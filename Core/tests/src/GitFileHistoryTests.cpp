@@ -78,8 +78,7 @@ TEST_CASE("A file's history continues through a rename when following is on")
 
 	// Without following, the history would stop at "rename to new" and the commit that
 	// created the file would be invisible — which is the case this whole feature exists for.
-	CHECK(Summaries(log.GetValue().Commits)
-		  == std::vector<std::string>{"edit new", "rename to new", "add old"});
+	CHECK(Summaries(log.GetValue().Commits) == std::vector<std::string>{"edit new", "rename to new", "add old"});
 }
 
 TEST_CASE("A file's history stops at the rename when following is off")
@@ -294,6 +293,5 @@ TEST_CASE("A line range's history follows the lines as earlier commits move them
 	// The line is number four today and was number one when it was written. Without
 	// mapping the range backwards, the walk would look at line four of a one-line file
 	// and lose the commit that created it.
-	CHECK(Summaries(log.GetValue().Commits)
-		  == std::vector<std::string>{"edit the target line", "add the target line"});
+	CHECK(Summaries(log.GetValue().Commits) == std::vector<std::string>{"edit the target line", "add the target line"});
 }

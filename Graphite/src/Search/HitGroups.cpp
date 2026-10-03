@@ -7,7 +7,10 @@
 
 namespace Graphite {
 
-	void HitGroups::SetRoot(std::filesystem::path root) { m_Root = std::move(root); }
+	void HitGroups::SetRoot(std::filesystem::path root)
+	{
+		m_Root = std::move(root);
+	}
 
 	void HitGroups::Add(SearchHit hit)
 	{
@@ -20,8 +23,7 @@ namespace Graphite {
 			DisplayPath shown = SplitPathForDisplay(hit.File, m_Root);
 
 			m_Index.emplace(id, m_Groups.size());
-			m_Groups.push_back(HitGroup{std::move(id), std::move(shown.Directory),
-										std::move(shown.Name), hit.File, {}});
+			m_Groups.push_back(HitGroup{std::move(id), std::move(shown.Directory), std::move(shown.Name), hit.File, {}});
 			m_Groups.back().Hits.push_back(std::move(hit));
 		}
 		else

@@ -83,7 +83,7 @@ namespace Graphite {
 		const float top = at.y + std::floor((ImGui::GetFrameHeight() - height) * 0.5f);
 
 		ImGui::GetWindowDrawList()->AddLine(ImVec2(at.x, top), ImVec2(at.x, top + height),
-										   ImGui::GetColorU32(ImGuiCol_Separator), Core::Scaled(kIconSeparatorWidth));
+											ImGui::GetColorU32(ImGuiCol_Separator), Core::Scaled(kIconSeparatorWidth));
 
 		// Claims the line it drew on, so the spacing either side of it is the ordinary item
 		// spacing and nothing has to know a line went past.

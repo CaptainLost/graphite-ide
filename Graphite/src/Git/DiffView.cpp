@@ -43,13 +43,17 @@ namespace Graphite {
 		{
 			switch (kind)
 			{
-				case DiffRowKind::Added: return palette.DiffAddedLine;
-				case DiffRowKind::Removed: return palette.DiffRemovedLine;
-				case DiffRowKind::HunkHeader:
-				case DiffRowKind::HunkSignature: return ImGui::GetColorU32(ImGuiCol_FrameBg);
-				case DiffRowKind::HunkGap:
-				case DiffRowKind::Context:
-				case DiffRowKind::Unchanged: break;
+			case DiffRowKind::Added:
+				return palette.DiffAddedLine;
+			case DiffRowKind::Removed:
+				return palette.DiffRemovedLine;
+			case DiffRowKind::HunkHeader:
+			case DiffRowKind::HunkSignature:
+				return ImGui::GetColorU32(ImGuiCol_FrameBg);
+			case DiffRowKind::HunkGap:
+			case DiffRowKind::Context:
+			case DiffRowKind::Unchanged:
+				break;
 			}
 
 			return 0;
@@ -59,13 +63,16 @@ namespace Graphite {
 		{
 			switch (kind)
 			{
-				case DiffRowKind::Added: return palette.DiffAddedText;
-				case DiffRowKind::Removed: return palette.DiffRemovedText;
-				case DiffRowKind::HunkHeader:
-				case DiffRowKind::HunkSignature:
-				case DiffRowKind::HunkGap:
-				case DiffRowKind::Context:
-				case DiffRowKind::Unchanged: break;
+			case DiffRowKind::Added:
+				return palette.DiffAddedText;
+			case DiffRowKind::Removed:
+				return palette.DiffRemovedText;
+			case DiffRowKind::HunkHeader:
+			case DiffRowKind::HunkSignature:
+			case DiffRowKind::HunkGap:
+			case DiffRowKind::Context:
+			case DiffRowKind::Unchanged:
+				break;
 			}
 
 			return ImGui::GetColorU32(ImGuiCol_Text);
@@ -102,13 +109,11 @@ namespace Graphite {
 
 			// Named, because a bare pair of numbers above the code says nothing about being one
 			// changed stretch of the file, or about how many more there are to read.
-			std::string text = "Hunk " + std::to_string(index + 1) + " of "
-							   + std::to_string(file.Hunks.size());
+			std::string text = "Hunk " + std::to_string(index + 1) + " of " + std::to_string(file.Hunks.size());
 
 			// A half the hunk has no lines on says so in words: a bare dash reads as a range
 			// that failed to show rather than as an added or deleted file's empty side.
-			if (side.has_value()
-				&& (*side == DiffSide::Old ? hunk.OldCount : hunk.NewCount) <= 0)
+			if (side.has_value() && (*side == DiffSide::Old ? hunk.OldCount : hunk.NewCount) <= 0)
 			{
 				return text + " | no lines";
 			}
@@ -254,8 +259,7 @@ namespace Graphite {
 		// what is drawn rather than from the buttons, so that whole-file mode arriving a few
 		// frames late with its texts still keeps the reader's line.
 		const Layout layout{m_Mode, wholeFile ? DiffScope::WholeFile : DiffScope::Hunks};
-		m_RestoreKeptLine = layout != m_Layout && m_KeptLine.has_value()
-						   && m_KeptLine->Path == ShownPath(file);
+		m_RestoreKeptLine = layout != m_Layout && m_KeptLine.has_value() && m_KeptLine->Path == ShownPath(file);
 		m_Layout = layout;
 
 		if (wholeFile)
@@ -469,8 +473,7 @@ namespace Graphite {
 								.value_or(row);
 				}
 
-				if (drawn.Kind == DiffRowKind::HunkHeader
-					|| drawn.Kind == DiffRowKind::HunkSignature)
+				if (drawn.Kind == DiffRowKind::HunkHeader || drawn.Kind == DiffRowKind::HunkSignature)
 				{
 					// In the text column, past both line numbers, so it lines up with the code
 					// it introduces rather than hanging off the region's edge.
@@ -640,8 +643,7 @@ namespace Graphite {
 								.value_or(*row);
 				}
 
-				if (drawn.Kind == DiffRowKind::HunkHeader
-					|| drawn.Kind == DiffRowKind::HunkSignature)
+				if (drawn.Kind == DiffRowKind::HunkHeader || drawn.Kind == DiffRowKind::HunkSignature)
 				{
 					// Measured like any other line, so a long scope shown as git wrote it is
 					// not left beyond anything scrolling could reach.
@@ -729,7 +731,7 @@ namespace Graphite {
 		ImGui::EndChild();
 	}
 
-	template <typename Row>
+	template<typename Row>
 	std::optional<float> DiffView::TakeRestoredScroll(std::span<const Row> rows, float startY)
 	{
 		const bool restore = std::exchange(m_RestoreKeptLine, false);
@@ -743,13 +745,12 @@ namespace Graphite {
 		// the whole file — is stood in for by the hunk after it, put where the line was.
 		const DiffRowAt at = RowAt(rows, m_KeptLine->Anchor);
 
-		return std::max(0.0f, startY + static_cast<float>(at.Row) * m_RowHeight
-								  - m_KeptLine->Offset);
+		return std::max(0.0f, startY + static_cast<float>(at.Row) * m_RowHeight - m_KeptLine->Offset);
 	}
 
-	template <typename Row>
+	template<typename Row>
 	void DiffView::RememberKeptLine(std::span<const Row> rows, const Core::FileDiff& file,
-								   float startY)
+									float startY)
 	{
 		const float scrollY = ImGui::GetScrollY();
 

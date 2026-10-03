@@ -139,14 +139,12 @@ namespace Core {
 
 		const auto code = static_cast<std::uint16_t>(key);
 
-		if (HasModifier(modifiers, KeyModifier::Control) && code >= static_cast<std::uint16_t>(KeyCode::A)
-			&& code <= static_cast<std::uint16_t>(KeyCode::Z))
+		if (HasModifier(modifiers, KeyModifier::Control) && code >= static_cast<std::uint16_t>(KeyCode::A) && code <= static_cast<std::uint16_t>(KeyCode::Z))
 		{
 			return std::string(1, static_cast<char>(code - static_cast<std::uint16_t>(KeyCode::A) + 1));
 		}
 
-		if (HasModifier(modifiers, KeyModifier::Alt) && code >= static_cast<std::uint16_t>(KeyCode::A)
-			&& code <= static_cast<std::uint16_t>(KeyCode::Z))
+		if (HasModifier(modifiers, KeyModifier::Alt) && code >= static_cast<std::uint16_t>(KeyCode::A) && code <= static_cast<std::uint16_t>(KeyCode::Z))
 		{
 			const char letter =
 				static_cast<char>(code - static_cast<std::uint16_t>(KeyCode::A) + 'a');

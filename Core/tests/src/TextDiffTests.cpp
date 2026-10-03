@@ -54,8 +54,7 @@ TEST_CASE("Every line of a text diffed against nothing is new")
 
 TEST_CASE("Separate changes are separate hunks in order")
 {
-	CHECK(Diff("1\n2\n3\n4\n5\n", "1\nX\n3\n4\nY\n")
-		  == std::vector<LineHunk>{{1, 1, 1, 1}, {4, 1, 4, 1}});
+	CHECK(Diff("1\n2\n3\n4\n5\n", "1\nX\n3\n4\nY\n") == std::vector<LineHunk>{{1, 1, 1, 1}, {4, 1, 4, 1}});
 }
 
 // git's own answer, pinned so it is a known behaviour: the last line differs in whether it

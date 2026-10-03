@@ -18,7 +18,7 @@ namespace Graphite {
 			// The same comparison TakeFor uses, so the two never disagree about what counts
 			// as "the same path".
 			const auto found = std::find_if(m_Entries.begin(), m_Entries.end(),
-				[&normalized](const Entry& entry) { return Core::SamePath(entry.Path, normalized); });
+											[&normalized](const Entry& entry) { return Core::SamePath(entry.Path, normalized); });
 
 			if (found != m_Entries.end())
 			{
@@ -35,7 +35,7 @@ namespace Graphite {
 		const std::filesystem::path normalized = Core::NormalizePath(path);
 
 		const auto found = std::find_if(m_Entries.begin(), m_Entries.end(),
-			[&normalized](const Entry& entry) { return Core::SamePath(entry.Path, normalized); });
+										[&normalized](const Entry& entry) { return Core::SamePath(entry.Path, normalized); });
 
 		if (found == m_Entries.end())
 		{
@@ -54,6 +54,6 @@ namespace Graphite {
 		}
 
 		std::erase_if(m_Entries,
-			[](const Entry& entry) { return entry.Age >= kExpectedWriteSeconds; });
+					  [](const Entry& entry) { return entry.Age >= kExpectedWriteSeconds; });
 	}
 }

@@ -28,12 +28,18 @@ namespace {
 	{
 		switch (target)
 		{
-		case Core::DiffTarget::WorkTreeToIndex: return "unstaged";
-		case Core::DiffTarget::IndexToHead: return "staged";
-		case Core::DiffTarget::WorkTreeToHead: return "working";
-		case Core::DiffTarget::CommitToParent: return "commit";
-		case Core::DiffTarget::StashToParent: return "stash";
-		case Core::DiffTarget::RevisionToRevision: return "range";
+		case Core::DiffTarget::WorkTreeToIndex:
+			return "unstaged";
+		case Core::DiffTarget::IndexToHead:
+			return "staged";
+		case Core::DiffTarget::WorkTreeToHead:
+			return "working";
+		case Core::DiffTarget::CommitToParent:
+			return "commit";
+		case Core::DiffTarget::StashToParent:
+			return "stash";
+		case Core::DiffTarget::RevisionToRevision:
+			return "range";
 		}
 
 		return "diff";
@@ -71,9 +77,12 @@ namespace {
 	{
 		switch (target)
 		{
-		case Core::DiffTarget::WorkTreeToIndex: return "unstaged ";
-		case Core::DiffTarget::IndexToHead: return "staged ";
-		default: return "";
+		case Core::DiffTarget::WorkTreeToIndex:
+			return "unstaged ";
+		case Core::DiffTarget::IndexToHead:
+			return "staged ";
+		default:
+			return "";
 		}
 	}
 }
@@ -215,7 +224,7 @@ namespace Graphite {
 	bool DiffWindows::IsOpen(const OpenDiff& diff) const
 	{
 		return std::any_of(m_Open.begin(), m_Open.end(),
-							[&diff](const Entry& entry) { return entry.Diff == diff; });
+						   [&diff](const Entry& entry) { return entry.Diff == diff; });
 	}
 
 	void DiffWindows::CloseAll()

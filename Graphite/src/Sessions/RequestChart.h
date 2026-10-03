@@ -31,7 +31,7 @@ namespace Graphite {
 	// hidden layer adds nothing: its top is the top of the layer under it, so a bar drawn for it
 	// would be covered exactly, and the layers above it sit lower by what it held rather than
 	// floating over a gap.
-	template <std::size_t N>
+	template<std::size_t N>
 	std::array<double, N> StackedTops(const std::array<double, N>& layers, const std::array<bool, N>& shown)
 	{
 		std::array<double, N> tops{};

@@ -15,8 +15,7 @@ namespace {
 		std::vector<std::string> names;
 
 		Graphite::CollectAnalysable(root, Core::CancellationToken{},
-									[&names](const std::filesystem::path& file)
-									{ names.push_back(file.filename().string()); });
+									[&names](const std::filesystem::path& file) { names.push_back(file.filename().string()); });
 
 		std::sort(names.begin(), names.end());
 
@@ -49,8 +48,7 @@ TEST_CASE("A cancelled walk stops rather than finishing quietly")
 	Core::CancellationToken token;
 	std::size_t seen = 0;
 
-	Graphite::CollectAnalysable(temp.GetPath(), token, [&](const std::filesystem::path&)
-	{
+	Graphite::CollectAnalysable(temp.GetPath(), token, [&](const std::filesystem::path&) {
 		++seen;
 		token.Cancel();
 	});

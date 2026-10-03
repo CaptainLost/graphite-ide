@@ -29,12 +29,18 @@ namespace Graphite {
 		{
 			switch (category)
 			{
-			case ToolCategory::Read: return Read;
-			case ToolCategory::Edit: return Edit;
-			case ToolCategory::Run: return Run;
-			case ToolCategory::Agent: return Agent;
-			case ToolCategory::Web: return Web;
-			case ToolCategory::Other: return Other;
+			case ToolCategory::Read:
+				return Read;
+			case ToolCategory::Edit:
+				return Edit;
+			case ToolCategory::Run:
+				return Run;
+			case ToolCategory::Agent:
+				return Agent;
+			case ToolCategory::Web:
+				return Web;
+			case ToolCategory::Other:
+				return Other;
 			}
 
 			return Other;

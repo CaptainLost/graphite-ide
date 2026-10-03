@@ -53,14 +53,14 @@ namespace Graphite {
 	{
 		switch (language)
 		{
-			case LanguageId::Cpp:
-				return "C++";
-			case LanguageId::CSharp:
-				return "C#";
-			case LanguageId::TypeScript:
-				return "TypeScript";
-			case LanguageId::PlainText:
-				return {};
+		case LanguageId::Cpp:
+			return "C++";
+		case LanguageId::CSharp:
+			return "C#";
+		case LanguageId::TypeScript:
+			return "TypeScript";
+		case LanguageId::PlainText:
+			return {};
 		}
 
 		return {};
@@ -79,13 +79,13 @@ namespace Graphite {
 	{
 		switch (language)
 		{
-			case LanguageId::Cpp:
-			case LanguageId::CSharp:
-			case LanguageId::TypeScript:
-				return "//";
+		case LanguageId::Cpp:
+		case LanguageId::CSharp:
+		case LanguageId::TypeScript:
+			return "//";
 
-			case LanguageId::PlainText:
-				return std::nullopt;
+		case LanguageId::PlainText:
+			return std::nullopt;
 		}
 
 		return std::nullopt;

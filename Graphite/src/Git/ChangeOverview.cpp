@@ -12,8 +12,7 @@ namespace Graphite {
 			const float from = lineTop(hunk.FirstLine);
 			const float to = hunk.Kind == HunkKind::Deleted ? from : lineTop(hunk.FirstLine + hunk.LineCount);
 
-			OverviewMark mark{.From = from, .To = std::max(to, from + minFraction), .Kind = hunk.Kind,
-							  .Staged = hunk.Staged};
+			OverviewMark mark{.From = from, .To = std::max(to, from + minFraction), .Kind = hunk.Kind, .Staged = hunk.Staged};
 
 			// Pushed back up rather than cut short, so a change on the last line keeps its height.
 			if (mark.To > 1.0f)

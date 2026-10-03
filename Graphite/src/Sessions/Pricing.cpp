@@ -113,8 +113,7 @@ namespace Graphite {
 			return std::nullopt;
 
 		const double scale = key.Fast ? kFastMultiplier : 1.0;
-		const auto dollars = [scale](std::uint64_t tokens, double perMillion)
-		{ return static_cast<double>(tokens) / kPerMillion * perMillion * scale; };
+		const auto dollars = [scale](std::uint64_t tokens, double perMillion) { return static_cast<double>(tokens) / kPerMillion * perMillion * scale; };
 
 		BucketCosts costs;
 		costs.Input = dollars(counts.Input, price->Input);

@@ -160,7 +160,6 @@ TEST_CASE("CenterEmptyState submits nothing while a window is docked in the cent
 	});
 }
 
-
 TEST_CASE("DockSpaceHost draws what it is given above the dockspace and gives the dockspace the rest")
 {
 	DockingContext context;

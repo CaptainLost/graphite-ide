@@ -74,8 +74,7 @@ TEST_CASE("A file whose stamp moved while it was being read is not vouched for")
 
 	const Graphite::FileText moved = Graphite::ReadFileText(
 		file,
-		[&](const std::filesystem::path&) -> std::optional<std::filesystem::file_time_type>
-		{
+		[&](const std::filesystem::path&) -> std::optional<std::filesystem::file_time_type> {
 			return first + std::chrono::seconds(calls++);
 		});
 
@@ -85,8 +84,7 @@ TEST_CASE("A file whose stamp moved while it was being read is not vouched for")
 
 	const Graphite::FileText steady = Graphite::ReadFileText(
 		file,
-		[&](const std::filesystem::path&) -> std::optional<std::filesystem::file_time_type>
-		{
+		[&](const std::filesystem::path&) -> std::optional<std::filesystem::file_time_type> {
 			return first;
 		});
 
@@ -101,8 +99,7 @@ TEST_CASE("A file with no stamp before the read is not readable")
 
 	const Graphite::FileText read = Graphite::ReadFileText(
 		file,
-		[](const std::filesystem::path&) -> std::optional<std::filesystem::file_time_type>
-		{
+		[](const std::filesystem::path&) -> std::optional<std::filesystem::file_time_type> {
 			return std::nullopt;
 		});
 

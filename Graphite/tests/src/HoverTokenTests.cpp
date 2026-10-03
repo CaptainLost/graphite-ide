@@ -21,10 +21,10 @@ TEST_CASE("The token under the mouse is taken only from Identifier tokens")
 	const std::string line = "int x = 1; // foo";
 	const auto tokens = Lex(line);
 
-	CHECK(TokenUnderByte(line, 0, 4, tokens).has_value());     // x
-	CHECK_FALSE(TokenUnderByte(line, 0, 0, tokens).has_value()); // int, a keyword
+	CHECK(TokenUnderByte(line, 0, 4, tokens).has_value());		  // x
+	CHECK_FALSE(TokenUnderByte(line, 0, 0, tokens).has_value());  // int, a keyword
 	CHECK_FALSE(TokenUnderByte(line, 0, 14, tokens).has_value()); // foo, inside a comment
-	CHECK_FALSE(TokenUnderByte(line, 0, 5, tokens).has_value()); // whitespace
+	CHECK_FALSE(TokenUnderByte(line, 0, 5, tokens).has_value());  // whitespace
 }
 
 TEST_CASE("The LSP column of a token after a tab counts the tab as one unit")

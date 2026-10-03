@@ -21,7 +21,6 @@ namespace Graphite {
 				   (status.Restarts == 1 ? " time" : " times");
 		}
 
-
 	}
 
 	std::string ServerStatusText(const ServerStatus& status)
@@ -112,7 +111,8 @@ namespace Graphite {
 
 		case ServerState::NoCompileDatabase:
 			detail = "No compile_commands.json, compile_flags.txt or .clangd was found for this "
-					 "project, so " + status.Name +
+					 "project, so " +
+					 status.Name +
 					 " can see only the files that are open rather than the whole project.";
 			break;
 

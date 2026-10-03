@@ -291,8 +291,7 @@ namespace Core {
 	Result<std::string> ReadFileBytes(const std::filesystem::path& path,
 									  std::optional<std::uintmax_t> maximumBytes)
 	{
-		const auto tooLarge = [&path, maximumBytes]()
-		{
+		const auto tooLarge = [&path, maximumBytes]() {
 			return Error{ErrorCode::TooLarge,
 						 "File is larger than " + std::to_string(*maximumBytes) +
 							 " bytes: " + ToUtf8(path)};

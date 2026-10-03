@@ -21,20 +21,20 @@ namespace Graphite {
 		{
 			switch (kind)
 			{
-				case SemanticKind::Type:
-					return TokenKind::SemanticType;
-				case SemanticKind::Function:
-					return TokenKind::SemanticFunction;
-				case SemanticKind::Macro:
-					return TokenKind::SemanticMacro;
-				case SemanticKind::Member:
-					return TokenKind::SemanticMember;
-				case SemanticKind::Parameter:
-					return TokenKind::SemanticParameter;
-				case SemanticKind::Namespace:
-					return TokenKind::SemanticNamespace;
-				case SemanticKind::Other:
-					break;
+			case SemanticKind::Type:
+				return TokenKind::SemanticType;
+			case SemanticKind::Function:
+				return TokenKind::SemanticFunction;
+			case SemanticKind::Macro:
+				return TokenKind::SemanticMacro;
+			case SemanticKind::Member:
+				return TokenKind::SemanticMember;
+			case SemanticKind::Parameter:
+				return TokenKind::SemanticParameter;
+			case SemanticKind::Namespace:
+				return TokenKind::SemanticNamespace;
+			case SemanticKind::Other:
+				break;
 			}
 
 			// Other never reaches here - ParseSemanticTokens drops it, because a span that changes

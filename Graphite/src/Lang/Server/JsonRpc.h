@@ -26,10 +26,10 @@ namespace Graphite {
 	// it can only ever be one of ours, and we issue integers.
 	struct IncomingMessage
 	{
-		std::optional<RequestId> ReplyTo;        // set when this is a reply we asked for
+		std::optional<RequestId> ReplyTo;		 // set when this is a reply we asked for
 		std::optional<nlohmann::json> RespondTo; // set when this is a server-initiated request we must answer
-		std::string Method;                 // set when this is a server-initiated request or notification
-		nlohmann::json Payload;             // "result" for a reply, "params" otherwise
+		std::string Method;						 // set when this is a server-initiated request or notification
+		nlohmann::json Payload;					 // "result" for a reply, "params" otherwise
 		bool IsError = false;
 	};
 

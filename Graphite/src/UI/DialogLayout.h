@@ -32,7 +32,10 @@ namespace Graphite::DialogLayout {
 		ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
 	}
 
-	inline void PopModalFrameColours() { ImGui::PopStyleColor(); }
+	inline void PopModalFrameColours()
+	{
+		ImGui::PopStyleColor();
+	}
 
 	// Around the question's Begin. The padding is read by Begin and must not reach the
 	// children drawn inside, so it is popped straight after; the width is fixed so the dialog
@@ -44,10 +47,16 @@ namespace Graphite::DialogLayout {
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Core::Scaled(ImVec2(kPadding, kPadding)));
 	}
 
-	inline void AfterBegin() { ImGui::PopStyleVar(); }
+	inline void AfterBegin()
+	{
+		ImGui::PopStyleVar();
+	}
 
 	// Air between two sections: the text, the list, the options, the buttons.
-	inline void Gap() { ImGui::Dummy(ImVec2(0.0f, Core::Scaled(kSectionGap))); }
+	inline void Gap()
+	{
+		ImGui::Dummy(ImVec2(0.0f, Core::Scaled(kSectionGap)));
+	}
 
 	// Wrapped at the dialog's edge, which the fixed width keeps where it is.
 	inline void Text(const std::string& text)
@@ -99,7 +108,10 @@ namespace Graphite::DialogLayout {
 		return ImGui::BeginChild(id, ImVec2(0.0f, height), ImGuiChildFlags_Borders);
 	}
 
-	inline void EndFileList() { ImGui::EndChild(); }
+	inline void EndFileList()
+	{
+		ImGui::EndChild();
+	}
 
 	// "CHANGED", "UNTRACKED": small and muted, so the paths are what the eye lands on.
 	inline void FileGroupHeader(const char* text)

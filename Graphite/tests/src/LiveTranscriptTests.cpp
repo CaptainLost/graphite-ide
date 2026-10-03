@@ -58,10 +58,10 @@ TEST_CASE("The timeline follows the transcript and restarts with it")
 {
 	TempDirectory temp;
 	const std::filesystem::path file = temp.MakeFile("s.jsonl",
-		Fixtures::UserPrompt("one") +
-		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(1, 1)) +
-		Fixtures::Assistant("r2", Fixtures::TextBlock("b"), Fixtures::Usage(1, 1), "claude-opus-5",
-							"2026-09-17T09:00:02.000Z"));
+													 Fixtures::UserPrompt("one") +
+														 Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(1, 1)) +
+														 Fixtures::Assistant("r2", Fixtures::TextBlock("b"), Fixtures::Usage(1, 1), "claude-opus-5",
+																			 "2026-09-17T09:00:02.000Z"));
 
 	LiveTranscript live{file};
 	Session session;
@@ -277,7 +277,7 @@ TEST_CASE("A subagent's transcript is followed from where the last read stopped"
 
 namespace {
 	// Polls GetProgress until `done` holds, or fails after `seconds`.
-	template <typename Done>
+	template<typename Done>
 	LiveTranscript::LoadProgress WaitForProgress(const LiveTranscript& live, Done done, int seconds = 60)
 	{
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{seconds};
@@ -439,8 +439,7 @@ TEST_CASE("Closing a transcript while its subagents are read returns without fin
 
 	auto live = std::make_unique<LiveTranscript>(large.File);
 	live->Poll();
-	WaitForProgress(*live, [](const LiveTranscript::LoadProgress& p)
-					{ return p.FirstPassDone && p.SubagentsTotal > 0 && !p.SubagentsWalked; }, 300);
+	WaitForProgress(*live, [](const LiveTranscript::LoadProgress& p) { return p.FirstPassDone && p.SubagentsTotal > 0 && !p.SubagentsWalked; }, 300);
 
 	const LiveTranscript::LoadProgress before = live->GetProgress();
 	const Clock::duration destroy = TimeDestroy(live);

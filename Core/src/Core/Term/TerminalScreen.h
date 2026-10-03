@@ -61,14 +61,12 @@ namespace Core {
 
 	inline CellFlags operator|(CellFlags left, CellFlags right)
 	{
-		return static_cast<CellFlags>(static_cast<std::uint8_t>(left)
-									  | static_cast<std::uint8_t>(right));
+		return static_cast<CellFlags>(static_cast<std::uint8_t>(left) | static_cast<std::uint8_t>(right));
 	}
 
 	inline CellFlags operator&(CellFlags left, CellFlags right)
 	{
-		return static_cast<CellFlags>(static_cast<std::uint8_t>(left)
-									  & static_cast<std::uint8_t>(right));
+		return static_cast<CellFlags>(static_cast<std::uint8_t>(left) & static_cast<std::uint8_t>(right));
 	}
 
 	inline CellFlags operator~(CellFlags value)

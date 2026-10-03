@@ -29,8 +29,7 @@ namespace {
 		std::vector<std::string> names;
 
 		Graphite::EnumerateFiles(input, Core::CancellationToken{},
-								 [&names](const std::filesystem::path& file)
-								 { names.push_back(file.filename().string()); });
+								 [&names](const std::filesystem::path& file) { names.push_back(file.filename().string()); });
 
 		std::sort(names.begin(), names.end());
 
@@ -67,15 +66,14 @@ TEST_CASE("EnumerateFiles does not descend into an ignored directory")
 	int directoriesAsked = 0;
 
 	const Graphite::IgnorePredicate ignored =
-		[&directoriesAsked](const std::filesystem::path& path, bool isDirectory)
-	{
-		if (isDirectory)
-		{
-			++directoriesAsked;
-		}
+		[&directoriesAsked](const std::filesystem::path& path, bool isDirectory) {
+			if (isDirectory)
+			{
+				++directoriesAsked;
+			}
 
-		return path.filename() == "bin";
-	};
+			return path.filename() == "bin";
+		};
 
 	const std::vector<std::string> names = NamesUnder(temp.GetPath(), ignored);
 
@@ -98,8 +96,7 @@ TEST_CASE("EnumerateFiles leaves out an ignored file")
 	Touch(temp.GetPath() / "drop.obj");
 
 	const std::vector<std::string> names =
-		NamesUnder(temp.GetPath(), [](const std::filesystem::path& path, bool)
-				   { return path.extension() == ".obj"; });
+		NamesUnder(temp.GetPath(), [](const std::filesystem::path& path, bool) { return path.extension() == ".obj"; });
 
 	REQUIRE(names.size() == 1);
 	CHECK(names[0] == "keep.cpp");
@@ -122,8 +119,7 @@ TEST_CASE("EnumerateFiles stops when its token is cancelled")
 	int seen = 0;
 
 	Graphite::EnumerateFiles(input, token,
-							 [&](const std::filesystem::path&)
-							 {
+							 [&](const std::filesystem::path&) {
 								 ++seen;
 								 token.Cancel();
 							 });
@@ -166,8 +162,7 @@ TEST_CASE("EnumerateProjectFiles reports what the projects declare")
 	std::vector<std::string> names;
 
 	Graphite::EnumerateProjectFiles(solution,
-									[&names](const std::filesystem::path& file)
-									{ names.push_back(file.filename().string()); });
+									[&names](const std::filesystem::path& file) { names.push_back(file.filename().string()); });
 
 	std::sort(names.begin(), names.end());
 

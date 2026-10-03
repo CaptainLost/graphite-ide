@@ -49,8 +49,8 @@ namespace Graphite {
 	bool NeedsCheckoutDialog(const Core::CheckoutPlan& plan, const std::vector<std::filesystem::path>& unsaved);
 
 	CheckoutQuestion BuildCheckoutQuestion(const std::string& targetLabel, const Core::CheckoutPlan& plan,
-	                                       const Core::WorkingTreeStatus& status,
-	                                       const std::vector<std::filesystem::path>& unsaved);
+										   const Core::WorkingTreeStatus& status,
+										   const std::vector<std::filesystem::path>& unsaved);
 
 	// The paths a finished checkout changed that the editor may reload without asking: every
 	// one but a document with unsaved edits now. A document the dialog reverted or saved is
@@ -59,7 +59,7 @@ namespace Graphite {
 	// instead of a reload throwing the edits away. All paths absolute; matched without
 	// regard to case or separators.
 	std::vector<std::filesystem::path> SilentReloads(const std::vector<std::filesystem::path>& changed,
-	                                                 const std::vector<std::filesystem::path>& unsavedNow);
+													 const std::vector<std::filesystem::path>& unsavedNow);
 
 	// nullopt when the name is fine; otherwise the reason to show under the field.
 	std::optional<std::string> BranchNameProblem(const std::string& name, const std::vector<Core::Branch>& branches);

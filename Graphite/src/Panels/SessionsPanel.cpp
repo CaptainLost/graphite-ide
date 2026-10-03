@@ -264,8 +264,7 @@ namespace Graphite {
 			// window still looking for its session now either finds it or never will.
 			if (!m_InitialScan && m_Windows.IsLookingForSessions())
 			{
-				m_Windows.SettleRestored([this](const std::string& id) -> const SessionSummary*
-				{
+				m_Windows.SettleRestored([this](const std::string& id) -> const SessionSummary* {
 					for (const auto& [file, summary] : m_Sessions)
 					{
 						if (SameSessionId(summary.Id, id))
@@ -305,8 +304,7 @@ namespace Graphite {
 		}
 
 		// Grouped by where each was started when every project is shown, newest first within.
-		std::sort(visible.begin(), visible.end(), [](const VisibleRow& a, const VisibleRow& b)
-		{
+		std::sort(visible.begin(), visible.end(), [](const VisibleRow& a, const VisibleRow& b) {
 			if (a.Folder != b.Folder)
 				return a.Folder < b.Folder;
 
@@ -360,7 +358,7 @@ namespace Graphite {
 		std::error_code status;
 		const std::filesystem::path directory =
 			!summary.Cwd.empty() && std::filesystem::is_directory(summary.Cwd, status) ? summary.Cwd
-																						: WorkspaceRoot();
+																					   : WorkspaceRoot();
 
 		if (!m_Launch("Claude", ResumeCommand(program, summary.Id), directory))
 		{

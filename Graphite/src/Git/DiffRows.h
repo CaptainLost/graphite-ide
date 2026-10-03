@@ -104,7 +104,7 @@ namespace Graphite {
 	// lines exist and how they pair, never what they say — so the widget looks a line's text
 	// up by number exactly as it already looks a diff line up by index.
 	WholeFileRows BuildWholeFileRows(const Core::FileDiff& file, std::size_t oldLineCount,
-									  std::size_t newLineCount);
+									 std::size_t newLineCount);
 
 	// Which half of the side-by-side view a row is being resolved for. The unified view has one
 	// text column standing for both sides and asks for New, which is what it drew before this

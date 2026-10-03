@@ -50,8 +50,7 @@ namespace Graphite {
 		bool IsUnder(const std::set<std::string>& keys, const std::string& directory)
 		{
 			const std::string prefix = directory + "/";
-			return std::any_of(keys.begin(), keys.end(), [&prefix](const std::string& key)
-			                   { return key.compare(0, prefix.size(), prefix) == 0; });
+			return std::any_of(keys.begin(), keys.end(), [&prefix](const std::string& key) { return key.compare(0, prefix.size(), prefix) == 0; });
 		}
 	}
 
@@ -79,12 +78,12 @@ namespace Graphite {
 
 		const std::set<std::string> updated = Keys(plan.Updated);
 		return std::any_of(unsaved.begin(), unsaved.end(),
-		                   [&updated](const std::filesystem::path& path) { return updated.count(Key(path)) != 0; });
+						   [&updated](const std::filesystem::path& path) { return updated.count(Key(path)) != 0; });
 	}
 
 	CheckoutQuestion BuildCheckoutQuestion(const std::string& targetLabel, const Core::CheckoutPlan& plan,
-	                                       const Core::WorkingTreeStatus& status,
-	                                       const std::vector<std::filesystem::path>& unsaved)
+										   const Core::WorkingTreeStatus& status,
+										   const std::vector<std::filesystem::path>& unsaved)
 	{
 		CheckoutQuestion question;
 		question.Title = "Checking out " + targetLabel + " would overwrite your changes";
@@ -127,7 +126,7 @@ namespace Graphite {
 				for (const auto* names : {&plan.Overwritten, &plan.Updated})
 				{
 					const auto named = std::find_if(names->begin(), names->end(),
-					                                [&key](const std::filesystem::path& name) { return Key(name) == key; });
+													[&key](const std::filesystem::path& name) { return Key(name) == key; });
 					if (named != names->end())
 					{
 						row.Path = *named;
@@ -155,13 +154,11 @@ namespace Graphite {
 	}
 
 	std::vector<std::filesystem::path> SilentReloads(const std::vector<std::filesystem::path>& changed,
-	                                                 const std::vector<std::filesystem::path>& unsavedNow)
+													 const std::vector<std::filesystem::path>& unsavedNow)
 	{
-		const auto unsaved = [&unsavedNow](const std::filesystem::path& path)
-		{
+		const auto unsaved = [&unsavedNow](const std::filesystem::path& path) {
 			const std::filesystem::path normal = Core::NormalizePath(path);
-			return std::any_of(unsavedNow.begin(), unsavedNow.end(), [&normal](const std::filesystem::path& other)
-			                   { return Core::SamePath(Core::NormalizePath(other), normal); });
+			return std::any_of(unsavedNow.begin(), unsavedNow.end(), [&normal](const std::filesystem::path& other) { return Core::SamePath(Core::NormalizePath(other), normal); });
 		};
 
 		std::vector<std::filesystem::path> silent;
@@ -188,8 +185,7 @@ namespace Graphite {
 			return "Not a valid branch name";
 		}
 
-		const bool taken = std::any_of(branches.begin(), branches.end(), [&name](const Core::Branch& branch)
-		                               { return branch.Kind == Core::RefKind::Local && branch.Name == name; });
+		const bool taken = std::any_of(branches.begin(), branches.end(), [&name](const Core::Branch& branch) { return branch.Kind == Core::RefKind::Local && branch.Name == name; });
 		if (taken)
 		{
 			return "A branch named " + name + " already exists";

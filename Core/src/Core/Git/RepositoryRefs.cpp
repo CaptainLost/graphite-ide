@@ -95,8 +95,7 @@ namespace Core {
 			Branch branch;
 			branch.Kind = type == GIT_BRANCH_REMOTE ? RefKind::Remote : RefKind::Local;
 
-			if (const char* name = nullptr; git_branch_name(&name, reference.get()) == 0
-										   && name != nullptr)
+			if (const char* name = nullptr; git_branch_name(&name, reference.get()) == 0 && name != nullptr)
 			{
 				branch.Name = name;
 			}
@@ -124,8 +123,7 @@ namespace Core {
 
 			if (tracked == 0 && upstream != nullptr)
 			{
-				if (const char* name = nullptr; git_branch_name(&name, upstream.get()) == 0
-											   && name != nullptr)
+				if (const char* name = nullptr; git_branch_name(&name, upstream.get()) == 0 && name != nullptr)
 				{
 					branch.Upstream = name;
 				}
@@ -136,8 +134,7 @@ namespace Core {
 					std::size_t ahead = 0;
 					std::size_t behind = 0;
 
-					if (git_graph_ahead_behind(&ahead, &behind, m_Handle.get(), target, upstreamTarget)
-						== 0)
+					if (git_graph_ahead_behind(&ahead, &behind, m_Handle.get(), target, upstreamTarget) == 0)
 					{
 						branch.Ahead = ahead;
 						branch.Behind = behind;

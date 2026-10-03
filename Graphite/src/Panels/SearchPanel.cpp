@@ -109,8 +109,7 @@ namespace Graphite {
 		if (request.Options.ProjectsOnly)
 		{
 			EnumerateProjectFiles(*m_Workspace.LoadedSolution(),
-								  [&request](const std::filesystem::path& file)
-								  { request.ProjectFiles.push_back(file); });
+								  [&request](const std::filesystem::path& file) { request.ProjectFiles.push_back(file); });
 		}
 
 		return request;
@@ -212,8 +211,7 @@ namespace Graphite {
 	{
 		// Already grouped, in OnUpdate, as the hits arrived. DrawHitList walks groups; it never
 		// touches a hit belonging to a file it is not drawing.
-		const std::function<void(const SearchHit&)> onOpen = [this](const SearchHit& hit)
-		{ OpenAndSelect(hit); };
+		const std::function<void(const SearchHit&)> onOpen = [this](const SearchHit& hit) { OpenAndSelect(hit); };
 
 		DrawHitList(HitListInput{
 			.Groups = m_Groups.Get(), .Selected = m_Selected, .OnOpen = onOpen});
@@ -273,7 +271,6 @@ namespace Graphite {
 		// already or never will be this frame (a large file still waiting on the size
 		// confirmation, say).
 		SelectInDocument(m_Documents, hit.File, hit.Line, hit.From, hit.To,
-						 [this](const std::filesystem::path& file)
-						 { m_Workspace.RequestOpenFile(file, true); });
+						 [this](const std::filesystem::path& file) { m_Workspace.RequestOpenFile(file, true); });
 	}
 }

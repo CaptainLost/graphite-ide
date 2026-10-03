@@ -984,9 +984,7 @@ TEST_CASE("Whole-file rows have no headers or gaps, since nothing is left out")
 	const Graphite::WholeFileRows whole = Graphite::BuildWholeFileRows(TwoHunks(), 24, 26);
 
 	const auto marks = [](const std::optional<DiffRow>& row) {
-		return row.has_value()
-			   && (row->Kind == DiffRowKind::HunkHeader || row->Kind == DiffRowKind::HunkSignature
-				   || row->Kind == DiffRowKind::HunkGap);
+		return row.has_value() && (row->Kind == DiffRowKind::HunkHeader || row->Kind == DiffRowKind::HunkSignature || row->Kind == DiffRowKind::HunkGap);
 	};
 
 	for (const DiffRow& row : whole.Unified)
@@ -1016,8 +1014,7 @@ TEST_CASE("A line between two hunks lands on the gap before the second")
 	const std::vector<DiffRow> rows = Graphite::BuildUnifiedRows(TwoHunks());
 
 	// Line 10 of the new file is between the hunks, which the hunks-only rows leave out.
-	CHECK(Graphite::RowAt(rows, Graphite::DiffLineAnchor{Graphite::DiffSide::New, 10})
-		  == Graphite::DiffRowAt{4, false});
+	CHECK(Graphite::RowAt(rows, Graphite::DiffLineAnchor{Graphite::DiffSide::New, 10}) == Graphite::DiffRowAt{4, false});
 }
 
 TEST_CASE("A hunk's scope is what follows its second @@, without the line break")
@@ -1084,8 +1081,8 @@ TEST_CASE("A signature is found as the nearest line above the hunk that starts w
 {
 	using Graphite::SignatureLine;
 
-	const std::vector<std::string_view> lines{"namespace Graphite {", "",   "    int Foo()",
-											  "    {",                 "        return 1;",
+	const std::vector<std::string_view> lines{"namespace Graphite {", "", "    int Foo()",
+											  "    {", "        return 1;",
 											  "    }"};
 
 	// Searched upward from the line before the hunk, which starts at line 5 here. Indentation

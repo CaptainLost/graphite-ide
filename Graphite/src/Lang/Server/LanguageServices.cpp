@@ -59,7 +59,7 @@ namespace Graphite {
 	}
 
 	const ServerConfig* LanguageServices::Resolve(const std::filesystem::path& path,
-												   LanguageId language, Key& key)
+												  LanguageId language, Key& key)
 	{
 		const ServerConfig* config = ServerConfigFor(language);
 
@@ -262,27 +262,26 @@ namespace Graphite {
 
 	std::optional<ServerStatus> LanguageServices::OverallStatus() const
 	{
-		const auto rank = [](ServerState state) -> int
-		{
+		const auto rank = [](ServerState state) -> int {
 			switch (state)
 			{
-				case ServerState::Indexing:
-				case ServerState::Starting:
-					return 4; // something is happening and will stop happening
-				case ServerState::Failed:
-				case ServerState::NotFound:
-				case ServerState::NoCompileDatabase:
-					return 3; // something is wrong and will not fix itself
-				case ServerState::Ready:
-					return 2; // up and answering, which is worth saying when nothing else is
-				case ServerState::Restricted:
-					// Below Ready: a trusted server that is up is more use to show than an
-					// untrusted one somewhere else - one file opened from another folder would
-					// otherwise speak for the whole workspace for the rest of the session. Its own
-					// tabs still say it, through StatusFor for their path.
-					return 1;
-				case ServerState::NotConfigured:
-					return 0; // no server here at all - the one case with nothing to report
+			case ServerState::Indexing:
+			case ServerState::Starting:
+				return 4; // something is happening and will stop happening
+			case ServerState::Failed:
+			case ServerState::NotFound:
+			case ServerState::NoCompileDatabase:
+				return 3; // something is wrong and will not fix itself
+			case ServerState::Ready:
+				return 2; // up and answering, which is worth saying when nothing else is
+			case ServerState::Restricted:
+				// Below Ready: a trusted server that is up is more use to show than an
+				// untrusted one somewhere else - one file opened from another folder would
+				// otherwise speak for the whole workspace for the rest of the session. Its own
+				// tabs still say it, through StatusFor for their path.
+				return 1;
+			case ServerState::NotConfigured:
+				return 0; // no server here at all - the one case with nothing to report
 			}
 
 			return 0;
@@ -364,48 +363,48 @@ namespace Graphite {
 	}
 
 	LanguageServices::Ticket LanguageServices::AskDefinition(const std::filesystem::path& path,
-															  LanguageId language,
-															  const FilePosition& where)
+															 LanguageId language,
+															 const FilePosition& where)
 	{
 		return AskVia(path, language,
-					 [&where](LspClient& client) { return client.AskDefinition(where); });
+					  [&where](LspClient& client) { return client.AskDefinition(where); });
 	}
 
 	LanguageServices::Ticket LanguageServices::AskReferences(const std::filesystem::path& path,
-															   LanguageId language,
-															   const FilePosition& where)
+															 LanguageId language,
+															 const FilePosition& where)
 	{
 		return AskVia(path, language,
-					 [&where](LspClient& client) { return client.AskReferences(where); });
+					  [&where](LspClient& client) { return client.AskReferences(where); });
 	}
 
 	LanguageServices::Ticket LanguageServices::AskHover(const std::filesystem::path& path,
-														  LanguageId language,
-														  const FilePosition& where)
+														LanguageId language,
+														const FilePosition& where)
 	{
 		return AskVia(path, language,
-					 [&where](LspClient& client) { return client.AskHover(where); });
+					  [&where](LspClient& client) { return client.AskHover(where); });
 	}
 
 	LanguageServices::Ticket LanguageServices::AskSwitchSourceHeader(
 		const std::filesystem::path& path, LanguageId language)
 	{
 		return AskVia(path, language,
-					 [&path](LspClient& client) { return client.AskSwitchSourceHeader(path); });
+					  [&path](LspClient& client) { return client.AskSwitchSourceHeader(path); });
 	}
 
 	LanguageServices::Ticket LanguageServices::AskSemanticTokens(const std::filesystem::path& path,
-																  LanguageId language)
+																 LanguageId language)
 	{
 		return AskVia(path, language,
-					 [&path](LspClient& client) { return client.AskSemanticTokens(path); });
+					  [&path](LspClient& client) { return client.AskSemanticTokens(path); });
 	}
 
 	LanguageServices::Ticket LanguageServices::AskSymbols(const std::filesystem::path& path,
-														   LanguageId language)
+														  LanguageId language)
 	{
 		return AskVia(path, language,
-					 [&path](LspClient& client) { return client.AskSymbols(path); });
+					  [&path](LspClient& client) { return client.AskSymbols(path); });
 	}
 
 	void LanguageServices::TakeAnswers(std::vector<Answer>& answers)
@@ -758,8 +757,7 @@ namespace Graphite {
 		}
 
 		m_Jobs.Submit([warm = m_Warm, token = m_WarmToken, root = std::move(root),
-					   respectGitIgnore]
-		{
+					   respectGitIgnore] {
 			const std::span<const LanguageId> wanted = LanguagesWithServers();
 
 			std::vector<LanguageId> seen;
@@ -778,13 +776,11 @@ namespace Graphite {
 				{
 					repository.emplace(std::move(opened.GetValue()));
 
-					enumeration.Ignored = [&repository](const std::filesystem::path& path, bool)
-					{ return repository->IsIgnored(path); };
+					enumeration.Ignored = [&repository](const std::filesystem::path& path, bool) { return repository->IsIgnored(path); };
 				}
 			}
 
-			EnumerateFiles(enumeration, token, [&](const std::filesystem::path& file)
-			{
+			EnumerateFiles(enumeration, token, [&](const std::filesystem::path& file) {
 				if (seen.size() == wanted.size())
 				{
 					// Everything worth finding has been found. EnumerateFiles checks the token

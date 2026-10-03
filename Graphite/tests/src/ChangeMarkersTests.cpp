@@ -66,8 +66,7 @@ TEST_CASE("A staged change follows its line when unstaged lines are inserted abo
 	const std::vector<LineHunk> unstaged{{0, 0, 0, 2}};
 	const auto markers = BuildChangeMarkers(staged, unstaged, 7);
 
-	CHECK(markers.Lines
-		  == std::vector<LineChange>{kAdded, kAdded, kNone, kNone, kNone, kStagedModified, kNone});
+	CHECK(markers.Lines == std::vector<LineChange>{kAdded, kAdded, kNone, kNone, kNone, kStagedModified, kNone});
 }
 
 TEST_CASE("An unstaged change wins over a staged one on the same line")
@@ -85,8 +84,7 @@ TEST_CASE("A staged line rewritten since into several lines shows only the unsta
 	const std::vector<LineHunk> unstaged{{2, 1, 2, 3}};
 	const auto markers = BuildChangeMarkers(staged, unstaged, 6);
 
-	CHECK(markers.Lines
-		  == std::vector<LineChange>{kNone, kNone, kModified, kModified, kModified, kNone});
+	CHECK(markers.Lines == std::vector<LineChange>{kNone, kNone, kModified, kModified, kModified, kNone});
 }
 
 TEST_CASE("A staged deletion follows its boundary across an unstaged insertion above")

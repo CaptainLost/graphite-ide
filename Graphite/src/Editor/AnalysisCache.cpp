@@ -82,7 +82,7 @@ namespace Graphite {
 	}
 
 	std::optional<CachedAnalysis> AnalysisCache::Take(const std::filesystem::path& path,
-													 std::filesystem::file_time_type modifiedAt)
+													  std::filesystem::file_time_type modifiedAt)
 	{
 		const auto found = m_ByPath.find(path);
 

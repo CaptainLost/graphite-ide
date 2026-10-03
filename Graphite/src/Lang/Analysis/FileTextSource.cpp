@@ -122,8 +122,7 @@ namespace Graphite {
 
 	void DiskFileTexts::Request(const std::filesystem::path& path)
 	{
-		m_Jobs.Submit([ready = m_Ready, path]
-		{
+		m_Jobs.Submit([ready = m_Ready, path] {
 			FileText read = ReadFileText(path);
 
 			{

@@ -7,8 +7,8 @@
 #include <string>
 
 using Core::HeadKind;
-using Core::RepositoryOperation;
 using Core::Repository;
+using Core::RepositoryOperation;
 
 namespace {
 

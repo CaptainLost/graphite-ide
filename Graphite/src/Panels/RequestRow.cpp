@@ -97,16 +97,25 @@ namespace Graphite {
 			return {IconOf(category), item.IsError ? palette.Failed : palette.CategoryColor(category)};
 		}
 		case SentKind::Prompt:
-		case SentKind::QueuedPrompt: return {ICON_MDI_ACCOUNT_OUTLINE, palette.Accent};
+		case SentKind::QueuedPrompt:
+			return {ICON_MDI_ACCOUNT_OUTLINE, palette.Accent};
 		case SentKind::Injected:
-		case SentKind::Reminder: return {ICON_MDI_BELL_OUTLINE, palette.Injected};
-		case SentKind::ToolsLoaded: return {ICON_MDI_TOOLS, palette.Agent};
-		case SentKind::Skills: return {ICON_MDI_PUZZLE_OUTLINE, palette.Agent};
-		case SentKind::McpInstructions: return {ICON_MDI_SERVER_NETWORK, palette.Agent};
-		case SentKind::EditedFile: return {ICON_MDI_PENCIL, palette.Edit};
-		case SentKind::Image: return {ICON_MDI_IMAGE_OUTLINE, palette.Accent};
-		case SentKind::SystemPrompt: return {ICON_MDI_TEXT_BOX_OUTLINE, palette.Injected};
-		case SentKind::ToolSchemas: return {ICON_MDI_CODE_BRACES, palette.Agent};
+		case SentKind::Reminder:
+			return {ICON_MDI_BELL_OUTLINE, palette.Injected};
+		case SentKind::ToolsLoaded:
+			return {ICON_MDI_TOOLS, palette.Agent};
+		case SentKind::Skills:
+			return {ICON_MDI_PUZZLE_OUTLINE, palette.Agent};
+		case SentKind::McpInstructions:
+			return {ICON_MDI_SERVER_NETWORK, palette.Agent};
+		case SentKind::EditedFile:
+			return {ICON_MDI_PENCIL, palette.Edit};
+		case SentKind::Image:
+			return {ICON_MDI_IMAGE_OUTLINE, palette.Accent};
+		case SentKind::SystemPrompt:
+			return {ICON_MDI_TEXT_BOX_OUTLINE, palette.Injected};
+		case SentKind::ToolSchemas:
+			return {ICON_MDI_CODE_BRACES, palette.Agent};
 		}
 
 		return {ICON_MDI_HELP_CIRCLE_OUTLINE, palette.Other};
@@ -116,14 +125,17 @@ namespace Graphite {
 	{
 		switch (item.Kind)
 		{
-		case ResponseKind::Thinking: return {ICON_MDI_BRAIN, palette.TextDisabled};
-		case ResponseKind::Text: return {ICON_MDI_MESSAGE_TEXT_OUTLINE, palette.Accent};
+		case ResponseKind::Thinking:
+			return {ICON_MDI_BRAIN, palette.TextDisabled};
+		case ResponseKind::Text:
+			return {ICON_MDI_MESSAGE_TEXT_OUTLINE, palette.Accent};
 		case ResponseKind::ToolCall:
 		{
 			const ToolCategory category = CategoryOf(item.ToolName);
 			return {IconOf(category), palette.CategoryColor(category)};
 		}
-		case ResponseKind::Other: break;
+		case ResponseKind::Other:
+			break;
 		}
 
 		return {ICON_MDI_HELP_CIRCLE_OUTLINE, palette.TextDisabled};
@@ -226,8 +238,7 @@ namespace Graphite {
 	{
 		DetailsPick pick;
 
-		const auto line = [&](const ItemLook& look, const std::string& label, const std::string& column, std::size_t id)
-		{
+		const auto line = [&](const ItemLook& look, const std::string& label, const std::string& column, std::size_t id) {
 			const LineOutcome outcome = ItemLine(look, label, column, palette, id, selected == id, reveal == id);
 
 			if (outcome.Clicked)

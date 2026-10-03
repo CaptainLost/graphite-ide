@@ -438,7 +438,7 @@ namespace Graphite {
 			std::size_t operator()(const TextsKey& key) const noexcept
 			{
 				return std::hash<Core::Oid>{}(key.Commit) ^
-					(std::hash<std::filesystem::path>{}(key.Path) << 1);
+					   (std::hash<std::filesystem::path>{}(key.Path) << 1);
 			}
 		};
 

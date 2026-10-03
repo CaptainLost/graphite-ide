@@ -247,7 +247,6 @@ namespace Graphite {
 		bool IsAnalysing(const std::filesystem::path& path) const;
 
 	private:
-
 		// Null when no language server is configured for this document's language, which is what
 		// puts a null LensModel on EditorView and spares the widget a branch on whether a server
 		// exists. Opens the document with the server the first time it is asked for.

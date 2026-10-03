@@ -23,27 +23,51 @@ namespace {
 
 			switch (token.Kind)
 			{
-				case Graphite::TokenKind::Keyword: mark = 'k'; break;
-				case Graphite::TokenKind::Identifier: mark = 'i'; break;
-				case Graphite::TokenKind::Number: mark = 'n'; break;
-				case Graphite::TokenKind::String: mark = 's'; break;
-				case Graphite::TokenKind::Character: mark = 'c'; break;
-				case Graphite::TokenKind::Comment: mark = 'm'; break;
-				case Graphite::TokenKind::Preprocessor: mark = 'p'; break;
-				case Graphite::TokenKind::Punctuation: mark = '.'; break;
-				case Graphite::TokenKind::Invalid: mark = 'x'; break;
-				case Graphite::TokenKind::Text: mark = ' '; break;
-				// A language server's kinds; the lexer never produces one.
-				case Graphite::TokenKind::SemanticType:
-				case Graphite::TokenKind::SemanticFunction:
-				case Graphite::TokenKind::SemanticMacro:
-				case Graphite::TokenKind::SemanticMember:
-				case Graphite::TokenKind::SemanticParameter:
-				case Graphite::TokenKind::SemanticNamespace: mark = '?'; break;
-				// Not a colourable kind — see TokenKind::Count's own comment. No token this
-				// lexer produces is ever Count; a default: here would hide a genuinely missing
-				// kind instead of failing loudly like this one does.
-				case Graphite::TokenKind::Count: mark = '?'; break;
+			case Graphite::TokenKind::Keyword:
+				mark = 'k';
+				break;
+			case Graphite::TokenKind::Identifier:
+				mark = 'i';
+				break;
+			case Graphite::TokenKind::Number:
+				mark = 'n';
+				break;
+			case Graphite::TokenKind::String:
+				mark = 's';
+				break;
+			case Graphite::TokenKind::Character:
+				mark = 'c';
+				break;
+			case Graphite::TokenKind::Comment:
+				mark = 'm';
+				break;
+			case Graphite::TokenKind::Preprocessor:
+				mark = 'p';
+				break;
+			case Graphite::TokenKind::Punctuation:
+				mark = '.';
+				break;
+			case Graphite::TokenKind::Invalid:
+				mark = 'x';
+				break;
+			case Graphite::TokenKind::Text:
+				mark = ' ';
+				break;
+			// A language server's kinds; the lexer never produces one.
+			case Graphite::TokenKind::SemanticType:
+			case Graphite::TokenKind::SemanticFunction:
+			case Graphite::TokenKind::SemanticMacro:
+			case Graphite::TokenKind::SemanticMember:
+			case Graphite::TokenKind::SemanticParameter:
+			case Graphite::TokenKind::SemanticNamespace:
+				mark = '?';
+				break;
+			// Not a colourable kind — see TokenKind::Count's own comment. No token this
+			// lexer produces is ever Count; a default: here would hide a genuinely missing
+			// kind instead of failing loudly like this one does.
+			case Graphite::TokenKind::Count:
+				mark = '?';
+				break;
 			}
 
 			for (std::size_t at = token.From; at < token.To; ++at)
@@ -65,7 +89,10 @@ namespace {
 	// Which construct a line carries over is the lexer's own business — LineState says only
 	// whether there is one. So these tests assert that something carried, and prove what it was
 	// by the shape of the line that resumes it, which is the behaviour anyone actually depends on.
-	bool CarriedOver(const Graphite::LineState& state) { return state != Graphite::LineState{}; }
+	bool CarriedOver(const Graphite::LineState& state)
+	{
+		return state != Graphite::LineState{};
+	}
 }
 
 TEST_CASE("CppLexer separates keywords from identifiers")

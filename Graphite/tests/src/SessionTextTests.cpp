@@ -198,7 +198,9 @@ TEST_CASE("A request's activity names each tool it called, else the start of its
 	// Quoted, so a reply is not read as a tool's name.
 	const std::vector<std::string> reply = RequestActivity(requests[1]);
 	REQUIRE(reply.size() == 1);
-	CHECK(reply[0] == "\xe2\x80\x9c" "All done. The rest." "\xe2\x80\x9d");
+	CHECK(reply[0] == "\xe2\x80\x9c"
+					  "All done. The rest."
+					  "\xe2\x80\x9d");
 
 	CHECK(RequestActivity(ApiRequest{}).empty());
 }

@@ -263,8 +263,12 @@ TEST_CASE("A byte's offset in expanded text accounts for tabs but not for charac
 	CHECK(Core::ExpandedOffsetOfByte("ab\tc", 3, 4) == 4);
 
 	// Two bytes of "ą" stay two bytes in the expanded text: only tabs change length.
-	CHECK(Core::ExpandedOffsetOfByte("\xC4\x85""b", 2, 4) == 2);
-	CHECK(Core::ExpandedOffsetOfByte("\t\xC4\x85""b", 3, 4) == 6);
+	CHECK(Core::ExpandedOffsetOfByte("\xC4\x85"
+									 "b",
+									 2, 4) == 2);
+	CHECK(Core::ExpandedOffsetOfByte("\t\xC4\x85"
+									 "b",
+									 3, 4) == 6);
 
 	// Past the end clamps, like every other conversion in this header.
 	CHECK(Core::ExpandedOffsetOfByte("ab", 99, 4) == 2);

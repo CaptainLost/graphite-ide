@@ -79,8 +79,7 @@ namespace Core {
 		// instead would consume the ESC of the *next* sequence, and that sequence's body would
 		// then land on the screen as text — the one thing this parser exists to prevent.
 		// The string states own their ESC: there it may be the first half of ESC \.
-		if (byte == Escape && m_State != State::OscString && m_State != State::OscEscape
-			&& m_State != State::StringSink)
+		if (byte == Escape && m_State != State::OscString && m_State != State::OscEscape && m_State != State::StringSink)
 		{
 			Reset();
 			m_State = State::Escape;
@@ -566,8 +565,7 @@ namespace Core {
 			if (Parameter(0, 0) == 6)
 			{
 				const CursorPosition cursor = m_Screen.GetCursor();
-				replies += "\x1B[" + std::to_string(cursor.Row + 1) + ';'
-						   + std::to_string(cursor.Column + 1) + 'R';
+				replies += "\x1B[" + std::to_string(cursor.Row + 1) + ';' + std::to_string(cursor.Column + 1) + 'R';
 			}
 			break;
 		default:
@@ -667,8 +665,8 @@ namespace Core {
 				else if (kind == 2 && index + 4 < m_Parameters.size())
 				{
 					chosen = TerminalColor::FromRgb(static_cast<std::uint8_t>(m_Parameters[index + 2]),
-											static_cast<std::uint8_t>(m_Parameters[index + 3]),
-											static_cast<std::uint8_t>(m_Parameters[index + 4]));
+													static_cast<std::uint8_t>(m_Parameters[index + 3]),
+													static_cast<std::uint8_t>(m_Parameters[index + 4]));
 					index += 4;
 				}
 				else

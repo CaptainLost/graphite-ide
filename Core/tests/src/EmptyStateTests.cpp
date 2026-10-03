@@ -8,8 +8,8 @@
 #include <string>
 #include <vector>
 
-using Core::CentreLines;
 using Core::CentredLine;
+using Core::CentreLines;
 
 namespace {
 	// A context of its own with the default font built, which is all CentreLines measures

@@ -178,8 +178,7 @@ namespace Graphite {
 
 		summary.Main = main.Get();
 
-		ForEachSubagent(sessionFile, [&summary](const std::filesystem::path& file)
-		{
+		ForEachSubagent(sessionFile, [&summary](const std::filesystem::path& file) {
 			++summary.SubagentCount;
 			UsageTally tally;
 

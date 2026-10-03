@@ -151,8 +151,7 @@ namespace Core {
 				// stalls for a quarter of a second per session on the thread closing the tab.
 				DWORD available = 0;
 
-				if (!::PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr)
-					|| available == 0)
+				if (!::PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr) || available == 0)
 				{
 					break;
 				}
@@ -180,16 +179,14 @@ namespace Core {
 					break;
 				}
 
-				if (::WaitForSingleObject(event, static_cast<DWORD>(deadline - now))
-					!= WAIT_OBJECT_0)
+				if (::WaitForSingleObject(event, static_cast<DWORD>(deadline - now)) != WAIT_OBJECT_0)
 				{
 					::CancelIoEx(pipe, &overlapped);
 					::GetOverlappedResult(pipe, &overlapped, &transferred, TRUE);
 					break;
 				}
 
-				if (!::GetOverlappedResult(pipe, &overlapped, &transferred, FALSE)
-					|| transferred == 0)
+				if (!::GetOverlappedResult(pipe, &overlapped, &transferred, FALSE) || transferred == 0)
 				{
 					break;
 				}
@@ -470,8 +467,8 @@ namespace Core {
 			DWORD chunk = 0;
 
 			if (!::WriteFile(m_ToChild.Get(), bytes.data() + written,
-							 static_cast<DWORD>(bytes.size() - written), &chunk, nullptr)
-				|| chunk == 0)
+							 static_cast<DWORD>(bytes.size() - written), &chunk, nullptr) ||
+				chunk == 0)
 			{
 				return false;
 			}

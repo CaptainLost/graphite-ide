@@ -74,7 +74,9 @@ TEST_CASE("A UTF-16 file on disk is decoded")
 	TempDirectory dir;
 	const auto file = dir.GetPath() / "Wide.h";
 	// "int X;\n" in UTF-16LE with a BOM.
-	const std::string bytes{"\xFF\xFE" "i\0n\0t\0 \0X\0;\0\n\0", 16};
+	const std::string bytes{"\xFF\xFE"
+							"i\0n\0t\0 \0X\0;\0\n\0",
+							16};
 	Write(file, bytes);
 
 	Core::DocumentSet documents;

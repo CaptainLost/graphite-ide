@@ -60,11 +60,10 @@ TEST_CASE("JobQueue finishes its queue before it is destroyed")
 
 		for (int job = 0; job < 20; ++job)
 		{
-			queue.Submit([&done]
-						 {
-							 std::this_thread::sleep_for(std::chrono::milliseconds(1));
-							 done.fetch_add(1);
-						 });
+			queue.Submit([&done] {
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+				done.fetch_add(1);
+			});
 		}
 	}
 
@@ -99,19 +98,18 @@ TEST_CASE("A cancelled token stops a cooperative job")
 	{
 		Core::JobQueue queue(1);
 
-		queue.Submit([&]
-					 {
-						 // Bounded independently of the token: if cancellation ever stops
-						 // propagating, this test must fail, and a job that can only be stopped
-						 // by the thing under test would instead hang the destructor's join.
-						 for (int round = 0; round < 100000 && !token.IsCancelled(); ++round)
-						 {
-							 rounds.fetch_add(1);
-							 std::this_thread::sleep_for(std::chrono::milliseconds(1));
-						 }
+		queue.Submit([&] {
+			// Bounded independently of the token: if cancellation ever stops
+			// propagating, this test must fail, and a job that can only be stopped
+			// by the thing under test would instead hang the destructor's join.
+			for (int round = 0; round < 100000 && !token.IsCancelled(); ++round)
+			{
+				rounds.fetch_add(1);
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
 
-						 finished.store(true);
-					 });
+			finished.store(true);
+		});
 
 		CHECK(WaitFor([&rounds] { return rounds.load() > 0; }));
 

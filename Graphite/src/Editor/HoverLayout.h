@@ -37,8 +37,8 @@ namespace Graphite {
 	struct TooltipPlacement
 	{
 		ImVec2 Position{};
-		ImVec2 Pivot{};          // (0, 0) hangs the tooltip below Position, (0, 1) stands it above
-		float MaxHeight = 0.0f;  // the room on the side it went to; a taller tooltip scrolls
+		ImVec2 Pivot{};			// (0, 0) hangs the tooltip below Position, (0, 1) stands it above
+		float MaxHeight = 0.0f; // the room on the side it went to; a taller tooltip scrolls
 	};
 
 	// Where a tooltip of `size` goes for a token at [anchorMin, anchorMax], kept within

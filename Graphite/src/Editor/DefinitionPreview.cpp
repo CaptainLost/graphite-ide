@@ -33,7 +33,7 @@ namespace Graphite {
 				return std::string_view(current);
 			};
 
-			LineRange range{ line, std::min(line + (kDefinitionFallbackLines - 1), count - 1) };
+			LineRange range{line, std::min(line + (kDefinitionFallbackLines - 1), count - 1)};
 			if (const Lexer* lexer = LexerFor(LanguageOfPath(path)))
 				range = DefinitionExtent(lineAt, line, *lexer);
 

@@ -44,8 +44,7 @@ namespace Graphite {
 	{
 		ImPlot::SetupAxisFormat(
 			ImAxis_X1,
-			[](double value, char* buffer, int size, void*) -> int
-			{
+			[](double value, char* buffer, int size, void*) -> int {
 				// A tick between two whole numbers keeps its grid line and loses its label.
 				if (std::abs(value - std::round(value)) > 1e-9)
 				{

@@ -78,7 +78,8 @@ TEST_CASE("An edit counts the lines its patch added and removed")
 	const nlohmann::json patch = nlohmann::json::array(
 		{{{"lines", {" keep", "-old one", "-old two", "+new"}}}, {{"lines", {"+another"}}}});
 
-	CHECK(Facts(Call("Edit", {{"structuredPatch", patch}})).Detail == "+2 \xe2\x88\x92" "2");
+	CHECK(Facts(Call("Edit", {{"structuredPatch", patch}})).Detail == "+2 \xe2\x88\x92"
+																	  "2");
 }
 
 TEST_CASE("A new file counts its lines")

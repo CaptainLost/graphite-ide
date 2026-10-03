@@ -22,8 +22,8 @@ namespace Graphite {
 		}
 
 		ImGui::TextWrapped("A few files at a time are sent to the language server, ahead of being "
-							"opened, so that a file opens already coloured. The pass waits while "
-							"the file you are reading has questions of its own outstanding.");
+						   "opened, so that a file opens already coloured. The pass waits while "
+						   "the file you are reading has questions of its own outstanding.");
 
 		// Disabled rather than hidden, the same reasoning SearchSection gives for its own
 		// project-only checkbox: a control that vanishes reads as a bug, and there is nothing to
@@ -37,9 +37,9 @@ namespace Graphite {
 		// the range produces a new value every frame. Same shape EditorSection
 		// uses for its font-size and tab-width sliders, and the same reason.
 		if (ImGui::SliderInt("Analysis kept (MB)", &budget,
-							  static_cast<int>(AnalysisSettings::kMinimumBudgetMegabytes),
-							  static_cast<int>(AnalysisSettings::kMaximumBudgetMegabytes),
-							  "%d", ImGuiSliderFlags_AlwaysClamp))
+							 static_cast<int>(AnalysisSettings::kMinimumBudgetMegabytes),
+							 static_cast<int>(AnalysisSettings::kMaximumBudgetMegabytes),
+							 "%d", ImGuiSliderFlags_AlwaysClamp))
 		{
 			m_PendingBudgetMegabytes = budget;
 		}
@@ -80,9 +80,9 @@ namespace Graphite {
 		// Written on release, not on every frame of the drag, for the same reason as the budget
 		// slider above.
 		if (ImGui::SliderInt(label, &concurrency,
-							  static_cast<int>(AnalysisSettings::kMinimumConcurrency),
-							  static_cast<int>(AnalysisSettings::kMaximumConcurrency),
-							  "%d", ImGuiSliderFlags_AlwaysClamp))
+							 static_cast<int>(AnalysisSettings::kMinimumConcurrency),
+							 static_cast<int>(AnalysisSettings::kMaximumConcurrency),
+							 "%d", ImGuiSliderFlags_AlwaysClamp))
 		{
 			m_PendingConcurrency = concurrency;
 		}

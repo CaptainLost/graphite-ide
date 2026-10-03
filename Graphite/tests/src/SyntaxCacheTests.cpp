@@ -48,10 +48,10 @@ namespace {
 
 		for (const Graphite::Token& token : cache.TokensOf(buffer, line))
 		{
-			kinds += token.Kind == Graphite::TokenKind::Comment  ? 'm'
+			kinds += token.Kind == Graphite::TokenKind::Comment	  ? 'm'
 					 : token.Kind == Graphite::TokenKind::Keyword ? 'k'
-					 : token.Kind == Graphite::TokenKind::String	 ? 's'
-																 : 'o';
+					 : token.Kind == Graphite::TokenKind::String  ? 's'
+																  : 'o';
 		}
 
 		return kinds;

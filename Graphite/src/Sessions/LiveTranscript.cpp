@@ -232,8 +232,7 @@ namespace Graphite {
 			m_Inbox->Reading = true;
 		}
 
-		m_Jobs.Submit([inbox = m_Inbox, subagentFiles = m_Subagents, file = m_File]
-		{
+		m_Jobs.Submit([inbox = m_Inbox, subagentFiles = m_Subagents, file = m_File] {
 			// However the read ends, what it published last has to be drawn.
 			const Core::ScopeExit wakeOnExit{[] { Core::Redraw::Request(); }};
 

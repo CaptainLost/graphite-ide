@@ -12,8 +12,7 @@ namespace {
 	Graphite::DirectoryPredicate DirectoriesAre(
 		std::vector<std::filesystem::path> directories)
 	{
-		return [directories = std::move(directories)](const std::filesystem::path& path)
-		{
+		return [directories = std::move(directories)](const std::filesystem::path& path) {
 			return std::find(directories.begin(), directories.end(), path) !=
 				   directories.end();
 		};

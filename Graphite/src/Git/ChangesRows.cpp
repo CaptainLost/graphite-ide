@@ -167,8 +167,7 @@ namespace Graphite {
 			// Not the listing: a directory nobody opened has no listing, and the edits under
 			// it would be lost all the same. The subject answers for every file beneath it,
 			// listed or not.
-			if (Core::SamePath(normalized, absoluteSubject)
-				|| (subject.IsDirectory && UnderDirectory(normalized, absoluteSubject)))
+			if (Core::SamePath(normalized, absoluteSubject) || (subject.IsDirectory && UnderDirectory(normalized, absoluteSubject)))
 			{
 				plan.Dirty.push_back(document);
 			}

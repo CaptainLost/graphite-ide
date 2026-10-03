@@ -71,8 +71,7 @@ TEST_CASE("A set environment variable comes back as the path it names, wide char
 {
 	REQUIRE(_wputenv_s(L"GRAPHITE_TESTS_PATH", L"C:\\Users\\Micha\u0142") == 0);
 
-	CHECK(Core::EnvironmentPath(L"GRAPHITE_TESTS_PATH").value()
-		  == std::filesystem::path{L"C:\\Users\\Micha\u0142"});
+	CHECK(Core::EnvironmentPath(L"GRAPHITE_TESTS_PATH").value() == std::filesystem::path{L"C:\\Users\\Micha\u0142"});
 
 	_wputenv_s(L"GRAPHITE_TESTS_PATH", L"");
 }

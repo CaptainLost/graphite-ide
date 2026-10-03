@@ -73,8 +73,7 @@ namespace Graphite {
 		// Characters, not bytes: a reply in Polish has more bytes than letters.
 		std::size_t CodePoints(std::string_view text)
 		{
-			return static_cast<std::size_t>(std::count_if(text.begin(), text.end(), [](char c)
-														  { return (static_cast<unsigned char>(c) & 0xC0u) != 0x80u; }));
+			return static_cast<std::size_t>(std::count_if(text.begin(), text.end(), [](char c) { return (static_cast<unsigned char>(c) & 0xC0u) != 0x80u; }));
 		}
 
 		// "Image (png, 212.0 KB)", leaving out whatever the block did not say.
@@ -356,7 +355,7 @@ namespace Graphite {
 				{
 					// Meta text with no known opening, a skill's body say, has no kind to name,
 					// so its first line says what it is.
-					const std::string label = record.IsCompactSummary ? std::string{kCompactSummaryLabel}
+					const std::string label = record.IsCompactSummary	   ? std::string{kCompactSummaryLabel}
 											  : IsInjectedText(block.Text) ? InjectedLabel(block.Text)
 																		   : FirstLineLabel(block.Text, 120);
 					m_Pending.push_back(
@@ -472,8 +471,7 @@ namespace Graphite {
 
 	void RequestTimeline::PlaceSnapshot(ApiRequest& request) const
 	{
-		std::erase_if(request.Sent, [](const SentItem& item)
-					  { return item.Kind == SentKind::SystemPrompt || item.Kind == SentKind::ToolSchemas; });
+		std::erase_if(request.Sent, [](const SentItem& item) { return item.Kind == SentKind::SystemPrompt || item.Kind == SentKind::ToolSchemas; });
 		request.Sent.insert(request.Sent.begin(), m_Snapshot.begin(), m_Snapshot.end());
 	}
 
@@ -615,10 +613,18 @@ namespace Graphite {
 		{
 			switch (item.Kind)
 			{
-			case ResponseKind::Thinking: ++thinking; break;
-			case ResponseKind::Text: ++text; break;
-			case ResponseKind::ToolCall: ++toolCalls; break;
-			case ResponseKind::Other: ++other; break;
+			case ResponseKind::Thinking:
+				++thinking;
+				break;
+			case ResponseKind::Text:
+				++text;
+				break;
+			case ResponseKind::ToolCall:
+				++toolCalls;
+				break;
+			case ResponseKind::Other:
+				++other;
+				break;
 			}
 		}
 

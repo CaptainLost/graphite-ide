@@ -127,8 +127,7 @@ namespace Graphite {
 			m_OpenUsage.clear();
 		}
 
-		const auto identity = [](const Row& row)
-		{ return RowIdentity{static_cast<int>(row.Kind), row.Turn, row.Part, row.Item, row.Open}; };
+		const auto identity = [](const Row& row) { return RowIdentity{static_cast<int>(row.Kind), row.Turn, row.Part, row.Item, row.Open}; };
 
 		// Heights are kept by what a row shows, not by its index: opening a run of steps
 		// inserts rows in the middle, and every row after it would otherwise take the height of
@@ -152,14 +151,12 @@ namespace Graphite {
 		// The latest time seen so far, which a gap is measured from.
 		std::string last;
 
-		const auto pushGap = [&rows](std::optional<std::chrono::milliseconds> gap, std::size_t turn, std::size_t part)
-		{
+		const auto pushGap = [&rows](std::optional<std::chrono::milliseconds> gap, std::size_t turn, std::size_t part) {
 			if (gap)
 				rows.push_back({RowKind::Gap, turn, part, 0, *gap});
 		};
 
-		const auto gapTo = [&rows, &last, &pushGap](std::string_view next, std::size_t turn, std::size_t part)
-		{
+		const auto gapTo = [&rows, &last, &pushGap](std::string_view next, std::size_t turn, std::size_t part) {
 			if (last.empty() || next.empty())
 				return;
 
@@ -168,8 +165,7 @@ namespace Graphite {
 
 		// Same as gapTo, but for an item that may be a compaction: its own time is taken off
 		// first, so the divider's duration is not shown again as a pause above it.
-		const auto gapBeforeItem = [&rows, &last, &pushGap](const TurnItem& item, std::size_t turn, std::size_t part)
-		{
+		const auto gapBeforeItem = [&rows, &last, &pushGap](const TurnItem& item, std::size_t turn, std::size_t part) {
 			if (last.empty() || item.At.empty())
 				return;
 
@@ -483,7 +479,7 @@ namespace Graphite {
 		// that they always fit.
 		const std::string duration = part.Duration.count() > 0 ? kDot + FormatDuration(part.Duration) : std::string{};
 		const bool showStatus = anyTool && finished;
-		const std::string status = !showStatus			? std::string{}
+		const std::string status = !showStatus		   ? std::string{}
 								   : part.Failures > 0 ? std::string{ICON_MDI_CLOSE} + " " + std::to_string(part.Failures)
 													   : std::string{ICON_MDI_CHECK};
 		const std::string statusDot = showStatus ? kDot : "";
@@ -596,7 +592,8 @@ namespace Graphite {
 			column += piece;
 		}
 
-		const std::string status = !tool.HasResult ? std::string{} : tool.IsError ? ICON_MDI_CLOSE : ICON_MDI_CHECK;
+		const std::string status = !tool.HasResult ? std::string{} : tool.IsError ? ICON_MDI_CLOSE
+																				  : ICON_MDI_CHECK;
 		const float space = ImGui::GetStyle().ItemSpacing.x;
 		const float rightWidth = ImGui::CalcTextSize(column.c_str()).x +
 								 (status.empty() ? 0.0f : space + ImGui::CalcTextSize(status.c_str()).x);
@@ -864,7 +861,8 @@ namespace Graphite {
 			}
 
 			const float scale = block.Kind == MarkdownKind::Heading
-									? (block.Level == 1 ? 1.35f : block.Level == 2 ? 1.2f : 1.1f)
+									? (block.Level == 1 ? 1.35f : block.Level == 2 ? 1.2f
+																				   : 1.1f)
 									: 1.0f;
 
 			ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * scale);
@@ -884,8 +882,7 @@ namespace Graphite {
 									 origin.y),
 							  ink, block.Marker.c_str());
 
-			const auto measure = [codePad](std::string_view word, SpanStyle style)
-			{
+			const auto measure = [codePad](std::string_view word, SpanStyle style) {
 				const float pad = style == SpanStyle::Code ? codePad : 0.0f;
 				return ImGui::CalcTextSize(word.data(), word.data() + word.size()).x + pad;
 			};

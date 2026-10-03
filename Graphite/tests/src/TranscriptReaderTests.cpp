@@ -132,8 +132,8 @@ TEST_CASE("A tool result given as a list of text blocks is joined")
 		   {"content", nlohmann::json::array({{{"type", "tool_result"},
 											   {"tool_use_id", "t"},
 											   {"content", nlohmann::json::array(
-																   {{{"type", "text"}, {"text", "a"}},
-																	{{"type", "text"}, {"text", "b"}}})}}})}}}});
+															   {{{"type", "text"}, {"text", "a"}},
+																{{"type", "text"}, {"text", "b"}}})}}})}}}});
 
 	const TranscriptChunk chunk = ParseTranscript(line);
 
@@ -526,8 +526,7 @@ TEST_CASE("A prompt snapshot carries the system prompt and the tool schemas as t
 	// As Claude Code writes a tool: its name and description, and the definition the API got
 	// nested under `schema`, the input schema inside it.
 	const nlohmann::json schema = {{"type", "object"}};
-	const auto tool = [&schema](const char* name, const char* description)
-	{
+	const auto tool = [&schema](const char* name, const char* description) {
 		return nlohmann::json{{"name", name},
 							  {"description", description},
 							  {"schema",
@@ -687,8 +686,8 @@ TEST_CASE("A compact boundary reads its trigger, token counts and duration")
 TEST_CASE("A compact boundary with no metadata reads with every fact absent")
 {
 	const std::vector<TranscriptRecord> records = ParseTranscript(
-		Fixtures::Line({{"type", "system"}, {"subtype", "compact_boundary"}, {"timestamp", "2026-08-31T16:33:10.464Z"}}))
-		.Records;
+													  Fixtures::Line({{"type", "system"}, {"subtype", "compact_boundary"}, {"timestamp", "2026-08-31T16:33:10.464Z"}}))
+													  .Records;
 
 	REQUIRE(records.size() == 1);
 	CHECK(records[0].IsCompactBoundary);
@@ -701,10 +700,10 @@ TEST_CASE("A compact boundary with no metadata reads with every fact absent")
 TEST_CASE("A compact boundary's count of the wrong type reads as absent, the rest still read")
 {
 	const std::vector<TranscriptRecord> records = ParseTranscript(Fixtures::Line(
-		{{"type", "system"},
-		 {"subtype", "compact_boundary"},
-		 {"compactMetadata", {{"trigger", "manual"}, {"preTokens", "lots"}, {"postTokens", 4000}, {"durationMs", -5}}}}))
-		.Records;
+																	  {{"type", "system"},
+																	   {"subtype", "compact_boundary"},
+																	   {"compactMetadata", {{"trigger", "manual"}, {"preTokens", "lots"}, {"postTokens", 4000}, {"durationMs", -5}}}}))
+													  .Records;
 
 	REQUIRE(records.size() == 1);
 	CHECK(records[0].Compaction.Trigger == "manual");

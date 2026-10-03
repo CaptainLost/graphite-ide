@@ -377,7 +377,7 @@ namespace Graphite {
 	}
 
 	void KeyBindingsSection::RenderSlot(const std::string& id, std::size_t slot,
-									  const std::string& text)
+										const std::string& text)
 	{
 		ImGui::PushID(static_cast<int>(slot));
 

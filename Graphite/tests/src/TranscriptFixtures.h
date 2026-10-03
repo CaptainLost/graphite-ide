@@ -87,9 +87,9 @@ namespace Fixtures {
 								 const char* stopReason = nullptr)
 	{
 		nlohmann::json message = {{"model", model},
-								   {"role", "assistant"},
-								   {"content", nlohmann::json::array({block})},
-								   {"usage", usage}};
+								  {"role", "assistant"},
+								  {"content", nlohmann::json::array({block})},
+								  {"usage", usage}};
 
 		if (stopReason != nullptr)
 			message["stop_reason"] = stopReason;

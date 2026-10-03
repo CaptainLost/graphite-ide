@@ -339,8 +339,8 @@ namespace Graphite {
 				// is different every time the file is touched. Cleared when there is none, so a
 				// file too large to lex does not go on showing the last file's text.
 				m_WorkingTreeTexts = texts.has_value()
-					? std::make_shared<const FileTexts>(std::move(*texts))
-					: nullptr;
+										 ? std::make_shared<const FileTexts>(std::move(*texts))
+										 : nullptr;
 
 				PumpWorkingTreeDiff();
 			});

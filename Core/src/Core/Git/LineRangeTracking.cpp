@@ -14,8 +14,7 @@ namespace Core {
 		// is excluded too.
 		std::size_t NewEnd(const Hunk& hunk)
 		{
-			return static_cast<std::size_t>(hunk.NewStart)
-				   + static_cast<std::size_t>(std::max(hunk.NewCount, 0));
+			return static_cast<std::size_t>(hunk.NewStart) + static_cast<std::size_t>(std::max(hunk.NewCount, 0));
 		}
 
 		bool Overlaps(const Hunk& hunk, const LineRange& range)
@@ -34,8 +33,7 @@ namespace Core {
 		{
 			for (const DiffLine& line : hunk.Lines)
 			{
-				if (line.Kind == DiffLineKind::Context
-					&& static_cast<std::size_t>(line.NewLine) == pos)
+				if (line.Kind == DiffLineKind::Context && static_cast<std::size_t>(line.NewLine) == pos)
 				{
 					return static_cast<std::size_t>(line.OldLine);
 				}
@@ -105,8 +103,7 @@ namespace Core {
 			{
 				if (NewEnd(hunk) <= pos)
 				{
-					shift += static_cast<std::ptrdiff_t>(hunk.OldCount)
-							 - static_cast<std::ptrdiff_t>(hunk.NewCount);
+					shift += static_cast<std::ptrdiff_t>(hunk.OldCount) - static_cast<std::ptrdiff_t>(hunk.NewCount);
 					continue;
 				}
 

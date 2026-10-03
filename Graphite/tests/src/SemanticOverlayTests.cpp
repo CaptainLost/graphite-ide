@@ -148,8 +148,7 @@ TEST_CASE("An overlay can be walked line by line and built back up again")
 
 	Graphite::SemanticOverlay rebuilt;
 
-	original.ForEachLine([&rebuilt](std::size_t line, const std::vector<Graphite::SemanticSpan>& spans)
-						 { rebuilt.SetSpansOn(line, spans); });
+	original.ForEachLine([&rebuilt](std::size_t line, const std::vector<Graphite::SemanticSpan>& spans) { rebuilt.SetSpansOn(line, spans); });
 
 	CHECK(rebuilt.SpansOn(3).size() == 1);
 	CHECK(rebuilt.SpansOn(7).size() == 2);
@@ -166,8 +165,7 @@ TEST_CASE("Setting no spans on a line leaves nothing behind to walk")
 
 	std::size_t visited = 0;
 
-	overlay.ForEachLine([&visited](std::size_t, const std::vector<Graphite::SemanticSpan>&)
-						{ ++visited; });
+	overlay.ForEachLine([&visited](std::size_t, const std::vector<Graphite::SemanticSpan>&) { ++visited; });
 
 	CHECK(visited == 0);
 	CHECK(overlay.IsEmpty());

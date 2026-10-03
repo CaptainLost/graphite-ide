@@ -49,12 +49,18 @@ namespace Graphite {
 	{
 		switch (category)
 		{
-		case ToolCategory::Read: return ICON_MDI_FILE_DOCUMENT_OUTLINE;
-		case ToolCategory::Edit: return ICON_MDI_PENCIL;
-		case ToolCategory::Run: return ICON_MDI_CONSOLE;
-		case ToolCategory::Agent: return ICON_MDI_ROBOT_OUTLINE;
-		case ToolCategory::Web: return ICON_MDI_WEB;
-		case ToolCategory::Other: return ICON_MDI_TOOLS;
+		case ToolCategory::Read:
+			return ICON_MDI_FILE_DOCUMENT_OUTLINE;
+		case ToolCategory::Edit:
+			return ICON_MDI_PENCIL;
+		case ToolCategory::Run:
+			return ICON_MDI_CONSOLE;
+		case ToolCategory::Agent:
+			return ICON_MDI_ROBOT_OUTLINE;
+		case ToolCategory::Web:
+			return ICON_MDI_WEB;
+		case ToolCategory::Other:
+			return ICON_MDI_TOOLS;
 		}
 		return ICON_MDI_TOOLS;
 	}

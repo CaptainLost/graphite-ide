@@ -277,8 +277,7 @@ TEST_CASE("BracketedPasteBytes wraps a paste only when the shell asked for the m
 	parser.Consume("\x1B[?2004h");
 
 	REQUIRE(screen.IsBracketedPaste());
-	CHECK(Core::BracketedPasteBytes("one\ntwo", screen.IsBracketedPaste())
-		  == "\x1B[200~one\ntwo\x1B[201~");
+	CHECK(Core::BracketedPasteBytes("one\ntwo", screen.IsBracketedPaste()) == "\x1B[200~one\ntwo\x1B[201~");
 
 	parser.Consume("\x1B[?2004l");
 

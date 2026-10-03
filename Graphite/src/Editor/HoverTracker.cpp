@@ -74,8 +74,7 @@ namespace Graphite {
 		const bool ctrl = held ? m_HeldCtrl : input.Ctrl;
 		const bool wantInfo =
 			settings.ShowInfo && (settings.Preview != DefinitionPreviewMode::WithCtrl || !ctrl);
-		const bool wantPreview = settings.Preview == DefinitionPreviewMode::Always
-			|| (settings.Preview == DefinitionPreviewMode::WithCtrl && ctrl);
+		const bool wantPreview = settings.Preview == DefinitionPreviewMode::Always || (settings.Preview == DefinitionPreviewMode::WithCtrl && ctrl);
 
 		// Rule 3: nothing is asked until the mouse has rested for the delay; until then the
 		// frame loop is told when to come back, since a resting mouse produces no events. The
@@ -98,8 +97,7 @@ namespace Graphite {
 			// before this frame's own asks: a question asked only now has not failed yet, and the
 			// widget clears the old failure as it asks.
 			const auto retry = [&](bool want, bool asked, bool failed, bool arrived,
-								   bool& retried, std::optional<double>& failedAt)
-			{
+								   bool& retried, std::optional<double>& failedAt) {
 				if (!want || !asked || !failed || arrived || retried)
 					return false;
 				if (!failedAt)

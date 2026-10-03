@@ -228,10 +228,7 @@ namespace Core {
 			for (std::size_t column = 0; column < m_Lines[row].size(); ++column)
 			{
 				const bool before = column < m_Cursor.Column;
-				const bool skip = partial
-								  && ((extent == EraseExtent::ToEnd && before)
-									  || (extent == EraseExtent::ToStart && !before
-										  && column != m_Cursor.Column));
+				const bool skip = partial && ((extent == EraseExtent::ToEnd && before) || (extent == EraseExtent::ToStart && !before && column != m_Cursor.Column));
 
 				if (!skip)
 				{

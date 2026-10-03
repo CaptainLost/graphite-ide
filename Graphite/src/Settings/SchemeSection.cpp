@@ -207,8 +207,7 @@ namespace Graphite {
 		// Asked before deleting because the file is the user's own work and there is no undo.
 		// A scheme that was renamed or deleted between the ask and the answer is no longer worth
 		// asking about, which is what the predicate is for.
-		if (m_DeleteQuestion.Begin([this](const std::string& name)
-								   { return name == m_Draft.GetSelected(); }))
+		if (m_DeleteQuestion.Begin([this](const std::string& name) { return name == m_Draft.GetSelected(); }))
 		{
 			ImGui::TextUnformatted("This cannot be undone.");
 			ImGui::Separator();

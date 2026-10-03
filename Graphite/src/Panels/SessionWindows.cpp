@@ -43,7 +43,7 @@ namespace Graphite {
 			{
 				const float fraction =
 					progress.Total > 0 ? static_cast<float>(static_cast<double>(progress.Bytes) /
-															 static_cast<double>(progress.Total))
+															static_cast<double>(progress.Total))
 									   : 0.0f;
 				const std::string label =
 					std::format("{:.1f} / {:.1f} MB", Megabytes(progress.Bytes), Megabytes(progress.Total));
@@ -267,8 +267,7 @@ namespace Graphite {
 			// The session's own project directory, or anything inside its folder — which is
 			// every directory the watcher reports that could hold something of this session.
 			const bool mine = std::any_of(directories.begin(), directories.end(),
-										  [&file](const std::filesystem::path& directory)
-										  {
+										  [&file](const std::filesystem::path& directory) {
 											  return directory == file.parent_path() ||
 													 IsWithinDirectory(directory, file.parent_path() / file.stem()) ||
 													 IsWithinDirectory(file, directory);
@@ -381,10 +380,9 @@ namespace Graphite {
 			return;
 
 		// A restored view is selected once, on the first frame the tab bar is drawn.
-		const auto restoredFlag = [&entry](SessionTab tab)
-		{
+		const auto restoredFlag = [&entry](SessionTab tab) {
 			return entry.RestoredTab.ShouldSelect(tab) ? ImGuiTabItemFlags_SetSelected
-														: ImGuiTabItemFlags_None;
+													   : ImGuiTabItemFlags_None;
 		};
 
 		if (ImGui::BeginTabItem("Conversation", nullptr, restoredFlag(SessionTab::Conversation)))
@@ -493,7 +491,7 @@ namespace Graphite {
 	}
 
 	void SessionWindows::Render(unsigned int centreNode, const SessionPalette& palette,
-								 Core::TabCloseRequests& closeRequests)
+								Core::TabCloseRequests& closeRequests)
 	{
 		for (std::size_t index = 0; index < m_Open.size();)
 		{

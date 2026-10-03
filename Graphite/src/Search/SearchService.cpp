@@ -128,13 +128,11 @@ namespace Graphite {
 		}
 
 		m_Jobs.Submit(
-			[shared = m_Shared, token = m_Token, generation, input = std::move(request)]
-			{
+			[shared = m_Shared, token = m_Token, generation, input = std::move(request)] {
 				// Everything this job writes goes through this, which drops the write when a
 				// newer search has already taken over.
 				const auto contribute = [&shared, generation](const std::vector<SearchHit>& found,
-															  FileOutcome outcome)
-				{
+															  FileOutcome outcome) {
 					const std::lock_guard<std::mutex> lock(shared->Mutex);
 
 					// Covers the one window Start's own clear cannot: a contribution from the
@@ -169,8 +167,7 @@ namespace Graphite {
 					Core::Redraw::Request();
 				};
 
-				const auto scanFile = [&](const std::filesystem::path& file)
-				{
+				const auto scanFile = [&](const std::filesystem::path& file) {
 					if (token.IsCancelled())
 					{
 						return;
@@ -265,8 +262,7 @@ namespace Graphite {
 							repository.emplace(std::move(opened.GetValue()));
 
 							enumeration.Ignored =
-								[&repository](const std::filesystem::path& path, bool)
-							{ return repository->IsIgnored(path); };
+								[&repository](const std::filesystem::path& path, bool) { return repository->IsIgnored(path); };
 						}
 					}
 

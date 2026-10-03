@@ -91,20 +91,19 @@ namespace Graphite {
 		// reason this is sorted before anything else happens to it. Line and column after that
 		// so the panel's groups come out with their hits already in the order HitGroups expects.
 		std::sort(sorted.begin(), sorted.end(),
-				 [](const Location& a, const Location& b)
-				 {
-					 if (a.Path != b.Path)
-					 {
-						 return a.Path < b.Path;
-					 }
+				  [](const Location& a, const Location& b) {
+					  if (a.Path != b.Path)
+					  {
+						  return a.Path < b.Path;
+					  }
 
-					 if (a.Line != b.Line)
-					 {
-						 return a.Line < b.Line;
-					 }
+					  if (a.Line != b.Line)
+					  {
+						  return a.Line < b.Line;
+					  }
 
-					 return a.Column.Value < b.Column.Value;
-				 });
+					  return a.Column.Value < b.Column.Value;
+				  });
 
 		// A server can report the same location twice; a reference listed twice would read as a
 		// miscount against the number the lens that opened this panel showed. Sorted just above,
@@ -114,7 +113,7 @@ namespace Graphite {
 									 return a.Path == b.Path && a.Line == b.Line &&
 											a.Column.Value == b.Column.Value;
 								 }),
-					sorted.end());
+					 sorted.end());
 
 		std::vector<SearchHit> hits;
 		hits.reserve(sorted.size());
@@ -218,8 +217,7 @@ namespace Graphite {
 		// them all here would be hundreds of probes, reads and decodes in the single frame the
 		// reply arrives - on the UI thread, with the application stopped for the length of it.
 		// The rest are read by ResolveGroup, one file at a time, as the user expands them.
-		const LineTextSource lineText = [this](const std::filesystem::path& path, std::size_t line)
-		{ return LineTextInOpenDocument(path, line); };
+		const LineTextSource lineText = [this](const std::filesystem::path& path, std::size_t line) { return LineTextInOpenDocument(path, line); };
 
 		for (SearchHit& hit : AsHits(locations, symbol, lineText))
 		{
@@ -256,11 +254,9 @@ namespace Graphite {
 
 	void ReferencesPanel::RenderResults()
 	{
-		const std::function<void(const SearchHit&)> onOpen = [this](const SearchHit& hit)
-		{ OpenAndSelect(hit); };
+		const std::function<void(const SearchHit&)> onOpen = [this](const SearchHit& hit) { OpenAndSelect(hit); };
 
-		const std::function<void(HitGroup&)> onGroupOpened = [this](HitGroup& group)
-		{ ResolveGroup(group); };
+		const std::function<void(HitGroup&)> onGroupOpened = [this](HitGroup& group) { ResolveGroup(group); };
 
 		DrawHitList(HitListInput{.Groups = m_Groups.Get(),
 								 .Selected = m_Selected,
@@ -324,8 +320,7 @@ namespace Graphite {
 		// open yet, and only that path asks the large-file question instead of dropping the
 		// click. Permanent, because this is somewhere the user meant to go.
 		SelectInDocument(m_Documents, hit.File, hit.Line, hit.From, hit.To,
-						 [this](const std::filesystem::path& file)
-						 { m_Workspace.RequestOpenFile(file, true); });
+						 [this](const std::filesystem::path& file) { m_Workspace.RequestOpenFile(file, true); });
 	}
 
 	std::optional<std::string> ReferencesPanel::LineTextInOpenDocument(

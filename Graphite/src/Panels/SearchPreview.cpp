@@ -163,8 +163,7 @@ namespace Graphite {
 			// the line is shorter, so short lines do not leave the panel's colour showing
 			// through beside them.
 			draw->AddRectFilled(
-				at, ImVec2(at.x + std::max(lineWidth, ImGui::GetContentRegionAvail().x),
-						   at.y + lineHeight),
+				at, ImVec2(at.x + std::max(lineWidth, ImGui::GetContentRegionAvail().x), at.y + lineHeight),
 				palette.Background);
 
 			draw->AddRectFilled(at, ImVec2(textLeft, at.y + lineHeight), palette.GutterFill);
@@ -205,8 +204,7 @@ namespace Graphite {
 
 			std::size_t drawn = 0;
 
-			const auto drawRun = [&](std::size_t from, std::size_t to, ImU32 colour)
-			{
+			const auto drawRun = [&](std::size_t from, std::size_t to, ImU32 colour) {
 				if (from >= to || from >= expanded.size())
 				{
 					return;

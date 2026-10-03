@@ -112,7 +112,8 @@ TEST_CASE("A references answer leaves out the position it was asked from, and no
 	client.Deliver(
 		R"({"id":)" + std::to_string(id) +
 		R"(,"result":[)"
-		R"({"uri":")" + Graphite::ToFileUri(source) +
+		R"({"uri":")" +
+		Graphite::ToFileUri(source) +
 		R"(","range":{"start":{"line":28,"character":14}}},)"
 		R"({"uri":"file:///D:/Application.h","range":{"start":{"line":39,"character":11}}},)"
 		R"({"uri":"file:///D:/Main.cpp","range":{"start":{"line":54,"character":10}}}]})");

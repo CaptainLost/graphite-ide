@@ -10,7 +10,10 @@ namespace Graphite {
 
 	namespace {
 
-		std::string DefaultName() { return std::string(NameOf(BuiltInScheme::Dark)); }
+		std::string DefaultName()
+		{
+			return std::string(NameOf(BuiltInScheme::Dark));
+		}
 	}
 
 	std::string UniqueSchemeName(const std::filesystem::path& directory, std::string_view base)
@@ -58,7 +61,10 @@ namespace Graphite {
 		}
 	}
 
-	bool SchemeDraft::IsReadOnly() const { return ParseBuiltInName(m_Selected).has_value(); }
+	bool SchemeDraft::IsReadOnly() const
+	{
+		return ParseBuiltInName(m_Selected).has_value();
+	}
 
 	void SchemeDraft::Resolve()
 	{

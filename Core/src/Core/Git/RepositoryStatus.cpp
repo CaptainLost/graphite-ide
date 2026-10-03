@@ -20,11 +20,26 @@ namespace Core {
 		{
 			StatusFlags flags = StatusFlags::None;
 
-			if ((status & GIT_STATUS_INDEX_NEW) != 0) { flags |= StatusFlags::New; }
-			if ((status & GIT_STATUS_INDEX_MODIFIED) != 0) { flags |= StatusFlags::Modified; }
-			if ((status & GIT_STATUS_INDEX_DELETED) != 0) { flags |= StatusFlags::Deleted; }
-			if ((status & GIT_STATUS_INDEX_RENAMED) != 0) { flags |= StatusFlags::Renamed; }
-			if ((status & GIT_STATUS_INDEX_TYPECHANGE) != 0) { flags |= StatusFlags::TypeChanged; }
+			if ((status & GIT_STATUS_INDEX_NEW) != 0)
+			{
+				flags |= StatusFlags::New;
+			}
+			if ((status & GIT_STATUS_INDEX_MODIFIED) != 0)
+			{
+				flags |= StatusFlags::Modified;
+			}
+			if ((status & GIT_STATUS_INDEX_DELETED) != 0)
+			{
+				flags |= StatusFlags::Deleted;
+			}
+			if ((status & GIT_STATUS_INDEX_RENAMED) != 0)
+			{
+				flags |= StatusFlags::Renamed;
+			}
+			if ((status & GIT_STATUS_INDEX_TYPECHANGE) != 0)
+			{
+				flags |= StatusFlags::TypeChanged;
+			}
 
 			return flags;
 		}
@@ -33,11 +48,26 @@ namespace Core {
 		{
 			StatusFlags flags = StatusFlags::None;
 
-			if ((status & GIT_STATUS_WT_NEW) != 0) { flags |= StatusFlags::New; }
-			if ((status & GIT_STATUS_WT_MODIFIED) != 0) { flags |= StatusFlags::Modified; }
-			if ((status & GIT_STATUS_WT_DELETED) != 0) { flags |= StatusFlags::Deleted; }
-			if ((status & GIT_STATUS_WT_RENAMED) != 0) { flags |= StatusFlags::Renamed; }
-			if ((status & GIT_STATUS_WT_TYPECHANGE) != 0) { flags |= StatusFlags::TypeChanged; }
+			if ((status & GIT_STATUS_WT_NEW) != 0)
+			{
+				flags |= StatusFlags::New;
+			}
+			if ((status & GIT_STATUS_WT_MODIFIED) != 0)
+			{
+				flags |= StatusFlags::Modified;
+			}
+			if ((status & GIT_STATUS_WT_DELETED) != 0)
+			{
+				flags |= StatusFlags::Deleted;
+			}
+			if ((status & GIT_STATUS_WT_RENAMED) != 0)
+			{
+				flags |= StatusFlags::Renamed;
+			}
+			if ((status & GIT_STATUS_WT_TYPECHANGE) != 0)
+			{
+				flags |= StatusFlags::TypeChanged;
+			}
 
 			return flags;
 		}
@@ -52,10 +82,7 @@ namespace Core {
 
 		git_status_options options = GIT_STATUS_OPTIONS_INIT;
 		options.show = GIT_STATUS_SHOW_INDEX_AND_WORKDIR;
-		options.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED
-						| GIT_STATUS_OPT_RENAMES_HEAD_TO_INDEX
-						| GIT_STATUS_OPT_RENAMES_INDEX_TO_WORKDIR
-						| GIT_STATUS_OPT_SORT_CASE_INSENSITIVELY;
+		options.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED | GIT_STATUS_OPT_RENAMES_HEAD_TO_INDEX | GIT_STATUS_OPT_RENAMES_INDEX_TO_WORKDIR | GIT_STATUS_OPT_SORT_CASE_INSENSITIVELY;
 
 		StatusListHandle list;
 
@@ -82,8 +109,7 @@ namespace Core {
 			file.Index = IndexFlagsOf(entry->status);
 			file.WorkTree = WorkTreeFlagsOf(entry->status);
 			file.IsConflicted = (entry->status & GIT_STATUS_CONFLICTED) != 0;
-			file.IsUntracked = (entry->status & GIT_STATUS_WT_NEW) != 0
-							   && (entry->status & GIT_STATUS_INDEX_NEW) == 0;
+			file.IsUntracked = (entry->status & GIT_STATUS_WT_NEW) != 0 && (entry->status & GIT_STATUS_INDEX_NEW) == 0;
 
 			// index_to_workdir names the file as it is on disk now; head_to_index names it
 			// only when the working tree has nothing to say, such as a staged deletion.
@@ -118,8 +144,7 @@ namespace Core {
 
 			file.Path = FromUtf8(reported);
 
-			if (delta->old_file.path != nullptr && delta->new_file.path != nullptr
-				&& std::string_view(delta->old_file.path) != delta->new_file.path)
+			if (delta->old_file.path != nullptr && delta->new_file.path != nullptr && std::string_view(delta->old_file.path) != delta->new_file.path)
 			{
 				file.RenamedFrom = FromUtf8(delta->old_file.path);
 			}
@@ -150,10 +175,7 @@ namespace Core {
 		// fnmatch-style glob: a directory whose name contains '[' or ']' — legal on Windows,
 		// where '*' and '?' are not — would have its brackets read as a character class and
 		// match nothing.
-		options.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED
-						| GIT_STATUS_OPT_RECURSE_UNTRACKED_DIRS
-						| GIT_STATUS_OPT_SORT_CASE_INSENSITIVELY
-						| GIT_STATUS_OPT_DISABLE_PATHSPEC_MATCH;
+		options.flags = GIT_STATUS_OPT_INCLUDE_UNTRACKED | GIT_STATUS_OPT_RECURSE_UNTRACKED_DIRS | GIT_STATUS_OPT_SORT_CASE_INSENSITIVELY | GIT_STATUS_OPT_DISABLE_PATHSPEC_MATCH;
 
 		options.pathspec = spec.Get();
 

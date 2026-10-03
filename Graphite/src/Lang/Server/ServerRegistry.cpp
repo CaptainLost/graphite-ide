@@ -45,8 +45,7 @@ namespace Graphite {
 		// then a row in the table and nothing else: a second hand-kept list would be a second
 		// place to forget, and forgetting it here fails silently - the server simply never starts
 		// for that language and nothing says why.
-		static const std::vector<LanguageId> kConfigured = []
-		{
+		static const std::vector<LanguageId> kConfigured = [] {
 			std::vector<LanguageId> configured;
 
 			for (const LanguageId language : kAllLanguages)
@@ -67,19 +66,19 @@ namespace Graphite {
 	{
 		switch (language)
 		{
-			case LanguageId::Cpp:
-				return &kCpp;
-			case LanguageId::PlainText:
-			case LanguageId::CSharp:
-			case LanguageId::TypeScript:
-				return nullptr;
+		case LanguageId::Cpp:
+			return &kCpp;
+		case LanguageId::PlainText:
+		case LanguageId::CSharp:
+		case LanguageId::TypeScript:
+			return nullptr;
 		}
 
 		return nullptr;
 	}
 
 	std::filesystem::path RootFor(const ServerConfig& config, const std::filesystem::path& file,
-								   const std::filesystem::path& fallbackRoot)
+								  const std::filesystem::path& fallbackRoot)
 	{
 		std::filesystem::path directory = file.parent_path();
 

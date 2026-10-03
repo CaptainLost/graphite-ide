@@ -26,13 +26,17 @@ TEST_CASE("A UTF-8 byte order mark is not part of the text")
 
 TEST_CASE("UTF-16 text is decoded to UTF-8")
 {
-	const std::string bytes{"\xFF\xFE" "a\0\n\0", 6};
+	const std::string bytes{"\xFF\xFE"
+							"a\0\n\0",
+							6};
 	CHECK(DecodeBaseText(bytes) == std::optional<std::string>{"a\n"});
 }
 
 TEST_CASE("Binary content is not text to diff")
 {
-	const std::string bytes{"\x7F" "ELF\0\0\0\x01\x02\0\0", 11};
+	const std::string bytes{"\x7F"
+							"ELF\0\0\0\x01\x02\0\0",
+							11};
 	CHECK_FALSE(DecodeBaseText(bytes).has_value());
 }
 

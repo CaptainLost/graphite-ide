@@ -20,8 +20,7 @@ TEST_CASE("ScopeExit runs its action when its scope is left early")
 {
 	int runs = 0;
 
-	const auto leaveEarly = [&runs](bool early)
-	{
+	const auto leaveEarly = [&runs](bool early) {
 		const Core::ScopeExit atExit{[&runs] { ++runs; }};
 
 		if (early)

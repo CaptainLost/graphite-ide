@@ -398,8 +398,7 @@ namespace Graphite {
 		{
 			const std::lock_guard<std::mutex> state(m_Shared->StateMutex);
 
-			std::erase_if(m_Shared->Diagnostics, [&uri](const PublishedDiagnostics& published)
-						  { return ToFileUri(published.Path) == uri; });
+			std::erase_if(m_Shared->Diagnostics, [&uri](const PublishedDiagnostics& published) { return ToFileUri(published.Path) == uri; });
 		}
 
 		nlohmann::json params;
@@ -640,8 +639,7 @@ namespace Graphite {
 				std::unique_lock<std::mutex> outbound(shared->OutboundMutex);
 
 				shared->Outbound.wait(outbound,
-									  [&shared]
-									  {
+									  [&shared] {
 										  return !shared->ToSend.empty() ||
 												 shared->Stopping.load() || shared->WriterStopped;
 									  });

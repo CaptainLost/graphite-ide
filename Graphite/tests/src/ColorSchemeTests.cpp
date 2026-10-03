@@ -191,10 +191,8 @@ TEST_CASE("A git colour overrides its base and leaves the others alone")
 
 	const Graphite::ResolvedScheme resolved = Graphite::Resolve(scheme, base);
 
-	CHECK(resolved.Git[static_cast<std::size_t>(Graphite::GitColor::DiffAddedLine)].R
-		  == doctest::Approx(0.1f));
-	CHECK(resolved.Git[static_cast<std::size_t>(Graphite::GitColor::DiffRemovedLine)].R
-		  == doctest::Approx(untouched.R));
+	CHECK(resolved.Git[static_cast<std::size_t>(Graphite::GitColor::DiffAddedLine)].R == doctest::Approx(0.1f));
+	CHECK(resolved.Git[static_cast<std::size_t>(Graphite::GitColor::DiffRemovedLine)].R == doctest::Approx(untouched.R));
 }
 
 TEST_CASE("Every git colour has a key and a label, and no two keys collide")
@@ -230,10 +228,8 @@ TEST_CASE("A session colour overrides its base and leaves the others alone")
 
 	const Graphite::ResolvedScheme resolved = Graphite::Resolve(scheme, base);
 
-	CHECK(resolved.Session[static_cast<std::size_t>(Graphite::SessionColor::Read)].R
-		  == doctest::Approx(0.1f));
-	CHECK(resolved.Session[static_cast<std::size_t>(Graphite::SessionColor::Edit)].R
-		  == doctest::Approx(untouched.R));
+	CHECK(resolved.Session[static_cast<std::size_t>(Graphite::SessionColor::Read)].R == doctest::Approx(0.1f));
+	CHECK(resolved.Session[static_cast<std::size_t>(Graphite::SessionColor::Edit)].R == doctest::Approx(untouched.R));
 }
 
 TEST_CASE("Every session colour has a key and a label, and no two keys collide")

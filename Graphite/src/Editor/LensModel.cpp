@@ -87,11 +87,10 @@ namespace Graphite {
 		// an unstable sort happens to leave adjacent.
 		std::stable_sort(next.begin(), next.end(), ByDocumentRow);
 		next.erase(std::unique(next.begin(), next.end(),
-								[](const Entry& a, const Entry& b)
-								{
-									return a.LensValue.DocumentRow == b.LensValue.DocumentRow;
-								}),
-				  next.end());
+							   [](const Entry& a, const Entry& b) {
+								   return a.LensValue.DocumentRow == b.LensValue.DocumentRow;
+							   }),
+				   next.end());
 
 		// After the live entries, never before: emplace leaves an existing key alone, so a count
 		// this model already holds outranks one restored from a previous life of the document.
@@ -153,8 +152,7 @@ namespace Graphite {
 	void LensModel::SetCount(std::size_t documentRow, std::size_t count)
 	{
 		const auto it = std::lower_bound(m_Entries.begin(), m_Entries.end(), documentRow,
-										 [](const Entry& entry, std::size_t row)
-										 {
+										 [](const Entry& entry, std::size_t row) {
 											 return entry.LensValue.DocumentRow < row;
 										 });
 
@@ -226,8 +224,7 @@ namespace Graphite {
 	const Lens* LensModel::LensAt(std::size_t documentRow) const
 	{
 		const auto it = std::lower_bound(m_Entries.begin(), m_Entries.end(), documentRow,
-										 [](const Entry& entry, std::size_t row)
-										 {
+										 [](const Entry& entry, std::size_t row) {
 											 return entry.LensValue.DocumentRow < row;
 										 });
 

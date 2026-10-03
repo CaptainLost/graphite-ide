@@ -84,13 +84,13 @@ namespace Graphite {
 		// put back as far below the top edge as it was. `startY` is where the region's first
 		// row will sit, which it cannot be asked for until it has opened. Answers once per
 		// switch; null every other frame, leaving the scroll to the reader.
-		template <typename Row>
+		template<typename Row>
 		std::optional<float> TakeRestoredScroll(std::span<const Row> rows, float startY);
 
 		// Notes which line on screen in the region now open a switch should keep in place —
 		// see RowToKeep for which — for TakeRestoredScroll to find again should the next frame
 		// lay the file out differently.
-		template <typename Row>
+		template<typename Row>
 		void RememberKeptLine(std::span<const Row> rows, const Core::FileDiff& file, float startY);
 
 		// Splits `texts` into raw lines via SplitTextLines — the same split LexAllLines lexes

@@ -19,21 +19,29 @@ namespace Core {
 		{
 			switch (status)
 			{
-				case GIT_DELTA_ADDED: return FileChange::Added;
-				case GIT_DELTA_DELETED: return FileChange::Deleted;
-				case GIT_DELTA_MODIFIED: return FileChange::Modified;
-				case GIT_DELTA_RENAMED: return FileChange::Renamed;
-				case GIT_DELTA_COPIED: return FileChange::Copied;
-				case GIT_DELTA_TYPECHANGE: return FileChange::TypeChanged;
+			case GIT_DELTA_ADDED:
+				return FileChange::Added;
+			case GIT_DELTA_DELETED:
+				return FileChange::Deleted;
+			case GIT_DELTA_MODIFIED:
+				return FileChange::Modified;
+			case GIT_DELTA_RENAMED:
+				return FileChange::Renamed;
+			case GIT_DELTA_COPIED:
+				return FileChange::Copied;
+			case GIT_DELTA_TYPECHANGE:
+				return FileChange::TypeChanged;
 
-				// A file git has never seen is, against the index or against HEAD, a file
-				// that is entirely new - which is what an add is. libgit2 keeps the two
-				// deltas apart because a status listing wants to say "untracked"; a diff
-				// does not, and a view that only knew Added would otherwise draw the file
-				// as unmodified and empty.
-				case GIT_DELTA_UNTRACKED: return FileChange::Added;
+			// A file git has never seen is, against the index or against HEAD, a file
+			// that is entirely new - which is what an add is. libgit2 keeps the two
+			// deltas apart because a status listing wants to say "untracked"; a diff
+			// does not, and a view that only knew Added would otherwise draw the file
+			// as unmodified and empty.
+			case GIT_DELTA_UNTRACKED:
+				return FileChange::Added;
 
-				default: return FileChange::Unmodified;
+			default:
+				return FileChange::Unmodified;
 			}
 		}
 
@@ -104,13 +112,20 @@ namespace Core {
 
 			switch (line->origin)
 			{
-				case GIT_DIFF_LINE_ADDITION: entry.Kind = DiffLineKind::Added; break;
-				case GIT_DIFF_LINE_DELETION: entry.Kind = DiffLineKind::Removed; break;
-				case GIT_DIFF_LINE_CONTEXT: entry.Kind = DiffLineKind::Context; break;
+			case GIT_DIFF_LINE_ADDITION:
+				entry.Kind = DiffLineKind::Added;
+				break;
+			case GIT_DIFF_LINE_DELETION:
+				entry.Kind = DiffLineKind::Removed;
+				break;
+			case GIT_DIFF_LINE_CONTEXT:
+				entry.Kind = DiffLineKind::Context;
+				break;
 
-				// The end-of-file-newline markers carry no line of the file. Letting them
-				// through would draw a phantom line in the view.
-				default: return 0;
+			// The end-of-file-newline markers carry no line of the file. Letting them
+			// through would draw a phantom line in the view.
+			default:
+				return 0;
 			}
 
 			entry.OldLine = line->old_lineno > 0 ? line->old_lineno : 0;
@@ -131,8 +146,7 @@ namespace Core {
 
 		git_diff_options options = GIT_DIFF_OPTIONS_INIT;
 
-		if (request.Target == DiffTarget::WorkTreeToIndex
-			|| request.Target == DiffTarget::WorkTreeToHead)
+		if (request.Target == DiffTarget::WorkTreeToIndex || request.Target == DiffTarget::WorkTreeToHead)
 		{
 			// A new file that has never been added is a change to the working tree, and the
 			// status listing already reports it as one - so a tab opened from that listing
@@ -141,8 +155,7 @@ namespace Core {
 			// all. RECURSE_UNTRACKED_DIRS goes with it because the file wanted may sit
 			// inside a directory git has never seen, and a pathspec naming that file matches
 			// nothing while the directory stands in for everything under it.
-			options.flags |= GIT_DIFF_INCLUDE_UNTRACKED | GIT_DIFF_SHOW_UNTRACKED_CONTENT
-							 | GIT_DIFF_RECURSE_UNTRACKED_DIRS;
+			options.flags |= GIT_DIFF_INCLUDE_UNTRACKED | GIT_DIFF_SHOW_UNTRACKED_CONTENT | GIT_DIFF_RECURSE_UNTRACKED_DIRS;
 		}
 
 		const PathSpec pathspec{request.File.has_value() ? std::vector{*request.File}
@@ -231,141 +244,141 @@ namespace Core {
 
 		switch (request.Target)
 		{
-			case DiffTarget::WorkTreeToIndex:
-				created = git_diff_index_to_workdir(Out(diff), m_Handle.get(), nullptr, &options);
-				break;
+		case DiffTarget::WorkTreeToIndex:
+			created = git_diff_index_to_workdir(Out(diff), m_Handle.get(), nullptr, &options);
+			break;
 
-			case DiffTarget::IndexToHead:
-			case DiffTarget::WorkTreeToHead:
+		case DiffTarget::IndexToHead:
+		case DiffTarget::WorkTreeToHead:
+		{
+			Result<TreeHandle> head = headTree();
+
+			if (!head.HasValue())
 			{
-				Result<TreeHandle> head = headTree();
-
-				if (!head.HasValue())
-				{
-					return head.GetError();
-				}
-
-				left = std::move(head).GetValue();
-				created = request.Target == DiffTarget::IndexToHead
-							  ? git_diff_tree_to_index(Out(diff), m_Handle.get(), left.get(), nullptr, &options)
-							  : git_diff_tree_to_workdir_with_index(Out(diff), m_Handle.get(), left.get(), &options);
-				break;
+				return head.GetError();
 			}
 
-			case DiffTarget::CommitToParent:
-			case DiffTarget::StashToParent:
+			left = std::move(head).GetValue();
+			created = request.Target == DiffTarget::IndexToHead
+						  ? git_diff_tree_to_index(Out(diff), m_Handle.get(), left.get(), nullptr, &options)
+						  : git_diff_tree_to_workdir_with_index(Out(diff), m_Handle.get(), left.get(), &options);
+			break;
+		}
+
+		case DiffTarget::CommitToParent:
+		case DiffTarget::StashToParent:
+		{
+			if (!request.From.has_value())
 			{
-				if (!request.From.has_value())
-				{
-					return Error{ErrorCode::InvalidArgument,
-								 "a commit-to-parent diff needs a commit"};
-				}
-
-				git_oid raw = ToGitOid(*request.From);
-
-				CommitHandle commit;
-				if (git_commit_lookup(Out(commit), m_Handle.get(), &raw) != 0)
-				{
-					return Error{ErrorCode::NotFound,
-								 std::format("cannot find commit {}: {}", request.From->ToHex(),
-											 LastLibgit2Message())};
-				}
-
-				Result<TreeHandle> commitTree = treeOfCommit(commit.get());
-
-				if (!commitTree.HasValue())
-				{
-					return commitTree.GetError();
-				}
-
-				right = std::move(commitTree).GetValue();
-
-				// First parent only. A merge shown against every parent at once reads
-				// as a diff nobody wrote; the view offers the other parents separately.
-				// A root commit has no parent, and diffing it against nothing is the
-				// right answer; a parent that exists but cannot be read is not.
-				if (git_commit_parentcount(commit.get()) > 0)
-				{
-					CommitHandle parent;
-
-					if (git_commit_parent(Out(parent), commit.get(), 0) != 0)
-					{
-						const std::string message = LastLibgit2Message();
-						return Error{ErrorCode::IoFailure,
-									 std::format("cannot read the parent of {}: {}",
-												 request.From->ToHex(), message)};
-					}
-
-					Result<TreeHandle> parentTree = treeOfCommit(parent.get());
-
-					if (!parentTree.HasValue())
-					{
-						return parentTree.GetError();
-					}
-
-					left = std::move(parentTree).GetValue();
-				}
-
-				created = git_diff_tree_to_tree(Out(diff), m_Handle.get(), left.get(), right.get(), &options);
-
-				// A stash made to include untracked files keeps them in a third parent, a
-				// commit of those files alone - so its whole tree is what was added.
-				if (created == 0 && request.Target == DiffTarget::StashToParent &&
-					git_commit_parentcount(commit.get()) > 2)
-				{
-					CommitHandle third;
-
-					if (git_commit_parent(Out(third), commit.get(), 2) != 0)
-					{
-						const std::string message = LastLibgit2Message();
-						return Error{ErrorCode::IoFailure,
-									 std::format("cannot read the untracked files of stash {}: {}",
-												 request.From->ToHex(), message)};
-					}
-
-					Result<TreeHandle> thirdTree = treeOfCommit(third.get());
-
-					if (!thirdTree.HasValue())
-					{
-						return thirdTree.GetError();
-					}
-
-					untrackedTree = std::move(thirdTree).GetValue();
-
-					created = git_diff_tree_to_tree(Out(untracked), m_Handle.get(), nullptr, untrackedTree.get(),
-													&options);
-
-					if (created == 0)
-					{
-						created = git_diff_merge(diff.get(), untracked.get());
-					}
-				}
-
-				break;
+				return Error{ErrorCode::InvalidArgument,
+							 "a commit-to-parent diff needs a commit"};
 			}
 
-			case DiffTarget::RevisionToRevision:
+			git_oid raw = ToGitOid(*request.From);
+
+			CommitHandle commit;
+			if (git_commit_lookup(Out(commit), m_Handle.get(), &raw) != 0)
 			{
-				Result<TreeHandle> from = treeOf(request.From);
-
-				if (!from.HasValue())
-				{
-					return from.GetError();
-				}
-
-				left = std::move(from).GetValue();
-
-				Result<TreeHandle> to = treeOf(request.To);
-
-				if (!to.HasValue())
-				{
-					return to.GetError();
-				}
-
-				right = std::move(to).GetValue();
-				created = git_diff_tree_to_tree(Out(diff), m_Handle.get(), left.get(), right.get(), &options);
-				break;
+				return Error{ErrorCode::NotFound,
+							 std::format("cannot find commit {}: {}", request.From->ToHex(),
+										 LastLibgit2Message())};
 			}
+
+			Result<TreeHandle> commitTree = treeOfCommit(commit.get());
+
+			if (!commitTree.HasValue())
+			{
+				return commitTree.GetError();
+			}
+
+			right = std::move(commitTree).GetValue();
+
+			// First parent only. A merge shown against every parent at once reads
+			// as a diff nobody wrote; the view offers the other parents separately.
+			// A root commit has no parent, and diffing it against nothing is the
+			// right answer; a parent that exists but cannot be read is not.
+			if (git_commit_parentcount(commit.get()) > 0)
+			{
+				CommitHandle parent;
+
+				if (git_commit_parent(Out(parent), commit.get(), 0) != 0)
+				{
+					const std::string message = LastLibgit2Message();
+					return Error{ErrorCode::IoFailure,
+								 std::format("cannot read the parent of {}: {}",
+											 request.From->ToHex(), message)};
+				}
+
+				Result<TreeHandle> parentTree = treeOfCommit(parent.get());
+
+				if (!parentTree.HasValue())
+				{
+					return parentTree.GetError();
+				}
+
+				left = std::move(parentTree).GetValue();
+			}
+
+			created = git_diff_tree_to_tree(Out(diff), m_Handle.get(), left.get(), right.get(), &options);
+
+			// A stash made to include untracked files keeps them in a third parent, a
+			// commit of those files alone - so its whole tree is what was added.
+			if (created == 0 && request.Target == DiffTarget::StashToParent &&
+				git_commit_parentcount(commit.get()) > 2)
+			{
+				CommitHandle third;
+
+				if (git_commit_parent(Out(third), commit.get(), 2) != 0)
+				{
+					const std::string message = LastLibgit2Message();
+					return Error{ErrorCode::IoFailure,
+								 std::format("cannot read the untracked files of stash {}: {}",
+											 request.From->ToHex(), message)};
+				}
+
+				Result<TreeHandle> thirdTree = treeOfCommit(third.get());
+
+				if (!thirdTree.HasValue())
+				{
+					return thirdTree.GetError();
+				}
+
+				untrackedTree = std::move(thirdTree).GetValue();
+
+				created = git_diff_tree_to_tree(Out(untracked), m_Handle.get(), nullptr, untrackedTree.get(),
+												&options);
+
+				if (created == 0)
+				{
+					created = git_diff_merge(diff.get(), untracked.get());
+				}
+			}
+
+			break;
+		}
+
+		case DiffTarget::RevisionToRevision:
+		{
+			Result<TreeHandle> from = treeOf(request.From);
+
+			if (!from.HasValue())
+			{
+				return from.GetError();
+			}
+
+			left = std::move(from).GetValue();
+
+			Result<TreeHandle> to = treeOf(request.To);
+
+			if (!to.HasValue())
+			{
+				return to.GetError();
+			}
+
+			right = std::move(to).GetValue();
+			created = git_diff_tree_to_tree(Out(diff), m_Handle.get(), left.get(), right.get(), &options);
+			break;
+		}
 		}
 
 		if (created != 0 || diff == nullptr)

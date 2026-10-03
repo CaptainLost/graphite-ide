@@ -61,7 +61,8 @@ namespace Graphite {
 			case SentKind::ToolResult:
 			case SentKind::Prompt:
 			case SentKind::QueuedPrompt:
-			case SentKind::Image: return false;
+			case SentKind::Image:
+				return false;
 			case SentKind::Injected:
 			case SentKind::ToolsLoaded:
 			case SentKind::Skills:
@@ -69,7 +70,8 @@ namespace Graphite {
 			case SentKind::EditedFile:
 			case SentKind::Reminder:
 			case SentKind::SystemPrompt:
-			case SentKind::ToolSchemas: return true;
+			case SentKind::ToolSchemas:
+				return true;
 			}
 
 			return true;

@@ -36,8 +36,7 @@ namespace Graphite {
 		// feature off everywhere.
 		IgnorePredicate SkipNestedProjects(const std::filesystem::path& root)
 		{
-			return [root](const std::filesystem::path& path, bool isDirectory)
-			{ return isDirectory && path != root && IsProjectRoot(path); };
+			return [root](const std::filesystem::path& path, bool isDirectory) { return isDirectory && path != root && IsProjectRoot(path); };
 		}
 	}
 
@@ -48,8 +47,7 @@ namespace Graphite {
 		enumeration.Root = root;
 		enumeration.Ignored = SkipNestedProjects(root);
 
-		EnumerateFiles(enumeration, token, [&onFile](const std::filesystem::path& file)
-		{
+		EnumerateFiles(enumeration, token, [&onFile](const std::filesystem::path& file) {
 			if (!IsAnalysable(file))
 			{
 				return;
@@ -78,8 +76,7 @@ namespace Graphite {
 		}
 
 		m_Jobs.Submit([findings = m_Findings, token = m_Token, root = std::move(root),
-					   respectGitIgnore]
-		{
+					   respectGitIgnore] {
 			EnumerationInput enumeration;
 			enumeration.Root = root;
 
@@ -102,8 +99,7 @@ namespace Graphite {
 			// repository — git treats the submodule as a single entry and says nothing about
 			// what is inside it — so gitignore alone would walk straight into vendor/.
 			enumeration.Ignored = [&repository, &nested](const std::filesystem::path& path,
-														 bool isDirectory)
-			{
+														 bool isDirectory) {
 				if (nested(path, isDirectory))
 				{
 					return true;
@@ -112,8 +108,7 @@ namespace Graphite {
 				return repository && repository->IsIgnored(path);
 			};
 
-			EnumerateFiles(enumeration, token, [&findings](const std::filesystem::path& file)
-			{
+			EnumerateFiles(enumeration, token, [&findings](const std::filesystem::path& file) {
 				if (!IsAnalysable(file))
 				{
 					return;

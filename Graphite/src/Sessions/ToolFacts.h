@@ -24,8 +24,8 @@ namespace Graphite {
 
 	ToolCategory CategoryOf(std::string_view toolName);
 
-		// A call that starts a subagent, under either of the names Claude Code has used.
-		bool IsAgentCall(const ToolCall& tool);
+	// A call that starts a subagent, under either of the names Claude Code has used.
+	bool IsAgentCall(const ToolCall& tool);
 
 	// Each subagent's usage, by the agent id its Agent call's result names.
 	using SubagentUsage = std::unordered_map<std::string, UsageByModel>;

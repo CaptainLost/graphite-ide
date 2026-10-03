@@ -19,14 +19,12 @@ namespace Core {
 
 	constexpr StatusFlags operator|(StatusFlags left, StatusFlags right)
 	{
-		return static_cast<StatusFlags>(static_cast<std::uint8_t>(left)
-										| static_cast<std::uint8_t>(right));
+		return static_cast<StatusFlags>(static_cast<std::uint8_t>(left) | static_cast<std::uint8_t>(right));
 	}
 
 	constexpr StatusFlags operator&(StatusFlags left, StatusFlags right)
 	{
-		return static_cast<StatusFlags>(static_cast<std::uint8_t>(left)
-										& static_cast<std::uint8_t>(right));
+		return static_cast<StatusFlags>(static_cast<std::uint8_t>(left) & static_cast<std::uint8_t>(right));
 	}
 
 	constexpr StatusFlags& operator|=(StatusFlags& left, StatusFlags right)

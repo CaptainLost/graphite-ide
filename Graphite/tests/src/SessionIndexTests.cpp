@@ -105,8 +105,7 @@ TEST_CASE("A cancelled scan stops rather than finishing quietly")
 	Core::CancellationToken token;
 	std::size_t seen = 0;
 
-	ScanProjects(temp.GetPath(), {}, token, [&](SessionSummary)
-	{
+	ScanProjects(temp.GetPath(), {}, token, [&](SessionSummary) {
 		++seen;
 		token.Cancel();
 	});

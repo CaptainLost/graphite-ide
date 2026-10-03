@@ -638,8 +638,7 @@ namespace Graphite {
 		const bool rowHovered = ImGui::IsMouseHoveringRect(rowScreenStart, rowScreenEnd);
 
 		// Selected first, so the highlight and the menu about to open talk about the same file.
-		if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)
-			&& ImGui::IsMouseReleased(ImGuiMouseButton_Right))
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup) && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
 		{
 			m_Selected = identity;
 		}
@@ -801,8 +800,7 @@ namespace Graphite {
 		const ImU32 letterColor = ColourOfLetter(letter, palette);
 
 		// Selected first, for the reason RenderRow gives.
-		if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup)
-			&& ImGui::IsMouseReleased(ImGuiMouseButton_Right))
+		if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup) && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
 		{
 			m_Selected = identity;
 		}

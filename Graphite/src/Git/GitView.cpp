@@ -775,7 +775,8 @@ namespace Graphite {
 		// its ceiling found these and stopped looking, which is not the same as these being
 		// all there are.
 		ImGui::TextDisabled("%zu matching %s so far — the search stopped before the end of "
-							"the history", count, count == 1 ? "commit" : "commits");
+							"the history",
+							count, count == 1 ? "commit" : "commits");
 	}
 
 	void GitView::RenderCommits(const GitPalette& palette)

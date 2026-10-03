@@ -215,9 +215,9 @@ TEST_CASE("One file is opened at a time, however many are queued")
 
 	analysis.Enqueue({"a.cpp", "b.cpp", "c.cpp"});
 
-	analysis.Tick(1.0, false, NobodyElse);   // asks for a.cpp's text
-	analysis.Tick(2.0, false, NobodyElse);   // the text arrives and a.cpp is opened
-	analysis.Tick(3.0, false, NobodyElse);   // nothing new while a.cpp is outstanding
+	analysis.Tick(1.0, false, NobodyElse); // asks for a.cpp's text
+	analysis.Tick(2.0, false, NobodyElse); // the text arrives and a.cpp is opened
+	analysis.Tick(3.0, false, NobodyElse); // nothing new while a.cpp is outstanding
 
 	CHECK(port.CountOf("open") == 1);
 	CHECK(port.Calls.front().Path == std::filesystem::path{"a.cpp"});
@@ -310,8 +310,8 @@ TEST_CASE("A document busy for longer than anything real is stopped being waited
 
 	CHECK(port.Calls.empty());
 
-	analysis.Tick(1.0 + 11.0, true, NobodyElse);   // asks for a.cpp's text
-	analysis.Tick(1.0 + 12.0, true, NobodyElse);   // the text arrives and a.cpp is opened
+	analysis.Tick(1.0 + 11.0, true, NobodyElse); // asks for a.cpp's text
+	analysis.Tick(1.0 + 12.0, true, NobodyElse); // the text arrives and a.cpp is opened
 
 	CHECK(port.CountOf("open") == 1);
 }
@@ -392,8 +392,7 @@ TEST_CASE("A file somebody else holds is left alone, whether a tab or other hold
 
 	// A preview pane holding a.cpp sent the didOpen, and the predicate the application hands down
 	// answers for holders, not for tabs. b.cpp is what the pass may have.
-	const auto paneHoldsA = [](const std::filesystem::path& path)
-	{ return path == std::filesystem::path{"a.cpp"}; };
+	const auto paneHoldsA = [](const std::filesystem::path& path) { return path == std::filesystem::path{"a.cpp"}; };
 
 	analysis.Enqueue({"a.cpp", "b.cpp"});
 
@@ -750,8 +749,8 @@ TEST_CASE("Up to the limit are outstanding at once, and no more")
 	analysis.SetConcurrency(3);
 	analysis.Enqueue({"a.cpp", "b.cpp", "c.cpp", "d.cpp", "e.cpp"});
 
-	analysis.Tick(1.0, false, NobodyElse);   // three reads requested
-	analysis.Tick(2.0, false, NobodyElse);   // their texts arrive and three are opened
+	analysis.Tick(1.0, false, NobodyElse); // three reads requested
+	analysis.Tick(2.0, false, NobodyElse); // their texts arrive and three are opened
 
 	CHECK(port.CountOf("open") == 3);
 

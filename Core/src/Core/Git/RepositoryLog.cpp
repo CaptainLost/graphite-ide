@@ -410,8 +410,7 @@ namespace Core {
 			// swapping "*.txt" for the renamed file's old path would drop every other .txt
 			// from a question that plainly included them. The same holds when the pattern
 			// named several files in this commit, wildcard or not.
-			if (request.FollowRenames && file->Change == FileChange::Renamed
-				&& !file->OldPath.empty() && !match.Several && !HasWildcard(*tracked))
+			if (request.FollowRenames && file->Change == FileChange::Renamed && !file->OldPath.empty() && !match.Several && !HasWildcard(*tracked))
 			{
 				tracked = file->OldPath;
 			}

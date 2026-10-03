@@ -19,8 +19,7 @@ namespace Graphite {
 		// partner search reads straight past them.
 		bool IsCode(TokenKind kind)
 		{
-			return kind != TokenKind::String && kind != TokenKind::Character
-				   && kind != TokenKind::Comment && kind != TokenKind::Preprocessor;
+			return kind != TokenKind::String && kind != TokenKind::Character && kind != TokenKind::Comment && kind != TokenKind::Preprocessor;
 		}
 
 		bool IsOpen(char bracket)
@@ -40,13 +39,20 @@ namespace Graphite {
 		{
 			switch (bracket)
 			{
-				case '(': return ')';
-				case ')': return '(';
-				case '[': return ']';
-				case ']': return '[';
-				case '{': return '}';
-				case '}': return '{';
-				default: return '\0';
+			case '(':
+				return ')';
+			case ')':
+				return '(';
+			case '[':
+				return ']';
+			case ']':
+				return '[';
+			case '{':
+				return '}';
+			case '}':
+				return '{';
+			default:
+				return '\0';
 			}
 		}
 

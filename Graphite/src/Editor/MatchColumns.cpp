@@ -18,8 +18,7 @@ namespace Graphite {
 		// the line's end rather than walking to the document's.
 		const auto first = std::lower_bound(
 			input.Matches.begin(), input.Matches.end(), start,
-			[](const std::pair<std::size_t, std::size_t>& match, std::size_t lineStart)
-			{ return match.second <= lineStart; });
+			[](const std::pair<std::size_t, std::size_t>& match, std::size_t lineStart) { return match.second <= lineStart; });
 
 		bool currentOnLine = false;
 

@@ -93,8 +93,8 @@ TEST_CASE("A set the buffer has outrun is stale")
 	model.Apply(typed);
 
 	CHECK(model.IsStale(kMain));
-	CHECK(model.For(kMain).size() == 1);            // dimmed, not dropped
-	CHECK(model.Total(Everything).Errors == 1);     // Total counts a stale entry's items too - dimmed, not dropped
+	CHECK(model.For(kMain).size() == 1);		// dimmed, not dropped
+	CHECK(model.Total(Everything).Errors == 1); // Total counts a stale entry's items too - dimmed, not dropped
 }
 
 TEST_CASE("A publication naming no version reads as stale once anything has been sent")
@@ -196,7 +196,8 @@ TEST_CASE("Applying nothing about a document leaves its generation alone")
 	Graphite::DiagnosticsUpdate other;
 	other.Published.push_back(
 		Graphite::PublishedDiagnostics{std::filesystem::path{"C:/src/Other.cpp"},
-										Graphite::DocumentVersion{1}, {Error(0, "x")}});
+									   Graphite::DocumentVersion{1},
+									   {Error(0, "x")}});
 	model.Apply(other);
 
 	CHECK(model.Documents().at(kMain).Generation == generation);

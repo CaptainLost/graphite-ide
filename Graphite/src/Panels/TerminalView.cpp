@@ -68,22 +68,38 @@ namespace Graphite {
 		{
 			switch (index)
 			{
-				case 0: return IM_COL32(0x00, 0x00, 0x00, 0xFF);
-				case 1: return IM_COL32(0xCD, 0x00, 0x00, 0xFF);
-				case 2: return IM_COL32(0x00, 0xCD, 0x00, 0xFF);
-				case 3: return IM_COL32(0xCD, 0xCD, 0x00, 0xFF);
-				case 4: return IM_COL32(0x00, 0x00, 0xEE, 0xFF);
-				case 5: return IM_COL32(0xCD, 0x00, 0xCD, 0xFF);
-				case 6: return IM_COL32(0x00, 0xCD, 0xCD, 0xFF);
-				case 7: return IM_COL32(0xE5, 0xE5, 0xE5, 0xFF);
-				case 8: return IM_COL32(0x7F, 0x7F, 0x7F, 0xFF);
-				case 9: return IM_COL32(0xFF, 0x00, 0x00, 0xFF);
-				case 10: return IM_COL32(0x00, 0xFF, 0x00, 0xFF);
-				case 11: return IM_COL32(0xFF, 0xFF, 0x00, 0xFF);
-				case 12: return IM_COL32(0x5C, 0x5C, 0xFF, 0xFF);
-				case 13: return IM_COL32(0xFF, 0x00, 0xFF, 0xFF);
-				case 14: return IM_COL32(0x00, 0xFF, 0xFF, 0xFF);
-				default: break;
+			case 0:
+				return IM_COL32(0x00, 0x00, 0x00, 0xFF);
+			case 1:
+				return IM_COL32(0xCD, 0x00, 0x00, 0xFF);
+			case 2:
+				return IM_COL32(0x00, 0xCD, 0x00, 0xFF);
+			case 3:
+				return IM_COL32(0xCD, 0xCD, 0x00, 0xFF);
+			case 4:
+				return IM_COL32(0x00, 0x00, 0xEE, 0xFF);
+			case 5:
+				return IM_COL32(0xCD, 0x00, 0xCD, 0xFF);
+			case 6:
+				return IM_COL32(0x00, 0xCD, 0xCD, 0xFF);
+			case 7:
+				return IM_COL32(0xE5, 0xE5, 0xE5, 0xFF);
+			case 8:
+				return IM_COL32(0x7F, 0x7F, 0x7F, 0xFF);
+			case 9:
+				return IM_COL32(0xFF, 0x00, 0x00, 0xFF);
+			case 10:
+				return IM_COL32(0x00, 0xFF, 0x00, 0xFF);
+			case 11:
+				return IM_COL32(0xFF, 0xFF, 0x00, 0xFF);
+			case 12:
+				return IM_COL32(0x5C, 0x5C, 0xFF, 0xFF);
+			case 13:
+				return IM_COL32(0xFF, 0x00, 0xFF, 0xFF);
+			case 14:
+				return IM_COL32(0x00, 0xFF, 0xFF, 0xFF);
+			default:
+				break;
 			}
 
 			return IM_COL32(0xFF, 0xFF, 0xFF, 0xFF);
@@ -288,8 +304,7 @@ namespace Graphite {
 		{
 			const Core::CursorPosition cursor = screen.GetCursor();
 
-			if (static_cast<int>(cursor.Column) < columns && static_cast<int>(cursor.Row) < rows
-				&& cursor.Column < screen.GetColumns() && cursor.Row < screen.GetRows())
+			if (static_cast<int>(cursor.Column) < columns && static_cast<int>(cursor.Row) < rows && cursor.Column < screen.GetColumns() && cursor.Row < screen.GetRows())
 			{
 				const ImVec2 topLeft(origin.x + static_cast<float>(cursor.Column) * cellSize.x,
 									 origin.y + static_cast<float>(cursor.Row) * cellSize.y);
@@ -298,9 +313,7 @@ namespace Graphite {
 				// both, so a cursor one cell wide would invert half of the very character it
 				// exists to keep readable.
 				const bool wide =
-					static_cast<int>(cursor.Column) + 1 < columns
-					&& cursor.Column + 1 < screen.GetColumns()
-					&& screen.At(cursor.Row, static_cast<std::uint16_t>(cursor.Column + 1)).WideTrailer;
+					static_cast<int>(cursor.Column) + 1 < columns && cursor.Column + 1 < screen.GetColumns() && screen.At(cursor.Row, static_cast<std::uint16_t>(cursor.Column + 1)).WideTrailer;
 
 				const ImVec2 bottomRight(topLeft.x + (wide ? 2.0f : 1.0f) * cellSize.x,
 										 topLeft.y + cellSize.y);
@@ -370,8 +383,7 @@ namespace Graphite {
 		// selected that they want to do something with, and the gesture lands where that text
 		// is. The window is the whole of this view, so the right button anywhere in it opens it.
 		if (!ImGui::BeginPopupContextWindow("##terminalContext",
-											ImGuiPopupFlags_MouseButtonRight
-												| ImGuiPopupFlags_NoOpenOverExistingPopup))
+											ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverExistingPopup))
 		{
 			return false;
 		}
@@ -775,11 +787,14 @@ namespace Graphite {
 	{
 		switch (color.Kind)
 		{
-			// Only Default reaches the panel's own colours. Everything the program named
-			// explicitly is given as named — see AnsiColour for why the theme is not consulted.
-			case Core::TerminalColorKind::Palette: return PaletteColour(color.Index);
-			case Core::TerminalColorKind::Rgb: return IM_COL32(color.R, color.G, color.B, 255);
-			case Core::TerminalColorKind::Default: break;
+		// Only Default reaches the panel's own colours. Everything the program named
+		// explicitly is given as named — see AnsiColour for why the theme is not consulted.
+		case Core::TerminalColorKind::Palette:
+			return PaletteColour(color.Index);
+		case Core::TerminalColorKind::Rgb:
+			return IM_COL32(color.R, color.G, color.B, 255);
+		case Core::TerminalColorKind::Default:
+			break;
 		}
 
 		return foreground ? Opaque(palette.Text) : palette.Background;
@@ -800,8 +815,7 @@ namespace Graphite {
 		// hand would smear a grid whose whole premise is that every cell is the same width.
 		Core::TerminalColor chosen = cell.Foreground;
 
-		if (Core::HasFlag(cell.Flags, Core::CellFlags::Bold)
-			&& chosen.Kind == Core::TerminalColorKind::Palette && chosen.Index < 8)
+		if (Core::HasFlag(cell.Flags, Core::CellFlags::Bold) && chosen.Kind == Core::TerminalColorKind::Palette && chosen.Index < 8)
 		{
 			chosen.Index = static_cast<std::uint8_t>(chosen.Index + 8);
 		}

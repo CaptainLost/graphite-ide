@@ -65,7 +65,7 @@ namespace Graphite {
 	struct ResponseItem
 	{
 		ResponseKind Kind = ResponseKind::Other;
-		std::string Label;    // Text: "N chars"; ToolCall: tool name + "  " + summary; Thinking: "thinking (empty)"
+		std::string Label;	  // Text: "N chars"; ToolCall: tool name + "  " + summary; Thinking: "thinking (empty)"
 							  // when Text is empty, else "thinking (N chars)"
 		std::string ToolName; // ToolCall only
 
@@ -79,7 +79,7 @@ namespace Graphite {
 	struct ApiRequest
 	{
 		std::size_t Index = 0; // 1-based
-		std::string Key;       // requestId, else uuid
+		std::string Key;	   // requestId, else uuid
 		std::string Model;
 		bool Fast = false;
 		std::string RespondedAt; // the response's first record
@@ -98,13 +98,13 @@ namespace Graphite {
 		TokenCounts Usage;
 		std::uint64_t Context = 0; // input + cache writes + cache read
 		std::optional<std::int64_t> ContextDelta;
-		double CachedShare = 0.0; // 0..1
+		double CachedShare = 0.0;  // 0..1
 		bool CacheRebuilt = false; // cache write >= half of Context
 		std::vector<SentItem> Sent;
 		std::vector<ResponseItem> Response;
 		std::string StopReason;
 		std::size_t ToolsAvailable = 0; // deferred tool names announced by this request
-		std::size_t ToolsLoaded = 0;    // new tool names this request's own deltas announced
+		std::size_t ToolsLoaded = 0;	// new tool names this request's own deltas announced
 
 		// Tools the request carried with their full schema, from the session's latest prompt
 		// snapshot: the tool count a reader can trust, unlike ToolsAvailable's names alone.

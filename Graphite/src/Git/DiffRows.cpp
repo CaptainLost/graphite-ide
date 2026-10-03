@@ -15,9 +15,12 @@ namespace Graphite {
 		{
 			switch (kind)
 			{
-				case Core::DiffLineKind::Added: return DiffRowKind::Added;
-				case Core::DiffLineKind::Removed: return DiffRowKind::Removed;
-				case Core::DiffLineKind::Context: break;
+			case Core::DiffLineKind::Added:
+				return DiffRowKind::Added;
+			case Core::DiffLineKind::Removed:
+				return DiffRowKind::Removed;
+			case Core::DiffLineKind::Context:
+				break;
 			}
 
 			return DiffRowKind::Context;
@@ -70,7 +73,7 @@ namespace Graphite {
 		// BuildWholeFileRows so the hunks-only and whole-file layouts agree exactly on what a
 		// hunk looks like.
 		void AppendUnifiedHunk(std::vector<DiffRow>& rows, const Core::FileDiff& file,
-								std::size_t hunk)
+							   std::size_t hunk)
 		{
 			const std::vector<Core::DiffLine>& lines = file.Hunks[hunk].Lines;
 
@@ -84,7 +87,7 @@ namespace Graphite {
 		// insertions that follows it. Shared with BuildWholeFileRows for the same reason as
 		// AppendUnifiedHunk.
 		void AppendSideBySideHunk(std::vector<DiffPair>& pairs, const Core::FileDiff& file,
-								   std::size_t hunk)
+								  std::size_t hunk)
 		{
 			const std::vector<Core::DiffLine>& lines = file.Hunks[hunk].Lines;
 
@@ -200,9 +203,7 @@ namespace Graphite {
 		// A header, its scope or a gap names no line, and an Unchanged row names no hunk at all
 		// — its Hunk and Line fields are left at their default zero, which would otherwise
 		// resolve to file.Hunks[0].Lines[0] for any file whose first hunk is non-empty.
-		if (row.Kind == DiffRowKind::HunkHeader || row.Kind == DiffRowKind::HunkSignature
-			|| row.Kind == DiffRowKind::HunkGap || row.Kind == DiffRowKind::Unchanged
-			|| row.Hunk >= file.Hunks.size())
+		if (row.Kind == DiffRowKind::HunkHeader || row.Kind == DiffRowKind::HunkSignature || row.Kind == DiffRowKind::HunkGap || row.Kind == DiffRowKind::Unchanged || row.Hunk >= file.Hunks.size())
 		{
 			return nullptr;
 		}
@@ -218,7 +219,7 @@ namespace Graphite {
 	}
 
 	WholeFileRows BuildWholeFileRows(const Core::FileDiff& file, std::size_t oldLineCount,
-									  std::size_t newLineCount)
+									 std::size_t newLineCount)
 	{
 		WholeFileRows result;
 
@@ -293,14 +294,12 @@ namespace Graphite {
 
 			if (current.OldCount > 0)
 			{
-				oldNext = static_cast<std::size_t>(current.OldStart)
-						  + static_cast<std::size_t>(current.OldCount);
+				oldNext = static_cast<std::size_t>(current.OldStart) + static_cast<std::size_t>(current.OldCount);
 			}
 
 			if (current.NewCount > 0)
 			{
-				newNext = static_cast<std::size_t>(current.NewStart)
-						  + static_cast<std::size_t>(current.NewCount);
+				newNext = static_cast<std::size_t>(current.NewStart) + static_cast<std::size_t>(current.NewCount);
 			}
 		}
 
@@ -308,8 +307,8 @@ namespace Graphite {
 		// Both counts here come straight from the caller rather than a hunk header, so there
 		// is no zero-count ambiguity to prefer one side over the other for.
 		const std::size_t tailLength = hasNew ? ClampedGap(newLineCount + 1, newNext)
-											   : (hasOld ? ClampedGap(oldLineCount + 1, oldNext)
-														  : 0);
+											  : (hasOld ? ClampedGap(oldLineCount + 1, oldNext)
+														: 0);
 
 		emitGap(tailLength);
 
@@ -450,7 +449,7 @@ namespace Graphite {
 		// on the anchor's side — headers, gaps, and lines only the other side has — are passed
 		// over, and among the rest each side's numbers only ever rise, which is what lets the
 		// first one at or past the anchor stand for it.
-		template <typename Row>
+		template<typename Row>
 		DiffRowAt FindRow(std::span<const Row> rows, DiffLineAnchor anchor)
 		{
 			for (std::size_t index = 0; index < rows.size(); ++index)
@@ -485,7 +484,10 @@ namespace Graphite {
 
 	namespace {
 
-		bool IsUnchanged(const DiffRow& row) { return row.Kind == DiffRowKind::Unchanged; }
+		bool IsUnchanged(const DiffRow& row)
+		{
+			return row.Kind == DiffRowKind::Unchanged;
+		}
 
 		// Both halves of an Unchanged pair are Unchanged, so either answers for the pair.
 		bool IsUnchanged(const DiffPair& pair)
@@ -494,7 +496,7 @@ namespace Graphite {
 			return half.has_value() && IsUnchanged(*half);
 		}
 
-		template <typename Row>
+		template<typename Row>
 		std::optional<std::size_t> FindRowToKeep(std::span<const Row> rows, std::size_t first,
 												 std::size_t end)
 		{
@@ -523,8 +525,7 @@ namespace Graphite {
 				const std::size_t twice = index * 2;
 				const std::size_t distance = twice > middle ? twice - middle : middle - twice;
 
-				if (!best.has_value() || (inHunk && !bestInHunk)
-					|| (inHunk == bestInHunk && distance < bestDistance))
+				if (!best.has_value() || (inHunk && !bestInHunk) || (inHunk == bestInHunk && distance < bestDistance))
 				{
 					best = index;
 					bestInHunk = inHunk;

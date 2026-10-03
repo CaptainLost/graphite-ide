@@ -24,22 +24,19 @@ namespace {
 
 TEST_CASE("Two files of one commit have different identities")
 {
-	CHECK(Graphite::DiffWindowIdentity(Diff(1, "a.txt"))
-		  != Graphite::DiffWindowIdentity(Diff(1, "b.txt")));
+	CHECK(Graphite::DiffWindowIdentity(Diff(1, "a.txt")) != Graphite::DiffWindowIdentity(Diff(1, "b.txt")));
 }
 
 TEST_CASE("One file in two commits has different identities")
 {
-	CHECK(Graphite::DiffWindowIdentity(Diff(1, "a.txt"))
-		  != Graphite::DiffWindowIdentity(Diff(2, "a.txt")));
+	CHECK(Graphite::DiffWindowIdentity(Diff(1, "a.txt")) != Graphite::DiffWindowIdentity(Diff(2, "a.txt")));
 }
 
 TEST_CASE("An identity is the same every time it is asked for")
 {
 	// ImGui keys a window's dock position and its imgui.ini entry by this string. An
 	// identity that varied between frames would give the window a new home each frame.
-	CHECK(Graphite::DiffWindowIdentity(Diff(1, "a.txt"))
-		  == Graphite::DiffWindowIdentity(Diff(1, "a.txt")));
+	CHECK(Graphite::DiffWindowIdentity(Diff(1, "a.txt")) == Graphite::DiffWindowIdentity(Diff(1, "a.txt")));
 }
 
 TEST_CASE("An identity is the commit's full id immediately followed by the path")
@@ -60,8 +57,7 @@ TEST_CASE("Paths that differ only in their separators are told apart")
 	// between them; one that does not must keep them apart. Either is defensible, but it
 	// has to be decided rather than left to chance, and this is where it is decided:
 	// they are different paths and they get different windows.
-	CHECK(Graphite::DiffWindowIdentity(Diff(1, "a/b.txt"))
-		  != Graphite::DiffWindowIdentity(Diff(1, "a\\b.txt")));
+	CHECK(Graphite::DiffWindowIdentity(Diff(1, "a/b.txt")) != Graphite::DiffWindowIdentity(Diff(1, "a\\b.txt")));
 }
 
 TEST_CASE("The title carries the file's name and the commit's short id")
@@ -173,8 +169,7 @@ TEST_CASE("A staged tab whose file was unstaged follows it to the unstaged side"
 	const Core::WorkingTreeStatus status =
 		StatusOf("a.txt", Core::StatusFlags::None, Core::StatusFlags::Modified);
 
-	CHECK(Graphite::TargetHolding(status, "a.txt", Core::DiffTarget::IndexToHead)
-		  == Core::DiffTarget::WorkTreeToIndex);
+	CHECK(Graphite::TargetHolding(status, "a.txt", Core::DiffTarget::IndexToHead) == Core::DiffTarget::WorkTreeToIndex);
 }
 
 TEST_CASE("An unstaged tab whose file was staged follows it to the staged side")
@@ -182,8 +177,7 @@ TEST_CASE("An unstaged tab whose file was staged follows it to the staged side")
 	const Core::WorkingTreeStatus status =
 		StatusOf("a.txt", Core::StatusFlags::Modified, Core::StatusFlags::None);
 
-	CHECK(Graphite::TargetHolding(status, "a.txt", Core::DiffTarget::WorkTreeToIndex)
-		  == Core::DiffTarget::IndexToHead);
+	CHECK(Graphite::TargetHolding(status, "a.txt", Core::DiffTarget::WorkTreeToIndex) == Core::DiffTarget::IndexToHead);
 }
 
 TEST_CASE("A tab whose own side still holds a change stays where it is")
@@ -231,12 +225,9 @@ TEST_CASE("Only the staged and unstaged pair follow anything")
 
 TEST_CASE("An empty working-tree diff says which side is empty, and for which file")
 {
-	CHECK(Graphite::EmptyDiffMessage(WorkingDiff(Core::DiffTarget::IndexToHead, "src/a.txt"))
-		  == "a.txt has no staged changes.");
-	CHECK(Graphite::EmptyDiffMessage(WorkingDiff(Core::DiffTarget::WorkTreeToIndex, "src/a.txt"))
-		  == "a.txt has no unstaged changes.");
-	CHECK(Graphite::EmptyDiffMessage(WorkingDiff(Core::DiffTarget::WorkTreeToHead, "src/a.txt"))
-		  == "a.txt has no changes.");
+	CHECK(Graphite::EmptyDiffMessage(WorkingDiff(Core::DiffTarget::IndexToHead, "src/a.txt")) == "a.txt has no staged changes.");
+	CHECK(Graphite::EmptyDiffMessage(WorkingDiff(Core::DiffTarget::WorkTreeToIndex, "src/a.txt")) == "a.txt has no unstaged changes.");
+	CHECK(Graphite::EmptyDiffMessage(WorkingDiff(Core::DiffTarget::WorkTreeToHead, "src/a.txt")) == "a.txt has no changes.");
 }
 
 TEST_CASE("An empty commit diff still reports a file missing from that commit")

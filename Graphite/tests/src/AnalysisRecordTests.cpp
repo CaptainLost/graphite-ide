@@ -175,8 +175,7 @@ TEST_CASE("A semantic span whose kind is at or past TokenKind::Count is refused"
 
 TEST_CASE("A declaration whose kind is past DeclarationKind's known values is refused")
 {
-	auto withKind = [](DeclarationKind kind)
-	{
+	auto withKind = [](DeclarationKind kind) {
 		CachedAnalysis analysis;
 
 		Declaration declaration;
@@ -201,7 +200,7 @@ TEST_CASE("A declaration whose kind is past DeclarationKind's known values is re
 	REQUIRE(kindAt < functionBytes.size());
 
 	std::string corrupted = functionBytes;
-	corrupted[kindAt] = 3;   // one past Other, the last valid DeclarationKind
+	corrupted[kindAt] = 3; // one past Other, the last valid DeclarationKind
 	corrupted[kindAt + 1] = 0;
 	corrupted[kindAt + 2] = 0;
 	corrupted[kindAt + 3] = 0;
@@ -214,8 +213,7 @@ TEST_CASE("A known count whose kind is past DeclarationKind's known values is re
 	// The counts loop validates KnownCount::Kind with its own if-statement, separate from the
 	// one guarding Declaration::Kind - nothing shares the check between them, so each needs its
 	// own case pinning it or a later simplification could delete either one unnoticed.
-	auto withKind = [](DeclarationKind kind)
-	{
+	auto withKind = [](DeclarationKind kind) {
 		CachedAnalysis analysis;
 		analysis.Counts.push_back({"Draw", kind, 7});
 
@@ -231,7 +229,7 @@ TEST_CASE("A known count whose kind is past DeclarationKind's known values is re
 	REQUIRE(kindAt < functionBytes.size());
 
 	std::string corrupted = functionBytes;
-	corrupted[kindAt] = 3;   // one past Other, the last valid DeclarationKind
+	corrupted[kindAt] = 3; // one past Other, the last valid DeclarationKind
 	corrupted[kindAt + 1] = 0;
 	corrupted[kindAt + 2] = 0;
 	corrupted[kindAt + 3] = 0;

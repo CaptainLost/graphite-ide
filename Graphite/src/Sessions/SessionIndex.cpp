@@ -123,7 +123,7 @@ namespace Graphite {
 	}
 
 	std::optional<std::filesystem::path> SessionFileFor(const std::filesystem::path& projects,
-														 const std::filesystem::path& changedDirectory)
+														const std::filesystem::path& changedDirectory)
 	{
 		const std::filesystem::path relative =
 			WithoutTrailingSeparator(changedDirectory).lexically_relative(projects);
@@ -154,8 +154,7 @@ namespace Graphite {
 			++m_Inbox->Pending;
 		}
 
-		m_Jobs.Submit([inbox = m_Inbox, known = m_Known, token = m_Token, work = std::move(work)]
-		{
+		m_Jobs.Submit([inbox = m_Inbox, known = m_Known, token = m_Token, work = std::move(work)] {
 			if (!token.IsCancelled())
 				work(*inbox, *known);
 
@@ -177,21 +176,19 @@ namespace Graphite {
 		m_Known = std::make_shared<Known>();
 		m_Projects = projects;
 
-		Submit([projects = std::move(projects), cached = std::move(cached), token = m_Token](Inbox& inbox, Known& known)
-		{
+		Submit([projects = std::move(projects), cached = std::move(cached), token = m_Token](Inbox& inbox, Known& known) {
 			std::vector<std::filesystem::path> gone =
-				ScanProjects(projects, cached, token, [&inbox, &known](SessionSummary summary)
-			{
-				known.Prints[summary.File] = summary.Print;
+				ScanProjects(projects, cached, token, [&inbox, &known](SessionSummary summary) {
+					known.Prints[summary.File] = summary.Print;
 
-				// Delivered one at a time, so the list fills while the scan runs.
-				{
-					const std::lock_guard<std::mutex> guard(inbox.Mutex);
-					inbox.Ready.Updated.push_back(std::move(summary));
-				}
+					// Delivered one at a time, so the list fills while the scan runs.
+					{
+						const std::lock_guard<std::mutex> guard(inbox.Mutex);
+						inbox.Ready.Updated.push_back(std::move(summary));
+					}
 
-				Core::Redraw::Request();
-			});
+					Core::Redraw::Request();
+				});
 
 			// The caller shows the cache before the scan confirms it, so a session whose file
 			// went away while nothing was watching must be taken back out explicitly; no
@@ -204,8 +201,7 @@ namespace Graphite {
 
 	void SessionIndex::Refresh(std::vector<std::filesystem::path> changedDirectories)
 	{
-		Submit([projects = m_Projects, directories = std::move(changedDirectories)](Inbox& inbox, Known& known)
-		{
+		Submit([projects = m_Projects, directories = std::move(changedDirectories)](Inbox& inbox, Known& known) {
 			std::set<std::filesystem::path> files;
 
 			for (const std::filesystem::path& raw : directories)

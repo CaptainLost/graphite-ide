@@ -18,11 +18,16 @@ namespace Graphite {
 		{
 			switch (item.Kind)
 			{
-			case ItemKind::Text: return PartKind::Reply;
-			case ItemKind::Injected: return PartKind::Injected;
-			case ItemKind::Queued: return PartKind::Queued;
-			case ItemKind::Compaction: return PartKind::Compaction;
-			default: return PartKind::Steps;
+			case ItemKind::Text:
+				return PartKind::Reply;
+			case ItemKind::Injected:
+				return PartKind::Injected;
+			case ItemKind::Queued:
+				return PartKind::Queued;
+			case ItemKind::Compaction:
+				return PartKind::Compaction;
+			default:
+				return PartKind::Steps;
 			}
 		}
 
@@ -81,8 +86,7 @@ namespace Graphite {
 		std::vector<std::string> order;
 		std::set<std::string> seen;
 
-		const auto note = [&order, &seen](const std::string& request)
-		{
+		const auto note = [&order, &seen](const std::string& request) {
 			if (seen.insert(request).second)
 				order.push_back(request);
 		};
@@ -159,8 +163,7 @@ namespace Graphite {
 		std::string latest;
 		std::optional<std::chrono::sys_time<std::chrono::milliseconds>> latestTime;
 
-		const auto consider = [&latest, &latestTime](const std::string& timestamp)
-		{
+		const auto consider = [&latest, &latestTime](const std::string& timestamp) {
 			if (const auto parsed = ParseTimestamp(timestamp); parsed && (!latestTime || *parsed > *latestTime))
 			{
 				latestTime = parsed;

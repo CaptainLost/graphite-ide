@@ -69,7 +69,7 @@ namespace Graphite {
 	};
 
 	StatusBarClick DrawStatusBar(const Core::DocumentSet& documents,
-					   const std::filesystem::path& root,
-					   const StatusMessages& messages);
+								 const std::filesystem::path& root,
+								 const StatusMessages& messages);
 
 }

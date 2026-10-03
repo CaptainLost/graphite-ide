@@ -56,7 +56,7 @@ namespace Graphite {
 
 		// Whether the walk opens `node` because the file being revealed lies under it. The
 		// search runs only on the frame of a reveal.
-		template <typename Node>
+		template<typename Node>
 		bool OpensToward(const Node& node) const
 		{
 			return !m_RevealPath.empty() && HoldsFile(node, m_RevealPath);

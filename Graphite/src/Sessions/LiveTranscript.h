@@ -136,7 +136,7 @@ namespace Graphite {
 		// transcript is being closed. A file that grew only by a line still being written is
 		// looked at again next time, but moves nothing. Worker only.
 		static std::optional<SubagentState> FollowSubagents(const std::filesystem::path& sessionFile,
-														   SubagentFiles& subagents, Inbox& inbox);
+															SubagentFiles& subagents, Inbox& inbox);
 
 		// Shared by both overloads of Take; `timeline` is null for the session-only one.
 		bool TakeRecords(Session& session, RequestTimeline* timeline);

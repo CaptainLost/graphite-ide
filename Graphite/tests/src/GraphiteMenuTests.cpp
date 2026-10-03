@@ -72,8 +72,7 @@ TEST_CASE("The panels submenu holds every panel, under a heading per role")
 	const MenuItem* panels = FindSubmenu(view->GetChildren(), "Panels");
 
 	REQUIRE(panels != nullptr);
-	CHECK(SectionHeadings(panels->GetChildren())
-		  == std::vector<std::string>{"Navigate", "Tools", "Git", "AI"});
+	CHECK(SectionHeadings(panels->GetChildren()) == std::vector<std::string>{"Navigate", "Tools", "Git", "AI"});
 
 	for (const auto& [heading, group] : {std::pair{"Navigate", "panels.navigate"},
 										 std::pair{"Tools", "panels.tools"},
@@ -164,8 +163,7 @@ TEST_CASE("Following the active file is switched among the explorer's options")
 	REQUIRE(options != nullptr);
 
 	const bool listed = std::any_of(options->GetChildren().begin(), options->GetChildren().end(),
-									[](const MenuItem& item)
-									{ return item.GetText() == "explorer.followActiveFile"; });
+									[](const MenuItem& item) { return item.GetText() == "explorer.followActiveFile"; });
 
 	CHECK(listed);
 }

@@ -281,7 +281,7 @@ namespace Graphite {
 	void CommitListView::Render(const Core::LogPage& page, const Core::CommitGraph& graph,
 								const GitPalette& palette, std::chrono::minutes offset,
 								const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf,
-					std::string_view highlight, std::string_view pathHighlight)
+								std::string_view highlight, std::string_view pathHighlight)
 	{
 		if (page.Commits.empty())
 		{

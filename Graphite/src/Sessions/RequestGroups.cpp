@@ -98,13 +98,15 @@ namespace Graphite {
 		{
 			switch (column)
 			{
-			case RequestColumn::Index: return Numeric(static_cast<double>(summary.FirstIndex));
+			case RequestColumn::Index:
+				return Numeric(static_cast<double>(summary.FirstIndex));
 			case RequestColumn::Time:
 			{
 				const auto at = ParseTimestamp(summary.FirstRespondedAt);
 				return at ? Numeric(static_cast<double>(at->time_since_epoch().count())) : SortValue{};
 			}
-			case RequestColumn::Model: return Textual(summary.MixedModels ? std::string{"mixed"} : summary.Model);
+			case RequestColumn::Model:
+				return Textual(summary.MixedModels ? std::string{"mixed"} : summary.Model);
 			case RequestColumn::Context:
 				return summary.HasUsage ? Numeric(static_cast<double>(summary.Context)) : SortValue{};
 			case RequestColumn::Delta:
@@ -119,10 +121,12 @@ namespace Graphite {
 				return summary.HasUsage && summary.Cost.IsKnown() ? Numeric(summary.Cost.Dollars) : SortValue{};
 			case RequestColumn::Wait:
 				return summary.Waited ? Numeric(static_cast<double>(summary.Waited->count())) : SortValue{};
-			case RequestColumn::Stop: return Textual(summary.StopReason);
+			case RequestColumn::Stop:
+				return Textual(summary.StopReason);
 			case RequestColumn::Tools:
 				return Textual(summary.Turn < prompts.size() ? prompts[summary.Turn] : std::string{});
-			case RequestColumn::Rebuilt: return Numeric(static_cast<double>(summary.Rebuilt));
+			case RequestColumn::Rebuilt:
+				return Numeric(static_cast<double>(summary.Rebuilt));
 			}
 
 			return {};
@@ -208,8 +212,7 @@ namespace Graphite {
 
 		// Ties go by turn, so equal turns keep the session's order in either direction.
 		std::sort(sorted.begin(), sorted.end(),
-				  [&values, &groups, textual, ascending](std::size_t a, std::size_t b)
-				  {
+				  [&values, &groups, textual, ascending](std::size_t a, std::size_t b) {
 					  const int compared = CompareSortValues(values[a], values[b], textual, ascending);
 					  return compared != 0 ? compared < 0 : groups[a].Summary.Turn < groups[b].Summary.Turn;
 				  });

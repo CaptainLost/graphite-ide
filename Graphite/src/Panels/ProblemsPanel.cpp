@@ -42,22 +42,21 @@ namespace Graphite {
 			}
 
 			std::sort(sorted.begin(), sorted.end(),
-					 [](const Diagnostic* a, const Diagnostic* b)
-					 {
-						 if (a->Line != b->Line)
-						 {
-							 return a->Line < b->Line;
-						 }
+					  [](const Diagnostic* a, const Diagnostic* b) {
+						  if (a->Line != b->Line)
+						  {
+							  return a->Line < b->Line;
+						  }
 
-						 if (a->Column.Value != b->Column.Value)
-						 {
-							 return a->Column.Value < b->Column.Value;
-						 }
+						  if (a->Column.Value != b->Column.Value)
+						  {
+							  return a->Column.Value < b->Column.Value;
+						  }
 
-						 // DiagnosticSeverity::Error is 0 and Warning is 1, so the natural order
-						 // already puts an error before a warning at the same position.
-						 return a->Severity < b->Severity;
-					 });
+						  // DiagnosticSeverity::Error is 0 and Warning is 1, so the natural order
+						  // already puts an error before a warning at the same position.
+						  return a->Severity < b->Severity;
+					  });
 
 			return sorted;
 		}
@@ -77,8 +76,7 @@ namespace Graphite {
 		// behind it, and Find is the only thing that tells the two apart. The status bar's own
 		// count is built from this exact predicate too - see DiagnosticsModel::Total's comment -
 		// so a reader can always reconcile the number there with the rows drawn here.
-		const auto isOpenDocument = [this](const std::filesystem::path& path)
-		{ return m_Documents.Find(path).has_value(); };
+		const auto isOpenDocument = [this](const std::filesystem::path& path) { return m_Documents.Find(path).has_value(); };
 
 		const DiagnosticsModel::Counts counts = m_Diagnostics.Total(isOpenDocument);
 

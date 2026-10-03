@@ -247,13 +247,13 @@ namespace Graphite {
 
 		static_assert(std::size(kLightSession) == static_cast<std::size_t>(SessionColor::Count));
 
-		template <std::size_t SyntaxCount, std::size_t EditorCount, std::size_t ChromeCount,
-				  std::size_t GitCount, std::size_t SessionCount>
+		template<std::size_t SyntaxCount, std::size_t EditorCount, std::size_t ChromeCount,
+				 std::size_t GitCount, std::size_t SessionCount>
 		ResolvedScheme Build(const SyntaxEntry (&syntax)[SyntaxCount],
-							  const EditorEntry (&editor)[EditorCount],
-							  const ChromeEntry (&chrome)[ChromeCount],
-							  const GitEntry (&git)[GitCount],
-							  const SessionEntry (&session)[SessionCount])
+							 const EditorEntry (&editor)[EditorCount],
+							 const ChromeEntry (&chrome)[ChromeCount],
+							 const GitEntry (&git)[GitCount],
+							 const SessionEntry (&session)[SessionCount])
 		{
 			ResolvedScheme scheme;
 
@@ -326,8 +326,10 @@ namespace Graphite {
 	{
 		switch (scheme)
 		{
-			case BuiltInScheme::Dark: return DarkScheme();
-			case BuiltInScheme::Light: return LightScheme();
+		case BuiltInScheme::Dark:
+			return DarkScheme();
+		case BuiltInScheme::Light:
+			return LightScheme();
 		}
 
 		return DarkScheme();
@@ -337,8 +339,10 @@ namespace Graphite {
 	{
 		switch (scheme)
 		{
-			case BuiltInScheme::Dark: return "dark";
-			case BuiltInScheme::Light: return "light";
+		case BuiltInScheme::Dark:
+			return "dark";
+		case BuiltInScheme::Light:
+			return "light";
 		}
 
 		return {};

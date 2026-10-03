@@ -203,7 +203,7 @@ namespace Graphite {
 		// whatever those lines say. Cutting either down to the part that fits would search for
 		// something the user did not select and blame them for the result.
 		std::optional<std::string> SelectionAsQuery(const Core::TextBuffer& buffer,
-												   const Core::Caret& caret)
+													const Core::Caret& caret)
 		{
 			if (!Core::HasSelection(caret))
 				return std::nullopt;

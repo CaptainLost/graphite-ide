@@ -21,9 +21,9 @@ namespace {
 
 		const auto& entries = status.GetValue().Entries;
 		const auto found = std::find_if(entries.begin(), entries.end(),
-			[&relative](const Core::FileStatus& file) {
-				return file.Path == std::filesystem::path{relative};
-			});
+										[&relative](const Core::FileStatus& file) {
+											return file.Path == std::filesystem::path{relative};
+										});
 
 		return found == entries.end() ? Core::FileStatus{} : *found;
 	}

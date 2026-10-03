@@ -285,8 +285,8 @@ namespace Graphite {
 		// rather than an error - the old side is then simply absent, the same SideText{}
 		// an absent file's NotFound produces.
 		Core::Result<SideText> oldSide = parent.GetValue().has_value()
-			? ReadSideText(repository->ReadBlob(oldPath, *parent.GetValue()))
-			: Core::Result<SideText>{SideText{}};
+											 ? ReadSideText(repository->ReadBlob(oldPath, *parent.GetValue()))
+											 : Core::Result<SideText>{SideText{}};
 
 		if (!oldSide.HasValue())
 		{
@@ -722,15 +722,15 @@ namespace Graphite {
 		// whole call failing over a side ReadBases was never going to diff anyway.
 		if (!head.HasValue())
 			return head.GetError().Code == Core::ErrorCode::InvalidArgument
-				? ChangeBases{.Tracked = true, .Unusable = true}
-				: Core::Result<ChangeBases>{head.GetError()};
+					   ? ChangeBases{.Tracked = true, .Unusable = true}
+					   : Core::Result<ChangeBases>{head.GetError()};
 
 		auto index = ReadOneSide(*repository, TextSide::Index, relative);
 
 		if (!index.HasValue())
 			return index.GetError().Code == Core::ErrorCode::InvalidArgument
-				? ChangeBases{.Tracked = true, .Unusable = true}
-				: Core::Result<ChangeBases>{index.GetError()};
+					   ? ChangeBases{.Tracked = true, .Unusable = true}
+					   : Core::Result<ChangeBases>{index.GetError()};
 
 		SideText headSide = std::move(head).GetValue();
 		SideText indexSide = std::move(index).GetValue();

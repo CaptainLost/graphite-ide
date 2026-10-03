@@ -125,7 +125,8 @@ TEST_CASE("ToUtf8 turns a lone surrogate into a replacement character instead of
 
 	std::string text;
 	REQUIRE_NOTHROW(text = Core::ToUtf8(path));
-	CHECK(text == "a\xef\xbf\xbd" "b.txt");
+	CHECK(text == "a\xef\xbf\xbd"
+				  "b.txt");
 }
 #endif
 

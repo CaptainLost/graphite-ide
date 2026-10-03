@@ -81,9 +81,12 @@ namespace Graphite {
 		{
 			switch (static_cast<ContextLayer>(layer))
 			{
-			case ContextLayer::CacheRead: return palette.Web;
-			case ContextLayer::CacheWrite: return palette.Edit;
-			case ContextLayer::Uncached: return palette.Run;
+			case ContextLayer::CacheRead:
+				return palette.Web;
+			case ContextLayer::CacheWrite:
+				return palette.Edit;
+			case ContextLayer::Uncached:
+				return palette.Run;
 			}
 
 			return palette.Other;
@@ -142,8 +145,7 @@ namespace Graphite {
 		ImPlotStyle& plotStyle = ImPlot::GetStyle();
 		const bool wasLocal = std::exchange(plotStyle.UseLocalTime, true);
 		const bool was24Hour = std::exchange(plotStyle.Use24HourClock, true);
-		const auto restoreStyle = [&plotStyle, wasLocal, was24Hour]
-		{
+		const auto restoreStyle = [&plotStyle, wasLocal, was24Hour] {
 			plotStyle.UseLocalTime = wasLocal;
 			plotStyle.Use24HourClock = was24Hour;
 		};
@@ -213,8 +215,7 @@ namespace Graphite {
 
 		PlotStackedBars(std::span(passing).first(layout.LayerCount), m_Xs, m_BarWidth);
 
-		const bool anyLeftOut = std::any_of(m_Points.begin(), m_Points.end(), [&input](std::size_t position)
-											{ return position < input.Passes.size() && !input.Passes[position]; });
+		const bool anyLeftOut = std::any_of(m_Points.begin(), m_Points.end(), [&input](std::size_t position) { return position < input.Passes.size() && !input.Passes[position]; });
 
 		if (anyLeftOut)
 		{
@@ -417,8 +418,10 @@ namespace Graphite {
 	{
 		switch (m_Mode)
 		{
-		case ChartMode::Time: return m_Rate[position];
-		case ChartMode::Context: break;
+		case ChartMode::Time:
+			return m_Rate[position];
+		case ChartMode::Context:
+			break;
 		}
 
 		return kNaN;

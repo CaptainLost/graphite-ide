@@ -138,8 +138,7 @@ namespace Core {
 	{
 		// Built once by the static's own initialiser, which the language makes thread-safe, and
 		// zero-terminated by the two entries the loop leaves alone.
-		static const std::array<ImWchar, 2 * kUsedIconCount + 2> ranges = []
-		{
+		static const std::array<ImWchar, 2 * kUsedIconCount + 2> ranges = [] {
 			std::array<ImWchar, 2 * kUsedIconCount + 2> built{};
 
 			for (std::size_t i = 0; i < kUsedIconCount; ++i)

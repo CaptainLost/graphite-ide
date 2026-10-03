@@ -93,8 +93,7 @@ TEST_CASE("A selection that is still there stays where it is")
 	const std::vector<std::filesystem::path> before{"a.txt", "b.txt", "c.txt"};
 	const std::vector<std::filesystem::path> after{"c.txt", "a.txt", "b.txt"};
 
-	CHECK(Graphite::NextSelection("b.txt", before, after)
-		  == std::optional<std::filesystem::path>("b.txt"));
+	CHECK(Graphite::NextSelection("b.txt", before, after) == std::optional<std::filesystem::path>("b.txt"));
 }
 
 TEST_CASE("A selection that left is replaced by the row that took its place")
@@ -102,8 +101,7 @@ TEST_CASE("A selection that left is replaced by the row that took its place")
 	const std::vector<std::filesystem::path> before{"a.txt", "b.txt", "c.txt"};
 	const std::vector<std::filesystem::path> after{"a.txt", "c.txt"};
 
-	CHECK(Graphite::NextSelection("b.txt", before, after)
-		  == std::optional<std::filesystem::path>("c.txt"));
+	CHECK(Graphite::NextSelection("b.txt", before, after) == std::optional<std::filesystem::path>("c.txt"));
 }
 
 TEST_CASE("A selection on the last row falls back to the new last row")
@@ -111,8 +109,7 @@ TEST_CASE("A selection on the last row falls back to the new last row")
 	const std::vector<std::filesystem::path> before{"a.txt", "b.txt", "c.txt"};
 	const std::vector<std::filesystem::path> after{"a.txt", "b.txt"};
 
-	CHECK(Graphite::NextSelection("c.txt", before, after)
-		  == std::optional<std::filesystem::path>("b.txt"));
+	CHECK(Graphite::NextSelection("c.txt", before, after) == std::optional<std::filesystem::path>("b.txt"));
 }
 
 TEST_CASE("A selection in a section that emptied is dropped")
@@ -161,7 +158,7 @@ namespace {
 TEST_CASE("Discarding a tracked file restores it and names only itself")
 {
 	const Graphite::DiscardPlan plan = Graphite::PlanDiscard(File("src/a.txt", false),
-															Repository, {});
+															 Repository, {});
 
 	CHECK(plan.Restore == std::vector<std::filesystem::path>{"src/a.txt"});
 	CHECK(plan.Delete.empty());
@@ -172,7 +169,7 @@ TEST_CASE("Discarding a tracked file restores it and names only itself")
 TEST_CASE("Discarding an untracked file deletes it, since there is nothing to restore")
 {
 	const Graphite::DiscardPlan plan = Graphite::PlanDiscard(File("src/a.txt", true),
-															Repository, {});
+															 Repository, {});
 
 	CHECK(plan.Delete == std::vector<std::filesystem::path>{"src/a.txt"});
 	CHECK(plan.Restore.empty());
@@ -185,15 +182,14 @@ TEST_CASE("A folder discard names the files it was listed with")
 		Repository, {});
 
 	CHECK(plan.Delete == std::vector<std::filesystem::path>{"src"});
-	CHECK(plan.Files
-		  == std::vector<std::filesystem::path>{"src/a.txt", "src/deep/b.txt"});
+	CHECK(plan.Files == std::vector<std::filesystem::path>{"src/a.txt", "src/deep/b.txt"});
 	CHECK(plan.FileCount == std::optional<std::size_t>(2));
 }
 
 TEST_CASE("A folder nobody opened names no files and counts none")
 {
 	const Graphite::DiscardPlan plan = Graphite::PlanDiscard(Folder("src", std::nullopt),
-															Repository, {});
+															 Repository, {});
 
 	CHECK(plan.Delete == std::vector<std::filesystem::path>{"src"});
 	CHECK(plan.Files.empty());
@@ -259,14 +255,12 @@ TEST_CASE("The question counts a folder's files only when they are known")
 		Folder("src", std::vector<std::filesystem::path>{"src/a.txt", "src/b.txt"});
 
 	CHECK(Graphite::DiscardQuestionText(listed,
-										Graphite::PlanDiscard(listed, Repository, {}))
-		  == "Delete src/ and the 2 files in it?");
+										Graphite::PlanDiscard(listed, Repository, {})) == "Delete src/ and the 2 files in it?");
 
 	const Graphite::DiscardSubject unlisted = Folder("src", std::nullopt);
 
 	CHECK(Graphite::DiscardQuestionText(unlisted,
-										Graphite::PlanDiscard(unlisted, Repository, {}))
-		  == "Delete src/ and everything in it?");
+										Graphite::PlanDiscard(unlisted, Repository, {})) == "Delete src/ and everything in it?");
 }
 
 TEST_CASE("The question says whether a file is deleted or restored")
@@ -274,14 +268,12 @@ TEST_CASE("The question says whether a file is deleted or restored")
 	const Graphite::DiscardSubject untracked = File("src/a.txt", true);
 
 	CHECK(Graphite::DiscardQuestionText(untracked,
-										Graphite::PlanDiscard(untracked, Repository, {}))
-		  == "Delete src/a.txt?");
+										Graphite::PlanDiscard(untracked, Repository, {})) == "Delete src/a.txt?");
 
 	const Graphite::DiscardSubject tracked = File("src/a.txt", false);
 
 	CHECK(Graphite::DiscardQuestionText(tracked,
-										Graphite::PlanDiscard(tracked, Repository, {}))
-		  == "Discard the unstaged changes to src/a.txt?");
+										Graphite::PlanDiscard(tracked, Repository, {})) == "Discard the unstaged changes to src/a.txt?");
 }
 
 TEST_CASE("A row with room for everything shows the name and the directory whole")

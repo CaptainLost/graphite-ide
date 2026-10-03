@@ -46,8 +46,8 @@ namespace Graphite {
 			// is meaningless once it names a different line, so it is clamped to this line's own
 			// length rather than followed onto one it does not describe.
 			const std::size_t toByte = diagnostic.EndLine == diagnostic.Line
-											? FromUtf16Column(line, diagnostic.EndColumn)
-											: line.size();
+										   ? FromUtf16Column(line, diagnostic.EndColumn)
+										   : line.size();
 
 			DiagnosticSpan span;
 			span.From = Core::ExpandedOffsetOfByte(line, fromByte, tabWidth);

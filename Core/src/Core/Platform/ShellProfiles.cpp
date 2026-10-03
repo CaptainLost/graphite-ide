@@ -23,7 +23,7 @@ namespace Core {
 		// working directory and could accidentally exist there, so it has to be rejected
 		// before it ever reaches std::filesystem::exists rather than relying on that check.
 		std::filesystem::path JoinIfPresent(const std::filesystem::path& base,
-											 const std::filesystem::path& tail)
+											const std::filesystem::path& tail)
 		{
 			if (base.empty())
 			{
@@ -75,7 +75,7 @@ namespace Core {
 			DWORD type = 0;
 
 			const LONG status = ::RegQueryValueExW(key, L"InstallPath", nullptr, &type,
-													reinterpret_cast<BYTE*>(buffer), &size);
+												   reinterpret_cast<BYTE*>(buffer), &size);
 
 			if (status != ERROR_SUCCESS || type != REG_SZ)
 			{
@@ -241,7 +241,7 @@ namespace Core {
 
 		AddIfPresent(shells, "PowerShell",
 					 JoinIfPresent(programFiles, std::filesystem::path{"PowerShell"} / "7" /
-													  "pwsh.exe"),
+													 "pwsh.exe"),
 					 {});
 		AddIfPresent(shells, "Windows PowerShell",
 					 JoinIfPresent(system, std::filesystem::path{"WindowsPowerShell"} / "v1.0" /
@@ -267,7 +267,7 @@ namespace Core {
 		if (gitBash.empty())
 		{
 			gitBash = JoinIfPresent(programFiles, std::filesystem::path{"Git"} / "bin" /
-														"bash.exe");
+													  "bash.exe");
 		}
 		AddIfPresent(shells, "Git Bash", gitBash, {"--login", "-i"});
 

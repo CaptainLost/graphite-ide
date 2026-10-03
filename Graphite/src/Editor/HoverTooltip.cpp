@@ -122,8 +122,7 @@ namespace Graphite {
 			std::size_t at = from;
 			std::size_t column = 0;
 
-			const auto run = [&](std::size_t until, ImU32 colour)
-			{
+			const auto run = [&](std::size_t until, ImU32 colour) {
 				if (until <= at)
 					return;
 
@@ -334,7 +333,6 @@ namespace Graphite {
 			for (const std::string& text : expanded)
 				widest = std::max(widest, Core::ColumnCount(text, look.TabWidth));
 
-
 			const Lexer* const lexer = LexerFor(LanguageOfPath(preview.Path));
 
 			// The state runs from the definition's first line, not the file's: a definition
@@ -386,8 +384,8 @@ namespace Graphite {
 
 					const std::vector<SemanticSpan>& said =
 						look.PreviewOverlay != nullptr ? look.PreviewOverlay->SpansOn(fileLine)
-						: declared ? look.Semantics->SpansOn(preview.Path, fileLine)
-								   : none;
+						: declared					   ? look.Semantics->SpansOn(preview.Path, fileLine)
+													   : none;
 
 					DrawColouredRow(expanded[index], tokens, DedentSpans(said, dedented.Removed),
 									0, expanded[index].size(), look);

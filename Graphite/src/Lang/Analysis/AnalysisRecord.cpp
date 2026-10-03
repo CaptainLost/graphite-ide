@@ -50,14 +50,12 @@ namespace Graphite {
 		PutU64(bytes, FileTimeToTicks(analysis.ModifiedAt));
 
 		std::uint32_t lines = 0;
-		analysis.Semantic.ForEachLine([&lines](std::size_t, const std::vector<SemanticSpan>&)
-									  { ++lines; });
+		analysis.Semantic.ForEachLine([&lines](std::size_t, const std::vector<SemanticSpan>&) { ++lines; });
 
 		PutU32(bytes, lines);
 
 		analysis.Semantic.ForEachLine(
-			[&bytes](std::size_t line, const std::vector<SemanticSpan>& spans)
-			{
+			[&bytes](std::size_t line, const std::vector<SemanticSpan>& spans) {
 				PutU64(bytes, static_cast<std::uint64_t>(line));
 				PutU32(bytes, static_cast<std::uint32_t>(spans.size()));
 

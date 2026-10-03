@@ -149,10 +149,14 @@ namespace Graphite {
 		{
 			switch (static_cast<CostLayer>(layer))
 			{
-			case CostLayer::CacheRead: return palette.Web;
-			case CostLayer::CacheWrite: return palette.Edit;
-			case CostLayer::Input: return palette.Run;
-			case CostLayer::Output: return palette.Agent;
+			case CostLayer::CacheRead:
+				return palette.Web;
+			case CostLayer::CacheWrite:
+				return palette.Edit;
+			case CostLayer::Input:
+				return palette.Run;
+			case CostLayer::Output:
+				return palette.Agent;
 			}
 
 			return palette.Other;
@@ -725,7 +729,9 @@ namespace Graphite {
 			const float iconWidth = ImGui::CalcTextSize(ICON_MDI_CONSOLE).x + ImGui::GetStyle().ItemInnerSpacing.x;
 			ImGui::TableSetupColumn("Tool", ImGuiTableColumnFlags_WidthFixed,
 									std::min(iconWidth + nameWidth, ImGui::GetFontSize() * 12.0f));
-			ImGui::TableSetupColumn("Count", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("\xc3\x97" "000").x);
+			ImGui::TableSetupColumn("Count", ImGuiTableColumnFlags_WidthFixed, ImGui::CalcTextSize("\xc3\x97"
+																								   "000")
+																				   .x);
 			ImGui::TableSetupColumn("Bar", ImGuiTableColumnFlags_WidthStretch);
 
 			const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);

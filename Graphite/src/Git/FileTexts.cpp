@@ -86,9 +86,9 @@ namespace Graphite {
 		// Each side is lexed by its own path's language: a rename that changes the extension
 		// really is two languages, one per side.
 		Tokens.Old = texts && texts->HasOld ? LexFileText(texts->Old, file.OldPath)
-										    : std::vector<std::vector<Token>>{};
+											: std::vector<std::vector<Token>>{};
 		Tokens.New = texts && texts->HasNew ? LexFileText(texts->New, file.NewPath)
-										    : std::vector<std::vector<Token>>{};
+											: std::vector<std::vector<Token>>{};
 	}
 
 	WorkingTreeSides SidesFor(Core::DiffTarget target)
@@ -121,8 +121,7 @@ namespace Graphite {
 			return false;
 		}
 
-		return held->HasOld == fresh.HasOld && held->HasNew == fresh.HasNew
-			   && held->Old == fresh.Old && held->New == fresh.New;
+		return held->HasOld == fresh.HasOld && held->HasNew == fresh.HasNew && held->Old == fresh.Old && held->New == fresh.New;
 	}
 
 	void FileTextsBinding::UpdateFromWorkingTree(GitModel& model, const Core::FileDiff& file)

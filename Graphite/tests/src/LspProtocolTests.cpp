@@ -23,11 +23,15 @@ TEST_CASE("A file URI becomes the path it named")
 TEST_CASE("A byte column becomes the UTF-16 column a server counts in")
 {
 	// "ąb" is two bytes then one; a server counts the first character as one UTF-16 unit.
-	CHECK(Graphite::ToUtf16Column("\xC4\x85""b", 3) == Graphite::Utf16Column{2});
+	CHECK(Graphite::ToUtf16Column("\xC4\x85"
+								  "b",
+								  3) == Graphite::Utf16Column{2});
 	CHECK(Graphite::ToUtf16Column("plain", 3) == Graphite::Utf16Column{3});
 
 	// U+1F600 is four bytes and two UTF-16 units.
-	CHECK(Graphite::ToUtf16Column("\xF0\x9F\x98\x80""x", 5) == Graphite::Utf16Column{3});
+	CHECK(Graphite::ToUtf16Column("\xF0\x9F\x98\x80"
+								  "x",
+								  5) == Graphite::Utf16Column{3});
 }
 
 TEST_CASE("A column is a type, so a byte count cannot be passed as one by accident")
@@ -49,9 +53,13 @@ TEST_CASE("A column is a type, so a byte count cannot be passed as one by accide
 
 TEST_CASE("A UTF-16 column becomes the byte column this editor counts in")
 {
-	CHECK(Graphite::FromUtf16Column("\xC4\x85""b", Graphite::Utf16Column{2}) == 3);
+	CHECK(Graphite::FromUtf16Column("\xC4\x85"
+									"b",
+									Graphite::Utf16Column{2}) == 3);
 	CHECK(Graphite::FromUtf16Column("plain", Graphite::Utf16Column{3}) == 3);
-	CHECK(Graphite::FromUtf16Column("\xF0\x9F\x98\x80""x", Graphite::Utf16Column{3}) == 5);
+	CHECK(Graphite::FromUtf16Column("\xF0\x9F\x98\x80"
+									"x",
+									Graphite::Utf16Column{3}) == 5);
 }
 
 TEST_CASE("A definition reply parses into locations")
@@ -83,13 +91,13 @@ TEST_CASE("A semantic token legend maps the server's own indices onto what this 
 			 ["variable","macro","class","function","namespace","parameter","property"]}}}})"));
 
 	REQUIRE(legend.size() == 7);
-	CHECK(legend[0] == Graphite::SemanticKind::Other);     // variable - the lexer's colour stands
+	CHECK(legend[0] == Graphite::SemanticKind::Other); // variable - the lexer's colour stands
 	CHECK(legend[1] == Graphite::SemanticKind::Macro);
-	CHECK(legend[2] == Graphite::SemanticKind::Type);      // class is a type
+	CHECK(legend[2] == Graphite::SemanticKind::Type); // class is a type
 	CHECK(legend[3] == Graphite::SemanticKind::Function);
 	CHECK(legend[4] == Graphite::SemanticKind::Namespace);
 	CHECK(legend[5] == Graphite::SemanticKind::Parameter);
-	CHECK(legend[6] == Graphite::SemanticKind::Member);    // property is a member
+	CHECK(legend[6] == Graphite::SemanticKind::Member); // property is a member
 }
 
 TEST_CASE("A server that offers no semantic tokens yields an empty legend rather than a wrong one")
@@ -111,7 +119,8 @@ TEST_CASE("A semantic token reply decodes its deltas into absolute positions")
 
 	//                     line col len type mod
 	const auto tokens = Graphite::ParseSemanticTokens(nlohmann::json::parse(
-		R"({"data":[0,5,3,0,0,  0,5,4,1,0,  2,1,6,2,0]})"), legend);
+														  R"({"data":[0,5,3,0,0,  0,5,4,1,0,  2,1,6,2,0]})"),
+													  legend);
 
 	REQUIRE(tokens.size() == 3);
 
@@ -138,7 +147,8 @@ TEST_CASE("A semantic token naming an index the legend does not cover is dropped
 	// Type index 7 against a legend of one entry: a server and a legend that disagree is not
 	// something to colour by approximation.
 	CHECK(Graphite::ParseSemanticTokens(nlohmann::json::parse(R"({"data":[0,0,4,7,0]})"),
-									   legend).empty());
+										legend)
+			  .empty());
 }
 
 TEST_CASE("A semantic token reply that is malformed yields nothing rather than failing")

@@ -170,14 +170,14 @@ TEST_CASE("Replacing the middle of a range widens Last to the old lines it consu
 	// A five-line file has its middle three lines collapsed into one: "a,b,c,d,e"
 	// becomes "a,Z,e". The single hunk spans the whole file on both sides.
 	const Hunk hunk = MakeHunk(1, 5, 1, 3,
-	{
-		ContextLine(1, 1),
-		RemovedLine(2),
-		RemovedLine(3),
-		RemovedLine(4),
-		AddedLine(2),
-		ContextLine(5, 3),
-	});
+							   {
+								   ContextLine(1, 1),
+								   RemovedLine(2),
+								   RemovedLine(3),
+								   RemovedLine(4),
+								   AddedLine(2),
+								   ContextLine(5, 3),
+							   });
 	const FileDiff file = MakeFile({hunk});
 
 	CHECK(Core::TouchesRange(file, LineRange{2, 2}));
@@ -199,11 +199,11 @@ TEST_CASE("A removed line inside the range makes a line-aware hunk touch it")
 	// so a hunk-level check alone could not tell this apart from a context-only hunk —
 	// only the Removed entry says line 2 was actually edited.
 	const Hunk hunk = MakeHunk(1, 3, 1, 2,
-	{
-		ContextLine(1, 1),
-		RemovedLine(2),
-		ContextLine(3, 2),
-	});
+							   {
+								   ContextLine(1, 1),
+								   RemovedLine(2),
+								   ContextLine(3, 2),
+							   });
 	const FileDiff file = MakeFile({hunk});
 
 	CHECK(Core::TouchesRange(file, LineRange{2, 2}));
@@ -216,12 +216,12 @@ TEST_CASE("A context line's position maps to its exact old line")
 	// hunk, so only its own Old/NewLine pair — not a hunk-wide shift — gives its
 	// parent-side position.
 	const Hunk hunk = MakeHunk(1, 1, 1, 4,
-	{
-		AddedLine(1),
-		AddedLine(2),
-		AddedLine(3),
-		ContextLine(1, 4),
-	});
+							   {
+								   AddedLine(1),
+								   AddedLine(2),
+								   AddedLine(3),
+								   ContextLine(1, 4),
+							   });
 	const FileDiff file = MakeFile({hunk});
 
 	const auto mapped = Core::MapRangeToParent(file, LineRange{4, 4});
@@ -238,10 +238,10 @@ TEST_CASE("A removal at the very start of a hunk is attributed to the position i
 	// inside the hunk to anchor it — the position has to come from the hunk's own
 	// NewStart, not from whatever the previous line entry happened to leave behind.
 	const Hunk hunk = MakeHunk(5, 2, 5, 1,
-	{
-		RemovedLine(5),
-		ContextLine(6, 5),
-	});
+							   {
+								   RemovedLine(5),
+								   ContextLine(6, 5),
+							   });
 	const FileDiff file = MakeFile({hunk});
 
 	CHECK(Core::TouchesRange(file, LineRange{5, 5}));

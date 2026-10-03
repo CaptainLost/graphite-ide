@@ -15,8 +15,8 @@
 namespace Core {
 
 	Result<Scope<ChildProcess>> ChildProcess::Start(const std::filesystem::path& program,
-													 const std::vector<std::string>& arguments,
-													 const std::filesystem::path& workingDirectory)
+													const std::vector<std::string>& arguments,
+													const std::filesystem::path& workingDirectory)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		SECURITY_ATTRIBUTES inheritable{};
@@ -215,7 +215,7 @@ namespace Core {
 			DWORD wroteThisCall = 0;
 			const BOOL ok =
 				::WriteFile(m_ToChild.Get(), bytes.data() + written,
-						   static_cast<DWORD>(bytes.size() - written), &wroteThisCall, nullptr);
+							static_cast<DWORD>(bytes.size() - written), &wroteThisCall, nullptr);
 
 			if (!ok)
 			{

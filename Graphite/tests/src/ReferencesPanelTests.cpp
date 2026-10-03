@@ -15,8 +15,8 @@ TEST_CASE("References become hits grouped by file and ordered by line")
 	// Utf16Column's constructor is explicit (ADR 0023), so a bare column number does not
 	// aggregate-initialize a Location the way the other two fields do - it has to be spelled out.
 	const std::vector<Graphite::Location> locations{{"D:/b.cpp", 9, Graphite::Utf16Column(2)},
-													 {"D:/a.cpp", 40, Graphite::Utf16Column(4)},
-													 {"D:/a.cpp", 4, Graphite::Utf16Column(8)}};
+													{"D:/a.cpp", 40, Graphite::Utf16Column(4)},
+													{"D:/a.cpp", 4, Graphite::Utf16Column(8)}};
 
 	const auto hits = Graphite::AsHits(locations, "Draw", LineOf);
 
@@ -36,7 +36,7 @@ TEST_CASE("An empty reply becomes no hits rather than one empty group")
 TEST_CASE("A duplicated location appears once")
 {
 	const std::vector<Graphite::Location> locations{{"D:/a.cpp", 4, Graphite::Utf16Column(8)},
-													 {"D:/a.cpp", 4, Graphite::Utf16Column(8)}};
+													{"D:/a.cpp", 4, Graphite::Utf16Column(8)}};
 
 	CHECK(Graphite::AsHits(locations, "Draw", LineOf).size() == 1);
 }
@@ -46,8 +46,7 @@ TEST_CASE("A line that cannot be read yet leaves the hit carrying the column ins
 	// The references panel answers only for files already open, so a reply naming hundreds of
 	// files costs no reads in the frame it arrives. Everything else comes back here unresolved,
 	// carrying the column the row needs once someone does read the line.
-	const auto unread = [](const std::filesystem::path&, std::size_t) -> std::optional<std::string>
-	{ return std::nullopt; };
+	const auto unread = [](const std::filesystem::path&, std::size_t) -> std::optional<std::string> { return std::nullopt; };
 
 	const std::vector<Graphite::Location> locations{{"D:/a.cpp", 4, Graphite::Utf16Column(8)}};
 	const auto hits = Graphite::AsHits(locations, "Draw", unread);
@@ -62,8 +61,7 @@ TEST_CASE("A line that cannot be read yet leaves the hit carrying the column ins
 
 TEST_CASE("A line that is available is turned into a byte range there and then")
 {
-	const auto available = [](const std::filesystem::path&, std::size_t)
-	{ return std::optional<std::string>{"\tvoid Draw();"}; };
+	const auto available = [](const std::filesystem::path&, std::size_t) { return std::optional<std::string>{"\tvoid Draw();"}; };
 
 	// Column 6 in UTF-16 units is byte 6 on this ASCII line, where "Draw" starts.
 	const std::vector<Graphite::Location> locations{{"D:/a.cpp", 4, Graphite::Utf16Column(6)}};
@@ -80,8 +78,7 @@ TEST_CASE("A line that is available is turned into a byte range there and then")
 // "Application::Get" that is sixteen characters, which covers "Get().GetWindow(" exactly.
 TEST_CASE("A highlight covers the name as written, not the length of its qualified name")
 {
-	const auto available = [](const std::filesystem::path&, std::size_t)
-	{ return std::optional<std::string>{"	Core::Application::Get().GetWindow();"}; };
+	const auto available = [](const std::filesystem::path&, std::size_t) { return std::optional<std::string>{"	Core::Application::Get().GetWindow();"}; };
 
 	// The server names the span it matched: "Get" at bytes 20 to 23.
 	std::vector<Graphite::Location> locations{{"D:/a.cpp", 4, Graphite::Utf16Column(20)}};
@@ -100,8 +97,7 @@ TEST_CASE("A highlight covers the name as written, not the length of its qualifi
 // and not the constructor. Drawn as given, the highlight lands on the wrong word entirely.
 TEST_CASE("A span that misses the name is corrected to the name itself")
 {
-	const auto available = [](const std::filesystem::path&, std::size_t)
-	{ return std::optional<std::string>{"			: Core::Application(Core::ApplicationSpec{})," }; };
+	const auto available = [](const std::filesystem::path&, std::size_t) { return std::optional<std::string>{"			: Core::Application(Core::ApplicationSpec{}),"}; };
 
 	std::vector<Graphite::Location> locations{{"D:/Main.cpp", 54, Graphite::Utf16Column(5)}};
 	locations[0].EndLine = 54;
@@ -118,8 +114,7 @@ TEST_CASE("A span that misses the name is corrected to the name itself")
 
 TEST_CASE("A span the server named is kept when it does cover the name")
 {
-	const auto available = [](const std::filesystem::path&, std::size_t)
-	{ return std::optional<std::string>{"	Core::Application::Get().GetWindow();"}; };
+	const auto available = [](const std::filesystem::path&, std::size_t) { return std::optional<std::string>{"	Core::Application::Get().GetWindow();"}; };
 
 	// The same name appears twice on this line. The one the server pointed at is the one that
 	// stays highlighted - a search would be free to find either.
@@ -136,8 +131,7 @@ TEST_CASE("A span the server named is kept when it does cover the name")
 
 TEST_CASE("A reply carrying no end falls back to the unqualified name, not the whole symbol")
 {
-	const auto available = [](const std::filesystem::path&, std::size_t)
-	{ return std::optional<std::string>{"	Core::Application::Get().GetWindow();"}; };
+	const auto available = [](const std::filesystem::path&, std::size_t) { return std::optional<std::string>{"	Core::Application::Get().GetWindow();"}; };
 
 	// No end named, so the length has to be guessed - and the guess is "Get", three characters,
 	// rather than "Application::Get", sixteen.

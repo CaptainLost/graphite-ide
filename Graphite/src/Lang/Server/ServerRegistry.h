@@ -14,8 +14,8 @@ namespace Graphite {
 	// kCpp in ServerRegistry.cpp and one more case in ServerConfigFor.
 	struct ServerConfig
 	{
-		std::string_view Command;                    // launch command, e.g. "clangd"
-		std::string_view ProtocolLanguageId;          // the LSP languageId this server expects
+		std::string_view Command;					   // launch command, e.g. "clangd"
+		std::string_view ProtocolLanguageId;		   // the LSP languageId this server expects
 		std::span<const std::string_view> RootMarkers; // checked nearest-first, see RootFor
 	};
 
@@ -34,7 +34,7 @@ namespace Graphite {
 	// it is, rather than preferring one kind of marker over distance. Returns `fallbackRoot`
 	// when nothing above `file` carries a marker.
 	std::filesystem::path RootFor(const ServerConfig& config, const std::filesystem::path& file,
-								   const std::filesystem::path& fallbackRoot);
+								  const std::filesystem::path& fallbackRoot);
 
 	// True when `directory` carries any configured server's root marker — that is, when RootFor
 	// would stop there rather than climbing past it.

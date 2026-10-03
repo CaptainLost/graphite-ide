@@ -134,16 +134,15 @@ namespace Graphite {
 		gitView->SubscribeTo(m_Events);
 
 		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_Documents,
-													  m_DocumentWindows, m_ActiveScheme,
-													  m_DiffWindows));
+													 m_DocumentWindows, m_ActiveScheme,
+													 m_DiffWindows));
 
 		m_ClaudeSettings.Load();
 
 		m_Panels.Add(Core::CreateScope<SessionsPanel>(
 			m_Workspace, m_ClaudeSettings, m_SessionWindows,
 			[this](const std::string& label, const ClaudeCommand& command,
-				   const std::filesystem::path& workingDirectory)
-			{
+				   const std::filesystem::path& workingDirectory) {
 				return m_Terminals.OpenCommand(label, command.Program, command.Arguments, workingDirectory);
 			}));
 
@@ -297,8 +296,7 @@ namespace Graphite {
 								{
 									m_DocumentWindows.OpenFind(m_Documents.At(*index));
 								}
-							}
-						},
+							} },
 						.Enabled = [this] { return ActiveTextDocument(m_Documents).has_value(); }});
 
 		m_Keys.SetDefault("find.open", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_F)});
@@ -315,12 +313,10 @@ namespace Graphite {
 								{
 									m_DocumentWindows.RequestDefinition(*index);
 								}
-							}
-						},
+							} },
 						.Enabled = [this] {
 							const auto path = ActiveTextDocument(m_Documents);
-							return path.has_value() && HasLanguageServer(*path);
-						}});
+							return path.has_value() && HasLanguageServer(*path); }});
 
 		m_Keys.SetDefault(kGoToDefinitionCommand, {.Primary = Core::Chord::Key(ImGuiKey_F12)});
 
@@ -336,12 +332,10 @@ namespace Graphite {
 								{
 									m_DocumentWindows.RequestReferences(*index, *m_ReferencesPanel);
 								}
-							}
-						},
+							} },
 						.Enabled = [this] {
 							const auto path = ActiveTextDocument(m_Documents);
-							return path.has_value() && HasLanguageServer(*path);
-						}});
+							return path.has_value() && HasLanguageServer(*path); }});
 
 		m_Keys.SetDefault(kFindReferencesCommand,
 						  {.Primary = Core::Chord::Key(ImGuiMod_Shift | ImGuiKey_F12)});
@@ -625,7 +619,7 @@ namespace Graphite {
 		ApplyChromeIfSchemeChanged();
 
 		StatusMessages messages{m_DocumentWindows.GetStatusMessage(),
-								 m_SearchPanel->GetStatusMessage()};
+								m_SearchPanel->GetStatusMessage()};
 
 		// Read once and spent everywhere below - the analysis's switches, the status bar's server
 		// slot and the restricted-mode bar. Separate reads of the same getter are chances for those
@@ -658,8 +652,7 @@ namespace Graphite {
 
 		// The same "is this document open" predicate ProblemsPanel filters its own rows by - see
 		// DiagnosticsModel::Total's own comment for why.
-		const auto isOpenDocument = [this](const std::filesystem::path& path)
-		{ return m_Documents.Find(path).has_value(); };
+		const auto isOpenDocument = [this](const std::filesystem::path& path) { return m_Documents.Find(path).has_value(); };
 
 		// Preformatted here rather than handed to StatusBar.cpp as a Counts, the same way Server
 		// is preformatted from a ServerStatus below: it keeps DiagnosticsModel out of a file whose
@@ -697,8 +690,7 @@ namespace Graphite {
 			.BudgetBytes = m_AnalysisSettings.GetBudgetBytes(),
 			.Concurrency = m_AnalysisSettings.GetConcurrency(),
 			.TabWidth = m_EditorSettings.GetIndentStyle().Width,
-			.HeldElsewhere = [this](const std::filesystem::path& path)
-			{ return m_Documents.Find(path).has_value() || m_PreviewSemantics.Holds(path); }});
+			.HeldElsewhere = [this](const std::filesystem::path& path) { return m_Documents.Find(path).has_value() || m_PreviewSemantics.Holds(path); }});
 
 		// EnsureStarted is safe to call every frame the document stays active — see its own
 		// comment; the common case is a single map lookup.
@@ -965,16 +957,16 @@ namespace Graphite {
 
 		switch (DrawRestrictedModeBar(parent))
 		{
-			case RestrictedBarChoice::None:
-				break;
+		case RestrictedBarChoice::None:
+			break;
 
-			case RestrictedBarChoice::TrustFolder:
-				m_Trust.Trust(root);
-				break;
+		case RestrictedBarChoice::TrustFolder:
+			m_Trust.Trust(root);
+			break;
 
-			case RestrictedBarChoice::TrustParent:
-				m_Trust.Trust(*parent);
-				break;
+		case RestrictedBarChoice::TrustParent:
+			m_Trust.Trust(*parent);
+			break;
 		}
 	}
 

@@ -25,13 +25,13 @@ namespace Graphite {
 	// nothing was watching — or nothing when the scan was cancelled and so did not look
 	// everywhere.
 	std::vector<std::filesystem::path> ScanProjects(const std::filesystem::path& projects, const std::vector<SessionSummary>& cached,
-					  const Core::CancellationToken& token,
-					  const std::function<void(SessionSummary)>& onSummary);
+													const Core::CancellationToken& token,
+													const std::function<void(SessionSummary)>& onSummary);
 
 	// A directory under `<project>/<session-id>/` belongs to that session: its subagents and
 	// stored tool results live there. Anything shallower is not one session's.
 	std::optional<std::filesystem::path> SessionFileFor(const std::filesystem::path& projects,
-														 const std::filesystem::path& changedDirectory);
+														const std::filesystem::path& changedDirectory);
 
 	struct IndexDelivery
 	{

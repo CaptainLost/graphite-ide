@@ -6,9 +6,7 @@ using namespace Graphite;
 
 TEST_CASE("Spans pick out bold and inline code")
 {
-	CHECK(ParseSpans("a **b** `c` d") == std::vector<Span>{{SpanStyle::Plain, "a "}, {SpanStyle::Bold, "b"},
-														   {SpanStyle::Plain, " "}, {SpanStyle::Code, "c"},
-														   {SpanStyle::Plain, " d"}});
+	CHECK(ParseSpans("a **b** `c` d") == std::vector<Span>{{SpanStyle::Plain, "a "}, {SpanStyle::Bold, "b"}, {SpanStyle::Plain, " "}, {SpanStyle::Code, "c"}, {SpanStyle::Plain, " d"}});
 }
 
 TEST_CASE("Stars inside inline code stay literal, and an unclosed marker is plain text")

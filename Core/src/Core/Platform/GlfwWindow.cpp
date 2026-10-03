@@ -105,8 +105,7 @@ namespace Core {
 		glfwSetWindowUserPointer(m_Handle, this);
 
 		glfwSetWindowSizeCallback(m_Handle,
-								  [](GLFWwindow* handle, int width, int height)
-								  {
+								  [](GLFWwindow* handle, int width, int height) {
 									  GlfwWindow* self = WindowFrom(handle);
 									  if (self == nullptr || !self->m_EventCallback)
 										  return;
@@ -116,8 +115,7 @@ namespace Core {
 								  });
 
 		glfwSetWindowCloseCallback(m_Handle,
-								   [](GLFWwindow* handle)
-								   {
+								   [](GLFWwindow* handle) {
 									   GlfwWindow* self = WindowFrom(handle);
 									   if (self == nullptr || !self->m_EventCallback)
 										   return;
@@ -127,8 +125,7 @@ namespace Core {
 								   });
 
 		glfwSetWindowFocusCallback(m_Handle,
-								   [](GLFWwindow* handle, int focused)
-								   {
+								   [](GLFWwindow* handle, int focused) {
 									   GlfwWindow* self = WindowFrom(handle);
 									   if (self == nullptr || !self->m_EventCallback)
 										   return;
@@ -146,8 +143,7 @@ namespace Core {
 								   });
 
 		glfwSetWindowPosCallback(m_Handle,
-								 [](GLFWwindow* handle, int x, int y)
-								 {
+								 [](GLFWwindow* handle, int x, int y) {
 									 GlfwWindow* self = WindowFrom(handle);
 									 if (self == nullptr || !self->m_EventCallback)
 										 return;
@@ -157,8 +153,7 @@ namespace Core {
 								 });
 
 		glfwSetKeyCallback(m_Handle,
-						   [](GLFWwindow* handle, int key, int, int action, int mods)
-						   {
+						   [](GLFWwindow* handle, int key, int, int action, int mods) {
 							   GlfwWindow* self = WindowFrom(handle);
 							   if (self == nullptr || !self->m_EventCallback)
 								   return;
@@ -192,8 +187,7 @@ namespace Core {
 						   });
 
 		glfwSetCharCallback(m_Handle,
-							[](GLFWwindow* handle, unsigned int codepoint)
-							{
+							[](GLFWwindow* handle, unsigned int codepoint) {
 								GlfwWindow* self = WindowFrom(handle);
 								if (self == nullptr || !self->m_EventCallback)
 									return;
@@ -203,8 +197,7 @@ namespace Core {
 							});
 
 		glfwSetMouseButtonCallback(m_Handle,
-								   [](GLFWwindow* handle, int button, int action, int)
-								   {
+								   [](GLFWwindow* handle, int button, int action, int) {
 									   GlfwWindow* self = WindowFrom(handle);
 									   if (self == nullptr || !self->m_EventCallback)
 										   return;
@@ -224,8 +217,7 @@ namespace Core {
 								   });
 
 		glfwSetScrollCallback(m_Handle,
-							  [](GLFWwindow* handle, double xOffset, double yOffset)
-							  {
+							  [](GLFWwindow* handle, double xOffset, double yOffset) {
 								  GlfwWindow* self = WindowFrom(handle);
 								  if (self == nullptr || !self->m_EventCallback)
 									  return;
@@ -236,8 +228,7 @@ namespace Core {
 							  });
 
 		glfwSetCursorPosCallback(m_Handle,
-								 [](GLFWwindow* handle, double x, double y)
-								 {
+								 [](GLFWwindow* handle, double x, double y) {
 									 GlfwWindow* self = WindowFrom(handle);
 									 if (self == nullptr || !self->m_EventCallback)
 										 return;
@@ -253,8 +244,7 @@ namespace Core {
 		// The ImGui GLFW backend installs no drop callback of its own, so this one survives its
 		// initialisation even though it runs after the window is built.
 		glfwSetDropCallback(m_Handle,
-							[](GLFWwindow* handle, int count, const char** paths)
-							{
+							[](GLFWwindow* handle, int count, const char** paths) {
 								GlfwWindow* self = WindowFrom(handle);
 								if (self == nullptr || !self->m_EventCallback)
 									return;

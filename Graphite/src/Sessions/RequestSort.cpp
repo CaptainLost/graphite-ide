@@ -34,13 +34,15 @@ namespace Graphite {
 
 			switch (column)
 			{
-			case RequestColumn::Index: return Numeric(static_cast<double>(request.Index));
+			case RequestColumn::Index:
+				return Numeric(static_cast<double>(request.Index));
 			case RequestColumn::Time:
 			{
 				const auto at = ParseTimestamp(request.RespondedAt);
 				return at ? Numeric(static_cast<double>(at->time_since_epoch().count())) : SortKey{};
 			}
-			case RequestColumn::Model: return Textual(request.Model);
+			case RequestColumn::Model:
+				return Textual(request.Model);
 			case RequestColumn::Context:
 				return hasUsage ? Numeric(static_cast<double>(request.Context)) : SortKey{};
 			case RequestColumn::Delta:
@@ -59,7 +61,8 @@ namespace Graphite {
 			}
 			case RequestColumn::Wait:
 				return request.Waited ? Numeric(static_cast<double>(request.Waited->count())) : SortKey{};
-			case RequestColumn::Stop: return Textual(request.StopReason);
+			case RequestColumn::Stop:
+				return Textual(request.StopReason);
 			case RequestColumn::Tools:
 			{
 				std::string joined;
@@ -67,7 +70,8 @@ namespace Graphite {
 					joined += (joined.empty() ? "" : ", ") + name;
 				return Textual(std::move(joined));
 			}
-			case RequestColumn::Rebuilt: return Numeric(request.CacheRebuilt ? 1.0 : 0.0);
+			case RequestColumn::Rebuilt:
+				return Numeric(request.CacheRebuilt ? 1.0 : 0.0);
 			}
 
 			return {};
@@ -105,8 +109,7 @@ namespace Graphite {
 		// A total order on (blank last, value in the asked direction, position), so the result
 		// does not depend on the order `order` came in.
 		std::sort(order.begin(), order.end(),
-				  [&keys, textual, ascending](std::size_t a, std::size_t b)
-				  {
+				  [&keys, textual, ascending](std::size_t a, std::size_t b) {
 					  const int compared = CompareSortValues(keys[a], keys[b], textual, ascending);
 					  return compared != 0 ? compared < 0 : a < b;
 				  });

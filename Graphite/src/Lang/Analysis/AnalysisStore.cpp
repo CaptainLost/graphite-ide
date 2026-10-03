@@ -107,8 +107,7 @@ namespace Graphite {
 
 		m_Ready = false;
 
-		m_Jobs.Submit([listing = m_Listing, token = m_Token, directory = Directory()]
-		{
+		m_Jobs.Submit([listing = m_Listing, token = m_Token, directory = Directory()] {
 			ReadIndexInto(directory, token, *listing);
 			Core::Redraw::Request();
 		});
@@ -203,8 +202,7 @@ namespace Graphite {
 		m_Outstanding.fetch_add(1);
 
 		m_Jobs.Submit([this, listing = m_Listing, token = m_Token, directory = Directory(), key,
-					   entry, analysis]
-		{
+					   entry, analysis] {
 			if (!token.IsCancelled())
 			{
 				// Encoded here, not at the call site: an overlay of thousands of spans is tens of
@@ -394,8 +392,7 @@ namespace Graphite {
 
 		// No token check inside: this runs precisely because the token has been, or is about to
 		// be, cancelled, and what it writes describes records already on the disk.
-		m_Jobs.Submit([this, listing = m_Listing, directory = Directory()]
-		{
+		m_Jobs.Submit([this, listing = m_Listing, directory = Directory()] {
 			FlushIndex(directory, *listing, true);
 
 			m_Outstanding.fetch_sub(1);
@@ -506,8 +503,7 @@ namespace Graphite {
 		m_Outstanding.fetch_add(1);
 
 		m_Jobs.Submit([this, listing = m_Listing, token = m_Token, directory = Directory(), key,
-					   record]
-		{
+					   record] {
 			if (!token.IsCancelled())
 			{
 				std::error_code removal;

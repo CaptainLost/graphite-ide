@@ -189,7 +189,7 @@ namespace {
 			WriteCalls.push_back("branch:" + name);
 
 			return FailWrites ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
-									  : Core::Result<void>::Ok();
+							  : Core::Result<void>::Ok();
 		}
 
 		Core::Result<void> RenameBranch(const std::string& from, const std::string& to) override
@@ -197,7 +197,7 @@ namespace {
 			WriteCalls.push_back("rename:" + from + ">" + to);
 
 			return FailWrites ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
-									  : Core::Result<void>::Ok();
+							  : Core::Result<void>::Ok();
 		}
 
 		Core::Result<void> DeleteBranch(const std::string& name) override
@@ -205,7 +205,7 @@ namespace {
 			WriteCalls.push_back("delete-branch:" + name);
 
 			return FailWrites ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
-									  : Core::Result<void>::Ok();
+							  : Core::Result<void>::Ok();
 		}
 
 		Core::Result<void> StashApply(const Core::Oid& id) override
@@ -213,7 +213,7 @@ namespace {
 			WriteCalls.push_back("apply:" + id.ShortHex());
 
 			return FailWrites ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
-									  : Core::Result<void>::Ok();
+							  : Core::Result<void>::Ok();
 		}
 
 		Core::Result<void> StashPop(const Core::Oid& id) override
@@ -221,7 +221,7 @@ namespace {
 			WriteCalls.push_back("pop:" + id.ShortHex());
 
 			return FailWrites ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
-									  : Core::Result<void>::Ok();
+							  : Core::Result<void>::Ok();
 		}
 
 		Core::Result<void> StashDrop(const Core::Oid& id) override
@@ -229,7 +229,7 @@ namespace {
 			WriteCalls.push_back("drop:" + id.ShortHex());
 
 			return FailWrites ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
-									  : Core::Result<void>::Ok();
+							  : Core::Result<void>::Ok();
 		}
 
 		Core::Result<void> DiscardAll(bool includeUntracked) override
@@ -237,7 +237,7 @@ namespace {
 			WriteCalls.push_back(std::string{"discard-all:"} + (includeUntracked ? "1" : "0"));
 
 			return FailWrites ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
-									  : Core::Result<void>::Ok();
+							  : Core::Result<void>::Ok();
 		}
 
 		Core::Result<std::size_t> CountUnmergedCommits(const std::string&) override
@@ -1070,8 +1070,7 @@ TEST_CASE("The cache holds a bounded number of commits")
 	CHECK(model.GetDiffFor(IdOf(2)) == nullptr);
 	CHECK(model.GetDiffFor(IdOf(3)) == nullptr);
 	CHECK(model.GetDiffFor(IdOf(4)) != nullptr);
-	CHECK(model.GetDiffFor(IdOf(static_cast<std::uint8_t>(Graphite::GitModel::kCachedDiffs + 3)))
-		  != nullptr);
+	CHECK(model.GetDiffFor(IdOf(static_cast<std::uint8_t>(Graphite::GitModel::kCachedDiffs + 3))) != nullptr);
 }
 
 TEST_CASE("Reading a commit's diff protects it from eviction")
@@ -1324,7 +1323,7 @@ TEST_CASE("The texts cache holds a bounded number of files")
 	CHECK(model.GetTextsFor(IdOf(3), "a.txt") == nullptr);
 	CHECK(model.GetTextsFor(IdOf(4), "a.txt") != nullptr);
 	CHECK(model.GetTextsFor(IdOf(static_cast<std::uint8_t>(Graphite::GitModel::kCachedTexts + 3)),
-		"a.txt") != nullptr);
+							"a.txt") != nullptr);
 }
 
 TEST_CASE("Closing the workspace drops every cached file's texts")

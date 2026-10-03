@@ -201,17 +201,19 @@ TEST_CASE("Tools available follow additions and removals")
 
 	CHECK(requests[0].ToolsAvailable == 3);
 	CHECK(requests[1].ToolsAvailable == 2);
-	CHECK(requests[1].Sent[0].Label == "1 deferred tool name: D, \xe2\x88\x92" "2 removed");
+	CHECK(requests[1].Sent[0].Label == "1 deferred tool name: D, \xe2\x88\x92"
+									   "2 removed");
 }
 
 TEST_CASE("Appending in batches gives the same requests as appending at once, even with a request split across them")
 {
 	const std::vector<TranscriptRecord> records = ParseTranscript(
-		Fixtures::UserPrompt("go") +
-		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Grep", {{"pattern", "x"}}), Fixtures::Usage(0, 1, 0, 0, 100)) +
-		Fixtures::Assistant("r1", Fixtures::TextBlock("and"), Fixtures::Usage(0, 1, 0, 0, 100)) +
-		Fixtures::ToolResult("t1", "hit") +
-		Fixtures::Assistant("r2", Fixtures::TextBlock("done"), Fixtures::Usage(0, 1, 0, 0, 150))).Records;
+													  Fixtures::UserPrompt("go") +
+													  Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Grep", {{"pattern", "x"}}), Fixtures::Usage(0, 1, 0, 0, 100)) +
+													  Fixtures::Assistant("r1", Fixtures::TextBlock("and"), Fixtures::Usage(0, 1, 0, 0, 100)) +
+													  Fixtures::ToolResult("t1", "hit") +
+													  Fixtures::Assistant("r2", Fixtures::TextBlock("done"), Fixtures::Usage(0, 1, 0, 0, 150)))
+													  .Records;
 
 	RequestTimeline whole;
 	whole.Append(records);
@@ -395,8 +397,10 @@ TEST_CASE("A tools delta says only what it did, and counts one tool as one")
 	REQUIRE(requests[0].Sent.size() == 4);
 	CHECK(requests[0].Sent[0].Label == "2 deferred tool names: A, B");
 	CHECK(requests[0].Sent[1].Label == "1 deferred tool name: C");
-	CHECK(requests[0].Sent[2].Label == "\xe2\x88\x92" "2 tools removed");
-	CHECK(requests[0].Sent[3].Label == "\xe2\x88\x92" "1 tool removed");
+	CHECK(requests[0].Sent[2].Label == "\xe2\x88\x92"
+									   "2 tools removed");
+	CHECK(requests[0].Sent[3].Label == "\xe2\x88\x92"
+									   "1 tool removed");
 }
 
 TEST_CASE("Tools available name how many of them the request's own deltas loaded")

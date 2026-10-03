@@ -825,8 +825,7 @@ namespace Graphite {
 						  .Label = spec.Label,
 						  .Run = [this, activeIndex, action] {
 							  if (const auto index = activeIndex())
-								  QueueEditorAction(*index, action);
-						  },
+								  QueueEditorAction(*index, action); },
 						  .Enabled = [activeItem, action] {
 							  const Core::OpenItem* item = activeItem();
 
@@ -837,8 +836,7 @@ namespace Graphite {
 							  const bool hasText =
 								  action == EditorAction::Paste && Core::ClipboardHasText();
 
-							  return item != nullptr && CanRun(action, *item, hasText);
-						  },
+							  return item != nullptr && CanRun(action, *item, hasText); },
 						  .KeyScope = Core::Chord::Scope::FocusedEditor,
 						  .Repeats = false});
 
@@ -849,13 +847,11 @@ namespace Graphite {
 					  .Label = "Switch Header/Source",
 					  .Run = [this, activeIndex] {
 						  if (const auto index = activeIndex())
-							  RequestSwitchSourceHeader(*index);
-					  },
+							  RequestSwitchSourceHeader(*index); },
 					  .Enabled = [activeItem] {
 						  const Core::OpenItem* item = activeItem();
 						  return item != nullptr && HasLanguageServer(item->Path) &&
-								 LanguageOfPath(item->Path) == LanguageId::Cpp;
-					  },
+								 LanguageOfPath(item->Path) == LanguageId::Cpp; },
 					  .Repeats = false});
 
 		keys.SetDefault(kSwitchHeaderSourceCommand,
@@ -1967,8 +1963,7 @@ namespace Graphite {
 				std::size_t drawn = 0;
 				bool first = true;
 
-				const auto drawRun = [&](std::size_t from, std::size_t to, ImU32 colour)
-				{
+				const auto drawRun = [&](std::size_t from, std::size_t to, ImU32 colour) {
 					if (to <= from || from >= expanded.size())
 					{
 						return;

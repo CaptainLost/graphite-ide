@@ -9,7 +9,7 @@ namespace Graphite {
 	std::string FormatLocalTime(std::chrono::local_seconds time, ClockStyle style)
 	{
 		// English names whatever the reader's locale, like the rest of the interface.
-		static constexpr const char* kWeekdays[] = {"Sunday",   "Monday", "Tuesday", "Wednesday",
+		static constexpr const char* kWeekdays[] = {"Sunday", "Monday", "Tuesday", "Wednesday",
 													"Thursday", "Friday", "Saturday"};
 
 		const auto day = std::chrono::floor<std::chrono::days>(time);
@@ -24,13 +24,17 @@ namespace Graphite {
 
 		switch (style)
 		{
-		case ClockStyle::Time: return hms;
-		case ClockStyle::MonthDayTime: return std::format("{:02}-{:02} {}", month, dayOfMonth, hms);
-		case ClockStyle::DateTime: return std::format("{:04}-{:02}-{:02} {}", year, month, dayOfMonth, hms);
+		case ClockStyle::Time:
+			return hms;
+		case ClockStyle::MonthDayTime:
+			return std::format("{:02}-{:02} {}", month, dayOfMonth, hms);
+		case ClockStyle::DateTime:
+			return std::format("{:04}-{:02}-{:02} {}", year, month, dayOfMonth, hms);
 		case ClockStyle::DateTimeWeekday:
 			return std::format("{:04}-{:02}-{:02} {} ({})", year, month, dayOfMonth, hms,
 							   kWeekdays[std::chrono::weekday{day}.c_encoding()]);
-		case ClockStyle::Date: return std::format("{:04}-{:02}-{:02}", year, month, dayOfMonth);
+		case ClockStyle::Date:
+			return std::format("{:04}-{:02}-{:02}", year, month, dayOfMonth);
 		case ClockStyle::MonthDayHoursMinutes:
 			return std::format("{:02}-{:02} {:02}:{:02}", month, dayOfMonth, clock.hours().count(),
 							   clock.minutes().count());

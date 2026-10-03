@@ -204,11 +204,11 @@ namespace Graphite {
 		{
 			switch (symbolKind)
 			{
-			case 6:  // Method
-			case 9:  // Constructor
+			case 6:	 // Method
+			case 9:	 // Constructor
 			case 12: // Function
 				return DeclarationKind::Function;
-			case 5:  // Class
+			case 5:	 // Class
 			case 11: // Interface
 			case 23: // Struct
 				return DeclarationKind::Type;
@@ -546,8 +546,7 @@ namespace Graphite {
 		// token is not a token.
 		for (std::size_t index = 0; index + 5 <= data->size(); index += 5)
 		{
-			const auto read = [&data, index](std::size_t offset) -> std::size_t
-			{
+			const auto read = [&data, index](std::size_t offset) -> std::size_t {
 				const nlohmann::json& value = (*data)[index + offset];
 
 				return value.is_number_unsigned() ? value.get<std::size_t>() : 0;
@@ -604,9 +603,12 @@ namespace Graphite {
 
 			switch (severity->get<int>())
 			{
-			case 1: return DiagnosticSeverity::Error;
-			case 2: return DiagnosticSeverity::Warning;
-			default: return std::nullopt;   // Information, Hint, or something invented
+			case 1:
+				return DiagnosticSeverity::Error;
+			case 2:
+				return DiagnosticSeverity::Warning;
+			default:
+				return std::nullopt; // Information, Hint, or something invented
 			}
 		}
 	}

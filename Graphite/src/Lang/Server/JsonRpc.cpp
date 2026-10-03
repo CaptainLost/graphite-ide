@@ -143,7 +143,7 @@ namespace Graphite {
 			reply.ReplyTo = id;
 			reply.IsError = message.contains("error");
 			reply.Payload = reply.IsError ? message.value("error", nlohmann::json::object())
-										   : message.value("result", nlohmann::json::object());
+										  : message.value("result", nlohmann::json::object());
 			return reply;
 		}
 

@@ -17,11 +17,11 @@ namespace Core {
 #define CORE_DEBUGBREAK() ((void)0)
 #endif
 
-#define CORE_INTERNAL_FAIL(condition, message)                                     \
-	do                                                                             \
-	{                                                                              \
+#define CORE_INTERNAL_FAIL(condition, message)                                      \
+	do                                                                              \
+	{                                                                               \
 		::Core::ReportAssertionFailure((condition), (message), __FILE__, __LINE__); \
-		CORE_DEBUGBREAK();                                                         \
+		CORE_DEBUGBREAK();                                                          \
 	} while (false)
 
 #ifdef CORE_DEBUG

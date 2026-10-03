@@ -575,8 +575,7 @@ TEST_CASE("A document's status is its own root's, not another root's of the same
 	Graphite::LanguageServices services{temp.GetPath()};
 
 	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
-	services.SetRootPermission([&refusedRoot](const std::filesystem::path& root)
-							   { return root != refusedRoot; });
+	services.SetRootPermission([&refusedRoot](const std::filesystem::path& root) { return root != refusedRoot; });
 
 	services.EnsureStarted(refused, Graphite::LanguageId::Cpp);
 	services.EnsureStarted(permitted, Graphite::LanguageId::Cpp);
@@ -612,8 +611,7 @@ TEST_CASE("A trusted root's server outranks a restricted one for the workspace")
 	Graphite::LanguageServices services{temp.GetPath()};
 
 	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
-	services.SetRootPermission([&refusedRoot](const std::filesystem::path& root)
-							   { return root != refusedRoot; });
+	services.SetRootPermission([&refusedRoot](const std::filesystem::path& root) { return root != refusedRoot; });
 
 	services.EnsureStarted(temp.GetPath() / "other" / "main.cpp", Graphite::LanguageId::Cpp);
 	services.EnsureStarted(temp.GetPath() / "work" / "main.cpp", Graphite::LanguageId::Cpp);
@@ -638,11 +636,10 @@ TEST_CASE("A file with no marker inside the fallback root resolves to the fallba
 	std::vector<std::filesystem::path> asked;
 
 	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
-	services.SetRootPermission([&asked](const std::filesystem::path& root)
-							   {
-								   asked.push_back(root);
-								   return false;
-							   });
+	services.SetRootPermission([&asked](const std::filesystem::path& root) {
+		asked.push_back(root);
+		return false;
+	});
 
 	services.EnsureStarted(temp.GetPath() / "workspace" / "src" / "main.cpp", Graphite::LanguageId::Cpp);
 
@@ -660,11 +657,10 @@ TEST_CASE("A file with no marker outside the fallback root resolves to its own d
 	std::vector<std::filesystem::path> asked;
 
 	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
-	services.SetRootPermission([&asked](const std::filesystem::path& root)
-							   {
-								   asked.push_back(root);
-								   return false;
-							   });
+	services.SetRootPermission([&asked](const std::filesystem::path& root) {
+		asked.push_back(root);
+		return false;
+	});
 
 	services.EnsureStarted(temp.GetPath() / "elsewhere" / "loose.cpp", Graphite::LanguageId::Cpp);
 
@@ -683,11 +679,10 @@ TEST_CASE("A file with no marker and no fallback root resolves to its own direct
 	std::vector<std::filesystem::path> asked;
 
 	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
-	services.SetRootPermission([&asked](const std::filesystem::path& root)
-							   {
-								   asked.push_back(root);
-								   return false;
-							   });
+	services.SetRootPermission([&asked](const std::filesystem::path& root) {
+		asked.push_back(root);
+		return false;
+	});
 
 	services.EnsureStarted(temp.GetPath() / "loose" / "main.cpp", Graphite::LanguageId::Cpp);
 
@@ -706,11 +701,10 @@ TEST_CASE("Changing the fallback root re-resolves a directory already seen")
 	std::vector<std::filesystem::path> asked;
 
 	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
-	services.SetRootPermission([&asked](const std::filesystem::path& root)
-							   {
-								   asked.push_back(root);
-								   return false;
-							   });
+	services.SetRootPermission([&asked](const std::filesystem::path& root) {
+		asked.push_back(root);
+		return false;
+	});
 
 	const std::filesystem::path source = temp.GetPath() / "workspace" / "src" / "main.cpp";
 
@@ -732,8 +726,7 @@ namespace {
 
 		Graphite::LanguageServices::RootPermission Refusing()
 		{
-			return [this](const std::filesystem::path& root)
-			{
+			return [this](const std::filesystem::path& root) {
 				Roots.push_back(root);
 				return false;
 			};
@@ -1074,8 +1067,7 @@ TEST_CASE("Restricting a server forgets the files it named")
 	std::vector<std::filesystem::path> asked;
 	bool permitProject = true;
 	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "absent.exe");
-	services.SetRootPermission([&](const std::filesystem::path& root)
-	{
+	services.SetRootPermission([&](const std::filesystem::path& root) {
 		asked.push_back(root);
 		return permitProject;
 	});
@@ -1153,8 +1145,7 @@ namespace {
 		Graphite::LanguageServices::ClientFactory Get()
 		{
 			return [this](const Graphite::ServerConfig& config, const std::filesystem::path&,
-						  const std::filesystem::path& root)
-			{
+						  const std::filesystem::path& root) {
 				auto client = std::make_unique<Graphite::LspClient>(config, root,
 																	Graphite::LspClient::WithoutServer{});
 				Latest = client.get();

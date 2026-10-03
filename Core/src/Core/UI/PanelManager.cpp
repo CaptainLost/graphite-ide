@@ -28,8 +28,7 @@ namespace Core {
 						  .Icon = panel.GetIcon(),
 						  .Group = "panels." + panel.GetMenuGroup(),
 						  .Run =
-							  [&panel]
-							  {
+							  [&panel] {
 								  panel.SetVisible(true);
 								  panel.RequestFocus();
 							  },

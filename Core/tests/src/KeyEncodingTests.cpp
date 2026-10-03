@@ -38,7 +38,8 @@ TEST_CASE("EncodeKey turns a control letter into its control character")
 
 TEST_CASE("EncodeKey prefixes an alt combination with escape")
 {
-	CHECK(Core::EncodeKey(Core::KeyCode::B, Core::KeyModifier::Alt) == "\x1B" "b");
+	CHECK(Core::EncodeKey(Core::KeyCode::B, Core::KeyModifier::Alt) == "\x1B"
+																	   "b");
 }
 
 TEST_CASE("EncodeKey marks a modified arrow key")

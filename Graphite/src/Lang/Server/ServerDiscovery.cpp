@@ -41,7 +41,7 @@ namespace Graphite {
 	}
 
 	Core::Result<std::filesystem::path> FindServerBinary(std::string_view command,
-														   const std::filesystem::path& configured)
+														 const std::filesystem::path& configured)
 	{
 		if (!configured.empty() && Exists(configured))
 		{

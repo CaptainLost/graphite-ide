@@ -8,7 +8,10 @@ namespace Graphite {
 
 	namespace {
 
-		bool IsIndent(char c) { return c == ' ' || c == '\t'; }
+		bool IsIndent(char c)
+		{
+			return c == ' ' || c == '\t';
+		}
 	}
 
 	HitLine SplitForDisplay(const SearchHit& hit)

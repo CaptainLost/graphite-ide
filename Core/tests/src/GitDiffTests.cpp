@@ -254,8 +254,14 @@ TEST_CASE("An untracked file is an added file with its whole content, in both wo
 
 	DiffTarget target = DiffTarget::WorkTreeToIndex;
 
-	SUBCASE("against the index") { target = DiffTarget::WorkTreeToIndex; }
-	SUBCASE("against HEAD") { target = DiffTarget::WorkTreeToHead; }
+	SUBCASE("against the index")
+	{
+		target = DiffTarget::WorkTreeToIndex;
+	}
+	SUBCASE("against HEAD")
+	{
+		target = DiffTarget::WorkTreeToHead;
+	}
 
 	DiffRequest request;
 	request.Target = target;
@@ -351,8 +357,14 @@ TEST_CASE("With no commit yet, the index is all added in both HEAD diffs")
 
 	DiffRequest request;
 
-	SUBCASE("index against HEAD") { request.Target = DiffTarget::IndexToHead; }
-	SUBCASE("working tree against HEAD") { request.Target = DiffTarget::WorkTreeToHead; }
+	SUBCASE("index against HEAD")
+	{
+		request.Target = DiffTarget::IndexToHead;
+	}
+	SUBCASE("working tree against HEAD")
+	{
+		request.Target = DiffTarget::WorkTreeToHead;
+	}
 
 	auto diff = repository.QueryDiff(request);
 

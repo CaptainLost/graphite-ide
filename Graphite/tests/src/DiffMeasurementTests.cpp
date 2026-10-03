@@ -46,14 +46,12 @@ namespace {
 
 TEST_CASE("The same diff measures the same, so a kept width survives scrolling")
 {
-	CHECK(MeasurementOf(Simple("a.cpp"), DiffScope::Hunks)
-		  == MeasurementOf(Simple("a.cpp"), DiffScope::Hunks));
+	CHECK(MeasurementOf(Simple("a.cpp"), DiffScope::Hunks) == MeasurementOf(Simple("a.cpp"), DiffScope::Hunks));
 }
 
 TEST_CASE("A different file measures differently")
 {
-	CHECK_FALSE(MeasurementOf(Simple("a.cpp"), DiffScope::Hunks)
-				== MeasurementOf(Simple("b.cpp"), DiffScope::Hunks));
+	CHECK_FALSE(MeasurementOf(Simple("a.cpp"), DiffScope::Hunks) == MeasurementOf(Simple("b.cpp"), DiffScope::Hunks));
 }
 
 TEST_CASE("The same path in a different commit measures differently")
@@ -105,8 +103,7 @@ TEST_CASE("A deleted file measures by the path that names it")
 	other.Change = Core::FileChange::Deleted;
 
 	// Both have an empty new path; keying on that alone would call them the same file.
-	CHECK_FALSE(MeasurementOf(deleted, DiffScope::Hunks)
-				== MeasurementOf(other, DiffScope::Hunks));
+	CHECK_FALSE(MeasurementOf(deleted, DiffScope::Hunks) == MeasurementOf(other, DiffScope::Hunks));
 	CHECK(MeasurementOf(deleted, DiffScope::Hunks).Path == "a.cpp");
 }
 

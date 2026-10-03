@@ -118,8 +118,8 @@ TEST_CASE("DisplayText notes an empty thinking block instead of showing nothing,
 {
 	const std::vector<ApiRequest> requests = BuildRequestTimeline(
 		ParseTranscript(Fixtures::UserPrompt("go") +
-						 Fixtures::Assistant("r1", Fixtures::ThinkingBlock(""), Fixtures::Usage(1, 1)) +
-						 Fixtures::Assistant("r2", Fixtures::ThinkingBlock("hmm"), Fixtures::Usage(1, 1)))
+						Fixtures::Assistant("r1", Fixtures::ThinkingBlock(""), Fixtures::Usage(1, 1)) +
+						Fixtures::Assistant("r2", Fixtures::ThinkingBlock("hmm"), Fixtures::Usage(1, 1)))
 			.Records);
 
 	REQUIRE(requests.size() == 2);

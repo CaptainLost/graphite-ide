@@ -82,7 +82,7 @@ namespace Graphite {
 			return std::min(ParseNumber<std::size_t>(file.Get(key)).value_or(0), kMaximumTabs);
 		}
 
-		template <typename Value, std::size_t Size>
+		template<typename Value, std::size_t Size>
 		std::string_view NameOf(const std::pair<Value, std::string_view> (&names)[Size], Value value)
 		{
 			for (const auto& [candidate, name] : names)
@@ -96,7 +96,7 @@ namespace Graphite {
 			return {};
 		}
 
-		template <typename Value, std::size_t Size>
+		template<typename Value, std::size_t Size>
 		std::optional<Value> ValueNamed(const std::pair<Value, std::string_view> (&names)[Size],
 										std::string_view text)
 		{

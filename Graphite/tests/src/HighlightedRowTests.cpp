@@ -93,8 +93,7 @@ TEST_CASE("The three pieces always rebuild the label exactly")
 		const HighlightedLabel split = SplitHighlight(label, needle);
 
 		CAPTURE(needle);
-		CHECK(std::string(split.Before) + std::string(split.Match) + std::string(split.After)
-			  == label);
+		CHECK(std::string(split.Before) + std::string(split.Match) + std::string(split.After) == label);
 	}
 }
 

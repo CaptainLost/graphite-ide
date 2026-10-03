@@ -14,8 +14,8 @@ namespace Graphite {
 		const std::size_t saved = m_Store.GetAnalysisBudgetMegabytes();
 
 		m_BudgetMegabytes = saved == 0
-								 ? kDefaultBudgetMegabytes
-								 : std::clamp(saved, kMinimumBudgetMegabytes, kMaximumBudgetMegabytes);
+								? kDefaultBudgetMegabytes
+								: std::clamp(saved, kMinimumBudgetMegabytes, kMaximumBudgetMegabytes);
 
 		const std::size_t savedConcurrency = m_Store.GetAnalysisConcurrency();
 

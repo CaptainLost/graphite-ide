@@ -39,8 +39,8 @@ namespace Graphite {
 	{
 	public:
 		ChangesPanel(GitModel& model, ModalGate& modals, const Core::DocumentSet& documents,
-					DocumentWindows& documentWindows, const ActiveScheme& scheme,
-					DiffWindows& diffWindows);
+					 DocumentWindows& documentWindows, const ActiveScheme& scheme,
+					 DiffWindows& diffWindows);
 
 		void OnUpdate(Core::Timestep ts) override;
 		void OnImGuiRender() override;

@@ -69,8 +69,7 @@ namespace Graphite {
 
 			const bool alreadyHave =
 				std::any_of(candidates.begin(), candidates.end(),
-							[&location](const Location& existing)
-							{ return SameSpot(existing, location); });
+							[&location](const Location& existing) { return SameSpot(existing, location); });
 
 			if (!alreadyHave)
 			{

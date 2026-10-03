@@ -1432,8 +1432,7 @@ namespace Graphite {
 			std::size_t at = slice.FromByte;
 			std::size_t column = slice.FromColumn;
 
-			const auto draw = [&](std::size_t to, ImU32 colour)
-			{
+			const auto draw = [&](std::size_t to, ImU32 colour) {
 				if (to <= at)
 				{
 					return;
@@ -1441,7 +1440,7 @@ namespace Graphite {
 
 				const std::string_view run(base + at, to - at);
 				const float x = canvas.TextOriginX + static_cast<float>(column - slice.FromColumn) *
-													 canvas.Metrics.CellWidth;
+														 canvas.Metrics.CellWidth;
 
 				canvas.Draw->AddText(ImVec2(x, slice.Y), colour, run.data(),
 									 run.data() + run.size());
@@ -2483,7 +2482,7 @@ namespace Graphite {
 
 			for (const OverviewMark& mark : marks)
 			{
-				const ImU32 base = mark.Kind == HunkKind::Added		? canvas.Palette.ChangeAdded
+				const ImU32 base = mark.Kind == HunkKind::Added		 ? canvas.Palette.ChangeAdded
 								   : mark.Kind == HunkKind::Modified ? canvas.Palette.ChangeModified
 																	 : canvas.Palette.ChangeRemoved;
 
@@ -2600,8 +2599,8 @@ namespace Graphite {
 				const float baselineY = slice.Y + canvas.Metrics.LineHeight - 2.0f;
 
 				const ImU32 base = span.Severity == DiagnosticSeverity::Error
-										? canvas.Palette.DiagnosticError
-										: canvas.Palette.DiagnosticWarning;
+									   ? canvas.Palette.DiagnosticError
+									   : canvas.Palette.DiagnosticWarning;
 				const ImU32 colour = stale ? WithAlpha(base, kStaleDiagnosticAlpha) : base;
 
 				DrawSquiggle(canvas.Draw, fromX, toX, baselineY, colour);

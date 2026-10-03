@@ -47,7 +47,7 @@ namespace Graphite {
 	// empty vector when the language has no lexer: a file the application cannot lex draws in
 	// plain text, which is the correct answer rather than a failure.
 	std::vector<std::vector<Token>> LexFileText(std::string_view text,
-												 const std::filesystem::path& path);
+												const std::filesystem::path& path);
 
 	// One line's terminator removed: at most one '\n', and at most one '\r' before it. The
 	// single rule for this in the application — SplitTextLines strips exactly this from every

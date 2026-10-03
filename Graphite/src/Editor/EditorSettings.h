@@ -14,7 +14,12 @@ namespace Graphite {
 
 	class AppSettings;
 
-	enum class DefinitionPreviewMode : std::uint8_t { Off, WithCtrl, Always };
+	enum class DefinitionPreviewMode : std::uint8_t
+	{
+		Off,
+		WithCtrl,
+		Always
+	};
 
 	struct HoverSettings
 	{

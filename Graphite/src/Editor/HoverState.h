@@ -24,8 +24,8 @@ namespace Graphite {
 		// The answers held, each with the question it answers. Kept until another token is
 		// asked about, which is the cache: the same token at the same revision is not asked again.
 		std::optional<HoverQuestion> InfoFor;
-		std::optional<HoverInfo> Info;          // nullopt until answered; an empty reply is a
-		                                        // HoverInfo with Parsed false and Raw empty
+		std::optional<HoverInfo> Info; // nullopt until answered; an empty reply is a
+									   // HoverInfo with Parsed false and Raw empty
 		std::optional<HoverQuestion> PreviewFor;
 		std::optional<DefinitionPreview> Preview;
 

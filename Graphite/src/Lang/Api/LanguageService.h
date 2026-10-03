@@ -123,7 +123,7 @@ namespace Graphite {
 		Utf16Column EndColumn;
 		DiagnosticSeverity Severity = DiagnosticSeverity::Error;
 		std::string Message;
-		std::string Source;   // "clang", "clang-tidy" - shown in the tooltip after the message
+		std::string Source; // "clang", "clang-tidy" - shown in the tooltip after the message
 	};
 
 	// The protocol's own count of how many times a document has been sent, which is the only
@@ -148,7 +148,7 @@ namespace Graphite {
 	// One document's diagnostics as a server last published them.
 	struct PublishedDiagnostics
 	{
-		std::filesystem::path Path;    // empty when the notification named no usable uri
+		std::filesystem::path Path; // empty when the notification named no usable uri
 		DocumentVersion Version;
 		std::vector<Diagnostic> Items; // empty means "all clear", which is a real answer
 	};
@@ -175,7 +175,12 @@ namespace Graphite {
 		std::vector<std::filesystem::path> Closed;
 	};
 
-	enum class DeclarationKind : std::uint8_t { Function, Type, Other };
+	enum class DeclarationKind : std::uint8_t
+	{
+		Function,
+		Type,
+		Other
+	};
 
 	// Two positions, because the protocol gives two and they answer different questions.
 	//
@@ -199,7 +204,13 @@ namespace Graphite {
 
 	enum class ServerState : std::uint8_t
 	{
-		NotConfigured, NotFound, Starting, Indexing, NoCompileDatabase, Ready, Failed,
+		NotConfigured,
+		NotFound,
+		Starting,
+		Indexing,
+		NoCompileDatabase,
+		Ready,
+		Failed,
 
 		// The root's folder is not trusted: the entry exists, and keeps what documents were
 		// sent to it, but no process runs until trust is granted (ADR 0532).
@@ -209,9 +220,9 @@ namespace Graphite {
 	struct ServerStatus
 	{
 		ServerState State = ServerState::NotConfigured;
-		std::string Name;              // "clangd"
-		std::string Detail;            // binary path, version, what is missing
-		int Percent = -1;              // -1 means no percentage reported; meaningful only while State is Indexing
+		std::string Name;	// "clangd"
+		std::string Detail; // binary path, version, what is missing
+		int Percent = -1;	// -1 means no percentage reported; meaningful only while State is Indexing
 		std::size_t Restarts = 0;
 	};
 }

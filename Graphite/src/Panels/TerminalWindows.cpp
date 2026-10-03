@@ -131,10 +131,7 @@ namespace Graphite {
 			++number;
 
 			const std::string identity = WindowIdentity(entry.Record.Id);
-			const std::string name = ICON_MDI_CONSOLE "  " + std::to_string(number) + ": "
-									 + TerminalTitleFor(entry.Session->GetScreen().GetTitle(),
-														entry.Session->GetProfileName())
-									 + identity;
+			const std::string name = ICON_MDI_CONSOLE "  " + std::to_string(number) + ": " + TerminalTitleFor(entry.Session->GetScreen().GetTitle(), entry.Session->GetProfileName()) + identity;
 
 			// Docked only on the frame this identity is new, as SessionWindows does: every frame
 			// would fight a reader who dragged the tab elsewhere.
@@ -257,8 +254,7 @@ namespace Graphite {
 		const auto collect = [&nodes](const std::string& windowName) {
 			ImGuiWindow* window = ImGui::FindWindowByName(windowName.c_str());
 
-			if (window != nullptr && window->DockIsActive && window->DockNode != nullptr
-				&& std::find(nodes.begin(), nodes.end(), window->DockNode) == nodes.end())
+			if (window != nullptr && window->DockIsActive && window->DockNode != nullptr && std::find(nodes.begin(), nodes.end(), window->DockNode) == nodes.end())
 			{
 				nodes.push_back(window->DockNode);
 			}
@@ -280,9 +276,7 @@ namespace Graphite {
 			// the host window again and appends to its tab bar, and asserts if that bar would
 			// instead start over - not drawn yet this frame, hidden, or in a host that skips its
 			// items, which is what a collapsed floating node is.
-			const bool amendable = node->TabBar != nullptr && !node->IsHiddenTabBar() && !node->IsNoTabBar()
-								   && node->HostWindow != nullptr && !node->HostWindow->SkipItems
-								   && node->TabBar->CurrFrameVisible == ImGui::GetFrameCount();
+			const bool amendable = node->TabBar != nullptr && !node->IsHiddenTabBar() && !node->IsNoTabBar() && node->HostWindow != nullptr && !node->HostWindow->SkipItems && node->TabBar->CurrFrameVisible == ImGui::GetFrameCount();
 
 			if (!amendable)
 			{

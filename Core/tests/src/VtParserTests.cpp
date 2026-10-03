@@ -134,7 +134,9 @@ TEST_CASE("VtParser saves and restores the cursor")
 	Core::TerminalScreen screen(8, 4);
 	Core::VtParser parser(screen);
 
-	parser.Consume("\x1B[3;3H\x1B""7\x1B[1;1H\x1B""8x");
+	parser.Consume("\x1B[3;3H\x1B"
+				   "7\x1B[1;1H\x1B"
+				   "8x");
 
 	CHECK(screen.At(2, 2).Code == U'x');
 }
@@ -256,8 +258,7 @@ TEST_CASE("VtParser caps the parameter list and the operating system payload")
 
 	// Untrusted bytes: neither buffer may grow with the stream.
 	parser.Consume("\x1B[" + std::string(4096, ';') + "H");
-	parser.Consume("\x1B]0;" + std::string(65536, 'x') + "\x07"
-				   + "ok");
+	parser.Consume("\x1B]0;" + std::string(65536, 'x') + "\x07" + "ok");
 
 	CHECK(screen.GetTitle().size() < 65536);
 	CHECK(RowText(screen, 0) == U"ok      ");
@@ -470,7 +471,7 @@ TEST_CASE("VtParser decodes a multi-byte character")
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	parser.Consume("\xC5\x82");  // U+0142, a Polish l with stroke
+	parser.Consume("\xC5\x82"); // U+0142, a Polish l with stroke
 
 	CHECK(screen.At(0, 0).Code == U'\u0142');
 	CHECK(screen.GetCursor().Column == 1);
@@ -492,7 +493,7 @@ TEST_CASE("VtParser gives a double-width character two cells")
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	parser.Consume("\xE4\xBD\xA0");  // U+4F60
+	parser.Consume("\xE4\xBD\xA0"); // U+4F60
 
 	CHECK(screen.At(0, 0).Code == U'\u4F60');
 	CHECK(screen.At(0, 1).WideTrailer);
@@ -504,7 +505,8 @@ TEST_CASE("VtParser replaces an invalid byte rather than dropping the stream")
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	parser.Consume("a\xFF" "b");
+	parser.Consume("a\xFF"
+				   "b");
 
 	CHECK(screen.At(0, 0).Code == U'a');
 	CHECK(screen.At(0, 2).Code == U'b');
@@ -518,7 +520,8 @@ TEST_CASE("VtParser re-reads the byte that broke a multi-byte character")
 	// 0xC5 opens a two-byte character but 'Z' is not a continuation byte: the
 	// character is broken, and 'Z' must still be read as a fresh character rather
 	// than being consumed as though it were part of the ruined one.
-	parser.Consume("\xC5" "Z");
+	parser.Consume("\xC5"
+				   "Z");
 
 	CHECK(screen.At(0, 0).Code == U'\xFFFD');
 	CHECK(screen.At(0, 1).Code == U'Z');
@@ -547,7 +550,8 @@ TEST_CASE("VtParser does not decode an overlong form into the character it disgu
 	Core::VtParser parser(screen);
 
 	// C0 AF is '/' in two bytes. C0 can never lead, and AF then has nothing to continue.
-	parser.Consume("\xC0\xAF" "b");
+	parser.Consume("\xC0\xAF"
+				   "b");
 
 	CHECK(screen.At(0, 0).Code == Core::kReplacementCharacter);
 	CHECK(screen.At(0, 1).Code == Core::kReplacementCharacter);
@@ -561,7 +565,8 @@ TEST_CASE("VtParser does not decode an encoded surrogate")
 
 	// ED A0 80 would be U+D800. ED's sequence breaks at A0, which is then read again and
 	// is a continuation byte with nothing to continue, like the 80 after it.
-	parser.Consume("\xED\xA0\x80" "b");
+	parser.Consume("\xED\xA0\x80"
+				   "b");
 
 	CHECK(screen.At(0, 0).Code == Core::kReplacementCharacter);
 	CHECK(screen.At(0, 1).Code == Core::kReplacementCharacter);
@@ -574,7 +579,8 @@ TEST_CASE("VtParser does not decode a value above U+10FFFF")
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	parser.Consume("\xF4\x90\x80\x80" "b");
+	parser.Consume("\xF4\x90\x80\x80"
+				   "b");
 
 	CHECK(screen.At(0, 0).Code == Core::kReplacementCharacter);
 	CHECK(screen.At(0, 3).Code == Core::kReplacementCharacter);
@@ -588,7 +594,9 @@ TEST_CASE("VtParser replaces a continuation byte that arrives with nothing pendi
 
 	// 0x82 is only ever valid as a continuation byte; with no character in
 	// progress it is malformed on its own and must not be folded into 'a'.
-	parser.Consume("a" "\x82" "b");
+	parser.Consume("a"
+				   "\x82"
+				   "b");
 
 	CHECK(screen.At(0, 0).Code == U'a');
 	CHECK(screen.At(0, 1).Code == U'\xFFFD');
@@ -603,7 +611,8 @@ TEST_CASE("VtParser swallows a character-set selection whole")
 	// "ESC ( B" selects the ASCII character set. It is not implemented, but its final byte
 	// must not reach the screen: ncurses emits "\E(B\E[m" as sgr0 on essentially every
 	// attribute reset, so a leaked 'B' would litter the screen of anything that uses colour.
-	parser.Consume("\x1B(B" "hi");
+	parser.Consume("\x1B(B"
+				   "hi");
 
 	CHECK(RowText(screen, 0) == U"hi      ");
 	CHECK(screen.GetCursor().Column == 2);
@@ -616,8 +625,10 @@ TEST_CASE("VtParser swallows the line-drawing character set and a DEC alignment 
 
 	// The same rule for the other intermediates real programs emit: "ESC ( 0" switches to the
 	// line-drawing set and "ESC # 8" is the DEC screen alignment test.
-	parser.Consume("\x1B(0" "a");
-	parser.Consume("\x1B#8" "b");
+	parser.Consume("\x1B(0"
+				   "a");
+	parser.Consume("\x1B#8"
+				   "b");
 
 	CHECK(RowText(screen, 0) == U"ab      ");
 	CHECK(screen.GetCursor().Column == 2);
@@ -693,7 +704,8 @@ TEST_CASE("VtParser ignores DEL in the ground state")
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	parser.Consume("a\x7F" "b");
+	parser.Consume("a\x7F"
+				   "b");
 
 	CHECK(RowText(screen, 0) == U"ab      ");
 	CHECK(screen.GetCursor().Column == 2);
@@ -714,7 +726,8 @@ TEST_CASE("VtParser RIS restores every mode the screen tracks")
 	REQUIRE(screen.IsMouseReporting());
 	REQUIRE(screen.IsSgrMouse());
 
-	parser.Consume("\x1B" "c");
+	parser.Consume("\x1B"
+				   "c");
 
 	CHECK_FALSE(screen.IsAlternateBuffer());
 	CHECK(screen.IsAutoWrap());
@@ -735,7 +748,8 @@ TEST_CASE("VtParser abandons an ignored CSI on a control byte")
 	Core::VtParser parser(screen);
 
 	// CAN cancels the sequence, as it does in the states that interpret one.
-	parser.Consume("\x1B[4:\x18" "abc");
+	parser.Consume("\x1B[4:\x18"
+				   "abc");
 
 	CHECK(RowText(screen, 0) == U"abc     ");
 }
@@ -745,7 +759,10 @@ TEST_CASE("VtParser RIS forgets the saved cursor")
 	Core::TerminalScreen screen(8, 4);
 	Core::VtParser parser(screen);
 
-	parser.Consume("\x1B[3;5H\x1B" "7\x1B[1;1H\x1B" "c\x1B" "8");
+	parser.Consume("\x1B[3;5H\x1B"
+				   "7\x1B[1;1H\x1B"
+				   "c\x1B"
+				   "8");
 
 	CHECK(screen.GetCursor().Row == 0);
 	CHECK(screen.GetCursor().Column == 0);

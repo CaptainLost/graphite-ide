@@ -202,8 +202,7 @@ namespace Graphite {
 		m_Shown.clear();
 		m_Passes.assign(requests.size(), false);
 
-		const auto passes = [this, &requests](std::size_t position)
-		{
+		const auto passes = [this, &requests](std::size_t position) {
 			if (m_RebuiltOnly && !requests[position].CacheRebuilt)
 				return false;
 
@@ -400,7 +399,9 @@ namespace Graphite {
 						 (request.StopReason.empty() ? "" : " " + SingleLineLabel(request.StopReason, 60)),
 					 palette.TextDisabled, false);
 				break;
-			case RequestColumn::Tools: Cell(m_ToolLabels[position], palette.TextDisabled, false); break;
+			case RequestColumn::Tools:
+				Cell(m_ToolLabels[position], palette.TextDisabled, false);
+				break;
 			case RequestColumn::Rebuilt:
 				Cell(request.CacheRebuilt ? std::string{ICON_MDI_CACHED} : std::string{}, palette.Edit, false);
 				break;
@@ -445,9 +446,9 @@ namespace Graphite {
 		const std::string& prompt = summary.Turn < m_TurnPrompts.size() ? m_TurnPrompts[summary.Turn] : kNoPrompt;
 
 		constexpr std::size_t kTooltipBytes = 2000;
-		const std::string shown = prompt.empty()						 ? std::string{"(no prompt)"}
+		const std::string shown = prompt.empty()				  ? std::string{"(no prompt)"}
 								  : prompt.size() > kTooltipBytes ? SingleLineLabel(prompt, kTooltipBytes)
-																	 : prompt;
+																  : prompt;
 
 		std::string totals = std::to_string(summary.Count) + (summary.Count == 1 ? " request" : " requests");
 
@@ -582,7 +583,6 @@ namespace Graphite {
 		}
 
 		ImGui::EndTable();
-
 	}
 
 	void RequestsView::DrawDetails(const RequestTimeline& timeline, const ConversationContext& context)

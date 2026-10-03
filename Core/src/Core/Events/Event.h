@@ -40,7 +40,7 @@ namespace Core {
 		EventCategoryMouseButton = BIT(4)
 	};
 
-// clang-format off
+	// clang-format off
 #define EVENT_CLASS_TYPE(type)                                             \
 	static EventType GetStaticType() { return EventType::type; }           \
 	virtual EventType GetEventType() const override { return GetStaticType(); } \
@@ -48,7 +48,7 @@ namespace Core {
 
 #define EVENT_CLASS_CATEGORY(category) \
 	virtual int GetCategoryFlags() const override { return category; }
-// clang-format on
+	// clang-format on
 
 	class Event
 	{

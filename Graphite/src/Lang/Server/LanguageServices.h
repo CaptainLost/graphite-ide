@@ -196,7 +196,7 @@ namespace Graphite {
 		// process, is answered `Failed` on the very next `TakeAnswers` — there is no such thing as
 		// a ticket nobody ever hears back about.
 		Ticket AskDefinition(const std::filesystem::path& path, LanguageId language,
-							const FilePosition& where);
+							 const FilePosition& where);
 		Ticket AskReferences(const std::filesystem::path& path, LanguageId language,
 							 const FilePosition& where);
 		Ticket AskHover(const std::filesystem::path& path, LanguageId language,
@@ -298,8 +298,8 @@ namespace Graphite {
 		{
 			const ServerConfig* Config = nullptr; // points into ServerConfigFor's static storage
 			std::filesystem::path Root;
-			std::filesystem::path Binary; // resolved once; a restart reuses it rather than
-										  // searching again
+			std::filesystem::path Binary;	   // resolved once; a restart reuses it rather than
+											   // searching again
 			std::unique_ptr<LspClient> Client; // null when the binary was never found
 			ServerStatus Status;
 			std::size_t Restarts = 0;
@@ -393,7 +393,7 @@ namespace Graphite {
 		// server, and either forwards through `ask` and remembers the resulting RequestId against
 		// a fresh ticket, or fails the ticket immediately when there is no live client to ask.
 		Ticket AskVia(const std::filesystem::path& path, LanguageId language,
-					 const std::function<RequestId(LspClient&)>& ask);
+					  const std::function<RequestId(LspClient&)>& ask);
 
 		// One representative file per language, found by a warm-up walk and waiting for the next
 		// Poll to turn into a started server. Held through a shared_ptr for the same reason

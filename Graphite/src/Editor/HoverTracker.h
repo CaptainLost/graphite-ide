@@ -19,18 +19,18 @@ namespace Graphite {
 
 	struct HoverInput
 	{
-		std::optional<HoverToken> Token;   // null over anything that is not an identifier
-		bool MouseInTooltip = false;       // read from the tooltip's previous-frame rectangle
-		bool MouseMoved = false;           // the pointer position changed since the last frame
+		std::optional<HoverToken> Token; // null over anything that is not an identifier
+		bool MouseInTooltip = false;	 // read from the tooltip's previous-frame rectangle
+		bool MouseMoved = false;		 // the pointer position changed since the last frame
 		bool Ctrl = false;
 		bool DiagnosticUnderMouse = false;
 		// A key press other than a lone modifier, a click, a scroll of the editor surface or an
 		// edit, this frame. Ctrl, and the wheel over the tooltip, are not input: the first swaps
 		// the content and the second scrolls the preview.
 		bool InputHappened = false;
-		std::size_t Revision = 0;          // the document's buffer revision
+		std::size_t Revision = 0; // the document's buffer revision
 		HoverSettings Settings;
-		double Now = 0.0;                  // seconds
+		double Now = 0.0; // seconds
 
 		// Whether the answer of each kind has arrived for the tracker's own token — `Current()`
 		// as of the previous Update, not `Token` — and `Revision`. During the leave grace and
@@ -50,7 +50,7 @@ namespace Graphite {
 	{
 		bool AskInfo = false;
 		bool AskPreview = false;
-		bool Cancel = false;               // cancel outstanding questions; the token was left
+		bool Cancel = false; // cancel outstanding questions; the token was left
 
 		bool ShowDiagnostic = false;
 		bool ShowInfo = false;
@@ -98,12 +98,12 @@ namespace Graphite {
 		bool m_RetriedPreview = false;
 		std::optional<double> m_InfoFailedAt;
 		std::optional<double> m_PreviewFailedAt;
-		bool m_WasVisible = false;         // the last frame showed something
-		bool m_Dismissed = false;          // input closed the tooltip; only a mouse move reopens it
+		bool m_WasVisible = false; // the last frame showed something
+		bool m_Dismissed = false;  // input closed the tooltip; only a mouse move reopens it
 		// Kept across frames, not read off the input: it survives the leave grace, so a mouse
 		// that slips out of the tooltip and back is still latched.
-		bool m_Latched = false;            // mouse entered the tooltip; Ctrl no longer swaps it
-		std::optional<double> m_LeftAt;    // when the mouse left both token and tooltip
+		bool m_Latched = false;			// mouse entered the tooltip; Ctrl no longer swaps it
+		std::optional<double> m_LeftAt; // when the mouse left both token and tooltip
 		// While not held (latched or in the grace) these follow each frame's input, so on the
 		// frame the hold starts they still say what was true just before.
 		bool m_HeldCtrl = false;

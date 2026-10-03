@@ -82,8 +82,7 @@ namespace Graphite {
 		std::vector<MarkdownBlock> blocks;
 		std::string paragraph;
 
-		const auto flush = [&]
-		{
+		const auto flush = [&] {
 			if (!paragraph.empty())
 				blocks.push_back({.Kind = MarkdownKind::Paragraph, .Spans = ParseSpans(paragraph)});
 			paragraph.clear();
