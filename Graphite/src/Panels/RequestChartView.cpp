@@ -1,5 +1,7 @@
 #include "Core/Base/Base.h"
 
+#include "Core/Base/Narrow.h"
+
 #include "Panels/RequestChartView.h"
 
 #include "Panels/RequestRow.h"
@@ -140,7 +142,7 @@ namespace Graphite {
 
 		const SessionPalette& palette = context.Palette;
 		const ModeLayout layout = LayoutOf(m_Mode, palette);
-		const int count = static_cast<int>(m_Points.size());
+		const int count = Core::Narrow<int>(m_Points.size());
 		std::optional<std::size_t> clicked;
 
 		// The clock axis reads in the reader's time zone and on a 24-hour clock, as the table's

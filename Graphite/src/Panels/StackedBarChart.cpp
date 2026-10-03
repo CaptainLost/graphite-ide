@@ -1,5 +1,7 @@
 #include "Core/Base/Base.h"
 
+#include "Core/Base/Narrow.h"
+
 #include "Panels/StackedBarChart.h"
 
 #include "Panels/ChartAxes.h"
@@ -90,7 +92,7 @@ namespace Graphite {
 	{
 		ImPlot::SetAxes(ImAxis_X1, ImAxis_Y1);
 
-		const int count = static_cast<int>(xs.size());
+		const int count = Core::Narrow<int>(xs.size());
 
 		for (std::size_t layer = layers.size(); layer-- > 0;)
 		{

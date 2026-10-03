@@ -1,4 +1,6 @@
 #include "Core/ImGui/UiScale.h"
+
+#include "Core/Base/Narrow.h"
 #include "Core/Base/Base.h"
 
 #include "Panels/ConsolePanel.h"
@@ -134,7 +136,7 @@ namespace Graphite {
 		m_Filter.Draw("##consoleFilter");
 
 		ImGui::SameLine();
-		ImGui::TextDisabled("%d entries", static_cast<int>(m_Entries.size()));
+		ImGui::TextDisabled("%d entries", Core::Narrow<int>(m_Entries.size()));
 	}
 
 	void ConsolePanel::RenderEntries()

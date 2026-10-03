@@ -4,6 +4,8 @@
 
 #include "Core/Fs/FileSystem.h"
 
+#include "Core/Base/Narrow.h"
+
 #include "Core/Base/Ascii.h"
 
 #include <algorithm>
@@ -84,7 +86,7 @@ namespace Core {
 			return {};
 		}
 
-		const int wideLength = static_cast<int>(wide.size());
+		const int wideLength = Narrow<int>(wide.size());
 		const int length = ::WideCharToMultiByte(CP_UTF8, 0, wide.data(), wideLength, nullptr, 0, nullptr, nullptr);
 
 		std::string text(static_cast<std::size_t>(length), '\0');
@@ -111,7 +113,7 @@ namespace Core {
 			return {};
 		}
 
-		const int textLength = static_cast<int>(text.size());
+		const int textLength = Narrow<int>(text.size());
 		const int length = ::MultiByteToWideChar(CP_UTF8, 0, text.data(), textLength, nullptr, 0);
 
 		std::wstring wide(static_cast<std::size_t>(length), L'\0');
@@ -224,7 +226,7 @@ namespace Core {
 		// with the path it came from, which RelativeTo relies on.
 		if (!key.empty())
 		{
-			const int length = static_cast<int>(key.size());
+			const int length = Narrow<int>(key.size());
 			std::wstring folded(key.size(), L'\0');
 
 			if (::LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_UPPERCASE, key.data(), length, folded.data(), length,

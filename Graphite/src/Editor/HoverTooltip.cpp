@@ -1,5 +1,7 @@
 #include "Editor/HoverTooltip.h"
 
+#include "Core/Base/Narrow.h"
+
 #include "Editor/HoverLayout.h"
 #include "Editor/PreviewSemantics.h"
 
@@ -409,7 +411,7 @@ namespace Graphite {
 			// already scrolls when the editor has no room for all of it, and a child would put a
 			// second scrollbar beside that one.
 			ImGuiListClipper clipper;
-			clipper.Begin(static_cast<int>(expanded.size()), look.LineHeight);
+			clipper.Begin(Core::Narrow<int>(expanded.size()), look.LineHeight);
 
 			while (clipper.Step())
 			{

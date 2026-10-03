@@ -1,5 +1,7 @@
 #include "Panels/TerminalView.h"
 
+#include "Core/Base/Narrow.h"
+
 #include "Panels/TerminalRules.h"
 
 #include "Core/Command/Chord.h"
@@ -465,7 +467,7 @@ namespace Graphite {
 							   const ImVec2& origin, const ImVec2& cellSize, int columns,
 							   const EditorPalette& palette)
 	{
-		const int count = std::min(columns, static_cast<int>(cells.size()));
+		const int count = std::min(columns, Core::Narrow<int>(cells.size()));
 
 		if (count <= 0)
 		{

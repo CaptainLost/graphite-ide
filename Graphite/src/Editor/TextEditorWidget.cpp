@@ -1,5 +1,7 @@
 #include "Editor/TextEditorWidget.h"
 
+#include "Core/Base/Narrow.h"
+
 #include "Editor/BracketMatch.h"
 #include "Editor/DiagnosticOverlay.h"
 #include "Editor/EditorCommands.h"
@@ -2656,7 +2658,7 @@ namespace Graphite {
 				crest = !crest;
 			}
 
-			draw->AddPolyline(points.data(), static_cast<int>(points.size()), colour,
+			draw->AddPolyline(points.data(), Core::Narrow<int>(points.size()), colour,
 							  ImDrawFlags_None, 1.0f);
 		}
 

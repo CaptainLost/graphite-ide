@@ -2,6 +2,8 @@
 
 #include "Core/Platform/CommandLine.h"
 
+#include "Core/Base/Narrow.h"
+
 #ifdef CORE_PLATFORM_WINDOWS
 
 #include <Windows.h>
@@ -20,7 +22,7 @@ namespace Core {
 				return {};
 			}
 
-			const int size = static_cast<int>(text.size());
+			const int size = Narrow<int>(text.size());
 			const int length = MultiByteToWideChar(CP_UTF8, 0, text.data(), size, nullptr, 0);
 			std::wstring wide(static_cast<std::size_t>(length), L'\0');
 			MultiByteToWideChar(CP_UTF8, 0, text.data(), size, wide.data(), length);

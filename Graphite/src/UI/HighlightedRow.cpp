@@ -1,5 +1,7 @@
 #include "UI/HighlightedRow.h"
 
+#include "Core/Base/Narrow.h"
+
 #include "Core/Base/Ascii.h"
 
 #include <imgui.h>
@@ -72,7 +74,7 @@ namespace Graphite {
 			if (markerColor != 0)
 			{
 				ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(markerColor), "%.*s",
-								   static_cast<int>(marker.size()), marker.data());
+								   Core::Narrow<int>(marker.size()), marker.data());
 			}
 			else
 			{
@@ -93,7 +95,7 @@ namespace Graphite {
 			// The accent the theme already uses for a tick, so the match reads as marked
 			// rather than as a second colour of text.
 			ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_CheckMark), "%.*s",
-							   static_cast<int>(split.Match.size()), split.Match.data());
+							   Core::Narrow<int>(split.Match.size()), split.Match.data());
 
 			ImGui::SameLine(0.0f, 0.0f);
 			ImGui::TextUnformatted(split.After.data(), split.After.data() + split.After.size());

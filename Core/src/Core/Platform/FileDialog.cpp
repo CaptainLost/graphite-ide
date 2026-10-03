@@ -2,6 +2,8 @@
 
 #include "Core/Platform/FileDialog.h"
 
+#include "Core/Base/Narrow.h"
+
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
 
@@ -52,9 +54,9 @@ namespace Core {
 			}
 
 			const int length = ::MultiByteToWideChar(CP_UTF8, 0, text.c_str(),
-													 static_cast<int>(text.size()), nullptr, 0);
+													 Narrow<int>(text.size()), nullptr, 0);
 			std::wstring wide(static_cast<std::size_t>(length), L'\0');
-			::MultiByteToWideChar(CP_UTF8, 0, text.c_str(), static_cast<int>(text.size()),
+			::MultiByteToWideChar(CP_UTF8, 0, text.c_str(), Narrow<int>(text.size()),
 								  wide.data(), length);
 			return wide;
 		}

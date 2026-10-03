@@ -1,5 +1,7 @@
 #include "Search/HitList.h"
 
+#include "Core/Base/Narrow.h"
+
 #include "Search/HitDisplay.h"
 
 #include <imgui.h>
@@ -36,7 +38,7 @@ namespace Graphite {
 
 			ImGui::TextUnformatted(group.Name.c_str());
 			ImGui::SameLine(0.0f, 0.0f);
-			ImGui::TextDisabled("  (%d)", static_cast<int>(group.Hits.size()));
+			ImGui::TextDisabled("  (%d)", Core::Narrow<int>(group.Hits.size()));
 
 			if (!open)
 			{
@@ -56,7 +58,7 @@ namespace Graphite {
 			// draw it. The clipper submits only the rows the scroll actually shows, so an expanded
 			// file costs what is on screen rather than what is in it.
 			ImGuiListClipper clipper;
-			clipper.Begin(static_cast<int>(group.Hits.size()));
+			clipper.Begin(Core::Narrow<int>(group.Hits.size()));
 
 			while (clipper.Step())
 			{
@@ -112,7 +114,7 @@ namespace Graphite {
 										   line.Before.data() + line.Before.size());
 					ImGui::SameLine(0.0f, 0.0f);
 
-					ImGui::TextColored(accent, "%.*s", static_cast<int>(line.Match.size()),
+					ImGui::TextColored(accent, "%.*s", Core::Narrow<int>(line.Match.size()),
 									   line.Match.data());
 					ImGui::SameLine(0.0f, 0.0f);
 

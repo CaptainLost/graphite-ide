@@ -1,5 +1,7 @@
 #include "Git/CommitListView.h"
 
+#include "Core/Base/Narrow.h"
+
 #include "Core/Base/Base.h"
 
 #include "Core/ImGui/ContextMenu.h"
@@ -383,7 +385,7 @@ namespace Graphite {
 			ImGui::TableHeadersRow();
 
 			ImGuiListClipper clipper;
-			clipper.Begin(static_cast<int>(rows.Rows.size()), metrics.RowHeight);
+			clipper.Begin(Core::Narrow<int>(rows.Rows.size()), metrics.RowHeight);
 
 			while (clipper.Step())
 			{

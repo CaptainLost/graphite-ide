@@ -1,5 +1,7 @@
 #include "Core/Base/Base.h"
 
+#include "Core/Base/Narrow.h"
+
 #include "Panels/CostView.h"
 
 #include "Panels/RequestRow.h"
@@ -253,7 +255,7 @@ namespace Graphite {
 											 const std::vector<CostBar>& bars, std::optional<std::size_t> selected,
 											 const SessionPalette& palette, FollowingAxis& xAxis)
 		{
-			const int count = static_cast<int>(layers.size());
+			const int count = Core::Narrow<int>(layers.size());
 
 			if (count == 0)
 			{
@@ -599,7 +601,7 @@ namespace Graphite {
 			std::optional<std::size_t> clicked;
 
 			ImGuiListClipper clipper;
-			clipper.Begin(static_cast<int>(turns.size()));
+			clipper.Begin(Core::Narrow<int>(turns.size()));
 
 			while (clipper.Step())
 			{
@@ -1069,7 +1071,7 @@ namespace Graphite {
 
 				// A turn can run to hundreds of requests; only the rows in sight are laid out.
 				ImGuiListClipper clipper;
-				clipper.Begin(static_cast<int>(rows.size()));
+				clipper.Begin(Core::Narrow<int>(rows.size()));
 
 				while (clipper.Step())
 				{

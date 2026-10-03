@@ -1,5 +1,7 @@
 #include "Core/Base/Base.h"
 
+#include "Core/Base/Narrow.h"
+
 #include "Panels/SentTextView.h"
 
 #include "Core/ImGui/ImGuiRenderer.h"
@@ -162,7 +164,7 @@ namespace Graphite {
 		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
 
 		ImGuiListClipper clipper;
-		clipper.Begin(static_cast<int>(rows.size()), lineHeight);
+		clipper.Begin(Core::Narrow<int>(rows.size()), lineHeight);
 
 		while (clipper.Step())
 		{

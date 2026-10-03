@@ -1,4 +1,6 @@
 #include "Core/Base/Base.h"
+
+#include "Core/Base/Narrow.h"
 #include "Core/ImGui/EmptyState.h"
 
 #include "Panels/RequestsView.h"
@@ -608,7 +610,7 @@ namespace Graphite {
 
 		const std::vector<ApiRequest>& requests = timeline.GetRequests();
 		ImGuiListClipper clipper;
-		clipper.Begin(static_cast<int>(m_Shown.size()));
+		clipper.Begin(Core::Narrow<int>(m_Shown.size()));
 
 		// Drawn whether or not it is in view, so it has a place to scroll to.
 		if (revealRow)

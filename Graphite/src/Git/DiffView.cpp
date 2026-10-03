@@ -1,5 +1,7 @@
 #include "Git/DiffView.h"
 
+#include "Core/Base/Narrow.h"
+
 #include "Core/Base/Base.h"
 
 #include "Git/CommitLabels.h"
@@ -444,7 +446,7 @@ namespace Graphite {
 		// row height explicitly rather than measuring it from a first item, because that
 		// first item's own layout is exactly what a cursor-rewind bug would corrupt.
 		ImGuiListClipper clipper;
-		clipper.Begin(static_cast<int>(rows.size()), rowHeight);
+		clipper.Begin(Core::Narrow<int>(rows.size()), rowHeight);
 
 		while (clipper.Step())
 		{
@@ -695,7 +697,7 @@ namespace Graphite {
 		// Told the row height explicitly for the same reason as the unified view's clipper:
 		// measuring it from a first item is exactly what a cursor-rewind bug would corrupt.
 		ImGuiListClipper clipper;
-		clipper.Begin(static_cast<int>(pairs.size()), rowHeight);
+		clipper.Begin(Core::Narrow<int>(pairs.size()), rowHeight);
 
 		while (clipper.Step())
 		{
