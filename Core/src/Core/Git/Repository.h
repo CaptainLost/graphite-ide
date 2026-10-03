@@ -10,6 +10,7 @@
 #include "Core/Git/Stash.h"
 #include "Core/Git/Status.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>

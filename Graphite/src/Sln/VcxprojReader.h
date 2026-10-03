@@ -2,6 +2,8 @@
 
 #include "Sln/ProjectContentReader.h"
 
+#include <filesystem>
+
 namespace Graphite {
 
 	class VcxprojReader final : public ProjectContentReader

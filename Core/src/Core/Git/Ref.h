@@ -2,6 +2,7 @@
 
 #include "Core/Git/Oid.h"
 
+#include <cstddef>
 #include <optional>
 #include <string>
 

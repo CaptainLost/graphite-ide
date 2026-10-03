@@ -33,6 +33,7 @@
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileSync.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <map>

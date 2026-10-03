@@ -6,6 +6,7 @@
 #include "Core/Jobs/JobQueue.h"
 #include "Search/SearchQuery.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>

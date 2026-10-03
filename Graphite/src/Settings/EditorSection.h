@@ -3,6 +3,7 @@
 #include "Settings/SettingsSection.h"
 
 #include <optional>
+#include <string_view>
 
 namespace Core {
 

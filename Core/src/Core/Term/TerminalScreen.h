@@ -3,9 +3,11 @@
 #include "Core/Base/Base.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Core {

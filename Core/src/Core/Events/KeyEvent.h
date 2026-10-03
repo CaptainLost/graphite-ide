@@ -4,6 +4,7 @@
 #include "Core/Events/Event.h"
 
 #include <format>
+#include <string>
 
 namespace Core {
 

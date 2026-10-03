@@ -2,6 +2,9 @@
 
 #include "Lang/Syntax/Token.h"
 
+#include <string_view>
+#include <vector>
+
 namespace Graphite {
 
 	class CppLexer final : public Lexer

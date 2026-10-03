@@ -10,6 +10,7 @@
 #include "Search/SearchQuery.h"
 #include "Theme/ActiveScheme.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <optional>

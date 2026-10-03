@@ -7,6 +7,7 @@
 #include "Core/Jobs/CancellationToken.h"
 #include "Core/Jobs/JobQueue.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <map>

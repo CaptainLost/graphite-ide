@@ -3,6 +3,7 @@
 #include "Core/Term/TerminalScreen.h"
 #include "Core/Text/Utf8.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <string_view>

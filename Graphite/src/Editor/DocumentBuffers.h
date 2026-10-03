@@ -2,6 +2,9 @@
 
 #include "Git/EditorBuffers.h"
 
+#include <filesystem>
+#include <vector>
+
 namespace Core {
 
 	class DocumentSet;

@@ -4,11 +4,13 @@
 #include "Core/Text/Encoding.h"
 #include "Core/Text/TextBuffer.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace Core {
 

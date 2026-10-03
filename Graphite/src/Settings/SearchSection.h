@@ -2,6 +2,8 @@
 
 #include "Settings/SettingsSection.h"
 
+#include <string_view>
+
 namespace Graphite {
 
 	class SearchSettings;

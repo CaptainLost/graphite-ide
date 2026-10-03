@@ -3,6 +3,7 @@
 #include "Sessions/Pricing.h"
 #include "Sessions/Session.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <string>

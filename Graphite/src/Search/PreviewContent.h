@@ -6,6 +6,7 @@
 #include "Lang/Syntax/SyntaxCache.h"
 #include "Lang/Syntax/Token.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <optional>
 #include <string>

@@ -6,6 +6,11 @@
 #include "Lang/Analysis/WorkspaceAnalysisCoordinator.h"
 #include "Lang/Server/LanguageServices.h"
 
+#include <filesystem>
+#include <string>
+#include <utility>
+#include <vector>
+
 namespace Graphite {
 
 	// The production PreviewServerPort: PreviewSemantics talks to this, the tests talk to a fake,

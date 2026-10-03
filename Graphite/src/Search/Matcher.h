@@ -2,6 +2,8 @@
 
 #include "Search/SearchQuery.h"
 
+#include <cstddef>
+#include <filesystem>
 #include <string_view>
 #include <vector>
 
