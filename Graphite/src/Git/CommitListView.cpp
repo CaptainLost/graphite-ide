@@ -37,16 +37,24 @@ namespace Graphite {
 		}
 
 		// The table's columns, in the order they are set up.
-		enum Column : int
+		enum class Column : int
 		{
-			GraphColumn,
-			ChevronColumn,
-			HashColumn,
-			MessageColumn,
-			AuthorColumn,
-			DateColumn,
-			ColumnCount
+			Graph,
+			Chevron,
+			Hash,
+			Message,
+			Author,
+			Date,
+
+			// Not a column - the count of the ones above it.
+			Count
 		};
+
+		// The index ImGui's table calls take for a column.
+		constexpr int Index(Column column)
+		{
+			return static_cast<int>(column);
+		}
 
 		// Pulls the right edge of the table just begun `gap` away from its vertical scrollbar,
 		// when it has one. ImGui runs a scrolling table's rows, header and highlights right up
@@ -154,13 +162,13 @@ namespace Graphite {
 
 			std::string text;
 
-			switch (column)
+			switch (static_cast<Column>(column))
 			{
-			case HashColumn:
+			case Column::Hash:
 				text = commit.Id.ToHex();
 				break;
 
-			case AuthorColumn:
+			case Column::Author:
 				text = signature(commit.Author);
 
 				if (ShowsCommitter(commit))
@@ -170,7 +178,7 @@ namespace Graphite {
 
 				break;
 
-			case DateColumn:
+			case Column::Date:
 				text = moment(commit.Author.When);
 
 				// A rebased or amended commit keeps its author's date and gains a later one
@@ -345,7 +353,7 @@ namespace Graphite {
 										  ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_ScrollY |
 										  ImGuiTableFlags_PadOuterX;
 
-		if (ImGui::BeginTable("##commits", ColumnCount, flags))
+		if (ImGui::BeginTable("##commits", Index(Column::Count), flags))
 		{
 			KeepClearOfScrollbar(ImGui::GetStyle().ItemSpacing.x);
 
@@ -391,7 +399,7 @@ namespace Graphite {
 					ImGui::TableNextRow(ImGuiTableRowFlags_None, metrics.RowHeight);
 					ImGui::PushID(index);
 
-					ImGui::TableSetColumnIndex(GraphColumn);
+					ImGui::TableSetColumnIndex(Index(Column::Graph));
 					const ImVec2 cell = ImGui::GetCursorScreenPos();
 					graphOrigin = ImVec2(cell.x, cell.y - cellPaddingY -
 													 static_cast<float>(index) * metrics.RowHeight);
@@ -415,7 +423,7 @@ namespace Graphite {
 				// clipped there, so a second step drawing the same line again changes nothing.
 				if (clipper.DisplayEnd > clipper.DisplayStart)
 				{
-					ImGui::TableSetColumnIndex(GraphColumn);
+					ImGui::TableSetColumnIndex(Index(Column::Graph));
 
 					CommitGraphView{}.Render(graph, palette, metrics, rows.RowOfCommit,
 											 clipper.DisplayStart, clipper.DisplayEnd - 1,
@@ -460,7 +468,7 @@ namespace Graphite {
 		// describing.
 		const bool selected = m_SelectedCommit == commit.Id;
 
-		ImGui::TableSetColumnIndex(ChevronColumn);
+		ImGui::TableSetColumnIndex(Index(Column::Chevron));
 
 		// The arrow's zone starts at the edge of its own column, padding included. The
 		// Selectable below spans the graph column too, and a click on the lanes is a click
@@ -506,7 +514,7 @@ namespace Graphite {
 
 		// Everything left of the hash is the arrow's to click, the padding between the two
 		// columns included: forgiving to hit, and never reaching a click meant for the row.
-		ImGui::TableSetColumnIndex(HashColumn);
+		ImGui::TableSetColumnIndex(Index(Column::Hash));
 		const float hashStartX = ImGui::GetCursorScreenPos().x;
 
 		// Hash, author and date are dimmed so the summary, the part of the row that is read
@@ -524,13 +532,13 @@ namespace Graphite {
 		// where the answer to "why this commit" is.
 		FittedText(commit.Id.ShortHex(), hashColor, highlight);
 
-		ImGui::TableSetColumnIndex(MessageColumn);
+		ImGui::TableSetColumnIndex(Index(Column::Message));
 		FittedText(commit.Summary, 0, highlight);
 
-		ImGui::TableSetColumnIndex(AuthorColumn);
+		ImGui::TableSetColumnIndex(Index(Column::Author));
 		FittedText(AuthorName(commit.Author), dim, highlight);
 
-		ImGui::TableSetColumnIndex(DateColumn);
+		ImGui::TableSetColumnIndex(Index(Column::Date));
 		FittedText(RelativeAge(commit.Author.When, now), dim, {});
 
 		if (hoveredForTooltip)
@@ -586,7 +594,7 @@ namespace Graphite {
 		{
 			// Still a row, drawn disabled: the row's minimum height keeps it as tall as the
 			// others, so the graph stays on the rows it labels.
-			ImGui::TableSetColumnIndex(MessageColumn);
+			ImGui::TableSetColumnIndex(Index(Column::Message));
 			ImGui::TextDisabled("%s", std::string(Ellipsis).c_str());
 			return;
 		}
@@ -596,7 +604,7 @@ namespace Graphite {
 		const bool selected = m_SelectedFile.has_value() && m_SelectedFile->Commit == commit.Id &&
 							  m_SelectedFile->Path == path;
 
-		ImGui::TableSetColumnIndex(ChevronColumn);
+		ImGui::TableSetColumnIndex(Index(Column::Chevron));
 
 		if (ImGui::Selectable("##file", selected,
 							  ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
@@ -606,7 +614,7 @@ namespace Graphite {
 
 		// Under the summaries, so a commit's files read as the continuation of its message
 		// rather than as a column of their own.
-		ImGui::TableSetColumnIndex(MessageColumn);
+		ImGui::TableSetColumnIndex(Index(Column::Message));
 
 		// The letter carries the colour the editor's gutter gives that same change, so a
 		// glance down the column says what happened without reading a letter per row.
