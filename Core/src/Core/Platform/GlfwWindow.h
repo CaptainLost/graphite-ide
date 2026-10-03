@@ -41,6 +41,7 @@ namespace Core {
 		void Minimize() override;
 		void ToggleMaximize() override;
 		bool IsMaximized() const override;
+		bool IsFocused() const override;
 		WindowPlacement GetPlacement() const override;
 
 		// Shows a window created hidden, at `placement` when there is one. Called once, by

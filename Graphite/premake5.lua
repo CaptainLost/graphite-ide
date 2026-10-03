@@ -37,7 +37,6 @@ local function GraphiteCompileOptions()
     {
         "src",
         "%{wks.location}/Core/src",
-        "%{IncludeDir.GLFW}",
         "%{IncludeDir.ImGui}",
         "%{IncludeDir.ImPlot}",
         "%{IncludeDir.MdiIcons}"

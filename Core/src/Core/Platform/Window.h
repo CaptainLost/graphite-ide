@@ -66,6 +66,9 @@ namespace Core {
 		virtual void ToggleMaximize() = 0;
 		virtual bool IsMaximized() const = 0;
 
+		// Whether this window has keyboard focus - this window alone, not the process.
+		virtual bool IsFocused() const = 0;
+
 		// The window's restored rectangle and whether it is maximized, in the form Placement
 		// takes back. Reported for a maximized window too: the rectangle is the one it returns to.
 		virtual WindowPlacement GetPlacement() const = 0;

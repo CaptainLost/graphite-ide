@@ -64,8 +64,6 @@
 
 #include "Core/Platform/Process.h"
 
-#include <GLFW/glfw3.h>
-
 #include <imgui.h>
 
 #include <cstddef>
@@ -81,10 +79,7 @@ namespace Graphite {
 		// come back.
 		bool MainWindowHasFocus()
 		{
-			auto* handle =
-				static_cast<GLFWwindow*>(Core::Application::Get().GetWindow().GetNativeHandle());
-
-			return glfwGetWindowAttrib(handle, GLFW_FOCUSED) != 0;
+			return Core::Application::Get().GetWindow().IsFocused();
 		}
 	}
 

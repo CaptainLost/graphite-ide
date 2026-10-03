@@ -351,6 +351,11 @@ namespace Core {
 		return glfwGetWindowAttrib(m_Handle, GLFW_MAXIMIZED) == GLFW_TRUE;
 	}
 
+	bool GlfwWindow::IsFocused() const
+	{
+		return glfwGetWindowAttrib(m_Handle, GLFW_FOCUSED) == GLFW_TRUE;
+	}
+
 	WindowPlacement GlfwWindow::GetPlacement() const
 	{
 #ifdef CORE_PLATFORM_WINDOWS
