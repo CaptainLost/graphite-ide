@@ -145,6 +145,11 @@ namespace Graphite {
 
 		std::optional<std::string> GetStatusMessage() const;
 
+		// Shows `text` in the status bar for a few seconds, replacing whatever it showed. Public
+		// for GraphiteLayer, which forwards StatusMessageEvent here so other panels can speak
+		// through the bar without knowing the editor.
+		void SetTransientMessage(std::string text);
+
 		// Asks the language server serving the document at `index` for the definition of
 		// whatever the caret sits on, and routes the reply through ResolveDefinition once it
 		// arrives. The active document's index, not a path: F12 and Ctrl+click both already know
@@ -383,8 +388,6 @@ namespace Graphite {
 
 		// What a file tab's context menu offers above the close actions every tab has.
 		void DrawFileTabItems(std::size_t index, const std::filesystem::path& workspaceRoot);
-
-		void SetTransientMessage(std::string text);
 
 		unsigned int DockNodeForIdentity(const std::string& identity) const;
 

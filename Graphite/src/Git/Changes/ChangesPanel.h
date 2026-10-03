@@ -20,6 +20,7 @@
 
 namespace Core {
 	class DocumentSet;
+	class EventBus;
 }
 
 namespace Graphite {
@@ -40,7 +41,7 @@ namespace Graphite {
 	public:
 		ChangesPanel(GitModel& model, ModalGate& modals, const Core::DocumentSet& documents,
 					 DocumentWindows& documentWindows, const ActiveScheme& scheme,
-					 DiffWindows& diffWindows);
+					 DiffWindows& diffWindows, Core::EventBus& events);
 
 		void OnUpdate(Core::Timestep ts) override;
 		void OnImGuiRender() override;
@@ -130,6 +131,10 @@ namespace Graphite {
 
 		const ActiveScheme& m_Scheme;
 		DiffWindows& m_DiffWindows;
+
+		// Where "Committed ..." goes: the status bar says it, since the commit box clears
+		// itself and would otherwise be the only sign that anything happened.
+		Core::EventBus& m_Events;
 
 		// Which section RenderRow is currently drawing, so a row knows whether its button
 		// stages or unstages without every call site passing it down.

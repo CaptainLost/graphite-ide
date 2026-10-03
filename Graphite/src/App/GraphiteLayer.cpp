@@ -8,6 +8,7 @@
 #include "Editor/StatusBar/ServerStatusText.h"
 #include "Editor/StatusBar/StatusBar.h"
 #include "Editor/StatusBar/StatusLineComposer.h"
+#include "Editor/StatusBar/StatusMessageEvent.h"
 #include "Editor/TextEditorWidget.h"
 #include "Language/Registry/LanguageRegistry.h"
 
@@ -137,7 +138,7 @@ namespace Graphite {
 
 		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_Documents,
 													 m_DocumentWindows, m_ActiveScheme,
-													 m_DiffWindows));
+													 m_DiffWindows, m_Events));
 
 		m_ClaudeSettings.Load();
 
@@ -425,6 +426,12 @@ namespace Graphite {
 		// over the open terminals that OpenShellIn must not be called from.
 		m_Events.Subscribe<OpenTerminalRequested>([this](const OpenTerminalRequested& event) {
 			static_cast<void>(m_Terminals.OpenShellIn(0, event.Directory)); // logs its own failure
+		});
+
+		// Any panel can speak through the status bar by publishing this; the editor's own
+		// transient slot is where the bar reads it from.
+		m_Events.Subscribe<StatusMessageEvent>([this](const StatusMessageEvent& event) {
+			m_DocumentWindows.SetTransientMessage(event.Text);
 		});
 
 		m_Events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) {

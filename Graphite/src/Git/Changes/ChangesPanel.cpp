@@ -4,6 +4,8 @@
 
 #include "Editor/DocumentWindows.h"
 #include "Theme/Palettes.h"
+#include "Editor/StatusBar/StatusMessageEvent.h"
+#include "Git/Changes/CommitBlocker.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
 #include "Theme/ChromePalette.h"
@@ -11,6 +13,7 @@
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
+#include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
@@ -69,6 +72,21 @@ namespace Graphite {
 
 			return separator + style.ItemSpacing.y + MessageBoxHeight() + style.ItemSpacing.y +
 				   ImGui::GetFrameHeight();
+		}
+
+		// What RenderWriteError draws: the message wrapped to the panel's width, and the
+		// Dismiss button on the line under it. Shared with OnImGuiRender for the same reason
+		// as CommitBoxHeight - the lists above reserve exactly this much and no more.
+		//
+		// CalcTextSize rounds up, so the reservation can only be too generous by a pixel,
+		// never short of what the text takes.
+		float WriteErrorHeight(const std::string& message)
+		{
+			const float wrapWidth = std::max(ImGui::GetContentRegionAvail().x, 1.0f);
+			const float text = ImGui::CalcTextSize(message.c_str(), nullptr, false, wrapWidth).y;
+
+			return text + ImGui::GetStyle().ItemSpacing.y + ImGui::GetTextLineHeight() +
+				   ImGui::GetStyle().ItemSpacing.y;
 		}
 
 		// The column every row starts with: a file's icon, a folder's chevron, a section's
@@ -180,9 +198,9 @@ namespace Graphite {
 	ChangesPanel::ChangesPanel(GitModel& model, ModalGate& modals,
 							   const Core::DocumentSet& documents,
 							   DocumentWindows& documentWindows, const ActiveScheme& scheme,
-							   DiffWindows& diffWindows)
+							   DiffWindows& diffWindows, Core::EventBus& events)
 		: Core::Panel("changes", "Changes", "git", ICON_MDI_FILE_DOCUMENT_EDIT_OUTLINE), m_Model(model), m_Documents(documents),
-		  m_DocumentWindows(documentWindows), m_Scheme(scheme), m_DiffWindows(diffWindows),
+		  m_DocumentWindows(documentWindows), m_Scheme(scheme), m_DiffWindows(diffWindows), m_Events(events),
 		  m_DiscardQuestion(modals, "Discard changes?"), m_StashQuestion(modals, "Stash changes")
 	{
 	}
@@ -220,8 +238,23 @@ namespace Graphite {
 		// landing and the watcher noticing it - and a one-shot left undrained for however
 		// long the panel happens to stay off-screen would register as a fresh expectation
 		// far outside that window instead.
-		if (m_Model.TakeCommitted().has_value())
+		if (const std::optional<Core::Oid> committed = m_Model.TakeCommitted(); committed.has_value())
 		{
+			// Before the box is cleared: the box is the only place the subject still lives. An
+			// amend that kept the old message has none to quote, and says only the hash.
+			std::string said = "Committed " + committed->ShortHex();
+
+			const std::string message = Core::Trimmed(m_Message);
+			const std::string subject = Core::Trimmed(std::string_view(message).substr(0, message.find('\n')));
+
+			if (!subject.empty())
+			{
+				said += ' ';
+				said += subject;
+			}
+
+			m_Events.Publish(StatusMessageEvent{std::move(said)});
+
 			m_Message.clear();
 			m_Amend = false;
 		}
@@ -342,8 +375,9 @@ namespace Graphite {
 		// height rather than drawn after, because the box must not move as the lists grow.
 		// The write error's line is drawn between the two while there is one, so it is
 		// reserved too - or the box would be pushed past the bottom of the panel.
-		const float errorHeight =
-			m_Model.GetWriteError().has_value() ? ImGui::GetTextLineHeightWithSpacing() : 0.0f;
+		const float errorHeight = m_Model.GetWriteError().has_value()
+									  ? WriteErrorHeight(m_Model.GetWriteError()->Message)
+									  : 0.0f;
 
 		const float boxHeight = CommitBoxHeight() + errorHeight + ImGui::GetStyle().ItemSpacing.y;
 
@@ -371,10 +405,11 @@ namespace Graphite {
 				RenderSection("CHANGES", sections.Unstaged, *status, palette, drawnAbove);
 
 			// A clean tree draws no section, which would leave the child ending on the
-			// SetCursorPosY above with no item after it - an assertion in EndChild.
+			// SetCursorPosY above with no item after it - an assertion in EndChild. The empty
+			// state ends on a Dummy of its own, so it also settles that.
 			if (!drawnAbove && !drawnUnstaged)
 			{
-				ImGui::Dummy(ImVec2(0.0f, 0.0f));
+				Core::EmptyState("No changes");
 			}
 		}
 
@@ -1094,7 +1129,22 @@ namespace Graphite {
 
 		// Whitespace-only counts as empty here - git would reject it the same way - but the
 		// message sent to RequestCommit below is never trimmed; only this enablement test is.
-		const bool canCommit = !inFlight && (!Core::Trimmed(m_Message).empty() || m_Amend);
+		const Core::Ref<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
+		const Core::Ref<const Core::HeadState> head = m_Model.GetHead();
+
+		const std::optional<std::string_view> whyNot = WhyCommitIsDisabled(
+			{.WriteInFlight = inFlight,
+			 .AnythingStaged = status != nullptr &&
+							   std::any_of(status->Entries.begin(), status->Entries.end(),
+										   [](const Core::FileStatus& file) {
+											   return !file.IsConflicted &&
+													  file.Index != Core::StatusFlags::None;
+										   }),
+			 .Merging = head != nullptr && head->Operation == Core::RepositoryOperation::Merge,
+			 .MessageIsEmpty = Core::Trimmed(m_Message).empty(),
+			 .Amend = m_Amend});
+
+		const bool canCommit = !whyNot.has_value();
 
 		// Beside the button rather than on a line of its own: amend changes what the button
 		// will do, so the two are read together.
@@ -1145,11 +1195,17 @@ namespace Graphite {
 
 		ImGui::EndDisabled();
 
+		// Said while disabled, which is when the reader wants to know why.
+		if (whyNot.has_value() &&
+			ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled))
+		{
+			ImGui::SetTooltip("%.*s", static_cast<int>(whyNot->size()), whyNot->data());
+		}
+
 		ImGui::SameLine();
 
 		// Nothing to stash in a clean tree, and git would answer that with an error line the
 		// reader has to dismiss.
-		const Core::Ref<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
 		const bool canStash = !inFlight && status && !status->Entries.empty();
 
 		ImGui::BeginDisabled(!canStash);
@@ -1189,11 +1245,25 @@ namespace Graphite {
 			return;
 		}
 
-		// A line, not a modal: a failed write is worth saying and not worth interrupting for
-		// - the same choice GitView makes for a failed refresh.
+		// Not a modal: a failed write is worth saying and not worth interrupting for - the same
+		// choice GitView makes for a failed refresh. Wrapped, because git's own wording of a
+		// refusal runs to several lines and one clipped line would hide the part that says why.
+		ImGui::PushTextWrapPos(0.0f);
 		ImGui::TextUnformatted(error->Message.c_str());
-		ImGui::SameLine();
+		ImGui::PopTextWrapPos();
 
+		// The reader's way to take the error to a bug report or a search.
+		if (Core::BeginRightClickPopup("##writeErrorMenu"))
+		{
+			if (ImGui::MenuItem("Copy"))
+			{
+				ImGui::SetClipboardText(error->Message.c_str());
+			}
+
+			ImGui::EndPopup();
+		}
+
+		// On its own line, so the message has the panel's whole width to wrap in.
 		if (ImGui::SmallButton("Dismiss"))
 		{
 			m_Model.DismissWriteError();
