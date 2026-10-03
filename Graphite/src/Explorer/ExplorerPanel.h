@@ -13,6 +13,7 @@
 namespace Core {
 
 	class CommandRegistry;
+	class EventBus;
 
 }
 
@@ -29,7 +30,8 @@ namespace Graphite {
 	class ExplorerPanel final : public Core::Panel
 	{
 	public:
-		ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents, AppSettings& settings);
+		ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents, AppSettings& settings,
+					  Core::EventBus& events);
 
 		void OnImGuiRender() override;
 

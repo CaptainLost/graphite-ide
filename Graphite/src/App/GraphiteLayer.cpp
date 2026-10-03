@@ -112,7 +112,7 @@ namespace Graphite {
 		Core::ImGuiRenderer::SetInterfaceScale(
 			static_cast<float>(m_AppSettings.GetInterfaceScalePercent()) / 100.0f);
 
-		auto* explorer = m_Panels.Add(Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents, m_AppSettings));
+		auto* explorer = m_Panels.Add(Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents, m_AppSettings, m_Events));
 
 		m_Panels.Add(Core::CreateScope<ConsolePanel>(m_Sink));
 

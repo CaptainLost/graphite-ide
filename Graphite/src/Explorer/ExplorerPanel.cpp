@@ -37,9 +37,9 @@ namespace Graphite {
 	}
 
 	ExplorerPanel::ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents,
-								 AppSettings& settings)
+								 AppSettings& settings, Core::EventBus& events)
 		: Core::Panel("files", "Explorer", "navigate", ICON_MDI_FILE_TREE), m_Workspace(workspace),
-		  m_AppSettings(settings), m_Files(workspace, documents), m_Solution(workspace, documents)
+		  m_AppSettings(settings), m_Files(workspace, documents, events), m_Solution(workspace, documents)
 	{
 	}
 
