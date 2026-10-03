@@ -94,10 +94,21 @@ namespace Graphite {
 	// reader never closed one of its own.
 	bool KeepsTerminals(const std::optional<std::vector<TerminalTabState>>& saved, bool openedDefault);
 
-	// What a folder's state records of its terminals: absent while it keeps none, otherwise
-	// CaptureTerminals - which may well be empty.
-	std::optional<std::vector<TerminalTabState>> CaptureFolderTerminals(const std::vector<OpenTerminal>& open,
-																		bool keepsTerminals);
+	// The saved list a folder in restricted mode starts none of (`trusted` false), which its
+	// state goes on recording exactly as it was stored: nothing it names is open, and capturing
+	// what is would write an empty list - "every terminal closed on purpose" - so the folder,
+	// once trusted, would reopen with neither its terminals nor the default shell. Absent for a
+	// trusted folder, and for one that saved no list. Dropped once the reader starts a shell by
+	// hand in the folder: from then on its list is what is open, as in any other folder.
+	std::optional<std::vector<TerminalTabState>> HeldBackTerminals(
+		const std::optional<std::vector<TerminalTabState>>& saved, bool trusted);
+
+	// What a folder's state records of its terminals: the held-back list while there is one
+	// (HeldBackTerminals), otherwise absent while it keeps none, otherwise CaptureTerminals -
+	// which may well be empty.
+	std::optional<std::vector<TerminalTabState>> CaptureFolderTerminals(
+		const std::vector<OpenTerminal>& open, bool keepsTerminals,
+		const std::optional<std::vector<TerminalTabState>>& heldBack);
 
 	// Where a terminal opened on an Explorer entry starts: a folder is itself, a file is the
 	// folder it sits in.

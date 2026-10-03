@@ -136,9 +136,21 @@ namespace Graphite {
 		return saved.has_value() || openedDefault;
 	}
 
-	std::optional<std::vector<TerminalTabState>> CaptureFolderTerminals(const std::vector<OpenTerminal>& open,
-																		bool keepsTerminals)
+	std::optional<std::vector<TerminalTabState>> HeldBackTerminals(
+		const std::optional<std::vector<TerminalTabState>>& saved, bool trusted)
 	{
+		return trusted ? std::nullopt : saved;
+	}
+
+	std::optional<std::vector<TerminalTabState>> CaptureFolderTerminals(
+		const std::vector<OpenTerminal>& open, bool keepsTerminals,
+		const std::optional<std::vector<TerminalTabState>>& heldBack)
+	{
+		if (heldBack)
+		{
+			return heldBack;
+		}
+
 		if (!keepsTerminals)
 		{
 			return std::nullopt;

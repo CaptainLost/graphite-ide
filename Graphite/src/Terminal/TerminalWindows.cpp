@@ -450,6 +450,7 @@ namespace Graphite {
 		if (m_Workspace.IsOpen())
 		{
 			m_KeepsTerminals = true;
+			m_HeldBack.reset();
 		}
 
 		return true;
@@ -529,7 +530,7 @@ namespace Graphite {
 
 	std::optional<std::vector<TerminalTabState>> TerminalWindows::CaptureState() const
 	{
-		return CaptureFolderTerminals(Records(), m_KeepsTerminals);
+		return CaptureFolderTerminals(Records(), m_KeepsTerminals, m_HeldBack);
 	}
 
 	void TerminalWindows::RequestRedock()
@@ -547,6 +548,9 @@ namespace Graphite {
 
 	void TerminalWindows::RestoreState(const std::optional<std::vector<TerminalTabState>>& saved, bool trusted)
 	{
+		// For each folder anew, like m_KeepsTerminals below.
+		m_HeldBack = HeldBackTerminals(saved, trusted);
+
 		if (OpensDefaultTerminal(saved, m_Open.size(), trusted))
 		{
 			// Kept only if the shell actually started: a folder that got none because no shell
