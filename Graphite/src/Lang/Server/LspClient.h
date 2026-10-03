@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/Platform/ChildProcess.h"
 #include "Lang/Api/LanguageService.h"
 #include "Lang/Server/JsonRpc.h"
@@ -274,7 +276,7 @@ namespace Graphite {
 			std::atomic<bool> Stopping{false};
 
 			// Written once, before either thread starts, and only read afterwards.
-			std::shared_ptr<Core::ChildProcess> Process;
+			Core::Ref<Core::ChildProcess> Process;
 			std::string ProtocolLanguageId;
 
 			// Decided once at construction: a root with no compile database is a state the user
@@ -293,8 +295,8 @@ namespace Graphite {
 
 		// Everything below runs on a background thread and takes Shared explicitly, because by the
 		// time some of it runs there may be no LspClient left to reach through.
-		static void RunReader(std::shared_ptr<Shared> shared);
-		static void RunWriter(std::shared_ptr<Shared> shared);
+		static void RunReader(Core::Ref<Shared> shared);
+		static void RunWriter(Core::Ref<Shared> shared);
 
 		// Decides what one body is and hands it to the function for that kind of message: a
 		// server's request, the handshake's reply, a notification, or the reply to a question.
@@ -341,7 +343,7 @@ namespace Graphite {
 		// destructor does, shared with a constructor that fails between starting them.
 		void StopThreads();
 
-		std::shared_ptr<Shared> m_Shared = std::make_shared<Shared>();
+		Core::Ref<Shared> m_Shared = Core::CreateRef<Shared>();
 
 		// Declared last so they are destroyed last; the destructor joins both explicitly first.
 		std::thread m_Reader;

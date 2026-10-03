@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Git/SyntaxRuns.h"
 
 #include "Core/Base/Result.h"
@@ -97,7 +99,7 @@ namespace Graphite {
 	// nothing about GitModel.
 	struct FileTextsBinding
 	{
-		std::shared_ptr<const FileTexts> Texts;
+		Core::Ref<const FileTexts> Texts;
 		FileTokens Tokens;
 
 		// Which file the two above belong to. Key is ShownPath's answer for the file — the

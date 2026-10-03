@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Git/ChangeBases.h"
 #include "Git/ChangeMarkers.h"
 #include "Git/DeliveryInbox.h"
@@ -72,7 +74,7 @@ namespace Graphite {
 
 		// Null while nothing has been computed, and for a file git does not track, cannot diff
 		// or failed to read. In every case the column is empty.
-		std::shared_ptr<const ChangeMarkers> Get(const std::filesystem::path& path) const;
+		Core::Ref<const ChangeMarkers> Get(const std::filesystem::path& path) const;
 
 		static constexpr float kEditQuietSeconds = 0.1f;
 
@@ -90,7 +92,7 @@ namespace Graphite {
 		struct Entry
 		{
 			std::uint64_t BasesRequested = 0;
-			std::shared_ptr<const BaseTexts> Bases;
+			Core::Ref<const BaseTexts> Bases;
 
 			// The revision Update last saw, and how long the buffer has sat at it.
 			std::optional<std::size_t> Revision;
@@ -100,7 +102,7 @@ namespace Graphite {
 			bool Pending = false;
 
 			std::uint64_t MarkersRequested = 0;
-			std::shared_ptr<const ChangeMarkers> Markers;
+			Core::Ref<const ChangeMarkers> Markers;
 		};
 
 		void RequestBases(const std::filesystem::path& path, Entry& entry);

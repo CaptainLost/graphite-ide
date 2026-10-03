@@ -32,7 +32,7 @@ namespace Core {
 
 		Ref<spdlog::sinks::sink> MakeProcessConsoleSink()
 		{
-			auto sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+			auto sink = CreateRef<spdlog::sinks::stdout_color_sink_mt>();
 			sink->set_pattern(kConsolePattern);
 			return sink;
 		}
@@ -41,10 +41,10 @@ namespace Core {
 									   Ref<RingBufferSink> buffer)
 		{
 			const std::string_view name = ToString(source);
-			auto logger = std::make_shared<spdlog::logger>(std::string{name},
-														   spdlog::sinks_init_list{
-															   std::move(console),
-															   std::move(buffer)});
+			auto logger = CreateRef<spdlog::logger>(std::string{name},
+													spdlog::sinks_init_list{
+														std::move(console),
+														std::move(buffer)});
 			logger->set_level(spdlog::level::trace);
 			logger->flush_on(spdlog::level::warn);
 			return logger;
@@ -55,7 +55,7 @@ namespace Core {
 			static LogState state = [] {
 				const LogSpec defaults;
 				auto console = MakeProcessConsoleSink();
-				auto buffer = std::make_shared<RingBufferSink>(defaults.ConsoleCapacity);
+				auto buffer = CreateRef<RingBufferSink>(defaults.ConsoleCapacity);
 
 				return LogState{buffer, MakeLogger(LogSource::Engine, console, buffer),
 								MakeLogger(LogSource::Application, console, buffer)};
@@ -147,7 +147,7 @@ namespace Core {
 		// has, so the messages written before this call are still in the panel afterwards.
 		if (state.Console->GetCapacity() != spec.ConsoleCapacity)
 		{
-			state.Console = std::make_shared<RingBufferSink>(spec.ConsoleCapacity);
+			state.Console = CreateRef<RingBufferSink>(spec.ConsoleCapacity);
 		}
 
 		std::vector<spdlog::sink_ptr> sinks{MakeProcessConsoleSink(), state.Console};
@@ -159,7 +159,7 @@ namespace Core {
 
 			try
 			{
-				auto file = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+				auto file = CreateRef<spdlog::sinks::rotating_file_sink_mt>(
 					ToUtf8(spec.FilePath), spec.MaxFileSize, spec.MaxFiles);
 				file->set_pattern(kFilePattern);
 				sinks.push_back(std::move(file));

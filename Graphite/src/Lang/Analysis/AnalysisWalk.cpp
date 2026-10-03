@@ -1,5 +1,7 @@
 #include "Lang/Analysis/AnalysisWalk.h"
 
+#include "Core/Base/Base.h"
+
 #include "Lang/Registry/LanguageRegistry.h"
 #include "Lang/Server/ServerRegistry.h"
 #include "Search/FileEnumerator.h"
@@ -146,7 +148,7 @@ namespace Graphite {
 
 		// A fresh block for a fresh walk. The one that was running writes into the old block until
 		// it notices the token, and nothing reads that block again.
-		m_Findings = std::make_shared<Findings>();
+		m_Findings = Core::CreateRef<Findings>();
 	}
 
 	bool AnalysisWalk::IsWalking() const

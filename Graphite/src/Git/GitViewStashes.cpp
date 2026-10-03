@@ -3,6 +3,8 @@
 
 #include "Git/GitView.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/ImGui/ContextMenu.h"
 
 #include "Git/StashBranch.h"
@@ -47,7 +49,7 @@ namespace Graphite {
 
 	void GitView::RenderStashes()
 	{
-		const std::shared_ptr<const std::vector<Core::StashEntry>> stashes = m_Model.GetStashes();
+		const Core::Ref<const std::vector<Core::StashEntry>> stashes = m_Model.GetStashes();
 		const std::optional<Core::Error>& error = m_Model.GetStashesError();
 
 		// A stash popped or dropped - here or elsewhere - gives the history back to the

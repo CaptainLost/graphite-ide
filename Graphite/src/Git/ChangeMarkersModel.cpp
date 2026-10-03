@@ -1,5 +1,7 @@
 #include "Git/ChangeMarkersModel.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
@@ -114,12 +116,12 @@ namespace Graphite {
 		m_Submit([this, path, generation]() {
 			auto read = m_Port.ReadBases(path);
 
-			std::shared_ptr<const BaseTexts> bases;
+			Core::Ref<const BaseTexts> bases;
 			std::optional<Core::Error> error;
 
 			if (read.HasValue())
 			{
-				auto fresh = std::make_shared<BaseTexts>();
+				auto fresh = Core::CreateRef<BaseTexts>();
 				fresh->Texts = std::move(read).GetValue();
 
 				// Diffed once here rather than on every keystroke: HEAD and the index change only
@@ -219,7 +221,7 @@ namespace Graphite {
 				.Head = bases->Texts.Head ? std::string_view{*bases->Texts.Head} : std::string_view{},
 				.Index = index};
 
-			auto markers = std::make_shared<const ChangeMarkers>(
+			auto markers = Core::CreateRef<const ChangeMarkers>(
 				BuildChangeMarkers(bases->HeadToIndex, hunks.GetValue(), lines, old));
 
 			Deliver([this, path, generation, markers = std::move(markers)]() {
@@ -246,7 +248,7 @@ namespace Graphite {
 		m_Debounce.Reset();
 	}
 
-	std::shared_ptr<const ChangeMarkers> ChangeMarkersModel::Get(const std::filesystem::path& path) const
+	Core::Ref<const ChangeMarkers> ChangeMarkersModel::Get(const std::filesystem::path& path) const
 	{
 		const auto found = m_Entries.find(path);
 		return found == m_Entries.end() ? nullptr : found->second.Markers;

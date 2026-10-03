@@ -1,5 +1,7 @@
 #include "Lang/Analysis/AnalysisStore.h"
 
+#include "Core/Base/Base.h"
+
 #include "Lang/Analysis/AnalysisRecord.h"
 
 #include "Core/App/Redraw.h"
@@ -95,7 +97,7 @@ namespace Graphite {
 
 		m_Root = std::move(root);
 		m_Entries.clear();
-		m_Listing = std::make_shared<Listing>();
+		m_Listing = Core::CreateRef<Listing>();
 
 		if (m_Root.empty())
 		{

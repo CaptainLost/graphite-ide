@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Editor/AnalysisCache.h"
 
 #include "Core/Jobs/CancellationToken.h"
@@ -179,7 +181,7 @@ namespace Graphite {
 		EntryMap m_Entries;
 		bool m_Ready = true;
 
-		std::shared_ptr<Listing> m_Listing;
+		Core::Ref<Listing> m_Listing;
 		Core::CancellationToken m_Token;
 
 		// Incremented when a write is handed to the worker, decremented when it lands. Atomic

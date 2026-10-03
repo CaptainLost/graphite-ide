@@ -1,5 +1,7 @@
 #include "Git/DiffView.h"
 
+#include "Core/Base/Base.h"
+
 #include "Git/CommitLabels.h"
 #include "Git/DiffPanes.h"
 #include "UI/IconButton.h"
@@ -213,7 +215,7 @@ namespace Graphite {
 	}
 
 	void DiffView::Render(const Core::FileDiff& file, const GitPalette& palette,
-						  const SyntaxPalette& syntax, const std::shared_ptr<const FileTexts>& texts,
+						  const SyntaxPalette& syntax, const Core::Ref<const FileTexts>& texts,
 						  const FileTokens& tokens)
 	{
 		RenderToolbar(file);
@@ -396,7 +398,7 @@ namespace Graphite {
 		ImGui::Separator();
 	}
 
-	void DiffView::RebuildLineCache(const std::shared_ptr<const FileTexts>& texts)
+	void DiffView::RebuildLineCache(const Core::Ref<const FileTexts>& texts)
 	{
 		if (texts.get() == m_CachedTexts.get())
 		{

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Lang/Api/LanguageId.h"
 #include "Lang/Api/LanguageService.h"
 #include "Lang/Server/LspClient.h"
@@ -128,7 +130,7 @@ namespace Graphite {
 		// every restart; a real LspClient over that binary until set. A seam so the restart path -
 		// a death noticed, the backoff, the replay, the cap - can be driven with clients that have
 		// no process behind them (LspClient::WithoutServer) instead of a server that dies on cue.
-		using ClientFactory = std::function<std::unique_ptr<LspClient>(
+		using ClientFactory = std::function<Core::Scope<LspClient>(
 			const ServerConfig& config, const std::filesystem::path& binary,
 			const std::filesystem::path& root)>;
 
@@ -298,9 +300,9 @@ namespace Graphite {
 		{
 			const ServerConfig* Config = nullptr; // points into ServerConfigFor's static storage
 			std::filesystem::path Root;
-			std::filesystem::path Binary;	   // resolved once; a restart reuses it rather than
-											   // searching again
-			std::unique_ptr<LspClient> Client; // null when the binary was never found
+			std::filesystem::path Binary;  // resolved once; a restart reuses it rather than
+										   // searching again
+			Core::Scope<LspClient> Client; // null when the binary was never found
 			ServerStatus Status;
 			std::size_t Restarts = 0;
 
@@ -372,7 +374,7 @@ namespace Graphite {
 		ClientFactory m_ClientFactory;
 
 		// The one place a client is constructed: through m_ClientFactory when one is set.
-		std::unique_ptr<LspClient> MakeClient(const ManagedServer& server, const Key& key) const;
+		Core::Scope<LspClient> MakeClient(const ManagedServer& server, const Key& key) const;
 
 		bool Permits(const std::filesystem::path& root) const;
 		void MarkRestricted(ManagedServer& server);
@@ -415,7 +417,7 @@ namespace Graphite {
 			std::vector<WarmFinding> Found;
 		};
 
-		std::shared_ptr<WarmFindings> m_Warm = std::make_shared<WarmFindings>();
+		Core::Ref<WarmFindings> m_Warm = Core::CreateRef<WarmFindings>();
 		Core::CancellationToken m_WarmToken;
 
 		std::filesystem::path m_FallbackRoot;

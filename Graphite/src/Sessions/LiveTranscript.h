@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Sessions/RequestTimeline.h"
 #include "Sessions/Session.h"
 #include "Sessions/SessionSummary.h"
@@ -142,8 +144,8 @@ namespace Graphite {
 		bool TakeRecords(Session& session, RequestTimeline* timeline);
 
 		std::filesystem::path m_File;
-		std::shared_ptr<Inbox> m_Inbox = std::make_shared<Inbox>();
-		std::shared_ptr<SubagentFiles> m_Subagents = std::make_shared<SubagentFiles>();
+		Core::Ref<Inbox> m_Inbox = Core::CreateRef<Inbox>();
+		Core::Ref<SubagentFiles> m_Subagents = Core::CreateRef<SubagentFiles>();
 
 		// Last, deliberately: joined before the inbox it writes into could go.
 		Core::JobQueue m_Jobs{1};

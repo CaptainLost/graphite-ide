@@ -1,5 +1,7 @@
 #include "Git/CommitListView.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/Fs/FileSystem.h"
@@ -282,7 +284,7 @@ namespace Graphite {
 
 	void CommitListView::Render(const Core::LogPage& page, const Core::CommitGraph& graph,
 								const GitPalette& palette, std::chrono::minutes offset,
-								const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf,
+								const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf,
 								std::string_view highlight, std::string_view pathHighlight)
 	{
 		if (page.Commits.empty())
@@ -302,7 +304,7 @@ namespace Graphite {
 				return std::size_t{0};
 			}
 
-			const std::shared_ptr<const Core::Diff> diff = diffOf(summary.Id);
+			const Core::Ref<const Core::Diff> diff = diffOf(summary.Id);
 
 			return diff ? diff->Files.size() : std::size_t{0};
 		});
@@ -569,10 +571,10 @@ namespace Graphite {
 
 	void CommitListView::RenderFileRow(
 		const Core::CommitSummary& commit, std::size_t fileIndex, const GitPalette& palette,
-		const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf,
+		const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf,
 		std::string_view pathHighlight)
 	{
-		const std::shared_ptr<const Core::Diff> diff = diffOf(commit.Id);
+		const Core::Ref<const Core::Diff> diff = diffOf(commit.Id);
 
 		// The row layout was built from this same diffOf a moment ago; a file row only fails
 		// to resolve if the cache evicted the entry in between, which a fixed-size cache can

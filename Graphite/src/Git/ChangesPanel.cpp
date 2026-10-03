@@ -1,5 +1,7 @@
 #include "Git/ChangesPanel.h"
 
+#include "Core/Base/Base.h"
+
 #include "Editor/DocumentWindows.h"
 #include "Editor/Palettes.h"
 #include "Git/HistoryPlaceholder.h"
@@ -281,7 +283,7 @@ namespace Graphite {
 	{
 		const GitPalette palette = ReadGitPalette(m_Scheme.Get());
 
-		const std::shared_ptr<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
+		const Core::Ref<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
 
 		if (status == nullptr)
 		{
@@ -768,7 +770,7 @@ namespace Graphite {
 		// The listing is read before the row is laid out, not after: the file count is part
 		// of the row's width budget, and a count measured after the name was cut would let
 		// the two disagree about where the name may end.
-		const std::shared_ptr<const Core::WorkingTreeStatus> listing =
+		const Core::Ref<const Core::WorkingTreeStatus> listing =
 			m_Model.GetUntrackedIn(file.Path);
 
 		// An empty label over the whole row, the same as a file row - see RenderRow. A
@@ -1142,7 +1144,7 @@ namespace Graphite {
 
 		// Nothing to stash in a clean tree, and git would answer that with an error line the
 		// reader has to dismiss.
-		const std::shared_ptr<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
+		const Core::Ref<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
 		const bool canStash = !inFlight && status && !status->Entries.empty();
 
 		ImGui::BeginDisabled(!canStash);
@@ -1229,7 +1231,7 @@ namespace Graphite {
 		// question did, or never.
 		if (file.IsDirectory && m_Expanded.contains(file.Path))
 		{
-			if (const std::shared_ptr<const Core::WorkingTreeStatus> listing =
+			if (const Core::Ref<const Core::WorkingTreeStatus> listing =
 					m_Model.GetUntrackedIn(file.Path))
 			{
 				std::vector<std::filesystem::path> files;

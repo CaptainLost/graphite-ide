@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Timestep.h"
 #include "Core/Events/EventBus.h"
@@ -114,7 +116,7 @@ namespace Graphite {
 		// Null while the answer is in flight, after a failure, and for a directory never
 		// asked about. The caller's answer is the same in every case: draw no children
 		// under that folder yet.
-		std::shared_ptr<const Core::WorkingTreeStatus> GetUntrackedIn(
+		Core::Ref<const Core::WorkingTreeStatus> GetUntrackedIn(
 			const std::filesystem::path& directory) const;
 
 		void RequestBranches();
@@ -169,7 +171,7 @@ namespace Graphite {
 		// Null while the answer is in flight, after a failure, and for a commit that was
 		// evicted. In every case the caller's response is the same: draw nothing under
 		// that row yet.
-		std::shared_ptr<const Core::Diff> GetDiffFor(const Core::Oid& commit) const;
+		Core::Ref<const Core::Diff> GetDiffFor(const Core::Oid& commit) const;
 
 		// Thirty-two is well past any number of rows a reader expands at once, and bounds
 		// the memory a long scroll can accumulate. Evicting the least recently asked for
@@ -205,7 +207,7 @@ namespace Graphite {
 		// Null while the answer is in flight, after a failure, and for a file that was
 		// evicted. As with GetDiffFor, the caller's response is the same in every case: draw
 		// nothing yet. Keyed the same way RequestTextsFor is - see its comment on `key`.
-		std::shared_ptr<const FileTexts> GetTextsFor(
+		Core::Ref<const FileTexts> GetTextsFor(
 			const Core::Oid& commit, const std::filesystem::path& key) const;
 
 		// Same bound and the same reasoning as kCachedDiffs, kept as its own constant
@@ -222,15 +224,15 @@ namespace Graphite {
 		const std::filesystem::path& GetWorkingDirectory() const { return m_WorkingDirectory; }
 
 		// Null until the first result for that query has been applied.
-		std::shared_ptr<const Core::WorkingTreeStatus> GetStatus() const { return m_Status.Get(); }
-		std::shared_ptr<const std::vector<Core::Branch>> GetBranches() const { return m_Branches.Get(); }
-		std::shared_ptr<const std::vector<Core::StashEntry>> GetStashes() const { return m_Stashes.Get(); }
-		std::shared_ptr<const Core::HeadState> GetHead() const { return m_Head.Get(); }
-		std::shared_ptr<const Core::LogPage> GetLog() const { return m_Log.Get(); }
+		Core::Ref<const Core::WorkingTreeStatus> GetStatus() const { return m_Status.Get(); }
+		Core::Ref<const std::vector<Core::Branch>> GetBranches() const { return m_Branches.Get(); }
+		Core::Ref<const std::vector<Core::StashEntry>> GetStashes() const { return m_Stashes.Get(); }
+		Core::Ref<const Core::HeadState> GetHead() const { return m_Head.Get(); }
+		Core::Ref<const Core::LogPage> GetLog() const { return m_Log.Get(); }
 		// Also null while the slot holds the answer to a different request than the one last
 		// passed to RequestWorkingTreeDiff: a tab that follows its file to the other side asks
 		// a new question, and the old side's hunks are not an answer to it.
-		std::shared_ptr<const Core::Diff> GetWorkingTreeDiff() const
+		Core::Ref<const Core::Diff> GetWorkingTreeDiff() const
 		{
 			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeDiff.Get() : nullptr;
 		}
@@ -248,7 +250,7 @@ namespace Graphite {
 		// or too large to lex - in every case the caller's answer is the same: draw the diff
 		// without the colouring and the whole-file view that this text feeds. Null, too,
 		// whenever GetWorkingTreeDiff is, for the same reason.
-		std::shared_ptr<const FileTexts> GetWorkingTreeTexts() const
+		Core::Ref<const FileTexts> GetWorkingTreeTexts() const
 		{
 			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeTexts : nullptr;
 		}
@@ -447,7 +449,7 @@ namespace Graphite {
 			std::uint64_t Requested = 0;
 			std::uint64_t Applied = 0;
 
-			std::shared_ptr<const Core::WorkingTreeStatus> Listing;
+			Core::Ref<const Core::WorkingTreeStatus> Listing;
 
 			bool Failed = false;
 		};
@@ -595,7 +597,7 @@ namespace Graphite {
 		// Replaced on every landing like the slots above, and also driven by the wanted,
 		// settled and stale state below - see PumpWorkingTreeDiff.
 		GenerationSlot<Core::Diff> m_WorkingTreeDiff;
-		std::shared_ptr<const FileTexts> m_WorkingTreeTexts;
+		Core::Ref<const FileTexts> m_WorkingTreeTexts;
 
 		// The request the diff window last asked about, and the one m_WorkingTreeDiff and
 		// m_WorkingTreeTexts answer. They differ between a tab changing its question and the

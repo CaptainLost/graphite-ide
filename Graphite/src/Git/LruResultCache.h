@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -66,7 +68,7 @@ namespace Graphite {
 		// Lands an answer. False when it was dropped: the key was evicted or cleared while the
 		// question was out, or a newer answer for it has already landed. Nothing on screen is
 		// waiting for a dropped answer.
-		bool Succeed(const Key& key, std::uint64_t generation, std::shared_ptr<const T> value)
+		bool Succeed(const Key& key, std::uint64_t generation, Core::Ref<const T> value)
 		{
 			Entry* entry = Land(key, generation);
 
@@ -114,7 +116,7 @@ namespace Graphite {
 
 		// Null while the answer is in flight, after a failure, and for a key never asked about
 		// or since evicted.
-		std::shared_ptr<const T> Get(const Key& key) const
+		Core::Ref<const T> Get(const Key& key) const
 		{
 			const auto entry = m_Entries.find(key);
 
@@ -154,7 +156,7 @@ namespace Graphite {
 			std::uint64_t Requested = 0;
 			std::uint64_t Applied = 0;
 
-			std::shared_ptr<const T> Value;
+			Core::Ref<const T> Value;
 			bool Failed = false;
 
 			// Counts up on every request and every read, so eviction can pick the entry nobody

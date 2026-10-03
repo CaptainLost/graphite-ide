@@ -1,5 +1,7 @@
 #include "Sessions/SessionIndex.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/App/Redraw.h"
 
 #include <set>
@@ -202,8 +204,8 @@ namespace Graphite {
 	{
 		m_Token.Cancel();
 		m_Token = Core::CancellationToken{};
-		m_Inbox = std::make_shared<Inbox>();
-		m_Known = std::make_shared<Known>();
+		m_Inbox = Core::CreateRef<Inbox>();
+		m_Known = Core::CreateRef<Known>();
 		m_Projects = projects;
 
 		Submit([projects = std::move(projects), cached = std::move(cached), token = m_Token](Inbox& inbox, Known& known) {

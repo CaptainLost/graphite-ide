@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/Jobs/CancellationToken.h"
 #include "Core/Jobs/JobQueue.h"
 #include "Search/SearchQuery.h"
@@ -78,7 +80,7 @@ namespace Graphite {
 			SearchProgress Progress;
 		};
 
-		std::shared_ptr<Shared> m_Shared = std::make_shared<Shared>();
+		Core::Ref<Shared> m_Shared = Core::CreateRef<Shared>();
 
 		Core::CancellationToken m_Token;
 

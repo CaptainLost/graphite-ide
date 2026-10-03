@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Editor/ModalGate.h"
 #include "Editor/ModalQuestion.h"
 #include "Git/CheckoutQuestion.h"
@@ -287,7 +289,7 @@ namespace Graphite {
 
 		// The branches snapshot FollowSelectedRef last looked at, and the full names of a
 		// rename of the selected branch sent since: old, then new.
-		std::shared_ptr<const std::vector<Core::Branch>> m_LastSeenBranches;
+		Core::Ref<const std::vector<Core::Branch>> m_LastSeenBranches;
 		std::optional<std::pair<std::string, std::string>> m_PendingRename;
 
 		// What the reader is typing, and when it has stood still long enough to be worth a
@@ -307,14 +309,14 @@ namespace Graphite {
 		// Held rather than pointed at: the model drops its reference the moment the answer
 		// lands, and an address compared against a freed one could match the page that
 		// replaced it.
-		std::shared_ptr<const Core::LogPage> m_PageWhenAsked;
+		Core::Ref<const Core::LogPage> m_PageWhenAsked;
 		bool m_Searching = false;
 
 		// The page the list drew last frame, so a page that arrived since can be told from
 		// the one already on screen. Kept apart from m_PageWhenAsked, which answers a
 		// narrower question — whether the query this view sent has come back — and is unset
 		// while no query is outstanding.
-		std::shared_ptr<const Core::LogPage> m_LastSeenPage;
+		Core::Ref<const Core::LogPage> m_LastSeenPage;
 
 		// How tall the commit list is; the diff takes what is left. Persisted across frames by
 		// DrawSplitResults's own contract — see SplitResults.h for why it starts at zero and

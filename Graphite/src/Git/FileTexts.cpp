@@ -1,5 +1,7 @@
 #include "Git/FileTexts.h"
 
+#include "Core/Base/Base.h"
+
 #include "Git/CommitLabels.h"
 #include "Git/GitModel.h"
 
@@ -71,7 +73,7 @@ namespace Graphite {
 
 		model.RequestTextsFor(commit, key, file.OldPath, file.NewPath);
 
-		const std::shared_ptr<const FileTexts> texts = model.GetTextsFor(commit, key);
+		const Core::Ref<const FileTexts> texts = model.GetTextsFor(commit, key);
 
 		// The text is immutable once fetched, so an unchanged pointer means the tokens are
 		// still good; re-lexing every frame is the mistake LexFileText's own header warns
@@ -145,7 +147,7 @@ namespace Graphite {
 			return;
 		}
 
-		const std::shared_ptr<const FileTexts> texts = model.GetWorkingTreeTexts();
+		const Core::Ref<const FileTexts> texts = model.GetWorkingTreeTexts();
 
 		if (texts == nullptr)
 		{

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Editor/Palettes.h"
 #include "Git/DiffRows.h"
 #include "Git/FileTexts.h"
@@ -41,7 +43,7 @@ namespace Graphite {
 		// is whatever the owner has lexed for the current `texts`; an empty side means no lexer
 		// for that language, or no text yet, and both draw as plain text.
 		void Render(const Core::FileDiff& file, const GitPalette& palette,
-					const SyntaxPalette& syntax, const std::shared_ptr<const FileTexts>& texts,
+					const SyntaxPalette& syntax, const Core::Ref<const FileTexts>& texts,
 					const FileTokens& tokens);
 
 		void SetMode(DiffViewMode mode) { m_Mode = mode; }
@@ -98,7 +100,7 @@ namespace Graphite {
 		// cached; see the class comment. Never called with a null `texts`: Render clears the
 		// cache itself when the owner hands it one, rather than leaving the previous file's
 		// full text referenced until the next whole-file render happens to replace it.
-		void RebuildLineCache(const std::shared_ptr<const FileTexts>& texts);
+		void RebuildLineCache(const Core::Ref<const FileTexts>& texts);
 
 		DiffViewMode m_Mode = DiffViewMode::SideBySide;
 		DiffScope m_Scope = DiffScope::Hunks;
@@ -136,7 +138,7 @@ namespace Graphite {
 
 		// Identity-compared against the texts Render is next called with, so the split below
 		// is redone only when the file actually changed to a different one, not every frame.
-		std::shared_ptr<const FileTexts> m_CachedTexts;
+		Core::Ref<const FileTexts> m_CachedTexts;
 		std::vector<std::string_view> m_OldLines;
 		std::vector<std::string_view> m_NewLines;
 

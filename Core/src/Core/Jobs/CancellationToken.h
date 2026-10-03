@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include <atomic>
 #include <memory>
 
@@ -20,6 +22,6 @@ namespace Core {
 	private:
 		// relaxed is enough: this flag guards no other data. Everything a cancelled job hands
 		// back crosses threads through its own mutex.
-		std::shared_ptr<std::atomic_bool> m_Cancelled = std::make_shared<std::atomic_bool>(false);
+		Ref<std::atomic_bool> m_Cancelled = CreateRef<std::atomic_bool>(false);
 	};
 }

@@ -1,5 +1,7 @@
 #include "Lang/Server/LanguageServices.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
 #include "Core/Fs/FileSystem.h"
@@ -1040,15 +1042,15 @@ namespace Graphite {
 		m_ClientFactory = std::move(factory);
 	}
 
-	std::unique_ptr<LspClient> LanguageServices::MakeClient(const ManagedServer& server,
-															const Key& key) const
+	Core::Scope<LspClient> LanguageServices::MakeClient(const ManagedServer& server,
+														const Key& key) const
 	{
 		if (m_ClientFactory)
 		{
 			return m_ClientFactory(*server.Config, server.Binary, key.Root);
 		}
 
-		return std::make_unique<LspClient>(*server.Config, server.Binary, key.Root);
+		return Core::CreateScope<LspClient>(*server.Config, server.Binary, key.Root);
 	}
 
 	bool LanguageServices::IsRunningFor(const std::filesystem::path& path, LanguageId language)

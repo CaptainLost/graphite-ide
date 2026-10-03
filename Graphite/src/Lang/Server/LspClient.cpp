@@ -1,5 +1,7 @@
 #include "Lang/Server/LspClient.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/App/Redraw.h"
 #include "Core/Fs/FileSystem.h"
 #include "Lang/Server/MessageStream.h"
@@ -214,7 +216,7 @@ namespace Graphite {
 			return;
 		}
 
-		m_Shared->Process = std::shared_ptr<Core::ChildProcess>(std::move(started.GetValue()));
+		m_Shared->Process = Core::Ref<Core::ChildProcess>(std::move(started.GetValue()));
 
 		// Queued before either thread exists, so nothing that can throw comes after them: the
 		// writer sends it once it starts, and no reply can reach a reader that is not yet running.
@@ -627,7 +629,7 @@ namespace Graphite {
 		return sent;
 	}
 
-	void LspClient::RunWriter(std::shared_ptr<Shared> shared)
+	void LspClient::RunWriter(Core::Ref<Shared> shared)
 	{
 		Core::ChildProcess& process = *shared->Process;
 
@@ -678,7 +680,7 @@ namespace Graphite {
 		}
 	}
 
-	void LspClient::RunReader(std::shared_ptr<Shared> shared)
+	void LspClient::RunReader(Core::Ref<Shared> shared)
 	{
 		MessageStream stream;
 		std::array<char, 8192> buffer{};

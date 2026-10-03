@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/Base/Result.h"
 
 #include <cstdint>
@@ -58,12 +60,12 @@ namespace Graphite {
 			}
 
 			m_Error.reset();
-			m_Value = std::make_shared<const T>(std::move(result).GetValue());
+			m_Value = Core::CreateRef<const T>(std::move(result).GetValue());
 			return SlotLanding::Applied;
 		}
 
 		// Null until the first successful answer has landed, and after a Clear.
-		std::shared_ptr<const T> Get() const { return m_Value; }
+		Core::Ref<const T> Get() const { return m_Value; }
 
 		const std::optional<Core::Error>& GetError() const { return m_Error; }
 
@@ -86,7 +88,7 @@ namespace Graphite {
 		std::uint64_t m_Requested = 0;
 		std::uint64_t m_Applied = 0;
 
-		std::shared_ptr<const T> m_Value;
+		Core::Ref<const T> m_Value;
 		std::optional<Core::Error> m_Error;
 	};
 }

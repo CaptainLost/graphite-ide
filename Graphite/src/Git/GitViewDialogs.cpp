@@ -6,6 +6,8 @@
 
 #include "Git/GitView.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/Icons.h"
 #include "Editor/Palettes.h"
@@ -249,7 +251,7 @@ namespace Graphite {
 
 		const std::string name(m_BranchNameBuffer.data());
 
-		const std::shared_ptr<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
 		const std::optional<std::string> problem =
 			BranchNameProblem(name, branches ? *branches : std::vector<Core::Branch>{});
 

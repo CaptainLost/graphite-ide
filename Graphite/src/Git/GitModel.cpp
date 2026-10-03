@@ -1,5 +1,7 @@
 #include "Git/GitModel.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/Fs/FileSystem.h"
 #include "Workspace/Workspace.h"
 
@@ -339,7 +341,7 @@ namespace Graphite {
 				// is different every time the file is touched. Cleared when there is none, so a
 				// file too large to lex does not go on showing the last file's text.
 				m_WorkingTreeTexts = texts.has_value()
-										 ? std::make_shared<const FileTexts>(std::move(*texts))
+										 ? Core::CreateRef<const FileTexts>(std::move(*texts))
 										 : nullptr;
 
 				PumpWorkingTreeDiff();
@@ -370,7 +372,7 @@ namespace Graphite {
 		// own, which only the stash's own target reads. The list the panel shows is the one
 		// asked about: a stash that is not in it was dropped, and is asked for as the commit
 		// it still is.
-		const std::shared_ptr<const std::vector<Core::StashEntry>> stashes = m_Stashes.Get();
+		const Core::Ref<const std::vector<Core::StashEntry>> stashes = m_Stashes.Get();
 		const bool stash =
 			stashes && std::ranges::find(*stashes, commit, &Core::StashEntry::Id) != stashes->end();
 
@@ -394,7 +396,7 @@ namespace Graphite {
 					return;
 				}
 
-				auto diff = std::make_shared<const Core::Diff>(std::move(result).GetValue());
+				auto diff = Core::CreateRef<const Core::Diff>(std::move(result).GetValue());
 
 				if (m_CommitDiffs.Succeed(commit, generation, std::move(diff)))
 				{
@@ -443,13 +445,13 @@ namespace Graphite {
 					return;
 				}
 
-				held->second.Listing = std::make_shared<const Core::WorkingTreeStatus>(
+				held->second.Listing = Core::CreateRef<const Core::WorkingTreeStatus>(
 					std::move(listing).GetValue());
 			});
 		});
 	}
 
-	std::shared_ptr<const Core::WorkingTreeStatus> GitModel::GetUntrackedIn(
+	Core::Ref<const Core::WorkingTreeStatus> GitModel::GetUntrackedIn(
 		const std::filesystem::path& directory) const
 	{
 		const auto held = m_Untracked.find(Core::ToUtf8(directory));
@@ -474,7 +476,7 @@ namespace Graphite {
 		return m_CommitDiffs.IsFailed(commit);
 	}
 
-	std::shared_ptr<const Core::Diff> GitModel::GetDiffFor(const Core::Oid& commit) const
+	Core::Ref<const Core::Diff> GitModel::GetDiffFor(const Core::Oid& commit) const
 	{
 		return m_CommitDiffs.Get(commit);
 	}
@@ -519,7 +521,7 @@ namespace Graphite {
 					return;
 				}
 
-				auto texts = std::make_shared<const FileTexts>(std::move(result).GetValue());
+				auto texts = Core::CreateRef<const FileTexts>(std::move(result).GetValue());
 
 				if (m_Texts.Succeed(key, generation, std::move(texts)))
 				{
@@ -540,7 +542,7 @@ namespace Graphite {
 		}
 	}
 
-	std::shared_ptr<const FileTexts> GitModel::GetTextsFor(
+	Core::Ref<const FileTexts> GitModel::GetTextsFor(
 		const Core::Oid& commit, const std::filesystem::path& path) const
 	{
 		return m_Texts.Get(TextsKey{commit, path});

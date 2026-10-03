@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
 
@@ -48,7 +50,7 @@ namespace Core {
 		// with a dialog open.
 		struct Pending;
 
-		std::shared_ptr<Pending> m_Pending;
+		Ref<Pending> m_Pending;
 		Done m_Done;
 	};
 }

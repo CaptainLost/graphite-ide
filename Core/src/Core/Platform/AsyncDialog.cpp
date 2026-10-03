@@ -3,6 +3,7 @@
 #include "Core/Platform/AsyncDialog.h"
 
 #include "Core/App/Redraw.h"
+#include "Core/Base/Base.h"
 
 #include <mutex>
 #include <optional>
@@ -42,7 +43,7 @@ namespace Core {
 			return false;
 		}
 
-		auto pending = std::make_shared<Pending>();
+		auto pending = CreateRef<Pending>();
 
 		std::thread([pending, picker = std::move(picker)] {
 			Result<std::filesystem::path> answer = picker();

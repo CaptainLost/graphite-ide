@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Sessions/SessionSummary.h"
 
 #include "Core/Jobs/CancellationToken.h"
@@ -80,8 +82,8 @@ namespace Graphite {
 		void Submit(std::function<void(Inbox&, Known&)> work);
 
 		std::filesystem::path m_Projects;
-		std::shared_ptr<Inbox> m_Inbox = std::make_shared<Inbox>();
-		std::shared_ptr<Known> m_Known = std::make_shared<Known>();
+		Core::Ref<Inbox> m_Inbox = Core::CreateRef<Inbox>();
+		Core::Ref<Known> m_Known = Core::CreateRef<Known>();
 		Core::CancellationToken m_Token;
 
 		// Last, deliberately: destroyed first, so the worker is joined before what it touches.

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Git/CommitGraphView.h"
 #include "Git/GitPalette.h"
 #include "Git/GraphGeometry.h"
@@ -85,7 +87,7 @@ namespace Graphite {
 		// the path happens to end with.
 		void Render(const Core::LogPage& page, const Core::CommitGraph& graph,
 					const GitPalette& palette, std::chrono::minutes offset,
-					const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf,
+					const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf,
 					std::string_view highlight = {}, std::string_view pathHighlight = {});
 
 		// Applied when a new page arrives, by whoever noticed it arrive — the list is handed
@@ -146,7 +148,7 @@ namespace Graphite {
 
 		void RenderFileRow(const Core::CommitSummary& commit, std::size_t fileIndex,
 						   const GitPalette& palette,
-						   const std::function<std::shared_ptr<const Core::Diff>(const Core::Oid&)>& diffOf,
+						   const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf,
 						   std::string_view pathHighlight);
 
 		std::unordered_set<Core::Oid> m_Expanded;

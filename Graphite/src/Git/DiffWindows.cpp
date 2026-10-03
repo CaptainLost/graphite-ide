@@ -1,5 +1,7 @@
 #include "Git/DiffWindows.h"
 
+#include "Core/Base/Base.h"
+
 #include "Git/CommitLabels.h"
 
 #include "UI/RememberedPlace.h"
@@ -305,7 +307,7 @@ namespace Graphite {
 			return;
 		}
 
-		const std::shared_ptr<const Core::WorkingTreeStatus> status = model.GetStatus();
+		const Core::Ref<const Core::WorkingTreeStatus> status = model.GetStatus();
 
 		if (!status)
 		{
@@ -421,7 +423,7 @@ namespace Graphite {
 
 			if (visible)
 			{
-				std::shared_ptr<const Core::Diff> diff;
+				Core::Ref<const Core::Diff> diff;
 
 				if (entry.Diff.Commit.has_value())
 				{

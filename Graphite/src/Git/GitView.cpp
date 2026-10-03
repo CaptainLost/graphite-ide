@@ -1,5 +1,7 @@
 #include "Git/GitView.h"
 
+#include "Core/Base/Base.h"
+
 #include "Core/Fs/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
@@ -127,7 +129,7 @@ namespace Graphite {
 
 	void GitView::FollowSelectedRef()
 	{
-		const std::shared_ptr<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
 
 		if (branches == m_LastSeenBranches)
 		{
@@ -246,7 +248,7 @@ namespace Graphite {
 		}
 
 		// No status yet lists no changes of git's; the unsaved documents are still asked about.
-		const std::shared_ptr<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
+		const Core::Ref<const Core::WorkingTreeStatus> status = m_Model.GetStatus();
 
 		CheckoutQuestion question = BuildCheckoutQuestion(
 			label, *answer.Plan, status ? *status : Core::WorkingTreeStatus{}, unsavedRelative);
@@ -357,7 +359,7 @@ namespace Graphite {
 
 		const GitPalette palette = ReadGitPalette(m_Scheme.Get());
 
-		const std::shared_ptr<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
 
 		if (ImGui::BeginTable("git", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
 		{
@@ -377,7 +379,7 @@ namespace Graphite {
 			// Above the split rather than inside the list: it describes the page as a whole,
 			// and a line that scrolls away with the first few rows describes it only until
 			// the reader starts reading.
-			if (const std::shared_ptr<const Core::LogPage> page = m_Model.GetLog();
+			if (const Core::Ref<const Core::LogPage> page = m_Model.GetLog();
 				page && m_Filter.Get() != HistoryFilter{})
 			{
 				RenderFilterSummary(*page);
@@ -685,7 +687,7 @@ namespace Graphite {
 
 	void GitView::UpdateForNewPage()
 	{
-		const std::shared_ptr<const Core::LogPage> page = m_Model.GetLog();
+		const Core::Ref<const Core::LogPage> page = m_Model.GetLog();
 
 		if (page != m_LastSeenPage)
 		{
@@ -781,7 +783,7 @@ namespace Graphite {
 
 	void GitView::RenderCommits(const GitPalette& palette)
 	{
-		const std::shared_ptr<const Core::LogPage> page = m_Model.GetLog();
+		const Core::Ref<const Core::LogPage> page = m_Model.GetLog();
 
 		// Nothing calls RequestLog until a ref is clicked or a page runs out, so without
 		// this the history column stays empty until the user happens to click a branch.
@@ -886,7 +888,7 @@ namespace Graphite {
 		}
 
 		const std::optional<Core::Oid> commit = m_Commits.GetSelectedCommit();
-		const std::shared_ptr<const Core::LogPage> page = m_Model.GetLog();
+		const Core::Ref<const Core::LogPage> page = m_Model.GetLog();
 
 		if (!commit.has_value() || !page)
 		{
@@ -918,7 +920,7 @@ namespace Graphite {
 		// waits on a query nobody sent.
 		std::optional<DiffStats> stats;
 
-		if (const std::shared_ptr<const Core::Diff> diff = m_Model.GetDiffFor(commit.Id))
+		if (const Core::Ref<const Core::Diff> diff = m_Model.GetDiffFor(commit.Id))
 		{
 			stats = CountChanges(*diff);
 		}
@@ -964,7 +966,7 @@ namespace Graphite {
 
 		m_Diff.OnOpenFile = m_DiffWindows.OpenFileIn(m_Model);
 
-		const std::shared_ptr<const Core::Diff> diff = m_Model.GetDiffFor(selected->Commit);
+		const Core::Ref<const Core::Diff> diff = m_Model.GetDiffFor(selected->Commit);
 
 		if (!diff)
 		{

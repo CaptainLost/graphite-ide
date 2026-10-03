@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/Jobs/JobQueue.h"
 
 #include <filesystem>
@@ -79,7 +81,7 @@ namespace Graphite {
 			std::vector<FileText> Texts;
 		};
 
-		std::shared_ptr<Ready> m_Ready = std::make_shared<Ready>();
+		Core::Ref<Ready> m_Ready = Core::CreateRef<Ready>();
 
 		// Last, deliberately: members are destroyed in reverse order of declaration, so this one
 		// joins its worker before anything the worker might still be touching goes away.

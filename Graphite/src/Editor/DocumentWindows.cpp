@@ -1,5 +1,7 @@
 #include "Editor/DocumentWindows.h"
 
+#include "Core/Base/Base.h"
+
 #include "Editor/ActiveTextDocument.h"
 #include "Editor/DefinitionNavigation.h"
 #include "Editor/EditorCommands.h"
@@ -2294,7 +2296,7 @@ namespace Graphite {
 				}
 
 				// Kept alive in this scope, since the widget holds only a raw pointer while it draws.
-				const std::shared_ptr<const ChangeMarkers> changes =
+				const Core::Ref<const ChangeMarkers> changes =
 					wantsChanges ? m_ChangeMarkers.Get(item.Path) : nullptr;
 				view.Changes = changes.get();
 

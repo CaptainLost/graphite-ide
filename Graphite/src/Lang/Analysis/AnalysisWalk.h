@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Base.h"
+
 #include "Core/Jobs/CancellationToken.h"
 #include "Core/Jobs/JobQueue.h"
 
@@ -63,7 +65,7 @@ namespace Graphite {
 			bool Walking = false;
 		};
 
-		std::shared_ptr<Findings> m_Findings = std::make_shared<Findings>();
+		Core::Ref<Findings> m_Findings = Core::CreateRef<Findings>();
 		Core::CancellationToken m_Token;
 
 		// Whether a walk has been started and not yet cancelled. Not the same question as
