@@ -30,7 +30,10 @@ project "GraphiteTests"
     includedirs
     {
         "%{wks.location}/Core/src",
-        "%{wks.location}/Graphite/src"
+        "%{wks.location}/Graphite/src",
+        -- Shared fixtures such as TempDirectory.h stay at the root of src/ while the
+        -- tests mirror the source tree, so every depth reaches them by bare name.
+        "src"
     }
 
     externalincludedirs

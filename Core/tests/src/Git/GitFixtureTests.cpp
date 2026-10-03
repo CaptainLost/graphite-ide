@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "GitFixture.h"
+#include "Git/GitFixture.h"
 
 #include <git2.h>
 
