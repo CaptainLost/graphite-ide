@@ -1,0 +1,4 @@
+// The application icon. GLFW looks the class icon up by this name, so the one resource gives
+// the executable its icon in Explorer and the window its icon in the title bar and taskbar.
+// Graphite.ico is exported from Graphite.svg, the icon's source.
+GLFW_ICON ICON "Graphite.ico"
