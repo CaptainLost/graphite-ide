@@ -128,7 +128,7 @@ TEST_CASE("The editor's own view settings stay on the top level, where their sho
 		}
 	}
 
-	CHECK(commands == std::vector<std::string>{"editor.toggleWordWrap", "editor.zoomIn",
+	CHECK(commands == std::vector<std::string>{"terminal.new", "editor.toggleWordWrap", "editor.zoomIn",
 											   "editor.zoomOut", "editor.resetZoom",
 											   "view.resetLayout"});
 }
@@ -232,10 +232,28 @@ TEST_CASE("The File menu offers to trust the open folder, after closing it")
 	CHECK(trust == close + 1);
 }
 
-TEST_CASE("Terminals are started from their own tab bars, not from a menu of the menu bar")
+TEST_CASE("A terminal is opened from the View menu, right after the panels, without a menu of its own")
 {
 	const std::vector<MenuItem> tree = Graphite::BuildMenuTree();
 
 	CHECK(FindSubmenu(tree, "Terminal") == nullptr);
 	CHECK(tree.back().GetText() == "Help");
+
+	const MenuItem* view = FindSubmenu(tree, "View");
+
+	REQUIRE(view != nullptr);
+
+	const std::vector<MenuItem>& top = view->GetChildren();
+
+	REQUIRE(top.size() >= 3);
+	CHECK(top[0].GetText() == "Panels");
+	CHECK(top[1].GetKind() == MenuItem::Kind::Command);
+	CHECK(top[1].GetText() == "terminal.new");
+
+	const MenuItem* with = FindSubmenu(top, "New Terminal With");
+
+	REQUIRE(with != nullptr);
+	REQUIRE(with->GetChildren().size() == 1);
+	CHECK(with->GetChildren()[0].GetKind() == MenuItem::Kind::Group);
+	CHECK(with->GetChildren()[0].GetText() == "terminal.shells");
 }

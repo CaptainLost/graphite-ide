@@ -578,4 +578,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0546](0546-route-editor-scoped-key-commands-from-the-focused-editor.md) | Route editor-scoped key commands from the focused editor | proposed | 2026-10-02 |
 | [0547](0547-make-the-active-document-follow-keyboard-focus-into-its-editor.md) | Make the active document follow keyboard focus into its editor | proposed | 2026-10-02 |
 | [0548](0548-draw-interactive-tooltips-as-non-focusing-windows-rather-than-imgui-tooltips.md) | Draw interactive tooltips as non-focusing windows rather than ImGui tooltips | proposed | 2026-10-02 |
+| [0549](0549-anchor-the-terminal-buttons-to-the-whole-bottom-row-and-list-new-terminals-in-the-view-menu.md) | Anchor the terminal buttons to the whole bottom row and list new terminals in the View menu | proposed | 2026-10-03 |
 <!-- /adr-index -->

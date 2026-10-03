@@ -37,6 +37,11 @@ namespace Graphite {
 		std::string BesideWindow;
 		unsigned int CentreNode = 0;
 
+		// The windows of the panels the layout puts in the bottom row. Every node one of them is
+		// shown in gets the + and the shell list, as a terminal's own node does, so the row keeps
+		// its buttons whichever of its panels is left open in it.
+		std::vector<std::string> RowWindows;
+
 		// The dockspace's root, which a re-created bottom row is finished against; 0 when there
 		// is no dockspace to split.
 		unsigned int DockSpace = 0;
@@ -60,9 +65,7 @@ namespace Graphite {
 		TerminalWindows(Workspace& workspace, const Core::Keymap& keys);
 
 		// "New Terminal" for the default shell, bound to Ctrl+Shift+` by default, and one command
-		// per discovered shell in the terminal.shells group. No menu of the menu bar lists them:
-		// the tab bars of the terminals' own nodes do, so the palette and the key are what is
-		// left when no such node is on screen.
+		// per discovered shell in the terminal.shells group, which the View menu lists.
 		void RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys);
 
 		// Drains every session. Once per frame, before Render.

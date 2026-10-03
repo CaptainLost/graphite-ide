@@ -68,7 +68,9 @@
 
 #include <cstddef>
 
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace Graphite {
 
@@ -814,8 +816,19 @@ namespace Graphite {
 
 		const Core::Panel* console = m_Panels.Find("console");
 
+		std::vector<std::string> rowWindows;
+
+		for (const std::string& id : m_Layout.Bottom)
+		{
+			if (const Core::Panel* panel = m_Panels.Find(id); panel != nullptr)
+			{
+				rowWindows.push_back(panel->GetWindowName());
+			}
+		}
+
 		m_Terminals.Render(TerminalDockTargets{.BesideWindow = console != nullptr ? console->GetWindowName() : std::string{},
 											   .CentreNode = m_DockSpace.GetCenterNodeId(),
+											   .RowWindows = std::move(rowWindows),
 											   .DockSpace = m_DockSpace.GetDockSpaceId(),
 											   .BottomRatio = m_Layout.BottomRatio,
 											   .LayoutRebuilt = m_DockSpace.HasBuiltLayoutThisFrame()},

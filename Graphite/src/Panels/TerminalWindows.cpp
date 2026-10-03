@@ -63,7 +63,7 @@ namespace Graphite {
 					  .Enabled = [this] { return !m_Shells.empty(); }});
 
 		// The way back to a terminal once the whole bottom row is closed: with no terminal and
-		// no console on screen there is no tab bar left to carry the + button.
+		// no bottom-row panel on screen there is no tab bar left to carry the + button.
 		keys.SetDefault("terminal.new",
 						{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_GraveAccent)});
 
@@ -247,8 +247,8 @@ namespace Graphite {
 			return;
 		}
 
-		// Every node a terminal is shown in, and the console's: each gets one pair of buttons,
-		// however many terminals share it.
+		// Every node a terminal is shown in, and every node a bottom-row panel is: each gets one
+		// pair of buttons, however many of them share it.
 		std::vector<ImGuiDockNode*> nodes;
 
 		const auto collect = [&nodes](const std::string& windowName) {
@@ -265,9 +265,9 @@ namespace Graphite {
 			collect(WindowIdentity(entry->Record.Id));
 		}
 
-		if (!targets.BesideWindow.empty())
+		for (const std::string& window : targets.RowWindows)
 		{
-			collect(targets.BesideWindow);
+			collect(window);
 		}
 
 		for (ImGuiDockNode* node : nodes)

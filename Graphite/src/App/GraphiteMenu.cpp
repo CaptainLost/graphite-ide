@@ -36,6 +36,11 @@ namespace Graphite {
 										  MenuItem::Section("AI"),
 										  MenuItem::Group("panels.ai"),
 									  }),
+					// Beside the panels rather than in a menu of their own: a terminal is opened
+					// as a view of the work is, and the menu bar keeps its three menus. The default
+					// shell is one click away with its shortcut printed; the others, one hover.
+					MenuItem::Command("terminal.new"),
+					MenuItem::Submenu("New Terminal With", {MenuItem::Group("terminal.shells")}),
 					MenuItem::Separator(),
 					MenuItem::Command("editor.toggleWordWrap"),
 					MenuItem::Command("editor.zoomIn"),
