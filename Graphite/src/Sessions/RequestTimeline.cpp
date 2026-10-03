@@ -1,5 +1,7 @@
 #include "Sessions/RequestTimeline.h"
 
+#include "Core/Base/ByteSize.h"
+
 #include "Sessions/InjectedText.h"
 #include "Sessions/RequestUsageAccumulator.h"
 #include "Sessions/Session.h"
@@ -83,7 +85,7 @@ namespace Graphite {
 			if (!mediaType.empty())
 				parts.emplace_back(mediaType.starts_with("image/") ? mediaType.substr(6) : mediaType);
 			if (bytes > 0)
-				parts.push_back(FormatBytes(bytes));
+				parts.push_back(Core::FormatByteSize(bytes));
 
 			std::string label = "Image";
 
@@ -594,7 +596,7 @@ namespace Graphite {
 			bytes += item.Bytes;
 
 		return reference + " \xc2\xb7 " + std::to_string(request.Sent.size()) +
-			   (request.Sent.size() == 1 ? " item" : " items") + " \xc2\xb7 " + FormatBytes(bytes);
+			   (request.Sent.size() == 1 ? " item" : " items") + " \xc2\xb7 " + Core::FormatByteSize(bytes);
 	}
 
 	std::string ReplyHeading(const ApiRequest& request)

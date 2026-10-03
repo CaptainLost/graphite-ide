@@ -1,5 +1,6 @@
 #include "Sessions/ToolFacts.h"
 
+#include "Core/Base/ByteSize.h"
 #include "Core/Fs/FileSystem.h"
 
 #include "Sessions/JsonAccess.h"
@@ -116,26 +117,12 @@ namespace Graphite {
 		return usage;
 	}
 
-	std::string FormatBytes(std::uint64_t bytes)
-	{
-		char buffer[32];
-
-		if (bytes < 1024)
-			std::snprintf(buffer, sizeof(buffer), "%llu B", static_cast<unsigned long long>(bytes));
-		else if (bytes < 1024 * 1024)
-			std::snprintf(buffer, sizeof(buffer), "%.1f KB", static_cast<double>(bytes) / 1024.0);
-		else
-			std::snprintf(buffer, sizeof(buffer), "%.1f MB", static_cast<double>(bytes) / (1024.0 * 1024.0));
-
-		return buffer;
-	}
-
 	std::string ImageText(std::string_view mediaType, std::uint64_t bytes)
 	{
 		std::string text = "[" + (mediaType.empty() ? std::string{"image"} : std::string{mediaType});
 
 		if (bytes > 0)
-			text += ", " + FormatBytes(bytes);
+			text += ", " + Core::FormatByteSize(bytes);
 
 		return text + "]";
 	}
@@ -197,9 +184,9 @@ namespace Graphite {
 			// Output that was too large to keep inline is stored apart; its size says how big
 			// it really was, where stdout holds only the head.
 			if (const auto stored = OptionalCountAt(result, "persistedOutputSize"))
-				facts.Size = FormatBytes(*stored);
+				facts.Size = Core::FormatByteSize(*stored);
 			else if (result.contains("stdout") || result.contains("stderr"))
-				facts.Size = FormatBytes(StringAt(result, "stdout").size() + StringAt(result, "stderr").size());
+				facts.Size = Core::FormatByteSize(StringAt(result, "stdout").size() + StringAt(result, "stderr").size());
 
 			if (const auto interrupted = result.find("interrupted");
 				interrupted != result.end() && interrupted->is_boolean() && interrupted->get<bool>())
@@ -236,13 +223,13 @@ namespace Graphite {
 		else if (tool.Name == "WebFetch")
 		{
 			if (const auto bytes = OptionalCountAt(result, "bytes"))
-				facts.Size = FormatBytes(*bytes);
+				facts.Size = Core::FormatByteSize(*bytes);
 			if (const auto code = OptionalCountAt(result, "code"))
 				facts.Detail = "HTTP " + std::to_string(*code);
 		}
 
 		if (facts.Size.empty() && tool.ResultBytes > 0 && !IsAgentCall(tool))
-			facts.Size = FormatBytes(tool.ResultBytes);
+			facts.Size = Core::FormatByteSize(tool.ResultBytes);
 
 		return facts;
 	}

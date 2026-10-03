@@ -2,6 +2,8 @@
 
 #include "Core/Text/DocumentSet.h"
 
+#include "Core/Base/ByteSize.h"
+
 #include "Core/Fs/FileSystem.h"
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileProbe.h"
@@ -11,18 +13,6 @@
 
 namespace Core {
 
-	namespace {
-		std::string Megabytes(std::uint64_t bytes)
-		{
-			return std::to_string(bytes / (1024 * 1024)) + " MB";
-		}
-
-		std::string Kilobytes(std::uint64_t bytes)
-		{
-			return std::to_string(bytes / 1024) + " KB";
-		}
-	}
-
 	std::string FailureMessage(const OpenItem& item)
 	{
 		if (!item.Detail.empty())
@@ -31,9 +21,9 @@ namespace Core {
 		switch (item.Failure)
 		{
 		case OpenFailure::Binary:
-			return "Binary file — " + Kilobytes(item.Size);
+			return "Binary file — " + FormatWholeKilobytes(item.Size);
 		case OpenFailure::TooLarge:
-			return "This file is " + Megabytes(item.Size) + ", too large to open";
+			return "This file is " + FormatWholeMegabytes(item.Size) + ", too large to open";
 		case OpenFailure::Missing:
 			return "This file no longer exists on disk";
 		case OpenFailure::ReadFailed:

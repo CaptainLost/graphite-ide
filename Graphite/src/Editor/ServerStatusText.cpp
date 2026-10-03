@@ -2,6 +2,8 @@
 
 #include "Lang/Registry/LanguageRegistry.h"
 
+#include "Core/Base/ByteSize.h"
+
 namespace Graphite {
 
 	namespace {
@@ -19,10 +21,6 @@ namespace Graphite {
 				   (status.Restarts == 1 ? " time" : " times");
 		}
 
-		std::string Megabytes(std::size_t bytes)
-		{
-			return std::to_string(bytes / (1024ull * 1024ull)) + " MB";
-		}
 
 	}
 
@@ -187,7 +185,7 @@ namespace Graphite {
 							 std::to_string(progress.Done) + " of " +
 							 std::to_string(progress.Total) + " files.\n";
 
-		detail += "Holding " + Megabytes(keptBytes) + " of " + Megabytes(budgetBytes) + ".\n";
+		detail += "Holding " + Core::FormatWholeMegabytes(keptBytes) + " of " + Core::FormatWholeMegabytes(budgetBytes) + ".\n";
 		detail += "The file you are reading has its own questions answered first; this waits.";
 
 		return detail;

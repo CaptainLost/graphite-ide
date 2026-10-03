@@ -46,8 +46,6 @@ namespace Graphite {
 
 	ToolFacts FactsOf(const ToolCall& tool, const SubagentUsage& subagents, const Pricing& pricing);
 
-	std::string FormatBytes(std::uint64_t bytes);
-
 	// An image in the text a request sent, "[image/png, 3.0 KB]": what it is and how big, since
 	// its pixels are not text. Whatever is not known is left out, down to "[image]".
 	std::string ImageText(std::string_view mediaType, std::uint64_t bytes);

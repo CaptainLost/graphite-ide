@@ -8,6 +8,8 @@
 #include "Sessions/SessionText.h"
 #include "Sessions/ToolFacts.h"
 
+#include "Core/Base/ByteSize.h"
+
 #include <imgui.h>
 #include <implot.h>
 #include <implot_internal.h>
@@ -627,7 +629,7 @@ namespace Graphite {
 			const std::size_t items = request.Sent.size();
 			const std::string prefix =
 				"Sent: " + std::to_string(items) + (items == 1 ? " item" : " items") + " \xe2\x80\x94 largest: ";
-			const std::string suffix = "  " + FormatBytes(largest.Bytes);
+			const std::string suffix = "  " + Core::FormatByteSize(largest.Bytes);
 
 			// The label gives way to the numbers after it, down to a few characters.
 			const float room =

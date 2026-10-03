@@ -2,6 +2,8 @@
 
 #include "Sessions/ToolFacts.h"
 
+#include "Core/Base/ByteSize.h"
+
 #include "TempDirectory.h"
 #include "TranscriptFixtures.h"
 
@@ -42,9 +44,9 @@ TEST_CASE("Tools fall into the categories the view colours by")
 
 TEST_CASE("Sizes read as bytes and tokens a person scans")
 {
-	CHECK(FormatBytes(812) == "812 B");
-	CHECK(FormatBytes(3277) == "3.2 KB");
-	CHECK(FormatBytes(1468006) == "1.4 MB");
+	CHECK(Core::FormatByteSize(812) == "812 B");
+	CHECK(Core::FormatByteSize(3277) == "3.2 KB");
+	CHECK(Core::FormatByteSize(1468006) == "1.4 MB");
 	CHECK(FormatTokens(310) == "310");
 	CHECK(FormatTokens(12400) == "12.4k");
 	CHECK(FormatTokens(1200000) == "1.2M");

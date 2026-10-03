@@ -6,6 +6,8 @@
 #include "Sessions/SessionText.h"
 #include "Sessions/ToolFacts.h"
 
+#include "Core/Base/ByteSize.h"
+
 #include <IconsMaterialDesignIcons.h>
 
 #include <algorithm>
@@ -129,7 +131,7 @@ namespace Graphite {
 
 	std::string SentColumn(const SentItem& item)
 	{
-		const std::string column = FormatBytes(item.Bytes);
+		const std::string column = Core::FormatByteSize(item.Bytes);
 
 		// U+2248 ALMOST EQUAL TO.
 		return item.Approximate ? "\xe2\x89\x88 " + column : column;
