@@ -12,10 +12,10 @@
 #include "Core/Text/Columns.h"
 #include "Core/Text/Encoding.h"
 
-#include <format>
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <format>
 #include <string>
 #include <string_view>
 

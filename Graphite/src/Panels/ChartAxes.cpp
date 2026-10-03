@@ -2,13 +2,13 @@
 
 #include "Core/Base/Base.h"
 
-#include <format>
 #include <imgui.h>
 #include <implot.h>
 #include <implot_internal.h>
 
 #include <algorithm>
 #include <cmath>
+#include <format>
 
 namespace Graphite {
 

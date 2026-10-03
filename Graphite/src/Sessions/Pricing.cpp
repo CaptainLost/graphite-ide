@@ -2,11 +2,11 @@
 
 #include "Sessions/RequestTimeline.h"
 
-#include <format>
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <charconv>
+#include <format>
 
 namespace Graphite {
 

@@ -8,10 +8,10 @@
 #include "Sessions/SessionText.h"
 #include "Sessions/TranscriptReader.h"
 
-#include <format>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <format>
 
 namespace Graphite {
 

@@ -2,8 +2,9 @@
 
 #include "Settings/AnalysisSettings.h"
 
-#include <format>
 #include <imgui.h>
+
+#include <format>
 
 namespace Graphite {
 

@@ -14,7 +14,6 @@
 
 #include "Core/ImGui/EmptyState.h"
 
-#include <format>
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 #include <implot.h>
@@ -22,11 +21,12 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <format>
 #include <functional>
 #include <optional>
-#include <utility>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace Graphite {

@@ -2,9 +2,9 @@
 
 #include "Core/Base/Color.h"
 
-#include <format>
 #include <algorithm>
 #include <cmath>
+#include <format>
 
 namespace Core {
 
