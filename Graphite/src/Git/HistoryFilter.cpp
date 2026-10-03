@@ -43,8 +43,10 @@ namespace Graphite {
 		m_JustSet = true;
 	}
 
-	bool SettlingFilter::Advance(float seconds)
+	bool SettlingFilter::Advance(Core::Timestep step)
 	{
+		const float seconds = step.GetSeconds();
+
 		if (m_Pending == m_Requested)
 		{
 			return false;

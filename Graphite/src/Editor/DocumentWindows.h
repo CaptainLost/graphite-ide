@@ -179,7 +179,7 @@ namespace Graphite {
 
 		// Ages the expectations, so one whose event never arrives cannot silence a genuine
 		// external change later.
-		void TickExpectedWrites(Core::Timestep ts) { m_ExpectedWrites.Tick(ts.GetSeconds()); }
+		void TickExpectedWrites(Core::Timestep ts) { m_ExpectedWrites.Tick(ts); }
 
 		// Forgets every outstanding expectation. Called when the folder closes: an
 		// expectation registered against one repository has no business claiming a path in

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Timestep.h"
+
 namespace Graphite {
 
 	// Coalesces a burst of "something changed" marks into one refresh.
@@ -29,7 +31,7 @@ namespace Graphite {
 		// Adds the elapsed time, and returns true exactly once per burst - when it has run out
 		// of quiet or hit the cap - after which the debouncer is clean again. Then asks the
 		// frame loop for the frame the remaining debounce runs out on.
-		bool Advance(float seconds);
+		bool Advance(Core::Timestep step);
 
 		// Forgets any pending burst, without firing it.
 		void Reset();

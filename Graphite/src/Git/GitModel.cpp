@@ -112,7 +112,7 @@ namespace Graphite {
 
 	void GitModel::OnUpdate(Core::Timestep ts)
 	{
-		if (m_Debounce.Advance(ts.GetSeconds()))
+		if (m_Debounce.Advance(ts))
 		{
 			RequestStatus();
 			RequestBranches();

@@ -54,7 +54,7 @@ namespace Graphite {
 	{
 		const float seconds = ts.GetSeconds();
 
-		if (m_Debounce.Advance(seconds))
+		if (m_Debounce.Advance(ts))
 		{
 			for (auto& [path, entry] : m_Entries)
 			{

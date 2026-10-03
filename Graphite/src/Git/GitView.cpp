@@ -748,7 +748,7 @@ namespace Graphite {
 		m_Filter.Set(HistoryFilter{std::string(m_FilterBuffer.data()),
 								   std::string(m_FilterPathBuffer.data())});
 
-		if (m_Filter.Advance(ImGui::GetIO().DeltaTime))
+		if (m_Filter.Advance(Core::Timestep{ImGui::GetIO().DeltaTime}))
 		{
 			// Back to the default page size on every change: a reader who loaded four pages
 			// of unfiltered history and then typed a word is asking a new question, and

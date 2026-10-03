@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Timestep.h"
+
 #include "Core/Git/Requests.h"
 
 #include <cstddef>
@@ -48,7 +50,7 @@ namespace Graphite {
 		// and erased back to where it started needs no query at all, since the page on
 		// screen already answers it. The first call after a change does not count its
 		// seconds: they belong to the frame the change was typed in.
-		bool Advance(float seconds);
+		bool Advance(Core::Timestep step);
 
 		const HistoryFilter& Get() const { return m_Pending; }
 

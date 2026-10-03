@@ -20,7 +20,7 @@ TEST_CASE("A debouncer that was never marked does not fire")
 	Debouncer debouncer;
 
 	CHECK_FALSE(debouncer.IsDirty());
-	CHECK_FALSE(debouncer.Advance(10.0f));
+	CHECK_FALSE(debouncer.Advance(Core::Timestep{10.0f}));
 }
 
 TEST_CASE("A debouncer fires once the quiet time has passed, and only once")
@@ -29,10 +29,10 @@ TEST_CASE("A debouncer fires once the quiet time has passed, and only once")
 	debouncer.Mark();
 
 	CHECK(debouncer.IsDirty());
-	CHECK_FALSE(debouncer.Advance(Debouncer::kQuietSeconds * 0.5f));
-	CHECK(debouncer.Advance(Debouncer::kQuietSeconds * 0.5f));
+	CHECK_FALSE(debouncer.Advance(Core::Timestep{Debouncer::kQuietSeconds * 0.5f}));
+	CHECK(debouncer.Advance(Core::Timestep{Debouncer::kQuietSeconds * 0.5f}));
 	CHECK_FALSE(debouncer.IsDirty());
-	CHECK_FALSE(debouncer.Advance(10.0f));
+	CHECK_FALSE(debouncer.Advance(Core::Timestep{10.0f}));
 }
 
 TEST_CASE("A mark inside the burst restarts the quiet time")
@@ -40,10 +40,10 @@ TEST_CASE("A mark inside the burst restarts the quiet time")
 	Debouncer debouncer;
 	debouncer.Mark();
 
-	CHECK_FALSE(debouncer.Advance(Debouncer::kQuietSeconds * 0.75f));
+	CHECK_FALSE(debouncer.Advance(Core::Timestep{Debouncer::kQuietSeconds * 0.75f}));
 	debouncer.Mark();
-	CHECK_FALSE(debouncer.Advance(Debouncer::kQuietSeconds * 0.75f));
-	CHECK(debouncer.Advance(Debouncer::kQuietSeconds * 0.5f));
+	CHECK_FALSE(debouncer.Advance(Core::Timestep{Debouncer::kQuietSeconds * 0.75f}));
+	CHECK(debouncer.Advance(Core::Timestep{Debouncer::kQuietSeconds * 0.5f}));
 }
 
 TEST_CASE("A sustained stream of marks still fires at the cap")
@@ -57,7 +57,7 @@ TEST_CASE("A sustained stream of marks still fires at the cap")
 
 	while (!fired && elapsed < Debouncer::kMaxSeconds * 2.0f)
 	{
-		fired = debouncer.Advance(step);
+		fired = debouncer.Advance(Core::Timestep{step});
 		elapsed += step;
 
 		if (!fired)
@@ -78,17 +78,17 @@ TEST_CASE("Reset forgets a pending burst without firing it")
 	debouncer.Reset();
 
 	CHECK_FALSE(debouncer.IsDirty());
-	CHECK_FALSE(debouncer.Advance(10.0f));
+	CHECK_FALSE(debouncer.Advance(Core::Timestep{10.0f}));
 }
 
 TEST_CASE("A burst's cap starts at its first mark, not after the previous burst")
 {
 	Debouncer debouncer;
 	debouncer.Mark();
-	CHECK(debouncer.Advance(Debouncer::kQuietSeconds));
+	CHECK(debouncer.Advance(Core::Timestep{Debouncer::kQuietSeconds}));
 
 	debouncer.Mark();
-	CHECK_FALSE(debouncer.Advance(Debouncer::kQuietSeconds * 0.5f));
+	CHECK_FALSE(debouncer.Advance(Core::Timestep{Debouncer::kQuietSeconds * 0.5f}));
 }
 
 TEST_CASE("Marking asks for the frame the debounce runs out on")
@@ -108,6 +108,6 @@ TEST_CASE("A clean debouncer asks for no frame")
 	Debouncer debouncer;
 	DrainRedraw();
 
-	CHECK_FALSE(debouncer.Advance(0.016f));
+	CHECK_FALSE(debouncer.Advance(Core::Timestep{0.016f}));
 	CHECK_FALSE(Core::Redraw::TakeDeadline().has_value());
 }

@@ -46,8 +46,10 @@ namespace Graphite {
 		return true;
 	}
 
-	void ExpectedWrites::Tick(float seconds)
+	void ExpectedWrites::Tick(Core::Timestep step)
 	{
+		const float seconds = step.GetSeconds();
+
 		for (Entry& entry : m_Entries)
 		{
 			entry.Age += seconds;

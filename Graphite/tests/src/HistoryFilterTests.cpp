@@ -107,7 +107,7 @@ namespace {
 	// is — after the loop has slept, it is the whole sleep.
 	void KeystrokeFrame(SettlingFilter& settling)
 	{
-		REQUIRE_FALSE(settling.Advance(kSettled));
+		REQUIRE_FALSE(settling.Advance(Core::Timestep{kSettled}));
 	}
 
 	HistoryFilter TextOf(std::string text)
@@ -122,8 +122,8 @@ TEST_CASE("A filter nobody typed into never asks for anything")
 {
 	SettlingFilter settling;
 
-	CHECK_FALSE(settling.Advance(kSettled));
-	CHECK_FALSE(settling.Advance(kSettled));
+	CHECK_FALSE(settling.Advance(Core::Timestep{kSettled}));
+	CHECK_FALSE(settling.Advance(Core::Timestep{kSettled}));
 }
 
 TEST_CASE("A change does not ask before it has settled")
@@ -133,7 +133,7 @@ TEST_CASE("A change does not ask before it has settled")
 
 	// Querying on the keystroke would put a query behind every letter of a word, each one
 	// walking history the next one throws away.
-	CHECK_FALSE(settling.Advance(SettlingFilter::kSettleSeconds / 2.0f));
+	CHECK_FALSE(settling.Advance(Core::Timestep{SettlingFilter::kSettleSeconds / 2.0f}));
 }
 
 TEST_CASE("A change asks once it has settled")
@@ -142,7 +142,7 @@ TEST_CASE("A change asks once it has settled")
 	settling.Set(TextOf("enc"));
 	KeystrokeFrame(settling);
 
-	CHECK(settling.Advance(kSettled));
+	CHECK(settling.Advance(Core::Timestep{kSettled}));
 	CHECK(settling.Get().Text == "enc");
 }
 
@@ -152,8 +152,8 @@ TEST_CASE("A settled change asks exactly once")
 	settling.Set(TextOf("enc"));
 	KeystrokeFrame(settling);
 
-	REQUIRE(settling.Advance(kSettled));
-	CHECK_FALSE(settling.Advance(kSettled));
+	REQUIRE(settling.Advance(Core::Timestep{kSettled}));
+	CHECK_FALSE(settling.Advance(Core::Timestep{kSettled}));
 }
 
 TEST_CASE("Typing again before the wait is over starts the wait over")
@@ -162,13 +162,13 @@ TEST_CASE("Typing again before the wait is over starts the wait over")
 	settling.Set(TextOf("enc"));
 	KeystrokeFrame(settling);
 
-	REQUIRE_FALSE(settling.Advance(SettlingFilter::kSettleSeconds * 0.75f));
+	REQUIRE_FALSE(settling.Advance(Core::Timestep{SettlingFilter::kSettleSeconds * 0.75f}));
 
 	settling.Set(TextOf("enco"));
 	KeystrokeFrame(settling);
 
-	CHECK_FALSE(settling.Advance(SettlingFilter::kSettleSeconds * 0.75f));
-	CHECK(settling.Advance(SettlingFilter::kSettleSeconds * 0.75f));
+	CHECK_FALSE(settling.Advance(Core::Timestep{SettlingFilter::kSettleSeconds * 0.75f}));
+	CHECK(settling.Advance(Core::Timestep{SettlingFilter::kSettleSeconds * 0.75f}));
 	CHECK(settling.Get().Text == "enco");
 }
 
@@ -177,14 +177,14 @@ TEST_CASE("Text erased back to what was already asked for asks nothing")
 	SettlingFilter settling;
 	settling.Set(TextOf("enc"));
 	KeystrokeFrame(settling);
-	REQUIRE(settling.Advance(kSettled));
+	REQUIRE(settling.Advance(Core::Timestep{kSettled}));
 
 	settling.Set(TextOf("encoding"));
 	settling.Set(TextOf("enc"));
 
 	// The page on screen already answers this text, so re-querying would replace it with
 	// an identical one and lose the reader's scroll position for nothing.
-	CHECK_FALSE(settling.Advance(kSettled));
+	CHECK_FALSE(settling.Advance(Core::Timestep{kSettled}));
 }
 
 TEST_CASE("A change to the path alone settles the same way")
@@ -196,7 +196,7 @@ TEST_CASE("A change to the path alone settles the same way")
 	settling.Set(filter);
 	KeystrokeFrame(settling);
 
-	CHECK(settling.Advance(kSettled));
+	CHECK(settling.Advance(Core::Timestep{kSettled}));
 	CHECK(settling.Get().Path == "Core/src/Core/Git/Repository.cpp");
 }
 
@@ -210,7 +210,7 @@ TEST_CASE("A reset filter is empty and has nothing pending")
 	// A workspace that opened after another one left asks for its first page unfiltered;
 	// a change left pending from the previous repository would fire over the top of it.
 	CHECK(settling.Get().Text.empty());
-	CHECK_FALSE(settling.Advance(kSettled));
+	CHECK_FALSE(settling.Advance(Core::Timestep{kSettled}));
 }
 
 TEST_CASE("A filter somebody else already asked for does not ask again")
@@ -223,7 +223,7 @@ TEST_CASE("A filter somebody else already asked for does not ask again")
 	// the same query a second time — two walks of the history for one gesture.
 	settling.Accept();
 
-	CHECK_FALSE(settling.Advance(kSettled));
+	CHECK_FALSE(settling.Advance(Core::Timestep{kSettled}));
 }
 
 TEST_CASE("A filter changed after being asked for still settles")
@@ -235,7 +235,7 @@ TEST_CASE("A filter changed after being asked for still settles")
 	settling.Set(TextOf("encoding"));
 	KeystrokeFrame(settling);
 
-	CHECK(settling.Advance(kSettled));
+	CHECK(settling.Advance(Core::Timestep{kSettled}));
 	CHECK(settling.Get().Text == "encoding");
 }
 
@@ -246,7 +246,7 @@ TEST_CASE("The frame a change is typed in does not count toward its wait")
 
 	// The frame loop sleeps when idle, so the keystroke that wakes it arrives on a frame
 	// whose step is the whole sleep. Counting it would query the history for one letter.
-	CHECK_FALSE(settling.Advance(10.0f));
-	CHECK_FALSE(settling.Advance(SettlingFilter::kSettleSeconds / 2.0f));
-	CHECK(settling.Advance(SettlingFilter::kSettleSeconds));
+	CHECK_FALSE(settling.Advance(Core::Timestep{10.0f}));
+	CHECK_FALSE(settling.Advance(Core::Timestep{SettlingFilter::kSettleSeconds / 2.0f}));
+	CHECK(settling.Advance(Core::Timestep{SettlingFilter::kSettleSeconds}));
 }

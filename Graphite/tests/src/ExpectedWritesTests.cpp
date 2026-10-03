@@ -24,7 +24,7 @@ TEST_CASE("An expectation expires so it cannot silence a later real change")
 	Graphite::ExpectedWrites expected;
 	expected.Expect({"D:\\repo\\a.txt"});
 
-	expected.Tick(Graphite::ExpectedWrites::kExpectedWriteSeconds + 0.1f);
+	expected.Tick(Core::Timestep{Graphite::ExpectedWrites::kExpectedWriteSeconds + 0.1f});
 
 	CHECK_FALSE(expected.TakeFor("D:\\repo\\a.txt"));
 	CHECK(expected.GetCount() == 0);
@@ -35,7 +35,7 @@ TEST_CASE("An expectation survives right up to its deadline")
 	Graphite::ExpectedWrites expected;
 	expected.Expect({"D:\\repo\\a.txt"});
 
-	expected.Tick(Graphite::ExpectedWrites::kExpectedWriteSeconds - 0.1f);
+	expected.Tick(Core::Timestep{Graphite::ExpectedWrites::kExpectedWriteSeconds - 0.1f});
 
 	CHECK(expected.TakeFor("D:\\repo\\a.txt"));
 }
@@ -108,7 +108,7 @@ TEST_CASE("Expecting the same path twice resets its age instead of adding a seco
 	expected.Expect({"D:\\repo\\a.txt"});
 
 	// Most of the way to the first registration's deadline ...
-	expected.Tick(Graphite::ExpectedWrites::kExpectedWriteSeconds - 0.1f);
+	expected.Tick(Core::Timestep{Graphite::ExpectedWrites::kExpectedWriteSeconds - 0.1f});
 
 	// ... and re-expected, which must reset its age rather than add a second entry.
 	expected.Expect({"D:\\repo\\a.txt"});
@@ -117,7 +117,7 @@ TEST_CASE("Expecting the same path twice resets its age instead of adding a seco
 
 	// Past what would have been the first registration's deadline, but well within the
 	// second's - proving the age was actually reset, not just deduplicated.
-	expected.Tick(Graphite::ExpectedWrites::kExpectedWriteSeconds - 0.1f);
+	expected.Tick(Core::Timestep{Graphite::ExpectedWrites::kExpectedWriteSeconds - 0.1f});
 
 	CHECK(expected.TakeFor("D:\\repo\\a.txt"));
 }

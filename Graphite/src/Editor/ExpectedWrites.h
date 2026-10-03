@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Base/Timestep.h"
+
 #include <cstddef>
 #include <filesystem>
 #include <vector>
@@ -42,7 +44,7 @@ namespace Graphite {
 		// genuine external change to a dirty buffer the user never asked to discard.
 		bool TakeFor(const std::filesystem::path& path);
 
-		void Tick(float seconds);
+		void Tick(Core::Timestep step);
 
 		void Clear() { m_Entries.clear(); }
 

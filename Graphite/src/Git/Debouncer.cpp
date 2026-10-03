@@ -20,8 +20,10 @@ namespace Graphite {
 		RequestFrame();
 	}
 
-	bool Debouncer::Advance(float seconds)
+	bool Debouncer::Advance(Core::Timestep step)
 	{
+		const float seconds = step.GetSeconds();
+
 		bool fired = false;
 
 		if (m_Dirty)
