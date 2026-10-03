@@ -7,6 +7,7 @@
 #include "Core/Command/CommandRegistry.h"
 #include "Core/ImGui/TabCloseRequests.h"
 #include "Core/ImGui/TabContextMenu.h"
+#include "Core/Platform/Process.h"
 
 #include "UI/RememberedPlace.h"
 #include "Workspace/Workspace.h"
@@ -131,8 +132,20 @@ namespace Graphite {
 			Entry& entry = *owned;
 			++number;
 
+			// The title the shell announced last time stands until it announces one now, so a
+			// restored tab reads as it did; what is announced is remembered for the next launch.
+			const std::string& live = entry.Session->GetScreen().GetTitle();
+
+			if (!live.empty())
+			{
+				entry.Record.Title = live;
+			}
+
 			const std::string identity = WindowIdentity(entry.Record.Id);
-			const std::string name = ICON_MDI_CONSOLE "  " + std::to_string(number) + ": " + TerminalTitleFor(entry.Session->GetScreen().GetTitle(), entry.Session->GetProfileName()) + identity;
+			const std::string name = ICON_MDI_CONSOLE "  " + std::to_string(number) + ": " + TerminalTitleFor(TerminalLabelTitle(live, entry.Record.Title), entry.Session->GetProfileName()) + identity;
+
+			// Its first frame measures a window that is still settling into its dock node.
+			const bool appearing = entry.Fresh;
 
 			// Docked only on the frame this identity is new, as SessionWindows does: every frame
 			// would fight a reader who dragged the tab elsewhere.
@@ -201,7 +214,11 @@ namespace Graphite {
 
 				// What fitted is what the shell is told about, which is what makes dragging the
 				// window's edge behave like resizing a console window.
-				entry.Session->Resize(fitted.Column, fitted.Row);
+				// Not a sliver: the shell would reflow its banner away (TerminalSizeIsPlausible).
+					if (!appearing && TerminalSizeIsPlausible(fitted.Column, fitted.Row))
+					{
+						entry.Session->Resize(fitted.Column, fitted.Row);
+					}
 
 				// After the draw, so the menu sits over the grid it acts on. Closing is this
 				// class's because the session is; the view only reports the choice.
@@ -439,7 +456,9 @@ namespace Graphite {
 		const std::filesystem::path workingDirectory = directory.empty() ? DefaultWorkingDirectory() : directory;
 
 		if (!Start(m_Shells[shell], workingDirectory,
-				   OpenTerminal{Core::Uuid::Generate().ToString(), m_Shells[shell].Name, workingDirectory}, false))
+				   OpenTerminal{Core::Uuid::Generate().ToString(), m_Shells[shell].Name, workingDirectory, false, false, {},
+									!m_Workspace.IsOpen()},
+					   false))
 		{
 			return false;
 		}
@@ -501,6 +520,12 @@ namespace Graphite {
 			return m_Workspace.GetRoot();
 		}
 
+		// No folder: the user's home, not wherever the process happened to be launched from.
+		if (const Core::Result<std::filesystem::path> home = Core::HomeDirectory(); home)
+		{
+			return home.GetValue();
+		}
+
 		// The overload that cannot throw: a working directory deleted from under the process
 		// makes the other one raise out of a frame (ADR 0004). Empty then, which callers take
 		// as "no directory" and let the child process start in its own default.
@@ -542,12 +567,31 @@ namespace Graphite {
 	{
 		for (const Core::Scope<Entry>& entry : m_Open)
 		{
-			entry->Record.CarriedOver = true;
+			// A shell opened with no folder open was never a folder's, so there is nothing to
+			// carry it over from: the folder opened next adopts it.
+			if (!entry->Record.Unowned)
+			{
+				entry->Record.CarriedOver = true;
+			}
 		}
 	}
 
 	void TerminalWindows::RestoreState(const std::optional<std::vector<TerminalTabState>>& saved)
 	{
+		// The folder just opened takes over the shells nobody had, and from here they are its own:
+		// saved with it, and carried over when it closes.
+		bool adopted = false;
+
+		for (const Core::Scope<Entry>& entry : m_Open)
+		{
+			if (AdoptsTerminal(entry->Record))
+			{
+				adopted = true;
+			}
+
+			entry->Record.Unowned = false;
+		}
+
 		if (OpensDefaultTerminal(saved, m_Open.size()))
 		{
 			// Kept only if the shell actually started: a folder that got none because no shell
@@ -557,8 +601,9 @@ namespace Graphite {
 			return;
 		}
 
-		// For each folder anew: what the folder before had says nothing about this one.
-		m_KeepsTerminals = KeepsTerminals(saved, false);
+		// For each folder anew: what the folder before had says nothing about this one, but a
+		// shell it adopted is its own.
+		m_KeepsTerminals = KeepsTerminals(saved, adopted);
 
 		if (!saved)
 		{
@@ -592,7 +637,8 @@ namespace Graphite {
 
 			// Start logs its own failure, and the rest still restore.
 			static_cast<void>(Start(shell, start.WorkingDirectory,
-									OpenTerminal{start.Id, shell.Name, start.WorkingDirectory}, true));
+									OpenTerminal{start.Id, shell.Name, start.WorkingDirectory, false, false, start.Title},
+										true));
 		}
 	}
 

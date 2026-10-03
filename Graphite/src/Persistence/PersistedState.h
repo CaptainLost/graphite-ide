@@ -88,6 +88,9 @@ namespace Graphite {
 		std::string ProfileName;
 		std::filesystem::path WorkingDirectory;
 
+		// The last title the shell announced, so the tab keeps its label across a restart.
+		std::string Title;
+
 		friend bool operator==(const TerminalTabState&, const TerminalTabState&) = default;
 	};
 

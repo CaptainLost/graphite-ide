@@ -54,6 +54,64 @@ TEST_CASE("Capture leaves out terminals started by a command and those carried o
 										TerminalTabState{"{D}", "Command Prompt", kRoot / "docs"}});
 }
 
+TEST_CASE("A shell opened with no folder is captured once a folder has adopted it")
+{
+	// Opened before any folder: adoptable, and not carried over when the folder opens.
+	OpenTerminal shell{"{A}", "PowerShell 7", kRoot};
+	shell.Unowned = true;
+	OpenTerminal command{"{B}", "claude", kRoot, true, false};
+	command.Unowned = true;
+
+	CHECK(AdoptsTerminal(shell));
+	CHECK_FALSE(AdoptsTerminal(command));
+
+	// The folder adopts it: ownership is cleared and it is no longer carried over.
+	shell.Unowned = false;
+
+	CHECK(CaptureTerminals({shell, command}) == std::vector<TerminalTabState>{
+													TerminalTabState{"{A}", "PowerShell 7", kRoot}});
+
+	// A folder with an adopted terminal has a list of its own to keep.
+	CHECK(CaptureFolderTerminals({shell}, KeepsTerminals(std::nullopt, true)).has_value());
+}
+
+TEST_CASE("Capture keeps the saved order and the last title, and restore hands the title back")
+{
+	OpenTerminal first{"{A}", "Command Prompt", kRoot};
+	first.Title = "build";
+	OpenTerminal second{"{B}", "PowerShell 7", kRoot};
+
+	const std::vector<TerminalTabState> captured = CaptureTerminals({first, second});
+
+	REQUIRE(captured.size() == 2);
+	CHECK(captured[0].Id == "{A}");
+	CHECK(captured[0].Title == "build");
+	CHECK(captured[1].Id == "{B}");
+
+	const TerminalRestorePlan plan = PlanTerminalRestore(captured, Shells(), {}, Resolve);
+
+	REQUIRE(plan.Start.size() == 2);
+	CHECK(plan.Start[0].Id == "{A}");
+	CHECK(plan.Start[0].Title == "build");
+	CHECK(plan.Start[1].Id == "{B}");
+}
+
+TEST_CASE("A tab shows the title the shell announces now, else the one it announced last time")
+{
+	CHECK(TerminalLabelTitle("", "vim main.cpp") == "vim main.cpp");
+	CHECK(TerminalLabelTitle("make", "vim main.cpp") == "make");
+	CHECK(TerminalLabelTitle("", "").empty());
+}
+
+TEST_CASE("A grid measured as a sliver is not worth resizing the shell to")
+{
+	CHECK_FALSE(TerminalSizeIsPlausible(0, 0));
+	CHECK_FALSE(TerminalSizeIsPlausible(19, 25));
+	CHECK_FALSE(TerminalSizeIsPlausible(80, 1));
+	CHECK(TerminalSizeIsPlausible(20, 2));
+	CHECK(TerminalSizeIsPlausible(120, 30));
+}
+
 TEST_CASE("Restore starts each saved terminal with its own id, in saved order, by profile name")
 {
 	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "Command Prompt", kRoot / "src"},

@@ -391,6 +391,24 @@ TEST_CASE("Terminal windows survive a write and a read, their directory relative
 	CHECK(file.Get("restore.terminal.0.directory") == "src");
 }
 
+TEST_CASE("A terminal's last title survives a write and a read")
+{
+	WorkspaceState state;
+	state.Terminals = std::vector<TerminalTabState>{
+		TerminalTabState{"{A1}", "PowerShell 7", kRoot, "vim main.cpp"},
+		TerminalTabState{"{B2}", "Command Prompt", kRoot, ""}};
+
+	Core::JsonFile file;
+	WriteWorkspaceState(state, kRoot, file);
+
+	const WorkspaceState read = ReadWorkspaceState(file, kRoot);
+
+	CHECK(read == state);
+	REQUIRE(read.Terminals.has_value());
+	CHECK((*read.Terminals)[0].Title == "vim main.cpp");
+	CHECK((*read.Terminals)[1].Title.empty());
+}
+
 TEST_CASE("No terminals written at all reads as absent, and an empty list as empty")
 {
 	// Absent is a folder never opened with this version, and opens one default terminal;

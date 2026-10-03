@@ -65,12 +65,13 @@ namespace Graphite {
 						  "do not run in it. Trust it from the bar above the editor or the File menu."};
 		}
 
-		if (inputs.Overall)
+		if (inputs.Overall && inputs.FolderOpen)
 		{
 			// Nothing to say about what is open - plain text, or no document at all - so the
 			// workspace's servers as a whole. This is what makes a server started by opening the
 			// folder visible at all: without it the bar stays blank until a file of its language
-			// is opened, which looks like the feature is not working.
+			// is opened, which looks like the feature is not working. Only with a folder open: a
+			// server left over from the folder just closed is not the workspace's.
 			return ServerLine{.Text = ServerStatusText(*inputs.Overall),
 							  .Detail = ServerStatusDetail(*inputs.Overall)};
 		}

@@ -115,4 +115,9 @@ TEST_CASE("No folder, no document and no server leaves the server slot empty")
 	closed.FolderTrusted = false;
 
 	CHECK_FALSE(ChooseServerLine(closed).has_value());
+
+	// A server still running from the folder just closed says nothing about no folder.
+	closed.Overall = Clangd(ServerState::Ready);
+
+	CHECK_FALSE(ChooseServerLine(closed).has_value());
 }

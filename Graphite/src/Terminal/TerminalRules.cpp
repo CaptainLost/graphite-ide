@@ -66,10 +66,26 @@ namespace Graphite {
 				continue;
 			}
 
-			kept.push_back(TerminalTabState{terminal.Id, terminal.ProfileName, terminal.WorkingDirectory});
+			kept.push_back(
+				TerminalTabState{terminal.Id, terminal.ProfileName, terminal.WorkingDirectory, terminal.Title});
 		}
 
 		return kept;
+	}
+
+	bool AdoptsTerminal(const OpenTerminal& terminal)
+	{
+		return terminal.Unowned && !terminal.FromCommand;
+	}
+
+	std::string TerminalLabelTitle(const std::string& live, const std::string& remembered)
+	{
+		return live.empty() ? remembered : live;
+	}
+
+	bool TerminalSizeIsPlausible(int columns, int rows)
+	{
+		return columns >= 20 && rows >= 2;
 	}
 
 	TerminalRestorePlan PlanTerminalRestore(
@@ -114,7 +130,7 @@ namespace Graphite {
 
 			plan.Start.push_back(TerminalToStart{terminal.Id,
 												 static_cast<std::size_t>(shell - shells.begin()),
-												 resolveDirectory(terminal.WorkingDirectory)});
+												 resolveDirectory(terminal.WorkingDirectory), terminal.Title});
 		}
 
 		return plan;

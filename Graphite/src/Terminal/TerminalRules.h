@@ -42,9 +42,29 @@ namespace Graphite {
 
 		// Still open from a folder another one replaced, and already written to that folder.
 		bool CarriedOver = false;
+
+		// The last title the shell announced, kept so the tab reads the same after a restart until
+		// the new shell announces its own.
+		std::string Title;
+
+		// Opened while no folder was open, so it was never any folder's: the next folder opened
+		// adopts it. A terminal that belonged to a folder is carried over instead.
+		bool Unowned = false;
 	};
 
 	std::vector<TerminalTabState> CaptureTerminals(const std::vector<OpenTerminal>& open);
+
+	// Whether a folder just opened takes over a terminal that is open: a shell, not a command's
+	// window, that no folder has had.
+	bool AdoptsTerminal(const OpenTerminal& terminal);
+
+	// The title a tab shows: what the shell announces now, else what it announced last time.
+	std::string TerminalLabelTitle(const std::string& live, const std::string& remembered);
+
+	// Whether a measured grid is worth telling the shell about. A window on its first frame, or
+	// one squeezed to nothing, measures a sliver; resizing the pseudo-console to it makes the
+	// console host reflow what it has printed - the banner - out of existence.
+	bool TerminalSizeIsPlausible(int columns, int rows);
 
 	struct TerminalToStart
 	{
@@ -53,6 +73,7 @@ namespace Graphite {
 		// Index into the discovered shells.
 		std::size_t Shell = 0;
 		std::filesystem::path WorkingDirectory;
+		std::string Title;
 	};
 
 	struct TerminalRestorePlan
