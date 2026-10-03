@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/SyntaxRuns.h"
+#include "Git/Diff/SyntaxRuns.h"
 
 #include <optional>
 #include <string>

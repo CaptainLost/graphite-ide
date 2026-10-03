@@ -7,7 +7,7 @@
 #include "Core/Events/EventBus.h"
 #include "Git/Debouncer.h"
 #include "Git/DeliveryInbox.h"
-#include "Git/FileTexts.h"
+#include "Git/Diff/FileTexts.h"
 #include "Git/GenerationSlot.h"
 #include "Git/GitPort.h"
 #include "Git/LruResultCache.h"

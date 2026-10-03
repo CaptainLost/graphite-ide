@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/ChangesRows.h"
+#include "Git/Changes/ChangesRows.h"
 
 #include <filesystem>
 #include <optional>

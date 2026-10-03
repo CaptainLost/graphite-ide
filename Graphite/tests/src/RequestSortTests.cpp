@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Sessions/RequestSort.h"
+#include "Sessions/Requests/RequestSort.h"
 
 #include <cstddef>
 #include <string>

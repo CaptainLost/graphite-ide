@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Editor/DefinitionExtent.h"
+#include "Editor/Navigation/DefinitionExtent.h"
 #include "Language/Registry/LanguageRegistry.h"
 
 #include <string>

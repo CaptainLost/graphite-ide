@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Editor/SelectInDocument.h"
+#include "Editor/Navigation/SelectInDocument.h"
 
 #include "Core/Text/DocumentSet.h"
 

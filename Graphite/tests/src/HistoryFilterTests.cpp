@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/HistoryFilter.h"
+#include "Git/History/HistoryFilter.h"
 
 #include <string>
 

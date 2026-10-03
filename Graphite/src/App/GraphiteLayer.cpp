@@ -4,18 +4,18 @@
 
 #include "Editor/ActiveTextDocument.h"
 #include "Editor/EditorCommands.h"
-#include "Editor/Palettes.h"
-#include "Editor/ServerStatusText.h"
-#include "Editor/StatusBar.h"
-#include "Editor/StatusLineComposer.h"
+#include "Theme/Palettes.h"
+#include "Editor/StatusBar/ServerStatusText.h"
+#include "Editor/StatusBar/StatusBar.h"
+#include "Editor/StatusBar/StatusLineComposer.h"
 #include "Editor/TextEditorWidget.h"
 #include "Language/Registry/LanguageRegistry.h"
 
-#include "Git/ChangesPanel.h"
-#include "Git/GitPalette.h"
+#include "Git/Changes/ChangesPanel.h"
+#include "Theme/GitPalette.h"
 #include "Git/GitStatusText.h"
 #include "Git/GitView.h"
-#include "Git/HistoryPlaceholder.h"
+#include "Git/History/HistoryPlaceholder.h"
 
 #include "Console/ConsolePanel.h"
 

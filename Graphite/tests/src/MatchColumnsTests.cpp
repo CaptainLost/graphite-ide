@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Editor/MatchColumns.h"
+#include "Editor/Find/MatchColumns.h"
 
 namespace {
 

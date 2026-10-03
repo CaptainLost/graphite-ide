@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
-#include "Sessions/JsonAccess.h"
-#include "Sessions/RequestUsageAccumulator.h"
+#include "Sessions/Transcript/JsonAccess.h"
+#include "Sessions/Requests/RequestUsageAccumulator.h"
 
 using namespace Graphite;
 

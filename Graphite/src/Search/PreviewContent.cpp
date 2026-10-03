@@ -4,7 +4,7 @@
 #include "Core/Text/Codec.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
-#include "Editor/PreviewSemantics.h"
+#include "Editor/Server/PreviewSemantics.h"
 #include "Language/Registry/LanguageRegistry.h"
 
 #include <optional>

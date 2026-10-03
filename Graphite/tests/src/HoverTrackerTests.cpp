@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Editor/HoverTracker.h"
+#include "Editor/Hover/HoverTracker.h"
 
 using namespace Graphite;
 

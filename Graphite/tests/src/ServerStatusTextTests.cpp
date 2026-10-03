@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Editor/ServerStatusText.h"
+#include "Editor/StatusBar/ServerStatusText.h"
 #include "Language/Analysis/WorkspaceAnalysis.h"
 
 TEST_CASE("A language with no server contributes nothing to the bar")

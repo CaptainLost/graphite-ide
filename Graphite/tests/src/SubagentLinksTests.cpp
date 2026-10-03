@@ -2,8 +2,8 @@
 
 #include "Sessions/Session.h"
 #include "Sessions/SessionSummary.h"
-#include "Sessions/SubagentLinks.h"
-#include "Sessions/TranscriptReader.h"
+#include "Sessions/Transcript/SubagentLinks.h"
+#include "Sessions/Transcript/TranscriptReader.h"
 
 #include "TempDirectory.h"
 

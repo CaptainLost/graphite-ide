@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Editor/AnalysisCache.h"
+#include "Editor/Overlays/AnalysisCache.h"
 
 #include <cstddef>
 #include <cstdint>

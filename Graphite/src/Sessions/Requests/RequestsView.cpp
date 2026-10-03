@@ -7,9 +7,9 @@
 
 #include "Sessions/Requests/RequestRow.h"
 #include "Sessions/SessionDrawing.h"
-#include "Sessions/SentTextLayout.h"
+#include "Sessions/Requests/SentTextLayout.h"
 #include "Sessions/SessionText.h"
-#include "Sessions/ToolFacts.h"
+#include "Sessions/Transcript/ToolFacts.h"
 #include "UI/SideBySide.h"
 #include "UI/SplitResults.h"
 

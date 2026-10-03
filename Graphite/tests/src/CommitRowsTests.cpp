@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/CommitRows.h"
+#include "Git/History/CommitRows.h"
 
 #include <vector>
 

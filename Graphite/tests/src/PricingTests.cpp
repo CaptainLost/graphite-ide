@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Sessions/Pricing.h"
-#include "Sessions/RequestTimeline.h"
+#include "Sessions/Requests/RequestTimeline.h"
 
 using namespace Graphite;
 

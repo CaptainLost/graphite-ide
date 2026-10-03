@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Sessions/Markdown.h"
+#include "Sessions/Conversation/Markdown.h"
 
 using namespace Graphite;
 

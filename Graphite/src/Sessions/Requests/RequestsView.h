@@ -5,9 +5,9 @@
 #include "Sessions/Charts/RequestChartView.h"
 #include "Sessions/Requests/SentTextView.h"
 #include "Sessions/Pricing.h"
-#include "Sessions/RequestGroups.h"
-#include "Sessions/RequestSort.h"
-#include "Sessions/RequestTimeline.h"
+#include "Sessions/Requests/RequestGroups.h"
+#include "Sessions/Requests/RequestSort.h"
+#include "Sessions/Requests/RequestTimeline.h"
 #include "Sessions/Session.h"
 
 #include <cstddef>

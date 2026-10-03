@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Core/Text/TextBuffer.h"
-#include "Editor/SemanticOverlay.h"
+#include "Editor/Overlays/SemanticOverlay.h"
 #include "Language/Syntax/Token.h"
 
 #include <string>

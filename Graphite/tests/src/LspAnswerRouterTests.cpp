@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Editor/LspAnswerRouter.h"
+#include "Editor/Server/LspAnswerRouter.h"
 
 #include <algorithm>
 #include <cstdint>

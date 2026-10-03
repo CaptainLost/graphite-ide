@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
-#include "Editor/ModalGate.h"
-#include "Editor/ModalQuestion.h"
+#include "UI/ModalGate.h"
+#include "UI/ModalQuestion.h"
 
 #include <string>
 

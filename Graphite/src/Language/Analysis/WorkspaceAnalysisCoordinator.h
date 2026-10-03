@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Editor/AnalysisCache.h"
+#include "Editor/Overlays/AnalysisCache.h"
 #include "Language/Analysis/AnalysisStore.h"
 #include "Language/Analysis/AnalysisWalk.h"
 #include "Language/Analysis/FileTextSource.h"

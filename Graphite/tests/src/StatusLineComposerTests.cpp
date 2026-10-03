@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Editor/StatusLineComposer.h"
+#include "Editor/StatusBar/StatusLineComposer.h"
 
 using namespace Graphite;
 

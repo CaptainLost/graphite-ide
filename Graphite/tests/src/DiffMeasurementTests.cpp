@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/DiffRows.h"
+#include "Git/Diff/DiffRows.h"
 
 #include <string>
 #include <vector>

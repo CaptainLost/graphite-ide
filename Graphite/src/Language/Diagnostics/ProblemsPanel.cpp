@@ -1,7 +1,7 @@
 #include "Language/Diagnostics/ProblemsPanel.h"
 
-#include "Editor/Palettes.h"
-#include "Editor/SelectInDocument.h"
+#include "Theme/Palettes.h"
+#include "Editor/Navigation/SelectInDocument.h"
 
 #include "Language/Server/LspProtocol.h"
 

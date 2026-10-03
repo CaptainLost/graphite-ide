@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Sessions/Pricing.h"
-#include "Sessions/RequestUsageAccumulator.h"
-#include "Sessions/TranscriptRecord.h"
+#include "Sessions/Requests/RequestUsageAccumulator.h"
+#include "Sessions/Transcript/TranscriptRecord.h"
 
 #include <chrono>
 #include <cstddef>

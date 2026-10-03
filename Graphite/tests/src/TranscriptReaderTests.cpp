@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Sessions/TranscriptReader.h"
+#include "Sessions/Transcript/TranscriptReader.h"
 
 #include "TempDirectory.h"
 #include "TranscriptFixtures.h"

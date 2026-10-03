@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Editor/FindNavigation.h"
+#include "Editor/Find/FindNavigation.h"
 
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/TextBuffer.h"

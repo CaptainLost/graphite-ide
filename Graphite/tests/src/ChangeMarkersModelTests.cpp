@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/ChangeMarkersModel.h"
+#include "Git/Changes/ChangeMarkersModel.h"
 
 #include "Core/Events/EventBus.h"
 #include "Core/Git/Repository.h"

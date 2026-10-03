@@ -4,8 +4,8 @@
 #include "Sessions/Conversation/ConversationView.h"
 #include "Sessions/LocalClock.h"
 #include "Sessions/Pricing.h"
-#include "Sessions/RequestChart.h"
-#include "Sessions/RequestTimeline.h"
+#include "Sessions/Charts/RequestChart.h"
+#include "Sessions/Requests/RequestTimeline.h"
 
 #include <imgui.h>
 

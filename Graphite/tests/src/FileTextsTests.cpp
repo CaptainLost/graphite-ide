@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/FileTexts.h"
+#include "Git/Diff/FileTexts.h"
 
 TEST_CASE("A successful read is present with its text")
 {

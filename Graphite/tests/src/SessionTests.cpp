@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Sessions/Session.h"
-#include "Sessions/TranscriptReader.h"
+#include "Sessions/Transcript/TranscriptReader.h"
 
 #include "TranscriptFixtures.h"
 

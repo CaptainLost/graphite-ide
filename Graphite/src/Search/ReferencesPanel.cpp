@@ -1,6 +1,6 @@
 #include "Search/ReferencesPanel.h"
 
-#include "Editor/SelectInDocument.h"
+#include "Editor/Navigation/SelectInDocument.h"
 #include "Search/SearchPreview.h"
 #include "UI/SplitResults.h"
 

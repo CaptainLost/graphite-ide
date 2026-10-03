@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/GraphGeometry.h"
+#include "Git/History/GraphGeometry.h"
 
 using Graphite::EdgeShape;
 using Graphite::GraphMetrics;

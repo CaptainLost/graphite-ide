@@ -1,8 +1,8 @@
 #include "Sessions/SessionText.h"
 
-#include "Sessions/JsonAccess.h"
+#include "Sessions/Transcript/JsonAccess.h"
 #include "Sessions/SessionSummary.h"
-#include "Sessions/ToolFacts.h"
+#include "Sessions/Transcript/ToolFacts.h"
 
 #include "Core/FileSystem/FileSystem.h"
 

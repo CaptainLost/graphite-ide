@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/ChangeMarkers.h"
+#include "Git/Changes/ChangeMarkers.h"
 
 #include <string>
 #include <vector>

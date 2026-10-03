@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Editor/ModalQuestion.h"
+#include "UI/ModalQuestion.h"
 #include "Settings/SettingsSection.h"
 #include "Theme/SchemeDraft.h"
 

@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Sessions/RequestGroups.h"
+#include "Sessions/Requests/RequestGroups.h"
 
 #include <chrono>
 #include <cstddef>

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/Git/Repository.h"
-#include "Git/ChangeBases.h"
+#include "Git/Changes/ChangeBases.h"
 #include "Git/GitPort.h"
 
 #include <atomic>

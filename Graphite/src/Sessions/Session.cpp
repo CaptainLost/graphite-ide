@@ -1,7 +1,7 @@
 #include "Sessions/Session.h"
 
-#include "Sessions/InjectedText.h"
-#include "Sessions/RequestUsageAccumulator.h"
+#include "Sessions/Transcript/InjectedText.h"
+#include "Sessions/Requests/RequestUsageAccumulator.h"
 
 namespace Graphite {
 

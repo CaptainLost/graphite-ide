@@ -8,7 +8,7 @@
 
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
-#include "Sessions/ToolFacts.h"
+#include "Sessions/Transcript/ToolFacts.h"
 #include "Workspace/Workspace.h"
 
 #include "Core/FileSystem/FileSystem.h"

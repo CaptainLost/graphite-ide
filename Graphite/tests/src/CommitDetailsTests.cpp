@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/CommitDetails.h"
+#include "Git/History/CommitDetails.h"
 
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"

@@ -1,8 +1,8 @@
 #include <doctest/doctest.h>
 
-#include "Sessions/RequestTimeline.h"
-#include "Sessions/SentTextLayout.h"
-#include "Sessions/TranscriptReader.h"
+#include "Sessions/Requests/RequestTimeline.h"
+#include "Sessions/Requests/SentTextLayout.h"
+#include "Sessions/Transcript/TranscriptReader.h"
 
 #include "TranscriptFixtures.h"
 

@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Editor/HoverLayout.h"
+#include "Editor/Hover/HoverLayout.h"
 
 #include <string>
 #include <vector>

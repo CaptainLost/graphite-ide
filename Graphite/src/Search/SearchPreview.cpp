@@ -1,8 +1,8 @@
 #include "Search/SearchPreview.h"
 
-#include "Editor/MatchColumns.h"
-#include "Editor/Palettes.h"
-#include "Editor/SemanticOverlay.h"
+#include "Editor/Find/MatchColumns.h"
+#include "Theme/Palettes.h"
+#include "Editor/Overlays/SemanticOverlay.h"
 #include "Search/PreviewContent.h"
 #include "Search/PreviewWindow.h"
 

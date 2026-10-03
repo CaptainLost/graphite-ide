@@ -9,7 +9,7 @@
 #include "Sessions/Charts/StackedBarChart.h"
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
-#include "Sessions/ToolFacts.h"
+#include "Sessions/Transcript/ToolFacts.h"
 #include "UI/SplitResults.h"
 
 #include "Core/ImGui/EmptyState.h"

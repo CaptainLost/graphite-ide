@@ -2,7 +2,7 @@
 
 #include "Core/Text/Columns.h"
 #include "Core/Text/TextBuffer.h"
-#include "Editor/SemanticOverlay.h"
+#include "Editor/Overlays/SemanticOverlay.h"
 #include "Language/Syntax/SyntaxCache.h"
 #include "Language/Syntax/Token.h"
 

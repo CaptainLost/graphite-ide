@@ -2,7 +2,7 @@
 
 #include "Language/Analysis/WorkspaceAnalysisCoordinator.h"
 
-#include "Editor/AnalysisCache.h"
+#include "Editor/Overlays/AnalysisCache.h"
 
 #include "TempDirectory.h"
 

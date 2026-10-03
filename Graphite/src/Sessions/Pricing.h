@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Sessions/TranscriptRecord.h"
+#include "Sessions/Transcript/TranscriptRecord.h"
 
 #include <compare>
 #include <map>

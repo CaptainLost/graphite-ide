@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Editor/DefinitionNavigation.h"
+#include "Editor/Navigation/DefinitionNavigation.h"
 
 #include "Core/Text/DocumentSet.h"
 

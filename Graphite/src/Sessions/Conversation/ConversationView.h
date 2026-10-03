@@ -1,13 +1,13 @@
 #pragma once
 
 #include "Sessions/LocalClock.h"
-#include "Sessions/Markdown.h"
+#include "Sessions/Conversation/Markdown.h"
 #include "Sessions/Pricing.h"
-#include "Sessions/RequestTimeline.h"
+#include "Sessions/Requests/RequestTimeline.h"
 #include "Sessions/Session.h"
-#include "Sessions/SubagentLinks.h"
-#include "Sessions/ToolFacts.h"
-#include "Sessions/TurnParts.h"
+#include "Sessions/Transcript/SubagentLinks.h"
+#include "Sessions/Transcript/ToolFacts.h"
+#include "Sessions/Transcript/TurnParts.h"
 #include "Theme/SessionPalette.h"
 
 #include "Core/Events/EventBus.h"

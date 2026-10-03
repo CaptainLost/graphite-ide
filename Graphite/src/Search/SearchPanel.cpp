@@ -1,6 +1,6 @@
 #include "Search/SearchPanel.h"
 
-#include "Editor/SelectInDocument.h"
+#include "Editor/Navigation/SelectInDocument.h"
 
 #include "Search/SearchPreview.h"
 #include "Search/FileEnumerator.h"

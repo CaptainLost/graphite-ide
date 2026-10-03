@@ -1,8 +1,8 @@
 #include <doctest/doctest.h>
 
 #include "Sessions/Session.h"
-#include "Sessions/TranscriptReader.h"
-#include "Sessions/TurnParts.h"
+#include "Sessions/Transcript/TranscriptReader.h"
+#include "Sessions/Transcript/TurnParts.h"
 
 #include "TranscriptFixtures.h"
 

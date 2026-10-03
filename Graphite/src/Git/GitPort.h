@@ -10,7 +10,7 @@
 #include "Core/Git/Requests.h"
 #include "Core/Git/Stash.h"
 #include "Core/Git/Status.h"
-#include "Git/FileTexts.h"
+#include "Git/Diff/FileTexts.h"
 
 #include <cstddef>
 #include <filesystem>

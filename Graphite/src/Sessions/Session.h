@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Sessions/Pricing.h"
-#include "Sessions/TranscriptRecord.h"
+#include "Sessions/Transcript/TranscriptRecord.h"
 
 #include <cstddef>
 #include <cstdint>

@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
-#include "Git/CommitLabels.h"
-#include "Git/GitPalette.h"
+#include "Git/History/CommitLabels.h"
+#include "Theme/GitPalette.h"
 
 #include <cstddef>
 #include <optional>

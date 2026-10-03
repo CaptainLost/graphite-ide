@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/HistoryPlaceholder.h"
+#include "Git/History/HistoryPlaceholder.h"
 
 #include <optional>
 

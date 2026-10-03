@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Editor/HoverColouring.h"
+#include "Editor/Hover/HoverColouring.h"
 
 #include "Language/Registry/LanguageRegistry.h"
 

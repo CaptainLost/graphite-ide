@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Sessions/InjectedText.h"
+#include "Sessions/Transcript/InjectedText.h"
 
 using namespace Graphite;
 

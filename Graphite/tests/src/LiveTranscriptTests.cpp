@@ -1,8 +1,8 @@
 #include <doctest/doctest.h>
 
-#include "Sessions/LiveTranscript.h"
-#include "Sessions/RequestTimeline.h"
-#include "Sessions/SubagentLinks.h"
+#include "Sessions/Transcript/LiveTranscript.h"
+#include "Sessions/Requests/RequestTimeline.h"
+#include "Sessions/Transcript/SubagentLinks.h"
 
 #include "TempDirectory.h"
 #include "TranscriptFixtures.h"

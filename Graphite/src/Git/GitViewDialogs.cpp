@@ -10,7 +10,7 @@
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/Icons.h"
-#include "Editor/Palettes.h"
+#include "Theme/Palettes.h"
 #include "UI/DialogLayout.h"
 
 #include <imgui.h>

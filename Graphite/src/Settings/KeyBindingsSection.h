@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/Command/Chord.h"
-#include "Editor/ModalQuestion.h"
+#include "UI/ModalQuestion.h"
 #include "Settings/SettingsSection.h"
 
 #include <array>

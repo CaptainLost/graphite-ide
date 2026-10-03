@@ -3,9 +3,9 @@
 #include "Core/Base/Base.h"
 
 #include "Editor/ActiveTextDocument.h"
-#include "Editor/DefinitionNavigation.h"
+#include "Editor/Navigation/DefinitionNavigation.h"
 #include "Editor/EditorCommands.h"
-#include "Editor/Palettes.h"
+#include "Theme/Palettes.h"
 #include "Editor/TextEditorWidget.h"
 
 #include "Language/Registry/LanguageRegistry.h"

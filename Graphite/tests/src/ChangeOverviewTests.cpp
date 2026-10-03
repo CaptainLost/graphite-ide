@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/ChangeOverview.h"
+#include "Git/Changes/ChangeOverview.h"
 
 #include <array>
 #include <cstddef>

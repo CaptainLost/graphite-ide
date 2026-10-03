@@ -3,8 +3,8 @@
 #include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
 
-#include "Sessions/InjectedText.h"
-#include "Sessions/TranscriptReader.h"
+#include "Sessions/Transcript/InjectedText.h"
+#include "Sessions/Transcript/TranscriptReader.h"
 
 #include <algorithm>
 #include <charconv>

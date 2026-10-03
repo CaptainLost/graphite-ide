@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/LineSpans.h"
+#include "Git/Changes/LineSpans.h"
 
 using Graphite::ChangedSpan;
 using Graphite::RemovedSpan;

@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Core/Text/TextBuffer.h"
-#include "Editor/DiagnosticOverlay.h"
+#include "Editor/Overlays/DiagnosticOverlay.h"
 
 #include <string>
 #include <vector>

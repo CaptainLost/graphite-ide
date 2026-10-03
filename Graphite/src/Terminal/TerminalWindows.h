@@ -7,7 +7,7 @@
 #include "Core/Platform/ShellProfiles.h"
 #include "Core/Terminal/TerminalSession.h"
 
-#include "Editor/EditorPalette.h"
+#include "Theme/EditorPalette.h"
 #include "Terminal/TerminalRules.h"
 #include "Terminal/TerminalView.h"
 #include "Persistence/PersistedState.h"

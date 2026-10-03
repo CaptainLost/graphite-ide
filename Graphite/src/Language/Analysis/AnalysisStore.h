@@ -2,7 +2,7 @@
 
 #include "Core/Base/Base.h"
 
-#include "Editor/AnalysisCache.h"
+#include "Editor/Overlays/AnalysisCache.h"
 
 #include "Core/Jobs/CancellationToken.h"
 #include "Core/Jobs/JobQueue.h"

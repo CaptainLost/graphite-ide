@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/ChangeBases.h"
+#include "Git/Changes/ChangeBases.h"
 
 #include "Core/Git/Repository.h"
 

@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/DiffWindows.h"
+#include "Git/Diff/DiffWindows.h"
 
 #include "Core/Git/Status.h"
 

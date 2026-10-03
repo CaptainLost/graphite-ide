@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Editor/EditorSettings.h"
-#include "Editor/LspAnswerRouter.h"
+#include "Editor/Server/LspAnswerRouter.h"
 #include "Editor/ScrollAnchor.h"
 
 #include "Core/Command/MenuItem.h"

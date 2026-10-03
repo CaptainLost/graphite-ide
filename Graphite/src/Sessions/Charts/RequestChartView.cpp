@@ -8,7 +8,7 @@
 #include "Sessions/SessionDrawing.h"
 #include "Sessions/Charts/StackedBarChart.h"
 #include "Sessions/SessionText.h"
-#include "Sessions/ToolFacts.h"
+#include "Sessions/Transcript/ToolFacts.h"
 
 #include "Core/Base/ByteSize.h"
 

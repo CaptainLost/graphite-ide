@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Editor/PreviewSemantics.h"
+#include "Editor/Server/PreviewSemantics.h"
 
 #include "Core/Text/TextBuffer.h"
 

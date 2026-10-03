@@ -3,7 +3,7 @@
 #include "Core/Command/Keymap.h"
 #include "Core/Terminal/TerminalSession.h"
 
-#include "Editor/EditorPalette.h"
+#include "Theme/EditorPalette.h"
 
 #include <imgui.h>
 

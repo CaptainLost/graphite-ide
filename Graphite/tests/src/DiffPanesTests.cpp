@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/DiffPanes.h"
+#include "Git/Diff/DiffPanes.h"
 
 using Graphite::SideBySideContentWidth;
 using Graphite::SideBySidePanes;

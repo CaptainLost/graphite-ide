@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Sessions/RequestChart.h"
+#include "Sessions/Charts/RequestChart.h"
 
 #include "Sessions/Pricing.h"
 

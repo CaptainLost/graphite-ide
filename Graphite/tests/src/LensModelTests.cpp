@@ -2,7 +2,7 @@
 
 #include "Core/Text/RowMap.h"
 #include "Core/Text/TextBuffer.h"
-#include "Editor/LensModel.h"
+#include "Editor/Overlays/LensModel.h"
 
 namespace {
 

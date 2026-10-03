@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Editor/HoverState.h"
+#include "Editor/Hover/HoverState.h"
 
 #include "Core/Text/DocumentSet.h"
 

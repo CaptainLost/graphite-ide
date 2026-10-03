@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Editor/AnalysisCache.h"
+#include "Editor/Overlays/AnalysisCache.h"
 
 #include <chrono>
 

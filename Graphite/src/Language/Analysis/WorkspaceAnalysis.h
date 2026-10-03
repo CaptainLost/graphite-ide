@@ -4,7 +4,7 @@
 #include "Language/Api/LanguageId.h"
 #include "Language/Server/LanguageServices.h"
 
-#include "Editor/AnalysisCache.h"
+#include "Editor/Overlays/AnalysisCache.h"
 
 #include "Core/Text/Columns.h"
 #include "Core/Text/TextBuffer.h"

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Core/UI/Panel.h"
-#include "Editor/EditorPalette.h"
+#include "Theme/EditorPalette.h"
 #include "Language/Diagnostics/DiagnosticsModel.h"
 #include "Theme/ActiveScheme.h"
 

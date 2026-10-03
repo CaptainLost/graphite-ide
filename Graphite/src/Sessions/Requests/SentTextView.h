@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Sessions/RequestTimeline.h"
-#include "Sessions/SentTextLayout.h"
+#include "Sessions/Requests/RequestTimeline.h"
+#include "Sessions/Requests/SentTextLayout.h"
 #include "Theme/SessionPalette.h"
 
 #include <cstddef>

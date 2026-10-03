@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
-#include "Sessions/RequestTimeline.h"
-#include "Sessions/TranscriptReader.h"
+#include "Sessions/Requests/RequestTimeline.h"
+#include "Sessions/Transcript/TranscriptReader.h"
 
 #include "TranscriptFixtures.h"
 
