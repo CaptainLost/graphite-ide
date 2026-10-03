@@ -85,18 +85,23 @@ namespace Graphite {
 		DrawAxisCaptions(values.BarCaption, values.LineCaption);
 	}
 
-	void PlotStackedBars(std::span<const BarLayer> layers, const double* xs, int count, double width,
+	void PlotStackedBars(std::span<const BarLayer> layers, std::span<const double> xs, double width,
 						 ImPlotBarsFlags flags)
 	{
 		ImPlot::SetAxes(ImAxis_X1, ImAxis_Y1);
+
+		const int count = static_cast<int>(xs.size());
 
 		for (std::size_t layer = layers.size(); layer-- > 0;)
 		{
 			const BarLayer& bars = layers[layer];
 
+			// ImPlot reads `count` tops from the pointer it is handed, whatever was allocated.
+			CORE_ASSERT(bars.Tops.size() >= xs.size(), "a bar layer has fewer tops than there are bars");
+
 			ImPlot::SetNextFillStyle(bars.Colour);
 			ImPlot::SetNextLineStyle(bars.Colour);
-			ImPlot::PlotBars(bars.Id, xs, bars.Tops, count, width, flags);
+			ImPlot::PlotBars(bars.Id, xs.data(), bars.Tops.data(), count, width, flags);
 		}
 	}
 

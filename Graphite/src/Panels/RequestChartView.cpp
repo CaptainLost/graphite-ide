@@ -206,10 +206,10 @@ namespace Graphite {
 		for (std::size_t layer = 0; layer < layout.LayerCount; ++layer)
 		{
 			const ChartLayer& spec = layout.Layers[layer];
-			passing[layer] = {spec.Name, PlotColour(spec.Colour), m_PassTops[layer].data()};
+			passing[layer] = {spec.Name, PlotColour(spec.Colour), m_PassTops[layer]};
 		}
 
-		PlotStackedBars(std::span(passing).first(layout.LayerCount), m_Xs.data(), count, m_BarWidth);
+		PlotStackedBars(std::span(passing).first(layout.LayerCount), m_Xs, m_BarWidth);
 
 		const bool anyLeftOut = std::any_of(m_Points.begin(), m_Points.end(), [&input](std::size_t position)
 											{ return position < input.Passes.size() && !input.Passes[position]; });
@@ -230,11 +230,11 @@ namespace Graphite {
 				const ChartLayer& spec = layout.Layers[layer];
 				ids[leftOutCount] = std::string("##leftOut") + spec.Name;
 				leftOut[leftOutCount] = {ids[leftOutCount].c_str(), Faded(spec.Colour, kDimAlpha),
-										 m_FailTops[layer].data()};
+										 m_FailTops[layer]};
 				++leftOutCount;
 			}
 
-			PlotStackedBars(std::span(leftOut).first(leftOutCount), m_Xs.data(), count, m_BarWidth,
+			PlotStackedBars(std::span(leftOut).first(leftOutCount), m_Xs, m_BarWidth,
 							ImPlotItemFlags_NoLegend);
 		}
 

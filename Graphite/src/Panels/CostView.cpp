@@ -275,10 +275,10 @@ namespace Graphite {
 			std::array<BarLayer, kCostLayers> barLayers{};
 			for (std::size_t layer = 0; layer < kCostLayers; ++layer)
 			{
-				barLayers[layer] = {kLayerNames[layer], PlotColour(LayerColour(palette, layer)), tops[layer].data()};
+				barLayers[layer] = {kLayerNames[layer], PlotColour(LayerColour(palette, layer)), tops[layer]};
 			}
 
-			PlotStackedBars(barLayers, xs.data(), count, kBarFraction);
+			PlotStackedBars(barLayers, xs, kBarFraction);
 
 			ImPlot::SetAxes(ImAxis_X1, ImAxis_Y2);
 			ImPlot::SetNextLineStyle(PlotColour(palette.Accent));

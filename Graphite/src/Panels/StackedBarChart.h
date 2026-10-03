@@ -63,12 +63,12 @@ namespace Graphite {
 	void FinishBarChartSetup(const BarChartValues& values);
 
 	// One layer of the bars, bottom up: its legend entry, its colour, and the top of the layer
-	// for each bar, as StackedTops works it out.
+	// for each bar, as StackedTops works it out - one per position PlotStackedBars is given.
 	struct BarLayer
 	{
 		const char* Id = nullptr;
 		ImVec4 Colour;
-		const double* Tops = nullptr;
+		std::span<const double> Tops;
 	};
 
 	// Plots `layers` on the first value axis, stacked by drawing each layer's bar from the top
@@ -76,7 +76,7 @@ namespace Graphite {
 	// them when an item is first seen, where these must follow the scheme. A hidden layer is
 	// still plotted, so its legend entry stays to show it again; ImPlot draws nothing for it,
 	// and the layers above it come down by what it held.
-	void PlotStackedBars(std::span<const BarLayer> layers, const double* xs, int count, double width,
+	void PlotStackedBars(std::span<const BarLayer> layers, std::span<const double> xs, double width,
 						 ImPlotBarsFlags flags = ImPlotBarsFlags_None);
 
 	// Whether a column was clicked this frame, over the plot: taken on release and only without
