@@ -24,6 +24,11 @@ namespace Graphite {
 		return ImGui::SmallButton(ICON_MDI_CLOSE);
 	}
 
+	float DefaultResultsHeight(float available, float divider)
+	{
+		return std::max(0.0f, available - divider) * kDefaultResultsShare;
+	}
+
 	void DrawSplitResults(const SplitResultsInput& input)
 	{
 		if (!input.HasSelection)
@@ -61,7 +66,7 @@ namespace Graphite {
 
 		if (input.ResultsHeight <= 0.0f)
 		{
-			input.ResultsHeight = (available - divider) * 0.5f;
+			input.ResultsHeight = DefaultResultsHeight(available, divider);
 		}
 
 		float previewHeight = available - divider - input.ResultsHeight;

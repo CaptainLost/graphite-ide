@@ -27,7 +27,7 @@ namespace Graphite {
 		// Persisted by the caller across frames, so a split the user drags stays theirs until
 		// they drag it again — including across a preview being dismissed and brought back.
 		// Zero until the first frame that shows both, which is when there is a panel height to
-		// halve.
+		// split.
 		float& ResultsHeight;
 
 		const std::function<void()>& DrawResults;
@@ -40,6 +40,14 @@ namespace Graphite {
 		const char* PreviewChildId = nullptr;
 		const char* SplitterId = nullptr;
 	};
+
+	// What the results get the first time a preview appears: about two thirds of what the two
+	// panes share once the divider's band is taken out. These panels dock at the bottom where
+	// they are short, and half of one left the list about two rows; the preview is the pane
+	// the reader looks at second, so it gives way. The caller's minimums still apply on top.
+	inline constexpr float kDefaultResultsShare = 0.65f;
+
+	float DefaultResultsHeight(float available, float divider);
 
 	// Call with the content region this panel has to fill, after whatever heading the caller
 	// draws above it (a query field, a summary line). Opens and closes both children itself.

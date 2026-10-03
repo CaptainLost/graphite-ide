@@ -40,16 +40,21 @@ namespace Graphite {
 		void RenderFile(const std::filesystem::path& path, const DiagnosticsModel::Entry& entry,
 						const EditorPalette& palette);
 
-		// Draws one row and, on a click, navigates to it through
-		// SelectInDocument: opened permanently, not as a preview tab, because a problem clicked
-		// from this list is somewhere the user meant to go.
+		// Draws one row and, on a click, navigates to it through SelectInDocument. The same
+		// click model as the file tree, References and Find in Files: a single click selects the
+		// row and opens it as a preview, a double click or Enter opens it permanently.
 		void RenderRow(const std::filesystem::path& path, const Diagnostic& diagnostic, int rowId,
 					   const EditorPalette& palette);
 
-		void OpenAndSelect(const std::filesystem::path& path, const Diagnostic& diagnostic);
+		void OpenAndSelect(const std::filesystem::path& path, const Diagnostic& diagnostic, bool permanent);
 
 		const DiagnosticsModel& m_Diagnostics;
 		Core::DocumentSet& m_Documents;
 		const ActiveScheme& m_Scheme;
+
+		// The row last clicked or moved to, identified by file and by its position in that file's
+		// sorted list. Empty until something is picked.
+		std::filesystem::path m_SelectedPath;
+		int m_SelectedRow = -1;
 	};
 }

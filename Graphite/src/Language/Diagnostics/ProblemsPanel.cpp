@@ -191,23 +191,34 @@ namespace Graphite {
 								  std::to_string(diagnostic.Column.Value + 1) + "  " +
 								  diagnostic.Message;
 
-		if (ImGui::Selectable(label.c_str()))
+		const bool selected = m_SelectedRow == rowId && m_SelectedPath == path;
+
+		// AllowDoubleClick lets one row answer both gestures: the first click of a double click
+		// previews and the second promotes.
+		if (ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick))
 		{
-			OpenAndSelect(path, diagnostic);
+			m_SelectedPath = path;
+			m_SelectedRow = rowId;
+
+			const bool permanent = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) ||
+								   ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+								   ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
+
+			OpenAndSelect(path, diagnostic, permanent);
 		}
 
 		ImGui::PopID();
 	}
 
 	void ProblemsPanel::OpenAndSelect(const std::filesystem::path& path,
-									  const Diagnostic& diagnostic)
+									  const Diagnostic& diagnostic, bool permanent)
 	{
 		// Only reached for a document Find already answered for, so this opens nothing and only
 		// activates its tab: there is no size question to ask and no Workspace to ask it
-		// through. Permanent, not a preview tab - a problem clicked from this list is somewhere
-		// the user meant to go, not a file they are skimming past.
+		// through. `permanent` follows the click model of the file tree: a single click leaves a
+		// preview tab a preview, and a double click or Enter keeps it.
 		SelectInDocument(m_Documents, path, diagnostic.Line, diagnostic.Column, diagnostic.EndLine,
 						 diagnostic.EndColumn,
-						 [this](const std::filesystem::path& file) { m_Documents.Open(file, true); });
+						 [this, permanent](const std::filesystem::path& file) { m_Documents.Open(file, permanent); });
 	}
 }
