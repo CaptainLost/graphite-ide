@@ -2,6 +2,7 @@
 
 #include "Core/Base/Base.h"
 
+#include <concepts>
 #include <string>
 
 namespace Core {
@@ -73,13 +74,19 @@ namespace Core {
 
 		// Runs the handler only when the event is of the handler's type. Its answer is ORed
 		// into Handled rather than assigned: an event consumed upstream stays consumed.
-		template<typename T, typename F>
+		template<std::derived_from<Event> T, std::predicate<T&> F>
 		bool Dispatch(const F& handler)
 		{
-			if (m_Event.GetEventType() != T::GetStaticType())
-				return false;
+			// The language's own check rather than the EventType tag: nothing ties a tag to the
+			// one class that returns it, and a cast on a mismatched tag would be undefined.
+			T* const event = dynamic_cast<T*>(&m_Event);
 
-			m_Event.Handled |= handler(static_cast<T&>(m_Event));
+			if (event == nullptr)
+			{
+				return false;
+			}
+
+			m_Event.Handled |= handler(*event);
 			return true;
 		}
 
