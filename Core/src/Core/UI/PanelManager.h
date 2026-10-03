@@ -32,7 +32,7 @@ namespace Core {
 			return AddPanel(std::move(panel)) != nullptr ? typed : nullptr;
 		}
 
-		Panel* Find(std::string_view id);
+		Panel* Find(std::string_view id) const;
 		std::size_t GetCount() const { return m_Panels.size(); }
 
 		bool SetVisible(std::string_view id, bool visible);

@@ -138,7 +138,7 @@ namespace Graphite {
 
 		// Whether a server entry exists for the key this file resolves to, whether or not it has a
 		// process. What shows that an idle server has been shut down.
-		bool IsRunningFor(const std::filesystem::path& path, LanguageId language);
+		bool IsRunningFor(const std::filesystem::path& path, LanguageId language) const;
 
 		// Brings every server into line with the permission after it has changed: a restricted
 		// server whose root is now permitted starts and is told every document it was sent while
@@ -342,9 +342,10 @@ namespace Graphite {
 		// Resolves the config and the root for (path, language); null when the language has no
 		// configured server. Shared by every method that needs to find a server's entry rather
 		// than start one — including EnsureStarted, which is called every frame a document stays
-		// active, so this is on the hot path. Not const: it consults and fills m_RootCache.
+		// active, so this is on the hot path. Const, though it consults and fills m_RootCache:
+		// the cache changes how fast the answer comes, never what it is.
 		const ServerConfig* Resolve(const std::filesystem::path& path, LanguageId language,
-									Key& key);
+									Key& key) const;
 
 		// The root a file with no marker above it falls back to: the fallback root when the file
 		// lies inside it, the file's own directory otherwise.
@@ -437,7 +438,7 @@ namespace Graphite {
 		// session, the stale entry would point a server at where the project used to live; that
 		// is wrong but not silently so — restarting the application re-walks from scratch — and
 		// is a better trade than stat-ing the filesystem on every frame forever.
-		std::map<std::pair<LanguageId, std::filesystem::path>, std::filesystem::path> m_RootCache;
+		mutable std::map<std::pair<LanguageId, std::filesystem::path>, std::filesystem::path> m_RootCache;
 
 		// The key each open document was opened under. A document belongs to one server for as
 		// long as it is open (see the server-roots spec): every per-document call goes through

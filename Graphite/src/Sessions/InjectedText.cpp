@@ -127,7 +127,7 @@ namespace Graphite {
 
 		// The ellipsis counts within the budget, so a cut label is never longer than one that
 		// just fits.
-		const std::string_view ellipsis = "\xe2\x80\xa6";
+		constexpr std::string_view ellipsis = "\xe2\x80\xa6";
 		return TruncateUtf8(label, maxBytes > ellipsis.size() ? maxBytes - ellipsis.size() : 0) + std::string{ellipsis};
 	}
 }

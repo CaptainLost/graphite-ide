@@ -114,7 +114,8 @@ namespace Graphite {
 
 		bool IsOpen() const { return m_Tree.HasRoot(); }
 		const std::filesystem::path& GetRoot() const { return m_Root; }
-		Core::FileTree& Tree() { return m_Tree; }
+		Core::FileTree& GetTree() { return m_Tree; }
+		const Core::FileTree& GetTree() const { return m_Tree; }
 		const std::filesystem::path& GetSelectedFile() const
 		{
 			return m_SelectedFile;
@@ -132,12 +133,14 @@ namespace Graphite {
 
 		void SelectSolution(const std::filesystem::path& path);
 
-		WorkspaceSettings& FolderSettings() { return m_Settings; }
+		WorkspaceSettings& GetFolderSettings() { return m_Settings; }
+		const WorkspaceSettings& GetFolderSettings() const { return m_Settings; }
 
 		// The one system dialog the application has open at a time. Here because every dialog
 		// there is picks something for the workspace, and every place that opens one already
 		// holds it. Polled by Update, so an answer arrives on a later frame.
-		Core::AsyncDialog& Dialog() { return m_Dialog; }
+		Core::AsyncDialog& GetDialog() { return m_Dialog; }
+		const Core::AsyncDialog& GetDialog() const { return m_Dialog; }
 		bool IsDialogOpen() const { return m_Dialog.IsOpen(); }
 
 		void RegisterCommands(Core::CommandRegistry& commands);

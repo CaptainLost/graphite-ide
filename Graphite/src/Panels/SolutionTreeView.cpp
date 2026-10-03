@@ -510,22 +510,22 @@ namespace Graphite {
 		// have closed, which Apply already reports.
 		if (action.Action == PendingAction::Kind::AddProject)
 		{
-			m_Workspace.Dialog().Start(PickProjectFile,
-									   [this, action = std::move(action)](Core::Result<std::filesystem::path> picked) mutable {
-										   if (!picked)
-										   {
-											   APP_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
-											   return;
-										   }
+			m_Workspace.GetDialog().Start(PickProjectFile,
+										  [this, action = std::move(action)](Core::Result<std::filesystem::path> picked) mutable {
+											  if (!picked)
+											  {
+												  APP_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
+												  return;
+											  }
 
-										   if (picked.GetValue().empty())
-										   {
-											   return;
-										   }
+											  if (picked.GetValue().empty())
+											  {
+												  return;
+											  }
 
-										   action.Project = std::move(picked).GetValue();
-										   ApplyAndReport(action);
-									   });
+											  action.Project = std::move(picked).GetValue();
+											  ApplyAndReport(action);
+										  });
 			return;
 		}
 

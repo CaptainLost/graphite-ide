@@ -64,7 +64,7 @@ namespace Graphite {
 		if (ImGui::BeginChild("##fileTreeBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
 							  ImGuiWindowFlags_HorizontalScrollbar))
 		{
-			RenderNode(m_Workspace.Tree().GetRoot());
+			RenderNode(m_Workspace.GetTree().GetRoot());
 		}
 
 		ImGui::EndChild();
@@ -109,7 +109,7 @@ namespace Graphite {
 			return;
 		}
 
-		std::vector<std::filesystem::path> opened = ExpandToward(m_Workspace.Tree(), path);
+		std::vector<std::filesystem::path> opened = ExpandToward(m_Workspace.GetTree(), path);
 
 		if (opened.empty())
 		{
@@ -125,7 +125,7 @@ namespace Graphite {
 		if (ImGui::Button(ICON_MDI_REFRESH))
 		{
 			m_Workspace.Reload();
-			Core::FileNode& root = m_Workspace.Tree().GetRoot();
+			Core::FileNode& root = m_Workspace.GetTree().GetRoot();
 
 			if (root.Accessible)
 			{
@@ -315,7 +315,7 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		std::vector<Core::FileNode*> stack{&m_Workspace.Tree().GetRoot()};
+		std::vector<Core::FileNode*> stack{&m_Workspace.GetTree().GetRoot()};
 
 		while (!stack.empty())
 		{
@@ -342,7 +342,7 @@ namespace Graphite {
 
 		if (parent != nullptr)
 		{
-			m_Workspace.Tree().Refresh(*parent);
+			m_Workspace.GetTree().Refresh(*parent);
 		}
 	}
 
@@ -397,7 +397,7 @@ namespace Graphite {
 	{
 		if (Core::FileNode* node = FindNode(action.Target); node != nullptr)
 		{
-			m_Workspace.Tree().Refresh(*node);
+			m_Workspace.GetTree().Refresh(*node);
 		}
 	}
 
@@ -475,11 +475,11 @@ namespace Graphite {
 		if (!folder.Loaded)
 		{
 			// Expand fails only on a file node; an unreadable folder it logs and marks itself.
-			static_cast<void>(m_Workspace.Tree().Expand(folder));
+			static_cast<void>(m_Workspace.GetTree().Expand(folder));
 		}
 		else
 		{
-			m_Workspace.Tree().Refresh(folder);
+			m_Workspace.GetTree().Refresh(folder);
 		}
 	}
 
@@ -720,7 +720,7 @@ namespace Graphite {
 			if (!node.Expanded)
 			{
 				// A directory row, so Expand cannot fail; an unreadable folder it logs and marks.
-				static_cast<void>(m_Workspace.Tree().Expand(node));
+				static_cast<void>(m_Workspace.GetTree().Expand(node));
 			}
 
 			for (Core::FileNode& child : node.Children)
@@ -732,7 +732,7 @@ namespace Graphite {
 		}
 		else if (node.Expanded)
 		{
-			m_Workspace.Tree().Collapse(node);
+			m_Workspace.GetTree().Collapse(node);
 		}
 	}
 }

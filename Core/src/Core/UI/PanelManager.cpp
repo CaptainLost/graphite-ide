@@ -58,9 +58,9 @@ namespace Core {
 		return reference;
 	}
 
-	Panel* PanelManager::Find(std::string_view id)
+	Panel* PanelManager::Find(std::string_view id) const
 	{
-		for (auto& panel : m_Panels)
+		for (const Scope<Panel>& panel : m_Panels)
 		{
 			if (panel->GetId() == id)
 			{
@@ -73,7 +73,7 @@ namespace Core {
 
 	void PanelManager::OnEvent(Event& event)
 	{
-		for (auto& panel : m_Panels)
+		for (const Scope<Panel>& panel : m_Panels)
 		{
 			if (event.Handled)
 			{
@@ -109,7 +109,7 @@ namespace Core {
 
 	void PanelManager::OnUpdate(Timestep ts)
 	{
-		for (auto& panel : m_Panels)
+		for (const Scope<Panel>& panel : m_Panels)
 		{
 			panel->OnUpdate(ts);
 		}
@@ -120,7 +120,7 @@ namespace Core {
 		const ImGuiWindowFlags windowFlags =
 			std::exchange(m_FirstRender, false) ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
 
-		for (auto& panel : m_Panels)
+		for (const Scope<Panel>& panel : m_Panels)
 		{
 			if (!panel->IsVisible())
 			{
@@ -169,7 +169,7 @@ namespace Core {
 	{
 		m_Commands = &commands;
 
-		for (auto& panel : m_Panels)
+		for (const Scope<Panel>& panel : m_Panels)
 		{
 			RegisterPanelCommand(commands, *panel);
 		}
@@ -177,7 +177,7 @@ namespace Core {
 
 	void PanelManager::ResetVisibility()
 	{
-		for (auto& panel : m_Panels)
+		for (const Scope<Panel>& panel : m_Panels)
 		{
 			panel->SetVisible(panel->IsDefaultVisible());
 		}

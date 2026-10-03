@@ -89,7 +89,7 @@ namespace Core {
 	{
 		m_FrameLayers.clear();
 
-		for (auto& layer : m_Layers)
+		for (const Scope<Layer>& layer : m_Layers)
 		{
 			m_FrameLayers.push_back(layer.get());
 		}

@@ -61,7 +61,7 @@ namespace Graphite {
 	}
 
 	const ServerConfig* LanguageServices::Resolve(const std::filesystem::path& path,
-												  LanguageId language, Key& key)
+												  LanguageId language, Key& key) const
 	{
 		const ServerConfig* config = ServerConfigFor(language);
 
@@ -1053,7 +1053,7 @@ namespace Graphite {
 		return Core::CreateScope<LspClient>(*server.Config, server.Binary, key.Root);
 	}
 
-	bool LanguageServices::IsRunningFor(const std::filesystem::path& path, LanguageId language)
+	bool LanguageServices::IsRunningFor(const std::filesystem::path& path, LanguageId language) const
 	{
 		Key key;
 

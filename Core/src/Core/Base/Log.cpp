@@ -54,8 +54,8 @@ namespace Core {
 		{
 			static LogState state = [] {
 				const LogSpec defaults;
-				auto console = MakeProcessConsoleSink();
-				auto buffer = CreateRef<RingBufferSink>(defaults.ConsoleCapacity);
+				const auto console = MakeProcessConsoleSink();
+				const auto buffer = CreateRef<RingBufferSink>(defaults.ConsoleCapacity);
 
 				return LogState{buffer, MakeLogger(LogSource::Engine, console, buffer),
 								MakeLogger(LogSource::Application, console, buffer)};

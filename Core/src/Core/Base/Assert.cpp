@@ -16,8 +16,8 @@ namespace Core {
 	{
 		// The file and line are formatted the way a compiler emits a diagnostic, so the
 		// debugger's output window turns the first line into something double-clickable.
-		std::string report = std::string{file} + "(" + std::to_string(line) +
-							 "): assertion failed: " + condition + "\n  " + message + "\n";
+		const std::string report = std::string{file} + "(" + std::to_string(line) +
+								   "): assertion failed: " + condition + "\n  " + message + "\n";
 
 		// stderr first, because a console build - the test runners - is where this is read
 		// without a debugger attached.

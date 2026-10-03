@@ -225,7 +225,7 @@ namespace Graphite {
 		static Choice ButtonRow(ButtonSpec safe, ButtonSpec destructive, const ImVec4& danger)
 		{
 			const ImGuiStyle& style = ImGui::GetStyle();
-			const char* cancelLabel = "Cancel";
+			constexpr const char* cancelLabel = "Cancel";
 
 			float labelWidth = ImGui::CalcTextSize(cancelLabel).x;
 			int count = 1;

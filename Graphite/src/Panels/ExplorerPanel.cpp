@@ -67,7 +67,7 @@ namespace Graphite {
 		}
 
 		m_ModeLoadedFor = m_Workspace.GetRoot();
-		m_Mode = ModeFromSetting(m_Workspace.FolderSettings().Read(kModeKey));
+		m_Mode = ModeFromSetting(m_Workspace.GetFolderSettings().Read(kModeKey));
 	}
 
 	ExplorerPanel::Mode ExplorerPanel::ModeFromSetting(const std::string& value)
@@ -83,7 +83,7 @@ namespace Graphite {
 	void ExplorerPanel::SetMode(Mode mode)
 	{
 		m_Mode = mode;
-		m_Workspace.FolderSettings().Write(kModeKey, SettingForMode(mode));
+		m_Workspace.GetFolderSettings().Write(kModeKey, SettingForMode(mode));
 	}
 
 	void ExplorerPanel::RenderHeader()

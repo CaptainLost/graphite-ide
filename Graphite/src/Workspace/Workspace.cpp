@@ -753,24 +753,24 @@ namespace Graphite {
 	// own. The callbacks can hold the workspace by reference because it owns the dialog.
 	void OpenFolderInteractively(Workspace& workspace)
 	{
-		workspace.Dialog().Start([] { return Core::FileDialog::PickFolder("Open Folder"); },
-								 [&workspace](Core::Result<std::filesystem::path> picked) {
-									 if (!picked)
-									 {
-										 APP_ERROR("Folder dialog failed: {}", picked.GetError().Message);
-										 return;
-									 }
+		workspace.GetDialog().Start([] { return Core::FileDialog::PickFolder("Open Folder"); },
+									[&workspace](Core::Result<std::filesystem::path> picked) {
+										if (!picked)
+										{
+											APP_ERROR("Folder dialog failed: {}", picked.GetError().Message);
+											return;
+										}
 
-									 const bool cancelled = picked.GetValue().empty();
+										const bool cancelled = picked.GetValue().empty();
 
-									 if (cancelled)
-									 {
-										 return;
-									 }
+										if (cancelled)
+										{
+											return;
+										}
 
-									 // OpenFolder logs its own failure and leaves the current folder open.
-									 static_cast<void>(workspace.OpenFolder(picked.GetValue()));
-								 });
+										// OpenFolder logs its own failure and leaves the current folder open.
+										static_cast<void>(workspace.OpenFolder(picked.GetValue()));
+									});
 	}
 
 	void OpenSolutionInteractively(Workspace& workspace)
@@ -779,7 +779,7 @@ namespace Graphite {
 			{"Visual Studio solutions", "*.sln;*.slnx"},
 			{"All files", "*.*"}};
 
-		workspace.Dialog().Start(
+		workspace.GetDialog().Start(
 			[filters] { return Core::FileDialog::PickFile("Open Solution", filters); },
 			[&workspace](Core::Result<std::filesystem::path> picked) {
 				if (!picked)

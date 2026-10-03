@@ -38,9 +38,9 @@ namespace Graphite {
 		while (start <= text.size())
 		{
 			const std::size_t newline = text.find('\n', start);
-			std::string_view line = newline == std::string_view::npos
-										? text.substr(start)
-										: text.substr(start, newline - start);
+			const std::string_view line = newline == std::string_view::npos
+											  ? text.substr(start)
+											  : text.substr(start, newline - start);
 
 			// The split above already consumed the '\n'; this takes the '\r' a CRLF file leaves
 			// behind, by the same rule a diff line's own terminator is stripped with.

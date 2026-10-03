@@ -233,7 +233,7 @@ namespace Graphite {
 
 		// Emits `gapLength` Unchanged rows starting from wherever each side left off, then
 		// advances both pointers past them.
-		auto emitGap = [&](std::size_t gapLength) {
+		const auto emitGap = [&](std::size_t gapLength) {
 			for (std::size_t offset = 0; offset < gapLength; ++offset)
 			{
 				const int oldLine = hasOld ? static_cast<int>(oldNext + offset) : 0;

@@ -270,7 +270,7 @@ namespace Graphite {
 			// keys — and the path this class hands the server. Two spellings of one file reaching
 			// the queue would otherwise both pass IsOutstanding and produce two didOpens for one
 			// document entry, which is the failure ADR 0512 is about.
-			std::filesystem::path path = Core::NormalizePath(m_Queue.front());
+			const std::filesystem::path path = Core::NormalizePath(m_Queue.front());
 
 			if (ServerHeldBack(now, path))
 			{

@@ -34,7 +34,7 @@ namespace Graphite {
 		constexpr float kBlockPadding = 8.0f;
 		constexpr float kBarGap = 8.0f;
 
-		const char* const kTimes = " \xc3\x97";
+		constexpr const char* kTimes = " \xc3\x97";
 
 		std::string Pretty(const std::string& json)
 		{

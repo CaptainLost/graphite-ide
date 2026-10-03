@@ -16,7 +16,7 @@
 namespace Graphite {
 
 	namespace {
-		const char* const kDot = " \xc2\xb7 ";
+		constexpr const char* kDot = " \xc2\xb7 ";
 
 		std::string ShortModel(std::string_view model)
 		{
