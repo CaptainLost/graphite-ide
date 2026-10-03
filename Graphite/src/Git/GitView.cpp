@@ -857,7 +857,9 @@ namespace Graphite {
 				m_CommitRefs = BuildCommitRefs(branches ? *branches : std::vector<Core::Branch>{});
 			}
 
-			m_Commits.Render(*page, graph, palette, LocalOffset(), diffOf, m_CommitRefs,
+			const auto diffFailed = [this](const Core::Oid& commit) { return m_Model.IsDiffFailed(commit); };
+
+			m_Commits.Render(*page, graph, palette, LocalOffset(), diffOf, diffFailed, m_CommitRefs,
 							 m_Filter.Get().Text, m_Filter.Get().Path);
 
 			ApplyCommitAction();

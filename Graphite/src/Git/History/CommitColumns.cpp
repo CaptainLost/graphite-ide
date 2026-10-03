@@ -9,10 +9,10 @@ namespace Graphite {
 		CommitColumns columns;
 		columns.Graph = std::min(input.Graph, input.Available * 0.25f);
 
-		// The graph, arrow, hash and message always have their padding, and the table pads
-		// its outer edge once more.
+		// The graph, arrow, hash and message always have their padding; ImGui spends exactly
+		// two cell paddings on each enabled column and nothing more with the flags used.
 		const auto messageWith = [&](bool author, bool date) {
-			float used = columns.Graph + input.Chevron + input.Hash + input.CellPadding * 5.0f;
+			float used = columns.Graph + input.Chevron + input.Hash + input.CellPadding * 4.0f;
 
 			if (author)
 			{

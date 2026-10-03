@@ -79,6 +79,9 @@ namespace Graphite {
 		// `offset` is the reader's distance from UTC, for the exact time the tooltip over a
 		// date gives. Handed in because the list does not read the time zone itself.
 		//
+		// `diffFailed` says whether a commit's missing diff is a failure rather than a wait,
+		// so the placeholder under its row can say which.
+		//
 		// `diffOf` answers a commit's diff, or null while it is being fetched. The list
 		// asks for every commit it draws; the model is what decides whether that costs a
 		// query.
@@ -99,7 +102,8 @@ namespace Graphite {
 		void Render(const Core::LogPage& page, const Core::CommitGraph& graph,
 					const GitPalette& palette, std::chrono::minutes offset,
 					const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf,
-					const CommitRefMap& refs, std::string_view highlight = {},
+					const std::function<bool(const Core::Oid&)>& diffFailed, const CommitRefMap& refs,
+					std::string_view highlight = {},
 					std::string_view pathHighlight = {});
 
 		// Applied when a new page arrives, by whoever noticed it arrive — the list is handed
@@ -162,6 +166,7 @@ namespace Graphite {
 		void RenderFileRow(const Core::CommitSummary& commit, std::size_t fileIndex,
 						   const GitPalette& palette,
 						   const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf,
+						   const std::function<bool(const Core::Oid&)>& diffFailed,
 						   std::string_view pathHighlight);
 
 		std::unordered_set<Core::Oid> m_Expanded;

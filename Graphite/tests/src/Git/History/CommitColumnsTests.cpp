@@ -28,7 +28,7 @@ TEST_CASE("A wide table shows every column and gives the rest to the message")
 	CHECK(columns.ShowAuthor);
 	CHECK(columns.ShowDate);
 	CHECK(columns.Graph == 30.0f);
-	CHECK(columns.Message == doctest::Approx(900.0f - (30.0f + 20.0f + 60.0f + 110.0f + 90.0f + 8.0f * 7.0f)));
+	CHECK(columns.Message == doctest::Approx(900.0f - (30.0f + 20.0f + 60.0f + 110.0f + 90.0f + 8.0f * 6.0f)));
 }
 
 TEST_CASE("The graph is capped to a quarter of the table")
@@ -60,7 +60,7 @@ TEST_CASE("A table narrow enough to leave the message nothing today gives it its
 	// With every column shown and the graph uncapped, the stretched message would get nothing.
 	const Graphite::CommitColumnsInput input = InputAt(300.0f, 400.0f);
 	const float today = input.Available - (input.Graph + input.Chevron + input.Hash + input.Author +
-										   input.Date + input.CellPadding * 7.0f);
+										   input.Date + input.CellPadding * 6.0f);
 	REQUIRE(today <= 0.0f);
 
 	const Graphite::CommitColumns columns = Graphite::LayoutCommitColumns(input);

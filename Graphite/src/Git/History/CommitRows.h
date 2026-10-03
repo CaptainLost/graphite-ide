@@ -37,12 +37,13 @@ namespace Graphite {
 	// How many file rows an expanded commit gets when its diff holds `files` of them. At
 	// least one: a commit that changed nothing, and one whose diff has not arrived, would
 	// otherwise open onto nothing and look as though the arrow had done nothing. That row is
-	// a placeholder saying which of the two it is.
+	// a placeholder saying which of the cases it is: waiting, failed, or nothing changed.
 	std::size_t FileRowsOfExpanded(std::size_t files);
 
 	// `fileRowsUnder(commit)` answers how many file rows follow that commit: zero when it
-	// is collapsed, and FileRowsOfExpanded of its diff once it is open. Taking a function rather than the page and the diffs keeps this file
-	// free of every git type, and makes its tests a handful of integers.
+	// is collapsed, and FileRowsOfExpanded of its diff once it is open. Taking a function
+	// rather than the page and the diffs keeps this file free of every git type, and makes
+	// its tests a handful of integers.
 	CommitRows BuildCommitRows(std::size_t commitCount,
 							   const std::function<std::size_t(std::size_t)>& fileRowsUnder);
 }

@@ -34,7 +34,11 @@ namespace Graphite {
 	// one a narrow cell keeps.
 	CommitRefMap BuildCommitRefs(const std::vector<Core::Branch>& branches);
 
-	// How many of `widths`, taken in order, fit in `available` with `gap` between neighbours.
-	// Labels are cut from the end, never from the middle, so the count is a prefix.
-	std::size_t RefLabelsThatFit(const std::vector<float>& widths, float gap, float available);
+	// How many of `widths`, taken in order, fit in `available` with `gap` between neighbours
+	// and after the last, while the summary beside them - `summaryWidth` wide whole - keeps at
+	// least `minSummary` of it. A long summary is shortened with an ellipsis before a label
+	// is dropped; labels are dropped only when even that minimum would not fit. They are cut
+	// from the end, never from the middle, so the count is a prefix.
+	std::size_t RefLabelsThatFit(const std::vector<float>& widths, float gap, float available,
+								 float summaryWidth, float minSummary);
 }

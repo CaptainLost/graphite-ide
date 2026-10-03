@@ -169,8 +169,8 @@ namespace Graphite {
 		bool IsDiffFailed(const Core::Oid& commit) const;
 
 		// Null while the answer is in flight, after a failure, and for a commit that was
-		// evicted. In every case the caller's response is the same: draw nothing under
-		// that row yet.
+		// evicted. IsDiffFailed tells the failure from the others; the commit list puts a
+		// placeholder row saying which under the commit.
 		Core::Ref<const Core::Diff> GetDiffFor(const Core::Oid& commit) const;
 
 		// Thirty-two is well past any number of rows a reader expands at once, and bounds

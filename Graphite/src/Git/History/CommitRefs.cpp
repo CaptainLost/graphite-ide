@@ -10,6 +10,13 @@ namespace Graphite {
 
 		for (const Core::Branch& branch : branches)
 		{
+			// A remote's HEAD is a pointer to its default branch, not a branch: the one it
+			// points at is listed too, and a label for each would say the same thing twice.
+			if (branch.Kind == Core::RefKind::Remote && branch.Name.ends_with("/HEAD"))
+			{
+				continue;
+			}
+
 			CommitRefKind kind = CommitRefKind::Local;
 
 			if (branch.Kind == Core::RefKind::Remote)
@@ -39,8 +46,11 @@ namespace Graphite {
 		return refs;
 	}
 
-	std::size_t RefLabelsThatFit(const std::vector<float>& widths, float gap, float available)
+	std::size_t RefLabelsThatFit(const std::vector<float>& widths, float gap, float available,
+								 float summaryWidth, float minSummary)
 	{
+		const float room = available - std::min(summaryWidth, minSummary) - gap;
+
 		std::size_t count = 0;
 		float used = 0.0f;
 
@@ -48,7 +58,7 @@ namespace Graphite {
 		{
 			const float next = used + (count == 0 ? 0.0f : gap) + width;
 
-			if (next > available)
+			if (next > room)
 			{
 				break;
 			}

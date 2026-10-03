@@ -91,6 +91,13 @@ namespace Graphite {
 								: ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
 		}
 
+		// The least the summary is kept at, in the table's layout and beside branch labels
+		// alike: twelve digits' worth.
+		float MinMessageWidth()
+		{
+			return ImGui::CalcTextSize("0").x * 12.0f;
+		}
+
 		// `text` in `color` — zero for the theme's own — with the needle marked, cut with an
 		// ellipsis to whatever is left of the current cell.
 		//
@@ -173,8 +180,9 @@ namespace Graphite {
 				widths.push_back(WidthOf(ref.Name) + inset * 2.0f);
 			}
 
-			const float room = ImGui::GetContentRegionAvail().x + 1.0f - WidthOf(summary) - gap;
-			const std::size_t fitting = RefLabelsThatFit(widths, gap, room);
+			const std::size_t fitting =
+				RefLabelsThatFit(widths, gap, ImGui::GetContentRegionAvail().x + 1.0f, WidthOf(summary),
+								 MinMessageWidth());
 
 			ImDrawList* draw = ImGui::GetWindowDrawList();
 
@@ -357,6 +365,7 @@ namespace Graphite {
 	void CommitListView::Render(const Core::LogPage& page, const Core::CommitGraph& graph,
 								const GitPalette& palette, std::chrono::minutes offset,
 								const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf,
+								const std::function<bool(const Core::Oid&)>& diffFailed,
 								const CommitRefMap& refs, std::string_view highlight,
 								std::string_view pathHighlight)
 	{
@@ -419,26 +428,38 @@ namespace Graphite {
 
 		const auto widthOf = [](const char* sample) { return ImGui::CalcTextSize(sample).x; };
 
-		// Worked out before the table, from the width it is about to be given: the message is
-		// the only column that stretches, so what the fixed ones take is what it loses. The
-		// scrollbar's share is taken off because the table is told to stop short of it.
 		const ImGuiStyle& style = ImGui::GetStyle();
 
-		CommitColumnsInput sizes;
-		sizes.Available = ImGui::GetContentRegionAvail().x - style.ScrollbarSize;
-		sizes.Graph = GraphWidth(metrics, graph.LaneCount);
-		sizes.Chevron = std::max(widthOf(ICON_MDI_CHEVRON_RIGHT), widthOf(ICON_MDI_CHEVRON_DOWN));
-		sizes.Hash = widthOf("0000000");
-		sizes.Author = widthOf("Alice Johnson   ");
-		sizes.Date = widthOf("59 minutes ago");
-		sizes.CellPadding = style.CellPadding.x * 2.0f;
-		sizes.MinMessage = widthOf("0") * 12.0f;
-
-		const CommitColumns columns = LayoutCommitColumns(sizes);
+		// The scrollbar's share is taken off because the table is told to stop short of it.
+		const float available = ImGui::GetContentRegionAvail().x - style.ScrollbarSize;
 
 		if (ImGui::BeginTable("##commits", Index(Column::Count), flags))
 		{
 			KeepClearOfScrollbar(ImGui::GetStyle().ItemSpacing.x);
+
+			// The width a column the reader can resize is in use at: what ImGui requested for
+			// it last frame - their drag, or the width saved in the settings - and the width it
+			// usually needs until there is one. A hidden column keeps its request.
+			const ImGuiTable* table = ImGui::GetCurrentTable();
+
+			const auto inUse = [&](Column column, float usual) {
+				const float requested = table->Columns[Index(column)].WidthRequest;
+				return requested > 0.0f ? requested : usual;
+			};
+
+			// Worked out from those widths: the message is the only column that stretches, so
+			// what the fixed ones take is what it loses.
+			CommitColumnsInput sizes;
+			sizes.Available = available;
+			sizes.Graph = GraphWidth(metrics, graph.LaneCount);
+			sizes.Chevron = std::max(widthOf(ICON_MDI_CHEVRON_RIGHT), widthOf(ICON_MDI_CHEVRON_DOWN));
+			sizes.Hash = inUse(Column::Hash, widthOf("0000000"));
+			sizes.Author = inUse(Column::Author, widthOf("Alice Johnson   "));
+			sizes.Date = inUse(Column::Date, widthOf("59 minutes ago"));
+			sizes.CellPadding = style.CellPadding.x * 2.0f;
+			sizes.MinMessage = MinMessageWidth();
+
+			const CommitColumns columns = LayoutCommitColumns(sizes);
 
 			// The lanes and the arrow are not the reader's to resize: the graph is as wide as
 			// the history has lanes - up to the share of the table the layout allows it - and
@@ -453,16 +474,21 @@ namespace Graphite {
 
 			// The rest open at the width of what they usually hold. A cell too narrow for its
 			// text cuts it with an ellipsis, and the tooltip over it says the rest.
-			ImGui::TableSetupColumn("Hash", ImGuiTableColumnFlags_WidthFixed, sizes.Hash);
+			ImGui::TableSetupColumn("Hash", ImGuiTableColumnFlags_WidthFixed, widthOf("0000000"));
 			ImGui::TableSetupColumn("Message", ImGuiTableColumnFlags_WidthStretch);
-			ImGui::TableSetupColumn("Author", ImGuiTableColumnFlags_WidthFixed, sizes.Author);
-			ImGui::TableSetupColumn("Date", ImGuiTableColumnFlags_WidthFixed, sizes.Date);
 
 			// A narrow table gives up the author and then the date rather than the summary.
-			// The columns are not Hideable, so ImGui neither offers the reader a menu to bring
-			// them back nor saves the state: it follows the width alone.
-			ImGui::TableSetColumnEnabled(Index(Column::Author), columns.ShowAuthor);
-			ImGui::TableSetColumnEnabled(Index(Column::Date), columns.ShowDate);
+			// Done with the Disabled flag, which hides a column outright and is read again
+			// every frame; the table is not Hideable, so ImGui offers the reader no menu to
+			// bring them back and does not save the state.
+			constexpr ImGuiTableColumnFlags fixed = ImGuiTableColumnFlags_WidthFixed;
+
+			ImGui::TableSetupColumn("Author",
+									columns.ShowAuthor ? fixed : fixed | ImGuiTableColumnFlags_Disabled,
+									widthOf("Alice Johnson   "));
+			ImGui::TableSetupColumn("Date",
+									columns.ShowDate ? fixed : fixed | ImGuiTableColumnFlags_Disabled,
+									widthOf("59 minutes ago"));
 
 			ImGui::TableSetupScrollFreeze(0, 1);
 			ImGui::TableHeadersRow();
@@ -495,7 +521,7 @@ namespace Graphite {
 					}
 					else
 					{
-						RenderFileRow(commit, row.File, palette, diffOf, pathHighlight);
+						RenderFileRow(commit, row.File, palette, diffOf, diffFailed, pathHighlight);
 					}
 
 					ImGui::PopID();
@@ -700,7 +726,7 @@ namespace Graphite {
 	void CommitListView::RenderFileRow(
 		const Core::CommitSummary& commit, std::size_t fileIndex, const GitPalette& palette,
 		const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf,
-		std::string_view pathHighlight)
+		const std::function<bool(const Core::Oid&)>& diffFailed, std::string_view pathHighlight)
 	{
 		const Core::Ref<const Core::Diff> diff = diffOf(commit.Id);
 
@@ -718,7 +744,11 @@ namespace Graphite {
 			// left the cache between building the rows and drawing them.
 			ImGui::TableSetColumnIndex(Index(Column::Message));
 
-			if (!diff)
+			if (!diff && diffFailed(commit.Id))
+			{
+				ImGui::TextDisabled("Could not load changes");
+			}
+			else if (!diff)
 			{
 				ImGui::TextDisabled("Loading%s", std::string(Ellipsis).c_str());
 			}
