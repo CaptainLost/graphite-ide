@@ -2,9 +2,9 @@
 
 #include "Settings/AnalysisSettings.h"
 
+#include <format>
 #include <imgui.h>
 
-#include <cstdio>
 
 namespace Graphite {
 
@@ -66,20 +66,13 @@ namespace Graphite {
 		// The label carries the automatic figure while that is what governs, so ticking the box
 		// does not also make the number a mystery — a fixed "Files analysed at once" would leave
 		// nothing on screen saying what "automatically" actually chose.
-		char label[64];
-
-		if (concurrencyAutomatic)
-		{
-			std::snprintf(label, sizeof(label), "Files analysed at once (automatic: %d)###FilesAtOnce", concurrency);
-		}
-		else
-		{
-			std::snprintf(label, sizeof(label), "Files analysed at once###FilesAtOnce");
-		}
+		const std::string label =
+			concurrencyAutomatic ? std::format("Files analysed at once (automatic: {})###FilesAtOnce", concurrency)
+								 : std::string{"Files analysed at once###FilesAtOnce"};
 
 		// Written on release, not on every frame of the drag, for the same reason as the budget
 		// slider above.
-		if (ImGui::SliderInt(label, &concurrency,
+		if (ImGui::SliderInt(label.c_str(), &concurrency,
 							 static_cast<int>(AnalysisSettings::kMinimumConcurrency),
 							 static_cast<int>(AnalysisSettings::kMaximumConcurrency),
 							 "%d", ImGuiSliderFlags_AlwaysClamp))

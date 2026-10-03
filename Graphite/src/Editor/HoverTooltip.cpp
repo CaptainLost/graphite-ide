@@ -12,10 +12,10 @@
 #include "Core/Text/Columns.h"
 #include "Core/Text/Encoding.h"
 
+#include <format>
 #include <imgui_internal.h>
 
 #include <algorithm>
-#include <cstdio>
 #include <string>
 #include <string_view>
 
@@ -354,9 +354,7 @@ namespace Graphite {
 				return;
 			}
 
-			char line[32];
-			std::snprintf(line, sizeof(line), ":%zu", preview.FirstLine + 1);
-			DisabledText(file + line);
+			DisabledText(file + std::format(":{}", preview.FirstLine + 1));
 
 			// A file with no tab is declared every frame the preview shows, as a search result's
 			// preview pane does: the server holds it open for exactly as long as somebody is
@@ -559,10 +557,9 @@ namespace Graphite {
 			ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove;
 
 		// One window per document: two editors side by side must never append to each other's.
-		char name[48];
-		std::snprintf(name, sizeof(name), "##HoverTooltip%p", static_cast<const void*>(&hover));
+		const std::string name = std::format("##HoverTooltip{}", static_cast<const void*>(&hover));
 
-		ImGui::Begin(name, nullptr, kFlags);
+		ImGui::Begin(name.c_str(), nullptr, kFlags);
 
 		// A window never focused still falls behind whatever is focused after it — the first click
 		// into the editor would bury it for good. Raised every frame it shows instead, which

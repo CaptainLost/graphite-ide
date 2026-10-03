@@ -2,9 +2,9 @@
 
 #include "Core/Base/Color.h"
 
+#include <format>
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 
 namespace Core {
 
@@ -90,19 +90,11 @@ namespace Core {
 	{
 		const int alpha = ToByte(color.A);
 
-		char text[9] = {};
-
 		if (alpha == 255)
 		{
-			std::snprintf(text, sizeof(text), "%02X%02X%02X", ToByte(color.R), ToByte(color.G),
-						  ToByte(color.B));
-		}
-		else
-		{
-			std::snprintf(text, sizeof(text), "%02X%02X%02X%02X", ToByte(color.R),
-						  ToByte(color.G), ToByte(color.B), alpha);
+			return std::format("{:02X}{:02X}{:02X}", ToByte(color.R), ToByte(color.G), ToByte(color.B));
 		}
 
-		return text;
+		return std::format("{:02X}{:02X}{:02X}{:02X}", ToByte(color.R), ToByte(color.G), ToByte(color.B), alpha);
 	}
 }

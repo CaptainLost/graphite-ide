@@ -2,11 +2,11 @@
 
 #include "Sessions/RequestTimeline.h"
 
+#include <format>
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <charconv>
-#include <cstdio>
 
 namespace Graphite {
 
@@ -236,9 +236,7 @@ namespace Graphite {
 
 	std::string FormatPrice(const Price& price)
 	{
-		char buffer[160];
-		std::snprintf(buffer, sizeof(buffer), "%g,%g,%g,%g,%g", price.Input, price.Output,
-					  price.CacheWrite5m, price.CacheWrite1h, price.CacheRead);
-		return buffer;
+		return std::format("{:g},{:g},{:g},{:g},{:g}", price.Input, price.Output, price.CacheWrite5m,
+						   price.CacheWrite1h, price.CacheRead);
 	}
 }

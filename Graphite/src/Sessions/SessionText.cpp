@@ -6,10 +6,10 @@
 
 #include "Core/Fs/FileSystem.h"
 
+#include <format>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
-#include <cstdio>
 #include <map>
 #include <utility>
 
@@ -43,31 +43,24 @@ namespace Graphite {
 			return "< $0.01";
 		}
 
-		char buffer[32];
-		std::snprintf(buffer, sizeof(buffer), "$%.2f", cost.Dollars);
-		return buffer;
+		return std::format("${:.2f}", cost.Dollars);
 	}
 
 	std::string FormatDuration(std::chrono::milliseconds span)
 	{
 		const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(span).count();
-		char buffer[32];
 
 		if (seconds < 60)
 		{
-			std::snprintf(buffer, sizeof(buffer), "%llds", static_cast<long long>(seconds));
-		}
-		else if (seconds < 3600)
-		{
-			std::snprintf(buffer, sizeof(buffer), "%lldm", static_cast<long long>(seconds / 60));
-		}
-		else
-		{
-			std::snprintf(buffer, sizeof(buffer), "%lldh %lldm", static_cast<long long>(seconds / 3600),
-						  static_cast<long long>(seconds % 3600 / 60));
+			return std::format("{}s", seconds);
 		}
 
-		return buffer;
+		if (seconds < 3600)
+		{
+			return std::format("{}m", seconds / 60);
+		}
+
+		return std::format("{}h {}m", seconds / 3600, seconds % 3600 / 60);
 	}
 
 	std::string CompactionLabel(const CompactionFacts& facts, const std::string& time)

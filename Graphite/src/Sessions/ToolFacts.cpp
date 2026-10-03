@@ -8,10 +8,10 @@
 #include "Sessions/SessionText.h"
 #include "Sessions/TranscriptReader.h"
 
+#include <format>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
-#include <cstdio>
 
 namespace Graphite {
 
@@ -171,22 +171,17 @@ namespace Graphite {
 
 	std::string FormatTokens(std::uint64_t tokens)
 	{
-		char buffer[32];
-
 		if (tokens < 1000)
 		{
-			std::snprintf(buffer, sizeof(buffer), "%llu", static_cast<unsigned long long>(tokens));
-		}
-		else if (tokens < 1'000'000)
-		{
-			std::snprintf(buffer, sizeof(buffer), "%.1fk", static_cast<double>(tokens) / 1000.0);
-		}
-		else
-		{
-			std::snprintf(buffer, sizeof(buffer), "%.1fM", static_cast<double>(tokens) / 1'000'000.0);
+			return std::format("{}", tokens);
 		}
 
-		return buffer;
+		if (tokens < 1'000'000)
+		{
+			return std::format("{:.1f}k", static_cast<double>(tokens) / 1000.0);
+		}
+
+		return std::format("{:.1f}M", static_cast<double>(tokens) / 1'000'000.0);
 	}
 
 	std::string FormatTokensExact(std::uint64_t tokens)

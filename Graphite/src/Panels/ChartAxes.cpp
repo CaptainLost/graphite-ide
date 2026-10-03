@@ -2,13 +2,13 @@
 
 #include "Panels/ChartAxes.h"
 
+#include <format>
 #include <imgui.h>
 #include <implot.h>
 #include <implot_internal.h>
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
 
 namespace Graphite {
 
@@ -62,7 +62,10 @@ namespace Graphite {
 					return 0;
 				}
 
-				return std::snprintf(buffer, static_cast<std::size_t>(size), "%.0f", value);
+				// ImPlot hands over the buffer, so the text is written into it, cut to fit.
+				const auto written = std::format_to_n(buffer, size - 1, "{:.0f}", value);
+				*written.out = '\0';
+				return static_cast<int>(written.out - buffer);
 			});
 	}
 

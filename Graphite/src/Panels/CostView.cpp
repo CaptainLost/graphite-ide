@@ -14,6 +14,7 @@
 
 #include "Core/ImGui/EmptyState.h"
 
+#include <format>
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 #include <implot.h>
@@ -21,7 +22,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdio>
 #include <functional>
 #include <optional>
 #include <utility>
@@ -734,9 +734,7 @@ namespace Graphite {
 				ImGui::TableNextColumn();
 				if (cost.Known)
 				{
-					char percent[8];
-					std::snprintf(percent, sizeof(percent), "%.0f%%", 100.0 * share);
-					RightAligned(text, percent);
+					RightAligned(text, std::format("{:.0f}%", 100.0 * share).c_str());
 				}
 
 				// No bar for a share under a pixel: a sliver reads as a mark, not as nothing.
