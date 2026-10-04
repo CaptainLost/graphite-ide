@@ -3,6 +3,7 @@
 #include "Core/ImGui/SelectionGesture.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <string>
 
@@ -129,4 +130,83 @@ TEST_CASE("C without Ctrl copies nothing")
 
 	CHECK_FALSE(result.Copied);
 	CHECK_FALSE(result.FromMenu);
+}
+
+TEST_CASE("The context menu's Copy copies the selection and says it came from the menu")
+{
+	ImGuiContext* context = ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO();
+	io.DisplaySize = ImVec2(800.0f, 600.0f);
+	io.DeltaTime = 1.0f / 60.0f;
+	io.Fonts->Build();
+	ImGui::GetPlatformIO().Platform_SetClipboardTextFn = &KeepClipboard;
+
+	TextSelection selection;
+	selection.Select({0, 0}, {0, 5});
+
+	SelectionSource source;
+	source.SelectedText = [] { return std::string("hello"); };
+
+	SelectionGestureOptions options;
+	options.MenuId = "##gestureMenu";
+
+	SelectionGesture gesture;
+	SelectionGestureResult copied;
+	ImVec2 copyItem(-1.0f, -1.0f);
+
+	// Frame 0 opens the menu as a right-click would; frames 1-2 let it appear and find where
+	// its first item, Copy, is; frame 3 moves onto it, 4 presses, 5 releases.
+	for (int frame = 0; frame < 8; ++frame)
+	{
+		if (frame == 3)
+		{
+			io.AddMousePosEvent(copyItem.x, copyItem.y);
+		}
+		else if (frame == 4)
+		{
+			io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+		}
+		else if (frame == 5)
+		{
+			io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+		}
+
+		ImGui::NewFrame();
+		ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f));
+		ImGui::SetNextWindowSize(ImVec2(300.0f, 200.0f));
+		ImGui::Begin("Gesture");
+
+		if (frame == 0)
+		{
+			// The id BeginPopupContextWindow derives from MenuId in this same window.
+			ImGui::OpenPopup(options.MenuId);
+		}
+
+		const SelectionGestureResult result = gesture.Update(selection, source, options);
+
+		if (result.Copied)
+		{
+			copied = result;
+		}
+
+		ImGui::End();
+
+		if (frame == 2)
+		{
+			ImGuiContext& g = *GImGui;
+			REQUIRE(g.OpenPopupStack.Size == 1);
+			const ImGuiWindow* menu = g.OpenPopupStack[0].Window;
+			REQUIRE(menu != nullptr);
+			copyItem = ImVec2(menu->Pos.x + menu->WindowPadding.x + 4.0f,
+							  menu->Pos.y + menu->WindowPadding.y + ImGui::GetFontSize() * 0.5f);
+		}
+
+		ImGui::EndFrame();
+	}
+
+	ImGui::DestroyContext(context);
+
+	CHECK(copied.Copied);
+	CHECK(copied.CopiedText == "hello");
+	CHECK(copied.FromMenu);
 }
