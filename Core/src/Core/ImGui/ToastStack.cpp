@@ -19,7 +19,8 @@ namespace Core {
 		}
 	}
 
-	void ToastStack::Show(ToastKind kind, std::string title, std::string message, Clock::time_point now)
+	void ToastStack::Show(ToastKind kind, std::string title, std::string message, Clock::time_point now,
+						  std::string copyText)
 	{
 		const auto twin = std::ranges::find_if(m_Toasts, [&](const Toast& toast) {
 			return !toast.LeavingSince.has_value() && toast.Kind == kind && toast.Title == title &&
@@ -45,6 +46,7 @@ namespace Core {
 		toast.Kind = kind;
 		toast.Title = std::move(title);
 		toast.Message = std::move(message);
+		toast.CopyText = std::move(copyText);
 		toast.Shown = now;
 		toast.Left = kLifetime;
 		toast.CountingFrom = now;

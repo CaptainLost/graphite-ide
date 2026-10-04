@@ -14,12 +14,12 @@ namespace Core {
 	// Core does not pick the colours, as with Theme::Apply: the application hands them in.
 	struct ToastPalette
 	{
-		// The card's background, and the colour of the glyph in its icon.
+		// The card's background, and the colour of the mark drawn over its icon.
 		Color Surface;
 		Color Text;
 
-		// The message, the count after the title and the close button, a step quieter than
-		// the title.
+		// The count after the title and the close button, a step quieter than the title. The
+		// message sits most of the way from this towards Text; a quoted name in it is in Text.
 		Color TextDim;
 
 		Color Success;
@@ -32,8 +32,10 @@ namespace Core {
 	class Toasts
 	{
 	public:
-		// The title names the action - "Commit failed" - and the message says why.
-		void Show(ToastKind kind, std::string title, std::string message);
+		// The title names the action - "Commit failed" - and the message says why. The copy
+		// text is what Copy in the toast's menu copies instead of the title and the message,
+		// for a message shortened for the screen; see Toast::CopyText.
+		void Show(ToastKind kind, std::string title, std::string message, std::string copyText = {});
 
 		// Once a frame, after every panel has drawn, so the toasts sit on top.
 		void Render(const ToastPalette& palette);
@@ -42,7 +44,8 @@ namespace Core {
 		// they were about has closed or been replaced.
 		void Clear() { m_Stack.Clear(); }
 
-		// What Copy in a toast's menu does with the title and the message, one line each. Left
+		// What Copy in a toast's menu does with the toast's copy text - the title and the
+		// message, one line each, unless Show was given one of its own. Left
 		// empty, it goes straight to ImGui's clipboard; the application sets it to its own copy,
 		// which also reports it.
 		std::function<void(std::string_view)> OnCopied;

@@ -26,6 +26,11 @@ namespace Core {
 		std::string Title;
 		std::string Message;
 
+		// What Copy in the toast's menu copies; empty for the title and the message, one line
+		// each. Set when the message on screen is shortened - paths written relative to the
+		// repository - so the copy still carries the whole of what happened.
+		std::string CopyText;
+
 		// How many times this message was shown while the toast was up; drawn as "x2" past one.
 		int Count = 1;
 
@@ -57,7 +62,8 @@ namespace Core {
 		// not a new toast: that one counts it and starts its countdown afresh. Two clicks on the
 		// same failing action would otherwise stack two copies of the same words. The title
 		// takes part because the same words from two different actions are two reports.
-		void Show(ToastKind kind, std::string title, std::string message, Clock::time_point now);
+		void Show(ToastKind kind, std::string title, std::string message, Clock::time_point now,
+				  std::string copyText = {});
 
 		// Called every frame for every toast drawn; only a change of state does anything.
 		void SetHovered(std::uint64_t id, bool hovered, Clock::time_point now);

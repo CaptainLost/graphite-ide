@@ -5,8 +5,13 @@
 #include "Core/ImGui/Toasts.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <chrono>
+#include <cstdint>
+#include <format>
+#include <functional>
+#include <string>
 #include <thread>
 
 namespace {
@@ -31,6 +36,15 @@ namespace {
 		void Next(Core::Toasts& toasts)
 		{
 			ImGui::NewFrame();
+			toasts.Render(Core::ToastPalette{});
+			ImGui::EndFrame();
+		}
+
+		// With `before` drawn first, as the application draws its panels before the toasts.
+		void Next(Core::Toasts& toasts, const std::function<void()>& before)
+		{
+			ImGui::NewFrame();
+			before();
 			toasts.Render(Core::ToastPalette{});
 			ImGui::EndFrame();
 		}
@@ -159,4 +173,172 @@ TEST_CASE("Nothing shown asks for no frame")
 	frames.Next(toasts);
 
 	CHECK_FALSE(Core::Redraw::TakeDeadline().has_value());
+}
+
+namespace {
+	// A window that holds the keyboard, as the editor does, and the toasts drawn over it. The
+	// first frame focuses it; ImGui then keeps it focused until something else is clicked.
+	class EditorAndToasts
+	{
+	public:
+		EditorAndToasts() { Settle(); }
+
+		Core::Toasts Toasts;
+
+		void Next()
+		{
+			m_Frames.Next(Toasts, [this] {
+				if (m_FocusEditor)
+				{
+					ImGui::SetNextWindowFocus();
+					m_FocusEditor = false;
+				}
+
+				ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f));
+				ImGui::SetNextWindowSize(ImVec2(200.0f, 100.0f));
+				ImGui::Begin("Editor");
+				ImGui::TextUnformatted("text");
+				ImGui::End();
+			});
+		}
+
+		// Past the fade-in and its rise, so every toast stands where it rests.
+		void Settle()
+		{
+			Next();
+			std::this_thread::sleep_for(Core::ToastStack::kEnter + std::chrono::milliseconds(50));
+
+			for (int i = 0; i < 3; ++i)
+			{
+				Next();
+			}
+		}
+
+		// One event a frame, as a person clicks: over the point, down, up.
+		void Click(ImVec2 at, ImGuiMouseButton button = ImGuiMouseButton_Left)
+		{
+			ImGuiIO& io = ImGui::GetIO();
+
+			io.AddMousePosEvent(at.x, at.y);
+			Next();
+			io.AddMouseButtonEvent(button, true);
+			Next();
+			io.AddMouseButtonEvent(button, false);
+			Next();
+		}
+
+		static const ImGuiWindow& ToastWindow(std::uint64_t id)
+		{
+			const ImGuiWindow* window = ImGui::FindWindowByName(std::format("##toast{}", id).c_str());
+			REQUIRE(window != nullptr);
+			return *window;
+		}
+
+		static std::string Focused()
+		{
+			const ImGuiWindow* window = ImGui::GetCurrentContext()->NavWindow;
+			return window != nullptr ? std::string(window->Name) : std::string();
+		}
+
+	private:
+		Frames m_Frames;
+		bool m_FocusEditor = true;
+	};
+}
+
+TEST_CASE("A click on the close button closes the toast and hands the keyboard back")
+{
+	EditorAndToasts screen;
+	screen.Toasts.Show(Core::ToastKind::Error, "Title", "message");
+	screen.Settle();
+	REQUIRE(EditorAndToasts::Focused() == "Editor");
+
+	// Inside the close button: the card's right padding, then the button, on the title's row.
+	const ImGuiWindow& card = EditorAndToasts::ToastWindow(screen.Toasts.GetStack().Get()[0].Id);
+	screen.Click(ImVec2(card.Pos.x + card.Size.x - 14.0f - 2.0f, card.Pos.y + 12.0f + 6.0f));
+
+	REQUIRE(screen.Toasts.GetStack().Get().size() == 1);
+	CHECK(screen.Toasts.GetStack().Get()[0].LeavingSince.has_value());
+	CHECK(EditorAndToasts::Focused() == "Editor");
+}
+
+TEST_CASE("A click on a toast's message hands the keyboard back and leaves the toast up")
+{
+	EditorAndToasts screen;
+	screen.Toasts.Show(Core::ToastKind::Error, "Title", "a message long enough to be clicked on");
+	screen.Settle();
+
+	// Inside the message, under the title and to the right of the icon.
+	const ImGuiWindow& card = EditorAndToasts::ToastWindow(screen.Toasts.GetStack().Get()[0].Id);
+	screen.Click(ImVec2(card.Pos.x + 80.0f, card.Pos.y + card.Size.y - 12.0f - 4.0f));
+
+	REQUIRE(screen.Toasts.GetStack().Get().size() == 1);
+	CHECK_FALSE(screen.Toasts.GetStack().Get()[0].LeavingSince.has_value());
+	CHECK(EditorAndToasts::Focused() == "Editor");
+}
+
+namespace {
+	// Right-clicks the toast's title and picks Copy from the menu that opens.
+	std::string CopyFromTitle(EditorAndToasts& screen)
+	{
+		std::string copied;
+		screen.Toasts.OnCopied = [&](std::string_view text) { copied = std::string(text); };
+
+		const ImGuiWindow& card = EditorAndToasts::ToastWindow(screen.Toasts.GetStack().Get()[0].Id);
+		screen.Click(ImVec2(card.Pos.x + 60.0f, card.Pos.y + 12.0f + 6.0f), ImGuiMouseButton_Right);
+
+		// A popup sizes itself on the frame it appears and shows from the next.
+		screen.Next();
+
+		const ImGuiContext& g = *ImGui::GetCurrentContext();
+		REQUIRE(g.OpenPopupStack.Size == 1);
+		const ImGuiWindow* menu = g.OpenPopupStack[0].Window;
+		REQUIRE(menu != nullptr);
+
+		screen.Click(ImVec2(menu->Pos.x + menu->WindowPadding.x + 4.0f, menu->Pos.y + menu->WindowPadding.y + 4.0f));
+
+		return copied;
+	}
+}
+
+TEST_CASE("Copy copies the title and the message, one line each")
+{
+	EditorAndToasts screen;
+	screen.Toasts.Show(Core::ToastKind::Error, "Title", "message");
+	screen.Settle();
+
+	CHECK(CopyFromTitle(screen) == "Title\nmessage");
+}
+
+TEST_CASE("Copy copies the copy text a toast was shown with instead of its message")
+{
+	EditorAndToasts screen;
+	screen.Toasts.Show(Core::ToastKind::Error, "Title", "src/a.cpp", "Title\nD:/Repos/IDE/src/a.cpp");
+	screen.Settle();
+
+	CHECK(CopyFromTitle(screen) == "Title\nD:/Repos/IDE/src/a.cpp");
+}
+
+TEST_CASE("A toast drawn with a bold face for its quoted names and a path completes a frame without an ImGui assertion")
+{
+	Frames frames;
+	Core::Toasts toasts;
+
+	// Long enough to scroll, so the body is laid out short of its scrollbar too.
+	std::string message = "'side' is checked out in D:/Repos/IDE/.claude/worktrees/side";
+
+	for (int i = 0; i < 20; ++i)
+	{
+		message += " and more words";
+	}
+
+	toasts.Show(Core::ToastKind::Success, "Title", message);
+	toasts.Show(Core::ToastKind::Warning, "Title", "");
+
+	for (int i = 0; i < 30; ++i)
+	{
+		frames.Next(toasts);
+	}
+
+	CHECK(toasts.GetStack().Get().size() == 2);
 }
