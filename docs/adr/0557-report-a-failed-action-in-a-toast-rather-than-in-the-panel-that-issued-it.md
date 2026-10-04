@@ -34,6 +34,17 @@ application layer and handed by reference to whatever reports
   failure of `git init` in its own prompt (`GetInitError()`,
   `DismissInitError()`).
 
+Any feature raises a toast by publishing `ToastEvent` on the application's
+`Core::EventBus`, the way `StatusMessageEvent` reaches the status bar; only the
+application layer holds `Core::Toasts`. Each event carries a scope. A `Folder`
+toast is about the open folder or its repository - every git failure is one -
+and is cleared when that folder closes or another replaces it; an `Application`
+toast survives that. Core keeps the scope as an opaque group tag on the toast,
+which `Clear(group)` removes alone and which takes part in merging twins. Errors
+and warnings go to toasts; routine confirmations - saved, reloaded, committed -
+stay in the status bar's transient slot. A menu's Copy is confirmed by a Success
+toast titled "Copied"; plain Ctrl+C and Ctrl+X are not confirmed at all.
+
 ## Rationale
 
 A failure is reported whether or not a Git panel is open, and exactly once when
