@@ -12,7 +12,7 @@
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
-#include "Git/RelativePaths.h"
+#include "UI/RelativePaths.h"
 #include "UI/HighlightedRow.h"
 #include "UI/SplitResults.h"
 #include "UI/ToastEvent.h"

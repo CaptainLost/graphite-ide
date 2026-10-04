@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Git/RelativePaths.h"
+#include "UI/RelativePaths.h"
 
 #include <filesystem>
 

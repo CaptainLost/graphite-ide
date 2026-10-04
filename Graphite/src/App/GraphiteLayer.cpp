@@ -51,7 +51,7 @@
 #include "Theme/SessionPalette.h"
 #include "Theme/ToastPalette.h"
 
-#include "Git/RelativePaths.h"
+#include "UI/RelativePaths.h"
 
 #include "Core/Events/ApplicationEvent.h"
 
