@@ -25,6 +25,7 @@ struct git_signature;
 struct git_status_list;
 struct git_tree;
 struct git_tree_entry;
+struct git_worktree;
 
 namespace Core {
 
@@ -43,6 +44,7 @@ namespace Core {
 		void operator()(git_status_list* list) const;
 		void operator()(git_tree* tree) const;
 		void operator()(git_tree_entry* entry) const;
+		void operator()(git_worktree* worktree) const;
 	};
 
 	using BlobHandle = std::unique_ptr<git_blob, Libgit2Free>;
@@ -57,6 +59,7 @@ namespace Core {
 	using StatusListHandle = std::unique_ptr<git_status_list, Libgit2Free>;
 	using TreeHandle = std::unique_ptr<git_tree, Libgit2Free>;
 	using TreeEntryHandle = std::unique_ptr<git_tree_entry, Libgit2Free>;
+	using WorktreeHandle = std::unique_ptr<git_worktree, Libgit2Free>;
 
 	// Lets a handle stand where libgit2 wants an out-parameter: Out(commit) converts to the
 	// git_commit** the call writes into, and the handle takes what was written once the

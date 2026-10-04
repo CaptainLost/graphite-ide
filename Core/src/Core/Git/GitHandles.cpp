@@ -65,4 +65,9 @@ namespace Core {
 	{
 		git_tree_entry_free(entry);
 	}
+
+	void Libgit2Free::operator()(git_worktree* worktree) const
+	{
+		git_worktree_free(worktree);
+	}
 }

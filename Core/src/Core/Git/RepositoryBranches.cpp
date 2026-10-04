@@ -7,6 +7,7 @@
 
 #include <git2.h>
 
+#include <cstring>
 #include <format>
 #include <string>
 
@@ -25,6 +26,45 @@ namespace Core {
 			}
 
 			return reference;
+		}
+
+		// The linked worktree whose HEAD is this branch, by path. Empty when it is checked out
+		// in this repository's own working tree, or when the lookup fails - the caller then
+		// keeps the plain refusal, which is still true.
+		std::string WorktreeHolding(git_repository* handle, const char* referenceName)
+		{
+			git_strarray names{};
+
+			if (git_worktree_list(&names, handle) != 0)
+			{
+				return {};
+			}
+
+			std::string path;
+
+			for (std::size_t i = 0; i < names.count && path.empty(); ++i)
+			{
+				ReferenceHandle head;
+
+				// The handle takes the reference only when the call's full expression ends, so it
+				// is read in a second statement, never in the same condition.
+				const int found = git_repository_head_for_worktree(Out(head), handle, names.strings[i]);
+
+				if (found != 0 || std::strcmp(git_reference_name(head.get()), referenceName) != 0)
+				{
+					continue;
+				}
+
+				WorktreeHandle worktree;
+
+				if (git_worktree_lookup(Out(worktree), handle, names.strings[i]) == 0)
+				{
+					path = git_worktree_path(worktree.get());
+				}
+			}
+
+			git_strarray_dispose(&names);
+			return path;
 		}
 	}
 
@@ -172,6 +212,12 @@ namespace Core {
 
 		if (checkedOut == 1)
 		{
+			if (const std::string worktree = WorktreeHolding(m_Handle.get(), git_reference_name(reference.GetValue().get()));
+				!worktree.empty())
+			{
+				return Error{ErrorCode::InvalidArgument, std::format("'{}' is checked out in {}", name, worktree)};
+			}
+
 			return Error{ErrorCode::InvalidArgument,
 						 std::format("'{}' is checked out and cannot be deleted", name)};
 		}

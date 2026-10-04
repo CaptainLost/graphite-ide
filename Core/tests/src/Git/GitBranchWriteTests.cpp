@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Repository.h"
 
 #include "Git/GitFixture.h"
@@ -171,4 +172,58 @@ TEST_CASE("A symbolic origin/HEAD neither breaks the count nor changes it")
 	// symbolic origin/HEAD is also hidden.
 	CHECK(repository.CountUnmergedCommits("work").GetValue() == 0);
 	CHECK(repository.CountUnmergedCommits("master").GetValue() == 0);
+}
+
+TEST_CASE("Deleting a branch another worktree holds names that worktree")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("one");
+	fixture.Branch("side");
+
+	TempDirectory outside;
+	const std::filesystem::path worktreePath = outside.GetPath() / "side-tree";
+
+	// Opening a Repository initialises libgit2, which the raw calls below rely on.
+	{
+		auto opened = Core::Repository::Open(fixture.GetPath());
+		REQUIRE(opened.HasValue());
+	}
+
+	git_repository* raw = nullptr;
+	REQUIRE(git_repository_open(&raw, Core::ToUtf8(fixture.GetPath()).c_str()) == 0);
+
+	git_reference* side = nullptr;
+	REQUIRE(git_branch_lookup(&side, raw, "side", GIT_BRANCH_LOCAL) == 0);
+
+	git_worktree_add_options options = GIT_WORKTREE_ADD_OPTIONS_INIT;
+	options.ref = side;
+
+	git_worktree* worktree = nullptr;
+	REQUIRE(git_worktree_add(&worktree, raw, "side-tree", Core::ToUtf8(worktreePath).c_str(), &options) == 0);
+
+	git_worktree_free(worktree);
+	git_reference_free(side);
+	git_repository_free(raw);
+
+	Core::Repository repository = OpenAt(fixture.GetPath());
+	auto deleted = repository.DeleteBranch("side");
+
+	REQUIRE_FALSE(deleted.HasValue());
+	CHECK(deleted.GetError().Message.starts_with("'side' is checked out in "));
+	CHECK(deleted.GetError().Message.find("side-tree") != std::string::npos);
+	CHECK(HasLocal(repository, "side"));
+}
+
+TEST_CASE("Deleting the branch checked out here keeps the plain refusal")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("one");
+
+	Core::Repository repository = OpenAt(fixture.GetPath());
+	auto deleted = repository.DeleteBranch("master");
+
+	REQUIRE_FALSE(deleted.HasValue());
+	CHECK(deleted.GetError().Message == "'master' is checked out and cannot be deleted");
 }
