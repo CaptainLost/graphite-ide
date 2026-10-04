@@ -46,6 +46,9 @@ namespace Core {
 		std::function<std::pair<TextPoint, TextPoint>()> Everything;
 		// The owner joins its lines.
 		std::function<std::string()> SelectedText;
+		// True when the owner keeps the press at `screen` for itself (a scrollbar it draws
+		// without an item, say); the gesture then ignores that press entirely.
+		std::function<bool(ImVec2 screen)> Claims;
 	};
 
 	struct SelectionGestureResult
@@ -58,6 +61,8 @@ namespace Core {
 	{
 		// Edge auto-scroll of the current window while sweeping.
 		bool ScrollsVertically = true;
+		// Edge auto-scroll sideways by one character width while sweeping.
+		bool ScrollsHorizontally = false;
 		// Handle Ctrl+C here (false where the owner routes Ctrl+C itself, e.g. the terminal).
 		bool CopyKey = true;
 		// Handle Ctrl+A here (false where the shell owns it).
@@ -69,8 +74,9 @@ namespace Core {
 	class SelectionGesture
 	{
 	public:
-		// Call inside the owner's window/child after its rows are laid out. Handles a press
-		// (focusing the window), the drag, and the keys and menu `options` enable.
+		// Call inside the owner's window/child after every widget in it has been submitted.
+		// Handles a press (focusing the window), the drag, and the keys and menu `options`
+		// enable. A press already taken by an item (ActiveId) or by `source.Claims` is ignored.
 		SelectionGestureResult Update(TextSelection& selection, const SelectionSource& source,
 									  const SelectionGestureOptions& options);
 

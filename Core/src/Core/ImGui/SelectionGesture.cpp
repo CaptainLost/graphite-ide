@@ -74,7 +74,10 @@ namespace Core {
 		const ImGuiIO& io = ImGui::GetIO();
 		const ImVec2 mouse = ImGui::GetMousePos();
 
-		if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+		const bool claimed =
+			ImGui::IsAnyItemActive() || (source.Claims && source.Claims(mouse));
+
+		if (!claimed && ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 		{
 			// A child nothing focused never sees a key: without this the copy shortcut would
 			// go wherever the focus happened to be.
@@ -148,16 +151,33 @@ namespace Core {
 						ImGui::SetScrollY(ImGui::GetScrollY() + step);
 					}
 				}
+
+				if (options.ScrollsHorizontally)
+				{
+					const float left = ImGui::GetWindowPos().x;
+					const float right = left + ImGui::GetWindowSize().x;
+					const float step = ImGui::CalcTextSize("0").x;
+
+					if (mouse.x < left)
+					{
+						ImGui::SetScrollX(ImGui::GetScrollX() - step);
+					}
+					else if (mouse.x > right)
+					{
+						ImGui::SetScrollX(ImGui::GetScrollX() + step);
+					}
+				}
 			}
 		}
 
-		if (ImGui::IsWindowFocused() && !ImGui::IsAnyItemActive() && io.KeyCtrl)
+		if (ImGui::IsWindowFocused() && !ImGui::IsAnyItemActive() && io.KeyCtrl && !io.KeyAlt)
 		{
-			if (options.CopyKey && ImGui::IsKeyPressed(ImGuiKey_C))
+			// Ctrl+Alt is AltGr on some layouts (Polish letters), so it is not a shortcut.
+			if (options.CopyKey && ImGui::IsKeyPressed(ImGuiKey_C, false))
 			{
 				Copy(source, result);
 			}
-			else if (options.SelectAllKey && ImGui::IsKeyPressed(ImGuiKey_A))
+			else if (options.SelectAllKey && ImGui::IsKeyPressed(ImGuiKey_A, false))
 			{
 				SelectEverything(selection, source);
 			}
@@ -170,7 +190,16 @@ namespace Core {
 				Copy(source, result);
 			}
 
-			if (ImGui::MenuItem("Select All", options.SelectAllKey ? "Ctrl+A" : nullptr))
+			bool anything = false;
+
+			if (source.Everything)
+			{
+				const auto [from, to] = source.Everything();
+				anything = from != to;
+			}
+
+			if (ImGui::MenuItem("Select All", options.SelectAllKey ? "Ctrl+A" : nullptr, false,
+								anything))
 			{
 				SelectEverything(selection, source);
 			}
