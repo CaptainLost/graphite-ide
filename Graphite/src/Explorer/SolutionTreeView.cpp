@@ -316,7 +316,8 @@ namespace Graphite {
 		const bool clicked = ImGui::Selectable(id.c_str(), selected, flags, ImVec2(layout.Width, 0.0f));
 
 		DrawFileRowLabel(layout,
-						 ImGui::GetColorU32(file.Exists ? ImGuiCol_Text : ImGuiCol_TextDisabled), label);
+						 FileRowLook{.Ink = ImGui::GetColorU32(file.Exists ? ImGuiCol_Text : ImGuiCol_TextDisabled)},
+						 label);
 
 		if (!file.Exists && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 		{

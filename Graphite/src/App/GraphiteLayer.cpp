@@ -119,6 +119,7 @@ namespace Graphite {
 			static_cast<float>(m_AppSettings.GetInterfaceScalePercent()) / 100.0f);
 
 		auto* explorer = m_Panels.Add(Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents, m_AppSettings, m_Events));
+		m_Explorer = explorer;
 
 		m_Panels.Add(Core::CreateScope<ConsolePanel>(m_Sink, m_Events));
 
@@ -649,6 +650,34 @@ namespace Graphite {
 		Core::Application::Get().GetWindow().SetBorderColor(palette.Border);
 	}
 
+	void GraphiteLayer::UpdateGitDecorations()
+	{
+		// Compared by pointer: GitModel hands out a new snapshot for every status it applies, so an
+		// unchanged pointer is an unchanged status and the index built from it still holds.
+		if (Core::Ref<const Core::WorkingTreeStatus> status = m_Git.GetStatus(); status != m_DecoratedStatus)
+		{
+			m_Decorations = status ? std::make_unique<GitDecorations>(*status) : nullptr;
+			m_DecoratedStatus = std::move(status);
+		}
+
+		GitDecorationView view;
+
+		// No folder, or a folder that is not a repository (no status ever arrives): nothing is
+		// decorated, and the Explorer looks as it does without git.
+		if (m_Workspace.IsOpen() && m_Decorations)
+		{
+			const GitPalette palette = ReadGitPalette(m_ActiveScheme.Get());
+
+			view.Index = m_Decorations.get();
+			view.WorkingDirectory = m_Git.GetWorkingDirectory();
+			view.Colours[0] = palette.GutterAdded;
+			view.Colours[1] = palette.GutterModified;
+			view.Colours[2] = palette.GutterRemoved;
+		}
+
+		m_Explorer->SetGitDecorations(view);
+	}
+
 	void GraphiteLayer::OnImGuiRender()
 	{
 		// First statement, before any window is begun: ImGuiStyle::Colors must not change
@@ -825,6 +854,8 @@ namespace Graphite {
 		RenderDropConfirm();
 		m_About.Render();
 		RenderTrustParentConfirm();
+
+		UpdateGitDecorations();
 
 		// Panels render outside the host window — inside it they would dock as ordinary child
 		// windows instead of landing in the dockspace nodes.

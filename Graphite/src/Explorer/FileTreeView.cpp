@@ -876,30 +876,30 @@ namespace Graphite {
 
 		const std::string id = "##" + Core::ToUtf8(node.Path);
 
-		// Only the active file is selected. An open file that is not active is told apart by
-		// the accent colour of its name rather than by a background, which would read as a
-		// second selected row.
+		// Only the active file is selected. An open file that is not active is told apart by a
+		// dot before its name rather than by a background, which would read as a second
+		// selected row, and rather than by the name's colour, which says what git thinks of it.
 		const bool clicked = ImGui::Selectable(id.c_str(), isActive, ImGuiSelectableFlags_AllowDoubleClick,
 											   ImVec2(layout.Width, 0.0f));
 
-		ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
-
-		if (isOpen && !isActive)
+		// Only for a row on screen: the lookup builds a path key, and an expanded tree can hold
+		// thousands of rows. An ignored file keeps its plain or dimmed look and never a status.
+		if (ImGui::IsItemVisible())
 		{
-			// An ignored file is greyed; the accent is mixed into the grey so it stays
-			// both dimmed and marked.
-			constexpr float kAccentShare = 0.6f;
-			const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
-			const ImVec4 base = ImGui::GetStyleColorVec4(dimmed ? ImGuiCol_TextDisabled : ImGuiCol_Text);
-			const float share = dimmed ? kAccentShare : 1.0f;
+			FileRowLook look{.Ink = ImGui::GetColorU32(ImGuiCol_Text), .OpenElsewhere = isOpen && !isActive};
 
-			ink = ImGui::GetColorU32(ImVec4(base.x + (accent.x - base.x) * share,
-											base.y + (accent.y - base.y) * share,
-											base.z + (accent.z - base.z) * share,
-											base.w + (accent.w - base.w) * share));
+			if (!node.Ignored)
+			{
+				look.Status = FileRowStatusOf(m_GitDecorations, node.Path);
+
+				if (look.Status.Decoration != GitDecoration::None)
+				{
+					look.Ink = look.Status.Ink;
+				}
+			}
+
+			DrawFileRowLabel(layout, look, label);
 		}
-
-		DrawFileRowLabel(layout, ink, label);
 
 		if (!m_ScrollToPath.empty() && m_ScrollToPath == node.Path)
 		{
@@ -962,6 +962,15 @@ namespace Graphite {
 			{
 				ImGui::SetTooltip("This folder could not be read.");
 			}
+		}
+
+		// The name keeps its colour; a dot on the right, in the colour of the highest state
+		// beneath, says something changed inside, whether the folder is open or not.
+		if (!node.Ignored && ImGui::IsItemVisible())
+		{
+			const ImVec2 rowMin = ImGui::GetItemRectMin();
+			const float textTop = rowMin.y + (ImGui::GetItemRectSize().y - ImGui::GetFontSize()) * 0.5f;
+			DrawRowMarker(FolderRowStatusOf(m_GitDecorations, node.Path), textTop);
 		}
 
 		RenderContextMenu(node);

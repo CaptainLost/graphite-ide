@@ -39,6 +39,9 @@ namespace Graphite {
 
 		void RegisterCommands(Core::CommandRegistry& commands);
 
+		// This frame's git status for the trees, set before the panel renders.
+		void SetGitDecorations(const GitDecorationView& decorations);
+
 	private:
 		enum class Mode
 		{

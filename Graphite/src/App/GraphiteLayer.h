@@ -14,6 +14,7 @@
 #include "App/TitleBar.h"
 #include "Git/Changes/ChangeMarkersModel.h"
 #include "Git/Diff/DiffWindows.h"
+#include "Git/GitDecorations.h"
 #include "Git/GitModel.h"
 #include "Git/RepositoryGitPort.h"
 #include "Language/Analysis/FileTextSource.h"
@@ -59,6 +60,7 @@
 
 namespace Graphite {
 
+	class ExplorerPanel;
 	class SearchPanel;
 	class ReferencesPanel;
 
@@ -135,6 +137,10 @@ namespace Graphite {
 		void UpdateFocusReload(Core::Timestep ts);
 
 		void ApplyChromeIfSchemeChanged();
+
+		// Rebuilds the git decorations when GitModel holds a different status snapshot, and hands
+		// this frame's view of them to the Explorer. Before the panels render.
+		void UpdateGitDecorations();
 
 		void RevealPanel(std::string_view id);
 
@@ -312,6 +318,12 @@ namespace Graphite {
 		// left to the file watcher.
 		std::uint64_t m_SeenGitWrites = 0;
 
+		// The trees' git decorations and the status snapshot they were built from. Rebuilt only
+		// when GitModel hands out a different snapshot, never per frame. Declared before
+		// m_Panels: the Explorer holds a pointer into m_Decorations between rebuilds.
+		Core::Ref<const Core::WorkingTreeStatus> m_DecoratedStatus;
+		std::unique_ptr<GitDecorations> m_Decorations;
+
 		// Holds no reference to m_Git or the queue above, so its place in this group is only
 		// about outliving what refers to it: GitView takes a DiffWindows&, so this must be
 		// declared before m_Panels, which is where GitView is constructed.
@@ -348,6 +360,7 @@ namespace Graphite {
 		// CommandContext, so the widget draws commands without naming any.
 		std::vector<Core::MenuItem> m_EditorContextMenu = BuildEditorContextMenu();
 
+		ExplorerPanel* m_Explorer = nullptr;
 		SearchPanel* m_SearchPanel = nullptr;
 		ReferencesPanel* m_ReferencesPanel = nullptr;
 

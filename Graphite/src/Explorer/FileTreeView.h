@@ -3,6 +3,7 @@
 #include "Workspace/GitIgnoredDisplay.h"
 #include "Workspace/Workspace.h"
 #include "Explorer/RenameSelection.h"
+#include "Git/GitDecorationView.h"
 
 #include "Core/FileSystem/FileTree.h"
 
@@ -34,6 +35,9 @@ namespace Graphite {
 		void SetFollowsActiveFile(bool follow) { m_FollowsActiveFile = follow; }
 
 		void SetGitIgnoredDisplay(GitIgnoredDisplay display) { m_GitIgnoredDisplay = display; }
+
+		// This frame's git status, set before Render. A view with no index decorates nothing.
+		void SetGitDecorations(const GitDecorationView& decorations) { m_GitDecorations = decorations; }
 
 	private:
 		struct PendingAction
@@ -122,5 +126,6 @@ namespace Graphite {
 		// whatever name it was given.
 		std::filesystem::path m_OpenWhenNamed;
 		GitIgnoredDisplay m_GitIgnoredDisplay = GitIgnoredDisplay::Dim;
+		GitDecorationView m_GitDecorations;
 	};
 }
