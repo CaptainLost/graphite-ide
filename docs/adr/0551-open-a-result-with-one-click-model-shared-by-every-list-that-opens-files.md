@@ -15,13 +15,23 @@ few pixels apart.
 
 ## Decision
 
-Every list whose rows lead to a file answers the same three gestures:
+Every list whose rows lead to a file answers the mouse the same way:
 
-- a single click, or moving onto a row with the keyboard, selects the row and
-  previews it - in the editor's preview tab, or in the panel's own preview pane
-  where the panel has one;
-- a double click opens the file permanently;
-- Enter on the selected row opens the file permanently.
+- a single click selects the row and previews it - in the editor's preview tab,
+  or in the panel's own preview pane where the panel has one;
+- a double click opens the file permanently.
+
+Enter opens the file permanently too, acting on the row keyboard navigation
+has reached (the row ImGui's navigation activates), in every one of these lists.
+
+Moving between rows with the keyboard is not yet the same everywhere:
+
+- Find in Files and References select the row keyboard focus reaches, and
+  their preview pane follows it;
+- Problems moves its highlight to the row keyboard focus reaches, but opens
+  nothing until a click or Enter;
+- the file tree and the solution tree neither select nor preview on keyboard
+  movement; only a click or Enter acts on a row.
 
 The decision between preview and permanent open is made in one place,
 `OpensPermanently` in `Graphite/src/UI/OpenGesture.h`, asked on the frame the
@@ -49,6 +59,9 @@ reads the mouse on its own is visibly the odd one out.
   to take one click.
 - Enter on a row is spent on opening; a list cannot give Enter a meaning of its
   own without breaking the rule.
+- Keyboard movement is not yet uniform: arrowing through the search lists
+  previews, through Problems only highlights, and through the trees does
+  neither, so the same keys still mean different things from panel to panel.
 
 ### Neutral
 
