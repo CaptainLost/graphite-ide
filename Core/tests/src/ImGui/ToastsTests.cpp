@@ -44,9 +44,9 @@ TEST_CASE("Drawing a toast of every kind completes a frame without an ImGui asse
 	Frames frames;
 	Core::Toasts toasts;
 
-	toasts.Show(Core::ToastKind::Success, "done");
-	toasts.Show(Core::ToastKind::Warning, "careful");
-	toasts.Show(Core::ToastKind::Error, std::string(2000, 'x'));
+	toasts.Show(Core::ToastKind::Success, "Title", "done");
+	toasts.Show(Core::ToastKind::Warning, "Title", "careful");
+	toasts.Show(Core::ToastKind::Error, "Title", std::string(2000, 'x'));
 
 	for (int i = 0; i < 30; ++i)
 	{
@@ -56,13 +56,32 @@ TEST_CASE("Drawing a toast of every kind completes a frame without an ImGui asse
 	CHECK(toasts.GetStack().Get().size() == 3);
 }
 
+TEST_CASE("A title long enough to wrap, under a count, completes a frame without an ImGui assertion")
+{
+	Frames frames;
+	Core::Toasts toasts;
+
+	// Without the renderer there is no bold face, so this also covers drawing the title in
+	// the current font.
+	toasts.Show(Core::ToastKind::Error, std::string(300, 't'), "same");
+	toasts.Show(Core::ToastKind::Error, std::string(300, 't'), "same");
+
+	for (int i = 0; i < 30; ++i)
+	{
+		frames.Next(toasts);
+	}
+
+	REQUIRE(toasts.GetStack().Get().size() == 1);
+	CHECK(toasts.GetStack().Get()[0].Count == 2);
+}
+
 TEST_CASE("A toast still sliding in asks for the next frame")
 {
 	Frames frames;
 	Core::Toasts toasts;
 	(void)Core::Redraw::TakeDeadline();
 
-	toasts.Show(Core::ToastKind::Error, "e");
+	toasts.Show(Core::ToastKind::Error, "Title", "e");
 	frames.Next(toasts);
 
 	const auto deadline = Core::Redraw::TakeDeadline();
@@ -75,7 +94,7 @@ TEST_CASE("A shown toast asks for a frame no later than its expiry")
 	Frames frames;
 	Core::Toasts toasts;
 
-	toasts.Show(Core::ToastKind::Warning, "w");
+	toasts.Show(Core::ToastKind::Warning, "Title", "w");
 	frames.Next(toasts);
 
 	// Past the slide-in, wall-clock: the renderer reads the real clock.

@@ -21,6 +21,9 @@ namespace Core {
 	{
 		std::uint64_t Id = 0;
 		ToastKind Kind = ToastKind::Error;
+
+		// The action that failed or finished, drawn above the message in the bold face.
+		std::string Title;
 		std::string Message;
 
 		// How many times this message was shown while the toast was up; drawn as "x2" past one.
@@ -50,10 +53,11 @@ namespace Core {
 		static constexpr Clock::duration kEnter = std::chrono::milliseconds(300);
 		static constexpr Clock::duration kLeave = std::chrono::milliseconds(300);
 
-		// A message identical in kind and text to a toast still up, and not leaving, is not a
-		// new toast: that one counts it and starts its countdown afresh. Two clicks on the
-		// same failing action would otherwise stack two copies of the same words.
-		void Show(ToastKind kind, std::string message, Clock::time_point now);
+		// A message identical in kind, title and text to a toast still up, and not leaving, is
+		// not a new toast: that one counts it and starts its countdown afresh. Two clicks on the
+		// same failing action would otherwise stack two copies of the same words. The title
+		// takes part because the same words from two different actions are two reports.
+		void Show(ToastKind kind, std::string title, std::string message, Clock::time_point now);
 
 		// Called every frame for every toast drawn; only a change of state does anything.
 		void SetHovered(std::uint64_t id, bool hovered, Clock::time_point now);

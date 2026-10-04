@@ -4,6 +4,7 @@
 
 #include "Core/App/Redraw.h"
 #include "Core/ImGui/ContextMenu.h"
+#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/UiScale.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -14,6 +15,7 @@
 #include <algorithm>
 #include <format>
 #include <optional>
+#include <string_view>
 #include <vector>
 
 namespace Core {
@@ -49,11 +51,33 @@ namespace Core {
 		{
 			return std::chrono::duration<float>(duration).count();
 		}
+
+		// Every toast window's name starts with this; the number after it is the toast's id.
+		constexpr std::string_view kWindowPrefix = "##toast";
+
+		// Measured in the face the text is drawn in: the bold face is wider than the regular
+		// one, so a title measured in the regular face would wrap later than it is drawn.
+		float WrappedHeight(ImFont* font, const std::string& text, float wrap)
+		{
+			if (font != nullptr)
+			{
+				ImGui::PushFont(font, 0.0f);
+			}
+
+			const float height = ImGui::CalcTextSize(text.c_str(), nullptr, false, wrap).y;
+
+			if (font != nullptr)
+			{
+				ImGui::PopFont();
+			}
+
+			return height;
+		}
 	}
 
-	void Toasts::Show(ToastKind kind, std::string message)
+	void Toasts::Show(ToastKind kind, std::string title, std::string message)
 	{
-		m_Stack.Show(kind, std::move(message), ToastClock::now());
+		m_Stack.Show(kind, std::move(title), std::move(message), ToastClock::now());
 	}
 
 	void Toasts::Render(const ToastPalette& palette)
@@ -63,11 +87,17 @@ namespace Core {
 
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		const float width = Scaled(kMaxWidth);
-		const float padding = ImGui::GetStyle().WindowPadding.x;
-		// The close button shares the row with the body, so its width is taken off the wrap.
 		const ImGuiStyle& style = ImGui::GetStyle();
-		const float closeWidth = style.ItemSpacing.x + ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
-		const float wrap = width - padding * 2.0f - Scaled(kAccentWidth) - closeWidth;
+		const float padding = style.WindowPadding.x;
+		const float buttonWidth = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
+		const float closeWidth = style.ItemSpacing.x + buttonWidth;
+		// The message has the whole width; the close button shares the title's row, so the
+		// title's wrap stops short of it.
+		const float inner = width - padding * 2.0f - Scaled(kAccentWidth);
+		const float titleWrap = inner - closeWidth;
+
+		// Null when the bold face did not load: the title is then drawn in the current font.
+		ImFont* const bold = ImGuiRenderer::GetBoldFont();
 
 		// Bottom-up: the newest toast sits lowest, nearest the status bar, and older ones are
 		// pushed up as new ones arrive.
@@ -99,12 +129,18 @@ namespace Core {
 				alpha = 1.0f - iam_eval_preset(iam_ease_in_quad, leave);
 			}
 
-			const std::string text =
-				toast.Count > 1 ? std::format("{}  (x{})", toast.Message, toast.Count) : toast.Message;
+			// The count follows the title in the regular face, so the title wraps short of it.
+			const std::string count = toast.Count > 1 ? std::format("(x{})", toast.Count) : std::string();
+			const float countWidth = count.empty() ? 0.0f : style.ItemSpacing.x + ImGui::CalcTextSize(count.c_str()).x;
+			const float titleWidth = std::max(titleWrap - countWidth, 1.0f);
 
-			const float textHeight = ImGui::CalcTextSize(text.c_str(), nullptr, false, wrap).y;
-			const float bodyHeight = std::min(textHeight, ImGui::GetFontSize() * kMaxBodyLines);
-			const float height = bodyHeight + ImGui::GetStyle().WindowPadding.y * 2.0f;
+			// At least one line tall: the close button sits in the title's row.
+			const float titleHeight = std::max(WrappedHeight(bold, toast.Title, titleWidth), ImGui::GetFontSize());
+
+			// Only the message scrolls; the title stays above it, whatever the message's length.
+			const float messageHeight = ImGui::CalcTextSize(toast.Message.c_str(), nullptr, false, inner).y;
+			const float bodyHeight = std::min(messageHeight, ImGui::GetFontSize() * kMaxBodyLines);
+			const float height = titleHeight + style.ItemSpacing.y + bodyHeight + style.WindowPadding.y * 2.0f;
 
 			const float restX = viewport->WorkPos.x + viewport->WorkSize.x - Scaled(kMargin) - width;
 			const float x = restX + (1.0f - slide) * (width + Scaled(kMargin) * 2.0f);
@@ -117,7 +153,7 @@ namespace Core {
 
 			ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
 
-			const std::string name = std::format("##toast{}", toast.Id);
+			const std::string name = std::format("{}{}", kWindowPrefix, toast.Id);
 			constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking |
 												ImGuiWindowFlags_NoSavedSettings |
 												ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
@@ -175,15 +211,51 @@ namespace Core {
 									ImGui::GetColorU32(ToImVec4(AccentOf(palette, toast.Kind))), rounding,
 									ImDrawFlags_RoundCornersLeft);
 
-				// The body scrolls past kMaxBodyLines; the close button sits outside it so it
-				// never scrolls away.
-				ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Scaled(kAccentWidth));
+				const ImVec2 origin = ImGui::GetCursorPos();
+				const float left = origin.x + Scaled(kAccentWidth);
 
-				if (ImGui::BeginChild("body", ImVec2(wrap, bodyHeight)))
+				// The title, in the bold face, wrapped short of the count and the close button.
+				ImGui::SetCursorPos(ImVec2(left, origin.y));
+				ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4(palette.Text));
+
+				if (bold != nullptr)
+				{
+					ImGui::PushFont(bold, 0.0f);
+				}
+
+				ImGui::PushTextWrapPos(left + titleWidth);
+				ImGui::TextUnformatted(toast.Title.c_str());
+				ImGui::PopTextWrapPos();
+
+				if (bold != nullptr)
+				{
+					ImGui::PopFont();
+				}
+
+				if (!count.empty())
+				{
+					ImGui::SameLine();
+					ImGui::TextUnformatted(count.c_str());
+				}
+
+				ImGui::PopStyleColor();
+
+				// On the title's row, outside the body, so it never scrolls away.
+				ImGui::SetCursorPos(ImVec2(width - padding - buttonWidth, origin.y));
+
+				if (ImGui::SmallButton(ICON_MDI_CLOSE "##close"))
+				{
+					m_Stack.Close(toast.Id, now);
+				}
+
+				// The message, which scrolls past kMaxBodyLines.
+				ImGui::SetCursorPos(ImVec2(left, origin.y + titleHeight + style.ItemSpacing.y));
+
+				if (ImGui::BeginChild("body", ImVec2(inner, bodyHeight)))
 				{
 					ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4(palette.Text));
 					ImGui::PushTextWrapPos(0.0f);
-					ImGui::TextUnformatted(text.c_str());
+					ImGui::TextUnformatted(toast.Message.c_str());
 					ImGui::PopTextWrapPos();
 					ImGui::PopStyleColor();
 				}
@@ -198,24 +270,19 @@ namespace Core {
 
 					if (ImGui::MenuItem("Copy"))
 					{
+						const std::string copied = toast.Title + "\n" + toast.Message;
+
 						if (OnCopied)
 						{
-							OnCopied(toast.Message);
+							OnCopied(copied);
 						}
 						else
 						{
-							ImGui::SetClipboardText(toast.Message.c_str());
+							ImGui::SetClipboardText(copied.c_str());
 						}
 					}
 
 					ImGui::EndPopup();
-				}
-
-				ImGui::SameLine();
-
-				if (ImGui::SmallButton(ICON_MDI_CLOSE "##close"))
-				{
-					m_Stack.Close(toast.Id, now);
 				}
 
 				hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByPopup);

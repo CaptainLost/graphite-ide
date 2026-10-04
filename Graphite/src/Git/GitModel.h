@@ -361,11 +361,38 @@ namespace Graphite {
 			return m_InitSettlesAfter.has_value() && m_Status.GetApplied() <= *m_InitSettlesAfter;
 		}
 
+		enum class WriteKind
+		{
+			Stage,
+			Unstage,
+			Discard,
+			Commit,
+			Init,
+			CreateBranch,
+			RenameBranch,
+			DeleteCheck,
+			DeleteBranch,
+			StashSave,
+			StashApply,
+			StashPop,
+			StashDrop,
+			CheckoutPlan,
+			Checkout
+		};
+
+		// A failed write and which kind of write it was. The kind, not a title: the model
+		// stays free of UI text, and whoever reports the failure names it.
+		struct WriteFailure
+		{
+			WriteKind Kind = WriteKind::Stage;
+			Core::Error Error;
+		};
+
 		// Kept apart from GetLastError(): a write is the direct answer to a click, and a
 		// refresh succeeding must never clear it. Queued and handed out once each, oldest
 		// first, to whoever reports them to the user (ADR 0557), so a failure is reported
 		// whether or not a git panel is open, and a later write succeeding does not erase it.
-		std::optional<Core::Error> TakeWriteError();
+		std::optional<WriteFailure> TakeWriteError();
 
 		// git init's failure, kept apart from the queue above: the prompt that offered the
 		// button shows it in place, where the click was.
@@ -470,25 +497,6 @@ namespace Graphite {
 		// pre-clear delivery outrank a post-clear one.
 		std::uint64_t m_UntrackedGeneration = 0;
 
-		enum class WriteKind
-		{
-			Stage,
-			Unstage,
-			Discard,
-			Commit,
-			Init,
-			CreateBranch,
-			RenameBranch,
-			DeleteCheck,
-			DeleteBranch,
-			StashSave,
-			StashApply,
-			StashPop,
-			StashDrop,
-			CheckoutPlan,
-			Checkout
-		};
-
 		// One queued write. Carries every kind's payload rather than a variant: there are
 		// fifteen kinds sharing a handful of small fields, and a variant here would cost more
 		// to read than the fields it would save.
@@ -569,7 +577,7 @@ namespace Graphite {
 		// belonging to the folder that is gone.
 		std::uint64_t m_WriteGeneration = 0;
 
-		std::deque<Core::Error> m_WriteErrors;
+		std::deque<WriteFailure> m_WriteErrors;
 		std::optional<Core::Error> m_InitError;
 		std::optional<Core::Oid> m_Committed;
 		std::vector<std::filesystem::path> m_Discarded;

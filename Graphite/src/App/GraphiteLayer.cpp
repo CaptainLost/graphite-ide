@@ -18,6 +18,7 @@
 #include "Git/GitStatusText.h"
 #include "Git/GitView.h"
 #include "Git/History/HistoryPlaceholder.h"
+#include "Git/WriteFailureTitle.h"
 
 #include "Console/ConsolePanel.h"
 
@@ -924,9 +925,10 @@ namespace Graphite {
 
 		// Drained here, not in a git panel, so a failure is reported with both panels closed
 		// and only once with both open.
-		while (std::optional<Core::Error> error = m_Git.TakeWriteError())
+		while (std::optional<GitModel::WriteFailure> failure = m_Git.TakeWriteError())
 		{
-			m_Toasts.Show(Core::ToastKind::Error, std::move(error->Message));
+			m_Toasts.Show(Core::ToastKind::Error, std::string(WriteFailureTitle(failure->Kind)),
+						  std::move(failure->Error.Message));
 		}
 
 		// Last of what draws, so the toasts sit over every panel and terminal.

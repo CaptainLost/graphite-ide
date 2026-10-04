@@ -25,7 +25,8 @@ namespace Core {
 	class Toasts
 	{
 	public:
-		void Show(ToastKind kind, std::string message);
+		// The title names the action - "Commit failed" - and the message says why.
+		void Show(ToastKind kind, std::string title, std::string message);
 
 		// Once a frame, after every panel has drawn, so the toasts sit on top.
 		void Render(const ToastPalette& palette);
@@ -34,8 +35,9 @@ namespace Core {
 		// they were about has closed or been replaced.
 		void Clear() { m_Stack.Clear(); }
 
-		// What Copy in a toast's menu does with the message. Left empty, it goes straight to
-		// ImGui's clipboard; the application sets it to its own copy, which also reports it.
+		// What Copy in a toast's menu does with the title and the message, one line each. Left
+		// empty, it goes straight to ImGui's clipboard; the application sets it to its own copy,
+		// which also reports it.
 		std::function<void(std::string_view)> OnCopied;
 
 		const ToastStack& GetStack() const { return m_Stack; }

@@ -93,8 +93,7 @@ namespace Graphite {
 
 				if (check->Failure.has_value())
 				{
-					m_Toasts.Show(Core::ToastKind::Error,
-								  "Could not delete " + check->Branch + ": " + check->Failure->Message);
+					m_Toasts.Show(Core::ToastKind::Error, "Delete branch failed", check->Failure->Message);
 				}
 				else
 				{
@@ -231,9 +230,9 @@ namespace Graphite {
 
 		if (answer.Failure.has_value() || !answer.Plan.has_value())
 		{
-			m_Toasts.Show(Core::ToastKind::Error,
-						  "Could not check out " + label + ": " +
-							  (answer.Failure.has_value() ? answer.Failure->Message : std::string("no plan")));
+			// The target stays in the message: the title says only that a checkout failed.
+			m_Toasts.Show(Core::ToastKind::Error, "Checkout failed",
+						  label + ": " + (answer.Failure.has_value() ? answer.Failure->Message : std::string("no plan")));
 			return;
 		}
 

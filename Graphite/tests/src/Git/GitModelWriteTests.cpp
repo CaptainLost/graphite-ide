@@ -410,13 +410,31 @@ TEST_CASE("Two failed writes are two errors in order")
 	model.OnUpdate(Core::Timestep{0.0f});
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	const std::optional<Core::Error> first = model.TakeWriteError();
-	const std::optional<Core::Error> second = model.TakeWriteError();
+	const std::optional<Graphite::GitModel::WriteFailure> first = model.TakeWriteError();
+	const std::optional<Graphite::GitModel::WriteFailure> second = model.TakeWriteError();
 	REQUIRE(first.has_value());
 	REQUIRE(second.has_value());
-	CHECK(first->Message == "stage failed");
-	CHECK(second->Message == "commit failed");
+	CHECK(first->Error.Message == "stage failed");
+	CHECK(second->Error.Message == "commit failed");
+	CHECK(first->Kind == Graphite::GitModel::WriteKind::Stage);
+	CHECK(second->Kind == Graphite::GitModel::WriteKind::Commit);
 	CHECK_FALSE(model.TakeWriteError().has_value());
+}
+
+TEST_CASE("A failed commit is handed out as a commit's failure")
+{
+	WritePort port;
+	port.Fail = true;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCommit({.Message = "one"});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	const std::optional<Graphite::GitModel::WriteFailure> failure = model.TakeWriteError();
+	REQUIRE(failure.has_value());
+	CHECK(failure->Kind == Graphite::GitModel::WriteKind::Commit);
+	CHECK(failure->Error.Message == "commit failed");
 }
 
 TEST_CASE("Closing the folder drops failures nobody took")
@@ -1355,9 +1373,9 @@ TEST_CASE("A checkout's failure names the target, and where the prepared changes
 							   .Preparation = c.Preparation});
 		model.OnUpdate(Core::Timestep{0.0f});
 
-		const std::optional<Core::Error> error = model.TakeWriteError();
-		REQUIRE(error.has_value());
-		CHECK(error->Message == c.Expected);
+		const std::optional<Graphite::GitModel::WriteFailure> failure = model.TakeWriteError();
+		REQUIRE(failure.has_value());
+		CHECK(failure->Error.Message == c.Expected);
 	}
 }
 
@@ -1372,9 +1390,9 @@ TEST_CASE("A failed preparation names the checkout it was for")
 						   .Preparation = Graphite::CheckoutPreparation::Stash});
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	const std::optional<Core::Error> error = model.TakeWriteError();
-	REQUIRE(error.has_value());
-	CHECK(error->Message == "Could not check out feature: no");
+	const std::optional<Graphite::GitModel::WriteFailure> failure = model.TakeWriteError();
+	REQUIRE(failure.has_value());
+	CHECK(failure->Error.Message == "Could not check out feature: no");
 }
 
 TEST_CASE("A stash with nothing to stash says so instead of passing for done")
@@ -1391,12 +1409,12 @@ TEST_CASE("A stash with nothing to stash says so instead of passing for done")
 		model.RequestStashSave("msg", includeUntracked);
 		model.OnUpdate(Core::Timestep{0.0f});
 
-		const std::optional<Core::Error> error = model.TakeWriteError();
-		REQUIRE(error.has_value());
-		CHECK(error->Message.starts_with("Nothing to stash"));
+		const std::optional<Graphite::GitModel::WriteFailure> failure = model.TakeWriteError();
+		REQUIRE(failure.has_value());
+		CHECK(failure->Error.Message.starts_with("Nothing to stash"));
 
 		// Untracked files are the likely reason when they were left out.
-		CHECK((error->Message.find("untracked") != std::string::npos) == !includeUntracked);
+		CHECK((failure->Error.Message.find("untracked") != std::string::npos) == !includeUntracked);
 		CHECK(model.GetAppliedWriteCount() == 0);
 	}
 }

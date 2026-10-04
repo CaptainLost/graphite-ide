@@ -112,14 +112,14 @@ namespace Graphite {
 		return taken;
 	}
 
-	std::optional<Core::Error> GitModel::TakeWriteError()
+	std::optional<GitModel::WriteFailure> GitModel::TakeWriteError()
 	{
 		if (m_WriteErrors.empty())
 		{
 			return std::nullopt;
 		}
 
-		Core::Error taken = std::move(m_WriteErrors.front());
+		WriteFailure taken = std::move(m_WriteErrors.front());
 		m_WriteErrors.pop_front();
 		return taken;
 	}
@@ -521,7 +521,7 @@ namespace Graphite {
 			}
 			else
 			{
-				m_WriteErrors.push_back(std::move(*outcome.Failure));
+				m_WriteErrors.push_back(WriteFailure{job.Kind, std::move(*outcome.Failure)});
 			}
 
 			// An apply or a pop that stopped on a conflict or an I/O error may have written
