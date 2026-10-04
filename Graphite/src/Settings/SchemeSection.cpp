@@ -83,7 +83,7 @@ namespace Graphite {
 
 	void SchemeSection::PublishDraftFailure()
 	{
-		if (std::optional<ToastEvent> failure = m_Draft.TakeFailure())
+		while (std::optional<ToastEvent> failure = m_Draft.TakeFailure())
 		{
 			m_Events.Publish(std::move(*failure));
 		}

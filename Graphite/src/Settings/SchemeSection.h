@@ -56,8 +56,8 @@ namespace Graphite {
 		// to another scheme or leave the section.
 		void FlushColourEdit();
 
-		// Raises the toast for a save, duplicate or delete of the draft's that failed. The draft
-		// keeps it rather than holding the bus, so it can be tested without one.
+		// Raises a toast for each save, duplicate or delete of the draft's that failed, in order. The
+		// draft queues them rather than holding the bus, so it can be tested without one.
 		void PublishDraftFailure();
 
 		// Templated over the enum so the two groups share one row, rather than a syntax copy and

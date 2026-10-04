@@ -335,13 +335,20 @@ namespace Graphite {
 
 	std::optional<ToastEvent> SchemeDraft::TakeFailure()
 	{
-		return std::exchange(m_Failure, std::nullopt);
+		if (m_Failures.empty())
+		{
+			return std::nullopt;
+		}
+
+		ToastEvent failure = std::move(m_Failures.front());
+		m_Failures.pop_front();
+		return failure;
 	}
 
 	void SchemeDraft::Fail(std::string title, std::string message)
 	{
 		// The themes directory is the application's, not the open folder's: the toast outlives
-		// the folder. One slot: the section takes it straight after the action that failed.
-		m_Failure = ApplicationToast(Core::ToastKind::Error, std::move(title), std::move(message));
+		// the folder. Queued, so two failures before the section drains are two toasts.
+		m_Failures.push_back(ApplicationToast(Core::ToastKind::Error, std::move(title), std::move(message)));
 	}
 }

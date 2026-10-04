@@ -358,3 +358,31 @@ TEST_CASE("A draft whose every action succeeded has no failure to take")
 
 	CHECK_FALSE(draft.TakeFailure().has_value());
 }
+
+TEST_CASE("Two failures before the section drains are handed out as two toasts, oldest first")
+{
+	const TempDirectory temp;
+
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "mine", Graphite::ColorScheme{}));
+
+	Graphite::SchemeDraft draft(temp.GetPath());
+	draft.Select("mine");
+
+	// A folder with something in it where the file was: no write replaces it and no delete
+	// removes it.
+	std::filesystem::remove(temp.GetPath() / "mine.json");
+	std::filesystem::create_directory(temp.GetPath() / "mine.json");
+	WriteFile(temp.GetPath() / "mine.json" / "keep", "x");
+
+	CHECK_FALSE(draft.Save());
+	CHECK_FALSE(draft.DeleteSelected());
+
+	const std::optional<Graphite::ToastEvent> first = draft.TakeFailure();
+	const std::optional<Graphite::ToastEvent> second = draft.TakeFailure();
+
+	REQUIRE(first.has_value());
+	REQUIRE(second.has_value());
+	CHECK(first->Title == "Could not save scheme");
+	CHECK(second->Title == "Could not delete scheme");
+	CHECK_FALSE(draft.TakeFailure().has_value());
+}
