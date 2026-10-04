@@ -153,6 +153,10 @@ namespace Graphite {
 			// The node whose tab bar or tab menu asked for this terminal, 0 for none: its first
 			// frame docks it there, ahead of the last-focused rule, while that node still exists.
 			unsigned int DockNode = 0;
+
+			// What the view measured on the frame before, which a narrow grid has to repeat
+			// before the shell is resized to it (TerminalSizeIsPlausible).
+			TerminalGridSize LastMeasured;
 		};
 
 		// A terminal asked for from inside Render - a tab bar's buttons or a tab's menu - and

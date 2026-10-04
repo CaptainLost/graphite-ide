@@ -213,14 +213,18 @@ namespace Graphite {
 			if (visible)
 			{
 				const Core::CursorPosition fitted = entry.View->Draw(palette);
+				const TerminalGridSize measured{fitted.Column, fitted.Row};
 
 				// What fitted is what the shell is told about, which is what makes dragging the
 				// window's edge behave like resizing a console window.
 				// Not a sliver: the shell would reflow its banner away (TerminalSizeIsPlausible).
-				if (!appearing && TerminalSizeIsPlausible(fitted.Column, fitted.Row))
+				if (!appearing && TerminalSizeIsPlausible(measured, entry.LastMeasured))
 				{
 					entry.Session->Resize(fitted.Column, fitted.Row);
 				}
+
+				// The appearing frame's sliver is no evidence of a size the user chose.
+				entry.LastMeasured = appearing ? TerminalGridSize{} : measured;
 
 				// After the draw, so the menu sits over the grid it acts on. Closing is this
 				// class's because the session is; the view only reports the choice.

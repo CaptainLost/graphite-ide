@@ -218,11 +218,22 @@ TEST_CASE("A tab shows the title the shell announces now, else the one it announ
 
 TEST_CASE("A grid measured as a sliver is not worth resizing the shell to")
 {
-	CHECK_FALSE(TerminalSizeIsPlausible(0, 0));
-	CHECK_FALSE(TerminalSizeIsPlausible(19, 25));
-	CHECK_FALSE(TerminalSizeIsPlausible(80, 1));
-	CHECK(TerminalSizeIsPlausible(20, 2));
-	CHECK(TerminalSizeIsPlausible(120, 30));
+	CHECK_FALSE(TerminalSizeIsPlausible({0, 0}, {0, 0}));
+	CHECK_FALSE(TerminalSizeIsPlausible({1, 25}, {1, 25}));
+	CHECK_FALSE(TerminalSizeIsPlausible({80, 1}, {80, 1}));
+	CHECK(TerminalSizeIsPlausible({20, 2}, {0, 0}));
+	CHECK(TerminalSizeIsPlausible({120, 30}, {0, 0}));
+}
+
+TEST_CASE("A narrow grid resizes the shell once it measured the same on the frame before")
+{
+	// A layout still settling: the first narrow measurement is held back.
+	CHECK_FALSE(TerminalSizeIsPlausible({19, 25}, {0, 0}));
+	CHECK_FALSE(TerminalSizeIsPlausible({12, 25}, {19, 25}));
+
+	// A terminal the user docked narrow keeps its size, and the shell follows it.
+	CHECK(TerminalSizeIsPlausible({12, 25}, {12, 25}));
+	CHECK(TerminalSizeIsPlausible({2, 2}, {2, 2}));
 }
 
 TEST_CASE("Restore starts each saved terminal with its own id, in saved order, by profile name")

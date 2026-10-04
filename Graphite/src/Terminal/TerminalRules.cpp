@@ -130,9 +130,17 @@ namespace Graphite {
 		return live.empty() ? remembered : live;
 	}
 
-	bool TerminalSizeIsPlausible(int columns, int rows)
+	bool TerminalSizeIsPlausible(TerminalGridSize measured, TerminalGridSize previous)
 	{
-		return columns >= 20 && rows >= 2;
+		// Wide enough that no window passing through its first frames measures it.
+		constexpr int kRoomyColumns = 20;
+
+		if (measured.Columns < 2 || measured.Rows < 2)
+		{
+			return false;
+		}
+
+		return measured.Columns >= kRoomyColumns || measured == previous;
 	}
 
 	TerminalRestorePlan PlanTerminalRestore(

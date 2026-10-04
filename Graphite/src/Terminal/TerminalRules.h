@@ -84,10 +84,22 @@ namespace Graphite {
 	// The title a tab shows: what the shell announces now, else what it announced last time.
 	std::string TerminalLabelTitle(const std::string& live, const std::string& remembered);
 
+	// A grid as a terminal view measured it, in character cells.
+	struct TerminalGridSize
+	{
+		int Columns = 0;
+		int Rows = 0;
+
+		bool operator==(const TerminalGridSize&) const = default;
+	};
+
 	// Whether a measured grid is worth telling the shell about. A window on its first frame, or
 	// one squeezed to nothing, measures a sliver; resizing the pseudo-console to it makes the
-	// console host reflow what it has printed - the banner - out of existence.
-	bool TerminalSizeIsPlausible(int columns, int rows);
+	// console host reflow what it has printed - the banner - out of existence. Below two cells
+	// either way it is never told. A narrow grid the user may really have docked is told once
+	// it measured the same on the frame before as well: a layout still settling changes from
+	// frame to frame, a terminal docked narrow does not.
+	bool TerminalSizeIsPlausible(TerminalGridSize measured, TerminalGridSize previous);
 
 	struct TerminalToStart
 	{
