@@ -10,6 +10,14 @@
 
 namespace Graphite {
 
+	// An editor action waiting for its document to draw, and whether a menu asked for it: a
+	// Cut or Copy chosen from a menu is confirmed, the same one from its chord is not.
+	struct PendingEditorAction
+	{
+		EditorAction Action = EditorAction::Copy;
+		bool FromMenu = false;
+	};
+
 	// Stepping through the history runs on its own clock rather than on the keyboard's
 	// auto-repeat, which is tuned for typing: at the ~30 a second Windows delivers, a held undo
 	// is a dozen changes past the one being looked for before the key comes up. A history step
@@ -112,6 +120,6 @@ namespace Graphite {
 		// item — and applied the next time this document draws, which is the only place that
 		// knows what has to be told an edit happened. In order; drained every draw, focused or
 		// not.
-		std::vector<EditorAction> PendingActions;
+		std::vector<PendingEditorAction> PendingActions;
 	};
 }

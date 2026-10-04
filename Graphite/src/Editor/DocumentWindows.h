@@ -165,7 +165,8 @@ namespace Graphite {
 		void RequestDefinition(std::size_t index);
 
 		// Hands an editor action to the document at `index`, to be applied when it next draws.
-		void QueueEditorAction(std::size_t index, EditorAction action);
+		// `fromMenu` when a menu item asked for it, so a Cut or Copy is confirmed.
+		void QueueEditorAction(std::size_t index, EditorAction action, bool fromMenu = false);
 
 		// Asks the language server for the header or source belonging to the document at
 		// `index`, and opens it when the answer arrives.
@@ -199,8 +200,8 @@ namespace Graphite {
 		// whatever folder opens next.
 		void ClearExpectedWrites() { m_ExpectedWrites.Clear(); }
 
-		// Confirms a tab menu's Copy Path, Copy Relative Path or Copy File Name once the text is
-		// on the clipboard; `what` names what was copied. GraphiteLayer sets it to ReportCopied,
+		// Confirms a tab menu's Copy Path, Copy Relative Path or Copy File Name, or an editor
+		// menu's Cut or Copy, once the text is on the clipboard; `what` names what was copied. GraphiteLayer sets it to ReportCopied,
 		// which this class has no event bus to call itself. Unset, the copy goes unconfirmed.
 		std::function<void(std::string_view what, std::string_view text)> OnCopied;
 

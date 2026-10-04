@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace Core {
@@ -89,6 +90,10 @@ namespace Graphite {
 		// A right click on the text, after the caret has been placed for it. The menu is opened
 		// by the widget itself; this only says the click qualified.
 		bool ContextMenuWanted = false;
+
+		// What a Cut or Copy chosen from a menu put on the clipboard this frame, for the caller
+		// to confirm. A Cut or Copy from the chord leaves it empty: that one is not confirmed.
+		std::optional<std::string> CopiedFromMenu;
 
 		// The document rows the frame actually drew, so whatever feeds the lenses can ask the
 		// server about what is on screen rather than about every declaration in the file. Both

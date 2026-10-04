@@ -1072,7 +1072,7 @@ namespace Graphite {
 		//
 		// An undo or redo is taken only when the history hold says a step is due, so holding the
 		// key steps at the ramp's pace and a menu item or a fresh press always steps.
-		void ApplyPendingActions(std::vector<EditorAction>& pending, Core::OpenItem& item,
+		void ApplyPendingActions(std::vector<PendingEditorAction>& pending, Core::OpenItem& item,
 								 const EditSinks& sinks, HistoryHold& history, bool repeatHeld,
 								 EditorFrameResult& result)
 		{
@@ -1081,13 +1081,14 @@ namespace Graphite {
 				return;
 			}
 
-			std::vector<EditorAction> actions;
+			std::vector<PendingEditorAction> actions;
 			actions.swap(pending);
 
 			const Core::TextBuffer& buffer = item.Document->GetBuffer();
 
-			for (const EditorAction action : actions)
+			for (const PendingEditorAction& queued : actions)
 			{
+				const EditorAction action = queued.Action;
 				EditMark before = MarkBeforeEdit(buffer, item.Caret);
 
 				if (action == EditorAction::Undo || action == EditorAction::Redo)
@@ -1132,6 +1133,11 @@ namespace Graphite {
 				if (outcome.ToClipboard)
 				{
 					ImGui::SetClipboardText(outcome.ToClipboard->c_str());
+
+					if (queued.FromMenu)
+					{
+						result.CopiedFromMenu = *outcome.ToClipboard;
+					}
 				}
 
 				result.Edited |= outcome.Changed;

@@ -854,6 +854,13 @@ namespace Graphite {
 							  {
 								  QueueEditorAction(*index, action);
 							  } },
+						  // The Edit menu and the editor's right-click menu: the same action,
+						  // marked so a Cut or Copy is confirmed where its chord is not.
+						  .RunFromMenu = [this, activeIndex, action] {
+							  if (const auto index = activeIndex())
+							  {
+								  QueueEditorAction(*index, action, true);
+							  } },
 						  .Enabled = [activeItem, action] {
 							  const Core::OpenItem* item = activeItem();
 
@@ -923,14 +930,14 @@ namespace Graphite {
 						{.Primary = Core::Chord::Key(ImGuiMod_Alt | ImGuiKey_O)});
 	}
 
-	void DocumentWindows::QueueEditorAction(std::size_t index, EditorAction action)
+	void DocumentWindows::QueueEditorAction(std::size_t index, EditorAction action, bool fromMenu)
 	{
 		if (index >= m_Documents.GetCount())
 		{
 			return;
 		}
 
-		StateFor(m_Documents.At(index).Path).Widget.PendingActions.push_back(action);
+		StateFor(m_Documents.At(index).Path).Widget.PendingActions.push_back({action, fromMenu});
 
 		// A context-menu item runs after its editor has drawn for the frame; without a frame
 		// asked for, the action would wait for the next mouse move.
@@ -2449,6 +2456,11 @@ namespace Graphite {
 				if (lens != nullptr && editorResult.LensClicked)
 				{
 					RequestReferencesForLens(item, *lens, *editorResult.LensClicked, referencesPanel);
+				}
+
+				if (editorResult.CopiedFromMenu && OnCopied)
+				{
+					OnCopied("selection", *editorResult.CopiedFromMenu);
 				}
 
 				// Cancelled first: a frame that leaves one token for another cancels the old
