@@ -119,7 +119,7 @@ namespace Graphite {
 
 		auto* explorer = m_Panels.Add(Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents, m_AppSettings, m_Events));
 
-		m_Panels.Add(Core::CreateScope<ConsolePanel>(m_Sink));
+		m_Panels.Add(Core::CreateScope<ConsolePanel>(m_Sink, m_Events));
 
 		m_SearchPanel = m_Panels.Add(Core::CreateScope<SearchPanel>(
 			m_Search, m_SearchSettings, m_Workspace, m_Documents, m_ActiveScheme,

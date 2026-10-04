@@ -4,14 +4,18 @@
 
 #include "Core/Base/Base.h"
 
+#include "Core/ImGui/SelectionGesture.h"
 #include "Core/ImGui/TextInput.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Text/Columns.h"
+
+#include "Editor/StatusBar/ClipboardCopy.h"
 
 #include <IconsMaterialDesignIcons.h>
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <utility>
@@ -74,8 +78,9 @@ namespace Graphite {
 		}
 	}
 
-	ConsolePanel::ConsolePanel(Core::Ref<Core::RingBufferSink> sink)
-		: Core::Panel("console", "Console", "tools", ICON_MDI_MESSAGE_TEXT_OUTLINE), m_Sink(std::move(sink))
+	ConsolePanel::ConsolePanel(Core::Ref<Core::RingBufferSink> sink, Core::EventBus& events)
+		: Core::Panel("console", "Console", "tools", ICON_MDI_MESSAGE_TEXT_OUTLINE), m_Sink(std::move(sink)),
+		  m_Events(events)
 	{
 	}
 
@@ -194,10 +199,7 @@ namespace Graphite {
 
 		const ConsoleLayout layout = MeasureRows(Core::Scaled(kRowSpacing));
 
-		HandleSweep(layout);
-
 		ImDrawList* const draw = ImGui::GetWindowDrawList();
-		const ImU32 selectionColor = ImGui::GetColorU32(ImGuiCol_TextSelectedBg);
 		const float lineHeight = ImGui::GetTextLineHeight();
 
 		for (std::size_t row = 0; row < m_Shown.size(); ++row)
@@ -205,17 +207,15 @@ namespace Graphite {
 			const Core::LogEntry& entry = m_Shown[row];
 			const std::size_t columns = Core::ColumnCount(entry.Message, Core::DefaultTabWidth);
 
-			if (const std::optional<ConsoleColumnSpan> span =
-					m_Selection.ColumnsOn(entry.Sequence, columns))
+			if (const std::optional<Core::ColumnSpan> span =
+					m_Selection.SpanOn(static_cast<std::int64_t>(entry.Sequence), columns))
 			{
 				const float top = layout.OriginY + static_cast<float>(row) * layout.RowHeight;
 
-				draw->AddRectFilled(
-					ImVec2(layout.OriginX + static_cast<float>(span->From) * layout.CellWidth,
-						   top),
-					ImVec2(layout.OriginX + static_cast<float>(span->To) * layout.CellWidth,
-						   top + lineHeight),
-					selectionColor);
+				Core::DrawSelectionSpan(*draw,
+										layout.OriginX + static_cast<float>(span->From) * layout.CellWidth,
+										layout.OriginX + static_cast<float>(span->To) * layout.CellWidth,
+										top, lineHeight);
 			}
 
 			ImGui::PushStyleColor(ImGuiCol_Text, ColorFor(entry.Level));
@@ -225,124 +225,58 @@ namespace Graphite {
 
 		ImGui::PopStyleVar();
 
-		RenderContextMenu();
-		HandleShortcuts();
+		UpdateSelection(layout);
 		FollowTailOnlyWhenEntriesArrived();
 
 		ImGui::EndChild();
 	}
 
-	void ConsolePanel::HandleSweep(const ConsoleLayout& layout)
+	void ConsolePanel::UpdateSelection(const ConsoleLayout& layout)
 	{
-		const ImVec2 mouse = ImGui::GetMousePos();
+		Core::SelectionSource source;
 
-		if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-		{
-			// The output is a child window, and a child nothing focused never sees a key:
-			// without this the copy shortcut would go wherever the focus happened to be.
-			ImGui::SetWindowFocus();
-
-			if (const std::optional<ConsoleAnchor> anchor =
-					AnchorAtPoint(m_Shown, layout, mouse.x, mouse.y))
+		source.PointAt = [this, &layout](ImVec2 screen) {
+			return PointAt(m_Shown, layout, screen.x, screen.y);
+		};
+		source.WordAt = [this](Core::TextPoint at) {
+			return ConsoleWordAt(m_Shown, at);
+		};
+		source.LineLength = [this](std::int64_t line) -> std::size_t {
+			for (const Core::LogEntry& entry : m_Shown)
 			{
-				// Shift keeps the pressed end where it was, which is how a reader stretches a
-				// selection they already made rather than starting another one.
-				if (ImGui::GetIO().KeyShift && !m_Selection.IsEmpty())
+				if (static_cast<std::int64_t>(entry.Sequence) == line)
 				{
-					m_Selection.ExtendTo(*anchor);
+					return Core::ColumnCount(entry.Message, Core::DefaultTabWidth);
 				}
-				else
-				{
-					m_Selection.Begin(*anchor);
-				}
-
-				m_Sweeping = true;
 			}
-		}
 
-		if (!m_Sweeping)
+			return 0;
+		};
+		source.Everything = [this]() -> std::pair<Core::TextPoint, Core::TextPoint> {
+			if (m_Shown.empty())
+			{
+				return {};
+			}
+
+			return {Core::TextPoint{static_cast<std::int64_t>(m_Shown.front().Sequence), 0},
+					Core::TextPoint{static_cast<std::int64_t>(m_Shown.back().Sequence),
+									Core::ColumnCount(m_Shown.back().Message, Core::DefaultTabWidth)}};
+		};
+		source.SelectedText = [this]() {
+			return SelectedConsoleText(m_Selection, m_Shown);
+		};
+
+		Core::SelectionGestureOptions options;
+		options.ScrollsVertically = true;
+		options.CopyKey = true;
+		options.SelectAllKey = true;
+		options.MenuId = "##consoleMenu";
+
+		const Core::SelectionGestureResult result = m_Gesture.Update(m_Selection, source, options);
+
+		if (result.Copied)
 		{
-			return;
-		}
-
-		if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
-		{
-			m_Sweeping = false;
-			return;
-		}
-
-		if (const std::optional<ConsoleAnchor> anchor =
-				AnchorAtPoint(m_Shown, layout, mouse.x, mouse.y))
-		{
-			m_Selection.ExtendTo(*anchor);
-		}
-
-		// Dragging out of the top or the bottom scrolls the output after the pointer, so a
-		// selection can reach further than the panel is tall.
-		const float top = ImGui::GetWindowPos().y;
-		const float bottom = top + ImGui::GetWindowSize().y;
-
-		if (mouse.y < top)
-		{
-			ImGui::SetScrollY(ImGui::GetScrollY() - layout.RowHeight);
-		}
-		else if (mouse.y > bottom)
-		{
-			ImGui::SetScrollY(ImGui::GetScrollY() + layout.RowHeight);
-		}
-	}
-
-	void ConsolePanel::HandleShortcuts()
-	{
-		if (!ImGui::IsWindowFocused())
-		{
-			return;
-		}
-
-		const ImGuiIO& io = ImGui::GetIO();
-
-		if (!io.KeyCtrl)
-		{
-			return;
-		}
-
-		if (ImGui::IsKeyPressed(ImGuiKey_C))
-		{
-			CopySelection();
-		}
-		else if (ImGui::IsKeyPressed(ImGuiKey_A))
-		{
-			m_Selection.SelectAll(m_Shown);
-		}
-	}
-
-	void ConsolePanel::RenderContextMenu()
-	{
-		if (!ImGui::BeginPopupContextWindow("##consoleMenu"))
-		{
-			return;
-		}
-
-		if (ImGui::MenuItem("Copy", "Ctrl+C", false, !m_Selection.IsEmpty()))
-		{
-			CopySelection();
-		}
-
-		if (ImGui::MenuItem("Select all", "Ctrl+A", false, !m_Shown.empty()))
-		{
-			m_Selection.SelectAll(m_Shown);
-		}
-
-		ImGui::EndPopup();
-	}
-
-	void ConsolePanel::CopySelection() const
-	{
-		const std::string selected = m_Selection.ExtractText(m_Shown);
-
-		if (!selected.empty())
-		{
-			ImGui::SetClipboardText(selected.c_str());
+			CopyToClipboard(m_Events, "selection", result.CopiedText);
 		}
 	}
 

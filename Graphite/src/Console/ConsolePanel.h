@@ -4,10 +4,12 @@
 
 #include "Core/Base/Log.h"
 #include "Core/Base/RingBufferSink.h"
+#include "Core/ImGui/SelectionGesture.h"
+#include "Core/Text/TextSelection.h"
 #include "Core/UI/Panel.h"
 
 #include "Console/ConsoleLevel.h"
-#include "Console/ConsoleSelection.h"
+#include "Console/ConsoleLines.h"
 
 #include <imgui.h>
 
@@ -18,12 +20,17 @@
 #include <string>
 #include <vector>
 
+namespace Core {
+
+	class EventBus;
+}
+
 namespace Graphite {
 
 	class ConsolePanel final : public Core::Panel
 	{
 	public:
-		explicit ConsolePanel(Core::Ref<Core::RingBufferSink> sink);
+		ConsolePanel(Core::Ref<Core::RingBufferSink> sink, Core::EventBus& events);
 
 		void OnImGuiRender() override;
 
@@ -32,10 +39,7 @@ namespace Graphite {
 		void RenderLevelCombo();
 		void RenderEntries();
 		void CollectShownEntries();
-		void HandleSweep(const ConsoleLayout& layout);
-		void HandleShortcuts();
-		void RenderContextMenu();
-		void CopySelection() const;
+		void UpdateSelection(const ConsoleLayout& layout);
 		void FollowTailOnlyWhenEntriesArrived();
 
 		Core::Ref<Core::RingBufferSink> m_Sink;
@@ -43,10 +47,10 @@ namespace Graphite {
 		// What the filter leaves of m_Entries, which is what the panel draws and what a
 		// selection is taken from: a message the reader cannot see is not one they can copy.
 		std::vector<Core::LogEntry> m_Shown;
-		ConsoleSelection m_Selection;
-		// Set while the left button is held after a press inside the output, so a drag that
-		// leaves the panel keeps extending the selection instead of dropping it.
-		bool m_Sweeping = false;
+		Core::EventBus& m_Events;
+		// Lines are entry sequence numbers, columns are tab-expanded characters (ADR 0503).
+		Core::TextSelection m_Selection;
+		Core::SelectionGesture m_Gesture;
 		ImGuiTextFilter m_Filter;
 		// What the filter box holds. ImGuiTextFilter has no hint of its own, so the box is drawn
 		// here and the text is handed to the filter to be parsed.

@@ -31,15 +31,19 @@ source and a string, none of them unique.
 stamps each message with as it arrives. It is never reset, `Clear()` included,
 so a number handed out once is never handed out again.
 
-A console selection is a pair of `ConsoleAnchor`s — a sequence number and a
-column into that message. `ConsoleSelection` holds no messages of its own: the
-entries are passed in when the text or the highlight is wanted, so the
-selection cannot go stale against a buffer that has moved on.
+A console selection is the shared `Core::TextSelection`, whose two ends are
+`Core::TextPoint`s — a line, which for the console is an entry's sequence number
+cast to `int64`, and a column into that message. The selection holds no
+messages of its own: the entries are passed in when the text or the highlight is
+wanted, so the selection cannot go stale against a buffer that has moved on.
+`ConsoleLines` is the console's side of it: the hit test, the word under a
+point and the joining of the selected text.
 
 The entries passed in are the ones the panel shows — the filter applied. A
 message the reader cannot see contributes nothing to what they copy, and a
 message the buffer has dropped contributes nothing either: both are simply
-absent from the vector, and `ExtractText` skips whatever it does not find.
+absent from the vector, and `SelectedConsoleText` skips whatever it does not
+find.
 
 Columns count characters rather than bytes, converted through
 `Core::ColumnOfByte` and `Core::ByteOfColumn`, so the sweep cuts a Polish
@@ -63,7 +67,7 @@ nothing, and there is no third case where it finds a different one.
 - A selection survives new messages, a full buffer, and the filter being typed
   into, because none of those change what a message is called.
 - The selection model is free of ImGui and is unit-tested directly, hit test
-  included, through `ConsoleLayout` and `AnchorAtPoint` taking plain floats.
+  included, through `ConsoleLayout` and `PointAt` taking plain floats.
 - Anything else that later wants to point at a console message — a jump from a
   build error, a bookmark — has a name to point with.
 
