@@ -658,4 +658,8 @@ namespace Graphite {
 		// not ask about a change the user already confirmed once. See ExpectedWrites.
 		ExpectedWrites m_ExpectedWrites;
 	};
+
+	// The message of the "Save failed" toast for `path`: the error as it is when it already names
+	// the file, and prefixed with the whole path when it does not, so the file is named once.
+	std::string SaveFailureMessage(const std::filesystem::path& path, std::string_view error);
 }

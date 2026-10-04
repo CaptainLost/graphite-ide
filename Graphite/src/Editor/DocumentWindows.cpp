@@ -140,17 +140,20 @@ namespace Graphite {
 			return std::to_string(names.size()) + " changed on disk and " + (names.size() == 1 ? "was" : "were") + " not saved: " + Join(names);
 		}
 
-		std::string ConflictSummary(const Core::SaveAllReport& report)
+	}
+
+	std::string SaveFailureMessage(const std::filesystem::path& path, std::string_view error)
+	{
+		// Matched on the name alone: the error may spell the folder differently, or name the
+		// file relative to it, and either way it already says which file.
+		if (const std::string name = Core::ToUtf8(path.filename()); !name.empty() && error.find(name) != std::string_view::npos)
 		{
-			std::string message = SavedCount(report.Saved);
-
-			if (!message.empty())
-			{
-				message += " ";
-			}
-
-			return message + NotSavedSummary(report.Conflicted);
+			return std::string(error);
 		}
+
+		// Named by its whole path, which the toast shows relative to the folder: the error may
+		// name only the temporary file the write went through, or nothing at all.
+		return Core::ToUtf8(path) + ": " + std::string(error);
 	}
 
 	void DocumentWindows::RequestOpen(const std::filesystem::path& path, bool permanent)
@@ -469,8 +472,8 @@ namespace Graphite {
 
 	void DocumentWindows::AnnounceExpectedReloads(const ReloadBatch& batch)
 	{
-		// A failure has already said "Could not reload" and why, which matters more than how
-		// many others went well; the batch's line would write over it.
+		// A failure has already said "Reload failed" and why in a toast; a line counting the
+		// files that did reload would read as though every one of them had.
 		if (batch.AnyFailed)
 		{
 			return;
@@ -601,9 +604,10 @@ namespace Graphite {
 		}
 		else
 		{
-			SetTransientMessage("Could not reload " + fileName + ": " + result.GetError().Message);
+			APP_ERROR("Could not reload {}: {}", fileName, result.GetError().Message);
 
-			// The error names the file.
+			// In a toast alone, not on the status bar, which keeps the routine "reloaded" (ADR
+			// 0557). The error names the file.
 			ReportFailure(Core::ToastKind::Error, "Reload failed", result.GetError().Message);
 			return false;
 		}
@@ -646,9 +650,7 @@ namespace Graphite {
 	{
 		APP_ERROR("Could not save '{}': {}", Core::ToUtf8(path), error.Message);
 
-		// Named by its whole path, which the toast shows relative to the folder: the error itself
-		// may name only the temporary file the write went through.
-		ReportFailure(Core::ToastKind::Error, "Save failed", Core::ToUtf8(path) + ": " + error.Message);
+		ReportFailure(Core::ToastKind::Error, "Save failed", SaveFailureMessage(path, error.Message));
 	}
 
 	void DocumentWindows::ReportFailure(Core::ToastKind kind, std::string title, std::string_view message)
@@ -745,23 +747,19 @@ namespace Graphite {
 			return report.IsComplete();
 		}
 
-		if (report.Conflicted.empty())
+		// The status bar confirms what was saved, the routine part (ADR 0557)...
+		if (report.Saved > 0)
 		{
-			if (report.Saved > 0)
-			{
-				SetTransientMessage(SavedCount(report.Saved));
-			}
-
-			return report.IsComplete();
+			SetTransientMessage(SavedCount(report.Saved));
 		}
 
-		// Nothing is asked about here: a conflicted document gets its Overwrite/Cancel
-		// question from RequestSave, a deliberate per-document Ctrl+S.
-		SetTransientMessage(ConflictSummary(report));
-
-		// And in a toast that stays its few seconds whatever the status bar says next: what was
-		// skipped still needs attention.
-		ReportFailure(Core::ToastKind::Warning, "Save skipped", NotSavedSummary(report.Conflicted));
+		// ...and what was skipped, which still needs attention, goes in a toast alone. Nothing
+		// is asked about here: a conflicted document gets its Overwrite/Cancel question from
+		// RequestSave, a deliberate per-document Ctrl+S.
+		if (!report.Conflicted.empty())
+		{
+			ReportFailure(Core::ToastKind::Warning, "Save skipped", NotSavedSummary(report.Conflicted));
+		}
 
 		return report.IsComplete();
 	}
