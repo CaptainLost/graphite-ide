@@ -9,7 +9,7 @@
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Text/Columns.h"
 
-#include "Editor/StatusBar/ClipboardCopy.h"
+#include "UI/ClipboardCopy.h"
 
 #include <IconsMaterialDesignIcons.h>
 

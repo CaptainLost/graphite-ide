@@ -5,7 +5,7 @@
 #include "Core/Base/Narrow.h"
 
 #include "Core/ImGui/ImGuiRenderer.h"
-#include "Editor/StatusBar/ClipboardCopy.h"
+#include "UI/ClipboardCopy.h"
 #include "Sessions/Requests/RequestRow.h"
 #include "Sessions/SessionDrawing.h"
 #include "Sessions/SessionText.h"

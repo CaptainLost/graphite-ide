@@ -5,7 +5,7 @@
 #include "Editor/ActiveTextDocument.h"
 #include "Editor/EditorCommands.h"
 #include "Theme/Palettes.h"
-#include "Editor/StatusBar/ClipboardCopy.h"
+#include "UI/ClipboardCopy.h"
 #include "Editor/StatusBar/ServerStatusText.h"
 #include "Editor/StatusBar/StatusBar.h"
 #include "Editor/StatusBar/StatusLineComposer.h"
@@ -152,11 +152,12 @@ namespace Graphite {
 			ReportCopied(m_Events, what, text);
 		};
 
-		m_Toasts.OnCopied = [this](std::string_view text) { CopyToClipboard(m_Events, "message", std::string(text)); };
+		// m_Toasts.OnCopied is left unset: Copy in a toast's menu only fills the clipboard. A
+		// "Copied" toast raised by copying a toast would be a toast about a toast.
 
 		auto* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_DiffWindows, m_Modals,
 																m_DocumentBuffers, m_Events));
-		gitView->SubscribeTo(m_Events);
+		gitView->Subscribe();
 
 		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_Documents,
 													 m_DocumentWindows, m_ActiveScheme,

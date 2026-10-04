@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "Editor/StatusBar/ClipboardCopy.h"
+#include "UI/ClipboardCopy.h"
 #include "Editor/StatusBar/StatusMessageEvent.h"
 #include "UI/ToastEvent.h"
 

@@ -8,7 +8,7 @@
 
 #include "Theme/Palettes.h"
 #include "Theme/GitPalette.h"
-#include "Editor/StatusBar/ClipboardCopy.h"
+#include "UI/ClipboardCopy.h"
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
@@ -345,7 +345,7 @@ namespace Graphite {
 		}
 	}
 
-	void GitView::SubscribeTo(Core::EventBus& events)
+	void GitView::Subscribe()
 	{
 		// Bound once: unlike the callbacks RenderDiff reassigns, this captures nothing about
 		// what is selected. The gesture has set the clipboard already, so only the copy is
@@ -387,8 +387,8 @@ namespace Graphite {
 			m_PendingDelete.reset();
 		};
 
-		events.Subscribe<WorkspaceOpenedEvent>([forget](const WorkspaceOpenedEvent&) { forget(); });
-		events.Subscribe<WorkspaceClosedEvent>([forget](const WorkspaceClosedEvent&) { forget(); });
+		m_Events.Subscribe<WorkspaceOpenedEvent>([forget](const WorkspaceOpenedEvent&) { forget(); });
+		m_Events.Subscribe<WorkspaceClosedEvent>([forget](const WorkspaceClosedEvent&) { forget(); });
 	}
 
 	void GitView::OnImGuiRender()

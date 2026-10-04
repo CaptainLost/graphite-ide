@@ -1,4 +1,4 @@
-#include "Editor/StatusBar/ClipboardCopy.h"
+#include "UI/ClipboardCopy.h"
 
 #include "UI/ToastEvent.h"
 

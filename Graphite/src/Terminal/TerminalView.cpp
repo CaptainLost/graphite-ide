@@ -2,7 +2,7 @@
 
 #include "Core/Base/Narrow.h"
 
-#include "Editor/StatusBar/ClipboardCopy.h"
+#include "UI/ClipboardCopy.h"
 #include "Terminal/TerminalRules.h"
 #include "Terminal/TerminalSelection.h"
 

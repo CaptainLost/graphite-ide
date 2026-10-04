@@ -10,7 +10,7 @@
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
 
-#include "Editor/StatusBar/ClipboardCopy.h"
+#include "UI/ClipboardCopy.h"
 #include "Terminal/TerminalRules.h"
 #include "Explorer/FileRow.h"
 #include "Explorer/TreeReveal.h"

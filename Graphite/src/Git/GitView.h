@@ -76,7 +76,8 @@ namespace Graphite {
 		// GitModel::Clear() drops every cached diff on the same two events and a selection
 		// or expansion naming a commit from the old repository would otherwise point at
 		// nothing the new page ever re-requests.
-		void SubscribeTo(Core::EventBus& events);
+		// On the bus the constructor was given.
+		void Subscribe();
 
 	private:
 		// What the checkout dialog asks about. Two asks about one target are one question.
@@ -336,7 +337,7 @@ namespace Graphite {
 
 		// Set once per workspace, the first frame the panel draws with no log snapshot yet
 		// — an empty Ref means HEAD. Guards RequestLog so it fires once rather than every
-		// frame the log is still in flight. Reset by SubscribeTo's handlers whenever the
+		// frame the log is still in flight. Reset by Subscribe's handlers whenever the
 		// workspace opens or closes, since GitModel::Clear() drops the log on both.
 		bool m_LogRequested = false;
 
