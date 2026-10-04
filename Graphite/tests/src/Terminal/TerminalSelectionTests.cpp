@@ -130,6 +130,48 @@ TEST_CASE("TerminalSelection knows a selection whose text has left the scrollbac
 	CHECK(SelectedTerminalText(selection, screen, 10).empty());
 }
 
+TEST_CASE("TerminalSelection clamps a start that left the scrollback and clears only when the end left too")
+{
+	Core::TerminalScreen screen(10, 2, 2);
+
+	PrintAscii(screen, "first");
+	const std::int64_t first = ScreenLine(screen, 0);
+
+	NewLine(screen);
+	PrintAscii(screen, "second");
+	const std::int64_t second = ScreenLine(screen, 1);
+
+	for (int line = 0; line < 3; ++line)
+	{
+		NewLine(screen);
+	}
+
+	const std::uint64_t scrolled = screen.GetRowsScrolledOff();
+	const std::size_t held = screen.GetScrollbackCount();
+	const std::int64_t oldest = LineOfScrollbackRow(scrolled, held, 0);
+
+	REQUIRE(first < oldest);
+
+	// Start gone, end on the screen: not left, and clamped to the head of the oldest line held.
+	const Core::TextSelection reaching = Between({first, 2}, {oldest + 1, 3});
+
+	CHECK_FALSE(SelectionLeftHistory(reaching, scrolled, held));
+
+	const Core::TextSelection clamped = ClampSelectionToHistory(reaching, scrolled, held);
+
+	CHECK(clamped.First() == Core::TextPoint{oldest, 0});
+	CHECK(clamped.Last() == Core::TextPoint{oldest + 1, 3});
+
+	// A start that is still held is left alone.
+	const Core::TextSelection held_ = Between({oldest, 1}, {oldest + 1, 3});
+
+	CHECK(ClampSelectionToHistory(held_, scrolled, held).First() == Core::TextPoint{oldest, 1});
+
+	// Both ends gone: cleared.
+	CHECK(SelectionLeftHistory(Between({first, 0}, {first, 5}), scrolled, held));
+	CHECK(second < oldest + 2);
+}
+
 TEST_CASE("TerminalSelection treats the whole selection as gone once the scrollback is cleared")
 {
 	Core::TerminalScreen screen(10, 2);

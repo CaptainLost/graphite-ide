@@ -237,14 +237,18 @@ namespace Graphite {
 
 		m_LastRowsScrolledOff = scrolledOff;
 
-		// Its text has scrolled out of the history, so its line numbers now name nothing. Or the
+		// Its text has all scrolled out of the history, so its line numbers now name nothing. Or the
 		// screen switched to or from the alternate buffer: the screen rows it names now hold a
-		// different screen's text.
+		// different screen's text. A start alone that has gone is moved to the oldest line held.
 		const bool alternate = screen.IsAlternateBuffer();
 
 		if (SelectionLeftHistory(m_Selection, scrolledOff, scrollback) || alternate != m_WasAlternate)
 		{
 			ClearSelection();
+		}
+		else
+		{
+			m_Selection = ClampSelectionToHistory(m_Selection, scrolledOff, scrollback);
 		}
 
 		m_WasAlternate = alternate;

@@ -29,11 +29,17 @@ namespace Graphite {
 									 std::size_t index);
 	std::int64_t LineOfScreenRow(std::uint64_t rowsScrolledOff, int screenRow);
 
-	// True when the selection starts on a line the scrollback no longer holds: its text has gone,
-	// so what is left of it would name rows that are now something else, or nothing. An empty
-	// selection never left anything.
+	// True when the selection ends on a line the scrollback no longer holds: all of its text has
+	// gone, so what is left of it would name rows that are now something else, or nothing. An
+	// empty selection never left anything.
 	bool SelectionLeftHistory(const Core::TextSelection& selection, std::uint64_t rowsScrolledOff,
 							  std::size_t scrollbackCount);
+
+	// The selection with a start that has left the scrollback moved to the head of the oldest line
+	// still held; unchanged when the start is held, or when the end has gone too (that is
+	// SelectionLeftHistory).
+	Core::TextSelection ClampSelectionToHistory(const Core::TextSelection& selection,
+												std::uint64_t rowsScrolledOff, std::size_t scrollbackCount);
 
 	// The byte offset in TerminalRowText at which each of the first `columns` cells starts, plus
 	// one past the end: columns + 1 entries. A trailer starts where its leader ends, and cells the

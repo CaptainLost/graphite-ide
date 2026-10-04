@@ -68,7 +68,7 @@ namespace Graphite {
 		// Side-by-side only; New for unified.
 		DiffSide Side = DiffSide::New;
 
-		// Hash of the file's hunks text (std::hash over the joined line text).
+		// DiffContentHash of the file's hunks: the line kinds, numbers and text, and the hunk shape.
 		std::size_t ContentHash = 0;
 
 		// TextsContentHash of the whole-file texts in whole-file scope, so an edit to an

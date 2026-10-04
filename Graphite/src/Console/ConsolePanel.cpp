@@ -199,6 +199,11 @@ namespace Graphite {
 
 		const ConsoleLayout layout = MeasureRows(Core::Scaled(kRowSpacing));
 
+		// Before the rows are drawn, so the highlight under them is this frame's. Nothing in the
+		// child can become active (the rows are TextUnformatted) and its scrollbar takes the
+		// ActiveId inside BeginChild, so a drag on the bar is already seen as claimed here.
+		UpdateSelection(layout);
+
 		ImDrawList* const draw = ImGui::GetWindowDrawList();
 		const float lineHeight = ImGui::GetTextLineHeight();
 
@@ -225,7 +230,6 @@ namespace Graphite {
 
 		ImGui::PopStyleVar();
 
-		UpdateSelection(layout);
 		FollowTailOnlyWhenEntriesArrived();
 
 		ImGui::EndChild();
@@ -271,6 +275,7 @@ namespace Graphite {
 
 		Core::SelectionGestureOptions options;
 		options.ScrollsVertically = true;
+		options.ScrollsHorizontally = true;
 		options.CopyKey = true;
 		options.SelectAllKey = true;
 		options.MenuId = "##consoleMenu";

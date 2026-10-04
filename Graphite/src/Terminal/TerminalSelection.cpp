@@ -65,7 +65,28 @@ namespace Graphite {
 							  std::size_t scrollbackCount)
 	{
 		return !selection.IsEmpty() &&
-			   selection.First().Line < OldestLine(rowsScrolledOff, scrollbackCount);
+			   selection.Last().Line < OldestLine(rowsScrolledOff, scrollbackCount);
+	}
+
+	Core::TextSelection ClampSelectionToHistory(const Core::TextSelection& selection,
+												std::uint64_t rowsScrolledOff, std::size_t scrollbackCount)
+	{
+		const std::int64_t oldest = OldestLine(rowsScrolledOff, scrollbackCount);
+
+		if (selection.IsEmpty() || selection.First().Line >= oldest || selection.Last().Line < oldest)
+		{
+			return selection;
+		}
+
+		// The start is on a line that has gone and the end is not: the start moves to the head of
+		// the oldest line held, and each end stays the end it was.
+		const Core::TextPoint clamped{oldest, 0};
+		const bool pressedIsFirst = selection.Pressed() == selection.First();
+
+		Core::TextSelection result;
+		result.Select(pressedIsFirst ? clamped : selection.Pressed(),
+					  pressedIsFirst ? selection.Last() : clamped);
+		return result;
 	}
 
 	std::vector<std::size_t> TerminalCellBytes(const std::vector<Core::Cell>& cells, std::size_t columns)
