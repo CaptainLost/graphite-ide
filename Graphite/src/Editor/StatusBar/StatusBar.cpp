@@ -127,13 +127,18 @@ namespace Graphite {
 			{
 				ImGui::SameLine();
 				ImGui::TextUnformatted(segment.Distance.c_str());
+
+				if (ImGui::IsItemHovered() && !segment.DistanceTooltip.empty())
+				{
+					ImGui::SetTooltip("%s", segment.DistanceTooltip.c_str());
+				}
 			}
 
 			if (!segment.Changes.empty())
 			{
 				ImGui::SameLine(0.0f, ImGui::GetFontSize());
 
-				if (DrawGitPiece("##GitChanges", segment.Changes, true, {}))
+				if (DrawGitPiece("##GitChanges", segment.Changes, true, segment.ChangesTooltip))
 				{
 					clicked = StatusBarClick::GitChanges;
 				}

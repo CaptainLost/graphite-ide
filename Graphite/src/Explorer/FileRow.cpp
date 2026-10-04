@@ -25,6 +25,72 @@ namespace Graphite {
 			const ImGuiWindow* window = ImGui::GetCurrentWindowRead();
 			return window->InnerRect.Max.x - window->WindowPadding.x - ImGui::GetStyle().ItemSpacing.x;
 		}
+
+		// A mark drawn on the row is no item of its own, so its tooltip goes by the row's hover
+		// and the mouse's place on it. Padded by half the item spacing each way: a dot is a few
+		// pixels across and a target that small is hard to rest on.
+		void TooltipOver(ImVec2 min, ImVec2 max, const char* text)
+		{
+			if (text == nullptr || !ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
+			{
+				return;
+			}
+
+			const ImVec2 pad(ImGui::GetStyle().ItemSpacing.x * 0.5f, ImGui::GetStyle().ItemSpacing.y * 0.5f);
+
+			if (ImGui::IsMouseHoveringRect(ImVec2(min.x - pad.x, min.y - pad.y), ImVec2(max.x + pad.x, max.y + pad.y)))
+			{
+				ImGui::SetTooltip("%s", text);
+			}
+		}
+
+		const char* DotTooltipOf(GitDecoration decoration)
+		{
+			switch (decoration)
+			{
+			case GitDecoration::Untracked: return "Contains untracked files";
+			case GitDecoration::Added: return "Contains added files";
+			case GitDecoration::Renamed: return "Contains renamed files";
+			// A deleted file has no row of its own and raises its folders to Modified.
+			case GitDecoration::Modified: return "Contains modified or deleted files";
+			case GitDecoration::Conflicted: return "Contains files with conflicts";
+			case GitDecoration::None: break;
+			}
+
+			return nullptr;
+		}
+
+		const char* LetterTooltipOf(GitDecoration decoration)
+		{
+			switch (decoration)
+			{
+			case GitDecoration::Untracked: return "Untracked";
+			case GitDecoration::Added: return "Added";
+			case GitDecoration::Renamed: return "Renamed";
+			case GitDecoration::Modified: return "Modified";
+			case GitDecoration::Conflicted: return "Conflicted";
+			case GitDecoration::None: break;
+			}
+
+			return nullptr;
+		}
+	}
+
+	const char* MarkerTooltipOf(const RowStatus& status)
+	{
+		if (status.Dot)
+		{
+			return DotTooltipOf(status.Decoration);
+		}
+
+		// A folder's 'U' stands for the untracked directory it is or lies in, whatever its
+		// decoration - see FolderRowStatusOf - so the letter decides it.
+		if (status.Letter == LetterOf(GitDecoration::Untracked))
+		{
+			return LetterTooltipOf(GitDecoration::Untracked);
+		}
+
+		return status.Letter != '\0' ? LetterTooltipOf(status.Decoration) : nullptr;
 	}
 
 	RowStatus FileRowStatusOf(const GitDecorationView& view, const std::filesystem::path& absolute,
@@ -106,6 +172,10 @@ namespace Graphite {
 		// over its files' letters.
 		const float column = RowMarkerColumnWidth();
 
+		const float textBottom = textTop + ImGui::GetFontSize();
+
+		TooltipOver(ImVec2(right - column, textTop), ImVec2(right, textBottom), MarkerTooltipOf(status));
+
 		if (status.Dot)
 		{
 			const ImVec2 centre(right - column * 0.5f, textTop + ImGui::GetFontSize() * 0.5f);
@@ -136,6 +206,9 @@ namespace Graphite {
 			const float gap = layout.LabelAt.x - layout.RowAt.x;
 			const ImVec2 centre(layout.RowAt.x + gap * 0.5f, layout.LabelAt.y + ImGui::GetFontSize() * 0.5f);
 			drawList->AddCircleFilled(centre, DotRadius(), ImGui::GetColorU32(ImGuiCol_CheckMark));
+
+			TooltipOver(ImVec2(layout.RowAt.x, layout.LabelAt.y),
+						ImVec2(layout.LabelAt.x, layout.LabelAt.y + ImGui::GetFontSize()), "Open in an editor tab");
 		}
 
 		if (!look.Status.HasMarker())

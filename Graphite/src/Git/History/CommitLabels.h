@@ -52,6 +52,10 @@ namespace Graphite {
 	// that did not happen.
 	char ChangeLetter(Core::FileChange change);
 
+	// What ChangeLetter's letter stands for, for the tooltip on it. Null for Unmodified, whose
+	// blank has nothing to explain.
+	const char* ChangeName(Core::FileChange change);
+
 	// The colour that letter is drawn in: the gutter colours the editor already marks
 	// changes with, so a file added in a commit and a line added in the working tree read
 	// as the same event. A rename, a copy and a type change all leave the file where it was

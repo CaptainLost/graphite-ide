@@ -785,7 +785,17 @@ namespace Graphite {
 		// glance down the column says what happened without reading a letter per row.
 		const std::string letter(1, ChangeLetter(file->Change));
 
+		// Asked before drawing: in a column too narrow for it the letter gives way to an
+		// ellipsis, which the name would not explain.
+		const bool letterFits = ImGui::CalcTextSize(letter.c_str()).x <= ImGui::GetContentRegionAvail().x + 1.0f;
+
 		FittedText(letter, ChangeColor(file->Change, palette), {});
+
+		if (const char* name = ChangeName(file->Change); name != nullptr && letterFits)
+		{
+			ImGui::SetItemTooltip("%s", name);
+		}
+
 		ImGui::SameLine(0.0f, 0.0f);
 		FittedText(std::format("  {}", Core::ToUtf8(path)), 0, pathHighlight);
 	}

@@ -113,6 +113,7 @@ TEST_CASE("A tracking branch shows only the sides it differs on")
 		const auto segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
 		REQUIRE(segment.has_value());
 		CHECK(segment->Distance == ICON_MDI_CHECK);
+		CHECK(segment->DistanceTooltip == "Up to date with origin/main");
 		CHECK(segment->BranchTooltip == "main tracks origin/main");
 	}
 
@@ -122,6 +123,7 @@ TEST_CASE("A tracking branch shows only the sides it differs on")
 		const auto segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
 		REQUIRE(segment.has_value());
 		CHECK(segment->Distance == kUp + "2");
+		CHECK(segment->DistanceTooltip == "2 commits ahead of origin/main");
 	}
 
 	SUBCASE("behind only")
@@ -130,6 +132,7 @@ TEST_CASE("A tracking branch shows only the sides it differs on")
 		const auto segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
 		REQUIRE(segment.has_value());
 		CHECK(segment->Distance == kDown + "1");
+		CHECK(segment->DistanceTooltip == "1 commit behind origin/main");
 	}
 
 	SUBCASE("both")
@@ -138,6 +141,7 @@ TEST_CASE("A tracking branch shows only the sides it differs on")
 		const auto segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
 		REQUIRE(segment.has_value());
 		CHECK(segment->Distance == kUp + "2 " + kDown + "1");
+		CHECK(segment->DistanceTooltip == "2 commits ahead of origin/main and 1 commit behind it");
 	}
 
 	SUBCASE("distance not measured")
@@ -148,6 +152,7 @@ TEST_CASE("A tracking branch shows only the sides it differs on")
 		const auto segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
 		REQUIRE(segment.has_value());
 		CHECK(segment->Distance.empty());
+		CHECK(segment->DistanceTooltip.empty());
 	}
 }
 
@@ -229,13 +234,17 @@ TEST_CASE("The change count is one per changed path, and absent when clean")
 	const Core::HeadState head = OnBranch("main");
 
 	const Core::WorkingTreeStatus clean = Changed(0);
-	CHECK(GitStatusText({.FolderOpen = true, .Head = &head, .Status = &clean})->Changes.empty());
+	const auto none = GitStatusText({.FolderOpen = true, .Head = &head, .Status = &clean});
+	CHECK(none->Changes.empty());
+	CHECK(none->ChangesTooltip.empty());
 
 	const Core::WorkingTreeStatus one = Changed(1);
-	CHECK(GitStatusText({.FolderOpen = true, .Head = &head, .Status = &one})->Changes ==
-		  kChanges + "1 change");
+	const auto single = GitStatusText({.FolderOpen = true, .Head = &head, .Status = &one});
+	CHECK(single->Changes == kChanges + "1 change");
+	CHECK(single->ChangesTooltip == "1 uncommitted change. Click to show it in Changes.");
 
 	const Core::WorkingTreeStatus three = Changed(3);
-	CHECK(GitStatusText({.FolderOpen = true, .Head = &head, .Status = &three})->Changes ==
-		  kChanges + "3 changes");
+	const auto several = GitStatusText({.FolderOpen = true, .Head = &head, .Status = &three});
+	CHECK(several->Changes == kChanges + "3 changes");
+	CHECK(several->ChangesTooltip == "3 uncommitted changes. Click to show them in Changes.");
 }

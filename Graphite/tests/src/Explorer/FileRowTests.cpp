@@ -2,6 +2,8 @@
 
 #include "Explorer/FileRow.h"
 
+#include <string>
+
 namespace {
 
 	using Graphite::GitDecoration;
@@ -121,4 +123,50 @@ TEST_CASE("FileRowStatusOf: an ignored row keeps its own status but not an untra
 
 	CHECK(Graphite::FileRowStatusOf(view, "C:/repo/gen/a.cpp").Letter == 'U');
 	CHECK_FALSE(Graphite::FileRowStatusOf(view, "C:/repo/gen/a.cpp", true).HasMarker());
+}
+
+TEST_CASE("MarkerTooltipOf: a letter names its state, a dot what lies beneath")
+{
+	const auto index = IndexOf({Entry(u8"src/a.cpp", StatusFlags::Modified), UntrackedDirectory(u8"build/gen")});
+	const auto view = ViewOf(index);
+
+	CHECK(std::string{Graphite::MarkerTooltipOf(Graphite::FileRowStatusOf(view, "C:/repo/src/a.cpp"))} == "Modified");
+	CHECK(std::string{Graphite::MarkerTooltipOf(Graphite::FolderRowStatusOf(view, "C:/repo/src"))} ==
+		  "Contains modified or deleted files");
+	CHECK(std::string{Graphite::MarkerTooltipOf(Graphite::FolderRowStatusOf(view, "C:/repo/build/gen"))} ==
+		  "Untracked");
+	CHECK(std::string{Graphite::MarkerTooltipOf(Graphite::FolderRowStatusOf(view, "C:/repo/build"))} ==
+		  "Contains untracked files");
+
+	CHECK(Graphite::MarkerTooltipOf(Graphite::FileRowStatusOf(view, "C:/repo/src/b.cpp")) == nullptr);
+}
+
+TEST_CASE("MarkerTooltipOf covers every decoration, as a letter and as a dot")
+{
+	const struct
+	{
+		GitDecoration Decoration;
+		const char* Letter;
+		const char* Dot;
+	} cases[] = {
+		{GitDecoration::Untracked, "Untracked", "Contains untracked files"},
+		{GitDecoration::Added, "Added", "Contains added files"},
+		{GitDecoration::Renamed, "Renamed", "Contains renamed files"},
+		{GitDecoration::Modified, "Modified", "Contains modified or deleted files"},
+		{GitDecoration::Conflicted, "Conflicted", "Contains files with conflicts"},
+	};
+
+	for (const auto& expected : cases)
+	{
+		CAPTURE(expected.Letter);
+
+		Graphite::RowStatus status;
+		status.Decoration = expected.Decoration;
+		status.Letter = Graphite::LetterOf(expected.Decoration);
+		CHECK(std::string{Graphite::MarkerTooltipOf(status)} == expected.Letter);
+
+		status.Letter = '\0';
+		status.Dot = true;
+		CHECK(std::string{Graphite::MarkerTooltipOf(status)} == expected.Dot);
+	}
 }

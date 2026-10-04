@@ -24,8 +24,15 @@ namespace Graphite {
 		// distance to it.
 		std::string Distance;
 
+		// The distance in words, "2 commits ahead of origin/main"; empty with Distance. The marks
+		// alone do not say what they are measured against.
+		std::string DistanceTooltip;
+
 		// "<dot> 3 changes", or empty when the working tree is clean.
 		std::string Changes;
+
+		// What the count counts and what a click on it does; empty with Changes.
+		std::string ChangesTooltip;
 
 		// False only for "No repository": the piece is greyed and does nothing on a click.
 		bool HasRepository = false;

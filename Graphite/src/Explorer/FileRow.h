@@ -44,6 +44,10 @@ namespace Graphite {
 	// directory get the dot.
 	RowStatus FolderRowStatusOf(const GitDecorationView& view, const std::filesystem::path& absolute);
 
+	// What the marker means in words, shown when the mouse rests on it: the state a letter stands
+	// for, or what a dot says lies beneath its folder. Null for a row with no marker.
+	const char* MarkerTooltipOf(const RowStatus& status);
+
 	// How a file row's label is drawn.
 	struct FileRowLook
 	{
@@ -71,11 +75,14 @@ namespace Graphite {
 
 	// After the row's Selectable, which `layout.Width` sized. Draws nothing for a row that is
 	// scrolled out of view. A name long enough to reach the status letter is clipped short of it.
+	// The open-elsewhere dot and the marker each explain themselves in a tooltip when the mouse
+	// rests on them, and only then, so the rest of the row stays quiet.
 	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& label);
 
 	// Draws `status`'s marker with its right edge at the visible right edge of the current
 	// window, on the line of text whose top is `textTop`. The edge stays put while the window
 	// scrolls sideways, so the marker is always in view. Returns the marker's left edge, or the
-	// right edge itself when there is no marker.
+	// right edge itself when there is no marker. Call it while the row's own item is the last one:
+	// the marker's tooltip is shown only while that item is hovered.
 	float DrawRowMarker(const RowStatus& status, float textTop);
 }

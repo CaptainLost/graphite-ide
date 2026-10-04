@@ -332,6 +332,7 @@ namespace Graphite {
 		const SubagentInfo& info = entry.Agent->Info;
 
 		bool back = ImGui::SmallButton(ICON_MDI_ARROW_LEFT "##agentBack");
+		ImGui::SetItemTooltip("Back to the session");
 		ImGui::SameLine();
 
 		// The session's title goes back too: it is where the reader came from.

@@ -199,6 +199,29 @@ namespace Graphite {
 		return ' ';
 	}
 
+	const char* ChangeName(Core::FileChange change)
+	{
+		switch (change)
+		{
+		case Core::FileChange::Added:
+			return "Added";
+		case Core::FileChange::Modified:
+			return "Modified";
+		case Core::FileChange::Deleted:
+			return "Deleted";
+		case Core::FileChange::Renamed:
+			return "Renamed";
+		case Core::FileChange::Copied:
+			return "Copied";
+		case Core::FileChange::TypeChanged:
+			return "Type changed";
+		case Core::FileChange::Unmodified:
+			return nullptr;
+		}
+
+		return nullptr;
+	}
+
 	ImU32 ChangeColor(Core::FileChange change, const GitPalette& palette)
 	{
 		switch (change)

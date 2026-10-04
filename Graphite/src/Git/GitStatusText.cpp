@@ -79,6 +79,39 @@ namespace Graphite {
 
 			return text;
 		}
+
+		std::string Commits(std::size_t count)
+		{
+			return std::to_string(count) + (count == 1 ? " commit" : " commits");
+		}
+
+		std::string DistanceTooltip(const Core::Branch& branch)
+		{
+			if (!branch.Upstream.has_value() || !branch.DistanceKnown)
+			{
+				return {};
+			}
+
+			const std::string& upstream = *branch.Upstream;
+
+			if (branch.Ahead == 0 && branch.Behind == 0)
+			{
+				return "Up to date with " + upstream;
+			}
+
+			if (branch.Behind == 0)
+			{
+				return Commits(branch.Ahead) + " ahead of " + upstream;
+			}
+
+			if (branch.Ahead == 0)
+			{
+				return Commits(branch.Behind) + " behind " + upstream;
+			}
+
+			return Commits(branch.Ahead) + " ahead of " + upstream + " and " + Commits(branch.Behind) +
+				   " behind it";
+		}
 	}
 
 	std::optional<GitStatusSegment> GitStatusText(const GitStatusInputs& inputs)
@@ -118,6 +151,7 @@ namespace Graphite {
 			{
 				segment.BranchTooltip = head.BranchName + " tracks " + *branch->Upstream;
 				segment.Distance = Distance(*branch);
+				segment.DistanceTooltip = DistanceTooltip(*branch);
 			}
 			else
 			{
@@ -153,6 +187,9 @@ namespace Graphite {
 			const std::size_t count = inputs.Status->Entries.size();
 			segment.Changes = ICON_MDI_CIRCLE_MEDIUM " " + std::to_string(count) +
 							  (count == 1 ? " change" : " changes");
+			segment.ChangesTooltip =
+				count == 1 ? "1 uncommitted change. Click to show it in Changes."
+						   : std::to_string(count) + " uncommitted changes. Click to show them in Changes.";
 		}
 
 		return segment;

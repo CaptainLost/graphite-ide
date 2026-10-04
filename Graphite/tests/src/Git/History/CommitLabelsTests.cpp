@@ -246,6 +246,17 @@ TEST_CASE("Every kind of file change has its own letter")
 	CHECK(Graphite::ChangeLetter(Core::FileChange::Unmodified) == ' ');
 }
 
+TEST_CASE("Every letter has a name for its tooltip")
+{
+	CHECK(std::string{Graphite::ChangeName(Core::FileChange::Added)} == "Added");
+	CHECK(std::string{Graphite::ChangeName(Core::FileChange::Modified)} == "Modified");
+	CHECK(std::string{Graphite::ChangeName(Core::FileChange::Deleted)} == "Deleted");
+	CHECK(std::string{Graphite::ChangeName(Core::FileChange::Renamed)} == "Renamed");
+	CHECK(std::string{Graphite::ChangeName(Core::FileChange::Copied)} == "Copied");
+	CHECK(std::string{Graphite::ChangeName(Core::FileChange::TypeChanged)} == "Type changed");
+	CHECK(Graphite::ChangeName(Core::FileChange::Unmodified) == nullptr);
+}
+
 TEST_CASE("A modified file is shown under its new path")
 {
 	Core::FileDiff file;
