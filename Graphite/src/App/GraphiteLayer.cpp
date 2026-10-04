@@ -48,6 +48,7 @@
 
 #include "Theme/ChromePalette.h"
 #include "Theme/SessionPalette.h"
+#include "Theme/ToastPalette.h"
 
 #include "Core/Events/ApplicationEvent.h"
 
@@ -143,8 +144,10 @@ namespace Graphite {
 			ReportCopied(m_Events, "selection", text);
 		};
 
+		m_Toasts.OnCopied = [this](std::string_view text) { CopyToClipboard(m_Events, "message", std::string(text)); };
+
 		auto* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_DiffWindows, m_Modals,
-																m_DocumentBuffers));
+																m_DocumentBuffers, m_Toasts));
 		gitView->SubscribeTo(m_Events);
 
 		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_Documents,
@@ -910,6 +913,9 @@ namespace Graphite {
 											   .BottomRatio = m_Layout.BottomRatio,
 											   .LayoutRebuilt = m_DockSpace.HasBuiltLayoutThisFrame()},
 						   ReadEditorPalette(m_ActiveScheme.Get()), m_TabCloseRequests);
+
+		// Last of what draws, so the toasts sit over every panel and terminal.
+		m_Toasts.Render(ToastPaletteFor(m_ActiveScheme.Get()));
 
 		// After every owner has drawn: what nobody took this frame belonged to a window that
 		// went some other way, and what the menus asked this frame becomes due for the next.

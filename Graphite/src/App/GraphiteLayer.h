@@ -46,6 +46,7 @@
 #include "Core/Events/FrameInput.h"
 #include "Core/ImGui/DockSpaceHost.h"
 #include "Core/ImGui/TabCloseRequests.h"
+#include "Core/ImGui/Toasts.h"
 #include "Core/Jobs/JobQueue.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/UI/PanelManager.h"
@@ -335,6 +336,10 @@ namespace Graphite {
 		// destructor, and nothing it refers to is declared after it.
 		ClaudeSettings m_ClaudeSettings{m_AppSettings};
 		SessionWindows m_SessionWindows{m_Events, m_ClaudeSettings};
+
+		// Before m_Panels: GitView holds a reference to it. The one owner of the toasts;
+		// anything that reports through one is handed this by reference.
+		Core::Toasts m_Toasts;
 
 		Core::PanelManager m_Panels;
 		Core::DockSpaceHost m_DockSpace;

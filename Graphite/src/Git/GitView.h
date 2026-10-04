@@ -10,6 +10,7 @@
 #include "Git/History/CommitDetailsView.h"
 #include "Git/Diff/DiffView.h"
 #include "Git/Diff/DiffWindows.h"
+#include "Core/ImGui/Toasts.h"
 #include "Git/EditorBuffers.h"
 #include "Git/GitModel.h"
 #include "Git/History/HistoryFilter.h"
@@ -59,7 +60,7 @@ namespace Graphite {
 	{
 	public:
 		GitView(GitModel& model, const ActiveScheme& scheme, DiffWindows& diffWindows, ModalGate& modals,
-				EditorBuffers& buffers);
+				EditorBuffers& buffers, Core::Toasts& toasts);
 
 		// Drains the model's one-shots that belong to this panel - a checkout plan, a delete
 		// check, the paths a checkout changed - and hands the gate back for a question this
@@ -285,6 +286,7 @@ namespace Graphite {
 		// reverting or reloading them. A seam rather than DocumentWindows, so this panel stays
 		// buildable into the tests.
 		EditorBuffers& m_Buffers;
+		Core::Toasts& m_Toasts;
 
 		CommitListView m_Commits;
 		DiffView m_Diff;
@@ -360,10 +362,6 @@ namespace Graphite {
 
 		// The branch whose delete check is in flight, for the same reason.
 		std::optional<std::string> m_PendingDelete;
-
-		// A plan or a delete check that failed. Those answer through their own one-shots,
-		// never through GetWriteError, so saying so is this panel's job.
-		std::optional<std::string> m_ActionError;
 
 		// Where a confirmation for the status bar goes. Set by SubscribeTo, the one place this
 		// panel is handed the bus; null before that, when nothing can have been copied.

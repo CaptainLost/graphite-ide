@@ -57,9 +57,9 @@ namespace Graphite {
 	}
 
 	GitView::GitView(GitModel& model, const ActiveScheme& scheme, DiffWindows& diffWindows, ModalGate& modals,
-					 EditorBuffers& buffers)
+					 EditorBuffers& buffers, Core::Toasts& toasts)
 		: Core::Panel("git", "Git", "git", ICON_MDI_SOURCE_BRANCH, false), m_Model(model), m_Scheme(scheme),
-		  m_DiffWindows(diffWindows), m_Buffers(buffers), m_DetachQuestion(modals, "###GitDetach"),
+		  m_DiffWindows(diffWindows), m_Buffers(buffers), m_Toasts(toasts), m_DetachQuestion(modals, "###GitDetach"),
 		  m_CheckoutQuestion(modals, "###GitCheckout"),
 		  m_NewBranchQuestion(modals, "###GitNewBranch"), m_RenameBranchQuestion(modals, "###GitRenameBranch"),
 		  m_DeleteBranchQuestion(modals, "###GitDeleteBranch"), m_DropStashQuestion(modals, "###GitDropStash")
@@ -93,7 +93,8 @@ namespace Graphite {
 
 				if (check->Failure.has_value())
 				{
-					m_ActionError = "Could not delete " + check->Branch + ": " + check->Failure->Message;
+					m_Toasts.Show(Core::ToastKind::Error,
+								  "Could not delete " + check->Branch + ": " + check->Failure->Message);
 				}
 				else
 				{
@@ -213,7 +214,6 @@ namespace Graphite {
 
 	void GitView::BeginCheckout(const Core::CheckoutTarget& target)
 	{
-		m_ActionError.reset();
 		m_PendingCheckout = target;
 		m_Model.RequestCheckoutPlan(target);
 	}
@@ -231,8 +231,9 @@ namespace Graphite {
 
 		if (answer.Failure.has_value() || !answer.Plan.has_value())
 		{
-			m_ActionError = "Could not check out " + label + ": " +
-							(answer.Failure.has_value() ? answer.Failure->Message : std::string("no plan"));
+			m_Toasts.Show(Core::ToastKind::Error,
+						  "Could not check out " + label + ": " +
+							  (answer.Failure.has_value() ? answer.Failure->Message : std::string("no plan")));
 			return;
 		}
 
@@ -375,7 +376,6 @@ namespace Graphite {
 			WithdrawQuestions();
 			m_PendingCheckout.reset();
 			m_PendingDelete.reset();
-			m_ActionError.reset();
 		};
 
 		events.Subscribe<WorkspaceOpenedEvent>([forget](const WorkspaceOpenedEvent&) { forget(); });
@@ -618,7 +618,6 @@ namespace Graphite {
 			// clicked rather than after.
 			if (ImGui::MenuItem("Delete", nullptr, false, !branch.IsHead))
 			{
-				m_ActionError.reset();
 				m_PendingDelete = branch.Name;
 				m_Model.RequestDeleteCheck(branch.Name);
 			}
@@ -692,19 +691,6 @@ namespace Graphite {
 			if (ImGui::SmallButton("Dismiss"))
 			{
 				m_Model.DismissWriteError();
-			}
-
-			ImGui::PopID();
-		}
-
-		if (m_ActionError.has_value())
-		{
-			ImGui::PushID("action-error");
-			ImGui::TextWrapped("%s", m_ActionError->c_str());
-
-			if (ImGui::SmallButton("Dismiss"))
-			{
-				m_ActionError.reset();
 			}
 
 			ImGui::PopID();
