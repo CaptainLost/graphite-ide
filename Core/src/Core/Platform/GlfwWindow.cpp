@@ -16,18 +16,40 @@
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
 
+// <GL/gl.h> on Windows depends on typedefs from <windows.h>, so windows.h comes first.
+#include <GL/gl.h>
+
 #define GLFW_EXPOSE_NATIVE_WIN32
 
 #include <GLFW/glfw3.h>
 
 #include <GLFW/glfw3native.h>
 #else
+#include <GL/gl.h>
+
 #include <GLFW/glfw3.h>
 #endif
 
 namespace Core {
 
 	namespace {
+		// Needs a current context. A driver that answers nothing is reported as such rather than
+		// handed to the formatter as a null string.
+		const char* GlString(GLenum name)
+		{
+			const auto* text = reinterpret_cast<const char*>(glGetString(name));
+			return text != nullptr ? text : "unknown";
+		}
+
+		// A bug report that says what drew the window is worth one line per fact in the file.
+		void LogGraphicsEnvironment()
+		{
+			CORE_INFO("GL vendor: {}", GlString(GL_VENDOR));
+			CORE_INFO("GL renderer: {}", GlString(GL_RENDERER));
+			CORE_INFO("GL version: {}", GlString(GL_VERSION));
+			CORE_INFO("GLFW: {}", glfwGetVersionString());
+		}
+
 		int s_GlfwWindowCount = 0;
 
 		void OnGlfwError(int code, const char* description)
@@ -566,6 +588,7 @@ namespace Core {
 		window->InstallCallbacks();
 		glfwMakeContextCurrent(handle);
 		window->SetVSync(spec.VSync);
+		LogGraphicsEnvironment();
 
 		if (spec.CustomTitleBar)
 		{
