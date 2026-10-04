@@ -14,7 +14,7 @@ namespace Core {
 	// Core does not pick the colours, as with Theme::Apply: the application hands them in.
 	struct ToastPalette
 	{
-		// Tinted towards the kind's colour for the card, and the colour of the glyph in its icon.
+		// The card's background, and the colour of the glyph in its icon.
 		Color Surface;
 		Color Text;
 

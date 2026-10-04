@@ -3,7 +3,6 @@
 #include "Core/ImGui/Toasts.h"
 
 #include "Core/App/Redraw.h"
-#include "Core/ImGui/Animation.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/UiScale.h"
 
@@ -44,10 +43,6 @@ namespace Core {
 		// The kind's icon: a filled circle in its accent colour with the glyph cut out of it in
 		// the surface colour.
 		constexpr float kIconDiameter = 28.0f;
-
-		// How far the card's surface leans towards the kind's accent: enough to read as dark
-		// red, amber or green, little enough to keep the text on it legible.
-		constexpr float kTint = 0.14f;
 
 		// How far below its resting place a toast starts as it fades in.
 		constexpr float kRise = 8.0f;
@@ -329,7 +324,7 @@ namespace Core {
 				const ImVec4 surface = ToImVec4(palette.Surface);
 
 				// GetColorU32 multiplies in the toast's fade.
-				draw->AddRectFilled(min, max, ImGui::GetColorU32(Animation::Blend(surface, accent, kTint)), rounding);
+				draw->AddRectFilled(min, max, ImGui::GetColorU32(surface), rounding);
 				draw->AddRect(min, max, ImGui::GetColorU32(accent), rounding, ImDrawFlags_None, Scaled(kBorderWidth));
 
 				// The kind's glyph, centred in its circle, in the regular face the icon font is
@@ -396,7 +391,7 @@ namespace Core {
 				ImGui::PopStyleColor(2);
 
 				// The message, dimmer than the title, which scrolls past kMaxBodyLines. On the
-				// card's tint rather than a background of its own, and with no padding of its
+				// card's surface rather than a background of its own, and with no padding of its
 				// own, so it starts at the title's x.
 				ImGui::SetCursorPos(ImVec2(left, rowY + titleHeight + Scaled(kTitleGap)));
 				ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
