@@ -52,7 +52,9 @@ namespace Graphite {
 		// is the working directory itself.
 		GitDecoration Folder(const std::filesystem::path& relative) const;
 
-		// Whether `relative` is, or lies inside, a directory git reported as untracked.
+		// Whether `relative` is, or lies inside, a directory git reported as untracked. The folders
+		// above an untracked directory are not: Folder gives them Untracked by aggregation, so they
+		// get the dot, but only the untracked directory and what lies inside it draw the 'U'.
 		bool IsUntrackedFolder(const std::filesystem::path& relative) const;
 
 		bool IsEmpty() const;

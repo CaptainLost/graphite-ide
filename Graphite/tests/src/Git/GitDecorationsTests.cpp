@@ -99,6 +99,35 @@ TEST_CASE("GitDecorations: files get their own status and folders the highest be
 	CHECK(decorations.Folder("lib") == GitDecoration::None);
 }
 
+TEST_CASE("GitDecorations: a file at the top reaches the working directory under every spelling of it")
+{
+	const Graphite::GitDecorations decorations(
+		StatusOf({Entry(u8"README.md", StatusFlags::None, StatusFlags::Modified)}));
+
+	CHECK(decorations.File("README.md") == GitDecoration::Modified);
+	CHECK(decorations.Folder("") == GitDecoration::Modified);
+	CHECK(decorations.Folder(".") == GitDecoration::Modified);
+}
+
+TEST_CASE("GitDecorations: a folder spelled with a trailing separator is the same folder")
+{
+	const Graphite::GitDecorations decorations(
+		StatusOf({Entry(u8"src/a.cpp", StatusFlags::None, StatusFlags::Modified)}));
+
+	CHECK(decorations.Folder("src/") == GitDecoration::Modified);
+	CHECK(decorations.Folder("src\\") == GitDecoration::Modified);
+}
+
+TEST_CASE("GitDecorations: the folders above an untracked directory aggregate it but are not untracked")
+{
+	const Graphite::GitDecorations decorations(StatusOf({UntrackedEntry(u8"build/gen", true)}));
+
+	CHECK(decorations.Folder("build") == GitDecoration::Untracked);
+	CHECK(decorations.Folder("") == GitDecoration::Untracked);
+	CHECK_FALSE(decorations.IsUntrackedFolder("build"));
+	CHECK_FALSE(decorations.IsUntrackedFolder(""));
+}
+
 TEST_CASE("GitDecorations: an untracked directory marks everything beneath it")
 {
 	const Graphite::GitDecorations decorations(StatusOf({UntrackedEntry(u8"build/gen", true)}));

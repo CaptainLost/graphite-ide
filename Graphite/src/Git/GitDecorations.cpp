@@ -180,6 +180,13 @@ namespace Graphite {
 
 	GitDecoration GitDecorations::File(const std::filesystem::path& relative) const
 	{
+		// Both lookups run for every visible row on every frame: a clean tree builds no key, and
+		// IsUntrackedFolder walks no ancestors while nothing is untracked.
+		if (IsEmpty())
+		{
+			return GitDecoration::None;
+		}
+
 		const auto found = m_Files.find(KeyOf(relative));
 
 		if (found != m_Files.end())
@@ -192,6 +199,11 @@ namespace Graphite {
 
 	GitDecoration GitDecorations::Folder(const std::filesystem::path& relative) const
 	{
+		if (IsEmpty())
+		{
+			return GitDecoration::None;
+		}
+
 		const auto found = m_Folders.find(KeyOf(relative));
 
 		if (found != m_Folders.end())
