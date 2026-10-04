@@ -11,6 +11,7 @@
 #include "Core/Platform/AsyncDialog.h"
 #include "Solution/SolutionReader.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -133,6 +134,10 @@ namespace Graphite {
 			return m_Solution;
 		}
 
+		// Changes whenever the loaded solution is replaced, reread or dropped, the failed
+		// reads among them, so a view can tell that what it waits for has had its chance.
+		std::uint64_t GetSolutionLoad() const { return m_SolutionLoads; }
+
 		const std::vector<std::filesystem::path>& GetSolutionCandidates() const
 		{
 			return m_SolutionCandidates;
@@ -192,6 +197,7 @@ namespace Graphite {
 		std::filesystem::path m_SelectedFile;
 
 		std::optional<Solution> m_Solution;
+		std::uint64_t m_SolutionLoads = 0;
 		std::vector<std::filesystem::path> m_SolutionCandidates;
 		std::filesystem::path m_SelectedSolution;
 

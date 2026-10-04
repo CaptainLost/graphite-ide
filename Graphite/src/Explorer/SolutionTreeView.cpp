@@ -68,6 +68,11 @@ namespace Graphite {
 
 	void SolutionTreeView::Render()
 	{
+		// Before the empty state: a reload that failed, or a folder that closed, ends the
+		// wait for the folder just added.
+		m_RenameWhenListed.BeginFrame(m_Workspace.IsOpen() && CanEditSolution(),
+									  m_Workspace.GetSolutionLoad());
+
 		if (!m_Workspace.IsOpen() || !m_Workspace.GetLoadedSolution())
 		{
 			RenderEmptyState();
@@ -75,7 +80,6 @@ namespace Graphite {
 		}
 
 		FollowActiveDocument();
-		DropStaleRenameRequest();
 		RenderFilter();
 		ImGui::Separator();
 
@@ -87,7 +91,7 @@ namespace Graphite {
 			const std::string label =
 				solution.Name + " (" + std::to_string(solution.ProjectCount) + " projects)";
 
-			if (OpensToward(solution.Root) || !m_RenameWhenListed.empty())
+			if (OpensToward(solution.Root) || m_RenameWhenListed.IsLooking())
 			{
 				ImGui::SetNextItemOpen(true);
 			}
@@ -106,6 +110,7 @@ namespace Graphite {
 
 		ImGui::EndChild();
 		m_RevealPath.clear();
+		m_RenameWhenListed.EndFrame();
 
 		// Outside the walk: the executor edits the solution the walk holds references into,
 		// and the modal must not be nested inside the child window.
@@ -155,9 +160,8 @@ namespace Graphite {
 			const std::string childPath = ChildPath(path, child.Name);
 
 			// A folder just added, now that the reloaded solution lists it.
-			if (m_RenameWhenListed == childPath)
+			if (m_RenameWhenListed.Take(childPath))
 			{
-				m_RenameWhenListed.clear();
 				StartRenamingFolder(child, childPath);
 			}
 
@@ -168,7 +172,7 @@ namespace Graphite {
 
 			const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.Name;
 
-			if (OpensToward(child) || LeadsToPendingRename(childPath))
+			if (OpensToward(child) || m_RenameWhenListed.LeadsTo(childPath))
 			{
 				ImGui::SetNextItemOpen(true);
 			}
@@ -415,20 +419,6 @@ namespace Graphite {
 		}
 	}
 
-	bool SolutionTreeView::LeadsToPendingRename(const std::string& folderPath) const
-	{
-		return !m_RenameWhenListed.empty() && m_RenameWhenListed.starts_with(folderPath + "/");
-	}
-
-	void SolutionTreeView::DropStaleRenameRequest()
-	{
-		// Nothing to wait for once the solution is gone or cannot be edited again.
-		if (!CanEditSolution())
-		{
-			m_RenameWhenListed.clear();
-		}
-	}
-
 	void SolutionTreeView::StartRenamingFolder(const Folder& folder, const std::string& path)
 	{
 		m_RenamingFolder = path;
@@ -636,7 +626,7 @@ namespace Graphite {
 		// Named by the user next, in place, as soon as the reloaded solution lists it.
 		if (action.Action == PendingAction::Kind::AddFolder)
 		{
-			m_RenameWhenListed = action.Folder;
+			m_RenameWhenListed.Request(action.Folder, m_Workspace.GetSolutionLoad());
 		}
 	}
 

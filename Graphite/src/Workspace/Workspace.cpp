@@ -624,6 +624,11 @@ namespace Graphite {
 	{
 		if (m_SolutionCandidates.empty())
 		{
+			if (m_Solution)
+			{
+				++m_SolutionLoads;
+			}
+
 			m_Solution.reset();
 			m_SelectedSolution.clear();
 			ForgetSolutionAttempt();
@@ -656,6 +661,7 @@ namespace Graphite {
 		// every focus change; replaced below once a success has named the projects.
 		m_SolutionStamp = stamp;
 		m_Solution.reset();
+		++m_SolutionLoads;
 
 		auto solution = ReadSolution(m_SelectedSolution);
 
@@ -726,6 +732,7 @@ namespace Graphite {
 	void Workspace::ResetSolutionState()
 	{
 		m_Solution.reset();
+		++m_SolutionLoads;
 		m_SolutionCandidates.clear();
 		m_SelectedSolution.clear();
 		ForgetSolutionAttempt();
