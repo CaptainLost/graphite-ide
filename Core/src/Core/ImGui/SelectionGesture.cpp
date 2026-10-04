@@ -29,6 +29,22 @@ namespace Core {
 		return input.Shift && input.HasSelection ? SelectionAction::Extend : SelectionAction::Begin;
 	}
 
+	std::optional<TextPoint> PressPoint(SelectionAction action, const SelectionSource& source,
+										ImVec2 screen, std::optional<TextPoint> boundary)
+	{
+		const bool character = action == SelectionAction::SelectWord || action == SelectionAction::SelectLine;
+
+		if (character && source.CharacterAt)
+		{
+			if (std::optional<TextPoint> under = source.CharacterAt(screen))
+			{
+				return under;
+			}
+		}
+
+		return boundary;
+	}
+
 	namespace {
 		std::optional<TextPoint> PointUnder(const SelectionSource& source, ImVec2 mouse)
 		{
@@ -83,10 +99,14 @@ namespace Core {
 			// go wherever the focus happened to be.
 			ImGui::SetWindowFocus();
 
-			const std::optional<TextPoint> point = PointUnder(source, mouse);
+			const std::optional<TextPoint> boundary = PointUnder(source, mouse);
 			const SelectionAction action =
 				DecidePress({ImGui::GetMouseClickedCount(ImGuiMouseButton_Left), io.KeyShift,
-							 point.has_value(), !selection.IsEmpty()});
+							 boundary.has_value(), !selection.IsEmpty()});
+
+			// A word or a line is the one under the pointer, not the one past the nearest
+			// boundary; a sweep and a single press keep the boundary.
+			const std::optional<TextPoint> point = PressPoint(action, source, mouse, boundary);
 
 			// Every press settles the sweep first, so no gesture order leaves it stuck.
 			m_Sweeping = false;
@@ -210,7 +230,8 @@ namespace Core {
 		return result;
 	}
 
-	void DrawSelectionSpan(ImDrawList& drawList, float fromX, float toX, float top, float height)
+	void DrawSelectionSpan(ImDrawList& drawList, float fromX, float toX, float top, float height,
+						   std::optional<ImU32> colour)
 	{
 		if (toX <= fromX)
 		{
@@ -218,6 +239,6 @@ namespace Core {
 		}
 
 		drawList.AddRectFilled(ImVec2(fromX, top), ImVec2(toX, top + height),
-							   ImGui::GetColorU32(ImGuiCol_TextSelectedBg));
+							   colour.has_value() ? *colour : ImGui::GetColorU32(ImGuiCol_TextSelectedBg));
 	}
 }

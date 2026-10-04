@@ -32,3 +32,30 @@ TEST_CASE("No press does nothing")
 {
 	CHECK(DecidePress({0, true, true, true}) == SelectionAction::None);
 }
+
+TEST_CASE("A word or a line press acts on the character under the pointer, not the nearest boundary")
+{
+	SelectionSource source;
+	source.CharacterAt = [](ImVec2) { return std::optional<TextPoint>(TextPoint{4, 1}); };
+
+	const std::optional<TextPoint> boundary = TextPoint{4, 2};
+
+	CHECK(PressPoint(SelectionAction::SelectWord, source, ImVec2(0.0f, 0.0f), boundary) == TextPoint{4, 1});
+	CHECK(PressPoint(SelectionAction::SelectLine, source, ImVec2(0.0f, 0.0f), boundary) == TextPoint{4, 1});
+
+	// A single press and a Shift+click keep the boundary.
+	CHECK(PressPoint(SelectionAction::Begin, source, ImVec2(0.0f, 0.0f), boundary) == boundary);
+	CHECK(PressPoint(SelectionAction::Extend, source, ImVec2(0.0f, 0.0f), boundary) == boundary);
+}
+
+TEST_CASE("A word press falls back to the boundary when the owner names no character")
+{
+	const std::optional<TextPoint> boundary = TextPoint{2, 3};
+
+	SelectionSource unset;
+	CHECK(PressPoint(SelectionAction::SelectWord, unset, ImVec2(0.0f, 0.0f), boundary) == boundary);
+
+	SelectionSource silent;
+	silent.CharacterAt = [](ImVec2) { return std::optional<TextPoint>{}; };
+	CHECK(PressPoint(SelectionAction::SelectWord, silent, ImVec2(0.0f, 0.0f), boundary) == boundary);
+}

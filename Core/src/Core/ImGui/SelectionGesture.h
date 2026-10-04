@@ -34,11 +34,25 @@ namespace Core {
 	// What a press does. Drags are handled by the glue (Extend while sweeping).
 	SelectionAction DecidePress(const GestureInput& input);
 
+	struct SelectionSource;
+
+	// The point a press doing `action` acts on, given `boundary` = PointAt at the pointer: the
+	// character under the pointer (source.CharacterAt) for a word or a line, when the owner
+	// gives one and it answers; `boundary` otherwise.
+	std::optional<TextPoint> PressPoint(SelectionAction action, const SelectionSource& source,
+										ImVec2 screen, std::optional<TextPoint> boundary);
+
 	// Owner callbacks the glue needs, all in the owner's units.
 	struct SelectionSource
 	{
-		// Clamped to the nearest line; nullopt over a non-line.
+		// The boundary between characters nearest to `screen`, clamped to the nearest line;
+		// nullopt over a non-line. Where a drag and a single press land.
 		std::function<std::optional<TextPoint>(ImVec2 screen)> PointAt;
+		// The character under `screen` (its start, truncated rather than rounded), clamped like
+		// PointAt. Where a double-click's word and a triple-click's line are looked for, so a
+		// double-click on the right half of a word's last character still takes that word
+		// rather than the space after it. Optional: unset, or nullopt, falls back to PointAt.
+		std::function<std::optional<TextPoint>(ImVec2 screen)> CharacterAt;
 		// The owner applies WordSpanAt in its own unit.
 		std::function<ColumnSpan(TextPoint at)> WordAt;
 		std::function<std::size_t(std::int64_t line)> LineLength;
@@ -94,7 +108,9 @@ namespace Core {
 		bool m_Sweeping = false;
 	};
 
-	// Fills [fromX, toX) of a row at `top` with height `height` in the theme's selection colour
-	// (ImGuiCol_TextSelectedBg). Does nothing when toX <= fromX.
-	void DrawSelectionSpan(ImDrawList& drawList, float fromX, float toX, float top, float height);
+	// Fills [fromX, toX) of a row at `top` with height `height` in `colour`, or in the theme's
+	// selection colour (ImGuiCol_TextSelectedBg) when none is given. Does nothing when
+	// toX <= fromX.
+	void DrawSelectionSpan(ImDrawList& drawList, float fromX, float toX, float top, float height,
+						   std::optional<ImU32> colour = std::nullopt);
 }

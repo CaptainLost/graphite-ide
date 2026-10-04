@@ -46,39 +46,52 @@ namespace Graphite {
 
 			return at;
 		}
+
+		// PointAt and CharacterAt, which differ only in `bias`: 0.5 rounds to the nearest
+		// boundary, 0 truncates to the character the point is over.
+		std::optional<Core::TextPoint> OnRows(const std::vector<Core::LogEntry>& shown,
+											  const ConsoleLayout& layout, float x, float y, float bias)
+		{
+			if (shown.empty() || layout.RowHeight <= 0.0f || layout.CellWidth <= 0.0f)
+			{
+				return std::nullopt;
+			}
+
+			const float rows = (y - layout.OriginY) / layout.RowHeight;
+
+			if (rows < 0.0f)
+			{
+				return Core::TextPoint{LineOf(shown.front()), 0};
+			}
+
+			const std::size_t row = static_cast<std::size_t>(rows);
+
+			if (row >= shown.size())
+			{
+				return Core::TextPoint{LineOf(shown.back()), ColumnsIn(shown.back().Message)};
+			}
+
+			const std::size_t columns = ColumnsIn(shown[row].Message);
+			const float cells = (x - layout.OriginX) / layout.CellWidth + bias;
+			const std::size_t column =
+				cells <= 0.0f ? 0 : std::min(static_cast<std::size_t>(cells), columns);
+
+			return Core::TextPoint{LineOf(shown[row]), column};
+		}
 	}
 
 	std::optional<Core::TextPoint> PointAt(const std::vector<Core::LogEntry>& shown,
 										   const ConsoleLayout& layout, float x, float y)
 	{
-		if (shown.empty() || layout.RowHeight <= 0.0f || layout.CellWidth <= 0.0f)
-		{
-			return std::nullopt;
-		}
-
-		const float rows = (y - layout.OriginY) / layout.RowHeight;
-
-		if (rows < 0.0f)
-		{
-			return Core::TextPoint{LineOf(shown.front()), 0};
-		}
-
-		const std::size_t row = static_cast<std::size_t>(rows);
-
-		if (row >= shown.size())
-		{
-			return Core::TextPoint{LineOf(shown.back()), ColumnsIn(shown.back().Message)};
-		}
-
-		const std::size_t columns = ColumnsIn(shown[row].Message);
-
 		// Rounded rather than truncated: the boundary the pointer is nearest to is the one the
 		// sweep should stop at, so the right half of a character selects it.
-		const float cells = (x - layout.OriginX) / layout.CellWidth + 0.5f;
-		const std::size_t column =
-			cells <= 0.0f ? 0 : std::min(static_cast<std::size_t>(cells), columns);
+		return OnRows(shown, layout, x, y, 0.5f);
+	}
 
-		return Core::TextPoint{LineOf(shown[row]), column};
+	std::optional<Core::TextPoint> CharacterAt(const std::vector<Core::LogEntry>& shown,
+											   const ConsoleLayout& layout, float x, float y)
+	{
+		return OnRows(shown, layout, x, y, 0.0f);
 	}
 
 	std::string SelectedConsoleText(const Core::TextSelection& selection,

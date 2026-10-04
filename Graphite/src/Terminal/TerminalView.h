@@ -133,9 +133,13 @@ namespace Graphite {
 		// back is pinned to the text the reader is looking at, and every row the shell pushes
 		// into the scrollback would otherwise slide that text up by one: the offset is measured
 		// from the tail, so it has to grow by as many rows as went in. The screen's count of
-		// rows ever pushed keeps moving when the scrollback sits at its cap and stands still
-		// when the alternate buffer is entered or left, where a count of rows held did neither.
+		// rows ever pushed keeps moving once the scrollback sits at its cap, where the number of
+		// rows it holds stands still.
 		std::uint64_t m_LastRowsScrolledOff = 0;
+
+		// Whether the screen showed the alternate buffer last frame; a switch either way clears
+		// the selection.
+		bool m_WasAlternate = false;
 
 		// One row's resolved colours, kept between frames rather than allocated per row. Two
 		// vectors a row at sixty frames a second is thousands of allocations a second for

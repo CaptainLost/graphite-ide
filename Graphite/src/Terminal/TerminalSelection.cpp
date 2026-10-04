@@ -219,46 +219,86 @@ namespace Graphite {
 		return cells == nullptr ? 0 : CellCount(*cells, columns);
 	}
 
+	std::size_t TerminalCellAt(const std::vector<Core::Cell>& cells, std::size_t columns,
+							   float position)
+	{
+		const std::size_t count = CellCount(cells, columns);
+
+		if (!(position > 0.0f))
+		{
+			return 0;
+		}
+
+		const std::size_t column = std::min(static_cast<std::size_t>(position), count);
+
+		// The right half of a double-width character is that character.
+		if (column < count && cells[column].WideTrailer && column > 0)
+		{
+			return column - 1;
+		}
+
+		return column;
+	}
+
+	namespace {
+		// Where TerminalPointAt and TerminalCharacterAt part: the row is found the same way, the
+		// column is the nearest boundary for one and the cell under the pointer for the other.
+		std::optional<Core::TextPoint> PointOnGrid(const Core::TerminalScreen& screen,
+												   const TerminalGrid& grid, float x, float y,
+												   bool character)
+		{
+			// Rows counted from the top of the screen, negative into the scrollback, as the grid
+			// shows them: its top row is -ScrollOffset.
+			const int firstRow = std::max(-static_cast<int>(screen.GetScrollbackCount()), -grid.ScrollOffset);
+			const int lastRow =
+				std::min(grid.VisibleRows - 1 - grid.ScrollOffset, static_cast<int>(screen.GetRows()) - 1);
+
+			if (lastRow < firstRow || grid.CellHeight <= 0.0f || grid.CellWidth <= 0.0f)
+			{
+				return std::nullopt;
+			}
+
+			const std::uint64_t scrolled = screen.GetRowsScrolledOff();
+			const int row =
+				static_cast<int>(std::floor((y - grid.OriginY) / grid.CellHeight)) - grid.ScrollOffset;
+
+			if (row < firstRow)
+			{
+				return Core::TextPoint{LineOfScreenRow(scrolled, firstRow), 0};
+			}
+
+			if (row > lastRow)
+			{
+				const std::int64_t line = LineOfScreenRow(scrolled, lastRow);
+				return Core::TextPoint{line, TerminalLineLength(screen, line, grid.Columns)};
+			}
+
+			const std::int64_t line = LineOfScreenRow(scrolled, row);
+			std::vector<Core::Cell> scratch;
+			const std::vector<Core::Cell>* cells = TerminalLineCells(screen, line, grid.Columns, scratch);
+
+			if (cells == nullptr)
+			{
+				return std::nullopt;
+			}
+
+			const float position = (x - grid.OriginX) / grid.CellWidth;
+
+			return Core::TextPoint{line, character ? TerminalCellAt(*cells, grid.Columns, position)
+												   : TerminalColumnAt(*cells, grid.Columns, position)};
+		}
+	}
+
 	std::optional<Core::TextPoint> TerminalPointAt(const Core::TerminalScreen& screen,
 												   const TerminalGrid& grid, float x, float y)
 	{
-		// Rows counted from the top of the screen, negative into the scrollback, as the grid
-		// shows them: its top row is -ScrollOffset.
-		const int firstRow = std::max(-static_cast<int>(screen.GetScrollbackCount()), -grid.ScrollOffset);
-		const int lastRow =
-			std::min(grid.VisibleRows - 1 - grid.ScrollOffset, static_cast<int>(screen.GetRows()) - 1);
+		return PointOnGrid(screen, grid, x, y, false);
+	}
 
-		if (lastRow < firstRow || grid.CellHeight <= 0.0f || grid.CellWidth <= 0.0f)
-		{
-			return std::nullopt;
-		}
-
-		const std::uint64_t scrolled = screen.GetRowsScrolledOff();
-		const int row =
-			static_cast<int>(std::floor((y - grid.OriginY) / grid.CellHeight)) - grid.ScrollOffset;
-
-		if (row < firstRow)
-		{
-			return Core::TextPoint{LineOfScreenRow(scrolled, firstRow), 0};
-		}
-
-		if (row > lastRow)
-		{
-			const std::int64_t line = LineOfScreenRow(scrolled, lastRow);
-			return Core::TextPoint{line, TerminalLineLength(screen, line, grid.Columns)};
-		}
-
-		const std::int64_t line = LineOfScreenRow(scrolled, row);
-		std::vector<Core::Cell> scratch;
-		const std::vector<Core::Cell>* cells = TerminalLineCells(screen, line, grid.Columns, scratch);
-
-		if (cells == nullptr)
-		{
-			return std::nullopt;
-		}
-
-		return Core::TextPoint{line, TerminalColumnAt(*cells, grid.Columns,
-													  (x - grid.OriginX) / grid.CellWidth)};
+	std::optional<Core::TextPoint> TerminalCharacterAt(const Core::TerminalScreen& screen,
+													   const TerminalGrid& grid, float x, float y)
+	{
+		return PointOnGrid(screen, grid, x, y, true);
 	}
 
 	std::pair<Core::TextPoint, Core::TextPoint> TerminalEverything(const Core::TerminalScreen& screen,

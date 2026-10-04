@@ -238,6 +238,9 @@ namespace Graphite {
 		source.PointAt = [this, &layout](ImVec2 screen) {
 			return PointAt(m_Shown, layout, screen.x, screen.y);
 		};
+		source.CharacterAt = [this, &layout](ImVec2 screen) {
+			return CharacterAt(m_Shown, layout, screen.x, screen.y);
+		};
 		source.WordAt = [this](Core::TextPoint at) {
 			return ConsoleWordAt(m_Shown, at);
 		};

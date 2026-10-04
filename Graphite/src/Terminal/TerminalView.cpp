@@ -237,11 +237,17 @@ namespace Graphite {
 
 		m_LastRowsScrolledOff = scrolledOff;
 
-		// Its text has scrolled out of the history, so its line numbers now name nothing.
-		if (SelectionLeftHistory(m_Selection, scrolledOff, scrollback))
+		// Its text has scrolled out of the history, so its line numbers now name nothing. Or the
+		// screen switched to or from the alternate buffer: the screen rows it names now hold a
+		// different screen's text.
+		const bool alternate = screen.IsAlternateBuffer();
+
+		if (SelectionLeftHistory(m_Selection, scrolledOff, scrollback) || alternate != m_WasAlternate)
 		{
 			ClearSelection();
 		}
+
+		m_WasAlternate = alternate;
 
 		if (ImGui::IsWindowHovered())
 		{
@@ -515,9 +521,7 @@ namespace Graphite {
 		}
 
 		// No chord beside it: Ctrl+A is the shell's, which moves to the start of the line.
-		const auto [from, to] = TerminalEverything(m_Session.GetScreen(), SelectionColumns());
-
-		if (ImGui::MenuItem("Select All", nullptr, false, from != to))
+		if (ImGui::MenuItem("Select All"))
 		{
 			SelectAll();
 		}
@@ -670,8 +674,10 @@ namespace Graphite {
 		if (const std::optional<Core::ColumnSpan> span =
 				m_Selection.SpanOn(textLine, static_cast<std::size_t>(count)))
 		{
+			// The scheme's own selection colour, as the editor draws its selection.
 			Core::DrawSelectionSpan(drawList, xOf(static_cast<int>(span->From)),
-									xOf(static_cast<int>(span->To)), top, cellSize.y);
+									xOf(static_cast<int>(span->To)), top, cellSize.y,
+									palette.Selection);
 		}
 
 		std::string run;
@@ -747,6 +753,9 @@ namespace Graphite {
 
 		source.PointAt = [&screen, &grid](ImVec2 at) {
 			return TerminalPointAt(screen, grid, at.x, at.y);
+		};
+		source.CharacterAt = [&screen, &grid](ImVec2 at) {
+			return TerminalCharacterAt(screen, grid, at.x, at.y);
 		};
 		source.WordAt = [&screen, &grid](Core::TextPoint at) {
 			std::vector<Core::Cell> scratch;

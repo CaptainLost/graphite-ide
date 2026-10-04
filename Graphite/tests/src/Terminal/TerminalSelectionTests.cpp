@@ -7,6 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -205,6 +206,48 @@ TEST_CASE("TerminalSelection hit-tests to the nearest boundary and never inside 
 	CHECK(TerminalColumnAt(cells, 6, 2.1f) == 3);
 	CHECK(TerminalColumnAt(cells, 6, -3.0f) == 0);
 	CHECK(TerminalColumnAt(cells, 6, 40.0f) == 6);
+}
+
+TEST_CASE("TerminalSelection names the cell under the pointer, a wide character by its leader")
+{
+	const std::vector<Core::Cell> cells = WideRow();
+
+	CHECK(TerminalCellAt(cells, 6, 0.9f) == 0);
+	CHECK(TerminalCellAt(cells, 6, 1.2f) == 1);
+	// The right half of the wide character is still that character.
+	CHECK(TerminalCellAt(cells, 6, 2.7f) == 1);
+	CHECK(TerminalCellAt(cells, 6, 3.1f) == 3);
+	CHECK(TerminalCellAt(cells, 6, -2.0f) == 0);
+	CHECK(TerminalCellAt(cells, 6, 40.0f) == 6);
+}
+
+TEST_CASE("TerminalSelection double-click on the right half of a word's last character takes the word")
+{
+	Core::TerminalScreen screen(10, 1);
+
+	PrintAscii(screen, "ls foo");
+
+	TerminalGrid grid;
+	grid.CellWidth = 10.0f;
+	grid.CellHeight = 20.0f;
+	grid.Columns = 10;
+	grid.VisibleRows = 1;
+
+	// The right half of the 's': the nearest boundary is after it, the cell under it is the 's'.
+	const float x = 18.0f;
+	const std::int64_t line = ScreenLine(screen, 0);
+
+	REQUIRE(TerminalPointAt(screen, grid, x, 5.0f) == Core::TextPoint{line, 2});
+
+	const std::optional<Core::TextPoint> character = TerminalCharacterAt(screen, grid, x, 5.0f);
+
+	REQUIRE(character == Core::TextPoint{line, 1});
+
+	std::vector<Core::Cell> scratch;
+	const std::vector<Core::Cell>* cells = TerminalLineCells(screen, line, 10, scratch);
+
+	REQUIRE(cells != nullptr);
+	CHECK(TerminalWordAt(*cells, 10, character->Column) == Core::ColumnSpan{0, 2});
 }
 
 TEST_CASE("TerminalSelection copies a stream across rows, trimming each row's trailing spaces")

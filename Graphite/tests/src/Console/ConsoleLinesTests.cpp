@@ -122,6 +122,32 @@ TEST_CASE("A point over a row lands on the character boundary nearest to it")
 	CHECK(point->Column == 3);
 }
 
+TEST_CASE("The character under a point is the one it is over, even on its right half")
+{
+	const Graphite::ConsoleLayout layout{100.0f, 50.0f, 10.0f, 8.0f};
+
+	// Second row ("failed to parse"), the right half of the 'd' that ends "failed".
+	const float x = 100.0f + 8.0f * 5.8f;
+	const float y = 50.0f + 10.0f * 1.5f;
+
+	REQUIRE(Graphite::PointAt(ThreeLines(), layout, x, y) == Core::TextPoint{8, 6});
+
+	const auto character = Graphite::CharacterAt(ThreeLines(), layout, x, y);
+
+	REQUIRE(character == Core::TextPoint{8, 5});
+	CHECK(Graphite::ConsoleWordAt(ThreeLines(), *character) == Core::ColumnSpan{0, 6});
+}
+
+TEST_CASE("The character under a point is clamped like the point")
+{
+	const Graphite::ConsoleLayout layout{0.0f, 0.0f, 10.0f, 8.0f};
+
+	CHECK(Graphite::CharacterAt(ThreeLines(), layout, 4000.0f, 25.0f) == Core::TextPoint{9, 4});
+	CHECK(Graphite::CharacterAt(ThreeLines(), layout, -30.0f, 5.0f) == Core::TextPoint{7, 0});
+	CHECK(Graphite::CharacterAt(ThreeLines(), layout, 30.0f, -200.0f) == Core::TextPoint{7, 0});
+	CHECK_FALSE(Graphite::CharacterAt({}, layout, 10.0f, 10.0f).has_value());
+}
+
 TEST_CASE("A point past the end of a row lands at the end of it")
 {
 	const Graphite::ConsoleLayout layout{0.0f, 0.0f, 10.0f, 8.0f};

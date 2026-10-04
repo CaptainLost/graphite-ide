@@ -34,6 +34,12 @@ namespace Graphite {
 	std::optional<Core::TextPoint> PointAt(const std::vector<Core::LogEntry>& shown,
 										   const ConsoleLayout& layout, float x, float y);
 
+	// As PointAt, but the column of the character the point is over rather than the nearest
+	// boundary - the right half of a character still names that character - which is where a
+	// double-click looks for its word (Core::SelectionSource::CharacterAt).
+	std::optional<Core::TextPoint> CharacterAt(const std::vector<Core::LogEntry>& shown,
+											   const ConsoleLayout& layout, float x, float y);
+
 	// The selected text of whichever of `shown` the selection crosses, one line per entry.
 	// Entries the selection names but that are not in the vector - dropped from the buffer, or
 	// hidden by the filter - contribute nothing, so what comes out is what the reader could see.

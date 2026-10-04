@@ -17,6 +17,10 @@ namespace Graphite {
 	// row's place, so the same text keeps the same number while output scrolls it up the screen
 	// and into the history. A column is a cell index; a double-width character's trailer is a
 	// column of its own that carries no text.
+	//
+	// Only rows pushed into the scrollback move the count, so rows scrolling inside a DECSTBM
+	// region, or on a screen whose scrollback limit is 0, keep their numbers while their text
+	// moves under them.
 
 	// The line of the scrollback row at `index` (0 = oldest kept) and of the screen row
 	// `screenRow`. Both come to rowsScrolledOff + the row's place counted from the top of the
@@ -52,6 +56,11 @@ namespace Graphite {
 	std::size_t TerminalColumnAt(const std::vector<Core::Cell>& cells, std::size_t columns,
 								 float position);
 
+	// The cell under `position` (truncated, not rounded), clamped to the row; the right half of a
+	// double-width character names its leader. Where a double-click looks for its word.
+	std::size_t TerminalCellAt(const std::vector<Core::Cell>& cells, std::size_t columns,
+							   float position);
+
 	// The cells of `line`, or nullptr when the line has left the scrollback or lies below the
 	// screen. Screen rows are copied into `scratch`, at most `columns` cells of them.
 	const std::vector<Core::Cell>* TerminalLineCells(const Core::TerminalScreen& screen,
@@ -80,6 +89,11 @@ namespace Graphite {
 	// out of the grid keeps selecting. Nothing comes back when the grid shows no row.
 	std::optional<Core::TextPoint> TerminalPointAt(const Core::TerminalScreen& screen,
 												   const TerminalGrid& grid, float x, float y);
+
+	// As TerminalPointAt, but the cell under the pointer (TerminalCellAt) rather than the nearest
+	// boundary: Core::SelectionSource::CharacterAt.
+	std::optional<Core::TextPoint> TerminalCharacterAt(const Core::TerminalScreen& screen,
+													   const TerminalGrid& grid, float x, float y);
 
 	// From the start of the oldest scrollback line to the end of the last screen row that holds
 	// anything - text or the cursor - so Select All does not take the blank rows below the prompt.
