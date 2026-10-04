@@ -1,6 +1,7 @@
 #include "Workspace/Workspace.h"
 
 #include "Settings/AppSettings.h"
+#include "UI/ToastEvent.h"
 #include "Workspace/OwnStateChanges.h"
 
 #include "Core/Base/Log.h"
@@ -39,15 +40,24 @@ namespace Graphite {
 		Core::FileTree candidate;
 
 		// Built first: a failed open must leave the current tree untouched.
+		// Reported here rather than by each caller - the picker, a drop, the folder restored at
+		// startup - so a folder that will not open is said once however it was asked for. An
+		// application toast: the folder never opened, so there is none to clear it with.
 		if (const auto rooted = candidate.SetRoot(root); !rooted)
 		{
 			APP_ERROR("Cannot open folder '{}': {}", Core::ToUtf8(root), rooted.GetError().Message);
+
+			// The error already names the folder.
+			m_Events.Publish(ApplicationToast(Core::ToastKind::Error, "Cannot open folder", rooted.GetError().Message));
 			return rooted;
 		}
 
 		if (const auto expanded = candidate.Expand(candidate.GetRoot()); !expanded)
 		{
 			APP_ERROR("Cannot read folder '{}': {}", Core::ToUtf8(root), expanded.GetError().Message);
+			m_Events.Publish(ApplicationToast(
+				Core::ToastKind::Error, "Cannot open folder",
+				std::format("'{}' cannot be read: {}", Core::ToUtf8(root), expanded.GetError().Message)));
 			return expanded;
 		}
 
@@ -127,12 +137,21 @@ namespace Graphite {
 
 	Core::Result<void> Workspace::OpenSolution(const std::filesystem::path& solutionPath)
 	{
+		// Every failure is reported from in here, the way OpenFolder reports its own, so a caller
+		// only logs: a refusal below in this toast, a folder that would not open by OpenFolder,
+		// and a solution that would not read by LoadSolution. A caller toasting the result too
+		// would say each of those twice.
+		const auto refuse = [this](Core::Error error) -> Core::Result<void> {
+			m_Events.Publish(ApplicationToast(Core::ToastKind::Error, "Cannot open solution", error.Message));
+			return error;
+		};
+
 		std::error_code code;
 
 		if (!std::filesystem::is_regular_file(solutionPath, code))
 		{
-			return Core::Error{Core::ErrorCode::NotFound,
-							   std::format("no solution file at '{}'", Core::ToUtf8(solutionPath))};
+			return refuse(Core::Error{Core::ErrorCode::NotFound,
+									  std::format("no solution file at '{}'", Core::ToUtf8(solutionPath))});
 		}
 
 		// Refused before anything is touched: by the time ReadSolution could recognise the
@@ -140,8 +159,8 @@ namespace Graphite {
 		// candidate on every later open.
 		if (!IsSolutionFile(solutionPath))
 		{
-			return Core::Error{Core::ErrorCode::Unsupported,
-							   std::format("'{}' is not a solution file", Core::ToUtf8(solutionPath))};
+			return refuse(Core::Error{Core::ErrorCode::Unsupported,
+									  std::format("'{}' is not a solution file", Core::ToUtf8(solutionPath))});
 		}
 
 		std::filesystem::path chosen = std::filesystem::absolute(solutionPath, code);
@@ -669,6 +688,14 @@ namespace Graphite {
 		{
 			APP_WARN("Cannot read '{}': {}", Core::ToUtf8(m_SelectedSolution),
 					 solution.GetError().Message);
+
+			// The solution view says only that it could not be read; this says why. Once per
+			// attempt, as the stamp above allows, and about the open folder's own file, so it
+			// goes when the folder does.
+			m_Events.Publish(FolderToast(Core::ToastKind::Error, "Cannot open solution",
+										 std::format("Cannot read '{}': {}", Core::ToUtf8(m_SelectedSolution),
+													 solution.GetError().Message),
+										 m_Root));
 			return;
 		}
 
@@ -759,6 +786,11 @@ namespace Graphite {
 					  .Enabled = [this] { return !IsDialogOpen(); }});
 	}
 
+	void Workspace::ReportDialogFailure(const Core::Error& error)
+	{
+		m_Events.Publish(ApplicationToast(Core::ToastKind::Error, "Cannot open dialog", error.Message));
+	}
+
 	// Both answer on a later frame, from Workspace::Update: the dialog runs on a thread of its
 	// own. The callbacks can hold the workspace by reference because it owns the dialog.
 	void OpenFolderInteractively(Workspace& workspace)
@@ -768,6 +800,7 @@ namespace Graphite {
 										if (!picked)
 										{
 											APP_ERROR("Folder dialog failed: {}", picked.GetError().Message);
+											workspace.ReportDialogFailure(picked.GetError());
 											return;
 										}
 
@@ -778,7 +811,7 @@ namespace Graphite {
 											return;
 										}
 
-										// OpenFolder logs its own failure and leaves the current folder open.
+										// OpenFolder reports its own failure and leaves the current folder open.
 										static_cast<void>(workspace.OpenFolder(picked.GetValue()));
 									});
 	}
@@ -795,6 +828,7 @@ namespace Graphite {
 				if (!picked)
 				{
 					APP_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
+					workspace.ReportDialogFailure(picked.GetError());
 					return;
 				}
 
@@ -805,6 +839,7 @@ namespace Graphite {
 					return;
 				}
 
+				// Logged only: OpenSolution has already said why in a toast.
 				if (const auto opened = workspace.OpenSolution(picked.GetValue()); !opened)
 				{
 					APP_ERROR("Cannot open the solution: {}", opened.GetError().Message);

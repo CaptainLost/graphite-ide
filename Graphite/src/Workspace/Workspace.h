@@ -155,6 +155,10 @@ namespace Graphite {
 		const Core::AsyncDialog& GetDialog() const { return m_Dialog; }
 		bool IsDialogOpen() const { return m_Dialog.IsOpen(); }
 
+		// A dialog that could not be shown, in an application toast: for the callbacks given to
+		// GetDialog, which hold the workspace and not the event bus.
+		void ReportDialogFailure(const Core::Error& error);
+
 		void RegisterCommands(Core::CommandRegistry& commands);
 
 	private:

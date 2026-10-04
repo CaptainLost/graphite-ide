@@ -538,7 +538,7 @@ namespace Graphite {
 
 		if (!startFolder.empty())
 		{
-			// OpenFolder logs its own failure, and starting with no folder open is the fallback.
+			// OpenFolder reports its own failure, and starting with no folder open is the fallback.
 			static_cast<void>(m_Workspace.OpenFolder(startFolder));
 		}
 
@@ -1054,6 +1054,7 @@ namespace Graphite {
 			break;
 
 		case DropTarget::Solution:
+			// Logged only: OpenSolution reports every failure in a toast itself.
 			if (const auto opened = m_Workspace.OpenSolution(dropped.Root); !opened)
 			{
 				APP_ERROR("Cannot open the solution: {}", opened.GetError().Message);
