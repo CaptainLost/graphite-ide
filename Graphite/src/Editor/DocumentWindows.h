@@ -17,6 +17,7 @@
 #include "Editor/TextEditorWidget.h"
 
 #include "Git/Changes/ChangeMarkersModel.h"
+#include "Git/GitDecorationView.h"
 
 #include "Language/Analysis/AnalysisStore.h"
 #include "Language/Analysis/WorkspaceAnalysis.h"
@@ -105,6 +106,10 @@ namespace Graphite {
 					ReferencesPanel& referencesPanel);
 
 		void RequestOpen(const std::filesystem::path& path, bool permanent);
+
+		// What the tabs colour their labels by, set once a frame before Render. A copy: the view is
+		// cheap to copy and the caller's is rebuilt every frame.
+		void SetGitDecorations(const GitDecorationView& decorations) { m_GitDecorations = decorations; }
 
 		// The open file documents as they stand, for the next launch. A tab holding no
 		// document — its file went missing or would not load — is left out, and so is one
@@ -484,6 +489,8 @@ namespace Graphite {
 		ModalGate& m_Modals;
 
 		unsigned int m_LastFocusedNode = 0;
+
+		GitDecorationView m_GitDecorations;
 
 		ModalQuestion<LargeFileQuestion> m_SizeQuestion;
 

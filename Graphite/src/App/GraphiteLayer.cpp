@@ -678,6 +678,7 @@ namespace Graphite {
 		}
 
 		m_Explorer->SetGitDecorations(view);
+		m_DocumentWindows.SetGitDecorations(view);
 	}
 
 	void GraphiteLayer::OnImGuiRender()

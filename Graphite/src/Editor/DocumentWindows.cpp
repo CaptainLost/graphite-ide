@@ -7,6 +7,7 @@
 #include "Editor/EditorCommands.h"
 #include "Editor/StatusBar/ClipboardCopy.h"
 #include "Theme/Palettes.h"
+#include "Editor/TabColour.h"
 #include "Editor/TextEditorWidget.h"
 
 #include "Language/Registry/LanguageRegistry.h"
@@ -2224,10 +2225,17 @@ namespace Graphite {
 			// before drawing its tab. A font cannot do the same — every tab of a node is
 			// drawn in one pass with one global font — and the icon in the title comes from
 			// the mono face only.
-			if (preview)
+			//
+			// A file's git status colours the label too, and a preview dims it rather than replacing it.
+			// A document with no path (untitled) has no status.
+			const GitDecoration decoration =
+				item.Path.empty() ? GitDecoration::None : m_GitDecorations.FileOf(item.Path);
+			const std::optional<ImU32> tabColour =
+				TabTextColour(decoration, preview, m_GitDecorations.ColourFor(decoration),
+							  ImGui::GetColorU32(ImGuiCol_TextDisabled));
+			if (tabColour)
 			{
-				ImGui::PushStyleColor(ImGuiCol_Text,
-									  ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+				ImGui::PushStyleColor(ImGuiCol_Text, *tabColour);
 			}
 
 			// The dot next to the tab, and — for a docked tab — what stops ImGui assuming the
@@ -2260,7 +2268,7 @@ namespace Graphite {
 
 			// Popped the moment Begin returns, so the dimming reaches this document's tab and
 			// title bar without following it into the editor's own contents.
-			if (preview)
+			if (tabColour)
 			{
 				ImGui::PopStyleColor();
 			}
