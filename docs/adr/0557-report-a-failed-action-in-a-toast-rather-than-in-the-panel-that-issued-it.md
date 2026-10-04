@@ -22,10 +22,14 @@ application layer and handed by reference to whatever reports
 
 - An Error toast stays until it is closed. Success and Warning toasts leave after
   six seconds, the countdown paused while the pointer is on them.
-- A message identical to one still shown is counted on that toast, not repeated.
+- Each toast carries a title naming the failed action - "Commit failed" - drawn
+  in JetBrains Mono Bold above the message, which is drawn in the regular face.
+- A message identical in title and text to one still shown is counted on that
+  toast, not repeated.
 - `GitModel` queues write failures and hands each out once through
-  `TakeWriteError()`; the application layer drains them every frame and turns
-  each into a toast. The model knows nothing about toasts.
+  `TakeWriteError()`, each with the kind of write that failed; the application
+  layer drains them every frame and turns each into a toast, titled from that
+  kind. The model knows nothing about toasts and holds no UI text.
 - A lasting state stays where it is: a refresh error in the Git panel, and the
   failure of `git init` in its own prompt (`GetInitError()`,
   `DismissInitError()`).
