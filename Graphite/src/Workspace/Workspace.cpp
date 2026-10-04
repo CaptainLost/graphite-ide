@@ -61,6 +61,10 @@ namespace Graphite {
 			return expanded;
 		}
 
+		// Past every failure that leaves the current folder open, and before LoadSolution can
+		// report anything about the new one.
+		m_Events.Publish(WorkspaceOpeningEvent{root});
+
 		m_Tree = std::move(candidate);
 		m_Root = root;
 		m_SelectedFile.clear();
@@ -179,6 +183,14 @@ namespace Graphite {
 			{
 				return opened;
 			}
+		}
+		else
+		{
+			// Picked by hand in the folder already open, so read again even at a stamp already
+			// tried: a retry of a solution that would not read must say so again rather than
+			// meet the guard in LoadSolution and stay silent. A folder opened just above has
+			// only now tried it, and reported it once already.
+			ForgetSolutionAttempt();
 		}
 
 		RememberSolutionCandidate(chosen);

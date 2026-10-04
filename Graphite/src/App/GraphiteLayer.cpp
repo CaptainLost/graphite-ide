@@ -448,10 +448,14 @@ namespace Graphite {
 			// new folder onto the window is a folder close as far as the user is concerned, even
 			// though no WorkspaceClosedEvent says so.
 			m_DocumentWindows.ClearExpectedWrites();
+		});
 
-			// A failure reported for the folder this drop replaced is about a folder no longer
-			// open; an error toast would otherwise stay until closed by hand. Only the folder's:
-			// a toast about the application still applies.
+		// A failure reported for the folder being replaced - by a drop too, which publishes no
+		// WorkspaceClosedEvent - is about a folder no longer open; an error toast would otherwise
+		// stay until closed by hand. Here and not on WorkspaceOpenedEvent: by then the new folder
+		// has reported its own failures, and clearing would take those with it. Only the
+		// folder's: a toast about the application still applies.
+		m_Events.Subscribe<WorkspaceOpeningEvent>([this](const WorkspaceOpeningEvent&) {
 			m_Toasts.Clear(ToastGroupOf(ToastScope::Folder));
 		});
 
@@ -463,7 +467,7 @@ namespace Graphite {
 		// m_Terminals.Render in OnImGuiRender - so the new entry is never pushed inside the loop
 		// over the open terminals that OpenShellIn must not be called from.
 		m_Events.Subscribe<OpenTerminalRequested>([this](const OpenTerminalRequested& event) {
-			static_cast<void>(m_Terminals.OpenDefaultShellIn(event.Directory)); // logs its own failure
+			static_cast<void>(m_Terminals.OpenDefaultShellIn(event.Directory)); // reports its own failure
 		});
 
 		// Any panel can speak through the status bar by publishing this; the editor's own
@@ -541,7 +545,7 @@ namespace Graphite {
 		// No folder to restore terminals for: one default shell, as the terminal always opened.
 		if (!m_Workspace.IsOpen())
 		{
-			static_cast<void>(m_Terminals.OpenStartupShell()); // logs its own failure
+			static_cast<void>(m_Terminals.OpenStartupShell()); // reports its own failure
 		}
 	}
 

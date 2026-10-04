@@ -28,6 +28,15 @@ namespace Graphite {
 
 	class AppSettings;
 
+	// A folder is about to replace whatever was open, published once it is known to open and
+	// before it reads anything about itself. What belonged to the folder before - its toasts -
+	// goes here rather than on WorkspaceOpenedEvent, which comes after the new folder has already
+	// reported its own failures, a solution that would not read among them.
+	struct WorkspaceOpeningEvent
+	{
+		std::filesystem::path Root;
+	};
+
 	struct WorkspaceOpenedEvent
 	{
 		std::filesystem::path Root;
