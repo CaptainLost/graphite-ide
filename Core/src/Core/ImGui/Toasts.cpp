@@ -9,6 +9,7 @@
 #include <IconsMaterialDesignIcons.h>
 #include <im_anim.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <format>
@@ -63,7 +64,10 @@ namespace Core {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		const float width = Scaled(kMaxWidth);
 		const float padding = ImGui::GetStyle().WindowPadding.x;
-		const float wrap = width - padding * 2.0f - Scaled(kAccentWidth) - Scaled(16.0f);
+		// The close button shares the row with the body, so its width is taken off the wrap.
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float closeWidth = style.ItemSpacing.x + ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
+		const float wrap = width - padding * 2.0f - Scaled(kAccentWidth) - closeWidth;
 
 		// Bottom-up: the newest toast sits lowest, nearest the status bar, and older ones are
 		// pushed up as new ones arrive.
@@ -92,7 +96,7 @@ namespace Core {
 				toast.Count > 1 ? std::format("{}  (x{})", toast.Message, toast.Count) : toast.Message;
 
 			const float textHeight = ImGui::CalcTextSize(text.c_str(), nullptr, false, wrap).y;
-			const float bodyHeight = std::min(textHeight, ImGui::GetTextLineHeightWithSpacing() * kMaxBodyLines);
+			const float bodyHeight = std::min(textHeight, ImGui::GetFontSize() * kMaxBodyLines);
 			const float height = bodyHeight + ImGui::GetStyle().WindowPadding.y * 2.0f;
 
 			const float restX = viewport->WorkPos.x + viewport->WorkSize.x - Scaled(kMargin) - width;
@@ -112,8 +116,14 @@ namespace Core {
 												ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
 												ImGuiWindowFlags_NoMove;
 
+			bool hovered = false;
+
 			if (ImGui::Begin(name.c_str(), nullptr, kFlags))
 			{
+				// Over every window, floating ones clicked after the toast appeared included, yet
+				// without focus: NoFocusOnAppearing keeps the keyboard in the editor.
+				ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+
 				ImDrawList* draw = ImGui::GetWindowDrawList();
 				const ImVec2 min = ImGui::GetWindowPos();
 				const ImVec2 max(min.x + width, min.y + height);
@@ -163,11 +173,11 @@ namespace Core {
 					m_Stack.Close(toast.Id, now);
 				}
 
-				m_Stack.SetHovered(toast.Id,
-								   ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows |
-														  ImGuiHoveredFlags_AllowWhenBlockedByPopup),
-								   now);
+				hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByPopup);
 			}
+
+			// Reported even when Begin returned false, so a stale hover cannot outlive the window.
+			m_Stack.SetHovered(toast.Id, hovered, now);
 
 			ImGui::End();
 			ImGui::PopStyleVar();
