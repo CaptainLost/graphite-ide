@@ -10,7 +10,7 @@
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
 
-#include "Editor/StatusBar/StatusMessageEvent.h"
+#include "Editor/StatusBar/ClipboardCopy.h"
 #include "Terminal/TerminalRules.h"
 #include "Explorer/FileRow.h"
 #include "Explorer/TreeReveal.h"
@@ -267,7 +267,7 @@ namespace Graphite {
 
 		if (ImGui::MenuItem("Copy Path"))
 		{
-			CopyToClipboard(Core::ToUtf8(node.Path));
+			CopyToClipboard(m_Events, "path", Core::ToUtf8(node.Path));
 		}
 
 		if (ImGui::MenuItem("Copy Relative Path"))
@@ -278,12 +278,13 @@ namespace Graphite {
 
 			// relative() fails when the two paths share no prefix; the absolute path is
 			// still worth copying.
-			CopyToClipboard(Core::ToUtf8(code ? node.Path : relative));
+			CopyToClipboard(m_Events, "relative path", Core::ToUtf8(code ? node.Path : relative));
 		}
 
 		if (ImGui::MenuItem(node.IsDirectory ? "Copy Folder Name" : "Copy File Name"))
 		{
-			CopyToClipboard(Core::ToUtf8(node.Path.filename()));
+			CopyToClipboard(m_Events, node.IsDirectory ? "folder name" : "file name",
+							Core::ToUtf8(node.Path.filename()));
 		}
 
 		if (!isRoot)
@@ -492,12 +493,6 @@ namespace Graphite {
 
 		// No rename will follow, so none is waited for.
 		OpenIfJustCreated(path, path);
-	}
-
-	void FileTreeView::CopyToClipboard(const std::string& text)
-	{
-		ImGui::SetClipboardText(text.c_str());
-		m_Events.Publish(StatusMessageEvent{"Copied \"" + text + "\""});
 	}
 
 	Core::FileNode* FileTreeView::FindNode(const std::filesystem::path& path)

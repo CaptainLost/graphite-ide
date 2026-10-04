@@ -4,6 +4,7 @@
 
 #include "Editor/DocumentWindows.h"
 #include "Theme/Palettes.h"
+#include "Editor/StatusBar/ClipboardCopy.h"
 #include "Editor/StatusBar/StatusMessageEvent.h"
 #include "Git/Changes/CommitBlocker.h"
 #include "Git/History/HistoryPlaceholder.h"
@@ -1068,7 +1069,7 @@ namespace Graphite {
 
 		if (ImGui::MenuItem("Copy Path"))
 		{
-			ImGui::SetClipboardText(Core::ToUtf8(absolute).c_str());
+			CopyToClipboard(m_Events, "path", Core::ToUtf8(absolute));
 		}
 
 		// The path as the status names it, which is already relative to the working directory
@@ -1076,12 +1077,12 @@ namespace Graphite {
 		// paths that share no prefix.
 		if (ImGui::MenuItem("Copy Relative Path"))
 		{
-			ImGui::SetClipboardText(Core::ToUtf8(file.Path).c_str());
+			CopyToClipboard(m_Events, "relative path", Core::ToUtf8(file.Path));
 		}
 
 		if (ImGui::MenuItem("Copy File Name"))
 		{
-			ImGui::SetClipboardText(Core::ToUtf8(file.Path.filename()).c_str());
+			CopyToClipboard(m_Events, "file name", Core::ToUtf8(file.Path.filename()));
 		}
 
 		ImGui::EndPopup();
@@ -1257,7 +1258,7 @@ namespace Graphite {
 		{
 			if (ImGui::MenuItem("Copy"))
 			{
-				ImGui::SetClipboardText(error->Message.c_str());
+				CopyToClipboard(m_Events, "error", error->Message);
 			}
 
 			ImGui::EndPopup();

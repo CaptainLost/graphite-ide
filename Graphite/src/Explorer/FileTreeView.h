@@ -70,7 +70,6 @@ namespace Graphite {
 		void ForgetRenames();
 		bool IsReachable(const std::filesystem::path& path);
 		bool IsRowShown(const Core::FileNode& node) const;
-		void CopyToClipboard(const std::string& text);
 		void RecordAction(PendingAction action);
 		void ExecutePendingAction();
 		void HandleDelete(const PendingAction& action);

@@ -5,6 +5,7 @@
 #include "Editor/ActiveTextDocument.h"
 #include "Editor/Navigation/DefinitionNavigation.h"
 #include "Editor/EditorCommands.h"
+#include "Editor/StatusBar/ClipboardCopy.h"
 #include "Theme/Palettes.h"
 #include "Editor/TextEditorWidget.h"
 
@@ -42,6 +43,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 
@@ -668,9 +670,16 @@ namespace Graphite {
 
 		ImGui::Separator();
 
+		// Confirmed the way every other Copy is; this class owns the slot the status bar
+		// shows, so it fills it directly rather than through the event bus.
+		const auto copy = [this](std::string_view what, const std::string& text) {
+			ImGui::SetClipboardText(text.c_str());
+			SetTransientMessage(CopiedMessage(what, text));
+		};
+
 		if (ImGui::MenuItem("Copy Path"))
 		{
-			ImGui::SetClipboardText(Core::ToUtf8(item.Path).c_str());
+			copy("path", Core::ToUtf8(item.Path));
 		}
 
 		if (ImGui::MenuItem("Copy Relative Path"))
@@ -683,12 +692,12 @@ namespace Graphite {
 			// With no folder open, or when the two share no prefix, the absolute path is
 			// still worth copying.
 			const bool usable = !workspaceRoot.empty() && !code && !relative.empty();
-			ImGui::SetClipboardText(Core::ToUtf8(usable ? relative : item.Path).c_str());
+			copy("relative path", Core::ToUtf8(usable ? relative : item.Path));
 		}
 
 		if (ImGui::MenuItem("Copy File Name"))
 		{
-			ImGui::SetClipboardText(Core::ToUtf8(item.Path.filename()).c_str());
+			copy("file name", Core::ToUtf8(item.Path.filename()));
 		}
 
 		if (ImGui::MenuItem("Show in Explorer"))

@@ -8,7 +8,7 @@
 
 #include "Theme/Palettes.h"
 #include "Theme/GitPalette.h"
-#include "Editor/StatusBar/StatusMessageEvent.h"
+#include "Editor/StatusBar/ClipboardCopy.h"
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
@@ -318,11 +318,13 @@ namespace Graphite {
 			break;
 		}
 		case CommitAction::Kind::Copy:
-			ImGui::SetClipboardText(action->Text.c_str());
-
 			if (m_Events != nullptr)
 			{
-				m_Events->Publish(StatusMessageEvent{"Copied " + action->What});
+				CopyToClipboard(*m_Events, action->What, action->Text);
+			}
+			else
+			{
+				ImGui::SetClipboardText(action->Text.c_str());
 			}
 
 			break;
