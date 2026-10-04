@@ -165,6 +165,11 @@ namespace Graphite {
 		std::vector<std::string_view> m_OldLines;
 		std::vector<std::string_view> m_NewLines;
 
+		// TextsContentHash of m_CachedTexts, zero without them. A working-tree diff brings a
+		// new texts object on every landing, equal or not, and a selection outlives the ones
+		// whose content is equal.
+		std::size_t m_TextsHash = 0;
+
 		// The widest line the side-by-side view has drawn so far, which is how far its shared
 		// horizontal scrollbar reaches. Only the rows that have been on screen are measured,
 		// because only those are laid out — see RenderSideBySide for why a frame's lag is the

@@ -310,7 +310,32 @@ TEST_CASE("The content hash follows the diff's lines")
 
 	Graphite::DiffSelectionContext a;
 	Graphite::DiffSelectionContext b;
-	const int texts = 0;
-	b.Texts = &texts;
+	b.TextsHash = 1;
 	CHECK_FALSE(a == b);
+}
+
+TEST_CASE("The texts hash follows both sides' content, not the object holding it")
+{
+	const Graphite::FileTexts texts{.Old = "a\nb\n", .New = "a\nc\n", .HasOld = true, .HasNew = true};
+	const std::size_t hash = Graphite::TextsContentHash(texts);
+
+	// A fresh object with the same content, as every working-tree landing brings.
+	const Graphite::FileTexts same = texts;
+	CHECK(Graphite::TextsContentHash(same) == hash);
+
+	Graphite::FileTexts changed = texts;
+	changed.Old = "a\nx\n";
+	CHECK(Graphite::TextsContentHash(changed) != hash);
+
+	changed = texts;
+	changed.New = "a\nx\n";
+	CHECK(Graphite::TextsContentHash(changed) != hash);
+
+	// The same bytes moved from one side to the other are a different pair of texts.
+	const Graphite::FileTexts swapped{.Old = texts.New, .New = texts.Old, .HasOld = true, .HasNew = true};
+	CHECK(Graphite::TextsContentHash(swapped) != hash);
+
+	changed = texts;
+	changed.HasOld = false;
+	CHECK(Graphite::TextsContentHash(changed) != hash);
 }

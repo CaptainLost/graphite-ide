@@ -217,6 +217,18 @@ namespace Graphite {
 		return seed;
 	}
 
+	std::size_t TextsContentHash(const FileTexts& texts)
+	{
+		std::size_t seed = 0;
+
+		Combine(seed, texts.HasOld ? 1 : 0);
+		Combine(seed, std::hash<std::string_view>{}(texts.Old));
+		Combine(seed, texts.HasNew ? 1 : 0);
+		Combine(seed, std::hash<std::string_view>{}(texts.New));
+
+		return seed;
+	}
+
 	std::size_t ByteAtX(std::string_view text, float x,
 						const std::function<float(std::string_view prefix)>& widthOf)
 	{

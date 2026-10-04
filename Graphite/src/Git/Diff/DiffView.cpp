@@ -229,6 +229,18 @@ namespace Graphite {
 			return ImGui::CalcTextSize(prefix.data(), prefix.data() + prefix.size()).x;
 		}
 
+		// WidthOf in the mono font the rows are drawn in, for hit-testing from the selection
+		// gesture: that runs with the UI font back, so the context menu it opens draws like
+		// every other menu's.
+		float MonoWidthOf(std::string_view prefix)
+		{
+			ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont());
+			const float width = WidthOf(prefix);
+			ImGui::PopFont();
+
+			return width;
+		}
+
 		// Fills the part of a line `span` covers, from the x its text is drawn at, under the
 		// text: called before DrawLine so the code stays readable on top of it.
 		void DrawSelected(std::string_view text, Core::ColumnSpan span, float textScreenX,
@@ -337,6 +349,7 @@ namespace Graphite {
 			m_CachedTexts.reset();
 			m_OldLines.clear();
 			m_NewLines.clear();
+			m_TextsHash = 0;
 		}
 
 		// After the clear above, never before it: a binary file's owner hands us no texts, so
@@ -374,7 +387,7 @@ namespace Graphite {
 			.Scope = layout.Scope,
 			.Side = m_Mode == DiffViewMode::SideBySide ? m_SelectionSide : DiffSide::New,
 			.ContentHash = ContentHashOf(file),
-			.Texts = wholeFile ? texts.get() : nullptr};
+			.TextsHash = wholeFile ? m_TextsHash : 0};
 
 		if (context != m_SelectionFor)
 		{
@@ -562,6 +575,10 @@ namespace Graphite {
 		m_CachedTexts = texts;
 		m_OldLines = texts->HasOld ? SplitTextLines(texts->Old) : std::vector<std::string_view>{};
 		m_NewLines = texts->HasNew ? SplitTextLines(texts->New) : std::vector<std::string_view>{};
+
+		// Here, keyed by the same pointer as the split, so it is read once per texts object;
+		// it is the content that decides whether a selection survives, not the object.
+		m_TextsHash = TextsContentHash(*texts);
 	}
 
 	void DiffView::RenderUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
@@ -681,11 +698,13 @@ namespace Graphite {
 
 		RememberKeptLine(std::span(rows), file, startY);
 
-		// After every row, as the gesture asks, and before the font is popped: hit-testing
-		// measures in the mono font the rows were drawn in.
+		// The UI font back before the gesture, whose context menu is a menu like any other;
+		// its hit-testing measures in the mono font by itself (MonoWidthOf).
+		ImGui::PopFont();
+
+		// After every row, as the gesture asks.
 		SelectUnified(rows, file, tokens, startX, startY, numberWidth * 2.0f, rowHeight);
 
-		ImGui::PopFont();
 		ImGui::EndChild();
 	}
 
@@ -730,7 +749,7 @@ namespace Graphite {
 				const std::string_view text = textOf(index);
 				const float x = screen.x - textScreenX;
 
-				return Core::TextPoint{*line, under ? ByteUnderX(text, x, WidthOf) : ByteAtX(text, x, WidthOf)};
+				return Core::TextPoint{*line, under ? ByteUnderX(text, x, MonoWidthOf) : ByteAtX(text, x, MonoWidthOf)};
 			}
 
 			// A header, a signature or a gap: no selection starts there, but one already being
@@ -992,9 +1011,6 @@ namespace Graphite {
 
 		RememberKeptLine(std::span(pairs), file, startY);
 
-		SelectSideBySide(pairs, file, tokens, startX, startY, numberWidth, rowHeight, innerMin.x,
-						 panes.RightPaneX, panes.PaneWidth);
-
 		// Drawn after the halves and outside their clipping rectangles, so it is not cut off by
 		// either and does not slide when the reader scrolls across. A filled rectangle rather
 		// than a line, which AddLine would centre on the split and so lay half of over the
@@ -1004,7 +1020,13 @@ namespace Graphite {
 														 innerMax.y),
 												  ImGui::GetColorU32(ImGuiCol_Border));
 
+		// The UI font back first, as in the unified view: the gesture's menu is a menu like
+		// any other, and its hit-testing measures in the mono font by itself (MonoWidthOf).
 		ImGui::PopFont();
+
+		SelectSideBySide(pairs, file, tokens, startX, startY, numberWidth, rowHeight, innerMin.x,
+						 panes.RightPaneX, panes.PaneWidth);
+
 		ImGui::EndChild();
 	}
 
@@ -1082,7 +1104,7 @@ namespace Graphite {
 			{
 				const std::string_view text = textOf(index);
 
-				return Core::TextPoint{*line, under ? ByteUnderX(text, x, WidthOf) : ByteAtX(text, x, WidthOf)};
+				return Core::TextPoint{*line, under ? ByteUnderX(text, x, MonoWidthOf) : ByteAtX(text, x, MonoWidthOf)};
 			}
 
 			// A header, a gap, or a row this side does not have: no selection starts there,

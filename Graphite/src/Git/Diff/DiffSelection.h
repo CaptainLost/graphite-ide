@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Git/Diff/DiffRows.h"
+#include "Git/Diff/FileTexts.h"
 #include "Git/Diff/SyntaxRuns.h"
 
 #include "Core/Git/Diff.h"
@@ -51,6 +52,11 @@ namespace Graphite {
 	// per frame; the text functions above likewise run per copy, not per frame.
 	std::size_t DiffContentHash(const Core::FileDiff& file);
 
+	// Hash of both sides of the whole-file texts: each side's presence and its text, in order,
+	// so equal content in a different object hashes equal and a change to either side does
+	// not. Reads every byte, so the caller recomputes it only when the object changes.
+	std::size_t TextsContentHash(const FileTexts& texts);
+
 	// What the selection is about, so the view can clear it when that changes. Two contexts
 	// compare equal exactly when the selection is still valid.
 	struct DiffSelectionContext
@@ -65,9 +71,10 @@ namespace Graphite {
 		// Hash of the file's hunks text (std::hash over the joined line text).
 		std::size_t ContentHash = 0;
 
-		// Identity of the whole-file texts (the FileTexts object) in whole-file scope, so an
-		// edit to an unchanged line invalidates the selection; null otherwise.
-		const void* Texts = nullptr;
+		// TextsContentHash of the whole-file texts in whole-file scope, so an edit to an
+		// unchanged line invalidates the selection; zero otherwise. Their content rather than
+		// the object: a working-tree diff gets a fresh FileTexts on every landing, equal or not.
+		std::size_t TextsHash = 0;
 
 		bool operator==(const DiffSelectionContext& other) const = default;
 	};

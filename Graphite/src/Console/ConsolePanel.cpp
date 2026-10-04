@@ -279,7 +279,8 @@ namespace Graphite {
 
 		if (result.Copied)
 		{
-			CopyToClipboard(m_Events, "selection", result.CopiedText);
+			// The gesture has set the clipboard already; only the status bar is told.
+			ReportCopied(m_Events, "selection", result.CopiedText);
 		}
 	}
 
