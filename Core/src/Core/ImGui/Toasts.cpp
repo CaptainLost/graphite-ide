@@ -111,11 +111,17 @@ namespace Core {
 
 		// The kind's mark, drawn rather than typed: a glyph from the icon font sits where its
 		// font's metrics put it, which is never quite the circle's centre, and is drawn thin.
-		// Lengths are at 100% and in pixels from the centre, y downwards.
+		// Lengths are at 100% and in pixels from the centre, y downwards. Every stroke is a
+		// polyline, never AddLine, which shifts both ends by half a pixel and would put the
+		// cross and the exclamation stem off the circle's centre.
 		void DrawMark(ImDrawList& draw, ToastKind kind, ImVec2 centre, ImU32 colour)
 		{
 			const float thickness = Scaled(kMarkThickness);
 			const auto at = [&](float x, float y) { return ImVec2(centre.x + Scaled(x), centre.y + Scaled(y)); };
+			const auto stroke = [&](ImVec2 from, ImVec2 to) {
+				const ImVec2 points[] = {from, to};
+				draw.AddPolyline(points, 2, colour, thickness, ImDrawFlags_None);
+			};
 
 			switch (kind)
 			{
@@ -126,15 +132,15 @@ namespace Core {
 				return;
 			}
 			case ToastKind::Warning:
-				draw.AddLine(at(0.0f, -5.0f), at(0.0f, 1.5f), colour, thickness);
+				stroke(at(0.0f, -5.0f), at(0.0f, 1.5f));
 				draw.AddCircleFilled(at(0.0f, 4.5f), Scaled(1.2f), colour);
 				return;
 			case ToastKind::Error:
 				break;
 			}
 
-			draw.AddLine(at(-5.0f, -5.0f), at(5.0f, 5.0f), colour, thickness);
-			draw.AddLine(at(-5.0f, 5.0f), at(5.0f, -5.0f), colour, thickness);
+			stroke(at(-5.0f, -5.0f), at(5.0f, 5.0f));
+			stroke(at(-5.0f, 5.0f), at(5.0f, -5.0f));
 		}
 
 		float Seconds(ToastClock::duration duration)

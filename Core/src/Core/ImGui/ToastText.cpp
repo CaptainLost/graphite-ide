@@ -2,6 +2,7 @@
 
 #include "Core/ImGui/ToastText.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstddef>
 #include <optional>
@@ -65,10 +66,17 @@ namespace Core {
 
 		// A run with a separator in it that starts the way only a path does: a drive, the
 		// root, the current or parent folder, home, or a hidden folder such as ".claude/".
-		// "src/a.cpp" or "and/or" stay words.
+		// "src/a.cpp" or "and/or" stay words, and so does a separator on its own, as in "A / B".
+		// A path in double quotes or brackets, the way git and libgit2 print one, is a path all
+		// the same.
 		bool IsPath(std::string_view run)
 		{
-			if (run.find_first_of("/\\") == std::string_view::npos)
+			while (!run.empty() && (run.front() == '"' || run.front() == '(' || run.front() == '[' || run.front() == '<'))
+			{
+				run.remove_prefix(1);
+			}
+
+			if (run.find_first_of("/\\") == std::string_view::npos || std::ranges::none_of(run, IsWordChar))
 			{
 				return false;
 			}
@@ -99,6 +107,10 @@ namespace Core {
 		{
 			std::string_view Text;
 			ToastTextStyle Style = ToastTextStyle::Plain;
+
+			// Starts a line of its own and breaks only after a separator: a path, or a quoted
+			// span with a path inside, which keeps its bold face but breaks as the path it is.
+			bool BreaksAsPath = false;
 		};
 
 		// Pieces with no whitespace between them - a quoted span and the colon after it - which
@@ -141,7 +153,8 @@ namespace Core {
 
 				if (const std::optional<std::size_t> close = StrongEnd(text, i); close.has_value())
 				{
-					piece = Piece{text.substr(i, *close - i + 1), ToastTextStyle::Strong};
+					piece = Piece{text.substr(i, *close - i + 1), ToastTextStyle::Strong,
+								  IsPath(text.substr(i + 1, *close - i - 1))};
 					i = *close + 1;
 				}
 				else
@@ -158,7 +171,8 @@ namespace Core {
 
 					// Only a run that starts a word is a path: one glued to a quoted span is the
 					// span's tail.
-					piece = Piece{run, !glued && IsPath(run) ? ToastTextStyle::Path : ToastTextStyle::Plain};
+					const bool path = !glued && IsPath(run);
+					piece = Piece{run, path ? ToastTextStyle::Path : ToastTextStyle::Plain, path};
 					i = end;
 				}
 
@@ -201,7 +215,7 @@ namespace Core {
 					}
 				}
 
-				if (group.Pieces.front().Style == ToastTextStyle::Path && m_X > 0.0f)
+				if (group.Pieces.front().BreaksAsPath && m_X > 0.0f)
 				{
 					NewLine();
 				}
@@ -314,7 +328,7 @@ namespace Core {
 			// The longest prefix of a path that ends just after a separator and fits `room`.
 			// When the segment after it is wider than a whole line, it has to break anywhere
 			// sooner or later, so it starts doing so here rather than on a line of its own.
-			std::size_t FitPath(std::string_view text, float room) const
+			std::size_t FitPath(std::string_view text, bool bold, float room) const
 			{
 				std::size_t fit = 0;
 
@@ -322,7 +336,7 @@ namespace Core {
 				{
 					if (IsSeparator(text[i]))
 					{
-						if (m_Measure(text.substr(0, i + 1), false) > room)
+						if (m_Measure(text.substr(0, i + 1), bold) > room)
 						{
 							break;
 						}
@@ -334,9 +348,9 @@ namespace Core {
 				std::size_t segmentEnd = text.find_first_of("/\\", fit);
 				segmentEnd = segmentEnd == std::string_view::npos ? text.size() : segmentEnd + 1;
 
-				if (m_Measure(text.substr(fit, segmentEnd - fit), false) > m_Width)
+				if (m_Measure(text.substr(fit, segmentEnd - fit), bold) > m_Width)
 				{
-					return FitCharacters(text, false, room);
+					return FitCharacters(text, bold, room);
 				}
 
 				return fit;
@@ -358,8 +372,7 @@ namespace Core {
 					}
 
 					const float room = m_Width - m_X - gap;
-					std::size_t fit = piece.Style == ToastTextStyle::Path ? FitPath(text, room)
-																		  : FitCharacters(text, bold, room);
+					std::size_t fit = piece.BreaksAsPath ? FitPath(text, bold, room) : FitCharacters(text, bold, room);
 
 					if (fit == 0)
 					{

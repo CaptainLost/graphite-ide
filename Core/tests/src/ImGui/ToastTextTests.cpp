@@ -212,6 +212,59 @@ TEST_CASE("An empty message lays out no lines")
 	CHECK(LayoutToastText("  \n ", 100.0f, Monospace).empty());
 }
 
+TEST_CASE("A quoted path stays bold but starts its own line and breaks only after a separator")
+{
+	const auto lines = LayoutToastText("could not open 'C:/Repos/IDE/.claude/x.jsonl': denied", 20.0f, Monospace);
+
+	CHECK(TextsOf(lines) ==
+		  std::vector<std::string>{"could not open", "'C:/Repos/IDE/", ".claude/x.jsonl':", "denied"});
+	REQUIRE(lines.size() == 4);
+	REQUIRE(lines[1].Runs.size() == 1);
+	CHECK(lines[1].Runs[0].Style == ToastTextStyle::Strong);
+	REQUIRE(lines[2].Runs.size() == 2);
+	CHECK(lines[2].Runs[0].Style == ToastTextStyle::Strong);
+	CHECK(lines[2].Runs[1].Text == ":");
+}
+
+TEST_CASE("A quoted path that fits a line still starts one of its own")
+{
+	const auto lines = LayoutToastText("open 'C:/a/b' now", 100.0f, Monospace);
+
+	CHECK(TextsOf(lines) == std::vector<std::string>{"open", "'C:/a/b' now"});
+	REQUIRE(lines.size() == 2);
+	CHECK(lines[1].Runs[0].Style == ToastTextStyle::Strong);
+}
+
+TEST_CASE("A path in double quotes or brackets is a path")
+{
+	for (const std::string_view wrapped : {"\"C:/a/b\"", "(C:/a/b)", "\"./a/b\":", "(/a/b),"})
+	{
+		const std::string shown(wrapped);
+		CAPTURE(shown);
+		const auto lines = LayoutToastText("open " + shown + " now", 100.0f, Monospace);
+
+		REQUIRE(lines.size() == 2);
+		CHECK(TextOf(lines[1]) == shown + " now");
+		CHECK(lines[1].Runs[0].Style == ToastTextStyle::Path);
+		CHECK(lines[1].Runs[0].Text == shown);
+	}
+}
+
+TEST_CASE("A separator on its own is not a path")
+{
+	for (const std::string_view message : {"A / B", "A \\ B", "A (/) B", "A // B"})
+	{
+		const std::string shown(message);
+		CAPTURE(shown);
+		const auto lines = LayoutToastText(message, 100.0f, Monospace);
+
+		REQUIRE(lines.size() == 1);
+		REQUIRE(lines[0].Runs.size() == 1);
+		CHECK(lines[0].Runs[0].Style == ToastTextStyle::Plain);
+		CHECK(lines[0].Runs[0].Text == shown);
+	}
+}
+
 TEST_CASE("A line narrower than one character still makes progress")
 {
 	const auto lines = LayoutToastText("abc", 0.5f, Monospace);
