@@ -124,3 +124,42 @@ TEST_CASE("A registered command keeps its address as more are added")
 	CHECK(first == commands.Find("a"));
 	CHECK(first->Label == "A");
 }
+
+TEST_CASE("RunFromMenu runs the command's menu variant when it has one")
+{
+	CommandRegistry commands;
+	int keyRuns = 0;
+	int menuRuns = 0;
+	commands.Add({.Id = "edit.copy",
+				  .Label = "Copy",
+				  .Run = [&keyRuns] { ++keyRuns; },
+				  .RunFromMenu = [&menuRuns] { ++menuRuns; }});
+
+	CHECK(commands.RunFromMenu("edit.copy"));
+	CHECK(menuRuns == 1);
+	CHECK(keyRuns == 0);
+
+	// A chord still runs the plain variant.
+	CHECK(commands.Run("edit.copy"));
+	CHECK(keyRuns == 1);
+	CHECK(menuRuns == 1);
+}
+
+TEST_CASE("RunFromMenu falls back to Run and is gated like it")
+{
+	CommandRegistry commands;
+	int runs = 0;
+	bool enabled = true;
+	commands.Add({.Id = "editor.zoomIn",
+				  .Label = "Zoom In",
+				  .Run = [&runs] { ++runs; },
+				  .Enabled = [&enabled] { return enabled; }});
+
+	CHECK(commands.RunFromMenu("editor.zoomIn"));
+	CHECK(runs == 1);
+
+	enabled = false;
+	CHECK_FALSE(commands.RunFromMenu("editor.zoomIn"));
+	CHECK(runs == 1);
+	CHECK_FALSE(commands.RunFromMenu("nothing.here"));
+}

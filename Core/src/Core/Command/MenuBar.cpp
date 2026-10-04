@@ -89,7 +89,7 @@ namespace Core {
 			if (ImGui::MenuItem(label.c_str(), shortcut.empty() ? nullptr : shortcut.c_str(), checked,
 								enabled))
 			{
-				commands.Run(id);
+				commands.RunFromMenu(id);
 			}
 		}
 

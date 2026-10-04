@@ -23,6 +23,11 @@ namespace Core {
 
 		std::function<void()> Run;
 
+		// What a menu item runs instead of Run, for a command that does something more when
+		// chosen deliberately than when its chord is pressed - an editor's Copy confirms it from
+		// a menu but not from Ctrl+C. Empty means Run.
+		std::function<void()> RunFromMenu;
+
 		std::function<bool()> Enabled;
 
 		std::function<bool()> Checked;

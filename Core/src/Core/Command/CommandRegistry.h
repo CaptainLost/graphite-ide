@@ -24,6 +24,10 @@ namespace Core {
 
 		bool Run(std::string_view id);
 
+		// Run as a menu item runs it: the command's RunFromMenu when it has one, else Run.
+		// Gated by Enabled the same way.
+		bool RunFromMenu(std::string_view id);
+
 		std::vector<const Command*> InGroup(std::string_view group) const;
 
 		void ForEach(const std::function<void(const Command&)>& action) const;

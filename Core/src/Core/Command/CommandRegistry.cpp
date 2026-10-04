@@ -51,6 +51,24 @@ namespace Core {
 		return true;
 	}
 
+	bool CommandRegistry::RunFromMenu(std::string_view id)
+	{
+		const Command* command = Find(id);
+
+		if (command == nullptr || !command->RunFromMenu)
+		{
+			return Run(id);
+		}
+
+		if (command->Enabled && !command->Enabled())
+		{
+			return false;
+		}
+
+		command->RunFromMenu();
+		return true;
+	}
+
 	std::vector<const Command*> CommandRegistry::InGroup(std::string_view group) const
 	{
 		std::vector<const Command*> members;
