@@ -45,6 +45,9 @@ namespace Graphite {
 
 		void UpdateSummary(const SessionSummary& summary);
 
+		// Whether a window is open for the session with this id.
+		bool IsOpen(const std::string& id) const;
+
 		// The open session windows, in tab order, each with the view it shows, for the next
 		// launch. A window carried over from a folder this one replaced is left out (see
 		// CarryOverOpenSessions).

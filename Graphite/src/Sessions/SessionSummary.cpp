@@ -132,6 +132,15 @@ namespace Graphite {
 		return FirstPrompt.empty() ? Id : FirstPrompt;
 	}
 
+	bool SessionSummary::IsEmpty() const
+	{
+		const auto used = [](const UsageByModel& usage) {
+			return std::ranges::any_of(usage, [](const auto& entry) { return entry.second.Total() != 0; });
+		};
+
+		return Title.empty() && FirstPrompt.empty() && !used(Main) && !used(Subagents);
+	}
+
 	SessionSummary SummariseSession(const std::filesystem::path& sessionFile)
 	{
 		std::optional<SessionSummary> summary = TrySummariseSession(sessionFile);

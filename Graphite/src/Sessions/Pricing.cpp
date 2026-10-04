@@ -16,6 +16,8 @@ namespace Graphite {
 		// Fast mode is priced at twice the standard rate on every model that offers it.
 		constexpr double kFastMultiplier = 2.0;
 
+		constexpr std::string_view kSyntheticModel = "<synthetic>";
+
 		bool IsDateSuffix(std::string_view rest)
 		{
 			if (rest.size() != 9 || rest[0] != '-')
@@ -72,9 +74,6 @@ namespace Graphite {
 			{"claude-sonnet-5", StandardPrice(2.0, 10.0, 0.2)},
 			{"claude-sonnet-4-6", StandardPrice(3.0, 15.0, 0.3)},
 			{"claude-haiku-4-5", StandardPrice(1.0, 5.0, 0.1)},
-			// What Claude Code names on messages it writes itself — an interrupted turn, an
-			// API error shown in the conversation. Nothing was billed for them.
-			{"<synthetic>", Price{}},
 		};
 
 		pricing.m_Prices = pricing.m_Defaults;
@@ -117,6 +116,14 @@ namespace Graphite {
 
 	std::optional<BucketCosts> Pricing::BucketsOf(const UsageKey& key, const TokenCounts& counts) const
 	{
+		// What Claude Code names on messages it writes itself - an interrupted turn, an API
+		// error shown in the conversation. Nothing was billed for them: no price to list, and no
+		// reason to call the cost unknown.
+		if (key.Model == kSyntheticModel)
+		{
+			return BucketCosts{};
+		}
+
 		const Price* price = Find(key.Model);
 
 		if (price == nullptr)

@@ -972,8 +972,10 @@ namespace Graphite {
 							  ink, block.Marker.c_str());
 			}
 
-			const auto measure = [codePad](std::string_view word, SpanStyle style) {
-				const float pad = style == SpanStyle::Code ? codePad : 0.0f;
+			const auto isCode = [](SpanStyle style) { return style == SpanStyle::Code || style == SpanStyle::BoldCode; };
+
+			const auto measure = [codePad, &isCode](std::string_view word, SpanStyle style) {
+				const float pad = isCode(style) ? codePad : 0.0f;
 				return ImGui::CalcTextSize(word.data(), word.data() + word.size()).x + pad;
 			};
 
@@ -985,36 +987,70 @@ namespace Graphite {
 			const std::vector<PlacedWord>& words = cache.Layouts[index];
 			int lastLine = 0;
 
-			for (const PlacedWord& word : words)
+			// The end of a word's text without the spaces placed after it.
+			const auto trimmedEnd = [](const PlacedWord& word) {
+				const char* begin = word.Text.c_str();
+				const char* trimmed = begin + word.Text.size();
+				while (trimmed > begin && trimmed[-1] == ' ')
+				{
+					--trimmed;
+				}
+				return trimmed;
+			};
+			const auto positionOf = [&](const PlacedWord& word) {
+				return ImVec2(origin.x + indent + word.X, origin.y + static_cast<float>(word.Line) * lineHeight);
+			};
+
+			for (std::size_t at = 0; at < words.size(); ++at)
 			{
+				const PlacedWord& word = words[at];
 				const SpanStyle style = block.Spans[word.Span].Style;
-				const ImVec2 at(origin.x + indent + word.X, origin.y + static_cast<float>(word.Line) * lineHeight);
+				const ImVec2 position = positionOf(word);
 				const char* begin = word.Text.c_str();
 				const char* end = begin + word.Text.size();
 
-				if (style == SpanStyle::Code)
+				if (isCode(style))
 				{
-					// The background covers the word, not the space placed after it.
-					const char* trimmed = end;
-					while (trimmed > begin && trimmed[-1] == ' ')
+					// One background for the run of words of this span on this line, not one per
+					// word; it covers the words, not the space placed after the last of them.
+					std::size_t last = at;
+					while (last + 1 < words.size() && words[last + 1].Span == word.Span &&
+						   words[last + 1].Line == word.Line)
 					{
-						--trimmed;
+						++last;
 					}
 
-					const ImVec2 size = ImGui::CalcTextSize(begin, trimmed);
-					draw->AddRectFilled(at, ImVec2(at.x + size.x + codePad, at.y + ImGui::GetTextLineHeight()),
+					const PlacedWord& tail = words[last];
+					const ImVec2 tailAt = positionOf(tail);
+					const ImVec2 tailSize = ImGui::CalcTextSize(tail.Text.c_str(), trimmedEnd(tail));
+					draw->AddRectFilled(position,
+										ImVec2(tailAt.x + tailSize.x + codePad, position.y + ImGui::GetTextLineHeight()),
 										context.Palette.CodeBlock, 3.0f);
-					draw->AddText(ImVec2(at.x + codePad * 0.5f, at.y), ink, begin, trimmed);
-				}
-				else
-				{
-					draw->AddText(at, ink, begin, end);
 
-					// There is one text face; bold is the same glyphs drawn twice, a pixel apart.
-					if (bold || style == SpanStyle::Bold)
+					for (std::size_t each = at; each <= last; ++each)
 					{
-						draw->AddText(ImVec2(at.x + 1.0f, at.y), ink, begin, end);
+						const ImVec2 eachAt = positionOf(words[each]);
+						const char* eachBegin = words[each].Text.c_str();
+						const ImVec2 textAt(eachAt.x + codePad * 0.5f, eachAt.y);
+						draw->AddText(textAt, ink, eachBegin, trimmedEnd(words[each]));
+
+						if (style == SpanStyle::BoldCode)
+						{
+							draw->AddText(ImVec2(textAt.x + 1.0f, textAt.y), ink, eachBegin, trimmedEnd(words[each]));
+						}
 					}
+
+					lastLine = tail.Line;
+					at = last;
+					continue;
+				}
+
+				draw->AddText(position, ink, begin, end);
+
+				// There is one text face; bold is the same glyphs drawn twice, a pixel apart.
+				if (bold || style == SpanStyle::Bold)
+				{
+					draw->AddText(ImVec2(position.x + 1.0f, position.y), ink, begin, end);
 				}
 
 				lastLine = word.Line;

@@ -106,6 +106,7 @@ namespace Graphite {
 		// True from Start until the index first goes idle. Refreshes run the index too, while a
 		// live session writes, and a notice that came and went with each would flicker.
 		bool m_InitialScan = false;
+		ScanProgress m_ScanProgress;
 
 		// Written at most every kCacheSaveInterval while dirty, and once more on the way out:
 		// a live session delivers a summary with every turn, and each save rewrites every one.

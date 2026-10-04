@@ -103,6 +103,12 @@ namespace Graphite {
 	{
 	}
 
+	bool SessionWindows::IsOpen(const std::string& id) const
+	{
+		return std::any_of(m_Open.begin(), m_Open.end(),
+						   [&id](const Core::Scope<Entry>& entry) { return SameSessionId(entry->Id, id); });
+	}
+
 	SessionWindows::Entry* SessionWindows::Find(const std::string& id)
 	{
 		const auto found = std::find_if(m_Open.begin(), m_Open.end(),

@@ -69,6 +69,20 @@ TEST_CASE("Messages Claude Code writes itself are known and free")
 	CHECK(cost.Dollars == doctest::Approx(0.0));
 }
 
+TEST_CASE("The synthetic model is not a price in the defaults, and is neither priced nor unknown")
+{
+	const Pricing pricing = Pricing::Defaults();
+
+	CHECK(pricing.GetEntries().find("<synthetic>") == pricing.GetEntries().end());
+	CHECK(pricing.Find("<synthetic>") == nullptr);
+
+	const CostResult cost = pricing.CostOf({{{"<synthetic>", false}, {kMillion, kMillion, 0, 0, 0}},
+											{{"claude-opus-5", false}, {kMillion, 0, 0, 0, 0}}});
+
+	CHECK(cost.IsKnown());
+	CHECK(cost.Dollars == doctest::Approx(5.0));
+}
+
 TEST_CASE("A fast request costs twice the standard rate")
 {
 	const Pricing pricing = Pricing::Defaults();

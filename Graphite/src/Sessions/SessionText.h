@@ -3,6 +3,7 @@
 #include "Sessions/Pricing.h"
 #include "Sessions/Requests/RequestTimeline.h"
 #include "Sessions/Session.h"
+#include "Sessions/SessionSummary.h"
 
 #include <chrono>
 #include <cstddef>
@@ -17,6 +18,22 @@ namespace Graphite {
 	// "?" whenever part of the cost is unknown: a partial sum shown as a total would be a
 	// wrong number that looks right.
 	std::string FormatCost(const CostResult& cost);
+
+	// Why a cost reads "?" - the models with no price, and where to add one - or nothing when
+	// the cost is known. For the tooltip over the cost.
+	std::string UnknownCostHint(const CostResult& cost);
+
+	// A session list shows a session unless it is empty (see SessionSummary::IsEmpty); one live or
+	// open in a tab is shown regardless, since it is about to have a first prompt.
+	bool ShowsInSessionList(const SessionSummary& summary, bool live);
+
+	// "Reading transcripts... 12 / 40", or without the count while the total is not known.
+	std::string ScanProgressText(std::size_t done, std::size_t total);
+
+	// What an empty session list says, by why it is empty: still reading, a text filter that
+	// matches nothing, the workspace-only filter, or simply no sessions.
+	std::string EmptyListMessage(bool scanning, std::size_t done, std::size_t total, bool workspaceOnly,
+								 std::string_view filter);
 
 	std::string FormatDuration(std::chrono::milliseconds span);
 

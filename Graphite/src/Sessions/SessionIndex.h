@@ -7,6 +7,7 @@
 #include "Core/Jobs/CancellationToken.h"
 #include "Core/Jobs/JobQueue.h"
 
+#include <atomic>
 #include <cstddef>
 #include <filesystem>
 #include <functional>
@@ -42,6 +43,15 @@ namespace Graphite {
 		std::vector<std::filesystem::path> Removed;
 	};
 
+	// How far the first full scan has got. Watcher refreshes are not part of it: a session
+	// that is being written keeps the index busy indefinitely, and the scan is long over.
+	struct ScanProgress
+	{
+		bool Done = false;
+		std::size_t Scanned = 0;
+		std::size_t Total = 0;
+	};
+
 	// Summaries of every session, kept current on a worker.
 	class SessionIndex
 	{
@@ -59,7 +69,13 @@ namespace Graphite {
 		// session's folder means that session.
 		void Refresh(std::vector<std::filesystem::path> changedDirectories);
 
+		// Whether any work is queued or running, refreshes included. For a caller that needs
+		// the index quiet, as a test does; a list that shows progress asks InitialScan.
 		bool IsScanning() const;
+
+		// Whether the scan Start began has finished, and how many session files it has looked
+		// at out of how many it found. Read on any thread.
+		ScanProgress InitialScan() const;
 
 		// UI thread only.
 		void Take(IndexDelivery& out);
@@ -70,6 +86,12 @@ namespace Graphite {
 			std::mutex Mutex;
 			IndexDelivery Ready;
 			std::size_t Pending = 0;
+
+			// Written by the start job, read by the UI thread, without the lock: the count
+			// moves once per session file, not per byte.
+			std::atomic<bool> InitialScanDone = false;
+			std::atomic<std::size_t> Scanned = 0;
+			std::atomic<std::size_t> Total = 0;
 		};
 
 		// Touched only by the worker: the fingerprint each session had when it was last

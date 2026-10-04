@@ -209,7 +209,7 @@ namespace Graphite {
 
 	void SessionsPanel::SaveCacheWhenSettled()
 	{
-		if (!m_CacheDirty || m_Index.IsScanning())
+		if (!m_CacheDirty || m_InitialScan)
 		{
 			return;
 		}
@@ -270,16 +270,19 @@ namespace Graphite {
 
 		if (m_Indexing)
 		{
-			// Asked before taking: the worker delivers every summary before it stops counting as
-			// scanning, so an index idle here has nothing left to deliver once the take below is
-			// done. Asked after, it could have finished in between and left its last summaries
-			// for the next frame - after the scan had already been declared complete.
-			const bool scanning = m_Index.IsScanning();
+			// Asked before taking: the worker delivers every summary before it marks the scan
+			// done, so a scan reported done here has nothing left to deliver once the take below
+			// is done. Asked after, it could have finished in between and left its last
+			// summaries for the next frame - after the scan had already been declared complete.
+			// Only the first scan counts: refreshes of a session being written to would keep
+			// the index busy, and this list waiting, for as long as the session lives.
+			const ScanProgress progress = m_Index.InitialScan();
+			m_ScanProgress = progress;
 
 			TakeFromIndex();
 			TakeFromWatcher();
 
-			if (m_InitialScan && !scanning)
+			if (m_InitialScan && progress.Done)
 			{
 				m_InitialScan = false;
 			}
@@ -316,6 +319,11 @@ namespace Graphite {
 
 		for (const auto& [file, summary] : m_Sessions)
 		{
+			if (!ShowsInSessionList(summary, IsLive(summary) || m_Windows.IsOpen(summary.Id)))
+			{
+				continue;
+			}
+
 			if (limitToWorkspace && !IsWithinDirectory(summary.Cwd, m_Workspace.GetRoot()))
 			{
 				continue;
@@ -426,7 +434,7 @@ namespace Graphite {
 
 		if (m_InitialScan)
 		{
-			ImGui::TextDisabled("Reading transcripts...");
+			ImGui::TextDisabled("%s", ScanProgressText(m_ScanProgress.Scanned, m_ScanProgress.Total).c_str());
 		}
 	}
 
@@ -475,6 +483,12 @@ namespace Graphite {
 
 		ImGui::Indent();
 		ImGui::TextDisabled("%s", detail.c_str());
+
+		if (const std::string hint = UnknownCostHint(all); !hint.empty() && ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("%s", hint.c_str());
+		}
+
 		ImGui::Unindent();
 
 		ImGui::PopID();
@@ -486,7 +500,9 @@ namespace Graphite {
 
 		if (visible.empty())
 		{
-			Core::EmptyState(m_InitialScan ? "" : "No sessions.");
+			Core::EmptyState(EmptyListMessage(m_InitialScan, m_ScanProgress.Scanned, m_ScanProgress.Total,
+											  m_WorkspaceOnly && m_Workspace.IsOpen(), m_Filter)
+								 .c_str());
 			return;
 		}
 
@@ -530,6 +546,11 @@ namespace Graphite {
 				const std::string header =
 					label + "  " + FormatCost(total) + "###group-" + Core::ToUtf8(std::filesystem::path{folder});
 				groupOpen = ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+
+				if (const std::string hint = UnknownCostHint(total); !hint.empty() && ImGui::IsItemHovered())
+				{
+					ImGui::SetTooltip("%s", hint.c_str());
+				}
 			}
 
 			if (!grouped || groupOpen)

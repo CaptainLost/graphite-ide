@@ -209,6 +209,15 @@ namespace Graphite {
 		m_Projects = projects;
 
 		Submit([projects = std::move(projects), cached = std::move(cached), token = m_Token](Inbox& inbox, Known& known) {
+			// Listing the directories is cheap beside reading the files, and gives the total
+			// the count is shown against.
+			std::size_t total = 0;
+			for (const std::filesystem::path& project : ProjectDirectories(projects))
+			{
+				total += SessionFilesUnder(project).size();
+			}
+			inbox.Total = total;
+
 			std::vector<std::filesystem::path> gone =
 				ScanProjects(projects, cached, token, [&inbox, &known](SessionSummary summary) {
 					known.Prints[summary.File] = summary.Print;
@@ -219,6 +228,7 @@ namespace Graphite {
 						inbox.Ready.Updated.push_back(std::move(summary));
 					}
 
+					++inbox.Scanned;
 					Core::Redraw::Request();
 				});
 
@@ -229,6 +239,15 @@ namespace Graphite {
 			for (std::filesystem::path& file : gone)
 			{
 				inbox.Ready.Removed.push_back(std::move(file));
+			}
+
+			// After everything above is in the inbox: a reader that sees the flag and then
+			// takes has the whole scan. A cancelled scan returns early without it, and its
+			// inbox is dropped by the next Start anyway.
+			if (!token.IsCancelled())
+			{
+				inbox.Scanned = inbox.Total.load();
+				inbox.InitialScanDone = true;
 			}
 		});
 	}
@@ -295,6 +314,13 @@ namespace Graphite {
 	{
 		const std::lock_guard<std::mutex> guard(m_Inbox->Mutex);
 		return m_Inbox->Pending > 0;
+	}
+
+	ScanProgress SessionIndex::InitialScan() const
+	{
+		// Done first: the counts only grow, so a reader that sees the flag sees the final ones.
+		const bool done = m_Inbox->InitialScanDone.load();
+		return {done, m_Inbox->Scanned.load(), m_Inbox->Total.load()};
 	}
 
 	void SessionIndex::Take(IndexDelivery& out)

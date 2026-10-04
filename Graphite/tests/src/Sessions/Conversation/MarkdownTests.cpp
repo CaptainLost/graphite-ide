@@ -16,6 +16,14 @@ TEST_CASE("Stars inside inline code stay literal, and an unclosed marker is plai
 	CHECK(ParseSpans("a `b") == std::vector<Span>{{SpanStyle::Plain, "a `b"}});
 }
 
+TEST_CASE("Code inside bold is a bold code span, without its backticks")
+{
+	CHECK(ParseSpans("**run `make` now**") ==
+		  std::vector<Span>{{SpanStyle::Bold, "run "}, {SpanStyle::BoldCode, "make"}, {SpanStyle::Bold, " now"}});
+	CHECK(ParseSpans("**`x`**") == std::vector<Span>{{SpanStyle::BoldCode, "x"}});
+	CHECK(ParseSpans("**a `b**") == std::vector<Span>{{SpanStyle::Bold, "a `b"}});
+}
+
 TEST_CASE("Headings, list items and paragraphs are told apart")
 {
 	const std::vector<MarkdownBlock> blocks = ParseMarkdown("## Title\n\nFirst line\ncontinues.\n\n- one\n  - two\n1. three");

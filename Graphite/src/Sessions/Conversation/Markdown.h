@@ -12,7 +12,10 @@ namespace Graphite {
 	{
 		Plain,
 		Bold,
-		Code
+		Code,
+
+		// `code` inside **bold**.
+		BoldCode
 	};
 
 	struct Span
@@ -52,7 +55,8 @@ namespace Graphite {
 
 	std::vector<MarkdownBlock> ParseMarkdown(std::string_view text);
 
-	// **bold** and `code` within one block's text. A marker that is never closed is text.
+	// **bold** and `code` within one block's text, code allowed inside bold. A marker that is
+	// never closed is text.
 	std::vector<Span> ParseSpans(std::string_view text);
 
 	struct PlacedWord

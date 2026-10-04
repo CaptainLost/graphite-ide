@@ -46,6 +46,56 @@ namespace Graphite {
 		return std::format("${:.2f}", cost.Dollars);
 	}
 
+	std::string UnknownCostHint(const CostResult& cost)
+	{
+		if (cost.IsKnown())
+		{
+			return {};
+		}
+
+		std::string hint = "No price for ";
+
+		for (std::size_t index = 0; index < cost.UnknownModels.size(); ++index)
+		{
+			hint += (index > 0 ? ", " : "") + cost.UnknownModels[index];
+		}
+
+		return hint + ". Add a price under Settings > Claude.";
+	}
+
+	bool ShowsInSessionList(const SessionSummary& summary, bool live)
+	{
+		return live || !summary.IsEmpty();
+	}
+
+	std::string ScanProgressText(std::size_t done, std::size_t total)
+	{
+		std::string text = "Reading transcripts...";
+
+		if (total > 0)
+		{
+			text += std::format(" {} / {}", std::min(done, total), total);
+		}
+
+		return text;
+	}
+
+	std::string EmptyListMessage(bool scanning, std::size_t done, std::size_t total, bool workspaceOnly,
+								 std::string_view filter)
+	{
+		if (scanning)
+		{
+			return ScanProgressText(done, total);
+		}
+
+		if (!filter.empty())
+		{
+			return std::format("No sessions match \"{}\"", filter);
+		}
+
+		return workspaceOnly ? "No sessions in this workspace" : "No sessions.";
+	}
+
 	std::string FormatDuration(std::chrono::milliseconds span)
 	{
 		const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(span).count();

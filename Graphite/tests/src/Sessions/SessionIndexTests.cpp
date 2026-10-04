@@ -198,3 +198,42 @@ TEST_CASE("A transcript that cannot be read is neither delivered nor remembered,
 	CHECK(after.Updated.empty());
 	CHECK(after.Removed.empty());
 }
+
+TEST_CASE("The initial scan reports its progress and is done once every file has been looked at")
+{
+	TempDirectory temp;
+	temp.MakeFile("p1/a.jsonl", Fixtures::UserPrompt("a"));
+	temp.MakeFile("p1/b.jsonl", Fixtures::UserPrompt("b"));
+	temp.MakeFile("p2/c.jsonl", Fixtures::UserPrompt("c"));
+
+	SessionIndex index;
+	index.Start(temp.GetPath(), {});
+	Settle(index);
+
+	const ScanProgress progress = index.InitialScan();
+	CHECK(progress.Done);
+	CHECK(progress.Total == 3);
+	CHECK(progress.Scanned == 3);
+}
+
+TEST_CASE("Refreshes after the initial scan do not bring it back")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = temp.MakeFile("p/a.jsonl", Fixtures::UserPrompt("a"));
+
+	SessionIndex index;
+	index.Start(temp.GetPath(), {});
+	Settle(index);
+	REQUIRE(index.InitialScan().Done);
+
+	// A session being written to, as a live terminal does: the watcher keeps reporting it.
+	for (int round = 0; round < 20; ++round)
+	{
+		std::ofstream{file, std::ios::app} << Fixtures::UserPrompt("more");
+		index.Refresh({file.parent_path()});
+		CHECK(index.InitialScan().Done);
+	}
+
+	Settle(index);
+	CHECK(index.InitialScan().Done);
+}

@@ -71,6 +71,10 @@ namespace Graphite {
 
 		std::string DisplayTitle() const;
 
+		// No title, no first prompt and no tokens at all: a transcript that holds nothing to
+		// show, which DisplayTitle could only name by its UUID.
+		bool IsEmpty() const;
+
 		friend bool operator==(const SessionSummary&, const SessionSummary&) = default;
 	};
 

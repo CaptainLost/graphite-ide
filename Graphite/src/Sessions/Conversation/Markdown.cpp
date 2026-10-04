@@ -12,21 +12,70 @@ namespace Graphite {
 			return start == std::string_view::npos ? std::string_view{} : text.substr(start);
 		}
 
-		void AddPlain(std::vector<Span>& spans, std::string_view text)
+		// Appends plain text, merging into the span before it when that has the same style.
+		void AddText(std::vector<Span>& spans, SpanStyle style, std::string_view text)
 		{
 			if (text.empty())
 			{
 				return;
 			}
 
-			if (!spans.empty() && spans.back().Style == SpanStyle::Plain)
+			if (!spans.empty() && spans.back().Style == style)
 			{
 				spans.back().Text += text;
 			}
 			else
 			{
-				spans.push_back({SpanStyle::Plain, std::string{text}});
+				spans.push_back({style, std::string{text}});
 			}
+		}
+
+		// `text` as spans; within bold, everything is bold and a code span is bold code. Bold
+		// does not open inside bold: the first "**" after an opening one is what closes it.
+		std::vector<Span> ParseSpansIn(std::string_view text, bool bold)
+		{
+			std::vector<Span> spans;
+			std::size_t at = 0;
+
+			while (at < text.size())
+			{
+				if (text[at] == '`')
+				{
+					const std::size_t close = text.find('`', at + 1);
+					if (close != std::string_view::npos)
+					{
+						spans.push_back({bold ? SpanStyle::BoldCode : SpanStyle::Code,
+										 std::string{text.substr(at + 1, close - at - 1)}});
+						at = close + 1;
+						continue;
+					}
+				}
+				else if (!bold && text.substr(at).starts_with("**"))
+				{
+					const std::size_t close = text.find("**", at + 2);
+					if (close != std::string_view::npos && close > at + 2)
+					{
+						for (Span& inner : ParseSpansIn(text.substr(at + 2, close - at - 2), true))
+						{
+							spans.push_back(std::move(inner));
+						}
+						at = close + 2;
+						continue;
+					}
+				}
+
+				// Text up to the next character that could open a span.
+				std::size_t next = text.find_first_of("`*", at + 1);
+				if (next == std::string_view::npos)
+				{
+					next = text.size();
+				}
+
+				AddText(spans, bold ? SpanStyle::Bold : SpanStyle::Plain, text.substr(at, next - at));
+				at = next;
+			}
+
+			return spans;
 		}
 
 		// A line that opens an ordered item: digits, a dot, a space. Returns the marker length.
@@ -49,44 +98,7 @@ namespace Graphite {
 
 	std::vector<Span> ParseSpans(std::string_view text)
 	{
-		std::vector<Span> spans;
-		std::size_t at = 0;
-
-		while (at < text.size())
-		{
-			if (text[at] == '`')
-			{
-				const std::size_t close = text.find('`', at + 1);
-				if (close != std::string_view::npos)
-				{
-					spans.push_back({SpanStyle::Code, std::string{text.substr(at + 1, close - at - 1)}});
-					at = close + 1;
-					continue;
-				}
-			}
-			else if (text.substr(at).starts_with("**"))
-			{
-				const std::size_t close = text.find("**", at + 2);
-				if (close != std::string_view::npos && close > at + 2)
-				{
-					spans.push_back({SpanStyle::Bold, std::string{text.substr(at + 2, close - at - 2)}});
-					at = close + 2;
-					continue;
-				}
-			}
-
-			// Plain text up to the next character that could open a span.
-			std::size_t next = text.find_first_of("`*", at + 1);
-			if (next == std::string_view::npos)
-			{
-				next = text.size();
-			}
-
-			AddPlain(spans, text.substr(at, next - at));
-			at = next;
-		}
-
-		return spans;
+		return ParseSpansIn(text, false);
 	}
 
 	std::vector<MarkdownBlock> ParseMarkdown(std::string_view text)

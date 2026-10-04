@@ -266,3 +266,43 @@ TEST_CASE("A turn's request costs are what the pricing makes of each request")
 			  doctest::Approx(pricing.CostOf(timeline.GetRequests()[*request.Position]).Dollars));
 	}
 }
+
+TEST_CASE("An unknown cost is explained by the models without a price")
+{
+	CHECK(UnknownCostHint({1.0, {}}).empty());
+	CHECK(UnknownCostHint({1.0, {"mystery", "other"}}) ==
+		  "No price for mystery, other. Add a price under Settings > Claude.");
+}
+
+TEST_CASE("An empty session list says why it is empty")
+{
+	CHECK(EmptyListMessage(true, 3, 10, true, "x") == "Reading transcripts... 3 / 10");
+	CHECK(EmptyListMessage(true, 0, 0, false, "") == "Reading transcripts...");
+	CHECK(EmptyListMessage(false, 0, 0, false, "bug") == "No sessions match \"bug\"");
+	CHECK(EmptyListMessage(false, 0, 0, true, "") == "No sessions in this workspace");
+	CHECK(EmptyListMessage(false, 0, 0, false, "") == "No sessions.");
+}
+
+TEST_CASE("An empty session is hidden from the list unless it is live or open")
+{
+	SessionSummary empty;
+	empty.Id = "id";
+	CHECK_FALSE(ShowsInSessionList(empty, false));
+	CHECK(ShowsInSessionList(empty, true));
+
+	SessionSummary titled = empty;
+	titled.Title = "t";
+	CHECK(ShowsInSessionList(titled, false));
+
+	SessionSummary prompted = empty;
+	prompted.FirstPrompt = "hello";
+	CHECK(ShowsInSessionList(prompted, false));
+
+	SessionSummary used = empty;
+	used.Subagents[{"claude-opus-5", false}] = TokenCounts{1, 0, 0, 0, 0};
+	CHECK(ShowsInSessionList(used, false));
+
+	SessionSummary zeroUsage = empty;
+	zeroUsage.Main[{"claude-opus-5", false}] = TokenCounts{};
+	CHECK_FALSE(ShowsInSessionList(zeroUsage, false));
+}
