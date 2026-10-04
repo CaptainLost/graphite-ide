@@ -16,9 +16,10 @@ the same failure, or one could show it while the other did not.
 
 ## Decision
 
-A click's failure is reported through `Core::Toasts`, owned once by the
-application layer and handed by reference to whatever reports
-([0022](0022-i-3-avoid-singletons.md)).
+A click's failure is reported in a toast. `Core::Toasts` is owned once, by the
+application layer ([0022](0022-i-3-avoid-singletons.md)); no feature holds it.
+Features raise toasts by publishing `ToastEvent` on the event bus, as described
+below.
 
 - An Error toast stays until it is closed. Success and Warning toasts leave after
   six seconds, the countdown paused while the pointer is on them.
@@ -35,15 +36,22 @@ application layer and handed by reference to whatever reports
   `DismissInitError()`).
 
 Any feature raises a toast by publishing `ToastEvent` on the application's
-`Core::EventBus`, the way `StatusMessageEvent` reaches the status bar; only the
-application layer holds `Core::Toasts`. Each event carries a scope. A `Folder`
+`Core::EventBus`, the way `StatusMessageEvent` reaches the status bar; the
+application layer subscribes and shows it. Each event carries a scope. A `Folder`
 toast is about the open folder or its repository - every git failure is one -
 and is cleared when that folder closes or another replaces it; an `Application`
 toast survives that. Core keeps the scope as an opaque group tag on the toast,
 which `Clear(group)` removes alone and which takes part in merging twins. Errors
 and warnings go to toasts; routine confirmations - saved, reloaded, committed -
-stay in the status bar's transient slot. A menu's Copy is confirmed by a Success
-toast titled "Copied"; plain Ctrl+C and Ctrl+X are not confirmed at all.
+stay in the status bar's transient slot.
+
+A copy chosen deliberately is confirmed by a Success toast titled "Copied" whose
+message names what was copied and its first line. That covers every Copy item
+in a menu - Copy Path, Copy Hash, a selection's context-menu Copy - the Edit
+menu's and the editor's right-click menu's Cut and Copy, and the console's Copy
+all button. A key is never confirmed: Ctrl+C and Ctrl+X in the editor, Ctrl+C in
+a selection, and the terminal's copy chords only fill the clipboard. So does
+Copy in a toast's own menu, which would otherwise raise a toast about a toast.
 
 ## Rationale
 
@@ -89,5 +97,5 @@ held in a single slot. The panels' layout stops moving when an error appears.
   kept.
 - [0541](0541-put-branch-and-stash-actions-in-the-git-panel-s-right-click-menus.md)
   — the Git panel's write error.
-- [0022](0022-i-3-avoid-singletons.md) — the stack is owned once and passed by
-  reference.
+- [0022](0022-i-3-avoid-singletons.md) — the stack is owned once; features
+  reach it through the event bus.

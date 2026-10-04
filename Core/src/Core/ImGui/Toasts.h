@@ -28,7 +28,8 @@ namespace Core {
 	};
 
 	// Short messages in the bottom-right corner of the main viewport, over everything else.
-	// One owner - the application layer - which hands it by reference to whatever reports.
+	// Owned once, by whatever draws the frame; how the rest of the application reaches it is
+	// the owner's business.
 	class Toasts
 	{
 	public:
@@ -51,9 +52,8 @@ namespace Core {
 		void Clear(std::uint32_t group) { m_Stack.Clear(group); }
 
 		// What Copy in a toast's menu does with the toast's copy text - the title and the
-		// message, one line each, unless Show was given one of its own. Left
-		// empty, it goes straight to ImGui's clipboard; the application sets it to its own copy,
-		// which also reports it.
+		// message, one line each, unless Show was given one of its own. Left empty, it goes
+		// straight to ImGui's clipboard; an owner that copies some other way sets it.
 		std::function<void(std::string_view)> OnCopied;
 
 		const ToastStack& GetStack() const { return m_Stack; }
