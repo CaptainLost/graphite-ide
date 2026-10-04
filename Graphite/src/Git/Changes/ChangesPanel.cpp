@@ -11,6 +11,7 @@
 #include "Git/InitRepositoryPrompt.h"
 #include "Theme/ChromePalette.h"
 #include "UI/DialogLayout.h"
+#include "UI/ToastEvent.h"
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
@@ -1038,6 +1039,8 @@ namespace Graphite {
 			if (const auto revealed = Core::Shell::RevealInFileBrowser(absolute); !revealed)
 			{
 				APP_ERROR("{}", revealed.GetError().Message);
+				m_Events.Publish(FolderToast(Core::ToastKind::Error, "Cannot reveal file", revealed.GetError().Message,
+											 m_Model.GetWorkingDirectory()));
 			}
 		}
 
