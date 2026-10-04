@@ -584,4 +584,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0552](0552-give-a-command-a-separate-label-for-the-key-bindings-list.md) | Give a command a separate label for the key bindings list | proposed | 2026-10-04 |
 | [0553](0553-keep-the-commit-message-readable-in-a-narrow-history-and-ask-before-every-detached-checkout.md) | Keep the commit message readable in a narrow history and ask before every detached checkout | proposed | 2026-10-04 |
 | [0554](0554-refuse-a-commit-that-records-head-s-tree-unless-it-amends-or-concludes-a-merge.md) | Refuse a commit that records HEAD's tree unless it amends or concludes a merge | proposed | 2026-10-04 |
+| [0555](0555-share-one-text-selection-model-across-views-that-show-text.md) | Share one text selection model across views that show text | proposed | 2026-10-04 |
 <!-- /adr-index -->
