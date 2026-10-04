@@ -7,18 +7,19 @@
 #include <functional>
 #include <string>
 #include <string_view>
-#include <unordered_map>
+#include <unordered_set>
 
 namespace Core {
 
 	// Core does not pick the colours, as with Theme::Apply: the application hands them in.
 	struct ToastPalette
 	{
+		// Tinted towards the kind's colour for the card, and the colour of the glyph in its icon.
 		Color Surface;
-		Color Border;
 		Color Text;
 
-		// The count after the title, a step quieter than the text.
+		// The message, the count after the title and the close button, a step quieter than
+		// the title.
 		Color TextDim;
 
 		Color Success;
@@ -56,9 +57,8 @@ namespace Core {
 		// this header needs no ImGui.
 		std::uint32_t m_FocusBeforeToasts = 0;
 
-		// Each toast's resting y as of the last frame, by id. A toast missing here is new, and
-		// its tween starts where it rests instead of sliding in from wherever an old tween left
-		// off; one present hands its old place to the tween as the start of a move.
-		std::unordered_map<std::uint64_t, float> m_RestingY;
+		// The toasts drawn last frame, by id. A toast missing here is new, and its tween is cut
+		// to where it rests instead of sliding in from wherever an old tween left off.
+		std::unordered_set<std::uint64_t> m_Drawn;
 	};
 }
