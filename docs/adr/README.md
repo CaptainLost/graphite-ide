@@ -580,4 +580,8 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0548](0548-draw-interactive-tooltips-as-non-focusing-windows-rather-than-imgui-tooltips.md) | Draw interactive tooltips as non-focusing windows rather than ImGui tooltips | proposed | 2026-10-02 |
 | [0549](0549-anchor-the-terminal-buttons-to-the-whole-bottom-row-and-list-new-terminals-in-the-view-menu.md) | Anchor the terminal buttons to the whole bottom row and list new terminals in the View menu | proposed | 2026-10-03 |
 | [0550](0550-lay-out-sources-by-feature-in-whole-word-folders-mirrored-by-the-tests.md) | Lay out sources by feature in whole-word folders mirrored by the tests | proposed | 2026-10-03 |
+| [0551](0551-open-a-result-with-one-click-model-shared-by-every-list-that-opens-files.md) | Open a result with one click model shared by every list that opens files | proposed | 2026-10-04 |
+| [0552](0552-give-a-command-a-separate-label-for-the-key-bindings-list.md) | Give a command a separate label for the key bindings list | proposed | 2026-10-04 |
+| [0553](0553-keep-the-commit-message-readable-in-a-narrow-history-and-ask-before-every-detached-checkout.md) | Keep the commit message readable in a narrow history and ask before every detached checkout | proposed | 2026-10-04 |
+| [0554](0554-refuse-a-commit-that-records-head-s-tree-unless-it-amends-or-concludes-a-merge.md) | Refuse a commit that records HEAD's tree unless it amends or concludes a merge | proposed | 2026-10-04 |
 <!-- /adr-index -->
