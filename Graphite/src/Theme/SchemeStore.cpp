@@ -350,8 +350,6 @@ namespace Graphite {
 
 	std::optional<std::string> SchemeNameProblem(std::string_view name, const std::vector<std::string>& existing)
 	{
-		constexpr std::size_t kLongestName = 64;
-
 		if (name.empty())
 		{
 			return "Enter a name.";
@@ -361,9 +359,9 @@ namespace Graphite {
 		const auto characters = static_cast<std::size_t>(std::count_if(
 			name.begin(), name.end(), [](char byte) { return (static_cast<unsigned char>(byte) & 0xC0) != 0x80; }));
 
-		if (characters > kLongestName)
+		if (characters > kLongestSchemeName)
 		{
-			return std::format("A name can have at most {} characters.", kLongestName);
+			return std::format("A name can have at most {} characters.", kLongestSchemeName);
 		}
 
 		for (const char character : name)

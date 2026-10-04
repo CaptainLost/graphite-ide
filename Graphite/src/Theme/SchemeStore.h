@@ -4,6 +4,7 @@
 
 #include "Theme/ColorScheme.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -11,6 +12,9 @@
 #include <vector>
 
 namespace Graphite {
+
+	// The longest scheme name SchemeNameProblem accepts, in characters, not bytes.
+	inline constexpr std::size_t kLongestSchemeName = 64;
 
 	// The file holding scheme `name` (UTF-8) in `directory`. Through Core::FromUtf8, so a name with
 	// non-ASCII characters is not read as the ANSI code page on the way to a path.

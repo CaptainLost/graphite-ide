@@ -2,7 +2,6 @@
 
 #include "Core/ImGui/UiScale.h"
 
-#include "Core/Base/Narrow.h"
 #include "Core/Base/Base.h"
 
 #include "Core/ImGui/TextInput.h"
@@ -128,9 +127,11 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
+		// What the reader sees, as a selection is: lines the level or the filter hides are
+		// not copied with the rest.
 		if (ImGui::Button("Copy all"))
 		{
-			ImGui::SetClipboardText(JoinEntries(m_Entries).c_str());
+			ImGui::SetClipboardText(JoinEntries(m_Shown).c_str());
 		}
 
 		ImGui::SameLine();
@@ -151,7 +152,7 @@ namespace Graphite {
 		RenderLevelCombo();
 
 		ImGui::SameLine();
-		ImGui::TextDisabled("%d entries", Core::Narrow<int>(m_Entries.size()));
+		ImGui::TextDisabled("%s", ConsoleEntryCount(m_Shown.size(), m_Entries.size()).c_str());
 	}
 
 	void ConsolePanel::RenderLevelCombo()

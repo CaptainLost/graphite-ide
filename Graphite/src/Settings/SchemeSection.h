@@ -3,6 +3,7 @@
 #include "UI/ModalQuestion.h"
 #include "Settings/SettingsSection.h"
 #include "Theme/SchemeDraft.h"
+#include "Theme/SchemeStore.h"
 
 #include <imgui.h>
 
@@ -69,7 +70,8 @@ namespace Graphite {
 		ModalQuestion<std::string> m_RenameQuestion;
 
 		// The rename field's text, loaded from the payload on the first frame the dialog shows.
-		std::array<char, 128> m_RenameBuffer{};
+		// Room for the longest name allowed in four-byte characters, and the terminator.
+		std::array<char, kLongestSchemeName * 4 + 1> m_RenameBuffer{};
 		bool m_RenameShown = false;
 		std::string m_RenameError;
 

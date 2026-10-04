@@ -3,6 +3,8 @@
 #include "Core/Base/Log.h"
 
 #include <array>
+#include <cstddef>
+#include <string>
 #include <string_view>
 
 namespace Graphite {
@@ -21,4 +23,8 @@ namespace Graphite {
 
 	// The word the combo shows for a level, in the case a menu uses rather than the log's capitals.
 	std::string_view ConsoleLevelName(Core::LogLevel level);
+
+	// The toolbar's count: "12 entries" when every message is drawn, "8 / 12 entries" when the
+	// level or the filter hides some, so the reader knows there is more than they see.
+	std::string ConsoleEntryCount(std::size_t shown, std::size_t total);
 }

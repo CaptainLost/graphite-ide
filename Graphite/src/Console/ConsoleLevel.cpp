@@ -26,4 +26,14 @@ namespace Graphite {
 
 		return "?";
 	}
+
+	std::string ConsoleEntryCount(std::size_t shown, std::size_t total)
+	{
+		if (shown == total)
+		{
+			return std::to_string(total) + " entries";
+		}
+
+		return std::to_string(shown) + " / " + std::to_string(total) + " entries";
+	}
 }

@@ -7,6 +7,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <optional>
 
 namespace Graphite {
@@ -326,7 +327,17 @@ namespace Graphite {
 			m_RenameShown = true;
 			m_RenameError.clear();
 			m_RenameBuffer.fill('\0');
-			from.copy(m_RenameBuffer.data(), m_RenameBuffer.size() - 1);
+
+			// A name written outside Graphite can be longer than the field; it is cut at the
+			// start of a character, never inside one.
+			std::size_t length = std::min(from.size(), m_RenameBuffer.size() - 1);
+
+			while (length > 0 && length < from.size() && (static_cast<unsigned char>(from[length]) & 0xC0) == 0x80)
+			{
+				--length;
+			}
+
+			from.copy(m_RenameBuffer.data(), length);
 
 			// The field is what the dialog is for, so it takes the keyboard as it opens.
 			ImGui::SetKeyboardFocusHere();

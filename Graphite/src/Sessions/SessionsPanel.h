@@ -103,8 +103,9 @@ namespace Graphite {
 		bool m_Started = false;
 		bool m_Indexing = false;
 
-		// True from Start until the index first goes idle. Refreshes run the index too, while a
-		// live session writes, and a notice that came and went with each would flicker.
+		// True from Start until the index reports its initial scan done - the first full read of
+		// every transcript - and never again after. Refreshes run the index too, while a live
+		// session writes, and a notice that came and went with each would flicker.
 		bool m_InitialScan = false;
 		ScanProgress m_ScanProgress;
 

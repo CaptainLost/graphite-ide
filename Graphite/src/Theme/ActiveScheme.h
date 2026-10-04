@@ -16,7 +16,7 @@ namespace Graphite {
 	// temporary directory without touching any settings file.
 	//
 	// An empty name, or one ParseBuiltInName recognises, returns that built-in with no file
-	// read. Otherwise the name is loaded from directory / (name + ".json") — LoadScheme never
+	// read. Otherwise the name is loaded from SchemeFile(directory, name) — LoadScheme never
 	// fails, and already falls back to the dark base (with a warning) when the file names a
 	// base nobody knows.
 	ResolvedScheme ResolveNamed(std::string_view name, const std::filesystem::path& directory);

@@ -15,6 +15,14 @@ TEST_CASE("The default console level hides trace and shows everything from info 
 	CHECK(Graphite::IsShownAtLevel(LogLevel::Critical, Graphite::kDefaultConsoleLevel));
 }
 
+TEST_CASE("The console count says how many entries are shown out of how many when some are hidden")
+{
+	CHECK(Graphite::ConsoleEntryCount(12, 12) == "12 entries");
+	CHECK(Graphite::ConsoleEntryCount(0, 0) == "0 entries");
+	CHECK(Graphite::ConsoleEntryCount(8, 12) == "8 / 12 entries");
+	CHECK(Graphite::ConsoleEntryCount(0, 3) == "0 / 3 entries");
+}
+
 TEST_CASE("Trace as the minimum shows every message")
 {
 	for (const LogLevel level : {LogLevel::Trace, LogLevel::Info, LogLevel::Warn, LogLevel::Error, LogLevel::Critical})
