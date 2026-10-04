@@ -1,6 +1,7 @@
 #include "Git/Diff/DiffSelection.h"
 
 #include <algorithm>
+#include <functional>
 #include <vector>
 
 namespace Graphite {
@@ -14,7 +15,10 @@ namespace Graphite {
 			std::vector<std::size_t> boundaries;
 			boundaries.reserve(text.size() + 1);
 
-			for (std::size_t i = 0; i < text.size(); ++i)
+			// Offset 0 is always one, even when the text opens on a stray continuation byte.
+			boundaries.push_back(0);
+
+			for (std::size_t i = 1; i < text.size(); ++i)
 			{
 				if ((static_cast<unsigned char>(text[i]) & 0xC0) != 0x80)
 				{
@@ -22,7 +26,11 @@ namespace Graphite {
 				}
 			}
 
-			boundaries.push_back(text.size());
+			if (!text.empty())
+			{
+				boundaries.push_back(text.size());
+			}
+
 			return boundaries;
 		}
 
@@ -154,9 +162,15 @@ namespace Graphite {
 		{
 			const std::optional<std::int64_t> number = SideLineOf(pair, side);
 
-			if (!number.has_value() || *number < first || *number > last)
+			if (!number.has_value() || *number < first)
 			{
 				continue;
+			}
+
+			// Line numbers on one side only grow down the file, so nothing later is selected.
+			if (*number > last)
+			{
+				break;
 			}
 
 			const DiffRow& row = side == DiffSide::Old ? *pair.Left : *pair.Right;
@@ -169,6 +183,38 @@ namespace Graphite {
 		}
 
 		return Core::JoinSelected(selection, lines);
+	}
+
+	namespace {
+
+		void Combine(std::size_t& seed, std::size_t value)
+		{
+			seed ^= value + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2);
+		}
+	}
+
+	std::size_t DiffContentHash(const Core::FileDiff& file)
+	{
+		std::size_t seed = file.Hunks.size();
+
+		for (const Core::Hunk& hunk : file.Hunks)
+		{
+			Combine(seed, static_cast<std::size_t>(hunk.OldStart));
+			Combine(seed, static_cast<std::size_t>(hunk.OldCount));
+			Combine(seed, static_cast<std::size_t>(hunk.NewStart));
+			Combine(seed, static_cast<std::size_t>(hunk.NewCount));
+			Combine(seed, hunk.Lines.size());
+
+			for (const Core::DiffLine& line : hunk.Lines)
+			{
+				Combine(seed, static_cast<std::size_t>(line.Kind));
+				Combine(seed, static_cast<std::size_t>(line.OldLine));
+				Combine(seed, static_cast<std::size_t>(line.NewLine));
+				Combine(seed, std::hash<std::string_view>{}(line.Text));
+			}
+		}
+
+		return seed;
 	}
 
 	std::size_t ByteAtX(std::string_view text, float x,
@@ -220,6 +266,6 @@ namespace Graphite {
 			return text.size();
 		}
 
-		return boundaries[end - 1];
+		return end == 0 ? 0 : boundaries[end - 1];
 	}
 }

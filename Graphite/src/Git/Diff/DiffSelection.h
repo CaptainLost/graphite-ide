@@ -46,6 +46,11 @@ namespace Graphite {
 	std::size_t ByteUnderX(std::string_view text, float x,
 						   const std::function<float(std::string_view prefix)>& widthOf);
 
+	// Hash of everything a selection's text depends on in the diff: every hunk's start and
+	// counts and every line's kind, numbers and text. Computed when the snapshot changes, not
+	// per frame; the text functions above likewise run per copy, not per frame.
+	std::size_t DiffContentHash(const Core::FileDiff& file);
+
 	// What the selection is about, so the view can clear it when that changes. Two contexts
 	// compare equal exactly when the selection is still valid.
 	struct DiffSelectionContext
@@ -59,6 +64,10 @@ namespace Graphite {
 
 		// Hash of the file's hunks text (std::hash over the joined line text).
 		std::size_t ContentHash = 0;
+
+		// Identity of the whole-file texts (the FileTexts object) in whole-file scope, so an
+		// edit to an unchanged line invalidates the selection; null otherwise.
+		const void* Texts = nullptr;
 
 		bool operator==(const DiffSelectionContext& other) const = default;
 	};

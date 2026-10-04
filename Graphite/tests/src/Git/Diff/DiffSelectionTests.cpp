@@ -210,3 +210,107 @@ TEST_CASE("A selection context differs when anything it depends on does")
 	other.Path = "b.txt";
 	CHECK_FALSE(other == base);
 }
+
+TEST_CASE("Hit-testing survives text that opens on a stray continuation byte")
+{
+	// A stray continuation byte still has a drawn width: one cell per byte.
+	const auto PerByteWidth = [](std::string_view prefix) { return 10.0f * static_cast<float>(prefix.size()); };
+	const std::string_view text = "\xA9" "x";
+
+	CHECK(Graphite::ByteUnderX(text, 0.0f, PerByteWidth) == 0);
+	CHECK(Graphite::ByteUnderX(text, -1.0f, PerByteWidth) == 0);
+	CHECK(Graphite::ByteUnderX(text, 100.0f, PerByteWidth) == text.size());
+	CHECK(Graphite::ByteAtX(text, 0.0f, PerByteWidth) == 0);
+	CHECK(Graphite::ByteAtX(text, 3.0f, PerByteWidth) <= text.size());
+}
+
+TEST_CASE("Hit-testing at exact boundaries and with a four-byte character")
+{
+	CHECK(Graphite::ByteAtX("ab", 10.0f, MonoWidth) == 1);
+	CHECK(Graphite::ByteAtX("ab", 20.0f, MonoWidth) == 2);
+	CHECK(Graphite::ByteUnderX("ab", 10.0f, MonoWidth) == 1);
+
+	const std::string_view emoji = "a\xF0\x9F\x98\x80" "z"; // a, U+1F600, z
+	CHECK(Graphite::ByteAtX(emoji, 14.0f, MonoWidth) == 1);
+	CHECK(Graphite::ByteAtX(emoji, 16.0f, MonoWidth) == 5);
+	CHECK(Graphite::ByteUnderX(emoji, 15.0f, MonoWidth) == 1);
+	CHECK(Graphite::ByteUnderX(emoji, 25.0f, MonoWidth) == 5);
+	CHECK(Graphite::ByteUnderX(emoji, 30.0f, MonoWidth) == 6);
+}
+
+TEST_CASE("Whole-file Unchanged rows join the real file lines")
+{
+	const Core::FileDiff file = EditedFile();
+	std::vector<DiffRow> rows;
+
+	for (int line = 1; line <= 3; ++line)
+	{
+		DiffRow row;
+		row.Kind = Graphite::DiffRowKind::Unchanged;
+		row.OldLine = line;
+		row.NewLine = line;
+		rows.push_back(row);
+	}
+
+	const std::vector<std::string_view> oldLines{"one", "two", "three"};
+	const std::vector<std::string_view> newLines{"ONE", "TWO", "THREE"};
+
+	Core::TextSelection selection;
+	selection.Select({0, 0}, {2, 5});
+
+	CHECK(Graphite::SelectedUnifiedText(selection, rows, file, oldLines, newLines, {}) == "ONE\nTWO\nTHREE");
+
+	std::vector<DiffPair> pairs;
+
+	for (const DiffRow& row : rows)
+	{
+		pairs.push_back(DiffPair{row, row});
+	}
+
+	Core::TextSelection side;
+	side.Select({2, 0}, {3, 3});
+
+	CHECK(Graphite::SelectedSideText(side, DiffSide::Old, pairs, file, oldLines, newLines, {}) == "two\nthr");
+}
+
+TEST_CASE("A removed row is selectable on the old side only")
+{
+	const Core::FileDiff file = EditedFile();
+	const std::vector<DiffPair> pairs = Graphite::BuildSideBySideRows(file);
+
+	Core::TextSelection selection;
+	selection.Select({2, 0}, {2, 1});
+
+	CHECK(Graphite::SelectedSideText(selection, DiffSide::Old, pairs, file, {}, {}, {}) == "b");
+}
+
+TEST_CASE("The content hash follows the diff's lines")
+{
+	const Core::FileDiff file = EditedFile();
+	const std::size_t hash = Graphite::DiffContentHash(file);
+
+	CHECK(hash == Graphite::DiffContentHash(file));
+	CHECK(hash == Graphite::DiffContentHash(EditedFile()));
+
+	Core::FileDiff changed = EditedFile();
+	changed.Hunks[0].Lines[1].Text = "x\n";
+	CHECK(Graphite::DiffContentHash(changed) != hash);
+
+	changed = EditedFile();
+	changed.Hunks[0].Lines[1].Kind = Core::DiffLineKind::Context;
+	CHECK(Graphite::DiffContentHash(changed) != hash);
+
+	changed = EditedFile();
+	changed.Hunks[0].Lines[3].NewLine = 9;
+	CHECK(Graphite::DiffContentHash(changed) != hash);
+
+	changed = EditedFile();
+	changed.Hunks[0].OldStart = 5;
+	CHECK(Graphite::DiffContentHash(changed) != hash);
+
+	Graphite::DiffSelectionContext a;
+	Graphite::DiffSelectionContext b;
+	const int texts = 0;
+	b.Texts = &texts;
+	CHECK_FALSE(a == b);
+}
