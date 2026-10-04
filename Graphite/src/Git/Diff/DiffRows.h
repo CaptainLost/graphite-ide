@@ -69,6 +69,13 @@ namespace Graphite {
 		std::optional<DiffRow> Right;
 	};
 
+	// Which layout a diff is drawn in.
+	enum class DiffViewMode
+	{
+		SideBySide,
+		Unified
+	};
+
 	// How much of the file a diff shows: only the hunks, or every line with the hunks in place.
 	enum class DiffScope
 	{

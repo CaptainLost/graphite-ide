@@ -20,12 +20,6 @@
 
 namespace Graphite {
 
-	enum class DiffViewMode
-	{
-		SideBySide,
-		Unified
-	};
-
 	// Draws one file's diff. Holds the mode, the scope and the syntax toggle below, plus a small cache of
 	// the file's own lines split out of its texts — rebuilt only when the FileTexts pointer
 	// changes, for the same reason the caller's token cache is: splitting a whole file's text
