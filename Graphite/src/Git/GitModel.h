@@ -314,7 +314,7 @@ namespace Graphite {
 		void RequestCommit(Core::CommitRequest request);
 
 		// git init at the open folder. Queued like the other writes, so a panel greys its
-		// button through IsWriteInFlight and reads a failure through GetWriteError.
+		// button through IsWriteInFlight and reads a failure through GetInitError.
 		void RequestInit();
 
 		// Branch and stash writes. Every one of them queues behind the writes before it, the
@@ -326,8 +326,8 @@ namespace Graphite {
 		void RequestDeleteBranch(std::string branch);
 
 		// Answered once through TakeDeleteCheck, failure included. Not counted as an applied
-		// write, refreshes nothing, and never touches GetWriteError - neither to set it nor to
-		// clear an earlier write's - since it changes nothing.
+		// write, refreshes nothing, and never touches the write errors - neither to add one nor
+		// to drop an earlier write's - since it changes nothing.
 		void RequestDeleteCheck(std::string branch);
 		std::optional<DeleteCheck> TakeDeleteCheck();
 
@@ -361,11 +361,16 @@ namespace Graphite {
 			return m_InitSettlesAfter.has_value() && m_Status.GetApplied() <= *m_InitSettlesAfter;
 		}
 
-		// Kept apart from GetLastError(): a write is the direct answer to a click, so it
-		// belongs to the panel that issued it rather than to the list of refresh failures,
-		// and a refresh succeeding must never clear it.
-		const std::optional<Core::Error>& GetWriteError() const { return m_WriteError; }
-		void DismissWriteError() { m_WriteError.reset(); }
+		// Kept apart from GetLastError(): a write is the direct answer to a click, and a
+		// refresh succeeding must never clear it. Queued and handed out once each, oldest
+		// first, to whoever reports them to the user (ADR <new>), so a failure is reported
+		// whether or not a git panel is open, and a later write succeeding does not erase it.
+		std::optional<Core::Error> TakeWriteError();
+
+		// git init's failure, kept apart from the queue above: the prompt that offered the
+		// button shows it in place, where the click was.
+		const std::optional<Core::Error>& GetInitError() const { return m_InitError; }
+		void DismissInitError() { m_InitError.reset(); }
 
 		// One-shot: answers once after a successful commit and forgets. This is how a panel
 		// learns to clear its message box, rather than inferring it from the status having
@@ -564,7 +569,8 @@ namespace Graphite {
 		// belonging to the folder that is gone.
 		std::uint64_t m_WriteGeneration = 0;
 
-		std::optional<Core::Error> m_WriteError;
+		std::deque<Core::Error> m_WriteErrors;
+		std::optional<Core::Error> m_InitError;
 		std::optional<Core::Oid> m_Committed;
 		std::vector<std::filesystem::path> m_Discarded;
 		std::vector<std::filesystem::path> m_CheckedOut;

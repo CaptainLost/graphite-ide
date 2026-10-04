@@ -79,10 +79,6 @@ namespace Graphite {
 
 		void RenderCommitBox();
 
-		// The error a write left behind, with a way to dismiss it. Drawn above the commit
-		// box rather than as a modal: a failed stage is information, not a question.
-		void RenderWriteError();
-
 		// Which side of the file this row's diff shows. A staged row compares the index
 		// against HEAD; every other row compares the disk against the index.
 		Core::DiffTarget TargetForSection() const;

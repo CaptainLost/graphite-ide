@@ -181,10 +181,6 @@ namespace Graphite {
 		void SelectStash(const Core::Oid& stash);
 		void DeselectStash();
 
-		// The write error and this panel's own - a plan or a delete check that could not be
-		// made - each with a way to dismiss it. Lines, not modals, like ChangesPanel's.
-		void RenderErrors();
-
 		// The first step of every checkout - a new branch's "Checkout after creating"
 		// included: ask the model what the checkout would touch. OnUpdate takes it from there.
 		void BeginCheckout(const Core::CheckoutTarget& target);

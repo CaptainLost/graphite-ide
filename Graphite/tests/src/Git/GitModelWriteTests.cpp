@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -109,7 +110,7 @@ namespace {
 
 			if (Fail)
 			{
-				return Core::Error{Core::ErrorCode::IoFailure, "no"};
+				return Core::Error{Core::ErrorCode::IoFailure, "commit failed"};
 			}
 
 			return Committed;
@@ -275,7 +276,8 @@ namespace {
 				throw std::runtime_error("write port exploded");
 			}
 
-			return Fail ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
+			// Named after the operation, so a test holding two failures can tell them apart.
+			return Fail ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, kind + " failed"}}
 						: Core::Result<void>::Ok();
 		}
 	};
@@ -365,7 +367,7 @@ TEST_CASE("A failed write reports itself and refreshes nothing")
 	model.OnUpdate(Core::Timestep{0.0f});
 	model.OnUpdate(Core::Timestep{1.0f});
 
-	REQUIRE(model.GetWriteError().has_value());
+	REQUIRE(model.TakeWriteError().has_value());
 	CHECK_FALSE(model.GetLastError().has_value());
 	CHECK(model.GetStatus() == nullptr);
 
@@ -374,8 +376,61 @@ TEST_CASE("A failed write reports itself and refreshes nothing")
 	CHECK_FALSE(model.TakeCommitted().has_value());
 	CHECK(model.TakeDiscarded().empty());
 
-	model.DismissWriteError();
-	CHECK_FALSE(model.GetWriteError().has_value());
+	// Answers once: a failure handed out is not handed out again.
+	CHECK_FALSE(model.TakeWriteError().has_value());
+}
+
+TEST_CASE("A failure is still reported after a later write succeeds")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	port.Fail = true;
+	model.RequestStage({"a.txt"});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	port.Fail = false;
+	model.RequestUnstage({"a.txt"});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(model.TakeWriteError().has_value());
+	CHECK_FALSE(model.TakeWriteError().has_value());
+}
+
+TEST_CASE("Two failed writes are two errors in order")
+{
+	WritePort port;
+	port.Fail = true;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestStage({"a.txt"});
+	model.RequestCommit({.Message = "one"});
+	model.OnUpdate(Core::Timestep{0.0f});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	const std::optional<Core::Error> first = model.TakeWriteError();
+	const std::optional<Core::Error> second = model.TakeWriteError();
+	REQUIRE(first.has_value());
+	REQUIRE(second.has_value());
+	CHECK(first->Message == "stage failed");
+	CHECK(second->Message == "commit failed");
+	CHECK_FALSE(model.TakeWriteError().has_value());
+}
+
+TEST_CASE("Closing the folder drops failures nobody took")
+{
+	WritePort port;
+	port.Fail = true;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestStage({"a.txt"});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	model.Clear();
+	CHECK_FALSE(model.TakeWriteError().has_value());
 }
 
 TEST_CASE("The applied write count grows with each successful write and only then")
@@ -397,7 +452,7 @@ TEST_CASE("The applied write count grows with each successful write and only the
 	port.Fail = true;
 	model.RequestUnstage({"a.txt"});
 	model.OnUpdate(Core::Timestep{0.0f});
-	REQUIRE(model.GetWriteError().has_value());
+	REQUIRE(model.TakeWriteError().has_value());
 	CHECK(model.GetAppliedWriteCount() == 2);
 }
 
@@ -439,7 +494,7 @@ TEST_CASE("A discard that restored files and then failed to delete still announc
 	model.RequestDiscard({.Restore = {"a.txt"}, .Delete = {"new.txt"}});
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	REQUIRE(model.GetWriteError().has_value());
+	REQUIRE(model.TakeWriteError().has_value());
 	CHECK(model.GetAppliedWriteCount() == 1);
 
 	// Only the restored path: the delete never happened, and the editor must not be told
@@ -490,7 +545,7 @@ TEST_CASE("Closing the folder drops a write that had not started")
 
 	// The first had already reached the port; the queued second must never follow it.
 	CHECK(port.Calls == std::vector<std::string>{"stage:a.txt"});
-	CHECK_FALSE(model.GetWriteError().has_value());
+	CHECK_FALSE(model.TakeWriteError().has_value());
 }
 
 TEST_CASE("A write for a closed folder neither reports nor refreshes")
@@ -505,7 +560,7 @@ TEST_CASE("A write for a closed folder neither reports nor refreshes")
 	model.Clear();
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	CHECK_FALSE(model.GetWriteError().has_value());
+	CHECK_FALSE(model.TakeWriteError().has_value());
 
 	// Pins the bug the name describes: an implementation that called MarkDirty() before
 	// checking the generation would still pass every assertion above, since the mark is
@@ -540,7 +595,7 @@ TEST_CASE("A write that throws frees the queue instead of stranding it")
 	// the exception escape, ApplyWrite - the only place that clears m_WriteInFlight - would
 	// never run, and the queue would be wedged for the life of the application.
 	CHECK_FALSE(model.IsWriteInFlight());
-	CHECK(model.GetWriteError().has_value());
+	CHECK(model.TakeWriteError().has_value());
 
 	port.Throw = false;
 	model.RequestUnstage({"b.txt"});
@@ -765,7 +820,7 @@ TEST_CASE("A successful init counts as an applied write and refreshes the model"
 	model.OnUpdate(Core::Timestep{0.0f});
 
 	CHECK(model.GetAppliedWriteCount() == 1);
-	CHECK_FALSE(model.GetWriteError().has_value());
+	CHECK_FALSE(model.TakeWriteError().has_value());
 
 	model.OnUpdate(Core::Timestep{1.0f});
 
@@ -773,7 +828,7 @@ TEST_CASE("A successful init counts as an applied write and refreshes the model"
 	CHECK(model.GetHead() != nullptr);
 }
 
-TEST_CASE("A failed init is reported as a write error")
+TEST_CASE("A failed init is reported as the init's error and not queued as a write error")
 {
 	WritePort port;
 	port.Fail = true;
@@ -784,8 +839,12 @@ TEST_CASE("A failed init is reported as a write error")
 	model.RequestInit();
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	REQUIRE(model.GetWriteError().has_value());
+	REQUIRE(model.GetInitError().has_value());
+	CHECK_FALSE(model.TakeWriteError().has_value());
 	CHECK(model.GetAppliedWriteCount() == 0);
+
+	model.DismissInitError();
+	CHECK_FALSE(model.GetInitError().has_value());
 }
 
 TEST_CASE("A second init queued behind the first is passed on, not dropped")
@@ -802,7 +861,7 @@ TEST_CASE("A second init queued behind the first is passed on, not dropped")
 	// The real port refuses a second init over the repository the first one made, so the
 	// model need not know to suppress it - it only has to pass it on.
 	CHECK(port.Calls == std::vector<std::string>{"init:", "init:"});
-	CHECK_FALSE(model.GetWriteError().has_value());
+	CHECK_FALSE(model.TakeWriteError().has_value());
 }
 
 TEST_CASE("No init is sent with no folder open")
@@ -849,7 +908,7 @@ TEST_CASE("A failed init leaves nothing to settle")
 	model.RequestInit();
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	REQUIRE(model.GetWriteError().has_value());
+	REQUIRE(model.GetInitError().has_value());
 	CHECK_FALSE(model.IsAwaitingStatusAfterInit());
 }
 
@@ -954,7 +1013,7 @@ TEST_CASE("A stash with nothing to stash does not stop the checkout")
 	model.OnUpdate(Core::Timestep{0.0f});
 
 	CHECK(port.Calls == std::vector<std::string>{"stash:|0", "checkout:feature"});
-	CHECK_FALSE(model.GetWriteError().has_value());
+	CHECK_FALSE(model.TakeWriteError().has_value());
 }
 
 TEST_CASE("A failed preparation stops before the checkout")
@@ -977,7 +1036,7 @@ TEST_CASE("A failed preparation stops before the checkout")
 	model.OnUpdate(Core::Timestep{0.0f});
 
 	CHECK(port.Calls == std::vector<std::string>{"discard-all:0"});
-	CHECK(model.GetWriteError().has_value());
+	CHECK(model.TakeWriteError().has_value());
 	CHECK(model.TakeCheckedOut().empty());
 
 	// The discard may have got partway, so the model refreshes all the same.
@@ -1002,7 +1061,7 @@ TEST_CASE("A checkout that fails after a successful discard still reports the di
 	model.OnUpdate(Core::Timestep{0.0f});
 
 	CHECK(port.Calls == std::vector<std::string>{"discard-all:0", "checkout:feature"});
-	CHECK(model.GetWriteError().has_value());
+	CHECK(model.TakeWriteError().has_value());
 
 	// The discard did rewrite b.txt, whatever the checkout then did: the editor still has to
 	// reload it.
@@ -1021,7 +1080,7 @@ TEST_CASE("A checkout that fails partway reports every path it may have changed"
 	model.RequestCheckout({.Target = {.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"}});
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	CHECK(model.GetWriteError().has_value());
+	CHECK(model.TakeWriteError().has_value());
 	CHECK(model.TakeCheckedOut() == std::vector<std::filesystem::path>{"a.txt", "c.txt"});
 }
 
@@ -1064,7 +1123,7 @@ TEST_CASE("A plan landing after a failed write leaves that write's error in plac
 	model.OnUpdate(Core::Timestep{0.0f});
 
 	REQUIRE(model.TakeCheckoutPlan().has_value());
-	CHECK(model.GetWriteError().has_value());
+	CHECK(model.TakeWriteError().has_value());
 }
 
 TEST_CASE("A failed plan answers through its own one-shot, not the write error")
@@ -1082,7 +1141,7 @@ TEST_CASE("A failed plan answers through its own one-shot, not the write error")
 	CHECK(plan->Target.Name == "feature");
 	CHECK(plan->Failure.has_value());
 	CHECK_FALSE(plan->Plan.has_value());
-	CHECK_FALSE(model.GetWriteError().has_value());
+	CHECK_FALSE(model.TakeWriteError().has_value());
 }
 
 TEST_CASE("A plan asked for right after a new branch reaches the port after the branch exists")
@@ -1174,7 +1233,7 @@ TEST_CASE("A delete check landing after a failed write leaves that write's error
 	model.OnUpdate(Core::Timestep{0.0f});
 
 	REQUIRE(model.TakeDeleteCheck().has_value());
-	CHECK(model.GetWriteError().has_value());
+	CHECK(model.TakeWriteError().has_value());
 }
 
 TEST_CASE("A failed delete check answers through its own one-shot, not the write error")
@@ -1191,7 +1250,7 @@ TEST_CASE("A failed delete check answers through its own one-shot, not the write
 	REQUIRE(check.has_value());
 	CHECK(check->Branch == "old");
 	CHECK(check->Failure.has_value());
-	CHECK_FALSE(model.GetWriteError().has_value());
+	CHECK_FALSE(model.TakeWriteError().has_value());
 }
 
 TEST_CASE("A failed stash apply or pop still refreshes the model")
@@ -1218,7 +1277,7 @@ TEST_CASE("A failed stash apply or pop still refreshes the model")
 		}
 
 		model.OnUpdate(Core::Timestep{0.0f});
-		CHECK(model.GetWriteError().has_value());
+		CHECK(model.TakeWriteError().has_value());
 
 		// The apply may have written some files before it stopped, so it counts as applied:
 		// that is what tells the change markers to look again.
@@ -1261,8 +1320,9 @@ TEST_CASE("A checkout's failure names the target, and where the prepared changes
 							   .Preparation = c.Preparation});
 		model.OnUpdate(Core::Timestep{0.0f});
 
-		REQUIRE(model.GetWriteError().has_value());
-		CHECK(model.GetWriteError()->Message == c.Expected);
+		const std::optional<Core::Error> error = model.TakeWriteError();
+		REQUIRE(error.has_value());
+		CHECK(error->Message == c.Expected);
 	}
 }
 
@@ -1277,8 +1337,9 @@ TEST_CASE("A failed preparation names the checkout it was for")
 						   .Preparation = Graphite::CheckoutPreparation::Stash});
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	REQUIRE(model.GetWriteError().has_value());
-	CHECK(model.GetWriteError()->Message == "Could not check out feature: no");
+	const std::optional<Core::Error> error = model.TakeWriteError();
+	REQUIRE(error.has_value());
+	CHECK(error->Message == "Could not check out feature: no");
 }
 
 TEST_CASE("A stash with nothing to stash says so instead of passing for done")
@@ -1295,11 +1356,12 @@ TEST_CASE("A stash with nothing to stash says so instead of passing for done")
 		model.RequestStashSave("msg", includeUntracked);
 		model.OnUpdate(Core::Timestep{0.0f});
 
-		REQUIRE(model.GetWriteError().has_value());
-		CHECK(model.GetWriteError()->Message.starts_with("Nothing to stash"));
+		const std::optional<Core::Error> error = model.TakeWriteError();
+		REQUIRE(error.has_value());
+		CHECK(error->Message.starts_with("Nothing to stash"));
 
 		// Untracked files are the likely reason when they were left out.
-		CHECK((model.GetWriteError()->Message.find("untracked") != std::string::npos) == !includeUntracked);
+		CHECK((error->Message.find("untracked") != std::string::npos) == !includeUntracked);
 		CHECK(model.GetAppliedWriteCount() == 0);
 	}
 }

@@ -61,7 +61,8 @@ namespace Graphite {
 		++m_WriteGeneration;
 		m_WriteQueue.clear();
 
-		m_WriteError.reset();
+		m_WriteErrors.clear();
+		m_InitError.reset();
 		m_Committed.reset();
 		m_Discarded.clear();
 		m_CheckedOut.clear();

@@ -75,21 +75,6 @@ namespace Graphite {
 				   ImGui::GetFrameHeight();
 		}
 
-		// What RenderWriteError draws: the message wrapped to the panel's width, and the
-		// Dismiss button on the line under it. Shared with OnImGuiRender for the same reason
-		// as CommitBoxHeight - the lists above reserve exactly this much and no more.
-		//
-		// CalcTextSize rounds up, so the reservation can only be too generous by a pixel,
-		// never short of what the text takes.
-		float WriteErrorHeight(const std::string& message)
-		{
-			const float wrapWidth = std::max(ImGui::GetContentRegionAvail().x, 1.0f);
-			const float text = ImGui::CalcTextSize(message.c_str(), nullptr, false, wrapWidth).y;
-
-			return text + ImGui::GetStyle().ItemSpacing.y + ImGui::GetTextLineHeight() +
-				   ImGui::GetStyle().ItemSpacing.y;
-		}
-
 		// The column every row starts with: a file's icon, a folder's chevron, a section's
 		// chevron. One width for all three, so whatever follows them - a name, a heading -
 		// starts at the same x on every row. The font size rather than a glyph's measured
@@ -374,13 +359,7 @@ namespace Graphite {
 
 		// The lists scroll together above a commit box pinned to the bottom. Reserved by
 		// height rather than drawn after, because the box must not move as the lists grow.
-		// The write error's line is drawn between the two while there is one, so it is
-		// reserved too - or the box would be pushed past the bottom of the panel.
-		const float errorHeight = m_Model.GetWriteError().has_value()
-									  ? WriteErrorHeight(m_Model.GetWriteError()->Message)
-									  : 0.0f;
-
-		const float boxHeight = CommitBoxHeight() + errorHeight + ImGui::GetStyle().ItemSpacing.y;
+		const float boxHeight = CommitBoxHeight() + ImGui::GetStyle().ItemSpacing.y;
 
 		if (ImGui::BeginChild("changes.lists", ImVec2(0.0f, -boxHeight)))
 		{
@@ -416,7 +395,6 @@ namespace Graphite {
 
 		ImGui::EndChild();
 
-		RenderWriteError();
 		RenderCommitBox();
 		RenderDiscardConfirm();
 		RenderStashDialog();
@@ -1235,40 +1213,6 @@ namespace Graphite {
 		ImGui::BeginDisabled(inFlight);
 		ImGui::Checkbox("Amend", &m_Amend);
 		ImGui::EndDisabled();
-	}
-
-	void ChangesPanel::RenderWriteError()
-	{
-		const std::optional<Core::Error>& error = m_Model.GetWriteError();
-
-		if (!error.has_value())
-		{
-			return;
-		}
-
-		// Not a modal: a failed write is worth saying and not worth interrupting for - the same
-		// choice GitView makes for a failed refresh. Wrapped, because git's own wording of a
-		// refusal runs to several lines and one clipped line would hide the part that says why.
-		ImGui::PushTextWrapPos(0.0f);
-		ImGui::TextUnformatted(error->Message.c_str());
-		ImGui::PopTextWrapPos();
-
-		// The reader's way to take the error to a bug report or a search.
-		if (Core::BeginRightClickPopup("##writeErrorMenu"))
-		{
-			if (ImGui::MenuItem("Copy"))
-			{
-				CopyToClipboard(m_Events, "error", error->Message);
-			}
-
-			ImGui::EndPopup();
-		}
-
-		// On its own line, so the message has the panel's whole width to wrap in.
-		if (ImGui::SmallButton("Dismiss"))
-		{
-			m_Model.DismissWriteError();
-		}
 	}
 
 	Core::DiffTarget ChangesPanel::TargetForSection() const

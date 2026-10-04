@@ -914,6 +914,13 @@ namespace Graphite {
 											   .LayoutRebuilt = m_DockSpace.HasBuiltLayoutThisFrame()},
 						   ReadEditorPalette(m_ActiveScheme.Get()), m_TabCloseRequests);
 
+		// Drained here, not in a git panel, so a failure is reported with both panels closed
+		// and only once with both open.
+		while (std::optional<Core::Error> error = m_Git.TakeWriteError())
+		{
+			m_Toasts.Show(Core::ToastKind::Error, std::move(error->Message));
+		}
+
 		// Last of what draws, so the toasts sit over every panel and terminal.
 		m_Toasts.Render(ToastPaletteFor(m_ActiveScheme.Get()));
 

@@ -467,8 +467,6 @@ namespace Graphite {
 
 		const std::string refFilter(m_RefFilterBuffer.data());
 
-		RenderErrors();
-
 		const auto group = [&](const char* heading, Core::RefKind kind, RefSection section) {
 			// Matched against the full name, so "origin" narrows to one remote's branches
 			// even though the label shows only the short name.
@@ -676,24 +674,6 @@ namespace Graphite {
 		catch (const std::exception&)
 		{
 			return std::chrono::minutes{0};
-		}
-	}
-
-	void GitView::RenderErrors()
-	{
-		// Wrapped: the ref column is narrow, and a message cut at its edge says less than one
-		// that runs to a second line.
-		if (const std::optional<Core::Error>& error = m_Model.GetWriteError(); error.has_value())
-		{
-			ImGui::PushID("write-error");
-			ImGui::TextWrapped("%s", error->Message.c_str());
-
-			if (ImGui::SmallButton("Dismiss"))
-			{
-				m_Model.DismissWriteError();
-			}
-
-			ImGui::PopID();
 		}
 	}
 

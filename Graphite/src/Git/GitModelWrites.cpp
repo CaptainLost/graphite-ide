@@ -112,6 +112,18 @@ namespace Graphite {
 		return taken;
 	}
 
+	std::optional<Core::Error> GitModel::TakeWriteError()
+	{
+		if (m_WriteErrors.empty())
+		{
+			return std::nullopt;
+		}
+
+		Core::Error taken = std::move(m_WriteErrors.front());
+		m_WriteErrors.pop_front();
+		return taken;
+	}
+
 	std::vector<std::filesystem::path> GitModel::TakeDiscarded()
 	{
 		std::vector<std::filesystem::path> taken = std::move(m_Discarded);
@@ -482,11 +494,11 @@ namespace Graphite {
 			return;
 		}
 
-		// Answers rather than writes, handled before the write error is looked at. They
+		// Answers rather than writes, handled before the write errors are looked at. They
 		// changed nothing, so they neither refresh the model nor count as applied, and they
-		// leave GetWriteError alone either way: a plan landing a frame after a failed stash
-		// must not erase that failure before anyone saw it, and the dialog waiting on the
-		// answer must be able to tell its own failure from an earlier write's.
+		// leave the write errors alone either way: a plan landing a frame after a failed
+		// stash must not erase that failure before anyone saw it, and the dialog waiting on
+		// the answer must be able to tell its own failure from an earlier write's.
 		if (job.Kind == WriteKind::CheckoutPlan)
 		{
 			m_CheckoutPlan = CheckoutPlanAnswer{*job.Target, std::move(outcome.Plan), std::move(outcome.Failure)};
@@ -503,7 +515,14 @@ namespace Graphite {
 
 		if (outcome.Failure.has_value())
 		{
-			m_WriteError = std::move(outcome.Failure);
+			if (job.Kind == WriteKind::Init)
+			{
+				m_InitError = std::move(outcome.Failure);
+			}
+			else
+			{
+				m_WriteErrors.push_back(std::move(*outcome.Failure));
+			}
 
 			// An apply or a pop that stopped on a conflict or an I/O error may have written
 			// some files already, so the status refreshes as it does for a discard, and the
@@ -547,8 +566,6 @@ namespace Graphite {
 			return;
 		}
 
-		m_WriteError.reset();
-
 		// Replaced rather than appended, for the reason given on m_Discarded below.
 		if (job.Kind == WriteKind::Checkout)
 		{
@@ -577,6 +594,7 @@ namespace Graphite {
 		if (job.Kind == WriteKind::Init)
 		{
 			m_InitSettlesAfter = m_Status.GetRequested();
+			m_InitError.reset();
 		}
 
 		++m_AppliedWrites;

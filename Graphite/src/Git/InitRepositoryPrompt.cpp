@@ -14,7 +14,7 @@ namespace Graphite {
 	{
 		std::string message = "This folder is not a git repository.";
 
-		if (const auto& error = model.GetWriteError(); error.has_value())
+		if (const auto& error = model.GetInitError(); error.has_value())
 		{
 			message += "\n\nCould not initialize it: " + error->Message;
 		}
@@ -23,7 +23,7 @@ namespace Graphite {
 
 		if (Core::EmptyState(message, "Initialize Repository"))
 		{
-			model.DismissWriteError();
+			model.DismissInitError();
 			model.RequestInit();
 		}
 
