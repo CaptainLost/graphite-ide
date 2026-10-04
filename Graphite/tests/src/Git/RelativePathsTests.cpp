@@ -55,6 +55,21 @@ TEST_CASE("An empty root changes nothing")
 	CHECK(RelativiseUnder("D:/Repos/IDE/a", std::filesystem::path()) == "D:/Repos/IDE/a");
 }
 
+TEST_CASE("A root of only a separator changes nothing")
+{
+	CHECK(RelativiseUnder("open /a/b and \\c\\d", std::filesystem::path("/")) == "open /a/b and \\c\\d");
+	CHECK(RelativiseUnder("open /a/b", std::filesystem::path("\\")) == "open /a/b");
+}
+
+TEST_CASE("A root with letters outside ASCII matches its UTF-8 spelling in the message")
+{
+	const std::filesystem::path root(u8"D:/Projekty/Za\u017C\u00F3\u0142\u0107");
+
+	CHECK(RelativiseUnder("at D:/Projekty/Za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87/src/a.cpp", root) == "at src/a.cpp");
+	CHECK(RelativiseUnder("at D:\\Projekty\\Za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87\\a", root) == "at a");
+	CHECK(RelativiseUnder("at D:/Projekty/Zazolc/a", root) == "at D:/Projekty/Zazolc/a");
+}
+
 TEST_CASE("A message with no path comes back as it was")
 {
 	CHECK(RelativiseUnder("", kRoot).empty());

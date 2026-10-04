@@ -89,14 +89,16 @@ namespace Graphite {
 	{
 		std::string rootText = Core::ToUtf8(root);
 
-		if (rootText.empty())
-		{
-			return std::string(message);
-		}
-
 		while (!rootText.empty() && IsSeparator(rootText.back()))
 		{
 			rootText.pop_back();
+		}
+
+		// Checked once the separators are gone: a root of "/" alone would otherwise match
+		// every absolute path in the message, inside the repository or not.
+		if (rootText.empty())
+		{
+			return std::string(message);
 		}
 
 		std::string result;
