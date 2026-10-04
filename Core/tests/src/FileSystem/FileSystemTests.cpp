@@ -196,6 +196,19 @@ TEST_CASE("RelativeTo refuses a path on another drive")
 	CHECK_FALSE(RelativeTo("E:/work/main.cpp", "D:/work").has_value());
 }
 
+TEST_CASE("RelativeToKey agrees with RelativeTo for a base key made once")
+{
+	const auto baseKey = Core::PathKey("D:/work/project");
+
+	const auto inside = Core::RelativeToKey("D:/work/project/src/main.cpp", baseKey);
+	REQUIRE(inside.has_value());
+	CHECK(*inside == std::filesystem::path{"src"} / "main.cpp");
+
+	CHECK(*Core::RelativeToKey("D:/work/project", baseKey) == ".");
+	CHECK_FALSE(Core::RelativeToKey("D:/work/project2/a", baseKey).has_value());
+	CHECK_FALSE(Core::RelativeToKey("D:/work/project/a", Core::PathKey("")).has_value());
+}
+
 TEST_CASE("RelativeTo refuses an empty base")
 {
 	CHECK_FALSE(RelativeTo("D:/work/main.cpp", "").has_value());

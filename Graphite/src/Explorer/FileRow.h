@@ -57,8 +57,14 @@ namespace Graphite {
 
 	// Taken at the cursor, before the row's Selectable: that item pads its rect out by half the
 	// item spacing, so the rect's corner is not where a folder's label would start. The width
-	// is what the label needs at least, so a long name still extends the scrollable width.
-	FileRowLayout LayoutFileRow(const std::string& label);
+	// is what the label needs at least, so a long name still extends the scrollable width. With
+	// `reserveMarker` that includes the room for the marker column, so the end of a long name
+	// can be scrolled clear of the status letter; pass whether the tree has a decoration index.
+	FileRowLayout LayoutFileRow(const std::string& label, bool reserveMarker);
+
+	// The width of the column a row's marker is drawn in, as wide as the widest letter. Shared by
+	// the drawing and by the layout that reserves room for it.
+	float RowMarkerColumnWidth();
 
 	// After the row's Selectable, which `layout.Width` sized. Draws nothing for a row that is
 	// scrolled out of view. A name long enough to reach the status letter is clipped short of it.

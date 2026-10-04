@@ -273,8 +273,13 @@ namespace Core {
 			return std::nullopt;
 		}
 
+		return RelativeToKey(path, PathKey(base));
+	}
+
+	std::optional<std::filesystem::path> RelativeToKey(const std::filesystem::path& path,
+													   const std::filesystem::path::string_type& baseKey)
+	{
 		const auto pathKey = PathKey(path);
-		const auto baseKey = PathKey(base);
 
 		if (!IsKeyWithin(pathKey, baseKey))
 		{

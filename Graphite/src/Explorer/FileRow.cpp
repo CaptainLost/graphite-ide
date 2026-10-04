@@ -44,7 +44,8 @@ namespace Graphite {
 	RowStatus FolderRowStatusOf(const GitDecorationView& view, const std::filesystem::path& absolute)
 	{
 		RowStatus status;
-		status.Decoration = view.FolderOf(absolute);
+		const FolderDecoration folder = view.FolderDecorationOf(absolute);
+		status.Decoration = folder.Decoration;
 
 		if (status.Decoration == GitDecoration::None)
 		{
@@ -53,7 +54,7 @@ namespace Graphite {
 
 		status.Ink = view.ColourFor(status.Decoration);
 
-		if (view.IsUntrackedFolderOf(absolute))
+		if (folder.Untracked)
 		{
 			status.Letter = LetterOf(GitDecoration::Untracked);
 		}
@@ -65,16 +66,26 @@ namespace Graphite {
 		return status;
 	}
 
-	FileRowLayout LayoutFileRow(const std::string& label)
+	float RowMarkerColumnWidth()
+	{
+		return ImGui::CalcTextSize("M").x;
+	}
+
+	FileRowLayout LayoutFileRow(const std::string& label, bool reserveMarker)
 	{
 		const float labelOffset = ImGui::GetTreeNodeToLabelSpacing();
 		const ImVec2 cursor = ImGui::GetCursorScreenPos();
 
+		// The marker sits at the visible right edge, with a gap each side of it to the label and to
+		// the edge, so a name scrolled fully into view still ends short of it.
+		const float markerRoom =
+			reserveMarker ? RowMarkerColumnWidth() + 2.0f * ImGui::GetStyle().ItemSpacing.x : 0.0f;
+
 		FileRowLayout layout;
 		layout.RowAt = cursor;
 		layout.LabelAt = ImVec2(cursor.x + labelOffset, cursor.y);
-		layout.Width =
-			std::max(ImGui::GetContentRegionAvail().x, labelOffset + ImGui::CalcTextSize(label.c_str()).x);
+		layout.Width = std::max(ImGui::GetContentRegionAvail().x,
+								labelOffset + ImGui::CalcTextSize(label.c_str()).x + markerRoom);
 
 		return layout;
 	}
@@ -92,7 +103,7 @@ namespace Graphite {
 
 		// Dots and letters share one column, as wide as the widest letter, so a folder's dot sits
 		// over its files' letters.
-		const float column = ImGui::CalcTextSize("M").x;
+		const float column = RowMarkerColumnWidth();
 
 		if (status.Dot)
 		{

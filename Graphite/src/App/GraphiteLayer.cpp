@@ -669,7 +669,7 @@ namespace Graphite {
 			const GitPalette palette = ReadGitPalette(m_ActiveScheme.Get());
 
 			view.Index = m_Decorations.get();
-			view.WorkingDirectory = m_Git.GetWorkingDirectory();
+			view.SetWorkingDirectory(m_Git.GetWorkingDirectory());
 			view.Colours[0] = palette.GutterAdded;
 			view.Colours[1] = palette.GutterModified;
 			view.Colours[2] = palette.GutterRemoved;

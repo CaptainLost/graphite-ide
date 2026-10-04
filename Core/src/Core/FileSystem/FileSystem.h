@@ -69,6 +69,11 @@ namespace Core {
 	std::optional<std::filesystem::path> RelativeTo(
 		const std::filesystem::path& path, const std::filesystem::path& base);
 
+	// RelativeTo for a caller that asks about many paths under one base: `baseKey` is
+	// PathKey(base), made once. An empty key gives nothing.
+	std::optional<std::filesystem::path> RelativeToKey(
+		const std::filesystem::path& path, const std::filesystem::path::string_type& baseKey);
+
 	// Whether `path` is `root` or lies below it, compared through PathKey, so case and slash
 	// direction do not matter and "D:\Repos2" is not inside "D:\Repos". Lexical - neither path
 	// has to exist. False for an empty root and for a relative path on either side, neither of

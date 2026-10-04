@@ -303,7 +303,7 @@ namespace Graphite {
 			label += " (missing)";
 		}
 
-		const FileRowLayout layout = LayoutFileRow(label);
+		const FileRowLayout layout = LayoutFileRow(label, false);
 
 		// Keyed by the full path: ImGui gives same-labelled siblings the same id, and two
 		// projects can hold files of the same name.

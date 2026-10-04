@@ -30,7 +30,9 @@ namespace {
 
 	Graphite::GitDecorationView ViewOf(const Graphite::GitDecorations& index)
 	{
-		Graphite::GitDecorationView view{.Index = &index, .WorkingDirectory = "C:/repo"};
+		Graphite::GitDecorationView view;
+		view.Index = &index;
+		view.SetWorkingDirectory("C:/repo");
 		view.Colours[0] = kAdded;
 		view.Colours[1] = kModified;
 		view.Colours[2] = kRemoved;

@@ -872,7 +872,7 @@ namespace Graphite {
 			std::string{Core::IconForExtension(Core::ToUtf8(node.Path.extension()))} + "  " +
 			node.Name;
 
-		const FileRowLayout layout = LayoutFileRow(label);
+		const FileRowLayout layout = LayoutFileRow(label, m_GitDecorations.Index != nullptr);
 
 		const std::string id = "##" + Core::ToUtf8(node.Path);
 

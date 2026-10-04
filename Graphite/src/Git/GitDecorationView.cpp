@@ -4,11 +4,16 @@
 
 namespace Graphite {
 
+	void GitDecorationView::SetWorkingDirectory(const std::filesystem::path& workingDirectory)
+	{
+		m_WorkingDirectoryKey = Core::PathKey(workingDirectory);
+	}
+
 	std::optional<std::filesystem::path> GitDecorationView::RelativeOf(const std::filesystem::path& absolute) const
 	{
 		// Through PathKey, as the index's own keys are: case-folded on Windows, either separator,
 		// and "D:\Repos2" is not inside "D:\Repos".
-		return Core::RelativeTo(absolute, WorkingDirectory);
+		return Core::RelativeToKey(absolute, m_WorkingDirectoryKey);
 	}
 
 	GitDecoration GitDecorationView::FileOf(const std::filesystem::path& absolute) const
@@ -42,6 +47,23 @@ namespace Graphite {
 
 		const auto relative = RelativeOf(absolute);
 		return relative && Index->IsUntrackedFolder(*relative);
+	}
+
+	FolderDecoration GitDecorationView::FolderDecorationOf(const std::filesystem::path& absolute) const
+	{
+		if (Index == nullptr || Index->IsEmpty())
+		{
+			return {};
+		}
+
+		const auto relative = RelativeOf(absolute);
+
+		if (!relative)
+		{
+			return {};
+		}
+
+		return {.Decoration = Index->Folder(*relative), .Untracked = Index->IsUntrackedFolder(*relative)};
 	}
 
 	ImU32 GitDecorationView::ColourFor(GitDecoration decoration) const
