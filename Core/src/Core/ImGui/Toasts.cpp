@@ -55,6 +55,14 @@ namespace Core {
 		// Every toast window's name starts with this; the number after it is the toast's id.
 		constexpr std::string_view kWindowPrefix = "##toast";
 
+		// A toast window, a child of one - the scrolling body - or a popup opened from one, its
+		// Copy menu.
+		bool BelongsToToast(const ImGuiWindow& window)
+		{
+			const ImGuiWindow* const root = window.RootWindowPopupTree;
+			return root != nullptr && std::string_view(root->Name).starts_with(kWindowPrefix);
+		}
+
 		// Measured in the face the text is drawn in: the bold face is wider than the regular
 		// one, so a title measured in the regular face would wrap later than it is drawn.
 		float WrappedHeight(ImFont* font, const std::string& text, float wrap)
@@ -286,6 +294,15 @@ namespace Core {
 				}
 
 				hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByPopup);
+
+				// Checked again here: a press on the close button or the body's scrollbar
+				// focuses the toast inside the button's behaviour, after the check above has
+				// already said no. Unseen, the end of the frame would record the toast as the
+				// window to hand the keyboard back to, and the next frame would hand it to itself.
+				if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows | ImGuiFocusedFlags_NoPopupHierarchy))
+				{
+					toastFocused = true;
+				}
 			}
 
 			// Reported even when Begin returned false, so a stale hover cannot outlive the window.
@@ -299,10 +316,21 @@ namespace Core {
 
 		// Remembered only while no toast holds focus: once one does, the focused window is the
 		// toast itself, and the one to hand back to is the window recorded before the click.
+		// Nor is a window of a toast's own ever recorded - the toast, its body, its Copy menu -
+		// whatever the checks above missed: handed the keyboard back, a toast would keep it, so
+		// the window from before the click stays recorded instead.
 		if (!toastFocused)
 		{
 			const ImGuiWindow* const holder = ImGui::GetCurrentContext()->NavWindow;
-			m_FocusBeforeToasts = holder != nullptr ? holder->ID : 0;
+
+			if (holder == nullptr)
+			{
+				m_FocusBeforeToasts = 0;
+			}
+			else if (!BelongsToToast(*holder))
+			{
+				m_FocusBeforeToasts = holder->ID;
+			}
 		}
 
 		if (const std::optional<ToastClock::time_point> next = m_Stack.NextChange(now); next.has_value())
