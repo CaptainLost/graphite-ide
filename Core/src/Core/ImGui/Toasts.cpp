@@ -76,6 +76,13 @@ namespace Core {
 		// Copied: SetHovered and Close below change the stack while it is walked.
 		const std::vector<Toast> toasts = m_Stack.Get();
 
+		// A popup, a context menu or a modal is raised only on the frame it appears; a toast
+		// raised every frame would cover it from its second frame on and take its hover - the
+		// toast's own Copy menu included. So toasts go to the front only while none is open.
+		const bool popupOpen = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+
+		bool toastFocused = false;
+
 		for (auto it = toasts.rbegin(); it != toasts.rend(); ++it)
 		{
 			const Toast& toast = *it;
@@ -120,9 +127,43 @@ namespace Core {
 
 			if (ImGui::Begin(name.c_str(), nullptr, kFlags))
 			{
+				ImGuiWindow* const window = ImGui::GetCurrentWindow();
+
 				// Over every window, floating ones clicked after the toast appeared included, yet
 				// without focus: NoFocusOnAppearing keeps the keyboard in the editor.
-				ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+				if (!popupOpen)
+				{
+					ImGui::BringWindowToDisplayFront(window);
+				}
+
+				// NoFocusOnAppearing covers only the appearing: a click on the body, its scrollbar
+				// or the close button focuses the toast as it would any window, and the editor
+				// loses the keyboard to a box that has nothing to type into. Handed back once no
+				// button is down - during the press it would end a drag of the scrollbar - to the
+				// window that held focus before the click. ImGui moves focus on a click only at
+				// the end of the frame, so a frame with no toast focused still names that window.
+				// The popup hierarchy is left out: the toast's own menu holds focus while open,
+				// and refocusing the editor then would close it.
+				if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows | ImGuiFocusedFlags_NoPopupHierarchy))
+				{
+					toastFocused = true;
+
+					if (!ImGui::IsAnyMouseDown())
+					{
+						ImGuiWindow* const holder = ImGui::FindWindowByID(m_FocusBeforeToasts);
+
+						// A window that has gone since - a popup the click closed - leaves the
+						// keyboard to whichever window was focused before this toast.
+						if (holder != nullptr && holder->WasActive)
+						{
+							ImGui::FocusWindow(holder);
+						}
+						else
+						{
+							ImGui::FocusTopMostWindowUnderOne(window, window, nullptr, ImGuiFocusRequestFlags_None);
+						}
+					}
+				}
 
 				ImDrawList* draw = ImGui::GetWindowDrawList();
 				const ImVec2 min = ImGui::GetWindowPos();
@@ -151,6 +192,10 @@ namespace Core {
 
 				if (Core::BeginRightClickPopup("##toastMenu"))
 				{
+					// Raised every frame it is open: the toast under it is not raised while a
+					// popup is open, but one raised on the frame the menu opened would cover it.
+					ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+
 					if (ImGui::MenuItem("Copy"))
 					{
 						if (OnCopied)
@@ -183,6 +228,14 @@ namespace Core {
 			ImGui::PopStyleVar();
 
 			bottom = y - Scaled(kSpacing);
+		}
+
+		// Remembered only while no toast holds focus: once one does, the focused window is the
+		// toast itself, and the one to hand back to is the window recorded before the click.
+		if (!toastFocused)
+		{
+			const ImGuiWindow* const holder = ImGui::GetCurrentContext()->NavWindow;
+			m_FocusBeforeToasts = holder != nullptr ? holder->ID : 0;
 		}
 
 		if (const std::optional<ToastClock::time_point> next = m_Stack.NextChange(now); next.has_value())

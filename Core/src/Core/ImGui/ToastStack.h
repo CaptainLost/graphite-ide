@@ -64,6 +64,10 @@ namespace Core {
 		// fade has ended.
 		void Update(Clock::time_point now);
 
+		// Drops every toast at once, with no fade: what they reported belongs to something that
+		// is gone, such as the folder a failed git write was made in.
+		void Clear() { m_Toasts.clear(); }
+
 		const std::vector<Toast>& Get() const { return m_Toasts; }
 
 		// When the stack next changes on its own: now while anything animates, else the

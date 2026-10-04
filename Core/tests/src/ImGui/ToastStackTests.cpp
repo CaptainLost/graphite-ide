@@ -139,3 +139,65 @@ TEST_CASE("An error waiting to be closed asks for no frame")
 	stack.Update(kStart + 1s);
 	CHECK_FALSE(stack.NextChange(kStart + 1s).has_value());
 }
+
+TEST_CASE("Hover reported on two frames takes the time it had counted off only once")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Success, "done", kStart);
+	const std::uint64_t id = stack.Get()[0].Id;
+
+	// 4 s left when the pointer arrives; the second report must not take another 3 s off.
+	stack.SetHovered(id, true, kStart + 2s);
+	stack.SetHovered(id, true, kStart + 5s);
+	stack.SetHovered(id, false, kStart + 10s);
+
+	stack.Update(kStart + 13900ms);
+	REQUIRE(stack.Get().size() == 1);
+	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
+
+	stack.Update(kStart + 14s);
+	REQUIRE(stack.Get()[0].LeavingSince.has_value());
+	CHECK(*stack.Get()[0].LeavingSince == kStart + 14s);
+}
+
+TEST_CASE("A message merged into a hovered twin keeps it paused and gives it the full lifetime")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Warning, "same", kStart);
+	const std::uint64_t id = stack.Get()[0].Id;
+
+	stack.SetHovered(id, true, kStart + 2s);
+	stack.Show(Core::ToastKind::Warning, "same", kStart + 3s);
+
+	REQUIRE(stack.Get().size() == 1);
+	CHECK(stack.Get()[0].Count == 2);
+	CHECK_FALSE(stack.Get()[0].CountingFrom.has_value());
+	CHECK(stack.Get()[0].Left == Core::ToastStack::kLifetime);
+
+	stack.Update(kStart + 30s);
+	REQUIRE(stack.Get().size() == 1);
+	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
+
+	stack.SetHovered(id, false, kStart + 30s);
+	stack.Update(kStart + 35900ms);
+	REQUIRE(stack.Get().size() == 1);
+	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
+
+	stack.Update(kStart + 36s);
+	REQUIRE(stack.Get().size() == 1);
+	REQUIRE(stack.Get()[0].LeavingSince.has_value());
+	CHECK(*stack.Get()[0].LeavingSince == kStart + 36s);
+}
+
+TEST_CASE("Clear drops every toast and leaves nothing to wait for")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Error, "e", kStart);
+	stack.Show(Core::ToastKind::Warning, "w", kStart);
+	stack.Close(stack.Get()[0].Id, kStart + 1s);
+
+	stack.Clear();
+
+	CHECK(stack.Get().empty());
+	CHECK_FALSE(stack.NextChange(kStart + 1s).has_value());
+}

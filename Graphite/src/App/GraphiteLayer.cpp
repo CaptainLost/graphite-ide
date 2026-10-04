@@ -443,6 +443,10 @@ namespace Graphite {
 			// new folder onto the window is a folder close as far as the user is concerned, even
 			// though no WorkspaceClosedEvent says so.
 			m_DocumentWindows.ClearExpectedWrites();
+
+			// A failure reported for the folder this drop replaced is about a folder no longer
+			// open; an error toast would otherwise stay until closed by hand.
+			m_Toasts.Clear();
 		});
 
 		m_Events.Subscribe<OpenFileRequested>([this](const OpenFileRequested& event) {
@@ -489,6 +493,10 @@ namespace Graphite {
 			// its own to put this in - this event handler is where the rest of the per-folder
 			// state above is already dropped, so the expectations join it here.
 			m_DocumentWindows.ClearExpectedWrites();
+
+			// An error toast never expires, so one about a git write in this folder would
+			// outlive it. GitModel drops the failures nobody took yet on the same event.
+			m_Toasts.Clear();
 		});
 
 		m_Events.Subscribe<WorkspaceRootMovedEvent>([this](const WorkspaceRootMovedEvent& event) {
