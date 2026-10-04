@@ -2,17 +2,28 @@
 
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
+#include "Core/ImGui/SelectionGesture.h"
 #include "Core/Terminal/TerminalSession.h"
+#include "Core/Text/TextSelection.h"
 
 #include "Theme/EditorPalette.h"
 
 #include <imgui.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 
+namespace Core {
+
+	class EventBus;
+
+}
+
 namespace Graphite {
+
+	struct TerminalGrid;
 
 	// Draws one terminal session and turns mouse and keyboard into bytes for it. It owns the
 	// selection and the scroll position, which belong to the view rather than to the session:
@@ -30,9 +41,11 @@ namespace Graphite {
 		// The registry comes with it because a chord is the IDE's only when the command bound to
 		// it can fire while a terminal holds the keyboard: an editor-scoped chord cannot, and
 		// the shell gets it.
+		//
+		// The event bus carries the status bar's confirmation of a copy.
 		TerminalView(Core::TerminalSession& session, const Core::Keymap& keys,
-					 const Core::CommandRegistry& commands)
-			: m_Session(session), m_Keys(keys), m_Commands(commands)
+					 const Core::CommandRegistry& commands, Core::EventBus& events)
+			: m_Session(session), m_Keys(keys), m_Commands(commands), m_Events(events)
 		{
 		}
 
@@ -44,41 +57,44 @@ namespace Graphite {
 		// theme is deliberately not consulted there.
 		Core::CursorPosition Draw(const EditorPalette& palette);
 
-		// The right-click menu over the grid. Copy, paste and clear are the view's own, because
-		// it owns the selection and the screen they act on; closing the session is not, because
-		// the session lives in the panel's tab vector. So a chosen Close is returned rather
-		// than performed, and the caller does it after the draw is over.
+		// The right-click menu over the grid. Copy, select all, paste and clear are the view's
+		// own, because it owns the selection and the screen they act on; closing the session is
+		// not, because the session lives in the panel's tab vector. So a chosen Close is
+		// returned rather than performed, and the caller does it after the draw is over.
 		bool DrawContextMenu();
 
-		// The same three actions the keyboard reaches, named once so the menu and the key are
-		// one behaviour rather than two that agree today.
+		// The same actions the keyboard reaches, named once so the menu and the key are one
+		// behaviour rather than two that agree today.
 		void Copy();
 		void PasteFromClipboard();
 		void Clear();
 
-		bool HasSelection() const { return m_HasSelection; }
+		// From the oldest line of the scrollback to the last screen row that holds anything.
+		void SelectAll();
+
+		bool HasSelection() const { return !m_Selection.IsEmpty(); }
 		std::string CopySelection() const;
-		void ClearSelection() { m_HasSelection = false; }
+
+		void ClearSelection()
+		{
+			m_Selection.Clear();
+			m_Gesture.Cancel();
+		}
 
 	private:
-		struct CellIndex
-		{
-			// Negative rows address the scrollback, counting back from the top of the screen.
-			int Row = 0;
-			int Column = 0;
-		};
-
 		void DrawRow(ImDrawList& drawList, const std::vector<Core::Cell>& cells, int row,
 					 const ImVec2& origin, const ImVec2& cellSize, int columns,
 					 const EditorPalette& palette);
-		void HandleMouse(const ImVec2& origin, const ImVec2& cellSize, int visibleRows,
-						 int columns);
+
+		// The shared gesture over the grid: drag, double-click word, triple-click row and
+		// Shift+click. Its keys and its menu stay off - Ctrl+C is settled by HandleKeyboard
+		// (ADR 0546), Ctrl+A belongs to the shell, and the view has a menu of its own.
+		void UpdateSelection(const TerminalGrid& grid);
 		void HandleKeyboard();
 
-		// Draws the scrollbar in `track` and moves the view with it. Returns whether the mouse
-		// is using it, so the grid does not also treat the same press as the start of a
-		// selection.
-		bool DrawScrollbar(const ImVec2& trackMin, const ImVec2& trackMax, int rows, int scrollback);
+		// Draws the scrollbar in `track` and moves the view with it. While the mouse is using it
+		// m_ScrollbarGrab is set, which is how the selection gesture knows the press is not its.
+		void DrawScrollbar(const ImVec2& trackMin, const ImVec2& trackMax, int rows, int scrollback);
 		ImU32 Resolve(const Core::TerminalColor& color, const EditorPalette& palette,
 					  bool foreground) const;
 
@@ -89,46 +105,37 @@ namespace Graphite {
 		// the cursor needs and a row does not — see the comment beside it in the .cpp.
 		void ResolveCell(const Core::Cell& cell, const EditorPalette& palette, ImU32& foreground,
 						 ImU32& background, bool opaqueBase = false) const;
-		CellIndex CellUnder(const ImVec2& position, const ImVec2& origin,
-							const ImVec2& cellSize) const;
 
-		// Fills `scratch` from the screen and returns it, or returns the scrollback line the row
-		// names, or nullptr when the row is past either end. The two live in different shapes —
-		// the screen answers cell by cell, the scrollback hands back whole lines — and this is
-		// the one place that difference is dealt with.
-		const std::vector<Core::Cell>* RowCells(int row, std::vector<Core::Cell>& scratch,
-												int columns) const;
-
-		bool IsSelected(int row, int column) const;
-
-		void SelectWordAt(const CellIndex& cell, int columns);
-		void SelectRowAt(const CellIndex& cell, int columns);
+		// The width the selection reads rows at: what the grid fitted last frame, or the screen's
+		// own width before the first draw.
+		std::size_t SelectionColumns() const;
 
 		Core::TerminalSession& m_Session;
 		const Core::Keymap& m_Keys;
 		const Core::CommandRegistry& m_Commands;
+		Core::EventBus& m_Events;
 		int m_ScrollOffset = 0;
+
+		// The columns the grid fitted last frame; zero before the first draw.
+		std::size_t m_Columns = 0;
 
 		// Where in the thumb the scrollbar was grabbed, in pixels from its top, while a drag is
 		// under way; negative otherwise.
 		float m_ScrollbarGrab = -1.0f;
 		bool m_FollowTail = true;
-		bool m_HasSelection = false;
-		bool m_Sweeping = false;
-		CellIndex m_SelectionAnchor;
-		CellIndex m_SelectionHead;
 
-		// What the scrollback held last frame. A view scrolled back is pinned to the text the
-		// reader is looking at, and every line the shell pushes into the scrollback would
-		// otherwise slide that text up by one: the offset is measured from the tail, so it has
-		// to grow by as much as the tail moved to leave the content where it was.
-		//
-		// A growing count is only an approximation of "the tail moved", and it stops being one
-		// in two known cases: once the scrollback is at its ten-thousand-line cap the count
-		// stays put while lines keep scrolling off the top, and entering or leaving the
-		// alternate buffer can make it drop outright. Both leave the pinned view sliding rather
-		// than corrupt; a session-side count of lines ever pushed is what would fix it properly.
-		std::size_t m_LastScrollbackCount = 0;
+		// Lines numbered as TerminalSelection numbers them, so the selection stays on its text
+		// while output scrolls it up, and is cleared once that text leaves the scrollback.
+		Core::TextSelection m_Selection;
+		Core::SelectionGesture m_Gesture;
+
+		// How many rows the screen had pushed into its scrollback last frame. A view scrolled
+		// back is pinned to the text the reader is looking at, and every row the shell pushes
+		// into the scrollback would otherwise slide that text up by one: the offset is measured
+		// from the tail, so it has to grow by as many rows as went in. The screen's count of
+		// rows ever pushed keeps moving when the scrollback sits at its cap and stands still
+		// when the alternate buffer is entered or left, where a count of rows held did neither.
+		std::uint64_t m_LastRowsScrolledOff = 0;
 
 		// One row's resolved colours, kept between frames rather than allocated per row. Two
 		// vectors a row at sixty frames a second is thousands of allocations a second for

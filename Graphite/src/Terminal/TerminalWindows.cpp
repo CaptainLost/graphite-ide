@@ -52,8 +52,9 @@ namespace Graphite {
 	}
 
 	TerminalWindows::TerminalWindows(Workspace& workspace, const Core::Keymap& keys,
-								   const Core::CommandRegistry& commands, AppSettings& settings)
-		: m_Workspace(workspace), m_Settings(settings), m_Keys(keys), m_Commands(commands),
+								   const Core::CommandRegistry& commands, AppSettings& settings,
+								   Core::EventBus& events)
+		: m_Workspace(workspace), m_Settings(settings), m_Keys(keys), m_Commands(commands), m_Events(events),
 		  m_Shells(Core::DiscoverShells())
 	{
 	}
@@ -524,7 +525,7 @@ namespace Graphite {
 
 		auto entry = Core::CreateScope<Entry>();
 		entry->Session = std::move(result).GetValue();
-		entry->View = Core::CreateScope<TerminalView>(*entry->Session, m_Keys, m_Commands);
+		entry->View = Core::CreateScope<TerminalView>(*entry->Session, m_Keys, m_Commands, m_Events);
 		entry->Record = std::move(record);
 		entry->Restored = restored;
 

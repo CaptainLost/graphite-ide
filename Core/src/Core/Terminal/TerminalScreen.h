@@ -202,6 +202,13 @@ namespace Core {
 
 		std::size_t GetScrollbackCount() const { return m_Scrollback.size(); }
 
+		// Every row ever pushed into the scrollback, counted once as it goes in and never taken
+		// back: dropping the oldest rows at the limit and ClearScrollback leave it alone. Rows
+		// leaving a smaller scroll region or the alternate buffer never reach the scrollback and
+		// are not counted. A view numbers rows from it, so a row keeps its number while output
+		// scrolls it up the screen and into the history.
+		std::uint64_t GetRowsScrolledOff() const { return m_RowsScrolledOff; }
+
 		// Drops the history without touching the screen. What a reader asking a terminal to
 		// clear means by it: erasing the visible grid alone would leave everything they wanted
 		// gone still one wheel notch away.
@@ -254,6 +261,7 @@ namespace Core {
 		std::string m_Title;
 
 		std::deque<std::vector<Cell>> m_Scrollback;
+		std::uint64_t m_RowsScrolledOff = 0;
 		std::vector<std::vector<Cell>> m_PrimaryLines;
 		CursorPosition m_PrimaryCursor;
 		bool m_Alternate = false;

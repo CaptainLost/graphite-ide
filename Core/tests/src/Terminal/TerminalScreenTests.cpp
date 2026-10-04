@@ -433,3 +433,51 @@ TEST_CASE("TerminalScreen clamps the cursor restored from the alternate buffer")
 	CHECK(RowText(screen, 1) == U"a   ");
 	CHECK(RowText(screen, 2) == U"b   ");
 }
+
+TEST_CASE("TerminalScreen counts every row scrolled into the scrollback, past its limit too")
+{
+	constexpr std::size_t limit = 3;
+	constexpr std::uint16_t rows = 2;
+	Core::TerminalScreen screen(4, rows, limit);
+
+	CHECK(screen.GetRowsScrolledOff() == 0);
+
+	constexpr int feeds = 3 * static_cast<int>(limit);
+
+	for (int line = 0; line < feeds; ++line)
+	{
+		screen.LineFeed();
+	}
+
+	// The first rows - 1 feeds only walk the cursor down to the bottom row; each one after that
+	// pushes a row off the top.
+	const auto scrolled = static_cast<std::uint64_t>(feeds - (rows - 1));
+
+	CHECK(screen.GetScrollbackCount() == limit);
+	CHECK(screen.GetRowsScrolledOff() == scrolled);
+
+	screen.ClearScrollback();
+
+	CHECK(screen.GetScrollbackCount() == 0);
+	CHECK(screen.GetRowsScrolledOff() == scrolled);
+
+	screen.LineFeed();
+
+	CHECK(screen.GetRowsScrolledOff() == scrolled + 1);
+}
+
+TEST_CASE("TerminalScreen does not count rows that never reach the scrollback")
+{
+	Core::TerminalScreen screen(4, 4);
+
+	screen.SetScrollRegion(1, 2);
+	screen.ScrollUp(2);
+	screen.ResetScrollRegion();
+
+	screen.UseAlternateBuffer(true);
+	screen.ScrollUp(3);
+	screen.UseAlternateBuffer(false);
+
+	CHECK(screen.GetRowsScrolledOff() == 0);
+	CHECK(screen.GetScrollbackCount() == 0);
+}

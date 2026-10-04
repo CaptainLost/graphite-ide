@@ -2,7 +2,9 @@
 
 #include "Core/Base/Narrow.h"
 
+#include "Editor/StatusBar/ClipboardCopy.h"
 #include "Terminal/TerminalRules.h"
+#include "Terminal/TerminalSelection.h"
 
 #include "Core/Command/Chord.h"
 #include "Core/ImGui/ImGuiKeys.h"
@@ -218,22 +220,28 @@ namespace Graphite {
 
 		const Core::TerminalScreen& screen = m_Session.GetScreen();
 		const std::size_t scrollback = screen.GetScrollbackCount();
+		const std::uint64_t scrolledOff = screen.GetRowsScrolledOff();
+
+		m_Columns = static_cast<std::size_t>(columns);
 
 		// A view scrolled back stays on the text the reader is looking at. The offset is measured
-		// from the tail, so every line the shell pushes into the scrollback would otherwise slide
-		// that text up by one; growing the offset by as much as the tail moved leaves it put.
-		//
-		// A growing count is a proxy for "the tail moved" and not the thing itself. It stops
-		// reporting the motion once the scrollback sits at its ten-thousand-line cap — lines
-		// keep scrolling off the top while the count stands still — and it can fall rather than
-		// rise when the alternate buffer is entered or left. In both cases the pinned view
-		// slides; a count of lines ever pushed, kept by the screen, is what would settle it.
-		if (!m_FollowTail && scrollback > m_LastScrollbackCount)
+		// from the tail, so every row the shell pushes into the scrollback would otherwise slide
+		// that text up by one; growing the offset by as many rows as went in leaves it put. The
+		// growth is capped at the history there is, which the clamp below would do anyway, so a
+		// burst of millions of rows cannot overflow the int on its way there.
+		if (!m_FollowTail && scrolledOff > m_LastRowsScrolledOff)
 		{
-			m_ScrollOffset += static_cast<int>(scrollback - m_LastScrollbackCount);
+			m_ScrollOffset += static_cast<int>(
+				std::min<std::uint64_t>(scrolledOff - m_LastRowsScrolledOff, scrollback));
 		}
 
-		m_LastScrollbackCount = scrollback;
+		m_LastRowsScrolledOff = scrolledOff;
+
+		// Its text has scrolled out of the history, so its line numbers now name nothing.
+		if (SelectionLeftHistory(m_Selection, scrolledOff, scrollback))
+		{
+			ClearSelection();
+		}
 
 		if (ImGui::IsWindowHovered())
 		{
@@ -284,21 +292,47 @@ namespace Graphite {
 
 		// The strip on the right of the grid, as tall as the rows are. Before the mouse is read
 		// for the grid: a press on the track is the scrollbar's and must not also start a
-		// selection under it.
-		const bool onScrollbar = DrawScrollbar(
-			ImVec2(origin.x + available.x - scrollbarWidth, origin.y),
-			ImVec2(origin.x + available.x, origin.y + static_cast<float>(rows) * cellSize.y), rows,
-			static_cast<int>(scrollback));
+		// selection under it, which the gesture's Claims sees by the grab this sets.
+		DrawScrollbar(ImVec2(origin.x + available.x - scrollbarWidth, origin.y),
+					  ImVec2(origin.x + available.x, origin.y + static_cast<float>(rows) * cellSize.y),
+					  rows, static_cast<int>(scrollback));
+
+		// A sweep dragged above or below the grid scrolls the history a row a frame after the
+		// pointer, so a selection can reach further than the grid is tall. Before the gesture
+		// reads the pointer, so it lands on the row this scroll brought into view.
+		if (m_Gesture.IsSweeping() && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+		{
+			const float mouseY = ImGui::GetMousePos().y;
+
+			if (mouseY < origin.y)
+			{
+				++m_ScrollOffset;
+			}
+			else if (mouseY > origin.y + static_cast<float>(rows) * cellSize.y)
+			{
+				--m_ScrollOffset;
+			}
+		}
 
 		m_ScrollOffset = std::clamp(m_ScrollOffset, 0, static_cast<int>(scrollback));
 		m_FollowTail = m_ScrollOffset == 0;
 
+		TerminalGrid grid;
+		grid.OriginX = origin.x;
+		grid.OriginY = origin.y;
+		grid.CellWidth = cellSize.x;
+		grid.CellHeight = cellSize.y;
+		grid.Columns = static_cast<std::size_t>(columns);
+		grid.VisibleRows = rows;
+		grid.ScrollOffset = m_ScrollOffset;
+
 		// Before the rows are drawn, so the highlight goes under the text of the frame the mouse
-		// moved in rather than a frame behind the pointer.
-		if (!onScrollbar)
-		{
-			HandleMouse(origin, cellSize, rows, columns);
-		}
+		// moved in rather than a frame behind the pointer. The gesture asks to come after every
+		// item in the window so an item can take a press first; this window has none that can -
+		// the grid and the scrollbar are drawn straight onto the draw list, the Dummy below only
+		// reserves space, and the scrollbar keeps its press through Claims - so nothing later in
+		// the frame can claim a press the gesture already took.
+		UpdateSelection(grid);
 
 		ImDrawList& drawList = *ImGui::GetWindowDrawList();
 		std::vector<Core::Cell> scratch;
@@ -306,8 +340,10 @@ namespace Graphite {
 		for (int view = 0; view < rows; ++view)
 		{
 			const int row = view - m_ScrollOffset;
+			const std::int64_t line = LineOfScreenRow(scrolledOff, row);
 
-			if (const std::vector<Core::Cell>* cells = RowCells(row, scratch, columns);
+			if (const std::vector<Core::Cell>* cells =
+					TerminalLineCells(screen, line, static_cast<std::size_t>(columns), scratch);
 				cells != nullptr)
 			{
 				DrawRow(drawList, *cells, row, origin, cellSize, columns, palette);
@@ -391,7 +427,7 @@ namespace Graphite {
 		return fitted;
 	}
 
-	bool TerminalView::DrawScrollbar(const ImVec2& trackMin, const ImVec2& trackMax, int rows,
+	void TerminalView::DrawScrollbar(const ImVec2& trackMin, const ImVec2& trackMax, int rows,
 									 int scrollback)
 	{
 		// Nothing to scroll through: no bar, and a drag that was under way has nothing left to
@@ -399,7 +435,7 @@ namespace Graphite {
 		if (scrollback <= 0)
 		{
 			m_ScrollbarGrab = -1.0f;
-			return false;
+			return;
 		}
 
 		const float trackHeight = trackMax.y - trackMin.y;
@@ -456,8 +492,6 @@ namespace Graphite {
 							   : overThumb ? ImGuiCol_ScrollbarGrabHovered
 										   : ImGuiCol_ScrollbarGrab),
 			ImGui::GetStyle().ScrollbarRounding);
-
-		return dragging;
 	}
 
 	bool TerminalView::DrawContextMenu()
@@ -475,9 +509,17 @@ namespace Graphite {
 
 		// The chords that only ever do what the item says: plain Ctrl+C is an interrupt when
 		// nothing is selected, so it is not the one to advertise. Ctrl+V pastes too.
-		if (ImGui::MenuItem("Copy", "Ctrl+Shift+C", false, m_HasSelection))
+		if (ImGui::MenuItem("Copy", "Ctrl+Shift+C", false, HasSelection()))
 		{
 			Copy();
+		}
+
+		// No chord beside it: Ctrl+A is the shell's, which moves to the start of the line.
+		const auto [from, to] = TerminalEverything(m_Session.GetScreen(), SelectionColumns());
+
+		if (ImGui::MenuItem("Select All", nullptr, false, from != to))
+		{
+			SelectAll();
 		}
 
 		if (ImGui::MenuItem("Paste", "Ctrl+Shift+V"))
@@ -507,17 +549,31 @@ namespace Graphite {
 
 	void TerminalView::Copy()
 	{
-		if (!m_HasSelection)
+		if (!HasSelection())
 		{
 			return;
 		}
 
 		if (const std::string selected = CopySelection(); !selected.empty())
 		{
-			ImGui::SetClipboardText(selected.c_str());
+			CopyToClipboard(m_Events, "selection", selected);
 		}
 
+		// Cleared once copied, so the next Ctrl+C is the interrupt again (ADR 0546).
 		ClearSelection();
+	}
+
+	void TerminalView::SelectAll()
+	{
+		const auto [from, to] = TerminalEverything(m_Session.GetScreen(), SelectionColumns());
+
+		m_Gesture.Cancel();
+		m_Selection.Select(from, to);
+	}
+
+	std::size_t TerminalView::SelectionColumns() const
+	{
+		return m_Columns != 0 ? m_Columns : static_cast<std::size_t>(m_Session.GetScreen().GetColumns());
 	}
 
 	void TerminalView::PasteFromClipboard()
@@ -544,7 +600,6 @@ namespace Graphite {
 
 		m_ScrollOffset = 0;
 		m_FollowTail = true;
-		m_LastScrollbackCount = 0;
 		ClearSelection();
 	}
 
@@ -610,27 +665,13 @@ namespace Graphite {
 			column = end;
 		}
 
-		if (m_HasSelection)
+		const std::int64_t textLine = LineOfScreenRow(m_Session.GetScreen().GetRowsScrolledOff(), row);
+
+		if (const std::optional<Core::ColumnSpan> span =
+				m_Selection.SpanOn(textLine, static_cast<std::size_t>(count)))
 		{
-			for (int column = 0; column < count;)
-			{
-				if (!IsSelected(row, column))
-				{
-					++column;
-					continue;
-				}
-
-				int end = column + 1;
-
-				while (end < count && IsSelected(row, end))
-				{
-					++end;
-				}
-
-				drawList.AddRectFilled(ImVec2(xOf(column), top), ImVec2(xOf(end), bottom),
-									   palette.Selection);
-				column = end;
-			}
+			Core::DrawSelectionSpan(drawList, xOf(static_cast<int>(span->From)),
+									xOf(static_cast<int>(span->To)), top, cellSize.y);
 		}
 
 		std::string run;
@@ -699,73 +740,43 @@ namespace Graphite {
 		}
 	}
 
-	void TerminalView::HandleMouse(const ImVec2& origin, const ImVec2& cellSize, int visibleRows,
-								   int columns)
+	void TerminalView::UpdateSelection(const TerminalGrid& grid)
 	{
-		const ImVec2 mouse = ImGui::GetMousePos();
+		const Core::TerminalScreen& screen = m_Session.GetScreen();
+		Core::SelectionSource source;
 
-		const auto clamped = [this, visibleRows, columns](CellIndex cell) {
-			const auto scrollback =
-				static_cast<int>(m_Session.GetScreen().GetScrollbackCount());
+		source.PointAt = [&screen, &grid](ImVec2 at) {
+			return TerminalPointAt(screen, grid, at.x, at.y);
+		};
+		source.WordAt = [&screen, &grid](Core::TextPoint at) {
+			std::vector<Core::Cell> scratch;
+			const std::vector<Core::Cell>* cells = TerminalLineCells(screen, at.Line, grid.Columns, scratch);
 
-			cell.Column = std::clamp(cell.Column, 0, std::max(0, columns - 1));
-			cell.Row = std::clamp(cell.Row, -scrollback,
-								  std::max(0, visibleRows - 1 - m_ScrollOffset));
-
-			return cell;
+			return cells == nullptr ? Core::ColumnSpan{} : TerminalWordAt(*cells, grid.Columns, at.Column);
+		};
+		source.LineLength = [&screen, &grid](std::int64_t line) {
+			return TerminalLineLength(screen, line, grid.Columns);
+		};
+		source.Everything = [&screen, &grid]() {
+			return TerminalEverything(screen, grid.Columns);
+		};
+		source.SelectedText = [this]() {
+			return CopySelection();
+		};
+		// The scrollbar took the press this frame, or is being dragged: it is the scrollbar's.
+		source.Claims = [this](ImVec2) {
+			return m_ScrollbarGrab >= 0.0f;
 		};
 
-		if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
-		{
-			// A child window nothing focused never sees a key, so without this the first thing
-			// typed after a click would go wherever the focus happened to be.
-			ImGui::SetWindowFocus();
+		Core::SelectionGestureOptions options;
+		options.ScrollsVertically = false;
+		options.ScrollsHorizontally = false;
+		options.CopyKey = false;
+		options.SelectAllKey = false;
+		options.MenuId = nullptr;
 
-			const CellIndex cell = clamped(CellUnder(mouse, origin, cellSize));
-			const int clicks = ImGui::GetMouseClickedCount(ImGuiMouseButton_Left);
-
-			if (clicks >= 3)
-			{
-				SelectRowAt(cell, columns);
-				m_Sweeping = false;
-			}
-			else if (clicks == 2)
-			{
-				SelectWordAt(cell, columns);
-				m_Sweeping = false;
-			}
-			else if (ImGui::GetIO().KeyShift && m_HasSelection)
-			{
-				// Shift keeps the pressed end where it was, which is how a reader stretches the
-				// selection they already made rather than starting another one.
-				m_SelectionHead = cell;
-				m_Sweeping = true;
-			}
-			else
-			{
-				m_SelectionAnchor = cell;
-				m_SelectionHead = cell;
-				m_HasSelection = false;
-				m_Sweeping = true;
-			}
-		}
-
-		if (!m_Sweeping)
-		{
-			return;
-		}
-
-		if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
-		{
-			m_Sweeping = false;
-			return;
-		}
-
-		m_SelectionHead = clamped(CellUnder(mouse, origin, cellSize));
-
-		// A press that never moved is a click, not a selection of the one cell it landed on.
-		m_HasSelection = m_SelectionHead.Row != m_SelectionAnchor.Row ||
-						 m_SelectionHead.Column != m_SelectionAnchor.Column;
+		// With its keys and menu off the gesture never copies, so there is nothing to report.
+		static_cast<void>(m_Gesture.Update(m_Selection, source, options));
 	}
 
 	void TerminalView::HandleKeyboard()
@@ -829,7 +840,7 @@ namespace Graphite {
 			// through to the lookup would put it back at the mercy of it. A paste likewise has to
 			// arrive as text on the wire rather than as an editor action, which is why Ctrl+V is
 			// settled here and not left to whatever an editor binds to it.
-			switch (ClassifyTerminalShortcut(*code, held, m_HasSelection))
+			switch (ClassifyTerminalShortcut(*code, held, HasSelection()))
 			{
 			case TerminalShortcut::Copy:
 				Copy();
@@ -938,184 +949,8 @@ namespace Graphite {
 		}
 	}
 
-	TerminalView::CellIndex TerminalView::CellUnder(const ImVec2& position, const ImVec2& origin,
-													const ImVec2& cellSize) const
-	{
-		CellIndex cell;
-
-		cell.Column = static_cast<int>(std::floor((position.x - origin.x) / cellSize.x));
-		cell.Row = static_cast<int>(std::floor((position.y - origin.y) / cellSize.y)) - m_ScrollOffset;
-
-		return cell;
-	}
-
-	const std::vector<Core::Cell>* TerminalView::RowCells(int row, std::vector<Core::Cell>& scratch,
-														  int columns) const
-	{
-		const Core::TerminalScreen& screen = m_Session.GetScreen();
-
-		if (row < 0)
-		{
-			const int index = static_cast<int>(screen.GetScrollbackCount()) + row;
-
-			if (index < 0)
-			{
-				return nullptr;
-			}
-
-			return &screen.GetScrollbackLine(static_cast<std::size_t>(index));
-		}
-
-		if (row >= static_cast<int>(screen.GetRows()))
-		{
-			return nullptr;
-		}
-
-		const int count = std::min(columns, static_cast<int>(screen.GetColumns()));
-
-		scratch.clear();
-		scratch.reserve(static_cast<std::size_t>(std::max(0, count)));
-
-		for (int column = 0; column < count; ++column)
-		{
-			scratch.push_back(screen.At(static_cast<std::uint16_t>(row),
-										static_cast<std::uint16_t>(column)));
-		}
-
-		return &scratch;
-	}
-
-	bool TerminalView::IsSelected(int row, int column) const
-	{
-		if (!m_HasSelection)
-		{
-			return false;
-		}
-
-		// A rectangle of cells rather than a run that wraps at the right edge: what a terminal
-		// puts on a line is a column of a table as often as it is a sentence, and a rectangle is
-		// the shape that lets one of those columns be taken on its own.
-		const int top = std::min(m_SelectionAnchor.Row, m_SelectionHead.Row);
-		const int bottom = std::max(m_SelectionAnchor.Row, m_SelectionHead.Row);
-		const int left = std::min(m_SelectionAnchor.Column, m_SelectionHead.Column);
-		const int right = std::max(m_SelectionAnchor.Column, m_SelectionHead.Column);
-
-		return row >= top && row <= bottom && column >= left && column <= right;
-	}
-
-	void TerminalView::SelectWordAt(const CellIndex& cell, int columns)
-	{
-		std::vector<Core::Cell> scratch;
-		const std::vector<Core::Cell>* cells = RowCells(cell.Row, scratch, columns);
-
-		if (cells == nullptr)
-		{
-			return;
-		}
-
-		const int count = std::min(columns, static_cast<int>(cells->size()));
-
-		if (cell.Column < 0 || cell.Column >= count)
-		{
-			return;
-		}
-
-		const auto isSpace = [cells](int column) {
-			return (*cells)[static_cast<std::size_t>(column)].Code == U' ';
-		};
-
-		// Bounded by spaces, and a double-click on a gap takes the gap: expanding over cells that
-		// match what was clicked means the gesture always selects something, which is what makes
-		// a second click on the wrong cell recoverable rather than a no-op.
-		const bool space = isSpace(cell.Column);
-		int from = cell.Column;
-		int to = cell.Column;
-
-		while (from > 0 && isSpace(from - 1) == space)
-		{
-			--from;
-		}
-
-		while (to + 1 < count && isSpace(to + 1) == space)
-		{
-			++to;
-		}
-
-		m_SelectionAnchor = CellIndex{cell.Row, from};
-		m_SelectionHead = CellIndex{cell.Row, to};
-		m_HasSelection = true;
-	}
-
-	void TerminalView::SelectRowAt(const CellIndex& cell, int columns)
-	{
-		m_SelectionAnchor = CellIndex{cell.Row, 0};
-		m_SelectionHead = CellIndex{cell.Row, std::max(0, columns - 1)};
-		m_HasSelection = true;
-	}
-
 	std::string TerminalView::CopySelection() const
 	{
-		if (!m_HasSelection)
-		{
-			return {};
-		}
-
-		const int top = std::min(m_SelectionAnchor.Row, m_SelectionHead.Row);
-		const int bottom = std::max(m_SelectionAnchor.Row, m_SelectionHead.Row);
-		const int left = std::max(0, std::min(m_SelectionAnchor.Column, m_SelectionHead.Column));
-		const int right = std::max(m_SelectionAnchor.Column, m_SelectionHead.Column);
-
-		std::string text;
-		std::vector<Core::Cell> scratch;
-		bool wrote = false;
-
-		for (int row = top; row <= bottom; ++row)
-		{
-			const std::vector<Core::Cell>* cells = RowCells(row, scratch, right + 1);
-
-			// After the row is fetched, not before: a selection swept past the bottom of the
-			// screen names rows that do not exist, and separating them anyway would put a
-			// blank line in the clipboard for each one.
-			if (cells == nullptr)
-			{
-				continue;
-			}
-
-			if (wrote)
-			{
-				text.push_back('\n');
-			}
-
-			wrote = true;
-
-			const int count = std::min(right + 1, static_cast<int>(cells->size()));
-			std::string line;
-
-			for (int column = left; column < count; ++column)
-			{
-				const Core::Cell& cell = (*cells)[static_cast<std::size_t>(column)];
-
-				// The trailer carries no character of its own; the cell to its left already
-				// contributed the whole double-width one.
-				if (cell.WideTrailer)
-				{
-					continue;
-				}
-
-				Core::AppendUtf8(line, cell.Code);
-			}
-
-			// The grid is space-filled out to its right edge, so without this every copied line
-			// would carry a tail of spaces nobody typed — and pasting it back would indent
-			// whatever followed.
-			while (!line.empty() && line.back() == ' ')
-			{
-				line.pop_back();
-			}
-
-			text.append(line);
-		}
-
-		return text;
+		return SelectedTerminalText(m_Selection, m_Session.GetScreen(), SelectionColumns());
 	}
 }

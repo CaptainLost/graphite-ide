@@ -139,6 +139,7 @@ namespace Core {
 			if (!m_Alternate && IsFullHeightRegion() && m_ScrollbackLimit > 0)
 			{
 				m_Scrollback.push_back(m_Lines[m_ScrollTop]);
+				++m_RowsScrolledOff;
 
 				while (m_Scrollback.size() > m_ScrollbackLimit)
 				{

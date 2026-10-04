@@ -22,6 +22,7 @@
 namespace Core {
 
 	class CommandRegistry;
+	class EventBus;
 	class TabCloseRequests;
 
 }
@@ -64,8 +65,10 @@ namespace Graphite {
 	class TerminalWindows final : Core::NonCopyable
 	{
 	public:
+		// The event bus is handed to every view, which reports a copy of its selection on the
+		// status bar through it.
 		TerminalWindows(Workspace& workspace, const Core::Keymap& keys, const Core::CommandRegistry& commands,
-						AppSettings& settings);
+						AppSettings& settings, Core::EventBus& events);
 
 		// The shells found on this machine, in the order a terminal offers them.
 		const std::vector<Core::ShellProfile>& GetShells() const { return m_Shells; }
@@ -184,6 +187,7 @@ namespace Graphite {
 		AppSettings& m_Settings;
 		const Core::Keymap& m_Keys;
 		const Core::CommandRegistry& m_Commands;
+		Core::EventBus& m_Events;
 		std::vector<Core::ShellProfile> m_Shells;
 
 		// Scoped, so closing one never moves the others: a TerminalView holds its session by
