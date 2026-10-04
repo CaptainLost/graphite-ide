@@ -1,0 +1,141 @@
+#include <doctest/doctest.h>
+
+#include "Core/ImGui/ToastStack.h"
+
+#include <chrono>
+
+namespace {
+	using Clock = Core::ToastStack::Clock;
+	using namespace std::chrono_literals;
+
+	const Clock::time_point kStart{};
+}
+
+TEST_CASE("A warning leaves once its lifetime has run and is removed after the fade")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Warning, "careful", kStart);
+
+	stack.Update(kStart + 5900ms);
+	REQUIRE(stack.Get().size() == 1);
+	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
+
+	stack.Update(kStart + 6s);
+	REQUIRE(stack.Get().size() == 1);
+	REQUIRE(stack.Get()[0].LeavingSince.has_value());
+	CHECK(*stack.Get()[0].LeavingSince == kStart + 6s);
+
+	stack.Update(kStart + 6s + Core::ToastStack::kLeave);
+	CHECK(stack.Get().empty());
+}
+
+TEST_CASE("An error never expires and leaves only when closed")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Error, "failed", kStart);
+
+	stack.Update(kStart + 1h);
+	REQUIRE(stack.Get().size() == 1);
+	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
+
+	stack.Close(stack.Get()[0].Id, kStart + 1h);
+	stack.Update(kStart + 1h + Core::ToastStack::kLeave);
+	CHECK(stack.Get().empty());
+}
+
+TEST_CASE("Hovering pauses the countdown and leaving the toast resumes it with the time that was left")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Success, "done", kStart);
+	const std::uint64_t id = stack.Get()[0].Id;
+
+	stack.SetHovered(id, true, kStart + 2s);
+	stack.Update(kStart + 30s);
+	REQUIRE(stack.Get().size() == 1);
+	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
+
+	// 4 s were left when the pointer arrived.
+	stack.SetHovered(id, false, kStart + 30s);
+	stack.Update(kStart + 33s);
+	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
+
+	stack.Update(kStart + 34s);
+	CHECK(stack.Get()[0].LeavingSince.has_value());
+}
+
+TEST_CASE("Hover reported every frame does not restart the pause")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Success, "done", kStart);
+	const std::uint64_t id = stack.Get()[0].Id;
+
+	stack.SetHovered(id, false, kStart + 1s);
+	stack.SetHovered(id, false, kStart + 2s);
+	stack.Update(kStart + 6s);
+	CHECK(stack.Get()[0].LeavingSince.has_value());
+}
+
+TEST_CASE("An identical message merges into the toast still shown and counts and restarts its countdown")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Warning, "same", kStart);
+	stack.Show(Core::ToastKind::Warning, "same", kStart + 5s);
+
+	REQUIRE(stack.Get().size() == 1);
+	CHECK(stack.Get()[0].Count == 2);
+
+	stack.Update(kStart + 10s);
+	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
+
+	stack.Update(kStart + 11s);
+	CHECK(stack.Get()[0].LeavingSince.has_value());
+}
+
+TEST_CASE("A message differing in kind or text or arriving while its twin leaves is a toast of its own")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Warning, "same", kStart);
+	stack.Show(Core::ToastKind::Error, "same", kStart);
+	stack.Show(Core::ToastKind::Warning, "other", kStart);
+	CHECK(stack.Get().size() == 3);
+
+	stack.Close(stack.Get()[0].Id, kStart + 1s);
+	stack.Show(Core::ToastKind::Warning, "same", kStart + 1s);
+	CHECK(stack.Get().size() == 4);
+}
+
+TEST_CASE("Toasts keep the order they were shown in and every one has its own id")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Error, "first", kStart);
+	stack.Show(Core::ToastKind::Error, "second", kStart);
+
+	REQUIRE(stack.Get().size() == 2);
+	CHECK(stack.Get()[0].Message == "first");
+	CHECK(stack.Get()[1].Message == "second");
+	CHECK(stack.Get()[0].Id != stack.Get()[1].Id);
+}
+
+TEST_CASE("The next change is the end of an animation or else the earliest expiry or else nothing")
+{
+	Core::ToastStack stack;
+	CHECK_FALSE(stack.NextChange(kStart).has_value());
+
+	stack.Show(Core::ToastKind::Warning, "w", kStart);
+	// Entering: the renderer wants every frame until the slide ends.
+	CHECK(stack.NextChange(kStart) == kStart);
+
+	stack.Update(kStart + 1s);
+	CHECK(stack.NextChange(kStart + 1s) == kStart + 6s);
+
+	stack.SetHovered(stack.Get()[0].Id, true, kStart + 1s);
+	CHECK_FALSE(stack.NextChange(kStart + 1s).has_value());
+}
+
+TEST_CASE("An error waiting to be closed asks for no frame")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Error, "e", kStart);
+	stack.Update(kStart + 1s);
+	CHECK_FALSE(stack.NextChange(kStart + 1s).has_value());
+}
