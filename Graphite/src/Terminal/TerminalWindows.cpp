@@ -5,12 +5,14 @@
 #include "Core/Base/Log.h"
 #include "Core/Base/Uuid.h"
 #include "Core/Command/CommandRegistry.h"
+#include "Core/Events/EventBus.h"
 #include "Core/ImGui/TabCloseRequests.h"
 #include "Core/ImGui/TabContextMenu.h"
 #include "Core/Platform/Process.h"
 
 #include "Settings/AppSettings.h"
 #include "UI/RememberedPlace.h"
+#include "UI/ToastEvent.h"
 #include "Workspace/Workspace.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -20,6 +22,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <format>
 #include <functional>
 #include <system_error>
 #include <utility>
@@ -440,6 +443,8 @@ namespace Graphite {
 		if (m_Shells.empty())
 		{
 			APP_WARN("No shell found to open a terminal with");
+			m_Events.Publish(ApplicationToast(Core::ToastKind::Warning, "No shell found",
+											  "No shell was found on this machine to open a terminal with"));
 			return false;
 		}
 
@@ -451,6 +456,8 @@ namespace Graphite {
 		if (m_Shells.empty())
 		{
 			APP_WARN("No shell found to open a terminal with");
+			m_Events.Publish(ApplicationToast(Core::ToastKind::Warning, "No shell found",
+											  "No shell was found on this machine to open a terminal with"));
 			return false;
 		}
 
@@ -472,6 +479,8 @@ namespace Graphite {
 		if (shell >= m_Shells.size())
 		{
 			APP_WARN("No shell {} to open a terminal with: {} found", shell, m_Shells.size());
+			m_Events.Publish(ApplicationToast(Core::ToastKind::Warning, "No shell found",
+											  std::format("Shell {} is not available: {} were found", shell, m_Shells.size())));
 			return false;
 		}
 
@@ -520,6 +529,8 @@ namespace Graphite {
 		{
 			// No window: an empty one would look like a shell that had simply printed nothing.
 			APP_ERROR("Cannot start {}: {}", profile.Name, result.GetError().Message);
+			m_Events.Publish(ApplicationToast(Core::ToastKind::Error, "Terminal failed to start",
+											  std::format("{}: {}", profile.Name, result.GetError().Message)));
 			return false;
 		}
 
