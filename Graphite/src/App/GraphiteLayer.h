@@ -243,7 +243,7 @@ namespace Graphite {
 		DocumentWindows m_DocumentWindows{m_Documents, m_Modals, m_DocumentPort,
 										  m_Diagnostics, m_ChangeMarkers, m_PreviewSemantics,
 										  m_Analysis, m_AnalysisCoordinator.GetStore(),
-										  m_AnalysisCoordinator.GetPass()};
+										  m_AnalysisCoordinator.GetPass(), m_Events};
 
 		// The Git panel's view of the editor, over the two members above. Declared after both
 		// and before m_Panels, where GitView holds it by reference.

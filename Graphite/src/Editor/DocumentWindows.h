@@ -31,6 +31,7 @@
 
 #include "Core/Base/Timestep.h"
 #include "Core/ImGui/TabCloseRequests.h"
+#include "Core/ImGui/ToastStack.h"
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileSync.h"
 
@@ -54,6 +55,7 @@ namespace Core {
 namespace Core {
 
 	class DocumentSet;
+	class EventBus;
 
 }
 
@@ -86,8 +88,9 @@ namespace Graphite {
 		DocumentWindows(Core::DocumentSet& documents, ModalGate& modals,
 						DocumentServerPort& server, const DiagnosticsModel& diagnostics,
 						ChangeMarkersModel& changeMarkers, PreviewSemantics& previewSemantics, AnalysisCache& analysis,
-						AnalysisStore& analysisStore, WorkspaceAnalysis& workspaceAnalysis)
+						AnalysisStore& analysisStore, WorkspaceAnalysis& workspaceAnalysis, Core::EventBus& events)
 			: m_Documents(documents),
+			  m_Events(events),
 			  m_Server(server),
 			  m_Diagnostics(diagnostics),
 			  m_ChangeMarkers(changeMarkers),
@@ -397,6 +400,12 @@ namespace Graphite {
 
 		bool SaveOne(std::size_t index);
 
+		// A save of `path` that failed, logged and in a toast; shared by Ctrl+S and Save All.
+		void ReportSaveFailure(const std::filesystem::path& path, const Core::Error& error);
+
+		// A failure about one of the open documents, in a toast.
+		void ReportFailure(Core::ToastKind kind, std::string title, std::string_view message);
+
 		void RequestSave(std::size_t index);
 
 		// What a file tab's context menu offers above the close actions every tab has.
@@ -457,6 +466,14 @@ namespace Graphite {
 		};
 
 		Core::DocumentSet& m_Documents;
+
+		// Where a save, a reload or a reveal that failed is reported, as a toast.
+		Core::EventBus& m_Events;
+
+		// The folder the last frame was drawn under, which a toast about a document writes its
+		// paths relative to. Kept from Render because a save can be asked for outside it - by a
+		// command run from its key - where no frame is at hand.
+		std::filesystem::path m_WorkspaceRoot;
 
 		DocumentServerPort& m_Server;
 

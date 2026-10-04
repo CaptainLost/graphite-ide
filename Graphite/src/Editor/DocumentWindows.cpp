@@ -16,6 +16,7 @@
 #include "Persistence/CaretRestore.h"
 
 #include "UI/RememberedPlace.h"
+#include "UI/ToastEvent.h"
 
 #include "Core/App/Redraw.h"
 #include "Core/Base/ByteSize.h"
@@ -23,6 +24,7 @@
 #include "Core/Command/Chord.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
+#include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/TabContextMenu.h"
@@ -124,16 +126,21 @@ namespace Graphite {
 
 		// Named together in one message rather than one message per file overwriting the
 		// last, so what still needs attention is not buried under "saved".
-		std::string ConflictSummary(const Core::SaveAllReport& report)
+		std::string NotSavedSummary(const std::vector<std::filesystem::path>& conflicted)
 		{
 			std::vector<std::string> names;
-			names.reserve(report.Conflicted.size());
+			names.reserve(conflicted.size());
 
-			for (const std::filesystem::path& path : report.Conflicted)
+			for (const std::filesystem::path& path : conflicted)
 			{
 				names.push_back(Core::ToUtf8(path.filename()));
 			}
 
+			return std::to_string(names.size()) + " changed on disk and " + (names.size() == 1 ? "was" : "were") + " not saved: " + Join(names);
+		}
+
+		std::string ConflictSummary(const Core::SaveAllReport& report)
+		{
 			std::string message = SavedCount(report.Saved);
 
 			if (!message.empty())
@@ -141,9 +148,7 @@ namespace Graphite {
 				message += " ";
 			}
 
-			message += std::to_string(names.size()) + " changed on disk and " + (names.size() == 1 ? "was" : "were") + " not saved: " + Join(names);
-
-			return message;
+			return message + NotSavedSummary(report.Conflicted);
 		}
 	}
 
@@ -596,6 +601,9 @@ namespace Graphite {
 		else
 		{
 			SetTransientMessage("Could not reload " + fileName + ": " + result.GetError().Message);
+
+			// The error names the file.
+			ReportFailure(Core::ToastKind::Error, "Reload failed", result.GetError().Message);
 			return false;
 		}
 	}
@@ -626,9 +634,26 @@ namespace Graphite {
 		}
 		else
 		{
-			SetTransientMessage("Could not save " + fileName + ": " + result.GetError().Message);
+			// A toast rather than the status bar, which keeps only the routine "saved" (ADR 0557):
+			// a failed save must not fade after a few seconds the way that line does.
+			ReportSaveFailure(item.Path, result.GetError());
 			return false;
 		}
+	}
+
+	void DocumentWindows::ReportSaveFailure(const std::filesystem::path& path, const Core::Error& error)
+	{
+		APP_ERROR("Could not save '{}': {}", Core::ToUtf8(path), error.Message);
+
+		// Named by its whole path, which the toast shows relative to the folder: the error itself
+		// may name only the temporary file the write went through.
+		ReportFailure(Core::ToastKind::Error, "Save failed", Core::ToUtf8(path) + ": " + error.Message);
+	}
+
+	void DocumentWindows::ReportFailure(Core::ToastKind kind, std::string title, std::string_view message)
+	{
+		// About the open folder's documents, so it reads relative to the folder and goes when it does.
+		m_Events.Publish(FolderToast(kind, std::move(title), message, m_WorkspaceRoot));
 	}
 
 	void DocumentWindows::RequestSave(std::size_t index)
@@ -709,6 +734,7 @@ namespace Graphite {
 			if (const auto revealed = Core::Shell::RevealInFileBrowser(item.Path); !revealed)
 			{
 				APP_ERROR("{}", revealed.GetError().Message);
+				ReportFailure(Core::ToastKind::Error, "Cannot reveal file", revealed.GetError().Message);
 			}
 		}
 	}
@@ -719,12 +745,12 @@ namespace Graphite {
 		// would find itself.
 		const Core::SaveAllReport report = Core::SaveAllModified(m_Documents);
 
-		// A stopped batch says why, naming the document that stopped it, and gets no summary
-		// over the top: a count of what was saved before the failure would only bury the one
-		// thing the user has to act on.
+		// A stopped batch says why in a toast, naming the document that stopped it, and gets no
+		// summary on the status bar: a count of what was saved before the failure would only
+		// bury the one thing the user has to act on.
 		if (report.StoppedAt)
 		{
-			SetTransientMessage("Could not save " + Core::ToUtf8(report.StoppedAt->Path.filename()) + ": " + report.StoppedAt->Error.Message);
+			ReportSaveFailure(report.StoppedAt->Path, report.StoppedAt->Error);
 
 			return report.IsComplete();
 		}
@@ -742,6 +768,10 @@ namespace Graphite {
 		// Nothing is asked about here: a conflicted document gets its Overwrite/Cancel
 		// question from RequestSave, a deliberate per-document Ctrl+S.
 		SetTransientMessage(ConflictSummary(report));
+
+		// And in a toast that stays its few seconds whatever the status bar says next: what was
+		// skipped still needs attention.
+		ReportFailure(Core::ToastKind::Warning, "Save skipped", NotSavedSummary(report.Conflicted));
 
 		return report.IsComplete();
 	}
@@ -2519,6 +2549,8 @@ namespace Graphite {
 	void DocumentWindows::Render(const CommandContext& context, const EditorFrame& frame,
 								 ReferencesPanel& referencesPanel)
 	{
+		m_WorkspaceRoot = frame.WorkspaceRoot;
+
 		const std::vector<std::string> startingIdentities = CurrentIdentities(m_Documents);
 
 		// Before the documents draw, so an answer that arrived since the last frame is on screen
