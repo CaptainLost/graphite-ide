@@ -5,6 +5,7 @@
 
 #include "Language/Diagnostics/ProblemIdentity.h"
 #include "Language/Server/LspProtocol.h"
+#include "UI/OpenGesture.h"
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/EmptyState.h"
@@ -226,11 +227,7 @@ namespace Graphite {
 			m_Selected = IdentityOf(path, diagnostic);
 			m_SelectionSeen = true;
 
-			const bool permanent = ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) ||
-								   ImGui::IsKeyPressed(ImGuiKey_Enter) ||
-								   ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
-
-			OpenAndSelect(path, diagnostic, permanent);
+			OpenAndSelect(path, diagnostic, OpensPermanently());
 		}
 
 		ImGui::PopID();

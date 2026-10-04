@@ -10,6 +10,7 @@
 #include "Core/Text/DocumentSet.h"
 #include "Explorer/FileRow.h"
 #include "Solution/SolutionEditor.h"
+#include "UI/OpenGesture.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -331,7 +332,7 @@ namespace Graphite {
 		if (clicked)
 		{
 			m_Workspace.SelectFile(file.Path);
-			m_Workspace.RequestOpenFile(file.Path, ImGui::IsMouseDoubleClicked(0));
+			m_Workspace.RequestOpenFile(file.Path, OpensPermanently());
 		}
 	}
 

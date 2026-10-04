@@ -15,6 +15,7 @@
 #include "Explorer/FileRow.h"
 #include "Explorer/TreeReveal.h"
 #include "UI/IconButton.h"
+#include "UI/OpenGesture.h"
 
 #include "Core/Events/EventBus.h"
 
@@ -914,7 +915,7 @@ namespace Graphite {
 		if (clicked)
 		{
 			m_Workspace.SelectFile(node.Path);
-			m_Workspace.RequestOpenFile(node.Path, ImGui::IsMouseDoubleClicked(0));
+			m_Workspace.RequestOpenFile(node.Path, OpensPermanently());
 		}
 
 		if (dimmed)

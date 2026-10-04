@@ -3,6 +3,7 @@
 #include "Core/Base/Narrow.h"
 
 #include "Search/HitDisplay.h"
+#include "UI/OpenGesture.h"
 
 #include <imgui.h>
 
@@ -87,8 +88,7 @@ namespace Graphite {
 						// arrow through fifty hits without leaving fifty tabs behind. Enter on
 						// the row the arrows reached opens it too, as it does in Problems and
 						// the file tree.
-						if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) ||
-							ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))
+						if (OpensPermanently())
 						{
 							input.OnOpen(hit);
 						}
