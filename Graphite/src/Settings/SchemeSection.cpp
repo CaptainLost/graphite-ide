@@ -123,10 +123,9 @@ namespace Graphite {
 		float rgba[4] = {shown.R, shown.G, shown.B, shown.A};
 
 		// NoInputs: the row is a swatch and a name, and the picker opens on the swatch instead of
-		// four RGBA fields crowding the row. DisplayHex makes the picker show the colour as the hex
-		// the scheme file stores; the picker's right-click menu still switches it to RGB or HSV.
+		// four RGBA fields crowding the row. The picker itself offers RGB, HSV and Hex fields.
 		ImGuiColorEditFlags flags = ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf |
-									ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_DisplayHex;
+									ImGuiColorEditFlags_NoInputs;
 
 		if (readOnly)
 		{
@@ -325,6 +324,7 @@ namespace Graphite {
 		if (first)
 		{
 			m_RenameShown = true;
+			m_RenameError.clear();
 			m_RenameBuffer.fill('\0');
 			from.copy(m_RenameBuffer.data(), m_RenameBuffer.size() - 1);
 
@@ -335,6 +335,11 @@ namespace Graphite {
 		ImGui::SetNextItemWidth(-FLT_MIN);
 		const bool entered = ImGui::InputTextWithHint("##schemeName", "Scheme name", m_RenameBuffer.data(),
 													  m_RenameBuffer.size(), ImGuiInputTextFlags_EnterReturnsTrue);
+
+		if (ImGui::IsItemEdited())
+		{
+			m_RenameError.clear();
+		}
 
 		const std::string name(m_RenameBuffer.data());
 		const bool unchanged = name == from;
@@ -347,9 +352,14 @@ namespace Graphite {
 			DialogLayout::ErrorText(*problem, DangerColour());
 		}
 
+		if (!m_RenameError.empty())
+		{
+			DialogLayout::ErrorText(m_RenameError, DangerColour());
+		}
+
 		DialogLayout::Gap();
 
-		const bool acceptable = !problem.has_value();
+		const bool acceptable = !problem.has_value() && !unchanged;
 
 		const DialogLayout::Choice choice =
 			DialogLayout::ButtonRow({.Label = "Rename", .Enabled = acceptable}, {}, DangerColour());
@@ -362,10 +372,14 @@ namespace Graphite {
 			{
 				m_Settings.SetColorScheme(name);
 				Apply();
+				m_RenameQuestion.Answer();
+				m_RenameShown = false;
 			}
-
-			m_RenameQuestion.Answer();
-			m_RenameShown = false;
+			else
+			{
+				// Kept open: the file may be in use or read-only, and the name can be tried again.
+				m_RenameError = "Could not rename the scheme. Its file may be in use or read-only.";
+			}
 		}
 		else if (choice == DialogLayout::Choice::Cancel)
 		{

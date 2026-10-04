@@ -318,7 +318,7 @@ namespace Graphite {
 
 				if (ImGui::TabItemButton(newLabel.c_str(), ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
 				{
-						m_PendingOpens.push_back(PendingOpen{GetDefaultShellIndex(), node->ID});
+					m_PendingOpens.push_back(PendingOpen{GetDefaultShellIndex(), node->ID});
 				}
 
 				ImGui::SetItemTooltip("New terminal");

@@ -41,6 +41,17 @@ TEST_CASE("A default window is centred in a work area that does not start at the
 	CHECK(placement.Y == 60 + (1000 - 850) / 2);
 }
 
+TEST_CASE("A default window on a tiny work area shrinks with it and stays inside it")
+{
+	const ScreenRect tiny{10, 20, 110, 80};
+	const WindowPlacement placement = Core::DefaultPlacement(1600, 900, tiny);
+
+	CHECK(placement == WindowPlacement{10 + (100 - 85) / 2, 20 + (60 - 51) / 2, 85, 51, false});
+	CHECK(placement.X >= tiny.Left);
+	CHECK(placement.X + placement.Width <= tiny.Right);
+	CHECK(placement.Y + placement.Height <= tiny.Bottom);
+}
+
 TEST_CASE("A window inside the primary monitor stays where it was")
 {
 	const std::vector<ScreenRect> areas{kPrimary, kSecond};

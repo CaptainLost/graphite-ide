@@ -79,6 +79,9 @@ namespace Core {
 		float m_InitialDpiScale = 1.0f;
 		// The scale the style's sizes were last built at; zero until the first frame.
 		float m_StyleScale = 0.0f;
+		// Whether the main viewport has reported its monitor's scale yet, as opposed to the
+		// window's initial one standing in for it.
+		bool m_ViewportDpiKnown = false;
 
 		// False only for a renderer whose Init failed, which cleaned up after itself and leaves
 		// the destructor nothing to do.

@@ -6,6 +6,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Theme/BuiltInSchemes.h"
 
+#include <algorithm>
 #include <format>
 #include <optional>
 #include <string>
@@ -88,6 +89,13 @@ namespace Graphite {
 
 			return std::nullopt;
 		}
+	}
+
+	std::filesystem::path SchemeFile(const std::filesystem::path& directory, std::string_view name)
+	{
+		std::filesystem::path file = directory / Core::FromUtf8(name);
+		file += L".json";
+		return file;
 	}
 
 	ColorScheme LoadScheme(const std::filesystem::path& file)
@@ -260,7 +268,7 @@ namespace Graphite {
 			}
 		}
 
-		return json.Save(directory / (std::string(name) + ".json"));
+		return json.Save(SchemeFile(directory, name));
 	}
 
 	std::vector<std::string> ListSchemes(const std::filesystem::path& directory)
@@ -297,7 +305,7 @@ namespace Graphite {
 
 	Core::Result<void> DeleteScheme(const std::filesystem::path& directory, std::string_view name)
 	{
-		const std::filesystem::path file = directory / (std::string(name) + ".json");
+		const std::filesystem::path file = SchemeFile(directory, name);
 
 		std::error_code ec;
 
@@ -349,7 +357,11 @@ namespace Graphite {
 			return "Enter a name.";
 		}
 
-		if (name.size() > kLongestName)
+		// Characters, not bytes: a UTF-8 continuation byte is not one.
+		const auto characters = static_cast<std::size_t>(std::count_if(
+			name.begin(), name.end(), [](char byte) { return (static_cast<unsigned char>(byte) & 0xC0) != 0x80; }));
+
+		if (characters > kLongestName)
 		{
 			return std::format("A name can have at most {} characters.", kLongestName);
 		}
@@ -402,8 +414,8 @@ namespace Graphite {
 			return Core::Error{Core::ErrorCode::InvalidArgument, std::format("'{}': {}", to, *problem)};
 		}
 
-		const std::filesystem::path source = directory / (std::string(from) + ".json");
-		const std::filesystem::path target = directory / (std::string(to) + ".json");
+		const std::filesystem::path source = SchemeFile(directory, from);
+		const std::filesystem::path target = SchemeFile(directory, to);
 
 		std::error_code ec;
 
@@ -412,7 +424,11 @@ namespace Graphite {
 			return Core::Error{Core::ErrorCode::NotFound, std::format("'{}' is not there", Core::ToUtf8(source))};
 		}
 
-		if (std::filesystem::exists(target, ec))
+		// The same file under a name that differs in case only is not a clash: the file system
+		// finds the target because it is the source, and the rename is how the case changes.
+		const bool caseOnly = from != to && Lowered(from) == Lowered(to);
+
+		if (!caseOnly && std::filesystem::exists(target, ec))
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument,
 							   std::format("'{}' already exists", Core::ToUtf8(target))};

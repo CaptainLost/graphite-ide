@@ -45,7 +45,6 @@ namespace Graphite {
 	{
 		RenderServerPath();
 
-
 		ImGui::SeparatorText("Background analysis");
 
 		bool enabled = m_Settings.IsEnabled();

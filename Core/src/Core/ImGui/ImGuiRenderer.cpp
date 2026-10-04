@@ -190,6 +190,12 @@ namespace Core {
 		ImGuiStyle& style = ImGui::GetStyle();
 		const float scale = style.FontScaleMain * dpi;
 
+		// The first frame is built from the window's own content scale, the next ones from the
+		// viewport's. Whatever differs between the two is a correction of the source, not a change
+		// the user made, and the layout restored at startup is already at the scale it was saved at.
+		const bool sourceSwitched = viewportDpi > 0.0f && !m_ViewportDpiKnown;
+		m_ViewportDpiKnown = viewportDpi > 0.0f;
+
 		if (scale == m_StyleScale)
 		{
 			return;
@@ -198,7 +204,10 @@ namespace Core {
 		// Here, between frames, and not where the scale is set: dock nodes are laid out during a
 		// frame. The reference sizes are pixels, and a layout restored at startup is already at the
 		// scale it was saved at - the first change is from zero, which scales nothing.
-		ScaleDockNodeSizes(ScaleChangeFactor(m_StyleScale, scale));
+		if (!sourceSwitched)
+		{
+			ScaleDockNodeSizes(ScaleChangeFactor(m_StyleScale, scale));
+		}
 
 		style = ScaledStyle(style, scale, ViewportsEnabled());
 		m_StyleScale = scale;

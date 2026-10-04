@@ -29,7 +29,7 @@ namespace Graphite {
 			std::string candidate = suffix == 1 ? stem : stem + "-" + std::to_string(suffix);
 
 			if (!ParseBuiltInName(candidate) &&
-				!std::filesystem::exists(directory / (candidate + ".json"), ec))
+				!std::filesystem::exists(SchemeFile(directory, candidate), ec))
 			{
 				return candidate;
 			}
@@ -86,7 +86,7 @@ namespace Graphite {
 		}
 		else
 		{
-			m_Scheme = LoadScheme(m_Directory / (m_Selected + ".json"));
+			m_Scheme = LoadScheme(SchemeFile(m_Directory, m_Selected));
 		}
 
 		Resolve();
@@ -270,12 +270,24 @@ namespace Graphite {
 
 	std::optional<std::string> SchemeDraft::NameProblem(std::string_view name) const
 	{
-		return SchemeNameProblem(name, m_Names);
+		// Without the selected scheme's own name, so that changing only its case is allowed. Its
+		// exact current name is not a new name, which RenameSelected refuses.
+		std::vector<std::string> others;
+
+		for (const std::string& existing : m_Names)
+		{
+			if (existing != m_Selected)
+			{
+				others.push_back(existing);
+			}
+		}
+
+		return SchemeNameProblem(name, others);
 	}
 
 	bool SchemeDraft::RenameSelected(std::string_view name)
 	{
-		if (IsReadOnly() || NameProblem(name).has_value())
+		if (IsReadOnly() || name == m_Selected || NameProblem(name).has_value())
 		{
 			return false;
 		}

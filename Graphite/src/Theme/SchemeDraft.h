@@ -64,8 +64,9 @@ namespace Graphite {
 		// read-only built-in to something editable.
 		bool Duplicate();
 
-		// Why `name` cannot be the selected scheme's new name, or nothing when it can. The current
-		// name is among the taken ones, so naming the scheme what it already is reads as a clash.
+		// Why `name` cannot be the selected scheme's new name, or nothing when it can. The scheme's
+		// own name is not counted as taken, so a change of case alone is a rename; its exact current
+		// name has no problem but is no rename either.
 		std::optional<std::string> NameProblem(std::string_view name) const;
 
 		// Renames the selected scheme's file and keeps it selected under the new name. False, with

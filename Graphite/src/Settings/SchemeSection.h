@@ -71,6 +71,7 @@ namespace Graphite {
 		// The rename field's text, loaded from the payload on the first frame the dialog shows.
 		std::array<char, 128> m_RenameBuffer{};
 		bool m_RenameShown = false;
+		std::string m_RenameError;
 
 		bool m_ColourEdited = false;
 	};

@@ -377,3 +377,55 @@ TEST_CASE("Renaming a scheme refuses a taken name, a missing source, a built-in 
 	CHECK(std::filesystem::exists(temp.GetPath() / "one.json"));
 	CHECK(std::filesystem::exists(temp.GetPath() / "two.json"));
 }
+
+TEST_CASE("A scheme with a non-ASCII name is saved, renamed, listed and loaded under that name")
+{
+	const TempDirectory temp;
+
+	// "Ciemny z with a dot" and "Zolty" in Polish, as UTF-8 bytes.
+	const std::string first = "Ciemny \xC5\xBC";
+	const std::string second = "\xC5\xBB\xC3\xB3\xC5\x82ty";
+
+	Graphite::ColorScheme scheme;
+	scheme.Syntax[0] = DistinctColor(0);
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), first, scheme));
+	REQUIRE(std::filesystem::exists(Graphite::SchemeFile(temp.GetPath(), first)));
+
+	REQUIRE(Graphite::RenameScheme(temp.GetPath(), first, second));
+	CHECK_FALSE(std::filesystem::exists(Graphite::SchemeFile(temp.GetPath(), first)));
+
+	const std::vector<std::string> names = Graphite::ListSchemes(temp.GetPath());
+	REQUIRE(names.size() == 1);
+	CHECK(names[0] == second);
+
+	const Graphite::ColorScheme loaded = Graphite::LoadScheme(Graphite::SchemeFile(temp.GetPath(), names[0]));
+	REQUIRE(loaded.Syntax[0].has_value());
+
+	REQUIRE(Graphite::DeleteScheme(temp.GetPath(), second));
+	CHECK(Graphite::ListSchemes(temp.GetPath()).empty());
+}
+
+TEST_CASE("The name length limit counts characters, not bytes")
+{
+	std::string name;
+
+	for (int character = 0; character < 64; ++character)
+	{
+		name += "\xC5\xBC";
+	}
+
+	CHECK_FALSE(Graphite::SchemeNameProblem(name, {}).has_value());
+	CHECK(Graphite::SchemeNameProblem(name + "x", {}).has_value());
+}
+
+TEST_CASE("A scheme can be renamed to the same name in another case")
+{
+	const TempDirectory temp;
+
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "mine", Graphite::ColorScheme{}));
+	REQUIRE(Graphite::RenameScheme(temp.GetPath(), "mine", "Mine"));
+
+	const std::vector<std::string> names = Graphite::ListSchemes(temp.GetPath());
+	REQUIRE(names.size() == 1);
+	CHECK(names[0] == "Mine");
+}

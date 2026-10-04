@@ -20,7 +20,7 @@ namespace Graphite {
 			return SchemeFor(*builtIn);
 		}
 
-		const ColorScheme scheme = LoadScheme(directory / (std::string(name) + ".json"));
+		const ColorScheme scheme = LoadScheme(SchemeFile(directory, name));
 
 		return Resolve(scheme, SchemeFor(scheme.Base));
 	}

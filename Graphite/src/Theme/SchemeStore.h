@@ -12,6 +12,10 @@
 
 namespace Graphite {
 
+	// The file holding scheme `name` (UTF-8) in `directory`. Through Core::FromUtf8, so a name with
+	// non-ASCII characters is not read as the ANSI code page on the way to a path.
+	std::filesystem::path SchemeFile(const std::filesystem::path& directory, std::string_view name);
+
 	// The names of the .json files in the directory, without their extension, minus any that
 	// collide with a built-in — a file named dark.json is ignored so the built-in keeps its
 	// name.

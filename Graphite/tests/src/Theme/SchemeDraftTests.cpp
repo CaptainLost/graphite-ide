@@ -275,3 +275,21 @@ TEST_CASE("A chrome colour can be overridden and reverted in a draft")
 	CHECK(draft.GetPreview().Chrome[accent].R ==
 		  doctest::Approx(Graphite::DarkScheme().Chrome[accent].R));
 }
+
+TEST_CASE("The selected scheme can be renamed to a non-ASCII name and to its own name in another case")
+{
+	const TempDirectory temp;
+
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "plain", Graphite::ColorScheme{}));
+
+	Graphite::SchemeDraft draft(temp.GetPath());
+	draft.Select("plain");
+
+	const std::string polish = "Ciemny \xC5\xBC";
+	REQUIRE(draft.RenameSelected(polish));
+	CHECK(draft.GetSelected() == polish);
+	CHECK(std::filesystem::exists(Graphite::SchemeFile(temp.GetPath(), polish)));
+
+	CHECK_FALSE(draft.NameProblem("ciemny \xC5\xBC").has_value());
+	CHECK_FALSE(draft.RenameSelected(polish));
+}
