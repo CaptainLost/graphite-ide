@@ -15,24 +15,6 @@
 
 namespace Core {
 
-	namespace {
-
-		// Every write below opens the index the same way and reports the same failure when
-		// it cannot, so the three lines live here once.
-		Result<IndexHandle> OpenIndex(git_repository* handle)
-		{
-			IndexHandle index;
-
-			if (git_repository_index(Out(index), handle) != 0)
-			{
-				return Error{ErrorCode::IoFailure,
-							 std::format("cannot read the index: {}", LastLibgit2Message())};
-			}
-
-			return index;
-		}
-	}
-
 	Result<void> Repository::Stage(const std::vector<std::filesystem::path>& paths)
 	{
 		if (m_Handle == nullptr)
@@ -40,24 +22,33 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
-		auto opened = OpenIndex(m_Handle.get());
-
-		if (!opened.HasValue())
+		// What each path stands for, all worked out before the index is opened: opening a
+		// directory up into its files is a status query, and that reloads the index - which,
+		// between this operation's own edits and its write, would throw those edits away.
+		struct Planned
 		{
-			return opened.GetError();
-		}
+			std::string Text;
+			bool OnDisk = false;
 
-		const IndexHandle index = std::move(opened).GetValue();
+			bool Directory = false;
+
+			// For a directory, the untracked files it is opened up into.
+			std::vector<std::string> Files;
+		};
+
+		std::vector<Planned> plan;
+		plan.reserve(paths.size());
 
 		for (const std::filesystem::path& path : paths)
 		{
-			const std::string text = ToGitPath(path);
+			Planned planned;
+			planned.Text = ToGitPath(path);
 
 			// A path that is gone from disk cannot be added; removing its entry is what
 			// records the deletion. Asked of the filesystem rather than of the index,
 			// because the index is exactly what is being brought up to date.
 			std::error_code code;
-			const bool onDisk = std::filesystem::exists(m_WorkingDirectory / path, code);
+			planned.OnDisk = std::filesystem::exists(m_WorkingDirectory / path, code);
 
 			// exists() answers false on an error too. Taking that for "gone" would record a
 			// file that is still there as deleted, so an error stops the stage here. The index
@@ -68,13 +59,7 @@ namespace Core {
 							 std::format("cannot stage '{}': {}", ToGenericUtf8(path), code.message())};
 			}
 
-			int result = 0;
-
-			if (!onDisk)
-			{
-				result = git_index_remove_bypath(index.get(), text.c_str());
-			}
-			else if (std::filesystem::is_directory(m_WorkingDirectory / path, code))
+			if (planned.OnDisk && std::filesystem::is_directory(m_WorkingDirectory / path, code))
 			{
 				// The status collapses a wholly untracked directory into one entry, and
 				// add_bypath takes files only - so the directory is opened up into its files
@@ -91,9 +76,39 @@ namespace Core {
 					return files.GetError();
 				}
 
+				planned.Directory = true;
+
 				for (const FileStatus& file : files.GetValue().Entries)
 				{
-					result = git_index_add_bypath(index.get(), ToGitPath(file.Path).c_str());
+					planned.Files.push_back(ToGitPath(file.Path));
+				}
+			}
+
+			plan.push_back(std::move(planned));
+		}
+
+		auto opened = OpenFreshIndex(m_Handle.get());
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		const IndexHandle index = std::move(opened).GetValue();
+
+		for (const Planned& planned : plan)
+		{
+			int result = 0;
+
+			if (!planned.OnDisk)
+			{
+				result = git_index_remove_bypath(index.get(), planned.Text.c_str());
+			}
+			else if (planned.Directory)
+			{
+				for (const std::string& file : planned.Files)
+				{
+					result = git_index_add_bypath(index.get(), file.c_str());
 
 					if (result != 0)
 					{
@@ -103,13 +118,13 @@ namespace Core {
 			}
 			else
 			{
-				result = git_index_add_bypath(index.get(), text.c_str());
+				result = git_index_add_bypath(index.get(), planned.Text.c_str());
 			}
 
 			if (result != 0)
 			{
 				return Error{ErrorCode::IoFailure,
-							 std::format("cannot stage '{}': {}", text, LastLibgit2Message())};
+							 std::format("cannot stage '{}': {}", planned.Text, LastLibgit2Message())};
 			}
 		}
 
@@ -129,6 +144,12 @@ namespace Core {
 		if (m_Handle == nullptr)
 		{
 			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
+
+		// git_reset_default edits the handle's cached index and writes it back.
+		if (const auto refreshed = RefreshIndex(m_Handle.get()); !refreshed.HasValue())
+		{
+			return refreshed.GetError();
 		}
 
 		const PathSpec spec{paths};
@@ -160,6 +181,13 @@ namespace Core {
 		if (paths.empty())
 		{
 			return Result<void>::Ok();
+		}
+
+		// Checking out the index does not reload it, so a stale one would write old content over
+		// the files.
+		if (const auto refreshed = RefreshIndex(m_Handle.get()); !refreshed.HasValue())
+		{
+			return refreshed.GetError();
 		}
 
 		const PathSpec spec{paths};
@@ -248,7 +276,7 @@ namespace Core {
 						 std::format("cannot determine who is committing: {}", LastLibgit2Message())};
 		}
 
-		auto opened = OpenIndex(m_Handle.get());
+		auto opened = OpenFreshIndex(m_Handle.get());
 
 		if (!opened.HasValue())
 		{

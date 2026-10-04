@@ -7,6 +7,8 @@
 
 #include <git2.h>
 
+#include <format>
+
 namespace Core {
 
 	std::string LastLibgit2Message()
@@ -15,6 +17,37 @@ namespace Core {
 
 		return detail != nullptr && detail->message != nullptr ? detail->message
 															   : "unknown error";
+	}
+
+	Result<IndexHandle> OpenFreshIndex(git_repository* handle)
+	{
+		IndexHandle index;
+
+		// Two statements: Out hands the index over only at the end of the full expression.
+		if (git_repository_index(Out(index), handle) != 0)
+		{
+			return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+		}
+
+		// Not forced: libgit2 compares the file's checksum and reloads only when it changed.
+		if (git_index_read(index.get(), false) != 0)
+		{
+			return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+		}
+
+		return index;
+	}
+
+	Result<void> RefreshIndex(git_repository* handle)
+	{
+		auto index = OpenFreshIndex(handle);
+
+		if (!index.HasValue())
+		{
+			return index.GetError();
+		}
+
+		return Result<void>::Ok();
 	}
 
 	Oid ToOid(const git_oid& id)

@@ -220,23 +220,18 @@ namespace Core {
 		}
 
 		// Paths with unresolved conflicts in the index, each once. The index is re-read
-		// first: libgit2 keeps one per repository handle, and a merge or a pop that
-		// conflicted since it was last read is exactly what this looks for.
+		// first: a merge or a pop that conflicted since it was last read is exactly what this
+		// looks for.
 		Result<std::vector<std::filesystem::path>> Conflicted(git_repository* handle)
 		{
-			IndexHandle index;
+			auto opened = OpenFreshIndex(handle);
 
-			// Two statements: Out hands the index over only at the end of the full expression.
-			if (git_repository_index(Out(index), handle) != 0)
+			if (!opened.HasValue())
 			{
-				return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+				return opened.GetError();
 			}
 
-			if (git_index_read(index.get(), false) != 0)
-			{
-				return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
-			}
-
+			const IndexHandle index = std::move(opened).GetValue();
 			std::vector<std::filesystem::path> conflicted;
 
 			if (!git_index_has_conflicts(index.get()))
@@ -634,12 +629,14 @@ namespace Core {
 			return Error{ErrorCode::IoFailure, std::format("cannot read HEAD's tree: {}", LastLibgit2Message())};
 		}
 
-		IndexHandle index;
+		auto opened = OpenFreshIndex(m_Handle.get());
 
-		if (git_repository_index(Out(index), m_Handle.get()) != 0)
+		if (!opened.HasValue())
 		{
-			return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+			return opened.GetError();
 		}
+
+		const IndexHandle index = std::move(opened).GetValue();
 
 		// What a hard reset does, but with git's own ending: git_reset also deletes
 		// rebase-merge/, rebase-apply/, sequencer/ and BISECT_LOG, and discarding the changes -

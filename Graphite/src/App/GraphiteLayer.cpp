@@ -26,6 +26,7 @@
 #include "Search/ReferencesPanel.h"
 #include "Sessions/SessionsPanel.h"
 #include "Terminal/TerminalWindows.h"
+#include "Persistence/RestrictedRestore.h"
 
 #include <optional>
 
@@ -59,6 +60,7 @@
 #include "Settings/SettingsPanel.h"
 #include "Settings/TerminalSection.h"
 #include "Settings/TrustSection.h"
+#include "UI/DialogLayout.h"
 #include "UI/RestrictedModeBar.h"
 #include "Workspace/WorkspaceTrust.h"
 
@@ -93,7 +95,8 @@ namespace Graphite {
 		  m_AppSettings(settings),
 		  m_CloseQuestion(m_Modals, kUnsavedWorkTitle),
 		  m_DropQuestion(m_Modals, kReplaceWorkspaceTitle),
-		  m_About(m_Modals)
+		  m_About(m_Modals),
+		  m_TrustParentQuestion(m_Modals, kTrustParentTitle)
 	{
 		m_Layout.Left = {"files", "changes"};
 
@@ -400,10 +403,17 @@ namespace Graphite {
 			m_SessionWindows.CarryOverOpenSessions();
 			m_Terminals.CarryOverOpenTerminals();
 
+			// Asked once, here: trusting the folder later in the session reopens nothing and
+			// starts nothing, because what restricted mode left closed stays the reader's to open.
+			const bool trusted = m_Trust.IsTrusted(event.Root);
+
+			// The keeper is told what is on disk, as it always is; the windows get only what
+			// restricted mode lets them reopen (ADR 0532).
 			const WorkspaceState stored = WorkspaceSettings{event.Root}.LoadState();
-			m_DocumentWindows.RestoreState(stored);
-			m_SessionWindows.RestoreState(stored.Sessions);
-			m_Terminals.RestoreState(stored.Terminals);
+			const WorkspaceState restorable = RestorableState(stored, event.Root, trusted);
+			m_DocumentWindows.RestoreState(restorable);
+			m_SessionWindows.RestoreState(restorable.Sessions);
+			m_Terminals.RestoreState(restorable.Terminals, trusted);
 			m_StateKeeper.AdoptWorkspace(event.Root, stored);
 
 			m_GitPort.SetRoot(event.Root);
@@ -417,7 +427,7 @@ namespace Graphite {
 
 			// After CloseAll, never before: the diffs this folder had open last time are the
 			// only ones that belong to it.
-			m_DiffWindows.RestoreState(stored.Diffs);
+			m_DiffWindows.RestoreState(restorable.Diffs);
 
 			// Same trap, same reason: an expectation registered against the folder this drop
 			// replaced has no business claiming a path in the one that just opened. Dropping a
@@ -809,6 +819,7 @@ namespace Graphite {
 		RenderCloseConfirm();
 		RenderDropConfirm();
 		m_About.Render();
+		RenderTrustParentConfirm();
 
 		// Panels render outside the host window — inside it they would dock as ordinary child
 		// windows instead of landing in the dockspace nodes.
@@ -1012,9 +1023,69 @@ namespace Graphite {
 			break;
 
 		case RestrictedBarChoice::TrustParent:
-			m_Trust.Trust(*parent);
+			// Asked first: this trusts every folder under the parent, not just this one.
+			m_TrustParentQuestion.Ask(*parent);
 			break;
 		}
+	}
+
+	void GraphiteLayer::RenderTrustParentConfirm()
+	{
+		// Fixed width, so a long parent path wraps rather than widening the dialog.
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
+
+		// A question still queued when its folder closed, was replaced, or got trusted some other
+		// way is dropped rather than asked about a parent that no longer has anything to do with
+		// what is open.
+		const bool open = m_TrustParentQuestion.Begin([this](const std::filesystem::path& parent) {
+			if (!m_Workspace.IsOpen())
+			{
+				return false;
+			}
+
+			const std::filesystem::path root = m_Workspace.GetRoot();
+			return !m_Trust.IsTrusted(root) && ParentWorthTrusting(root) == parent;
+		});
+
+		DialogLayout::AfterBegin();
+
+		if (!open)
+		{
+			return;
+		}
+
+		const std::filesystem::path* asked = m_TrustParentQuestion.GetCurrent();
+
+		if (asked == nullptr)
+		{
+			ImGui::CloseCurrentPopup();
+			m_TrustParentQuestion.End();
+			return;
+		}
+
+		// Copied out: Answer clears what GetCurrent points at, and trusting writes the list.
+		const std::filesystem::path parent = *asked;
+
+		DialogLayout::Text(TrustAllMessage(parent));
+		DialogLayout::Gap();
+
+		// Trust All is the dangerous choice, so it is the destructive role: Enter does nothing,
+		// and Escape cancels as the Cancel button does.
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
+			{}, {.Label = "Trust All"},
+			ImGui::ColorConvertU32ToFloat4(ReadEditorPalette(m_ActiveScheme.Get()).DiagnosticError));
+
+		if (choice == DialogLayout::Choice::Destructive)
+		{
+			m_Trust.Trust(parent);
+			m_TrustParentQuestion.Answer();
+		}
+		else if (choice == DialogLayout::Choice::Cancel)
+		{
+			m_TrustParentQuestion.Answer();
+		}
+
+		m_TrustParentQuestion.End();
 	}
 
 	void GraphiteLayer::RenderDropConfirm()

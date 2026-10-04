@@ -54,4 +54,11 @@ namespace Graphite {
 
 		return choice;
 	}
+
+	std::string TrustAllMessage(const std::filesystem::path& parent)
+	{
+		return "Trust every folder under\n" + Core::ToUtf8(parent) +
+			   "\n\nEach folder in it, now and in the future, will run the language server and "
+			   "background analysis when opened.";
+	}
 }

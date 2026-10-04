@@ -392,3 +392,54 @@ TEST_CASE("A stash that took untracked files names the commit it keeps them in")
 	REQUIRE(none.HasValue());
 	CHECK_FALSE(none.GetValue().has_value());
 }
+
+// Two handles on one repository: libgit2 caches an index per handle, and the application keeps
+// one handle per worker thread. The second handle reads the index first so that its cache is
+// populated before the first one changes it.
+
+TEST_CASE("Popping through a handle that has not seen the tree become clean succeeds")
+{
+	GitFixture fixture;
+	Prepare(fixture);
+	fixture.Write("a.txt", "changed\n");
+
+	Core::Repository first = OpenAt(fixture.GetPath());
+	Core::Repository second = OpenAt(fixture.GetPath());
+
+	REQUIRE(first.StashSave("work", false).HasValue());
+	const Core::Oid id = first.QueryStashes().GetValue()[0].Id;
+	REQUIRE(second.QueryStatus().HasValue());
+
+	fixture.Write("b.txt", "other\n");
+	REQUIRE(first.Stage({"b.txt"}).HasValue());
+	REQUIRE(first.Commit({.Message = "add b"}).HasValue());
+
+	const auto popped = second.StashPop(id);
+	CHECK(popped.HasValue());
+	CHECK(Read(fixture.GetPath() / "a.txt") == "changed\n");
+}
+
+TEST_CASE("Stashing through a handle that has not seen a stage keeps the staged content as the stash's index")
+{
+	GitFixture fixture;
+	Prepare(fixture);
+
+	Core::Repository staging = OpenAt(fixture.GetPath());
+	Core::Repository stashing = OpenAt(fixture.GetPath());
+	REQUIRE(stashing.QueryStatus().HasValue());
+
+	fixture.Write("a.txt", "staged\n");
+	REQUIRE(staging.Stage({"a.txt"}).HasValue());
+	fixture.Write("a.txt", "edited\n");
+
+	REQUIRE(stashing.StashSave("work", false).HasValue());
+
+	Core::Repository fresh = OpenAt(fixture.GetPath());
+	const Core::Oid id = fresh.QueryStashes().GetValue()[0].Id;
+	REQUIRE(fresh.StashPop(id).HasValue());
+
+	const auto staged = fresh.ReadIndexBlob("a.txt");
+	REQUIRE(staged.HasValue());
+	CHECK(staged.GetValue() == "staged\n");
+	CHECK(Read(fixture.GetPath() / "a.txt") == "edited\n");
+}

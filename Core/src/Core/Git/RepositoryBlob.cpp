@@ -164,14 +164,14 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
-		IndexHandle index;
+		auto opened = OpenFreshIndex(m_Handle.get());
 
-		if (git_repository_index(Out(index), m_Handle.get()) != 0)
+		if (!opened.HasValue())
 		{
-			return Error{ErrorCode::IoFailure,
-						 std::format("cannot read the index: {}", LastLibgit2Message())};
+			return opened.GetError();
 		}
 
+		const IndexHandle index = std::move(opened).GetValue();
 		const std::string gitPath = ToGitPath(path);
 
 		// Stage zero is the settled entry. A path in conflict has stages one to three

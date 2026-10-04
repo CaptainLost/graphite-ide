@@ -487,6 +487,7 @@ namespace Graphite {
 		if (m_Workspace.IsOpen())
 		{
 			m_KeepsTerminals = true;
+			m_HeldBack.reset();
 		}
 
 		return true;
@@ -576,7 +577,7 @@ namespace Graphite {
 
 	std::optional<std::vector<TerminalTabState>> TerminalWindows::CaptureState() const
 	{
-		return CaptureFolderTerminals(Records(), m_KeepsTerminals);
+		return CaptureFolderTerminals(Records(), m_KeepsTerminals, m_HeldBack);
 	}
 
 	void TerminalWindows::RequestRedock()
@@ -610,15 +611,18 @@ namespace Graphite {
 		return true;
 	}
 
-	void TerminalWindows::RestoreState(const std::optional<std::vector<TerminalTabState>>& saved)
+	void TerminalWindows::RestoreState(const std::optional<std::vector<TerminalTabState>>& saved, bool trusted)
 	{
+		// For each folder anew, like m_KeepsTerminals below.
+		m_HeldBack = HeldBackTerminals(saved, trusted);
+
 		// The folder just opened takes over the shells nobody had, and from here they are its own:
-		// saved with it, and carried over when it closes.
+		// saved with it, and carried over when it closes. A folder in restricted mode takes none.
 		std::vector<OpenTerminal> records = Records();
-		const bool adopted = AdoptTerminals(records, saved.has_value());
+		const bool adopted = AdoptTerminals(records, saved.has_value(), trusted);
 		StoreRecords(records);
 
-		if (OpensDefaultTerminal(saved, m_Open.size()))
+		if (OpensDefaultTerminal(saved, m_Open.size(), trusted))
 		{
 			// Kept only if the shell actually started: a folder that got none because no shell
 			// was found, or it failed, must still ask for its default at the next launch.
@@ -642,7 +646,8 @@ namespace Graphite {
 			*saved, m_Shells, Records(), [&root](const std::filesystem::path& directory) {
 				std::error_code error;
 				return !directory.empty() && std::filesystem::is_directory(directory, error) ? directory : root;
-			});
+			},
+			trusted);
 
 		for (const std::string& id : plan.AlreadyOpen)
 		{

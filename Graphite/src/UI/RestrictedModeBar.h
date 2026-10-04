@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <string>
 
 namespace Graphite {
 
@@ -17,4 +18,9 @@ namespace Graphite {
 	// there is a parent worth offering (see ParentWorthTrusting). Returns what was clicked this
 	// frame; the caller does the trusting.
 	RestrictedBarChoice DrawRestrictedModeBar(const std::optional<std::filesystem::path>& parent);
+
+	// What the confirmation behind "Trust All in <parent>" tells the user: the full parent
+	// path, then what trusting it means for every folder under it. One click on the bar must
+	// not trust a folder like Downloads without this being read first.
+	std::string TrustAllMessage(const std::filesystem::path& parent);
 }

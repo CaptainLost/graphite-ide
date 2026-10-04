@@ -63,17 +63,17 @@ TEST_CASE("A shell opened with no folder is adopted by the folder opened next, a
 
 	// Open folder A: carry over, then adopt. A has no saved list.
 	CarryOverTerminals(open);
-	CHECK(AdoptTerminals(open, false));
+	CHECK(AdoptTerminals(open, false, true));
 	CHECK(CaptureTerminals(open) == std::vector<TerminalTabState>{TerminalTabState{"{A}", "PowerShell 7", kRoot}});
-	CHECK(CaptureFolderTerminals(open, KeepsTerminals(std::nullopt, true)).has_value());
+	CHECK(CaptureFolderTerminals(open, KeepsTerminals(std::nullopt, true), std::nullopt).has_value());
 
 	// Close A: the shell stays open but is A's, so it is carried over...
 	CarryOverTerminals(open);
 
 	// ...and open B, which adopts nothing: it is not captured, and B keeps no list of its own.
-	CHECK_FALSE(AdoptTerminals(open, false));
+	CHECK_FALSE(AdoptTerminals(open, false, true));
 	CHECK(CaptureTerminals(open).empty());
-	CHECK_FALSE(CaptureFolderTerminals(open, KeepsTerminals(std::nullopt, false)).has_value());
+	CHECK_FALSE(CaptureFolderTerminals(open, KeepsTerminals(std::nullopt, false), std::nullopt).has_value());
 }
 
 TEST_CASE("Carrying over on its own leaves a shell nobody owned alone")
@@ -88,7 +88,7 @@ TEST_CASE("Carrying over on its own leaves a shell nobody owned alone")
 
 	CHECK(open[0].Unowned);
 	CHECK_FALSE(open[0].CarriedOver);
-	CHECK(AdoptTerminals(open, false));
+	CHECK(AdoptTerminals(open, false, true));
 }
 
 TEST_CASE("A terminal carried over from one folder to another is never adopted")
@@ -98,7 +98,7 @@ TEST_CASE("A terminal carried over from one folder to another is never adopted")
 
 	CarryOverTerminals(open);
 
-	CHECK_FALSE(AdoptTerminals(open, false));
+	CHECK_FALSE(AdoptTerminals(open, false, true));
 	CHECK(open[0].CarriedOver);
 	CHECK(CaptureTerminals(open).empty());
 }
@@ -111,7 +111,7 @@ TEST_CASE("A command's window is never adopted")
 
 	CarryOverTerminals(open);
 
-	CHECK_FALSE(AdoptTerminals(open, false));
+	CHECK_FALSE(AdoptTerminals(open, false, true));
 	CHECK(CaptureTerminals(open).empty());
 }
 
@@ -125,20 +125,67 @@ TEST_CASE("The startup shell is adopted only by a folder with no terminals saved
 
 	std::vector<OpenTerminal> fresh = {startup, chosen};
 	CarryOverTerminals(fresh);
-	CHECK(AdoptTerminals(fresh, false));
+	CHECK(AdoptTerminals(fresh, false, true));
 	CHECK(CaptureTerminals(fresh).size() == 2);
 
 	std::vector<OpenTerminal> withSaved = {startup, chosen};
 	CarryOverTerminals(withSaved);
-	CHECK(AdoptTerminals(withSaved, true));
+	CHECK(AdoptTerminals(withSaved, true, true));
 	REQUIRE(CaptureTerminals(withSaved).size() == 1);
 	CHECK(CaptureTerminals(withSaved)[0].Id == "{U}");
 
 	// Alone, with a saved list to open: nothing adopted, so nothing makes the list kept by itself.
 	std::vector<OpenTerminal> only = {startup};
 	CarryOverTerminals(only);
-	CHECK_FALSE(AdoptTerminals(only, true));
+	CHECK_FALSE(AdoptTerminals(only, true, true));
 	CHECK(CaptureTerminals(only).empty());
+}
+
+TEST_CASE("A folder in restricted mode adopts neither a shell opened with no folder nor the startup shell")
+{
+	OpenTerminal startup{"{S}", "PowerShell 7", kRoot};
+	startup.Unowned = true;
+	startup.AutoOpened = true;
+	OpenTerminal chosen{"{U}", "Command Prompt", kRoot};
+	chosen.Unowned = true;
+
+	// With no saved list: nothing adopted, so the folder keeps no list and writes none.
+	std::vector<OpenTerminal> fresh = {startup, chosen};
+	CarryOverTerminals(fresh);
+	CHECK_FALSE(AdoptTerminals(fresh, false, false));
+	CHECK(CaptureTerminals(fresh).empty());
+	CHECK(CaptureFolderTerminals(fresh, KeepsTerminals(std::nullopt, false), HeldBackTerminals(std::nullopt, false)) ==
+		  std::nullopt);
+
+	// With a saved list: it is written back exactly as stored, the open shells not added to it.
+	const std::vector<TerminalTabState> saved = {TerminalTabState{"{T}", "PowerShell 7", kRoot / "tools"}};
+	std::vector<OpenTerminal> withSaved = {startup, chosen};
+	CarryOverTerminals(withSaved);
+	CHECK_FALSE(AdoptTerminals(withSaved, true, false));
+	CHECK(CaptureFolderTerminals(withSaved, KeepsTerminals(saved, false), HeldBackTerminals(saved, false)) == saved);
+}
+
+TEST_CASE("Shells a restricted folder did not adopt stay nobody's, and the next trusted folder adopts them")
+{
+	OpenTerminal chosen{"{U}", "Command Prompt", kRoot};
+	chosen.Unowned = true;
+	std::vector<OpenTerminal> open = {chosen};
+
+	// Restricted folder A takes nothing.
+	CarryOverTerminals(open);
+	CHECK_FALSE(AdoptTerminals(open, false, false));
+	CHECK(open[0].Unowned);
+	CHECK(open[0].CarriedOver);
+
+	// A shell started by hand in A does not sweep the unadopted one into A's list.
+	open.push_back(OpenTerminal{"{A}", "PowerShell 7", kRoot});
+	CHECK(CaptureFolderTerminals(open, true, std::nullopt) ==
+		  std::vector<TerminalTabState>{TerminalTabState{"{A}", "PowerShell 7", kRoot}});
+
+	// Trusted folder B opens next: A's own shell is carried over, the unowned one adopted.
+	CarryOverTerminals(open);
+	CHECK(AdoptTerminals(open, false, true));
+	CHECK(CaptureTerminals(open) == std::vector<TerminalTabState>{TerminalTabState{"{U}", "Command Prompt", kRoot}});
 }
 
 TEST_CASE("Capture keeps the saved order and the last title, and restore hands the title back")
@@ -154,7 +201,7 @@ TEST_CASE("Capture keeps the saved order and the last title, and restore hands t
 	CHECK(captured[0].Title == "build");
 	CHECK(captured[1].Id == "{B}");
 
-	const TerminalRestorePlan plan = PlanTerminalRestore(captured, Shells(), {}, Resolve);
+	const TerminalRestorePlan plan = PlanTerminalRestore(captured, Shells(), {}, Resolve, true);
 
 	REQUIRE(plan.Start.size() == 2);
 	CHECK(plan.Start[0].Id == "{A}");
@@ -183,7 +230,7 @@ TEST_CASE("Restore starts each saved terminal with its own id, in saved order, b
 	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "Command Prompt", kRoot / "src"},
 												 TerminalTabState{"{B}", "PowerShell 7", kRoot}};
 
-	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), {}, Resolve);
+	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), {}, Resolve, true);
 
 	REQUIRE(plan.Start.size() == 2);
 	CHECK(plan.Start[0].Id == "{A}");
@@ -199,7 +246,7 @@ TEST_CASE("A saved terminal whose shell is no longer installed is skipped and na
 	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "Nushell", kRoot},
 												 TerminalTabState{"{B}", "PowerShell 7", kRoot}};
 
-	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), {}, Resolve);
+	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), {}, Resolve, true);
 
 	REQUIRE(plan.Start.size() == 1);
 	CHECK(plan.Start[0].Id == "{B}");
@@ -210,7 +257,7 @@ TEST_CASE("A saved directory that is gone starts the terminal in the folder inst
 {
 	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "PowerShell 7", kRoot / "gone"}};
 
-	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), {}, Resolve);
+	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), {}, Resolve, true);
 
 	REQUIRE(plan.Start.size() == 1);
 	CHECK(plan.Start[0].WorkingDirectory == kRoot);
@@ -224,7 +271,7 @@ TEST_CASE("A saved terminal that is already open is not started twice")
 												 TerminalTabState{"{B}", "PowerShell 7", kRoot}};
 	const std::vector<OpenTerminal> open = {OpenTerminal{"{A}", "PowerShell 7", kRoot, false, true}};
 
-	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), open, Resolve);
+	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), open, Resolve, true);
 
 	REQUIRE(plan.Start.size() == 1);
 	CHECK(plan.Start[0].Id == "{B}");
@@ -236,14 +283,34 @@ TEST_CASE("A saved list naming one id twice starts it once")
 	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "PowerShell 7", kRoot},
 												 TerminalTabState{"{A}", "Command Prompt", kRoot}};
 
-	CHECK(PlanTerminalRestore(saved, Shells(), {}, Resolve).Start.size() == 1);
+	CHECK(PlanTerminalRestore(saved, Shells(), {}, Resolve, true).Start.size() == 1);
 }
 
 TEST_CASE("Only a folder that never kept terminals, with none open, opens a default one")
 {
-	CHECK(OpensDefaultTerminal(std::nullopt, 0));
-	CHECK_FALSE(OpensDefaultTerminal(std::nullopt, 2));
-	CHECK_FALSE(OpensDefaultTerminal(std::vector<TerminalTabState>{}, 0));
+	CHECK(OpensDefaultTerminal(std::nullopt, 0, true));
+	CHECK_FALSE(OpensDefaultTerminal(std::nullopt, 2, true));
+	CHECK_FALSE(OpensDefaultTerminal(std::vector<TerminalTabState>{}, 0, true));
+}
+
+TEST_CASE("A folder in restricted mode starts none of its saved terminals")
+{
+	// The list comes from the folder's own .graphite/workspace.json, which anyone who wrote the
+	// folder could have filled with any shell in any directory.
+	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "PowerShell 7", "C:\\Windows"},
+												 TerminalTabState{"{B}", "Command Prompt", kRoot}};
+
+	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), {}, Resolve, false);
+
+	CHECK(plan.Start.empty());
+	CHECK(plan.AlreadyOpen.empty());
+	CHECK(plan.UnknownProfiles.empty());
+}
+
+TEST_CASE("A folder in restricted mode opens no default terminal")
+{
+	CHECK_FALSE(OpensDefaultTerminal(std::nullopt, 0, false));
+	CHECK_FALSE(OpensDefaultTerminal(std::vector<TerminalTabState>{}, 0, false));
 }
 
 TEST_CASE("A folder whose only terminals were carried over stays absent")
@@ -251,28 +318,28 @@ TEST_CASE("A folder whose only terminals were carried over stays absent")
 	// Opened while another folder's shells were still up: no default shell opened, and the
 	// reader started none here. Writing [] would read back as "all closed on purpose", and the
 	// folder would open with no terminal from then on.
-	const bool keeps = KeepsTerminals(std::nullopt, OpensDefaultTerminal(std::nullopt, 1));
+	const bool keeps = KeepsTerminals(std::nullopt, OpensDefaultTerminal(std::nullopt, 1, true));
 	const std::vector<OpenTerminal> open = {OpenTerminal{"{A}", "PowerShell 7", kRoot, false, true}};
 
 	CHECK_FALSE(keeps);
-	CHECK(CaptureFolderTerminals(open, keeps) == std::nullopt);
+	CHECK(CaptureFolderTerminals(open, keeps, std::nullopt) == std::nullopt);
 }
 
 TEST_CASE("A folder whose only terminals were started by a command stays absent")
 {
 	const std::vector<OpenTerminal> open = {OpenTerminal{"{A}", "claude", kRoot, true, false}};
 
-	CHECK(CaptureFolderTerminals(open, KeepsTerminals(std::nullopt, false)) == std::nullopt);
+	CHECK(CaptureFolderTerminals(open, KeepsTerminals(std::nullopt, false), std::nullopt) == std::nullopt);
 }
 
 TEST_CASE("A folder whose own terminals were all closed is kept empty")
 {
 	// It opened its default shell, so it has had a terminal of its own; with that closed the
 	// list is empty rather than absent, and the next launch opens nothing.
-	const bool keeps = KeepsTerminals(std::nullopt, OpensDefaultTerminal(std::nullopt, 0));
+	const bool keeps = KeepsTerminals(std::nullopt, OpensDefaultTerminal(std::nullopt, 0, true));
 
 	CHECK(keeps);
-	CHECK(CaptureFolderTerminals({}, keeps) == std::vector<TerminalTabState>{});
+	CHECK(CaptureFolderTerminals({}, keeps, std::nullopt) == std::vector<TerminalTabState>{});
 }
 
 TEST_CASE("A folder with a restored list keeps it")
@@ -282,7 +349,52 @@ TEST_CASE("A folder with a restored list keeps it")
 
 	CHECK(KeepsTerminals(saved, false));
 	CHECK(KeepsTerminals(std::vector<TerminalTabState>{}, false));
-	CHECK(CaptureFolderTerminals(open, KeepsTerminals(saved, false)) == saved);
+	CHECK(CaptureFolderTerminals(open, KeepsTerminals(saved, false), std::nullopt) == saved);
+}
+
+TEST_CASE("A folder in restricted mode records its saved list unchanged although it started none of it")
+{
+	// Nothing started, so nothing is open to capture; writing that would read back as "every
+	// terminal closed on purpose", and the folder, once trusted, would reopen with none.
+	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "PowerShell 7", kRoot},
+												 TerminalTabState{"{B}", "Command Prompt", kRoot / "src"}};
+	const std::optional<std::vector<TerminalTabState>> heldBack = HeldBackTerminals(saved, false);
+
+	CHECK(heldBack == saved);
+	CHECK(CaptureFolderTerminals({}, KeepsTerminals(saved, false), heldBack) == saved);
+
+	// A terminal carried over from the folder before changes nothing either.
+	const std::vector<OpenTerminal> carried = {OpenTerminal{"{C}", "PowerShell 7", kRoot, false, true}};
+	CHECK(CaptureFolderTerminals(carried, KeepsTerminals(saved, false), heldBack) == saved);
+}
+
+TEST_CASE("A folder in restricted mode keeps an empty saved list empty and an absent one absent")
+{
+	const std::vector<TerminalTabState> empty;
+
+	CHECK(CaptureFolderTerminals({}, KeepsTerminals(empty, false), HeldBackTerminals(empty, false)) == empty);
+	CHECK(HeldBackTerminals(std::nullopt, false) == std::nullopt);
+	CHECK(CaptureFolderTerminals({}, KeepsTerminals(std::nullopt, false), HeldBackTerminals(std::nullopt, false)) ==
+		  std::nullopt);
+}
+
+TEST_CASE("A trusted folder holds nothing back")
+{
+	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "PowerShell 7", kRoot}};
+
+	CHECK(HeldBackTerminals(saved, true) == std::nullopt);
+	CHECK(HeldBackTerminals(std::nullopt, true) == std::nullopt);
+}
+
+TEST_CASE("A terminal started by hand in restricted mode records what is open instead")
+{
+	// Starting a shell drops what was held back (TerminalWindows::StartShell), so the capture
+	// is what is open, as in any other folder - closing it again leaves the list empty.
+	const std::vector<OpenTerminal> open = {OpenTerminal{"{N}", "Command Prompt", kRoot}};
+
+	CHECK(CaptureFolderTerminals(open, true, std::nullopt) ==
+		  std::vector<TerminalTabState>{TerminalTabState{"{N}", "Command Prompt", kRoot}});
+	CHECK(CaptureFolderTerminals({}, true, std::nullopt) == std::vector<TerminalTabState>{});
 }
 
 TEST_CASE("A terminal opened on a folder starts in it, and on a file in the file's folder")

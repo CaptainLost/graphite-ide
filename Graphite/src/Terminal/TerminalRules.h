@@ -71,7 +71,13 @@ namespace Graphite {
 	// the startup shell when the folder has a saved list; those are carried over instead. All of
 	// them are owned from here on. Returns whether any was adopted: the folder then has a
 	// terminal of its own, so its list is kept even if empty of anything else.
-	bool AdoptTerminals(std::vector<OpenTerminal>& open, bool folderHasSavedList);
+	//
+	// A folder in restricted mode (`trusted` false) adopts none of them - neither a shell the
+	// reader opened with no folder nor the startup shell. Adopting one would count as a shell
+	// started in the folder by hand, dropping the saved list HeldBackTerminals keeps and writing
+	// shells the folder never had into its .graphite/workspace.json. They are carried over
+	// instead, but stay nobody's: the next trusted folder opened may still adopt them.
+	bool AdoptTerminals(std::vector<OpenTerminal>& open, bool folderHasSavedList, bool trusted);
 
 	std::vector<TerminalTabState> CaptureTerminals(const std::vector<OpenTerminal>& open);
 
@@ -107,16 +113,22 @@ namespace Graphite {
 
 	// `resolveDirectory` turns a saved directory into the one to start in: itself when it still
 	// exists, the folder's root otherwise. Passed in so the rule can be tested without a disk.
+	//
+	// A folder in restricted mode (`trusted` false) plans nothing: its saved list comes from its
+	// own .graphite/workspace.json, so any shell in any directory could be named there, and a
+	// terminal it starts is one the reader never asked for. The reader starts one by hand.
 	TerminalRestorePlan PlanTerminalRestore(
 		const std::vector<TerminalTabState>& saved, const std::vector<Core::ShellProfile>& shells,
 		const std::vector<OpenTerminal>& open,
-		const std::function<std::filesystem::path(const std::filesystem::path&)>& resolveDirectory);
+		const std::function<std::filesystem::path(const std::filesystem::path&)>& resolveDirectory,
+		bool trusted);
 
 	// A folder that never kept terminals opens one, as the terminal always did; one that kept an
 	// empty list had them all closed on purpose. Either way, terminals already open - carried
-	// over from the folder before - are enough.
+	// over from the folder before - are enough. A folder in restricted mode opens none, for the
+	// reason PlanTerminalRestore gives.
 	bool OpensDefaultTerminal(const std::optional<std::vector<TerminalTabState>>& saved,
-							  std::size_t openCount);
+							  std::size_t openCount, bool trusted);
 
 	// Whether a folder just opened has a terminal list of its own to keep: one it saved before,
 	// even an empty one, or the default shell it has just opened. A folder opened while another
@@ -126,10 +138,21 @@ namespace Graphite {
 	// reader never closed one of its own.
 	bool KeepsTerminals(const std::optional<std::vector<TerminalTabState>>& saved, bool openedDefault);
 
-	// What a folder's state records of its terminals: absent while it keeps none, otherwise
-	// CaptureTerminals - which may well be empty.
-	std::optional<std::vector<TerminalTabState>> CaptureFolderTerminals(const std::vector<OpenTerminal>& open,
-																		bool keepsTerminals);
+	// The saved list a folder in restricted mode starts none of (`trusted` false), which its
+	// state goes on recording exactly as it was stored: nothing it names is open, and capturing
+	// what is would write an empty list - "every terminal closed on purpose" - so the folder,
+	// once trusted, would reopen with neither its terminals nor the default shell. Absent for a
+	// trusted folder, and for one that saved no list. Dropped once the reader starts a shell by
+	// hand in the folder: from then on its list is what is open, as in any other folder.
+	std::optional<std::vector<TerminalTabState>> HeldBackTerminals(
+		const std::optional<std::vector<TerminalTabState>>& saved, bool trusted);
+
+	// What a folder's state records of its terminals: the held-back list while there is one
+	// (HeldBackTerminals), otherwise absent while it keeps none, otherwise CaptureTerminals -
+	// which may well be empty.
+	std::optional<std::vector<TerminalTabState>> CaptureFolderTerminals(
+		const std::vector<OpenTerminal>& open, bool keepsTerminals,
+		const std::optional<std::vector<TerminalTabState>>& heldBack);
 
 	// Where a terminal opened on an Explorer entry starts: a folder is itself, a file is the
 	// folder it sits in.

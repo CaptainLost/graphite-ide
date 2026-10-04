@@ -88,24 +88,18 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "that stash no longer exists"};
 		}
 
-		// Whether applying a stash left conflicts. The index is re-read first: libgit2 keeps
-		// one per repository handle, and the apply wrote the file.
+		// Whether applying a stash left conflicts. The index is re-read first: the apply wrote
+		// the file.
 		Result<bool> HasConflicts(git_repository* handle)
 		{
-			IndexHandle index;
+			auto index = OpenFreshIndex(handle);
 
-			// Two statements: Out hands the index over only at the end of the full expression.
-			if (git_repository_index(Out(index), handle) != 0)
+			if (!index.HasValue())
 			{
-				return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+				return index.GetError();
 			}
 
-			if (git_index_read(index.get(), false) != 0)
-			{
-				return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
-			}
-
-			return git_index_has_conflicts(index.get()) != 0;
+			return git_index_has_conflicts(index.GetValue().get()) != 0;
 		}
 	}
 
@@ -129,6 +123,13 @@ namespace Core {
 		// ignored files inside it included, though the stash never took them. So the stash
 		// only records, and the tree is cleared by DiscardAll, which removes untracked files
 		// one by one and leaves ignored ones where they are.
+		// The stash commits the handle's cached index as the stash's index commit. libgit2's own
+		// check for changes reloads it first today, but that is not a promise it makes.
+		if (const auto refreshed = RefreshIndex(m_Handle.get()); !refreshed.HasValue())
+		{
+			return refreshed.GetError();
+		}
+
 		git_oid id{};
 		const std::uint32_t flags =
 			GIT_STASH_KEEP_ALL | (includeUntracked ? GIT_STASH_INCLUDE_UNTRACKED : GIT_STASH_DEFAULT);
@@ -191,6 +192,13 @@ namespace Core {
 			return index.GetError();
 		}
 
+		// git_stash_apply refuses over differences between HEAD and the cached index, and a
+		// stale one reports a clean tree as having uncommitted changes.
+		if (const auto refreshed = RefreshIndex(m_Handle.get()); !refreshed.HasValue())
+		{
+			return refreshed.GetError();
+		}
+
 		git_stash_apply_options options = GIT_STASH_APPLY_OPTIONS_INIT;
 		options.flags = GIT_STASH_APPLY_REINSTATE_INDEX;
 
@@ -229,6 +237,13 @@ namespace Core {
 		if (!index.HasValue())
 		{
 			return index.GetError();
+		}
+
+		// git_stash_apply refuses over differences between HEAD and the cached index, and a
+		// stale one reports a clean tree as having uncommitted changes.
+		if (const auto refreshed = RefreshIndex(m_Handle.get()); !refreshed.HasValue())
+		{
+			return refreshed.GetError();
 		}
 
 		git_stash_apply_options options = GIT_STASH_APPLY_OPTIONS_INIT;

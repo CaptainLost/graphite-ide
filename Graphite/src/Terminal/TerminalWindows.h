@@ -109,7 +109,8 @@ namespace Graphite {
 
 		// The shells, as the next launch of this folder starts them again. Absent until the folder
 		// has had a terminal of its own (KeepsTerminals): one carried over from the folder before,
-		// or started by a command, does not make the folder's list empty.
+		// or started by a command, does not make the folder's list empty. A folder in restricted
+		// mode writes back the list it started none of until the reader starts a shell in it.
 		std::optional<std::vector<TerminalTabState>> CaptureState() const;
 
 		// Marks every open terminal as carried over from the folder about to be replaced or
@@ -118,8 +119,10 @@ namespace Graphite {
 
 		// Starts what CaptureState returned last time for the folder being opened, each window
 		// going back to the place imgui.ini remembers. Absent state opens one default shell when
-		// nothing is open (OpensDefaultTerminal).
-		void RestoreState(const std::optional<std::vector<TerminalTabState>>& saved);
+		// nothing is open (OpensDefaultTerminal). A folder in restricted mode starts nothing at
+		// all, and trusting it later starts nothing either: the reader opens a shell by hand.
+		// Shells nobody owned become the folder's first (AdoptTerminals), except in restricted mode.
+		void RestoreState(const std::optional<std::vector<TerminalTabState>>& saved, bool trusted);
 
 		// View > Reset Layout: every terminal docks again by the rule a new one follows, as the
 		// panels do into the rebuilt layout, instead of being left floating where the removed
@@ -191,6 +194,11 @@ namespace Graphite {
 		// Whether the open folder has had a terminal of its own, so CaptureState writes a list -
 		// see KeepsTerminals. Set by RestoreState for each folder, and by starting a shell in one.
 		bool m_KeepsTerminals = false;
+
+		// The saved list a folder in restricted mode started none of, which CaptureState writes
+		// back unchanged until the reader starts a shell there - see HeldBackTerminals. Set by
+		// RestoreState for each folder.
+		std::optional<std::vector<TerminalTabState>> m_HeldBack;
 
 		// A layout reset was asked for and its rebuild has not been drawn yet.
 		bool m_RedockPending = false;

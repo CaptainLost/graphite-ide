@@ -36,13 +36,15 @@ answer.
   not wipe the list.
 - Do not ask when a folder is opened. An unknown folder opens in restricted
   mode. A bar above the editor area offers "Trust Folder" and "Trust All in
-  <parent>", the second absent when the parent is a drive root. File menu >
-  Trust This Folder toggles the same entry and is checked and disabled when the
-  folder is trusted through a parent. Settings > Trusted Folders lists every
-  entry with a Remove button.
-- In restricted mode editing, browsing, search, Git, the terminal and Claude
-  sessions work as before. The language server and the background analysis do
-  not start, and the status bar's server slot says "Restricted mode". When a
+  <parent>", the second absent when the parent is a drive root. "Trust All in
+  <parent>" opens a confirmation that names the parent path and says that every
+  folder under it will run the language server and the analysis; only the
+  confirmation trusts it. File menu > Trust This Folder toggles the same entry
+  and is checked and disabled when the folder is trusted through a parent.
+  Settings > Trusted Folders lists every entry with a Remove button.
+- In restricted mode editing, browsing, search, Git and Claude sessions work
+  as before. The language server and the background analysis do not start, and
+  the status bar's server slot says "Restricted mode". When a
   document's own server is restricted, the detail names that server's root,
   since it can lie above the open folder or be another folder altogether.
 - Gate the language server in `LanguageServices`, not in its callers. It takes
@@ -75,6 +77,22 @@ answer.
   `WorkspaceAnalysisCoordinator` reacts to the edge. Falling: `Revalidate()`,
   cancel the walk, clear its queue, detach the store. Rising: `WarmUp`, and
   attach the store and start the walk if the setting is on.
+- Restore less of the folder's own `.graphite/workspace.json` in restricted
+  mode, since that file is repository content and can name anything. It is
+  filtered by `RestorableState` before the windows see it, once, when the
+  folder opens. A document tab restores only when its path is lexically the
+  folder or inside it, and the active tab is dropped when its path is not. A
+  diff restores only when its path is relative and has no root and no `..`
+  element: it is relative to the repository's working directory, which may
+  lie above the folder, so the folder cannot be what it is judged against.
+  No terminal starts on its own, neither the saved ones nor the default one
+  (`PlanTerminalRestore` returns an empty plan and `OpensDefaultTerminal` is
+  false). The saved list is written back as stored (`HeldBackTerminals`), so
+  the folder keeps its terminals for when it is trusted. A terminal the user
+  starts by hand, from View > New Terminal or the like, works, and from then
+  on what is open is saved. Trust is read once at that moment: trusting the folder later in
+  the session restores and starts nothing that was held back. A trusted
+  folder restores as before, tabs outside it included.
 - Build, run and debug must ask `WorkspaceTrust` before they start anything,
   and refuse for a folder it does not trust.
 
@@ -92,10 +110,18 @@ frictionless and keeps the choice visible and reversible.
 ### Positive
 
 - Opening a cloned repository starts no process that reads the repository's
-  configuration, and writes no index or analysis output into it. Graphite's own
-  view state in `.graphite/workspace.json` and in-process Git reads continue.
-  Later stages have one place to ask.
-- Trusting and revoking act at once, with no restart and no reopening of tabs.
+  configuration, and writes no index or analysis output into it. Browsing,
+  in-process Git reads and the tabs inside the folder continue. Later stages
+  have one place to ask.
+- The folder's own `.graphite/workspace.json` can no longer open files outside
+  the folder or start a shell, such as WSL or Git Bash, that nobody asked for.
+  Containment is lexical, so a junction or symlink inside the folder can still
+  lead out of it, and a repository's own configuration can point its working
+  directory elsewhere (`core.worktree`), against which diffs are read. Both only
+  display content locally, and Git is not gated in restricted mode.
+- Trusting and revoking start and stop the language server and the analysis at
+  once, with no restart. Trust granted mid-session does not bring back what
+  restricted mode held back at restore.
 - Trust is granted by the user's action in the interface, never by the contents
   of the folder being opened.
 
@@ -117,14 +143,21 @@ frictionless and keeps the choice visible and reversible.
   every folder until the user trusts them again.
 - A build older than the file's version leaves it alone, so trust granted in
   that build is lost when the list is next written by a newer one.
+- A restricted session drops the tabs outside the folder, and the diffs, it
+  skipped from `workspace.json` at its next save, about two seconds after the
+  folder opens, so a folder trusted later opens without them. Its saved
+  terminals are kept as stored, unless the user starts a terminal by hand in
+  that session; then what is open is saved, as in a trusted folder.
+- Trusting a folder during a session does not bring back what restricted mode
+  held back; the user reopens it, or reopens the folder.
 
 ### Neutral
 
 - The list sits beside the other machine-local state and apart from
   `graphite.json`, so preferences can be copied between machines without
   carrying trust.
-- The terminal and Claude sessions are not gated: both start only on the
-  user's command.
+- Claude sessions are not gated. A terminal is gated only at restore: none
+  starts on its own in restricted mode, and one started by hand works.
 - There is no way yet to trust a single file's root from the interface when no
   folder is open. Such a file gets a server only when its root - its project,
   or its own directory - already lies under a trusted entry; otherwise its
