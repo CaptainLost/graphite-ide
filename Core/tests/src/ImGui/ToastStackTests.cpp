@@ -226,3 +226,43 @@ TEST_CASE("Clear drops every toast and leaves nothing to wait for")
 	CHECK(stack.Get().empty());
 	CHECK_FALSE(stack.NextChange(kStart + 1s).has_value());
 }
+
+TEST_CASE("Clearing a group drops only that group's toasts and keeps the rest as they were")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Error, "Commit failed", "locked", kStart, {}, 1);
+	stack.Show(Core::ToastKind::Error, "Theme failed", "bad file", kStart, {}, 0);
+	stack.Show(Core::ToastKind::Warning, "Push failed", "rejected", kStart, {}, 1);
+
+	stack.Clear(1);
+
+	REQUIRE(stack.Get().size() == 1);
+	CHECK(stack.Get()[0].Title == "Theme failed");
+	CHECK(stack.Get()[0].Group == 0);
+	CHECK(stack.Get()[0].Count == 1);
+}
+
+TEST_CASE("A toast shown with no group is in group zero")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Error, "Title", "e", kStart);
+
+	REQUIRE(stack.Get().size() == 1);
+	CHECK(stack.Get()[0].Group == 0);
+}
+
+TEST_CASE("The same message in another group is a toast of its own")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Error, "Save failed", "access denied", kStart, {}, 0);
+	stack.Show(Core::ToastKind::Error, "Save failed", "access denied", kStart, {}, 1);
+
+	REQUIRE(stack.Get().size() == 2);
+	CHECK(stack.Get()[0].Count == 1);
+	CHECK(stack.Get()[1].Count == 1);
+
+	// The merge still applies within a group.
+	stack.Show(Core::ToastKind::Error, "Save failed", "access denied", kStart + 1s, {}, 1);
+	REQUIRE(stack.Get().size() == 2);
+	CHECK(stack.Get()[1].Count == 2);
+}

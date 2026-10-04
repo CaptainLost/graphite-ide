@@ -20,11 +20,11 @@ namespace Core {
 	}
 
 	void ToastStack::Show(ToastKind kind, std::string title, std::string message, Clock::time_point now,
-						  std::string copyText)
+						  std::string copyText, std::uint32_t group)
 	{
 		const auto twin = std::ranges::find_if(m_Toasts, [&](const Toast& toast) {
 			return !toast.LeavingSince.has_value() && toast.Kind == kind && toast.Title == title &&
-				   toast.Message == message;
+				   toast.Message == message && toast.Group == group;
 		});
 
 		if (twin != m_Toasts.end())
@@ -47,11 +47,17 @@ namespace Core {
 		toast.Title = std::move(title);
 		toast.Message = std::move(message);
 		toast.CopyText = std::move(copyText);
+		toast.Group = group;
 		toast.Shown = now;
 		toast.Left = kLifetime;
 		toast.CountingFrom = now;
 
 		m_Toasts.push_back(std::move(toast));
+	}
+
+	void ToastStack::Clear(std::uint32_t group)
+	{
+		std::erase_if(m_Toasts, [group](const Toast& toast) { return toast.Group == group; });
 	}
 
 	void ToastStack::SetHovered(std::uint64_t id, bool hovered, Clock::time_point now)

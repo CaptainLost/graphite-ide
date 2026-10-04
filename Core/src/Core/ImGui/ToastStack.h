@@ -31,6 +31,10 @@ namespace Core {
 		// repository - so the copy still carries the whole of what happened.
 		std::string CopyText;
 
+		// A tag the owner gives the toast so it can later clear the toasts about one thing
+		// without the others; Core never reads it. 0 unless Show was given one.
+		std::uint32_t Group = 0;
+
 		// How many times this message was shown while the toast was up; drawn as "x2" past one.
 		int Count = 1;
 
@@ -58,12 +62,13 @@ namespace Core {
 		static constexpr Clock::duration kEnter = std::chrono::milliseconds(150);
 		static constexpr Clock::duration kLeave = std::chrono::milliseconds(150);
 
-		// A message identical in kind, title and text to a toast still up, and not leaving, is
-		// not a new toast: that one counts it and starts its countdown afresh. Two clicks on the
-		// same failing action would otherwise stack two copies of the same words. The title
-		// takes part because the same words from two different actions are two reports.
+		// A message identical in kind, title, text and group to a toast still up, and not
+		// leaving, is not a new toast: that one counts it and starts its countdown afresh. Two
+		// clicks on the same failing action would otherwise stack two copies of the same words.
+		// The title takes part because the same words from two different actions are two
+		// reports; the group because a twin in another group would be cleared with the wrong one.
 		void Show(ToastKind kind, std::string title, std::string message, Clock::time_point now,
-				  std::string copyText = {});
+				  std::string copyText = {}, std::uint32_t group = 0);
 
 		// Called every frame for every toast drawn; only a change of state does anything.
 		void SetHovered(std::uint64_t id, bool hovered, Clock::time_point now);
@@ -77,6 +82,9 @@ namespace Core {
 		// Drops every toast at once, with no fade: what they reported belongs to something that
 		// is gone, such as the folder a failed git write was made in.
 		void Clear() { m_Toasts.clear(); }
+
+		// The same, for the toasts shown in `group` only; the others are left as they were.
+		void Clear(std::uint32_t group);
 
 		const std::vector<Toast>& Get() const { return m_Toasts; }
 

@@ -342,3 +342,18 @@ TEST_CASE("A toast drawn with a bold face for its quoted names and a path comple
 
 	CHECK(toasts.GetStack().Get().size() == 2);
 }
+
+TEST_CASE("Toasts::Clear with a group drops only the toasts shown in that group")
+{
+	Core::Toasts toasts;
+	toasts.Show(Core::ToastKind::Error, "Checkout failed", "locked", {}, 1);
+	toasts.Show(Core::ToastKind::Success, "Copied", "path: a.cpp");
+
+	toasts.Clear(1);
+
+	REQUIRE(toasts.GetStack().Get().size() == 1);
+	CHECK(toasts.GetStack().Get()[0].Title == "Copied");
+
+	toasts.Clear();
+	CHECK(toasts.GetStack().Get().empty());
+}

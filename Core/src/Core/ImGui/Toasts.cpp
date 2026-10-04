@@ -179,9 +179,10 @@ namespace Core {
 		}
 	}
 
-	void Toasts::Show(ToastKind kind, std::string title, std::string message, std::string copyText)
+	void Toasts::Show(ToastKind kind, std::string title, std::string message, std::string copyText,
+					  std::uint32_t group)
 	{
-		m_Stack.Show(kind, std::move(title), std::move(message), ToastClock::now(), std::move(copyText));
+		m_Stack.Show(kind, std::move(title), std::move(message), ToastClock::now(), std::move(copyText), group);
 	}
 
 	void Toasts::Render(const ToastPalette& palette)
