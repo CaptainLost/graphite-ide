@@ -29,7 +29,7 @@ namespace Core {
 		// How many times this message was shown while the toast was up; drawn as "x2" past one.
 		int Count = 1;
 
-		// Start of the slide in.
+		// Start of the fade in.
 		ToastClock::time_point Shown;
 
 		// Set once the toast starts to fade; it is removed kLeave after this.
@@ -50,8 +50,8 @@ namespace Core {
 		using Clock = ToastClock;
 
 		static constexpr Clock::duration kLifetime = std::chrono::seconds(6);
-		static constexpr Clock::duration kEnter = std::chrono::milliseconds(300);
-		static constexpr Clock::duration kLeave = std::chrono::milliseconds(300);
+		static constexpr Clock::duration kEnter = std::chrono::milliseconds(150);
+		static constexpr Clock::duration kLeave = std::chrono::milliseconds(150);
 
 		// A message identical in kind, title and text to a toast still up, and not leaving, is
 		// not a new toast: that one counts it and starts its countdown afresh. Two clicks on the

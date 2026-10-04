@@ -147,7 +147,7 @@ TEST_CASE("The next change is the end of an animation or else the earliest expir
 	CHECK_FALSE(stack.NextChange(kStart).has_value());
 
 	stack.Show(Core::ToastKind::Warning, "Title", "w", kStart);
-	// Entering: the renderer wants every frame until the slide ends.
+	// Entering: the renderer wants every frame until the fade-in ends.
 	CHECK(stack.NextChange(kStart) == kStart);
 
 	stack.Update(kStart + 1s);

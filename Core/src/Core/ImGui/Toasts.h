@@ -7,6 +7,7 @@
 #include <functional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 
 namespace Core {
 
@@ -14,7 +15,12 @@ namespace Core {
 	struct ToastPalette
 	{
 		Color Surface;
+		Color Border;
 		Color Text;
+
+		// The count after the title, a step quieter than the text.
+		Color TextDim;
+
 		Color Success;
 		Color Warning;
 		Color Error;
@@ -49,5 +55,10 @@ namespace Core {
 		// handed back once the button is up; 0 for none. An ImGuiID, kept as its integer so
 		// this header needs no ImGui.
 		std::uint32_t m_FocusBeforeToasts = 0;
+
+		// Each toast's resting y as of the last frame, by id. A toast missing here is new, and
+		// its tween starts where it rests instead of sliding in from wherever an old tween left
+		// off; one present hands its old place to the tween as the start of a move.
+		std::unordered_map<std::uint64_t, float> m_RestingY;
 	};
 }
