@@ -47,6 +47,9 @@ All of these run as writes on the model's existing queue, with the same ordering
 in-flight flag, error line and refresh as the Changes panel's writes. The Git
 panel shows the write error the same way the Changes panel does.
 
+Amended by [0557](0557-report-a-failed-action-in-a-toast-rather-than-in-the-panel-that-issued-it.md):
+the Git panel no longer shows the write error; it is reported in a toast.
+
 ## Rationale
 
 A row is the thing the action applies to, and a right-click menu is the place a

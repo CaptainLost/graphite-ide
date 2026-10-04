@@ -586,4 +586,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0554](0554-refuse-a-commit-that-records-head-s-tree-unless-it-amends-or-concludes-a-merge.md) | Refuse a commit that records HEAD's tree unless it amends or concludes a merge | proposed | 2026-10-04 |
 | [0555](0555-share-one-text-selection-model-across-views-that-show-text.md) | Share one text selection model across views that show text | proposed | 2026-10-04 |
 | [0556](0556-show-git-status-in-the-file-tree-solution-view-and-editor-tabs.md) | Show git status in the file tree, solution view and editor tabs | proposed | 2026-10-04 |
+| [0557](0557-report-a-failed-action-in-a-toast-rather-than-in-the-panel-that-issued-it.md) | Report a failed action in a toast rather than in the panel that issued it | proposed | 2026-10-04 |
 <!-- /adr-index -->

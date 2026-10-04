@@ -58,6 +58,10 @@ write is the direct answer to a click, so it belongs to the panel that issued
 it, not to the list of refresh failures. `TakeCommitted()` hands back a
 successful commit's `Oid` once and forgets it.
 
+Amended by [0557](0557-report-a-failed-action-in-a-toast-rather-than-in-the-panel-that-issued-it.md):
+failures are now queued and handed out once through `TakeWriteError()`, and
+reported in a toast rather than in the panel.
+
 ## Rationale
 
 **Why one model.** The argument for a second model — that `GitModel` is already

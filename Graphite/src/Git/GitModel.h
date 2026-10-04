@@ -363,7 +363,7 @@ namespace Graphite {
 
 		// Kept apart from GetLastError(): a write is the direct answer to a click, and a
 		// refresh succeeding must never clear it. Queued and handed out once each, oldest
-		// first, to whoever reports them to the user (ADR <new>), so a failure is reported
+		// first, to whoever reports them to the user (ADR 0557), so a failure is reported
 		// whether or not a git panel is open, and a later write succeeding does not erase it.
 		std::optional<Core::Error> TakeWriteError();
 
