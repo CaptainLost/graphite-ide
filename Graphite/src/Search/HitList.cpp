@@ -84,8 +84,11 @@ namespace Graphite {
 						input.Selected = HitSelection{group.Id, static_cast<std::size_t>(row)};
 
 						// Single click previews, double click opens. That is the whole point:
-						// arrow through fifty hits without leaving fifty tabs behind.
-						if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+						// arrow through fifty hits without leaving fifty tabs behind. Enter on
+						// the row the arrows reached opens it too, as it does in Problems and
+						// the file tree.
+						if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) ||
+							ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter))
 						{
 							input.OnOpen(hit);
 						}
