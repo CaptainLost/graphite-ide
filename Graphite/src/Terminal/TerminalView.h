@@ -64,8 +64,15 @@ namespace Graphite {
 		bool DrawContextMenu();
 
 		// The same actions the keyboard reaches, named once so the menu and the key are one
-		// behaviour rather than two that agree today.
-		void Copy();
+		// behaviour rather than two that agree today. The one difference: the menu's Copy is
+		// confirmed with a toast and the key's is not, as in the editor.
+		enum class CopyConfirm
+		{
+			Silent,
+			Toast
+		};
+
+		void Copy(CopyConfirm confirm);
 		void PasteFromClipboard();
 		void Clear();
 

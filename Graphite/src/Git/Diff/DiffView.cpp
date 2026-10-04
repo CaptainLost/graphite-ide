@@ -455,8 +455,9 @@ namespace Graphite {
 
 		const Core::SelectionGestureResult result = m_Gesture.Update(m_Selection, source, options);
 
-		// The gesture has already put the text on the clipboard; the owner only confirms it.
-		if (result.Copied && OnCopied)
+		// The gesture has already put the text on the clipboard; the owner only confirms it,
+		// and only for the menu's Copy - Ctrl+C goes unremarked, as it does in the editor.
+		if (result.Copied && result.FromMenu && OnCopied)
 		{
 			OnCopied(result.CopiedText);
 		}

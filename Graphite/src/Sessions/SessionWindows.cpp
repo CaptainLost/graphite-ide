@@ -506,7 +506,8 @@ namespace Graphite {
 				{
 					views.Requests.Draw(
 						views.Timeline, views.Data,
-						ConversationContext{m_Settings.GetPricing(), views.Subagents, palette, views.SubagentsVersion});
+						ConversationContext{m_Settings.GetPricing(), views.Subagents, palette, views.SubagentsVersion},
+						m_Events);
 				}
 				else
 				{

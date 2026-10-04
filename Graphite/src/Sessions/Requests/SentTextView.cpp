@@ -5,6 +5,7 @@
 #include "Core/Base/Narrow.h"
 
 #include "Core/ImGui/ImGuiRenderer.h"
+#include "Editor/StatusBar/ClipboardCopy.h"
 #include "Sessions/Requests/RequestRow.h"
 #include "Sessions/SessionDrawing.h"
 #include "Sessions/SessionText.h"
@@ -109,7 +110,7 @@ namespace Graphite {
 
 	std::optional<std::size_t> SentTextView::Draw(const ApiRequest& request, std::uint64_t version,
 												  std::optional<std::size_t> selected, std::optional<std::size_t> hovered,
-												  const SessionPalette& palette)
+												  const SessionPalette& palette, Core::EventBus& events)
 	{
 		ImFont* mono = Core::ImGuiRenderer::GetMonoFont();
 		const float fontSize = ImGui::GetFontSize();
@@ -255,12 +256,12 @@ namespace Graphite {
 
 			if (ImGui::MenuItem("Copy this item", nullptr, false, haveItem))
 			{
-				ImGui::SetClipboardText(std::string{SegmentText(request, *m_MenuSegment)}.c_str());
+				CopyToClipboard(events, "item", std::string{SegmentText(request, *m_MenuSegment)});
 			}
 
 			if (ImGui::MenuItem("Copy all"))
 			{
-				ImGui::SetClipboardText(AllSegmentText(request).c_str());
+				CopyToClipboard(events, "request text", AllSegmentText(request));
 			}
 
 			ImGui::EndPopup();

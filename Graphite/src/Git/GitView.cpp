@@ -15,6 +15,7 @@
 #include "Git/RelativePaths.h"
 #include "UI/HighlightedRow.h"
 #include "UI/SplitResults.h"
+#include "UI/ToastEvent.h"
 #include "Workspace/Workspace.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -42,12 +43,16 @@ namespace Graphite {
 		}
 
 		// An error toast whose paths inside the repository read relative to it, while Copy
-		// keeps the message whole.
-		void ShowFailure(Core::Toasts& toasts, std::string title, const std::string& message,
+		// keeps the message whole. About the open repository, so it goes when the folder does.
+		void ShowFailure(Core::EventBus& events, std::string title, const std::string& message,
 						 const std::filesystem::path& root)
 		{
 			std::string copied = title + "\n" + message;
-			toasts.Show(Core::ToastKind::Error, std::move(title), RelativiseUnder(message, root), std::move(copied));
+			events.Publish(ToastEvent{.Kind = Core::ToastKind::Error,
+									  .Title = std::move(title),
+									  .Message = RelativiseUnder(message, root),
+									  .CopyText = std::move(copied),
+									  .Scope = ToastScope::Folder});
 		}
 	}
 
@@ -67,9 +72,9 @@ namespace Graphite {
 	}
 
 	GitView::GitView(GitModel& model, const ActiveScheme& scheme, DiffWindows& diffWindows, ModalGate& modals,
-					 EditorBuffers& buffers, Core::Toasts& toasts)
+					 EditorBuffers& buffers, Core::EventBus& events)
 		: Core::Panel("git", "Git", "git", ICON_MDI_SOURCE_BRANCH, false), m_Model(model), m_Scheme(scheme),
-		  m_DiffWindows(diffWindows), m_Buffers(buffers), m_Toasts(toasts), m_DetachQuestion(modals, "###GitDetach"),
+		  m_DiffWindows(diffWindows), m_Buffers(buffers), m_Events(events), m_DetachQuestion(modals, "###GitDetach"),
 		  m_CheckoutQuestion(modals, "###GitCheckout"),
 		  m_NewBranchQuestion(modals, "###GitNewBranch"), m_RenameBranchQuestion(modals, "###GitRenameBranch"),
 		  m_DeleteBranchQuestion(modals, "###GitDeleteBranch"), m_DropStashQuestion(modals, "###GitDropStash")
@@ -105,7 +110,7 @@ namespace Graphite {
 				{
 					// The branch stays in the message: the check's failures do not name it, and
 					// an error toast stays until it is closed, long after the click.
-					ShowFailure(m_Toasts, "Delete branch failed", check->Branch + ": " + check->Failure->Message,
+					ShowFailure(m_Events, "Delete branch failed", check->Branch + ": " + check->Failure->Message,
 								m_Model.GetWorkingDirectory());
 				}
 				else
@@ -244,7 +249,7 @@ namespace Graphite {
 		if (answer.Failure.has_value() || !answer.Plan.has_value())
 		{
 			// The target stays in the message: the title says only that a checkout failed.
-			ShowFailure(m_Toasts, "Checkout failed",
+			ShowFailure(m_Events, "Checkout failed",
 						label + ": " + (answer.Failure.has_value() ? answer.Failure->Message : std::string("no plan")),
 						m_Model.GetWorkingDirectory());
 			return;
@@ -332,15 +337,7 @@ namespace Graphite {
 			break;
 		}
 		case CommitAction::Kind::Copy:
-			if (m_Events != nullptr)
-			{
-				CopyToClipboard(*m_Events, action->What, action->Text);
-			}
-			else
-			{
-				ImGui::SetClipboardText(action->Text.c_str());
-			}
-
+			CopyToClipboard(m_Events, action->What, action->Text);
 			break;
 		case CommitAction::Kind::NewBranch:
 			BeginNewBranch(action->Commit.ShortHex(), action->Commit);
@@ -350,12 +347,11 @@ namespace Graphite {
 
 	void GitView::SubscribeTo(Core::EventBus& events)
 	{
-		m_Events = &events;
-
 		// Bound once: unlike the callbacks RenderDiff reassigns, this captures nothing about
-		// what is selected. The gesture has set the clipboard already, so only the bar is told.
+		// what is selected. The gesture has set the clipboard already, so only the copy is
+		// confirmed.
 		m_Diff.OnCopied = [this](std::string_view text) {
-			ReportCopied(*m_Events, "selection", text);
+			ReportCopied(m_Events, "selection", text);
 		};
 
 		// GitModel::Clear() drops the log on both events, and nothing else re-requests it,

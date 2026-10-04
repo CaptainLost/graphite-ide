@@ -521,7 +521,7 @@ namespace Graphite {
 		// nothing is selected, so it is not the one to advertise. Ctrl+V pastes too.
 		if (ImGui::MenuItem("Copy", "Ctrl+Shift+C", false, HasSelection()))
 		{
-			Copy();
+			Copy(CopyConfirm::Toast);
 		}
 
 		// No chord beside it: Ctrl+A is the shell's, which moves to the start of the line.
@@ -555,7 +555,7 @@ namespace Graphite {
 		return close;
 	}
 
-	void TerminalView::Copy()
+	void TerminalView::Copy(CopyConfirm confirm)
 	{
 		if (!HasSelection())
 		{
@@ -564,7 +564,14 @@ namespace Graphite {
 
 		if (const std::string selected = CopySelection(); !selected.empty())
 		{
-			CopyToClipboard(m_Events, "selection", selected);
+			if (confirm == CopyConfirm::Toast)
+			{
+				CopyToClipboard(m_Events, "selection", selected);
+			}
+			else
+			{
+				ImGui::SetClipboardText(selected.c_str());
+			}
 		}
 
 		// Cleared once copied, so the next Ctrl+C is the interrupt again (ADR 0546).
@@ -856,7 +863,7 @@ namespace Graphite {
 			switch (ClassifyTerminalShortcut(*code, held, HasSelection()))
 			{
 			case TerminalShortcut::Copy:
-				Copy();
+				Copy(CopyConfirm::Silent);
 				continue;
 			case TerminalShortcut::Paste:
 				PasteFromClipboard();

@@ -1,6 +1,6 @@
 #include "Editor/StatusBar/ClipboardCopy.h"
 
-#include "Editor/StatusBar/StatusMessageEvent.h"
+#include "UI/ToastEvent.h"
 
 #include "Core/Events/EventBus.h"
 
@@ -20,7 +20,7 @@ namespace Graphite {
 		}
 	}
 
-	std::string CopiedMessage(std::string_view what, std::string_view text)
+	std::string CopiedSummary(std::string_view what, std::string_view text)
 	{
 		const std::size_t lineEnd = text.find_first_of("\r\n");
 		std::string_view shown = text.substr(0, lineEnd);
@@ -40,8 +40,7 @@ namespace Graphite {
 			cut = true;
 		}
 
-		std::string message = "Copied ";
-		message += what;
+		std::string message(what);
 
 		if (!shown.empty())
 		{
@@ -65,6 +64,9 @@ namespace Graphite {
 
 	void ReportCopied(Core::EventBus& events, std::string_view what, std::string_view text)
 	{
-		events.Publish(StatusMessageEvent{CopiedMessage(what, text)});
+		events.Publish(ToastEvent{.Kind = Core::ToastKind::Success,
+								  .Title = "Copied",
+								  .Message = CopiedSummary(what, text),
+								  .Scope = ToastScope::Application});
 	}
 }

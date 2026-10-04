@@ -67,6 +67,7 @@
 #include "Settings/TrustSection.h"
 #include "UI/DialogLayout.h"
 #include "UI/RestrictedModeBar.h"
+#include "UI/ToastEvent.h"
 #include "Workspace/WorkspaceTrust.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -147,10 +148,14 @@ namespace Graphite {
 			ReportCopied(m_Events, "selection", text);
 		};
 
+		m_DocumentWindows.OnCopied = [this](std::string_view what, std::string_view text) {
+			ReportCopied(m_Events, what, text);
+		};
+
 		m_Toasts.OnCopied = [this](std::string_view text) { CopyToClipboard(m_Events, "message", std::string(text)); };
 
 		auto* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_DiffWindows, m_Modals,
-																m_DocumentBuffers, m_Toasts));
+																m_DocumentBuffers, m_Events));
 		gitView->SubscribeTo(m_Events);
 
 		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_Documents,
@@ -448,8 +453,9 @@ namespace Graphite {
 			m_DocumentWindows.ClearExpectedWrites();
 
 			// A failure reported for the folder this drop replaced is about a folder no longer
-			// open; an error toast would otherwise stay until closed by hand.
-			m_Toasts.Clear();
+			// open; an error toast would otherwise stay until closed by hand. Only the folder's:
+			// a toast about the application still applies.
+			m_Toasts.Clear(ToastGroupOf(ToastScope::Folder));
 		});
 
 		m_Events.Subscribe<OpenFileRequested>([this](const OpenFileRequested& event) {
@@ -467,6 +473,12 @@ namespace Graphite {
 		// transient slot is where the bar reads it from.
 		m_Events.Subscribe<StatusMessageEvent>([this](const StatusMessageEvent& event) {
 			m_DocumentWindows.SetTransientMessage(event.Text);
+		});
+
+		// And raise a toast the same way, so no feature holds the toasts themselves. The scope
+		// becomes the toast's group, which the folder handlers above and below clear by.
+		m_Events.Subscribe<ToastEvent>([this](const ToastEvent& event) {
+			m_Toasts.Show(event.Kind, event.Title, event.Message, event.CopyText, ToastGroupOf(event.Scope));
 		});
 
 		m_Events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) {
@@ -498,8 +510,9 @@ namespace Graphite {
 			m_DocumentWindows.ClearExpectedWrites();
 
 			// An error toast never expires, so one about a git write in this folder would
-			// outlive it. GitModel drops the failures nobody took yet on the same event.
-			m_Toasts.Clear();
+			// outlive it. GitModel drops the failures nobody took yet on the same event. Only
+			// the folder's toasts go; one about the application outlives the folder.
+			m_Toasts.Clear(ToastGroupOf(ToastScope::Folder));
 		});
 
 		m_Events.Subscribe<WorkspaceRootMovedEvent>([this](const WorkspaceRootMovedEvent& event) {
@@ -934,7 +947,9 @@ namespace Graphite {
 			std::string shown = RelativiseUnder(failure->Error.Message, m_Git.GetWorkingDirectory());
 			std::string copied = title + "\n" + failure->Error.Message;
 
-			m_Toasts.Show(Core::ToastKind::Error, std::move(title), std::move(shown), std::move(copied));
+			// About the open repository, so the folder's close or replacement clears it.
+			m_Toasts.Show(Core::ToastKind::Error, std::move(title), std::move(shown), std::move(copied),
+						  ToastGroupOf(ToastScope::Folder));
 		}
 
 		// Last of what draws, so the toasts sit over every panel and terminal.

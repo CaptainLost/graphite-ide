@@ -74,8 +74,9 @@ namespace Graphite {
 		// the same gesture.
 		std::function<void()> OnClose;
 
-		// Called with the text a Ctrl+C or the menu's Copy has already put on the clipboard,
-		// for the owner to confirm in the status bar. The view itself reaches no event bus.
+		// Called with the text the menu's Copy has already put on the clipboard, for the owner
+		// to confirm with a toast; not for Ctrl+C, which is not confirmed. The view itself
+		// reaches no event bus.
 		std::function<void(std::string_view)> OnCopied;
 
 	private:

@@ -136,7 +136,7 @@ namespace Graphite {
 		// not copied with the rest.
 		if (ImGui::Button("Copy all"))
 		{
-			ImGui::SetClipboardText(JoinEntries(m_Shown).c_str());
+			CopyToClipboard(m_Events, "console output", JoinEntries(m_Shown));
 		}
 
 		ImGui::SameLine();
@@ -282,9 +282,10 @@ namespace Graphite {
 
 		const Core::SelectionGestureResult result = m_Gesture.Update(m_Selection, source, options);
 
-		if (result.Copied)
+		// The gesture has set the clipboard already; only the menu's Copy is confirmed, Ctrl+C
+		// goes unremarked as it does in the editor.
+		if (result.Copied && result.FromMenu)
 		{
-			// The gesture has set the clipboard already; only the status bar is told.
 			ReportCopied(m_Events, "selection", result.CopiedText);
 		}
 	}

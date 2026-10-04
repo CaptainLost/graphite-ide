@@ -37,10 +37,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <map>
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -196,6 +198,11 @@ namespace Graphite {
 		// expectation registered against one repository has no business claiming a path in
 		// whatever folder opens next.
 		void ClearExpectedWrites() { m_ExpectedWrites.Clear(); }
+
+		// Confirms a tab menu's Copy Path, Copy Relative Path or Copy File Name once the text is
+		// on the clipboard; `what` names what was copied. GraphiteLayer sets it to ReportCopied,
+		// which this class has no event bus to call itself. Unset, the copy goes unconfirmed.
+		std::function<void(std::string_view what, std::string_view text)> OnCopied;
 
 	private:
 		// Everything the reference-count rows need for one document. LensModel alone is not

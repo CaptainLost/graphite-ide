@@ -10,7 +10,6 @@
 #include "Git/History/CommitDetailsView.h"
 #include "Git/Diff/DiffView.h"
 #include "Git/Diff/DiffWindows.h"
-#include "Core/ImGui/Toasts.h"
 #include "Git/EditorBuffers.h"
 #include "Git/GitModel.h"
 #include "Git/History/HistoryFilter.h"
@@ -60,7 +59,7 @@ namespace Graphite {
 	{
 	public:
 		GitView(GitModel& model, const ActiveScheme& scheme, DiffWindows& diffWindows, ModalGate& modals,
-				EditorBuffers& buffers, Core::Toasts& toasts);
+				EditorBuffers& buffers, Core::EventBus& events);
 
 		// Drains the model's one-shots that belong to this panel - a checkout plan, a delete
 		// check, the paths a checkout changed - and hands the gate back for a question this
@@ -282,7 +281,9 @@ namespace Graphite {
 		// reverting or reloading them. A seam rather than DocumentWindows, so this panel stays
 		// buildable into the tests.
 		EditorBuffers& m_Buffers;
-		Core::Toasts& m_Toasts;
+
+		// Where a failure's toast and a copy's confirmation are published.
+		Core::EventBus& m_Events;
 
 		CommitListView m_Commits;
 		DiffView m_Diff;
@@ -358,10 +359,6 @@ namespace Graphite {
 
 		// The branch whose delete check is in flight, for the same reason.
 		std::optional<std::string> m_PendingDelete;
-
-		// Where a confirmation for the status bar goes. Set by SubscribeTo, the one place this
-		// panel is handed the bus; null before that, when nothing can have been copied.
-		Core::EventBus* m_Events = nullptr;
 
 		// The names on each commit of the branches snapshot they were built from, so they are
 		// rebuilt when the branches change and not on every frame.

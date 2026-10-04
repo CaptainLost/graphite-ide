@@ -635,7 +635,8 @@ namespace Graphite {
 		ImGui::EndTable();
 	}
 
-	void RequestsView::DrawDetails(const RequestTimeline& timeline, const ConversationContext& context)
+	void RequestsView::DrawDetails(const RequestTimeline& timeline, const ConversationContext& context,
+								   Core::EventBus& events)
 	{
 		const std::vector<ApiRequest>& requests = timeline.GetRequests();
 
@@ -792,7 +793,7 @@ namespace Graphite {
 		if (textOpen)
 		{
 			if (const std::optional<std::size_t> clicked =
-					m_SentText.Draw(request, timeline.GetVersion(), m_SelectedItem, hovered, context.Palette))
+					m_SentText.Draw(request, timeline.GetVersion(), m_SelectedItem, hovered, context.Palette, events))
 			{
 				m_SelectedItem = clicked;
 				m_RevealItem = clicked;
@@ -802,7 +803,8 @@ namespace Graphite {
 		ImGui::EndChild();
 	}
 
-	void RequestsView::Draw(const RequestTimeline& timeline, const Session& session, const ConversationContext& context)
+	void RequestsView::Draw(const RequestTimeline& timeline, const Session& session, const ConversationContext& context,
+							Core::EventBus& events)
 	{
 		if (session.GetGeneration() != m_BuiltGeneration || timeline.GetVersion() != m_BuiltVersion)
 		{
@@ -872,7 +874,9 @@ namespace Graphite {
 			ImGui::EndChild();
 		};
 
-		const std::function<void()> drawDetails = [this, &timeline, &context] { DrawDetails(timeline, context); };
+		const std::function<void()> drawDetails = [this, &timeline, &context, &events] {
+			DrawDetails(timeline, context, events);
+		};
 
 		DrawSplitResults(SplitResultsInput{.HasSelection = hasSelection,
 										   .ResultsHeight = m_ListHeight,

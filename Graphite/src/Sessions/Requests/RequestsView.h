@@ -28,7 +28,9 @@ namespace Graphite {
 	class RequestsView
 	{
 	public:
-		void Draw(const RequestTimeline& timeline, const Session& session, const ConversationContext& context);
+		// `events` is where a copy out of the details is confirmed.
+		void Draw(const RequestTimeline& timeline, const Session& session, const ConversationContext& context,
+				  Core::EventBus& events);
 
 		// Selects the request at `requestIndex` — its position in GetRequests() — and scrolls the
 		// table to it on the next draw, dropping the filters only if they would hide it.
@@ -50,7 +52,7 @@ namespace Graphite {
 		void DrawTableRow(const ApiRequest& request, std::size_t position, std::size_t row,
 						  const ConversationContext& context);
 		void DrawTurnMark(std::size_t row, const SessionPalette& palette);
-		void DrawDetails(const RequestTimeline& timeline, const ConversationContext& context);
+		void DrawDetails(const RequestTimeline& timeline, const ConversationContext& context, Core::EventBus& events);
 
 		// By position in GetRequests(), for every request: the tools it used, and the same names
 		// joined as its Tools cell reads them.

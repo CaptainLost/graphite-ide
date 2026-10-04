@@ -9,6 +9,12 @@
 #include <optional>
 #include <string>
 
+namespace Core {
+
+	class EventBus;
+
+}
+
 namespace Graphite {
 
 	// The plain text a request's items put in front of the model, and what it wrote back: a
@@ -20,9 +26,10 @@ namespace Graphite {
 	public:
 		// `version` is the timeline's, so the rows are laid out again when the request's
 		// items change under the same key. Returns the item whose header or text was clicked.
+		// `events` is where the context menu's Copy is confirmed.
 		std::optional<std::size_t> Draw(const ApiRequest& request, std::uint64_t version,
 										std::optional<std::size_t> selected, std::optional<std::size_t> hovered,
-										const SessionPalette& palette);
+										const SessionPalette& palette, Core::EventBus& events);
 
 		// Puts the item's header at the top on the next draw.
 		void ScrollTo(std::size_t segment) { m_PendingScroll = segment; }

@@ -5,7 +5,6 @@
 #include "Editor/ActiveTextDocument.h"
 #include "Editor/Navigation/DefinitionNavigation.h"
 #include "Editor/EditorCommands.h"
-#include "Editor/StatusBar/ClipboardCopy.h"
 #include "Editor/TabColour.h"
 #include "Theme/Palettes.h"
 #include "Editor/TextEditorWidget.h"
@@ -671,11 +670,15 @@ namespace Graphite {
 
 		ImGui::Separator();
 
-		// Confirmed the way every other Copy is; this class owns the slot the status bar
-		// shows, so it fills it directly rather than through the event bus.
+		// Confirmed the way every other menu Copy is, through OnCopied: this class has no
+		// event bus to publish the toast on.
 		const auto copy = [this](std::string_view what, const std::string& text) {
 			ImGui::SetClipboardText(text.c_str());
-			SetTransientMessage(CopiedMessage(what, text));
+
+			if (OnCopied)
+			{
+				OnCopied(what, text);
+			}
 		};
 
 		if (ImGui::MenuItem("Copy Path"))

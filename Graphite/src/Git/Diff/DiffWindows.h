@@ -110,7 +110,7 @@ namespace Graphite {
 					ImU32 selection, unsigned int centreNode, Core::TabCloseRequests& closeRequests);
 
 		// Confirms a copy out of any tab's diff, given the text already on the clipboard. Set
-		// once by whoever owns the status bar's event bus; handed to every DiffView this draws.
+		// once by whoever owns the application's event bus; handed to every DiffView this draws.
 		std::function<void(std::string_view)> OnCopied;
 
 		// Opens a file in the editor, given its absolute path. Set once by whoever owns the
