@@ -148,10 +148,6 @@ namespace Graphite {
 			ReportCopied(m_Events, "selection", text);
 		};
 
-		m_DocumentWindows.OnCopied = [this](std::string_view what, std::string_view text) {
-			ReportCopied(m_Events, what, text);
-		};
-
 		// m_Toasts.OnCopied is left unset: Copy in a toast's menu only fills the clipboard. A
 		// "Copied" toast raised by copying a toast would be a toast about a toast.
 

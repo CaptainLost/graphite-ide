@@ -15,6 +15,7 @@
 
 #include "Persistence/CaretRestore.h"
 
+#include "UI/ClipboardCopy.h"
 #include "UI/RememberedPlace.h"
 #include "UI/ToastEvent.h"
 
@@ -695,20 +696,9 @@ namespace Graphite {
 
 		ImGui::Separator();
 
-		// Confirmed the way every other menu Copy is, through OnCopied: this class has no
-		// event bus to publish the toast on.
-		const auto copy = [this](std::string_view what, const std::string& text) {
-			ImGui::SetClipboardText(text.c_str());
-
-			if (OnCopied)
-			{
-				OnCopied(what, text);
-			}
-		};
-
 		if (ImGui::MenuItem("Copy Path"))
 		{
-			copy("path", Core::ToUtf8(item.Path));
+			CopyToClipboard(m_Events, "path", Core::ToUtf8(item.Path));
 		}
 
 		if (ImGui::MenuItem("Copy Relative Path"))
@@ -721,12 +711,12 @@ namespace Graphite {
 			// With no folder open, or when the two share no prefix, the absolute path is
 			// still worth copying.
 			const bool usable = !workspaceRoot.empty() && !code && !relative.empty();
-			copy("relative path", Core::ToUtf8(usable ? relative : item.Path));
+			CopyToClipboard(m_Events, "relative path", Core::ToUtf8(usable ? relative : item.Path));
 		}
 
 		if (ImGui::MenuItem("Copy File Name"))
 		{
-			copy("file name", Core::ToUtf8(item.Path.filename()));
+			CopyToClipboard(m_Events, "file name", Core::ToUtf8(item.Path.filename()));
 		}
 
 		if (ImGui::MenuItem("Show in Explorer"))
@@ -2488,9 +2478,9 @@ namespace Graphite {
 					RequestReferencesForLens(item, *lens, *editorResult.LensClicked, referencesPanel);
 				}
 
-				if (editorResult.CopiedFromMenu && OnCopied)
+				if (editorResult.CopiedFromMenu)
 				{
-					OnCopied("selection", *editorResult.CopiedFromMenu);
+					ReportCopied(m_Events, "selection", *editorResult.CopiedFromMenu);
 				}
 
 				// Cancelled first: a frame that leaves one token for another cancels the old

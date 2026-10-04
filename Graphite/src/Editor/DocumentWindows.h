@@ -203,11 +203,6 @@ namespace Graphite {
 		// whatever folder opens next.
 		void ClearExpectedWrites() { m_ExpectedWrites.Clear(); }
 
-		// Confirms a tab menu's Copy Path, Copy Relative Path or Copy File Name, or an editor
-		// menu's Cut or Copy, once the text is on the clipboard; `what` names what was copied. GraphiteLayer sets it to ReportCopied,
-		// which this class has no event bus to call itself. Unset, the copy goes unconfirmed.
-		std::function<void(std::string_view what, std::string_view text)> OnCopied;
-
 	private:
 		// Everything the reference-count rows need for one document. LensModel alone is not
 		// enough: the declarations behind it have to be kept so the anchors can be rebuilt when
