@@ -208,6 +208,7 @@ namespace Core {
 			if (ImGui::MenuItem("Copy", "Ctrl+C", false, !selection.IsEmpty()))
 			{
 				Copy(source, result);
+				result.FromMenu = result.Copied;
 			}
 
 			bool anything = false;

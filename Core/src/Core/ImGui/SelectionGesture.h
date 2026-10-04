@@ -69,6 +69,11 @@ namespace Core {
 	{
 		bool Copied = false; // Ctrl+C or the menu's Copy put text on the clipboard
 		std::string CopiedText;
+
+		// The copy was the menu's Copy rather than Ctrl+C. An owner confirms only that one:
+		// the key is the one people press without looking, and a confirmation every time
+		// would be noise.
+		bool FromMenu = false;
 	};
 
 	struct SelectionGestureOptions
