@@ -5,6 +5,7 @@
 #include "Editor/ActiveTextDocument.h"
 #include "Editor/EditorCommands.h"
 #include "Theme/Palettes.h"
+#include "Editor/StatusBar/ClipboardCopy.h"
 #include "Editor/StatusBar/ServerStatusText.h"
 #include "Editor/StatusBar/StatusBar.h"
 #include "Editor/StatusBar/StatusLineComposer.h"
@@ -135,6 +136,10 @@ namespace Graphite {
 		// choosing "Open File" from the Changes panel's menu.
 		m_DiffWindows.OpenFile = [this](const std::filesystem::path& path) {
 			m_DocumentWindows.RequestOpen(path, true);
+		};
+
+		m_DiffWindows.OnCopied = [this](std::string_view text) {
+			ReportCopied(m_Events, "selection", text);
 		};
 
 		auto* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_DiffWindows, m_Modals,
@@ -845,8 +850,9 @@ namespace Graphite {
 								 *m_ReferencesPanel);
 
 		m_DiffWindows.Render(m_Git, ReadGitPalette(m_ActiveScheme.Get()),
-							 ReadSyntaxPalette(m_ActiveScheme.Get()), m_DockSpace.GetCenterNodeId(),
-							 m_TabCloseRequests);
+							 ReadSyntaxPalette(m_ActiveScheme.Get()),
+							 ReadEditorPalette(m_ActiveScheme.Get()).Selection,
+							 m_DockSpace.GetCenterNodeId(), m_TabCloseRequests);
 
 		m_SessionWindows.Render(m_DockSpace.GetCenterNodeId(), ReadSessionPalette(m_ActiveScheme.Get()),
 								m_TabCloseRequests);

@@ -1,8 +1,12 @@
 #include <doctest/doctest.h>
 
 #include "Editor/StatusBar/ClipboardCopy.h"
+#include "Editor/StatusBar/StatusMessageEvent.h"
+
+#include "Core/Events/EventBus.h"
 
 #include <string>
+#include <vector>
 
 using Graphite::CopiedMessage;
 
@@ -38,4 +42,18 @@ TEST_CASE("CopiedMessage keeps a text of exactly the limit whole")
 	const std::string text(80, 'a');
 
 	CHECK(CopiedMessage("path", text) == "Copied path: " + text);
+}
+
+TEST_CASE("ReportCopied confirms a copy already on the clipboard in CopiedMessage's words")
+{
+	Core::EventBus events;
+	std::vector<std::string> shown;
+
+	events.Subscribe<Graphite::StatusMessageEvent>(
+		[&](const Graphite::StatusMessageEvent& event) { shown.push_back(event.Text); });
+
+	Graphite::ReportCopied(events, "selection", "int main()\n{");
+
+	REQUIRE(shown.size() == 1);
+	CHECK(shown.front() == CopiedMessage("selection", "int main()\n{"));
 }

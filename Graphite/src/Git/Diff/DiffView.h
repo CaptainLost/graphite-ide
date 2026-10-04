@@ -4,12 +4,18 @@
 
 #include "Theme/Palettes.h"
 #include "Git/Diff/DiffRows.h"
+#include "Git/Diff/DiffSelection.h"
 #include "Git/Diff/FileTexts.h"
 #include "Theme/GitPalette.h"
 #include "Git/Diff/SyntaxRuns.h"
 
 #include "Core/Git/Diff.h"
+#include "Core/ImGui/SelectionGesture.h"
+#include "Core/Text/TextSelection.h"
 
+#include <imgui.h>
+
+#include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -36,9 +42,11 @@ namespace Graphite {
 		// one of those cases, which needs no text and is what the reader already had. `tokens`
 		// is whatever the owner has lexed for the current `texts`; an empty side means no lexer
 		// for that language, or no text yet, and both draw as plain text.
+		// `selection` is the editor scheme's selection colour: the diff draws code in the
+		// editor's palette, so a selection in it looks the way one does in the editor.
 		void Render(const Core::FileDiff& file, const GitPalette& palette,
-					const SyntaxPalette& syntax, const Core::Ref<const FileTexts>& texts,
-					const FileTokens& tokens);
+					const SyntaxPalette& syntax, ImU32 selection,
+					const Core::Ref<const FileTexts>& texts, const FileTokens& tokens);
 
 		void SetMode(DiffViewMode mode) { m_Mode = mode; }
 		DiffViewMode GetMode() const { return m_Mode; }
@@ -66,14 +74,35 @@ namespace Graphite {
 		// the same gesture.
 		std::function<void()> OnClose;
 
+		// Called with the text a Ctrl+C or the menu's Copy has already put on the clipboard,
+		// for the owner to confirm in the status bar. The view itself reaches no event bus.
+		std::function<void(std::string_view)> OnCopied;
+
 	private:
 		void RenderToolbar(const Core::FileDiff& file);
 		void RenderUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
 						   const GitPalette& palette, const SyntaxPalette& syntax,
-						   const FileTokens& tokens);
+						   ImU32 selection, const FileTokens& tokens);
 		void RenderSideBySide(const std::vector<DiffPair>& pairs, const Core::FileDiff& file,
 							  const GitPalette& palette, const SyntaxPalette& syntax,
-							  const FileTokens& tokens);
+							  ImU32 selection, const FileTokens& tokens);
+
+		// The gestures over the region open now, given that frame's rows: called inside it,
+		// after every row has been drawn.
+		void SelectUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
+						   const FileTokens& tokens, float startX, float startY,
+						   float textOffset, float rowHeight);
+		void SelectSideBySide(const std::vector<DiffPair>& pairs, const Core::FileDiff& file,
+							  const FileTokens& tokens, float startX, float startY,
+							  float textOffset, float rowHeight, float innerLeft,
+							  float rightPaneX, float paneWidth);
+
+		// Runs the gesture with the diff's options and reports a copy to OnCopied.
+		void UpdateSelection(const Core::SelectionSource& source);
+
+		// DiffContentHash of `file`, recomputed only when `file` is not the one hashed last
+		// time; see m_HashedFile.
+		std::size_t ContentHashOf(const Core::FileDiff& file);
 
 		// Where the region about to open should be scrolled to, when this frame's layout is a
 		// different one than last frame's: the line kept from last frame, found in `rows` and
@@ -150,5 +179,22 @@ namespace Graphite {
 		// declared before the region opens, which is before anything can be measured — while
 		// the split between the panes is measured afresh each frame and does not lag.
 		float m_SideInnerWidth = 0.0f;
+
+		// The reader's selection. Unified: lines are row ordinals. Side-by-side: lines are the
+		// file's line numbers on m_SelectionSide, the half the press that started it landed in.
+		Core::TextSelection m_Selection;
+		Core::SelectionGesture m_Gesture;
+		DiffSide m_SelectionSide = DiffSide::New;
+
+		// What m_Selection was made over. Render clears the selection when this frame's
+		// differs: another file, mode, scope or content leaves its lines meaning something else.
+		std::optional<DiffSelectionContext> m_SelectionFor;
+
+		// The file m_ContentHash was computed for, and its measurement — the address alone
+		// could be reused by the next snapshot. Hashing reads every line, so it is done once
+		// per file, not once per frame.
+		const Core::FileDiff* m_HashedFile = nullptr;
+		DiffMeasurement m_HashedShape;
+		std::size_t m_ContentHash = 0;
 	};
 }

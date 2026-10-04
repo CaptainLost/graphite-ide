@@ -338,6 +338,12 @@ namespace Graphite {
 	{
 		m_Events = &events;
 
+		// Bound once: unlike the callbacks RenderDiff reassigns, this captures nothing about
+		// what is selected. The gesture has set the clipboard already, so only the bar is told.
+		m_Diff.OnCopied = [this](std::string_view text) {
+			ReportCopied(*m_Events, "selection", text);
+		};
+
 		// GitModel::Clear() drops the log on both events, and nothing else re-requests it,
 		// so without this a folder opened after another one leaves the history column
 		// loading forever - RenderCommits' own latch would stay set from the first folder.
@@ -1036,6 +1042,7 @@ namespace Graphite {
 		m_Texts.Update(m_Model, selected->Commit, file);
 
 		const SyntaxPalette syntax = ReadSyntaxPalette(m_Scheme.Get());
-		m_Diff.Render(file, palette, syntax, m_Texts.Texts, m_Texts.Tokens);
+		m_Diff.Render(file, palette, syntax, ReadEditorPalette(m_Scheme.Get()).Selection, m_Texts.Texts,
+					  m_Texts.Tokens);
 	}
 }

@@ -19,4 +19,8 @@ namespace Graphite {
 
 	// Puts `text` on the clipboard and confirms it in the status bar with CopiedMessage.
 	void CopyToClipboard(Core::EventBus& events, std::string_view what, const std::string& text);
+
+	// Only the confirmation, for text something else has already put on the clipboard — a
+	// selection gesture's Ctrl+C, say — so the clipboard is not set a second time.
+	void ReportCopied(Core::EventBus& events, std::string_view what, std::string_view text);
 }

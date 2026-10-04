@@ -13,6 +13,7 @@
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Text/WordBounds.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -20,6 +21,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
@@ -214,11 +216,107 @@ namespace Graphite {
 						run.Kind.has_value() ? syntax.Of(*run.Kind) : ordinaryColour);
 			}
 		}
+
+		// The width a line's first bytes are drawn at, measured as DrawLine measures them: from
+		// the line's start, never summed run by run.
+		float WidthOf(std::string_view prefix)
+		{
+			if (prefix.empty())
+			{
+				return 0.0f;
+			}
+
+			return ImGui::CalcTextSize(prefix.data(), prefix.data() + prefix.size()).x;
+		}
+
+		// Fills the part of a line `span` covers, from the x its text is drawn at, under the
+		// text: called before DrawLine so the code stays readable on top of it.
+		void DrawSelected(std::string_view text, Core::ColumnSpan span, float textScreenX,
+						  float top, ImU32 colour)
+		{
+			Core::DrawSelectionSpan(*ImGui::GetWindowDrawList(),
+									textScreenX + WidthOf(text.substr(0, span.From)),
+									textScreenX + WidthOf(text.substr(0, span.To)), top,
+									ImGui::GetTextLineHeight(), colour);
+		}
+
+		// The row of `count` under `screenY` in the region open now, clamped to the rows; the
+		// rows start at `startY` in the region's own coordinates and are `rowHeight` apart.
+		std::size_t RowUnder(float screenY, float startY, float rowHeight, std::size_t count)
+		{
+			const float local = screenY - ImGui::GetWindowPos().y + ImGui::GetScrollY() - startY;
+			const float row = std::floor(local / rowHeight);
+
+			if (row <= 0.0f)
+			{
+				return 0;
+			}
+
+			if (row >= static_cast<float>(count - 1))
+			{
+				return count - 1;
+			}
+
+			return static_cast<std::size_t>(row);
+		}
+
+		// Where a sweep over a row with no line lands: the end of the nearest line above or the
+		// start of the nearest one below, the one above winning a tie — so dragging across a
+		// hunk header takes in what precedes it rather than stalling on it.
+		template<typename LineOf, typename LengthOf>
+		std::optional<Core::TextPoint> NearestLine(std::size_t index, std::size_t count,
+												   const LineOf& lineOf, const LengthOf& lengthOf)
+		{
+			for (std::size_t distance = 1; distance <= index || index + distance < count; ++distance)
+			{
+				if (distance <= index)
+				{
+					if (const std::optional<std::int64_t> line = lineOf(index - distance))
+					{
+						return Core::TextPoint{*line, lengthOf(index - distance)};
+					}
+				}
+
+				if (index + distance < count)
+				{
+					if (const std::optional<std::int64_t> line = lineOf(index + distance))
+					{
+						return Core::TextPoint{*line, 0};
+					}
+				}
+			}
+
+			return std::nullopt;
+		}
+
+		// The first and the last row that carry a line, for Select All; empty without one.
+		template<typename LineOf, typename LengthOf>
+		std::pair<Core::TextPoint, Core::TextPoint> EveryLine(std::size_t count, const LineOf& lineOf,
+															 const LengthOf& lengthOf)
+		{
+			// From each end inwards, so only the two lines found are resolved: the menu asks for
+			// this every frame it is open.
+			for (std::size_t first = 0; first < count; ++first)
+			{
+				if (const std::optional<std::int64_t> from = lineOf(first))
+				{
+					for (std::size_t last = count; last-- > first;)
+					{
+						if (const std::optional<std::int64_t> to = lineOf(last))
+						{
+							return {Core::TextPoint{*from, 0}, Core::TextPoint{*to, lengthOf(last)}};
+						}
+					}
+				}
+			}
+
+			return {};
+		}
 	}
 
 	void DiffView::Render(const Core::FileDiff& file, const GitPalette& palette,
-						  const SyntaxPalette& syntax, const Core::Ref<const FileTexts>& texts,
-						  const FileTokens& tokens)
+						  const SyntaxPalette& syntax, ImU32 selection,
+						  const Core::Ref<const FileTexts>& texts, const FileTokens& tokens)
 	{
 		RenderToolbar(file);
 
@@ -266,17 +364,36 @@ namespace Graphite {
 		m_RestoreKeptLine = layout != m_Layout && m_KeptLine.has_value() && m_KeptLine->Path == ShownPath(file);
 		m_Layout = layout;
 
+		// A selection's lines are row ordinals or line numbers of one layout of one version of
+		// one file; under anything else they would select whatever happens to sit there now.
+		// The side is the selection's own, kept in step by SelectSideBySide, so this only sees
+		// it change along with the layout.
+		const DiffSelectionContext context{
+			.Path = ShownPath(file),
+			.Mode = m_Mode,
+			.Scope = layout.Scope,
+			.Side = m_Mode == DiffViewMode::SideBySide ? m_SelectionSide : DiffSide::New,
+			.ContentHash = ContentHashOf(file),
+			.Texts = wholeFile ? texts.get() : nullptr};
+
+		if (context != m_SelectionFor)
+		{
+			m_Selection.Clear();
+			m_Gesture.Cancel();
+			m_SelectionFor = context;
+		}
+
 		if (wholeFile)
 		{
 			const WholeFileRows rows = BuildWholeFileRows(file, m_OldLines.size(), m_NewLines.size());
 
 			if (m_Mode == DiffViewMode::Unified)
 			{
-				RenderUnified(rows.Unified, file, palette, syntax, tokens);
+				RenderUnified(rows.Unified, file, palette, syntax, selection, tokens);
 			}
 			else
 			{
-				RenderSideBySide(rows.SideBySide, file, palette, syntax, tokens);
+				RenderSideBySide(rows.SideBySide, file, palette, syntax, selection, tokens);
 			}
 
 			return;
@@ -290,11 +407,46 @@ namespace Graphite {
 
 		if (m_Mode == DiffViewMode::Unified)
 		{
-			RenderUnified(BuildUnifiedRows(file), file, palette, syntax, tokens);
+			RenderUnified(BuildUnifiedRows(file), file, palette, syntax, selection, tokens);
 			return;
 		}
 
-		RenderSideBySide(BuildSideBySideRows(file), file, palette, syntax, tokens);
+		RenderSideBySide(BuildSideBySideRows(file), file, palette, syntax, selection, tokens);
+	}
+
+	std::size_t DiffView::ContentHashOf(const Core::FileDiff& file)
+	{
+		const DiffMeasurement shape = MeasurementOf(file, DiffScope::Hunks);
+
+		if (&file != m_HashedFile || shape != m_HashedShape)
+		{
+			m_HashedFile = &file;
+			m_HashedShape = shape;
+			m_ContentHash = DiffContentHash(file);
+		}
+
+		return m_ContentHash;
+	}
+
+	void DiffView::UpdateSelection(const Core::SelectionSource& source)
+	{
+		Core::SelectionGestureOptions options;
+		options.ScrollsVertically = true;
+		// Side-by-side the halves share the region's one horizontal scroll (ADR 0495), so a
+		// sweep past either edge moves both, as the scrollbar does.
+		options.ScrollsHorizontally = true;
+		options.CopyKey = true;
+		options.SelectAllKey = true;
+		// The only context menu the region has, opened over it and nowhere else.
+		options.MenuId = "##diffMenu";
+
+		const Core::SelectionGestureResult result = m_Gesture.Update(m_Selection, source, options);
+
+		// The gesture has already put the text on the clipboard; the owner only confirms it.
+		if (result.Copied && OnCopied)
+		{
+			OnCopied(result.CopiedText);
+		}
 	}
 
 	void DiffView::RenderToolbar(const Core::FileDiff& file)
@@ -414,7 +566,7 @@ namespace Graphite {
 
 	void DiffView::RenderUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
 								 const GitPalette& palette, const SyntaxPalette& syntax,
-								 const FileTokens& tokens)
+								 ImU32 selection, const FileTokens& tokens)
 	{
 		// No border, so ImGui gives the region no padding and its first row sits at its top.
 		if (const std::optional<float> scroll = TakeRestoredScroll(std::span(rows), 0.0f))
@@ -437,6 +589,7 @@ namespace Graphite {
 		const float numberWidth =
 			ImGui::CalcTextSize("0").x * kLineNumberColumns + Core::Scaled(kNumberPaddingX) * 2.0f;
 		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
+		const float startX = ImGui::GetCursorPosX();
 		const float startY = ImGui::GetCursorPosY();
 
 		m_RowHeight = rowHeight;
@@ -503,6 +656,17 @@ namespace Graphite {
 
 				if (resolved.Text.has_value())
 				{
+					if (const std::optional<std::int64_t> line =
+							UnifiedLineOf(rows, static_cast<std::size_t>(index)))
+					{
+						if (const std::optional<Core::ColumnSpan> span =
+								m_Selection.SpanOn(*line, resolved.Text->size()))
+						{
+							DrawSelected(*resolved.Text, *span, start.x + numberWidth * 2.0f, start.y,
+										 selection);
+						}
+					}
+
 					DrawLine(ImVec2(rowPos.x + numberWidth * 2.0f, rowPos.y), *resolved.Text,
 							 m_ColourSyntax ? resolved.Tokens : nullptr,
 							 TextFor(drawn.Kind, palette), syntax);
@@ -517,13 +681,99 @@ namespace Graphite {
 
 		RememberKeptLine(std::span(rows), file, startY);
 
+		// After every row, as the gesture asks, and before the font is popped: hit-testing
+		// measures in the mono font the rows were drawn in.
+		SelectUnified(rows, file, tokens, startX, startY, numberWidth * 2.0f, rowHeight);
+
 		ImGui::PopFont();
 		ImGui::EndChild();
 	}
 
+	void DiffView::SelectUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
+								 const FileTokens& tokens, float startX, float startY,
+								 float textOffset, float rowHeight)
+	{
+		// As drawn: one text column standing for both sides, resolved for New.
+		const auto textOf = [&](std::size_t index) {
+			return ResolveRow(file, rows[index], DiffSide::New, m_OldLines, m_NewLines, tokens)
+				.Text.value_or(std::string_view{});
+		};
+		const auto lineOf = [&](std::size_t index) {
+			return UnifiedLineOf(rows, index);
+		};
+		const auto lengthOf = [&](std::size_t index) {
+			return textOf(index).size();
+		};
+		const auto indexOf = [&](std::int64_t line) -> std::optional<std::size_t> {
+			if (line < 0 || static_cast<std::size_t>(line) >= rows.size())
+			{
+				return std::nullopt;
+			}
+
+			return static_cast<std::size_t>(line);
+		};
+
+		// A press asks where it landed; a sweep, where it has got to. Only a press can miss.
+		const bool pressing = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+		const float textScreenX = ImGui::GetWindowPos().x - ImGui::GetScrollX() + startX + textOffset;
+
+		const auto pointAt = [&](ImVec2 screen, bool under) -> std::optional<Core::TextPoint> {
+			if (rows.empty())
+			{
+				return std::nullopt;
+			}
+
+			const std::size_t index = RowUnder(screen.y, startY, rowHeight, rows.size());
+
+			if (const std::optional<std::int64_t> line = lineOf(index))
+			{
+				const std::string_view text = textOf(index);
+				const float x = screen.x - textScreenX;
+
+				return Core::TextPoint{*line, under ? ByteUnderX(text, x, WidthOf) : ByteAtX(text, x, WidthOf)};
+			}
+
+			// A header, a signature or a gap: no selection starts there, but one already being
+			// swept carries on across it.
+			if (pressing)
+			{
+				return std::nullopt;
+			}
+
+			return NearestLine(index, rows.size(), lineOf, lengthOf);
+		};
+
+		Core::SelectionSource source;
+		source.PointAt = [&](ImVec2 screen) {
+			return pointAt(screen, false);
+		};
+		source.CharacterAt = [&](ImVec2 screen) {
+			return pointAt(screen, true);
+		};
+		source.WordAt = [&](Core::TextPoint at) {
+			const std::optional<std::size_t> index = indexOf(at.Line);
+
+			return index.has_value() ? Core::WordSpanAt(textOf(*index), at.Column, Core::WordKind::Code)
+									 : Core::ColumnSpan{};
+		};
+		source.LineLength = [&](std::int64_t line) -> std::size_t {
+			const std::optional<std::size_t> index = indexOf(line);
+
+			return index.has_value() ? lengthOf(*index) : 0;
+		};
+		source.Everything = [&]() {
+			return EveryLine(rows.size(), lineOf, lengthOf);
+		};
+		source.SelectedText = [&]() {
+			return SelectedUnifiedText(m_Selection, rows, file, m_OldLines, m_NewLines, tokens);
+		};
+
+		UpdateSelection(source);
+	}
+
 	void DiffView::RenderSideBySide(const std::vector<DiffPair>& pairs, const Core::FileDiff& file,
 									const GitPalette& palette, const SyntaxPalette& syntax,
-									const FileTokens& tokens)
+									ImU32 selection, const FileTokens& tokens)
 	{
 		// The widest line is measured from the rows that have been on screen, for the reason
 		// ImGui itself derives a window's content size from the items it saw: the widest line
@@ -577,6 +827,7 @@ namespace Graphite {
 		const float numberWidth =
 			ImGui::CalcTextSize("0").x * kLineNumberColumns + Core::Scaled(kNumberPaddingX) * 2.0f;
 		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
+		const float startX = ImGui::GetCursorPosX();
 		const float startY = ImGui::GetCursorPosY();
 
 		m_RowHeight = rowHeight;
@@ -680,6 +931,25 @@ namespace Graphite {
 					continue;
 				}
 
+				// Only on the half the selection belongs to; its lines are that side's.
+				if (leftSide == (m_SelectionSide == DiffSide::Old))
+				{
+					if (const std::optional<std::int64_t> line =
+							SideLineOf(pairs[static_cast<std::size_t>(index)], m_SelectionSide))
+					{
+						if (const std::optional<Core::ColumnSpan> span =
+								m_Selection.SpanOn(*line, resolved.Text->size()))
+						{
+							// The x DrawLine is given below, in screen coordinates: the region's
+							// shared horizontal scroll is already in it.
+							DrawSelected(*resolved.Text, *span,
+										 ImGui::GetWindowPos().x - ImGui::GetScrollX() + rowPos.x +
+											 numberWidth,
+										 rowScreenY, selection);
+						}
+					}
+				}
+
 				DrawLine(ImVec2(rowPos.x + numberWidth, rowPos.y), *resolved.Text,
 						 m_ColourSyntax ? resolved.Tokens : nullptr, TextFor(drawn.Kind, palette),
 						 syntax);
@@ -722,6 +992,9 @@ namespace Graphite {
 
 		RememberKeptLine(std::span(pairs), file, startY);
 
+		SelectSideBySide(pairs, file, tokens, startX, startY, numberWidth, rowHeight, innerMin.x,
+						 panes.RightPaneX, panes.PaneWidth);
+
 		// Drawn after the halves and outside their clipping rectangles, so it is not cut off by
 		// either and does not slide when the reader scrolls across. A filled rectangle rather
 		// than a line, which AddLine would centre on the split and so lay half of over the
@@ -733,6 +1006,130 @@ namespace Graphite {
 
 		ImGui::PopFont();
 		ImGui::EndChild();
+	}
+
+	void DiffView::SelectSideBySide(const std::vector<DiffPair>& pairs, const Core::FileDiff& file,
+									const FileTokens& tokens, float startX, float startY,
+									float textOffset, float rowHeight, float innerLeft,
+									float rightPaneX, float paneWidth)
+	{
+		// Read as m_SelectionSide is when each is called, not now: a press decides the side
+		// inside PointAt, ahead of the word, the line or the drag that follows from it.
+		const auto rowOf = [&](std::size_t index) -> const std::optional<DiffRow>& {
+			return m_SelectionSide == DiffSide::Old ? pairs[index].Left : pairs[index].Right;
+		};
+		const auto textOf = [&](std::size_t index) {
+			const std::optional<DiffRow>& row = rowOf(index);
+
+			if (!row.has_value())
+			{
+				return std::string_view{};
+			}
+
+			return ResolveRow(file, *row, m_SelectionSide, m_OldLines, m_NewLines, tokens)
+				.Text.value_or(std::string_view{});
+		};
+		const auto lineOf = [&](std::size_t index) {
+			return SideLineOf(pairs[index], m_SelectionSide);
+		};
+		const auto lengthOf = [&](std::size_t index) {
+			return textOf(index).size();
+		};
+		// Line numbers on one side are not row ordinals, so a line is looked for. Only a
+		// double- or triple-click asks, never a frame by itself.
+		const auto indexOf = [&](std::int64_t line) -> std::optional<std::size_t> {
+			for (std::size_t index = 0; index < pairs.size(); ++index)
+			{
+				if (lineOf(index) == line)
+				{
+					return index;
+				}
+			}
+
+			return std::nullopt;
+		};
+
+		const bool pressing = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+
+		// A Shift+click extends the selection there is, on the side it is on.
+		const bool extending = ImGui::GetIO().KeyShift && !m_Selection.IsEmpty();
+
+		// Where the left half's text starts on screen; the right half's is RightPaneX further.
+		// The same x DrawLine is given, so the shared horizontal scroll is in it.
+		const float textScreenX = ImGui::GetWindowPos().x - ImGui::GetScrollX() + startX + textOffset;
+
+		const auto pointAt = [&](ImVec2 screen, bool under) -> std::optional<Core::TextPoint> {
+			if (pairs.empty())
+			{
+				return std::nullopt;
+			}
+
+			// The half a press lands in is the selection's side until the next press: a sweep
+			// over the other half keeps extending this one, by row.
+			if (pressing && !extending)
+			{
+				m_SelectionSide = screen.x < innerLeft + rightPaneX ? DiffSide::Old : DiffSide::New;
+			}
+
+			const float paneX = m_SelectionSide == DiffSide::Old ? 0.0f : rightPaneX;
+			const float paneLeft = innerLeft + paneX;
+			const float x = std::clamp(screen.x, paneLeft, paneLeft + std::max(paneWidth, 0.0f)) -
+							(textScreenX + paneX);
+
+			const std::size_t index = RowUnder(screen.y, startY, rowHeight, pairs.size());
+
+			if (const std::optional<std::int64_t> line = lineOf(index))
+			{
+				const std::string_view text = textOf(index);
+
+				return Core::TextPoint{*line, under ? ByteUnderX(text, x, WidthOf) : ByteAtX(text, x, WidthOf)};
+			}
+
+			// A header, a gap, or a row this side does not have: no selection starts there,
+			// and a sweep over it carries on from the nearest line this side does have.
+			if (pressing)
+			{
+				return std::nullopt;
+			}
+
+			return NearestLine(index, pairs.size(), lineOf, lengthOf);
+		};
+
+		Core::SelectionSource source;
+		source.PointAt = [&](ImVec2 screen) {
+			return pointAt(screen, false);
+		};
+		source.CharacterAt = [&](ImVec2 screen) {
+			return pointAt(screen, true);
+		};
+		source.WordAt = [&](Core::TextPoint at) {
+			const std::optional<std::size_t> index = indexOf(at.Line);
+
+			return index.has_value() ? Core::WordSpanAt(textOf(*index), at.Column, Core::WordKind::Code)
+									 : Core::ColumnSpan{};
+		};
+		source.LineLength = [&](std::int64_t line) -> std::size_t {
+			const std::optional<std::size_t> index = indexOf(line);
+
+			return index.has_value() ? lengthOf(*index) : 0;
+		};
+		// The side last pressed in, New before any press.
+		source.Everything = [&]() {
+			return EveryLine(pairs.size(), lineOf, lengthOf);
+		};
+		source.SelectedText = [&]() {
+			return SelectedSideText(m_Selection, m_SelectionSide, pairs, file, m_OldLines, m_NewLines,
+									tokens);
+		};
+
+		UpdateSelection(source);
+
+		// A press may have moved the selection to the other half. The selection made there is
+		// this context's, not a stale one for Render to clear next frame.
+		if (m_SelectionFor.has_value())
+		{
+			m_SelectionFor->Side = m_SelectionSide;
+		}
 	}
 
 	template<typename Row>

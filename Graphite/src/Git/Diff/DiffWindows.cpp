@@ -333,7 +333,8 @@ namespace Graphite {
 	}
 
 	void DiffWindows::Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,
-							 unsigned int centreNode, Core::TabCloseRequests& closeRequests)
+							 ImU32 selection, unsigned int centreNode,
+							 Core::TabCloseRequests& closeRequests)
 	{
 		for (std::size_t index = 0; index < m_Open.size();)
 		{
@@ -486,8 +487,9 @@ namespace Graphite {
 						}
 
 						entry.View.OnOpenFile = OpenFileIn(model);
+						entry.View.OnCopied = OnCopied;
 
-						entry.View.Render(file, palette, syntax, entry.Texts.Texts,
+						entry.View.Render(file, palette, syntax, selection, entry.Texts.Texts,
 										  entry.Texts.Tokens);
 					}
 				}

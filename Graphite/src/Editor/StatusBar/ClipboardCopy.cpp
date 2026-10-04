@@ -60,6 +60,11 @@ namespace Graphite {
 	void CopyToClipboard(Core::EventBus& events, std::string_view what, const std::string& text)
 	{
 		ImGui::SetClipboardText(text.c_str());
+		ReportCopied(events, what, text);
+	}
+
+	void ReportCopied(Core::EventBus& events, std::string_view what, std::string_view text)
+	{
 		events.Publish(StatusMessageEvent{CopiedMessage(what, text)});
 	}
 }
