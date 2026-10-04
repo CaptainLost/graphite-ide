@@ -46,16 +46,26 @@ every frame.
 - Treat an untracked directory as one entry, as git reports it. The folder
   itself shows `U`; every path beneath it is Untracked; its ancestors
   aggregate it like any other change (a dot, not a letter).
-- Leave ignored files undecorated; they keep their dimmed look.
+- A file moved out of a folder weighs on the folder it left as a deletion
+  would, so the source folder of a rename gets a dot as well as the target.
+- Leave ignored files undecorated; they keep their dimmed look. The exception
+  is a tracked file under an ignore pattern (force-added, say): git reports it
+  as ignored too, but it has its own status entry, so the file tree shows that
+  entry like any other. Only what a row would inherit from an untracked
+  directory around it is withheld, so ignored files inside an untracked
+  directory stay plain.
+- A deleted or missing file in a project does not weigh on the project's dot in
+  the solution view; there is no row to point at.
 - In the file tree and the solution view, draw the name in its state's colour
   and the letter right-aligned at the visible right edge of the row. Draw a
   filled dot in the same column on a folder, a project or a solution folder
   that has any decorated descendant, in the colour of the highest state among
   them, whether expanded or collapsed. The folder's own name keeps its normal
   colour.
-- Mark a file that is open in the editor by a dot drawn in the gap where a
-  sibling folder draws its arrow, in the checkmark colour, in place of the
-  accent name colour. The name colour is thereby free to carry the status, and
+- Mark a file that is open in the editor but not the active one by a dot drawn
+  in the gap where a sibling folder draws its arrow, in the checkmark colour,
+  in place of the accent name colour. The active file keeps its selection and
+  gets no dot. The name colour is thereby free to carry the status, and
   an open file with a status shows both.
 - Colour a tab's label in the file's state colour and draw no letter. A
   preview tab uses the same colour at 0.6 of its alpha, so it still reads as a
@@ -63,8 +73,11 @@ every frame.
   colour, and an untitled document has no state.
 - Build the lookup, `GitDecorations`, once per status snapshot: the layer
   compares the snapshot pointer and rebuilds only when it changes. A folder's
-  state is the maximum over its descendants, computed while building, so
-  per-frame lookups are hash probes and a clean tree builds no key.
+  state in the file tree is the maximum over its descendants, computed while
+  building, so per-frame lookups are hash probes and a clean tree builds no
+  key. The solution view's project and solution-folder aggregates are not in
+  the index: the view computes them lazily from the files it lists and caches
+  them per index version.
 - Key the lookup by path relative to the repository's working directory
   (`GitModel::GetWorkingDirectory`), through `Core::PathKey`, so lookups are
   case-folded on Windows and indifferent to the separator. The layer hands a
