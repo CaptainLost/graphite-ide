@@ -94,6 +94,9 @@ namespace Graphite {
 		// A failed file action in a toast, beside the log line each site keeps.
 		void ReportFailure(Core::ToastKind kind, std::string title, std::string_view message);
 
+		// A name the file system refuses, in a toast; an empty one is a cancel and raises none.
+		void ReportInvalidName(std::string title, const std::string& name);
+
 		Workspace& m_Workspace;
 		const Core::DocumentSet& m_Documents;
 		Core::EventBus& m_Events;

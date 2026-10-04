@@ -42,14 +42,18 @@ namespace Graphite {
 
 			return std::clamp(fitted, Core::Scaled(kMinFieldWidth), ImGui::GetContentRegionAvail().x);
 		}
+	}
 
-		// Said in a toast, where quoting an emptied name field would read as a stray pair of
-		// quotes.
-		std::string InvalidNameMessage(const std::string& name)
+	void FileTreeView::ReportInvalidName(std::string title, const std::string& name)
+	{
+		// An emptied name field is the user backing out of the name, not a failure to tell
+		// them about: the log line at the call site is all it gets.
+		if (name.empty())
 		{
-			return name.empty() ? std::string("A name cannot be empty")
-								: std::format("'{}' is not a valid file name", name);
+			return;
 		}
+
+		ReportFailure(Core::ToastKind::Error, std::move(title), std::format("'{}' is not a valid file name", name));
 	}
 
 	void FileTreeView::ReportFailure(Core::ToastKind kind, std::string title, std::string_view message)
@@ -620,7 +624,7 @@ namespace Graphite {
 		if (!Core::IsValidFileName(action.Name))
 		{
 			APP_ERROR("'{}' is not a valid file name", action.Name);
-			ReportFailure(Core::ToastKind::Error, "Rename failed", InvalidNameMessage(action.Name));
+			ReportInvalidName("Rename failed", action.Name);
 			return action.Target;
 		}
 
@@ -675,7 +679,7 @@ namespace Graphite {
 		if (!Core::IsValidFileName(action.Name))
 		{
 			APP_ERROR("'{}' is not a valid file name", action.Name);
-			ReportFailure(Core::ToastKind::Error, "Create failed", InvalidNameMessage(action.Name));
+			ReportInvalidName("Create failed", action.Name);
 			return;
 		}
 
