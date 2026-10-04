@@ -32,11 +32,31 @@ A stroke that ran a command is not also applied as a keystroke by the editor.
 command again on every repeat. A command that sets it false is skipped on
 repeated presses.
 
+A focused terminal passes every chord to its shell unless the chord is bound to
+a command that fires globally (`Keymap::BoundTo` asked with `Global`). An
+editor-scoped chord - Ctrl+S, Ctrl+Z, Ctrl+Y, Ctrl+W, Ctrl+C, Ctrl+V, Ctrl+A -
+is bound to nothing as far as the terminal is concerned, so it reaches the
+shell. Before that lookup the terminal settles its own clipboard keys, which no
+binding can take from it:
+
+- Ctrl+V and Ctrl+Shift+V paste the clipboard into the shell.
+- Ctrl+Shift+C copies the selection, and with no selection does nothing; it
+  never sends an interrupt.
+- Ctrl+C copies when there is a selection, and otherwise sends the interrupt.
+
 ## Rationale
 
 The command is the one thing that survives rebinding and knows what it does, so
 it owns the scope. Routing from the editor, rather than guessing focus in the
 layer, is the only way to leave text fields their own clipboard shortcuts.
+
+A shell's line editing lives on the same chords an editor uses - Ctrl+A, Ctrl+E,
+Ctrl+W, Ctrl+R - and a terminal that kept them for the IDE would be a poor
+shell, while one that took every chord would make the rest of the application
+unreachable from inside it. A command's scope already says which chords the
+IDE needs everywhere, so it is the line between the two. The interrupt must not
+depend on what the IDE has bound, which is why Ctrl+C is decided before the
+lookup rather than left to it.
 
 ## Consequences
 
@@ -52,6 +72,10 @@ layer, is the only way to leave text fields their own clipboard shortcuts.
   to a menu accelerator that must work everywhere.
 - Every editor-like widget that wants these commands has to route its strokes
   itself.
+- Binding a chord to a global command takes it away from every shell: a user
+  who binds Ctrl+R globally loses reverse search in the terminal.
+- Ctrl+C in a terminal with a selection copies instead of interrupting; to
+  interrupt, the selection has to be cleared first.
 
 ### Neutral
 
