@@ -29,7 +29,7 @@ namespace Graphite {
 
 		ImGui::TextUnformatted("C++ language server");
 		ImGui::SetNextItemWidth(-1.0f);
-		Core::InputTextWithHint("##languageServerBinary", "clangd from PATH", m_PendingServerPath);
+		Core::InputTextWithHint("##languageServerBinary", "clangd next to Graphite, then on PATH", m_PendingServerPath);
 
 		m_EditingServerPath = ImGui::IsItemActive();
 
