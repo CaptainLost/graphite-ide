@@ -27,4 +27,16 @@ namespace Core {
 	// `squareViewportWindows` is for when panels can be undocked into system windows of
 	// their own, where rounded corners and a translucent background look out of place.
 	ImGuiStyle ScaledStyle(const ImGuiStyle& current, float scale, bool squareViewportWindows);
+
+	// What the sizes in pixels that ImGui keeps - a dock node's reference size - are multiplied by
+	// when the scale goes from `previous` to `next`. One when there was no previous scale (the
+	// first frame, whose sizes come from the saved layout at the scale it was saved at) or either
+	// is not a scale.
+	float ScaleChangeFactor(float previous, float next);
+
+	// Multiplies the reference size of every dock node by `factor`. The side panels of a layout
+	// are held at those sizes in pixels, while the central node takes what is left, so without
+	// this a panel keeps its width when the text in it grows. Between frames only: dock nodes
+	// are being laid out while a frame runs.
+	void ScaleDockNodeSizes(float factor);
 }

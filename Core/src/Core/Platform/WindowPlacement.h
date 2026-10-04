@@ -28,6 +28,11 @@ namespace Core {
 		friend bool operator==(const ScreenRect&, const ScreenRect&) = default;
 	};
 
+	// Where a window with no saved placement opens: `width` by `height`, shrunk to no more than
+	// 85% of `workArea` in either direction so the window and its borders clear the taskbar and
+	// the edges, and centred in it.
+	WindowPlacement DefaultPlacement(int width, int height, const ScreenRect& workArea);
+
 	// Keeps a placement that enough of the window shows on some monitor to be grabbed, and
 	// otherwise centres it on the primary work area, shrunk to fit if it has to be. A window
 	// restored onto a monitor that has since been unplugged would open where nobody can see it.

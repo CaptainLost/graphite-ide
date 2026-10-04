@@ -14,6 +14,33 @@ namespace {
 	const ScreenRect kSecond{1920, 0, 3840, 1040};
 }
 
+TEST_CASE("A default window larger than the work area shrinks to 85% of it and is centred")
+{
+	// 85% of 1920x1040 is 1632x884.
+	const WindowPlacement placement = Core::DefaultPlacement(2400, 1350, kPrimary);
+
+	CHECK(placement == WindowPlacement{144, 78, 1632, 884, false});
+}
+
+TEST_CASE("A default window that fits is left its size and centred")
+{
+	const WindowPlacement placement = Core::DefaultPlacement(1600, 800, kPrimary);
+
+	CHECK(placement == WindowPlacement{160, 120, 1600, 800, false});
+}
+
+TEST_CASE("A default window is centred in a work area that does not start at the origin")
+{
+	// A taskbar docked on the left and a monitor to the left of the primary one.
+	const ScreenRect offset{-1000, 60, 600, 1060};
+	const WindowPlacement placement = Core::DefaultPlacement(1600, 900, offset);
+
+	CHECK(placement.Width == 1360);
+	CHECK(placement.Height == 850);
+	CHECK(placement.X == -1000 + (1600 - 1360) / 2);
+	CHECK(placement.Y == 60 + (1000 - 850) / 2);
+}
+
 TEST_CASE("A window inside the primary monitor stays where it was")
 {
 	const std::vector<ScreenRect> areas{kPrimary, kSecond};

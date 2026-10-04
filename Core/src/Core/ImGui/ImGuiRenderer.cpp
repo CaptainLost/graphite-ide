@@ -195,6 +195,11 @@ namespace Core {
 			return;
 		}
 
+		// Here, between frames, and not where the scale is set: dock nodes are laid out during a
+		// frame. The reference sizes are pixels, and a layout restored at startup is already at the
+		// scale it was saved at - the first change is from zero, which scales nothing.
+		ScaleDockNodeSizes(ScaleChangeFactor(m_StyleScale, scale));
+
 		style = ScaledStyle(style, scale, ViewportsEnabled());
 		m_StyleScale = scale;
 	}

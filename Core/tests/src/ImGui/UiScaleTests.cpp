@@ -4,6 +4,7 @@
 #include "Core/ImGui/UiScale.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 using Core::ScaledStyle;
 
@@ -110,4 +111,43 @@ TEST_CASE("ScaledStyle below one keeps every hairline at least a pixel thick")
 	CHECK(style.MouseCursorScale >= 1.0f);
 	// A size the theme sets to zero stays zero.
 	CHECK(style.FrameBorderSize == doctest::Approx(0.0f));
+}
+
+TEST_CASE("A change of scale multiplies by the ratio of the two")
+{
+	CHECK(Core::ScaleChangeFactor(1.0f, 1.5f) == doctest::Approx(1.5f));
+	CHECK(Core::ScaleChangeFactor(2.0f, 1.0f) == doctest::Approx(0.5f));
+	CHECK(Core::ScaleChangeFactor(1.25f, 1.25f) == doctest::Approx(1.0f));
+}
+
+TEST_CASE("The first scale and a scale that is not one change nothing")
+{
+	// Zero is the scale before the first frame: the layout is then the saved one, at the scale it
+	// was saved at.
+	CHECK(Core::ScaleChangeFactor(0.0f, 1.5f) == doctest::Approx(1.0f));
+	CHECK(Core::ScaleChangeFactor(1.5f, 0.0f) == doctest::Approx(1.0f));
+	CHECK(Core::ScaleChangeFactor(-1.0f, 1.5f) == doctest::Approx(1.0f));
+}
+
+TEST_CASE("Scaling the dock nodes multiplies their reference sizes")
+{
+	Context context;
+
+	const ImGuiID first = ImGui::DockBuilderAddNode(0x100, ImGuiDockNodeFlags_None);
+	const ImGuiID second = ImGui::DockBuilderAddNode(0x200, ImGuiDockNodeFlags_None);
+	ImGui::DockBuilderGetNode(first)->SizeRef = ImVec2(300.0f, 200.0f);
+	ImGui::DockBuilderGetNode(second)->SizeRef = ImVec2(0.0f, 120.0f);
+
+	Core::ScaleDockNodeSizes(1.5f);
+
+	CHECK(ImGui::DockBuilderGetNode(first)->SizeRef.x == doctest::Approx(450.0f));
+	CHECK(ImGui::DockBuilderGetNode(first)->SizeRef.y == doctest::Approx(300.0f));
+	// A node with no reference size on an axis has none afterwards either: the layout reads zero as
+	// "take what is left".
+	CHECK(ImGui::DockBuilderGetNode(second)->SizeRef.x == doctest::Approx(0.0f));
+	CHECK(ImGui::DockBuilderGetNode(second)->SizeRef.y == doctest::Approx(180.0f));
+
+	Core::ScaleDockNodeSizes(1.0f);
+
+	CHECK(ImGui::DockBuilderGetNode(first)->SizeRef.x == doctest::Approx(450.0f));
 }

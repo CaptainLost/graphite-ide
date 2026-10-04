@@ -4,6 +4,8 @@
 
 #include "Core/ImGui/Theme.h"
 
+#include <imgui_internal.h>
+
 #include <algorithm>
 #include <iterator>
 
@@ -24,6 +26,44 @@ namespace Core {
 	{
 		const float scale = UiScale();
 		return ImVec2(size.x * scale, size.y * scale);
+	}
+
+	float ScaleChangeFactor(float previous, float next)
+	{
+		if (previous <= 0.0f || next <= 0.0f)
+		{
+			return 1.0f;
+		}
+
+		return next / previous;
+	}
+
+	void ScaleDockNodeSizes(float factor)
+	{
+		if (factor == 1.0f || factor <= 0.0f)
+		{
+			return;
+		}
+
+		ImGuiContext* context = ImGui::GetCurrentContext();
+
+		if (context == nullptr)
+		{
+			return;
+		}
+
+		// Every node the context holds, not just the tree under one dockspace: a floating layout
+		// has nodes of its own. The storage is only read here, and the nodes only written to.
+		for (const ImGuiStoragePair& pair : context->DockContext.Nodes.Data)
+		{
+			ImGuiDockNode* node = static_cast<ImGuiDockNode*>(pair.val_p);
+
+			if (node != nullptr)
+			{
+				node->SizeRef.x *= factor;
+				node->SizeRef.y *= factor;
+			}
+		}
 	}
 
 	ImGuiStyle ScaledStyle(const ImGuiStyle& current, float scale, bool squareViewportWindows)

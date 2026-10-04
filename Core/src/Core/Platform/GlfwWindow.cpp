@@ -409,12 +409,6 @@ namespace Core {
 
 	void GlfwWindow::Show(const std::optional<WindowPlacement>& placement)
 	{
-		if (!placement)
-		{
-			glfwShowWindow(m_Handle);
-			return;
-		}
-
 #ifdef CORE_PLATFORM_WINDOWS
 		// rcNormalPosition is in workspace coordinates, which are screen coordinates shifted by
 		// a taskbar docked on the primary monitor's top or left. The monitors report screen
@@ -423,12 +417,27 @@ namespace Core {
 		const int shiftX = primary.rcWork.left - primary.rcMonitor.left;
 		const int shiftY = primary.rcWork.top - primary.rcMonitor.top;
 
-		WindowPlacement onScreen = *placement;
-		onScreen.X += shiftX;
-		onScreen.Y += shiftY;
+		WindowPlacement fitted;
 
-		const std::vector<ScreenRect> areas = MonitorWorkAreas();
-		const WindowPlacement fitted = FitToMonitors(onScreen, areas, ToScreenRect(primary.rcWork));
+		if (placement)
+		{
+			WindowPlacement onScreen = *placement;
+			onScreen.X += shiftX;
+			onScreen.Y += shiftY;
+
+			const std::vector<ScreenRect> areas = MonitorWorkAreas();
+			fitted = FitToMonitors(onScreen, areas, ToScreenRect(primary.rcWork));
+		}
+		else
+		{
+			// Nothing saved: the size the window was created at, scaled to the monitor, which can
+			// be taller than the monitor's work area leaves room for - the window then opened
+			// under the taskbar. Kept clear of it and centred.
+			int width = 0;
+			int height = 0;
+			glfwGetWindowSize(m_Handle, &width, &height);
+			fitted = DefaultPlacement(width, height, ToScreenRect(primary.rcWork));
+		}
 
 		WINDOWPLACEMENT native{};
 		native.length = sizeof(native);
@@ -456,6 +465,30 @@ namespace Core {
 				  GetLastError());
 		glfwShowWindow(m_Handle);
 #else
+		if (!placement)
+		{
+			int areaX = 0;
+			int areaY = 0;
+			int areaWidth = 0;
+			int areaHeight = 0;
+			int width = 0;
+			int height = 0;
+
+			if (GLFWmonitor* monitor = glfwGetPrimaryMonitor(); monitor != nullptr)
+			{
+				glfwGetMonitorWorkarea(monitor, &areaX, &areaY, &areaWidth, &areaHeight);
+				glfwGetWindowSize(m_Handle, &width, &height);
+
+				const WindowPlacement centred =
+					DefaultPlacement(width, height, ScreenRect{areaX, areaY, areaX + areaWidth, areaY + areaHeight});
+				glfwSetWindowPos(m_Handle, centred.X, centred.Y);
+				glfwSetWindowSize(m_Handle, centred.Width, centred.Height);
+			}
+
+			glfwShowWindow(m_Handle);
+			return;
+		}
+
 		glfwSetWindowPos(m_Handle, placement->X, placement->Y);
 		glfwSetWindowSize(m_Handle, placement->Width, placement->Height);
 		glfwShowWindow(m_Handle);
