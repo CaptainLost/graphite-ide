@@ -40,6 +40,9 @@ terminal that comes back after a restart has to come back under the same name.
   - `terminal.new` opens the default shell and is bound to Ctrl+Shift+`, and
     each discovered shell has a `terminal.new.<slug>` command, keyed by the
     profile's name rather than its position, for the command palette.
+- "The default shell" is the one chosen in Settings, stored as `defaultShell`
+  by profile name, the name terminals are saved under. With nothing chosen, or
+  with the chosen shell no longer discovered, it is the first discovered shell.
 - A new window is docked on its first frame only, afterwards `imgui.ini` owns
   its place. The target is the first that exists: the node whose button or menu
   asked for it, else the dock node of the terminal focused last, else the node
@@ -55,7 +58,9 @@ terminal that comes back after a restart has to come back under the same name.
   left them. It happens on the frame the layout is rebuilt, which can be the
   frame after the reset is chosen.
 - Shell terminals are kept per folder (0522) as `restore.terminal.*`: `Id`,
-  profile name and starting directory. A folder with no saved list is told apart
+  profile name, starting directory and the last title the shell announced. A
+  restored tab shows that title until the new shell announces one of its own.
+  A folder with no saved list is told apart
   from a folder with an empty one: absent opens one default shell, empty opens
   none. A folder's list stays absent until the folder has had a terminal of its
   own - a saved list, its default shell, or a shell started while it is open -
@@ -65,6 +70,13 @@ terminal that comes back after a restart has to come back under the same name.
   ImGui and starts no process.
 - Terminals started by a command (0519) are never kept, and neither are
   terminals carried over from a folder that another one replaced.
+- A shell opened while no folder is open belongs to no folder, and the next
+  trusted folder opened adopts it: it is saved with that folder from then on.
+  The default shell opened at startup because no folder was is adopted only
+  into a folder with no saved terminal list, so a folder that has terminals of
+  its own does not gain one more each time it is opened from an empty start.
+  A folder in restricted mode (0532) adopts nothing and keeps its stored list
+  as it was; the unowned shells stay unowned, for the next trusted folder.
 - The id is a `Core::Uuid`, not a counter, so two folders' terminals never share
   an `imgui.ini` entry and a restored id cannot collide with one already open.
 
@@ -75,7 +87,15 @@ document tab is to be a window. Placing a new one beside the terminal last used
 puts it where the reader's attention already is, and a node's own `+` says more
 than which terminal had focus last; the fallbacks cover the first terminal of a
 session. Remembering the profile and directory rather than the process keeps
-the feature small and honest: the layout returns, the shell is new.
+the feature small and honest: the layout returns, the shell is new. The title
+is kept because a row of tabs that all read the shell's name until each shell
+prints a prompt is a row the reader cannot tell apart.
+
+A shell opened before any folder was opened is work the reader started on
+purpose, and it has nowhere else to be kept, so the folder that follows takes
+it. A shell carried from one folder to the next already belongs to the first,
+which is why that case is still never kept. Restricted mode must not change a
+folder's saved list behind the reader's back, so adoption waits for trust.
 
 ## Consequences
 
@@ -98,6 +118,11 @@ the feature small and honest: the layout returns, the shell is new.
   appear one frame after a node first shows.
 - A bottom row made again by splitting the central node moves the open documents
   up at once, to give the row its share of the height.
+- A shell moved from folder A to folder B is still not saved with B, even when
+  the reader kept using it there.
+- A shell opened before a restricted folder is not saved with that folder.
+- A saved title can be stale: it is what the last program said, shown until
+  the new shell says something else.
 
 ### Neutral
 
@@ -124,5 +149,5 @@ the feature small and honest: the layout returns, the shell is new.
 
 ## Related
 
-- 0494, 0519, 0522, 0528
-- `Graphite/src/Panels/TerminalWindows.h`, `Graphite/src/Panels/TerminalRules.h`
+- 0494, 0519, 0522, 0528, 0532
+- `Graphite/src/Terminal/TerminalWindows.h`, `Graphite/src/Terminal/TerminalRules.h`
