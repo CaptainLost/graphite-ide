@@ -16,13 +16,16 @@
 #include "Explorer/TreeReveal.h"
 #include "UI/IconButton.h"
 #include "UI/OpenGesture.h"
+#include "UI/ToastEvent.h"
 
 #include "Core/Events/EventBus.h"
 
 #include <IconsMaterialDesignIcons.h>
 
 #include <algorithm>
+#include <format>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -39,6 +42,20 @@ namespace Graphite {
 
 			return std::clamp(fitted, Core::Scaled(kMinFieldWidth), ImGui::GetContentRegionAvail().x);
 		}
+
+		// Said in a toast, where quoting an emptied name field would read as a stray pair of
+		// quotes.
+		std::string InvalidNameMessage(const std::string& name)
+		{
+			return name.empty() ? std::string("A name cannot be empty")
+								: std::format("'{}' is not a valid file name", name);
+		}
+	}
+
+	void FileTreeView::ReportFailure(Core::ToastKind kind, std::string title, std::string_view message)
+	{
+		// About a file in the open folder, so it reads relative to it and goes when the folder does.
+		m_Events.Publish(FolderToast(kind, std::move(title), message, m_Workspace.GetRoot()));
 	}
 
 	FileTreeView::FileTreeView(Workspace& workspace, const Core::DocumentSet& documents,
@@ -256,6 +273,7 @@ namespace Graphite {
 			if (const auto revealed = Core::Shell::RevealInFileBrowser(node.Path); !revealed)
 			{
 				APP_ERROR("{}", revealed.GetError().Message);
+				ReportFailure(Core::ToastKind::Error, "Cannot reveal file", revealed.GetError().Message);
 			}
 		}
 
@@ -390,6 +408,7 @@ namespace Graphite {
 			if (const auto revealed = Core::Shell::RevealInFileBrowser(root); !revealed)
 			{
 				APP_ERROR("{}", revealed.GetError().Message);
+				ReportFailure(Core::ToastKind::Error, "Cannot reveal file", revealed.GetError().Message);
 			}
 		}
 
@@ -408,6 +427,7 @@ namespace Graphite {
 		if (current.size() >= m_RenameBuffer.size())
 		{
 			APP_ERROR("Cannot rename '{}': the name is too long to edit", current);
+			ReportFailure(Core::ToastKind::Warning, "Cannot rename", std::format("'{}': the name is too long to edit", current));
 			return;
 		}
 
@@ -600,6 +620,7 @@ namespace Graphite {
 		if (!Core::IsValidFileName(action.Name))
 		{
 			APP_ERROR("'{}' is not a valid file name", action.Name);
+			ReportFailure(Core::ToastKind::Error, "Rename failed", InvalidNameMessage(action.Name));
 			return action.Target;
 		}
 
@@ -614,6 +635,7 @@ namespace Graphite {
 		if (const auto renamed = Core::Rename(action.Target, target); !renamed)
 		{
 			APP_ERROR("{}", renamed.GetError().Message);
+			ReportFailure(Core::ToastKind::Error, "Rename failed", renamed.GetError().Message);
 			return action.Target;
 		}
 
@@ -640,6 +662,7 @@ namespace Graphite {
 		if (!copied)
 		{
 			APP_ERROR("{}", copied.GetError().Message);
+			ReportFailure(Core::ToastKind::Error, "Duplicate failed", copied.GetError().Message);
 			return;
 		}
 
@@ -652,6 +675,7 @@ namespace Graphite {
 		if (!Core::IsValidFileName(action.Name))
 		{
 			APP_ERROR("'{}' is not a valid file name", action.Name);
+			ReportFailure(Core::ToastKind::Error, "Create failed", InvalidNameMessage(action.Name));
 			return;
 		}
 
@@ -665,6 +689,7 @@ namespace Graphite {
 		if (!created)
 		{
 			APP_ERROR("{}", created.GetError().Message);
+			ReportFailure(Core::ToastKind::Error, "Create failed", created.GetError().Message);
 			return;
 		}
 
@@ -732,6 +757,7 @@ namespace Graphite {
 			if (const auto removed = Core::MoveToRecycleBin(m_DeleteCandidate); !removed)
 			{
 				APP_ERROR("{}", removed.GetError().Message);
+				ReportFailure(Core::ToastKind::Error, "Delete failed", removed.GetError().Message);
 			}
 			else
 			{

@@ -20,6 +20,7 @@
 namespace Core {
 
 	class DocumentSet;
+	class EventBus;
 
 }
 
@@ -28,7 +29,7 @@ namespace Graphite {
 	class SolutionTreeView final
 	{
 	public:
-		SolutionTreeView(Workspace& workspace, const Core::DocumentSet& documents);
+		SolutionTreeView(Workspace& workspace, const Core::DocumentSet& documents, Core::EventBus& events);
 
 		void Render();
 
@@ -109,6 +110,7 @@ namespace Graphite {
 
 		Workspace& m_Workspace;
 		const Core::DocumentSet& m_Documents;
+		Core::EventBus& m_Events;
 		ImGuiTextFilter m_Filter;
 
 		GitDecorationView m_GitDecorations;

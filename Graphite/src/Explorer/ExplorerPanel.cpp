@@ -42,7 +42,7 @@ namespace Graphite {
 	ExplorerPanel::ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents,
 								 AppSettings& settings, Core::EventBus& events)
 		: Core::Panel("files", "Explorer", "navigate", ICON_MDI_FILE_TREE), m_Workspace(workspace),
-		  m_AppSettings(settings), m_Files(workspace, documents, events), m_Solution(workspace, documents)
+		  m_AppSettings(settings), m_Files(workspace, documents, events), m_Solution(workspace, documents, events)
 	{
 		// The folder's stored mode is read when the panel first sees a folder, and would put a
 		// just-opened solution back behind the file tree. Handled here, after the workspace has

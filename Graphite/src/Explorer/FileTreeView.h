@@ -6,12 +6,14 @@
 #include "Git/GitDecorationView.h"
 
 #include "Core/FileSystem/FileTree.h"
+#include "Core/ImGui/ToastStack.h"
 
 #include <imgui.h>
 
 #include <array>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Core {
@@ -88,6 +90,9 @@ namespace Graphite {
 		void RefreshParentOf(const std::filesystem::path& path);
 		bool PassesFilter(const Core::FileNode& node) const;
 		bool AnyChildPassesFilter(const Core::FileNode& node) const;
+
+		// A failed file action in a toast, beside the log line each site keeps.
+		void ReportFailure(Core::ToastKind kind, std::string title, std::string_view message);
 
 		Workspace& m_Workspace;
 		const Core::DocumentSet& m_Documents;

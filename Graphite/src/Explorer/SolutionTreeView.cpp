@@ -1,6 +1,7 @@
 #include "Explorer/SolutionTreeView.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
@@ -12,6 +13,7 @@
 #include "Git/GitDecorationView.h"
 #include "Solution/SolutionEditor.h"
 #include "UI/OpenGesture.h"
+#include "UI/ToastEvent.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -80,8 +82,9 @@ namespace Graphite {
 		}
 	}
 
-	SolutionTreeView::SolutionTreeView(Workspace& workspace, const Core::DocumentSet& documents)
-		: m_Workspace(workspace), m_Documents(documents)
+	SolutionTreeView::SolutionTreeView(Workspace& workspace, const Core::DocumentSet& documents,
+									   Core::EventBus& events)
+		: m_Workspace(workspace), m_Documents(documents), m_Events(events)
 	{
 	}
 
@@ -698,6 +701,8 @@ namespace Graphite {
 			if (const auto applied = Apply(action); !applied)
 			{
 				APP_ERROR("{}", applied.GetError().Message);
+				m_Events.Publish(FolderToast(Core::ToastKind::Error, "Solution edit failed", applied.GetError().Message,
+												 m_Workspace.GetRoot()));
 			}
 
 			m_RemoveCandidate.clear();
@@ -737,6 +742,8 @@ namespace Graphite {
 											  if (!picked)
 											  {
 												  APP_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
+												  m_Events.Publish(ApplicationToast(Core::ToastKind::Error, "Cannot open file picker",
+																									picked.GetError().Message));
 												  return;
 											  }
 
@@ -761,6 +768,8 @@ namespace Graphite {
 		if (const auto applied = Apply(action); !applied)
 		{
 			APP_ERROR("{}", applied.GetError().Message);
+			m_Events.Publish(FolderToast(Core::ToastKind::Error, "Solution edit failed", applied.GetError().Message,
+											 m_Workspace.GetRoot()));
 			return;
 		}
 
