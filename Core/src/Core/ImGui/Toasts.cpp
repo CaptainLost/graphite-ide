@@ -71,6 +71,21 @@ namespace Core {
 			return ImVec4(color.R, color.G, color.B, color.A * alpha);
 		}
 
+		// How far the message's colour sits from the dim text towards the full one. The dim
+		// colour alone is too faint to read a several-line git message in; the full one would
+		// leave the bold title nothing but its weight to stand apart by.
+		constexpr float kMessageBrightness = 0.7f;
+
+		ImVec4 MessageColour(const ToastPalette& palette)
+		{
+			const Color& from = palette.TextDim;
+			const Color& to = palette.Text;
+			const float t = kMessageBrightness;
+
+			return ImVec4(from.R + (to.R - from.R) * t, from.G + (to.G - from.G) * t,
+						  from.B + (to.B - from.B) * t, from.A + (to.A - from.A) * t);
+		}
+
 		const Color& AccentOf(const ToastPalette& palette, ToastKind kind)
 		{
 			switch (kind)
@@ -328,14 +343,27 @@ namespace Core {
 				draw->AddRect(min, max, ImGui::GetColorU32(accent), rounding, ImDrawFlags_None, Scaled(kBorderWidth));
 
 				// The kind's glyph, centred in its circle, in the regular face the icon font is
-				// merged into.
+				// merged into. Centred by its ink rather than its line box: the icon font is merged
+				// with a vertical offset and a minimum advance wider than most glyphs, so the line
+				// box puts the mark visibly low and to one side of the circle's centre.
 				const ImVec2 iconCentre(min.x + paddingX + iconDiameter * 0.5f, min.y + iconTop + iconDiameter * 0.5f);
 				const char* const glyph = IconOf(toast.Kind);
-				const ImVec2 glyphSize = ImGui::CalcTextSize(glyph);
 
 				draw->AddCircleFilled(iconCentre, iconDiameter * 0.5f, ImGui::GetColorU32(accent));
-				draw->AddText(ImVec2(std::floor(iconCentre.x - glyphSize.x * 0.5f),
-									 std::floor(iconCentre.y - glyphSize.y * 0.5f)),
+
+				unsigned int codepoint = 0;
+				ImTextCharFromUtf8(&codepoint, glyph, nullptr);
+				ImVec2 glyphOrigin(iconCentre.x - ImGui::CalcTextSize(glyph).x * 0.5f,
+								   iconCentre.y - ImGui::GetFontSize() * 0.5f);
+
+				if (const ImFontGlyph* ink = ImGui::GetFontBaked()->FindGlyphNoFallback(static_cast<ImWchar>(codepoint));
+					ink != nullptr)
+				{
+					glyphOrigin = ImVec2(iconCentre.x - (ink->X0 + ink->X1) * 0.5f,
+										 iconCentre.y - (ink->Y0 + ink->Y1) * 0.5f);
+				}
+
+				draw->AddText(ImVec2(std::round(glyphOrigin.x), std::round(glyphOrigin.y)),
 							  ImGui::GetColorU32(surface), glyph);
 
 				const float rowY = paddingY;
@@ -390,9 +418,9 @@ namespace Core {
 
 				ImGui::PopStyleColor(2);
 
-				// The message, dimmer than the title, which scrolls past kMaxBodyLines. On the
-				// card's surface rather than a background of its own, and with no padding of its
-				// own, so it starts at the title's x.
+				// The message, a little dimmer than the title, which scrolls past kMaxBodyLines.
+				// On the card's surface rather than a background of its own, and with no padding
+				// of its own, so it starts at the title's x.
 				ImGui::SetCursorPos(ImVec2(left, rowY + titleHeight + Scaled(kTitleGap)));
 				ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 				ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
@@ -405,7 +433,7 @@ namespace Core {
 
 				if (bodyOpen)
 				{
-					ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4(palette.TextDim));
+					ImGui::PushStyleColor(ImGuiCol_Text, MessageColour(palette));
 					ImGui::PushTextWrapPos(0.0f);
 					ImGui::TextUnformatted(toast.Message.c_str());
 					ImGui::PopTextWrapPos();
