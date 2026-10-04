@@ -100,6 +100,7 @@ project "Graphite"
     {
         '{COPYFILE} "../vendor/fonts/materialdesignicons-webfont.ttf" "%{cfg.targetdir}"',
         '{COPYFILE} "../vendor/fonts/JetBrainsMono-Regular.ttf" "%{cfg.targetdir}"',
+        '{COPYFILE} "../vendor/fonts/JetBrainsMono-Bold.ttf" "%{cfg.targetdir}"',
         '{COPYFILE} "../THIRD_PARTY_NOTICES.txt" "%{cfg.targetdir}"',
         'if exist "..\\vendor\\bin\\clangd\\clangd.exe" copy /Y "..\\vendor\\bin\\clangd\\clangd.exe" "%{cfg.targetdir}"'
     }

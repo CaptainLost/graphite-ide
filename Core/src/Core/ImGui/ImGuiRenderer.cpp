@@ -36,6 +36,7 @@ namespace Core {
 		constexpr float kBaseFontSize = 15.0f;
 
 		ImFont* g_monoFont = nullptr;
+		ImFont* g_boldFont = nullptr;
 
 		// Every way out of ImGui ends here, so the font pointer - which points into the context's
 		// atlas - never outlives the context it came from.
@@ -44,6 +45,7 @@ namespace Core {
 			ImPlot::DestroyContext();
 			ImGui::DestroyContext();
 			g_monoFont = nullptr;
+			g_boldFont = nullptr;
 		}
 
 		ImFont* LoadTextFont(ImGuiIO& io, const Result<std::filesystem::path>& directory)
@@ -150,6 +152,37 @@ namespace Core {
 			}
 		}
 
+		// Must run after every merge onto the text face: ImGui's dynamic atlas merges onto
+		// whichever font was added last, so adding this one earlier would hand it the icons or
+		// the symbol fallback and leave the text face without them. Not merged with anything
+		// itself - a title has no icons in it.
+		ImFont* LoadBoldFont(ImGuiIO& io, const Result<std::filesystem::path>& directory)
+		{
+			if (!directory)
+			{
+				CORE_WARN("Cannot locate the executable directory, the bold face will not load: {}",
+						  directory.GetError().Message);
+				return nullptr;
+			}
+
+			ImFontConfig config;
+			config.SizePixels = kBaseFontSize;
+			// Without this a missing .ttf trips ImGui's IM_ASSERT_USER_ERROR before the call
+			// returns nullptr, which crashes a Debug build instead of letting the warning run.
+			config.Flags |= ImFontFlags_NoLoadError;
+
+			const auto path = directory.GetValue() / "JetBrainsMono-Bold.ttf";
+			ImFont* loaded = io.Fonts->AddFontFromFileTTF(ToUtf8(path).c_str(), kBaseFontSize, &config);
+
+			if (loaded == nullptr)
+			{
+				CORE_WARN("Could not load JetBrains Mono Bold, titles will use the regular face: {}",
+						  ToUtf8(path));
+			}
+
+			return loaded;
+		}
+
 		bool ViewportsEnabled()
 		{
 			return (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0;
@@ -159,6 +192,11 @@ namespace Core {
 	ImFont* ImGuiRenderer::GetMonoFont()
 	{
 		return g_monoFont;
+	}
+
+	ImFont* ImGuiRenderer::GetBoldFont()
+	{
+		return g_boldFont;
 	}
 
 	// Exists because applying a palette is not a complete operation on its own: Theme::Apply
@@ -285,6 +323,7 @@ namespace Core {
 		g_monoFont = LoadTextFont(io, executableDirectory);
 		MergeIconFont(io, executableDirectory);
 		MergeSymbolFallback(io, g_monoFont);
+		g_boldFont = LoadBoldFont(io, executableDirectory);
 
 		ApplyTheme(Theme::DefaultPalette());
 

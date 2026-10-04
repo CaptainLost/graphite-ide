@@ -49,6 +49,11 @@ namespace Core {
 
 		static ImFont* GetMonoFont();
 
+		// JetBrains Mono Bold at the text face's size, for a line that has to stand out from the
+		// text under it - a toast's title. Null when the file did not load; a caller then draws
+		// in the current font instead. Carries no icons and no symbol fallback.
+		static ImFont* GetBoldFont();
+
 		// The way to put a palette on screen. Theme::Apply paints the colours; this also runs
 		// the style fixups that have to follow it, so applying a palette here means the same
 		// thing at startup and on every later change of scheme.
