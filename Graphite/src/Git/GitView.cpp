@@ -12,7 +12,6 @@
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
-#include "UI/RelativePaths.h"
 #include "UI/HighlightedRow.h"
 #include "UI/SplitResults.h"
 #include "UI/ToastEvent.h"
@@ -47,12 +46,7 @@ namespace Graphite {
 		void ShowFailure(Core::EventBus& events, std::string title, const std::string& message,
 						 const std::filesystem::path& root)
 		{
-			std::string copied = title + "\n" + message;
-			events.Publish(ToastEvent{.Kind = Core::ToastKind::Error,
-									  .Title = std::move(title),
-									  .Message = RelativiseUnder(message, root),
-									  .CopyText = std::move(copied),
-									  .Scope = ToastScope::Folder});
+			events.Publish(FolderToast(Core::ToastKind::Error, std::move(title), message, root));
 		}
 	}
 

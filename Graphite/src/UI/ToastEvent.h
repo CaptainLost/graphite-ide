@@ -3,7 +3,9 @@
 #include "Core/ImGui/ToastStack.h"
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
+#include <string_view>
 
 namespace Graphite {
 
@@ -40,4 +42,14 @@ namespace Graphite {
 	{
 		return scope == ToastScope::Folder ? 1u : 0u;
 	}
+
+	// A toast about the open folder's files or its repository. Paths inside `root` read
+	// relative to it on screen, where the folder is already known; Copy keeps the title and the
+	// whole message, for pasting somewhere the folder is not. An empty root - no folder open -
+	// leaves the message as it is.
+	ToastEvent FolderToast(Core::ToastKind kind, std::string title, std::string_view message,
+						   const std::filesystem::path& root);
+
+	// A toast that outlives the folder: a setting, a theme, a shell, a folder that would not open.
+	ToastEvent ApplicationToast(Core::ToastKind kind, std::string title, std::string message);
 }
