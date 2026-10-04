@@ -72,6 +72,7 @@ namespace Graphite {
 	void ExplorerPanel::SetGitDecorations(const GitDecorationView& decorations)
 	{
 		m_Files.SetGitDecorations(decorations);
+		m_Solution.SetGitDecorations(decorations);
 	}
 
 	void ExplorerPanel::SyncModeWithWorkspace()

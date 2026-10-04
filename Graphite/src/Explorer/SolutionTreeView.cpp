@@ -9,6 +9,7 @@
 #include "Core/Platform/FileDialog.h"
 #include "Core/Text/DocumentSet.h"
 #include "Explorer/FileRow.h"
+#include "Git/GitDecorationView.h"
 #include "Solution/SolutionEditor.h"
 #include "UI/OpenGesture.h"
 
@@ -50,6 +51,23 @@ namespace Graphite {
 			return folders;
 		}
 
+		void CollectFilePaths(const ContentFolder& folder, std::vector<std::filesystem::path>& out)
+		{
+			for (const ContentFile& file : folder.Files)
+			{
+				// A file the disk lacks has no status to show.
+				if (file.Exists)
+				{
+					out.push_back(file.Path);
+				}
+			}
+
+			for (const ContentFolder& child : folder.Folders)
+			{
+				CollectFilePaths(child, out);
+			}
+		}
+
 		constexpr const char* kNotEditableTip =
 			"Editing .sln files is not supported yet; convert the solution to .slnx";
 
@@ -86,6 +104,8 @@ namespace Graphite {
 
 		const Solution& solution = *m_Workspace.GetLoadedSolution();
 
+		ForgetStaleGroupDecorations();
+
 		if (ImGui::BeginChild("##solutionBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
 							  ImGuiWindowFlags_HorizontalScrollbar))
 		{
@@ -100,6 +120,7 @@ namespace Graphite {
 			const bool rootOpen = ImGui::TreeNodeEx(
 				label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
 
+			DrawGroupMarker(solution.Root);
 			RenderContextMenu(solution.Root, "");
 
 			if (rootOpen)
@@ -181,6 +202,7 @@ namespace Graphite {
 			const bool open = ImGui::TreeNodeEx(
 				label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
 
+			DrawGroupMarker(child);
 			RenderContextMenu(child, childPath);
 
 			if (open)
@@ -228,6 +250,7 @@ namespace Graphite {
 			ImGui::PopStyleColor();
 		}
 
+		DrawGroupMarker(project);
 		RenderContextMenu(project, folder);
 
 		if (!open)
@@ -303,7 +326,7 @@ namespace Graphite {
 			label += " (missing)";
 		}
 
-		const FileRowLayout layout = LayoutFileRow(label, false);
+		const FileRowLayout layout = LayoutFileRow(label, m_GitDecorations.Index != nullptr);
 
 		// Keyed by the full path: ImGui gives same-labelled siblings the same id, and two
 		// projects can hold files of the same name.
@@ -315,9 +338,26 @@ namespace Graphite {
 
 		const bool clicked = ImGui::Selectable(id.c_str(), selected, flags, ImVec2(layout.Width, 0.0f));
 
-		DrawFileRowLabel(layout,
-						 FileRowLook{.Ink = ImGui::GetColorU32(file.Exists ? ImGuiCol_Text : ImGuiCol_TextDisabled)},
-						 label);
+		// Only for a row on screen: the lookup builds a path key. A file the disk lacks keeps its
+		// missing look and shows no status.
+		if (ImGui::IsItemVisible())
+		{
+			FileRowLook look{.Ink = ImGui::GetColorU32(file.Exists ? ImGuiCol_Text : ImGuiCol_TextDisabled)};
+
+			if (file.Exists)
+			{
+				const bool isActive = active.has_value() && m_Documents.At(*active).Path == file.Path;
+				look.OpenElsewhere = !isActive && m_Documents.Find(file.Path).has_value();
+				look.Status = FileRowStatusOf(m_GitDecorations, file.Path);
+
+				if (look.Status.Decoration != GitDecoration::None)
+				{
+					look.Ink = look.Status.Ink;
+				}
+			}
+
+			DrawFileRowLabel(layout, look, label);
+		}
 
 		if (!file.Exists && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 		{
@@ -335,6 +375,105 @@ namespace Graphite {
 			m_Workspace.SelectFile(file.Path);
 			m_Workspace.RequestOpenFile(file.Path, OpensPermanently());
 		}
+	}
+
+	void SolutionTreeView::ForgetStaleGroupDecorations()
+	{
+		const std::uint64_t load = m_Workspace.GetSolutionLoad();
+
+		if (load == m_GroupLoad && m_GitDecorations.Index == m_GroupIndex &&
+			m_GitDecorations.Version == m_GroupVersion)
+		{
+			return;
+		}
+
+		m_GroupDecorations.clear();
+		m_GroupLoad = load;
+		m_GroupIndex = m_GitDecorations.Index;
+		m_GroupVersion = m_GitDecorations.Version;
+	}
+
+	GitDecoration SolutionTreeView::GroupDecorationOf(const Project& project)
+	{
+		if (!project.Exists || !project.ContentRead || m_GitDecorations.Index == nullptr)
+		{
+			return GitDecoration::None;
+		}
+
+		if (const auto cached = m_GroupDecorations.find(&project); cached != m_GroupDecorations.end())
+		{
+			return cached->second;
+		}
+
+		std::vector<std::filesystem::path> files;
+		CollectFilePaths(project.Content.Root, files);
+
+		const GitDecoration decoration = MaxDecorationOf(files, m_GitDecorations);
+		m_GroupDecorations.emplace(&project, decoration);
+
+		return decoration;
+	}
+
+	GitDecoration SolutionTreeView::GroupDecorationOf(const Folder& folder)
+	{
+		if (m_GitDecorations.Index == nullptr)
+		{
+			return GitDecoration::None;
+		}
+
+		if (const auto cached = m_GroupDecorations.find(&folder); cached != m_GroupDecorations.end())
+		{
+			return cached->second;
+		}
+
+		GitDecoration decoration = GitDecoration::None;
+
+		for (const Folder& child : folder.Folders)
+		{
+			decoration = std::max(decoration, GroupDecorationOf(child));
+		}
+
+		for (const Project& project : folder.Projects)
+		{
+			decoration = std::max(decoration, GroupDecorationOf(project));
+		}
+
+		m_GroupDecorations.emplace(&folder, decoration);
+
+		return decoration;
+	}
+
+	void SolutionTreeView::DrawGroupMarker(const Project& project)
+	{
+		if (ImGui::IsItemVisible())
+		{
+			DrawGroupMarker(GroupDecorationOf(project));
+		}
+	}
+
+	void SolutionTreeView::DrawGroupMarker(const Folder& folder)
+	{
+		if (ImGui::IsItemVisible())
+		{
+			DrawGroupMarker(GroupDecorationOf(folder));
+		}
+	}
+
+	void SolutionTreeView::DrawGroupMarker(GitDecoration decoration)
+	{
+		if (decoration == GitDecoration::None)
+		{
+			return;
+		}
+
+		RowStatus status;
+		status.Decoration = decoration;
+		status.Dot = true;
+		status.Ink = m_GitDecorations.ColourFor(decoration);
+
+		const float textTop =
+			ImGui::GetItemRectMin().y + (ImGui::GetItemRectSize().y - ImGui::GetFontSize()) * 0.5f;
+		DrawRowMarker(status, textTop);
 	}
 
 	void SolutionTreeView::RenderEmptyState()

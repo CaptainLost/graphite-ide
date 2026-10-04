@@ -4,8 +4,10 @@
 
 #include <imgui.h>
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <span>
 
 namespace Graphite {
 
@@ -27,6 +29,10 @@ namespace Graphite {
 		// Null when there is no repository or no status yet; nothing is decorated then. Owned by
 		// whoever built the view and valid until it next rebuilds the index.
 		const GitDecorations* Index = nullptr;
+
+		// Changes whenever the index is rebuilt, so a result computed from one index is not mistaken
+		// for the next one's, which may sit at the same address.
+		std::uint64_t Version = 0;
 
 		// [0] GutterAdded, [1] GutterModified, [2] GutterRemoved, from the active scheme.
 		ImU32 Colours[3] = {};
@@ -51,4 +57,7 @@ namespace Graphite {
 	private:
 		std::filesystem::path::string_type m_WorkingDirectoryKey;
 	};
+
+	// The highest decoration among `files`, None for no files or nothing decorated.
+	GitDecoration MaxDecorationOf(std::span<const std::filesystem::path> files, const GitDecorationView& view);
 }

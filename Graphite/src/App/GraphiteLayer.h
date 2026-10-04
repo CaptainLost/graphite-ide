@@ -323,6 +323,7 @@ namespace Graphite {
 		// m_Panels: the Explorer holds a pointer into m_Decorations between rebuilds.
 		Core::Ref<const Core::WorkingTreeStatus> m_DecoratedStatus;
 		std::unique_ptr<GitDecorations> m_Decorations;
+		std::uint64_t m_DecorationsVersion = 0;
 
 		// Holds no reference to m_Git or the queue above, so its place in this group is only
 		// about outliving what refers to it: GitView takes a DiffWindows&, so this must be

@@ -2,6 +2,8 @@
 
 #include "Core/FileSystem/FileSystem.h"
 
+#include <algorithm>
+
 namespace Graphite {
 
 	void GitDecorationView::SetWorkingDirectory(const std::filesystem::path& workingDirectory)
@@ -76,5 +78,22 @@ namespace Graphite {
 		}
 
 		return Colours[1];
+	}
+
+	GitDecoration MaxDecorationOf(std::span<const std::filesystem::path> files, const GitDecorationView& view)
+	{
+		GitDecoration highest = GitDecoration::None;
+
+		for (const std::filesystem::path& file : files)
+		{
+			highest = std::max(highest, view.FileOf(file));
+
+			if (highest == GitDecoration::Conflicted)
+			{
+				break;
+			}
+		}
+
+		return highest;
 	}
 }

@@ -5,13 +5,16 @@
 #include "Workspace/Workspace.h"
 
 #include "Core/Base/Result.h"
+#include "Git/GitDecorationView.h"
 #include "Solution/SolutionModel.h"
 
 #include <imgui.h>
 
 #include <array>
+#include <cstdint>
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace Core {
@@ -32,6 +35,9 @@ namespace Graphite {
 		// Off, the tree is left as the user arranged it; turned back on, it reveals the
 		// active document straight away.
 		void SetFollowsActiveFile(bool follow) { m_FollowsActiveFile = follow; }
+
+		// This frame's git status, set before the tree renders.
+		void SetGitDecorations(const GitDecorationView& decorations) { m_GitDecorations = decorations; }
 
 	private:
 		struct PendingAction
@@ -76,6 +82,19 @@ namespace Graphite {
 		void RenderContentFile(const ContentFile& file);
 		void RenderEmptyState();
 
+		// The most important decoration among the content files a project or solution folder
+		// holds. Computed the first time a row asks and kept until the solution is reloaded or the
+		// status index rebuilt, so a collapsed project's files are walked once, not every frame.
+		GitDecoration GroupDecorationOf(const Project& project);
+		GitDecoration GroupDecorationOf(const Folder& folder);
+		void ForgetStaleGroupDecorations();
+
+		// A dot on the right of the row just submitted, in the colour of its group's decoration.
+		// Drawn only for a row on screen.
+		void DrawGroupMarker(const Project& project);
+		void DrawGroupMarker(const Folder& folder);
+		void DrawGroupMarker(GitDecoration decoration);
+
 		void StartRenamingFolder(const Folder& folder, const std::string& path);
 		void RenderContextMenu(const Folder& folder, const std::string& path);
 		void RenderContextMenu(const Project& project, const std::string& folder);
@@ -91,6 +110,15 @@ namespace Graphite {
 		Workspace& m_Workspace;
 		const Core::DocumentSet& m_Documents;
 		ImGuiTextFilter m_Filter;
+
+		GitDecorationView m_GitDecorations;
+
+		// What m_GroupDecorations were computed from: the load of the solution, and the status
+		// index with its version (the pointer alone can repeat across rebuilds).
+		std::uint64_t m_GroupLoad = 0;
+		const GitDecorations* m_GroupIndex = nullptr;
+		std::uint64_t m_GroupVersion = 0;
+		std::unordered_map<const void*, GitDecoration> m_GroupDecorations;
 
 		// The active document the tree last revealed, and the file the next walk opens every
 		// row on the way to and scrolls into view. Spent by that one walk, so a row the user

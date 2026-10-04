@@ -158,6 +158,36 @@ TEST_CASE("GitDecorationView: a folder lookup gives the decoration and the untra
 	CHECK(ViewOf(nullptr).FolderDecorationOf("C:/repo/src").Decoration == GitDecoration::None);
 }
 
+TEST_CASE("MaxDecorationOf: the most important decoration among the files wins")
+{
+	Core::FileStatus conflicted = Entry(u8"src/c.cpp", StatusFlags::Modified);
+	conflicted.IsConflicted = true;
+
+	const Graphite::GitDecorations index(StatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified),
+												   Entry(u8"src/b.cpp", StatusFlags::New), conflicted}));
+	const Graphite::GitDecorationView view = ViewOf(&index);
+
+	const std::vector<std::filesystem::path> modifiedAndClean = {"C:/repo/src/clean.cpp", "C:/repo/src/a.cpp"};
+	CHECK(Graphite::MaxDecorationOf(modifiedAndClean, view) == GitDecoration::Modified);
+
+	const std::vector<std::filesystem::path> all = {"C:/repo/src/b.cpp", "C:/repo/src/a.cpp", "C:/repo/src/c.cpp"};
+	CHECK(Graphite::MaxDecorationOf(all, view) == GitDecoration::Conflicted);
+}
+
+TEST_CASE("MaxDecorationOf: no files, clean files, files outside the repository or no index give None")
+{
+	const Graphite::GitDecorations index(StatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified)}));
+	const Graphite::GitDecorationView view = ViewOf(&index);
+
+	CHECK(Graphite::MaxDecorationOf({}, view) == GitDecoration::None);
+
+	const std::vector<std::filesystem::path> clean = {"C:/repo/src/clean.cpp", "C:/other/src/a.cpp"};
+	CHECK(Graphite::MaxDecorationOf(clean, view) == GitDecoration::None);
+
+	const std::vector<std::filesystem::path> changed = {"C:/repo/src/a.cpp"};
+	CHECK(Graphite::MaxDecorationOf(changed, ViewOf(nullptr)) == GitDecoration::None);
+}
+
 TEST_CASE("GitDecorationView: a copy keeps the working directory")
 {
 	const Graphite::GitDecorations index(StatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified)}));

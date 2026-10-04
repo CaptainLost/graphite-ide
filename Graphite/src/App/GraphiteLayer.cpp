@@ -657,6 +657,7 @@ namespace Graphite {
 		if (Core::Ref<const Core::WorkingTreeStatus> status = m_Git.GetStatus(); status != m_DecoratedStatus)
 		{
 			m_Decorations = status ? std::make_unique<GitDecorations>(*status) : nullptr;
+			++m_DecorationsVersion;
 			m_DecoratedStatus = std::move(status);
 		}
 
@@ -669,6 +670,7 @@ namespace Graphite {
 			const GitPalette palette = ReadGitPalette(m_ActiveScheme.Get());
 
 			view.Index = m_Decorations.get();
+			view.Version = m_DecorationsVersion;
 			view.SetWorkingDirectory(m_Git.GetWorkingDirectory());
 			view.Colours[0] = palette.GutterAdded;
 			view.Colours[1] = palette.GutterModified;
