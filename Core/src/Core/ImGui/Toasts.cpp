@@ -3,7 +3,6 @@
 #include "Core/ImGui/Toasts.h"
 
 #include "Core/App/Redraw.h"
-#include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/UiScale.h"
 
@@ -270,7 +269,17 @@ namespace Core {
 
 				ImGui::EndChild();
 
-				if (Core::BeginRightClickPopup("##toastMenu"))
+				// Opened from anywhere on the toast - the title row as much as the body - rather
+				// than through Core::BeginRightClickPopup, which answers only to the last item.
+				// Otherwise the same: opened on release, and begun with NoMove for the reason
+				// ContextMenu.h gives. The id lives in the toast window's own id stack.
+				if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
+					ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByPopup))
+				{
+					ImGui::OpenPopup("##toastMenu");
+				}
+
+				if (ImGui::BeginPopup("##toastMenu", ImGuiWindowFlags_NoMove))
 				{
 					// Raised every frame it is open: the toast under it is not raised while a
 					// popup is open, but one raised on the frame the menu opened would cover it.

@@ -93,7 +93,10 @@ namespace Graphite {
 
 				if (check->Failure.has_value())
 				{
-					m_Toasts.Show(Core::ToastKind::Error, "Delete branch failed", check->Failure->Message);
+					// The branch stays in the message: the check's failures do not name it, and
+					// an error toast stays until it is closed, long after the click.
+					m_Toasts.Show(Core::ToastKind::Error, "Delete branch failed",
+								  check->Branch + ": " + check->Failure->Message);
 				}
 				else
 				{
