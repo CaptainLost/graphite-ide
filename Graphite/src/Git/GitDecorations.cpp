@@ -151,6 +151,18 @@ namespace Graphite {
 				parent = parent.parent_path();
 				Raise(m_Folders, KeyOf(parent), weight);
 			}
+
+			// A file moved out of a folder leaves that folder changed, as deleting it would.
+			if (entry.RenamedFrom)
+			{
+				std::filesystem::path origin = *entry.RenamedFrom;
+
+				while (origin.has_relative_path())
+				{
+					origin = origin.parent_path();
+					Raise(m_Folders, KeyOf(origin), weight);
+				}
+			}
 		}
 	}
 
@@ -176,6 +188,17 @@ namespace Graphite {
 		}
 
 		return false;
+	}
+
+	GitDecoration GitDecorations::OwnFile(const std::filesystem::path& relative) const
+	{
+		if (m_Files.empty())
+		{
+			return GitDecoration::None;
+		}
+
+		const auto found = m_Files.find(KeyOf(relative));
+		return found != m_Files.end() ? found->second : GitDecoration::None;
 	}
 
 	GitDecoration GitDecorations::File(const std::filesystem::path& relative) const

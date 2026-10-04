@@ -109,3 +109,16 @@ TEST_CASE("FolderRowStatusOf: an untracked directory shows U, the folders above 
 
 	CHECK(Graphite::FileRowStatusOf(view, "C:/repo/build/gen/a.o").Letter == 'U');
 }
+
+TEST_CASE("FileRowStatusOf: an ignored row keeps its own status but not an untracked directory's")
+{
+	const auto index = IndexOf({UntrackedDirectory(u8"gen"), Entry(u8"out/tracked.cpp", StatusFlags::Modified)});
+	const auto view = ViewOf(index);
+
+	const Graphite::RowStatus tracked = Graphite::FileRowStatusOf(view, "C:/repo/out/tracked.cpp", true);
+	CHECK(tracked.Decoration == GitDecoration::Modified);
+	CHECK(tracked.Letter == 'M');
+
+	CHECK(Graphite::FileRowStatusOf(view, "C:/repo/gen/a.cpp").Letter == 'U');
+	CHECK_FALSE(Graphite::FileRowStatusOf(view, "C:/repo/gen/a.cpp", true).HasMarker());
+}

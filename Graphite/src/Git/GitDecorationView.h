@@ -46,6 +46,10 @@ namespace Graphite {
 		std::optional<std::filesystem::path> RelativeOf(const std::filesystem::path& absolute) const;
 
 		GitDecoration FileOf(const std::filesystem::path& absolute) const;
+
+		// FileOf without what a file inherits from an untracked directory around it.
+		GitDecoration OwnFileOf(const std::filesystem::path& absolute) const;
+
 		GitDecoration FolderOf(const std::filesystem::path& absolute) const;
 		bool IsUntrackedFolderOf(const std::filesystem::path& absolute) const;
 

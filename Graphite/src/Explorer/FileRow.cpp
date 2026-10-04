@@ -27,10 +27,11 @@ namespace Graphite {
 		}
 	}
 
-	RowStatus FileRowStatusOf(const GitDecorationView& view, const std::filesystem::path& absolute)
+	RowStatus FileRowStatusOf(const GitDecorationView& view, const std::filesystem::path& absolute,
+							  bool ownEntryOnly)
 	{
 		RowStatus status;
-		status.Decoration = view.FileOf(absolute);
+		status.Decoration = ownEntryOnly ? view.OwnFileOf(absolute) : view.FileOf(absolute);
 
 		if (status.Decoration != GitDecoration::None)
 		{

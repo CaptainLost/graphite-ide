@@ -883,19 +883,18 @@ namespace Graphite {
 											   ImVec2(layout.Width, 0.0f));
 
 		// Only for a row on screen: the lookup builds a path key, and an expanded tree can hold
-		// thousands of rows. An ignored file keeps its plain or dimmed look and never a status.
+		// thousands of rows.
 		if (ImGui::IsItemVisible())
 		{
 			FileRowLook look{.Ink = ImGui::GetColorU32(ImGuiCol_Text), .OpenElsewhere = isOpen && !isActive};
 
-			if (!node.Ignored)
-			{
-				look.Status = FileRowStatusOf(m_GitDecorations, node.Path);
+			// An ignored file shows only its own entry: a tracked file under an ignore pattern
+			// still has a status, but what lies inside an untracked directory stays plain.
+			look.Status = FileRowStatusOf(m_GitDecorations, node.Path, node.Ignored);
 
-				if (look.Status.Decoration != GitDecoration::None)
-				{
-					look.Ink = look.Status.Ink;
-				}
+			if (look.Status.Decoration != GitDecoration::None)
+			{
+				look.Ink = look.Status.Ink;
 			}
 
 			DrawFileRowLabel(layout, look, label);

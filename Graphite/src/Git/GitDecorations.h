@@ -48,6 +48,11 @@ namespace Graphite {
 		// git as one entry, so everything beneath it is Untracked here.
 		GitDecoration File(const std::filesystem::path& relative) const;
 
+		// File without the untracked-directory fallback: only the file's own status entry. A
+		// tracked file under an ignore pattern still has one; a file merely inside an untracked
+		// directory does not.
+		GitDecoration OwnFile(const std::filesystem::path& relative) const;
+
 		// The highest decoration among the folder's descendants; None when clean. The empty path
 		// is the working directory itself.
 		GitDecoration Folder(const std::filesystem::path& relative) const;

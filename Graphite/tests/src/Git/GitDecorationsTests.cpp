@@ -187,3 +187,40 @@ TEST_CASE("GitDecorations: an empty status decorates nothing")
 	CHECK_FALSE(decorations.IsUntrackedFolder("src"));
 	CHECK(Graphite::GitDecorations{}.IsEmpty());
 }
+
+TEST_CASE("GitDecorations: the folder a file was renamed out of is decorated too")
+{
+	Core::FileStatus renamed = Entry(u8"b/x.cpp", StatusFlags::Renamed, StatusFlags::None);
+	renamed.RenamedFrom = std::filesystem::path(u8"a/x.cpp");
+	const Graphite::GitDecorations decorations(StatusOf({renamed}));
+
+	CHECK(decorations.Folder("a") == GitDecoration::Renamed);
+	CHECK(decorations.Folder("b") == GitDecoration::Renamed);
+	CHECK(decorations.File("a/x.cpp") == GitDecoration::None);
+	CHECK(decorations.File("b/x.cpp") == GitDecoration::Renamed);
+}
+
+TEST_CASE("GitDecorations: the renamed-from path raises every ancestor up to the root")
+{
+	Core::FileStatus renamed = Entry(u8"new/x.cpp", StatusFlags::Renamed, StatusFlags::None);
+	renamed.RenamedFrom = std::filesystem::path(u8"old/deep/x.cpp");
+	const Graphite::GitDecorations decorations(StatusOf({renamed}));
+
+	CHECK(decorations.Folder("old/deep") == GitDecoration::Renamed);
+	CHECK(decorations.Folder("old") == GitDecoration::Renamed);
+	CHECK(decorations.Folder("") == GitDecoration::Renamed);
+}
+
+TEST_CASE("GitDecorations: OwnFile ignores what a file inherits from an untracked directory")
+{
+	const Graphite::GitDecorations decorations(StatusOf({
+		UntrackedEntry(u8"gen", true),
+		Entry(u8"lib/kept.cpp", StatusFlags::None, StatusFlags::Modified),
+	}));
+
+	CHECK(decorations.File("gen/a.cpp") == GitDecoration::Untracked);
+	CHECK(decorations.OwnFile("gen/a.cpp") == GitDecoration::None);
+	CHECK(decorations.OwnFile("lib/kept.cpp") == GitDecoration::Modified);
+	CHECK(decorations.OwnFile("lib/other.cpp") == GitDecoration::None);
+	CHECK(Graphite::GitDecorations{}.OwnFile("a.cpp") == GitDecoration::None);
+}

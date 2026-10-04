@@ -196,3 +196,20 @@ TEST_CASE("GitDecorationView: a copy keeps the working directory")
 
 	CHECK(copy.FileOf("C:/repo/src/a.cpp") == GitDecoration::Modified);
 }
+
+TEST_CASE("GitDecorationView: OwnFileOf gives a file's own entry and nothing inherited")
+{
+	Core::FileStatus untracked;
+	untracked.Path = u8"gen";
+	untracked.IsUntracked = true;
+	untracked.IsDirectory = true;
+
+	const Graphite::GitDecorations index(StatusOf({untracked, Entry(u8"src/a.cpp", StatusFlags::Modified)}));
+	const Graphite::GitDecorationView view = ViewOf(&index);
+
+	CHECK(view.OwnFileOf("C:/repo/src/a.cpp") == GitDecoration::Modified);
+	CHECK(view.FileOf("C:/repo/gen/b.cpp") == GitDecoration::Untracked);
+	CHECK(view.OwnFileOf("C:/repo/gen/b.cpp") == GitDecoration::None);
+	CHECK(view.OwnFileOf("C:/other/a.cpp") == GitDecoration::None);
+	CHECK(Graphite::GitDecorationView{}.OwnFileOf("C:/repo/src/a.cpp") == GitDecoration::None);
+}

@@ -34,7 +34,10 @@ namespace Graphite {
 	};
 
 	// A file's own status: its letter, in its state's colour. Nothing outside the repository.
-	RowStatus FileRowStatusOf(const GitDecorationView& view, const std::filesystem::path& absolute);
+	// With `ownEntryOnly`, what a file merely inherits from an untracked directory around it is
+	// left out; ignored rows use it, since a tracked file can sit under an ignore pattern.
+	RowStatus FileRowStatusOf(const GitDecorationView& view, const std::filesystem::path& absolute,
+							  bool ownEntryOnly = false);
 
 	// A folder's: a dot in the colour of the highest state beneath it, or 'U' for a directory git
 	// reports as untracked and for every folder inside one. The folders above an untracked

@@ -29,6 +29,17 @@ namespace Graphite {
 		return relative ? Index->File(*relative) : GitDecoration::None;
 	}
 
+	GitDecoration GitDecorationView::OwnFileOf(const std::filesystem::path& absolute) const
+	{
+		if (Index == nullptr || Index->IsEmpty())
+		{
+			return GitDecoration::None;
+		}
+
+		const auto relative = RelativeOf(absolute);
+		return relative ? Index->OwnFile(*relative) : GitDecoration::None;
+	}
+
 	GitDecoration GitDecorationView::FolderOf(const std::filesystem::path& absolute) const
 	{
 		if (Index == nullptr || Index->IsEmpty())
