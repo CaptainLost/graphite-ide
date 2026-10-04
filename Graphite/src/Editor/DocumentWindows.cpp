@@ -6,8 +6,8 @@
 #include "Editor/Navigation/DefinitionNavigation.h"
 #include "Editor/EditorCommands.h"
 #include "Editor/StatusBar/ClipboardCopy.h"
-#include "Theme/Palettes.h"
 #include "Editor/TabColour.h"
+#include "Theme/Palettes.h"
 #include "Editor/TextEditorWidget.h"
 
 #include "Language/Registry/LanguageRegistry.h"
@@ -2219,14 +2219,14 @@ namespace Graphite {
 
 			const bool preview = item.Preview;
 
-			// Colour alone marks a preview, and it has to be pushed before Begin: Begin ->
-			// BeginDocked calls StoreDockStyleForWindow, which snapshots the style colours in
-			// effect at that moment, and the tab bar swaps to each window's own snapshot
-			// before drawing its tab. A font cannot do the same — every tab of a node is
-			// drawn in one pass with one global font — and the icon in the title comes from
-			// the mono face only.
+			// Colour alone marks a preview and a file's git status, and it has to be pushed
+			// before Begin: Begin -> BeginDocked calls StoreDockStyleForWindow, which
+			// snapshots the style colours in effect at that moment, and the tab bar swaps to
+			// each window's own snapshot before drawing its tab. A font cannot do the same —
+			// every tab of a node is drawn in one pass with one global font — and the icon
+			// in the title comes from the mono face only.
 			//
-			// A file's git status colours the label too, and a preview dims it rather than replacing it.
+			// A status colours the label and a preview dims it rather than replacing it.
 			// A document with no path (untitled) has no status.
 			const GitDecoration decoration =
 				item.Path.empty() ? GitDecoration::None : m_GitDecorations.FileOf(item.Path);
