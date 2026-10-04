@@ -50,14 +50,18 @@ Each view numbers its lines so that a selection follows its text:
 - Terminal: the selection is linear; the rectangle is gone. The line is the
   number of rows ever scrolled into the scrollback plus the row, so a selection
   follows its text as output scrolls. It is cleared when its text leaves the
-  history, and when the screen switches to or from the alternate buffer, whose
+  history; when only its start has left, the start is clamped to the oldest line
+  still held, and the selection is cleared once its end has left too. It is also
+  cleared when the screen switches to or from the alternate buffer, whose
   rows are a different text. Ctrl+C keeps the semantics of 0546. Select All is
   in the terminal's own menu; Ctrl+A stays with the shell.
-- Diff: in side-by-side, the selection is confined to the side the press began
+- Diff: the line is the file line number on the selection's side in
+  side-by-side and the row's ordinal in unified. A press on a header, a hunk
+  signature row or a gap starts nothing. In side-by-side, the selection is confined to the side the press began
   on, and rows that side does not have are skipped. In unified, removed and added
   lines are copied as shown, without the `+` and `-` prefixes. Headers and gaps
-  are never selected. The selection is cleared when the mode or scope changes, or
-  when the content hash changes: the hunks, plus the whole file's texts in
+  are never selected. The selection is cleared on a change of file, mode, scope
+  or content (the content hash): the hunks, plus the whole file's texts in
   whole-file scope.
 
 The highlight uses the editor scheme's Selection colour in the terminal and the
