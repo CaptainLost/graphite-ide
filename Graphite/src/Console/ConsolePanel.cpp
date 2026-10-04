@@ -5,11 +5,14 @@
 #include "Core/Base/Narrow.h"
 #include "Core/Base/Base.h"
 
+#include "Core/ImGui/TextInput.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Text/Columns.h"
 
 #include <IconsMaterialDesignIcons.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <utility>
@@ -83,13 +86,15 @@ namespace Graphite {
 		// filtering copies the shown ones again, on frames where nothing has changed.
 		const std::uint64_t revision = m_Sink->GetRevision();
 
-		if (revision != m_SeenRevision || m_SeenFilter != m_Filter.InputBuf)
+		if (revision != m_SeenRevision || m_SeenFilter != m_Filter.InputBuf ||
+			m_SeenLevel != m_MinimumLevel)
 		{
 			m_Entries = m_Sink->TakeSnapshot();
 			CollectShownEntries();
 
 			m_SeenRevision = revision;
 			m_SeenFilter = m_Filter.InputBuf;
+			m_SeenLevel = m_MinimumLevel;
 		}
 
 		RenderToolbar();
@@ -103,7 +108,7 @@ namespace Graphite {
 
 		for (const Core::LogEntry& entry : m_Entries)
 		{
-			if (m_Filter.PassFilter(entry.Message.c_str()))
+			if (IsShownAtLevel(entry.Level, m_MinimumLevel) && m_Filter.PassFilter(entry.Message.c_str()))
 			{
 				m_Shown.push_back(entry);
 			}
@@ -133,10 +138,44 @@ namespace Graphite {
 
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(Core::Scaled(240.0f));
-		m_Filter.Draw("##consoleFilter");
+		if (Core::InputTextWithHint("##consoleFilter", "Filter (inc,-exc)", m_FilterText))
+		{
+			// The filter's own buffer is fixed; a longer pattern is cut, not overrun.
+			const std::size_t length = std::min(m_FilterText.size(), sizeof(m_Filter.InputBuf) - 1);
+			std::copy_n(m_FilterText.data(), length, m_Filter.InputBuf);
+			m_Filter.InputBuf[length] = '\0';
+			m_Filter.Build();
+		}
+
+		ImGui::SameLine();
+		RenderLevelCombo();
 
 		ImGui::SameLine();
 		ImGui::TextDisabled("%d entries", Core::Narrow<int>(m_Entries.size()));
+	}
+
+	void ConsolePanel::RenderLevelCombo()
+	{
+		const std::string preview{ConsoleLevelName(m_MinimumLevel)};
+
+		ImGui::SetNextItemWidth(Core::Scaled(80.0f));
+
+		if (!ImGui::BeginCombo("##consoleLevel", preview.c_str()))
+		{
+			return;
+		}
+
+		for (const Core::LogLevel level : kConsoleLevels)
+		{
+			const std::string name{ConsoleLevelName(level)};
+
+			if (ImGui::Selectable(name.c_str(), level == m_MinimumLevel))
+			{
+				m_MinimumLevel = level;
+			}
+		}
+
+		ImGui::EndCombo();
 	}
 
 	void ConsolePanel::RenderEntries()

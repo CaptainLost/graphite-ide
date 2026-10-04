@@ -6,6 +6,7 @@
 #include "Core/Base/RingBufferSink.h"
 #include "Core/UI/Panel.h"
 
+#include "Console/ConsoleLevel.h"
 #include "Console/ConsoleSelection.h"
 
 #include <imgui.h>
@@ -28,6 +29,7 @@ namespace Graphite {
 
 	private:
 		void RenderToolbar();
+		void RenderLevelCombo();
 		void RenderEntries();
 		void CollectShownEntries();
 		void HandleSweep(const ConsoleLayout& layout);
@@ -46,6 +48,10 @@ namespace Graphite {
 		// leaves the panel keeps extending the selection instead of dropping it.
 		bool m_Sweeping = false;
 		ImGuiTextFilter m_Filter;
+		// What the filter box holds. ImGuiTextFilter has no hint of its own, so the box is drawn
+		// here and the text is handed to the filter to be parsed.
+		std::string m_FilterText;
+		Core::LogLevel m_MinimumLevel = kDefaultConsoleLevel;
 		bool m_AutoScroll = true;
 		std::size_t m_LastCount = 0;
 
@@ -53,5 +59,6 @@ namespace Graphite {
 		// The snapshot is the whole buffer, so it is taken again only when one of them moved.
 		std::optional<std::uint64_t> m_SeenRevision;
 		std::string m_SeenFilter;
+		Core::LogLevel m_SeenLevel = kDefaultConsoleLevel;
 	};
 }
