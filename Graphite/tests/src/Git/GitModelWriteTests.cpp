@@ -847,6 +847,41 @@ TEST_CASE("A failed init is reported as the init's error and not queued as a wri
 	CHECK_FALSE(model.GetInitError().has_value());
 }
 
+TEST_CASE("A failed write other than init is queued as a write error and never shown as the init's")
+{
+	WritePort port;
+	port.Fail = true;
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestStage({"a.txt"});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK_FALSE(model.GetInitError().has_value());
+	CHECK(model.TakeWriteError().has_value());
+}
+
+TEST_CASE("A successful init clears the error a failed one left")
+{
+	WritePort port;
+	port.Fail = true;
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestInit();
+	model.OnUpdate(Core::Timestep{0.0f});
+	REQUIRE(model.GetInitError().has_value());
+
+	port.Fail = false;
+	model.RequestInit();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK_FALSE(model.GetInitError().has_value());
+	CHECK_FALSE(model.TakeWriteError().has_value());
+}
+
 TEST_CASE("A second init queued behind the first is passed on, not dropped")
 {
 	WritePort port;
