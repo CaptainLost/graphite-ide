@@ -12,6 +12,7 @@
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
+#include "Git/RelativePaths.h"
 #include "UI/HighlightedRow.h"
 #include "UI/SplitResults.h"
 #include "Workspace/Workspace.h"
@@ -38,6 +39,15 @@ namespace Graphite {
 		std::filesystem::path RelativeTo(const std::filesystem::path& path, const std::filesystem::path& root)
 		{
 			return Core::RelativeTo(path, root).value_or(path.lexically_relative(root));
+		}
+
+		// An error toast whose paths inside the repository read relative to it, while Copy
+		// keeps the message whole.
+		void ShowFailure(Core::Toasts& toasts, std::string title, const std::string& message,
+						 const std::filesystem::path& root)
+		{
+			std::string copied = title + "\n" + message;
+			toasts.Show(Core::ToastKind::Error, std::move(title), RelativiseUnder(message, root), std::move(copied));
 		}
 	}
 
@@ -95,8 +105,8 @@ namespace Graphite {
 				{
 					// The branch stays in the message: the check's failures do not name it, and
 					// an error toast stays until it is closed, long after the click.
-					m_Toasts.Show(Core::ToastKind::Error, "Delete branch failed",
-								  check->Branch + ": " + check->Failure->Message);
+					ShowFailure(m_Toasts, "Delete branch failed", check->Branch + ": " + check->Failure->Message,
+								m_Model.GetWorkingDirectory());
 				}
 				else
 				{
@@ -234,8 +244,9 @@ namespace Graphite {
 		if (answer.Failure.has_value() || !answer.Plan.has_value())
 		{
 			// The target stays in the message: the title says only that a checkout failed.
-			m_Toasts.Show(Core::ToastKind::Error, "Checkout failed",
-						  label + ": " + (answer.Failure.has_value() ? answer.Failure->Message : std::string("no plan")));
+			ShowFailure(m_Toasts, "Checkout failed",
+						label + ": " + (answer.Failure.has_value() ? answer.Failure->Message : std::string("no plan")),
+						m_Model.GetWorkingDirectory());
 			return;
 		}
 

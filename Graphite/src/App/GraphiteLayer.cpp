@@ -51,6 +51,8 @@
 #include "Theme/SessionPalette.h"
 #include "Theme/ToastPalette.h"
 
+#include "Git/RelativePaths.h"
+
 #include "Core/Events/ApplicationEvent.h"
 
 #include "Settings/ClaudeSection.h"
@@ -927,8 +929,12 @@ namespace Graphite {
 		// and only once with both open.
 		while (std::optional<GitModel::WriteFailure> failure = m_Git.TakeWriteError())
 		{
-			m_Toasts.Show(Core::ToastKind::Error, std::string(WriteFailureTitle(failure->Kind)),
-						  std::move(failure->Error.Message));
+			// Paths inside the repository read relative to it on screen; Copy keeps them whole.
+			std::string title(WriteFailureTitle(failure->Kind));
+			std::string shown = RelativiseUnder(failure->Error.Message, m_Git.GetWorkingDirectory());
+			std::string copied = title + "\n" + failure->Error.Message;
+
+			m_Toasts.Show(Core::ToastKind::Error, std::move(title), std::move(shown), std::move(copied));
 		}
 
 		// Last of what draws, so the toasts sit over every panel and terminal.
