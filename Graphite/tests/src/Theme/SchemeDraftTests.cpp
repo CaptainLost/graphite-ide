@@ -4,10 +4,13 @@
 #include "Theme/BuiltInSchemes.h"
 #include "Theme/SchemeDraft.h"
 #include "Theme/SchemeStore.h"
+#include "UI/ToastEvent.h"
 
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <optional>
+#include <string>
 
 namespace {
 
@@ -292,4 +295,66 @@ TEST_CASE("The selected scheme can be renamed to a non-ASCII name and to its own
 
 	CHECK_FALSE(draft.NameProblem("ciemny \xC5\xBC").has_value());
 	CHECK_FALSE(draft.RenameSelected(polish));
+}
+
+TEST_CASE("A scheme that cannot be deleted leaves one failure toast to take")
+{
+	const TempDirectory temp;
+
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "doomed", Graphite::ColorScheme{}));
+
+	Graphite::SchemeDraft draft(temp.GetPath());
+	draft.Select("doomed");
+
+	// Gone behind the draft's back, so the delete has nothing to remove.
+	std::filesystem::remove(temp.GetPath() / "doomed.json");
+
+	CHECK_FALSE(draft.DeleteSelected());
+
+	const std::optional<Graphite::ToastEvent> failure = draft.TakeFailure();
+
+	REQUIRE(failure.has_value());
+	CHECK(failure->Kind == Core::ToastKind::Error);
+	CHECK(failure->Title == "Could not delete scheme");
+	CHECK(failure->Message.find("doomed") != std::string::npos);
+	CHECK(failure->Scope == Graphite::ToastScope::Application);
+
+	// Handed out once.
+	CHECK_FALSE(draft.TakeFailure().has_value());
+}
+
+TEST_CASE("A scheme that cannot be saved leaves one failure toast to take")
+{
+	const TempDirectory temp;
+
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "mine", Graphite::ColorScheme{}));
+
+	Graphite::SchemeDraft draft(temp.GetPath());
+	draft.Select("mine");
+	draft.SetColor(Graphite::TokenKind::Comment, kTestColor);
+
+	// A folder where the file was, which no write can replace.
+	std::filesystem::remove(temp.GetPath() / "mine.json");
+	std::filesystem::create_directory(temp.GetPath() / "mine.json");
+
+	CHECK_FALSE(draft.Save());
+
+	const std::optional<Graphite::ToastEvent> failure = draft.TakeFailure();
+
+	REQUIRE(failure.has_value());
+	CHECK(failure->Title == "Could not save scheme");
+	CHECK(failure->Scope == Graphite::ToastScope::Application);
+}
+
+TEST_CASE("A draft whose every action succeeded has no failure to take")
+{
+	const TempDirectory temp;
+
+	Graphite::SchemeDraft draft(temp.GetPath());
+
+	REQUIRE(draft.Duplicate());
+	REQUIRE(draft.Save());
+	REQUIRE(draft.DeleteSelected());
+
+	CHECK_FALSE(draft.TakeFailure().has_value());
 }

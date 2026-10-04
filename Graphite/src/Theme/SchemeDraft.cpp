@@ -4,6 +4,7 @@
 #include "Theme/BuiltInSchemes.h"
 #include "Theme/SchemeStore.h"
 
+#include <format>
 #include <utility>
 
 namespace Graphite {
@@ -243,6 +244,7 @@ namespace Graphite {
 		if (const Core::Result<void> saved = SaveScheme(m_Directory, m_Selected, m_Scheme); !saved)
 		{
 			APP_WARN("Could not save colour scheme '{}': {}", m_Selected, saved.GetError().Message);
+			Fail("Could not save scheme", std::format("'{}': {}", m_Selected, saved.GetError().Message));
 			return false;
 		}
 
@@ -259,6 +261,7 @@ namespace Graphite {
 		{
 			APP_WARN("Could not duplicate colour scheme '{}' as '{}': {}", m_Selected, name,
 					 saved.GetError().Message);
+			Fail("Could not duplicate scheme", std::format("'{}' as '{}': {}", m_Selected, name, saved.GetError().Message));
 			return false;
 		}
 
@@ -320,6 +323,7 @@ namespace Graphite {
 		if (const Core::Result<void> deleted = DeleteScheme(m_Directory, m_Selected); !deleted)
 		{
 			APP_WARN("Could not delete colour scheme '{}': {}", m_Selected, deleted.GetError().Message);
+			Fail("Could not delete scheme", std::format("'{}': {}", m_Selected, deleted.GetError().Message));
 			return false;
 		}
 
@@ -327,5 +331,17 @@ namespace Graphite {
 		Select(NameOf(fallback));
 
 		return true;
+	}
+
+	std::optional<ToastEvent> SchemeDraft::TakeFailure()
+	{
+		return std::exchange(m_Failure, std::nullopt);
+	}
+
+	void SchemeDraft::Fail(std::string title, std::string message)
+	{
+		// The themes directory is the application's, not the open folder's: the toast outlives
+		// the folder. One slot: the section takes it straight after the action that failed.
+		m_Failure = ApplicationToast(Core::ToastKind::Error, std::move(title), std::move(message));
 	}
 }

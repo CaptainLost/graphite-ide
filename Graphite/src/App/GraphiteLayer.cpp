@@ -203,7 +203,7 @@ namespace Graphite {
 		std::vector<Core::Scope<SettingsSection>> sections;
 
 		sections.push_back(Core::CreateScope<EditorSection>(m_EditorSettings, m_Commands));
-		sections.push_back(Core::CreateScope<SchemeSection>(m_ActiveScheme, m_AppSettings, m_Modals));
+		sections.push_back(Core::CreateScope<SchemeSection>(m_ActiveScheme, m_AppSettings, m_Modals, m_Events));
 		sections.push_back(Core::CreateScope<InterfaceSection>(m_AppSettings));
 		sections.push_back(Core::CreateScope<KeyBindingsSection>(
 			m_Commands, m_Keys, m_Modals, [this] { m_AppSettings.SetKeyBindings(m_Keys); }));

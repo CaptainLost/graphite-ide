@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Theme/ColorScheme.h"
+#include "UI/ToastEvent.h"
 
 #include <filesystem>
 #include <optional>
@@ -77,11 +78,19 @@ namespace Graphite {
 		// pointed at a file that is gone.
 		bool DeleteSelected();
 
+		// The toast for the last Save, Duplicate or DeleteSelected that failed, handed out once,
+		// for the section to publish: the draft holds no event bus, and is tested without one. A
+		// failed rename is not kept here - the rename dialog says why in place.
+		std::optional<ToastEvent> TakeFailure();
+
 	private:
 		void Rebuild();
 		void Resolve();
+		void Fail(std::string title, std::string message);
 
 		std::filesystem::path m_Directory;
+
+		std::optional<ToastEvent> m_Failure;
 
 		std::vector<std::string> m_Names;
 

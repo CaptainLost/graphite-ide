@@ -4,11 +4,15 @@
 #include "Theme/ActiveScheme.h"
 #include "Theme/Palettes.h"
 #include "UI/DialogLayout.h"
+#include "UI/ToastEvent.h"
+
+#include "Core/Events/EventBus.h"
 
 #include <imgui.h>
 
 #include <algorithm>
 #include <optional>
+#include <utility>
 
 namespace Graphite {
 
@@ -40,8 +44,9 @@ namespace Graphite {
 		}
 	}
 
-	SchemeSection::SchemeSection(ActiveScheme& scheme, AppSettings& settings, ModalGate& modals)
-		: m_Active(scheme), m_Settings(settings), m_Draft(AppSettings::ThemesDirectory()),
+	SchemeSection::SchemeSection(ActiveScheme& scheme, AppSettings& settings, ModalGate& modals,
+								 Core::EventBus& events)
+		: m_Active(scheme), m_Settings(settings), m_Events(events), m_Draft(AppSettings::ThemesDirectory()),
 		  m_DeleteQuestion(modals, "Delete colour scheme?"), m_RenameQuestion(modals, "Rename colour scheme")
 	{
 		// Constructed before GraphiteLayer calls ActiveScheme::Load, so this reads the setting
@@ -72,6 +77,16 @@ namespace Graphite {
 		FlushColourEdit();
 		m_Draft.Select(m_Settings.GetColorScheme());
 		Apply();
+
+		PublishDraftFailure();
+	}
+
+	void SchemeSection::PublishDraftFailure()
+	{
+		if (std::optional<ToastEvent> failure = m_Draft.TakeFailure())
+		{
+			m_Events.Publish(std::move(*failure));
+		}
 	}
 
 	void SchemeSection::FlushColourEdit()
@@ -240,6 +255,9 @@ namespace Graphite {
 
 		RenderRenameDialog();
 		RenderDeleteDialog();
+
+		// Last, after every place above that saves, duplicates or deletes.
+		PublishDraftFailure();
 	}
 
 	// Asked before deleting because the file is the user's own work and there is no undo.

@@ -13,6 +13,12 @@
 #include <string_view>
 #include <type_traits>
 
+namespace Core {
+
+	class EventBus;
+
+}
+
 namespace Graphite {
 
 	class ActiveScheme;
@@ -23,7 +29,7 @@ namespace Graphite {
 	class SchemeSection : public SettingsSection
 	{
 	public:
-		SchemeSection(ActiveScheme& scheme, AppSettings& settings, ModalGate& modals);
+		SchemeSection(ActiveScheme& scheme, AppSettings& settings, ModalGate& modals, Core::EventBus& events);
 
 		std::string_view GetTitle() const override { return "Colours"; }
 
@@ -50,6 +56,10 @@ namespace Graphite {
 		// to another scheme or leave the section.
 		void FlushColourEdit();
 
+		// Raises the toast for a save, duplicate or delete of the draft's that failed. The draft
+		// keeps it rather than holding the bus, so it can be tested without one.
+		void PublishDraftFailure();
+
 		// Templated over the enum so the two groups share one row, rather than a syntax copy and
 		// an editor copy drifting apart the way a key table and a label table would.
 		template<typename Which>
@@ -62,6 +72,7 @@ namespace Graphite {
 
 		ActiveScheme& m_Active;
 		AppSettings& m_Settings;
+		Core::EventBus& m_Events;
 
 		SchemeDraft m_Draft;
 
