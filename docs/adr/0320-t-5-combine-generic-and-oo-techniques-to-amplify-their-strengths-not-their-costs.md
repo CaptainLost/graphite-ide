@@ -149,3 +149,4 @@ this wrong.
   — the shape of the abstract interface a template implements.
 - [0248](0248-per-13-eliminate-redundant-indirections.md) — the cost the dynamic
   half adds.
+- [0563](0563-write-concrete-code-and-keep-templates-for-vocabulary-types.md) — amends this record: concrete code first.

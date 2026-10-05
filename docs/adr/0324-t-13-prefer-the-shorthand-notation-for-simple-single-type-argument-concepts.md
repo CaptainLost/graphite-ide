@@ -93,3 +93,4 @@ starts looking like an ordinary function.
   same `concept auto` notation applied to local variables.
 - [0009](0009-p-3-express-intent.md) — the readability argument this rule rests
   on.
+- [0560](0560-spell-out-a-variable-s-type-unless-the-same-line-already-states-it.md) — amends this record: a template parameter is declared with an explicit template header, not auto.

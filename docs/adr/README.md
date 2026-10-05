@@ -206,11 +206,11 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0174](0174-es-3-dont-repeat-yourself-avoid-redundant-code.md) | ES.3: Don't repeat yourself, avoid redundant code | accepted | 2026-08-10 |
 | [0175](0175-es-5-keep-scopes-small.md) | ES.5: Keep scopes small | accepted | 2026-08-10 |
 | [0176](0176-es-6-declare-names-in-for-statement-initializers-and-conditions-to-limit-scope.md) | ES.6: Declare names in for-statement initializers and conditions to limit scope | accepted | 2026-08-10 |
-| [0177](0177-es-7-keep-common-and-local-names-short-and-keep-uncommon-and-non-local-names-longer.md) | ES.7: Keep common and local names short, and keep uncommon and non-local names longer | accepted | 2026-08-10 |
+| [0177](0177-es-7-keep-common-and-local-names-short-and-keep-uncommon-and-non-local-names-longer.md) | ES.7: Keep common and local names short, and keep uncommon and non-local names longer | superseded by 0559 | 2026-08-10 |
 | [0178](0178-es-8-avoid-similar-looking-names.md) | ES.8: Avoid similar-looking names | accepted | 2026-08-10 |
 | [0179](0179-es-9-avoid-all-caps-names.md) | ES.9: Avoid ALL_CAPS names | accepted | 2026-08-10 |
 | [0180](0180-es-10-declare-one-name-only-per-declaration.md) | ES.10: Declare one name (only) per declaration | accepted | 2026-08-10 |
-| [0181](0181-es-11-use-auto-to-avoid-redundant-repetition-of-type-names.md) | ES.11: Use auto to avoid redundant repetition of type names | accepted | 2026-08-10 |
+| [0181](0181-es-11-use-auto-to-avoid-redundant-repetition-of-type-names.md) | ES.11: Use auto to avoid redundant repetition of type names | superseded by 0560 | 2026-08-10 |
 | [0182](0182-es-12-do-not-reuse-names-in-nested-scopes.md) | ES.12: Do not reuse names in nested scopes | accepted | 2026-08-10 |
 | [0183](0183-es-20-always-initialize-an-object.md) | ES.20: Always initialize an object | accepted | 2026-08-10 |
 | [0184](0184-es-21-dont-introduce-a-variable-or-constant-before-you-need-to-use-it.md) | ES.21: Don't introduce a variable (or constant) before you need to use it | accepted | 2026-08-10 |
@@ -220,7 +220,7 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0188](0188-es-25-declare-an-object-const-or-constexpr-unless-you-want-to-modify-its-value-later-on.md) | ES.25: Declare an object const or constexpr unless you want to modify its value later on | accepted | 2026-08-10 |
 | [0189](0189-es-26-dont-use-a-variable-for-two-unrelated-purposes.md) | ES.26: Don't use a variable for two unrelated purposes | accepted | 2026-08-10 |
 | [0190](0190-es-27-use-std-array-or-stack-array-for-arrays-on-the-stack.md) | ES.27: Use std::array or stack_array for arrays on the stack | accepted | 2026-08-10 |
-| [0191](0191-es-28-use-lambdas-for-complex-initialization-especially-of-const-variables.md) | ES.28: Use lambdas for complex initialization, especially of const variables | accepted | 2026-08-10 |
+| [0191](0191-es-28-use-lambdas-for-complex-initialization-especially-of-const-variables.md) | ES.28: Use lambdas for complex initialization, especially of const variables | superseded by 0561 | 2026-08-10 |
 | [0192](0192-es-30-dont-use-macros-for-program-text-manipulation.md) | ES.30: Don't use macros for program text manipulation | accepted | 2026-08-10 |
 | [0193](0193-es-31-dont-use-macros-for-constants-or-functions.md) | ES.31: Don't use macros for constants or "functions" | accepted | 2026-08-10 |
 | [0194](0194-es-32-use-all-caps-for-all-macro-names.md) | ES.32: Use ALL_CAPS for all macro names | accepted | 2026-08-10 |
@@ -394,7 +394,7 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0362](0362-t-124-prefer-to-use-standard-library-tmp-facilities.md) | T.124: Prefer to use standard-library TMP facilities | accepted | 2026-08-10 |
 | [0363](0363-t-125-if-you-need-to-go-beyond-the-standard-library-tmp-facilities-use-an-existing-library.md) | T.125: If you need to go beyond the standard-library TMP facilities, use an existing library | accepted | 2026-08-10 |
 | [0364](0364-t-140-name-all-operations-with-potential-for-reuse.md) | T.140: Name all operations with potential for reuse | accepted | 2026-08-10 |
-| [0365](0365-t-141-use-an-unnamed-lambda-if-you-need-a-simple-function-object-in-one-place-only.md) | T.141: Use an unnamed lambda if you need a simple function object in one place only | accepted | 2026-08-10 |
+| [0365](0365-t-141-use-an-unnamed-lambda-if-you-need-a-simple-function-object-in-one-place-only.md) | T.141: Use an unnamed lambda if you need a simple function object in one place only | superseded by 0561 | 2026-08-10 |
 | [0366](0366-t-143-dont-write-unintentionally-non-generic-code.md) | T.143: Don't write unintentionally non-generic code | accepted | 2026-08-10 |
 | [0367](0367-t-144-dont-specialize-function-templates.md) | T.144: Don't specialize function templates | accepted | 2026-08-10 |
 | [0368](0368-t-150-check-that-a-class-matches-a-concept-using-static-assert.md) | T.150: Check that a class matches a concept using static_assert | accepted | 2026-08-10 |
@@ -449,11 +449,11 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0417](0417-nr-6-dont-place-all-cleanup-actions-at-the-end-of-a-function-and-goto-exit.md) | NR.6: Don't place all cleanup actions at the end of a function and goto exit | accepted | 2026-08-10 |
 | [0418](0418-nr-7-dont-make-all-data-members-protected.md) | NR.7: Don't make all data members protected | accepted | 2026-08-10 |
 | [0419](0419-nl-1-dont-say-in-comments-what-can-be-clearly-stated-in-code.md) | NL.1: Don't say in comments what can be clearly stated in code | accepted | 2026-08-10 |
-| [0420](0420-nl-2-state-intent-in-comments.md) | NL.2: State intent in comments | accepted | 2026-08-10 |
+| [0420](0420-nl-2-state-intent-in-comments.md) | NL.2: State intent in comments | superseded by 0562 | 2026-08-10 |
 | [0421](0421-nl-3-keep-comments-crisp.md) | NL.3: Keep comments crisp | accepted | 2026-08-10 |
 | [0422](0422-nl-4-maintain-a-consistent-indentation-style.md) | NL.4: Maintain a consistent indentation style | accepted | 2026-08-10 |
 | [0423](0423-nl-5-avoid-encoding-type-information-in-names.md) | NL.5: Avoid encoding type information in names | accepted | 2026-08-10 |
-| [0424](0424-nl-7-make-the-length-of-a-name-roughly-proportional-to-the-length-of-its-scope.md) | NL.7: Make the length of a name roughly proportional to the length of its scope | accepted | 2026-08-10 |
+| [0424](0424-nl-7-make-the-length-of-a-name-roughly-proportional-to-the-length-of-its-scope.md) | NL.7: Make the length of a name roughly proportional to the length of its scope | superseded by 0559 | 2026-08-10 |
 | [0425](0425-nl-8-use-a-consistent-naming-style.md) | NL.8: Use a consistent naming style | accepted | 2026-08-10 |
 | [0426](0426-nl-9-use-all-caps-for-macro-names-only.md) | NL.9: Use ALL_CAPS for macro names only | accepted | 2026-08-10 |
 | [0427](0427-nl-10-prefer-underscore-style-names.md) | NL.10: Prefer underscore_style names | accepted | 2026-08-10 |
@@ -587,4 +587,10 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0555](0555-share-one-text-selection-model-across-views-that-show-text.md) | Share one text selection model across views that show text | proposed | 2026-10-04 |
 | [0556](0556-show-git-status-in-the-file-tree-solution-view-and-editor-tabs.md) | Show git status in the file tree, solution view and editor tabs | proposed | 2026-10-04 |
 | [0557](0557-report-a-failed-action-in-a-toast-rather-than-in-the-panel-that-issued-it.md) | Report a failed action in a toast rather than in the panel that issued it | proposed | 2026-10-04 |
+| [0558](0558-write-code-a-junior-engineer-can-read-like-prose.md) | Write code a junior engineer can read like prose | accepted | 2026-10-05 |
+| [0559](0559-name-every-variable-for-its-role-loop-indices-included.md) | Name every variable for its role, loop indices included | accepted | 2026-10-05 |
+| [0560](0560-spell-out-a-variable-s-type-unless-the-same-line-already-states-it.md) | Spell out a variable's type unless the same line already states it | accepted | 2026-10-05 |
+| [0561](0561-write-searches-as-named-loops-and-give-every-predicate-a-name.md) | Write searches as named loops and give every predicate a name | accepted | 2026-10-05 |
+| [0562](0562-say-it-in-code-and-keep-a-comment-only-as-a-warning.md) | Say it in code and keep a comment only as a warning | accepted | 2026-10-05 |
+| [0563](0563-write-concrete-code-and-keep-templates-for-vocabulary-types.md) | Write concrete code and keep templates for vocabulary types | accepted | 2026-10-05 |
 <!-- /adr-index -->

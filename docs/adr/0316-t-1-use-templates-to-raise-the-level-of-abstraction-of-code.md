@@ -137,3 +137,4 @@ concept" — minimality is not the goal, coherence is.
   — the counterweight: require only what is essential.
 - [0325](0325-t-20-avoid-concepts-without-meaningful-semantics.md) — why
   single-operation constraints are not concepts.
+- [0563](0563-write-concrete-code-and-keep-templates-for-vocabulary-types.md) — amends this record: templates only for vocabulary types.

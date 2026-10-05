@@ -99,3 +99,4 @@ the argument outright.
   — a generic lambda is a template, and its parameter deserves a concept.
 - [0011](0011-p-5-prefer-compile-time-checking-to-run-time-checking.md) — this
   rule is enforced entirely at compile time.
+- [0561](0561-write-searches-as-named-loops-and-give-every-predicate-a-name.md) — amends this record: no generic lambdas.

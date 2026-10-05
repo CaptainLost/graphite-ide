@@ -88,3 +88,4 @@ type that does not depend on what was stored.
   where hiding the type behind a compilation boundary is the point.
 - [0332](0332-t-40-use-function-objects-to-pass-operations-to-algorithms.md) —
   passing a constrained callable rather than an erased one.
+- [0563](0563-write-concrete-code-and-keep-templates-for-vocabulary-types.md) — amends this record: std::function is accepted off the hot path.

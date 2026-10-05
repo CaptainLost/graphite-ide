@@ -1,6 +1,6 @@
 # 0181. ES.11: Use auto to avoid redundant repetition of type names
 
-Status: accepted
+Status: superseded by 0560
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

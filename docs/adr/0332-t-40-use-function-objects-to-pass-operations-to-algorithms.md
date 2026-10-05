@@ -112,3 +112,4 @@ same signature into one type and one indirect call.
   the performance half of the reason is conditional.
 - [0134](0134-c-170-if-you-feel-like-overloading-a-lambda-use-a-generic-lambda.md)
   — generic lambdas, as used in the last examples.
+- [0563](0563-write-concrete-code-and-keep-templates-for-vocabulary-types.md) — amends this record: off the hot path a callable is taken as std::function.

@@ -1,6 +1,6 @@
 # 0177. ES.7: Keep common and local names short, and keep uncommon and non-local names longer
 
-Status: accepted
+Status: superseded by 0559
 Date: 2026-08-10
 Source: C++ Core Guidelines, section ES (Expressions and statements), transcribed 2026-08-10
 

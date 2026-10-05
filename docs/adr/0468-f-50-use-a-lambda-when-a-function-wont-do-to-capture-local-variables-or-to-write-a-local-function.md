@@ -119,3 +119,4 @@ criterion keeps the choice from being made by preference.
   — the restriction on default capture inside a member function.
 - [0009](0009-p-3-express-intent.md) — using the simplest tool that says what is
   meant.
+- [0561](0561-write-searches-as-named-loops-and-give-every-predicate-a-name.md) — amends this record: no lambda as a local function; lambdas only as one-line adapters or API callbacks.

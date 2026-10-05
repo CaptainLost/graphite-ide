@@ -125,3 +125,4 @@ it replaced, so cost is now part of the naming rule rather than an afterthought.
 - [0060](0060-c-37-make-destructors-noexcept.md) — contradicted in letter.
 - [0537](0537-mark-result-nodiscard-on-the-type-not-on-functions.md) — amends
   this record: `Result` is `[[nodiscard]]` on the type; functions still are not.
+- [0562](0562-say-it-in-code-and-keep-a-comment-only-as-a-warning.md) — amends this record: an invariant now goes into code; a platform quirk or a trap stays as a warning comment.

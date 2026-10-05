@@ -116,3 +116,4 @@ signal.
   a standard algorithm is a form of repetition.
 - [0015](0015-p-9-do-not-waste-time-or-space.md) — the exception here is where
   the library's costs stop being acceptable.
+- [0561](0561-write-searches-as-named-loops-and-give-every-predicate-a-name.md) — amends this record: searches, checks and counts are named loops; sort, binary search and erase_if stay with named predicates.

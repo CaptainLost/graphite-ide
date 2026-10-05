@@ -140,3 +140,4 @@ which the name is actively misleading rather than merely redundant.
   system carries this information properly, which is why the name need not.
 - [0009](0009-p-3-express-intent.md) — a name should express purpose, and a type
   wart expresses representation.
+- [0559](0559-name-every-variable-for-its-role-loop-indices-included.md) — amends this record: every name states its role, loop indices included.
