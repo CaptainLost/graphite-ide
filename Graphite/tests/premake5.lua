@@ -27,6 +27,11 @@ project "GraphiteTests"
     -- themselves are compiled here.
     files { "src/**.h", "src/**.cpp" }
 
+    -- The title bar's mark as an icon resource, so a test can load it the way the
+    -- application does. rc.exe resolves the icon against these directories.
+    files { "resources/GraphiteTests.rc" }
+    resincludedirs { "../resources" }
+
     includedirs
     {
         "%{wks.location}/Core/src",

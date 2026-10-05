@@ -1,0 +1,4 @@
+// The title bar's mark, under the name Graphite.rc gives it, so the tests read the icon the
+// application ships through the same call it does. resincludedirs points rc.exe at the
+// application's resources, where the one copy of the file lives.
+GRAPHITE_MARK ICON "GraphiteMark.ico"
