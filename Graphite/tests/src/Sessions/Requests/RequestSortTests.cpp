@@ -2,7 +2,10 @@
 
 #include "Sessions/Requests/RequestSort.h"
 
+#include <cmath>
 #include <cstddef>
+#include <limits>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -181,4 +184,19 @@ TEST_CASE("A fast request sorts as dearer than the same usage at standard speed"
 	requests[1].Fast = true;
 
 	CHECK(Sorted(requests, RequestColumn::Cost, true) == std::vector<std::size_t>{0, 2, 1});
+}
+
+TEST_CASE("A sort value is blank for a missing number or an empty text")
+{
+	const SortValue missing = NumericSortValue(std::nullopt);
+	CHECK_FALSE(missing.Has);
+	CHECK(missing.Number == 0.0);
+
+	CHECK(NumericSortValue(2.5).Has);
+	CHECK(NumericSortValue(2.5).Number == 2.5);
+	CHECK(std::isnan(NumericSortValue(std::numeric_limits<double>::quiet_NaN()).Number));
+
+	CHECK_FALSE(TextualSortValue("").Has);
+	CHECK(TextualSortValue("x").Has);
+	CHECK(TextualSortValue("x").Text == "x");
 }

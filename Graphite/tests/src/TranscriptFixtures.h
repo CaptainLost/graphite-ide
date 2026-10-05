@@ -1,5 +1,8 @@
 #pragma once
 
+#include "Sessions/Session.h"
+#include "Sessions/Transcript/TranscriptReader.h"
+
 #include <nlohmann/json.hpp>
 
 #include <cstdint>
@@ -220,4 +223,11 @@ namespace Fixtures {
 	inline const std::string kCompactBoundary =
 		R"({"type": "system", "subtype": "compact_boundary", "content": "Conversation compacted", "level": "info", "uuid": "144b7ad8-b082-4bd9-9bea-04c0f5dca872", "logicalParentUuid": "fea75cdd-d071-4a6e-8e96-63efa87af5b3", "timestamp": "2026-08-31T16:33:10.464Z", "version": "2.1.251", "compactMetadata": {"trigger": "auto", "preTokens": 167324, "postTokens": 5090, "cumulativeDroppedTokens": 162234, "durationMs": 169810, "preservedSegment": {"headUuid": "308f8b8a-efb4-4fe2-8d78-1e5e4e406729", "anchorUuid": "c1fc7cb3-0c0f-4efa-bc2a-8baf1f6ad687", "tailUuid": "fea75cdd-d071-4a6e-8e96-63efa87af5b3"}, "preservedMessages": {"anchorUuid": "c1fc7cb3-0c0f-4efa-bc2a-8baf1f6ad687", "uuids": ["308f8b8a-efb4-4fe2-8d78-1e5e4e406729"], "allUuids": ["308f8b8a-efb4-4fe2-8d78-1e5e4e406729"]}}, "parentUuid": null})"
 		"\n";
+
+	inline Graphite::Session SessionFromTranscript(const std::string& bytes)
+	{
+		Graphite::Session session;
+		session.Append(Graphite::ParseTranscript(bytes).Records);
+		return session;
+	}
 }

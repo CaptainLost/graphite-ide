@@ -4,6 +4,8 @@
 
 #include "Core/Text/Utf8.h"
 
+#include <algorithm>
+
 namespace Core {
 
 	namespace {
@@ -58,6 +60,18 @@ namespace Core {
 		}
 
 		return {};
+	}
+
+	std::string_view WithoutUtf8ByteOrderMark(std::string_view text)
+	{
+		const std::string_view mark = BomBytes(Encoding::Utf8Bom);
+
+		if (text.starts_with(mark))
+		{
+			text.remove_prefix(mark.size());
+		}
+
+		return text;
 	}
 
 	Encoding DetectEncoding(std::string_view bytes)
@@ -127,6 +141,45 @@ namespace Core {
 		}
 
 		return previous;
+	}
+
+	std::size_t CharacterBoundaryAtOrBefore(std::string_view bytes, std::size_t offset)
+	{
+		std::size_t boundary = std::min(offset, bytes.size());
+
+		while (boundary > 0 && boundary < bytes.size() && IsUtf8ContinuationByte(bytes[boundary]))
+		{
+			--boundary;
+		}
+
+		return boundary;
+	}
+
+	std::size_t CharacterBoundaryAtOrAfter(std::string_view bytes, std::size_t offset)
+	{
+		std::size_t boundary = offset;
+
+		while (boundary < bytes.size() && IsUtf8ContinuationByte(bytes[boundary]))
+		{
+			++boundary;
+		}
+
+		return boundary;
+	}
+
+	std::size_t CharacterCount(std::string_view bytes)
+	{
+		std::size_t count = 0;
+
+		for (const char byte : bytes)
+		{
+			if (!IsUtf8ContinuationByte(byte))
+			{
+				++count;
+			}
+		}
+
+		return count;
 	}
 
 	std::string_view EncodingName(Encoding encoding)

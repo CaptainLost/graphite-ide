@@ -9,6 +9,7 @@
 
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
+#include "Core/Base/Strings.h"
 #include "Core/Command/Binding.h"
 #include "Core/Command/Keymap.h"
 #include "Core/FileSystem/FileSystem.h"
@@ -60,7 +61,7 @@ namespace Graphite {
 			requires std::integral<Number> || std::floating_point<Number>
 		Number NumberOrZero(std::string_view stored)
 		{
-			return ParseNumber<Number>(stored).value_or(Number{});
+			return Core::ParseNumber<Number>(stored).value_or(Number{});
 		}
 	}
 

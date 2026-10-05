@@ -36,4 +36,9 @@ namespace Graphite {
 	SyntaxPalette ReadSyntaxPalette(const ResolvedScheme& scheme);
 
 	EditorPalette ReadEditorPalette(const ResolvedScheme& scheme);
+
+	// The scheme has no error colour for the chrome, so this one is fixed rather than read from it.
+	inline constexpr ImVec4 kErrorTextColour{0.94f, 0.42f, 0.42f, 1.0f};
+
+	ImVec4 DangerColourOf(const ResolvedScheme& scheme);
 }

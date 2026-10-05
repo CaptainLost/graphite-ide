@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string_view>
+
 namespace Core {
 
 	// The width of one character cell in the monospaced face currently pushed.
@@ -11,4 +13,6 @@ namespace Core {
 	// line up with - several pixels by column 40, enough to put a caret, a selection edge or a
 	// mouse hit test each a character away from the text.
 	float MonospaceCellWidth();
+
+	float TextWidth(std::string_view text);
 }

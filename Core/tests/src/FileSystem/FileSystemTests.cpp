@@ -5,8 +5,11 @@
 #include "TempDirectory.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <string>
+#include <string_view>
+#include <type_traits>
 
 using Core::DirectoryEntry;
 using Core::ErrorCode;
@@ -333,4 +336,51 @@ TEST_CASE("ReadFileBytes reads an empty file as an empty string")
 
 	REQUIRE(result.HasValue());
 	CHECK(result.GetValue().empty());
+}
+
+TEST_CASE("A path separator is either slash, and the leaf is what follows the last one")
+{
+	static_assert(Core::IsPathSeparator('/'));
+	static_assert(Core::IsPathSeparator('\\'));
+	static_assert(!Core::IsPathSeparator(':'));
+	static_assert(!Core::IsPathSeparator('\xAF'));
+	static_assert(!Core::IsPathSeparator('\0'));
+
+	CHECK(Core::AfterLastPathSeparator("a/b\\c") == "c");
+	CHECK(Core::AfterLastPathSeparator("c") == "c");
+	CHECK(Core::AfterLastPathSeparator("dir/").empty());
+	CHECK(Core::AfterLastPathSeparator("").empty());
+	CHECK(Core::AfterLastPathSeparator("\\").empty());
+}
+
+#ifdef CORE_PLATFORM_WINDOWS
+TEST_CASE("ToUtf16 converts every byte it is given and replaces what is not UTF-8")
+{
+	CHECK(Core::ToUtf16("").empty());
+	CHECK(Core::ToUtf16("abc") == L"abc");
+	CHECK(Core::ToUtf16(std::string_view{"a\0b", 3}) == std::wstring{L"a\0b", 3});
+	CHECK(Core::ToUtf16("\xE6"
+						"a") == L"\xFFFD"
+								L"a");
+	CHECK(Core::ToUtf16("\xF0\x9F\x98\x80") == L"\xD83D\xDE00");
+
+	const std::string_view polish = "za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87";
+	CHECK(Core::FromUtf8(polish).native() == Core::ToUtf16(polish));
+}
+#endif
+
+TEST_CASE("A path key is the native string type")
+{
+	static_assert(std::is_same_v<Core::PathKeyText, std::filesystem::path::string_type>);
+	static_assert(std::is_same_v<decltype(Core::PathKey(std::filesystem::path{})), Core::PathKeyText>);
+}
+
+TEST_CASE("PathExists reads anything it cannot examine as absent")
+{
+	TempDirectory directory;
+
+	CHECK(Core::PathExists(directory.GetPath()));
+	CHECK(Core::PathExists(directory.MakeFile("a.txt")));
+	CHECK_FALSE(Core::PathExists(directory.GetPath() / "absent.txt"));
+	CHECK_FALSE(Core::PathExists(std::filesystem::path{}));
 }

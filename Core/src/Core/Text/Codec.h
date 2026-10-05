@@ -10,6 +10,8 @@ namespace Core {
 
 	Result<std::string> Decode(std::string_view bytes, Encoding encoding);
 
+	Result<std::string> DecodeWithoutByteOrderMark(std::string bytes, Encoding encoding);
+
 	std::string Encode(std::string_view utf8, Encoding encoding);
 
 	// Deliberately hard to convince of UTF-16: a file of small 16-bit integers has the same

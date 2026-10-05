@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include <cstdio>
+#include <limits>
 #include <optional>
 
 #include "Core/Base/Color.h"
@@ -111,5 +112,27 @@ TEST_CASE("Every channel value round-trips through parse and format exactly")
 
 		REQUIRE(parsed.has_value());
 		CHECK(ToHexColor(*parsed) == text);
+	}
+}
+
+TEST_CASE("A channel becomes the nearest byte, clamped, and a byte becomes its channel")
+{
+	CHECK(Core::ChannelToByte(0.0f) == 0);
+	CHECK(Core::ChannelToByte(1.0f) == 255);
+	CHECK(Core::ChannelToByte(0.5f) == 128);
+	CHECK(Core::ChannelToByte(-0.0f) == 0);
+	CHECK(Core::ChannelToByte(-3.0f) == 0);
+	CHECK(Core::ChannelToByte(7.0f) == 255);
+	CHECK(Core::ChannelToByte(std::numeric_limits<float>::infinity()) == 255);
+
+	// 0.0019607842f * 255 is 0.49999997f: lround gives 0 where ImGui's +0.5 rounding gives 1.
+	CHECK(Core::ChannelToByte(0.0019607842f) == 0);
+
+	CHECK(Core::ChannelFromByte(0) == 0.0f);
+	CHECK(Core::ChannelFromByte(255) == 1.0f);
+
+	for (int byteValue = 0; byteValue < 256; ++byteValue)
+	{
+		CHECK(Core::ChannelToByte(Core::ChannelFromByte(byteValue)) == byteValue);
 	}
 }

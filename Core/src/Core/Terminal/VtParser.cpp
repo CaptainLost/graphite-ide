@@ -3,6 +3,7 @@
 #include "Core/Terminal/VtParser.h"
 
 #include "Core/Terminal/CharacterWidth.h"
+#include "Core/Terminal/ControlCharacters.h"
 
 #include <algorithm>
 
@@ -10,7 +11,6 @@ namespace Core {
 
 	namespace {
 		constexpr char Escape = '\x1B';
-		constexpr char Bell = '\x07';
 		constexpr char Delete = '\x7F';
 
 		// This parser is where bytes from an arbitrary program enter the process, so neither
@@ -295,7 +295,7 @@ namespace Core {
 		}
 		case State::OscString:
 		{
-			if (byte == Bell)
+			if (byte == kBellCharacter)
 			{
 				HandleOsc();
 				Reset();
@@ -336,7 +336,7 @@ namespace Core {
 		}
 		case State::StringSink:
 		{
-			if (byte == Bell)
+			if (byte == kBellCharacter)
 			{
 				Reset();
 			}

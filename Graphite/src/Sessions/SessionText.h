@@ -15,6 +15,9 @@
 
 namespace Graphite {
 
+	// U+25CF BLACK CIRCLE: a transcript written to within the live window.
+	inline constexpr std::string_view kLiveSessionMark = "\xE2\x97\x8F";
+
 	// "?" whenever part of the cost is unknown: a partial sum shown as a total would be a
 	// wrong number that looks right.
 	std::string FormatCost(const CostResult& cost);

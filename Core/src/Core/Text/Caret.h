@@ -47,6 +47,8 @@ namespace Core {
 	Caret PlaceAt(const TextBuffer& buffer, Caret caret, std::size_t offset,
 				  bool extend, std::size_t tabWidth);
 
+	std::size_t CharacterBoundaryAtOrBefore(const TextBuffer& buffer, std::size_t offset);
+
 	Caret SelectWordAt(const TextBuffer& buffer, std::size_t offset);
 
 	Caret SelectLineAt(const TextBuffer& buffer, std::size_t line);

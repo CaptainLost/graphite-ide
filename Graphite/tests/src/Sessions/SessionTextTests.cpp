@@ -306,3 +306,8 @@ TEST_CASE("An empty session is hidden from the list unless it is live or open")
 	zeroUsage.Main[{"claude-opus-5", false}] = TokenCounts{};
 	CHECK_FALSE(ShowsInSessionList(zeroUsage, false));
 }
+
+TEST_CASE("The live session mark is the UTF-8 encoding of a black circle")
+{
+	CHECK(kLiveSessionMark == std::string_view{"\xE2\x97\x8F", 3});
+}

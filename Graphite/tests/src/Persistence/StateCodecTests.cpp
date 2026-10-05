@@ -493,19 +493,6 @@ TEST_CASE("A flag reads as what was written, and anything else as the stated def
 	}
 }
 
-TEST_CASE("A number is read whole or not at all")
-{
-	CHECK(ParseNumber<std::size_t>("42") == 42);
-	CHECK(ParseNumber<float>("14.500000") == 14.5f);
-
-	// A negative number is rejected for an unsigned target rather than wrapped to a huge one.
-	CHECK_FALSE(ParseNumber<std::size_t>("-1"));
-	CHECK_FALSE(ParseNumber<std::size_t>(""));
-	CHECK_FALSE(ParseNumber<std::size_t>("12abc"));
-	CHECK_FALSE(ParseNumber<std::size_t>("abc"));
-	CHECK(ParseNumber<int>("-1") == -1);
-}
-
 TEST_CASE("A negative stored count or caret falls back to zero")
 {
 	Core::JsonFile file;

@@ -66,6 +66,11 @@ namespace Graphite {
 		return palette;
 	}
 
+	ImVec4 DangerColourOf(const ResolvedScheme& scheme)
+	{
+		return ImGui::ColorConvertU32ToFloat4(ReadEditorPalette(scheme).DiagnosticError);
+	}
+
 	GitPalette ReadGitPalette(const ResolvedScheme& scheme)
 	{
 		const auto of = [&scheme](GitColor color) {

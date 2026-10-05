@@ -22,4 +22,6 @@ namespace Graphite {
 	protected:
 		ProjectContentReader() = default;
 	};
+
+	void SortContentByName(ContentFolder& folder);
 }

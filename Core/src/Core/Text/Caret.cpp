@@ -3,6 +3,7 @@
 #include "Core/Text/Caret.h"
 
 #include "Core/Text/Columns.h"
+#include "Core/Text/Encoding.h"
 #include "Core/Text/TextBuffer.h"
 
 #include <algorithm>
@@ -257,6 +258,18 @@ namespace Core {
 		result.DesiredColumn = ColumnAt(buffer, result.Offset, tabWidth);
 
 		return result;
+	}
+
+	std::size_t CharacterBoundaryAtOrBefore(const TextBuffer& buffer, std::size_t offset)
+	{
+		std::size_t boundary = std::min(offset, buffer.GetLength());
+
+		while (boundary > 0 && boundary < buffer.GetLength() && IsUtf8ContinuationByte(buffer.CharAt(boundary)))
+		{
+			--boundary;
+		}
+
+		return boundary;
 	}
 
 	Caret SelectWordAt(const TextBuffer& buffer, std::size_t offset)

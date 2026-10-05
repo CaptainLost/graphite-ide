@@ -8,6 +8,7 @@
 #include <fstream>
 #include <string>
 #include <system_error>
+#include <utility>
 
 namespace Core {
 
@@ -78,5 +79,43 @@ namespace Core {
 		sample.resize(static_cast<std::size_t>(stream.gcount()));
 
 		return ClassifySample(sample, static_cast<std::uint64_t>(size));
+	}
+
+	DiskText ReadDiskText(const std::filesystem::path& path)
+	{
+		const Result<FileProbe> probeResult = ProbeFile(path);
+
+		if (!probeResult)
+		{
+			return DiskText{.Outcome = DiskTextOutcome::Unreadable};
+		}
+
+		const FileProbe& probe = probeResult.GetValue();
+
+		if (probe.Kind == FileKind::Binary)
+		{
+			return DiskText{.Outcome = DiskTextOutcome::Binary};
+		}
+
+		if (probe.Kind == FileKind::TooLarge)
+		{
+			return DiskText{.Outcome = DiskTextOutcome::TooLarge};
+		}
+
+		const Result<std::string> bytes = ReadFileBytes(path);
+
+		if (!bytes)
+		{
+			return DiskText{.Outcome = DiskTextOutcome::Unreadable};
+		}
+
+		Result<std::string> text = Decode(bytes.GetValue(), probe.FileEncoding);
+
+		if (!text)
+		{
+			return DiskText{.Outcome = DiskTextOutcome::Undecodable};
+		}
+
+		return DiskText{.Outcome = DiskTextOutcome::Read, .Text = std::move(text).GetValue()};
 	}
 }

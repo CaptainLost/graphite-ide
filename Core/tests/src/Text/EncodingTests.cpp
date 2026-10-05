@@ -147,3 +147,99 @@ TEST_CASE("A mark's length matches the bytes it is made of")
 		CHECK(BomLength(std::string{mark} + "rest") == mark.size());
 	}
 }
+
+TEST_CASE("A continuation byte is exactly one of 0x80 to 0xBF, read without sign extension")
+{
+	for (int byteValue = 0; byteValue < 256; ++byteValue)
+	{
+		const bool expected = byteValue >= 0x80 && byteValue <= 0xBF;
+
+		CHECK(IsUtf8ContinuationByte(static_cast<char>(byteValue)) == expected);
+	}
+
+	static_assert(IsUtf8ContinuationByte('\x80'));
+	static_assert(IsUtf8ContinuationByte('\xBF'));
+	static_assert(!IsUtf8ContinuationByte('\xC0'));
+	static_assert(!IsUtf8ContinuationByte('\0'));
+}
+
+TEST_CASE("A lead byte's claimed length, and one for any byte that cannot lead")
+{
+	for (int byteValue = 0; byteValue < 256; ++byteValue)
+	{
+		std::size_t expected = 1;
+
+		if (byteValue >= 0xC0 && byteValue <= 0xDF)
+		{
+			expected = 2;
+		}
+		else if (byteValue >= 0xE0 && byteValue <= 0xEF)
+		{
+			expected = 3;
+		}
+		else if (byteValue >= 0xF0 && byteValue <= 0xF7)
+		{
+			expected = 4;
+		}
+
+		CHECK(Utf8SequenceLength(static_cast<char>(byteValue)) == expected);
+	}
+
+	// Unlike DecodeUtf8, the overlong leads and F5 to F7 are taken at their word.
+	CHECK(Utf8SequenceLength('\xC0') == 2);
+	CHECK(Utf8SequenceLength('\xF5') == 4);
+	CHECK(Utf8SequenceLength('\x80') == 1);
+	CHECK(Utf8SequenceLength('\xFF') == 1);
+}
+
+TEST_CASE("CharacterBoundaryAtOrBefore backs off to a character's first byte and clamps to the end")
+{
+	const std::string_view text = "a\xC4\x99";
+
+	CHECK(CharacterBoundaryAtOrBefore(text, 0) == 0);
+	CHECK(CharacterBoundaryAtOrBefore(text, 1) == 1);
+	CHECK(CharacterBoundaryAtOrBefore(text, 2) == 1);
+	CHECK(CharacterBoundaryAtOrBefore(text, 3) == 3);
+	CHECK(CharacterBoundaryAtOrBefore(text, 99) == 3);
+
+	CHECK(CharacterBoundaryAtOrBefore("", 0) == 0);
+	CHECK(CharacterBoundaryAtOrBefore("", 5) == 0);
+
+	// Stray continuation bytes back off all the way to the start, never past it.
+	CHECK(CharacterBoundaryAtOrBefore("\x80\x80", 1) == 0);
+	CHECK(CharacterBoundaryAtOrBefore("\x80\x80", 2) == 2);
+}
+
+TEST_CASE("CharacterBoundaryAtOrAfter skips continuation bytes and leaves an offset past the end alone")
+{
+	const std::string_view text = "a\xC4\x99"
+								  "b";
+
+	CHECK(CharacterBoundaryAtOrAfter(text, 1) == 1);
+	CHECK(CharacterBoundaryAtOrAfter(text, 2) == 3);
+	CHECK(CharacterBoundaryAtOrAfter(text, 4) == 4);
+	CHECK(CharacterBoundaryAtOrAfter(text, 9) == 9);
+	CHECK(CharacterBoundaryAtOrAfter("", 0) == 0);
+	CHECK(CharacterBoundaryAtOrAfter("", 1) == 1);
+	CHECK(CharacterBoundaryAtOrAfter("\x80\x80", 0) == 2);
+}
+
+TEST_CASE("CharacterCount counts the bytes that start a character")
+{
+	CHECK(CharacterCount("") == 0);
+	CHECK(CharacterCount("abc") == 3);
+	CHECK(CharacterCount("za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87") == 6);
+	CHECK(CharacterCount("\x80") == 0);
+	CHECK(CharacterCount("\xC4") == 1);
+	CHECK(CharacterCount("\xF8\xFF") == 2);
+	CHECK(CharacterCount(std::string_view{"a\0b", 3}) == 3);
+}
+
+TEST_CASE("WithoutUtf8ByteOrderMark drops one UTF-8 mark and nothing else")
+{
+	CHECK(WithoutUtf8ByteOrderMark("\xEF\xBB\xBFx") == "x");
+	CHECK(WithoutUtf8ByteOrderMark("\xEF\xBB\xBF\xEF\xBB\xBFx") == "\xEF\xBB\xBFx");
+	CHECK(WithoutUtf8ByteOrderMark("\xEF\xBB") == "\xEF\xBB");
+	CHECK(WithoutUtf8ByteOrderMark("\xFF\xFEx") == "\xFF\xFEx");
+	CHECK(WithoutUtf8ByteOrderMark("").empty());
+}

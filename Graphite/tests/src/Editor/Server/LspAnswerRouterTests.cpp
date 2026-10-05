@@ -357,7 +357,7 @@ TEST_CASE("Failed declarations stay wanted and are asked for again only once the
 	h.Router.AskSymbolsIfDue(kSource);
 	CHECK(h.Server.CountOf("symbols") == 1);
 
-	h.Now += LspAnswerRouter::kSymbolsRetrySeconds - 0.01;
+	h.Now += kFailedRequestRetrySeconds - 0.01;
 	h.Router.AskSymbolsIfDue(kSource);
 	CHECK(h.Server.CountOf("symbols") == 1);
 
@@ -401,7 +401,7 @@ TEST_CASE("A late failure of an older declarations question leaves the newer one
 	h.Server.Reply(older, true);
 	h.Router.Collect(h.Target);
 
-	h.Now += LspAnswerRouter::kSymbolsRetrySeconds;
+	h.Now += kFailedRequestRetrySeconds;
 	h.Router.AskSymbolsIfDue(kSource);
 
 	CHECK(h.Server.CountOf("symbols") == 2);

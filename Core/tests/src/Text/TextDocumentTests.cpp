@@ -746,3 +746,22 @@ TEST_CASE("AcceptDiskState silences a change without reading it")
 	CHECK_FALSE(document.CheckChangedOnDisk());
 	CHECK(document.GetBuffer().Materialize() == "original\n");
 }
+
+TEST_CASE("NormaliseLineEndings turns CR LF into LF and leaves a lone CR alone")
+{
+	const NormalisedLineEndings windows = NormaliseLineEndings("a\r\nb");
+	CHECK(windows.Content == "a\nb");
+	CHECK(windows.Ending == LineEnding::Crlf);
+	CHECK_FALSE(windows.Mixed);
+
+	CHECK(NormaliseLineEndings("\r\r\n").Content == "\r\n");
+	CHECK(NormaliseLineEndings("a\r").Content == "a\r");
+	CHECK(NormaliseLineEndings("a\r").Ending == LineEnding::Lf);
+
+	const NormalisedLineEndings mixed = NormaliseLineEndings("a\r\nb\nc");
+	CHECK(mixed.Content == "a\nb\nc");
+	CHECK(mixed.Mixed);
+	CHECK(mixed.Ending == LineEnding::Lf);
+
+	CHECK(NormaliseLineEndings("").Content.empty());
+}

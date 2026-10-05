@@ -142,6 +142,9 @@ namespace Core {
 		void Activate(std::size_t index);
 		std::optional<std::size_t> GetActive() const { return m_Active; }
 
+		// Valid until the set next changes.
+		const std::filesystem::path* GetActiveItemPath() const;
+
 		void Promote(std::size_t index);
 
 		std::optional<std::size_t> GetPreviewIndex() const;
@@ -162,4 +165,7 @@ namespace Core {
 		std::vector<OpenItem> m_Items;
 		std::optional<std::size_t> m_Active;
 	};
+
+	// The path is matched exactly, as Find matches it. The pointer is valid until the set next changes.
+	const TextBuffer* BufferOfOpenDocument(const DocumentSet& documents, const std::filesystem::path& path);
 }

@@ -342,3 +342,14 @@ TEST_CASE("Left and right step characters across piece boundaries")
 	caret = Step(buffer, caret, Motion::Left);
 	CHECK(caret.Offset == 1);
 }
+
+TEST_CASE("A buffer offset backs off to a character boundary and clamps to the end")
+{
+	const TextBuffer buffer{std::string{"a\xC4\x99"}};
+
+	CHECK(CharacterBoundaryAtOrBefore(buffer, 2) == 1);
+	CHECK(CharacterBoundaryAtOrBefore(buffer, 3) == 3);
+	CHECK(CharacterBoundaryAtOrBefore(buffer, std::numeric_limits<std::size_t>::max()) == 3);
+	CHECK(CharacterBoundaryAtOrBefore(TextBuffer{}, 4) == 0);
+	CHECK(CharacterBoundaryAtOrBefore(TextBuffer{std::string{"\x80\x80"}}, 1) == 0);
+}

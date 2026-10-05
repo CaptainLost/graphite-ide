@@ -9,6 +9,8 @@
 namespace Core {
 
 	namespace {
+		constexpr float kLargestChannelByte = 255.0f;
+
 		std::uint32_t Channel(float value)
 		{
 			const float scaled = std::clamp(value, 0.0f, 1.0f) * 255.0f;
@@ -54,6 +56,16 @@ namespace Core {
 		{
 			return static_cast<int>(std::lround(std::clamp(channel, 0.0f, 1.0f) * 255.0f));
 		}
+	}
+
+	int ChannelToByte(float channel)
+	{
+		return static_cast<int>(std::lround(std::clamp(channel, 0.0f, 1.0f) * kLargestChannelByte));
+	}
+
+	float ChannelFromByte(int byteValue)
+	{
+		return static_cast<float>(byteValue) / kLargestChannelByte;
 	}
 
 	std::uint32_t PackBgr(const Color& color)

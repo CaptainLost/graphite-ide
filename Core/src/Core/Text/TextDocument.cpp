@@ -18,47 +18,6 @@
 namespace Core {
 
 	namespace {
-		struct Normalised
-		{
-			std::string Content;
-			LineEnding Ending = LineEnding::Lf;
-			bool Mixed = false;
-		};
-
-		Normalised NormaliseLineEndings(std::string_view bytes)
-		{
-			Normalised result;
-			result.Content.reserve(bytes.size());
-
-			std::size_t crlf = 0;
-			std::size_t lf = 0;
-
-			for (std::size_t at = 0; at < bytes.size(); ++at)
-			{
-				if (bytes[at] == '\r' && at + 1 < bytes.size() && bytes[at + 1] == '\n')
-				{
-					++crlf;
-					result.Content.push_back('\n');
-					++at;
-					continue;
-				}
-
-				if (bytes[at] == '\n')
-				{
-					++lf;
-				}
-
-				result.Content.push_back(bytes[at]);
-			}
-
-			// A lone '\r' is left alone rather than taken for a Mac Classic line ending,
-			// which would split a line over a stray byte.
-			result.Mixed = crlf > 0 && lf > 0;
-			result.Ending = crlf > lf ? LineEnding::Crlf : LineEnding::Lf;
-
-			return result;
-		}
-
 		std::string NotTextMessage(Encoding encoding, bool marked,
 								   std::string_view content,
 								   const std::filesystem::path& path)
@@ -181,7 +140,7 @@ namespace Core {
 			document.m_ReadOnly = true;
 		}
 
-		Normalised normalised = NormaliseLineEndings(content);
+		NormalisedLineEndings normalised = NormaliseLineEndings(content);
 		document.m_LineEnding = normalised.Ending;
 		document.m_WasMixed = normalised.Mixed;
 		document.m_Buffer = TextBuffer{std::move(normalised.Content)};
@@ -249,6 +208,42 @@ namespace Core {
 		}
 
 		return document;
+	}
+
+	NormalisedLineEndings NormaliseLineEndings(std::string_view bytes)
+	{
+		NormalisedLineEndings result;
+		result.Content.reserve(bytes.size());
+
+		std::size_t crlfCount = 0;
+		std::size_t lfCount = 0;
+
+		for (std::size_t byteIndex = 0; byteIndex < bytes.size(); ++byteIndex)
+		{
+			const bool startsCrlf =
+				bytes[byteIndex] == '\r' && byteIndex + 1 < bytes.size() && bytes[byteIndex + 1] == '\n';
+
+			if (startsCrlf)
+			{
+				++crlfCount;
+				result.Content.push_back('\n');
+				++byteIndex;
+				continue;
+			}
+
+			if (bytes[byteIndex] == '\n')
+			{
+				++lfCount;
+			}
+
+			result.Content.push_back(bytes[byteIndex]);
+		}
+
+		// A lone '\r' stays: taken for a classic Mac line end, it would split a line at a stray byte.
+		result.Mixed = crlfCount > 0 && lfCount > 0;
+		result.Ending = crlfCount > lfCount ? LineEnding::Crlf : LineEnding::Lf;
+
+		return result;
 	}
 
 	std::string WithLineEnding(std::string_view text, LineEnding ending)

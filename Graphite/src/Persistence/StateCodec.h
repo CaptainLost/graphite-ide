@@ -2,13 +2,9 @@
 
 #include "Persistence/PersistedState.h"
 
-#include <charconv>
-#include <concepts>
 #include <filesystem>
-#include <optional>
 #include <string>
 #include <string_view>
-#include <system_error>
 
 namespace Core {
 
@@ -19,29 +15,6 @@ namespace Core {
 namespace Graphite {
 
 	// How every stored value in graphite.json and workspace.json is written and read back.
-
-	// The whole text as a number, or nothing: a trailing letter, an empty string and — for an
-	// unsigned target — a minus sign are all absent, never a wrapped or partial value.
-	template<typename Number>
-		requires std::integral<Number> || std::floating_point<Number>
-	std::optional<Number> ParseNumber(std::string_view text)
-	{
-		if (text.empty())
-		{
-			return std::nullopt;
-		}
-
-		Number value{};
-		const char* last = text.data() + text.size();
-		const auto [end, error] = std::from_chars(text.data(), last, value);
-
-		if (error != std::errc{} || end != last)
-		{
-			return std::nullopt;
-		}
-
-		return value;
-	}
 
 	// "1" or "0".
 	inline std::string Flag(bool value)

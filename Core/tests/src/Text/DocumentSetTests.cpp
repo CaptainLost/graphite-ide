@@ -828,3 +828,42 @@ TEST_CASE("A newly opened item asks for its window too")
 	REQUIRE(documents.Open(path, true) == OpenOutcome::Opened);
 	CHECK(documents.At(0).PendingFocus);
 }
+
+TEST_CASE("BufferOfOpenDocument finds a tab's buffer only when the tab holds a document")
+{
+	TempDirectory directory;
+	const std::filesystem::path text = directory.MakeFile("a.txt", "Hello");
+	const std::filesystem::path binary = directory.MakeFile("b.obj", std::string{"MZ\0\0", 4});
+	DocumentSet documents;
+
+	CHECK(BufferOfOpenDocument(documents, text) == nullptr);
+
+	REQUIRE(documents.Open(text, true) == OpenOutcome::Opened);
+	const TextBuffer* buffer = BufferOfOpenDocument(documents, text);
+	REQUIRE(buffer != nullptr);
+	CHECK(buffer->Materialize() == "Hello");
+
+	REQUIRE(documents.Open(binary, true) == OpenOutcome::Failed);
+	CHECK(BufferOfOpenDocument(documents, binary) == nullptr);
+
+	// Matched exactly, like Find: another spelling of the same file is not this tab.
+	CHECK(BufferOfOpenDocument(documents, directory.GetPath() / "A.TXT") == nullptr);
+}
+
+TEST_CASE("GetActiveItemPath names the active tab whether or not it holds a document")
+{
+	TempDirectory directory;
+	DocumentSet documents;
+
+	CHECK(documents.GetActiveItemPath() == nullptr);
+
+	const std::filesystem::path text = directory.MakeFile("a.txt", "Hello");
+	REQUIRE(documents.Open(text, true) == OpenOutcome::Opened);
+	REQUIRE(documents.GetActiveItemPath() != nullptr);
+	CHECK(*documents.GetActiveItemPath() == text);
+
+	const std::filesystem::path binary = directory.MakeFile("b.obj", std::string{"MZ\0\0", 4});
+	REQUIRE(documents.Open(binary, true) == OpenOutcome::Failed);
+	REQUIRE(documents.GetActiveItemPath() != nullptr);
+	CHECK(*documents.GetActiveItemPath() == binary);
+}

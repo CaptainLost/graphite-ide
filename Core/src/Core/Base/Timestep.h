@@ -1,6 +1,10 @@
 #pragma once
 
+#include <chrono>
+
 namespace Core {
+
+	using SteadyClock = std::chrono::steady_clock;
 
 	class Timestep
 	{

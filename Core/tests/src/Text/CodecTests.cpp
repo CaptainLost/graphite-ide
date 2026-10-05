@@ -266,3 +266,20 @@ TEST_CASE("Decoded DEL is not text")
 
 	CHECK(SniffEncoding(bytes) == Encoding::Utf8);
 }
+
+TEST_CASE("DecodeWithoutByteOrderMark strips the mark the bytes carry, whatever the encoding says")
+{
+	CHECK(DecodeWithoutByteOrderMark("\xEF\xBB\xBF"
+									 "abc",
+									 Encoding::Utf8Bom)
+			  .GetValue() == "abc");
+	CHECK(DecodeWithoutByteOrderMark("abc", Encoding::Utf8Bom).GetValue() == "abc");
+	CHECK(DecodeWithoutByteOrderMark("\xFF\xFE"
+									 "abc",
+									 Encoding::Utf8)
+			  .GetValue() == "abc");
+	CHECK(DecodeWithoutByteOrderMark(std::string{"\xFF\xFEH\0i\0", 6}, Encoding::Utf16Le).GetValue() == "Hi");
+	CHECK(DecodeWithoutByteOrderMark(std::string{"H\0i\0", 4}, Encoding::Utf16Le).GetValue() == "Hi");
+	CHECK(DecodeWithoutByteOrderMark("", Encoding::Utf8).GetValue().empty());
+	CHECK_FALSE(DecodeWithoutByteOrderMark("\xFF\xFEH", Encoding::Utf16Le).HasValue());
+}

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -60,4 +61,36 @@ namespace Graphite {
 		Folder Root;
 		std::size_t ProjectCount = 0;
 	};
+
+	template<typename FolderType>
+	FolderType& EnsureFolderPath(FolderType& root, const std::vector<std::string>& parts)
+	{
+		FolderType* current = &root;
+
+		for (const std::string& part : parts)
+		{
+			FolderType* match = nullptr;
+
+			for (FolderType& folder : current->Folders)
+			{
+				if (folder.Name == part)
+				{
+					match = &folder;
+					break;
+				}
+			}
+
+			if (match == nullptr)
+			{
+				FolderType created;
+				created.Name = part;
+				current->Folders.push_back(std::move(created));
+				match = &current->Folders.back();
+			}
+
+			current = match;
+		}
+
+		return *current;
+	}
 }

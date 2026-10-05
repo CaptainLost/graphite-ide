@@ -440,15 +440,15 @@ TEST_CASE("VtParser tracks mouse reporting while any of its three modes is on")
 	REQUIRE_FALSE(screen.IsMouseReporting());
 
 	// What Claude Code sends on start: all three at once, then the SGR encoding.
-	parser.Consume("[?1000h[?1002h[?1003h[?1006h");
+	parser.Consume("\x1B[?1000h\x1B[?1002h\x1B[?1003h\x1B[?1006h");
 	CHECK(screen.IsMouseReporting());
 	CHECK(screen.IsSgrMouse());
 
 	// Motion off leaves clicks and drags reported.
-	parser.Consume("[?1003l");
+	parser.Consume("\x1B[?1003l");
 	CHECK(screen.IsMouseReporting());
 
-	parser.Consume("[?1000l[?1002l[?1006l");
+	parser.Consume("\x1B[?1000l\x1B[?1002l\x1B[?1006l");
 	CHECK_FALSE(screen.IsMouseReporting());
 	CHECK_FALSE(screen.IsSgrMouse());
 }

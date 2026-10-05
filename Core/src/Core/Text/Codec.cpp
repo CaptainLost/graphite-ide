@@ -196,6 +196,22 @@ namespace Core {
 		return std::string{bytes};
 	}
 
+	// The mark is measured on the bytes, never taken from the encoding: unmarked bytes can be
+	// sniffed as UTF-16 and must then lose nothing. A pass-through encoding is erased in place
+	// because Decode would return a second whole copy of the file.
+	Result<std::string> DecodeWithoutByteOrderMark(std::string bytes, Encoding encoding)
+	{
+		const std::size_t markLength = BomLength(bytes);
+
+		if (!TransformsContent(encoding))
+		{
+			bytes.erase(0, markLength);
+			return bytes;
+		}
+
+		return Decode(std::string_view{bytes}.substr(markLength), encoding);
+	}
+
 	std::string Encode(std::string_view utf8, Encoding encoding)
 	{
 		switch (CodecFor(encoding))

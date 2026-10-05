@@ -82,6 +82,23 @@ namespace Graphite {
 		}
 	}
 
+	SortValue NumericSortValue(std::optional<double> value)
+	{
+		if (!value)
+		{
+			return SortValue{};
+		}
+
+		return SortValue{.Has = true, .Number = *value};
+	}
+
+	SortValue TextualSortValue(std::string text)
+	{
+		const bool hasText = !text.empty();
+
+		return SortValue{.Has = hasText, .Text = std::move(text)};
+	}
+
 	bool IsTextColumn(RequestColumn column)
 	{
 		return column == RequestColumn::Model || column == RequestColumn::Stop || column == RequestColumn::Tools;

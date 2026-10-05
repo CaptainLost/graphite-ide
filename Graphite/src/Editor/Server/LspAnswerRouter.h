@@ -99,6 +99,10 @@ namespace Graphite {
 		virtual bool Offer(const LanguageServices::Answer& answer) = 0;
 	};
 
+	// A server is routinely still starting or indexing when the first request goes out; asking again
+	// every frame would hit a busy server sixty times a second.
+	inline constexpr double kFailedRequestRetrySeconds = 2.0;
+
 	// The questions the editor has outstanding with the language servers, and where each answer
 	// goes when it arrives.
 	//

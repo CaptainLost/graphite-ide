@@ -44,6 +44,10 @@ namespace Graphite {
 	void DrawRequestLine(ImVec2 at, float right, const ApiRequest& request, const Pricing& pricing,
 						 const SessionPalette& palette, LocalClock& clock);
 
+	// A label is cut to one line and to this many bytes before it is fitted to the row: fitting
+	// measures the text, and a tool result's summary can be long.
+	inline constexpr std::size_t kLongestLabelBytes = 400;
+
 	// How an item is drawn wherever it is listed: its icon, in its colour.
 	struct ItemLook
 	{

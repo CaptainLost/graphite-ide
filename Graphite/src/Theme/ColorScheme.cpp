@@ -233,6 +233,31 @@ namespace Graphite {
 		return NamesOf(color).Label;
 	}
 
+	const Core::Color& ColourFromScheme(const ResolvedScheme& scheme, TokenKind slot)
+	{
+		return scheme.Syntax[static_cast<std::size_t>(slot)];
+	}
+
+	const Core::Color& ColourFromScheme(const ResolvedScheme& scheme, EditorColor slot)
+	{
+		return scheme.Editor[static_cast<std::size_t>(slot)];
+	}
+
+	const Core::Color& ColourFromScheme(const ResolvedScheme& scheme, ChromeColor slot)
+	{
+		return scheme.Chrome[static_cast<std::size_t>(slot)];
+	}
+
+	const Core::Color& ColourFromScheme(const ResolvedScheme& scheme, GitColor slot)
+	{
+		return scheme.Git[static_cast<std::size_t>(slot)];
+	}
+
+	const Core::Color& ColourFromScheme(const ResolvedScheme& scheme, SessionColor slot)
+	{
+		return scheme.Session[static_cast<std::size_t>(slot)];
+	}
+
 	ResolvedScheme Resolve(const ColorScheme& scheme, const ResolvedScheme& base)
 	{
 		ResolvedScheme resolved = base;

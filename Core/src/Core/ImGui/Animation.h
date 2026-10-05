@@ -18,6 +18,10 @@ namespace Core {
 		static constexpr float kHoverInSeconds = 0.2f;
 		static constexpr float kHoverOutSeconds = 0.35f;
 
+		// DeltaTime carries the whole sleep on the first frame after the loop slept. This cap is longer
+		// than any real frame, so it never slows a fade in motion.
+		static constexpr float kLongestStepSeconds = 0.1f;
+
 		// Advances every animation by this frame's step. Called once per frame, after
 		// ImGui::NewFrame, before anything asks for a value.
 		static void BeginFrame();

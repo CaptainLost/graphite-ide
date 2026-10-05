@@ -15,6 +15,9 @@ namespace Core {
 		float A = 1.0f;
 	};
 
+	int ChannelToByte(float channel);
+	float ChannelFromByte(int byteValue);
+
 	std::uint32_t PackBgr(const Color& color);
 
 	// RRGGBB or RRGGBBAA, case-insensitive, no leading '#'. Nothing for any other length, any

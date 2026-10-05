@@ -4,6 +4,7 @@
 #include "Sessions/Requests/RequestTimeline.h"
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -35,6 +36,10 @@ namespace Graphite {
 		double Number = 0.0;
 		std::string Text;
 	};
+
+	SortValue NumericSortValue(std::optional<double> value);
+
+	SortValue TextualSortValue(std::string text);
 
 	// Whether `column` compares its values as text rather than as numbers.
 	bool IsTextColumn(RequestColumn column);

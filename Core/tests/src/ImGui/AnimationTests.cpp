@@ -60,6 +60,8 @@ namespace {
 	constexpr ImGuiID kOtherItem = 0x5678;
 }
 
+static_assert(Core::Animation::kLongestStepSeconds == 0.1f);
+
 TEST_CASE("An item never hovered rests at zero")
 {
 	Frames frames;

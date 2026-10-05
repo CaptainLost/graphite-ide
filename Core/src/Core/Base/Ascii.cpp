@@ -37,4 +37,9 @@ namespace Core {
 
 		return std::string(text.substr(begin, end - begin));
 	}
+
+	bool LoweredTextContains(std::string_view text, std::string_view loweredNeedle)
+	{
+		return Lowered(text).find(loweredNeedle) != std::string::npos;
+	}
 }

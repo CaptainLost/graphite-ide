@@ -22,6 +22,15 @@ namespace Core {
 
 	std::string WithLineEnding(std::string_view text, LineEnding ending);
 
+	struct NormalisedLineEndings
+	{
+		std::string Content;
+		LineEnding Ending = LineEnding::Lf;
+		bool Mixed = false;
+	};
+
+	NormalisedLineEndings NormaliseLineEndings(std::string_view bytes);
+
 	class TextDocument
 	{
 	public:

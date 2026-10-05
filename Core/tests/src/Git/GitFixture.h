@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Git/Repository.h"
+#include "Core/Git/Requests.h"
 
 #include "TempDirectory.h"
 
@@ -9,8 +11,11 @@
 #include <git2.h>
 
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <system_error>
+#include <utility>
 
 // Builds a real repository in a temporary directory. Every commit carries the same author
 // and a timestamp one minute later than the last, so ordering is deterministic and a log
@@ -306,3 +311,29 @@ private:
 	git_repository* m_Repository = nullptr;
 	int m_CommitCount = 0;
 };
+
+inline Core::Repository OpenRepositoryAt(const std::filesystem::path& root)
+{
+	Core::Result<Core::Repository> opened = Core::Repository::Open(root);
+	REQUIRE(opened.HasValue());
+	return std::move(opened).GetValue();
+}
+
+inline Core::Oid HeadCommitId(const Core::Repository& repository)
+{
+	const Core::Result<Core::LogPage> log = repository.QueryLog(Core::LogRequest{});
+	REQUIRE(log.HasValue());
+	REQUIRE_FALSE(log.GetValue().Commits.empty());
+	return log.GetValue().Commits.front().Id;
+}
+
+// core.autocrlf may check a file out with CRLF line ends; the tests compare content.
+inline std::string ReadWithoutCarriageReturns(const std::filesystem::path& path)
+{
+	std::ifstream file{path, std::ios::binary};
+	std::stringstream contentBuffer;
+	contentBuffer << file.rdbuf();
+	std::string content = contentBuffer.str();
+	std::erase(content, '\r');
+	return content;
+}

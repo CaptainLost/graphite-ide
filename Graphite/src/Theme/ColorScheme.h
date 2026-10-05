@@ -71,5 +71,11 @@ namespace Graphite {
 	std::string_view NameOf(GitColor color);
 	std::string_view NameOf(SessionColor color);
 
+	const Core::Color& ColourFromScheme(const ResolvedScheme& scheme, TokenKind slot);
+	const Core::Color& ColourFromScheme(const ResolvedScheme& scheme, EditorColor slot);
+	const Core::Color& ColourFromScheme(const ResolvedScheme& scheme, ChromeColor slot);
+	const Core::Color& ColourFromScheme(const ResolvedScheme& scheme, GitColor slot);
+	const Core::Color& ColourFromScheme(const ResolvedScheme& scheme, SessionColor slot);
+
 	ResolvedScheme Resolve(const ColorScheme& scheme, const ResolvedScheme& base);
 }

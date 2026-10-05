@@ -9,6 +9,8 @@
 #include <string_view>
 #include <vector>
 
+using namespace Graphite;
+
 namespace {
 
 	// A base with every entry filled, so a resolution against it can only produce a colour that
@@ -252,4 +254,15 @@ TEST_CASE("Every session colour has a key and a label, and no two keys collide")
 
 	std::sort(keys.begin(), keys.end());
 	CHECK(std::adjacent_find(keys.begin(), keys.end()) == keys.end());
+}
+
+TEST_CASE("ColourFromScheme reads the slot out of the scheme itself, not a copy")
+{
+	ResolvedScheme scheme{};
+	scheme.Chrome[static_cast<std::size_t>(ChromeColor::Accent)] = Core::Color{.R = 0.25f, .G = 0.5f, .B = 0.75f};
+
+	const Core::Color& accent = ColourFromScheme(scheme, ChromeColor::Accent);
+
+	CHECK(&accent == &scheme.Chrome[static_cast<std::size_t>(ChromeColor::Accent)]);
+	CHECK(accent.G == 0.5f);
 }

@@ -22,4 +22,15 @@ namespace Core {
 		// width of every cell.
 		return baked->GetCharAdvance('0') * (ImGui::GetFontSize() / baked->Size);
 	}
+
+	// An empty view may carry a null pointer, which CalcTextSize would read as "up to the terminator".
+	float TextWidth(std::string_view text)
+	{
+		if (text.empty())
+		{
+			return 0.0f;
+		}
+
+		return ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
+	}
 }

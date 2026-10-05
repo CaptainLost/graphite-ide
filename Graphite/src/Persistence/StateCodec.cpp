@@ -1,6 +1,7 @@
 #include "Persistence/StateCodec.h"
 
 #include "Core/Base/JsonFile.h"
+#include "Core/Base/Strings.h"
 #include "Core/FileSystem/FileSystem.h"
 
 #include <algorithm>
@@ -79,7 +80,7 @@ namespace Graphite {
 
 		std::size_t ReadCount(const Core::JsonFile& file, std::string_view key)
 		{
-			return std::min(ParseNumber<std::size_t>(file.Get(key)).value_or(0), kMaximumTabs);
+			return std::min(Core::ParseNumber<std::size_t>(file.Get(key)).value_or(0), kMaximumTabs);
 		}
 
 		template<typename Value, std::size_t Size>
@@ -277,10 +278,10 @@ namespace Graphite {
 	{
 		GlobalState state;
 
-		const auto x = ParseNumber<int>(file.Get(kWindowX));
-		const auto y = ParseNumber<int>(file.Get(kWindowY));
-		const auto width = ParseNumber<int>(file.Get(kWindowWidth));
-		const auto height = ParseNumber<int>(file.Get(kWindowHeight));
+		const auto x = Core::ParseNumber<int>(file.Get(kWindowX));
+		const auto y = Core::ParseNumber<int>(file.Get(kWindowY));
+		const auto width = Core::ParseNumber<int>(file.Get(kWindowWidth));
+		const auto height = Core::ParseNumber<int>(file.Get(kWindowHeight));
 
 		if (x && y && width && height && *width > 0 && *height > 0)
 		{
@@ -390,9 +391,9 @@ namespace Graphite {
 			TabState tab;
 			tab.Path = DecodePath(path, root);
 			tab.Preview = ReadFlag(file.Get(TabKey(index, "preview")), false);
-			tab.Line = ParseNumber<std::size_t>(file.Get(TabKey(index, "line"))).value_or(0);
-			tab.Column = ParseNumber<std::size_t>(file.Get(TabKey(index, "column"))).value_or(0);
-			tab.Top = ParseNumber<std::size_t>(file.Get(TabKey(index, "top"))).value_or(0);
+			tab.Line = Core::ParseNumber<std::size_t>(file.Get(TabKey(index, "line"))).value_or(0);
+			tab.Column = Core::ParseNumber<std::size_t>(file.Get(TabKey(index, "column"))).value_or(0);
+			tab.Top = Core::ParseNumber<std::size_t>(file.Get(TabKey(index, "top"))).value_or(0);
 
 			state.Tabs.push_back(std::move(tab));
 		}

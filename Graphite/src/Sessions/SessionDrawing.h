@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Sessions/Transcript/ToolFacts.h"
+#include "UI/TypographicMarks.h"
 
 #include <imgui.h>
 
@@ -12,7 +13,6 @@ namespace Graphite {
 	// The pieces the session views draw their one-line rows from, shared so a request listed in
 	// the Requests tab and under a usage line in the conversation reads the same.
 
-	inline constexpr const char* kEllipsis = "\xe2\x80\xa6";
 	inline constexpr const char* kDot = " \xc2\xb7 ";
 
 	void ColouredText(ImU32 colour, const std::string& text);

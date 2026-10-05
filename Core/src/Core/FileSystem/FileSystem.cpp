@@ -105,6 +105,27 @@ namespace Core {
 		return text;
 	}
 
+#ifdef CORE_PLATFORM_WINDOWS
+	// Do not add MB_ERR_INVALID_CHARS: callers rely on bytes that are not UTF-8 arriving as U+FFFD,
+	// not as an empty string. The explicit length keeps an embedded NUL.
+	std::wstring ToUtf16(std::string_view text)
+	{
+		if (text.empty())
+		{
+			return {};
+		}
+
+		const int textLength = Narrow<int>(text.size());
+		constexpr DWORD kReplaceInvalidSequences = 0;
+		constexpr int kMeasureOnly = 0;
+		const int utf16Length = ::MultiByteToWideChar(CP_UTF8, kReplaceInvalidSequences, text.data(), textLength, nullptr, kMeasureOnly);
+
+		std::wstring utf16Text(static_cast<std::size_t>(utf16Length), L'\0');
+		::MultiByteToWideChar(CP_UTF8, kReplaceInvalidSequences, text.data(), textLength, utf16Text.data(), utf16Length);
+		return utf16Text;
+	}
+#endif
+
 	std::filesystem::path FromUtf8(std::string_view text)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
@@ -358,5 +379,13 @@ namespace Core {
 		}
 
 		return bytes;
+	}
+
+	// std::filesystem::exists without an error_code throws when it cannot examine a path, as when access is denied.
+	bool PathExists(const std::filesystem::path& path)
+	{
+		std::error_code failure;
+
+		return std::filesystem::exists(path, failure) && !failure;
 	}
 }

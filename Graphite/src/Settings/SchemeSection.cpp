@@ -2,6 +2,7 @@
 
 #include "Settings/AppSettings.h"
 #include "Theme/ActiveScheme.h"
+#include "Theme/ColorScheme.h"
 #include "Theme/Palettes.h"
 #include "UI/DialogLayout.h"
 #include "UI/ToastEvent.h"
@@ -15,34 +16,6 @@
 #include <utility>
 
 namespace Graphite {
-
-	namespace {
-
-		const Core::Color& ColorIn(const ResolvedScheme& scheme, TokenKind kind)
-		{
-			return scheme.Syntax[static_cast<std::size_t>(kind)];
-		}
-
-		const Core::Color& ColorIn(const ResolvedScheme& scheme, EditorColor color)
-		{
-			return scheme.Editor[static_cast<std::size_t>(color)];
-		}
-
-		const Core::Color& ColorIn(const ResolvedScheme& scheme, ChromeColor color)
-		{
-			return scheme.Chrome[static_cast<std::size_t>(color)];
-		}
-
-		const Core::Color& ColorIn(const ResolvedScheme& scheme, GitColor color)
-		{
-			return scheme.Git[static_cast<std::size_t>(color)];
-		}
-
-		const Core::Color& ColorIn(const ResolvedScheme& scheme, SessionColor color)
-		{
-			return scheme.Session[static_cast<std::size_t>(color)];
-		}
-	}
 
 	SchemeSection::SchemeSection(ActiveScheme& scheme, AppSettings& settings, ModalGate& modals,
 								 Core::EventBus& events)
@@ -132,7 +105,7 @@ namespace Graphite {
 		const bool readOnly = m_Draft.IsReadOnly();
 		const bool overridden = m_Draft.IsOverridden(which);
 
-		const Core::Color& shown = ColorIn(m_Draft.GetPreview(), which);
+		const Core::Color& shown = ColourFromScheme(m_Draft.GetPreview(), which);
 
 		// A local array rather than &shown.R: Core::Color's four floats are almost certainly
 		// contiguous, but "almost certainly" is not a thing to hand a pointer to.

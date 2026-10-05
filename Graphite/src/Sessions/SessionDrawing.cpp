@@ -33,7 +33,7 @@ namespace Graphite {
 			return text;
 		}
 
-		const float ellipsis = font->CalcTextSizeA(size, FLT_MAX, 0.0f, kEllipsis).x;
+		const float ellipsis = font->CalcTextSizeA(size, FLT_MAX, 0.0f, kEllipsis.data(), kEllipsis.data() + kEllipsis.size()).x;
 		if (width < ellipsis)
 		{
 			return {};
@@ -48,7 +48,7 @@ namespace Graphite {
 			--remaining;
 		}
 
-		return std::string{begin, remaining} + kEllipsis;
+		return std::string{begin, remaining}.append(kEllipsis);
 	}
 
 	const char* IconOf(ToolCategory category)

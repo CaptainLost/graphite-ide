@@ -154,3 +154,39 @@ TEST_CASE("A large UTF-16 file is judged by its size like any other text")
 
 	CHECK(ClassifySample(bytes, LargeFileThreshold + 1).Kind == FileKind::LargeText);
 }
+
+TEST_CASE("ReadDiskText keeps the byte order mark and refuses what is not text")
+{
+	TempDirectory directory;
+
+	const DiskText marked = ReadDiskText(directory.MakeFile("marked.txt", "\xEF\xBB\xBFint x;"));
+	CHECK(marked.Outcome == DiskTextOutcome::Read);
+	CHECK(marked.Text == "\xEF\xBB\xBFint x;");
+
+	const DiskText wide = ReadDiskText(directory.MakeFile("wide.txt", std::string{"\xFF\xFEh\0i\0", 6}));
+	CHECK(wide.Outcome == DiskTextOutcome::Read);
+	CHECK(wide.Text == "\xEF\xBB\xBFhi");
+
+	const DiskText empty = ReadDiskText(directory.MakeFile("empty.txt"));
+	CHECK(empty.Outcome == DiskTextOutcome::Read);
+	CHECK(empty.Text.empty());
+
+	CHECK(ReadDiskText(directory.MakeFile("object.obj", std::string{"MZ\0\0binary", 10})).Outcome ==
+		  DiskTextOutcome::Binary);
+	CHECK(ReadDiskText(directory.GetPath() / "absent.txt").Outcome == DiskTextOutcome::Unreadable);
+	CHECK(ReadDiskText(directory.MakeDir("folder")).Outcome == DiskTextOutcome::Unreadable);
+
+	const std::string markedUtf16WithUnpairedHighSurrogate{"\xFF\xFE"
+														   "a\0"
+														   "\x00\xD8"
+														   "b\0",
+														   8};
+	CHECK(ReadDiskText(directory.MakeFile("damaged.txt", markedUtf16WithUnpairedHighSurrogate)).Outcome ==
+		  DiskTextOutcome::Undecodable);
+}
+
+TEST_CASE("ReadDiskText leaves line endings as they are on disk")
+{
+	TempDirectory directory;
+	CHECK(ReadDiskText(directory.MakeFile("crlf.txt", "a\r\nb")).Text == "a\r\nb");
+}

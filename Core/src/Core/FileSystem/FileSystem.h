@@ -1,7 +1,9 @@
 #pragma once
 
+#include "Core/Base/PlatformDetection.h"
 #include "Core/Base/Result.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -30,12 +32,36 @@ namespace Core {
 	Result<std::string> ReadFileBytes(const std::filesystem::path& path,
 									  std::optional<std::uintmax_t> maximumBytes = std::nullopt);
 
+	bool PathExists(const std::filesystem::path& path);
+
 	std::string ToUtf8(const std::filesystem::path& path);
 
 	// ToUtf8 with every separator written as a forward slash, the way git spells paths.
 	std::string ToGenericUtf8(const std::filesystem::path& path);
 
 	std::filesystem::path FromUtf8(std::string_view text);
+
+#ifdef CORE_PLATFORM_WINDOWS
+	std::wstring ToUtf16(std::string_view text);
+#endif
+
+	constexpr bool IsPathSeparator(char character)
+	{
+		return character == '/' || character == '\\';
+	}
+
+	// A view into `text`.
+	constexpr std::string_view AfterLastPathSeparator(std::string_view text)
+	{
+		const std::size_t lastSeparator = text.find_last_of("\\/");
+
+		if (lastSeparator == std::string_view::npos)
+		{
+			return text;
+		}
+
+		return text.substr(lastSeparator + 1);
+	}
 
 	// The extension with its dot, ASCII-lowered: ".vcxproj" for "App.VCXPROJ", empty for none.
 	std::string LoweredExtension(const std::filesystem::path& path);
@@ -50,11 +76,13 @@ namespace Core {
 	// file path never carries one to begin with.
 	std::filesystem::path NormalizePath(const std::filesystem::path& path);
 
+	using PathKeyText = std::filesystem::path::string_type;
+
 	// The one form every path in this codebase is compared in: normalized as NormalizeDirectory
 	// does, then upper-cased the way Windows folds a file name - every letter it treats as the
 	// same, not only ASCII. Two spellings of one place have the same key, so it serves as a map
 	// key as well as for equality. Lexical: the path need not exist. Empty for an empty path.
-	std::filesystem::path::string_type PathKey(const std::filesystem::path& path);
+	PathKeyText PathKey(const std::filesystem::path& path);
 
 	// Whole-path equality through PathKey. A filename or suffix match is not safe here: a
 	// repository-root file has an empty parent_path, so matching on "ends with" degenerates
@@ -72,7 +100,7 @@ namespace Core {
 	// RelativeTo for a caller that asks about many paths under one base: `baseKey` is
 	// PathKey(base), made once. An empty key gives nothing.
 	std::optional<std::filesystem::path> RelativeToKey(
-		const std::filesystem::path& path, const std::filesystem::path::string_type& baseKey);
+		const std::filesystem::path& path, const PathKeyText& baseKey);
 
 	// Whether `path` is `root` or lies below it, compared through PathKey, so case and slash
 	// direction do not matter and "D:\Repos2" is not inside "D:\Repos". Lexical - neither path

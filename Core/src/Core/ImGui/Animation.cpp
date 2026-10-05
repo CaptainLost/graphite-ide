@@ -17,10 +17,6 @@ namespace Core {
 		// is below what a display shows.
 		constexpr float kSettledEpsilon = 0.001f;
 
-		// Longer than any real frame, even a slow Debug one, so it never slows a fade in
-		// motion.
-		constexpr float kLongestStepSeconds = 0.1f;
-
 		// ImAnim keys a tween by item and channel; every hover shares this channel, so an item
 		// animating something else under its own id does not collide with its hover.
 		ImGuiID HoverChannel()

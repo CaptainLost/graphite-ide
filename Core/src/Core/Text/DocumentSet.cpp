@@ -37,6 +37,25 @@ namespace Core {
 		return {};
 	}
 
+	const TextBuffer* BufferOfOpenDocument(const DocumentSet& documents, const std::filesystem::path& path)
+	{
+		const std::optional<std::size_t> index = documents.Find(path);
+
+		if (!index)
+		{
+			return nullptr;
+		}
+
+		const OpenItem& item = documents.At(*index);
+
+		if (!item.Document)
+		{
+			return nullptr;
+		}
+
+		return &item.Document->GetBuffer();
+	}
+
 	std::optional<std::size_t> DocumentSet::Find(const std::filesystem::path& path) const
 	{
 		for (std::size_t index = 0; index < m_Items.size(); ++index)
@@ -56,6 +75,16 @@ namespace Core {
 		{
 			m_Active = index;
 		}
+	}
+
+	const std::filesystem::path* DocumentSet::GetActiveItemPath() const
+	{
+		if (!m_Active)
+		{
+			return nullptr;
+		}
+
+		return &m_Items[*m_Active].Path;
 	}
 
 	OpenOutcome DocumentSet::Open(const std::filesystem::path& path, bool permanent)
