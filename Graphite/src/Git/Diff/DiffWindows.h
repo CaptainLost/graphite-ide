@@ -105,13 +105,19 @@ namespace Graphite {
 
 		// centreNode is where a window is placed the first time its identity appears —
 		// after that ImGui remembers, including across a restart through imgui.ini.
-		// `selection` is the editor scheme's selection colour; see DiffView::Render.
+		// `selection` is the editor scheme's selection colour and `wordWrap` the setting for
+		// diffs; see DiffView::Render for both.
 		void Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,
-					ImU32 selection, unsigned int centreNode, Core::TabCloseRequests& closeRequests);
+					ImU32 selection, bool wordWrap, unsigned int centreNode,
+					Core::TabCloseRequests& closeRequests);
 
 		// Confirms a copy out of any tab's diff, given the text already on the clipboard. Set
 		// once by whoever owns the application's event bus; handed to every DiffView this draws.
 		std::function<void(std::string_view)> OnCopied;
+
+		// Sets the setting for diffs that Render's `wordWrap` comes from. Set once by whoever
+		// owns the settings; handed to every DiffView this draws, as OnCopied is.
+		std::function<void(bool)> OnSetWordWrap;
 
 		// Opens a file in the editor, given its absolute path. Set once by whoever owns the
 		// editor's tabs; every diff this draws offers it, and so does the docked history

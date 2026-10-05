@@ -26,7 +26,9 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
+#include <vector>
 
 namespace Graphite {
 
@@ -35,6 +37,63 @@ namespace Graphite {
 		constexpr float kLineNumberColumns = 5.0f;
 		constexpr float kNumberPaddingX = 6.0f;
 		constexpr float kModeButtonGap = 2.0f;
+
+		// Where a line breaks when nothing wraps: never.
+		constexpr std::size_t kNoWrap = static_cast<std::size_t>(-1);
+
+		// How many cells of the font pushed fit across `width`; never none, so a pane dragged
+		// narrower than one cell still breaks somewhere rather than nowhere. Measured with
+		// CalcTextSize, which rounds up, so a row never comes out wider than the width it fits.
+		std::size_t CellsAcross(float width)
+		{
+			const float cell = ImGui::CalcTextSize("0").x;
+
+			if (cell <= 0.0f || width <= cell)
+			{
+				return 1;
+			}
+
+			return static_cast<std::size_t>(width / cell);
+		}
+
+		// Both line numbers' column in the font pushed.
+		float NumberColumnWidth()
+		{
+			return ImGui::CalcTextSize("0").x * kLineNumberColumns + Core::Scaled(kNumberPaddingX) * 2.0f;
+		}
+
+		// How many cells a wrapped line has across a text column `width` wide: short of the
+		// edge it runs to by a padding, the way text keeps clear of a window's edge.
+		std::size_t WrapColumnsAcross(float width)
+		{
+			return CellsAcross(width - ImGui::GetStyle().WindowPadding.x);
+		}
+
+		// Which of a line's `count` screen lines, the first at `screenTop` and `rowHeight` apart,
+		// the clipping rectangle in force shows, as [first, end). Only those are drawn: a
+		// minified file's one line can wrap into thousands, of which a screenful is visible.
+		std::pair<std::size_t, std::size_t> VisibleSegments(float screenTop, std::size_t count,
+															float rowHeight)
+		{
+			const ImDrawList& drawList = *ImGui::GetWindowDrawList();
+			const float above = (drawList.GetClipRectMin().y - screenTop) / rowHeight;
+			const float below = (drawList.GetClipRectMax().y - screenTop) / rowHeight;
+			const float total = static_cast<float>(count);
+
+			return {static_cast<std::size_t>(std::clamp(std::floor(above), 0.0f, total)),
+					static_cast<std::size_t>(std::clamp(std::ceil(below), 0.0f, total))};
+		}
+
+		// Where `text` breaks after `columns` cells; nowhere for kNoWrap.
+		std::vector<std::size_t> BreaksOf(std::string_view text, std::size_t columns)
+		{
+			if (columns == kNoWrap)
+			{
+				return {};
+			}
+
+			return WrapBytes(text, columns);
+		}
 
 		// How tall a region's content is once the clipper has walked `count` rows: every row's
 		// height, less the spacing ImGui leaves out after the last item. Declared up front only
@@ -189,31 +248,56 @@ namespace Graphite {
 		// than with SameLine(): a run that draws nothing (an empty gap before two adjacent
 		// tokens) would otherwise rewind the cursor and overwrite the row above, which is the
 		// exact bug this file's history records.
+		//
+		// A wrapped line is drawn one segment of `breaks` to a screen line, `rowHeight` apart,
+		// each from `origin`'s x; a run crossing a break is cut in two there.
 		void DrawLine(const ImVec2& origin, std::string_view text,
 					  const std::vector<Token>* tokens, ImU32 ordinaryColour,
-					  const SyntaxPalette& syntax)
+					  const SyntaxPalette& syntax, std::span<const std::size_t> breaks,
+					  float rowHeight)
 		{
-			// Each run's x is measured from `origin` against the whole prefix up to it, not
-			// accumulated from the previous run's width: CalcTextSize rounds its result up to a
-			// whole pixel, and summing that rounding error run by run drifts the tail of a long,
-			// densely tokenised line several pixels right of where the monospaced grid puts it —
-			// the same trap already recorded against the editor's own caret, reached here by
-			// accumulation instead of by caret math.
-			const auto xAt = [&](std::size_t offset) {
-				return origin.x + ImGui::CalcTextSize(text.data(), text.data() + offset).x;
-			};
+			const std::vector<SyntaxRun> runs = RunsFor(text, tokens);
+			const auto [first, end] =
+				VisibleSegments(ImGui::GetWindowPos().y - ImGui::GetScrollY() + origin.y,
+								breaks.size() + 1, rowHeight);
 
-			const auto drawRun = [&](std::size_t from, std::size_t to, ImU32 colour) {
-				ImGui::SetCursorPos(ImVec2(xAt(from), origin.y));
-				ImGui::PushStyleColor(ImGuiCol_Text, colour);
-				ImGui::TextUnformatted(text.data() + from, text.data() + to);
-				ImGui::PopStyleColor();
-			};
-
-			for (const SyntaxRun& run : RunsFor(text, tokens))
+			for (std::size_t index = first; index < end; ++index)
 			{
-				drawRun(run.From, run.To,
-						run.Kind.has_value() ? syntax.Of(*run.Kind) : ordinaryColour);
+				const WrapSegment segment = SegmentOf(text, breaks, index);
+				const float y = origin.y + static_cast<float>(index) * rowHeight;
+
+				// Each run's x is measured from the segment's start against the whole prefix up
+				// to it, not accumulated from the previous run's width: CalcTextSize rounds its
+				// result up to a whole pixel, and summing that rounding error run by run drifts
+				// the tail of a long, densely tokenised line several pixels right of where the
+				// monospaced grid puts it — the same trap already recorded against the editor's
+				// own caret, reached here by accumulation instead of by caret math.
+				const auto xAt = [&](std::size_t offset) {
+					return origin.x +
+						   ImGui::CalcTextSize(text.data() + segment.From, text.data() + offset).x;
+				};
+
+				// The runs are in order, so the segment's are found by search rather than by
+				// walking every run of the line for every segment of it.
+				const auto firstRun = std::partition_point(
+					runs.begin(), runs.end(), [&](const SyntaxRun& run) { return run.To <= segment.From; });
+
+				for (auto run = firstRun; run != runs.end() && run->From < segment.To; ++run)
+				{
+					const std::size_t from = std::max(run->From, segment.From);
+					const std::size_t to = std::min(run->To, segment.To);
+
+					if (from >= to)
+					{
+						continue;
+					}
+
+					ImGui::SetCursorPos(ImVec2(xAt(from), y));
+					ImGui::PushStyleColor(ImGuiCol_Text,
+										  run->Kind.has_value() ? syntax.Of(*run->Kind) : ordinaryColour);
+					ImGui::TextUnformatted(text.data() + from, text.data() + to);
+					ImGui::PopStyleColor();
+				}
 			}
 		}
 
@@ -242,34 +326,66 @@ namespace Graphite {
 		}
 
 		// Fills the part of a line `span` covers, from the x its text is drawn at, under the
-		// text: called before DrawLine so the code stays readable on top of it.
-		void DrawSelected(std::string_view text, Core::ColumnSpan span, float textScreenX,
-						  float top, ImU32 colour)
+		// text: called before DrawLine so the code stays readable on top of it. Laid out as
+		// DrawLine lays the line out, one segment of `breaks` to a screen line.
+		void DrawSelected(std::string_view text, Core::ColumnSpan span,
+						  std::span<const std::size_t> breaks, float textScreenX, float top,
+						  float rowHeight, ImU32 colour)
 		{
-			Core::DrawSelectionSpan(*ImGui::GetWindowDrawList(),
-									textScreenX + WidthOf(text.substr(0, span.From)),
-									textScreenX + WidthOf(text.substr(0, span.To)), top,
-									ImGui::GetTextLineHeight(), colour);
+			const auto [first, end] = VisibleSegments(top, breaks.size() + 1, rowHeight);
+
+			for (std::size_t index = first; index < end; ++index)
+			{
+				const WrapSegment segment = SegmentOf(text, breaks, index);
+				const std::size_t from = std::clamp(span.From, segment.From, segment.To);
+				const std::size_t to = std::clamp(span.To, segment.From, segment.To);
+
+				if (from >= to)
+				{
+					continue;
+				}
+
+				const std::string_view piece = text.substr(segment.From, segment.To - segment.From);
+
+				Core::DrawSelectionSpan(*ImGui::GetWindowDrawList(),
+										textScreenX + WidthOf(piece.substr(0, from - segment.From)),
+										textScreenX + WidthOf(piece.substr(0, to - segment.From)),
+										top + static_cast<float>(index) * rowHeight,
+										ImGui::GetTextLineHeight(), colour);
+			}
 		}
 
-		// The row of `count` under `screenY` in the region open now, clamped to the rows; the
-		// rows start at `startY` in the region's own coordinates and are `rowHeight` apart.
-		std::size_t RowUnder(float screenY, float startY, float rowHeight, std::size_t count)
+		// The screen line of the `count` under `screenY` in the region open now, clamped to
+		// them; they start at `startY` in the region's own coordinates and are `rowHeight` apart.
+		std::size_t LineUnder(float screenY, float startY, float rowHeight, std::size_t count)
 		{
 			const float local = screenY - ImGui::GetWindowPos().y + ImGui::GetScrollY() - startY;
-			const float row = std::floor(local / rowHeight);
+			const float line = std::floor(local / rowHeight);
 
-			if (row <= 0.0f)
+			if (line <= 0.0f || count == 0)
 			{
 				return 0;
 			}
 
-			if (row >= static_cast<float>(count - 1))
+			if (line >= static_cast<float>(count - 1))
 			{
 				return count - 1;
 			}
 
-			return static_cast<std::size_t>(row);
+			return static_cast<std::size_t>(line);
+		}
+
+		// The byte of `text` at `x` along screen line `segment` of it, as broken after
+		// `columns` cells: the nearest boundary, or with `under` the start of the character
+		// covering x. Past the line's last screen line, its end.
+		std::size_t ByteOnSegment(std::string_view text, std::size_t columns, std::size_t segment,
+								  float x, bool under)
+		{
+			const std::vector<std::size_t> breaks = BreaksOf(text, columns);
+			const WrapSegment bytes = SegmentOf(text, breaks, segment);
+			const std::string_view piece = text.substr(bytes.From, bytes.To - bytes.From);
+
+			return bytes.From + (under ? ByteUnderX(piece, x, MonoWidthOf) : ByteAtX(piece, x, MonoWidthOf));
 		}
 
 		// Where a sweep over a row with no line lands: the end of the nearest line above or the
@@ -328,9 +444,10 @@ namespace Graphite {
 
 	void DiffView::Render(const Core::FileDiff& file, const GitPalette& palette,
 						  const SyntaxPalette& syntax, ImU32 selection,
-						  const Core::Ref<const FileTexts>& texts, const FileTokens& tokens)
+						  const Core::Ref<const FileTexts>& texts, const FileTokens& tokens,
+						  bool wordWrap)
 	{
-		RenderToolbar(file);
+		RenderToolbar(file, wordWrap);
 
 		if (texts != nullptr)
 		{
@@ -373,7 +490,7 @@ namespace Graphite {
 		// left alone would show whatever those rows happen to have there. Decided here, from
 		// what is drawn rather than from the buttons, so that whole-file mode arriving a few
 		// frames late with its texts still keeps the reader's line.
-		const Layout layout{m_Mode, wholeFile ? DiffScope::WholeFile : DiffScope::Hunks};
+		const Layout layout{m_Mode, wholeFile ? DiffScope::WholeFile : DiffScope::Hunks, wordWrap};
 		m_RestoreKeptLine = layout != m_Layout && m_KeptLine.has_value() && m_KeptLine->Path == ShownPath(file);
 		m_Layout = layout;
 
@@ -402,11 +519,11 @@ namespace Graphite {
 
 			if (m_Mode == DiffViewMode::Unified)
 			{
-				RenderUnified(rows.Unified, file, palette, syntax, selection, tokens);
+				RenderUnified(rows.Unified, file, palette, syntax, selection, tokens, wordWrap);
 			}
 			else
 			{
-				RenderSideBySide(rows.SideBySide, file, palette, syntax, selection, tokens);
+				RenderSideBySide(rows.SideBySide, file, palette, syntax, selection, tokens, wordWrap);
 			}
 
 			return;
@@ -420,11 +537,11 @@ namespace Graphite {
 
 		if (m_Mode == DiffViewMode::Unified)
 		{
-			RenderUnified(BuildUnifiedRows(file), file, palette, syntax, selection, tokens);
+			RenderUnified(BuildUnifiedRows(file), file, palette, syntax, selection, tokens, wordWrap);
 			return;
 		}
 
-		RenderSideBySide(BuildSideBySideRows(file), file, palette, syntax, selection, tokens);
+		RenderSideBySide(BuildSideBySideRows(file), file, palette, syntax, selection, tokens, wordWrap);
 	}
 
 	std::size_t DiffView::ContentHashOf(const Core::FileDiff& file)
@@ -441,13 +558,13 @@ namespace Graphite {
 		return m_ContentHash;
 	}
 
-	void DiffView::UpdateSelection(const Core::SelectionSource& source)
+	void DiffView::UpdateSelection(const Core::SelectionSource& source, bool wordWrap)
 	{
 		Core::SelectionGestureOptions options;
 		options.ScrollsVertically = true;
 		// Side-by-side the halves share the region's one horizontal scroll (ADR 0495), so a
-		// sweep past either edge moves both, as the scrollbar does.
-		options.ScrollsHorizontally = true;
+		// sweep past either edge moves both, as the scrollbar does. Wrapped, there is none.
+		options.ScrollsHorizontally = !wordWrap;
 		options.CopyKey = true;
 		options.SelectAllKey = true;
 		// The only context menu the region has, opened over it and nowhere else.
@@ -463,7 +580,7 @@ namespace Graphite {
 		}
 	}
 
-	void DiffView::RenderToolbar(const Core::FileDiff& file)
+	void DiffView::RenderToolbar(const Core::FileDiff& file, bool wordWrap)
 	{
 		const std::filesystem::path& path = ShownPath(file);
 
@@ -521,6 +638,16 @@ namespace Graphite {
 						   "Colour syntax"))
 		{
 			m_ColourSyntax = !m_ColourSyntax;
+		}
+
+		if (OnSetWordWrap)
+		{
+			ImGui::SameLine(0.0f, Core::Scaled(kModeButtonGap));
+
+			if (DrawIconButton("##wordWrap", ICON_MDI_WRAP, wordWrap, "Word wrap"))
+			{
+				OnSetWordWrap(!wordWrap);
+			}
 		}
 
 		// The file as it is on disk now, which a deleted file no longer has. NewPath and not
@@ -584,17 +711,39 @@ namespace Graphite {
 
 	void DiffView::RenderUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
 								 const GitPalette& palette, const SyntaxPalette& syntax,
-								 ImU32 selection, const FileTokens& tokens)
+								 ImU32 selection, const FileTokens& tokens, bool wordWrap)
 	{
+		// Where a wrapped line breaks is known for certain only once the region has opened and
+		// can be measured, and the scroll a switch of layout restores has to be set before
+		// that. Last frame's width stands in for it here; the rows are laid out again inside
+		// should the region have come out a different width since.
+		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont());
+		const float lastWidth =
+			m_UnifiedInnerWidth > 0.0f ? m_UnifiedInnerWidth : ImGui::GetContentRegionAvail().x;
+		const std::size_t lastColumns =
+			wordWrap ? WrapColumnsAcross(lastWidth - NumberColumnWidth() * 2.0f) : kNoWrap;
+		ImGui::PopFont();
+
+		const DiffRowLines& lastLines = RowLinesFor(std::span(rows), file, tokens, lastColumns);
+		const std::size_t lastTotal = lastLines.TotalLines();
+
 		// No border, so ImGui gives the region no padding and its first row sits at its top.
-		if (const std::optional<float> scroll = TakeRestoredScroll(std::span(rows), 0.0f))
+		const std::optional<float> scroll = TakeRestoredScroll(std::span(rows), lastLines, 0.0f);
+
+		// Wrapped, nothing reaches past the right edge, so a scroll left over from before is put
+		// back to the start rather than left showing every line with its beginning cut off.
+		if (scroll.has_value() || wordWrap)
 		{
-			ImGui::SetNextWindowScroll(ImVec2(-1.0f, *scroll));
-			ImGui::SetNextWindowContentSize(ImVec2(0.0f, RowsHeight(rows.size(), m_RowHeight)));
+			ImGui::SetNextWindowScroll(ImVec2(wordWrap ? 0.0f : -1.0f, scroll.value_or(-1.0f)));
+		}
+
+		if (scroll.has_value())
+		{
+			ImGui::SetNextWindowContentSize(ImVec2(0.0f, RowsHeight(lastTotal, m_RowHeight)));
 		}
 
 		if (!ImGui::BeginChild("unified", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
-							   ImGuiWindowFlags_HorizontalScrollbar))
+							   wordWrap ? ImGuiWindowFlags_None : ImGuiWindowFlags_HorizontalScrollbar))
 		{
 			ImGui::EndChild();
 			return;
@@ -604,33 +753,65 @@ namespace Graphite {
 		// the search preview in the mono font applies to a line of a hunk.
 		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont());
 
-		const float numberWidth =
-			ImGui::CalcTextSize("0").x * kLineNumberColumns + Core::Scaled(kNumberPaddingX) * 2.0f;
+		const float numberWidth = NumberColumnWidth();
 		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
 		const float startX = ImGui::GetCursorPosX();
 		const float startY = ImGui::GetCursorPosY();
 
 		m_RowHeight = rowHeight;
 
-		// Only the visible rows are laid out. A diff of a generated file runs to tens of
-		// thousands of lines and drawing them all costs the frame. The clipper is told the
-		// row height explicitly rather than measuring it from a first item, because that
-		// first item's own layout is exactly what a cursor-rewind bug would corrupt.
+		// What the reader can see across, any scrollbar already taken off.
+		m_UnifiedInnerWidth = ImGui::GetWindowDrawList()->GetClipRectMax().x -
+							  ImGui::GetWindowDrawList()->GetClipRectMin().x;
+
+		const std::size_t columns =
+			wordWrap ? WrapColumnsAcross(m_UnifiedInnerWidth - numberWidth * 2.0f) : kNoWrap;
+		const DiffRowLines& lines = RowLinesFor(std::span(rows), file, tokens, columns);
+		const bool rewrapped =
+			KeepLineAcrossRewrap(std::span(rows), lines, file, startY, columns, lastColumns);
+
+		// Only the visible screen lines are laid out. A diff of a generated file runs to tens
+		// of thousands of lines and drawing them all costs the frame. The clipper counts screen
+		// lines rather than rows, since a wrapped row takes several, and is told their height
+		// explicitly rather than measuring it from a first item, because that first item's own
+		// layout is exactly what a cursor-rewind bug would corrupt.
 		ImGuiListClipper clipper;
-		clipper.Begin(Core::Narrow<int>(rows.size()), rowHeight);
+		clipper.Begin(Core::Narrow<int>(lines.TotalLines()), rowHeight);
+
+		// Every row before this one is drawn: one taller than a line can reach into the next
+		// step, which must not draw it a second time over itself.
+		std::size_t drawnTo = 0;
 
 		while (clipper.Step())
 		{
-			for (int index = clipper.DisplayStart; index < clipper.DisplayEnd; ++index)
+			const ImVec2 stepPos = ImGui::GetCursorPos();
+			const auto firstLine = static_cast<std::size_t>(clipper.DisplayStart);
+			const auto endLine = static_cast<std::size_t>(clipper.DisplayEnd);
+
+			if (endLine <= firstLine)
 			{
-				const DiffRow& row = rows[static_cast<std::size_t>(index)];
+				continue;
+			}
+
+			const std::size_t endRow = lines.RowOfLine(endLine - 1) + 1;
+
+			for (std::size_t index = std::max(lines.RowOfLine(firstLine), drawnTo); index < endRow;
+				 ++index)
+			{
+				const DiffRow& row = rows[index];
 
 				// Each column is positioned explicitly from the row's own start rather than
 				// with SameLine(), so a column that draws nothing (a blank line number) never
-				// leaves a later column depending on it having existed.
-				const ImVec2 rowPos = ImGui::GetCursorPos();
+				// leaves a later column depending on it having existed. A row that starts above
+				// the step starts above it here too.
+				const ImVec2 rowPos(stepPos.x, stepPos.y + (static_cast<float>(lines.FirstLineOf(index)) -
+															static_cast<float>(firstLine)) *
+															   rowHeight);
+				ImGui::SetCursorPos(rowPos);
+
 				const ImVec2 start = ImGui::GetCursorScreenPos();
-				const float height = ImGui::GetTextLineHeight();
+				const float height = static_cast<float>(lines.LinesOf(index)) * rowHeight -
+									 ImGui::GetStyle().ItemSpacing.y;
 
 				if (const ImU32 band = BandFor(row.Kind, palette); band != 0)
 				{
@@ -639,14 +820,7 @@ namespace Graphite {
 						band);
 				}
 
-				// The signature row draws as the line of the file it names, once that is found.
-				DiffRow drawn = row;
-
-				if (row.Kind == DiffRowKind::HunkSignature)
-				{
-					drawn = SignatureRowFor(file.Hunks[row.Hunk], m_OldLines, m_NewLines)
-								.value_or(row);
-				}
+				const DiffRow drawn = DrawnRow(file, row);
 
 				if (drawn.Kind == DiffRowKind::HunkHeader || drawn.Kind == DiffRowKind::HunkSignature)
 				{
@@ -659,8 +833,6 @@ namespace Graphite {
 
 				if (row.Kind == DiffRowKind::HunkGap)
 				{
-					ImGui::SetCursorPos(rowPos);
-					ImGui::NewLine();
 					continue;
 				}
 
@@ -672,46 +844,55 @@ namespace Graphite {
 				const ResolvedLine resolved =
 					ResolveRow(file, drawn, DiffSide::New, m_OldLines, m_NewLines, tokens);
 
-				if (resolved.Text.has_value())
+				if (!resolved.Text.has_value())
 				{
-					if (const std::optional<std::int64_t> line =
-							UnifiedLineOf(rows, static_cast<std::size_t>(index)))
-					{
-						if (const std::optional<Core::ColumnSpan> span =
-								m_Selection.SpanOn(*line, resolved.Text->size()))
-						{
-							DrawSelected(*resolved.Text, *span, start.x + numberWidth * 2.0f, start.y,
-										 selection);
-						}
-					}
+					continue;
+				}
 
-					DrawLine(ImVec2(rowPos.x + numberWidth * 2.0f, rowPos.y), *resolved.Text,
-							 m_ColourSyntax ? resolved.Tokens : nullptr,
-							 TextFor(drawn.Kind, palette), syntax);
-				}
-				else
+				const std::vector<std::size_t> breaks = BreaksOf(*resolved.Text, columns);
+
+				if (const std::optional<std::int64_t> line = UnifiedLineOf(rows, index))
 				{
-					ImGui::SetCursorPos(rowPos);
-					ImGui::NewLine();
+					if (const std::optional<Core::ColumnSpan> span =
+							m_Selection.SpanOn(*line, resolved.Text->size()))
+					{
+						DrawSelected(*resolved.Text, *span, breaks, start.x + numberWidth * 2.0f,
+									 start.y, rowHeight, selection);
+					}
 				}
+
+				DrawLine(ImVec2(rowPos.x + numberWidth * 2.0f, rowPos.y), *resolved.Text,
+						 m_ColourSyntax ? resolved.Tokens : nullptr, TextFor(drawn.Kind, palette),
+						 syntax, breaks, rowHeight);
 			}
+
+			drawnTo = std::max(drawnTo, endRow);
+
+			// The step's lines reserved as one item, for the reason RenderSideBySide gives.
+			ImGui::SetCursorPos(stepPos);
+			ImGui::Dummy(ImVec2(0.0f, static_cast<float>(endLine - firstLine) * rowHeight -
+										  ImGui::GetStyle().ItemSpacing.y));
 		}
 
-		RememberKeptLine(std::span(rows), file, startY);
+		if (!rewrapped)
+		{
+			RememberKeptLine(std::span(rows), lines, file, startY);
+		}
 
 		// The UI font back before the gesture, whose context menu is a menu like any other;
 		// its hit-testing measures in the mono font by itself (MonoWidthOf).
 		ImGui::PopFont();
 
 		// After every row, as the gesture asks.
-		SelectUnified(rows, file, tokens, startX, startY, numberWidth * 2.0f, rowHeight);
+		SelectUnified(rows, lines, file, tokens, startX, startY, numberWidth * 2.0f, rowHeight,
+					  columns);
 
 		ImGui::EndChild();
 	}
 
-	void DiffView::SelectUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
-								 const FileTokens& tokens, float startX, float startY,
-								 float textOffset, float rowHeight)
+	void DiffView::SelectUnified(const std::vector<DiffRow>& rows, const DiffRowLines& lines,
+								 const Core::FileDiff& file, const FileTokens& tokens, float startX,
+								 float startY, float textOffset, float rowHeight, std::size_t columns)
 	{
 		// As drawn: one text column standing for both sides, resolved for New.
 		const auto textOf = [&](std::size_t index) {
@@ -743,14 +924,17 @@ namespace Graphite {
 				return std::nullopt;
 			}
 
-			const std::size_t index = RowUnder(screen.y, startY, rowHeight, rows.size());
+			const std::size_t screenLine = LineUnder(screen.y, startY, rowHeight, lines.TotalLines());
+			const std::size_t index = lines.RowOfLine(screenLine);
 
 			if (const std::optional<std::int64_t> line = lineOf(index))
 			{
 				const std::string_view text = textOf(index);
 				const float x = screen.x - textScreenX;
 
-				return Core::TextPoint{*line, under ? ByteUnderX(text, x, MonoWidthOf) : ByteAtX(text, x, MonoWidthOf)};
+				return Core::TextPoint{*line, ByteOnSegment(text, columns,
+															screenLine - lines.FirstLineOf(index), x,
+															under)};
 			}
 
 			// A header, a signature or a gap: no selection starts there, but one already being
@@ -788,12 +972,12 @@ namespace Graphite {
 			return SelectedUnifiedText(m_Selection, rows, file, m_OldLines, m_NewLines, tokens);
 		};
 
-		UpdateSelection(source);
+		UpdateSelection(source, columns != kNoWrap);
 	}
 
 	void DiffView::RenderSideBySide(const std::vector<DiffPair>& pairs, const Core::FileDiff& file,
 									const GitPalette& palette, const SyntaxPalette& syntax,
-									ImU32 selection, const FileTokens& tokens)
+									ImU32 selection, const FileTokens& tokens, bool wordWrap)
 	{
 		// The widest line is measured from the rows that have been on screen, for the reason
 		// ImGui itself derives a window's content size from the items it saw: the widest line
@@ -820,18 +1004,37 @@ namespace Graphite {
 									 : ImGui::GetContentRegionAvail().x;
 		const float padding = ImGui::GetStyle().WindowPadding.x;
 
+		// Each half's text runs from past its line numbers, which start a padding in from the
+		// half's own left edge, to its right edge.
+		const auto columnsOf = [&](const SideBySidePanes& panes, float numberWidth) {
+			return wordWrap ? WrapColumnsAcross(panes.PaneWidth - padding - numberWidth) : kNoWrap;
+		};
+
+		// Last frame's width stands in for where a wrapped line breaks, as in the unified view
+		// and for the same reason: the scroll restored has to be set before the region opens.
+		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont());
+		const std::size_t lastColumns =
+			columnsOf(SplitIntoPanes(m_SideInnerWidth > 0.0f ? m_SideInnerWidth : innerWidth),
+					  NumberColumnWidth());
+		ImGui::PopFont();
+
+		const DiffRowLines& lastLines = RowLinesFor(std::span(pairs), file, tokens, lastColumns);
+		const std::size_t lastTotal = lastLines.TotalLines();
+
 		// Bordered, so ImGui pads the region and its first row sits that far below its top.
 		const std::optional<float> scroll =
-			TakeRestoredScroll(std::span(pairs), ImGui::GetStyle().WindowPadding.y);
+			TakeRestoredScroll(std::span(pairs), lastLines, ImGui::GetStyle().WindowPadding.y);
 
-		if (scroll.has_value())
+		// Wrapped, nothing reaches past either half's edge, so the shared horizontal scroll is
+		// put back to the start rather than left where it cuts every line's beginning off.
+		if (scroll.has_value() || wordWrap)
 		{
-			ImGui::SetNextWindowScroll(ImVec2(-1.0f, *scroll));
+			ImGui::SetNextWindowScroll(ImVec2(wordWrap ? 0.0f : -1.0f, scroll.value_or(-1.0f)));
 		}
 
 		ImGui::SetNextWindowContentSize(
-			ImVec2(SideBySideContentWidth(innerWidth, m_WidestSideLine, padding),
-				   scroll.has_value() ? RowsHeight(pairs.size(), m_RowHeight) : 0.0f));
+			ImVec2(SideBySideContentWidth(innerWidth, wordWrap ? 0.0f : m_WidestSideLine, padding),
+				   scroll.has_value() ? RowsHeight(lastTotal, m_RowHeight) : 0.0f));
 
 		// One region for both halves, so there is one scroll position rather than two that have
 		// to be kept equal; see SideBySidePanes for why that is worth the shared scrollbar.
@@ -844,8 +1047,7 @@ namespace Graphite {
 
 		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont());
 
-		const float numberWidth =
-			ImGui::CalcTextSize("0").x * kLineNumberColumns + Core::Scaled(kNumberPaddingX) * 2.0f;
+		const float numberWidth = NumberColumnWidth();
 		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
 		const float startX = ImGui::GetCursorPosX();
 		const float startY = ImGui::GetCursorPosY();
@@ -866,14 +1068,21 @@ namespace Graphite {
 		// slides as the reader scrolls across, while the split between them stays where it is.
 		const SideBySidePanes panes = SplitIntoPanes(m_SideInnerWidth);
 
+		// Both halves break after the same number of cells, being the same width.
+		const std::size_t columns = columnsOf(panes, numberWidth);
+		const DiffRowLines& lines = RowLinesFor(std::span(pairs), file, tokens, columns);
+		const bool rewrapped =
+			KeepLineAcrossRewrap(std::span(pairs), lines, file, startY, columns, lastColumns);
+
 		float widest = 0.0f;
 
-		// Draws one half of every row of a clipper step under a single clipping rectangle.
-		// Per row it would be two rectangles a row, and ImGui starts a fresh draw command each
-		// time one is pushed over anything already drawn — sixty rows of alternating halves
-		// would cost a hundred and twenty commands where the whole region should cost two.
-		const auto drawPane = [&](bool leftSide, int first, int last, const ImVec2& firstRowPos,
-								  float firstRowScreenY) {
+		// Draws one half of the rows `first` up to `last` of a clipper step under a single
+		// clipping rectangle. Per row it would be two rectangles a row, and ImGui starts a
+		// fresh draw command each time one is pushed over anything already drawn — sixty rows
+		// of alternating halves would cost a hundred and twenty commands where the whole region
+		// should cost two. The step starts at screen line `firstLine`, at `stepPos`.
+		const auto drawPane = [&](bool leftSide, std::size_t first, std::size_t last,
+								  std::size_t firstLine, const ImVec2& stepPos, float stepScreenY) {
 			const float paneX = leftSide ? 0.0f : panes.RightPaneX;
 			const float paneScreenX = innerMin.x + paneX;
 
@@ -882,11 +1091,9 @@ namespace Graphite {
 			ImGui::PushClipRect(ImVec2(paneScreenX, innerMin.y),
 								ImVec2(paneScreenX + panes.PaneWidth, innerMax.y), true);
 
-			for (int index = first; index < last; ++index)
+			for (std::size_t index = first; index < last; ++index)
 			{
-				const std::optional<DiffRow>& row =
-					leftSide ? pairs[static_cast<std::size_t>(index)].Left
-							 : pairs[static_cast<std::size_t>(index)].Right;
+				const std::optional<DiffRow>& row = leftSide ? pairs[index].Left : pairs[index].Right;
 
 				// The other side changed and this one did not exist. The row still occupies its
 				// height — that is reserved once for the whole step, below, and not by whatever
@@ -896,27 +1103,27 @@ namespace Graphite {
 					continue;
 				}
 
-				const float offsetY = static_cast<float>(index - first) * rowHeight;
-				const ImVec2 rowPos = ImVec2(firstRowPos.x + paneX, firstRowPos.y + offsetY);
-				const float rowScreenY = firstRowScreenY + offsetY;
+				// A row that starts above the step starts above it here too.
+				const float offsetY =
+					(static_cast<float>(lines.FirstLineOf(index)) - static_cast<float>(firstLine)) *
+					rowHeight;
+				const ImVec2 rowPos = ImVec2(stepPos.x + paneX, stepPos.y + offsetY);
+				const float rowScreenY = stepScreenY + offsetY;
 
+				// As tall as the pair, not as this half's own text: a line wrapped on the other
+				// half leaves this one's change marked all the way down to where the next pair
+				// starts, rather than a band with a gap under it.
 				if (const ImU32 band = BandFor(row->Kind, palette); band != 0)
 				{
 					ImGui::GetWindowDrawList()->AddRectFilled(
 						ImVec2(paneScreenX, rowScreenY),
 						ImVec2(paneScreenX + panes.PaneWidth,
-							   rowScreenY + ImGui::GetTextLineHeight()),
+							   rowScreenY + static_cast<float>(lines.LinesOf(index)) * rowHeight -
+								   ImGui::GetStyle().ItemSpacing.y),
 						band);
 				}
 
-				// The signature row draws as the line of the file it names, once that is found.
-				DiffRow drawn = *row;
-
-				if (row->Kind == DiffRowKind::HunkSignature)
-				{
-					drawn = SignatureRowFor(file.Hunks[row->Hunk], m_OldLines, m_NewLines)
-								.value_or(*row);
-				}
+				const DiffRow drawn = DrawnRow(file, *row);
 
 				if (drawn.Kind == DiffRowKind::HunkHeader || drawn.Kind == DiffRowKind::HunkSignature)
 				{
@@ -951,28 +1158,29 @@ namespace Graphite {
 					continue;
 				}
 
+				const std::vector<std::size_t> breaks = BreaksOf(*resolved.Text, columns);
+
 				// Only on the half the selection belongs to; its lines are that side's.
 				if (leftSide == (m_SelectionSide == DiffSide::Old))
 				{
-					if (const std::optional<std::int64_t> line =
-							SideLineOf(pairs[static_cast<std::size_t>(index)], m_SelectionSide))
+					if (const std::optional<std::int64_t> line = SideLineOf(pairs[index], m_SelectionSide))
 					{
 						if (const std::optional<Core::ColumnSpan> span =
 								m_Selection.SpanOn(*line, resolved.Text->size()))
 						{
 							// The x DrawLine is given below, in screen coordinates: the region's
 							// shared horizontal scroll is already in it.
-							DrawSelected(*resolved.Text, *span,
+							DrawSelected(*resolved.Text, *span, breaks,
 										 ImGui::GetWindowPos().x - ImGui::GetScrollX() + rowPos.x +
 											 numberWidth,
-										 rowScreenY, selection);
+										 rowScreenY, rowHeight, selection);
 						}
 					}
 				}
 
 				DrawLine(ImVec2(rowPos.x + numberWidth, rowPos.y), *resolved.Text,
 						 m_ColourSyntax ? resolved.Tokens : nullptr, TextFor(drawn.Kind, palette),
-						 syntax);
+						 syntax, breaks, rowHeight);
 
 				widest = std::max(widest, numberWidth +
 											  ImGui::CalcTextSize(resolved.Text->data(),
@@ -984,33 +1192,50 @@ namespace Graphite {
 			ImGui::PopClipRect();
 		};
 
-		// Told the row height explicitly for the same reason as the unified view's clipper:
-		// measuring it from a first item is exactly what a cursor-rewind bug would corrupt.
+		// Over screen lines, and told their height explicitly, for the same reasons as the
+		// unified view's clipper.
 		ImGuiListClipper clipper;
-		clipper.Begin(Core::Narrow<int>(pairs.size()), rowHeight);
+		clipper.Begin(Core::Narrow<int>(lines.TotalLines()), rowHeight);
+
+		// Every pair before this one is drawn, as in the unified view.
+		std::size_t drawnTo = 0;
 
 		while (clipper.Step())
 		{
-			const ImVec2 firstRowPos = ImGui::GetCursorPos();
-			const float firstRowScreenY = ImGui::GetCursorScreenPos().y;
-			const int rows = clipper.DisplayEnd - clipper.DisplayStart;
+			const ImVec2 stepPos = ImGui::GetCursorPos();
+			const float stepScreenY = ImGui::GetCursorScreenPos().y;
+			const auto firstLine = static_cast<std::size_t>(clipper.DisplayStart);
+			const auto endLine = static_cast<std::size_t>(clipper.DisplayEnd);
 
-			drawPane(true, clipper.DisplayStart, clipper.DisplayEnd, firstRowPos, firstRowScreenY);
-			drawPane(false, clipper.DisplayStart, clipper.DisplayEnd, firstRowPos, firstRowScreenY);
+			if (endLine <= firstLine)
+			{
+				continue;
+			}
 
-			// The step's rows reserved as one item rather than by moving the cursor: a bare
+			const std::size_t first = std::max(lines.RowOfLine(firstLine), drawnTo);
+			const std::size_t last = lines.RowOfLine(endLine - 1) + 1;
+
+			drawPane(true, first, last, firstLine, stepPos, stepScreenY);
+			drawPane(false, first, last, firstLine, stepPos, stepScreenY);
+
+			drawnTo = std::max(drawnTo, last);
+
+			// The step's lines reserved as one item rather than by moving the cursor: a bare
 			// SetCursorPos past the last item is how a region gets extended behind ImGui's
 			// back, and it asserts on the last row of the frame for exactly that. Submitting it
 			// decides the height outright, so rows with nothing on either side are as tall as
 			// rows with text on both. The spacing comes off because ItemSize adds it back.
-			ImGui::SetCursorPos(firstRowPos);
-			ImGui::Dummy(ImVec2(0.0f, static_cast<float>(rows) * rowHeight -
+			ImGui::SetCursorPos(stepPos);
+			ImGui::Dummy(ImVec2(0.0f, static_cast<float>(endLine - firstLine) * rowHeight -
 										  ImGui::GetStyle().ItemSpacing.y));
 		}
 
 		m_WidestSideLine = std::max(m_WidestSideLine, widest);
 
-		RememberKeptLine(std::span(pairs), file, startY);
+		if (!rewrapped)
+		{
+			RememberKeptLine(std::span(pairs), lines, file, startY);
+		}
 
 		// Drawn after the halves and outside their clipping rectangles, so it is not cut off by
 		// either and does not slide when the reader scrolls across. A filled rectangle rather
@@ -1025,16 +1250,17 @@ namespace Graphite {
 		// any other, and its hit-testing measures in the mono font by itself (MonoWidthOf).
 		ImGui::PopFont();
 
-		SelectSideBySide(pairs, file, tokens, startX, startY, numberWidth, rowHeight, innerMin.x,
-						 panes.RightPaneX, panes.PaneWidth);
+		SelectSideBySide(pairs, lines, file, tokens, startX, startY, numberWidth, rowHeight,
+						 innerMin.x, panes.RightPaneX, panes.PaneWidth, columns);
 
 		ImGui::EndChild();
 	}
 
-	void DiffView::SelectSideBySide(const std::vector<DiffPair>& pairs, const Core::FileDiff& file,
-									const FileTokens& tokens, float startX, float startY,
-									float textOffset, float rowHeight, float innerLeft,
-									float rightPaneX, float paneWidth)
+	void DiffView::SelectSideBySide(const std::vector<DiffPair>& pairs, const DiffRowLines& lines,
+									const Core::FileDiff& file, const FileTokens& tokens,
+									float startX, float startY, float textOffset, float rowHeight,
+									float innerLeft, float rightPaneX, float paneWidth,
+									std::size_t columns)
 	{
 		// Read as m_SelectionSide is when each is called, not now: a press decides the side
 		// inside PointAt, ahead of the word, the line or the drag that follows from it.
@@ -1099,13 +1325,16 @@ namespace Graphite {
 			const float x = std::clamp(screen.x, paneLeft, paneLeft + std::max(paneWidth, 0.0f)) -
 							(textScreenX + paneX);
 
-			const std::size_t index = RowUnder(screen.y, startY, rowHeight, pairs.size());
+			const std::size_t screenLine = LineUnder(screen.y, startY, rowHeight, lines.TotalLines());
+			const std::size_t index = lines.RowOfLine(screenLine);
 
+			// Below a line that wrapped less than the other half's did, this half's line has
+			// ended, and the point is its end.
 			if (const std::optional<std::int64_t> line = lineOf(index))
 			{
-				const std::string_view text = textOf(index);
-
-				return Core::TextPoint{*line, under ? ByteUnderX(text, x, MonoWidthOf) : ByteAtX(text, x, MonoWidthOf)};
+				return Core::TextPoint{*line, ByteOnSegment(textOf(index), columns,
+															screenLine - lines.FirstLineOf(index), x,
+															under)};
 			}
 
 			// A header, a gap, or a row this side does not have: no selection starts there,
@@ -1145,7 +1374,7 @@ namespace Graphite {
 									tokens);
 		};
 
-		UpdateSelection(source);
+		UpdateSelection(source, columns != kNoWrap);
 
 		// A press may have moved the selection to the other half. The selection made there is
 		// this context's, not a stale one for Render to clear next frame.
@@ -1155,8 +1384,90 @@ namespace Graphite {
 		}
 	}
 
+	DiffRow DiffView::DrawnRow(const Core::FileDiff& file, const DiffRow& row) const
+	{
+		if (row.Kind != DiffRowKind::HunkSignature)
+		{
+			return row;
+		}
+
+		// Once that line is found; until then the scope as git wrote it.
+		return SignatureRowFor(file.Hunks[row.Hunk], m_OldLines, m_NewLines).value_or(row);
+	}
+
+	std::size_t DiffView::LinesOfRow(const Core::FileDiff& file, const DiffRow& row, DiffSide side,
+									 const FileTokens& tokens, std::size_t columns) const
+	{
+		const DiffRow drawn = DrawnRow(file, row);
+
+		// A header says what the code below it is and stays one line, cut off at the edge
+		// rather than broken: there is nothing in it to read across a break.
+		if (drawn.Kind == DiffRowKind::HunkHeader || drawn.Kind == DiffRowKind::HunkSignature ||
+			drawn.Kind == DiffRowKind::HunkGap)
+		{
+			return 1;
+		}
+
+		const ResolvedLine resolved = ResolveRow(file, drawn, side, m_OldLines, m_NewLines, tokens);
+
+		return resolved.Text.has_value() ? BreaksOf(*resolved.Text, columns).size() + 1 : 1;
+	}
+
 	template<typename Row>
-	std::optional<float> DiffView::TakeRestoredScroll(std::span<const Row> rows, float startY)
+	const DiffRowLines& DiffView::RowLinesFor(std::span<const Row> rows, const Core::FileDiff& file,
+											  const FileTokens& tokens, std::size_t columns)
+	{
+		// Nothing to read while nothing wraps: one line a row, which needs no table.
+		if (columns == kNoWrap)
+		{
+			m_RowLines = DiffRowLines::Uniform(rows.size());
+			m_RowLinesFor.reset();
+			return m_RowLines;
+		}
+
+		RowLinesKey key{.Path = ShownPath(file),
+						.Mode = m_Layout.Mode,
+						.Scope = m_Layout.Scope,
+						.ContentHash = ContentHashOf(file),
+						.TextsHash = m_TextsHash,
+						.Rows = rows.size(),
+						.Columns = columns};
+
+		if (key == m_RowLinesFor)
+		{
+			return m_RowLines;
+		}
+
+		std::vector<std::size_t> counts;
+		counts.reserve(rows.size());
+
+		for (const Row& row : rows)
+		{
+			if constexpr (std::is_same_v<Row, DiffPair>)
+			{
+				// A pair is as tall as the taller of its halves, so the next pair starts level
+				// on both.
+				counts.push_back(std::max(
+					row.Left.has_value() ? LinesOfRow(file, *row.Left, DiffSide::Old, tokens, columns) : 1,
+					row.Right.has_value() ? LinesOfRow(file, *row.Right, DiffSide::New, tokens, columns)
+										  : 1));
+			}
+			else
+			{
+				// One text column standing for both sides, resolved for New as it is drawn.
+				counts.push_back(LinesOfRow(file, row, DiffSide::New, tokens, columns));
+			}
+		}
+
+		m_RowLines = DiffRowLines::FromCounts(counts);
+		m_RowLinesFor = std::move(key);
+
+		return m_RowLines;
+	}
+
+	template<typename Row>
+	std::optional<float> DiffView::TakeRestoredScroll(std::span<const Row> rows,
+													  const DiffRowLines& lines, float startY)
 	{
 		const bool restore = std::exchange(m_RestoreKeptLine, false);
 
@@ -1165,16 +1476,42 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
+		return ScrollToKeptLine(rows, lines, startY);
+	}
+
+	template<typename Row>
+	float DiffView::ScrollToKeptLine(std::span<const Row> rows, const DiffRowLines& lines,
+									 float startY) const
+	{
 		// A line the new rows do not have — only when nothing of a hunk was on screen, leaving
 		// the whole file — is stood in for by the hunk after it, put where the line was.
 		const DiffRowAt at = RowAt(rows, m_KeptLine->Anchor);
 
-		return std::max(0.0f, startY + static_cast<float>(at.Row) * m_RowHeight - m_KeptLine->Offset);
+		return std::max(0.0f, startY + static_cast<float>(lines.FirstLineOf(at.Row)) * m_RowHeight -
+								  m_KeptLine->Offset);
 	}
 
 	template<typename Row>
-	void DiffView::RememberKeptLine(std::span<const Row> rows, const Core::FileDiff& file,
-									float startY)
+	bool DiffView::KeepLineAcrossRewrap(std::span<const Row> rows, const DiffRowLines& lines,
+										const Core::FileDiff& file, float startY,
+										std::size_t columns, std::size_t lastColumns)
+	{
+		if (columns == lastColumns || !m_KeptLine.has_value() || m_KeptLine->Path != ShownPath(file) ||
+			rows.empty() || m_RowHeight <= 0.0f)
+		{
+			return false;
+		}
+
+		// Too late for SetNextWindowScroll, so the reader sees one frame at the old scroll
+		// over the new breaks — while a resize is being dragged, which redraws it anyway.
+		ImGui::SetScrollY(ScrollToKeptLine(rows, lines, startY));
+
+		return true;
+	}
+
+	template<typename Row>
+	void DiffView::RememberKeptLine(std::span<const Row> rows, const DiffRowLines& lines,
+									const Core::FileDiff& file, float startY)
 	{
 		const float scrollY = ImGui::GetScrollY();
 
@@ -1189,8 +1526,11 @@ namespace Graphite {
 		// because the clipper's own also counts the rows it lays out to measure.
 		const float top = std::max(0.0f, scrollY - startY);
 		const float bottom = std::max(0.0f, scrollY + ImGui::GetWindowHeight() - startY);
-		const auto first = static_cast<std::size_t>(top / m_RowHeight);
-		const auto end = static_cast<std::size_t>(std::ceil(bottom / m_RowHeight));
+		const auto firstLine = static_cast<std::size_t>(top / m_RowHeight);
+		const auto endLine = static_cast<std::size_t>(std::ceil(bottom / m_RowHeight));
+
+		const std::size_t first = std::min(lines.RowOfLine(firstLine), rows.size());
+		const std::size_t end = endLine == 0 ? first : std::min(lines.RowOfLine(endLine - 1) + 1, rows.size());
 
 		const std::optional<std::size_t> index = RowToKeep(rows, first, end);
 
@@ -1200,7 +1540,7 @@ namespace Graphite {
 			return;
 		}
 
-		const float rowTop = startY + static_cast<float>(*index) * m_RowHeight;
+		const float rowTop = startY + static_cast<float>(lines.FirstLineOf(*index)) * m_RowHeight;
 		m_KeptLine = KeptLine{ShownPath(file), *AnchorOf(rows[*index]), rowTop - scrollY};
 	}
 }

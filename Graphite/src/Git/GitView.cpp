@@ -65,14 +65,17 @@ namespace Graphite {
 		return label;
 	}
 
-	GitView::GitView(GitModel& model, const ActiveScheme& scheme, DiffWindows& diffWindows, ModalGate& modals,
-					 EditorBuffers& buffers, Core::EventBus& events)
-		: Core::Panel("git", "Git", "git", ICON_MDI_SOURCE_BRANCH, false), m_Model(model), m_Scheme(scheme),
-		  m_DiffWindows(diffWindows), m_Buffers(buffers), m_Events(events), m_DetachQuestion(modals, "###GitDetach"),
+	GitView::GitView(GitModel& model, const ActiveScheme& scheme, EditorSettings& editorSettings,
+					 DiffWindows& diffWindows, ModalGate& modals, EditorBuffers& buffers,
+					 Core::EventBus& events)
+		: Core::Panel("git", "Git", "git", ICON_MDI_SOURCE_BRANCH, false), m_Model(model),
+		  m_Scheme(scheme), m_EditorSettings(editorSettings), m_DiffWindows(diffWindows),
+		  m_Buffers(buffers), m_Events(events), m_DetachQuestion(modals, "###GitDetach"),
 		  m_CheckoutQuestion(modals, "###GitCheckout"),
 		  m_NewBranchQuestion(modals, "###GitNewBranch"), m_RenameBranchQuestion(modals, "###GitRenameBranch"),
 		  m_DeleteBranchQuestion(modals, "###GitDeleteBranch"), m_DropStashQuestion(modals, "###GitDropStash")
 	{
+		m_Diff.OnSetWordWrap = [this](bool wrap) { m_EditorSettings.SetDiffWordWrap(wrap); };
 	}
 
 	void GitView::OnUpdate(Core::Timestep)
@@ -1012,6 +1015,6 @@ namespace Graphite {
 
 		const SyntaxPalette syntax = ReadSyntaxPalette(m_Scheme.Get());
 		m_Diff.Render(file, palette, syntax, ReadEditorPalette(m_Scheme.Get()).Selection, m_Texts.Texts,
-					  m_Texts.Tokens);
+					  m_Texts.Tokens, m_EditorSettings.IsDiffWordWrap());
 	}
 }

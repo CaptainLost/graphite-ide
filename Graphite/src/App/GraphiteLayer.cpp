@@ -148,11 +148,14 @@ namespace Graphite {
 			ReportCopied(m_Events, "selection", text);
 		};
 
+		m_DiffWindows.OnSetWordWrap = [this](bool wrap) { m_EditorSettings.SetDiffWordWrap(wrap); };
+
 		// m_Toasts.OnCopied is left unset: Copy in a toast's menu only fills the clipboard. A
 		// "Copied" toast raised by copying a toast would be a toast about a toast.
 
-		auto* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_DiffWindows, m_Modals,
-																m_DocumentBuffers, m_Events));
+		auto* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_EditorSettings,
+																m_DiffWindows, m_Modals, m_DocumentBuffers,
+																m_Events));
 		gitView->Subscribe();
 
 		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_Documents,
@@ -914,7 +917,8 @@ namespace Graphite {
 		m_DiffWindows.Render(m_Git, ReadGitPalette(m_ActiveScheme.Get()),
 							 ReadSyntaxPalette(m_ActiveScheme.Get()),
 							 ReadEditorPalette(m_ActiveScheme.Get()).Selection,
-							 m_DockSpace.GetCenterNodeId(), m_TabCloseRequests);
+							 m_EditorSettings.IsDiffWordWrap(), m_DockSpace.GetCenterNodeId(),
+							 m_TabCloseRequests);
 
 		m_SessionWindows.Render(m_DockSpace.GetCenterNodeId(), ReadSessionPalette(m_ActiveScheme.Get()),
 								m_TabCloseRequests);

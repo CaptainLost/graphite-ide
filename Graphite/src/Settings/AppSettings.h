@@ -76,6 +76,9 @@ namespace Graphite {
 		bool IsWordWrapEnabled() const;
 		void SetWordWrap(bool wrap);
 
+		bool IsDiffWordWrapEnabled() const;
+		void SetDiffWordWrap(bool wrap);
+
 		bool HasGutterChangeMarkers() const;
 		void SetGutterChangeMarkers(bool show);
 

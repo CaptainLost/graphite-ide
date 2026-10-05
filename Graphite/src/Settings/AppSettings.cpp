@@ -34,6 +34,7 @@ namespace Graphite {
 		constexpr const char* kIndentWithSpacesKey = "indentWithSpaces";
 		constexpr const char* kIndentWidthKey = "indentWidth";
 		constexpr const char* kWordWrapKey = "wordWrap";
+		constexpr const char* kDiffWordWrapKey = "diffWordWrap";
 		constexpr const char* kGutterChangeMarkersKey = "gutterChangeMarkers";
 		constexpr const char* kScrollbarChangeMarkersKey = "scrollbarChangeMarkers";
 		constexpr const char* kHoverInfoKey = "hoverInfo";
@@ -262,6 +263,16 @@ namespace Graphite {
 	void AppSettings::SetWordWrap(bool wrap)
 	{
 		Set(kWordWrapKey, Flag(wrap));
+	}
+
+	bool AppSettings::IsDiffWordWrapEnabled() const
+	{
+		return ReadFlag(Get(kDiffWordWrapKey), false);
+	}
+
+	void AppSettings::SetDiffWordWrap(bool wrap)
+	{
+		Set(kDiffWordWrapKey, Flag(wrap));
 	}
 
 	// Both default on: a file that predates the switches, and so has neither key, keeps showing

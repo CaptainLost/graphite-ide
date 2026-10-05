@@ -102,6 +102,14 @@ namespace Graphite {
 			m_Settings.SetScrollbarChangeMarkers(scrollbarChanges);
 		}
 
+		// The same switch as the diff toolbar's wrap button, here for finding it.
+		bool diffWordWrap = m_Settings.IsDiffWordWrap();
+
+		if (ImGui::Checkbox("Wrap lines in diffs", &diffWordWrap))
+		{
+			m_Settings.SetDiffWordWrap(diffWordWrap);
+		}
+
 		ImGui::TextUnformatted("Ignored files");
 
 		RenderCommandRadio("Show", "git.ignored.show");

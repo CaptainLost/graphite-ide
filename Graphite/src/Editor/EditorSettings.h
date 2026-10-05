@@ -52,6 +52,12 @@ namespace Graphite {
 
 		bool IsWordWrap() const { return m_WordWrap; }
 
+		// Whether a diff wraps its long lines. A switch apart from the editor's: a diff is read
+		// side by side in half the width, where wrapping earns its keep in a way it may not in
+		// the editor, and the reader turns it on or off from the diff's own toolbar.
+		bool IsDiffWordWrap() const { return m_DiffWordWrap; }
+		void SetDiffWordWrap(bool wrap);
+
 		// The git change markers, in the gutter (with the tooltip over them) and on the
 		// scrollbar. Two switches because they are two places on screen; the tooltip has no
 		// switch of its own, since without the gutter's marks there is nothing to hover.
@@ -88,6 +94,7 @@ namespace Graphite {
 		std::size_t m_IndentWidth = 4;
 
 		bool m_WordWrap = false;
+		bool m_DiffWordWrap = false;
 
 		bool m_GutterChangeMarkers = true;
 		bool m_ScrollbarChangeMarkers = true;

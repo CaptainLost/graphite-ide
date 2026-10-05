@@ -10,6 +10,7 @@
 #include "Git/History/CommitDetailsView.h"
 #include "Git/Diff/DiffView.h"
 #include "Git/Diff/DiffWindows.h"
+#include "Editor/EditorSettings.h"
 #include "Git/EditorBuffers.h"
 #include "Git/GitModel.h"
 #include "Git/History/HistoryFilter.h"
@@ -58,8 +59,9 @@ namespace Graphite {
 	class GitView final : public Core::Panel
 	{
 	public:
-		GitView(GitModel& model, const ActiveScheme& scheme, DiffWindows& diffWindows, ModalGate& modals,
-				EditorBuffers& buffers, Core::EventBus& events);
+		GitView(GitModel& model, const ActiveScheme& scheme, EditorSettings& editorSettings,
+				DiffWindows& diffWindows, ModalGate& modals, EditorBuffers& buffers,
+				Core::EventBus& events);
 
 		// Drains the model's one-shots that belong to this panel - a checkout plan, a delete
 		// check, the paths a checkout changed - and hands the gate back for a question this
@@ -272,6 +274,9 @@ namespace Graphite {
 
 		GitModel& m_Model;
 		const ActiveScheme& m_Scheme;
+
+		// Holds the word wrap for diffs, which the docked diff reads and its button sets.
+		EditorSettings& m_EditorSettings;
 
 		// Referenced rather than owned: GraphiteLayer owns the one DiffWindows and renders
 		// it itself, beside m_DocumentWindows, so a tab opened from here keeps drawing after

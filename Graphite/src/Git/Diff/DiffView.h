@@ -5,6 +5,7 @@
 #include "Theme/Palettes.h"
 #include "Git/Diff/DiffRows.h"
 #include "Git/Diff/DiffSelection.h"
+#include "Git/Diff/DiffWrap.h"
 #include "Git/Diff/FileTexts.h"
 #include "Theme/GitPalette.h"
 #include "Git/Diff/SyntaxRuns.h"
@@ -44,9 +45,12 @@ namespace Graphite {
 		// for that language, or no text yet, and both draw as plain text.
 		// `selection` is the editor scheme's selection colour: the diff draws code in the
 		// editor's palette, so a selection in it looks the way one does in the editor.
+		// `wordWrap` is the setting for diffs, which every diff shares and the toolbar's
+		// button changes through OnSetWordWrap.
 		void Render(const Core::FileDiff& file, const GitPalette& palette,
 					const SyntaxPalette& syntax, ImU32 selection,
-					const Core::Ref<const FileTexts>& texts, const FileTokens& tokens);
+					const Core::Ref<const FileTexts>& texts, const FileTokens& tokens,
+					bool wordWrap);
 
 		void SetMode(DiffViewMode mode) { m_Mode = mode; }
 		DiffViewMode GetMode() const { return m_Mode; }
@@ -79,27 +83,46 @@ namespace Graphite {
 		// reaches no event bus.
 		std::function<void(std::string_view)> OnCopied;
 
+		// Sets the setting Render's `wordWrap` comes from, which the owner keeps rather than
+		// this view: it is one for every diff, not one each. Unset hides the button.
+		std::function<void(bool)> OnSetWordWrap;
+
 	private:
-		void RenderToolbar(const Core::FileDiff& file);
+		void RenderToolbar(const Core::FileDiff& file, bool wordWrap);
 		void RenderUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
 						   const GitPalette& palette, const SyntaxPalette& syntax,
-						   ImU32 selection, const FileTokens& tokens);
+						   ImU32 selection, const FileTokens& tokens, bool wordWrap);
 		void RenderSideBySide(const std::vector<DiffPair>& pairs, const Core::FileDiff& file,
 							  const GitPalette& palette, const SyntaxPalette& syntax,
-							  ImU32 selection, const FileTokens& tokens);
+							  ImU32 selection, const FileTokens& tokens, bool wordWrap);
+
+		// Which screen lines of the region each row takes once its text breaks after
+		// `columns` cells — one line a row for kNoWrap. Kept from frame to frame while nothing
+		// it depends on changes, because wrapping reads every line of the file.
+		template<typename Row>
+		const DiffRowLines& RowLinesFor(std::span<const Row> rows, const Core::FileDiff& file,
+										const FileTokens& tokens, std::size_t columns);
+
+		// The row as it is drawn: a signature row stands in for the line of the file it names.
+		DiffRow DrawnRow(const Core::FileDiff& file, const DiffRow& row) const;
+
+		// How many screen lines `row` takes on `side` when its text breaks after `columns`.
+		std::size_t LinesOfRow(const Core::FileDiff& file, const DiffRow& row, DiffSide side,
+							   const FileTokens& tokens, std::size_t columns) const;
 
 		// The gestures over the region open now, given that frame's rows: called inside it,
 		// after every row has been drawn.
-		void SelectUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
-						   const FileTokens& tokens, float startX, float startY,
-						   float textOffset, float rowHeight);
-		void SelectSideBySide(const std::vector<DiffPair>& pairs, const Core::FileDiff& file,
-							  const FileTokens& tokens, float startX, float startY,
-							  float textOffset, float rowHeight, float innerLeft,
-							  float rightPaneX, float paneWidth);
+		void SelectUnified(const std::vector<DiffRow>& rows, const DiffRowLines& lines,
+						   const Core::FileDiff& file, const FileTokens& tokens, float startX,
+						   float startY, float textOffset, float rowHeight, std::size_t columns);
+		void SelectSideBySide(const std::vector<DiffPair>& pairs, const DiffRowLines& lines,
+							  const Core::FileDiff& file, const FileTokens& tokens, float startX,
+							  float startY, float textOffset, float rowHeight, float innerLeft,
+							  float rightPaneX, float paneWidth, std::size_t columns);
 
-		// Runs the gesture with the diff's options and reports a copy to OnCopied.
-		void UpdateSelection(const Core::SelectionSource& source);
+		// Runs the gesture with the diff's options and reports a copy to OnCopied. A wrapped
+		// diff has no horizontal range for a sweep to scroll through.
+		void UpdateSelection(const Core::SelectionSource& source, bool wordWrap);
 
 		// DiffContentHash of `file`, recomputed only when `file` is not the one hashed last
 		// time; see m_HashedFile.
@@ -111,13 +134,29 @@ namespace Graphite {
 		// row will sit, which it cannot be asked for until it has opened. Answers once per
 		// switch; null every other frame, leaving the scroll to the reader.
 		template<typename Row>
-		std::optional<float> TakeRestoredScroll(std::span<const Row> rows, float startY);
+		std::optional<float> TakeRestoredScroll(std::span<const Row> rows,
+												const DiffRowLines& lines, float startY);
+
+		// The scroll that puts the kept line back where it was, laid out as `lines` say.
+		template<typename Row>
+		float ScrollToKeptLine(std::span<const Row> rows, const DiffRowLines& lines, float startY) const;
+
+		// Called inside the region once its rows are laid out at the width it really has: when
+		// that breaks lines after a different number of cells than `lastColumns`, which the
+		// frame began with, scrolls so the kept line stays put — a resize re-wraps every line
+		// above it. Answers whether it did, in which case the line on screen this frame is
+		// not the one to keep, the scroll arriving only next frame.
+		template<typename Row>
+		bool KeepLineAcrossRewrap(std::span<const Row> rows, const DiffRowLines& lines,
+								  const Core::FileDiff& file, float startY, std::size_t columns,
+								  std::size_t lastColumns);
 
 		// Notes which line on screen in the region now open a switch should keep in place —
 		// see RowToKeep for which — for TakeRestoredScroll to find again should the next frame
 		// lay the file out differently.
 		template<typename Row>
-		void RememberKeptLine(std::span<const Row> rows, const Core::FileDiff& file, float startY);
+		void RememberKeptLine(std::span<const Row> rows, const DiffRowLines& lines,
+							  const Core::FileDiff& file, float startY);
 
 		// Splits `texts` into raw lines via SplitTextLines — the same split LexAllLines lexes
 		// each line of — but only when `texts` is a different object than the one already
@@ -137,6 +176,10 @@ namespace Graphite {
 		{
 			DiffViewMode Mode = DiffViewMode::SideBySide;
 			DiffScope Scope = DiffScope::Hunks;
+
+			// Wrapping moves every row below the first long line down, as much a different
+			// layout as the other mode is.
+			bool Wrap = false;
 
 			bool operator==(const Layout& other) const = default;
 		};
@@ -185,6 +228,28 @@ namespace Graphite {
 		// declared before the region opens, which is before anything can be measured — while
 		// the split between the panes is measured afresh each frame and does not lag.
 		float m_SideInnerWidth = 0.0f;
+
+		// The same for the unified region. Where a wrapped line breaks has to be known before
+		// the region opens, on the frame a switch of layout restores the scroll.
+		float m_UnifiedInnerWidth = 0.0f;
+
+		// What m_RowLines was worked out for: which rows, laid out how, broken after how many
+		// cells. The hashes stand for the text the rows draw, which their shape alone does not.
+		struct RowLinesKey
+		{
+			std::filesystem::path Path;
+			DiffViewMode Mode = DiffViewMode::SideBySide;
+			DiffScope Scope = DiffScope::Hunks;
+			std::size_t ContentHash = 0;
+			std::size_t TextsHash = 0;
+			std::size_t Rows = 0;
+			std::size_t Columns = 0;
+
+			bool operator==(const RowLinesKey& other) const = default;
+		};
+
+		DiffRowLines m_RowLines;
+		std::optional<RowLinesKey> m_RowLinesFor;
 
 		// The reader's selection. Unified: lines are row ordinals. Side-by-side: lines are the
 		// file's line numbers on m_SelectionSide, the half the press that started it landed in.

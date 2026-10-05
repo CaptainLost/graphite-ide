@@ -130,6 +130,39 @@ TEST_CASE("EditorSettings turns each kind of change marker off on its own")
 	CHECK(settings.HasScrollbarChangeMarkers());
 }
 
+TEST_CASE("EditorSettings wraps diffs on a switch of their own, off by default")
+{
+	TempAppSettings store;
+
+	// The editor's wrap on says nothing about the diff's.
+	store.Get().SetWordWrap(true);
+
+	{
+		Graphite::EditorSettings settings{store.Get()};
+		settings.Load();
+
+		CHECK(settings.IsWordWrap());
+		CHECK_FALSE(settings.IsDiffWordWrap());
+	}
+
+	// Nor the other way round.
+	store.Get().SetWordWrap(false);
+
+	{
+		Graphite::EditorSettings settings{store.Get()};
+		settings.Load();
+		settings.SetDiffWordWrap(true);
+
+		CHECK(settings.IsDiffWordWrap());
+	}
+
+	Graphite::EditorSettings reloaded{store.Get()};
+	reloaded.Load();
+
+	CHECK(reloaded.IsDiffWordWrap());
+	CHECK_FALSE(reloaded.IsWordWrap());
+}
+
 TEST_CASE("EditorSettings loads back what it set, after a restart")
 {
 	TempAppSettings store;

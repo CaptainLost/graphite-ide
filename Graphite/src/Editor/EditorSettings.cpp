@@ -92,6 +92,7 @@ namespace Graphite {
 		}
 
 		m_WordWrap = m_Store.IsWordWrapEnabled();
+		m_DiffWordWrap = m_Store.IsDiffWordWrapEnabled();
 		m_GutterChangeMarkers = m_Store.HasGutterChangeMarkers();
 		m_ScrollbarChangeMarkers = m_Store.HasScrollbarChangeMarkers();
 
@@ -146,6 +147,12 @@ namespace Graphite {
 	{
 		m_WordWrap = wrap;
 		m_Store.SetWordWrap(m_WordWrap);
+	}
+
+	void EditorSettings::SetDiffWordWrap(bool wrap)
+	{
+		m_DiffWordWrap = wrap;
+		m_Store.SetDiffWordWrap(m_DiffWordWrap);
 	}
 
 	void EditorSettings::SetGutterChangeMarkers(bool show)
