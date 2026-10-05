@@ -877,6 +877,7 @@ namespace Graphite {
 		m_Layout.MenuBarHeight = m_CustomTitleBar ? Core::Scaled(kCaptionHeight) : 0.0f;
 		m_DockSpace.Begin(m_Layout, [this, workspaceTrusted] { RenderRestrictedModeBar(workspaceTrusted); });
 		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.MenuBarHeight,
+						 [this] { m_TitleBar.RenderLogo(Core::Application::Get().GetWindow()); },
 						 [this] { m_TitleBar.Render(Core::Application::Get().GetWindow()); });
 		RenderEmptyEditorArea();
 		m_DockSpace.End();

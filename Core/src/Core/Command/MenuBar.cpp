@@ -140,7 +140,7 @@ namespace Core {
 
 	void MenuBar::Render(CommandRegistry& commands, const Keymap& keys,
 						 const std::vector<MenuItem>& tree, float rowHeight,
-						 const std::function<void()>& trailing)
+						 const std::function<void()>& leading, const std::function<void()>& trailing)
 	{
 		// Read before the override below is pushed over it: this is the padding the dropdowns
 		// are entitled to, and BeginTopLevelMenu hands it back to each of them.
@@ -148,7 +148,7 @@ namespace Core {
 
 		// DockSpaceHost::Begin pops its own override before opening the dockspace, so the bar
 		// sees default padding unless it is pushed again here. It has to match the row, or the
-		// top-level items and whatever `trailing` draws sit off-centre in it.
+		// top-level items and whatever `leading` and `trailing` draw sit off-centre in it.
 		const bool overridePadding = rowHeight > 0.0f;
 
 		if (overridePadding)
@@ -160,6 +160,11 @@ namespace Core {
 		// Not an early return on BeginMenuBar: the push above still has to be popped.
 		if (ImGui::BeginMenuBar())
 		{
+			if (leading)
+			{
+				leading();
+			}
+
 			for (const MenuItem& item : tree)
 			{
 				// Anything else at the top level is a malformed tree, and drawing it as a bare

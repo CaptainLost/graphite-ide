@@ -1,5 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- Graphite's application icon; Graphite.ico is exported from this file. -->
+  <!-- Graphite's application icon; Graphite.ico is exported from this file. The title bar draws
+       its paths, without the disc: after a change run scripts/Update-LogoSvg.ps1. -->
   <defs>
     <linearGradient id="disc" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4b5163"/><stop offset="1" stop-color="#262833"/></linearGradient>
     <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8a90a2"/><stop offset="1" stop-color="#454958"/></linearGradient>

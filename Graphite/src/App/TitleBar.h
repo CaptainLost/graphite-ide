@@ -15,6 +15,9 @@ namespace Graphite {
 	class TitleBar
 	{
 	public:
+		// The mark at the row's left edge, before the menus.
+		void RenderLogo(Core::Window& window);
+
 		void Render(Core::Window& window);
 	};
 }

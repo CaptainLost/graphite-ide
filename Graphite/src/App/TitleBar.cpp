@@ -1,5 +1,6 @@
 #include "App/TitleBar.h"
 
+#include "App/Logo.h"
 #include "App/Version.h"
 
 #include "Core/ImGui/UiScale.h"
@@ -19,6 +20,9 @@ namespace Graphite {
 	namespace {
 		constexpr float kButtonWidth = 46.0f;
 		constexpr float kVersionGap = 12.0f;
+
+		// The mark's height against the caption's.
+		constexpr float kLogoHeightRatio = 0.6f;
 
 		constexpr ImVec4 kCloseHovered{0.75f, 0.16f, 0.16f, 1.0f};
 
@@ -150,6 +154,33 @@ namespace Graphite {
 				window.RequestClose();
 			}
 		}
+	}
+
+	void TitleBar::RenderLogo(Core::Window& window)
+	{
+		// A system caption shows the icon itself.
+		if (!window.HasCustomTitleBar())
+		{
+			return;
+		}
+
+		const float rowHeight = Core::Scaled(kCaptionHeight);
+		const float height = std::round(rowHeight * kLogoHeightRatio);
+		const float width = LogoWidth(height);
+
+		// Starts where the bar's cursor does, which is the window padding everything below
+		// the bar is inset by, so the mark lines up with the left edge of the panels. Placed
+		// against the row rather than the cursor in y, which BeginMenuBar() has already moved
+		// down by the frame padding.
+		const ImVec2 origin(ImGui::GetWindowPos().x + ImGui::GetCursorPosX(), ImGui::GetWindowPos().y);
+		DrawLogo(ImGui::GetWindowDrawList(), ImVec2(origin.x + width * 0.5f, origin.y + rowHeight * 0.5f),
+				 height);
+
+		// The menu bar lays out horizontally, so this moves the menus along after the mark.
+		// Two item spacings apart, the same gap BeginMenu() leaves between one menu's title
+		// and the next: the bar adds one spacing after this item and the menu half of one
+		// before its title, so the dummy carries the remaining half.
+		ImGui::Dummy(ImVec2(width + ImGui::GetStyle().ItemSpacing.x * 0.5f, 0.0f));
 	}
 
 	void TitleBar::Render(Core::Window& window)

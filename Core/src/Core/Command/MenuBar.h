@@ -23,6 +23,6 @@ namespace Core {
 	public:
 		void Render(CommandRegistry& commands, const Keymap& keys,
 					const std::vector<MenuItem>& tree, float rowHeight,
-					const std::function<void()>& trailing);
+					const std::function<void()>& leading, const std::function<void()>& trailing);
 	};
 }
