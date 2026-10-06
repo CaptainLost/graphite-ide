@@ -2,6 +2,7 @@
 
 #include "Git/Changes/ChangesRows.h"
 
+#include <cmath>
 #include <filesystem>
 #include <optional>
 #include <vector>
@@ -329,4 +330,81 @@ TEST_CASE("A row with no room shows nothing")
 
 	CHECK(text.Name == doctest::Approx(0.0f));
 	CHECK(text.Directory == doctest::Approx(0.0f));
+}
+
+namespace {
+
+	const Graphite::FolderRowGlyphs ClosedFolderGlyphs{
+		.Folder = Core::GlyphInk{.StartFromDrawX = 1.0f, .EndFromDrawX = 15.0f},
+		.Chevron = Core::GlyphInk{.StartFromDrawX = 6.0f, .EndFromDrawX = 10.0f}};
+
+	constexpr float FileRowIconInkToNameGap = 10.0f;
+	constexpr float NameSideBearing = 1.0f;
+	constexpr float FileRowVisibleGap = FileRowIconInkToNameGap + NameSideBearing;
+
+	float VisibleGapAfterFolder(const Graphite::FolderRowPlacement& placement,
+								const Graphite::FolderRowGlyphs& drawn)
+	{
+		return placement.ChevronOffsetFromIcon + drawn.Chevron.StartFromDrawX - drawn.Folder.EndFromDrawX;
+	}
+
+	float VisibleGapBeforeName(const Graphite::FolderRowPlacement& placement,
+							   const Graphite::FolderRowGlyphs& drawn)
+	{
+		return placement.NameOffsetFromIcon + NameSideBearing -
+			   (placement.ChevronOffsetFromIcon + drawn.Chevron.EndFromDrawX);
+	}
+}
+
+TEST_CASE("A closed folder row leaves a file row's gap between the folder and the chevron, and again before the name")
+{
+	const Graphite::FolderRowPlacement placement = Graphite::PlaceFolderRow(
+		ClosedFolderGlyphs, ClosedFolderGlyphs, FileRowIconInkToNameGap, NameSideBearing);
+
+	CHECK(VisibleGapAfterFolder(placement, ClosedFolderGlyphs) == doctest::Approx(FileRowVisibleGap));
+	CHECK(VisibleGapBeforeName(placement, ClosedFolderGlyphs) == doctest::Approx(FileRowVisibleGap));
+}
+
+TEST_CASE("An open folder keeps its name where the closed one had it and centres its wider chevron")
+{
+	const Graphite::FolderRowGlyphs openFolderGlyphs{
+		.Folder = Core::GlyphInk{.StartFromDrawX = 1.0f, .EndFromDrawX = 16.0f},
+		.Chevron = Core::GlyphInk{.StartFromDrawX = 4.0f, .EndFromDrawX = 11.0f}};
+
+	const Graphite::FolderRowPlacement closedPlacement = Graphite::PlaceFolderRow(
+		ClosedFolderGlyphs, ClosedFolderGlyphs, FileRowIconInkToNameGap, NameSideBearing);
+	const Graphite::FolderRowPlacement openPlacement = Graphite::PlaceFolderRow(
+		ClosedFolderGlyphs, openFolderGlyphs, FileRowIconInkToNameGap, NameSideBearing);
+
+	CHECK(openPlacement.NameOffsetFromIcon == doctest::Approx(closedPlacement.NameOffsetFromIcon));
+	CHECK(VisibleGapAfterFolder(openPlacement, openFolderGlyphs) ==
+		  doctest::Approx(VisibleGapBeforeName(openPlacement, openFolderGlyphs)));
+}
+
+TEST_CASE("An open folder's file icons are centred under its chevron")
+{
+	const Graphite::FolderRowPlacement placement{.ChevronOffsetFromIcon = 21.0f, .NameOffsetFromIcon = 40.0f};
+	const Core::GlyphInk downChevron{.StartFromDrawX = 4.0f, .EndFromDrawX = 11.0f};
+	constexpr float iconColumnWidth = 15.0f;
+
+	const float childIndent = Graphite::FolderChildIndent(placement, downChevron, iconColumnWidth);
+
+	const float chevronInkCentre =
+		placement.ChevronOffsetFromIcon + (downChevron.StartFromDrawX + downChevron.EndFromDrawX) / 2.0f;
+	const float childIconColumnCentre = childIndent + iconColumnWidth / 2.0f;
+
+	CHECK(childIconColumnCentre == doctest::Approx(chevronInkCentre));
+}
+
+TEST_CASE("A folder row's offsets are whole pixels, since ImGui truncates the x it draws text at")
+{
+	const Graphite::FolderRowGlyphs fractionalGlyphs{
+		.Folder = Core::GlyphInk{.StartFromDrawX = 0.75f, .EndFromDrawX = 14.25f},
+		.Chevron = Core::GlyphInk{.StartFromDrawX = 4.75f, .EndFromDrawX = 10.25f}};
+
+	const Graphite::FolderRowPlacement placement =
+		Graphite::PlaceFolderRow(fractionalGlyphs, fractionalGlyphs, 9.75f, 1.25f);
+
+	CHECK(placement.ChevronOffsetFromIcon == std::round(placement.ChevronOffsetFromIcon));
+	CHECK(placement.NameOffsetFromIcon == std::round(placement.NameOffsetFromIcon));
 }

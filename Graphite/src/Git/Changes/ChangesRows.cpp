@@ -3,6 +3,7 @@
 #include "Core/FileSystem/FileSystem.h"
 
 #include <algorithm>
+#include <cmath>
 #include <format>
 
 namespace Graphite {
@@ -221,5 +222,36 @@ namespace Graphite {
 		}
 
 		return text;
+	}
+
+	FolderRowPlacement PlaceFolderRow(FolderRowGlyphs closedGlyphs, FolderRowGlyphs drawnGlyphs,
+									  float fileRowIconInkToNameGap, float nameSideBearing)
+	{
+		const float fileRowVisibleGap = fileRowIconInkToNameGap + nameSideBearing;
+
+		const float closedChevronInkWidth =
+			closedGlyphs.Chevron.EndFromDrawX - closedGlyphs.Chevron.StartFromDrawX;
+		const float nameOffset = closedGlyphs.Folder.EndFromDrawX + fileRowVisibleGap +
+								 closedChevronInkWidth + fileRowIconInkToNameGap;
+
+		const float nameInkOffset = nameOffset + nameSideBearing;
+		const float drawnChevronInkWidth =
+			drawnGlyphs.Chevron.EndFromDrawX - drawnGlyphs.Chevron.StartFromDrawX;
+		const float gapEitherSideOfChevron =
+			(nameInkOffset - drawnGlyphs.Folder.EndFromDrawX - drawnChevronInkWidth) / 2.0f;
+		const float chevronOffset =
+			drawnGlyphs.Folder.EndFromDrawX + gapEitherSideOfChevron - drawnGlyphs.Chevron.StartFromDrawX;
+
+		return FolderRowPlacement{.ChevronOffsetFromIcon = std::round(chevronOffset),
+								  .NameOffsetFromIcon = std::round(nameOffset)};
+	}
+
+	float FolderChildIndent(const FolderRowPlacement& placement, Core::GlyphInk drawnChevron,
+							float iconColumnWidth)
+	{
+		const float chevronInkCentre = placement.ChevronOffsetFromIcon +
+									   (drawnChevron.StartFromDrawX + drawnChevron.EndFromDrawX) / 2.0f;
+
+		return std::round(chevronInkCentre - iconColumnWidth / 2.0f);
 	}
 }

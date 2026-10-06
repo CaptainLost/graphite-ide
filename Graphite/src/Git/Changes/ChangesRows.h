@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Git/Status.h"
+#include "Core/ImGui/TextMetrics.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -131,4 +132,28 @@ namespace Graphite {
 	// narrower than that already and fits whole.
 	RowText FitRowText(float available, float name, float directory, float gap,
 					   float minDirectory);
+
+	struct FolderRowGlyphs
+	{
+		Core::GlyphInk Folder;
+		Core::GlyphInk Chevron;
+	};
+
+	struct FolderRowPlacement
+	{
+		float ChevronOffsetFromIcon = 0.0f;
+		float NameOffsetFromIcon = 0.0f;
+	};
+
+	// The open folder and the down chevron are wider than the closed ones, so the gaps cannot
+	// match a file row's in both states without the name moving as the folder opens. The
+	// closed glyphs place the name; the drawn chevron is centred in the room the drawn folder
+	// leaves before it.
+	FolderRowPlacement PlaceFolderRow(FolderRowGlyphs closedGlyphs, FolderRowGlyphs drawnGlyphs,
+									  float fileRowIconInkToNameGap, float nameSideBearing);
+
+	// The icon glyphs sit centred in the icon column, so centring the column under the
+	// chevron's ink centres every file icon under it, whatever its width.
+	float FolderChildIndent(const FolderRowPlacement& placement, Core::GlyphInk drawnChevron,
+							float iconColumnWidth);
 }

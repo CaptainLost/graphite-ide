@@ -21,6 +21,7 @@
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/TextInput.h"
+#include "Core/ImGui/TextMetrics.h"
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
 
@@ -76,10 +77,10 @@ namespace Graphite {
 				   ImGui::GetFrameHeight();
 		}
 
-		// The column every row starts with: a file's icon, a folder's chevron, a section's
-		// chevron. One width for all three, so whatever follows them - a name, a heading -
-		// starts at the same x on every row. The font size rather than a glyph's measured
-		// width, because icon glyphs are not all equally wide and the column must not be.
+		// The column every row starts with: a file's icon, a folder's icon, a section's
+		// chevron. One width for all three, so a file's name and a heading start at the same x.
+		// The font size rather than a glyph's measured width, because icon glyphs are not all
+		// equally wide and the column must not be.
 		float IconColumnWidth()
 		{
 			return ImGui::GetFontSize();
@@ -93,12 +94,24 @@ namespace Graphite {
 			return ImGui::GetStyle().ItemInnerSpacing.x * 2.0f;
 		}
 
-		// One level of nesting: rows under a heading, files under an open folder. Exactly the
-		// icon column and its gap, so a nested row's icon lands under its parent's text and
-		// every level lines up with the one above it.
+		// One level of nesting under a heading. Exactly the icon column and its gap, so a row's
+		// icon lands under the heading's text.
 		float TreeIndent()
 		{
 			return IconColumnWidth() + TextGap();
+		}
+
+		float FileRowIconInkToNameGap()
+		{
+			const Core::GlyphInk plainFileIcon = Core::MeasureGlyphInk(Core::IconForExtension(""));
+			return IconColumnWidth() - plainFileIcon.EndFromDrawX + TextGap();
+		}
+
+		// The gap a reader sees before a name runs to its ink, which starts a little past where
+		// it is drawn; a lowercase letter stands in for whichever one a name starts with.
+		float TypicalNameSideBearing()
+		{
+			return Core::MeasureGlyphInk("n").StartFromDrawX;
 		}
 
 		// The narrowest a directory is drawn at before it is dropped - see FitRowText.
@@ -875,14 +888,22 @@ namespace Graphite {
 
 		const float separatorWidth = ImGui::CalcTextSize(Separator.data()).x;
 
-		// The chevron takes the icon column a file row gives its icon, and the folder icon and
-		// name follow one level further in. Hanging the chevron out into the heading's column
-		// instead, so the name could line up with the files', made the folder read as a
-		// sibling of the heading rather than a row under it; and reserving a chevron column on
-		// every row would push all the file rows right for the sake of the few that open.
+		// The folder icon takes the icon column a file row gives its icon, so that column reads
+		// as one unbroken run of icons down the list. Hanging the chevron out into the
+		// heading's column instead made the folder read as a sibling of the heading rather than
+		// a row under it.
+		const FolderRowGlyphs closedGlyphs{.Folder = Core::MeasureGlyphInk(ICON_MDI_FOLDER),
+										   .Chevron = Core::MeasureGlyphInk(ICON_MDI_CHEVRON_RIGHT)};
+		const FolderRowGlyphs drawnGlyphs{.Folder = Core::MeasureGlyphInk(folderIcon),
+										  .Chevron = Core::MeasureGlyphInk(chevron)};
+
+		const FolderRowPlacement placement = PlaceFolderRow(
+			closedGlyphs, drawnGlyphs, FileRowIconInkToNameGap(), TypicalNameSideBearing());
+
 		const float pad = RowPadding();
-		const float iconStart = rowStart.x + pad + TreeIndent();
-		const float textStart = iconStart + IconColumnWidth() + gap;
+		const float iconStart = rowStart.x + pad;
+		const float chevronStart = iconStart + placement.ChevronOffsetFromIcon;
+		const float textStart = iconStart + placement.NameOffsetFromIcon;
 		const float rightEdge = rowStart.x + rowWidth - pad;
 
 		// The same trade a file row makes between its letter and its buttons - see RenderRow.
@@ -892,13 +913,13 @@ namespace Graphite {
 		const float nameLimit = rightEdge - trailing - ImGui::GetStyle().ItemSpacing.x -
 								countWidth - separatorWidth - textStart;
 
-		// Dimmed like the heading's: the icon beside it already says open or closed, so the
-		// chevron is only the affordance.
-		ImGui::SetCursorPos(ImVec2(rowStart.x + pad, rowStart.y));
-		ImGui::TextDisabled("%s", chevron);
-
 		ImGui::SetCursorPos(ImVec2(iconStart, rowStart.y));
 		ImGui::TextUnformatted(folderIcon);
+
+		// Dimmed like the heading's: the icon beside it already says open or closed, so the
+		// chevron is only the affordance.
+		ImGui::SetCursorPos(ImVec2(chevronStart, rowStart.y));
+		ImGui::TextDisabled("%s", chevron);
 
 		ImGui::SetCursorPos(ImVec2(textStart, rowStart.y));
 
@@ -983,7 +1004,9 @@ namespace Graphite {
 			return;
 		}
 
-		ImGui::Indent(TreeIndent());
+		const float childIndent = FolderChildIndent(placement, drawnGlyphs.Chevron, IconColumnWidth());
+
+		ImGui::Indent(childIndent);
 
 		// RenderRow identifies a row by its index into the status it was handed, so a child
 		// at index 0 and the outer status's entry 0 would be the same ImGui id. Scoped under
@@ -996,7 +1019,7 @@ namespace Graphite {
 		}
 
 		ImGui::PopID();
-		ImGui::Unindent(TreeIndent());
+		ImGui::Unindent(childIndent);
 	}
 
 	void ChangesPanel::RenderRowContextMenu(const Core::FileStatus& file, char letter)

@@ -15,4 +15,14 @@ namespace Core {
 	float MonospaceCellWidth();
 
 	float TextWidth(std::string_view text);
+
+	struct GlyphInk
+	{
+		float StartFromDrawX = 0.0f;
+		float EndFromDrawX = 0.0f;
+	};
+
+	// Icon glyphs carry empty margins of differing widths inside their advance, so glyphs
+	// spaced by advance look unevenly spaced.
+	GlyphInk MeasureGlyphInk(std::string_view character);
 }
