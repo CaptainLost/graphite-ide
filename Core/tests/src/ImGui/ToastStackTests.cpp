@@ -368,3 +368,121 @@ TEST_CASE("An error waiting to be closed runs no countdown")
 
 	CHECK_FALSE(stack.IsAnyCountdownRunning());
 }
+
+TEST_CASE("Show returns the id of the toast it shows")
+{
+	Core::ToastStack stack;
+	const std::uint64_t firstId = stack.Show(Core::ToastKind::Error, "Title", "first", kStart);
+	const std::uint64_t secondId = stack.Show(Core::ToastKind::Error, "Title", "second", kStart);
+
+	REQUIRE(stack.Get().size() == 2);
+	CHECK(firstId == stack.Get()[0].Id);
+	CHECK(secondId == stack.Get()[1].Id);
+}
+
+TEST_CASE("Show returns the twin's id when the message merges into a toast still up")
+{
+	Core::ToastStack stack;
+	const std::uint64_t shownId = stack.Show(Core::ToastKind::Warning, "Title", "same", kStart);
+	const std::uint64_t mergedId = stack.Show(Core::ToastKind::Warning, "Title", "same", kStart + 1s);
+
+	CHECK(mergedId == shownId);
+}
+
+TEST_CASE("Closing a toast reports it as closed by the user")
+{
+	Core::ToastStack stack;
+	const std::uint64_t shownId = stack.Show(Core::ToastKind::Error, "Title", "failed", kStart);
+	stack.Close(shownId, kStart + 1s);
+
+	const std::vector<Core::ToastDeparture> departures = stack.TakeDepartures();
+	REQUIRE(departures.size() == 1);
+	CHECK(departures[0].Id == shownId);
+	CHECK(departures[0].Reason == Core::ToastDepartureReason::ClosedByUser);
+	CHECK_FALSE(departures[0].WasHovered);
+}
+
+TEST_CASE("A toast closed twice is reported once")
+{
+	Core::ToastStack stack;
+	const std::uint64_t shownId = stack.Show(Core::ToastKind::Error, "Title", "failed", kStart);
+	stack.Close(shownId, kStart + 1s);
+	stack.Close(shownId, kStart + 1100ms);
+
+	CHECK(stack.TakeDepartures().size() == 1);
+}
+
+TEST_CASE("A toast whose countdown runs out is reported as expired")
+{
+	Core::ToastStack stack;
+	const std::uint64_t shownId = stack.Show(Core::ToastKind::Warning, "Title", "careful", kStart);
+	stack.Update(kStart + 6s);
+
+	const std::vector<Core::ToastDeparture> departures = stack.TakeDepartures();
+	REQUIRE(departures.size() == 1);
+	CHECK(departures[0].Id == shownId);
+	CHECK(departures[0].Reason == Core::ToastDepartureReason::Expired);
+}
+
+TEST_CASE("A toast the pointer rested on is reported as hovered when it leaves")
+{
+	Core::ToastStack stack;
+	const std::uint64_t shownId = stack.Show(Core::ToastKind::Success, "Title", "done", kStart);
+	stack.SetHovered(shownId, true, kStart + 1s);
+	stack.SetHovered(shownId, false, kStart + 2s);
+	stack.Update(kStart + 7s);
+
+	const std::vector<Core::ToastDeparture> departures = stack.TakeDepartures();
+	REQUIRE(departures.size() == 1);
+	CHECK(departures[0].Reason == Core::ToastDepartureReason::Expired);
+	CHECK(departures[0].WasHovered);
+}
+
+TEST_CASE("An error waiting to be closed is never reported as expired")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Error, "Title", "failed", kStart);
+	stack.Update(kStart + 1h);
+
+	CHECK(stack.TakeDepartures().empty());
+}
+
+TEST_CASE("Clearing reports as cleared only the toasts that were not already leaving")
+{
+	Core::ToastStack stack;
+	const std::uint64_t closedId = stack.Show(Core::ToastKind::Error, "Title", "closed", kStart);
+	const std::uint64_t standingId = stack.Show(Core::ToastKind::Error, "Title", "standing", kStart);
+	stack.Close(closedId, kStart + 1s);
+	static_cast<void>(stack.TakeDepartures()); // the close is not what this test is about
+
+	stack.Clear();
+
+	const std::vector<Core::ToastDeparture> departures = stack.TakeDepartures();
+	REQUIRE(departures.size() == 1);
+	CHECK(departures[0].Id == standingId);
+	CHECK(departures[0].Reason == Core::ToastDepartureReason::Cleared);
+}
+
+TEST_CASE("Clearing a group reports only that group's toasts")
+{
+	Core::ToastStack stack;
+	const std::uint64_t folderId = stack.Show(Core::ToastKind::Error, "Commit failed", "locked", kStart, {}, 1);
+	stack.Show(Core::ToastKind::Error, "Theme failed", "bad file", kStart, {}, 0);
+
+	stack.Clear(1);
+
+	const std::vector<Core::ToastDeparture> departures = stack.TakeDepartures();
+	REQUIRE(departures.size() == 1);
+	CHECK(departures[0].Id == folderId);
+	CHECK(departures[0].Reason == Core::ToastDepartureReason::Cleared);
+}
+
+TEST_CASE("Taking the departures empties the queue")
+{
+	Core::ToastStack stack;
+	const std::uint64_t shownId = stack.Show(Core::ToastKind::Error, "Title", "failed", kStart);
+	stack.Close(shownId, kStart + 1s);
+
+	static_cast<void>(stack.TakeDepartures()); // emptying the queue is what is under test
+	CHECK(stack.TakeDepartures().empty());
+}

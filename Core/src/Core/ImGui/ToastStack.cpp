@@ -3,6 +3,7 @@
 #include "Core/ImGui/ToastStack.h"
 
 #include <algorithm>
+#include <utility>
 
 namespace Core {
 
@@ -19,8 +20,8 @@ namespace Core {
 		}
 	}
 
-	void ToastStack::Show(ToastKind kind, std::string title, std::string message, Clock::time_point now,
-						  std::string copyText, std::uint32_t group)
+	std::uint64_t ToastStack::Show(ToastKind kind, std::string title, std::string message, Clock::time_point now,
+							  std::string copyText, std::uint32_t group)
 	{
 		const auto twin = std::ranges::find_if(m_Toasts, [&](const Toast& toast) {
 			return !toast.LeavingSince.has_value() && toast.Kind == kind && toast.Title == title &&
@@ -38,7 +39,7 @@ namespace Core {
 				twin->CountingFrom = now;
 			}
 
-			return;
+			return twin->Id;
 		}
 
 		Toast toast;
@@ -52,12 +53,47 @@ namespace Core {
 		toast.Left = kLifetime;
 		toast.CountingFrom = now;
 
+		const std::uint64_t shownId = toast.Id;
 		m_Toasts.push_back(std::move(toast));
+		return shownId;
+	}
+
+	void ToastStack::Clear()
+	{
+		for (const Toast& toast : m_Toasts)
+		{
+			const bool alreadyReported = toast.LeavingSince.has_value();
+			if (!alreadyReported)
+			{
+				NoteDeparture(toast, ToastDepartureReason::Cleared);
+			}
+		}
+
+		m_Toasts.clear();
 	}
 
 	void ToastStack::Clear(std::uint32_t group)
 	{
+		for (const Toast& toast : m_Toasts)
+		{
+			const bool clearedNow = toast.Group == group && !toast.LeavingSince.has_value();
+			if (clearedNow)
+			{
+				NoteDeparture(toast, ToastDepartureReason::Cleared);
+			}
+		}
+
 		std::erase_if(m_Toasts, [group](const Toast& toast) { return toast.Group == group; });
+	}
+
+	std::vector<ToastDeparture> ToastStack::TakeDepartures()
+	{
+		return std::exchange(m_Departures, {});
+	}
+
+	void ToastStack::NoteDeparture(const Toast& toast, ToastDepartureReason reason)
+	{
+		m_Departures.push_back({.Id = toast.Id, .Reason = reason, .WasHovered = toast.WasHovered});
 	}
 
 	void ToastStack::SetHovered(std::uint64_t id, bool hovered, Clock::time_point now)
@@ -67,6 +103,11 @@ namespace Core {
 		if (toast == nullptr || toast->LeavingSince.has_value())
 		{
 			return;
+		}
+
+		if (hovered)
+		{
+			toast->WasHovered = true;
 		}
 
 		const bool paused = !toast->CountingFrom.has_value();
@@ -87,6 +128,7 @@ namespace Core {
 		if (Toast* toast = Find(m_Toasts, id); toast != nullptr && !toast->LeavingSince.has_value())
 		{
 			toast->LeavingSince = now;
+			NoteDeparture(*toast, ToastDepartureReason::ClosedByUser);
 		}
 	}
 
@@ -104,6 +146,7 @@ namespace Core {
 			if (const Clock::time_point expiry = *toast.CountingFrom + toast.Left; now >= expiry)
 			{
 				toast.LeavingSince = expiry;
+				NoteDeparture(toast, ToastDepartureReason::Expired);
 			}
 		}
 
