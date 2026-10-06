@@ -52,10 +52,8 @@ namespace Core {
 		CORE_EVENT_CLASS_CATEGORY(EventCategory::Application)
 	};
 
-	// What the window manager handed over when something was dropped on the window: whole
-	// paths, already decoded from the platform's own encoding. The paths exist on disk at the
-	// moment they arrive and can be anything - a file, a directory - so it is the handler that
-	// decides what each of them means.
+	// Each path existed on disk when it was dropped and can be anything, a file or a directory,
+	// so it is the handler that decides what each of them means.
 	class FileDropEvent final : public Event
 	{
 	public:

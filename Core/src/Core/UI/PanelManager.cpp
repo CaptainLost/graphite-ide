@@ -17,22 +17,22 @@
 namespace Core {
 
 	namespace {
+		// Not a toggle: the click meant to find a panel buried behind another tab would close
+		// it. Closing is the tab's own button.
+		void ShowAndBringForward(Panel& panel)
+		{
+			panel.SetVisible(true);
+			panel.RequestFocus();
+		}
+
 		void RegisterPanelCommand(CommandRegistry& commands, Panel& panel)
 		{
-			// Opens the panel, or brings it forward when it is already open, rather than toggling:
-			// the menu is where a panel is gone looking for, and one that is open but buried
-			// behind another tab would otherwise be closed by the click meant to find it. Closing
-			// is the tab's own button.
 			commands.Add({.Id = "panel." + panel.GetId(),
 						  .Label = panel.GetTitle(),
 						  .ListLabel = "Show " + panel.GetTitle() + " Panel",
 						  .Icon = panel.GetIcon(),
 						  .Group = "panels." + panel.GetMenuGroup(),
-						  .Run =
-							  [&panel] {
-								  panel.SetVisible(true);
-								  panel.RequestFocus();
-							  },
+						  .Run = [&panel] { ShowAndBringForward(panel); },
 						  .Checked = [&panel] { return panel.IsVisible(); }});
 		}
 	}
@@ -41,22 +41,22 @@ namespace Core {
 	{
 		CORE_ASSERT(panel != nullptr, "PanelManager::Add received a null pointer");
 
-		if (Find(panel->GetId()) != nullptr)
+		const bool idAlreadyTaken = Find(panel->GetId()) != nullptr;
+		if (idAlreadyTaken)
 		{
 			return nullptr;
 		}
 
-		Panel* reference = panel.get();
+		Panel* const addedPanel = panel.get();
 		m_Panels.push_back(std::move(panel));
 
-		// A panel added after RegisterCommands registers as it arrives, so OnAttach can call
-		// the two in either order.
-		if (m_Commands != nullptr)
+		const bool commandsAlreadyRegistered = m_Commands != nullptr;
+		if (commandsAlreadyRegistered)
 		{
-			RegisterPanelCommand(*m_Commands, *m_Panels.back());
+			RegisterPanelCommand(*m_Commands, *addedPanel);
 		}
 
-		return reference;
+		return addedPanel;
 	}
 
 	Panel* PanelManager::Find(std::string_view id) const
@@ -81,7 +81,7 @@ namespace Core {
 				return;
 			}
 
-			if (panel->HasBeenDrawn())
+			if (panel->HasBeenDrawnOnLatestFrame())
 			{
 				panel->OnEvent(event);
 			}
@@ -108,58 +108,61 @@ namespace Core {
 		}
 	}
 
-	void PanelManager::OnUpdate(Timestep ts)
+	void PanelManager::OnUpdate(Timestep timeSinceLastFrame)
 	{
 		for (const Scope<Panel>& panel : m_Panels)
 		{
-			panel->OnUpdate(ts);
+			panel->OnUpdate(timeSinceLastFrame);
 		}
 	}
 
 	void PanelManager::OnImGuiRender(TabCloseRequests& closeRequests)
 	{
-		const ImGuiWindowFlags windowFlags =
-			std::exchange(m_FirstRender, false) ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
+		const bool isFirstRender = m_FirstRender;
+		m_FirstRender = false;
+
+		const ImGuiWindowFlags windowFlags = isFirstRender ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
 
 		for (const Scope<Panel>& panel : m_Panels)
 		{
 			if (!panel->IsVisible())
 			{
-				panel->SetWasDrawn(false);
+				panel->SetDrawnOnLatestFrame(false);
 				continue;
 			}
 
-			bool open = true;
-			const std::string label = panel->GetWindowName();
+			bool windowOpen = true;
+			const std::string windowName = panel->GetWindowName();
 
-			// Set before Begin so it reaches a window that is appearing this frame too, and
-			// selects the tab when the window shares a dock node with others.
-			if (panel->ConsumeFocusRequest())
+			// SetNextWindowFocus has to come before Begin to reach a window that appears this
+			// frame; on a docked window it also selects the tab.
+			const bool focusRequested = panel->ConsumeFocusRequest();
+			if (focusRequested)
 			{
 				ImGui::SetNextWindowFocus();
 			}
 
-			// Begin returns false when the window is collapsed or another tab of the same dock
-			// node is selected: the panel got its turn, but its body did not run.
-			const bool drawn = ImGui::Begin(label.c_str(), &open, windowFlags);
-			panel->SetWasDrawn(drawn);
+			// Begin returns false for a docked window whose tab is not selected as well as for a
+			// collapsed one.
+			const bool bodyRuns = ImGui::Begin(windowName.c_str(), &windowOpen, windowFlags);
+			panel->SetDrawnOnLatestFrame(bodyRuns);
 
-			// A tab's menu asked for this one last frame: the same as its close button.
-			if (closeRequests.Take(label))
+			const bool tabMenuAskedToClose = closeRequests.Take(windowName);
+			if (tabMenuAskedToClose)
 			{
-				open = false;
+				windowOpen = false;
 			}
 
 			DrawTabContextMenu(closeRequests);
 
-			if (drawn)
+			if (bodyRuns)
 			{
 				panel->OnImGuiRender();
 			}
 
 			ImGui::End();
 
-			if (!open)
+			if (!windowOpen)
 			{
 				panel->SetVisible(false);
 			}

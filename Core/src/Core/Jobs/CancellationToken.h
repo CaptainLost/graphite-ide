@@ -7,11 +7,8 @@
 
 namespace Core {
 
-	// Copyable on purpose: every copy shares one flag, so the thread that starts a job and the
-	// thread that runs it hold the same token without either owning the other's lifetime.
-	//
-	// Cancellation is cooperative. A job that never asks is never stopped, and there is no way
-	// to interrupt one — killing a thread mid-work leaves whatever it was holding half-written.
+	// Cancellation is cooperative: a job that never asks is never stopped. There is no way to
+	// interrupt one, because killing a thread mid-work leaves whatever it was holding half-written.
 	class CancellationToken
 	{
 	public:

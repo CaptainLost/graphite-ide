@@ -12,32 +12,41 @@ namespace Core {
 
 	namespace {
 
-		std::size_t WorkerCount(std::size_t requested)
+		constexpr std::size_t kCoresKeptForUserInterfaceThread = 1;
+
+		// A queue with no workers accepts jobs and runs none, which looks exactly like a hang.
+		constexpr std::size_t kFewestWorkers = 1;
+
+		std::size_t WorkerCountFor(std::size_t requestedWorkers)
 		{
-			if (requested > 0)
+			const bool workerCountGiven = requestedWorkers != JobQueue::kOneWorkerPerSpareCore;
+
+			if (workerCountGiven)
 			{
-				return requested;
+				return requestedWorkers;
 			}
 
-			const unsigned int cores = std::thread::hardware_concurrency();
-
 			// hardware_concurrency is allowed to return 0 when it cannot tell.
-			return cores > 2 ? static_cast<std::size_t>(cores) - 1 : 1;
+			const unsigned int cores = std::thread::hardware_concurrency();
+			const bool spareCoresExceedFewestWorkers = cores > kCoresKeptForUserInterfaceThread + kFewestWorkers;
+
+			return spareCoresExceedFewestWorkers ? static_cast<std::size_t>(cores) - kCoresKeptForUserInterfaceThread : kFewestWorkers;
 		}
 	}
 
-	JobQueue::JobQueue(std::size_t workers)
+	JobQueue::JobQueue(std::size_t requestedWorkers)
 	{
-		const std::size_t count = WorkerCount(workers);
+		const std::size_t workerCount = WorkerCountFor(requestedWorkers);
 
-		m_Workers.reserve(count);
+		m_Workers.reserve(workerCount);
 
 		// Starting a thread can throw std::system_error when the system is out of resources. The
-		// destructor never runs for a constructor that throws, so the workers started so far are
-		// stopped and joined here before the exception goes on.
+		// destructor never runs for a constructor that throws, and a started std::thread destroyed
+		// unjoined calls std::terminate, so the workers started so far are stopped and joined here
+		// before the exception goes on.
 		try
 		{
-			for (std::size_t worker = 0; worker < count; ++worker)
+			for (std::size_t workerIndex = 0; workerIndex < workerCount; ++workerIndex)
 			{
 				m_Workers.emplace_back([this] { Run(); });
 			}
@@ -96,9 +105,9 @@ namespace Core {
 
 				m_Wake.wait(lock, [this] { return m_Stopping || !m_Jobs.empty(); });
 
-				// Queued work is finished before stopping, so a job submitted a moment before
-				// shutdown is not silently dropped.
-				if (m_Jobs.empty())
+				const bool stoppingWithQueueDrained = m_Jobs.empty();
+
+				if (stoppingWithQueueDrained)
 				{
 					return;
 				}
@@ -109,7 +118,7 @@ namespace Core {
 
 			// An exception leaving a thread function calls std::terminate, so an allocation
 			// failure or a path conversion deep inside one job would take the whole process
-			// down with no message. The job is lost either way; the worker is not.
+			// down with no message.
 			try
 			{
 				job();

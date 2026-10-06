@@ -12,29 +12,18 @@
 
 namespace Core {
 
-	// A fixed set of worker threads pulling from one queue. Deliberately the smallest thing that
-	// works: no priorities, no work stealing, no dependencies between jobs. The stage that needs
-	// those will know what shape they should take; guessing now would fix the wrong shape.
 	class JobQueue : NonCopyable
 	{
 	public:
-		// Zero asks the hardware, leaving one core for the UI thread, and never yields fewer
-		// than one worker — a queue with no workers accepts jobs and runs none, which looks
-		// exactly like a hang.
-		explicit JobQueue(std::size_t workers = 0);
+		static constexpr std::size_t kOneWorkerPerSpareCore = 0;
 
-		// Stops accepting work, wakes every worker and joins. Jobs already running are waited
-		// for: a worker that outlived this object would be running a function whose captures
-		// are gone.
+		explicit JobQueue(std::size_t requestedWorkers = kOneWorkerPerSpareCore);
 		~JobQueue();
 
 		void Submit(std::function<void()> job);
 
 	private:
 		void Run();
-
-		// What the destructor does, shared with a constructor that fails part-way: the workers
-		// already started are joinable, and destroying one unjoined calls std::terminate.
 		void StopAndJoin();
 
 		std::mutex m_Mutex;

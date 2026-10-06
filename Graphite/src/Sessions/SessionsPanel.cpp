@@ -74,7 +74,7 @@ namespace Graphite {
 
 	SessionsPanel::SessionsPanel(const Workspace& workspace, const ClaudeSettings& settings,
 								 SessionWindows& windows, LaunchClaude launch)
-		: Core::Panel("sessions", "Claude Sessions", "ai", ICON_MDI_ROBOT_OUTLINE, false),
+		: Core::Panel("sessions", "Claude Sessions", "ai", ICON_MDI_ROBOT_OUTLINE, StartsAs::Hidden),
 		  m_Workspace(workspace), m_Settings(settings), m_Windows(windows), m_Launch(std::move(launch))
 	{
 	}
@@ -257,7 +257,7 @@ namespace Graphite {
 		{
 			// A session window restored from the last launch needs the index to find its
 			// transcript, whether or not this list has been shown yet.
-			if (!HasBeenDrawn() && !m_Windows.IsLookingForSessions())
+			if (!HasBeenDrawnOnLatestFrame() && !m_Windows.IsLookingForSessions())
 			{
 				return;
 			}

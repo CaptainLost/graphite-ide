@@ -13,46 +13,51 @@
 
 namespace Core {
 
-	template<typename E>
-	concept EventPayload = std::is_class_v<E> && std::same_as<E, std::remove_cvref_t<E>>;
+	template<typename Payload>
+	concept EventPayload = std::is_class_v<Payload> && std::same_as<Payload, std::remove_cvref_t<Payload>>;
 
 	class EventBus final : NonCopyable
 	{
 	public:
-		// Keyed on typeid(E), so E is a plain class type: a const or reference spelling of one
-		// event would otherwise key a different list from the one it is published to.
-		template<EventPayload E>
-		void Subscribe(std::function<void(const E&)> handler)
+		template<EventPayload Payload>
+		void Subscribe(std::function<void(const Payload&)> handler)
 		{
-			m_Handlers[std::type_index(typeid(E))].push_back(
-				[handler = std::move(handler)](const void* payload) { handler(*static_cast<const E*>(payload)); });
+			m_Handlers[std::type_index(typeid(Payload))].push_back(
+				[handler = std::move(handler)](const void* erasedPayload) { handler(*static_cast<const Payload*>(erasedPayload)); });
 		}
 
-		template<EventPayload E>
-		void Publish(const E& event)
+		template<EventPayload Payload>
+		void Publish(const Payload& event)
 		{
-			const auto entry = m_Handlers.find(std::type_index(typeid(E)));
-			if (entry == m_Handlers.end())
+			const std::type_index payloadType{typeid(Payload)};
+
+			if (!m_Handlers.contains(payloadType))
 			{
 				return;
 			}
 
-			// Copied because a handler may subscribe while this iterates, and a reallocated
-			// vector would invalidate the iterator. Only subscription is guarded: a handler
-			// that publishes the event type it is handling still recurses without bound.
-			const std::vector<Handler> handlers = entry->second;
+			// A copy, because a handler may subscribe while this iterates, and a reallocated vector
+			// would invalidate the iterator. Only subscription is guarded: a handler that publishes
+			// the event type it is handling still recurses without bound.
+			const std::vector<Handler> handlersAtPublish = m_Handlers.at(payloadType);
 
-			for (const Handler& handler : handlers)
+			for (const Handler& handler : handlersAtPublish)
 			{
 				handler(&event);
 			}
 		}
 
-		template<EventPayload E>
+		template<EventPayload Payload>
 		std::size_t GetHandlerCount() const
 		{
-			const auto entry = m_Handlers.find(std::type_index(typeid(E)));
-			return entry == m_Handlers.end() ? 0 : entry->second.size();
+			const std::type_index payloadType{typeid(Payload)};
+
+			if (!m_Handlers.contains(payloadType))
+			{
+				return 0;
+			}
+
+			return m_Handlers.at(payloadType).size();
 		}
 
 	private:

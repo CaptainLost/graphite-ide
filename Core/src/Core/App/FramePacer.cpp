@@ -8,37 +8,41 @@ namespace Core {
 
 	void FramePacer::NoteInput(Clock::time_point now)
 	{
-		m_InputUntil = std::max(m_InputUntil, now + InputWindow);
+		m_InputWindowEnd = std::max(m_InputWindowEnd, now + kInputWindow);
 	}
 
 	void FramePacer::NoteRequest()
 	{
-		m_FramesOwed = std::max(m_FramesOwed, RequestFrames);
+		m_RequestFramesLeft = std::max(m_RequestFramesLeft, kRequestFrames);
 	}
 
 	void FramePacer::FrameDrawn()
 	{
-		if (m_FramesOwed > 0)
+		if (m_RequestFramesLeft > 0)
 		{
-			--m_FramesOwed;
+			--m_RequestFramesLeft;
 		}
 	}
 
 	FramePacer::Clock::duration FramePacer::SleepFor(Clock::time_point now, bool pointerHeld,
 													 std::optional<Clock::time_point> deadline) const
 	{
-		if (pointerHeld || m_FramesOwed > 0 || now < m_InputUntil)
+		const bool requestFramesLeft = m_RequestFramesLeft > 0;
+		const bool insideInputWindow = now < m_InputWindowEnd;
+		const bool drawStraightAway = pointerHeld || requestFramesLeft || insideInputWindow;
+
+		if (drawStraightAway)
 		{
 			return Clock::duration::zero();
 		}
 
-		Clock::time_point wake = now + IdleTick;
+		Clock::time_point wakeTime = now + kIdleTick;
 
-		if (deadline)
+		if (deadline.has_value())
 		{
-			wake = std::clamp(*deadline, now, wake);
+			wakeTime = std::clamp(*deadline, now, wakeTime);
 		}
 
-		return wake - now;
+		return wakeTime - now;
 	}
 }

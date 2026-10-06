@@ -14,7 +14,7 @@ namespace Graphite {
 	}
 
 	SettingsPanel::SettingsPanel(std::vector<Core::Scope<SettingsSection>> sections)
-		: Core::Panel("settings", "Settings", "window", ICON_MDI_COG_OUTLINE, false), m_Sections(std::move(sections))
+		: Core::Panel("settings", "Settings", "window", ICON_MDI_COG_OUTLINE, StartsAs::Hidden), m_Sections(std::move(sections))
 	{
 	}
 
@@ -35,7 +35,7 @@ namespace Graphite {
 
 	void SettingsPanel::OnUpdate(Core::Timestep)
 	{
-		const bool drawn = HasBeenDrawn();
+		const bool drawn = HasBeenDrawnOnLatestFrame();
 
 		// Latched on the edge, not on the state: hiding the panel deactivates the section once,
 		// rather than every frame it stays hidden. A section left holding transient state — an

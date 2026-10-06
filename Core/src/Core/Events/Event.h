@@ -3,13 +3,11 @@
 #include "Core/Base/Base.h"
 
 #include <concepts>
+#include <functional>
 #include <string>
 
 namespace Core {
 
-	// Dispatched the moment they arrive, not queued: a handler that consumes one has to do so
-	// before the frame that produced it draws, or the shortcut and the text field both see the
-	// same key.
 	enum class EventType
 	{
 		None = 0,
@@ -28,8 +26,6 @@ namespace Core {
 		MouseScrolled
 	};
 
-	// Lets a handler consume a whole class of event without naming every type in it, which is
-	// what the GUI layer does when it has the keyboard.
 	enum class EventCategory : int
 	{
 		None = 0,
@@ -60,13 +56,14 @@ namespace Core {
 	EventCategory GetCategoryFlags() const override { return category; }
 	// clang-format on
 
+	// Dispatched the moment it arrives, not queued: a handler that consumes one has to do so
+	// before the frame that produced it draws, or the shortcut and the text field both see the
+	// same key.
 	class Event
 	{
 	public:
 		virtual ~Event() = default;
 
-		// Set by whoever deals with the event. Application stops walking the layer stack as
-		// soon as it is true, so the topmost interested layer wins.
 		bool Handled = false;
 
 		virtual EventType GetEventType() const = 0;
@@ -82,21 +79,20 @@ namespace Core {
 	public:
 		explicit EventDispatcher(Event& event) : m_Event(event) {}
 
-		// Runs the handler only when the event is of the handler's type. Its answer is ORed
-		// into Handled rather than assigned: an event consumed upstream stays consumed.
-		template<std::derived_from<Event> T, std::predicate<T&> F>
-		bool Dispatch(const F& handler)
+		template<std::derived_from<Event> EventClass>
+		bool Dispatch(const std::function<bool(EventClass&)>& handler)
 		{
 			// The language's own check rather than the EventType tag: nothing ties a tag to the
 			// one class that returns it, and a cast on a mismatched tag would be undefined.
-			T* const event = dynamic_cast<T*>(&m_Event);
+			EventClass* const matchingEvent = dynamic_cast<EventClass*>(&m_Event);
 
-			if (event == nullptr)
+			if (matchingEvent == nullptr)
 			{
 				return false;
 			}
 
-			m_Event.Handled |= handler(*event);
+			const bool handlerConsumed = handler(*matchingEvent);
+			m_Event.Handled = m_Event.Handled || handlerConsumed;
 			return true;
 		}
 

@@ -68,7 +68,7 @@ namespace Graphite {
 	GitView::GitView(GitModel& model, const ActiveScheme& scheme, EditorSettings& editorSettings,
 					 DiffWindows& diffWindows, ModalGate& modals, EditorBuffers& buffers,
 					 Core::EventBus& events)
-		: Core::Panel("git", "Git", "git", ICON_MDI_SOURCE_BRANCH, false), m_Model(model),
+		: Core::Panel("git", "Git", "git", ICON_MDI_SOURCE_BRANCH, StartsAs::Hidden), m_Model(model),
 		  m_Scheme(scheme), m_EditorSettings(editorSettings), m_DiffWindows(diffWindows),
 		  m_Buffers(buffers), m_Events(events), m_DetachQuestion(modals, "###GitDetach"),
 		  m_CheckoutQuestion(modals, "###GitCheckout"),
@@ -83,7 +83,7 @@ namespace Graphite {
 		// Begin is what hands the gate back, and it runs from OnImGuiRender, which the panel
 		// manager skips for a panel that is hidden or behind another tab - see
 		// ChangesPanel::OnUpdate for why dropping the question is the lesser harm.
-		if (!HasBeenDrawn())
+		if (!HasBeenDrawnOnLatestFrame())
 		{
 			WithdrawQuestions();
 		}

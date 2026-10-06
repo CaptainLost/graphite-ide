@@ -197,21 +197,22 @@ namespace Graphite {
 		// OnImGuiRender is what hands the gate back, and PanelManager skips it for a panel that
 		// is hidden, collapsed or behind another dock tab - so a question left open when the
 		// panel stopped being drawn would hold the gate forever and silence every modal in the
-		// application. HasBeenDrawn reports the previous frame, and a question can only be asked
-		// from a frame this panel drew, so this never withdraws one the reader can still see.
+		// application. HasBeenDrawnOnLatestFrame reports the previous frame, and a question can
+		// only be asked from a frame this panel drew, so this never withdraws one the reader can
+		// still see.
 		//
 		// The cost is that the question is dropped, queue and all: a discard clicked while
 		// another modal held the gate disappears without a word if the panel is hidden before
 		// its turn comes. That is the lesser harm - nothing is discarded, and the row is still
 		// there to click again, whereas a gate never handed back takes the whole application's
 		// modals down with it and gives no way back at all.
-		if (!HasBeenDrawn() && m_DiscardQuestion.IsAsked())
+		if (!HasBeenDrawnOnLatestFrame() && m_DiscardQuestion.IsAsked())
 		{
 			m_DiscardQuestion.Withdraw();
 		}
 
 		// For the same reason, and with the dialog's edits dropped along with it.
-		if (!HasBeenDrawn() && m_StashQuestion.IsAsked())
+		if (!HasBeenDrawnOnLatestFrame() && m_StashQuestion.IsAsked())
 		{
 			m_StashQuestion.Withdraw();
 			ResetStashDialog();

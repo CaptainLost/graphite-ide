@@ -15,21 +15,19 @@ namespace Core {
 		bool IsRepeat = false;
 	};
 
-	// The keyboard input nobody upstream consumed, held until something drawing this frame can
-	// say it was meant for it: events are dispatched before any window has been submitted, so
-	// a widget only learns it has the keyboard while drawing.
-	//
-	// Cleared at the end of a frame, never the start, which would drop everything that arrived
-	// while the previous frame was being built.
+	// Holds the keyboard input nobody upstream consumed until something drawing this frame can
+	// say it was meant for it: events are dispatched before any window has been submitted, so a
+	// widget only learns it has the keyboard while drawing. Clear it at the end of a frame,
+	// never the start, which would drop everything that arrived while the previous frame was
+	// being built.
 	class FrameInput
 	{
 	public:
 		void PushKey(KeyCode key, KeyModifier modifiers, bool isRepeat)
 		{
-			m_Strokes.push_back(KeyStroke{key, modifiers, isRepeat});
+			m_Strokes.push_back(KeyStroke{.Key = key, .Modifiers = modifiers, .IsRepeat = isRepeat});
 		}
 
-		// A codepoint, not a key: what the layout and any dead key actually produced.
 		void PushCharacter(unsigned int codepoint) { m_Characters.push_back(codepoint); }
 
 		void Clear()

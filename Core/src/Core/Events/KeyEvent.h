@@ -60,8 +60,8 @@ namespace Core {
 		CORE_EVENT_CLASS_TYPE(KeyReleased)
 	};
 
-	// The character a keystroke produced, after the keyboard layout and any dead keys have had
-	// their say. This is what text input must read: a key code cannot tell a comma from a
+	// What text input must read rather than a key code: the character after the keyboard layout
+	// and any dead keys have had their say, where a key code cannot tell a comma from a
 	// semicolon on a layout nobody anticipated.
 	class KeyTypedEvent final : public Event
 	{

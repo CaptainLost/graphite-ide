@@ -30,10 +30,10 @@ Much of the program relies on frames arriving without input:
 
 - Let `Core::FramePacer` decide how long `Application::Run` may sleep before
   the next frame. After input, draw every refresh for
-  `FramePacer::InputWindow` (1 s). After a `Core::Redraw::Request`, draw
-  `FramePacer::RequestFrames` (3) frames. Keep drawing for as long as a mouse
+  `FramePacer::kInputWindow` (1 s). After a `Core::Redraw::Request`, draw
+  `FramePacer::kRequestFrames` (3) frames. Keep drawing for as long as a mouse
   button is held. Otherwise sleep in `glfwWaitEventsTimeout` until the earliest
-  requested deadline, and never longer than `FramePacer::IdleTick` (1 s).
+  requested deadline, and never longer than `FramePacer::kIdleTick` (1 s).
 - Count as input an event reaching `Application::OnEvent` and input left in
   ImGui's queue, which covers every viewport.
 - Call `Core::Redraw::Request()` from any code that changes what the screen

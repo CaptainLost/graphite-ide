@@ -22,14 +22,12 @@ namespace Core {
 	class PanelManager final : NonCopyable
 	{
 	public:
-		// Takes the panel and hands it back as the type it was given, so an owner that needs to
-		// reach it later keeps a typed pointer instead of casting the base one down. Null when a
-		// panel with the same id is already here, and the new one is dropped.
-		template<std::derived_from<Panel> T>
-		T* Add(Scope<T> panel)
+		template<std::derived_from<Panel> PanelType>
+		PanelType* Add(Scope<PanelType> panel)
 		{
-			T* const typed = panel.get();
-			return AddPanel(std::move(panel)) != nullptr ? typed : nullptr;
+			PanelType* const typedPanel = panel.get();
+			const bool wasAdded = AddPanel(std::move(panel)) != nullptr;
+			return wasAdded ? typedPanel : nullptr;
 		}
 
 		Panel* Find(std::string_view id) const;
@@ -39,7 +37,7 @@ namespace Core {
 
 		void ForEach(const std::function<void(Panel&)>& visit);
 
-		void OnUpdate(Timestep ts);
+		void OnUpdate(Timestep timeSinceLastFrame);
 		void OnImGuiRender(TabCloseRequests& closeRequests);
 		void OnEvent(Event& event);
 
@@ -52,10 +50,10 @@ namespace Core {
 
 		std::vector<Scope<Panel>> m_Panels;
 
-		// ImGui focuses a window on the frame it appears, and focusing a docked window selects
-		// its tab. On the first frame every panel appears at once, so the last one drawn in each
-		// dock node would take its front from whatever imgui.ini remembers there. A panel shown
-		// later - from a menu, a shortcut - does appear in front, which is what asking for it means.
+		// ImGui focuses a window on the frame it appears, which selects its tab in a dock node.
+		// On the first frame every panel appears at once, and the last one drawn in each node
+		// would push aside the tab imgui.ini remembers there; a panel shown later should come
+		// to the front, as asking for it means.
 		bool m_FirstRender = true;
 		CommandRegistry* m_Commands = nullptr;
 	};

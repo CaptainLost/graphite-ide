@@ -10,123 +10,129 @@
 
 namespace {
 
-	// Waits for a condition rather than sleeping a fixed time: a fixed sleep is either flaky on
-	// a loaded machine or slow on an idle one. Fails by timing out, so a broken queue makes the
-	// test fail rather than hang the suite.
-	bool WaitFor(const std::function<bool()>& done)
+	constexpr std::chrono::seconds kGiveUpAfter{5};
+	constexpr std::chrono::milliseconds kPollInterval{1};
+	constexpr std::chrono::milliseconds kSimulatedWork{1};
+
+	constexpr std::size_t kSingleWorker = 1;
+	constexpr std::size_t kTwoWorkers = 2;
+
+	constexpr int kJobsForTwoWorkers = 50;
+	constexpr int kJobsQueuedBeforeDestruction = 20;
+
+	// Bounded independently of the token: if cancellation ever stops propagating, this test must
+	// fail, and a job that can only be stopped by the thing under test would instead hang the
+	// destructor's join.
+	constexpr int kRoundsBeforeGivingUp = 100000;
+
+	// Polls rather than sleeping a fixed time: a fixed sleep is either flaky on a loaded machine
+	// or slow on an idle one.
+	bool WaitUntilTrueOrTimeOut(const std::function<bool()>& condition)
 	{
-		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kGiveUpAfter;
 
 		while (std::chrono::steady_clock::now() < deadline)
 		{
-			if (done())
+			if (condition())
 			{
 				return true;
 			}
 
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			std::this_thread::sleep_for(kPollInterval);
 		}
 
 		return false;
+	}
+
+	void CountRoundsUntilCancelled(const Core::CancellationToken& token, std::atomic_int& roundsRun, std::atomic_bool& jobFinished)
+	{
+		for (int round = 0; round < kRoundsBeforeGivingUp && !token.IsCancelled(); ++round)
+		{
+			roundsRun.fetch_add(1);
+			std::this_thread::sleep_for(kSimulatedWork);
+		}
+
+		jobFinished.store(true);
 	}
 }
 
 TEST_CASE("JobQueue runs what it is given")
 {
-	std::atomic_int done{0};
+	std::atomic_int jobsRun{0};
 
 	{
-		Core::JobQueue queue(2);
+		Core::JobQueue queue(kTwoWorkers);
 
-		for (int job = 0; job < 50; ++job)
+		for (int jobIndex = 0; jobIndex < kJobsForTwoWorkers; ++jobIndex)
 		{
-			queue.Submit([&done] { done.fetch_add(1); });
+			queue.Submit([&jobsRun] { jobsRun.fetch_add(1); });
 		}
 
-		CHECK(WaitFor([&done] { return done.load() == 50; }));
+		CHECK(WaitUntilTrueOrTimeOut([&jobsRun] { return jobsRun.load() == kJobsForTwoWorkers; }));
 	}
 
-	CHECK(done.load() == 50);
+	CHECK(jobsRun.load() == kJobsForTwoWorkers);
 }
 
-// The destructor must join. If it detached instead, the counter could still be climbing after
-// the queue is gone — and the job's captures with it.
-TEST_CASE("JobQueue finishes its queue before it is destroyed")
+TEST_CASE("JobQueue finishes its queue before it is destroyed so no job outlives its captures")
 {
-	std::atomic_int done{0};
+	std::atomic_int jobsRun{0};
 
 	{
-		Core::JobQueue queue(1);
+		Core::JobQueue queue(kSingleWorker);
 
-		for (int job = 0; job < 20; ++job)
+		for (int jobIndex = 0; jobIndex < kJobsQueuedBeforeDestruction; ++jobIndex)
 		{
-			queue.Submit([&done] {
-				std::this_thread::sleep_for(std::chrono::milliseconds(1));
-				done.fetch_add(1);
+			queue.Submit([&jobsRun] {
+				std::this_thread::sleep_for(kSimulatedWork);
+				jobsRun.fetch_add(1);
 			});
 		}
 	}
 
-	CHECK(done.load() == 20);
+	CHECK(jobsRun.load() == kJobsQueuedBeforeDestruction);
 }
 
-// One worker on purpose: the job that follows has to run on the very thread the exception
-// escaped from, so a worker that died with it would leave `after` false forever.
-TEST_CASE("A job that throws does not take its worker with it")
+TEST_CASE("A job that throws does not take its worker with it so the next job on a single-worker queue still runs")
 {
-	std::atomic_bool after{false};
+	std::atomic_bool nextJobRan{false};
 
 	{
-		Core::JobQueue queue(1);
+		Core::JobQueue queue(kSingleWorker);
 
 		queue.Submit([] { throw std::runtime_error("a job that fails"); });
-		queue.Submit([&after] { after.store(true); });
+		queue.Submit([&nextJobRan] { nextJobRan.store(true); });
 
-		CHECK(WaitFor([&after] { return after.load(); }));
+		CHECK(WaitUntilTrueOrTimeOut([&nextJobRan] { return nextJobRan.load(); }));
 	}
 
-	CHECK(after.load());
+	CHECK(nextJobRan.load());
 }
 
-TEST_CASE("A cancelled token stops a cooperative job")
+TEST_CASE("A cancelled token stops a cooperative job before it runs out of rounds")
 {
 	const Core::CancellationToken token;
 
-	std::atomic_int rounds{0};
-	std::atomic_bool finished{false};
+	std::atomic_int roundsRun{0};
+	std::atomic_bool jobFinished{false};
 
 	{
-		Core::JobQueue queue(1);
+		Core::JobQueue queue(kSingleWorker);
 
-		queue.Submit([&] {
-			// Bounded independently of the token: if cancellation ever stops
-			// propagating, this test must fail, and a job that can only be stopped
-			// by the thing under test would instead hang the destructor's join.
-			for (int round = 0; round < 100000 && !token.IsCancelled(); ++round)
-			{
-				rounds.fetch_add(1);
-				std::this_thread::sleep_for(std::chrono::milliseconds(1));
-			}
+		queue.Submit([&token, &roundsRun, &jobFinished] { CountRoundsUntilCancelled(token, roundsRun, jobFinished); });
 
-			finished.store(true);
-		});
-
-		CHECK(WaitFor([&rounds] { return rounds.load() > 0; }));
+		CHECK(WaitUntilTrueOrTimeOut([&roundsRun] { return roundsRun.load() > 0; }));
 
 		token.Cancel();
 
-		CHECK(WaitFor([&finished] { return finished.load(); }));
+		CHECK(WaitUntilTrueOrTimeOut([&jobFinished] { return jobFinished.load(); }));
 	}
 
-	CHECK(finished.load());
-
-	// finished alone is true on both exit paths (cancelled or bound exhausted). Comparing
-	// rounds against the bound is what actually proves the loop stopped because it saw the
-	// cancellation, not because it ran out of iterations.
-	CHECK(rounds.load() < 100000);
+	CHECK(jobFinished.load());
+	CHECK(roundsRun.load() < kRoundsBeforeGivingUp);
 }
 
-TEST_CASE("A token copy shares the flag with its original")
+TEST_CASE("A token copy shares the flag with its original so the thread that starts a job and the thread that runs it hold one token")
 {
 	const Core::CancellationToken token;
 	const Core::CancellationToken copy = token;

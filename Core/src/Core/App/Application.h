@@ -39,8 +39,7 @@ namespace Core {
 
 		std::optional<WindowPlacement> Placement;
 
-		// Where the GUI keeps its window and docking layout between runs. Empty keeps none:
-		// the layout lives only as long as the process.
+		// Empty keeps no layout between runs: the docking layout then lives only as long as the process.
 		std::filesystem::path LayoutFile;
 	};
 
@@ -55,7 +54,6 @@ namespace Core {
 
 		Layer& PushLayer(Scope<Layer> layer);
 
-		// The window exists from the start of Run to its end; asking outside that is a mistake.
 		Window& GetWindow()
 		{
 			CORE_ASSERT(m_Window != nullptr, "Application::GetWindow() called outside Run");
@@ -65,8 +63,6 @@ namespace Core {
 
 		static Application& Get();
 
-		// Entry point for everything the window reports. The GUI gets first refusal, then the
-		// layers from the top down, and the walk stops at the first one that consumes.
 		void OnEvent(Event& event);
 
 	protected:
@@ -76,21 +72,22 @@ namespace Core {
 	private:
 		Result<void> OpenWindowAndGui();
 		void WaitForReasonToDraw();
-		void RefreshFrameLayers();
+		void SnapshotLayersForThisFrame();
 		bool EveryLayerAllowsClose();
 		bool HasNoPixels() const;
 
 		ApplicationSpec m_Spec;
 		Scope<Window> m_Window;
-		// Created with the window in Run and gone before it; null outside that span.
+		// Declared after m_Window so that it is destroyed first: the renderer is bound to the
+		// window, which must outlive it.
 		Scope<ImGuiRenderer> m_Gui;
 		LayerStack m_Layers;
-		std::vector<Layer*> m_FrameLayers;
+		std::vector<Layer*> m_LayersThisFrame;
 		bool m_Running = false;
 		bool m_Minimized = false;
 		FramePacer m_Pacer;
 		bool m_EventArrived = false;
-		double m_LastFrameTime = 0.0;
+		double m_LastFrameStartSeconds = 0.0;
 
 		static Application* s_Instance;
 	};

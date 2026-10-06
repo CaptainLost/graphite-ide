@@ -9,44 +9,59 @@
 #include <vector>
 
 namespace {
+	constexpr const char* kNoIcon = "";
+	constexpr Core::Timestep kOneFrame{0.016f};
+
+	using StartsAs = Core::Panel::StartsAs;
+
+	enum class EventResponse
+	{
+		PassOn,
+		Consume
+	};
+
 	class CountingPanel final : public Core::Panel
 	{
 	public:
 		CountingPanel(std::string id, std::string title, std::string menuGroup = "tools",
-					  bool visible = true)
-			: Core::Panel(std::move(id), std::move(title), std::move(menuGroup), "", visible)
+					  StartsAs initialVisibility = StartsAs::Visible)
+			: Core::Panel(std::move(id), std::move(title), std::move(menuGroup), kNoIcon, initialVisibility)
 		{
 		}
 
-		void OnUpdate(Core::Timestep) override { ++updates; }
+		void OnUpdate(Core::Timestep) override { ++updatesReceived; }
 
-		int updates = 0;
+		int updatesReceived = 0;
 	};
 
-	// Counts what reaches it and can be told to consume, which is the whole contract a panel
-	// has with the event walk.
 	class ListeningPanel final : public Core::Panel
 	{
 	public:
-		ListeningPanel(std::string id, bool consume)
-			: Core::Panel(std::move(id), "Panel", "tools", ""), m_Consume(consume)
+		ListeningPanel(std::string id, EventResponse response)
+			: Core::Panel(std::move(id), "Panel", "tools", kNoIcon), m_Response(response)
 		{
 		}
 
 		void OnEvent(Core::Event& event) override
 		{
-			++seen;
-			event.Handled = m_Consume;
+			++eventsReceived;
+			event.Handled = m_Response == EventResponse::Consume;
 		}
 
-		int seen = 0;
+		int eventsReceived = 0;
 
 	private:
-		bool m_Consume = false;
+		EventResponse m_Response = EventResponse::PassOn;
 	};
 
-	// Written out rather than declared with the EVENT_CLASS_* macros: those name EventType
-	// unqualified, which only resolves inside namespace Core.
+	class IconPanel final : public Core::Panel
+	{
+	public:
+		IconPanel() : Core::Panel("terminal", "Terminal", "tools", "*") {}
+	};
+
+	// Written out because CORE_EVENT_CLASS_TYPE names EventType unqualified, which resolves
+	// only inside namespace Core.
 	class TestEvent final : public Core::Event
 	{
 	public:
@@ -70,8 +85,7 @@ TEST_CASE("Add registers a panel and allows finding it by identifier")
 	CHECK(added->IsVisible());
 }
 
-// The owner keeps a typed handle to a panel it added without casting the base pointer back down.
-TEST_CASE("Add hands back the panel as the type it was given")
+TEST_CASE("Add hands back the panel as the type it was given so its owner need not cast the base pointer down")
 {
 	Core::PanelManager panels;
 
@@ -82,7 +96,7 @@ TEST_CASE("Add hands back the panel as the type it was given")
 	CHECK(panels.Find("console") == added);
 }
 
-TEST_CASE("Add rejects a duplicate identifier")
+TEST_CASE("Add rejects a duplicate identifier and keeps the panel already there")
 {
 	Core::PanelManager panels;
 	panels.Add(std::make_unique<CountingPanel>("console", "Console"));
@@ -91,6 +105,10 @@ TEST_CASE("Add rejects a duplicate identifier")
 
 	CHECK(duplicate == nullptr);
 	CHECK(panels.GetCount() == 1);
+
+	const Core::Panel* kept = panels.Find("console");
+	REQUIRE(kept != nullptr);
+	CHECK(kept->GetTitle() == "Console");
 }
 
 TEST_CASE("Find returns nullptr for an unknown identifier")
@@ -103,26 +121,24 @@ TEST_CASE("Find returns nullptr for an unknown identifier")
 TEST_CASE("SetVisible changes visibility and signals an unknown identifier")
 {
 	Core::PanelManager panels;
-	Core::Panel* panel = panels.Add(std::make_unique<CountingPanel>("files", "Files"));
+	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Files"));
 
 	CHECK(panels.SetVisible("files", false));
-	CHECK_FALSE(panel->IsVisible());
+	CHECK_FALSE(files->IsVisible());
 	CHECK_FALSE(panels.SetVisible("missing", true));
 }
 
 TEST_CASE("OnUpdate reaches all panels, including hidden ones")
 {
 	Core::PanelManager panels;
-	auto* visible = static_cast<CountingPanel*>(
-		panels.Add(std::make_unique<CountingPanel>("a", "A")));
-	auto* hidden = static_cast<CountingPanel*>(
-		panels.Add(std::make_unique<CountingPanel>("b", "B")));
-	hidden->SetVisible(false);
+	CountingPanel* visiblePanel = panels.Add(std::make_unique<CountingPanel>("a", "A"));
+	CountingPanel* hiddenPanel = panels.Add(std::make_unique<CountingPanel>("b", "B"));
+	hiddenPanel->SetVisible(false);
 
-	panels.OnUpdate(Core::Timestep{0.016f});
+	panels.OnUpdate(kOneFrame);
 
-	CHECK(visible->updates == 1);
-	CHECK(hidden->updates == 1);
+	CHECK(visiblePanel->updatesReceived == 1);
+	CHECK(hiddenPanel->updatesReceived == 1);
 }
 
 TEST_CASE("RegisterCommands gives every panel a command in the panels group")
@@ -134,18 +150,16 @@ TEST_CASE("RegisterCommands gives every panel a command in the panels group")
 
 	panels.RegisterCommands(commands);
 
-	const std::vector<const Core::Command*> members = commands.InGroup("panels.tools");
+	const std::vector<const Core::Command*> toolsCommands = commands.InGroup("panels.tools");
 
-	REQUIRE(members.size() == 2);
-	CHECK(members[0]->Id == "panel.files");
-	CHECK(members[0]->Label == "Explorer");
-	CHECK(members[1]->Id == "panel.console");
+	REQUIRE(toolsCommands.size() == 2);
+	CHECK(toolsCommands[0]->Id == "panel.files");
+	CHECK(toolsCommands[0]->Label == "Explorer");
+	CHECK(toolsCommands[1]->Id == "panel.console");
 }
 
-TEST_CASE("A panel's command lands in the menu group the panel names")
+TEST_CASE("A panel's command lands in the menu group the panel names which decides its section of the menu")
 {
-	// The menu draws one section per group, so this is what decides where a panel appears
-	// in it - not the order the panels were added in.
 	Core::PanelManager panels;
 	Core::CommandRegistry commands;
 	panels.Add(std::make_unique<CountingPanel>("files", "Explorer", "navigate"));
@@ -153,20 +167,20 @@ TEST_CASE("A panel's command lands in the menu group the panel names")
 
 	panels.RegisterCommands(commands);
 
-	const std::vector<const Core::Command*> navigate = commands.InGroup("panels.navigate");
-	const std::vector<const Core::Command*> tools = commands.InGroup("panels.tools");
+	const std::vector<const Core::Command*> navigateCommands = commands.InGroup("panels.navigate");
+	const std::vector<const Core::Command*> toolsCommands = commands.InGroup("panels.tools");
 
-	REQUIRE(navigate.size() == 1);
-	CHECK(navigate[0]->Id == "panel.files");
-	REQUIRE(tools.size() == 1);
-	CHECK(tools[0]->Id == "panel.console");
+	REQUIRE(navigateCommands.size() == 1);
+	CHECK(navigateCommands[0]->Id == "panel.files");
+	REQUIRE(toolsCommands.size() == 1);
+	CHECK(toolsCommands[0]->Id == "panel.console");
 }
 
 TEST_CASE("A panel's command opens a hidden panel, asks for focus and reports its state")
 {
 	Core::PanelManager panels;
 	Core::CommandRegistry commands;
-	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer", "tools", false));
+	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer", "tools", StartsAs::Hidden));
 	panels.RegisterCommands(commands);
 
 	REQUIRE_FALSE(commands.Find("panel.files")->Checked());
@@ -178,10 +192,8 @@ TEST_CASE("A panel's command opens a hidden panel, asks for focus and reports it
 	CHECK(files->ConsumeFocusRequest());
 }
 
-TEST_CASE("A panel's command leaves an open panel open and brings it forward")
+TEST_CASE("A panel's command leaves an open panel open and brings it forward rather than toggling so the click meant to find a buried panel does not close it")
 {
-	// The menu is where a buried panel is gone looking for; were the command a toggle, the
-	// click meant to find a panel behind another tab would close it instead.
 	Core::PanelManager panels;
 	Core::CommandRegistry commands;
 	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
@@ -198,20 +210,18 @@ TEST_CASE("A panel's command leaves an open panel open and brings it forward")
 
 TEST_CASE("A focus request is consumed once")
 {
-	CountingPanel panel("files", "Explorer");
+	CountingPanel files("files", "Explorer");
 
-	CHECK_FALSE(panel.ConsumeFocusRequest());
+	CHECK_FALSE(files.ConsumeFocusRequest());
 
-	panel.RequestFocus();
+	files.RequestFocus();
 
-	CHECK(panel.ConsumeFocusRequest());
-	CHECK_FALSE(panel.ConsumeFocusRequest());
+	CHECK(files.ConsumeFocusRequest());
+	CHECK_FALSE(files.ConsumeFocusRequest());
 }
 
-TEST_CASE("A panel added after RegisterCommands still gets its command")
+TEST_CASE("A panel added after RegisterCommands still gets its command so OnAttach may add panels and register commands in either order")
 {
-	// Panels are added in OnAttach and commands are registered there too; the order of
-	// those two calls should not be a trap for whoever edits OnAttach next.
 	Core::PanelManager panels;
 	Core::CommandRegistry commands;
 	panels.RegisterCommands(commands);
@@ -221,97 +231,75 @@ TEST_CASE("A panel added after RegisterCommands still gets its command")
 	REQUIRE(commands.Find("panel.files") != nullptr);
 }
 
-TEST_CASE("An event reaches only the panels that drew")
+TEST_CASE("An event reaches only the panels that drew so a shortcut capture behind another tab cannot swallow every keystroke")
 {
-	// A panel behind another tab of the same dock node is not on screen for the user to have
-	// aimed at. Were it given the event anyway, a shortcut capture left waiting on a hidden
-	// screen would swallow every keystroke in the application with nothing on screen to
-	// explain it.
 	Core::PanelManager panels;
-	auto* drawn = static_cast<ListeningPanel*>(panels.Add(std::make_unique<ListeningPanel>("files", false)));
-	auto* hidden =
-		static_cast<ListeningPanel*>(panels.Add(std::make_unique<ListeningPanel>("keybindings", false)));
+	ListeningPanel* drawnPanel = panels.Add(std::make_unique<ListeningPanel>("files", EventResponse::PassOn));
+	ListeningPanel* hiddenPanel = panels.Add(std::make_unique<ListeningPanel>("keybindings", EventResponse::PassOn));
 
-	drawn->SetWasDrawn(true);
-	hidden->SetWasDrawn(false);
+	drawnPanel->SetDrawnOnLatestFrame(true);
+	hiddenPanel->SetDrawnOnLatestFrame(false);
 
 	TestEvent event;
 	panels.OnEvent(event);
 
-	CHECK(drawn->seen == 1);
-	CHECK(hidden->seen == 0);
+	CHECK(drawnPanel->eventsReceived == 1);
+	CHECK(hiddenPanel->eventsReceived == 0);
 }
 
-TEST_CASE("A panel that consumes an event stops it reaching the rest")
+TEST_CASE("A panel that consumes an event stops it reaching the rest because a panel recording a chord must keep the keystroke from the shortcut router")
 {
-	// What replaces asking every panel whether it is capturing: the panel recording a chord
-	// simply takes the keystroke, and nothing below — the shortcut router included — sees it.
 	Core::PanelManager panels;
-	auto* first = static_cast<ListeningPanel*>(panels.Add(std::make_unique<ListeningPanel>("first", true)));
-	auto* second =
-		static_cast<ListeningPanel*>(panels.Add(std::make_unique<ListeningPanel>("second", false)));
+	ListeningPanel* consumingPanel = panels.Add(std::make_unique<ListeningPanel>("first", EventResponse::Consume));
+	ListeningPanel* laterPanel = panels.Add(std::make_unique<ListeningPanel>("second", EventResponse::PassOn));
 
-	first->SetWasDrawn(true);
-	second->SetWasDrawn(true);
+	consumingPanel->SetDrawnOnLatestFrame(true);
+	laterPanel->SetDrawnOnLatestFrame(true);
 
 	TestEvent event;
 	panels.OnEvent(event);
 
-	CHECK(first->seen == 1);
-	CHECK(second->seen == 0);
+	CHECK(consumingPanel->eventsReceived == 1);
+	CHECK(laterPanel->eventsReceived == 0);
 	CHECK(event.Handled);
 }
 
-TEST_CASE("A panel starts out not drawn")
+TEST_CASE("A panel starts out not drawn because events arrive before the first frame is drawn")
 {
-	// Events arrive before the first frame is drawn. A panel that claimed to have been on
-	// screen before it ever was would answer a keystroke aimed at nothing.
 	Core::PanelManager panels;
 	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
 
-	CHECK_FALSE(files->HasBeenDrawn());
+	CHECK_FALSE(files->HasBeenDrawnOnLatestFrame());
 }
 
-TEST_CASE("ResetVisibility restores each panel's own default, not everything visible")
+TEST_CASE("ResetVisibility restores each panel's own default so Reset Layout does not open a panel that starts hidden")
 {
-	// A panel that starts hidden — a settings screen — must not be revealed by Reset
-	// Layout, which nobody asked to open it.
 	Core::PanelManager panels;
 	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
-	Core::Panel* keys = panels.Add(std::make_unique<CountingPanel>("keybindings", "Keyboard Shortcuts", "tools", false));
+	Core::Panel* keyboardShortcuts = panels.Add(std::make_unique<CountingPanel>("keybindings", "Keyboard Shortcuts", "tools", StartsAs::Hidden));
 
 	REQUIRE(files->IsVisible());
-	REQUIRE_FALSE(keys->IsVisible());
+	REQUIRE_FALSE(keyboardShortcuts->IsVisible());
 
 	files->SetVisible(false);
-	keys->SetVisible(true);
+	keyboardShortcuts->SetVisible(true);
 	panels.ResetVisibility();
 
 	CHECK(files->IsVisible());
-	CHECK_FALSE(keys->IsVisible());
+	CHECK_FALSE(keyboardShortcuts->IsVisible());
 }
 
 TEST_CASE("A panel's window name shows its icon before the title and keeps its id stable")
 {
-	CountingPanel plain("console", "Console");
-	CHECK(plain.GetWindowName() == "Console###console");
+	CountingPanel consoleWithoutIcon("console", "Console");
+	CHECK(consoleWithoutIcon.GetWindowName() == "Console###console");
 
-	class IconPanel final : public Core::Panel
-	{
-	public:
-		IconPanel() : Core::Panel("terminal", "Terminal", "tools", "*") {}
-	} withIcon;
-	CHECK(withIcon.GetWindowName() == "*  Terminal###terminal");
+	IconPanel terminalWithIcon;
+	CHECK(terminalWithIcon.GetWindowName() == "*  Terminal###terminal");
 }
 
 TEST_CASE("A panel's command carries the panel's icon for the menu to draw")
 {
-	class IconPanel final : public Core::Panel
-	{
-	public:
-		IconPanel() : Core::Panel("terminal", "Terminal", "tools", "*") {}
-	};
-
 	Core::PanelManager panels;
 	Core::CommandRegistry commands;
 	panels.Add(std::make_unique<IconPanel>());
@@ -319,12 +307,12 @@ TEST_CASE("A panel's command carries the panel's icon for the menu to draw")
 
 	panels.RegisterCommands(commands);
 
-	const std::vector<const Core::Command*> members = commands.InGroup("panels.tools");
+	const std::vector<const Core::Command*> toolsCommands = commands.InGroup("panels.tools");
 
-	REQUIRE(members.size() == 2);
-	CHECK(members[0]->Icon == "*");
-	CHECK(members[0]->Label == "Terminal");
-	CHECK(members[1]->Icon.empty());
+	REQUIRE(toolsCommands.size() == 2);
+	CHECK(toolsCommands[0]->Icon == "*");
+	CHECK(toolsCommands[0]->Label == "Terminal");
+	CHECK(toolsCommands[1]->Icon.empty());
 }
 
 TEST_CASE("A panel's command keeps its short menu label and says what it does in a list")
@@ -346,10 +334,10 @@ TEST_CASE("ForEach visits every panel in the order they were added")
 {
 	Core::PanelManager panels;
 	panels.Add(std::make_unique<CountingPanel>("first", "First"));
-	panels.Add(std::make_unique<CountingPanel>("second", "Second", "tools", false));
+	panels.Add(std::make_unique<CountingPanel>("second", "Second", "tools", StartsAs::Hidden));
 
-	std::vector<std::string> seen;
-	panels.ForEach([&seen](Core::Panel& panel) { seen.push_back(panel.GetId()); });
+	std::vector<std::string> visitedIds;
+	panels.ForEach([&visitedIds](Core::Panel& panel) { visitedIds.push_back(panel.GetId()); });
 
-	CHECK(seen == std::vector<std::string>{"first", "second"});
+	CHECK(visitedIds == std::vector<std::string>{"first", "second"});
 }

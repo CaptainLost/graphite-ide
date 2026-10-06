@@ -30,7 +30,7 @@ namespace Graphite {
 		// The id stays "search" while the title changes: the id is what imgui.ini keys the dock
 		// layout on and what the panel's command is named after, so renaming it would move
 		// everyone's panel back to where it started.
-		: Core::Panel("search", "Find in Files", "navigate", ICON_MDI_TEXT_SEARCH, false), m_Service(service), m_Settings(settings),
+		: Core::Panel("search", "Find in Files", "navigate", ICON_MDI_TEXT_SEARCH, StartsAs::Hidden), m_Service(service), m_Settings(settings),
 		  m_Workspace(workspace), m_Documents(documents), m_Scheme(scheme), m_Editor(editor),
 		  m_Preview(&semantics)
 	{

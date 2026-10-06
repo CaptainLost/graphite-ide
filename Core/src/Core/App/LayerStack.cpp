@@ -17,20 +17,32 @@ namespace Core {
 	{
 		CORE_ASSERT(layer != nullptr, "LayerStack::Push received a null pointer");
 
-		Layer& reference = *layer;
+		Layer& pushedLayer = *layer;
 		m_Layers.push_back(std::move(layer));
-		reference.OnAttach();
-		return reference;
+		pushedLayer.OnAttach();
+		return pushedLayer;
 	}
 
 	void LayerStack::Clear()
 	{
-		// Reverse order: a layer added later may depend on an earlier one.
-		for (auto it = m_Layers.rbegin(); it != m_Layers.rend(); ++it)
+		for (Container::reverse_iterator layerFromTheTop = m_Layers.rbegin(); layerFromTheTop != m_Layers.rend(); ++layerFromTheTop)
 		{
-			(*it)->OnDetach();
+			(*layerFromTheTop)->OnDetach();
 		}
 
 		m_Layers.clear();
+	}
+
+	void LayerStack::OfferEventFromTheTopUntilHandled(Event& event)
+	{
+		for (Container::reverse_iterator layerFromTheTop = m_Layers.rbegin(); layerFromTheTop != m_Layers.rend(); ++layerFromTheTop)
+		{
+			if (event.Handled)
+			{
+				break;
+			}
+
+			(*layerFromTheTop)->OnEvent(event);
+		}
 	}
 }

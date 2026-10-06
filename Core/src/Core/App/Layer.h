@@ -12,27 +12,23 @@ namespace Core {
 	class Layer : NonCopyable
 	{
 	public:
-		explicit Layer(std::string name) : m_DebugName(std::move(name)) {}
+		explicit Layer(std::string name) : m_Name(std::move(name)) {}
 		virtual ~Layer() = default;
 
 		virtual void OnAttach() {}
 		virtual void OnDetach() {}
 		virtual void OnUpdate(Timestep) {}
 		virtual void OnImGuiRender() {}
-
-		// Called as the event arrives, before the frame that produced it draws. Set
-		// event.Handled to stop it reaching the layers below.
 		virtual void OnEvent(Event&) {}
 
-		// Returning true does not by itself close the window: refusing already cleared the
+		// Returning true later does not close the window by itself: refusing already cleared the
 		// flag the loop tests, so a layer that has finished asking must call
-		// Window::RequestClose() itself. A layer that refuses is asked again every frame,
-		// which is what lets a modal draw.
+		// Window::RequestClose() itself.
 		virtual bool OnCloseRequested() { return true; }
 
-		const std::string& GetName() const { return m_DebugName; }
+		const std::string& GetName() const { return m_Name; }
 
 	private:
-		std::string m_DebugName;
+		std::string m_Name;
 	};
 }
