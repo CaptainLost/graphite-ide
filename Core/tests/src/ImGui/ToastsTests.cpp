@@ -360,3 +360,24 @@ TEST_CASE("Toasts::Clear with a group drops only the toasts shown in that group"
 	toasts.Clear();
 	CHECK(toasts.GetStack().Get().empty());
 }
+
+TEST_CASE("Toasts::Show returns the id the stack gave the toast")
+{
+	Core::Toasts toasts;
+	const std::uint64_t shownId = toasts.Show(Core::ToastKind::Error, "Title", "failed");
+
+	REQUIRE(toasts.GetStack().Get().size() == 1);
+	CHECK(shownId == toasts.GetStack().Get()[0].Id);
+}
+
+TEST_CASE("Toasts hands on the departures of the toasts it cleared")
+{
+	Core::Toasts toasts;
+	const std::uint64_t shownId = toasts.Show(Core::ToastKind::Error, "Title", "failed");
+	toasts.Clear();
+
+	const std::vector<Core::ToastDeparture> departures = toasts.TakeDepartures();
+	REQUIRE(departures.size() == 1);
+	CHECK(departures[0].Id == shownId);
+	CHECK(departures[0].Reason == Core::ToastDepartureReason::Cleared);
+}

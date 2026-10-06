@@ -5,6 +5,7 @@
 #include "Core/App/Redraw.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/ToastBorder.h"
+#include "Core/ImGui/ToastStyle.h"
 #include "Core/ImGui/ToastText.h"
 #include "Core/ImGui/UiScale.h"
 
@@ -25,13 +26,9 @@
 namespace Core {
 
 	namespace {
-		// The card's width, which is the window's: wide enough for most of a path inside a
-		// repository on one line.
-		constexpr float kMaxWidth = 460.0f;
 		constexpr float kMaxBodyLines = 8.0f;
 
-		// Between the card and the edge of the work area, and between two cards.
-		constexpr float kMargin = 12.0f;
+		// Between two cards.
 		constexpr float kSpacing = 8.0f;
 
 		// Inside the card: around its contents, between the kind's icon and the text, and
@@ -58,11 +55,6 @@ namespace Core {
 		// countdown would redraw the application several times over for nothing.
 		constexpr std::chrono::duration<double> kCountdownFrameInterval{1.0 / 60.0};
 
-		// The kind's icon: a filled circle in its accent colour with the mark drawn over it in
-		// the surface colour, in strokes this thick.
-		constexpr float kIconDiameter = 24.0f;
-		constexpr float kMarkThickness = 2.0f;
-
 		// How far below its resting place a toast starts as it fades in.
 		constexpr float kRise = 8.0f;
 
@@ -88,70 +80,6 @@ namespace Core {
 		ImVec4 ToImVec4(const Color& color, float alpha = 1.0f)
 		{
 			return ImVec4(color.R, color.G, color.B, color.A * alpha);
-		}
-
-		// How far the message's colour sits from the dim text towards the full one. The dim
-		// colour alone is too faint to read a several-line git message in; the full one would
-		// leave the bold title nothing but its weight to stand apart by.
-		constexpr float kMessageBrightness = 0.85f;
-
-		ImVec4 MessageColour(const ToastPalette& palette)
-		{
-			const Color& from = palette.TextDim;
-			const Color& to = palette.Text;
-			const float t = kMessageBrightness;
-
-			return ImVec4(from.R + (to.R - from.R) * t, from.G + (to.G - from.G) * t,
-						  from.B + (to.B - from.B) * t, from.A + (to.A - from.A) * t);
-		}
-
-		const Color& AccentOf(const ToastPalette& palette, ToastKind kind)
-		{
-			switch (kind)
-			{
-			case ToastKind::Success:
-				return palette.Success;
-			case ToastKind::Warning:
-				return palette.Warning;
-			case ToastKind::Error:
-				break;
-			}
-
-			return palette.Error;
-		}
-
-		// The kind's mark, drawn rather than typed: a glyph from the icon font sits where its
-		// font's metrics put it, which is never quite the circle's centre, and is drawn thin.
-		// Lengths are at 100% and in pixels from the centre, y downwards. Every stroke is a
-		// polyline, never AddLine, which shifts both ends by half a pixel and would put the
-		// cross and the exclamation stem off the circle's centre.
-		void DrawMark(ImDrawList& draw, ToastKind kind, ImVec2 centre, ImU32 colour)
-		{
-			const float thickness = Scaled(kMarkThickness);
-			const auto at = [&](float x, float y) { return ImVec2(centre.x + Scaled(x), centre.y + Scaled(y)); };
-			const auto stroke = [&](ImVec2 from, ImVec2 to) {
-				const ImVec2 points[] = {from, to};
-				draw.AddPolyline(points, 2, colour, thickness, ImDrawFlags_None);
-			};
-
-			switch (kind)
-			{
-			case ToastKind::Success:
-			{
-				const ImVec2 tick[] = {at(-5.0f, 0.0f), at(-1.5f, 3.5f), at(5.0f, -3.5f)};
-				draw.AddPolyline(tick, 3, colour, thickness, ImDrawFlags_None);
-				return;
-			}
-			case ToastKind::Warning:
-				stroke(at(0.0f, -5.0f), at(0.0f, 1.5f));
-				draw.AddCircleFilled(at(0.0f, 4.5f), Scaled(1.2f), colour);
-				return;
-			case ToastKind::Error:
-				break;
-			}
-
-			stroke(at(-5.0f, -5.0f), at(5.0f, 5.0f));
-			stroke(at(-5.0f, 5.0f), at(5.0f, -5.0f));
 		}
 
 		std::vector<ImVec2> ToImVec2s(const std::vector<BorderPoint>& points)
@@ -242,10 +170,10 @@ namespace Core {
 		}
 	}
 
-	void Toasts::Show(ToastKind kind, std::string title, std::string message, std::string copyText,
+	std::uint64_t Toasts::Show(ToastKind kind, std::string title, std::string message, std::string copyText,
 					  std::uint32_t group)
 	{
-		m_Stack.Show(kind, std::move(title), std::move(message), ToastClock::now(), std::move(copyText), group);
+		return m_Stack.Show(kind, std::move(title), std::move(message), ToastClock::now(), std::move(copyText), group);
 	}
 
 	void Toasts::Render(const ToastPalette& palette)
@@ -255,10 +183,10 @@ namespace Core {
 
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		const ImGuiStyle& style = ImGui::GetStyle();
-		const float width = Scaled(kMaxWidth);
+		const float width = ToastCardWidth();
 		const float paddingX = Scaled(kPaddingX);
 		const float paddingY = Scaled(kPaddingY);
-		const float iconDiameter = Scaled(kIconDiameter);
+		const float iconDiameter = ToastIconDiameter();
 		const float buttonWidth = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
 		const float closeWidth = style.ItemSpacing.x + buttonWidth;
 
@@ -292,7 +220,7 @@ namespace Core {
 		// Bottom-up: the newest toast sits lowest, nearest the status bar, and older ones are
 		// pushed up as new ones arrive. Laid out from where each toast rests, never from where
 		// its tween has got to, so a move under way does not shift the toasts above it twice.
-		float bottom = viewport->WorkPos.y + viewport->WorkSize.y - Scaled(kMargin);
+		float bottom = viewport->WorkPos.y + viewport->WorkSize.y - ToastMargin();
 
 		// Copied: SetHovered and Close below change the stack while it is walked.
 		const std::vector<Toast> toasts = m_Stack.Get();
@@ -386,7 +314,7 @@ namespace Core {
 			drawn.insert(toast.Id);
 			moving = moving || std::fabs(restY - targetY) > kSettledEpsilon;
 
-			const float cardX = viewport->WorkPos.x + viewport->WorkSize.x - Scaled(kMargin) - width;
+			const float cardX = viewport->WorkPos.x + viewport->WorkSize.x - ToastMargin() - width;
 			const float cardY = restY + (1.0f - entered) * Scaled(kRise);
 
 			// The window is the card.
@@ -421,9 +349,8 @@ namespace Core {
 				const ImVec2 min = ImGui::GetWindowPos();
 				const ImVec2 max(min.x + width, min.y + height);
 				const float rounding = Scaled(kRounding);
-				const ImVec4 accent = ToImVec4(AccentOf(palette, toast.Kind));
-				const ImVec4 border = ToImVec4(AccentOf(palette, toast.Kind), kBorderAlpha);
-				const ImVec4 drainedBorder = ToImVec4(AccentOf(palette, toast.Kind), kDrainedBorderAlpha);
+				const ImVec4 border = ToImVec4(ToastAccentOf(palette, toast.Kind), kBorderAlpha);
+				const ImVec4 drainedBorder = ToImVec4(ToastAccentOf(palette, toast.Kind), kDrainedBorderAlpha);
 				const ImVec4 surface = ToImVec4(palette.Surface);
 
 				// GetColorU32 multiplies in the toast's fade.
@@ -432,8 +359,7 @@ namespace Core {
 									{.Remaining = ImGui::GetColorU32(border), .Drained = ImGui::GetColorU32(drainedBorder)});
 
 				const ImVec2 iconCentre(min.x + paddingX + iconDiameter * 0.5f, min.y + iconCentreY);
-				draw->AddCircleFilled(iconCentre, iconDiameter * 0.5f, ImGui::GetColorU32(accent));
-				DrawMark(*draw, toast.Kind, iconCentre, ImGui::GetColorU32(surface));
+				DrawToastIcon(*draw, toast.Kind, iconCentre, palette);
 
 				const float rowY = paddingY;
 				const float left = textLeft;
@@ -508,7 +434,7 @@ namespace Core {
 					// on an item rather than on a bare cursor.
 					ImDrawList* const body = ImGui::GetWindowDrawList();
 					const ImVec2 origin = ImGui::GetCursorScreenPos();
-					const ImU32 plainColour = ImGui::GetColorU32(MessageColour(palette));
+					const ImU32 plainColour = ImGui::GetColorU32(ToImVec4(ToastMessageColour(palette)));
 					const ImU32 strongColour = ImGui::GetColorU32(ToImVec4(palette.Text));
 
 					for (std::size_t line = 0; line < lines.size(); ++line)
