@@ -2,6 +2,8 @@
 
 #include "Git/GitStatusText.h"
 
+#include "Core/Base/Color.h"
+
 #include <cstddef>
 #include <filesystem>
 #include <optional>
@@ -58,6 +60,8 @@ namespace Graphite {
 		// GitStatusText's output. Unset when there is nothing to say about git at all — no
 		// folder open, or a head not delivered yet.
 		std::optional<GitStatusSegment> Git;
+
+		std::optional<Core::Color> MissedNotificationColour;
 	};
 
 	// Which piece of the bar was clicked this frame. The bar itself does nothing with a
@@ -66,7 +70,8 @@ namespace Graphite {
 	{
 		None,
 		GitBranch,
-		GitChanges
+		GitChanges,
+		Notifications
 	};
 
 	// `shown` is the document the bar describes - ShownActiveDocument's answer, not the active

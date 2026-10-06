@@ -8,6 +8,8 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <IconsMaterialDesignIcons.h>
+
 #include <string>
 
 namespace Graphite {
@@ -41,14 +43,53 @@ namespace Graphite {
 		// Positioned outright rather than through SameLine, as DrawCentred beside it already is.
 		// SameLine places relative to the item before it, so it silently needs one - and the
 		// server's state is drawn on frames where no document is open and nothing precedes it.
-		void DrawRightAligned(const std::string& text, float barHeight)
+		void DrawRightAligned(const std::string& text, float barHeight, float reservedOnTheRight)
 		{
 			const float width = ImGui::CalcTextSize(text.c_str()).x;
 
 			ImGui::SetCursorPos(
-				ImVec2(ImGui::GetWindowWidth() - width - ImGui::GetStyle().WindowPadding.x,
+				ImVec2(ImGui::GetWindowWidth() - width - ImGui::GetStyle().WindowPadding.x - reservedOnTheRight,
 					   CentredTextY(barHeight)));
 			ImGui::TextUnformatted(text.c_str());
+		}
+
+		constexpr float kDotShareOfFont = 0.18f;
+
+		float BellWidth()
+		{
+			return ImGui::CalcTextSize(ICON_MDI_BELL_OUTLINE).x;
+		}
+
+		ImU32 ToU32(const Core::Color& colour)
+		{
+			return ImGui::GetColorU32(ImVec4(colour.R, colour.G, colour.B, colour.A));
+		}
+
+		// A button rather than a text item, for the reason DrawGitPiece gives.
+		bool DrawNotificationBell(const std::optional<Core::Color>& missedColour, float barHeight)
+		{
+			const ImVec2 glyphSize = ImGui::CalcTextSize(ICON_MDI_BELL_OUTLINE);
+			ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - glyphSize.x - ImGui::GetStyle().WindowPadding.x,
+									   CentredTextY(barHeight)));
+
+			const bool clicked = ImGui::InvisibleButton("##NotificationBell", glyphSize);
+			ImDrawList* const draw = ImGui::GetWindowDrawList();
+			draw->AddText(ImGui::GetItemRectMin(), ImGui::GetColorU32(ImGuiCol_Text), ICON_MDI_BELL_OUTLINE);
+
+			if (missedColour.has_value())
+			{
+				const float dotRadius = ImGui::GetFontSize() * kDotShareOfFont;
+				const ImVec2 dotCentre(ImGui::GetItemRectMax().x - dotRadius, ImGui::GetItemRectMin().y + dotRadius);
+				draw->AddCircleFilled(dotCentre, dotRadius, ToU32(*missedColour));
+			}
+
+			if (ImGui::IsItemHovered())
+			{
+				ImGui::SetTooltip("Notifications");
+				ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+			}
+
+			return clicked;
 		}
 
 		void DrawCentred(const std::string& text, float barHeight)
@@ -284,7 +325,7 @@ namespace Graphite {
 
 		if (!rightAligned.empty())
 		{
-			DrawRightAligned(rightAligned, height);
+			DrawRightAligned(rightAligned, height, BellWidth() + ImGui::GetFontSize());
 
 			if (ImGui::IsItemHovered())
 			{
@@ -310,6 +351,11 @@ namespace Graphite {
 					ImGui::SetTooltip("%s", tooltip.c_str());
 				}
 			}
+		}
+
+		if (DrawNotificationBell(messages.MissedNotificationColour, height))
+		{
+			clicked = StatusBarClick::Notifications;
 		}
 
 		// A transient message outranks a running search: it answers something the user just did

@@ -868,6 +868,9 @@ namespace Graphite {
 			RevealPanel("changes");
 			break;
 
+		case StatusBarClick::Notifications:
+			break;
+
 		case StatusBarClick::None:
 			break;
 		}
