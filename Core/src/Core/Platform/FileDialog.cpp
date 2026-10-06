@@ -17,20 +17,30 @@ namespace Core {
 
 #ifdef CORE_PLATFORM_WINDOWS
 	namespace {
+		constexpr std::size_t kStringsPerFilter = 2;
+		constexpr UINT kFirstFilterCountingFromOne = 1;
+
+		// No owner window: AsyncDialog runs the pickers on a thread of their own, and an owner on
+		// another thread would share its input queue with the dialog's and stall along with it.
+		constexpr HWND kNoOwnerWindow = nullptr;
+
 		class ComGuard
 		{
 		public:
 			ComGuard()
 			{
-				const HRESULT result = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED |
-																	 COINIT_DISABLE_OLE1DDE);
-				m_Owned = SUCCEEDED(result);
-				m_Ok = m_Owned || result == RPC_E_CHANGED_MODE;
+				const HRESULT initialiseStatus = ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED |
+																			   COINIT_DISABLE_OLE1DDE);
+				const bool runsInTheOtherApartmentModel = initialiseStatus == RPC_E_CHANGED_MODE;
+
+				// S_FALSE, COM already initialised on this thread, is a success too and still needs its CoUninitialize.
+				m_MustUninitialise = SUCCEEDED(initialiseStatus);
+				m_Usable = m_MustUninitialise || runsInTheOtherApartmentModel;
 			}
 
 			~ComGuard()
 			{
-				if (m_Owned)
+				if (m_MustUninitialise)
 				{
 					::CoUninitialize();
 				}
@@ -39,11 +49,11 @@ namespace Core {
 			ComGuard(const ComGuard&) = delete;
 			ComGuard& operator=(const ComGuard&) = delete;
 
-			bool Ok() const { return m_Ok; }
+			bool IsUsable() const { return m_Usable; }
 
 		private:
-			bool m_Owned = false;
-			bool m_Ok = false;
+			bool m_MustUninitialise = false;
+			bool m_Usable = false;
 		};
 
 		std::wstring Widen(const std::string& text)
@@ -61,8 +71,6 @@ namespace Core {
 			return wide;
 		}
 
-		// Owners for what the dialog hands out, so every return - and a throw from a vector or a
-		// string between them - releases it.
 		struct ComRelease
 		{
 			void operator()(IUnknown* object) const { object->Release(); }
@@ -73,56 +81,72 @@ namespace Core {
 			void operator()(wchar_t* text) const { ::CoTaskMemFree(text); }
 		};
 
-		template<typename Interface>
-		using ComOwner = std::unique_ptr<Interface, ComRelease>;
+		using DialogOwner = std::unique_ptr<IFileOpenDialog, ComRelease>;
+		using ShellItemOwner = std::unique_ptr<IShellItem, ComRelease>;
+		using CoTaskTextOwner = std::unique_ptr<wchar_t, CoTaskMemDelete>;
 
-		// Both pickers: one dialog, configured by `options`, offering `filters` if any. `noun`
-		// names what is picked in the messages. An empty path when the user cancels.
-		Result<std::filesystem::path> Pick(FILEOPENDIALOGOPTIONS options, const std::string& title,
-										   const std::vector<FileDialog::Filter>& filters, const std::string& noun)
+		HRESULT AddOptions(IFileOpenDialog& dialog, FILEOPENDIALOGOPTIONS addedOptions)
 		{
-			const ComGuard com;
-			if (!com.Ok())
+			DWORD currentOptions = 0;
+			const HRESULT readStatus = dialog.GetOptions(&currentOptions);
+
+			if (FAILED(readStatus))
 			{
-				return Error{ErrorCode::Unsupported, "COM initialisation failed"};
+				return readStatus;
 			}
 
-			IFileOpenDialog* created = nullptr;
-			if (FAILED(::CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&created))) ||
-				created == nullptr)
+			return dialog.SetOptions(currentOptions | addedOptions);
+		}
+
+		Result<std::filesystem::path> PickWithOpenDialog(FILEOPENDIALOGOPTIONS pickerOptions, const std::string& title,
+														 const std::vector<FileDialog::Filter>& filters, const std::string& whatIsPicked)
+		{
+			const ComGuard comGuard;
+			if (!comGuard.IsUsable())
 			{
-				return Error{ErrorCode::Unsupported, "cannot create the system " + noun + " dialog"};
+				return Error{.Code = ErrorCode::Unsupported, .Message = "COM initialisation failed"};
 			}
 
-			const ComOwner<IFileOpenDialog> dialog{created};
+			IFileOpenDialog* createdDialog = nullptr;
+			const HRESULT createStatus = ::CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&createdDialog));
 
-			DWORD current = 0;
-			if (FAILED(dialog->GetOptions(&current)) || FAILED(dialog->SetOptions(current | options)))
+			if (FAILED(createStatus) || createdDialog == nullptr)
 			{
-				return Error{ErrorCode::Unsupported, "cannot configure the dialog as a " + noun + " picker"};
+				return Error{.Code = ErrorCode::Unsupported, .Message = "cannot create the system " + whatIsPicked + " dialog"};
 			}
 
-			// The COMDLG_FILTERSPEC entries below hold raw pointers into these strings, and moving
-			// a short wstring copies its buffer inline, so the reserve is load-bearing rather than
-			// a performance hint: exactly one push_back per reserved slot, and no reallocation.
-			std::vector<std::wstring> storage;
-			storage.reserve(filters.size() * 2);
+			const DialogOwner dialog{createdDialog};
 
-			std::vector<COMDLG_FILTERSPEC> specs;
-			specs.reserve(filters.size());
+			const HRESULT configureStatus = AddOptions(*dialog, pickerOptions);
+
+			if (FAILED(configureStatus))
+			{
+				return Error{.Code = ErrorCode::Unsupported, .Message = "cannot configure the dialog as a " + whatIsPicked + " picker"};
+			}
+
+			// Each COMDLG_FILTERSPEC holds raw pointers into these strings, and a short wstring keeps
+			// its characters inside itself, where a reallocation would move them. So the reserve is
+			// load-bearing: exactly one push_back per reserved slot, and no reallocation.
+			std::vector<std::wstring> filterStrings;
+			filterStrings.reserve(filters.size() * kStringsPerFilter);
+
+			std::vector<COMDLG_FILTERSPEC> filterSpecs;
+			filterSpecs.reserve(filters.size());
 
 			for (const FileDialog::Filter& filter : filters)
 			{
-				storage.push_back(Widen(filter.Label));
-				storage.push_back(Widen(filter.Pattern));
+				filterStrings.push_back(Widen(filter.Label));
+				filterStrings.push_back(Widen(filter.Pattern));
 
-				specs.push_back(COMDLG_FILTERSPEC{storage[storage.size() - 2].c_str(), storage.back().c_str()});
+				const std::wstring& label = filterStrings[filterStrings.size() - kStringsPerFilter];
+				const std::wstring& pattern = filterStrings.back();
+				filterSpecs.push_back(COMDLG_FILTERSPEC{.pszName = label.c_str(), .pszSpec = pattern.c_str()});
 			}
 
-			if (!specs.empty())
+			if (!filterSpecs.empty())
 			{
-				dialog->SetFileTypes(static_cast<UINT>(specs.size()), specs.data());
-				dialog->SetFileTypeIndex(1);
+				dialog->SetFileTypes(static_cast<UINT>(filterSpecs.size()), filterSpecs.data());
+				dialog->SetFileTypeIndex(kFirstFilterCountingFromOne);
 			}
 
 			const std::wstring wideTitle = Widen(title);
@@ -131,38 +155,43 @@ namespace Core {
 				dialog->SetTitle(wideTitle.c_str());
 			}
 
-			const HRESULT shown = dialog->Show(nullptr);
+			const HRESULT showStatus = dialog->Show(kNoOwnerWindow);
+			const bool userCancelled = showStatus == HRESULT_FROM_WIN32(ERROR_CANCELLED);
 
-			if (shown == HRESULT_FROM_WIN32(ERROR_CANCELLED))
+			if (userCancelled)
 			{
 				return std::filesystem::path{};
 			}
 
-			if (FAILED(shown))
+			if (FAILED(showStatus))
 			{
-				return Error{ErrorCode::IoFailure, "the " + noun + " dialog failed"};
+				return Error{.Code = ErrorCode::IoFailure, .Message = "the " + whatIsPicked + " dialog failed"};
 			}
 
-			IShellItem* result = nullptr;
-			if (FAILED(dialog->GetResult(&result)) || result == nullptr)
+			IShellItem* createdSelection = nullptr;
+			const HRESULT resultStatus = dialog->GetResult(&createdSelection);
+
+			if (FAILED(resultStatus) || createdSelection == nullptr)
 			{
-				return Error{ErrorCode::IoFailure, "the " + noun + " dialog returned no selection"};
+				return Error{.Code = ErrorCode::IoFailure, .Message = "the " + whatIsPicked + " dialog returned no selection"};
 			}
 
-			const ComOwner<IShellItem> item{result};
+			const ShellItemOwner selection{createdSelection};
 
-			PWSTR name = nullptr;
-			if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &name)) || name == nullptr)
+			PWSTR createdPathText = nullptr;
+			const HRESULT nameStatus = selection->GetDisplayName(SIGDN_FILESYSPATH, &createdPathText);
+
+			if (FAILED(nameStatus) || createdPathText == nullptr)
 			{
-				return Error{ErrorCode::IoFailure, "the selected item has no filesystem path"};
+				return Error{.Code = ErrorCode::IoFailure, .Message = "the selected item has no filesystem path"};
 			}
 
-			const std::unique_ptr<wchar_t, CoTaskMemDelete> selected{name};
-			std::filesystem::path picked{selected.get()};
+			const CoTaskTextOwner selectedPathText{createdPathText};
+			std::filesystem::path picked{selectedPathText.get()};
 
 			if (picked.empty())
 			{
-				return Error{ErrorCode::IoFailure, "the selected item has no filesystem path"};
+				return Error{.Code = ErrorCode::IoFailure, .Message = "the selected item has no filesystem path"};
 			}
 
 			return picked;
@@ -173,10 +202,11 @@ namespace Core {
 	Result<std::filesystem::path> FileDialog::PickFolder([[maybe_unused]] const std::string& title)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		return Pick(FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST, title, {}, "folder");
+		const std::vector<Filter> noFilters;
+		return PickWithOpenDialog(FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST, title, noFilters, "folder");
 #else
-		return Error{ErrorCode::Unsupported,
-					 "a native folder picker is not implemented on this platform"};
+		return Error{.Code = ErrorCode::Unsupported,
+					 .Message = "a native folder picker is not implemented on this platform"};
 #endif
 	}
 
@@ -184,10 +214,10 @@ namespace Core {
 													   [[maybe_unused]] const std::vector<Filter>& filters)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		return Pick(FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST, title, filters, "file");
+		return PickWithOpenDialog(FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST | FOS_FILEMUSTEXIST, title, filters, "file");
 #else
-		return Error{ErrorCode::Unsupported,
-					 "a native file picker is not implemented on this platform"};
+		return Error{.Code = ErrorCode::Unsupported,
+					 .Message = "a native file picker is not implemented on this platform"};
 #endif
 	}
 }

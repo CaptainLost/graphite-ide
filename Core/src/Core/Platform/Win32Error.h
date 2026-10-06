@@ -1,7 +1,6 @@
 #pragma once
 
-// Private to Core's .cpp files: never include this from a public header, because it
-// pulls in <windows.h>.
+// Private to Core's .cpp files: it pulls in <windows.h>, so a public header must never include it.
 
 #ifdef CORE_PLATFORM_WINDOWS
 
@@ -11,12 +10,9 @@
 
 namespace Core {
 
-	// The one mapping from a Win32 error to an ErrorCode. A sharing violation counts as
-	// AccessDenied: from the caller's side another process holding the file is a refusal
-	// to let this one touch it, and retrying immediately will not help.
-	inline ErrorCode ErrorCodeFromWin32(DWORD error)
+	inline ErrorCode ErrorCodeFromWin32(DWORD win32ErrorCode)
 	{
-		switch (error)
+		switch (win32ErrorCode)
 		{
 		case ERROR_ACCESS_DENIED:
 		case ERROR_SHARING_VIOLATION:

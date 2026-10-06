@@ -8,16 +8,24 @@
 #include <utility>
 
 namespace {
+	constexpr BOOL kManualReset = TRUE;
+	constexpr BOOL kInitialStateUnsignalled = FALSE;
+
+	HANDLE CreateUnnamedEvent()
+	{
+		return ::CreateEventW(nullptr, kManualReset, kInitialStateUnsignalled, nullptr);
+	}
+
 	bool IsOpen(HANDLE handle)
 	{
-		DWORD flags = 0;
-		return ::GetHandleInformation(handle, &flags) != FALSE;
+		DWORD handleFlags = 0;
+		return ::GetHandleInformation(handle, &handleFlags) != FALSE;
 	}
 }
 
 TEST_CASE("UniqueHandle closes what it owns when it goes")
 {
-	const HANDLE event = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+	const HANDLE event = CreateUnnamedEvent();
 	REQUIRE(event != nullptr);
 
 	{
@@ -30,21 +38,20 @@ TEST_CASE("UniqueHandle closes what it owns when it goes")
 
 TEST_CASE("UniqueHandle hands ownership on when moved, and closes it once")
 {
-	const HANDLE event = ::CreateEventW(nullptr, TRUE, FALSE, nullptr);
+	const HANDLE event = CreateUnnamedEvent();
 	REQUIRE(event != nullptr);
 
-	Core::UniqueHandle first{event};
-	Core::UniqueHandle second = std::move(first);
+	Core::UniqueHandle movedFrom{event};
+	Core::UniqueHandle movedTo = std::move(movedFrom);
 
-	CHECK_FALSE(first);
-	CHECK(second.Get() == event);
+	CHECK_FALSE(movedFrom);
+	CHECK(movedTo.Get() == event);
 
-	second.Reset();
+	movedTo.Reset();
 	CHECK_FALSE(IsOpen(event));
 }
 
-// The Win32 calls disagree about which of the two they return on failure.
-TEST_CASE("UniqueHandle owns nothing for null or INVALID_HANDLE_VALUE")
+TEST_CASE("UniqueHandle owns nothing for null or INVALID_HANDLE_VALUE since the Win32 calls disagree about which of the two reports a failure")
 {
 	CHECK_FALSE(Core::UniqueHandle{nullptr});
 	CHECK_FALSE(Core::UniqueHandle{INVALID_HANDLE_VALUE});

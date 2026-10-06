@@ -13,12 +13,11 @@ namespace Core {
 		std::vector<std::string> Arguments;
 	};
 
-	// What is installed on this machine, in the order a terminal should offer it: the most
-	// capable shell first, so opening a terminal without choosing gives the best default.
-	// A shell that is not installed is simply absent — this reports, it does not fail.
+	// The order is a preference, most capable first: a terminal opened without a choice takes the
+	// first shell.
 	std::vector<ShellProfile> DiscoverShells();
 
-	// The first directory on PATH holding `executableName`, joined to it; empty when none
-	// does. The name must carry its extension: this does not try PATHEXT.
-	std::filesystem::path FindOnPath(const std::string& executableName);
+	// Empty when no PATH entry holds the file. PATHEXT is not tried, so the name must carry its
+	// extension.
+	std::filesystem::path FindOnPath(const std::string& executableFileName);
 }

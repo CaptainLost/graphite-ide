@@ -28,8 +28,7 @@ namespace Core {
 
 		Color BorderColor;
 
-		// Where to put the window, when there is somewhere it was before. Empty means the
-		// platform's default position at Width x Height.
+		// Empty opens the window at Width x Height in the platform's default position.
 		std::optional<WindowPlacement> Placement;
 	};
 
@@ -38,15 +37,15 @@ namespace Core {
 	public:
 		virtual ~Window() = default;
 
-		// Called as each event arrives, from inside PollEvents. Install it before the first
-		// poll: events produced before there is a callback are dropped, not queued.
-		using EventCallbackFn = std::function<void(Event&)>;
-		virtual void SetEventCallback(EventCallbackFn callback) = 0;
+		// Runs inside PollEvents as each event arrives. Events that arrive before there is a
+		// callback are dropped, not queued, so it is set before the first poll.
+		using EventCallback = std::function<void(Event&)>;
+		virtual void SetEventCallback(EventCallback callback) = 0;
 
 		virtual void PollEvents() = 0;
 
-		// PollEvents, but first sleeps until an event arrives, Redraw's waker fires, or the
-		// timeout passes — or a millisecond after it, never before.
+		// Sleeps until an event arrives, Redraw's waker fires or the timeout passes, then polls. The
+		// timeout may be overrun by a millisecond but is never cut short.
 		virtual void WaitEvents(double timeoutSeconds) = 0;
 
 		virtual void SwapBuffers() = 0;
@@ -66,11 +65,10 @@ namespace Core {
 		virtual void ToggleMaximize() = 0;
 		virtual bool IsMaximized() const = 0;
 
-		// Whether this window has keyboard focus - this window alone, not the process.
+		// Keyboard focus of this window alone: another window of the same process holding it
+		// answers false.
 		virtual bool IsFocused() const = 0;
 
-		// The window's restored rectangle and whether it is maximized, in the form Placement
-		// takes back. Reported for a maximized window too: the rectangle is the one it returns to.
 		virtual WindowPlacement GetPlacement() const = 0;
 
 		virtual bool HasCustomTitleBar() const = 0;

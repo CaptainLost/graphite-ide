@@ -5,16 +5,13 @@
 
 namespace Core {
 
-	// Owns a Win32 kernel handle and closes it exactly once. Spelled as void*, which is what
-	// HANDLE is, so a public header can hold one without pulling in <windows.h>. Both null and
-	// INVALID_HANDLE_VALUE mean "nothing owned": the Win32 calls that hand handles out disagree
-	// about which of the two they return on failure, and an owner that accepted either would
-	// end up closing a value that was never a handle.
+	// Holds void*, which is what HANDLE is, so a public header can own a handle without pulling in
+	// <windows.h>.
 	class UniqueHandle
 	{
 	public:
 		UniqueHandle() = default;
-		explicit UniqueHandle(void* handle) : m_Handle(Normalise(handle)) {}
+		explicit UniqueHandle(void* handle) : m_Handle(NullIfInvalid(handle)) {}
 
 		UniqueHandle(const UniqueHandle&) = delete;
 		UniqueHandle& operator=(const UniqueHandle&) = delete;
@@ -36,18 +33,22 @@ namespace Core {
 		void* Get() const { return m_Handle; }
 		explicit operator bool() const { return m_Handle != nullptr; }
 
-		// Gives the handle up without closing it; the caller owns it from here.
 		void* Release() { return std::exchange(m_Handle, nullptr); }
 
-		// Closes what is held, then takes ownership of the new handle. Closing overwrites the
-		// thread's last error, so a caller about to report one must read it first.
-		void Reset(void* handle = nullptr);
+		// Closing overwrites the thread's last error, so a caller about to report one must read it
+		// first.
+		void Reset(void* replacement = nullptr);
 
 	private:
-		static void* Normalise(void* handle)
+		static void* InvalidHandleValue() { return reinterpret_cast<void*>(static_cast<std::intptr_t>(-1)); }
+
+		// The Win32 calls that hand out handles disagree about whether null or INVALID_HANDLE_VALUE
+		// reports a failure, so both mean that nothing is owned.
+		static void* NullIfInvalid(void* handle)
 		{
-			// INVALID_HANDLE_VALUE, written out so this header needs no <windows.h>.
-			return handle == reinterpret_cast<void*>(static_cast<std::intptr_t>(-1)) ? nullptr : handle;
+			const bool isInvalidHandleValue = handle == InvalidHandleValue();
+
+			return isInvalidHandleValue ? nullptr : handle;
 		}
 
 		void* m_Handle = nullptr;

@@ -2,62 +2,69 @@
 
 #include "Core/Platform/Caption.h"
 
+#include "Core/Base/Assert.h"
+
 namespace Core {
 
 	namespace {
-		CaptionHit Corner(bool top, bool bottom, bool left, bool right)
+		CaptionHit ResizeEdgeOrCorner(bool onTopEdge, bool onBottomEdge, bool onLeftEdge, bool onRightEdge)
 		{
-			if (top && left)
+			if (onTopEdge && onLeftEdge)
 			{
 				return CaptionHit::TopLeft;
 			}
-			if (top && right)
+			if (onTopEdge && onRightEdge)
 			{
 				return CaptionHit::TopRight;
 			}
-			if (bottom && left)
+			if (onBottomEdge && onLeftEdge)
 			{
 				return CaptionHit::BottomLeft;
 			}
-			if (bottom && right)
+			if (onBottomEdge && onRightEdge)
 			{
 				return CaptionHit::BottomRight;
 			}
-			if (top)
+			if (onTopEdge)
 			{
 				return CaptionHit::Top;
 			}
-			if (bottom)
+			if (onBottomEdge)
 			{
 				return CaptionHit::Bottom;
 			}
-			if (left)
+			if (onLeftEdge)
 			{
 				return CaptionHit::Left;
 			}
 
+			CORE_ASSERT(onRightEdge, "a point on the resize border is on at least one edge");
 			return CaptionHit::Right;
 		}
 	}
 
 	CaptionHit Classify(const CaptionMetrics& metrics, float clientWidth, float clientHeight,
-						float x, float y, bool maximized)
+						float x, float y, WindowState windowState)
 	{
-		if (!maximized)
+		if (windowState == WindowState::Restored)
 		{
-			const bool top = y < metrics.ResizeBorder;
-			const bool bottom = y >= clientHeight - metrics.ResizeBorder;
-			const bool left = x < metrics.ResizeBorder;
-			const bool right = x >= clientWidth - metrics.ResizeBorder;
+			const bool onTopEdge = y < metrics.ResizeBorder;
+			const bool onBottomEdge = y >= clientHeight - metrics.ResizeBorder;
+			const bool onLeftEdge = x < metrics.ResizeBorder;
+			const bool onRightEdge = x >= clientWidth - metrics.ResizeBorder;
+			const bool onAnyEdge = onTopEdge || onBottomEdge || onLeftEdge || onRightEdge;
 
-			if (top || bottom || left || right)
+			if (onAnyEdge)
 			{
-				return Corner(top, bottom, left, right);
+				return ResizeEdgeOrCorner(onTopEdge, onBottomEdge, onLeftEdge, onRightEdge);
 			}
 		}
 
-		if (y < metrics.Height && !metrics.DragSuppressed && x >= metrics.DragBegin &&
-			x < metrics.DragEnd)
+		const bool insideCaptionRow = y < metrics.Height;
+		const bool overFreeSpan = x >= metrics.DragBegin && x < metrics.DragEnd;
+		const bool dragsWindow = insideCaptionRow && !metrics.DragSuppressed && overFreeSpan;
+
+		if (dragsWindow)
 		{
 			return CaptionHit::Caption;
 		}

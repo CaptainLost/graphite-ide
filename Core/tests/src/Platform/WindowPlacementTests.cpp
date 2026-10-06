@@ -9,31 +9,43 @@ using Core::ScreenRect;
 using Core::WindowPlacement;
 
 namespace {
-	// A 1920x1080 primary with a 40-pixel taskbar at the bottom, and a second monitor to its right.
-	const ScreenRect kPrimary{0, 0, 1920, 1040};
-	const ScreenRect kSecond{1920, 0, 3840, 1040};
+	constexpr int kMonitorWidth = 1920;
+	constexpr int kMonitorHeight = 1080;
+	constexpr int kBottomTaskbarHeight = 40;
+
+	const ScreenRect kPrimaryWorkArea{.Left = 0, .Top = 0, .Right = kMonitorWidth, .Bottom = kMonitorHeight - kBottomTaskbarHeight};
+	const ScreenRect kSecondMonitorWorkAreaToTheRight{.Left = kMonitorWidth, .Top = 0, .Right = 2 * kMonitorWidth, .Bottom = kMonitorHeight - kBottomTaskbarHeight};
 }
 
-TEST_CASE("A default window larger than the work area shrinks to 85% of it and is centred")
+TEST_CASE("A default window larger than the work area shrinks to 85% of it to clear the edges and is centred")
 {
-	// 85% of 1920x1040 is 1632x884.
-	const WindowPlacement placement = Core::DefaultPlacement(2400, 1350, kPrimary);
+	const int preferredWidth = 2400;
+	const int preferredHeight = 1350;
+	const int eightyFivePercentOfWorkAreaWidth = 1632;
+	const int eightyFivePercentOfWorkAreaHeight = 884;
 
-	CHECK(placement == WindowPlacement{144, 78, 1632, 884, false});
+	const WindowPlacement placement = Core::DefaultPlacement(preferredWidth, preferredHeight, kPrimaryWorkArea);
+
+	CHECK(placement == WindowPlacement{.X = 144, .Y = 78, .Width = eightyFivePercentOfWorkAreaWidth, .Height = eightyFivePercentOfWorkAreaHeight, .Maximized = false});
 }
 
 TEST_CASE("A default window that fits is left its size and centred")
 {
-	const WindowPlacement placement = Core::DefaultPlacement(1600, 800, kPrimary);
+	const int preferredWidth = 1600;
+	const int preferredHeight = 800;
 
-	CHECK(placement == WindowPlacement{160, 120, 1600, 800, false});
+	const WindowPlacement placement = Core::DefaultPlacement(preferredWidth, preferredHeight, kPrimaryWorkArea);
+
+	CHECK(placement == WindowPlacement{.X = 160, .Y = 120, .Width = 1600, .Height = 800, .Maximized = false});
 }
 
 TEST_CASE("A default window is centred in a work area that does not start at the origin")
 {
-	// A taskbar docked on the left and a monitor to the left of the primary one.
-	const ScreenRect offset{-1000, 60, 600, 1060};
-	const WindowPlacement placement = Core::DefaultPlacement(1600, 900, offset);
+	const ScreenRect workAreaAwayFromOrigin{.Left = -1000, .Top = 60, .Right = 600, .Bottom = 1060};
+	const int preferredWidth = 1600;
+	const int preferredHeight = 900;
+
+	const WindowPlacement placement = Core::DefaultPlacement(preferredWidth, preferredHeight, workAreaAwayFromOrigin);
 
 	CHECK(placement.Width == 1360);
 	CHECK(placement.Height == 850);
@@ -43,70 +55,74 @@ TEST_CASE("A default window is centred in a work area that does not start at the
 
 TEST_CASE("A default window on a tiny work area shrinks with it and stays inside it")
 {
-	const ScreenRect tiny{10, 20, 110, 80};
-	const WindowPlacement placement = Core::DefaultPlacement(1600, 900, tiny);
+	const ScreenRect tinyWorkArea{.Left = 10, .Top = 20, .Right = 110, .Bottom = 80};
+	const int preferredWidth = 1600;
+	const int preferredHeight = 900;
 
-	CHECK(placement == WindowPlacement{10 + (100 - 85) / 2, 20 + (60 - 51) / 2, 85, 51, false});
-	CHECK(placement.X >= tiny.Left);
-	CHECK(placement.X + placement.Width <= tiny.Right);
-	CHECK(placement.Y + placement.Height <= tiny.Bottom);
+	const WindowPlacement placement = Core::DefaultPlacement(preferredWidth, preferredHeight, tinyWorkArea);
+
+	CHECK(placement == WindowPlacement{.X = 10 + (100 - 85) / 2, .Y = 20 + (60 - 51) / 2, .Width = 85, .Height = 51, .Maximized = false});
+	CHECK(placement.X >= tinyWorkArea.Left);
+	CHECK(placement.X + placement.Width <= tinyWorkArea.Right);
+	CHECK(placement.Y + placement.Height <= tinyWorkArea.Bottom);
 }
 
 TEST_CASE("A window inside the primary monitor stays where it was")
 {
-	const std::vector<ScreenRect> areas{kPrimary, kSecond};
-	const WindowPlacement placement{100, 100, 1600, 900, false};
+	const std::vector<ScreenRect> workAreas{kPrimaryWorkArea, kSecondMonitorWorkAreaToTheRight};
+	const WindowPlacement placement{.X = 100, .Y = 100, .Width = 1600, .Height = 900, .Maximized = false};
 
-	CHECK(FitToMonitors(placement, areas, kPrimary) == placement);
+	CHECK(FitToMonitors(placement, workAreas, kPrimaryWorkArea) == placement);
 }
 
 TEST_CASE("A window on the second monitor stays there while that monitor is attached")
 {
-	const std::vector<ScreenRect> areas{kPrimary, kSecond};
-	const WindowPlacement placement{2000, 50, 1600, 900, true};
+	const std::vector<ScreenRect> workAreas{kPrimaryWorkArea, kSecondMonitorWorkAreaToTheRight};
+	const WindowPlacement placement{.X = 2000, .Y = 50, .Width = 1600, .Height = 900, .Maximized = true};
 
-	CHECK(FitToMonitors(placement, areas, kPrimary) == placement);
+	CHECK(FitToMonitors(placement, workAreas, kPrimaryWorkArea) == placement);
 }
 
 TEST_CASE("A window straddling two monitors stays where it was")
 {
-	const std::vector<ScreenRect> areas{kPrimary, kSecond};
-	const WindowPlacement placement{1500, 100, 1000, 700, false};
+	const std::vector<ScreenRect> workAreas{kPrimaryWorkArea, kSecondMonitorWorkAreaToTheRight};
+	const WindowPlacement placement{.X = 1500, .Y = 100, .Width = 1000, .Height = 700, .Maximized = false};
 
-	CHECK(FitToMonitors(placement, areas, kPrimary) == placement);
+	CHECK(FitToMonitors(placement, workAreas, kPrimaryWorkArea) == placement);
 }
 
 TEST_CASE("A window left on a detached monitor is centred on the primary at its own size")
 {
-	const std::vector<ScreenRect> areas{kPrimary};
-	const WindowPlacement placement{2000, 50, 1600, 900, true};
+	const std::vector<ScreenRect> workAreas{kPrimaryWorkArea};
+	const WindowPlacement placement{.X = 2000, .Y = 50, .Width = 1600, .Height = 900, .Maximized = true};
 
-	const WindowPlacement fitted = FitToMonitors(placement, areas, kPrimary);
+	const WindowPlacement fitted = FitToMonitors(placement, workAreas, kPrimaryWorkArea);
 
-	CHECK(fitted == WindowPlacement{160, 70, 1600, 900, true});
+	CHECK(fitted == WindowPlacement{.X = 160, .Y = 70, .Width = 1600, .Height = 900, .Maximized = true});
 }
 
 TEST_CASE("A window larger than the primary is shrunk to fit it when it has to move")
 {
-	const std::vector<ScreenRect> areas{kPrimary};
-	const WindowPlacement placement{-5000, -5000, 2560, 1440, false};
+	const std::vector<ScreenRect> workAreas{kPrimaryWorkArea};
+	const WindowPlacement placement{.X = -5000, .Y = -5000, .Width = 2560, .Height = 1440, .Maximized = false};
 
-	CHECK(FitToMonitors(placement, areas, kPrimary) == WindowPlacement{0, 0, 1920, 1040, false});
+	CHECK(FitToMonitors(placement, workAreas, kPrimaryWorkArea) == WindowPlacement{.X = 0, .Y = 0, .Width = 1920, .Height = 1040, .Maximized = false});
 }
 
 TEST_CASE("A window with only a sliver on screen is brought back, since nobody could grab it")
 {
-	const std::vector<ScreenRect> areas{kPrimary};
-	const WindowPlacement placement{1910, 100, 800, 600, false};
+	const std::vector<ScreenRect> workAreas{kPrimaryWorkArea};
+	const WindowPlacement placement{.X = 1910, .Y = 100, .Width = 800, .Height = 600, .Maximized = false};
 
-	const WindowPlacement fitted = FitToMonitors(placement, areas, kPrimary);
+	const WindowPlacement fitted = FitToMonitors(placement, workAreas, kPrimaryWorkArea);
 
-	CHECK(fitted == WindowPlacement{560, 220, 800, 600, false});
+	CHECK(fitted == WindowPlacement{.X = 560, .Y = 220, .Width = 800, .Height = 600, .Maximized = false});
 }
 
 TEST_CASE("With no monitors reported the window is placed on the primary")
 {
-	const WindowPlacement placement{100, 100, 800, 600, false};
+	const std::vector<ScreenRect> noWorkAreas;
+	const WindowPlacement placement{.X = 100, .Y = 100, .Width = 800, .Height = 600, .Maximized = false};
 
-	CHECK(FitToMonitors(placement, {}, kPrimary) == WindowPlacement{560, 220, 800, 600, false});
+	CHECK(FitToMonitors(placement, noWorkAreas, kPrimaryWorkArea) == WindowPlacement{.X = 560, .Y = 220, .Width = 800, .Height = 600, .Maximized = false});
 }

@@ -11,27 +11,38 @@
 
 namespace {
 
-	// A pseudo-console never reports end-of-output the way a pipe does while the shell is
-	// alive, so a test cannot read to exhaustion. It reads until the text it is waiting for
-	// has arrived, or until it runs out of patience.
-	bool ReadUntil(Core::PseudoConsole& console, std::string_view wanted)
+	using StartedConsole = Core::Result<Core::Scope<Core::PseudoConsole>>;
+
+	constexpr std::uint16_t kColumns = 80;
+	constexpr std::uint16_t kRows = 25;
+	constexpr std::uint16_t kResizedColumns = 100;
+	constexpr std::uint16_t kResizedRows = 30;
+
+	constexpr std::size_t kReadBufferBytes = 512;
+
+	constexpr std::chrono::seconds kPatience{10};
+	constexpr std::chrono::milliseconds kDelayBeforeTerminating{200};
+	constexpr std::chrono::milliseconds kReleasePollInterval{10};
+
+	// A live shell never reports end-of-output, so a test cannot read to exhaustion.
+	bool ReadUntilTextArrives(Core::PseudoConsole& console, std::string_view wantedText)
 	{
-		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-		std::string text;
-		std::array<char, 512> buffer{};
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kPatience;
+		std::string receivedText;
+		std::array<char, kReadBufferBytes> buffer{};
 
 		while (std::chrono::steady_clock::now() < deadline)
 		{
-			const std::size_t read = console.Read(buffer);
+			const std::size_t bytesRead = console.Read(buffer);
 
-			if (read == 0)
+			if (bytesRead == 0)
 			{
 				break;
 			}
 
-			text.append(buffer.data(), read);
+			receivedText.append(buffer.data(), bytesRead);
 
-			if (text.find(wanted) != std::string::npos)
+			if (receivedText.find(wantedText) != std::string::npos)
 			{
 				return true;
 			}
@@ -39,87 +50,94 @@ namespace {
 
 		return false;
 	}
+
+	void ReadUntilReadReturnsZero(Core::PseudoConsole& console)
+	{
+		std::array<char, kReadBufferBytes> buffer{};
+		std::size_t bytesRead = console.Read(buffer);
+
+		while (bytesRead != 0)
+		{
+			bytesRead = console.Read(buffer);
+		}
+	}
 }
 
 TEST_CASE("PseudoConsole runs a command and reads its output")
 {
-	auto console = Core::PseudoConsole::Start("cmd.exe", {"/c", "echo hello"},
-											  std::filesystem::current_path(), 80, 25);
+	const std::vector<std::string> echoHello{"/c", "echo hello"};
+	StartedConsole started = Core::PseudoConsole::Start("cmd.exe", echoHello,
+														std::filesystem::current_path(), kColumns, kRows);
 
-	REQUIRE(console);
-	CHECK(ReadUntil(*console.GetValue(), "hello"));
+	REQUIRE(started);
+	CHECK(ReadUntilTextArrives(*started.GetValue(), "hello"));
 }
 
 TEST_CASE("PseudoConsole writes to the shell's input")
 {
-	auto console = Core::PseudoConsole::Start("cmd.exe", {}, std::filesystem::current_path(),
-											  80, 25);
+	const std::vector<std::string> noArguments;
+	StartedConsole started = Core::PseudoConsole::Start("cmd.exe", noArguments, std::filesystem::current_path(),
+														kColumns, kRows);
 
-	REQUIRE(console);
-	REQUIRE(console.GetValue()->Write("echo written\r\n"));
-	CHECK(ReadUntil(*console.GetValue(), "written"));
+	REQUIRE(started);
+	REQUIRE(started.GetValue()->Write("echo written\r\n"));
+	CHECK(ReadUntilTextArrives(*started.GetValue(), "written"));
 }
 
 TEST_CASE("PseudoConsole resizes a live shell")
 {
-	auto console = Core::PseudoConsole::Start("cmd.exe", {}, std::filesystem::current_path(),
-											  80, 25);
+	const std::vector<std::string> noArguments;
+	StartedConsole started = Core::PseudoConsole::Start("cmd.exe", noArguments, std::filesystem::current_path(),
+														kColumns, kRows);
 
-	REQUIRE(console);
-	CHECK(console.GetValue()->Resize(100, 30));
+	REQUIRE(started);
+	CHECK(started.GetValue()->Resize(kResizedColumns, kResizedRows));
 }
 
 TEST_CASE("PseudoConsole reports a program that does not exist")
 {
-	auto console = Core::PseudoConsole::Start("no-such-program-4b71.exe", {},
-											  std::filesystem::current_path(), 80, 25);
+	const std::vector<std::string> noArguments;
+	StartedConsole started = Core::PseudoConsole::Start("no-such-program-4b71.exe", noArguments,
+														std::filesystem::current_path(), kColumns, kRows);
 
-	REQUIRE_FALSE(console);
-	CHECK(console.GetError().Code == Core::ErrorCode::NotFound);
+	REQUIRE_FALSE(started);
+	CHECK(started.GetError().Code == Core::ErrorCode::NotFound);
 }
 
 TEST_CASE("PseudoConsole terminating the shell releases a thread blocked in Read")
 {
-	auto started = Core::PseudoConsole::Start("cmd.exe", {}, std::filesystem::current_path(),
-											  80, 25);
+	const std::vector<std::string> noArguments;
+	StartedConsole started = Core::PseudoConsole::Start("cmd.exe", noArguments, std::filesystem::current_path(),
+														kColumns, kRows);
 
 	REQUIRE(started);
 
 	Core::PseudoConsole& console = *started.GetValue();
 
-	// Drain the banner and prompt first, so the read below has nothing waiting and genuinely
-	// blocks — otherwise this passes without proving anything.
-	CHECK(ReadUntil(console, ">"));
+	// The banner and prompt are drained first so that the read below finds nothing waiting and
+	// genuinely blocks; otherwise the case passes without proving anything.
+	CHECK(ReadUntilTextArrives(console, ">"));
 
 	std::thread terminator([&console] {
-		std::this_thread::sleep_for(std::chrono::milliseconds(200));
+		std::this_thread::sleep_for(kDelayBeforeTerminating);
 		console.Terminate();
 	});
 
-	// The claim under test is that Read returns zero once the shell is killed, so the loop
-	// itself has to be the thing that is bounded. A deadline checked between iterations would
-	// not do it: the defect this guards against is a single Read that never returns, and it
-	// took out the whole suite by hanging rather than failing. Running the loop on its own
-	// thread and giving the main thread a deadline turns that into one red case in seconds.
-	// The buffer and the flag live with the reader — heap-allocated flag, thread-local buffer —
-	// because on failure that thread is still running when this one leaves the scope.
+	// A single Read that never returns would hang the whole suite, so the reader runs on its own
+	// thread and this one waits with a deadline. The flag is on the heap and the buffer on the
+	// reader's stack, because on failure the reader outlives this scope.
 	auto released = std::make_shared<std::atomic<bool>>(false);
 
 	std::thread reader([&console, released] {
-		std::array<char, 512> buffer{};
-
-		while (console.Read(buffer) != 0)
-		{
-		}
-
+		ReadUntilReadReturnsZero(console);
 		released->store(true);
 	});
 
-	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+	const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kPatience;
 
 	while (!released->load() && std::chrono::steady_clock::now() < deadline)
 	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+		std::this_thread::sleep_for(kReleasePollInterval);
 	}
 
 	CHECK(released->load());
@@ -131,9 +149,8 @@ TEST_CASE("PseudoConsole terminating the shell releases a thread blocked in Read
 	}
 	else
 	{
-		// The reader is still parked inside Read, on a handle this object owns. Destroying the
-		// console would pull that handle out from under a live thread and turn a failed case
-		// into a crash on the way out, so the failing run deliberately leaks it instead.
+		// The reader is still parked inside Read on a handle the console owns, and destroying the
+		// console under it would turn a failed case into a crash on the way out, so it is leaked.
 		reader.detach();
 		(void)started.GetValue().release();
 		return;

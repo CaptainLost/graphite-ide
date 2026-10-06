@@ -12,75 +12,59 @@
 
 namespace Core {
 
-	struct AsyncDialog::Pending
+	struct AsyncDialog::PendingDialog
 	{
 		std::mutex Mutex;
 		std::optional<Result<std::filesystem::path>> Answer;
-
-		// Set by the owner's destructor. Nobody will poll for the answer any more, and the
-		// application may be past main, destroying Redraw's statics.
-		bool Abandoned = false;
+		bool AbandonedByOwner = false;
 	};
 
-	// Detached from the start rather than joined here: joining would block the thread that
-	// draws on a dialog the user has not answered, which is the stall this class exists to
-	// avoid. The thread owns what it touches through the shared Pending, and touches nothing
-	// else once this has run: it asks for a redraw only under Pending's mutex and only while
-	// the dialog is not abandoned, so after this returns it never reaches Redraw.
+	// Does not join the picker's thread: joining would block the thread that draws on a dialog the
+	// user has not answered. That thread asks for a redraw only under the mutex and only while the
+	// dialog is not abandoned, so once this returns it never reaches Redraw, whose statics may
+	// already be gone when the application is past main.
 	AsyncDialog::~AsyncDialog()
 	{
-		if (m_Pending)
+		if (IsOpen())
 		{
-			const std::lock_guard lock(m_Pending->Mutex);
-			m_Pending->Abandoned = true;
+			const std::lock_guard lock(m_PendingDialog->Mutex);
+			m_PendingDialog->AbandonedByOwner = true;
 		}
 	}
 
-	bool AsyncDialog::Start(Picker picker, Done done)
+	bool AsyncDialog::Start(Picker picker, AnswerHandler answerHandler)
 	{
 		if (IsOpen())
 		{
 			return false;
 		}
 
-		auto pending = CreateRef<Pending>();
+		auto pendingDialog = CreateRef<PendingDialog>();
 
-		std::thread([pending, picker = std::move(picker)] {
-			Result<std::filesystem::path> answer = picker();
+		std::thread([pendingDialog, picker = std::move(picker)] { PickAndHandOver(picker, *pendingDialog); }).detach();
 
-			const std::lock_guard lock(pending->Mutex);
-
-			if (pending->Abandoned)
-			{
-				return;
-			}
-
-			pending->Answer.emplace(std::move(answer));
-			Redraw::Request();
-		}).detach();
-
-		m_Pending = std::move(pending);
-		m_Done = std::move(done);
+		m_PendingDialog = std::move(pendingDialog);
+		m_AnswerHandler = std::move(answerHandler);
 
 		return true;
 	}
 
 	bool AsyncDialog::IsOpen() const
 	{
-		return m_Pending != nullptr;
+		return m_PendingDialog != nullptr;
 	}
 
 	void AsyncDialog::Poll()
 	{
-		if (!m_Pending)
+		if (!IsOpen())
 		{
 			return;
 		}
 
 		std::optional<Result<std::filesystem::path>> answer;
 		{
-			const std::lock_guard lock(m_Pending->Mutex);
-			answer.swap(m_Pending->Answer);
+			const std::lock_guard lock(m_PendingDialog->Mutex);
+			answer.swap(m_PendingDialog->Answer);
 		}
 
 		if (!answer)
@@ -88,10 +72,24 @@ namespace Core {
 			return;
 		}
 
-		// Cleared before the callback, so that it sees no dialog open and can start the next.
-		m_Pending.reset();
-		Done done = std::exchange(m_Done, nullptr);
+		m_PendingDialog.reset();
+		AnswerHandler answerHandler = std::exchange(m_AnswerHandler, nullptr);
 
-		done(std::move(*answer));
+		answerHandler(std::move(*answer));
+	}
+
+	void AsyncDialog::PickAndHandOver(const Picker& picker, PendingDialog& pendingDialog)
+	{
+		Result<std::filesystem::path> answer = picker();
+
+		const std::lock_guard lock(pendingDialog.Mutex);
+
+		if (pendingDialog.AbandonedByOwner)
+		{
+			return;
+		}
+
+		pendingDialog.Answer.emplace(std::move(answer));
+		Redraw::Request();
 	}
 }

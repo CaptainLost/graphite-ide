@@ -14,20 +14,19 @@ using namespace Core;
 
 TEST_CASE("The executable directory exists and holds the running test binary")
 {
-	const auto directory = ExecutableDirectory();
+	const Result<std::filesystem::path> directory = ExecutableDirectory();
 
 	REQUIRE(directory.HasValue());
 	CHECK(std::filesystem::is_directory(directory.GetValue()));
 
-	// Naming the binary rather than just checking for a directory: a function that
-	// returned the working directory would pass the weaker assertion, and the working
-	// directory is exactly what this exists to stop using.
+	// The binary is named because the working directory, which this exists to stop using, would
+	// pass a check for a directory alone.
 	CHECK(std::filesystem::exists(directory.GetValue() / "CoreTests.exe"));
 }
 
 TEST_CASE("The executable directory is absolute")
 {
-	const auto directory = ExecutableDirectory();
+	const Result<std::filesystem::path> directory = ExecutableDirectory();
 
 	REQUIRE(directory.HasValue());
 	CHECK(directory.GetValue().is_absolute());
@@ -42,7 +41,7 @@ TEST_CASE("The home directory is the user's profile and exists")
 	CHECK(home.GetValue() == Core::EnvironmentPath(L"USERPROFILE").value());
 }
 
-TEST_CASE("The roaming data directory is the profile's AppData and exists")
+TEST_CASE("The roaming data directory for settings that follow the user between machines is the profile's AppData and exists")
 {
 	const Core::Result<std::filesystem::path> roaming = Core::RoamingDataDirectory();
 
@@ -52,7 +51,7 @@ TEST_CASE("The roaming data directory is the profile's AppData and exists")
 	CHECK(roaming.GetValue() == Core::EnvironmentPath(L"APPDATA").value());
 }
 
-TEST_CASE("The local data directory is the profile's LocalAppData and exists")
+TEST_CASE("The local data directory for caches and logs that stay on this machine is the profile's LocalAppData and exists")
 {
 	const Core::Result<std::filesystem::path> local = Core::LocalDataDirectory();
 
@@ -69,11 +68,13 @@ TEST_CASE("An unset environment variable is no path rather than an empty one")
 
 TEST_CASE("A set environment variable comes back as the path it names, wide characters intact")
 {
-	REQUIRE(_wputenv_s(L"GRAPHITE_TESTS_PATH", L"C:\\Users\\Micha\u0142") == 0);
+	const errno_t setStatus = _wputenv_s(L"GRAPHITE_TESTS_PATH", L"C:\\Users\\Micha\u0142");
+	REQUIRE(setStatus == 0);
 
 	CHECK(Core::EnvironmentPath(L"GRAPHITE_TESTS_PATH").value() == std::filesystem::path{L"C:\\Users\\Micha\u0142"});
 
-	_wputenv_s(L"GRAPHITE_TESTS_PATH", L"");
+	const wchar_t* const emptyValueRemovesTheVariable = L"";
+	_wputenv_s(L"GRAPHITE_TESTS_PATH", emptyValueRemovesTheVariable);
 }
 
 TEST_CASE("A program on PATH is found and a missing one is not")
@@ -84,27 +85,31 @@ TEST_CASE("A program on PATH is found and a missing one is not")
 
 TEST_CASE("A program in a non-ANSI directory on PATH is found")
 {
-	namespace fs = std::filesystem;
-	const fs::path directory = fs::temp_directory_path() / L"graphite-中文-\U0001F600-path";
-	std::error_code status;
-	fs::create_directories(directory, status);
-	REQUIRE_FALSE(status);
+	const std::filesystem::path directory = std::filesystem::temp_directory_path() / L"graphite-中文-\U0001F600-path";
+	const std::filesystem::path probeProgram = directory / L"graphite-wide-path-probe.exe";
+
+	std::error_code fileSystemError;
+	std::filesystem::create_directories(directory, fileSystemError);
+	REQUIRE_FALSE(fileSystemError);
 
 	{
-		std::ofstream program{directory / L"graphite-wide-path-probe.exe"};
-		REQUIRE(program.is_open());
+		std::ofstream probeFile{probeProgram};
+		REQUIRE(probeFile.is_open());
 	}
 
-	const std::optional<fs::path> original = Core::EnvironmentPath(L"PATH");
-	REQUIRE(original.has_value());
-	REQUIRE(_wputenv_s(L"PATH", directory.wstring().c_str()) == 0);
+	const std::optional<std::filesystem::path> originalPath = Core::EnvironmentPath(L"PATH");
+	REQUIRE(originalPath.has_value());
 
-	const fs::path found = Core::FindOnPath("graphite-wide-path-probe.exe");
+	const errno_t setStatus = _wputenv_s(L"PATH", directory.wstring().c_str());
+	REQUIRE(setStatus == 0);
 
-	// Restore before asserting so a failure cannot leave later tests with a broken PATH.
-	const errno_t restored = _wputenv_s(L"PATH", original->wstring().c_str());
-	fs::remove_all(directory, status);
+	const std::filesystem::path foundProgram = Core::FindOnPath("graphite-wide-path-probe.exe");
 
-	CHECK(restored == 0);
-	CHECK(found == directory / L"graphite-wide-path-probe.exe");
+	// PATH is restored before anything is asserted, so a failure cannot leave later tests with a
+	// broken PATH.
+	const errno_t restoreStatus = _wputenv_s(L"PATH", originalPath->wstring().c_str());
+	std::filesystem::remove_all(directory, fileSystemError);
+
+	CHECK(restoreStatus == 0);
+	CHECK(foundProgram == probeProgram);
 }

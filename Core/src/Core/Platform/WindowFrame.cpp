@@ -29,22 +29,28 @@ namespace Core {
 	namespace {
 		constexpr const wchar_t* kFrameProperty = L"GraphiteWindowFrame";
 
-		// The frame is only recomputed on a frame change, so a caption that came or went
-		// stays on screen until the user next resizes the window.
-		void RequestFrameChange(HWND hwnd)
+		constexpr int kIgnoredPosition = 0;
+		constexpr int kIgnoredSize = 0;
+		constexpr UINT kFrameChangeOnly = SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
+
+		constexpr UINT kDpiOfInvalidWindow = 0;
+
+		constexpr LRESULT kClientAreaIsFirstRectangle = 0;
+
+		// The frame is only recomputed on a frame change, so a caption that came or went stays on
+		// screen until the user next resizes the window.
+		void RequestFrameChange(HWND windowHandle)
 		{
-			SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
-						 SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
-							 SWP_NOACTIVATE);
+			SetWindowPos(windowHandle, nullptr, kIgnoredPosition, kIgnoredPosition, kIgnoredSize, kIgnoredSize, kFrameChangeOnly);
 		}
 
 		// Asked per monitor: GLFW makes the process per-monitor DPI aware, so the plain
 		// GetSystemMetrics would answer for the primary monitor and be wrong on any other.
-		UINT DpiOf(HWND hwnd)
+		UINT DpiOf(HWND windowHandle)
 		{
-			const UINT dpi = GetDpiForWindow(hwnd);
+			const UINT windowDpi = GetDpiForWindow(windowHandle);
 
-			return dpi == 0 ? USER_DEFAULT_SCREEN_DPI : dpi;
+			return windowDpi == kDpiOfInvalidWindow ? USER_DEFAULT_SCREEN_DPI : windowDpi;
 		}
 
 		void Inset(RECT& rectangle, int x, int y)
@@ -55,33 +61,34 @@ namespace Core {
 			rectangle.bottom -= y;
 		}
 
-		// A maximized window is placed one frame thickness outside the work area on every
-		// side, because the system expects the frame to cover the overhang. With no frame
-		// left to cover it the top of the caption would fall off the screen.
+		// A maximized window is placed one frame thickness outside the work area on every side,
+		// because the system expects the frame to cover the overhang; with no frame left to cover it,
+		// the top of the caption would fall off the screen.
 		void InsetByResizeFrame(RECT& rectangle, UINT dpi)
 		{
-			// There is no SM_CYPADDEDBORDER — the one padded border spans both axes.
-			const int padding = GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+			// There is no SM_CYPADDEDBORDER: the one padded border spans both axes.
+			const int paddedBorder = GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+			const int horizontalFrame = GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) + paddedBorder;
+			const int verticalFrame = GetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi) + paddedBorder;
 
-			Inset(rectangle, GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) + padding,
-				  GetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi) + padding);
+			Inset(rectangle, horizontalFrame, verticalFrame);
 		}
 
-		// DWM draws the window's border into the band between the window rectangle and the
-		// client rectangle, so handing back the proposed rectangle untouched leaves that band
-		// zero pixels wide and nothing appears. Giving up one SM_CXBORDER per edge is the
-		// least that can still be seen, and it is asked per monitor rather than hard-coded to
-		// the one pixel it answers at 96 DPI.
+		// DWM draws the border in the band between the window and client rectangles, so the client
+		// area gives up one SM_CXBORDER per edge, the least that still shows. It is asked per monitor
+		// rather than hard-coded to the one pixel it is at 96 DPI.
 		void InsetByBorder(RECT& rectangle, UINT dpi)
 		{
-			Inset(rectangle, GetSystemMetricsForDpi(SM_CXBORDER, dpi),
-				  GetSystemMetricsForDpi(SM_CYBORDER, dpi));
+			const int horizontalBorder = GetSystemMetricsForDpi(SM_CXBORDER, dpi);
+			const int verticalBorder = GetSystemMetricsForDpi(SM_CYBORDER, dpi);
+
+			Inset(rectangle, horizontalBorder, verticalBorder);
 		}
 
 		class Win32Frame final : public WindowFrame
 		{
 		public:
-			Win32Frame(HWND hwnd, COLORREF border) : m_Hwnd(hwnd), m_Border(border) {}
+			Win32Frame(HWND windowHandle, COLORREF borderColour) : m_WindowHandle(windowHandle), m_BorderColour(borderColour) {}
 
 			~Win32Frame() override
 			{
@@ -92,36 +99,36 @@ namespace Core {
 
 				RestoreSystemBorderColour();
 
-				SetWindowLongPtrW(m_Hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(m_Previous));
+				SetWindowLongPtrW(m_WindowHandle, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(m_ReplacedWindowProcedure));
 
-				RequestFrameChange(m_Hwnd);
-				RemovePropW(m_Hwnd, kFrameProperty);
+				RequestFrameChange(m_WindowHandle);
+				RemovePropW(m_WindowHandle, kFrameProperty);
 			}
 
 			Result<void> Install()
 			{
-				// The property goes on before the subclass so that the procedure below can
-				// never find itself running without its frame.
-				if (SetPropW(m_Hwnd, kFrameProperty, this) == 0)
+				// The property goes on before the subclass, so the procedure never runs without
+				// finding its frame.
+				const BOOL propertySet = SetPropW(m_WindowHandle, kFrameProperty, this);
+
+				if (propertySet == FALSE)
 				{
-					return Error{ErrorCode::Unsupported,
-								 "the window would not hold the frame's property"};
+					return Error{.Code = ErrorCode::Unsupported, .Message = "the window would not hold the frame's property"};
 				}
 
-				// A live window's procedure is never null, so a zero here is a failure and
-				// not a previous value worth keeping.
-				m_Previous = reinterpret_cast<WNDPROC>(
-					SetWindowLongPtrW(m_Hwnd, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&Proc)));
+				// A live window's procedure is never null, so zero from SetWindowLongPtrW is a failure
+				// and not a previous procedure worth keeping.
+				m_ReplacedWindowProcedure = reinterpret_cast<WNDPROC>(
+					SetWindowLongPtrW(m_WindowHandle, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&WindowProcedure)));
 
-				if (m_Previous == nullptr)
+				if (m_ReplacedWindowProcedure == nullptr)
 				{
-					RemovePropW(m_Hwnd, kFrameProperty);
-					return Error{ErrorCode::Unsupported,
-								 "the window procedure could not be subclassed"};
+					RemovePropW(m_WindowHandle, kFrameProperty);
+					return Error{.Code = ErrorCode::Unsupported, .Message = "the window procedure could not be subclassed"};
 				}
 
 				ApplyBorderColour();
-				RequestFrameChange(m_Hwnd);
+				RequestFrameChange(m_WindowHandle);
 
 				return Result<void>::Ok();
 			}
@@ -133,10 +140,8 @@ namespace Core {
 
 			void SetBorderColor(const Color& color) override
 			{
-				m_Border = static_cast<COLORREF>(PackBgr(color));
+				m_BorderColour = static_cast<COLORREF>(PackBgr(color));
 
-				// Only once installed: before that, Install's own call is what puts the colour
-				// on, and DWM has no subclassed window to answer about yet.
 				if (IsInstalled())
 				{
 					ApplyBorderColour();
@@ -144,77 +149,76 @@ namespace Core {
 			}
 
 		private:
-			// Install leaves nothing behind on any path that does not set m_Previous.
-			bool IsInstalled() const { return m_Previous != nullptr; }
+			bool IsInstalled() const { return m_ReplacedWindowProcedure != nullptr; }
 
-			bool Maximized() const { return IsZoomed(m_Hwnd) != FALSE; }
+			bool IsWindowMaximized() const { return IsZoomed(m_WindowHandle) != FALSE; }
 
 			void ApplyBorderColour() const
 			{
-				const HRESULT set = DwmSetWindowAttribute(m_Hwnd, DWMWA_BORDER_COLOR, &m_Border,
-														  sizeof(m_Border));
+				const HRESULT attributeResult = DwmSetWindowAttribute(m_WindowHandle, DWMWA_BORDER_COLOR, &m_BorderColour,
+																	  sizeof(m_BorderColour));
 
-				if (FAILED(set))
+				if (FAILED(attributeResult))
 				{
 					CORE_WARN("The window border keeps the system colour: DWM refused "
 							  "DWMWA_BORDER_COLOR (0x{:08X}), which needs Windows 11.",
-							  static_cast<unsigned>(set));
+							  static_cast<unsigned>(attributeResult));
 				}
 			}
 
 			void RestoreSystemBorderColour() const
 			{
-				const COLORREF none = DWMWA_COLOR_DEFAULT;
-				DwmSetWindowAttribute(m_Hwnd, DWMWA_BORDER_COLOR, &none, sizeof(none));
+				const COLORREF systemColour = DWMWA_COLOR_DEFAULT;
+				DwmSetWindowAttribute(m_WindowHandle, DWMWA_BORDER_COLOR, &systemColour, sizeof(systemColour));
 			}
 
-			LRESULT OnCalcSize(WPARAM wParam, LPARAM lParam)
+			LRESULT OnCalcSize(WPARAM asksForValidArea, LPARAM rectanglesAddress)
 			{
-				// A zero wParam means lParam is a bare RECT: the system is only asking what
-				// client area a proposed window rectangle would give. Nothing to correct.
-				if (wParam == 0u)
+				const bool addressesBareRectangle = asksForValidArea == 0u;
+
+				// A bare RECT only asks what client area a proposed window rectangle would give, so the replaced procedure answers it.
+				if (addressesBareRectangle)
 				{
-					return CallWindowProcW(m_Previous, m_Hwnd, WM_NCCALCSIZE, wParam, lParam);
+					return CallWindowProcW(m_ReplacedWindowProcedure, m_WindowHandle, WM_NCCALCSIZE, asksForValidArea, rectanglesAddress);
 				}
 
-				auto* params = reinterpret_cast<NCCALCSIZE_PARAMS*>(lParam);
-				RECT& target = params->rgrc[0];
-				const UINT dpi = DpiOf(m_Hwnd);
+				auto* calcSizeParameters = reinterpret_cast<NCCALCSIZE_PARAMS*>(rectanglesAddress);
+				RECT& proposedClientArea = calcSizeParameters->rgrc[0];
+				const UINT dpi = DpiOf(m_WindowHandle);
 
-				// Either inset is far short of a caption's height, so no room is left for the
-				// system to paint one into. A maximized window needs no border of its own:
-				// every edge it has is off the screen already.
-				if (Maximized())
+				// Either inset is far short of a caption's height, so no room is left for the system to
+				// paint one. A maximized window needs no border of its own: every edge it has is off the
+				// screen already.
+				if (IsWindowMaximized())
 				{
-					InsetByResizeFrame(target, dpi);
+					InsetByResizeFrame(proposedClientArea, dpi);
 				}
 				else
 				{
-					InsetByBorder(target, dpi);
+					InsetByBorder(proposedClientArea, dpi);
 				}
 
-				// Zero means "the client area is rgrc[0], keep none of the old one", which
-				// costs a repaint of the client area on resize and nothing else.
-				return 0;
+				return kClientAreaIsFirstRectangle;
 			}
 
-			LRESULT OnHitTest(LPARAM lParam) const
+			LRESULT OnHitTest(LPARAM packedScreenPoint) const
 			{
-				// WM_NCHITTEST asks about a point in screen coordinates — it has to, since the
-				// point may lie outside the client area.
-				POINT point{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
-				ScreenToClient(m_Hwnd, &point);
+				POINT pointer{.x = GET_X_LPARAM(packedScreenPoint), .y = GET_Y_LPARAM(packedScreenPoint)};
+				ScreenToClient(m_WindowHandle, &pointer);
 
-				RECT client{};
-				GetClientRect(m_Hwnd, &client);
+				RECT clientArea{};
+				GetClientRect(m_WindowHandle, &clientArea);
 
-				const CaptionHit hit =
-					Classify(m_Metrics, static_cast<float>(client.right - client.left),
-							 static_cast<float>(client.bottom - client.top),
-							 static_cast<float>(point.x), static_cast<float>(point.y),
-							 Maximized());
+				const float clientWidth = static_cast<float>(clientArea.right - clientArea.left);
+				const float clientHeight = static_cast<float>(clientArea.bottom - clientArea.top);
+				const float pointerX = static_cast<float>(pointer.x);
+				const float pointerY = static_cast<float>(pointer.y);
 
-				switch (hit)
+				const WindowState windowState = IsWindowMaximized() ? WindowState::Maximized : WindowState::Restored;
+
+				const CaptionHit captionHit = Classify(m_Metrics, clientWidth, clientHeight, pointerX, pointerY, windowState);
+
+				switch (captionHit)
 				{
 				case CaptionHit::Caption:
 					return HTCAPTION;
@@ -241,66 +245,65 @@ namespace Core {
 				return HTCLIENT;
 			}
 
-			static LRESULT CALLBACK Proc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
+			static LRESULT CALLBACK WindowProcedure(HWND windowHandle, UINT message, WPARAM messageWordParameter, LPARAM messageLongParameter)
 			{
-				auto* self = static_cast<Win32Frame*>(GetPropW(hwnd, kFrameProperty));
+				auto* frame = static_cast<Win32Frame*>(GetPropW(windowHandle, kFrameProperty));
 
-				// Unreachable, and kept for what it would cost: DefWindowProcW skips GLFW's
-				// procedure entirely, and a window whose events never reach GLFW is deaf.
-				if (self == nullptr)
+				// Unreachable, since the property outlives the subclass. Were it reached, DefWindowProcW
+				// would skip GLFW's procedure and the window would no longer hear its events.
+				if (frame == nullptr)
 				{
-					return DefWindowProcW(hwnd, message, wParam, lParam);
+					return DefWindowProcW(windowHandle, message, messageWordParameter, messageLongParameter);
 				}
 
 				switch (message)
 				{
 				case WM_NCCALCSIZE:
-					return self->OnCalcSize(wParam, lParam);
+					return frame->OnCalcSize(messageWordParameter, messageLongParameter);
 				case WM_NCHITTEST:
-					return self->OnHitTest(lParam);
+					return frame->OnHitTest(messageLongParameter);
 				default:
 					break;
 				}
 
-				return CallWindowProcW(self->m_Previous, hwnd, message, wParam, lParam);
+				return CallWindowProcW(frame->m_ReplacedWindowProcedure, windowHandle, message, messageWordParameter, messageLongParameter);
 			}
 
-			HWND m_Hwnd = nullptr;
-			COLORREF m_Border = 0;
-			WNDPROC m_Previous = nullptr;
+			HWND m_WindowHandle = nullptr;
+			COLORREF m_BorderColour = 0;
+			WNDPROC m_ReplacedWindowProcedure = nullptr;
 			CaptionMetrics m_Metrics;
 		};
 	}
 #endif
 
 	Result<Scope<WindowFrame>> WindowFrame::Hide([[maybe_unused]] Window& window,
-												 [[maybe_unused]] const Color& border)
+												 [[maybe_unused]] const Color& borderColor)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		auto* glfwHandle = static_cast<GLFWwindow*>(window.GetNativeHandle());
-		if (glfwHandle == nullptr)
+		auto* glfwWindow = static_cast<GLFWwindow*>(window.GetNativeHandle());
+		if (glfwWindow == nullptr)
 		{
-			return Error{ErrorCode::Unsupported, "the window has no native handle"};
+			return Error{.Code = ErrorCode::Unsupported, .Message = "the window has no native handle"};
 		}
 
-		HWND hwnd = glfwGetWin32Window(glfwHandle);
-		if (hwnd == nullptr)
+		HWND windowHandle = glfwGetWin32Window(glfwWindow);
+		if (windowHandle == nullptr)
 		{
-			return Error{ErrorCode::Unsupported, "the window is not a Win32 window"};
+			return Error{.Code = ErrorCode::Unsupported, .Message = "the window is not a Win32 window"};
 		}
 
-		auto frame = CreateScope<Win32Frame>(hwnd, static_cast<COLORREF>(PackBgr(border)));
+		auto frame = CreateScope<Win32Frame>(windowHandle, static_cast<COLORREF>(PackBgr(borderColor)));
 
-		const Result<void> installed = frame->Install();
-		if (!installed)
+		const Result<void> installResult = frame->Install();
+		if (!installResult)
 		{
-			return installed.GetError();
+			return installResult.GetError();
 		}
 
 		return Result<Scope<WindowFrame>>{std::move(frame)};
 #else
-		return Error{ErrorCode::Unsupported,
-					 "removing the system title bar is only implemented on Windows"};
+		return Error{.Code = ErrorCode::Unsupported, .Message = "removing the system title bar is only implemented on Windows"};
 #endif
 	}
 }

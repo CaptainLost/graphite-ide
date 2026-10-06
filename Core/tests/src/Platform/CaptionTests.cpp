@@ -5,136 +5,143 @@
 using Core::CaptionHit;
 using Core::CaptionMetrics;
 using Core::Classify;
+using Core::WindowState;
 
 namespace {
 	constexpr float kWidth = 800.0f;
 	constexpr float kHeight = 600.0f;
 
+	constexpr float kCaptionHeight = 32.0f;
+	constexpr float kResizeBorder = 8.0f;
+
 	constexpr float kDragBegin = 200.0f;
 	constexpr float kDragEnd = 700.0f;
 
-	CaptionMetrics Metrics()
+	constexpr float kMiddleX = 400.0f;
+	constexpr float kMiddleY = 300.0f;
+
+	constexpr float kInsideLeftBorder = 2.0f;
+	constexpr float kInsideRightBorder = 798.0f;
+	constexpr float kInsideTopBorder = 2.0f;
+	constexpr float kInsideBottomBorder = 598.0f;
+
+	constexpr float kFramePixelLeftOfClient = -1.0f;
+	constexpr float kFramePixelRightOfClient = kWidth;
+	constexpr float kFramePixelAboveClient = -1.0f;
+	constexpr float kFramePixelBelowClient = kHeight;
+
+	constexpr float kInsideCaption = 20.0f;
+	constexpr float kJustBelowCaption = 33.0f;
+
+	constexpr float kOverMenus = 100.0f;
+	constexpr float kOverWindowButtons = 750.0f;
+
+	constexpr float kOnePixel = 1.0f;
+	constexpr float kButtonsBeginLeftOfWindow = -40.0f;
+	constexpr float kCaptionShorterThanResizeBorder = 4.0f;
+
+	CaptionMetrics CaptionBetweenMenusAndButtons()
 	{
-		CaptionMetrics metrics;
-		metrics.Height = 32.0f;
-		metrics.ResizeBorder = 8.0f;
-		metrics.DragBegin = kDragBegin;
-		metrics.DragEnd = kDragEnd;
-		return metrics;
+		return CaptionMetrics{.Height = kCaptionHeight, .ResizeBorder = kResizeBorder, .DragBegin = kDragBegin, .DragEnd = kDragEnd};
 	}
 }
 
 TEST_CASE("Classify finds the resize edges of a restored window")
 {
-	const CaptionMetrics metrics = Metrics();
+	const CaptionMetrics metrics = CaptionBetweenMenusAndButtons();
 
-	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, 2.0f, false) == CaptionHit::Top);
-	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, 598.0f, false) == CaptionHit::Bottom);
-	CHECK(Classify(metrics, kWidth, kHeight, 2.0f, 300.0f, false) == CaptionHit::Left);
-	CHECK(Classify(metrics, kWidth, kHeight, 798.0f, 300.0f, false) == CaptionHit::Right);
+	CHECK(Classify(metrics, kWidth, kHeight, kMiddleX, kInsideTopBorder, WindowState::Restored) == CaptionHit::Top);
+	CHECK(Classify(metrics, kWidth, kHeight, kMiddleX, kInsideBottomBorder, WindowState::Restored) == CaptionHit::Bottom);
+	CHECK(Classify(metrics, kWidth, kHeight, kInsideLeftBorder, kMiddleY, WindowState::Restored) == CaptionHit::Left);
+	CHECK(Classify(metrics, kWidth, kHeight, kInsideRightBorder, kMiddleY, WindowState::Restored) == CaptionHit::Right);
 }
 
 TEST_CASE("Classify prefers a corner over the two edges that meet there")
 {
-	const CaptionMetrics metrics = Metrics();
+	const CaptionMetrics metrics = CaptionBetweenMenusAndButtons();
 
-	CHECK(Classify(metrics, kWidth, kHeight, 2.0f, 2.0f, false) == CaptionHit::TopLeft);
-	CHECK(Classify(metrics, kWidth, kHeight, 798.0f, 2.0f, false) == CaptionHit::TopRight);
-	CHECK(Classify(metrics, kWidth, kHeight, 2.0f, 598.0f, false) == CaptionHit::BottomLeft);
-	CHECK(Classify(metrics, kWidth, kHeight, 798.0f, 598.0f, false) == CaptionHit::BottomRight);
+	CHECK(Classify(metrics, kWidth, kHeight, kInsideLeftBorder, kInsideTopBorder, WindowState::Restored) == CaptionHit::TopLeft);
+	CHECK(Classify(metrics, kWidth, kHeight, kInsideRightBorder, kInsideTopBorder, WindowState::Restored) == CaptionHit::TopRight);
+	CHECK(Classify(metrics, kWidth, kHeight, kInsideLeftBorder, kInsideBottomBorder, WindowState::Restored) == CaptionHit::BottomLeft);
+	CHECK(Classify(metrics, kWidth, kHeight, kInsideRightBorder, kInsideBottomBorder, WindowState::Restored) == CaptionHit::BottomRight);
 }
 
-TEST_CASE("The border outside the client area resizes like the edge it sits on")
+TEST_CASE("The frame pixel the system draws its border into outside each client edge resizes like that edge")
 {
-	// The window keeps one pixel of frame on each edge for the system to draw its border
-	// into, so the hit test is asked about points that are outside the client rectangle
-	// and convert to negative — or past-the-end — client coordinates. They belong to the
-	// edge they lie beyond, which is what the arithmetic already says; these cases are
-	// here so that stays true, because it is now a reachable input and not a curiosity.
-	const CaptionMetrics metrics = Metrics();
+	const CaptionMetrics metrics = CaptionBetweenMenusAndButtons();
 
-	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, -1.0f, false) == CaptionHit::Top);
-	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, kHeight, false) == CaptionHit::Bottom);
-	CHECK(Classify(metrics, kWidth, kHeight, -1.0f, 300.0f, false) == CaptionHit::Left);
-	CHECK(Classify(metrics, kWidth, kHeight, kWidth, 300.0f, false) == CaptionHit::Right);
+	CHECK(Classify(metrics, kWidth, kHeight, kMiddleX, kFramePixelAboveClient, WindowState::Restored) == CaptionHit::Top);
+	CHECK(Classify(metrics, kWidth, kHeight, kMiddleX, kFramePixelBelowClient, WindowState::Restored) == CaptionHit::Bottom);
+	CHECK(Classify(metrics, kWidth, kHeight, kFramePixelLeftOfClient, kMiddleY, WindowState::Restored) == CaptionHit::Left);
+	CHECK(Classify(metrics, kWidth, kHeight, kFramePixelRightOfClient, kMiddleY, WindowState::Restored) == CaptionHit::Right);
 
-	CHECK(Classify(metrics, kWidth, kHeight, -1.0f, -1.0f, false) == CaptionHit::TopLeft);
-	CHECK(Classify(metrics, kWidth, kHeight, kWidth, -1.0f, false) == CaptionHit::TopRight);
-	CHECK(Classify(metrics, kWidth, kHeight, -1.0f, kHeight, false) == CaptionHit::BottomLeft);
-	CHECK(Classify(metrics, kWidth, kHeight, kWidth, kHeight, false) ==
-		  CaptionHit::BottomRight);
+	CHECK(Classify(metrics, kWidth, kHeight, kFramePixelLeftOfClient, kFramePixelAboveClient, WindowState::Restored) == CaptionHit::TopLeft);
+	CHECK(Classify(metrics, kWidth, kHeight, kFramePixelRightOfClient, kFramePixelAboveClient, WindowState::Restored) == CaptionHit::TopRight);
+	CHECK(Classify(metrics, kWidth, kHeight, kFramePixelLeftOfClient, kFramePixelBelowClient, WindowState::Restored) == CaptionHit::BottomLeft);
+	CHECK(Classify(metrics, kWidth, kHeight, kFramePixelRightOfClient, kFramePixelBelowClient, WindowState::Restored) == CaptionHit::BottomRight);
 }
 
 TEST_CASE("A maximized window has no resize edges")
 {
-	const CaptionMetrics metrics = Metrics();
+	const CaptionMetrics metrics = CaptionBetweenMenusAndButtons();
 
-	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, 2.0f, true) == CaptionHit::Caption);
+	CHECK(Classify(metrics, kWidth, kHeight, kMiddleX, kInsideTopBorder, WindowState::Maximized) == CaptionHit::Caption);
 
-	// Over the menus rather than the free span, so client area — but the point of the
-	// check is that it is not TopLeft.
-	CHECK(Classify(metrics, kWidth, kHeight, 2.0f, 2.0f, true) == CaptionHit::Client);
-	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, 598.0f, true) == CaptionHit::Client);
+	const CaptionHit topLeftCornerOverTheMenus = Classify(metrics, kWidth, kHeight, kInsideLeftBorder, kInsideTopBorder, WindowState::Maximized);
+	CHECK(topLeftCornerOverTheMenus == CaptionHit::Client);
+	CHECK(Classify(metrics, kWidth, kHeight, kMiddleX, kInsideBottomBorder, WindowState::Maximized) == CaptionHit::Client);
 }
 
-TEST_CASE("Only the span between the menus and the window buttons drags the window")
+TEST_CASE("Only the span between the menus and the window buttons drags the window so menu and button clicks reach the application")
 {
-	const CaptionMetrics metrics = Metrics();
+	const CaptionMetrics metrics = CaptionBetweenMenusAndButtons();
 
-	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, 20.0f, false) == CaptionHit::Caption);
+	CHECK(Classify(metrics, kWidth, kHeight, kMiddleX, kInsideCaption, WindowState::Restored) == CaptionHit::Caption);
 
-	// A menu or a window button owns the click at these two points, so they have to read
-	// as client area — otherwise the strip would swallow every menu click.
-	CHECK(Classify(metrics, kWidth, kHeight, 100.0f, 20.0f, false) == CaptionHit::Client);
-	CHECK(Classify(metrics, kWidth, kHeight, 750.0f, 20.0f, false) == CaptionHit::Client);
+	CHECK(Classify(metrics, kWidth, kHeight, kOverMenus, kInsideCaption, WindowState::Restored) == CaptionHit::Client);
+	CHECK(Classify(metrics, kWidth, kHeight, kOverWindowButtons, kInsideCaption, WindowState::Restored) == CaptionHit::Client);
 }
 
 TEST_CASE("The free span takes its first pixel and gives up its last")
 {
-	const CaptionMetrics metrics = Metrics();
+	const CaptionMetrics metrics = CaptionBetweenMenusAndButtons();
 
-	CHECK(Classify(metrics, kWidth, kHeight, kDragBegin, 20.0f, false) == CaptionHit::Caption);
-	CHECK(Classify(metrics, kWidth, kHeight, kDragBegin - 1.0f, 20.0f, false) ==
-		  CaptionHit::Client);
-	CHECK(Classify(metrics, kWidth, kHeight, kDragEnd - 1.0f, 20.0f, false) ==
-		  CaptionHit::Caption);
-	CHECK(Classify(metrics, kWidth, kHeight, kDragEnd, 20.0f, false) == CaptionHit::Client);
+	CHECK(Classify(metrics, kWidth, kHeight, kDragBegin, kInsideCaption, WindowState::Restored) == CaptionHit::Caption);
+	CHECK(Classify(metrics, kWidth, kHeight, kDragBegin - kOnePixel, kInsideCaption, WindowState::Restored) == CaptionHit::Client);
+	CHECK(Classify(metrics, kWidth, kHeight, kDragEnd - kOnePixel, kInsideCaption, WindowState::Restored) == CaptionHit::Caption);
+	CHECK(Classify(metrics, kWidth, kHeight, kDragEnd, kInsideCaption, WindowState::Restored) == CaptionHit::Client);
 }
 
-TEST_CASE("A caption whose free span is empty drags nowhere")
+TEST_CASE("A window too narrow for its buttons has an empty or inverted free span and drags nowhere")
 {
-	// What a window too narrow for its own buttons reports: the buttons have run past the
-	// menus, so there is no free caption left anywhere in the row.
-	CaptionMetrics metrics = Metrics();
+	CaptionMetrics metrics = CaptionBetweenMenusAndButtons();
 	metrics.DragEnd = metrics.DragBegin;
 
-	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, 20.0f, false) == CaptionHit::Client);
+	CHECK(Classify(metrics, kWidth, kHeight, kMiddleX, kInsideCaption, WindowState::Restored) == CaptionHit::Client);
 
-	metrics.DragEnd = -40.0f;
-	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, 20.0f, false) == CaptionHit::Client);
+	metrics.DragEnd = kButtonsBeginLeftOfWindow;
+	CHECK(Classify(metrics, kWidth, kHeight, kMiddleX, kInsideCaption, WindowState::Restored) == CaptionHit::Client);
 }
 
-TEST_CASE("A suppressed drag leaves the whole caption to the application")
+TEST_CASE("A suppressed drag leaves the whole caption to the application but not the resize edges since an open menu is no reason to stop resizing")
 {
-	CaptionMetrics metrics = Metrics();
+	CaptionMetrics metrics = CaptionBetweenMenusAndButtons();
 	metrics.DragSuppressed = true;
 
-	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, 20.0f, false) == CaptionHit::Client);
-
-	// Only the caption is withheld: an open menu is no reason to stop resizing.
-	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, 2.0f, false) == CaptionHit::Top);
+	CHECK(Classify(metrics, kWidth, kHeight, kMiddleX, kInsideCaption, WindowState::Restored) == CaptionHit::Client);
+	CHECK(Classify(metrics, kWidth, kHeight, kMiddleX, kInsideTopBorder, WindowState::Restored) == CaptionHit::Top);
 }
 
 TEST_CASE("Everything below the caption is client area")
 {
-	CHECK(Classify(Metrics(), kWidth, kHeight, 400.0f, 33.0f, false) == CaptionHit::Client);
-	CHECK(Classify(Metrics(), kWidth, kHeight, 400.0f, 300.0f, false) == CaptionHit::Client);
+	CHECK(Classify(CaptionBetweenMenusAndButtons(), kWidth, kHeight, kMiddleX, kJustBelowCaption, WindowState::Restored) == CaptionHit::Client);
+	CHECK(Classify(CaptionBetweenMenusAndButtons(), kWidth, kHeight, kMiddleX, kMiddleY, WindowState::Restored) == CaptionHit::Client);
 }
 
 TEST_CASE("A caption shorter than the resize border still resizes from the top")
 {
-	CaptionMetrics metrics = Metrics();
-	metrics.Height = 4.0f;
+	CaptionMetrics metrics = CaptionBetweenMenusAndButtons();
+	metrics.Height = kCaptionShorterThanResizeBorder;
 
-	CHECK(Classify(metrics, kWidth, kHeight, 400.0f, 2.0f, false) == CaptionHit::Top);
+	CHECK(Classify(metrics, kWidth, kHeight, kMiddleX, kInsideTopBorder, WindowState::Restored) == CaptionHit::Top);
 }

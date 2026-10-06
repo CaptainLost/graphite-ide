@@ -594,7 +594,7 @@ namespace Graphite {
 	{
 		// The process, not the main window: a panel dragged out into its own viewport is a
 		// separate OS window, and working in one is not having left the application.
-		if (!Core::IsForeground())
+		if (!Core::IsProcessInForeground())
 		{
 			m_SecondsInBackground += ts.GetSeconds();
 			m_AppForeground = false;

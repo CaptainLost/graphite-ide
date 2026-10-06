@@ -12,25 +12,29 @@ namespace Core {
 
 #ifdef CORE_PLATFORM_WINDOWS
 	namespace {
-		// Asked of the shell rather than read from APPDATA / LOCALAPPDATA: the variables are
-		// inherited and can be overridden or missing in a child's environment, while the
-		// known folder is what the profile actually has - redirected folders included.
-		Result<std::filesystem::path> KnownFolder(REFKNOWNFOLDERID id, const char* name)
+		constexpr std::size_t kLongestWindowsPathBufferCharacters = 32768;
+
+		constexpr DWORD kEmptyValueLengthWithTerminator = 1;
+
+		// Asked of the shell rather than read from APPDATA or LOCALAPPDATA: those variables are
+		// inherited and can be overridden or missing in a child's environment, while the known
+		// folder is what the profile actually has, redirected folders included.
+		Result<std::filesystem::path> KnownFolder(REFKNOWNFOLDERID folderId, const char* folderDescription)
 		{
-			PWSTR raw = nullptr;
-			const HRESULT result = SHGetKnownFolderPath(id, KF_FLAG_DEFAULT, nullptr, &raw);
+			PWSTR folderPathText = nullptr;
+			const HRESULT lookupResult = SHGetKnownFolderPath(folderId, KF_FLAG_DEFAULT, nullptr, &folderPathText);
 
 			// The buffer is the caller's to free on failure as well as on success.
-			std::filesystem::path path = SUCCEEDED(result) ? std::filesystem::path{raw}
-														   : std::filesystem::path{};
-			CoTaskMemFree(raw);
+			std::filesystem::path folderPath = SUCCEEDED(lookupResult) ? std::filesystem::path{folderPathText}
+																	   : std::filesystem::path{};
+			CoTaskMemFree(folderPathText);
 
-			if (FAILED(result))
+			if (FAILED(lookupResult))
 			{
-				return Error{ErrorCode::NotFound, std::format("cannot locate the {} folder", name)};
+				return Error{.Code = ErrorCode::NotFound, .Message = std::format("cannot locate the {} folder", folderDescription)};
 			}
 
-			return path;
+			return folderPath;
 		}
 	}
 #endif
@@ -38,63 +42,70 @@ namespace Core {
 	Result<std::filesystem::path> ExecutableDirectory()
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		// GetModuleFileNameW gives no way to ask for the required length: it fills what
-		// it can and reports truncation through ERROR_INSUFFICIENT_BUFFER, so grow until
-		// it fits rather than trusting MAX_PATH, which long paths exceed.
-		std::wstring buffer(MAX_PATH, L'\0');
+		// GetModuleFileNameW cannot be asked for the length it needs: it fills what it can and
+		// reports truncation through ERROR_INSUFFICIENT_BUFFER. So the buffer grows until the path
+		// fits, rather than trusting MAX_PATH, which long paths exceed.
+		const HMODULE runningExecutable = nullptr;
+		std::wstring executablePath(MAX_PATH, L'\0');
 
 		while (true)
 		{
-			const DWORD written =
-				GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+			const DWORD charactersWritten =
+				GetModuleFileNameW(runningExecutable, executablePath.data(), static_cast<DWORD>(executablePath.size()));
 
-			if (written == 0)
+			if (charactersWritten == 0)
 			{
-				return Error{ErrorCode::IoFailure, "cannot determine the executable path"};
+				return Error{.Code = ErrorCode::IoFailure, .Message = "cannot determine the executable path"};
 			}
 
-			if (written < buffer.size())
+			const bool pathFits = charactersWritten < executablePath.size();
+
+			if (pathFits)
 			{
-				buffer.resize(written);
+				executablePath.resize(charactersWritten);
 				break;
 			}
 
-			if (buffer.size() >= 32768)
+			if (executablePath.size() >= kLongestWindowsPathBufferCharacters)
 			{
-				return Error{ErrorCode::IoFailure, "the executable path is implausibly long"};
+				return Error{.Code = ErrorCode::IoFailure, .Message = "the executable path is implausibly long"};
 			}
 
-			buffer.resize(buffer.size() * 2);
+			executablePath.resize(executablePath.size() * 2);
 		}
 
-		return std::filesystem::path{buffer}.parent_path();
+		return std::filesystem::path{executablePath}.parent_path();
 #else
-		return Error{ErrorCode::Unsupported,
-					 "locating the executable is not implemented on this platform"};
+		return Error{.Code = ErrorCode::Unsupported,
+					 .Message = "locating the executable is not implemented on this platform"};
 #endif
 	}
 
 	std::optional<std::filesystem::path> EnvironmentPath([[maybe_unused]] const wchar_t* name)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		// Asked twice: once for the length, once for the value. The length includes the
-		// terminator; the second call's return value does not.
-		const DWORD length = GetEnvironmentVariableW(name, nullptr, 0);
+		// GetEnvironmentVariableW counts the terminator when it reports the length and leaves it out when it copies the value.
+		const DWORD measureOnly = 0;
+		const DWORD lengthWithTerminator = GetEnvironmentVariableW(name, nullptr, measureOnly);
 
-		if (length <= 1)
+		const bool unsetOrEmpty = lengthWithTerminator <= kEmptyValueLengthWithTerminator;
+
+		if (unsetOrEmpty)
 		{
 			return std::nullopt;
 		}
 
-		std::wstring value(length, L'\0');
-		const DWORD written = GetEnvironmentVariableW(name, value.data(), length);
+		std::wstring value(lengthWithTerminator, L'\0');
+		const DWORD charactersWritten = GetEnvironmentVariableW(name, value.data(), lengthWithTerminator);
 
-		if (written == 0 || written >= length)
+		const bool wholeValueRead = charactersWritten != 0 && charactersWritten < lengthWithTerminator;
+
+		if (!wholeValueRead)
 		{
 			return std::nullopt;
 		}
 
-		value.resize(written);
+		value.resize(charactersWritten);
 		return std::filesystem::path{value};
 #else
 		return std::nullopt;
@@ -107,14 +118,15 @@ namespace Core {
 
 		if (!home.has_value())
 		{
-			return Error{ErrorCode::NotFound, "USERPROFILE is not set"};
+			return Error{.Code = ErrorCode::NotFound, .Message = "USERPROFILE is not set"};
 		}
 
-		std::error_code status;
+		std::error_code ignoredError;
+		const bool namesADirectory = std::filesystem::is_directory(*home, ignoredError);
 
-		if (!std::filesystem::is_directory(*home, status))
+		if (!namesADirectory)
 		{
-			return Error{ErrorCode::NotFound, "USERPROFILE does not name a directory"};
+			return Error{.Code = ErrorCode::NotFound, .Message = "USERPROFILE does not name a directory"};
 		}
 
 		return std::move(*home);
@@ -125,8 +137,8 @@ namespace Core {
 #ifdef CORE_PLATFORM_WINDOWS
 		return KnownFolder(FOLDERID_RoamingAppData, "roaming application data");
 #else
-		return Error{ErrorCode::Unsupported,
-					 "the roaming data directory is not implemented on this platform"};
+		return Error{.Code = ErrorCode::Unsupported,
+					 .Message = "the roaming data directory is not implemented on this platform"};
 #endif
 	}
 
@@ -135,8 +147,8 @@ namespace Core {
 #ifdef CORE_PLATFORM_WINDOWS
 		return KnownFolder(FOLDERID_LocalAppData, "local application data");
 #else
-		return Error{ErrorCode::Unsupported,
-					 "the local data directory is not implemented on this platform"};
+		return Error{.Code = ErrorCode::Unsupported,
+					 .Message = "the local data directory is not implemented on this platform"};
 #endif
 	}
 
@@ -145,27 +157,27 @@ namespace Core {
 #ifdef CORE_PLATFORM_WINDOWS
 		return KnownFolder(FOLDERID_Fonts, "system fonts");
 #else
-		return Error{ErrorCode::Unsupported,
-					 "the system fonts directory is not implemented on this platform"};
+		return Error{.Code = ErrorCode::Unsupported,
+					 .Message = "the system fonts directory is not implemented on this platform"};
 #endif
 	}
 
-	bool IsForeground()
+	bool IsProcessInForeground()
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		const HWND foreground = ::GetForegroundWindow();
+		const HWND foregroundWindow = ::GetForegroundWindow();
 
-		// Null when the foreground window belongs to another desktop, or during the
-		// moment a window is being switched. Not ours either way.
-		if (foreground == nullptr)
+		// GetForegroundWindow answers null while the foreground belongs to another desktop or a
+		// window switch is under way, and neither is ours.
+		if (foregroundWindow == nullptr)
 		{
 			return false;
 		}
 
-		DWORD owner = 0;
-		::GetWindowThreadProcessId(foreground, &owner);
+		DWORD ownerProcessId = 0;
+		::GetWindowThreadProcessId(foregroundWindow, &ownerProcessId);
 
-		return owner == ::GetCurrentProcessId();
+		return ownerProcessId == ::GetCurrentProcessId();
 #else
 		return true;
 #endif

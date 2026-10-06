@@ -10,83 +10,84 @@
 
 namespace {
 
+	using StartedChild = Core::Result<Core::Scope<Core::ChildProcess>>;
+
+	constexpr std::size_t kReadChunkBytes = 256;
+	constexpr int kExitPollAttempts = 100;
+	constexpr std::chrono::milliseconds kExitPollInterval{20};
+
 	std::string ReadAll(Core::ChildProcess& process)
 	{
 		std::string text;
-		std::array<char, 256> buffer{};
+		std::array<char, kReadChunkBytes> buffer{};
 
-		for (std::size_t read = process.Read(buffer); read != 0; read = process.Read(buffer))
+		for (std::size_t bytesRead = process.Read(buffer); bytesRead != 0; bytesRead = process.Read(buffer))
 		{
-			text.append(buffer.data(), read);
+			text.append(buffer.data(), bytesRead);
 		}
 
 		return text;
 	}
 
 	// The output pipe closes as the child is torn down, which can be a moment before its process
-	// object is signalled, so give the exit a bounded time to become visible.
+	// object is signalled, so the exit gets a bounded time to become visible.
 	void WaitForExit(const Core::ChildProcess& process)
 	{
-		for (int attempt = 0; attempt < 100 && process.IsRunning(); ++attempt)
+		for (int attempt = 0; attempt < kExitPollAttempts && process.IsRunning(); ++attempt)
 		{
-			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+			std::this_thread::sleep_for(kExitPollInterval);
 		}
 	}
 }
 
-TEST_CASE("ChildProcess reads what the child writes to its output")
+TEST_CASE("ChildProcess reads what the child writes to its output until Read returns zero as the child exits")
 {
-	auto process = Core::ChildProcess::Start("cmd.exe", {"/c", "echo hello"},
-											 std::filesystem::current_path());
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "echo hello"},
+													 std::filesystem::current_path());
 
-	REQUIRE(process);
-	CHECK(ReadAll(*process.GetValue()).find("hello") != std::string::npos);
+	REQUIRE(started);
+	CHECK(ReadAll(*started.GetValue()).find("hello") != std::string::npos);
 }
 
 TEST_CASE("ChildProcess writes to the child's input")
 {
-	auto process = Core::ChildProcess::Start("cmd.exe", {"/c", "findstr", "wanted"},
-											 std::filesystem::current_path());
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "findstr", "wanted"},
+													 std::filesystem::current_path());
 
-	REQUIRE(process);
-	CHECK(process.GetValue()->Write("unwanted line\r\nwanted line\r\n"));
+	REQUIRE(started);
+	CHECK(started.GetValue()->Write("unwanted line\r\nwanted line\r\n"));
 }
 
-TEST_CASE("ChildProcess quotes a program path that contains a space")
+TEST_CASE("ChildProcess quotes a program path that contains a space so CreateProcessW does not split it as it would under Program Files")
 {
-	// An unquoted command line lets CreateProcessW split the program path itself on the
-	// space, which is exactly what a real "C:\Program Files\..." install path would trigger.
-	TempDirectory temp;
-	const std::filesystem::path directory = temp.MakeDirectory("has space");
-	const std::filesystem::path copiedExe = directory / "cmd.exe";
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path directory = temporaryDirectory.MakeDirectory("has space");
+	const std::filesystem::path copiedProgram = directory / "cmd.exe";
 
 	std::error_code copyError;
-	std::filesystem::copy_file("C:\\Windows\\System32\\cmd.exe", copiedExe, copyError);
+	std::filesystem::copy_file("C:\\Windows\\System32\\cmd.exe", copiedProgram, copyError);
 	REQUIRE_FALSE(copyError);
 
-	auto process =
-		Core::ChildProcess::Start(copiedExe, {"/c", "echo hello"}, std::filesystem::current_path());
+	StartedChild started =
+		Core::ChildProcess::Start(copiedProgram, {"/c", "echo hello"}, std::filesystem::current_path());
 
-	REQUIRE(process);
-	CHECK(ReadAll(*process.GetValue()).find("hello") != std::string::npos);
+	REQUIRE(started);
+	CHECK(ReadAll(*started.GetValue()).find("hello") != std::string::npos);
 }
 
 TEST_CASE("ChildProcess terminating the child releases a thread blocked in Read")
 {
-	// cmd.exe with no arguments prints its banner and then waits on its input forever, so the
-	// reader thread ends up blocked inside ReadFile with nothing coming. Only the child's death
-	// closes the writing end and makes that call return, which is what a client's destructor
-	// depends on to join its reader without waiting on a server that may never speak again.
-	auto started = Core::ChildProcess::Start("cmd.exe", {}, std::filesystem::current_path());
+	const std::vector<std::string> noArgumentsSoItWaitsOnItsInputForever;
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", noArgumentsSoItWaitsOnItsInputForever, std::filesystem::current_path());
 
 	REQUIRE(started);
 
 	Core::ChildProcess& process = *started.GetValue();
 
-	std::thread reader([&process] { ReadAll(process); });
+	std::thread blockedReader([&process] { ReadAll(process); });
 
 	process.Terminate();
-	reader.join();
+	blockedReader.join();
 	WaitForExit(process);
 
 	CHECK_FALSE(process.IsRunning());
@@ -94,19 +95,18 @@ TEST_CASE("ChildProcess terminating the child releases a thread blocked in Read"
 
 TEST_CASE("ChildProcess reports a program that does not exist")
 {
-	auto process = Core::ChildProcess::Start("no-such-program-8a3f.exe", {},
-											 std::filesystem::current_path());
+	const std::vector<std::string> noArguments;
+	StartedChild started = Core::ChildProcess::Start("no-such-program-8a3f.exe", noArguments,
+													 std::filesystem::current_path());
 
-	CHECK_FALSE(process);
-	CHECK(process.GetError().Code == Core::ErrorCode::NotFound);
+	CHECK_FALSE(started);
+	CHECK(started.GetError().Code == Core::ErrorCode::NotFound);
 }
 
-TEST_CASE("ChildProcess reports a child that exited with code 259 as not running")
+TEST_CASE("ChildProcess reports a child that exited with code 259 which is also STILL_ACTIVE as not running")
 {
-	// 259 is STILL_ACTIVE, the value GetExitCodeProcess reports for a live process, so a check
-	// that compares the exit code with it cannot tell this exit from a child that never ended.
-	auto started = Core::ChildProcess::Start("cmd.exe", {"/c", "exit 259"},
-											 std::filesystem::current_path());
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "exit 259"},
+													 std::filesystem::current_path());
 
 	REQUIRE(started);
 

@@ -18,123 +18,148 @@ namespace Core {
 
 #ifdef CORE_PLATFORM_WINDOWS
 	namespace {
-		// How long a read waits for the pseudo-console's last buffered bytes once the shell's
-		// process handle has already signalled. The host keeps writing for a moment after the
-		// process it hosts dies — a final newline, a cursor restore — and treating the process
-		// handle alone as end-of-stream would cut that off.
-		constexpr DWORD FlushGraceMilliseconds = 250;
+		// The host keeps writing for a moment after the shell dies, a final newline or a cursor
+		// restore, so a read waits this long after the process handle signals before calling it the
+		// end of the output.
+		constexpr DWORD kFlushGraceMilliseconds = 250;
 
-		// The two bounds the destructor runs under. Neither is a guess about how long a shell
-		// needs; both exist so that no shell, however wedged, can stop this object from being
-		// destroyed. Exceeding either leaks nothing this process owns — the handles are closed
-		// regardless — it only means the last of a dying shell's output is dropped.
-		constexpr DWORD ShutdownWaitMilliseconds = 2000;
-		constexpr DWORD ShutdownDrainMilliseconds = 250;
+		// Bounds, not estimates: they keep a wedged shell from blocking the destructor. Running out
+		// leaks nothing, since the handles are closed anyway; only the last of the shell's output is
+		// dropped.
+		constexpr DWORD kShutdownWaitMilliseconds = 2000;
+		constexpr DWORD kShutdownDrainMilliseconds = 250;
 
-		// CreatePipe cannot make either end of an anonymous pipe overlapped, and the reading end
-		// has to be: a synchronous ReadFile can only be woken by data arriving on that one
-		// handle, but the pseudo-console's host owns the writing end for as long as the
-		// pseudo-console itself lives, so a killed shell never makes that handle close. Read has
-		// to wait on the shell's process handle at the same time as the pipe, and that requires
-		// FILE_FLAG_OVERLAPPED. A uniquely named pipe nobody else can reach gets the same
-		// anonymous-pipe behaviour with that one extra flag.
+		constexpr DWORD kNoWaitMilliseconds = 0;
+
+		constexpr DWORD kOnlyPipeInstance = 1;
+		constexpr DWORD kPipeBufferBytes = 65536;
+		constexpr DWORD kSystemDefaultPipeTimeout = 0;
+
+		constexpr DWORD kDrainChunkBytes = 4096;
+
+		constexpr DWORD kWatchedHandleCount = 2;
+		constexpr DWORD kReadEventOnly = 1;
+		constexpr DWORD kReadFinished = WAIT_OBJECT_0;
+		constexpr DWORD kShellExited = WAIT_OBJECT_0 + 1;
+
+		constexpr DWORD kPseudoConsoleAttributeCount = 1;
+
+		constexpr UINT kTerminatedExitCode = 1;
+
+		HANDLE CreateUnsignalledManualResetEvent()
+		{
+			const BOOL manualReset = TRUE;
+			const BOOL initiallySignalled = FALSE;
+			return ::CreateEventW(nullptr, manualReset, initiallySignalled, nullptr);
+		}
+
+		COORD ToConsoleSize(std::uint16_t columns, std::uint16_t rows)
+		{
+			return COORD{.X = static_cast<SHORT>(columns), .Y = static_cast<SHORT>(rows)};
+		}
+
+		// The OVERLAPPED lives on the caller's stack and the kernel writes into it until the cancelled
+		// read is collected, so this waits for the cancellation before the caller may return.
+		void CancelAndCollectRead(HANDLE pipe, OVERLAPPED& overlapped)
+		{
+			DWORD discardedByteCount = 0;
+			const BOOL waitForCancellation = TRUE;
+			::CancelIoEx(pipe, &overlapped);
+			::GetOverlappedResult(pipe, &overlapped, &discardedByteCount, waitForCancellation);
+		}
+
+		// CreatePipe cannot make an overlapped end, and the reading end must be one: the host owns
+		// the writing end for as long as the pseudo-console lives, so a killed shell never closes it,
+		// and Read has to wait on the shell's process handle alongside the pipe. A uniquely named
+		// pipe nobody else can reach behaves as an anonymous pipe with that one extra flag.
 		bool CreateOverlappedPipe(UniqueHandle& readEnd, UniqueHandle& writeEnd)
 		{
-			static std::atomic<std::uint64_t> nextPipe{0};
+			static std::atomic<std::uint64_t> nextPipeNumber{0};
 
-			wchar_t name[MAX_PATH]{};
-			::swprintf_s(name, L"\\\\.\\pipe\\Core.PseudoConsole.%lu.%llu", ::GetCurrentProcessId(),
-						 static_cast<unsigned long long>(nextPipe.fetch_add(1)));
+			wchar_t pipeName[MAX_PATH]{};
+			::swprintf_s(pipeName, L"\\\\.\\pipe\\Core.PseudoConsole.%lu.%llu", ::GetCurrentProcessId(),
+						 static_cast<unsigned long long>(nextPipeNumber.fetch_add(1)));
 
 			readEnd.Reset(::CreateNamedPipeW(
-				name, PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
-				PIPE_TYPE_BYTE | PIPE_WAIT, 1, 65536, 65536, 0, nullptr));
+				pipeName, PIPE_ACCESS_INBOUND | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE,
+				PIPE_TYPE_BYTE | PIPE_WAIT, kOnlyPipeInstance, kPipeBufferBytes, kPipeBufferBytes,
+				kSystemDefaultPipeTimeout, nullptr));
 
 			if (!readEnd)
 			{
 				return false;
 			}
 
-			writeEnd.Reset(::CreateFileW(name, GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
+			const DWORD shareWithNoOne = 0;
+			writeEnd.Reset(::CreateFileW(pipeName, GENERIC_WRITE, shareWithNoOne, nullptr, OPEN_EXISTING,
 										 FILE_ATTRIBUTE_NORMAL, nullptr));
 
 			if (!writeEnd)
 			{
-				// Closing overwrites the thread's last error, so the caller would report
-				// whatever the close did rather than why the pipe could not be opened.
-				const DWORD failure = ::GetLastError();
+				// Closing a handle overwrites the thread's last error, which the caller reports as the reason the pipe could not be opened.
+				const DWORD openErrorCode = ::GetLastError();
 				readEnd.Reset();
-				::SetLastError(failure);
+				::SetLastError(openErrorCode);
 				return false;
 			}
 
 			return true;
 		}
 
-		// Waits for a read already in flight, watching the shell's process handle alongside it.
-		// The pipe alone never reports the shell's death — the pseudo-console's host, not the
-		// shell, owns the writing end — so the process handle is what lets a killed shell
-		// release a blocked reader; without this, Terminate() would kill the shell and a thread
-		// in Read would still be waiting on a pipe nothing is ever going to close.
-		// The flag is passed rather than its value: a reader is normally already parked here
-		// when the tab is closed, so a grace decided at the start of the read would be the one
-		// from before the shell was killed. It is read at the moment it is used.
-		std::size_t AwaitRead(HANDLE pipe, OVERLAPPED& overlapped, void* process,
-							  const std::atomic<bool>& terminating)
+		// The host, not the shell, owns the pipe's writing end, so only the shell's process handle can
+		// release a reader once the shell is killed. The flag is passed rather than its value because a
+		// reader is usually parked here already when Terminate runs, and must see the flag as it is then.
+		std::size_t AwaitRead(HANDLE pipe, OVERLAPPED& overlapped, HANDLE shellProcess,
+							  const std::atomic<bool>& terminateRequested)
 		{
-			const HANDLE waited[2]{overlapped.hEvent, static_cast<HANDLE>(process)};
-			const DWORD count = process != nullptr ? 2u : 1u;
+			const HANDLE watchedHandles[kWatchedHandleCount]{overlapped.hEvent, shellProcess};
+			const bool hasShellProcess = shellProcess != nullptr;
+			const DWORD watchedHandleCount = hasShellProcess ? kWatchedHandleCount : kReadEventOnly;
+			const BOOL waitForAllHandles = FALSE;
 
-			DWORD signalled = ::WaitForMultipleObjects(count, waited, FALSE, INFINITE);
+			DWORD waitResult = ::WaitForMultipleObjects(watchedHandleCount, watchedHandles, waitForAllHandles, INFINITE);
 
-			if (signalled == WAIT_OBJECT_0 + 1)
+			if (waitResult == kShellExited)
 			{
-				// The process just died. Give the host a short window to deliver whatever it
-				// had already flushed before treating this as end-of-stream.
-				const DWORD grace = terminating.load(std::memory_order_relaxed)
-										? 0u
-										: FlushGraceMilliseconds;
+				// A shell killed on purpose has no last words worth waiting for, and the grace would
+				// otherwise be paid on every tab close, on the thread being joined.
+				const bool killedOnPurpose = terminateRequested.load(std::memory_order_relaxed);
+				const DWORD graceMilliseconds = killedOnPurpose ? kNoWaitMilliseconds : kFlushGraceMilliseconds;
 
-				signalled = ::WaitForSingleObject(overlapped.hEvent, grace);
+				waitResult = ::WaitForSingleObject(overlapped.hEvent, graceMilliseconds);
 			}
 
-			if (signalled != WAIT_OBJECT_0)
+			if (waitResult != kReadFinished)
 			{
-				DWORD discarded = 0;
-				::CancelIoEx(pipe, &overlapped);
-				::GetOverlappedResult(pipe, &overlapped, &discarded, TRUE);
+				CancelAndCollectRead(pipe, overlapped);
 				return 0;
 			}
 
-			DWORD transferred = 0;
+			DWORD bytesTransferred = 0;
+			const BOOL waitForCompletion = FALSE;
+			const BOOL readCollected = ::GetOverlappedResult(pipe, &overlapped, &bytesTransferred, waitForCompletion);
 
-			if (!::GetOverlappedResult(pipe, &overlapped, &transferred, FALSE))
+			if (!readCollected)
 			{
 				return 0;
 			}
 
-			return static_cast<std::size_t>(transferred);
+			return static_cast<std::size_t>(bytesTransferred);
 		}
 
-		// Reads and discards whatever is already sitting in the pipe, for at most the given
-		// number of milliseconds. Used on the way out, where the point is not the bytes but the
-		// room they free: ClosePseudoConsole waits for the host to flush, and at that moment no
-		// reader is left, so a full buffer would leave the host unable to finish. The deadline is
-		// re-checked before every wait and after every completed read, so a host that keeps
-		// producing cannot hold this open.
-		void DrainPipe(HANDLE pipe, DWORD milliseconds)
+		void DrainPipe(HANDLE pipe, DWORD budgetMilliseconds)
 		{
-			const UniqueHandle eventHandle{::CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+			const UniqueHandle readEventOwner{CreateUnsignalledManualResetEvent()};
 
-			if (!eventHandle)
+			if (!readEventOwner)
 			{
 				return;
 			}
 
-			const HANDLE event = eventHandle.Get();
+			const HANDLE readEvent = readEventOwner.Get();
 
-			const ULONGLONG deadline = ::GetTickCount64() + milliseconds;
-			char scratch[4096]{};
+			const ULONGLONG deadline = ::GetTickCount64() + budgetMilliseconds;
+			char drainBuffer[kDrainChunkBytes]{};
 
 			while (true)
 			{
@@ -145,28 +170,29 @@ namespace Core {
 					break;
 				}
 
-				// Only what is already buffered is taken. Issuing a read for bytes that may
-				// never arrive is what made this cost its whole budget every time: with the
-				// shell dead the read simply pends until the deadline, and the destructor
-				// stalls for a quarter of a second per session on the thread closing the tab.
-				DWORD available = 0;
+				// Only what is already buffered is taken: with the shell dead, a read for bytes that
+				// never arrive pends until the deadline, and every tab close would stall for the budget.
+				DWORD bytesAvailable = 0;
+				const DWORD noPeekBuffer = 0;
+				const BOOL peeked = ::PeekNamedPipe(pipe, nullptr, noPeekBuffer, nullptr, &bytesAvailable, nullptr);
+				const bool nothingBuffered = !peeked || bytesAvailable == 0;
 
-				if (!::PeekNamedPipe(pipe, nullptr, 0, nullptr, &available, nullptr) || available == 0)
+				if (nothingBuffered)
 				{
 					break;
 				}
 
-				::ResetEvent(event);
+				::ResetEvent(readEvent);
 
 				OVERLAPPED overlapped{};
-				overlapped.hEvent = event;
+				overlapped.hEvent = readEvent;
 
-				DWORD transferred = 0;
+				DWORD bytesTransferred = 0;
+				const BOOL completedAtOnce = ::ReadFile(pipe, drainBuffer, kDrainChunkBytes, &bytesTransferred, &overlapped);
 
-				if (::ReadFile(pipe, scratch, static_cast<DWORD>(sizeof(scratch)), &transferred,
-							   &overlapped))
+				if (completedAtOnce)
 				{
-					if (transferred == 0)
+					if (bytesTransferred == 0)
 					{
 						break;
 					}
@@ -174,26 +200,32 @@ namespace Core {
 					continue;
 				}
 
-				if (::GetLastError() != ERROR_IO_PENDING)
+				const bool readPending = ::GetLastError() == ERROR_IO_PENDING;
+
+				if (!readPending)
 				{
 					break;
 				}
 
-				if (::WaitForSingleObject(event, static_cast<DWORD>(deadline - now)) != WAIT_OBJECT_0)
+				const DWORD timeLeftMilliseconds = static_cast<DWORD>(deadline - now);
+				const DWORD waitResult = ::WaitForSingleObject(readEvent, timeLeftMilliseconds);
+
+				if (waitResult != kReadFinished)
 				{
-					::CancelIoEx(pipe, &overlapped);
-					::GetOverlappedResult(pipe, &overlapped, &transferred, TRUE);
+					CancelAndCollectRead(pipe, overlapped);
 					break;
 				}
 
-				if (!::GetOverlappedResult(pipe, &overlapped, &transferred, FALSE) || transferred == 0)
+				const BOOL waitForCompletion = FALSE;
+				const BOOL readCollected = ::GetOverlappedResult(pipe, &overlapped, &bytesTransferred, waitForCompletion);
+
+				if (!readCollected || bytesTransferred == 0)
 				{
 					break;
 				}
 			}
 		}
 
-		// The four ends of the two pipes the pseudo-console is built from.
 		struct ConsolePipes
 		{
 			UniqueHandle InputRead;
@@ -208,19 +240,24 @@ namespace Core {
 			HANDLE inputRead = nullptr;
 			HANDLE inputWrite = nullptr;
 
-			if (!::CreatePipe(&inputRead, &inputWrite, nullptr, 0))
+			const DWORD systemDefaultBufferBytes = 0;
+			const BOOL inputPipeCreated = ::CreatePipe(&inputRead, &inputWrite, nullptr, systemDefaultBufferBytes);
+
+			if (!inputPipeCreated)
 			{
-				return Error{ErrorCodeFromWin32(::GetLastError()),
-							 "cannot create the shell's input pipe"};
+				return Error{.Code = ErrorCodeFromWin32(::GetLastError()),
+							 .Message = "cannot create the shell's input pipe"};
 			}
 
 			pipes.InputRead.Reset(inputRead);
 			pipes.InputWrite.Reset(inputWrite);
 
-			if (!CreateOverlappedPipe(pipes.OutputRead, pipes.OutputWrite))
+			const bool outputPipeCreated = CreateOverlappedPipe(pipes.OutputRead, pipes.OutputWrite);
+
+			if (!outputPipeCreated)
 			{
-				return Error{ErrorCodeFromWin32(::GetLastError()),
-							 "cannot create the shell's output pipe"};
+				return Error{.Code = ErrorCodeFromWin32(::GetLastError()),
+							 .Message = "cannot create the shell's output pipe"};
 			}
 
 			return pipes;
@@ -229,21 +266,21 @@ namespace Core {
 		Result<UniquePseudoConsole> CreateConsole(ConsolePipes& pipes, std::uint16_t columns,
 												  std::uint16_t rows)
 		{
-			const COORD size{static_cast<SHORT>(columns), static_cast<SHORT>(rows)};
+			const COORD consoleSize = ToConsoleSize(columns, rows);
 			UniquePseudoConsole console;
-			const HRESULT created = ::CreatePseudoConsole(
-				size, pipes.InputRead.Get(), pipes.OutputWrite.Get(), 0, console.Receive());
+			const DWORD noFlags = 0;
+			const HRESULT createResult = ::CreatePseudoConsole(
+				consoleSize, pipes.InputRead.Get(), pipes.OutputWrite.Get(), noFlags, console.Receive());
 
-			// ConPTY duplicates the two ends it was handed, so this side is done with them the
-			// moment the call returns. Holding them open would keep the output pipe's writing end
-			// alive after the shell exits, and a reader would then block for ever instead of
-			// learning that the shell is gone.
+			// ConPTY duplicates the two ends it was handed, so this side's copies are closed as soon as the
+			// call returns; held, they would keep the pipes from breaking if the host goes away, and Write
+			// would block on a full pipe instead of failing.
 			pipes.InputRead.Reset();
 			pipes.OutputWrite.Reset();
 
-			if (FAILED(created))
+			if (FAILED(createResult))
 			{
-				return Error{ErrorCode::Unsupported, "this system has no pseudo-console support"};
+				return Error{.Code = ErrorCode::Unsupported, .Message = "this system has no pseudo-console support"};
 			}
 
 			return console;
@@ -253,59 +290,62 @@ namespace Core {
 		{
 			ProcThreadAttributeList attributes;
 
-			if (!attributes.Initialise(1))
+			const bool initialised = attributes.Initialise(kPseudoConsoleAttributeCount);
+
+			if (!initialised)
 			{
-				return Error{ErrorCode::IoFailure, "cannot prepare the process attribute list"};
+				return Error{.Code = ErrorCode::IoFailure, .Message = "cannot prepare the process attribute list"};
 			}
 
-			if (!attributes.Update(PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, console, sizeof(console)))
+			const bool consoleAttached = attributes.Update(PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, console, sizeof(console));
+
+			if (!consoleAttached)
 			{
-				return Error{ErrorCode::IoFailure,
-							 "cannot attach the pseudo-console to the process attributes"};
+				return Error{.Code = ErrorCode::IoFailure,
+							 .Message = "cannot attach the pseudo-console to the process attributes"};
 			}
 
 			return attributes;
 		}
 
-		// Starts the shell bound to the pseudo-console named by the attribute list and returns
-		// its process handle.
 		Result<UniqueHandle> SpawnShell(ProcThreadAttributeList& attributes,
 										const std::filesystem::path& program,
 										const std::vector<std::string>& arguments,
 										const std::filesystem::path& workingDirectory)
 		{
-			STARTUPINFOEXW startup{};
-			startup.StartupInfo.cb = sizeof(startup);
-			startup.lpAttributeList = attributes.Get();
+			STARTUPINFOEXW startupInfo{};
+			startupInfo.StartupInfo.cb = sizeof(startupInfo);
+			startupInfo.lpAttributeList = attributes.Get();
 
-			// Naming the standard handles — as nothing — is what actually binds the child to the
-			// pseudo-console. Left unsaid, the child takes over the console this process is already
-			// attached to and writes its prompt there instead, which looks from here exactly like a
-			// pseudo-console that never received any output: every call above still reports success.
-			// The three null handles are replaced by the pseudo-console's own before the child runs.
-			startup.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
-			startup.StartupInfo.hStdInput = nullptr;
-			startup.StartupInfo.hStdOutput = nullptr;
-			startup.StartupInfo.hStdError = nullptr;
+			// Naming the standard handles, as null, is what binds the child to the pseudo-console, which
+			// replaces them before the child runs. Left unnamed, the child writes its prompt to the console
+			// this process is attached to, while every call here still reports success.
+			startupInfo.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+			startupInfo.StartupInfo.hStdInput = nullptr;
+			startupInfo.StartupInfo.hStdOutput = nullptr;
+			startupInfo.StartupInfo.hStdError = nullptr;
 
 			std::wstring commandLine = BuildWindowsCommandLine(program, arguments);
-			const std::wstring directory = workingDirectory.wstring();
+			const std::wstring workingDirectoryText = workingDirectory.wstring();
+			const wchar_t* const inheritOurDirectory = nullptr;
+			const wchar_t* const childDirectory = workingDirectoryText.empty() ? inheritOurDirectory : workingDirectoryText.c_str();
 
-			PROCESS_INFORMATION information{};
+			PROCESS_INFORMATION processInformation{};
+			const BOOL inheritHandles = FALSE;
 
-			// EXTENDED_STARTUPINFO_PRESENT is what makes CreateProcessW read lpAttributeList at
-			// all; without it the child starts with no pseudo-console and behaves as though it
-			// were on a pipe, which is the failure this whole class exists to avoid.
-			if (!::CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, FALSE,
-								  EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
-								  nullptr, directory.empty() ? nullptr : directory.c_str(),
-								  &startup.StartupInfo, &information))
+			// Without EXTENDED_STARTUPINFO_PRESENT, CreateProcessW ignores lpAttributeList and the child
+			// starts with no pseudo-console, behaving as though it were on a pipe.
+			const BOOL started = ::CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, inheritHandles,
+												  EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
+												  nullptr, childDirectory, &startupInfo.StartupInfo, &processInformation);
+
+			if (!started)
 			{
-				return Error{ErrorCodeFromWin32(::GetLastError()), "cannot start the shell"};
+				return Error{.Code = ErrorCodeFromWin32(::GetLastError()), .Message = "cannot start the shell"};
 			}
 
-			const UniqueHandle thread{information.hThread};
-			return UniqueHandle{information.hProcess};
+			const UniqueHandle unusedThreadClosedOnReturn{processInformation.hThread};
+			return UniqueHandle{processInformation.hProcess};
 		}
 	}
 #endif
@@ -345,7 +385,6 @@ namespace Core {
 			return process.GetError();
 		}
 
-		// Only now is nothing left that can fail, so ownership moves into the object in one go.
 		Scope<PseudoConsole> shell{new PseudoConsole};
 		shell->m_Console = console.GetValue().Release();
 		shell->m_Process = std::move(process.GetValue());
@@ -355,8 +394,8 @@ namespace Core {
 
 		return shell;
 #else
-		return Error{ErrorCode::Unsupported,
-					 "starting a pseudo-console is only implemented on Windows"};
+		return Error{.Code = ErrorCode::Unsupported,
+					 .Message = "starting a pseudo-console is only implemented on Windows"};
 #endif
 	}
 
@@ -365,28 +404,24 @@ namespace Core {
 #ifdef CORE_PLATFORM_WINDOWS
 		Terminate();
 
-		// TerminateProcess only asks; it returns long before the process is gone. Everything
-		// below is written on the assumption that nothing is still feeding the pseudo-console,
-		// so the shell's death is waited for rather than assumed. The wait is bounded because a
-		// destructor that can block for ever is worse than one that gives up on a shell which
-		// refuses to die: on expiry the handles are closed anyway.
+		// TerminateProcess returns before the process is gone, and what follows assumes nothing still
+		// feeds the pseudo-console. The wait is bounded so that a shell refusing to die cannot hang the
+		// destructor; the handles are closed regardless.
 		if (m_Process)
 		{
-			::WaitForSingleObject(m_Process.Get(), ShutdownWaitMilliseconds);
+			::WaitForSingleObject(m_Process.Get(), kShutdownWaitMilliseconds);
 		}
 
-		// ClosePseudoConsole below waits for the host's final flush to land in the pipe, and by
-		// then nobody is draining it — a full buffer would leave the host unable to finish and
-		// the close unable to return. Emptying the pipe first hands that flush the whole buffer.
-		// Bounded, for the same reason as the wait above.
+		// ClosePseudoConsole waits for the host's final flush to land in the pipe, and nobody reads it
+		// by then, so a full pipe would leave the close unable to return. Draining it first, within a
+		// bound, gives that flush room.
 		if (m_FromChild)
 		{
-			DrainPipe(m_FromChild.Get(), ShutdownDrainMilliseconds);
+			DrainPipe(m_FromChild.Get(), kShutdownDrainMilliseconds);
 		}
 
-		// The pseudo-console goes first, while the reading end is still open: closing it is the
-		// host's cue to shut down, and the flush it does on the way out needs a pipe left to
-		// write into.
+		// The pseudo-console closes while the reading end is still open: closing it is the host's cue
+		// to shut down, and its last flush needs a pipe to write into.
 		if (m_Console != nullptr)
 		{
 			::ClosePseudoConsole(static_cast<HPCON>(m_Console));
@@ -417,30 +452,37 @@ namespace Core {
 
 		const HANDLE pipe = m_FromChild.Get();
 
-		const UniqueHandle event{::CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+		const UniqueHandle readEvent{CreateUnsignalledManualResetEvent()};
 
-		if (!event)
+		if (!readEvent)
 		{
 			return 0;
 		}
 
 		OVERLAPPED overlapped{};
-		overlapped.hEvent = event.Get();
+		overlapped.hEvent = readEvent.Get();
 
-		DWORD transferred = 0;
-		std::size_t read = 0;
+		DWORD bytesTransferred = 0;
+		std::size_t bytesRead = 0;
 
-		if (::ReadFile(pipe, buffer.data(), static_cast<DWORD>(buffer.size()), &transferred,
-					   &overlapped))
+		const BOOL completedAtOnce = ::ReadFile(pipe, buffer.data(), static_cast<DWORD>(buffer.size()),
+												&bytesTransferred, &overlapped);
+
+		if (completedAtOnce)
 		{
-			read = static_cast<std::size_t>(transferred);
+			bytesRead = static_cast<std::size_t>(bytesTransferred);
 		}
-		else if (::GetLastError() == ERROR_IO_PENDING)
+		else
 		{
-			read = AwaitRead(pipe, overlapped, m_Process.Get(), m_Terminating);
+			const bool readPending = ::GetLastError() == ERROR_IO_PENDING;
+
+			if (readPending)
+			{
+				bytesRead = AwaitRead(pipe, overlapped, m_Process.Get(), m_TerminateRequested);
+			}
 		}
 
-		return read;
+		return bytesRead;
 #else
 		return 0;
 #endif
@@ -454,20 +496,21 @@ namespace Core {
 			return false;
 		}
 
-		std::size_t written = 0;
+		std::size_t bytesWritten = 0;
 
-		while (written < bytes.size())
+		while (bytesWritten < bytes.size())
 		{
-			DWORD chunk = 0;
+			DWORD chunkBytesWritten = 0;
+			const BOOL wrote = ::WriteFile(m_ToChild.Get(), bytes.data() + bytesWritten,
+										   static_cast<DWORD>(bytes.size() - bytesWritten), &chunkBytesWritten, nullptr);
+			const bool writeStalled = !wrote || chunkBytesWritten == 0;
 
-			if (!::WriteFile(m_ToChild.Get(), bytes.data() + written,
-							 static_cast<DWORD>(bytes.size() - written), &chunk, nullptr) ||
-				chunk == 0)
+			if (writeStalled)
 			{
 				return false;
 			}
 
-			written += chunk;
+			bytesWritten += chunkBytesWritten;
 		}
 
 		return true;
@@ -481,20 +524,21 @@ namespace Core {
 #ifdef CORE_PLATFORM_WINDOWS
 		if (m_Console == nullptr)
 		{
-			return Error{ErrorCode::InvalidArgument, "the pseudo-console is closed"};
+			return Error{.Code = ErrorCode::InvalidArgument, .Message = "the pseudo-console is closed"};
 		}
 
-		const COORD size{static_cast<SHORT>(columns), static_cast<SHORT>(rows)};
+		const COORD consoleSize = ToConsoleSize(columns, rows);
+		const HRESULT resizeResult = ::ResizePseudoConsole(static_cast<HPCON>(m_Console), consoleSize);
 
-		if (FAILED(::ResizePseudoConsole(static_cast<HPCON>(m_Console), size)))
+		if (FAILED(resizeResult))
 		{
-			return Error{ErrorCode::IoFailure, "cannot resize the pseudo-console"};
+			return Error{.Code = ErrorCode::IoFailure, .Message = "cannot resize the pseudo-console"};
 		}
 
 		return Result<void>::Ok();
 #else
-		return Error{ErrorCode::Unsupported,
-					 "resizing a pseudo-console is only implemented on Windows"};
+		return Error{.Code = ErrorCode::Unsupported,
+					 .Message = "resizing a pseudo-console is only implemented on Windows"};
 #endif
 	}
 
@@ -506,11 +550,11 @@ namespace Core {
 			return;
 		}
 
-		// Before the kill, so a read already parked in its grace window is not waiting
-		// on a shell that is about to be gone.
-		m_Terminating = true;
+		// Raised before the kill: a reader parked in AwaitRead wakes the moment the shell dies and reads
+		// the flag then, so it must already be set or that reader waits out the full flush grace.
+		m_TerminateRequested = true;
 
-		::TerminateProcess(m_Process.Get(), 1);
+		::TerminateProcess(m_Process.Get(), kTerminatedExitCode);
 #endif
 	}
 
@@ -522,7 +566,7 @@ namespace Core {
 			return false;
 		}
 
-		return ::WaitForSingleObject(m_Process.Get(), 0) == WAIT_TIMEOUT;
+		return ::WaitForSingleObject(m_Process.Get(), kNoWaitMilliseconds) == WAIT_TIMEOUT;
 #else
 		return false;
 #endif

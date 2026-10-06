@@ -3,73 +3,81 @@
 #include "Core/Base/PlatformDetection.h"
 #include "Core/Platform/ShellProfiles.h"
 
-#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
 
 namespace {
 
-	// PATH is read the platform's way. MSVC rejects std::getenv in favour of _dupenv_s, which
-	// owns its buffer; everywhere else getenv is the only spelling there is. The separator
-	// differs along the same line, so both halves are needed for this file to compile — and to
-	// mean the same thing — on either target.
 #ifdef CORE_PLATFORM_WINDOWS
-	constexpr char PathSeparator = ';';
+	constexpr char kPathEntrySeparator = ';';
 #else
-	constexpr char PathSeparator = ':';
+	constexpr char kPathEntrySeparator = ':';
 #endif
 
+	// MSVC rejects std::getenv as unsafe, so on Windows PATH is read through _dupenv_s, which hands
+	// back a buffer the caller frees.
 	std::string PathVariable()
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		char* value = nullptr;
-		std::size_t length = 0;
+		char* pathValue = nullptr;
+		std::size_t pathValueLength = 0;
+		const errno_t readStatus = _dupenv_s(&pathValue, &pathValueLength, "PATH");
 
-		if (_dupenv_s(&value, &length, "PATH") != 0 || value == nullptr)
+		if (readStatus != 0 || pathValue == nullptr)
 		{
 			return {};
 		}
 
-		std::string result = value;
-		std::free(value);
-		return result;
+		std::string pathText = pathValue;
+		std::free(pathValue);
+		return pathText;
 #else
-		const char* value = std::getenv("PATH");
+		const char* pathValue = std::getenv("PATH");
 
-		return value == nullptr ? std::string{} : std::string{value};
+		return pathValue == nullptr ? std::string{} : std::string{pathValue};
 #endif
 	}
 
-	// A minimal, test-local PATH search — deliberately not the production implementation —
-	// so this test proves the outcome (git.exe on PATH implies a Git Bash profile) rather
-	// than re-running the code under test against itself.
-	bool IsOnPath(const std::string& executableName)
+	bool IsOnPathIndependentlyOfFindOnPath(const std::string& executableName)
 	{
-		const std::string path = PathVariable();
+		const std::string pathVariable = PathVariable();
+		std::size_t entryStart = 0;
+		bool entriesRemain = true;
 
-		std::size_t start = 0;
-		while (start <= path.size())
+		while (entriesRemain)
 		{
-			std::size_t end = path.find(PathSeparator, start);
-			if (end == std::string::npos)
-			{
-				end = path.size();
-			}
+			const std::size_t separatorPosition = pathVariable.find(kPathEntrySeparator, entryStart);
+			const bool isLastEntry = separatorPosition == std::string::npos;
+			const std::size_t entryEnd = isLastEntry ? pathVariable.size() : separatorPosition;
+			const bool entryHasCharacters = entryEnd > entryStart;
 
-			if (end > start)
+			if (entryHasCharacters)
 			{
-				std::error_code status;
-				const std::filesystem::path candidate =
-					std::filesystem::path{path.substr(start, end - start)} / executableName;
+				std::error_code ignoredError;
+				const std::filesystem::path candidate = std::filesystem::path{pathVariable.substr(entryStart, entryEnd - entryStart)} / executableName;
 
-				if (std::filesystem::exists(candidate, status))
+				if (std::filesystem::exists(candidate, ignoredError))
 				{
 					return true;
 				}
 			}
 
-			start = end + 1;
+			entriesRemain = !isLastEntry;
+			entryStart = entryEnd + 1;
+		}
+
+		return false;
+	}
+
+	bool ContainsShellNamed(const std::vector<Core::ShellProfile>& shells, const std::string& shellName)
+	{
+		for (const Core::ShellProfile& shell : shells)
+		{
+			if (shell.Name == shellName)
+			{
+				return true;
+			}
 		}
 
 		return false;
@@ -103,31 +111,26 @@ TEST_CASE("DiscoverShells returns each shell once")
 {
 	const std::vector<Core::ShellProfile> shells = Core::DiscoverShells();
 
-	for (std::size_t outer = 0; outer < shells.size(); ++outer)
+	for (std::size_t earlierIndex = 0; earlierIndex < shells.size(); ++earlierIndex)
 	{
-		for (std::size_t inner = outer + 1; inner < shells.size(); ++inner)
+		for (std::size_t laterIndex = earlierIndex + 1; laterIndex < shells.size(); ++laterIndex)
 		{
-			CHECK(shells[outer].Path != shells[inner].Path);
+			CHECK(shells[earlierIndex].Path != shells[laterIndex].Path);
 		}
 	}
 }
 
-TEST_CASE("DiscoverShells finds Git Bash when git.exe is on PATH")
+TEST_CASE("DiscoverShells finds Git Bash wherever Git is installed when git.exe is on PATH and skips the check when it is not")
 {
-	// Conditional on the environment rather than hard-coding an install location, so it
-	// still proves the mechanism (registry lookup, or the PATH-derived fallback) on a
-	// machine where Git lives somewhere other than %ProgramFiles%\Git — such as this one. The
-	// same condition skips the case on a platform that has no git.exe to find, where
-	// DiscoverShells offers no Git Bash profile by construction.
-	if (!IsOnPath("git.exe"))
+	const bool gitIsOnPath = IsOnPathIndependentlyOfFindOnPath("git.exe");
+
+	if (!gitIsOnPath)
 	{
 		return;
 	}
 
 	const std::vector<Core::ShellProfile> shells = Core::DiscoverShells();
-	const bool foundGitBash = std::any_of(
-		shells.begin(), shells.end(),
-		[](const Core::ShellProfile& shell) { return shell.Name == "Git Bash"; });
+	const bool foundGitBash = ContainsShellNamed(shells, "Git Bash");
 
 	CHECK(foundGitBash);
 }

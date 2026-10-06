@@ -4,9 +4,9 @@
 
 #include "Core/Base/PlatformDetection.h"
 #include "Core/Base/ScopeExit.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Platform/Process.h"
 
-#include <array>
 #include <cstdlib>
 #include <string_view>
 
@@ -17,123 +17,149 @@
 namespace Core {
 
 	namespace {
-		// Appends onto an environment-derived base, but only when that base is actually
-		// present. An empty base concatenated with a relative tail ("PowerShell/7/pwsh.exe")
-		// is still a valid, non-empty path — one that resolves relative to the current
-		// working directory and could accidentally exist there, so it has to be rejected
-		// before it ever reaches std::filesystem::exists rather than relying on that check.
-		std::filesystem::path JoinIfPresent(const std::filesystem::path& base,
-											const std::filesystem::path& tail)
+		constexpr wchar_t kPathEntrySeparator = L';';
+		constexpr wchar_t kQuote = L'"';
+
+		// An empty base would turn the tail into a path relative to the working directory, which can
+		// exist there by accident, so a missing base gives an empty path instead.
+		std::filesystem::path JoinIfPresent(const std::filesystem::path& baseDirectory, const std::filesystem::path& relativeTail)
 		{
-			if (base.empty())
+			if (baseDirectory.empty())
 			{
 				return {};
 			}
 
-			return base / tail;
+			return baseDirectory / relativeTail;
 		}
 
-		void AddIfPresent(std::vector<ShellProfile>& shells, std::string name,
-						  const std::filesystem::path& path, std::vector<std::string> arguments)
+		bool ContainsShellAt(const std::vector<ShellProfile>& shells, const std::filesystem::path& path)
 		{
-			std::error_code status;
+			for (const ShellProfile& shell : shells)
+			{
+				if (shell.Path == path)
+				{
+					return true;
+				}
+			}
 
-			if (path.empty() || !std::filesystem::exists(path, status))
+			return false;
+		}
+
+		void AddIfPresent(std::vector<ShellProfile>& shells, std::string name, const std::filesystem::path& path, std::vector<std::string> arguments)
+		{
+			if (path.empty() || !PathExists(path))
 			{
 				return;
 			}
 
-			for (const ShellProfile& existing : shells)
+			if (ContainsShellAt(shells, path))
 			{
-				if (existing.Path == path)
-				{
-					return;
-				}
+				return;
 			}
 
-			shells.push_back(ShellProfile{std::move(name), path, std::move(arguments)});
+			shells.push_back(ShellProfile{.Name = std::move(name), .Path = path, .Arguments = std::move(arguments)});
+		}
+
+		// Installers quote a PATH entry that holds a space, and CreateProcess strips the quotes before
+		// searching; kept, they would name a directory that does not exist.
+		std::wstring_view WithoutEnclosingQuotes(std::wstring_view pathEntry)
+		{
+			const bool hasRoomForTwoQuotes = pathEntry.size() >= 2;
+
+			if (!hasRoomForTwoQuotes)
+			{
+				return pathEntry;
+			}
+
+			const bool startsAndEndsWithQuote = pathEntry.front() == kQuote && pathEntry.back() == kQuote;
+
+			if (!startsAndEndsWithQuote)
+			{
+				return pathEntry;
+			}
+
+			const std::size_t lengthInsideQuotes = pathEntry.size() - 2;
+			return pathEntry.substr(1, lengthInsideQuotes);
 		}
 
 #ifdef CORE_PLATFORM_WINDOWS
-		// The registry key an installer writes is preferred over guessing a directory: Git
-		// for Windows lets the user pick any install drive and folder, so "%ProgramFiles%\Git"
-		// is only ever a guess that happens to be right on a default install. The key is the
-		// one place that answers correctly no matter where the user put it.
-		std::filesystem::path ReadRegistryInstallPath(HKEY root, const wchar_t* subKey)
+		constexpr DWORD kNoOptions = 0;
+
+		// Git for Windows puts git.exe in cmd\ and in mingw64\bin\, one and two levels below the
+		// install root that holds bin\bash.exe.
+		constexpr int kGitDirectoryAndParentsSearched = 3;
+
+		struct InstallerKey
 		{
-			HKEY key = nullptr;
+			HKEY Root;
+			const wchar_t* SubKey;
+		};
 
-			if (::RegOpenKeyExW(root, subKey, 0, KEY_READ, &key) != ERROR_SUCCESS)
-			{
-				return {};
-			}
-
-			const ScopeExit closeKey{[key] { ::RegCloseKey(key); }};
-
-			wchar_t buffer[MAX_PATH] = {};
-			DWORD size = sizeof(buffer) - sizeof(wchar_t); // leave room to force termination
-			DWORD type = 0;
-
-			const LONG status = ::RegQueryValueExW(key, L"InstallPath", nullptr, &type,
-												   reinterpret_cast<BYTE*>(buffer), &size);
-
-			if (status != ERROR_SUCCESS || type != REG_SZ)
-			{
-				return {};
-			}
-
-			// RegQueryValueExW only null-terminates a REG_SZ if the source value already was;
-			// the buffer is one wchar_t larger than what was requested, and stays zero-filled,
-			// so indexing at the requested size is always in bounds and always a terminator.
-			buffer[size / sizeof(wchar_t)] = L'\0';
-
-			return std::filesystem::path{buffer};
+		std::filesystem::path GitBashUnder(const std::filesystem::path& installRoot)
+		{
+			return installRoot / "bin" / "bash.exe";
 		}
 
-		// Tries every place Git for Windows' installer might have recorded InstallPath: the
-		// machine-wide key, the per-user key (a non-admin install), and the WOW6432Node
-		// mirror that a 32-bit build of Git lands in when seen from a 64-bit process.
+		std::filesystem::path ReadRegistryInstallPath(HKEY root, const wchar_t* subKey)
+		{
+			HKEY openedKey = nullptr;
+			const LONG openStatus = ::RegOpenKeyExW(root, subKey, kNoOptions, KEY_READ, &openedKey);
+
+			if (openStatus != ERROR_SUCCESS)
+			{
+				return {};
+			}
+
+			const ScopeExit closeKey{[openedKey] { ::RegCloseKey(openedKey); }};
+
+			// RegQueryValueExW null-terminates a REG_SZ only when the stored value already was, so the
+			// zero-filled buffer is offered one wchar_t short and the wchar_t after the value is forced to zero.
+			wchar_t installPathBuffer[MAX_PATH] = {};
+			DWORD valueByteCount = sizeof(installPathBuffer) - sizeof(wchar_t);
+			DWORD valueType = 0;
+
+			const LONG queryStatus = ::RegQueryValueExW(openedKey, L"InstallPath", nullptr, &valueType,
+														reinterpret_cast<BYTE*>(installPathBuffer), &valueByteCount);
+
+			if (queryStatus != ERROR_SUCCESS || valueType != REG_SZ)
+			{
+				return {};
+			}
+
+			const std::size_t terminatorIndex = valueByteCount / sizeof(wchar_t);
+			installPathBuffer[terminatorIndex] = L'\0';
+
+			return std::filesystem::path{installPathBuffer};
+		}
+
 		std::filesystem::path GitBashFromRegistry()
 		{
-			struct Candidate
+			const InstallerKey machineWideInstall{.Root = HKEY_LOCAL_MACHINE, .SubKey = L"SOFTWARE\\GitForWindows"};
+			const InstallerKey perUserInstallWithoutAdmin{.Root = HKEY_CURRENT_USER, .SubKey = L"SOFTWARE\\GitForWindows"};
+			const InstallerKey thirtyTwoBitInstallSeenFromSixtyFourBitProcess{.Root = HKEY_LOCAL_MACHINE, .SubKey = L"SOFTWARE\\WOW6432Node\\GitForWindows"};
+
+			const InstallerKey installerKeys[] = {machineWideInstall, perUserInstallWithoutAdmin, thirtyTwoBitInstallSeenFromSixtyFourBitProcess};
+
+			for (const InstallerKey& installerKey : installerKeys)
 			{
-				HKEY Root;
-				const wchar_t* SubKey;
-			};
+				const std::filesystem::path installRoot = ReadRegistryInstallPath(installerKey.Root, installerKey.SubKey);
 
-			const Candidate candidates[] = {
-				{HKEY_LOCAL_MACHINE, L"SOFTWARE\\GitForWindows"},
-				{HKEY_CURRENT_USER, L"SOFTWARE\\GitForWindows"},
-				{HKEY_LOCAL_MACHINE, L"SOFTWARE\\WOW6432Node\\GitForWindows"},
-			};
-
-			for (const Candidate& candidate : candidates)
-			{
-				const std::filesystem::path installPath =
-					ReadRegistryInstallPath(candidate.Root, candidate.SubKey);
-
-				if (installPath.empty())
+				if (installRoot.empty())
 				{
 					continue;
 				}
 
-				const std::filesystem::path bash = installPath / "bin" / "bash.exe";
-				std::error_code status;
+				const std::filesystem::path gitBash = GitBashUnder(installRoot);
 
-				if (std::filesystem::exists(bash, status))
+				if (PathExists(gitBash))
 				{
-					return bash;
+					return gitBash;
 				}
 			}
 
 			return {};
 		}
 
-		// Git for Windows places git.exe in two different spots below the install root —
-		// "cmd\git.exe" and "mingw64\bin\git.exe" — at different depths, with "bin\bash.exe"
-		// a sibling of whichever the shim on PATH resolves to. Rather than assume one fixed
-		// depth, climb a few levels from wherever PATH found git.exe and check each for the
-		// "bin\bash.exe" that would sit beside it at the real install root.
 		std::filesystem::path GitBashFromPath()
 		{
 			const std::filesystem::path gitExecutable = FindOnPath("git.exe");
@@ -145,18 +171,19 @@ namespace Core {
 
 			std::filesystem::path directory = gitExecutable.parent_path();
 
-			for (int level = 0; level < 3 && !directory.empty(); ++level)
+			for (int directoriesSearched = 0; directoriesSearched < kGitDirectoryAndParentsSearched && !directory.empty(); ++directoriesSearched)
 			{
-				const std::filesystem::path candidate = directory / "bin" / "bash.exe";
-				std::error_code status;
+				const std::filesystem::path gitBash = GitBashUnder(directory);
 
-				if (std::filesystem::exists(candidate, status))
+				if (PathExists(gitBash))
 				{
-					return candidate;
+					return gitBash;
 				}
 
 				const std::filesystem::path parent = directory.parent_path();
-				if (parent == directory)
+				const bool reachedFilesystemRoot = parent == directory;
+
+				if (reachedFilesystemRoot)
 				{
 					break;
 				}
@@ -169,62 +196,39 @@ namespace Core {
 #endif
 	}
 
-	namespace {
-		// An installer may write a PATH entry with quotes around it — usually one containing a
-		// space. CreateProcess strips them before it resolves anything, so a segment used
-		// verbatim here would name a directory whose first and last characters are quote marks
-		// and match nothing at all.
-		std::wstring_view StripQuotes(std::wstring_view segment)
-		{
-			if (segment.size() >= 2 && segment.front() == L'"' && segment.back() == L'"')
-			{
-				return segment.substr(1, segment.size() - 2);
-			}
-
-			return segment;
-		}
-	}
-
-	// Finds an executable the same way CreateProcess resolves a bare command name: by
-	// walking PATH in order.
-	std::filesystem::path FindOnPath(const std::string& executableName)
+	std::filesystem::path FindOnPath(const std::string& executableFileName)
 	{
-		// Read wide: a PATH entry under a non-ANSI profile directory would not survive the
-		// narrow code page.
-		const std::optional<std::filesystem::path> pathValue = EnvironmentPath(L"PATH");
+		const std::optional<std::filesystem::path> pathVariableValue = EnvironmentPath(L"PATH");
 
-		if (!pathValue.has_value())
+		if (!pathVariableValue.has_value())
 		{
 			return {};
 		}
 
-		const std::wstring pathVariable = pathValue->wstring();
+		const std::wstring pathVariable = pathVariableValue->wstring();
+		std::size_t entryStart = 0;
+		bool entriesRemain = true;
 
-		std::size_t start = 0;
-		while (start <= pathVariable.size())
+		while (entriesRemain)
 		{
-			std::size_t end = pathVariable.find(L';', start);
-			if (end == std::wstring::npos)
+			const std::size_t separatorPosition = pathVariable.find(kPathEntrySeparator, entryStart);
+			const bool isLastEntry = separatorPosition == std::wstring::npos;
+			const std::size_t entryEnd = isLastEntry ? pathVariable.size() : separatorPosition;
+
+			const std::wstring_view entry = WithoutEnclosingQuotes(std::wstring_view{pathVariable}.substr(entryStart, entryEnd - entryStart));
+
+			if (!entry.empty())
 			{
-				end = pathVariable.size();
-			}
+				const std::filesystem::path candidate = std::filesystem::path{std::wstring{entry}} / executableFileName;
 
-			const std::wstring_view segment = StripQuotes(
-				std::wstring_view{pathVariable}.substr(start, end - start));
-
-			if (!segment.empty())
-			{
-				const std::filesystem::path candidate =
-					std::filesystem::path{std::wstring{segment}} / executableName;
-				std::error_code status;
-
-				if (std::filesystem::exists(candidate, status))
+				if (PathExists(candidate))
 				{
 					return candidate;
 				}
 			}
 
-			start = end + 1;
+			entriesRemain = !isLastEntry;
+			entryStart = entryEnd + 1;
 		}
 
 		return {};
@@ -235,32 +239,23 @@ namespace Core {
 		std::vector<ShellProfile> shells;
 
 #ifdef CORE_PLATFORM_WINDOWS
-		const std::filesystem::path programFiles =
-			EnvironmentPath(L"ProgramFiles").value_or(std::filesystem::path{});
-		const std::filesystem::path systemRoot =
-			EnvironmentPath(L"SystemRoot").value_or(std::filesystem::path{});
-		const std::filesystem::path system = JoinIfPresent(systemRoot, "System32");
+		const std::vector<std::string> noArguments;
 
-		AddIfPresent(shells, "PowerShell",
-					 JoinIfPresent(programFiles, std::filesystem::path{"PowerShell"} / "7" /
-													 "pwsh.exe"),
-					 {});
-		AddIfPresent(shells, "Windows PowerShell",
-					 JoinIfPresent(system, std::filesystem::path{"WindowsPowerShell"} / "v1.0" /
-											   "powershell.exe"),
-					 {});
-		AddIfPresent(shells, "Command Prompt", JoinIfPresent(system, "cmd.exe"), {});
+		const std::filesystem::path programFiles = EnvironmentPath(L"ProgramFiles").value_or(std::filesystem::path{});
+		const std::filesystem::path systemRoot = EnvironmentPath(L"SystemRoot").value_or(std::filesystem::path{});
+		const std::filesystem::path systemDirectory = JoinIfPresent(systemRoot, "System32");
 
-		// --login -i is what makes Git Bash read the profile and behave interactively;
-		// without it the prompt is a bare "bash-5.2$" with no environment. Three mechanisms
-		// are tried in order of trust: the registry key the installer itself writes (correct
-		// regardless of which drive Git lives on), then a PATH search (covers portable and
-		// unpackaged installs the registry never heard of), then the old %ProgramFiles%
-		// guess as a last resort that costs nothing and still covers the ordinary default
-		// install. The first mechanism that finds a bash.exe wins and the rest are skipped, so
-		// exactly one of them ever contributes a path; AddIfPresent still de-duplicates, but
-		// against this list that is defence for a future change rather than something today's
-		// code exercises.
+		const std::filesystem::path powerShell = JoinIfPresent(programFiles, std::filesystem::path{"PowerShell"} / "7" / "pwsh.exe");
+		AddIfPresent(shells, "PowerShell", powerShell, noArguments);
+
+		const std::filesystem::path windowsPowerShell = JoinIfPresent(systemDirectory, std::filesystem::path{"WindowsPowerShell"} / "v1.0" / "powershell.exe");
+		AddIfPresent(shells, "Windows PowerShell", windowsPowerShell, noArguments);
+
+		const std::filesystem::path commandPrompt = JoinIfPresent(systemDirectory, "cmd.exe");
+		AddIfPresent(shells, "Command Prompt", commandPrompt, noArguments);
+
+		// Git for Windows may live on any drive and folder, and a portable copy writes no registry key,
+		// so %ProgramFiles%\Git is only the last guess, after the installer's key and the git.exe on PATH.
 		std::filesystem::path gitBash = GitBashFromRegistry();
 		if (gitBash.empty())
 		{
@@ -268,20 +263,24 @@ namespace Core {
 		}
 		if (gitBash.empty())
 		{
-			gitBash = JoinIfPresent(programFiles, std::filesystem::path{"Git"} / "bin" /
-													  "bash.exe");
+			gitBash = JoinIfPresent(programFiles, GitBashUnder("Git"));
 		}
-		AddIfPresent(shells, "Git Bash", gitBash, {"--login", "-i"});
 
-		AddIfPresent(shells, "WSL", JoinIfPresent(system, "wsl.exe"), {});
+		// Git Bash reads its profile only as a login shell; without --login the prompt is a bare
+		// "bash-5.2$" with no environment.
+		const std::vector<std::string> loginInteractiveArguments{"--login", "-i"};
+		AddIfPresent(shells, "Git Bash", gitBash, loginInteractiveArguments);
+
+		const std::filesystem::path windowsSubsystemForLinux = JoinIfPresent(systemDirectory, "wsl.exe");
+		AddIfPresent(shells, "WSL", windowsSubsystemForLinux, noArguments);
 #else
-		// /etc/shells lists what the machine offers, and SHELL names the user's own.
+		const std::vector<std::string> interactiveArguments{"-i"};
+
 		const char* const userShell = std::getenv("SHELL");
-		AddIfPresent(shells, "Default shell",
-					 userShell == nullptr ? std::filesystem::path{} : std::filesystem::path{userShell},
-					 {"-i"});
-		AddIfPresent(shells, "bash", "/bin/bash", {"-i"});
-		AddIfPresent(shells, "sh", "/bin/sh", {"-i"});
+		const std::filesystem::path userShellPath = userShell == nullptr ? std::filesystem::path{} : std::filesystem::path{userShell};
+		AddIfPresent(shells, "Default shell", userShellPath, interactiveArguments);
+		AddIfPresent(shells, "bash", "/bin/bash", interactiveArguments);
+		AddIfPresent(shells, "sh", "/bin/sh", interactiveArguments);
 #endif
 
 		return shells;

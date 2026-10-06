@@ -20,11 +20,11 @@ namespace Core {
 
 		virtual void SetCaptionMetrics(const CaptionMetrics& metrics) = 0;
 
-		// The DWM attribute behind this may be set at any time on a live window, so a themed
-		// border does not have to be decided before the window exists.
+		// DWM takes a border colour at any time on a live window, so a theme can change it after the
+		// window exists.
 		virtual void SetBorderColor(const Color& color) = 0;
 
 		static Result<Scope<WindowFrame>> Hide(Window& window,
-											   const Color& border);
+											   const Color& borderColor);
 	};
 }

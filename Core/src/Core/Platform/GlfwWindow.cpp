@@ -33,46 +33,57 @@
 namespace Core {
 
 	namespace {
-		// Needs a current context. A driver that answers nothing is reported as such rather than
-		// handed to the formatter as a null string.
-		const char* GlString(GLenum name)
+		constexpr int kOpenGlMajorVersion = 3;
+		constexpr int kOpenGlMinorVersion = 3;
+
+		constexpr int kSwapOnEveryVerticalBlank = 1;
+		constexpr int kSwapImmediately = 0;
+
+		// GLFW truncates the timeout to whole milliseconds, so it wakes a hair before the deadline,
+		// finds it not yet due and spends another frame asking again. A millisecond late is invisible.
+		constexpr double kTimeoutTruncationMarginSeconds = 0.001;
+
+		// glGetString answers only with a current context, and a driver may answer null, which the
+		// formatter cannot take.
+		const char* OpenGlStringOrUnknown(GLenum name)
 		{
-			const auto* text = reinterpret_cast<const char*>(glGetString(name));
+			const char* text = reinterpret_cast<const char*>(glGetString(name));
 			return text != nullptr ? text : "unknown";
 		}
 
-		// A bug report that says what drew the window is worth one line per fact in the file.
-		void LogGraphicsEnvironment()
+		void LogGraphicsEnvironmentForBugReports()
 		{
-			CORE_INFO("GL vendor: {}", GlString(GL_VENDOR));
-			CORE_INFO("GL renderer: {}", GlString(GL_RENDERER));
-			CORE_INFO("GL version: {}", GlString(GL_VERSION));
+			CORE_INFO("GL vendor: {}", OpenGlStringOrUnknown(GL_VENDOR));
+			CORE_INFO("GL renderer: {}", OpenGlStringOrUnknown(GL_RENDERER));
+			CORE_INFO("GL version: {}", OpenGlStringOrUnknown(GL_VERSION));
 			CORE_INFO("GLFW: {}", glfwGetVersionString());
 		}
 
-		int s_GlfwWindowCount = 0;
+		int s_LiveWindowCount = 0;
 
-		void OnGlfwError(int code, const char* description)
+		void OnGlfwError(int errorCode, const char* description)
 		{
-			CORE_ERROR("GLFW ({}): {}", code, description);
+			CORE_ERROR("GLFW ({}): {}", errorCode, description);
 		}
 	}
 
 #ifdef CORE_PLATFORM_WINDOWS
 	namespace {
-		ScreenRect ToScreenRect(const RECT& rect)
+		ScreenRect ToScreenRect(const RECT& rectangle)
 		{
-			return ScreenRect{rect.left, rect.top, rect.right, rect.bottom};
+			return ScreenRect{.Left = rectangle.left, .Top = rectangle.top, .Right = rectangle.right, .Bottom = rectangle.bottom};
 		}
 
-		BOOL CALLBACK CollectWorkArea(HMONITOR monitor, HDC, LPRECT, LPARAM data)
+		BOOL CALLBACK CollectWorkArea(HMONITOR monitor, HDC, LPRECT, LPARAM workAreas)
 		{
-			MONITORINFO info{};
-			info.cbSize = sizeof(info);
+			MONITORINFO monitorInfo{};
+			monitorInfo.cbSize = sizeof(monitorInfo);
 
-			if (GetMonitorInfoW(monitor, &info) != 0)
+			const bool hasMonitorInfo = GetMonitorInfoW(monitor, &monitorInfo) != 0;
+
+			if (hasMonitorInfo)
 			{
-				reinterpret_cast<std::vector<ScreenRect>*>(data)->push_back(ToScreenRect(info.rcWork));
+				reinterpret_cast<std::vector<ScreenRect>*>(workAreas)->push_back(ToScreenRect(monitorInfo.rcWork));
 			}
 
 			return TRUE;
@@ -80,17 +91,19 @@ namespace Core {
 
 		std::vector<ScreenRect> MonitorWorkAreas()
 		{
-			std::vector<ScreenRect> areas;
-			EnumDisplayMonitors(nullptr, nullptr, &CollectWorkArea, reinterpret_cast<LPARAM>(&areas));
-			return areas;
+			std::vector<ScreenRect> workAreas;
+			EnumDisplayMonitors(nullptr, nullptr, &CollectWorkArea, reinterpret_cast<LPARAM>(&workAreas));
+			return workAreas;
 		}
 
-		MONITORINFO PrimaryMonitor()
+		MONITORINFO PrimaryMonitorInfo()
 		{
-			MONITORINFO info{};
-			info.cbSize = sizeof(info);
-			GetMonitorInfoW(MonitorFromPoint(POINT{0, 0}, MONITOR_DEFAULTTOPRIMARY), &info);
-			return info;
+			const POINT primaryMonitorOrigin{.x = 0, .y = 0};
+
+			MONITORINFO monitorInfo{};
+			monitorInfo.cbSize = sizeof(monitorInfo);
+			GetMonitorInfoW(MonitorFromPoint(primaryMonitorOrigin, MONITOR_DEFAULTTOPRIMARY), &monitorInfo);
+			return monitorInfo;
 		}
 	}
 #endif
@@ -98,35 +111,28 @@ namespace Core {
 	GlfwWindow::GlfwWindow(GLFWwindow* handle) : m_Handle(handle) {}
 
 	namespace {
-		// GLFW hands back only the window pointer, so the callback has to find its way home
-		// through the user pointer set in InstallCallbacks.
-		GlfwWindow* WindowFrom(GLFWwindow* handle)
+		KeyModifier ToKeyModifier(int glfwModifierBits)
 		{
-			return static_cast<GlfwWindow*>(glfwGetWindowUserPointer(handle));
-		}
+			KeyModifier modifiers = KeyModifier::None;
 
-		KeyModifier ToModifiers(int mods)
-		{
-			KeyModifier result = KeyModifier::None;
-
-			if ((mods & GLFW_MOD_SHIFT) != 0)
+			if ((glfwModifierBits & GLFW_MOD_SHIFT) != 0)
 			{
-				result = result | KeyModifier::Shift;
+				modifiers = modifiers | KeyModifier::Shift;
 			}
-			if ((mods & GLFW_MOD_CONTROL) != 0)
+			if ((glfwModifierBits & GLFW_MOD_CONTROL) != 0)
 			{
-				result = result | KeyModifier::Control;
+				modifiers = modifiers | KeyModifier::Control;
 			}
-			if ((mods & GLFW_MOD_ALT) != 0)
+			if ((glfwModifierBits & GLFW_MOD_ALT) != 0)
 			{
-				result = result | KeyModifier::Alt;
+				modifiers = modifiers | KeyModifier::Alt;
 			}
-			if ((mods & GLFW_MOD_SUPER) != 0)
+			if ((glfwModifierBits & GLFW_MOD_SUPER) != 0)
 			{
-				result = result | KeyModifier::Super;
+				modifiers = modifiers | KeyModifier::Super;
 			}
 
-			return result;
+			return modifiers;
 		}
 	}
 
@@ -134,188 +140,212 @@ namespace Core {
 	{
 		glfwSetWindowUserPointer(m_Handle, this);
 
-		glfwSetWindowSizeCallback(m_Handle,
-								  [](GLFWwindow* handle, int width, int height) {
-									  GlfwWindow* self = WindowFrom(handle);
-									  if (self == nullptr || !self->m_EventCallback)
-									  {
-										  return;
-									  }
+		glfwSetWindowSizeCallback(m_Handle, &OnResized);
+		glfwSetWindowCloseCallback(m_Handle, &OnCloseRequested);
+		glfwSetWindowFocusCallback(m_Handle, &OnFocusChanged);
+		glfwSetWindowPosCallback(m_Handle, &OnMoved);
+		glfwSetKeyCallback(m_Handle, &OnKey);
+		glfwSetCharCallback(m_Handle, &OnCharacterTyped);
+		glfwSetMouseButtonCallback(m_Handle, &OnMouseButton);
+		glfwSetScrollCallback(m_Handle, &OnScrolled);
+		glfwSetCursorPosCallback(m_Handle, &OnCursorMoved);
+		glfwSetDropCallback(m_Handle, &OnFilesDropped);
+	}
 
-									  WindowResizeEvent event{width, height};
-									  self->m_EventCallback(event);
-								  });
+	GlfwWindow* GlfwWindow::ListeningWindowOf(GLFWwindow* handle)
+	{
+		GlfwWindow* window = static_cast<GlfwWindow*>(glfwGetWindowUserPointer(handle));
+		const bool nobodyIsListening = window == nullptr || !window->m_EventCallback;
 
-		glfwSetWindowCloseCallback(m_Handle,
-								   [](GLFWwindow* handle) {
-									   GlfwWindow* self = WindowFrom(handle);
-									   if (self == nullptr || !self->m_EventCallback)
-									   {
-										   return;
-									   }
+		if (nobodyIsListening)
+		{
+			return nullptr;
+		}
 
-									   WindowCloseEvent event;
-									   self->m_EventCallback(event);
-								   });
+		return window;
+	}
 
-		glfwSetWindowFocusCallback(m_Handle,
-								   [](GLFWwindow* handle, int focused) {
-									   GlfwWindow* self = WindowFrom(handle);
-									   if (self == nullptr || !self->m_EventCallback)
-									   {
-										   return;
-									   }
+	void GlfwWindow::OnResized(GLFWwindow* handle, int width, int height)
+	{
+		GlfwWindow* window = ListeningWindowOf(handle);
+		if (window == nullptr)
+		{
+			return;
+		}
 
-									   if (focused == GLFW_TRUE)
-									   {
-										   WindowFocusEvent event;
-										   self->m_EventCallback(event);
-									   }
-									   else
-									   {
-										   WindowLostFocusEvent event;
-										   self->m_EventCallback(event);
-									   }
-								   });
+		WindowResizeEvent event{width, height};
+		window->m_EventCallback(event);
+	}
 
-		glfwSetWindowPosCallback(m_Handle,
-								 [](GLFWwindow* handle, int x, int y) {
-									 GlfwWindow* self = WindowFrom(handle);
-									 if (self == nullptr || !self->m_EventCallback)
-									 {
-										 return;
-									 }
+	void GlfwWindow::OnCloseRequested(GLFWwindow* handle)
+	{
+		GlfwWindow* window = ListeningWindowOf(handle);
+		if (window == nullptr)
+		{
+			return;
+		}
 
-									 WindowMovedEvent event{x, y};
-									 self->m_EventCallback(event);
-								 });
+		WindowCloseEvent event;
+		window->m_EventCallback(event);
+	}
 
-		glfwSetKeyCallback(m_Handle,
-						   [](GLFWwindow* handle, int key, int, int action, int mods) {
-							   GlfwWindow* self = WindowFrom(handle);
-							   if (self == nullptr || !self->m_EventCallback)
-							   {
-								   return;
-							   }
+	void GlfwWindow::OnFocusChanged(GLFWwindow* handle, int focused)
+	{
+		GlfwWindow* window = ListeningWindowOf(handle);
+		if (window == nullptr)
+		{
+			return;
+		}
 
-							   const KeyCode code = static_cast<KeyCode>(key);
-							   const KeyModifier modifiers = ToModifiers(mods);
+		const bool gainedFocus = focused == GLFW_TRUE;
 
-							   switch (action)
-							   {
-							   case GLFW_PRESS:
-							   {
-								   KeyPressedEvent event{code, modifiers, false};
-								   self->m_EventCallback(event);
-								   break;
-							   }
-							   case GLFW_REPEAT:
-							   {
-								   KeyPressedEvent event{code, modifiers, true};
-								   self->m_EventCallback(event);
-								   break;
-							   }
-							   case GLFW_RELEASE:
-							   {
-								   KeyReleasedEvent event{code, modifiers};
-								   self->m_EventCallback(event);
-								   break;
-							   }
-							   default:
-								   break;
-							   }
-						   });
+		if (gainedFocus)
+		{
+			WindowFocusEvent event;
+			window->m_EventCallback(event);
+		}
+		else
+		{
+			WindowLostFocusEvent event;
+			window->m_EventCallback(event);
+		}
+	}
 
-		glfwSetCharCallback(m_Handle,
-							[](GLFWwindow* handle, unsigned int codepoint) {
-								GlfwWindow* self = WindowFrom(handle);
-								if (self == nullptr || !self->m_EventCallback)
-								{
-									return;
-								}
+	void GlfwWindow::OnMoved(GLFWwindow* handle, int x, int y)
+	{
+		GlfwWindow* window = ListeningWindowOf(handle);
+		if (window == nullptr)
+		{
+			return;
+		}
 
-								KeyTypedEvent event{codepoint};
-								self->m_EventCallback(event);
-							});
+		WindowMovedEvent event{x, y};
+		window->m_EventCallback(event);
+	}
 
-		glfwSetMouseButtonCallback(m_Handle,
-								   [](GLFWwindow* handle, int button, int action, int) {
-									   GlfwWindow* self = WindowFrom(handle);
-									   if (self == nullptr || !self->m_EventCallback)
-									   {
-										   return;
-									   }
+	void GlfwWindow::OnKey(GLFWwindow* handle, int key, int, int action, int modifierBits)
+	{
+		GlfwWindow* window = ListeningWindowOf(handle);
+		if (window == nullptr)
+		{
+			return;
+		}
 
-									   const MouseCode code = static_cast<MouseCode>(button);
+		const KeyCode keyCode = static_cast<KeyCode>(key);
+		const KeyModifier modifiers = ToKeyModifier(modifierBits);
 
-									   if (action == GLFW_PRESS)
-									   {
-										   MouseButtonPressedEvent event{code};
-										   self->m_EventCallback(event);
-									   }
-									   else if (action == GLFW_RELEASE)
-									   {
-										   MouseButtonReleasedEvent event{code};
-										   self->m_EventCallback(event);
-									   }
-								   });
+		switch (action)
+		{
+		case GLFW_PRESS:
+		{
+			const bool isRepeat = false;
+			KeyPressedEvent event{keyCode, modifiers, isRepeat};
+			window->m_EventCallback(event);
+			break;
+		}
+		case GLFW_REPEAT:
+		{
+			const bool isRepeat = true;
+			KeyPressedEvent event{keyCode, modifiers, isRepeat};
+			window->m_EventCallback(event);
+			break;
+		}
+		case GLFW_RELEASE:
+		{
+			KeyReleasedEvent event{keyCode, modifiers};
+			window->m_EventCallback(event);
+			break;
+		}
+		default:
+			break;
+		}
+	}
 
-		glfwSetScrollCallback(m_Handle,
-							  [](GLFWwindow* handle, double xOffset, double yOffset) {
-								  GlfwWindow* self = WindowFrom(handle);
-								  if (self == nullptr || !self->m_EventCallback)
-								  {
-									  return;
-								  }
+	void GlfwWindow::OnCharacterTyped(GLFWwindow* handle, unsigned int codepoint)
+	{
+		GlfwWindow* window = ListeningWindowOf(handle);
+		if (window == nullptr)
+		{
+			return;
+		}
 
-								  MouseScrolledEvent event{static_cast<float>(xOffset),
-														   static_cast<float>(yOffset)};
-								  self->m_EventCallback(event);
-							  });
+		KeyTypedEvent event{codepoint};
+		window->m_EventCallback(event);
+	}
 
-		glfwSetCursorPosCallback(m_Handle,
-								 [](GLFWwindow* handle, double x, double y) {
-									 GlfwWindow* self = WindowFrom(handle);
-									 if (self == nullptr || !self->m_EventCallback)
-									 {
-										 return;
-									 }
+	void GlfwWindow::OnMouseButton(GLFWwindow* handle, int button, int action, int)
+	{
+		GlfwWindow* window = ListeningWindowOf(handle);
+		if (window == nullptr)
+		{
+			return;
+		}
 
-									 MouseMovedEvent event{static_cast<float>(x), static_cast<float>(y)};
-									 self->m_EventCallback(event);
-								 });
+		const MouseCode mouseButton = static_cast<MouseCode>(button);
 
-		// GLFW hands the dropped paths over as UTF-8 whatever the platform stores them as, so
-		// they go back through FromUtf8 rather than std::filesystem::path's own constructor -
-		// which would read them in the machine's ANSI codepage and mangle every path outside it.
-		//
-		// The ImGui GLFW backend installs no drop callback of its own, so this one survives its
-		// initialisation even though it runs after the window is built.
-		glfwSetDropCallback(m_Handle,
-							[](GLFWwindow* handle, int count, const char** paths) {
-								GlfwWindow* self = WindowFrom(handle);
-								if (self == nullptr || !self->m_EventCallback)
-								{
-									return;
-								}
+		if (action == GLFW_PRESS)
+		{
+			MouseButtonPressedEvent event{mouseButton};
+			window->m_EventCallback(event);
+		}
+		else if (action == GLFW_RELEASE)
+		{
+			MouseButtonReleasedEvent event{mouseButton};
+			window->m_EventCallback(event);
+		}
+	}
 
-								std::vector<std::filesystem::path> dropped;
-								dropped.reserve(static_cast<std::size_t>(count));
+	void GlfwWindow::OnScrolled(GLFWwindow* handle, double xOffset, double yOffset)
+	{
+		GlfwWindow* window = ListeningWindowOf(handle);
+		if (window == nullptr)
+		{
+			return;
+		}
 
-								for (int index = 0; index < count; ++index)
-								{
-									dropped.push_back(FromUtf8(paths[index]));
-								}
+		MouseScrolledEvent event{static_cast<float>(xOffset), static_cast<float>(yOffset)};
+		window->m_EventCallback(event);
+	}
 
-								FileDropEvent event{std::move(dropped)};
-								self->m_EventCallback(event);
-							});
+	void GlfwWindow::OnCursorMoved(GLFWwindow* handle, double x, double y)
+	{
+		GlfwWindow* window = ListeningWindowOf(handle);
+		if (window == nullptr)
+		{
+			return;
+		}
+
+		MouseMovedEvent event{static_cast<float>(x), static_cast<float>(y)};
+		window->m_EventCallback(event);
+	}
+
+	// GLFW hands dropped paths over as UTF-8 on every platform, and std::filesystem::path's own
+	// constructor would read them in the ANSI codepage and mangle every path outside it. The ImGui
+	// GLFW backend installs no drop callback, so it neither chains to nor replaces this one.
+	void GlfwWindow::OnFilesDropped(GLFWwindow* handle, int pathCount, const char** paths)
+	{
+		GlfwWindow* window = ListeningWindowOf(handle);
+		if (window == nullptr)
+		{
+			return;
+		}
+
+		std::vector<std::filesystem::path> droppedPaths;
+		droppedPaths.reserve(static_cast<std::size_t>(pathCount));
+
+		for (int pathIndex = 0; pathIndex < pathCount; ++pathIndex)
+		{
+			droppedPaths.push_back(FromUtf8(paths[pathIndex]));
+		}
+
+		FileDropEvent event{std::move(droppedPaths)};
+		window->m_EventCallback(event);
 	}
 
 	GlfwWindow::~GlfwWindow()
 	{
-		// Before glfwDestroyWindow, always: the frame restores a window procedure, and a
-		// destroyed window has none left to restore it to.
+		// The frame restores a window procedure, so it goes before glfwDestroyWindow: a destroyed
+		// window has none left to restore it to.
 		m_Frame.reset();
 
 		if (m_Handle == nullptr)
@@ -326,7 +356,10 @@ namespace Core {
 		glfwDestroyWindow(m_Handle);
 		m_Handle = nullptr;
 
-		if (--s_GlfwWindowCount == 0)
+		--s_LiveWindowCount;
+		const bool wasLastWindow = s_LiveWindowCount == 0;
+
+		if (wasLastWindow)
 		{
 			glfwTerminate();
 		}
@@ -339,10 +372,7 @@ namespace Core {
 
 	void GlfwWindow::WaitEvents(double timeoutSeconds)
 	{
-		// GLFW truncates the timeout to whole milliseconds, which wakes a hair before the
-		// deadline, finds it not yet due, and spends another frame asking again. A millisecond
-		// late is invisible.
-		glfwWaitEventsTimeout(timeoutSeconds + 0.001);
+		glfwWaitEventsTimeout(timeoutSeconds + kTimeoutTruncationMarginSeconds);
 	}
 
 	void GlfwWindow::SwapBuffers()
@@ -373,7 +403,9 @@ namespace Core {
 	void GlfwWindow::SetVSync(bool enabled)
 	{
 		glfwMakeContextCurrent(m_Handle);
-		glfwSwapInterval(enabled ? 1 : 0);
+
+		const int swapInterval = enabled ? kSwapOnEveryVerticalBlank : kSwapImmediately;
+		glfwSwapInterval(swapInterval);
 	}
 
 	void GlfwWindow::Minimize()
@@ -405,21 +437,25 @@ namespace Core {
 	WindowPlacement GlfwWindow::GetPlacement() const
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		WINDOWPLACEMENT native{};
-		native.length = sizeof(native);
+		WINDOWPLACEMENT nativePlacement{};
+		nativePlacement.length = sizeof(nativePlacement);
 
-		if (GetWindowPlacement(glfwGetWin32Window(m_Handle), &native) != 0)
+		const bool placementRead = GetWindowPlacement(glfwGetWin32Window(m_Handle), &nativePlacement) != 0;
+
+		if (placementRead)
 		{
-			const RECT& rect = native.rcNormalPosition;
+			const RECT& restoredRectangle = nativePlacement.rcNormalPosition;
 
-			// A window minimized from maximized comes back maximized, and that is what the next
-			// launch should do too.
-			const bool maximized =
-				native.showCmd == SW_SHOWMAXIMIZED ||
-				(native.showCmd == SW_SHOWMINIMIZED && (native.flags & WPF_RESTORETOMAXIMIZED) != 0);
+			const bool shownMaximized = nativePlacement.showCmd == SW_SHOWMAXIMIZED;
+			const bool restoresToMaximized = (nativePlacement.flags & WPF_RESTORETOMAXIMIZED) != 0;
+			const bool minimizedFromMaximized = nativePlacement.showCmd == SW_SHOWMINIMIZED && restoresToMaximized;
+			const bool reopensMaximized = shownMaximized || minimizedFromMaximized;
 
-			return WindowPlacement{rect.left, rect.top, rect.right - rect.left,
-								   rect.bottom - rect.top, maximized};
+			return WindowPlacement{.X = restoredRectangle.left,
+								   .Y = restoredRectangle.top,
+								   .Width = restoredRectangle.right - restoredRectangle.left,
+								   .Height = restoredRectangle.bottom - restoredRectangle.top,
+								   .Maximized = reopensMaximized};
 		}
 #endif
 		WindowPlacement placement;
@@ -432,54 +468,52 @@ namespace Core {
 	void GlfwWindow::Show(const std::optional<WindowPlacement>& placement)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		// rcNormalPosition is in workspace coordinates, which are screen coordinates shifted by
-		// a taskbar docked on the primary monitor's top or left. The monitors report screen
-		// coordinates, so the fit happens there and the result is shifted back.
-		const MONITORINFO primary = PrimaryMonitor();
-		const int shiftX = primary.rcWork.left - primary.rcMonitor.left;
-		const int shiftY = primary.rcWork.top - primary.rcMonitor.top;
+		// rcNormalPosition is in workspace coordinates: screen coordinates shifted by a taskbar docked
+		// on the primary monitor's top or left edge. The monitors report screen coordinates, so the
+		// placement is fitted there and shifted back.
+		const MONITORINFO primaryMonitorInfo = PrimaryMonitorInfo();
+		const int workspaceShiftX = primaryMonitorInfo.rcWork.left - primaryMonitorInfo.rcMonitor.left;
+		const int workspaceShiftY = primaryMonitorInfo.rcWork.top - primaryMonitorInfo.rcMonitor.top;
 
 		WindowPlacement fitted;
 
 		if (placement)
 		{
 			WindowPlacement onScreen = *placement;
-			onScreen.X += shiftX;
-			onScreen.Y += shiftY;
+			onScreen.X += workspaceShiftX;
+			onScreen.Y += workspaceShiftY;
 
-			const std::vector<ScreenRect> areas = MonitorWorkAreas();
-			fitted = FitToMonitors(onScreen, areas, ToScreenRect(primary.rcWork));
+			const std::vector<ScreenRect> workAreas = MonitorWorkAreas();
+			fitted = FitToMonitors(onScreen, workAreas, ToScreenRect(primaryMonitorInfo.rcWork));
 		}
 		else
 		{
-			// Nothing saved: the size the window was created at, scaled to the monitor, which can
-			// be taller than the monitor's work area leaves room for - the window then opened
-			// under the taskbar. Kept clear of it and centred.
-			int width = 0;
-			int height = 0;
-			glfwGetWindowSize(m_Handle, &width, &height);
-			fitted = DefaultPlacement(width, height, ToScreenRect(primary.rcWork));
+			int createdWidth = 0;
+			int createdHeight = 0;
+			glfwGetWindowSize(m_Handle, &createdWidth, &createdHeight);
+			fitted = DefaultPlacement(createdWidth, createdHeight, ToScreenRect(primaryMonitorInfo.rcWork));
 		}
 
-		WINDOWPLACEMENT native{};
-		native.length = sizeof(native);
-		native.showCmd = fitted.Maximized ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL;
-		native.rcNormalPosition = RECT{fitted.X - shiftX, fitted.Y - shiftY,
-									   fitted.X - shiftX + fitted.Width,
-									   fitted.Y - shiftY + fitted.Height};
+		const int workspaceLeft = fitted.X - workspaceShiftX;
+		const int workspaceTop = fitted.Y - workspaceShiftY;
 
-		// SetWindowPlacement shows the window itself, with showCmd.
-		const HWND hwnd = glfwGetWin32Window(m_Handle);
-		if (SetWindowPlacement(hwnd, &native) != 0)
+		WINDOWPLACEMENT nativePlacement{};
+		nativePlacement.length = sizeof(nativePlacement);
+		nativePlacement.showCmd = fitted.Maximized ? SW_SHOWMAXIMIZED : SW_SHOWNORMAL;
+		nativePlacement.rcNormalPosition = RECT{.left = workspaceLeft,
+												.top = workspaceTop,
+												.right = workspaceLeft + fitted.Width,
+												.bottom = workspaceTop + fitted.Height};
+
+		const HWND nativeWindow = glfwGetWin32Window(m_Handle);
+		const bool placedAndShown = SetWindowPlacement(nativeWindow, &nativePlacement) != 0;
+
+		if (placedAndShown)
 		{
-			// The window was created on the primary monitor, at that monitor's DPI. When the
-			// placement lands it on a monitor with a different DPI, Windows sends WM_DPICHANGED
-			// and the window, which scales to its monitor, resizes to the suggested rectangle:
-			// the restored one scaled by the ratio of the two DPIs. A size saved at 150% would
-			// come back half as large again, and grow on every launch. By now the window is at
-			// the target monitor's DPI, so placing it once more is not rescaled and leaves
-			// exactly the saved rectangle.
-			SetWindowPlacement(hwnd, &native);
+			// Placed on a monitor with another DPI, the window receives WM_DPICHANGED and resizes to the
+			// restored rectangle scaled by the ratio of the two DPIs, so a saved size would grow on every
+			// launch. It is at the target monitor's DPI by now, so placing it again is not rescaled.
+			SetWindowPlacement(nativeWindow, &nativePlacement);
 			return;
 		}
 
@@ -489,20 +523,25 @@ namespace Core {
 #else
 		if (!placement)
 		{
-			int areaX = 0;
-			int areaY = 0;
-			int areaWidth = 0;
-			int areaHeight = 0;
-			int width = 0;
-			int height = 0;
+			int workAreaX = 0;
+			int workAreaY = 0;
+			int workAreaWidth = 0;
+			int workAreaHeight = 0;
+			int createdWidth = 0;
+			int createdHeight = 0;
 
-			if (GLFWmonitor* monitor = glfwGetPrimaryMonitor(); monitor != nullptr)
+			GLFWmonitor* primaryMonitor = glfwGetPrimaryMonitor();
+
+			if (primaryMonitor != nullptr)
 			{
-				glfwGetMonitorWorkarea(monitor, &areaX, &areaY, &areaWidth, &areaHeight);
-				glfwGetWindowSize(m_Handle, &width, &height);
+				glfwGetMonitorWorkarea(primaryMonitor, &workAreaX, &workAreaY, &workAreaWidth, &workAreaHeight);
+				glfwGetWindowSize(m_Handle, &createdWidth, &createdHeight);
 
-				const WindowPlacement centred =
-					DefaultPlacement(width, height, ScreenRect{areaX, areaY, areaX + areaWidth, areaY + areaHeight});
+				const ScreenRect workArea{.Left = workAreaX,
+										  .Top = workAreaY,
+										  .Right = workAreaX + workAreaWidth,
+										  .Bottom = workAreaY + workAreaHeight};
+				const WindowPlacement centred = DefaultPlacement(createdWidth, createdHeight, workArea);
 				glfwSetWindowPos(m_Handle, centred.X, centred.Y);
 				glfwSetWindowSize(m_Handle, centred.Width, centred.Height);
 			}
@@ -537,62 +576,70 @@ namespace Core {
 
 	void GlfwWindow::SetBorderColor(const Color& color)
 	{
-		// No frame means the caption was never reclaimed and the system owns the border. There
-		// is nothing to recolour, and that is the degraded-but-working state, not an error.
-		if (m_Frame != nullptr)
+		const bool systemOwnsTheBorder = m_Frame == nullptr;
+
+		if (systemOwnsTheBorder)
 		{
-			m_Frame->SetBorderColor(color);
+			return;
 		}
+
+		m_Frame->SetBorderColor(color);
 	}
 
 	Result<Scope<Window>> Window::Create(const WindowSpec& spec)
 	{
-		if (s_GlfwWindowCount == 0)
+		const bool isFirstWindow = s_LiveWindowCount == 0;
+
+		if (isFirstWindow)
 		{
 			glfwSetErrorCallback(&OnGlfwError);
 
-			if (glfwInit() == GLFW_FALSE)
+			const bool initialised = glfwInit() != GLFW_FALSE;
+
+			if (!initialised)
 			{
-				return Error{ErrorCode::Unsupported, "glfwInit failed"};
+				return Error{.Code = ErrorCode::Unsupported, .Message = "glfwInit failed"};
 			}
 		}
 
-		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, kOpenGlMajorVersion);
+		glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, kOpenGlMinorVersion);
 		glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 		glfwWindowHint(GLFW_SCALE_TO_MONITOR, GLFW_TRUE);
 
-		// Created hidden and shown once it is where it belongs, so a restored window does not
-		// flash up at the default size first.
+		// Created hidden and shown once Show has placed it, so a restored window does not flash up
+		// at the default size first.
 		glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 
+		GLFWmonitor* const noFullScreenMonitor = nullptr;
+		GLFWwindow* const noSharedContext = nullptr;
 		GLFWwindow* handle =
-			glfwCreateWindow(spec.Width, spec.Height, spec.Title.c_str(), nullptr, nullptr);
+			glfwCreateWindow(spec.Width, spec.Height, spec.Title.c_str(), noFullScreenMonitor, noSharedContext);
 
-		// Hints outlive the call, and ImGui's platform windows are GLFW windows too.
+		// GLFW keeps hints after the call, and ImGui's platform windows are GLFW windows too.
 		glfwWindowHint(GLFW_VISIBLE, GLFW_TRUE);
 
 		if (handle == nullptr)
 		{
-			if (s_GlfwWindowCount == 0)
+			if (isFirstWindow)
 			{
 				glfwTerminate();
 			}
 
-			return Error{ErrorCode::Unsupported, "failed to create an OpenGL 3.3 window"};
+			return Error{.Code = ErrorCode::Unsupported, .Message = "failed to create an OpenGL 3.3 window"};
 		}
 
-		++s_GlfwWindowCount;
+		++s_LiveWindowCount;
 
 		auto window = CreateScope<GlfwWindow>(handle);
 		window->InstallCallbacks();
 		glfwMakeContextCurrent(handle);
 		window->SetVSync(spec.VSync);
-		LogGraphicsEnvironment();
+		LogGraphicsEnvironmentForBugReports();
 
 		if (spec.CustomTitleBar)
 		{
-			auto frame = WindowFrame::Hide(*window, spec.BorderColor);
+			Result<Scope<WindowFrame>> frame = WindowFrame::Hide(*window, spec.BorderColor);
 			if (frame)
 			{
 				window->AdoptFrame(std::move(frame).GetValue());

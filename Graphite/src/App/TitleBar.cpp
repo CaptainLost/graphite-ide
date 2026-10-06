@@ -119,10 +119,12 @@ namespace Graphite {
 			const ImVec2 origin = ImGui::GetWindowPos();
 			const ImVec2 pointer = ImGui::GetMousePos();
 
+			const Core::WindowState windowState = window.IsMaximized() ? Core::WindowState::Maximized : Core::WindowState::Restored;
+
 			return Core::Classify(metrics, static_cast<float>(clientWidth),
 								  static_cast<float>(clientHeight), pointer.x - origin.x,
 								  pointer.y - origin.y,
-								  window.IsMaximized()) != Core::CaptionHit::Client;
+								  windowState) != Core::CaptionHit::Client;
 		}
 
 		void DrawWindowButtons(Core::Window& window, const Core::CaptionLayout& layout,

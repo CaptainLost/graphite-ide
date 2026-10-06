@@ -9,58 +9,82 @@
 namespace Core {
 
 	namespace {
-		// Enough of the window to take hold of: a strip the width of a couple of caption
-		// buttons and the height of the caption.
-		constexpr int kGrabbableWidth = 64;
-		constexpr int kGrabbableHeight = 32;
+		constexpr int kGrabbableWidthOfTwoCaptionButtons = 64;
+		constexpr int kGrabbableHeightOfCaption = 32;
 
-		// The most of the work area a window with no saved placement takes.
-		constexpr int kDefaultAreaPercent = 85;
+		constexpr int kLargestDefaultPercentOfWorkArea = 85;
+		constexpr int kHundredPercent = 100;
+
+		int WidthOf(const ScreenRect& area)
+		{
+			return area.Right - area.Left;
+		}
+
+		int HeightOf(const ScreenRect& area)
+		{
+			return area.Bottom - area.Top;
+		}
+
+		int PercentOf(int length, int percent)
+		{
+			return length * percent / kHundredPercent;
+		}
+
+		void CentreIn(WindowPlacement& placement, const ScreenRect& area)
+		{
+			const int spareWidth = WidthOf(area) - placement.Width;
+			const int spareHeight = HeightOf(area) - placement.Height;
+
+			placement.X = area.Left + spareWidth / 2;
+			placement.Y = area.Top + spareHeight / 2;
+		}
 
 		bool IsGrabbableOn(const WindowPlacement& placement, const ScreenRect& area)
 		{
-			const int left = std::max(placement.X, area.Left);
-			const int right = std::min(placement.X + placement.Width, area.Right);
-			const int top = std::max(placement.Y, area.Top);
-			const int bottom = std::min(placement.Y + placement.Height, area.Bottom);
+			const int overlapLeft = std::max(placement.X, area.Left);
+			const int overlapRight = std::min(placement.X + placement.Width, area.Right);
+			const int overlapTop = std::max(placement.Y, area.Top);
+			const int overlapBottom = std::min(placement.Y + placement.Height, area.Bottom);
 
-			return right - left >= kGrabbableWidth && bottom - top >= kGrabbableHeight;
+			return overlapRight - overlapLeft >= kGrabbableWidthOfTwoCaptionButtons && overlapBottom - overlapTop >= kGrabbableHeightOfCaption;
+		}
+
+		bool IsGrabbableOnAnyMonitor(const WindowPlacement& placement, std::span<const ScreenRect> workAreas)
+		{
+			for (const ScreenRect& workArea : workAreas)
+			{
+				if (IsGrabbableOn(placement, workArea))
+				{
+					return true;
+				}
+			}
+
+			return false;
 		}
 	}
 
-	WindowPlacement DefaultPlacement(int width, int height, const ScreenRect& workArea)
+	WindowPlacement DefaultPlacement(int preferredWidth, int preferredHeight, const ScreenRect& workArea)
 	{
-		const int areaWidth = workArea.Right - workArea.Left;
-		const int areaHeight = workArea.Bottom - workArea.Top;
-
-		WindowPlacement placement;
-		placement.Width = std::min(width, areaWidth * kDefaultAreaPercent / 100);
-		placement.Height = std::min(height, areaHeight * kDefaultAreaPercent / 100);
-		placement.X = workArea.Left + (areaWidth - placement.Width) / 2;
-		placement.Y = workArea.Top + (areaHeight - placement.Height) / 2;
+		WindowPlacement placement{
+			.Width = std::min(preferredWidth, PercentOf(WidthOf(workArea), kLargestDefaultPercentOfWorkArea)),
+			.Height = std::min(preferredHeight, PercentOf(HeightOf(workArea), kLargestDefaultPercentOfWorkArea)),
+		};
+		CentreIn(placement, workArea);
 
 		return placement;
 	}
 
 	WindowPlacement FitToMonitors(WindowPlacement placement, std::span<const ScreenRect> workAreas,
-								  const ScreenRect& primary)
+								  const ScreenRect& primaryWorkArea)
 	{
-		const bool grabbable =
-			std::any_of(workAreas.begin(), workAreas.end(),
-						[&placement](const ScreenRect& area) { return IsGrabbableOn(placement, area); });
-
-		if (grabbable)
+		if (IsGrabbableOnAnyMonitor(placement, workAreas))
 		{
 			return placement;
 		}
 
-		const int areaWidth = primary.Right - primary.Left;
-		const int areaHeight = primary.Bottom - primary.Top;
-
-		placement.Width = std::min(placement.Width, areaWidth);
-		placement.Height = std::min(placement.Height, areaHeight);
-		placement.X = primary.Left + (areaWidth - placement.Width) / 2;
-		placement.Y = primary.Top + (areaHeight - placement.Height) / 2;
+		placement.Width = std::min(placement.Width, WidthOf(primaryWorkArea));
+		placement.Height = std::min(placement.Height, HeightOf(primaryWorkArea));
+		CentreIn(placement, primaryWorkArea);
 
 		return placement;
 	}

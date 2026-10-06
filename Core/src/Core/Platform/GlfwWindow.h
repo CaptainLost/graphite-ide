@@ -19,10 +19,11 @@ namespace Core {
 		explicit GlfwWindow(GLFWwindow* handle);
 		~GlfwWindow() override;
 
-		void SetEventCallback(EventCallbackFn callback) override { m_EventCallback = std::move(callback); }
+		void SetEventCallback(EventCallback callback) override { m_EventCallback = std::move(callback); }
 
-		// Must run before the GUI backend initialises: that backend chains to whatever
-		// callbacks it finds, so these have to be there first or they are replaced.
+		// The ImGui GLFW backend chains to the callbacks it finds when it initialises, so these must be
+		// installed before it: installed later, they would replace the backend's own and ImGui would
+		// receive no keyboard or mouse input.
 		void InstallCallbacks();
 
 		void PollEvents() override;
@@ -44,9 +45,8 @@ namespace Core {
 		bool IsFocused() const override;
 		WindowPlacement GetPlacement() const override;
 
-		// Shows a window created hidden, at `placement` when there is one. Called once, by
-		// Window::Create, after the frame is adopted: the frame changes the non-client area, and
-		// a placement applied before that would be measured against the old one.
+		// Call after AdoptFrame: the frame changes the non-client area, and a placement applied
+		// before it would be measured against the old one.
 		void Show(const std::optional<WindowPlacement>& placement);
 
 		bool HasCustomTitleBar() const override;
@@ -56,8 +56,21 @@ namespace Core {
 		void AdoptFrame(Scope<WindowFrame> frame) { m_Frame = std::move(frame); }
 
 	private:
+		static GlfwWindow* ListeningWindowOf(GLFWwindow* handle);
+
+		static void OnResized(GLFWwindow* handle, int width, int height);
+		static void OnCloseRequested(GLFWwindow* handle);
+		static void OnFocusChanged(GLFWwindow* handle, int focused);
+		static void OnMoved(GLFWwindow* handle, int x, int y);
+		static void OnKey(GLFWwindow* handle, int key, int scancode, int action, int modifierBits);
+		static void OnCharacterTyped(GLFWwindow* handle, unsigned int codepoint);
+		static void OnMouseButton(GLFWwindow* handle, int button, int action, int modifierBits);
+		static void OnScrolled(GLFWwindow* handle, double xOffset, double yOffset);
+		static void OnCursorMoved(GLFWwindow* handle, double x, double y);
+		static void OnFilesDropped(GLFWwindow* handle, int pathCount, const char** paths);
+
 		GLFWwindow* m_Handle = nullptr;
-		EventCallbackFn m_EventCallback;
+		EventCallback m_EventCallback;
 
 		Scope<WindowFrame> m_Frame;
 	};

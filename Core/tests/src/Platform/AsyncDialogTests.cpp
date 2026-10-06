@@ -6,6 +6,7 @@
 #include <atomic>
 #include <chrono>
 #include <filesystem>
+#include <functional>
 #include <future>
 #include <memory>
 #include <optional>
@@ -19,14 +20,17 @@ using Core::Result;
 namespace {
 	using Picked = Result<std::filesystem::path>;
 
-	// Polls the way a frame loop does until `done` holds or a generous deadline passes, so a
-	// broken dialog fails the test instead of hanging the suite.
-	template<typename Predicate>
-	bool PollUntil(AsyncDialog& dialog, Predicate done)
-	{
-		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+	constexpr std::chrono::seconds kGiveUpAfter{5};
+	constexpr std::chrono::milliseconds kPollInterval{1};
+	constexpr std::chrono::milliseconds kTimeToAskForARedrawAfterReturning{200};
 
-		while (!done())
+	// Answers false once kGiveUpAfter has passed, so that a broken dialog fails the test instead
+	// of hanging the suite.
+	bool PollEachFrameUntil(AsyncDialog& dialog, const std::function<bool()>& condition)
+	{
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kGiveUpAfter;
+
+		while (!condition())
 		{
 			if (std::chrono::steady_clock::now() > deadline)
 			{
@@ -34,20 +38,19 @@ namespace {
 			}
 
 			dialog.Poll();
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			std::this_thread::sleep_for(kPollInterval);
 		}
 
 		return true;
 	}
 
-	// A picker that stays open until the test lets it return, like a dialog the user has not
-	// answered yet. Shared, because a dialog abandoned by its owner still runs to the end.
-	struct HeldPicker
+	struct HeldOpenPicker
 	{
+		// Shared, because a dialog abandoned by its owner still runs to the end.
 		std::shared_ptr<std::promise<void>> Release = std::make_shared<std::promise<void>>();
 		std::shared_ptr<std::atomic<bool>> Returned = std::make_shared<std::atomic<bool>>(false);
 
-		AsyncDialog::Picker Make() const
+		AsyncDialog::Picker MakePicker() const
 		{
 			return [release = Release->get_future().share(), returned = Returned]() -> Picked {
 				release.wait();
@@ -56,6 +59,26 @@ namespace {
 			};
 		}
 	};
+
+	void WaitUntilPickerReturns(const HeldOpenPicker& heldPicker)
+	{
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kGiveUpAfter;
+
+		while (!heldPicker.Returned->load() && std::chrono::steady_clock::now() < deadline)
+		{
+			std::this_thread::sleep_for(kPollInterval);
+		}
+	}
+
+	Picked PickSecond()
+	{
+		return std::filesystem::path("second");
+	}
+
+	bool StartSecondDialog(AsyncDialog& dialog, int& deliveredCount)
+	{
+		return dialog.Start(PickSecond, [&deliveredCount](Picked) { ++deliveredCount; });
+	}
 }
 
 TEST_CASE("AsyncDialog runs the picker on a thread other than the one that started it")
@@ -71,81 +94,76 @@ TEST_CASE("AsyncDialog runs the picker on a thread other than the one that start
 		},
 		[&](Picked) { delivered = true; }));
 
-	REQUIRE(PollUntil(dialog, [&] { return delivered; }));
+	REQUIRE(PollEachFrameUntil(dialog, [&] { return delivered; }));
 	CHECK(pickerThread != std::thread::id{});
 	CHECK(pickerThread != std::this_thread::get_id());
 }
 
-TEST_CASE("AsyncDialog hands the result over on the thread that polls, and only through Poll")
+TEST_CASE("AsyncDialog hands the result over only through Poll on the thread that polls and never from the picker's thread")
 {
 	AsyncDialog dialog;
-	HeldPicker picker;
-	std::optional<Picked> result;
-	std::thread::id doneThread;
+	HeldOpenPicker heldPicker;
+	std::optional<Picked> deliveredAnswer;
+	std::thread::id answerHandlerThread;
 
-	REQUIRE(dialog.Start(picker.Make(), [&](Picked picked) {
-		doneThread = std::this_thread::get_id();
-		result = std::move(picked);
+	REQUIRE(dialog.Start(heldPicker.MakePicker(), [&](Picked picked) {
+		answerHandlerThread = std::this_thread::get_id();
+		deliveredAnswer = std::move(picked);
 	}));
 
-	picker.Release->set_value();
+	heldPicker.Release->set_value();
 
-	// Returned is not delivered: the picker's thread never calls back on its own.
-	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-	while (!picker.Returned->load() && std::chrono::steady_clock::now() < deadline)
-	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	}
-	REQUIRE(picker.Returned->load());
-	CHECK_FALSE(result.has_value());
+	WaitUntilPickerReturns(heldPicker);
+	REQUIRE(heldPicker.Returned->load());
+	CHECK_FALSE(deliveredAnswer.has_value());
 
-	REQUIRE(PollUntil(dialog, [&] { return result.has_value(); }));
-	CHECK(doneThread == std::this_thread::get_id());
-	REQUIRE(result->HasValue());
-	CHECK(result->GetValue() == std::filesystem::path("picked"));
+	REQUIRE(PollEachFrameUntil(dialog, [&] { return deliveredAnswer.has_value(); }));
+	CHECK(answerHandlerThread == std::this_thread::get_id());
+	REQUIRE(deliveredAnswer->HasValue());
+	CHECK(deliveredAnswer->GetValue() == std::filesystem::path("picked"));
 }
 
 TEST_CASE("AsyncDialog passes a failed pick through unchanged")
 {
 	AsyncDialog dialog;
-	std::optional<Picked> result;
+	std::optional<Picked> deliveredAnswer;
 
-	REQUIRE(dialog.Start([]() -> Picked { return Error{ErrorCode::Unsupported, "no dialog here"}; },
-						 [&](Picked picked) { result = std::move(picked); }));
+	REQUIRE(dialog.Start([]() -> Picked { return Error{.Code = ErrorCode::Unsupported, .Message = "no dialog here"}; },
+						 [&](Picked picked) { deliveredAnswer = std::move(picked); }));
 
-	REQUIRE(PollUntil(dialog, [&] { return result.has_value(); }));
-	REQUIRE_FALSE(result->HasValue());
-	CHECK(result->GetError().Code == ErrorCode::Unsupported);
-	CHECK(result->GetError().Message == "no dialog here");
+	REQUIRE(PollEachFrameUntil(dialog, [&] { return deliveredAnswer.has_value(); }));
+	REQUIRE_FALSE(deliveredAnswer->HasValue());
+	CHECK(deliveredAnswer->GetError().Code == ErrorCode::Unsupported);
+	CHECK(deliveredAnswer->GetError().Message == "no dialog here");
 }
 
 TEST_CASE("AsyncDialog counts as open from Start until its result is handed over")
 {
 	AsyncDialog dialog;
-	HeldPicker picker;
+	HeldOpenPicker heldPicker;
 	bool delivered = false;
 
 	CHECK_FALSE(dialog.IsOpen());
 
-	REQUIRE(dialog.Start(picker.Make(), [&](Picked) { delivered = true; }));
+	REQUIRE(dialog.Start(heldPicker.MakePicker(), [&](Picked) { delivered = true; }));
 	CHECK(dialog.IsOpen());
 
 	dialog.Poll();
 	CHECK(dialog.IsOpen());
 
-	picker.Release->set_value();
-	REQUIRE(PollUntil(dialog, [&] { return delivered; }));
+	heldPicker.Release->set_value();
+	REQUIRE(PollEachFrameUntil(dialog, [&] { return delivered; }));
 	CHECK_FALSE(dialog.IsOpen());
 }
 
 TEST_CASE("AsyncDialog refuses a second dialog while one is open")
 {
 	AsyncDialog dialog;
-	HeldPicker picker;
+	HeldOpenPicker heldPicker;
 	bool firstDelivered = false;
 	bool secondRan = false;
 
-	REQUIRE(dialog.Start(picker.Make(), [&](Picked) { firstDelivered = true; }));
+	REQUIRE(dialog.Start(heldPicker.MakePicker(), [&](Picked) { firstDelivered = true; }));
 
 	CHECK_FALSE(dialog.Start(
 		[&]() -> Picked {
@@ -154,73 +172,62 @@ TEST_CASE("AsyncDialog refuses a second dialog while one is open")
 		},
 		[&](Picked) { secondRan = true; }));
 
-	picker.Release->set_value();
-	REQUIRE(PollUntil(dialog, [&] { return firstDelivered; }));
+	heldPicker.Release->set_value();
+	REQUIRE(PollEachFrameUntil(dialog, [&] { return firstDelivered; }));
 	CHECK_FALSE(secondRan);
 }
 
-TEST_CASE("AsyncDialog lets the callback start the next dialog")
+TEST_CASE("AsyncDialog counts as closed when the callback runs so the callback can start the next dialog")
 {
 	AsyncDialog dialog;
-	int delivered = 0;
+	int deliveredCount = 0;
+	const int bothDialogs = 2;
 
 	REQUIRE(dialog.Start([]() -> Picked { return std::filesystem::path("first"); },
 						 [&](Picked) {
-							 ++delivered;
-							 CHECK(dialog.Start([]() -> Picked { return std::filesystem::path("second"); },
-												[&](Picked) { ++delivered; }));
+							 ++deliveredCount;
+							 CHECK_FALSE(dialog.IsOpen());
+							 CHECK(StartSecondDialog(dialog, deliveredCount));
 						 }));
 
-	REQUIRE(PollUntil(dialog, [&] { return delivered == 2; }));
+	REQUIRE(PollEachFrameUntil(dialog, [&] { return deliveredCount == bothDialogs; }));
 	CHECK_FALSE(dialog.IsOpen());
 }
 
 TEST_CASE("AsyncDialog destroyed while a dialog is open neither waits for it nor calls back")
 {
-	HeldPicker picker;
+	HeldOpenPicker heldPicker;
 	bool delivered = false;
 
 	{
 		AsyncDialog dialog;
-		REQUIRE(dialog.Start(picker.Make(), [&](Picked) { delivered = true; }));
+		REQUIRE(dialog.Start(heldPicker.MakePicker(), [&](Picked) { delivered = true; }));
 	}
 
-	// Still open, and the owner is gone: letting it return now must not reach the callback.
-	picker.Release->set_value();
+	heldPicker.Release->set_value();
 
-	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-	while (!picker.Returned->load() && std::chrono::steady_clock::now() < deadline)
-	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	}
+	WaitUntilPickerReturns(heldPicker);
 
-	CHECK(picker.Returned->load());
+	CHECK(heldPicker.Returned->load());
 	CHECK_FALSE(delivered);
 }
 
-// A dialog the owner gave up on may return after main has, while static objects are being
-// destroyed - Redraw's among them. So once its owner is gone, its thread asks for no frame.
-TEST_CASE("AsyncDialog destroyed while a dialog is open asks for no redraw when it returns")
+TEST_CASE("AsyncDialog destroyed while a dialog is open asks for no redraw when it returns since Redraw may be destroyed past main by then")
 {
-	HeldPicker picker;
+	HeldOpenPicker heldPicker;
 
 	{
 		AsyncDialog dialog;
-		REQUIRE(dialog.Start(picker.Make(), [](Picked) {}));
+		REQUIRE(dialog.Start(heldPicker.MakePicker(), [](Picked) {}));
 	}
 
 	Core::Redraw::TakeRequest();
-	picker.Release->set_value();
+	heldPicker.Release->set_value();
 
-	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-	while (!picker.Returned->load() && std::chrono::steady_clock::now() < deadline)
-	{
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
-	}
+	WaitUntilPickerReturns(heldPicker);
 
-	// Returned is set before the thread would ask; give it time to, so a regression shows.
-	std::this_thread::sleep_for(std::chrono::milliseconds(200));
+	std::this_thread::sleep_for(kTimeToAskForARedrawAfterReturning);
 
-	CHECK(picker.Returned->load());
+	CHECK(heldPicker.Returned->load());
 	CHECK_FALSE(Core::Redraw::IsRequested());
 }

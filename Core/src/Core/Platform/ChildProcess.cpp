@@ -14,188 +14,200 @@
 
 namespace Core {
 
+#ifdef CORE_PLATFORM_WINDOWS
+	namespace {
+		constexpr DWORD kDefaultPipeBufferSize = 0;
+		constexpr DWORD kClearedHandleFlags = 0;
+		constexpr DWORD kNoFlagsOrAttributes = 0;
+		constexpr DWORD kDesiredAccessIgnored = 0;
+		constexpr BOOL kInheritable = TRUE;
+		constexpr BOOL kInheritListedHandles = TRUE;
+		constexpr DWORD kHandleListAttributeCount = 1;
+		constexpr UINT kTerminatedExitCode = 0;
+		constexpr DWORD kPollWithoutWaiting = 0;
+		constexpr const wchar_t* kNullDevice = L"NUL";
+
+		Result<void> CreateInheritablePipe(SECURITY_ATTRIBUTES& inheritable, UniqueHandle& readEnd, UniqueHandle& writeEnd, const char* failureMessage)
+		{
+			HANDLE createdReadEnd = nullptr;
+			HANDLE createdWriteEnd = nullptr;
+
+			const BOOL created = ::CreatePipe(&createdReadEnd, &createdWriteEnd, &inheritable, kDefaultPipeBufferSize);
+
+			if (!created)
+			{
+				return Error{.Code = ErrorCodeFromWin32(::GetLastError()), .Message = failureMessage};
+			}
+
+			readEnd.Reset(createdReadEnd);
+			writeEnd.Reset(createdWriteEnd);
+			return Result<void>::Ok();
+		}
+	}
+#endif
+
 	Result<Scope<ChildProcess>> ChildProcess::Start([[maybe_unused]] const std::filesystem::path& program,
 													[[maybe_unused]] const std::vector<std::string>& arguments,
 													[[maybe_unused]] const std::filesystem::path& workingDirectory)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		SECURITY_ATTRIBUTES inheritable{};
-		inheritable.nLength = sizeof(inheritable);
-		inheritable.bInheritHandle = TRUE;
+		SECURITY_ATTRIBUTES inheritable{.nLength = sizeof(SECURITY_ATTRIBUTES), .bInheritHandle = TRUE};
 
 		UniqueHandle childStdinRead;
 		UniqueHandle childStdinWrite;
 		UniqueHandle childStdoutRead;
 		UniqueHandle childStdoutWrite;
 
+		const Result<void> inputPipe = CreateInheritablePipe(inheritable, childStdinRead, childStdinWrite, "cannot create the child's input pipe");
+
+		if (!inputPipe)
 		{
-			HANDLE read = nullptr;
-			HANDLE write = nullptr;
-
-			if (!::CreatePipe(&read, &write, &inheritable, 0))
-			{
-				return Error{ErrorCodeFromWin32(::GetLastError()),
-							 "cannot create the child's input pipe"};
-			}
-
-			childStdinRead.Reset(read);
-			childStdinWrite.Reset(write);
+			return inputPipe.GetError();
 		}
 
+		const Result<void> outputPipe = CreateInheritablePipe(inheritable, childStdoutRead, childStdoutWrite, "cannot create the child's output pipe");
+
+		if (!outputPipe)
 		{
-			HANDLE read = nullptr;
-			HANDLE write = nullptr;
-
-			if (!::CreatePipe(&read, &write, &inheritable, 0))
-			{
-				return Error{ErrorCodeFromWin32(::GetLastError()),
-							 "cannot create the child's output pipe"};
-			}
-
-			childStdoutRead.Reset(read);
-			childStdoutWrite.Reset(write);
+			return outputPipe.GetError();
 		}
 
-		// Only the ends the child inherits should be inheritable: leaving the parent's own
-		// ends inheritable would leak them into every future child this process starts.
-		::SetHandleInformation(childStdinWrite.Get(), HANDLE_FLAG_INHERIT, 0);
-		::SetHandleInformation(childStdoutRead.Get(), HANDLE_FLAG_INHERIT, 0);
+		// The parent's own ends must not stay inheritable, or every child this process starts later
+		// inherits them.
+		::SetHandleInformation(childStdinWrite.Get(), HANDLE_FLAG_INHERIT, kClearedHandleFlags);
+		::SetHandleInformation(childStdoutRead.Get(), HANDLE_FLAG_INHERIT, kClearedHandleFlags);
 
-		// This class exists to carry a framed protocol on stdout: a later caller parses that
-		// stream by a length prefix, and anything else written into the same pipe is
-		// indistinguishable from protocol content. Redirecting stderr here too would interleave
-		// the child's log lines into message bodies, so leave it on the parent's own stderr,
-		// where diagnostics already go.
+		// Stderr does not share the output pipe: callers parse stdout as a length-framed protocol,
+		// and the child's log lines would land inside message bodies. It goes where this process's
+		// own diagnostics go.
 		const HANDLE processStdError = ::GetStdHandle(STD_ERROR_HANDLE);
+		const bool processHasNoStdError = processStdError == nullptr || processStdError == INVALID_HANDLE_VALUE;
 		UniqueHandle childStdError;
 
-		// Graphite is a windowed application with no console attached, so this is the normal
-		// case in the shipped product, not a rare one: GetStdHandle returns NULL there almost
-		// always. STARTF_USESTDHANDLES requires all three handles to be valid, and a child
-		// handed a null one gets a broken stderr that fails far from here in ways that look
-		// unrelated to this. Opening the null device keeps the child's handle valid regardless
-		// of whether this process has a console; a real console handle, when there is one, is
-		// duplicated into an inheritable copy so a server's diagnostics still land there during
-		// development. Either way the handle is this call's own, so the process's real stderr
-		// handle is never modified or closed here.
-		if (processStdError == nullptr || processStdError == INVALID_HANDLE_VALUE)
+		// A windowed process normally has no stderr, and STARTF_USESTDHANDLES needs all three
+		// handles valid, so the child gets the null device rather than a null handle that fails far
+		// from here. A real console handle is duplicated, so that the copy is inheritable and
+		// closing it leaves this process's own stderr alone.
+		if (processHasNoStdError)
 		{
-			childStdError.Reset(::CreateFileW(L"NUL", GENERIC_WRITE,
+			childStdError.Reset(::CreateFileW(kNullDevice, GENERIC_WRITE,
 											  FILE_SHARE_READ | FILE_SHARE_WRITE, &inheritable,
-											  OPEN_EXISTING, 0, nullptr));
+											  OPEN_EXISTING, kNoFlagsOrAttributes, nullptr));
 
 			if (!childStdError)
 			{
-				return Error{ErrorCodeFromWin32(::GetLastError()),
-							 "cannot open the null device for the child's stderr"};
+				return Error{.Code = ErrorCodeFromWin32(::GetLastError()),
+							 .Message = "cannot open the null device for the child's stderr"};
 			}
 		}
 		else
 		{
 			HANDLE duplicate = nullptr;
-			const HANDLE self = ::GetCurrentProcess();
+			const HANDLE currentProcess = ::GetCurrentProcess();
 
-			if (!::DuplicateHandle(self, processStdError, self, &duplicate, 0, TRUE,
-								   DUPLICATE_SAME_ACCESS))
+			const BOOL duplicated = ::DuplicateHandle(currentProcess, processStdError, currentProcess, &duplicate, kDesiredAccessIgnored, kInheritable, DUPLICATE_SAME_ACCESS);
+
+			if (!duplicated)
 			{
-				return Error{ErrorCodeFromWin32(::GetLastError()),
-							 "cannot duplicate the process's stderr for the child"};
+				return Error{.Code = ErrorCodeFromWin32(::GetLastError()),
+							 .Message = "cannot duplicate the process's stderr for the child"};
 			}
 
 			childStdError.Reset(duplicate);
 		}
 
 		// Without an explicit list CreateProcessW hands the child every inheritable handle this
-		// process holds at that instant, including ones belonging to unrelated work on other
-		// threads. The list names exactly the three the child is meant to have; all are distinct
-		// handles this call owns, as the list requires.
+		// process holds at that instant, including ones of unrelated work on other threads. The
+		// list requires distinct handles, which these three are.
 		std::array<HANDLE, 3> inheritedHandles{childStdinRead.Get(), childStdoutWrite.Get(),
 											   childStdError.Get()};
 
 		ProcThreadAttributeList attributeList;
 
-		if (!attributeList.Initialise(1))
+		const bool listInitialised = attributeList.Initialise(kHandleListAttributeCount);
+
+		if (!listInitialised)
 		{
-			return Error{ErrorCodeFromWin32(::GetLastError()), "cannot prepare the child's handle list"};
+			return Error{.Code = ErrorCodeFromWin32(::GetLastError()), .Message = "cannot prepare the child's handle list"};
 		}
 
-		if (!attributeList.Update(PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inheritedHandles.data(),
-								  inheritedHandles.size() * sizeof(HANDLE)))
+		const bool listUpdated = attributeList.Update(PROC_THREAD_ATTRIBUTE_HANDLE_LIST, inheritedHandles.data(), inheritedHandles.size() * sizeof(HANDLE));
+
+		if (!listUpdated)
 		{
-			return Error{ErrorCodeFromWin32(::GetLastError()),
-						 "cannot restrict the child's inherited handles"};
+			return Error{.Code = ErrorCodeFromWin32(::GetLastError()),
+						 .Message = "cannot restrict the child's inherited handles"};
 		}
 
-		STARTUPINFOEXW startupInfo{};
-		startupInfo.StartupInfo.cb = sizeof(startupInfo);
-		startupInfo.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
-		startupInfo.StartupInfo.hStdInput = childStdinRead.Get();
-		startupInfo.StartupInfo.hStdOutput = childStdoutWrite.Get();
-		startupInfo.StartupInfo.hStdError = childStdError.Get();
-		startupInfo.lpAttributeList = attributeList.Get();
+		STARTUPINFOEXW startupInfo{
+			.StartupInfo = {
+				.cb = sizeof(STARTUPINFOEXW),
+				.dwFlags = STARTF_USESTDHANDLES,
+				.hStdInput = childStdinRead.Get(),
+				.hStdOutput = childStdoutWrite.Get(),
+				.hStdError = childStdError.Get(),
+			},
+			.lpAttributeList = attributeList.Get(),
+		};
 
-		PROCESS_INFORMATION processInfo{};
+		PROCESS_INFORMATION processInformation{};
 
 		std::wstring commandLine = BuildWindowsCommandLine(program, arguments);
-		const std::wstring directory = workingDirectory.wstring();
+		const std::wstring nativeWorkingDirectory = workingDirectory.wstring();
 
-		if (!::CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, TRUE,
-							  CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr,
-							  directory.c_str(), &startupInfo.StartupInfo, &processInfo))
+		const BOOL started = ::CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, kInheritListedHandles,
+											  CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr,
+											  nativeWorkingDirectory.c_str(), &startupInfo.StartupInfo, &processInformation);
+
+		if (!started)
 		{
-			return Error{ErrorCodeFromWin32(::GetLastError()),
-						 std::format("cannot start '{}'", ToUtf8(program))};
+			return Error{.Code = ErrorCodeFromWin32(::GetLastError()),
+						 .Message = std::format("cannot start '{}'", ToUtf8(program))};
 		}
 
-		UniqueHandle thread{processInfo.hThread};
-		UniqueHandle processHandle{processInfo.hProcess};
+		UniqueHandle primaryThread{processInformation.hThread};
+		UniqueHandle processHandle{processInformation.hProcess};
 
-		// The parent never reads or writes through these ends; the child owns them now, and
-		// keeping the parent's copy open would stop the pipe from signalling closure. The
-		// stderr copy is the same story, whether it is the null device or a duplicate of the
-		// console handle.
+		// The parent's copies of the child's ends close now: kept open, they would stop the pipes
+		// from signalling closure when the child exits.
 		childStdinRead.Reset();
 		childStdoutWrite.Reset();
 		childStdError.Reset();
-		thread.Reset();
+		primaryThread.Reset();
 
-		Scope<ChildProcess> process{new ChildProcess()};
-		process->m_Process = std::move(processHandle);
-		process->m_ToChild = std::move(childStdinWrite);
-		process->m_FromChild = std::move(childStdoutRead);
+		Scope<ChildProcess> child{new ChildProcess()};
+		child->m_Process = std::move(processHandle);
+		child->m_ToChild = std::move(childStdinWrite);
+		child->m_FromChild = std::move(childStdoutRead);
 
-		return process;
+		return child;
 #else
-		return Error{ErrorCode::Unsupported,
-					 "starting a child process is not implemented on this platform"};
+		return Error{.Code = ErrorCode::Unsupported,
+					 .Message = "starting a child process is not implemented on this platform"};
 #endif
 	}
 
 	ChildProcess::~ChildProcess()
 	{
-#ifdef CORE_PLATFORM_WINDOWS
-		// The handles close as the members are destroyed; only the process needs ending first.
-		if (m_Process)
-		{
-			::TerminateProcess(m_Process.Get(), 0);
-		}
-#endif
+		Terminate();
 	}
 
 	std::size_t ChildProcess::Read([[maybe_unused]] std::span<char> buffer)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		DWORD read = 0;
+		DWORD bytesRead = 0;
 
-		// ReadFile blocks until the pipe has at least one byte or the writing end closes, which
-		// is exactly the contract callers depend on: zero means gone, never "nothing yet".
-		if (!::ReadFile(m_FromChild.Get(), buffer.data(),
-						static_cast<DWORD>(buffer.size()), &read, nullptr))
+		// ReadFile on a pipe blocks until at least one byte arrives or the writing end closes, so
+		// zero here always means the child is gone, never "nothing yet".
+		const BOOL readSucceeded = ::ReadFile(m_FromChild.Get(), buffer.data(),
+											  static_cast<DWORD>(buffer.size()), &bytesRead, nullptr);
+
+		if (!readSucceeded)
 		{
 			return 0;
 		}
 
-		return static_cast<std::size_t>(read);
+		return static_cast<std::size_t>(bytesRead);
 #else
 		return 0;
 #endif
@@ -204,21 +216,21 @@ namespace Core {
 	bool ChildProcess::Write([[maybe_unused]] std::string_view bytes)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		std::size_t written = 0;
+		std::size_t bytesWritten = 0;
 
-		while (written < bytes.size())
+		while (bytesWritten < bytes.size())
 		{
-			DWORD wroteThisCall = 0;
-			const BOOL ok =
-				::WriteFile(m_ToChild.Get(), bytes.data() + written,
-							static_cast<DWORD>(bytes.size() - written), &wroteThisCall, nullptr);
+			DWORD bytesWrittenThisCall = 0;
+			const BOOL writeSucceeded =
+				::WriteFile(m_ToChild.Get(), bytes.data() + bytesWritten,
+							static_cast<DWORD>(bytes.size() - bytesWritten), &bytesWrittenThisCall, nullptr);
 
-			if (!ok)
+			if (!writeSucceeded)
 			{
 				return false;
 			}
 
-			written += wroteThisCall;
+			bytesWritten += bytesWrittenThisCall;
 		}
 
 		return true;
@@ -232,17 +244,13 @@ namespace Core {
 #ifdef CORE_PLATFORM_WINDOWS
 		if (m_Process)
 		{
-			// Only the process is touched: the handle another thread may be reading through is
-			// left open, and the destructor still closes everything exactly once. Terminating an
-			// already-dead child simply fails, which is why the return value is ignored.
-			::TerminateProcess(m_Process.Get(), 0);
+			// Fails on a child that has already exited, which is harmless, so the result is ignored.
+			::TerminateProcess(m_Process.Get(), kTerminatedExitCode);
 		}
 #else
-		// Deliberately empty rather than absent, so the reason is written down where the next
-		// port will read it: Start already refuses on every other platform, so nothing here can
-		// hold a live child, and a thread blocked in Read is a thread that never started. A port
-		// that implements Start must implement this in the same change — without it the join a
-		// caller does after Terminate would wait on a read nothing releases.
+		// Empty because Start refuses on this platform, so no child exists to end. A port that
+		// implements Start must implement this in the same change, or a caller's join after
+		// Terminate waits on a read nothing releases.
 #endif
 	}
 
@@ -254,10 +262,9 @@ namespace Core {
 			return false;
 		}
 
-		// The exit code cannot answer this: a process may legitimately exit with 259, the value
-		// GetExitCodeProcess reports (as STILL_ACTIVE) for one that has not ended. The process
-		// object is signalled once it has ended, so a zero-timeout wait is the unambiguous test.
-		return ::WaitForSingleObject(m_Process.Get(), 0) == WAIT_TIMEOUT;
+		// Not GetExitCodeProcess: a child may exit with 259, which is also STILL_ACTIVE, the code
+		// it reports for a process that has not ended. The process object is signalled once it ends.
+		return ::WaitForSingleObject(m_Process.Get(), kPollWithoutWaiting) == WAIT_TIMEOUT;
 #else
 		return false;
 #endif

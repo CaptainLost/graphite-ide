@@ -16,6 +16,12 @@ namespace Core {
 		BottomRight
 	};
 
+	enum class WindowState
+	{
+		Restored,
+		Maximized
+	};
+
 	struct CaptionMetrics
 	{
 		float Height = 0.0f;
@@ -28,6 +34,5 @@ namespace Core {
 		bool DragSuppressed = false;
 	};
 
-	CaptionHit Classify(const CaptionMetrics& metrics, float clientWidth,
-						float clientHeight, float x, float y, bool maximized);
+	CaptionHit Classify(const CaptionMetrics& metrics, float clientWidth, float clientHeight, float x, float y, WindowState windowState);
 }

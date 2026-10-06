@@ -16,15 +16,9 @@
 
 namespace Core {
 
-	// A shell running behind a pseudo-console: the operating system tells it that it is
-	// attached to a window of the given size, so it keeps its colours, its prompt and its
-	// interactivity instead of the reduced behaviour every program falls back to when it
-	// detects a pipe. That is the whole reason this exists next to ChildProcess rather than
-	// being a flag on it — ChildProcess deliberately carries a framed protocol on a pipe,
-	// which is the opposite requirement.
-	//
-	// Nothing here interprets a byte. What arrives is a stream of text and escape sequences
-	// for a terminal emulator to make sense of.
+	// A program that detects a pipe falls back to reduced behaviour, without colours, prompt or
+	// interactivity, so the shell runs behind a pseudo-console that tells it it has a window. This
+	// is not a flag on ChildProcess, which deliberately carries a framed protocol on a pipe.
 	class PseudoConsole : NonCopyable
 	{
 	public:
@@ -35,28 +29,17 @@ namespace Core {
 
 		~PseudoConsole();
 
-		// Blocks until at least one byte arrives, and returns how many were written into the
-		// buffer.
-		//
-		// Zero means "no bytes, and this call is not going to produce any" — it does NOT on its
-		// own mean the shell has exited. A live shell never reports end-of-output the way a pipe
-		// does, so the ordinary reason for zero is indeed that the shell is gone; but zero is
-		// also what an empty buffer, a failure to set up the wait, or a failed read returns,
-		// because this call has nowhere to put an error. A caller that reacts to the shell
-		// exiting — closing a terminal tab, say — must confirm with IsRunning() before treating
-		// zero as the end, and may otherwise read again.
+		// Blocks until bytes arrive. Zero does not by itself mean the shell has exited, since an empty
+		// buffer, a failed wait and a failed read return zero too: confirm with IsRunning() before
+		// treating zero as the end.
 		std::size_t Read(std::span<char> buffer);
 
 		bool Write(std::string_view bytes);
 
-		// Tells the shell its window changed, which is what makes it redraw its prompt at the
-		// new width instead of leaving the old one wrapped.
 		Result<void> Resize(std::uint16_t columns, std::uint16_t rows);
 
-		// Kills the shell without closing this side's handles, releasing a thread blocked in
-		// Read — the same arrangement ChildProcess::Terminate documents, and for the same
-		// reason: destroying the object under that thread would pull the handle from beneath
-		// it.
+		// Releases a thread blocked in Read by killing the shell while keeping the handles that thread
+		// waits on; destroying the object instead would pull them out from under it.
 		void Terminate();
 
 		bool IsRunning() const;
@@ -64,14 +47,10 @@ namespace Core {
 	private:
 		PseudoConsole() = default;
 
-		// Raised by Terminate. A shell we killed on purpose has no last words worth
-		// waiting for, so the read's flush grace is skipped once this is set - that
-		// wait is otherwise paid in full on every tab close, on the thread being
-		// joined, and the user sees it as the window locking up.
-		std::atomic<bool> m_Terminating{false};
+		std::atomic<bool> m_TerminateRequested{false};
 
-		// Released by the destructor, in the order closing them has to happen in: an HPCON and a
-		// PROC_THREAD_ATTRIBUTE_LIST, both spelled void* to keep <windows.h> out of this header.
+		// An HPCON and a PROC_THREAD_ATTRIBUTE_LIST, spelled void* to keep <windows.h> out of this
+		// header. The destructor releases them by hand, in the order the platform needs.
 		void* m_Console = nullptr;
 		void* m_Attributes = nullptr;
 

@@ -8,17 +8,17 @@
 
 namespace Core {
 
-	void UniqueHandle::Reset(void* handle)
+	void UniqueHandle::Reset(void* replacement)
 	{
-		[[maybe_unused]] void* const old = std::exchange(m_Handle, Normalise(handle));
+		[[maybe_unused]] void* const previousHandle = std::exchange(m_Handle, NullIfInvalid(replacement));
 
 #ifdef CORE_PLATFORM_WINDOWS
-		if (old != nullptr)
+		if (previousHandle != nullptr)
 		{
-			::CloseHandle(old);
+			::CloseHandle(previousHandle);
 		}
 #else
-		// Nothing on another platform hands out a Win32 handle, so nothing can be held.
+		// Off Windows nothing hands out a Win32 handle, so nothing is ever held to close.
 #endif
 	}
 }

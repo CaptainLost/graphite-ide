@@ -1,7 +1,6 @@
 #pragma once
 
-// Private to Core's .cpp files: never include this from a public header, because it
-// pulls in <windows.h>.
+// Private to Core's .cpp files: it pulls in <windows.h>, so a public header must never include it.
 
 #ifdef CORE_PLATFORM_WINDOWS
 
@@ -11,9 +10,8 @@
 
 namespace Core {
 
-	// Owns an initialised PROC_THREAD_ATTRIBUTE_LIST. Initialised lists own more than the
-	// block they were written into, so returning that block is not enough: the API contract
-	// is to delete the list first, and only a list that was initialised may be deleted.
+	// An initialised list owns more than its memory block, so it is deleted before the block is
+	// freed, and only a list that was initialised may be deleted.
 	class ProcThreadAttributeList
 	{
 	public:
@@ -39,67 +37,72 @@ namespace Core {
 
 		~ProcThreadAttributeList() { Destroy(m_List); }
 
-		// Allocates and initialises room for the given number of attributes. On failure the
-		// thread's last error describes why and nothing is held.
+		// On failure the thread's last error says why, so it is put back after HeapFree, which may
+		// overwrite it.
 		bool Initialise(DWORD attributeCount)
 		{
 			Destroy(std::exchange(m_List, nullptr));
 
-			SIZE_T bytes = 0;
-			::InitializeProcThreadAttributeList(nullptr, attributeCount, 0, &bytes);
+			SIZE_T listBytes = 0;
+			// The sizing call fails by design and only fills listBytes, so its result is not checked.
+			::InitializeProcThreadAttributeList(kSizeQueryOnly, attributeCount, kNoFlags, &listBytes);
 
-			auto* list = static_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(
-				::HeapAlloc(::GetProcessHeap(), 0, bytes));
+			auto* allocatedList = static_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(
+				::HeapAlloc(::GetProcessHeap(), kNoFlags, listBytes));
 
-			if (list == nullptr)
+			if (allocatedList == nullptr)
 			{
 				::SetLastError(ERROR_NOT_ENOUGH_MEMORY);
 				return false;
 			}
 
-			if (!::InitializeProcThreadAttributeList(list, attributeCount, 0, &bytes))
+			const BOOL initialised = ::InitializeProcThreadAttributeList(allocatedList, attributeCount, kNoFlags, &listBytes);
+
+			if (!initialised)
 			{
-				const DWORD failure = ::GetLastError();
-				::HeapFree(::GetProcessHeap(), 0, list);
-				::SetLastError(failure);
+				const DWORD initialiseErrorCode = ::GetLastError();
+				::HeapFree(::GetProcessHeap(), kNoFlags, allocatedList);
+				::SetLastError(initialiseErrorCode);
 				return false;
 			}
 
-			m_List = list;
+			m_List = allocatedList;
 			return true;
 		}
 
 		// The value must outlive every use of the list, as the underlying API requires.
-		bool Update(DWORD_PTR attribute, void* value, SIZE_T size)
+		bool Update(DWORD_PTR attribute, void* value, SIZE_T valueSize)
 		{
-			return ::UpdateProcThreadAttribute(m_List, 0, attribute, value, size, nullptr,
+			return ::UpdateProcThreadAttribute(m_List, kNoFlags, attribute, value, valueSize, nullptr,
 											   nullptr) != FALSE;
 		}
 
 		LPPROC_THREAD_ATTRIBUTE_LIST Get() const { return m_List; }
 
-		// Gives the list up; the caller must pass it to Destroy exactly once.
+		// The caller must pass the list it is given to Destroy exactly once.
 		LPPROC_THREAD_ATTRIBUTE_LIST Release()
 		{
 			return std::exchange(m_List, nullptr);
 		}
 
-		// Deletes and frees a list that Initialise produced. Null is accepted.
 		static void Destroy(LPPROC_THREAD_ATTRIBUTE_LIST list)
 		{
 			if (list != nullptr)
 			{
 				::DeleteProcThreadAttributeList(list);
-				::HeapFree(::GetProcessHeap(), 0, list);
+				::HeapFree(::GetProcessHeap(), kNoFlags, list);
 			}
 		}
 
 	private:
+		static constexpr DWORD kNoFlags = 0;
+		static constexpr LPPROC_THREAD_ATTRIBUTE_LIST kSizeQueryOnly = nullptr;
+
 		LPPROC_THREAD_ATTRIBUTE_LIST m_List = nullptr;
 	};
 
-	// Owns a pseudo-console. Closing waits for the host's final flush, so whoever holds
-	// one must keep the reading end of its output pipe open until this is closed.
+	// Closing waits for the host's final flush, so whoever holds one must keep the reading end of
+	// its output pipe open until this is closed.
 	class UniquePseudoConsole
 	{
 	public:
@@ -122,7 +125,6 @@ namespace Core {
 
 		~UniquePseudoConsole() { Close(m_Console); }
 
-		// Receives the console CreatePseudoConsole produces; anything held before is closed.
 		HPCON* Receive()
 		{
 			Close(std::exchange(m_Console, nullptr));
