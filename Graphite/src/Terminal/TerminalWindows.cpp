@@ -55,8 +55,8 @@ namespace Graphite {
 	}
 
 	TerminalWindows::TerminalWindows(Workspace& workspace, const Core::Keymap& keys,
-								   const Core::CommandRegistry& commands, AppSettings& settings,
-								   Core::EventBus& events)
+									 const Core::CommandRegistry& commands, AppSettings& settings,
+									 Core::EventBus& events)
 		: m_Workspace(workspace), m_Settings(settings), m_Keys(keys), m_Commands(commands), m_Events(events),
 		  m_Shells(Core::DiscoverShells())
 	{
@@ -99,7 +99,7 @@ namespace Graphite {
 		// keep draining its pipe, or the shell blocks on a full pseudo-console and stops.
 		for (const Core::Scope<Entry>& entry : m_Open)
 		{
-			entry->Session->Pump();
+			entry->Session->ApplyQueuedOutput();
 		}
 	}
 
@@ -487,8 +487,7 @@ namespace Graphite {
 		const std::filesystem::path workingDirectory = directory.empty() ? DefaultWorkingDirectory() : directory;
 
 		if (!Start(m_Shells[shell], workingDirectory,
-				   OpenTerminal{Core::Uuid::Generate().ToString(), m_Shells[shell].Name, workingDirectory, false, false, {},
-								!m_Workspace.IsOpen()},
+				   OpenTerminal{Core::Uuid::Generate().ToString(), m_Shells[shell].Name, workingDirectory, false, false, {}, !m_Workspace.IsOpen()},
 				   false))
 		{
 			return false;

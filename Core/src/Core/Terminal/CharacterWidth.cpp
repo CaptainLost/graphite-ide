@@ -2,41 +2,50 @@
 
 #include "Core/Terminal/CharacterWidth.h"
 
-#include <array>
-
 namespace Core {
 
 	namespace {
-		struct Range
+		struct CodePointRange
 		{
 			char32_t First;
 			char32_t Last;
 		};
 
-		constexpr std::array<Range, 10> WideRanges{{
-			{0x1100, 0x115F},	// Hangul Jamo initial consonants
-			{0x2E80, 0x303E},	// CJK radicals, Kangxi, CJK symbols
-			{0x3041, 0x33FF},	// Hiragana through CJK compatibility
-			{0x3400, 0x4DBF},	// CJK extension A
-			{0x4E00, 0x9FFF},	// CJK unified ideographs
-			{0xA000, 0xA4CF},	// Yi
-			{0xAC00, 0xD7A3},	// Hangul syllables
-			{0xF900, 0xFAFF},	// CJK compatibility ideographs
-			{0xFF00, 0xFF60},	// Fullwidth forms
-			{0x1F300, 0x1F64F}, // Emoji
-		}};
+		constexpr CodePointRange kHangulJamoInitialConsonants{.First = 0x1100, .Last = 0x115F};
+		constexpr CodePointRange kCjkRadicalsKangxiAndSymbols{.First = 0x2E80, .Last = 0x303E};
+		constexpr CodePointRange kHiraganaThroughCjkCompatibility{.First = 0x3041, .Last = 0x33FF};
+		constexpr CodePointRange kCjkExtensionA{.First = 0x3400, .Last = 0x4DBF};
+		constexpr CodePointRange kCjkUnifiedIdeographs{.First = 0x4E00, .Last = 0x9FFF};
+		constexpr CodePointRange kYiSyllablesAndRadicals{.First = 0xA000, .Last = 0xA4CF};
+		constexpr CodePointRange kHangulSyllables{.First = 0xAC00, .Last = 0xD7A3};
+		constexpr CodePointRange kCjkCompatibilityIdeographs{.First = 0xF900, .Last = 0xFAFF};
+		constexpr CodePointRange kFullwidthForms{.First = 0xFF00, .Last = 0xFF60};
+		constexpr CodePointRange kEmoji{.First = 0x1F300, .Last = 0x1F64F};
+
+		constexpr CodePointRange kWideRanges[] = {
+			kHangulJamoInitialConsonants,
+			kCjkRadicalsKangxiAndSymbols,
+			kHiraganaThroughCjkCompatibility,
+			kCjkExtensionA,
+			kCjkUnifiedIdeographs,
+			kYiSyllablesAndRadicals,
+			kHangulSyllables,
+			kCjkCompatibilityIdeographs,
+			kFullwidthForms,
+			kEmoji,
+		};
 	}
 
 	std::uint8_t CharacterWidth(char32_t code)
 	{
-		for (const Range& range : WideRanges)
+		for (const CodePointRange& range : kWideRanges)
 		{
 			if (code >= range.First && code <= range.Last)
 			{
-				return 2;
+				return kWideCharacterCells;
 			}
 		}
 
-		return 1;
+		return kNarrowCharacterCells;
 	}
 }

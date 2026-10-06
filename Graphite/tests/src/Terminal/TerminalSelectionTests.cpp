@@ -31,7 +31,7 @@ namespace {
 	}
 
 	// "a", a double-width character over two cells, "b", then the row's blank remainder.
-	std::vector<Core::Cell> WideRow()
+	std::vector<Core::TerminalCell> WideRow()
 	{
 		Core::TerminalScreen screen(6, 1);
 
@@ -39,7 +39,7 @@ namespace {
 		screen.Print(U'界', 2);
 		screen.Print(U'b', 1);
 
-		std::vector<Core::Cell> cells;
+		std::vector<Core::TerminalCell> cells;
 
 		for (std::uint16_t column = 0; column < screen.GetColumns(); ++column)
 		{
@@ -49,13 +49,13 @@ namespace {
 		return cells;
 	}
 
-	std::vector<Core::Cell> AsciiRow(std::string_view text)
+	std::vector<Core::TerminalCell> AsciiRow(std::string_view text)
 	{
-		std::vector<Core::Cell> cells;
+		std::vector<Core::TerminalCell> cells;
 
 		for (const char character : text)
 		{
-			Core::Cell cell;
+			Core::TerminalCell cell;
 			cell.Code = static_cast<char32_t>(character);
 			cells.push_back(cell);
 		}
@@ -197,15 +197,16 @@ TEST_CASE("TerminalSelection never says an empty selection left the history")
 
 TEST_CASE("TerminalSelection writes a double-width character once")
 {
-	const std::vector<Core::Cell> cells = WideRow();
+	const std::vector<Core::TerminalCell> cells = WideRow();
 
-	CHECK(TerminalRowText(cells, 4) == "a界" "b");
+	CHECK(TerminalRowText(cells, 4) == "a界"
+									   "b");
 	CHECK(TerminalCellBytes(cells, 4) == std::vector<std::size_t>{0, 1, 4, 4, 5});
 }
 
 TEST_CASE("TerminalSelection gives cells the row does not have the end of its text")
 {
-	const std::vector<Core::Cell> cells = AsciiRow("ab");
+	const std::vector<Core::TerminalCell> cells = AsciiRow("ab");
 
 	CHECK(TerminalRowText(cells, 4) == "ab");
 	CHECK(TerminalCellBytes(cells, 4) == std::vector<std::size_t>{0, 1, 2, 2, 2});
@@ -213,7 +214,7 @@ TEST_CASE("TerminalSelection gives cells the row does not have the end of its te
 
 TEST_CASE("TerminalSelection double-click takes a whole path with its line suffix")
 {
-	const std::vector<Core::Cell> cells = AsciiRow("open src/main.cpp:42 now");
+	const std::vector<Core::TerminalCell> cells = AsciiRow("open src/main.cpp:42 now");
 
 	CHECK(TerminalWordAt(cells, cells.size(), 9) == Core::ColumnSpan{5, 20});
 	CHECK(TerminalWordAt(cells, cells.size(), 5) == Core::ColumnSpan{5, 20});
@@ -222,7 +223,7 @@ TEST_CASE("TerminalSelection double-click takes a whole path with its line suffi
 
 TEST_CASE("TerminalSelection double-click on a gap takes the one cell")
 {
-	const std::vector<Core::Cell> cells = AsciiRow("a  b");
+	const std::vector<Core::TerminalCell> cells = AsciiRow("a  b");
 
 	CHECK(TerminalWordAt(cells, cells.size(), 1) == Core::ColumnSpan{1, 2});
 	CHECK(TerminalWordAt(cells, cells.size(), 9) == Core::ColumnSpan{4, 4});
@@ -230,7 +231,7 @@ TEST_CASE("TerminalSelection double-click on a gap takes the one cell")
 
 TEST_CASE("TerminalSelection double-click counts a trailer with its leader")
 {
-	const std::vector<Core::Cell> cells = WideRow();
+	const std::vector<Core::TerminalCell> cells = WideRow();
 
 	// The whole of "a", the wide character and "b", from either half of the wide one.
 	CHECK(TerminalWordAt(cells, 6, 1) == Core::ColumnSpan{0, 4});
@@ -239,7 +240,7 @@ TEST_CASE("TerminalSelection double-click counts a trailer with its leader")
 
 TEST_CASE("TerminalSelection hit-tests to the nearest boundary and never inside a wide character")
 {
-	const std::vector<Core::Cell> cells = WideRow();
+	const std::vector<Core::TerminalCell> cells = WideRow();
 
 	CHECK(TerminalColumnAt(cells, 6, 0.4f) == 0);
 	CHECK(TerminalColumnAt(cells, 6, 0.6f) == 1);
@@ -252,7 +253,7 @@ TEST_CASE("TerminalSelection hit-tests to the nearest boundary and never inside 
 
 TEST_CASE("TerminalSelection names the cell under the pointer, a wide character by its leader")
 {
-	const std::vector<Core::Cell> cells = WideRow();
+	const std::vector<Core::TerminalCell> cells = WideRow();
 
 	CHECK(TerminalCellAt(cells, 6, 0.9f) == 0);
 	CHECK(TerminalCellAt(cells, 6, 1.2f) == 1);
@@ -285,8 +286,8 @@ TEST_CASE("TerminalSelection double-click on the right half of a word's last cha
 
 	REQUIRE(character == Core::TextPoint{line, 1});
 
-	std::vector<Core::Cell> scratch;
-	const std::vector<Core::Cell>* cells = TerminalLineCells(screen, line, 10, scratch);
+	std::vector<Core::TerminalCell> scratch;
+	const std::vector<Core::TerminalCell>* cells = TerminalLineCells(screen, line, 10, scratch);
 
 	REQUIRE(cells != nullptr);
 	CHECK(TerminalWordAt(*cells, 10, character->Column) == Core::ColumnSpan{0, 2});
@@ -348,7 +349,8 @@ TEST_CASE("TerminalSelection copies a wide character half covered by the end of 
 
 	const std::int64_t line = ScreenLine(screen, 0);
 
-	CHECK(SelectedTerminalText(Between({line, 0}, {line, 4}), screen, 6) == "a界" "b");
+	CHECK(SelectedTerminalText(Between({line, 0}, {line, 4}), screen, 6) == "a界"
+																			"b");
 	CHECK(SelectedTerminalText(Between({line, 1}, {line, 3}), screen, 6) == "界");
 }
 

@@ -19,10 +19,9 @@ namespace Core {
 		Rgb
 	};
 
-	// Kept as what the program actually asked for rather than resolved to RGB at write time:
-	// a default colour has to stay distinguishable from a named one, since only the default
-	// takes the panel's own foreground and background, and flattening here would throw that
-	// away. It also leaves the mapping of the numbered entries a drawing-time decision.
+	// Kept as the program asked for it rather than resolved to RGB: only a default colour takes
+	// the panel's own foreground and background, so flattening it here would make it
+	// indistinguishable from a named one.
 	struct TerminalColor
 	{
 		TerminalColorKind Kind = TerminalColorKind::Default;
@@ -33,20 +32,12 @@ namespace Core {
 
 		static TerminalColor FromPalette(std::uint8_t index)
 		{
-			TerminalColor color;
-			color.Kind = TerminalColorKind::Palette;
-			color.Index = index;
-			return color;
+			return TerminalColor{.Kind = TerminalColorKind::Palette, .Index = index};
 		}
 
-		static TerminalColor FromRgb(std::uint8_t r, std::uint8_t g, std::uint8_t b)
+		static TerminalColor FromRgb(std::uint8_t red, std::uint8_t green, std::uint8_t blue)
 		{
-			TerminalColor color;
-			color.Kind = TerminalColorKind::Rgb;
-			color.R = r;
-			color.G = g;
-			color.B = b;
-			return color;
+			return TerminalColor{.Kind = TerminalColorKind::Rgb, .R = red, .G = green, .B = blue};
 		}
 	};
 
@@ -88,14 +79,13 @@ namespace Core {
 		CellFlags Flags = CellFlags::None;
 	};
 
-	struct Cell
+	struct TerminalCell
 	{
 		char32_t Code = U' ';
 		TerminalColor Foreground;
 		TerminalColor Background;
 		CellFlags Flags = CellFlags::None;
-		// The right half of a double-width character. It carries no glyph of its own; the
-		// drawing code skips it, and erasing either half clears both.
+		// The right half of a double-width character, which carries no glyph of its own.
 		bool WideTrailer = false;
 	};
 
@@ -112,13 +102,13 @@ namespace Core {
 		All
 	};
 
-	// What a terminal currently looks like, and nothing else: no bytes are parsed here and no
-	// process is owned. VtParser turns a stream into calls on this, and the panel reads it.
 	class TerminalScreen
 	{
 	public:
+		static constexpr std::size_t kDefaultScrollbackLimit = 10000;
+
 		TerminalScreen(std::uint16_t columns, std::uint16_t rows,
-					   std::size_t scrollbackLimit = 10000);
+					   std::size_t scrollbackLimit = kDefaultScrollbackLimit);
 
 		void Print(char32_t code, std::uint8_t width);
 		void LineFeed();
@@ -134,7 +124,7 @@ namespace Core {
 		void SetPen(const Pen& pen) { m_Pen = pen; }
 		const Pen& GetPen() const { return m_Pen; }
 
-		const Cell& At(std::uint16_t row, std::uint16_t column) const;
+		const TerminalCell& At(std::uint16_t row, std::uint16_t column) const;
 
 		std::uint16_t GetColumns() const { return m_Columns; }
 		std::uint16_t GetRows() const { return m_Rows; }
@@ -146,15 +136,11 @@ namespace Core {
 		void SetCursorVisible(bool visible) { m_CursorVisible = visible; }
 		bool IsCursorVisible() const { return m_CursorVisible; }
 
-		// A shell that turns this on wants pasted text wrapped in markers, so it can tell a
-		// paste from typing and not run every line it contains.
-		void SetBracketedPaste(bool bracketed) { m_BracketedPaste = bracketed; }
+		// A shell asks for this so it can tell a paste from typing and not run each line the
+		// paste contains.
+		void SetBracketedPaste(bool wrapPastesInMarkers) { m_BracketedPaste = wrapPastesInMarkers; }
 		bool IsBracketedPaste() const { return m_BracketedPaste; }
 
-		// xterm's three mouse modes: clicks (1000), drags (1002) and all motion (1003). A program
-		// that turns any of them on - Claude Code turns on all three - is asking for the wheel
-		// as well, and draws its own scrolling, usually on the alternate buffer where there is
-		// no scrollback for the view to move through.
 		enum class MouseMode : std::uint8_t
 		{
 			Clicks = 1 << 0,
@@ -162,15 +148,18 @@ namespace Core {
 			Motion = 1 << 2
 		};
 
-		void SetMouseMode(MouseMode mode, bool on)
+		void SetMouseMode(MouseMode mode, bool enabled)
 		{
-			const auto bit = static_cast<std::uint8_t>(mode);
-			m_MouseModes = static_cast<std::uint8_t>(on ? m_MouseModes | bit : m_MouseModes & ~bit);
+			const auto modeBit = static_cast<std::uint8_t>(mode);
+			m_MouseModes = static_cast<std::uint8_t>(enabled ? m_MouseModes | modeBit : m_MouseModes & ~modeBit);
 		}
+
+		// A program that turns on any of the mouse modes is asking for the wheel as well, and
+		// draws its own scrolling, usually on the alternate buffer where the view has no
+		// scrollback to move through.
 		bool IsMouseReporting() const { return m_MouseModes != 0; }
 
-		// Mode 1006: reports written out in decimal rather than packed into single bytes.
-		void SetSgrMouse(bool sgr) { m_SgrMouse = sgr; }
+		void SetSgrMouse(bool sgrDecimalForm) { m_SgrMouse = sgrDecimalForm; }
 		bool IsSgrMouse() const { return m_SgrMouse; }
 
 		void SetTitle(std::string title) { m_Title = std::move(title); }
@@ -192,45 +181,42 @@ namespace Core {
 		void SetScrollRegion(std::uint16_t top, std::uint16_t bottom);
 		void ResetScrollRegion();
 
-		// vim and its kind draw on a second screen with no scrollback, so leaving it hands
-		// back the prompt that was there before, unchanged.
 		void UseAlternateBuffer(bool alternate);
 		bool IsAlternateBuffer() const { return m_Alternate; }
 
-		// Truncates and pads. Wrapped history is not reflowed — see the design document.
 		void Resize(std::uint16_t columns, std::uint16_t rows);
 
 		std::size_t GetScrollbackCount() const { return m_Scrollback.size(); }
 
-		// Every row ever pushed into the scrollback, counted once as it goes in and never taken
-		// back: dropping the oldest rows at the limit and ClearScrollback leave it alone. Rows
-		// leaving a smaller scroll region or the alternate buffer never reach the scrollback and
-		// are not counted. A view numbers rows from it, so a row keeps its number while output
-		// scrolls it up the screen and into the history.
+		// Counts only rows that entered the scrollback, and never decreases, unlike GetScrollbackCount:
+		// a view numbers rows from it, so a row keeps its number while output scrolls it up the
+		// screen and into the history.
 		std::uint64_t GetRowsScrolledOff() const { return m_RowsScrolledOff; }
 
-		// Drops the history without touching the screen. What a reader asking a terminal to
-		// clear means by it: erasing the visible grid alone would leave everything they wanted
-		// gone still one wheel notch away.
+		// Clearing a terminal needs this as well as erasing the grid, or what the reader wanted
+		// gone stays one wheel notch away.
 		void ClearScrollback() { m_Scrollback.clear(); }
 
-		// Clamped like At and RowAt, and for the same reason: the row a caller asks for comes
-		// from a scroll offset that can name a line the scrollback has since dropped, and the
-		// three accessors must not disagree about whether that is a crash or a nearby line.
-		// Never called on an empty scrollback — GetScrollbackCount is what a caller consults
-		// first — so there is always a line to answer with.
-		const std::vector<Cell>& GetScrollbackLine(std::size_t index) const
+		// Clamped like At, because a scroll offset can name a line the scrollback has since
+		// dropped, and the accessors must agree that it is a nearby line rather than a crash.
+		const std::vector<TerminalCell>& GetScrollbackLine(std::size_t index) const
 		{
-			return m_Scrollback[std::min(index, m_Scrollback.size() - 1)];
+			CORE_ASSERT(!m_Scrollback.empty(), "TerminalScreen::GetScrollbackLine called on an empty scrollback");
+			return m_Scrollback[ClampToLastIndex(index, m_Scrollback.size())];
 		}
 
 	private:
-		std::vector<Cell>& RowAt(std::uint16_t row);
-		void ClearCell(Cell& cell) const;
+		std::vector<TerminalCell>& RowAt(std::uint16_t row);
+		void ClearCell(TerminalCell& cell) const;
 
-		// How many rows an operation bounded by the scroll region can act on, and whether that
-		// region is the whole screen — only a line leaving the top of a full-height screen is
-		// history rather than a redraw artefact.
+		static std::size_t ClampToLastIndex(std::size_t index, std::size_t count)
+		{
+			return std::min(index, count - 1);
+		}
+
+		std::uint16_t LastRow() const { return static_cast<std::uint16_t>(m_Rows - 1); }
+		std::uint16_t LastColumn() const { return static_cast<std::uint16_t>(m_Columns - 1); }
+
 		std::size_t RegionHeight() const
 		{
 			return static_cast<std::size_t>(m_ScrollBottom - m_ScrollTop) + 1;
@@ -241,16 +227,24 @@ namespace Core {
 			return m_ScrollTop == 0 && m_ScrollBottom + 1 == m_Rows;
 		}
 
-		std::vector<std::vector<Cell>> m_Lines;
+		bool IsCursorInsideScrollRegion() const
+		{
+			return m_Cursor.Row >= m_ScrollTop && m_Cursor.Row <= m_ScrollBottom;
+		}
+
+		std::size_t RowsFromCursorToScrollBottom() const
+		{
+			return static_cast<std::size_t>(m_ScrollBottom - m_Cursor.Row) + 1;
+		}
+
+		std::vector<std::vector<TerminalCell>> m_Lines;
 		std::uint16_t m_Columns = 0;
 		std::uint16_t m_Rows = 0;
 		CursorPosition m_Cursor;
 		CursorPosition m_SavedCursor;
 		Pen m_Pen;
-		// Set when a character lands in the last column. The cursor stays put and the *next*
-		// printable character performs the wrap, which is what a real terminal does and what
-		// makes a carriage return at that moment overwrite the current line rather than the
-		// following one.
+		// A carriage return while this is set overwrites the current line rather than the next
+		// one, as a real terminal does.
 		bool m_PendingWrap = false;
 		bool m_AutoWrap = true;
 		bool m_CursorVisible = true;
@@ -260,9 +254,9 @@ namespace Core {
 		std::size_t m_ScrollbackLimit = 0;
 		std::string m_Title;
 
-		std::deque<std::vector<Cell>> m_Scrollback;
+		std::deque<std::vector<TerminalCell>> m_Scrollback;
 		std::uint64_t m_RowsScrolledOff = 0;
-		std::vector<std::vector<Cell>> m_PrimaryLines;
+		std::vector<std::vector<TerminalCell>> m_PrimaryLines;
 		CursorPosition m_PrimaryCursor;
 		bool m_Alternate = false;
 		std::uint16_t m_ScrollTop = 0;

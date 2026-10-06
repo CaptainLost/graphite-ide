@@ -4,6 +4,7 @@
 
 #include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
+#include "Core/Terminal/ControlCharacters.h"
 
 #include <algorithm>
 #include <array>
@@ -12,34 +13,51 @@
 namespace Core {
 
 	namespace {
-		// Above anything an ordinary command produces in a frame, and far below what would
-		// stall one. The reader waits when the queue is this full, which pushes back through
-		// the pseudo-console to the program — the same backpressure a real console applies.
-		constexpr std::size_t QueueLimit = 1024 * 1024;
-		constexpr std::size_t PerFrameLimit = 1024 * 1024;
+		// Above anything an ordinary command writes in a frame and far below what would stall one.
+		// The reader waits when the queue is this full rather than drop bytes, which would cut
+		// escape sequences into garbage, so the program feels the backpressure a real console applies.
+		constexpr std::size_t kQueueLimitBytes = 1024 * 1024;
+		constexpr std::size_t kMostBytesParsedPerFrame = 1024 * 1024;
 
-		// How long the reader pauses after a read that produced nothing while the shell is
-		// still running. Such a read failed rather than blocked, so retrying it straight away
-		// would spin a core on the failure.
-		constexpr std::chrono::milliseconds RetryPause{10};
+		constexpr std::size_t kReadChunkBytes = 8192;
+		constexpr std::size_t kFrontOfQueue = 0;
+
+		// A read that returns nothing while the shell still runs has failed rather than blocked, so
+		// retrying it at once would spin a core on the failure.
+		constexpr std::chrono::milliseconds kPauseAfterEmptyRead{10};
+
+		constexpr std::string_view kPasteStartMarker = "\x1B[200~";
+		constexpr std::string_view kPasteEndMarker = "\x1B[201~";
+
+		// Every ESC goes, not only the one starting an end marker: an embedded end marker would close
+		// the paste early and run the rest as typed input, and dropping every ESC defuses that and
+		// every other control sequence.
+		void AppendWithoutEscapeCharacters(std::string& wireBytes, std::string_view pastedText)
+		{
+			for (const char character : pastedText)
+			{
+				if (character != kEscapeCharacter)
+				{
+					wireBytes.push_back(character);
+				}
+			}
+		}
 	}
 
-	std::string BracketedPasteBytes(std::string_view text, bool bracketedPasteEnabled)
+	std::string BracketedPasteBytes(std::string_view text, bool shellTurnedBracketedPasteOn)
 	{
-		if (!bracketedPasteEnabled)
+		if (!shellTurnedBracketedPasteOn)
 		{
 			return std::string{text};
 		}
 
-		std::string bytes;
-		bytes.reserve(text.size() + 12);
-		bytes += "\x1B[200~";
-		// Pasted text must not contain ESC: an embedded ESC[201~ would end the paste early and
-		// the rest would run as typed input. Dropping every ESC defuses all control sequences.
-		std::ranges::copy_if(text, std::back_inserter(bytes), [](char c) { return c != '\x1B'; });
-		bytes += "\x1B[201~";
+		std::string wireBytes;
+		wireBytes.reserve(kPasteStartMarker.size() + text.size() + kPasteEndMarker.size());
+		wireBytes += kPasteStartMarker;
+		AppendWithoutEscapeCharacters(wireBytes, text);
+		wireBytes += kPasteEndMarker;
 
-		return bytes;
+		return wireBytes;
 	}
 
 	TerminalSession::TerminalSession(Scope<PseudoConsole> console, std::string profileName,
@@ -53,18 +71,18 @@ namespace Core {
 		const ShellProfile& profile, const std::filesystem::path& workingDirectory,
 		std::uint16_t columns, std::uint16_t rows)
 	{
-		Result<Scope<PseudoConsole>> console =
+		Result<Scope<PseudoConsole>> consoleResult =
 			PseudoConsole::Start(profile.Path, profile.Arguments, workingDirectory, columns, rows);
 
-		if (!console)
+		if (!consoleResult)
 		{
-			return console.GetError();
+			return consoleResult.GetError();
 		}
 
 		Scope<TerminalSession> session{new TerminalSession(
-			std::move(console).GetValue(), profile.Name, columns, rows)};
+			std::move(consoleResult).GetValue(), profile.Name, columns, rows)};
 
-		session->m_Reader = std::thread([raw = session.get()] { raw->ReadLoop(); });
+		session->m_ReaderThread = std::thread([startedSession = session.get()] { startedSession->ReadLoop(); });
 
 		return session;
 	}
@@ -72,61 +90,55 @@ namespace Core {
 	TerminalSession::~TerminalSession()
 	{
 		{
-			// Under the mutex, not merely atomic: the reader evaluates its wait predicate while
-			// holding this, so a flag raised outside it could be set — and the notification
-			// below delivered — in the window between that evaluation and the wait itself. The
-			// reader would then sleep on a notification that has already been sent, and the
-			// join below would never return.
-			std::lock_guard<std::mutex> lock(m_Mutex);
+			// Raised under the mutex, not merely atomically: the reader tests its wait predicate while
+			// holding it, so a flag and notification landing between that test and the wait would be
+			// missed, leaving the reader asleep and the join that waits for it waiting forever.
+			std::lock_guard<std::mutex> lock(m_QueueMutex);
 			m_Stopping.store(true, std::memory_order_relaxed);
 		}
 
-		// Terminate first: it releases a reader blocked in Read, which is the only way the
-		// join below can complete. Joining first would wait for a thread that is waiting for
-		// bytes that will never come.
+		// Terminate before joining: it is the only thing that releases a reader blocked in Read,
+		// so joining first would wait forever for bytes that never come.
 		if (m_Console)
 		{
 			m_Console->Terminate();
 		}
 
-		m_Drained.notify_all();
+		m_ReaderWake.notify_all();
 
-		// The reader is inside the pipe until this returns, and ~PseudoConsole — which runs
-		// when m_Console is destroyed, after this body — reads from that same pipe on its way
-		// out. Joining here is what keeps the two out of it at the same time.
-		if (m_Reader.joinable())
+		// ~PseudoConsole, which runs after this body, reads from the same pipe the reader is inside
+		// until it returns; joining here keeps the two out of it at the same time.
+		if (m_ReaderThread.joinable())
 		{
-			m_Reader.join();
+			m_ReaderThread.join();
 		}
 	}
 
 	void TerminalSession::ReadLoop()
 	{
-		std::array<char, 8192> buffer{};
+		std::array<char, kReadChunkBytes> readBuffer{};
 
 		while (!m_Stopping.load(std::memory_order_relaxed))
 		{
-			const std::size_t read = m_Console->Read(buffer);
+			const std::size_t bytesRead = m_Console->Read(readBuffer);
 
-			if (read == 0)
+			if (bytesRead == 0)
 			{
-				// Zero means "no bytes from this call", not end of stream: a read that could not
-				// set up its wait, or that failed outright, reports zero as well. Ending the
-				// session on one of those would close a terminal whose shell is still there, so
-				// the shell itself is asked.
-				if (!m_Console->IsRunning())
+				const bool shellHasExited = !m_Console->IsRunning();
+
+				if (shellHasExited)
 				{
 					break;
 				}
 
-				std::this_thread::sleep_for(RetryPause);
+				std::this_thread::sleep_for(kPauseAfterEmptyRead);
 				continue;
 			}
 
-			std::unique_lock<std::mutex> lock(m_Mutex);
+			std::unique_lock<std::mutex> lock(m_QueueMutex);
 
-			m_Drained.wait(lock, [this] {
-				return m_Incoming.size() < QueueLimit || m_Stopping.load(std::memory_order_relaxed);
+			m_ReaderWake.wait(lock, [this] {
+				return m_QueuedOutput.size() < kQueueLimitBytes || m_Stopping.load(std::memory_order_relaxed);
 			});
 
 			if (m_Stopping.load(std::memory_order_relaxed))
@@ -134,10 +146,10 @@ namespace Core {
 				break;
 			}
 
-			m_Incoming.append(buffer.data(), read);
+			m_QueuedOutput.append(readBuffer.data(), bytesRead);
 
-			// Without the wake a sleeping UI never pumps, the queue fills, and the shell
-			// blocks on its own output.
+			// Without this wake a sleeping UI never pumps, the queue fills, and the shell blocks on
+			// its own output.
 			Redraw::Request();
 		}
 
@@ -147,26 +159,26 @@ namespace Core {
 		Redraw::Request();
 	}
 
-	void TerminalSession::Pump()
+	void TerminalSession::ApplyQueuedOutput()
 	{
-		std::string batch;
+		std::string outputThisFrame;
 
 		{
-			std::lock_guard<std::mutex> lock(m_Mutex);
+			std::lock_guard<std::mutex> lock(m_QueueMutex);
 
-			if (m_Incoming.empty())
+			if (m_QueuedOutput.empty())
 			{
 				return;
 			}
 
-			const std::size_t take = std::min(m_Incoming.size(), PerFrameLimit);
-			batch.assign(m_Incoming, 0, take);
-			m_Incoming.erase(0, take);
+			const std::size_t bytesThisFrame = std::min(m_QueuedOutput.size(), kMostBytesParsedPerFrame);
+			outputThisFrame.assign(m_QueuedOutput, kFrontOfQueue, bytesThisFrame);
+			m_QueuedOutput.erase(kFrontOfQueue, bytesThisFrame);
 		}
 
-		m_Drained.notify_all();
+		m_ReaderWake.notify_all();
 
-		const std::string replies = m_Parser.Consume(batch);
+		const std::string replies = m_Parser.Consume(outputThisFrame);
 
 		if (!replies.empty())
 		{
@@ -198,21 +210,25 @@ namespace Core {
 
 	void TerminalSession::Resize(std::uint16_t columns, std::uint16_t rows)
 	{
-		if (columns == m_Screen.GetColumns() && rows == m_Screen.GetRows())
+		const bool sizeIsUnchanged = columns == m_Screen.GetColumns() && rows == m_Screen.GetRows();
+
+		if (sizeIsUnchanged)
 		{
 			return;
 		}
 
 		m_Screen.Resize(columns, rows);
 
-		// Once the shell has exited, its console refusing a resize is expected and not worth a
-		// line per column of a window drag; while it runs, a refusal leaves the shell wrapping
-		// at the old width, which the log should explain.
 		if (m_Console)
 		{
-			if (const auto resized = m_Console->Resize(columns, rows); !resized && m_Console->IsRunning())
+			// A console refuses a resize once its shell has exited, and a window drag would log that
+			// once per column; a refusal while the shell runs leaves it wrapping at the old width.
+			const Result<void> resizeResult = m_Console->Resize(columns, rows);
+			const bool refusedWhileShellRuns = !resizeResult && m_Console->IsRunning();
+
+			if (refusedWhileShellRuns)
 			{
-				CORE_WARN("Cannot resize the terminal to {}x{}: {}", columns, rows, resized.GetError().Message);
+				CORE_WARN("Cannot resize the terminal to {}x{}: {}", columns, rows, resizeResult.GetError().Message);
 			}
 		}
 	}

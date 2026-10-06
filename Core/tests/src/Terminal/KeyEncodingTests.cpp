@@ -2,7 +2,13 @@
 
 #include "Core/Terminal/KeyEncoding.h"
 
+#include <cstdint>
 #include <string>
+
+namespace {
+	constexpr std::uint16_t kFirstColumn = 0;
+	constexpr std::uint16_t kFirstRow = 0;
+}
 
 TEST_CASE("EncodeKey sends the control characters for the editing keys")
 {
@@ -48,10 +54,8 @@ TEST_CASE("EncodeKey marks a modified arrow key")
 	CHECK(Core::EncodeKey(Core::KeyCode::Left, Core::KeyModifier::Shift) == "\x1B[1;2D");
 }
 
-TEST_CASE("EncodeKey sends nothing for a plain letter")
+TEST_CASE("EncodeKey sends nothing for a plain letter because it arrives through the character queue with the keyboard layout already applied")
 {
-	// Printable input arrives through the character queue, which already applies the
-	// keyboard layout. Encoding it here as well would double every keystroke.
 	CHECK(Core::EncodeKey(Core::KeyCode::A, Core::KeyModifier::None).empty());
 	CHECK(Core::EncodeKey(Core::KeyCode::A, Core::KeyModifier::Shift).empty());
 }
@@ -61,10 +65,8 @@ TEST_CASE("EncodeKey sends nothing for a modifier held alone")
 	CHECK(Core::EncodeKey(Core::KeyCode::LeftControl, Core::KeyModifier::Control).empty());
 }
 
-TEST_CASE("EncodeKey sends the function keys")
+TEST_CASE("EncodeKey sends F1 to F4 as SS3 sequences and the other function keys as tilde sequences as xterm does")
 {
-	// F1-F4 are SS3 sequences and the rest are tilde sequences, which is what xterm sends and
-	// what every terminfo entry a TUI reads is written against.
 	CHECK(Core::EncodeKey(Core::KeyCode::F1, Core::KeyModifier::None) == "\x1BOP");
 	CHECK(Core::EncodeKey(Core::KeyCode::F2, Core::KeyModifier::None) == "\x1BOQ");
 	CHECK(Core::EncodeKey(Core::KeyCode::F3, Core::KeyModifier::None) == "\x1BOR");
@@ -79,9 +81,8 @@ TEST_CASE("EncodeKey sends the function keys")
 	CHECK(Core::EncodeKey(Core::KeyCode::F12, Core::KeyModifier::None) == "\x1B[24~");
 }
 
-TEST_CASE("EncodeKey parameterises a modified function key")
+TEST_CASE("EncodeKey parameterises a modified function key by moving F1 to F4 from SS3 to the CSI form that carries the parameter")
 {
-	// A modified F1-F4 leaves SS3 for the CSI form, which is the one that carries a parameter.
 	CHECK(Core::EncodeKey(Core::KeyCode::F1, Core::KeyModifier::Shift) == "\x1B[1;2P");
 	CHECK(Core::EncodeKey(Core::KeyCode::F5, Core::KeyModifier::Control) == "\x1B[15;5~");
 }
@@ -91,32 +92,31 @@ TEST_CASE("EncodeKey sends insert")
 	CHECK(Core::EncodeKey(Core::KeyCode::Insert, Core::KeyModifier::None) == "\x1B[2~");
 }
 
-TEST_CASE("EncodeKey sends a back-tab for shifted tab")
+TEST_CASE("EncodeKey sends a back-tab for shifted tab so a TUI walks its focus backwards")
 {
-	// Shift+Tab is CBT, how a TUI walks its focus backwards; a plain tab would walk forwards.
 	CHECK(Core::EncodeKey(Core::KeyCode::Tab, Core::KeyModifier::Shift) == "\x1B[Z");
 	CHECK(Core::EncodeKey(Core::KeyCode::Tab, Core::KeyModifier::None) == "\t");
 }
 
-TEST_CASE("EncodeMouseWheel reports a notch at a one-based cell in SGR")
+TEST_CASE("EncodeMouseWheel reports the zero-based cell it is given as a one-based position in SGR")
 {
-	CHECK(Core::EncodeMouseWheel(true, 0, 0, Core::KeyModifier::None, true) == "\x1B[<64;1;1M");
-	CHECK(Core::EncodeMouseWheel(false, 9, 4, Core::KeyModifier::None, true) == "\x1B[<65;10;5M");
+	CHECK(Core::EncodeMouseWheel(Core::WheelDirection::Up, kFirstColumn, kFirstRow, Core::KeyModifier::None, Core::MouseReportForm::SgrDecimal) == "\x1B[<64;1;1M");
+	CHECK(Core::EncodeMouseWheel(Core::WheelDirection::Down, 9, 4, Core::KeyModifier::None, Core::MouseReportForm::SgrDecimal) == "\x1B[<65;10;5M");
 }
 
 TEST_CASE("EncodeMouseWheel adds the modifier bits xterm defines")
 {
-	CHECK(Core::EncodeMouseWheel(true, 0, 0, Core::KeyModifier::Shift, true) == "\x1B[<68;1;1M");
-	CHECK(Core::EncodeMouseWheel(true, 0, 0, Core::KeyModifier::Alt, true) == "\x1B[<72;1;1M");
-	CHECK(Core::EncodeMouseWheel(true, 0, 0, Core::KeyModifier::Control, true) == "\x1B[<80;1;1M");
+	CHECK(Core::EncodeMouseWheel(Core::WheelDirection::Up, kFirstColumn, kFirstRow, Core::KeyModifier::Shift, Core::MouseReportForm::SgrDecimal) == "\x1B[<68;1;1M");
+	CHECK(Core::EncodeMouseWheel(Core::WheelDirection::Up, kFirstColumn, kFirstRow, Core::KeyModifier::Alt, Core::MouseReportForm::SgrDecimal) == "\x1B[<72;1;1M");
+	CHECK(Core::EncodeMouseWheel(Core::WheelDirection::Up, kFirstColumn, kFirstRow, Core::KeyModifier::Control, Core::MouseReportForm::SgrDecimal) == "\x1B[<80;1;1M");
 }
 
-TEST_CASE("EncodeMouseWheel falls back to the legacy byte encoding without SGR")
+TEST_CASE("EncodeMouseWheel falls back to the legacy byte encoding without SGR and reports a cell past the 223rd as the 223rd")
 {
-	CHECK(Core::EncodeMouseWheel(true, 0, 0, Core::KeyModifier::None, false) == "\x1B[M`!!");
-	CHECK(Core::EncodeMouseWheel(false, 2, 1, Core::KeyModifier::None, false) == "\x1B[Ma#\"");
+	CHECK(Core::EncodeMouseWheel(Core::WheelDirection::Up, kFirstColumn, kFirstRow, Core::KeyModifier::None, Core::MouseReportForm::Legacy) == "\x1B[M`!!");
+	CHECK(Core::EncodeMouseWheel(Core::WheelDirection::Down, 2, 1, Core::KeyModifier::None, Core::MouseReportForm::Legacy) == "\x1B[Ma#\"");
 
-	// One byte per coordinate cannot name a cell past 223; the last one it can is used.
-	CHECK(Core::EncodeMouseWheel(true, 500, 0, Core::KeyModifier::None, false) ==
-		  std::string("\x1B[M`") + static_cast<char>(255) + "!");
+	constexpr std::uint16_t kColumnPastLegacyRange = 500;
+
+	CHECK(Core::EncodeMouseWheel(Core::WheelDirection::Up, kColumnPastLegacyRange, kFirstRow, Core::KeyModifier::None, Core::MouseReportForm::Legacy) == "\x1B[M`\xFF!");
 }

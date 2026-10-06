@@ -5,6 +5,8 @@
 #include "Core/Terminal/TerminalSession.h"
 #include "Core/Terminal/VtParser.h"
 
+#include "TerminalFixtures.h"
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -14,17 +16,46 @@
 #include <future>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 
 namespace {
 
+	constexpr std::uint16_t kInitialColumns = 80;
+	constexpr std::uint16_t kInitialRows = 25;
+	constexpr std::uint16_t kResizedColumns = 100;
+	constexpr std::uint16_t kResizedRows = 30;
+
+	constexpr std::chrono::seconds kShellResponseLimit{10};
+	constexpr std::chrono::milliseconds kFrameInterval{20};
+
+	// Generous on purpose: they turn a hang into a failure and do not measure how fast a shell
+	// starts, so no correct implementation can miss them by being busy.
+	constexpr std::chrono::seconds kShutdownLimit{5};
+	constexpr std::chrono::seconds kSessionLimit{40};
+
+	// TerminalSession's queue holds one mebibyte and its reader parks only once this file overflows
+	// it, so raising that limit means raising this count.
+	constexpr std::size_t kFillerLineLengthBeforeNewline = 1023;
+	constexpr int kFillerLineCountForFourTimesTheQueueLimit = 4096;
+	static_assert((kFillerLineLengthBeforeNewline + 1) * kFillerLineCountForFourTimesTheQueueLimit == std::size_t{4} * 1024 * 1024);
+	constexpr char kAnyFillerCharacter = 'a';
+	constexpr std::chrono::seconds kSessionStartAllowance{3};
+	constexpr std::chrono::seconds kTimeForTheShellToFillTheQueue{2};
+
+	constexpr std::string_view kShellTurnsBracketedPasteOn = "\x1B[?2004h";
+	constexpr std::string_view kShellTurnsBracketedPasteOff = "\x1B[?2004l";
+	constexpr std::string_view kPasteEndMarker = "\x1B[201~";
+
 	Core::ShellProfile CommandPrompt()
 	{
-		Core::ShellProfile profile;
-		profile.Name = "Command Prompt";
-		profile.Path = "cmd.exe";
-		return profile;
+		return Core::ShellProfile{.Name = "Command Prompt", .Path = "cmd.exe"};
+	}
+
+	Core::Result<Core::Scope<Core::TerminalSession>> StartCommandPrompt()
+	{
+		return Core::TerminalSession::Start(CommandPrompt(), std::filesystem::current_path(), kInitialColumns, kInitialRows);
 	}
 
 	std::u32string ScreenText(const Core::TerminalScreen& screen)
@@ -33,94 +64,174 @@ namespace {
 
 		for (std::uint16_t row = 0; row < screen.GetRows(); ++row)
 		{
-			for (std::uint16_t column = 0; column < screen.GetColumns(); ++column)
-			{
-				text.push_back(screen.At(row, column).Code);
-			}
+			text += ScreenRowText(screen, row);
 		}
 
 		return text;
 	}
 
-	// Pumping is the UI thread's job, so a test stands in for the frame loop.
-	bool PumpUntil(Core::TerminalSession& session, std::u32string_view wanted)
+	bool ApplyQueuedOutputUntilScreenShows(Core::TerminalSession& session, std::u32string_view expectedText)
 	{
-		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kShellResponseLimit;
 
 		while (std::chrono::steady_clock::now() < deadline)
 		{
-			session.Pump();
+			session.ApplyQueuedOutput();
 
-			if (ScreenText(session.GetScreen()).find(wanted) != std::u32string::npos)
+			const bool screenShowsExpectedText = ScreenText(session.GetScreen()).find(expectedText) != std::u32string::npos;
+
+			if (screenShowsExpectedText)
 			{
 				return true;
 			}
 
-			std::this_thread::sleep_for(std::chrono::milliseconds(20));
+			std::this_thread::sleep_for(kFrameInterval);
 		}
 
 		return false;
 	}
 
-	// Runs work that owns a session — creation, use, and above all destruction — on a thread of
-	// its own, and reports whether it finished inside the limit.
-	//
-	// Every session in this file is destroyed somewhere a deadline can see it, because a
-	// shutdown bug in TerminalSession shows up as a join that never returns. Run inline, that
-	// stops the whole binary: a scope's closing brace cannot be timed from inside the scope, and
-	// a hung suite has to be killed from outside, which destroys the entire run's results rather
-	// than reddening one case.
-	//
-	// The thread is deliberately detached and the promise deliberately shared: when the deadline
-	// expires, the stuck work is abandoned — leaking the session and its thread — so the case can
-	// fail and the cases after it can still run. Nothing here touches a doctest macro off the
-	// main thread; results come back through the shared state and are asserted by the caller.
-	bool FinishesWithin(std::chrono::milliseconds limit, std::function<void()> work)
+	std::size_t CountOccurrences(const std::string& text, std::string_view pattern)
 	{
-		auto finished = std::make_shared<std::promise<void>>();
-		std::future<void> done = finished->get_future();
+		std::size_t occurrenceCount = 0;
 
-		std::thread([finished, work = std::move(work)]() mutable {
-			work();
-			finished->set_value();
-		}).detach();
+		for (std::size_t matchPosition = text.find(pattern); matchPosition != std::string::npos;
+			 matchPosition = text.find(pattern, matchPosition + 1))
+		{
+			++occurrenceCount;
+		}
 
-		return done.wait_for(limit) == std::future_status::ready;
+		return occurrenceCount;
 	}
 
-	// Deadlines are generous on purpose: they are there to convert a hang into a failure, not to
-	// measure how fast a shell starts, so no correct implementation can miss them by being busy.
-	constexpr std::chrono::seconds ShutdownLimit{5};
-	constexpr std::chrono::seconds SessionLimit{40};
-}
+	// A shutdown bug shows up as a join that never returns, which run inline would hang the whole
+	// suite; on a detached thread the stuck work is abandoned and leaked, so this case fails and the
+	// cases after it still run, and the promise is shared because the abandoned thread may still set
+	// it after this function has returned. Doctest macros must not be called off the main thread, so
+	// results come back through shared state for the caller to assert.
+	bool FinishesOnItsOwnThreadWithin(std::chrono::milliseconds limit, std::function<void()> work)
+	{
+		auto completion = std::make_shared<std::promise<void>>();
+		std::future<void> completionReport = completion->get_future();
 
-TEST_CASE("TerminalSession puts a command's output on the screen")
-{
-	struct Outcome
+		std::thread([completion, work = std::move(work)]() mutable {
+			work();
+			completion->set_value();
+		}).detach();
+
+		const std::future_status waitStatus = completionReport.wait_for(limit);
+		return waitStatus == std::future_status::ready;
+	}
+
+	struct EchoOutcome
 	{
 		std::atomic<bool> Started{false};
 		std::atomic<bool> Alive{false};
 		std::atomic<bool> Echoed{false};
 	};
 
-	auto outcome = std::make_shared<Outcome>();
+	void StartAndEcho(EchoOutcome& outcome)
+	{
+		Core::Result<Core::Scope<Core::TerminalSession>> sessionResult = StartCommandPrompt();
 
-	const bool finished = FinishesWithin(SessionLimit, [outcome] {
-		auto session = Core::TerminalSession::Start(CommandPrompt(),
-													std::filesystem::current_path(), 80, 25);
-
-		if (!session)
+		if (!sessionResult)
 		{
 			return;
 		}
 
-		outcome->Started.store(true);
-		outcome->Alive.store(session.GetValue()->IsAlive());
+		Core::TerminalSession& session = *sessionResult.GetValue();
 
-		session.GetValue()->Send("echo session-works\r\n");
+		outcome.Started.store(true);
+		outcome.Alive.store(session.IsAlive());
 
-		outcome->Echoed.store(PumpUntil(*session.GetValue(), U"session-works"));
-	});
+		session.Send("echo session-works\r\n");
+
+		outcome.Echoed.store(ApplyQueuedOutputUntilScreenShows(session, U"session-works"));
+	}
+
+	struct ExitOutcome
+	{
+		std::atomic<bool> Started{false};
+		std::atomic<bool> Alive{true};
+	};
+
+	void StartAndExitTheShell(ExitOutcome& outcome)
+	{
+		Core::Result<Core::Scope<Core::TerminalSession>> sessionResult = StartCommandPrompt();
+
+		if (!sessionResult)
+		{
+			return;
+		}
+
+		Core::TerminalSession& session = *sessionResult.GetValue();
+
+		outcome.Started.store(true);
+		session.Send("exit\r\n");
+
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kShellResponseLimit;
+
+		while (session.IsAlive() && std::chrono::steady_clock::now() < deadline)
+		{
+			session.ApplyQueuedOutput();
+			std::this_thread::sleep_for(kFrameInterval);
+		}
+
+		outcome.Alive.store(session.IsAlive());
+	}
+
+	struct ResizeOutcome
+	{
+		std::atomic<bool> Started{false};
+		std::atomic<std::uint16_t> Columns{0};
+		std::atomic<std::uint16_t> Rows{0};
+	};
+
+	void StartAndResize(ResizeOutcome& outcome)
+	{
+		Core::Result<Core::Scope<Core::TerminalSession>> sessionResult = StartCommandPrompt();
+
+		if (!sessionResult)
+		{
+			return;
+		}
+
+		Core::TerminalSession& session = *sessionResult.GetValue();
+
+		outcome.Started.store(true);
+		session.Resize(kResizedColumns, kResizedRows);
+
+		outcome.Columns.store(session.GetScreen().GetColumns());
+		outcome.Rows.store(session.GetScreen().GetRows());
+	}
+
+	void StartAndDestroy(std::atomic<bool>& started)
+	{
+		Core::Result<Core::Scope<Core::TerminalSession>> sessionResult = StartCommandPrompt();
+		started.store(static_cast<bool>(sessionResult));
+	}
+
+	void StartAndFillTheQueue(const std::filesystem::path& fillerFile, std::atomic<bool>& started)
+	{
+		Core::Result<Core::Scope<Core::TerminalSession>> sessionResult = StartCommandPrompt();
+
+		if (!sessionResult)
+		{
+			return;
+		}
+
+		started.store(true);
+		sessionResult.GetValue()->Send("type \"" + fillerFile.string() + "\"\r\n");
+
+		std::this_thread::sleep_for(kTimeForTheShellToFillTheQueue);
+	}
+}
+
+TEST_CASE("TerminalSession puts a command's output on the screen")
+{
+	auto outcome = std::make_shared<EchoOutcome>();
+
+	const bool finished = FinishesOnItsOwnThreadWithin(kSessionLimit, [outcome] { StartAndEcho(*outcome); });
 
 	REQUIRE(finished);
 	REQUIRE(outcome->Started.load());
@@ -130,36 +241,9 @@ TEST_CASE("TerminalSession puts a command's output on the screen")
 
 TEST_CASE("TerminalSession stops being alive after the shell exits")
 {
-	struct Outcome
-	{
-		std::atomic<bool> Started{false};
-		std::atomic<bool> Alive{true};
-	};
+	auto outcome = std::make_shared<ExitOutcome>();
 
-	auto outcome = std::make_shared<Outcome>();
-
-	const bool finished = FinishesWithin(SessionLimit, [outcome] {
-		auto session = Core::TerminalSession::Start(CommandPrompt(),
-													std::filesystem::current_path(), 80, 25);
-
-		if (!session)
-		{
-			return;
-		}
-
-		outcome->Started.store(true);
-		session.GetValue()->Send("exit\r\n");
-
-		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
-
-		while (session.GetValue()->IsAlive() && std::chrono::steady_clock::now() < deadline)
-		{
-			session.GetValue()->Pump();
-			std::this_thread::sleep_for(std::chrono::milliseconds(20));
-		}
-
-		outcome->Alive.store(session.GetValue()->IsAlive());
-	});
+	const bool finished = FinishesOnItsOwnThreadWithin(kSessionLimit, [outcome] { StartAndExitTheShell(*outcome); });
 
 	REQUIRE(finished);
 	REQUIRE(outcome->Started.load());
@@ -168,118 +252,67 @@ TEST_CASE("TerminalSession stops being alive after the shell exits")
 
 TEST_CASE("TerminalSession resizes its screen with its shell")
 {
-	struct Outcome
-	{
-		std::atomic<bool> Started{false};
-		std::atomic<std::uint16_t> Columns{0};
-		std::atomic<std::uint16_t> Rows{0};
-	};
+	auto outcome = std::make_shared<ResizeOutcome>();
 
-	auto outcome = std::make_shared<Outcome>();
-
-	const bool finished = FinishesWithin(SessionLimit, [outcome] {
-		auto session = Core::TerminalSession::Start(CommandPrompt(),
-													std::filesystem::current_path(), 80, 25);
-
-		if (!session)
-		{
-			return;
-		}
-
-		outcome->Started.store(true);
-		session.GetValue()->Resize(100, 30);
-
-		outcome->Columns.store(session.GetValue()->GetScreen().GetColumns());
-		outcome->Rows.store(session.GetValue()->GetScreen().GetRows());
-	});
+	const bool finished = FinishesOnItsOwnThreadWithin(kSessionLimit, [outcome] { StartAndResize(*outcome); });
 
 	REQUIRE(finished);
 	REQUIRE(outcome->Started.load());
-	CHECK(outcome->Columns.load() == 100);
-	CHECK(outcome->Rows.load() == 30);
+	CHECK(outcome->Columns.load() == kResizedColumns);
+	CHECK(outcome->Rows.load() == kResizedRows);
 }
 
-TEST_CASE("TerminalSession destroying a live session returns promptly")
+TEST_CASE("TerminalSession destroying a live session returns promptly because it terminates the shell before joining the reader")
 {
-	// The shutdown order is the point: terminate, then join. Getting it wrong hangs in the
-	// destructor, which is why the destructor runs on a thread the deadline below can observe.
 	auto started = std::make_shared<std::atomic<bool>>(false);
 
-	const bool finished = FinishesWithin(ShutdownLimit, [started] {
-		auto session = Core::TerminalSession::Start(CommandPrompt(),
-													std::filesystem::current_path(), 80, 25);
-		started->store(static_cast<bool>(session));
-	});
+	const bool finished = FinishesOnItsOwnThreadWithin(kShutdownLimit, [started] { StartAndDestroy(*started); });
 
 	CHECK(finished);
 	CHECK(started->load());
 }
 
-TEST_CASE("TerminalSession destroying a session with a full queue returns promptly")
+TEST_CASE("TerminalSession destroying a session whose reader waits on a full queue that nothing pumps returns promptly")
 {
-	// The reader blocks once the queue reaches its cap, waiting on the condition variable for
-	// the UI thread to drain it. Nothing here ever calls Pump, so that drain never comes and the
-	// only thing that can release the reader is the destructor's own flag and notification. If
-	// that wakeup is lost, the join never returns — hence the deadline, and hence the thread.
-	const std::filesystem::path filler =
+	const std::filesystem::path fillerFile =
 		std::filesystem::temp_directory_path() / "graphite-terminal-queue-filler.txt";
 
 	{
-		// Several times the queue limit, so the queue is full long before the shell runs out of
-		// bytes to write. Its content is irrelevant: the queue holds raw bytes and is never
-		// parsed in this case.
-		const std::string line(1023, 'a');
-		std::ofstream out(filler, std::ios::binary | std::ios::trunc);
+		const std::string fillerLine(kFillerLineLengthBeforeNewline, kAnyFillerCharacter);
+		std::ofstream fillerStream(fillerFile, std::ios::binary | std::ios::trunc);
 
-		for (int written = 0; written < 4096; ++written)
+		for (int linesWritten = 0; linesWritten < kFillerLineCountForFourTimesTheQueueLimit; ++linesWritten)
 		{
-			out << line << '\n';
+			fillerStream << fillerLine << '\n';
 		}
 	}
 
 	auto started = std::make_shared<std::atomic<bool>>(false);
 
-	const bool finished = FinishesWithin(ShutdownLimit + std::chrono::seconds(5), [started, filler] {
-		auto session = Core::TerminalSession::Start(CommandPrompt(),
-													std::filesystem::current_path(), 80, 25);
-
-		if (!session)
-		{
-			return;
-		}
-
-		started->store(true);
-		session.GetValue()->Send("type \"" + filler.string() + "\"\r\n");
-
-		// Long enough for the shell to pour four megabytes into a queue capped at one, with no
-		// Pump to relieve it, which leaves the reader parked in its wait.
-		std::this_thread::sleep_for(std::chrono::seconds(2));
-	});
+	const bool finished = FinishesOnItsOwnThreadWithin(kShutdownLimit + kTimeForTheShellToFillTheQueue + kSessionStartAllowance,
+													   [started, fillerFile] { StartAndFillTheQueue(fillerFile, *started); });
 
 	CHECK(finished);
 	CHECK(started->load());
 
-	std::error_code status;
-	std::filesystem::remove(filler, status);
+	std::error_code removeError;
+	std::filesystem::remove(fillerFile, removeError);
 }
 
 TEST_CASE("BracketedPasteBytes wraps a paste only when the shell asked for the markers")
 {
-	// The screen's flag is driven the way the shell drives it — through the parser — rather than
-	// set by hand, so this covers the sequence that turns the mode on as well as the choice it
-	// governs. No shell is spawned: the decision is all that is under test.
-	Core::TerminalScreen screen(80, 25);
+	Core::TerminalScreen screen(kInitialColumns, kInitialRows);
 	Core::VtParser parser(screen);
 
 	REQUIRE_FALSE(screen.IsBracketedPaste());
 	CHECK(Core::BracketedPasteBytes("one\ntwo", screen.IsBracketedPaste()) == "one\ntwo");
 
-	parser.Consume("\x1B[?2004h");
+	parser.Consume(kShellTurnsBracketedPasteOn);
 
 	REQUIRE(screen.IsBracketedPaste());
 	CHECK(Core::BracketedPasteBytes("one\ntwo", screen.IsBracketedPaste()) == "\x1B[200~one\ntwo\x1B[201~");
 
-	parser.Consume("\x1B[?2004l");
+	parser.Consume(kShellTurnsBracketedPasteOff);
 
 	REQUIRE_FALSE(screen.IsBracketedPaste());
 	CHECK(Core::BracketedPasteBytes("one\ntwo", screen.IsBracketedPaste()) == "one\ntwo");
@@ -287,16 +320,12 @@ TEST_CASE("BracketedPasteBytes wraps a paste only when the shell asked for the m
 
 TEST_CASE("BracketedPasteBytes strips ESC so pasted text cannot close the paste early")
 {
-	const std::string bytes = Core::BracketedPasteBytes("a\x1B[201~rm -rf x\x1B[200~b", true);
+	const bool shellTurnedBracketedPasteOn = true;
+	const std::string bytes = Core::BracketedPasteBytes("a\x1B[201~rm -rf x\x1B[200~b", shellTurnedBracketedPasteOn);
 
 	CHECK(bytes == "\x1B[200~a[201~rm -rf x[200~b\x1B[201~");
 
-	std::size_t closers = 0;
-	for (std::size_t at = bytes.find("\x1B[201~"); at != std::string::npos;
-		 at = bytes.find("\x1B[201~", at + 1))
-	{
-		++closers;
-	}
-	CHECK(closers == 1);
-	CHECK(bytes.rfind("\x1B[201~") == bytes.size() - 6);
+	const std::size_t pasteEndMarkerCount = CountOccurrences(bytes, kPasteEndMarker);
+	CHECK(pasteEndMarkerCount == 1);
+	CHECK(bytes.rfind(kPasteEndMarker) == bytes.size() - kPasteEndMarker.size());
 }

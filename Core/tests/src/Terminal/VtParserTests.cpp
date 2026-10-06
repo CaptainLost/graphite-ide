@@ -4,22 +4,10 @@
 #include "Core/Terminal/VtParser.h"
 #include "Core/Text/Utf8.h"
 
+#include "TerminalFixtures.h"
+
 #include <string>
-
-namespace {
-
-	std::u32string RowText(const Core::TerminalScreen& screen, std::uint16_t row)
-	{
-		std::u32string text;
-
-		for (std::uint16_t column = 0; column < screen.GetColumns(); ++column)
-		{
-			text.push_back(screen.At(row, column).Code);
-		}
-
-		return text;
-	}
-}
+#include <string_view>
 
 TEST_CASE("VtParser prints plain text")
 {
@@ -28,15 +16,14 @@ TEST_CASE("VtParser prints plain text")
 
 	parser.Consume("hello");
 
-	CHECK(RowText(screen, 0) == U"hello   ");
+	CHECK(ScreenRowText(screen, 0) == U"hello   ");
 }
 
-TEST_CASE("VtParser places the cursor absolutely")
+TEST_CASE("VtParser places the cursor from one-based coordinates on the wire onto zero-based cells")
 {
 	Core::TerminalScreen screen(8, 4);
 	Core::VtParser parser(screen);
 
-	// CUP is one-based on the wire and zero-based in the screen.
 	parser.Consume("\x1B[3;5Hx");
 
 	CHECK(screen.At(2, 4).Code == U'x');
@@ -69,7 +56,7 @@ TEST_CASE("VtParser erases to the end of the line")
 
 	parser.Consume("abcdef\x1B[1;3H\x1B[K");
 
-	CHECK(RowText(screen, 0) == U"ab    ");
+	CHECK(ScreenRowText(screen, 0) == U"ab    ");
 }
 
 TEST_CASE("VtParser erases the display")
@@ -79,7 +66,7 @@ TEST_CASE("VtParser erases the display")
 
 	parser.Consume("ab\x1B[2J");
 
-	CHECK(RowText(screen, 0) == U"    ");
+	CHECK(ScreenRowText(screen, 0) == U"    ");
 }
 
 TEST_CASE("VtParser sets a scroll region and reverse-indexes inside it")
@@ -90,8 +77,8 @@ TEST_CASE("VtParser sets a scroll region and reverse-indexes inside it")
 	parser.Consume("\x1B[2;3r");
 	parser.Consume("\x1B[2;1Hone\x1BM");
 
-	CHECK(RowText(screen, 1) == U"    ");
-	CHECK(RowText(screen, 2) == U"one ");
+	CHECK(ScreenRowText(screen, 1) == U"    ");
+	CHECK(ScreenRowText(screen, 2) == U"one ");
 }
 
 TEST_CASE("VtParser handles a sequence split across two reads")
@@ -99,7 +86,6 @@ TEST_CASE("VtParser handles a sequence split across two reads")
 	Core::TerminalScreen screen(8, 4);
 	Core::VtParser parser(screen);
 
-	// A pipe splits wherever it likes. A parser that resets between calls loses this.
 	parser.Consume("\x1B[");
 	parser.Consume("3;");
 	parser.Consume("2Hx");
@@ -114,8 +100,7 @@ TEST_CASE("VtParser swallows an unknown sequence whole")
 
 	parser.Consume("a\x1B[?99;7$pb");
 
-	// Nothing of the sequence reaches the screen — not even its tail.
-	CHECK(RowText(screen, 0) == U"ab      ");
+	CHECK(ScreenRowText(screen, 0) == U"ab      ");
 }
 
 TEST_CASE("VtParser swallows an operating system command and takes the title from it")
@@ -126,7 +111,7 @@ TEST_CASE("VtParser swallows an operating system command and takes the title fro
 	parser.Consume("\x1B]0;git status\x07ok");
 
 	CHECK(screen.GetTitle() == "git status");
-	CHECK(RowText(screen, 0) == U"ok      ");
+	CHECK(ScreenRowText(screen, 0) == U"ok      ");
 }
 
 TEST_CASE("VtParser saves and restores the cursor")
@@ -141,16 +126,14 @@ TEST_CASE("VtParser saves and restores the cursor")
 	CHECK(screen.At(2, 2).Code == U'x');
 }
 
-TEST_CASE("VtParser lets an ESC abort the sequence in progress")
+TEST_CASE("VtParser lets an ESC abort the sequence in progress and open the next one")
 {
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// The first sequence is abandoned halfway. Its ESC must start the second one rather
-	// than being eaten as the abandoned sequence's unrecognised byte.
 	parser.Consume("\x1B[3\x1B[2Jab");
 
-	CHECK(RowText(screen, 0) == U"ab      ");
+	CHECK(ScreenRowText(screen, 0) == U"ab      ");
 }
 
 TEST_CASE("VtParser starts a fresh sequence on a doubled ESC")
@@ -160,52 +143,47 @@ TEST_CASE("VtParser starts a fresh sequence on a doubled ESC")
 
 	parser.Consume("\x1B\x1B[1;3Hx");
 
-	CHECK(RowText(screen, 0) == U"  x     ");
+	CHECK(ScreenRowText(screen, 0) == U"  x     ");
 }
 
-TEST_CASE("VtParser swallows a CSI opened with a prefix other than '?'")
+TEST_CASE("VtParser neither prints nor dispatches a CSI opened with a prefix other than '?' such as modifyOtherKeys")
 {
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// modifyOtherKeys is emitted by real programs; its final 'm' must not reach the screen
-	// as text, and must not be dispatched as an SGR sequence either.
 	const std::string reply = parser.Consume("a\x1B[>4;2mb");
 
-	CHECK(RowText(screen, 0) == U"ab      ");
+	CHECK(ScreenRowText(screen, 0) == U"ab      ");
 	CHECK(reply.empty());
+	CHECK(screen.At(0, 1).Flags == Core::CellFlags::None);
 }
 
-TEST_CASE("VtParser answers a secondary device attributes request")
+TEST_CASE("VtParser answers the secondary device attributes request that tmux waits for")
 {
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// tmux and some ncurses probes send this and wait on a timeout for an answer.
 	CHECK(parser.Consume("\x1B[>0c") == "\x1B[>0;10;1c");
 }
 
-TEST_CASE("VtParser keeps a leading empty parameter")
+TEST_CASE("VtParser keeps a leading empty parameter so ESC[;5H means the default row and column five")
 {
 	Core::TerminalScreen screen(8, 4);
 	Core::VtParser parser(screen);
 
-	// "ESC[;5H" is row default, column five — not column default, row five.
 	parser.Consume("\x1B[;5Hx");
 
 	CHECK(screen.At(0, 4).Code == U'x');
 }
 
-TEST_CASE("VtParser ignores a CSI carrying an intermediate byte it does not implement")
+TEST_CASE("VtParser ignores scroll left rather than insert characters that share its final byte")
 {
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// "CSI Ps SP @" is scroll left, not insert characters. Unimplemented means nothing
-	// happens, never a different action.
 	parser.Consume("abc\x1B[1;1H\x1B[1 @");
 
-	CHECK(RowText(screen, 0) == U"abc     ");
+	CHECK(ScreenRowText(screen, 0) == U"abc     ");
 }
 
 TEST_CASE("VtParser drops a title whose sequence an ESC abandons")
@@ -217,7 +195,7 @@ TEST_CASE("VtParser drops a title whose sequence an ESC abandons")
 	parser.Consume("\x1B]0;second\x1B[2Jok");
 
 	CHECK(screen.GetTitle() == "first");
-	CHECK(RowText(screen, 0) == U"ok      ");
+	CHECK(ScreenRowText(screen, 0) == U"ok      ");
 }
 
 TEST_CASE("VtParser takes a title from a string-terminated operating system command")
@@ -228,17 +206,16 @@ TEST_CASE("VtParser takes a title from a string-terminated operating system comm
 	parser.Consume("\x1B]2;built\x1B\\ok");
 
 	CHECK(screen.GetTitle() == "built");
-	CHECK(RowText(screen, 0) == U"ok      ");
+	CHECK(ScreenRowText(screen, 0) == U"ok      ");
 }
 
-TEST_CASE("VtParser answers a cursor position report")
+TEST_CASE("VtParser answers a cursor position report in the one-based coordinates a CUP takes")
 {
 	Core::TerminalScreen screen(8, 4);
 	Core::VtParser parser(screen);
 
 	parser.Consume("\x1B[3;5H");
 
-	// The reply is one-based, like the CUP that put the cursor there.
 	CHECK(parser.Consume("\x1B[6n") == "\x1B[3;5R");
 }
 
@@ -256,24 +233,24 @@ TEST_CASE("VtParser caps the parameter list and the operating system payload")
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// Untrusted bytes: neither buffer may grow with the stream.
-	parser.Consume("\x1B[" + std::string(4096, ';') + "H");
-	parser.Consume("\x1B]0;" + std::string(65536, 'x') + "\x07" + "ok");
+	const std::size_t floodedSeparatorCount = 4096;
+	const std::size_t floodedTitleLength = 65536;
 
-	CHECK(screen.GetTitle().size() < 65536);
-	CHECK(RowText(screen, 0) == U"ok      ");
+	parser.Consume("\x1B[" + std::string(floodedSeparatorCount, ';') + "H");
+	parser.Consume("\x1B]0;" + std::string(floodedTitleLength, 'x') + "\x07" + "ok");
+
+	CHECK(screen.GetTitle().size() < floodedTitleLength);
+	CHECK(ScreenRowText(screen, 0) == U"ok      ");
 }
 
-TEST_CASE("VtParser drops a code that falls past the parameter cap")
+TEST_CASE("VtParser drops a bold code that falls past the parameter cap")
 {
 	Core::TerminalScreen screen(4, 2);
 	Core::VtParser parser(screen);
 
-	// Fifty "0;" parameters followed by "1" for bold. If the cap did not exist, the trailing
-	// "1" would land in the parameter list and set Bold; capped at 32, that digit is dropped
-	// along with everything past it, so only leading zeros (which reset the pen) are seen.
+	const int resetCodesBeforeBold = 49;
 	std::string sequence = "\x1B[";
-	for (int i = 0; i < 49; ++i)
+	for (int repetition = 0; repetition < resetCodesBeforeBold; ++repetition)
 	{
 		sequence += "0;";
 	}
@@ -284,19 +261,17 @@ TEST_CASE("VtParser drops a code that falls past the parameter cap")
 	CHECK_FALSE(Core::HasFlag(screen.At(0, 0).Flags, Core::CellFlags::Bold));
 }
 
-TEST_CASE("VtParser caps the intermediate byte buffer")
+TEST_CASE("VtParser swallows a CSI flooded with intermediate bytes and prints what follows")
 {
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// A run of 0x20-0x2F bytes with no final never terminates the sequence; the buffer must
-	// not grow with it. The next byte is a final this parser does not implement with any
-	// intermediate present, so nothing reaches the screen and no crash or unbounded growth
-	// occurs either way — the point is that the previous byte stream is bounded.
-	parser.Consume("\x1B[" + std::string(4096, ' ') + "@");
+	const std::size_t floodedIntermediateCount = 4096;
+
+	parser.Consume("\x1B[" + std::string(floodedIntermediateCount, ' ') + "@");
 	parser.Consume("ok");
 
-	CHECK(RowText(screen, 0) == U"ok      ");
+	CHECK(ScreenRowText(screen, 0) == U"ok      ");
 }
 
 TEST_CASE("VtParser applies a palette foreground colour")
@@ -349,7 +324,6 @@ TEST_CASE("VtParser does not read past a truncated extended-colour sequence")
 	Core::TerminalScreen screen(4, 2);
 	Core::VtParser parser(screen);
 
-	// "38;5" with no index following must not crash or read out of bounds.
 	parser.Consume("\x1B[38;5ma");
 
 	CHECK(screen.At(0, 0).Foreground.Kind == Core::TerminalColorKind::Default);
@@ -439,13 +413,13 @@ TEST_CASE("VtParser tracks mouse reporting while any of its three modes is on")
 
 	REQUIRE_FALSE(screen.IsMouseReporting());
 
-	// What Claude Code sends on start: all three at once, then the SGR encoding.
-	parser.Consume("\x1B[?1000h\x1B[?1002h\x1B[?1003h\x1B[?1006h");
+	const std::string_view allThreeMouseModesThenSgrEncoding = "\x1B[?1000h\x1B[?1002h\x1B[?1003h\x1B[?1006h";
+	parser.Consume(allThreeMouseModesThenSgrEncoding);
 	CHECK(screen.IsMouseReporting());
 	CHECK(screen.IsSgrMouse());
 
-	// Motion off leaves clicks and drags reported.
-	parser.Consume("\x1B[?1003l");
+	const std::string_view motionOffWithClicksAndDragsStillOn = "\x1B[?1003l";
+	parser.Consume(motionOffWithClicksAndDragsStillOn);
 	CHECK(screen.IsMouseReporting());
 
 	parser.Consume("\x1B[?1000l\x1B[?1002l\x1B[?1006l");
@@ -453,17 +427,16 @@ TEST_CASE("VtParser tracks mouse reporting while any of its three modes is on")
 	CHECK_FALSE(screen.IsSgrMouse());
 }
 
-TEST_CASE("VtParser ignores a public mode it does not implement")
+TEST_CASE("VtParser ignores a public mode rather than mistake it for the DEC private mode with the same number")
 {
 	Core::TerminalScreen screen(4, 2);
 	Core::VtParser parser(screen);
 
-	// Insert mode (4, unprefixed) is not a DEC private mode; it must be swallowed rather
-	// than mistaken for a private one and acted on.
-	parser.Consume("\x1B[4h");
+	parser.Consume("\x1B[4h\x1B[7l\x1B[25l\x1B[1049h");
 
-	CHECK_FALSE(screen.IsAlternateBuffer());
+	CHECK(screen.IsAutoWrap());
 	CHECK(screen.IsCursorVisible());
+	CHECK_FALSE(screen.IsAlternateBuffer());
 }
 
 TEST_CASE("VtParser decodes a multi-byte character")
@@ -471,7 +444,7 @@ TEST_CASE("VtParser decodes a multi-byte character")
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	parser.Consume("\xC5\x82"); // U+0142, a Polish l with stroke
+	parser.Consume("\xC5\x82");
 
 	CHECK(screen.At(0, 0).Code == U'\u0142');
 	CHECK(screen.GetCursor().Column == 1);
@@ -493,7 +466,7 @@ TEST_CASE("VtParser gives a double-width character two cells")
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	parser.Consume("\xE4\xBD\xA0"); // U+4F60
+	parser.Consume("\xE4\xBD\xA0");
 
 	CHECK(screen.At(0, 0).Code == U'\u4F60');
 	CHECK(screen.At(0, 1).WideTrailer);
@@ -512,14 +485,11 @@ TEST_CASE("VtParser replaces an invalid byte rather than dropping the stream")
 	CHECK(screen.At(0, 2).Code == U'b');
 }
 
-TEST_CASE("VtParser re-reads the byte that broke a multi-byte character")
+TEST_CASE("VtParser re-reads the non-continuation byte that broke a multi-byte character as a fresh character")
 {
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// 0xC5 opens a two-byte character but 'Z' is not a continuation byte: the
-	// character is broken, and 'Z' must still be read as a fresh character rather
-	// than being consumed as though it were part of the ruined one.
 	parser.Consume("\xC5"
 				   "Z");
 
@@ -533,9 +503,6 @@ TEST_CASE("VtParser re-reads a byte that breaks a multi-byte character across re
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// Same recovery as above, but the lead byte and the offending byte arrive in
-	// separate Consume calls: the pending-character state must survive the call
-	// boundary and still recover the same way.
 	parser.Consume("\xC5");
 	parser.Consume("Z");
 
@@ -544,12 +511,11 @@ TEST_CASE("VtParser re-reads a byte that breaks a multi-byte character across re
 	CHECK(screen.GetCursor().Column == 2);
 }
 
-TEST_CASE("VtParser does not decode an overlong form into the character it disguises")
+TEST_CASE("VtParser replaces both bytes of an overlong slash rather than decode the slash it disguises")
 {
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// C0 AF is '/' in two bytes. C0 can never lead, and AF then has nothing to continue.
 	parser.Consume("\xC0\xAF"
 				   "b");
 
@@ -558,13 +524,11 @@ TEST_CASE("VtParser does not decode an overlong form into the character it disgu
 	CHECK(screen.At(0, 2).Code == U'b');
 }
 
-TEST_CASE("VtParser does not decode an encoded surrogate")
+TEST_CASE("VtParser does not decode an encoded surrogate and replaces each of its three bytes")
 {
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// ED A0 80 would be U+D800. ED's sequence breaks at A0, which is then read again and
-	// is a continuation byte with nothing to continue, like the 80 after it.
 	parser.Consume("\xED\xA0\x80"
 				   "b");
 
@@ -587,13 +551,11 @@ TEST_CASE("VtParser does not decode a value above U+10FFFF")
 	CHECK(screen.At(0, 4).Code == U'b');
 }
 
-TEST_CASE("VtParser replaces a continuation byte that arrives with nothing pending")
+TEST_CASE("VtParser replaces a continuation byte that arrives with nothing pending rather than fold it into the previous character")
 {
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// 0x82 is only ever valid as a continuation byte; with no character in
-	// progress it is malformed on its own and must not be folded into 'a'.
 	parser.Consume("a"
 				   "\x82"
 				   "b");
@@ -603,18 +565,15 @@ TEST_CASE("VtParser replaces a continuation byte that arrives with nothing pendi
 	CHECK(screen.At(0, 2).Code == U'b');
 }
 
-TEST_CASE("VtParser swallows a character-set selection whole")
+TEST_CASE("VtParser swallows whole the character-set selection that ncurses sends on every attribute reset")
 {
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// "ESC ( B" selects the ASCII character set. It is not implemented, but its final byte
-	// must not reach the screen: ncurses emits "\E(B\E[m" as sgr0 on essentially every
-	// attribute reset, so a leaked 'B' would litter the screen of anything that uses colour.
 	parser.Consume("\x1B(B"
 				   "hi");
 
-	CHECK(RowText(screen, 0) == U"hi      ");
+	CHECK(ScreenRowText(screen, 0) == U"hi      ");
 	CHECK(screen.GetCursor().Column == 2);
 }
 
@@ -623,31 +582,26 @@ TEST_CASE("VtParser swallows the line-drawing character set and a DEC alignment 
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// The same rule for the other intermediates real programs emit: "ESC ( 0" switches to the
-	// line-drawing set and "ESC # 8" is the DEC screen alignment test.
 	parser.Consume("\x1B(0"
 				   "a");
 	parser.Consume("\x1B#8"
 				   "b");
 
-	CHECK(RowText(screen, 0) == U"ab      ");
+	CHECK(ScreenRowText(screen, 0) == U"ab      ");
 	CHECK(screen.GetCursor().Column == 2);
 }
 
-TEST_CASE("VtParser clamps a repetition count to the screen")
+TEST_CASE("VtParser clamps the largest repetition count to the rows and columns that exist")
 {
 	Core::TerminalScreen screen(8, 5);
 	Core::VtParser parser(screen);
 
 	parser.Consume("hello");
 
-	// The digit accumulator caps a parameter at 65535, so an unclamped scroll would copy
-	// hundreds of millions of cells and push tens of thousands of blank lines into the
-	// scrollback. Only the rows that exist can leave the screen.
 	parser.Consume("\x1B[65535S");
 
 	CHECK(screen.GetScrollbackCount() == 5);
-	CHECK(RowText(screen, 0) == U"        ");
+	CHECK(ScreenRowText(screen, 0) == U"        ");
 	CHECK(screen.GetRows() == 5);
 	CHECK(screen.GetColumns() == 8);
 
@@ -655,7 +609,7 @@ TEST_CASE("VtParser clamps a repetition count to the screen")
 
 	CHECK(screen.GetRows() == 5);
 	CHECK(screen.GetColumns() == 8);
-	CHECK(RowText(screen, 0) == U"        ");
+	CHECK(ScreenRowText(screen, 0) == U"        ");
 }
 
 TEST_CASE("VtParser drops a CSI with a colon sub-parameter whole")
@@ -663,10 +617,9 @@ TEST_CASE("VtParser drops a CSI with a colon sub-parameter whole")
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// The sequence is dropped rather than interpreted, but its tail must not print.
 	parser.Consume("\x1B[4:3mX");
 
-	CHECK(RowText(screen, 0) == U"X       ");
+	CHECK(ScreenRowText(screen, 0) == U"X       ");
 }
 
 TEST_CASE("VtParser drops a colon-separated true-colour sequence whole")
@@ -676,7 +629,7 @@ TEST_CASE("VtParser drops a colon-separated true-colour sequence whole")
 
 	parser.Consume("\x1B[38:2::1:2:3mX");
 
-	CHECK(RowText(screen, 0) == U"X       ");
+	CHECK(ScreenRowText(screen, 0) == U"X       ");
 }
 
 TEST_CASE("VtParser drops a CSI with a private byte after the first parameter byte")
@@ -686,7 +639,7 @@ TEST_CASE("VtParser drops a CSI with a private byte after the first parameter by
 
 	parser.Consume("\x1B[1?2mX");
 
-	CHECK(RowText(screen, 0) == U"X       ");
+	CHECK(ScreenRowText(screen, 0) == U"X       ");
 }
 
 TEST_CASE("VtParser resumes normally after a dropped CSI")
@@ -707,7 +660,7 @@ TEST_CASE("VtParser ignores DEL in the ground state")
 	parser.Consume("a\x7F"
 				   "b");
 
-	CHECK(RowText(screen, 0) == U"ab      ");
+	CHECK(ScreenRowText(screen, 0) == U"ab      ");
 	CHECK(screen.GetCursor().Column == 2);
 }
 
@@ -736,22 +689,21 @@ TEST_CASE("VtParser RIS restores every mode the screen tracks")
 	CHECK_FALSE(screen.IsMouseReporting());
 	CHECK_FALSE(screen.IsSgrMouse());
 
-	// A full-height scroll region again: a line feed on the last row scrolls into history.
-	parser.Consume("\x1B[6;1H\n");
+	const std::string_view lineFeedOnTheLastRowOfAFullHeightRegion = "\x1B[6;1H\n";
+	parser.Consume(lineFeedOnTheLastRowOfAFullHeightRegion);
 	CHECK(screen.GetScrollbackCount() == 1);
-	CHECK(RowText(screen, 0) == U"        ");
+	CHECK(ScreenRowText(screen, 0) == U"        ");
 }
 
-TEST_CASE("VtParser abandons an ignored CSI on a control byte")
+TEST_CASE("VtParser abandons an ignored CSI on CAN as the interpreting states do on any control byte")
 {
 	Core::TerminalScreen screen(8, 2);
 	Core::VtParser parser(screen);
 
-	// CAN cancels the sequence, as it does in the states that interpret one.
 	parser.Consume("\x1B[4:\x18"
 				   "abc");
 
-	CHECK(RowText(screen, 0) == U"abc     ");
+	CHECK(ScreenRowText(screen, 0) == U"abc     ");
 }
 
 TEST_CASE("VtParser RIS forgets the saved cursor")

@@ -44,34 +44,34 @@ namespace Graphite {
 	// The byte offset in TerminalRowText at which each of the first `columns` cells starts, plus
 	// one past the end: columns + 1 entries. A trailer starts where its leader ends, and cells the
 	// row does not have all start at the end of the text.
-	std::vector<std::size_t> TerminalCellBytes(const std::vector<Core::Cell>& cells, std::size_t columns);
+	std::vector<std::size_t> TerminalCellBytes(const std::vector<Core::TerminalCell>& cells, std::size_t columns);
 
 	// The first `columns` cells as UTF-8, a double-width character once.
-	std::string TerminalRowText(const std::vector<Core::Cell>& cells, std::size_t columns);
+	std::string TerminalRowText(const std::vector<Core::TerminalCell>& cells, std::size_t columns);
 
 	// The span of cells around `column` that a double-click selects: the run of path-word
 	// characters (Core::WordKind::Path, so `src/main.cpp:42` is one word), or the one character
 	// clicked when it is not a word character. A trailer counts with its leader, so a span never
 	// splits a double-width character. Past the end of the row the span is empty.
-	Core::ColumnSpan TerminalWordAt(const std::vector<Core::Cell>& cells, std::size_t columns,
+	Core::ColumnSpan TerminalWordAt(const std::vector<Core::TerminalCell>& cells, std::size_t columns,
 									std::size_t column);
 
 	// The cell boundary nearest to `position`, counted in cells from the row's left edge and
 	// clamped to the row. A boundary inside a double-width character moves to whichever of its
 	// edges is nearer.
-	std::size_t TerminalColumnAt(const std::vector<Core::Cell>& cells, std::size_t columns,
+	std::size_t TerminalColumnAt(const std::vector<Core::TerminalCell>& cells, std::size_t columns,
 								 float position);
 
 	// The cell under `position` (truncated, not rounded), clamped to the row; the right half of a
 	// double-width character names its leader. Where a double-click looks for its word.
-	std::size_t TerminalCellAt(const std::vector<Core::Cell>& cells, std::size_t columns,
+	std::size_t TerminalCellAt(const std::vector<Core::TerminalCell>& cells, std::size_t columns,
 							   float position);
 
 	// The cells of `line`, or nullptr when the line has left the scrollback or lies below the
 	// screen. Screen rows are copied into `scratch`, at most `columns` cells of them.
-	const std::vector<Core::Cell>* TerminalLineCells(const Core::TerminalScreen& screen,
-													 std::int64_t line, std::size_t columns,
-													 std::vector<Core::Cell>& scratch);
+	const std::vector<Core::TerminalCell>* TerminalLineCells(const Core::TerminalScreen& screen,
+															 std::int64_t line, std::size_t columns,
+															 std::vector<Core::TerminalCell>& scratch);
 
 	// How many cells of `line` the view shows: zero for a line that is not there.
 	std::size_t TerminalLineLength(const Core::TerminalScreen& screen, std::int64_t line,

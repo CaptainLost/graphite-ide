@@ -20,13 +20,13 @@ namespace Graphite {
 			return Signed(rowsScrolledOff) - static_cast<std::int64_t>(scrollbackCount);
 		}
 
-		std::size_t CellCount(const std::vector<Core::Cell>& cells, std::size_t columns)
+		std::size_t CellCount(const std::vector<Core::TerminalCell>& cells, std::size_t columns)
 		{
 			return std::min(columns, cells.size());
 		}
 
 		// A trailer stands for the character its leader holds.
-		char32_t CodeAt(const std::vector<Core::Cell>& cells, std::size_t column)
+		char32_t CodeAt(const std::vector<Core::TerminalCell>& cells, std::size_t column)
 		{
 			if (cells[column].WideTrailer && column > 0)
 			{
@@ -89,7 +89,7 @@ namespace Graphite {
 		return result;
 	}
 
-	std::vector<std::size_t> TerminalCellBytes(const std::vector<Core::Cell>& cells, std::size_t columns)
+	std::vector<std::size_t> TerminalCellBytes(const std::vector<Core::TerminalCell>& cells, std::size_t columns)
 	{
 		std::vector<std::size_t> bytes(columns + 1, 0);
 		const std::size_t count = CellCount(cells, columns);
@@ -112,7 +112,7 @@ namespace Graphite {
 		return bytes;
 	}
 
-	std::string TerminalRowText(const std::vector<Core::Cell>& cells, std::size_t columns)
+	std::string TerminalRowText(const std::vector<Core::TerminalCell>& cells, std::size_t columns)
 	{
 		const std::size_t count = CellCount(cells, columns);
 		std::string text;
@@ -129,7 +129,7 @@ namespace Graphite {
 		return text;
 	}
 
-	Core::ColumnSpan TerminalWordAt(const std::vector<Core::Cell>& cells, std::size_t columns,
+	Core::ColumnSpan TerminalWordAt(const std::vector<Core::TerminalCell>& cells, std::size_t columns,
 									std::size_t column)
 	{
 		const std::size_t count = CellCount(cells, columns);
@@ -173,7 +173,7 @@ namespace Graphite {
 		return {from, to};
 	}
 
-	std::size_t TerminalColumnAt(const std::vector<Core::Cell>& cells, std::size_t columns,
+	std::size_t TerminalColumnAt(const std::vector<Core::TerminalCell>& cells, std::size_t columns,
 								 float position)
 	{
 		const std::size_t count = CellCount(cells, columns);
@@ -195,9 +195,9 @@ namespace Graphite {
 		return column;
 	}
 
-	const std::vector<Core::Cell>* TerminalLineCells(const Core::TerminalScreen& screen,
-													 std::int64_t line, std::size_t columns,
-													 std::vector<Core::Cell>& scratch)
+	const std::vector<Core::TerminalCell>* TerminalLineCells(const Core::TerminalScreen& screen,
+															 std::int64_t line, std::size_t columns,
+															 std::vector<Core::TerminalCell>& scratch)
 	{
 		const std::int64_t row = line - Signed(screen.GetRowsScrolledOff());
 
@@ -234,13 +234,13 @@ namespace Graphite {
 	std::size_t TerminalLineLength(const Core::TerminalScreen& screen, std::int64_t line,
 								   std::size_t columns)
 	{
-		std::vector<Core::Cell> scratch;
-		const std::vector<Core::Cell>* cells = TerminalLineCells(screen, line, columns, scratch);
+		std::vector<Core::TerminalCell> scratch;
+		const std::vector<Core::TerminalCell>* cells = TerminalLineCells(screen, line, columns, scratch);
 
 		return cells == nullptr ? 0 : CellCount(*cells, columns);
 	}
 
-	std::size_t TerminalCellAt(const std::vector<Core::Cell>& cells, std::size_t columns,
+	std::size_t TerminalCellAt(const std::vector<Core::TerminalCell>& cells, std::size_t columns,
 							   float position)
 	{
 		const std::size_t count = CellCount(cells, columns);
@@ -295,8 +295,8 @@ namespace Graphite {
 			}
 
 			const std::int64_t line = LineOfScreenRow(scrolled, row);
-			std::vector<Core::Cell> scratch;
-			const std::vector<Core::Cell>* cells = TerminalLineCells(screen, line, grid.Columns, scratch);
+			std::vector<Core::TerminalCell> scratch;
+			const std::vector<Core::TerminalCell>* cells = TerminalLineCells(screen, line, grid.Columns, scratch);
 
 			if (cells == nullptr)
 			{
@@ -363,12 +363,12 @@ namespace Graphite {
 										   LineOfScreenRow(scrolled, static_cast<int>(screen.GetRows()) - 1));
 
 		std::string text;
-		std::vector<Core::Cell> scratch;
+		std::vector<Core::TerminalCell> scratch;
 		bool wrote = false;
 
 		for (std::int64_t line = first; line <= last; ++line)
 		{
-			const std::vector<Core::Cell>* cells = TerminalLineCells(screen, line, columns, scratch);
+			const std::vector<Core::TerminalCell>* cells = TerminalLineCells(screen, line, columns, scratch);
 
 			if (cells == nullptr)
 			{

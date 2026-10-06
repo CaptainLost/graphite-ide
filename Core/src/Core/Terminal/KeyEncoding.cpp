@@ -2,70 +2,111 @@
 
 #include "Core/Terminal/KeyEncoding.h"
 
+#include "Core/Terminal/ControlCharacters.h"
+
 namespace Core {
 
 	namespace {
-		// The modifier encoding shared by every parameterised sequence: 1 plus a bit each for
-		// shift, alt and control.
+		constexpr int kUnmodifiedParameter = 1;
+		constexpr int kPlaceholderFirstParameter = 1;
+		constexpr int kShiftParameterBit = 1;
+		constexpr int kAltParameterBit = 2;
+		constexpr int kControlParameterBit = 4;
+
+		constexpr std::string_view kBackTab = "\x1B[Z";
+
+		constexpr int kControlCharacterOfA = 0x01;
+
+		constexpr int kWheelUpButton = 64;
+		constexpr int kWheelDownButton = 65;
+		constexpr int kShiftButtonBit = 4;
+		constexpr int kAltButtonBit = 8;
+		constexpr int kControlButtonBit = 16;
+
+		constexpr int kLegacyMouseOffset = 32;
+		constexpr int kLargestByteValue = 255;
+		constexpr int kLargestLegacyMouseValue = kLargestByteValue - kLegacyMouseOffset;
+
 		int ModifierParameter(KeyModifier modifiers)
 		{
-			int value = 1;
+			int parameter = kUnmodifiedParameter;
 
 			if (HasModifier(modifiers, KeyModifier::Shift))
 			{
-				value += 1;
+				parameter += kShiftParameterBit;
 			}
 
 			if (HasModifier(modifiers, KeyModifier::Alt))
 			{
-				value += 2;
+				parameter += kAltParameterBit;
 			}
 
 			if (HasModifier(modifiers, KeyModifier::Control))
 			{
-				value += 4;
+				parameter += kControlParameterBit;
 			}
 
-			return value;
+			return parameter;
 		}
 
-		std::string CursorSequence(char final, KeyModifier modifiers)
+		std::string ModifiedControlSequence(char finalByte, int modifierParameter)
 		{
-			const int parameter = ModifierParameter(modifiers);
-
-			if (parameter == 1)
-			{
-				return std::string("\x1B[") + final;
-			}
-
-			return "\x1B[1;" + std::to_string(parameter) + final;
+			return std::string{kControlSequenceIntroducer} + std::to_string(kPlaceholderFirstParameter) + ';' + std::to_string(modifierParameter) + finalByte;
 		}
 
-		std::string TildeSequence(int number, KeyModifier modifiers)
+		std::string CursorSequence(char finalByte, KeyModifier modifiers)
 		{
-			const int parameter = ModifierParameter(modifiers);
+			const int modifierParameter = ModifierParameter(modifiers);
 
-			if (parameter == 1)
+			if (modifierParameter == kUnmodifiedParameter)
 			{
-				return "\x1B[" + std::to_string(number) + '~';
+				return std::string{kControlSequenceIntroducer} + finalByte;
 			}
 
-			return "\x1B[" + std::to_string(number) + ';' + std::to_string(parameter) + '~';
+			return ModifiedControlSequence(finalByte, modifierParameter);
 		}
 
-		// F1 to F4 are SS3 sequences — ESC O P through ESC O S — while every other function key
-		// is a tilde sequence. SS3 carries no parameter, so a modified F1 has to fall back to
-		// the CSI form that does; xterm does the same, and a TUI reading its terminfo expects it.
-		std::string FunctionSequence(char final, KeyModifier modifiers)
+		std::string TildeSequence(int keyNumber, KeyModifier modifiers)
 		{
-			const int parameter = ModifierParameter(modifiers);
+			const int modifierParameter = ModifierParameter(modifiers);
 
-			if (parameter == 1)
+			if (modifierParameter == kUnmodifiedParameter)
 			{
-				return std::string("\x1BO") + final;
+				return std::string{kControlSequenceIntroducer} + std::to_string(keyNumber) + '~';
 			}
 
-			return "\x1B[1;" + std::to_string(parameter) + final;
+			return std::string{kControlSequenceIntroducer} + std::to_string(keyNumber) + ';' + std::to_string(modifierParameter) + '~';
+		}
+
+		// SS3 (ESC O) carries no parameter, so a modified key falls back to the CSI form that does,
+		// as xterm does and as a TUI reading its terminfo expects.
+		std::string SingleShiftThreeSequence(char finalByte, KeyModifier modifiers)
+		{
+			const int modifierParameter = ModifierParameter(modifiers);
+
+			if (modifierParameter == kUnmodifiedParameter)
+			{
+				return std::string("\x1BO") + finalByte;
+			}
+
+			return ModifiedControlSequence(finalByte, modifierParameter);
+		}
+
+		bool IsLetterKey(KeyCode key)
+		{
+			return key >= KeyCode::A && key <= KeyCode::Z;
+		}
+
+		int LetterIndexOf(KeyCode letterKey)
+		{
+			return static_cast<int>(letterKey) - static_cast<int>(KeyCode::A);
+		}
+
+		// The legacy form packs each value into one byte, offset to keep it printable, so it cannot
+		// name a cell past the 223rd; the last one it can is reported instead.
+		char LegacyMouseByte(int value)
+		{
+			return static_cast<char>(kLegacyMouseOffset + std::min(value, kLargestLegacyMouseValue));
 		}
 	}
 
@@ -77,15 +118,18 @@ namespace Core {
 		case KeyCode::KeypadEnter:
 			return "\r";
 		case KeyCode::Tab:
-			// Shift+Tab is CBT, the back-tab: it is how a TUI walks its focus backwards, and a
-			// plain tab in its place walks forwards instead — the opposite of what was asked.
-			return HasModifier(modifiers, KeyModifier::Shift) ? "\x1B[Z" : "\t";
+			if (HasModifier(modifiers, KeyModifier::Shift))
+			{
+				return std::string{kBackTab};
+			}
+
+			return "\t";
 		case KeyCode::Escape:
-			return "\x1B";
+			return std::string(1, kEscapeCharacter);
 		case KeyCode::Backspace:
-			// Delete rather than backspace: it is what a shell's line editing expects, and
-			// sending 0x08 instead makes Backspace move the cursor without erasing.
-			return "\x7F";
+			// Sending backspace (0x08) instead makes Backspace move the cursor without erasing in a
+			// shell's line editing.
+			return std::string(1, kDeleteCharacter);
 		case KeyCode::Up:
 			return CursorSequence('A', modifiers);
 		case KeyCode::Down:
@@ -107,16 +151,15 @@ namespace Core {
 		case KeyCode::PageDown:
 			return TildeSequence(6, modifiers);
 		case KeyCode::F1:
-			return FunctionSequence('P', modifiers);
+			return SingleShiftThreeSequence('P', modifiers);
 		case KeyCode::F2:
-			return FunctionSequence('Q', modifiers);
+			return SingleShiftThreeSequence('Q', modifiers);
 		case KeyCode::F3:
-			return FunctionSequence('R', modifiers);
+			return SingleShiftThreeSequence('R', modifiers);
 		case KeyCode::F4:
-			return FunctionSequence('S', modifiers);
-		// The tilde numbers are not consecutive — 16 and 22 were never assigned — so they are
-		// written out rather than computed from the key. A formula here would be shorter and
-		// would send F6 as F5's sequence.
+			return SingleShiftThreeSequence('S', modifiers);
+		// The tilde numbers skip 16 and 22, which were never assigned, so they are written out:
+		// a formula from the key would send the wrong sequence from F6 on.
 		case KeyCode::F5:
 			return TildeSequence(15, modifiers);
 		case KeyCode::F6:
@@ -137,56 +180,56 @@ namespace Core {
 			break;
 		}
 
-		const auto code = static_cast<std::uint16_t>(key);
-
-		if (HasModifier(modifiers, KeyModifier::Control) && code >= static_cast<std::uint16_t>(KeyCode::A) && code <= static_cast<std::uint16_t>(KeyCode::Z))
+		if (!IsLetterKey(key))
 		{
-			return std::string(1, static_cast<char>(code - static_cast<std::uint16_t>(KeyCode::A) + 1));
+			return {};
 		}
 
-		if (HasModifier(modifiers, KeyModifier::Alt) && code >= static_cast<std::uint16_t>(KeyCode::A) && code <= static_cast<std::uint16_t>(KeyCode::Z))
+		const int letterIndex = LetterIndexOf(key);
+
+		if (HasModifier(modifiers, KeyModifier::Control))
 		{
-			const char letter =
-				static_cast<char>(code - static_cast<std::uint16_t>(KeyCode::A) + 'a');
-			return std::string("\x1B") + letter;
+			const char controlCharacter = static_cast<char>(kControlCharacterOfA + letterIndex);
+			return std::string(1, controlCharacter);
+		}
+
+		if (HasModifier(modifiers, KeyModifier::Alt))
+		{
+			const char lowercaseLetter = static_cast<char>('a' + letterIndex);
+			return std::string{kEscapeCharacter, lowercaseLetter};
 		}
 
 		return {};
 	}
 
-	std::string EncodeMouseWheel(bool up, std::uint16_t column, std::uint16_t row,
-								 KeyModifier modifiers, bool sgr)
+	std::string EncodeMouseWheel(WheelDirection direction, std::uint16_t zeroBasedColumn, std::uint16_t zeroBasedRow,
+								 KeyModifier modifiers, MouseReportForm form)
 	{
-		// Wheel buttons are 4 and 5, which xterm numbers from 64; the modifiers ride on top.
-		int button = up ? 64 : 65;
+		int button = direction == WheelDirection::Up ? kWheelUpButton : kWheelDownButton;
 
 		if (HasModifier(modifiers, KeyModifier::Shift))
 		{
-			button += 4;
+			button += kShiftButtonBit;
 		}
 
 		if (HasModifier(modifiers, KeyModifier::Alt))
 		{
-			button += 8;
+			button += kAltButtonBit;
 		}
 
 		if (HasModifier(modifiers, KeyModifier::Control))
 		{
-			button += 16;
+			button += kControlButtonBit;
 		}
 
-		const int x = column + 1;
-		const int y = row + 1;
+		const int oneBasedColumn = zeroBasedColumn + 1;
+		const int oneBasedRow = zeroBasedRow + 1;
 
-		if (sgr)
+		if (form == MouseReportForm::SgrDecimal)
 		{
-			return "[<" + std::to_string(button) + ";" + std::to_string(x) + ";" +
-				   std::to_string(y) + "M";
+			return std::string{kControlSequenceIntroducer} + "<" + std::to_string(button) + ";" + std::to_string(oneBasedColumn) + ";" + std::to_string(oneBasedRow) + "M";
 		}
 
-		// Each value is offset by 32 to keep it printable, so 223 is the last one a byte holds.
-		const auto packed = [](int value) { return static_cast<char>(32 + std::min(value, 223)); };
-
-		return std::string("[M") + packed(button) + packed(x) + packed(y);
+		return std::string{kControlSequenceIntroducer} + "M" + LegacyMouseByte(button) + LegacyMouseByte(oneBasedColumn) + LegacyMouseByte(oneBasedRow);
 	}
 }

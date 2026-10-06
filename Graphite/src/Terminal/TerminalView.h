@@ -89,7 +89,7 @@ namespace Graphite {
 		}
 
 	private:
-		void DrawRow(ImDrawList& drawList, const std::vector<Core::Cell>& cells, int row,
+		void DrawRow(ImDrawList& drawList, const std::vector<Core::TerminalCell>& cells, int row,
 					 const ImVec2& origin, const ImVec2& cellSize, int columns,
 					 const EditorPalette& palette);
 
@@ -110,7 +110,7 @@ namespace Graphite {
 		// exactly the pair that cell was drawn with.
 		// `opaqueBase` forces both resolved colours opaque before the flags are applied, which
 		// the cursor needs and a row does not — see the comment beside it in the .cpp.
-		void ResolveCell(const Core::Cell& cell, const EditorPalette& palette, ImU32& foreground,
+		void ResolveCell(const Core::TerminalCell& cell, const EditorPalette& palette, ImU32& foreground,
 						 ImU32& background, bool opaqueBase = false) const;
 
 		// The width the selection reads rows at: what the grid fitted last frame, or the screen's

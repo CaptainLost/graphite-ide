@@ -2,6 +2,7 @@
 
 #include "Core/Terminal/VtParser.h"
 
+#include "Core/Base/Assert.h"
 #include "Core/Terminal/CharacterWidth.h"
 #include "Core/Terminal/ControlCharacters.h"
 
@@ -10,32 +11,192 @@
 namespace Core {
 
 	namespace {
-		constexpr char Escape = '\x1B';
-		constexpr char Delete = '\x7F';
+		// Bytes from an arbitrary program enter the process here, so no buffer may grow with the
+		// stream: a run of ';' or an OSC that never terminates would otherwise reallocate until
+		// memory runs out. Past each cap the excess is dropped; real terminals cap at about these
+		// sizes, and no sequence a program emits comes near them.
+		constexpr std::size_t kMostParameters = 32;
+		constexpr std::size_t kLongestOperatingSystemCommandPayload = 4096;
+		constexpr std::size_t kMostIntermediateBytes = 8;
 
-		// This parser is where bytes from an arbitrary program enter the process, so neither
-		// buffer may grow with the stream: a run of ';' or an OSC that never terminates would
-		// otherwise reallocate until the process runs out of memory. Real terminals cap both
-		// at about these sizes, and no sequence anyone emits comes near them. Past the cap the
-		// excess is dropped, never buffered.
-		constexpr std::size_t MaxParameters = 32;
-		constexpr std::size_t MaxOscLength = 4096;
-		// No real sequence uses more than two intermediates, so a handful of bytes is plenty;
-		// without a cap "ESC[" followed by an endless run of 0x20-0x2F bytes would grow this
-		// buffer forever.
-		constexpr std::size_t MaxIntermediateLength = 8;
+		constexpr std::uint16_t kOmittedParameter = 0;
+		constexpr int kLargestParameter = 65535;
+		constexpr int kDecimalBase = 10;
 
-		bool IsCsiFinal(char byte)
+		constexpr std::size_t kFirstParameterIndex = 0;
+		constexpr std::size_t kSecondParameterIndex = 1;
+		constexpr std::uint16_t kDefaultCount = 1;
+		constexpr std::uint16_t kDefaultPosition = 1;
+
+		constexpr unsigned char kFirstByteAfterC0Controls = 0x20;
+
+		constexpr char kParameterSeparator = ';';
+		constexpr char kSubParameterSeparator = ':';
+		constexpr char kDecPrivatePrefix = '?';
+		constexpr char kSecondaryDeviceAttributesPrefix = '>';
+
+		constexpr char kEscapeOpensControlSequence = '[';
+		constexpr char kEscapeOpensOperatingSystemCommand = ']';
+		constexpr char kEscapeOpensDeviceControlString = 'P';
+		constexpr char kEscapeOpensPrivacyMessage = '^';
+		constexpr char kEscapeOpensApplicationProgramCommand = '_';
+		constexpr char kStringTerminatorAfterEscape = '\\';
+
+		constexpr char kEscapeSaveCursor = '7';
+		constexpr char kEscapeRestoreCursor = '8';
+		constexpr char kEscapeIndex = 'D';
+		constexpr char kEscapeNextLine = 'E';
+		constexpr char kEscapeReverseIndex = 'M';
+		constexpr char kEscapeFullReset = 'c';
+
+		constexpr char kControlSequenceCursorUp = 'A';
+		constexpr char kControlSequenceCursorDown = 'B';
+		constexpr char kControlSequenceCursorForward = 'C';
+		constexpr char kControlSequenceCursorBack = 'D';
+		constexpr char kControlSequenceCursorColumn = 'G';
+		constexpr char kControlSequenceCursorRow = 'd';
+		constexpr char kControlSequenceCursorPosition = 'H';
+		constexpr char kControlSequenceHorizontalVerticalPosition = 'f';
+		constexpr char kControlSequenceEraseInDisplay = 'J';
+		constexpr char kControlSequenceEraseInLine = 'K';
+		constexpr char kControlSequenceInsertLines = 'L';
+		constexpr char kControlSequenceDeleteLines = 'M';
+		constexpr char kControlSequenceInsertCharacters = '@';
+		constexpr char kControlSequenceDeleteCharacters = 'P';
+		constexpr char kControlSequenceEraseCharacters = 'X';
+		constexpr char kControlSequenceScrollUp = 'S';
+		constexpr char kControlSequenceScrollDown = 'T';
+		constexpr char kControlSequenceSetScrollRegion = 'r';
+		constexpr char kControlSequenceSaveCursor = 's';
+		constexpr char kControlSequenceRestoreCursor = 'u';
+		constexpr char kControlSequenceSelectGraphicRendition = 'm';
+		constexpr char kControlSequenceSetMode = 'h';
+		constexpr char kControlSequenceResetMode = 'l';
+		constexpr char kControlSequenceDeviceAttributes = 'c';
+		constexpr char kControlSequenceDeviceStatusReport = 'n';
+		constexpr char kControlSequenceCursorPositionReport = 'R';
+
+		constexpr std::uint16_t kCursorPositionRequest = 6;
+
+		constexpr std::string_view kSecondaryDeviceAttributesReply = "\x1B[>0;10;1c";
+		// Every emulator gives this answer and every program accepts it.
+		constexpr std::string_view kVt100WithAdvancedVideoAttributes = "\x1B[?1;2c";
+
+		constexpr std::uint16_t kEraseToEndParameter = 0;
+		constexpr std::uint16_t kEraseToStartParameter = 1;
+
+		constexpr std::string_view kOperatingSystemCommandSetIconNameAndWindowTitle = "0";
+		constexpr std::string_view kOperatingSystemCommandSetWindowTitle = "2";
+
+		constexpr std::uint16_t kGraphicRenditionReset = 0;
+		constexpr std::uint16_t kGraphicRenditionBold = 1;
+		constexpr std::uint16_t kGraphicRenditionFaint = 2;
+		constexpr std::uint16_t kGraphicRenditionItalic = 3;
+		constexpr std::uint16_t kGraphicRenditionUnderline = 4;
+		constexpr std::uint16_t kGraphicRenditionInverse = 7;
+		constexpr std::uint16_t kGraphicRenditionHidden = 8;
+		constexpr std::uint16_t kGraphicRenditionNormalIntensity = 22;
+		constexpr std::uint16_t kGraphicRenditionNotItalic = 23;
+		constexpr std::uint16_t kGraphicRenditionNotUnderlined = 24;
+		constexpr std::uint16_t kGraphicRenditionNotInverse = 27;
+		constexpr std::uint16_t kGraphicRenditionNotHidden = 28;
+		constexpr std::uint16_t kGraphicRenditionFirstForeground = 30;
+		constexpr std::uint16_t kGraphicRenditionLastForeground = 37;
+		constexpr std::uint16_t kGraphicRenditionExtendedForeground = 38;
+		constexpr std::uint16_t kGraphicRenditionDefaultForeground = 39;
+		constexpr std::uint16_t kGraphicRenditionFirstBackground = 40;
+		constexpr std::uint16_t kGraphicRenditionLastBackground = 47;
+		constexpr std::uint16_t kGraphicRenditionExtendedBackground = 48;
+		constexpr std::uint16_t kGraphicRenditionDefaultBackground = 49;
+		constexpr std::uint16_t kGraphicRenditionFirstBrightForeground = 90;
+		constexpr std::uint16_t kGraphicRenditionLastBrightForeground = 97;
+		constexpr std::uint16_t kGraphicRenditionFirstBrightBackground = 100;
+		constexpr std::uint16_t kGraphicRenditionLastBrightBackground = 107;
+
+		constexpr std::uint16_t kExtendedPaletteForm = 5;
+		constexpr std::uint16_t kExtendedRgbForm = 2;
+		constexpr std::uint8_t kFirstBrightPaletteIndex = 8;
+
+		constexpr std::uint16_t kAutoWrapMode = 7;
+		constexpr std::uint16_t kCursorVisibleMode = 25;
+		constexpr std::uint16_t kMouseClicksMode = 1000;
+		constexpr std::uint16_t kMouseDragsMode = 1002;
+		constexpr std::uint16_t kMouseMotionMode = 1003;
+		constexpr std::uint16_t kSgrMouseMode = 1006;
+		constexpr std::uint16_t kAlternateBufferMode = 1049;
+		constexpr std::uint16_t kBracketedPasteMode = 2004;
+
+		constexpr bool kAlternateBufferAtPowerOn = false;
+		constexpr bool kAutoWrapAtPowerOn = true;
+		constexpr bool kBracketedPasteAtPowerOn = false;
+		constexpr bool kMouseModeAtPowerOn = false;
+		constexpr bool kSgrMouseAtPowerOn = false;
+		constexpr bool kCursorVisibleAtPowerOn = true;
+		constexpr std::uint16_t kHomeRow = 0;
+		constexpr std::uint16_t kHomeColumn = 0;
+
+		constexpr std::uint8_t kReplacementCharacterWidth = kNarrowCharacterCells;
+		constexpr int kNoMovement = 0;
+
+		bool IsControlByte(char byte)
+		{
+			return static_cast<unsigned char>(byte) < kFirstByteAfterC0Controls;
+		}
+
+		bool IsIntermediateByte(char byte)
+		{
+			return byte >= ' ' && byte <= '/';
+		}
+
+		bool IsDecimalDigit(char byte)
+		{
+			return byte >= '0' && byte <= '9';
+		}
+
+		bool IsParameterByte(char byte)
+		{
+			return byte >= '0' && byte <= '?';
+		}
+
+		bool IsControlSequenceFinal(char byte)
 		{
 			return byte >= '@' && byte <= '~';
 		}
 
-		// 0x3C-0x3F: '<', '=', '>', '?'. All four are legal parameter-prefix bytes and real
-		// programs emit them — ESC[>0c for secondary device attributes, ESC[>4;2m for
-		// modifyOtherKeys — so they must be parsed, not aborted on.
-		bool IsCsiPrefix(char byte)
+		bool IsControlSequencePrefix(char byte)
 		{
 			return byte >= '<' && byte <= '?';
+		}
+
+		bool OpensDiscardedString(char byte)
+		{
+			return byte == kEscapeOpensDeviceControlString || byte == kEscapeOpensPrivacyMessage || byte == kEscapeOpensApplicationProgramCommand;
+		}
+
+		std::uint16_t ZeroBased(std::uint16_t oneBased)
+		{
+			CORE_ASSERT(oneBased > 0, "A one-based coordinate is never zero");
+			return static_cast<std::uint16_t>(oneBased - 1);
+		}
+
+		int OneBased(std::uint16_t zeroBased)
+		{
+			return zeroBased + 1;
+		}
+
+		EraseExtent ToEraseExtent(std::uint16_t parameter)
+		{
+			if (parameter == kEraseToEndParameter)
+			{
+				return EraseExtent::ToEnd;
+			}
+
+			if (parameter == kEraseToStartParameter)
+			{
+				return EraseExtent::ToStart;
+			}
+
+			return EraseExtent::All;
 		}
 	}
 
@@ -56,30 +217,80 @@ namespace Core {
 		m_State = State::Ground;
 		m_Parameters.clear();
 		m_ParametersFull = false;
-		m_Intermediate.clear();
-		m_OscBuffer.clear();
-		m_Prefix = '\0';
-		m_Private = false;
+		m_IntermediateBytes.clear();
+		m_OperatingSystemCommandPayload.clear();
+		m_ControlSequencePrefix = kNoControlSequencePrefix;
 	}
 
-	std::uint16_t VtParser::Parameter(std::size_t index, std::uint16_t fallback) const
+	bool VtParser::IsInStringState() const
 	{
-		if (index >= m_Parameters.size() || m_Parameters[index] == 0)
+		return m_State == State::OperatingSystemCommandString || m_State == State::OperatingSystemCommandEscape || m_State == State::StringSink;
+	}
+
+	void VtParser::CollectIntermediate(char byte)
+	{
+		if (m_IntermediateBytes.size() < kMostIntermediateBytes)
+		{
+			m_IntermediateBytes.push_back(byte);
+		}
+	}
+
+	void VtParser::OpenFirstParameterIfNone()
+	{
+		if (m_Parameters.empty())
+		{
+			m_Parameters.push_back(kOmittedParameter);
+		}
+	}
+
+	std::uint16_t VtParser::ParameterOr(std::size_t parameterIndex, std::uint16_t fallback) const
+	{
+		const bool isOmitted = parameterIndex >= m_Parameters.size() || m_Parameters[parameterIndex] == kOmittedParameter;
+
+		if (isOmitted)
 		{
 			return fallback;
 		}
 
-		return m_Parameters[index];
+		return m_Parameters[parameterIndex];
+	}
+
+	std::optional<VtParser::ExtendedTerminalColor> VtParser::ReadExtendedTerminalColor(std::size_t codeIndex) const
+	{
+		const std::size_t formParameterIndex = codeIndex + 1;
+		const std::size_t paletteParameterIndex = codeIndex + 2;
+		const std::size_t redParameterIndex = codeIndex + 2;
+		const std::size_t greenParameterIndex = codeIndex + 3;
+		const std::size_t blueParameterIndex = codeIndex + 4;
+		const std::uint16_t extendedForm = ParameterOr(formParameterIndex, kOmittedParameter);
+		const bool hasPaletteIndex = extendedForm == kExtendedPaletteForm && paletteParameterIndex < m_Parameters.size();
+		const bool hasRgbComponents = extendedForm == kExtendedRgbForm && blueParameterIndex < m_Parameters.size();
+
+		if (hasPaletteIndex)
+		{
+			return ExtendedTerminalColor{
+				.Value = TerminalColor::FromPalette(static_cast<std::uint8_t>(m_Parameters[paletteParameterIndex])),
+				.LastParameterIndex = paletteParameterIndex};
+		}
+
+		if (hasRgbComponents)
+		{
+			return ExtendedTerminalColor{
+				.Value = TerminalColor::FromRgb(static_cast<std::uint8_t>(m_Parameters[redParameterIndex]),
+												static_cast<std::uint8_t>(m_Parameters[greenParameterIndex]),
+												static_cast<std::uint8_t>(m_Parameters[blueParameterIndex])),
+				.LastParameterIndex = blueParameterIndex};
+		}
+
+		return std::nullopt;
 	}
 
 	void VtParser::ConsumeByte(char byte, std::string& replies)
 	{
-		// An ESC aborts whatever is in progress and begins a new sequence, in every state
-		// where it cannot be part of a terminator. Letting it fall through to the reset below
-		// instead would consume the ESC of the *next* sequence, and that sequence's body would
-		// then land on the screen as text — the one thing this parser exists to prevent.
-		// The string states own their ESC: there it may be the first half of ESC \.
-		if (byte == Escape && m_State != State::OscString && m_State != State::OscEscape && m_State != State::StringSink)
+		// An ESC is not left to the state's own reset: that would swallow it, and the body of the
+		// sequence it opens would land on the screen as text. A string state handles its ESC
+		// itself, because there it may be the first half of the terminator ESC \ instead.
+		if (byte == kEscapeCharacter && !IsInStringState())
 		{
 			Reset();
 			m_State = State::Escape;
@@ -90,14 +301,13 @@ namespace Core {
 		{
 		case State::Ground:
 		{
-			if (static_cast<unsigned char>(byte) < 0x20)
+			if (IsControlByte(byte))
 			{
 				HandleControl(byte);
 				return;
 			}
 
-			// DEL has no glyph and no effect; a terminal discards it.
-			if (byte == Delete)
+			if (byte == kDeleteCharacter)
 			{
 				return;
 			}
@@ -107,37 +317,27 @@ namespace Core {
 		}
 		case State::Escape:
 		{
-			if (byte == '[')
+			if (byte == kEscapeOpensControlSequence)
 			{
-				m_State = State::CsiEntry;
+				m_State = State::ControlSequenceEntry;
 				return;
 			}
 
-			if (byte == ']')
+			if (byte == kEscapeOpensOperatingSystemCommand)
 			{
-				m_State = State::OscString;
+				m_State = State::OperatingSystemCommandString;
 				return;
 			}
 
-			// A device control or privacy message: consumed to its terminator and dropped.
-			if (byte == 'P' || byte == '^' || byte == '_')
+			if (OpensDiscardedString(byte))
 			{
 				m_State = State::StringSink;
 				return;
 			}
 
-			// An intermediate byte: the sequence's meaning is decided by the final byte still
-			// to come, so nothing can be dispatched yet and the ESC path needs the same
-			// intermediate state the CSI path already has. Without it "ESC ( B" — ncurses'
-			// sgr0 for the xterm terminfo, emitted on every attribute reset by vim, less,
-			// htop and git's pager — swallows the '(' and prints the 'B'.
-			if (byte >= ' ' && byte <= '/')
+			if (IsIntermediateByte(byte))
 			{
-				if (m_Intermediate.size() < MaxIntermediateLength)
-				{
-					m_Intermediate.push_back(byte);
-				}
-
+				CollectIntermediate(byte);
 				m_State = State::EscapeIntermediate;
 				return;
 			}
@@ -148,187 +348,158 @@ namespace Core {
 		}
 		case State::EscapeIntermediate:
 		{
-			if (byte >= ' ' && byte <= '/')
+			if (IsIntermediateByte(byte))
 			{
-				if (m_Intermediate.size() < MaxIntermediateLength)
-				{
-					m_Intermediate.push_back(byte);
-				}
-
+				CollectIntermediate(byte);
 				return;
 			}
 
-			// Nothing with an intermediate is implemented — character set selection, the
-			// alignment test — so the final byte dispatches nothing and is consumed whole,
-			// which is the invariant this parser exists for.
 			Reset();
 			return;
 		}
-		case State::CsiEntry:
-		case State::CsiParam:
+		case State::ControlSequenceEntry:
+		case State::ControlSequenceParameter:
 		{
-			if (m_State == State::CsiEntry && IsCsiPrefix(byte))
+			if (m_State == State::ControlSequenceEntry && IsControlSequencePrefix(byte))
 			{
-				m_Prefix = byte;
-				// Only '?' means DEC private; the others are recorded as themselves so that
-				// dispatch can tell them apart rather than treating them as private modes.
-				m_Private = byte == '?';
-				m_State = State::CsiParam;
+				m_ControlSequencePrefix = byte;
+				m_State = State::ControlSequenceParameter;
 				return;
 			}
 
-			if (byte >= '0' && byte <= '9')
+			if (IsDecimalDigit(byte))
 			{
-				m_State = State::CsiParam;
+				m_State = State::ControlSequenceParameter;
 
 				if (m_ParametersFull)
 				{
 					return;
 				}
 
-				if (m_Parameters.empty())
-				{
-					m_Parameters.push_back(0);
-				}
+				OpenFirstParameterIfNone();
 
+				const int digitValue = byte - '0';
 				m_Parameters.back() = static_cast<std::uint16_t>(
-					std::min(m_Parameters.back() * 10 + (byte - '0'), 65535));
+					std::min(m_Parameters.back() * kDecimalBase + digitValue, kLargestParameter));
 				return;
 			}
 
-			if (byte == ';')
+			if (byte == kParameterSeparator)
 			{
-				m_State = State::CsiParam;
+				m_State = State::ControlSequenceParameter;
 
 				if (m_ParametersFull)
 				{
 					return;
 				}
 
-				// The slot the separator closes has to exist before the next one opens, or a
-				// leading empty parameter — "ESC[;5H" is row default, column five — is lost.
-				if (m_Parameters.empty())
-				{
-					m_Parameters.push_back(0);
-				}
+				OpenFirstParameterIfNone();
 
-				if (m_Parameters.size() >= MaxParameters)
+				if (m_Parameters.size() >= kMostParameters)
 				{
 					m_ParametersFull = true;
 					return;
 				}
 
-				m_Parameters.push_back(0);
+				m_Parameters.push_back(kOmittedParameter);
 				return;
 			}
 
-			if (byte >= ' ' && byte <= '/')
+			if (IsIntermediateByte(byte))
 			{
-				if (m_Intermediate.size() < MaxIntermediateLength)
-				{
-					m_Intermediate.push_back(byte);
-				}
-				m_State = State::CsiIntermediate;
+				CollectIntermediate(byte);
+				m_State = State::ControlSequenceIntermediate;
 				return;
 			}
 
-			if (IsCsiFinal(byte))
+			if (IsControlSequenceFinal(byte))
 			{
-				HandleCsi(byte, replies);
+				HandleControlSequence(byte, replies);
 				Reset();
 				return;
 			}
 
-			// A ':' sub-parameter separator ("ESC[4:3m", "ESC[38:2::r:g:bm") or a prefix byte
-			// that is not first is a well-formed sequence this parser does not interpret.
-			// Dropping it at the final byte keeps its tail off the screen.
-			if (byte == ':' || IsCsiPrefix(byte))
+			const bool opensUninterpretedSequence = byte == kSubParameterSeparator || IsControlSequencePrefix(byte);
+
+			if (opensUninterpretedSequence)
 			{
-				m_State = State::CsiIgnore;
+				m_State = State::ControlSequenceIgnore;
 				return;
 			}
 
 			Reset();
 			return;
 		}
-		case State::CsiIgnore:
+		case State::ControlSequenceIgnore:
 		{
-			// A control byte abandons the sequence, as it does in the states that interpret one.
-			if (static_cast<unsigned char>(byte) < 0x20)
+			if (IsControlByte(byte))
 			{
 				Reset();
 				return;
 			}
 
-			if (IsCsiFinal(byte))
+			if (IsControlSequenceFinal(byte))
 			{
 				Reset();
 			}
 
 			return;
 		}
-		case State::CsiIntermediate:
+		case State::ControlSequenceIntermediate:
 		{
-			if (byte >= ' ' && byte <= '/')
+			if (IsIntermediateByte(byte))
 			{
-				if (m_Intermediate.size() < MaxIntermediateLength)
-				{
-					m_Intermediate.push_back(byte);
-				}
+				CollectIntermediate(byte);
 				return;
 			}
 
-			if (IsCsiFinal(byte))
+			if (IsControlSequenceFinal(byte))
 			{
-				HandleCsi(byte, replies);
+				HandleControlSequence(byte, replies);
 			}
-			else if (byte >= '0' && byte <= '?')
+			else if (IsParameterByte(byte))
 			{
-				// A parameter byte after an intermediate is malformed; the sequence is
-				// consumed to its final byte and dispatches nothing.
-				m_State = State::CsiIgnore;
+				m_State = State::ControlSequenceIgnore;
 				return;
 			}
 
 			Reset();
 			return;
 		}
-		case State::OscString:
+		case State::OperatingSystemCommandString:
 		{
 			if (byte == kBellCharacter)
 			{
-				HandleOsc();
+				HandleOperatingSystemCommand();
 				Reset();
 				return;
 			}
 
-			// The other terminator is ESC \, whose ESC arrives here first. Whether it really
-			// terminates the string is not known until the next byte.
-			if (byte == Escape)
+			if (byte == kEscapeCharacter)
 			{
-				m_State = State::OscEscape;
+				m_State = State::OperatingSystemCommandEscape;
 				return;
 			}
 
-			if (m_OscBuffer.size() < MaxOscLength)
+			if (m_OperatingSystemCommandPayload.size() < kLongestOperatingSystemCommandPayload)
 			{
-				m_OscBuffer.push_back(byte);
+				m_OperatingSystemCommandPayload.push_back(byte);
 			}
 
 			return;
 		}
-		case State::OscEscape:
+		case State::OperatingSystemCommandEscape:
 		{
-			if (byte == '\\')
+			if (byte == kStringTerminatorAfterEscape)
 			{
-				HandleOsc();
+				HandleOperatingSystemCommand();
 				Reset();
 				return;
 			}
 
-			// A bare ESC means the program abandoned the string, so nothing of a partial
-			// payload may be committed — a half-written title is worse than none. The byte
-			// after it belongs to whatever sequence that ESC opened, so it is replayed there.
+			// Any other byte means the ESC abandoned the string, so none of its payload is
+			// committed: a half-written title is worse than none. That byte belongs to the sequence
+			// the ESC opened, so it is replayed in the Escape state.
 			Reset();
 			m_State = State::Escape;
 			ConsumeByte(byte, replies);
@@ -341,7 +512,7 @@ namespace Core {
 				Reset();
 			}
 
-			if (byte == Escape)
+			if (byte == kEscapeCharacter)
 			{
 				Reset();
 				m_State = State::Escape;
@@ -354,15 +525,15 @@ namespace Core {
 
 	void VtParser::PrintByte(char byte)
 	{
-		Utf8Step step = m_Utf8.Feed(byte);
+		Utf8Step step = m_Utf8Decoder.Feed(byte);
 
-		if (step.Status == Utf8Status::Interrupted)
+		const bool byteBrokeCharacterInProgress = step.Status == Utf8Status::Interrupted;
+
+		if (byteBrokeCharacterInProgress)
 		{
-			// The byte cannot continue the character in progress: that character is broken.
-			// Show a replacement and re-read this byte as a fresh start, so one bad byte costs
-			// one character rather than resynchronising the stream.
-			m_Screen.Print(kReplacementCharacter, 1);
-			step = m_Utf8.Feed(byte);
+			m_Screen.Print(kReplacementCharacter, kReplacementCharacterWidth);
+			step = m_Utf8Decoder.Feed(byte);
+			CORE_ASSERT(step.Status != Utf8Status::Interrupted, "A byte fed with no character pending cannot interrupt one");
 		}
 
 		switch (step.Status)
@@ -371,13 +542,10 @@ namespace Core {
 			m_Screen.Print(step.CodePoint, CharacterWidth(step.CodePoint));
 			break;
 		case Utf8Status::Invalid:
-			// A byte that cannot start any UTF-8 sequence — a continuation byte with none
-			// expected, C0, C1 or F5-FF: one replacement, no state.
-			m_Screen.Print(kReplacementCharacter, 1);
+			m_Screen.Print(kReplacementCharacter, kReplacementCharacterWidth);
 			break;
 		case Utf8Status::Pending:
 		case Utf8Status::Interrupted:
-			// Re-read with nothing pending, a byte is never Interrupted again.
 			break;
 		}
 	}
@@ -401,7 +569,6 @@ namespace Core {
 			m_Screen.Tab();
 			break;
 		default:
-			// A bell, a shift-in, a shift-out: nothing this terminal shows.
 			break;
 		}
 	}
@@ -410,162 +577,153 @@ namespace Core {
 	{
 		switch (byte)
 		{
-		case '7':
+		case kEscapeSaveCursor:
 			m_Screen.SaveCursor();
 			break;
-		case '8':
+		case kEscapeRestoreCursor:
 			m_Screen.RestoreCursor();
 			break;
-		case 'M':
+		case kEscapeReverseIndex:
 			m_Screen.ReverseIndex();
 			break;
-		case 'D':
+		case kEscapeIndex:
 			m_Screen.LineFeed();
 			break;
-		case 'E':
+		case kEscapeNextLine:
 			m_Screen.CarriageReturn();
 			m_Screen.LineFeed();
 			break;
-		case 'c':
-			// Full reset: every mode the screen tracks returns to its power-on value. The
-			// alternate buffer goes first so the erase below clears the primary screen.
-			m_Screen.UseAlternateBuffer(false);
+		case kEscapeFullReset:
+			// The alternate buffer is left before the display is erased, so that the erase clears
+			// the primary screen.
+			m_Screen.UseAlternateBuffer(kAlternateBufferAtPowerOn);
 			m_Screen.ResetScrollRegion();
-			m_Screen.SetAutoWrap(true);
-			m_Screen.SetBracketedPaste(false);
-			m_Screen.SetMouseMode(TerminalScreen::MouseMode::Clicks, false);
-			m_Screen.SetMouseMode(TerminalScreen::MouseMode::Drags, false);
-			m_Screen.SetMouseMode(TerminalScreen::MouseMode::Motion, false);
-			m_Screen.SetSgrMouse(false);
-			m_Screen.SetCursorVisible(true);
+			m_Screen.SetAutoWrap(kAutoWrapAtPowerOn);
+			m_Screen.SetBracketedPaste(kBracketedPasteAtPowerOn);
+			m_Screen.SetMouseMode(TerminalScreen::MouseMode::Clicks, kMouseModeAtPowerOn);
+			m_Screen.SetMouseMode(TerminalScreen::MouseMode::Drags, kMouseModeAtPowerOn);
+			m_Screen.SetMouseMode(TerminalScreen::MouseMode::Motion, kMouseModeAtPowerOn);
+			m_Screen.SetSgrMouse(kSgrMouseAtPowerOn);
+			m_Screen.SetCursorVisible(kCursorVisibleAtPowerOn);
 			m_Screen.EraseInDisplay(EraseExtent::All);
-			m_Screen.SetCursor(0, 0);
-			// The screen has no call to clear the saved cursor, but saving home overwrites it with
-			// the power-on value.
+			m_Screen.SetCursor(kHomeRow, kHomeColumn);
+			// The screen has no call to clear the saved cursor, so saving the home position puts
+			// back its power-on value.
 			m_Screen.SaveCursor();
 			m_Screen.SetPen(Pen{});
 			break;
 		default:
-			// Character set selection and the rest: swallowed, which is the point of routing
-			// them through here rather than letting them fall to the screen.
 			break;
 		}
 	}
 
-	void VtParser::HandleCsi(char final, std::string& replies)
+	void VtParser::HandleControlSequence(char finalByte, std::string& replies)
 	{
-		// An intermediate byte changes what a final means: "CSI Ps SP @" is scroll left, not
-		// insert characters, and "CSI Ps SP A" is scroll right, not cursor up. None of those
-		// are implemented, so the sequence is swallowed silently — dispatching on the final
-		// alone would perform a wrong action, which is worse than performing none.
-		if (!m_Intermediate.empty())
+		const bool intermediateChangesTheFinal = !m_IntermediateBytes.empty();
+
+		if (intermediateChangesTheFinal)
 		{
 			return;
 		}
 
-		// ESC[>0c asks for secondary device attributes. tmux and some ncurses probes send it
-		// and wait on a timeout for an answer, so this is worth a real reply rather than the
-		// silence every other '>'-prefixed sequence gets.
-		if (m_Prefix == '>' && final == 'c')
+		const bool asksSecondaryDeviceAttributes = m_ControlSequencePrefix == kSecondaryDeviceAttributesPrefix && finalByte == kControlSequenceDeviceAttributes;
+
+		if (asksSecondaryDeviceAttributes)
 		{
-			replies += "\x1B[>0;10;1c";
+			replies += kSecondaryDeviceAttributesReply;
 			return;
 		}
 
-		// Likewise for the rest of a prefix other than '?': ESC[>4;2m sets modifyOtherKeys,
-		// and answering it as though it were the unprefixed sequence would be a wrong answer
-		// rather than silence.
-		if (m_Prefix != '\0' && m_Prefix != '?')
+		const bool hasUnimplementedPrefix = m_ControlSequencePrefix != kNoControlSequencePrefix && m_ControlSequencePrefix != kDecPrivatePrefix;
+
+		if (hasUnimplementedPrefix)
 		{
 			return;
 		}
 
-		switch (final)
+		switch (finalByte)
 		{
-		case 'A':
-			m_Screen.MoveCursor(-static_cast<int>(Parameter(0, 1)), 0);
+		case kControlSequenceCursorUp:
+			m_Screen.MoveCursor(-static_cast<int>(ParameterOr(kFirstParameterIndex, kDefaultCount)), kNoMovement);
 			break;
-		case 'B':
-			m_Screen.MoveCursor(static_cast<int>(Parameter(0, 1)), 0);
+		case kControlSequenceCursorDown:
+			m_Screen.MoveCursor(static_cast<int>(ParameterOr(kFirstParameterIndex, kDefaultCount)), kNoMovement);
 			break;
-		case 'C':
-			m_Screen.MoveCursor(0, static_cast<int>(Parameter(0, 1)));
+		case kControlSequenceCursorForward:
+			m_Screen.MoveCursor(kNoMovement, static_cast<int>(ParameterOr(kFirstParameterIndex, kDefaultCount)));
 			break;
-		case 'D':
-			m_Screen.MoveCursor(0, -static_cast<int>(Parameter(0, 1)));
+		case kControlSequenceCursorBack:
+			m_Screen.MoveCursor(kNoMovement, -static_cast<int>(ParameterOr(kFirstParameterIndex, kDefaultCount)));
 			break;
-		case 'G':
+		case kControlSequenceCursorColumn:
 			m_Screen.SetCursor(m_Screen.GetCursor().Row,
-							   static_cast<std::uint16_t>(Parameter(0, 1) - 1));
+							   ZeroBased(ParameterOr(kFirstParameterIndex, kDefaultPosition)));
 			break;
-		case 'd':
-			m_Screen.SetCursor(static_cast<std::uint16_t>(Parameter(0, 1) - 1),
+		case kControlSequenceCursorRow:
+			m_Screen.SetCursor(ZeroBased(ParameterOr(kFirstParameterIndex, kDefaultPosition)),
 							   m_Screen.GetCursor().Column);
 			break;
-		case 'H':
-		case 'f':
-			m_Screen.SetCursor(static_cast<std::uint16_t>(Parameter(0, 1) - 1),
-							   static_cast<std::uint16_t>(Parameter(1, 1) - 1));
+		case kControlSequenceCursorPosition:
+		case kControlSequenceHorizontalVerticalPosition:
+			m_Screen.SetCursor(ZeroBased(ParameterOr(kFirstParameterIndex, kDefaultPosition)),
+							   ZeroBased(ParameterOr(kSecondParameterIndex, kDefaultPosition)));
 			break;
-		case 'J':
-			m_Screen.EraseInDisplay(static_cast<EraseExtent>(
-				std::min<std::uint16_t>(m_Parameters.empty() ? 0 : m_Parameters[0], 2)));
+		case kControlSequenceEraseInDisplay:
+			m_Screen.EraseInDisplay(ToEraseExtent(ParameterOr(kFirstParameterIndex, kOmittedParameter)));
 			break;
-		case 'K':
-			m_Screen.EraseInLine(static_cast<EraseExtent>(
-				std::min<std::uint16_t>(m_Parameters.empty() ? 0 : m_Parameters[0], 2)));
+		case kControlSequenceEraseInLine:
+			m_Screen.EraseInLine(ToEraseExtent(ParameterOr(kFirstParameterIndex, kOmittedParameter)));
 			break;
-		case 'L':
-			m_Screen.InsertLines(Parameter(0, 1));
+		case kControlSequenceInsertLines:
+			m_Screen.InsertLines(ParameterOr(kFirstParameterIndex, kDefaultCount));
 			break;
-		case 'M':
-			m_Screen.DeleteLines(Parameter(0, 1));
+		case kControlSequenceDeleteLines:
+			m_Screen.DeleteLines(ParameterOr(kFirstParameterIndex, kDefaultCount));
 			break;
-		case '@':
-			m_Screen.InsertCharacters(Parameter(0, 1));
+		case kControlSequenceInsertCharacters:
+			m_Screen.InsertCharacters(ParameterOr(kFirstParameterIndex, kDefaultCount));
 			break;
-		case 'P':
-			m_Screen.DeleteCharacters(Parameter(0, 1));
+		case kControlSequenceDeleteCharacters:
+			m_Screen.DeleteCharacters(ParameterOr(kFirstParameterIndex, kDefaultCount));
 			break;
-		case 'X':
-			m_Screen.EraseCharacters(Parameter(0, 1));
+		case kControlSequenceEraseCharacters:
+			m_Screen.EraseCharacters(ParameterOr(kFirstParameterIndex, kDefaultCount));
 			break;
-		case 'S':
-			m_Screen.ScrollUp(Parameter(0, 1));
+		case kControlSequenceScrollUp:
+			m_Screen.ScrollUp(ParameterOr(kFirstParameterIndex, kDefaultCount));
 			break;
-		case 'T':
-			m_Screen.ScrollDown(Parameter(0, 1));
+		case kControlSequenceScrollDown:
+			m_Screen.ScrollDown(ParameterOr(kFirstParameterIndex, kDefaultCount));
 			break;
-		case 'r':
+		case kControlSequenceSetScrollRegion:
 			m_Screen.SetScrollRegion(
-				static_cast<std::uint16_t>(Parameter(0, 1) - 1),
-				static_cast<std::uint16_t>(Parameter(1, m_Screen.GetRows()) - 1));
+				ZeroBased(ParameterOr(kFirstParameterIndex, kDefaultPosition)),
+				ZeroBased(ParameterOr(kSecondParameterIndex, m_Screen.GetRows())));
 			break;
-		case 's':
+		case kControlSequenceSaveCursor:
 			m_Screen.SaveCursor();
 			break;
-		case 'u':
+		case kControlSequenceRestoreCursor:
 			m_Screen.RestoreCursor();
 			break;
-		case 'm':
-			HandleSgr();
+		case kControlSequenceSelectGraphicRendition:
+			HandleGraphicRendition();
 			break;
-		case 'h':
-			HandleMode(true);
+		case kControlSequenceSetMode:
+			HandleMode(ModeRequest::TurnOn);
 			break;
-		case 'l':
-			HandleMode(false);
+		case kControlSequenceResetMode:
+			HandleMode(ModeRequest::TurnOff);
 			break;
-		case 'c':
-			// Device attributes: "I am a VT100 with an advanced video option", which is what
-			// every emulator answers and what every program accepts.
-			replies += "\x1B[?1;2c";
+		case kControlSequenceDeviceAttributes:
+			replies += kVt100WithAdvancedVideoAttributes;
 			break;
-		case 'n':
-			if (Parameter(0, 0) == 6)
+		case kControlSequenceDeviceStatusReport:
+			if (ParameterOr(kFirstParameterIndex, kOmittedParameter) == kCursorPositionRequest)
 			{
 				const CursorPosition cursor = m_Screen.GetCursor();
-				replies += "\x1B[" + std::to_string(cursor.Row + 1) + ';' + std::to_string(cursor.Column + 1) + 'R';
+				replies += kControlSequenceIntroducer;
+				replies += std::to_string(OneBased(cursor.Row)) + kParameterSeparator + std::to_string(OneBased(cursor.Column)) + kControlSequenceCursorPositionReport;
 			}
 			break;
 		default:
@@ -573,135 +731,121 @@ namespace Core {
 		}
 	}
 
-	void VtParser::HandleOsc()
+	void VtParser::HandleOperatingSystemCommand()
 	{
-		// The payload is "<number>;<text>". Only the window title is used, and it is what
-		// labels a terminal tab: a shell announces what it is running through it.
-		const std::size_t separator = m_OscBuffer.find(';');
+		const std::size_t separatorOffset = m_OperatingSystemCommandPayload.find(kParameterSeparator);
 
-		if (separator == std::string::npos)
+		if (separatorOffset == std::string::npos)
 		{
 			return;
 		}
 
-		const std::string_view command{m_OscBuffer.data(), separator};
+		const std::string_view command{m_OperatingSystemCommandPayload.data(), separatorOffset};
+		const bool setsWindowTitle = command == kOperatingSystemCommandSetIconNameAndWindowTitle || command == kOperatingSystemCommandSetWindowTitle;
 
-		if (command == "0" || command == "2")
+		if (setsWindowTitle)
 		{
-			m_Screen.SetTitle(m_OscBuffer.substr(separator + 1));
+			const std::size_t titleOffset = separatorOffset + 1;
+			m_Screen.SetTitle(m_OperatingSystemCommandPayload.substr(titleOffset));
 		}
 	}
 
-	void VtParser::HandleSgr()
+	void VtParser::HandleGraphicRendition()
 	{
 		if (m_Parameters.empty())
 		{
-			m_Parameters.push_back(0);
+			m_Parameters.push_back(kGraphicRenditionReset);
 		}
 
 		Pen pen = m_Screen.GetPen();
 
-		for (std::size_t index = 0; index < m_Parameters.size(); ++index)
+		for (std::size_t parameterIndex = 0; parameterIndex < m_Parameters.size(); ++parameterIndex)
 		{
-			const std::uint16_t code = m_Parameters[index];
+			const std::uint16_t renditionCode = m_Parameters[parameterIndex];
 
-			switch (code)
+			switch (renditionCode)
 			{
-			case 0:
+			case kGraphicRenditionReset:
 				pen = Pen{};
 				break;
-			case 1:
+			case kGraphicRenditionBold:
 				pen.Flags = pen.Flags | CellFlags::Bold;
 				break;
-			case 2:
+			case kGraphicRenditionFaint:
 				pen.Flags = pen.Flags | CellFlags::Faint;
 				break;
-			case 3:
+			case kGraphicRenditionItalic:
 				pen.Flags = pen.Flags | CellFlags::Italic;
 				break;
-			case 4:
+			case kGraphicRenditionUnderline:
 				pen.Flags = pen.Flags | CellFlags::Underline;
 				break;
-			case 7:
+			case kGraphicRenditionInverse:
 				pen.Flags = pen.Flags | CellFlags::Inverse;
 				break;
-			case 8:
+			case kGraphicRenditionHidden:
 				pen.Flags = pen.Flags | CellFlags::Hidden;
 				break;
-			case 22:
+			case kGraphicRenditionNormalIntensity:
 				pen.Flags = pen.Flags & ~(CellFlags::Bold | CellFlags::Faint);
 				break;
-			case 23:
+			case kGraphicRenditionNotItalic:
 				pen.Flags = pen.Flags & ~CellFlags::Italic;
 				break;
-			case 24:
+			case kGraphicRenditionNotUnderlined:
 				pen.Flags = pen.Flags & ~CellFlags::Underline;
 				break;
-			case 27:
+			case kGraphicRenditionNotInverse:
 				pen.Flags = pen.Flags & ~CellFlags::Inverse;
 				break;
-			case 28:
+			case kGraphicRenditionNotHidden:
 				pen.Flags = pen.Flags & ~CellFlags::Hidden;
 				break;
-			case 39:
+			case kGraphicRenditionDefaultForeground:
 				pen.Foreground = TerminalColor{};
 				break;
-			case 49:
+			case kGraphicRenditionDefaultBackground:
 				pen.Background = TerminalColor{};
 				break;
-			case 38:
-			case 48:
+			case kGraphicRenditionExtendedForeground:
+			case kGraphicRenditionExtendedBackground:
 			{
-				// Extended colour: "38;5;<index>" or "38;2;<r>;<g>;<b>", with the parameters
-				// that follow belonging to this code rather than standing on their own.
-				TerminalColor chosen;
-				const std::uint16_t kind = Parameter(index + 1, 0);
+				const std::optional<ExtendedTerminalColor> extended = ReadExtendedTerminalColor(parameterIndex);
 
-				if (kind == 5 && index + 2 < m_Parameters.size())
+				if (!extended.has_value())
 				{
-					chosen = TerminalColor::FromPalette(static_cast<std::uint8_t>(m_Parameters[index + 2]));
-					index += 2;
+					continue;
 				}
-				else if (kind == 2 && index + 4 < m_Parameters.size())
+
+				if (renditionCode == kGraphicRenditionExtendedForeground)
 				{
-					chosen = TerminalColor::FromRgb(static_cast<std::uint8_t>(m_Parameters[index + 2]),
-													static_cast<std::uint8_t>(m_Parameters[index + 3]),
-													static_cast<std::uint8_t>(m_Parameters[index + 4]));
-					index += 4;
+					pen.Foreground = extended->Value;
 				}
 				else
 				{
-					break;
+					pen.Background = extended->Value;
 				}
 
-				if (code == 38)
-				{
-					pen.Foreground = chosen;
-				}
-				else
-				{
-					pen.Background = chosen;
-				}
-
+				parameterIndex = extended->LastParameterIndex;
 				break;
 			}
 			default:
 			{
-				if (code >= 30 && code <= 37)
+				if (renditionCode >= kGraphicRenditionFirstForeground && renditionCode <= kGraphicRenditionLastForeground)
 				{
-					pen.Foreground = TerminalColor::FromPalette(static_cast<std::uint8_t>(code - 30));
+					pen.Foreground = TerminalColor::FromPalette(static_cast<std::uint8_t>(renditionCode - kGraphicRenditionFirstForeground));
 				}
-				else if (code >= 40 && code <= 47)
+				else if (renditionCode >= kGraphicRenditionFirstBackground && renditionCode <= kGraphicRenditionLastBackground)
 				{
-					pen.Background = TerminalColor::FromPalette(static_cast<std::uint8_t>(code - 40));
+					pen.Background = TerminalColor::FromPalette(static_cast<std::uint8_t>(renditionCode - kGraphicRenditionFirstBackground));
 				}
-				else if (code >= 90 && code <= 97)
+				else if (renditionCode >= kGraphicRenditionFirstBrightForeground && renditionCode <= kGraphicRenditionLastBrightForeground)
 				{
-					pen.Foreground = TerminalColor::FromPalette(static_cast<std::uint8_t>(code - 90 + 8));
+					pen.Foreground = TerminalColor::FromPalette(static_cast<std::uint8_t>(renditionCode - kGraphicRenditionFirstBrightForeground + kFirstBrightPaletteIndex));
 				}
-				else if (code >= 100 && code <= 107)
+				else if (renditionCode >= kGraphicRenditionFirstBrightBackground && renditionCode <= kGraphicRenditionLastBrightBackground)
 				{
-					pen.Background = TerminalColor::FromPalette(static_cast<std::uint8_t>(code - 100 + 8));
+					pen.Background = TerminalColor::FromPalette(static_cast<std::uint8_t>(renditionCode - kGraphicRenditionFirstBrightBackground + kFirstBrightPaletteIndex));
 				}
 
 				break;
@@ -712,46 +856,46 @@ namespace Core {
 		m_Screen.SetPen(pen);
 	}
 
-	void VtParser::HandleMode(bool set)
+	void VtParser::HandleMode(ModeRequest request)
 	{
-		if (!m_Private)
+		const bool requestsPublicMode = m_ControlSequencePrefix != kDecPrivatePrefix;
+
+		if (requestsPublicMode)
 		{
-			// The public modes (insert mode and its kind) are not used by anything this
-			// terminal runs; recognising and ignoring them keeps them off the screen.
 			return;
 		}
+
+		const bool turnOn = request == ModeRequest::TurnOn;
 
 		for (const std::uint16_t mode : m_Parameters)
 		{
 			switch (mode)
 			{
-			case 7:
-				m_Screen.SetAutoWrap(set);
+			case kAutoWrapMode:
+				m_Screen.SetAutoWrap(turnOn);
 				break;
-			case 25:
-				m_Screen.SetCursorVisible(set);
+			case kCursorVisibleMode:
+				m_Screen.SetCursorVisible(turnOn);
 				break;
-			case 1000:
-				m_Screen.SetMouseMode(TerminalScreen::MouseMode::Clicks, set);
+			case kMouseClicksMode:
+				m_Screen.SetMouseMode(TerminalScreen::MouseMode::Clicks, turnOn);
 				break;
-			case 1002:
-				m_Screen.SetMouseMode(TerminalScreen::MouseMode::Drags, set);
+			case kMouseDragsMode:
+				m_Screen.SetMouseMode(TerminalScreen::MouseMode::Drags, turnOn);
 				break;
-			case 1003:
-				m_Screen.SetMouseMode(TerminalScreen::MouseMode::Motion, set);
+			case kMouseMotionMode:
+				m_Screen.SetMouseMode(TerminalScreen::MouseMode::Motion, turnOn);
 				break;
-			case 1006:
-				m_Screen.SetSgrMouse(set);
+			case kSgrMouseMode:
+				m_Screen.SetSgrMouse(turnOn);
 				break;
-			case 1049:
-				m_Screen.UseAlternateBuffer(set);
+			case kAlternateBufferMode:
+				m_Screen.UseAlternateBuffer(turnOn);
 				break;
-			case 2004:
-				m_Screen.SetBracketedPaste(set);
+			case kBracketedPasteMode:
+				m_Screen.SetBracketedPaste(turnOn);
 				break;
 			default:
-				// The rest are out of scope for now, and being listed nowhere is exactly what
-				// keeps them harmless.
 				break;
 			}
 		}

@@ -280,12 +280,13 @@ namespace Graphite {
 					const auto row = static_cast<std::uint16_t>(std::clamp(
 						static_cast<int>(std::floor((mouse.y - origin.y) / cellSize.y)), 0, rows - 1));
 					const Core::KeyModifier held = HeldModifiers(ImGui::GetIO());
+					const Core::WheelDirection direction = notches > 0 ? Core::WheelDirection::Up : Core::WheelDirection::Down;
+					const Core::MouseReportForm form = screen.IsSgrMouse() ? Core::MouseReportForm::SgrDecimal : Core::MouseReportForm::Legacy;
 					std::string reports;
 
 					for (int notch = 0; notch < std::abs(notches); ++notch)
 					{
-						reports += Core::EncodeMouseWheel(notches > 0, column, row, held,
-														  screen.IsSgrMouse());
+						reports += Core::EncodeMouseWheel(direction, column, row, held, form);
 					}
 
 					m_Session.Send(reports);
@@ -345,14 +346,14 @@ namespace Graphite {
 		UpdateSelection(grid);
 
 		ImDrawList& drawList = *ImGui::GetWindowDrawList();
-		std::vector<Core::Cell> scratch;
+		std::vector<Core::TerminalCell> scratch;
 
 		for (int view = 0; view < rows; ++view)
 		{
 			const int row = view - m_ScrollOffset;
 			const std::int64_t line = LineOfScreenRow(scrolledOff, row);
 
-			if (const std::vector<Core::Cell>* cells =
+			if (const std::vector<Core::TerminalCell>* cells =
 					TerminalLineCells(screen, line, static_cast<std::size_t>(columns), scratch);
 				cells != nullptr)
 			{
@@ -386,7 +387,7 @@ namespace Graphite {
 					// parity this feature is held to. A solid block hides the character underneath
 					// it, and it hides it exactly where it matters least affordably: on the one
 					// character you are about to overtype.
-					const Core::Cell& cell = screen.At(cursor.Row, cursor.Column);
+					const Core::TerminalCell& cell = screen.At(cursor.Row, cursor.Column);
 
 					ImU32 foreground = 0;
 					ImU32 background = 0;
@@ -618,7 +619,7 @@ namespace Graphite {
 		ClearSelection();
 	}
 
-	void TerminalView::DrawRow(ImDrawList& drawList, const std::vector<Core::Cell>& cells, int row,
+	void TerminalView::DrawRow(ImDrawList& drawList, const std::vector<Core::TerminalCell>& cells, int row,
 							   const ImVec2& origin, const ImVec2& cellSize, int columns,
 							   const EditorPalette& palette)
 	{
@@ -646,7 +647,7 @@ namespace Graphite {
 
 		for (int column = 0; column < count; ++column)
 		{
-			const Core::Cell& cell = cells[static_cast<std::size_t>(column)];
+			const Core::TerminalCell& cell = cells[static_cast<std::size_t>(column)];
 
 			ImU32 foreground = 0;
 			ImU32 background = 0;
@@ -695,7 +696,7 @@ namespace Graphite {
 
 		for (int column = 0; column < count;)
 		{
-			const Core::Cell& first = cells[static_cast<std::size_t>(column)];
+			const Core::TerminalCell& first = cells[static_cast<std::size_t>(column)];
 
 			// The right half of a double-width character: its glyph was drawn by the cell to its
 			// left, and drawing anything here would put a second copy over that half.
@@ -719,7 +720,7 @@ namespace Graphite {
 
 			while (end < count)
 			{
-				const Core::Cell& cell = cells[static_cast<std::size_t>(end)];
+				const Core::TerminalCell& cell = cells[static_cast<std::size_t>(end)];
 
 				if (cell.WideTrailer || cell.Flags != flags ||
 					foregrounds[static_cast<std::size_t>(end)] != colour)
@@ -769,8 +770,8 @@ namespace Graphite {
 			return TerminalCharacterAt(screen, grid, at.x, at.y);
 		};
 		source.WordAt = [&screen, &grid](Core::TextPoint at) {
-			std::vector<Core::Cell> scratch;
-			const std::vector<Core::Cell>* cells = TerminalLineCells(screen, at.Line, grid.Columns, scratch);
+			std::vector<Core::TerminalCell> scratch;
+			const std::vector<Core::TerminalCell>* cells = TerminalLineCells(screen, at.Line, grid.Columns, scratch);
 
 			return cells == nullptr ? Core::ColumnSpan{} : TerminalWordAt(*cells, grid.Columns, at.Column);
 		};
@@ -921,7 +922,7 @@ namespace Graphite {
 		return foreground ? Opaque(palette.Text) : palette.Background;
 	}
 
-	void TerminalView::ResolveCell(const Core::Cell& cell, const EditorPalette& palette,
+	void TerminalView::ResolveCell(const Core::TerminalCell& cell, const EditorPalette& palette,
 								   ImU32& foreground, ImU32& background, bool opaqueBase) const
 	{
 		// Bold on one of the low eight palette entries is the bright entry eight above it. That
