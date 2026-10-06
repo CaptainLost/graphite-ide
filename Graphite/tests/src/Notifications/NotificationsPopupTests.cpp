@@ -35,12 +35,10 @@ namespace {
 			Frames.Next([&] { Draw(); });
 		}
 
-		// A popup sizes itself on the frame it appears and shows from the next, and the list in it,
-		// sized to what it held the frame before, reaches its height one frame later still.
+		// A popup sizes itself on the frame it appears and shows from the next.
 		void OpenFromBell()
 		{
 			Popup.OpenFromBell();
-			Next();
 			Next();
 			Next();
 		}
@@ -63,20 +61,37 @@ namespace {
 			return *context.OpenPopupStack[0].Window;
 		}
 
-		// Inside the first entry, a little in from the list's top-left corner.
-		static ImVec2 FirstEntry()
+		static const ImGuiWindow& ListWindow()
 		{
 			const ImGuiWindow& popup = PopupWindow();
+			const ImGuiWindow* list = nullptr;
 			for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
 			{
 				const bool isTheList = window->ParentWindow == &popup && (window->Flags & ImGuiWindowFlags_ChildWindow) != 0;
 				if (isTheList)
 				{
-					return ImVec2(window->InnerRect.Min.x + 40.0f, window->InnerRect.Min.y + 8.0f);
+					list = window;
 				}
 			}
-			FAIL("the popup has no list");
-			return ImVec2();
+			REQUIRE(list != nullptr);
+			return *list;
+		}
+
+		// Inside the first entry, a little in from the list's top-left corner.
+		static ImVec2 FirstEntry()
+		{
+			const ImGuiWindow& list = ListWindow();
+			return ImVec2(list.InnerRect.Min.x + 40.0f, list.InnerRect.Min.y + 8.0f);
+		}
+
+		// Over the first item of the menu open above the popup.
+		static ImVec2 FirstMenuItem()
+		{
+			const ImGuiContext& context = *ImGui::GetCurrentContext();
+			REQUIRE(context.OpenPopupStack.Size == 2);
+			const ImGuiWindow* menu = context.OpenPopupStack[1].Window;
+			REQUIRE(menu != nullptr);
+			return ImVec2(menu->Pos.x + menu->WindowPadding.x + 4.0f, menu->Pos.y + menu->WindowPadding.y + 4.0f);
 		}
 	};
 
@@ -162,6 +177,57 @@ TEST_CASE("A click on a long entry expands it and a second click collapses it")
 	CHECK_FALSE(screen.Popup.IsExpanded(1));
 }
 
+TEST_CASE("The popup opens at the height it keeps, with the whole list inside it")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error, LinesOfText(12)));
+	screen.History.Record(Entry(2, Core::ToastKind::Warning));
+	screen.OpenFromBell();
+
+	const ImGuiWindow& popup = PopupScreen::PopupWindow();
+	const ImGuiWindow& list = PopupScreen::ListWindow();
+	const float heightOnOpening = popup.Size.y;
+	CHECK(list.Pos.y + list.Size.y <= popup.Pos.y + popup.Size.y - popup.WindowPadding.y);
+
+	screen.Next();
+	screen.Next();
+
+	CHECK(PopupScreen::PopupWindow().Size.y == heightOnOpening);
+}
+
+TEST_CASE("An expanded entry is drawn at its full height on the frame after the click")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error, LinesOfText(12)));
+	screen.OpenFromBell();
+	const float collapsedHeight = PopupScreen::PopupWindow().Size.y;
+
+	screen.Click(PopupScreen::FirstEntry());
+	screen.Next();
+	const float heightAfterTheClick = PopupScreen::PopupWindow().Size.y;
+	screen.Next();
+	screen.Next();
+
+	CHECK(heightAfterTheClick > collapsedHeight);
+	CHECK(PopupScreen::PopupWindow().Size.y == heightAfterTheClick);
+}
+
+TEST_CASE("A list taller than its share of the window scrolls, with its rows clear of the scrollbar")
+{
+	PopupScreen screen;
+	for (std::uint64_t toastId = 1; toastId <= 10; ++toastId)
+	{
+		screen.History.Record(Entry(toastId, Core::ToastKind::Error, LinesOfText(6)));
+	}
+	screen.OpenFromBell();
+
+	const ImGuiWindow& list = PopupScreen::ListWindow();
+	const float highestListHeight = ImGui::GetMainViewport()->WorkSize.y * 0.6f;
+	CHECK(list.Size.y <= highestListHeight);
+	CHECK(list.ScrollbarY);
+	CHECK(list.ContentSize.x <= list.InnerRect.GetWidth());
+}
+
 TEST_CASE("A click on a short entry leaves it as it is")
 {
 	PopupScreen screen;
@@ -183,14 +249,29 @@ TEST_CASE("Copy in an entry's menu copies the title and the message")
 
 	screen.Click(PopupScreen::FirstEntry(), ImGuiMouseButton_Right);
 	screen.Next();
-
-	const ImGuiContext& context = *ImGui::GetCurrentContext();
-	REQUIRE(context.OpenPopupStack.Size == 2);
-	const ImGuiWindow* menu = context.OpenPopupStack[1].Window;
-	REQUIRE(menu != nullptr);
-	screen.Click(ImVec2(menu->Pos.x + menu->WindowPadding.x + 4.0f, menu->Pos.y + menu->WindowPadding.y + 4.0f));
+	screen.Click(PopupScreen::FirstMenuItem());
 
 	CHECK(copied == "Push failed\nrejected");
+}
+
+TEST_CASE("Copy whose handler records a notification copies the entry it was chosen on")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error, "rejected"));
+	screen.History.Record(Entry(2, Core::ToastKind::Warning, "behind"));
+	std::string copied;
+	screen.Popup.OnCopied = [&](std::string_view text) {
+		copied = std::string(text);
+		screen.History.Record(Entry(3, Core::ToastKind::Success, "Copied"));
+	};
+	screen.OpenFromBell();
+
+	screen.Click(PopupScreen::FirstEntry(), ImGuiMouseButton_Right);
+	screen.Next();
+	screen.Click(PopupScreen::FirstMenuItem());
+
+	CHECK(copied == "Push failed\nbehind");
+	CHECK(screen.History.Entries(true).size() == 3);
 }
 
 TEST_CASE("Esc closes the popup")

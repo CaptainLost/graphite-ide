@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <format>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,7 @@ namespace Graphite {
 
 		struct EntryLayout
 		{
+			const NotificationEntry* Entry = nullptr;
 			std::string Count;
 			std::string Time;
 			std::string FolderLine;
@@ -38,6 +40,22 @@ namespace Graphite {
 			std::size_t VisibleLines = 0;
 			std::size_t HiddenLines = 0;
 			float Height = 0.0f;
+		};
+
+		struct ListLayout
+		{
+			std::vector<EntryLayout> Rows;
+			float RowWidth = 0.0f;
+			float Height = 0.0f;
+		};
+
+		// The toggle and the copy are carried out only once the list is drawn: its rows point into
+		// the history, and a copy confirmation shown as a toast adds to the history.
+		struct ListOutcome
+		{
+			std::optional<std::uint64_t> ToggledToastId;
+			std::optional<std::string> TextToCopy;
+			bool EntryMenuOpen = false;
 		};
 
 		ImVec4 ToImVec4(const Core::Color& colour)
@@ -67,6 +85,7 @@ namespace Graphite {
 								const std::filesystem::path& openFolder, const std::chrono::time_zone& zone)
 		{
 			EntryLayout layout;
+			layout.Entry = &entry;
 			layout.Count = entry.Count > 1 ? std::format("(x{})", entry.Count) : std::string();
 			layout.Time = FormatClockTime(entry.LastShownAt, zone);
 
@@ -153,6 +172,114 @@ namespace Graphite {
 				draw->AddText(FontFor(false), lineHeight, ImVec2(textX, lineY), dimColour, more.c_str());
 			}
 		}
+
+		std::vector<EntryLayout> LayOutRows(const std::vector<const NotificationEntry*>& entries, const NotificationsPopup& popup,
+											float rowWidth, const std::filesystem::path& openFolder, const std::chrono::time_zone& zone)
+		{
+			const float textWidth = std::max(rowWidth - Core::ToastIconDiameter() - Core::Scaled(kIconGap), 1.0f);
+
+			std::vector<EntryLayout> rows;
+			rows.reserve(entries.size());
+			for (const NotificationEntry* entry : entries)
+			{
+				rows.push_back(LayOutEntry(*entry, popup.IsExpanded(entry->ToastId), textWidth, openFolder, zone));
+			}
+
+			return rows;
+		}
+
+		float StackedHeight(const std::vector<EntryLayout>& rows)
+		{
+			const float spacing = ImGui::GetStyle().ItemSpacing.y;
+
+			float height = 0.0f;
+			for (std::size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
+			{
+				const bool belowAnotherRow = rowIndex > 0;
+				if (belowAnotherRow)
+				{
+					height += spacing;
+				}
+
+				height += rows[rowIndex].Height;
+			}
+
+			return height;
+		}
+
+		ListLayout LayOutList(const std::vector<const NotificationEntry*>& entries, const NotificationsPopup& popup, float listWidth,
+							  float highestListHeight, const std::filesystem::path& openFolder, const std::chrono::time_zone& zone)
+		{
+			ListLayout list;
+			if (entries.empty())
+			{
+				list.Height = ImGui::GetTextLineHeight();
+				return list;
+			}
+
+			list.RowWidth = listWidth;
+			list.Rows = LayOutRows(entries, popup, list.RowWidth, openFolder, zone);
+			float rowsHeight = StackedHeight(list.Rows);
+
+			// A list cut short scrolls, and ImGui takes its scrollbar's width from the rows.
+			const bool scrolls = rowsHeight > highestListHeight;
+			if (scrolls)
+			{
+				list.RowWidth = listWidth - ImGui::GetStyle().ScrollbarSize;
+				list.Rows = LayOutRows(entries, popup, list.RowWidth, openFolder, zone);
+				rowsHeight = StackedHeight(list.Rows);
+			}
+
+			list.Height = std::min(rowsHeight, highestListHeight);
+			return list;
+		}
+
+		ListOutcome DrawList(const ListLayout& list, const Core::ToastPalette& palette)
+		{
+			ListOutcome outcome;
+			if (list.Rows.empty())
+			{
+				ImGui::TextDisabled("No notifications");
+				return outcome;
+			}
+
+			for (const EntryLayout& row : list.Rows)
+			{
+				const NotificationEntry& entry = *row.Entry;
+				const std::string rowId = std::to_string(entry.ToastId);
+				ImGui::PushID(rowId.c_str());
+
+				const bool rowClicked = ImGui::InvisibleButton("##row", ImVec2(list.RowWidth, row.Height));
+				const bool canExpand = row.Lines.size() > kCollapsedLines;
+				if (rowClicked && canExpand)
+				{
+					outcome.ToggledToastId = entry.ToastId;
+				}
+
+				DrawEntry(entry, row, palette, list.RowWidth);
+
+				if (Core::BeginRightClickPopup("##entryMenu"))
+				{
+					outcome.EntryMenuOpen = true;
+
+					if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+					{
+						ImGui::CloseCurrentPopup();
+					}
+
+					if (ImGui::MenuItem("Copy"))
+					{
+						outcome.TextToCopy = CopiedText(entry);
+					}
+
+					ImGui::EndPopup();
+				}
+
+				ImGui::PopID();
+			}
+
+			return outcome;
+		}
 	}
 
 	void NotificationsPopup::OpenFromBell()
@@ -169,43 +296,84 @@ namespace Graphite {
 			m_OpenRequested = false;
 		}
 
+		if (!ImGui::IsPopupOpen(kPopupId))
+		{
+			m_EntryMenuOpenLastFrame = false;
+			return;
+		}
+
 		const ImGuiViewport* const viewport = ImGui::GetMainViewport();
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float popupWidth = Core::ToastCardWidth();
+		const float listWidth = popupWidth - 2.0f * style.WindowPadding.x;
+		const float highestListHeight = viewport->WorkSize.y * kHighestShareOfWindow;
+		const std::vector<const NotificationEntry*> entries = history.Entries(m_ShowConfirmations);
+		const ListLayout list = LayOutList(entries, *this, listWidth, highestListHeight, openFolder, zone);
+
+		// Sized from this frame's rows, not left to ImGui: it fits a popup and a child to what they
+		// held the frame before, so the popup would open at a stale height and lag every expand.
+		const float headerHeight = ImGui::GetFrameHeight();
+		const float separatorHeight = std::max(style.SeparatorSize, 1.0f);
+		const float popupHeight = style.WindowPadding.y + headerHeight + style.ItemSpacing.y + separatorHeight +
+								  style.ItemSpacing.y + list.Height + style.WindowPadding.y;
+
 		const float margin = Core::ToastMargin();
 		const ImVec2 bottomRight(viewport->WorkPos.x + viewport->WorkSize.x - margin,
 								 viewport->WorkPos.y + viewport->WorkSize.y - margin);
 
 		ImGui::SetNextWindowPos(bottomRight, ImGuiCond_Always, ImVec2(1.0f, 1.0f));
-		ImGui::SetNextWindowSize(ImVec2(Core::ToastCardWidth(), 0.0f), ImGuiCond_Always);
+		ImGui::SetNextWindowSize(ImVec2(popupWidth, popupHeight), ImGuiCond_Always);
 		ImGui::SetNextWindowViewport(viewport->ID);
 
 		if (!ImGui::BeginPopup(kPopupId, ImGuiWindowFlags_NoMove))
 		{
+			m_EntryMenuOpenLastFrame = false;
 			return;
 		}
 
 		history.MarkAllSeen();
 
-		const bool entryMenuOpen = ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId);
-		const bool escapeClosesThePopup = ImGui::IsKeyPressed(ImGuiKey_Escape) && !entryMenuOpen;
+		// Under keyboard navigation ImGui closes the entry menu on Esc before this frame is drawn,
+		// so without last frame's menu the key that shut it would close the popup as well.
+		const bool escapeIsForTheMenu = m_EntryMenuOpenLastFrame || ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId);
+		const bool escapeClosesThePopup = ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !escapeIsForTheMenu;
 		if (escapeClosesThePopup)
 		{
 			ImGui::CloseCurrentPopup();
 		}
 
-		DrawHeader(history);
+		const bool clearClicked = DrawHeader();
 		ImGui::Separator();
 
-		ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(FLT_MAX, viewport->WorkSize.y * kHighestShareOfWindow));
-		if (ImGui::BeginChild("##entries", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AutoResizeY))
+		ListOutcome outcome;
+		if (ImGui::BeginChild("##entries", ImVec2(0.0f, list.Height)))
 		{
-			DrawEntries(history, palette, openFolder, zone);
+			outcome = DrawList(list, palette);
 		}
 		ImGui::EndChild();
 
 		ImGui::EndPopup();
+
+		m_EntryMenuOpenLastFrame = outcome.EntryMenuOpen;
+
+		if (outcome.ToggledToastId.has_value())
+		{
+			ToggleExpanded(*outcome.ToggledToastId);
+		}
+
+		if (outcome.TextToCopy.has_value())
+		{
+			Copy(*outcome.TextToCopy);
+		}
+
+		if (clearClicked)
+		{
+			history.Clear();
+			m_Expanded.clear();
+		}
 	}
 
-	void NotificationsPopup::DrawHeader(NotificationHistory& history)
+	bool NotificationsPopup::DrawHeader()
 	{
 		const float lineStartX = ImGui::GetCursorPosX();
 		const float lineWidth = ImGui::GetContentRegionAvail().x;
@@ -231,58 +399,7 @@ namespace Graphite {
 		ImGui::Checkbox(filterLabel, &m_ShowConfirmations);
 		ImGui::SameLine();
 
-		if (DrawIconButton("##clear", ICON_MDI_DELETE_SWEEP_OUTLINE, false, "Clear"))
-		{
-			history.Clear();
-			m_Expanded.clear();
-		}
-	}
-
-	void NotificationsPopup::DrawEntries(const NotificationHistory& history, const Core::ToastPalette& palette,
-										 const std::filesystem::path& openFolder, const std::chrono::time_zone& zone)
-	{
-		const std::vector<const NotificationEntry*> entries = history.Entries(m_ShowConfirmations);
-		if (entries.empty())
-		{
-			ImGui::TextDisabled("No notifications");
-			return;
-		}
-
-		const float rowWidth = ImGui::GetContentRegionAvail().x;
-		const float textWidth = std::max(rowWidth - Core::ToastIconDiameter() - Core::Scaled(kIconGap), 1.0f);
-
-		for (const NotificationEntry* entry : entries)
-		{
-			const std::string rowId = std::to_string(entry->ToastId);
-			ImGui::PushID(rowId.c_str());
-
-			const EntryLayout layout = LayOutEntry(*entry, IsExpanded(entry->ToastId), textWidth, openFolder, zone);
-			const bool rowClicked = ImGui::InvisibleButton("##row", ImVec2(rowWidth, layout.Height));
-			const bool canExpand = layout.Lines.size() > kCollapsedLines;
-			if (rowClicked && canExpand)
-			{
-				ToggleExpanded(entry->ToastId);
-			}
-
-			DrawEntry(*entry, layout, palette, rowWidth);
-
-			if (Core::BeginRightClickPopup("##entryMenu"))
-			{
-				if (ImGui::IsKeyPressed(ImGuiKey_Escape))
-				{
-					ImGui::CloseCurrentPopup();
-				}
-
-				if (ImGui::MenuItem("Copy"))
-				{
-					Copy(*entry);
-				}
-
-				ImGui::EndPopup();
-			}
-
-			ImGui::PopID();
-		}
+		return DrawIconButton("##clear", ICON_MDI_DELETE_SWEEP_OUTLINE, false, "Clear");
 	}
 
 	void NotificationsPopup::ToggleExpanded(std::uint64_t toastId)
@@ -294,15 +411,14 @@ namespace Graphite {
 		}
 	}
 
-	void NotificationsPopup::Copy(const NotificationEntry& entry)
+	void NotificationsPopup::Copy(const std::string& copiedText)
 	{
-		const std::string copied = CopiedText(entry);
 		if (OnCopied)
 		{
-			OnCopied(copied);
+			OnCopied(copiedText);
 			return;
 		}
 
-		ImGui::SetClipboardText(copied.c_str());
+		ImGui::SetClipboardText(copiedText.c_str());
 	}
 }

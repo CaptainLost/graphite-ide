@@ -19,6 +19,11 @@ public:
 		io.DeltaTime = 1.0f / 60.0f;
 		io.IniFilename = nullptr;
 		io.LogFilename = nullptr;
+
+		// As the application runs: with keyboard navigation on, ImGui closes the topmost popup on
+		// Esc itself, before any drawing code sees the key.
+		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
 		io.Fonts->Build();
 	}
 

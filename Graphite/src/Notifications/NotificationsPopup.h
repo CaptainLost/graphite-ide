@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <string>
 #include <string_view>
 #include <unordered_set>
 
@@ -30,14 +31,13 @@ namespace Graphite {
 		std::function<void(std::string_view)> OnCopied;
 
 	private:
-		void DrawHeader(NotificationHistory& history);
-		void DrawEntries(const NotificationHistory& history, const Core::ToastPalette& palette,
-						 const std::filesystem::path& openFolder, const std::chrono::time_zone& zone);
+		bool DrawHeader();
 		void ToggleExpanded(std::uint64_t toastId);
-		void Copy(const NotificationEntry& entry);
+		void Copy(const std::string& copiedText);
 
 		bool m_OpenRequested = false;
 		bool m_ShowConfirmations = false;
+		bool m_EntryMenuOpenLastFrame = false;
 		std::unordered_set<std::uint64_t> m_Expanded;
 	};
 }
