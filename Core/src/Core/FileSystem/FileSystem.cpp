@@ -20,19 +20,32 @@
 namespace Core {
 
 	namespace {
-		ErrorCode TranslateError(const std::error_code& code)
+		constexpr std::size_t kReadChunkBytes = 64 * 1024;
+
+#ifdef CORE_PLATFORM_WINDOWS
+		// Without WC_ERR_INVALID_CHARS or MB_ERR_INVALID_CHARS the Win32 conversions write U+FFFD for a
+		// lone surrogate or bytes that are not UTF-8, where std::filesystem's u8string throws
+		// std::system_error. Callers rely on a recognisable name coming back, not an exception or an
+		// empty string.
+		constexpr DWORD kReplaceInvalidSequences = 0;
+
+		constexpr int kMeasureOnly = 0;
+		constexpr LPARAM kNoSortHandle = 0;
+#endif
+
+		ErrorCode TranslateError(const std::error_code& error)
 		{
-			if (code == std::errc::no_such_file_or_directory)
+			if (error == std::errc::no_such_file_or_directory)
 			{
 				return ErrorCode::NotFound;
 			}
 
-			if (code == std::errc::permission_denied)
+			if (error == std::errc::permission_denied)
 			{
 				return ErrorCode::AccessDenied;
 			}
 
-			if (code == std::errc::not_a_directory)
+			if (error == std::errc::not_a_directory)
 			{
 				return ErrorCode::InvalidArgument;
 			}
@@ -40,20 +53,26 @@ namespace Core {
 			return ErrorCode::IoFailure;
 		}
 
-		// Whether the place `key` names is `rootKey`'s or lies below it, both made by PathKey. A
-		// root ending in a separator ("D:\") already marks a boundary; any other has to be followed
-		// by one, or "D:\Repos2" would count as inside "D:\Repos".
-		bool IsKeyWithin(const std::filesystem::path::string_type& key,
-						 const std::filesystem::path::string_type& rootKey)
+		bool IsKeyWithin(const PathKeyText& key, const PathKeyText& rootKey)
 		{
-			constexpr auto separator = std::filesystem::path::preferred_separator;
+			constexpr std::filesystem::path::value_type separator = std::filesystem::path::preferred_separator;
 
 			if (rootKey.empty() || !key.starts_with(rootKey))
 			{
 				return false;
 			}
 
-			return key.size() == rootKey.size() || rootKey.back() == separator || key[rootKey.size()] == separator;
+			const bool keyIsTheRoot = key.size() == rootKey.size();
+
+			if (keyIsTheRoot)
+			{
+				return true;
+			}
+
+			const bool rootEndsInSeparator = rootKey.back() == separator;
+			const bool separatorFollowsRoot = key[rootKey.size()] == separator;
+
+			return rootEndsInSeparator || separatorFollowsRoot;
 		}
 
 		bool IsHidden(const std::filesystem::path& path)
@@ -71,43 +90,54 @@ namespace Core {
 			return !name.empty() && name.front() == '.';
 #endif
 		}
+
+		int LoweredByCurrentLocale(char character)
+		{
+			return std::tolower(static_cast<unsigned char>(character));
+		}
+
+		bool IsOverLimit(std::uintmax_t byteCount, const std::optional<std::uintmax_t>& maximumBytes)
+		{
+			return maximumBytes.has_value() && byteCount > *maximumBytes;
+		}
+
+		Error FileTooLargeError(const std::filesystem::path& path, std::uintmax_t maximumBytes)
+		{
+			return Error{.Code = ErrorCode::TooLarge, .Message = "File is larger than " + std::to_string(maximumBytes) + " bytes: " + ToUtf8(path)};
+		}
 	}
 
-	// Both directions convert with the Win32 calls rather than through std::filesystem, whose
-	// u8string() and u8string constructor throw std::system_error on a lone surrogate or on bytes
-	// that are not UTF-8 (ADR 0004). Without the strict flags, the Win32 calls write U+FFFD there
-	// instead, so a name that cannot be spelled exactly still comes out as a recognisable one.
 	std::string ToUtf8(const std::filesystem::path& path)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		const std::wstring& wide = path.native();
-		if (wide.empty())
+		const std::wstring& utf16Path = path.native();
+		if (utf16Path.empty())
 		{
 			return {};
 		}
 
-		const int wideLength = Narrow<int>(wide.size());
-		const int length = ::WideCharToMultiByte(CP_UTF8, 0, wide.data(), wideLength, nullptr, 0, nullptr, nullptr);
+		const int utf16Length = Narrow<int>(utf16Path.size());
+		const int utf8Length = ::WideCharToMultiByte(CP_UTF8, kReplaceInvalidSequences, utf16Path.data(), utf16Length,
+													 nullptr, kMeasureOnly, nullptr, nullptr);
 
-		std::string text(static_cast<std::size_t>(length), '\0');
-		::WideCharToMultiByte(CP_UTF8, 0, wide.data(), wideLength, text.data(), length, nullptr, nullptr);
-		return text;
+		std::string utf8Text(static_cast<std::size_t>(utf8Length), '\0');
+		::WideCharToMultiByte(CP_UTF8, kReplaceInvalidSequences, utf16Path.data(), utf16Length, utf8Text.data(),
+							  utf8Length, nullptr, nullptr);
+		return utf8Text;
 #else
-		const std::u8string utf8 = path.u8string();
-		return std::string{reinterpret_cast<const char*>(utf8.data()), utf8.size()};
+		const std::u8string utf8Path = path.u8string();
+		return std::string{reinterpret_cast<const char*>(utf8Path.data()), utf8Path.size()};
 #endif
 	}
 
 	std::string ToGenericUtf8(const std::filesystem::path& path)
 	{
-		std::string text = ToUtf8(path);
-		std::ranges::replace(text, '\\', '/');
-		return text;
+		std::string utf8Text = ToUtf8(path);
+		std::ranges::replace(utf8Text, '\\', '/');
+		return utf8Text;
 	}
 
 #ifdef CORE_PLATFORM_WINDOWS
-	// Do not add MB_ERR_INVALID_CHARS: callers rely on bytes that are not UTF-8 arriving as U+FFFD,
-	// not as an empty string. The explicit length keeps an embedded NUL.
 	std::wstring ToUtf16(std::string_view text)
 	{
 		if (text.empty())
@@ -116,8 +146,6 @@ namespace Core {
 		}
 
 		const int textLength = Narrow<int>(text.size());
-		constexpr DWORD kReplaceInvalidSequences = 0;
-		constexpr int kMeasureOnly = 0;
 		const int utf16Length = ::MultiByteToWideChar(CP_UTF8, kReplaceInvalidSequences, text.data(), textLength, nullptr, kMeasureOnly);
 
 		std::wstring utf16Text(static_cast<std::size_t>(utf16Length), L'\0');
@@ -129,70 +157,60 @@ namespace Core {
 	std::filesystem::path FromUtf8(std::string_view text)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		if (text.empty())
-		{
-			return {};
-		}
-
-		const int textLength = Narrow<int>(text.size());
-		const int length = ::MultiByteToWideChar(CP_UTF8, 0, text.data(), textLength, nullptr, 0);
-
-		std::wstring wide(static_cast<std::size_t>(length), L'\0');
-		::MultiByteToWideChar(CP_UTF8, 0, text.data(), textLength, wide.data(), length);
-		return std::filesystem::path{std::move(wide)};
+		return std::filesystem::path{ToUtf16(text)};
 #else
-		const std::u8string utf8{reinterpret_cast<const char8_t*>(text.data()), text.size()};
-		return std::filesystem::path{utf8};
+		const std::u8string utf8Text{reinterpret_cast<const char8_t*>(text.data()), text.size()};
+		return std::filesystem::path{utf8Text};
 #endif
 	}
 
 	Result<std::vector<DirectoryEntry>> ReadDirectory(const std::filesystem::path& path)
 	{
-		std::error_code code;
+		std::error_code error;
 
-		// directory_options::none rather than skip_permission_denied, which turns an
-		// unreadable directory into an empty listing indistinguishable from a genuinely
-		// empty one.
+		// Not skip_permission_denied: it turns an unreadable directory into an empty listing,
+		// indistinguishable from a directory that really is empty.
 		std::filesystem::directory_iterator iterator{
-			path, std::filesystem::directory_options::none, code};
+			path, std::filesystem::directory_options::none, error};
 
-		if (code)
+		if (error)
 		{
-			return Error{TranslateError(code),
-						 std::format("cannot read directory '{}': {}", ToUtf8(path), code.message())};
+			return Error{.Code = TranslateError(error), .Message = std::format("cannot read directory '{}': {}", ToUtf8(path), error.message())};
 		}
 
 		std::vector<DirectoryEntry> entries;
 
-		for (; iterator != std::filesystem::directory_iterator{}; iterator.increment(code))
+		for (; iterator != std::filesystem::directory_iterator{}; iterator.increment(error))
 		{
-			if (code)
+			if (error)
 			{
-				return Error{TranslateError(code),
-							 std::format("cannot enumerate '{}': {}", ToUtf8(path), code.message())};
+				return Error{.Code = TranslateError(error), .Message = std::format("cannot enumerate '{}': {}", ToUtf8(path), error.message())};
 			}
 
-			DirectoryEntry entry;
-			entry.Path = iterator->path();
-			entry.Name = ToUtf8(iterator->path().filename());
+			const std::filesystem::path& entryPath = iterator->path();
+			DirectoryEntry entry{.Path = entryPath, .Name = ToUtf8(entryPath.filename())};
 
-			std::error_code statusCode;
-			entry.IsDirectory = iterator->is_directory(statusCode);
+			std::error_code classifyError;
+			entry.IsDirectory = iterator->is_directory(classifyError);
 
-			if (statusCode)
+			if (classifyError)
 			{
-				return Error{TranslateError(statusCode),
-							 std::format("cannot classify '{}': {}", ToUtf8(entry.Path),
-										 statusCode.message())};
+				return Error{.Code = TranslateError(classifyError), .Message = std::format("cannot classify '{}': {}", ToUtf8(entry.Path), classifyError.message())};
 			}
 
 			entry.IsHidden = IsHidden(entry.Path);
 
 			if (!entry.IsDirectory)
 			{
-				std::error_code sizeCode;
-				const std::uintmax_t size = iterator->file_size(sizeCode);
-				entry.Size = sizeCode ? 0 : static_cast<std::uint64_t>(size);
+				// The size is informational, unlike the kind, so an unreadable size lists the entry with its default of 0
+				// rather than failing the whole folder.
+				std::error_code sizeError;
+				const std::uintmax_t fileSize = iterator->file_size(sizeError);
+
+				if (!sizeError)
+				{
+					entry.Size = fileSize;
+				}
 			}
 
 			entries.push_back(std::move(entry));
@@ -208,16 +226,16 @@ namespace Core {
 
 	int CompareNames(std::string_view left, std::string_view right)
 	{
-		const std::size_t count = std::min(left.size(), right.size());
+		const std::size_t sharedLength = std::min(left.size(), right.size());
 
-		for (std::size_t i = 0; i < count; ++i)
+		for (std::size_t byteIndex = 0; byteIndex < sharedLength; ++byteIndex)
 		{
-			const int a = std::tolower(static_cast<unsigned char>(left[i]));
-			const int b = std::tolower(static_cast<unsigned char>(right[i]));
+			const int leftLowered = LoweredByCurrentLocale(left[byteIndex]);
+			const int rightLowered = LoweredByCurrentLocale(right[byteIndex]);
 
-			if (a != b)
+			if (leftLowered != rightLowered)
 			{
-				return a < b ? -1 : 1;
+				return leftLowered < rightLowered ? -1 : 1;
 			}
 		}
 
@@ -236,29 +254,33 @@ namespace Core {
 		return normalized;
 	}
 
-	std::filesystem::path::string_type PathKey(const std::filesystem::path& path)
+	PathKeyText PathKey(const std::filesystem::path& path)
 	{
-		std::filesystem::path::string_type key = NormalizeDirectory(path).native();
+		PathKeyText key = NormalizeDirectory(path).native();
 
 #ifdef CORE_PLATFORM_WINDOWS
-		// The invariant upper-casing table, as the file system folds names, rather than the user's
-		// locale: a Turkish locale would otherwise give "i" a different capital from everyone
-		// else's. Upper-casing never changes the length of UTF-16 text, so the key stays aligned
-		// with the path it came from, which RelativeTo relies on.
+		// The invariant locale folds case as the file system does, where the user's locale would give
+		// "i" a different capital under Turkish. Upper-casing never changes the length of UTF-16 text,
+		// which RelativeToKey relies on to cut the path at the length of its base's key.
 		if (!key.empty())
 		{
-			const int length = Narrow<int>(key.size());
+			const int keyLength = Narrow<int>(key.size());
 			std::wstring folded(key.size(), L'\0');
 
-			if (::LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_UPPERCASE, key.data(), length, folded.data(), length,
-								nullptr, nullptr, 0) == length)
+			const int foldedLength = ::LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_UPPERCASE, key.data(), keyLength,
+													 folded.data(), keyLength, nullptr, nullptr, kNoSortHandle);
+			const bool foldedWholeKey = foldedLength == keyLength;
+
+			if (foldedWholeKey)
 			{
 				key = std::move(folded);
 			}
 		}
 #else
-		std::ranges::transform(key, key.begin(),
-							   [](char c) { return static_cast<char>(std::toupper(static_cast<unsigned char>(c))); });
+		for (char& character : key)
+		{
+			character = static_cast<char>(std::toupper(static_cast<unsigned char>(character)));
+		}
 #endif
 
 		return key;
@@ -271,14 +293,12 @@ namespace Core {
 
 	std::filesystem::path NormalizeDirectory(const std::filesystem::path& path)
 	{
-		std::filesystem::path normalized = path.lexically_normal();
-		normalized.make_preferred();
+		std::filesystem::path normalized = NormalizePath(path);
 
-		// lexically_normal leaves a trailing separator in place, which shows up as an empty
-		// final element — has_filename() is false exactly then — and makes the path unequal
-		// to the same directory spelled without it. has_relative_path() guards the roots:
-		// parent_path() of `D:/` is `D:`, a drive-relative path naming a different place.
-		if (!normalized.has_filename() && normalized.has_relative_path())
+		const bool endsInSeparator = !normalized.has_filename();
+		const bool isRoot = !normalized.has_relative_path();
+
+		if (endsInSeparator && !isRoot)
 		{
 			normalized = normalized.parent_path();
 		}
@@ -298,31 +318,32 @@ namespace Core {
 	}
 
 	std::optional<std::filesystem::path> RelativeToKey(const std::filesystem::path& path,
-													   const std::filesystem::path::string_type& baseKey)
+													   const PathKeyText& baseKey)
 	{
-		const auto pathKey = PathKey(path);
+		const PathKeyText pathKey = PathKey(path);
 
 		if (!IsKeyWithin(pathKey, baseKey))
 		{
 			return std::nullopt;
 		}
 
-		// The key is the normalized path upper-cased, character for character, so its length
-		// marks where the base ends in the normalized spelling too - and the remainder keeps the
-		// case it was written in.
-		auto rest = NormalizeDirectory(path).native().substr(baseKey.size());
+		const std::size_t baseEndInNormalizedPath = baseKey.size();
+		std::filesystem::path::string_type relativeSpelling = NormalizeDirectory(path).native().substr(baseEndInNormalizedPath);
 
-		while (!rest.empty() && rest.front() == std::filesystem::path::preferred_separator)
+		while (!relativeSpelling.empty() && relativeSpelling.front() == std::filesystem::path::preferred_separator)
 		{
-			rest.erase(0, 1);
+			relativeSpelling.erase(0, 1);
 		}
 
-		return rest.empty() ? std::filesystem::path{"."} : std::filesystem::path{std::move(rest)};
+		return relativeSpelling.empty() ? std::filesystem::path{"."} : std::filesystem::path{std::move(relativeSpelling)};
 	}
 
 	bool IsSameOrWithin(const std::filesystem::path& path, const std::filesystem::path& root)
 	{
-		if (root.empty() || !root.is_absolute() || !path.is_absolute())
+		const bool rootNamesAPlace = !root.empty() && root.is_absolute();
+		const bool pathNamesAPlace = path.is_absolute();
+
+		if (!rootNamesAPlace || !pathNamesAPlace)
 		{
 			return false;
 		}
@@ -333,49 +354,44 @@ namespace Core {
 	Result<std::string> ReadFileBytes(const std::filesystem::path& path,
 									  std::optional<std::uintmax_t> maximumBytes)
 	{
-		const auto tooLarge = [&path, maximumBytes]() {
-			return Error{ErrorCode::TooLarge,
-						 "File is larger than " + std::to_string(*maximumBytes) +
-							 " bytes: " + ToUtf8(path)};
-		};
+		std::error_code sizeError;
+		const std::uintmax_t fileSize = std::filesystem::file_size(path, sizeError);
 
-		std::error_code code;
-		const std::uintmax_t size = std::filesystem::file_size(path, code);
-
-		if (code)
+		if (sizeError)
 		{
-			return Error{TranslateError(code), "Cannot read " + ToUtf8(path) + ": " + code.message()};
+			return Error{.Code = TranslateError(sizeError), .Message = "Cannot read " + ToUtf8(path) + ": " + sizeError.message()};
 		}
 
-		if (maximumBytes && size > *maximumBytes)
+		if (IsOverLimit(fileSize, maximumBytes))
 		{
-			return tooLarge();
+			return FileTooLargeError(path, *maximumBytes);
 		}
 
-		std::ifstream in(path, std::ios::binary);
+		std::ifstream file(path, std::ios::binary);
 
-		if (!in)
+		if (!file)
 		{
-			return Error{ErrorCode::AccessDenied, "Cannot open " + ToUtf8(path)};
+			return Error{.Code = ErrorCode::AccessDenied, .Message = "Cannot open " + ToUtf8(path)};
 		}
 
 		std::string bytes;
-		std::array<char, 64 * 1024> chunk;
+		std::array<char, kReadChunkBytes> chunk;
 
-		while (in)
+		while (file)
 		{
-			in.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
-			bytes.append(chunk.data(), static_cast<std::size_t>(in.gcount()));
+			file.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+			bytes.append(chunk.data(), static_cast<std::size_t>(file.gcount()));
 
-			if (maximumBytes && bytes.size() > *maximumBytes)
+			// Checked again while reading, because the file can grow after its size was taken.
+			if (IsOverLimit(bytes.size(), maximumBytes))
 			{
-				return tooLarge();
+				return FileTooLargeError(path, *maximumBytes);
 			}
 		}
 
-		if (in.bad())
+		if (file.bad())
 		{
-			return Error{ErrorCode::IoFailure, "Read failed: " + ToUtf8(path)};
+			return Error{.Code = ErrorCode::IoFailure, .Message = "Read failed: " + ToUtf8(path)};
 		}
 
 		return bytes;

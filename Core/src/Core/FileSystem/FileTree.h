@@ -19,9 +19,9 @@ namespace Core {
 		std::string Name;
 		bool IsDirectory = false;
 		bool Expanded = false;
-		bool Loaded = false;	// children have been read from disk
-		bool Accessible = true; // false when the directory could not be read
-		bool Ignored = false;	// the ignore query said to treat this as excluded
+		bool ChildrenLoaded = false;
+		bool Readable = true;
+		bool Ignored = false;
 		std::vector<FileNode> Children;
 	};
 
@@ -47,10 +47,9 @@ namespace Core {
 		const FileNode& GetRoot() const { return m_Root; }
 
 	private:
-		bool AskIgnored(const std::filesystem::path& path, bool isDirectory) const;
+		bool IsIgnoredByQuery(const std::filesystem::path& path, bool isDirectory) const;
 
-		// A fresh, unloaded node for what ReadDirectory listed.
-		FileNode NodeFor(const DirectoryEntry& entry) const;
+		FileNode UnloadedNodeFor(const DirectoryEntry& entry) const;
 
 		static void RebaseNode(FileNode& node, const std::filesystem::path& newPath);
 
@@ -59,5 +58,5 @@ namespace Core {
 		IgnoreQuery m_IgnoreQuery;
 	};
 
-	bool FileNodeLess(const FileNode& left, const FileNode& right);
+	bool IsFileNodeListedBefore(const FileNode& left, const FileNode& right);
 }

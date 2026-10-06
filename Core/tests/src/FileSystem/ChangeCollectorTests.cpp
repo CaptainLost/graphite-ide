@@ -7,95 +7,93 @@
 using namespace Core;
 
 namespace {
-	// A fixed origin plus explicit offsets: the rule under test is about elapsed time,
-	// and reading the real clock would make these tests depend on how fast they run.
-	constexpr ChangeCollector::Clock::time_point kStart{};
+	// A fixed start rather than the real clock, so that these tests do not depend on how fast
+	// they run.
+	constexpr ChangeCollector::Clock::time_point kFixedStart{};
 
-	ChangeCollector::Clock::time_point At(int milliseconds)
+	ChangeCollector::Clock::time_point AtMillisecond(int milliseconds)
 	{
-		return kStart + std::chrono::milliseconds{milliseconds};
+		return kFixedStart + std::chrono::milliseconds{milliseconds};
 	}
 
-	constexpr std::chrono::milliseconds kQuiet{250};
+	constexpr std::chrono::milliseconds kQuietPeriod{250};
 }
 
 TEST_CASE("An empty collector hands over nothing")
 {
 	ChangeCollector collector;
 
-	CHECK(collector.TakeSettled(At(1000), kQuiet).empty());
+	CHECK(collector.TakeSettled(AtMillisecond(1000), kQuietPeriod).empty());
 }
 
 TEST_CASE("A change is withheld until the quiet period has passed")
 {
 	ChangeCollector collector;
-	collector.Add("C:/work/src", At(0));
+	collector.Add("C:/work/src", AtMillisecond(0));
 
-	CHECK(collector.TakeSettled(At(100), kQuiet).empty());
-	CHECK(collector.TakeSettled(At(249), kQuiet).empty());
+	CHECK(collector.TakeSettled(AtMillisecond(100), kQuietPeriod).empty());
+	CHECK(collector.TakeSettled(AtMillisecond(249), kQuietPeriod).empty());
 
-	const auto settled = collector.TakeSettled(At(250), kQuiet);
+	const std::vector<std::filesystem::path> settled = collector.TakeSettled(AtMillisecond(250), kQuietPeriod);
 
 	REQUIRE(settled.size() == 1);
 	CHECK(settled[0] == std::filesystem::path{"C:/work/src"});
 }
 
-TEST_CASE("A later change restarts the quiet period")
+TEST_CASE("A later change restarts the quiet period so that a build still writing is not handed over half-written")
 {
 	ChangeCollector collector;
-	collector.Add("C:/work/src", At(0));
+	collector.Add("C:/work/src", AtMillisecond(0));
 
-	// The second change arrives before the first has settled: a build writes for
-	// several seconds, and refreshing partway through would show a half-written state.
-	collector.Add("C:/work/docs", At(200));
+	const ChangeCollector::Clock::time_point beforeTheFirstSettled = AtMillisecond(200);
+	collector.Add("C:/work/docs", beforeTheFirstSettled);
 
-	CHECK(collector.TakeSettled(At(300), kQuiet).empty());
-	CHECK(collector.TakeSettled(At(450), kQuiet).size() == 2);
+	CHECK(collector.TakeSettled(AtMillisecond(300), kQuietPeriod).empty());
+	CHECK(collector.TakeSettled(AtMillisecond(450), kQuietPeriod).size() == 2);
 }
 
 TEST_CASE("The same directory is reported once however often it changed")
 {
 	ChangeCollector collector;
-	collector.Add("C:/work/src", At(0));
-	collector.Add("C:/work/src", At(10));
-	collector.Add("C:/work/src", At(20));
+	collector.Add("C:/work/src", AtMillisecond(0));
+	collector.Add("C:/work/src", AtMillisecond(10));
+	collector.Add("C:/work/src", AtMillisecond(20));
 
-	CHECK(collector.TakeSettled(At(500), kQuiet).size() == 1);
+	CHECK(collector.TakeSettled(AtMillisecond(500), kQuietPeriod).size() == 1);
 }
 
 TEST_CASE("Taking settled changes empties the collector")
 {
 	ChangeCollector collector;
-	collector.Add("C:/work/src", At(0));
+	collector.Add("C:/work/src", AtMillisecond(0));
 
-	REQUIRE(collector.TakeSettled(At(500), kQuiet).size() == 1);
-	CHECK(collector.TakeSettled(At(1000), kQuiet).empty());
+	REQUIRE(collector.TakeSettled(AtMillisecond(500), kQuietPeriod).size() == 1);
+	CHECK(collector.TakeSettled(AtMillisecond(1000), kQuietPeriod).empty());
 }
 
-TEST_CASE("Overflow is reported once and then cleared")
+TEST_CASE("Overflow is not reported until it settles and is then reported by one take only so the consumer acts on it once")
 {
 	ChangeCollector collector;
-	collector.AddOverflow(At(0));
+	collector.AddOverflow(AtMillisecond(0));
 
-	CHECK_FALSE(collector.HasOverflowed()); // not until it settles
+	CHECK_FALSE(collector.HasOverflowed());
 
-	REQUIRE(collector.TakeSettled(At(500), kQuiet).empty());
+	REQUIRE(collector.TakeSettled(AtMillisecond(500), kQuietPeriod).empty());
 	CHECK(collector.HasOverflowed());
 
-	// The consumer has acted on it; a second read must not make it act again.
-	REQUIRE(collector.TakeSettled(At(1000), kQuiet).empty());
+	REQUIRE(collector.TakeSettled(AtMillisecond(1000), kQuietPeriod).empty());
 	CHECK_FALSE(collector.HasOverflowed());
 }
 
 TEST_CASE("Overflow settles alongside ordinary changes")
 {
 	ChangeCollector collector;
-	collector.Add("C:/work/src", At(0));
-	collector.AddOverflow(At(100));
+	collector.Add("C:/work/src", AtMillisecond(0));
+	collector.AddOverflow(AtMillisecond(100));
 
-	CHECK(collector.TakeSettled(At(200), kQuiet).empty());
+	CHECK(collector.TakeSettled(AtMillisecond(200), kQuietPeriod).empty());
 
-	const auto settled = collector.TakeSettled(At(400), kQuiet);
+	const std::vector<std::filesystem::path> settled = collector.TakeSettled(AtMillisecond(400), kQuietPeriod);
 
 	CHECK(settled.size() == 1);
 	CHECK(collector.HasOverflowed());
@@ -105,24 +103,27 @@ TEST_CASE("Nothing pending settles at no time")
 {
 	ChangeCollector collector;
 
-	CHECK_FALSE(collector.SettlesAt(kQuiet).has_value());
+	CHECK_FALSE(collector.SettlesAt(kQuietPeriod).has_value());
 }
 
-TEST_CASE("Pending changes settle a quiet period after the last one")
+TEST_CASE("Pending changes settle a quiet period after the last one which is the earliest a take hands them over")
 {
 	ChangeCollector collector;
-	collector.Add("C:/a", At(0));
-	collector.Add("C:/b", At(100));
+	collector.Add("C:/a", AtMillisecond(0));
+	collector.Add("C:/b", AtMillisecond(100));
 
-	REQUIRE(collector.SettlesAt(kQuiet).has_value());
-	CHECK(*collector.SettlesAt(kQuiet) == At(350));
+	REQUIRE(collector.SettlesAt(kQuietPeriod).has_value());
+	CHECK(*collector.SettlesAt(kQuietPeriod) == AtMillisecond(350));
+
+	CHECK(collector.TakeSettled(AtMillisecond(349), kQuietPeriod).empty());
+	CHECK(collector.TakeSettled(AtMillisecond(350), kQuietPeriod).size() == 2);
 }
 
 TEST_CASE("Settled changes taken leave nothing to settle")
 {
 	ChangeCollector collector;
-	collector.Add("C:/a", At(0));
-	(void)collector.TakeSettled(At(300), kQuiet);
+	collector.Add("C:/a", AtMillisecond(0));
+	(void)collector.TakeSettled(AtMillisecond(300), kQuietPeriod);
 
-	CHECK_FALSE(collector.SettlesAt(kQuiet).has_value());
+	CHECK_FALSE(collector.SettlesAt(kQuietPeriod).has_value());
 }

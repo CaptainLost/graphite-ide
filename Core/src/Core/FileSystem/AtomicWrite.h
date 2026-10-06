@@ -11,9 +11,8 @@ namespace Core {
 	Result<std::filesystem::path> PickAvailablePath(
 		const std::function<std::filesystem::path(int)>& candidateFor);
 
-	// The temporary goes beside the target, not in the temp directory: same volume, and it
-	// inherits the target directory's ACLs. The stream is closed but not flushed, so this
-	// protects against process death, not power loss.
-	Result<void> WriteFileAtomically(const std::filesystem::path& path,
+	// The stream is closed but not flushed to disk, so a write survives the process dying but
+	// not the power failing.
+	Result<void> WriteFileAtomically(const std::filesystem::path& target,
 									 std::string_view bytes);
 }

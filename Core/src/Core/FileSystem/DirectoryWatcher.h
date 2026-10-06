@@ -21,15 +21,7 @@
 
 namespace Core {
 
-	// Whether a path, relative to the watched root, is one of the few files that say what a
-	// repository is rather than what it holds: HEAD, the index, packed-refs, and everything
-	// under refs. Those change exactly when the answer to "what is in this repository"
-	// changes, which is what makes them worth hearing about when the rest of .git - objects
-	// rewritten on every operation, lock files, edit messages, reflogs - is not.
-	//
-	// Only inside the repository's own directory. A project with its own file called HEAD
-	// has an ordinary file, and editing it is an edit to the working tree like any other.
-	bool NamesRepositoryState(const std::filesystem::path& relative);
+	bool NamesRepositoryState(const std::filesystem::path& pathRelativeToRoot);
 
 	class DirectoryWatcher final : NonCopyable
 	{
@@ -38,10 +30,9 @@ namespace Core {
 
 		~DirectoryWatcher();
 
-		// Returns only once the watch is actually armed. Windows buffers nothing for a
-		// directory handle until a read has been issued against it, and that read happens on
-		// the worker thread, so returning as soon as the handle existed would drop every
-		// change made before the worker was first scheduled.
+		// Returns only once the watch is armed. Windows records nothing for a directory handle
+		// until a read has been issued against it, and that read is issued on the worker thread,
+		// so returning as soon as the handle exists would lose every change made before then.
 		static Result<Scope<DirectoryWatcher>> Start(
 			const std::filesystem::path& root);
 
@@ -51,11 +42,7 @@ namespace Core {
 
 			bool Overflowed = false;
 
-			// Something a commit, a checkout, a fetch or a rebase rewrote - see
-			// NamesRepositoryState. Carried apart from Directories because the working tree
-			// did not change: a branch moving is nothing for the file tree to redraw, and
-			// everything for whatever draws the history.
-			bool RepositoryState = false;
+			bool RepositoryStateChanged = false;
 
 			std::optional<std::filesystem::path> MovedTo;
 		};
@@ -72,31 +59,26 @@ namespace Core {
 		std::filesystem::path QueryHandlePath() const;
 
 		void CheckForMove();
-
-		// Set by the watcher thread, taken by TakeSettled. Under the same mutex as the
-		// collector beside it: they describe the same batch, and a take that read one
-		// without the other could report a repository change in a batch that no longer
-		// carries it.
-		bool m_RepositoryState = false;
-
 		void CheckForMoveIfDue();
-		void RecordChange(const std::filesystem::path& path);
-
-		// The FILE_NOTIFY_INFORMATION chain a read filled, exactly as many bytes as it reported.
-		void RecordChangesIn(std::span<const std::byte> records);
-
+		void RecordChange(const std::filesystem::path& changedPath);
+		void RecordChangesIn(std::span<const std::byte> filledNotificationRecords);
 		void RecordOverflow();
+
+		static constexpr std::chrono::milliseconds kMoveCheckInterval{2000};
+
+		bool m_RepositoryStateChanged = false;
 
 		std::filesystem::path m_Root;
 		std::thread m_Thread;
-		std::mutex m_Mutex; // guards m_Collector and m_MovedTo
+
+		// Guards m_Collector, m_RepositoryStateChanged and m_MovedTo, which together make one
+		// batch: a take that read one of them without the others could split the batch.
+		std::mutex m_Mutex;
 		ChangeCollector m_Collector;
 
 		std::atomic<bool> m_Running{true};
 
 		std::promise<Result<void>> m_Armed;
-
-		static constexpr std::chrono::milliseconds kMoveCheckInterval{2000};
 
 		std::filesystem::path m_WatchedPath;
 

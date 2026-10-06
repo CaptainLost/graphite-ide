@@ -6,36 +6,36 @@ namespace Core {
 
 	void ChangeCollector::Add(const std::filesystem::path& directory, Clock::time_point now)
 	{
-		m_Pending.insert(directory);
-		m_LastChange = now;
-		m_HasPending = true;
+		m_PendingDirectories.insert(directory);
+		m_LastChangeTime = now;
+		m_HasPendingChanges = true;
 	}
 
 	void ChangeCollector::AddOverflow(Clock::time_point now)
 	{
-		m_PendingOverflow = true;
-		m_LastChange = now;
-		m_HasPending = true;
+		m_PendingBatchOverflowed = true;
+		m_LastChangeTime = now;
+		m_HasPendingChanges = true;
 	}
 
 	std::vector<std::filesystem::path> ChangeCollector::TakeSettled(
 		Clock::time_point now, std::chrono::milliseconds quietPeriod)
 	{
-		// Cleared on every call, so a consumer that acted on an overflow is not told again on
-		// the next frame.
-		m_Overflowed = false;
+		m_LastBatchOverflowed = false;
 
-		if (!m_HasPending || now - m_LastChange < quietPeriod)
+		const bool stillWithinQuietPeriod = now - m_LastChangeTime < quietPeriod;
+
+		if (!m_HasPendingChanges || stillWithinQuietPeriod)
 		{
 			return {};
 		}
 
-		std::vector<std::filesystem::path> settled(m_Pending.begin(), m_Pending.end());
+		std::vector<std::filesystem::path> settled(m_PendingDirectories.begin(), m_PendingDirectories.end());
 
-		m_Pending.clear();
-		m_HasPending = false;
-		m_Overflowed = m_PendingOverflow;
-		m_PendingOverflow = false;
+		m_PendingDirectories.clear();
+		m_HasPendingChanges = false;
+		m_LastBatchOverflowed = m_PendingBatchOverflowed;
+		m_PendingBatchOverflowed = false;
 
 		return settled;
 	}
@@ -43,11 +43,11 @@ namespace Core {
 	std::optional<ChangeCollector::Clock::time_point> ChangeCollector::SettlesAt(
 		std::chrono::milliseconds quietPeriod) const
 	{
-		if (!m_HasPending)
+		if (!m_HasPendingChanges)
 		{
 			return std::nullopt;
 		}
 
-		return m_LastChange + quietPeriod;
+		return m_LastChangeTime + quietPeriod;
 	}
 }

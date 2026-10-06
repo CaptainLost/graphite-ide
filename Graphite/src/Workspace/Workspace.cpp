@@ -277,7 +277,7 @@ namespace Graphite {
 		// Published before the tree work below, and on its own path: a branch moving is
 		// nothing for the file tree to refresh, and the subscribers that care re-ask git
 		// rather than reading anything this function touches.
-		if (changed.RepositoryState)
+		if (changed.RepositoryStateChanged)
 		{
 			m_Events.Publish(RepositoryChangedEvent{});
 		}
@@ -516,7 +516,7 @@ namespace Graphite {
 
 		// A directory that was never expanded has nothing loaded to correct: it reads the
 		// current state whenever the user opens it.
-		if (node != nullptr && node->IsDirectory && node->Loaded)
+		if (node != nullptr && node->IsDirectory && node->ChildrenLoaded)
 		{
 			m_Tree.Refresh(*node);
 		}

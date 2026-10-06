@@ -20,58 +20,83 @@
 
 namespace Core {
 
+	namespace {
+		constexpr int kFirstNumberedCopy = 2;
+
+		constexpr std::string_view kForbiddenFileNameCharacters = "\\/:*?\"<>|";
+
+		Error AlreadyExistsError(const std::filesystem::path& path)
+		{
+			return Error{.Code = ErrorCode::InvalidArgument, .Message = std::format("'{}' already exists", ToUtf8(path))};
+		}
+
+		Error NoLongerExistsError(const std::filesystem::path& path)
+		{
+			return Error{.Code = ErrorCode::NotFound, .Message = std::format("'{}' no longer exists", ToUtf8(path))};
+		}
+
+#ifdef CORE_PLATFORM_WINDOWS
+		constexpr DWORD kShareWithNoOne = 0;
+
+		// MoveFileExW without MOVEFILE_REPLACE_EXISTING: the OS itself refuses an occupied destination,
+		// which a check before moving could not promise, since a file can appear in between.
+		constexpr DWORD kRefuseOccupiedDestination = 0;
+
+		bool IsAlreadyExistsError(DWORD win32Error)
+		{
+			return win32Error == ERROR_FILE_EXISTS || win32Error == ERROR_ALREADY_EXISTS;
+		}
+#endif
+	}
+
 	Result<void> CreateEmptyFile(const std::filesystem::path& path)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		// CREATE_NEW makes the OS itself refuse an existing target, so no file appearing
-		// between a check and the act could be truncated.
-		const UniqueHandle handle{::CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
-												FILE_ATTRIBUTE_NORMAL, nullptr)};
+		// CREATE_NEW has the OS itself refuse an existing file, which a check before creating could
+		// not promise: a file can appear in between and would be truncated.
+		const UniqueHandle newFile{::CreateFileW(path.c_str(), GENERIC_WRITE, kShareWithNoOne, nullptr, CREATE_NEW,
+												 FILE_ATTRIBUTE_NORMAL, nullptr)};
 
-		if (!handle)
+		if (!newFile)
 		{
-			const DWORD error = ::GetLastError();
+			const DWORD win32Error = ::GetLastError();
 
-			if (error == ERROR_FILE_EXISTS || error == ERROR_ALREADY_EXISTS)
+			if (IsAlreadyExistsError(win32Error))
 			{
-				return Error{ErrorCode::InvalidArgument,
-							 std::format("'{}' already exists", ToUtf8(path))};
+				return AlreadyExistsError(path);
 			}
 
-			const ErrorCode code = ErrorCodeFromWin32(error);
+			const ErrorCode errorCode = ErrorCodeFromWin32(win32Error);
 
-			if (code == ErrorCode::AccessDenied)
+			if (errorCode == ErrorCode::AccessDenied)
 			{
-				return Error{code, std::format("cannot create '{}': access denied", ToUtf8(path))};
+				return Error{.Code = errorCode, .Message = std::format("cannot create '{}': access denied", ToUtf8(path))};
 			}
 
-			return Error{code,
-						 std::format("cannot create '{}' (error {})", ToUtf8(path), error)};
+			return Error{.Code = errorCode, .Message = std::format("cannot create '{}' (error {})", ToUtf8(path), win32Error)};
 		}
 
 		return Result<void>::Ok();
 #else
-		// std::filesystem has no atomic exclusive-create before C++23, so a check-then-act
-		// fallback would be a silent downgrade rather than a port.
-		return Error{ErrorCode::Unsupported,
-					 std::format("creating '{}' is not implemented on this platform",
-								 ToUtf8(path))};
+		// Before C++23 std::filesystem cannot create a file exclusively, and a check followed by a
+		// create races, so a fallback here would be a silent downgrade rather than a port.
+		return Error{.Code = ErrorCode::Unsupported, .Message = std::format("creating '{}' is not implemented on this platform", ToUtf8(path))};
 #endif
 	}
 
 	Result<void> MakeDirectory(const std::filesystem::path& path)
 	{
-		std::error_code code;
-		if (std::filesystem::exists(path, code))
+		std::error_code error;
+		if (std::filesystem::exists(path, error))
 		{
-			return Error{ErrorCode::InvalidArgument,
-						 std::format("'{}' already exists", ToUtf8(path))};
+			return AlreadyExistsError(path);
 		}
 
-		if (!std::filesystem::create_directory(path, code) || code)
+		const bool created = std::filesystem::create_directory(path, error);
+
+		if (!created || error)
 		{
-			return Error{ErrorCode::IoFailure,
-						 std::format("cannot create '{}': {}", ToUtf8(path), code.message())};
+			return Error{.Code = ErrorCode::IoFailure, .Message = std::format("cannot create '{}': {}", ToUtf8(path), error.message())};
 		}
 
 		return Result<void>::Ok();
@@ -80,49 +105,46 @@ namespace Core {
 	Result<void> Rename(const std::filesystem::path& from, const std::filesystem::path& to)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		// No MOVEFILE_REPLACE_EXISTING: the OS refuses an occupied destination, so a file
-		// appearing after a check cannot be clobbered.
-		if (::MoveFileExW(from.c_str(), to.c_str(), 0) != 0)
+		const bool moved = ::MoveFileExW(from.c_str(), to.c_str(), kRefuseOccupiedDestination) != 0;
+
+		if (moved)
 		{
 			return Result<void>::Ok();
 		}
 
-		const DWORD error = ::GetLastError();
+		const DWORD win32Error = ::GetLastError();
 
-		if (error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS)
+		if (IsAlreadyExistsError(win32Error))
 		{
-			return Error{ErrorCode::InvalidArgument, std::format("'{}' already exists", ToUtf8(to))};
+			return AlreadyExistsError(to);
 		}
 
-		const ErrorCode code = ErrorCodeFromWin32(error);
+		const ErrorCode errorCode = ErrorCodeFromWin32(win32Error);
 
-		if (code == ErrorCode::NotFound)
+		if (errorCode == ErrorCode::NotFound)
 		{
-			return Error{code, std::format("'{}' no longer exists", ToUtf8(from))};
+			return NoLongerExistsError(from);
 		}
 
-		if (code == ErrorCode::AccessDenied)
+		if (errorCode == ErrorCode::AccessDenied)
 		{
-			return Error{code, std::format("cannot rename '{}': access denied", ToUtf8(from))};
+			return Error{.Code = errorCode, .Message = std::format("cannot rename '{}': access denied", ToUtf8(from))};
 		}
 
-		return Error{code,
-					 std::format("cannot rename '{}' (error {})", ToUtf8(from), error)};
+		return Error{.Code = errorCode, .Message = std::format("cannot rename '{}' (error {})", ToUtf8(from), win32Error)};
 #else
-		// std::filesystem::rename replaces an existing destination, which this function
-		// must never do; a correct port needs the platform's own non-replacing move.
-		return Error{ErrorCode::Unsupported,
-					 std::format("renaming '{}' is not implemented on this platform",
-								 ToUtf8(from))};
+		// std::filesystem::rename replaces an existing destination, which this function must never
+		// do, so a port needs the platform's own move that refuses one.
+		return Error{.Code = ErrorCode::Unsupported, .Message = std::format("renaming '{}' is not implemented on this platform", ToUtf8(from))};
 #endif
 	}
 
 	Result<std::filesystem::path> Duplicate(const std::filesystem::path& path)
 	{
-		std::error_code code;
-		if (!std::filesystem::exists(path, code))
+		std::error_code error;
+		if (!std::filesystem::exists(path, error))
 		{
-			return Error{ErrorCode::NotFound, std::format("'{}' no longer exists", ToUtf8(path))};
+			return NoLongerExistsError(path);
 		}
 
 		const std::filesystem::path target = MakeUniquePath(path);
@@ -130,12 +152,11 @@ namespace Core {
 		std::filesystem::copy(path, target,
 							  std::filesystem::copy_options::recursive |
 								  std::filesystem::copy_options::copy_symlinks,
-							  code);
+							  error);
 
-		if (code)
+		if (error)
 		{
-			return Error{ErrorCode::IoFailure,
-						 std::format("cannot copy '{}': {}", ToUtf8(path), code.message())};
+			return Error{.Code = ErrorCode::IoFailure, .Message = std::format("cannot copy '{}': {}", ToUtf8(path), error.message())};
 		}
 
 		return target;
@@ -143,45 +164,44 @@ namespace Core {
 
 	Result<void> MoveToRecycleBin(const std::filesystem::path& path)
 	{
-		std::error_code code;
-		if (!std::filesystem::exists(path, code))
+		std::error_code ignoredError;
+		if (!std::filesystem::exists(path, ignoredError))
 		{
-			return Error{ErrorCode::NotFound, std::format("'{}' no longer exists", ToUtf8(path))};
+			return NoLongerExistsError(path);
 		}
 
 #ifdef CORE_PLATFORM_WINDOWS
-		// SHFILEOPSTRUCTW::pFrom is a list of paths terminated by an EXTRA null. Passing
-		// an ordinary null-terminated string makes the API read past the buffer.
-		std::wstring source = path.wstring();
-		source.push_back(L'\0');
-		source.push_back(L'\0');
+		// SHFILEOPSTRUCTW::pFrom is a list of paths ended by an extra null, so an ordinary
+		// null-terminated string makes the API read past the buffer.
+		std::wstring pathList = path.wstring();
+		pathList.push_back(L'\0');
+		pathList.push_back(L'\0');
 
-		SHFILEOPSTRUCTW operation{};
-		operation.wFunc = FO_DELETE;
-		operation.pFrom = source.c_str();
-		operation.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
+		SHFILEOPSTRUCTW operation{
+			.wFunc = FO_DELETE,
+			.pFrom = pathList.c_str(),
+			.fFlags = FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT,
+		};
 
-		const int result = ::SHFileOperationW(&operation);
+		const int operationStatus = ::SHFileOperationW(&operation);
 
-		if (result != 0 || operation.fAnyOperationsAborted != FALSE)
+		if (operationStatus != 0 || operation.fAnyOperationsAborted != FALSE)
 		{
-			return Error{ErrorCode::IoFailure,
-						 std::format("cannot move '{}' to the Recycle Bin", ToUtf8(path))};
+			return Error{.Code = ErrorCode::IoFailure, .Message = std::format("cannot move '{}' to the Recycle Bin", ToUtf8(path))};
 		}
 
 		return Result<void>::Ok();
 #else
-		return Error{ErrorCode::Unsupported,
-					 std::format("moving '{}' to the recycle bin is not implemented on "
-								 "this platform",
-								 ToUtf8(path))};
+		return Error{.Code = ErrorCode::Unsupported, .Message = std::format("moving '{}' to the recycle bin is not implemented on "
+																			"this platform",
+																			ToUtf8(path))};
 #endif
 	}
 
 	std::filesystem::path MakeUniquePath(const std::filesystem::path& path)
 	{
-		std::error_code code;
-		if (!std::filesystem::exists(path, code))
+		std::error_code ignoredError;
+		if (!std::filesystem::exists(path, ignoredError))
 		{
 			return path;
 		}
@@ -191,12 +211,12 @@ namespace Core {
 		const std::string extension = ToUtf8(path.extension());
 
 		std::filesystem::path candidate = parent / FromUtf8(stem + " copy" + extension);
-		int attempt = 2;
+		int copyNumber = kFirstNumberedCopy;
 
-		while (std::filesystem::exists(candidate, code))
+		while (std::filesystem::exists(candidate, ignoredError))
 		{
-			candidate = parent / FromUtf8(stem + " copy " + std::to_string(attempt) + extension);
-			++attempt;
+			candidate = parent / FromUtf8(stem + " copy " + std::to_string(copyNumber) + extension);
+			++copyNumber;
 		}
 
 		return candidate;
@@ -209,33 +229,34 @@ namespace Core {
 			return false;
 		}
 
-		if (name.find_first_not_of(" \t") == std::string_view::npos)
+		if (ContainsOnlySpacesAndTabs(name))
 		{
 			return false;
 		}
 
-		if (name.find_first_of("\\/:*?\"<>|") != std::string_view::npos)
+		if (name.find_first_of(kForbiddenFileNameCharacters) != std::string_view::npos)
 		{
 			return false;
 		}
 
-		if (name.back() == '.' || name.back() == ' ')
+		// Windows strips a trailing dot or space from a name, so "notes." would silently create "notes".
+		const bool endsInDotOrSpace = name.back() == '.' || name.back() == ' ';
+
+		if (endsInDotOrSpace)
 		{
 			return false;
 		}
 
-		// A reserved device name is reserved with any extension too: NUL.txt cannot be
-		// created either. Compare against the part before the first dot.
-		const std::size_t dot = name.find('.');
-		const std::string_view base = dot == std::string_view::npos ? name : name.substr(0, dot);
+		const std::size_t firstDot = name.find('.');
+		const std::string_view nameBeforeFirstDot = firstDot == std::string_view::npos ? name : name.substr(0, firstDot);
 
-		constexpr std::array<std::string_view, 22> kReserved{
+		constexpr std::array<std::string_view, 22> kReservedDeviceNames{
 			"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
 			"COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"};
 
-		for (const std::string_view reserved : kReserved)
+		for (const std::string_view reservedDeviceName : kReservedDeviceNames)
 		{
-			if (Core::EqualsIgnoringCase(base, reserved))
+			if (Core::EqualsIgnoringCase(nameBeforeFirstDot, reservedDeviceName))
 			{
 				return false;
 			}

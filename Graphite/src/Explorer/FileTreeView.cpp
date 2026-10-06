@@ -168,7 +168,7 @@ namespace Graphite {
 			m_Workspace.Reload();
 			Core::FileNode& root = m_Workspace.GetTree().GetRoot();
 
-			if (root.Accessible)
+			if (root.Readable)
 			{
 				APP_INFO("File tree refreshed");
 			}
@@ -727,7 +727,7 @@ namespace Graphite {
 
 	void FileTreeView::ReadFolderFromDisk(Core::FileNode& folder)
 	{
-		if (!folder.Loaded)
+		if (!folder.ChildrenLoaded)
 		{
 			// Expand fails only on a file node; an unreadable folder it logs and marks itself.
 			static_cast<void>(m_Workspace.GetTree().Expand(folder));
@@ -813,8 +813,7 @@ namespace Graphite {
 
 		// The callback runs on every frame the field is active; the frame it activates on
 		// selects the stem (AutoSelectAll would take the extension too).
-		const auto selectStem = [](ImGuiInputTextCallbackData* data)
-		{
+		const auto selectStem = [](ImGuiInputTextCallbackData* data) {
 			auto& self = *static_cast<FileTreeView*>(data->UserData);
 
 			if (data->EventActivated)
@@ -971,7 +970,7 @@ namespace Graphite {
 		}
 
 		const bool dimmed =
-			!node.Accessible || (node.Ignored && m_GitIgnoredDisplay == GitIgnoredDisplay::Dim);
+			!node.Readable || (node.Ignored && m_GitIgnoredDisplay == GitIgnoredDisplay::Dim);
 
 		if (dimmed)
 		{
@@ -987,7 +986,7 @@ namespace Graphite {
 		{
 			ImGui::PopStyleColor();
 
-			if (!node.Accessible && ImGui::IsItemHovered())
+			if (!node.Readable && ImGui::IsItemHovered())
 			{
 				ImGui::SetTooltip("This folder could not be read.");
 			}

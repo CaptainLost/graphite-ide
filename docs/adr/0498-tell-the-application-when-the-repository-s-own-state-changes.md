@@ -29,7 +29,7 @@ The two are independent. Either one alone is enough to show a stale history.
 Name the few paths under `.git` that say what a repository *is* rather than
 what it holds: `HEAD`, `index`, `packed-refs`, and everything under `refs`.
 `Core::NamesRepositoryState` decides, and the watcher reports a change to one
-of them as `Changes::RepositoryState` — a flag, not a directory.
+of them as `Changes::RepositoryStateChanged` — a flag, not a directory.
 
 Carry it as its own event, `RepositoryChangedEvent`, published by `Workspace`
 beside `WorkspaceFilesChangedEvent` rather than folded into it. The event is

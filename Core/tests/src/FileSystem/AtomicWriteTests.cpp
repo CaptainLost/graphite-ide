@@ -17,120 +17,116 @@
 
 using Core::WriteFileAtomically;
 
+namespace {
+	std::string ReadWholeFile(const std::filesystem::path& path)
+	{
+		std::ifstream stream{path, std::ios::binary};
+		return std::string{std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
+	}
+}
+
 TEST_CASE("Writing over an existing file leaves the new content")
 {
-	TempDirectory temp;
-	const auto path = temp.MakeFile("target.txt", "original");
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path target = temporaryDirectory.MakeFile("target.txt", "original");
 
-	REQUIRE(WriteFileAtomically(path, "replaced"));
+	REQUIRE(WriteFileAtomically(target, "replaced"));
 
-	std::ifstream stream{path, std::ios::binary};
-	std::string contents{std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
+	const std::string contents = ReadWholeFile(target);
 
 	CHECK(contents == "replaced");
 }
 
 TEST_CASE("Writing a file that does not exist yet creates it")
 {
-	TempDirectory temp;
-	const auto path = temp.GetPath() / "target.txt";
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path target = temporaryDirectory.GetPath() / "target.txt";
 
-	REQUIRE(WriteFileAtomically(path, "content"));
+	REQUIRE(WriteFileAtomically(target, "content"));
 
-	std::ifstream stream{path, std::ios::binary};
-	std::string contents{std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
+	const std::string contents = ReadWholeFile(target);
 
 	CHECK(contents == "content");
 }
 
 TEST_CASE("An occupied .tmp name is stepped over rather than clobbered")
 {
-	TempDirectory temp;
-	const auto path = temp.MakeFile("target.txt", "original");
-	const auto occupied = temp.MakeFile("target.txt.tmp", "someone else's data");
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path target = temporaryDirectory.MakeFile("target.txt", "original");
+	const std::filesystem::path occupied = temporaryDirectory.MakeFile("target.txt.tmp", "someone else's data");
 
-	REQUIRE(WriteFileAtomically(path, "replaced"));
+	REQUIRE(WriteFileAtomically(target, "replaced"));
 
-	std::ifstream stream{occupied, std::ios::binary};
-	std::string contents{std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
+	const std::string occupiedContents = ReadWholeFile(occupied);
 
-	CHECK(contents == "someone else's data");
+	CHECK(occupiedContents == "someone else's data");
 
-	std::ifstream targetStream{path, std::ios::binary};
-	std::string targetContents{std::istreambuf_iterator<char>{targetStream},
-							   std::istreambuf_iterator<char>{}};
+	const std::string targetContents = ReadWholeFile(target);
 
 	CHECK(targetContents == "replaced");
 }
 
 TEST_CASE("A write to a missing directory fails and leaves nothing behind")
 {
-	TempDirectory temp;
-	const auto path = temp.GetPath() / "missing-directory" / "target.txt";
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path target = temporaryDirectory.GetPath() / "missing-directory" / "target.txt";
 
-	CHECK_FALSE(WriteFileAtomically(path, "content"));
-	CHECK_FALSE(std::filesystem::exists(path));
-	CHECK_FALSE(std::filesystem::exists(temp.GetPath() / "missing-directory"));
+	CHECK_FALSE(WriteFileAtomically(target, "content"));
+	CHECK_FALSE(std::filesystem::exists(target));
+	CHECK_FALSE(std::filesystem::exists(temporaryDirectory.GetPath() / "missing-directory"));
 }
 
 #ifdef CORE_PLATFORM_WINDOWS
-TEST_CASE("A failed write leaves an existing target and its content untouched")
+TEST_CASE("A write to a target another program holds open fails and leaves the target and its content untouched with no temporary behind")
 {
-	TempDirectory temp;
-	const auto path = temp.MakeFile("target.txt", "original");
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path target = temporaryDirectory.MakeFile("target.txt", "original");
 
-	// Opened with no sharing at all, so ReplaceFileW cannot get at it: this is the
-	// "file held open by another program" case ErrorCodeFor exists to name, provoked
-	// deterministically against real content rather than the missing-directory case
-	// covered above, which never has a target to protect in the first place.
-	const HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING,
-										FILE_ATTRIBUTE_NORMAL, nullptr);
-	REQUIRE(handle != INVALID_HANDLE_VALUE);
+	const DWORD shareNothing = 0;
+	const HANDLE heldOpenByAnotherProgram = ::CreateFileW(target.c_str(), GENERIC_READ, shareNothing, nullptr, OPEN_EXISTING,
+														  FILE_ATTRIBUTE_NORMAL, nullptr);
+	REQUIRE(heldOpenByAnotherProgram != INVALID_HANDLE_VALUE);
 
-	CHECK_FALSE(WriteFileAtomically(path, "replaced"));
+	CHECK_FALSE(WriteFileAtomically(target, "replaced"));
 
-	::CloseHandle(handle);
+	::CloseHandle(heldOpenByAnotherProgram);
 
-	std::ifstream stream{path, std::ios::binary};
-	std::string contents{std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
+	const std::string contents = ReadWholeFile(target);
 	CHECK(contents == "original");
 
-	// No debris either: the temporary that held "replaced" must be gone. The count is
-	// asserted rather than only the names, because an iterator that failed to open the
-	// directory yields nothing at all — a loop body that never runs would let this pass
-	// having checked nothing, which is exactly the shape of a test that quietly stops
-	// testing.
-	std::error_code code;
-	std::vector<std::string> names;
+	// The whole listing is compared rather than each name checked in a loop, because a
+	// directory that failed to open lists nothing, and a loop over nothing checks nothing.
+	std::error_code listingError;
+	std::vector<std::string> fileNames;
 
-	for (const auto& entry : std::filesystem::directory_iterator{temp.GetPath(), code})
+	for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator{temporaryDirectory.GetPath(), listingError})
 	{
-		names.push_back(Core::ToUtf8(entry.path().filename()));
+		fileNames.push_back(Core::ToUtf8(entry.path().filename()));
 	}
 
-	CHECK_FALSE(code);
-	CHECK(names == std::vector<std::string>{"target.txt"});
+	CHECK_FALSE(listingError);
+	CHECK(fileNames == std::vector<std::string>{"target.txt"});
 }
 
 TEST_CASE("An alternate data stream survives an atomic write")
 {
-	TempDirectory temp;
-	const std::filesystem::path target = temp.GetPath() / "target.txt";
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path target = temporaryDirectory.GetPath() / "target.txt";
 
 	{
 		std::ofstream content{target, std::ios::binary};
 		content << "original";
 	}
 	{
-		std::ofstream stream{target.string() + ":meta", std::ios::binary};
-		stream << "kept";
+		std::ofstream alternateStream{target.string() + ":meta", std::ios::binary};
+		alternateStream << "kept";
 	}
 
 	REQUIRE(WriteFileAtomically(target, "replaced"));
 
-	std::ifstream stream{target.string() + ":meta", std::ios::binary};
+	std::ifstream alternateStream{target.string() + ":meta", std::ios::binary};
 	std::string recovered;
-	stream >> recovered;
+	alternateStream >> recovered;
 
 	CHECK(recovered == "kept");
 }

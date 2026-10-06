@@ -14,135 +14,148 @@
 
 namespace Core {
 
+	namespace {
+		constexpr int kAttemptLimit = 100;
+	}
+
 	Result<std::filesystem::path> PickAvailablePath(
 		const std::function<std::filesystem::path(int)>& candidateFor)
 	{
-		for (int attempt = 0; attempt < 100; ++attempt)
+		for (int attempt = 0; attempt < kAttemptLimit; ++attempt)
 		{
 			const std::filesystem::path candidate = candidateFor(attempt);
 
-			std::error_code code;
-			const bool exists = std::filesystem::exists(candidate, code);
+			std::error_code statError;
+			const bool candidateExists = std::filesystem::exists(candidate, statError);
 
-			// A stat error is not "nothing is there": treating it as absence would hand back
-			// a name something already occupies.
-			if (code)
+			// A failed stat is not "nothing is there": taking it for absence would hand back a
+			// name something already occupies.
+			if (statError)
 			{
-				return Error{ErrorCode::IoFailure,
-							 std::format("cannot tell whether '{}' exists: {}",
-										 ToUtf8(candidate), code.message())};
+				return Error{.Code = ErrorCode::IoFailure, .Message = std::format("cannot tell whether '{}' exists: {}", ToUtf8(candidate), statError.message())};
 			}
 
-			if (!exists)
+			if (!candidateExists)
 			{
 				return candidate;
 			}
 		}
 
-		return Error{ErrorCode::IoFailure, "cannot find an unused name after 100 attempts"};
+		return Error{.Code = ErrorCode::IoFailure, .Message = "cannot find an unused name after 100 attempts"};
 	}
 
 	namespace {
-		Result<std::filesystem::path> PickTemporaryPath(const std::filesystem::path& path)
+		std::filesystem::path TemporaryCandidateFor(const std::filesystem::path& target, int attempt)
+		{
+			std::filesystem::path candidate = target;
+			const bool isFirstAttempt = attempt == 0;
+			candidate += isFirstAttempt ? std::string{".tmp"} : std::format(".tmp{}", attempt);
+			return candidate;
+		}
+
+		// Beside the target rather than in the temp directory, so that the temporary is on the
+		// same volume and inherits the target directory's ACLs.
+		Result<std::filesystem::path> PickTemporaryPath(const std::filesystem::path& target)
 		{
 			return PickAvailablePath(
-				[&path](int attempt) {
-					std::filesystem::path candidate = path;
-					candidate += attempt == 0 ? std::string{".tmp"}
-											  : std::format(".tmp{}", attempt);
-					return candidate;
-				});
+				[&target](int attempt) { return TemporaryCandidateFor(target, attempt); });
+		}
+
+		Error CannotWriteError(const std::filesystem::path& temporary)
+		{
+			return Error{.Code = ErrorCode::IoFailure, .Message = std::format("cannot write '{}'", ToUtf8(temporary))};
+		}
+
+		void DiscardTemporary(const std::filesystem::path& temporary)
+		{
+			std::error_code ignoredError;
+			std::filesystem::remove(temporary, ignoredError);
 		}
 
 		Result<void> WriteTemporary(const std::filesystem::path& temporary, std::string_view bytes)
 		{
+			// Scoped so that the stream is closed before the temporary is discarded, because Windows will not delete a file that is still open.
 			{
-				std::ofstream stream{temporary, std::ios::binary | std::ios::trunc};
+				std::ofstream temporaryFile{temporary, std::ios::binary | std::ios::trunc};
 
-				if (!stream.is_open())
+				if (!temporaryFile.is_open())
 				{
-					return Error{ErrorCode::IoFailure,
-								 std::format("cannot write '{}'", ToUtf8(temporary))};
+					return CannotWriteError(temporary);
 				}
 
-				stream.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+				temporaryFile.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
 
-				if (stream.good())
+				if (temporaryFile.good())
 				{
 					return Result<void>::Ok();
 				}
 			}
 
-			// Half a file is worse than none, and this one is not the target yet.
-			std::error_code ignored;
-			std::filesystem::remove(temporary, ignored);
+			DiscardTemporary(temporary);
 
-			return Error{ErrorCode::IoFailure, std::format("cannot write '{}'", ToUtf8(temporary))};
+			return CannotWriteError(temporary);
 		}
 
 		Result<void> SwapIntoPlace(const std::filesystem::path& temporary,
-								   const std::filesystem::path& path)
+								   const std::filesystem::path& target)
 		{
 #ifdef CORE_PLATFORM_WINDOWS
-			std::error_code existsError;
-			const bool targetExists = std::filesystem::exists(path, existsError);
+			std::error_code statError;
+			const bool targetExists = std::filesystem::exists(target, statError);
 
-			// A stat error is not "the target is gone": skipping ReplaceFileW on the strength
-			// of a failed stat would silently drop the ACLs, creation time and identity this
-			// function exists to keep, so only a stat confirming absence goes straight to
-			// MoveFileExW.
-			if (targetExists || existsError)
+			// A failed stat counts as a target that may exist, because skipping ReplaceFileW on
+			// its strength would silently drop the ACLs, creation time and identity this
+			// function exists to keep.
+			const bool targetMayExist = targetExists || statError;
+
+			if (targetMayExist)
 			{
-				// REPLACEFILE_IGNORE_MERGE_ERRORS proceeds when the target's ACLs or
-				// attributes cannot all be carried across, rather than failing the save.
-				if (::ReplaceFileW(path.c_str(), temporary.c_str(), nullptr,
-								   REPLACEFILE_IGNORE_MERGE_ERRORS, nullptr, nullptr) != 0)
+				// REPLACEFILE_IGNORE_MERGE_ERRORS lets the save go ahead when the target's ACLs or
+				// attributes cannot all be carried across, rather than failing it.
+				const BOOL replaced = ::ReplaceFileW(target.c_str(), temporary.c_str(), nullptr,
+													 REPLACEFILE_IGNORE_MERGE_ERRORS, nullptr, nullptr);
+
+				if (replaced != 0)
 				{
 					return Result<void>::Ok();
 				}
 
-				const DWORD error = ::GetLastError();
+				const DWORD replaceErrorCode = ::GetLastError();
+				const bool targetTurnedOutMissing = replaceErrorCode == ERROR_FILE_NOT_FOUND || replaceErrorCode == ERROR_PATH_NOT_FOUND;
 
-				// ReplaceFileW requires an existing target, so this code means there is
-				// genuinely none: the ordinary case MoveFileExW below handles.
-				if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND)
+				if (!targetTurnedOutMissing)
 				{
-					std::error_code ignored;
-					std::filesystem::remove(temporary, ignored);
+					DiscardTemporary(temporary);
 
-					return Error{ErrorCodeFromWin32(error),
-								 std::format("cannot replace '{}' (error {})", ToUtf8(path), error)};
+					return Error{.Code = ErrorCodeFromWin32(replaceErrorCode), .Message = std::format("cannot replace '{}' (error {})", ToUtf8(target), replaceErrorCode)};
 				}
 			}
 
-			// MOVEFILE_REPLACE_EXISTING covers the race in which the file appears between
-			// whichever check above ran and this call.
-			if (::MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING) != 0)
+			// MOVEFILE_REPLACE_EXISTING covers a target that appears after the checks that found none.
+			const BOOL moved = ::MoveFileExW(temporary.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING);
+
+			if (moved != 0)
 			{
 				return Result<void>::Ok();
 			}
 
-			const DWORD error = ::GetLastError();
+			const DWORD moveErrorCode = ::GetLastError();
 
-			std::error_code ignored;
-			std::filesystem::remove(temporary, ignored);
+			DiscardTemporary(temporary);
 
-			return Error{ErrorCodeFromWin32(error),
-						 std::format("cannot write '{}' (error {})", ToUtf8(path), error)};
+			return Error{.Code = ErrorCodeFromWin32(moveErrorCode), .Message = std::format("cannot write '{}' (error {})", ToUtf8(target), moveErrorCode)};
 #else
-			// The one platform split in Core that must not return Unsupported — that would
-			// mean an editor that cannot save. A rename is still atomic, just without the
-			// metadata ReplaceFileW preserves above.
-			std::error_code code;
-			std::filesystem::rename(temporary, path, code);
+			// The one platform split in Core that must not return Unsupported, because that would
+			// make an editor that cannot save. A rename is still atomic, only without the metadata
+			// ReplaceFileW keeps.
+			std::error_code renameError;
+			std::filesystem::rename(temporary, target, renameError);
 
-			if (code)
+			if (renameError)
 			{
-				std::error_code ignored;
-				std::filesystem::remove(temporary, ignored);
+				DiscardTemporary(temporary);
 
-				return Error{ErrorCode::IoFailure,
-							 std::format("cannot replace '{}': {}", ToUtf8(path), code.message())};
+				return Error{.Code = ErrorCode::IoFailure, .Message = std::format("cannot replace '{}': {}", ToUtf8(target), renameError.message())};
 			}
 
 			return Result<void>::Ok();
@@ -150,22 +163,22 @@ namespace Core {
 		}
 	}
 
-	Result<void> WriteFileAtomically(const std::filesystem::path& path, std::string_view bytes)
+	Result<void> WriteFileAtomically(const std::filesystem::path& target, std::string_view bytes)
 	{
-		const Result<std::filesystem::path> temporary = PickTemporaryPath(path);
+		const Result<std::filesystem::path> temporary = PickTemporaryPath(target);
 
 		if (!temporary)
 		{
 			return temporary.GetError();
 		}
 
-		const Result<void> written = WriteTemporary(temporary.GetValue(), bytes);
+		const Result<void> writeOutcome = WriteTemporary(temporary.GetValue(), bytes);
 
-		if (!written)
+		if (!writeOutcome)
 		{
-			return written;
+			return writeOutcome;
 		}
 
-		return SwapIntoPlace(temporary.GetValue(), path);
+		return SwapIntoPlace(temporary.GetValue(), target);
 	}
 }
