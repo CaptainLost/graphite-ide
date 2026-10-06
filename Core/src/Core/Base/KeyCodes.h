@@ -4,8 +4,8 @@
 
 namespace Core {
 
-	// GLFW's values, because the window layer is what produces them, named here so nothing
-	// above that layer needs a GLFW header.
+	// The values must stay GLFW's, because the window layer produces them; naming them here keeps
+	// GLFW's header out of everything above that layer.
 	enum class KeyCode : std::uint16_t
 	{
 		Space = 32,
@@ -15,16 +15,16 @@ namespace Core {
 		Period = 46,
 		Slash = 47,
 
-		D0 = 48,
-		D1 = 49,
-		D2 = 50,
-		D3 = 51,
-		D4 = 52,
-		D5 = 53,
-		D6 = 54,
-		D7 = 55,
-		D8 = 56,
-		D9 = 57,
+		Digit0 = 48,
+		Digit1 = 49,
+		Digit2 = 50,
+		Digit3 = 51,
+		Digit4 = 52,
+		Digit5 = 53,
+		Digit6 = 54,
+		Digit7 = 55,
+		Digit8 = 56,
+		Digit9 = 57,
 
 		Semicolon = 59,
 		Equal = 61,
@@ -94,23 +94,23 @@ namespace Core {
 		F11 = 300,
 		F12 = 301,
 
-		KP0 = 320,
-		KP1 = 321,
-		KP2 = 322,
-		KP3 = 323,
-		KP4 = 324,
-		KP5 = 325,
-		KP6 = 326,
-		KP7 = 327,
-		KP8 = 328,
-		KP9 = 329,
-		KPDecimal = 330,
-		KPDivide = 331,
-		KPMultiply = 332,
-		KPSubtract = 333,
-		KPAdd = 334,
-		KPEnter = 335,
-		KPEqual = 336,
+		Keypad0 = 320,
+		Keypad1 = 321,
+		Keypad2 = 322,
+		Keypad3 = 323,
+		Keypad4 = 324,
+		Keypad5 = 325,
+		Keypad6 = 326,
+		Keypad7 = 327,
+		Keypad8 = 328,
+		Keypad9 = 329,
+		KeypadDecimal = 330,
+		KeypadDivide = 331,
+		KeypadMultiply = 332,
+		KeypadSubtract = 333,
+		KeypadAdd = 334,
+		KeypadEnter = 335,
+		KeypadEqual = 336,
 
 		LeftShift = 340,
 		LeftControl = 341,
@@ -123,8 +123,8 @@ namespace Core {
 		Menu = 348
 	};
 
-	// Modifier bits as they arrive with a key event, so a handler never has to poll the
-	// keyboard a second time and get a different answer.
+	// The modifiers travel with the key event because polling the keyboard again from a handler
+	// can give a different answer than the one the event was made with.
 	enum class KeyModifier : std::uint8_t
 	{
 		None = 0,
@@ -144,8 +144,8 @@ namespace Core {
 		return static_cast<KeyModifier>(static_cast<std::uint8_t>(left) & static_cast<std::uint8_t>(right));
 	}
 
-	inline bool HasModifier(KeyModifier set, KeyModifier wanted)
+	inline bool HasModifier(KeyModifier modifiers, KeyModifier wanted)
 	{
-		return (set & wanted) == wanted;
+		return (modifiers & wanted) == wanted;
 	}
 }

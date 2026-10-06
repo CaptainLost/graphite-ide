@@ -43,7 +43,7 @@ public:
 
 	const std::filesystem::path& GetPath() const { return m_Path; }
 
-	std::filesystem::path MakeDir(const std::string& relative)
+	std::filesystem::path MakeDirectory(const std::string& relative)
 	{
 		const std::filesystem::path full = m_Path / relative;
 		std::error_code ec;

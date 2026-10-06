@@ -8,15 +8,20 @@
 
 namespace Core {
 
-	// ASCII only, deliberately: every caller compares bytes - extensions, header names, ids,
-	// search text - and a locale's fold would promise a correctness across scripts that a byte
-	// comparison cannot keep. Every other byte comes back as it was.
+	// ASCII only, on purpose: callers compare bytes (extensions, header names, ids, search text),
+	// and a locale's case fold would promise a correctness across scripts that bytes cannot keep.
 	constexpr char LowerAscii(char character)
 	{
-		return character >= 'A' && character <= 'Z' ? static_cast<char>(character - 'A' + 'a') : character;
+		const bool isAsciiCapital = character >= 'A' && character <= 'Z';
+
+		if (isAsciiCapital)
+		{
+			return static_cast<char>(character - 'A' + 'a');
+		}
+
+		return character;
 	}
 
-	// Whole-string equality through LowerAscii.
 	constexpr bool EqualsIgnoringCase(std::string_view left, std::string_view right)
 	{
 		if (left.size() != right.size())
@@ -24,9 +29,9 @@ namespace Core {
 			return false;
 		}
 
-		for (std::size_t index = 0; index < left.size(); ++index)
+		for (std::size_t characterIndex = 0; characterIndex < left.size(); ++characterIndex)
 		{
-			if (LowerAscii(left[index]) != LowerAscii(right[index]))
+			if (LowerAscii(left[characterIndex]) != LowerAscii(right[characterIndex]))
 			{
 				return false;
 			}
@@ -43,8 +48,9 @@ namespace Core {
 	// The six bytes the C locale calls space, without asking the locale.
 	constexpr bool IsAsciiWhitespace(char character)
 	{
-		return character == ' ' || character == '\t' || character == '\n' || character == '\v' || character == '\f' ||
-			   character == '\r';
+		constexpr std::string_view kAsciiWhitespace = " \t\n\v\f\r";
+
+		return kAsciiWhitespace.find(character) != std::string_view::npos;
 	}
 
 	constexpr std::optional<std::uint8_t> HexDigitValue(char character)
@@ -69,7 +75,6 @@ namespace Core {
 		return std::nullopt;
 	}
 
-	// Index it with 0 to 15 only: [16] is out of range for a string_view.
 	inline constexpr std::string_view kLowercaseHexDigits = "0123456789abcdef";
 
 	constexpr std::string_view WithoutLeading(std::string_view text, std::string_view characters)
@@ -99,6 +104,5 @@ namespace Core {
 	std::string Lowered(std::string_view text);
 	std::string Trimmed(std::string_view text);
 
-	// The needle must already be ASCII-lowered: an upper-case needle never matches.
 	bool LoweredTextContains(std::string_view text, std::string_view loweredNeedle);
 }

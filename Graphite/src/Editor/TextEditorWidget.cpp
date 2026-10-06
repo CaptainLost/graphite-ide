@@ -954,7 +954,7 @@ namespace Graphite {
 				const bool shift = ShiftOf(stroke);
 				const bool control = ControlOf(stroke);
 
-				if (stroke.Key == Core::KeyCode::Enter || stroke.Key == Core::KeyCode::KPEnter)
+				if (stroke.Key == Core::KeyCode::Enter || stroke.Key == Core::KeyCode::KeypadEnter)
 				{
 					const EditMark before = MarkBeforeEdit(buffer, item.Caret);
 					const bool changed = Core::InsertNewline(item, indentStyle);
@@ -996,7 +996,6 @@ namespace Graphite {
 					result.Edited |= changed;
 					NotifyAfterEdit(sinks, buffer, item, before, changed);
 				}
-
 			}
 		}
 

@@ -19,48 +19,52 @@
 namespace Core {
 
 	namespace {
-		// The file carries the date and sub-second field the console has no use for, so that
-		// it still sorts and greps a week later.
-		constexpr const char* kConsolePattern = "%^[%T] [%n] %v%$";
+		// The file pattern adds the date and the milliseconds the process console leaves out, so a log
+		// read a week later still sorts and greps.
+		constexpr const char* kProcessConsolePattern = "%^[%T] [%n] %v%$";
 		constexpr const char* kFilePattern = "[%Y-%m-%d %T.%e] [%n] [%l] %v";
 
 		struct LogState
 		{
-			Ref<RingBufferSink> Console;
-			Ref<spdlog::logger> Engine;
-			Ref<spdlog::logger> Application;
+			Ref<RingBufferSink> ConsoleSink;
+			Ref<spdlog::logger> EngineLogger;
+			Ref<spdlog::logger> ApplicationLogger;
 		};
 
 		Ref<spdlog::sinks::sink> MakeProcessConsoleSink()
 		{
 			auto sink = CreateRef<spdlog::sinks::stdout_color_sink_mt>();
-			sink->set_pattern(kConsolePattern);
+			sink->set_pattern(kProcessConsolePattern);
 			return sink;
 		}
 
-		Ref<spdlog::logger> MakeLogger(LogSource source, Ref<spdlog::sinks::sink> console,
-									   Ref<RingBufferSink> buffer)
+		Ref<spdlog::logger> MakeLogger(LogSource source, Ref<spdlog::sinks::sink> processConsoleSink,
+									   Ref<RingBufferSink> consoleSink)
 		{
-			const std::string_view name = ToString(source);
-			auto logger = CreateRef<spdlog::logger>(std::string{name},
+			const std::string_view loggerName = ToString(source);
+			auto logger = CreateRef<spdlog::logger>(std::string{loggerName},
 													spdlog::sinks_init_list{
-														std::move(console),
-														std::move(buffer)});
+														std::move(processConsoleSink),
+														std::move(consoleSink)});
 			logger->set_level(spdlog::level::trace);
 			logger->flush_on(spdlog::level::warn);
 			return logger;
 		}
 
+		LogState MakeStateBeforeInit()
+		{
+			const LogSpec defaults;
+			const Ref<spdlog::sinks::sink> processConsoleSink = MakeProcessConsoleSink();
+			const Ref<RingBufferSink> consoleSink = CreateRef<RingBufferSink>(defaults.ConsoleCapacity);
+
+			return LogState{.ConsoleSink = consoleSink,
+							.EngineLogger = MakeLogger(LogSource::Engine, processConsoleSink, consoleSink),
+							.ApplicationLogger = MakeLogger(LogSource::Application, processConsoleSink, consoleSink)};
+		}
+
 		LogState& GetState()
 		{
-			static LogState state = [] {
-				const LogSpec defaults;
-				const auto console = MakeProcessConsoleSink();
-				const auto buffer = CreateRef<RingBufferSink>(defaults.ConsoleCapacity);
-
-				return LogState{buffer, MakeLogger(LogSource::Engine, console, buffer),
-								MakeLogger(LogSource::Application, console, buffer)};
-			}();
+			static LogState state = MakeStateBeforeInit();
 
 			return state;
 		}
@@ -144,37 +148,37 @@ namespace Core {
 	{
 		LogState& state = GetState();
 
-		// The buffer survives Init whenever the requested capacity is the one it already
-		// has, so the messages written before this call are still in the panel afterwards.
-		if (state.Console->GetCapacity() != spec.ConsoleCapacity)
+		const bool capacityChanged = state.ConsoleSink->GetCapacity() != spec.ConsoleCapacity;
+		if (capacityChanged)
 		{
-			state.Console = CreateRef<RingBufferSink>(spec.ConsoleCapacity);
+			state.ConsoleSink = CreateRef<RingBufferSink>(spec.ConsoleCapacity);
 		}
 
-		std::vector<spdlog::sink_ptr> sinks{MakeProcessConsoleSink(), state.Console};
+		std::vector<Ref<spdlog::sinks::sink>> sinks{MakeProcessConsoleSink(), state.ConsoleSink};
 
-		if (!spec.FilePath.empty())
+		const bool writesLogFile = !spec.FilePath.empty();
+		if (writesLogFile)
 		{
-			std::error_code code;
-			std::filesystem::create_directories(spec.FilePath.parent_path(), code);
+			std::error_code ignoredDirectoryError;
+			std::filesystem::create_directories(spec.FilePath.parent_path(), ignoredDirectoryError);
 
 			try
 			{
-				auto file = CreateRef<spdlog::sinks::rotating_file_sink_mt>(
-					ToUtf8(spec.FilePath), spec.MaxFileSize, spec.MaxFiles);
-				file->set_pattern(kFilePattern);
-				sinks.push_back(std::move(file));
+				auto fileSink = CreateRef<spdlog::sinks::rotating_file_sink_mt>(
+					ToUtf8(spec.FilePath), spec.MaximumFileSize, spec.RotatedFilesKept);
+				fileSink->set_pattern(kFilePattern);
+				sinks.push_back(std::move(fileSink));
 			}
-			catch (const spdlog::spdlog_ex& e)
+			catch (const spdlog::spdlog_ex& fileSinkError)
 			{
-				// Reported straight to stderr: the loggers are mid-reconfiguration, so
-				// this is the one message that cannot go through them.
+				// Written straight to stderr, not through CORE_ERROR: the loggers still hold the sinks this
+				// call is replacing, so the message could land in a console buffer the panel no longer shows.
 				std::fprintf(stderr, "Cannot write the log file '%s': %s\n",
-							 ToUtf8(spec.FilePath).c_str(), e.what());
+							 ToUtf8(spec.FilePath).c_str(), fileSinkError.what());
 			}
 		}
 
-		for (const Ref<spdlog::logger>& logger : {state.Engine, state.Application})
+		for (const Ref<spdlog::logger>& logger : {state.EngineLogger, state.ApplicationLogger})
 		{
 			logger->sinks() = sinks;
 			logger->set_level(ToBackendLevel(spec.Level));
@@ -183,16 +187,16 @@ namespace Core {
 
 	const Ref<spdlog::logger>& Log::GetEngineLogger()
 	{
-		return GetState().Engine;
+		return GetState().EngineLogger;
 	}
 
 	const Ref<spdlog::logger>& Log::GetApplicationLogger()
 	{
-		return GetState().Application;
+		return GetState().ApplicationLogger;
 	}
 
 	const Ref<RingBufferSink>& Log::GetConsoleSink()
 	{
-		return GetState().Console;
+		return GetState().ConsoleSink;
 	}
 }

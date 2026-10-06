@@ -25,8 +25,6 @@ namespace Core {
 		return text.substr(0, text.find('\n'));
 	}
 
-	// The whole text as a number, or nothing: a trailing letter, an empty string and, for an
-	// unsigned target, a minus sign are all absent, never a wrapped or partial value.
 	template<typename Number>
 		requires std::integral<Number> || std::floating_point<Number>
 	std::optional<Number> ParseNumber(std::string_view text)
@@ -36,15 +34,17 @@ namespace Core {
 			return std::nullopt;
 		}
 
-		Number value{};
-		const char* last = text.data() + text.size();
-		const auto [end, error] = std::from_chars(text.data(), last, value);
+		Number parsedValue{};
+		const char* textEnd = text.data() + text.size();
+		const auto [parseEnd, parseError] = std::from_chars(text.data(), textEnd, parsedValue);
 
-		if (error != std::errc{} || end != last)
+		const bool parseFailed = parseError != std::errc{};
+		const bool charactersLeftUnread = parseEnd != textEnd;
+		if (parseFailed || charactersLeftUnread)
 		{
 			return std::nullopt;
 		}
 
-		return value;
+		return parsedValue;
 	}
 }

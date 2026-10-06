@@ -1,8 +1,8 @@
 #include <doctest/doctest.h>
 
 #include "Core/Base/Ascii.h"
-#include "Core/FileSystem/FileSystem.h"
 
+#include <ostream>
 #include <string>
 #include <string_view>
 
@@ -24,13 +24,6 @@ TEST_CASE("EqualsIgnoringCase compares ASCII without regard to case, and nothing
 	CHECK(Core::EqualsIgnoringCase("", ""));
 }
 
-TEST_CASE("LoweredExtension gives the extension with its dot, in lower case")
-{
-	CHECK(Core::LoweredExtension("D:/work/App.VCXPROJ") == ".vcxproj");
-	CHECK(Core::LoweredExtension("Makefile").empty());
-	CHECK(Core::LoweredExtension("archive.tar.GZ") == ".gz");
-}
-
 TEST_CASE("Lowered lowers the ASCII capitals and keeps every other byte and the length")
 {
 	CHECK(Core::Lowered("Hello, WORLD") == "hello, world");
@@ -50,16 +43,24 @@ TEST_CASE("Two characters are equal ignoring ASCII case, and only ASCII case")
 
 TEST_CASE("IsAsciiWhitespace accepts exactly the six ASCII space bytes")
 {
-	for (int byteValue = 0; byteValue < 256; ++byteValue)
+	constexpr int kByteValueCount = 256;
+	constexpr int kSpaceByte = 0x20;
+	constexpr int kTabByte = 0x09;
+	constexpr int kCarriageReturnByte = 0x0D;
+
+	for (int byteValue = 0; byteValue < kByteValueCount; ++byteValue)
 	{
-		const bool expected = byteValue == 0x20 || (byteValue >= 0x09 && byteValue <= 0x0D);
+		const bool isSpace = byteValue == kSpaceByte;
+		const bool isTabThroughCarriageReturn = byteValue >= kTabByte && byteValue <= kCarriageReturnByte;
+		const bool expected = isSpace || isTabThroughCarriageReturn;
 
 		CHECK(Core::IsAsciiWhitespace(static_cast<char>(byteValue)) == expected);
 	}
 
-	// No-break space in Windows-1252 and NEL in Latin-1 are not ASCII whitespace.
-	CHECK_FALSE(Core::IsAsciiWhitespace('\xA0'));
-	CHECK_FALSE(Core::IsAsciiWhitespace('\x85'));
+	const char noBreakSpaceInWindows1252 = '\xA0';
+	const char nextLineInLatin1 = '\x85';
+	CHECK_FALSE(Core::IsAsciiWhitespace(noBreakSpaceInWindows1252));
+	CHECK_FALSE(Core::IsAsciiWhitespace(nextLineInLatin1));
 }
 
 TEST_CASE("HexDigitValue reads 0-9, a-f and A-F and nothing else")
@@ -81,7 +82,7 @@ TEST_CASE("The lowercase hex digits are sixteen, in order")
 	CHECK(Core::kLowercaseHexDigits[15] == 'f');
 }
 
-TEST_CASE("LoweredTextContains finds a lowered needle in text of any case")
+TEST_CASE("LoweredTextContains finds a lowered needle in text of any case and never an upper-case needle")
 {
 	CHECK(Core::LoweredTextContains("Hello World", "world"));
 	CHECK_FALSE(Core::LoweredTextContains("Hello World", "World"));

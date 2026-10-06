@@ -159,7 +159,7 @@ TEST_CASE("Opening an unreadable solution from outside the open folder reports i
 	ToastLog log(events);
 	Graphite::Workspace workspace(events, settings.Get());
 
-	const std::filesystem::path broken = temp.MakeDir("other") / "Broken.slnx";
+	const std::filesystem::path broken = temp.MakeDirectory("other") / "Broken.slnx";
 	std::ofstream(broken) << "<Solution><Project";
 
 	CHECK_FALSE(workspace.OpenSolution(broken));

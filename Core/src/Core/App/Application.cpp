@@ -133,7 +133,7 @@ namespace Core {
 
 		m_Gui = std::move(gui).GetValue();
 
-		m_Window->SetEventCallback(CORE_BIND_EVENT_FN(Application::OnEvent));
+		m_Window->SetEventCallback([this](Event& event) { OnEvent(event); });
 
 		return Result<void>::Ok();
 	}

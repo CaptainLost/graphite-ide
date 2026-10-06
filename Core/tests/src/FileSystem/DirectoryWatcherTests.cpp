@@ -169,7 +169,7 @@ TEST_CASE("A file created the instant Start returns is reported on every start")
 TEST_CASE("A file created in a subdirectory reports that subdirectory")
 {
 	TempDirectory temp;
-	temp.MakeDir("nested");
+	temp.MakeDirectory("nested");
 
 	auto watcher = DirectoryWatcher::Start(temp.GetPath());
 	REQUIRE(watcher.HasValue());
@@ -188,7 +188,7 @@ TEST_CASE("A file created in a subdirectory reports that subdirectory")
 TEST_CASE("Changes inside a .git directory are not reported")
 {
 	TempDirectory temp;
-	temp.MakeDir(".git");
+	temp.MakeDirectory(".git");
 
 	auto watcher = DirectoryWatcher::Start(temp.GetPath());
 	REQUIRE(watcher.HasValue());
@@ -214,7 +214,7 @@ TEST_CASE("The .git directory appearing is reported")
 
 	// How `git init` in a terminal becomes visible: the directory itself passes the
 	// filter that its contents do not.
-	temp.MakeDir(".git");
+	temp.MakeDirectory(".git");
 
 	const auto changes = WaitForChanges(*watcher.GetValue(), std::chrono::seconds{5});
 
@@ -242,7 +242,7 @@ TEST_CASE("Destroying a watcher with no changes pending returns promptly")
 TEST_CASE("A change to the repository's exclude file is reported as a root change")
 {
 	TempDirectory temp;
-	temp.MakeDir(".git/info");
+	temp.MakeDirectory(".git/info");
 
 	auto watcher = DirectoryWatcher::Start(temp.GetPath());
 	REQUIRE(watcher.HasValue());
@@ -312,7 +312,7 @@ namespace {
 TEST_CASE("A watched directory that is renamed is reported at its new path")
 {
 	TempDirectory temp;
-	const std::filesystem::path watched = temp.MakeDir("before");
+	const std::filesystem::path watched = temp.MakeDirectory("before");
 
 	auto watcher = DirectoryWatcher::Start(watched);
 	REQUIRE(watcher.HasValue());
@@ -330,8 +330,8 @@ TEST_CASE("A watched directory that is renamed is reported at its new path")
 TEST_CASE("A watched directory that is moved elsewhere is reported at its new path")
 {
 	TempDirectory temp;
-	const std::filesystem::path watched = temp.MakeDir("origin/watched");
-	temp.MakeDir("destination");
+	const std::filesystem::path watched = temp.MakeDirectory("origin/watched");
+	temp.MakeDirectory("destination");
 
 	auto watcher = DirectoryWatcher::Start(watched);
 	REQUIRE(watcher.HasValue());
@@ -369,7 +369,7 @@ TEST_CASE("A directory that stays put is never reported as moved")
 TEST_CASE("A move is reported once, not on every poll")
 {
 	TempDirectory temp;
-	const std::filesystem::path watched = temp.MakeDir("before");
+	const std::filesystem::path watched = temp.MakeDirectory("before");
 
 	auto watcher = DirectoryWatcher::Start(watched);
 	REQUIRE(watcher.HasValue());
@@ -390,7 +390,7 @@ TEST_CASE("A move is reported once, not on every poll")
 TEST_CASE("A move is noticed even while the directory is busy")
 {
 	TempDirectory temp;
-	const std::filesystem::path watched = temp.MakeDir("busy");
+	const std::filesystem::path watched = temp.MakeDirectory("busy");
 
 	auto watcher = DirectoryWatcher::Start(watched);
 	REQUIRE(watcher.HasValue());
@@ -454,7 +454,7 @@ TEST_CASE("A file of the same name outside the repository's directory says nothi
 TEST_CASE("A commit made outside the application is reported as a repository change")
 {
 	TempDirectory temp;
-	temp.MakeDir(".git/refs/heads");
+	temp.MakeDirectory(".git/refs/heads");
 
 	auto watcher = DirectoryWatcher::Start(temp.GetPath());
 	REQUIRE(watcher.HasValue());

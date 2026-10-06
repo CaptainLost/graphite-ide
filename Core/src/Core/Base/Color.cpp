@@ -2,6 +2,8 @@
 
 #include "Core/Base/Color.h"
 
+#include "Core/Base/Ascii.h"
+
 #include <algorithm>
 #include <cmath>
 #include <format>
@@ -10,51 +12,27 @@ namespace Core {
 
 	namespace {
 		constexpr float kLargestChannelByte = 255.0f;
+		constexpr int kOpaqueAlphaByte = 255;
 
-		std::uint32_t Channel(float value)
+		constexpr int kValuesPerHexDigit = 16;
+		constexpr std::size_t kHexDigitsPerChannel = 2;
+		constexpr std::size_t kHexDigitsWithoutAlpha = 6;
+		constexpr std::size_t kHexDigitsWithAlpha = 8;
+
+		constexpr std::uint32_t kGreenShift = 8u;
+		constexpr std::uint32_t kBlueShift = 16u;
+
+		std::optional<int> HexByte(std::string_view hexDigits, std::size_t highDigitIndex)
 		{
-			const float scaled = std::clamp(value, 0.0f, 1.0f) * 255.0f;
-			return static_cast<std::uint32_t>(std::lround(scaled));
-		}
+			const std::optional<int> highDigit = HexDigitValue(hexDigits[highDigitIndex]);
+			const std::optional<int> lowDigit = HexDigitValue(hexDigits[highDigitIndex + 1]);
 
-		std::optional<int> HexDigit(char c)
-		{
-			if (c >= '0' && c <= '9')
-			{
-				return c - '0';
-			}
-
-			if (c >= 'a' && c <= 'f')
-			{
-				return c - 'a' + 10;
-			}
-
-			if (c >= 'A' && c <= 'F')
-			{
-				return c - 'A' + 10;
-			}
-
-			return std::nullopt;
-		}
-
-		std::optional<int> HexByte(std::string_view text, std::size_t at)
-		{
-			const std::optional<int> high = HexDigit(text[at]);
-			const std::optional<int> low = HexDigit(text[at + 1]);
-
-			if (!high || !low)
+			if (!highDigit || !lowDigit)
 			{
 				return std::nullopt;
 			}
 
-			return *high * 16 + *low;
-		}
-
-		// Rounds to nearest rather than truncating, for the same reason PackBgr does: a channel
-		// that came from a byte has to go back to that byte.
-		int ToByte(float channel)
-		{
-			return static_cast<int>(std::lround(std::clamp(channel, 0.0f, 1.0f) * 255.0f));
+			return *highDigit * kValuesPerHexDigit + *lowDigit;
 		}
 	}
 
@@ -70,29 +48,33 @@ namespace Core {
 
 	std::uint32_t PackBgr(const Color& color)
 	{
-		return Channel(color.R) | (Channel(color.G) << 8u) | (Channel(color.B) << 16u);
+		const std::uint32_t red = static_cast<std::uint32_t>(ChannelToByte(color.R));
+		const std::uint32_t green = static_cast<std::uint32_t>(ChannelToByte(color.G));
+		const std::uint32_t blue = static_cast<std::uint32_t>(ChannelToByte(color.B));
+
+		return red | (green << kGreenShift) | (blue << kBlueShift);
 	}
 
-	std::optional<Color> ParseHexColor(std::string_view text)
+	std::optional<Color> ParseHexColor(std::string_view hexDigits)
 	{
-		if (text.size() != 6 && text.size() != 8)
+		if (hexDigits.size() != kHexDigitsWithoutAlpha && hexDigits.size() != kHexDigitsWithAlpha)
 		{
 			return std::nullopt;
 		}
 
 		Color color;
-		float* const channels[] = {&color.R, &color.G, &color.B, &color.A};
+		float* const channelsInTextOrder[] = {&color.R, &color.G, &color.B, &color.A};
 
-		for (std::size_t index = 0; index * 2 < text.size(); ++index)
+		for (std::size_t channelIndex = 0; channelIndex * kHexDigitsPerChannel < hexDigits.size(); ++channelIndex)
 		{
-			const std::optional<int> byte = HexByte(text, index * 2);
+			const std::optional<int> channelByte = HexByte(hexDigits, channelIndex * kHexDigitsPerChannel);
 
-			if (!byte)
+			if (!channelByte)
 			{
 				return std::nullopt;
 			}
 
-			*channels[index] = static_cast<float>(*byte) / 255.0f;
+			*channelsInTextOrder[channelIndex] = ChannelFromByte(*channelByte);
 		}
 
 		return color;
@@ -100,13 +82,14 @@ namespace Core {
 
 	std::string ToHexColor(const Color& color)
 	{
-		const int alpha = ToByte(color.A);
+		const int alphaByte = ChannelToByte(color.A);
+		const bool isOpaque = alphaByte == kOpaqueAlphaByte;
 
-		if (alpha == 255)
+		if (isOpaque)
 		{
-			return std::format("{:02X}{:02X}{:02X}", ToByte(color.R), ToByte(color.G), ToByte(color.B));
+			return std::format("{:02X}{:02X}{:02X}", ChannelToByte(color.R), ChannelToByte(color.G), ChannelToByte(color.B));
 		}
 
-		return std::format("{:02X}{:02X}{:02X}{:02X}", ToByte(color.R), ToByte(color.G), ToByte(color.B), alpha);
+		return std::format("{:02X}{:02X}{:02X}{:02X}", ChannelToByte(color.R), ChannelToByte(color.G), ChannelToByte(color.B), alphaByte);
 	}
 }

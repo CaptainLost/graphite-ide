@@ -43,7 +43,7 @@ TEST_CASE("MakeUniquePath numbers further collisions")
 TEST_CASE("MakeUniquePath handles a name without an extension")
 {
 	TempDirectory temp;
-	temp.MakeDir("build");
+	temp.MakeDirectory("build");
 
 	CHECK(MakeUniquePath(temp.GetPath() / "build") == temp.GetPath() / "build copy");
 }

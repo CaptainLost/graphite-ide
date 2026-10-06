@@ -1,7 +1,5 @@
 #pragma once
 
-// For use by Graphite applications
-
 #include "Core/Base/Base.h"
 
 #include "Core/App/Application.h"
@@ -19,7 +17,6 @@
 #include "Core/Base/Timestep.h"
 #include "Core/Base/Uuid.h"
 
-// ---Commands and shortcuts----------
 #include "Core/Command/Binding.h"
 #include "Core/Command/Chord.h"
 #include "Core/Command/Command.h"
@@ -32,22 +29,18 @@
 #include "Core/Command/ModifierName.h"
 #include "Core/Command/Trigger.h"
 #include "Core/Command/ShortcutRouter.h"
-// -----------------------------------
 
 #include "Core/Events/EventBus.h"
 
-// ---Files---------------------------
 #include "Core/FileSystem/AtomicWrite.h"
 #include "Core/FileSystem/ChangeCollector.h"
 #include "Core/FileSystem/DirectoryWatcher.h"
 #include "Core/FileSystem/FileOperations.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/FileSystem/FileTree.h"
-// -----------------------------------
 
 #include "Core/Git/Repository.h"
 
-// ---ImGui---------------------------
 #include "Core/ImGui/CaptionLayout.h"
 #include "Core/ImGui/DockSpaceHost.h"
 #include "Core/ImGui/Icons.h"
@@ -55,19 +48,15 @@
 #include "Core/ImGui/TabCloseRequests.h"
 #include "Core/ImGui/TabContextMenu.h"
 #include "Core/ImGui/Theme.h"
-// -----------------------------------
 
-// ---Platform------------------------
-// GlfwWindow.h and WindowFrame.h are deliberately absent: they are the implementation
-// behind Window::Create, and an application that names them has reached past the seam.
+// GlfwWindow.h and WindowFrame.h are left out on purpose: they implement Window::Create, and
+// an application that includes them has reached past that seam.
 #include "Core/Platform/Caption.h"
 #include "Core/Platform/FileDialog.h"
 #include "Core/Platform/Process.h"
 #include "Core/Platform/Shell.h"
 #include "Core/Platform/Window.h"
-// -----------------------------------
 
-// ---Text----------------------------
 #include "Core/Text/Caret.h"
 #include "Core/Text/Codec.h"
 #include "Core/Text/Columns.h"
@@ -81,7 +70,6 @@
 #include "Core/Text/TextBuffer.h"
 #include "Core/Text/TextDocument.h"
 #include "Core/Text/WrapLayout.h"
-// -----------------------------------
 
 #include "Core/UI/Panel.h"
 #include "Core/UI/PanelManager.h"

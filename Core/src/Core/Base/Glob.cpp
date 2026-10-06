@@ -7,10 +7,14 @@
 namespace Core {
 
 	namespace {
+		constexpr char kStar = '*';
+		constexpr char kQuestionMark = '?';
+		constexpr char kSlash = '/';
+		constexpr std::size_t kNoStar = std::string_view::npos;
 
-		bool SameChar(char left, char right)
+		bool MatchesOneCharacter(char patternCharacter, char textCharacter)
 		{
-			return LowerAscii(left) == LowerAscii(right);
+			return patternCharacter == kQuestionMark || EqualsIgnoringCase(patternCharacter, textCharacter);
 		}
 	}
 
@@ -18,64 +22,66 @@ namespace Core {
 	// recurses deeply enough to matter, and the loop is no harder to read.
 	bool GlobMatches(std::string_view pattern, std::string_view text)
 	{
-		std::size_t p = 0;
-		std::size_t t = 0;
-		std::size_t star = std::string_view::npos;
-		std::size_t afterStar = 0;
+		std::size_t patternIndex = 0;
+		std::size_t textIndex = 0;
+		std::size_t lastStarInSegment = kNoStar;
+		std::size_t starMatchEnd = 0;
 
-		while (t < text.size())
+		while (textIndex < text.size())
 		{
-			if (p < pattern.size() && pattern[p] == '*' && text[t] != '/')
+			const bool patternRemains = patternIndex < pattern.size();
+			const bool textAtSeparator = text[textIndex] == kSlash;
+			const bool patternAtStar = patternRemains && pattern[patternIndex] == kStar;
+
+			if (patternAtStar && !textAtSeparator)
 			{
-				star = p;
-				++p;
-				afterStar = t;
+				lastStarInSegment = patternIndex;
+				++patternIndex;
+				starMatchEnd = textIndex;
 				continue;
 			}
 
-			if (p < pattern.size() && text[t] != '/' &&
-				(pattern[p] == '?' || SameChar(pattern[p], text[t])))
+			const bool patternMatchesCharacter = patternRemains && MatchesOneCharacter(pattern[patternIndex], text[textIndex]);
+
+			if (patternMatchesCharacter && !textAtSeparator)
 			{
-				++p;
-				++t;
+				++patternIndex;
+				++textIndex;
 				continue;
 			}
 
-			// A separator matches only a separator written in the pattern, never a wildcard.
-			if (p < pattern.size() && text[t] == '/' && pattern[p] == '/')
-			{
-				++p;
-				++t;
+			const bool patternAtSeparator = patternRemains && pattern[patternIndex] == kSlash;
 
-				// The star that was open belonged to the segment just ended; it cannot
-				// swallow across the boundary, so there is nothing left to back track to.
-				star = std::string_view::npos;
+			if (patternAtSeparator && textAtSeparator)
+			{
+				++patternIndex;
+				++textIndex;
+				lastStarInSegment = kNoStar;
 				continue;
 			}
 
-			if (star == std::string_view::npos)
+			if (lastStarInSegment == kNoStar)
 			{
 				return false;
 			}
 
-			// The star would have to swallow the separator to get any further, which is the
-			// one thing it may not do.
-			if (text[afterStar] == '/')
+			const bool starWouldSwallowSeparator = text[starMatchEnd] == kSlash;
+
+			if (starWouldSwallowSeparator)
 			{
 				return false;
 			}
 
-			// The star swallows one more character and we try again from just after it.
-			p = star + 1;
-			++afterStar;
-			t = afterStar;
+			patternIndex = lastStarInSegment + 1;
+			++starMatchEnd;
+			textIndex = starMatchEnd;
 		}
 
-		while (p < pattern.size() && pattern[p] == '*')
+		while (patternIndex < pattern.size() && pattern[patternIndex] == kStar)
 		{
-			++p;
+			++patternIndex;
 		}
 
-		return p == pattern.size();
+		return patternIndex == pattern.size();
 	}
 }

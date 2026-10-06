@@ -38,9 +38,8 @@ namespace Core {
 
 		std::vector<std::string> CollectKeys() const;
 
-		// True when Load found a file holding something other than a JSON object - a typo in a
-		// hand edit, say. It reads as empty like a missing file, but unlike a missing or blank one
-		// it has content a save over it would lose.
+		// A malformed file reads as empty, like a missing one, but unlike a missing or blank one it
+		// holds what a person wrote, which a save over it would lose.
 		bool IsMalformed() const { return m_Malformed; }
 
 	private:

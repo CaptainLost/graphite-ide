@@ -182,7 +182,7 @@ TEST_CASE("A file that is not there opens as an item saying so, not as silence")
 TEST_CASE("Opening a directory does not claim it does not exist")
 {
 	TempDirectory directory;
-	const auto sub = directory.MakeDir("subfolder");
+	const auto sub = directory.MakeDirectory("subfolder");
 
 	DocumentSet documents;
 

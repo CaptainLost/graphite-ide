@@ -55,12 +55,11 @@ TEST_CASE("SplitSkippingEmpty never yields an empty segment")
 	CHECK(Core::SplitSkippingEmpty("a/b", '\\') == std::vector<std::string>{"a/b"});
 }
 
-TEST_CASE("A number is read whole or not at all")
+TEST_CASE("A number is read whole or not at all and a minus sign for an unsigned target gives nothing rather than a wrapped value")
 {
 	CHECK(Core::ParseNumber<std::size_t>("42") == 42);
 	CHECK(Core::ParseNumber<float>("14.500000") == 14.5f);
 
-	// A negative number is rejected for an unsigned target rather than wrapped to a huge one.
 	CHECK_FALSE(Core::ParseNumber<std::size_t>("-1"));
 	CHECK_FALSE(Core::ParseNumber<std::size_t>(""));
 	CHECK_FALSE(Core::ParseNumber<std::size_t>("12abc"));

@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include <cstdint>
 #include <cstdio>
 #include <limits>
 #include <optional>
@@ -13,39 +14,37 @@ using Core::ParseHexColor;
 using Core::Theme;
 using Core::ToHexColor;
 
-TEST_CASE("The channels land in the order the system reads them, blue highest")
+TEST_CASE("The channels land in a Windows COLORREF's order, 0x00BBGGRR, with red lowest and blue highest")
 {
-	CHECK(PackBgr(Color{1.0f, 0.0f, 0.0f, 1.0f}) == 0x0000FFu);
-	CHECK(PackBgr(Color{0.0f, 1.0f, 0.0f, 1.0f}) == 0x00FF00u);
-	CHECK(PackBgr(Color{0.0f, 0.0f, 1.0f, 1.0f}) == 0xFF0000u);
+	CHECK(PackBgr(Color{.R = 1.0f, .G = 0.0f, .B = 0.0f, .A = 1.0f}) == 0x0000FFu);
+	CHECK(PackBgr(Color{.R = 0.0f, .G = 1.0f, .B = 0.0f, .A = 1.0f}) == 0x00FF00u);
+	CHECK(PackBgr(Color{.R = 0.0f, .G = 0.0f, .B = 1.0f, .A = 1.0f}) == 0xFF0000u);
 }
 
 TEST_CASE("Alpha is dropped, because the border it colours has none")
 {
-	CHECK(PackBgr(Color{1.0f, 1.0f, 1.0f, 0.0f}) == 0xFFFFFFu);
-	CHECK(PackBgr(Color{1.0f, 1.0f, 1.0f, 1.0f}) == 0xFFFFFFu);
+	CHECK(PackBgr(Color{.R = 1.0f, .G = 1.0f, .B = 1.0f, .A = 0.0f}) == 0xFFFFFFu);
+	CHECK(PackBgr(Color{.R = 1.0f, .G = 1.0f, .B = 1.0f, .A = 1.0f}) == 0xFFFFFFu);
 }
 
-TEST_CASE("Channels round to nearest rather than truncating")
+TEST_CASE("Channels round to the nearest byte rather than truncating, so 0.247 packs to the 63 the theme paints and not to 62")
 {
-	// 0.247 is 62.985 of 255: truncation would say 62, which is a different colour from
-	// the one the theme paints the same float with.
-	CHECK(PackBgr(Color{0.247f, 0.0f, 0.0f, 1.0f}) == 63u);
-	CHECK(PackBgr(Color{0.5f, 0.0f, 0.0f, 1.0f}) == 128u);
+	const float channelOf62Point985Bytes = 0.247f;
+
+	CHECK(PackBgr(Color{.R = channelOf62Point985Bytes, .G = 0.0f, .B = 0.0f, .A = 1.0f}) == 63u);
+	CHECK(PackBgr(Color{.R = 0.5f, .G = 0.0f, .B = 0.0f, .A = 1.0f}) == 128u);
 }
 
 TEST_CASE("Channels outside the unit range clamp to the end they passed")
 {
-	CHECK(PackBgr(Color{-1.0f, 2.0f, 0.0f, 1.0f}) == 0x00FF00u);
+	CHECK(PackBgr(Color{.R = -1.0f, .G = 2.0f, .B = 0.0f, .A = 1.0f}) == 0x00FF00u);
 }
 
-TEST_CASE("The window border is the theme's border colour, unchanged")
+TEST_CASE("The theme's border colour packs to RGB(52, 56, 63), the only check on the colour the window border is given")
 {
-	// 0x3F3834 is the RGB(52, 56, 63) that DWM used to be handed as a literal in
-	// the frame, back when the theme and the frame each spelled this colour out.
-	// The frame now packs whatever the theme says, so this is what pins the two together
-	// — nothing else in the process can observe the colour a window border was given.
-	CHECK(PackBgr(Theme::GetBorderColor()) == 0x3F3834u);
+	const std::uint32_t red52Green56Blue63 = 0x3F3834u;
+
+	CHECK(PackBgr(Theme::GetBorderColor()) == red52Green56Blue63);
 }
 
 TEST_CASE("A six-character hex colour parses to full opacity")
@@ -79,8 +78,6 @@ TEST_CASE("Hex parsing ignores case")
 	CHECK(upper->B == doctest::Approx(lower->B));
 }
 
-// A scheme file is hand-editable, so every one of these is something a person will actually
-// type. None of them may produce a colour.
 TEST_CASE("Hex parsing rejects anything that is not six or eight hex digits")
 {
 	CHECK_FALSE(ParseHexColor("").has_value());
@@ -94,24 +91,24 @@ TEST_CASE("Hex parsing rejects anything that is not six or eight hex digits")
 
 TEST_CASE("A fully opaque colour formats as six characters, a translucent one as eight")
 {
-	CHECK(ToHexColor(Color{1.0f, 0.0f, 0.0f, 1.0f}) == "FF0000");
-	CHECK(ToHexColor(Color{0.0f, 0.0f, 0.0f, 0.0f}) == "00000000");
+	CHECK(ToHexColor(Color{.R = 1.0f, .G = 0.0f, .B = 0.0f, .A = 1.0f}) == "FF0000");
+	CHECK(ToHexColor(Color{.R = 0.0f, .G = 0.0f, .B = 0.0f, .A = 0.0f}) == "00000000");
 }
 
-// Color stores floats, so this is the property that decides whether a scheme survives being
-// saved: every byte value has to come back as itself. Proved over the whole range rather than
-// sampled, because it is cheap and the alternative is an estimate.
-TEST_CASE("Every channel value round-trips through parse and format exactly")
+TEST_CASE("Every channel value round-trips through parse and format exactly so a saved scheme reads back unchanged")
 {
-	for (int value = 0; value <= 255; ++value)
-	{
-		char text[7] = {};
-		std::snprintf(text, sizeof(text), "%02X%02X%02X", value, value, value);
+	constexpr int kLargestByteValue = 255;
+	constexpr std::size_t kSixHexDigitsAndTerminator = 7;
 
-		const std::optional<Color> parsed = ParseHexColor(text);
+	for (int byteValue = 0; byteValue <= kLargestByteValue; ++byteValue)
+	{
+		char greyHexText[kSixHexDigitsAndTerminator] = {};
+		std::snprintf(greyHexText, sizeof(greyHexText), "%02X%02X%02X", byteValue, byteValue, byteValue);
+
+		const std::optional<Color> parsed = ParseHexColor(greyHexText);
 
 		REQUIRE(parsed.has_value());
-		CHECK(ToHexColor(*parsed) == text);
+		CHECK(ToHexColor(*parsed) == greyHexText);
 	}
 }
 
@@ -125,13 +122,16 @@ TEST_CASE("A channel becomes the nearest byte, clamped, and a byte becomes its c
 	CHECK(Core::ChannelToByte(7.0f) == 255);
 	CHECK(Core::ChannelToByte(std::numeric_limits<float>::infinity()) == 255);
 
-	// 0.0019607842f * 255 is 0.49999997f: lround gives 0 where ImGui's +0.5 rounding gives 1.
-	CHECK(Core::ChannelToByte(0.0019607842f) == 0);
+	// ImGui's +0.5 rounding turns this channel into 1; lround turns its 0.49999997 of a byte into 0.
+	const float channelJustUnderHalfAByte = 0.0019607842f;
+	CHECK(Core::ChannelToByte(channelJustUnderHalfAByte) == 0);
 
 	CHECK(Core::ChannelFromByte(0) == 0.0f);
 	CHECK(Core::ChannelFromByte(255) == 1.0f);
 
-	for (int byteValue = 0; byteValue < 256; ++byteValue)
+	constexpr int kByteValueCount = 256;
+
+	for (int byteValue = 0; byteValue < kByteValueCount; ++byteValue)
 	{
 		CHECK(Core::ChannelToByte(Core::ChannelFromByte(byteValue)) == byteValue);
 	}

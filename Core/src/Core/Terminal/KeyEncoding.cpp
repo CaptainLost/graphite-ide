@@ -74,7 +74,7 @@ namespace Core {
 		switch (key)
 		{
 		case KeyCode::Enter:
-		case KeyCode::KPEnter:
+		case KeyCode::KeypadEnter:
 			return "\r";
 		case KeyCode::Tab:
 			// Shift+Tab is CBT, the back-tab: it is how a TUI walks its focus backwards, and a

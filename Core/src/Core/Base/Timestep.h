@@ -6,18 +6,19 @@ namespace Core {
 
 	using SteadyClock = std::chrono::steady_clock;
 
+	// No implicit conversion either way: a bare float does not say it is seconds.
 	class Timestep
 	{
 	public:
-		// Explicit both ways: a bare float is not obviously seconds, and a Timestep read as a
-		// bare float loses the unit it carries. GetSeconds and GetMilliseconds say which.
 		constexpr Timestep() = default;
-		constexpr explicit Timestep(float seconds) : m_Time(seconds) {}
+		constexpr explicit Timestep(float seconds) : m_Seconds(seconds) {}
 
-		float GetSeconds() const { return m_Time; }
-		float GetMilliseconds() const { return m_Time * 1000.0f; }
+		float GetSeconds() const { return m_Seconds; }
+		float GetMilliseconds() const { return m_Seconds * kMillisecondsPerSecond; }
 
 	private:
-		float m_Time = 0.0f;
+		static constexpr float kMillisecondsPerSecond = 1000.0f;
+
+		float m_Seconds = 0.0f;
 	};
 }

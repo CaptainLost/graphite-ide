@@ -47,7 +47,7 @@ TEST_CASE("Expand loads children on first use and marks the node loaded")
 {
 	TempDirectory temp;
 	temp.MakeFile("a.txt", "x");
-	temp.MakeDir("sub");
+	temp.MakeDirectory("sub");
 
 	FileTree tree;
 	REQUIRE(tree.SetRoot(temp.GetPath()).HasValue());
@@ -65,8 +65,8 @@ TEST_CASE("Expand sorts directories before files, case-insensitively within each
 	TempDirectory temp;
 	temp.MakeFile("Zebra.txt", "x");
 	temp.MakeFile("apple.txt", "x");
-	temp.MakeDir("Yankee");
-	temp.MakeDir("bravo");
+	temp.MakeDirectory("Yankee");
+	temp.MakeDirectory("bravo");
 
 	FileTree tree;
 	REQUIRE(tree.SetRoot(temp.GetPath()).HasValue());
@@ -281,7 +281,7 @@ TEST_CASE("Expand marks the children the query rejects")
 TEST_CASE("The query is told whether the entry is a directory")
 {
 	TempDirectory temp;
-	temp.MakeDir("folder");
+	temp.MakeDirectory("folder");
 	temp.MakeFile("file.txt", "x");
 
 	std::vector<std::pair<std::string, bool>> seen;
@@ -339,7 +339,7 @@ TEST_CASE("Refresh re-asks for nodes carried over from the previous listing")
 {
 	TempDirectory temp;
 	temp.MakeFile("stays.txt", "x");
-	temp.MakeDir("sub");
+	temp.MakeDirectory("sub");
 
 	int calls = 0;
 
@@ -364,7 +364,7 @@ TEST_CASE("Refresh re-asks for nodes carried over from the previous listing")
 TEST_CASE("Rebase rewrites the root and every loaded descendant")
 {
 	TempDirectory temp;
-	temp.MakeDir("sub");
+	temp.MakeDirectory("sub");
 	temp.MakeFile("sub/deep.txt", "x");
 	temp.MakeFile("top.txt", "x");
 
@@ -406,7 +406,7 @@ TEST_CASE("Rebase rewrites the root and every loaded descendant")
 TEST_CASE("Rebase leaves everything except the paths alone")
 {
 	TempDirectory temp;
-	temp.MakeDir("sub");
+	temp.MakeDirectory("sub");
 	temp.MakeFile("top.txt", "x");
 
 	FileTree tree;
@@ -484,7 +484,7 @@ TEST_CASE("Replacing the query does not disturb already loaded nodes")
 TEST_CASE("Rebase renames the root node to match its new location")
 {
 	TempDirectory temp;
-	const std::filesystem::path before = temp.MakeDir("before");
+	const std::filesystem::path before = temp.MakeDirectory("before");
 
 	FileTree tree;
 	REQUIRE(tree.SetRoot(before).HasValue());

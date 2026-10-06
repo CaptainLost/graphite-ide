@@ -4,7 +4,7 @@
 
 namespace Core {
 
-	// GLFW's values, for the same reason as KeyCode.
+	// GLFW's button numbers: the window layer casts GLFW's value straight to a MouseCode.
 	enum class MouseCode : std::uint8_t
 	{
 		Button0 = 0,

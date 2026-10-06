@@ -4,6 +4,28 @@
 
 #include <type_traits>
 
+namespace {
+	enum class ScopeLeft
+	{
+		ByEarlyReturn,
+		AtItsEnd
+	};
+
+	constexpr int kAddedOnlyAtTheEndOfTheScope = 10;
+
+	void LeaveScopeHoldingExitCounter(int& runs, ScopeLeft scopeLeft)
+	{
+		const Core::ScopeExit atExit{[&runs] { ++runs; }};
+
+		if (scopeLeft == ScopeLeft::ByEarlyReturn)
+		{
+			return;
+		}
+
+		runs += kAddedOnlyAtTheEndOfTheScope;
+	}
+}
+
 TEST_CASE("ScopeExit runs its action once, when its scope ends")
 {
 	int runs = 0;
@@ -16,28 +38,16 @@ TEST_CASE("ScopeExit runs its action once, when its scope ends")
 	CHECK(runs == 1);
 }
 
-TEST_CASE("ScopeExit runs its action when its scope is left early")
+TEST_CASE("ScopeExit runs its action when its scope is left early by a return")
 {
 	int runs = 0;
 
-	const auto leaveEarly = [&runs](bool early) {
-		const Core::ScopeExit atExit{[&runs] { ++runs; }};
-
-		if (early)
-		{
-			return;
-		}
-
-		runs += 10;
-	};
-
-	leaveEarly(true);
+	LeaveScopeHoldingExitCounter(runs, ScopeLeft::ByEarlyReturn);
 
 	CHECK(runs == 1);
 }
 
-// A copy would run the action a second time: a promise answered twice throws.
-TEST_CASE("ScopeExit can be neither copied nor moved")
+TEST_CASE("ScopeExit can be neither copied nor moved because a copy would run its action a second time")
 {
 	using Guard = Core::ScopeExit<void (*)()>;
 

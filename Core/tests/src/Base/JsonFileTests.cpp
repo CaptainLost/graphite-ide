@@ -14,11 +14,25 @@
 
 using Core::JsonFile;
 
+namespace {
+	std::vector<std::filesystem::path> ListEntryNames(const std::filesystem::path& folder)
+	{
+		std::vector<std::filesystem::path> entryNames;
+
+		for (const std::filesystem::directory_entry& entry : std::filesystem::directory_iterator{folder})
+		{
+			entryNames.push_back(entry.path().filename());
+		}
+
+		return entryNames;
+	}
+}
+
 TEST_CASE("Loading a missing file yields an empty set of values")
 {
-	TempDirectory temp;
+	TempDirectory temporaryDirectory;
 
-	const JsonFile file = JsonFile::Load(temp.GetPath() / "absent.json");
+	const JsonFile file = JsonFile::Load(temporaryDirectory.GetPath() / "absent.json");
 
 	CHECK(file.GetCount() == 0);
 	CHECK(file.Get("anything").empty());
@@ -26,8 +40,8 @@ TEST_CASE("Loading a missing file yields an empty set of values")
 
 TEST_CASE("A value survives a save and load round trip")
 {
-	TempDirectory temp;
-	const auto path = temp.GetPath() / "settings.json";
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path path = temporaryDirectory.GetPath() / "settings.json";
 
 	JsonFile written;
 	written.Set("lastFolder", "D:\\Repos\\IDE");
@@ -41,17 +55,17 @@ TEST_CASE("A value survives a save and load round trip")
 
 TEST_CASE("Writing one key preserves the others")
 {
-	TempDirectory temp;
-	const auto path = temp.GetPath() / "settings.json";
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path path = temporaryDirectory.GetPath() / "settings.json";
 
-	JsonFile first;
-	first.Set("lastFolder", "D:\\Repos\\IDE");
-	first.Set("ignoredDisplay", "dim");
-	REQUIRE(first.Save(path));
+	JsonFile firstWriter;
+	firstWriter.Set("lastFolder", "D:\\Repos\\IDE");
+	firstWriter.Set("ignoredDisplay", "dim");
+	REQUIRE(firstWriter.Save(path));
 
-	JsonFile second = JsonFile::Load(path);
-	second.Set("ignoredDisplay", "hide");
-	REQUIRE(second.Save(path));
+	JsonFile secondWriter = JsonFile::Load(path);
+	secondWriter.Set("ignoredDisplay", "hide");
+	REQUIRE(secondWriter.Save(path));
 
 	const JsonFile read = JsonFile::Load(path);
 
@@ -71,8 +85,8 @@ TEST_CASE("Setting an existing key replaces it rather than duplicating it")
 
 TEST_CASE("An empty value is stored and reads back empty")
 {
-	TempDirectory temp;
-	const auto path = temp.GetPath() / "settings.json";
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path path = temporaryDirectory.GetPath() / "settings.json";
 
 	JsonFile written;
 	written.Set("lastFolder", "");
@@ -86,8 +100,8 @@ TEST_CASE("An empty value is stored and reads back empty")
 
 TEST_CASE("A value containing a newline survives intact")
 {
-	TempDirectory temp;
-	const auto path = temp.GetPath() / "settings.json";
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path path = temporaryDirectory.GetPath() / "settings.json";
 
 	JsonFile written;
 	written.Set("expression", "a\nb");
@@ -100,8 +114,8 @@ TEST_CASE("A value containing a newline survives intact")
 
 TEST_CASE("A value containing an equals sign survives intact")
 {
-	TempDirectory temp;
-	const auto path = temp.GetPath() / "settings.json";
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path path = temporaryDirectory.GetPath() / "settings.json";
 
 	JsonFile written;
 	written.Set("expression", "a=b=c");
@@ -112,8 +126,8 @@ TEST_CASE("A value containing an equals sign survives intact")
 
 TEST_CASE("A malformed file loads as empty rather than throwing")
 {
-	TempDirectory temp;
-	const auto path = temp.MakeFile("settings.json", "{ this is not valid json ");
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path path = temporaryDirectory.MakeFile("settings.json", "{ this is not valid json ");
 
 	const JsonFile read = JsonFile::Load(path);
 
@@ -121,38 +135,36 @@ TEST_CASE("A malformed file loads as empty rather than throwing")
 	CHECK(read.Get("anything").empty());
 }
 
-// Both read as empty, but only one has anything in it a person could lose by writing over it.
-TEST_CASE("A file that does not parse is reported as malformed, and a missing or blank one is not")
+TEST_CASE("A file that is not a JSON object is reported as malformed, and a missing or blank one is not")
 {
-	TempDirectory temp;
+	TempDirectory temporaryDirectory;
 
-	CHECK(JsonFile::Load(temp.MakeFile("broken.json", "{ this is not valid json ")).IsMalformed());
-	CHECK(JsonFile::Load(temp.MakeFile("array.json", "[1, 2]")).IsMalformed());
+	CHECK(JsonFile::Load(temporaryDirectory.MakeFile("broken.json", "{ this is not valid json ")).IsMalformed());
+	CHECK(JsonFile::Load(temporaryDirectory.MakeFile("array.json", "[1, 2]")).IsMalformed());
 
-	CHECK_FALSE(JsonFile::Load(temp.GetPath() / "missing.json").IsMalformed());
-	CHECK_FALSE(JsonFile::Load(temp.MakeFile("blank.json", " \r\n")).IsMalformed());
-	CHECK_FALSE(JsonFile::Load(temp.MakeFile("good.json", R"({"a": "1"})")).IsMalformed());
+	CHECK_FALSE(JsonFile::Load(temporaryDirectory.GetPath() / "missing.json").IsMalformed());
+	CHECK_FALSE(JsonFile::Load(temporaryDirectory.MakeFile("blank.json", " \r\n")).IsMalformed());
+	CHECK_FALSE(JsonFile::Load(temporaryDirectory.MakeFile("good.json", R"({"a": "1"})")).IsMalformed());
 	CHECK_FALSE(JsonFile{}.IsMalformed());
 }
 
 TEST_CASE("A non-string value reads back as empty rather than throwing")
 {
-	TempDirectory temp;
-	const auto path = temp.MakeFile("settings.json", "{ \"count\": 42, \"mode\": \"dim\" }");
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path path = temporaryDirectory.MakeFile("settings.json", "{ \"count\": 42, \"mode\": \"dim\" }");
 
 	const JsonFile read = JsonFile::Load(path);
 
 	CHECK(read.Get("count").empty());
 
-	// The neighbouring key proves the file was read at all — without it this test would
-	// also pass if parsing had failed outright and everything came back empty.
+	// Without this check the test would also pass if parsing had failed and everything read as empty.
 	CHECK(read.Get("mode") == "dim");
 }
 
 TEST_CASE("Saving is human-readable, not a single-line blob")
 {
-	TempDirectory temp;
-	const auto path = temp.GetPath() / "settings.json";
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path path = temporaryDirectory.GetPath() / "settings.json";
 
 	JsonFile written;
 	written.Set("lastFolder", "D:\\Repos\\IDE");
@@ -164,66 +176,58 @@ TEST_CASE("Saving is human-readable, not a single-line blob")
 	CHECK(contents.find('\n') != std::string::npos);
 }
 
-TEST_CASE("A failed save leaves the previous file intact")
+TEST_CASE("A save that fails leaves an unrelated file and the folder around it untouched")
 {
-	TempDirectory temp;
-	const auto path = temp.GetPath() / "settings.json";
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path unrelatedFile = temporaryDirectory.GetPath() / "settings.json";
 
 	JsonFile original;
 	original.Set("lastFolder", "D:\\Repos\\IDE");
-	REQUIRE(original.Save(path));
+	REQUIRE(original.Save(unrelatedFile));
 
+	const std::filesystem::path targetInMissingDirectory = temporaryDirectory.GetPath() / "missing-directory" / "settings.json";
 	JsonFile doomed;
 	doomed.Set("lastFolder", "D:\\Elsewhere");
-	CHECK_FALSE(doomed.Save(temp.GetPath() / "missing-directory" / "settings.json"));
+	CHECK_FALSE(doomed.Save(targetInMissingDirectory));
 
-	// The unrelated file must be untouched, and no stray temporary left behind.
-	CHECK(JsonFile::Load(path).Get("lastFolder") == "D:\\Repos\\IDE");
-	CHECK_FALSE(std::filesystem::exists(temp.GetPath() / "settings.json.tmp"));
+	const std::vector<std::filesystem::path> onlyTheUnrelatedFile = {unrelatedFile.filename()};
+	CHECK(JsonFile::Load(unrelatedFile).Get("lastFolder") == "D:\\Repos\\IDE");
+	CHECK_FALSE(std::filesystem::exists(targetInMissingDirectory.parent_path()));
+	CHECK(ListEntryNames(temporaryDirectory.GetPath()) == onlyTheUnrelatedFile);
 }
 
 TEST_CASE("A value that is not valid UTF-8 is saved instead of throwing")
 {
-	TempDirectory temp;
-	const auto path = temp.GetPath() / "settings.json";
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path path = temporaryDirectory.GetPath() / "settings.json";
 
 	JsonFile written;
-
-	// Lone continuation bytes: not reachable from today's callers, which pass paths and
-	// fixed tokens, but Set takes any std::string and this class is public API of a
-	// library meant to be reused. Serialising rejects malformed UTF-8 unless told to
-	// substitute, and it would throw out of Core — with the temporary file already open,
-	// so the failure would also leave debris behind.
 	written.Set("broken", std::string{"aÿþb"});
 
 	REQUIRE(written.Save(path));
 	CHECK(std::filesystem::exists(path));
-	CHECK_FALSE(std::filesystem::exists(temp.GetPath() / "settings.json.tmp"));
 
-	// Readable afterwards: the mangled characters became replacement characters rather
-	// than corrupting the document.
+	const std::filesystem::path leftoverTemporaryFile = temporaryDirectory.GetPath() / "settings.json.tmp";
+	CHECK_FALSE(std::filesystem::exists(leftoverTemporaryFile));
+
 	const JsonFile read = JsonFile::Load(path);
 	CHECK_FALSE(read.Get("broken").empty());
 }
 
 TEST_CASE("A moved-from file leaves the source usable enough to destroy")
 {
-	TempDirectory temp;
-	const auto path = temp.GetPath() / "settings.json";
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path path = temporaryDirectory.GetPath() / "settings.json";
 
 	JsonFile original;
 	original.Set("lastFolder", "D:\\Repos\\IDE");
 
 	const JsonFile moved = std::move(original);
 
-	// The document lives behind a pointer, so moving empties the source; its destructor still
-	// runs at the end of this scope and must not fall over.
 	CHECK(moved.Get("lastFolder") == "D:\\Repos\\IDE");
 	CHECK(moved.Save(path));
 }
 
-// A moved-from file is an empty one, as a default-constructed file is, rather than an object
-// every member of which reads through a null pointer.
 TEST_CASE("A moved-from file reads as empty and can be written to again")
 {
 	JsonFile original;
@@ -246,10 +250,10 @@ TEST_CASE("A moved-from file reads as empty and can be written to again")
 	CHECK(original.GetCount() == 0);
 }
 
-TEST_CASE("Keys lists what was stored, so a caller can find its own by prefix")
+TEST_CASE("CollectKeys lists what was stored, so a caller can find its own by prefix")
 {
-	TempDirectory temp;
-	const auto path = temp.GetPath() / "settings.json";
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path path = temporaryDirectory.GetPath() / "settings.json";
 
 	JsonFile file;
 	file.Set("key.editor.zoomIn", "Ctrl+U");
@@ -265,15 +269,15 @@ TEST_CASE("Keys lists what was stored, so a caller can find its own by prefix")
 	CHECK(keys[1] == "wordWrap");
 }
 
-TEST_CASE("Keys on an empty file is empty")
+TEST_CASE("CollectKeys on an empty file is empty")
 {
 	CHECK(JsonFile{}.CollectKeys().empty());
 }
 
 TEST_CASE("Remove takes the key out rather than leaving it holding an empty value")
 {
-	TempDirectory temp;
-	const auto path = temp.GetPath() / "settings.json";
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path path = temporaryDirectory.GetPath() / "settings.json";
 
 	JsonFile file;
 	file.Set("key.editor.zoomIn", "Ctrl+U");
@@ -284,8 +288,6 @@ TEST_CASE("Remove takes the key out rather than leaving it holding an empty valu
 	CHECK(file.Get("key.editor.zoomIn").empty());
 	REQUIRE(file.Save(path));
 
-	// Proven through the file too: a key merely blanked would survive the round trip and
-	// every reader would have to keep apologising for it.
 	const JsonFile read = JsonFile::Load(path);
 	CHECK(read.CollectKeys() == std::vector<std::string>{"wordWrap"});
 }

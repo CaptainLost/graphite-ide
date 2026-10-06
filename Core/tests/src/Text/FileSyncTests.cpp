@@ -209,7 +209,7 @@ TEST_CASE("Save all skips a document that changed on disk and keeps saving the r
 TEST_CASE("Save all stops at a write that fails rather than carrying on past it")
 {
 	TempDirectory directory;
-	const auto folder = directory.MakeDir("folder");
+	const auto folder = directory.MakeDirectory("folder");
 	const auto doomed = folder / "doomed.txt";
 	const auto after = directory.GetPath() / "after.txt";
 	WriteBytes(doomed, "original\n");

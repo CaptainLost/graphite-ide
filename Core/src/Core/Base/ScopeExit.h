@@ -5,8 +5,6 @@
 
 namespace Core {
 
-	// Runs an action when the scope holding it ends, however it ends - including by a return
-	// added later. Neither copyable nor movable: a copy would run the action a second time.
 	template<std::invocable Action>
 	class ScopeExit
 	{

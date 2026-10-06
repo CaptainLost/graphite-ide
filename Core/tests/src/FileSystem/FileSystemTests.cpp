@@ -30,7 +30,7 @@ TEST_CASE("ReadDirectory lists files and directories")
 {
 	TempDirectory temp;
 	temp.MakeFile("alpha.txt", "hello");
-	temp.MakeDir("beta");
+	temp.MakeDirectory("beta");
 
 	auto result = ReadDirectory(temp.GetPath());
 
@@ -383,4 +383,11 @@ TEST_CASE("PathExists reads anything it cannot examine as absent")
 	CHECK(Core::PathExists(directory.MakeFile("a.txt")));
 	CHECK_FALSE(Core::PathExists(directory.GetPath() / "absent.txt"));
 	CHECK_FALSE(Core::PathExists(std::filesystem::path{}));
+}
+
+TEST_CASE("LoweredExtension gives the extension with its dot, in lower case")
+{
+	CHECK(Core::LoweredExtension("D:/work/App.VCXPROJ") == ".vcxproj");
+	CHECK(Core::LoweredExtension("Makefile").empty());
+	CHECK(Core::LoweredExtension("archive.tar.GZ") == ".gz");
 }

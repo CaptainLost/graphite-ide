@@ -6,9 +6,9 @@
 
 TEST_CASE("SharedEmptyVector is one empty vector per element type")
 {
-	const std::vector<int>& first = Core::SharedEmptyVector<int>();
-	const std::vector<int>& second = Core::SharedEmptyVector<int>();
+	const std::vector<int>& fromFirstCall = Core::SharedEmptyVector<int>();
+	const std::vector<int>& fromSecondCall = Core::SharedEmptyVector<int>();
 
-	CHECK(first.empty());
-	CHECK(&first == &second);
+	CHECK(fromFirstCall.empty());
+	CHECK(&fromFirstCall == &fromSecondCall);
 }

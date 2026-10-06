@@ -6,23 +6,23 @@
 
 namespace Core {
 
-	template<typename T>
-	using Scope = std::unique_ptr<T>;
+	template<typename Object>
+	using Scope = std::unique_ptr<Object>;
 
-	template<typename T, typename... Args>
-		requires std::constructible_from<T, Args...>
-	constexpr Scope<T> CreateScope(Args&&... args)
+	template<typename Object, typename... Arguments>
+		requires std::constructible_from<Object, Arguments...>
+	constexpr Scope<Object> CreateScope(Arguments&&... arguments)
 	{
-		return std::make_unique<T>(std::forward<Args>(args)...);
+		return std::make_unique<Object>(std::forward<Arguments>(arguments)...);
 	}
 
-	template<typename T>
-	using Ref = std::shared_ptr<T>;
+	template<typename Object>
+	using Ref = std::shared_ptr<Object>;
 
-	template<typename T, typename... Args>
-		requires std::constructible_from<T, Args...>
-	constexpr Ref<T> CreateRef(Args&&... args)
+	template<typename Object, typename... Arguments>
+		requires std::constructible_from<Object, Arguments...>
+	constexpr Ref<Object> CreateRef(Arguments&&... arguments)
 	{
-		return std::make_shared<T>(std::forward<Args>(args)...);
+		return std::make_shared<Object>(std::forward<Arguments>(arguments)...);
 	}
 }

@@ -57,7 +57,7 @@ TEST_CASE("ChildProcess quotes a program path that contains a space")
 	// An unquoted command line lets CreateProcessW split the program path itself on the
 	// space, which is exactly what a real "C:\Program Files\..." install path would trigger.
 	TempDirectory temp;
-	const std::filesystem::path directory = temp.MakeDir("has space");
+	const std::filesystem::path directory = temp.MakeDirectory("has space");
 	const std::filesystem::path copiedExe = directory / "cmd.exe";
 
 	std::error_code copyError;

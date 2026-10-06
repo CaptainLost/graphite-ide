@@ -168,7 +168,7 @@ TEST_CASE("A transcript that cannot be read has no summary, and a readable one h
 {
 	TempDirectory temp;
 	const std::filesystem::path file = temp.MakeFile("p/a.jsonl", Fixtures::UserPrompt("hello"));
-	const std::filesystem::path directory = temp.MakeDir("p/x.jsonl");
+	const std::filesystem::path directory = temp.MakeDirectory("p/x.jsonl");
 
 	const std::optional<SessionSummary> read = TrySummariseSession(file);
 	REQUIRE(read.has_value());

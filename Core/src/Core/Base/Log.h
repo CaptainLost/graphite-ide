@@ -21,8 +21,6 @@ namespace Core {
 		Critical
 	};
 
-	// Which half of the program spoke. Both write through named loggers sharing one set of
-	// sinks, so a reader gets them interleaved and a sink can still tell them apart.
 	enum class LogSource
 	{
 		Engine,
@@ -40,21 +38,18 @@ namespace Core {
 		LogLevel Level = LogLevel::Info;
 		LogSource Source = LogSource::Engine;
 		std::string Message;
-		// Names this message for as long as the program runs. A reader holding on to a
-		// position in the buffer - a selection, say - cannot hold an index instead: the
-		// buffer drops its oldest entries, and every index then points at a message one
-		// further along than the one it was taken from.
+		// A reader that remembers a message, a selection say, keeps this number and not an index:
+		// the buffer drops its oldest entries, and every index then names the next message along.
 		std::uint64_t Sequence = 0;
 	};
 
 	class RingBufferSink;
 
-	// An empty FilePath means no file is written at all, which is what a test run wants.
 	struct LogSpec
 	{
 		std::filesystem::path FilePath;
-		std::size_t MaxFileSize = 5u * 1024u * 1024u;
-		std::size_t MaxFiles = 3;
+		std::size_t MaximumFileSize = 5u * 1024u * 1024u;
+		std::size_t RotatedFilesKept = 3;
 		std::size_t ConsoleCapacity = 4096;
 		LogLevel Level = LogLevel::Trace;
 	};
@@ -62,9 +57,6 @@ namespace Core {
 	class Log final
 	{
 	public:
-		// Both loggers exist from the first message written through them, so anything logged
-		// before Init still reaches the console and the in-memory buffer. Init replaces the
-		// sink set, and is the only point at which capacity and level can be chosen.
 		static void Init(const LogSpec& spec = LogSpec{});
 
 		static const Ref<spdlog::logger>& GetEngineLogger();
@@ -72,12 +64,12 @@ namespace Core {
 		static const Ref<RingBufferSink>& GetConsoleSink();
 	};
 
-	// Defined by the client, next to CreateApplication and for the same reason: the entry
-	// point runs before the application exists.
+	// Defined by the client, not by Core: the entry point calls it to set up logging before the
+	// application exists.
 	LogSpec CreateLogSpec();
 }
-// The engine logs through CORE_*, the application through APP_*: anything below the engine
-// boundary that used APP_* would be reporting itself as the application.
+// Core logs through CORE_* and the application through APP_*: a Core file that used APP_* would
+// report itself as the application.
 #define CORE_TRACE(...) ::Core::Log::GetEngineLogger()->trace(__VA_ARGS__)
 #define CORE_INFO(...) ::Core::Log::GetEngineLogger()->info(__VA_ARGS__)
 #define CORE_WARN(...) ::Core::Log::GetEngineLogger()->warn(__VA_ARGS__)

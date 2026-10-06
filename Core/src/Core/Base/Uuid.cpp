@@ -3,56 +3,68 @@
 #include "Core/Base/Uuid.h"
 
 #include <cstring>
+#include <iterator>
 #include <random>
 
 namespace Core {
 
+	namespace {
+		constexpr std::size_t kVersionByteIndex = 6;
+		constexpr std::uint8_t kBitsBelowVersionMask = 0x0F;
+		constexpr std::uint8_t kRandomVersionInTopNibble = 0x40;
+
+		constexpr std::size_t kVariantByteIndex = 8;
+		constexpr std::uint8_t kBitsBelowVariantMask = 0x3F;
+		constexpr std::uint8_t kRfc4122VariantInTopTwoBits = 0x80;
+
+		constexpr std::size_t kCanonicalGroupByteCounts[] = {4, 2, 2, 2, 6};
+		constexpr std::size_t kHexDigitsPerByte = 2;
+		constexpr std::size_t kGroupSeparatorCount = std::size(kCanonicalGroupByteCounts) - 1;
+		constexpr std::size_t kCanonicalTextLength = Uuid::kByteCount * kHexDigitsPerByte + kGroupSeparatorCount;
+	}
+
 	Uuid Uuid::Generate()
 	{
-		// random_device only seeds: a conforming one is allowed to be deterministic, and
-		// drawing every bit from it is slow where it is not. thread_local because the engine
-		// is stateful and this may be called from the UI thread and a worker.
+		// random_device only seeds: a conforming one may be deterministic, and drawing every bit
+		// from it is slow where it is not. thread_local because the engine is stateful and nothing
+		// confines this function to one thread.
 		static thread_local std::mt19937_64 engine{std::random_device{}()};
 
 		std::uniform_int_distribution<std::uint64_t> distribution;
 
-		// Every byte is random, so neither which half lands where nor the byte order within a
-		// half is an ordering there is anything to get wrong about.
-		const std::uint64_t halves[2] = {distribution(engine), distribution(engine)};
+		const std::uint64_t randomHalves[2] = {distribution(engine), distribution(engine)};
 
-		static_assert(sizeof(halves) == kByteCount, "two 64-bit draws are one UUID");
+		static_assert(sizeof(randomHalves) == kByteCount, "two 64-bit draws are one UUID");
 
 		Uuid uuid;
-		std::memcpy(uuid.m_Bytes.data(), halves, kByteCount);
+		std::memcpy(uuid.m_Bytes.data(), randomHalves, kByteCount);
 
-		// RFC 4122 section 4.4: version in the top nibble of byte 6, variant in the top two
-		// bits of byte 8, leaving the other hundred and twenty-two bits random.
-		uuid.m_Bytes[6] = static_cast<std::uint8_t>((uuid.m_Bytes[6] & 0x0F) | 0x40);
-		uuid.m_Bytes[8] = static_cast<std::uint8_t>((uuid.m_Bytes[8] & 0x3F) | 0x80);
+		uuid.m_Bytes[kVersionByteIndex] = static_cast<std::uint8_t>(
+			(uuid.m_Bytes[kVersionByteIndex] & kBitsBelowVersionMask) | kRandomVersionInTopNibble);
+		uuid.m_Bytes[kVariantByteIndex] = static_cast<std::uint8_t>(
+			(uuid.m_Bytes[kVariantByteIndex] & kBitsBelowVariantMask) | kRfc4122VariantInTopTwoBits);
 
 		return uuid;
 	}
 
 	std::string Uuid::ToString() const
 	{
-		// The 8-4-4-4-12 hexadecimal digits of the canonical form, in bytes.
-		constexpr std::size_t kGroupSizes[] = {4, 2, 2, 2, 6};
-
 		std::string text;
-		text.reserve(36);
+		text.reserve(kCanonicalTextLength);
 
-		std::size_t byte = 0;
+		std::size_t byteIndex = 0;
 
-		for (const std::size_t size : kGroupSizes)
+		for (const std::size_t groupByteCount : kCanonicalGroupByteCounts)
 		{
 			if (!text.empty())
 			{
 				text += '-';
 			}
 
-			for (std::size_t i = 0; i < size; ++i, ++byte)
+			for (std::size_t byteInGroup = 0; byteInGroup < groupByteCount; ++byteInGroup)
 			{
-				text += std::format("{:02X}", m_Bytes[byte]);
+				text += std::format("{:02X}", m_Bytes[byteIndex]);
+				++byteIndex;
 			}
 		}
 

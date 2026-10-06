@@ -20,12 +20,11 @@ namespace Core {
 
 	std::uint32_t PackBgr(const Color& color);
 
-	// RRGGBB or RRGGBBAA, case-insensitive, no leading '#'. Nothing for any other length, any
-	// non-hex character, or an empty string — a scheme file is hand-edited, so a malformed
-	// colour is an ordinary occurrence and not an error worth throwing over.
-	std::optional<Color> ParseHexColor(std::string_view text);
+	// Empty rather than an error for malformed text: a scheme file is edited by hand, so a
+	// malformed colour is an ordinary occurrence and not worth an error.
+	std::optional<Color> ParseHexColor(std::string_view hexDigits);
 
-	// Six characters when the colour is fully opaque, eight when it is not, so a scheme written
-	// by hand stays as short as what a person would have typed.
+	// An opaque colour leaves out its alpha digits, so a scheme written by hand stays as short as
+	// what a person would have typed.
 	std::string ToHexColor(const Color& color);
 }

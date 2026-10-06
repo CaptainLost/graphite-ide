@@ -1,8 +1,8 @@
 #include <doctest/doctest.h>
 
-#include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
 
+#include <cstddef>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -10,6 +10,23 @@
 using Core::Error;
 using Core::ErrorCode;
 using Core::Result;
+
+namespace {
+	constexpr std::size_t kLengthBeyondSmallStringBuffer = 64;
+
+	std::string StringLongerThanSmallStringBuffer()
+	{
+		return std::string(kLengthBeyondSmallStringBuffer, 'x');
+	}
+
+	Result<std::string> MakeResultHoldingLongString()
+	{
+		return Result<std::string>{StringLongerThanSmallStringBuffer()};
+	}
+
+	template<typename Candidate>
+	concept NamesAResult = requires { typename Result<Candidate>; };
+}
 
 TEST_CASE("Result stores a value")
 {
@@ -22,7 +39,7 @@ TEST_CASE("Result stores a value")
 
 TEST_CASE("Result stores an error")
 {
-	Result<int> result{Error{ErrorCode::NotFound, "no such file"}};
+	Result<int> result{Error{.Code = ErrorCode::NotFound, .Message = "no such file"}};
 
 	CHECK_FALSE(result.HasValue());
 	CHECK_FALSE(static_cast<bool>(result));
@@ -32,10 +49,10 @@ TEST_CASE("Result stores an error")
 
 TEST_CASE("ValueOr returns the fallback value on error")
 {
-	Result<int> ok{7};
-	Result<int> failed{Error{ErrorCode::IoFailure, "disk"}};
+	Result<int> succeeded{7};
+	Result<int> failed{Error{.Code = ErrorCode::IoFailure, .Message = "disk"}};
 
-	CHECK(ok.ValueOr(-1) == 7);
+	CHECK(succeeded.ValueOr(-1) == 7);
 	CHECK(failed.ValueOr(-1) == -1);
 }
 
@@ -52,62 +69,32 @@ TEST_CASE("Result works with a move-only type")
 
 TEST_CASE("Result<void> distinguishes success from error")
 {
-	Result<void> ok = Result<void>::Ok();
-	Result<void> failed{Error{ErrorCode::AccessDenied, "no access"}};
+	Result<void> succeeded = Result<void>::Ok();
+	Result<void> failed{Error{.Code = ErrorCode::AccessDenied, .Message = "no access"}};
 
-	CHECK(ok.HasValue());
+	CHECK(succeeded.HasValue());
 	CHECK_FALSE(failed.HasValue());
 	CHECK(failed.GetError().Code == ErrorCode::AccessDenied);
 }
 
-TEST_CASE("A type inheriting from NonCopyable remains movable")
-{
-	struct Movable : Core::NonCopyable
-	{
-		explicit Movable(int v) : value(v) {}
-		Movable(Movable&&) = default;
-		Movable& operator=(Movable&&) = default;
-
-		int value = 0;
-	};
-
-	static_assert(std::is_move_constructible_v<Movable>);
-	static_assert(std::is_move_assignable_v<Movable>);
-	static_assert(!std::is_copy_constructible_v<Movable>);
-
-	Movable source{7};
-	Movable moved{std::move(source)};
-
-	CHECK(moved.value == 7);
-}
-
-// GetValue on a temporary hands the value out rather than a reference into the temporary, so
-// `const auto& path = Open().GetValue();` holds the value instead of dangling at the semicolon.
-TEST_CASE("GetValue on a temporary result returns the value, not a reference into it")
+TEST_CASE("GetValue on a temporary result returns the value rather than a reference into it so a const reference keeps it alive")
 {
 	static_assert(std::is_same_v<decltype(std::declval<Result<std::string>>().GetValue()), std::string>);
 	static_assert(std::is_same_v<decltype(std::declval<Result<std::unique_ptr<int>>>().GetValue()),
 								 std::unique_ptr<int>>);
 
-	const auto make = [] { return Result<std::string>{std::string(64, 'x')}; };
-	const std::string& held = make().GetValue();
+	const std::string& held = MakeResultHoldingLongString().GetValue();
 
-	CHECK(held == std::string(64, 'x'));
+	CHECK(held == StringLongerThanSmallStringBuffer());
 }
 
-namespace {
-	template<typename T>
-	concept NamesAResult = requires { typename Result<T>; };
-}
-
-// Refused where it is named, rather than as an ambiguous constructor or a variant error deep
-// inside the class.
-TEST_CASE("Result refuses Error and references as its value type")
+TEST_CASE("Result refuses Error and references as its value type where the type is named rather than as an ambiguous constructor or a variant error inside the class")
 {
 	static_assert(NamesAResult<int>);
 	static_assert(NamesAResult<void>);
 	static_assert(!NamesAResult<Error>);
 	static_assert(!NamesAResult<int&>);
 
-	CHECK(true);
+	constexpr bool kStaticAssertionsCompiled = true;
+	CHECK(kStaticAssertionsCompiled);
 }

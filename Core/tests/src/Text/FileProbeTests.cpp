@@ -174,7 +174,7 @@ TEST_CASE("ReadDiskText keeps the byte order mark and refuses what is not text")
 	CHECK(ReadDiskText(directory.MakeFile("object.obj", std::string{"MZ\0\0binary", 10})).Outcome ==
 		  DiskTextOutcome::Binary);
 	CHECK(ReadDiskText(directory.GetPath() / "absent.txt").Outcome == DiskTextOutcome::Unreadable);
-	CHECK(ReadDiskText(directory.MakeDir("folder")).Outcome == DiskTextOutcome::Unreadable);
+	CHECK(ReadDiskText(directory.MakeDirectory("folder")).Outcome == DiskTextOutcome::Unreadable);
 
 	const std::string markedUtf16WithUnpairedHighSurrogate{"\xFF\xFE"
 														   "a\0"

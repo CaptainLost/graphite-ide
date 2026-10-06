@@ -88,8 +88,8 @@ Core::LogSpec Core::CreateLogSpec()
 
 	Core::LogSpec spec;
 	spec.FilePath = Graphite::UserDirectories::LogFile();
-	spec.MaxFileSize = Graphite::kLogFileSize;
-	spec.MaxFiles = Graphite::kLogFileCount;
+	spec.MaximumFileSize = Graphite::kLogFileSize;
+	spec.RotatedFilesKept = Graphite::kLogFileCount;
 	spec.ConsoleCapacity = Graphite::kConsoleCapacity;
 	return spec;
 }

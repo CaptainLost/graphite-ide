@@ -18,23 +18,21 @@ TEST_CASE("A star stands for any run of characters")
 	CHECK_FALSE(GlobMatches("*.cpp", "Application.h"));
 }
 
-TEST_CASE("A question mark stands for exactly one character")
+TEST_CASE("A question mark stands for exactly one character and never for a '/'")
 {
 	CHECK(GlobMatches("Ma?n.cpp", "Main.cpp"));
 	CHECK_FALSE(GlobMatches("Ma?n.cpp", "Man.cpp"));
+	CHECK_FALSE(GlobMatches("Core?Repository.cpp", "Core/Repository.cpp"));
 }
 
 TEST_CASE("Several stars match without backtracking wrongly")
 {
-	// "*a*b*c" against a long name is where a naive matcher gives up or recurses too deep.
 	CHECK(GlobMatches("*Git*Log*.cpp", "RepositoryGitLogReader.cpp"));
 	CHECK_FALSE(GlobMatches("*Git*Log*.h", "RepositoryGitLogReader.cpp"));
 }
 
-TEST_CASE("Stars in a multi-segment pattern each stay inside their own segment")
+TEST_CASE("Stars in a multi-segment pattern each stay inside their own segment so the pattern says how deep it means")
 {
-	// Each segment is matched by the segment of the pattern facing it, so the pattern says
-	// how deep it means and a star cannot quietly widen it.
 	CHECK(GlobMatches("Core/*/Repository*.cpp", "Core/Git/RepositoryLog.cpp"));
 	CHECK_FALSE(GlobMatches("Core/*/Repository*.cpp", "Core/src/Git/RepositoryLog.cpp"));
 }
@@ -45,13 +43,16 @@ TEST_CASE("Matching ignores case")
 	CHECK(GlobMatches("application.cpp", "Application.cpp"));
 }
 
-TEST_CASE("A star does not cross a directory separator")
+TEST_CASE("A star does not cross a '/'")
 {
-	// Otherwise "Core/*.cpp" would quietly mean "anywhere under Core", and a pattern could
-	// not say how deep it means.
 	CHECK_FALSE(GlobMatches("Core/*.cpp", "Core/Git/Repository.cpp"));
 	CHECK(GlobMatches("Core/*.cpp", "Core/Repository.cpp"));
 	CHECK_FALSE(GlobMatches("*.cpp", "Core/Repository.cpp"));
+}
+
+TEST_CASE("A backslash is an ordinary character, not a separator")
+{
+	CHECK(GlobMatches("Core*.cpp", "Core\\Repository.cpp"));
 }
 
 TEST_CASE("An empty pattern matches only empty text")

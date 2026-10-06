@@ -7,17 +7,14 @@
 
 namespace Core {
 
-	// Whether `value` survives a conversion to `To` unchanged - neither cut off nor turned
-	// from negative to positive or back.
 	template<std::integral To, std::integral From>
 	constexpr bool NarrowFits(From value)
 	{
 		return std::in_range<To>(value);
 	}
 
-	// A narrowing conversion that says it is one, and asserts that nothing is lost: a size
-	// handed to an API that counts in int, say. Asserted rather than thrown (ADR 0004): a
-	// value out of range here is a mistake in the caller, not something the environment does.
+	// Asserted, not returned as an error: a value out of range here is a bug in the caller, not
+	// something the environment can cause.
 	template<std::integral To, std::integral From>
 	constexpr To Narrow(From value)
 	{

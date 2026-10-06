@@ -181,7 +181,7 @@ TEST_CASE("A transcript that cannot be read is neither delivered nor remembered,
 	temp.MakeFile("p/a.jsonl", Fixtures::UserPrompt("a"));
 
 	// A directory where a transcript should be: it exists, and reading it fails.
-	const std::filesystem::path unreadable = temp.MakeDir("p/x.jsonl");
+	const std::filesystem::path unreadable = temp.MakeDirectory("p/x.jsonl");
 
 	SessionIndex index;
 	index.Start(temp.GetPath(), {});

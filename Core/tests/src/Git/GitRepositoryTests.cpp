@@ -109,7 +109,7 @@ TEST_CASE("Opening succeeds from a directory inside the repository")
 {
 	TempDirectory temp;
 	InitRepository(temp.GetPath());
-	temp.MakeDir("deep/nested");
+	temp.MakeDirectory("deep/nested");
 
 	auto opened = Repository::Open(temp.GetPath() / "deep" / "nested");
 
@@ -137,7 +137,7 @@ TEST_CASE("A nested rules file applies inside its own directory only")
 {
 	TempDirectory temp;
 	InitRepository(temp.GetPath());
-	temp.MakeDir("sub");
+	temp.MakeDirectory("sub");
 	temp.MakeFile("sub/.gitignore", "secret.txt\n");
 	temp.MakeFile("sub/secret.txt", "x");
 	temp.MakeFile("secret.txt", "x");
@@ -156,7 +156,7 @@ TEST_CASE("A wildcard-free negation in a nested file does not override a parent 
 	TempDirectory temp;
 	InitRepository(temp.GetPath());
 	temp.MakeFile(".gitignore", "*.log\n");
-	temp.MakeDir("sub");
+	temp.MakeDirectory("sub");
 	temp.MakeFile("sub/.gitignore", "!keep.log\n");
 	temp.MakeFile("sub/keep.log", "x");
 	temp.MakeFile("sub/other.log", "x");
@@ -184,7 +184,7 @@ TEST_CASE("A negation with a wildcard does override a parent rule")
 	TempDirectory temp;
 	InitRepository(temp.GetPath());
 	temp.MakeFile(".gitignore", "*.log\n");
-	temp.MakeDir("sub");
+	temp.MakeDirectory("sub");
 	temp.MakeFile("sub/.gitignore", "!keep.*\n");
 	temp.MakeFile("sub/keep.log", "x");
 	temp.MakeFile("sub/other.log", "x");
@@ -234,7 +234,7 @@ TEST_CASE("A directory-only rule ignores the directory itself")
 	TempDirectory temp;
 	InitRepository(temp.GetPath());
 	temp.MakeFile(".gitignore", "build/\n");
-	temp.MakeDir("build");
+	temp.MakeDirectory("build");
 	temp.MakeFile("build.txt", "x");
 
 	auto opened = Repository::Open(temp.GetPath());

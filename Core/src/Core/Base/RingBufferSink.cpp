@@ -9,11 +9,10 @@
 namespace Core {
 
 	namespace {
-		LogSource SourceOf(const spdlog::details::log_msg& msg)
+		LogSource SourceFromLoggerName(std::string_view loggerName)
 		{
-			const std::string_view name{msg.logger_name.data(), msg.logger_name.size()};
-			return name == ToString(LogSource::Application) ? LogSource::Application
-															: LogSource::Engine;
+			return loggerName == ToString(LogSource::Application) ? LogSource::Application
+																  : LogSource::Engine;
 		}
 	}
 
@@ -22,10 +21,13 @@ namespace Core {
 		CORE_ASSERT(capacity > 0, "RingBufferSink requires a capacity greater than zero");
 	}
 
-	void RingBufferSink::sink_it_(const spdlog::details::log_msg& msg)
+	// Keeps the raw message text, not spdlog's formatted line: the writer and the severity stay
+	// separate fields a renderer can lay out or filter on, instead of being parsed back out.
+	void RingBufferSink::sink_it_(const spdlog::details::log_msg& message)
 	{
-		LogEntry entry{FromBackendLevel(msg.level), SourceOf(msg),
-					   std::string{msg.payload.data(), msg.payload.size()}};
+		LogEntry entry{.Level = FromBackendLevel(message.level),
+					   .Source = SourceFromLoggerName(std::string_view{message.logger_name.data(), message.logger_name.size()}),
+					   .Message = std::string{message.payload.data(), message.payload.size()}};
 
 		const std::scoped_lock lock{m_Mutex};
 
@@ -40,7 +42,7 @@ namespace Core {
 
 	void RingBufferSink::flush_()
 	{
-		// Nothing is buffered on the way in, so there is nothing to push out.
+		// sink_it_ stores each entry as it arrives, so nothing is held back to flush.
 	}
 
 	std::vector<LogEntry> RingBufferSink::TakeSnapshot() const

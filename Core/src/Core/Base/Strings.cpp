@@ -49,14 +49,15 @@ namespace Core {
 		while (segmentStart < text.size())
 		{
 			const std::size_t separatorIndex = text.find(separator, segmentStart);
-			const std::size_t segmentEnd = separatorIndex == std::string_view::npos ? text.size() : separatorIndex;
+			const bool isLastSegment = separatorIndex == std::string_view::npos;
+			const std::size_t segmentEnd = isLastSegment ? text.size() : separatorIndex;
 
 			if (segmentEnd > segmentStart)
 			{
 				parts.emplace_back(text.substr(segmentStart, segmentEnd - segmentStart));
 			}
 
-			if (separatorIndex == std::string_view::npos)
+			if (isLastSegment)
 			{
 				break;
 			}

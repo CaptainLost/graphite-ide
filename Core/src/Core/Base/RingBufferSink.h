@@ -12,10 +12,6 @@
 
 namespace Core {
 
-	// Keeps the last N messages in memory so a panel can render them, dropping the oldest
-	// rather than letting a long session grow without limit. The entries carry the message
-	// text alone: the clock, the writer and the severity stay fields a renderer can lay out or
-	// filter on, rather than being formatted in and parsed back out.
 	class RingBufferSink final : public spdlog::sinks::base_sink<std::mutex>
 	{
 	public:
@@ -24,26 +20,21 @@ namespace Core {
 		std::vector<LogEntry> TakeSnapshot() const;
 		std::size_t GetCount() const;
 		std::size_t GetCapacity() const { return m_Capacity; }
-
-		// Moves with every entry taken in and every Clear, and with nothing else, so a reader can
-		// tell a snapshot it already holds is still the buffer's contents without copying again.
 		std::uint64_t GetRevision() const;
 
 		void Clear();
 
 	protected:
-		void sink_it_(const spdlog::details::log_msg& msg) override;
+		void sink_it_(const spdlog::details::log_msg& message) override;
 		void flush_() override;
 
 	private:
-		// The base class only locks around sink_it_, and TakeSnapshot is called from wherever
-		// a panel renders.
+		// spdlog's base_sink takes its mutex only inside its own members, never around TakeSnapshot,
+		// GetCount, GetRevision or Clear, which are called from wherever a panel renders, so the
+		// entries need a lock of their own.
 		mutable std::mutex m_Mutex;
 		std::deque<LogEntry> m_Entries;
 		std::size_t m_Capacity;
-		// Never reset, Clear included: a number handed out once is not handed out again, so a
-		// reader that kept one can tell the message it named is gone rather than find another
-		// message wearing it.
 		std::uint64_t m_NextSequence = 1;
 		std::uint64_t m_Revision = 0;
 	};

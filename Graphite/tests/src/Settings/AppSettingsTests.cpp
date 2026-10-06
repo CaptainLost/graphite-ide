@@ -173,7 +173,7 @@ TEST_CASE("Two instances on one file keep each other's changes")
 TEST_CASE("AppSettings keeps a change whose write failed and writes it on the next flush")
 {
 	TempDirectory temp;
-	const std::filesystem::path file = temp.MakeDir("graphite.json");
+	const std::filesystem::path file = temp.MakeDirectory("graphite.json");
 
 	Graphite::AppSettings settings{file};
 	settings.SetWordWrap(true);

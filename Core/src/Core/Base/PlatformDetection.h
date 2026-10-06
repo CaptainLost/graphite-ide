@@ -1,8 +1,8 @@
 #pragma once
 
-// premake already defines CORE_PLATFORM_WINDOWS. This header exists to notice when it does
-// not: without it EntryPoint.h compiles to no main() at all, and the first sign is a link
-// error that names nothing.
+// premake defines CORE_PLATFORM_WINDOWS, and this header defines it too for a build that does not
+// come from premake's project files: without it EntryPoint.h compiles to no main() at all and the
+// link error that follows names nothing.
 
 #ifdef _WIN32
 #ifdef _WIN64

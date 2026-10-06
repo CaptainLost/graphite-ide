@@ -21,25 +21,25 @@ namespace Core {
 		case KeyCode::Slash:
 			return ImGuiKey_Slash;
 
-		case KeyCode::D0:
+		case KeyCode::Digit0:
 			return ImGuiKey_0;
-		case KeyCode::D1:
+		case KeyCode::Digit1:
 			return ImGuiKey_1;
-		case KeyCode::D2:
+		case KeyCode::Digit2:
 			return ImGuiKey_2;
-		case KeyCode::D3:
+		case KeyCode::Digit3:
 			return ImGuiKey_3;
-		case KeyCode::D4:
+		case KeyCode::Digit4:
 			return ImGuiKey_4;
-		case KeyCode::D5:
+		case KeyCode::Digit5:
 			return ImGuiKey_5;
-		case KeyCode::D6:
+		case KeyCode::Digit6:
 			return ImGuiKey_6;
-		case KeyCode::D7:
+		case KeyCode::Digit7:
 			return ImGuiKey_7;
-		case KeyCode::D8:
+		case KeyCode::Digit8:
 			return ImGuiKey_8;
-		case KeyCode::D9:
+		case KeyCode::Digit9:
 			return ImGuiKey_9;
 
 		case KeyCode::Semicolon:
@@ -173,39 +173,39 @@ namespace Core {
 		case KeyCode::F12:
 			return ImGuiKey_F12;
 
-		case KeyCode::KP0:
+		case KeyCode::Keypad0:
 			return ImGuiKey_Keypad0;
-		case KeyCode::KP1:
+		case KeyCode::Keypad1:
 			return ImGuiKey_Keypad1;
-		case KeyCode::KP2:
+		case KeyCode::Keypad2:
 			return ImGuiKey_Keypad2;
-		case KeyCode::KP3:
+		case KeyCode::Keypad3:
 			return ImGuiKey_Keypad3;
-		case KeyCode::KP4:
+		case KeyCode::Keypad4:
 			return ImGuiKey_Keypad4;
-		case KeyCode::KP5:
+		case KeyCode::Keypad5:
 			return ImGuiKey_Keypad5;
-		case KeyCode::KP6:
+		case KeyCode::Keypad6:
 			return ImGuiKey_Keypad6;
-		case KeyCode::KP7:
+		case KeyCode::Keypad7:
 			return ImGuiKey_Keypad7;
-		case KeyCode::KP8:
+		case KeyCode::Keypad8:
 			return ImGuiKey_Keypad8;
-		case KeyCode::KP9:
+		case KeyCode::Keypad9:
 			return ImGuiKey_Keypad9;
-		case KeyCode::KPDecimal:
+		case KeyCode::KeypadDecimal:
 			return ImGuiKey_KeypadDecimal;
-		case KeyCode::KPDivide:
+		case KeyCode::KeypadDivide:
 			return ImGuiKey_KeypadDivide;
-		case KeyCode::KPMultiply:
+		case KeyCode::KeypadMultiply:
 			return ImGuiKey_KeypadMultiply;
-		case KeyCode::KPSubtract:
+		case KeyCode::KeypadSubtract:
 			return ImGuiKey_KeypadSubtract;
-		case KeyCode::KPAdd:
+		case KeyCode::KeypadAdd:
 			return ImGuiKey_KeypadAdd;
-		case KeyCode::KPEnter:
+		case KeyCode::KeypadEnter:
 			return ImGuiKey_KeypadEnter;
-		case KeyCode::KPEqual:
+		case KeyCode::KeypadEqual:
 			return ImGuiKey_KeypadEqual;
 
 		case KeyCode::LeftShift:

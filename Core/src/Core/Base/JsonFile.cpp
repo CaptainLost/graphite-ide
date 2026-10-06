@@ -16,21 +16,32 @@
 
 namespace Core {
 
+	namespace {
+		constexpr bool kNotMalformed = false;
+		constexpr std::string_view kJsonWhitespace = " \t\r\n";
+
+		constexpr int kIndentWidth = 4;
+		constexpr char kIndentCharacter = ' ';
+		constexpr bool kEscapeNonAscii = false;
+	}
+
 	struct JsonFile::Document
 	{
 		nlohmann::json Root = nlohmann::json::object();
 
-		// A moved-from file holds no document; it reads as an empty object.
 		static const nlohmann::json& RootOf(const Scope<Document>& document)
 		{
-			static const nlohmann::json empty = nlohmann::json::object();
-			return document ? document->Root : empty;
+			static const nlohmann::json emptyRootOfMovedFromFile = nlohmann::json::object();
+			const bool isMovedFrom = document == nullptr;
+
+			return isMovedFrom ? emptyRootOfMovedFromFile : document->Root;
 		}
 
-		// ...and its first write gives it one again.
 		static nlohmann::json& WritableRootOf(Scope<Document>& document)
 		{
-			if (!document)
+			const bool isMovedFrom = document == nullptr;
+
+			if (isMovedFrom)
 			{
 				document = CreateScope<Document>();
 			}
@@ -45,16 +56,15 @@ namespace Core {
 
 	JsonFile::~JsonFile() = default;
 
-	// A moved-from file is an empty one, as a default-constructed file is: see Document's RootOf.
 	JsonFile::JsonFile(JsonFile&& other) noexcept
-		: m_Document(std::move(other.m_Document)), m_Malformed(std::exchange(other.m_Malformed, false))
+		: m_Document(std::move(other.m_Document)), m_Malformed(std::exchange(other.m_Malformed, kNotMalformed))
 	{
 	}
 
 	JsonFile& JsonFile::operator=(JsonFile&& other) noexcept
 	{
 		m_Document = std::move(other.m_Document);
-		m_Malformed = std::exchange(other.m_Malformed, false);
+		m_Malformed = std::exchange(other.m_Malformed, kNotMalformed);
 		return *this;
 	}
 
@@ -71,14 +81,17 @@ namespace Core {
 		std::ostringstream buffer;
 		buffer << stream.rdbuf();
 
-		// nlohmann/json throws by default; `allow_exceptions = false` returns a discarded
-		// value instead, so a hand-edited settings file loads as empty like a missing one.
+		// nlohmann/json throws on a parse error by default; with exceptions off it returns a
+		// discarded value instead, so a hand-edited settings file loads as empty like a missing one.
 		const std::string text = buffer.str();
-		nlohmann::json parsed = nlohmann::json::parse(text, nullptr, false);
+		const nlohmann::json::parser_callback_t noParseCallback = nullptr;
+		const bool allowExceptions = false;
+		nlohmann::json parsed = nlohmann::json::parse(text, noParseCallback, allowExceptions);
 
 		if (parsed.is_discarded() || !parsed.is_object())
 		{
-			file.m_Malformed = text.find_first_not_of(" \t\r\n") != std::string::npos;
+			const bool holdsMoreThanWhitespace = text.find_first_not_of(kJsonWhitespace) != std::string::npos;
+			file.m_Malformed = holdsMoreThanWhitespace;
 			return file;
 		}
 
@@ -90,7 +103,7 @@ namespace Core {
 	{
 		const nlohmann::json& root = Document::RootOf(m_Document);
 
-		const auto entry = root.find(std::string{key});
+		const nlohmann::json::const_iterator entry = root.find(std::string{key});
 		if (entry == root.end() || !entry->is_string())
 		{
 			return {};
@@ -116,7 +129,7 @@ namespace Core {
 		std::vector<std::string> keys;
 		keys.reserve(root.size());
 
-		for (const auto& entry : root.items())
+		for (nlohmann::json::const_iterator entry = root.cbegin(); entry != root.cend(); ++entry)
 		{
 			keys.push_back(entry.key());
 		}
@@ -131,12 +144,10 @@ namespace Core {
 
 	Result<void> JsonFile::Save(const std::filesystem::path& path) const
 	{
-		// dump() rejects invalid UTF-8 unless told otherwise, and `replace` substitutes U+FFFD
-		// instead: a visibly mangled setting is a better outcome than an exception crossing
-		// out of Core. Serialised before WriteFileAtomically opens anything, so a throw here
-		// could not leave a .tmp behind either.
-		const std::string text =
-			Document::RootOf(m_Document).dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
+		// dump() throws on invalid UTF-8 unless told to replace it with U+FFFD, and a visibly
+		// mangled setting is better than an exception crossing out of Core. Serialising before
+		// WriteFileAtomically opens anything also means a throw here could not leave a .tmp behind.
+		const std::string text = Document::RootOf(m_Document).dump(kIndentWidth, kIndentCharacter, kEscapeNonAscii, nlohmann::json::error_handler_t::replace);
 
 		return WriteFileAtomically(path, text);
 	}
