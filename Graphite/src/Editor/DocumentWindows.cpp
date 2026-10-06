@@ -158,9 +158,11 @@ namespace Graphite {
 
 	void DocumentWindows::RequestOpen(const std::filesystem::path& path, bool permanent)
 	{
+		const Core::TabKind tabKind = permanent ? Core::TabKind::Permanent : Core::TabKind::Preview;
+
 		// Whether this opened a tab or landed on one already there, the item now carries
 		// OpenItem::PendingFocus and the render pass below is what spends it.
-		const Core::OpenOutcome outcome = m_Documents.Open(path, permanent);
+		const Core::OpenOutcome outcome = m_Documents.Open(path, tabKind);
 
 		// Opened from inside the folder that is open now, so it belongs to that folder, even if
 		// its tab was carried over from the one before.
@@ -222,7 +224,7 @@ namespace Graphite {
 			state.Tabs.push_back(std::move(tab));
 		}
 
-		if (const auto active = m_Documents.GetActive();
+		if (const auto active = m_Documents.GetActiveIndex();
 			active && m_Documents.At(*active).Document && !IsCarriedOver(m_Documents.At(*active).Path))
 		{
 			state.Active = m_Documents.At(*active).Path;
@@ -321,11 +323,12 @@ namespace Graphite {
 		{
 			// Confirmed, so NeedsConfirmation cannot come back, and Loaded and Failed both
 			// leave the tab saying the right thing: the content, or the reason there is none.
-			static_cast<void>(Core::LoadFromFile(m_Documents.At(*existing), true));
+			static_cast<void>(Core::LoadFromFile(m_Documents.At(*existing), Core::LargeFileConfirmation::Confirmed));
 			return;
 		}
 
-		m_Documents.OpenConfirmed(path, permanent);
+		const Core::TabKind tabKind = permanent ? Core::TabKind::Permanent : Core::TabKind::Preview;
+		m_Documents.OpenConfirmed(path, tabKind);
 	}
 
 	void DocumentWindows::AskAboutSize(const std::filesystem::path& path, bool permanent)
@@ -556,7 +559,7 @@ namespace Graphite {
 			// would look again.
 			Core::OpenItem& item = m_Documents.At(index);
 
-			if (Core::LoadFromFile(item, false) == Core::ItemLoad::NeedsConfirmation)
+			if (Core::LoadFromFile(item, Core::LargeFileConfirmation::Unconfirmed) == Core::ItemLoad::NeedsConfirmation)
 			{
 				AskAboutSize(item.Path, !item.Preview);
 			}
@@ -1679,11 +1682,11 @@ namespace Graphite {
 		// are rebuilt from the declarations already in hand rather than waiting for the server to
 		// say the same thing again. SetDeclarations carries the counts over by identity, so
 		// nothing is re-asked for.
-		if (state.HaveDeclarations && (state.NeedsRebuild || state.BuiltAt != item.WrappedTo))
+		if (state.HaveDeclarations && (state.NeedsRebuild || state.BuiltAt != item.ColumnsPerWrappedRow))
 		{
 			state.Model.SetDeclarations(state.Declarations, item.Rows,
 										item.Document->GetBuffer(), item.TabWidth);
-			state.BuiltAt = item.WrappedTo;
+			state.BuiltAt = item.ColumnsPerWrappedRow;
 			state.NeedsRebuild = false;
 			state.Asked.clear();
 		}
@@ -1722,7 +1725,7 @@ namespace Graphite {
 
 		state.HaveDeclarations = true;
 		state.Model.SetDeclarations(state.Declarations, item.Rows, buffer, item.TabWidth);
-		state.BuiltAt = item.WrappedTo;
+		state.BuiltAt = item.ColumnsPerWrappedRow;
 
 		// The anchors have been replaced outright, so the rows the outstanding requests name are
 		// no longer the rows they were asked about. Cleared rather than translated: an answer that

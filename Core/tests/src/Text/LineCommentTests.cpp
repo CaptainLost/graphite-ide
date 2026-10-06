@@ -7,40 +7,49 @@
 #include <doctest/doctest.h>
 
 #include <string>
+#include <string_view>
 
 namespace {
+	constexpr std::string_view kCppLineCommentPrefix = "//";
+	constexpr std::size_t kStartOfDocument = 0;
+
 	Core::OpenItem ItemWith(std::string content)
 	{
 		Core::OpenItem item;
 
-		auto document = Core::TextDocument::FromContent(std::move(content), "test.cpp");
+		Core::Result<Core::TextDocument> document = Core::TextDocument::FromContent(std::move(content), "test.cpp");
 		REQUIRE(document);
 
 		item.Document = std::move(document).GetValue();
-		Core::RefreshDerived(item);
+		Core::RecomputeLineCaches(item);
 
 		return item;
 	}
 
 	std::string TextOf(const Core::OpenItem& item)
 	{
-		const Core::TextBuffer& buffer = item.Document->GetBuffer();
-		return buffer.Substring(0, buffer.GetLength());
+		return item.Document->GetBuffer().Materialize();
 	}
 
-	void Select(Core::OpenItem& item, std::size_t anchor, std::size_t offset)
+	void SelectFromTo(Core::OpenItem& item, std::size_t anchor, std::size_t offset)
 	{
 		item.Caret.Anchor = anchor;
 		item.Caret.Offset = offset;
+	}
+
+	void PlaceCaretAt(Core::OpenItem& item, std::size_t offset)
+	{
+		SelectFromTo(item, offset, offset);
 	}
 }
 
 TEST_CASE("The caret's line is commented, and the caret stays on the same character")
 {
 	Core::OpenItem item = ItemWith("int a;\nint b;");
-	Select(item, 2, 2);
+	const std::size_t insideFirstInt = 2;
+	PlaceCaretAt(item, insideFirstInt);
 
-	REQUIRE(Core::ToggleLineComment(item, "//"));
+	REQUIRE(Core::ToggleLineComment(item, kCppLineCommentPrefix));
 
 	CHECK(TextOf(item) == "// int a;\nint b;");
 	CHECK(item.Caret.Offset == 5);
@@ -50,9 +59,9 @@ TEST_CASE("The caret's line is commented, and the caret stays on the same charac
 TEST_CASE("A commented line is uncommented together with the space after the prefix")
 {
 	Core::OpenItem item = ItemWith("    // int a;");
-	Select(item, 0, 0);
+	PlaceCaretAt(item, kStartOfDocument);
 
-	REQUIRE(Core::ToggleLineComment(item, "//"));
+	REQUIRE(Core::ToggleLineComment(item, kCppLineCommentPrefix));
 
 	CHECK(TextOf(item) == "    int a;");
 }
@@ -61,7 +70,7 @@ TEST_CASE("A prefix with no space after it is removed alone")
 {
 	Core::OpenItem item = ItemWith("//int a;");
 
-	REQUIRE(Core::ToggleLineComment(item, "//"));
+	REQUIRE(Core::ToggleLineComment(item, kCppLineCommentPrefix));
 
 	CHECK(TextOf(item) == "int a;");
 }
@@ -69,9 +78,9 @@ TEST_CASE("A prefix with no space after it is removed alone")
 TEST_CASE("A block is commented at its shallowest indentation and blank lines are skipped")
 {
 	Core::OpenItem item = ItemWith("    if (x)\n\n        y();\n    z();");
-	Select(item, 0, item.Document->GetBuffer().GetLength());
+	item.Caret = Core::SelectAll(item.Document->GetBuffer());
 
-	REQUIRE(Core::ToggleLineComment(item, "//"));
+	REQUIRE(Core::ToggleLineComment(item, kCppLineCommentPrefix));
 
 	CHECK(TextOf(item) == "    // if (x)\n\n    //     y();\n    // z();");
 }
@@ -79,9 +88,9 @@ TEST_CASE("A block is commented at its shallowest indentation and blank lines ar
 TEST_CASE("A partly commented block is commented everywhere")
 {
 	Core::OpenItem item = ItemWith("// a();\nb();");
-	Select(item, 0, item.Document->GetBuffer().GetLength());
+	item.Caret = Core::SelectAll(item.Document->GetBuffer());
 
-	REQUIRE(Core::ToggleLineComment(item, "//"));
+	REQUIRE(Core::ToggleLineComment(item, kCppLineCommentPrefix));
 
 	CHECK(TextOf(item) == "// // a();\n// b();");
 }
@@ -89,9 +98,9 @@ TEST_CASE("A partly commented block is commented everywhere")
 TEST_CASE("A fully commented block is uncommented")
 {
 	Core::OpenItem item = ItemWith("// a();\n\n  //b();");
-	Select(item, 0, item.Document->GetBuffer().GetLength());
+	item.Caret = Core::SelectAll(item.Document->GetBuffer());
 
-	REQUIRE(Core::ToggleLineComment(item, "//"));
+	REQUIRE(Core::ToggleLineComment(item, kCppLineCommentPrefix));
 
 	CHECK(TextOf(item) == "a();\n\n  b();");
 }
@@ -99,48 +108,46 @@ TEST_CASE("A fully commented block is uncommented")
 TEST_CASE("A selection ending at the start of a line leaves that line alone")
 {
 	Core::OpenItem item = ItemWith("a();\nb();");
-	Select(item, 0, 5);
+	const std::size_t startOfSecondLine = 5;
+	SelectFromTo(item, kStartOfDocument, startOfSecondLine);
 
-	REQUIRE(Core::ToggleLineComment(item, "//"));
+	REQUIRE(Core::ToggleLineComment(item, kCppLineCommentPrefix));
 
 	CHECK(TextOf(item) == "// a();\nb();");
 }
 
-// The prefix goes in at a column the lines share byte for byte. A line indented with a tab and
-// one indented with spaces share no indentation at all, so the prefix goes at column 0 rather
-// than splitting a tab or mixing the two.
-TEST_CASE("Mixed tab and space indentation is commented at the shortest prefix")
+TEST_CASE("Tab and space indentation share no bytes so the prefix goes at column 0 rather than splitting a tab or mixing the two")
 {
 	Core::OpenItem item = ItemWith("\ta();\n    b();");
-	Select(item, 0, item.Document->GetBuffer().GetLength());
+	item.Caret = Core::SelectAll(item.Document->GetBuffer());
 
-	REQUIRE(Core::ToggleLineComment(item, "//"));
+	REQUIRE(Core::ToggleLineComment(item, kCppLineCommentPrefix));
 
 	CHECK(TextOf(item) == "// \ta();\n//     b();");
 }
 
-TEST_CASE("Toggling is one undo step")
+TEST_CASE("Toggling is one undo step that collapses the caret onto its oldest edit because the history keeps offsets rather than carets")
 {
 	Core::OpenItem item = ItemWith("a();\nb();");
-	Select(item, 0, item.Document->GetBuffer().GetLength());
+	item.Caret = Core::SelectAll(item.Document->GetBuffer());
 
-	REQUIRE(Core::ToggleLineComment(item, "//"));
+	REQUIRE(Core::ToggleLineComment(item, kCppLineCommentPrefix));
 	REQUIRE(Core::Undo(item));
 
 	CHECK(TextOf(item) == "a();\nb();");
 
-	// The history keeps offsets, not carets, so undo cannot give a selection back. It collapses
-	// the caret onto the oldest edit of the step: the comment taken off the last line.
-	CHECK(item.Caret.Offset == 5);
-	CHECK(item.Caret.Anchor == 5);
+	const std::size_t startOfLastLineWhereTheOldestEditWas = 5;
+	CHECK(item.Caret.Offset == startOfLastLineWhereTheOldestEditWas);
+	CHECK(item.Caret.Anchor == startOfLastLineWhereTheOldestEditWas);
 }
 
 TEST_CASE("Undoing a comment on the caret's line puts the caret back on that line")
 {
 	Core::OpenItem item = ItemWith("int a;\nint b;");
-	Select(item, 9, 9);
+	const std::size_t insideSecondInt = 9;
+	PlaceCaretAt(item, insideSecondInt);
 
-	REQUIRE(Core::ToggleLineComment(item, "//"));
+	REQUIRE(Core::ToggleLineComment(item, kCppLineCommentPrefix));
 	REQUIRE(Core::Undo(item));
 
 	CHECK(TextOf(item) == "int a;\nint b;");
@@ -151,15 +158,16 @@ TEST_CASE("Undoing a comment on the caret's line puts the caret back on that lin
 TEST_CASE("A caret inside the leading whitespace stays where it was")
 {
 	Core::OpenItem item = ItemWith("    a();");
-	Select(item, 1, 1);
+	const std::size_t insideLeadingWhitespace = 1;
+	PlaceCaretAt(item, insideLeadingWhitespace);
 
-	REQUIRE(Core::ToggleLineComment(item, "//"));
+	REQUIRE(Core::ToggleLineComment(item, kCppLineCommentPrefix));
 
 	CHECK(TextOf(item) == "    // a();");
 	CHECK(item.Caret.Offset == 1);
 	CHECK(item.Caret.Anchor == 1);
 
-	REQUIRE(Core::ToggleLineComment(item, "//"));
+	REQUIRE(Core::ToggleLineComment(item, kCppLineCommentPrefix));
 
 	CHECK(TextOf(item) == "    a();");
 	CHECK(item.Caret.Offset == 1);
@@ -168,9 +176,10 @@ TEST_CASE("A caret inside the leading whitespace stays where it was")
 TEST_CASE("A caret inside the removed prefix lands where the prefix began")
 {
 	Core::OpenItem item = ItemWith("    // a();");
-	Select(item, 5, 5);
+	const std::size_t betweenTheTwoSlashes = 5;
+	PlaceCaretAt(item, betweenTheTwoSlashes);
 
-	REQUIRE(Core::ToggleLineComment(item, "//"));
+	REQUIRE(Core::ToggleLineComment(item, kCppLineCommentPrefix));
 
 	CHECK(TextOf(item) == "    a();");
 	CHECK(item.Caret.Offset == 4);
@@ -179,9 +188,10 @@ TEST_CASE("A caret inside the removed prefix lands where the prefix began")
 TEST_CASE("A block of blank lines and an empty prefix change nothing")
 {
 	Core::OpenItem blank = ItemWith("\n   \n");
-	Select(blank, 0, blank.Document->GetBuffer().GetLength());
-	CHECK_FALSE(Core::ToggleLineComment(blank, "//"));
+	blank.Caret = Core::SelectAll(blank.Document->GetBuffer());
+	CHECK_FALSE(Core::ToggleLineComment(blank, kCppLineCommentPrefix));
 
 	Core::OpenItem plain = ItemWith("text");
-	CHECK_FALSE(Core::ToggleLineComment(plain, ""));
+	const std::string_view emptyPrefix = "";
+	CHECK_FALSE(Core::ToggleLineComment(plain, emptyPrefix));
 }

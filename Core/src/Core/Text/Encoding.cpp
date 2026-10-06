@@ -9,51 +9,32 @@
 namespace Core {
 
 	namespace {
-		unsigned char ByteAt(std::string_view bytes, std::size_t offset)
-		{
-			return static_cast<unsigned char>(bytes[offset]);
-		}
-
-		bool IsContinuation(unsigned char byte)
-		{
-			return (byte & 0xC0u) == 0x80u;
-		}
+		constexpr std::string_view kUtf8ByteOrderMark = "\xEF\xBB\xBF";
+		constexpr std::string_view kUtf16LittleEndianByteOrderMark = "\xFF\xFE";
+		constexpr std::string_view kUtf16BigEndianByteOrderMark = "\xFE\xFF";
 	}
 
-	std::size_t BomLength(std::string_view bytes)
+	std::size_t LeadingByteOrderMarkLength(std::string_view bytes)
 	{
-		return BomLength(DetectEncoding(bytes));
+		return ByteOrderMarkLength(DetectEncoding(bytes));
 	}
 
-	std::size_t BomLength(Encoding encoding)
+	std::size_t ByteOrderMarkLength(Encoding encoding)
 	{
-		// No default: fatalwarnings turns a missing case here into a build error the moment
-		// a new encoding is added.
+		return ByteOrderMarkBytes(encoding).size();
+	}
+
+	std::string_view ByteOrderMarkBytes(Encoding encoding)
+	{
+		// No default, so that a new encoding missing from this switch breaks the build.
 		switch (encoding)
 		{
 		case Encoding::Utf8Bom:
-			return 3;
+			return kUtf8ByteOrderMark;
 		case Encoding::Utf16Le:
+			return kUtf16LittleEndianByteOrderMark;
 		case Encoding::Utf16Be:
-			return 2;
-		case Encoding::Utf8:
-		case Encoding::Unknown:
-			break;
-		}
-
-		return 0;
-	}
-
-	std::string_view BomBytes(Encoding encoding)
-	{
-		switch (encoding)
-		{
-		case Encoding::Utf8Bom:
-			return "\xEF\xBB\xBF";
-		case Encoding::Utf16Le:
-			return std::string_view{"\xFF\xFE", 2};
-		case Encoding::Utf16Be:
-			return std::string_view{"\xFE\xFF", 2};
+			return kUtf16BigEndianByteOrderMark;
 		case Encoding::Utf8:
 		case Encoding::Unknown:
 			break;
@@ -64,7 +45,7 @@ namespace Core {
 
 	std::string_view WithoutUtf8ByteOrderMark(std::string_view text)
 	{
-		const std::string_view mark = BomBytes(Encoding::Utf8Bom);
+		const std::string_view mark = ByteOrderMarkBytes(Encoding::Utf8Bom);
 
 		if (text.starts_with(mark))
 		{
@@ -76,17 +57,17 @@ namespace Core {
 
 	Encoding DetectEncoding(std::string_view bytes)
 	{
-		if (bytes.size() >= 3 && ByteAt(bytes, 0) == 0xEFu && ByteAt(bytes, 1) == 0xBBu && ByteAt(bytes, 2) == 0xBFu)
+		if (bytes.starts_with(kUtf8ByteOrderMark))
 		{
 			return Encoding::Utf8Bom;
 		}
 
-		if (bytes.size() >= 2 && ByteAt(bytes, 0) == 0xFFu && ByteAt(bytes, 1) == 0xFEu)
+		if (bytes.starts_with(kUtf16LittleEndianByteOrderMark))
 		{
 			return Encoding::Utf16Le;
 		}
 
-		if (bytes.size() >= 2 && ByteAt(bytes, 0) == 0xFEu && ByteAt(bytes, 1) == 0xFFu)
+		if (bytes.starts_with(kUtf16BigEndianByteOrderMark))
 		{
 			return Encoding::Utf16Be;
 		}
@@ -96,11 +77,13 @@ namespace Core {
 
 	bool IsValidUtf8(std::string_view bytes)
 	{
-		std::size_t position = 0;
+		std::size_t offset = 0;
 
-		while (position < bytes.size())
+		while (offset < bytes.size())
 		{
-			if (!DecodeUtf8(bytes, position))
+			const std::optional<char32_t> decodedCharacter = DecodeUtf8(bytes, offset);
+
+			if (!decodedCharacter)
 			{
 				return false;
 			}
@@ -118,7 +101,7 @@ namespace Core {
 
 		std::size_t next = offset + 1;
 
-		while (next < bytes.size() && IsContinuation(ByteAt(bytes, next)))
+		while (next < bytes.size() && IsUtf8ContinuationByte(bytes[next]))
 		{
 			++next;
 		}
@@ -133,9 +116,10 @@ namespace Core {
 			return 0;
 		}
 
-		std::size_t previous = (offset > bytes.size() ? bytes.size() : offset) - 1;
+		const std::size_t offsetWithinText = std::min(offset, bytes.size());
+		std::size_t previous = offsetWithinText - 1;
 
-		while (previous > 0 && IsContinuation(ByteAt(bytes, previous)))
+		while (previous > 0 && IsUtf8ContinuationByte(bytes[previous]))
 		{
 			--previous;
 		}

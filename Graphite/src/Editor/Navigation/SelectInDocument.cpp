@@ -37,12 +37,12 @@ namespace Graphite {
 		{
 			Core::TextBuffer& buffer = item.Document->GetBuffer();
 
-			item.Caret = Core::PlaceAt(buffer, item.Caret, from, false, item.TabWidth);
-			item.Caret = Core::PlaceAt(buffer, item.Caret, to, true, item.TabWidth);
+			item.Caret = Core::PlaceAt(buffer, item.Caret, from, Core::SelectionChange::Collapse, item.TabWidth);
+			item.Caret = Core::PlaceAt(buffer, item.Caret, to, Core::SelectionChange::Extend, item.TabWidth);
 
 			// The vertical aim was measured, if at all, against wherever the caret used to sit;
 			// the next Up or Down should resolve it fresh from here.
-			item.RowAimAt = Core::NoRowAim;
+			item.RowAimCaretOffset = Core::NoRowAim;
 
 			// Runs during the panels' turn, before DocumentWindows renders the editor later in
 			// the same frame, so by the editor's own reckoning the caret never moved this frame

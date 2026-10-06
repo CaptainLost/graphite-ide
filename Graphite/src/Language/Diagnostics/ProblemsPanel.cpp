@@ -240,10 +240,12 @@ namespace Graphite {
 		// activates its tab: there is no size question to ask and no Workspace to ask it
 		// through. `permanent` follows the click model of the file tree: a single click leaves a
 		// preview tab a preview, and a double click or Enter keeps it.
+		const Core::TabKind tabKind = permanent ? Core::TabKind::Permanent : Core::TabKind::Preview;
+
 		SelectInDocument(m_Documents, path, diagnostic.Line, diagnostic.Column, diagnostic.EndLine,
 						 diagnostic.EndColumn,
-						 [this, permanent](const std::filesystem::path& file) {
-							 m_Documents.Open(file, permanent);
+						 [this, tabKind](const std::filesystem::path& file) {
+							 m_Documents.Open(file, tabKind);
 						 });
 	}
 }

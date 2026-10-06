@@ -134,7 +134,7 @@ namespace Graphite {
 			return;
 		}
 
-		const auto active = m_Documents.GetActive();
+		const auto active = m_Documents.GetActiveIndex();
 		const std::filesystem::path path =
 			active.has_value() ? m_Documents.At(*active).Path : std::filesystem::path{};
 
@@ -893,7 +893,7 @@ namespace Graphite {
 
 		// Read from the DocumentSet rather than from the workspace selection, which only
 		// moves when a row here is clicked and so misses tab switches in the editor.
-		const auto active = m_Documents.GetActive();
+		const auto active = m_Documents.GetActiveIndex();
 		const bool isActive = active.has_value() && m_Documents.At(*active).Path == node.Path;
 		const bool isOpen = m_Documents.Find(node.Path).has_value();
 

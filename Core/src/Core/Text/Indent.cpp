@@ -2,6 +2,7 @@
 
 #include "Core/Text/Indent.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/TextBuffer.h"
 
@@ -11,32 +12,22 @@
 namespace Core {
 
 	namespace {
-		bool IsIndentWhitespace(char c)
-		{
-			return c == ' ' || c == '\t';
-		}
+		constexpr std::size_t kDepthOfMissingNeighbour = 0;
 
-		bool IsBlank(std::string_view line)
+		bool IsIndentWhitespace(char character)
 		{
-			for (const char c : line)
-			{
-				if (!IsIndentWhitespace(c))
-				{
-					return false;
-				}
-			}
-
-			return true;
+			return character == ' ' || character == '\t';
 		}
 
 		std::optional<std::size_t> DepthAboveRange(const TextBuffer& buffer, std::size_t firstLine,
 												   std::size_t tabWidth)
 		{
-			for (std::size_t line = firstLine; line-- > 0;)
+			for (std::size_t linesLeftAbove = firstLine; linesLeftAbove > 0; --linesLeftAbove)
 			{
-				const std::string text = buffer.LineText(line);
+				const std::size_t lineIndex = linesLeftAbove - 1;
+				const std::string text = buffer.LineText(lineIndex);
 
-				if (!IsBlank(text))
+				if (!ContainsOnlySpacesAndTabs(text))
 				{
 					return IndentDepth(text, tabWidth);
 				}
@@ -48,11 +39,11 @@ namespace Core {
 		std::optional<std::size_t> DepthBelowRange(const TextBuffer& buffer, std::size_t lastLine,
 												   std::size_t tabWidth)
 		{
-			for (std::size_t line = lastLine + 1; line < buffer.GetLineCount(); ++line)
+			for (std::size_t lineIndex = lastLine + 1; lineIndex < buffer.GetLineCount(); ++lineIndex)
 			{
-				const std::string text = buffer.LineText(line);
+				const std::string text = buffer.LineText(lineIndex);
 
-				if (!IsBlank(text))
+				if (!ContainsOnlySpacesAndTabs(text))
 				{
 					return IndentDepth(text, tabWidth);
 				}
@@ -62,65 +53,72 @@ namespace Core {
 		}
 
 		std::vector<std::optional<std::size_t>> CarryForward(
-			const std::vector<std::size_t>& depths, const std::vector<bool>& blank,
-			std::optional<std::size_t> seed)
+			const std::vector<std::size_t>& depths, const std::vector<bool>& isBlankLine,
+			std::optional<std::size_t> nearestNonBlankDepth)
 		{
-			std::vector<std::optional<std::size_t>> carried(depths.size());
+			std::vector<std::optional<std::size_t>> carriedDepths(depths.size());
 
-			for (std::size_t index = 0; index < depths.size(); ++index)
+			for (std::size_t rangeIndex = 0; rangeIndex < depths.size(); ++rangeIndex)
 			{
-				if (!blank[index])
+				if (!isBlankLine[rangeIndex])
 				{
-					seed = depths[index];
+					nearestNonBlankDepth = depths[rangeIndex];
 				}
 
-				carried[index] = seed;
+				carriedDepths[rangeIndex] = nearestNonBlankDepth;
 			}
 
-			return carried;
+			return carriedDepths;
 		}
 
 		std::vector<std::optional<std::size_t>> CarryBackward(
-			const std::vector<std::size_t>& depths, const std::vector<bool>& blank,
-			std::optional<std::size_t> seed)
+			const std::vector<std::size_t>& depths, const std::vector<bool>& isBlankLine,
+			std::optional<std::size_t> nearestNonBlankDepth)
 		{
-			std::vector<std::optional<std::size_t>> carried(depths.size());
+			std::vector<std::optional<std::size_t>> carriedDepths(depths.size());
 
-			for (std::size_t index = depths.size(); index-- > 0;)
+			for (std::size_t linesLeft = depths.size(); linesLeft > 0; --linesLeft)
 			{
-				if (!blank[index])
+				const std::size_t rangeIndex = linesLeft - 1;
+
+				if (!isBlankLine[rangeIndex])
 				{
-					seed = depths[index];
+					nearestNonBlankDepth = depths[rangeIndex];
 				}
 
-				carried[index] = seed;
+				carriedDepths[rangeIndex] = nearestNonBlankDepth;
 			}
 
-			return carried;
+			return carriedDepths;
 		}
 	}
 
-	std::size_t IndentDepth(std::string_view line, std::size_t tabWidth)
+	std::size_t IndentDepth(std::string_view lineText, std::size_t tabWidth)
 	{
-		std::size_t byte = 0;
+		std::size_t indentEnd = 0;
 
-		while (byte < line.size() && IsIndentWhitespace(line[byte]))
+		while (indentEnd < lineText.size() && IsIndentWhitespace(lineText[indentEnd]))
 		{
-			++byte;
+			++indentEnd;
 		}
 
-		if (byte == line.size())
+		const bool lineIsOnlyIndentation = indentEnd == lineText.size();
+
+		if (lineIsOnlyIndentation)
 		{
 			return 0;
 		}
 
-		return ColumnOfByte(line, byte, tabWidth);
+		return ColumnOfByte(lineText, indentEnd, tabWidth);
 	}
 
 	std::vector<std::size_t> IndentDepths(const TextBuffer& buffer, std::size_t tabWidth)
 	{
 		const std::size_t lineCount = buffer.GetLineCount();
-		return IndentDepths(buffer, tabWidth, 0, lineCount - 1);
+		const std::size_t firstLine = 0;
+		const std::size_t lastLine = lineCount - 1;
+
+		return IndentDepths(buffer, tabWidth, firstLine, lastLine);
 	}
 
 	std::vector<std::size_t> IndentDepths(const TextBuffer& buffer, std::size_t tabWidth,
@@ -130,39 +128,38 @@ namespace Core {
 		firstLine = std::min(firstLine, lineCount - 1);
 		lastLine = std::min(lastLine, lineCount - 1);
 
-		const std::size_t rangeSize = lastLine - firstLine + 1;
-		std::vector<std::size_t> depths(rangeSize, 0);
-		std::vector<bool> blank(rangeSize, false);
+		const std::size_t rangeLineCount = lastLine - firstLine + 1;
+		std::vector<std::size_t> depths(rangeLineCount);
+		std::vector<bool> isBlankLine(rangeLineCount);
 
-		for (std::size_t line = firstLine; line <= lastLine; ++line)
+		for (std::size_t lineIndex = firstLine; lineIndex <= lastLine; ++lineIndex)
 		{
-			const std::string text = buffer.LineText(line);
-			const std::size_t index = line - firstLine;
-			blank[index] = IsBlank(text);
+			const std::string text = buffer.LineText(lineIndex);
+			const std::size_t rangeIndex = lineIndex - firstLine;
+			isBlankLine[rangeIndex] = ContainsOnlySpacesAndTabs(text);
 
-			if (!blank[index])
+			if (!isBlankLine[rangeIndex])
 			{
-				depths[index] = IndentDepth(text, tabWidth);
+				depths[rangeIndex] = IndentDepth(text, tabWidth);
 			}
 		}
 
-		const std::vector<std::optional<std::size_t>> above =
-			CarryForward(depths, blank, DepthAboveRange(buffer, firstLine, tabWidth));
+		const std::vector<std::optional<std::size_t>> nearestDepthAbove =
+			CarryForward(depths, isBlankLine, DepthAboveRange(buffer, firstLine, tabWidth));
 
-		const std::vector<std::optional<std::size_t>> below =
-			CarryBackward(depths, blank, DepthBelowRange(buffer, lastLine, tabWidth));
+		const std::vector<std::optional<std::size_t>> nearestDepthBelow =
+			CarryBackward(depths, isBlankLine, DepthBelowRange(buffer, lastLine, tabWidth));
 
-		for (std::size_t index = 0; index < rangeSize; ++index)
+		for (std::size_t rangeIndex = 0; rangeIndex < rangeLineCount; ++rangeIndex)
 		{
-			if (!blank[index])
+			if (!isBlankLine[rangeIndex])
 			{
 				continue;
 			}
 
-			// A blank line belongs to neither the block above nor the one below, so a guide
-			// is only honest at the shallower of the two; a missing side counts as depth 0,
-			// which folds into the same minimum rather than needing its own case.
-			depths[index] = std::min(above[index].value_or(0), below[index].value_or(0));
+			const std::size_t depthAbove = nearestDepthAbove[rangeIndex].value_or(kDepthOfMissingNeighbour);
+			const std::size_t depthBelow = nearestDepthBelow[rangeIndex].value_or(kDepthOfMissingNeighbour);
+			depths[rangeIndex] = std::min(depthAbove, depthBelow);
 		}
 
 		return depths;

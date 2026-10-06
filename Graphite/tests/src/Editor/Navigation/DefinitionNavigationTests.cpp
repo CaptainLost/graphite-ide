@@ -122,8 +122,8 @@ TEST_CASE("Jumping into a file already open asks for that file's window")
 	const auto source = directory.MakeFile("source.cpp", "void Draw() {}\n");
 
 	Core::DocumentSet documents;
-	documents.Open(header, true);
-	documents.Open(source, true);
+	documents.Open(header, Core::TabKind::Permanent);
+	documents.Open(source, Core::TabKind::Permanent);
 
 	// The state a second Ctrl+click starts from: both files open, the caller reading the one
 	// holding the reference. Nothing about this jump adds a tab, so nothing about it reaches

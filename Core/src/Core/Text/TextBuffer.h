@@ -19,23 +19,22 @@ namespace Core {
 	class TextBuffer
 	{
 	public:
+		using CaretOffset = std::size_t;
+
 		TextBuffer() = default;
 		explicit TextBuffer(std::string original);
 
 		void Insert(std::size_t offset, std::string_view text);
 		void Erase(std::size_t from, std::size_t to);
 
-		// Both report where the caret belongs afterwards — the end of what was put back, or
-		// the start of what was taken away — because only the history knows which part of
-		// the document moved. Nothing when there was nothing to step through.
-		std::optional<std::size_t> Undo();
+		std::optional<CaretOffset> Undo();
 
-		std::optional<std::size_t> Redo();
+		std::optional<CaretOffset> Redo();
 
 		void BeginTransaction();
 		void EndTransaction();
 
-		void BreakUndoGroup() { m_BreakGroup = true; }
+		void BreakUndoGroup() { m_NextEditStartsGroup = true; }
 
 		bool CanUndo() const { return !m_Undo.empty(); }
 		bool CanRedo() const { return !m_Redo.empty(); }
@@ -63,7 +62,7 @@ namespace Core {
 
 		bool LineIndexMatchesRebuild() const;
 
-		std::size_t GetAppendBufferSize() const { return m_Append.size(); }
+		std::size_t GetAppendBufferSize() const { return m_AppendBuffer.size(); }
 
 	private:
 		enum class Source
@@ -75,73 +74,82 @@ namespace Core {
 		struct Piece
 		{
 			Source Origin = Source::Original;
-			std::size_t Offset = 0;
+			std::size_t SourceOffset = 0;
 			std::size_t Length = 0;
-			std::size_t Start = 0;
+			std::size_t DocumentStart = 0;
 		};
 
 		const std::string& SourceBuffer(Source source) const;
 
-		std::size_t PieceAt(std::size_t offset) const;
+		std::size_t IndexOfPieceCovering(std::size_t offset) const;
 
-		std::size_t SplitAt(std::size_t offset);
+		std::size_t SplitPieceAt(std::size_t offset);
 
-		std::size_t PieceStartingAt(std::size_t offset) const;
+		std::size_t IndexOfFirstPieceStartingAtOrAfter(std::size_t offset) const;
 
-		void RefreshPieceStarts(std::size_t index);
+		void RefreshDocumentStartsFrom(std::size_t firstPieceIndex);
 
 		std::vector<std::size_t> BuildLineIndex() const;
 
 		void PatchLineIndexForInsert(std::size_t offset, std::string_view text);
 		void PatchLineIndexForErase(std::size_t from, std::size_t to);
 
-		std::size_t InsertRaw(std::size_t offset, std::string_view text);
-		void EraseRaw(std::size_t from, std::size_t to);
+		std::size_t InsertWithoutHistory(std::size_t offset, std::string_view text);
+		void EraseWithoutHistory(std::size_t from, std::size_t to);
 
-		void InsertPieceRaw(std::size_t offset, std::size_t appendOffset, std::string_view text);
+		void InsertAppendedPiece(std::size_t documentOffset, std::size_t appendOffset, std::string_view text);
+
+		enum class EditKind
+		{
+			Insertion,
+			Deletion
+		};
+
+		enum class EditDirection
+		{
+			AsRecorded,
+			Reversed
+		};
+
+		static constexpr std::size_t kNoGroupId = 0;
 
 		struct Edit
 		{
 			std::size_t Id = 0;
-			std::size_t Offset = 0;
+			std::size_t DocumentOffset = 0;
 			std::string Text;
-			bool Inserted = false;
+			EditKind Kind = EditKind::Deletion;
 
 			std::size_t AppendOffset = 0;
 			bool HasAppendOffset = false;
 
-			std::size_t Group = 0;
+			std::size_t GroupId = kNoGroupId;
 		};
 
-		void ApplyEdit(Edit& edit, bool reversed);
+		void ApplyEdit(Edit& edit, EditDirection direction);
 
-		bool ContinuesLastGroup(std::size_t from, std::size_t to, bool inserted) const;
+		bool ContinuesLastGroup(std::size_t from, std::size_t to, EditKind kind) const;
 
-		std::size_t GroupForNewEdit(std::size_t from, std::size_t to, std::string_view text,
-									bool inserted);
+		std::size_t ChooseGroupForNewEdit(std::size_t from, std::size_t to, std::string_view text,
+										  EditKind kind);
 
-		std::string m_Original;
-		std::string m_Append;
+		void RememberLastEdit(EditKind kind, std::size_t from, std::string_view text);
+
+		std::string m_OriginalBuffer;
+		std::string m_AppendBuffer;
 		std::vector<Piece> m_Pieces;
 		std::size_t m_Length = 0;
 		std::vector<std::size_t> m_LineStarts{0};
 		std::vector<Edit> m_Undo;
 		std::vector<Edit> m_Redo;
 		std::size_t m_NextEditId = 1;
-		std::size_t m_NextGroupId = 1;
+		std::size_t m_NextGroupId = kNoGroupId + 1;
 		std::size_t m_TransactionDepth = 0;
-		std::size_t m_TransactionGroup = 0;
+		std::size_t m_TransactionGroupId = kNoGroupId;
 
-		enum class GroupKind
-		{
-			None,
-			Insertion,
-			Deletion
-		};
-
-		GroupKind m_LastGroupKind = GroupKind::None;
-		std::size_t m_InsertEnd = 0;
-		std::size_t m_DeleteAt = 0;
-		bool m_BreakGroup = true;
+		std::optional<EditKind> m_LastEditKind;
+		std::size_t m_LastEditEnd = 0;
+		std::size_t m_LastEditStart = 0;
+		bool m_NextEditStartsGroup = true;
 	};
 }

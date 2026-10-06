@@ -20,8 +20,8 @@ TEST_CASE("The active tab's path is the active text document once its text is lo
 	const std::filesystem::path second = temp.MakeFile("second.cpp", "int y;");
 
 	Core::DocumentSet documents;
-	REQUIRE(documents.Open(first, true) == Core::OpenOutcome::Opened);
-	REQUIRE(documents.Open(second, true) == Core::OpenOutcome::Opened);
+	REQUIRE(documents.Open(first, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+	REQUIRE(documents.Open(second, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
 
 	CHECK(Graphite::ActiveTextDocument(documents) == second);
 
@@ -37,8 +37,8 @@ TEST_CASE("An active tab whose file could not be read is not a text document")
 	// A tab that failed to load is still a tab - it stays open to say why - but it holds no
 	// text, so nothing that asks a language server about the active document can use it.
 	Core::DocumentSet documents;
-	REQUIRE(documents.Open(temp.GetPath() / "missing.cpp", true) == Core::OpenOutcome::Failed);
-	REQUIRE(documents.GetActive().has_value());
+	REQUIRE(documents.Open(temp.GetPath() / "missing.cpp", Core::TabKind::Permanent) == Core::OpenOutcome::Failed);
+	REQUIRE(documents.GetActiveIndex().has_value());
 
 	CHECK_FALSE(Graphite::ActiveTextDocument(documents).has_value());
 }
@@ -50,8 +50,8 @@ TEST_CASE("The active text document is the shown one only while its tab is on sc
 	const std::filesystem::path second = temp.MakeFile("second.cpp", "int y;");
 
 	Core::DocumentSet documents;
-	REQUIRE(documents.Open(first, true) == Core::OpenOutcome::Opened);
-	REQUIRE(documents.Open(second, true) == Core::OpenOutcome::Opened);
+	REQUIRE(documents.Open(first, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+	REQUIRE(documents.Open(second, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
 
 	// The second tab is active, but another tab of its node - a panel, the Git view - is in
 	// front of it. It stays active, so commands still act on it, yet nothing on screen shows it.
@@ -67,7 +67,7 @@ TEST_CASE("A shown tab whose file could not be read is not a shown text document
 	TempDirectory temp;
 
 	Core::DocumentSet documents;
-	REQUIRE(documents.Open(temp.GetPath() / "missing.cpp", true) == Core::OpenOutcome::Failed);
+	REQUIRE(documents.Open(temp.GetPath() / "missing.cpp", Core::TabKind::Permanent) == Core::OpenOutcome::Failed);
 
 	const auto allShown = [](const std::filesystem::path&) { return true; };
 	CHECK_FALSE(Graphite::ShownActiveDocument(documents, allShown).has_value());

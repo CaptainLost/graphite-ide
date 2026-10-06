@@ -11,6 +11,31 @@ namespace Core {
 
 	namespace {
 		const std::vector<std::size_t> kNoBreaks;
+
+		constexpr std::size_t LowestSetBit(std::size_t value)
+		{
+			return value & (~value + 1);
+		}
+
+		static_assert(LowestSetBit(0b1100) == 0b0100);
+		static_assert(LowestSetBit(0b1000) == 0b1000);
+
+		std::size_t RowsOfLineWithBreaks(const std::vector<std::size_t>& breaks)
+		{
+			return breaks.size() + 1;
+		}
+
+		std::size_t HighestPowerOfTwoAtMost(std::size_t limit)
+		{
+			std::size_t power = 1;
+
+			while (power * 2 <= limit)
+			{
+				power *= 2;
+			}
+
+			return power;
+		}
 	}
 
 	void RowMap::Rebuild(const TextBuffer& buffer, std::size_t columnsPerRow,
@@ -19,21 +44,21 @@ namespace Core {
 		m_ColumnsPerRow = columnsPerRow;
 		m_TabWidth = tabWidth;
 
-		const std::size_t lines = buffer.GetLineCount();
+		const std::size_t lineCount = buffer.GetLineCount();
 
-		m_RowsPerLine.assign(lines, 0);
-		m_Breaks.assign(lines, {});
+		m_RowsPerLine.assign(lineCount, kNoRows);
+		m_Breaks.assign(lineCount, kNoBreaks);
 
-		// The counts are filled in directly and the tree built once from them: SetCount per
-		// line would be a logarithmic update each time into a tree about to be thrown away.
-		for (std::size_t line = 0; line < lines; ++line)
+		// The counts are filled in directly and the tree built once from them: SetRowCount per line
+		// would be a logarithmic update each time into a tree about to be thrown away.
+		for (std::size_t line = 0; line < lineCount; ++line)
 		{
 			if (columnsPerRow != kNoWrap)
 			{
 				m_Breaks[line] = WrapColumns(buffer.LineText(line), columnsPerRow, tabWidth);
 			}
 
-			m_RowsPerLine[line] = m_Breaks[line].size() + 1;
+			m_RowsPerLine[line] = RowsOfLineWithBreaks(m_Breaks[line]);
 		}
 
 		RebuildTree();
@@ -53,134 +78,130 @@ namespace Core {
 			m_Breaks[line] = WrapColumns(buffer.LineText(line), m_ColumnsPerRow, m_TabWidth);
 		}
 
-		SetCount(line, m_Breaks[line].size() + 1);
+		SetRowCount(line, RowsOfLineWithBreaks(m_Breaks[line]));
 	}
 
-	void RowMap::InsertLines(const TextBuffer& buffer, std::size_t at, std::size_t count)
+	void RowMap::InsertLines(const TextBuffer& buffer, std::size_t firstNewLine, std::size_t newLineCount)
 	{
-		if (count == 0)
+		if (newLineCount == 0)
 		{
 			return;
 		}
 
-		const std::size_t where = std::min(at, m_RowsPerLine.size());
-		const auto offset = static_cast<std::ptrdiff_t>(where);
+		const std::size_t insertionLine = std::min(firstNewLine, m_RowsPerLine.size());
+		const auto insertionOffset = static_cast<std::ptrdiff_t>(insertionLine);
 
-		m_RowsPerLine.insert(m_RowsPerLine.begin() + offset, count, 0);
-		m_Breaks.insert(m_Breaks.begin() + offset, count, std::vector<std::size_t>{});
+		m_RowsPerLine.insert(m_RowsPerLine.begin() + insertionOffset, newLineCount, kNoRows);
+		m_Breaks.insert(m_Breaks.begin() + insertionOffset, newLineCount, kNoBreaks);
 
-		for (std::size_t line = where; line < where + count; ++line)
+		for (std::size_t line = insertionLine; line < insertionLine + newLineCount; ++line)
 		{
 			if (m_ColumnsPerRow != kNoWrap && line < buffer.GetLineCount())
 			{
 				m_Breaks[line] = WrapColumns(buffer.LineText(line), m_ColumnsPerRow, m_TabWidth);
 			}
 
-			m_RowsPerLine[line] = m_Breaks[line].size() + 1;
+			m_RowsPerLine[line] = RowsOfLineWithBreaks(m_Breaks[line]);
 		}
 
 		RebuildTree();
 	}
 
-	void RowMap::RemoveLines(std::size_t at, std::size_t count)
+	void RowMap::RemoveLines(std::size_t firstRemovedLine, std::size_t removedLineCount)
 	{
-		if (count == 0 || at >= m_RowsPerLine.size())
+		if (removedLineCount == 0 || firstRemovedLine >= m_RowsPerLine.size())
 		{
 			return;
 		}
 
-		const std::size_t end = std::min(at + count, m_RowsPerLine.size());
-		const auto first = static_cast<std::ptrdiff_t>(at);
-		const auto last = static_cast<std::ptrdiff_t>(end);
+		const std::size_t endLine = std::min(firstRemovedLine + removedLineCount, m_RowsPerLine.size());
+		const auto eraseBegin = static_cast<std::ptrdiff_t>(firstRemovedLine);
+		const auto eraseEnd = static_cast<std::ptrdiff_t>(endLine);
 
-		m_RowsPerLine.erase(m_RowsPerLine.begin() + first, m_RowsPerLine.begin() + last);
-		m_Breaks.erase(m_Breaks.begin() + first, m_Breaks.begin() + last);
+		m_RowsPerLine.erase(m_RowsPerLine.begin() + eraseBegin, m_RowsPerLine.begin() + eraseEnd);
+		m_Breaks.erase(m_Breaks.begin() + eraseBegin, m_Breaks.begin() + eraseEnd);
 
 		RebuildTree();
 	}
 
 	void RowMap::RebuildTree()
 	{
-		const std::size_t lines = m_RowsPerLine.size();
+		const std::size_t lineCount = m_RowsPerLine.size();
 
-		m_Tree.assign(lines + 1, 0);
+		m_FenwickTree.assign(lineCount + 1, kNoRows);
 		m_TotalRows = 0;
 
-		// Linear Fenwick construction: each node takes its own line's count and hands its
-		// subtotal to its parent, so the whole tree is one pass.
-		for (std::size_t index = 1; index <= lines; ++index)
+		for (std::size_t node = 1; node <= lineCount; ++node)
 		{
-			m_Tree[index] += m_RowsPerLine[index - 1];
-			m_TotalRows += m_RowsPerLine[index - 1];
+			const std::size_t lineOfNode = node - 1;
+			m_FenwickTree[node] += m_RowsPerLine[lineOfNode];
+			m_TotalRows += m_RowsPerLine[lineOfNode];
 
-			const std::size_t parent = index + (index & (~index + 1));
+			const std::size_t parent = node + LowestSetBit(node);
 
-			if (parent <= lines)
+			if (parent <= lineCount)
 			{
-				m_Tree[parent] += m_Tree[index];
+				m_FenwickTree[parent] += m_FenwickTree[node];
 			}
 		}
 	}
 
-	void RowMap::SetRowsOf(std::size_t line, std::size_t rows)
+	void RowMap::SetRowsOf(std::size_t line, std::size_t rowCount)
 	{
 		if (line < m_RowsPerLine.size())
 		{
-			SetCount(line, rows);
+			SetRowCount(line, rowCount);
 		}
 	}
 
-	void RowMap::SetCount(std::size_t line, std::size_t rows)
+	void RowMap::SetRowCount(std::size_t line, std::size_t rowCount)
 	{
-		const std::size_t previous = m_RowsPerLine[line];
+		const std::size_t previousRowCount = m_RowsPerLine[line];
 
-		if (rows == previous)
+		if (rowCount == previousRowCount)
 		{
 			return;
 		}
 
-		m_RowsPerLine[line] = rows;
-		m_TotalRows = m_TotalRows - previous + rows;
+		m_RowsPerLine[line] = rowCount;
+		m_TotalRows = m_TotalRows - previousRowCount + rowCount;
 
-		// Fenwick update, with the delta kept positive and its direction carried separately:
-		// an unsigned wraparound here would corrupt every later lookup rather than fail
-		// loudly.
-		const bool grew = rows > previous;
-		const std::size_t delta = grew ? rows - previous : previous - rows;
+		const bool grew = rowCount > previousRowCount;
+		const std::size_t delta = grew ? rowCount - previousRowCount : previousRowCount - rowCount;
 
-		for (std::size_t index = line + 1; index < m_Tree.size(); index += index & (~index + 1))
+		for (std::size_t node = line + 1; node < m_FenwickTree.size(); node += LowestSetBit(node))
 		{
 			if (grew)
 			{
-				m_Tree[index] += delta;
+				m_FenwickTree[node] += delta;
 			}
 			else
 			{
-				m_Tree[index] -= delta;
+				m_FenwickTree[node] -= delta;
 			}
 		}
 	}
 
-	std::size_t RowMap::PrefixSum(std::size_t line) const
+	std::size_t RowMap::CountRowsBefore(std::size_t line) const
 	{
-		std::size_t sum = 0;
+		std::size_t rowsBefore = 0;
 
-		for (std::size_t index = line; index > 0; index -= index & (~index + 1))
+		for (std::size_t node = line; node > 0; node -= LowestSetBit(node))
 		{
-			sum += m_Tree[index];
+			rowsBefore += m_FenwickTree[node];
 		}
 
-		return sum;
+		return rowsBefore;
 	}
 
 	std::size_t RowMap::FirstRowOf(std::size_t line) const
 	{
-		return PrefixSum(std::min(line, m_RowsPerLine.size()));
+		return CountRowsBefore(std::min(line, m_RowsPerLine.size()));
 	}
 
 	std::size_t RowMap::RowsOf(std::size_t line) const
 	{
-		return line < m_RowsPerLine.size() ? m_RowsPerLine[line] : 0;
+		return line < m_RowsPerLine.size() ? m_RowsPerLine[line] : kNoRows;
 	}
 
 	const std::vector<std::size_t>& RowMap::BreaksOf(std::size_t line) const
@@ -195,39 +216,33 @@ namespace Core {
 			return RowRef{};
 		}
 
-		// A row past the end resolves to the last line's last row, the way a click below the
-		// document is already clamped rather than treated as an error.
-		if (row >= m_TotalRows)
-		{
-			const std::size_t last = m_RowsPerLine.size() - 1;
-			const std::size_t rows = m_RowsPerLine[last];
+		const bool rowIsPastTheEnd = row >= m_TotalRows;
 
-			return RowRef{last, rows > 0 ? rows - 1 : 0};
+		if (rowIsPastTheEnd)
+		{
+			const std::size_t lastLine = m_RowsPerLine.size() - 1;
+			const std::size_t lastLineRows = m_RowsPerLine[lastLine];
+			const std::size_t lastSubRow = lastLineRows > 0 ? lastLineRows - 1 : 0;
+
+			return RowRef{.Line = lastLine, .SubRow = lastSubRow};
 		}
 
-		// Fenwick descent from the highest power of two downwards, taking a branch whenever
-		// the rows it covers still fit below `row`, which lands on the last line whose first
-		// row is at or before it.
-		std::size_t index = 0;
-		std::size_t remaining = row;
-		std::size_t step = 1;
+		std::size_t linesBefore = 0;
+		std::size_t rowsLeft = row;
 
-		while (step * 2 <= m_Tree.size() - 1)
+		for (std::size_t step = HighestPowerOfTwoAtMost(m_FenwickTree.size() - 1); step > 0; step /= 2)
 		{
-			step *= 2;
-		}
+			const std::size_t candidate = linesBefore + step;
+			const bool candidateEndsAtOrBeforeRow =
+				candidate < m_FenwickTree.size() && m_FenwickTree[candidate] <= rowsLeft;
 
-		for (; step > 0; step /= 2)
-		{
-			const std::size_t next = index + step;
-
-			if (next < m_Tree.size() && m_Tree[next] <= remaining)
+			if (candidateEndsAtOrBeforeRow)
 			{
-				index = next;
-				remaining -= m_Tree[next];
+				linesBefore = candidate;
+				rowsLeft -= m_FenwickTree[candidate];
 			}
 		}
 
-		return RowRef{index, remaining};
+		return RowRef{.Line = linesBefore, .SubRow = rowsLeft};
 	}
 }

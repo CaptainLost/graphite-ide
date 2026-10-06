@@ -1,26 +1,36 @@
 #include <doctest/doctest.h>
 
 #include "Core/Text/Caret.h"
-#include "Core/Text/Columns.h"
+#include "Core/Text/Encoding.h"
 #include "Core/Text/TextBuffer.h"
 
+#include <limits>
 #include <ostream>
 #include <string>
 
 using namespace Core;
 
 namespace {
-	// A caret that has landed at `offset` without ever having aimed at a column — the
-	// state a click or a fresh document leaves it in, before any vertical motion resolves
-	// a real desiredColumn from it.
-	Caret At(std::size_t offset)
+	constexpr std::size_t kTabWidth = 4;
+	constexpr std::size_t kPageLines = 10;
+
+	const std::string kLetterAWithOgonek = "\xC4\x85";
+	const std::string kLetterEWithOgonek = "\xC4\x99";
+	const std::string kSlightlySmilingFace = "\xF0\x9F\x99\x82";
+
+	Caret CaretWithoutDesiredColumnAt(std::size_t offset)
 	{
-		return Caret{offset, offset, NoDesiredColumn};
+		return Caret{.Offset = offset, .Anchor = offset, .DesiredColumn = NoDesiredColumn};
 	}
 
-	Caret Step(const TextBuffer& buffer, Caret caret, Motion motion, bool extend = false)
+	Caret Step(const TextBuffer& buffer, Caret caret, Motion motion)
 	{
-		return Move(buffer, caret, motion, extend, 4, 10);
+		return Move(buffer, caret, motion, SelectionChange::Collapse, kTabWidth, kPageLines);
+	}
+
+	Caret StepExtendingSelection(const TextBuffer& buffer, Caret caret, Motion motion)
+	{
+		return Move(buffer, caret, motion, SelectionChange::Extend, kTabWidth, kPageLines);
 	}
 }
 
@@ -29,26 +39,25 @@ TEST_CASE("A fresh caret has no selection")
 	const Caret caret;
 
 	CHECK_FALSE(HasSelection(caret));
-	CHECK(SelectionRange(caret) == std::pair<std::size_t, std::size_t>{0, 0});
+	CHECK(SelectionRange(caret) == OffsetRange{.From = 0, .To = 0});
 }
 
 TEST_CASE("A selection reads the same whichever way it was dragged")
 {
-	const Caret forward{7, 2, 0};
-	const Caret backward{2, 7, 0};
+	const Caret forward{.Offset = 7, .Anchor = 2, .DesiredColumn = 0};
+	const Caret backward{.Offset = 2, .Anchor = 7, .DesiredColumn = 0};
 
 	CHECK(HasSelection(forward));
 	CHECK(HasSelection(backward));
 	CHECK(SelectionRange(forward) == SelectionRange(backward));
-	CHECK(SelectionRange(forward) == std::pair<std::size_t, std::size_t>{2, 7});
+	CHECK(SelectionRange(forward) == OffsetRange{.From = 2, .To = 7});
 }
 
 TEST_CASE("Left and right move by a character, not a byte")
 {
-	const TextBuffer buffer{"a\xC4\x85\xF0\x9F\x99\x82"
-							"z"}; // a ą 🙂 z
+	const TextBuffer buffer{"a" + kLetterAWithOgonek + kSlightlySmilingFace + "z"};
 
-	Caret caret = At(0);
+	Caret caret = CaretWithoutDesiredColumnAt(0);
 	caret = Step(buffer, caret, Motion::Right);
 	CHECK(caret.Offset == 1);
 	caret = Step(buffer, caret, Motion::Right);
@@ -66,151 +75,159 @@ TEST_CASE("Movement stops at the ends of the document")
 {
 	const TextBuffer buffer{"ab"};
 
-	CHECK(Step(buffer, At(0), Motion::Left).Offset == 0);
-	CHECK(Step(buffer, At(2), Motion::Right).Offset == 2);
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(0), Motion::Left).Offset == 0);
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(2), Motion::Right).Offset == 2);
 }
 
 TEST_CASE("Left and right cross line boundaries")
 {
 	const TextBuffer buffer{"ab\ncd"};
 
-	CHECK(Step(buffer, At(2), Motion::Right).Offset == 3);
-	CHECK(Step(buffer, At(3), Motion::Left).Offset == 2);
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(2), Motion::Right).Offset == 3);
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(3), Motion::Left).Offset == 2);
 }
 
 TEST_CASE("Home and End go to the ends of the line, not the document")
 {
 	const TextBuffer buffer{"first\nsecond\nthird"};
 
-	CHECK(Step(buffer, At(9), Motion::LineStart).Offset == 6);
-	CHECK(Step(buffer, At(9), Motion::LineEnd).Offset == 12);
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(9), Motion::LineStart).Offset == 6);
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(9), Motion::LineEnd).Offset == 12);
 }
 
 TEST_CASE("Ctrl+Home and Ctrl+End go to the ends of the document")
 {
 	const TextBuffer buffer{"first\nsecond"};
 
-	CHECK(Step(buffer, At(8), Motion::DocumentStart).Offset == 0);
-	CHECK(Step(buffer, At(2), Motion::DocumentEnd).Offset == buffer.GetLength());
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(8), Motion::DocumentStart).Offset == 0);
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(2), Motion::DocumentEnd).Offset == buffer.GetLength());
 }
 
-TEST_CASE("Down keeps the column across a shorter line")
+TEST_CASE("Down keeps the column across a shorter line and comes back to it on the next long line")
 {
-	// Column 5 on line 0, then a two-column line, then a long line again. The caret has
-	// to come back to column 5 rather than sticking to the short line's end.
 	const TextBuffer buffer{"aaaaaaaa\nbb\ncccccccc"};
+	const std::size_t columnFiveOfFirstLine = 5;
+	const std::size_t endOfShortLine = 11;
+	const std::size_t startOfLastLine = 12;
 
-	Caret caret = At(5);
+	Caret caret = CaretWithoutDesiredColumnAt(columnFiveOfFirstLine);
 	caret = Step(buffer, caret, Motion::Down);
-	CHECK(caret.Offset == 11); // end of "bb"
+	CHECK(caret.Offset == endOfShortLine);
 
 	caret = Step(buffer, caret, Motion::Down);
-	CHECK(caret.Offset == 12 + 5); // column 5 of "cccccccc"
+	CHECK(caret.Offset == startOfLastLine + columnFiveOfFirstLine);
 }
 
 TEST_CASE("A stored column smaller than the actual one still wins")
 {
-	// The caret sits at offset 5 on line 0 — actual column 5 — but was built directly with
-	// a stored desiredColumn of 1. That is a real, already-set aim (not the sentinel), so
-	// Down must travel to column 1, not to the caret's current actual column of 5: line 1
-	// is "bb" at offset 9, byte 1 of it (column 1) is offset 10.
 	const TextBuffer buffer{"aaaaaaaa\nbb\ncccccccc"};
+	const std::size_t storedColumn = 1;
+	const std::size_t startOfShortLine = 9;
+	const std::size_t columnFiveOfFirstLine = 5;
 
-	const Caret caret{5, 5, 1};
-	CHECK(Step(buffer, caret, Motion::Down).Offset == 10);
+	const Caret caret{.Offset = columnFiveOfFirstLine, .Anchor = columnFiveOfFirstLine, .DesiredColumn = storedColumn};
+	CHECK(Step(buffer, caret, Motion::Down).Offset == startOfShortLine + storedColumn);
 }
 
 TEST_CASE("A horizontal move resets the column the caret aims for")
 {
 	const TextBuffer buffer{"aaaaaaaa\nbb\ncccccccc"};
+	const std::size_t startOfLastLine = 12;
+	const std::size_t columnAfterMovingLeft = 1;
 
-	Caret caret = At(5);
+	Caret caret = CaretWithoutDesiredColumnAt(5);
 	caret = Step(buffer, caret, Motion::Down);
-	caret = Step(buffer, caret, Motion::Left); // now deliberately at column 1
+	caret = Step(buffer, caret, Motion::Left);
 	caret = Step(buffer, caret, Motion::Down);
 
-	CHECK(caret.Offset == 12 + 1);
+	CHECK(caret.Offset == startOfLastLine + columnAfterMovingLeft);
 }
 
 TEST_CASE("Up and down respect tab stops rather than byte counts")
 {
-	// Line 0 is a tab then 'x' — 'x' is column 4. Line 1 is four spaces then 'y', so
-	// column 4 is 'y' at byte 4 of that line.
 	const TextBuffer buffer{"\tx\n    y"};
+	const std::size_t offsetOfXAtColumnFour = 1;
+	const std::size_t startOfSecondLine = 3;
+	const std::size_t byteOfYAtColumnFour = 4;
 
-	Caret caret = At(1); // on 'x', column 4
+	Caret caret = CaretWithoutDesiredColumnAt(offsetOfXAtColumnFour);
 	caret = Step(buffer, caret, Motion::Down);
 
-	CHECK(caret.Offset == 3 + 4);
+	CHECK(caret.Offset == startOfSecondLine + byteOfYAtColumnFour);
 }
 
 TEST_CASE("Up on the first line and down on the last stay put")
 {
 	const TextBuffer buffer{"one\ntwo"};
 
-	CHECK(Step(buffer, At(1), Motion::Up).Offset == 1);
-	CHECK(Step(buffer, At(5), Motion::Down).Offset == 5);
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(1), Motion::Up).Offset == 1);
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(5), Motion::Down).Offset == 5);
 }
 
 TEST_CASE("Page movement covers a screen and clamps at the ends")
 {
+	const std::size_t lineCount = 50;
 	std::string content;
 
-	for (std::size_t line = 0; line < 50; ++line)
+	for (std::size_t lineIndex = 0; lineIndex < lineCount; ++lineIndex)
 	{
 		content += "line\n";
 	}
 
 	const TextBuffer buffer{content};
+	const SelectionChange selectionChange = SelectionChange::Collapse;
 
-	const Caret start = At(buffer.LineStart(20));
-	CHECK(Move(buffer, start, Motion::PageDown, false, 4, 10).Offset == buffer.LineStart(30));
-	CHECK(Move(buffer, start, Motion::PageUp, false, 4, 10).Offset == buffer.LineStart(10));
+	const Caret start = CaretWithoutDesiredColumnAt(buffer.LineStart(20));
+	CHECK(Move(buffer, start, Motion::PageDown, selectionChange, kTabWidth, kPageLines).Offset == buffer.LineStart(30));
+	CHECK(Move(buffer, start, Motion::PageUp, selectionChange, kTabWidth, kPageLines).Offset == buffer.LineStart(10));
 
-	CHECK(Move(buffer, At(0), Motion::PageUp, false, 4, 10).Offset == 0);
+	CHECK(Move(buffer, CaretWithoutDesiredColumnAt(0), Motion::PageUp, selectionChange, kTabWidth, kPageLines).Offset == 0);
 
-	const Caret last = At(buffer.LineStart(buffer.GetLineCount() - 1));
-	CHECK(Move(buffer, last, Motion::PageDown, false, 4, 10).Offset == last.Offset);
+	const Caret last = CaretWithoutDesiredColumnAt(buffer.LineStart(buffer.GetLineCount() - 1));
+	CHECK(Move(buffer, last, Motion::PageDown, selectionChange, kTabWidth, kPageLines).Offset == last.Offset);
 }
 
 TEST_CASE("Word movement crosses runs of like characters")
 {
 	const TextBuffer buffer{"int value_2 = other;"};
+	const std::size_t endOfInt = 3;
+	const std::size_t startOfValue = 4;
+	const std::size_t endOfValue = 11;
 
-	CHECK(Step(buffer, At(0), Motion::WordRight).Offset == 3);	// end of "int"
-	CHECK(Step(buffer, At(3), Motion::WordRight).Offset == 4);	// over the space
-	CHECK(Step(buffer, At(4), Motion::WordRight).Offset == 11); // end of "value_2"
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(0), Motion::WordRight).Offset == endOfInt);
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(endOfInt), Motion::WordRight).Offset == startOfValue);
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(startOfValue), Motion::WordRight).Offset == endOfValue);
 
-	CHECK(Step(buffer, At(11), Motion::WordLeft).Offset == 4);
-	CHECK(Step(buffer, At(4), Motion::WordLeft).Offset == 3);
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(endOfValue), Motion::WordLeft).Offset == startOfValue);
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(startOfValue), Motion::WordLeft).Offset == endOfInt);
 }
 
 TEST_CASE("Word movement stops at the ends of the document")
 {
 	const TextBuffer buffer{"word"};
 
-	CHECK(Step(buffer, At(0), Motion::WordLeft).Offset == 0);
-	CHECK(Step(buffer, At(4), Motion::WordRight).Offset == 4);
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(0), Motion::WordLeft).Offset == 0);
+	CHECK(Step(buffer, CaretWithoutDesiredColumnAt(4), Motion::WordRight).Offset == 4);
 }
 
 TEST_CASE("Shift keeps the anchor, so movement extends the selection")
 {
 	const TextBuffer buffer{"abcdef"};
 
-	Caret caret = At(2);
-	caret = Step(buffer, caret, Motion::Right, true);
-	caret = Step(buffer, caret, Motion::Right, true);
+	Caret caret = CaretWithoutDesiredColumnAt(2);
+	caret = StepExtendingSelection(buffer, caret, Motion::Right);
+	caret = StepExtendingSelection(buffer, caret, Motion::Right);
 
 	CHECK(caret.Anchor == 2);
 	CHECK(caret.Offset == 4);
-	CHECK(SelectionRange(caret) == std::pair<std::size_t, std::size_t>{2, 4});
+	CHECK(SelectionRange(caret) == OffsetRange{.From = 2, .To = 4});
 }
 
 TEST_CASE("Movement without Shift collapses the selection")
 {
 	const TextBuffer buffer{"abcdef"};
 
-	const Caret selected{4, 2, 0};
+	const Caret selected{.Offset = 4, .Anchor = 2, .DesiredColumn = 0};
 	const Caret moved = Step(buffer, selected, Motion::Right);
 
 	CHECK_FALSE(HasSelection(moved));
@@ -219,19 +236,21 @@ TEST_CASE("Movement without Shift collapses the selection")
 
 TEST_CASE("A click lands on a character boundary and never inside one")
 {
-	const TextBuffer buffer{"a\xC4\x85"
-							"b"};
+	const TextBuffer buffer{"a" + kLetterAWithOgonek + "b"};
+	const std::size_t middleOfLetterAWithOgonek = 2;
+	const std::size_t pastTheEnd = 99;
 
-	// Byte 2 is the middle of 'ą'.
-	CHECK(PlaceAt(buffer, Caret{}, 2, false, 4).Offset == 1);
-	CHECK(PlaceAt(buffer, Caret{}, 99, false, 4).Offset == buffer.GetLength());
+	CHECK(PlaceAt(buffer, Caret{}, middleOfLetterAWithOgonek, SelectionChange::Collapse, kTabWidth).Offset == 1);
+	CHECK(PlaceAt(buffer, Caret{}, pastTheEnd, SelectionChange::Collapse, kTabWidth).Offset == buffer.GetLength());
 }
 
 TEST_CASE("A click with Shift extends from the existing anchor")
 {
 	const TextBuffer buffer{"abcdef"};
+	const Caret anchoredAtTwo{.Offset = 2, .Anchor = 2, .DesiredColumn = 0};
+	const std::size_t clickedOffset = 5;
 
-	const Caret placed = PlaceAt(buffer, Caret{2, 2, 0}, 5, true, 4);
+	const Caret placed = PlaceAt(buffer, anchoredAtTwo, clickedOffset, SelectionChange::Extend, kTabWidth);
 
 	CHECK(placed.Anchor == 2);
 	CHECK(placed.Offset == 5);
@@ -243,7 +262,7 @@ TEST_CASE("Double click selects the word under the caret")
 
 	const Caret word = SelectWordAt(buffer, 6);
 
-	CHECK(SelectionRange(word) == std::pair<std::size_t, std::size_t>{4, 11});
+	CHECK(SelectionRange(word) == OffsetRange{.From = 4, .To = 11});
 }
 
 TEST_CASE("Double click on whitespace selects the run of whitespace")
@@ -251,28 +270,29 @@ TEST_CASE("Double click on whitespace selects the run of whitespace")
 	const TextBuffer buffer{"a    b"};
 
 	CHECK(SelectWordAt(buffer, 2).Offset == 5);
-	CHECK(SelectionRange(SelectWordAt(buffer, 2)) == std::pair<std::size_t, std::size_t>{1, 5});
+	CHECK(SelectionRange(SelectWordAt(buffer, 2)) == OffsetRange{.From = 1, .To = 5});
 }
 
-TEST_CASE("Non-ASCII bytes count as letters, so a Polish word is one word")
+TEST_CASE("Non-ASCII bytes count as word characters, so a Polish word is one word")
 {
 	const TextBuffer buffer{"cz\xC4\x99\xC5\x9B\xC4\x87 next"};
+	const std::size_t endOfPolishWord = 8;
 
-	CHECK(SelectionRange(SelectWordAt(buffer, 0)).second == 8);
+	CHECK(SelectionRange(SelectWordAt(buffer, 0)).To == endOfPolishWord);
 }
 
 TEST_CASE("Triple click selects the line with its ending")
 {
 	const TextBuffer buffer{"one\ntwo\nthree"};
 
-	CHECK(SelectionRange(SelectLineAt(buffer, 1)) == std::pair<std::size_t, std::size_t>{4, 8});
+	CHECK(SelectionRange(SelectLineAt(buffer, 1)) == OffsetRange{.From = 4, .To = 8});
 }
 
 TEST_CASE("The last line has no ending to include")
 {
 	const TextBuffer buffer{"one\ntwo"};
 
-	CHECK(SelectionRange(SelectLineAt(buffer, 1)) == std::pair<std::size_t, std::size_t>{4, buffer.GetLength()});
+	CHECK(SelectionRange(SelectLineAt(buffer, 1)) == OffsetRange{.From = 4, .To = buffer.GetLength()});
 }
 
 TEST_CASE("Select all covers the document")
@@ -281,12 +301,13 @@ TEST_CASE("Select all covers the document")
 
 	const Caret all = SelectAll(buffer);
 
-	CHECK(SelectionRange(all) == std::pair<std::size_t, std::size_t>{0, buffer.GetLength()});
+	CHECK(SelectionRange(all) == OffsetRange{.From = 0, .To = buffer.GetLength()});
 }
 
 TEST_CASE("Every motion leaves the caret on a character boundary")
 {
-	const TextBuffer buffer{"\t\xC4\x85\xF0\x9F\x99\x82 word\n\xC4\x99nd\nx"};
+	const TextBuffer buffer{"\t" + kLetterAWithOgonek + kSlightlySmilingFace + " word\n" + kLetterEWithOgonek + "nd\nx"};
+	const std::size_t threeLinePage = 3;
 
 	const Motion motions[] = {Motion::Left, Motion::Right, Motion::Up,
 							  Motion::Down, Motion::LineStart, Motion::LineEnd,
@@ -295,37 +316,31 @@ TEST_CASE("Every motion leaves the caret on a character boundary")
 
 	for (const Motion motion : motions)
 	{
-		for (std::size_t start = 0; start <= buffer.GetLength(); ++start)
+		for (std::size_t startOffset = 0; startOffset <= buffer.GetLength(); ++startOffset)
 		{
-			const Caret result = Move(buffer, At(start), motion, false, 4, 3);
+			const Caret result = Move(buffer, CaretWithoutDesiredColumnAt(startOffset), motion, SelectionChange::Collapse, kTabWidth, threeLinePage);
 
 			REQUIRE(result.Offset <= buffer.GetLength());
 
-			// A boundary is any offset that is not a UTF-8 continuation byte.
 			if (result.Offset < buffer.GetLength())
 			{
-				REQUIRE((static_cast<unsigned char>(buffer.CharAt(result.Offset)) & 0xC0) != 0x80);
+				REQUIRE(!IsUtf8ContinuationByte(buffer.CharAt(result.Offset)));
 			}
 		}
 	}
 }
 
-TEST_CASE("Left and right step characters across piece boundaries")
+TEST_CASE("Left and right step characters across piece boundaries when each character sits in a piece of its own")
 {
-	// Move reads bytes around the caret straight out of the buffer rather than
-	// materialising the whole document first, so a multi-byte character split across
-	// two pieces has to step exactly as one that sits inside a single piece does.
 	TextBuffer buffer{"ab"};
 
-	// "a" + "ą" + "ę" + "b", assembled so that no inserted character shares a piece
-	// with its neighbours.
-	buffer.Insert(1, "\xC4\x99");
-	buffer.Insert(1, "\xC4\x85");
+	buffer.Insert(1, kLetterEWithOgonek);
+	buffer.Insert(1, kLetterAWithOgonek);
 
 	REQUIRE(buffer.Materialize() == "a\xC4\x85\xC4\x99"
 									"b");
 
-	Caret caret = At(0);
+	Caret caret = CaretWithoutDesiredColumnAt(0);
 
 	caret = Step(buffer, caret, Motion::Right);
 	CHECK(caret.Offset == 1);
@@ -345,7 +360,7 @@ TEST_CASE("Left and right step characters across piece boundaries")
 
 TEST_CASE("A buffer offset backs off to a character boundary and clamps to the end")
 {
-	const TextBuffer buffer{std::string{"a\xC4\x99"}};
+	const TextBuffer buffer{"a" + kLetterEWithOgonek};
 
 	CHECK(CharacterBoundaryAtOrBefore(buffer, 2) == 1);
 	CHECK(CharacterBoundaryAtOrBefore(buffer, 3) == 3);

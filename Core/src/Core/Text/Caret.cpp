@@ -11,32 +11,46 @@
 namespace Core {
 
 	namespace {
+		constexpr unsigned char kFirstNonAsciiByte = 0x80;
+
+		constexpr std::size_t kOneLine = 1;
+
 		enum class CharacterClass
 		{
-			Letter,
+			Word,
 			Whitespace,
 			Punctuation
 		};
 
-		CharacterClass ClassOf(char value)
+		enum class VerticalDirection
 		{
-			const unsigned char byte = static_cast<unsigned char>(value);
+			Up,
+			Down
+		};
 
-			// Anything outside ASCII counts as a letter, which makes `variableName_ąę` one
-			// word rather than three.
-			if (byte >= 0x80)
+		CharacterClass ClassOf(char character)
+		{
+			const unsigned char byte = static_cast<unsigned char>(character);
+
+			const bool isOutsideAscii = byte >= kFirstNonAsciiByte;
+			if (isOutsideAscii)
 			{
-				return CharacterClass::Letter;
+				return CharacterClass::Word;
 			}
 
-			if (byte == ' ' || byte == '\t' || byte == '\n')
+			const bool isWhitespace = byte == ' ' || byte == '\t' || byte == '\n';
+			if (isWhitespace)
 			{
 				return CharacterClass::Whitespace;
 			}
 
-			const bool alphanumeric = (byte >= '0' && byte <= '9') || (byte >= 'a' && byte <= 'z') || (byte >= 'A' && byte <= 'Z') || byte == '_';
+			const bool isDigit = byte >= '0' && byte <= '9';
+			const bool isLowercaseLetter = byte >= 'a' && byte <= 'z';
+			const bool isUppercaseLetter = byte >= 'A' && byte <= 'Z';
+			const bool isUnderscore = byte == '_';
+			const bool isIdentifierCharacter = isDigit || isLowercaseLetter || isUppercaseLetter || isUnderscore;
 
-			return alphanumeric ? CharacterClass::Letter : CharacterClass::Punctuation;
+			return isIdentifierCharacter ? CharacterClass::Word : CharacterClass::Punctuation;
 		}
 
 		std::size_t ColumnAt(const TextBuffer& buffer, std::size_t offset,
@@ -61,17 +75,34 @@ namespace Core {
 					   : caret.DesiredColumn;
 		}
 
+		std::size_t LineAbove(std::size_t line, std::size_t linesToMove)
+		{
+			if (line > linesToMove)
+			{
+				return line - linesToMove;
+			}
+
+			return 0;
+		}
+
+		std::size_t LineBelow(const TextBuffer& buffer, std::size_t line, std::size_t linesToMove)
+		{
+			const std::size_t lastLine = buffer.GetLineCount() - 1;
+
+			return std::min(line + linesToMove, lastLine);
+		}
+
 		std::size_t VerticalTarget(const TextBuffer& buffer, const Caret& caret,
-								   std::size_t lines, bool up, std::size_t tabWidth,
-								   std::size_t column)
+								   std::size_t linesToMove, VerticalDirection direction,
+								   std::size_t tabWidth, std::size_t column)
 		{
 			const Position position = buffer.ToPosition(caret.Offset);
 
-			const std::size_t line =
-				up ? (position.Line > lines ? position.Line - lines : 0)
-				   : std::min(position.Line + lines, buffer.GetLineCount() - 1);
+			const std::size_t targetLine = direction == VerticalDirection::Up
+											   ? LineAbove(position.Line, linesToMove)
+											   : LineBelow(buffer, position.Line, linesToMove);
 
-			return OffsetOfColumn(buffer, line, column, tabWidth);
+			return OffsetOfColumn(buffer, targetLine, column, tabWidth);
 		}
 
 		std::size_t WordBoundaryForward(const TextBuffer& buffer, std::size_t offset)
@@ -81,15 +112,15 @@ namespace Core {
 				return buffer.GetLength();
 			}
 
-			const CharacterClass start = ClassOf(buffer.CharAt(offset));
-			std::size_t at = offset;
+			const CharacterClass startClass = ClassOf(buffer.CharAt(offset));
+			std::size_t boundary = offset;
 
-			while (at < buffer.GetLength() && ClassOf(buffer.CharAt(at)) == start)
+			while (boundary < buffer.GetLength() && ClassOf(buffer.CharAt(boundary)) == startClass)
 			{
-				++at;
+				++boundary;
 			}
 
-			return at;
+			return boundary;
 		}
 
 		std::size_t WordBoundaryBackward(const TextBuffer& buffer, std::size_t offset)
@@ -99,20 +130,15 @@ namespace Core {
 				return 0;
 			}
 
-			const CharacterClass start = ClassOf(buffer.CharAt(offset - 1));
-			std::size_t at = offset;
+			const CharacterClass startClass = ClassOf(buffer.CharAt(offset - 1));
+			std::size_t boundary = offset;
 
-			while (at > 0 && ClassOf(buffer.CharAt(at - 1)) == start)
+			while (boundary > 0 && ClassOf(buffer.CharAt(boundary - 1)) == startClass)
 			{
-				--at;
+				--boundary;
 			}
 
-			return at;
-		}
-
-		bool IsContinuation(const TextBuffer& buffer, std::size_t offset)
-		{
-			return (static_cast<unsigned char>(buffer.CharAt(offset)) & 0xC0) == 0x80;
+			return boundary;
 		}
 
 		std::size_t NextCharacterIn(const TextBuffer& buffer, std::size_t offset)
@@ -124,7 +150,7 @@ namespace Core {
 
 			std::size_t next = offset + 1;
 
-			while (next < buffer.GetLength() && IsContinuation(buffer, next))
+			while (next < buffer.GetLength() && IsUtf8ContinuationByte(buffer.CharAt(next)))
 			{
 				++next;
 			}
@@ -141,7 +167,7 @@ namespace Core {
 
 			std::size_t previous = std::min(offset, buffer.GetLength()) - 1;
 
-			while (previous > 0 && IsContinuation(buffer, previous))
+			while (previous > 0 && IsUtf8ContinuationByte(buffer.CharAt(previous)))
 			{
 				--previous;
 			}
@@ -149,23 +175,18 @@ namespace Core {
 			return previous;
 		}
 
-		std::size_t SnapToBoundary(const TextBuffer& buffer, std::size_t offset)
+		bool IsInsideCharacter(const TextBuffer& buffer, std::size_t offset)
 		{
-			std::size_t at = std::min(offset, buffer.GetLength());
+			const bool isBetweenTheEnds = offset > 0 && offset < buffer.GetLength();
 
-			while (at > 0 && at < buffer.GetLength() && IsContinuation(buffer, at))
-			{
-				--at;
-			}
-
-			return at;
+			return isBetweenTheEnds && IsUtf8ContinuationByte(buffer.CharAt(offset));
 		}
 
-		Caret Settle(Caret caret, std::size_t offset, bool extend)
+		Caret MovedTo(Caret caret, std::size_t offset, SelectionChange selectionChange)
 		{
 			caret.Offset = offset;
 
-			if (!extend)
+			if (selectionChange == SelectionChange::Collapse)
 			{
 				caret.Anchor = offset;
 			}
@@ -179,92 +200,91 @@ namespace Core {
 		return caret.Offset != caret.Anchor;
 	}
 
-	std::pair<std::size_t, std::size_t> SelectionRange(const Caret& caret)
+	OffsetRange SelectionRange(const Caret& caret)
 	{
-		return caret.Offset < caret.Anchor ? std::pair{caret.Offset, caret.Anchor}
-										   : std::pair{caret.Anchor, caret.Offset};
+		return caret.Offset < caret.Anchor ? OffsetRange{.From = caret.Offset, .To = caret.Anchor}
+										   : OffsetRange{.From = caret.Anchor, .To = caret.Offset};
 	}
 
-	Caret Move(const TextBuffer& buffer, Caret caret, Motion motion, bool extend,
+	Caret Move(const TextBuffer& buffer, Caret caret, Motion motion, SelectionChange selectionChange,
 			   std::size_t tabWidth, std::size_t pageLines)
 	{
 		const Position position = buffer.ToPosition(caret.Offset);
 
-		std::size_t target = caret.Offset;
-		bool vertical = false;
-		std::size_t verticalColumn = 0;
+		std::size_t targetOffset = caret.Offset;
+		bool isVerticalMotion = false;
+		std::size_t desiredColumn = 0;
 
 		switch (motion)
 		{
 		case Motion::Left:
-			target = PreviousCharacterIn(buffer, caret.Offset);
+			targetOffset = PreviousCharacterIn(buffer, caret.Offset);
 			break;
 		case Motion::Right:
-			target = NextCharacterIn(buffer, caret.Offset);
+			targetOffset = NextCharacterIn(buffer, caret.Offset);
 			break;
 		case Motion::Up:
-			verticalColumn = DesiredColumnFor(buffer, caret, tabWidth);
-			target = VerticalTarget(buffer, caret, 1, true, tabWidth, verticalColumn);
-			vertical = true;
+			desiredColumn = DesiredColumnFor(buffer, caret, tabWidth);
+			targetOffset = VerticalTarget(buffer, caret, kOneLine, VerticalDirection::Up, tabWidth, desiredColumn);
+			isVerticalMotion = true;
 			break;
 		case Motion::Down:
-			verticalColumn = DesiredColumnFor(buffer, caret, tabWidth);
-			target = VerticalTarget(buffer, caret, 1, false, tabWidth, verticalColumn);
-			vertical = true;
+			desiredColumn = DesiredColumnFor(buffer, caret, tabWidth);
+			targetOffset = VerticalTarget(buffer, caret, kOneLine, VerticalDirection::Down, tabWidth, desiredColumn);
+			isVerticalMotion = true;
 			break;
 		case Motion::PageUp:
-			verticalColumn = DesiredColumnFor(buffer, caret, tabWidth);
-			target = VerticalTarget(buffer, caret, pageLines, true, tabWidth, verticalColumn);
-			vertical = true;
+			desiredColumn = DesiredColumnFor(buffer, caret, tabWidth);
+			targetOffset = VerticalTarget(buffer, caret, pageLines, VerticalDirection::Up, tabWidth, desiredColumn);
+			isVerticalMotion = true;
 			break;
 		case Motion::PageDown:
-			verticalColumn = DesiredColumnFor(buffer, caret, tabWidth);
-			target = VerticalTarget(buffer, caret, pageLines, false, tabWidth, verticalColumn);
-			vertical = true;
+			desiredColumn = DesiredColumnFor(buffer, caret, tabWidth);
+			targetOffset = VerticalTarget(buffer, caret, pageLines, VerticalDirection::Down, tabWidth, desiredColumn);
+			isVerticalMotion = true;
 			break;
 		case Motion::LineStart:
-			target = buffer.LineStart(position.Line);
+			targetOffset = buffer.LineStart(position.Line);
 			break;
 		case Motion::LineEnd:
-			target = buffer.LineStart(position.Line) + buffer.LineLength(position.Line);
+			targetOffset = buffer.LineStart(position.Line) + buffer.LineLength(position.Line);
 			break;
 		case Motion::DocumentStart:
-			target = 0;
+			targetOffset = 0;
 			break;
 		case Motion::DocumentEnd:
-			target = buffer.GetLength();
+			targetOffset = buffer.GetLength();
 			break;
 		case Motion::WordLeft:
-			target = WordBoundaryBackward(buffer, caret.Offset);
+			targetOffset = WordBoundaryBackward(buffer, caret.Offset);
 			break;
 		case Motion::WordRight:
-			target = WordBoundaryForward(buffer, caret.Offset);
+			targetOffset = WordBoundaryForward(buffer, caret.Offset);
 			break;
 		}
 
-		Caret result = Settle(caret, target, extend);
+		Caret moved = MovedTo(caret, targetOffset, selectionChange);
+		moved.DesiredColumn = isVerticalMotion ? desiredColumn : ColumnAt(buffer, moved.Offset, tabWidth);
 
-		// Vertical movement carries the column it aimed at forward, even when this line was
-		// too short to reach it; every other motion re-aims from where the caret now sits.
-		result.DesiredColumn = vertical ? verticalColumn : ColumnAt(buffer, result.Offset, tabWidth);
-
-		return result;
+		return moved;
 	}
 
-	Caret PlaceAt(const TextBuffer& buffer, Caret caret, std::size_t offset, bool extend,
+	Caret PlaceAt(const TextBuffer& buffer, Caret caret, std::size_t offset, SelectionChange selectionChange,
 				  std::size_t tabWidth)
 	{
-		Caret result = Settle(caret, SnapToBoundary(buffer, offset), extend);
-		result.DesiredColumn = ColumnAt(buffer, result.Offset, tabWidth);
+		const std::size_t boundary = CharacterBoundaryAtOrBefore(buffer, offset);
 
-		return result;
+		Caret placed = MovedTo(caret, boundary, selectionChange);
+		placed.DesiredColumn = ColumnAt(buffer, placed.Offset, tabWidth);
+
+		return placed;
 	}
 
 	std::size_t CharacterBoundaryAtOrBefore(const TextBuffer& buffer, std::size_t offset)
 	{
 		std::size_t boundary = std::min(offset, buffer.GetLength());
 
-		while (boundary > 0 && boundary < buffer.GetLength() && IsUtf8ContinuationByte(buffer.CharAt(boundary)))
+		while (IsInsideCharacter(buffer, boundary))
 		{
 			--boundary;
 		}
@@ -274,34 +294,33 @@ namespace Core {
 
 	Caret SelectWordAt(const TextBuffer& buffer, std::size_t offset)
 	{
-		const std::size_t at = SnapToBoundary(buffer, offset);
+		const std::size_t boundary = CharacterBoundaryAtOrBefore(buffer, offset);
 
-		Caret caret;
-		caret.Anchor = WordBoundaryBackward(buffer, at == buffer.GetLength() ? at : at + 1);
-		caret.Offset = WordBoundaryForward(buffer, at);
-		caret.DesiredColumn = NoDesiredColumn;
+		const bool isAtEndOfBuffer = boundary == buffer.GetLength();
+		const std::size_t backwardSearchStart = isAtEndOfBuffer ? boundary : boundary + 1;
 
-		return caret;
+		const std::size_t wordStart = WordBoundaryBackward(buffer, backwardSearchStart);
+		const std::size_t wordEnd = WordBoundaryForward(buffer, boundary);
+
+		return Caret{.Offset = wordEnd, .Anchor = wordStart, .DesiredColumn = NoDesiredColumn};
 	}
 
 	Caret SelectLineAt(const TextBuffer& buffer, std::size_t line)
 	{
-		Caret caret;
-		caret.Anchor = buffer.LineStart(line);
-		caret.Offset = line + 1 < buffer.GetLineCount() ? buffer.LineStart(line + 1)
-														: buffer.GetLength();
-		caret.DesiredColumn = NoDesiredColumn;
+		const std::size_t lineStart = buffer.LineStart(line);
 
-		return caret;
+		const std::size_t nextLine = line + 1;
+		const bool hasNextLine = nextLine < buffer.GetLineCount();
+		const std::size_t endIncludingLineEnding = hasNextLine ? buffer.LineStart(nextLine)
+															   : buffer.GetLength();
+
+		return Caret{.Offset = endIncludingLineEnding, .Anchor = lineStart, .DesiredColumn = NoDesiredColumn};
 	}
 
 	Caret SelectAll(const TextBuffer& buffer)
 	{
-		Caret caret;
-		caret.Anchor = 0;
-		caret.Offset = buffer.GetLength();
-		caret.DesiredColumn = NoDesiredColumn;
+		const std::size_t documentStart = 0;
 
-		return caret;
+		return Caret{.Offset = buffer.GetLength(), .Anchor = documentStart, .DesiredColumn = NoDesiredColumn};
 	}
 }

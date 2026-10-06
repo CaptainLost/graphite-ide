@@ -15,126 +15,163 @@ namespace Core {
 		constexpr std::uint32_t kLowSurrogateFirst = 0xDC00;
 		constexpr std::uint32_t kLowSurrogateLast = 0xDFFF;
 		constexpr std::uint32_t kFirstSupplementary = 0x10000;
+		constexpr std::uint32_t kSurrogatePayloadBits = 10;
+		constexpr std::uint32_t kSurrogatePayloadMask = 0x3FFu;
 
-		std::uint32_t ReadUnit(std::string_view bytes, std::size_t at,
-							   bool littleEndian)
+		constexpr std::uint32_t kBitsPerByte = 8;
+		constexpr std::uint32_t kLowByteMask = 0xFFu;
+
+		constexpr std::size_t kUtf16UnitBytes = 2;
+		constexpr std::size_t kSurrogatePairBytes = 4;
+
+		constexpr unsigned char kFirstByteAfterC0Controls = 0x20u;
+		constexpr unsigned char kDeleteByte = 0x7Fu;
+		constexpr unsigned char kC1ControlLeadByte = 0xC2u;
+		constexpr unsigned char kFirstC1ControlTrailByte = 0x80u;
+		constexpr unsigned char kLastC1ControlTrailByte = 0x9Fu;
+
+		constexpr std::size_t kFewestNulsForUtf16 = 2;
+
+		// Nine tenths rather than all of them: U+0100 and its neighbours put a NUL at the other
+		// parity, and a file may legitimately contain a few.
+		constexpr std::size_t kDominantNulShareNumerator = 9;
+		constexpr std::size_t kDominantNulShareDenominator = 10;
+
+		enum class ByteOrder
 		{
-			const auto first = static_cast<std::uint32_t>(
-				static_cast<unsigned char>(bytes[at]));
-			const auto second = static_cast<std::uint32_t>(
-				static_cast<unsigned char>(bytes[at + 1]));
+			LittleEndian,
+			BigEndian
+		};
 
-			return littleEndian ? (second << 8) | first : (first << 8) | second;
+		bool IsHighSurrogate(std::uint32_t unit)
+		{
+			return unit >= kHighSurrogateFirst && unit <= kHighSurrogateLast;
 		}
 
-		void AppendUnit(std::string& out, std::uint32_t unit, bool littleEndian)
+		bool IsLowSurrogate(std::uint32_t unit)
 		{
-			const auto low = static_cast<char>(unit & 0xFFu);
-			const auto high = static_cast<char>((unit >> 8) & 0xFFu);
+			return unit >= kLowSurrogateFirst && unit <= kLowSurrogateLast;
+		}
 
-			out.push_back(littleEndian ? low : high);
-			out.push_back(littleEndian ? high : low);
+		std::uint32_t ReadUnit(std::string_view bytes, std::size_t unitStart,
+							   ByteOrder byteOrder)
+		{
+			const std::uint32_t firstByte = static_cast<std::uint32_t>(
+				static_cast<unsigned char>(bytes[unitStart]));
+			const std::uint32_t secondByte = static_cast<std::uint32_t>(
+				static_cast<unsigned char>(bytes[unitStart + 1]));
+
+			return byteOrder == ByteOrder::LittleEndian ? (secondByte << kBitsPerByte) | firstByte
+														: (firstByte << kBitsPerByte) | secondByte;
+		}
+
+		void AppendUnit(std::string& utf16, std::uint32_t unit, ByteOrder byteOrder)
+		{
+			const char lowByte = static_cast<char>(unit & kLowByteMask);
+			const char highByte = static_cast<char>((unit >> kBitsPerByte) & kLowByteMask);
+
+			const bool isLittleEndian = byteOrder == ByteOrder::LittleEndian;
+
+			utf16.push_back(isLittleEndian ? lowByte : highByte);
+			utf16.push_back(isLittleEndian ? highByte : lowByte);
 		}
 
 		Result<std::string> DecodeUtf16(std::string_view bytes,
-										bool littleEndian)
+										ByteOrder byteOrder)
 		{
-			if (bytes.size() % 2 != 0)
+			if (bytes.size() % kUtf16UnitBytes != 0)
 			{
-				return Error{ErrorCode::InvalidArgument,
-							 "UTF-16 file is damaged: odd number of bytes (" + std::to_string(bytes.size()) + ")"};
+				return Error{.Code = ErrorCode::InvalidArgument, .Message = "UTF-16 file is damaged: odd number of bytes (" + std::to_string(bytes.size()) + ")"};
 			}
 
-			std::string out;
-			out.reserve(bytes.size());
+			std::string utf8;
+			utf8.reserve(bytes.size());
 
-			std::size_t at = 0;
+			std::size_t unitStart = 0;
 
-			while (at < bytes.size())
+			while (unitStart < bytes.size())
 			{
-				const std::uint32_t unit = ReadUnit(bytes, at, littleEndian);
+				const std::uint32_t unit = ReadUnit(bytes, unitStart, byteOrder);
 
-				if (unit >= kLowSurrogateFirst && unit <= kLowSurrogateLast)
+				if (IsLowSurrogate(unit))
 				{
-					return Error{ErrorCode::InvalidArgument,
-								 "UTF-16 file is damaged: a low surrogate at byte " + std::to_string(at) + " has no high surrogate "
-																										   "before it"};
+					return Error{.Code = ErrorCode::InvalidArgument, .Message = "UTF-16 file is damaged: a low surrogate at byte " + std::to_string(unitStart) + " has no high surrogate before it"};
 				}
 
-				if (unit >= kHighSurrogateFirst && unit <= kHighSurrogateLast)
+				if (IsHighSurrogate(unit))
 				{
-					if (at + 4 > bytes.size())
+					if (unitStart + kSurrogatePairBytes > bytes.size())
 					{
-						return Error{ErrorCode::InvalidArgument,
-									 "UTF-16 file is damaged: a high surrogate at byte " + std::to_string(at) + " is the last unit"};
+						return Error{.Code = ErrorCode::InvalidArgument, .Message = "UTF-16 file is damaged: a high surrogate at byte " + std::to_string(unitStart) + " is the last unit"};
 					}
 
-					const std::uint32_t low = ReadUnit(bytes, at + 2, littleEndian);
+					const std::uint32_t lowSurrogate = ReadUnit(bytes, unitStart + kUtf16UnitBytes, byteOrder);
 
-					if (low < kLowSurrogateFirst || low > kLowSurrogateLast)
+					if (!IsLowSurrogate(lowSurrogate))
 					{
-						return Error{ErrorCode::InvalidArgument,
-									 "UTF-16 file is damaged: a high surrogate at byte " + std::to_string(at) + " is not followed by a low one"};
+						return Error{.Code = ErrorCode::InvalidArgument, .Message = "UTF-16 file is damaged: a high surrogate at byte " + std::to_string(unitStart) + " is not followed by a low one"};
 					}
 
-					AppendUtf8(out, static_cast<char32_t>(kFirstSupplementary + ((unit - kHighSurrogateFirst) << 10) + (low - kLowSurrogateFirst)));
-					at += 4;
+					const std::uint32_t highPayload = unit - kHighSurrogateFirst;
+					const std::uint32_t lowPayload = lowSurrogate - kLowSurrogateFirst;
+					const std::uint32_t codePoint = kFirstSupplementary + (highPayload << kSurrogatePayloadBits) + lowPayload;
+
+					AppendUtf8(utf8, static_cast<char32_t>(codePoint));
+					unitStart += kSurrogatePairBytes;
 					continue;
 				}
 
-				AppendUtf8(out, static_cast<char32_t>(unit));
-				at += 2;
+				AppendUtf8(utf8, static_cast<char32_t>(unit));
+				unitStart += kUtf16UnitBytes;
 			}
 
-			return out;
+			return utf8;
 		}
 
-		std::string EncodeUtf16(std::string_view utf8, bool littleEndian)
+		std::string EncodeUtf16(std::string_view utf8, ByteOrder byteOrder)
 		{
-			std::string out;
-			out.reserve(utf8.size() * 2);
+			std::string utf16;
+			utf16.reserve(utf8.size() * kUtf16UnitBytes);
 
-			std::size_t at = 0;
+			std::size_t characterStart = 0;
 
-			while (at < utf8.size())
+			while (characterStart < utf8.size())
 			{
-				// Text that is not UTF-8 has no UTF-16 form; each broken sequence is written as
-				// U+FFFD rather than as whatever its bits happen to assemble into.
-				const auto codepoint = static_cast<std::uint32_t>(DecodeUtf8(utf8, at).value_or(kReplacementCharacter));
+				const std::uint32_t codePoint = static_cast<std::uint32_t>(DecodeUtf8(utf8, characterStart).value_or(kReplacementCharacter));
 
-				if (codepoint < kFirstSupplementary)
+				if (codePoint < kFirstSupplementary)
 				{
-					AppendUnit(out, codepoint, littleEndian);
+					AppendUnit(utf16, codePoint, byteOrder);
 				}
 				else
 				{
-					const std::uint32_t offset = codepoint - kFirstSupplementary;
+					const std::uint32_t supplementaryOffset = codePoint - kFirstSupplementary;
 
-					AppendUnit(out, kHighSurrogateFirst + (offset >> 10), littleEndian);
-					AppendUnit(out, kLowSurrogateFirst + (offset & 0x3FFu), littleEndian);
+					AppendUnit(utf16, kHighSurrogateFirst + (supplementaryOffset >> kSurrogatePayloadBits), byteOrder);
+					AppendUnit(utf16, kLowSurrogateFirst + (supplementaryOffset & kSurrogatePayloadMask), byteOrder);
 				}
 			}
 
-			return out;
+			return utf16;
 		}
 
 		enum class Transform
 		{
 			PassThrough,
-			Utf16Little,
-			Utf16Big
+			Utf16LittleEndian,
+			Utf16BigEndian
 		};
 
-		Transform CodecFor(Encoding encoding)
+		// No default, so a new Encoding enumerator is a build error until its Transform is
+		// decided here.
+		Transform TransformFor(Encoding encoding)
 		{
-			// No default: adding an Encoding enumerator without deciding its Transform here
-			// is then a build error.
 			switch (encoding)
 			{
 			case Encoding::Utf16Le:
-				return Transform::Utf16Little;
+				return Transform::Utf16LittleEndian;
 			case Encoding::Utf16Be:
-				return Transform::Utf16Big;
+				return Transform::Utf16BigEndian;
 			case Encoding::Utf8:
 			case Encoding::Utf8Bom:
 			case Encoding::Unknown:
@@ -144,38 +181,54 @@ namespace Core {
 			return Transform::PassThrough;
 		}
 
-	}
-
-	bool LooksLikeText(std::string_view utf8)
-	{
-		// Byte value alone is not enough: DEL (U+007F) is a single byte >= 0x20, and the C1
-		// controls (U+0080-U+009F) encode as C2 80 through C2 9F, whose bytes are also
-		// >= 0x20, so both are matched by the exact sequences that encode them.
-		for (std::size_t at = 0; at < utf8.size(); ++at)
+		bool IsC1ControlAt(std::string_view utf8, std::size_t byteIndex)
 		{
-			const auto byte = static_cast<unsigned char>(utf8[at]);
+			const bool isLeadByte = static_cast<unsigned char>(utf8[byteIndex]) == kC1ControlLeadByte;
+			const bool hasTrailByte = byteIndex + 1 < utf8.size();
 
-			if (byte == 0x7Fu)
+			if (!isLeadByte || !hasTrailByte)
 			{
 				return false;
 			}
 
-			if (byte == 0xC2u && at + 1 < utf8.size())
-			{
-				const auto next = static_cast<unsigned char>(utf8[at + 1]);
+			const unsigned char trailByte = static_cast<unsigned char>(utf8[byteIndex + 1]);
 
-				if (next >= 0x80u && next <= 0x9Fu)
-				{
-					return false;
-				}
+			return trailByte >= kFirstC1ControlTrailByte && trailByte <= kLastC1ControlTrailByte;
+		}
+
+		bool IsC0ControlOtherThanTabOrLineBreak(unsigned char byte)
+		{
+			const bool isC0Control = byte < kFirstByteAfterC0Controls;
+			const bool isTab = byte == '\t';
+			const bool isLineFeed = byte == '\n';
+			const bool isCarriageReturn = byte == '\r';
+
+			return isC0Control && !isTab && !isLineFeed && !isCarriageReturn;
+		}
+	}
+
+	// DEL and the C1 controls are not text, yet every byte that encodes them lies past the C0
+	// range, so the C0 test alone lets them through.
+	bool LooksLikeText(std::string_view utf8)
+	{
+		for (std::size_t byteIndex = 0; byteIndex < utf8.size(); ++byteIndex)
+		{
+			const unsigned char byte = static_cast<unsigned char>(utf8[byteIndex]);
+
+			if (byte == kDeleteByte)
+			{
+				return false;
 			}
 
-			if (byte >= 0x20u || byte == '\t' || byte == '\n' || byte == '\r')
+			if (IsC1ControlAt(utf8, byteIndex))
 			{
-				continue;
+				return false;
 			}
 
-			return false;
+			if (IsC0ControlOtherThanTabOrLineBreak(byte))
+			{
+				return false;
+			}
 		}
 
 		return true;
@@ -183,12 +236,12 @@ namespace Core {
 
 	Result<std::string> Decode(std::string_view bytes, Encoding encoding)
 	{
-		switch (CodecFor(encoding))
+		switch (TransformFor(encoding))
 		{
-		case Transform::Utf16Little:
-			return DecodeUtf16(bytes, true);
-		case Transform::Utf16Big:
-			return DecodeUtf16(bytes, false);
+		case Transform::Utf16LittleEndian:
+			return DecodeUtf16(bytes, ByteOrder::LittleEndian);
+		case Transform::Utf16BigEndian:
+			return DecodeUtf16(bytes, ByteOrder::BigEndian);
 		case Transform::PassThrough:
 			break;
 		}
@@ -201,7 +254,7 @@ namespace Core {
 	// because Decode would return a second whole copy of the file.
 	Result<std::string> DecodeWithoutByteOrderMark(std::string bytes, Encoding encoding)
 	{
-		const std::size_t markLength = BomLength(bytes);
+		const std::size_t markLength = LeadingByteOrderMarkLength(bytes);
 
 		if (!TransformsContent(encoding))
 		{
@@ -214,12 +267,12 @@ namespace Core {
 
 	std::string Encode(std::string_view utf8, Encoding encoding)
 	{
-		switch (CodecFor(encoding))
+		switch (TransformFor(encoding))
 		{
-		case Transform::Utf16Little:
-			return EncodeUtf16(utf8, true);
-		case Transform::Utf16Big:
-			return EncodeUtf16(utf8, false);
+		case Transform::Utf16LittleEndian:
+			return EncodeUtf16(utf8, ByteOrder::LittleEndian);
+		case Transform::Utf16BigEndian:
+			return EncodeUtf16(utf8, ByteOrder::BigEndian);
 		case Transform::PassThrough:
 			break;
 		}
@@ -229,62 +282,64 @@ namespace Core {
 
 	bool TransformsContent(Encoding encoding)
 	{
-		return CodecFor(encoding) != Transform::PassThrough;
+		return TransformFor(encoding) != Transform::PassThrough;
 	}
 
 	Encoding SniffEncoding(std::string_view bytes)
 	{
-		const Encoding declared = DetectEncoding(bytes);
+		const Encoding markedEncoding = DetectEncoding(bytes);
 
-		// A mark is a statement by whoever wrote the file; nothing here overrules it.
-		if (declared != Encoding::Utf8)
+		const bool bytesCarryByteOrderMark = markedEncoding != Encoding::Utf8;
+		if (bytesCarryByteOrderMark)
 		{
-			return declared;
+			return markedEncoding;
 		}
 
-		std::size_t evenNuls = 0;
-		std::size_t oddNuls = 0;
+		std::size_t nulsAtEvenOffsets = 0;
+		std::size_t nulsAtOddOffsets = 0;
 
-		for (std::size_t at = 0; at < bytes.size(); ++at)
+		for (std::size_t byteIndex = 0; byteIndex < bytes.size(); ++byteIndex)
 		{
-			if (bytes[at] != '\0')
+			if (bytes[byteIndex] != '\0')
 			{
 				continue;
 			}
 
-			if (at % 2 == 0)
+			const bool isEvenOffset = byteIndex % 2 == 0;
+			if (isEvenOffset)
 			{
-				++evenNuls;
+				++nulsAtEvenOffsets;
 			}
 			else
 			{
-				++oddNuls;
+				++nulsAtOddOffsets;
 			}
 		}
 
-		const std::size_t nuls = evenNuls + oddNuls;
+		const std::size_t nulCount = nulsAtEvenOffsets + nulsAtOddOffsets;
 
-		if (nuls < 2)
+		if (nulCount < kFewestNulsForUtf16)
 		{
 			return Encoding::Utf8;
 		}
 
-		const std::size_t dominant = evenNuls > oddNuls ? evenNuls : oddNuls;
+		const std::size_t nulsAtDominantParity = nulsAtEvenOffsets > nulsAtOddOffsets ? nulsAtEvenOffsets : nulsAtOddOffsets;
 
-		// Nine tenths rather than all of them: U+0100 and its neighbours put a NUL at the
-		// other parity, and a file may legitimately contain a few.
-		if (dominant * 10 < nuls * 9)
+		const bool tooFewNulsShareOneParity = nulsAtDominantParity * kDominantNulShareDenominator < nulCount * kDominantNulShareNumerator;
+		if (tooFewNulsShareOneParity)
 		{
 			return Encoding::Utf8;
 		}
 
-		// A NUL at an odd position means the low byte came first.
-		const Encoding candidate = oddNuls > evenNuls ? Encoding::Utf16Le
-													  : Encoding::Utf16Be;
+		const bool lowByteComesFirst = nulsAtOddOffsets > nulsAtEvenOffsets;
+		const Encoding candidate = lowByteComesFirst ? Encoding::Utf16Le
+													 : Encoding::Utf16Be;
 
-		// A sample may end mid-unit; that is a boundary, not damage.
-		const std::string_view whole = bytes.substr(0, bytes.size() - bytes.size() % 2);
-		const auto decoded = Decode(whole, candidate);
+		const std::size_t strayByteCount = bytes.size() % kUtf16UnitBytes;
+		std::string_view wholeUnits = bytes;
+		wholeUnits.remove_suffix(strayByteCount);
+
+		const Result<std::string> decoded = Decode(wholeUnits, candidate);
 
 		if (!decoded)
 		{

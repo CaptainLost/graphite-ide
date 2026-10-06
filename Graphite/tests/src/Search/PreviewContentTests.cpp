@@ -37,7 +37,7 @@ TEST_CASE("An open document's buffer wins over the file on disk")
 
 	Core::DocumentSet documents;
 
-	REQUIRE(documents.Open(file, true) == Core::OpenOutcome::Opened);
+	REQUIRE(documents.Open(file, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
 
 	const auto index = documents.Find(file);
 	REQUIRE(index.has_value());
@@ -118,7 +118,7 @@ TEST_CASE("A file closed while its preview is showing falls back to disk")
 
 	Core::DocumentSet documents;
 
-	REQUIRE(documents.Open(file, true) == Core::OpenOutcome::Opened);
+	REQUIRE(documents.Open(file, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
 
 	const auto index = documents.Find(file);
 	REQUIRE(index.has_value());
@@ -201,7 +201,7 @@ TEST_CASE("Colours follow an edit to the open document being previewed")
 
 	Core::DocumentSet documents;
 
-	REQUIRE(documents.Open(file, true) == Core::OpenOutcome::Opened);
+	REQUIRE(documents.Open(file, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
 
 	const auto index = documents.Find(file);
 	REQUIRE(index.has_value());
@@ -313,7 +313,7 @@ TEST_CASE("A file with a tab open is declared as one the editor holds")
 	PreviewSemantics semantics{port};
 	Core::DocumentSet documents;
 
-	REQUIRE(documents.Open(file, true) == Core::OpenOutcome::Opened);
+	REQUIRE(documents.Open(file, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
 
 	PreviewContent content{&semantics};
 

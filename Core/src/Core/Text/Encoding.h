@@ -14,11 +14,11 @@ namespace Core {
 		Unknown
 	};
 
-	std::size_t BomLength(std::string_view bytes);
+	std::size_t LeadingByteOrderMarkLength(std::string_view bytes);
 
-	std::size_t BomLength(Encoding encoding);
+	std::size_t ByteOrderMarkLength(Encoding encoding);
 
-	std::string_view BomBytes(Encoding encoding);
+	std::string_view ByteOrderMarkBytes(Encoding encoding);
 
 	std::string_view WithoutUtf8ByteOrderMark(std::string_view text);
 

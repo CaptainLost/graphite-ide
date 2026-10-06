@@ -24,11 +24,11 @@ namespace Core {
 		NeedsDecision
 	};
 
-	FileSyncOutcome SyncWithFile(DocumentSet& documents, std::size_t index);
+	FileSyncOutcome SyncWithFile(DocumentSet& documents, std::size_t itemIndex);
 
-	Result<void> ReloadItem(DocumentSet& documents, std::size_t index);
+	Result<void> ReloadItem(DocumentSet& documents, std::size_t itemIndex);
 
-	Result<void> SaveDocument(DocumentSet& documents, std::size_t index);
+	Result<void> SaveDocument(DocumentSet& documents, std::size_t itemIndex);
 
 	struct SaveAllReport
 	{

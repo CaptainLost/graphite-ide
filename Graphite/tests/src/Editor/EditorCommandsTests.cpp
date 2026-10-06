@@ -23,7 +23,7 @@ namespace {
 
 		item.Document = std::move(document).GetValue();
 		item.Path = std::move(path);
-		Core::RefreshDerived(item);
+		Core::RecomputeLineCaches(item);
 
 		return item;
 	}

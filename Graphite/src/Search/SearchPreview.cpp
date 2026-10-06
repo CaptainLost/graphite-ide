@@ -16,7 +16,6 @@
 #include <algorithm>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -48,7 +47,7 @@ namespace Graphite {
 		// hits within a group already arrive that way.
 		LineMatchInput MatchesOnLine(const SearchPreviewInput& input, std::size_t lineStart,
 									 std::size_t line, std::string_view text,
-									 std::vector<std::pair<std::size_t, std::size_t>>& scratch,
+									 std::vector<Core::FindMatch>& scratch,
 									 std::size_t& current)
 		{
 			scratch.clear();
@@ -68,7 +67,7 @@ namespace Graphite {
 					current = scratch.size();
 				}
 
-				scratch.push_back({lineStart + hit.From, lineStart + hit.To});
+				scratch.push_back(Core::FindMatch{.From = lineStart + hit.From, .To = lineStart + hit.To});
 			}
 
 			// By name, not positionally: three of these are std::size_t and LineMatchInput's own
@@ -145,7 +144,7 @@ namespace Graphite {
 
 		ImDrawList* draw = ImGui::GetWindowDrawList();
 
-		std::vector<std::pair<std::size_t, std::size_t>> scratch;
+		std::vector<Core::FindMatch> scratch;
 		std::string expanded;
 
 		for (std::size_t line = window.First; line <= window.Last; ++line)

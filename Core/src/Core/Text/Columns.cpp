@@ -11,120 +11,118 @@ namespace Core {
 
 	std::size_t ColumnAfterTab(std::size_t column, std::size_t tabWidth)
 	{
-		const std::size_t width = tabWidth == 0 ? 1 : tabWidth;
+		const std::size_t nonZeroTabWidth = tabWidth == 0 ? 1 : tabWidth;
 
-		return column + width - column % width;
+		return column + nonZeroTabWidth - column % nonZeroTabWidth;
 	}
 
-	std::size_t ColumnOfByte(std::string_view line, std::size_t byte, std::size_t tabWidth)
+	std::size_t ColumnOfByte(std::string_view lineText, std::size_t byteOffset, std::size_t tabWidth)
 	{
-		const std::size_t target = std::min(byte, line.size());
+		const std::size_t stopOffset = std::min(byteOffset, lineText.size());
 
 		std::size_t column = 0;
-		std::size_t at = 0;
+		std::size_t characterStart = 0;
 
-		while (at < target)
+		while (characterStart < stopOffset)
 		{
-			if (line[at] == '\t')
+			if (lineText[characterStart] == '\t')
 			{
 				column = ColumnAfterTab(column, tabWidth);
-				++at;
+				++characterStart;
 				continue;
 			}
 
 			++column;
-			at = NextCharacter(line, at);
+			characterStart = NextCharacter(lineText, characterStart);
 		}
 
 		return column;
 	}
 
-	std::size_t ByteOfColumn(std::string_view line, std::size_t column, std::size_t tabWidth)
+	std::size_t ByteOfColumn(std::string_view lineText, std::size_t column, std::size_t tabWidth)
 	{
-		std::size_t at = 0;
-		std::size_t current = 0;
+		std::size_t characterStart = 0;
+		std::size_t characterColumn = 0;
 
-		while (at < line.size())
+		while (characterStart < lineText.size())
 		{
-			// A tab covers a run of columns and a character has no inside, so any column
-			// before the next boundary resolves to this character's first byte.
-			const std::size_t next =
-				line[at] == '\t' ? ColumnAfterTab(current, tabWidth) : current + 1;
+			const bool isTab = lineText[characterStart] == '\t';
+			const std::size_t nextCharacterColumn =
+				isTab ? ColumnAfterTab(characterColumn, tabWidth) : characterColumn + 1;
 
-			if (column < next)
+			const bool columnFallsInsideThisCharacter = column < nextCharacterColumn;
+			if (columnFallsInsideThisCharacter)
 			{
-				return at;
+				return characterStart;
 			}
 
-			current = next;
-			at = line[at] == '\t' ? at + 1 : NextCharacter(line, at);
+			characterColumn = nextCharacterColumn;
+			characterStart = isTab ? characterStart + 1 : NextCharacter(lineText, characterStart);
 		}
 
-		return line.size();
+		return lineText.size();
 	}
 
-	std::size_t ColumnCount(std::string_view line, std::size_t tabWidth)
+	std::size_t ColumnCount(std::string_view lineText, std::size_t tabWidth)
 	{
-		return ColumnOfByte(line, line.size(), tabWidth);
+		return ColumnOfByte(lineText, lineText.size(), tabWidth);
 	}
 
-	std::size_t ExpandedOffsetOfByte(std::string_view line, std::size_t byte, std::size_t tabWidth)
+	std::size_t ExpandedOffsetOfByte(std::string_view lineText, std::size_t byteOffset, std::size_t tabWidth)
 	{
-		const std::size_t target = std::min(byte, line.size());
+		const std::size_t stopOffset = std::min(byteOffset, lineText.size());
 
-		std::size_t expanded = 0;
+		std::size_t expandedOffset = 0;
 		std::size_t column = 0;
-		std::size_t at = 0;
+		std::size_t characterStart = 0;
 
-		while (at < target)
+		while (characterStart < stopOffset)
 		{
-			if (line[at] == '	')
+			if (lineText[characterStart] == '\t')
 			{
-				const std::size_t next = ColumnAfterTab(column, tabWidth);
+				const std::size_t nextTabStop = ColumnAfterTab(column, tabWidth);
 
-				expanded += next - column;
-				column = next;
-				++at;
+				expandedOffset += nextTabStop - column;
+				column = nextTabStop;
+				++characterStart;
 				continue;
 			}
 
-			// Byte for byte, and one column for the character they make up: the two counts move
-			// at different rates, which is the whole distinction this function draws.
-			const std::size_t next = NextCharacter(line, at);
+			const std::size_t nextCharacterStart = NextCharacter(lineText, characterStart);
 
-			expanded += next - at;
+			expandedOffset += nextCharacterStart - characterStart;
 			++column;
-			at = next;
+			characterStart = nextCharacterStart;
 		}
 
-		return expanded;
+		return expandedOffset;
 	}
 
-	std::string ExpandTabs(std::string_view line, std::size_t tabWidth)
+	std::string ExpandTabs(std::string_view lineText, std::size_t tabWidth)
 	{
 		std::string expanded;
-		expanded.reserve(line.size());
+		expanded.reserve(lineText.size());
 
 		std::size_t column = 0;
-		std::size_t at = 0;
+		std::size_t characterStart = 0;
 
-		while (at < line.size())
+		while (characterStart < lineText.size())
 		{
-			if (line[at] == '\t')
+			if (lineText[characterStart] == '\t')
 			{
-				const std::size_t next = ColumnAfterTab(column, tabWidth);
+				const std::size_t nextTabStop = ColumnAfterTab(column, tabWidth);
 
-				expanded.append(next - column, ' ');
-				column = next;
-				++at;
+				expanded.append(nextTabStop - column, ' ');
+				column = nextTabStop;
+				++characterStart;
 				continue;
 			}
 
-			const std::size_t next = NextCharacter(line, at);
+			const std::size_t nextCharacterStart = NextCharacter(lineText, characterStart);
 
-			expanded.append(line.substr(at, next - at));
+			expanded.append(lineText.substr(characterStart, nextCharacterStart - characterStart));
 			++column;
-			at = next;
+			characterStart = nextCharacterStart;
 		}
 
 		return expanded;
@@ -134,9 +132,9 @@ namespace Core {
 	{
 		std::size_t widest = 0;
 
-		for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
+		for (std::size_t lineIndex = 0; lineIndex < buffer.GetLineCount(); ++lineIndex)
 		{
-			widest = std::max(widest, ColumnCount(buffer.LineText(line), tabWidth));
+			widest = std::max(widest, ColumnCount(buffer.LineText(lineIndex), tabWidth));
 		}
 
 		return widest;

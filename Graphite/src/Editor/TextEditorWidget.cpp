@@ -57,7 +57,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -232,21 +231,21 @@ namespace Graphite {
 		{
 			// The line-count test is not redundant with the width test: Editing keeps the map
 			// current through every edit, but a document could reach here without ever having
-			// passed through RefreshDerived, and a map with more lines than the buffer would send
+			// passed through RecomputeLineCaches, and a map with more lines than the buffer would send
 			// RowAt off the end of it.
-			if (columnsPerRow == item.WrappedTo && item.Rows.GetLineCount() == buffer.GetLineCount())
+			if (columnsPerRow == item.ColumnsPerWrappedRow && item.Rows.GetLineCount() == buffer.GetLineCount())
 			{
 				return;
 			}
 
 			item.Rows.Rebuild(buffer, columnsPerRow, item.TabWidth);
-			item.WrappedTo = columnsPerRow;
+			item.ColumnsPerWrappedRow = columnsPerRow;
 
 			// The aim was a column of the geometry that just went away: after a resize or a
 			// toggle of wrapping, the caret sits at a different row column than the one it was
 			// aiming at. Cleared rather than converted, so the next vertical move resolves it
 			// from where the caret actually is now.
-			item.RowAimAt = Core::NoRowAim;
+			item.RowAimCaretOffset = Core::NoRowAim;
 		}
 
 		// WidestColumn is computed once when the document loaded, not walked here every frame —
@@ -347,7 +346,7 @@ namespace Graphite {
 			// second condition, every frame between a double or triple click's press and its
 			// release (a click spans several frames at 60 Hz) would fall into the drag branch and
 			// overwrite the word or line SelectWordAt / SelectLineAt just selected with
-			// PlaceAt(..., true, ...) at the still stationary mouse position, collapsing the
+			// PlaceAt(..., SelectionChange::Extend, ...) at the still stationary mouse position, collapsing the
 			// selection to nothing before the button is ever released.
 			pointer.Dragging =
 				ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left);
@@ -577,7 +576,8 @@ namespace Graphite {
 
 				if (!insideSelection)
 				{
-					item.Caret = Core::PlaceAt(buffer, item.Caret, offset, false, item.TabWidth);
+					item.Caret = Core::PlaceAt(buffer, item.Caret, offset, Core::SelectionChange::Collapse,
+											   item.TabWidth);
 				}
 
 				return;
@@ -586,7 +586,8 @@ namespace Graphite {
 			if (!pointer.PressedThisFrame)
 			{
 				// Dragging always extends, whichever way it goes.
-				item.Caret = Core::PlaceAt(buffer, item.Caret, offset, true, item.TabWidth);
+				item.Caret = Core::PlaceAt(buffer, item.Caret, offset, Core::SelectionChange::Extend,
+										   item.TabWidth);
 				return;
 			}
 
@@ -604,8 +605,11 @@ namespace Graphite {
 			}
 			else
 			{
-				item.Caret = Core::PlaceAt(buffer, item.Caret, offset, ImGui::GetIO().KeyShift,
-										   item.TabWidth);
+				const Core::SelectionChange selectionChange = ImGui::GetIO().KeyShift
+																  ? Core::SelectionChange::Extend
+																  : Core::SelectionChange::Collapse;
+
+				item.Caret = Core::PlaceAt(buffer, item.Caret, offset, selectionChange, item.TabWidth);
 
 				// Ctrl+click asks the same question F12 does, from wherever this click just put
 				// the caret — a single click only, the same restriction a double or triple click
@@ -698,12 +702,12 @@ namespace Graphite {
 
 			if (aiming)
 			{
-				item.RowAim = column;
-				item.RowAimAt = offset;
+				item.RowAimColumn = column;
+				item.RowAimCaretOffset = offset;
 			}
 			else
 			{
-				item.RowAimAt = Core::NoRowAim;
+				item.RowAimCaretOffset = Core::NoRowAim;
 			}
 		}
 
@@ -718,7 +722,7 @@ namespace Graphite {
 			// new width — leaves the two disagreeing, and the aim resolves from the caret's
 			// current row column instead. Order-independent by construction: it does not matter
 			// whether that other move happened earlier in this frame or ten frames ago.
-			const std::size_t aim = item.RowAimAt == item.Caret.Offset ? item.RowAim : here.Column;
+			const std::size_t aim = item.RowAimCaretOffset == item.Caret.Offset ? item.RowAimColumn : here.Column;
 
 			// A target past the last row resolves to the last row (RowAt clamps), which is the
 			// same standing-still that moving down on the last line always did.
@@ -774,6 +778,8 @@ namespace Graphite {
 			{
 				const bool shift = ShiftOf(stroke);
 				const bool control = ControlOf(stroke);
+				const Core::SelectionChange selectionChange =
+					shift ? Core::SelectionChange::Extend : Core::SelectionChange::Collapse;
 
 				for (const Binding& binding : bindings)
 				{
@@ -783,7 +789,7 @@ namespace Graphite {
 					}
 
 					item.Caret = Core::Move(buffer, item.Caret,
-											control ? binding.WithControl : binding.Plain, shift,
+											control ? binding.WithControl : binding.Plain, selectionChange,
 											item.TabWidth, pageRows);
 				}
 
@@ -812,7 +818,7 @@ namespace Graphite {
 					if (control)
 					{
 						item.Caret = Core::Move(buffer, item.Caret, Core::Motion::DocumentStart,
-												shift, item.TabWidth, pageRows);
+												selectionChange, item.TabWidth, pageRows);
 					}
 					else
 					{
@@ -825,7 +831,7 @@ namespace Graphite {
 					if (control)
 					{
 						item.Caret = Core::Move(buffer, item.Caret, Core::Motion::DocumentEnd,
-												shift, item.TabWidth, pageRows);
+												selectionChange, item.TabWidth, pageRows);
 					}
 					else
 					{
@@ -860,7 +866,7 @@ namespace Graphite {
 		// edit actually BEGINS on is the selection's start, not the caret's line.
 		EditMark MarkBeforeEdit(const Core::TextBuffer& buffer, const Core::Caret& caret)
 		{
-			return EditMark{buffer.ToPosition(Core::SelectionRange(caret).first).Line,
+			return EditMark{buffer.ToPosition(Core::SelectionRange(caret).From).Line,
 							buffer.GetLineCount()};
 		}
 
@@ -957,7 +963,7 @@ namespace Graphite {
 				if (stroke.Key == Core::KeyCode::Enter || stroke.Key == Core::KeyCode::KeypadEnter)
 				{
 					const EditMark before = MarkBeforeEdit(buffer, item.Caret);
-					const bool changed = Core::InsertNewline(item, indentStyle);
+					const bool changed = Core::InsertNewline(item);
 					result.Edited |= changed;
 					NotifyAfterEdit(sinks, buffer, item, before, changed);
 				}
@@ -1292,9 +1298,9 @@ namespace Graphite {
 			const Core::TextBuffer& Buffer;
 
 			// Document byte ranges, ascending, and which of them the caret is on.
-			const std::vector<std::pair<std::size_t, std::size_t>>& Matches;
+			const std::vector<Core::FindMatch>& Matches;
 
-			std::pair<std::size_t, std::size_t> Selection;
+			Core::OffsetRange Selection;
 			std::size_t CurrentMatch = 0;
 			std::size_t TabWidth = Core::DefaultTabWidth;
 
@@ -3062,7 +3068,7 @@ namespace Graphite {
 			LineCacheInput lineInput{buffer, item.Find.Matches};
 
 			lineInput.Selection = Core::SelectionRange(item.Caret);
-			lineInput.CurrentMatch = item.Find.Current;
+			lineInput.CurrentMatch = item.Find.CurrentMatch;
 			lineInput.TabWidth = item.TabWidth;
 
 			// Once for the frame, ahead of the rows: every visible line is asked about the same
@@ -3208,21 +3214,21 @@ namespace Graphite {
 
 			// The same compare-and-rebuild the wrap width uses. A changed tab width invalidates
 			// every column in the document — the guides, the widest line and the wrap points are
-			// all measured in columns — so RefreshDerived recomputes all three.
+			// all measured in columns — so RecomputeLineCaches recomputes all three.
 			if (item.TabWidth != view.Indent.Width && view.Indent.Width > 0)
 			{
 				item.TabWidth = view.Indent.Width;
-				Core::RefreshDerived(item);
+				Core::RecomputeLineCaches(item);
 
 				// The aim was a column measured at the old width; at the new width the same
 				// column lands somewhere else. Cleared rather than converted, so the next
 				// vertical move resolves it from where the caret actually is now.
-				item.RowAimAt = Core::NoRowAim;
+				item.RowAimCaretOffset = Core::NoRowAim;
 			}
 
 			// Called every frame rather than only inside the block above: the item's width and
 			// the cache's must never be able to diverge, and tying this to the same edge as
-			// RefreshDerived would let a null view.Syntax on the one frame the width changes
+			// RecomputeLineCaches would let a null view.Syntax on the one frame the width changes
 			// desync the two for good, since the block above only fires again on the next
 			// actual change. SetTabWidth's own equality guard already makes the repeated call
 			// free once the two agree, so the null check is the only guard this still needs.

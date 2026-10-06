@@ -9,57 +9,57 @@
 
 using Core::AppendUtf8;
 using Core::DecodeUtf8;
+using Core::kReplacementCharacter;
 using Core::Utf8Decoder;
 using Core::Utf8Status;
+using Core::Utf8Step;
 
 namespace {
-	struct Decoded
+	struct DecodedCharacter
 	{
 		std::optional<char32_t> CodePoint;
 		std::size_t Offset = 0;
 	};
 
-	Decoded DecodeFirst(std::string_view bytes)
+	DecodedCharacter DecodeFirst(std::string_view bytes)
 	{
 		std::size_t offset = 0;
-		const auto codePoint = DecodeUtf8(bytes, offset);
-		return {codePoint, offset};
+		const std::optional<char32_t> codePoint = DecodeUtf8(bytes, offset);
+		return DecodedCharacter{.CodePoint = codePoint, .Offset = offset};
 	}
 
-	// Feeds the whole stream through the incremental decoder the way the terminal does:
-	// a broken sequence becomes one U+FFFD, and the byte that broke it is read again.
-	std::u32string FeedAll(std::string_view bytes)
+	std::u32string FeedAllReplacingBrokenSequences(std::string_view bytes)
 	{
 		Utf8Decoder decoder;
-		std::u32string out;
+		std::u32string decoded;
 
 		for (const char byte : bytes)
 		{
-			auto step = decoder.Feed(byte);
+			Utf8Step step = decoder.Feed(byte);
 
 			if (step.Status == Utf8Status::Interrupted)
 			{
-				out.push_back(U'\uFFFD');
+				decoded.push_back(kReplacementCharacter);
 				step = decoder.Feed(byte);
 			}
 
 			if (step.Status == Utf8Status::Decoded)
 			{
-				out.push_back(step.CodePoint);
+				decoded.push_back(step.CodePoint);
 			}
 			else if (step.Status == Utf8Status::Invalid)
 			{
-				out.push_back(U'\uFFFD');
+				decoded.push_back(kReplacementCharacter);
 			}
 		}
 
-		return out;
+		return decoded;
 	}
 }
 
 TEST_CASE("DecodeUtf8 reads an ASCII byte as itself")
 {
-	const auto decoded = DecodeFirst("A");
+	const DecodedCharacter decoded = DecodeFirst("A");
 
 	CHECK(decoded.CodePoint == U'A');
 	CHECK(decoded.Offset == 1);
@@ -67,16 +67,16 @@ TEST_CASE("DecodeUtf8 reads an ASCII byte as itself")
 
 TEST_CASE("DecodeUtf8 reads two-, three- and four-byte sequences")
 {
-	const auto two = DecodeFirst("\xC5\x82");		   // U+0142
-	const auto three = DecodeFirst("\xE2\x82\xAC");	   // U+20AC
-	const auto four = DecodeFirst("\xF0\x9F\x98\x80"); // U+1F600
+	const DecodedCharacter twoBytes = DecodeFirst("\xC5\x82");
+	const DecodedCharacter threeBytes = DecodeFirst("\xE2\x82\xAC");
+	const DecodedCharacter fourBytes = DecodeFirst("\xF0\x9F\x98\x80");
 
-	CHECK(two.CodePoint == U'\u0142');
-	CHECK(two.Offset == 2);
-	CHECK(three.CodePoint == U'\u20AC');
-	CHECK(three.Offset == 3);
-	CHECK(four.CodePoint == U'\U0001F600');
-	CHECK(four.Offset == 4);
+	CHECK(twoBytes.CodePoint == U'\u0142');
+	CHECK(twoBytes.Offset == 2);
+	CHECK(threeBytes.CodePoint == U'\u20AC');
+	CHECK(threeBytes.Offset == 3);
+	CHECK(fourBytes.CodePoint == U'\U0001F600');
+	CHECK(fourBytes.Offset == 4);
 }
 
 TEST_CASE("DecodeUtf8 walks a string one character at a time")
@@ -90,13 +90,12 @@ TEST_CASE("DecodeUtf8 walks a string one character at a time")
 	CHECK(offset == text.size());
 }
 
-TEST_CASE("DecodeUtf8 rejects an overlong form")
+TEST_CASE("DecodeUtf8 rejects an overlong form such as a slash written in two bytes to slip past a naive path check")
 {
-	// C0 AF is '/' in two bytes, the form that gets smuggled past a naive path check.
-	const auto decoded = DecodeFirst("\xC0\xAF");
+	const DecodedCharacter overlongSlash = DecodeFirst("\xC0\xAF");
 
-	CHECK_FALSE(decoded.CodePoint);
-	CHECK(decoded.Offset == 1);
+	CHECK_FALSE(overlongSlash.CodePoint);
+	CHECK(overlongSlash.Offset == 1);
 }
 
 TEST_CASE("DecodeUtf8 rejects the overlong forms of every length")
@@ -108,7 +107,7 @@ TEST_CASE("DecodeUtf8 rejects the overlong forms of every length")
 
 TEST_CASE("DecodeUtf8 rejects an encoded surrogate")
 {
-	const auto decoded = DecodeFirst("\xED\xA0\x80");
+	const DecodedCharacter decoded = DecodeFirst("\xED\xA0\x80");
 
 	CHECK_FALSE(decoded.CodePoint);
 	CHECK(decoded.Offset == 1);
@@ -123,7 +122,7 @@ TEST_CASE("DecodeUtf8 rejects a value above U+10FFFF")
 
 TEST_CASE("DecodeUtf8 rejects a truncated sequence and consumes what it read")
 {
-	const auto decoded = DecodeFirst("\xE2\x82");
+	const DecodedCharacter decoded = DecodeFirst("\xE2\x82");
 
 	CHECK_FALSE(decoded.CodePoint);
 	CHECK(decoded.Offset == 2);
@@ -131,7 +130,7 @@ TEST_CASE("DecodeUtf8 rejects a truncated sequence and consumes what it read")
 
 TEST_CASE("DecodeUtf8 rejects a stray continuation byte one byte at a time")
 {
-	const auto decoded = DecodeFirst("\x82!");
+	const DecodedCharacter decoded = DecodeFirst("\x82!");
 
 	CHECK_FALSE(decoded.CodePoint);
 	CHECK(decoded.Offset == 1);
@@ -186,11 +185,20 @@ TEST_CASE("AppendUtf8 writes each length's exact bytes")
 
 TEST_CASE("AppendUtf8 writes a replacement for what is not a character")
 {
+	constexpr char32_t kFirstSurrogate = 0xD800;
+	constexpr char32_t kLastSurrogate = 0xDFFF;
+	constexpr char32_t kFirstValueAboveLastCodePoint = 0x110000;
+
 	std::string text;
-	AppendUtf8(text, static_cast<char32_t>(0xD800));
-	AppendUtf8(text, static_cast<char32_t>(0x110000));
+	AppendUtf8(text, kFirstSurrogate);
+	AppendUtf8(text, kFirstValueAboveLastCodePoint);
 
 	CHECK(text == "\xEF\xBF\xBD\xEF\xBF\xBD");
+
+	std::string lastSurrogateText;
+	AppendUtf8(lastSurrogateText, kLastSurrogate);
+
+	CHECK(lastSurrogateText == "\xEF\xBF\xBD");
 }
 
 TEST_CASE("Utf8Decoder decodes a character fed one byte at a time")
@@ -201,7 +209,7 @@ TEST_CASE("Utf8Decoder decodes a character fed one byte at a time")
 	CHECK(decoder.IsPending());
 	CHECK(decoder.Feed('\x82').Status == Utf8Status::Pending);
 
-	const auto step = decoder.Feed('\xAC');
+	const Utf8Step step = decoder.Feed('\xAC');
 
 	CHECK(step.Status == Utf8Status::Decoded);
 	CHECK(step.CodePoint == U'\u20AC');
@@ -210,10 +218,10 @@ TEST_CASE("Utf8Decoder decodes a character fed one byte at a time")
 
 TEST_CASE("Utf8Decoder applies the same rules as DecodeUtf8")
 {
-	CHECK(FeedAll("\xC0\xAF") == U"\uFFFD\uFFFD");
-	CHECK(FeedAll("\xED\xA0\x80") == U"\uFFFD\uFFFD\uFFFD");
-	CHECK(FeedAll("\xF4\x90\x80\x80") == U"\uFFFD\uFFFD\uFFFD\uFFFD");
-	CHECK(FeedAll("a\x82!") == U"a\uFFFD!");
-	CHECK(FeedAll("\xC5Z") == U"\uFFFDZ");
-	CHECK(FeedAll("\xF0\x9F\x98\x80") == U"\U0001F600");
+	CHECK(FeedAllReplacingBrokenSequences("\xC0\xAF") == U"\uFFFD\uFFFD");
+	CHECK(FeedAllReplacingBrokenSequences("\xED\xA0\x80") == U"\uFFFD\uFFFD\uFFFD");
+	CHECK(FeedAllReplacingBrokenSequences("\xF4\x90\x80\x80") == U"\uFFFD\uFFFD\uFFFD\uFFFD");
+	CHECK(FeedAllReplacingBrokenSequences("a\x82!") == U"a\uFFFD!");
+	CHECK(FeedAllReplacingBrokenSequences("\xC5Z") == U"\uFFFDZ");
+	CHECK(FeedAllReplacingBrokenSequences("\xF0\x9F\x98\x80") == U"\U0001F600");
 }

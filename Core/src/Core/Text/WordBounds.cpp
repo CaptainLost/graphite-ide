@@ -2,6 +2,7 @@
 
 #include "Core/Text/WordBounds.h"
 
+#include "Core/Text/Encoding.h"
 #include "Core/Text/Utf8.h"
 
 #include <cctype>
@@ -10,106 +11,109 @@
 namespace Core {
 
 	namespace {
-		bool IsContinuation(char byte)
-		{
-			return (static_cast<unsigned char>(byte) & 0xC0) == 0x80;
-		}
+		constexpr char32_t kFirstCodePointOutsideAscii = 0x80;
+		constexpr char32_t kCodePointOfUndecodedCharacter = 0;
+		constexpr std::string_view kFilePathAndLineSuffixPunctuation = "/\\.-:~";
 
-		// First byte of the character `byte` falls inside.
-		std::size_t CharacterStart(std::string_view line, std::size_t byte)
+		std::size_t StartOfCharacterContaining(std::string_view lineText, std::size_t byteOffset)
 		{
-			while (byte > 0 && IsContinuation(line[byte]))
+			while (byteOffset > 0 && IsUtf8ContinuationByte(lineText[byteOffset]))
 			{
-				--byte;
+				--byteOffset;
 			}
-			return byte;
+			return byteOffset;
 		}
 
-		// A character that does not decode is not a word character and is one byte wide.
 		struct Character
 		{
 			char32_t CodePoint = 0;
 			std::size_t End = 0;
-			bool Valid = false;
+			bool Decoded = false;
 		};
 
-		Character ReadCharacter(std::string_view line, std::size_t start)
+		Character ReadCharacter(std::string_view lineText, std::size_t characterStart)
 		{
-			std::size_t offset = start;
-			const std::optional<char32_t> decoded = DecodeUtf8(line, offset);
-			return Character{decoded.value_or(0), offset, decoded.has_value()};
+			std::size_t characterEnd = characterStart;
+			const std::optional<char32_t> codePoint = DecodeUtf8(lineText, characterEnd);
+			return Character{.CodePoint = codePoint.value_or(kCodePointOfUndecodedCharacter), .End = characterEnd, .Decoded = codePoint.has_value()};
 		}
 
 		bool IsWordCharacter(const Character& character, WordKind kind)
 		{
-			return character.Valid && IsWordCodePoint(character.CodePoint, kind);
+			return character.Decoded && IsWordCodePoint(character.CodePoint, kind);
+		}
+
+		bool IsFilePathOrLineSuffixPunctuation(char asciiCharacter)
+		{
+			return kFilePathAndLineSuffixPunctuation.find(asciiCharacter) != std::string_view::npos;
 		}
 	}
 
 	bool IsWordCodePoint(char32_t codePoint, WordKind kind)
 	{
-		if (codePoint >= 0x80)
+		if (codePoint >= kFirstCodePointOutsideAscii)
 		{
 			return true;
 		}
 
-		const char ascii = static_cast<char>(codePoint);
+		const char asciiCharacter = static_cast<char>(codePoint);
+		const bool isLetterOrDigit = std::isalnum(static_cast<unsigned char>(asciiCharacter)) != 0;
 
-		if (std::isalnum(static_cast<unsigned char>(ascii)) != 0 || ascii == '_')
+		if (isLetterOrDigit || asciiCharacter == '_')
 		{
 			return true;
 		}
 
 		if (kind == WordKind::Path)
 		{
-			return ascii == '/' || ascii == '\\' || ascii == '.' || ascii == '-' || ascii == ':' ||
-				   ascii == '~';
+			return IsFilePathOrLineSuffixPunctuation(asciiCharacter);
 		}
 
 		return false;
 	}
 
-	ColumnSpan WordSpanAt(std::string_view line, std::size_t byte, WordKind kind)
+	ColumnSpan WordSpanAt(std::string_view lineText, std::size_t byteOffset, WordKind kind)
 	{
-		if (byte >= line.size())
+		if (byteOffset >= lineText.size())
 		{
-			return ColumnSpan{line.size(), line.size()};
+			return ColumnSpan{.From = lineText.size(), .To = lineText.size()};
 		}
 
-		const std::size_t start = CharacterStart(line, byte);
-		const Character here = ReadCharacter(line, start);
+		const std::size_t characterStart = StartOfCharacterContaining(lineText, byteOffset);
+		const Character characterAtOffset = ReadCharacter(lineText, characterStart);
 
-		if (!IsWordCharacter(here, kind))
+		if (!IsWordCharacter(characterAtOffset, kind))
 		{
-			return ColumnSpan{start, here.End};
+			return ColumnSpan{.From = characterStart, .To = characterAtOffset.End};
 		}
 
-		std::size_t from = start;
-		while (from > 0)
+		std::size_t wordStart = characterStart;
+		while (wordStart > 0)
 		{
-			const std::size_t previous = CharacterStart(line, from - 1);
+			const std::size_t previousCharacterStart = StartOfCharacterContaining(lineText, wordStart - 1);
+			const Character previousCharacter = ReadCharacter(lineText, previousCharacterStart);
 
-			if (!IsWordCharacter(ReadCharacter(line, previous), kind))
+			if (!IsWordCharacter(previousCharacter, kind))
 			{
 				break;
 			}
 
-			from = previous;
+			wordStart = previousCharacterStart;
 		}
 
-		std::size_t to = here.End;
-		while (to < line.size())
+		std::size_t wordEnd = characterAtOffset.End;
+		while (wordEnd < lineText.size())
 		{
-			const Character next = ReadCharacter(line, to);
+			const Character nextCharacter = ReadCharacter(lineText, wordEnd);
 
-			if (!IsWordCharacter(next, kind))
+			if (!IsWordCharacter(nextCharacter, kind))
 			{
 				break;
 			}
 
-			to = next.End;
+			wordEnd = nextCharacter.End;
 		}
 
-		return ColumnSpan{from, to};
+		return ColumnSpan{.From = wordStart, .To = wordEnd};
 	}
 }

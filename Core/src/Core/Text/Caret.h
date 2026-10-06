@@ -2,7 +2,6 @@
 
 #include <cstddef>
 #include <limits>
-#include <utility>
 
 namespace Core {
 
@@ -37,15 +36,29 @@ namespace Core {
 		PageDown
 	};
 
+	enum class SelectionChange
+	{
+		Collapse,
+		Extend
+	};
+
+	struct OffsetRange
+	{
+		std::size_t From = 0;
+		std::size_t To = 0;
+
+		friend bool operator==(const OffsetRange&, const OffsetRange&) = default;
+	};
+
 	bool HasSelection(const Caret& caret);
 
-	std::pair<std::size_t, std::size_t> SelectionRange(const Caret& caret);
+	OffsetRange SelectionRange(const Caret& caret);
 
-	Caret Move(const TextBuffer& buffer, Caret caret, Motion motion, bool extend,
+	Caret Move(const TextBuffer& buffer, Caret caret, Motion motion, SelectionChange selectionChange,
 			   std::size_t tabWidth, std::size_t pageLines);
 
 	Caret PlaceAt(const TextBuffer& buffer, Caret caret, std::size_t offset,
-				  bool extend, std::size_t tabWidth);
+				  SelectionChange selectionChange, std::size_t tabWidth);
 
 	std::size_t CharacterBoundaryAtOrBefore(const TextBuffer& buffer, std::size_t offset);
 

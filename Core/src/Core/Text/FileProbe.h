@@ -32,7 +32,7 @@ namespace Core {
 		std::uint64_t Size = 0;
 	};
 
-	FileProbe ClassifySample(std::string_view sample, std::uint64_t size);
+	FileProbe ClassifySample(std::string_view sample, std::uint64_t fileSize);
 
 	Result<FileProbe> ProbeFile(const std::filesystem::path& path);
 
@@ -51,7 +51,5 @@ namespace Core {
 		std::string Text;
 	};
 
-	// LargeText is read. The byte order mark is kept: a UTF-8 mark stays as EF BB BF, a UTF-16 mark
-	// decodes to a leading U+FEFF.
 	DiskText ReadDiskText(const std::filesystem::path& path);
 }

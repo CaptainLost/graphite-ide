@@ -92,7 +92,7 @@ namespace Graphite {
 
 	void Jump(Core::DocumentSet& documents, const Location& location)
 	{
-		documents.Open(location.Path, true);
+		documents.Open(location.Path, Core::TabKind::Permanent);
 
 		const auto index = documents.Find(location.Path);
 
@@ -119,7 +119,7 @@ namespace Graphite {
 		const std::size_t byteColumn = FromUtf16Column(lineText, location.Column);
 		const std::size_t offset = buffer.LineStart(line) + byteColumn;
 
-		item.Caret = Core::PlaceAt(buffer, item.Caret, offset, false, item.TabWidth);
+		item.Caret = Core::PlaceAt(buffer, item.Caret, offset, Core::SelectionChange::Collapse, item.TabWidth);
 		item.PendingScroll = true;
 	}
 }

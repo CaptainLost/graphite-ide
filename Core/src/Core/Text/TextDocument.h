@@ -29,13 +29,12 @@ namespace Core {
 		bool Mixed = false;
 	};
 
-	NormalisedLineEndings NormaliseLineEndings(std::string_view bytes);
+	NormalisedLineEndings NormaliseLineEndings(std::string_view text);
 
 	class TextDocument
 	{
 	public:
-		static Result<TextDocument> FromContent(std::string bytes,
-												std::filesystem::path path);
+		static Result<TextDocument> FromContent(std::string bytes, std::filesystem::path path);
 
 		static Result<TextDocument> Load(const std::filesystem::path& path);
 
@@ -78,8 +77,10 @@ namespace Core {
 		LineEnding m_LineEnding = LineEnding::Lf;
 		bool m_WasMixed = false;
 		bool m_ReadOnly = false;
-		bool m_HadBom = false;
-		Encoding m_BomEncoding = Encoding::Utf8;
+		// Kept apart from m_Encoding: invalid UTF-8 behind a mark demotes m_Encoding to Unknown,
+		// and the mark still has to be written back for the bytes to round-trip.
+		bool m_HadByteOrderMark = false;
+		Encoding m_ByteOrderMarkEncoding = Encoding::Utf8;
 		std::size_t m_SavedRevision = 0;
 
 		struct DiskStamp
@@ -88,8 +89,9 @@ namespace Core {
 			std::uintmax_t Size = 0;
 		};
 
-		// Read BEFORE the content, never after: a stamp taken afterwards records a state
-		// newer than what was read, and that change is then lost for good.
+		// Taken before the content is read, never after: a later stamp describes a newer file than
+		// the one read, and that change is lost for good. It is whole or absent, because a default
+		// time beside a real size compares as changed forever.
 		std::optional<DiskStamp> m_DiskStamp;
 	};
 }

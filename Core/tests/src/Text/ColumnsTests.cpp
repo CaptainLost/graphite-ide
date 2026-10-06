@@ -9,37 +9,40 @@
 
 using namespace Core;
 
+namespace {
+	constexpr std::size_t kTabWidth = 4;
+}
+
 TEST_CASE("In plain ASCII a column is a byte")
 {
 	const std::string line = "int main()";
 
-	CHECK(ColumnOfByte(line, 0, 4) == 0);
-	CHECK(ColumnOfByte(line, 4, 4) == 4);
-	CHECK(ColumnOfByte(line, line.size(), 4) == 10);
-	CHECK(ColumnCount(line, 4) == 10);
+	CHECK(ColumnOfByte(line, 0, kTabWidth) == 0);
+	CHECK(ColumnOfByte(line, 4, kTabWidth) == 4);
+	CHECK(ColumnOfByte(line, line.size(), kTabWidth) == 10);
+	CHECK(ColumnCount(line, kTabWidth) == 10);
 }
 
 TEST_CASE("A character outside ASCII occupies one column whatever its byte length")
 {
-	// "aąb" — 'ą' is two bytes, so the byte offsets are 0, 1, 3 and 4.
-	const std::string line = "a\xC4\x85"
-							 "b";
+	const std::string twoByteLetterBetweenLetters = "a\xC4\x85"
+													"b";
 
-	CHECK(ColumnOfByte(line, 0, 4) == 0);
-	CHECK(ColumnOfByte(line, 1, 4) == 1);
-	CHECK(ColumnOfByte(line, 3, 4) == 2);
-	CHECK(ColumnOfByte(line, 4, 4) == 3);
-	CHECK(ColumnCount(line, 4) == 3);
+	CHECK(ColumnOfByte(twoByteLetterBetweenLetters, 0, kTabWidth) == 0);
+	CHECK(ColumnOfByte(twoByteLetterBetweenLetters, 1, kTabWidth) == 1);
+	CHECK(ColumnOfByte(twoByteLetterBetweenLetters, 3, kTabWidth) == 2);
+	CHECK(ColumnOfByte(twoByteLetterBetweenLetters, 4, kTabWidth) == 3);
+	CHECK(ColumnCount(twoByteLetterBetweenLetters, kTabWidth) == 3);
 }
 
 TEST_CASE("A four-byte character is still one column")
 {
-	const std::string line = "a\xF0\x9F\x99\x82"
-							 "b"; // a 🙂 b
+	const std::string emojiBetweenLetters = "a\xF0\x9F\x99\x82"
+											"b";
 
-	CHECK(ColumnOfByte(line, 1, 4) == 1);
-	CHECK(ColumnOfByte(line, 5, 4) == 2);
-	CHECK(ColumnCount(line, 4) == 3);
+	CHECK(ColumnOfByte(emojiBetweenLetters, 1, kTabWidth) == 1);
+	CHECK(ColumnOfByte(emojiBetweenLetters, 5, kTabWidth) == 2);
+	CHECK(ColumnCount(emojiBetweenLetters, kTabWidth) == 3);
 }
 
 TEST_CASE("A tab advances to the next multiple of the tab width")
@@ -48,108 +51,108 @@ TEST_CASE("A tab advances to the next multiple of the tab width")
 	{
 		const std::string line = "\tif";
 
-		CHECK(ColumnOfByte(line, 0, 4) == 0);
-		CHECK(ColumnOfByte(line, 1, 4) == 4);
-		CHECK(ColumnOfByte(line, 2, 4) == 5);
-		CHECK(ColumnCount(line, 4) == 6);
+		CHECK(ColumnOfByte(line, 0, kTabWidth) == 0);
+		CHECK(ColumnOfByte(line, 1, kTabWidth) == 4);
+		CHECK(ColumnOfByte(line, 2, kTabWidth) == 5);
+		CHECK(ColumnCount(line, kTabWidth) == 6);
 	}
 
 	SUBCASE("in the middle, from a column that is not a multiple")
 	{
-		const std::string line = "ab\tc"; // a=0 b=1 tab spans 2..3 c=4
+		const std::string tabSpanningColumnsTwoAndThree = "ab\tc";
 
-		CHECK(ColumnOfByte(line, 2, 4) == 2);
-		CHECK(ColumnOfByte(line, 3, 4) == 4);
-		CHECK(ColumnCount(line, 4) == 5);
+		CHECK(ColumnOfByte(tabSpanningColumnsTwoAndThree, 2, kTabWidth) == 2);
+		CHECK(ColumnOfByte(tabSpanningColumnsTwoAndThree, 3, kTabWidth) == 4);
+		CHECK(ColumnCount(tabSpanningColumnsTwoAndThree, kTabWidth) == 5);
 	}
 
 	SUBCASE("from a column that is already a multiple, so it advances a whole width")
 	{
 		const std::string line = "abcd\te";
 
-		CHECK(ColumnOfByte(line, 4, 4) == 4);
-		CHECK(ColumnOfByte(line, 5, 4) == 8);
+		CHECK(ColumnOfByte(line, 4, kTabWidth) == 4);
+		CHECK(ColumnOfByte(line, 5, kTabWidth) == 8);
 	}
 
 	SUBCASE("two in a row")
 	{
 		const std::string line = "\t\tx";
 
-		CHECK(ColumnOfByte(line, 1, 4) == 4);
-		CHECK(ColumnOfByte(line, 2, 4) == 8);
-		CHECK(ColumnCount(line, 4) == 9);
+		CHECK(ColumnOfByte(line, 1, kTabWidth) == 4);
+		CHECK(ColumnOfByte(line, 2, kTabWidth) == 8);
+		CHECK(ColumnCount(line, kTabWidth) == 9);
 	}
 
 	SUBCASE("immediately before the end")
 	{
 		const std::string line = "ab\t";
 
-		CHECK(ColumnCount(line, 4) == 4);
+		CHECK(ColumnCount(line, kTabWidth) == 4);
 	}
 }
 
 TEST_CASE("The tab width is honoured rather than assumed")
 {
 	const std::string line = "\tx";
+	const std::size_t narrowTabWidth = 2;
+	const std::size_t wideTabWidth = 8;
 
-	CHECK(ColumnOfByte(line, 1, 2) == 2);
-	CHECK(ColumnOfByte(line, 1, 8) == 8);
+	CHECK(ColumnOfByte(line, 1, narrowTabWidth) == 2);
+	CHECK(ColumnOfByte(line, 1, wideTabWidth) == 8);
 }
 
 TEST_CASE("An empty line is zero columns wide")
 {
-	CHECK(ColumnCount("", 4) == 0);
-	CHECK(ColumnOfByte("", 0, 4) == 0);
-	CHECK(ByteOfColumn("", 0, 4) == 0);
-	CHECK(ByteOfColumn("", 7, 4) == 0);
+	CHECK(ColumnCount("", kTabWidth) == 0);
+	CHECK(ColumnOfByte("", 0, kTabWidth) == 0);
+	CHECK(ByteOfColumn("", 0, kTabWidth) == 0);
+	CHECK(ByteOfColumn("", 7, kTabWidth) == 0);
 }
 
 TEST_CASE("A byte past the end of the line gives the column past its last")
 {
 	const std::string line = "abc";
 
-	CHECK(ColumnOfByte(line, 99, 4) == 3);
+	CHECK(ColumnOfByte(line, 99, kTabWidth) == 3);
 }
 
 TEST_CASE("Columns convert back to bytes")
 {
-	const std::string line = "a\xC4\x85"
-							 "b"; // aąb
+	const std::string twoByteLetterBetweenLetters = "a\xC4\x85"
+													"b";
 
-	CHECK(ByteOfColumn(line, 0, 4) == 0);
-	CHECK(ByteOfColumn(line, 1, 4) == 1);
-	CHECK(ByteOfColumn(line, 2, 4) == 3);
-	CHECK(ByteOfColumn(line, 3, 4) == 4);
+	CHECK(ByteOfColumn(twoByteLetterBetweenLetters, 0, kTabWidth) == 0);
+	CHECK(ByteOfColumn(twoByteLetterBetweenLetters, 1, kTabWidth) == 1);
+	CHECK(ByteOfColumn(twoByteLetterBetweenLetters, 2, kTabWidth) == 3);
+	CHECK(ByteOfColumn(twoByteLetterBetweenLetters, 3, kTabWidth) == 4);
 }
 
 TEST_CASE("A column past the end of the line gives the line's length")
 {
 	const std::string line = "abc";
 
-	CHECK(ByteOfColumn(line, 99, 4) == 3);
+	CHECK(ByteOfColumn(line, 99, kTabWidth) == 3);
 }
 
-TEST_CASE("A column inside a tab's run gives the tab itself")
+TEST_CASE("A column inside a tab's run gives the tab itself because a caret cannot sit inside a character")
 {
-	// "\tx": the tab covers columns 0 to 3, x sits at 4. Clicking anywhere inside the
-	// tab has to put the caret before it, not inside a character that has no inside.
-	const std::string line = "\tx";
+	const std::string tabThenX = "\tx";
 
-	CHECK(ByteOfColumn(line, 0, 4) == 0);
-	CHECK(ByteOfColumn(line, 2, 4) == 0);
-	CHECK(ByteOfColumn(line, 3, 4) == 0);
-	CHECK(ByteOfColumn(line, 4, 4) == 1);
+	CHECK(ByteOfColumn(tabThenX, 0, kTabWidth) == 0);
+	CHECK(ByteOfColumn(tabThenX, 2, kTabWidth) == 0);
+	CHECK(ByteOfColumn(tabThenX, 3, kTabWidth) == 0);
+	CHECK(ByteOfColumn(tabThenX, 4, kTabWidth) == 1);
 }
 
 TEST_CASE("Every byte boundary round-trips through a column")
 {
 	const std::string line = "\tif (\xC4\x85 == \xF0\x9F\x99\x82)\tx";
-	std::size_t byte = 0;
+	std::size_t boundary = 0;
 
-	while (byte <= line.size())
+	while (boundary <= line.size())
 	{
-		REQUIRE(ByteOfColumn(line, ColumnOfByte(line, byte, 4), 4) == byte);
-		byte = byte < line.size() ? Core::NextCharacter(line, byte) : byte + 1;
+		REQUIRE(ByteOfColumn(line, ColumnOfByte(line, boundary, kTabWidth), kTabWidth) == boundary);
+		boundary = boundary < line.size() ? NextCharacter(line, boundary) : boundary + 1;
 	}
 }
 
@@ -157,75 +160,71 @@ TEST_CASE("The widest line is the scrolling extent")
 {
 	const TextBuffer buffer{"ab\nabcdef\nabc"};
 
-	CHECK(WidestColumn(buffer, 4) == 6);
+	CHECK(WidestColumn(buffer, kTabWidth) == 6);
 }
 
 TEST_CASE("The widest line in columns is not always the longest in bytes")
 {
-	// The first line is 8 bytes and 4 columns; the second is 6 bytes and 6 columns.
-	const TextBuffer buffer{"\xC4\x85\xC4\x85\xC4\x85\xC4\x85\nabcdef"};
+	const std::string eightBytesInFourColumns = "\xC4\x85\xC4\x85\xC4\x85\xC4\x85";
+	const std::string sixBytesInSixColumns = "abcdef";
+	const TextBuffer buffer{eightBytesInFourColumns + "\n" + sixBytesInSixColumns};
 
-	CHECK(WidestColumn(buffer, 4) == 6);
+	CHECK(WidestColumn(buffer, kTabWidth) == 6);
 }
 
 TEST_CASE("A tab counts as its full run toward the widest line")
 {
 	const TextBuffer buffer{"\tx\nabcd"};
 
-	CHECK(WidestColumn(buffer, 4) == 5);
+	CHECK(WidestColumn(buffer, kTabWidth) == 5);
 }
 
 TEST_CASE("An empty document has no width")
 {
 	const TextBuffer buffer;
 
-	CHECK(WidestColumn(buffer, 4) == 0);
+	CHECK(WidestColumn(buffer, kTabWidth) == 0);
 }
 
 TEST_CASE("Expanding tabs leaves a line without any alone")
 {
-	CHECK(ExpandTabs("int main()", 4) == "int main()");
+	CHECK(ExpandTabs("int main()", kTabWidth) == "int main()");
 }
 
 TEST_CASE("A tab expands to the spaces that reach its next stop")
 {
-	CHECK(ExpandTabs("\tx", 4) == "    x");
-	CHECK(ExpandTabs("a\tx", 4) == "a   x");
-	CHECK(ExpandTabs("abc\tx", 4) == "abc x");
-	CHECK(ExpandTabs("abcd\tx", 4) == "abcd    x");
+	CHECK(ExpandTabs("\tx", kTabWidth) == "    x");
+	CHECK(ExpandTabs("a\tx", kTabWidth) == "a   x");
+	CHECK(ExpandTabs("abc\tx", kTabWidth) == "abc x");
+	CHECK(ExpandTabs("abcd\tx", kTabWidth) == "abcd    x");
 }
 
 TEST_CASE("Consecutive tabs each reach their own stop")
 {
-	CHECK(ExpandTabs("\t\tx", 4) == "        x");
-	CHECK(ExpandTabs("a\t\tx", 4) == "a       x");
+	CHECK(ExpandTabs("\t\tx", kTabWidth) == "        x");
+	CHECK(ExpandTabs("a\t\tx", kTabWidth) == "a       x");
 }
 
-TEST_CASE("A non-ASCII character keeps its bytes and costs one column")
+TEST_CASE("A non-ASCII character keeps its bytes and costs one column so a tab after two of them expands to two spaces")
 {
-	// Two 'ą' (two bytes each) occupy two columns, so the tab after them reaches
-	// column 4 — two spaces, not two bytes' worth.
-	CHECK(ExpandTabs("\xC4\x85\xC4\x85\tx", 4) == "\xC4\x85\xC4\x85  x");
+	CHECK(ExpandTabs("\xC4\x85\xC4\x85\tx", kTabWidth) == "\xC4\x85\xC4\x85  x");
 }
 
-TEST_CASE("An ASCII byte's column is its index into the expansion")
+TEST_CASE("An ASCII byte's column is its index into the expansion so the caret lands on the character drawn there")
 {
 	const std::string line = "\ta\tbc\td";
 
-	// The expansion is what the renderer draws; ColumnOfByte is what places the caret
-	// and the selection on top of it. With ASCII throughout, one column is one byte of
-	// the expansion, so the two must agree byte for byte or they disagree on screen.
-	const std::string expanded = ExpandTabs(line, 4);
+	const std::string expanded = ExpandTabs(line, kTabWidth);
 
-	for (std::size_t byte = 0; byte <= line.size(); ++byte)
+	for (std::size_t byteOffset = 0; byteOffset <= line.size(); ++byteOffset)
 	{
-		const std::size_t column = ColumnOfByte(line, byte, 4);
+		const std::size_t column = ColumnOfByte(line, byteOffset, kTabWidth);
 
 		REQUIRE(column <= expanded.size());
 
-		if (byte < line.size() && line[byte] != '\t')
+		if (byteOffset < line.size() && line[byteOffset] != '\t')
 		{
-			CHECK(expanded[column] == line[byte]);
+			CHECK(expanded[column] == line[byteOffset]);
 		}
 	}
 }
@@ -234,45 +233,41 @@ TEST_CASE("An expanded line occupies exactly as many columns as the original")
 {
 	const std::string line = "\ta\tbc\t\xC4\x85\td";
 
-	CHECK(ColumnCount(ExpandTabs(line, 4), 4) == ColumnCount(line, 4));
+	CHECK(ColumnCount(ExpandTabs(line, kTabWidth), kTabWidth) == ColumnCount(line, kTabWidth));
 }
 
 TEST_CASE("Expanding an empty line gives an empty line")
 {
-	CHECK(ExpandTabs("", 4).empty());
+	CHECK(ExpandTabs("", kTabWidth).empty());
 }
 
 TEST_CASE("A tab width of zero advances one column at a time")
 {
-	// AfterTab guards against a zero width rather than dividing by it; the expansion
-	// has to survive the same input the rest of Columns.h does.
-	CHECK(ExpandTabs("a\tb", 0) == "a b");
+	const std::size_t zeroTabWidth = 0;
+
+	CHECK(ExpandTabs("a\tb", zeroTabWidth) == "a b");
 }
 
-// Where a byte of the raw line lands in the string ExpandTabs produces. Not the same thing as
-// ColumnOfByte, and the difference is the whole reason this exists: ColumnOfByte counts one
-// column per character, while the expanded string advances by a character's byte length, so the
-// two agree only while a line is pure ASCII. Anything mapping a position onto the tokens a lexer
-// produced - which are offsets into the expanded text - needs this one.
 TEST_CASE("A byte's offset in expanded text accounts for tabs but not for character width")
 {
-	// One tab at column 0 becomes four spaces, so byte 1 ("a") sits at offset 4.
-	CHECK(Core::ExpandedOffsetOfByte("\tabc", 0, 4) == 0);
-	CHECK(Core::ExpandedOffsetOfByte("\tabc", 1, 4) == 4);
-	CHECK(Core::ExpandedOffsetOfByte("\tabc", 2, 4) == 5);
+	const std::string tabThenAbc = "\tabc";
+	const std::string tabSpanningColumnsTwoAndThree = "ab\tc";
+	const std::string twoByteLetterThenB = "\xC4\x85"
+										   "b";
+	const std::string tabThenTwoByteLetterThenB = "\t\xC4\x85"
+												  "b";
+	const std::size_t pastTheEnd = 99;
 
-	// A tab mid-line runs to the next stop, not a fixed four.
-	CHECK(Core::ExpandedOffsetOfByte("ab\tc", 3, 4) == 4);
+	CHECK(ExpandedOffsetOfByte(tabThenAbc, 0, kTabWidth) == 0);
+	CHECK(ExpandedOffsetOfByte(tabThenAbc, 1, kTabWidth) == 4);
+	CHECK(ExpandedOffsetOfByte(tabThenAbc, 2, kTabWidth) == 5);
 
-	// Two bytes of "ą" stay two bytes in the expanded text: only tabs change length.
-	CHECK(Core::ExpandedOffsetOfByte("\xC4\x85"
-									 "b",
-									 2, 4) == 2);
-	CHECK(Core::ExpandedOffsetOfByte("\t\xC4\x85"
-									 "b",
-									 3, 4) == 6);
+	CHECK(ExpandedOffsetOfByte(tabSpanningColumnsTwoAndThree, 3, kTabWidth) == 4);
 
-	// Past the end clamps, like every other conversion in this header.
-	CHECK(Core::ExpandedOffsetOfByte("ab", 99, 4) == 2);
-	CHECK(Core::ExpandedOffsetOfByte("", 0, 4) == 0);
+	CHECK(ExpandedOffsetOfByte(twoByteLetterThenB, 2, kTabWidth) == 2);
+	CHECK(ExpandedOffsetOfByte(tabThenTwoByteLetterThenB, 3, kTabWidth) == 6);
+	CHECK(ColumnOfByte(twoByteLetterThenB, 2, kTabWidth) == 1);
+
+	CHECK(ExpandedOffsetOfByte("ab", pastTheEnd, kTabWidth) == 2);
+	CHECK(ExpandedOffsetOfByte("", 0, kTabWidth) == 0);
 }

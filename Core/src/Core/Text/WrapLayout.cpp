@@ -13,210 +13,206 @@
 namespace Core {
 
 	namespace {
+		constexpr std::size_t kNarrowestRowThatStillAdvances = 1;
+		constexpr std::size_t kLineStartColumn = 0;
+
 		struct RowScan
 		{
-			std::size_t At = 0;
-			std::size_t Column = 0;
+			std::size_t EndByte = 0;
+			std::size_t EndColumn = 0;
 
-			bool HaveSpace = false;
-			std::size_t SpaceByte = 0;
-			std::size_t SpaceColumn = 0;
+			bool FoundSpace = false;
+			std::size_t LastSpaceByte = 0;
+			std::size_t LastSpaceColumn = 0;
 
-			// The character occupying the limit's last cell, and the boundary just past it.
-			// A tab occupies a run of cells, so the character covering that cell is not the
-			// same thing as the character starting on it.
-			bool HaveEdge = false;
-			bool EdgeIsTab = false;
-			std::size_t EdgeByte = 0;
-			std::size_t EdgeColumn = 0;
-			std::size_t PastEdgeByte = 0;
-			std::size_t PastEdgeColumn = 0;
+			bool FoundLastCellCharacter = false;
+			bool LastCellCharacterIsTab = false;
+			std::size_t LastCellCharacterByte = 0;
+			std::size_t LastCellCharacterColumn = 0;
+			std::size_t ByteAfterLastCellCharacter = 0;
+			std::size_t ColumnAfterLastCellCharacter = 0;
 		};
 
-		// The byte and the column are carried together because deriving one from the other
-		// per probe re-walks the line from byte 0 and makes wrapping a single line quadratic
-		// in its length. Both only ever land on a character boundary, so a row can never
-		// begin inside a multi-byte character or inside a tab's run.
-		RowScan ScanToLimit(std::string_view line, std::size_t tabWidth, std::size_t limit,
-							std::size_t at, std::size_t column)
+		struct WrappedRow
 		{
+			std::size_t SubRow = 0;
+			std::size_t StartColumn = 0;
+		};
+
+		// Byte and column advance together on purpose: deriving one from the other for each character
+		// re-walks the line from its start and makes wrapping one line quadratic in its length.
+		RowScan ScanToLimit(std::string_view lineText, std::size_t tabWidth, std::size_t limitColumn, std::size_t byteOffset, std::size_t column)
+		{
+			const std::size_t lastCellColumn = limitColumn - 1;
 			RowScan scan;
 
-			while (at < line.size() && column < limit)
+			while (byteOffset < lineText.size() && column < limitColumn)
 			{
-				const bool isTab = line[at] == '\t';
-				const std::size_t nextByte = isTab ? at + 1 : NextCharacter(line, at);
-				const std::size_t nextColumn =
-					isTab ? ColumnAfterTab(column, tabWidth) : column + 1;
+				const bool isTab = lineText[byteOffset] == '\t';
+				const std::size_t nextByte = isTab ? byteOffset + 1 : NextCharacter(lineText, byteOffset);
+				const std::size_t nextColumn = isTab ? ColumnAfterTab(column, tabWidth) : column + 1;
 
-				if (!isTab && line[at] == ' ')
+				const bool isSpace = lineText[byteOffset] == ' ';
+				if (isSpace)
 				{
-					scan.SpaceByte = at;
-					scan.SpaceColumn = column;
-					scan.HaveSpace = true;
+					scan.LastSpaceByte = byteOffset;
+					scan.LastSpaceColumn = column;
+					scan.FoundSpace = true;
 				}
 
-				if (column <= limit - 1 && limit - 1 < nextColumn)
+				const bool coversLastCell = column <= lastCellColumn && lastCellColumn < nextColumn;
+				if (coversLastCell)
 				{
-					scan.EdgeByte = at;
-					scan.EdgeColumn = column;
-					scan.PastEdgeByte = nextByte;
-					scan.PastEdgeColumn = nextColumn;
-					scan.EdgeIsTab = isTab;
-					scan.HaveEdge = true;
+					scan.LastCellCharacterByte = byteOffset;
+					scan.LastCellCharacterColumn = column;
+					scan.ByteAfterLastCellCharacter = nextByte;
+					scan.ColumnAfterLastCellCharacter = nextColumn;
+					scan.LastCellCharacterIsTab = isTab;
+					scan.FoundLastCellCharacter = true;
 				}
 
-				at = nextByte;
+				byteOffset = nextByte;
 				column = nextColumn;
 			}
 
-			scan.At = at;
-			scan.Column = column;
+			scan.EndByte = byteOffset;
+			scan.EndColumn = column;
 
 			return scan;
 		}
 
-		// The run is invisible where a row starting with one is not, so a run reaching past
-		// the limit stays on the row it ends even though that makes the row visually wider
-		// than columnsPerRow.
-		void SkipSpaceRun(std::string_view line, std::size_t total, std::size_t& at,
-						  std::size_t& column)
+		void SkipWholeSpaceRun(std::string_view lineText, std::size_t lineColumnCount, std::size_t& byteOffset, std::size_t& column)
 		{
-			while (at < line.size() && column < total && line[at] == ' ')
+			while (byteOffset < lineText.size() && column < lineColumnCount)
 			{
-				++at;
-				++column;
-			}
-		}
-
-		std::pair<std::size_t, std::size_t> SubRowOfColumn(
-			const std::vector<std::size_t>& breaks, std::size_t column)
-		{
-			std::size_t subRow = 0;
-			std::size_t rowStart = 0;
-
-			// "At or before" rather than "before" is the whole rule: a column equal to a
-			// break is the first cell of the row that break starts.
-			for (std::size_t index = 0; index < breaks.size(); ++index)
-			{
-				if (breaks[index] > column)
+				const bool isSpace = lineText[byteOffset] == ' ';
+				if (!isSpace)
 				{
 					break;
 				}
 
-				subRow = index + 1;
-				rowStart = breaks[index];
+				++byteOffset;
+				++column;
+			}
+		}
+
+		WrappedRow WrappedRowOfColumn(const std::vector<std::size_t>& breaks, std::size_t column)
+		{
+			WrappedRow wrappedRow;
+
+			for (std::size_t breakIndex = 0; breakIndex < breaks.size(); ++breakIndex)
+			{
+				const std::size_t breakColumn = breaks[breakIndex];
+				const bool columnIsAtOrPastBreak = column >= breakColumn;
+
+				if (!columnIsAtOrPastBreak)
+				{
+					break;
+				}
+
+				const std::size_t subRowStartedByBreak = breakIndex + 1;
+				wrappedRow.SubRow = subRowStartedByBreak;
+				wrappedRow.StartColumn = breakColumn;
 			}
 
-			return {subRow, rowStart};
+			return wrappedRow;
 		}
 	}
 
-	std::vector<std::size_t> WrapColumns(std::string_view line, std::size_t columnsPerRow,
-										 std::size_t tabWidth)
+	std::vector<std::size_t> WrapColumns(std::string_view lineText, std::size_t columnsPerRow, std::size_t tabWidth)
 	{
 		std::vector<std::size_t> breaks;
 
-		// A row narrower than one cell would make the walk below stand still.
-		const std::size_t width = std::max<std::size_t>(columnsPerRow, 1);
-		const std::size_t total = ColumnCount(line, tabWidth);
+		const std::size_t rowWidth = std::max(columnsPerRow, kNarrowestRowThatStillAdvances);
+		const std::size_t lineColumnCount = ColumnCount(lineText, tabWidth);
 
-		std::size_t at = 0;
+		std::size_t byteOffset = 0;
 		std::size_t column = 0;
-		std::size_t rowStart = 0;
+		std::size_t rowStartColumn = 0;
 
-		while (total - rowStart > width)
+		while (lineColumnCount - rowStartColumn > rowWidth)
 		{
-			const std::size_t limit = rowStart + width;
-			const RowScan scan = ScanToLimit(line, tabWidth, limit, at, column);
+			const std::size_t limitColumn = rowStartColumn + rowWidth;
+			const RowScan scan = ScanToLimit(lineText, tabWidth, limitColumn, byteOffset, column);
 
-			at = scan.At;
-			column = scan.Column;
+			byteOffset = scan.EndByte;
+			column = scan.EndColumn;
 
-			// The loop condition guarantees the line reaches past the limit, so the scan
-			// always covers its last cell; stopping rather than guessing if it somehow did
-			// not is what keeps this loop from standing still.
-			if (!scan.HaveEdge)
+			// The loop condition means the scan always reaches the row's last cell. Stopping when it
+			// somehow does not, rather than guessing a break, keeps this loop from standing still.
+			if (!scan.FoundLastCellCharacter)
 			{
 				break;
 			}
 
-			std::size_t breakAt = 0;
+			const bool tabCoveringLastCellCanMoveToNextRow = scan.LastCellCharacterIsTab && scan.LastCellCharacterColumn != rowStartColumn;
+			std::size_t breakColumn = 0;
 
-			if (scan.HaveSpace)
+			if (scan.FoundSpace)
 			{
-				at = scan.SpaceByte + 1;
-				column = scan.SpaceColumn + 1;
+				byteOffset = scan.LastSpaceByte + 1;
+				column = scan.LastSpaceColumn + 1;
 
-				SkipSpaceRun(line, total, at, column);
+				SkipWholeSpaceRun(lineText, lineColumnCount, byteOffset, column);
 
-				breakAt = column;
+				breakColumn = column;
 			}
-			else if (scan.EdgeIsTab && scan.EdgeColumn != rowStart)
+			else if (tabCoveringLastCellCanMoveToNextRow)
 			{
-				// The hard break would land inside a tab's run, so the whole tab goes to the
-				// next row.
-				at = scan.EdgeByte;
-				column = scan.EdgeColumn;
-				breakAt = scan.EdgeColumn;
+				byteOffset = scan.LastCellCharacterByte;
+				column = scan.LastCellCharacterColumn;
+				breakColumn = scan.LastCellCharacterColumn;
 			}
 			else
 			{
-				// A single word wider than the row: breaking hard at the limit keeps it on
-				// screen. A tab starting on this row's own start is wider than the whole row,
-				// so the break goes after it — there is nowhere further back to go.
-				at = scan.PastEdgeByte;
-				column = scan.PastEdgeColumn;
-				breakAt = scan.PastEdgeColumn;
+				byteOffset = scan.ByteAfterLastCellCharacter;
+				column = scan.ColumnAfterLastCellCharacter;
+				breakColumn = scan.ColumnAfterLastCellCharacter;
 			}
 
-			if (breakAt >= total)
+			const bool breakWouldStartEmptyRow = breakColumn >= lineColumnCount;
+			if (breakWouldStartEmptyRow)
 			{
 				break;
 			}
 
-			breaks.push_back(breakAt);
-			rowStart = breakAt;
+			breaks.push_back(breakColumn);
+			rowStartColumn = breakColumn;
 		}
 
 		return breaks;
 	}
 
-	VisualPosition CaretToVisual(const TextBuffer& buffer, const RowMap& rows,
-								 std::size_t offset, std::size_t tabWidth)
+	VisualPosition CaretToVisual(const TextBuffer& buffer, const RowMap& rows, std::size_t offset, std::size_t tabWidth)
 	{
-		const Position position = buffer.ToPosition(offset);
-		const std::size_t line = position.Line;
-		const std::string text = buffer.LineText(line);
-		const std::size_t column = ColumnOfByte(text, position.Column, tabWidth);
+		const Position caretPosition = buffer.ToPosition(offset);
+		const std::size_t lineIndex = caretPosition.Line;
+		const std::size_t caretByteInLine = caretPosition.Column;
+		const std::string lineText = buffer.LineText(lineIndex);
+		const std::size_t caretColumn = ColumnOfByte(lineText, caretByteInLine, tabWidth);
 
-		const auto [subRow, rowStart] = SubRowOfColumn(rows.BreaksOf(line), column);
+		const WrappedRow wrappedRow = WrappedRowOfColumn(rows.BreaksOf(lineIndex), caretColumn);
 
-		return VisualPosition{rows.FirstRowOf(line) + subRow, column - rowStart};
+		return VisualPosition{.Row = rows.FirstRowOf(lineIndex) + wrappedRow.SubRow, .Column = caretColumn - wrappedRow.StartColumn};
 	}
 
-	std::size_t VisualToCaret(const TextBuffer& buffer, const RowMap& rows,
-							  VisualPosition position, std::size_t tabWidth)
+	std::size_t VisualToCaret(const TextBuffer& buffer, const RowMap& rows, VisualPosition position, std::size_t tabWidth)
 	{
-		const RowRef ref = rows.RowAt(position.Row);
-		const std::string text = buffer.LineText(ref.Line);
+		const RowRef visualRow = rows.RowAt(position.Row);
+		const std::string lineText = buffer.LineText(visualRow.Line);
 
-		const std::vector<std::size_t>& breaks = rows.BreaksOf(ref.Line);
+		const std::vector<std::size_t>& breaks = rows.BreaksOf(visualRow.Line);
 
-		// Guarded rather than indexed straight, because RowMap::SetRowsOf forces a row count
-		// without touching the breaks: degrading to the line's own start keeps a decoupled
-		// pair a wrong caret rather than a read past the end of the vector.
-		const std::size_t rowStart =
-			ref.SubRow == 0 || ref.SubRow > breaks.size() ? 0 : breaks[ref.SubRow - 1];
+		// After RowMap::SetRowsOf a sub-row may have no break to start at; starting it at the line's start
+		// gives a wrong caret, not a read past the breaks.
+		const bool rowStartsAtLineStart = visualRow.SubRow == 0 || visualRow.SubRow > breaks.size();
+		const std::size_t rowStartColumn = rowStartsAtLineStart ? kLineStartColumn : breaks[visualRow.SubRow - 1];
 
-		// One less than the next row's first column, never the break itself: landing exactly
-		// on a break is what SubRowOfColumn reads back as the *next* row's start, so the
-		// row-end clamp has to agree with the row-start rule or the round trip breaks.
-		const std::size_t rowEnd = ref.SubRow < breaks.size() ? breaks[ref.SubRow] - 1
-															  : ColumnCount(text, tabWidth);
+		const bool anotherSubRowFollows = visualRow.SubRow < breaks.size();
+		const std::size_t lastCaretColumnOnRow = anotherSubRowFollows ? breaks[visualRow.SubRow] - 1 : ColumnCount(lineText, tabWidth);
 
-		const std::size_t column = std::min(rowStart + position.Column, rowEnd);
+		const std::size_t caretColumn = std::min(rowStartColumn + position.Column, lastCaretColumnOnRow);
 
-		return buffer.LineStart(ref.Line) + ByteOfColumn(text, column, tabWidth);
+		return buffer.LineStart(visualRow.Line) + ByteOfColumn(lineText, caretColumn, tabWidth);
 	}
 }

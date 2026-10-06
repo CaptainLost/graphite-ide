@@ -29,11 +29,11 @@ TEST_CASE("Stepping forward from the last match wraps to the first")
 
 	REQUIRE(item.Find.Matches.size() == 3);
 
-	item.Find.Current = 2;
+	item.Find.CurrentMatch = 2;
 
 	Graphite::StepFindMatch(item, buffer, false);
 
-	CHECK(item.Find.Current == 0);
+	CHECK(item.Find.CurrentMatch == 0);
 
 	// Selected, not merely landed on: the anchor is the match's start and the offset its end.
 	CHECK(item.Caret.Anchor == 0);
@@ -50,11 +50,11 @@ TEST_CASE("Stepping back from the first match wraps to the last")
 
 	REQUIRE(item.Find.Matches.size() == 3);
 
-	item.Find.Current = 0;
+	item.Find.CurrentMatch = 0;
 
 	Graphite::StepFindMatch(item, buffer, true);
 
-	CHECK(item.Find.Current == 2);
+	CHECK(item.Find.CurrentMatch == 2);
 	CHECK(item.Caret.Anchor == 23);
 	CHECK(item.Caret.Offset == 28);
 }
@@ -73,7 +73,7 @@ TEST_CASE("Stepping through no matches at all does nothing")
 	CHECK_FALSE(item.PendingScroll);
 }
 
-TEST_CASE("A refresh after the buffer shrank leaves Current inside the new list")
+TEST_CASE("A refresh after the buffer shrank leaves the current match inside the new list")
 {
 	Core::TextBuffer buffer("alpha\nalpha\nalpha\n");
 	Core::OpenItem item = ItemSearchingFor("alpha");
@@ -82,7 +82,7 @@ TEST_CASE("A refresh after the buffer shrank leaves Current inside the new list"
 
 	REQUIRE(item.Find.Matches.size() == 3);
 
-	item.Find.Current = 2;
+	item.Find.CurrentMatch = 2;
 
 	// Two of the three lines go, so the index that was current is past the end of what is left.
 	buffer.Erase(0, 12);
@@ -90,10 +90,10 @@ TEST_CASE("A refresh after the buffer shrank leaves Current inside the new list"
 	Graphite::RefreshFindMatches(item, buffer);
 
 	REQUIRE(item.Find.Matches.size() == 1);
-	CHECK(item.Find.Current < item.Find.Matches.size());
-	CHECK(item.Find.Matches[0].first == 0);
-	CHECK(item.Find.Matches[0].second == 5);
-	CHECK(item.Find.Revision == buffer.GetRevision());
+	CHECK(item.Find.CurrentMatch < item.Find.Matches.size());
+	CHECK(item.Find.Matches[0].From == 0);
+	CHECK(item.Find.Matches[0].To == 5);
+	CHECK(item.Find.MatchesRevision == buffer.GetRevision());
 }
 
 TEST_CASE("A refresh with an empty query clears the matches")
@@ -110,7 +110,7 @@ TEST_CASE("A refresh with an empty query clears the matches")
 	Graphite::RefreshFindMatches(item, buffer);
 
 	CHECK(item.Find.Matches.empty());
-	CHECK(item.Find.Current == 0);
+	CHECK(item.Find.CurrentMatch == 0);
 }
 
 // Pins the invalidation strategy: the editor calls this every frame, and only a changed
@@ -127,7 +127,7 @@ TEST_CASE("Refreshing twice at the same revision does not rebuild")
 
 	// Planted by hand, so a rebuild is visible as its disappearance rather than as an
 	// identical list nobody can tell apart from the one that was already there.
-	item.Find.Matches.emplace_back(99, 100);
+	item.Find.Matches.push_back(Core::FindMatch{.From = 99, .To = 100});
 
 	CHECK_FALSE(Graphite::RefreshFindMatchesIfStale(item, buffer));
 	CHECK(item.Find.Matches.size() == 3);
@@ -137,7 +137,7 @@ TEST_CASE("Refreshing twice at the same revision does not rebuild")
 	CHECK(Graphite::RefreshFindMatchesIfStale(item, buffer));
 	CHECK(item.Find.Matches.size() == 3);
 	// "alpha alpha beta alpha": the planted pair is gone and the third match is a real one.
-	CHECK(item.Find.Matches[2].first == 17);
+	CHECK(item.Find.Matches[2].From == 17);
 }
 
 TEST_CASE("The frame Escape closes the bar on does not write the field back")
@@ -164,13 +164,13 @@ TEST_CASE("Revealing the current match selects it and asks for a scroll to it")
 
 	Graphite::RefreshFindMatches(item, buffer);
 
-	REQUIRE(item.Find.Current == 1);
+	REQUIRE(item.Find.CurrentMatch == 1);
 
 	item.PendingScroll = false;
 
 	Graphite::RevealFindMatch(item, buffer);
 
-	CHECK(item.Find.Current == 1);
+	CHECK(item.Find.CurrentMatch == 1);
 	CHECK(item.Caret.Anchor == 11);
 	CHECK(item.Caret.Offset == 16);
 	CHECK(item.PendingScroll);

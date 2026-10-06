@@ -6,9 +6,7 @@
 
 namespace Core {
 
-	std::vector<std::size_t> WrapColumns(std::string_view line,
-										 std::size_t columnsPerRow,
-										 std::size_t tabWidth);
+	std::vector<std::size_t> WrapColumns(std::string_view lineText, std::size_t columnsPerRow, std::size_t tabWidth);
 
 	class TextBuffer;
 	class RowMap;
@@ -19,9 +17,7 @@ namespace Core {
 		std::size_t Column = 0;
 	};
 
-	VisualPosition CaretToVisual(const TextBuffer& buffer, const RowMap& rows,
-								 std::size_t offset, std::size_t tabWidth);
+	VisualPosition CaretToVisual(const TextBuffer& buffer, const RowMap& rows, std::size_t offset, std::size_t tabWidth);
 
-	std::size_t VisualToCaret(const TextBuffer& buffer, const RowMap& rows,
-							  VisualPosition position, std::size_t tabWidth);
+	std::size_t VisualToCaret(const TextBuffer& buffer, const RowMap& rows, VisualPosition position, std::size_t tabWidth);
 }

@@ -4,7 +4,7 @@
 
 namespace {
 
-	using Matches = std::vector<std::pair<std::size_t, std::size_t>>;
+	using Matches = std::vector<Core::FindMatch>;
 
 	// The line under test always starts at byte 100, so a document offset in these cases is
 	// visibly not a line offset and an accidental confusion of the two shows up as a wild column

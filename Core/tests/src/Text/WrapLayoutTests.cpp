@@ -8,235 +8,274 @@
 
 #include <chrono>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace Core;
 
-TEST_CASE("A line that fits does not break")
-{
-	CHECK(WrapColumns("", 10, 4).empty());
-	CHECK(WrapColumns("short", 10, 4).empty());
+namespace {
+	constexpr std::size_t kTabWidth = 4;
+	constexpr std::size_t kWideEnoughNotToWrap = 80;
+	constexpr std::size_t kFarPastAnyRowEnd = 99;
+	constexpr std::size_t kFirstLine = 0;
 }
 
-TEST_CASE("A line exactly as wide as the row does not break")
+TEST_CASE("A line that fits does not break")
 {
-	// Ten columns in a ten column row: the last character lands on the last cell,
-	// and a break after it would make an empty trailing row.
-	CHECK(WrapColumns("0123456789", 10, 4).empty());
+	const std::size_t columnsPerRow = 10;
+
+	CHECK(WrapColumns("", columnsPerRow, kTabWidth).empty());
+	CHECK(WrapColumns("short", columnsPerRow, kTabWidth).empty());
+}
+
+TEST_CASE("A line exactly as wide as the row does not break because a break after its last cell would leave an empty row")
+{
+	const std::size_t columnsPerRow = 10;
+
+	CHECK(WrapColumns("0123456789", columnsPerRow, kTabWidth).empty());
 }
 
 TEST_CASE("A break goes after the last space that fits")
 {
-	// Columns: "alpha beta gamma", limit 12. The space at column 10 is the last
-	// one at or before the limit, so the second row starts at column 11.
-	const std::vector<std::size_t> breaks = WrapColumns("alpha beta gamma", 12, 4);
+	const std::size_t columnsPerRow = 12;
+	const std::size_t firstColumnOfGamma = 11;
+
+	const std::vector<std::size_t> breaks = WrapColumns("alpha beta gamma", columnsPerRow, kTabWidth);
 
 	REQUIRE(breaks.size() == 1);
-	CHECK(breaks[0] == 11);
+	CHECK(breaks[0] == firstColumnOfGamma);
 }
 
 TEST_CASE("A word longer than the row breaks hard at the limit")
 {
-	const std::vector<std::size_t> breaks = WrapColumns("aaaaaaaaaaaaaaa", 5, 4);
+	const std::size_t columnsPerRow = 5;
+
+	const std::vector<std::size_t> breaks = WrapColumns("aaaaaaaaaaaaaaa", columnsPerRow, kTabWidth);
 
 	REQUIRE(breaks.size() == 2);
 	CHECK(breaks[0] == 5);
 	CHECK(breaks[1] == 10);
 }
 
-TEST_CASE("Runs of spaces stay on the row they end")
+TEST_CASE("Runs of spaces stay on the row they end so the next row starts at a letter")
 {
-	// "aa    bb" with a limit of 6: breaking after the run leaves the next row
-	// starting at 'b', never at a space.
-	const std::vector<std::size_t> breaks = WrapColumns("aa    bb", 6, 4);
+	const std::size_t columnsPerRow = 6;
+	const std::size_t firstColumnOfSecondWord = 6;
+
+	const std::vector<std::size_t> breaks = WrapColumns("aa    bb", columnsPerRow, kTabWidth);
 
 	REQUIRE(breaks.size() == 1);
-	CHECK(breaks[0] == 6);
+	CHECK(breaks[0] == firstColumnOfSecondWord);
 }
 
 TEST_CASE("A tab counts as the columns it advances, not as one character")
 {
-	// "\tabcdef" with tabWidth 4 occupies 10 columns: 4 for the tab, 6 for the
-	// letters. With a limit of 6 the break falls inside the letters, at column 6.
-	const std::vector<std::size_t> breaks = WrapColumns("\tabcdef", 6, 4);
+	const std::string_view lineText = "\tabcdef";
+	const std::size_t columnsPerRow = 6;
+	const std::size_t fourTabColumnsAndSixLetters = 10;
+	const std::size_t columnOfThirdLetter = 6;
+
+	CHECK(ColumnCount(lineText, kTabWidth) == fourTabColumnsAndSixLetters);
+
+	const std::vector<std::size_t> breaks = WrapColumns(lineText, columnsPerRow, kTabWidth);
 
 	REQUIRE(breaks.size() == 1);
-	CHECK(breaks[0] == 6);
+	CHECK(breaks[0] == columnOfThirdLetter);
 }
 
 TEST_CASE("A character outside ASCII is one column whatever its byte length")
 {
-	// "ąąąą" is four characters and eight bytes. With a limit of 2 it breaks
-	// twice, on column boundaries, never mid-character.
-	const std::vector<std::size_t> breaks = WrapColumns("\xC4\x85\xC4\x85\xC4\x85\xC4\x85", 2, 4);
+	const std::size_t columnsPerRow = 2;
+	const std::size_t columnAfterTwoCharacters = 2;
+
+	const std::vector<std::size_t> breaks = WrapColumns("ąąąą", columnsPerRow, kTabWidth);
 
 	REQUIRE(breaks.size() == 1);
-	CHECK(breaks[0] == 2);
+	CHECK(breaks[0] == columnAfterTwoCharacters);
 }
 
-TEST_CASE("A degenerate row width still terminates")
+TEST_CASE("A space after letters outside ASCII breaks at its own column because the scan steps over whole characters and never single bytes")
 {
-	// A window dragged narrower than one cell is a layout state, not an error.
-	CHECK(WrapColumns("abc", 1, 4).size() == 2);
-	CHECK(WrapColumns("abc", 0, 4).size() == 2);
-}
+	const std::size_t columnsPerRow = 5;
+	const std::size_t firstColumnOfSecondWord = 3;
 
-TEST_CASE("A space run reaching past the limit keeps the whole run on its row")
-{
-	// The run is invisible, so letting it overflow the row is right; starting the next
-	// row with a space is not.
-	const std::vector<std::size_t> breaks = WrapColumns("aa      bb", 4, 4);
+	const std::vector<std::size_t> breaks = WrapColumns("ąą bb cc", columnsPerRow, kTabWidth);
 
 	REQUIRE(breaks.size() == 1);
-	CHECK(breaks[0] == 8);
+	CHECK(breaks[0] == firstColumnOfSecondWord);
+}
+
+TEST_CASE("A row width below one cell from a window dragged that narrow is a layout state that still terminates")
+{
+	const std::size_t oneCellWide = 1;
+	const std::size_t noCellsWide = 0;
+
+	CHECK(WrapColumns("abc", oneCellWide, kTabWidth).size() == 2);
+	CHECK(WrapColumns("abc", noCellsWide, kTabWidth).size() == 2);
+}
+
+TEST_CASE("A space run reaching past the limit stays whole on its row because trailing spaces are invisible and leading ones are not")
+{
+	const std::size_t columnsPerRow = 4;
+	const std::size_t firstColumnAfterTheRun = 8;
+
+	const std::vector<std::size_t> breaks = WrapColumns("aa      bb", columnsPerRow, kTabWidth);
+
+	REQUIRE(breaks.size() == 1);
+	CHECK(breaks[0] == firstColumnAfterTheRun);
 }
 
 TEST_CASE("A line of nothing but spaces never breaks")
 {
-	CHECK(WrapColumns("      ", 3, 4).empty());
+	const std::size_t columnsPerRow = 3;
+
+	CHECK(WrapColumns("      ", columnsPerRow, kTabWidth).empty());
 }
 
-TEST_CASE("A hard break never lands inside a tab")
+TEST_CASE("A hard break never lands inside a tab so the whole tab moves to the next row")
 {
-	// Columns: "aaaa" is 0-3, the tab spans 4-7, "bbbb" is 8-11. Breaking at the limit of
-	// 6 would split the tab, so the break moves back to where the tab starts.
-	const std::vector<std::size_t> breaks = WrapColumns("aaaa\tbbbb", 6, 4);
+	const std::size_t columnsPerRow = 6;
+	const std::size_t columnWhereTabStarts = 4;
+
+	const std::vector<std::size_t> breaks = WrapColumns("aaaa\tbbbb", columnsPerRow, kTabWidth);
 
 	REQUIRE(!breaks.empty());
-	CHECK(breaks[0] == 4);
+	CHECK(breaks[0] == columnWhereTabStarts);
 }
 
-TEST_CASE("A tab wider than the row still advances")
+TEST_CASE("A tab wider than the row at the row's own start cannot move back so the break goes after it")
 {
-	// The tab starts at the row's own start, so it cannot move back any further; the
-	// break goes after it instead of standing still.
-	const std::vector<std::size_t> breaks = WrapColumns("\tabc", 2, 4);
+	const std::size_t columnsPerRow = 2;
+	const std::size_t columnAfterTab = 4;
+
+	const std::vector<std::size_t> breaks = WrapColumns("\tabc", columnsPerRow, kTabWidth);
 
 	REQUIRE(!breaks.empty());
-	CHECK(breaks[0] == 4);
+	CHECK(breaks[0] == columnAfterTab);
 }
 
 TEST_CASE("A tab wider than the row at the end of a line does not add an empty row")
 {
-	// Columns: "bbbb" is 0-3 and the tab runs to column 8. Breaking after the tab would
-	// start a row one past the end of the line.
-	const std::vector<std::size_t> breaks = WrapColumns("bbbb\t", 3, 4);
+	const std::string_view lineText = "bbbb\t";
+	const std::size_t columnsPerRow = 3;
+	const std::size_t columnAfterTab = 8;
+
+	CHECK(ColumnCount(lineText, kTabWidth) == columnAfterTab);
+
+	const std::vector<std::size_t> breaks = WrapColumns(lineText, columnsPerRow, kTabWidth);
 
 	REQUIRE(!breaks.empty());
-	CHECK(breaks.back() < ColumnCount("bbbb\t", 4));
+	CHECK(breaks.back() < ColumnCount(lineText, kTabWidth));
 }
 
 TEST_CASE("A line of a single tab never breaks")
 {
-	CHECK(WrapColumns("\t", 1, 4).empty());
+	const std::size_t oneCellWide = 1;
+
+	CHECK(WrapColumns("\t", oneCellWide, kTabWidth).empty());
 }
 
 TEST_CASE("An offset on an unwrapped line maps to its own row and column")
 {
 	const TextBuffer buffer{std::string{"abc\ndef"}};
+	const std::size_t offsetOfE = 5;
 
 	RowMap rows;
-	rows.Rebuild(buffer, 80, 4);
+	rows.Rebuild(buffer, kWideEnoughNotToWrap, kTabWidth);
 
-	const VisualPosition position = CaretToVisual(buffer, rows, 5, 4);
+	const VisualPosition position = CaretToVisual(buffer, rows, offsetOfE, kTabWidth);
 
 	CHECK(position.Row == 1);
 	CHECK(position.Column == 1);
 }
 
-TEST_CASE("An offset past a break belongs to the following row")
+TEST_CASE("An offset on a break is the first cell of the following row and never the last of the row before")
 {
-	// One line of ten characters, four columns per row: rows start at columns 0, 4, 8.
 	const TextBuffer buffer{std::string{"aaaaaaaaaa"}};
+	const std::size_t columnsPerRow = 4;
+	const std::vector<std::size_t> rowsAfterTheFirstStartAt{4, 8};
+	const std::size_t offsetOnFirstBreak = 4;
 
 	RowMap rows;
-	rows.Rebuild(buffer, 4, 4);
+	rows.Rebuild(buffer, columnsPerRow, kTabWidth);
 
-	// Column 4 is exactly a break: it is the first cell of row 1, never the last of row 0.
-	const VisualPosition position = CaretToVisual(buffer, rows, 4, 4);
+	CHECK(rows.BreaksOf(kFirstLine) == rowsAfterTheFirstStartAt);
+
+	const VisualPosition position = CaretToVisual(buffer, rows, offsetOnFirstBreak, kTabWidth);
 
 	CHECK(position.Row == 1);
 	CHECK(position.Column == 0);
 }
 
-TEST_CASE("A column past the end of a row clamps to that row's last position")
+TEST_CASE("A column past the end of a row clamps to that row's last position and never to the next row's first cell")
 {
 	const TextBuffer buffer{std::string{"abc\ndef"}};
+	const VisualPosition farRightOfFirstRow{.Row = 0, .Column = kFarPastAnyRowEnd};
+	const std::size_t endOfShortFirstLine = 3;
 
 	RowMap unwrapped;
-	unwrapped.Rebuild(buffer, 80, 4);
+	unwrapped.Rebuild(buffer, kWideEnoughNotToWrap, kTabWidth);
 
-	// Clicking far to the right of a short line puts the caret at its end, which is what
-	// the widget already does when it is not wrapping.
-	CHECK(VisualToCaret(buffer, unwrapped, VisualPosition{0, 99}, 4) == 3);
+	CHECK(VisualToCaret(buffer, unwrapped, farRightOfFirstRow, kTabWidth) == endOfShortFirstLine);
 
-	// Same idea for a row that is not the last one in its line: clicking past the end of
-	// row 0 must land on its own last character (offset 3), not spill onto row 1's first
-	// cell (offset 4). The row-end clamp has to agree with the break rule above, or a
-	// click at the right edge of a wrapped row jumps to the wrong row.
 	const TextBuffer wrapped{std::string{"aaaaaaaaaa"}};
+	const std::size_t fourColumnsPerRow = 4;
+	const std::size_t lastCharacterOfFirstRow = 3;
 
 	RowMap wrappedRows;
-	wrappedRows.Rebuild(wrapped, 4, 4);
+	wrappedRows.Rebuild(wrapped, fourColumnsPerRow, kTabWidth);
 
-	CHECK(VisualToCaret(wrapped, wrappedRows, VisualPosition{0, 99}, 4) == 3);
+	CHECK(VisualToCaret(wrapped, wrappedRows, farRightOfFirstRow, kTabWidth) == lastCharacterOfFirstRow);
 
-	// A space-broken row: "alpha beta gamma" at width 6 breaks at columns 6 and 11, so
-	// row 0 is "alpha " and its last caret position is column 5, just before the space
-	// it broke on.
 	const TextBuffer spaceWrapped{std::string{"alpha beta gamma"}};
+	const std::size_t sixColumnsPerRow = 6;
+	const std::vector<std::size_t> breaksAfterAlphaAndBeta{6, 11};
+	const std::size_t caretBeforeSpaceAfterAlpha = 5;
+	const VisualPosition farRightOfMiddleRow{.Row = 1, .Column = kFarPastAnyRowEnd};
+	const std::size_t caretBeforeSpaceAfterBeta = 10;
 
 	RowMap spaceWrappedRows;
-	spaceWrappedRows.Rebuild(spaceWrapped, 6, 4);
+	spaceWrappedRows.Rebuild(spaceWrapped, sixColumnsPerRow, kTabWidth);
 
-	CHECK(VisualToCaret(spaceWrapped, spaceWrappedRows, VisualPosition{0, 99}, 4) == 5);
-
-	// A middle row, where rowStart is not zero: row 1 spans columns 6 to 10.
-	CHECK(VisualToCaret(spaceWrapped, spaceWrappedRows, VisualPosition{1, 99}, 4) == 10);
+	CHECK(spaceWrappedRows.BreaksOf(kFirstLine) == breaksAfterAlphaAndBeta);
+	CHECK(VisualToCaret(spaceWrapped, spaceWrappedRows, farRightOfFirstRow, kTabWidth) == caretBeforeSpaceAfterAlpha);
+	CHECK(VisualToCaret(spaceWrapped, spaceWrappedRows, farRightOfMiddleRow, kTabWidth) == caretBeforeSpaceAfterBeta);
 }
 
-TEST_CASE("Both directions compose to the identity for every offset")
+TEST_CASE("Both directions compose to the identity at every byte offset of ASCII text because drawing and hit-testing and caret movement all go through them")
 {
-	// The property that matters: drawing, hit-testing and caret movement all go through
-	// this pair, so any disagreement between them shows up here first.
 	const TextBuffer buffer{std::string{"alpha beta gamma\n\tindented line\nx\n\nlast"}};
+	const std::size_t columnsPerRow = 6;
 
 	RowMap rows;
-	rows.Rebuild(buffer, 6, 4);
+	rows.Rebuild(buffer, columnsPerRow, kTabWidth);
 
 	for (std::size_t offset = 0; offset <= buffer.GetLength(); ++offset)
 	{
-		const VisualPosition position = CaretToVisual(buffer, rows, offset, 4);
+		const VisualPosition position = CaretToVisual(buffer, rows, offset, kTabWidth);
 
 		CAPTURE(offset);
-		CHECK(VisualToCaret(buffer, rows, position, 4) == offset);
+		CHECK(VisualToCaret(buffer, rows, position, kTabWidth) == offset);
 	}
 }
 
-TEST_CASE("Both directions compose to the identity across characters outside ASCII")
+TEST_CASE("Both directions compose to the identity at every character boundary of text outside ASCII since no caret sits inside a character")
 {
-	// The case above walks every *byte*, which quietly restricts it to ASCII: an offset
-	// inside a multi-byte character cannot round-trip, because no caret may sit there.
-	// "A character outside ASCII is one column" is a rule of this project, and this pair
-	// is where the drawing half and the hit-testing half would first be caught disagreeing
-	// about it — so the same property is checked again over text that exercises the rule,
-	// advancing by character boundaries instead of by bytes.
-	const TextBuffer buffer{
-		std::string{"zaz\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87 g\xC4\x99\xC5\x9Bl\xC4\x85 ja\xC5\xBA\xC5\x84"
-					"\n\t\xC4\x85\xC4\x87\xC4\x99 wrapped\n\xE2\x82\xAC\xE2\x82\xAC\xE2\x82\xAC"}};
+	const TextBuffer buffer{std::string{"zazżółć gęślą jaźń\n\tąćę wrapped\n€€€"}};
+	const std::size_t columnsPerRow = 6;
 
 	RowMap rows;
-	rows.Rebuild(buffer, 6, 4);
+	rows.Rebuild(buffer, columnsPerRow, kTabWidth);
 
 	const std::string text = buffer.Materialize();
 	std::size_t offset = 0;
 
 	while (true)
 	{
-		const VisualPosition position = CaretToVisual(buffer, rows, offset, 4);
+		const VisualPosition position = CaretToVisual(buffer, rows, offset, kTabWidth);
 
 		CAPTURE(offset);
-		CHECK(VisualToCaret(buffer, rows, position, 4) == offset);
+		CHECK(VisualToCaret(buffer, rows, position, kTabWidth) == offset);
 
 		if (offset >= text.size())
 		{
@@ -247,45 +286,40 @@ TEST_CASE("Both directions compose to the identity across characters outside ASC
 	}
 }
 
-TEST_CASE("Wrapping a very long line stays linear")
+TEST_CASE("Wrapping a 200 000 character line stays linear because the UI thread wraps it with no way to cancel the frame")
 {
-	// A performance guard, not a behaviour test. WrapColumns used to probe columns through
-	// ByteOfColumn, which walks the line from byte 0 on every call: one line cost
-	// Theta(length^2 / width), measured at 7 seconds for 128 KB and four times that per
-	// doubling. This line is 200 000 characters — a small minified script — and would take
-	// upwards of fifteen seconds if that walk came back, with the UI thread blocked and no
-	// way to cancel the frame. It runs in single-digit milliseconds while the walk stays
-	// linear.
-	//
-	// The count is arithmetic, not a recorded number. Columns are 0..199 999, a space
-	// every 400 columns at 399, 799, ... Inside each 400-column block the row limit is
-	// reached three times with no space behind it (hard breaks at +120, +240, +360) and
-	// the fourth row does find one, breaking just past it at the next multiple of 400.
-	// That is four breaks per block for the first 499 blocks; the last block runs out of
-	// line after its three hard breaks, because what remains after +360 fits in one row.
-	std::string line;
-	line.reserve(200000);
+	const std::size_t blockCount = 500;
+	const std::size_t blockColumns = 400;
+	const std::size_t lettersBeforeEachSpace = blockColumns - 1;
+	const std::size_t lineLength = blockCount * blockColumns;
+	const std::size_t columnsPerRow = 120;
+	const std::size_t hardBreaksPerBlock = lettersBeforeEachSpace / columnsPerRow;
+	const std::size_t breaksPerFullBlock = hardBreaksPerBlock + 1;
+	const std::size_t fullBlocksBeforeTheLast = blockCount - 1;
+	const std::size_t hardBreaksInLastBlock = hardBreaksPerBlock;
+	const std::size_t indexOfFirstBreakPastASpace = hardBreaksPerBlock;
 
-	for (std::size_t block = 0; block < 500; ++block)
+	std::string lineText;
+	lineText.reserve(lineLength);
+
+	for (std::size_t blockIndex = 0; blockIndex < blockCount; ++blockIndex)
 	{
-		line.append(399, 'a');
-		line.push_back(' ');
+		lineText.append(lettersBeforeEachSpace, 'a');
+		lineText.push_back(' ');
 	}
 
-	REQUIRE(line.size() == 200000);
+	REQUIRE(lineText.size() == lineLength);
 
-	const auto started = std::chrono::steady_clock::now();
-	const std::vector<std::size_t> breaks = WrapColumns(line, 120, 4);
-	const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-							 std::chrono::steady_clock::now() - started)
-							 .count();
+	const std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
+	const std::vector<std::size_t> breaks = WrapColumns(lineText, columnsPerRow, kTabWidth);
+	const std::chrono::milliseconds::rep elapsedMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
 
-	CHECK(breaks.size() == 499 * 4 + 3);
-	CHECK(breaks.front() == 120);
-	CHECK(breaks[3] == 400);
+	CHECK(breaks.size() == fullBlocksBeforeTheLast * breaksPerFullBlock + hardBreaksInLastBlock);
+	CHECK(breaks.front() == columnsPerRow);
+	CHECK(breaks[indexOfFirstBreakPastASpace] == blockColumns);
 
-	// Deliberately loose: this has to hold on a cold, unoptimised, instrumented Debug
-	// build without ever being flaky, while still being three orders of magnitude below
-	// what the quadratic walk cost.
-	CHECK(elapsed < 2000);
+	// Loose on purpose so it is never flaky on a cold, unoptimised, instrumented Debug build; a walk
+	// quadratic in the line's length would still overrun it several times over.
+	const std::chrono::milliseconds::rep budgetMilliseconds = 2000;
+	CHECK(elapsedMilliseconds < budgetMilliseconds);
 }

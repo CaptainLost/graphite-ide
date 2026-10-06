@@ -2,6 +2,8 @@
 
 #include "Core/Text/Utf8.h"
 
+#include "Core/Base/Assert.h"
+
 namespace Core {
 
 	namespace {
@@ -9,52 +11,99 @@ namespace Core {
 		constexpr char32_t kSurrogateFirst = 0xD800;
 		constexpr char32_t kSurrogateLast = 0xDFFF;
 
-		struct Lead
+		constexpr std::uint32_t kFirstTwoByteCodePoint = 0x80u;
+		constexpr std::uint32_t kFirstThreeByteCodePoint = 0x800u;
+		constexpr std::uint32_t kFirstFourByteCodePoint = 0x10000u;
+
+		constexpr std::uint32_t kTwoByteLeadMarker = 0xC0u;
+		constexpr std::uint32_t kThreeByteLeadMarker = 0xE0u;
+		constexpr std::uint32_t kFourByteLeadMarker = 0xF0u;
+		constexpr std::uint32_t kContinuationMarker = 0x80u;
+		constexpr std::uint32_t kContinuationPayloadMask = 0x3Fu;
+		constexpr int kBitsPerContinuation = 6;
+
+		constexpr unsigned int kFirstNonAsciiByte = 0x80u;
+		constexpr unsigned int kFirstTwoByteLead = 0xC2u;
+		constexpr unsigned int kLastTwoByteLead = 0xDFu;
+		constexpr unsigned int kFirstThreeByteLead = 0xE0u;
+		constexpr unsigned int kSurrogateLead = 0xEDu;
+		constexpr unsigned int kLastThreeByteLead = 0xEFu;
+		constexpr unsigned int kFirstFourByteLead = 0xF0u;
+		constexpr unsigned int kLastFourByteLead = 0xF4u;
+
+		constexpr unsigned int kTwoByteLeadPayloadMask = 0x1Fu;
+		constexpr unsigned int kThreeByteLeadPayloadMask = 0x0Fu;
+		constexpr unsigned int kFourByteLeadPayloadMask = 0x07u;
+
+		constexpr std::uint8_t kLowestSecondByteAfterFirstThreeByteLead = 0xA0;
+		constexpr std::uint8_t kHighestSecondByteAfterSurrogateLead = 0x9F;
+		constexpr std::uint8_t kLowestSecondByteAfterFirstFourByteLead = 0x90;
+		constexpr std::uint8_t kHighestSecondByteAfterLastFourByteLead = 0x8F;
+
+		struct LeadByte
 		{
-			// Continuation bytes still to come; 0 for ASCII and for a byte that cannot lead.
-			std::uint8_t Continuations = 0;
-			bool Valid = false;
-			char32_t Bits = 0;
-			// The range the first continuation byte must fall in.
-			std::uint8_t Lower = 0x80;
-			std::uint8_t Upper = 0xBF;
+			std::uint8_t ContinuationCount = 0;
+			bool CanStartCharacter = false;
+			char32_t PayloadBits = 0;
+			std::uint8_t LowestFirstContinuation = Utf8Decoder::kLowestContinuationByte;
+			std::uint8_t HighestFirstContinuation = Utf8Decoder::kHighestContinuationByte;
 		};
 
-		// Unicode's table of well-formed byte sequences, read by its first byte. Narrowing
-		// the second byte's range is what rules out overlongs (E0, F0), surrogates (ED) and
-		// values above U+10FFFF (F4); C0, C1 and F5-FF can never lead.
-		Lead ReadLead(unsigned char byte)
+		// Unicode's table of well-formed byte sequences, read by its first byte. Narrowing the second
+		// byte's range is what rules out overlongs (after E0 and F0), surrogates (after ED) and values
+		// above U+10FFFF (after F4); C0, C1 and F5 to FF can never lead.
+		LeadByte ReadLeadByte(unsigned char byte)
 		{
-			if (byte < 0x80u)
+			if (byte < kFirstNonAsciiByte)
 			{
-				return {0, true, byte};
+				return LeadByte{.ContinuationCount = 0, .CanStartCharacter = true, .PayloadBits = byte};
 			}
 
-			if (byte >= 0xC2u && byte <= 0xDFu)
+			if (byte >= kFirstTwoByteLead && byte <= kLastTwoByteLead)
 			{
-				return {1, true, static_cast<char32_t>(byte & 0x1Fu)};
+				return LeadByte{.ContinuationCount = 1,
+								.CanStartCharacter = true,
+								.PayloadBits = static_cast<char32_t>(byte & kTwoByteLeadPayloadMask)};
 			}
 
-			if (byte >= 0xE0u && byte <= 0xEFu)
+			if (byte >= kFirstThreeByteLead && byte <= kLastThreeByteLead)
 			{
-				const std::uint8_t lower = byte == 0xE0u ? 0xA0 : 0x80;
-				const std::uint8_t upper = byte == 0xEDu ? 0x9F : 0xBF;
-				return {2, true, static_cast<char32_t>(byte & 0x0Fu), lower, upper};
+				const bool couldEncodeOverlong = byte == kFirstThreeByteLead;
+				const bool couldEncodeSurrogate = byte == kSurrogateLead;
+
+				const std::uint8_t lowestFirstContinuation = couldEncodeOverlong ? kLowestSecondByteAfterFirstThreeByteLead : Utf8Decoder::kLowestContinuationByte;
+				const std::uint8_t highestFirstContinuation = couldEncodeSurrogate ? kHighestSecondByteAfterSurrogateLead : Utf8Decoder::kHighestContinuationByte;
+
+				return LeadByte{.ContinuationCount = 2,
+								.CanStartCharacter = true,
+								.PayloadBits = static_cast<char32_t>(byte & kThreeByteLeadPayloadMask),
+								.LowestFirstContinuation = lowestFirstContinuation,
+								.HighestFirstContinuation = highestFirstContinuation};
 			}
 
-			if (byte >= 0xF0u && byte <= 0xF4u)
+			if (byte >= kFirstFourByteLead && byte <= kLastFourByteLead)
 			{
-				const std::uint8_t lower = byte == 0xF0u ? 0x90 : 0x80;
-				const std::uint8_t upper = byte == 0xF4u ? 0x8F : 0xBF;
-				return {3, true, static_cast<char32_t>(byte & 0x07u), lower, upper};
+				const bool couldEncodeOverlong = byte == kFirstFourByteLead;
+				const bool couldExceedLastCodePoint = byte == kLastFourByteLead;
+
+				const std::uint8_t lowestFirstContinuation = couldEncodeOverlong ? kLowestSecondByteAfterFirstFourByteLead : Utf8Decoder::kLowestContinuationByte;
+				const std::uint8_t highestFirstContinuation = couldExceedLastCodePoint ? kHighestSecondByteAfterLastFourByteLead : Utf8Decoder::kHighestContinuationByte;
+
+				return LeadByte{.ContinuationCount = 3,
+								.CanStartCharacter = true,
+								.PayloadBits = static_cast<char32_t>(byte & kFourByteLeadPayloadMask),
+								.LowestFirstContinuation = lowestFirstContinuation,
+								.HighestFirstContinuation = highestFirstContinuation};
 			}
 
-			return {};
+			return LeadByte{.CanStartCharacter = false};
 		}
 	}
 
 	std::optional<char32_t> DecodeUtf8(std::string_view bytes, std::size_t& offset)
 	{
+		CORE_ASSERT(offset < bytes.size(), "DecodeUtf8 needs a byte to read at the offset");
+
 		Utf8Decoder decoder;
 
 		while (offset < bytes.size())
@@ -73,92 +122,95 @@ namespace Core {
 				++offset;
 				return std::nullopt;
 			case Utf8Status::Interrupted:
-				// The byte that broke the sequence starts the next read.
 				return std::nullopt;
 			}
 		}
 
-		// The input ended inside a character.
 		return std::nullopt;
 	}
 
-	void AppendUtf8(std::string& out, char32_t codePoint)
+	void AppendUtf8(std::string& text, char32_t codePoint)
 	{
-		if (codePoint > kLastCodePoint || (codePoint >= kSurrogateFirst && codePoint <= kSurrogateLast))
+		const bool isSurrogate = codePoint >= kSurrogateFirst && codePoint <= kSurrogateLast;
+		const bool isNotACharacter = codePoint > kLastCodePoint || isSurrogate;
+
+		if (isNotACharacter)
 		{
 			codePoint = kReplacementCharacter;
 		}
 
-		const auto value = static_cast<std::uint32_t>(codePoint);
+		const auto scalarValue = static_cast<std::uint32_t>(codePoint);
 
-		if (value < 0x80u)
+		if (scalarValue < kFirstTwoByteCodePoint)
 		{
-			out.push_back(static_cast<char>(value));
+			text.push_back(static_cast<char>(scalarValue));
 		}
-		else if (value < 0x800u)
+		else if (scalarValue < kFirstThreeByteCodePoint)
 		{
-			out.push_back(static_cast<char>(0xC0u | (value >> 6)));
-			out.push_back(static_cast<char>(0x80u | (value & 0x3Fu)));
+			text.push_back(static_cast<char>(kTwoByteLeadMarker | (scalarValue >> kBitsPerContinuation)));
+			text.push_back(static_cast<char>(kContinuationMarker | (scalarValue & kContinuationPayloadMask)));
 		}
-		else if (value < 0x10000u)
+		else if (scalarValue < kFirstFourByteCodePoint)
 		{
-			out.push_back(static_cast<char>(0xE0u | (value >> 12)));
-			out.push_back(static_cast<char>(0x80u | ((value >> 6) & 0x3Fu)));
-			out.push_back(static_cast<char>(0x80u | (value & 0x3Fu)));
+			text.push_back(static_cast<char>(kThreeByteLeadMarker | (scalarValue >> (2 * kBitsPerContinuation))));
+			text.push_back(static_cast<char>(kContinuationMarker | ((scalarValue >> kBitsPerContinuation) & kContinuationPayloadMask)));
+			text.push_back(static_cast<char>(kContinuationMarker | (scalarValue & kContinuationPayloadMask)));
 		}
 		else
 		{
-			out.push_back(static_cast<char>(0xF0u | (value >> 18)));
-			out.push_back(static_cast<char>(0x80u | ((value >> 12) & 0x3Fu)));
-			out.push_back(static_cast<char>(0x80u | ((value >> 6) & 0x3Fu)));
-			out.push_back(static_cast<char>(0x80u | (value & 0x3Fu)));
+			text.push_back(static_cast<char>(kFourByteLeadMarker | (scalarValue >> (3 * kBitsPerContinuation))));
+			text.push_back(static_cast<char>(kContinuationMarker | ((scalarValue >> (2 * kBitsPerContinuation)) & kContinuationPayloadMask)));
+			text.push_back(static_cast<char>(kContinuationMarker | ((scalarValue >> kBitsPerContinuation) & kContinuationPayloadMask)));
+			text.push_back(static_cast<char>(kContinuationMarker | (scalarValue & kContinuationPayloadMask)));
 		}
 	}
 
 	Utf8Step Utf8Decoder::Feed(char byte)
 	{
-		const auto value = static_cast<unsigned char>(byte);
+		const auto byteValue = static_cast<unsigned char>(byte);
 
-		if (m_Remaining > 0)
+		if (m_RemainingContinuations > 0)
 		{
-			if (value < m_Lower || value > m_Upper)
+			const bool continuesPendingCharacter = byteValue >= m_LowestNextByte && byteValue <= m_HighestNextByte;
+
+			if (!continuesPendingCharacter)
 			{
-				m_Remaining = 0;
-				m_Value = 0;
-				return {Utf8Status::Interrupted, 0};
+				m_RemainingContinuations = 0;
+				m_PendingValue = 0;
+				return Utf8Step{.Status = Utf8Status::Interrupted, .CodePoint = 0};
 			}
 
-			m_Value = (m_Value << 6) | static_cast<char32_t>(value & 0x3Fu);
-			m_Lower = 0x80;
-			m_Upper = 0xBF;
-			--m_Remaining;
+			m_PendingValue = (m_PendingValue << kBitsPerContinuation) | static_cast<char32_t>(byteValue & kContinuationPayloadMask);
+			m_LowestNextByte = kLowestContinuationByte;
+			m_HighestNextByte = kHighestContinuationByte;
+			--m_RemainingContinuations;
 
-			if (m_Remaining > 0)
+			if (m_RemainingContinuations > 0)
 			{
-				return {Utf8Status::Pending, 0};
+				return Utf8Step{.Status = Utf8Status::Pending, .CodePoint = 0};
 			}
 
-			const char32_t codePoint = m_Value;
-			m_Value = 0;
-			return {Utf8Status::Decoded, codePoint};
+			const char32_t codePoint = m_PendingValue;
+			m_PendingValue = 0;
+			return Utf8Step{.Status = Utf8Status::Decoded, .CodePoint = codePoint};
 		}
 
-		const Lead lead = ReadLead(value);
+		const LeadByte lead = ReadLeadByte(byteValue);
 
-		if (!lead.Valid)
+		if (!lead.CanStartCharacter)
 		{
-			return {Utf8Status::Invalid, 0};
+			return Utf8Step{.Status = Utf8Status::Invalid, .CodePoint = 0};
 		}
 
-		if (lead.Continuations == 0)
+		if (lead.ContinuationCount == 0)
 		{
-			return {Utf8Status::Decoded, lead.Bits};
+			return Utf8Step{.Status = Utf8Status::Decoded, .CodePoint = lead.PayloadBits};
 		}
 
-		m_Value = lead.Bits;
-		m_Remaining = lead.Continuations;
-		m_Lower = lead.Lower;
-		m_Upper = lead.Upper;
-		return {Utf8Status::Pending, 0};
+		m_PendingValue = lead.PayloadBits;
+		m_RemainingContinuations = lead.ContinuationCount;
+		m_LowestNextByte = lead.LowestFirstContinuation;
+		m_HighestNextByte = lead.HighestFirstContinuation;
+		return Utf8Step{.Status = Utf8Status::Pending, .CodePoint = 0};
 	}
 }

@@ -54,7 +54,7 @@ TEST_CASE("An open document wins over the file on disk")
 	Write(file, "int Old;\n");
 
 	Core::DocumentSet documents;
-	REQUIRE(documents.Open(file, true) == Core::OpenOutcome::Opened);
+	REQUIRE(documents.Open(file, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
 
 	// An unsaved edit: the buffer now reads "int New;" while the disk still says "int Old;".
 	Core::OpenItem& item = documents.At(*documents.Find(file));

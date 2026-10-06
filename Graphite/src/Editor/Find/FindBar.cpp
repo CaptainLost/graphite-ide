@@ -45,7 +45,7 @@ namespace Graphite {
 			// The highlight draws straight from this list, so a closed bar has to leave none
 			// behind. The query survives, so reopening the bar offers it back.
 			item.Find.Matches.clear();
-			item.Find.Current = 0;
+			item.Find.CurrentMatch = 0;
 		}
 
 		// Room for a query worth typing, and no more: the bar hangs off the editor's right corner
@@ -78,7 +78,7 @@ namespace Graphite {
 				return "0/0";
 			}
 
-			return std::to_string(find.Current + 1) + "/" + std::to_string(find.Matches.size());
+			return std::to_string(find.CurrentMatch + 1) + "/" + std::to_string(find.Matches.size());
 		}
 
 		// A constant, and reserved even while the counter shows nothing. It depends on neither the
@@ -214,16 +214,16 @@ namespace Graphite {
 				return std::nullopt;
 			}
 
-			const std::pair<std::size_t, std::size_t> selection = Core::SelectionRange(caret);
+			const Core::OffsetRange selection = Core::SelectionRange(caret);
 
 			// Measured before the text is taken: a selection of half a file has no business
 			// being copied out only to be thrown away.
-			if (selection.second - selection.first >= kFindQueryLimit)
+			if (selection.To - selection.From >= kFindQueryLimit)
 			{
 				return std::nullopt;
 			}
 
-			std::string text = buffer.Substring(selection.first, selection.second);
+			std::string text = buffer.Substring(selection.From, selection.To);
 
 			if (text.find('\n') != std::string::npos)
 			{

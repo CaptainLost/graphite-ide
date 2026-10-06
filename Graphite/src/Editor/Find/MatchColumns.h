@@ -1,10 +1,10 @@
 #pragma once
 
 #include "Core/Text/Columns.h"
+#include "Core/Text/DocumentSet.h"
 
 #include <cstddef>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -37,7 +37,7 @@ namespace Graphite {
 		// Document byte ranges, ascending and non-overlapping. The ascending part is load-bearing:
 		// the line's own matches are a contiguous run, which is what lets the search below skip
 		// everything above the line instead of walking the whole document per line.
-		const std::vector<std::pair<std::size_t, std::size_t>>& Matches;
+		const std::vector<Core::FindMatch>& Matches;
 
 		// The line as it is stored, tabs included — the conversion needs them.
 		std::string_view LineText;

@@ -8,7 +8,7 @@ namespace Core {
 
 	class TextBuffer;
 
-	std::size_t IndentDepth(std::string_view line, std::size_t tabWidth);
+	std::size_t IndentDepth(std::string_view lineText, std::size_t tabWidth);
 
 	std::vector<std::size_t> IndentDepths(const TextBuffer& buffer,
 										  std::size_t tabWidth);

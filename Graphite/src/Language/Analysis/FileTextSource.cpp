@@ -82,7 +82,7 @@ namespace Graphite {
 		// Bytes rather than probe.FileEncoding, for the reason TextDocument::FromContent
 		// computes it the same way: the probe only sniffed a sample, so the mark actually
 		// sitting on the bytes about to be decoded is what has to be stripped.
-		const std::size_t bomLength = Core::BomLength(bytes);
+		const std::size_t bomLength = Core::LeadingByteOrderMarkLength(bytes);
 
 		Core::Result<std::string> text =
 			Core::TransformsContent(probe.FileEncoding)

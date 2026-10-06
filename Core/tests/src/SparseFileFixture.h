@@ -1,11 +1,20 @@
 #pragma once
 
+#include <doctest/doctest.h>
+
+#include "Core/Text/FileProbe.h"
+
+#include "FileFixtures.h"
+
+#include <cstdint>
+#include <filesystem>
+#include <string>
+#include <system_error>
+
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
 
 #include <winioctl.h>
-
-#include <filesystem>
 
 // NTFS reserves real clusters for a grown file unless it is sparse. False means the filesystem
 // cannot mark it, a fact about the machine rather than the code under test, so a caller skips.
@@ -29,3 +38,23 @@ inline bool MarkFileSparse(const std::filesystem::path& path)
 	return succeeded != FALSE;
 }
 #endif
+
+// The probe classifies a file by its first ProbeSampleSize bytes, and growing a file fills it
+// with zeros, so the sample is written as text first or its NUL bytes would read as Binary.
+inline bool TryWriteLargeTextFile(const std::filesystem::path& path, std::uint64_t fileSize)
+{
+	WriteFileBytes(path, std::string(Core::ProbeSampleSize, 'x'));
+
+#ifdef CORE_PLATFORM_WINDOWS
+	if (!MarkFileSparse(path))
+	{
+		return false;
+	}
+#endif
+
+	std::error_code resizeError;
+	std::filesystem::resize_file(path, fileSize, resizeError);
+	REQUIRE_FALSE(resizeError);
+
+	return true;
+}

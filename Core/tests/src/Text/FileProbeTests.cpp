@@ -2,31 +2,27 @@
 
 #include "Core/Text/FileProbe.h"
 
+#include "FileFixtures.h"
+#include "SparseFileFixture.h"
 #include "TempDirectory.h"
 
-#include <fstream>
+#include <filesystem>
 #include <ostream>
 #include <string>
 
 using namespace Core;
 
 namespace {
-	std::string SampleWithNul(std::size_t length, std::size_t nulAt)
+	std::string SampleWithNul(std::size_t length, std::size_t nulOffset)
 	{
 		std::string sample(length, 'a');
 
-		if (nulAt < length)
+		if (nulOffset < length)
 		{
-			sample[nulAt] = '\0';
+			sample[nulOffset] = '\0';
 		}
 
 		return sample;
-	}
-
-	void WriteFile(const std::filesystem::path& path, std::string_view contents)
-	{
-		std::ofstream stream{path, std::ios::binary};
-		stream.write(contents.data(), static_cast<std::streamsize>(contents.size()));
 	}
 }
 
@@ -47,27 +43,38 @@ TEST_CASE("An empty file is text")
 
 TEST_CASE("A NUL byte inside the sample means binary")
 {
-	const std::string sample = SampleWithNul(8192, 5000);
+	const std::size_t nulOffsetInsideTheSample = 5000;
+	const std::string sample = SampleWithNul(ProbeSampleSize, nulOffsetInsideTheSample);
 
-	CHECK(ClassifySample(sample, 8192).Kind == FileKind::Binary);
+	CHECK(ClassifySample(sample, ProbeSampleSize).Kind == FileKind::Binary);
 }
 
 TEST_CASE("A NUL byte past the sample goes unseen, which is the documented trade-off")
 {
-	// The file is 40 KB with a NUL at 20 000, but only the first 8 KB were read.
-	const std::string sample = SampleWithNul(8192, 20000);
+	TempDirectory directory;
+	const std::size_t fileSize = 40000;
+	const std::size_t nulOffsetPastTheSample = 20000;
+	REQUIRE(nulOffsetPastTheSample >= ProbeSampleSize);
 
-	CHECK(ClassifySample(sample, 40000).Kind == FileKind::Text);
+	std::string contents(fileSize, 'a');
+	contents[nulOffsetPastTheSample] = '\0';
+	const std::filesystem::path path = directory.GetPath() / "nul-past-the-sample.bin";
+	WriteFileBytes(path, contents);
+
+	const Result<FileProbe> probeResult = ProbeFile(path);
+
+	REQUIRE(probeResult);
+	CHECK(probeResult.GetValue().Kind == FileKind::Text);
 }
 
 TEST_CASE("A UTF-16 file is judged by its mark, not by the NUL bytes it is made of")
 {
-	// Every other byte is NUL, so the order of the checks is the only thing keeping
-	// this from being called binary.
-	std::string sample = "\xFF\xFE";
-	sample += std::string("h\0e\0l\0l\0o\0", 10);
+	std::string markedUtf16Hello = "\xFF\xFE";
+	markedUtf16Hello += std::string("h\0e\0l\0l\0o\0", 10);
 
-	const FileProbe probe = ClassifySample(sample, sample.size());
+	REQUIRE(markedUtf16Hello.find('\0') != std::string::npos);
+
+	const FileProbe probe = ClassifySample(markedUtf16Hello, markedUtf16Hello.size());
 
 	CHECK(probe.Kind == FileKind::Text);
 	CHECK(probe.FileEncoding == Encoding::Utf16Le);
@@ -98,10 +105,10 @@ TEST_CASE("A file too large to load is still reported with its size")
 TEST_CASE("Probing reads the file from disk")
 {
 	TempDirectory directory;
-	const auto path = directory.GetPath() / "hello.txt";
-	WriteFile(path, "int main() {}");
+	const std::filesystem::path path = directory.GetPath() / "hello.txt";
+	WriteFileBytes(path, "int main() {}");
 
-	const auto probe = ProbeFile(path);
+	const Result<FileProbe> probe = ProbeFile(path);
 
 	REQUIRE(probe);
 	CHECK(probe.GetValue().Kind == FileKind::Text);
@@ -112,33 +119,33 @@ TEST_CASE("Probing a file that is not there fails rather than guessing")
 {
 	TempDirectory directory;
 
-	const auto probe = ProbeFile(directory.GetPath() / "absent.txt");
+	const Result<FileProbe> probe = ProbeFile(directory.GetPath() / "absent.txt");
 
 	REQUIRE_FALSE(probe);
-	CHECK(probe.GetError().Code == Core::ErrorCode::NotFound);
+	CHECK(probe.GetError().Code == ErrorCode::NotFound);
 }
 
 TEST_CASE("Probing a directory fails")
 {
 	TempDirectory directory;
 
-	const auto probe = ProbeFile(directory.GetPath());
+	const Result<FileProbe> probe = ProbeFile(directory.GetPath());
 
 	REQUIRE_FALSE(probe);
 }
 
 TEST_CASE("UTF-16 without a mark is text, not binary")
 {
-	const std::string le = std::string("H\0e\0l\0l\0o\0", 10);
-	const std::string be = std::string("\0H\0e\0l\0l\0o", 10);
+	const std::string littleEndian = std::string("H\0e\0l\0l\0o\0", 10);
+	const std::string bigEndian = std::string("\0H\0e\0l\0l\0o", 10);
 
-	const FileProbe leProbe = ClassifySample(le, le.size());
-	const FileProbe beProbe = ClassifySample(be, be.size());
+	const FileProbe littleEndianProbe = ClassifySample(littleEndian, littleEndian.size());
+	const FileProbe bigEndianProbe = ClassifySample(bigEndian, bigEndian.size());
 
-	CHECK(leProbe.Kind == FileKind::Text);
-	CHECK(leProbe.FileEncoding == Encoding::Utf16Le);
-	CHECK(beProbe.Kind == FileKind::Text);
-	CHECK(beProbe.FileEncoding == Encoding::Utf16Be);
+	CHECK(littleEndianProbe.Kind == FileKind::Text);
+	CHECK(littleEndianProbe.FileEncoding == Encoding::Utf16Le);
+	CHECK(bigEndianProbe.Kind == FileKind::Text);
+	CHECK(bigEndianProbe.FileEncoding == Encoding::Utf16Be);
 }
 
 TEST_CASE("Binary data is still binary even when its NUL bytes line up")
@@ -155,7 +162,7 @@ TEST_CASE("A large UTF-16 file is judged by its size like any other text")
 	CHECK(ClassifySample(bytes, LargeFileThreshold + 1).Kind == FileKind::LargeText);
 }
 
-TEST_CASE("ReadDiskText keeps the byte order mark and refuses what is not text")
+TEST_CASE("ReadDiskText keeps a UTF-8 byte order mark as it is and decodes a UTF-16 one to a leading U+FEFF but refuses what is not text")
 {
 	TempDirectory directory;
 
@@ -189,4 +196,33 @@ TEST_CASE("ReadDiskText leaves line endings as they are on disk")
 {
 	TempDirectory directory;
 	CHECK(ReadDiskText(directory.MakeFile("crlf.txt", "a\r\nb")).Text == "a\r\nb");
+}
+
+TEST_CASE("ReadDiskText reads a file large enough to need confirmation rather than refusing it")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "big.log";
+
+	if (!TryWriteLargeTextFile(path, LargeFileThreshold + 1))
+	{
+		return;
+	}
+
+	const DiskText largeFileText = ReadDiskText(path);
+
+	CHECK(largeFileText.Outcome == DiskTextOutcome::Read);
+	CHECK(largeFileText.Text.size() == LargeFileThreshold + 1);
+}
+
+TEST_CASE("ReadDiskText refuses a file past the maximum size")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "huge.log";
+
+	if (!TryWriteLargeTextFile(path, MaximumFileSize + 1))
+	{
+		return;
+	}
+
+	CHECK(ReadDiskText(path).Outcome == DiskTextOutcome::TooLarge);
 }

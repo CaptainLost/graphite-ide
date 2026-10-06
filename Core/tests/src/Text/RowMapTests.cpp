@@ -5,10 +5,15 @@
 #include "Core/Text/WrapLayout.h"
 
 #include <string>
+#include <vector>
 
 using namespace Core;
 
 namespace {
+	constexpr std::size_t kTabWidth = 4;
+	constexpr std::size_t kWideEnoughNotToWrap = 80;
+	constexpr std::size_t kFourColumnsPerRow = 4;
+
 	TextBuffer BufferOf(const std::string& text)
 	{
 		return TextBuffer{text};
@@ -20,7 +25,7 @@ TEST_CASE("Without wrapping every line is one row")
 	const TextBuffer buffer = BufferOf("aaa\nbbb\nccc");
 
 	RowMap rows;
-	rows.Rebuild(buffer, 80, 4);
+	rows.Rebuild(buffer, kWideEnoughNotToWrap, kTabWidth);
 
 	CHECK(rows.GetTotalRows() == 3);
 	CHECK(rows.FirstRowOf(0) == 0);
@@ -34,9 +39,10 @@ TEST_CASE("A wrapped line occupies as many rows as it has breaks plus one")
 	const TextBuffer buffer = BufferOf("aaaaaaaaaa\nbb");
 
 	RowMap rows;
-	rows.Rebuild(buffer, 4, 4);
+	rows.Rebuild(buffer, kFourColumnsPerRow, kTabWidth);
 
-	// Ten columns at four per row: rows at columns 0, 4 and 8.
+	const std::vector<std::size_t> breaksAtColumnsFourAndEight{4, 8};
+	CHECK(rows.BreaksOf(0) == breaksAtColumnsFourAndEight);
 	CHECK(rows.RowsOf(0) == 3);
 	CHECK(rows.RowsOf(1) == 1);
 	CHECK(rows.GetTotalRows() == 4);
@@ -47,7 +53,7 @@ TEST_CASE("A row resolves to its line and its position within it")
 	const TextBuffer buffer = BufferOf("aaaaaaaaaa\nbb");
 
 	RowMap rows;
-	rows.Rebuild(buffer, 4, 4);
+	rows.Rebuild(buffer, kFourColumnsPerRow, kTabWidth);
 
 	CHECK(rows.RowAt(0).Line == 0);
 	CHECK(rows.RowAt(0).SubRow == 0);
@@ -57,12 +63,28 @@ TEST_CASE("A row resolves to its line and its position within it")
 	CHECK(rows.RowAt(3).SubRow == 0);
 }
 
+TEST_CASE("A row past the end resolves to the last row of the last line")
+{
+	const TextBuffer buffer = BufferOf("bb\naaaaaaaaaa");
+
+	RowMap rows;
+	rows.Rebuild(buffer, kFourColumnsPerRow, kTabWidth);
+	REQUIRE(rows.GetTotalRows() == 4);
+
+	const std::size_t rowPastTheEnd = 100;
+
+	CHECK(rows.RowAt(rowPastTheEnd).Line == 1);
+	CHECK(rows.RowAt(rowPastTheEnd).SubRow == 2);
+	CHECK(rows.RowAt(rows.GetTotalRows()).Line == 1);
+	CHECK(rows.RowAt(rows.GetTotalRows()).SubRow == 2);
+}
+
 TEST_CASE("FirstRowOf and RowAt agree in both directions")
 {
 	const TextBuffer buffer = BufferOf("aaaaaaaaaa\nbb\ncccccc\nd");
 
 	RowMap rows;
-	rows.Rebuild(buffer, 4, 4);
+	rows.Rebuild(buffer, kFourColumnsPerRow, kTabWidth);
 
 	for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
 	{
@@ -78,12 +100,10 @@ TEST_CASE("Updating one line moves every row after it")
 	TextBuffer buffer = BufferOf("aa\nbb\ncc");
 
 	RowMap rows;
-	rows.Rebuild(buffer, 4, 4);
+	rows.Rebuild(buffer, kFourColumnsPerRow, kTabWidth);
 	CHECK(rows.GetTotalRows() == 3);
 	CHECK(rows.FirstRowOf(2) == 2);
 
-	// The middle line grows to three rows; the line after it must shift by two.
-	// TextBuffer has Insert and Erase, no Replace.
 	buffer.Erase(3, 5);
 	buffer.Insert(3, "bbbbbbbbbb");
 	rows.UpdateLine(buffer, 1);
@@ -93,19 +113,21 @@ TEST_CASE("Updating one line moves every row after it")
 	CHECK(rows.FirstRowOf(2) == 4);
 }
 
-TEST_CASE("kNoWrap gives every line exactly one row")
+TEST_CASE("kNoWrap gives every line exactly one row where a width of zero would wrap at every column")
 {
-	// What the editor uses when wrapping is off, so the widget takes one path either way
-	// instead of branching between a wrapped and an unwrapped renderer. It cannot be
-	// expressed as a width: WrapColumns treats a width of zero as one column, which would
-	// wrap everything rather than nothing.
 	const TextBuffer buffer = BufferOf("aaaaaaaaaaaaaaaaaaaa\nbb");
 
 	RowMap rows;
-	rows.Rebuild(buffer, RowMap::kNoWrap, 4);
+	rows.Rebuild(buffer, RowMap::kNoWrap, kTabWidth);
 
 	CHECK(rows.GetTotalRows() == 2);
 	CHECK(rows.BreaksOf(0).empty());
+
+	const std::size_t zeroColumnsPerRow = 0;
+	RowMap zeroWidthRows;
+	zeroWidthRows.Rebuild(buffer, zeroColumnsPerRow, kTabWidth);
+
+	CHECK(zeroWidthRows.RowsOf(0) == 20);
 }
 
 TEST_CASE("A line of zero rows is skipped, which is what folding will need")
@@ -113,24 +135,22 @@ TEST_CASE("A line of zero rows is skipped, which is what folding will need")
 	const TextBuffer buffer = BufferOf("aa\nbb\ncc");
 
 	RowMap rows;
-	rows.Rebuild(buffer, 80, 4);
-	rows.SetRowsOf(1, 0);
+	rows.Rebuild(buffer, kWideEnoughNotToWrap, kTabWidth);
+	rows.SetRowsOf(1, RowMap::kNoRows);
 
 	CHECK(rows.GetTotalRows() == 2);
 	CHECK(rows.RowAt(0).Line == 0);
 	CHECK(rows.RowAt(1).Line == 2);
 }
 
-TEST_CASE("Two adjacent zero-row lines are both skipped")
+TEST_CASE("Two adjacent zero-row lines of a folded block are both stepped over by the descent")
 {
-	// What a folded block of several lines looks like to this map. The descent has to
-	// step over a run of them, not just a single one.
 	const TextBuffer buffer = BufferOf("aa\nbb\ncc\ndd");
 
 	RowMap rows;
-	rows.Rebuild(buffer, 80, 4);
-	rows.SetRowsOf(1, 0);
-	rows.SetRowsOf(2, 0);
+	rows.Rebuild(buffer, kWideEnoughNotToWrap, kTabWidth);
+	rows.SetRowsOf(1, RowMap::kNoRows);
+	rows.SetRowsOf(2, RowMap::kNoRows);
 
 	CHECK(rows.GetTotalRows() == 2);
 	CHECK(rows.RowAt(0).Line == 0);
@@ -138,15 +158,13 @@ TEST_CASE("Two adjacent zero-row lines are both skipped")
 	CHECK(rows.FirstRowOf(3) == 1);
 }
 
-TEST_CASE("A zero-row first line does not claim row zero")
+TEST_CASE("A zero-row first line does not claim row zero although the descent starts there")
 {
-	// The descent starts at line zero, so a folded first line is the case most likely to
-	// be resolved to the wrong line.
 	const TextBuffer buffer = BufferOf("aa\nbb");
 
 	RowMap rows;
-	rows.Rebuild(buffer, 80, 4);
-	rows.SetRowsOf(0, 0);
+	rows.Rebuild(buffer, kWideEnoughNotToWrap, kTabWidth);
+	rows.SetRowsOf(0, RowMap::kNoRows);
 
 	CHECK(rows.GetTotalRows() == 1);
 	CHECK(rows.RowAt(0).Line == 1);
@@ -156,29 +174,27 @@ TEST_CASE("A zero-row first line does not claim row zero")
 
 TEST_CASE("A caret on a visible line maps correctly around a zero-row line")
 {
-	// CaretToVisual assumes every line occupies at least one row, and a caret *inside* a
-	// zero-row line has no defined answer until stage 5's folding decides what one means.
-	// The lines either side of it are not in doubt, though: they are ordinary visible
-	// lines whose rows have simply moved up. Pinned here so folding cannot quietly break
-	// the composition of a zero-row map with this pair while the undefined case is still
-	// being designed.
+	// A caret inside a zero-row line has no defined position, so only the visible lines
+	// either side of it are pinned.
 	const TextBuffer buffer = BufferOf("aa\nbb\ncc");
 
 	RowMap rows;
-	rows.Rebuild(buffer, 80, 4);
-	rows.SetRowsOf(1, 0);
+	rows.Rebuild(buffer, kWideEnoughNotToWrap, kTabWidth);
+	rows.SetRowsOf(1, RowMap::kNoRows);
 
-	// Line 0 keeps row 0; line 2 (offsets 6 and 7) moves up to row 1.
-	const VisualPosition before = CaretToVisual(buffer, rows, 1, 4);
+	const std::size_t secondCharacterOfFirstLine = 1;
+	const std::size_t secondCharacterOfThirdLine = 7;
+
+	const VisualPosition before = CaretToVisual(buffer, rows, secondCharacterOfFirstLine, kTabWidth);
 
 	CHECK(before.Row == 0);
 	CHECK(before.Column == 1);
 
-	const VisualPosition after = CaretToVisual(buffer, rows, 7, 4);
+	const VisualPosition after = CaretToVisual(buffer, rows, secondCharacterOfThirdLine, kTabWidth);
 
 	CHECK(after.Row == 1);
 	CHECK(after.Column == 1);
 
-	CHECK(VisualToCaret(buffer, rows, before, 4) == 1);
-	CHECK(VisualToCaret(buffer, rows, after, 4) == 7);
+	CHECK(VisualToCaret(buffer, rows, before, kTabWidth) == secondCharacterOfFirstLine);
+	CHECK(VisualToCaret(buffer, rows, after, kTabWidth) == secondCharacterOfThirdLine);
 }

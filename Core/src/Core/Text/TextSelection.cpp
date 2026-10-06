@@ -2,39 +2,27 @@
 
 #include "Core/Text/TextSelection.h"
 
+#include "Core/Text/Encoding.h"
+
 #include <algorithm>
 
 namespace Core {
 
-	namespace {
-		// Moves `byte` back to the first byte of the character it falls inside.
-		std::size_t CharacterStart(std::string_view text, std::size_t byte)
-		{
-			byte = std::min(byte, text.size());
-			while (byte > 0 && byte < text.size() &&
-				   (static_cast<unsigned char>(text[byte]) & 0xC0) == 0x80)
-			{
-				--byte;
-			}
-			return byte;
-		}
+	void TextSelection::Begin(TextPoint pressedPoint)
+	{
+		m_Pressed = pressedPoint;
+		m_Dragged = pressedPoint;
 	}
 
-	void TextSelection::Begin(TextPoint at)
+	void TextSelection::ExtendTo(TextPoint draggedPoint)
 	{
-		m_Pressed = at;
-		m_Dragged = at;
+		m_Dragged = draggedPoint;
 	}
 
-	void TextSelection::ExtendTo(TextPoint at)
+	void TextSelection::Select(TextPoint pressedPoint, TextPoint draggedPoint)
 	{
-		m_Dragged = at;
-	}
-
-	void TextSelection::Select(TextPoint from, TextPoint to)
-	{
-		m_Pressed = from;
-		m_Dragged = to;
+		m_Pressed = pressedPoint;
+		m_Dragged = draggedPoint;
 	}
 
 	void TextSelection::Clear()
@@ -58,7 +46,7 @@ namespace Core {
 		return std::max(m_Pressed, m_Dragged);
 	}
 
-	std::optional<ColumnSpan> TextSelection::SpanOn(std::int64_t line, std::size_t length) const
+	std::optional<ColumnSpan> TextSelection::SpanOn(std::int64_t line, std::size_t lineLength) const
 	{
 		if (IsEmpty())
 		{
@@ -73,37 +61,40 @@ namespace Core {
 			return std::nullopt;
 		}
 
-		const std::size_t from = line == first.Line ? std::min(first.Column, length) : 0;
-		const std::size_t to = line == last.Line ? std::min(last.Column, length) : length;
+		const bool selectionStartsOnLine = line == first.Line;
+		const bool selectionEndsOnLine = line == last.Line;
 
-		return ColumnSpan{from, std::max(from, to)};
+		const std::size_t selectedFrom = selectionStartsOnLine ? std::min(first.Column, lineLength) : 0;
+		const std::size_t selectedTo = selectionEndsOnLine ? std::min(last.Column, lineLength) : lineLength;
+
+		return ColumnSpan{.From = selectedFrom, .To = std::max(selectedFrom, selectedTo)};
 	}
 
-	std::string JoinSelected(const TextSelection& selection, std::span<const SelectableLine> lines)
+	std::string JoinSelected(const TextSelection& selection, std::span<const SelectableLine> shownLines)
 	{
-		std::string out;
-		bool wrote = false;
+		std::string joined;
+		bool anyLineJoined = false;
 
-		for (const SelectableLine& line : lines)
+		for (const SelectableLine& shownLine : shownLines)
 		{
-			const std::optional<ColumnSpan> span = selection.SpanOn(line.Line, line.Text.size());
+			const std::optional<ColumnSpan> span = selection.SpanOn(shownLine.Line, shownLine.Text.size());
 
 			if (!span.has_value())
 			{
 				continue;
 			}
 
-			if (wrote)
+			if (anyLineJoined)
 			{
-				out.push_back('\n');
+				joined.push_back('\n');
 			}
 
-			wrote = true;
-			const std::size_t from = CharacterStart(line.Text, span->From);
-			const std::size_t to = CharacterStart(line.Text, span->To);
-			out.append(line.Text.substr(from, to - from));
+			anyLineJoined = true;
+			const std::size_t selectedStart = CharacterBoundaryAtOrBefore(shownLine.Text, span->From);
+			const std::size_t selectedEnd = CharacterBoundaryAtOrBefore(shownLine.Text, span->To);
+			joined.append(shownLine.Text.substr(selectedStart, selectedEnd - selectedStart));
 		}
 
-		return out;
+		return joined;
 	}
 }

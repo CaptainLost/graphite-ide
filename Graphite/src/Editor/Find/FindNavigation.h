@@ -9,7 +9,7 @@ namespace Core {
 namespace Graphite {
 
 	// Rebuilds the document's find matches from its query and flags, unconditionally, and puts
-	// Current on the first match at or after the caret. Every place that changes the query or a
+	// CurrentMatch on the first match at or after the caret. Every place that changes the query or a
 	// flag calls this as it changes them — see RefreshFindMatchesIfStale for why that matters.
 	void RefreshFindMatches(Core::OpenItem& item, const Core::TextBuffer& buffer);
 
@@ -45,7 +45,7 @@ namespace Graphite {
 	void StepFindMatch(Core::OpenItem& item, const Core::TextBuffer& buffer, bool backwards);
 
 	// Selects the current match and asks for a scroll to it, the way a step does, without
-	// moving Current. Does nothing when there are no matches.
+	// moving CurrentMatch. Does nothing when there are no matches.
 	//
 	// Called whenever the bar rebuilds the list on the user's behalf — a query typed, a toggle
 	// flipped, the bar opened — because the counter names a current match and nothing else

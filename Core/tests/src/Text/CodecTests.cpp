@@ -7,13 +7,15 @@
 using namespace Core;
 
 namespace {
-	const std::string kHiLe = std::string("H\0i\0", 4);
-	const std::string kHiBe = std::string("\0H\0i", 4);
+	// A string holding a NUL is built with an explicit length: built from the literal alone it
+	// would stop at the first NUL.
+	const std::string kHiLittleEndian = std::string("H\0i\0", 4);
+	const std::string kHiBigEndian = std::string("\0H\0i", 4);
 }
 
 TEST_CASE("UTF-8 passes through decoding untouched")
 {
-	const auto decoded = Decode("plain text", Encoding::Utf8);
+	const Result<std::string> decoded = Decode("plain text", Encoding::Utf8);
 
 	REQUIRE(decoded);
 	CHECK(decoded.GetValue() == "plain text");
@@ -21,28 +23,27 @@ TEST_CASE("UTF-8 passes through decoding untouched")
 
 TEST_CASE("Unknown passes through decoding untouched")
 {
-	// Bytes that are not valid UTF-8 — "część" as Windows-1250 writes it.
-	const std::string bytes = "cz\xEA\x9C\xE6";
-	const auto decoded = Decode(bytes, Encoding::Unknown);
+	const std::string polishWordInWindows1250 = "cz\xEA\x9C\xE6";
+	const Result<std::string> decoded = Decode(polishWordInWindows1250, Encoding::Unknown);
 
 	REQUIRE(decoded);
-	CHECK(decoded.GetValue() == bytes);
+	CHECK(decoded.GetValue() == polishWordInWindows1250);
 }
 
 TEST_CASE("UTF-16 decodes in both byte orders")
 {
-	const auto le = Decode(kHiLe, Encoding::Utf16Le);
-	const auto be = Decode(kHiBe, Encoding::Utf16Be);
+	const Result<std::string> fromLittleEndian = Decode(kHiLittleEndian, Encoding::Utf16Le);
+	const Result<std::string> fromBigEndian = Decode(kHiBigEndian, Encoding::Utf16Be);
 
-	REQUIRE(le);
-	REQUIRE(be);
-	CHECK(le.GetValue() == "Hi");
-	CHECK(be.GetValue() == "Hi");
+	REQUIRE(fromLittleEndian);
+	REQUIRE(fromBigEndian);
+	CHECK(fromLittleEndian.GetValue() == "Hi");
+	CHECK(fromBigEndian.GetValue() == "Hi");
 }
 
 TEST_CASE("An empty file decodes to nothing rather than failing")
 {
-	const auto decoded = Decode("", Encoding::Utf16Le);
+	const Result<std::string> decoded = Decode("", Encoding::Utf16Le);
 
 	REQUIRE(decoded);
 	CHECK(decoded.GetValue() == "");
@@ -50,9 +51,8 @@ TEST_CASE("An empty file decodes to nothing rather than failing")
 
 TEST_CASE("Characters outside the basic plane decode from a surrogate pair")
 {
-	// U+1F642 is D83D DE42; little-endian that is 3D D8 42 DE.
-	const std::string bytes = "\x3D\xD8\x42\xDE";
-	const auto decoded = Decode(bytes, Encoding::Utf16Le);
+	const std::string slightlySmilingFaceInUtf16LittleEndian = "\x3D\xD8\x42\xDE";
+	const Result<std::string> decoded = Decode(slightlySmilingFaceInUtf16LittleEndian, Encoding::Utf16Le);
 
 	REQUIRE(decoded);
 	CHECK(decoded.GetValue() == "\xF0\x9F\x99\x82");
@@ -60,42 +60,42 @@ TEST_CASE("Characters outside the basic plane decode from a surrogate pair")
 
 TEST_CASE("Polish characters survive the round trip in both byte orders")
 {
-	const std::string text = "zaz\xC3\xB3\xC5\x82\xC4\x87 g\xC4\x99\xC5\x9Bl\xC4\x85";
+	const std::string polishPhrase = "zaz\xC3\xB3\xC5\x82\xC4\x87 g\xC4\x99\xC5\x9Bl\xC4\x85";
 
 	for (const Encoding encoding : {Encoding::Utf16Le, Encoding::Utf16Be})
 	{
-		const std::string encoded = Encode(text, encoding);
-		const auto decoded = Decode(encoded, encoding);
+		const std::string encoded = Encode(polishPhrase, encoding);
+		const Result<std::string> decoded = Decode(encoded, encoding);
 
 		REQUIRE(decoded);
-		CHECK(decoded.GetValue() == text);
+		CHECK(decoded.GetValue() == polishPhrase);
 	}
 }
 
 TEST_CASE("An emoji survives the round trip, which is the only case that makes a pair")
 {
-	const std::string text = "a\xF0\x9F\x99\x82z";
+	const std::string emojiBetweenLetters = "a\xF0\x9F\x99\x82z";
 
 	for (const Encoding encoding : {Encoding::Utf16Le, Encoding::Utf16Be})
 	{
-		const auto decoded = Decode(Encode(text, encoding), encoding);
+		const Result<std::string> decoded = Decode(Encode(emojiBetweenLetters, encoding), encoding);
 
 		REQUIRE(decoded);
-		CHECK(decoded.GetValue() == text);
+		CHECK(decoded.GetValue() == emojiBetweenLetters);
 	}
 }
 
 TEST_CASE("Bytes decoded and re-encoded come back identical")
 {
-	const auto decoded = Decode(kHiLe, Encoding::Utf16Le);
+	const Result<std::string> decoded = Decode(kHiLittleEndian, Encoding::Utf16Le);
 
 	REQUIRE(decoded);
-	CHECK(Encode(decoded.GetValue(), Encoding::Utf16Le) == kHiLe);
+	CHECK(Encode(decoded.GetValue(), Encoding::Utf16Le) == kHiLittleEndian);
 }
 
 TEST_CASE("An odd number of bytes is a truncated file, not a character")
 {
-	const auto decoded = Decode(std::string("H\0i", 3), Encoding::Utf16Le);
+	const Result<std::string> decoded = Decode(std::string("H\0i", 3), Encoding::Utf16Le);
 
 	REQUIRE_FALSE(decoded);
 	CHECK(decoded.GetError().Message.find("odd") != std::string::npos);
@@ -103,10 +103,8 @@ TEST_CASE("An odd number of bytes is a truncated file, not a character")
 
 TEST_CASE("A high surrogate without a low one fails")
 {
-	// D83D followed by an ordinary character rather than its partner.
-	// Built with an explicit length: a string literal would stop at the trailing NUL.
-	const std::string bytes = std::string("\x3D\xD8\x69\x00", 4);
-	const auto decoded = Decode(bytes, Encoding::Utf16Le);
+	const std::string highSurrogateThenOrdinaryCharacter = std::string("\x3D\xD8\x69\x00", 4);
+	const Result<std::string> decoded = Decode(highSurrogateThenOrdinaryCharacter, Encoding::Utf16Le);
 
 	REQUIRE_FALSE(decoded);
 	CHECK(decoded.GetError().Message.find("surrogate") != std::string::npos);
@@ -114,8 +112,8 @@ TEST_CASE("A high surrogate without a low one fails")
 
 TEST_CASE("A high surrogate at the very end fails")
 {
-	const std::string bytes = "\x3D\xD8";
-	const auto decoded = Decode(bytes, Encoding::Utf16Le);
+	const std::string loneHighSurrogate = "\x3D\xD8";
+	const Result<std::string> decoded = Decode(loneHighSurrogate, Encoding::Utf16Le);
 
 	REQUIRE_FALSE(decoded);
 	CHECK(decoded.GetError().Message.find("surrogate") != std::string::npos);
@@ -123,8 +121,8 @@ TEST_CASE("A high surrogate at the very end fails")
 
 TEST_CASE("A low surrogate with nothing before it fails")
 {
-	const std::string bytes = "\x42\xDE";
-	const auto decoded = Decode(bytes, Encoding::Utf16Le);
+	const std::string loneLowSurrogate = "\x42\xDE";
+	const Result<std::string> decoded = Decode(loneLowSurrogate, Encoding::Utf16Le);
 
 	REQUIRE_FALSE(decoded);
 	CHECK(decoded.GetError().Message.find("surrogate") != std::string::npos);
@@ -132,40 +130,40 @@ TEST_CASE("A low surrogate with nothing before it fails")
 
 TEST_CASE("The error names where it happened, so a damaged file can be looked at")
 {
-	// "Hi" then a stray low surrogate, so the failure is at byte 4 rather than byte 0.
-	// Built with an explicit length: a string literal would stop at the first NUL.
-	const std::string bytes = std::string("H\0i\0\x42\xDE", 6);
-	const auto decoded = Decode(bytes, Encoding::Utf16Le);
+	const std::string hiThenStrayLowSurrogate = std::string("H\0i\0\x42\xDE", 6);
+	const std::string offsetOfStrayLowSurrogate = "4";
+	const Result<std::string> decoded = Decode(hiThenStrayLowSurrogate, Encoding::Utf16Le);
 
 	REQUIRE_FALSE(decoded);
-	CHECK(decoded.GetError().Message.find("4") != std::string::npos);
+	CHECK(decoded.GetError().Message.find(offsetOfStrayLowSurrogate) != std::string::npos);
 }
 
-TEST_CASE("Encoding passes UTF-8, its BOM variant and Unknown through unchanged")
+TEST_CASE("Encoding passes UTF-8, its BOM variant and Unknown through unchanged so a read-only file that failed validation is written back byte-identical")
 {
-	// This is what keeps a read-only file whose bytes failed validation byte-identical
-	// when it is written back.
-	const std::string bytes = "cz\xEA\x9C\xE6";
+	const std::string polishWordInWindows1250 = "cz\xEA\x9C\xE6";
 
-	CHECK(Encode(bytes, Encoding::Utf8) == bytes);
-	CHECK(Encode(bytes, Encoding::Utf8Bom) == bytes);
-	CHECK(Encode(bytes, Encoding::Unknown) == bytes);
+	CHECK(Encode(polishWordInWindows1250, Encoding::Utf8) == polishWordInWindows1250);
+	CHECK(Encode(polishWordInWindows1250, Encoding::Utf8Bom) == polishWordInWindows1250);
+	CHECK(Encode(polishWordInWindows1250, Encoding::Unknown) == polishWordInWindows1250);
 }
 
 TEST_CASE("Encoding writes the byte order it was asked for")
 {
-	CHECK(Encode("Hi", Encoding::Utf16Le) == kHiLe);
-	CHECK(Encode("Hi", Encoding::Utf16Be) == kHiBe);
+	CHECK(Encode("Hi", Encoding::Utf16Le) == kHiLittleEndian);
+	CHECK(Encode("Hi", Encoding::Utf16Be) == kHiBigEndian);
 }
 
-TEST_CASE("Encoding to UTF-16 writes a replacement for each byte that is not UTF-8")
+TEST_CASE("Encoding to UTF-16 writes one replacement for each broken sequence rather than assembling its bits")
 {
-	// A stray continuation byte is not U+0080, and F5 cannot lead at all: assembling their
-	// bits anyway gave a C1 control for the first and a lone low surrogate for the second.
-	const std::string replacement = std::string("\xFD\xFF", 2);
+	const std::string strayContinuationByteBetweenCharacters = "a\x80!";
+	const std::string byteThatCannotLeadThenThreeContinuationBytes = "\xF5\x80\x80\x80";
+	const std::string truncatedThreeByteSequenceThenLetter = "\xE2\x82"
+															 "a";
+	const std::string replacementCharacterLittleEndian = std::string("\xFD\xFF", 2);
 
-	CHECK(Encode("a\x80!", Encoding::Utf16Le) == std::string("a\0", 2) + replacement + std::string("!\0", 2));
-	CHECK(Encode("\xF5\x80\x80\x80", Encoding::Utf16Le) == replacement + replacement + replacement + replacement);
+	CHECK(Encode(strayContinuationByteBetweenCharacters, Encoding::Utf16Le) == std::string("a\0", 2) + replacementCharacterLittleEndian + std::string("!\0", 2));
+	CHECK(Encode(byteThatCannotLeadThenThreeContinuationBytes, Encoding::Utf16Le) == replacementCharacterLittleEndian + replacementCharacterLittleEndian + replacementCharacterLittleEndian + replacementCharacterLittleEndian);
+	CHECK(Encode(truncatedThreeByteSequenceThenLetter, Encoding::Utf16Le) == replacementCharacterLittleEndian + std::string("a\0", 2));
 }
 
 TEST_CASE("A byte order mark settles the encoding on its own")
@@ -183,17 +181,18 @@ TEST_CASE("Ordinary text with no mark is UTF-8")
 
 TEST_CASE("UTF-16 without a mark is recognised from the parity of its NUL bytes")
 {
-	// "Hello" — NULs at odd positions is little-endian, at even is big-endian.
-	CHECK(SniffEncoding(std::string("H\0e\0l\0l\0o\0", 10)) == Encoding::Utf16Le);
-	CHECK(SniffEncoding(std::string("\0H\0e\0l\0l\0o", 10)) == Encoding::Utf16Be);
+	const std::string helloWithNulsAtOddOffsets = std::string("H\0e\0l\0l\0o\0", 10);
+	const std::string helloWithNulsAtEvenOffsets = std::string("\0H\0e\0l\0l\0o", 10);
+
+	CHECK(SniffEncoding(helloWithNulsAtOddOffsets) == Encoding::Utf16Le);
+	CHECK(SniffEncoding(helloWithNulsAtEvenOffsets) == Encoding::Utf16Be);
 }
 
 TEST_CASE("A file with NUL bytes on both parities is not UTF-16")
 {
-	// Both parities carry NULs, so neither byte order explains the file.
-	const std::string bytes = std::string("\0\0a\0\0b\0\0", 8);
+	const std::string nulsOnBothParities = std::string("\0\0a\0\0b\0\0", 8);
 
-	CHECK(SniffEncoding(bytes) == Encoding::Utf8);
+	CHECK(SniffEncoding(nulsOnBothParities) == Encoding::Utf8);
 }
 
 TEST_CASE("A single NUL byte is not enough evidence")
@@ -203,68 +202,53 @@ TEST_CASE("A single NUL byte is not enough evidence")
 
 TEST_CASE("Binary data whose NULs happen to line up is caught by the decode check")
 {
-	// Every NUL at an odd position, so the parity test passes — but decoded as UTF-16LE
-	// these are control characters, which text does not contain. This is the case that
-	// keeps the third condition from being decoration.
-	const std::string bytes = std::string("\x01\0\x02\0\x03\0\x04\0", 8);
+	const std::string controlCharactersWithNulsAtOddOffsets = std::string("\x01\0\x02\0\x03\0\x04\0", 8);
 
-	CHECK(SniffEncoding(bytes) == Encoding::Utf8);
+	CHECK(SniffEncoding(controlCharactersWithNulsAtOddOffsets) == Encoding::Utf8);
 }
 
 TEST_CASE("Text containing tabs and newlines is still text")
 {
-	const std::string bytes = std::string("a\0\t\0\n\0b\0", 8);
+	const std::string tabAndNewlineBetweenLetters = std::string("a\0\t\0\n\0b\0", 8);
 
-	CHECK(SniffEncoding(bytes) == Encoding::Utf16Le);
+	CHECK(SniffEncoding(tabAndNewlineBetweenLetters) == Encoding::Utf16Le);
 }
 
 TEST_CASE("An unpaired surrogate means the bytes are not UTF-16 text")
 {
-	// A high surrogate followed by an ordinary character: NULs line up, but it does not
-	// decode.
-	const std::string bytes = std::string("\x3D\xD8\x69\0\x69\0", 6);
+	const std::string highSurrogateThenOrdinaryCharacters = std::string("\x3D\xD8\x69\0\x69\0", 6);
 
-	CHECK(SniffEncoding(bytes) == Encoding::Utf8);
+	CHECK(SniffEncoding(highSurrogateThenOrdinaryCharacters) == Encoding::Utf8);
 }
 
 TEST_CASE("A sample cut mid-unit is still recognised")
 {
-	// Nine bytes: four whole units and one stray byte, as an 8 KB sample of a larger
-	// file would be.
-	const std::string bytes = std::string("H\0e\0l\0l\0o", 9);
+	const std::string fourUnitsThenOneStrayByte = std::string("H\0e\0l\0l\0o", 9);
 
-	CHECK(SniffEncoding(bytes) == Encoding::Utf16Le);
+	CHECK(SniffEncoding(fourUnitsThenOneStrayByte) == Encoding::Utf16Le);
 }
 
-TEST_CASE("A character outside Latin-1 does not break the parity rule")
+TEST_CASE("A character outside Latin-1 does not break the parity rule while nine tenths of the NULs share one parity")
 {
-	// U+0100 is 00 01 little-endian, putting one NUL at the even parity while every
-	// ASCII character puts one at the odd. Nine ASCII characters against that one give
-	// 9 of 10 NULs at the dominant parity, which is exactly the threshold — so this case
-	// also pins where the threshold sits. Note the arithmetic: fewer than nine ASCII
-	// characters here and the file would be called UTF-8.
-	const std::string bytes = std::string("a\0b\0c\0d\0e\0f\0g\0h\0i\0\0\x01", 20);
+	const std::string nineAsciiLettersThenCapitalAWithMacron = std::string("a\0b\0c\0d\0e\0f\0g\0h\0i\0\0\x01", 20);
+	const std::string eightAsciiLettersThenCapitalAWithMacron = std::string("b\0c\0d\0e\0f\0g\0h\0i\0\0\x01", 18);
 
-	CHECK(SniffEncoding(bytes) == Encoding::Utf16Le);
+	CHECK(SniffEncoding(nineAsciiLettersThenCapitalAWithMacron) == Encoding::Utf16Le);
+	CHECK(SniffEncoding(eightAsciiLettersThenCapitalAWithMacron) == Encoding::Utf8);
 }
 
 TEST_CASE("Decoded C1 control characters are not text")
 {
-	// Codepoints U+0085, U+0086, U+0087, U+0088 — all C1 controls, all NULs at the odd
-	// parity. Their UTF-8 encoding is C2 85, C2 86, C2 87, C2 88, whose bytes are all
-	// individually >= 0x20, which is exactly what makes them easy to miss.
-	const std::string bytes = std::string("\x85\0\x86\0\x87\0\x88\0", 8);
+	const std::string c1ControlCharactersWithNulsAtOddOffsets = std::string("\x85\0\x86\0\x87\0\x88\0", 8);
 
-	CHECK(SniffEncoding(bytes) == Encoding::Utf8);
+	CHECK(SniffEncoding(c1ControlCharactersWithNulsAtOddOffsets) == Encoding::Utf8);
 }
 
 TEST_CASE("Decoded DEL is not text")
 {
-	// Codepoints U+007F 'A' U+007F 'B' — DEL is a single UTF-8 byte >= 0x20, so it looks
-	// like an ordinary character unless matched specifically.
-	const std::string bytes = std::string("\x7F\0\x41\0\x7F\0\x42\0", 8);
+	const std::string deleteBeforeEachOfTwoLetters = std::string("\x7F\0\x41\0\x7F\0\x42\0", 8);
 
-	CHECK(SniffEncoding(bytes) == Encoding::Utf8);
+	CHECK(SniffEncoding(deleteBeforeEachOfTwoLetters) == Encoding::Utf8);
 }
 
 TEST_CASE("DecodeWithoutByteOrderMark strips the mark the bytes carry, whatever the encoding says")

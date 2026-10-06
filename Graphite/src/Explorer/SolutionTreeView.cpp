@@ -154,7 +154,7 @@ namespace Graphite {
 			return;
 		}
 
-		const auto active = m_Documents.GetActive();
+		const auto active = m_Documents.GetActiveIndex();
 		const std::filesystem::path path =
 			active.has_value() ? m_Documents.At(*active).Path : std::filesystem::path{};
 
@@ -316,7 +316,7 @@ namespace Graphite {
 	{
 		// The active document as well as the clicked row: a document opened some other way,
 		// by go-to-definition or from a tab, is what the reveal just opened the tree to show.
-		const auto active = m_Documents.GetActive();
+		const auto active = m_Documents.GetActiveIndex();
 		const bool selected = m_Workspace.GetSelectedFile() == file.Path ||
 							  (active.has_value() && m_Documents.At(*active).Path == file.Path);
 

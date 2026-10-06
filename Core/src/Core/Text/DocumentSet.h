@@ -10,7 +10,6 @@
 #include <filesystem>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 namespace Core {
@@ -26,13 +25,15 @@ namespace Core {
 
 	inline constexpr std::size_t NoRowAim = static_cast<std::size_t>(-1);
 
-	// What a document remembers about the find bar between one visit and the next. Lives here
-	// rather than beside the editor so closing or renaming a document takes it along, which a
-	// map kept next to the editor would have to be told about.
-	//
-	// Deliberately plain: a string, two flags, offset pairs, two indices. The matcher and its
-	// query type live above Core and must stay there — a text editor remembering what you last
-	// searched for is a text-editing concept, a search query carrying a file mask is not.
+	struct FindMatch
+	{
+		std::size_t From = 0;
+		std::size_t To = 0;
+	};
+
+	// Kept on the item rather than in a map beside the editor, so closing or renaming a document
+	// takes it along. Plain fields on purpose: the matcher and its query type belong above Core,
+	// because a query carrying a file mask is a search concept, not a text-editing one.
 	struct FindState
 	{
 		bool Open = false;
@@ -41,18 +42,13 @@ namespace Core {
 		bool MatchCase = false;
 		bool WholeWord = false;
 
-		// Ascending document byte ranges, and which of them the caret is on.
-		std::vector<std::pair<std::size_t, std::size_t>> Matches;
-		std::size_t Current = 0;
+		// Document byte ranges in ascending order.
+		std::vector<FindMatch> Matches;
+		std::size_t CurrentMatch = 0;
 
-		// The buffer revision Matches were computed from. Comparing it against the buffer's
-		// current one is what makes a stale list detectable rather than something the editor has
-		// to remember to invalidate on every edit path.
-		//
-		// Zero is a real revision — a buffer starts there — so it cannot double as a "never
-		// computed" sentinel. An empty Query is what says the state has never been searched
-		// with; Revision only says whether a list that exists is still current.
-		std::size_t Revision = 0;
+		// A buffer starts at revision zero, so an empty Query, not a zero MatchesRevision, means
+		// never searched.
+		std::size_t MatchesRevision = 0;
 	};
 
 	struct OpenItem
@@ -60,7 +56,7 @@ namespace Core {
 		std::filesystem::path Path;
 		std::optional<TextDocument> Document;
 		OpenFailure Failure = OpenFailure::None;
-		std::uint64_t Size = 0;
+		std::uint64_t FileSize = 0;
 		Caret Caret;
 		bool Preview = false;
 
@@ -70,48 +66,46 @@ namespace Core {
 
 		RowMap Rows;
 
-		std::size_t WrappedTo = 0;
+		std::size_t ColumnsPerWrappedRow = 0;
 
-		std::size_t RowAim = 0;
-		std::size_t RowAimAt = NoRowAim;
+		std::size_t RowAimColumn = 0;
+		std::size_t RowAimCaretOffset = NoRowAim;
 
-		// Set by anything that moves the caret from outside the editor's own frame — a jump
-		// requested from elsewhere. The editor only scrolls to the caret when it notices the
-		// caret changed during its own processing this frame; a change made earlier in the same
-		// frame, before the editor's turn, looks like no change at all from inside that
-		// processing. This flag says "scroll anyway", and the editor clears it once it has.
+		// The editor scrolls to the caret only when it saw the caret move during its own turn, so
+		// a jump made earlier in the frame from elsewhere sets this to say scroll anyway. The
+		// editor clears it once it has.
 		bool PendingScroll = false;
 
-		// Set by every open that lands on this item, and cleared by whatever draws it once it
-		// has brought its window forward. Activating an item moves nothing on screen by itself:
-		// the set records which item is active, and the tab bar goes on showing whichever tab it
-		// last drew. Without this, opening a file that already had a tab — a definition jumped
-		// to a second time, a reference clicked in a file still open from the first — moved the
-		// caret in a tab nobody could see.
+		// Activating an item moves nothing on screen: the tab bar goes on showing the tab it last
+		// drew. Every open that lands on the item sets this, and whatever draws the item clears it
+		// once its window is in front.
 		bool PendingFocus = false;
 
 		std::vector<std::size_t> IndentDepths;
 
-		// How many columns a tab character occupies in this document. A layout input like the
-		// wrap width beside it, not a preference: Core does not know where the number comes
-		// from, only that everything measuring this document must use the same one.
+		// A layout input like the wrap width, not a preference: everything that measures this
+		// document has to use this one value.
 		std::size_t TabWidth = DefaultTabWidth;
 
 		FindState Find;
 
-		std::string Detail;
+		std::string FailureDetail;
 	};
 
 	enum class ItemLoad
 	{
 		Loaded,
-
 		NeedsConfirmation,
-
 		Failed
 	};
 
-	ItemLoad LoadFromFile(OpenItem& item, bool confirmed);
+	enum class LargeFileConfirmation
+	{
+		Unconfirmed,
+		Confirmed
+	};
+
+	ItemLoad LoadFromFile(OpenItem& item, LargeFileConfirmation largeFileConfirmation);
 
 	enum class OpenOutcome
 	{
@@ -123,12 +117,18 @@ namespace Core {
 
 	std::string FailureMessage(const OpenItem& item);
 
+	enum class TabKind
+	{
+		Preview,
+		Permanent
+	};
+
 	class DocumentSet
 	{
 	public:
-		OpenOutcome Open(const std::filesystem::path& path, bool permanent);
+		OpenOutcome Open(const std::filesystem::path& path, TabKind tabKind);
 
-		OpenOutcome OpenConfirmed(const std::filesystem::path& path, bool permanent);
+		OpenOutcome OpenConfirmed(const std::filesystem::path& path, TabKind tabKind);
 
 		void Close(std::size_t index);
 		void CloseAll();
@@ -140,7 +140,7 @@ namespace Core {
 		const OpenItem& At(std::size_t index) const { return m_Items[index]; }
 
 		void Activate(std::size_t index);
-		std::optional<std::size_t> GetActive() const { return m_Active; }
+		std::optional<std::size_t> GetActiveIndex() const { return m_ActiveIndex; }
 
 		// Valid until the set next changes.
 		const std::filesystem::path* GetActiveItemPath() const;
@@ -151,21 +151,24 @@ namespace Core {
 
 		std::string DisplayTitle(std::size_t index) const;
 
-		void RewritePaths(const std::filesystem::path& from, const std::filesystem::path& to);
+		void RewritePaths(const std::filesystem::path& movedFrom, const std::filesystem::path& movedTo);
 
 		void MarkMissing(const std::filesystem::path& path);
 
 		void MarkPresent(const std::filesystem::path& path);
 
 	private:
-		OpenOutcome Add(const std::filesystem::path& path, bool permanent, bool confirmed);
+		OpenOutcome Add(const std::filesystem::path& path, TabKind tabKind, LargeFileConfirmation largeFileConfirmation);
 
-		bool HasOtherItemNamed(std::size_t index, const std::string& name) const;
+		void ClosePreviewIfAny();
+
+		bool HasOtherItemNamed(std::size_t index, const std::string& fileName) const;
 
 		std::vector<OpenItem> m_Items;
-		std::optional<std::size_t> m_Active;
+		std::optional<std::size_t> m_ActiveIndex;
 	};
 
-	// The path is matched exactly, as Find matches it. The pointer is valid until the set next changes.
+	// The path is matched exactly, as Find matches it, not through PathKey. The pointer is valid
+	// until the set next changes.
 	const TextBuffer* BufferOfOpenDocument(const DocumentSet& documents, const std::filesystem::path& path);
 }

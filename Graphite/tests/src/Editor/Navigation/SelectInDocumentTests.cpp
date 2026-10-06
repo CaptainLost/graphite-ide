@@ -13,7 +13,7 @@ namespace {
 	// Opens the way DocumentWindows would for a file inside the size limit.
 	Graphite::OpenDocument OpenPermanently(Core::DocumentSet& documents)
 	{
-		return [&documents](const std::filesystem::path& path) { documents.Open(path, true); };
+		return [&documents](const std::filesystem::path& path) { documents.Open(path, Core::TabKind::Permanent); };
 	}
 }
 
@@ -30,7 +30,7 @@ TEST_CASE("A byte range on a line is selected and the editor is told to scroll t
 	CHECK(item.Caret.Anchor == 6 + 3);
 	CHECK(item.Caret.Offset == 6 + 6);
 	CHECK(item.PendingScroll);
-	CHECK(item.RowAimAt == Core::NoRowAim);
+	CHECK(item.RowAimCaretOffset == Core::NoRowAim);
 }
 
 TEST_CASE("A range past the end of a shrunk file is clamped rather than read past it")

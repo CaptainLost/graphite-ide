@@ -4,7 +4,7 @@ namespace Graphite {
 
 	std::optional<std::filesystem::path> ActiveTextDocument(const Core::DocumentSet& documents)
 	{
-		const std::optional<std::size_t> active = documents.GetActive();
+		const std::optional<std::size_t> active = documents.GetActiveIndex();
 
 		if (!active)
 		{
@@ -25,7 +25,7 @@ namespace Graphite {
 		const Core::DocumentSet& documents,
 		const std::function<bool(const std::filesystem::path&)>& isShown)
 	{
-		const std::optional<std::size_t> active = documents.GetActive();
+		const std::optional<std::size_t> active = documents.GetActiveIndex();
 
 		if (!active)
 		{
