@@ -5,152 +5,195 @@
 #include "Core/Command/ShortcutRouter.h"
 #include "Core/Events/KeyEvent.h"
 
+#include <optional>
 #include <string>
 #include <vector>
 
 using Core::Chord;
-using Scope = Core::Chord::Scope;
+using Core::ShortcutScope;
 
 namespace {
-	// A registry with one command that counts its runs, bound to Ctrl+C.
-	struct Harness
+	enum class HeldKey
+	{
+		RunsAgain,
+		RunsOnce
+	};
+
+	enum class StrokeKind
+	{
+		FirstPress,
+		RepeatedPress
+	};
+
+	struct CopyBoundToCtrlC
 	{
 		Core::CommandRegistry Commands;
-		Core::Keymap Keys;
+		Core::Keymap Bindings;
 		Core::ShortcutRouter Router;
-		int Runs = 0;
+		int RunCount = 0;
 
-		explicit Harness(Scope scope, bool repeats = true)
+		explicit CopyBoundToCtrlC(ShortcutScope commandScope, HeldKey heldKey = HeldKey::RunsAgain)
 		{
 			Commands.Add({.Id = "edit.copy",
 						  .Label = "Copy",
-						  .Run = [this] { ++Runs; },
-						  .KeyScope = scope,
-						  .Repeats = repeats});
+						  .Run = [this] { ++RunCount; },
+						  .KeyScope = commandScope,
+						  .RepeatsWhileHeld = heldKey == HeldKey::RunsAgain});
 
-			Keys.SetDefault("edit.copy", {.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_C)});
+			Bindings.SetDefault("edit.copy", {.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_C)});
 		}
 
-		bool Press(Scope routedAs, Core::KeyModifier modifiers = Core::KeyModifier::Control,
-				   bool repeat = false)
+		bool Press(ShortcutScope routedScope, Core::KeyModifier modifiers = Core::KeyModifier::Control,
+				   StrokeKind strokeKind = StrokeKind::FirstPress)
 		{
-			const Core::KeyPressedEvent event{Core::KeyCode::C, modifiers, repeat};
-			return Router.OnKeyPressed(Commands, Keys, routedAs, event);
+			const bool isRepeat = strokeKind == StrokeKind::RepeatedPress;
+			const Core::KeyPressedEvent pressC{Core::KeyCode::C, modifiers, isRepeat};
+			return Router.OnKeyPressed(Commands, Bindings, routedScope, pressC);
 		}
 	};
 }
 
 TEST_CASE("A Global command fires when routed as Global")
 {
-	Harness h{Scope::Global};
+	CopyBoundToCtrlC harness{ShortcutScope::Global};
 
-	CHECK(h.Press(Scope::Global));
-	CHECK(h.Runs == 1);
+	CHECK(harness.Press(ShortcutScope::Global));
+	CHECK(harness.RunCount == 1);
 }
 
-// The find bar and every other text field keep their own Ctrl+C because GraphiteLayer routes
-// every key event as Global, and an editor-scoped command must pass through that untouched.
-TEST_CASE("A FocusedEditor command does not fire when routed as Global")
+TEST_CASE("A FocusedEditor command does not fire when routed as Global so other text fields keep their own Ctrl+C")
 {
-	Harness h{Scope::FocusedEditor};
+	CopyBoundToCtrlC harness{ShortcutScope::FocusedEditor};
 
-	CHECK_FALSE(h.Press(Scope::Global));
-	CHECK(h.Runs == 0);
+	CHECK_FALSE(harness.Press(ShortcutScope::Global));
+	CHECK(harness.RunCount == 0);
 }
 
 TEST_CASE("A FocusedEditor command fires when the focused editor routes it")
 {
-	Harness h{Scope::FocusedEditor};
+	CopyBoundToCtrlC harness{ShortcutScope::FocusedEditor};
 
-	CHECK(h.Press(Scope::FocusedEditor));
-	CHECK(h.Runs == 1);
+	CHECK(harness.Press(ShortcutScope::FocusedEditor));
+	CHECK(harness.RunCount == 1);
 }
 
 TEST_CASE("A Global command does not fire a second time when the editor routes the same stroke")
 {
-	Harness h{Scope::Global};
+	CopyBoundToCtrlC harness{ShortcutScope::Global};
 
-	CHECK_FALSE(h.Press(Scope::FocusedEditor));
-	CHECK(h.Runs == 0);
+	CHECK_FALSE(harness.Press(ShortcutScope::FocusedEditor));
+	CHECK(harness.RunCount == 0);
+}
+
+TEST_CASE("A binding whose command nobody registered fires only when routed as Global")
+{
+	Core::CommandRegistry commands;
+	Core::Keymap keymap;
+	Core::ShortcutRouter router;
+
+	keymap.SetDefault("ghost.command", {.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Q)});
+
+	const bool isRepeat = false;
+	const Core::KeyPressedEvent pressCtrlQ{Core::KeyCode::Q, Core::KeyModifier::Control, isRepeat};
+
+	CHECK(router.OnKeyPressed(commands, keymap, ShortcutScope::Global, pressCtrlQ));
+	CHECK_FALSE(router.OnKeyPressed(commands, keymap, ShortcutScope::FocusedEditor, pressCtrlQ));
 }
 
 TEST_CASE("A repeated press runs a repeating command again and skips a non-repeating one")
 {
-	Harness repeating{Scope::Global, true};
-	CHECK(repeating.Press(Scope::Global, Core::KeyModifier::Control, true));
-	CHECK(repeating.Runs == 1);
+	CopyBoundToCtrlC repeatingCopy{ShortcutScope::Global, HeldKey::RunsAgain};
+	CHECK(repeatingCopy.Press(ShortcutScope::Global, Core::KeyModifier::Control, StrokeKind::RepeatedPress));
+	CHECK(repeatingCopy.RunCount == 1);
 
-	Harness once{Scope::Global, false};
-	CHECK_FALSE(once.Press(Scope::Global, Core::KeyModifier::Control, true));
-	CHECK(once.Runs == 0);
+	CopyBoundToCtrlC nonRepeatingCopy{ShortcutScope::Global, HeldKey::RunsOnce};
+	CHECK_FALSE(nonRepeatingCopy.Press(ShortcutScope::Global, Core::KeyModifier::Control, StrokeKind::RepeatedPress));
+	CHECK(nonRepeatingCopy.RunCount == 0);
 }
 
-// The scope belongs to the command, so a chord the user typed into settings — plain text with
-// no scope in it — cannot turn an editor command global.
-TEST_CASE("An overridden binding keeps the command's scope")
+TEST_CASE("A disabled command still consumes its chord although it does not run")
 {
-	Harness h{Scope::FocusedEditor};
+	Core::CommandRegistry commands;
+	Core::Keymap keymap;
+	Core::ShortcutRouter router;
+	int copyRunCount = 0;
 
-	const auto chord = Chord::Parse("Ctrl+Insert");
-	REQUIRE(chord);
-	h.Keys.Override("edit.copy", Core::Binding{.Primary = *chord});
+	commands.Add({.Id = "edit.copy",
+				  .Label = "Copy",
+				  .Run = [&copyRunCount] { ++copyRunCount; },
+				  .Enabled = [] { return false; }});
+	keymap.SetDefault("edit.copy", {.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_C)});
 
-	const Core::KeyPressedEvent insert{Core::KeyCode::Insert, Core::KeyModifier::Control, false};
+	const bool isRepeat = false;
+	const Core::KeyPressedEvent pressCtrlC{Core::KeyCode::C, Core::KeyModifier::Control, isRepeat};
 
-	CHECK_FALSE(h.Router.OnKeyPressed(h.Commands, h.Keys, Scope::Global, insert));
-	CHECK(h.Router.OnKeyPressed(h.Commands, h.Keys, Scope::FocusedEditor, insert));
-	CHECK(h.Runs == 1);
+	CHECK(router.OnKeyPressed(commands, keymap, ShortcutScope::Global, pressCtrlC));
+	CHECK(copyRunCount == 0);
 }
 
-// Windows reports AltGr as Ctrl+Alt, so typing a Polish letter must never read as a shortcut.
-TEST_CASE("Ctrl+Alt+C does not fire a Ctrl+C command")
+TEST_CASE("An overridden binding keeps the command's scope since a chord typed into settings carries none")
 {
-	Harness h{Scope::FocusedEditor};
+	CopyBoundToCtrlC harness{ShortcutScope::FocusedEditor};
 
-	CHECK_FALSE(h.Press(Scope::FocusedEditor,
-						Core::KeyModifier::Control | Core::KeyModifier::Alt));
-	CHECK(h.Runs == 0);
+	const std::optional<Core::Chord> ctrlInsert = Chord::Parse("Ctrl+Insert");
+	REQUIRE(ctrlInsert.has_value());
+	harness.Bindings.Override("edit.copy", Core::Binding{.Primary = *ctrlInsert});
+
+	const bool isRepeat = false;
+	const Core::KeyPressedEvent pressCtrlInsert{Core::KeyCode::Insert, Core::KeyModifier::Control, isRepeat};
+
+	CHECK_FALSE(harness.Router.OnKeyPressed(harness.Commands, harness.Bindings, ShortcutScope::Global, pressCtrlInsert));
+	CHECK(harness.Router.OnKeyPressed(harness.Commands, harness.Bindings, ShortcutScope::FocusedEditor, pressCtrlInsert));
+	CHECK(harness.RunCount == 1);
 }
 
-// The editor replays strokes the layer already routed as Global. A replayed Ctrl press must not
-// re-arm a tap that the S in Ctrl+S already abandoned, or releasing Ctrl would run the tap.
+TEST_CASE("Ctrl+Alt+C does not fire a Ctrl+C command because Windows reports AltGr as Ctrl+Alt")
+{
+	CopyBoundToCtrlC harness{ShortcutScope::FocusedEditor};
+
+	CHECK_FALSE(harness.Press(ShortcutScope::FocusedEditor,
+							  Core::KeyModifier::Control | Core::KeyModifier::Alt));
+	CHECK(harness.RunCount == 0);
+}
+
 TEST_CASE("A stroke the editor replays does not bring back an abandoned modifier tap")
 {
 	Core::CommandRegistry commands;
-	Core::Keymap keys;
+	Core::Keymap keymap;
 	Core::ShortcutRouter router;
-	int taps = 0;
+	int tapRunCount = 0;
 
-	commands.Add({.Id = "app.tap", .Label = "Tap", .Run = [&taps] { ++taps; }});
-	keys.SetDefault("app.tap", {.Primary = Chord::ModifierTap(ImGuiMod_Ctrl)});
+	commands.Add({.Id = "app.tap", .Label = "Tap", .Run = [&tapRunCount] { ++tapRunCount; }});
+	keymap.SetDefault("app.tap", {.Primary = Chord::ModifierTap(ImGuiMod_Ctrl)});
 
-	const Core::KeyPressedEvent ctrl{Core::KeyCode::LeftControl, Core::KeyModifier::Control, false};
-	const Core::KeyPressedEvent s{Core::KeyCode::S, Core::KeyModifier::Control, false};
+	const bool isRepeat = false;
+	const Core::KeyPressedEvent pressCtrl{Core::KeyCode::LeftControl, Core::KeyModifier::Control, isRepeat};
+	const Core::KeyPressedEvent pressS{Core::KeyCode::S, Core::KeyModifier::Control, isRepeat};
 
-	router.OnKeyPressed(commands, keys, Scope::Global, ctrl);
-	router.OnKeyPressed(commands, keys, Scope::Global, s);
-	router.OnKeyPressed(commands, keys, Scope::FocusedEditor, ctrl);
+	router.OnKeyPressed(commands, keymap, ShortcutScope::Global, pressCtrl);
+	router.OnKeyPressed(commands, keymap, ShortcutScope::Global, pressS);
+	router.OnKeyPressed(commands, keymap, ShortcutScope::FocusedEditor, pressCtrl);
 
-	const Core::KeyReleasedEvent release{Core::KeyCode::LeftControl, Core::KeyModifier::None};
+	const Core::KeyReleasedEvent releaseCtrl{Core::KeyCode::LeftControl, Core::KeyModifier::None};
 
-	CHECK_FALSE(router.OnKeyReleased(commands, keys, release));
-	CHECK(taps == 0);
+	CHECK_FALSE(router.OnKeyReleased(commands, keymap, releaseCtrl));
+	CHECK(tapRunCount == 0);
 }
 
-// The scope lives on the command, not on the chord, so the keymap sees one chord bound twice
-// whichever scopes the two commands carry — and reports it, since the menu would show the
-// same shortcut against both.
-TEST_CASE("FindConflicts reports a Global and a FocusedEditor command sharing a chord")
+TEST_CASE("FindConflicts reports a Global and a FocusedEditor command sharing a chord since the menu would show it against both")
 {
-	Harness h{Scope::FocusedEditor};
+	CopyBoundToCtrlC harness{ShortcutScope::FocusedEditor};
 
-	h.Commands.Add({.Id = "app.copyPath", .Label = "Copy Path", .Run = [] {}});
-	h.Keys.SetDefault("app.copyPath", {.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_C)});
+	harness.Commands.Add({.Id = "app.copyPath", .Label = "Copy Path", .Run = [] {}});
+	harness.Bindings.SetDefault("app.copyPath", {.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_C)});
 
-	const std::vector<Core::Conflict> conflicts = h.Keys.FindConflicts();
+	const std::vector<Core::BindingConflict> conflicts = harness.Bindings.FindConflicts();
 
 	REQUIRE(conflicts.size() == 1);
-	CHECK(conflicts[0].Chord == Chord::Key(ImGuiMod_Ctrl | ImGuiKey_C));
-	CHECK(((conflicts[0].First == "edit.copy" && conflicts[0].Second == "app.copyPath") ||
-		   (conflicts[0].First == "app.copyPath" && conflicts[0].Second == "edit.copy")));
+	const auto& [sharedChord, firstCommandId, secondCommandId] = conflicts.front();
+	CHECK(sharedChord == Chord::Key(ImGuiMod_Ctrl | ImGuiKey_C));
+
+	const bool copyClaimedTheChordFirst = firstCommandId == "edit.copy" && secondCommandId == "app.copyPath";
+	const bool copyPathClaimedTheChordFirst = firstCommandId == "app.copyPath" && secondCommandId == "edit.copy";
+	CHECK((copyClaimedTheChordFirst || copyPathClaimedTheChordFirst));
 }

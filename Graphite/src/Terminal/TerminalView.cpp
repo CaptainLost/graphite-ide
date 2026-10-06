@@ -498,7 +498,7 @@ namespace Graphite {
 		drawList.AddRectFilled(
 			ImVec2(trackMin.x, trackMin.y + thumb.Top),
 			ImVec2(trackMax.x, trackMin.y + thumb.Top + thumb.Height),
-			ImGui::GetColorU32(dragging	  ? ImGuiCol_ScrollbarGrabActive
+			ImGui::GetColorU32(dragging	   ? ImGuiCol_ScrollbarGrabActive
 							   : overThumb ? ImGuiCol_ScrollbarGrabHovered
 										   : ImGuiCol_ScrollbarGrab),
 			ImGui::GetStyle().ScrollbarRounding);
@@ -891,7 +891,7 @@ namespace Graphite {
 			// KeyBindingsSection builds one, so the two agree about what a binding is.
 			const Core::Chord chord = Core::Chord::Key(io.KeyMods | key);
 
-			if (!m_Keys.BoundTo(chord, Core::Chord::Scope::Global, m_Commands).empty())
+			if (!m_Keys.BoundTo(chord, Core::ShortcutScope::Global, m_Commands).empty())
 			{
 				continue;
 			}

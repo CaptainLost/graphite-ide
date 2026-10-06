@@ -3,6 +3,7 @@
 #include "Core/Command/Binding.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Base/Strings.h"
 
 namespace Core {
 
@@ -10,72 +11,74 @@ namespace Core {
 		constexpr char kChordSeparator = '|';
 
 		constexpr std::string_view kUnboundText = "None";
+
+		std::vector<std::string> ChordTextsOf(const Binding& binding)
+		{
+			std::vector<std::string> chordTexts;
+			chordTexts.push_back(binding.Primary.ToString());
+
+			for (const Chord& alternate : binding.Alternates)
+			{
+				chordTexts.push_back(alternate.ToString());
+			}
+
+			return chordTexts;
+		}
 	}
 
 	std::string ToString(const Binding& binding)
 	{
-		if (binding.Primary.IsEmpty() && binding.Alternates.empty())
+		const bool bindsNothing = binding.Primary.IsEmpty() && binding.Alternates.empty();
+		if (bindsNothing)
 		{
 			return std::string{kUnboundText};
 		}
 
-		std::string text = binding.Primary.ToString();
+		const std::vector<std::string> chordTexts = ChordTextsOf(binding);
 
-		for (const Chord& alternate : binding.Alternates)
-		{
-			text += kChordSeparator;
-			text += alternate.ToString();
-		}
-
-		return text;
+		return JoinedWith(chordTexts, std::string_view{&kChordSeparator, 1});
 	}
 
 	std::optional<Binding> ParseBinding(std::string_view text)
 	{
-		Binding binding;
-		bool first = true;
-		std::size_t start = 0;
-
-		// An override binding nothing, which is a different thing from a missing override:
-		// that one restores the factory chord. Matched case-insensitively, like every other
-		// name in the file this comes from, so a hand-written "none" is not refused into
-		// exactly the outcome the token exists to prevent.
-		if (Lowered(Trimmed(text)) == Lowered(kUnboundText))
+		const bool isUnboundToken = EqualsIgnoringCase(Trimmed(text), kUnboundText);
+		if (isUnboundToken)
 		{
-			return binding;
+			return Binding{};
 		}
 
-		for (;;)
-		{
-			const std::size_t separator = text.find(kChordSeparator, start);
-			const std::string_view part =
-				text.substr(start, separator == std::string_view::npos
-									   ? std::string_view::npos
-									   : separator - start);
+		Binding binding;
+		std::size_t chordStart = 0;
 
-			const std::optional<Chord> chord = Chord::Parse(part);
+		while (true)
+		{
+			const std::size_t separatorPosition = text.find(kChordSeparator, chordStart);
+			const bool isLastChord = separatorPosition == std::string_view::npos;
+			const std::string_view chordText = isLastChord ? text.substr(chordStart) : text.substr(chordStart, separatorPosition - chordStart);
+
+			const std::optional<Chord> chord = Chord::Parse(chordText);
 
 			if (!chord.has_value())
 			{
 				return std::nullopt;
 			}
 
-			if (first)
+			const bool isPrimaryChord = chordStart == 0;
+			if (isPrimaryChord)
 			{
 				binding.Primary = *chord;
-				first = false;
 			}
 			else
 			{
 				binding.Alternates.push_back(*chord);
 			}
 
-			if (separator == std::string_view::npos)
+			if (isLastChord)
 			{
 				break;
 			}
 
-			start = separator + 1;
+			chordStart = separatorPosition + 1;
 		}
 
 		return binding;

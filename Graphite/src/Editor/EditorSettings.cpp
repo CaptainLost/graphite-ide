@@ -51,19 +51,20 @@ namespace Graphite {
 		void SetDefaultZoomBindings(Core::Keymap& keys)
 		{
 			using Core::Chord;
+			using Core::ShortcutScope;
 			using Core::Trigger;
 
 			keys.SetDefault("editor.zoomIn",
 							{.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Equal),
 							 .Alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd),
 											Chord::Wheel(ImGuiMod_Ctrl, Trigger::WheelUp,
-														 Chord::Scope::HoveredEditor)}});
+														 ShortcutScope::HoveredEditor)}});
 
 			keys.SetDefault("editor.zoomOut",
 							{.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Minus),
 							 .Alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadSubtract),
 											Chord::Wheel(ImGuiMod_Ctrl, Trigger::WheelDown,
-														 Chord::Scope::HoveredEditor)}});
+														 ShortcutScope::HoveredEditor)}});
 
 			keys.SetDefault("editor.resetZoom",
 							{.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_0),

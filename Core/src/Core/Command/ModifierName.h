@@ -11,9 +11,9 @@ namespace Core {
 	};
 
 	constexpr ModifierName kModifiers[] = {
-		{ImGuiMod_Ctrl, "Ctrl"},
-		{ImGuiMod_Shift, "Shift"},
-		{ImGuiMod_Alt, "Alt"},
-		{ImGuiMod_Super, "Super"},
+		{.Bit = ImGuiMod_Ctrl, .Name = "Ctrl"},
+		{.Bit = ImGuiMod_Shift, .Name = "Shift"},
+		{.Bit = ImGuiMod_Alt, .Name = "Alt"},
+		{.Bit = ImGuiMod_Super, .Name = "Super"},
 	};
 }

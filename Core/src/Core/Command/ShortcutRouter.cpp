@@ -9,105 +9,164 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <string>
 #include <vector>
 
 namespace Core {
 
 	namespace {
-		// Collected first and run afterwards, because running a command inside the walk would
-		// let it register another command while the keymap is being iterated.
-		template<std::predicate<const Chord&> Matches>
-		std::vector<std::string> CommandsBoundTo(const Keymap& keys, Matches matches)
-		{
-			std::vector<std::string> fired;
+		using ChordMatcher = std::function<bool(const Chord&)>;
 
-			keys.ForEachBinding([&fired, &matches](const std::string& id, const Binding& binding) {
-				if (matches(binding.Primary) ||
-					std::any_of(binding.Alternates.begin(), binding.Alternates.end(), matches))
+		constexpr float kFewestNotchesOfAGesture = 1.0f;
+
+		bool HasMatchingChord(const Binding& binding, const ChordMatcher& matchesChord)
+		{
+			if (matchesChord(binding.Primary))
+			{
+				return true;
+			}
+
+			for (const Chord& alternate : binding.Alternates)
+			{
+				if (matchesChord(alternate))
 				{
-					fired.push_back(id);
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		// Collected first and run afterwards, because a command run inside the walk could change
+		// the keymap being iterated, as registering a command with a default binding does.
+		std::vector<std::string> CommandIdsBoundTo(const Keymap& keymap, const ChordMatcher& matchesChord)
+		{
+			std::vector<std::string> commandIds;
+
+			keymap.ForEachBinding([&commandIds, &matchesChord](const std::string& commandId, const Binding& binding) {
+				if (HasMatchingChord(binding, matchesChord))
+				{
+					commandIds.push_back(commandId);
 				}
 			});
 
-			return fired;
+			return commandIds;
 		}
 
-		void RunAll(CommandRegistry& commands, const std::vector<std::string>& fired, int times = 1)
+		void RunAll(CommandRegistry& commands, const std::vector<std::string>& commandIds, int runsPerCommand = 1)
 		{
-			for (const std::string& id : fired)
+			for (const std::string& commandId : commandIds)
 			{
-				for (int repeat = 0; repeat < times; ++repeat)
+				for (int runIndex = 0; runIndex < runsPerCommand; ++runIndex)
 				{
-					commands.Run(id);
+					commands.Run(commandId);
 				}
 			}
+		}
+
+		// A command whose every chord was taken away holds an empty primary, and an empty chord
+		// names no key: matching it would fire on the modifiers alone.
+		bool IsChordForKeyPress(const Chord& chord, ImGuiKeyChord pressedKeys)
+		{
+			const bool chordIsEmpty = chord.IsEmpty();
+			const bool firesOnKey = chord.GetTrigger() == Trigger::Key;
+			const bool keysMatch = chord.GetKeys() == pressedKeys;
+
+			return !chordIsEmpty && firesOnKey && keysMatch;
+		}
+
+		bool IsChordForModifierTap(const Chord& chord, ImGuiKeyChord tappedModifiers)
+		{
+			const bool firesOnTap = chord.GetTrigger() == Trigger::ModifierTap;
+			const bool chordIsEmpty = chord.IsEmpty();
+			const bool modifiersMatch = chord.GetKeys() == tappedModifiers;
+
+			return firesOnTap && !chordIsEmpty && modifiersMatch;
+		}
+
+		bool IsChordForWheelTurn(const Chord& chord, Trigger direction, ShortcutScope scopeUnderPointer,
+								 ImGuiKeyChord heldModifiers)
+		{
+			const bool firesOnDirection = chord.GetTrigger() == direction;
+			const bool scopeMatches = chord.GetScope() == scopeUnderPointer;
+			const bool modifiersMatch = chord.GetKeys() == heldModifiers;
+
+			return firesOnDirection && scopeMatches && modifiersMatch;
+		}
+
+		bool IsSkippedForStroke(const CommandRegistry& commands, const std::string& commandId,
+								ShortcutScope routedScope, bool strokeIsRepeat)
+		{
+			const Command* command = commands.Find(commandId);
+			const bool commandIsRegistered = command != nullptr;
+			const bool commandRepeats = !commandIsRegistered || command->RepeatsWhileHeld;
+
+			const ShortcutScope commandScope = commands.KeyScopeOf(commandId);
+			const bool firesInAnotherScope = commandScope != routedScope;
+			const bool isUnwantedRepeat = strokeIsRepeat && !commandRepeats;
+
+			return firesInAnotherScope || isUnwantedRepeat;
 		}
 	}
 
-	bool ShortcutRouter::OnKeyPressed(CommandRegistry& commands, const Keymap& keys,
-									  Chord::Scope scope, const KeyPressedEvent& event)
+	bool ShortcutRouter::OnKeyPressed(CommandRegistry& commands, const Keymap& keymap,
+									  ShortcutScope routedScope, const KeyPressedEvent& event)
 	{
-		const ImGuiKey key = ToImGuiKey(event.GetKeyCode());
+		const ImGuiKey pressedKey = ToImGuiKey(event.GetKeyCode());
 
-		// A modifier going down keeps a tap possible and adds itself to it; anything else
-		// going down ends the possibility, which is what stops an abandoned Ctrl+S from
-		// firing whatever Ctrl alone is bound to when the hand comes off.
-		//
-		// Only for a Global stroke. The focused editor replays strokes the layer already
-		// routed as Global, so the keyboard has been accounted for once; counting a replayed
-		// Ctrl press again would re-arm the tap the S of that Ctrl+S had just abandoned.
-		const bool tracksTaps = scope == Chord::Scope::Global;
+		// Any key but a modifier cancels the tap, so releasing Ctrl after an abandoned Ctrl+S
+		// does not fire what Ctrl alone is bound to. Only a Global stroke counts: the focused
+		// editor replays strokes the layer already routed as Global, and counting a replayed
+		// Ctrl again would re-arm the tap the S of that Ctrl+S had just abandoned.
+		const bool strokeCountsTowardTap = routedScope == ShortcutScope::Global;
+		const bool strokeIsRepeat = event.IsRepeat();
 
-		if (const ImGuiKeyChord bit = ModifierBitOf(event.GetKeyCode()); bit != 0)
+		const ImGuiKeyChord modifierBit = ModifierBitOf(event.GetKeyCode());
+		const bool pressedAModifier = modifierBit != ImGuiMod_None;
+
+		if (pressedAModifier)
 		{
-			if (tracksTaps && !event.IsRepeat())
+			if (strokeCountsTowardTap && !strokeIsRepeat)
 			{
-				m_TapMods |= bit;
+				m_PendingTapModifiers |= modifierBit;
 			}
 
 			return false;
 		}
 
-		if (tracksTaps)
+		if (strokeCountsTowardTap)
 		{
-			m_TapMods = 0;
+			CancelTap();
 		}
 
-		if (key == ImGuiKey_None)
+		if (pressedKey == ImGuiKey_None)
 		{
 			return false;
 		}
 
-		const ImGuiKeyChord pressed = ToImGuiModifiers(event.GetModifiers()) | key;
+		const ImGuiKeyChord pressedKeys = ToImGuiModifiers(event.GetModifiers()) | pressedKey;
 
-		std::vector<std::string> fired =
-			CommandsBoundTo(keys, [pressed](const Chord& chord) {
-				// A command every chord was taken away from holds an empty primary, and an
-				// empty chord names no key: matching it would fire on the modifiers alone.
-				return !chord.IsEmpty() && chord.GetTrigger() == Trigger::Key &&
-					   chord.GetKeys() == pressed;
-			});
+		std::vector<std::string> commandIdsToRun =
+			CommandIdsBoundTo(keymap, [pressedKeys](const Chord& chord) { return IsChordForKeyPress(chord, pressedKeys); });
 
-		// A binding whose command was never registered is treated as Global, the scope every
-		// chord had before commands carried one.
-		std::erase_if(fired, [&commands, scope, &event](const std::string& id) {
-			const Command* command = commands.Find(id);
-			const Chord::Scope wanted =
-				command != nullptr ? command->KeyScope : Chord::Scope::Global;
-			const bool repeats = command == nullptr || command->Repeats;
-
-			return wanted != scope || (event.IsRepeat() && !repeats);
+		std::erase_if(commandIdsToRun, [&commands, routedScope, strokeIsRepeat](const std::string& commandId) {
+			return IsSkippedForStroke(commands, commandId, routedScope, strokeIsRepeat);
 		});
 
-		RunAll(commands, fired);
-		return !fired.empty();
+		RunAll(commands, commandIdsToRun);
+
+		const bool eventWasHandled = !commandIdsToRun.empty();
+		return eventWasHandled;
 	}
 
-	bool ShortcutRouter::OnKeyReleased(CommandRegistry& commands, const Keymap& keys,
+	bool ShortcutRouter::OnKeyReleased(CommandRegistry& commands, const Keymap& keymap,
 									   const KeyReleasedEvent& event)
 	{
-		if (ModifierBitOf(event.GetKeyCode()) == 0 || m_TapMods == 0)
+		const bool releasedAModifier = ModifierBitOf(event.GetKeyCode()) != ImGuiMod_None;
+		const bool tapIsPending = m_PendingTapModifiers != ImGuiMod_None;
+
+		if (!releasedAModifier || !tapIsPending)
 		{
 			return false;
 		}
@@ -115,45 +174,45 @@ namespace Core {
 		// Read and cleared before anything runs: the command about to fire may open a
 		// window or take the focus, and a tap left half-recorded would fire again on the
 		// next modifier released anywhere.
-		const ImGuiKeyChord tapped = m_TapMods;
-		m_TapMods = 0;
+		const ImGuiKeyChord tappedModifiers = m_PendingTapModifiers;
+		m_PendingTapModifiers = ImGuiMod_None;
 
-		const std::vector<std::string> fired =
-			CommandsBoundTo(keys, [tapped](const Chord& chord) {
-				return chord.GetTrigger() == Trigger::ModifierTap && !chord.IsEmpty() &&
-					   chord.GetKeys() == tapped;
-			});
+		const std::vector<std::string> commandIdsToRun = CommandIdsBoundTo(
+			keymap, [tappedModifiers](const Chord& chord) { return IsChordForModifierTap(chord, tappedModifiers); });
 
-		RunAll(commands, fired);
-		return !fired.empty();
+		RunAll(commands, commandIdsToRun);
+
+		const bool eventWasHandled = !commandIdsToRun.empty();
+		return eventWasHandled;
 	}
 
-	bool ShortcutRouter::OnMouseScrolled(CommandRegistry& commands, const Keymap& keys, Chord::Scope scope,
+	bool ShortcutRouter::OnMouseScrolled(CommandRegistry& commands, const Keymap& keymap, ShortcutScope scopeUnderPointer,
 										 const MouseScrolledEvent& event)
 	{
-		const float wheel = event.GetYOffset();
+		const float wheelOffset = event.GetYOffset();
 
-		if (wheel == 0.0f)
+		if (wheelOffset == 0.0f)
 		{
 			return false;
 		}
 
-		const Trigger direction = wheel > 0.0f ? Trigger::WheelUp : Trigger::WheelDown;
+		const Trigger direction = wheelOffset > 0.0f ? Trigger::WheelUp : Trigger::WheelDown;
 
-		// A fast spin reports several notches at once, so firing once per event would make a
-		// wheel-bound command visibly slower. At least one, since any non-zero wheel is a
-		// gesture the user made.
-		const auto notches = static_cast<int>(std::max(1.0f, std::round(std::fabs(wheel))));
+		// A fast spin reports several notches in one event, so firing once per event would make
+		// a wheel-bound command visibly slower.
+		const float roundedNotches = std::round(std::fabs(wheelOffset));
+		const auto notchCount = static_cast<int>(std::max(kFewestNotchesOfAGesture, roundedNotches));
 
-		const ImGuiKeyChord mods = ImGui::GetIO().KeyMods;
+		const ImGuiKeyChord heldModifiers = ImGui::GetIO().KeyMods;
 
-		const std::vector<std::string> fired =
-			CommandsBoundTo(keys, [scope, direction, mods](const Chord& chord) {
-				return chord.GetTrigger() == direction && chord.GetScope() == scope &&
-					   chord.GetKeys() == mods;
+		const std::vector<std::string> commandIdsToRun =
+			CommandIdsBoundTo(keymap, [direction, scopeUnderPointer, heldModifiers](const Chord& chord) {
+				return IsChordForWheelTurn(chord, direction, scopeUnderPointer, heldModifiers);
 			});
 
-		RunAll(commands, fired, notches);
-		return !fired.empty();
+		RunAll(commands, commandIdsToRun, notchCount);
+
+		const bool eventWasHandled = !commandIdsToRun.empty();
+		return eventWasHandled;
 	}
 }

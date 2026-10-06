@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "Core/Command/Command.h"
 #include "Core/Command/CommandRegistry.h"
 
 #include <string>
@@ -11,11 +12,11 @@ using Core::CommandRegistry;
 TEST_CASE("Add registers a command and allows finding it by id")
 {
 	CommandRegistry commands;
-	int runs = 0;
+	int runCount = 0;
 
 	Command* added = commands.Add({.Id = "editor.zoomIn",
 								   .Label = "Zoom In",
-								   .Run = [&runs] { ++runs; }});
+								   .Run = [&runCount] { ++runCount; }});
 
 	REQUIRE(added != nullptr);
 	REQUIRE(commands.Find("editor.zoomIn") != nullptr);
@@ -23,10 +24,8 @@ TEST_CASE("Add registers a command and allows finding it by id")
 	CHECK(commands.Find("editor.zoomOut") == nullptr);
 }
 
-TEST_CASE("Add rejects a duplicate id")
+TEST_CASE("Add rejects a duplicate id so which command a shortcut runs never depends on registration order")
 {
-	// The same contract PanelManager::Add has. Two commands under one id would make
-	// "which one does the shortcut run" a question about registration order.
 	CommandRegistry commands;
 	commands.Add({.Id = "editor.zoomIn", .Label = "Zoom In", .Run = [] {}});
 
@@ -39,11 +38,11 @@ TEST_CASE("Add rejects a duplicate id")
 TEST_CASE("Run invokes the command and reports that it did")
 {
 	CommandRegistry commands;
-	int runs = 0;
-	commands.Add({.Id = "editor.zoomIn", .Label = "Zoom In", .Run = [&runs] { ++runs; }});
+	int runCount = 0;
+	commands.Add({.Id = "editor.zoomIn", .Label = "Zoom In", .Run = [&runCount] { ++runCount; }});
 
 	CHECK(commands.Run("editor.zoomIn"));
-	CHECK(runs == 1);
+	CHECK(runCount == 1);
 }
 
 TEST_CASE("Run refuses an unknown id")
@@ -53,42 +52,46 @@ TEST_CASE("Run refuses an unknown id")
 	CHECK_FALSE(commands.Run("nothing.here"));
 }
 
-TEST_CASE("Run refuses a command its own predicate disables")
+TEST_CASE("Run refuses a command registered without an action")
 {
-	// The gate that keeps a binding from doing what the greyed-out menu item will not:
-	// without it, a chord on "Close Workspace" would close one that is not open.
+	CommandRegistry commands;
+	commands.Add({.Id = "editor.zoomIn", .Label = "Zoom In"});
+
+	CHECK_FALSE(commands.Run("editor.zoomIn"));
+}
+
+TEST_CASE("Run refuses a command its own predicate disables just as its greyed-out menu item does")
+{
 	CommandRegistry commands;
 	bool workspaceOpen = false;
-	int runs = 0;
+	int runCount = 0;
 
 	commands.Add({.Id = "workspace.close",
 				  .Label = "Close Workspace",
-				  .Run = [&runs] { ++runs; },
+				  .Run = [&runCount] { ++runCount; },
 				  .Enabled = [&workspaceOpen] { return workspaceOpen; }});
 
 	CHECK_FALSE(commands.Run("workspace.close"));
-	CHECK(runs == 0);
+	CHECK(runCount == 0);
 
 	workspaceOpen = true;
 
 	CHECK(commands.Run("workspace.close"));
-	CHECK(runs == 1);
+	CHECK(runCount == 1);
 }
 
 TEST_CASE("A command without predicates always runs")
 {
 	CommandRegistry commands;
-	int runs = 0;
-	commands.Add({.Id = "help.logTestEntries", .Label = "Log test entries", .Run = [&runs] { ++runs; }});
+	int runCount = 0;
+	commands.Add({.Id = "help.logTestEntries", .Label = "Log test entries", .Run = [&runCount] { ++runCount; }});
 
 	CHECK(commands.Run("help.logTestEntries"));
-	CHECK(runs == 1);
+	CHECK(runCount == 1);
 }
 
-TEST_CASE("InGroup returns the group's members in registration order")
+TEST_CASE("InGroup returns the group's members in registration order which is the order a menu lists them in")
 {
-	// Registration order is the panel order in the View menu, which is the order panels
-	// were added in — so this is the guarantee that reordering Add calls reorders the menu.
 	CommandRegistry commands;
 	commands.Add({.Id = "panel.files", .Label = "Files", .Group = "panels", .Run = [] {}});
 	commands.Add({.Id = "editor.zoomIn", .Label = "Zoom In", .Run = [] {}});
@@ -109,57 +112,56 @@ TEST_CASE("InGroup on an unknown group is empty rather than an error")
 	CHECK(commands.InGroup("panels").empty());
 }
 
-TEST_CASE("A registered command keeps its address as more are added")
+TEST_CASE("A registered command keeps the address Add returned as more are added")
 {
-	// Add returns a pointer callers hold on to. A vector of Command would invalidate it
-	// on the next Add, which is exactly the kind of failure that survives review.
-	CommandRegistry commands;
-	Command* first = commands.Add({.Id = "a", .Label = "A", .Run = [] {}});
+	constexpr int kFillerCount = 64;
 
-	for (int index = 0; index < 64; ++index)
+	CommandRegistry commands;
+	Command* firstCommand = commands.Add({.Id = "a", .Label = "A", .Run = [] {}});
+
+	for (int fillerIndex = 0; fillerIndex < kFillerCount; ++fillerIndex)
 	{
-		commands.Add({.Id = "filler" + std::to_string(index), .Label = "Filler", .Run = [] {}});
+		commands.Add({.Id = "filler" + std::to_string(fillerIndex), .Label = "Filler", .Run = [] {}});
 	}
 
-	CHECK(first == commands.Find("a"));
-	CHECK(first->Label == "A");
+	CHECK(firstCommand == commands.Find("a"));
+	CHECK(firstCommand->Label == "A");
 }
 
-TEST_CASE("RunFromMenu runs the command's menu variant when it has one")
+TEST_CASE("RunFromMenu runs the command's menu variant when it has one while Run still runs the plain one as a chord does")
 {
 	CommandRegistry commands;
-	int keyRuns = 0;
-	int menuRuns = 0;
+	int plainRunCount = 0;
+	int menuRunCount = 0;
 	commands.Add({.Id = "edit.copy",
 				  .Label = "Copy",
-				  .Run = [&keyRuns] { ++keyRuns; },
-				  .RunFromMenu = [&menuRuns] { ++menuRuns; }});
+				  .Run = [&plainRunCount] { ++plainRunCount; },
+				  .RunFromMenu = [&menuRunCount] { ++menuRunCount; }});
 
 	CHECK(commands.RunFromMenu("edit.copy"));
-	CHECK(menuRuns == 1);
-	CHECK(keyRuns == 0);
+	CHECK(menuRunCount == 1);
+	CHECK(plainRunCount == 0);
 
-	// A chord still runs the plain variant.
 	CHECK(commands.Run("edit.copy"));
-	CHECK(keyRuns == 1);
-	CHECK(menuRuns == 1);
+	CHECK(plainRunCount == 1);
+	CHECK(menuRunCount == 1);
 }
 
 TEST_CASE("RunFromMenu falls back to Run and is gated like it")
 {
 	CommandRegistry commands;
-	int runs = 0;
-	bool enabled = true;
+	int runCount = 0;
+	bool isEnabled = true;
 	commands.Add({.Id = "editor.zoomIn",
 				  .Label = "Zoom In",
-				  .Run = [&runs] { ++runs; },
-				  .Enabled = [&enabled] { return enabled; }});
+				  .Run = [&runCount] { ++runCount; },
+				  .Enabled = [&isEnabled] { return isEnabled; }});
 
 	CHECK(commands.RunFromMenu("editor.zoomIn"));
-	CHECK(runs == 1);
+	CHECK(runCount == 1);
 
-	enabled = false;
+	isEnabled = false;
 	CHECK_FALSE(commands.RunFromMenu("editor.zoomIn"));
-	CHECK(runs == 1);
+	CHECK(runCount == 1);
 	CHECK_FALSE(commands.RunFromMenu("nothing.here"));
 }

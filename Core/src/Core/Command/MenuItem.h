@@ -17,15 +17,13 @@ namespace Core {
 			Group
 		};
 
-		static MenuItem Command(std::string id);
+		static MenuItem Command(std::string commandId);
 		static MenuItem Separator();
 
-		// A separator that names the block it opens. The label is drawn, so it is prose for
-		// the reader rather than an identifier anything looks up.
-		static MenuItem Section(std::string label);
+		static MenuItem Section(std::string heading);
 		static MenuItem Submenu(std::string label, std::vector<MenuItem> children);
 
-		static MenuItem Group(std::string group);
+		static MenuItem Group(std::string commandGroup);
 
 		Kind GetKind() const { return m_Kind; }
 		const std::string& GetText() const { return m_Text; }

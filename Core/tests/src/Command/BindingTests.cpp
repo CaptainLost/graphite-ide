@@ -8,7 +8,7 @@
 using Core::Binding;
 using Core::Chord;
 using Core::ParseBinding;
-using Scope = Core::Chord::Scope;
+using Core::ShortcutScope;
 using Core::Trigger;
 
 TEST_CASE("A binding of one chord is written as that chord alone")
@@ -33,11 +33,8 @@ TEST_CASE("Alternates follow the primary, separated from it")
 	CHECK(parsed->Alternates[0] == Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd));
 }
 
-TEST_CASE("A binding that reaches nothing round-trips through its own token")
+TEST_CASE("A binding that reaches nothing round-trips through its own token because an empty text is refused as malformed and would bring the factory chord back")
 {
-	// The empty string cannot carry it: an empty text is a malformed entry, so an
-	// unbound override written that way would be dropped at the next start and the
-	// factory chord would silently come back.
 	const Binding unbound;
 
 	CHECK(Core::ToString(unbound) == "None");
@@ -47,39 +44,35 @@ TEST_CASE("A binding that reaches nothing round-trips through its own token")
 	REQUIRE(parsed.has_value());
 	CHECK(parsed->Primary.IsEmpty());
 	CHECK(parsed->Alternates.empty());
+
+	CHECK_FALSE(ParseBinding("").has_value());
 }
 
-TEST_CASE("The unbound token is read the way a hand-editor would write it")
+TEST_CASE("The unbound token is read case- and whitespace-insensitively like every other name in the hand-edited settings file")
 {
-	// The settings file is meant to be edited by hand, and Chord::Parse already reads
-	// every other name in it case- and whitespace-insensitively.
-	for (const char* text : {"none", " None ", "NONE"})
+	for (const char* handWrittenToken : {"none", " None ", "NONE"})
 	{
-		const std::optional<Binding> parsed = ParseBinding(text);
+		const std::optional<Binding> parsed = ParseBinding(handWrittenToken);
 
 		REQUIRE(parsed.has_value());
 		CHECK(parsed->Primary.IsEmpty());
 	}
 }
 
-TEST_CASE("A binding is refused whole when any part of it is unreadable")
+TEST_CASE("A binding is refused whole when any part of it is unreadable rather than keeping only the chords this build recognises")
 {
-	// Half a binding is worse than none: the user would keep the chords this build
-	// happened to recognise and silently lose the rest.
 	CHECK_FALSE(ParseBinding("Ctrl+S|Ctrl+Nonsense").has_value());
 	CHECK_FALSE(ParseBinding("Ctrl+Nonsense").has_value());
 	CHECK_FALSE(ParseBinding("").has_value());
 	CHECK_FALSE(ParseBinding("|").has_value());
 }
 
-TEST_CASE("Every kind of chord in a binding survives a round trip through text")
+TEST_CASE("Every kind of chord in a binding survives a round trip through text including the wheel gesture")
 {
-	// The one place where a typo in the format silently eats a user's binding at the
-	// next start, so the wheel gesture is carried through it too.
 	const Binding binding{
 		.Primary = Chord::Key(ImGuiMod_Ctrl | ImGuiKey_Equal),
 		.Alternates = {Chord::Key(ImGuiMod_Ctrl | ImGuiKey_KeypadAdd),
-					   Chord::Wheel(ImGuiMod_Ctrl, Trigger::WheelUp, Scope::HoveredEditor)}};
+					   Chord::Wheel(ImGuiMod_Ctrl, Trigger::WheelUp, ShortcutScope::HoveredEditor)}};
 
 	const std::optional<Binding> parsed = ParseBinding(Core::ToString(binding));
 

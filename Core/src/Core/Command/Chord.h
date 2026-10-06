@@ -11,31 +11,29 @@
 
 namespace Core {
 
+	enum class ShortcutScope : std::uint8_t
+	{
+		Global,
+		HoveredEditor,
+
+		// Fired only by the editor holding the keyboard, which routes the strokes it reads
+		// while drawing. A chord never carries it: a key chord's scope is its command's.
+		FocusedEditor
+	};
+
 	class Chord
 	{
 	public:
-		enum class Scope : std::uint8_t
-		{
-			Global,
-			HoveredEditor,
-
-			// Fired only by the editor holding the keyboard, which routes the strokes it reads
-			// while drawing. Never a chord's own scope: a key chord's scope is its command's.
-			FocusedEditor
-		};
-
 		Chord() = default;
 
 		static Chord Key(ImGuiKeyChord keys);
 
-		static Chord Wheel(ImGuiKeyChord mods, Trigger direction, Chord::Scope scope);
+		static Chord Wheel(ImGuiKeyChord modifiers, Trigger direction, ShortcutScope scope);
 
-		// Modifiers on their own, fired when they are released with nothing pressed in
-		// between. Empty when given no modifiers, since that names no gesture at all.
-		static Chord ModifierTap(ImGuiKeyChord mods);
+		static Chord ModifierTap(ImGuiKeyChord modifiers);
 
 		Trigger GetTrigger() const { return m_Trigger; }
-		Chord::Scope GetScope() const { return m_Scope; }
+		ShortcutScope GetScope() const { return m_Scope; }
 
 		ImGuiKeyChord GetKeys() const { return m_Keys; }
 
@@ -50,6 +48,6 @@ namespace Core {
 	private:
 		ImGuiKeyChord m_Keys = 0;
 		Trigger m_Trigger = Trigger::Key;
-		Chord::Scope m_Scope = Chord::Scope::Global;
+		ShortcutScope m_Scope = ShortcutScope::Global;
 	};
 }

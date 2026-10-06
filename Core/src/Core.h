@@ -18,10 +18,10 @@
 #include "Core/Base/Uuid.h"
 
 #include "Core/Command/Binding.h"
+#include "Core/Command/BindingConflict.h"
 #include "Core/Command/Chord.h"
 #include "Core/Command/Command.h"
 #include "Core/Command/CommandRegistry.h"
-#include "Core/Command/Conflict.h"
 #include "Core/Command/KeyName.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Command/MenuBar.h"

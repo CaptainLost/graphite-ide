@@ -19,7 +19,7 @@ so a scope stored on the chord would be lost the first time the user rebinds it.
 ## Decision
 
 The scope of a command's key chords lives on `Command::KeyScope`, `Global` by
-default, and `Chord::Scope::FocusedEditor` names the new case. The layer keeps
+default, and `ShortcutScope::FocusedEditor` names the new case. The layer keeps
 routing every key event as `Global`, so editor-scoped commands pass through it
 untouched. The focused editor routes the strokes it reads while drawing as
 `FocusedEditor`. `ShortcutRouter::OnKeyPressed` takes the scope and fires only
@@ -28,7 +28,7 @@ counts as `Global`.
 
 A stroke that ran a command is not also applied as a keystroke by the editor.
 
-`Command::Repeats`, true by default, says whether holding the key runs the
+`Command::RepeatsWhileHeld`, true by default, says whether holding the key runs the
 command again on every repeat. A command that sets it false is skipped on
 repeated presses.
 

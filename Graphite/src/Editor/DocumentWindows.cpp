@@ -890,8 +890,8 @@ namespace Graphite {
 								  action == EditorAction::Paste && Core::ClipboardHasText();
 
 							  return item != nullptr && CanRun(action, *item, hasText); },
-						  .KeyScope = Core::Chord::Scope::FocusedEditor,
-						  .Repeats = spec.Repeats});
+						  .KeyScope = Core::ShortcutScope::FocusedEditor,
+						  .RepeatsWhileHeld = spec.Repeats});
 
 			keys.SetDefault(spec.Id, BindingOf(spec));
 		}
@@ -909,8 +909,8 @@ namespace Graphite {
 					  .Enabled = [activeItem] {
 						  const Core::OpenItem* item = activeItem();
 						  return item != nullptr && item->Document.has_value(); },
-					  .KeyScope = Core::Chord::Scope::FocusedEditor,
-					  .Repeats = false});
+					  .KeyScope = Core::ShortcutScope::FocusedEditor,
+					  .RepeatsWhileHeld = false});
 
 		keys.SetDefault(kSaveCommand, SaveBinding());
 
@@ -926,8 +926,8 @@ namespace Graphite {
 							  Core::Redraw::Request();
 						  } },
 					  .Enabled = [activeItem] { return activeItem() != nullptr; },
-					  .KeyScope = Core::Chord::Scope::FocusedEditor,
-					  .Repeats = false});
+					  .KeyScope = Core::ShortcutScope::FocusedEditor,
+					  .RepeatsWhileHeld = false});
 
 		keys.SetDefault(kCloseCommand, CloseBinding());
 
@@ -942,7 +942,7 @@ namespace Graphite {
 						  const Core::OpenItem* item = activeItem();
 						  return item != nullptr && HasLanguageServer(item->Path) &&
 								 LanguageOfPath(item->Path) == LanguageId::Cpp; },
-					  .Repeats = false});
+					  .RepeatsWhileHeld = false});
 
 		keys.SetDefault(kSwitchHeaderSourceCommand,
 						{.Primary = Core::Chord::Key(ImGuiMod_Alt | ImGuiKey_O)});

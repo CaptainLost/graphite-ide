@@ -20,11 +20,8 @@ TEST_CASE("IsModifierKey answers for the eight modifier keys a keyboard has")
 	CHECK(IsModifierKey(ImGuiKey_RightSuper));
 }
 
-TEST_CASE("IsModifierKey answers for the reserved mod aliases as well")
+TEST_CASE("IsModifierKey answers for the reserved mod aliases ImGui raises while a modifier is held so reaching for Ctrl never captures Ctrl+ModCtrl")
 {
-	// The span the rebinding screen missed: these sit far from the eight above and inside
-	// the named-key range, they are raised while a modifier is held, and ImGui names them.
-	// Missing them turned reaching for Ctrl into a captured "Ctrl+ModCtrl".
 	CHECK(IsModifierKey(ImGuiKey_ReservedForModCtrl));
 	CHECK(IsModifierKey(ImGuiKey_ReservedForModShift));
 	CHECK(IsModifierKey(ImGuiKey_ReservedForModAlt));
@@ -40,10 +37,8 @@ TEST_CASE("IsModifierKey leaves ordinary keys alone")
 	CHECK_FALSE(IsModifierKey(ImGuiKey_Escape));
 }
 
-TEST_CASE("IsKeyboardKey holds at both ends of the keyboard block")
+TEST_CASE("IsKeyboardKey holds at both ends of the keyboard block from Tab to Oem102 which an ImGui update would move first")
 {
-	// Tab opens the named range and Oem102 closes the keyboard part of it, so these two
-	// are what a submodule bump would move first.
 	CHECK(Core::IsKeyboardKey(ImGuiKey_Tab));
 	CHECK(Core::IsKeyboardKey(ImGuiKey_Oem102));
 	CHECK(Core::IsKeyboardKey(ImGuiKey_S));
@@ -53,10 +48,8 @@ TEST_CASE("IsKeyboardKey holds at both ends of the keyboard block")
 	CHECK(Core::IsKeyboardKey(ImGuiKey_LeftCtrl));
 }
 
-TEST_CASE("IsKeyboardKey refuses the mouse aliases")
+TEST_CASE("IsKeyboardKey refuses the mouse aliases since arming a capture is itself a left click")
 {
-	// The seven that cost a user their left click: arming a capture is itself a left
-	// click, so a scan that accepted these answered its own question.
 	CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_MouseLeft));
 	CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_MouseRight));
 	CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_MouseMiddle));
@@ -75,18 +68,14 @@ TEST_CASE("IsKeyboardKey refuses the gamepad buttons and the reserved mod slots"
 	CHECK_FALSE(Core::IsKeyboardKey(ImGuiKey_ReservedForModSuper));
 }
 
-TEST_CASE("No key a capture can return names a modifier")
+TEST_CASE("No key a capture can return names a modifier anywhere in the named-key range")
 {
-	// The failure itself, pinned. A capture walks the named-key range and takes the first
-	// key it finds pressed, skipping only what IsModifierKey rejects — so no key it can
-	// return may be one of ImGui's modifier names. Written as a sweep of the whole range
-	// rather than a list of keys, because a list is exactly what went stale when ImGui's
-	// second span of modifiers went unnoticed.
-	for (int index = ImGuiKey_NamedKey_BEGIN; index < ImGuiKey_NamedKey_END; ++index)
+	for (int keyValue = ImGuiKey_NamedKey_BEGIN; keyValue < ImGuiKey_NamedKey_END; ++keyValue)
 	{
-		const auto key = static_cast<ImGuiKey>(index);
+		const auto key = static_cast<ImGuiKey>(keyValue);
 
-		if (!Core::IsKeyboardKey(key) || IsModifierKey(key))
+		const bool captureCanReturnKey = Core::IsKeyboardKey(key) && !IsModifierKey(key);
+		if (!captureCanReturnKey)
 		{
 			continue;
 		}

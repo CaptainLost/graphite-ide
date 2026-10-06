@@ -640,7 +640,7 @@ namespace Graphite {
 													ImGui::GetIO().MouseWheel};
 
 			context.Router->OnMouseScrolled(*context.Commands, *context.Keys,
-											Core::Chord::Scope::HoveredEditor, scrolled);
+											Core::ShortcutScope::HoveredEditor, scrolled);
 		}
 
 		// Asked of the stroke rather than of the keyboard: the queue is drained after the fact,
@@ -1045,7 +1045,7 @@ namespace Graphite {
 
 				const bool ran = routable &&
 								 context.Router->OnKeyPressed(*context.Commands, *context.Keys,
-															  Core::Chord::Scope::FocusedEditor,
+															  Core::ShortcutScope::FocusedEditor,
 															  pressed);
 
 				if (!ran)

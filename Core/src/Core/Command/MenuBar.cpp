@@ -12,6 +12,10 @@
 namespace Core {
 
 	namespace {
+		constexpr char kShortcutHintSeparator = '\t';
+		constexpr const char* kIconGap = "  ";
+		constexpr const char* kImGuiIdSeparator = "###";
+
 		bool BeginTopLevelMenu(const char* label, const ImVec2& dropdownPadding)
 		{
 			if (!ImGui::BeginMenu(label))
@@ -29,38 +33,65 @@ namespace Core {
 			ImGui::EndMenu();
 		}
 
-		// A label may carry a hint after a tab ("Exit\tAlt+F4") for a shortcut the application
-		// does not own and cannot rebind, so no keymap entry exists to advertise it. The tab
-		// has to be split off rather than passed through: ImGui's text renderer handles only
-		// '\n' and '\r', so a tab draws as the fallback glyph in one left-aligned run instead
-		// of reaching the right-aligned shortcut column MenuItem keeps for exactly this.
+		// A label may end in a tab and a hint for a shortcut the application does not own ("Exit\tAlt+F4").
+		// ImGui's text renderer handles only '\n' and '\r', so a tab left in the label draws as the
+		// fallback glyph instead of reaching the right-aligned shortcut column MenuItem keeps for it.
 		std::string TextBeforeShortcutHint(const std::string& label)
 		{
-			return label.substr(0, label.find('\t'));
+			return label.substr(0, label.find(kShortcutHintSeparator));
 		}
 
-		std::string ShortcutHintIn(const std::string& label)
+		std::string ShortcutHintOf(const std::string& label)
 		{
-			const std::size_t tab = label.find('\t');
+			const std::size_t separatorPosition = label.find(kShortcutHintSeparator);
 
-			return tab == std::string::npos ? std::string() : label.substr(tab + 1);
+			if (separatorPosition == std::string::npos)
+			{
+				return std::string();
+			}
+
+			return label.substr(separatorPosition + 1);
 		}
 
-		// "###id" fixes the item's identity to the command, so a label that changes with state
-		// does not make ImGui treat it as a different item.
+		// What follows "###" is the item's ImGui identity, so a label that changes with state
+		// stays the same item.
 		std::string LabelWithStableId(const std::string& text, const std::string& id)
 		{
-			return text + "###" + id;
+			return text + kImGuiIdSeparator + id;
 		}
 
-		// A menu naming a command nobody registered is a wiring mistake, and drawing nothing
-		// hides it. The id is what the tree names and what a search would find.
+		std::string WithIcon(const std::string& text, const std::string& icon)
+		{
+			if (icon.empty())
+			{
+				return text;
+			}
+
+			return icon + kIconGap + text;
+		}
+
+		std::string PrimaryChordTextOf(const Binding* binding)
+		{
+			if (binding == nullptr)
+			{
+				return std::string();
+			}
+
+			return binding->Primary.ToString();
+		}
+
+		// Drawn disabled under the id the tree names rather than skipped: a menu naming a command
+		// nobody registered is a wiring mistake, and drawing nothing would hide it.
 		void RenderUnregisteredCommand(const std::string& id)
 		{
-			ImGui::MenuItem(id.c_str(), nullptr, false, false);
+			const char* const noShortcut = nullptr;
+			const bool selected = false;
+			const bool enabled = false;
+
+			ImGui::MenuItem(id.c_str(), noShortcut, selected, enabled);
 		}
 
-		void RenderCommand(CommandRegistry& commands, const Keymap& keys, const std::string& id)
+		void RenderCommand(CommandRegistry& commands, const Keymap& keymap, const std::string& id)
 		{
 			const Command* command = commands.Find(id);
 
@@ -70,30 +101,28 @@ namespace Core {
 				return;
 			}
 
-			const Binding* binding = keys.For(id);
-			std::string shortcut = binding != nullptr ? binding->Primary.ToString() : std::string();
+			// A bound chord wins over the label's hint: it is the shortcut the user can rebind, and
+			// a command must never show two.
+			std::string shortcut = PrimaryChordTextOf(keymap.For(id));
 
-			// A binding wins over the hint: a command must never show two shortcut texts, and
-			// the one that can actually be rebound is the truthful one.
 			if (shortcut.empty())
 			{
-				shortcut = ShortcutHintIn(command->Label);
+				shortcut = ShortcutHintOf(command->Label);
 			}
 
-			const bool enabled = !command->Enabled || command->Enabled();
-			const bool checked = command->Checked && command->Checked();
+			const bool enabled = IsCommandEnabled(*command);
+			const bool checked = IsCommandChecked(*command);
 			const std::string text = TextBeforeShortcutHint(command->Label);
-			const std::string label = LabelWithStableId(
-				command->Icon.empty() ? text : command->Icon + "  " + text, id);
+			const std::string label = LabelWithStableId(WithIcon(text, command->Icon), id);
+			const char* shortcutOrNothing = shortcut.empty() ? nullptr : shortcut.c_str();
 
-			if (ImGui::MenuItem(label.c_str(), shortcut.empty() ? nullptr : shortcut.c_str(), checked,
-								enabled))
+			if (ImGui::MenuItem(label.c_str(), shortcutOrNothing, checked, enabled))
 			{
 				commands.RunFromMenu(id);
 			}
 		}
 
-		void RenderItem(CommandRegistry& commands, const Keymap& keys, const MenuItem& item)
+		void RenderItem(CommandRegistry& commands, const Keymap& keymap, const MenuItem& item)
 		{
 			switch (item.GetKind())
 			{
@@ -106,22 +135,25 @@ namespace Core {
 				break;
 
 			case MenuItem::Kind::Command:
-				RenderCommand(commands, keys, item.GetText());
+				RenderCommand(commands, keymap, item.GetText());
 				break;
 
 			case MenuItem::Kind::Group:
-				// InGroup hands back a copy, so a command registered by one of the members
-				// run below cannot resize the registry mid-iteration.
-				for (const Command* member : commands.InGroup(item.GetText()))
+			{
+				// A copy of the members rather than a view into the registry, because a command run from this loop may register another and resize the registry.
+				const std::vector<const Command*> members = commands.InGroup(item.GetText());
+
+				for (const Command* member : members)
 				{
-					RenderCommand(commands, keys, member->Id);
+					RenderCommand(commands, keymap, member->Id);
 				}
 				break;
+			}
 
 			case MenuItem::Kind::Submenu:
 				if (ImGui::BeginMenu(item.GetText().c_str()))
 				{
-					RenderMenuItems(commands, keys, item.GetChildren());
+					RenderMenuItems(commands, keymap, item.GetChildren());
 					ImGui::EndMenu();
 				}
 				break;
@@ -129,67 +161,67 @@ namespace Core {
 		}
 	}
 
-	void RenderMenuItems(CommandRegistry& commands, const Keymap& keys,
+	void RenderMenuItems(CommandRegistry& commands, const Keymap& keymap,
 						 const std::vector<MenuItem>& items)
 	{
 		for (const MenuItem& item : items)
 		{
-			RenderItem(commands, keys, item);
+			RenderItem(commands, keymap, item);
 		}
 	}
 
-	void MenuBar::Render(CommandRegistry& commands, const Keymap& keys,
-						 const std::vector<MenuItem>& tree, float rowHeight,
-						 const std::function<void()>& leading, const std::function<void()>& trailing)
+	void MenuBar::Render(CommandRegistry& commands, const Keymap& keymap,
+						 const std::vector<MenuItem>& menuTree, float rowHeight,
+						 const std::function<void()>& drawLeading, const std::function<void()>& drawTrailing)
 	{
-		// Read before the override below is pushed over it: this is the padding the dropdowns
-		// are entitled to, and BeginTopLevelMenu hands it back to each of them.
+		// Read before the bar's own padding is pushed over it: BeginTopLevelMenu hands this
+		// padding back to each dropdown.
 		const ImVec2 dropdownPadding = ImGui::GetStyle().FramePadding;
 
-		// DockSpaceHost::Begin pops its own override before opening the dockspace, so the bar
-		// sees default padding unless it is pushed again here. It has to match the row, or the
-		// top-level items and whatever `leading` and `trailing` draw sit off-centre in it.
-		const bool overridePadding = rowHeight > 0.0f;
+		// DockSpaceHost::Begin pops its own padding before opening the dockspace, so the bar has
+		// to push one that centres its items, and what drawLeading and drawTrailing draw, in the row.
+		const bool rowHeightGiven = rowHeight > 0.0f;
 
-		if (overridePadding)
+		if (rowHeightGiven)
 		{
-			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-								ImVec2(dropdownPadding.x, (rowHeight - ImGui::GetFontSize()) * 0.5f));
+			const float paddingThatCentresText = (rowHeight - ImGui::GetFontSize()) * 0.5f;
+			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(dropdownPadding.x, paddingThatCentresText));
 		}
 
-		// Not an early return on BeginMenuBar: the push above still has to be popped.
+		// Not an early return on BeginMenuBar: the bar's padding still has to be popped.
 		if (ImGui::BeginMenuBar())
 		{
-			if (leading)
+			if (drawLeading)
 			{
-				leading();
+				drawLeading();
 			}
 
-			for (const MenuItem& item : tree)
+			for (const MenuItem& item : menuTree)
 			{
-				// Anything else at the top level is a malformed tree, and drawing it as a bare
-				// item would look like a menu that failed to open.
-				if (item.GetKind() != MenuItem::Kind::Submenu)
+				// Only a submenu belongs at the top level: a bare item there would look like a
+				// menu that failed to open.
+				const bool isTopLevelMenu = item.GetKind() == MenuItem::Kind::Submenu;
+				if (!isTopLevelMenu)
 				{
 					continue;
 				}
 
 				if (BeginTopLevelMenu(item.GetText().c_str(), dropdownPadding))
 				{
-					RenderMenuItems(commands, keys, item.GetChildren());
+					RenderMenuItems(commands, keymap, item.GetChildren());
 					EndTopLevelMenu();
 				}
 			}
 
-			if (trailing)
+			if (drawTrailing)
 			{
-				trailing();
+				drawTrailing();
 			}
 
 			ImGui::EndMenuBar();
 		}
 
-		if (overridePadding)
+		if (rowHeightGiven)
 		{
 			ImGui::PopStyleVar();
 		}

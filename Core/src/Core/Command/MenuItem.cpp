@@ -5,11 +5,11 @@
 
 namespace Core {
 
-	MenuItem MenuItem::Command(std::string id)
+	MenuItem MenuItem::Command(std::string commandId)
 	{
 		MenuItem item;
 		item.m_Kind = Kind::Command;
-		item.m_Text = std::move(id);
+		item.m_Text = std::move(commandId);
 
 		return item;
 	}
@@ -22,11 +22,11 @@ namespace Core {
 		return item;
 	}
 
-	MenuItem MenuItem::Section(std::string label)
+	MenuItem MenuItem::Section(std::string heading)
 	{
 		MenuItem item;
 		item.m_Kind = Kind::Section;
-		item.m_Text = std::move(label);
+		item.m_Text = std::move(heading);
 
 		return item;
 	}
@@ -41,11 +41,11 @@ namespace Core {
 		return item;
 	}
 
-	MenuItem MenuItem::Group(std::string group)
+	MenuItem MenuItem::Group(std::string commandGroup)
 	{
 		MenuItem item;
 		item.m_Kind = Kind::Group;
-		item.m_Text = std::move(group);
+		item.m_Text = std::move(commandGroup);
 
 		return item;
 	}

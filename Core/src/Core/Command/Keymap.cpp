@@ -2,7 +2,6 @@
 
 #include "Core/Command/Keymap.h"
 
-#include "Core/Command/Command.h"
 #include "Core/Command/CommandRegistry.h"
 
 #include <utility>
@@ -10,7 +9,15 @@
 namespace Core {
 
 	namespace {
-		bool Holds(const Binding& binding, const Chord& chord)
+		using BindingsById = std::map<std::string, Binding, std::less<>>;
+
+		struct ChordOwner
+		{
+			Chord HeldChord;
+			std::string CommandId;
+		};
+
+		bool ContainsChord(const Binding& binding, const Chord& chord)
 		{
 			if (binding.Primary == chord)
 			{
@@ -27,6 +34,58 @@ namespace Core {
 
 			return false;
 		}
+
+		const Binding* FindBinding(const BindingsById& bindings, std::string_view commandId)
+		{
+			const BindingsById::const_iterator entry = bindings.find(commandId);
+
+			if (entry == bindings.end())
+			{
+				return nullptr;
+			}
+
+			const auto& [boundCommandId, binding] = *entry;
+
+			return &binding;
+		}
+
+		bool ContainsChordInScope(const Binding& binding, const std::string& commandId, const Chord& chord,
+								  ShortcutScope scope, const CommandRegistry& commands)
+		{
+			return ContainsChord(binding, chord) && commands.KeyScopeOf(commandId) == scope;
+		}
+
+		void ClaimChord(const Chord& chord, const std::string& commandId, std::vector<ChordOwner>& owners,
+						std::vector<BindingConflict>& conflicts)
+		{
+			if (chord.IsEmpty())
+			{
+				return;
+			}
+
+			for (const ChordOwner& owner : owners)
+			{
+				const bool heldByAnotherCommand = owner.HeldChord == chord && owner.CommandId != commandId;
+				if (heldByAnotherCommand)
+				{
+					conflicts.push_back({.SharedChord = chord, .FirstCommandId = owner.CommandId, .SecondCommandId = commandId});
+					return;
+				}
+			}
+
+			owners.push_back({.HeldChord = chord, .CommandId = commandId});
+		}
+
+		void ClaimEveryChordOf(const std::string& commandId, const Binding& binding, std::vector<ChordOwner>& owners,
+							   std::vector<BindingConflict>& conflicts)
+		{
+			ClaimChord(binding.Primary, commandId, owners, conflicts);
+
+			for (const Chord& alternate : binding.Alternates)
+			{
+				ClaimChord(alternate, commandId, owners, conflicts);
+			}
+		}
 	}
 
 	void Keymap::SetDefault(std::string id, Binding binding)
@@ -34,18 +93,18 @@ namespace Core {
 		m_Defaults[std::move(id)] = std::move(binding);
 	}
 
-	void Keymap::Override(std::string_view id, std::optional<Binding> binding)
+	void Keymap::Override(std::string_view commandId, Binding binding)
 	{
-		if (!binding.has_value())
-		{
-			if (const auto found = m_Overrides.find(id); found != m_Overrides.end())
-			{
-				m_Overrides.erase(found);
-			}
-			return;
-		}
+		m_Overrides[std::string(commandId)] = std::move(binding);
+	}
 
-		m_Overrides[std::string(id)] = std::move(*binding);
+	void Keymap::RestoreDefault(std::string_view commandId)
+	{
+		const BindingsById::const_iterator existingOverride = m_Overrides.find(commandId);
+		if (existingOverride != m_Overrides.end())
+		{
+			m_Overrides.erase(existingOverride);
+		}
 	}
 
 	void Keymap::ClearOverrides()
@@ -55,9 +114,11 @@ namespace Core {
 
 	const Binding* Keymap::For(std::string_view id) const
 	{
-		if (const auto override = m_Overrides.find(id); override != m_Overrides.end())
+		const Binding* userOverride = FindBinding(m_Overrides, id);
+
+		if (userOverride != nullptr)
 		{
-			return &override->second;
+			return userOverride;
 		}
 
 		return DefaultFor(id);
@@ -65,98 +126,57 @@ namespace Core {
 
 	const Binding* Keymap::DefaultFor(std::string_view id) const
 	{
-		const auto found = m_Defaults.find(id);
-
-		if (found == m_Defaults.end())
-		{
-			return nullptr;
-		}
-
-		return &found->second;
+		return FindBinding(m_Defaults, id);
 	}
 
 	bool Keymap::IsOverridden(std::string_view id) const
 	{
-		return m_Overrides.find(id) != m_Overrides.end();
+		return FindBinding(m_Overrides, id) != nullptr;
 	}
 
 	std::string_view Keymap::BoundTo(const Chord& chord) const
 	{
-		std::string_view owner;
+		std::string_view owningCommandId;
 
 		// Through ForEachBinding rather than over the two maps directly, so this cannot start
 		// disagreeing with For about which layer wins.
 		ForEachBinding(
-			[&owner, &chord](const std::string& id, const Binding& binding) {
-				if (owner.empty() && Holds(binding, chord))
+			[&owningCommandId, &chord](const std::string& id, const Binding& binding) {
+				const bool ownerFound = !owningCommandId.empty();
+				if (!ownerFound && ContainsChord(binding, chord))
 				{
-					owner = id;
+					owningCommandId = id;
 				}
 			});
 
-		return owner;
+		return owningCommandId;
 	}
 
-	std::string_view Keymap::BoundTo(const Chord& chord, Chord::Scope scope,
+	std::string_view Keymap::BoundTo(const Chord& chord, ShortcutScope scope,
 									 const CommandRegistry& commands) const
 	{
-		std::string_view owner;
+		std::string_view owningCommandId;
 
 		ForEachBinding(
-			[&owner, &chord, scope, &commands](const std::string& id, const Binding& binding) {
-				if (!owner.empty() || !Holds(binding, chord))
+			[&owningCommandId, &chord, scope, &commands](const std::string& id, const Binding& binding) {
+				const bool ownerFound = !owningCommandId.empty();
+				if (!ownerFound && ContainsChordInScope(binding, id, chord, scope, commands))
 				{
-					return;
-				}
-
-				const Command* command = commands.Find(id);
-				const Chord::Scope wanted =
-					command != nullptr ? command->KeyScope : Chord::Scope::Global;
-
-				if (wanted == scope)
-				{
-					owner = id;
+					owningCommandId = id;
 				}
 			});
 
-		return owner;
+		return owningCommandId;
 	}
 
-	std::vector<Conflict> Keymap::FindConflicts() const
+	std::vector<BindingConflict> Keymap::FindConflicts() const
 	{
-		std::vector<std::pair<Chord, std::string>> seen;
-		std::vector<Conflict> conflicts;
+		std::vector<ChordOwner> owners;
+		std::vector<BindingConflict> conflicts;
 
 		ForEachBinding(
-			[&seen, &conflicts](const std::string& id, const Binding& binding) {
-				const auto note = [&seen, &conflicts, &id](const Chord& chord) {
-					// Two commands the user unbound both hold an empty primary, and they
-					// are not in conflict: neither can be reached at all.
-					if (chord.IsEmpty())
-					{
-						return;
-					}
-
-					for (const auto& [known, owner] : seen)
-					{
-						// Same command twice is harmless: a chord listed as primary and
-						// as an alternate of one command reaches one command either way.
-						if (known == chord && owner != id)
-						{
-							conflicts.push_back({.Chord = chord, .First = owner, .Second = id});
-							return;
-						}
-					}
-
-					seen.emplace_back(chord, id);
-				};
-
-				note(binding.Primary);
-
-				for (const Chord& alternate : binding.Alternates)
-				{
-					note(alternate);
-				}
+			[&owners, &conflicts](const std::string& id, const Binding& binding) {
+				ClaimEveryChordOf(id, binding, owners, conflicts);
 			});
 
 		return conflicts;
@@ -174,20 +194,20 @@ namespace Core {
 	void Keymap::ForEachBinding(
 		const std::function<void(const std::string&, const Binding&)>& action) const
 	{
-		for (const auto& [id, binding] : m_Defaults)
+		for (const auto& [id, defaultBinding] : m_Defaults)
 		{
-			const auto override = m_Overrides.find(id);
+			const Binding* userOverride = FindBinding(m_Overrides, id);
+			const bool isOverridden = userOverride != nullptr;
 
-			action(id, override != m_Overrides.end() ? override->second : binding);
+			action(id, isOverridden ? *userOverride : defaultBinding);
 		}
 
-		// Overrides on ids with no default at all — a command that shipped without a
-		// shortcut and was given one.
-		for (const auto& [id, binding] : m_Overrides)
+		for (const auto& [id, overrideBinding] : m_Overrides)
 		{
-			if (m_Defaults.find(id) == m_Defaults.end())
+			const bool hasNoDefault = FindBinding(m_Defaults, id) == nullptr;
+			if (hasNoDefault)
 			{
-				action(id, binding);
+				action(id, overrideBinding);
 			}
 		}
 	}

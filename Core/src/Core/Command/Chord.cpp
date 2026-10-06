@@ -12,16 +12,25 @@ namespace Core {
 		constexpr const char* kWheelUpName = "WheelUp";
 		constexpr const char* kWheelDownName = "WheelDown";
 
-		bool NamesMatch(std::string_view left, std::string_view right)
+		constexpr char kModifierSeparator = '+';
+
+		constexpr ShortcutScope kWheelGestureScope = ShortcutScope::HoveredEditor;
+
+		ImGuiKeyChord ModifiersOf(ImGuiKeyChord keys)
 		{
-			return Lowered(left) == Lowered(right);
+			return keys & ImGuiMod_Mask_;
+		}
+
+		ImGuiKey KeyOf(ImGuiKeyChord keys)
+		{
+			return static_cast<ImGuiKey>(keys & ~ImGuiMod_Mask_);
 		}
 
 		const ModifierName* ModifierNamed(std::string_view name)
 		{
 			for (const ModifierName& modifier : kModifiers)
 			{
-				if (NamesMatch(modifier.Name, name))
+				if (EqualsIgnoringCase(modifier.Name, name))
 				{
 					return &modifier;
 				}
@@ -30,51 +39,55 @@ namespace Core {
 			return nullptr;
 		}
 
-		// Consumes the leading "Ctrl+Shift+" run of `text`, leaving whatever the trigger is.
-		// A trailing '+' therefore leaves an empty segment, which falls out as "no key named
-		// that", and a '+' that is itself the key — "Ctrl+=", "Num+" — ends the run.
-		ImGuiKeyChord TakeModifierPrefixes(std::string& text)
+		// Not a split on every '+': a key name can contain one ("Num+"), so the run ends at the first segment that is not a modifier name.
+		ImGuiKeyChord TakeLeadingModifiers(std::string& text)
 		{
-			ImGuiKeyChord mods = 0;
+			ImGuiKeyChord modifiers = ImGuiMod_None;
 
-			for (;;)
+			while (true)
 			{
-				const std::size_t separator = text.find('+');
+				const std::size_t separatorPosition = text.find(kModifierSeparator);
 
-				if (separator == std::string::npos)
+				if (separatorPosition == std::string::npos)
 				{
 					break;
 				}
 
-				const ModifierName* found =
-					ModifierNamed(Trimmed(std::string_view(text).substr(0, separator)));
+				const std::string_view segment = std::string_view(text).substr(0, separatorPosition);
+				const ModifierName* modifier = ModifierNamed(Trimmed(segment));
 
-				if (found == nullptr)
+				if (modifier == nullptr)
 				{
 					break;
 				}
 
-				mods |= found->Bit;
-				text = Trimmed(std::string_view(text).substr(separator + 1));
+				modifiers |= modifier->Bit;
+				text = Trimmed(std::string_view(text).substr(separatorPosition + 1));
 			}
 
-			return mods;
+			return modifiers;
 		}
 
-		std::string NameModifiersOf(ImGuiKeyChord keys)
+		std::string ModifierPrefixOf(ImGuiKeyChord keys)
 		{
-			std::string result;
+			std::string modifierPrefix;
 
 			for (const ModifierName& modifier : kModifiers)
 			{
-				if ((keys & modifier.Bit) != 0)
+				const bool chordHasModifier = (keys & modifier.Bit) != 0;
+				if (chordHasModifier)
 				{
-					result += modifier.Name;
-					result += '+';
+					modifierPrefix += modifier.Name;
+					modifierPrefix += kModifierSeparator;
 				}
 			}
 
-			return result;
+			return modifierPrefix;
+		}
+
+		void DropSeparatorAfterLastModifier(std::string& modifierPrefix)
+		{
+			modifierPrefix.pop_back();
 		}
 	}
 
@@ -83,46 +96,47 @@ namespace Core {
 		Chord chord;
 		chord.m_Keys = keys;
 		chord.m_Trigger = Trigger::Key;
-		chord.m_Scope = Chord::Scope::Global;
+		chord.m_Scope = ShortcutScope::Global;
 
 		return chord;
 	}
 
-	Chord Chord::Wheel(ImGuiKeyChord mods, Trigger direction, Chord::Scope scope)
+	Chord Chord::Wheel(ImGuiKeyChord modifiers, Trigger direction, ShortcutScope scope)
 	{
 		Chord chord;
-		chord.m_Keys = mods & ImGuiMod_Mask_;
+		chord.m_Keys = ModifiersOf(modifiers);
 		chord.m_Trigger = direction;
 		chord.m_Scope = scope;
 
 		return chord;
 	}
 
-	Chord Chord::ModifierTap(ImGuiKeyChord mods)
+	Chord Chord::ModifierTap(ImGuiKeyChord modifiers)
 	{
 		Chord chord;
-		chord.m_Keys = mods & ImGuiMod_Mask_;
+		chord.m_Keys = ModifiersOf(modifiers);
 		chord.m_Trigger = Trigger::ModifierTap;
-		chord.m_Scope = Chord::Scope::Global;
+		chord.m_Scope = ShortcutScope::Global;
 
 		return chord;
 	}
 
 	bool Chord::IsEmpty() const
 	{
-		// A tap names its gesture with the modifiers alone, so it is the modifiers that have
-		// to be there. Every other trigger says what it fires on by its own kind.
-		if (m_Trigger == Trigger::ModifierTap)
+		switch (m_Trigger)
 		{
-			return (m_Keys & ImGuiMod_Mask_) == 0;
-		}
+		case Trigger::Key:
+			return KeyOf(m_Keys) == ImGuiKey_None;
 
-		if (m_Trigger != Trigger::Key)
-		{
+		case Trigger::WheelUp:
+		case Trigger::WheelDown:
 			return false;
+
+		case Trigger::ModifierTap:
+			return ModifiersOf(m_Keys) == ImGuiMod_None;
 		}
 
-		return (m_Keys & ~ImGuiMod_Mask_) == ImGuiKey_None;
+		return false;
 	}
 
 	std::string Chord::ToString() const
@@ -132,36 +146,28 @@ namespace Core {
 			return {};
 		}
 
-		std::string result = NameModifiersOf(m_Keys);
-
-		// A tap has no trigger to append: the modifiers are the gesture, so the last one
-		// stands where a key would, and the separator behind it goes.
-		if (m_Trigger == Trigger::ModifierTap)
-		{
-			result.pop_back();
-			return result;
-		}
+		std::string text = ModifierPrefixOf(m_Keys);
 
 		switch (m_Trigger)
 		{
 		case Trigger::WheelUp:
-			result += kWheelUpName;
+			text += kWheelUpName;
 			break;
 
 		case Trigger::WheelDown:
-			result += kWheelDownName;
+			text += kWheelDownName;
 			break;
 
 		case Trigger::Key:
-			result += NameOfKey(static_cast<ImGuiKey>(m_Keys & ~ImGuiMod_Mask_));
+			text += NameOfKey(KeyOf(m_Keys));
 			break;
 
 		case Trigger::ModifierTap:
-			// Returned above: a tap has no trigger to append.
+			DropSeparatorAfterLastModifier(text);
 			break;
 		}
 
-		return result;
+		return text;
 	}
 
 	std::optional<Chord> Chord::Parse(std::string_view text)
@@ -173,48 +179,47 @@ namespace Core {
 			return std::nullopt;
 		}
 
-		const ImGuiKeyChord mods = TakeModifierPrefixes(remaining);
-		const std::string trigger = Trimmed(remaining);
+		const ImGuiKeyChord modifiers = TakeLeadingModifiers(remaining);
+		const std::string& triggerName = remaining;
 
-		if (trigger.empty())
+		if (triggerName.empty())
 		{
 			return std::nullopt;
 		}
 
-		if (NamesMatch(trigger, kWheelUpName))
+		if (EqualsIgnoringCase(triggerName, kWheelUpName))
 		{
-			return Chord::Wheel(mods, Trigger::WheelUp, Chord::Scope::HoveredEditor);
+			return Chord::Wheel(modifiers, Trigger::WheelUp, kWheelGestureScope);
 		}
 
-		if (NamesMatch(trigger, kWheelDownName))
+		if (EqualsIgnoringCase(triggerName, kWheelDownName))
 		{
-			return Chord::Wheel(mods, Trigger::WheelDown, Chord::Scope::HoveredEditor);
+			return Chord::Wheel(modifiers, Trigger::WheelDown, kWheelGestureScope);
 		}
 
-		// A trailing segment that is itself a modifier name means the gesture is the
-		// modifiers: "Ctrl" is a tap, "Ctrl+Shift" is a tap of both. ImGui names the keyboard
-		// keys LeftCtrl and RightCtrl, so the two forms cannot be mistaken for one another.
-		if (const ModifierName* tapped = ModifierNamed(trigger))
+		// ImGui names the keyboard keys LeftCtrl and RightCtrl, so a trigger that is a bare
+		// modifier name can only mean a tap of the modifiers.
+		const ModifierName* tappedModifier = ModifierNamed(triggerName);
+		if (tappedModifier != nullptr)
 		{
-			return Chord::ModifierTap(mods | tapped->Bit);
+			return Chord::ModifierTap(modifiers | tappedModifier->Bit);
 		}
 
-		const ImGuiKey key = KeyNamed(trigger);
+		const ImGuiKey key = KeyNamed(triggerName);
 
 		if (key == ImGuiKey_None)
 		{
 			return std::nullopt;
 		}
 
-		// ImGuiKey's named range also holds gamepad buttons, mouse aliases and ImGui's
-		// internal mod slots, all of which KeyNamed answers about honestly. None of them can
-		// be what a chord fires on. Refused here rather than in KeyNamed, so the printer and
-		// the parser go on agreeing about one table.
-		if (!IsKeyboardKey(key) || IsModifierKey(key))
+		// Refused here rather than in KeyNamed, so that KeyNamed and NameOfKey keep agreeing
+		// about one table of names.
+		const bool keyCanFireChord = IsKeyboardKey(key) && !IsModifierKey(key);
+		if (!keyCanFireChord)
 		{
 			return std::nullopt;
 		}
 
-		return Chord::Key(mods | key);
+		return Chord::Key(modifiers | key);
 	}
 }

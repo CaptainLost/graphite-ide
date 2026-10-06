@@ -10,8 +10,8 @@ namespace Core {
 		WheelUp,
 		WheelDown,
 
-		// Modifiers pressed and released with nothing in between. Its own kind because a chord
-		// of modifiers alone is otherwise indistinguishable from no chord at all.
+		// Modifiers pressed and released with nothing in between. A trigger of its own, because a
+		// Key chord of modifiers alone is indistinguishable from no chord at all.
 		ModifierTap
 	};
 }

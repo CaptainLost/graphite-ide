@@ -390,7 +390,7 @@ namespace Graphite {
 
 		if (ImGui::SmallButton("Default"))
 		{
-			m_Keys.Override(command.Id, std::nullopt);
+			m_Keys.RestoreDefault(command.Id);
 			m_OnChanged();
 		}
 
@@ -477,7 +477,7 @@ namespace Graphite {
 		if (pointerOverCell && io.MouseWheel != 0.0f && io.KeyMods != ImGuiMod_None)
 		{
 			return Core::Chord::Wheel(io.KeyMods, io.MouseWheel > 0.0f ? Core::Trigger::WheelUp : Core::Trigger::WheelDown,
-									  Core::Chord::Scope::HoveredEditor);
+									  Core::ShortcutScope::HoveredEditor);
 		}
 
 		return std::nullopt;

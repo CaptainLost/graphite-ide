@@ -22,10 +22,10 @@ namespace Core {
 
 		const Command* Find(std::string_view id) const;
 
+		ShortcutScope KeyScopeOf(std::string_view commandId) const;
+
 		bool Run(std::string_view id);
 
-		// Run as a menu item runs it: the command's RunFromMenu when it has one, else Run.
-		// Gated by Enabled the same way.
 		bool RunFromMenu(std::string_view id);
 
 		std::vector<const Command*> InGroup(std::string_view group) const;
@@ -33,7 +33,9 @@ namespace Core {
 		void ForEach(const std::function<void(const Command&)>& action) const;
 
 	private:
+		// Each command is held through a pointer because Add hands out its address, which has to
+		// stay valid as the vector grows.
 		std::vector<Scope<Command>> m_Commands;
-		std::unordered_map<std::string, std::size_t> m_ById;
+		std::unordered_map<std::string, std::size_t> m_CommandIndexById;
 	};
 }

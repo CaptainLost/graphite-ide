@@ -387,10 +387,10 @@ namespace Graphite {
 		// The defaults are assembled across five files, each of which believes it is claiming
 		// a free chord. An error rather than an assertion: a duplicate binding is a wiring
 		// mistake worth shouting about, not a reason to refuse to start.
-		for (const Core::Conflict& conflict : m_Keys.FindConflicts())
+		for (const Core::BindingConflict& conflict : m_Keys.FindConflicts())
 		{
-			APP_ERROR("'{}' and '{}' are both bound to {}", conflict.First, conflict.Second,
-					  conflict.Chord.ToString());
+			APP_ERROR("'{}' and '{}' are both bound to {}", conflict.FirstCommandId, conflict.SecondCommandId,
+					  conflict.SharedChord.ToString());
 		}
 	}
 
@@ -876,9 +876,7 @@ namespace Graphite {
 		// monitor the window is on or the settings can change at any moment.
 		m_Layout.MenuBarHeight = m_CustomTitleBar ? Core::Scaled(kCaptionHeight) : 0.0f;
 		m_DockSpace.Begin(m_Layout, [this, workspaceTrusted] { RenderRestrictedModeBar(workspaceTrusted); });
-		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.MenuBarHeight,
-						 [this] { m_TitleBar.RenderLogo(Core::Application::Get().GetWindow()); },
-						 [this] { m_TitleBar.Render(Core::Application::Get().GetWindow()); });
+		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.MenuBarHeight, [this] { m_TitleBar.RenderLogo(Core::Application::Get().GetWindow()); }, [this] { m_TitleBar.Render(Core::Application::Get().GetWindow()); });
 		RenderEmptyEditorArea();
 		m_DockSpace.End();
 
@@ -1217,7 +1215,7 @@ namespace Graphite {
 		Core::EventDispatcher dispatcher{event};
 
 		dispatcher.Dispatch<Core::KeyPressedEvent>([this](Core::KeyPressedEvent& pressed) {
-			return m_Router.OnKeyPressed(m_Commands, m_Keys, Core::Chord::Scope::Global, pressed);
+			return m_Router.OnKeyPressed(m_Commands, m_Keys, Core::ShortcutScope::Global, pressed);
 		});
 
 		dispatcher.Dispatch<Core::KeyReleasedEvent>([this](Core::KeyReleasedEvent& released) {
