@@ -266,3 +266,105 @@ TEST_CASE("The same message in another group is a toast of its own")
 	REQUIRE(stack.Get().size() == 2);
 	CHECK(stack.Get()[1].Count == 2);
 }
+
+TEST_CASE("A toast just shown has its whole lifetime left")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Success, "Title", "done", kStart);
+
+	CHECK(Core::ToastStack::ShareOfLifetimeLeft(stack.Get()[0], kStart) == doctest::Approx(1.0f));
+}
+
+TEST_CASE("The share of lifetime left falls evenly while the countdown runs")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Warning, "Title", "careful", kStart);
+	const Core::Toast& toast = stack.Get()[0];
+
+	CHECK(Core::ToastStack::ShareOfLifetimeLeft(toast, kStart + 1500ms) == doctest::Approx(0.75f));
+	CHECK(Core::ToastStack::ShareOfLifetimeLeft(toast, kStart + 3s) == doctest::Approx(0.5f));
+	CHECK(Core::ToastStack::ShareOfLifetimeLeft(toast, kStart + 6s) == doctest::Approx(0.0f));
+}
+
+TEST_CASE("A hovered toast keeps the share of lifetime it had when the pointer arrived")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Success, "Title", "done", kStart);
+	stack.SetHovered(stack.Get()[0].Id, true, kStart + 3s);
+
+	CHECK(Core::ToastStack::ShareOfLifetimeLeft(stack.Get()[0], kStart + 30s) == doctest::Approx(0.5f));
+
+	stack.SetHovered(stack.Get()[0].Id, false, kStart + 30s);
+	CHECK(Core::ToastStack::ShareOfLifetimeLeft(stack.Get()[0], kStart + 31500ms) == doctest::Approx(0.25f));
+}
+
+TEST_CASE("An error has its whole lifetime left however long it waits")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Error, "Title", "failed", kStart);
+	stack.Update(kStart + 1h);
+
+	CHECK(Core::ToastStack::ShareOfLifetimeLeft(stack.Get()[0], kStart + 1h) == doctest::Approx(1.0f));
+}
+
+TEST_CASE("A toast closed by hand keeps the share it had when it was closed while it fades")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Success, "Title", "done", kStart);
+	stack.Close(stack.Get()[0].Id, kStart + 3s);
+
+	CHECK(Core::ToastStack::ShareOfLifetimeLeft(stack.Get()[0], kStart + 3s + 100ms) == doctest::Approx(0.5f));
+}
+
+TEST_CASE("A toast closed while hovered keeps the share it had when the pointer arrived")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Success, "Title", "done", kStart);
+	stack.SetHovered(stack.Get()[0].Id, true, kStart + 3s);
+	stack.Close(stack.Get()[0].Id, kStart + 10s);
+
+	CHECK(Core::ToastStack::ShareOfLifetimeLeft(stack.Get()[0], kStart + 10s + 100ms) == doctest::Approx(0.5f));
+}
+
+TEST_CASE("A toast whose countdown ran out has nothing left while it fades")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Warning, "Title", "careful", kStart);
+	stack.Update(kStart + 6s + 50ms);
+
+	REQUIRE(stack.Get()[0].LeavingSince.has_value());
+	CHECK(Core::ToastStack::ShareOfLifetimeLeft(stack.Get()[0], kStart + 6s + 100ms) == doctest::Approx(0.0f));
+}
+
+TEST_CASE("A twin gives its toast the whole lifetime back")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Warning, "Title", "same", kStart);
+	stack.Show(Core::ToastKind::Warning, "Title", "same", kStart + 3s);
+
+	CHECK(Core::ToastStack::ShareOfLifetimeLeft(stack.Get()[0], kStart + 3s) == doctest::Approx(1.0f));
+}
+
+TEST_CASE("A countdown runs while a toast that expires is up and the pointer is elsewhere")
+{
+	Core::ToastStack stack;
+	CHECK_FALSE(stack.IsAnyCountdownRunning());
+
+	stack.Show(Core::ToastKind::Success, "Title", "done", kStart);
+	CHECK(stack.IsAnyCountdownRunning());
+
+	stack.SetHovered(stack.Get()[0].Id, true, kStart + 1s);
+	CHECK_FALSE(stack.IsAnyCountdownRunning());
+
+	stack.SetHovered(stack.Get()[0].Id, false, kStart + 2s);
+	stack.Close(stack.Get()[0].Id, kStart + 3s);
+	CHECK_FALSE(stack.IsAnyCountdownRunning());
+}
+
+TEST_CASE("An error waiting to be closed runs no countdown")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Error, "Title", "failed", kStart);
+
+	CHECK_FALSE(stack.IsAnyCountdownRunning());
+}

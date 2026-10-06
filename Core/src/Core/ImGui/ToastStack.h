@@ -93,6 +93,10 @@ namespace Core {
 		// on input, which wakes the loop by itself.
 		std::optional<Clock::time_point> NextChange(Clock::time_point now) const;
 
+		bool IsAnyCountdownRunning() const;
+
+		static float ShareOfLifetimeLeft(const Toast& toast, Clock::time_point now);
+
 	private:
 		std::vector<Toast> m_Toasts;
 		std::uint64_t m_NextId = 1;

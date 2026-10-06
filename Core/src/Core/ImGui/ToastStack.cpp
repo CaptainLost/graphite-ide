@@ -134,4 +134,38 @@ namespace Core {
 
 		return next;
 	}
+
+	bool ToastStack::IsAnyCountdownRunning() const
+	{
+		for (const Toast& toast : m_Toasts)
+		{
+			const bool countdownRunning =
+				Expires(toast.Kind) && toast.CountingFrom.has_value() && !toast.LeavingSince.has_value();
+			if (countdownRunning)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	float ToastStack::ShareOfLifetimeLeft(const Toast& toast, Clock::time_point now)
+	{
+		if (!Expires(toast.Kind))
+		{
+			return 1.0f;
+		}
+
+		Clock::duration timeLeft = toast.Left;
+		if (toast.CountingFrom.has_value())
+		{
+			const Clock::time_point countedUntil =
+				toast.LeavingSince.has_value() ? std::min(now, *toast.LeavingSince) : now;
+			timeLeft -= countedUntil - *toast.CountingFrom;
+		}
+
+		const float shareLeft = std::chrono::duration<float>(timeLeft) / std::chrono::duration<float>(kLifetime);
+		return std::clamp(shareLeft, 0.0f, 1.0f);
+	}
 }

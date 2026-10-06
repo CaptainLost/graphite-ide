@@ -4,6 +4,7 @@
 
 #include "Core/App/Redraw.h"
 #include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/ToastBorder.h"
 #include "Core/ImGui/ToastText.h"
 #include "Core/ImGui/UiScale.h"
 
@@ -46,6 +47,16 @@ namespace Core {
 		// The border in the kind's colour at this much of its alpha: at full strength it and the
 		// icon spoke louder than the words they frame.
 		constexpr float kBorderAlpha = 0.55f;
+
+		// Not zero: the card would lose its edge once the countdown has drained the border.
+		constexpr float kDrainedBorderAlpha = 0.18f;
+
+		// As AddRect insets its own path: a stroke centred on the card's edge would hang half outside it.
+		constexpr float kStrokeInset = 0.5f;
+
+		// Sixty frames a second keep the draining border smooth; the monitor's rate for the whole
+		// countdown would redraw the application several times over for nothing.
+		constexpr std::chrono::duration<double> kCountdownFrameInterval{1.0 / 60.0};
 
 		// The kind's icon: a filled circle in its accent colour with the mark drawn over it in
 		// the surface colour, in strokes this thick.
@@ -141,6 +152,58 @@ namespace Core {
 
 			stroke(at(-5.0f, -5.0f), at(5.0f, 5.0f));
 			stroke(at(-5.0f, 5.0f), at(5.0f, -5.0f));
+		}
+
+		std::vector<ImVec2> ToImVec2s(const std::vector<BorderPoint>& points)
+		{
+			std::vector<ImVec2> converted;
+			converted.reserve(points.size());
+			for (const BorderPoint& point : points)
+			{
+				converted.emplace_back(point.X, point.Y);
+			}
+			return converted;
+		}
+
+		void DrawOpenPath(ImDrawList& draw, const std::vector<BorderPoint>& path, ImU32 colour, float thickness)
+		{
+			const std::vector<ImVec2> points = ToImVec2s(path);
+			draw.AddPolyline(points.data(), static_cast<int>(points.size()), colour, thickness, ImDrawFlags_None);
+		}
+
+		struct CountdownColours
+		{
+			ImU32 Remaining = 0;
+			ImU32 Drained = 0;
+		};
+
+		int SegmentsPerCorner(const ImDrawList& draw, float rounding)
+		{
+			constexpr int kCornersInACircle = 4;
+			const int segmentsInWholeCircle = draw._CalcCircleAutoSegmentCount(rounding);
+			return (segmentsInWholeCircle + kCornersInACircle - 1) / kCornersInACircle;
+		}
+
+		void DrawCountdownBorder(ImDrawList& draw, ImVec2 cardMin, ImVec2 cardMax, float rounding,
+								 float shareOfLifetimeLeft, const CountdownColours& colours)
+		{
+			const std::vector<BorderPoint> outline =
+				TraceToastBorder(cardMin.x + kStrokeInset, cardMin.y + kStrokeInset, cardMax.x - kStrokeInset,
+								 cardMax.y - kStrokeInset, rounding, SegmentsPerCorner(draw, rounding));
+			const float thickness = Scaled(kBorderWidth);
+
+			const bool wholeOutlineRemains = shareOfLifetimeLeft >= 1.0f;
+			if (wholeOutlineRemains)
+			{
+				const std::vector<ImVec2> loop = ToImVec2s(outline);
+				const int pointsWithoutRepeatedStart = static_cast<int>(loop.size()) - 1;
+				draw.AddPolyline(loop.data(), pointsWithoutRepeatedStart, colours.Remaining, thickness, ImDrawFlags_Closed);
+				return;
+			}
+
+			const SplitBorder split = SplitToastBorder(outline, shareOfLifetimeLeft);
+			DrawOpenPath(draw, split.Drained, colours.Drained, thickness);
+			DrawOpenPath(draw, split.Remaining, colours.Remaining, thickness);
 		}
 
 		float Seconds(ToastClock::duration duration)
@@ -360,11 +423,13 @@ namespace Core {
 				const float rounding = Scaled(kRounding);
 				const ImVec4 accent = ToImVec4(AccentOf(palette, toast.Kind));
 				const ImVec4 border = ToImVec4(AccentOf(palette, toast.Kind), kBorderAlpha);
+				const ImVec4 drainedBorder = ToImVec4(AccentOf(palette, toast.Kind), kDrainedBorderAlpha);
 				const ImVec4 surface = ToImVec4(palette.Surface);
 
 				// GetColorU32 multiplies in the toast's fade.
 				draw->AddRectFilled(min, max, ImGui::GetColorU32(surface), rounding);
-				draw->AddRect(min, max, ImGui::GetColorU32(border), rounding, ImDrawFlags_None, Scaled(kBorderWidth));
+				DrawCountdownBorder(*draw, min, max, rounding, ToastStack::ShareOfLifetimeLeft(toast, now),
+									{.Remaining = ImGui::GetColorU32(border), .Drained = ImGui::GetColorU32(drainedBorder)});
 
 				const ImVec2 iconCentre(min.x + paddingX + iconDiameter * 0.5f, min.y + iconCentreY);
 				draw->AddCircleFilled(iconCentre, iconDiameter * 0.5f, ImGui::GetColorU32(accent));
@@ -587,6 +652,11 @@ namespace Core {
 		if (moving)
 		{
 			Redraw::RequestIn(Redraw::Clock::duration::zero());
+		}
+
+		if (m_Stack.IsAnyCountdownRunning())
+		{
+			Redraw::RequestIn(kCountdownFrameInterval);
 		}
 
 		if (const std::optional<ToastClock::time_point> next = m_Stack.NextChange(now); next.has_value())

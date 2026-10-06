@@ -104,7 +104,7 @@ TEST_CASE("A toast still fading in asks for the next frame")
 	CHECK(*deadline <= Core::Redraw::Clock::now());
 }
 
-TEST_CASE("A shown toast asks for a frame no later than its expiry")
+TEST_CASE("A toast counting down asks for frames often enough to drain its border smoothly")
 {
 	Frames frames;
 	Core::Toasts toasts;
@@ -115,12 +115,15 @@ TEST_CASE("A shown toast asks for a frame no later than its expiry")
 	// Past the fade-in, wall-clock: the renderer reads the real clock.
 	std::this_thread::sleep_for(Core::ToastStack::kEnter + std::chrono::milliseconds(50));
 	(void)Core::Redraw::TakeDeadline();
+	const Core::Redraw::Clock::time_point beforeFrame = Core::Redraw::Clock::now();
 	frames.Next(toasts);
 
-	const auto deadline = Core::Redraw::TakeDeadline();
+	const std::optional<Core::Redraw::Clock::time_point> deadline = Core::Redraw::TakeDeadline();
+	const std::chrono::milliseconds justUnderASixtieth{16};
+	const std::chrono::milliseconds justOverASixtieth{17};
 	REQUIRE(deadline.has_value());
-	CHECK(*deadline > Core::Redraw::Clock::now() + std::chrono::seconds(4));
-	CHECK(*deadline <= Core::Redraw::Clock::now() + Core::ToastStack::kLifetime);
+	CHECK(*deadline >= beforeFrame + justUnderASixtieth);
+	CHECK(*deadline <= Core::Redraw::Clock::now() + justOverASixtieth);
 }
 
 TEST_CASE("A toast pushed up by a newer one asks for frames until it arrives")
