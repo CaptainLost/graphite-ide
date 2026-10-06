@@ -62,11 +62,12 @@ every frame.
   that has any decorated descendant, in the colour of the highest state among
   them, whether expanded or collapsed. The folder's own name keeps its normal
   colour.
-- Mark a file that is open in the editor but not the active one by a dot drawn
-  in the gap where a sibling folder draws its arrow, in the checkmark colour,
-  in place of the accent name colour. The active file keeps its selection and
-  gets no dot. The name colour is thereby free to carry the status, and
-  an open file with a status shows both.
+- Mark every file that is open in the editor, the active one included, by a
+  dot drawn in the gap where a sibling folder draws its arrow, in the
+  checkmark colour, in place of the accent name colour. The active file also
+  keeps its selection, so the dot always means "open in a tab" and does not
+  vanish from the file the reader is working in. The name colour is thereby
+  free to carry the status, and an open file with a status shows both.
 - Colour a tab's label in the file's state colour and draw no letter. A
   preview tab uses the same colour at 0.6 of its alpha, so it still reads as a
   preview next to a permanent tab; an undecorated preview keeps the disabled

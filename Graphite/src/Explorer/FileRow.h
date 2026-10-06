@@ -54,10 +54,9 @@ namespace Graphite {
 		// The name's colour.
 		ImU32 Ink = 0;
 
-		// Whether the file is open in a tab that is not the active one. Marked by a dot in the
-		// accent colour in the gap left of the label, where a folder has its arrow, so the label
-		// itself does not move.
-		bool OpenElsewhere = false;
+		// Marked by a dot in the accent colour in the gap left of the label, where a folder has
+		// its arrow, so the label itself does not move.
+		bool IsOpenInTab = false;
 
 		RowStatus Status;
 	};
@@ -75,7 +74,7 @@ namespace Graphite {
 
 	// After the row's Selectable, which `layout.Width` sized. Draws nothing for a row that is
 	// scrolled out of view. A name long enough to reach the status letter is clipped short of it.
-	// The open-elsewhere dot and the marker each explain themselves in a tooltip when the mouse
+	// The open-tab dot and the marker each explain themselves in a tooltip when the mouse
 	// rests on them, and only then, so the rest of the row stays quiet.
 	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& label);
 

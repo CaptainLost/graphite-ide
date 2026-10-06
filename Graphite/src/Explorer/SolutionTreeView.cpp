@@ -349,8 +349,7 @@ namespace Graphite {
 
 			if (file.Exists)
 			{
-				const bool isActive = active.has_value() && m_Documents.At(*active).Path == file.Path;
-				look.OpenElsewhere = !isActive && m_Documents.Find(file.Path).has_value();
+				look.IsOpenInTab = m_Documents.Find(file.Path).has_value();
 				look.Status = FileRowStatusOf(m_GitDecorations, file.Path);
 
 				if (look.Status.Decoration != GitDecoration::None)

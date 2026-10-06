@@ -200,7 +200,7 @@ namespace Graphite {
 
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-		if (look.OpenElsewhere)
+		if (look.IsOpenInTab)
 		{
 			// Centred in the gap before the label, where a sibling folder draws its arrow.
 			const float gap = layout.LabelAt.x - layout.RowAt.x;

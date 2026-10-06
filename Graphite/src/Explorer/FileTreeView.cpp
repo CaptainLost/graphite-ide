@@ -905,9 +905,8 @@ namespace Graphite {
 
 		const std::string id = "##" + Core::ToUtf8(node.Path);
 
-		// Only the active file is selected. An open file that is not active is told apart by a
-		// dot before its name rather than by a background, which would read as a second
-		// selected row, and rather than by the name's colour, which says what git thinks of it.
+		// An open file is marked by a dot, not by a background, which would read as several
+		// selected rows, nor by the name's colour, which says what git thinks of it.
 		const bool clicked = ImGui::Selectable(id.c_str(), isActive, ImGuiSelectableFlags_AllowDoubleClick,
 											   ImVec2(layout.Width, 0.0f));
 
@@ -915,7 +914,7 @@ namespace Graphite {
 		// thousands of rows.
 		if (ImGui::IsItemVisible())
 		{
-			FileRowLook look{.Ink = ImGui::GetColorU32(ImGuiCol_Text), .OpenElsewhere = isOpen && !isActive};
+			FileRowLook look{.Ink = ImGui::GetColorU32(ImGuiCol_Text), .IsOpenInTab = isOpen};
 
 			// An ignored file shows only its own entry: a tracked file under an ignore pattern
 			// still has a status, but what lies inside an untracked directory stays plain.
