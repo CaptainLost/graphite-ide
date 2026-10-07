@@ -51,14 +51,14 @@ namespace Graphite {
 		Core::Result<void> RenameBranch(const std::string& from, const std::string& to) override;
 		Core::Result<std::size_t> CountUnmergedCommits(const std::string& name) override;
 		Core::Result<void> DeleteBranch(const std::string& name) override;
-		Core::Result<bool> StashSave(const std::string& message, bool includeUntracked) override;
+		Core::Result<bool> StashSave(const std::string& message, Core::UntrackedFiles untrackedFiles) override;
 		Core::Result<std::vector<Core::StashEntry>> QueryStashes() override;
 		Core::Result<void> StashApply(const Core::Oid& id) override;
 		Core::Result<void> StashPop(const Core::Oid& id) override;
 		Core::Result<void> StashDrop(const Core::Oid& id) override;
 		Core::Result<Core::CheckoutPlan> PlanCheckout(const Core::CheckoutTarget& target) override;
 		Core::CheckoutOutcome Checkout(const Core::CheckoutTarget& target) override;
-		Core::Result<void> DiscardAll(bool includeUntracked) override;
+		Core::Result<void> DiscardAll(Core::UntrackedFiles untrackedFiles) override;
 
 		Core::Result<FileTexts> ReadWorkingTreeTexts(
 			Core::DiffTarget target,

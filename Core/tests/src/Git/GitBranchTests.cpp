@@ -4,7 +4,6 @@
 
 #include "Git/GitFixture.h"
 
-#include <algorithm>
 #include <string>
 
 using Core::Branch;
@@ -13,21 +12,32 @@ using Core::Repository;
 
 namespace {
 
-	Repository OpenAt(const std::filesystem::path& root)
+	const Branch* FindBranchNamed(const std::vector<Branch>& branches, const std::string& name)
 	{
-		auto opened = Repository::Open(root);
-		REQUIRE(opened.HasValue());
-		return std::move(opened).GetValue();
+		for (const Branch& candidate : branches)
+		{
+			if (candidate.Name == name)
+			{
+				return &candidate;
+			}
+		}
+
+		return nullptr;
 	}
 
-	const Branch* Find(const std::vector<Branch>& branches, const std::string& name)
+	std::size_t CountHeads(const std::vector<Branch>& branches)
 	{
-		const auto entry = std::find_if(branches.begin(), branches.end(),
-										[&name](const Branch& candidate) {
-											return candidate.Name == name;
-										});
+		std::size_t headCount = 0;
 
-		return entry == branches.end() ? nullptr : &*entry;
+		for (const Branch& branch : branches)
+		{
+			if (branch.IsHead)
+			{
+				++headCount;
+			}
+		}
+
+		return headCount;
 	}
 }
 
@@ -39,13 +49,13 @@ TEST_CASE("Every local branch is listed with its tip")
 	const std::string tip = fixture.Commit("add a");
 	fixture.Branch("side");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto branches = repository.QueryBranches();
+	Core::Result<std::vector<Branch>> branches = repository.QueryBranches();
 
 	REQUIRE(branches.HasValue());
 
-	const Branch* side = Find(branches.GetValue(), "side");
+	const Branch* side = FindBranchNamed(branches.GetValue(), "side");
 
 	REQUIRE(side != nullptr);
 	CHECK(side->Kind == RefKind::Local);
@@ -62,46 +72,42 @@ TEST_CASE("The checked out branch is marked")
 	fixture.Branch("side");
 	fixture.Checkout("side");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto branches = repository.QueryBranches();
+	Core::Result<std::vector<Branch>> branches = repository.QueryBranches();
 
 	REQUIRE(branches.HasValue());
 
-	const Branch* side = Find(branches.GetValue(), "side");
+	const Branch* side = FindBranchNamed(branches.GetValue(), "side");
 
 	REQUIRE(side != nullptr);
 	CHECK(side->IsHead);
 
-	const auto heads = std::count_if(branches.GetValue().begin(), branches.GetValue().end(),
-									 [](const Branch& branch) { return branch.IsHead; });
+	const std::size_t heads = CountHeads(branches.GetValue());
 
 	CHECK(heads == 1);
 }
 
-TEST_CASE("A branch with no upstream reports no counts")
+TEST_CASE("A branch with no upstream has an unknown distance, so its zero counts do not claim it is in sync")
 {
 	GitFixture fixture;
 
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("add a");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto branches = repository.QueryBranches();
+	Core::Result<std::vector<Branch>> branches = repository.QueryBranches();
 
 	REQUIRE(branches.HasValue());
 	REQUIRE_FALSE(branches.GetValue().empty());
 
-	// Zero and zero would read as "in sync with the remote", which is a different and
-	// wrong claim for a branch that was never pushed.
 	CHECK_FALSE(branches.GetValue().front().Upstream.has_value());
 	CHECK(branches.GetValue().front().Ahead == 0);
 	CHECK(branches.GetValue().front().Behind == 0);
 
-	// DistanceKnown also covers a resolved-but-unmeasurable upstream (a symbolic
-	// upstream, or a failed graph walk) — that case needs a remote to reach and the
-	// fixture has none, so only the no-upstream half of the contract is pinned here.
+	// DistanceKnown is also false for an upstream that resolves but cannot be measured; that
+	// half needs a remote, which this fixture does not have.
 	CHECK_FALSE(branches.GetValue().front().DistanceKnown);
 }
 
@@ -109,9 +115,9 @@ TEST_CASE("Listing branches in a repository with no commits is empty rather than
 {
 	GitFixture fixture;
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto branches = repository.QueryBranches();
+	Core::Result<std::vector<Branch>> branches = repository.QueryBranches();
 
 	REQUIRE(branches.HasValue());
 	CHECK(branches.GetValue().empty());

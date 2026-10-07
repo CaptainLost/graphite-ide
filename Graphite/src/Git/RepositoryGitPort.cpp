@@ -424,7 +424,7 @@ namespace Graphite {
 		return repository->DeleteBranch(name);
 	}
 
-	Core::Result<bool> RepositoryGitPort::StashSave(const std::string& message, bool includeUntracked)
+	Core::Result<bool> RepositoryGitPort::StashSave(const std::string& message, Core::UntrackedFiles untrackedFiles)
 	{
 		auto opened = RepositoryForThisThread();
 
@@ -435,7 +435,7 @@ namespace Graphite {
 
 		Core::Repository* repository = opened.GetValue();
 
-		return repository->StashSave(message, includeUntracked);
+		return repository->StashSave(message, untrackedFiles);
 	}
 
 	Core::Result<std::vector<Core::StashEntry>> RepositoryGitPort::QueryStashes()
@@ -522,7 +522,7 @@ namespace Graphite {
 		return repository->Checkout(target);
 	}
 
-	Core::Result<void> RepositoryGitPort::DiscardAll(bool includeUntracked)
+	Core::Result<void> RepositoryGitPort::DiscardAll(Core::UntrackedFiles untrackedFiles)
 	{
 		auto opened = RepositoryForThisThread();
 
@@ -533,7 +533,7 @@ namespace Graphite {
 
 		Core::Repository* repository = opened.GetValue();
 
-		return repository->DiscardAll(includeUntracked);
+		return repository->DiscardAll(untrackedFiles);
 	}
 
 	Core::Result<Core::HeadState> RepositoryGitPort::QueryHead()

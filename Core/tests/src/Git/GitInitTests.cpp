@@ -10,35 +10,35 @@ using Core::Repository;
 
 TEST_CASE("Init makes a folder a repository that Open then finds")
 {
-	TempDirectory temp;
-	temp.MakeFile("a.txt", "one\n");
+	TempDirectory directory;
+	directory.MakeFile("a.txt", "one\n");
 
-	CHECK_FALSE(Repository::Open(temp.GetPath()).HasValue());
+	CHECK_FALSE(Repository::Open(directory.GetPath()).HasValue());
 
-	auto created = Repository::Init(temp.GetPath());
+	const Core::Result<Repository> created = Repository::Init(directory.GetPath());
 	REQUIRE(created.HasValue());
 
-	CHECK(std::filesystem::is_directory(temp.GetPath() / ".git"));
+	CHECK(std::filesystem::is_directory(directory.GetPath() / ".git"));
 
-	auto opened = Repository::Open(temp.GetPath());
+	const Core::Result<Repository> opened = Repository::Open(directory.GetPath());
 	REQUIRE(opened.HasValue());
 
-	auto head = opened.GetValue().QueryHead();
+	const Core::Result<Core::HeadState> head = opened.GetValue().QueryHead();
 	REQUIRE(head.HasValue());
 	CHECK(head.GetValue().Kind == Core::HeadKind::Unborn);
 
-	// Named by the machine's init.defaultBranch, so only its presence is portable.
+	// The branch is named by the machine's init.defaultBranch, so only its presence is portable.
 	CHECK_FALSE(head.GetValue().BranchName.empty());
 }
 
 TEST_CASE("Init leaves the files already in the folder alone")
 {
-	TempDirectory temp;
-	temp.MakeFile("a.txt", "one\n");
+	TempDirectory directory;
+	directory.MakeFile("a.txt", "one\n");
 
-	REQUIRE(Repository::Init(temp.GetPath()).HasValue());
+	REQUIRE(Repository::Init(directory.GetPath()).HasValue());
 
-	auto status = Repository::Open(temp.GetPath()).GetValue().QueryStatus();
+	const Core::Result<Core::WorkingTreeStatus> status = Repository::Open(directory.GetPath()).GetValue().QueryStatus();
 	REQUIRE(status.HasValue());
 	REQUIRE(status.GetValue().Entries.size() == 1);
 	CHECK(status.GetValue().Entries.front().IsUntracked);
@@ -46,8 +46,8 @@ TEST_CASE("Init leaves the files already in the folder alone")
 
 TEST_CASE("Init refuses a folder that does not exist rather than creating it")
 {
-	TempDirectory temp;
+	TempDirectory directory;
 
-	CHECK_FALSE(Repository::Init(temp.GetPath() / "missing").HasValue());
-	CHECK_FALSE(std::filesystem::exists(temp.GetPath() / "missing"));
+	CHECK_FALSE(Repository::Init(directory.GetPath() / "missing").HasValue());
+	CHECK_FALSE(std::filesystem::exists(directory.GetPath() / "missing"));
 }

@@ -12,25 +12,33 @@ namespace Core {
 
 	namespace {
 
-		// git numbers lines from one, and names the line a zero-length run follows rather than
-		// a line it contains. That is exactly the zero-based boundary LineHunk wants.
-		std::size_t ZeroBasedStart(int start, int count)
+		// git numbers lines from one, but for a run with no lines it names the line the run
+		// follows, which already is the zero-based boundary LineHunk wants.
+		std::size_t ZeroBasedStart(int gitStart, int lineCount)
 		{
-			const auto from = static_cast<std::size_t>(start);
-			return count == 0 ? from : from - 1;
+			const std::size_t start = static_cast<std::size_t>(gitStart);
+			const bool isEmptyRun = lineCount == 0;
+			return isEmptyRun ? start : start - 1;
 		}
 
-		int CollectHunk(const git_diff_delta*, const git_diff_hunk* hunk, void* payload)
+		int CollectHunk(const git_diff_delta*, const git_diff_hunk* diffHunk, void* payload)
 		{
-			auto& hunks = *static_cast<std::vector<LineHunk>*>(payload);
+			std::vector<LineHunk>& hunks = *static_cast<std::vector<LineHunk>*>(payload);
 
 			hunks.push_back(LineHunk{
-				ZeroBasedStart(hunk->old_start, hunk->old_lines),
-				static_cast<std::size_t>(hunk->old_lines),
-				ZeroBasedStart(hunk->new_start, hunk->new_lines),
-				static_cast<std::size_t>(hunk->new_lines)});
+				.OldStart = ZeroBasedStart(diffHunk->old_start, diffHunk->old_lines),
+				.OldCount = static_cast<std::size_t>(diffHunk->old_lines),
+				.NewStart = ZeroBasedStart(diffHunk->new_start, diffHunk->new_lines),
+				.NewCount = static_cast<std::size_t>(diffHunk->new_lines)});
 
 			return 0;
+		}
+
+		// An empty view may carry a null pointer, and libgit2 reads a null buffer as no file at
+		// all, which is not what an empty text means.
+		const char* DataOrEmptyString(std::string_view text)
+		{
+			return text.empty() ? "" : text.data();
 		}
 	}
 
@@ -42,22 +50,25 @@ namespace Core {
 		options.context_lines = 0;
 		options.interhunk_lines = 0;
 
-		// The caller has already decided this is text. Without this, a stray NUL would turn the
-		// answer into "binary" and silently no hunks at all.
+		// Without this a stray NUL turns the answer into "binary", which silently has no hunks.
 		options.flags |= GIT_DIFF_FORCE_TEXT;
 
-		// An empty view may carry a null pointer. libgit2 reads a null buffer as "no file",
-		// which is not what an empty text means.
-		const char* oldData = oldText.empty() ? "" : oldText.data();
-		const char* newData = newText.empty() ? "" : newText.data();
+		const char* oldData = DataOrEmptyString(oldText);
+		const char* newData = DataOrEmptyString(newText);
+
+		const char* const noFileName = nullptr;
+		const git_diff_file_cb noFileCallback = nullptr;
+		const git_diff_binary_cb noBinaryCallback = nullptr;
+		const git_diff_line_cb noLineCallback = nullptr;
 
 		std::vector<LineHunk> hunks;
 
-		const int result = git_diff_buffers(oldData, oldText.size(), nullptr,
-											newData, newText.size(), nullptr,
-											&options, nullptr, nullptr, &CollectHunk, nullptr, &hunks);
+		const int diffResult = git_diff_buffers(oldData, oldText.size(), noFileName,
+												newData, newText.size(), noFileName,
+												&options, noFileCallback, noBinaryCallback, &CollectHunk,
+												noLineCallback, &hunks);
 
-		if (result != 0)
+		if (diffResult != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot diff the two texts: {}", LastLibgit2Message())};

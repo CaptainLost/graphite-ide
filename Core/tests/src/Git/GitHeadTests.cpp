@@ -12,26 +12,19 @@ using Core::RepositoryOperation;
 
 namespace {
 
-	Repository OpenAt(const std::filesystem::path& root)
-	{
-		auto opened = Repository::Open(root);
-		REQUIRE(opened.HasValue());
-		return std::move(opened).GetValue();
-	}
-
 	Core::HeadState HeadOf(const GitFixture& fixture)
 	{
-		const Repository repository = OpenAt(fixture.GetPath());
-		auto head = repository.QueryHead();
+		const Repository repository = OpenRepositoryAt(fixture.GetPath());
+		const Core::Result<Core::HeadState> head = repository.QueryHead();
 		REQUIRE(head.HasValue());
 		return head.GetValue();
 	}
 
-	// git_repository_state looks for these marker files and nothing else, so writing one is
-	// how a test puts a repository in the middle of an operation without performing it.
-	void Mark(GitFixture& fixture, const std::string& marker, const std::string& commit)
+	// git_repository_state looks only for marker files, so writing one puts a repository in the
+	// middle of an operation without performing it.
+	void WriteOperationMarker(GitFixture& fixture, const std::string& markerFile, const std::string& firstLine)
 	{
-		fixture.Write(".git/" + marker, commit + "\n");
+		fixture.Write(".git/" + markerFile, firstLine + "\n");
 	}
 }
 
@@ -65,10 +58,7 @@ TEST_CASE("A detached head names its commit and no branch")
 	CHECK(head.Commit->ToHex() == tip);
 }
 
-// The shape a real rebase leaves while it is stopped: git detaches HEAD onto the commit being
-// replayed, so the detached kind and the rebase operation have to be read side by side rather
-// than one hiding the other.
-TEST_CASE("A rebase in progress on a detached head reads as both detached and rebasing")
+TEST_CASE("A stopped rebase, which git leaves on a detached head, reads as both detached and rebasing")
 {
 	GitFixture fixture;
 	fixture.Write("a.txt", "one\n");
@@ -126,31 +116,33 @@ TEST_CASE("Each operation git can leave half done is named")
 
 	SUBCASE("interactive rebase")
 	{
-		fixture.Write(".git/rebase-merge/interactive", "");
+		const std::string emptyMarker = "";
+		fixture.Write(".git/rebase-merge/interactive", emptyMarker);
 		CHECK(HeadOf(fixture).Operation == RepositoryOperation::Rebase);
 	}
 
 	SUBCASE("cherry-pick")
 	{
-		Mark(fixture, "CHERRY_PICK_HEAD", tip);
+		WriteOperationMarker(fixture, "CHERRY_PICK_HEAD", tip);
 		CHECK(HeadOf(fixture).Operation == RepositoryOperation::CherryPick);
 	}
 
 	SUBCASE("revert")
 	{
-		Mark(fixture, "REVERT_HEAD", tip);
+		WriteOperationMarker(fixture, "REVERT_HEAD", tip);
 		CHECK(HeadOf(fixture).Operation == RepositoryOperation::Revert);
 	}
 
 	SUBCASE("bisect")
 	{
-		Mark(fixture, "BISECT_LOG", "# bad");
+		WriteOperationMarker(fixture, "BISECT_LOG", "# bad");
 		CHECK(HeadOf(fixture).Operation == RepositoryOperation::Bisect);
 	}
 
 	SUBCASE("git am")
 	{
-		fixture.Write(".git/rebase-apply/applying", "");
+		const std::string emptyMarker = "";
+		fixture.Write(".git/rebase-apply/applying", emptyMarker);
 		CHECK(HeadOf(fixture).Operation == RepositoryOperation::ApplyMailbox);
 	}
 }

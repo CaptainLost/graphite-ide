@@ -10,49 +10,42 @@
 
 namespace Core {
 
-	// One-based and inclusive on both ends, matching how an editor names its lines.
-	struct LineRange
+	// Inclusive on both ends, as an editor numbers its lines, so a single line has First equal to
+	// Last. It is not the half-open range the standard library uses.
+	struct OneBasedLineRange
 	{
 		std::size_t First = 1;
 		std::size_t Last = 1;
 	};
 
-	// One structure covers three questions: the log of a branch, the history of a file,
-	// and the history of a range of lines. They differ only in how much is filled in, so
-	// they are not three functions.
+	// A branch log, a file's history and a line range's history differ only in which fields are
+	// filled in, so they share this request instead of being three functions.
 	struct LogRequest
 	{
-		// Empty means HEAD. Otherwise a full name such as "refs/heads/main".
+		// Without a value the walk starts at HEAD. A value must be a full reference name such as
+		// "refs/heads/main", not a short one.
 		std::optional<std::string> Ref;
 
-		// This stash alone, in place of a walk: a stash belongs to no branch, and the history
-		// it was made on is that branch's to show. Git keeps a stash as a merge of the commit
-		// it was made on with one commit holding the index and, for a stash that took
-		// untracked files, another holding those. Neither is anything the reader made, so
-		// the row names its first parent alone. Filter applies; File, Lines and the walk
-		// bounds have nothing to narrow, and nothing is measured against an upstream.
+		// Shows this stash alone instead of walking. Git stores a stash as a merge whose other
+		// parents hold the index and the untracked files, so the row names only the first parent;
+		// Filter still applies, while File, Lines, the walk bounds and the upstream are ignored.
 		std::optional<Oid> Stash;
 
-		// Relative to the working directory. Without it, the whole tree.
+		// Relative to the working directory; without a value, the whole tree.
 		std::optional<std::filesystem::path> File;
 
-		// Only meaningful together with File.
-		std::optional<LineRange> Lines;
+		// Ignored without File.
+		std::optional<OneBasedLineRange> Lines;
 
-		// Narrows the page to the commits this matches, without narrowing the walk: every
-		// commit the walk reaches is still visited and measured, so MaxWalk below is what
-		// bounds the search, and a filter that matches nothing still costs a full walk up
-		// to that ceiling. An empty filter accepts everything, which is what makes this
-		// field free to leave alone.
+		// Narrows the page, not the walk: every commit up to MaxWalk is still visited and measured,
+		// so a filter that matches nothing costs a full walk. An empty filter accepts everything.
 		CommitFilter Filter;
 
 		bool FollowRenames = true;
 
-		// Bounds how many commits the walk visits looking for matches, not how many it
-		// keeps — MaxCount below is what bounds the result. File and line-range narrowing
-		// diff every commit they pass through on the way to a match, so without this a
-		// file touched once in a huge history would walk and diff the whole thing. A plain
-		// branch log (no File) never diffs, so this rarely matters there.
+		// Bounds the commits visited, not the commits kept, which MaxCount bounds. A file or line
+		// history diffs every commit it passes, so without it a file touched once in a long
+		// history would diff all of that history.
 		std::size_t MaxWalk = 20000;
 
 		std::size_t MaxCount = 500;
@@ -60,27 +53,18 @@ namespace Core {
 
 	enum class DiffTarget
 	{
-		// What is edited but not staged.
 		WorkTreeToIndex,
-
-		// What is staged and would go into the next commit.
 		IndexToHead,
-
-		// Everything that differs from the last commit, staged or not. This is what the
-		// editor's change markers are drawn from.
 		WorkTreeToHead,
 
-		// One commit against its first parent. A root commit diffs against nothing, and
-		// every file comes out as added.
+		// Against the first parent only. A root commit diffs against nothing, so every file comes
+		// out as added.
 		CommitToParent,
 
-		// A stash against the commit it was made on: what CommitToParent gives for its own
-		// commit, which is the tracked files, together with the untracked files a stash
-		// made to include them keeps in its third parent, each of them added. Reads From
-		// as the stash.
+		// The stash's tracked changes against the commit it was made on, together with the
+		// untracked files the stash keeps in its third parent, each of them added.
 		StashToParent,
 
-		// Any two revisions, in either direction.
 		RevisionToRevision
 	};
 
@@ -88,30 +72,29 @@ namespace Core {
 	{
 		DiffTarget Target = DiffTarget::WorkTreeToHead;
 
-		// CommitToParent reads From as the commit. RevisionToRevision reads From as the
-		// older side and To as the newer. The working tree targets read neither.
+		// CommitToParent and StashToParent read From as the commit or the stash; RevisionToRevision
+		// reads From as the older side and To as the newer. The working tree targets read neither.
 		std::optional<Oid> From;
 		std::optional<Oid> To;
 
-		// Relative to the working directory. Without it, the whole tree.
+		// Relative to the working directory; without a value, the whole tree.
 		std::optional<std::filesystem::path> File;
 
 		friend bool operator==(const DiffRequest&, const DiffRequest&) = default;
 	};
 
-	// What a commit needs and nothing more. No author override, no sign-off, no signing:
-	// none is needed to make the panel work, and each is easier to add against a shipped,
-	// tested write path than to design blind now.
 	struct CommitRequest
 	{
 		std::string Message;
 
-		// Replaces HEAD rather than adding to it, keeping HEAD's parents. Fails on an
-		// unborn HEAD, which has nothing to replace.
-		//
-		// An empty Message keeps the message of the commit being replaced, rather than
-		// blanking it - amending to add a forgotten file is the case with nothing new to
-		// say. Without Amend an empty Message is just an empty message, which git rejects.
+		// Replaces HEAD, keeping its parents, and fails on an unborn HEAD. With Amend an empty
+		// Message keeps the replaced commit's message; without it an empty Message is refused.
 		bool Amend = false;
+	};
+
+	enum class UntrackedFiles
+	{
+		Excluded,
+		Included
 	};
 }

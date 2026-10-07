@@ -10,9 +10,8 @@ namespace Core {
 		std::string Name;
 		std::string Email;
 
-		// The instant git recorded, in UTC. The offset the author's clock had is
-		// deliberately dropped: every display in this application shows local time or a
-		// relative age, and neither needs it.
+		// In UTC. The author's clock offset is dropped, so this cannot show the author's own
+		// local time.
 		std::chrono::sys_seconds When;
 	};
 }

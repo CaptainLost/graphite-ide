@@ -9,18 +9,15 @@ namespace Core {
 
 	enum class HeadKind
 	{
-		// HEAD names a branch that has at least one commit.
 		Branch,
-
-		// HEAD names a commit directly.
 		Detached,
 
-		// HEAD names a branch that does not exist yet: a repository with no commits.
+		// HEAD names a branch that has no commit yet, as in a new repository.
 		Unborn
 	};
 
-	// An operation git has started and not finished. Folded from libgit2's finer states:
-	// every flavour of rebase is a rebase to the person reading the bar.
+	// An operation git has started and not finished, folded from libgit2's finer states:
+	// every flavour of rebase is a Rebase.
 	enum class RepositoryOperation
 	{
 		None,
@@ -36,10 +33,10 @@ namespace Core {
 	{
 		HeadKind Kind = HeadKind::Branch;
 
-		// "main" for Branch and Unborn; empty for Detached.
+		// Empty for Detached.
 		std::string BranchName;
 
-		// The commit HEAD points at; unset for Unborn.
+		// Unset for Unborn.
 		std::optional<Oid> Commit;
 
 		RepositoryOperation Operation = RepositoryOperation::None;

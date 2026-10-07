@@ -12,18 +12,18 @@ namespace Core {
 
 	namespace {
 
-		bool Contains(std::string_view haystack, std::string_view lowered)
+		bool IsLowercaseHexDigit(char character)
 		{
-			return Lowered(haystack).find(lowered) != std::string::npos;
+			const bool isDecimalDigit = character >= '0' && character <= '9';
+			const bool isLowercaseHexLetter = character >= 'a' && character <= 'f';
+			return isDecimalDigit || isLowercaseHexLetter;
 		}
 
-		bool IsHex(std::string_view text)
+		bool IsLowercaseHex(std::string_view text)
 		{
-			for (const char digit : text)
+			for (const char character : text)
 			{
-				const bool hex = (digit >= '0' && digit <= '9') || (digit >= 'a' && digit <= 'f');
-
-				if (!hex)
+				if (!IsLowercaseHexDigit(character))
 				{
 					return false;
 				}
@@ -31,28 +31,30 @@ namespace Core {
 
 			return true;
 		}
+
+		bool MessageOrAuthorContains(const CommitSummary& commit, std::string_view loweredText)
+		{
+			return LoweredTextContains(commit.Summary, loweredText) || LoweredTextContains(commit.Body, loweredText) ||
+				   LoweredTextContains(commit.Author.Name, loweredText) ||
+				   LoweredTextContains(commit.Author.Email, loweredText);
+		}
 	}
 
-	bool Matches(const CommitFilter& filter, const CommitSummary& commit)
+	bool CommitMatchesFilter(const CommitFilter& filter, const CommitSummary& commit)
 	{
-		const std::string text = Lowered(Trimmed(filter.Text));
+		const std::string loweredText = Lowered(Trimmed(filter.Text));
 
-		if (text.empty())
+		if (loweredText.empty())
 		{
 			return true;
 		}
 
-		if (Contains(commit.Summary, text) || Contains(commit.Body, text) ||
-			Contains(commit.Author.Name, text) || Contains(commit.Author.Email, text))
+		if (MessageOrAuthorContains(commit, loweredText))
 		{
 			return true;
 		}
 
-		// Checked last: a text that reads as both — "added", "beef" — is far more likely to
-		// be a word the reader remembers than the opening digits of a hash, and answering
-		// the message first costs nothing, since a text that really is a hash prefix will
-		// not be found in any of the fields above.
-		return IsHex(text) && commit.Id.ToHex().starts_with(text);
+		return IsLowercaseHex(loweredText) && commit.Id.ToHex().starts_with(loweredText);
 	}
 
 	bool NamesPath(std::string_view pattern, const std::filesystem::path& path)
@@ -62,29 +64,23 @@ namespace Core {
 			return false;
 		}
 
-		// Git writes its paths with forward slashes whatever the platform, and so must
-		// whichever side of this comparison came from a filesystem::path.
-		const std::string text = ToGenericUtf8(path);
+		const std::string forwardSlashPath = ToGenericUtf8(path);
+		const bool patternHasSeparator = pattern.find('/') != std::string_view::npos;
 
-		if (pattern.find('/') != std::string_view::npos)
+		if (patternHasSeparator)
 		{
-			return GlobMatches(pattern, text);
+			return GlobMatches(pattern, forwardSlashPath);
 		}
 
-		const std::string name = ToGenericUtf8(FromUtf8(text).filename());
+		const std::string fileName = ToGenericUtf8(FromUtf8(forwardSlashPath).filename());
+		const bool patternHasWildcard = pattern.find('*') != std::string_view::npos ||
+										pattern.find('?') != std::string_view::npos;
 
-		// A wildcard is the reader saying where the loose part of the name is, so the
-		// pattern is honoured as written, against the whole name.
-		if (pattern.find('*') != std::string_view::npos ||
-			pattern.find('?') != std::string_view::npos)
+		if (patternHasWildcard)
 		{
-			return GlobMatches(pattern, name);
+			return GlobMatches(pattern, fileName);
 		}
 
-		// Everything else is a fragment: "Graph" names GraphiteLayer.cpp, the same gesture
-		// that opens a file by typing three letters of it. Against the name alone and never
-		// the directories above it — otherwise every file under Graphite/ would answer to
-		// "Graphite", and this would be a path search wearing a file search's clothes.
-		return Contains(name, Lowered(pattern));
+		return LoweredTextContains(fileName, Lowered(pattern));
 	}
 }

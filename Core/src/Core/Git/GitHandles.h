@@ -1,15 +1,7 @@
 #pragma once
 
-// Owning handles for the libgit2 objects the Repository queries acquire. Private to
-// Core/Git: include it from a .cpp only, never from a header that leaves the module.
-//
-// A handle frees its object on every path out of the scope that holds it, so an early
-// return - or a throw from std::format or an allocation - between acquiring an object and
-// the end of the query cannot leak it.
-//
-// The rule that no header under Core/Git includes <git2.h> applies here too: the types are
-// forward-declared, and the one function object that frees them is defined in
-// GitHandles.cpp, which does include it.
+// Include only from a .cpp inside Core/Git. No header under Core/Git includes <git2.h>, so
+// the libgit2 types are forward-declared and Libgit2Free is defined in GitHandles.cpp.
 
 #include <memory>
 
@@ -29,7 +21,6 @@ struct git_worktree;
 
 namespace Core {
 
-	// One overload per type, each calling that type's git_xxx_free.
 	struct Libgit2Free
 	{
 		void operator()(git_blob* blob) const;
@@ -61,12 +52,10 @@ namespace Core {
 	using TreeEntryHandle = std::unique_ptr<git_tree_entry, Libgit2Free>;
 	using WorktreeHandle = std::unique_ptr<git_worktree, Libgit2Free>;
 
-	// Lets a handle stand where libgit2 wants an out-parameter: Out(commit) converts to the
-	// git_commit** the call writes into, and the handle takes what was written once the
-	// call's full expression ends - before the next statement, and before the body of an
-	// `if` whose condition made the call. The object the handle held before, if any, is
-	// freed at that moment. So the handle must not be read in the same expression as the
-	// call - `f(Out(h)) == 0 && h != nullptr` still sees the old value - only after it.
+	// Out(handle) stands in for the out-parameter libgit2 writes into, and the handle takes
+	// the written pointer, freeing what it held, only when the call's full expression ends.
+	// Read the handle only after that: `f(Out(handle)) == 0 && handle != nullptr` sees the old
+	// value.
 	template<typename Handle>
 	class OutHandle
 	{

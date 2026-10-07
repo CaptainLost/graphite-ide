@@ -4,41 +4,43 @@
 
 #include "Git/GitFixture.h"
 
-#include <algorithm>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace {
 
-	Core::Repository OpenAt(const std::filesystem::path& root)
+	Core::FileStatus StatusOf(const Core::Repository& repository, const std::string& relativePath)
 	{
-		auto opened = Core::Repository::Open(root);
-		REQUIRE(opened.HasValue());
-		return std::move(opened).GetValue();
+		const Core::Result<Core::WorkingTreeStatus> statusResult = repository.QueryStatus();
+		REQUIRE(statusResult.HasValue());
+
+		const std::filesystem::path wantedPath{relativePath};
+		const std::vector<Core::FileStatus>& entries = statusResult.GetValue().Entries;
+		for (const Core::FileStatus& entry : entries)
+		{
+			if (entry.Path == wantedPath)
+			{
+				return entry;
+			}
+		}
+
+		const Core::FileStatus cleanFileStatus{};
+		return cleanFileStatus;
 	}
 
-	// The status of one path, or a default-constructed FileStatus when git says the path
-	// is clean. Written as a helper because every case below asks the same question.
-	Core::FileStatus StatusOf(const Core::Repository& repository, const std::string& relative)
+	bool HasStatusFlag(Core::StatusFlags flags, Core::StatusFlags wantedFlags)
 	{
-		const auto status = repository.QueryStatus();
-		REQUIRE(status.HasValue());
-
-		const auto& entries = status.GetValue().Entries;
-		const auto found = std::find_if(entries.begin(), entries.end(),
-										[&relative](const Core::FileStatus& file) {
-											return file.Path == std::filesystem::path{relative};
-										});
-
-		return found == entries.end() ? Core::FileStatus{} : *found;
+		return (flags & wantedFlags) == wantedFlags;
 	}
 
-	bool Has(Core::StatusFlags flags, Core::StatusFlags wanted)
+	// libgit2 caches the index per repository handle, and the application keeps one handle per
+	// worker thread, so one handle can act after another has changed the index behind its cache.
+	void ReadIndexIntoCache(const Core::Repository& repository)
 	{
-		return (flags & wanted) == wanted;
+		REQUIRE(repository.QueryStatus().HasValue());
 	}
 }
 
@@ -49,13 +51,12 @@ TEST_CASE("Stage adds a new file to the index")
 	fixture.Commit("first");
 	fixture.Write("b.txt", "two\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().Stage({"b.txt"}).HasValue());
+	REQUIRE(repository.Stage({"b.txt"}).HasValue());
 
-	const Core::FileStatus after = StatusOf(repository.GetValue(), "b.txt");
-	CHECK(Has(after.Index, Core::StatusFlags::New));
+	const Core::FileStatus after = StatusOf(repository, "b.txt");
+	CHECK(HasStatusFlag(after.Index, Core::StatusFlags::New));
 	CHECK(after.WorkTree == Core::StatusFlags::None);
 }
 
@@ -67,14 +68,13 @@ TEST_CASE("Stage adds every file under an untracked directory")
 	fixture.Write("new folder/b.txt", "two\n");
 	fixture.Write("new folder/deep/c.txt", "three\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().Stage({"new folder"}).HasValue());
+	REQUIRE(repository.Stage({"new folder"}).HasValue());
 
-	CHECK(Has(StatusOf(repository.GetValue(), "new folder/b.txt").Index, Core::StatusFlags::New));
-	CHECK(Has(StatusOf(repository.GetValue(), "new folder/deep/c.txt").Index,
-			  Core::StatusFlags::New));
+	CHECK(HasStatusFlag(StatusOf(repository, "new folder/b.txt").Index, Core::StatusFlags::New));
+	CHECK(HasStatusFlag(StatusOf(repository, "new folder/deep/c.txt").Index,
+						Core::StatusFlags::New));
 }
 
 TEST_CASE("Staging a directory leaves the ignored files under it out")
@@ -85,13 +85,12 @@ TEST_CASE("Staging a directory leaves the ignored files under it out")
 	fixture.Write("dir/b.txt", "two\n");
 	fixture.Write("dir/noise.log", "noise\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().Stage({"dir"}).HasValue());
+	REQUIRE(repository.Stage({"dir"}).HasValue());
 
-	CHECK(Has(StatusOf(repository.GetValue(), "dir/b.txt").Index, Core::StatusFlags::New));
-	CHECK(StatusOf(repository.GetValue(), "dir/noise.log").Index == Core::StatusFlags::None);
+	CHECK(HasStatusFlag(StatusOf(repository, "dir/b.txt").Index, Core::StatusFlags::New));
+	CHECK(StatusOf(repository, "dir/noise.log").Index == Core::StatusFlags::None);
 }
 
 TEST_CASE("A directory named like a pattern is staged by its name")
@@ -102,13 +101,12 @@ TEST_CASE("A directory named like a pattern is staged by its name")
 	fixture.Write("[ab]/b.txt", "two\n");
 	fixture.Write("a/c.txt", "three\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().Stage({"[ab]"}).HasValue());
+	REQUIRE(repository.Stage({"[ab]"}).HasValue());
 
-	CHECK(Has(StatusOf(repository.GetValue(), "[ab]/b.txt").Index, Core::StatusFlags::New));
-	CHECK(StatusOf(repository.GetValue(), "a/c.txt").Index == Core::StatusFlags::None);
+	CHECK(HasStatusFlag(StatusOf(repository, "[ab]/b.txt").Index, Core::StatusFlags::New));
+	CHECK(StatusOf(repository, "a/c.txt").Index == Core::StatusFlags::None);
 }
 
 TEST_CASE("Staging a directory stages only that directory")
@@ -119,13 +117,12 @@ TEST_CASE("Staging a directory stages only that directory")
 	fixture.Write("dir/b.txt", "two\n");
 	fixture.Write("dir2/c.txt", "three\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().Stage({"dir"}).HasValue());
+	REQUIRE(repository.Stage({"dir"}).HasValue());
 
-	CHECK(Has(StatusOf(repository.GetValue(), "dir/b.txt").Index, Core::StatusFlags::New));
-	CHECK(StatusOf(repository.GetValue(), "dir2/c.txt").Index == Core::StatusFlags::None);
+	CHECK(HasStatusFlag(StatusOf(repository, "dir/b.txt").Index, Core::StatusFlags::New));
+	CHECK(StatusOf(repository, "dir2/c.txt").Index == Core::StatusFlags::None);
 }
 
 TEST_CASE("Stage records a modified file")
@@ -135,13 +132,12 @@ TEST_CASE("Stage records a modified file")
 	fixture.Commit("first");
 	fixture.Write("a.txt", "changed\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
+	REQUIRE(repository.Stage({"a.txt"}).HasValue());
 
-	const Core::FileStatus after = StatusOf(repository.GetValue(), "a.txt");
-	CHECK(Has(after.Index, Core::StatusFlags::Modified));
+	const Core::FileStatus after = StatusOf(repository, "a.txt");
+	CHECK(HasStatusFlag(after.Index, Core::StatusFlags::Modified));
 	CHECK(after.WorkTree == Core::StatusFlags::None);
 }
 
@@ -152,13 +148,12 @@ TEST_CASE("Stage records a deletion through the same call")
 	fixture.Commit("first");
 	fixture.Remove("a.txt");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
+	REQUIRE(repository.Stage({"a.txt"}).HasValue());
 
-	const Core::FileStatus after = StatusOf(repository.GetValue(), "a.txt");
-	CHECK(Has(after.Index, Core::StatusFlags::Deleted));
+	const Core::FileStatus after = StatusOf(repository, "a.txt");
+	CHECK(HasStatusFlag(after.Index, Core::StatusFlags::Deleted));
 }
 
 TEST_CASE("Unstage puts a staged file back as HEAD has it")
@@ -168,15 +163,14 @@ TEST_CASE("Unstage puts a staged file back as HEAD has it")
 	fixture.Commit("first");
 	fixture.Write("a.txt", "changed\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
-	REQUIRE(repository.GetValue().Unstage({"a.txt"}).HasValue());
+	REQUIRE(repository.Stage({"a.txt"}).HasValue());
+	REQUIRE(repository.Unstage({"a.txt"}).HasValue());
 
-	const Core::FileStatus after = StatusOf(repository.GetValue(), "a.txt");
+	const Core::FileStatus after = StatusOf(repository, "a.txt");
 	CHECK(after.Index == Core::StatusFlags::None);
-	CHECK(Has(after.WorkTree, Core::StatusFlags::Modified));
+	CHECK(HasStatusFlag(after.WorkTree, Core::StatusFlags::Modified));
 }
 
 TEST_CASE("Unstage removes the entry when HEAD is unborn")
@@ -184,13 +178,12 @@ TEST_CASE("Unstage removes the entry when HEAD is unborn")
 	GitFixture fixture;
 	fixture.Write("a.txt", "one\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
-	REQUIRE(repository.GetValue().Unstage({"a.txt"}).HasValue());
+	REQUIRE(repository.Stage({"a.txt"}).HasValue());
+	REQUIRE(repository.Unstage({"a.txt"}).HasValue());
 
-	const Core::FileStatus after = StatusOf(repository.GetValue(), "a.txt");
+	const Core::FileStatus after = StatusOf(repository, "a.txt");
 	CHECK(after.IsUntracked);
 }
 
@@ -202,13 +195,12 @@ TEST_CASE("Staging many paths at once writes the index once")
 	fixture.Write("a.txt", "changed\n");
 	fixture.Write("b.txt", "two\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().Stage({"a.txt", "b.txt"}).HasValue());
+	REQUIRE(repository.Stage({"a.txt", "b.txt"}).HasValue());
 
-	CHECK(Has(StatusOf(repository.GetValue(), "a.txt").Index, Core::StatusFlags::Modified));
-	CHECK(Has(StatusOf(repository.GetValue(), "b.txt").Index, Core::StatusFlags::New));
+	CHECK(HasStatusFlag(StatusOf(repository, "a.txt").Index, Core::StatusFlags::Modified));
+	CHECK(HasStatusFlag(StatusOf(repository, "b.txt").Index, Core::StatusFlags::New));
 }
 
 TEST_CASE("DiscardWorkTree restores a modified file from the index")
@@ -218,12 +210,11 @@ TEST_CASE("DiscardWorkTree restores a modified file from the index")
 	fixture.Commit("first");
 	fixture.Write("a.txt", "changed\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().DiscardWorkTree({"a.txt"}).HasValue());
+	REQUIRE(repository.DiscardWorkTree({"a.txt"}).HasValue());
 
-	CHECK(StatusOf(repository.GetValue(), "a.txt").WorkTree == Core::StatusFlags::None);
+	CHECK(StatusOf(repository, "a.txt").WorkTree == Core::StatusFlags::None);
 }
 
 TEST_CASE("DiscardWorkTree leaves untracked files alone")
@@ -233,13 +224,12 @@ TEST_CASE("DiscardWorkTree leaves untracked files alone")
 	fixture.Commit("first");
 	fixture.Write("new.txt", "fresh\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().DiscardWorkTree({"new.txt"}).HasValue());
+	REQUIRE(repository.DiscardWorkTree({"new.txt"}).HasValue());
 
 	CHECK(std::filesystem::exists(fixture.GetPath() / "new.txt"));
-	CHECK(StatusOf(repository.GetValue(), "new.txt").IsUntracked);
+	CHECK(StatusOf(repository, "new.txt").IsUntracked);
 }
 
 TEST_CASE("DeleteUntracked removes the file from disk")
@@ -249,10 +239,9 @@ TEST_CASE("DeleteUntracked removes the file from disk")
 	fixture.Commit("first");
 	fixture.Write("new.txt", "fresh\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().DeleteUntracked({"new.txt"}).HasValue());
+	REQUIRE(repository.DeleteUntracked({"new.txt"}).HasValue());
 
 	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "new.txt"));
 }
@@ -263,22 +252,21 @@ TEST_CASE("DeleteUntracked reports a path it cannot remove")
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("first");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	fixture.Write("folder/inside.txt", "x\n");
 
-	// An open handle without FILE_SHARE_DELETE makes Windows refuse to remove the file
-	// while it is held, which is a genuine failure rather than the old bug this used to
-	// assert (a non-empty directory failing outright). That drives remove_all into setting
-	// an error code, which is what this test exists to exercise.
-	std::ofstream held(fixture.GetPath() / "folder" / "inside.txt", std::ios::app);
-	REQUIRE(held.is_open());
+	// Windows refuses to remove a file while a handle opened without FILE_SHARE_DELETE holds it,
+	// which makes remove_all set an error code.
+	std::ofstream handleWithoutShareDelete(fixture.GetPath() / "folder" / "inside.txt",
+										   std::ios::app);
+	REQUIRE(handleWithoutShareDelete.is_open());
 
-	const auto result = repository.GetValue().DeleteUntracked({std::filesystem::path("folder")});
-	CHECK_FALSE(result.HasValue());
+	const Core::Result<void> deleteResult =
+		repository.DeleteUntracked({std::filesystem::path("folder")});
+	CHECK_FALSE(deleteResult.HasValue());
 
-	held.close();
+	handleWithoutShareDelete.close();
 }
 
 TEST_CASE("Deleting an untracked directory removes it with everything under it")
@@ -291,10 +279,9 @@ TEST_CASE("Deleting an untracked directory removes it with everything under it")
 	fixture.Write("notes/first.md", "one\n");
 	fixture.Write("notes/nested/second.md", "two\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().DeleteUntracked({std::filesystem::path("notes")}).HasValue());
+	REQUIRE(repository.DeleteUntracked({std::filesystem::path("notes")}).HasValue());
 
 	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "notes"));
 }
@@ -308,10 +295,9 @@ TEST_CASE("Deleting an untracked file still removes just the file")
 
 	fixture.Write("loose.txt", "two\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().DeleteUntracked({std::filesystem::path("loose.txt")}).HasValue());
+	REQUIRE(repository.DeleteUntracked({std::filesystem::path("loose.txt")}).HasValue());
 
 	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "loose.txt"));
 	CHECK(std::filesystem::exists(fixture.GetPath() / "a.txt"));
@@ -325,19 +311,18 @@ TEST_CASE("Commit writes the index as a commit the log then finds")
 	fixture.Commit("first");
 	fixture.Write("a.txt", "changed\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
+	REQUIRE(repository.Stage({"a.txt"}).HasValue());
 
-	const auto committed = repository.GetValue().Commit({.Message = "second"});
-	REQUIRE(committed.HasValue());
+	const Core::Result<Core::Oid> commitResult = repository.Commit({.Message = "second"});
+	REQUIRE(commitResult.HasValue());
 
-	const auto page = repository.GetValue().QueryLog({});
-	REQUIRE(page.HasValue());
-	REQUIRE_FALSE(page.GetValue().Commits.empty());
-	CHECK(page.GetValue().Commits.front().Id == committed.GetValue());
-	CHECK(StatusOf(repository.GetValue(), "a.txt").Index == Core::StatusFlags::None);
+	const Core::Result<Core::LogPage> logResult = repository.QueryLog(Core::LogRequest{});
+	REQUIRE(logResult.HasValue());
+	REQUIRE_FALSE(logResult.GetValue().Commits.empty());
+	CHECK(logResult.GetValue().Commits.front().Id == commitResult.GetValue());
+	CHECK(StatusOf(repository, "a.txt").Index == Core::StatusFlags::None);
 }
 
 TEST_CASE("Commit refuses an empty message and creates no commit")
@@ -348,24 +333,23 @@ TEST_CASE("Commit refuses an empty message and creates no commit")
 	fixture.Commit("first");
 	fixture.Write("a.txt", "changed\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
-	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+	REQUIRE(repository.Stage({"a.txt"}).HasValue());
 
-	const auto before = repository.GetValue().QueryLog({});
-	REQUIRE(before.HasValue());
+	const Core::Result<Core::LogPage> logBefore = repository.QueryLog(Core::LogRequest{});
+	REQUIRE(logBefore.HasValue());
 
-	for (const char* message : {"", "   ", "\t\r\n  \n"})
+	for (const char* blankMessage : {"", "   ", "\t\r\n  \n"})
 	{
-		const auto committed = repository.GetValue().Commit({.Message = message});
-		REQUIRE_FALSE(committed.HasValue());
-		CHECK(committed.GetError().Code == Core::ErrorCode::InvalidArgument);
+		const Core::Result<Core::Oid> commitResult = repository.Commit({.Message = blankMessage});
+		REQUIRE_FALSE(commitResult.HasValue());
+		CHECK(commitResult.GetError().Code == Core::ErrorCode::InvalidArgument);
 	}
 
-	const auto after = repository.GetValue().QueryLog({});
-	REQUIRE(after.HasValue());
-	CHECK(after.GetValue().Commits.size() == before.GetValue().Commits.size());
-	CHECK(after.GetValue().Commits.front().Id == before.GetValue().Commits.front().Id);
+	const Core::Result<Core::LogPage> logAfter = repository.QueryLog(Core::LogRequest{});
+	REQUIRE(logAfter.HasValue());
+	CHECK(logAfter.GetValue().Commits.size() == logBefore.GetValue().Commits.size());
+	CHECK(logAfter.GetValue().Commits.front().Id == logBefore.GetValue().Commits.front().Id);
 }
 
 TEST_CASE("Commit fails rather than inventing an author it cannot resolve")
@@ -374,13 +358,12 @@ TEST_CASE("Commit fails rather than inventing an author it cannot resolve")
 	fixture.SetUnusableIdentity();
 	fixture.Write("a.txt", "one\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
+	REQUIRE(repository.Stage({"a.txt"}).HasValue());
 
-	const auto committed = repository.GetValue().Commit({.Message = "first"});
-	CHECK_FALSE(committed.HasValue());
+	const Core::Result<Core::Oid> commitResult = repository.Commit({.Message = "first"});
+	CHECK_FALSE(commitResult.HasValue());
 }
 
 TEST_CASE("Commit into an unborn HEAD makes a root commit")
@@ -389,17 +372,17 @@ TEST_CASE("Commit into an unborn HEAD makes a root commit")
 	fixture.SetIdentity("Test Author", "test@example.com");
 	fixture.Write("a.txt", "one\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
+	REQUIRE(repository.Stage({"a.txt"}).HasValue());
 
-	const auto committed = repository.GetValue().Commit({.Message = "first"});
-	REQUIRE(committed.HasValue());
+	const Core::Result<Core::Oid> commitResult = repository.Commit({.Message = "first"});
+	REQUIRE(commitResult.HasValue());
 
-	const auto parent = repository.GetValue().FirstParentOf(committed.GetValue());
-	REQUIRE(parent.HasValue());
-	CHECK_FALSE(parent.GetValue().has_value());
+	const Core::Result<std::optional<Core::Oid>> parentResult =
+		repository.FirstParentOf(commitResult.GetValue());
+	REQUIRE(parentResult.HasValue());
+	CHECK_FALSE(parentResult.GetValue().has_value());
 }
 
 TEST_CASE("Commit with nothing staged refuses and creates no commit")
@@ -409,33 +392,34 @@ TEST_CASE("Commit with nothing staged refuses and creates no commit")
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("first");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	const auto before = repository.GetValue().QueryLog({});
-	REQUIRE(before.HasValue());
+	const Core::Result<Core::LogPage> logBefore = repository.QueryLog(Core::LogRequest{});
+	REQUIRE(logBefore.HasValue());
 
-	const auto committed = repository.GetValue().Commit({.Message = "second"});
-	REQUIRE_FALSE(committed.HasValue());
-	CHECK(committed.GetError().Message == "nothing to commit");
+	const Core::Result<Core::Oid> commitResult = repository.Commit({.Message = "second"});
+	REQUIRE_FALSE(commitResult.HasValue());
+	CHECK(commitResult.GetError().Message == "nothing to commit");
 
-	const auto after = repository.GetValue().QueryLog({});
-	REQUIRE(after.HasValue());
-	CHECK(after.GetValue().Commits.size() == before.GetValue().Commits.size());
+	const Core::Result<Core::LogPage> logAfter = repository.QueryLog(Core::LogRequest{});
+	REQUIRE(logAfter.HasValue());
+	CHECK(logAfter.GetValue().Commits.size() == logBefore.GetValue().Commits.size());
 }
 
-TEST_CASE("Amend with an unchanged index still succeeds")
+TEST_CASE("Amend with an unchanged index still succeeds in rewording the commit")
 {
 	GitFixture fixture;
 	fixture.SetIdentity("Test Author", "test@example.com");
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("first");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	// Rewording is the whole point of an amend with nothing new staged.
-	CHECK(repository.GetValue().Commit({.Message = "first, reworded", .Amend = true}).HasValue());
+	CHECK(repository.Commit({.Message = "first, reworded", .Amend = true}).HasValue());
+
+	const Core::Result<Core::LogPage> logAfter = repository.QueryLog(Core::LogRequest{});
+	REQUIRE(logAfter.HasValue());
+	CHECK(logAfter.GetValue().Commits.front().Summary == "first, reworded");
 }
 
 TEST_CASE("Commit during a merge may keep HEAD's tree")
@@ -445,16 +429,13 @@ TEST_CASE("Commit during a merge may keep HEAD's tree")
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("first");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	const auto log = repository.GetValue().QueryLog({});
-	REQUIRE(log.HasValue());
+	const Core::Oid headId = HeadCommitId(repository);
+	const std::string mergeHeadContent = headId.ToHex() + "\n";
+	fixture.Write(".git/MERGE_HEAD", mergeHeadContent);
 
-	// A merge whose result is HEAD's own tree is legitimate, so the backstop stands down.
-	fixture.Write(".git/MERGE_HEAD", log.GetValue().Commits.front().Id.ToHex() + "\n");
-
-	CHECK(repository.GetValue().Commit({.Message = "merge"}).HasValue());
+	CHECK(repository.Commit({.Message = "merge"}).HasValue());
 }
 
 TEST_CASE("Amend replaces HEAD and keeps its parent")
@@ -466,23 +447,23 @@ TEST_CASE("Amend replaces HEAD and keeps its parent")
 	fixture.Write("b.txt", "two\n");
 	fixture.Commit("second");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	const auto before = repository.GetValue().QueryLog({});
-	REQUIRE(before.HasValue());
-	const std::size_t countBefore = before.GetValue().Commits.size();
-	const Core::Oid firstParent = before.GetValue().Commits.front().Id;
+	const Core::Result<Core::LogPage> logBefore = repository.QueryLog(Core::LogRequest{});
+	REQUIRE(logBefore.HasValue());
+	const std::size_t commitCountBefore = logBefore.GetValue().Commits.size();
+	const Core::Oid replacedHeadId = logBefore.GetValue().Commits.front().Id;
 
-	const auto amended = repository.GetValue().Commit({.Message = "second, reworded", .Amend = true});
-	REQUIRE(amended.HasValue());
-	CHECK(amended.GetValue() != firstParent);
+	const Core::Result<Core::Oid> amendResult =
+		repository.Commit({.Message = "second, reworded", .Amend = true});
+	REQUIRE(amendResult.HasValue());
+	CHECK(amendResult.GetValue() != replacedHeadId);
 
-	const auto after = repository.GetValue().QueryLog({});
-	REQUIRE(after.HasValue());
-	CHECK(after.GetValue().Commits.size() == countBefore);
-	CHECK(after.GetValue().Commits.front().Id == amended.GetValue());
-	CHECK(after.GetValue().Commits.front().Summary == "second, reworded");
+	const Core::Result<Core::LogPage> logAfter = repository.QueryLog(Core::LogRequest{});
+	REQUIRE(logAfter.HasValue());
+	CHECK(logAfter.GetValue().Commits.size() == commitCountBefore);
+	CHECK(logAfter.GetValue().Commits.front().Id == amendResult.GetValue());
+	CHECK(logAfter.GetValue().Commits.front().Summary == "second, reworded");
 }
 
 TEST_CASE("Amend with no message keeps the message it is replacing")
@@ -492,20 +473,17 @@ TEST_CASE("Amend with no message keeps the message it is replacing")
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("first");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	fixture.Write("b.txt", "two\n");
-	REQUIRE(repository.GetValue().Stage({"b.txt"}).HasValue());
+	REQUIRE(repository.Stage({"b.txt"}).HasValue());
 
-	// Amending to add a forgotten file is the case with nothing to say: the message is
-	// already written, and an empty box means "leave it alone", not "make it blank".
-	const auto amended = repository.GetValue().Commit({.Message = "", .Amend = true});
-	REQUIRE(amended.HasValue());
+	const Core::Result<Core::Oid> amendResult = repository.Commit({.Message = "", .Amend = true});
+	REQUIRE(amendResult.HasValue());
 
-	const auto after = repository.GetValue().QueryLog({});
-	REQUIRE(after.HasValue());
-	CHECK(after.GetValue().Commits.front().Summary == "first");
+	const Core::Result<Core::LogPage> logAfter = repository.QueryLog(Core::LogRequest{});
+	REQUIRE(logAfter.HasValue());
+	CHECK(logAfter.GetValue().Commits.front().Summary == "first");
 }
 
 TEST_CASE("Amend fails when HEAD is unborn")
@@ -514,13 +492,13 @@ TEST_CASE("Amend fails when HEAD is unborn")
 	fixture.SetIdentity("Test Author", "test@example.com");
 	fixture.Write("a.txt", "one\n");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
+	REQUIRE(repository.Stage({"a.txt"}).HasValue());
 
-	const auto amended = repository.GetValue().Commit({.Message = "nothing to amend", .Amend = true});
-	CHECK_FALSE(amended.HasValue());
+	const Core::Result<Core::Oid> amendResult =
+		repository.Commit({.Message = "nothing to amend", .Amend = true});
+	CHECK_FALSE(amendResult.HasValue());
 }
 
 TEST_CASE("Staging a conflicted file clears the conflict")
@@ -536,22 +514,16 @@ TEST_CASE("Staging a conflicted file clears the conflict")
 	fixture.Write("a.txt", "theirs\n");
 	fixture.Commit("theirs");
 
-	auto repository = Core::Repository::Open(fixture.GetPath());
-	REQUIRE(repository.HasValue());
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	fixture.StartConflict("master");
-	REQUIRE(StatusOf(repository.GetValue(), "a.txt").IsConflicted);
+	REQUIRE(StatusOf(repository, "a.txt").IsConflicted);
 
 	fixture.Write("a.txt", "resolved\n");
-	REQUIRE(repository.GetValue().Stage({"a.txt"}).HasValue());
+	REQUIRE(repository.Stage({"a.txt"}).HasValue());
 
-	CHECK_FALSE(StatusOf(repository.GetValue(), "a.txt").IsConflicted);
+	CHECK_FALSE(StatusOf(repository, "a.txt").IsConflicted);
 }
-
-// The tests below hold two handles on one repository: libgit2 caches an index per handle, and
-// the application keeps one handle per worker thread, so one handle can act on the repository
-// after another has changed the index. Each makes the second handle read the index first, so
-// that its cache is populated before the first one writes.
 
 TEST_CASE("Commit through a handle that has not seen a stage commits what was staged")
 {
@@ -560,17 +532,17 @@ TEST_CASE("Commit through a handle that has not seen a stage commits what was st
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("first");
 
-	Core::Repository staging = OpenAt(fixture.GetPath());
-	Core::Repository committing = OpenAt(fixture.GetPath());
-	REQUIRE(committing.QueryStatus().HasValue());
+	Core::Repository staging = OpenRepositoryAt(fixture.GetPath());
+	Core::Repository committing = OpenRepositoryAt(fixture.GetPath());
+	ReadIndexIntoCache(committing);
 
 	fixture.Write("x.txt", "new\n");
 	REQUIRE(staging.Stage({"x.txt"}).HasValue());
 
 	REQUIRE(committing.Commit({.Message = "add x"}).HasValue());
 
-	const Core::Repository check = OpenAt(fixture.GetPath());
-	const Core::FileStatus after = StatusOf(check, "x.txt");
+	const Core::Repository freshHandle = OpenRepositoryAt(fixture.GetPath());
+	const Core::FileStatus after = StatusOf(freshHandle, "x.txt");
 	CHECK(after.Index == Core::StatusFlags::None);
 	CHECK(after.WorkTree == Core::StatusFlags::None);
 }
@@ -582,9 +554,9 @@ TEST_CASE("Stage through a handle that has not seen an amend does not revert the
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("first");
 
-	Core::Repository amending = OpenAt(fixture.GetPath());
-	Core::Repository staging = OpenAt(fixture.GetPath());
-	REQUIRE(staging.QueryStatus().HasValue());
+	Core::Repository amending = OpenRepositoryAt(fixture.GetPath());
+	Core::Repository staging = OpenRepositoryAt(fixture.GetPath());
+	ReadIndexIntoCache(staging);
 
 	fixture.Write("a.txt", "two\n");
 	REQUIRE(amending.Stage({"a.txt"}).HasValue());
@@ -593,9 +565,9 @@ TEST_CASE("Stage through a handle that has not seen an amend does not revert the
 	fixture.Write("b.txt", "other\n");
 	REQUIRE(staging.Stage({"b.txt"}).HasValue());
 
-	const Core::Repository check = OpenAt(fixture.GetPath());
-	CHECK(StatusOf(check, "a.txt").Index == Core::StatusFlags::None);
-	CHECK(Has(StatusOf(check, "b.txt").Index, Core::StatusFlags::New));
+	const Core::Repository freshHandle = OpenRepositoryAt(fixture.GetPath());
+	CHECK(StatusOf(freshHandle, "a.txt").Index == Core::StatusFlags::None);
+	CHECK(HasStatusFlag(StatusOf(freshHandle, "b.txt").Index, Core::StatusFlags::New));
 }
 
 TEST_CASE("Unstage through a handle that has not seen a stage keeps that stage")
@@ -605,17 +577,17 @@ TEST_CASE("Unstage through a handle that has not seen a stage keeps that stage")
 	fixture.Write("b.txt", "one\n");
 	fixture.Commit("first");
 
-	Core::Repository staging = OpenAt(fixture.GetPath());
-	Core::Repository unstaging = OpenAt(fixture.GetPath());
-	REQUIRE(unstaging.QueryStatus().HasValue());
+	Core::Repository staging = OpenRepositoryAt(fixture.GetPath());
+	Core::Repository unstaging = OpenRepositoryAt(fixture.GetPath());
+	ReadIndexIntoCache(unstaging);
 
 	fixture.Write("a.txt", "two\n");
 	REQUIRE(staging.Stage({"a.txt"}).HasValue());
 
 	REQUIRE(unstaging.Unstage({"b.txt"}).HasValue());
 
-	const Core::Repository check = OpenAt(fixture.GetPath());
-	CHECK(Has(StatusOf(check, "a.txt").Index, Core::StatusFlags::Modified));
+	const Core::Repository freshHandle = OpenRepositoryAt(fixture.GetPath());
+	CHECK(HasStatusFlag(StatusOf(freshHandle, "a.txt").Index, Core::StatusFlags::Modified));
 }
 
 TEST_CASE("Discarding through a handle that has not seen a stage restores the staged content")
@@ -624,9 +596,9 @@ TEST_CASE("Discarding through a handle that has not seen a stage restores the st
 	fixture.Write("a.txt", "committed\n");
 	fixture.Commit("first");
 
-	Core::Repository staging = OpenAt(fixture.GetPath());
-	Core::Repository discarding = OpenAt(fixture.GetPath());
-	REQUIRE(discarding.QueryStatus().HasValue());
+	Core::Repository staging = OpenRepositoryAt(fixture.GetPath());
+	Core::Repository discarding = OpenRepositoryAt(fixture.GetPath());
+	ReadIndexIntoCache(discarding);
 
 	fixture.Write("a.txt", "staged\n");
 	REQUIRE(staging.Stage({"a.txt"}).HasValue());
@@ -634,8 +606,6 @@ TEST_CASE("Discarding through a handle that has not seen a stage restores the st
 
 	REQUIRE(discarding.DiscardWorkTree({"a.txt"}).HasValue());
 
-	std::ifstream in{fixture.GetPath() / "a.txt", std::ios::binary};
-	std::string content{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
-	std::erase(content, '\r');
+	const std::string content = ReadWithoutCarriageReturns(fixture.GetPath() / "a.txt");
 	CHECK(content == "staged\n");
 }

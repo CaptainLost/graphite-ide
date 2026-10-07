@@ -2,18 +2,22 @@
 
 #include <git2.h>
 
+namespace {
+
+	constexpr int kExpectedMajorVersion = 1;
+	constexpr int kExpectedMinorVersion = 8;
+}
+
 TEST_CASE("libgit2 links and reports its version")
 {
-	// The point is not the numbers but that the library compiled, linked and can be
-	// called at all — everything else in this integration builds on that.
-	int major = 0;
-	int minor = 0;
-	int revision = 0;
+	int majorVersion = 0;
+	int minorVersion = 0;
+	int revisionVersion = 0;
 
-	git_libgit2_version(&major, &minor, &revision);
+	git_libgit2_version(&majorVersion, &minorVersion, &revisionVersion);
 
-	CHECK(major == 1);
-	CHECK(minor == 8);
+	CHECK(majorVersion == kExpectedMajorVersion);
+	CHECK(minorVersion == kExpectedMinorVersion);
 }
 
 TEST_CASE("libgit2 initialises and shuts down cleanly")

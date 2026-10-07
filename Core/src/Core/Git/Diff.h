@@ -17,13 +17,13 @@ namespace Core {
 	{
 		DiffLineKind Kind = DiffLineKind::Context;
 
-		// Zero where the line does not exist on that side: an added line has no old
-		// number, a removed line has no new one.
+		// Zero on the side where the line does not exist: an added line has no old number,
+		// a removed line no new one.
 		int OldLine = 0;
 		int NewLine = 0;
 
 		// Includes the line terminator when the file has one, so a missing final newline
-		// is visible in the text rather than only in a flag.
+		// shows in the text.
 		std::string Text;
 	};
 
@@ -34,8 +34,7 @@ namespace Core {
 		int NewStart = 0;
 		int NewCount = 0;
 
-		// The "@@ -a,b +c,d @@" line, kept as libgit2 formatted it so the unified view
-		// does not have to rebuild it.
+		// The "@@ -a,b +c,d @@" line exactly as libgit2 formatted it.
 		std::string Header;
 
 		std::vector<DiffLine> Lines;
@@ -54,14 +53,15 @@ namespace Core {
 
 	struct FileDiff
 	{
-		// Both are relative to the working directory. For anything but a rename or a copy
-		// they hold the same path; for an add, OldPath is empty, and for a delete NewPath is.
+		// Relative to the working directory, and the same path unless the file was renamed
+		// or copied. An add leaves OldPath empty, a delete leaves NewPath empty.
 		std::filesystem::path OldPath;
 		std::filesystem::path NewPath;
 
 		FileChange Change = FileChange::Unmodified;
 
-		// A binary delta has no hunks. The view must check this before drawing lines.
+		// A binary delta has no hunks, so an empty Hunks cannot tell it from a hunkless change; check
+		// this flag before drawing lines.
 		bool IsBinary = false;
 
 		std::vector<Hunk> Hunks;

@@ -35,23 +35,21 @@ namespace Core {
 
 	struct FileStatus
 	{
-		// Relative to the working directory, so it can be compared against what the file
-		// tree and the open documents hold without either side knowing the root.
+		// Relative to the working directory, so it compares against the file tree and the open
+		// documents without either of them knowing the root.
 		std::filesystem::path Path;
 
 		std::optional<std::filesystem::path> RenamedFrom;
 
-		// The two halves git tracks separately: what is staged, and what is not. A file
-		// can be both — staged one way and edited again since.
+		// A file can carry flags in both: staged one way and edited again since.
 		StatusFlags Index = StatusFlags::None;
 		StatusFlags WorkTree = StatusFlags::None;
 
 		bool IsConflicted = false;
 		bool IsUntracked = false;
 
-		// libgit2 collapses a wholly untracked directory into one status entry. A reader
-		// asks this rather than looking for a separator on the end of Path, because Path
-		// is stored without one - see RepositoryStatus.cpp.
+		// libgit2 reports a wholly untracked directory as one entry. Path is stored without a
+		// trailing separator, so ask this instead of looking for one.
 		bool IsDirectory = false;
 	};
 

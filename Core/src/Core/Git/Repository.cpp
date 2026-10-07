@@ -16,11 +16,32 @@
 namespace Core {
 
 	namespace {
-		// Compared as components rather than as a string, so an in-tree file called "..config"
+
+		constexpr const char* kParentDirectoryComponent = "..";
+
+		// Compared as components rather than as a string, so that an in-tree file called "..config"
 		// is not mistaken for a leading "..".
-		bool LeadsOutOfTree(const std::filesystem::path& relative)
+		bool LeadsOutOfTree(const std::filesystem::path& relativePath)
 		{
-			return relative.begin() != relative.end() && *relative.begin() == "..";
+			const bool hasAComponent = relativePath.begin() != relativePath.end();
+			return hasAComponent && *relativePath.begin() == kParentDirectoryComponent;
+		}
+
+		bool IsInsideTree(const std::filesystem::path& relativePath)
+		{
+			return !relativePath.empty() && !LeadsOutOfTree(relativePath);
+		}
+
+		std::filesystem::path WorkingDirectoryOf(git_repository* handle)
+		{
+			const char* workingDirectory = git_repository_workdir(handle);
+
+			if (workingDirectory == nullptr)
+			{
+				return std::filesystem::path{};
+			}
+
+			return FromUtf8(workingDirectory);
 		}
 	}
 
@@ -28,56 +49,54 @@ namespace Core {
 	{
 		EnsureLibgit2Initialised();
 
-		git_repository* handle = nullptr;
+		git_repository* openedHandle = nullptr;
 		const std::string path = ToUtf8(anyPathInside);
 
-		// ceiling_dirs is null so the search walks up to the filesystem root, matching
-		// what the git command line does from a subdirectory.
-		const int result = git_repository_open_ext(&handle, path.c_str(), 0, nullptr);
+		const unsigned int noOpenFlags = 0;
+		const char* const searchUpToTheFilesystemRootLikeGit = nullptr;
+		const int openResult =
+			git_repository_open_ext(&openedHandle, path.c_str(), noOpenFlags, searchUpToTheFilesystemRootLikeGit);
 
-		if (result != 0 || handle == nullptr)
+		if (openResult != 0 || openedHandle == nullptr)
 		{
 			const std::string message = LastLibgit2Message();
 
-			ErrorCode code = ErrorCode::IoFailure;
+			ErrorCode errorCode = ErrorCode::IoFailure;
 
-			if (result == GIT_ENOTFOUND)
+			if (openResult == GIT_ENOTFOUND)
 			{
-				code = ErrorCode::NotFound;
+				errorCode = ErrorCode::NotFound;
 			}
-			else if (result == GIT_EAUTH)
+			else if (openResult == GIT_EAUTH)
 			{
-				code = ErrorCode::AccessDenied;
+				errorCode = ErrorCode::AccessDenied;
 			}
 
-			return Error{code, std::format("cannot open a git repository at '{}': {}", path, message)};
+			return Error{errorCode, std::format("cannot open a git repository at '{}': {}", path, message)};
 		}
 
 		Repository repository;
-		repository.m_Handle.reset(handle);
-
-		if (const char* workdir = git_repository_workdir(handle); workdir != nullptr)
-		{
-			repository.m_WorkingDirectory = FromUtf8(workdir);
-		}
+		repository.m_Handle.reset(openedHandle);
+		repository.m_WorkingDirectory = WorkingDirectoryOf(openedHandle);
 
 		return repository;
 	}
 
-	Result<Repository> Repository::Init(const std::filesystem::path& directory)
+	Result<Repository> Repository::Init(const std::filesystem::path& existingDirectory)
 	{
 		EnsureLibgit2Initialised();
 
 		git_repository_init_options options = GIT_REPOSITORY_INIT_OPTIONS_INIT;
 
-		// Without MKPATH, the default: the folder is the one open in the IDE, so it exists,
-		// and creating a missing one would hide a wrong path behind a fresh repository.
-		options.flags = 0;
+		// MKPATH stays off: the folder is the one open in the IDE, and creating a missing one would
+		// hide a wrong path behind a fresh repository.
+		const std::uint32_t withoutMakePath = 0;
+		options.flags = withoutMakePath;
 
-		git_repository* handle = nullptr;
-		const std::string path = ToUtf8(directory);
+		git_repository* createdHandle = nullptr;
+		const std::string path = ToUtf8(existingDirectory);
 
-		if (git_repository_init_ext(&handle, path.c_str(), &options) != 0 || handle == nullptr)
+		if (git_repository_init_ext(&createdHandle, path.c_str(), &options) != 0 || createdHandle == nullptr)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot initialise a git repository at '{}': {}", path,
@@ -85,12 +104,8 @@ namespace Core {
 		}
 
 		Repository repository;
-		repository.m_Handle.reset(handle);
-
-		if (const char* workdir = git_repository_workdir(handle); workdir != nullptr)
-		{
-			repository.m_WorkingDirectory = FromUtf8(workdir);
-		}
+		repository.m_Handle.reset(createdHandle);
+		repository.m_WorkingDirectory = WorkingDirectoryOf(createdHandle);
 
 		return repository;
 	}
@@ -107,64 +122,64 @@ namespace Core {
 			return false;
 		}
 
-		std::error_code code;
-		const std::filesystem::path relative =
-			std::filesystem::relative(path, m_WorkingDirectory, code);
+		std::error_code relativeError;
+		const std::filesystem::path relativePath =
+			std::filesystem::relative(path, m_WorkingDirectory, relativeError);
 
-		if (code || relative.empty() || LeadsOutOfTree(relative))
+		if (relativeError || !IsInsideTree(relativePath))
 		{
 			return false;
 		}
 
-		const std::string text = ToGitPath(relative);
+		const std::string gitPath = ToGitPath(relativePath);
 
-		int ignored = 0;
-		if (git_ignore_path_is_ignored(&ignored, m_Handle.get(), text.c_str()) != 0)
+		int ignoredFlag = 0;
+		if (git_ignore_path_is_ignored(&ignoredFlag, m_Handle.get(), gitPath.c_str()) != 0)
 		{
-			CORE_TRACE("Cannot determine ignore status for '{}'", text);
+			CORE_TRACE("Cannot determine ignore status for '{}'", gitPath);
 			return false;
 		}
 
-		return ignored != 0;
+		return ignoredFlag != 0;
 	}
 
-	bool Repository::IsInsideSubmodule(const std::filesystem::path& relative) const
+	bool Repository::IsInsideSubmodule(const std::filesystem::path& pathRelativeToWorkingDirectory) const
 	{
-		if (m_Handle == nullptr || relative.empty() || LeadsOutOfTree(relative))
+		if (m_Handle == nullptr || !IsInsideTree(pathRelativeToWorkingDirectory))
 		{
 			return false;
 		}
 
-		auto opened = OpenFreshIndex(m_Handle.get());
+		Result<IndexHandle> openedIndex = OpenFreshIndex(m_Handle.get());
 
-		if (!opened.HasValue())
+		if (!openedIndex.HasValue())
 		{
-			CORE_TRACE("Cannot read the index to look for a submodule above '{}': {}", ToGitPath(relative),
-					   opened.GetError().Message);
+			CORE_TRACE("Cannot read the index to look for a submodule above '{}': {}",
+					   ToGitPath(pathRelativeToWorkingDirectory), openedIndex.GetError().Message);
 			return false;
 		}
 
-		const IndexHandle index = std::move(opened).GetValue();
+		const IndexHandle index = std::move(openedIndex).GetValue();
 
-		bool inside = false;
-		std::filesystem::path prefix;
+		bool isInsideSubmodule = false;
+		std::filesystem::path directoryAbove;
 
-		// Only the directories above the path: a gitlink at the path itself is the submodule's
-		// root directory, not a file inside it.
-		for (const std::filesystem::path& part : relative.parent_path())
+		// Only the directories above the path count: a gitlink at the path itself is the
+		// submodule's root directory, not a file inside it.
+		for (const std::filesystem::path& component : pathRelativeToWorkingDirectory.parent_path())
 		{
-			prefix /= part;
+			directoryAbove /= component;
 
-			const std::string text = ToGitPath(prefix);
-			const git_index_entry* entry = git_index_get_bypath(index.get(), text.c_str(), 0);
+			const std::string gitPath = ToGitPath(directoryAbove);
+			const git_index_entry* indexEntry = git_index_get_bypath(index.get(), gitPath.c_str(), GIT_INDEX_STAGE_NORMAL);
 
-			if (entry != nullptr && entry->mode == static_cast<std::uint32_t>(GIT_FILEMODE_COMMIT))
+			if (indexEntry != nullptr && indexEntry->mode == static_cast<std::uint32_t>(GIT_FILEMODE_COMMIT))
 			{
-				inside = true;
+				isInsideSubmodule = true;
 				break;
 			}
 		}
 
-		return inside;
+		return isInsideSubmodule;
 	}
 }

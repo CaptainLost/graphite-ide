@@ -164,9 +164,9 @@ namespace {
 						: Core::Result<void>::Ok();
 		}
 
-		Core::Result<void> DiscardAll(bool includeUntracked) override
+		Core::Result<void> DiscardAll(Core::UntrackedFiles untrackedFiles) override
 		{
-			Calls.push_back(std::string{"discard-all:"} + (includeUntracked ? "1" : "0"));
+			Calls.push_back(std::string{"discard-all:"} + (untrackedFiles == Core::UntrackedFiles::Included ? "1" : "0"));
 
 			return Fail ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, "no"}}
 						: Core::Result<void>::Ok();
@@ -182,9 +182,9 @@ namespace {
 			return Unmerged;
 		}
 
-		Core::Result<bool> StashSave(const std::string& message, bool includeUntracked) override
+		Core::Result<bool> StashSave(const std::string& message, Core::UntrackedFiles untrackedFiles) override
 		{
-			Calls.push_back("stash:" + message + "|" + (includeUntracked ? "1" : "0"));
+			Calls.push_back("stash:" + message + "|" + (untrackedFiles == Core::UntrackedFiles::Included ? "1" : "0"));
 
 			if (Fail)
 			{

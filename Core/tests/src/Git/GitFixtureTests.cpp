@@ -14,24 +14,22 @@ namespace {
 		git_repository* repository = nullptr;
 		REQUIRE(git_repository_open(&repository, Core::ToUtf8(root).c_str()) == 0);
 
-		git_revwalk* walk = nullptr;
-		REQUIRE(git_revwalk_new(&walk, repository) == 0);
-		git_revwalk_sorting(walk, GIT_SORT_TOPOLOGICAL | GIT_SORT_TIME);
-		REQUIRE(git_revwalk_push_head(walk) == 0);
+		git_revwalk* revisionWalk = nullptr;
+		REQUIRE(git_revwalk_new(&revisionWalk, repository) == 0);
+		git_revwalk_sorting(revisionWalk, GIT_SORT_TOPOLOGICAL | GIT_SORT_TIME);
+		REQUIRE(git_revwalk_push_head(revisionWalk) == 0);
 
-		std::vector<std::string> ids;
-		git_oid id{};
+		std::vector<std::string> commitIds;
+		git_oid commitId{};
 
-		while (git_revwalk_next(&id, walk) == 0)
+		while (git_revwalk_next(&commitId, revisionWalk) == 0)
 		{
-			char text[GIT_OID_SHA1_HEXSIZE + 1] = {};
-			git_oid_fmt(text, &id);
-			ids.emplace_back(text, GIT_OID_SHA1_HEXSIZE);
+			commitIds.push_back(HexTextOf(commitId));
 		}
 
-		git_revwalk_free(walk);
+		git_revwalk_free(revisionWalk);
 		git_repository_free(repository);
-		return ids;
+		return commitIds;
 	}
 }
 
@@ -45,11 +43,11 @@ TEST_CASE("The fixture builds a linear history newest first")
 	fixture.Write("b.txt", "two\n");
 	const std::string second = fixture.Commit("add b");
 
-	const std::vector<std::string> ids = WalkHeadIds(fixture.GetPath());
+	const std::vector<std::string> commitIds = WalkHeadIds(fixture.GetPath());
 
-	REQUIRE(ids.size() == 2);
-	CHECK(ids[0] == second);
-	CHECK(ids[1] == first);
+	REQUIRE(commitIds.size() == 2);
+	CHECK(commitIds[0] == second);
+	CHECK(commitIds[1] == first);
 }
 
 TEST_CASE("The fixture builds a merge commit with two parents")
@@ -81,13 +79,13 @@ TEST_CASE("The fixture builds a merge commit with two parents")
 
 	REQUIRE(git_commit_parentcount(commit) == 2);
 
-	char first[GIT_OID_SHA1_HEXSIZE + 1] = {};
-	char second[GIT_OID_SHA1_HEXSIZE + 1] = {};
-	git_oid_fmt(first, git_commit_parent_id(commit, 0));
-	git_oid_fmt(second, git_commit_parent_id(commit, 1));
+	const unsigned int firstParentPosition = 0;
+	const unsigned int secondParentPosition = 1;
+	const std::string firstParent = HexTextOf(*git_commit_parent_id(commit, firstParentPosition));
+	const std::string secondParent = HexTextOf(*git_commit_parent_id(commit, secondParentPosition));
 
-	CHECK(std::string(first, GIT_OID_SHA1_HEXSIZE) == mainTip);
-	CHECK(std::string(second, GIT_OID_SHA1_HEXSIZE) == sideTip);
+	CHECK(firstParent == mainTip);
+	CHECK(secondParent == sideTip);
 
 	git_commit_free(commit);
 	git_repository_free(repository);

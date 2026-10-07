@@ -92,7 +92,7 @@ namespace Graphite {
 			// elsewhere still belongs to the stash it was opened on.
 			ImGui::PushID(stash.Id.ToHex().c_str());
 
-			const std::chrono::sys_seconds made{std::chrono::seconds{stash.Time}};
+			const std::chrono::sys_seconds made{std::chrono::seconds{stash.SecondsSinceEpoch}};
 			const std::string when = std::format("{:%Y-%m-%d %H:%M}", made + offset);
 
 			// The label is laid over an id-only Selectable rather than passed as one: a stash

@@ -10,16 +10,15 @@ namespace Core {
 
 	struct StashEntry
 	{
-		// stash@{Index}. Shifts whenever a stash is pushed or dropped, which is why the
-		// writes take Id instead.
+		// The n in stash@{n}. It shifts whenever a stash is pushed or dropped, so the write
+		// operations take Id instead.
 		std::size_t Index = 0;
 
-		// As git records it: "On main: message" or "WIP on main: <commit summary>".
+		// Git's own text, prefix included: "On main: message" or "WIP on main: <commit summary>".
 		std::string Message;
 
 		Oid Id;
 
-		// Seconds since the epoch, from the stash commit.
-		std::int64_t Time = 0;
+		std::int64_t SecondsSinceEpoch = 0;
 	};
 }

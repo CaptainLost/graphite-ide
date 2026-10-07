@@ -91,7 +91,7 @@ namespace Graphite {
 		// Stashes. The writes take the stash commit's id rather than its index, because
 		// stash@{N} shifts whenever another stash is pushed or dropped. StashSave answers
 		// false when there was nothing to stash.
-		virtual Core::Result<bool> StashSave(const std::string& message, bool includeUntracked) = 0;
+		virtual Core::Result<bool> StashSave(const std::string& message, Core::UntrackedFiles untrackedFiles) = 0;
 		virtual Core::Result<std::vector<Core::StashEntry>> QueryStashes() = 0;
 		virtual Core::Result<void> StashApply(const Core::Oid& id) = 0;
 		virtual Core::Result<void> StashPop(const Core::Oid& id) = 0;
@@ -102,7 +102,7 @@ namespace Graphite {
 		// the paths that may have changed.
 		virtual Core::Result<Core::CheckoutPlan> PlanCheckout(const Core::CheckoutTarget& target) = 0;
 		virtual Core::CheckoutOutcome Checkout(const Core::CheckoutTarget& target) = 0;
-		virtual Core::Result<void> DiscardAll(bool includeUntracked) = 0;
+		virtual Core::Result<void> DiscardAll(Core::UntrackedFiles untrackedFiles) = 0;
 
 		// Creates a repository at the folder this port was given. NotFound when no folder is
 		// open.

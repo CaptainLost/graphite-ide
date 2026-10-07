@@ -2,6 +2,8 @@
 
 #include "Core/Git/GraphLayout.h"
 
+#include "Core/Base/Assert.h"
+
 #include <optional>
 #include <unordered_map>
 
@@ -9,11 +11,20 @@ namespace Core {
 
 	namespace {
 
-		// What each lane is waiting for. An empty slot is a lane that is free to be taken
-		// by the next commit that needs one.
-		using Lanes = std::vector<std::optional<Oid>>;
+		// Each slot holds the commit its lane is waiting for; an empty slot is a free lane.
+		using LaneReservations = std::vector<std::optional<Oid>>;
 
-		std::size_t TakeLaneFor(Lanes& lanes, const Oid& id)
+		using RowOfCommit = std::unordered_map<Oid, std::size_t>;
+
+		struct PendingEdge
+		{
+			std::size_t FromRow = 0;
+			std::size_t FromLane = 0;
+			Oid ToId;
+			std::size_t ToLane = 0;
+		};
+
+		std::optional<std::size_t> FindLaneWaitingFor(const LaneReservations& lanes, const Oid& id)
 		{
 			for (std::size_t lane = 0; lane < lanes.size(); ++lane)
 			{
@@ -23,9 +34,23 @@ namespace Core {
 				}
 			}
 
+			return std::nullopt;
+		}
+
+		std::size_t TakeLaneFor(LaneReservations& lanes, const Oid& id)
+		{
+			const std::optional<std::size_t> waitingLane = FindLaneWaitingFor(lanes, id);
+
+			if (waitingLane.has_value())
+			{
+				return *waitingLane;
+			}
+
 			for (std::size_t lane = 0; lane < lanes.size(); ++lane)
 			{
-				if (!lanes[lane].has_value())
+				const bool laneIsFree = !lanes[lane].has_value();
+
+				if (laneIsFree)
 				{
 					lanes[lane] = id;
 					return lane;
@@ -36,15 +61,28 @@ namespace Core {
 			return lanes.size() - 1;
 		}
 
-		void ClearLane(Lanes& lanes, const Oid& id)
+		void ReleaseLanesWaitingFor(LaneReservations& lanes, const Oid& id)
 		{
-			for (std::optional<Oid>& slot : lanes)
+			for (std::optional<Oid>& reservation : lanes)
 			{
-				if (slot.has_value() && *slot == id)
+				if (reservation.has_value() && *reservation == id)
 				{
-					slot.reset();
+					reservation.reset();
 				}
 			}
+		}
+
+		std::optional<std::size_t> FindRowOf(const RowOfCommit& rowOfCommit, const Oid& id)
+		{
+			const RowOfCommit::const_iterator entry = rowOfCommit.find(id);
+
+			if (entry == rowOfCommit.end())
+			{
+				return std::nullopt;
+			}
+
+			const auto& [commitId, row] = *entry;
+			return row;
 		}
 	}
 
@@ -53,27 +91,16 @@ namespace Core {
 		CommitGraph graph;
 		graph.Nodes.reserve(commits.size());
 
-		std::unordered_map<Oid, std::size_t> rowOf;
-		rowOf.reserve(commits.size());
+		RowOfCommit rowOfCommit;
+		rowOfCommit.reserve(commits.size());
 
 		for (std::size_t row = 0; row < commits.size(); ++row)
 		{
-			rowOf.emplace(commits[row].Id, row);
+			rowOfCommit.emplace(commits[row].Id, row);
 		}
 
-		Lanes lanes;
-
-		// Recorded while walking and resolved to rows afterwards, because a parent's row
-		// is not known until the walk reaches it.
-		struct PendingEdge
-		{
-			std::size_t FromRow = 0;
-			std::size_t FromLane = 0;
-			Oid ToId;
-			std::size_t ToLane = 0;
-		};
-
-		std::vector<PendingEdge> pending;
+		LaneReservations lanes;
+		std::vector<PendingEdge> pendingEdges;
 
 		for (std::size_t row = 0; row < commits.size(); ++row)
 		{
@@ -81,50 +108,34 @@ namespace Core {
 
 			const std::size_t lane = TakeLaneFor(lanes, commit.Id);
 
-			GraphNode node;
-			node.Id = commit.Id;
-			node.Row = row;
-			node.Lane = lane;
-			graph.Nodes.push_back(node);
+			graph.Nodes.push_back(GraphNode{.Id = commit.Id, .Row = row, .Lane = lane});
 
-			// This commit has been drawn, so nothing is waiting for it any more. Its
-			// parents claim lanes below.
-			ClearLane(lanes, commit.Id);
+			ReleaseLanesWaitingFor(lanes, commit.Id);
 
-			for (std::size_t index = 0; index < commit.Parents.size(); ++index)
+			for (std::size_t parentIndex = 0; parentIndex < commit.Parents.size(); ++parentIndex)
 			{
-				const Oid& parent = commit.Parents[index];
+				const Oid& parent = commit.Parents[parentIndex];
+				const bool parentIsOnPage = rowOfCommit.contains(parent);
 
-				// A parent outside the loaded page never arrives to release its own
-				// reservation, so reserving a lane for it would leak that lane for the
-				// rest of the layout. Skip both the reservation and the edge.
-				if (rowOf.find(parent) == rowOf.end())
+				if (!parentIsOnPage)
 				{
 					continue;
 				}
 
 				std::size_t parentLane = 0;
+				const bool isFirstParent = parentIndex == 0;
 
-				if (index == 0)
+				if (isFirstParent)
 				{
-					// The first parent continues this commit's line, so it keeps the lane
-					// unless another branch already reserved that lane for it.
-					bool reserved = false;
+					const std::optional<std::size_t> reservedLane = FindLaneWaitingFor(lanes, parent);
 
-					for (std::size_t candidate = 0; candidate < lanes.size(); ++candidate)
+					if (reservedLane.has_value())
 					{
-						if (lanes[candidate].has_value() && *lanes[candidate] == parent)
-						{
-							parentLane = candidate;
-							reserved = true;
-							break;
-						}
+						parentLane = *reservedLane;
 					}
-
-					if (!reserved)
+					else
 					{
-						// TakeLaneFor always returns an index inside lanes, and lanes
-						// never shrinks, so `lane` is guaranteed to be a valid slot here.
+						CORE_ASSERT(lane < lanes.size(), "TakeLaneFor returns a slot of lanes, and lanes never shrinks");
 						lanes[lane] = parent;
 						parentLane = lane;
 					}
@@ -134,27 +145,27 @@ namespace Core {
 					parentLane = TakeLaneFor(lanes, parent);
 				}
 
-				pending.push_back(PendingEdge{row, lane, parent, parentLane});
+				pendingEdges.push_back(PendingEdge{.FromRow = row, .FromLane = lane, .ToId = parent, .ToLane = parentLane});
 			}
 		}
 
 		graph.LaneCount = lanes.size();
 
-		for (const PendingEdge& edge : pending)
+		for (const PendingEdge& pendingEdge : pendingEdges)
 		{
-			const auto target = rowOf.find(edge.ToId);
+			const std::optional<std::size_t> targetRow = FindRowOf(rowOfCommit, pendingEdge.ToId);
 
-			if (target == rowOf.end())
+			if (!targetRow.has_value())
 			{
 				continue;
 			}
 
-			GraphEdge line;
-			line.FromRow = edge.FromRow;
-			line.FromLane = edge.FromLane;
-			line.ToRow = target->second;
-			line.ToLane = edge.ToLane;
-			graph.Edges.push_back(line);
+			graph.Edges.push_back(GraphEdge{
+				.FromRow = pendingEdge.FromRow,
+				.FromLane = pendingEdge.FromLane,
+				.ToRow = *targetRow,
+				.ToLane = pendingEdge.ToLane,
+			});
 		}
 
 		return graph;

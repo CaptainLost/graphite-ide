@@ -1,14 +1,8 @@
 #pragma once
 
-// Small conversions shared by every Repository query. Kept here instead of copied into
-// each RepositoryXxx.cpp so the five near-identical bodies that used to exist under
-// different names cannot drift from one another again.
-//
-// The rule that no header under Core/Git may include <git2.h> still applies: the libgit2
-// types stay forward-declared here, with the definitions living in the one .cpp that does
-// include git2.h. ToGitOid returns git_oid by value below - legal for an incomplete type
-// in a declaration - so "touched by reference or pointer" describes the other functions
-// here, not that one.
+// No header under Core/Git includes <git2.h>, so the libgit2 types here are only
+// forward-declared. ToGitOid and PathSpec::Get return one by value, which a declaration may
+// do with an incomplete type, so their callers include <git2.h> themselves.
 
 #include "Core/Base/Result.h"
 #include "Core/Git/GitHandles.h"
@@ -24,24 +18,30 @@ struct git_strarray;
 
 namespace Core {
 
-	// libgit2's own message names the real cause of the last failed call on this thread -
-	// a .git file pointing at a deleted worktree reads very differently from an unreadable
-	// directory.
+	inline constexpr int kHeadIsUnborn = 1;
+
+	inline constexpr unsigned int kFirstParentIndex = 0;
+
+	// A stash's parents are the commit it was made on, its index, and, only for a stash that took
+	// untracked files, a commit holding those files alone, so that commit's whole tree was added.
+	inline constexpr unsigned int kUntrackedFilesParentOfStash = 2;
+
+	// libgit2 keeps the last error per thread, so call this on the thread whose call failed.
 	std::string LastLibgit2Message();
 
-	// A git object name read out of libgit2's own representation.
 	Oid ToOid(const git_oid& id);
 
-	// The inverse: this codebase's Oid back into the twenty raw bytes libgit2 expects.
 	git_oid ToGitOid(const Oid& id);
 
-	// git speaks forward slashes on every platform; a relative path may carry native
-	// separators.
+	std::string TextOrEmpty(const char* text);
+
+	std::string LocalBranchReference(const std::string& branchName);
+
+	// git expects forward slashes on every platform.
 	std::string ToGitPath(const std::filesystem::path& relative);
 
-	// The pathspec libgit2 takes, built from paths: an array of C strings that has to outlive
-	// the call it is handed to, so the converted text is held here and pointed at. Neither
-	// copyable nor movable, since the array points into this object's own storage.
+	// libgit2's pathspec is an array of C strings pointing into this object's storage, so the
+	// object is neither copyable nor movable and must outlive the call it is handed to.
 	class PathSpec
 	{
 	public:
@@ -52,28 +52,24 @@ namespace Core {
 		PathSpec(PathSpec&&) = delete;
 		PathSpec& operator=(PathSpec&&) = delete;
 
-		// Valid for as long as this object lives.
 		git_strarray Get() const;
 
 	private:
-		std::vector<std::string> m_Text;
-		std::vector<const char*> m_Pointers;
+		std::vector<std::string> m_GitPaths;
+		std::vector<const char*> m_GitPathPointers;
 	};
 
-	// The repository's index, brought up to date with the file on disk first. libgit2 caches
-	// one index per repository handle and reloads it only in some of its own entry points, so a
-	// handle that has not touched the index since another one wrote it holds the old content -
-	// and a commit, a stage or a stash made from that is made from the past. Every operation
-	// that reads or writes the index, or hands the repository to a libgit2 call that does, goes
-	// through this at its start. Not between an operation's own edits and its write: the
-	// reload throws unsaved changes away.
+	// libgit2 caches one index per repository handle and does not always reload it, so every
+	// operation that reads or writes the index, or makes a libgit2 call that does, opens it
+	// through this first. Never between an operation's own edits and its write: the reload
+	// discards unsaved changes.
 	Result<IndexHandle> OpenFreshIndex(git_repository* handle);
 
-	// OpenFreshIndex for the operation that does not use the index itself, only needs the
-	// libgit2 call it makes next to see the current one.
+	// For an operation that does not use the index itself but needs its next libgit2 call to
+	// see the current one.
 	Result<void> RefreshIndex(git_repository* handle);
 
-	// Idempotent and thread-safe. Every entry point that calls libgit2 without first opening
-	// a Repository needs this, since Repository::Open is otherwise what initialises it.
+	// Call before any libgit2 call that no Repository::Open precedes, since that is otherwise
+	// what initialises the library. Safe to call repeatedly from any thread.
 	void EnsureLibgit2Initialised();
 }

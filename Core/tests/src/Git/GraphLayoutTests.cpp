@@ -2,7 +2,6 @@
 
 #include "Core/Git/GraphLayout.h"
 
-#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -12,42 +11,58 @@ using Core::Oid;
 
 namespace {
 
-	// Ids that read in a test: the first byte is the number, the rest is zero.
-	Oid Id(std::uint8_t value)
+	Oid IdNumbered(std::uint8_t number)
 	{
 		Oid id;
-		id.Bytes[0] = value;
+		id.Bytes[0] = number;
 		return id;
 	}
 
-	CommitSummary Commit(std::uint8_t id, std::vector<std::uint8_t> parents)
+	CommitSummary Commit(std::uint8_t number, std::vector<std::uint8_t> parentNumbers)
 	{
 		CommitSummary commit;
-		commit.Id = Id(id);
+		commit.Id = IdNumbered(number);
 
-		for (std::uint8_t parent : parents)
+		for (const std::uint8_t parentNumber : parentNumbers)
 		{
-			commit.Parents.push_back(Id(parent));
+			commit.Parents.push_back(IdNumbered(parentNumber));
 		}
 
 		return commit;
 	}
 
-	std::size_t LaneOf(const CommitGraph& graph, std::uint8_t id)
+	CommitSummary RootCommit(std::uint8_t number)
 	{
-		const auto node = std::find_if(graph.Nodes.begin(), graph.Nodes.end(),
-									   [id](const Core::GraphNode& candidate) {
-										   return candidate.Id == Id(id);
-									   });
+		const std::vector<std::uint8_t> noParents;
+		return Commit(number, noParents);
+	}
 
-		REQUIRE(node != graph.Nodes.end());
+	const Core::GraphNode* FindNode(const CommitGraph& graph, std::uint8_t number)
+	{
+		for (const Core::GraphNode& candidate : graph.Nodes)
+		{
+			if (candidate.Id == IdNumbered(number))
+			{
+				return &candidate;
+			}
+		}
+
+		return nullptr;
+	}
+
+	std::size_t LaneOf(const CommitGraph& graph, std::uint8_t number)
+	{
+		const Core::GraphNode* node = FindNode(graph, number);
+
+		REQUIRE(node != nullptr);
 		return node->Lane;
 	}
 }
 
 TEST_CASE("An empty history lays out to nothing")
 {
-	const CommitGraph graph = Core::LayoutCommits({});
+	const std::vector<CommitSummary> noCommits;
+	const CommitGraph graph = Core::LayoutCommits(noCommits);
 
 	CHECK(graph.Nodes.empty());
 	CHECK(graph.Edges.empty());
@@ -56,7 +71,7 @@ TEST_CASE("An empty history lays out to nothing")
 
 TEST_CASE("A linear history occupies one lane")
 {
-	const CommitGraph graph = Core::LayoutCommits({Commit(3, {2}), Commit(2, {1}), Commit(1, {})});
+	const CommitGraph graph = Core::LayoutCommits({Commit(3, {2}), Commit(2, {1}), RootCommit(1)});
 
 	REQUIRE(graph.Nodes.size() == 3);
 	CHECK(graph.LaneCount == 1);
@@ -69,34 +84,22 @@ TEST_CASE("A linear history occupies one lane")
 	CHECK(graph.Edges.size() == 2);
 }
 
-TEST_CASE("A merge keeps its first parent on its own lane and opens a second")
+TEST_CASE("A merge keeps its first parent on its own lane and pushes the second sideways")
 {
-	//   4  merge of 3 and 2
-	//   |\
-	//   3 |
-	//   | 2
-	//   |/
-	//   1
 	const CommitGraph graph = Core::LayoutCommits(
-		{Commit(4, {3, 2}), Commit(3, {1}), Commit(2, {1}), Commit(1, {})});
+		{Commit(4, {3, 2}), Commit(3, {1}), Commit(2, {1}), RootCommit(1)});
 
 	CHECK(graph.LaneCount == 2);
 	CHECK(LaneOf(graph, 4) == 0);
-
-	// The first parent inherits the merge's lane; the second is pushed sideways.
 	CHECK(LaneOf(graph, 3) == 0);
 	CHECK(LaneOf(graph, 2) == 1);
 	CHECK(LaneOf(graph, 1) == 0);
 }
 
-TEST_CASE("A lane is reused once the branch on it has been drawn")
+TEST_CASE("A lane is reused once the branch on it has been drawn, the leftmost free lane first")
 {
-	// 3 and 2 are commit 4's two parents, both parentless — not branches of one
-	// another. Once 3's line ends its lane is freed, and the free-lane scan runs left
-	// to right, so commit 1 below reclaims lane 0, the one 3 held, rather than opening
-	// a third lane.
 	const CommitGraph graph =
-		Core::LayoutCommits({Commit(4, {3, 2}), Commit(3, {}), Commit(2, {}), Commit(1, {})});
+		Core::LayoutCommits({Commit(4, {3, 2}), RootCommit(3), RootCommit(2), RootCommit(1)});
 
 	CHECK(graph.LaneCount == 2);
 	CHECK(LaneOf(graph, 1) == 0);
@@ -104,8 +107,6 @@ TEST_CASE("A lane is reused once the branch on it has been drawn")
 
 TEST_CASE("An edge to a parent outside the loaded page is dropped")
 {
-	// Commit 1's parent was not loaded — the page ended. Drawing an edge to a row that
-	// does not exist would index past the end of the node list.
 	const CommitGraph graph = Core::LayoutCommits({Commit(2, {1}), Commit(1, {99})});
 
 	CHECK(graph.Nodes.size() == 2);
@@ -114,12 +115,8 @@ TEST_CASE("An edge to a parent outside the loaded page is dropped")
 	CHECK(graph.Edges.front().ToRow == 1);
 }
 
-TEST_CASE("A parent outside the loaded page reserves no lane")
+TEST_CASE("A parent outside the loaded page reserves no lane, even for a merge")
 {
-	// Commit 1 is a merge whose page ended before either parent — the common case for
-	// a page that stops mid-history. Neither 98 nor 99 will ever arrive to release a
-	// reservation, so no lane should be held open for them: LaneCount must stay at 1,
-	// not grow to 2 with a permanently blank column.
 	const CommitGraph graph = Core::LayoutCommits({Commit(2, {1}), Commit(1, {98, 99})});
 
 	CHECK(graph.LaneCount == 1);
@@ -132,10 +129,6 @@ TEST_CASE("A parent outside the loaded page reserves no lane")
 
 TEST_CASE("A filtered history whose parents are all off-page occupies one lane")
 {
-	// This is how file history looks: QueryLog drops the commits that did not touch
-	// the path but leaves each survivor's real Parents pointing at commits that were
-	// filtered out. None of those parents is ever loaded, so none should reserve a
-	// lane — a hundred-commit file history must not draw as a hundred-column diagonal.
 	const CommitGraph graph = Core::LayoutCommits(
 		{Commit(3, {100}), Commit(2, {101}), Commit(1, {102})});
 
@@ -150,7 +143,7 @@ TEST_CASE("A filtered history whose parents are all off-page occupies one lane")
 TEST_CASE("Every edge names rows that exist")
 {
 	const CommitGraph graph = Core::LayoutCommits(
-		{Commit(5, {4, 3}), Commit(4, {2}), Commit(3, {2}), Commit(2, {1}), Commit(1, {})});
+		{Commit(5, {4, 3}), Commit(4, {2}), Commit(3, {2}), Commit(2, {1}), RootCommit(1)});
 
 	REQUIRE(graph.Edges.size() == 5);
 

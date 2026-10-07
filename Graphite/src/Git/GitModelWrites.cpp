@@ -9,6 +9,14 @@
 
 namespace Graphite {
 
+	namespace {
+
+		Core::UntrackedFiles UntrackedFilesFor(bool includeUntracked)
+		{
+			return includeUntracked ? Core::UntrackedFiles::Included : Core::UntrackedFiles::Excluded;
+		}
+	}
+
 	void GitModel::RequestStage(std::vector<std::filesystem::path> paths)
 	{
 		Enqueue({.Kind = WriteKind::Stage, .Paths = std::move(paths)});
@@ -303,7 +311,7 @@ namespace Graphite {
 
 			case WriteKind::StashSave:
 			{
-				const auto result = m_Port.StashSave(job.Name, job.Flag);
+				const auto result = m_Port.StashSave(job.Name, UntrackedFilesFor(job.Flag));
 
 				if (!result.HasValue())
 				{
@@ -418,7 +426,7 @@ namespace Graphite {
 
 			if (request.Preparation == CheckoutPreparation::Discard)
 			{
-				if (const auto result = m_Port.DiscardAll(request.IncludeUntracked); !result.HasValue())
+				if (const auto result = m_Port.DiscardAll(UntrackedFilesFor(request.IncludeUntracked)); !result.HasValue())
 				{
 					outcome.Failure = result.GetError();
 				}
@@ -431,7 +439,7 @@ namespace Graphite {
 			{
 				// False - nothing to stash - is not a failure: the checkout has nothing in its
 				// way either.
-				if (const auto result = m_Port.StashSave(request.StashMessage, request.IncludeUntracked);
+				if (const auto result = m_Port.StashSave(request.StashMessage, UntrackedFilesFor(request.IncludeUntracked));
 					!result.HasValue())
 				{
 					outcome.Failure = result.GetError();

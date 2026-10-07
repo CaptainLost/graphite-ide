@@ -15,56 +15,67 @@ namespace Core {
 
 	namespace {
 
-		Result<ReferenceHandle> LookupLocal(git_repository* handle, const std::string& name)
-		{
-			ReferenceHandle reference;
+		constexpr int kBranchNameIsValid = 1;
+		constexpr int kBranchIsCheckedOut = 1;
 
-			if (git_branch_lookup(Out(reference), handle, name.c_str(), GIT_BRANCH_LOCAL) != 0)
+		Result<ReferenceHandle> LookupLocalBranch(git_repository* handle, const std::string& name)
+		{
+			ReferenceHandle branch;
+
+			if (git_branch_lookup(Out(branch), handle, name.c_str(), GIT_BRANCH_LOCAL) != 0)
 			{
 				return Error{ErrorCode::NotFound,
 							 std::format("no branch named '{}': {}", name, LastLibgit2Message())};
 			}
 
-			return reference;
+			return branch;
 		}
 
-		// The linked worktree whose HEAD is this branch, by path. Empty when it is checked out
-		// in this repository's own working tree, or when the lookup fails - the caller then
-		// keeps the plain refusal, which is still true.
-		std::string WorktreeHolding(git_repository* handle, const char* referenceName)
+		// Empty when the branch is checked out in this repository's own working tree, or when the
+		// lookup fails; the caller's plain refusal is still true then.
+		std::string LinkedWorktreeHoldingBranch(git_repository* handle, const char* branchReference)
 		{
-			git_strarray names{};
+			git_strarray worktreeNames{};
 
-			if (git_worktree_list(&names, handle) != 0)
+			if (git_worktree_list(&worktreeNames, handle) != 0)
 			{
-				return {};
+				return std::string{};
 			}
 
-			std::string path;
+			std::string worktreePath;
 
-			for (std::size_t i = 0; i < names.count && path.empty(); ++i)
+			for (std::size_t worktreeIndex = 0; worktreeIndex < worktreeNames.count && worktreePath.empty();
+				 ++worktreeIndex)
 			{
-				ReferenceHandle head;
+				const char* worktreeName = worktreeNames.strings[worktreeIndex];
+				ReferenceHandle worktreeHead;
 
-				// The handle takes the reference only when the call's full expression ends, so it
-				// is read in a second statement, never in the same condition.
-				const int found = git_repository_head_for_worktree(Out(head), handle, names.strings[i]);
+				// The handle takes the reference only when the call's full expression ends, so it is
+				// read in a second statement, never in the same condition.
+				const int headLookupResult = git_repository_head_for_worktree(Out(worktreeHead), handle, worktreeName);
 
-				if (found != 0 || std::strcmp(git_reference_name(head.get()), referenceName) != 0)
+				if (headLookupResult != 0)
+				{
+					continue;
+				}
+
+				const bool headIsThisBranch = std::strcmp(git_reference_name(worktreeHead.get()), branchReference) == 0;
+
+				if (!headIsThisBranch)
 				{
 					continue;
 				}
 
 				WorktreeHandle worktree;
 
-				if (git_worktree_lookup(Out(worktree), handle, names.strings[i]) == 0)
+				if (git_worktree_lookup(Out(worktree), handle, worktreeName) == 0)
 				{
-					path = git_worktree_path(worktree.get());
+					worktreePath = git_worktree_path(worktree.get());
 				}
 			}
 
-			git_strarray_dispose(&names);
-			return path;
+			git_strarray_dispose(&worktreeNames);
+			return worktreePath;
 		}
 	}
 
@@ -72,8 +83,19 @@ namespace Core {
 	{
 		EnsureLibgit2Initialised();
 
-		int valid = 0;
-		return !name.empty() && git_branch_name_is_valid(&valid, name.c_str()) == 0 && valid == 1;
+		if (name.empty())
+		{
+			return false;
+		}
+
+		int validFlag = 0;
+
+		if (git_branch_name_is_valid(&validFlag, name.c_str()) != 0)
+		{
+			return false;
+		}
+
+		return validFlag == kBranchNameIsValid;
 	}
 
 	Result<void> Repository::CreateBranch(const std::string& name, const Oid& from)
@@ -83,19 +105,21 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
-		const git_oid id = ToGitOid(from);
+		const git_oid commitId = ToGitOid(from);
 		CommitHandle commit;
 
-		if (git_commit_lookup(Out(commit), m_Handle.get(), &id) != 0)
+		if (git_commit_lookup(Out(commit), m_Handle.get(), &commitId) != 0)
 		{
 			return Error{ErrorCode::NotFound,
 						 std::format("no commit {}: {}", from.ShortHex(), LastLibgit2Message())};
 		}
 
-		ReferenceHandle created;
-		const int result = git_branch_create(Out(created), m_Handle.get(), name.c_str(), commit.get(), 0);
+		ReferenceHandle createdBranch;
+		const int failIfTheBranchExists = 0;
+		const int createResult =
+			git_branch_create(Out(createdBranch), m_Handle.get(), name.c_str(), commit.get(), failIfTheBranchExists);
 
-		if (result != 0)
+		if (createResult != 0)
 		{
 			return Error{ErrorCode::InvalidArgument,
 						 std::format("cannot create branch '{}': {}", name, LastLibgit2Message())};
@@ -111,17 +135,19 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
-		auto reference = LookupLocal(m_Handle.get(), from);
+		Result<ReferenceHandle> branchToRename = LookupLocalBranch(m_Handle.get(), from);
 
-		if (!reference.HasValue())
+		if (!branchToRename.HasValue())
 		{
-			return reference.GetError();
+			return branchToRename.GetError();
 		}
 
-		ReferenceHandle moved;
-		const int result = git_branch_move(Out(moved), reference.GetValue().get(), to.c_str(), 0);
+		ReferenceHandle renamedBranch;
+		const int failIfTheNameIsTaken = 0;
+		const int moveResult = git_branch_move(Out(renamedBranch), branchToRename.GetValue().get(), to.c_str(),
+											   failIfTheNameIsTaken);
 
-		if (result != 0)
+		if (moveResult != 0)
 		{
 			return Error{ErrorCode::InvalidArgument,
 						 std::format("cannot rename '{}' to '{}': {}", from, to, LastLibgit2Message())};
@@ -137,55 +163,61 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
-		RevwalkHandle walk;
+		RevwalkHandle revisionWalk;
 
-		if (git_revwalk_new(Out(walk), m_Handle.get()) != 0)
+		if (git_revwalk_new(Out(revisionWalk), m_Handle.get()) != 0)
 		{
 			return Error{ErrorCode::IoFailure, std::format("cannot walk: {}", LastLibgit2Message())};
 		}
 
-		const std::string full = "refs/heads/" + name;
+		const std::string branchReference = LocalBranchReference(name);
 
-		if (git_revwalk_push_ref(walk.get(), full.c_str()) != 0)
+		if (git_revwalk_push_ref(revisionWalk.get(), branchReference.c_str()) != 0)
 		{
 			return Error{ErrorCode::NotFound, std::format("no branch named '{}'", name)};
 		}
 
-		// Every other branch, local and remote, is hidden: what remains is reachable only
-		// from this one.
-		BranchIteratorHandle iterator;
+		BranchIteratorHandle everyBranch;
 
-		if (git_branch_iterator_new(Out(iterator), m_Handle.get(), GIT_BRANCH_ALL) == 0)
+		if (git_branch_iterator_new(Out(everyBranch), m_Handle.get(), GIT_BRANCH_ALL) == 0)
 		{
-			git_branch_t type = GIT_BRANCH_LOCAL;
+			git_branch_t branchType = GIT_BRANCH_LOCAL;
 
 			while (true)
 			{
-				ReferenceHandle reference;
+				ReferenceHandle branch;
 
-				if (git_branch_next(Out(reference), &type, iterator.get()) != 0)
+				if (git_branch_next(Out(branch), &branchType, everyBranch.get()) != 0)
 				{
 					break;
 				}
 
-				const char* other = git_reference_name(reference.get());
+				const char* branchName = git_reference_name(branch.get());
+				const bool isAnotherBranch = branchName != nullptr && branchReference != branchName;
 
-				if (other != nullptr && full != other && git_reference_target(reference.get()) != nullptr)
+				if (!isAnotherBranch)
 				{
-					git_revwalk_hide(walk.get(), git_reference_target(reference.get()));
+					continue;
+				}
+
+				const git_oid* otherBranchTip = git_reference_target(branch.get());
+
+				if (otherBranchTip != nullptr)
+				{
+					git_revwalk_hide(revisionWalk.get(), otherBranchTip);
 				}
 			}
 		}
 
-		std::size_t count = 0;
-		git_oid id{};
+		std::size_t unmergedCount = 0;
+		git_oid walkedId{};
 
-		while (git_revwalk_next(&id, walk.get()) == 0)
+		while (git_revwalk_next(&walkedId, revisionWalk.get()) == 0)
 		{
-			++count;
+			++unmergedCount;
 		}
 
-		return count;
+		return unmergedCount;
 	}
 
 	Result<void> Repository::DeleteBranch(const std::string& name)
@@ -195,36 +227,38 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
-		auto reference = LookupLocal(m_Handle.get(), name);
+		Result<ReferenceHandle> branchToDelete = LookupLocalBranch(m_Handle.get(), name);
 
-		if (!reference.HasValue())
+		if (!branchToDelete.HasValue())
 		{
-			return reference.GetError();
+			return branchToDelete.GetError();
 		}
 
-		const int checkedOut = git_branch_is_checked_out(reference.GetValue().get());
+		git_reference* branch = branchToDelete.GetValue().get();
+		const int checkedOutResult = git_branch_is_checked_out(branch);
 
-		if (checkedOut < 0)
+		if (checkedOutResult < 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot tell whether '{}' is checked out: {}", name, LastLibgit2Message())};
 		}
 
-		if (checkedOut == 1)
+		if (checkedOutResult == kBranchIsCheckedOut)
 		{
-			if (const std::string worktree = WorktreeHolding(m_Handle.get(), git_reference_name(reference.GetValue().get()));
-				!worktree.empty())
+			const std::string holdingWorktree = LinkedWorktreeHoldingBranch(m_Handle.get(), git_reference_name(branch));
+
+			if (!holdingWorktree.empty())
 			{
-				return Error{ErrorCode::InvalidArgument, std::format("'{}' is checked out in {}", name, worktree)};
+				return Error{ErrorCode::InvalidArgument, std::format("'{}' is checked out in {}", name, holdingWorktree)};
 			}
 
 			return Error{ErrorCode::InvalidArgument,
 						 std::format("'{}' is checked out and cannot be deleted", name)};
 		}
 
-		const int result = git_branch_delete(reference.GetValue().get());
+		const int deleteResult = git_branch_delete(branch);
 
-		if (result != 0)
+		if (deleteResult != 0)
 		{
 			return Error{ErrorCode::IoFailure,
 						 std::format("cannot delete '{}': {}", name, LastLibgit2Message())};

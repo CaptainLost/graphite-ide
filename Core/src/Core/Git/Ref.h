@@ -16,10 +16,8 @@ namespace Core {
 
 	struct Branch
 	{
-		// "main" — what a person calls it.
+		// "main", where FullName is "refs/heads/main".
 		std::string Name;
-
-		// "refs/heads/main" — what a query needs.
 		std::string FullName;
 
 		RefKind Kind = RefKind::Local;
@@ -28,19 +26,15 @@ namespace Core {
 
 		bool IsHead = false;
 
-		// The remote branch this one tracks, if any.
 		std::optional<std::string> Upstream;
 
-		// Commits this branch has that its upstream does not, and the other way around.
-		// Both stay zero when the distance is not known; a caller must check
-		// DistanceKnown before reading them, because zero and zero also spells "in sync".
+		// Commits this branch has that its upstream lacks, and the reverse. Zero and zero
+		// also means "in sync", so read them only when DistanceKnown is true.
 		std::size_t Ahead = 0;
 		std::size_t Behind = 0;
 
-		// Whether Ahead and Behind were actually computed. False both when there is no
-		// upstream and when the distance to it could not be measured — a symbolic
-		// upstream, or a graph walk that failed. Zero and zero is a real answer meaning
-		// "in sync", so a caller that skips this check cannot tell the two apart.
+		// False with no upstream, or when the distance could not be measured: a symbolic
+		// upstream, or a graph walk that failed.
 		bool DistanceKnown = false;
 	};
 }

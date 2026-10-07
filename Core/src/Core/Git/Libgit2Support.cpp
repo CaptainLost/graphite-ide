@@ -11,28 +11,39 @@
 
 namespace Core {
 
+	namespace {
+
+		constexpr const char* kLocalBranchPrefix = "refs/heads/";
+
+		Error IndexReadFailure()
+		{
+			return Error{.Code = ErrorCode::IoFailure,
+						 .Message = std::format("cannot read the index: {}", LastLibgit2Message())};
+		}
+	}
+
 	std::string LastLibgit2Message()
 	{
-		const git_error* detail = git_error_last();
+		const git_error* lastError = git_error_last();
+		const bool hasMessage = lastError != nullptr && lastError->message != nullptr;
 
-		return detail != nullptr && detail->message != nullptr ? detail->message
-															   : "unknown error";
+		return hasMessage ? lastError->message : "unknown error";
 	}
 
 	Result<IndexHandle> OpenFreshIndex(git_repository* handle)
 	{
 		IndexHandle index;
 
-		// Two statements: Out hands the index over only at the end of the full expression.
 		if (git_repository_index(Out(index), handle) != 0)
 		{
-			return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+			return IndexReadFailure();
 		}
 
-		// Not forced: libgit2 compares the file's checksum and reloads only when it changed.
-		if (git_index_read(index.get(), false) != 0)
+		const bool reloadEvenIfChecksumUnchanged = false;
+
+		if (git_index_read(index.get(), reloadEvenIfChecksumUnchanged) != 0)
 		{
-			return Error{ErrorCode::IoFailure, std::format("cannot read the index: {}", LastLibgit2Message())};
+			return IndexReadFailure();
 		}
 
 		return index;
@@ -40,45 +51,55 @@ namespace Core {
 
 	Result<void> RefreshIndex(git_repository* handle)
 	{
-		auto index = OpenFreshIndex(handle);
+		Result<IndexHandle> openResult = OpenFreshIndex(handle);
 
-		if (!index.HasValue())
+		if (!openResult.HasValue())
 		{
-			return index.GetError();
+			return openResult.GetError();
 		}
 
 		return Result<void>::Ok();
 	}
 
+	std::string TextOrEmpty(const char* text)
+	{
+		return text != nullptr ? text : "";
+	}
+
+	std::string LocalBranchReference(const std::string& branchName)
+	{
+		return kLocalBranchPrefix + branchName;
+	}
+
 	Oid ToOid(const git_oid& id)
 	{
-		Oid result;
+		Oid oid;
 
-		for (std::size_t index = 0; index < result.Bytes.size(); ++index)
+		for (std::size_t byteIndex = 0; byteIndex < oid.Bytes.size(); ++byteIndex)
 		{
-			result.Bytes[index] = static_cast<std::uint8_t>(id.id[index]);
+			oid.Bytes[byteIndex] = static_cast<std::uint8_t>(id.id[byteIndex]);
 		}
 
-		return result;
+		return oid;
 	}
 
 	git_oid ToGitOid(const Oid& id)
 	{
-		git_oid result{};
+		git_oid gitOid{};
 
-		for (std::size_t index = 0; index < id.Bytes.size(); ++index)
+		for (std::size_t byteIndex = 0; byteIndex < id.Bytes.size(); ++byteIndex)
 		{
-			result.id[index] = id.Bytes[index];
+			gitOid.id[byteIndex] = id.Bytes[byteIndex];
 		}
 
-		return result;
+		return gitOid;
 	}
 
 	std::string ToGitPath(const std::filesystem::path& relative)
 	{
-		std::string text = ToUtf8(relative);
+		std::string gitPath = ToUtf8(relative);
 
-		for (char& character : text)
+		for (char& character : gitPath)
 		{
 			if (character == '\\')
 			{
@@ -86,22 +107,22 @@ namespace Core {
 			}
 		}
 
-		return text;
+		return gitPath;
 	}
 
 	PathSpec::PathSpec(const std::vector<std::filesystem::path>& paths)
 	{
-		m_Text.reserve(paths.size());
-		m_Pointers.reserve(paths.size());
+		m_GitPaths.reserve(paths.size());
+		m_GitPathPointers.reserve(paths.size());
 
 		for (const std::filesystem::path& path : paths)
 		{
-			m_Text.push_back(ToGitPath(path));
+			m_GitPaths.push_back(ToGitPath(path));
 		}
 
-		for (const std::string& text : m_Text)
+		for (const std::string& gitPath : m_GitPaths)
 		{
-			m_Pointers.push_back(text.c_str());
+			m_GitPathPointers.push_back(gitPath.c_str());
 		}
 	}
 
@@ -109,16 +130,16 @@ namespace Core {
 	{
 		// The one cast libgit2's signature forces: git_strarray holds char**, though every call
 		// that takes a pathspec only reads it.
-		return git_strarray{const_cast<char**>(m_Pointers.data()), m_Pointers.size()};
+		return git_strarray{.strings = const_cast<char**>(m_GitPathPointers.data()), .count = m_GitPathPointers.size()};
 	}
 
 	void EnsureLibgit2Initialised()
 	{
-		static const int result = git_libgit2_init();
+		static const int initialiseCode = git_libgit2_init();
 
-		if (result < 0)
+		if (initialiseCode < 0)
 		{
-			CORE_ERROR("libgit2 failed to initialise (code {})", result);
+			CORE_ERROR("libgit2 failed to initialise (code {})", initialiseCode);
 		}
 	}
 }

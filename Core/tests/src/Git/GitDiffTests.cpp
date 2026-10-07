@@ -6,31 +6,23 @@
 
 #include <git2.h>
 
-#include <git2.h>
-
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 using Core::DiffRequest;
 using Core::DiffTarget;
 using Core::FileChange;
-using Core::LogRequest;
 using Core::Repository;
 
 namespace {
 
-	Repository OpenAt(const std::filesystem::path& root)
+	Core::Oid IdOfNoStoredObject()
 	{
-		auto opened = Repository::Open(root);
-		REQUIRE(opened.HasValue());
-		return std::move(opened).GetValue();
-	}
-
-	Core::Oid HeadId(const Repository& repository)
-	{
-		auto log = repository.QueryLog(LogRequest{});
-		REQUIRE(log.HasValue());
-		REQUIRE_FALSE(log.GetValue().Commits.empty());
-		return log.GetValue().Commits.front().Id;
+		const std::uint8_t kFillerByte = 0xAB;
+		Core::Oid missing;
+		missing.Bytes.fill(kFillerByte);
+		return missing;
 	}
 }
 
@@ -43,13 +35,13 @@ TEST_CASE("A commit diffs against its parent")
 	fixture.Write("a.txt", "one\nTWO\nthree\n");
 	fixture.Commit("shout");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	DiffRequest request;
 	request.Target = DiffTarget::CommitToParent;
-	request.From = HeadId(repository);
+	request.From = HeadCommitId(repository);
 
-	auto diff = repository.QueryDiff(request);
+	const Core::Result<Core::Diff> diff = repository.QueryDiff(request);
 
 	REQUIRE(diff.HasValue());
 	REQUIRE(diff.GetValue().Files.size() == 1);
@@ -65,27 +57,27 @@ TEST_CASE("A commit diffs against its parent")
 	CHECK(hunk.OldStart == 1);
 	CHECK(hunk.NewStart == 1);
 
-	int added = 0;
-	int removed = 0;
+	int addedLineCount = 0;
+	int removedLineCount = 0;
 
 	for (const Core::DiffLine& line : hunk.Lines)
 	{
 		if (line.Kind == Core::DiffLineKind::Added)
 		{
-			++added;
+			++addedLineCount;
 			CHECK(line.Text == "TWO\n");
 			CHECK(line.NewLine == 2);
 		}
 		else if (line.Kind == Core::DiffLineKind::Removed)
 		{
-			++removed;
+			++removedLineCount;
 			CHECK(line.Text == "two\n");
 			CHECK(line.OldLine == 2);
 		}
 	}
 
-	CHECK(added == 1);
-	CHECK(removed == 1);
+	CHECK(addedLineCount == 1);
+	CHECK(removedLineCount == 1);
 }
 
 TEST_CASE("The first commit diffs against nothing and reports every file as added")
@@ -95,13 +87,13 @@ TEST_CASE("The first commit diffs against nothing and reports every file as adde
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("add a");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	DiffRequest request;
 	request.Target = DiffTarget::CommitToParent;
-	request.From = HeadId(repository);
+	request.From = HeadCommitId(repository);
 
-	auto diff = repository.QueryDiff(request);
+	const Core::Result<Core::Diff> diff = repository.QueryDiff(request);
 
 	REQUIRE(diff.HasValue());
 	REQUIRE(diff.GetValue().Files.size() == 1);
@@ -116,12 +108,12 @@ TEST_CASE("An unsaved edit shows up as a working tree change against HEAD")
 	fixture.Commit("add a");
 	fixture.Write("a.txt", "one\ntwo\n");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	DiffRequest request;
 	request.Target = DiffTarget::WorkTreeToHead;
 
-	auto diff = repository.QueryDiff(request);
+	const Core::Result<Core::Diff> diff = repository.QueryDiff(request);
 
 	REQUIRE(diff.HasValue());
 	REQUIRE(diff.GetValue().Files.size() == 1);
@@ -138,13 +130,13 @@ TEST_CASE("A path restricts the diff to one file")
 	fixture.Write("a.txt", "changed\n");
 	fixture.Write("b.txt", "changed\n");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	DiffRequest request;
 	request.Target = DiffTarget::WorkTreeToHead;
 	request.File = std::filesystem::path("b.txt");
 
-	auto diff = repository.QueryDiff(request);
+	const Core::Result<Core::Diff> diff = repository.QueryDiff(request);
 
 	REQUIRE(diff.HasValue());
 	REQUIRE(diff.GetValue().Files.size() == 1);
@@ -160,13 +152,13 @@ TEST_CASE("A rename is reported as one renamed file rather than an add and a del
 	fixture.Rename("old.txt", "new.txt");
 	fixture.Commit("rename");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	DiffRequest request;
 	request.Target = DiffTarget::CommitToParent;
-	request.From = HeadId(repository);
+	request.From = HeadCommitId(repository);
 
-	auto diff = repository.QueryDiff(request);
+	const Core::Result<Core::Diff> diff = repository.QueryDiff(request);
 
 	REQUIRE(diff.HasValue());
 	REQUIRE(diff.GetValue().Files.size() == 1);
@@ -182,24 +174,22 @@ TEST_CASE("A binary file is flagged and carries no hunks")
 {
 	GitFixture fixture;
 
-	fixture.Write("data.bin", std::string("\0\1\2\0\3", 5));
+	const std::size_t kBinaryByteCount = 5;
+	fixture.Write("data.bin", std::string("\0\1\2\0\3", kBinaryByteCount));
 	fixture.Commit("add binary");
-	fixture.Write("data.bin", std::string("\x00\x09\x09\x00\x03", 5));
+	fixture.Write("data.bin", std::string("\x00\x09\x09\x00\x03", kBinaryByteCount));
 	fixture.Commit("change binary");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	DiffRequest request;
 	request.Target = DiffTarget::CommitToParent;
-	request.From = HeadId(repository);
+	request.From = HeadCommitId(repository);
 
-	auto diff = repository.QueryDiff(request);
+	const Core::Result<Core::Diff> diff = repository.QueryDiff(request);
 
 	REQUIRE(diff.HasValue());
 	REQUIRE(diff.GetValue().Files.size() == 1);
-
-	// The view must not try to render bytes as lines, and the only warning it gets is
-	// this flag: libgit2 emits no hunks for a binary delta.
 	CHECK(diff.GetValue().Files.front().IsBinary);
 	CHECK(diff.GetValue().Files.front().Hunks.empty());
 }
@@ -213,13 +203,13 @@ TEST_CASE("A file with no trailing newline keeps its last line")
 	fixture.Write("a.txt", "one\ntwo");
 	fixture.Commit("append without a newline");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	DiffRequest request;
 	request.Target = DiffTarget::CommitToParent;
-	request.From = HeadId(repository);
+	request.From = HeadCommitId(repository);
 
-	auto diff = repository.QueryDiff(request);
+	const Core::Result<Core::Diff> diff = repository.QueryDiff(request);
 
 	REQUIRE(diff.HasValue());
 	REQUIRE(diff.GetValue().Files.size() == 1);
@@ -237,8 +227,8 @@ TEST_CASE("A file with no trailing newline keeps its last line")
 		}
 	}
 
-	// libgit2 also emits a GIT_DIFF_LINE_DEL_EOFNL / ADD_EOFNL marker line here. It
-	// carries no text of its own and must not reach the view as a line of the file.
+	// libgit2 also emits a GIT_DIFF_LINE_DEL_EOFNL / ADD_EOFNL marker line here, which carries
+	// no text of its own and must not reach the view as a line of the file.
 	CHECK(sawAddedLine);
 }
 
@@ -250,7 +240,7 @@ TEST_CASE("An untracked file is an added file with its whole content, in both wo
 	fixture.Commit("add a");
 	fixture.Write("b.txt", "first\nsecond\n");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	DiffTarget target = DiffTarget::WorkTreeToIndex;
 
@@ -267,7 +257,7 @@ TEST_CASE("An untracked file is an added file with its whole content, in both wo
 	request.Target = target;
 	request.File = std::filesystem::path("b.txt");
 
-	auto diff = repository.QueryDiff(request);
+	const Core::Result<Core::Diff> diff = repository.QueryDiff(request);
 
 	REQUIRE(diff.HasValue());
 	REQUIRE(diff.GetValue().Files.size() == 1);
@@ -289,10 +279,9 @@ TEST_CASE("A revision diff naming a commit that does not exist is an error, not 
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("add a");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	Core::Oid missing;
-	missing.Bytes.fill(0xAB);
+	const Core::Oid missing = IdOfNoStoredObject();
 
 	DiffRequest request;
 	request.Target = DiffTarget::RevisionToRevision;
@@ -300,16 +289,16 @@ TEST_CASE("A revision diff naming a commit that does not exist is an error, not 
 	SUBCASE("on the older side")
 	{
 		request.From = missing;
-		request.To = HeadId(repository);
+		request.To = HeadCommitId(repository);
 	}
 
 	SUBCASE("on the newer side")
 	{
-		request.From = HeadId(repository);
+		request.From = HeadCommitId(repository);
 		request.To = missing;
 	}
 
-	auto diff = repository.QueryDiff(request);
+	const Core::Result<Core::Diff> diff = repository.QueryDiff(request);
 
 	REQUIRE_FALSE(diff.HasValue());
 	CHECK(diff.GetError().Code == Core::ErrorCode::NotFound);
@@ -322,10 +311,9 @@ TEST_CASE("A commit-to-parent diff of a commit that does not exist is an error")
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("add a");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	Core::Oid missing;
-	missing.Bytes.fill(0xAB);
+	const Core::Oid missing = IdOfNoStoredObject();
 
 	DiffRequest request;
 	request.Target = DiffTarget::CommitToParent;
@@ -341,19 +329,19 @@ TEST_CASE("With no commit yet, the index is all added in both HEAD diffs")
 	fixture.Write("a.txt", "one\n");
 
 	{
-		git_repository* raw = nullptr;
-		REQUIRE(git_repository_open(&raw, Core::ToUtf8(fixture.GetPath()).c_str()) == 0);
+		git_repository* stagingRepository = nullptr;
+		REQUIRE(git_repository_open(&stagingRepository, Core::ToUtf8(fixture.GetPath()).c_str()) == 0);
 
 		git_index* index = nullptr;
-		REQUIRE(git_repository_index(&index, raw) == 0);
+		REQUIRE(git_repository_index(&index, stagingRepository) == 0);
 		REQUIRE(git_index_add_bypath(index, "a.txt") == 0);
 		REQUIRE(git_index_write(index) == 0);
 
 		git_index_free(index);
-		git_repository_free(raw);
+		git_repository_free(stagingRepository);
 	}
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	DiffRequest request;
 
@@ -366,7 +354,7 @@ TEST_CASE("With no commit yet, the index is all added in both HEAD diffs")
 		request.Target = DiffTarget::WorkTreeToHead;
 	}
 
-	auto diff = repository.QueryDiff(request);
+	const Core::Result<Core::Diff> diff = repository.QueryDiff(request);
 
 	REQUIRE(diff.HasValue());
 	REQUIRE(diff.GetValue().Files.size() == 1);
@@ -380,13 +368,13 @@ TEST_CASE("A revision diff with no older side reports every file of the newer on
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("add a");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	DiffRequest request;
 	request.Target = DiffTarget::RevisionToRevision;
-	request.To = HeadId(repository);
+	request.To = HeadCommitId(repository);
 
-	auto diff = repository.QueryDiff(request);
+	const Core::Result<Core::Diff> diff = repository.QueryDiff(request);
 
 	REQUIRE(diff.HasValue());
 	REQUIRE(diff.GetValue().Files.size() == 1);

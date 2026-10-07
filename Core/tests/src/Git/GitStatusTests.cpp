@@ -4,29 +4,27 @@
 
 #include "Git/GitFixture.h"
 
-#include <algorithm>
+#include <filesystem>
 
 using Core::FileStatus;
 using Core::Repository;
+using Core::Result;
 using Core::StatusFlags;
+using Core::WorkingTreeStatus;
 
 namespace {
 
-	Repository OpenAt(const std::filesystem::path& root)
+	const FileStatus* FindEntry(const WorkingTreeStatus& status, const char* path)
 	{
-		auto opened = Repository::Open(root);
-		REQUIRE(opened.HasValue());
-		return std::move(opened).GetValue();
-	}
+		for (const FileStatus& candidate : status.Entries)
+		{
+			if (candidate.Path == std::filesystem::path(path))
+			{
+				return &candidate;
+			}
+		}
 
-	const FileStatus* Find(const Core::WorkingTreeStatus& status, const char* path)
-	{
-		const auto entry = std::find_if(status.Entries.begin(), status.Entries.end(),
-										[path](const FileStatus& candidate) {
-											return candidate.Path == std::filesystem::path(path);
-										});
-
-		return entry == status.Entries.end() ? nullptr : &*entry;
+		return nullptr;
 	}
 }
 
@@ -37,9 +35,9 @@ TEST_CASE("A clean tree reports nothing")
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("add a");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto status = repository.QueryStatus();
+	const Result<WorkingTreeStatus> status = repository.QueryStatus();
 
 	REQUIRE(status.HasValue());
 	CHECK(status.GetValue().Entries.empty());
@@ -53,13 +51,13 @@ TEST_CASE("An edited file is modified in the working tree and clean in the index
 	fixture.Commit("add a");
 	fixture.Write("a.txt", "two\n");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto status = repository.QueryStatus();
+	const Result<WorkingTreeStatus> status = repository.QueryStatus();
 
 	REQUIRE(status.HasValue());
 
-	const FileStatus* entry = Find(status.GetValue(), "a.txt");
+	const FileStatus* entry = FindEntry(status.GetValue(), "a.txt");
 
 	REQUIRE(entry != nullptr);
 	CHECK((entry->WorkTree & StatusFlags::Modified) == StatusFlags::Modified);
@@ -75,13 +73,13 @@ TEST_CASE("A file that was never added is untracked")
 	fixture.Commit("add a");
 	fixture.Write("fresh.txt", "new\n");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto status = repository.QueryStatus();
+	const Result<WorkingTreeStatus> status = repository.QueryStatus();
 
 	REQUIRE(status.HasValue());
 
-	const FileStatus* entry = Find(status.GetValue(), "fresh.txt");
+	const FileStatus* entry = FindEntry(status.GetValue(), "fresh.txt");
 
 	REQUIRE(entry != nullptr);
 	CHECK(entry->IsUntracked);
@@ -96,19 +94,19 @@ TEST_CASE("A deleted file is reported as deleted rather than dropped")
 	fixture.Commit("add a");
 	fixture.Remove("a.txt");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto status = repository.QueryStatus();
+	const Result<WorkingTreeStatus> status = repository.QueryStatus();
 
 	REQUIRE(status.HasValue());
 
-	const FileStatus* entry = Find(status.GetValue(), "a.txt");
+	const FileStatus* entry = FindEntry(status.GetValue(), "a.txt");
 
 	REQUIRE(entry != nullptr);
 	CHECK((entry->WorkTree & StatusFlags::Deleted) == StatusFlags::Deleted);
 }
 
-TEST_CASE("An ignored file is not listed")
+TEST_CASE("An ignored file is not listed so a build directory cannot bury everything the user can act on")
 {
 	GitFixture fixture;
 
@@ -116,32 +114,28 @@ TEST_CASE("An ignored file is not listed")
 	fixture.Commit("add rules");
 	fixture.Write("build.log", "noise\n");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto status = repository.QueryStatus();
+	const Result<WorkingTreeStatus> status = repository.QueryStatus();
 
 	REQUIRE(status.HasValue());
 
-	// The panel lists what the user can act on. An ignored file is not that, and a build
-	// directory would otherwise bury everything else.
-	CHECK(Find(status.GetValue(), "build.log") == nullptr);
+	CHECK(FindEntry(status.GetValue(), "build.log") == nullptr);
 }
 
-TEST_CASE("Status of a repository with no commits lists the untracked files")
+TEST_CASE("Status of a repository with no commits lists the untracked files although an unborn HEAD has no tree to compare against")
 {
 	GitFixture fixture;
 
 	fixture.Write("a.txt", "one\n");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto status = repository.QueryStatus();
+	const Result<WorkingTreeStatus> status = repository.QueryStatus();
 
-	// An unborn HEAD has no tree to compare against, but the working tree still has
-	// files, and this is exactly the state a user is in when they first open a new folder.
 	REQUIRE(status.HasValue());
 
-	const FileStatus* entry = Find(status.GetValue(), "a.txt");
+	const FileStatus* entry = FindEntry(status.GetValue(), "a.txt");
 
 	REQUIRE(entry != nullptr);
 	CHECK(entry->IsUntracked);
@@ -157,11 +151,11 @@ TEST_CASE("An untracked directory is reported as a directory without a trailing 
 	fixture.Write("notes/first.md", "one\n");
 	fixture.Write("notes/second.md", "two\n");
 
-	const Repository repository = OpenAt(fixture.GetPath());
-	const auto status = repository.QueryStatus();
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const Result<WorkingTreeStatus> status = repository.QueryStatus();
 	REQUIRE(status.HasValue());
 
-	const FileStatus* entry = Find(status.GetValue(), "notes");
+	const FileStatus* entry = FindEntry(status.GetValue(), "notes");
 	REQUIRE(entry != nullptr);
 
 	CHECK(entry->IsDirectory);
@@ -179,11 +173,11 @@ TEST_CASE("An untracked file is not a directory")
 
 	fixture.Write("loose.txt", "two\n");
 
-	const Repository repository = OpenAt(fixture.GetPath());
-	const auto status = repository.QueryStatus();
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const Result<WorkingTreeStatus> status = repository.QueryStatus();
 	REQUIRE(status.HasValue());
 
-	const FileStatus* entry = Find(status.GetValue(), "loose.txt");
+	const FileStatus* entry = FindEntry(status.GetValue(), "loose.txt");
 	REQUIRE(entry != nullptr);
 
 	CHECK_FALSE(entry->IsDirectory);
@@ -200,14 +194,14 @@ TEST_CASE("An untracked directory expands to the files under it")
 	fixture.Write("notes/nested/second.md", "two\n");
 	fixture.Write("elsewhere/third.md", "three\n");
 
-	const Repository repository = OpenAt(fixture.GetPath());
-	const auto listing = repository.QueryUntrackedIn("notes");
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const Result<WorkingTreeStatus> listing = repository.QueryUntrackedIn("notes");
 	REQUIRE(listing.HasValue());
 
 	CHECK(listing.GetValue().Entries.size() == 2);
-	CHECK(Find(listing.GetValue(), "notes/first.md") != nullptr);
-	CHECK(Find(listing.GetValue(), "notes/nested/second.md") != nullptr);
-	CHECK(Find(listing.GetValue(), "elsewhere/third.md") == nullptr);
+	CHECK(FindEntry(listing.GetValue(), "notes/first.md") != nullptr);
+	CHECK(FindEntry(listing.GetValue(), "notes/nested/second.md") != nullptr);
+	CHECK(FindEntry(listing.GetValue(), "elsewhere/third.md") == nullptr);
 }
 
 TEST_CASE("A nested gitignore keeps its files out of the listing")
@@ -221,12 +215,12 @@ TEST_CASE("A nested gitignore keeps its files out of the listing")
 	fixture.Write("notes/first.md", "one\n");
 	fixture.Write("notes/scratch.tmp", "junk\n");
 
-	const Repository repository = OpenAt(fixture.GetPath());
-	const auto listing = repository.QueryUntrackedIn("notes");
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const Result<WorkingTreeStatus> listing = repository.QueryUntrackedIn("notes");
 	REQUIRE(listing.HasValue());
 
-	CHECK(Find(listing.GetValue(), "notes/first.md") != nullptr);
-	CHECK(Find(listing.GetValue(), "notes/scratch.tmp") == nullptr);
+	CHECK(FindEntry(listing.GetValue(), "notes/first.md") != nullptr);
+	CHECK(FindEntry(listing.GetValue(), "notes/scratch.tmp") == nullptr);
 }
 
 TEST_CASE("A listing of a directory with nothing untracked in it is empty")
@@ -236,8 +230,8 @@ TEST_CASE("A listing of a directory with nothing untracked in it is empty")
 	fixture.Write("tracked/a.txt", "one\n");
 	fixture.Commit("add a");
 
-	const Repository repository = OpenAt(fixture.GetPath());
-	const auto listing = repository.QueryUntrackedIn("tracked");
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const Result<WorkingTreeStatus> listing = repository.QueryUntrackedIn("tracked");
 	REQUIRE(listing.HasValue());
 
 	CHECK(listing.GetValue().Entries.empty());
@@ -253,10 +247,10 @@ TEST_CASE("A directory name with bracket characters is matched literally, not as
 	fixture.Write("notes[1]/first.md", "one\n");
 	fixture.Write("notes[1]/second.md", "two\n");
 
-	const Repository repository = OpenAt(fixture.GetPath());
-	const auto listing = repository.QueryUntrackedIn("notes[1]");
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const Result<WorkingTreeStatus> listing = repository.QueryUntrackedIn("notes[1]");
 	REQUIRE(listing.HasValue());
 
-	CHECK(Find(listing.GetValue(), "notes[1]/first.md") != nullptr);
-	CHECK(Find(listing.GetValue(), "notes[1]/second.md") != nullptr);
+	CHECK(FindEntry(listing.GetValue(), "notes[1]/first.md") != nullptr);
+	CHECK(FindEntry(listing.GetValue(), "notes[1]/second.md") != nullptr);
 }

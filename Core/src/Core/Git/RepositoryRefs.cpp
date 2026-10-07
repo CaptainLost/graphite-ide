@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <format>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -16,9 +17,14 @@ namespace Core {
 
 	namespace {
 
-		RepositoryOperation OperationOf(int state)
+		constexpr std::string_view kLocalBranchPrefix = "refs/heads/";
+
+		constexpr int kHeadIsDetached = 1;
+		constexpr int kReferenceIsHead = 1;
+
+		RepositoryOperation ToRepositoryOperation(int repositoryState)
 		{
-			switch (state)
+			switch (repositoryState)
 			{
 			case GIT_REPOSITORY_STATE_MERGE:
 				return RepositoryOperation::Merge;
@@ -48,18 +54,38 @@ namespace Core {
 			}
 		}
 
-		// "refs/heads/main" to "main". An unborn HEAD is only a symbolic name, so there is
-		// no branch object to ask git_branch_name about.
-		std::string ShortBranchName(std::string_view full)
+		// An unborn HEAD is only a symbolic name, so there is no branch object to ask
+		// git_branch_name about.
+		std::string ShortBranchName(std::string_view referenceName)
 		{
-			constexpr std::string_view prefix = "refs/heads/";
-
-			if (full.starts_with(prefix))
+			if (referenceName.starts_with(kLocalBranchPrefix))
 			{
-				full.remove_prefix(prefix.size());
+				referenceName.remove_prefix(kLocalBranchPrefix.size());
 			}
 
-			return std::string{full};
+			return std::string{referenceName};
+		}
+
+		std::optional<std::string> BranchNameOf(const git_reference* reference)
+		{
+			const char* name = nullptr;
+
+			if (git_branch_name(&name, reference) != 0 || name == nullptr)
+			{
+				return std::nullopt;
+			}
+
+			return std::string{name};
+		}
+
+		bool ComesBeforeInBranchList(const Branch& branch, const Branch& otherBranch)
+		{
+			if (branch.Kind != otherBranch.Kind)
+			{
+				return branch.Kind == RefKind::Local;
+			}
+
+			return branch.Name < otherBranch.Name;
 		}
 	}
 
@@ -70,73 +96,68 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
-		BranchIteratorHandle iterator;
+		BranchIteratorHandle branchIterator;
 
-		if (git_branch_iterator_new(Out(iterator), m_Handle.get(), GIT_BRANCH_ALL) != 0)
+		if (git_branch_iterator_new(Out(branchIterator), m_Handle.get(), GIT_BRANCH_ALL) != 0)
 		{
-			return Error{ErrorCode::IoFailure,
-						 std::format("cannot list the branches: {}", LastLibgit2Message())};
+			return Error{ErrorCode::IoFailure, std::format("cannot list the branches: {}", LastLibgit2Message())};
 		}
 
 		std::vector<Branch> branches;
 
-		git_branch_t type = GIT_BRANCH_LOCAL;
+		git_branch_t branchType = GIT_BRANCH_LOCAL;
 
-		int next = 0;
+		int nextResult = 0;
 
 		while (true)
 		{
 			ReferenceHandle reference;
-			next = git_branch_next(Out(reference), &type, iterator.get());
+			nextResult = git_branch_next(Out(reference), &branchType, branchIterator.get());
 
-			if (next != 0)
+			if (nextResult != 0)
 			{
 				break;
 			}
 
 			Branch branch;
-			branch.Kind = type == GIT_BRANCH_REMOTE ? RefKind::Remote : RefKind::Local;
+			branch.Kind = branchType == GIT_BRANCH_REMOTE ? RefKind::Remote : RefKind::Local;
 
-			if (const char* name = nullptr; git_branch_name(&name, reference.get()) == 0 && name != nullptr)
+			if (const std::optional<std::string> name = BranchNameOf(reference.get()); name.has_value())
 			{
-				branch.Name = name;
+				branch.Name = *name;
 			}
 
-			if (const char* full = git_reference_name(reference.get()); full != nullptr)
+			if (const char* fullName = git_reference_name(reference.get()); fullName != nullptr)
 			{
-				branch.FullName = full;
+				branch.FullName = fullName;
 			}
 
-			// A symbolic ref such as refs/remotes/origin/HEAD has no direct target. It
-			// names another branch rather than a commit, so there is nothing to show.
-			const git_oid* target = git_reference_target(reference.get());
+			// A symbolic ref such as refs/remotes/origin/HEAD has no direct target: it names another
+			// branch rather than a commit.
+			const git_oid* tipId = git_reference_target(reference.get());
 
-			if (target == nullptr)
+			if (tipId == nullptr)
 			{
 				continue;
 			}
 
-			branch.Tip = ToOid(*target);
-			branch.IsHead = git_branch_is_head(reference.get()) == 1;
+			branch.Tip = ToOid(*tipId);
+			branch.IsHead = git_branch_is_head(reference.get()) == kReferenceIsHead;
 
 			ReferenceHandle upstream;
 
-			const int tracked = git_branch_upstream(Out(upstream), reference.get());
+			const int upstreamResult = git_branch_upstream(Out(upstream), reference.get());
 
-			if (tracked == 0 && upstream != nullptr)
+			if (upstreamResult == 0 && upstream != nullptr)
 			{
-				if (const char* name = nullptr; git_branch_name(&name, upstream.get()) == 0 && name != nullptr)
-				{
-					branch.Upstream = name;
-				}
+				branch.Upstream = BranchNameOf(upstream.get());
 
-				if (const git_oid* upstreamTarget = git_reference_target(upstream.get());
-					upstreamTarget != nullptr)
+				if (const git_oid* upstreamTipId = git_reference_target(upstream.get()); upstreamTipId != nullptr)
 				{
 					std::size_t ahead = 0;
 					std::size_t behind = 0;
 
-					if (git_graph_ahead_behind(&ahead, &behind, m_Handle.get(), target, upstreamTarget) == 0)
+					if (git_graph_ahead_behind(&ahead, &behind, m_Handle.get(), tipId, upstreamTipId) == 0)
 					{
 						branch.Ahead = ahead;
 						branch.Behind = behind;
@@ -148,22 +169,15 @@ namespace Core {
 			branches.push_back(std::move(branch));
 		}
 
-		// GIT_ITEROVER is the ordinary end. Anything else means the listing stopped
-		// partway, and a partial list must not pass for the whole one.
-		if (next != GIT_ITEROVER)
+		// Anything but GIT_ITEROVER means the listing stopped partway, and a partial list must not
+		// pass for the whole one.
+		if (nextResult != GIT_ITEROVER)
 		{
 			const std::string message = LastLibgit2Message();
 			return Error{ErrorCode::IoFailure, std::format("cannot list the branches: {}", message)};
 		}
 
-		std::sort(branches.begin(), branches.end(), [](const Branch& left, const Branch& right) {
-			if (left.Kind != right.Kind)
-			{
-				return left.Kind == RefKind::Local;
-			}
-
-			return left.Name < right.Name;
-		});
+		std::sort(branches.begin(), branches.end(), ComesBeforeInBranchList);
 
 		return branches;
 	}
@@ -176,54 +190,53 @@ namespace Core {
 		}
 
 		HeadState head;
-		head.Operation = OperationOf(git_repository_state(m_Handle.get()));
+		head.Operation = ToRepositoryOperation(git_repository_state(m_Handle.get()));
 
-		const int unborn = git_repository_head_unborn(m_Handle.get());
+		const int unbornResult = git_repository_head_unborn(m_Handle.get());
 
-		if (unborn < 0)
+		if (unbornResult < 0)
 		{
-			return Error{ErrorCode::IoFailure,
-						 std::format("cannot read HEAD: {}", LastLibgit2Message())};
+			return Error{ErrorCode::IoFailure, std::format("cannot read HEAD: {}", LastLibgit2Message())};
 		}
 
-		if (unborn == 1)
+		if (unbornResult == kHeadIsUnborn)
 		{
 			head.Kind = HeadKind::Unborn;
 
-			ReferenceHandle symbolic;
+			ReferenceHandle symbolicHead;
 
-			if (git_reference_lookup(Out(symbolic), m_Handle.get(), "HEAD") == 0)
+			if (git_reference_lookup(Out(symbolicHead), m_Handle.get(), "HEAD") == 0)
 			{
-				if (const char* target = git_reference_symbolic_target(symbolic.get()); target != nullptr)
+				if (const char* symbolicTarget = git_reference_symbolic_target(symbolicHead.get());
+					symbolicTarget != nullptr)
 				{
-					head.BranchName = ShortBranchName(target);
+					head.BranchName = ShortBranchName(symbolicTarget);
 				}
 			}
 
 			return head;
 		}
 
-		ReferenceHandle reference;
+		ReferenceHandle headReference;
 
-		if (git_repository_head(Out(reference), m_Handle.get()) != 0)
+		if (git_repository_head(Out(headReference), m_Handle.get()) != 0)
 		{
-			return Error{ErrorCode::IoFailure,
-						 std::format("cannot read HEAD: {}", LastLibgit2Message())};
+			return Error{ErrorCode::IoFailure, std::format("cannot read HEAD: {}", LastLibgit2Message())};
 		}
 
-		if (const git_oid* target = git_reference_target(reference.get()); target != nullptr)
+		if (const git_oid* headCommitId = git_reference_target(headReference.get()); headCommitId != nullptr)
 		{
-			head.Commit = ToOid(*target);
+			head.Commit = ToOid(*headCommitId);
 		}
 
-		if (git_repository_head_detached(m_Handle.get()) == 1)
+		if (git_repository_head_detached(m_Handle.get()) == kHeadIsDetached)
 		{
 			head.Kind = HeadKind::Detached;
 		}
 		else
 		{
 			head.Kind = HeadKind::Branch;
-			head.BranchName = git_reference_shorthand(reference.get());
+			head.BranchName = git_reference_shorthand(headReference.get());
 		}
 
 		return head;

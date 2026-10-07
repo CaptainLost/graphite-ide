@@ -9,14 +9,16 @@
 #include <vector>
 
 using Core::CommitSummary;
+using Core::LogPage;
 using Core::LogRequest;
 using Core::Repository;
+using Core::Result;
 
 namespace {
 
-	// The unpushed set as text, so a failing test prints hashes a reader can look up rather
-	// than twenty raw bytes.
-	std::unordered_set<std::string> UnpushedHexes(const Core::LogPage& page)
+	// Compared as text so that a failing check prints hashes a reader can look up rather than
+	// twenty raw bytes.
+	std::unordered_set<std::string> UnpushedHexes(const LogPage& page)
 	{
 		std::unordered_set<std::string> hexes;
 
@@ -26,13 +28,6 @@ namespace {
 		}
 
 		return hexes;
-	}
-
-	Repository OpenAt(const std::filesystem::path& root)
-	{
-		auto opened = Repository::Open(root);
-		REQUIRE(opened.HasValue());
-		return std::move(opened).GetValue();
 	}
 }
 
@@ -46,9 +41,9 @@ TEST_CASE("The log lists commits newest first")
 	fixture.Write("b.txt", "two\n");
 	const std::string second = fixture.Commit("add b");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto log = repository.QueryLog(LogRequest{});
+	const Result<LogPage> log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
 	REQUIRE(log.GetValue().Commits.size() == 2);
@@ -63,9 +58,9 @@ TEST_CASE("A commit carries its author, summary and body")
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("add a\n\nA longer explanation.\n");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto log = repository.QueryLog(LogRequest{});
+	const Result<LogPage> log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
 	REQUIRE(log.GetValue().Commits.size() == 1);
@@ -79,46 +74,42 @@ TEST_CASE("A commit carries its author, summary and body")
 	CHECK(commit.Parents.empty());
 }
 
-TEST_CASE("MaxCount stops the walk early")
+TEST_CASE("MaxCount stops the walk early and marks the page incomplete")
 {
 	GitFixture fixture;
 
-	for (int index = 0; index < 5; ++index)
+	const int commitCount = 5;
+
+	for (int commitNumber = 0; commitNumber < commitCount; ++commitNumber)
 	{
-		fixture.Write("a.txt", std::to_string(index) + "\n");
-		fixture.Commit("edit " + std::to_string(index));
+		fixture.Write("a.txt", std::to_string(commitNumber) + "\n");
+		fixture.Commit("edit " + std::to_string(commitNumber));
 	}
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	LogRequest request;
 	request.MaxCount = 2;
 
-	auto log = repository.QueryLog(request);
+	const Result<LogPage> log = repository.QueryLog(request);
 
 	REQUIRE(log.HasValue());
 	CHECK(log.GetValue().Commits.size() == 2);
-
-	// Five commits exist and only two were kept: the page cannot be the whole history,
-	// whether or not a caller happens to compare the count against MaxCount itself.
 	CHECK_FALSE(log.GetValue().Complete);
 }
 
-TEST_CASE("A log that runs out of history on its own reports the page as complete")
+TEST_CASE("A log that runs out of history on its own well short of MaxCount and MaxWalk reports the page as complete")
 {
 	GitFixture fixture;
 
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("add a");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto log = repository.QueryLog(LogRequest{});
+	const Result<LogPage> log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
-
-	// The walk reached the end of history on its own, well short of MaxCount and MaxWalk:
-	// nothing was stopped early, so the page is the whole answer.
 	CHECK(log.GetValue().Complete);
 }
 
@@ -137,9 +128,9 @@ TEST_CASE("A merge commit reports both parents in order")
 	const std::string mainTip = fixture.Commit("add main");
 	fixture.MergeCommit("merge side", "side");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto log = repository.QueryLog(LogRequest{});
+	const Result<LogPage> log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
 	REQUIRE_FALSE(log.GetValue().Commits.empty());
@@ -165,28 +156,26 @@ TEST_CASE("A named ref limits the walk to that branch")
 	fixture.Write("main.txt", "main\n");
 	fixture.Commit("add main");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	LogRequest request;
 	request.Ref = "refs/heads/side";
 
-	auto log = repository.QueryLog(request);
+	const Result<LogPage> log = repository.QueryLog(request);
 
 	REQUIRE(log.HasValue());
 	REQUIRE(log.GetValue().Commits.size() == 2);
 	CHECK(log.GetValue().Commits[0].Summary == "add side");
 }
 
-TEST_CASE("The log of a repository with no commits is empty rather than an error")
+TEST_CASE("The log of a repository with no commits is empty rather than an error because an unborn HEAD is a legitimate state")
 {
 	GitFixture fixture;
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto log = repository.QueryLog(LogRequest{});
+	const Result<LogPage> log = repository.QueryLog(LogRequest{});
 
-	// An unborn HEAD is a state a fresh repository is legitimately in. Reporting it as
-	// an error would make the panel show a failure for a repository that is merely new.
 	REQUIRE(log.HasValue());
 	CHECK(log.GetValue().Commits.empty());
 }
@@ -198,15 +187,19 @@ TEST_CASE("A short id keeps the leading digits of the full one")
 	fixture.Write("a.txt", "one\n");
 	const std::string full = fixture.Commit("add a");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto log = repository.QueryLog(LogRequest{});
+	const Result<LogPage> log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
 	REQUIRE(log.GetValue().Commits.size() == 1);
 
-	CHECK(log.GetValue().Commits.front().Id.ShortHex() == full.substr(0, 7));
-	CHECK(log.GetValue().Commits.front().Id.ShortHex(12) == full.substr(0, 12));
+	const std::size_t firstDigitOffset = 0;
+	const std::size_t defaultShortDigits = 7;
+	const std::size_t longerShortDigits = 12;
+
+	CHECK(log.GetValue().Commits.front().Id.ShortHex() == full.substr(firstDigitOffset, defaultShortDigits));
+	CHECK(log.GetValue().Commits.front().Id.ShortHex(longerShortDigits) == full.substr(firstDigitOffset, longerShortDigits));
 }
 
 TEST_CASE("A CRLF message keeps its body without a leading blank line")
@@ -216,9 +209,9 @@ TEST_CASE("A CRLF message keeps its body without a leading blank line")
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("add a\r\n\r\nA longer explanation.\r\n");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto log = repository.QueryLog(LogRequest{});
+	const Result<LogPage> log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
 	REQUIRE(log.GetValue().Commits.size() == 1);
@@ -233,14 +226,13 @@ TEST_CASE("A second blank line between title and body stays in the body")
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("add a\n\n\nA longer explanation.\n");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto log = repository.QueryLog(LogRequest{});
+	const Result<LogPage> log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
 	REQUIRE(log.GetValue().Commits.size() == 1);
 
-	// Only the single separator line is consumed; a second blank line is the body's own.
 	CHECK(log.GetValue().Commits.front().Body == "\nA longer explanation.\n");
 }
 
@@ -251,12 +243,12 @@ TEST_CASE("Querying a ref that does not exist is an error")
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("add a");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	LogRequest request;
 	request.Ref = "refs/heads/nope";
 
-	auto log = repository.QueryLog(request);
+	const Result<LogPage> log = repository.QueryLog(request);
 
 	REQUIRE_FALSE(log.HasValue());
 	CHECK(log.GetError().Code == Core::ErrorCode::NotFound);
@@ -274,9 +266,9 @@ TEST_CASE("Commits the upstream does not have are reported as unpushed")
 	fixture.Write("b.txt", "two\n");
 	const std::string local = fixture.Commit("add b");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto log = repository.QueryLog(LogRequest{});
+	const Result<LogPage> log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
 	CHECK(log.GetValue().UpstreamKnown);
@@ -292,36 +284,32 @@ TEST_CASE("A branch level with its upstream has nothing unpushed")
 
 	fixture.PushTo("master", only);
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto log = repository.QueryLog(LogRequest{});
+	const Result<LogPage> log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
 	CHECK(log.GetValue().UpstreamKnown);
 	CHECK(log.GetValue().Unpushed.empty());
 }
 
-TEST_CASE("A branch with no upstream reports nothing rather than everything")
+TEST_CASE("A branch with no upstream reports nothing rather than everything and says its upstream is unknown")
 {
 	GitFixture fixture;
 
 	fixture.Write("a.txt", "one\n");
 	fixture.Commit("add a");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto log = repository.QueryLog(LogRequest{});
+	const Result<LogPage> log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
-
-	// Not "every commit is unpushed": without an upstream the question has no answer, and
-	// UpstreamKnown is what says so. A view that marked the whole history here would be
-	// stating a distance nobody measured.
 	CHECK_FALSE(log.GetValue().UpstreamKnown);
 	CHECK(log.GetValue().Unpushed.empty());
 }
 
-TEST_CASE("The log of a remote-tracking ref has nothing unpushed")
+TEST_CASE("The log of a remote-tracking ref has no upstream of its own so nothing is unpushed")
 {
 	GitFixture fixture;
 
@@ -333,22 +321,19 @@ TEST_CASE("The log of a remote-tracking ref has nothing unpushed")
 	fixture.Write("b.txt", "two\n");
 	fixture.Commit("add b");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
 	LogRequest request;
 	request.Ref = "refs/remotes/origin/master";
 
-	auto log = repository.QueryLog(request);
+	const Result<LogPage> log = repository.QueryLog(request);
 
 	REQUIRE(log.HasValue());
-
-	// A remote-tracking branch has no upstream of its own, so nothing in its history is
-	// waiting to be pushed anywhere.
 	CHECK_FALSE(log.GetValue().UpstreamKnown);
 	CHECK(log.GetValue().Unpushed.empty());
 }
 
-TEST_CASE("A merged branch's own commits count as unpushed")
+TEST_CASE("A merged branch's own commits count as unpushed alongside the merge as neither is reachable from the upstream")
 {
 	GitFixture fixture;
 
@@ -365,14 +350,11 @@ TEST_CASE("A merged branch's own commits count as unpushed")
 	fixture.Checkout("master");
 	const std::string merge = fixture.MergeCommit("merge side", "side");
 
-	const Repository repository = OpenAt(fixture.GetPath());
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
 
-	auto log = repository.QueryLog(LogRequest{});
+	const Result<LogPage> log = repository.QueryLog(LogRequest{});
 
 	REQUIRE(log.HasValue());
-
-	// Both, and for the same reason: neither is reachable from origin/master. That is also
-	// what the branch's own ahead count says, so the list and the count agree.
 	CHECK(log.GetValue().UpstreamKnown);
 	CHECK(UnpushedHexes(log.GetValue()) == std::unordered_set<std::string>{merge, side});
 }

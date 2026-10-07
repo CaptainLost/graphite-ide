@@ -8,21 +8,21 @@
 
 namespace Core {
 
-	// A git object name. Twenty raw bytes rather than the forty-character text, because
-	// these are compared and hashed far more often than they are shown: the graph keys
-	// commits by id on every layout pass.
+	// Raw bytes rather than hex text, because the graph compares and hashes ids on every
+	// layout pass.
 	struct Oid
 	{
-		std::array<std::uint8_t, 20> Bytes{};
+		static constexpr std::size_t kByteCount = 20;
+		static constexpr std::size_t kGitDefaultShortHexDigits = 7;
+
+		std::array<std::uint8_t, kByteCount> Bytes{};
 
 		bool IsZero() const;
 
 		std::string ToHex() const;
 
-		// Seven digits is what git itself abbreviates to by default. Values above forty
-		// are clamped rather than rejected: an over-long request is a display choice, not
-		// a programming error worth an assert.
-		std::string ShortHex(std::size_t digits = 7) const;
+		// A count above the full length is clamped rather than asserted.
+		std::string ShortHex(std::size_t digits = kGitDefaultShortHexDigits) const;
 
 		friend bool operator==(const Oid&, const Oid&) = default;
 	};

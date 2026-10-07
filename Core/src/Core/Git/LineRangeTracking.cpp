@@ -8,32 +8,51 @@ namespace Core {
 
 	namespace {
 
-		// One past the last line a hunk covers on the new side. A hunk with no new lines
-		// (a pure deletion) has `NewEnd == NewStart`, so it covers no new-side line at
-		// all — `Overlaps` requires a strict `<` against this value, and `NewStart` itself
-		// is excluded too.
-		std::size_t NewEnd(const Hunk& hunk)
+		constexpr std::size_t kFirstLine = 1;
+
+		std::size_t FirstNewLine(const Hunk& hunk)
 		{
-			return static_cast<std::size_t>(hunk.NewStart) + static_cast<std::size_t>(std::max(hunk.NewCount, 0));
+			return static_cast<std::size_t>(std::max(hunk.NewStart, 0));
 		}
 
-		bool Overlaps(const Hunk& hunk, const LineRange& range)
+		std::size_t OnePastLastNewLine(const Hunk& hunk)
 		{
-			const std::size_t start = static_cast<std::size_t>(std::max(hunk.NewStart, 0));
-
-			return start <= range.Last && NewEnd(hunk) > range.First;
+			const std::size_t newStart = static_cast<std::size_t>(hunk.NewStart);
+			const std::size_t newCount = static_cast<std::size_t>(std::max(hunk.NewCount, 0));
+			return newStart + newCount;
 		}
 
-		// The old-side line that carried `pos` into this hunk unchanged, found by literal
-		// line correspondence. A unified diff keeps a changed region's surrounding lines as
-		// context on both sides, so a hunk can span a position it never actually edited —
-		// this is what tells the two apart. Empty when the hunk carries no per-line detail,
-		// which is how the hand-built hunks in this file's tests exercise the fallback path.
-		std::optional<std::size_t> UnchangedOldLine(const Hunk& hunk, std::size_t pos)
+		std::size_t NewLineAboveHunk(const Hunk& hunk)
+		{
+			const std::size_t firstNewLine = FirstNewLine(hunk);
+
+			if (firstNewLine == 0)
+			{
+				return 0;
+			}
+
+			return firstNewLine - 1;
+		}
+
+		bool RangeContains(const OneBasedLineRange& range, std::size_t line)
+		{
+			return line >= range.First && line <= range.Last;
+		}
+
+		// A pure deletion has OnePastLastNewLine == FirstNewLine, so the strict comparison gives
+		// it no new-side line, not even NewStart.
+		bool HunkOverlapsRange(const Hunk& hunk, const OneBasedLineRange& range)
+		{
+			return FirstNewLine(hunk) <= range.Last && OnePastLastNewLine(hunk) > range.First;
+		}
+
+		// A unified diff keeps context lines around an edit, so a hunk can span a line it
+		// never changed. Only a context line says which old line carried it unchanged.
+		std::optional<std::size_t> FindUnchangedOldLine(const Hunk& hunk, std::size_t newLine)
 		{
 			for (const DiffLine& line : hunk.Lines)
 			{
-				if (line.Kind == DiffLineKind::Context && static_cast<std::size_t>(line.NewLine) == pos)
+				if (line.Kind == DiffLineKind::Context && static_cast<std::size_t>(line.NewLine) == newLine)
 				{
 					return static_cast<std::size_t>(line.OldLine);
 				}
@@ -42,33 +61,26 @@ namespace Core {
 			return std::nullopt;
 		}
 
-		// Whether this hunk edits something inside `range`, rather than merely carrying it
-		// as context around an edit elsewhere. A removed line has no new-side line number
-		// of its own — it is placed at the position right after the last line the hunk
-		// kept, which is where the missing text would have been read.
-		bool HunkChangesRange(const Hunk& hunk, const LineRange& range)
+		bool HunkChangesRange(const Hunk& hunk, const OneBasedLineRange& range)
 		{
-			if (hunk.Lines.empty())
+			const bool hasPerLineDetail = !hunk.Lines.empty();
+
+			if (!hasPerLineDetail)
 			{
-				// No per-line detail to refine with: the whole hunk counts, matching the
-				// coarse hunk-level overlap this falls back to.
 				return true;
 			}
 
-			std::size_t lastNew = static_cast<std::size_t>(std::max(hunk.NewStart, 0));
-
-			if (lastNew > 0)
-			{
-				--lastNew;
-			}
+			// A removed line has no new-side number of its own, so it is placed one past the
+			// last new-side line seen, which is where its text would have been read.
+			std::size_t lastNewSideLine = NewLineAboveHunk(hunk);
 
 			for (const DiffLine& line : hunk.Lines)
 			{
 				if (line.Kind == DiffLineKind::Removed)
 				{
-					const std::size_t at = lastNew + 1;
+					const std::size_t removedLinePosition = lastNewSideLine + 1;
 
-					if (at >= range.First && at <= range.Last)
+					if (RangeContains(range, removedLinePosition))
 					{
 						return true;
 					}
@@ -76,10 +88,10 @@ namespace Core {
 					continue;
 				}
 
-				const std::size_t pos = static_cast<std::size_t>(line.NewLine);
-				lastNew = pos;
+				const std::size_t newLine = static_cast<std::size_t>(line.NewLine);
+				lastNewSideLine = newLine;
 
-				if (line.Kind == DiffLineKind::Added && pos >= range.First && pos <= range.Last)
+				if (line.Kind == DiffLineKind::Added && RangeContains(range, newLine))
 				{
 					return true;
 				}
@@ -88,79 +100,94 @@ namespace Core {
 			return false;
 		}
 
-		// Maps one new-side line number back through the file's hunks, assuming they are
-		// in ascending order (as libgit2 always produces them within a file). Only hunks
-		// entirely above `pos` shift it, by the difference between their two sides. A hunk
-		// that reaches as far as `pos` stops the walk there: `pos` is resolved exactly when
-		// it turns out to be unchanged context, and otherwise left alone rather than shifted
-		// by a hunk that may not even apply to it — a position inside a hunk it was born in
-		// has no parent-side answer worth guessing at.
-		std::size_t MapPosition(const std::vector<Hunk>& hunks, std::size_t pos)
+		bool HunkTouchesRange(const Hunk& hunk, const OneBasedLineRange& range)
 		{
-			std::ptrdiff_t shift = 0;
+			return HunkOverlapsRange(hunk, range) && HunkChangesRange(hunk, range);
+		}
+
+		// Expects the hunks in ascending order, as libgit2 gives them. Only hunks wholly above
+		// the line shift it; the first hunk that reaches it maps an unchanged context line
+		// exactly and leaves any other line unshifted, since a line born in a hunk has no
+		// parent-side answer worth guessing.
+		std::size_t MapLineToParent(const std::vector<Hunk>& hunks, std::size_t newLine)
+		{
+			std::ptrdiff_t shiftToOldSide = 0;
 
 			for (const Hunk& hunk : hunks)
 			{
-				if (NewEnd(hunk) <= pos)
+				const bool hunkIsAboveLine = OnePastLastNewLine(hunk) <= newLine;
+
+				if (hunkIsAboveLine)
 				{
-					shift += static_cast<std::ptrdiff_t>(hunk.OldCount) - static_cast<std::ptrdiff_t>(hunk.NewCount);
+					const std::ptrdiff_t oldCount = static_cast<std::ptrdiff_t>(hunk.OldCount);
+					const std::ptrdiff_t newCount = static_cast<std::ptrdiff_t>(hunk.NewCount);
+					shiftToOldSide += oldCount - newCount;
 					continue;
 				}
 
-				const std::size_t start = static_cast<std::size_t>(std::max(hunk.NewStart, 0));
-
-				if (pos >= start)
+				if (newLine >= FirstNewLine(hunk))
 				{
-					if (const auto old = UnchangedOldLine(hunk, pos); old.has_value())
+					const std::optional<std::size_t> unchangedOldLine = FindUnchangedOldLine(hunk, newLine);
+
+					if (unchangedOldLine.has_value())
 					{
-						return *old;
+						return *unchangedOldLine;
 					}
 				}
 
 				break;
 			}
 
-			const std::ptrdiff_t moved = static_cast<std::ptrdiff_t>(pos) + shift;
-			return moved < 1 ? std::size_t{1} : static_cast<std::size_t>(moved);
+			const std::ptrdiff_t shiftedLine = static_cast<std::ptrdiff_t>(newLine) + shiftToOldSide;
+			const bool shiftedAboveFirstLine = shiftedLine < static_cast<std::ptrdiff_t>(kFirstLine);
+
+			if (shiftedAboveFirstLine)
+			{
+				return kFirstLine;
+			}
+
+			return static_cast<std::size_t>(shiftedLine);
 		}
 	}
 
-	bool TouchesRange(const FileDiff& file, const LineRange& range)
+	bool TouchesRange(const FileDiff& file, const OneBasedLineRange& range)
 	{
 		if (file.Change == FileChange::Added || file.Change == FileChange::Deleted)
 		{
 			return true;
 		}
 
-		return std::any_of(file.Hunks.begin(), file.Hunks.end(), [&range](const Hunk& hunk) {
-			return Overlaps(hunk, range) && HunkChangesRange(hunk, range);
-		});
+		for (const Hunk& hunk : file.Hunks)
+		{
+			if (HunkTouchesRange(hunk, range))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
-	std::optional<LineRange> MapRangeToParent(const FileDiff& file, const LineRange& range)
+	std::optional<OneBasedLineRange> MapRangeToParent(const FileDiff& file, const OneBasedLineRange& range)
 	{
-		// Nothing to map back to: the parent has no such file.
-		if (file.Change == FileChange::Added)
+		const bool fileIsNewInThisCommit = file.Change == FileChange::Added;
+
+		if (fileIsNewInThisCommit)
 		{
 			return std::nullopt;
 		}
 
-		// Each endpoint is mapped independently: a hunk between them can shift the far
-		// endpoint while leaving the near one untouched, which a single range-wide shift
-		// cannot express.
-		LineRange mapped;
-		mapped.First = MapPosition(file.Hunks, range.First);
-		mapped.Last = MapPosition(file.Hunks, range.Last);
+		// Each end is mapped on its own, because a hunk between them shifts only the far one.
+		OneBasedLineRange mapped{
+			.First = MapLineToParent(file.Hunks, range.First),
+			.Last = MapLineToParent(file.Hunks, range.Last),
+		};
 
-		// A hunk that actually changes the range may have consumed old lines past what
-		// `Last` mapped to — replacing three lines with one still means the two extra old
-		// lines belong to this range's history. Only a hunk's removed lines can extend it:
-		// a pure insertion contributed nothing on the old side to widen towards.
-		std::size_t floorLast = 0;
+		std::size_t lastConsumedOldLine = 0;
 
 		for (const Hunk& hunk : file.Hunks)
 		{
-			if (!Overlaps(hunk, range) || !HunkChangesRange(hunk, range))
+			if (!HunkTouchesRange(hunk, range))
 			{
 				continue;
 			}
@@ -169,12 +196,12 @@ namespace Core {
 			{
 				if (line.Kind == DiffLineKind::Removed)
 				{
-					floorLast = std::max(floorLast, static_cast<std::size_t>(line.OldLine));
+					lastConsumedOldLine = std::max(lastConsumedOldLine, static_cast<std::size_t>(line.OldLine));
 				}
 			}
 		}
 
-		mapped.Last = std::max(mapped.Last, floorLast);
+		mapped.Last = std::max(mapped.Last, lastConsumedOldLine);
 
 		if (mapped.Last < mapped.First)
 		{
