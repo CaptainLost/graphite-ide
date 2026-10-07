@@ -17,6 +17,7 @@
 #include "Git/GitDecorations.h"
 #include "Git/GitModel.h"
 #include "Git/RepositoryGitPort.h"
+#include "Notifications/ClockTime.h"
 #include "Notifications/NotificationHistory.h"
 #include "Notifications/NotificationsPopup.h"
 #include "UI/ToastEvent.h"
@@ -54,6 +55,7 @@
 #include "Core/Text/DocumentSet.h"
 #include "Core/UI/PanelManager.h"
 
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -347,6 +349,7 @@ namespace Graphite {
 		Core::Toasts m_Toasts;
 		NotificationHistory m_Notifications;
 		NotificationsPopup m_NotificationsPopup;
+		const std::chrono::time_zone* m_LocalTimeZone = LocalTimeZone();
 
 		Core::PanelManager m_Panels;
 		Core::DockSpaceHost m_DockSpace;

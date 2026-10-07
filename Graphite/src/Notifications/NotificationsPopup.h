@@ -23,9 +23,10 @@ namespace Graphite {
 
 		// Every frame, open or not.
 		void Render(NotificationHistory& history, const Core::ToastPalette& palette,
-					const std::filesystem::path& openFolder, const std::chrono::time_zone& zone);
+					const std::filesystem::path& openFolder, const std::chrono::time_zone* zone);
 
 		bool IsExpanded(std::uint64_t toastId) const { return m_Expanded.contains(toastId); }
+		bool IsOpen() const { return m_Open; }
 
 		// Left empty, Copy goes straight to ImGui's clipboard.
 		std::function<void(std::string_view)> OnCopied;
@@ -36,6 +37,7 @@ namespace Graphite {
 		void Copy(const std::string& copiedText);
 
 		bool m_OpenRequested = false;
+		bool m_Open = false;
 		bool m_ShowConfirmations = false;
 		bool m_EntryMenuOpenLastFrame = false;
 		std::unordered_set<std::uint64_t> m_Expanded;

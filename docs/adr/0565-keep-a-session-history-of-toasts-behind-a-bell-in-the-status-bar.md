@@ -47,8 +47,10 @@ Reporting departures keeps each fact where it is known.
 
 - The history is gone after a restart.
 - The bell takes a little of the status bar's right end.
-- A toast that arrives while the popup is open appears beneath it, because toasts
-  are not raised over an open popup.
+- A toast that arrives while the popup is open appears beneath it, partly hidden,
+  and its entry is already at the top of the list. ImGui puts every new window in
+  front of an open popup, so the popup and its entry menu raise themselves every
+  frame, and toasts are not raised over an open popup.
 
 ### Neutral
 

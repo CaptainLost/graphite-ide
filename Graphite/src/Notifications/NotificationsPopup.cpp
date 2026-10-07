@@ -1,6 +1,7 @@
 #include "Notifications/NotificationsPopup.h"
 
 #include "Notifications/ClockTime.h"
+#include "Notifications/FolderLine.h"
 #include "UI/IconButton.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -12,6 +13,7 @@
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <cfloat>
@@ -76,13 +78,18 @@ namespace Graphite {
 			return FontFor(strong)->CalcTextSizeA(ImGui::GetFontSize(), FLT_MAX, 0.0f, text.data(), text.data() + text.size()).x;
 		}
 
+		float MeasureRegularUnrounded(std::string_view text)
+		{
+			return MeasureUnrounded(text, false);
+		}
+
 		std::string HiddenLinesText(std::size_t hiddenLines)
 		{
 			return hiddenLines == 1 ? std::string("\u2026 1 more line") : std::format("\u2026 {} more lines", hiddenLines);
 		}
 
 		EntryLayout LayOutEntry(const NotificationEntry& entry, bool expanded, float textWidth,
-								const std::filesystem::path& openFolder, const std::chrono::time_zone& zone)
+								const std::filesystem::path& openFolder, const std::chrono::time_zone* zone)
 		{
 			EntryLayout layout;
 			layout.Entry = &entry;
@@ -92,7 +99,7 @@ namespace Graphite {
 			const bool aboutAnotherFolder = !entry.Folder.empty() && entry.Folder != openFolder;
 			if (aboutAnotherFolder)
 			{
-				layout.FolderLine = Core::ToUtf8(entry.Folder);
+				layout.FolderLine = ElideFolderLine(Core::ToUtf8(entry.Folder), textWidth, MeasureRegularUnrounded);
 			}
 
 			layout.Lines = Core::LayoutToastText(entry.Message, textWidth, MeasureUnrounded);
@@ -174,7 +181,7 @@ namespace Graphite {
 		}
 
 		std::vector<EntryLayout> LayOutRows(const std::vector<const NotificationEntry*>& entries, const NotificationsPopup& popup,
-											float rowWidth, const std::filesystem::path& openFolder, const std::chrono::time_zone& zone)
+											float rowWidth, const std::filesystem::path& openFolder, const std::chrono::time_zone* zone)
 		{
 			const float textWidth = std::max(rowWidth - Core::ToastIconDiameter() - Core::Scaled(kIconGap), 1.0f);
 
@@ -208,7 +215,7 @@ namespace Graphite {
 		}
 
 		ListLayout LayOutList(const std::vector<const NotificationEntry*>& entries, const NotificationsPopup& popup, float listWidth,
-							  float highestListHeight, const std::filesystem::path& openFolder, const std::chrono::time_zone& zone)
+							  float highestListHeight, const std::filesystem::path& openFolder, const std::chrono::time_zone* zone)
 		{
 			ListLayout list;
 			if (entries.empty())
@@ -260,6 +267,9 @@ namespace Graphite {
 
 				if (Core::BeginRightClickPopup("##entryMenu"))
 				{
+					// Raised every frame as well: the list's popup raises itself every frame, ahead of
+					// this menu, and would otherwise cover it from the menu's second frame.
+					ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
 					outcome.EntryMenuOpen = true;
 
 					if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
@@ -288,7 +298,7 @@ namespace Graphite {
 	}
 
 	void NotificationsPopup::Render(NotificationHistory& history, const Core::ToastPalette& palette,
-									const std::filesystem::path& openFolder, const std::chrono::time_zone& zone)
+									const std::filesystem::path& openFolder, const std::chrono::time_zone* zone)
 	{
 		if (m_OpenRequested)
 		{
@@ -298,6 +308,7 @@ namespace Graphite {
 
 		if (!ImGui::IsPopupOpen(kPopupId))
 		{
+			m_Open = false;
 			m_EntryMenuOpenLastFrame = false;
 			return;
 		}
@@ -327,10 +338,15 @@ namespace Graphite {
 
 		if (!ImGui::BeginPopup(kPopupId, ImGuiWindowFlags_NoMove))
 		{
+			m_Open = false;
 			m_EntryMenuOpenLastFrame = false;
 			return;
 		}
 
+		// ImGui raises a popup only on the frame it appears, and puts every window created after
+		// that in front of it: a toast shown while the list is open would cover its bottom rows.
+		ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
+		m_Open = true;
 		history.MarkAllSeen();
 
 		// Under keyboard navigation ImGui closes the entry menu on Esc before this frame is drawn,

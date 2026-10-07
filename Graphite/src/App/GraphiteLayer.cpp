@@ -860,7 +860,18 @@ namespace Graphite {
 			});
 		}
 
-		if (const std::optional<Core::ToastKind> missedKind = m_Notifications.MostSevereMissed(); missedKind.has_value())
+		// Drained here rather than after the toasts draw, so a toast cleared with its folder since
+		// the last frame already counts for the bell this frame.
+		for (const Core::ToastDeparture& departure : m_Toasts.TakeDepartures())
+		{
+			m_Notifications.NoteDeparture(departure);
+		}
+
+		// Not while the popup is open: it marks everything seen when it draws, after the bar, and
+		// the dot would flash for the frame between.
+		const std::optional<Core::ToastKind> missedKind = m_Notifications.MostSevereMissed();
+		const bool missedOutsideTheOpenList = missedKind.has_value() && !m_NotificationsPopup.IsOpen();
+		if (missedOutsideTheOpenList)
 		{
 			messages.MissedNotificationColour = Core::ToastAccentOf(ToastPaletteFor(m_ActiveScheme.Get()), *missedKind);
 		}
@@ -968,13 +979,8 @@ namespace Graphite {
 
 		// Last of what draws, so the toasts sit over every panel and terminal.
 		const Core::ToastPalette toastPalette = ToastPaletteFor(m_ActiveScheme.Get());
-		m_NotificationsPopup.Render(m_Notifications, toastPalette, m_Workspace.GetRoot(), *std::chrono::current_zone());
+		m_NotificationsPopup.Render(m_Notifications, toastPalette, m_Workspace.GetRoot(), m_LocalTimeZone);
 		m_Toasts.Render(toastPalette);
-
-		for (const Core::ToastDeparture& departure : m_Toasts.TakeDepartures())
-		{
-			m_Notifications.NoteDeparture(departure);
-		}
 
 		// After every owner has drawn: what nobody took this frame belonged to a window that
 		// went some other way, and what the menus asked this frame becomes due for the next.

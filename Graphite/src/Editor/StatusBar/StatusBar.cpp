@@ -72,9 +72,14 @@ namespace Graphite {
 			ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - glyphSize.x - ImGui::GetStyle().WindowPadding.x,
 									   CentredTextY(barHeight)));
 
-			const bool clicked = ImGui::InvisibleButton("##NotificationBell", glyphSize);
+			// Without NoFocus the press focuses the bar, and the popup the click opens hands the
+			// keyboard back to the bar when it closes rather than to the editor.
+			const ImGuiButtonFlags keepFocusWhereItIs = ImGuiButtonFlags_NoFocus | ImGuiButtonFlags_NoNavFocus;
+			const bool clicked = ImGui::InvisibleButton("##NotificationBell", glyphSize, keepFocusWhereItIs);
+			const bool hovered = ImGui::IsItemHovered();
+			const ImGuiCol glyphColour = hovered ? ImGuiCol_Text : ImGuiCol_TextDisabled;
 			ImDrawList* const draw = ImGui::GetWindowDrawList();
-			draw->AddText(ImGui::GetItemRectMin(), ImGui::GetColorU32(ImGuiCol_Text), ICON_MDI_BELL_OUTLINE);
+			draw->AddText(ImGui::GetItemRectMin(), ImGui::GetColorU32(glyphColour), ICON_MDI_BELL_OUTLINE);
 
 			if (missedColour.has_value())
 			{
@@ -83,7 +88,7 @@ namespace Graphite {
 				draw->AddCircleFilled(dotCentre, dotRadius, ToU32(*missedColour));
 			}
 
-			if (ImGui::IsItemHovered())
+			if (hovered)
 			{
 				ImGui::SetTooltip("Notifications");
 				ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);

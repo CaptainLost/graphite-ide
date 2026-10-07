@@ -6,12 +6,15 @@
 #include "Notifications/NotificationHistory.h"
 #include "Notifications/NotificationsPopup.h"
 
+#include "Core/ImGui/Toasts.h"
 #include "Core/Text/DocumentSet.h"
 
 #include <imgui_internal.h>
 
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
+#include <format>
 #include <functional>
 #include <optional>
 #include <string>
@@ -27,7 +30,7 @@ namespace {
 
 		void Draw()
 		{
-			Popup.Render(History, Palette, OpenFolder, *std::chrono::locate_zone("UTC"));
+			Popup.Render(History, Palette, OpenFolder, std::chrono::locate_zone("UTC"));
 		}
 
 		void Next()
@@ -108,6 +111,50 @@ namespace {
 			text += "line " + std::to_string(lineNumber) + "\n";
 		}
 		return text;
+	}
+
+	int DisplayIndexOf(const ImGuiWindow& window)
+	{
+		const ImVector<ImGuiWindow*>& windowsBackToFront = ImGui::GetCurrentContext()->Windows;
+		for (int windowIndex = 0; windowIndex < windowsBackToFront.Size; ++windowIndex)
+		{
+			if (windowsBackToFront[windowIndex] == &window)
+			{
+				return windowIndex;
+			}
+		}
+		return -1;
+	}
+
+	ImVec2 BellCentre()
+	{
+		const ImGuiWindow* bar = ImGui::FindWindowByName("##StatusBar");
+		REQUIRE(bar != nullptr);
+		return ImVec2(bar->Pos.x + bar->Size.x - bar->WindowPadding.x - 3.0f, bar->Pos.y + bar->Size.y * 0.5f);
+	}
+
+	void DrawBarOpeningPopup(const Core::DocumentSet& documents, const Graphite::StatusMessages& messages, Graphite::NotificationsPopup& popup)
+	{
+		const Graphite::StatusBarClick clicked = Graphite::DrawStatusBar(documents, std::nullopt, std::filesystem::path(), messages);
+		if (clicked == Graphite::StatusBarClick::Notifications)
+		{
+			popup.OpenFromBell();
+		}
+	}
+
+	void DrawEditorWindow(bool& focusRequested)
+	{
+		if (focusRequested)
+		{
+			ImGui::SetNextWindowFocus();
+			focusRequested = false;
+		}
+
+		ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f));
+		ImGui::SetNextWindowSize(ImVec2(200.0f, 100.0f));
+		ImGui::Begin("Editor");
+		ImGui::TextUnformatted("text");
+		ImGui::End();
 	}
 }
 
@@ -335,6 +382,71 @@ TEST_CASE("The bell opens the popup and a second click on it closes the popup wi
 
 	CHECK_FALSE(bellClicked);
 	CHECK(PopupScreen::OpenPopups() == 0);
+}
+
+TEST_CASE("A toast shown while the popup is open is drawn beneath the popup")
+{
+	PopupScreen screen;
+	Core::Toasts toasts;
+	const std::function<void()> drawPopupThenToasts = [&] {
+		screen.Draw();
+		toasts.Render(screen.Palette);
+	};
+
+	screen.Popup.OpenFromBell();
+	screen.Frames.Next(drawPopupThenToasts);
+	screen.Frames.Next(drawPopupThenToasts);
+
+	const std::uint64_t toastId = toasts.Show(Core::ToastKind::Error, "Push failed", "rejected");
+	screen.Frames.Next(drawPopupThenToasts);
+	screen.Frames.Next(drawPopupThenToasts);
+	screen.Frames.Next(drawPopupThenToasts);
+
+	const ImGuiWindow* toastWindow = ImGui::FindWindowByName(std::format("##toast{}", toastId).c_str());
+	REQUIRE(toastWindow != nullptr);
+	REQUIRE(PopupScreen::OpenPopups() == 1);
+	CHECK(DisplayIndexOf(PopupScreen::PopupWindow()) > DisplayIndexOf(*toastWindow));
+}
+
+TEST_CASE("Esc on the popup opened from the bell hands the keyboard back to the editor")
+{
+	PopupScreen screen;
+	Core::DocumentSet documents;
+	Graphite::StatusMessages messages;
+	bool editorFocusRequested = true;
+	const std::function<void()> drawBarEditorAndPopup = [&] {
+		DrawBarOpeningPopup(documents, messages, screen.Popup);
+		DrawEditorWindow(editorFocusRequested);
+		screen.Draw();
+	};
+
+	screen.Frames.Next(drawBarEditorAndPopup);
+	screen.Frames.Next(drawBarEditorAndPopup);
+	const ImGuiWindow* editor = ImGui::FindWindowByName("Editor");
+	REQUIRE(editor != nullptr);
+	REQUIRE(ImGui::GetCurrentContext()->NavWindow == editor);
+
+	screen.Frames.Click(BellCentre(), drawBarEditorAndPopup);
+	screen.Frames.Next(drawBarEditorAndPopup);
+	REQUIRE(PopupScreen::OpenPopups() == 1);
+
+	screen.Frames.PressKey(ImGuiKey_Escape, drawBarEditorAndPopup);
+
+	REQUIRE(PopupScreen::OpenPopups() == 0);
+	CHECK(ImGui::GetCurrentContext()->NavWindow == editor);
+}
+
+TEST_CASE("The popup says it is open from the frame it opens until Esc closes it")
+{
+	PopupScreen screen;
+	screen.Next();
+	CHECK_FALSE(screen.Popup.IsOpen());
+
+	screen.OpenFromBell();
+	CHECK(screen.Popup.IsOpen());
+
+	screen.Frames.PressKey(ImGuiKey_Escape, [&] { screen.Draw(); });
+	CHECK_FALSE(screen.Popup.IsOpen());
 }
 
 TEST_CASE("Clear in the popup's header empties the history")
