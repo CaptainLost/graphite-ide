@@ -594,4 +594,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0562](0562-say-it-in-code-and-keep-a-comment-only-as-a-warning.md) | Say it in code and keep a comment only as a warning | accepted | 2026-10-05 |
 | [0563](0563-write-concrete-code-and-keep-templates-for-vocabulary-types.md) | Write concrete code and keep templates for vocabulary types | accepted | 2026-10-05 |
 | [0564](0564-show-a-toast-s-countdown-by-draining-its-border.md) | Show a toast's countdown by draining its border | proposed | 2026-10-06 |
+| [0565](0565-keep-a-session-history-of-toasts-behind-a-bell-in-the-status-bar.md) | Keep a session history of toasts behind a bell in the status bar | proposed | 2026-10-07 |
 <!-- /adr-index -->

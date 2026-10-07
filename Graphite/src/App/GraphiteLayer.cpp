@@ -44,6 +44,7 @@
 #include "Core/Base/Log.h"
 
 #include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/ToastStyle.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/ImGui/Theme.h"
 
@@ -76,6 +77,7 @@
 
 #include <imgui.h>
 
+#include <chrono>
 #include <cstddef>
 
 #include <string>
@@ -482,7 +484,7 @@ namespace Graphite {
 		// And raise a toast the same way, so no feature holds the toasts themselves. The scope
 		// becomes the toast's group, which the folder handlers above and below clear by.
 		m_Events.Subscribe<ToastEvent>([this](const ToastEvent& event) {
-			m_Toasts.Show(event.Kind, event.Title, event.Message, event.CopyText, ToastGroupOf(event.Scope));
+			ShowToast(event.Kind, event.Title, event.Message, event.CopyText, event.Scope);
 		});
 
 		m_Events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) {
@@ -858,6 +860,11 @@ namespace Graphite {
 			});
 		}
 
+		if (const std::optional<Core::ToastKind> missedKind = m_Notifications.MostSevereMissed(); missedKind.has_value())
+		{
+			messages.MissedNotificationColour = Core::ToastAccentOf(ToastPaletteFor(m_ActiveScheme.Get()), *missedKind);
+		}
+
 		switch (DrawStatusBar(m_Documents, shownIndex, m_Workspace.GetRoot(), messages))
 		{
 		case StatusBarClick::GitBranch:
@@ -869,6 +876,7 @@ namespace Graphite {
 			break;
 
 		case StatusBarClick::Notifications:
+			m_NotificationsPopup.OpenFromBell();
 			break;
 
 		case StatusBarClick::None:
@@ -955,12 +963,18 @@ namespace Graphite {
 			std::string copied = title + "\n" + failure->Error.Message;
 
 			// About the open repository, so the folder's close or replacement clears it.
-			m_Toasts.Show(Core::ToastKind::Error, std::move(title), std::move(shown), std::move(copied),
-						  ToastGroupOf(ToastScope::Folder));
+			ShowToast(Core::ToastKind::Error, std::move(title), std::move(shown), std::move(copied), ToastScope::Folder);
 		}
 
 		// Last of what draws, so the toasts sit over every panel and terminal.
-		m_Toasts.Render(ToastPaletteFor(m_ActiveScheme.Get()));
+		const Core::ToastPalette toastPalette = ToastPaletteFor(m_ActiveScheme.Get());
+		m_NotificationsPopup.Render(m_Notifications, toastPalette, m_Workspace.GetRoot(), *std::chrono::current_zone());
+		m_Toasts.Render(toastPalette);
+
+		for (const Core::ToastDeparture& departure : m_Toasts.TakeDepartures())
+		{
+			m_Notifications.NoteDeparture(departure);
+		}
 
 		// After every owner has drawn: what nobody took this frame belonged to a window that
 		// went some other way, and what the menus asked this frame becomes due for the next.
@@ -1067,6 +1081,23 @@ namespace Graphite {
 			}
 			break;
 		}
+	}
+
+	void GraphiteLayer::ShowToast(Core::ToastKind kind, std::string title, std::string message, std::string copyText,
+								  ToastScope scope)
+	{
+		const std::uint64_t toastId = m_Toasts.Show(kind, title, message, copyText, ToastGroupOf(scope));
+		const bool aboutTheFolder = scope == ToastScope::Folder;
+
+		m_Notifications.Record({
+			.ToastId = toastId,
+			.Kind = kind,
+			.Title = std::move(title),
+			.Message = std::move(message),
+			.CopyText = std::move(copyText),
+			.Folder = aboutTheFolder ? m_Workspace.GetRoot() : std::filesystem::path(),
+			.LastShownAt = std::chrono::system_clock::now(),
+		});
 	}
 
 	void GraphiteLayer::RenderEmptyEditorArea()

@@ -17,6 +17,9 @@
 #include "Git/GitDecorations.h"
 #include "Git/GitModel.h"
 #include "Git/RepositoryGitPort.h"
+#include "Notifications/NotificationHistory.h"
+#include "Notifications/NotificationsPopup.h"
+#include "UI/ToastEvent.h"
 #include "Language/Analysis/FileTextSource.h"
 #include "Language/Analysis/WorkspaceAnalysisCoordinator.h"
 #include "Language/Diagnostics/DiagnosticsModel.h"
@@ -120,6 +123,8 @@ namespace Graphite {
 		void RenderTrustParentConfirm();
 
 		void RenderEmptyEditorArea();
+
+		void ShowToast(Core::ToastKind kind, std::string title, std::string message, std::string copyText, ToastScope scope);
 
 		void QueueForFocusedEditor(Core::Event& event);
 
@@ -340,6 +345,8 @@ namespace Graphite {
 		// Before m_Panels: GitView holds a reference to it. The one owner of the toasts;
 		// anything that reports through one is handed this by reference.
 		Core::Toasts m_Toasts;
+		NotificationHistory m_Notifications;
+		NotificationsPopup m_NotificationsPopup;
 
 		Core::PanelManager m_Panels;
 		Core::DockSpaceHost m_DockSpace;
