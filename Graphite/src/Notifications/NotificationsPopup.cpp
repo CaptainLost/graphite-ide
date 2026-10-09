@@ -34,7 +34,6 @@ namespace Graphite {
 		constexpr float kIconGap = 12.0f;
 		constexpr float kRowInset = 8.0f;
 		constexpr float kRowRounding = 4.0f;
-		constexpr float kCheckboxBorderWidth = 1.0f;
 
 		struct EntryLayout
 		{
@@ -74,12 +73,6 @@ namespace Graphite {
 		ImVec4 ToImVec4(const Core::Color& colour)
 		{
 			return ImVec4(colour.R, colour.G, colour.B, colour.A);
-		}
-
-		// Whole pixels and at least one, as the style's own borders are scaled: a fractional width blurs.
-		float CheckboxBorderWidth()
-		{
-			return std::max(std::floor(Core::Scaled(kCheckboxBorderWidth)), 1.0f);
 		}
 
 		ImFont* FontFor(bool strong)
@@ -494,7 +487,7 @@ namespace Graphite {
 			ImGui::CloseCurrentPopup();
 		}
 
-		const bool clearClicked = DrawHeader(palette);
+		const bool clearClicked = DrawHeader();
 		ImGui::Separator();
 
 		ListOutcome outcome;
@@ -531,7 +524,7 @@ namespace Graphite {
 		}
 	}
 
-	bool NotificationsPopup::DrawHeader(const Core::ToastPalette& palette)
+	bool NotificationsPopup::DrawHeader()
 	{
 		const float lineStartX = ImGui::GetCursorPosX();
 		const float lineWidth = ImGui::GetContentRegionAvail().x;
@@ -548,19 +541,18 @@ namespace Graphite {
 			ImGui::PopFont();
 		}
 
-		const char* const filterLabel = "Show confirmations";
-		const ImGuiStyle& style = ImGui::GetStyle();
-		const float checkboxWidth = ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize(filterLabel).x;
-		const float controlsWidth = checkboxWidth + style.ItemSpacing.x + IconButtonSize();
+		const float spacing = ImGui::GetStyle().ItemSpacing.x;
+		const float controlsWidth = IconButtonSize() + spacing + Core::Scaled(kIconSeparatorWidth) + spacing + IconButtonSize();
 
 		ImGui::SameLine(lineStartX + lineWidth - controlsWidth);
 
-		// The theme gives a frame the popup's own background and no border, which leaves an unticked box unseen.
-		ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, CheckboxBorderWidth());
-		ImGui::PushStyleColor(ImGuiCol_Border, ToImVec4(palette.TextDim));
-		ImGui::Checkbox(filterLabel, &m_ShowConfirmations);
-		ImGui::PopStyleColor();
-		ImGui::PopStyleVar();
+		if (DrawIconButton("##confirmations", ICON_MDI_CHECK_ALL, m_ShowConfirmations, "Show confirmations"))
+		{
+			m_ShowConfirmations = !m_ShowConfirmations;
+		}
+
+		ImGui::SameLine();
+		DrawIconSeparator();
 		ImGui::SameLine();
 
 		return DrawIconButton("##clear", ICON_MDI_DELETE_SWEEP_OUTLINE, false, "Clear");

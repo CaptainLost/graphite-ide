@@ -165,22 +165,27 @@ namespace {
 			return ImVec2(firstItem.x, firstItem.y + ImGui::GetTextLineHeightWithSpacing());
 		}
 
-		// Measured inside a frame: the text's size needs the font a frame sets up.
-		ImVec2 ConfirmationsCheckboxFrame()
+		// Measured inside a frame: the button's size needs the font a frame sets up.
+		ImVec2 ConfirmationsToggle()
 		{
-			ImVec2 frameCentre;
+			ImVec2 toggleCentre;
 			Frames.Next([&] {
 				Draw();
 				const ImGuiWindow& popup = PopupWindow();
 				const ImGuiStyle& style = ImGui::GetStyle();
-				const float frameSide = ImGui::GetFrameHeight();
-				const float labelWidth = ImGui::CalcTextSize("Show confirmations").x;
+				const float buttonSide = Graphite::IconButtonSize();
 				const float contentRight = popup.Pos.x + popup.Size.x - popup.WindowPadding.x;
-				const float frameLeft = contentRight - Graphite::IconButtonSize() - style.ItemSpacing.x - labelWidth -
-										style.ItemInnerSpacing.x - frameSide;
-				frameCentre = ImVec2(frameLeft + frameSide * 0.5f, popup.Pos.y + popup.WindowPadding.y + frameSide * 0.5f);
+				const float toggleLeft = contentRight - buttonSide - style.ItemSpacing.x - Graphite::kIconSeparatorWidth -
+										 style.ItemSpacing.x - buttonSide;
+				toggleCentre = ImVec2(toggleLeft + buttonSide * 0.5f,
+									  popup.Pos.y + popup.WindowPadding.y + ImGui::GetFrameHeight() * 0.5f);
 			});
-			return frameCentre;
+			return toggleCentre;
+		}
+
+		static ImGuiID ConfirmationsToggleId()
+		{
+			return ImHashStr("##confirmations", 0, PopupWindow().ID);
 		}
 	};
 
@@ -231,6 +236,18 @@ namespace {
 			}
 		}
 		return extent;
+	}
+
+	bool DrawsInColour(const ImGuiWindow& window, ImU32 colour)
+	{
+		for (const ImDrawVert& vertex : window.DrawList->VtxBuffer)
+		{
+			if (HasColourOf(vertex, colour))
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	bool DrawsInColourWithin(const ImGuiWindow& window, ImU32 colour, ImVec2 areaMin, ImVec2 areaMax)
@@ -870,37 +887,92 @@ TEST_CASE("A hovered entry is highlighted across the whole row")
 	CHECK(drawn.Right >= list.Pos.x + list.Size.x);
 }
 
-TEST_CASE("Ticking Show confirmations in the header lists the confirmations it hid")
-{
-	PopupScreen screen;
-	screen.History.Record(Entry(1, Core::ToastKind::Success));
-	screen.OpenFromBell();
-	const float heightWithNothingListed = PopupScreen::PopupWindow().Size.y;
+namespace {
+	// Apart from the buttons' hover and engaged fills, which share the default check mark's hue.
+	const ImVec4 kDistinctCheckMark(0.9f, 0.4f, 0.1f, 1.0f);
 
-	screen.Click(screen.ConfirmationsCheckboxFrame());
-	const ImGuiID checkboxId = ImHashStr("Show confirmations", 0, PopupScreen::PopupWindow().ID);
-	CHECK(ImGui::GetCurrentContext()->HoveredId == checkboxId);
+	struct ConfirmationsScreen
+	{
+		PopupScreen Screen;
 
-	screen.Next();
-	CHECK(PopupScreen::PopupWindow().Size.y > heightWithNothingListed);
+		ConfirmationsScreen()
+		{
+			Screen.Palette = PaletteOfDistinctColours();
+			ImGui::GetStyle().Colors[ImGuiCol_CheckMark] = kDistinctCheckMark;
+			Screen.History.Record(Entry(1, Core::ToastKind::Success));
+			Screen.History.Record(Entry(2, Core::ToastKind::Error));
+			Screen.OpenFromBell();
+		}
+
+		bool ListsTheConfirmation() const
+		{
+			return DrawsInColour(PopupScreen::ListWindow(), OpaqueColourOf(Screen.Palette.Success));
+		}
+	};
+
+	// An engaged toggle draws its glyph in the check mark's colour, one at rest in the text's.
+	bool ToggleDrawsInStyleColour(ImVec2 toggleCentre, ImGuiCol colourSlot)
+	{
+		const float halfSide = Graphite::IconButtonSize() * 0.5f;
+		const ImVec2 areaMin(toggleCentre.x - halfSide, toggleCentre.y - halfSide);
+		const ImVec2 areaMax(toggleCentre.x + halfSide, toggleCentre.y + halfSide);
+		const ImU32 colour = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[colourSlot]);
+		return DrawsInColourWithin(PopupScreen::PopupWindow(), colour, areaMin, areaMax);
+	}
 }
 
-TEST_CASE("The Show confirmations box is outlined in the dim text colour with the pointer away from it")
+TEST_CASE("The Show confirmations toggle starts disengaged, with the confirmations hidden")
 {
-	PopupScreen screen;
-	screen.Palette.TextDim = {.R = 0.25f, .G = 0.5f, .B = 0.75f};
-	screen.OpenFromBell();
+	ConfirmationsScreen confirmations;
 
-	const ImVec2 boxCentre = screen.ConfirmationsCheckboxFrame();
-	const float halfSide = ImGui::GetFrameHeight() * 0.5f;
+	const ImVec2 toggle = confirmations.Screen.ConfirmationsToggle();
+	CHECK(ToggleDrawsInStyleColour(toggle, ImGuiCol_Text));
+	CHECK_FALSE(ToggleDrawsInStyleColour(toggle, ImGuiCol_CheckMark));
+	CHECK_FALSE(confirmations.ListsTheConfirmation());
 
-	// The outline's anti-aliased edge may reach a pixel past the box.
-	const float fringe = 1.0f;
-	const ImVec2 aroundTheBoxMin(boxCentre.x - halfSide - fringe, boxCentre.y - halfSide - fringe);
-	const ImVec2 aroundTheBoxMax(boxCentre.x + halfSide + fringe, boxCentre.y + halfSide + fringe);
+	confirmations.Screen.PointAt(toggle);
+	CHECK(ImGui::GetCurrentContext()->HoveredId == PopupScreen::ConfirmationsToggleId());
+}
 
-	CHECK(DrawsInColourWithin(PopupScreen::PopupWindow(), OpaqueColourOf(screen.Palette.TextDim), aroundTheBoxMin,
-							  aroundTheBoxMax));
+TEST_CASE("A click on the Show confirmations toggle engages it and lists the confirmations it hid")
+{
+	ConfirmationsScreen confirmations;
+	const float heightWithConfirmationsHidden = PopupScreen::PopupWindow().Size.y;
+	const ImVec2 toggle = confirmations.Screen.ConfirmationsToggle();
+
+	confirmations.Screen.Click(toggle);
+	CHECK(ImGui::GetCurrentContext()->HoveredId == PopupScreen::ConfirmationsToggleId());
+
+	confirmations.Screen.Next();
+	CHECK(PopupScreen::PopupWindow().Size.y > heightWithConfirmationsHidden);
+	CHECK(confirmations.ListsTheConfirmation());
+
+	// Measured again: the popup grows upwards from the corner it is anchored to, taking its header with it.
+	const ImVec2 toggleAfterGrowing = confirmations.Screen.ConfirmationsToggle();
+	CHECK(ToggleDrawsInStyleColour(toggleAfterGrowing, ImGuiCol_CheckMark));
+}
+
+TEST_CASE("A second click on the Show confirmations toggle disengages it and hides the confirmations again")
+{
+	ConfirmationsScreen confirmations;
+	const float heightWithConfirmationsHidden = PopupScreen::PopupWindow().Size.y;
+	const ImVec2 toggle = confirmations.Screen.ConfirmationsToggle();
+	confirmations.Screen.Click(toggle);
+	confirmations.Screen.Next();
+	REQUIRE(confirmations.ListsTheConfirmation());
+
+	// Measured again: the popup grows upwards from the corner it is anchored to, taking its header with it.
+	const ImVec2 toggleAfterGrowing = confirmations.Screen.ConfirmationsToggle();
+	confirmations.Screen.Click(toggleAfterGrowing);
+	CHECK(ImGui::GetCurrentContext()->HoveredId == PopupScreen::ConfirmationsToggleId());
+	confirmations.Screen.Next();
+
+	CHECK(PopupScreen::PopupWindow().Size.y == heightWithConfirmationsHidden);
+	CHECK_FALSE(confirmations.ListsTheConfirmation());
+
+	const ImVec2 toggleAfterShrinking = confirmations.Screen.ConfirmationsToggle();
+	CHECK(ToggleDrawsInStyleColour(toggleAfterShrinking, ImGuiCol_Text));
+	CHECK_FALSE(ToggleDrawsInStyleColour(toggleAfterShrinking, ImGuiCol_CheckMark));
 }
 
 TEST_CASE("An entry shows its time while the pointer is on another entry and gives its place to the remove button while the pointer is on it")
