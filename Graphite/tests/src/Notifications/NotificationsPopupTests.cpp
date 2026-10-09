@@ -44,7 +44,7 @@ namespace {
 		// A popup sizes itself on the frame it appears and shows from the next.
 		void OpenFromBell()
 		{
-			Popup.OpenFromBell();
+			Popup.OpenFromBell(Graphite::kStatusBarWindowName);
 			Next();
 			Next();
 		}
@@ -182,7 +182,7 @@ namespace {
 
 	ImVec2 BellCentre()
 	{
-		const ImGuiWindow* bar = ImGui::FindWindowByName("##StatusBar");
+		const ImGuiWindow* bar = ImGui::FindWindowByName(Graphite::kStatusBarWindowName);
 		REQUIRE(bar != nullptr);
 		return ImVec2(bar->Pos.x + bar->Size.x - bar->WindowPadding.x - 3.0f, bar->Pos.y + bar->Size.y * 0.5f);
 	}
@@ -192,7 +192,7 @@ namespace {
 		const Graphite::StatusBarClick clicked = Graphite::DrawStatusBar(documents, std::nullopt, std::filesystem::path(), messages);
 		if (clicked == Graphite::StatusBarClick::Notifications)
 		{
-			popup.OpenFromBell();
+			popup.OpenFromBell(Graphite::kStatusBarWindowName);
 		}
 	}
 
@@ -209,6 +209,23 @@ namespace {
 		ImGui::Begin("Editor");
 		ImGui::TextUnformatted("text");
 		ImGui::End();
+	}
+
+	// Drawn before the editor: a window focuses itself on the frame it appears, and the editor
+	// is the one that must start with the keyboard.
+	void DrawExplorerWindow()
+	{
+		ImGui::SetNextWindowPos(ImVec2(10.0f, 150.0f));
+		ImGui::SetNextWindowSize(ImVec2(200.0f, 100.0f));
+		ImGui::Begin("Explorer");
+		ImGui::TextUnformatted("files");
+		ImGui::End();
+	}
+
+	// Over the explorer's empty space, below its one line of text.
+	ImVec2 InsideTheExplorer()
+	{
+		return ImVec2(110.0f, 220.0f);
 	}
 }
 
@@ -412,7 +429,7 @@ TEST_CASE("The bell opens the popup and a second click on it closes the popup wi
 		if (clicked == Graphite::StatusBarClick::Notifications)
 		{
 			bellClicked = true;
-			screen.Popup.OpenFromBell();
+			screen.Popup.OpenFromBell(Graphite::kStatusBarWindowName);
 		}
 		screen.Draw();
 	};
@@ -420,7 +437,7 @@ TEST_CASE("The bell opens the popup and a second click on it closes the popup wi
 	screen.Frames.Next(drawBarAndPopup);
 	screen.Frames.Next(drawBarAndPopup);
 
-	const ImGuiWindow* bar = ImGui::FindWindowByName("##StatusBar");
+	const ImGuiWindow* bar = ImGui::FindWindowByName(Graphite::kStatusBarWindowName);
 	REQUIRE(bar != nullptr);
 	const ImVec2 bell(bar->Pos.x + bar->Size.x - bar->WindowPadding.x - 3.0f, bar->Pos.y + bar->Size.y * 0.5f);
 
@@ -447,7 +464,7 @@ TEST_CASE("A toast shown while the popup is open is drawn beneath the popup")
 		toasts.Render(screen.Palette);
 	};
 
-	screen.Popup.OpenFromBell();
+	screen.Popup.OpenFromBell(Graphite::kStatusBarWindowName);
 	screen.Frames.Next(drawPopupThenToasts);
 	screen.Frames.Next(drawPopupThenToasts);
 
@@ -488,6 +505,79 @@ TEST_CASE("Esc on the popup opened from the bell hands the keyboard back to the 
 
 	REQUIRE(PopupScreen::OpenPopups() == 0);
 	CHECK(ImGui::GetCurrentContext()->NavWindow == editor);
+}
+
+namespace {
+	struct BellScreen
+	{
+		PopupScreen Screen;
+		Core::DocumentSet Documents;
+		Graphite::StatusMessages Messages;
+		bool EditorFocusRequested = true;
+
+		void Draw()
+		{
+			DrawBarOpeningPopup(Documents, Messages, Screen.Popup);
+			DrawExplorerWindow();
+			DrawEditorWindow(EditorFocusRequested);
+			Screen.Draw();
+		}
+
+		void Next()
+		{
+			Screen.Frames.Next([&] { Draw(); });
+		}
+
+		void Click(ImVec2 at)
+		{
+			Screen.Frames.Click(at, [&] { Draw(); });
+		}
+
+		static const ImGuiWindow* KeyboardHolder()
+		{
+			return ImGui::GetCurrentContext()->NavWindow;
+		}
+	};
+}
+
+TEST_CASE("A second click on the bell closes the popup and hands the keyboard back to the editor")
+{
+	BellScreen bell;
+	bell.Next();
+	bell.Next();
+	const ImGuiWindow* editor = ImGui::FindWindowByName("Editor");
+	REQUIRE(editor != nullptr);
+	REQUIRE(BellScreen::KeyboardHolder() == editor);
+
+	bell.Click(BellCentre());
+	bell.Next();
+	REQUIRE(PopupScreen::OpenPopups() == 1);
+
+	bell.Click(BellCentre());
+	bell.Next();
+
+	REQUIRE(PopupScreen::OpenPopups() == 0);
+	CHECK(BellScreen::KeyboardHolder() == editor);
+}
+
+TEST_CASE("A click in another window closes the popup and leaves the keyboard in that window")
+{
+	BellScreen bell;
+	bell.Next();
+	bell.Next();
+	const ImGuiWindow* explorer = ImGui::FindWindowByName("Explorer");
+	REQUIRE(explorer != nullptr);
+	REQUIRE(BellScreen::KeyboardHolder() == ImGui::FindWindowByName("Editor"));
+
+	bell.Click(BellCentre());
+	bell.Next();
+	REQUIRE(PopupScreen::OpenPopups() == 1);
+
+	bell.Click(InsideTheExplorer());
+	bell.Next();
+
+	REQUIRE(PopupScreen::OpenPopups() == 0);
+	CHECK(BellScreen::KeyboardHolder() == explorer);
 }
 
 TEST_CASE("The popup says it is open from the frame it opens until Esc closes it")

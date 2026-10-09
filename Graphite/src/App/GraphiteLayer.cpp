@@ -887,7 +887,7 @@ namespace Graphite {
 			break;
 
 		case StatusBarClick::Notifications:
-			m_NotificationsPopup.OpenFromBell();
+			m_NotificationsPopup.OpenFromBell(kStatusBarWindowName);
 			break;
 
 		case StatusBarClick::None:

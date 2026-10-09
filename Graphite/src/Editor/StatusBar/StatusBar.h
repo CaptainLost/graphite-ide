@@ -64,6 +64,10 @@ namespace Graphite {
 		std::optional<Core::Color> MissedNotificationColour;
 	};
 
+	// The ImGui window the bar is drawn in. A press on the bar's empty space focuses this window, as
+	// it would any window's, so the keyboard can end up in a bar with nothing to type into.
+	constexpr const char* kStatusBarWindowName = "##StatusBar";
+
 	// Which piece of the bar was clicked this frame. The bar itself does nothing with a
 	// click: what a click opens is the layer's business, and the bar stays read-only.
 	enum class StatusBarClick

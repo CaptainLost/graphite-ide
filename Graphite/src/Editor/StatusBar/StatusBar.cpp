@@ -250,7 +250,7 @@ namespace Graphite {
 		constexpr ImGuiWindowFlags flags =
 			ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings;
 
-		if (!ImGui::BeginViewportSideBar("##StatusBar", viewport, ImGuiDir_Down, height, flags))
+		if (!ImGui::BeginViewportSideBar(kStatusBarWindowName, viewport, ImGuiDir_Down, height, flags))
 		{
 			ImGui::End();
 			return StatusBarClick::None;

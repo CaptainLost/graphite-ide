@@ -296,9 +296,15 @@ namespace Graphite {
 		}
 	}
 
-	void NotificationsPopup::OpenFromBell()
+	void NotificationsPopup::OpenFromBell(std::string_view bellWindowName)
 	{
 		m_OpenRequested = true;
+		m_BellWindowName = bellWindowName;
+
+		// The bell takes no focus, so the window that holds the keyboard now is the one that held
+		// it before the click.
+		const ImGuiWindow* const keyboardHolder = ImGui::GetCurrentContext()->NavWindow;
+		m_KeyboardHolderOnOpening = keyboardHolder != nullptr ? keyboardHolder->ID : 0;
 	}
 
 	void NotificationsPopup::Render(NotificationHistory& history, const Core::ToastPalette& palette,
@@ -312,8 +318,7 @@ namespace Graphite {
 
 		if (!ImGui::IsPopupOpen(kPopupId))
 		{
-			m_Open = false;
-			m_EntryMenuOpenLastFrame = false;
+			NoteClosed();
 			return;
 		}
 
@@ -349,8 +354,7 @@ namespace Graphite {
 
 		if (!popupBegun)
 		{
-			m_Open = false;
-			m_EntryMenuOpenLastFrame = false;
+			NoteClosed();
 			return;
 		}
 
@@ -427,6 +431,37 @@ namespace Graphite {
 		ImGui::SameLine();
 
 		return DrawIconButton("##clear", ICON_MDI_DELETE_SWEEP_OUTLINE, false, "Clear");
+	}
+
+	void NotificationsPopup::NoteClosed()
+	{
+		const bool closedSinceLastFrame = m_Open;
+		if (closedSinceLastFrame)
+		{
+			HandKeyboardBackFromBellWindow();
+		}
+
+		m_Open = false;
+		m_EntryMenuOpenLastFrame = false;
+	}
+
+	// Only from the bell's window: a click that closed the popup by landing in another window that
+	// takes the keyboard, such as the editor or the Explorer, leaves the keyboard there.
+	void NotificationsPopup::HandKeyboardBackFromBellWindow() const
+	{
+		const ImGuiWindow* const keyboardHolder = ImGui::GetCurrentContext()->NavWindow;
+		const bool keyboardInBellWindow = keyboardHolder != nullptr && m_BellWindowName == keyboardHolder->Name;
+		if (!keyboardInBellWindow)
+		{
+			return;
+		}
+
+		ImGuiWindow* const holderOnOpening = ImGui::FindWindowByID(m_KeyboardHolderOnOpening);
+		const bool holderStillDrawn = holderOnOpening != nullptr && holderOnOpening->WasActive;
+		if (holderStillDrawn)
+		{
+			ImGui::FocusWindow(holderOnOpening);
+		}
 	}
 
 	void NotificationsPopup::ToggleExpanded(std::uint64_t toastId)

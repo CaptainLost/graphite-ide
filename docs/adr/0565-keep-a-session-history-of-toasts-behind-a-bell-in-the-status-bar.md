@@ -25,6 +25,11 @@ from a bell at the right end of the status bar.
   it, and was not a confirmation. The bell shows a dot in the colour of the most
   severe missed entry. Opening the popup marks everything seen.
 - The bell opens the popup, and a click outside it, the bell included, closes it.
+  ImGui gives the keyboard to whatever window that click lands in. When that is
+  the status bar, which has nothing to type into, the popup gives the keyboard
+  back to the window that held it when the popup opened; a click in the editor
+  or a panel leaves it there. The bar names its window, and the application
+  layer passes that name to the popup, so neither feature includes the other.
 - Error toasts expire too, after twelve seconds, where they used to stay until
   closed. The history is what makes that safe: an error that expires with the
   pointer never on it is missed, and lights the bell's dot in red.
