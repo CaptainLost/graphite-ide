@@ -174,21 +174,26 @@ namespace Graphite {
 
 	void LanguageServices::Reconfigure(LanguageId language)
 	{
-		const std::vector<HeldDocument> held = ReleaseServersOf(language);
+		const ReleasedServers released = ReleaseServersOf(language);
 
 		m_Choices.erase(language);
 		ForgetRootsOf(language);
 
-		for (const HeldDocument& document : held)
+		for (const HeldDocument& document : released.Held)
 		{
 			EnsureStarted(document.Path, language);
 			OpenDocument(document.Path, language, document.Text);
 		}
+
+		if (released.ReleasedWorkspaceServer && m_LastWarmUp.has_value())
+		{
+			WarmUp(m_LastWarmUp->Root, m_LastWarmUp->RespectGitIgnore);
+		}
 	}
 
-	std::vector<LanguageServices::HeldDocument> LanguageServices::ReleaseServersOf(LanguageId language)
+	LanguageServices::ReleasedServers LanguageServices::ReleaseServersOf(LanguageId language)
 	{
-		std::vector<HeldDocument> held;
+		ReleasedServers released;
 
 		for (std::map<Key, ManagedServer>::iterator entry = m_Servers.begin(); entry != m_Servers.end();)
 		{
@@ -202,7 +207,7 @@ namespace Graphite {
 
 			for (auto& [path, document] : server.OpenDocuments)
 			{
-				held.push_back(HeldDocument{.Path = path, .Text = std::move(document.Text)});
+				released.Held.push_back(HeldDocument{.Path = path, .Text = std::move(document.Text)});
 				m_DocumentKeys.erase(path);
 
 				if (server.Client)
@@ -221,11 +226,17 @@ namespace Graphite {
 				server.Client->RequestShutdown();
 			}
 
-			ForgetNamedBy(key);
+			// m_NamedBy stays: a header reached through a definition is re-rooted through it.
+			released.ReleasedWorkspaceServer = released.ReleasedWorkspaceServer || IsWorkspaceRoot(key.Root);
 			entry = m_Servers.erase(entry);
 		}
 
-		return held;
+		return released;
+	}
+
+	bool LanguageServices::IsWorkspaceRoot(const std::filesystem::path& root) const
+	{
+		return Core::IsSameOrWithin(root, m_FallbackRoot) || Core::IsSameOrWithin(m_FallbackRoot, root);
 	}
 
 	void LanguageServices::ForgetRootsOf(LanguageId language)
@@ -862,6 +873,8 @@ namespace Graphite {
 
 	void LanguageServices::WarmUp(std::filesystem::path root, bool respectGitIgnore)
 	{
+		m_LastWarmUp = WarmUpRequest{.Root = root, .RespectGitIgnore = respectGitIgnore};
+
 		// A walk still running is about the folder that was open a moment ago, and nothing it
 		// finds there is wanted now.
 		m_WarmToken.Cancel();
@@ -1196,7 +1209,7 @@ namespace Graphite {
 			// a subfolder of a project is open - hold the background index and are never reaped.
 			// Pending is checked even though only a live client can have any: a server is never
 			// destroyed with an answer still owed.
-			const bool workspaces = Core::IsSameOrWithin(root, m_FallbackRoot) || Core::IsSameOrWithin(m_FallbackRoot, root);
+			const bool workspaces = IsWorkspaceRoot(root);
 			const bool idle = !workspaces && server.OpenDocuments.empty() && server.Pending.empty();
 
 			if (!idle)

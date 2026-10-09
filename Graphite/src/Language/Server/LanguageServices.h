@@ -367,7 +367,23 @@ namespace Graphite {
 			std::string Text;
 		};
 
-		std::vector<HeldDocument> ReleaseServersOf(LanguageId language);
+		struct ReleasedServers
+		{
+			std::vector<HeldDocument> Held;
+			bool ReleasedWorkspaceServer = false;
+		};
+
+		// What WarmUp was last asked, so Reconfigure can start the workspace's server again.
+		struct WarmUpRequest
+		{
+			std::filesystem::path Root;
+			bool RespectGitIgnore = false;
+		};
+
+		ReleasedServers ReleaseServersOf(LanguageId language);
+
+		// Whether a server rooted here is the open folder's own: at it, inside it, or above it.
+		bool IsWorkspaceRoot(const std::filesystem::path& root) const;
 		void ForgetRootsOf(LanguageId language);
 
 		ServerStatus OffStatus(LanguageId language) const;
@@ -447,6 +463,7 @@ namespace Graphite {
 		Core::CancellationToken m_WarmToken;
 
 		std::filesystem::path m_FallbackRoot;
+		std::optional<WarmUpRequest> m_LastWarmUp;
 		ChoiceProvider m_ChoiceProvider;
 		mutable std::map<LanguageId, ServerChoice> m_Choices;
 

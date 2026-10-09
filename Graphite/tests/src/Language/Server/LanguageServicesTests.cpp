@@ -1165,6 +1165,7 @@ namespace {
 		std::size_t Made = 0;
 		Graphite::LspClient* Latest = nullptr;
 		Graphite::ServerLaunch LastLaunch;
+		std::filesystem::path LastRoot;
 
 		Graphite::LanguageServices::ClientFactory Get()
 		{
@@ -1174,6 +1175,7 @@ namespace {
 		Core::Scope<Graphite::LspClient> Make(const Graphite::ServerLaunch& launch, const std::filesystem::path& root)
 		{
 			LastLaunch = launch;
+			LastRoot = root;
 			Core::Scope<Graphite::LspClient> client = Core::CreateScope<Graphite::LspClient>(launch, root, Graphite::LspClient::WithoutServer{});
 			Latest = client.get();
 			++Made;
@@ -1590,5 +1592,77 @@ TEST_CASE("Reconfigure to a server turned off stops the server and reports Off")
 
 	CHECK(spy.Made == 1);
 	CHECK_FALSE(services.IsRunningFor(source, Graphite::LanguageId::Cpp));
+	CHECK_FALSE(services.OverallStatus().has_value());
 	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).State == Graphite::ServerState::Off);
+
+	Graphite::DiagnosticsUpdate update;
+	services.TakeDiagnostics(update);
+	CHECK(ContainsPath(update.Closed, source));
+}
+
+TEST_CASE("Reconfigure keeps a file reached through a definition on the root of the server that named it")
+{
+	TempDirectory temp;
+	TempDirectory elsewhere;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	elsewhere.MakeFile("header.h", "");
+	const std::filesystem::path header = elsewhere.GetPath() / "header.h";
+
+	StartWithSpy(services, temp, spy, clock, source);
+	services.NoteNamed(header, source, Graphite::LanguageId::Cpp);
+	services.EnsureStarted(header, Graphite::LanguageId::Cpp);
+	services.OpenDocument(header, Graphite::LanguageId::Cpp, "int header;");
+
+	REQUIRE(spy.Made == 1);
+
+	temp.MakeFile("other-clangd.exe", "");
+	UseClangdAt(services, temp.GetPath() / "other-clangd.exe");
+	services.Reconfigure(Graphite::LanguageId::Cpp);
+
+	CHECK(spy.Made == 2);
+	CHECK(spy.LastRoot == temp.GetPath());
+	CHECK(services.Holds(header, Graphite::LanguageId::Cpp));
+}
+
+TEST_CASE("Reconfigure starts the workspace's server again even when no document was open on it")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	temp.MakeFile("main.cpp", "int main() { return 0; }\n");
+	temp.MakeFile("stand-in-clangd.exe", "");
+	temp.MakeFile("other-clangd.exe", "");
+
+	services.SetClock(clock.Get());
+	services.SetClientFactory(spy.Get());
+	UseClangdAt(services, temp.GetPath() / "stand-in-clangd.exe");
+	services.WarmUp(temp.GetPath(), false);
+
+	constexpr int kMaxAttempts = 500;
+
+	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	REQUIRE(spy.Made == 1);
+
+	UseClangdAt(services, temp.GetPath() / "other-clangd.exe");
+	services.Reconfigure(Graphite::LanguageId::Cpp);
+
+	for (int attempt = 0; attempt < kMaxAttempts && spy.Made < 2; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	REQUIRE(spy.Made == 2);
+	CHECK(spy.LastLaunch.Binary == temp.GetPath() / "other-clangd.exe");
 }
