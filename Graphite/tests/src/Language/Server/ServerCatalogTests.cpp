@@ -2,6 +2,7 @@
 
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/ServerCatalog.h"
+#include "Language/Server/ServerDiscovery.h"
 #include "TempDirectory.h"
 
 #include "Core/Platform/Process.h"
@@ -95,24 +96,6 @@ TEST_CASE("RootFor falls back when no marker is anywhere above the file")
 
 	CHECK(Graphite::RootFor(clangd, temp.GetPath() / "loose" / "main.cpp", temp.GetPath()) ==
 		  temp.GetPath());
-}
-
-TEST_CASE("LacksCompileDatabase sees each accepted form")
-{
-	TempDirectory temp;
-
-	CHECK(Graphite::LacksCompileDatabase(temp.GetPath()));
-
-	Touch(temp.GetPath() / "compile_flags.txt");
-	CHECK_FALSE(Graphite::LacksCompileDatabase(temp.GetPath()));
-}
-
-TEST_CASE("LacksCompileDatabase finds compile_commands.json in build/ too")
-{
-	TempDirectory temp;
-
-	Touch(temp.GetPath() / "build" / "compile_commands.json");
-	CHECK_FALSE(Graphite::LacksCompileDatabase(temp.GetPath()));
 }
 
 TEST_CASE("FindServerBinary prefers a configured path that exists")

@@ -29,7 +29,8 @@ TEST_CASE("Each running state names the server and what it is doing")
 	status.State = Graphite::ServerState::NotFound;
 	CHECK(Graphite::ServerStatusText(status) == "clangd: not found");
 
-	status.State = Graphite::ServerState::NoCompileDatabase;
+	status.Problem = Graphite::ProjectProblem{.Summary = "no compile database", .Explanation = "No compile_commands.json, compile_flags.txt or .clangd was found for this project, so clangd can see only the files that are open rather than the whole project."};
+	status.State = Graphite::ServerState::ProjectIncomplete;
 	CHECK(Graphite::ServerStatusText(status) == "clangd: no compile database");
 
 	status.State = Graphite::ServerState::Failed;
@@ -50,7 +51,8 @@ TEST_CASE("The detail explains what is missing rather than repeating the state")
 {
 	Graphite::ServerStatus status;
 	status.Name = "clangd";
-	status.State = Graphite::ServerState::NoCompileDatabase;
+	status.Problem = Graphite::ProjectProblem{.Summary = "no compile database", .Explanation = "No compile_commands.json, compile_flags.txt or .clangd was found for this project, so clangd can see only the files that are open rather than the whole project."};
+	status.State = Graphite::ServerState::ProjectIncomplete;
 
 	const std::string detail = Graphite::ServerStatusDetail(status);
 

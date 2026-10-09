@@ -48,8 +48,8 @@ namespace Graphite {
 			}
 			return status.Name + ": indexing";
 
-		case ServerState::NoCompileDatabase:
-			return status.Name + ": no compile database";
+		case ServerState::ProjectIncomplete:
+			return status.Name + ": " + status.Problem.Summary;
 
 		case ServerState::Ready:
 			return status.Name + ": ready";
@@ -109,11 +109,8 @@ namespace Graphite {
 					 "location.";
 			break;
 
-		case ServerState::NoCompileDatabase:
-			detail = "No compile_commands.json, compile_flags.txt or .clangd was found for this "
-					 "project, so " +
-					 status.Name +
-					 " can see only the files that are open rather than the whole project.";
+		case ServerState::ProjectIncomplete:
+			detail = status.Problem.Explanation;
 			break;
 
 		case ServerState::Restricted:

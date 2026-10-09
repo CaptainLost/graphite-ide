@@ -131,9 +131,7 @@ namespace Graphite {
 		// every restart; a real LspClient over that binary until set. A seam so the restart path -
 		// a death noticed, the backoff, the replay, the cap - can be driven with clients that have
 		// no process behind them (LspClient::WithoutServer) instead of a server that dies on cue.
-		using ClientFactory = std::function<Core::Scope<LspClient>(
-			const ServerDefinition& server, const std::filesystem::path& binary,
-			const std::filesystem::path& root)>;
+		using ClientFactory = std::function<Core::Scope<LspClient>(const ServerLaunch& launch, const std::filesystem::path& root)>;
 
 		void SetClientFactory(ClientFactory factory);
 
@@ -169,7 +167,7 @@ namespace Graphite {
 		// the time, since a folder starts its servers before any document of theirs is opened,
 		// and a README is a perfectly ordinary thing to be looking at while one indexes behind it.
 		//
-		// Busy first (Starting, Indexing), then broken (Failed, NotFound, NoCompileDatabase),
+		// Busy first (Starting, Indexing), then broken (Failed, NotFound, ProjectIncomplete),
 		// then Ready, then Restricted. Ready is included: a server that is up and answering is
 		// worth saying so, the slot is empty anyway, and leaving it silent means the bar comes
 		// alive only when a file of that language is opened — which reads as the feature not
@@ -349,6 +347,8 @@ namespace Graphite {
 									   Key& key) const;
 
 		const ServerDefinition* ServerFor(LanguageId language) const;
+
+		bool WarmUpNeedsOpen(LanguageId language) const;
 
 		// The root a file with no marker above it falls back to: the fallback root when the file
 		// lies inside it, the file's own directory otherwise.

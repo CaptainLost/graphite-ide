@@ -209,13 +209,19 @@ namespace Graphite {
 		NotFound,
 		Starting,
 		Indexing,
-		NoCompileDatabase,
+		ProjectIncomplete,
 		Ready,
 		Failed,
 
 		// The root's folder is not trusted: the entry exists, and keeps what documents were
 		// sent to it, but no process runs until trust is granted (ADR 0532).
 		Restricted
+	};
+
+	struct ProjectProblem
+	{
+		std::string Summary;
+		std::string Explanation;
 	};
 
 	struct ServerStatus
@@ -225,5 +231,6 @@ namespace Graphite {
 		std::string Detail; // binary path, version, what is missing
 		int Percent = -1;	// -1 means no percentage reported; meaningful only while State is Indexing
 		std::size_t Restarts = 0;
+		ProjectProblem Problem;
 	};
 }

@@ -10,18 +10,62 @@
 #include <array>
 #include <iterator>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace Graphite {
 
 	namespace {
 
-		// The state a server settles into once it has answered initialize: a root with no compile
-		// database is not a failure, but it is not Ready either — clangd runs there and answers
-		// every question with a guess, which the status bar has to be able to say out loud.
-		ServerState SettledState(bool noCompileDatabase)
+		std::string SectionOf(const nlohmann::json& item)
 		{
-			return noCompileDatabase ? ServerState::NoCompileDatabase : ServerState::Ready;
+			if (!item.is_object())
+			{
+				return {};
+			}
+
+			const nlohmann::json::const_iterator section = item.find("section");
+
+			return section != item.end() && section->is_string() ? section->get<std::string>() : std::string{};
+		}
+
+		std::vector<std::string> RequestedSections(const nlohmann::json& params)
+		{
+			std::vector<std::string> sections;
+
+			if (params.is_object())
+			{
+				const nlohmann::json::const_iterator items = params.find("items");
+
+				if (items != params.end() && items->is_array())
+				{
+					for (const nlohmann::json& item : *items)
+					{
+						sections.push_back(SectionOf(item));
+					}
+				}
+			}
+
+			// A reply with no entry stalls clangd as surely as no reply at all.
+			if (sections.empty())
+			{
+				sections.emplace_back();
+			}
+
+			return sections;
+		}
+
+		nlohmann::json ConfigurationReply(const ServerAdapter& adapter, const AdapterContext& context, const nlohmann::json& params)
+		{
+			nlohmann::json result = nlohmann::json::array();
+
+			for (const std::string& section : RequestedSections(params))
+			{
+				result.push_back(adapter.WorkspaceConfiguration(context, section));
+			}
+
+			return result;
 		}
 
 		nlohmann::json InitializeParams(const std::filesystem::path& root)
@@ -175,17 +219,35 @@ namespace Graphite {
 		SendNowLocked(*m_Shared, std::move(bytes));
 	}
 
-	LspClient::LspClient(const ServerDefinition& server, std::filesystem::path binary,
-						 std::filesystem::path root)
+	void LspClient::Adopt(const ServerLaunch& launch, const std::filesystem::path& root)
 	{
-		m_Shared->ProtocolLanguageId = std::string(server.ProtocolLanguageId);
-		m_Shared->NoCompileDatabase = LacksCompileDatabase(root);
+		m_Shared->ProtocolLanguageId = std::string(launch.Server->ProtocolLanguageId);
+		m_Shared->Adapter = launch.Adapter;
+		m_Shared->Context = AdapterContext{.Root = root, .InitializationOptions = launch.InitializationOptions, .Settings = launch.Settings};
+		m_Shared->Problem = launch.Adapter->ProjectProblemAt(root);
 
-		m_Shared->Status.Name = std::string(server.DisplayName);
-		m_Shared->Status.Detail = Core::ToUtf8(binary);
+		m_Shared->Status.Name = std::string(launch.Server->DisplayName);
 		m_Shared->Status.State = ServerState::Starting;
+	}
 
-		Core::Result<Core::Scope<Core::ChildProcess>> started = Core::ChildProcess::Start(binary, DefaultArgumentsOf(server), root);
+	void LspClient::Settle(Shared& shared)
+	{
+		if (shared.Problem)
+		{
+			shared.Status.State = ServerState::ProjectIncomplete;
+			shared.Status.Problem = *shared.Problem;
+			return;
+		}
+
+		shared.Status.State = ServerState::Ready;
+	}
+
+	LspClient::LspClient(const ServerLaunch& launch, std::filesystem::path root)
+	{
+		Adopt(launch, root);
+		m_Shared->Status.Detail = Core::ToUtf8(launch.Binary);
+
+		Core::Result<Core::Scope<Core::ChildProcess>> started = Core::ChildProcess::Start(launch.Binary, launch.Arguments, root);
 
 		if (!started)
 		{
@@ -233,13 +295,9 @@ namespace Graphite {
 		}
 	}
 
-	LspClient::LspClient(const ServerDefinition& server, std::filesystem::path root, WithoutServer)
+	LspClient::LspClient(const ServerLaunch& launch, std::filesystem::path root, WithoutServer)
 	{
-		m_Shared->ProtocolLanguageId = std::string(server.ProtocolLanguageId);
-		m_Shared->NoCompileDatabase = LacksCompileDatabase(root);
-
-		m_Shared->Status.Name = std::string(server.DisplayName);
-		m_Shared->Status.State = ServerState::Starting;
+		Adopt(launch, root);
 
 		// Everything the real constructor does except start a process and the two threads that
 		// serve it. The handshake still goes out, into a queue nobody drains, so a test can read
@@ -957,29 +1015,7 @@ namespace Graphite {
 
 		if (request.Method == "workspace/configuration")
 		{
-			// One settings object per item asked about, each empty: every setting this side has
-			// an opinion about is already on the command line. Answering nothing at all is what
-			// stalls clangd — it holds its progress reporting until this returns.
-			std::size_t items = 1;
-
-			if (request.Payload.is_object())
-			{
-				const auto found = request.Payload.find("items");
-
-				if (found != request.Payload.end() && found->is_array() && !found->empty())
-				{
-					items = found->size();
-				}
-			}
-
-			nlohmann::json result = nlohmann::json::array();
-
-			for (std::size_t index = 0; index < items; ++index)
-			{
-				result.push_back(nlohmann::json::object());
-			}
-
-			SendNowLocked(shared, shared.Rpc.Reply(id, result));
+			SendNowLocked(shared, shared.Rpc.Reply(id, ConfigurationReply(*shared.Adapter, shared.Context, request.Payload)));
 			return;
 		}
 
@@ -1064,7 +1100,7 @@ namespace Graphite {
 
 		const std::lock_guard<std::mutex> state(shared.StateMutex);
 
-		shared.Status.State = SettledState(shared.NoCompileDatabase);
+		Settle(shared);
 
 		if (!detail.empty())
 		{
@@ -1145,7 +1181,7 @@ namespace Graphite {
 				return;
 			}
 
-			shared.Status.State = SettledState(shared.NoCompileDatabase);
+			Settle(shared);
 			shared.Status.Percent = -1;
 		}
 	}

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Language/Api/LanguageId.h"
-#include "Language/Server/ServerDiscovery.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -43,6 +42,4 @@ namespace Graphite {
 
 	// A submodule carries its own .git, so a walk stops here rather than reading somebody else's project.
 	bool IsProjectRoot(const std::filesystem::path& directory);
-
-	bool LacksCompileDatabase(const std::filesystem::path& root);
 }

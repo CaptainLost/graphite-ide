@@ -6,7 +6,8 @@
 #include "Language/Api/LanguageService.h"
 #include "Language/Server/JsonRpc.h"
 #include "Language/Server/LspProtocol.h"
-#include "Language/Server/ServerCatalog.h"
+#include "Language/Server/Adapters/ServerAdapter.h"
+#include "Language/Server/ServerLaunch.h"
 
 #include <atomic>
 #include <chrono>
@@ -35,8 +36,7 @@ namespace Graphite {
 	class LspClient
 	{
 	public:
-		LspClient(const ServerDefinition& server, std::filesystem::path binary,
-				  std::filesystem::path root);
+		LspClient(const ServerLaunch& launch, std::filesystem::path root);
 
 		// Tags the constructor that does everything except start a process, so that the paths only
 		// a server can otherwise reach — the handshake, the queue that holds messages until it
@@ -46,7 +46,7 @@ namespace Graphite {
 		{
 		};
 
-		LspClient(const ServerDefinition& server, std::filesystem::path root, WithoutServer);
+		LspClient(const ServerLaunch& launch, std::filesystem::path root, WithoutServer);
 
 		~LspClient();
 
@@ -279,10 +279,10 @@ namespace Graphite {
 			Core::Ref<Core::ChildProcess> Process;
 			std::string ProtocolLanguageId;
 
-			// Decided once at construction: a root with no compile database is a state the user
-			// has to fix, not a failure, and it outlives every reply that would otherwise report
-			// the server simply Ready.
-			bool NoCompileDatabase = false;
+			// Written once, before either thread starts, and only read afterwards.
+			const ServerAdapter* Adapter = nullptr;
+			AdapterContext Context;
+			std::optional<ProjectProblem> Problem;
 		};
 
 		// Numbers a question, remembers what was asked so its reply can be read, and queues it.
@@ -292,6 +292,11 @@ namespace Graphite {
 
 		// Sends initialize and records the id its reply will carry. ProtocolMutex NOT held.
 		void BeginHandshake(const std::filesystem::path& root);
+
+		void Adopt(const ServerLaunch& launch, const std::filesystem::path& root);
+
+		// StateMutex held by the caller.
+		static void Settle(Shared& shared);
 
 		// Everything below runs on a background thread and takes Shared explicitly, because by the
 		// time some of it runs there may be no LspClient left to reach through.

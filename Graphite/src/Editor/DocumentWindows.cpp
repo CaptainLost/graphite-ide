@@ -10,6 +10,7 @@
 #include "Editor/TextEditorWidget.h"
 
 #include "Language/Registry/LanguageRegistry.h"
+#include "Language/Server/Adapters/ServerAdapter.h"
 #include "Language/Server/LspClient.h"
 
 #include "Persistence/CaretRestore.h"
@@ -943,7 +944,7 @@ namespace Graphite {
 					  .Enabled = [activeItem] {
 						  const Core::OpenItem* item = activeItem();
 						  return item != nullptr && HasLanguageServer(item->Path) &&
-								 LanguageOfPath(item->Path) == LanguageId::Cpp; },
+								 LanguageOffersSwitchSourceHeader(LanguageOfPath(item->Path)); },
 					  .RepeatsWhileHeld = false});
 
 		keys.SetDefault(kSwitchHeaderSourceCommand,

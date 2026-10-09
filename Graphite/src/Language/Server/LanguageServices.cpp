@@ -8,6 +8,7 @@
 #include "Core/Git/Repository.h"
 #include "Core/Text/FileProbe.h"
 #include "Language/Registry/LanguageRegistry.h"
+#include "Language/Server/Adapters/ServerAdapter.h"
 #include "Language/Server/ServerDiscovery.h"
 #include "Search/FileEnumerator.h"
 
@@ -58,6 +59,13 @@ namespace Graphite {
 				server.Client->RequestShutdown();
 			}
 		}
+	}
+
+	bool LanguageServices::WarmUpNeedsOpen(LanguageId language) const
+	{
+		const ServerDefinition* server = ServerFor(language);
+
+		return server != nullptr && AdapterOf(server->Adapter).WarmUpNeedsOpen();
 	}
 
 	const ServerDefinition* LanguageServices::ServerFor(LanguageId language) const
@@ -277,7 +285,7 @@ namespace Graphite {
 				return 4; // something is happening and will stop happening
 			case ServerState::Failed:
 			case ServerState::NotFound:
-			case ServerState::NoCompileDatabase:
+			case ServerState::ProjectIncomplete:
 				return 3; // something is wrong and will not fix itself
 			case ServerState::Ready:
 				return 2; // up and answering, which is worth saying when nothing else is
@@ -880,7 +888,7 @@ namespace Graphite {
 			// sent it and primed the database. Opening it again would overwrite the tab's text with
 			// the disk's, and the close would make the server forget the tab, so every edit after
 			// it would be dropped as a change to a document it was never told about.
-			if (!finding.Text.empty() && !Holds(finding.Path, finding.Language))
+			if (!finding.Text.empty() && !Holds(finding.Path, finding.Language) && WarmUpNeedsOpen(finding.Language))
 			{
 				OpenDocument(finding.Path, finding.Language, std::move(finding.Text));
 				CloseDocument(finding.Path, finding.Language);
@@ -946,7 +954,7 @@ namespace Graphite {
 			// restart does.
 			const ServerState state = drained.Status.State;
 			const bool up = state == ServerState::Ready || state == ServerState::Indexing ||
-							state == ServerState::NoCompileDatabase;
+							state == ServerState::ProjectIncomplete;
 
 			if (up)
 			{
@@ -1050,12 +1058,15 @@ namespace Graphite {
 	Core::Scope<LspClient> LanguageServices::MakeClient(const ManagedServer& server,
 														const Key& key) const
 	{
+		const ServerOverrides noOverrides;
+		const ServerLaunch launch = LaunchFor(*server.Definition, server.Binary, noOverrides);
+
 		if (m_ClientFactory)
 		{
-			return m_ClientFactory(*server.Definition, server.Binary, key.Root);
+			return m_ClientFactory(launch, key.Root);
 		}
 
-		return Core::CreateScope<LspClient>(*server.Definition, server.Binary, key.Root);
+		return Core::CreateScope<LspClient>(launch, key.Root);
 	}
 
 	bool LanguageServices::IsRunningFor(const std::filesystem::path& path, LanguageId language) const

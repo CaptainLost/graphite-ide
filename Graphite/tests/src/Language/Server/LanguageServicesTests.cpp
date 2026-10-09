@@ -1141,17 +1141,20 @@ namespace {
 	{
 		std::size_t Made = 0;
 		Graphite::LspClient* Latest = nullptr;
+		Graphite::ServerLaunch LastLaunch;
 
 		Graphite::LanguageServices::ClientFactory Get()
 		{
-			return [this](const Graphite::ServerDefinition& server, const std::filesystem::path&,
-						  const std::filesystem::path& root) {
-				auto client = std::make_unique<Graphite::LspClient>(server, root,
-																	Graphite::LspClient::WithoutServer{});
-				Latest = client.get();
-				++Made;
-				return client;
-			};
+			return [this](const Graphite::ServerLaunch& launch, const std::filesystem::path& root) { return Make(launch, root); };
+		}
+
+		Core::Scope<Graphite::LspClient> Make(const Graphite::ServerLaunch& launch, const std::filesystem::path& root)
+		{
+			LastLaunch = launch;
+			Core::Scope<Graphite::LspClient> client = Core::CreateScope<Graphite::LspClient>(launch, root, Graphite::LspClient::WithoutServer{});
+			Latest = client.get();
+			++Made;
+			return client;
 		}
 
 		// Refuses the handshake, which is the shortest way a client without a process reports

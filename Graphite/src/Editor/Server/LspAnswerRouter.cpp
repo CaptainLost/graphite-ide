@@ -60,7 +60,7 @@ namespace Graphite {
 		// document uncoloured until the next edit.
 		if (before == ServerState::Starting &&
 			(now == ServerState::Ready || now == ServerState::Indexing ||
-			 now == ServerState::NoCompileDatabase))
+			 now == ServerState::ProjectIncomplete))
 		{
 			AskSemanticTokens(path);
 		}

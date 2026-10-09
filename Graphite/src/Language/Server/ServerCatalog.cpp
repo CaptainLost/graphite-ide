@@ -26,8 +26,6 @@ namespace Graphite {
 			 .Adapter = AdapterKind::Clangd},
 		}};
 
-		constexpr std::array<std::string_view, 3> kCompileDatabaseNames{"compile_commands.json", "compile_flags.txt", ".clangd"};
-
 		// The error_code overload: a directory that denies access reads as "not there" instead of throwing across the boundary ADR 0004 guards.
 		bool Exists(const std::filesystem::path& path)
 		{
@@ -126,14 +124,5 @@ namespace Graphite {
 		}
 
 		return false;
-	}
-
-	bool LacksCompileDatabase(const std::filesystem::path& root)
-	{
-		// compile_flags.txt and .clangd describe the sources beside them, so only compile_commands.json is also looked for in build/.
-		const bool hasDatabaseBesideSources = HoldsAnyMarker(root, kCompileDatabaseNames);
-		const bool hasDatabaseInBuild = Exists(root / "build" / "compile_commands.json");
-
-		return !hasDatabaseBesideSources && !hasDatabaseInBuild;
 	}
 }

@@ -23,7 +23,7 @@ namespace Graphite {
 
 	// The longer explanation behind ServerStatusText, shown as a tooltip on hover. Says what is
 	// missing rather than restating the state: for NotFound, where the binary was searched for;
-	// for NoCompileDatabase, what file would fix it and what the server can see without one; for
+	// for ProjectIncomplete, what file would fix it and what the server can see without one; for
 	// a running server, the binary path and the version its handshake reported. Notes a restart
 	// count once there has been one, regardless of state.
 	std::string ServerStatusDetail(const ServerStatus& status);
