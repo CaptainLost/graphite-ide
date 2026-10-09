@@ -27,6 +27,7 @@ namespace Graphite {
 
 	namespace {
 		constexpr const char* kPopupId = "##notifications";
+		constexpr const char* kRowId = "##row";
 		constexpr const char* kRemoveButtonId = "##remove";
 		constexpr std::size_t kCollapsedLines = 4;
 		constexpr float kHighestShareOfWindow = 0.6f;
@@ -104,7 +105,7 @@ namespace Graphite {
 			return hiddenLines == 1 ? std::string("\u2026 1 more line") : std::format("\u2026 {} more lines", hiddenLines);
 		}
 
-		// Floored: half a pixel here puts every row below off the pixel grid and blurs its highlight.
+		// Floored: half a pixel here puts the row's bottom edge, and its highlight, on a half pixel.
 		float IconOverhang()
 		{
 			return std::floor((Core::ToastIconDiameter() - ImGui::GetFontSize()) * 0.5f);
@@ -291,25 +292,35 @@ namespace Graphite {
 			return list;
 		}
 
-		// ImGui stops counting a row as hovered while an item drawn over it is hovered, or while any
-		// other item is held, which would hide the remove button under the pointer and drop its click.
-		ImGuiHoveredFlags RowHoverFlags(bool removeButtonHeld)
+		// Without AllowWhenBlockedByActiveItem ImGui reports no window hovered while any item is held,
+		// the row's own press included, which would drop the highlight and the remove button mid-click.
+		bool IsPointerOnRow(const ImRect& rowRect, bool partOfRowHeld)
 		{
-			const ImGuiHoveredFlags throughRemoveButton = ImGuiHoveredFlags_AllowWhenOverlappedByItem;
-			if (removeButtonHeld)
-			{
-				return throughRemoveButton | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem;
-			}
-
-			return throughRemoveButton;
+			const ImGuiHoveredFlags hoverFlags =
+				partOfRowHeld ? ImGuiHoveredFlags_AllowWhenBlockedByActiveItem : ImGuiHoveredFlags_None;
+			const bool listUnderPointer = ImGui::IsWindowHovered(hoverFlags);
+			const bool rowUnderPointer = ImGui::IsMouseHoveringRect(rowRect.Min, rowRect.Max);
+			return listUnderPointer && rowUnderPointer;
 		}
 
-		bool DrawRemoveButton(const ImRect& buttonRect, const Core::ToastPalette& palette)
+		struct RemoveButtonState
+		{
+			bool Clicked = false;
+			bool PointerOnIt = false;
+		};
+
+		RemoveButtonState SubmitRemoveButton(const ImRect& buttonRect)
 		{
 			ImGui::SetCursorScreenPos(buttonRect.Min);
 			const bool clicked = ImGui::InvisibleButton(kRemoveButtonId, buttonRect.GetSize());
-			const bool pointerOnButton = ImGui::IsItemHovered();
-			const Core::Color& glyphColour = pointerOnButton ? palette.Text : palette.TextDim;
+			const bool pointerOnIt = ImGui::IsItemHovered();
+			ImGui::SetItemTooltip("Remove");
+			return {.Clicked = clicked, .PointerOnIt = pointerOnIt};
+		}
+
+		void DrawRemoveGlyph(const ImRect& buttonRect, const RemoveButtonState& button, const Core::ToastPalette& palette)
+		{
+			const Core::Color& glyphColour = button.PointerOnIt ? palette.Text : palette.TextDim;
 
 			// Floored: CalcTextSize rounds up, and a glyph centred onto a half pixel reads blurrier than
 			// the text beside it.
@@ -317,9 +328,6 @@ namespace Graphite {
 			const ImVec2 glyphTopLeft(std::floor(buttonRect.Min.x + (buttonRect.GetWidth() - glyphSize.x) * 0.5f),
 									  std::floor(buttonRect.Min.y + (buttonRect.GetHeight() - glyphSize.y) * 0.5f));
 			ImGui::GetWindowDrawList()->AddText(glyphTopLeft, ImGui::GetColorU32(ToImVec4(glyphColour)), ICON_MDI_CLOSE);
-
-			ImGui::SetItemTooltip("Remove");
-			return clicked;
 		}
 
 		ListOutcome DrawList(const ListLayout& list, const Core::ToastPalette& palette)
@@ -337,22 +345,45 @@ namespace Graphite {
 				const std::string rowId = std::to_string(entry.ToastId);
 				ImGui::PushID(rowId.c_str());
 
-				const bool removeButtonHeld = ImGui::GetActiveID() == ImGui::GetID(kRemoveButtonId);
+				const ImVec2 rowTopLeft = ImGui::GetCursorScreenPos();
+				const ImRect rowRect(rowTopLeft, ImVec2(rowTopLeft.x + list.RowWidth, rowTopLeft.y + row.Height));
+				const ImRect removeButtonRect = RemoveButtonRect(rowRect);
 
-				// Without it the row, submitted first, keeps the pointer from the remove button drawn over it.
-				ImGui::SetNextItemAllowOverlap();
-				const bool rowClicked = ImGui::InvisibleButton("##row", ImVec2(list.RowWidth, row.Height));
-				const ImRect rowRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-				const bool pointerOnRow = ImGui::IsItemHovered(RowHoverFlags(removeButtonHeld));
+				const ImGuiID heldItem = ImGui::GetActiveID();
+				const bool removeButtonHeld = heldItem == ImGui::GetID(kRemoveButtonId);
+				const bool rowHeld = heldItem == ImGui::GetID(kRowId);
+				const bool partOfRowHeld = rowHeld || removeButtonHeld;
+				const bool pointerOnRow = IsPointerOnRow(rowRect, partOfRowHeld);
+				const bool showsRemoveButton = pointerOnRow || removeButtonHeld;
 
+				// Submitted before the row it lies on: ImGui gives the pointer to the first item under it,
+				// and a row submitted first would take the button's presses.
+				RemoveButtonState removeButton;
+				if (showsRemoveButton)
+				{
+					removeButton = SubmitRemoveButton(removeButtonRect);
+					ImGui::SetCursorScreenPos(rowTopLeft);
+				}
+
+				if (removeButton.Clicked)
+				{
+					outcome.RemovedToastId = entry.ToastId;
+				}
+
+				const bool rowClicked = ImGui::InvisibleButton(kRowId, rowRect.GetSize());
 				const bool canExpand = row.Lines.size() > kCollapsedLines;
 				if (rowClicked && canExpand)
 				{
 					outcome.ToggledToastId = entry.ToastId;
 				}
 
-				const bool showsRemoveButton = pointerOnRow || removeButtonHeld;
 				DrawEntry(entry, row, rowRect, {.Highlighted = pointerOnRow, .ShowsRemoveButton = showsRemoveButton}, palette);
+
+				// After the entry, whose highlight would otherwise cover it.
+				if (showsRemoveButton)
+				{
+					DrawRemoveGlyph(removeButtonRect, removeButton, palette);
+				}
 
 				if (Core::BeginRightClickPopup("##entryMenu"))
 				{
@@ -377,20 +408,6 @@ namespace Graphite {
 					}
 
 					ImGui::EndPopup();
-				}
-
-				if (showsRemoveButton)
-				{
-					const bool removeClicked = DrawRemoveButton(RemoveButtonRect(rowRect), palette);
-					if (removeClicked)
-					{
-						outcome.RemovedToastId = entry.ToastId;
-					}
-
-					// Without an item laid out as the row was, the next row would start below the remove
-					// button, and ImGui asserts when the last row's cursor is left moved.
-					ImGui::SetCursorScreenPos(rowRect.Min);
-					ImGui::Dummy(rowRect.GetSize());
 				}
 
 				ImGui::PopID();

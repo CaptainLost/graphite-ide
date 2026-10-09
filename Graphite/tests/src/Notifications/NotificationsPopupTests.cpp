@@ -7,6 +7,7 @@
 #include "Notifications/NotificationsPopup.h"
 #include "UI/IconButton.h"
 
+#include "Core/ImGui/ToastStyle.h"
 #include "Core/ImGui/Toasts.h"
 #include "Core/Text/DocumentSet.h"
 
@@ -61,6 +62,28 @@ namespace {
 		{
 			ImGui::GetIO().AddMousePosEvent(at.x, at.y);
 			Next();
+		}
+
+		// As a quick click lands: the pointer arrives and the button goes down in the same frame.
+		void ClickOnArrival(ImVec2 at, ImGuiMouseButton button = ImGuiMouseButton_Left)
+		{
+			ImGuiIO& io = ImGui::GetIO();
+			io.AddMousePosEvent(at.x, at.y);
+			io.AddMouseButtonEvent(button, true);
+			Next();
+			io.AddMouseButtonEvent(button, false);
+			Next();
+		}
+
+		// Read inside a frame, where the font is bound at the size the list draws its text in.
+		ImFontGlyph GlyphOf(ImWchar character)
+		{
+			ImFontGlyph glyph;
+			Frames.Next([&] {
+				Draw();
+				glyph = *ImGui::GetFontBaked()->FindGlyph(character);
+			});
+			return glyph;
 		}
 
 		static int OpenPopups()
@@ -793,6 +816,44 @@ TEST_CASE("An entry's icon keeps eight pixels clear of the top and the bottom of
 	CHECK(icon.Bottom >= rowBottom - rowInset);
 }
 
+TEST_CASE("An entry whose text is taller than its icon keeps its last line eight pixels clear of the row's bottom")
+{
+	PopupScreen screen;
+	screen.Palette = PaletteOfDistinctColours();
+	screen.History.Record({.ToastId = 1, .Kind = Core::ToastKind::Error, .Title = "MMMM", .Message = "MMMM\nMMMM"});
+	screen.OpenFromBell();
+	const ImFontGlyph glyph = screen.GlyphOf('M');
+
+	const ImGuiWindow& list = PopupScreen::ListWindow();
+	const float rowBottom = list.Pos.y + list.Size.y;
+	const float rowInset = 8.0f;
+	const float lineHeight = ImGui::GetFontSize();
+
+	const VerticalExtent message = DrawnExtentInColour(list, OpaqueColourOf(Core::ToastMessageColour(screen.Palette)));
+	const float lastLineTop = message.Bottom - glyph.Y1;
+	CHECK(lastLineTop + lineHeight == doctest::Approx(rowBottom - rowInset));
+}
+
+TEST_CASE("An entry's title line is centred on its icon to within half a pixel")
+{
+	PopupScreen screen;
+	screen.Palette = PaletteOfDistinctColours();
+	screen.History.Record({.ToastId = 1, .Kind = Core::ToastKind::Error, .Title = "MMMM", .Message = "MMMM"});
+	screen.OpenFromBell();
+	const ImFontGlyph glyph = screen.GlyphOf('M');
+
+	const ImGuiWindow& list = PopupScreen::ListWindow();
+	const float lineHeight = ImGui::GetFontSize();
+	const VerticalExtent title = DrawnExtentInColour(list, OpaqueColourOf(screen.Palette.Text));
+	const VerticalExtent icon = DrawnExtentInColour(list, OpaqueColourOf(screen.Palette.Error));
+	const float titleLineCentre = title.Top - glyph.Y0 + lineHeight * 0.5f;
+	const float iconCentre = (icon.Top + icon.Bottom) * 0.5f;
+
+	const float halfPixel = 0.5f;
+	const float floatError = 0.01f;
+	CHECK(std::abs(titleLineCentre - iconCentre) <= halfPixel + floatError);
+}
+
 TEST_CASE("A hovered entry is highlighted across the whole row")
 {
 	PopupScreen screen;
@@ -914,6 +975,67 @@ TEST_CASE("A press on an entry's remove button goes to the button, so the row be
 	screen.Next();
 	CHECK_FALSE(screen.Popup.IsExpanded(1));
 	CHECK(screen.History.Entries(kWithConfirmations).empty());
+}
+
+TEST_CASE("A press on an entry's text in the frame the pointer arrives expands it")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error, LinesOfText(12)));
+	screen.OpenFromBell();
+
+	screen.ClickOnArrival(PopupScreen::FirstEntry());
+
+	CHECK(screen.Popup.IsExpanded(1));
+}
+
+TEST_CASE("A move onto an entry's remove button and a press in the same frame removes the entry without expanding it")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error, LinesOfText(12)));
+	screen.OpenFromBell();
+	screen.PointAt(PopupScreen::FirstEntry());
+
+	screen.ClickOnArrival(PopupScreen::FirstEntryRemoveButton());
+
+	CHECK(screen.History.Entries(kWithConfirmations).empty());
+	CHECK_FALSE(screen.Popup.IsExpanded(1));
+}
+
+TEST_CASE("A right-click on an entry's remove button opens the entry's menu")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error, "rejected"));
+	std::string copied;
+	screen.Popup.OnCopied = [&](std::string_view text) { copied = std::string(text); };
+	screen.OpenFromBell();
+	screen.PointAt(PopupScreen::FirstEntry());
+
+	screen.Click(PopupScreen::FirstEntryRemoveButton(), ImGuiMouseButton_Right);
+	screen.Next();
+	REQUIRE(PopupScreen::OpenPopups() == 2);
+
+	screen.Click(PopupScreen::FirstMenuItem());
+	CHECK(copied == "Push failed\nrejected");
+}
+
+TEST_CASE("A quick right-click on another entry while one entry's menu is open opens the other entry's menu")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error, "rejected"));
+	screen.History.Record(Entry(2, Core::ToastKind::Warning, "behind"));
+	std::string copied;
+	screen.Popup.OnCopied = [&](std::string_view text) { copied = std::string(text); };
+	screen.OpenFromBell();
+	screen.Click(PopupScreen::FirstEntry(), ImGuiMouseButton_Right);
+	screen.Next();
+	REQUIRE(PopupScreen::OpenPopups() == 2);
+
+	screen.ClickOnArrival(PopupScreen::LastEntry(), ImGuiMouseButton_Right);
+	screen.Next();
+	REQUIRE(PopupScreen::OpenPopups() == 2);
+
+	screen.Click(PopupScreen::FirstMenuItem());
+	CHECK(copied == "Push failed\nrejected");
 }
 
 TEST_CASE("Remove in an entry's menu removes that entry and leaves the others")
