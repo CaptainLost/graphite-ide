@@ -21,8 +21,11 @@ application layer ([0022](0022-i-3-avoid-singletons.md)); no feature holds it.
 Features raise toasts by publishing `ToastEvent` on the event bus, as described
 below.
 
-- An Error toast stays until it is closed. Success and Warning toasts leave after
-  six seconds, the countdown paused while the pointer is on them.
+- Error toasts leave after twelve seconds, Success and Warning toasts after six,
+  the countdown paused while the pointer is on them. A toast that leaves unseen
+  is not lost: every toast is kept in the notification history
+  ([0565](0565-keep-a-session-history-of-toasts-behind-a-bell-in-the-status-bar.md)),
+  which marks the ones that left unseen.
 - Each toast carries a title naming the failed action - "Commit failed" - drawn
   in JetBrains Mono Bold above the message, which is drawn in the regular face.
 - A message identical in title and text to one still shown is counted on that

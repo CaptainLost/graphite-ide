@@ -77,6 +77,24 @@ TEST_CASE("An error cleared with its folder is missed")
 	CHECK(history.MostSevereMissed() == Core::ToastKind::Error);
 }
 
+TEST_CASE("An error toast left to run out its twelve seconds unhovered is missed")
+{
+	Core::ToastStack stack;
+	Graphite::NotificationHistory history;
+	const Core::ToastStack::Clock::time_point shownAt{};
+	const std::uint64_t toastId = stack.Show(Core::ToastKind::Error, "Push failed", "rejected", shownAt);
+	history.Record(Entry(toastId, Core::ToastKind::Error));
+
+	stack.Update(shownAt + 12s);
+	for (const Core::ToastDeparture& departure : stack.TakeDepartures())
+	{
+		history.NoteDeparture(departure);
+	}
+
+	CHECK(history.Entries(true)[0]->Missed);
+	CHECK(history.MostSevereMissed() == Core::ToastKind::Error);
+}
+
 TEST_CASE("A toast closed by the user is not missed")
 {
 	Graphite::NotificationHistory history;

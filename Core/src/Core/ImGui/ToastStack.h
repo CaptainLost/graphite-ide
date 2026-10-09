@@ -58,8 +58,8 @@ namespace Core {
 		// Set once the toast starts to fade; it is removed kLeave after this.
 		std::optional<ToastClock::time_point> LeavingSince;
 
-		// The countdown, for a kind that expires: the time left as of CountingFrom, and
-		// CountingFrom empty while the pointer rests on the toast.
+		// The countdown: the time left as of CountingFrom, and CountingFrom empty while the
+		// pointer rests on the toast.
 		ToastClock::duration Left{};
 		std::optional<ToastClock::time_point> CountingFrom;
 		bool WasHovered = false;
@@ -73,7 +73,8 @@ namespace Core {
 	public:
 		using Clock = ToastClock;
 
-		static constexpr Clock::duration kLifetime = std::chrono::seconds(6);
+		static constexpr Clock::duration kErrorLifetime = std::chrono::seconds(12);
+		static constexpr Clock::duration kWarningAndSuccessLifetime = std::chrono::seconds(6);
 		static constexpr Clock::duration kEnter = std::chrono::milliseconds(150);
 		static constexpr Clock::duration kLeave = std::chrono::milliseconds(150);
 
@@ -106,13 +107,15 @@ namespace Core {
 		std::vector<ToastDeparture> TakeDepartures();
 
 		// When the stack next changes on its own: now while anything animates, else the
-		// earliest expiry, else nothing - an error waiting for its close button changes only
-		// on input, which wakes the loop by itself.
+		// earliest expiry, else nothing - a toast the pointer rests on changes only on input,
+		// which wakes the loop by itself.
 		std::optional<Clock::time_point> NextChange(Clock::time_point now) const;
 
 		bool IsAnyCountdownRunning() const;
 
 		static float ShareOfLifetimeLeft(const Toast& toast, Clock::time_point now);
+
+		static Clock::duration LifetimeOf(ToastKind kind);
 
 	private:
 		std::vector<Toast> m_Toasts;

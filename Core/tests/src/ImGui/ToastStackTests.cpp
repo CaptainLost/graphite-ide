@@ -29,18 +29,74 @@ TEST_CASE("A warning leaves once its lifetime has run and is removed after the f
 	CHECK(stack.Get().empty());
 }
 
-TEST_CASE("An error never expires and leaves only when closed")
+TEST_CASE("An error leaves once its twelve seconds have run and is removed after the fade")
 {
 	Core::ToastStack stack;
 	stack.Show(Core::ToastKind::Error, "Title", "failed", kStart);
 
-	stack.Update(kStart + 1h);
+	stack.Update(kStart + 11900ms);
 	REQUIRE(stack.Get().size() == 1);
 	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
 
-	stack.Close(stack.Get()[0].Id, kStart + 1h);
-	stack.Update(kStart + 1h + Core::ToastStack::kLeave);
+	stack.Update(kStart + 12s);
+	REQUIRE(stack.Get().size() == 1);
+	REQUIRE(stack.Get()[0].LeavingSince.has_value());
+	CHECK(*stack.Get()[0].LeavingSince == kStart + 12s);
+
+	stack.Update(kStart + 12s + Core::ToastStack::kLeave);
 	CHECK(stack.Get().empty());
+}
+
+TEST_CASE("An error closed by hand leaves without waiting for its countdown")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Error, "Title", "failed", kStart);
+
+	stack.Close(stack.Get()[0].Id, kStart + 1s);
+	stack.Update(kStart + 1s + Core::ToastStack::kLeave);
+	CHECK(stack.Get().empty());
+}
+
+TEST_CASE("An error lives twelve seconds and a warning or a confirmation six")
+{
+	CHECK(Core::ToastStack::LifetimeOf(Core::ToastKind::Error) == 12s);
+	CHECK(Core::ToastStack::LifetimeOf(Core::ToastKind::Warning) == 6s);
+	CHECK(Core::ToastStack::LifetimeOf(Core::ToastKind::Success) == 6s);
+}
+
+TEST_CASE("The pointer on an error pauses its countdown")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Error, "Title", "failed", kStart);
+	const std::uint64_t errorId = stack.Get()[0].Id;
+
+	stack.SetHovered(errorId, true, kStart + 10s);
+	stack.Update(kStart + 1min);
+	REQUIRE(stack.Get().size() == 1);
+	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
+
+	stack.SetHovered(errorId, false, kStart + 1min);
+	stack.Update(kStart + 1min + 1900ms);
+	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
+
+	stack.Update(kStart + 1min + 2s);
+	CHECK(stack.Get()[0].LeavingSince.has_value());
+}
+
+TEST_CASE("A twin gives an error its twelve seconds again")
+{
+	Core::ToastStack stack;
+	stack.Show(Core::ToastKind::Error, "Title", "same", kStart);
+	stack.Show(Core::ToastKind::Error, "Title", "same", kStart + 10s);
+
+	REQUIRE(stack.Get().size() == 1);
+	CHECK(stack.Get()[0].Count == 2);
+
+	stack.Update(kStart + 21900ms);
+	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
+
+	stack.Update(kStart + 22s);
+	CHECK(stack.Get()[0].LeavingSince.has_value());
 }
 
 TEST_CASE("Hovering pauses the countdown and leaving the toast resumes it with the time that was left")
@@ -157,12 +213,12 @@ TEST_CASE("The next change is the end of an animation or else the earliest expir
 	CHECK_FALSE(stack.NextChange(kStart + 1s).has_value());
 }
 
-TEST_CASE("An error waiting to be closed asks for no frame")
+TEST_CASE("An error that has faded in next changes when its twelve seconds run out")
 {
 	Core::ToastStack stack;
 	stack.Show(Core::ToastKind::Error, "Title", "e", kStart);
 	stack.Update(kStart + 1s);
-	CHECK_FALSE(stack.NextChange(kStart + 1s).has_value());
+	CHECK(stack.NextChange(kStart + 1s) == kStart + 12s);
 }
 
 TEST_CASE("Hover reported on two frames takes the time it had counted off only once")
@@ -197,7 +253,7 @@ TEST_CASE("A message merged into a hovered twin keeps it paused and gives it the
 	REQUIRE(stack.Get().size() == 1);
 	CHECK(stack.Get()[0].Count == 2);
 	CHECK_FALSE(stack.Get()[0].CountingFrom.has_value());
-	CHECK(stack.Get()[0].Left == Core::ToastStack::kLifetime);
+	CHECK(stack.Get()[0].Left == Core::ToastStack::LifetimeOf(Core::ToastKind::Warning));
 
 	stack.Update(kStart + 30s);
 	REQUIRE(stack.Get().size() == 1);
@@ -298,13 +354,14 @@ TEST_CASE("A hovered toast keeps the share of lifetime it had when the pointer a
 	CHECK(Core::ToastStack::ShareOfLifetimeLeft(stack.Get()[0], kStart + 31500ms) == doctest::Approx(0.25f));
 }
 
-TEST_CASE("An error has its whole lifetime left however long it waits")
+TEST_CASE("An error's share of lifetime left halves at six seconds and runs out at twelve")
 {
 	Core::ToastStack stack;
 	stack.Show(Core::ToastKind::Error, "Title", "failed", kStart);
-	stack.Update(kStart + 1h);
+	const Core::Toast& error = stack.Get()[0];
 
-	CHECK(Core::ToastStack::ShareOfLifetimeLeft(stack.Get()[0], kStart + 1h) == doctest::Approx(1.0f));
+	CHECK(Core::ToastStack::ShareOfLifetimeLeft(error, kStart + 6s) == doctest::Approx(0.5f));
+	CHECK(Core::ToastStack::ShareOfLifetimeLeft(error, kStart + 12s) == doctest::Approx(0.0f));
 }
 
 TEST_CASE("A toast closed by hand keeps the share it had when it was closed while it fades")
@@ -345,7 +402,7 @@ TEST_CASE("A twin gives its toast the whole lifetime back")
 	CHECK(Core::ToastStack::ShareOfLifetimeLeft(stack.Get()[0], kStart + 3s) == doctest::Approx(1.0f));
 }
 
-TEST_CASE("A countdown runs while a toast that expires is up and the pointer is elsewhere")
+TEST_CASE("A countdown runs while a toast is up and the pointer is elsewhere")
 {
 	Core::ToastStack stack;
 	CHECK_FALSE(stack.IsAnyCountdownRunning());
@@ -361,12 +418,12 @@ TEST_CASE("A countdown runs while a toast that expires is up and the pointer is 
 	CHECK_FALSE(stack.IsAnyCountdownRunning());
 }
 
-TEST_CASE("An error waiting to be closed runs no countdown")
+TEST_CASE("An error runs its countdown as any other toast does")
 {
 	Core::ToastStack stack;
 	stack.Show(Core::ToastKind::Error, "Title", "failed", kStart);
 
-	CHECK_FALSE(stack.IsAnyCountdownRunning());
+	CHECK(stack.IsAnyCountdownRunning());
 }
 
 TEST_CASE("Show returns the id of the toast it shows")
@@ -438,13 +495,20 @@ TEST_CASE("A toast the pointer rested on is reported as hovered when it leaves")
 	CHECK(departures[0].WasHovered);
 }
 
-TEST_CASE("An error waiting to be closed is never reported as expired")
+TEST_CASE("An error whose twelve seconds run out with the pointer never on it is reported as expired unhovered")
 {
 	Core::ToastStack stack;
-	stack.Show(Core::ToastKind::Error, "Title", "failed", kStart);
-	stack.Update(kStart + 1h);
+	const std::uint64_t shownId = stack.Show(Core::ToastKind::Error, "Title", "failed", kStart);
 
+	stack.Update(kStart + 11900ms);
 	CHECK(stack.TakeDepartures().empty());
+
+	stack.Update(kStart + 12s);
+	const std::vector<Core::ToastDeparture> departures = stack.TakeDepartures();
+	REQUIRE(departures.size() == 1);
+	CHECK(departures[0].Id == shownId);
+	CHECK(departures[0].Reason == Core::ToastDepartureReason::Expired);
+	CHECK_FALSE(departures[0].WasHovered);
 }
 
 TEST_CASE("Clearing reports as cleared only the toasts that were not already leaving")

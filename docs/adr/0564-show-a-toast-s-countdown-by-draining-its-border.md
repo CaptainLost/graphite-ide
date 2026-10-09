@@ -5,12 +5,11 @@ Date: 2026-10-06
 
 ## Context
 
-Success and Warning toasts leave six seconds after they appear, the countdown
-paused while the pointer is on them; an Error toast stays until it is closed
+Every toast leaves by itself - an Error twelve seconds after it appears, a
+Success or Warning after six - the countdown paused while the pointer is on it
 ([0557](0557-report-a-failed-action-in-a-toast-rather-than-in-the-panel-that-issued-it.md)).
-Nothing on screen said which kind a toast was in that respect, or how long one
-that leaves had left: a toast vanished while it was still being read, and an
-error looked no different from a toast that would go by itself.
+Nothing on screen said how long a toast had left: a toast vanished while it was
+still being read.
 
 The card already has a border in its kind's colour. The frame loop sleeps when
 nothing changes ([0530](0530-draw-a-frame-only-when-there-is-reason-to.md)), so
@@ -26,8 +25,8 @@ Show the time a toast has left by draining its coloured border.
   an edge.
 - The border stops while the countdown is paused and fills again when a twin
   restarts it. A toast closed by hand fades with the border it had.
-- An Error toast keeps its whole border: a border that never drains says the
-  toast stays until it is closed.
+- An Error toast drains like the others, over its longer lifetime, so its border
+  moves at half their speed.
 - While any countdown runs, the toasts ask for a frame every sixtieth of a second,
   not every frame; a paused or finished countdown asks for none.
 
@@ -38,27 +37,27 @@ without ImGui.
 ## Rationale
 
 The border is already there, so the countdown adds no element to a card that
-holds a title, a message and a close button, and a toast that will not leave
-by itself is told apart by the same means. Sixty frames a second keep a
+holds a title, a message and a close button. Sixty frames a second keep a
 draining line smooth at a fraction of the monitor's rate.
 
 ## Consequences
 
 ### Positive
 
-- Whether a toast will leave by itself, and when, can be read at a glance.
+- When a toast will leave can be read at a glance.
 - Pausing on hover becomes visible: the border stops.
 
 ### Negative
 
-- A Success or Warning toast keeps the loop awake for its whole lifetime, at
-  sixty frames a second, where it used to sleep until the expiry.
+- Every toast keeps the loop awake for its whole lifetime, at sixty frames a
+  second, where it used to sleep until the expiry: six seconds for a Success or
+  Warning toast, twelve for an Error.
 - A thin line is quieter than a bar; on a busy screen the countdown is easier to
   miss.
 
 ### Neutral
 
-- An Error toast looks exactly as it did.
+- An Error toast drains like the others, over its longer lifetime.
 
 ## Alternatives Considered
 

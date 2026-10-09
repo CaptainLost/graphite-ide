@@ -106,7 +106,7 @@ namespace Graphite {
 				if (check->Failure.has_value())
 				{
 					// The branch stays in the message: the check's failures do not name it, and
-					// an error toast stays until it is closed, long after the click.
+					// the error may be read long after the click, in the notification history.
 					ShowFailure(m_Events, "Delete branch failed", check->Branch + ": " + check->Failure->Message,
 								m_Model.GetWorkingDirectory());
 				}

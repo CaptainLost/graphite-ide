@@ -457,9 +457,9 @@ namespace Graphite {
 
 		// A failure reported for the folder being replaced - by a drop too, which publishes no
 		// WorkspaceClosedEvent - is about a folder no longer open; an error toast would otherwise
-		// stay until closed by hand. Here and not on WorkspaceOpenedEvent: by then the new folder
-		// has reported its own failures, and clearing would take those with it. Only the
-		// folder's: a toast about the application still applies.
+		// linger for its twelve seconds over the new one. Here and not on WorkspaceOpenedEvent:
+		// by then the new folder has reported its own failures, and clearing would take those
+		// with it. Only the folder's: a toast about the application still applies.
 		m_Events.Subscribe<WorkspaceOpeningEvent>([this](const WorkspaceOpeningEvent&) {
 			m_Toasts.Clear(ToastGroupOf(ToastScope::Folder));
 		});
@@ -515,9 +515,9 @@ namespace Graphite {
 			// state above is already dropped, so the expectations join it here.
 			m_DocumentWindows.ClearExpectedWrites();
 
-			// An error toast never expires, so one about a git write in this folder would
-			// outlive it. GitModel drops the failures nobody took yet on the same event. Only
-			// the folder's toasts go; one about the application outlives the folder.
+			// An error toast stays up for twelve seconds, so one about a git write in this folder
+			// would outlive it. GitModel drops the failures nobody took yet on the same event.
+			// Only the folder's toasts go; one about the application outlives the folder.
 			m_Toasts.Clear(ToastGroupOf(ToastScope::Folder));
 		});
 

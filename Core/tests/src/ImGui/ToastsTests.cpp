@@ -131,15 +131,23 @@ TEST_CASE("A toast pushed up by a newer one asks for frames until it arrives")
 	Frames frames;
 	Core::Toasts toasts;
 
+	// Once the toasts have faded in, their countdowns ask for a frame no sooner than a sixtieth
+	// of a second away, while a move asks for the very next one.
+	const std::chrono::milliseconds justUnderASixtieth{16};
+	const auto asksOnlyForTheCountdown = [&] {
+		(void)Core::Redraw::TakeDeadline();
+		const Core::Redraw::Clock::time_point beforeFrame = Core::Redraw::Clock::now();
+		frames.Next(toasts);
+		const std::optional<Core::Redraw::Clock::time_point> deadline = Core::Redraw::TakeDeadline();
+		return deadline.has_value() && *deadline >= beforeFrame + justUnderASixtieth;
+	};
+
 	toasts.Show(Core::ToastKind::Error, "Title", "older");
 	frames.Next(toasts);
 
-	// Errors never expire, so once a toast has faded in nothing but a move asks for a frame.
 	std::this_thread::sleep_for(Core::ToastStack::kEnter + std::chrono::milliseconds(50));
 	frames.Next(toasts);
-	(void)Core::Redraw::TakeDeadline();
-	frames.Next(toasts);
-	REQUIRE_FALSE(Core::Redraw::TakeDeadline().has_value());
+	REQUIRE(asksOnlyForTheCountdown());
 
 	// The newer one takes the bottom; the older one starts moving up to make room.
 	toasts.Show(Core::ToastKind::Error, "Title", "newer");
@@ -155,16 +163,14 @@ TEST_CASE("A toast pushed up by a newer one asks for frames until it arrives")
 	CHECK(*moving <= Core::Redraw::Clock::now());
 
 	// A second of ImAnim's frames takes the move to its end.
-	for (int i = 0; i < 60; ++i)
+	for (int frameIndex = 0; frameIndex < 60; ++frameIndex)
 	{
 		Core::Animation::BeginFrame();
 		frames.Next(toasts);
 	}
 
-	(void)Core::Redraw::TakeDeadline();
 	Core::Animation::BeginFrame();
-	frames.Next(toasts);
-	CHECK_FALSE(Core::Redraw::TakeDeadline().has_value());
+	CHECK(asksOnlyForTheCountdown());
 }
 
 TEST_CASE("Nothing shown asks for no frame")

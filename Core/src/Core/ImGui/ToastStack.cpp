@@ -8,11 +8,6 @@
 namespace Core {
 
 	namespace {
-		bool Expires(ToastKind kind)
-		{
-			return kind != ToastKind::Error;
-		}
-
 		Toast* Find(std::vector<Toast>& toasts, std::uint64_t id)
 		{
 			const auto found = std::ranges::find(toasts, id, &Toast::Id);
@@ -31,7 +26,7 @@ namespace Core {
 		if (twin != m_Toasts.end())
 		{
 			++twin->Count;
-			twin->Left = kLifetime;
+			twin->Left = LifetimeOf(kind);
 
 			// A hovered twin stays paused; the full lifetime starts when the pointer leaves.
 			if (twin->CountingFrom.has_value())
@@ -50,7 +45,7 @@ namespace Core {
 		toast.CopyText = std::move(copyText);
 		toast.Group = group;
 		toast.Shown = now;
-		toast.Left = kLifetime;
+		toast.Left = LifetimeOf(kind);
 		toast.CountingFrom = now;
 
 		const std::uint64_t shownId = toast.Id;
@@ -136,7 +131,8 @@ namespace Core {
 	{
 		for (Toast& toast : m_Toasts)
 		{
-			if (toast.LeavingSince.has_value() || !Expires(toast.Kind) || !toast.CountingFrom.has_value())
+			const bool countdownStopped = toast.LeavingSince.has_value() || !toast.CountingFrom.has_value();
+			if (countdownStopped)
 			{
 				continue;
 			}
@@ -168,7 +164,7 @@ namespace Core {
 				return now;
 			}
 
-			if (Expires(toast.Kind) && toast.CountingFrom.has_value())
+			if (toast.CountingFrom.has_value())
 			{
 				const Clock::time_point expiry = *toast.CountingFrom + toast.Left;
 				next = next.has_value() ? std::min(*next, expiry) : expiry;
@@ -182,8 +178,7 @@ namespace Core {
 	{
 		for (const Toast& toast : m_Toasts)
 		{
-			const bool countdownRunning =
-				Expires(toast.Kind) && toast.CountingFrom.has_value() && !toast.LeavingSince.has_value();
+			const bool countdownRunning = toast.CountingFrom.has_value() && !toast.LeavingSince.has_value();
 			if (countdownRunning)
 			{
 				return true;
@@ -193,13 +188,14 @@ namespace Core {
 		return false;
 	}
 
+	ToastStack::Clock::duration ToastStack::LifetimeOf(ToastKind kind)
+	{
+		const bool isError = kind == ToastKind::Error;
+		return isError ? kErrorLifetime : kWarningAndSuccessLifetime;
+	}
+
 	float ToastStack::ShareOfLifetimeLeft(const Toast& toast, Clock::time_point now)
 	{
-		if (!Expires(toast.Kind))
-		{
-			return 1.0f;
-		}
-
 		Clock::duration timeLeft = toast.Left;
 		if (toast.CountingFrom.has_value())
 		{
@@ -208,7 +204,8 @@ namespace Core {
 			timeLeft -= countedUntil - *toast.CountingFrom;
 		}
 
-		const float shareLeft = std::chrono::duration<float>(timeLeft) / std::chrono::duration<float>(kLifetime);
+		const float shareLeft =
+			std::chrono::duration<float>(timeLeft) / std::chrono::duration<float>(LifetimeOf(toast.Kind));
 		return std::clamp(shareLeft, 0.0f, 1.0f);
 	}
 }

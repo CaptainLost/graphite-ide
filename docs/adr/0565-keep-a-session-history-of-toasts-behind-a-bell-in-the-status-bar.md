@@ -25,6 +25,9 @@ from a bell at the right end of the status bar.
   it, and was not a confirmation. The bell shows a dot in the colour of the most
   severe missed entry. Opening the popup marks everything seen.
 - The bell opens the popup, and a click outside it, the bell included, closes it.
+- Error toasts expire too, after twelve seconds, where they used to stay until
+  closed. The history is what makes that safe: an error that expires with the
+  pointer never on it is missed, and lights the bell's dot in red.
 - Confirmations (`Success`) are hidden behind a filter.
 - An entry about a folder keeps that folder and shows it when another folder is
   open.
@@ -36,16 +39,26 @@ The application layer already owns the toasts (0557) and is the only place that
 knows the open folder. Core is the only place that knows how a toast left.
 Reporting departures keeps each fact where it is known.
 
+An error that stayed until closed was the only way not to lose it; with the
+history behind the bell it no longer has to cover the corner of the editor
+until someone clicks its close button. It is given twelve seconds, twice a
+warning's six, because it usually asks for something to be done and its
+message - often a git error several lines long - takes longer to read. Any
+longer and errors would again stand over the code long after they were read.
+
 ## Consequences
 
 ### Positive
 
 - Nothing a toast said is lost within a session.
 - The dot answers "did I miss something?" without opening anything.
+- An error clears the corner by itself instead of waiting for its close button.
 
 ### Negative
 
 - The history is gone after a restart.
+- An error read slowly can leave before it is finished: the pointer on it pauses
+  its countdown, and the popup has the rest.
 - The bell takes a little of the status bar's right end.
 - A toast that arrives while the popup is open appears beneath it, partly hidden,
   and its entry is already at the top of the list. ImGui puts every new window in
