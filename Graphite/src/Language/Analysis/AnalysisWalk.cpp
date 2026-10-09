@@ -20,7 +20,7 @@ namespace Graphite {
 		// anything about it — asking about anything else would just be a wasted round trip.
 		bool IsAnalysable(const std::filesystem::path& file)
 		{
-			return ServerConfigFor(LanguageOfPath(file)) != nullptr;
+			return LanguageHasServers(LanguageOfPath(file));
 		}
 
 		// Stops the walk at the edge of somebody else's project. A directory carrying its own

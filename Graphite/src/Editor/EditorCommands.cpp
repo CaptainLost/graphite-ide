@@ -1,7 +1,6 @@
 #include "Editor/EditorCommands.h"
 
 #include "Language/Registry/LanguageRegistry.h"
-#include "Language/Server/ServerRegistry.h"
 
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
@@ -70,7 +69,7 @@ namespace Graphite {
 
 	bool HasLanguageServer(const std::filesystem::path& path)
 	{
-		return ServerConfigFor(LanguageOfPath(path)) != nullptr;
+		return LanguageHasServers(LanguageOfPath(path));
 	}
 
 	bool CanRun(EditorAction action, const Core::OpenItem& item, bool clipboardHasText)

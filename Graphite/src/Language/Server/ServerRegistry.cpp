@@ -1,5 +1,7 @@
 #include "Language/Server/ServerRegistry.h"
 
+#include "Language/Registry/LanguageRegistry.h"
+
 #include <array>
 #include <vector>
 #include <system_error>
@@ -37,29 +39,6 @@ namespace Graphite {
 			std::error_code failed;
 			return std::filesystem::exists(path, failed) && !failed;
 		}
-	}
-
-	std::span<const LanguageId> LanguagesWithServers()
-	{
-		// Derived from ServerConfigFor rather than written out beside it. Adding a language is
-		// then a row in the table and nothing else: a second hand-kept list would be a second
-		// place to forget, and forgetting it here fails silently - the server simply never starts
-		// for that language and nothing says why.
-		static const std::vector<LanguageId> kConfigured = [] {
-			std::vector<LanguageId> configured;
-
-			for (const LanguageId language : kAllLanguages)
-			{
-				if (ServerConfigFor(language) != nullptr)
-				{
-					configured.push_back(language);
-				}
-			}
-
-			return configured;
-		}();
-
-		return kConfigured;
 	}
 
 	const ServerConfig* ServerConfigFor(LanguageId language)

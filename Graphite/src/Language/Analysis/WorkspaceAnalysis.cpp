@@ -2,7 +2,6 @@
 
 #include "Language/Analysis/AnalysisStore.h"
 #include "Language/Registry/LanguageRegistry.h"
-#include "Language/Server/ServerRegistry.h"
 
 #include "Core/FileSystem/FileSystem.h"
 
@@ -370,7 +369,7 @@ namespace Graphite {
 
 			const LanguageId language = LanguageOfPath(text.Path);
 
-			if (ServerConfigFor(language) == nullptr)
+			if (!LanguageHasServers(language))
 			{
 				// Nothing serves this language, so there is nobody to ask. Counted as done rather
 				// than left in the queue: it is as finished as it will ever be.

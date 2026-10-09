@@ -794,7 +794,7 @@ namespace Graphite {
 
 				const LanguageId language = LanguageOfPath(file);
 
-				if (ServerConfigFor(language) == nullptr ||
+				if (!LanguageHasServers(language) ||
 					std::find(seen.begin(), seen.end(), language) != seen.end())
 				{
 					return;

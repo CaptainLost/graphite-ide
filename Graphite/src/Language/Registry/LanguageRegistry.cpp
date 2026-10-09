@@ -5,32 +5,107 @@
 #include "Language/Syntax/CppLexer.h"
 
 #include <array>
+#include <cstddef>
 #include <string>
-#include <string_view>
-#include <utility>
+#include <vector>
 
 namespace Graphite {
 
 	namespace {
 
-		constexpr std::array<std::pair<std::string_view, LanguageId>, 9> kByExtension{{
-			{".cpp", LanguageId::Cpp},
-			{".cc", LanguageId::Cpp},
-			{".cxx", LanguageId::Cpp},
-			{".h", LanguageId::Cpp},
-			{".hpp", LanguageId::Cpp},
-			{".hxx", LanguageId::Cpp},
-			{".ipp", LanguageId::Cpp},
-			{".cs", LanguageId::CSharp},
-			{".ts", LanguageId::TypeScript},
+		constexpr std::array<std::string_view, 7> kCppExtensions{".cpp", ".cc", ".cxx", ".h", ".hpp", ".hxx", ".ipp"};
+		constexpr std::array<std::string_view, 1> kCSharpExtensions{".cs"};
+		constexpr std::array<std::string_view, 1> kTypeScriptExtensions{".ts"};
+
+		constexpr std::array<std::string_view, 1> kCppServers{"clangd"};
+
+		constexpr std::string_view kSlashSlashComment = "//";
+
+		constexpr std::array<LanguageDefinition, kAllLanguages.size()> kDefinitions{{
+			{.Id = LanguageId::PlainText},
+			{.Id = LanguageId::Cpp,
+			 .SettingsName = "Cpp",
+			 .DisplayName = "C++",
+			 .Extensions = kCppExtensions,
+			 .LineComment = kSlashSlashComment,
+			 .Syntax = SyntaxKind::CppLexer,
+			 .Servers = kCppServers},
+			{.Id = LanguageId::CSharp,
+			 .SettingsName = "CSharp",
+			 .DisplayName = "C#",
+			 .Extensions = kCSharpExtensions,
+			 .LineComment = kSlashSlashComment},
+			{.Id = LanguageId::TypeScript,
+			 .SettingsName = "TypeScript",
+			 .DisplayName = "TypeScript",
+			 .Extensions = kTypeScriptExtensions,
+			 .LineComment = kSlashSlashComment},
 		}};
+
+		consteval bool EveryDefinitionSitsAtItsOwnId()
+		{
+			for (std::size_t definitionIndex = 0; definitionIndex < kDefinitions.size(); ++definitionIndex)
+			{
+				if (static_cast<std::size_t>(kDefinitions[definitionIndex].Id) != definitionIndex)
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
+
+		static_assert(EveryDefinitionSitsAtItsOwnId(), "kDefinitions must list the languages in LanguageId order");
+
+		bool HasExtension(const LanguageDefinition& definition, std::string_view extension)
+		{
+			for (const std::string_view candidate : definition.Extensions)
+			{
+				if (candidate == extension)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		std::vector<LanguageId> CollectLanguagesWithServers()
+		{
+			std::vector<LanguageId> languages;
+
+			for (const LanguageDefinition& definition : kDefinitions)
+			{
+				if (!definition.Servers.empty())
+				{
+					languages.push_back(definition.Id);
+				}
+			}
+
+			return languages;
+		}
+	}
+
+	const LanguageDefinition& DefinitionOf(LanguageId language)
+	{
+		return kDefinitions[static_cast<std::size_t>(language)];
+	}
+
+	bool LanguageHasServers(LanguageId language)
+	{
+		return !DefinitionOf(language).Servers.empty();
+	}
+
+	std::span<const LanguageId> LanguagesWithServers()
+	{
+		static const std::vector<LanguageId> languagesWithServers = CollectLanguagesWithServers();
+
+		return languagesWithServers;
 	}
 
 	LanguageId LanguageOfPath(const std::filesystem::path& path)
 	{
-		// This also covers the dotfiles: a name whose only period is its first character has no
-		// extension at all by [fs.path.decompose], so ".gitignore" reports the whole name as the
-		// stem and an empty extension.
+		// A name whose only period is its first character has no extension at all, so ".gitignore" falls through here.
 		if (!path.has_extension())
 		{
 			return LanguageId::PlainText;
@@ -38,11 +113,11 @@ namespace Graphite {
 
 		const std::string extension = Core::LoweredExtension(path);
 
-		for (const auto& [suffix, language] : kByExtension)
+		for (const LanguageDefinition& definition : kDefinitions)
 		{
-			if (extension == suffix)
+			if (HasExtension(definition, extension))
 			{
-				return language;
+				return definition.Id;
 			}
 		}
 
@@ -51,43 +126,33 @@ namespace Graphite {
 
 	std::string_view LanguageDisplayName(LanguageId language)
 	{
-		switch (language)
-		{
-		case LanguageId::Cpp:
-			return "C++";
-		case LanguageId::CSharp:
-			return "C#";
-		case LanguageId::TypeScript:
-			return "TypeScript";
-		case LanguageId::PlainText:
-			return {};
-		}
-
-		return {};
+		return DefinitionOf(language).DisplayName;
 	}
 
 	const Lexer* LexerFor(LanguageId language)
 	{
-		// Stateless, so one instance serves every document. Function-local rather than a file
-		// scope object, per ADR 0033 on complex initialization of globals.
 		static const CppLexer cpp;
 
-		return language == LanguageId::Cpp ? &cpp : nullptr;
+		switch (DefinitionOf(language).Syntax)
+		{
+		case SyntaxKind::CppLexer:
+			return &cpp;
+		case SyntaxKind::None:
+			return nullptr;
+		}
+
+		return nullptr;
 	}
 
 	std::optional<std::string_view> LineCommentPrefix(LanguageId language)
 	{
-		switch (language)
-		{
-		case LanguageId::Cpp:
-		case LanguageId::CSharp:
-		case LanguageId::TypeScript:
-			return "//";
+		const std::string_view comment = DefinitionOf(language).LineComment;
 
-		case LanguageId::PlainText:
+		if (comment.empty())
+		{
 			return std::nullopt;
 		}
 
-		return std::nullopt;
+		return comment;
 	}
 }

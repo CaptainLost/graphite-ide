@@ -11,7 +11,6 @@
 
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/LspClient.h"
-#include "Language/Server/ServerRegistry.h"
 
 #include "Persistence/CaretRestore.h"
 
@@ -1340,7 +1339,7 @@ namespace Graphite {
 
 		// The one test for "a server serves this document". A language with no row in the server
 		// registry gets no lens state at all, which is what puts a null LensModel on EditorView.
-		if (ServerConfigFor(language) == nullptr || !item.Document)
+		if (!LanguageHasServers(language) || !item.Document)
 		{
 			return nullptr;
 		}
@@ -1771,7 +1770,7 @@ namespace Graphite {
 
 		const LanguageId language = LanguageOfPath(item.Path);
 
-		if (ServerConfigFor(language) == nullptr)
+		if (!LanguageHasServers(language))
 		{
 			// Nothing configured to ask - the same answer a server that never started would give,
 			// said immediately rather than after a round trip that could not have happened.
@@ -1860,7 +1859,7 @@ namespace Graphite {
 											  const FilePosition& where, const std::string& symbol,
 											  ReferencesPanel& panel)
 	{
-		if (ServerConfigFor(language) == nullptr)
+		if (!LanguageHasServers(language))
 		{
 			// Nothing configured to ask - the same answer a server that never started would give,
 			// said immediately rather than after a round trip that could not have happened.
