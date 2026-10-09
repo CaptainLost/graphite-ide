@@ -45,12 +45,13 @@ project "GraphiteTests"
         "%{IncludeDir.ImPlot}",
         "%{IncludeDir.MdiIcons}",
         "%{IncludeDir.spdlog}",
-        "%{IncludeDir.json}"
+        "%{IncludeDir.json}",
+        "%{IncludeDir.TreeSitter}"
     }
 
     externalwarnings "Off"
 
-    links { "GraphiteLib", "Core", "GLFW", "ImGui", "libgit2", "pugixml", "opengl32.lib", "dwmapi.lib", "ole32.lib", "shell32.lib", "ws2_32.lib", "secur32.lib" }
+    links { "GraphiteLib", "Core", "GLFW", "ImGui", "libgit2", "pugixml", "tree-sitter", "tree-sitter-c-sharp", "opengl32.lib", "dwmapi.lib", "ole32.lib", "shell32.lib", "ws2_32.lib", "secur32.lib" }
 
     filter "system:windows"
         systemversion "latest"

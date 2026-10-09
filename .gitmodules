@@ -26,3 +26,9 @@
 [submodule "vendor/implot"]
 	path = vendor/implot
 	url = https://github.com/epezent/implot.git
+[submodule "vendor/tree-sitter"]
+	path = vendor/tree-sitter
+	url = https://github.com/tree-sitter/tree-sitter.git
+[submodule "vendor/tree-sitter-c-sharp"]
+	path = vendor/tree-sitter-c-sharp
+	url = https://github.com/tree-sitter/tree-sitter-c-sharp.git
