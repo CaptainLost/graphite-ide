@@ -33,7 +33,7 @@ namespace Graphite {
 		std::function<void(std::string_view)> OnCopied;
 
 	private:
-		bool DrawHeader();
+		bool DrawHeader(const Core::ToastPalette& palette);
 		void ToggleExpanded(std::uint64_t toastId);
 		void Copy(const std::string& copiedText);
 		void NoteClosed();

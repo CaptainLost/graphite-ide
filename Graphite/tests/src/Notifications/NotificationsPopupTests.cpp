@@ -174,6 +174,21 @@ namespace {
 		return extent;
 	}
 
+	bool DrawsInColourWithin(const ImGuiWindow& window, ImU32 colour, ImVec2 areaMin, ImVec2 areaMax)
+	{
+		for (const ImDrawVert& vertex : window.DrawList->VtxBuffer)
+		{
+			const bool insideArea = vertex.pos.x >= areaMin.x && vertex.pos.x <= areaMax.x && vertex.pos.y >= areaMin.y &&
+									vertex.pos.y <= areaMax.y;
+			const bool drawnThereInColour = insideArea && HasColourOf(vertex, colour);
+			if (drawnThereInColour)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
 	std::string WordsOfText(int wordCount)
 	{
 		std::string text;
@@ -748,4 +763,22 @@ TEST_CASE("Ticking Show confirmations in the header lists the confirmations it h
 
 	screen.Next();
 	CHECK(PopupScreen::PopupWindow().Size.y > heightWithNothingListed);
+}
+
+TEST_CASE("The Show confirmations box is outlined in the dim text colour with the pointer away from it")
+{
+	PopupScreen screen;
+	screen.Palette.TextDim = {.R = 0.25f, .G = 0.5f, .B = 0.75f};
+	screen.OpenFromBell();
+
+	const ImVec2 boxCentre = screen.ConfirmationsCheckboxFrame();
+	const float halfSide = ImGui::GetFrameHeight() * 0.5f;
+
+	// The outline's anti-aliased edge may reach a pixel past the box.
+	const float fringe = 1.0f;
+	const ImVec2 aroundTheBoxMin(boxCentre.x - halfSide - fringe, boxCentre.y - halfSide - fringe);
+	const ImVec2 aroundTheBoxMax(boxCentre.x + halfSide + fringe, boxCentre.y + halfSide + fringe);
+
+	CHECK(DrawsInColourWithin(PopupScreen::PopupWindow(), OpaqueColourOf(screen.Palette.TextDim), aroundTheBoxMin,
+							  aroundTheBoxMax));
 }
