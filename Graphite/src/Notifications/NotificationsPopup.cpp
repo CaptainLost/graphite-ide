@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <format>
 #include <optional>
 #include <string>
@@ -29,8 +30,7 @@ namespace Graphite {
 		constexpr std::size_t kCollapsedLines = 4;
 		constexpr float kHighestShareOfWindow = 0.6f;
 		constexpr float kIconGap = 12.0f;
-		constexpr float kRowPaddingX = 8.0f;
-		constexpr float kRowPaddingY = 6.0f;
+		constexpr float kRowInset = 8.0f;
 		constexpr float kRowRounding = 4.0f;
 
 		struct EntryLayout
@@ -89,6 +89,17 @@ namespace Graphite {
 			return hiddenLines == 1 ? std::string("\u2026 1 more line") : std::format("\u2026 {} more lines", hiddenLines);
 		}
 
+		// Floored: half a pixel here puts every row below off the pixel grid and blurs its highlight.
+		float IconOverhang()
+		{
+			return std::floor((Core::ToastIconDiameter() - ImGui::GetFontSize()) * 0.5f);
+		}
+
+		float FirstLineTop(float rowTop)
+		{
+			return rowTop + Core::Scaled(kRowInset) + IconOverhang();
+		}
+
 		EntryLayout LayOutEntry(const NotificationEntry& entry, bool expanded, float textWidth,
 								const std::filesystem::path& openFolder, const std::chrono::time_zone* zone)
 		{
@@ -114,7 +125,9 @@ namespace Graphite {
 			const std::size_t textLines = titleLines + folderLines + layout.VisibleLines + moreLines;
 
 			const float textHeight = static_cast<float>(textLines) * ImGui::GetFontSize();
-			layout.Height = std::max(textHeight, Core::ToastIconDiameter()) + 2.0f * Core::Scaled(kRowPaddingY);
+			const float contentHeight = std::max(Core::ToastIconDiameter(), IconOverhang() + textHeight);
+			const float inset = Core::Scaled(kRowInset);
+			layout.Height = inset + contentHeight + inset;
 			return layout;
 		}
 
@@ -123,8 +136,9 @@ namespace Graphite {
 			ImDrawList* const draw = ImGui::GetWindowDrawList();
 			const ImVec2 rowMin = ImGui::GetItemRectMin();
 			const ImVec2 rowMax = ImGui::GetItemRectMax();
-			const float contentLeft = rowMin.x + Core::Scaled(kRowPaddingX);
-			const float contentRight = rowMax.x - Core::Scaled(kRowPaddingX);
+			const float inset = Core::Scaled(kRowInset);
+			const float contentLeft = rowMin.x + inset;
+			const float contentRight = rowMax.x - inset;
 			const float lineHeight = ImGui::GetFontSize();
 			const float iconDiameter = Core::ToastIconDiameter();
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;
@@ -134,9 +148,11 @@ namespace Graphite {
 				draw->AddRectFilled(rowMin, rowMax, ImGui::GetColorU32(ImGuiCol_HeaderHovered), Core::Scaled(kRowRounding));
 			}
 
-			const float firstLineY = rowMin.y + Core::Scaled(kRowPaddingY);
-			const ImVec2 iconCentre(contentLeft + iconDiameter * 0.5f, firstLineY + lineHeight * 0.5f);
+			const float iconTop = rowMin.y + inset;
+			const ImVec2 iconCentre(contentLeft + iconDiameter * 0.5f, iconTop + iconDiameter * 0.5f);
 			Core::DrawToastIcon(*draw, entry.Kind, iconCentre, palette);
+
+			const float firstLineY = FirstLineTop(rowMin.y);
 
 			const float textX = contentLeft + iconDiameter + Core::Scaled(kIconGap);
 			const ImU32 textColour = ImGui::GetColorU32(ToImVec4(palette.Text));
@@ -187,7 +203,7 @@ namespace Graphite {
 											float rowWidth, const std::filesystem::path& openFolder, const std::chrono::time_zone* zone)
 		{
 			const float textWidth =
-				std::max(rowWidth - 2.0f * Core::Scaled(kRowPaddingX) - Core::ToastIconDiameter() - Core::Scaled(kIconGap), 1.0f);
+				std::max(rowWidth - 2.0f * Core::Scaled(kRowInset) - Core::ToastIconDiameter() - Core::Scaled(kIconGap), 1.0f);
 
 			std::vector<EntryLayout> rows;
 			rows.reserve(entries.size());

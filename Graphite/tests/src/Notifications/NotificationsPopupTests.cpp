@@ -142,6 +142,38 @@ namespace {
 		return extent;
 	}
 
+	struct VerticalExtent
+	{
+		float Top = FLT_MAX;
+		float Bottom = -FLT_MAX;
+	};
+
+	ImU32 OpaqueColourOf(const Core::Color& colour)
+	{
+		return ImGui::ColorConvertFloat4ToU32(ImVec4(colour.R, colour.G, colour.B, 1.0f));
+	}
+
+	// Alpha is left out of the comparison: an anti-aliased edge is drawn in the shape's colour at
+	// no alpha.
+	bool HasColourOf(const ImDrawVert& vertex, ImU32 colour)
+	{
+		return (vertex.col & ~IM_COL32_A_MASK) == (colour & ~IM_COL32_A_MASK);
+	}
+
+	VerticalExtent DrawnExtentInColour(const ImGuiWindow& window, ImU32 colour)
+	{
+		VerticalExtent extent;
+		for (const ImDrawVert& vertex : window.DrawList->VtxBuffer)
+		{
+			if (HasColourOf(vertex, colour))
+			{
+				extent.Top = std::min(extent.Top, vertex.pos.y);
+				extent.Bottom = std::max(extent.Bottom, vertex.pos.y);
+			}
+		}
+		return extent;
+	}
+
 	std::string WordsOfText(int wordCount)
 	{
 		std::string text;
@@ -662,6 +694,29 @@ TEST_CASE("An entry's icon, folder line, message and time keep eight pixels clea
 	CHECK(drawn.Left <= rowLeft + rowPadding);
 	CHECK(drawn.Right <= rowRight - rowPadding);
 	CHECK(drawn.Right >= rowRight - rowPadding - glyphBearing);
+}
+
+TEST_CASE("An entry's icon keeps eight pixels clear of the top and the bottom of its row")
+{
+	PopupScreen screen;
+	screen.Palette.Error = {.R = 0.9f, .G = 0.2f, .B = 0.2f};
+	const std::string noMessage;
+	screen.History.Record(Entry(1, Core::ToastKind::Error, noMessage));
+	screen.OpenFromBell();
+
+	const ImGuiWindow& list = PopupScreen::ListWindow();
+	const float rowTop = list.Pos.y;
+	const float rowBottom = list.Pos.y + list.Size.y;
+	const float rowInset = 8.0f;
+
+	// The icon's anti-aliased edge reaches half a pixel out of its circle.
+	const float fringe = 1.0f;
+
+	const VerticalExtent icon = DrawnExtentInColour(list, OpaqueColourOf(screen.Palette.Error));
+	CHECK(icon.Top >= rowTop + rowInset - fringe);
+	CHECK(icon.Top <= rowTop + rowInset);
+	CHECK(icon.Bottom <= rowBottom - rowInset + fringe);
+	CHECK(icon.Bottom >= rowBottom - rowInset);
 }
 
 TEST_CASE("A hovered entry is highlighted across the whole row")
