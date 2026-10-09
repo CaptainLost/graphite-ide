@@ -29,7 +29,8 @@ namespace Graphite {
 		constexpr std::size_t kCollapsedLines = 4;
 		constexpr float kHighestShareOfWindow = 0.6f;
 		constexpr float kIconGap = 12.0f;
-		constexpr float kRowPadding = 6.0f;
+		constexpr float kRowPaddingX = 8.0f;
+		constexpr float kRowPaddingY = 6.0f;
 		constexpr float kRowRounding = 4.0f;
 
 		struct EntryLayout
@@ -113,15 +114,17 @@ namespace Graphite {
 			const std::size_t textLines = titleLines + folderLines + layout.VisibleLines + moreLines;
 
 			const float textHeight = static_cast<float>(textLines) * ImGui::GetFontSize();
-			layout.Height = std::max(textHeight, Core::ToastIconDiameter()) + 2.0f * Core::Scaled(kRowPadding);
+			layout.Height = std::max(textHeight, Core::ToastIconDiameter()) + 2.0f * Core::Scaled(kRowPaddingY);
 			return layout;
 		}
 
-		void DrawEntry(const NotificationEntry& entry, const EntryLayout& layout, const Core::ToastPalette& palette, float rowWidth)
+		void DrawEntry(const NotificationEntry& entry, const EntryLayout& layout, const Core::ToastPalette& palette)
 		{
 			ImDrawList* const draw = ImGui::GetWindowDrawList();
 			const ImVec2 rowMin = ImGui::GetItemRectMin();
 			const ImVec2 rowMax = ImGui::GetItemRectMax();
+			const float contentLeft = rowMin.x + Core::Scaled(kRowPaddingX);
+			const float contentRight = rowMax.x - Core::Scaled(kRowPaddingX);
 			const float lineHeight = ImGui::GetFontSize();
 			const float iconDiameter = Core::ToastIconDiameter();
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;
@@ -131,16 +134,16 @@ namespace Graphite {
 				draw->AddRectFilled(rowMin, rowMax, ImGui::GetColorU32(ImGuiCol_HeaderHovered), Core::Scaled(kRowRounding));
 			}
 
-			const float firstLineY = rowMin.y + Core::Scaled(kRowPadding);
-			const ImVec2 iconCentre(rowMin.x + iconDiameter * 0.5f, firstLineY + lineHeight * 0.5f);
+			const float firstLineY = rowMin.y + Core::Scaled(kRowPaddingY);
+			const ImVec2 iconCentre(contentLeft + iconDiameter * 0.5f, firstLineY + lineHeight * 0.5f);
 			Core::DrawToastIcon(*draw, entry.Kind, iconCentre, palette);
 
-			const float textX = rowMin.x + iconDiameter + Core::Scaled(kIconGap);
+			const float textX = contentLeft + iconDiameter + Core::Scaled(kIconGap);
 			const ImU32 textColour = ImGui::GetColorU32(ToImVec4(palette.Text));
 			const ImU32 dimColour = ImGui::GetColorU32(ToImVec4(palette.TextDim));
 			const ImU32 messageColour = ImGui::GetColorU32(ToImVec4(Core::ToastMessageColour(palette)));
 
-			const float timeX = rowMin.x + rowWidth - MeasureUnrounded(layout.Time, false);
+			const float timeX = contentRight - MeasureUnrounded(layout.Time, false);
 			draw->AddText(FontFor(false), lineHeight, ImVec2(timeX, firstLineY), dimColour, layout.Time.c_str());
 
 			const ImVec4 headingClip(textX, firstLineY, timeX - spacing, firstLineY + lineHeight);
@@ -153,7 +156,7 @@ namespace Graphite {
 			}
 
 			float lineY = firstLineY + lineHeight;
-			const ImVec4 textClip(textX, rowMin.y, rowMax.x, rowMax.y);
+			const ImVec4 textClip(textX, rowMin.y, contentRight, rowMax.y);
 
 			if (!layout.FolderLine.empty())
 			{
@@ -183,7 +186,8 @@ namespace Graphite {
 		std::vector<EntryLayout> LayOutRows(const std::vector<const NotificationEntry*>& entries, const NotificationsPopup& popup,
 											float rowWidth, const std::filesystem::path& openFolder, const std::chrono::time_zone* zone)
 		{
-			const float textWidth = std::max(rowWidth - Core::ToastIconDiameter() - Core::Scaled(kIconGap), 1.0f);
+			const float textWidth =
+				std::max(rowWidth - 2.0f * Core::Scaled(kRowPaddingX) - Core::ToastIconDiameter() - Core::Scaled(kIconGap), 1.0f);
 
 			std::vector<EntryLayout> rows;
 			rows.reserve(entries.size());
@@ -263,7 +267,7 @@ namespace Graphite {
 					outcome.ToggledToastId = entry.ToastId;
 				}
 
-				DrawEntry(entry, row, palette, list.RowWidth);
+				DrawEntry(entry, row, palette);
 
 				if (Core::BeginRightClickPopup("##entryMenu"))
 				{
@@ -315,8 +319,9 @@ namespace Graphite {
 
 		const ImGuiViewport* const viewport = ImGui::GetMainViewport();
 		const ImGuiStyle& style = ImGui::GetStyle();
+		const ImVec2 popupPadding(Core::ToastPaddingX(), Core::ToastPaddingY());
 		const float popupWidth = Core::ToastCardWidth();
-		const float listWidth = popupWidth - 2.0f * style.WindowPadding.x;
+		const float listWidth = popupWidth - 2.0f * popupPadding.x;
 		const float highestListHeight = viewport->WorkSize.y * kHighestShareOfWindow;
 		const std::vector<const NotificationEntry*> entries = history.Entries(m_ShowConfirmations);
 		const ListLayout list = LayOutList(entries, *this, listWidth, highestListHeight, openFolder, zone);
@@ -325,8 +330,8 @@ namespace Graphite {
 		// held the frame before, so the popup would open at a stale height and lag every expand.
 		const float headerHeight = ImGui::GetFrameHeight();
 		const float separatorHeight = std::max(style.SeparatorSize, 1.0f);
-		const float popupHeight = style.WindowPadding.y + headerHeight + style.ItemSpacing.y + separatorHeight +
-								  style.ItemSpacing.y + list.Height + style.WindowPadding.y;
+		const float popupHeight = popupPadding.y + headerHeight + style.ItemSpacing.y + separatorHeight +
+								  style.ItemSpacing.y + list.Height + popupPadding.y;
 
 		const float margin = Core::ToastMargin();
 		const ImVec2 bottomRight(viewport->WorkPos.x + viewport->WorkSize.x - margin,
@@ -336,7 +341,13 @@ namespace Graphite {
 		ImGui::SetNextWindowSize(ImVec2(popupWidth, popupHeight), ImGuiCond_Always);
 		ImGui::SetNextWindowViewport(viewport->ID);
 
-		if (!ImGui::BeginPopup(kPopupId, ImGuiWindowFlags_NoMove))
+		// Popped as soon as the popup has begun: ImGui fixes a window's padding in its Begin, and
+		// the entry menu opened inside it keeps the default one.
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, popupPadding);
+		const bool popupBegun = ImGui::BeginPopup(kPopupId, ImGuiWindowFlags_NoMove);
+		ImGui::PopStyleVar();
+
+		if (!popupBegun)
 		{
 			m_Open = false;
 			m_EntryMenuOpenLastFrame = false;

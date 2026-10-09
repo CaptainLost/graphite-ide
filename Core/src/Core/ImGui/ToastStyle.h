@@ -9,6 +9,8 @@ namespace Core {
 
 	float ToastCardWidth();
 	float ToastMargin();
+	float ToastPaddingX();
+	float ToastPaddingY();
 	float ToastIconDiameter();
 
 	const Color& ToastAccentOf(const ToastPalette& palette, ToastKind kind);

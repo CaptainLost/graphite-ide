@@ -31,10 +31,8 @@ namespace Core {
 		// Between two cards.
 		constexpr float kSpacing = 8.0f;
 
-		// Inside the card: around its contents, between the kind's icon and the text, and
-		// between the title and the message.
-		constexpr float kPaddingX = 14.0f;
-		constexpr float kPaddingY = 12.0f;
+		// Inside the card: between the kind's icon and the text, and between the title and the
+		// message.
 		constexpr float kIconGap = 12.0f;
 		constexpr float kTitleGap = 4.0f;
 
@@ -184,8 +182,8 @@ namespace Core {
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
 		const ImGuiStyle& style = ImGui::GetStyle();
 		const float width = ToastCardWidth();
-		const float paddingX = Scaled(kPaddingX);
-		const float paddingY = Scaled(kPaddingY);
+		const float paddingX = ToastPaddingX();
+		const float paddingY = ToastPaddingY();
 		const float iconDiameter = ToastIconDiameter();
 		const float buttonWidth = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
 		const float closeWidth = style.ItemSpacing.x + buttonWidth;

@@ -9,6 +9,8 @@ namespace Core {
 	namespace {
 		constexpr float kCardWidth = 460.0f;
 		constexpr float kMargin = 12.0f;
+		constexpr float kPaddingX = 14.0f;
+		constexpr float kPaddingY = 12.0f;
 		constexpr float kIconDiameter = 24.0f;
 		constexpr float kMarkThickness = 2.0f;
 
@@ -64,6 +66,16 @@ namespace Core {
 	float ToastMargin()
 	{
 		return Scaled(kMargin);
+	}
+
+	float ToastPaddingX()
+	{
+		return Scaled(kPaddingX);
+	}
+
+	float ToastPaddingY()
+	{
+		return Scaled(kPaddingY);
 	}
 
 	float ToastIconDiameter()

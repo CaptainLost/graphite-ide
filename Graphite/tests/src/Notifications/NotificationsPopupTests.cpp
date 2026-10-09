@@ -5,12 +5,15 @@
 #include "Editor/StatusBar/StatusBar.h"
 #include "Notifications/NotificationHistory.h"
 #include "Notifications/NotificationsPopup.h"
+#include "UI/IconButton.h"
 
 #include "Core/ImGui/Toasts.h"
 #include "Core/Text/DocumentSet.h"
 
 #include <imgui_internal.h>
 
+#include <algorithm>
+#include <cfloat>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -87,16 +90,67 @@ namespace {
 			return ImVec2(list.InnerRect.Min.x + 40.0f, list.InnerRect.Min.y + 8.0f);
 		}
 
-		// Over the first item of the menu open above the popup.
-		static ImVec2 FirstMenuItem()
+		static const ImGuiWindow& EntryMenuWindow()
 		{
 			const ImGuiContext& context = *ImGui::GetCurrentContext();
 			REQUIRE(context.OpenPopupStack.Size == 2);
 			const ImGuiWindow* menu = context.OpenPopupStack[1].Window;
 			REQUIRE(menu != nullptr);
-			return ImVec2(menu->Pos.x + menu->WindowPadding.x + 4.0f, menu->Pos.y + menu->WindowPadding.y + 4.0f);
+			return *menu;
+		}
+
+		// Over the first item of the menu open above the popup.
+		static ImVec2 FirstMenuItem()
+		{
+			const ImGuiWindow& menu = EntryMenuWindow();
+			return ImVec2(menu.Pos.x + menu.WindowPadding.x + 4.0f, menu.Pos.y + menu.WindowPadding.y + 4.0f);
+		}
+
+		// Measured inside a frame: the text's size needs the font a frame sets up.
+		ImVec2 ConfirmationsCheckboxFrame()
+		{
+			ImVec2 frameCentre;
+			Frames.Next([&] {
+				Draw();
+				const ImGuiWindow& popup = PopupWindow();
+				const ImGuiStyle& style = ImGui::GetStyle();
+				const float frameSide = ImGui::GetFrameHeight();
+				const float labelWidth = ImGui::CalcTextSize("Show confirmations").x;
+				const float contentRight = popup.Pos.x + popup.Size.x - popup.WindowPadding.x;
+				const float frameLeft = contentRight - Graphite::IconButtonSize() - style.ItemSpacing.x - labelWidth -
+										style.ItemInnerSpacing.x - frameSide;
+				frameCentre = ImVec2(frameLeft + frameSide * 0.5f, popup.Pos.y + popup.WindowPadding.y + frameSide * 0.5f);
+			});
+			return frameCentre;
 		}
 	};
+
+	struct HorizontalExtent
+	{
+		float Left = FLT_MAX;
+		float Right = -FLT_MAX;
+	};
+
+	HorizontalExtent DrawnExtentOf(const ImGuiWindow& window)
+	{
+		HorizontalExtent extent;
+		for (const ImDrawVert& vertex : window.DrawList->VtxBuffer)
+		{
+			extent.Left = std::min(extent.Left, vertex.pos.x);
+			extent.Right = std::max(extent.Right, vertex.pos.x);
+		}
+		return extent;
+	}
+
+	std::string WordsOfText(int wordCount)
+	{
+		std::string text;
+		for (int wordNumber = 1; wordNumber <= wordCount; ++wordNumber)
+		{
+			text += "word" + std::to_string(wordNumber) + " ";
+		}
+		return text;
+	}
 
 	Graphite::NotificationEntry Entry(std::uint64_t toastId, Core::ToastKind kind, std::string message = "message")
 	{
@@ -461,4 +515,92 @@ TEST_CASE("Clear in the popup's header empties the history")
 	screen.Click(clearButton);
 
 	CHECK(screen.History.Entries(true).empty());
+}
+
+TEST_CASE("The popup is padded as a toast card is, with its list filling the space inside the padding")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error, LinesOfText(12)));
+	screen.OpenFromBell();
+
+	const ImGuiWindow& popup = PopupScreen::PopupWindow();
+	const ImGuiWindow& list = PopupScreen::ListWindow();
+	const float toastCardPaddingX = 14.0f;
+	const float toastCardPaddingY = 12.0f;
+
+	CHECK(popup.WindowPadding.x == toastCardPaddingX);
+	CHECK(popup.WindowPadding.y == toastCardPaddingY);
+	CHECK(list.Pos.x == doctest::Approx(popup.Pos.x + toastCardPaddingX));
+	CHECK(list.Pos.x + list.Size.x == doctest::Approx(popup.Pos.x + popup.Size.x - toastCardPaddingX));
+	CHECK(list.ContentSize.x == doctest::Approx(list.InnerRect.GetWidth()));
+	CHECK(list.Pos.y + list.Size.y == doctest::Approx(popup.Pos.y + popup.Size.y - toastCardPaddingY));
+}
+
+TEST_CASE("An entry's menu keeps the default window padding")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error));
+	screen.OpenFromBell();
+	screen.Click(PopupScreen::FirstEntry(), ImGuiMouseButton_Right);
+	screen.Next();
+
+	const ImGuiWindow& menu = PopupScreen::EntryMenuWindow();
+	CHECK(menu.WindowPadding.x == ImGui::GetStyle().WindowPadding.x);
+	CHECK(menu.WindowPadding.y == ImGui::GetStyle().WindowPadding.y);
+}
+
+TEST_CASE("An entry's icon, folder line, message and time keep eight pixels clear of the row's sides")
+{
+	PopupScreen screen;
+	Graphite::NotificationEntry entry = Entry(1, Core::ToastKind::Error, WordsOfText(60));
+	entry.Folder = "D:/Repos/" + std::string(200, 'f');
+	screen.History.Record(entry);
+	screen.OpenFromBell();
+
+	const ImGuiWindow& list = PopupScreen::ListWindow();
+	const float rowLeft = list.Pos.x;
+	const float rowRight = list.Pos.x + list.Size.x;
+	const float rowPadding = 8.0f;
+
+	// The icon's anti-aliased edge reaches half a pixel out of its circle, and the last glyph of
+	// the time may stop a pixel short of its advance.
+	const float fringe = 1.0f;
+	const float glyphBearing = 2.0f;
+
+	const HorizontalExtent drawn = DrawnExtentOf(list);
+	CHECK(drawn.Left >= rowLeft + rowPadding - fringe);
+	CHECK(drawn.Left <= rowLeft + rowPadding);
+	CHECK(drawn.Right <= rowRight - rowPadding);
+	CHECK(drawn.Right >= rowRight - rowPadding - glyphBearing);
+}
+
+TEST_CASE("A hovered entry is highlighted across the whole row")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error));
+	screen.OpenFromBell();
+
+	const ImVec2 overTheEntry = PopupScreen::FirstEntry();
+	ImGui::GetIO().AddMousePosEvent(overTheEntry.x, overTheEntry.y);
+	screen.Next();
+
+	const ImGuiWindow& list = PopupScreen::ListWindow();
+	const HorizontalExtent drawn = DrawnExtentOf(list);
+	CHECK(drawn.Left <= list.Pos.x);
+	CHECK(drawn.Right >= list.Pos.x + list.Size.x);
+}
+
+TEST_CASE("Ticking Show confirmations in the header lists the confirmations it hid")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Success));
+	screen.OpenFromBell();
+	const float heightWithNothingListed = PopupScreen::PopupWindow().Size.y;
+
+	screen.Click(screen.ConfirmationsCheckboxFrame());
+	const ImGuiID checkboxId = ImHashStr("Show confirmations", 0, PopupScreen::PopupWindow().ID);
+	CHECK(ImGui::GetCurrentContext()->HoveredId == checkboxId);
+
+	screen.Next();
+	CHECK(PopupScreen::PopupWindow().Size.y > heightWithNothingListed);
 }
