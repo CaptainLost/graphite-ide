@@ -14,7 +14,7 @@ namespace Graphite {
 	{
 		for (const Token& token : rawTokens)
 		{
-			if (token.Kind != TokenKind::Identifier)
+			if (!NamesSomething(token.Kind))
 			{
 				continue;
 			}

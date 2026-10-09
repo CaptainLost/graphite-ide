@@ -20,10 +20,8 @@ namespace Graphite {
 		Punctuation,
 		Invalid,
 
-		// What a language server says an identifier is, which a lexer cannot know: it sees
-		// `Application`, `s_Instance` and `CORE_ASSERT` as one kind of word. These are drawn over
-		// the lexer's own colouring where a server answers, and are simply never used where none
-		// does - so a file with no server behind it looks exactly as it did before they existed.
+		// A line lexer cannot tell `Application`, `s_Instance` and `CORE_ASSERT` apart, so a
+		// grammar may only guess these; a server's answer overrules the guess.
 		SemanticType,
 		SemanticFunction,
 		SemanticMacro,
@@ -36,4 +34,33 @@ namespace Graphite {
 		// past the end of it.
 		Count
 	};
+
+	// A grammar guesses at what a name is and a server may overrule it, so a name can arrive as any of these.
+	inline bool NamesSomething(TokenKind kind)
+	{
+		switch (kind)
+		{
+		case TokenKind::Identifier:
+		case TokenKind::SemanticType:
+		case TokenKind::SemanticFunction:
+		case TokenKind::SemanticMacro:
+		case TokenKind::SemanticMember:
+		case TokenKind::SemanticParameter:
+		case TokenKind::SemanticNamespace:
+			return true;
+		case TokenKind::Text:
+		case TokenKind::Keyword:
+		case TokenKind::Number:
+		case TokenKind::String:
+		case TokenKind::Character:
+		case TokenKind::Comment:
+		case TokenKind::Preprocessor:
+		case TokenKind::Punctuation:
+		case TokenKind::Invalid:
+		case TokenKind::Count:
+			return false;
+		}
+
+		return false;
+	}
 }

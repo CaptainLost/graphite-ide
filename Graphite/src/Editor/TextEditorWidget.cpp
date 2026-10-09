@@ -2020,7 +2020,7 @@ namespace Graphite {
 
 			for (const Token& token : syntax->TokensOf(buffer, ref.Line))
 			{
-				if (token.Kind != TokenKind::Identifier)
+				if (!NamesSomething(token.Kind))
 				{
 					continue;
 				}

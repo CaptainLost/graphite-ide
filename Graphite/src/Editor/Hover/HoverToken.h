@@ -18,8 +18,8 @@ namespace Graphite {
 	// multi-byte character before one; the server is asked in raw-line terms, so everything a
 	// hover keeps or sends is converted to them first, here.
 
-	// The identifier token whose raw byte range holds `rawByte`, or nothing. Only Identifier
-	// tokens count: a word in a comment or a string is not a symbol.
+	// The name whose raw byte range holds `rawByte`, or nothing. Only names
+	// count: a word in a comment or a string is not a symbol.
 	std::optional<HoverToken> TokenUnderByte(std::string_view rawLine, std::size_t line,
 											 std::size_t rawByte,
 											 const std::vector<Token>& rawTokens);

@@ -132,7 +132,7 @@ namespace Graphite {
 
 	TokenKind ColourOf(const Token& token, const std::vector<SemanticSpan>& semantic)
 	{
-		if (token.Kind != TokenKind::Identifier)
+		if (!NamesSomething(token.Kind))
 		{
 			return token.Kind;
 		}

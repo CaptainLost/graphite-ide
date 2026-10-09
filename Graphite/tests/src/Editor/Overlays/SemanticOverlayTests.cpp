@@ -170,3 +170,17 @@ TEST_CASE("Setting no spans on a line leaves nothing behind to walk")
 	CHECK(visited == 0);
 	CHECK(overlay.IsEmpty());
 }
+
+TEST_CASE("A server's span recolours a name the grammar guessed, and never a string")
+{
+	const std::vector<Graphite::SemanticSpan> spans{
+		Graphite::SemanticSpan{.From = 4, .To = 10, .Kind = Graphite::TokenKind::SemanticNamespace}};
+
+	const Graphite::Token guessedType{.Kind = Graphite::TokenKind::SemanticType, .From = 4, .To = 10};
+	const Graphite::Token identifier{.Kind = Graphite::TokenKind::Identifier, .From = 4, .To = 10};
+	const Graphite::Token text{.Kind = Graphite::TokenKind::String, .From = 4, .To = 10};
+
+	CHECK(Graphite::ColourOf(guessedType, spans) == Graphite::TokenKind::SemanticNamespace);
+	CHECK(Graphite::ColourOf(identifier, spans) == Graphite::TokenKind::SemanticNamespace);
+	CHECK(Graphite::ColourOf(text, spans) == Graphite::TokenKind::String);
+}

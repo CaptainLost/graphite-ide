@@ -16,7 +16,7 @@ namespace {
 	}
 }
 
-TEST_CASE("The token under the mouse is taken only from Identifier tokens")
+TEST_CASE("The token under the mouse is taken only from names")
 {
 	const std::string line = "int x = 1; // foo";
 	const auto tokens = Lex(line);
@@ -89,5 +89,17 @@ TEST_CASE("A multi-byte character before a tab still maps expanded bytes back to
 	const auto token = TokenUnderByte(raw, 0, mouse, rawTokens);
 	REQUIRE(token.has_value());
 	CHECK(token->From == 4);
+	CHECK(token->To == 6);
+}
+
+TEST_CASE("The token under the mouse may be a name the grammar coloured as a type")
+{
+	const std::string line = "Widget w;";
+	const std::vector<Token> tokens{Token{.Kind = TokenKind::SemanticType, .From = 0, .To = 6}};
+
+	const std::optional<HoverToken> token = TokenUnderByte(line, 0, 2, tokens);
+
+	REQUIRE(token.has_value());
+	CHECK(token->From == 0);
 	CHECK(token->To == 6);
 }
