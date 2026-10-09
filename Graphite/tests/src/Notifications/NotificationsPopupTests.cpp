@@ -21,8 +21,11 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace {
+	constexpr bool kWithConfirmations = true;
+
 	struct PopupScreen
 	{
 		ImGuiFrames Frames;
@@ -52,6 +55,12 @@ namespace {
 		void Click(ImVec2 at, ImGuiMouseButton button = ImGuiMouseButton_Left)
 		{
 			Frames.Click(at, [&] { Draw(); }, button);
+		}
+
+		void PointAt(ImVec2 at)
+		{
+			ImGui::GetIO().AddMousePosEvent(at.x, at.y);
+			Next();
 		}
 
 		static int OpenPopups()
@@ -90,6 +99,27 @@ namespace {
 			return ImVec2(list.InnerRect.Min.x + 40.0f, list.InnerRect.Min.y + 8.0f);
 		}
 
+		static ImVec2 LastEntry()
+		{
+			const ImGuiWindow& list = ListWindow();
+			return ImVec2(list.InnerRect.Min.x + 40.0f, list.InnerRect.Max.y - 8.0f);
+		}
+
+		static ImVec2 FirstEntryRemoveButton()
+		{
+			const ImGuiWindow& list = ListWindow();
+			const float rowInset = 8.0f;
+			const float iconDiameter = 24.0f;
+			const float buttonSide = ImGui::GetFontSize();
+			return ImVec2(list.Pos.x + list.Size.x - rowInset - buttonSide * 0.5f, list.Pos.y + rowInset + iconDiameter * 0.5f);
+		}
+
+		static ImGuiID RemoveButtonId(std::uint64_t toastId)
+		{
+			const ImGuiID rowId = ImHashStr(std::to_string(toastId).c_str(), 0, ListWindow().ID);
+			return ImHashStr("##remove", 0, rowId);
+		}
+
 		static const ImGuiWindow& EntryMenuWindow()
 		{
 			const ImGuiContext& context = *ImGui::GetCurrentContext();
@@ -104,6 +134,12 @@ namespace {
 		{
 			const ImGuiWindow& menu = EntryMenuWindow();
 			return ImVec2(menu.Pos.x + menu.WindowPadding.x + 4.0f, menu.Pos.y + menu.WindowPadding.y + 4.0f);
+		}
+
+		static ImVec2 SecondMenuItem()
+		{
+			const ImVec2 firstItem = FirstMenuItem();
+			return ImVec2(firstItem.x, firstItem.y + ImGui::GetTextLineHeightWithSpacing());
 		}
 
 		// Measured inside a frame: the text's size needs the font a frame sets up.
@@ -187,6 +223,29 @@ namespace {
 			}
 		}
 		return false;
+	}
+
+	Core::ToastPalette PaletteOfDistinctColours()
+	{
+		return {.Surface = {.R = 0.1f, .G = 0.1f, .B = 0.1f},
+				.Text = {.R = 0.95f, .G = 0.95f, .B = 0.95f},
+				.TextDim = {.R = 0.25f, .G = 0.5f, .B = 0.75f},
+				.Success = {.R = 0.2f, .G = 0.8f, .B = 0.3f},
+				.Warning = {.R = 0.9f, .G = 0.7f, .B = 0.1f},
+				.Error = {.R = 0.9f, .G = 0.2f, .B = 0.2f}};
+	}
+
+	// The time is wider than the remove button, which is a line high and as wide, so only the time
+	// reaches past the button's left edge.
+	bool FirstEntryDrawsDimTextLeftOfItsRemoveButton(const ImGuiWindow& list, ImU32 dimColour)
+	{
+		const float rowInset = 8.0f;
+		const float iconDiameter = 24.0f;
+		const float buttonSide = ImGui::GetFontSize();
+		const float glyphBearing = 1.0f;
+		const ImVec2 areaMin(list.Pos.x + list.Size.x * 0.5f, list.Pos.y + rowInset);
+		const ImVec2 areaMax(list.Pos.x + list.Size.x - rowInset - buttonSide - glyphBearing, list.Pos.y + rowInset + iconDiameter);
+		return DrawsInColourWithin(list, dimColour, areaMin, areaMax);
 	}
 
 	std::string WordsOfText(int wordCount)
@@ -781,4 +840,129 @@ TEST_CASE("The Show confirmations box is outlined in the dim text colour with th
 
 	CHECK(DrawsInColourWithin(PopupScreen::PopupWindow(), OpaqueColourOf(screen.Palette.TextDim), aroundTheBoxMin,
 							  aroundTheBoxMax));
+}
+
+TEST_CASE("An entry shows its time while the pointer is on another entry and gives its place to the remove button while the pointer is on it")
+{
+	PopupScreen screen;
+	screen.Palette = PaletteOfDistinctColours();
+	screen.History.Record(Entry(1, Core::ToastKind::Error));
+	screen.History.Record(Entry(2, Core::ToastKind::Warning));
+	screen.OpenFromBell();
+	const ImU32 dimColour = OpaqueColourOf(screen.Palette.TextDim);
+
+	screen.PointAt(PopupScreen::LastEntry());
+	CHECK(FirstEntryDrawsDimTextLeftOfItsRemoveButton(PopupScreen::ListWindow(), dimColour));
+
+	screen.PointAt(PopupScreen::FirstEntry());
+	CHECK_FALSE(FirstEntryDrawsDimTextLeftOfItsRemoveButton(PopupScreen::ListWindow(), dimColour));
+}
+
+TEST_CASE("The remove button is drawn in the dim text colour, and in the text colour while the pointer is on it")
+{
+	PopupScreen screen;
+	screen.Palette = PaletteOfDistinctColours();
+	screen.History.Record(Entry(1, Core::ToastKind::Error));
+	screen.OpenFromBell();
+	const ImU32 dimColour = OpaqueColourOf(screen.Palette.TextDim);
+	const ImU32 textColour = OpaqueColourOf(screen.Palette.Text);
+
+	const ImVec2 removeButton = PopupScreen::FirstEntryRemoveButton();
+	const float halfSide = ImGui::GetFontSize() * 0.5f;
+	const float fringe = 1.0f;
+	const ImVec2 aroundTheButtonMin(removeButton.x - halfSide - fringe, removeButton.y - halfSide - fringe);
+	const ImVec2 aroundTheButtonMax(removeButton.x + halfSide + fringe, removeButton.y + halfSide + fringe);
+
+	screen.PointAt(PopupScreen::FirstEntry());
+	CHECK(DrawsInColourWithin(PopupScreen::ListWindow(), dimColour, aroundTheButtonMin, aroundTheButtonMax));
+	CHECK_FALSE(DrawsInColourWithin(PopupScreen::ListWindow(), textColour, aroundTheButtonMin, aroundTheButtonMax));
+
+	screen.PointAt(removeButton);
+	CHECK(DrawsInColourWithin(PopupScreen::ListWindow(), textColour, aroundTheButtonMin, aroundTheButtonMax));
+	CHECK_FALSE(DrawsInColourWithin(PopupScreen::ListWindow(), dimColour, aroundTheButtonMin, aroundTheButtonMax));
+}
+
+TEST_CASE("A click on the remove button of the entry under the pointer removes that entry and leaves the others")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error));
+	screen.History.Record(Entry(2, Core::ToastKind::Warning));
+	screen.OpenFromBell();
+
+	screen.PointAt(PopupScreen::FirstEntry());
+	screen.Click(PopupScreen::FirstEntryRemoveButton());
+
+	const std::vector<const Graphite::NotificationEntry*> entries = screen.History.Entries(kWithConfirmations);
+	REQUIRE(entries.size() == 1);
+	CHECK(entries[0]->ToastId == 1);
+}
+
+TEST_CASE("A press on an entry's remove button goes to the button, so the row beneath it does not expand")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error, LinesOfText(12)));
+	screen.OpenFromBell();
+	screen.PointAt(PopupScreen::FirstEntry());
+	screen.PointAt(PopupScreen::FirstEntryRemoveButton());
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+	screen.Next();
+	CHECK(ImGui::GetActiveID() == PopupScreen::RemoveButtonId(1));
+
+	io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+	screen.Next();
+	CHECK_FALSE(screen.Popup.IsExpanded(1));
+	CHECK(screen.History.Entries(kWithConfirmations).empty());
+}
+
+TEST_CASE("Remove in an entry's menu removes that entry and leaves the others")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error, "rejected"));
+	screen.History.Record(Entry(2, Core::ToastKind::Warning, "behind"));
+	screen.OpenFromBell();
+
+	screen.Click(PopupScreen::FirstEntry(), ImGuiMouseButton_Right);
+	screen.Next();
+	screen.Click(PopupScreen::SecondMenuItem());
+
+	const std::vector<const Graphite::NotificationEntry*> entries = screen.History.Entries(kWithConfirmations);
+	REQUIRE(entries.size() == 1);
+	CHECK(entries[0]->ToastId == 1);
+}
+
+TEST_CASE("An expanded entry removed through its menu is no longer expanded")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error, LinesOfText(12)));
+	screen.OpenFromBell();
+	screen.Click(PopupScreen::FirstEntry());
+	REQUIRE(screen.Popup.IsExpanded(1));
+
+	screen.Next();
+	screen.Click(PopupScreen::FirstEntry(), ImGuiMouseButton_Right);
+	screen.Next();
+	screen.Click(PopupScreen::SecondMenuItem());
+
+	CHECK(screen.History.Entries(kWithConfirmations).empty());
+	CHECK_FALSE(screen.Popup.IsExpanded(1));
+}
+
+TEST_CASE("The popup shrinks to the entries left on the frame after one is removed")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error));
+	screen.History.Record(Entry(2, Core::ToastKind::Warning));
+	screen.OpenFromBell();
+	const float heightWithTwoEntries = PopupScreen::PopupWindow().Size.y;
+
+	screen.PointAt(PopupScreen::FirstEntry());
+	screen.Click(PopupScreen::FirstEntryRemoveButton());
+	screen.Next();
+
+	const ImGuiWindow& popup = PopupScreen::PopupWindow();
+	const ImGuiWindow& list = PopupScreen::ListWindow();
+	CHECK(popup.Size.y < heightWithTwoEntries);
+	CHECK(list.Pos.y + list.Size.y == doctest::Approx(popup.Pos.y + popup.Size.y - popup.WindowPadding.y));
 }

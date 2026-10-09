@@ -70,6 +70,17 @@ namespace Graphite {
 		}
 	}
 
+	void NotificationHistory::Remove(std::uint64_t toastId)
+	{
+		const std::vector<NotificationEntry>::iterator removed = FindByToastId(m_NewestFirst, toastId);
+		if (removed == m_NewestFirst.end())
+		{
+			return;
+		}
+
+		m_NewestFirst.erase(removed);
+	}
+
 	void NotificationHistory::Clear()
 	{
 		m_NewestFirst.clear();

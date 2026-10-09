@@ -10,6 +10,7 @@ namespace {
 	using namespace std::chrono_literals;
 
 	const std::chrono::system_clock::time_point kMorning{std::chrono::sys_days{std::chrono::year{2026} / 10 / 6} + 9h};
+	constexpr bool kWithConfirmations = true;
 
 	Graphite::NotificationEntry Entry(std::uint64_t toastId, Core::ToastKind kind, std::string title = "Title")
 	{
@@ -186,6 +187,55 @@ TEST_CASE("Clearing the history empties it")
 	history.Clear();
 
 	CHECK(history.Entries(true).empty());
+}
+
+TEST_CASE("Removing a notification takes out only its entry and keeps the others in their order")
+{
+	Graphite::NotificationHistory history;
+	history.Record(Entry(1, Core::ToastKind::Error));
+	history.Record(Entry(2, Core::ToastKind::Warning));
+	history.Record(Entry(3, Core::ToastKind::Error));
+
+	history.Remove(2);
+
+	CHECK(IdsOf(history.Entries(kWithConfirmations)) == std::vector<std::uint64_t>{3, 1});
+}
+
+TEST_CASE("Removing the only missed error turns the bell's dot off")
+{
+	Graphite::NotificationHistory history;
+	history.Record(Entry(1, Core::ToastKind::Error));
+	history.NoteDeparture(Departure(1, Core::ToastDepartureReason::Expired));
+	REQUIRE(history.MostSevereMissed() == Core::ToastKind::Error);
+
+	history.Remove(1);
+
+	CHECK_FALSE(history.MostSevereMissed().has_value());
+}
+
+TEST_CASE("Removing a missed error leaves the bell's dot to a missed warning that remains")
+{
+	Graphite::NotificationHistory history;
+	history.Record(Entry(1, Core::ToastKind::Error));
+	history.Record(Entry(2, Core::ToastKind::Warning));
+	history.NoteDeparture(Departure(1, Core::ToastDepartureReason::Expired));
+	history.NoteDeparture(Departure(2, Core::ToastDepartureReason::Expired));
+	REQUIRE(history.MostSevereMissed() == Core::ToastKind::Error);
+
+	history.Remove(1);
+
+	CHECK(history.MostSevereMissed() == Core::ToastKind::Warning);
+}
+
+TEST_CASE("Removing a toast that is not in the history leaves the history as it was")
+{
+	Graphite::NotificationHistory history;
+	history.Record(Entry(1, Core::ToastKind::Error));
+	history.Record(Entry(2, Core::ToastKind::Warning));
+
+	history.Remove(7);
+
+	CHECK(IdsOf(history.Entries(kWithConfirmations)) == std::vector<std::uint64_t>{2, 1});
 }
 
 TEST_CASE("A notification copies its own copy text, or else its title and message one line each")

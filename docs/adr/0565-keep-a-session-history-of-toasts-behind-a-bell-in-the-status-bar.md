@@ -34,6 +34,10 @@ from a bell at the right end of the status bar.
   closed. The history is what makes that safe: an error that expires with the
   pointer never on it is missed, and lights the bell's dot in red.
 - Confirmations (`Success`) are hidden behind a filter.
+- An entry can be removed with its ✕, which takes the place of its time while the
+  pointer is on the entry, or with Remove in its menu; Clear in the popup's header
+  empties the list. Removing an entry leaves its toast on screen alone, and that
+  toast's departure is then ignored.
 - An entry about a folder keeps that folder and shows it when another folder is
   open.
 - Nothing is written to disk.

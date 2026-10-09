@@ -36,6 +36,7 @@ namespace Graphite {
 		void Record(NotificationEntry entry);
 		void NoteDeparture(const Core::ToastDeparture& departure);
 		void MarkAllSeen();
+		void Remove(std::uint64_t toastId);
 		void Clear();
 
 		std::optional<Core::ToastKind> MostSevereMissed() const;
