@@ -479,12 +479,18 @@ TEST_CASE("AppSettings keeps a nested value edited by hand while it runs")
 	CHECK(reloaded.GetEditorFontSize() == doctest::Approx(15.0f));
 }
 
-TEST_CASE("A leaf that becomes an object keeps what another instance wrote beneath it")
+TEST_CASE("An empty object that gains a value keeps what another instance wrote beneath it")
 {
 	const TempDirectory temp;
 	const std::filesystem::path file = temp.GetPath() / "graphite.json";
 
 	WriteText(file, R"({"languages": {}})");
+
+	const std::vector<Core::JsonLeaf> startingLeaves = Core::JsonFile::Load(file).CollectLeaves();
+
+	REQUIRE(startingLeaves.size() == 1);
+	CHECK(startingLeaves[0].Path == std::vector<std::string>{"languages"});
+	CHECK(startingLeaves[0].Json == "{}");
 
 	Graphite::AppSettings first{file};
 	Graphite::AppSettings second{file};
@@ -501,7 +507,7 @@ TEST_CASE("A leaf that becomes an object keeps what another instance wrote benea
 	CHECK(reloaded.GetLanguageServerChoice("CSharp") == std::optional<std::string>{"roslyn"});
 }
 
-TEST_CASE("A nested leaf this process replaced is removed on disk and a sibling another instance wrote survives")
+TEST_CASE("A value this process replaced is read back as the new one and a sibling another instance wrote survives")
 {
 	const TempDirectory temp;
 	const std::filesystem::path file = temp.GetPath() / "graphite.json";
@@ -521,5 +527,5 @@ TEST_CASE("A nested leaf this process replaced is removed on disk and a sibling 
 
 	CHECK(reloaded.GetLanguageServerChoice("Cpp") == std::optional<std::string>{"clangd"});
 	CHECK(reloaded.GetLanguageServerChoice("CSharp") == std::optional<std::string>{"roslyn"});
-	CHECK(ReadBytes(file).find("old") == std::string::npos);
+	CHECK(Core::JsonFile::Load(file).GetJsonAt(std::vector<std::string>{"languages", "Cpp", "language_server"}) == std::optional<std::string>{R"("clangd")"});
 }
