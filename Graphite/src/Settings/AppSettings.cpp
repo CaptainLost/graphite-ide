@@ -14,6 +14,8 @@
 #include "Core/Command/Keymap.h"
 #include "Core/FileSystem/FileSystem.h"
 
+#include <nlohmann/json.hpp>
+
 #include <concepts>
 #include <filesystem>
 #include <optional>
@@ -55,6 +57,96 @@ namespace Graphite {
 		constexpr const char* kAnalysisConcurrencyKey = "analysisConcurrency";
 
 		constexpr std::string_view kKeyBindingPrefix = "key.";
+
+		constexpr const char* kLanguagesKey = "languages";
+		constexpr const char* kLanguageServerKey = "language_server";
+		constexpr const char* kServersKey = "lsp";
+		constexpr const char* kBinaryKey = "binary";
+		constexpr const char* kBinaryPathKey = "path";
+		constexpr const char* kBinaryArgumentsKey = "arguments";
+		constexpr const char* kInitializationOptionsKey = "initialization_options";
+		constexpr const char* kServerSettingsKey = "settings";
+
+		nlohmann::json ParsedOrNull(const std::optional<std::string>& json)
+		{
+			if (!json)
+			{
+				return nullptr;
+			}
+
+			const nlohmann::json::parser_callback_t noParseCallback = nullptr;
+			const bool allowExceptions = false;
+			nlohmann::json parsed = nlohmann::json::parse(*json, noParseCallback, allowExceptions);
+
+			if (parsed.is_discarded())
+			{
+				return nullptr;
+			}
+
+			return parsed;
+		}
+
+		const nlohmann::json& MemberOrNull(const nlohmann::json& value, std::string_view key)
+		{
+			static const nlohmann::json absent;
+
+			if (!value.is_object())
+			{
+				return absent;
+			}
+
+			const nlohmann::json::const_iterator member = value.find(std::string{key});
+
+			return member == value.end() ? absent : *member;
+		}
+
+		std::string StringOrEmpty(const nlohmann::json& value)
+		{
+			return value.is_string() ? value.get<std::string>() : std::string{};
+		}
+
+		std::vector<std::string> StringsIn(const nlohmann::json& value)
+		{
+			std::vector<std::string> strings;
+
+			if (!value.is_array())
+			{
+				return strings;
+			}
+
+			for (const nlohmann::json& element : value)
+			{
+				if (element.is_string())
+				{
+					strings.push_back(element.get<std::string>());
+				}
+			}
+
+			return strings;
+		}
+
+		std::string ObjectTextOrEmpty(const nlohmann::json& value)
+		{
+			return value.is_object() ? value.dump() : std::string{};
+		}
+
+		bool IsStrictlyUnder(const std::vector<std::string>& path, const std::vector<std::string>& prefix)
+		{
+			if (path.size() <= prefix.size())
+			{
+				return false;
+			}
+
+			for (std::size_t keyIndex = 0; keyIndex < prefix.size(); ++keyIndex)
+			{
+				if (path[keyIndex] != prefix[keyIndex])
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
 
 		// Zero is "absent" for every number stored here, so a malformed one reads as absent too.
 		template<typename Number>
@@ -110,19 +202,21 @@ namespace Graphite {
 			// everything else there - a hand edit, another instance's change - is kept.
 			const Snapshot current = TakeSnapshot(m_Document);
 
-			for (const auto& [key, value] : current)
+			for (const auto& [path, json] : m_Written)
 			{
-				if (const auto written = m_Written.find(key); written == m_Written.end() || written->second != value)
+				if (!current.contains(path) && !HasLeafUnder(current, path))
 				{
-					onDisk.Set(key, value);
+					onDisk.RemoveAt(path);
 				}
 			}
 
-			for (const auto& [key, value] : m_Written)
+			for (const auto& [path, json] : current)
 			{
-				if (!current.contains(key))
+				const bool unchanged = m_Written.contains(path) && m_Written.at(path) == json;
+
+				if (!unchanged)
 				{
-					onDisk.Remove(key);
+					onDisk.SetJsonAt(path, json);
 				}
 			}
 		}
@@ -167,12 +261,25 @@ namespace Graphite {
 	{
 		Snapshot snapshot;
 
-		for (const std::string& key : document.CollectKeys())
+		for (Core::JsonLeaf& leaf : document.CollectLeaves())
 		{
-			snapshot.emplace(key, document.Get(key));
+			snapshot.emplace(std::move(leaf.Path), std::move(leaf.Json));
 		}
 
 		return snapshot;
+	}
+
+	bool AppSettings::HasLeafUnder(const Snapshot& snapshot, const std::vector<std::string>& prefix)
+	{
+		for (const auto& [path, json] : snapshot)
+		{
+			if (IsStrictlyUnder(path, prefix))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	std::string AppSettings::Get(std::string_view key) const
@@ -400,6 +507,40 @@ namespace Graphite {
 	void AppSettings::SetLanguageServerBinary(const std::filesystem::path& binary)
 	{
 		Set(kLanguageServerBinaryKey, Core::ToUtf8(binary));
+	}
+
+	std::optional<std::string> AppSettings::GetLanguageServerChoice(std::string_view languageName) const
+	{
+		const std::vector<std::string> path{kLanguagesKey, std::string{languageName}, kLanguageServerKey};
+		const std::string choice = StringOrEmpty(ParsedOrNull(m_Document.GetJsonAt(path)));
+
+		if (choice.empty())
+		{
+			return std::nullopt;
+		}
+
+		return choice;
+	}
+
+	void AppSettings::SetLanguageServerChoice(std::string_view languageName, std::string_view serverId)
+	{
+		const std::vector<std::string> path{kLanguagesKey, std::string{languageName}, kLanguageServerKey};
+
+		m_Document.SetJsonAt(path, nlohmann::json(std::string{serverId}).dump());
+		m_Unwritten = true;
+	}
+
+	LanguageServerSettings AppSettings::GetLanguageServerSettings(std::string_view serverId) const
+	{
+		const std::vector<std::string> path{kServersKey, std::string{serverId}};
+		const nlohmann::json entry = ParsedOrNull(m_Document.GetJsonAt(path));
+		const nlohmann::json& binary = MemberOrNull(entry, kBinaryKey);
+
+		return LanguageServerSettings{
+			.BinaryPath = Core::FromUtf8(StringOrEmpty(MemberOrNull(binary, kBinaryPathKey))),
+			.Arguments = StringsIn(MemberOrNull(binary, kBinaryArgumentsKey)),
+			.InitializationOptionsJson = ObjectTextOrEmpty(MemberOrNull(entry, kInitializationOptionsKey)),
+			.SettingsJson = ObjectTextOrEmpty(MemberOrNull(entry, kServerSettingsKey))};
 	}
 
 	std::filesystem::path AppSettings::GetClaudeBinary() const

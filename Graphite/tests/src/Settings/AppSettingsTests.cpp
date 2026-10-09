@@ -4,19 +4,30 @@
 #include "Settings/SettingsVersion.h"
 
 #include "Core/Base/JsonFile.h"
+#include "Core/FileSystem/FileSystem.h"
 
+#include "TempAppSettings.h"
 #include "TempDirectory.h"
 
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <nlohmann/json.hpp>
+#include <optional>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace {
 	std::string ReadBytes(const std::filesystem::path& path)
 	{
 		std::ifstream stream{path, std::ios::binary};
 		return {std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()};
+	}
+
+	void WriteText(const std::filesystem::path& path, std::string_view text)
+	{
+		std::ofstream{path, std::ios::binary} << text;
 	}
 }
 
@@ -354,4 +365,116 @@ TEST_CASE("AppSettings keeps every setting when the file was emptied while it ra
 	CHECK(reloaded.IsWordWrapEnabled());
 	CHECK(reloaded.GetColorScheme() == "Light");
 	CHECK(reloaded.GetIndentWidth() == 2);
+}
+
+TEST_CASE("AppSettings reads a language's server choice and a server's settings from nested values")
+{
+	const TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
+
+	WriteText(file, R"({
+		"languages": { "Cpp": { "language_server": "clangd" } },
+		"lsp": { "clangd": {
+			"binary": { "path": "D:\\Tools\\clangd.exe", "arguments": ["--log=verbose", 7] },
+			"initialization_options": { "fallbackFlags": ["-std=c++20"] },
+			"settings": { "compilationDatabasePath": "build" } } }
+	})");
+
+	const Graphite::AppSettings settings{file};
+
+	CHECK(settings.GetLanguageServerChoice("Cpp") == std::optional<std::string>{"clangd"});
+	CHECK_FALSE(settings.GetLanguageServerChoice("CSharp").has_value());
+
+	const Graphite::LanguageServerSettings clangd = settings.GetLanguageServerSettings("clangd");
+
+	CHECK(clangd.BinaryPath == std::filesystem::path{L"D:\\Tools\\clangd.exe"});
+	CHECK(clangd.Arguments == std::vector<std::string>{"--log=verbose"});
+	CHECK(clangd.InitializationOptionsJson == R"({"fallbackFlags":["-std=c++20"]})");
+	CHECK(clangd.SettingsJson == R"({"compilationDatabasePath":"build"})");
+}
+
+TEST_CASE("AppSettings reads a server with no entry as nothing set")
+{
+	TempAppSettings settings;
+
+	const Graphite::LanguageServerSettings roslyn = settings.Get().GetLanguageServerSettings("roslyn");
+
+	CHECK(roslyn.BinaryPath.empty());
+	CHECK(roslyn.Arguments.empty());
+	CHECK(roslyn.InitializationOptionsJson.empty());
+	CHECK(roslyn.SettingsJson.empty());
+}
+
+TEST_CASE("AppSettings reads hand-written language entries of the wrong shape as nothing set and leaves them on disk")
+{
+	const TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
+
+	WriteText(file, R"({"languages": "Cpp", "lsp": {"clangd": "fast", "roslyn": {"binary": 3}}})");
+
+	Graphite::AppSettings settings{file};
+
+	CHECK_FALSE(settings.GetLanguageServerChoice("Cpp").has_value());
+	CHECK(settings.GetLanguageServerSettings("clangd").BinaryPath.empty());
+	CHECK(settings.GetLanguageServerSettings("roslyn").BinaryPath.empty());
+
+	settings.SetEditorFontSize(15.0f);
+	settings.Flush();
+
+	const std::string written = ReadBytes(file);
+
+	CHECK(written.find(R"("fast")") != std::string::npos);
+	CHECK(written.find(R"("binary": 3)") != std::string::npos);
+}
+
+TEST_CASE("AppSettings keeps a server path outside the ANSI code page")
+{
+	const TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
+	const std::filesystem::path server = std::filesystem::path{L"D:\\Narz\u0119dzia\\\u4E2D\u6587"} / L"clangd.exe";
+
+	const nlohmann::json content{{"lsp", {{"clangd", {{"binary", {{"path", Core::ToUtf8(server)}}}}}}}};
+	WriteText(file, content.dump());
+
+	const Graphite::AppSettings settings{file};
+
+	CHECK(settings.GetLanguageServerSettings("clangd").BinaryPath == server);
+}
+
+TEST_CASE("Two instances on one file keep each other's nested changes")
+{
+	const TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
+
+	Graphite::AppSettings first{file};
+	Graphite::AppSettings second{file};
+
+	first.SetLanguageServerChoice("Cpp", "clangd");
+	second.SetLanguageServerChoice("CSharp", "roslyn");
+
+	first.Flush();
+	second.Flush();
+
+	const Graphite::AppSettings reloaded{file};
+
+	CHECK(reloaded.GetLanguageServerChoice("Cpp") == std::optional<std::string>{"clangd"});
+	CHECK(reloaded.GetLanguageServerChoice("CSharp") == std::optional<std::string>{"roslyn"});
+}
+
+TEST_CASE("AppSettings keeps a nested value edited by hand while it runs")
+{
+	const TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
+
+	Graphite::AppSettings settings{file};
+	settings.SetEditorFontSize(15.0f);
+
+	WriteText(file, R"({"lsp":{"clangd":{"binary":{"path":"C:\\clangd.exe"}}}})");
+
+	settings.Flush();
+
+	const Graphite::AppSettings reloaded{file};
+
+	CHECK(reloaded.GetLanguageServerSettings("clangd").BinaryPath == std::filesystem::path{L"C:\\clangd.exe"});
+	CHECK(reloaded.GetEditorFontSize() == doctest::Approx(15.0f));
 }

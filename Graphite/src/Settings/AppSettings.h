@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -20,6 +21,14 @@ namespace Core {
 }
 
 namespace Graphite {
+
+	struct LanguageServerSettings
+	{
+		std::filesystem::path BinaryPath;
+		std::vector<std::string> Arguments;
+		std::string InitializationOptionsJson;
+		std::string SettingsJson;
+	};
 
 	// graphite.json, read once and then kept in memory. Getters read the copy in memory; setters
 	// change it and mark it unwritten. Nothing re-reads the file per value: Flush reads it once per
@@ -135,6 +144,11 @@ namespace Graphite {
 		std::filesystem::path GetLanguageServerBinary() const;
 		void SetLanguageServerBinary(const std::filesystem::path& binary);
 
+		std::optional<std::string> GetLanguageServerChoice(std::string_view languageName) const;
+		void SetLanguageServerChoice(std::string_view languageName, std::string_view serverId);
+
+		LanguageServerSettings GetLanguageServerSettings(std::string_view serverId) const;
+
 		// Where claude.exe is, when it is not the one on PATH. Empty means "use PATH".
 		std::filesystem::path GetClaudeBinary() const;
 		void SetClaudeBinary(const std::filesystem::path& binary);
@@ -171,8 +185,11 @@ namespace Graphite {
 
 		// What the file held as of load or the last write, key by key, so Flush can tell which keys
 		// this process changed since.
-		using Snapshot = std::map<std::string, std::string, std::less<>>;
+		using Snapshot = std::map<std::vector<std::string>, std::string>;
 		static Snapshot TakeSnapshot(const Core::JsonFile& document);
+
+		// A leaf that became an object keeps its path in the old snapshot, and removing that path would wipe what was just set beneath it.
+		static bool HasLeafUnder(const Snapshot& snapshot, const std::vector<std::string>& prefix);
 
 		std::filesystem::path m_File;
 		Core::JsonFile m_Document;
