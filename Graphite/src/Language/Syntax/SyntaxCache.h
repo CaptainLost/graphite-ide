@@ -1,9 +1,13 @@
 #pragma once
 
 #include "Core/Text/Columns.h"
+#include "Language/Syntax/SyntaxSource.h"
 #include "Language/Syntax/Token.h"
 
+#include <chrono>
 #include <cstddef>
+#include <memory>
+#include <optional>
 #include <vector>
 
 namespace Core {
@@ -13,18 +17,38 @@ namespace Core {
 
 namespace Graphite {
 
+	class SyntaxTree;
+
+	struct ParseBudget
+	{
+		std::chrono::microseconds PerAttempt{4000};
+
+		// A frame asks for many lines, and without a pause each of them would spend a whole attempt.
+		std::chrono::microseconds PauseAfterRunningOut{12000};
+	};
+
 	// The tokens of one line, and the entry states needed to reach it. A line's colours depend
 	// on every line above it — a block comment opened on line 0 reaches line 40 000 — so the
 	// entry states are kept and extended rather than recomputed each frame.
 	//
 	// One cache belongs to one document. It holds no reference to the buffer: the buffer is
 	// passed in, so a cache outliving its document cannot dangle.
+	//
+	// A grammar's tree is brought up to date from the buffer's revision; a tree that lags hands
+	// out its old tokens, clipped to the line.
 	class SyntaxCache
 	{
 	public:
-		void SetLexer(const Lexer* lexer);
+		SyntaxCache();
+		~SyntaxCache();
+		SyntaxCache(SyntaxCache&&) noexcept;
+		SyntaxCache& operator=(SyntaxCache&&) noexcept;
 
-		bool HasLexer() const { return m_Lexer != nullptr; }
+		void SetSyntax(SyntaxSource source);
+
+		bool HasSyntax() const;
+
+		void SetParseBudget(ParseBudget budget) { m_ParseBudget = budget; }
 
 		// A width change moves every token offset in any line holding a tab, because the lexer
 		// is fed tab-expanded text. Nothing below the changed width is salvageable, so this
@@ -47,8 +71,13 @@ namespace Graphite {
 
 	private:
 		void ExtendTo(const Core::TextBuffer& buffer, std::size_t line);
+		const std::vector<Token>& LexedTokensOf(const Core::TextBuffer& buffer, std::size_t line);
+		const std::vector<Token>& ParsedTokensOf(const Core::TextBuffer& buffer, std::size_t line);
+		void BringTreeTowards(const Core::TextBuffer& buffer);
+		void ForgetEntryStates();
+		void ForgetTree();
 
-		const Lexer* m_Lexer = nullptr;
+		SyntaxSource m_Source;
 		std::size_t m_TabWidth = Core::DefaultTabWidth;
 
 		// m_EntryStates[n] is the state line n begins in. Always holds at least one element —
@@ -69,5 +98,13 @@ namespace Graphite {
 		// check below would throw away the targeted invalidation it was meant to back up, and
 		// every edit would re-lex the file from line 0.
 		bool m_Invalidated = false;
+
+		std::unique_ptr<SyntaxTree> m_Tree;
+		std::optional<std::size_t> m_TreeTargetRevision;
+		std::optional<std::size_t> m_TreeRevision;
+		std::vector<std::optional<std::vector<Token>>> m_RowTokens;
+		std::vector<Token> m_ClippedTokens;
+		ParseBudget m_ParseBudget;
+		std::optional<std::chrono::steady_clock::time_point> m_RanOutAt;
 	};
 }

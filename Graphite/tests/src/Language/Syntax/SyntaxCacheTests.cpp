@@ -1,17 +1,23 @@
 #include <doctest/doctest.h>
 
+#include "Core/Text/Columns.h"
 #include "Core/Text/TextBuffer.h"
 #include "Language/Registry/LanguageRegistry.h"
+#include "Language/Syntax/ColourLines.h"
 #include "Language/Syntax/SyntaxCache.h"
+#include "SyntaxFixtures.h"
 
+#include <chrono>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace {
 
 	Graphite::SyntaxCache CppCache()
 	{
 		Graphite::SyntaxCache cache;
-		cache.SetLexer(Graphite::LexerFor(Graphite::LanguageId::Cpp));
+		cache.SetSyntax(Graphite::SyntaxOf(Graphite::LanguageId::Cpp));
 		return cache;
 	}
 
@@ -63,7 +69,7 @@ TEST_CASE("SyntaxCache without a lexer reports no tokens")
 	const Core::TextBuffer buffer{"int x;"};
 	Graphite::SyntaxCache cache;
 
-	CHECK_FALSE(cache.HasLexer());
+	CHECK_FALSE(cache.HasSyntax());
 	CHECK(cache.TokensOf(buffer, 0).empty());
 }
 
@@ -162,7 +168,7 @@ TEST_CASE("SyntaxCache keeps its states when the tab width is unchanged")
 	const Core::TextBuffer buffer{"/* open\nstill"};
 	CountingLexer lexer;
 	Graphite::SyntaxCache cache;
-	cache.SetLexer(&lexer);
+	cache.SetSyntax(Graphite::SyntaxSource{.LineLexer = &lexer});
 
 	cache.SetTabWidth(4);
 	cache.TokensOf(buffer, 1);
@@ -177,4 +183,150 @@ TEST_CASE("SyntaxCache keeps its states when the tab width is unchanged")
 	cache.SetTabWidth(8);
 	cache.TokensOf(buffer, 1);
 	CHECK(lexer.GetCallCount() > callsAfterFirst);
+}
+
+namespace {
+
+	Graphite::SyntaxCache CSharpCache()
+	{
+		Graphite::SyntaxCache cache;
+		cache.SetSyntax(Graphite::SyntaxOf(Graphite::LanguageId::CSharp));
+		return cache;
+	}
+
+	std::string DescribeLine(Graphite::SyntaxCache& cache, const Core::TextBuffer& buffer, std::size_t line)
+	{
+		const std::string expanded = Core::ExpandTabs(buffer.LineText(line), cache.GetTabWidth());
+		return DescribeTokens(expanded, cache.TokensOf(buffer, line));
+	}
+}
+
+TEST_CASE("SyntaxCache colours a C# document through its grammar")
+{
+	const Core::TextBuffer buffer{std::string(kCSharpFixture)};
+	Graphite::SyntaxCache cache = CSharpCache();
+
+	CHECK(cache.HasSyntax());
+	CHECK(DescribeLine(cache, buffer, 5) == "keyword 'public' | keyword 'sealed' | keyword 'class' | type 'Widget' | punctuation '<' | type 'T' | punctuation '>' | punctuation ':' | type 'IDisposable' | keyword 'where' | type 'T' | punctuation ':' | keyword 'class'");
+	CHECK(DescribeLine(cache, buffer, 3) == "comment '   line */'");
+}
+
+TEST_CASE("SyntaxCache puts a tree's tokens on the tab-expanded line at any tab width")
+{
+	const Core::TextBuffer buffer{std::string("\tint x = 1;")};
+	Graphite::SyntaxCache cache = CSharpCache();
+
+	CHECK(DescribeLine(cache, buffer, 0) == "keyword 'int' | identifier 'x' | punctuation '=' | number '1' | punctuation ';'");
+	CHECK(cache.TokensOf(buffer, 0).front().From == 4);
+
+	cache.SetTabWidth(8);
+
+	CHECK(cache.TokensOf(buffer, 0).front().From == 8);
+	CHECK(DescribeLine(cache, buffer, 0) == "keyword 'int' | identifier 'x' | punctuation '=' | number '1' | punctuation ';'");
+}
+
+TEST_CASE("SyntaxCache colours a C# line anew after an edit, and again after its undo")
+{
+	Core::TextBuffer buffer{std::string("int x = 1;\nint y = 2;")};
+	Graphite::SyntaxCache cache = CSharpCache();
+	const std::string declaration = "keyword 'int' | identifier 'y' | punctuation '=' | number '2' | punctuation ';'";
+
+	REQUIRE(DescribeLine(cache, buffer, 1) == declaration);
+
+	buffer.Insert(buffer.LineStart(1), "// ");
+	CHECK(DescribeLine(cache, buffer, 1) == "comment '// int y = 2;'");
+
+	REQUIRE(buffer.Undo().has_value());
+	CHECK(DescribeLine(cache, buffer, 1) == declaration);
+}
+
+TEST_CASE("A tree-coloured line past the end of the buffer has no tokens")
+{
+	const Core::TextBuffer buffer{std::string("int x;")};
+	Graphite::SyntaxCache cache = CSharpCache();
+
+	CHECK(cache.TokensOf(buffer, 5).empty());
+}
+
+TEST_CASE("SyntaxCache and ColourLines colour the same C# text alike")
+{
+	const Core::TextBuffer buffer{std::string(kCSharpFixture)};
+	Graphite::SyntaxCache cache = CSharpCache();
+	std::vector<std::string_view> rows;
+
+	for (std::size_t row = 0; row < buffer.GetLineCount(); ++row)
+	{
+		rows.push_back(FixtureRow(kCSharpFixture, row));
+	}
+
+	const std::vector<std::vector<Graphite::Token>> coloured = Graphite::ColourLines(Graphite::LanguageId::CSharp, rows);
+
+	REQUIRE(coloured.size() == buffer.GetLineCount());
+
+	for (std::size_t row = 0; row < buffer.GetLineCount(); ++row)
+	{
+		INFO("row ", row);
+		CHECK(cache.TokensOf(buffer, row) == coloured[row]);
+	}
+}
+
+TEST_CASE("While a parse is out of time the old colours stay, clipped to the line as it is now")
+{
+	Core::TextBuffer buffer{std::string("string s = \"abcdef\";")};
+	Graphite::SyntaxCache cache = CSharpCache();
+
+	REQUIRE(DescribeLine(cache, buffer, 0) == "keyword 'string' | identifier 's' | punctuation '=' | string '\"abcdef\"' | punctuation ';'");
+
+	buffer.Erase(0, buffer.GetLength());
+	buffer.Insert(0, "int s = 1;\n" + ManyCSharpClasses(2000));
+
+	cache.SetParseBudget(Graphite::ParseBudget{.PerAttempt = std::chrono::microseconds{0}, .PauseAfterRunningOut = std::chrono::hours{1}});
+
+	const std::vector<Graphite::Token> lagging{
+		Graphite::Token{.Kind = Graphite::TokenKind::Keyword, .From = 0, .To = 6},
+		Graphite::Token{.Kind = Graphite::TokenKind::Identifier, .From = 7, .To = 8},
+		Graphite::Token{.Kind = Graphite::TokenKind::Punctuation, .From = 9, .To = 10}};
+
+	CHECK(cache.TokensOf(buffer, 0) == lagging);
+	CHECK(cache.TokensOf(buffer, 0) == lagging);
+
+	cache.SetParseBudget(Graphite::ParseBudget{.PerAttempt = std::chrono::seconds{10}, .PauseAfterRunningOut = std::chrono::microseconds{0}});
+
+	CHECK(DescribeLine(cache, buffer, 0) == "keyword 'int' | identifier 's' | punctuation '=' | number '1' | punctuation ';'");
+}
+
+TEST_CASE("A document's first parse, out of time, finishes over later requests")
+{
+	const Core::TextBuffer buffer{ManyCSharpClasses(2000)};
+	Graphite::SyntaxCache cache = CSharpCache();
+	cache.SetParseBudget(Graphite::ParseBudget{.PerAttempt = std::chrono::microseconds{0}, .PauseAfterRunningOut = std::chrono::microseconds{0}});
+
+	CHECK(cache.TokensOf(buffer, 5).empty());
+
+	std::size_t requests = 1;
+
+	while (cache.TokensOf(buffer, 5).empty() && requests < 1'000'000)
+	{
+		++requests;
+	}
+
+	CHECK(requests > 1);
+	CHECK(DescribeLine(cache, buffer, 5) == "keyword 'class' | type 'C5' | punctuation '{' | keyword 'int' | identifier 'f' | punctuation '=' | number '1' | punctuation ';' | keyword 'void' | function 'M' | punctuation '(' | punctuation ')' | punctuation '{' | identifier 'f' | punctuation '+=' | number '2' | punctuation ';' | punctuation '}' | punctuation '}'");
+}
+
+TEST_CASE("Switching a cache from a grammar to a lexer colours by the lexer")
+{
+	const Core::TextBuffer buffer{std::string("/* a */ int x;")};
+	Graphite::SyntaxCache cache = CSharpCache();
+
+	REQUIRE_FALSE(cache.TokensOf(buffer, 0).empty());
+
+	cache.SetSyntax(Graphite::SyntaxOf(Graphite::LanguageId::Cpp));
+
+	CHECK(cache.TokensOf(buffer, 0) == LexCppLine("/* a */ int x;"));
+
+	cache.SetSyntax(Graphite::SyntaxSource{});
+
+	CHECK_FALSE(cache.HasSyntax());
+	CHECK(cache.TokensOf(buffer, 0).empty());
 }

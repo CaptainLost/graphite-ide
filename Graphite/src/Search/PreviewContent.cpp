@@ -27,7 +27,7 @@ namespace Graphite {
 			// was showing — line 40 of the next file starts in whatever state its own line 39
 			// left, not in the one carried over from a block comment in the last file.
 			m_Syntax.Reset();
-			m_Syntax.SetLexer(LexerFor(LanguageOfPath(m_Path)));
+			m_Syntax.SetSyntax(SyntaxOf(LanguageOfPath(m_Path)));
 		}
 
 		// Re-resolved on every call rather than remembered: the set reallocates as tabs open
@@ -69,7 +69,7 @@ namespace Graphite {
 		m_CentredOn.reset();
 
 		m_Syntax.Reset();
-		m_Syntax.SetLexer(nullptr);
+		m_Syntax.SetSyntax(SyntaxSource{});
 	}
 
 	bool PreviewContent::TakeCentring(std::size_t line)

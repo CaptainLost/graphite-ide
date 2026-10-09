@@ -1318,7 +1318,7 @@ namespace Graphite {
 		if (!syntax)
 		{
 			syntax.emplace();
-			syntax->SetLexer(LexerFor(LanguageOfPath(item.Path)));
+			syntax->SetSyntax(SyntaxOf(LanguageOfPath(item.Path)));
 			// Keeps the cache's width equal to the item's when a fresh cache is made for an item
 			// that was already at a non-default width — the case being a path rewrite while the
 			// document stays open: RewritePaths changes item.Path (a rename of the file or of a

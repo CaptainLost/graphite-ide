@@ -20,7 +20,7 @@ namespace {
 		// lexer comes from the registry, as SyntaxCacheTests.cpp does it.
 		explicit Fixture(std::string_view text) : Buffer(std::string(text))
 		{
-			Syntax.SetLexer(Graphite::LexerFor(Graphite::LanguageId::Cpp));
+			Syntax.SetSyntax(Graphite::SyntaxOf(Graphite::LanguageId::Cpp));
 		}
 
 		std::optional<Graphite::BracketPair> At(std::size_t caret)
