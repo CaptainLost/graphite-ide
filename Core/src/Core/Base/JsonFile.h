@@ -6,11 +6,21 @@
 #include <cstddef>
 #include <filesystem>
 #include <memory>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace Core {
+
+	struct JsonLeaf
+	{
+		std::vector<std::string> Path;
+		std::string Json;
+
+		friend bool operator==(const JsonLeaf&, const JsonLeaf&) = default;
+	};
 
 	class JsonFile
 	{
@@ -31,6 +41,15 @@ namespace Core {
 		void Set(std::string_view key, std::string value);
 
 		void Remove(std::string_view key);
+
+		std::optional<std::string> GetJsonAt(std::span<const std::string> path) const;
+
+		void SetJsonAt(std::span<const std::string> path, std::string_view json);
+
+		void RemoveAt(std::span<const std::string> path);
+
+		// A leaf is any value that is not an object with members, so an empty object is kept as one.
+		std::vector<JsonLeaf> CollectLeaves() const;
 
 		Result<void> Save(const std::filesystem::path& path) const;
 

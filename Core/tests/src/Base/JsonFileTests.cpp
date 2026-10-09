@@ -9,7 +9,9 @@
 #include <utility>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using Core::JsonFile;
@@ -300,4 +302,115 @@ TEST_CASE("Removing a key that is not there changes nothing")
 
 	CHECK(file.GetCount() == 1);
 	CHECK(file.Get("wordWrap") == "true");
+}
+
+TEST_CASE("A value set at a path is read back at that path after a save and a load")
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path path = temporaryDirectory.GetPath() / "settings.json";
+	const std::vector<std::string> choicePath{"languages", "CSharp", "language_server"};
+
+	JsonFile written;
+	written.SetJsonAt(choicePath, R"("roslyn")");
+	REQUIRE(written.Save(path));
+
+	const JsonFile read = JsonFile::Load(path);
+
+	CHECK(read.GetJsonAt(choicePath) == std::optional<std::string>{R"("roslyn")"});
+}
+
+TEST_CASE("Setting a value at a path keeps the values beside it")
+{
+	JsonFile file;
+	const std::vector<std::string> clangdPath{"lsp", "clangd", "binary", "path"};
+	const std::vector<std::string> roslynPath{"lsp", "roslyn", "binary", "path"};
+
+	file.SetJsonAt(clangdPath, R"("C:\\clangd.exe")");
+	file.SetJsonAt(roslynPath, R"("C:\\roslyn.exe")");
+
+	CHECK(file.GetJsonAt(clangdPath) == std::optional<std::string>{R"("C:\\clangd.exe")"});
+	CHECK(file.GetJsonAt(roslynPath) == std::optional<std::string>{R"("C:\\roslyn.exe")"});
+}
+
+TEST_CASE("A path through a value that is not an object reads as absent")
+{
+	JsonFile file;
+	file.Set("lsp", "fast");
+
+	const std::vector<std::string> throughString{"lsp", "clangd"};
+
+	CHECK_FALSE(file.GetJsonAt(throughString).has_value());
+}
+
+TEST_CASE("Leaves list every value that is not an object with members, with the keys that lead to it")
+{
+	JsonFile file;
+	file.Set("a", "x");
+
+	const std::vector<std::string> numberPath{"b", "c"};
+	const std::vector<std::string> emptyObjectPath{"b", "d"};
+	const std::vector<std::string> arrayPath{"e"};
+
+	file.SetJsonAt(numberPath, "1");
+	file.SetJsonAt(emptyObjectPath, "{}");
+	file.SetJsonAt(arrayPath, "[1,2]");
+
+	const std::vector<Core::JsonLeaf> expected{
+		Core::JsonLeaf{.Path = {"a"}, .Json = R"("x")"},
+		Core::JsonLeaf{.Path = {"b", "c"}, .Json = "1"},
+		Core::JsonLeaf{.Path = {"b", "d"}, .Json = "{}"},
+		Core::JsonLeaf{.Path = {"e"}, .Json = "[1,2]"},
+	};
+
+	CHECK(file.CollectLeaves() == expected);
+}
+
+TEST_CASE("Removing a value at a path drops the objects it leaves empty and nothing else")
+{
+	JsonFile file;
+	const std::vector<std::string> onlyServerPath{"lsp", "clangd", "binary", "path"};
+	const std::vector<std::string> keptPath{"languages", "Cpp", "language_server"};
+
+	file.SetJsonAt(onlyServerPath, R"("C:\\clangd.exe")");
+	file.SetJsonAt(keptPath, R"("clangd")");
+
+	file.RemoveAt(onlyServerPath);
+
+	const std::vector<std::string> serversPath{"lsp"};
+
+	CHECK_FALSE(file.GetJsonAt(serversPath).has_value());
+	CHECK(file.GetJsonAt(keptPath) == std::optional<std::string>{R"("clangd")"});
+}
+
+TEST_CASE("Removing a path that is not there leaves an empty object beside it alone")
+{
+	JsonFile file;
+	const std::vector<std::string> emptyOptionsPath{"lsp", "clangd", "initialization_options"};
+	const std::vector<std::string> absentPath{"lsp", "clangd", "initialization_options", "fallbackFlags"};
+
+	file.SetJsonAt(emptyOptionsPath, "{}");
+	file.RemoveAt(absentPath);
+
+	CHECK(file.GetJsonAt(emptyOptionsPath) == std::optional<std::string>{"{}"});
+}
+
+TEST_CASE("Setting text that does not parse changes nothing")
+{
+	JsonFile file;
+	const std::vector<std::string> path{"lsp", "clangd"};
+
+	file.SetJsonAt(path, "{not json");
+
+	CHECK(file.GetCount() == 0);
+	CHECK_FALSE(file.GetJsonAt(path).has_value());
+}
+
+TEST_CASE("A flat key is a leaf whose path is that one key")
+{
+	JsonFile file;
+	file.Set("lastFolder", "D:\\Repos\\IDE");
+
+	const std::vector<Core::JsonLeaf> expected{Core::JsonLeaf{.Path = {"lastFolder"}, .Json = R"("D:\\Repos\\IDE")"}};
+
+	CHECK(file.CollectLeaves() == expected);
 }

@@ -10,7 +10,11 @@
 
 #include <fstream>
 
+#include <span>
+
 #include <sstream>
+
+#include <string_view>
 
 #include <utility>
 
@@ -23,6 +27,97 @@ namespace Core {
 		constexpr int kIndentWidth = 4;
 		constexpr char kIndentCharacter = ' ';
 		constexpr bool kEscapeNonAscii = false;
+
+		constexpr int kCompactIndent = -1;
+
+		std::string DumpCompact(const nlohmann::json& value)
+		{
+			return value.dump(kCompactIndent, kIndentCharacter, kEscapeNonAscii, nlohmann::json::error_handler_t::replace);
+		}
+
+		nlohmann::json ParseOrDiscard(std::string_view text)
+		{
+			const nlohmann::json::parser_callback_t noParseCallback = nullptr;
+			const bool allowExceptions = false;
+			return nlohmann::json::parse(text.begin(), text.end(), noParseCallback, allowExceptions);
+		}
+
+		const nlohmann::json* FindAt(const nlohmann::json& root, std::span<const std::string> path)
+		{
+			const nlohmann::json* current = &root;
+
+			for (const std::string& key : path)
+			{
+				if (!current->is_object())
+				{
+					return nullptr;
+				}
+
+				const nlohmann::json::const_iterator member = current->find(key);
+
+				if (member == current->end())
+				{
+					return nullptr;
+				}
+
+				current = &*member;
+			}
+
+			return current;
+		}
+
+		bool IsObjectWithMembers(const nlohmann::json& value)
+		{
+			return value.is_object() && !value.empty();
+		}
+
+		void CollectLeavesUnder(const nlohmann::json& value, std::vector<std::string>& path, std::vector<JsonLeaf>& leaves)
+		{
+			if (!IsObjectWithMembers(value))
+			{
+				leaves.push_back(JsonLeaf{.Path = path, .Json = DumpCompact(value)});
+				return;
+			}
+
+			for (nlohmann::json::const_iterator member = value.cbegin(); member != value.cend(); ++member)
+			{
+				path.push_back(member.key());
+				CollectLeavesUnder(member.value(), path, leaves);
+				path.pop_back();
+			}
+		}
+
+		bool EraseAt(nlohmann::json& parent, std::span<const std::string> path)
+		{
+			if (!parent.is_object())
+			{
+				return false;
+			}
+
+			const std::string& key = path.front();
+
+			if (path.size() == 1)
+			{
+				return parent.erase(key) > 0;
+			}
+
+			const nlohmann::json::iterator child = parent.find(key);
+
+			if (child == parent.end())
+			{
+				return false;
+			}
+
+			const bool erased = EraseAt(*child, path.subspan(1));
+			const bool childLeftEmpty = erased && child->is_object() && child->empty();
+
+			if (childLeftEmpty)
+			{
+				parent.erase(key);
+			}
+
+			return erased;
+		}
 	}
 
 	struct JsonFile::Document
@@ -120,6 +215,81 @@ namespace Core {
 	void JsonFile::Remove(std::string_view key)
 	{
 		Document::WritableRootOf(m_Document).erase(std::string{key});
+	}
+
+	std::optional<std::string> JsonFile::GetJsonAt(std::span<const std::string> path) const
+	{
+		if (path.empty())
+		{
+			return std::nullopt;
+		}
+
+		const nlohmann::json* value = FindAt(Document::RootOf(m_Document), path);
+
+		if (value == nullptr)
+		{
+			return std::nullopt;
+		}
+
+		return DumpCompact(*value);
+	}
+
+	void JsonFile::SetJsonAt(std::span<const std::string> path, std::string_view json)
+	{
+		if (path.empty())
+		{
+			return;
+		}
+
+		nlohmann::json parsed = ParseOrDiscard(json);
+
+		if (parsed.is_discarded())
+		{
+			return;
+		}
+
+		nlohmann::json* parent = &Document::WritableRootOf(m_Document);
+
+		for (const std::string& key : path.first(path.size() - 1))
+		{
+			nlohmann::json& child = (*parent)[key];
+
+			if (!child.is_object())
+			{
+				child = nlohmann::json::object();
+			}
+
+			parent = &child;
+		}
+
+		(*parent)[path.back()] = std::move(parsed);
+	}
+
+	void JsonFile::RemoveAt(std::span<const std::string> path)
+	{
+		if (path.empty())
+		{
+			return;
+		}
+
+		EraseAt(Document::WritableRootOf(m_Document), path);
+	}
+
+	std::vector<JsonLeaf> JsonFile::CollectLeaves() const
+	{
+		const nlohmann::json& root = Document::RootOf(m_Document);
+
+		std::vector<JsonLeaf> leaves;
+		std::vector<std::string> path;
+
+		for (nlohmann::json::const_iterator member = root.cbegin(); member != root.cend(); ++member)
+		{
+			path.push_back(member.key());
+			CollectLeavesUnder(member.value(), path, leaves);
+			path.pop_back();
+		}
+
+		return leaves;
 	}
 
 	std::vector<std::string> JsonFile::CollectKeys() const
