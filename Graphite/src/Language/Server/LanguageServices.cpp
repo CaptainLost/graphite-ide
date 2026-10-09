@@ -60,12 +60,17 @@ namespace Graphite {
 		}
 	}
 
-	const ServerConfig* LanguageServices::Resolve(const std::filesystem::path& path,
-												  LanguageId language, Key& key) const
+	const ServerDefinition* LanguageServices::ServerFor(LanguageId language) const
 	{
-		const ServerConfig* config = ServerConfigFor(language);
+		return RecommendedServerFor(language);
+	}
 
-		if (config == nullptr)
+	const ServerDefinition* LanguageServices::Resolve(const std::filesystem::path& path,
+															  LanguageId language, Key& key) const
+	{
+		const ServerDefinition* server = ServerFor(language);
+
+		if (server == nullptr)
 		{
 			return nullptr;
 		}
@@ -77,7 +82,7 @@ namespace Graphite {
 		if (const auto open = m_DocumentKeys.find(path); open != m_DocumentKeys.end() && open->second.Language == language)
 		{
 			key.Root = open->second.Root;
-			return config;
+			return server;
 		}
 
 		// Per file, so ahead of the per-directory cache: one named header does not decide for
@@ -88,8 +93,8 @@ namespace Graphite {
 		{
 			const bool inFolder = Core::IsSameOrWithin(path, m_FallbackRoot);
 
-			key.Root = RootFor(*config, path, inFolder ? m_FallbackRoot : named->second.Root);
-			return config;
+			key.Root = RootFor(*server, path, inFolder ? m_FallbackRoot : named->second.Root);
+			return server;
 		}
 
 		// The directory, not the full path: every document in it resolves to the same root, and
@@ -100,13 +105,13 @@ namespace Graphite {
 		if (cached != m_RootCache.end())
 		{
 			key.Root = cached->second;
-			return config;
+			return server;
 		}
 
-		key.Root = RootFor(*config, path, FallbackFor(path));
+		key.Root = RootFor(*server, path, FallbackFor(path));
 		m_RootCache.emplace(cacheKey, key.Root);
 
-		return config;
+		return server;
 	}
 
 	// Every file gets a root it can be judged by (ADR 0532). One shared empty root for every
@@ -164,9 +169,9 @@ namespace Graphite {
 	void LanguageServices::StartServer(ManagedServer& server, const Key& key)
 	{
 		const Core::Result<std::filesystem::path> binary =
-			FindServerBinary(server.Config->Command, ConfiguredBinaryFor(key.Language));
+			FindServerBinary(server.Definition->ExecutableName, ConfiguredBinaryFor(key.Language));
 
-		server.Status.Name = std::string(server.Config->Command);
+		server.Status.Name = std::string(server.Definition->DisplayName);
 		server.Status.Restarts = server.Restarts;
 
 		if (!binary)
@@ -174,7 +179,7 @@ namespace Graphite {
 			server.Status.State = ServerState::NotFound;
 			server.Status.Detail = binary.GetError().Message;
 
-			APP_WARN("No {} for {}: {}", server.Config->Command,
+			APP_WARN("No {} for {}: {}", server.Definition->DisplayName,
 					 LanguageDisplayName(key.Language), binary.GetError().Message);
 			return;
 		}
@@ -185,7 +190,7 @@ namespace Graphite {
 		// later answer: which language it serves, which binary is running, and the root it was
 		// given - a server rooted somewhere unexpected answers about the wrong project, and this
 		// line is where that becomes visible instead of mysterious.
-		APP_INFO("Starting {} for {} at {}", server.Config->Command,
+		APP_INFO("Starting {} for {} at {}", server.Definition->DisplayName,
 				 LanguageDisplayName(key.Language), Core::ToUtf8(key.Root));
 
 		server.Client = MakeClient(server, key);
@@ -199,9 +204,9 @@ namespace Graphite {
 	void LanguageServices::EnsureStarted(const std::filesystem::path& path, LanguageId language)
 	{
 		Key key;
-		const ServerConfig* config = Resolve(path, language, key);
+		const ServerDefinition* definition = Resolve(path, language, key);
 
-		if (config == nullptr)
+		if (definition == nullptr)
 		{
 			// No server configured for this language: nothing to start, and no entry to create.
 			// StatusFor answers NotConfigured for a language with no entry, so there is nothing
@@ -218,7 +223,7 @@ namespace Graphite {
 		}
 
 		ManagedServer server;
-		server.Config = config;
+		server.Definition = definition;
 		server.Root = key.Root;
 
 		if (Permits(key.Root))
@@ -659,7 +664,7 @@ namespace Graphite {
 
 	void LanguageServices::MarkRestricted(ManagedServer& server)
 	{
-		server.Status.Name = std::string(server.Config->Command);
+		server.Status.Name = std::string(server.Definition->DisplayName);
 		server.Status.State = ServerState::Restricted;
 		server.Status.Detail = Core::ToUtf8(server.Root);
 		server.Status.Percent = -1;
@@ -1047,10 +1052,10 @@ namespace Graphite {
 	{
 		if (m_ClientFactory)
 		{
-			return m_ClientFactory(*server.Config, server.Binary, key.Root);
+			return m_ClientFactory(*server.Definition, server.Binary, key.Root);
 		}
 
-		return Core::CreateScope<LspClient>(*server.Config, server.Binary, key.Root);
+		return Core::CreateScope<LspClient>(*server.Definition, server.Binary, key.Root);
 	}
 
 	bool LanguageServices::IsRunningFor(const std::filesystem::path& path, LanguageId language) const

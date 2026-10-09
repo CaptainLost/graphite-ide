@@ -3,7 +3,7 @@
 #include "Core/Base/Base.h"
 
 #include "Language/Registry/LanguageRegistry.h"
-#include "Language/Server/ServerRegistry.h"
+#include "Language/Server/ServerCatalog.h"
 #include "Search/FileEnumerator.h"
 
 #include "Core/App/Redraw.h"

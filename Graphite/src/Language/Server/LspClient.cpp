@@ -175,21 +175,17 @@ namespace Graphite {
 		SendNowLocked(*m_Shared, std::move(bytes));
 	}
 
-	LspClient::LspClient(const ServerConfig& config, std::filesystem::path binary,
+	LspClient::LspClient(const ServerDefinition& server, std::filesystem::path binary,
 						 std::filesystem::path root)
 	{
-		m_Shared->ProtocolLanguageId = std::string(config.ProtocolLanguageId);
+		m_Shared->ProtocolLanguageId = std::string(server.ProtocolLanguageId);
 		m_Shared->NoCompileDatabase = LacksCompileDatabase(root);
 
-		m_Shared->Status.Name = std::string(config.Command);
+		m_Shared->Status.Name = std::string(server.DisplayName);
 		m_Shared->Status.Detail = Core::ToUtf8(binary);
 		m_Shared->Status.State = ServerState::Starting;
 
-		// --pch-storage=disk keeps preambles out of memory, which is what makes several
-		// background files affordable at once: a preamble is the bulk of what a translation
-		// unit costs, and the background pass holds more than one open at a time.
-		Core::Result<Core::Scope<Core::ChildProcess>> started =
-			Core::ChildProcess::Start(binary, {"--background-index", "--pch-storage=disk"}, root);
+		Core::Result<Core::Scope<Core::ChildProcess>> started = Core::ChildProcess::Start(binary, DefaultArgumentsOf(server), root);
 
 		if (!started)
 		{
@@ -237,12 +233,12 @@ namespace Graphite {
 		}
 	}
 
-	LspClient::LspClient(const ServerConfig& config, std::filesystem::path root, WithoutServer)
+	LspClient::LspClient(const ServerDefinition& server, std::filesystem::path root, WithoutServer)
 	{
-		m_Shared->ProtocolLanguageId = std::string(config.ProtocolLanguageId);
+		m_Shared->ProtocolLanguageId = std::string(server.ProtocolLanguageId);
 		m_Shared->NoCompileDatabase = LacksCompileDatabase(root);
 
-		m_Shared->Status.Name = std::string(config.Command);
+		m_Shared->Status.Name = std::string(server.DisplayName);
 		m_Shared->Status.State = ServerState::Starting;
 
 		// Everything the real constructor does except start a process and the two threads that

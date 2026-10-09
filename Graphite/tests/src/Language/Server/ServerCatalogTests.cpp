@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
-#include "Language/Server/ServerRegistry.h"
+#include "Language/Registry/LanguageRegistry.h"
+#include "Language/Server/ServerCatalog.h"
 #include "TempDirectory.h"
 
 #include "Core/Platform/Process.h"
@@ -8,6 +9,9 @@
 #include <cstdlib>
 #include <fstream>
 #include <optional>
+#include <string>
+#include <string_view>
+#include <vector>
 
 namespace {
 
@@ -18,12 +22,37 @@ namespace {
 	}
 }
 
-TEST_CASE("ServerConfigFor knows C++ and nothing else yet")
+TEST_CASE("The catalogue knows clangd and C++ recommends it")
 {
-	REQUIRE(Graphite::ServerConfigFor(Graphite::LanguageId::Cpp) != nullptr);
-	CHECK(Graphite::ServerConfigFor(Graphite::LanguageId::Cpp)->Command == "clangd");
-	CHECK(Graphite::ServerConfigFor(Graphite::LanguageId::Cpp)->ProtocolLanguageId == "cpp");
-	CHECK(Graphite::ServerConfigFor(Graphite::LanguageId::PlainText) == nullptr);
+	const Graphite::ServerDefinition* clangd = Graphite::FindServer("clangd");
+
+	REQUIRE(clangd != nullptr);
+	CHECK(clangd->DisplayName == "clangd");
+	CHECK(clangd->ExecutableName == "clangd");
+	CHECK(clangd->ProtocolLanguageId == "cpp");
+	CHECK(clangd->Adapter == Graphite::AdapterKind::Clangd);
+
+	CHECK(Graphite::RecommendedServerFor(Graphite::LanguageId::Cpp) == clangd);
+	CHECK(Graphite::RecommendedServerFor(Graphite::LanguageId::PlainText) == nullptr);
+	CHECK(Graphite::FindServer("no-such-server") == nullptr);
+}
+
+TEST_CASE("Every server a language names is in the catalogue")
+{
+	for (const Graphite::LanguageId language : Graphite::kAllLanguages)
+	{
+		for (const std::string_view serverId : Graphite::DefinitionOf(language).Servers)
+		{
+			CHECK(Graphite::FindServer(serverId) != nullptr);
+		}
+	}
+}
+
+TEST_CASE("clangd starts with background indexing and its preambles on disk")
+{
+	const std::vector<std::string> arguments = Graphite::DefaultArgumentsOf(*Graphite::FindServer("clangd"));
+
+	CHECK(arguments == std::vector<std::string>{"--background-index", "--pch-storage=disk"});
 }
 
 TEST_CASE("RootFor climbs to the nearest directory holding a marker")
@@ -33,9 +62,9 @@ TEST_CASE("RootFor climbs to the nearest directory holding a marker")
 	Touch(temp.GetPath() / "project" / "compile_flags.txt");
 	Touch(temp.GetPath() / "project" / "src" / "deep" / "main.cpp");
 
-	const auto* config = Graphite::ServerConfigFor(Graphite::LanguageId::Cpp);
+	const Graphite::ServerDefinition& clangd = *Graphite::FindServer("clangd");
 
-	CHECK(Graphite::RootFor(*config, temp.GetPath() / "project" / "src" / "deep" / "main.cpp",
+	CHECK(Graphite::RootFor(clangd, temp.GetPath() / "project" / "src" / "deep" / "main.cpp",
 							temp.GetPath()) == temp.GetPath() / "project");
 }
 
@@ -49,9 +78,9 @@ TEST_CASE("RootFor treats a compile database in build/ as a project marker")
 	Touch(temp.GetPath() / "project" / "build" / "compile_commands.json");
 	Touch(temp.GetPath() / "project" / "src" / "main.cpp");
 
-	const auto* config = Graphite::ServerConfigFor(Graphite::LanguageId::Cpp);
+	const Graphite::ServerDefinition& clangd = *Graphite::FindServer("clangd");
 
-	CHECK(Graphite::RootFor(*config, temp.GetPath() / "project" / "src" / "main.cpp", {}) ==
+	CHECK(Graphite::RootFor(clangd, temp.GetPath() / "project" / "src" / "main.cpp", {}) ==
 		  temp.GetPath() / "project");
 	CHECK(Graphite::IsProjectRoot(temp.GetPath() / "project"));
 }
@@ -62,9 +91,9 @@ TEST_CASE("RootFor falls back when no marker is anywhere above the file")
 
 	Touch(temp.GetPath() / "loose" / "main.cpp");
 
-	const auto* config = Graphite::ServerConfigFor(Graphite::LanguageId::Cpp);
+	const Graphite::ServerDefinition& clangd = *Graphite::FindServer("clangd");
 
-	CHECK(Graphite::RootFor(*config, temp.GetPath() / "loose" / "main.cpp", temp.GetPath()) ==
+	CHECK(Graphite::RootFor(clangd, temp.GetPath() / "loose" / "main.cpp", temp.GetPath()) ==
 		  temp.GetPath());
 }
 

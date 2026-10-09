@@ -5,7 +5,7 @@
 #include "Language/Api/LanguageId.h"
 #include "Language/Api/LanguageService.h"
 #include "Language/Server/LspClient.h"
-#include "Language/Server/ServerRegistry.h"
+#include "Language/Server/ServerCatalog.h"
 
 #include "Core/Jobs/CancellationToken.h"
 #include "Core/Jobs/JobQueue.h"
@@ -132,7 +132,7 @@ namespace Graphite {
 		// a death noticed, the backoff, the replay, the cap - can be driven with clients that have
 		// no process behind them (LspClient::WithoutServer) instead of a server that dies on cue.
 		using ClientFactory = std::function<Core::Scope<LspClient>(
-			const ServerConfig& config, const std::filesystem::path& binary,
+			const ServerDefinition& server, const std::filesystem::path& binary,
 			const std::filesystem::path& root)>;
 
 		void SetClientFactory(ClientFactory factory);
@@ -299,7 +299,7 @@ namespace Graphite {
 		// Everything owned about one server, whether or not it ever got a process.
 		struct ManagedServer
 		{
-			const ServerConfig* Config = nullptr; // points into ServerConfigFor's static storage
+			const ServerDefinition* Definition = nullptr;
 			std::filesystem::path Root;
 			std::filesystem::path Binary;  // resolved once; a restart reuses it rather than
 										   // searching again
@@ -340,13 +340,15 @@ namespace Graphite {
 			std::optional<std::chrono::steady_clock::time_point> IdleSince;
 		};
 
-		// Resolves the config and the root for (path, language); null when the language has no
+		// Resolves the server and the root for (path, language); null when the language has no
 		// configured server. Shared by every method that needs to find a server's entry rather
 		// than start one — including EnsureStarted, which is called every frame a document stays
 		// active, so this is on the hot path. Const, though it consults and fills m_RootCache:
 		// the cache changes how fast the answer comes, never what it is.
-		const ServerConfig* Resolve(const std::filesystem::path& path, LanguageId language,
-									Key& key) const;
+		const ServerDefinition* Resolve(const std::filesystem::path& path, LanguageId language,
+									   Key& key) const;
+
+		const ServerDefinition* ServerFor(LanguageId language) const;
 
 		// The root a file with no marker above it falls back to: the fallback root when the file
 		// lies inside it, the file's own directory otherwise.

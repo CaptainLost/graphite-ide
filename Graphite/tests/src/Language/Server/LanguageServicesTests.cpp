@@ -1144,9 +1144,9 @@ namespace {
 
 		Graphite::LanguageServices::ClientFactory Get()
 		{
-			return [this](const Graphite::ServerConfig& config, const std::filesystem::path&,
+			return [this](const Graphite::ServerDefinition& server, const std::filesystem::path&,
 						  const std::filesystem::path& root) {
-				auto client = std::make_unique<Graphite::LspClient>(config, root,
+				auto client = std::make_unique<Graphite::LspClient>(server, root,
 																	Graphite::LspClient::WithoutServer{});
 				Latest = client.get();
 				++Made;

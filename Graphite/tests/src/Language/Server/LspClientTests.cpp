@@ -2,7 +2,7 @@
 
 #include "Language/Server/LspClient.h"
 #include "Language/Server/ServerDiscovery.h"
-#include "Language/Server/ServerRegistry.h"
+#include "Language/Server/ServerCatalog.h"
 #include "TempDirectory.h"
 
 #include <chrono>
@@ -17,7 +17,7 @@ namespace {
 	// server's own requests.
 	Graphite::LspClient Offline(const std::filesystem::path& root)
 	{
-		return Graphite::LspClient{*Graphite::ServerConfigFor(Graphite::LanguageId::Cpp), root,
+		return Graphite::LspClient{*Graphite::FindServer("clangd"), root,
 								   Graphite::LspClient::WithoutServer{}};
 	}
 
@@ -535,7 +535,7 @@ TEST_CASE("A question asked of a server that never started is answered rather th
 {
 	TempDirectory temp;
 
-	Graphite::LspClient client{*Graphite::ServerConfigFor(Graphite::LanguageId::Cpp),
+	Graphite::LspClient client{*Graphite::FindServer("clangd"),
 							   "no-such-language-server-4c1e.exe", temp.GetPath()};
 
 	const Graphite::RequestId id = client.AskDefinition({temp.GetPath() / "main.cpp", 0, Graphite::Utf16Column{0}});
@@ -559,7 +559,7 @@ TEST_CASE("Nothing is queued for a server that is already gone")
 	// would pile up a whole file's text per keystroke for as long as it ran.
 	TempDirectory temp;
 
-	Graphite::LspClient client{*Graphite::ServerConfigFor(Graphite::LanguageId::Cpp),
+	Graphite::LspClient client{*Graphite::FindServer("clangd"),
 							   "no-such-language-server-4c1e.exe", temp.GetPath()};
 
 	const std::filesystem::path source = temp.GetPath() / "main.cpp";
@@ -585,7 +585,7 @@ TEST_CASE("Nothing can steal the outbound queue from a running writer")
 	// so the answer is nothing, rather than whatever happened to still be sitting there.
 	TempDirectory temp;
 
-	Graphite::LspClient client{*Graphite::ServerConfigFor(Graphite::LanguageId::Cpp), "cmd.exe",
+	Graphite::LspClient client{*Graphite::FindServer("clangd"), "cmd.exe",
 							   temp.GetPath()};
 
 	client.OpenDocument(temp.GetPath() / "main.cpp", "int Main() { return 0; }\n");
@@ -600,7 +600,7 @@ TEST_CASE("A client whose child never speaks the protocol still shuts down")
 	// hang here, not an assertion, is what failure looks like.
 	TempDirectory temp;
 
-	Graphite::LspClient client{*Graphite::ServerConfigFor(Graphite::LanguageId::Cpp), "cmd.exe",
+	Graphite::LspClient client{*Graphite::FindServer("clangd"), "cmd.exe",
 							   temp.GetPath()};
 
 	client.OpenDocument(temp.GetPath() / "main.cpp", "int Main() { return 0; }\n");
@@ -625,7 +625,7 @@ TEST_CASE("clangd answers a definition request" * doctest::skip(true))
 	std::ofstream{temp.GetPath() / "compile_flags.txt"} << "-std=c++20\n";
 	std::ofstream{source} << "int Answer() { return 42; }\nint Main() { return Answer(); }\n";
 
-	Graphite::LspClient client{*Graphite::ServerConfigFor(Graphite::LanguageId::Cpp),
+	Graphite::LspClient client{*Graphite::FindServer("clangd"),
 							   binary.GetValue(), temp.GetPath()};
 
 	const std::string text = "int Answer() { return 42; }\nint Main() { return Answer(); }\n";

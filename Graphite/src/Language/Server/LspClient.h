@@ -6,7 +6,7 @@
 #include "Language/Api/LanguageService.h"
 #include "Language/Server/JsonRpc.h"
 #include "Language/Server/LspProtocol.h"
-#include "Language/Server/ServerRegistry.h"
+#include "Language/Server/ServerCatalog.h"
 
 #include <atomic>
 #include <chrono>
@@ -35,7 +35,7 @@ namespace Graphite {
 	class LspClient
 	{
 	public:
-		LspClient(const ServerConfig& config, std::filesystem::path binary,
+		LspClient(const ServerDefinition& server, std::filesystem::path binary,
 				  std::filesystem::path root);
 
 		// Tags the constructor that does everything except start a process, so that the paths only
@@ -46,7 +46,7 @@ namespace Graphite {
 		{
 		};
 
-		LspClient(const ServerConfig& config, std::filesystem::path root, WithoutServer);
+		LspClient(const ServerDefinition& server, std::filesystem::path root, WithoutServer);
 
 		~LspClient();
 
