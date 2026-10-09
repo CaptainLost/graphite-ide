@@ -3,6 +3,7 @@
 #include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Language/Syntax/CppLexer.h"
+#include "Language/Syntax/Grammars/CSharpGrammar.h"
 
 #include <array>
 #include <cstddef>
@@ -34,7 +35,8 @@ namespace Graphite {
 			 .SettingsName = "CSharp",
 			 .DisplayName = "C#",
 			 .Extensions = kCSharpExtensions,
-			 .LineComment = kSlashSlashComment},
+			 .LineComment = kSlashSlashComment,
+			 .Syntax = SyntaxKind::CSharpGrammar},
 			{.Id = LanguageId::TypeScript,
 			 .SettingsName = "TypeScript",
 			 .DisplayName = "TypeScript",
@@ -129,19 +131,27 @@ namespace Graphite {
 		return DefinitionOf(language).DisplayName;
 	}
 
-	const Lexer* LexerFor(LanguageId language)
+	SyntaxSource SyntaxOf(LanguageId language)
 	{
+		// Built on first use, not during static initialisation.
 		static const CppLexer cpp;
 
 		switch (DefinitionOf(language).Syntax)
 		{
 		case SyntaxKind::CppLexer:
-			return &cpp;
+			return SyntaxSource{.LineLexer = &cpp};
+		case SyntaxKind::CSharpGrammar:
+			return SyntaxSource{.TreeGrammar = &CSharpGrammar()};
 		case SyntaxKind::None:
-			return nullptr;
+			return SyntaxSource{};
 		}
 
-		return nullptr;
+		return SyntaxSource{};
+	}
+
+	const Lexer* LexerFor(LanguageId language)
+	{
+		return SyntaxOf(language).LineLexer;
 	}
 
 	std::optional<std::string_view> LineCommentPrefix(LanguageId language)

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Language/Api/LanguageId.h"
+#include "Language/Syntax/SyntaxSource.h"
 #include "Language/Syntax/Token.h"
 
 #include <cstdint>
@@ -14,7 +15,8 @@ namespace Graphite {
 	enum class SyntaxKind : std::uint8_t
 	{
 		None,
-		CppLexer
+		CppLexer,
+		CSharpGrammar
 	};
 
 	struct LanguageDefinition
@@ -38,6 +40,8 @@ namespace Graphite {
 
 	// Empty for PlainText, which is the absence of a recognised language rather than one.
 	std::string_view LanguageDisplayName(LanguageId language);
+
+	SyntaxSource SyntaxOf(LanguageId language);
 
 	// Stateless and shared; its lifetime is the program's.
 	const Lexer* LexerFor(LanguageId language);

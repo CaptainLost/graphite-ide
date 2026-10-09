@@ -92,3 +92,16 @@ TEST_CASE("Only C++ has a lexer")
 	CHECK(Graphite::LexerFor(Graphite::LanguageId::TypeScript) == nullptr);
 	CHECK(Graphite::LexerFor(Graphite::LanguageId::PlainText) == nullptr);
 }
+
+TEST_CASE("C# is coloured by a grammar and C++ by its lexer")
+{
+	const Graphite::SyntaxSource csharp = Graphite::SyntaxOf(Graphite::LanguageId::CSharp);
+	const Graphite::SyntaxSource cpp = Graphite::SyntaxOf(Graphite::LanguageId::Cpp);
+
+	CHECK(csharp.TreeGrammar != nullptr);
+	CHECK(csharp.LineLexer == nullptr);
+	CHECK(cpp.LineLexer == Graphite::LexerFor(Graphite::LanguageId::Cpp));
+	CHECK(cpp.TreeGrammar == nullptr);
+	CHECK(Graphite::SyntaxOf(Graphite::LanguageId::TypeScript) == Graphite::SyntaxSource{});
+	CHECK(Graphite::SyntaxOf(Graphite::LanguageId::PlainText) == Graphite::SyntaxSource{});
+}
