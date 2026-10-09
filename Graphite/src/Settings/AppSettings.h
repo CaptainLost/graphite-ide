@@ -32,7 +32,7 @@ namespace Graphite {
 
 	// graphite.json, read once and then kept in memory. Getters read the copy in memory; setters
 	// change it and mark it unwritten. Nothing re-reads the file per value: Flush reads it once per
-	// write and lays only the keys this process set or removed over what is on disk, so a key
+	// write and lays only the leaves (a value at a path of keys) this process set or removed over what is on disk, so a leaf
 	// edited by hand, or written by another instance, while the application runs survives the
 	// write and is read back into memory by it.
 	//
@@ -180,7 +180,7 @@ namespace Graphite {
 		std::string Get(std::string_view key) const;
 		void Set(std::string_view key, std::string value);
 
-		// What the file held as of load or the last write, key by key, so Flush can tell which keys
+		// What the file held as of load or the last write, leaf by leaf, so Flush can tell which leaves
 		// this process changed since.
 		using Snapshot = std::map<std::vector<std::string>, std::string>;
 		static Snapshot TakeSnapshot(const Core::JsonFile& document);

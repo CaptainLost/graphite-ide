@@ -37,8 +37,13 @@ namespace Graphite {
 
 		if (ImGui::IsItemDeactivatedAfterEdit())
 		{
-			m_Store.SetLanguageServerBinary(Core::FromUtf8(m_PendingServerPath));
-			m_OnCppServerChanged();
+			const std::filesystem::path editedPath = Core::FromUtf8(m_PendingServerPath);
+
+			if (editedPath != m_Store.GetLanguageServerBinary())
+			{
+				m_Store.SetLanguageServerBinary(editedPath);
+				m_OnCppServerChanged();
+			}
 		}
 
 		ImGui::TextDisabled("Left empty, clangd is looked for next to Graphite, then on PATH.");

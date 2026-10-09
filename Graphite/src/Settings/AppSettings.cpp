@@ -526,7 +526,7 @@ namespace Graphite {
 	{
 		const std::vector<std::string> path{kLanguagesKey, std::string{languageName}, kLanguageServerKey};
 
-		m_Document.SetJsonAt(path, nlohmann::json(std::string{serverId}).dump());
+		m_Document.SetJsonAt(path, nlohmann::json(std::string{serverId}).dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
 		m_Unwritten = true;
 	}
 

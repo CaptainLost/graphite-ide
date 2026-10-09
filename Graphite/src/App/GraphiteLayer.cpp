@@ -200,10 +200,10 @@ namespace Graphite {
 		// replaces rather than being shadowed by it.
 		m_AppSettings.ApplyKeyBindings(m_Keys);
 
-		// Before any document opens: a choice is read once per language, at the first server it starts.
+		// Before any document opens: a choice is read at the first query for a language, and again after Reconfigure.
 		m_LanguageServices.SetChoiceProvider([this](LanguageId language) { return ReadServerChoice(m_AppSettings, language); });
 
-		// Set before any document opens, for the same reason: the first
+		// Set before any document opens: the first
 		// EnsureStarted is where a refused root must already be refused (ADR 0532).
 		//
 		// Every root is judged by itself: LanguageServices gives a file with no marker above it the

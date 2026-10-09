@@ -111,13 +111,13 @@ namespace Graphite {
 		// makes switching folders quickly cost one walk rather than a queue of them.
 		void WarmUp(std::filesystem::path root, bool respectGitIgnore);
 
-		// Asked once per language and remembered until the provider is replaced; the recommended server for every language until set.
+		// Asked once per language and remembered until the provider is replaced or Reconfigure asks again; the recommended server for every language until set.
 		// A server already running keeps the choice it started with; Reconfigure applies a new one.
 		using ChoiceProvider = std::function<ServerChoice(LanguageId language)>;
 
 		void SetChoiceProvider(ChoiceProvider provider);
 
-		// Shuts down every server of `language` and opens the documents they held on what is chosen now. Call it when the choice, path or arguments change.
+		// Shuts down every server of `language` and opens the documents they held on what is chosen now. Call it when the choice, path, arguments, initialization options or settings change.
 		void Reconfigure(LanguageId language);
 
 		// Decides whether a server may run for a project root - whether its folder is trusted.

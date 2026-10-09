@@ -174,15 +174,15 @@ namespace Graphite {
 
 	void LanguageServices::Reconfigure(LanguageId language)
 	{
-		const ReleasedServers released = ReleaseServersOf(language);
+		ReleasedServers released = ReleaseServersOf(language);
 
 		m_Choices.erase(language);
 		ForgetRootsOf(language);
 
-		for (const HeldDocument& document : released.Held)
+		for (HeldDocument& document : released.Held)
 		{
 			EnsureStarted(document.Path, language);
-			OpenDocument(document.Path, language, document.Text);
+			OpenDocument(document.Path, language, std::move(document.Text));
 		}
 
 		// The folder the last warm-up walked may have been closed or replaced since.

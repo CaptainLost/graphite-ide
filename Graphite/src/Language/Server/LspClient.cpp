@@ -273,6 +273,9 @@ namespace Graphite {
 
 	void LspClient::Adopt(const ServerLaunch& launch, const std::filesystem::path& root)
 	{
+		CORE_ASSERT(launch.Server != nullptr, "a launch needs a server to adopt");
+		CORE_ASSERT(launch.Adapter != nullptr, "a launch needs an adapter to adopt");
+
 		m_Shared->ProtocolLanguageId = std::string(launch.Server->ProtocolLanguageId);
 		m_Shared->Adapter = launch.Adapter;
 		m_Shared->Context = AdapterContext{.Root = root, .InitializationOptions = launch.InitializationOptions, .Settings = launch.Settings};

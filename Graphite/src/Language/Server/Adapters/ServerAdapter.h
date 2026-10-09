@@ -27,6 +27,7 @@ namespace Graphite {
 		nlohmann::json Params;
 	};
 
+	// Every hook but ProjectProblemAt runs with the client's protocol lock held - WorkspaceConfiguration, AnswerRequest and AfterInitialized on its reader thread - so a hook must not block or touch the filesystem.
 	class ServerAdapter
 	{
 	public:

@@ -329,6 +329,7 @@ TEST_CASE("A root with no compile database settles into saying so rather than in
 
 	CHECK(status.State == Graphite::ServerState::ProjectIncomplete);
 	CHECK(status.Problem.Summary == "no compile database");
+	CHECK(status.Problem.Explanation.find("compile_commands.json") != std::string::npos);
 }
 
 TEST_CASE("A progress notification moves the percentage the status bar shows")

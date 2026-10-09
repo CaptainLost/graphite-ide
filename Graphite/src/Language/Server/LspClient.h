@@ -280,7 +280,6 @@ namespace Graphite {
 			// Written once, before either thread starts, and only read afterwards.
 			Core::Ref<Core::ChildProcess> Process;
 			std::string ProtocolLanguageId;
-
 			const ServerAdapter* Adapter = nullptr;
 			AdapterContext Context;
 			std::optional<ProjectProblem> Problem;

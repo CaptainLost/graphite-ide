@@ -23,7 +23,7 @@ Two instances changing different servers keep each other's change, and a hand ed
 
 ### Negative
 
-The file mixes two styles, flat dotted keys and nested objects. A concurrent edit beneath a leaf that this process turned into an object is lost.
+The file mixes two styles, flat dotted keys and nested objects. Arrays, scalars and empty objects are written whole, so two instances editing the same array or the same value (for example `lsp.<id>.binary.arguments`, or one setting `initialization_options` to `{}` while the other adds a member) keep only the last write.
 
 ### Neutral
 

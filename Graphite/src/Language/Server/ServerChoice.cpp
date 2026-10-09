@@ -19,7 +19,7 @@ namespace Graphite {
 			return false;
 		}
 
-		// A settings file written before languages had a choice stores none, and C++ must keep the server it always had.
+		// A settings file written before languages had a choice stores nothing, and C++ must keep the server it always had. A stored id the language does not list falls back to the recommended server too.
 		ServerChoice RecommendedChoice(LanguageId language)
 		{
 			return ServerChoice{.Kind = ServerChoiceKind::Chosen, .Server = RecommendedServerFor(language)};

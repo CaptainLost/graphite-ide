@@ -18,6 +18,21 @@
 
 namespace {
 
+	std::size_t g_AsksOfFirstProvider = 0;
+	std::size_t g_AsksOfSecondProvider = 0;
+
+	Graphite::ServerChoice AnswerAsFirstProvider(Graphite::LanguageId language)
+	{
+		++g_AsksOfFirstProvider;
+		return Graphite::ChooseServer(language, std::string{Graphite::kServerTurnedOff});
+	}
+
+	Graphite::ServerChoice AnswerAsSecondProvider(Graphite::LanguageId language)
+	{
+		++g_AsksOfSecondProvider;
+		return Graphite::ChooseServer(language, std::string{Graphite::kServerTurnedOff});
+	}
+
 	Graphite::ServerChoice ClangdAtFor(Graphite::LanguageId language, const std::filesystem::path& binary)
 	{
 		if (language != Graphite::LanguageId::Cpp)
@@ -1712,4 +1727,25 @@ TEST_CASE("Reconfigure does not warm a folder that is no longer the open one")
 	}
 
 	CHECK(spy.Made == 2);
+}
+
+TEST_CASE("Replacing the choice provider asks the new one")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	g_AsksOfFirstProvider = 0;
+	g_AsksOfSecondProvider = 0;
+
+	services.SetChoiceProvider([](Graphite::LanguageId language) { return AnswerAsFirstProvider(language); });
+	services.StatusFor(Graphite::LanguageId::Cpp);
+	services.StatusFor(Graphite::LanguageId::Cpp);
+
+	CHECK(g_AsksOfFirstProvider == 1);
+
+	services.SetChoiceProvider([](Graphite::LanguageId language) { return AnswerAsSecondProvider(language); });
+	services.StatusFor(Graphite::LanguageId::Cpp);
+
+	CHECK(g_AsksOfFirstProvider == 1);
+	CHECK(g_AsksOfSecondProvider == 1);
 }
