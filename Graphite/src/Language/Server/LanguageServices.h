@@ -6,6 +6,7 @@
 #include "Language/Api/LanguageService.h"
 #include "Language/Server/LspClient.h"
 #include "Language/Server/ServerCatalog.h"
+#include "Language/Server/ServerChoice.h"
 #include "Language/Server/ServerLaunch.h"
 
 #include "Core/Jobs/CancellationToken.h"
@@ -110,10 +111,10 @@ namespace Graphite {
 		// makes switching folders quickly cost one walk rather than a queue of them.
 		void WarmUp(std::filesystem::path root, bool respectGitIgnore);
 
-		// Overrides the binary `FindServerBinary` would otherwise search for, for every root of
-		// this language started from here on. Does not touch a server already running — call
-		// before the first `EnsureStarted` for it to take effect.
-		void SetConfiguredBinary(LanguageId language, std::filesystem::path path);
+		// Asked once per language and remembered until the provider is replaced; the recommended server for every language until set.
+		using ChoiceProvider = std::function<ServerChoice(LanguageId language)>;
+
+		void SetChoiceProvider(ChoiceProvider provider);
 
 		// Decides whether a server may run for a project root - whether its folder is trusted.
 		// A refused root still gets an entry, in ServerState::Restricted, so the documents opened
@@ -303,6 +304,7 @@ namespace Graphite {
 		struct ManagedServer
 		{
 			const ServerDefinition* Definition = nullptr;
+			ServerOverrides Overrides;
 			std::filesystem::path Root;
 			std::filesystem::path Binary;  // resolved once; a restart reuses it rather than
 										   // searching again
@@ -353,6 +355,10 @@ namespace Graphite {
 
 		const ServerDefinition* ServerFor(LanguageId language) const;
 
+		const ServerChoice& ChoiceFor(LanguageId language) const;
+
+		ServerStatus OffStatus(LanguageId language) const;
+
 		bool WarmUpNeedsOpen(LanguageId language) const;
 
 		// The root a file with no marker above it falls back to: the fallback root when the file
@@ -362,8 +368,6 @@ namespace Graphite {
 		// NoteNamed once `by` has been resolved; what Poll calls with the key of the server whose
 		// answer it is reading. A map insert and nothing else - Poll runs every frame.
 		void NoteNamedByKey(const std::filesystem::path& named, const Key& key);
-
-		std::filesystem::path ConfiguredBinaryFor(LanguageId language) const;
 
 		// Resolves the binary and either constructs the client or records why it could not.
 		void StartServer(ManagedServer& server, const Key& key);
@@ -430,7 +434,8 @@ namespace Graphite {
 		Core::CancellationToken m_WarmToken;
 
 		std::filesystem::path m_FallbackRoot;
-		std::map<LanguageId, std::filesystem::path> m_ConfiguredBinaries;
+		ChoiceProvider m_ChoiceProvider;
+		mutable std::map<LanguageId, ServerChoice> m_Choices;
 
 		std::map<Key, ManagedServer> m_Servers;
 

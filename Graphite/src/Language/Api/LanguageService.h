@@ -206,6 +206,7 @@ namespace Graphite {
 	enum class ServerState : std::uint8_t
 	{
 		NotConfigured,
+		Off,
 		NotFound,
 		Starting,
 		Indexing,

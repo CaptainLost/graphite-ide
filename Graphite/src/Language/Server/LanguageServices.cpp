@@ -71,7 +71,9 @@ namespace Graphite {
 
 	const ServerDefinition* LanguageServices::ServerFor(LanguageId language) const
 	{
-		return RecommendedServerFor(language);
+		const ServerChoice& choice = ChoiceFor(language);
+
+		return choice.Kind == ServerChoiceKind::Chosen ? choice.Server : nullptr;
 	}
 
 	const ServerDefinition* LanguageServices::Resolve(const std::filesystem::path& path,
@@ -164,21 +166,34 @@ namespace Graphite {
 		}
 	}
 
-	std::filesystem::path LanguageServices::ConfiguredBinaryFor(LanguageId language) const
+	void LanguageServices::SetChoiceProvider(ChoiceProvider provider)
 	{
-		const auto found = m_ConfiguredBinaries.find(language);
-		return found == m_ConfiguredBinaries.end() ? std::filesystem::path{} : found->second;
+		m_ChoiceProvider = std::move(provider);
+		m_Choices.clear();
 	}
 
-	void LanguageServices::SetConfiguredBinary(LanguageId language, std::filesystem::path path)
+	const ServerChoice& LanguageServices::ChoiceFor(LanguageId language) const
 	{
-		m_ConfiguredBinaries[language] = std::move(path);
+		if (!m_Choices.contains(language))
+		{
+			const std::optional<std::string> nothingStored;
+			ServerChoice choice = m_ChoiceProvider ? m_ChoiceProvider(language) : ChooseServer(language, nothingStored);
+
+			m_Choices.emplace(language, std::move(choice));
+		}
+
+		return m_Choices.at(language);
+	}
+
+	ServerStatus LanguageServices::OffStatus(LanguageId language) const
+	{
+		return ServerStatus{.State = ServerState::Off, .Name = std::string{LanguageDisplayName(language)}};
 	}
 
 	void LanguageServices::StartServer(ManagedServer& server, const Key& key)
 	{
 		const Core::Result<std::filesystem::path> binary =
-			FindServerBinary(server.Definition->ExecutableName, ConfiguredBinaryFor(key.Language));
+			FindServerBinary(server.Definition->ExecutableName, server.Overrides.Binary);
 
 		server.Status.Name = std::string(server.Definition->DisplayName);
 		server.Status.Restarts = server.Restarts;
@@ -233,6 +248,7 @@ namespace Graphite {
 
 		ManagedServer server;
 		server.Definition = definition;
+		server.Overrides = ChoiceFor(language).Overrides;
 		server.Root = key.Root;
 
 		if (Permits(key.Root))
@@ -249,6 +265,11 @@ namespace Graphite {
 
 	ServerStatus LanguageServices::StatusFor(LanguageId language) const
 	{
+		if (ChoiceFor(language).Kind == ServerChoiceKind::Off)
+		{
+			return OffStatus(language);
+		}
+
 		for (const auto& [key, server] : m_Servers)
 		{
 			if (key.Language == language)
@@ -264,6 +285,11 @@ namespace Graphite {
 
 	ServerStatus LanguageServices::StatusFor(const std::filesystem::path& path, LanguageId language)
 	{
+		if (ChoiceFor(language).Kind == ServerChoiceKind::Off)
+		{
+			return OffStatus(language);
+		}
+
 		Key key;
 
 		if (Resolve(path, language, key) == nullptr)
@@ -296,6 +322,7 @@ namespace Graphite {
 				// otherwise speak for the whole workspace for the rest of the session. Its own
 				// tabs still say it, through StatusFor for their path.
 				return 1;
+			case ServerState::Off:
 			case ServerState::NotConfigured:
 				return 0; // no server here at all - the one case with nothing to report
 			}
@@ -1068,8 +1095,7 @@ namespace Graphite {
 	Core::Scope<LspClient> LanguageServices::MakeClient(const ManagedServer& server,
 														const Key& key) const
 	{
-		const ServerOverrides noOverrides;
-		const ServerLaunch launch = LaunchFor(*server.Definition, server.Binary, noOverrides);
+		const ServerLaunch launch = LaunchFor(*server.Definition, server.Binary, server.Overrides);
 
 		if (m_ClientFactory)
 		{

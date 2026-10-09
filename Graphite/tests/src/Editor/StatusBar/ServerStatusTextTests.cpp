@@ -181,3 +181,13 @@ TEST_CASE("A restricted server names the folder that is not trusted")
 	// The remedy must be reachable with no folder open, where no bar is on screen to offer it.
 	CHECK(detail.find("open as the workspace") != std::string::npos);
 }
+
+TEST_CASE("A language whose server is turned off says so")
+{
+	Graphite::ServerStatus status;
+	status.Name = "C++";
+	status.State = Graphite::ServerState::Off;
+
+	CHECK(Graphite::ServerStatusText(status) == "C++: language server off");
+	CHECK(Graphite::ServerStatusDetail(status).find("turned off") != std::string::npos);
+}

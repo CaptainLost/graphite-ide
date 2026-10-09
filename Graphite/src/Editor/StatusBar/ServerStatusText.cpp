@@ -30,6 +30,9 @@ namespace Graphite {
 		case ServerState::NotConfigured:
 			return {};
 
+		case ServerState::Off:
+			return status.Name + ": language server off";
+
 		case ServerState::NotFound:
 			return status.Name + ": not found";
 
@@ -101,6 +104,10 @@ namespace Graphite {
 		switch (status.State)
 		{
 		case ServerState::NotConfigured:
+			break;
+
+		case ServerState::Off:
+			detail = "The language server for " + status.Name + " is turned off in the settings.";
 			break;
 
 		case ServerState::NotFound:

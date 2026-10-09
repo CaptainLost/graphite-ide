@@ -37,6 +37,7 @@
 #include "Settings/AppSettings.h"
 
 #include "App/GraphiteMenu.h"
+#include "App/LanguageServerChoice.h"
 #include "App/SampleToasts.h"
 
 #include "Core/App/Application.h"
@@ -186,16 +187,10 @@ namespace Graphite {
 		// replaces rather than being shadowed by it.
 		m_AppSettings.ApplyKeyBindings(m_Keys);
 
-		// Before any document opens, which is when the first server is started: SetConfiguredBinary
-		// deliberately does not touch a server already running, so a setting read after that point
-		// would not take effect until the next session.
-		if (std::filesystem::path binary = m_AppSettings.GetLanguageServerBinary();
-			!binary.empty())
-		{
-			m_LanguageServices.SetConfiguredBinary(LanguageId::Cpp, std::move(binary));
-		}
+		// Before any document opens: a choice is read once per language, at the first server it starts.
+		m_LanguageServices.SetChoiceProvider([this](LanguageId language) { return ReadServerChoice(m_AppSettings, language); });
 
-		// Set before any document opens, for the reason SetConfiguredBinary is: the first
+		// Set before any document opens, for the same reason: the first
 		// EnsureStarted is where a refused root must already be refused (ADR 0532).
 		//
 		// Every root is judged by itself: LanguageServices gives a file with no marker above it the
