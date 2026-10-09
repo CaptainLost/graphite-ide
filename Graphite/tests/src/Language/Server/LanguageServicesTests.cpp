@@ -1220,6 +1220,19 @@ namespace {
 
 		return false;
 	}
+
+	bool ContainsPath(const std::vector<std::filesystem::path>& paths, const std::filesystem::path& wanted)
+	{
+		for (const std::filesystem::path& path : paths)
+		{
+			if (path == wanted)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
 }
 
 TEST_CASE("A dead client is replaced through the factory and told every open document again")
@@ -1430,6 +1443,7 @@ TEST_CASE("A language whose server is turned off reports Off and starts nothing"
 	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
 
 	CHECK_FALSE(services.IsRunningFor(source, Graphite::LanguageId::Cpp));
+	CHECK_FALSE(services.OverallStatus().has_value());
 
 	const Graphite::ServerStatus status = services.StatusFor(source, Graphite::LanguageId::Cpp);
 
@@ -1462,4 +1476,119 @@ TEST_CASE("The user's extra arguments and options reach the client that is built
 	REQUIRE(spy.Made == 1);
 	CHECK(spy.LastLaunch.Arguments == std::vector<std::string>{"--background-index", "--pch-storage=disk", "--log=verbose"});
 	CHECK(spy.LastLaunch.InitializationOptions == options);
+}
+
+TEST_CASE("The choice is asked once per language until Reconfigure asks again")
+{
+	struct AskCounter
+	{
+		std::size_t Cpp = 0;
+		std::size_t Other = 0;
+	};
+
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	AskCounter counter;
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	services.SetChoiceProvider([&counter](Graphite::LanguageId language) {
+		if (language == Graphite::LanguageId::Cpp)
+		{
+			++counter.Cpp;
+		}
+		else
+		{
+			++counter.Other;
+		}
+
+		return Graphite::ChooseServer(language, std::string{Graphite::kServerTurnedOff});
+	});
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.StatusFor(source, Graphite::LanguageId::Cpp);
+	services.StatusFor(Graphite::LanguageId::Cpp);
+
+	CHECK(counter.Cpp == 1);
+	CHECK(counter.Other == 0);
+
+	services.Reconfigure(Graphite::LanguageId::Cpp);
+	services.StatusFor(source, Graphite::LanguageId::Cpp);
+
+	CHECK(counter.Cpp == 2);
+}
+
+TEST_CASE("Reconfigure moves every open document of the language to the server chosen now")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	StartWithSpy(services, temp, spy, clock, source);
+	services.OpenDocument(source, Graphite::LanguageId::Cpp, "int moved;\n");
+
+	temp.MakeFile("other-clangd.exe", "");
+	UseClangdAt(services, temp.GetPath() / "other-clangd.exe");
+	services.Reconfigure(Graphite::LanguageId::Cpp);
+
+	REQUIRE(spy.Made == 2);
+	CHECK(spy.LastLaunch.Binary == temp.GetPath() / "other-clangd.exe");
+	CHECK(services.Holds(source, Graphite::LanguageId::Cpp));
+
+	Graphite::DiagnosticsUpdate update;
+	services.TakeDiagnostics(update);
+	CHECK(ContainsPath(update.Closed, source));
+
+	spy.Answer();
+	const std::vector<std::string> sent = spy.Latest->TakeSent();
+
+	CHECK(AnySentContaining(sent, "textDocument/didOpen"));
+	CHECK(AnySentContaining(sent, "int moved;"));
+}
+
+TEST_CASE("Reconfigure answers what the old server still owed as failed")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	StartWithSpy(services, temp, spy, clock, source);
+	spy.Answer();
+
+	const Graphite::FilePosition where{source, 0, Graphite::Utf16Column{0}};
+	const Graphite::LanguageServices::Ticket ticket = services.AskDefinition(source, Graphite::LanguageId::Cpp, where);
+
+	services.Reconfigure(Graphite::LanguageId::Cpp);
+
+	std::vector<Graphite::LanguageServices::Answer> answers;
+	services.TakeAnswers(answers);
+
+	REQUIRE(answers.size() == 1);
+	CHECK(answers[0].For == ticket);
+	CHECK(answers[0].Failed);
+}
+
+TEST_CASE("Reconfigure to a server turned off stops the server and reports Off")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	StartWithSpy(services, temp, spy, clock, source);
+	services.OpenDocument(source, Graphite::LanguageId::Cpp, "int dropped;\n");
+
+	services.SetChoiceProvider([](Graphite::LanguageId language) {
+		return Graphite::ChooseServer(language, std::string{Graphite::kServerTurnedOff});
+	});
+	services.Reconfigure(Graphite::LanguageId::Cpp);
+
+	CHECK(spy.Made == 1);
+	CHECK_FALSE(services.IsRunningFor(source, Graphite::LanguageId::Cpp));
+	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).State == Graphite::ServerState::Off);
 }

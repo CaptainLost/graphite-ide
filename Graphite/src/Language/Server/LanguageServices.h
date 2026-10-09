@@ -112,9 +112,13 @@ namespace Graphite {
 		void WarmUp(std::filesystem::path root, bool respectGitIgnore);
 
 		// Asked once per language and remembered until the provider is replaced; the recommended server for every language until set.
+		// A server already running keeps the choice it started with; Reconfigure applies a new one.
 		using ChoiceProvider = std::function<ServerChoice(LanguageId language)>;
 
 		void SetChoiceProvider(ChoiceProvider provider);
+
+		// Shuts down every server of `language` and opens the documents they held on what is chosen now. Call it when the choice, path or arguments change.
+		void Reconfigure(LanguageId language);
 
 		// Decides whether a server may run for a project root - whether its folder is trusted.
 		// A refused root still gets an entry, in ServerState::Restricted, so the documents opened
@@ -148,16 +152,16 @@ namespace Graphite {
 		// rather than every frame all the same.
 		void Revalidate();
 
-		// The status of some server for this language, or a default (State == NotConfigured) if
-		// none has ever been started. When more than one root is running the same language, this
+		// The status of some server for this language, Off when its server is turned off, or a
+		// default (State == NotConfigured) if none has ever been started. When more than one root is running the same language, this
 		// reports whichever the map happens to order first — every caller in this codebase works
 		// with one project root at a time, so that ambiguity has never mattered in practice.
 		// A caller with a document in hand asks the overload below instead, since a trusted
 		// workspace and an untrusted file opened beside it are two roots of the same language.
 		ServerStatus StatusFor(LanguageId language) const;
 
-		// The status of the server for this document's own (language, root), or a default
-		// (State == NotConfigured) when there is none. What a caller with a document in hand
+		// The status of the server for this document's own (language, root), Off when its server
+		// is turned off, or a default (State == NotConfigured) when there is none. What a caller with a document in hand
 		// asks, rather than the overload above: once two roots run the same language - a trusted
 		// workspace and one file opened from an untrusted folder elsewhere - the first in map
 		// order is the wrong answer for half the tabs. Not const: resolving the root consults and
@@ -346,7 +350,7 @@ namespace Graphite {
 		};
 
 		// Resolves the server and the root for (path, language); null when the language has no
-		// configured server. Shared by every method that needs to find a server's entry rather
+		// configured server or its server is turned off. Shared by every method that needs to find a server's entry rather
 		// than start one — including EnsureStarted, which is called every frame a document stays
 		// active, so this is on the hot path. Const, though it consults and fills m_RootCache:
 		// the cache changes how fast the answer comes, never what it is.
@@ -356,6 +360,15 @@ namespace Graphite {
 		const ServerDefinition* ServerFor(LanguageId language) const;
 
 		const ServerChoice& ChoiceFor(LanguageId language) const;
+
+		struct HeldDocument
+		{
+			std::filesystem::path Path;
+			std::string Text;
+		};
+
+		std::vector<HeldDocument> ReleaseServersOf(LanguageId language);
+		void ForgetRootsOf(LanguageId language);
 
 		ServerStatus OffStatus(LanguageId language) const;
 

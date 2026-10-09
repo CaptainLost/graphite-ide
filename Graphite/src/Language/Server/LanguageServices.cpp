@@ -172,6 +172,80 @@ namespace Graphite {
 		m_Choices.clear();
 	}
 
+	void LanguageServices::Reconfigure(LanguageId language)
+	{
+		const std::vector<HeldDocument> held = ReleaseServersOf(language);
+
+		m_Choices.erase(language);
+		ForgetRootsOf(language);
+
+		for (const HeldDocument& document : held)
+		{
+			EnsureStarted(document.Path, language);
+			OpenDocument(document.Path, language, document.Text);
+		}
+	}
+
+	std::vector<LanguageServices::HeldDocument> LanguageServices::ReleaseServersOf(LanguageId language)
+	{
+		std::vector<HeldDocument> held;
+
+		for (std::map<Key, ManagedServer>::iterator entry = m_Servers.begin(); entry != m_Servers.end();)
+		{
+			auto& [key, server] = *entry;
+
+			if (key.Language != language)
+			{
+				++entry;
+				continue;
+			}
+
+			for (auto& [path, document] : server.OpenDocuments)
+			{
+				held.push_back(HeldDocument{.Path = path, .Text = std::move(document.Text)});
+				m_DocumentKeys.erase(path);
+
+				if (server.Client)
+				{
+					m_Diagnostics.Closed.push_back(path);
+				}
+			}
+
+			for (const auto& [requestId, ticket] : server.Pending)
+			{
+				Fail(ticket);
+			}
+
+			if (server.Client)
+			{
+				server.Client->RequestShutdown();
+			}
+
+			ForgetNamedBy(key);
+			entry = m_Servers.erase(entry);
+		}
+
+		return held;
+	}
+
+	void LanguageServices::ForgetRootsOf(LanguageId language)
+	{
+		for (std::map<std::pair<LanguageId, std::filesystem::path>, std::filesystem::path>::iterator cached = m_RootCache.begin();
+			 cached != m_RootCache.end();)
+		{
+			const auto& [cacheKey, root] = *cached;
+			const auto& [cachedLanguage, directory] = cacheKey;
+
+			if (cachedLanguage == language)
+			{
+				cached = m_RootCache.erase(cached);
+				continue;
+			}
+
+			++cached;
+		}
+	}
+
 	const ServerChoice& LanguageServices::ChoiceFor(LanguageId language) const
 	{
 		if (!m_Choices.contains(language))
@@ -232,9 +306,8 @@ namespace Graphite {
 
 		if (definition == nullptr)
 		{
-			// No server configured for this language: nothing to start, and no entry to create.
-			// StatusFor answers NotConfigured for a language with no entry, so there is nothing
-			// else to record here.
+			// No server configured, or turned off: nothing to start, and no entry to create.
+			// StatusFor answers NotConfigured or Off for it, so there is nothing else to record.
 			return;
 		}
 
