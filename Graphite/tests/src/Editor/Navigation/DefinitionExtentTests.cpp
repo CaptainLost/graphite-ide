@@ -2,28 +2,34 @@
 
 #include "Editor/Navigation/DefinitionExtent.h"
 #include "Language/Registry/LanguageRegistry.h"
+#include "Language/Syntax/ColourLines.h"
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 using Graphite::DefinitionExtent;
 using Graphite::LineRange;
 
 namespace {
+	LineRange ExtentIn(Graphite::LanguageId language, const std::vector<std::string>& lines, std::size_t start)
+	{
+		std::vector<std::string_view> scanned;
+
+		for (std::size_t lineIndex = start; lineIndex < lines.size(); ++lineIndex)
+		{
+			scanned.push_back(lines[lineIndex]);
+		}
+
+		const std::vector<std::vector<Graphite::Token>> tokens = Graphite::ColourLines(language, scanned);
+		REQUIRE_FALSE(tokens.empty());
+
+		return DefinitionExtent(scanned, tokens, start);
+	}
+
 	LineRange ExtentOf(const std::vector<std::string>& lines, std::size_t start)
 	{
-		const Graphite::Lexer* lexer = Graphite::LexerFor(Graphite::LanguageId::Cpp);
-		REQUIRE(lexer != nullptr);
-
-		return DefinitionExtent(
-			[&lines](std::size_t i) -> std::optional<std::string_view> {
-				if (i >= lines.size())
-				{
-					return std::nullopt;
-				}
-				return std::string_view(lines[i]);
-			},
-			start, *lexer);
+		return ExtentIn(Graphite::LanguageId::Cpp, lines, start);
 	}
 }
 
@@ -129,4 +135,13 @@ TEST_CASE("An enum ends at its semicolon on the same line")
 TEST_CASE("A deleted special member ends at its semicolon")
 {
 	CHECK(ExtentOf({"Foo(const Foo&) = delete;", "int x;"}, 0).Last == 0);
+}
+
+TEST_CASE("A C# class ends at its matching brace")
+{
+	const std::vector<std::string> lines{"public class Widget", "{", "    public int Count { get; set; }", "}", "class Next { }"};
+	const LineRange range = ExtentIn(Graphite::LanguageId::CSharp, lines, 0);
+
+	CHECK(range.First == 0);
+	CHECK(range.Last == 3);
 }

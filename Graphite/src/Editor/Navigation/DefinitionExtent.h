@@ -3,9 +3,9 @@
 #include "Language/Syntax/Token.h"
 
 #include <cstddef>
-#include <functional>
-#include <optional>
+#include <span>
 #include <string_view>
+#include <vector>
 
 namespace Graphite {
 
@@ -18,9 +18,7 @@ namespace Graphite {
 	inline constexpr std::size_t kDefinitionScanLines = 400;
 	inline constexpr std::size_t kDefinitionFallbackLines = 20;
 
-	// `lineAt(i)` returns line i's text, or nullopt past the end. Taken as a function so the
-	// same walk serves an open TextBuffer and a file read from disk.
-	LineRange DefinitionExtent(
-		const std::function<std::optional<std::string_view>(std::size_t)>& lineAt,
-		std::size_t startLine, const Lexer& lexer);
+	// `lines[0]` is line `firstLine` of the file, and `tokens` runs in step with `lines`.
+	LineRange DefinitionExtent(std::span<const std::string_view> lines, std::span<const std::vector<Token>> tokens,
+							   std::size_t firstLine);
 }

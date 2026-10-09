@@ -2421,7 +2421,7 @@ namespace Graphite {
 			look.LineHeight = metrics.LineHeight;
 			look.CellWidth = metrics.CellWidth;
 			look.TabWidth = item.TabWidth;
-			look.DocumentLexer = LexerFor(LanguageOfPath(item.Path));
+			look.Language = LanguageOfPath(item.Path);
 			look.Viewport = ImGui::GetWindowViewport();
 
 			// The surface's own visible rectangle, scrollbars excluded: the tooltip flips and is

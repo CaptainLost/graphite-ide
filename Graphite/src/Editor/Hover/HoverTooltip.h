@@ -6,6 +6,7 @@
 #include "Editor/Hover/HoverTracker.h"
 #include "Theme/Palettes.h"
 
+#include "Language/Api/LanguageId.h"
 #include "Language/Syntax/Token.h"
 
 #include <imgui.h>
@@ -30,8 +31,8 @@ namespace Graphite {
 		float CellWidth = 0.0f;
 		std::size_t TabWidth = 4;
 
-		// The hovered document's lexer, for the declaration line; null draws it in one colour.
-		const Lexer* DocumentLexer = nullptr;
+		// The hovered document's language, for the declaration line; plain text draws it in one colour.
+		LanguageId Language = LanguageId::PlainText;
 
 		// The editor surface's viewport, which the tooltip is submitted to, so it never spills
 		// into a platform window of its own.

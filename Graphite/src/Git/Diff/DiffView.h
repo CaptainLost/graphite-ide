@@ -30,7 +30,7 @@ namespace Graphite {
 	// Draws one file's diff. Holds the mode, the scope and the syntax toggle below, plus a small cache of
 	// the file's own lines split out of its texts — rebuilt only when the FileTexts pointer
 	// changes, for the same reason the caller's token cache is: splitting a whole file's text
-	// on every frame is the same wasted pass LexFileText's own header warns against, just for
+	// on every frame is the same wasted pass ColourFileText's own header warns against, just for
 	// raw lines instead of tokens. Everything else — the rows themselves — is rebuilt from the
 	// file each frame, because the file comes from a snapshot that may be replaced between
 	// frames and rows cached across that swap would point into a diff that is no longer on
@@ -158,7 +158,7 @@ namespace Graphite {
 		void RememberKeptLine(std::span<const Row> rows, const DiffRowLines& lines,
 							  const Core::FileDiff& file, float startY);
 
-		// Splits `texts` into raw lines via SplitTextLines — the same split LexAllLines lexes
+		// Splits `texts` into raw lines via SplitTextLines — the same split ColourFileText colours
 		// each line of — but only when `texts` is a different object than the one already
 		// cached; see the class comment. Never called with a null `texts`: Render clears the
 		// cache itself when the owner hands it one, rather than leaving the previous file's

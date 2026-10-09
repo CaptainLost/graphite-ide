@@ -2,12 +2,13 @@
 
 #include "Editor/Navigation/DefinitionExtent.h"
 #include "Language/Registry/LanguageRegistry.h"
+#include "Language/Syntax/ColourLines.h"
 
 #include <algorithm>
-#include <functional>
 #include <optional>
 #include <string_view>
 #include <system_error>
+#include <vector>
 
 namespace Graphite {
 
@@ -24,23 +25,22 @@ namespace Graphite {
 				return preview;
 			}
 
-			// LineText returns by value, but the extent walk wants views. The walk finishes with
-			// one line before asking for the next, so a single string held here keeps the
-			// returned view alive for as long as it is read.
-			std::string current;
-			const auto lineAt = [&](std::size_t i) -> std::optional<std::string_view> {
-				if (i >= count)
-				{
-					return std::nullopt;
-				}
-				current = buffer.LineText(i);
-				return std::string_view(current);
-			};
+			const std::size_t scanEnd = std::min(line + kDefinitionScanLines, count);
+			std::vector<std::string> scannedText;
+
+			for (std::size_t lineIndex = line; lineIndex < scanEnd; ++lineIndex)
+			{
+				scannedText.push_back(buffer.LineText(lineIndex));
+			}
+
+			const std::vector<std::string_view> scannedLines(scannedText.begin(), scannedText.end());
+			const std::vector<std::vector<Token>> scannedTokens = ColourLines(LanguageOfPath(path), scannedLines);
 
 			LineRange range{line, std::min(line + (kDefinitionFallbackLines - 1), count - 1)};
-			if (const Lexer* lexer = LexerFor(LanguageOfPath(path)))
+
+			if (!scannedTokens.empty())
 			{
-				range = DefinitionExtent(lineAt, line, *lexer);
+				range = DefinitionExtent(scannedLines, scannedTokens, line);
 			}
 
 			range.Last = std::min(range.Last, count - 1);

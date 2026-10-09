@@ -1749,7 +1749,7 @@ TEST_CASE("The tokens are not rebuilt while the texts stay the same")
 	binding.Update(model, IdOf(1), ModifiedFile("a.cpp"));
 
 	// The text is immutable once fetched, so an unchanged pointer means the tokens are still
-	// good. Re-lexing a whole file every frame is the waste LexFileText's header warns of.
+	// good. Re-lexing a whole file every frame is the waste ColourFileText's header warns of.
 	CHECK(binding.Texts.get() == held);
 	CHECK(binding.Tokens.New.data() == firstLine);
 }

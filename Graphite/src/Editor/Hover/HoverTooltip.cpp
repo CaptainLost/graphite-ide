@@ -7,6 +7,7 @@
 #include "Editor/Server/PreviewSemantics.h"
 
 #include "Language/Registry/LanguageRegistry.h"
+#include "Language/Syntax/ColourLines.h"
 
 #include "Core/App/Redraw.h"
 #include "Core/FileSystem/FileSystem.h"
@@ -16,6 +17,7 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <array>
 #include <format>
 #include <string>
 #include <string_view>
@@ -171,16 +173,17 @@ namespace Graphite {
 			ImGui::Dummy(ImVec2(static_cast<float>(column) * look.CellWidth, look.LineHeight));
 		}
 
-		std::vector<Token> LexOne(const Lexer* lexer, std::string_view text)
+		std::vector<Token> ColourOne(LanguageId language, std::string_view text)
 		{
-			std::vector<Token> tokens;
+			const std::array<std::string_view, 1> lines{text};
+			std::vector<std::vector<Token>> coloured = ColourLines(language, lines);
 
-			if (lexer != nullptr)
+			if (coloured.empty())
 			{
-				lexer->LexLine(text, LineState{}, tokens);
+				return {};
 			}
 
-			return tokens;
+			return std::move(coloured.front());
 		}
 
 		// `code`, lexed in the hovered document's language, its identifiers coloured as `spansOf`
@@ -191,7 +194,7 @@ namespace Graphite {
 					  const HoverTooltipLook& look, float maxContentWidth)
 		{
 			const std::string expanded = Core::ExpandTabs(code, look.TabWidth);
-			std::vector<Token> tokens = LexOne(look.DocumentLexer, expanded);
+			std::vector<Token> tokens = ColourOne(look.Language, expanded);
 			std::vector<SemanticSpan> spans = spansOf(std::string_view(expanded), tokens);
 
 			// The label is no code, so it is lexed with none: an arrow or a colon in it would come
@@ -406,7 +409,7 @@ namespace Graphite {
 			}
 
 			// Expanded and dedented once per frame for the width and the drawing alike. A
-			// preview is a definition's extent, a few dozen lines as a rule, so lexing it every
+			// preview is a definition's extent, a few dozen lines as a rule, so colouring it every
 			// frame it shows costs less than keeping a cache of it honest would.
 			const DedentedPreview dedented = DedentPreview(preview.Lines, look.TabWidth);
 			const std::vector<std::string>& expanded = dedented.Lines;
@@ -418,14 +421,11 @@ namespace Graphite {
 				widest = std::max(widest, Core::ColumnCount(text, look.TabWidth));
 			}
 
-			const Lexer* const lexer = LexerFor(LanguageOfPath(preview.Path));
-
-			// The state runs from the definition's first line, not the file's: a definition
-			// rarely starts inside a block comment, and reading the file from the top to be
-			// sure would cost what the size limit exists to avoid.
-			LineState state;
-			std::vector<Token> tokens;
-			std::size_t lexed = 0;
+			// Coloured from the definition's first line, not the file's: reading the file from the
+			// top would cost what the size limit exists to avoid.
+			const std::vector<std::string_view> previewLines(expanded.begin(), expanded.end());
+			const std::vector<std::vector<Token>> previewTokens = ColourLines(LanguageOfPath(preview.Path), previewLines);
+			const std::vector<Token> noTokens;
 
 			const std::vector<SemanticSpan> none;
 
@@ -454,19 +454,6 @@ namespace Graphite {
 				{
 					const auto index = static_cast<std::size_t>(row);
 
-					// Lines above the clipped range are lexed only for the state they leave.
-					while (lexed <= index)
-					{
-						tokens.clear();
-
-						if (lexer != nullptr)
-						{
-							state = lexer->LexLine(expanded[lexed], state, tokens);
-						}
-
-						++lexed;
-					}
-
 					const std::size_t fileLine = preview.FirstLine + index;
 
 					const std::vector<SemanticSpan>& said =
@@ -474,7 +461,7 @@ namespace Graphite {
 						: declared					   ? look.Semantics->SpansOn(preview.Path, fileLine)
 													   : none;
 
-					DrawColouredRow(expanded[index], tokens, DedentSpans(said, dedented.Removed),
+					DrawColouredRow(expanded[index], index < previewTokens.size() ? previewTokens[index] : noTokens, DedentSpans(said, dedented.Removed),
 									0, expanded[index].size(), look);
 				}
 			}

@@ -1,6 +1,7 @@
 #include "Git/Diff/SyntaxRuns.h"
 
 #include "Language/Registry/LanguageRegistry.h"
+#include "Language/Syntax/ColourLines.h"
 
 #include <algorithm>
 
@@ -63,32 +64,11 @@ namespace Graphite {
 		return lines;
 	}
 
-	std::vector<std::vector<Token>> LexAllLines(std::string_view text, const Lexer& lexer)
+	std::vector<std::vector<Token>> ColourFileText(std::string_view text, const std::filesystem::path& path)
 	{
-		std::vector<std::vector<Token>> result;
-		LineState state;
+		const std::vector<std::string_view> lines = SplitTextLines(text);
 
-		for (std::string_view line : SplitTextLines(text))
-		{
-			std::vector<Token> tokens;
-			state = lexer.LexLine(line, state, tokens);
-			result.push_back(std::move(tokens));
-		}
-
-		return result;
-	}
-
-	std::vector<std::vector<Token>> LexFileText(std::string_view text,
-												const std::filesystem::path& path)
-	{
-		const Lexer* lexer = LexerFor(LanguageOfPath(path));
-
-		if (lexer == nullptr)
-		{
-			return {};
-		}
-
-		return LexAllLines(text, *lexer);
+		return ColourLines(LanguageOfPath(path), lines);
 	}
 
 	std::vector<SyntaxRun> RunsFor(std::string_view line, const std::vector<Token>* tokens)

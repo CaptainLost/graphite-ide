@@ -113,7 +113,7 @@ namespace Graphite {
 		// Points this binding at `file` as it stood in `commit`, asks the model for its texts,
 		// and re-lexes only when the model hands back a different object than last time — the
 		// text is immutable once fetched, so the pointer alone says whether the tokens are
-		// still good, and re-lexing every frame is the mistake LexFileText's own header warns
+		// still good, and re-lexing every frame is the mistake ColourFileText's own header warns
 		// against. Safe to call every frame; that is how it is meant to be called.
 		//
 		// A binary file is not fetched, cached or lexed at all: its bytes can never be drawn

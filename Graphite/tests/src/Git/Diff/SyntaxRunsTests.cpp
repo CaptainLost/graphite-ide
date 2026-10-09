@@ -1,38 +1,39 @@
 #include <doctest/doctest.h>
 
 #include "Git/Diff/SyntaxRuns.h"
+#include "SyntaxFixtures.h"
 
 #include <optional>
 #include <string>
 #include <vector>
 
-TEST_CASE("LexFileText lexes a one-line text into one line of tokens")
+TEST_CASE("ColourFileText lexes a one-line text into one line of tokens")
 {
-	const auto lines = Graphite::LexFileText("int x;", "main.cpp");
+	const auto lines = Graphite::ColourFileText("int x;", "main.cpp");
 
 	REQUIRE(lines.size() == 1);
 	CHECK_FALSE(lines[0].empty());
 }
 
-TEST_CASE("LexFileText lexes three lines whether or not the text ends with a newline")
+TEST_CASE("ColourFileText lexes three lines whether or not the text ends with a newline")
 {
-	const auto withoutTrailingNewline = Graphite::LexFileText("int a;\nint b;\nint c;", "main.cpp");
-	const auto withTrailingNewline = Graphite::LexFileText("int a;\nint b;\nint c;\n", "main.cpp");
+	const auto withoutTrailingNewline = Graphite::ColourFileText("int a;\nint b;\nint c;", "main.cpp");
+	const auto withTrailingNewline = Graphite::ColourFileText("int a;\nint b;\nint c;\n", "main.cpp");
 
 	CHECK(withoutTrailingNewline.size() == 3);
 	CHECK(withTrailingNewline.size() == 3);
 }
 
-TEST_CASE("LexFileText yields no lines for an empty text")
+TEST_CASE("ColourFileText yields no lines for an empty text")
 {
-	const auto lines = Graphite::LexFileText("", "main.cpp");
+	const auto lines = Graphite::ColourFileText("", "main.cpp");
 
 	CHECK(lines.empty());
 }
 
-TEST_CASE("LexFileText carries a block comment opened on the first line to the third")
+TEST_CASE("ColourFileText carries a block comment opened on the first line to the third")
 {
-	const auto lines = Graphite::LexFileText("/* opened here\nstill inside\n*/ int x;", "main.cpp");
+	const auto lines = Graphite::ColourFileText("/* opened here\nstill inside\n*/ int x;", "main.cpp");
 
 	REQUIRE(lines.size() == 3);
 	REQUIRE_FALSE(lines[2].empty());
@@ -42,11 +43,11 @@ TEST_CASE("LexFileText carries a block comment opened on the first line to the t
 	CHECK(lines[2][0].Kind == Graphite::TokenKind::Comment);
 }
 
-TEST_CASE("LexFileText's token offsets are byte offsets into the raw line, tabs included")
+TEST_CASE("ColourFileText's token offsets are byte offsets into the raw line, tabs included")
 {
 	// A tab before "int" would be expanded to several columns by the editor's own lexing path,
 	// but this view draws the raw line, so the token's From must count the tab as one byte.
-	const auto lines = Graphite::LexFileText("\tint x;", "main.cpp");
+	const auto lines = Graphite::ColourFileText("\tint x;", "main.cpp");
 
 	REQUIRE(lines.size() == 1);
 	REQUIRE_FALSE(lines[0].empty());
@@ -54,9 +55,9 @@ TEST_CASE("LexFileText's token offsets are byte offsets into the raw line, tabs 
 	CHECK(lines[0][0].Kind == Graphite::TokenKind::Keyword);
 }
 
-TEST_CASE("LexFileText leaves no stray carriage return inside a line's last token")
+TEST_CASE("ColourFileText leaves no stray carriage return inside a line's last token")
 {
-	const auto lines = Graphite::LexFileText("// a comment\r\nint x;\r\n", "main.cpp");
+	const auto lines = Graphite::ColourFileText("// a comment\r\nint x;\r\n", "main.cpp");
 
 	REQUIRE(lines.size() == 2);
 	REQUIRE_FALSE(lines[0].empty());
@@ -65,9 +66,9 @@ TEST_CASE("LexFileText leaves no stray carriage return inside a line's last toke
 	CHECK(lastOfFirstLine.To == 12); // "// a comment" is 12 bytes, no trailing '\r'
 }
 
-TEST_CASE("LexFileText returns no lines for a path with no lexer")
+TEST_CASE("ColourFileText returns no lines for a path with no syntax")
 {
-	const auto lines = Graphite::LexFileText("some text\nmore text", "README.md");
+	const auto lines = Graphite::ColourFileText("some text\nmore text", "README.md");
 
 	CHECK(lines.empty());
 }
@@ -153,4 +154,13 @@ TEST_CASE("Tokens that all cover nothing still leave one run for the line")
 
 	REQUIRE_FALSE(runs.empty());
 	CHECK(runs.back().To == 3);
+}
+
+TEST_CASE("ColourFileText colours a C# text, a comment over two lines on both")
+{
+	const std::vector<std::vector<Graphite::Token>> lines = Graphite::ColourFileText("/* a\nb */ int x;\n", "Program.cs");
+
+	REQUIRE(lines.size() == 2);
+	CHECK(DescribeTokens("/* a", lines[0]) == "comment '/* a'");
+	CHECK(DescribeTokens("b */ int x;", lines[1]) == "comment 'b */' | keyword 'int' | identifier 'x' | punctuation ';'");
 }

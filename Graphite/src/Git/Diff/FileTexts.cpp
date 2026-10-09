@@ -76,7 +76,7 @@ namespace Graphite {
 		const Core::Ref<const FileTexts> texts = model.GetTextsFor(commit, key);
 
 		// The text is immutable once fetched, so an unchanged pointer means the tokens are
-		// still good; re-lexing every frame is the mistake LexFileText's own header warns
+		// still good; re-lexing every frame is the mistake ColourFileText's own header warns
 		// against.
 		if (texts.get() == Texts.get())
 		{
@@ -87,9 +87,9 @@ namespace Graphite {
 
 		// Each side is lexed by its own path's language: a rename that changes the extension
 		// really is two languages, one per side.
-		Tokens.Old = texts && texts->HasOld ? LexFileText(texts->Old, file.OldPath)
+		Tokens.Old = texts && texts->HasOld ? ColourFileText(texts->Old, file.OldPath)
 											: std::vector<std::vector<Token>>{};
-		Tokens.New = texts && texts->HasNew ? LexFileText(texts->New, file.NewPath)
+		Tokens.New = texts && texts->HasNew ? ColourFileText(texts->New, file.NewPath)
 											: std::vector<std::vector<Token>>{};
 	}
 
@@ -167,9 +167,9 @@ namespace Graphite {
 
 		Texts = texts;
 
-		Tokens.Old = texts->HasOld ? LexFileText(texts->Old, file.OldPath)
+		Tokens.Old = texts->HasOld ? ColourFileText(texts->Old, file.OldPath)
 								   : std::vector<std::vector<Token>>{};
-		Tokens.New = texts->HasNew ? LexFileText(texts->New, file.NewPath)
+		Tokens.New = texts->HasNew ? ColourFileText(texts->New, file.NewPath)
 								   : std::vector<std::vector<Token>>{};
 	}
 }
