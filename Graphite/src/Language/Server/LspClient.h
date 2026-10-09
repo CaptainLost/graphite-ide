@@ -122,6 +122,7 @@ namespace Graphite {
 			std::vector<Answer> Answers;
 			ServerStatus Status;
 			std::vector<PublishedDiagnostics> Diagnostics;
+			std::vector<ServerMessage> Messages;
 		};
 
 		// UI thread only. Moves everything the server has said since the last call into
@@ -192,7 +193,7 @@ namespace Graphite {
 		// deadlock this shape exists to prevent is one where the UI thread waits to write while
 		// the server waits for us to read. Add a message and reach for the right one:
 		//
-		//   StateMutex     Answers, Status and Diagnostics. What Drain collects, and nothing else.
+		//   StateMutex     Answers, Status, Diagnostics and Messages. What Drain collects, and nothing else.
 		//   ProtocolMutex  Bookkeeping only: id allocation, the outstanding table, the document
 		//                  versions, the pre-handshake queue, InitializeId, Initialized,
 		//                  ReaderStopped. Never held across any I/O whatsoever.
@@ -213,6 +214,7 @@ namespace Graphite {
 			std::vector<Answer> Answers;
 			ServerStatus Status;
 			std::vector<PublishedDiagnostics> Diagnostics;
+			std::vector<ServerMessage> Messages;
 
 			// The $/progress tokens that have begun and not yet ended. A server may run several at
 			// once, and Indexing ends only when the last of them does - the first to finish says
@@ -279,7 +281,6 @@ namespace Graphite {
 			Core::Ref<Core::ChildProcess> Process;
 			std::string ProtocolLanguageId;
 
-			// Written once, before either thread starts, and only read afterwards.
 			const ServerAdapter* Adapter = nullptr;
 			AdapterContext Context;
 			std::optional<ProjectProblem> Problem;
@@ -318,6 +319,9 @@ namespace Graphite {
 		static void HandleReply(Shared& shared, const IncomingMessage& reply);
 
 		static void PublishDiagnostics(Shared& shared, const nlohmann::json& params);
+
+		// Takes StateMutex itself, so it is called with no lock held.
+		static void RecordServerMessage(Shared& shared, const nlohmann::json& params);
 		static void ApplyProgress(Shared& shared, const nlohmann::json& params);
 
 		// Reads a successful or failed reply as the answer to what was asked under its id. Pure:

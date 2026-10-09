@@ -1334,3 +1334,62 @@ TEST_CASE("A restarted server that stays up for kStableAfter earns its restarts 
 	// fail its handshake, and this one has finished it. What the restart path reads is
 	// server.Restarts, and the status above is that number as Poll left it.
 }
+
+TEST_CASE("A message a server shows reaches TakeMessages once")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	StartWithSpy(services, temp, spy, clock, temp.GetPath() / "main.cpp");
+	spy.Latest->Deliver(R"({"method":"window/showMessage","params":{"type":1,"message":"boom"}})");
+
+	services.Poll();
+
+	std::vector<Graphite::ServerMessage> messages;
+	services.TakeMessages(messages);
+
+	REQUIRE(messages.size() == 1);
+	CHECK(messages[0].Text == "boom");
+
+	std::vector<Graphite::ServerMessage> again;
+	services.Poll();
+	services.TakeMessages(again);
+
+	CHECK(again.empty());
+}
+
+TEST_CASE("The warm-up still opens and closes a C++ file so clangd loads its compile database")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	temp.MakeFile("main.cpp", "int main() { return 0; }\n");
+	temp.MakeFile("stand-in-clangd.exe", "");
+
+	services.SetClock(clock.Get());
+	services.SetClientFactory(spy.Get());
+	services.SetConfiguredBinary(Graphite::LanguageId::Cpp, temp.GetPath() / "stand-in-clangd.exe");
+
+	services.WarmUp(temp.GetPath(), false);
+
+	constexpr int kMaxAttempts = 500;
+
+	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	REQUIRE(spy.Made == 1);
+
+	spy.Answer();
+
+	const std::vector<std::string> sent = spy.Latest->TakeSent();
+
+	CHECK(AnySentContaining(sent, "textDocument/didOpen"));
+	CHECK(AnySentContaining(sent, "textDocument/didClose"));
+}

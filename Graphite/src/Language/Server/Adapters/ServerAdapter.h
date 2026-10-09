@@ -8,7 +8,9 @@
 
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <string_view>
+#include <vector>
 
 namespace Graphite {
 
@@ -19,12 +21,25 @@ namespace Graphite {
 		nlohmann::json Settings;
 	};
 
+	struct OutgoingNotification
+	{
+		std::string Method;
+		nlohmann::json Params;
+	};
+
 	class ServerAdapter
 	{
 	public:
 		virtual ~ServerAdapter() = default;
 
 		virtual nlohmann::json WorkspaceConfiguration(const AdapterContext& context, std::string_view section) const;
+
+		virtual nlohmann::json InitializationOptions(const AdapterContext& context) const;
+
+		virtual void AfterInitialized(const AdapterContext& context, std::vector<OutgoingNotification>& notifications) const;
+
+		virtual std::optional<nlohmann::json> AnswerRequest(const AdapterContext& context, std::string_view method,
+															 const nlohmann::json& params) const;
 
 		virtual std::optional<ProjectProblem> ProjectProblemAt(const std::filesystem::path& root) const;
 

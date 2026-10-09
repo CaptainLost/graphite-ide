@@ -34,6 +34,30 @@ namespace {
 		return Graphite::LspClient{ClangdLaunch(), root, Graphite::LspClient::WithoutServer{}};
 	}
 
+	class RecordingAdapter final : public Graphite::ServerAdapter
+	{
+	public:
+		void AfterInitialized(const Graphite::AdapterContext&, std::vector<Graphite::OutgoingNotification>& notifications) const override
+		{
+			notifications.push_back(Graphite::OutgoingNotification{.Method = "solution/open", .Params = nlohmann::json{{"solution", "file:///D:/MyApp.sln"}}});
+		}
+
+		std::optional<nlohmann::json> AnswerRequest(const Graphite::AdapterContext&, std::string_view method, const nlohmann::json&) const override
+		{
+			if (method != "workspace/_test_question")
+			{
+				return std::nullopt;
+			}
+
+			return nlohmann::json{{"answered", true}};
+		}
+	};
+
+	Graphite::LspClient OfflineWith(const Graphite::ServerLaunch& launch, const std::filesystem::path& root)
+	{
+		return Graphite::LspClient{launch, root, Graphite::LspClient::WithoutServer{}};
+	}
+
 	bool AnySent(const std::vector<std::string>& sent, std::string_view needle)
 	{
 		for (const std::string& message : sent)
@@ -859,4 +883,137 @@ TEST_CASE("A null hover reply is an answer with no text")
 	REQUIRE(drained.Answers.size() == 1);
 	CHECK_FALSE(drained.Answers[0].Failed);
 	CHECK(drained.Answers[0].Text.empty());
+}
+
+TEST_CASE("The handshake carries the user's initialization options when there are any")
+{
+	TempDirectory temp;
+	Graphite::ServerLaunch launch = ClangdLaunch();
+	launch.InitializationOptions = nlohmann::json{{"fallbackFlags", nlohmann::json::array({"-std=c++20"})}};
+
+	Graphite::LspClient client = OfflineWith(launch, temp.GetPath());
+	const std::vector<std::string> sent = client.TakeSent();
+
+	REQUIRE(sent.size() == 1);
+	CHECK(sent[0].find(R"("initializationOptions":{"fallbackFlags":["-std=c++20"]})") != std::string::npos);
+}
+
+TEST_CASE("The handshake carries no initialization options when the user set none")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+	const std::vector<std::string> sent = client.TakeSent();
+
+	REQUIRE(sent.size() == 1);
+	CHECK(sent[0].find("initializationOptions") == std::string::npos);
+}
+
+TEST_CASE("A server's capability registrations and message prompts are acknowledged with null")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+	client.TakeSent();
+
+	client.Deliver(R"({"id":20,"method":"client/registerCapability","params":{"registrations":[]}})");
+	client.Deliver(R"({"id":21,"method":"client/unregisterCapability","params":{"unregisterations":[]}})");
+	client.Deliver(R"({"id":22,"method":"window/showMessageRequest","params":{"type":3,"message":"Restore?"}})");
+
+	const std::vector<std::string> sent = client.TakeSent();
+
+	REQUIRE(sent.size() == 3);
+
+	for (const std::string& reply : sent)
+	{
+		CHECK(reply.find(R"("result":null)") != std::string::npos);
+	}
+}
+
+TEST_CASE("A request the adapter knows is answered with the adapter's answer")
+{
+	TempDirectory temp;
+	const RecordingAdapter adapter;
+	Graphite::ServerLaunch launch = ClangdLaunch();
+	launch.Adapter = &adapter;
+
+	Graphite::LspClient client = OfflineWith(launch, temp.GetPath());
+	client.TakeSent();
+
+	client.Deliver(R"({"id":23,"method":"workspace/_test_question","params":{}})");
+
+	const std::vector<std::string> sent = client.TakeSent();
+
+	REQUIRE(sent.size() == 1);
+	CHECK(sent[0].find(R"("result":{"answered":true})") != std::string::npos);
+}
+
+TEST_CASE("The adapter's notifications go out right after initialized and ahead of what was waiting")
+{
+	TempDirectory temp;
+	const RecordingAdapter adapter;
+	Graphite::ServerLaunch launch = ClangdLaunch();
+	launch.Adapter = &adapter;
+
+	Graphite::LspClient client = OfflineWith(launch, temp.GetPath());
+	client.TakeSent();
+
+	client.OpenDocument(temp.GetPath() / "main.cpp", "int Main();\n");
+	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
+
+	const std::vector<std::string> sent = client.TakeSent();
+
+	REQUIRE(sent.size() == 3);
+	CHECK(sent[0].find(R"("method":"initialized")") != std::string::npos);
+	CHECK(sent[1].find(R"("method":"solution/open")") != std::string::npos);
+	CHECK(sent[2].find(R"("method":"textDocument/didOpen")") != std::string::npos);
+}
+
+TEST_CASE("An error or warning a server shows becomes a message and anything milder does not")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+
+	client.Deliver(R"({"method":"window/showMessage","params":{"type":1,"message":"cannot read the project"}})");
+	client.Deliver(R"({"method":"window/showMessage","params":{"type":2,"message":"restore needed"}})");
+	client.Deliver(R"({"method":"window/showMessage","params":{"type":3,"message":"loaded"}})");
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	REQUIRE(drained.Messages.size() == 2);
+	CHECK(drained.Messages[0].Server == "clangd");
+	CHECK(drained.Messages[0].Kind == Graphite::ServerMessageKind::Error);
+	CHECK(drained.Messages[0].Text == "cannot read the project");
+	CHECK(drained.Messages[1].Kind == Graphite::ServerMessageKind::Warning);
+}
+
+TEST_CASE("A configuration request is answered from the user's settings through the plain adapter, one answer per item")
+{
+	TempDirectory temp;
+	Graphite::ServerLaunch launch = ClangdLaunch();
+	launch.Adapter = &Graphite::AdapterOf(Graphite::AdapterKind::Plain);
+	launch.Settings = nlohmann::json{{"csharp|inlay_hints", {{"enable", true}}}};
+
+	Graphite::LspClient client = OfflineWith(launch, temp.GetPath());
+	client.TakeSent();
+
+	client.Deliver(R"({"id":24,"method":"workspace/configuration","params":{"items":[{"section":"csharp|inlay_hints.enable"},{"section":"missing"},{}]}})");
+
+	const std::vector<std::string> sent = client.TakeSent();
+
+	REQUIRE(sent.size() == 1);
+	CHECK(sent[0].find(R"("result":[true,null,{"csharp|inlay_hints":{"enable":true}}])") != std::string::npos);
+}
+
+TEST_CASE("A configuration request with no items is still answered with one entry")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+	client.TakeSent();
+
+	client.Deliver(R"({"id":25,"method":"workspace/configuration","params":{"items":[]}})");
+
+	const std::vector<std::string> sent = client.TakeSent();
+
+	REQUIRE(sent.size() == 1);
+	CHECK(sent[0].find(R"("result":[{}])") != std::string::npos);
 }

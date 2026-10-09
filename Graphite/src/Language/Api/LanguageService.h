@@ -233,4 +233,17 @@ namespace Graphite {
 		std::size_t Restarts = 0;
 		ProjectProblem Problem;
 	};
+
+	enum class ServerMessageKind : std::uint8_t
+	{
+		Error,
+		Warning
+	};
+
+	struct ServerMessage
+	{
+		std::string Server;
+		ServerMessageKind Kind = ServerMessageKind::Error;
+		std::string Text;
+	};
 }

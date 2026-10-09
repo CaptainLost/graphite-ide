@@ -6,6 +6,7 @@
 #include "Language/Api/LanguageService.h"
 #include "Language/Server/LspClient.h"
 #include "Language/Server/ServerCatalog.h"
+#include "Language/Server/ServerLaunch.h"
 
 #include "Core/Jobs/CancellationToken.h"
 #include "Core/Jobs/JobQueue.h"
@@ -238,6 +239,10 @@ namespace Graphite {
 		// except through here.
 		void TakeDiagnostics(DiagnosticsUpdate& update);
 
+		// UI thread only, once a frame, and for the same reason as TakeDiagnostics: the errors and
+		// warnings servers have shown since the last call, moved out.
+		void TakeMessages(std::vector<ServerMessage>& messages);
+
 		void Cancel(Ticket ticket);
 
 		// Forwarded to the matching client and remembered here, so a restart can tell it again —
@@ -459,6 +464,7 @@ namespace Graphite {
 		std::uint64_t m_NextTicket = 1;
 		std::vector<Answer> m_Answers;
 		DiagnosticsUpdate m_Diagnostics;
+		std::vector<ServerMessage> m_Messages;
 
 		// Last, deliberately: members are destroyed in reverse order of declaration, so this one
 		// joins its worker before anything the worker might still be touching goes away.

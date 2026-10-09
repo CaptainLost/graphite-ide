@@ -67,6 +67,20 @@ namespace Graphite {
 		return ValueAtSection(context.Settings, section);
 	}
 
+	nlohmann::json ServerAdapter::InitializationOptions(const AdapterContext& context) const
+	{
+		return context.InitializationOptions;
+	}
+
+	void ServerAdapter::AfterInitialized(const AdapterContext&, std::vector<OutgoingNotification>&) const
+	{
+	}
+
+	std::optional<nlohmann::json> ServerAdapter::AnswerRequest(const AdapterContext&, std::string_view, const nlohmann::json&) const
+	{
+		return std::nullopt;
+	}
+
 	std::optional<ProjectProblem> ServerAdapter::ProjectProblemAt(const std::filesystem::path&) const
 	{
 		return std::nullopt;

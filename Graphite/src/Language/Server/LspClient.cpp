@@ -11,6 +11,7 @@
 #include <iterator>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -68,7 +69,53 @@ namespace Graphite {
 			return result;
 		}
 
-		nlohmann::json InitializeParams(const std::filesystem::path& root)
+		constexpr int kMethodNotFound = -32601;
+
+		constexpr int kShowMessageError = 1;
+		constexpr int kShowMessageWarning = 2;
+
+		// Null to workDoneProgress/create means "report under that token"; accepting a registration without acting on it is allowed, and refusing one stops some servers.
+		constexpr std::array<std::string_view, 4> kRequestsAcknowledgedWithNull{
+			"window/workDoneProgress/create", "client/registerCapability", "client/unregisterCapability", "window/showMessageRequest"};
+
+		bool IsAcknowledgedWithNull(std::string_view method)
+		{
+			for (const std::string_view acknowledged : kRequestsAcknowledgedWithNull)
+			{
+				if (acknowledged == method)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		std::optional<ServerMessageKind> ShownMessageKind(const nlohmann::json& params)
+		{
+			const nlohmann::json::const_iterator type = params.find("type");
+
+			if (type == params.end() || !type->is_number_integer())
+			{
+				return std::nullopt;
+			}
+
+			const int messageType = type->get<int>();
+
+			if (messageType == kShowMessageError)
+			{
+				return ServerMessageKind::Error;
+			}
+
+			if (messageType == kShowMessageWarning)
+			{
+				return ServerMessageKind::Warning;
+			}
+
+			return std::nullopt;
+		}
+
+		nlohmann::json InitializeParams(const std::filesystem::path& root, const nlohmann::json& initializationOptions)
 		{
 			nlohmann::json capabilities;
 
@@ -109,6 +156,11 @@ namespace Graphite {
 			params["rootUri"] = ToFileUri(root);
 			params["rootPath"] = Core::ToUtf8(root);
 			params["capabilities"] = std::move(capabilities);
+
+			if (!initializationOptions.is_null())
+			{
+				params["initializationOptions"] = initializationOptions;
+			}
 
 			return params;
 		}
@@ -211,7 +263,7 @@ namespace Graphite {
 		// Recorded before it is queued, and under the same mutex the reader takes to read it, so
 		// the reply can never arrive at a reader that does not yet know which id the handshake
 		// used.
-		auto [id, bytes] = m_Shared->Rpc.Request("initialize", InitializeParams(root));
+		auto [id, bytes] = m_Shared->Rpc.Request("initialize", InitializeParams(root, m_Shared->Adapter->InitializationOptions(m_Shared->Context)));
 
 		m_Shared->InitializeId = id;
 		m_Shared->HandshakeDeadline = std::chrono::steady_clock::now() + kHandshakeTimeout;
@@ -657,6 +709,11 @@ namespace Graphite {
 
 		m_Shared->Diagnostics.clear();
 
+		drained.Messages.insert(drained.Messages.end(), std::make_move_iterator(m_Shared->Messages.begin()),
+								std::make_move_iterator(m_Shared->Messages.end()));
+
+		m_Shared->Messages.clear();
+
 		drained.Status = m_Shared->Status;
 	}
 
@@ -867,8 +924,34 @@ namespace Graphite {
 			return;
 		}
 
+		if (notification.Method == "window/showMessage")
+		{
+			RecordServerMessage(shared, notification.Payload);
+			return;
+		}
+
 		// window/logMessage and telemetry still have nowhere to go, and dropping a notification
 		// is always allowed.
+	}
+
+	void LspClient::RecordServerMessage(Shared& shared, const nlohmann::json& params)
+	{
+		if (!params.is_object())
+		{
+			return;
+		}
+
+		const std::optional<ServerMessageKind> kind = ShownMessageKind(params);
+		const nlohmann::json::const_iterator message = params.find("message");
+
+		if (!kind || message == params.end() || !message->is_string())
+		{
+			return;
+		}
+
+		const std::lock_guard<std::mutex> state(shared.StateMutex);
+
+		shared.Messages.push_back(ServerMessage{.Server = shared.Status.Name, .Kind = *kind, .Text = message->get<std::string>()});
 	}
 
 	void LspClient::PublishDiagnostics(Shared& shared, const nlohmann::json& params)
@@ -1019,17 +1102,20 @@ namespace Graphite {
 			return;
 		}
 
-		if (request.Method == "window/workDoneProgress/create")
+		if (IsAcknowledgedWithNull(request.Method))
 		{
-			// Null is the whole of the answer: it means "yes, report progress under that token",
-			// and the $/progress notifications the status percentage is read from follow it.
 			SendNowLocked(shared, shared.Rpc.Reply(id, nullptr));
 			return;
 		}
 
-		// Anything else is refused rather than ignored. A server that asked and heard nothing
-		// waits; a server told it asked for something unknown carries on.
-		SendNowLocked(shared, shared.Rpc.ErrorReply(id, -32601, "method not found"));
+		if (std::optional<nlohmann::json> answer = shared.Adapter->AnswerRequest(shared.Context, request.Method, request.Payload))
+		{
+			SendNowLocked(shared, shared.Rpc.Reply(id, *answer));
+			return;
+		}
+
+		// Refused rather than ignored: a server that asked and heard nothing waits forever.
+		SendNowLocked(shared, shared.Rpc.ErrorReply(id, kMethodNotFound, "method not found"));
 	}
 
 	void LspClient::CompleteHandshake(Shared& shared, const IncomingMessage& reply)
@@ -1088,6 +1174,14 @@ namespace Graphite {
 		}
 
 		SendNowLocked(shared, shared.Rpc.Notification("initialized", nlohmann::json::object()));
+
+		std::vector<OutgoingNotification> afterInitialized;
+		shared.Adapter->AfterInitialized(shared.Context, afterInitialized);
+
+		for (const OutgoingNotification& notification : afterInitialized)
+		{
+			SendNowLocked(shared, shared.Rpc.Notification(notification.Method, notification.Params));
+		}
 
 		// Everything the caller asked for while the handshake was in flight, in the order it was
 		// asked, now that the server will accept it.

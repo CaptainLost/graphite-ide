@@ -35,7 +35,9 @@ TEST_CASE("The plain adapter answers an item with no section with every setting"
 	const Graphite::ServerAdapter& plain = Graphite::AdapterOf(Graphite::AdapterKind::Plain);
 	const nlohmann::json settings{{"python", {{"analysis", 1}}}};
 
-	CHECK(plain.WorkspaceConfiguration(ContextWithSettings(settings), "") == settings);
+	const std::string_view noSection;
+
+	CHECK(plain.WorkspaceConfiguration(ContextWithSettings(settings), noSection) == settings);
 }
 
 TEST_CASE("The plain adapter reports no project problem, needs no warm-up open and offers no header switch")
@@ -52,4 +54,18 @@ TEST_CASE("Only a language whose servers can switch between header and source of
 	CHECK(Graphite::LanguageOffersSwitchSourceHeader(Graphite::LanguageId::Cpp));
 	CHECK_FALSE(Graphite::LanguageOffersSwitchSourceHeader(Graphite::LanguageId::CSharp));
 	CHECK_FALSE(Graphite::LanguageOffersSwitchSourceHeader(Graphite::LanguageId::PlainText));
+}
+
+TEST_CASE("The plain adapter passes the user's initialization options through and adds nothing")
+{
+	const Graphite::ServerAdapter& plain = Graphite::AdapterOf(Graphite::AdapterKind::Plain);
+	const nlohmann::json options{{"fallbackFlags", nlohmann::json::array({"-std=c++20"})}};
+	const Graphite::AdapterContext context{.Root = {}, .InitializationOptions = options, .Settings = nullptr};
+
+	std::vector<Graphite::OutgoingNotification> notifications;
+	plain.AfterInitialized(context, notifications);
+
+	CHECK(plain.InitializationOptions(context) == options);
+	CHECK(notifications.empty());
+	CHECK_FALSE(plain.AnswerRequest(context, "workspace/anything", nlohmann::json::object()).has_value());
 }

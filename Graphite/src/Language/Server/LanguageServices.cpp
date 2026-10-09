@@ -10,6 +10,7 @@
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/Adapters/ServerAdapter.h"
 #include "Language/Server/ServerDiscovery.h"
+#include "Language/Server/ServerLaunch.h"
 #include "Search/FileEnumerator.h"
 
 #include <algorithm>
@@ -428,6 +429,12 @@ namespace Graphite {
 					   std::make_move_iterator(m_Answers.end()));
 
 		m_Answers.clear();
+	}
+
+	void LanguageServices::TakeMessages(std::vector<ServerMessage>& messages)
+	{
+		messages.insert(messages.end(), std::make_move_iterator(m_Messages.begin()), std::make_move_iterator(m_Messages.end()));
+		m_Messages.clear();
 	}
 
 	void LanguageServices::TakeDiagnostics(DiagnosticsUpdate& update)
@@ -947,6 +954,9 @@ namespace Graphite {
 			m_Diagnostics.Published.insert(m_Diagnostics.Published.end(),
 										   std::make_move_iterator(drained.Diagnostics.begin()),
 										   std::make_move_iterator(drained.Diagnostics.end()));
+
+			m_Messages.insert(m_Messages.end(), std::make_move_iterator(drained.Messages.begin()),
+							  std::make_move_iterator(drained.Messages.end()));
 
 			// A server that stays up without crashing earns the restart budget back, measured on
 			// the same clock as the backoff below. Moving between up states (indexing finishing,
