@@ -37,6 +37,7 @@
 #include "Settings/AppSettings.h"
 
 #include "App/GraphiteMenu.h"
+#include "App/SampleToasts.h"
 
 #include "Core/App/Application.h"
 #include "Core/App/Redraw.h"
@@ -373,7 +374,7 @@ namespace Graphite {
 						  {.Primary = Core::Chord::Key(ImGuiMod_Shift | ImGuiKey_F12)});
 
 #ifdef CORE_DEBUG
-		m_Commands.Add({.Id = "help.logTestEntries",
+		m_Commands.Add({.Id = "debug.logTestEntries",
 						.Label = "Log test entries",
 						.Run = [] {
 							APP_TRACE("Diagnostic entry");
@@ -381,6 +382,16 @@ namespace Graphite {
 							APP_WARN("Warning entry");
 							APP_ERROR("Sample error");
 						}});
+
+		for (const SampleToastCommand& sample : kSampleToastCommands)
+		{
+			m_Commands.Add({.Id = std::string(sample.CommandId),
+							.Label = std::string(sample.Label),
+							.ListLabel = std::string(sample.ListLabel),
+							.Run = [this, sampleKind = sample.Kind] {
+								m_Events.Publish(SampleToast(sampleKind, m_Workspace.GetRoot()));
+							}});
+		}
 #endif
 	}
 

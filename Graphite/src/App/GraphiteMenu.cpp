@@ -1,6 +1,24 @@
 #include "App/GraphiteMenu.h"
 
+#include "App/SampleToasts.h"
+
+#include <string>
+
 namespace Graphite {
+
+#ifdef CORE_DEBUG
+	namespace {
+		std::vector<Core::MenuItem> SampleToastMenuItems()
+		{
+			std::vector<Core::MenuItem> items;
+			for (const SampleToastCommand& sample : kSampleToastCommands)
+			{
+				items.push_back(Core::MenuItem::Command(std::string(sample.CommandId)));
+			}
+			return items;
+		}
+	}
+#endif
 
 	std::vector<Core::MenuItem> BuildMenuTree()
 	{
@@ -69,15 +87,15 @@ namespace Graphite {
 					MenuItem::Group("panels.window"),
 					MenuItem::Command("view.resetLayout"),
 				}),
-			// About is in every build; the diagnostic under it is a developer's tool and is not.
-			MenuItem::Submenu("Help",
-							  {
-								  MenuItem::Command("help.about"),
+			MenuItem::Submenu("Help", {MenuItem::Command("help.about")}),
 #ifdef CORE_DEBUG
+			MenuItem::Submenu("Debug",
+							  {
+								  MenuItem::Command("debug.logTestEntries"),
 								  MenuItem::Separator(),
-								  MenuItem::Command("help.logTestEntries"),
-#endif
+								  MenuItem::Submenu("Show Toast", SampleToastMenuItems()),
 							  }),
+#endif
 		};
 	}
 }

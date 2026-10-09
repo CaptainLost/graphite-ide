@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "App/GraphiteMenu.h"
+#include "App/SampleToasts.h"
 
 #include <algorithm>
 #include <string>
@@ -232,32 +233,56 @@ TEST_CASE("The File menu offers to trust the open folder, after closing it")
 	CHECK(trust == close + 1);
 }
 
-TEST_CASE("The Help menu opens with About in every build, and adds the diagnostic only in Debug")
+TEST_CASE("The Help menu holds About alone, in every build")
 {
 	const std::vector<MenuItem> tree = Graphite::BuildMenuTree();
 	const MenuItem* help = FindSubmenu(tree, "Help");
 
 	REQUIRE(help != nullptr);
-	CHECK(tree.back().GetText() == "Help");
-	REQUIRE_FALSE(help->GetChildren().empty());
+	REQUIRE(help->GetChildren().size() == 1);
 	CHECK(help->GetChildren()[0].GetText() == "help.about");
-
-	std::vector<std::string> commands;
-
-	for (const MenuItem& item : help->GetChildren())
-	{
-		if (item.GetKind() == MenuItem::Kind::Command)
-		{
-			commands.push_back(item.GetText());
-		}
-	}
+}
 
 #ifdef CORE_DEBUG
-	CHECK(commands == std::vector<std::string>{"help.about", "help.logTestEntries"});
-#else
-	CHECK(commands == std::vector<std::string>{"help.about"});
-#endif
+TEST_CASE("A Debug build ends the menu bar with a Debug menu holding the test log and the sample toasts")
+{
+	const std::vector<MenuItem> tree = Graphite::BuildMenuTree();
+	const MenuItem* debug = FindSubmenu(tree, "Debug");
+
+	REQUIRE(debug != nullptr);
+	CHECK(tree.back().GetText() == "Debug");
+
+	const std::vector<MenuItem>& debugItems = debug->GetChildren();
+	REQUIRE(debugItems.size() == 3);
+	CHECK(debugItems[0].GetText() == "debug.logTestEntries");
+	CHECK(debugItems[1].GetKind() == MenuItem::Kind::Separator);
+
+	const MenuItem* showToast = FindSubmenu(debugItems, "Show Toast");
+	REQUIRE(showToast != nullptr);
+
+	std::vector<std::string> toastCommandIds;
+	for (const MenuItem& item : showToast->GetChildren())
+	{
+		toastCommandIds.push_back(item.GetText());
+	}
+
+	std::vector<std::string> sampleCommandIds;
+	for (const Graphite::SampleToastCommand& sample : Graphite::kSampleToastCommands)
+	{
+		sampleCommandIds.emplace_back(sample.CommandId);
+	}
+
+	CHECK(toastCommandIds == sampleCommandIds);
 }
+#else
+TEST_CASE("A build that is not Debug has no Debug menu, and Help ends the menu bar")
+{
+	const std::vector<MenuItem> tree = Graphite::BuildMenuTree();
+
+	CHECK(FindSubmenu(tree, "Debug") == nullptr);
+	CHECK(tree.back().GetText() == "Help");
+}
+#endif
 
 TEST_CASE("A terminal is opened from the View menu, right after the panels, without a menu of its own")
 {
