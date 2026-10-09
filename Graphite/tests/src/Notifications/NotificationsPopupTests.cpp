@@ -375,6 +375,32 @@ namespace {
 	}
 }
 
+TEST_CASE("An empty list keeps its No notifications line eight pixels in from the list's edges, as a row keeps its content")
+{
+	PopupScreen screen;
+	const ImVec4 distinctDisabledText(0.3f, 0.6f, 0.9f, 1.0f);
+	ImGui::GetStyle().Colors[ImGuiCol_TextDisabled] = distinctDisabledText;
+	screen.OpenFromBell();
+
+	const ImGuiWindow& list = PopupScreen::ListWindow();
+	const ImU32 disabledColour = ImGui::ColorConvertFloat4ToU32(distinctDisabledText);
+	const float rowInset = 8.0f;
+	float textLeft = FLT_MAX;
+	for (const ImDrawVert& vertex : list.DrawList->VtxBuffer)
+	{
+		if (HasColourOf(vertex, disabledColour))
+		{
+			textLeft = std::min(textLeft, vertex.pos.x);
+		}
+	}
+	const VerticalExtent textExtent = DrawnExtentInColour(list, disabledColour);
+
+	REQUIRE(textLeft < FLT_MAX);
+	CHECK(textLeft >= list.Pos.x + rowInset);
+	CHECK(textExtent.Top >= list.Pos.y + rowInset);
+	CHECK(textExtent.Bottom <= list.Pos.y + list.Size.y - rowInset);
+}
+
 TEST_CASE("The popup over an empty history completes frames without an ImGui assertion")
 {
 	PopupScreen screen;

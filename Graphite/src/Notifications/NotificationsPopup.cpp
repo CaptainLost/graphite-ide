@@ -264,7 +264,7 @@ namespace Graphite {
 			ListLayout list;
 			if (entries.empty())
 			{
-				list.Height = ImGui::GetTextLineHeight();
+				list.Height = Core::Scaled(kRowInset) + ImGui::GetTextLineHeight() + Core::Scaled(kRowInset);
 				return list;
 			}
 
@@ -328,6 +328,8 @@ namespace Graphite {
 			ListOutcome outcome;
 			if (list.Rows.empty())
 			{
+				const float inset = Core::Scaled(kRowInset);
+				ImGui::SetCursorPos(ImVec2(inset, inset));
 				ImGui::TextDisabled("No notifications");
 				return outcome;
 			}
