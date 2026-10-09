@@ -478,3 +478,48 @@ TEST_CASE("AppSettings keeps a nested value edited by hand while it runs")
 	CHECK(reloaded.GetLanguageServerSettings("clangd").BinaryPath == std::filesystem::path{L"C:\\clangd.exe"});
 	CHECK(reloaded.GetEditorFontSize() == doctest::Approx(15.0f));
 }
+
+TEST_CASE("A leaf that becomes an object keeps what another instance wrote beneath it")
+{
+	const TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
+
+	WriteText(file, R"({"languages": {}})");
+
+	Graphite::AppSettings first{file};
+	Graphite::AppSettings second{file};
+
+	second.SetLanguageServerChoice("CSharp", "roslyn");
+	second.Flush();
+
+	first.SetLanguageServerChoice("Cpp", "clangd");
+	first.Flush();
+
+	const Graphite::AppSettings reloaded{file};
+
+	CHECK(reloaded.GetLanguageServerChoice("Cpp") == std::optional<std::string>{"clangd"});
+	CHECK(reloaded.GetLanguageServerChoice("CSharp") == std::optional<std::string>{"roslyn"});
+}
+
+TEST_CASE("A nested leaf this process replaced is removed on disk and a sibling another instance wrote survives")
+{
+	const TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
+
+	WriteText(file, R"({"languages": {"Cpp": {"language_server": {"old": 1}}}})");
+
+	Graphite::AppSettings first{file};
+	Graphite::AppSettings second{file};
+
+	second.SetLanguageServerChoice("CSharp", "roslyn");
+	second.Flush();
+
+	first.SetLanguageServerChoice("Cpp", "clangd");
+	first.Flush();
+
+	const Graphite::AppSettings reloaded{file};
+
+	CHECK(reloaded.GetLanguageServerChoice("Cpp") == std::optional<std::string>{"clangd"});
+	CHECK(reloaded.GetLanguageServerChoice("CSharp") == std::optional<std::string>{"roslyn"});
+	CHECK(ReadBytes(file).find("old") == std::string::npos);
+}
