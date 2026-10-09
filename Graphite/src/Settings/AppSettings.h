@@ -138,9 +138,6 @@ namespace Graphite {
 		// application nor whichever one is on PATH. Empty — the default — means "search as usual".
 		// This is the "configured location" the status bar's "not found" message names, and the
 		// only thing that makes that sentence true.
-		//
-		// `languageServerBinary` is read at startup, so a change made in the Language section takes
-		// effect after a restart.
 		std::filesystem::path GetLanguageServerBinary() const;
 		void SetLanguageServerBinary(const std::filesystem::path& binary);
 

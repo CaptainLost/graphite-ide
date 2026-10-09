@@ -2,6 +2,7 @@
 
 #include "Settings/SettingsSection.h"
 
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -17,7 +18,7 @@ namespace Graphite {
 	class LanguageSection final : public SettingsSection
 	{
 	public:
-		LanguageSection(AnalysisSettings& settings, AppSettings& store);
+		LanguageSection(AnalysisSettings& settings, AppSettings& store, std::function<void()> onCppServerChanged);
 
 		std::string_view GetTitle() const override { return "Language"; }
 
@@ -28,6 +29,7 @@ namespace Graphite {
 
 		AnalysisSettings& m_Settings;
 		AppSettings& m_Store;
+		std::function<void()> m_OnCppServerChanged;
 
 		// The path field's text while it is being edited, so the stored value does not overwrite
 		// what is being typed on the next frame.

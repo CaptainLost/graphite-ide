@@ -97,6 +97,19 @@ namespace Graphite {
 		{
 			return Core::Application::Get().GetWindow().IsFocused();
 		}
+
+		Core::ToastKind ToastKindOf(ServerMessageKind kind)
+		{
+			switch (kind)
+			{
+			case ServerMessageKind::Error:
+				return Core::ToastKind::Error;
+			case ServerMessageKind::Warning:
+				return Core::ToastKind::Warning;
+			}
+
+			return Core::ToastKind::Error;
+		}
 	}
 
 	GraphiteLayer::GraphiteLayer(Core::Ref<Core::RingBufferSink> sink,
@@ -206,7 +219,8 @@ namespace Graphite {
 			m_Commands, m_Keys, m_Modals, [this] { m_AppSettings.SetKeyBindings(m_Keys); }));
 		sections.push_back(
 			Core::CreateScope<SearchSection>(m_SearchSettings, m_SolutionLoaded));
-		sections.push_back(Core::CreateScope<LanguageSection>(m_AnalysisSettings, m_AppSettings));
+		sections.push_back(Core::CreateScope<LanguageSection>(m_AnalysisSettings, m_AppSettings,
+																	  [this] { m_LanguageServices.Reconfigure(LanguageId::Cpp); }));
 		sections.push_back(Core::CreateScope<TrustSection>(m_Trust));
 		sections.push_back(Core::CreateScope<TerminalSection>(m_AppSettings, m_Terminals));
 		sections.push_back(Core::CreateScope<ClaudeSection>(m_ClaudeSettings));
@@ -658,6 +672,17 @@ namespace Graphite {
 		m_AppSettings.Flush();
 	}
 
+	void GraphiteLayer::PublishServerMessages()
+	{
+		std::vector<ServerMessage> messages;
+		m_LanguageServices.TakeMessages(messages);
+
+		for (ServerMessage& message : messages)
+		{
+			m_Events.Publish(ApplicationToast(ToastKindOf(message.Kind), std::move(message.Server), std::move(message.Text)));
+		}
+	}
+
 	// Shows a panel that was hidden and brings it to the front of its dock node. The focus
 	// is applied on the panel's next Begin, which is next frame for a panel just made visible.
 	void GraphiteLayer::RevealPanel(std::string_view id)
@@ -749,6 +774,7 @@ namespace Graphite {
 		// status read ahead of it is always one frame stale, and on the frame a server first
 		// appears there is nothing to read at all.
 		m_LanguageServices.Poll();
+		PublishServerMessages();
 
 		// Before anything draws, for the reason the Tick below gives: the panels render at 512
 		// and DocumentWindows drains its own answers at 516, so a model fed any later is read by

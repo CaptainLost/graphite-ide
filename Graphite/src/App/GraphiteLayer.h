@@ -152,6 +152,8 @@ namespace Graphite {
 
 		void RevealPanel(std::string_view id);
 
+		void PublishServerMessages();
+
 		GlobalState CaptureGlobalState();
 
 		// The open folder's file tabs, session windows and diff windows, as one snapshot.

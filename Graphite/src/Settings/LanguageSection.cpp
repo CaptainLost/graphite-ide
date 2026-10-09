@@ -10,11 +10,13 @@
 
 #include <algorithm>
 #include <format>
+#include <utility>
 
 namespace Graphite {
 
-	LanguageSection::LanguageSection(AnalysisSettings& settings, AppSettings& store)
-		: m_Settings(settings), m_Store(store)
+	LanguageSection::LanguageSection(AnalysisSettings& settings, AppSettings& store,
+										 std::function<void()> onCppServerChanged)
+		: m_Settings(settings), m_Store(store), m_OnCppServerChanged(std::move(onCppServerChanged))
 	{
 	}
 
@@ -36,9 +38,10 @@ namespace Graphite {
 		if (ImGui::IsItemDeactivatedAfterEdit())
 		{
 			m_Store.SetLanguageServerBinary(Core::FromUtf8(m_PendingServerPath));
+			m_OnCppServerChanged();
 		}
 
-		ImGui::TextDisabled("Takes effect after restart. Left empty, clangd is looked for next to Graphite, then on PATH.");
+		ImGui::TextDisabled("Left empty, clangd is looked for next to Graphite, then on PATH.");
 	}
 
 	void LanguageSection::OnImGuiRender()

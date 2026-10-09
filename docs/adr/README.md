@@ -596,4 +596,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0564](0564-show-a-toast-s-countdown-by-draining-its-border.md) | Show a toast's countdown by draining its border | proposed | 2026-10-06 |
 | [0565](0565-keep-a-session-history-of-toasts-behind-a-bell-in-the-status-bar.md) | Keep a session history of toasts behind a bell in the status bar | proposed | 2026-10-07 |
 | [0566](0566-store-nested-values-in-graphite-json.md) | Store nested values in graphite.json | proposed | 2026-10-09 |
+| [0567](0567-keep-server-specific-behaviour-in-adapters.md) | Keep server-specific behaviour in adapters | proposed | 2026-10-09 |
 <!-- /adr-index -->
