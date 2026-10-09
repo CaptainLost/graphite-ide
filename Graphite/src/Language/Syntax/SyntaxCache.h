@@ -52,7 +52,8 @@ namespace Graphite {
 
 		// A width change moves every token offset in any line holding a tab, because the lexer
 		// is fed tab-expanded text. Nothing below the changed width is salvageable, so this
-		// resets rather than invalidating from a line.
+		// resets rather than invalidating from a line; a grammar's tree is not re-parsed, only
+		// its tokens are expanded again.
 		void SetTabWidth(std::size_t width);
 
 		// The width the tokens below were produced with. Anything mapping a raw byte of a line
@@ -66,7 +67,9 @@ namespace Graphite {
 
 		void Reset();
 
-		// Empty when there is no lexer, and empty for a line past the end of the buffer.
+		// Empty when there is no syntax, and empty for a line past the end of the buffer. Also
+		// empty while a grammar's first parse is unfinished, so bracket matching then sees every
+		// bracket as code.
 		const std::vector<Token>& TokensOf(const Core::TextBuffer& buffer, std::size_t line);
 
 	private:

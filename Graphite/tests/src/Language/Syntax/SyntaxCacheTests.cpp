@@ -1,10 +1,12 @@
 #include <doctest/doctest.h>
 
+#include "Core/App/Redraw.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/TextBuffer.h"
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Syntax/ColourLines.h"
 #include "Language/Syntax/SyntaxCache.h"
+#include "Language/Syntax/SyntaxTree.h"
 #include "SyntaxFixtures.h"
 
 #include <chrono>
@@ -191,6 +193,7 @@ namespace {
 	{
 		Graphite::SyntaxCache cache;
 		cache.SetSyntax(Graphite::SyntaxOf(Graphite::LanguageId::CSharp));
+		cache.SetParseBudget(Graphite::ParseBudget{.PerAttempt = std::chrono::seconds{10}, .PauseAfterRunningOut = std::chrono::microseconds{0}});
 		return cache;
 	}
 
@@ -329,4 +332,42 @@ TEST_CASE("Switching a cache from a grammar to a lexer colours by the lexer")
 
 	CHECK_FALSE(cache.HasSyntax());
 	CHECK(cache.TokensOf(buffer, 0).empty());
+}
+
+TEST_CASE("A tab-width change re-expands a tree's tokens without parsing again")
+{
+	const Core::TextBuffer buffer{std::string("\tint x = 1;")};
+	Graphite::SyntaxCache cache = CSharpCache();
+
+	REQUIRE(cache.TokensOf(buffer, 0).front().From == 4);
+
+	cache.SetParseBudget(Graphite::ParseBudget{.PerAttempt = std::chrono::microseconds{0}, .PauseAfterRunningOut = std::chrono::hours{1}});
+	cache.SetTabWidth(8);
+
+	CHECK(cache.TokensOf(buffer, 0).front().From == 8);
+}
+
+TEST_CASE("Running out of parse time asks for a frame when the pause ends")
+{
+	const Core::TextBuffer buffer{ManyCSharpClasses(2000)};
+	Graphite::SyntaxCache cache = CSharpCache();
+	cache.SetParseBudget(Graphite::ParseBudget{.PerAttempt = std::chrono::microseconds{0}, .PauseAfterRunningOut = std::chrono::hours{1}});
+	Core::Redraw::TakeDeadline();
+
+	CHECK(cache.TokensOf(buffer, 5).empty());
+
+	CHECK(Core::Redraw::TakeDeadline().has_value());
+}
+
+TEST_CASE("A text too large to parse has no tokens until it shrinks under the limit")
+{
+	Core::TextBuffer buffer{std::string(Graphite::kLargestParsedText, ' ') + "\nint x;"};
+	Graphite::SyntaxCache cache = CSharpCache();
+
+	CHECK(cache.TokensOf(buffer, 1).empty());
+	CHECK(cache.TokensOf(buffer, 1).empty());
+
+	buffer.Erase(0, buffer.GetLength() - 6);
+
+	CHECK(DescribeLine(cache, buffer, 0) == "keyword 'int' | identifier 'x' | punctuation ';'");
 }

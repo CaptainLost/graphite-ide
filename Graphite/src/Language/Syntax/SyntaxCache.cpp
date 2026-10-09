@@ -1,5 +1,6 @@
 #include "Language/Syntax/SyntaxCache.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/TextBuffer.h"
 #include "Language/Syntax/SyntaxTree.h"
@@ -241,6 +242,14 @@ namespace Graphite {
 			return;
 		}
 
+		if (buffer.GetLength() > kLargestParsedText)
+		{
+			ForgetTree();
+			m_TreeTargetRevision = revision;
+			m_TreeRevision = revision;
+			return;
+		}
+
 		if (m_TreeTargetRevision != revision)
 		{
 			m_Tree->Retarget(buffer.Materialize());
@@ -259,6 +268,7 @@ namespace Graphite {
 		if (!m_Tree->Advance(m_ParseBudget.PerAttempt))
 		{
 			m_RanOutAt = std::chrono::steady_clock::now();
+			Core::Redraw::RequestIn(m_ParseBudget.PauseAfterRunningOut);
 			return;
 		}
 
