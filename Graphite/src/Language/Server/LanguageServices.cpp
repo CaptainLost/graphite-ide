@@ -185,7 +185,12 @@ namespace Graphite {
 			OpenDocument(document.Path, language, document.Text);
 		}
 
-		if (released.ReleasedWorkspaceServer && m_LastWarmUp.has_value())
+		// The folder the last warm-up walked may have been closed or replaced since.
+		const bool warmedFolderIsOpen = m_LastWarmUp.has_value() &&
+										Core::IsSameOrWithin(m_LastWarmUp->Root, m_FallbackRoot) &&
+										Core::IsSameOrWithin(m_FallbackRoot, m_LastWarmUp->Root);
+
+		if (released.ReleasedWorkspaceServer && warmedFolderIsOpen)
 		{
 			WarmUp(m_LastWarmUp->Root, m_LastWarmUp->RespectGitIgnore);
 		}

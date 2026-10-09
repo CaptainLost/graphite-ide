@@ -1666,3 +1666,50 @@ TEST_CASE("Reconfigure starts the workspace's server again even when no document
 	REQUIRE(spy.Made == 2);
 	CHECK(spy.LastLaunch.Binary == temp.GetPath() / "other-clangd.exe");
 }
+
+TEST_CASE("Reconfigure does not warm a folder that is no longer the open one")
+{
+	TempDirectory folderA;
+	TempDirectory folderB;
+	Graphite::LanguageServices services{folderA.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	folderA.MakeFile("main.cpp", "int main() { return 0; }\n");
+	folderA.MakeFile("stand-in-clangd.exe", "");
+	folderA.MakeFile("other-clangd.exe", "");
+	folderB.MakeFile("b.cpp", "int b;\n");
+
+	services.SetClock(clock.Get());
+	services.SetClientFactory(spy.Get());
+	UseClangdAt(services, folderA.GetPath() / "stand-in-clangd.exe");
+	services.WarmUp(folderA.GetPath(), false);
+
+	constexpr int kMaxAttempts = 500;
+
+	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	REQUIRE(spy.Made == 1);
+
+	services.SetFallbackRoot(folderB.GetPath());
+	services.EnsureStarted(folderB.GetPath() / "b.cpp", Graphite::LanguageId::Cpp);
+
+	REQUIRE(spy.Made == 2);
+
+	UseClangdAt(services, folderA.GetPath() / "other-clangd.exe");
+	services.Reconfigure(Graphite::LanguageId::Cpp);
+
+	constexpr int kSettleAttempts = 100;
+
+	for (int attempt = 0; attempt < kSettleAttempts; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	CHECK(spy.Made == 2);
+}
