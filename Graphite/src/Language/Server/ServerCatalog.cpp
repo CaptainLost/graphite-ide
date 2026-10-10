@@ -2,6 +2,9 @@
 
 #include "Language/Registry/LanguageRegistry.h"
 
+#include "Core/Base/Ascii.h"
+#include "Core/FileSystem/FileSystem.h"
+
 #include <array>
 #include <system_error>
 
@@ -42,11 +45,38 @@ namespace Graphite {
 			return std::filesystem::exists(path, failure) && !failure;
 		}
 
-		bool HoldsAnyMarker(const std::filesystem::path& directory, std::span<const std::string_view> markers)
+		constexpr std::string_view kExtensionPatternPrefix = "*.";
+
+		bool IsExtensionPattern(std::string_view marker)
+		{
+			return marker.starts_with(kExtensionPatternPrefix);
+		}
+
+		bool MatchesExtensionPattern(std::string_view loweredExtension, std::span<const std::string_view> markers)
 		{
 			for (const std::string_view marker : markers)
 			{
-				if (Exists(directory / marker))
+				// "*.sln" names the extension ".sln": the marker without its star.
+				if (IsExtensionPattern(marker) && loweredExtension == Core::Lowered(marker.substr(1)))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		// Listed with the error_code overloads, so a directory that cannot be read holds nothing rather than throwing.
+		bool HoldsFileMatchingPattern(const std::filesystem::path& directory, std::span<const std::string_view> markers)
+		{
+			std::error_code listError;
+			std::filesystem::directory_iterator entries{directory, listError};
+
+			for (; !listError && entries != std::filesystem::directory_iterator{}; entries.increment(listError))
+			{
+				std::error_code kindError;
+
+				if (entries->is_regular_file(kindError) && MatchesExtensionPattern(Core::LoweredExtension(entries->path()), markers))
 				{
 					return true;
 				}
@@ -105,7 +135,7 @@ namespace Graphite {
 
 		for (;;)
 		{
-			if (HoldsAnyMarker(directory, server.RootMarkers))
+			if (DirectoryHoldsAnyMarker(directory, server.RootMarkers))
 			{
 				return directory;
 			}
@@ -122,11 +152,32 @@ namespace Graphite {
 		}
 	}
 
+	bool DirectoryHoldsAnyMarker(const std::filesystem::path& directory, std::span<const std::string_view> markers)
+	{
+		bool listsAPattern = false;
+
+		for (const std::string_view marker : markers)
+		{
+			if (IsExtensionPattern(marker))
+			{
+				listsAPattern = true;
+				continue;
+			}
+
+			if (Exists(directory / marker))
+			{
+				return true;
+			}
+		}
+
+		return listsAPattern && HoldsFileMatchingPattern(directory, markers);
+	}
+
 	bool IsProjectRoot(const std::filesystem::path& directory)
 	{
 		for (const ServerDefinition& server : kServers)
 		{
-			if (HoldsAnyMarker(directory, server.RootMarkers))
+			if (DirectoryHoldsAnyMarker(directory, server.RootMarkers))
 			{
 				return true;
 			}

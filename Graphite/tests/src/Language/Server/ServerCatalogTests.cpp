@@ -11,6 +11,7 @@
 #include "Core/Platform/CurrentPlatform.h"
 #include "Core/Platform/Process.h"
 
+#include <array>
 #include <cstdlib>
 #include <fstream>
 #include <optional>
@@ -29,6 +30,14 @@ namespace {
 		std::filesystem::create_directories(path.parent_path());
 		std::ofstream{path} << "";
 	}
+
+	constexpr std::array<std::string_view, 3> kSolutionMarkers{"*.sln", "*.slnx", ".git"};
+
+	constexpr Graphite::ServerDefinition kSolutionRooted{.Id = "solution-rooted",
+														 .DisplayName = "Solution rooted",
+														 .ExecutableName = "no-such-server",
+														 .ProtocolLanguageId = "csharp",
+														 .RootMarkers = kSolutionMarkers};
 }
 
 TEST_CASE("The catalogue knows clangd and C++ recommends it")
@@ -196,4 +205,39 @@ TEST_CASE("Every server installs on Windows x64 and every template it uses expan
 			CHECK(Graphite::ExpandPackageTemplate(tool->PackageIdTemplate, {.Version = "", .Platform = kWindowsX64}));
 		}
 	}
+}
+
+TEST_CASE("A marker written as a star and an extension matches a file with that extension in any case")
+{
+	TempDirectory temp;
+	Touch(temp.GetPath() / "proj" / "Demo.SLNX");
+	Touch(temp.GetPath() / "proj" / "Demo" / "Program.cs");
+
+	const std::filesystem::path root =
+		Graphite::RootFor(kSolutionRooted, temp.GetPath() / "proj" / "Demo" / "Program.cs", temp.GetPath());
+
+	CHECK(root == temp.GetPath() / "proj");
+}
+
+TEST_CASE("A directory named like a solution is not a solution")
+{
+	TempDirectory temp;
+	std::filesystem::create_directories(temp.GetPath() / "proj" / "fake.sln");
+	Touch(temp.GetPath() / "proj" / "Demo" / "Program.cs");
+
+	const std::filesystem::path fallback = temp.GetPath() / "fallback";
+	const std::filesystem::path root =
+		Graphite::RootFor(kSolutionRooted, temp.GetPath() / "proj" / "Demo" / "Program.cs", fallback);
+
+	CHECK(root == fallback);
+}
+
+TEST_CASE("A literal marker listed beside patterns still counts")
+{
+	TempDirectory temp;
+	std::filesystem::create_directories(temp.GetPath() / "repo" / ".git");
+	Touch(temp.GetPath() / "repo" / "src" / "Program.cs");
+
+	CHECK(Graphite::DirectoryHoldsAnyMarker(temp.GetPath() / "repo", kSolutionMarkers));
+	CHECK_FALSE(Graphite::DirectoryHoldsAnyMarker(temp.GetPath() / "repo" / "src", kSolutionMarkers));
 }

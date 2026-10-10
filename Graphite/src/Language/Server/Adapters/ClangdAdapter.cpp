@@ -1,5 +1,7 @@
 #include "Language/Server/Adapters/ClangdAdapter.h"
 
+#include "Language/Server/ServerCatalog.h"
+
 #include <array>
 #include <span>
 #include <string_view>
@@ -17,25 +19,12 @@ namespace Graphite {
 			std::error_code failure;
 			return std::filesystem::exists(path, failure) && !failure;
 		}
-
-		bool HoldsAnyMarker(const std::filesystem::path& directory, std::span<const std::string_view> markers)
-		{
-			for (const std::string_view marker : markers)
-			{
-				if (Exists(directory / marker))
-				{
-					return true;
-				}
-			}
-
-			return false;
-		}
 	}
 
 	bool LacksCompileDatabase(const std::filesystem::path& root)
 	{
 		// compile_flags.txt and .clangd describe the sources beside them, so only compile_commands.json is also looked for in build/.
-		const bool hasDatabaseBesideSources = HoldsAnyMarker(root, kCompileDatabaseNames);
+		const bool hasDatabaseBesideSources = DirectoryHoldsAnyMarker(root, kCompileDatabaseNames);
 		const bool hasDatabaseInBuild = Exists(root / "build" / "compile_commands.json");
 
 		return !hasDatabaseBesideSources && !hasDatabaseInBuild;

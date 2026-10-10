@@ -42,6 +42,9 @@ namespace Graphite {
 	std::filesystem::path RootFor(const ServerDefinition& server, const std::filesystem::path& file,
 								  const std::filesystem::path& fallbackRoot);
 
+	// A marker written "*.ext" stands for any file with that extension; every other marker is a path.
+	bool DirectoryHoldsAnyMarker(const std::filesystem::path& directory, std::span<const std::string_view> markers);
+
 	// A submodule carries its own .git, so a walk stops here rather than reading somebody else's project.
 	bool IsProjectRoot(const std::filesystem::path& directory);
 }
