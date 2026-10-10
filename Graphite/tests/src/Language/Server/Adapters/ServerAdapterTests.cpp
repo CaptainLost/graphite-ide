@@ -44,7 +44,7 @@ TEST_CASE("The plain adapter reports no project problem, needs no warm-up open a
 {
 	const Graphite::ServerAdapter& plain = Graphite::AdapterOf(Graphite::AdapterKind::Plain);
 
-	CHECK_FALSE(plain.ProjectProblemAt("C:\\").has_value());
+	CHECK_FALSE(plain.ProjectProblemAt(Graphite::AdapterContext{.Root = "C:\\"}).has_value());
 	CHECK_FALSE(plain.WarmUpNeedsOpen());
 	CHECK_FALSE(plain.SupportsSwitchSourceHeader());
 }

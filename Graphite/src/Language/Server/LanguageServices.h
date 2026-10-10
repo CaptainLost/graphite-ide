@@ -155,6 +155,9 @@ namespace Graphite {
 		// Filled into a server argument that names {logs}; the system's temporary directory until set.
 		void SetLogDirectory(std::filesystem::path directory);
 
+		// The solution the user selected; a server whose root holds it is told to load it.
+		void SetSelectedSolution(const std::filesystem::path& solution);
+
 		// Whether a server entry exists for the key this file resolves to, whether or not it has a
 		// process. What shows that an idle server has been shut down.
 		bool IsRunningFor(const std::filesystem::path& path, LanguageId language) const;
@@ -508,6 +511,7 @@ namespace Graphite {
 		DotnetLocator m_DotnetLocator;
 		mutable std::optional<std::vector<DotnetInstallation>> m_Dotnet;
 		std::filesystem::path m_LogDirectory;
+		std::filesystem::path m_SelectedSolution;
 
 		std::map<Key, ManagedServer> m_Servers;
 

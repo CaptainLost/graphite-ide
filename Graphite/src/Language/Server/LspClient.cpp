@@ -48,20 +48,21 @@ namespace Graphite {
 				}
 			}
 
-			// A reply with no entry stalls clangd as surely as no reply at all.
-			if (sections.empty())
-			{
-				sections.emplace_back();
-			}
-
 			return sections;
 		}
 
 		nlohmann::json ConfigurationReply(const ServerAdapter& adapter, const AdapterContext& context, const nlohmann::json& params)
 		{
 			nlohmann::json result = nlohmann::json::array();
+			const std::vector<std::string> sections = RequestedSections(params);
 
-			for (const std::string& section : RequestedSections(params))
+			if (sections.empty() && adapter.AnswersEmptyConfigurationWithOneEntry())
+			{
+				result.push_back(adapter.WorkspaceConfiguration(context, ""));
+				return result;
+			}
+
+			for (const std::string& section : sections)
 			{
 				result.push_back(adapter.WorkspaceConfiguration(context, section));
 			}
@@ -74,7 +75,7 @@ namespace Graphite {
 		constexpr int kShowMessageError = 1;
 		constexpr int kShowMessageWarning = 2;
 
-		// Null to workDoneProgress/create means "report under that token"; accepting a registration without acting on it is allowed, and refusing one stops some servers.
+		// Null to workDoneProgress/create means "report under that token", and null to showMessageRequest means no action was chosen; refusing a registration stops some servers.
 		constexpr std::array<std::string_view, 4> kRequestsAcknowledgedWithNull{
 			"window/workDoneProgress/create", "client/registerCapability", "client/unregisterCapability", "window/showMessageRequest"};
 
@@ -278,8 +279,11 @@ namespace Graphite {
 
 		m_Shared->ProtocolLanguageId = std::string(launch.Server->ProtocolLanguageId);
 		m_Shared->Adapter = launch.Adapter;
-		m_Shared->Context = AdapterContext{.Root = root, .InitializationOptions = launch.InitializationOptions, .Settings = launch.Settings};
-		m_Shared->Problem = launch.Adapter->ProjectProblemAt(root);
+		m_Shared->Context = AdapterContext{.Root = root,
+										   .InitializationOptions = launch.InitializationOptions,
+										   .Settings = launch.Settings,
+										   .Solution = launch.Solution};
+		m_Shared->Problem = launch.Adapter->ProjectProblemAt(m_Shared->Context);
 
 		m_Shared->Status.Name = std::string(launch.Server->DisplayName);
 		m_Shared->Status.State = ServerState::Starting;
@@ -1103,6 +1107,11 @@ namespace Graphite {
 		{
 			SendNowLocked(shared, shared.Rpc.Reply(id, ConfigurationReply(*shared.Adapter, shared.Context, request.Payload)));
 			return;
+		}
+
+		if (request.Method == "window/showMessageRequest")
+		{
+			RecordServerMessage(shared, request.Payload);
 		}
 
 		if (IsAcknowledgedWithNull(request.Method))

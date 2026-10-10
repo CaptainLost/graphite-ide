@@ -5,6 +5,7 @@
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,7 @@ namespace Graphite {
 		std::vector<std::string> Arguments;
 		nlohmann::json InitializationOptions;
 		nlohmann::json Settings;
+		std::optional<std::filesystem::path> Solution;
 	};
 
 	struct LaunchPlaces

@@ -81,9 +81,14 @@ namespace Graphite {
 		return std::nullopt;
 	}
 
-	std::optional<ProjectProblem> ServerAdapter::ProjectProblemAt(const std::filesystem::path&) const
+	std::optional<ProjectProblem> ServerAdapter::ProjectProblemAt(const AdapterContext&) const
 	{
 		return std::nullopt;
+	}
+
+	bool ServerAdapter::AnswersEmptyConfigurationWithOneEntry() const
+	{
+		return false;
 	}
 
 	bool ServerAdapter::WarmUpNeedsOpen() const

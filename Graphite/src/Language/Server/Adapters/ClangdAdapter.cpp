@@ -36,9 +36,9 @@ namespace Graphite {
 		return nlohmann::json::object();
 	}
 
-	std::optional<ProjectProblem> ClangdAdapter::ProjectProblemAt(const std::filesystem::path& root) const
+	std::optional<ProjectProblem> ClangdAdapter::ProjectProblemAt(const AdapterContext& context) const
 	{
-		if (!LacksCompileDatabase(root))
+		if (!LacksCompileDatabase(context.Root))
 		{
 			return std::nullopt;
 		}
@@ -56,6 +56,12 @@ namespace Graphite {
 
 	bool ClangdAdapter::SupportsSwitchSourceHeader() const
 	{
+		return true;
+	}
+
+	bool ClangdAdapter::AnswersEmptyConfigurationWithOneEntry() const
+	{
+		// A reply with no entry stalls clangd as surely as no reply at all.
 		return true;
 	}
 }

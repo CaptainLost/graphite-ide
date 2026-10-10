@@ -366,6 +366,12 @@ namespace Graphite {
 			decoded.erase(0, 1);
 		}
 
+		// Roslyn writes "c%3A"; the same file written "C:" must compare equal to it, and paths here compare by case.
+		if (decoded.size() >= 2 && decoded[1] == ':' && std::isalpha(static_cast<unsigned char>(decoded[0])) != 0)
+		{
+			decoded[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(decoded[0])));
+		}
+
 		return Core::FromUtf8(decoded);
 	}
 

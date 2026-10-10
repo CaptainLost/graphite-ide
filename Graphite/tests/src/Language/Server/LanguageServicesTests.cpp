@@ -1919,3 +1919,24 @@ TEST_CASE("A running server's installed files cannot be removed until it stops")
 
 	CHECK(Graphite::RemoveDirectoryWhole(version));
 }
+
+TEST_CASE("A server is started with the selected solution when it lies inside its root")
+{
+	TempDirectory temp;
+	temp.MakeFile("Demo.slnx", "");
+	temp.MakeFile("Demo/Program.cs", "");
+	InstallCsharpLsIn(temp.GetPath() / "servers");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+
+	services.SetClientFactory(spy.Get());
+	services.SetServersDirectory(temp.GetPath() / "servers");
+	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "10.0.10"));
+	services.SetChoiceProvider(ChooseCsharpLs);
+	services.SetSelectedSolution(temp.GetPath() / "Demo.slnx");
+
+	services.EnsureStarted(temp.GetPath() / "Demo" / "Program.cs", Graphite::LanguageId::CSharp);
+
+	REQUIRE(spy.Made == 1);
+	CHECK(spy.LastLaunch.Solution == temp.GetPath() / "Demo.slnx");
+}

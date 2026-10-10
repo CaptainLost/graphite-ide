@@ -38,7 +38,7 @@ TEST_CASE("clangd reports a project with no compile database as incomplete and s
 	TempDirectory temp;
 	const Graphite::ServerAdapter& clangd = Graphite::AdapterOf(Graphite::AdapterKind::Clangd);
 
-	const std::optional<Graphite::ProjectProblem> problem = clangd.ProjectProblemAt(temp.GetPath());
+	const std::optional<Graphite::ProjectProblem> problem = clangd.ProjectProblemAt(Graphite::AdapterContext{.Root = temp.GetPath()});
 
 	REQUIRE(problem.has_value());
 	CHECK(problem->Summary == "no compile database");
@@ -51,7 +51,7 @@ TEST_CASE("clangd reports nothing missing once a compile database is there")
 	TempDirectory temp;
 	Touch(temp.GetPath() / "compile_commands.json");
 
-	CHECK_FALSE(Graphite::AdapterOf(Graphite::AdapterKind::Clangd).ProjectProblemAt(temp.GetPath()).has_value());
+	CHECK_FALSE(Graphite::AdapterOf(Graphite::AdapterKind::Clangd).ProjectProblemAt(Graphite::AdapterContext{.Root = temp.GetPath()}).has_value());
 }
 
 TEST_CASE("clangd answers every configuration section with an empty object")

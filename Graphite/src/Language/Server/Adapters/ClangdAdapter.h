@@ -13,10 +13,12 @@ namespace Graphite {
 	public:
 		nlohmann::json WorkspaceConfiguration(const AdapterContext& context, std::string_view section) const override;
 
-		std::optional<ProjectProblem> ProjectProblemAt(const std::filesystem::path& root) const override;
+		std::optional<ProjectProblem> ProjectProblemAt(const AdapterContext& context) const override;
 
 		bool WarmUpNeedsOpen() const override;
 
 		bool SupportsSwitchSourceHeader() const override;
+
+		bool AnswersEmptyConfigurationWithOneEntry() const override;
 	};
 }

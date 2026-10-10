@@ -1018,3 +1018,38 @@ TEST_CASE("A configuration request with no items is still answered with one entr
 	REQUIRE(sent.size() == 1);
 	CHECK(sent[0].find(R"("result":[{}])") != std::string::npos);
 }
+
+TEST_CASE("A question from the server is shown as a message and answered with null")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+	client.TakeSent();
+
+	client.Deliver(R"({"jsonrpc":"2.0","id":7,"method":"window/showMessageRequest","params":{"type":1,"message":"Restore failed","actions":[{"title":"Retry"}]}})");
+
+	const std::vector<std::string> sent = client.TakeSent();
+	REQUIRE(sent.size() == 1);
+	CHECK(sent[0].find(R"("id":7)") != std::string::npos);
+	CHECK(sent[0].find(R"("result":null)") != std::string::npos);
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	REQUIRE(drained.Messages.size() == 1);
+	CHECK(drained.Messages[0].Kind == Graphite::ServerMessageKind::Error);
+	CHECK(drained.Messages[0].Text == "Restore failed");
+}
+
+TEST_CASE("A configuration request with no items gets no entries from a plain server")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = OfflineWith(Graphite::LaunchFor(*Graphite::FindServer("csharp-ls"), {}, {}), temp.GetPath());
+	client.TakeSent();
+
+	client.Deliver(R"({"id":25,"method":"workspace/configuration","params":{"items":[]}})");
+
+	const std::vector<std::string> sent = client.TakeSent();
+
+	REQUIRE(sent.size() == 1);
+	CHECK(sent[0].find(R"("result":[])") != std::string::npos);
+}

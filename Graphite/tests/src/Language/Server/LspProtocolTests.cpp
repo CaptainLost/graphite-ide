@@ -399,3 +399,9 @@ TEST_CASE("A null or malformed switchSourceHeader reply names nothing")
 	CHECK_FALSE(Graphite::ParseSwitchSourceHeader(nlohmann::json(nullptr)).has_value());
 	CHECK_FALSE(Graphite::ParseSwitchSourceHeader(nlohmann::json(42)).has_value());
 }
+
+TEST_CASE("A file URI with a lower-case escaped drive names the same path as an upper-case one")
+{
+	CHECK(Graphite::FromFileUri("file:///c%3A/Repos/Demo/Program.cs") == std::filesystem::path{L"C:/Repos/Demo/Program.cs"});
+	CHECK(Graphite::FromFileUri("file:///C:/Repos/Demo/Program.cs") == std::filesystem::path{L"C:/Repos/Demo/Program.cs"});
+}

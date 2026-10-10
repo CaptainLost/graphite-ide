@@ -11,6 +11,7 @@
 #include "Language/Server/Adapters/ServerAdapter.h"
 #include "Language/Server/ServerCommand.h"
 #include "Language/Server/ServerLaunch.h"
+#include "Language/Server/SolutionForRoot.h"
 #include "Search/FileEnumerator.h"
 
 #include <algorithm>
@@ -336,6 +337,11 @@ namespace Graphite {
 	void LanguageServices::SetLogDirectory(std::filesystem::path directory)
 	{
 		m_LogDirectory = std::move(directory);
+	}
+
+	void LanguageServices::SetSelectedSolution(const std::filesystem::path& solution)
+	{
+		m_SelectedSolution = solution;
 	}
 
 	const std::vector<DotnetInstallation>& LanguageServices::DotnetInstallations() const
@@ -1305,8 +1311,10 @@ namespace Graphite {
 	Core::Scope<LspClient> LanguageServices::MakeClient(const ManagedServer& server,
 														const Key& key) const
 	{
-		const ServerLaunch launch = LaunchFor(*server.Definition, server.Command.Program, server.Overrides,
+		ServerLaunch launch = LaunchFor(*server.Definition, server.Command.Program, server.Overrides,
 											  LaunchPlaces{.LeadingArguments = server.Command.LeadingArguments, .LogDirectory = m_LogDirectory});
+
+		launch.Solution = SolutionForRoot(key.Root, m_SelectedSolution);
 
 		if (m_ClientFactory)
 		{
