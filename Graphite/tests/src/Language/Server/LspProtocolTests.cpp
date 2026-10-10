@@ -405,3 +405,9 @@ TEST_CASE("A file URI with a lower-case escaped drive names the same path as an 
 	CHECK(Graphite::FromFileUri("file:///c%3A/Repos/Demo/Program.cs") == std::filesystem::path{L"C:/Repos/Demo/Program.cs"});
 	CHECK(Graphite::FromFileUri("file:///C:/Repos/Demo/Program.cs") == std::filesystem::path{L"C:/Repos/Demo/Program.cs"});
 }
+
+TEST_CASE("A lower-case drive gives the same file URI as an upper-case one")
+{
+	CHECK(Graphite::ToFileUri("d:\\Repos\\IDE\\main.cpp") == "file:///D:/Repos/IDE/main.cpp");
+	CHECK(Graphite::FromFileUri(Graphite::ToFileUri(L"d:\\Repos\\main.cpp")) == std::filesystem::path{L"D:/Repos/main.cpp"});
+}

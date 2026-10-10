@@ -301,6 +301,12 @@ namespace Graphite {
 			}
 		}
 
+		// Upper-cased as FromFileUri reads it, or a document keyed by one spelling is never found by the other.
+		if (text.size() >= 2 && text[1] == ':' && std::isalpha(static_cast<unsigned char>(text[0])) != 0)
+		{
+			text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
+		}
+
 		std::string uri = "file:///";
 
 		// A POSIX path already starts with the separator the prefix ends in; a Windows one starts
