@@ -55,7 +55,7 @@ TEST_CASE("SHA-512 gives the FIPS 180-4 example digests")
 TEST_CASE("Hashing a file gives the digest of its bytes across pieces and outside the ANSI code page")
 {
 	TempDirectory temporaryDirectory;
-	const std::filesystem::path file = temporaryDirectory.GetPath() / Core::FromUtf8("pobrany plik ł.zip");
+	const std::filesystem::path file = temporaryDirectory.GetPath() / Core::FromUtf8("pobrany plik Ω.zip");
 	const std::string contents(3 * 1024 * 1024 + 7, 'a');
 
 	{

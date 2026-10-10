@@ -31,7 +31,10 @@ to `src`.
 - **Tests mirror the source tree.** `<Name>Tests.cpp` sits at the same relative
   path under `tests/src` as `<Name>.h` does under `src`. Shared fixtures
   (`TempDirectory.h`, `TranscriptFixtures.h`, ...) stay at the root of
-  `tests/src`, which both test projects put on their include path.
+  `tests/src`, which both test projects put on their include path. Fixtures
+  shared by both test projects (`ZipFixtures.h`) live in `Core/tests/fixtures`
+  instead, on both projects' include paths, because neither project's `src`
+  root is the other's.
 - Includes stay rooted at `src`: `"Editor/Hover/HoverState.h"`,
   `"Core/FileSystem/FileTree.h"`.
 
