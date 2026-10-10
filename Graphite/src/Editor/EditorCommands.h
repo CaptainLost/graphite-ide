@@ -66,10 +66,6 @@ namespace Graphite {
 	Core::Binding SaveBinding();
 	Core::Binding CloseBinding();
 
-	// Whether a language server is configured for this file's language — the condition every
-	// navigation command shares.
-	bool HasLanguageServer(const std::filesystem::path& path);
-
 	// The clipboard is read by the caller and passed in, so this never touches ImGui.
 	bool CanRun(EditorAction action, const Core::OpenItem& item, bool clipboardHasText);
 

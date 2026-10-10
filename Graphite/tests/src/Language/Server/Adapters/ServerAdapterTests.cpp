@@ -49,13 +49,6 @@ TEST_CASE("The plain adapter reports no project problem, needs no warm-up open a
 	CHECK_FALSE(plain.SupportsSwitchSourceHeader());
 }
 
-TEST_CASE("Only a language whose servers can switch between header and source offers it")
-{
-	CHECK(Graphite::LanguageOffersSwitchSourceHeader(Graphite::LanguageId::Cpp));
-	CHECK_FALSE(Graphite::LanguageOffersSwitchSourceHeader(Graphite::LanguageId::CSharp));
-	CHECK_FALSE(Graphite::LanguageOffersSwitchSourceHeader(Graphite::LanguageId::PlainText));
-}
-
 TEST_CASE("The plain adapter passes the user's initialization options through and adds nothing")
 {
 	const Graphite::ServerAdapter& plain = Graphite::AdapterOf(Graphite::AdapterKind::Plain);

@@ -21,6 +21,14 @@
 
 namespace Graphite {
 
+	namespace {
+
+		bool ContainsLanguage(const std::vector<LanguageId>& languages, LanguageId language)
+		{
+			return std::find(languages.begin(), languages.end(), language) != languages.end();
+		}
+	}
+
 	std::chrono::steady_clock::duration RestartBackoff(std::size_t restarts)
 	{
 		return std::chrono::seconds(static_cast<long long>(restarts) * 2);
@@ -179,6 +187,11 @@ namespace Graphite {
 		m_Choices.erase(language);
 		ForgetRootsOf(language);
 
+		for (HeldDocument& parked : TakeParkedDocumentsOf(language))
+		{
+			released.Held.push_back(std::move(parked));
+		}
+
 		for (HeldDocument& document : released.Held)
 		{
 			EnsureStarted(document.Path, language);
@@ -194,6 +207,37 @@ namespace Graphite {
 		{
 			WarmUp(m_LastWarmUp->Root, m_LastWarmUp->RespectGitIgnore);
 		}
+	}
+
+	bool LanguageServices::HasChosenServer(LanguageId language) const
+	{
+		return ChoiceFor(language).Kind == ServerChoiceKind::Chosen;
+	}
+
+	bool LanguageServices::OffersSwitchSourceHeader(LanguageId language) const
+	{
+		const ServerDefinition* server = ServerFor(language);
+
+		return server != nullptr && AdapterOf(server->Adapter).SupportsSwitchSourceHeader();
+	}
+
+	std::vector<LanguageServices::HeldDocument> LanguageServices::TakeParkedDocumentsOf(LanguageId language)
+	{
+		std::vector<HeldDocument> taken;
+
+		for (std::map<std::filesystem::path, ParkedDocument>::iterator parked = m_Parked.begin(); parked != m_Parked.end();)
+		{
+			if (parked->second.Language != language)
+			{
+				++parked;
+				continue;
+			}
+
+			taken.push_back(HeldDocument{.Path = parked->first, .Text = std::move(parked->second.Text)});
+			parked = m_Parked.erase(parked);
+		}
+
+		return taken;
 	}
 
 	LanguageServices::ReleasedServers LanguageServices::ReleaseServersOf(LanguageId language)
@@ -599,8 +643,15 @@ namespace Graphite {
 
 		if (Resolve(path, language, key) == nullptr)
 		{
+			if (LanguageHasServers(language))
+			{
+				m_Parked[path] = ParkedDocument{.Language = language, .Text = std::move(text)};
+			}
+
 			return;
 		}
+
+		m_Parked.erase(path);
 
 		const auto found = m_Servers.find(key);
 
@@ -640,6 +691,13 @@ namespace Graphite {
 
 		if (Resolve(path, language, key) == nullptr)
 		{
+			const std::map<std::filesystem::path, ParkedDocument>::iterator parked = m_Parked.find(path);
+
+			if (parked != m_Parked.end() && parked->second.Language == language)
+			{
+				parked->second.Text = std::move(text);
+			}
+
 			return;
 		}
 
@@ -708,6 +766,8 @@ namespace Graphite {
 
 	void LanguageServices::CloseDocument(const std::filesystem::path& path, LanguageId language)
 	{
+		m_Parked.erase(path);
+
 		Key key;
 
 		if (Resolve(path, language, key) == nullptr)
@@ -750,7 +810,8 @@ namespace Graphite {
 
 		if (Resolve(path, language, key) == nullptr)
 		{
-			return false;
+			const std::map<std::filesystem::path, ParkedDocument>::const_iterator parked = m_Parked.find(path);
+			return parked != m_Parked.end() && parked->second.Language == language;
 		}
 
 		const auto found = m_Servers.find(key);
@@ -896,10 +957,23 @@ namespace Graphite {
 			return;
 		}
 
-		m_Jobs.Submit([warm = m_Warm, token = m_WarmToken, root = std::move(root),
-					   respectGitIgnore] {
-			const std::span<const LanguageId> wanted = LanguagesWithServers();
+		std::vector<LanguageId> wanted;
 
+		for (const LanguageId language : LanguagesWithServers())
+		{
+			if (HasChosenServer(language))
+			{
+				wanted.push_back(language);
+			}
+		}
+
+		if (wanted.empty())
+		{
+			return;
+		}
+
+		m_Jobs.Submit([warm = m_Warm, token = m_WarmToken, root = std::move(root),
+					   respectGitIgnore, wanted = std::move(wanted)] {
 			std::vector<LanguageId> seen;
 
 			EnumerationInput enumeration;
@@ -932,7 +1006,7 @@ namespace Graphite {
 
 				const LanguageId language = LanguageOfPath(file);
 
-				if (!LanguageHasServers(language) ||
+				if (!ContainsLanguage(wanted, language) ||
 					std::find(seen.begin(), seen.end(), language) != seen.end())
 				{
 					return;

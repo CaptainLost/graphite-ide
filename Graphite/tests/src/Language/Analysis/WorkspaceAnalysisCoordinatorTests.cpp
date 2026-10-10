@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Language/Analysis/WorkspaceAnalysisCoordinator.h"
+#include "Language/Registry/LanguageRegistry.h"
 
 #include "Editor/Overlays/AnalysisCache.h"
 
@@ -49,6 +50,8 @@ namespace {
 		void Close(const std::filesystem::path&, LanguageId) override {}
 
 		bool IsServerReady(const std::filesystem::path&, LanguageId) override { return true; }
+
+		bool HasChosenServer(Graphite::LanguageId language) override { return Graphite::LanguageHasServers(language); }
 
 		std::uint64_t Tickets = 0;
 	};

@@ -941,10 +941,16 @@ namespace Graphite {
 						  {
 							  RequestSwitchSourceHeader(*index);
 						  } },
-					  .Enabled = [activeItem] {
+					  .Enabled = [this, activeItem] {
 						  const Core::OpenItem* item = activeItem();
-						  return item != nullptr && HasLanguageServer(item->Path) &&
-								 LanguageOffersSwitchSourceHeader(LanguageOfPath(item->Path)); },
+
+						  if (item == nullptr)
+						  {
+							  return false;
+						  }
+
+						  const LanguageId language = LanguageOfPath(item->Path);
+						  return m_Server.HasChosenServer(language) && m_Server.OffersSwitchSourceHeader(language); },
 					  .RepeatsWhileHeld = false});
 
 		keys.SetDefault(kSwitchHeaderSourceCommand,
@@ -1338,8 +1344,7 @@ namespace Graphite {
 	{
 		const LanguageId language = LanguageOfPath(item.Path);
 
-		// The one test for "a server serves this document". A language with no row in the server
-		// registry gets no lens state at all, which is what puts a null LensModel on EditorView.
+		// Listed rather than chosen: a document of a language whose server is chosen later must already have been handed to the services, or that server never hears of it.
 		if (!LanguageHasServers(language) || !item.Document)
 		{
 			return nullptr;
@@ -1771,7 +1776,7 @@ namespace Graphite {
 
 		const LanguageId language = LanguageOfPath(item.Path);
 
-		if (!LanguageHasServers(language))
+		if (!m_Server.HasChosenServer(language))
 		{
 			// Nothing configured to ask - the same answer a server that never started would give,
 			// said immediately rather than after a round trip that could not have happened.
@@ -1860,7 +1865,7 @@ namespace Graphite {
 											  const FilePosition& where, const std::string& symbol,
 											  ReferencesPanel& panel)
 	{
-		if (!LanguageHasServers(language))
+		if (!m_Server.HasChosenServer(language))
 		{
 			// Nothing configured to ask - the same answer a server that never started would give,
 			// said immediately rather than after a round trip that could not have happened.

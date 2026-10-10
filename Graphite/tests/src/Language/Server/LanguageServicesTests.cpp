@@ -1252,6 +1252,85 @@ namespace {
 	}
 }
 
+namespace {
+
+	Graphite::ServerChoice ChooseNothing(Graphite::LanguageId language)
+	{
+		return Graphite::ChooseServer(language, std::string{Graphite::kServerTurnedOff});
+	}
+}
+
+TEST_CASE("A document opened while no server is chosen reaches the server chosen later with its edits")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	services.SetClock(clock.Get());
+	services.SetClientFactory(spy.Get());
+	services.SetChoiceProvider(ChooseNothing);
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.OpenDocument(source, Graphite::LanguageId::Cpp, "int first;\n");
+	services.ChangeDocument(source, Graphite::LanguageId::Cpp, "int edited;\n");
+
+	CHECK(services.Holds(source, Graphite::LanguageId::Cpp));
+	CHECK(spy.Made == 0);
+
+	temp.MakeFile("stand-in-clangd.exe", "");
+	UseClangdAt(services, temp.GetPath() / "stand-in-clangd.exe");
+	services.Reconfigure(Graphite::LanguageId::Cpp);
+
+	REQUIRE(spy.Made == 1);
+	spy.Answer();
+	const std::vector<std::string> sent = spy.Latest->TakeSent();
+
+	CHECK(AnySentContaining(sent, "textDocument/didOpen"));
+	CHECK(AnySentContaining(sent, "int edited;"));
+	CHECK_FALSE(AnySentContaining(sent, "int first;"));
+}
+
+TEST_CASE("A document closed while no server is chosen is not replayed later")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	services.SetClock(clock.Get());
+	services.SetClientFactory(spy.Get());
+	services.SetChoiceProvider(ChooseNothing);
+	services.OpenDocument(source, Graphite::LanguageId::Cpp, "int closed;\n");
+	services.CloseDocument(source, Graphite::LanguageId::Cpp);
+
+	CHECK_FALSE(services.Holds(source, Graphite::LanguageId::Cpp));
+
+	temp.MakeFile("stand-in-clangd.exe", "");
+	UseClangdAt(services, temp.GetPath() / "stand-in-clangd.exe");
+	services.Reconfigure(Graphite::LanguageId::Cpp);
+
+	CHECK(spy.Made == 0);
+}
+
+TEST_CASE("Whether a language has a chosen server and offers switch header follows the choice")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	services.SetChoiceProvider(ChooseNothing);
+	CHECK_FALSE(services.HasChosenServer(Graphite::LanguageId::Cpp));
+	CHECK_FALSE(services.OffersSwitchSourceHeader(Graphite::LanguageId::Cpp));
+
+	UseClangdAt(services, temp.GetPath() / "stand-in-clangd.exe");
+	CHECK(services.HasChosenServer(Graphite::LanguageId::Cpp));
+	CHECK(services.OffersSwitchSourceHeader(Graphite::LanguageId::Cpp));
+	CHECK_FALSE(services.HasChosenServer(Graphite::LanguageId::PlainText));
+	CHECK_FALSE(services.HasChosenServer(Graphite::LanguageId::CSharp));
+}
+
 TEST_CASE("A dead client is replaced through the factory and told every open document again")
 {
 	TempDirectory temp;

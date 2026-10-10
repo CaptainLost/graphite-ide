@@ -52,6 +52,7 @@ namespace Graphite {
 		// without a compile database answers true: those states do not improve by waiting, and
 		// what such a server says is the best this file will ever get.
 		virtual bool IsServerReady(const std::filesystem::path& path, LanguageId language) = 0;
+		virtual bool HasChosenServer(LanguageId language) = 0;
 	};
 
 	// How far the pass has got, for the status bar. Total is what was queued, not what the tree

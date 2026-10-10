@@ -369,7 +369,7 @@ namespace Graphite {
 
 			const LanguageId language = LanguageOfPath(text.Path);
 
-			if (!LanguageHasServers(language))
+			if (!m_Port.HasChosenServer(language))
 			{
 				// Nothing serves this language, so there is nobody to ask. Counted as done rather
 				// than left in the queue: it is as finished as it will ever be.

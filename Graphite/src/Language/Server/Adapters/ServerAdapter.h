@@ -50,6 +50,4 @@ namespace Graphite {
 	};
 
 	const ServerAdapter& AdapterOf(AdapterKind kind);
-
-	bool LanguageOffersSwitchSourceHeader(LanguageId language);
 }

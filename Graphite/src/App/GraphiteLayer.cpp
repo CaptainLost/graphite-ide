@@ -358,7 +358,7 @@ namespace Graphite {
 							} },
 						.Enabled = [this] {
 							const auto path = ActiveTextDocument(m_Documents);
-							return path.has_value() && HasLanguageServer(*path); }});
+							return path.has_value() && m_LanguageServices.HasChosenServer(LanguageOfPath(*path)); }});
 
 		m_Keys.SetDefault(kGoToDefinitionCommand, {.Primary = Core::Chord::Key(ImGuiKey_F12)});
 
@@ -377,7 +377,7 @@ namespace Graphite {
 							} },
 						.Enabled = [this] {
 							const auto path = ActiveTextDocument(m_Documents);
-							return path.has_value() && HasLanguageServer(*path); }});
+							return path.has_value() && m_LanguageServices.HasChosenServer(LanguageOfPath(*path)); }});
 
 		m_Keys.SetDefault(kFindReferencesCommand,
 						  {.Primary = Core::Chord::Key(ImGuiMod_Shift | ImGuiKey_F12)});

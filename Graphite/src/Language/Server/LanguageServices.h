@@ -160,6 +160,12 @@ namespace Graphite {
 		// workspace and an untrusted file opened beside it are two roots of the same language.
 		ServerStatus StatusFor(LanguageId language) const;
 
+		// Whether a server is chosen for `language`, which is what a command offering go to definition asks. Says
+		// nothing about whether one is installed or running.
+		bool HasChosenServer(LanguageId language) const;
+
+		bool OffersSwitchSourceHeader(LanguageId language) const;
+
 		// The status of the server for this document's own (language, root), Off when its server
 		// is turned off, or a default (State == NotConfigured) when there is none. What a caller with a document in hand
 		// asks, rather than the overload above: once two roots run the same language - a trusted
@@ -366,6 +372,18 @@ namespace Graphite {
 			std::filesystem::path Path;
 			std::string Text;
 		};
+
+		// A document of a language that lists servers but has none chosen, kept so the server chosen
+		// later is told about it.
+		struct ParkedDocument
+		{
+			LanguageId Language = LanguageId::PlainText;
+			std::string Text;
+		};
+
+		std::map<std::filesystem::path, ParkedDocument> m_Parked;
+
+		std::vector<HeldDocument> TakeParkedDocumentsOf(LanguageId language);
 
 		struct ReleasedServers
 		{

@@ -111,19 +111,4 @@ namespace Graphite {
 
 		return plain;
 	}
-
-	bool LanguageOffersSwitchSourceHeader(LanguageId language)
-	{
-		for (const std::string_view serverId : DefinitionOf(language).Servers)
-		{
-			const ServerDefinition* server = FindServer(serverId);
-
-			if (server != nullptr && AdapterOf(server->Adapter).SupportsSwitchSourceHeader())
-			{
-				return true;
-			}
-		}
-
-		return false;
-	}
 }

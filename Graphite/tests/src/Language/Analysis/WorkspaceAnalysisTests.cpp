@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Language/Analysis/WorkspaceAnalysis.h"
+#include "Language/Registry/LanguageRegistry.h"
 
 #include "Language/Analysis/AnalysisStore.h"
 
@@ -8,6 +9,7 @@
 
 #include "TempDirectory.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <string>
@@ -52,6 +54,13 @@ namespace {
 		}
 
 		bool IsServerReady(const std::filesystem::path&, LanguageId) override { return Ready; }
+
+		bool HasChosenServer(Graphite::LanguageId language) override
+		{
+			return Graphite::LanguageHasServers(language) && std::find(Unchosen.begin(), Unchosen.end(), language) == Unchosen.end();
+		}
+
+		std::vector<Graphite::LanguageId> Unchosen;
 
 		void Close(const std::filesystem::path& path, LanguageId) override
 		{
@@ -563,6 +572,23 @@ TEST_CASE("A file in a language no server serves is dropped without being mentio
 
 	CHECK(port.Calls.empty());
 	CHECK(analysis.Progress().Done == 1);
+}
+
+TEST_CASE("A file whose language has no chosen server is counted done without being opened")
+{
+	FakePort port;
+	FakeTexts texts;
+	AnalysisCache cache{1024 * 1024};
+	WorkspaceAnalysis analysis{port, texts, cache, nullptr};
+
+	port.Unchosen.push_back(LanguageId::Cpp);
+	analysis.Enqueue({"a.cpp"});
+
+	analysis.Tick(1.0, false, NobodyElse);
+	analysis.Tick(2.0, false, NobodyElse);
+
+	CHECK(port.Calls.empty());
+	CHECK(analysis.Progress().Done == analysis.Progress().Total);
 }
 
 TEST_CASE("An analysis that is never answered is given up on rather than blocking the queue "

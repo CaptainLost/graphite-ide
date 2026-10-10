@@ -39,6 +39,9 @@ namespace Graphite {
 		// The status of the server for this document's own (language, root).
 		virtual ServerStatus StatusFor(const std::filesystem::path& path, LanguageId language) = 0;
 
+		virtual bool HasChosenServer(LanguageId language) = 0;
+		virtual bool OffersSwitchSourceHeader(LanguageId language) = 0;
+
 		virtual LanguageServices::Ticket AskDefinition(const std::filesystem::path& path,
 													   LanguageId language,
 													   const FilePosition& where) = 0;

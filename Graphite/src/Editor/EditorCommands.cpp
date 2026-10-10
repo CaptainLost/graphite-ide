@@ -67,11 +67,6 @@ namespace Graphite {
 				.Alternates = {Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_F4)}};
 	}
 
-	bool HasLanguageServer(const std::filesystem::path& path)
-	{
-		return LanguageHasServers(LanguageOfPath(path));
-	}
-
 	bool CanRun(EditorAction action, const Core::OpenItem& item, bool clipboardHasText)
 	{
 		if (!item.Document)

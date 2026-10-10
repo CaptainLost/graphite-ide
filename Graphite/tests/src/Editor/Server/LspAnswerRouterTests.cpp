@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Editor/Server/LspAnswerRouter.h"
+#include "Language/Registry/LanguageRegistry.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -44,6 +45,9 @@ namespace {
 			status.State = State;
 			return status;
 		}
+
+		bool HasChosenServer(LanguageId language) override { return LanguageHasServers(language); }
+		bool OffersSwitchSourceHeader(LanguageId language) override { return language == LanguageId::Cpp; }
 
 		Ticket AskDefinition(const std::filesystem::path& path, LanguageId,
 							 const FilePosition&) override

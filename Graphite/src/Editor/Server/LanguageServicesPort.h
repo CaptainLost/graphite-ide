@@ -94,6 +94,8 @@ namespace Graphite {
 			return state != ServerState::Starting && state != ServerState::Indexing;
 		}
 
+		bool HasChosenServer(LanguageId language) override { return m_Services.HasChosenServer(language); }
+
 	private:
 		LanguageServices& m_Services;
 	};
@@ -137,6 +139,13 @@ namespace Graphite {
 		ServerStatus StatusFor(const std::filesystem::path& path, LanguageId language) override
 		{
 			return m_Services.StatusFor(path, language);
+		}
+
+		bool HasChosenServer(LanguageId language) override { return m_Services.HasChosenServer(language); }
+
+		bool OffersSwitchSourceHeader(LanguageId language) override
+		{
+			return m_Services.OffersSwitchSourceHeader(language);
 		}
 
 		LanguageServices::Ticket AskDefinition(const std::filesystem::path& path,
