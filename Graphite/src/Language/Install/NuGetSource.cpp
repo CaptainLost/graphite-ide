@@ -42,7 +42,8 @@ namespace Graphite {
 				const Core::ErrorCode code =
 					response.GetValue().Status == kStatusNotFound ? Core::ErrorCode::NotFound : Core::ErrorCode::IoFailure;
 				return Core::Error{.Code = code,
-								   .Message = std::format("NuGet answered {} for {}", response.GetValue().Status, packageId)};
+								   .Message = std::format("NuGet answered {} for {} at '{}'", response.GetValue().Status,
+														  packageId, url)};
 			}
 
 			nlohmann::json parsed = ParseJsonText(response.GetValue().Body);
@@ -152,15 +153,17 @@ namespace Graphite {
 		Core::Result<std::optional<Checksum>> PackageHashIn(const nlohmann::json& catalogEntry, std::string_view packageId,
 															std::string_view version)
 		{
-			const std::optional<std::string> hash = TextAt(catalogEntry, "packageHash");
+			const nlohmann::json::const_iterator hashMember = catalogEntry.find("packageHash");
 
-			if (!hash)
+			if (hashMember == catalogEntry.end() || hashMember->is_null())
 			{
 				return std::optional<Checksum>{};
 			}
 
+			const std::optional<std::string> hash = TextAt(catalogEntry, "packageHash");
 			const std::optional<std::string> algorithm = TextAt(catalogEntry, "packageHashAlgorithm");
-			std::optional<std::vector<std::uint8_t>> digest = Core::BytesFromBase64(*hash);
+			std::optional<std::vector<std::uint8_t>> digest =
+				hash ? Core::BytesFromBase64(*hash) : std::optional<std::vector<std::uint8_t>>{};
 			const bool isSha512 = algorithm.has_value() && Core::EqualsIgnoringCase(*algorithm, "SHA512");
 
 			if (!isSha512 || !digest || digest->size() != kSha512Bytes)

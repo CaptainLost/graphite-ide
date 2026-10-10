@@ -219,3 +219,43 @@ TEST_CASE("A package NuGet does not know is reported as not found")
 	CHECK(resolved.GetError().Code == Core::ErrorCode::NotFound);
 	CHECK(resolved.GetError().Message.find("csharp-ls") != std::string::npos);
 }
+
+TEST_CASE("A hash of another JSON type fails the resolution")
+{
+	FakeHttpClient http;
+	http.Answer(kCsharpLsIndex, 200, IndexWithPages({InlinedPage("csharp-ls", {{.Version = "0.28.0"}})}));
+	http.Answer(CatalogUrlOf("csharp-ls", "0.28.0"), 200, R"({"packageHash": 42, "packageHashAlgorithm": "SHA512"})");
+
+	const Core::Result<Graphite::ResolvedPackage> resolved = Graphite::ResolveNuGetTool(http, kCsharpLs, kWindowsX64);
+
+	REQUIRE_FALSE(resolved);
+	CHECK(resolved.GetError().Message.find("csharp-ls 0.28.0") != std::string::npos);
+}
+
+TEST_CASE("A null hash resolves without a checksum")
+{
+	FakeHttpClient http;
+	http.Answer(kCsharpLsIndex, 200, IndexWithPages({InlinedPage("csharp-ls", {{.Version = "0.28.0"}})}));
+	http.Answer(CatalogUrlOf("csharp-ls", "0.28.0"), 200, R"({"packageHash": null})");
+
+	const Core::Result<Graphite::ResolvedPackage> resolved = Graphite::ResolveNuGetTool(http, kCsharpLs, kWindowsX64);
+
+	REQUIRE(resolved);
+	CHECK_FALSE(resolved.GetValue().ExpectedChecksum.has_value());
+}
+
+TEST_CASE("A version with build metadata and an upper-case label installs lower-cased and without the metadata")
+{
+	constexpr Graphite::NuGetToolPackage prereleaseAllowed{.PackageIdTemplate = "CSharp-LS", .AllowPrerelease = true};
+	FakeHttpClient http;
+	http.Answer(kCsharpLsIndex, 200, IndexWithPages({InlinedPage("csharp-ls", {{.Version = "1.0.0-Beta.2+build.7"}})}));
+	http.Answer(CatalogUrlOf("csharp-ls", "1.0.0-Beta.2+build.7"), 200, CatalogEntryWithHash(std::nullopt, ""));
+
+	const Core::Result<Graphite::ResolvedPackage> resolved = Graphite::ResolveNuGetTool(http, prereleaseAllowed, kWindowsX64);
+
+	REQUIRE(resolved);
+	CHECK(resolved.GetValue().Version == "1.0.0-beta.2");
+	CHECK(resolved.GetValue().FileName == "csharp-ls.1.0.0-beta.2.nupkg");
+	CHECK(resolved.GetValue().DownloadUrl ==
+		  "https://api.nuget.org/v3-flatcontainer/csharp-ls/1.0.0-beta.2/csharp-ls.1.0.0-beta.2.nupkg");
+}
