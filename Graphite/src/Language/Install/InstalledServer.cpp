@@ -9,6 +9,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/FileSystem/RelativePath.h"
 
+#include <cstdint>
 #include <system_error>
 #include <vector>
 
@@ -18,6 +19,7 @@ namespace Graphite {
 
 		constexpr std::uintmax_t kLargestRecordBytes = 64 * 1024;
 		constexpr int kRecordIndent = 2;
+		constexpr std::int64_t kRecordFormat = 1;
 		constexpr std::string_view kDownloadDirectoryName = ".download";
 
 		void RemoveQuietly(const std::filesystem::path& path)
@@ -47,6 +49,72 @@ namespace Graphite {
 			return checksum;
 		}
 
+		enum class RecordFormat
+		{
+			Current,
+			Newer,
+			Unknown
+		};
+
+		// A record without a format predates the field and is read as the first format.
+		RecordFormat FormatOf(const nlohmann::json& root)
+		{
+			const nlohmann::json::const_iterator field = root.find("format");
+
+			if (field == root.end())
+			{
+				return RecordFormat::Current;
+			}
+
+			if (field->is_number_integer() && field->get<std::int64_t>() == kRecordFormat)
+			{
+				return RecordFormat::Current;
+			}
+
+			if (field->is_number() && field->get<double>() > static_cast<double>(kRecordFormat))
+			{
+				return RecordFormat::Newer;
+			}
+
+			return RecordFormat::Unknown;
+		}
+
+		std::optional<InstallRecord> RecordFrom(const nlohmann::json& root)
+		{
+			const std::optional<std::string> version = TextAt(root, "version");
+			const std::optional<std::string> source = TextAt(root, "source");
+			const std::optional<std::string> installedAt = TextAt(root, "installedAt");
+			const nlohmann::json* command = ObjectAt(root, "command");
+
+			if (FormatOf(root) != RecordFormat::Current || !version || !source || !installedAt || command == nullptr ||
+				!IsSafeDirectoryName(*version))
+			{
+				return std::nullopt;
+			}
+
+			const std::optional<std::string> runnerName = TextAt(*command, "runner");
+			const std::optional<std::string> commandPath = TextAt(*command, "path");
+			const std::optional<LaunchRunner> runner = runnerName ? RunnerNamed(*runnerName) : std::nullopt;
+
+			if (!runner || !commandPath || !Core::IsSafeRelativePath(*commandPath))
+			{
+				return std::nullopt;
+			}
+
+			Core::Result<std::optional<Checksum>> checksum = ChecksumIn(root);
+
+			if (!checksum)
+			{
+				return std::nullopt;
+			}
+
+			return InstallRecord{.Version = *version,
+								 .SourceUrl = *source,
+								 .VerifiedChecksum = std::move(checksum).GetValue(),
+								 .InstalledAt = *installedAt,
+								 .Command = {.Runner = *runner, .RelativePath = *commandPath}};
+		}
+
 		enum class RecordState
 		{
 			AbsentOrInvalid,
@@ -70,7 +138,15 @@ namespace Graphite {
 				return {.State = isAbsent ? RecordState::AbsentOrInvalid : RecordState::Unreadable, .Record = std::nullopt};
 			}
 
-			std::optional<InstallRecord> record = ParseInstallRecord(text.GetValue());
+			const nlohmann::json root = ParseJsonText(text.GetValue());
+
+			// A newer Graphite's record names versions this build cannot tell apart from leftovers.
+			if (FormatOf(root) == RecordFormat::Newer)
+			{
+				return {.State = RecordState::Unreadable, .Record = std::nullopt};
+			}
+
+			std::optional<InstallRecord> record = RecordFrom(root);
 			const RecordState state = record ? RecordState::Valid : RecordState::AbsentOrInvalid;
 
 			return {.State = state, .Record = std::move(record)};
@@ -159,6 +235,7 @@ namespace Graphite {
 		command["path"] = record.Command.RelativePath;
 
 		nlohmann::json root = nlohmann::json::object();
+		root["format"] = kRecordFormat;
 		root["version"] = record.Version;
 		root["source"] = record.SourceUrl;
 		root["checksum"] = record.VerifiedChecksum ? nlohmann::json(DescribeChecksum(*record.VerifiedChecksum))
@@ -171,38 +248,7 @@ namespace Graphite {
 
 	std::optional<InstallRecord> ParseInstallRecord(std::string_view json)
 	{
-		const nlohmann::json root = ParseJsonText(json);
-		const std::optional<std::string> version = TextAt(root, "version");
-		const std::optional<std::string> source = TextAt(root, "source");
-		const std::optional<std::string> installedAt = TextAt(root, "installedAt");
-		const nlohmann::json* command = ObjectAt(root, "command");
-
-		if (!version || !source || !installedAt || command == nullptr || !IsSafeDirectoryName(*version))
-		{
-			return std::nullopt;
-		}
-
-		const std::optional<std::string> runnerName = TextAt(*command, "runner");
-		const std::optional<std::string> commandPath = TextAt(*command, "path");
-		const std::optional<LaunchRunner> runner = runnerName ? RunnerNamed(*runnerName) : std::nullopt;
-
-		if (!runner || !commandPath || !Core::IsSafeRelativePath(*commandPath))
-		{
-			return std::nullopt;
-		}
-
-		Core::Result<std::optional<Checksum>> checksum = ChecksumIn(root);
-
-		if (!checksum)
-		{
-			return std::nullopt;
-		}
-
-		return InstallRecord{.Version = *version,
-							 .SourceUrl = *source,
-							 .VerifiedChecksum = std::move(checksum).GetValue(),
-							 .InstalledAt = *installedAt,
-							 .Command = {.Runner = *runner, .RelativePath = *commandPath}};
+		return RecordFrom(ParseJsonText(json));
 	}
 
 	Core::Result<void> WriteInstallRecord(const std::filesystem::path& serverDirectory, const InstallRecord& record)

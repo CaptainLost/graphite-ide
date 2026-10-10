@@ -41,7 +41,8 @@ namespace Graphite {
 
 	std::string SerialiseInstallRecord(const InstallRecord& record);
 
-	// A record whose version or command could lead outside the server's directory reads as nothing, like a broken one.
+	// A record whose version or command could lead outside the server's directory reads as nothing, like a broken one,
+	// and so does a record a newer Graphite wrote in a later format.
 	std::optional<InstallRecord> ParseInstallRecord(std::string_view json);
 
 	Core::Result<void> WriteInstallRecord(const std::filesystem::path& serverDirectory, const InstallRecord& record);

@@ -61,6 +61,18 @@ TEST_CASE("A record written is read back whole")
 
 	CHECK(Graphite::ParseInstallRecord(Graphite::SerialiseInstallRecord(withoutChecksum)) == withoutChecksum);
 	CHECK(Graphite::SerialiseInstallRecord(withoutChecksum).find("\"checksum\": null") != std::string::npos);
+	CHECK(Graphite::SerialiseInstallRecord(record).find("\"format\": 1") != std::string::npos);
+}
+
+TEST_CASE("A record without a format reads as the first format and one written by a newer format reads as nothing")
+{
+	nlohmann::json withoutFormat = Graphite::ParseJsonText(Graphite::SerialiseInstallRecord(ClangdRecord()));
+	REQUIRE(withoutFormat.erase("format") == 1);
+
+	CHECK(Graphite::ParseInstallRecord(withoutFormat.dump()) == ClangdRecord());
+	CHECK(Graphite::ParseInstallRecord(ClangdRecordWith("format", 1)) == ClangdRecord());
+	CHECK_FALSE(Graphite::ParseInstallRecord(ClangdRecordWith("format", 2)).has_value());
+	CHECK_FALSE(Graphite::ParseInstallRecord(ClangdRecordWith("format", "1")).has_value());
 }
 
 TEST_CASE("A malformed or unsafe record reads as nothing")
@@ -169,6 +181,26 @@ TEST_CASE("The sweep removes every version of a server whose record is corrupt")
 	Graphite::SweepServersDirectory(servers);
 
 	CHECK_FALSE(std::filesystem::exists(clangd / "23.1.0"));
+}
+
+TEST_CASE("The sweep keeps every version of a server whose record a newer Graphite wrote")
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path servers = temporaryDirectory.GetPath() / "servers";
+	const std::filesystem::path clangd = Graphite::ServerDirectoryOf(servers, "clangd");
+	MakeServerFile(clangd / "23.1.0" / "clangd_23.1.0" / "bin" / "clangd.exe");
+	MakeServerFile(clangd / "22.1.0" / "clangd_22.1.0" / "bin" / "clangd.exe");
+	MakeServerFile(clangd / "24.0.0.tmp" / "half.exe");
+	temporaryDirectory.MakeFile("servers/clangd/installed.json", ClangdRecordWith("format", 2));
+
+	CHECK_FALSE(Graphite::FindInstalledServer(clangd).has_value());
+
+	Graphite::SweepServersDirectory(servers);
+
+	CHECK(std::filesystem::exists(clangd / "23.1.0" / "clangd_23.1.0" / "bin" / "clangd.exe"));
+	CHECK(std::filesystem::exists(clangd / "22.1.0" / "clangd_22.1.0" / "bin" / "clangd.exe"));
+	CHECK(std::filesystem::exists(clangd / "installed.json"));
+	CHECK_FALSE(std::filesystem::exists(clangd / "24.0.0.tmp"));
 }
 
 TEST_CASE("The sweep leaves alone a server another Graphite window is installing")
