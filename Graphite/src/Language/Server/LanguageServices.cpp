@@ -9,7 +9,7 @@
 #include "Core/Text/FileProbe.h"
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/Adapters/ServerAdapter.h"
-#include "Language/Server/ServerDiscovery.h"
+#include "Language/Server/ServerCommand.h"
 #include "Language/Server/ServerLaunch.h"
 #include "Search/FileEnumerator.h"
 
@@ -48,6 +48,8 @@ namespace Graphite {
 	LanguageServices::LanguageServices(std::filesystem::path fallbackRoot)
 		: m_FallbackRoot(std::move(fallbackRoot))
 	{
+		std::error_code noTemporaryDirectory;
+		m_LogDirectory = std::filesystem::temp_directory_path(noTemporaryDirectory);
 	}
 
 	LanguageServices::~LanguageServices()
@@ -185,6 +187,7 @@ namespace Graphite {
 		ReleasedServers released = ReleaseServersOf(language);
 
 		m_Choices.erase(language);
+		m_Dotnet.reset();
 		ForgetRootsOf(language);
 
 		for (HeldDocument& parked : TakeParkedDocumentsOf(language))
@@ -319,6 +322,37 @@ namespace Graphite {
 		return m_Choices.at(language);
 	}
 
+	void LanguageServices::SetServersDirectory(std::filesystem::path directory)
+	{
+		m_ServersDirectory = std::move(directory);
+	}
+
+	void LanguageServices::SetDotnetLocator(DotnetLocator locator)
+	{
+		m_DotnetLocator = std::move(locator);
+		m_Dotnet.reset();
+	}
+
+	void LanguageServices::SetLogDirectory(std::filesystem::path directory)
+	{
+		m_LogDirectory = std::move(directory);
+	}
+
+	const std::vector<DotnetInstallation>& LanguageServices::DotnetInstallations() const
+	{
+		if (!m_Dotnet)
+		{
+			m_Dotnet = m_DotnetLocator ? m_DotnetLocator() : FindDotnetInstallations(DotnetCandidateRoots());
+		}
+
+		return *m_Dotnet;
+	}
+
+	ServerCommandPlaces LanguageServices::CommandPlaces() const
+	{
+		return ServerCommandPlaces{.ServersDirectory = m_ServersDirectory, .Dotnet = DotnetInstallations()};
+	}
+
 	ServerStatus LanguageServices::OffStatus(LanguageId language) const
 	{
 		return ServerStatus{.State = ServerState::Off, .Name = std::string{LanguageDisplayName(language)}};
@@ -326,37 +360,34 @@ namespace Graphite {
 
 	void LanguageServices::StartServer(ManagedServer& server, const Key& key)
 	{
-		const Core::Result<std::filesystem::path> binary =
-			FindServerBinary(server.Definition->ExecutableName, server.Overrides.Binary);
+		server.Command = FindServerCommand(*server.Definition, server.Overrides.Binary, CommandPlaces());
 
 		server.Status.Name = std::string(server.Definition->DisplayName);
 		server.Status.Restarts = server.Restarts;
 
-		if (!binary)
+		if (server.Command.State != ServerState::Starting)
 		{
-			server.Status.State = ServerState::NotFound;
-			server.Status.Detail = binary.GetError().Message;
+			server.Status.State = server.Command.State;
+			server.Status.Detail = server.Command.Detail;
 
-			APP_WARN("No {} for {}: {}", server.Definition->DisplayName,
-					 LanguageDisplayName(key.Language), binary.GetError().Message);
+			APP_WARN("Cannot start {} for {}: {}", server.Definition->DisplayName, LanguageDisplayName(key.Language),
+					 server.Command.Detail);
 			return;
 		}
-
-		server.Binary = binary.GetValue();
 
 		// Logged at the moment a process is about to exist, with everything needed to explain a
 		// later answer: which language it serves, which binary is running, and the root it was
 		// given - a server rooted somewhere unexpected answers about the wrong project, and this
 		// line is where that becomes visible instead of mysterious.
-		APP_INFO("Starting {} for {} at {}", server.Definition->DisplayName,
-				 LanguageDisplayName(key.Language), Core::ToUtf8(key.Root));
+		APP_INFO("Starting {} for {} at {}", server.Definition->DisplayName, LanguageDisplayName(key.Language),
+				 Core::ToUtf8(key.Root));
 
 		server.Client = MakeClient(server, key);
 
 		// The client's own Drain reports the real state — Starting, then Indexing/Ready/Failed —
 		// from the next Poll onward. This is only what a caller sees before that first Poll.
 		server.Status.State = ServerState::Starting;
-		server.Status.Detail = Core::ToUtf8(server.Binary);
+		server.Status.Detail = DescribeCommand(server.Command);
 	}
 
 	void LanguageServices::EnsureStarted(const std::filesystem::path& path, LanguageId language)
@@ -445,6 +476,8 @@ namespace Graphite {
 				return 4; // something is happening and will stop happening
 			case ServerState::Failed:
 			case ServerState::NotFound:
+			case ServerState::NotInstalled:
+			case ServerState::MissingRuntime:
 			case ServerState::ProjectIncomplete:
 				return 3; // something is wrong and will not fix itself
 			case ServerState::Ready:
@@ -840,7 +873,7 @@ namespace Graphite {
 		server.RestartPending = false;
 
 		server.Status.State = ServerState::Starting;
-		server.Status.Detail = Core::ToUtf8(server.Binary);
+		server.Status.Detail = DescribeCommand(server.Command);
 		server.Status.Restarts = server.Restarts;
 	}
 
@@ -1260,7 +1293,8 @@ namespace Graphite {
 	Core::Scope<LspClient> LanguageServices::MakeClient(const ManagedServer& server,
 														const Key& key) const
 	{
-		const ServerLaunch launch = LaunchFor(*server.Definition, server.Binary, server.Overrides);
+		const ServerLaunch launch = LaunchFor(*server.Definition, server.Command.Program, server.Overrides,
+											  LaunchPlaces{.LeadingArguments = server.Command.LeadingArguments, .LogDirectory = m_LogDirectory});
 
 		if (m_ClientFactory)
 		{

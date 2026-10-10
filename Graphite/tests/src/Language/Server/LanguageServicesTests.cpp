@@ -1,14 +1,19 @@
 #include <doctest/doctest.h>
 
+#include "InstalledServers.h"
+#include "Language/Server/DotnetRuntime.h"
 #include "Language/Server/LanguageServices.h"
 #include "Language/Server/ServerChoice.h"
 #include "TempDirectory.h"
+
+#include "Core/FileSystem/FileSystem.h"
 
 #include <chrono>
 #include <cwctype>
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -1827,4 +1832,63 @@ TEST_CASE("Replacing the choice provider asks the new one")
 
 	CHECK(g_AsksOfFirstProvider == 1);
 	CHECK(g_AsksOfSecondProvider == 1);
+}
+
+namespace {
+
+	Graphite::LanguageServices::DotnetLocator DotnetAt(const std::filesystem::path& executable, const std::string& runtimeVersion)
+	{
+		return [executable, runtimeVersion] {
+			return std::vector<Graphite::DotnetInstallation>{
+				Graphite::DotnetInstallation{.Executable = executable, .RuntimeVersions = {runtimeVersion}}};
+		};
+	}
+
+	Graphite::ServerChoice ChooseCsharpLs(Graphite::LanguageId language)
+	{
+		return Graphite::ChooseServer(language, std::string{"csharp-ls"});
+	}
+}
+
+TEST_CASE("A C# server installed by Graphite starts through dotnet from its install")
+{
+	TempDirectory temp;
+	const std::filesystem::path version = InstallCsharpLsIn(temp.GetPath() / "servers");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	services.SetClock(clock.Get());
+	services.SetClientFactory(spy.Get());
+	services.SetServersDirectory(temp.GetPath() / "servers");
+	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "10.0.10"));
+	services.SetChoiceProvider(ChooseCsharpLs);
+
+	services.EnsureStarted(temp.GetPath() / "Demo" / "Program.cs", Graphite::LanguageId::CSharp);
+
+	REQUIRE(spy.Made == 1);
+	CHECK(spy.LastLaunch.Binary == temp.GetPath() / "dotnet" / "dotnet.exe");
+	REQUIRE_FALSE(spy.LastLaunch.Arguments.empty());
+	CHECK(spy.LastLaunch.Arguments[0] == Core::ToUtf8(version / kCsharpLsAssembly));
+}
+
+TEST_CASE("A C# server without its runtime reads MissingRuntime and starts nothing")
+{
+	TempDirectory temp;
+	InstallCsharpLsIn(temp.GetPath() / "servers");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	const std::filesystem::path source = temp.GetPath() / "Demo" / "Program.cs";
+
+	services.SetClientFactory(spy.Get());
+	services.SetServersDirectory(temp.GetPath() / "servers");
+	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "8.0.11"));
+	services.SetChoiceProvider(ChooseCsharpLs);
+
+	services.EnsureStarted(source, Graphite::LanguageId::CSharp);
+
+	CHECK(spy.Made == 0);
+	CHECK(services.StatusFor(source, Graphite::LanguageId::CSharp).State == Graphite::ServerState::MissingRuntime);
+	CHECK(services.StatusFor(source, Graphite::LanguageId::CSharp).Detail == "needs .NET 10");
+	CHECK(services.OverallStatus()->State == Graphite::ServerState::MissingRuntime);
 }

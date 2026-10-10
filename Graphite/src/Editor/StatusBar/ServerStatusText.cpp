@@ -36,6 +36,12 @@ namespace Graphite {
 		case ServerState::NotFound:
 			return status.Name + ": not found";
 
+		case ServerState::NotInstalled:
+			return status.Name + ": not installed";
+
+		case ServerState::MissingRuntime:
+			return status.Name + ": " + status.Detail;
+
 		case ServerState::Restricted:
 			return status.Name + ": restricted mode";
 
@@ -111,9 +117,17 @@ namespace Graphite {
 			break;
 
 		case ServerState::NotFound:
-			detail = status.Name +
-					 " was not found beside the application, on PATH, or at a configured "
-					 "location.";
+			detail = status.Name + " was not found: " +
+					 (status.Detail.empty() ? std::string{"it is neither beside the application nor on PATH"} : status.Detail) + ".";
+			break;
+
+		case ServerState::NotInstalled:
+			detail = status.Name + " is not installed: " + status.Detail + ".";
+			break;
+
+		case ServerState::MissingRuntime:
+			detail = status.Name + " " + status.Detail +
+					 " or newer, and no such runtime was found in DOTNET_ROOT, beside dotnet on PATH or under Program Files.";
 			break;
 
 		case ServerState::ProjectIncomplete:

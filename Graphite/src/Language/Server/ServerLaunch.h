@@ -30,5 +30,12 @@ namespace Graphite {
 		nlohmann::json Settings;
 	};
 
-	ServerLaunch LaunchFor(const ServerDefinition& server, std::filesystem::path binary, const ServerOverrides& overrides);
+	struct LaunchPlaces
+	{
+		std::vector<std::string> LeadingArguments;
+		std::filesystem::path LogDirectory;
+	};
+
+	ServerLaunch LaunchFor(const ServerDefinition& server, std::filesystem::path program, const ServerOverrides& overrides,
+						   const LaunchPlaces& places = {});
 }

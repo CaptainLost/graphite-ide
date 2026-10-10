@@ -208,6 +208,8 @@ namespace Graphite {
 		NotConfigured,
 		Off,
 		NotFound,
+		NotInstalled,
+		MissingRuntime,
 		Starting,
 		Indexing,
 		ProjectIncomplete,

@@ -5,6 +5,10 @@
 
 #include <nlohmann/json.hpp>
 
+#include <ostream>
+#include <string>
+#include <vector>
+
 TEST_CASE("A launch runs the server's own arguments first and the user's after them")
 {
 	const Graphite::ServerOverrides overrides{.Binary = {}, .ExtraArguments = {"--log=verbose"}, .InitializationOptions = nullptr, .Settings = nullptr};
@@ -27,4 +31,15 @@ TEST_CASE("A launch carries the adapter its server names and the user's options 
 	CHECK(launch.Adapter == &Graphite::AdapterOf(Graphite::AdapterKind::Clangd));
 	CHECK(launch.InitializationOptions == options);
 	CHECK(launch.Settings == settings);
+}
+
+TEST_CASE("A launch puts the runner's arguments first and fills in the log directory")
+{
+	const Graphite::LaunchPlaces places{.LeadingArguments = {"C:\\servers\\roslyn.dll"}, .LogDirectory = "D:\\Logs"};
+
+	const Graphite::ServerLaunch launch = Graphite::LaunchFor(*Graphite::FindServer("roslyn"), "C:\\dotnet\\dotnet.exe", {}, places);
+
+	CHECK(launch.Binary == std::filesystem::path{L"C:\\dotnet\\dotnet.exe"});
+	CHECK(launch.Arguments == std::vector<std::string>{"C:\\servers\\roslyn.dll", "--stdio", "--logLevel", "Information",
+														"--extensionLogDirectory", "D:\\Logs/roslyn"});
 }

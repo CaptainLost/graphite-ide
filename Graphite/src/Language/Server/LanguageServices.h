@@ -4,9 +4,11 @@
 
 #include "Language/Api/LanguageId.h"
 #include "Language/Api/LanguageService.h"
+#include "Language/Server/DotnetRuntime.h"
 #include "Language/Server/LspClient.h"
 #include "Language/Server/ServerCatalog.h"
 #include "Language/Server/ServerChoice.h"
+#include "Language/Server/ServerCommand.h"
 #include "Language/Server/ServerLaunch.h"
 
 #include "Core/Jobs/CancellationToken.h"
@@ -140,6 +142,17 @@ namespace Graphite {
 		using ClientFactory = std::function<Core::Scope<LspClient>(const ServerLaunch& launch, const std::filesystem::path& root)>;
 
 		void SetClientFactory(ClientFactory factory);
+
+		// Where Graphite installs servers; nothing is looked for there until set.
+		void SetServersDirectory(std::filesystem::path directory);
+
+		// Asked at most once until Reconfigure, which asks again so a runtime installed since is seen.
+		using DotnetLocator = std::function<std::vector<DotnetInstallation>()>;
+
+		void SetDotnetLocator(DotnetLocator locator);
+
+		// Filled into a server argument that names {logs}; the system's temporary directory until set.
+		void SetLogDirectory(std::filesystem::path directory);
 
 		// Whether a server entry exists for the key this file resolves to, whether or not it has a
 		// process. What shows that an idle server has been shut down.
@@ -316,8 +329,8 @@ namespace Graphite {
 			const ServerDefinition* Definition = nullptr;
 			ServerOverrides Overrides;
 			std::filesystem::path Root;
-			std::filesystem::path Binary;  // resolved once; a restart reuses it rather than
-										   // searching again
+			ServerCommand Command; // found once; a restart reuses it rather than searching again
+
 			Core::Scope<LspClient> Client; // null when the binary was never found
 			ServerStatus Status;
 			std::size_t Restarts = 0;
@@ -484,6 +497,14 @@ namespace Graphite {
 		std::optional<WarmUpRequest> m_LastWarmUp;
 		ChoiceProvider m_ChoiceProvider;
 		mutable std::map<LanguageId, ServerChoice> m_Choices;
+
+		ServerCommandPlaces CommandPlaces() const;
+		const std::vector<DotnetInstallation>& DotnetInstallations() const;
+
+		std::filesystem::path m_ServersDirectory;
+		DotnetLocator m_DotnetLocator;
+		mutable std::optional<std::vector<DotnetInstallation>> m_Dotnet;
+		std::filesystem::path m_LogDirectory;
 
 		std::map<Key, ManagedServer> m_Servers;
 

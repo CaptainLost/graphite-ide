@@ -3,6 +3,9 @@
 #include "Editor/StatusBar/ServerStatusText.h"
 #include "Language/Analysis/WorkspaceAnalysis.h"
 
+#include <ostream>
+#include <string>
+
 TEST_CASE("A language with no server contributes nothing to the bar")
 {
 	Graphite::ServerStatus status;
@@ -190,4 +193,29 @@ TEST_CASE("A language whose server is turned off says so")
 
 	CHECK(Graphite::ServerStatusText(status) == "C++: language server off");
 	CHECK(Graphite::ServerStatusDetail(status).find("turned off") != std::string::npos);
+}
+
+TEST_CASE("A server that is not installed or lacks its runtime says so")
+{
+	Graphite::ServerStatus status;
+	status.Name = "Roslyn";
+
+	status.State = Graphite::ServerState::NotInstalled;
+	CHECK(Graphite::ServerStatusText(status) == "Roslyn: not installed");
+
+	status.State = Graphite::ServerState::MissingRuntime;
+	status.Detail = "needs .NET 10";
+	CHECK(Graphite::ServerStatusText(status) == "Roslyn: needs .NET 10");
+	CHECK(Graphite::ServerStatusDetail(status).find("DOTNET_ROOT") != std::string::npos);
+}
+
+TEST_CASE("A configured path that does not exist is named in the tooltip")
+{
+	Graphite::ServerStatus status;
+	status.Name = "clangd";
+	status.State = Graphite::ServerState::NotFound;
+	status.Detail = "the configured path 'D:\\Gone\\clangd.exe' does not exist";
+
+	CHECK(Graphite::ServerStatusText(status) == "clangd: not found");
+	CHECK(Graphite::ServerStatusDetail(status).find("D:\\Gone\\clangd.exe") != std::string::npos);
 }
