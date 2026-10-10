@@ -24,8 +24,13 @@ namespace Graphite {
 			return std::string{startsWithV ? tag.substr(1) : tag};
 		}
 
-		Core::Error RefusalFrom(const Core::HttpResponse& response, std::string_view repository)
+		Core::Error RefusalFrom(const Core::HttpResponse& response, std::string_view url, std::string_view repository)
 		{
+			if (response.Status == Core::kHttpStatusProxyAuthenticationRequired)
+			{
+				return Core::ProxyCredentialsError(url);
+			}
+
 			const std::optional<std::string> message = TextAt(ParseJsonText(response.Body), "message");
 			const Core::ErrorCode code = response.Status == kStatusNotFound ? Core::ErrorCode::NotFound : Core::ErrorCode::IoFailure;
 
@@ -92,9 +97,9 @@ namespace Graphite {
 							   .Message = std::format("{} publishes no build for this platform", package.Repository)};
 		}
 
+		const std::string latestUrl = std::format("{}{}/releases/latest", kGitHubApi, package.Repository);
 		const Core::Result<Core::HttpResponse> response =
-			http.Fetch({.Url = std::format("{}{}/releases/latest", kGitHubApi, package.Repository),
-						.Headers = {{.Name = "Accept", .Value = "application/vnd.github+json"}}});
+			http.Fetch({.Url = latestUrl, .Headers = {{.Name = "Accept", .Value = "application/vnd.github+json"}}});
 
 		if (!response)
 		{
@@ -103,7 +108,7 @@ namespace Graphite {
 
 		if (response.GetValue().Status != kStatusOk)
 		{
-			return RefusalFrom(response.GetValue(), package.Repository);
+			return RefusalFrom(response.GetValue(), latestUrl, package.Repository);
 		}
 
 		const nlohmann::json release = ParseJsonText(response.GetValue().Body);

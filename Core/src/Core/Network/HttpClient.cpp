@@ -403,6 +403,11 @@ namespace Core {
 					return status.GetError();
 				}
 
+				if (status.GetValue() == kHttpStatusProxyAuthenticationRequired)
+				{
+					return ProxyCredentialsError(request.Url);
+				}
+
 				if (status.GetValue() != kStatusOk)
 				{
 					const ErrorCode code = status.GetValue() == kStatusNotFound ? ErrorCode::NotFound : ErrorCode::IoFailure;
@@ -440,5 +445,12 @@ namespace Core {
 #else
 		return Error{.Code = ErrorCode::Unsupported, .Message = "HTTP is not built for this platform yet"};
 #endif
+	}
+
+	Error ProxyCredentialsError(std::string_view url)
+	{
+		return Error{.Code = ErrorCode::AccessDenied,
+					 .Message = std::format("the proxy asked for credentials (HTTP {}) when fetching '{}'",
+											kHttpStatusProxyAuthenticationRequired, url)};
 	}
 }

@@ -37,6 +37,11 @@ namespace Graphite {
 				return response.GetError();
 			}
 
+			if (response.GetValue().Status == Core::kHttpStatusProxyAuthenticationRequired)
+			{
+				return Core::ProxyCredentialsError(url);
+			}
+
 			if (response.GetValue().Status != kStatusOk)
 			{
 				const Core::ErrorCode code =

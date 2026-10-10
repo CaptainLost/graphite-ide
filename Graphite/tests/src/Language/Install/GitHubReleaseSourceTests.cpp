@@ -157,6 +157,19 @@ TEST_CASE("GitHub's refusal is reported with its own message")
 	CHECK(resolved.GetError().Message == "GitHub answered 403 for example/tool: API rate limit exceeded for 192.0.2.1.");
 }
 
+TEST_CASE("A proxy's demand for credentials is named as the proxy's")
+{
+	FakeHttpClient http;
+	http.Answer(kToolLatest, 407, "<html>Proxy Authentication Required</html>");
+
+	const Core::Result<Graphite::ResolvedPackage> resolved = Graphite::ResolveGitHubRelease(http, kTool, kWindowsX64);
+
+	REQUIRE_FALSE(resolved);
+	CHECK(resolved.GetError().Code == Core::ErrorCode::AccessDenied);
+	CHECK(resolved.GetError().Message ==
+		  "the proxy asked for credentials (HTTP 407) when fetching 'https://api.github.com/repos/example/tool/releases/latest'");
+}
+
 TEST_CASE("A release without the platform's asset or with a tag that cannot name a directory is refused")
 {
 	FakeHttpClient http;

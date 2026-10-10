@@ -43,6 +43,8 @@ namespace Core {
 
 	inline constexpr std::size_t kLargestFetchedBody = 32 * 1024 * 1024;
 
+	inline constexpr int kHttpStatusProxyAuthenticationRequired = 407;
+
 	// HTTPS only: any other scheme is refused before anything is sent. One client may serve several threads at once.
 	class HttpClient
 	{
@@ -63,4 +65,7 @@ namespace Core {
 
 	// Unsupported on a platform that has no backend yet.
 	Result<Scope<HttpClient>> CreateHttpClient(std::string_view userAgent);
+
+	// Fetch hands a 407 back as an answer; word it through this, as Download does, so the user looks at the proxy.
+	Error ProxyCredentialsError(std::string_view url);
 }

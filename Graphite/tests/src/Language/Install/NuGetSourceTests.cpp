@@ -220,6 +220,19 @@ TEST_CASE("A package NuGet does not know is reported as not found")
 	CHECK(resolved.GetError().Message.find("csharp-ls") != std::string::npos);
 }
 
+TEST_CASE("A proxy's demand for credentials on the way to NuGet is named as the proxy's")
+{
+	FakeHttpClient http;
+	http.Answer(kCsharpLsIndex, 407, "<html>Proxy Authentication Required</html>");
+
+	const Core::Result<Graphite::ResolvedPackage> resolved = Graphite::ResolveNuGetTool(http, kCsharpLs, kWindowsX64);
+
+	REQUIRE_FALSE(resolved);
+	CHECK(resolved.GetError().Code == Core::ErrorCode::AccessDenied);
+	CHECK(resolved.GetError().Message ==
+		  std::string{"the proxy asked for credentials (HTTP 407) when fetching '"} + kCsharpLsIndex + "'");
+}
+
 TEST_CASE("A hash of another JSON type fails the resolution")
 {
 	FakeHttpClient http;
