@@ -298,6 +298,40 @@ TEST_CASE("While a parse is out of time the old colours stay, clipped to the lin
 	CHECK(DescribeLine(cache, buffer, 0) == "keyword 'int' | identifier 's' | punctuation '=' | number '1' | punctuation ';'");
 }
 
+TEST_CASE("Undo while a parse is pending shows the finished tree's colours, and redo the edited text's")
+{
+	Core::TextBuffer buffer{ManyCSharpClasses(2000)};
+	Graphite::SyntaxCache cache = CSharpCache();
+	constexpr std::size_t kEditedLine = 5;
+
+	const std::vector<Graphite::Token> finished = cache.TokensOf(buffer, kEditedLine);
+	REQUIRE_FALSE(finished.empty());
+
+	// Cut short, so colours lagging behind the edit are clipped and differ from the finished ones.
+	const std::size_t lineEnd = buffer.LineStart(kEditedLine) + buffer.LineText(kEditedLine).size();
+	buffer.Erase(lineEnd - 10, lineEnd);
+
+	cache.SetParseBudget(Graphite::ParseBudget{.PerAttempt = std::chrono::microseconds{0}, .PauseAfterRunningOut = std::chrono::hours{1}});
+	REQUIRE(cache.TokensOf(buffer, kEditedLine) != finished);
+
+	REQUIRE(buffer.Undo().has_value());
+	CHECK(cache.TokensOf(buffer, kEditedLine) == finished);
+
+	cache.SetParseBudget(Graphite::ParseBudget{.PerAttempt = std::chrono::seconds{10}, .PauseAfterRunningOut = std::chrono::microseconds{0}});
+	REQUIRE(buffer.Redo().has_value());
+
+	const Core::TextBuffer edited{buffer.Materialize()};
+	Graphite::SyntaxCache fresh = CSharpCache();
+
+	for (std::size_t line = kEditedLine - 1; line <= kEditedLine + 1; ++line)
+	{
+		INFO("line ", line);
+		CHECK(cache.TokensOf(buffer, line) == fresh.TokensOf(edited, line));
+	}
+
+	CHECK(cache.TokensOf(buffer, kEditedLine) != finished);
+}
+
 TEST_CASE("A document's first parse, out of time, finishes over later requests")
 {
 	const Core::TextBuffer buffer{ManyCSharpClasses(2000)};

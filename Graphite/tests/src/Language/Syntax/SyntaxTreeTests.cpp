@@ -165,6 +165,34 @@ TEST_CASE("An edited text colours exactly as a fresh parse of it")
 	}
 }
 
+TEST_CASE("A line broken or joined in the middle of the text colours exactly as a fresh parse of it")
+{
+	const std::string original(kCSharpFixture);
+
+	std::string enterInMethod = original;
+	enterInMethod.insert(original.find("count = size;"), "\n");
+	std::string enterInComment = original;
+	enterInComment.insert(original.find("ti\n   line */"), "\n");
+	std::string enterAtLineEnd = original;
+	enterAtLineEnd.insert(original.find("\n    public void Run"), "\n");
+	std::string backspaceJoiningMethods = original;
+	backspaceJoiningMethods.erase(original.find("\n    public void Run"), 1);
+	std::string backspaceJoiningDirective = original;
+	backspaceJoiningDirective.erase(original.find("\n    void Trace"), 1);
+
+	Graphite::SyntaxTree tree(Graphite::CSharpGrammar());
+
+	for (const std::string& text : {enterInMethod, enterInComment, enterAtLineEnd, backspaceJoiningMethods, backspaceJoiningDirective})
+	{
+		ParsedFixture(tree);
+		tree.Retarget(text);
+		REQUIRE(tree.AdvanceToEnd());
+
+		INFO("edited text: ", text);
+		CHECK(DescribeEveryRow(tree) == DescribeFreshParse(text));
+	}
+}
+
 TEST_CASE("A parse that runs out of time resumes where it stopped")
 {
 	const std::string text = ManyCSharpClasses(2000);
