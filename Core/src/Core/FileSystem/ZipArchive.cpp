@@ -135,7 +135,6 @@ namespace Core {
 				return created;
 			}
 
-			// Closed when this returns, so the caller can remove what was written.
 			std::ofstream stream{target, std::ios::binary | std::ios::trunc};
 
 			if (!stream.is_open())
@@ -146,13 +145,14 @@ namespace Core {
 			EntryOutput output{.Stream = &stream, .Token = &token};
 			const bool extracted =
 				mz_zip_reader_extract_to_callback(reader.Get(), entry.m_file_index, WriteEntryPiece, &output, 0) != MZ_FALSE;
+			stream.close();
 
 			if (token.IsCancelled())
 			{
 				return CancelledError(archive);
 			}
 
-			if (!extracted || !stream.good())
+			if (!extracted || stream.fail())
 			{
 				return Error{.Code = ErrorCode::IoFailure,
 							 .Message = std::format("cannot extract '{}' to '{}': {}", entry.m_filename, ToUtf8(target),

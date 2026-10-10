@@ -6,9 +6,9 @@
 
 TEST_CASE("A relative path that stays below its base is safe")
 {
-	CHECK(Core::IsSafeRelativePath("clangd_23.1.0/bin/clangd.exe"));
-	CHECK(Core::IsSafeRelativePath("tools/net10.0/any/CSharpLanguageServer.dll"));
-	CHECK(Core::IsSafeRelativePath("tools\\net10.0\\win-x64\\roslyn-language-server.exe"));
+	CHECK(Core::IsSafeRelativePath("tool_1.0/bin/tool.exe"));
+	CHECK(Core::IsSafeRelativePath("tools/net10.0/any/Tool.dll"));
+	CHECK(Core::IsSafeRelativePath("tools\\net10.0\\win-x64\\tool.exe"));
 	CHECK(Core::IsSafeRelativePath("[Content_Types].xml"));
 	CHECK(Core::IsSafeRelativePath("_rels/.rels"));
 	CHECK(Core::IsSafeRelativePath(".signature.p7s"));
@@ -46,6 +46,9 @@ TEST_CASE("A path holding a stream or a device name or a forbidden character is 
 	CHECK_FALSE(Core::IsSafeRelativePath("bin/nul.txt"));
 	CHECK_FALSE(Core::IsSafeRelativePath("com1.log"));
 	CHECK_FALSE(Core::IsSafeRelativePath("Lpt9"));
+	CHECK_FALSE(Core::IsSafeRelativePath("COM0"));
+	CHECK_FALSE(Core::IsSafeRelativePath("lpt0.txt"));
+	CHECK_FALSE(Core::IsSafeRelativePath("COM¹"));
 	CHECK_FALSE(Core::IsSafeRelativePath("a<b"));
 	CHECK_FALSE(Core::IsSafeRelativePath("a|b"));
 	CHECK_FALSE(Core::IsSafeRelativePath("a?b"));

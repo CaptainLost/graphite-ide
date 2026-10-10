@@ -112,8 +112,8 @@ project "Graphite"
     resincludedirs { "resources", "src" }
 
     -- GraphiteLib, GLFW, ImGui and opengl32 are listed explicitly: a static library does
-    -- not propagate its own linker inputs to a consumer. The two tree-sitter libraries and miniz are
-    -- listed for the same reason.
+    -- not propagate its own linker inputs to a consumer. The two tree-sitter libraries and
+    -- miniz are listed for the same reason.
     -- dwmapi is Core's own need — WindowFrame asks DWM for the border the reclaimed
     -- caption took with it — but it belongs here and not in Core: a static library has
     -- no link step to use an import library in, and naming it there would only merge

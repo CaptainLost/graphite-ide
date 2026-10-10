@@ -44,19 +44,19 @@ namespace {
 TEST_CASE("Extracting a zip writes every entry below the destination with its directories")
 {
 	TempDirectory temporaryDirectory;
-	const std::filesystem::path destination = temporaryDirectory.GetPath() / "23.1.0.tmp";
+	const std::filesystem::path destination = temporaryDirectory.GetPath() / "1.0.tmp";
 
 	const Core::Result<void> extracted = ExtractArchiveBytes(temporaryDirectory,
 															 ZipBytes({
-																 {.Name = "clangd_23.1.0/bin/clangd.exe", .Contents = "the server"},
-																 {.Name = "clangd_23.1.0/lib/clang/23/include/stddef.h", .Contents = "a header"},
+																 {.Name = "tool_1.0/bin/tool.exe", .Contents = "the program"},
+																 {.Name = "tool_1.0/lib/include/stddef.h", .Contents = "a header"},
 																 {.Name = "empty/", .Contents = ""},
 															 }),
 															 destination);
 
 	REQUIRE(extracted);
-	CHECK(ReadWholeFile(destination / "clangd_23.1.0" / "bin" / "clangd.exe") == "the server");
-	CHECK(ReadWholeFile(destination / "clangd_23.1.0" / "lib" / "clang" / "23" / "include" / "stddef.h") == "a header");
+	CHECK(ReadWholeFile(destination / "tool_1.0" / "bin" / "tool.exe") == "the program");
+	CHECK(ReadWholeFile(destination / "tool_1.0" / "lib" / "include" / "stddef.h") == "a header");
 	CHECK(IsEmptyDirectory(destination / "empty"));
 }
 
@@ -79,7 +79,7 @@ TEST_CASE("An archive with one entry that climbs out extracts nothing at all")
 	CHECK_FALSE(std::filesystem::exists(temporaryDirectory.GetPath() / "evil.txt"));
 }
 
-TEST_CASE("Rooted and drive-lettered and backslash-climbing entries are refused before anything is written")
+TEST_CASE("Entries that would escape or reach a stream or a device are refused before anything is written")
 {
 	TempDirectory temporaryDirectory;
 	const std::filesystem::path destination = temporaryDirectory.GetPath() / "inside";
@@ -130,20 +130,20 @@ TEST_CASE("A destination outside the ANSI code page extracts")
 	TempDirectory temporaryDirectory;
 	const std::filesystem::path folder = temporaryDirectory.GetPath() / Core::FromUtf8("Zażółć Ω");
 	std::filesystem::create_directories(folder);
-	const std::filesystem::path archive = folder / Core::FromUtf8("serwer ł.zip");
-	WriteWholeFile(archive, ZipBytes({{.Name = "bin/tool.exe", .Contents = "the server"}}));
+	const std::filesystem::path archive = folder / Core::FromUtf8("archiwum ł.zip");
+	WriteWholeFile(archive, ZipBytes({{.Name = "bin/tool.exe", .Contents = "the program"}}));
 	const std::filesystem::path destination = folder / Core::FromUtf8("wersja ę");
 
 	REQUIRE(Core::ExtractZip(archive, destination, Core::CancellationToken{}));
 
-	CHECK(ReadWholeFile(destination / "bin" / "tool.exe") == "the server");
+	CHECK(ReadWholeFile(destination / "bin" / "tool.exe") == "the program");
 }
 
 TEST_CASE("A cancelled extraction stops with Cancelled")
 {
 	TempDirectory temporaryDirectory;
 	const std::filesystem::path archive =
-		temporaryDirectory.MakeFile("server.zip", ZipBytes({{.Name = "bin/tool.exe", .Contents = "the server"}}));
+		temporaryDirectory.MakeFile("archive.zip", ZipBytes({{.Name = "bin/tool.exe", .Contents = "the program"}}));
 	Core::CancellationToken token;
 	token.Cancel();
 
@@ -157,7 +157,7 @@ TEST_CASE("A cancelled extraction stops with Cancelled")
 TEST_CASE("A file that is not a zip is reported rather than extracted")
 {
 	TempDirectory temporaryDirectory;
-	const std::filesystem::path archive = temporaryDirectory.MakeFile("server.zip", "this is not an archive");
+	const std::filesystem::path archive = temporaryDirectory.MakeFile("archive.zip", "this is not an archive");
 
 	const Core::Result<void> extracted =
 		Core::ExtractZip(archive, temporaryDirectory.GetPath() / "inside", Core::CancellationToken{});
