@@ -19,7 +19,8 @@ namespace Core {
 		InvalidArgument,
 		IoFailure,
 		Unsupported,
-		TooLarge
+		TooLarge,
+		Cancelled
 	};
 
 	struct Error

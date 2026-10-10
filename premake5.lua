@@ -3,7 +3,8 @@ workspace "Graphite"
     startproject "Graphite"
     configurations { "Debug", "Release", "Dist" }
     flags { "MultiProcessorCompile" }
-    defines { "IMGUI_USE_WCHAR32" }
+    -- miniz.h otherwise #defines zlib's names (compress, crc32, ...) in every file that includes it.
+    defines { "IMGUI_USE_WCHAR32", "MINIZ_NO_ZLIB_COMPATIBLE_NAMES" }
 
     -- The C assert() is how ImGui, nlohmann/json and pugixml check their invariants, and
     -- MSVC leaves it on unless NDEBUG is defined - premake does not define it for an
@@ -28,11 +29,14 @@ IncludeDir["json"]    = "%{wks.location}/vendor/json/single_include"
 IncludeDir["MdiIcons"] = "%{wks.location}/vendor/fonts"
 IncludeDir["spdlog"]  = "%{wks.location}/vendor/spdlog/include"
 IncludeDir["TreeSitter"] = "%{wks.location}/vendor/tree-sitter/lib/include"
+IncludeDir["miniz"] = "%{wks.location}/vendor/miniz"
+IncludeDir["MinizExport"] = "%{wks.location}/vendor/premake/miniz"
 
 group "Dependencies"
     include "vendor/premake/glfw.lua"
     include "vendor/premake/imgui.lua"
     include "vendor/premake/libgit2.lua"
+    include "vendor/premake/miniz.lua"
     include "vendor/premake/pugixml.lua"
     include "vendor/premake/tree-sitter.lua"
 group ""

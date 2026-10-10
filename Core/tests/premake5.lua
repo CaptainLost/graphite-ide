@@ -30,13 +30,17 @@ project "CoreTests"
         "%{wks.location}/Core/src",
         -- Shared fixtures such as TempDirectory.h stay at the root of src/ while the
         -- tests mirror the source tree, so every depth reaches them by bare name.
-        "src"
+        "src",
+        -- Fixtures both test projects use, such as ZipFixtures.h.
+        "fixtures"
     }
 
     externalincludedirs
     {
         "%{IncludeDir.doctest}",
         "%{IncludeDir.libgit2}",
+        "%{IncludeDir.miniz}",
+        "%{IncludeDir.MinizExport}",
         "%{IncludeDir.ImGui}",
         "%{IncludeDir.ImPlot}",
         "%{IncludeDir.MdiIcons}",
@@ -45,7 +49,7 @@ project "CoreTests"
 
     externalwarnings "Off"
 
-    links { "Core", "GLFW", "ImGui", "libgit2", "opengl32.lib", "dwmapi.lib", "ole32.lib", "shell32.lib", "ws2_32.lib", "secur32.lib" }
+    links { "Core", "GLFW", "ImGui", "libgit2", "miniz", "opengl32.lib", "dwmapi.lib", "ole32.lib", "shell32.lib", "ws2_32.lib", "secur32.lib" }
 
     filter "system:windows"
         systemversion "latest"

@@ -33,13 +33,16 @@ project "GraphiteTests"
         "%{wks.location}/Graphite/src",
         -- Shared fixtures such as TempDirectory.h stay at the root of src/ while the
         -- tests mirror the source tree, so every depth reaches them by bare name.
-        "src"
+        "src",
+        "%{wks.location}/Core/tests/fixtures"
     }
 
     externalincludedirs
     {
         "%{IncludeDir.doctest}",
         "%{IncludeDir.libgit2}",
+        "%{IncludeDir.miniz}",
+        "%{IncludeDir.MinizExport}",
         "%{IncludeDir.pugixml}",
         "%{IncludeDir.ImGui}",
         "%{IncludeDir.ImPlot}",
@@ -51,7 +54,7 @@ project "GraphiteTests"
 
     externalwarnings "Off"
 
-    links { "GraphiteLib", "Core", "GLFW", "ImGui", "libgit2", "pugixml", "tree-sitter", "tree-sitter-c-sharp", "opengl32.lib", "dwmapi.lib", "ole32.lib", "shell32.lib", "ws2_32.lib", "secur32.lib" }
+    links { "GraphiteLib", "Core", "GLFW", "ImGui", "libgit2", "pugixml", "tree-sitter", "tree-sitter-c-sharp", "miniz", "opengl32.lib", "dwmapi.lib", "ole32.lib", "shell32.lib", "ws2_32.lib", "secur32.lib" }
 
     filter "system:windows"
         systemversion "latest"

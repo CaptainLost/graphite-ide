@@ -39,6 +39,8 @@ project "Core"
     externalincludedirs
     {
         "%{IncludeDir.libgit2}",
+        "%{IncludeDir.miniz}",
+        "%{IncludeDir.MinizExport}",
         "%{IncludeDir.ImAnim}",
         "%{IncludeDir.ImPlot}",
         "%{IncludeDir.json}",
