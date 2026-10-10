@@ -118,8 +118,8 @@ project "Graphite"
     -- caption took with it — but it belongs here and not in Core: a static library has
     -- no link step to use an import library in, and naming it there would only merge
     -- dwmapi.lib into Core.lib, where it collides with opengl32.lib (LNK4006).
-    -- bcrypt is Core's too, for the same reason as dwmapi.
-    links { "GraphiteLib", "Core", "GLFW", "ImGui", "libgit2", "pugixml", "tree-sitter", "tree-sitter-c-sharp", "miniz", "opengl32.lib", "dwmapi.lib", "ole32.lib", "shell32.lib", "ws2_32.lib", "secur32.lib", "bcrypt.lib" }
+    -- bcrypt and winhttp are Core's too, for the same reason as dwmapi.
+    links { "GraphiteLib", "Core", "GLFW", "ImGui", "libgit2", "pugixml", "tree-sitter", "tree-sitter-c-sharp", "miniz", "opengl32.lib", "dwmapi.lib", "ole32.lib", "shell32.lib", "ws2_32.lib", "secur32.lib", "bcrypt.lib", "winhttp.lib" }
 
     filter "configurations:Dist"
         kind "WindowedApp"
