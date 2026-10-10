@@ -1940,3 +1940,75 @@ TEST_CASE("A server is started with the selected solution when it lies inside it
 	REQUIRE(spy.Made == 1);
 	CHECK(spy.LastLaunch.Solution == temp.GetPath() / "Demo.slnx");
 }
+
+namespace {
+
+	Graphite::ServerChoice ChooseRoslynAt(Graphite::LanguageId language, const std::filesystem::path& binary)
+	{
+		if (language != Graphite::LanguageId::CSharp)
+		{
+			return Graphite::ChooseServer(language, std::nullopt);
+		}
+
+		Graphite::ServerChoice choice = Graphite::ChooseServer(language, std::string{"roslyn"});
+		choice.Overrides.Binary = binary;
+		return choice;
+	}
+}
+
+TEST_CASE("Selecting another solution restarts a server that follows it on the new one")
+{
+	TempDirectory temp;
+	const std::filesystem::path roslyn = temp.MakeFile("tools/roslyn-language-server.exe", "");
+	temp.MakeFile("A.slnx", "");
+	temp.MakeFile("B.slnx", "");
+	const std::filesystem::path source = temp.MakeFile("Demo/Program.cs", "class Program { }\n");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+
+	services.SetClientFactory(spy.Get());
+	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "10.0.10"));
+	services.SetChoiceProvider([roslyn](Graphite::LanguageId language) { return ChooseRoslynAt(language, roslyn); });
+	services.SetSelectedSolution(temp.GetPath() / "A.slnx");
+
+	services.EnsureStarted(source, Graphite::LanguageId::CSharp);
+	services.OpenDocument(source, Graphite::LanguageId::CSharp, "class Program { }\n");
+	REQUIRE(spy.Made == 1);
+	CHECK(spy.LastLaunch.Solution == temp.GetPath() / "A.slnx");
+
+	services.SetSelectedSolution(temp.GetPath() / "B.slnx");
+
+	REQUIRE(spy.Made == 2);
+	CHECK(spy.LastLaunch.Solution == temp.GetPath() / "B.slnx");
+
+	spy.Answer();
+	const std::vector<std::string> sent = spy.Latest->TakeSent();
+	CHECK(AnySentContaining(sent, "solution/open"));
+	CHECK(AnySentContaining(sent, "B.slnx"));
+	CHECK(AnySentContaining(sent, "textDocument/didOpen"));
+}
+
+TEST_CASE("Selecting the same solution again or under a server that does not follow it restarts nothing")
+{
+	TempDirectory temp;
+	temp.MakeFile("A.slnx", "");
+	temp.MakeFile("B.slnx", "");
+	InstallCsharpLsIn(temp.GetPath() / "servers");
+	const std::filesystem::path source = temp.MakeFile("Demo/Program.cs", "class Program { }\n");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+
+	services.SetClientFactory(spy.Get());
+	services.SetServersDirectory(temp.GetPath() / "servers");
+	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "10.0.10"));
+	services.SetChoiceProvider(ChooseCsharpLs);
+	services.SetSelectedSolution(temp.GetPath() / "A.slnx");
+
+	services.EnsureStarted(source, Graphite::LanguageId::CSharp);
+	REQUIRE(spy.Made == 1);
+
+	services.SetSelectedSolution(temp.GetPath() / "A.slnx");
+	services.SetSelectedSolution(temp.GetPath() / "B.slnx");
+
+	CHECK(spy.Made == 1);
+}

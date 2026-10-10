@@ -341,7 +341,40 @@ namespace Graphite {
 
 	void LanguageServices::SetSelectedSolution(const std::filesystem::path& solution)
 	{
+		if (solution == m_SelectedSolution)
+		{
+			return;
+		}
+
 		m_SelectedSolution = solution;
+
+		for (const LanguageId language : LanguagesWithServers())
+		{
+			if (FollowsSelectedSolution(language) && RunsServersOf(language))
+			{
+				Reconfigure(language);
+			}
+		}
+	}
+
+	bool LanguageServices::FollowsSelectedSolution(LanguageId language) const
+	{
+		const ServerDefinition* server = ServerFor(language);
+
+		return server != nullptr && AdapterOf(server->Adapter).FollowsSelectedSolution();
+	}
+
+	bool LanguageServices::RunsServersOf(LanguageId language) const
+	{
+		for (const auto& [key, server] : m_Servers)
+		{
+			if (key.Language == language)
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	const std::vector<DotnetInstallation>& LanguageServices::DotnetInstallations() const

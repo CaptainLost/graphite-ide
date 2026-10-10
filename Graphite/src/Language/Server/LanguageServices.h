@@ -155,7 +155,7 @@ namespace Graphite {
 		// Filled into a server argument that names {logs}; the system's temporary directory until set.
 		void SetLogDirectory(std::filesystem::path directory);
 
-		// The solution the user selected; a server whose root holds it is told to load it.
+		// Restarts every server whose adapter follows the selected solution; cheap when nothing changed, so it may be called every frame.
 		void SetSelectedSolution(const std::filesystem::path& solution);
 
 		// Whether a server entry exists for the key this file resolves to, whether or not it has a
@@ -383,6 +383,9 @@ namespace Graphite {
 									   Key& key) const;
 
 		const ServerDefinition* ServerFor(LanguageId language) const;
+
+		bool FollowsSelectedSolution(LanguageId language) const;
+		bool RunsServersOf(LanguageId language) const;
 
 		const ServerChoice& ChoiceFor(LanguageId language) const;
 

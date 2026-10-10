@@ -146,6 +146,8 @@ namespace Graphite {
 		// Changes whenever the loaded solution is replaced, reread or dropped, the failed
 		// reads among them, so a view can tell that what it waits for has had its chance.
 		std::uint64_t GetSolutionLoad() const { return m_SolutionLoads; }
+		// Kept even when the Explorer cannot read the solution: a language server may read it all the same.
+		const std::filesystem::path& GetSelectedSolution() const { return m_SelectedSolution; }
 
 		const std::vector<std::filesystem::path>& GetSolutionCandidates() const
 		{

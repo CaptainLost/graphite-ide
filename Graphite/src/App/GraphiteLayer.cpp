@@ -598,6 +598,8 @@ namespace Graphite {
 		m_Terminals.Update();
 
 		m_SolutionLoaded = m_Workspace.GetLoadedSolution().has_value();
+		// In OnUpdate, ahead of the Poll in OnImGuiRender, so a server started this frame starts on this selection.
+		m_LanguageServices.SetSelectedSolution(m_Workspace.GetSelectedSolution());
 
 		UpdateFocusReload(ts);
 
