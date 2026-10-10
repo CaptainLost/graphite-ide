@@ -57,14 +57,14 @@ namespace Graphite {
 					continue;
 				}
 
-				const char c = text[token.From];
+				const char punctuation = text[token.From];
 
-				if (c == '{')
+				if (punctuation == '{')
 				{
 					++depth;
 					opened = true;
 				}
-				else if (c == '}')
+				else if (punctuation == '}')
 				{
 					--depth;
 
@@ -76,7 +76,7 @@ namespace Graphite {
 						closedAt = line;
 					}
 				}
-				else if (c == ';' && depth == 0)
+				else if (punctuation == ';' && depth == 0)
 				{
 					range.Last = line;
 					return range;
