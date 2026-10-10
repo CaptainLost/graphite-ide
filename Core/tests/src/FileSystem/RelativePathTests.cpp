@@ -15,6 +15,8 @@ TEST_CASE("A relative path that stays below its base is safe")
 	CHECK(Core::IsSafeRelativePath("lib/clang/23/include/"));
 	CHECK(Core::IsSafeRelativePath("CONSOLE.txt"));
 	CHECK(Core::IsSafeRelativePath("COM10"));
+	CHECK(Core::IsSafeRelativePath("conin.txt"));
+	CHECK(Core::IsSafeRelativePath("null .txt"));
 }
 
 TEST_CASE("A path that is empty or rooted or names a drive is refused")
@@ -49,6 +51,10 @@ TEST_CASE("A path holding a stream or a device name or a forbidden character is 
 	CHECK_FALSE(Core::IsSafeRelativePath("COM0"));
 	CHECK_FALSE(Core::IsSafeRelativePath("lpt0.txt"));
 	CHECK_FALSE(Core::IsSafeRelativePath("COM¹"));
+	CHECK_FALSE(Core::IsSafeRelativePath("nul .txt"));
+	CHECK_FALSE(Core::IsSafeRelativePath("bin/con  .log"));
+	CHECK_FALSE(Core::IsSafeRelativePath("CONIN$"));
+	CHECK_FALSE(Core::IsSafeRelativePath("conout$"));
 	CHECK_FALSE(Core::IsSafeRelativePath("a<b"));
 	CHECK_FALSE(Core::IsSafeRelativePath("a|b"));
 	CHECK_FALSE(Core::IsSafeRelativePath("a?b"));

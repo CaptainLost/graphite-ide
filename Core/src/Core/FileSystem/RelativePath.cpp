@@ -11,9 +11,10 @@ namespace Core {
 
 		constexpr std::string_view kCharactersWindowsForbids = "<>:\"|?*";
 
-		constexpr std::array<std::string_view, 30> kDeviceNames{
+		constexpr std::array<std::string_view, 32> kDeviceNames{
 			"con",	"prn",	"aux",	"nul",	"com1", "com2", "com3", "com4", "com5", "com6", "com7",
-			"com8", "com9", "com0", "com¹", "com²", "com³", "lpt0", "lpt¹", "lpt²", "lpt³", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9"};
+			"com8", "com9", "com0", "com¹", "com²", "com³", "lpt0", "lpt¹", "lpt²", "lpt³", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+			"conin$", "conout$"};
 
 		bool IsForbiddenCharacter(char character)
 		{
@@ -21,9 +22,10 @@ namespace Core {
 			return isControlCharacter || kCharactersWindowsForbids.find(character) != std::string_view::npos;
 		}
 
+		// Windows ignores spaces before the extension, so "nul .txt" opens the device too.
 		bool NamesADevice(std::string_view segment)
 		{
-			const std::string_view stem = segment.substr(0, segment.find('.'));
+			const std::string_view stem = WithoutTrailing(segment.substr(0, segment.find('.')), " ");
 
 			for (const std::string_view deviceName : kDeviceNames)
 			{
