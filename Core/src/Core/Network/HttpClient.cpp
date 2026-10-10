@@ -19,6 +19,7 @@ namespace Core {
 	namespace {
 
 		constexpr DWORD kReadPieceBytes = 64 * 1024;
+		constexpr DWORD kStageTimeoutMilliseconds = 30 * 1000;
 		constexpr int kStatusOk = 200;
 		constexpr int kStatusNotFound = 404;
 
@@ -113,7 +114,7 @@ namespace Core {
 			URL_COMPONENTS components{};
 			components.dwStructSize = sizeof(components);
 
-			// A length of -1 asks for each part as a pointer into wideUrl rather than a copy.
+			// The parts point into wideUrl, so they must not outlive it.
 			constexpr DWORD kPointIntoUrl = static_cast<DWORD>(-1);
 			components.dwSchemeLength = kPointIntoUrl;
 			components.dwHostNameLength = kPointIntoUrl;
@@ -212,7 +213,6 @@ namespace Core {
 			return static_cast<int>(status);
 		}
 
-		// Nothing for a body sent in chunks, which states no length up front.
 		std::optional<std::uint64_t> ContentLengthOf(const OpenedRequest& opened)
 		{
 			std::uint64_t length = 0;
@@ -310,7 +310,7 @@ namespace Core {
 			if (endedEarly)
 			{
 				return Error{.Code = ErrorCode::IoFailure,
-							 .Message = std::format("the download of '{}' ended after {} of {} bytes", request.Url,
+							 .Message = std::format("the download of '{}' received {} bytes where {} were announced", request.Url,
 													progress.ReceivedBytes, *progress.TotalBytes)};
 			}
 
@@ -324,10 +324,11 @@ namespace Core {
 			return Result<void>::Ok();
 		}
 
-		void RemovePartialDownload(const std::filesystem::path& target)
+		bool RemovePartialDownload(const std::filesystem::path& target)
 		{
-			std::error_code ignoredError;
-			std::filesystem::remove(target, ignoredError);
+			std::error_code removalError;
+			std::filesystem::remove(target, removalError);
+			return !removalError;
 		}
 
 		class WinHttpClient final : public HttpClient
@@ -367,9 +368,11 @@ namespace Core {
 			{
 				const Result<void> received = DownloadInto(request, target, observer, token);
 
-				if (!received)
+				if (!received && !RemovePartialDownload(target))
 				{
-					RemovePartialDownload(target);
+					return Error{.Code = received.GetError().Code,
+								 .Message = std::format("{}; the partial file '{}' could not be removed",
+														received.GetError().Message, ToUtf8(target))};
 				}
 
 				return received;
@@ -424,6 +427,13 @@ namespace Core {
 		{
 			return Error{.Code = ErrorCode::IoFailure,
 						 .Message = std::format("cannot open an HTTP session (error {})", ::GetLastError())};
+		}
+
+		if (::WinHttpSetTimeouts(session.Get(), kStageTimeoutMilliseconds, kStageTimeoutMilliseconds,
+								 kStageTimeoutMilliseconds, kStageTimeoutMilliseconds) == FALSE)
+		{
+			return Error{.Code = ErrorCode::IoFailure,
+						 .Message = std::format("cannot set the HTTP timeouts (error {})", ::GetLastError())};
 		}
 
 		return Scope<HttpClient>{CreateScope<WinHttpClient>(std::move(session))};

@@ -24,7 +24,7 @@ TEST_CASE("A URL that is not https is refused before anything is sent")
 {
 	const Core::Scope<Core::HttpClient> client = MakeClient();
 
-	const Core::Result<Core::HttpResponse> plain = client->Fetch({.Url = "http://api.github.com/"});
+	const Core::Result<Core::HttpResponse> plain = client->Fetch({.Url = "http://example.invalid/"});
 	REQUIRE_FALSE(plain);
 	CHECK(plain.GetError().Code == Core::ErrorCode::InvalidArgument);
 
@@ -36,11 +36,11 @@ TEST_CASE("A URL that is not https is refused before anything is sent")
 TEST_CASE("A refused download leaves no file at its target")
 {
 	TempDirectory temporaryDirectory;
-	const std::filesystem::path target = temporaryDirectory.MakeFile("server.zip.part", "an earlier attempt");
+	const std::filesystem::path target = temporaryDirectory.MakeFile("archive.zip.part", "an earlier attempt");
 	const Core::Scope<Core::HttpClient> client = MakeClient();
 
 	const Core::Result<void> downloaded =
-		client->Download({.Url = "http://example.com/server.zip"}, target, nullptr, Core::CancellationToken{});
+		client->Download({.Url = "http://example.invalid/archive.zip"}, target, nullptr, Core::CancellationToken{});
 
 	REQUIRE_FALSE(downloaded);
 	CHECK(downloaded.GetError().Code == Core::ErrorCode::InvalidArgument);
@@ -50,13 +50,13 @@ TEST_CASE("A refused download leaves no file at its target")
 TEST_CASE("A download cancelled before it starts sends nothing and leaves no file")
 {
 	TempDirectory temporaryDirectory;
-	const std::filesystem::path target = temporaryDirectory.GetPath() / "server.zip.part";
+	const std::filesystem::path target = temporaryDirectory.GetPath() / "archive.zip.part";
 	const Core::Scope<Core::HttpClient> client = MakeClient();
 	Core::CancellationToken token;
 	token.Cancel();
 
 	const Core::Result<void> downloaded =
-		client->Download({.Url = "https://example.invalid/server.zip"}, target, nullptr, token);
+		client->Download({.Url = "https://example.invalid/archive.zip"}, target, nullptr, token);
 
 	REQUIRE_FALSE(downloaded);
 	CHECK(downloaded.GetError().Code == Core::ErrorCode::Cancelled);
@@ -107,4 +107,21 @@ TEST_CASE("A file downloads through a redirect and reports progress" * doctest::
 	CHECK(lastProgress.ReceivedBytes > 0);
 	CHECK(lastProgress.TotalBytes == lastProgress.ReceivedBytes);
 	CHECK(std::filesystem::file_size(target) == lastProgress.ReceivedBytes);
+}
+
+TEST_CASE("A download cancelled midway stops and leaves no file" * doctest::skip())
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path target = temporaryDirectory.GetPath() / "clangd.zip";
+	const Core::Scope<Core::HttpClient> client = MakeClient();
+	Core::CancellationToken token;
+	const Core::DownloadObserver observer = [&token](const Core::DownloadProgress&) { token.Cancel(); };
+
+	const Core::Result<void> downloaded = client->Download(
+		{.Url = "https://github.com/clangd/clangd/releases/download/23.1.0/clangd-windows-23.1.0.zip"}, target, observer,
+		token);
+
+	REQUIRE_FALSE(downloaded);
+	CHECK(downloaded.GetError().Code == Core::ErrorCode::Cancelled);
+	CHECK_FALSE(std::filesystem::exists(target));
 }
