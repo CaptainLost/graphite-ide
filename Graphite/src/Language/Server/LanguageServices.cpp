@@ -382,6 +382,18 @@ namespace Graphite {
 		APP_INFO("Starting {} for {} at {}", server.Definition->DisplayName, LanguageDisplayName(key.Language),
 				 Core::ToUtf8(key.Root));
 
+		if (!server.Command.InstalledFile.empty())
+		{
+			if (Core::Result<Core::FileHold> held = Core::FileHold::HoldOpen(server.Command.InstalledFile))
+			{
+				server.Hold.emplace(std::move(held.GetValue()));
+			}
+			else
+			{
+				APP_WARN("Cannot hold {} open while it runs: {}", Core::ToUtf8(server.Command.InstalledFile), held.GetError().Message);
+			}
+		}
+
 		server.Client = MakeClient(server, key);
 
 		// The client's own Drain reports the real state — Starting, then Indexing/Ready/Failed —

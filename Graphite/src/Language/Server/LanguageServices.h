@@ -11,6 +11,7 @@
 #include "Language/Server/ServerCommand.h"
 #include "Language/Server/ServerLaunch.h"
 
+#include "Core/FileSystem/FileHold.h"
 #include "Core/Jobs/CancellationToken.h"
 #include "Core/Jobs/JobQueue.h"
 
@@ -331,6 +332,8 @@ namespace Graphite {
 			std::filesystem::path Root;
 			ServerCommand Command; // found once; a restart reuses it rather than searching again
 
+			// Before Client, so the process ends before its files are let go.
+			std::optional<Core::FileHold> Hold;
 			Core::Scope<LspClient> Client; // null when the binary was never found
 			ServerStatus Status;
 			std::size_t Restarts = 0;

@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "InstalledServers.h"
+#include "Language/Install/InstalledServer.h"
 #include "Language/Server/DotnetRuntime.h"
 #include "Language/Server/LanguageServices.h"
 #include "Language/Server/ServerChoice.h"
@@ -1891,4 +1892,30 @@ TEST_CASE("A C# server without its runtime reads MissingRuntime and starts nothi
 	CHECK(services.StatusFor(source, Graphite::LanguageId::CSharp).State == Graphite::ServerState::MissingRuntime);
 	CHECK(services.StatusFor(source, Graphite::LanguageId::CSharp).Detail == "needs .NET 10");
 	CHECK(services.OverallStatus()->State == Graphite::ServerState::MissingRuntime);
+}
+
+TEST_CASE("A running server's installed files cannot be removed until it stops")
+{
+	TempDirectory temp;
+	const std::filesystem::path version = InstallCsharpLsIn(temp.GetPath() / "servers");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+	std::string chosen = "csharp-ls";
+
+	services.SetClock(clock.Get());
+	services.SetClientFactory(spy.Get());
+	services.SetServersDirectory(temp.GetPath() / "servers");
+	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "10.0.10"));
+	services.SetChoiceProvider([&chosen](Graphite::LanguageId language) { return Graphite::ChooseServer(language, chosen); });
+
+	services.EnsureStarted(temp.GetPath() / "Program.cs", Graphite::LanguageId::CSharp);
+	REQUIRE(spy.Made == 1);
+
+	CHECK_FALSE(Graphite::RemoveDirectoryWhole(version));
+
+	chosen = std::string{Graphite::kServerTurnedOff};
+	services.Reconfigure(Graphite::LanguageId::CSharp);
+
+	CHECK(Graphite::RemoveDirectoryWhole(version));
 }
