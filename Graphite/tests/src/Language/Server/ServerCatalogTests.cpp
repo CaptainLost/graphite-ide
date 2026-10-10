@@ -11,6 +11,7 @@
 #include "Core/Platform/CurrentPlatform.h"
 #include "Core/Platform/Process.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdlib>
 #include <fstream>
@@ -240,4 +241,59 @@ TEST_CASE("A literal marker listed beside patterns still counts")
 
 	CHECK(Graphite::DirectoryHoldsAnyMarker(temp.GetPath() / "repo", kSolutionMarkers));
 	CHECK_FALSE(Graphite::DirectoryHoldsAnyMarker(temp.GetPath() / "repo" / "src", kSolutionMarkers));
+}
+
+TEST_CASE("C# offers Roslyn first then csharp-ls and OmniSharp")
+{
+	const std::span<const std::string_view> servers = Graphite::DefinitionOf(Graphite::LanguageId::CSharp).Servers;
+
+	REQUIRE(servers.size() == 3);
+	CHECK(servers[0] == "roslyn");
+	CHECK(servers[1] == "csharp-ls");
+	CHECK(servers[2] == "omnisharp");
+	CHECK(Graphite::RecommendedServerFor(Graphite::LanguageId::CSharp) == Graphite::FindServer("roslyn"));
+}
+
+TEST_CASE("Each C# server speaks csharp from a solution root and needs .NET 10")
+{
+	for (const std::string_view serverId : {std::string_view{"roslyn"}, std::string_view{"csharp-ls"}, std::string_view{"omnisharp"}})
+	{
+		INFO(std::string{serverId});
+		const Graphite::ServerDefinition* server = Graphite::FindServer(serverId);
+		REQUIRE(server != nullptr);
+
+		CHECK(server->ProtocolLanguageId == "csharp");
+		CHECK(server->Runtime.Kind == Graphite::RuntimeKind::Dotnet);
+		CHECK(server->Runtime.MinimumMajor == 10);
+		CHECK(std::find(server->RootMarkers.begin(), server->RootMarkers.end(), std::string_view{"*.sln"}) != server->RootMarkers.end());
+		CHECK(std::find(server->RootMarkers.begin(), server->RootMarkers.end(), std::string_view{"*.slnx"}) != server->RootMarkers.end());
+	}
+
+	CHECK(Graphite::FindServer("clangd")->Runtime.Kind == Graphite::RuntimeKind::None);
+}
+
+TEST_CASE("Roslyn and csharp-ls come from NuGet and OmniSharp from its GitHub releases")
+{
+	const Graphite::NuGetToolPackage* roslyn = std::get_if<Graphite::NuGetToolPackage>(&Graphite::FindServer("roslyn")->Package);
+	REQUIRE(roslyn != nullptr);
+	CHECK(roslyn->PackageIdTemplate == "roslyn-language-server.{rid}");
+	CHECK(roslyn->AllowPrerelease);
+
+	const Graphite::NuGetToolPackage* csharpLs = std::get_if<Graphite::NuGetToolPackage>(&Graphite::FindServer("csharp-ls")->Package);
+	REQUIRE(csharpLs != nullptr);
+	CHECK(csharpLs->PackageIdTemplate == "csharp-ls");
+	CHECK_FALSE(csharpLs->AllowPrerelease);
+
+	const Graphite::GitHubReleasePackage* omniSharp =
+		std::get_if<Graphite::GitHubReleasePackage>(&Graphite::FindServer("omnisharp")->Package);
+	REQUIRE(omniSharp != nullptr);
+	CHECK(omniSharp->Repository == "OmniSharp/omnisharp-roslyn");
+	const Graphite::GitHubAsset* windows = Graphite::FindAssetFor(*omniSharp, kWindowsX64);
+	REQUIRE(windows != nullptr);
+	CHECK(windows->AssetTemplate == "omnisharp-{rid}.zip");
+	CHECK(windows->ExecutableTemplate == "OmniSharp{exe}");
+
+	const std::vector<std::string> roslynArguments = Graphite::DefaultArgumentsOf(*Graphite::FindServer("roslyn"));
+	CHECK(roslynArguments == std::vector<std::string>{"--stdio", "--logLevel", "Information", "--extensionLogDirectory", "{logs}/roslyn"});
+	CHECK(Graphite::DefaultArgumentsOf(*Graphite::FindServer("omnisharp")) == std::vector<std::string>{"-lsp"});
 }

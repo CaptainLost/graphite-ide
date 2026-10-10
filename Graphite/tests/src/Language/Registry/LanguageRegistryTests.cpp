@@ -56,7 +56,7 @@ TEST_CASE("Every language's definition is found under its own id")
 	}
 }
 
-TEST_CASE("C++ names clangd as its only server and the other languages name none yet")
+TEST_CASE("C++ names clangd and C# names its servers while the others name none yet")
 {
 	const Graphite::LanguageDefinition& cpp = Graphite::DefinitionOf(Graphite::LanguageId::Cpp);
 
@@ -64,7 +64,7 @@ TEST_CASE("C++ names clangd as its only server and the other languages name none
 	CHECK(cpp.Servers[0] == "clangd");
 
 	CHECK(Graphite::LanguageHasServers(Graphite::LanguageId::Cpp));
-	CHECK_FALSE(Graphite::LanguageHasServers(Graphite::LanguageId::CSharp));
+	CHECK(Graphite::LanguageHasServers(Graphite::LanguageId::CSharp));
 	CHECK_FALSE(Graphite::LanguageHasServers(Graphite::LanguageId::TypeScript));
 	CHECK_FALSE(Graphite::LanguageHasServers(Graphite::LanguageId::PlainText));
 }
@@ -73,8 +73,9 @@ TEST_CASE("LanguagesWithServers lists exactly the languages that name a server")
 {
 	const std::span<const Graphite::LanguageId> languages = Graphite::LanguagesWithServers();
 
-	REQUIRE(languages.size() == 1);
+	REQUIRE(languages.size() == 2);
 	CHECK(languages[0] == Graphite::LanguageId::Cpp);
+	CHECK(languages[1] == Graphite::LanguageId::CSharp);
 }
 
 TEST_CASE("graphite.json names each language by its settings name")

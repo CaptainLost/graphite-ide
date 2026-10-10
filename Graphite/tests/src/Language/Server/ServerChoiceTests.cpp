@@ -1,8 +1,10 @@
 #include <doctest/doctest.h>
 
+#include "Language/Server/ServerCatalog.h"
 #include "Language/Server/ServerChoice.h"
 
 #include <optional>
+#include <ostream>
 #include <string>
 
 TEST_CASE("A language with nothing stored gets its recommended server")
@@ -41,6 +43,25 @@ TEST_CASE("A language with no servers is not configured whatever is stored")
 {
 	const std::optional<std::string> stored{"roslyn"};
 
-	CHECK(Graphite::ChooseServer(Graphite::LanguageId::CSharp, stored).Kind == Graphite::ServerChoiceKind::NotConfigured);
+	CHECK(Graphite::ChooseServer(Graphite::LanguageId::TypeScript, stored).Kind == Graphite::ServerChoiceKind::NotConfigured);
 	CHECK(Graphite::ChooseServer(Graphite::LanguageId::PlainText, std::nullopt).Kind == Graphite::ServerChoiceKind::NotConfigured);
+}
+
+TEST_CASE("C# runs no server until one is chosen while C++ keeps clangd")
+{
+	CHECK(Graphite::ChooseServer(Graphite::LanguageId::CSharp, std::nullopt).Kind == Graphite::ServerChoiceKind::NotConfigured);
+
+	const Graphite::ServerChoice cpp = Graphite::ChooseServer(Graphite::LanguageId::Cpp, std::nullopt);
+	CHECK(cpp.Kind == Graphite::ServerChoiceKind::Chosen);
+	CHECK(cpp.Server == Graphite::FindServer("clangd"));
+}
+
+TEST_CASE("A C# server chosen by id is the one that runs and none turns it off")
+{
+	const Graphite::ServerChoice chosen = Graphite::ChooseServer(Graphite::LanguageId::CSharp, std::string{"csharp-ls"});
+	CHECK(chosen.Kind == Graphite::ServerChoiceKind::Chosen);
+	CHECK(chosen.Server == Graphite::FindServer("csharp-ls"));
+
+	CHECK(Graphite::ChooseServer(Graphite::LanguageId::CSharp, std::string{Graphite::kServerTurnedOff}).Kind ==
+		  Graphite::ServerChoiceKind::Off);
 }

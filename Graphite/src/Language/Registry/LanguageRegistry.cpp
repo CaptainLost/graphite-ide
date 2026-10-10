@@ -19,6 +19,7 @@ namespace Graphite {
 		constexpr std::array<std::string_view, 1> kTypeScriptExtensions{".ts"};
 
 		constexpr std::array<std::string_view, 1> kCppServers{"clangd"};
+		constexpr std::array<std::string_view, 3> kCSharpServers{"roslyn", "csharp-ls", "omnisharp"};
 
 		constexpr std::string_view kSlashSlashComment = "//";
 
@@ -30,13 +31,15 @@ namespace Graphite {
 			 .Extensions = kCppExtensions,
 			 .LineComment = kSlashSlashComment,
 			 .Syntax = SyntaxKind::CppLexer,
-			 .Servers = kCppServers},
+			 .Servers = kCppServers,
+			 .UsesRecommendedServerUntilChosen = true},
 			{.Id = LanguageId::CSharp,
 			 .SettingsName = "CSharp",
 			 .DisplayName = "C#",
 			 .Extensions = kCSharpExtensions,
 			 .LineComment = kSlashSlashComment,
-			 .Syntax = SyntaxKind::CSharpGrammar},
+			 .Syntax = SyntaxKind::CSharpGrammar,
+			 .Servers = kCSharpServers},
 			{.Id = LanguageId::TypeScript,
 			 .SettingsName = "TypeScript",
 			 .DisplayName = "TypeScript",

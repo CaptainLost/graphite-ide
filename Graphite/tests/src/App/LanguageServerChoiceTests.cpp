@@ -65,7 +65,7 @@ TEST_CASE("A path stored for clangd under lsp wins over the old key")
 		  std::filesystem::path{L"D:\\New\\clangd.exe"});
 }
 
-TEST_CASE("C++ stored as none reads as turned off and C# as not configured")
+TEST_CASE("C++ stored as none reads as turned off and C# stored as roslyn chooses Roslyn")
 {
 	const TempDirectory temp;
 	const std::filesystem::path file = temp.GetPath() / "graphite.json";
@@ -75,5 +75,7 @@ TEST_CASE("C++ stored as none reads as turned off and C# as not configured")
 	const Graphite::AppSettings settings{file};
 
 	CHECK(Graphite::ReadServerChoice(settings, Graphite::LanguageId::Cpp).Kind == Graphite::ServerChoiceKind::Off);
-	CHECK(Graphite::ReadServerChoice(settings, Graphite::LanguageId::CSharp).Kind == Graphite::ServerChoiceKind::NotConfigured);
+	const Graphite::ServerChoice choice = Graphite::ReadServerChoice(settings, Graphite::LanguageId::CSharp);
+	CHECK(choice.Kind == Graphite::ServerChoiceKind::Chosen);
+	CHECK(choice.Server == Graphite::FindServer("roslyn"));
 }

@@ -18,6 +18,19 @@ namespace Graphite {
 		Clangd
 	};
 
+	enum class RuntimeKind : std::uint8_t
+	{
+		None,
+		Dotnet
+	};
+
+	// What must already be on the machine for the server to run. Graphite checks it and never installs it.
+	struct ServerRuntime
+	{
+		RuntimeKind Kind = RuntimeKind::None;
+		int MinimumMajor = 0;
+	};
+
 	struct ServerDefinition
 	{
 		std::string_view Id;
@@ -28,6 +41,7 @@ namespace Graphite {
 		std::span<const std::string_view> RootMarkers;
 		AdapterKind Adapter = AdapterKind::Plain;
 		ServerPackage Package;
+		ServerRuntime Runtime;
 	};
 
 	std::span<const ServerDefinition> AllServers();

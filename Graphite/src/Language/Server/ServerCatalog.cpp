@@ -27,7 +27,24 @@ namespace Graphite {
 			 .ExecutableTemplate = "clangd_{version}/bin/clangd{exe}"},
 		}};
 
-		constexpr std::array<ServerDefinition, 1> kServers{{
+		constexpr std::array<std::string_view, 3> kCSharpRootMarkers{"*.sln", "*.slnx", ".git"};
+
+		// {logs} is the application's log directory, filled in when the server starts.
+		constexpr std::array<std::string_view, 5> kRoslynArguments{"--stdio", "--logLevel", "Information",
+																	"--extensionLogDirectory", "{logs}/roslyn"};
+
+		constexpr std::array<std::string_view, 1> kOmniSharpArguments{"-lsp"};
+
+		constexpr std::array<GitHubAsset, 1> kOmniSharpAssets{{
+			{.Platform = {.System = Core::OperatingSystem::Windows, .Machine = Core::Architecture::X64},
+			 .AssetTemplate = "omnisharp-{rid}.zip",
+			 .Archive = ArchiveKind::Zip,
+			 .ExecutableTemplate = "OmniSharp{exe}"},
+		}};
+
+		constexpr ServerRuntime kDotnet10{.Kind = RuntimeKind::Dotnet, .MinimumMajor = 10};
+
+		constexpr std::array<ServerDefinition, 4> kServers{{
 			{.Id = "clangd",
 			 .DisplayName = "clangd",
 			 .ExecutableName = "clangd",
@@ -36,6 +53,32 @@ namespace Graphite {
 			 .RootMarkers = kClangdRootMarkers,
 			 .Adapter = AdapterKind::Clangd,
 			 .Package = GitHubReleasePackage{.Repository = "clangd/clangd", .Assets = kClangdAssets}},
+			{.Id = "roslyn",
+			 .DisplayName = "Roslyn",
+			 .ExecutableName = "roslyn-language-server",
+			 .ProtocolLanguageId = "csharp",
+			 .DefaultArguments = kRoslynArguments,
+			 .RootMarkers = kCSharpRootMarkers,
+			 .Adapter = AdapterKind::Plain,
+			 .Package = NuGetToolPackage{.PackageIdTemplate = "roslyn-language-server.{rid}", .AllowPrerelease = true},
+			 .Runtime = kDotnet10},
+			{.Id = "csharp-ls",
+			 .DisplayName = "csharp-ls",
+			 .ExecutableName = "csharp-ls",
+			 .ProtocolLanguageId = "csharp",
+			 .RootMarkers = kCSharpRootMarkers,
+			 .Adapter = AdapterKind::Plain,
+			 .Package = NuGetToolPackage{.PackageIdTemplate = "csharp-ls", .AllowPrerelease = false},
+			 .Runtime = kDotnet10},
+			{.Id = "omnisharp",
+			 .DisplayName = "OmniSharp",
+			 .ExecutableName = "OmniSharp",
+			 .ProtocolLanguageId = "csharp",
+			 .DefaultArguments = kOmniSharpArguments,
+			 .RootMarkers = kCSharpRootMarkers,
+			 .Adapter = AdapterKind::Plain,
+			 .Package = GitHubReleasePackage{.Repository = "OmniSharp/omnisharp-roslyn", .Assets = kOmniSharpAssets},
+			 .Runtime = kDotnet10},
 		}};
 
 		// The error_code overload: a directory that denies access reads as "not there" instead of throwing across the boundary ADR 0004 guards.
