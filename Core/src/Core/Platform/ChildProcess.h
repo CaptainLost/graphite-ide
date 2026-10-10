@@ -39,6 +39,7 @@ namespace Core {
 	private:
 		ChildProcess() = default;
 
+		UniqueHandle m_Job;
 		UniqueHandle m_Process;
 		UniqueHandle m_ToChild;
 		UniqueHandle m_FromChild;

@@ -139,6 +139,23 @@ namespace Core {
 						 .Message = "cannot restrict the child's inherited handles"};
 		}
 
+		// Terminate ends the job rather than the process, so a child that is only a launcher for
+		// another process cannot leave that process holding our pipes open.
+		UniqueHandle job{::CreateJobObjectW(nullptr, nullptr)};
+
+		if (!job)
+		{
+			return Error{.Code = ErrorCodeFromWin32(::GetLastError()), .Message = "cannot create a job for the child"};
+		}
+
+		JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+		limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
+		if (::SetInformationJobObject(job.Get(), JobObjectExtendedLimitInformation, &limits, sizeof(limits)) == FALSE)
+		{
+			return Error{.Code = ErrorCodeFromWin32(::GetLastError()), .Message = "cannot set up the child's job"};
+		}
+
 		STARTUPINFOEXW startupInfo{
 			.StartupInfo = {
 				.cb = sizeof(STARTUPINFOEXW),
@@ -156,8 +173,9 @@ namespace Core {
 		const std::wstring nativeWorkingDirectory = workingDirectory.wstring();
 
 		const BOOL started = ::CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, kInheritListedHandles,
-											  CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, nullptr,
-											  nativeWorkingDirectory.c_str(), &startupInfo.StartupInfo, &processInformation);
+											  CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED,
+											  nullptr, nativeWorkingDirectory.c_str(), &startupInfo.StartupInfo,
+											  &processInformation);
 
 		if (!started)
 		{
@@ -168,6 +186,18 @@ namespace Core {
 		UniqueHandle primaryThread{processInformation.hThread};
 		UniqueHandle processHandle{processInformation.hProcess};
 
+		// Assigned while suspended, so nothing the child starts can run outside the job.
+		if (::AssignProcessToJobObject(job.Get(), processHandle.Get()) == FALSE)
+		{
+			const DWORD assignErrorCode = ::GetLastError();
+			::TerminateProcess(processHandle.Get(), kTerminatedExitCode);
+
+			return Error{.Code = ErrorCodeFromWin32(assignErrorCode),
+						 .Message = std::format("cannot place '{}' in its job", ToUtf8(program))};
+		}
+
+		::ResumeThread(primaryThread.Get());
+
 		// The parent's copies of the child's ends close now: kept open, they would stop the pipes
 		// from signalling closure when the child exits.
 		childStdinRead.Reset();
@@ -176,6 +206,7 @@ namespace Core {
 		primaryThread.Reset();
 
 		Scope<ChildProcess> child{new ChildProcess()};
+		child->m_Job = std::move(job);
 		child->m_Process = std::move(processHandle);
 		child->m_ToChild = std::move(childStdinWrite);
 		child->m_FromChild = std::move(childStdoutRead);
@@ -242,10 +273,10 @@ namespace Core {
 	void ChildProcess::Terminate()
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		if (m_Process)
+		// Fails on a tree that has already exited, which is harmless, so the result is ignored.
+		if (m_Job)
 		{
-			// Fails on a child that has already exited, which is harmless, so the result is ignored.
-			::TerminateProcess(m_Process.Get(), kTerminatedExitCode);
+			::TerminateJobObject(m_Job.Get(), kTerminatedExitCode);
 		}
 #else
 		// Empty because Start refuses on this platform, so no child exists to end. A port that

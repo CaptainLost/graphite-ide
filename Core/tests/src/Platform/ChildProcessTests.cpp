@@ -118,3 +118,22 @@ TEST_CASE("ChildProcess reports a child that exited with code 259 which is also 
 
 	CHECK_FALSE(process.IsRunning());
 }
+
+TEST_CASE("Terminating a child ends the processes it started so its output closes at once")
+{
+	// cmd waits on ping, and ping inherits the output pipe: ending cmd alone would leave the pipe
+	// open until ping finished, half a minute later.
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "ping -n 30 127.0.0.1"},
+													 std::filesystem::current_path());
+	REQUIRE(started);
+	Core::ChildProcess& child = *started.GetValue();
+
+	std::array<char, kReadChunkBytes> buffer{};
+	REQUIRE(child.Read(buffer) > 0);
+
+	const std::chrono::steady_clock::time_point terminatedAt = std::chrono::steady_clock::now();
+	child.Terminate();
+	ReadAll(child);
+
+	CHECK(std::chrono::steady_clock::now() - terminatedAt < std::chrono::seconds{10});
+}
