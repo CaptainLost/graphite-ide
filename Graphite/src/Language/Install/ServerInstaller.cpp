@@ -8,6 +8,7 @@
 #include "Language/Install/ResolvedPackage.h"
 #include "Language/Install/ToolSettings.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/Base/Assert.h"
 #include "Core/Base/ScopeExit.h"
 #include "Core/FileSystem/FileLock.h"
@@ -83,9 +84,10 @@ namespace Graphite {
 			state.Running.erase(serverId);
 		}
 
+		// A cancel often surfaces as some other failure, such as a lookup that timed out while the user waited.
 		InstallProgress OutcomeOf(const InstallJob& job, const Core::Error& error)
 		{
-			const bool wasCancelled = error.Code == Core::ErrorCode::Cancelled;
+			const bool wasCancelled = error.Code == Core::ErrorCode::Cancelled || job.Token.IsCancelled();
 			InstallProgress outcome = ChangeOf(job, wasCancelled ? InstallStep::Cancelled : InstallStep::Failed);
 			outcome.Failure = wasCancelled ? std::string{} : error.Message;
 			return outcome;
@@ -205,9 +207,9 @@ namespace Graphite {
 			return Core::Result<void>::Ok();
 		}
 
-		InstallProgress InstalledOutcome(const InstallJob& job, std::string_view version, bool hasChecksum)
+		InstallProgress OutcomeWithChecksum(const InstallJob& job, InstallStep step, std::string_view version, bool hasChecksum)
 		{
-			InstallProgress outcome = ChangeOf(job, InstallStep::Installed, version);
+			InstallProgress outcome = ChangeOf(job, step, version);
 			outcome.HasChecksum = hasChecksum;
 			return outcome;
 		}
@@ -224,6 +226,11 @@ namespace Graphite {
 			Report(state, ChangeOf(job, InstallStep::Resolving));
 			const Core::Result<ResolvedPackage> resolved = ResolveLatest(job);
 
+			if (job.Token.IsCancelled())
+			{
+				return CancelledError(job);
+			}
+
 			if (!resolved)
 			{
 				return resolved.GetError();
@@ -238,10 +245,12 @@ namespace Graphite {
 														  job.Server->DisplayName)};
 			}
 
+			// UpToDate, so that nothing acting on Installed, such as restarting servers, acts on an install that changed nothing.
 			if (const std::optional<InstalledServer> installed = FindInstalledServer(job.ServerDirectory);
-				installed && installed->Record.Version == package.Version)
+				installed && Core::EqualsIgnoringCase(installed->Record.Version, package.Version))
 			{
-				return InstalledOutcome(job, package.Version, installed->Record.VerifiedChecksum.has_value());
+				return OutcomeWithChecksum(job, InstallStep::UpToDate, installed->Record.Version,
+										   installed->Record.VerifiedChecksum.has_value());
 			}
 
 			const std::filesystem::path downloadDirectory = DownloadDirectoryOf(job.ServerDirectory);
@@ -331,7 +340,7 @@ namespace Graphite {
 				return recorded.GetError();
 			}
 
-			return InstalledOutcome(job, package.Version, package.ExpectedChecksum.has_value());
+			return OutcomeWithChecksum(job, InstallStep::Installed, package.Version, package.ExpectedChecksum.has_value());
 		}
 
 		Core::Result<InstallProgress> CheckLatest(const InstallJob& job, InstallerState& state)
@@ -339,17 +348,22 @@ namespace Graphite {
 			Report(state, ChangeOf(job, InstallStep::Resolving));
 			const Core::Result<ResolvedPackage> resolved = ResolveLatest(job);
 
+			if (job.Token.IsCancelled())
+			{
+				return CancelledError(job);
+			}
+
 			if (!resolved)
 			{
 				return resolved.GetError();
 			}
 
 			const std::string& latest = resolved.GetValue().Version;
-			const std::optional<InstallRecord> record = ReadInstallRecord(job.ServerDirectory);
+			const std::optional<InstalledServer> installed = FindInstalledServer(job.ServerDirectory);
 
-			if (record && !IsNewerRelease(job.Server->Package, latest, record->Version))
+			if (installed && !IsNewerRelease(job.Server->Package, latest, installed->Record.Version))
 			{
-				return ChangeOf(job, InstallStep::UpToDate, record->Version);
+				return ChangeOf(job, InstallStep::UpToDate, installed->Record.Version);
 			}
 
 			return ChangeOf(job, InstallStep::UpdateAvailable, latest);
@@ -385,8 +399,14 @@ namespace Graphite {
 			return ChangeOf(job, InstallStep::Uninstalled, record->Version);
 		}
 
+		// A job cancelled while it waited, as the installer's destructor does at shutdown, neither locks nor fetches.
 		Core::Result<InstallProgress> RunJob(const InstallJob& job, InstallerState& state)
 		{
+			if (job.Token.IsCancelled())
+			{
+				return CancelledError(job);
+			}
+
 			switch (job.Kind)
 			{
 			case InstallJobKind::Install:
@@ -441,7 +461,7 @@ namespace Graphite {
 			}
 		}
 
-		return latest != installed;
+		return !Core::EqualsIgnoringCase(latest, installed);
 	}
 
 	ServerInstaller::ServerInstaller(Core::Ref<Core::HttpClient> http, std::filesystem::path serversDirectory,

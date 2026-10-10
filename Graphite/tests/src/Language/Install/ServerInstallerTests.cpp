@@ -447,6 +447,7 @@ TEST_CASE("A NuGet release is newer by version order and a GitHub release by any
 	CHECK_FALSE(Graphite::IsNewerRelease(nuget, "1.0.0", "1.0.0"));
 	CHECK(Graphite::IsNewerRelease(github, "23.1.0", "22.1.0"));
 	CHECK_FALSE(Graphite::IsNewerRelease(github, "23.1.0", "23.1.0"));
+	CHECK_FALSE(Graphite::IsNewerRelease(github, "1.0.0-RC", "1.0.0-rc"));
 }
 
 TEST_CASE("Uninstalling removes the record and the version directory")
@@ -475,10 +476,121 @@ TEST_CASE("Installing the version already installed downloads nothing")
 	const std::vector<Graphite::InstallProgress> changes = fixture.Drain();
 
 	REQUIRE_FALSE(changes.empty());
-	CHECK(changes.back().Step == Graphite::InstallStep::Installed);
+	CHECK(changes.back().Step == Graphite::InstallStep::UpToDate);
+	CHECK(changes.back().Version == "1.0.0");
 	CHECK(changes.back().HasChecksum);
 	REQUIRE(fixture.Http->Requests.size() == 1);
 	CHECK(fixture.Http->Requests.front().Url == kLatestUrl);
+}
+
+TEST_CASE("A release whose tag differs from the installed version only in case is the installed version")
+{
+	InstallerFixture fixture;
+	fixture.InstallVersion("1.0.0-RC");
+	ServeRelease(*fixture.Http, "1.0.0-rc", ToolZip("1.0.0-rc"), std::nullopt);
+	fixture.Http->Requests.clear();
+
+	REQUIRE(fixture.Installer.Install(kGitHubTool));
+	const std::vector<Graphite::InstallProgress> installAgain = fixture.Drain();
+
+	REQUIRE_FALSE(installAgain.empty());
+	CHECK(installAgain.back().Step == Graphite::InstallStep::UpToDate);
+	CHECK(CountOfRequestsFor(*fixture.Http, DownloadUrlOf("1.0.0-rc")) == 0);
+
+	REQUIRE(fixture.Installer.CheckForUpdates(kGitHubTool));
+	const std::vector<Graphite::InstallProgress> check = fixture.Drain();
+
+	REQUIRE_FALSE(check.empty());
+	CHECK(check.back().Step == Graphite::InstallStep::UpToDate);
+
+	const std::optional<Graphite::InstalledServer> installed = Graphite::FindInstalledServer(fixture.ToolDirectory());
+	REQUIRE(installed.has_value());
+	CHECK(installed->Record.Version == "1.0.0-RC");
+}
+
+TEST_CASE("Checking for updates calls a server whose command is gone not up to date")
+{
+	InstallerFixture fixture;
+	fixture.InstallVersion("1.0.0");
+	REQUIRE(std::filesystem::remove(fixture.ToolDirectory() / "1.0.0" / "tool_1.0.0" / "bin" / "tool.exe"));
+
+	REQUIRE(fixture.Installer.CheckForUpdates(kGitHubTool));
+	const std::vector<Graphite::InstallProgress> changes = fixture.Drain();
+
+	REQUIRE_FALSE(changes.empty());
+	CHECK(changes.back().Step == Graphite::InstallStep::UpdateAvailable);
+	CHECK(changes.back().Version == "1.0.0");
+}
+
+TEST_CASE("A job cancelled before it runs ends as cancelled without asking the network or making its folder")
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path servers = temporaryDirectory.GetPath() / "servers";
+	std::vector<std::function<void()>> waitingJobs;
+	const Core::Ref<FakeHttpClient> http = Core::CreateRef<FakeHttpClient>();
+	ServeRelease(*http, "1.0.0", ToolZip("1.0.0"), std::nullopt);
+	Graphite::ServerInstaller installer{http, servers, kWindowsX64,
+										[&waitingJobs](std::function<void()> job) { waitingJobs.push_back(std::move(job)); }};
+
+	REQUIRE(installer.Install(kGitHubTool));
+	installer.Cancel("tool");
+	REQUIRE(waitingJobs.size() == 1);
+	waitingJobs.front()();
+
+	std::vector<Graphite::InstallProgress> changes;
+	installer.Drain(changes);
+
+	REQUIRE(changes.size() == 1);
+	CHECK(changes.back().Step == Graphite::InstallStep::Cancelled);
+	CHECK(changes.back().Failure.empty());
+	CHECK(http->Requests.empty());
+	CHECK_FALSE(std::filesystem::exists(Graphite::ServerDirectoryOf(servers, "tool")));
+	CHECK_FALSE(installer.IsBusy("tool"));
+}
+
+TEST_CASE("A cancel that lands during the version lookup ends as cancelled even when the lookup fails")
+{
+	InstallerFixture fixture;
+	fixture.Http->BeforeAnswer = [&fixture](const Core::HttpRequest&) { fixture.Installer.Cancel("tool"); };
+
+	SUBCASE("installing")
+	{
+		REQUIRE(fixture.Installer.Install(kGitHubTool));
+	}
+
+	SUBCASE("checking for updates")
+	{
+		REQUIRE(fixture.Installer.CheckForUpdates(kGitHubTool));
+	}
+
+	const std::vector<Graphite::InstallProgress> changes = fixture.Drain();
+
+	REQUIRE_FALSE(changes.empty());
+	CHECK(changes.back().Step == Graphite::InstallStep::Cancelled);
+	CHECK(changes.back().Failure.empty());
+	REQUIRE(fixture.Http->Requests.size() == 1);
+	CHECK(fixture.Http->Requests.front().Url == kLatestUrl);
+}
+
+TEST_CASE("A download that fails after a cancel ends as cancelled")
+{
+	InstallerFixture fixture;
+	ServeRelease(*fixture.Http, "1.0.0", ToolZip("1.0.0"), std::nullopt);
+	fixture.Http->Answer(DownloadUrlOf("1.0.0"), 503, "busy");
+	fixture.Http->BeforeAnswer = [&fixture](const Core::HttpRequest& request) {
+		if (request.Url == DownloadUrlOf("1.0.0"))
+		{
+			fixture.Installer.Cancel("tool");
+		}
+	};
+
+	REQUIRE(fixture.Installer.Install(kGitHubTool));
+	const std::vector<Graphite::InstallProgress> changes = fixture.Drain();
+
+	REQUIRE_FALSE(changes.empty());
+	CHECK(changes.back().Step == Graphite::InstallStep::Cancelled);
+	CHECK(changes.back().Failure.empty());
+	CHECK_FALSE(std::filesystem::exists(fixture.ToolDirectory() / "1.0.0"));
 }
 
 TEST_CASE("A directory left behind by an earlier uninstall is replaced by the new install")

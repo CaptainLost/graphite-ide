@@ -52,7 +52,7 @@ namespace Graphite {
 
 	bool IsFinished(InstallStep step);
 
-	// A GitHub tag need not sort, so any tag other than the installed one counts as newer.
+	// A GitHub tag need not sort, so any tag other than the installed one, case aside, counts as newer.
 	bool IsNewerRelease(const ServerPackage& package, std::string_view latest, std::string_view installed);
 
 	struct InstallerState;

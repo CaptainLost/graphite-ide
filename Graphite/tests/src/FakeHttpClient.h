@@ -29,6 +29,12 @@ public:
 	Core::Result<Core::HttpResponse> Fetch(const Core::HttpRequest& request) override
 	{
 		Requests.push_back(request);
+
+		if (BeforeAnswer)
+		{
+			BeforeAnswer(request);
+		}
+
 		const std::map<std::string, Core::HttpResponse>::const_iterator answer = m_Answers.find(request.Url);
 
 		if (answer == m_Answers.end())
@@ -43,6 +49,12 @@ public:
 								const Core::DownloadObserver& observer, const Core::CancellationToken& token) override
 	{
 		Requests.push_back(request);
+
+		if (BeforeAnswer)
+		{
+			BeforeAnswer(request);
+		}
+
 		const Core::Result<void> received = Receive(request, target, observer, token);
 
 		if (!received)
@@ -53,6 +65,9 @@ public:
 
 		return received;
 	}
+
+	// Called as each request arrives, before it is answered.
+	std::function<void(const Core::HttpRequest& request)> BeforeAnswer;
 
 	// Called after each piece is written, with the bytes received so far.
 	std::function<void(std::uint64_t receivedBytes)> AfterPiece;

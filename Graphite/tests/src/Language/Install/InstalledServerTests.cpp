@@ -151,6 +151,21 @@ TEST_CASE("The sweep keeps the recorded version and removes everything else left
 	CHECK_FALSE(std::filesystem::exists(clangd / "install.lock"));
 }
 
+TEST_CASE("The sweep keeps a version whose directory differs from the recorded version only in case")
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path servers = temporaryDirectory.GetPath() / "servers";
+	const std::filesystem::path clangd = Graphite::ServerDirectoryOf(servers, "clangd");
+	Graphite::InstallRecord record = ClangdRecord();
+	record.Version = "23.1.0-rc1";
+	MakeServerFile(clangd / "23.1.0-RC1" / "clangd_23.1.0" / "bin" / "clangd.exe");
+	REQUIRE(Graphite::WriteInstallRecord(clangd, record));
+
+	Graphite::SweepServersDirectory(servers);
+
+	CHECK(std::filesystem::exists(clangd / "23.1.0-RC1" / "clangd_23.1.0" / "bin" / "clangd.exe"));
+}
+
 TEST_CASE("The installer's working folders are ones the sweep clears")
 {
 	TempDirectory temporaryDirectory;
