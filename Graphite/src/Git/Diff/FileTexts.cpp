@@ -6,7 +6,6 @@
 #include "Git/GitModel.h"
 
 #include <utility>
-#include <vector>
 
 namespace Graphite {
 
@@ -75,22 +74,33 @@ namespace Graphite {
 
 		const Core::Ref<const FileTexts> texts = model.GetTextsFor(commit, key);
 
-		// The text is immutable once fetched, so an unchanged pointer means the tokens are
-		// still good; re-lexing every frame is the mistake ColourFileText's own header warns
-		// against.
+		// The texts are immutable once fetched, so an unchanged pointer must not copy their
+		// tokens again.
 		if (texts.get() == Texts.get())
 		{
 			return;
 		}
 
 		Texts = texts;
+		Tokens = texts != nullptr ? texts->Tokens : FileTokens{};
+	}
 
-		// Each side is lexed by its own path's language: a rename that changes the extension
-		// really is two languages, one per side.
-		Tokens.Old = texts && texts->HasOld ? ColourFileText(texts->Old, file.OldPath)
-											: std::vector<std::vector<Token>>{};
-		Tokens.New = texts && texts->HasNew ? ColourFileText(texts->New, file.NewPath)
-											: std::vector<std::vector<Token>>{};
+	FileTokens ColourSides(const FileTexts& texts, const std::filesystem::path& oldPath,
+						   const std::filesystem::path& newPath)
+	{
+		FileTokens tokens;
+
+		if (texts.HasOld)
+		{
+			tokens.Old = ColourFileText(texts.Old, oldPath);
+		}
+
+		if (texts.HasNew)
+		{
+			tokens.New = ColourFileText(texts.New, newPath);
+		}
+
+		return tokens;
 	}
 
 	WorkingTreeSides SidesFor(Core::DiffTarget target)
@@ -166,10 +176,6 @@ namespace Graphite {
 		}
 
 		Texts = texts;
-
-		Tokens.Old = texts->HasOld ? ColourFileText(texts->Old, file.OldPath)
-								   : std::vector<std::vector<Token>>{};
-		Tokens.New = texts->HasNew ? ColourFileText(texts->New, file.NewPath)
-								   : std::vector<std::vector<Token>>{};
+		Tokens = texts->Tokens;
 	}
 }

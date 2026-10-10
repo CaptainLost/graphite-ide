@@ -10,10 +10,8 @@
 
 namespace Graphite {
 
-	// Both sides' tokens for one file's texts, one entry per line, indexed the same way the
-	// texts themselves are: line number minus one. Held by whoever owns the texts and rebuilt
-	// only when those texts change, never lexed inside a draw call — see the header comment on
-	// ColourFileText for why lexing there, once a frame, would be the mistake.
+	// One entry per line, indexed by line number minus one, so a side's tokens fit only the text
+	// they were coloured from.
 	struct FileTokens
 	{
 		std::vector<std::vector<Token>> Old;
@@ -29,6 +27,7 @@ namespace Graphite {
 
 	// Offsets are into the raw line as SplitTextLines splits it, '\r' stripped, because this view
 	// draws the raw line — tab-expanded offsets would land every token after a tab in the wrong place.
+	// It parses the whole text with no budget, so it must never run on the UI thread.
 	std::vector<std::vector<Token>> ColourFileText(std::string_view text, const std::filesystem::path& path);
 
 	// One line's terminator removed: at most one '\n', and at most one '\r' before it. The

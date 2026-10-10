@@ -179,8 +179,8 @@ namespace Graphite {
 		// will not notice, against holding every diff they ever passed.
 		static constexpr std::size_t kCachedDiffs = 32;
 
-		// Both sides of one file's text around a commit, for the diff view to hand to the
-		// lexer. Keyed by commit and `key` together - not by commit alone, as RequestDiffFor
+		// Both sides of one file's text around a commit, with their tokens, coloured in the job
+		// that reads them. Keyed by commit and `key` together - not by commit alone, as RequestDiffFor
 		// is - because one commit touches many files and each needs its own entry. Mirrors
 		// RequestDiffFor in every other respect: held once fetched, since a commit's text
 		// cannot change either, and a failed entry is suppressed until ForgetFailedTextsFor

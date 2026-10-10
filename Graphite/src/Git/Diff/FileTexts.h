@@ -34,6 +34,10 @@ namespace Graphite {
 		std::string New;
 		bool HasOld = false;
 		bool HasNew = false;
+
+		// Filled by the model's job that reads the texts, not by the port, and never on the UI
+		// thread: a C# side is a whole-file parse.
+		FileTokens Tokens;
 	};
 
 	// One side of a file: its text, and whether that side had the file at all. A NotFound
@@ -76,18 +80,16 @@ namespace Graphite {
 	// repository, a thread or a file.
 	WorkingTreeSides SidesFor(Core::DiffTarget target);
 
-	// Whether tokens lexed from `held` are still good for `fresh`.
-	//
-	// A commit's text is immutable, so there the pointer alone answers this - a different
-	// object means different text. The working tree's text is fetched afresh on every
-	// refresh, so its pointer changes even when the file has not, and comparing the bytes is
-	// what stops the file being re-lexed sixty times a second while it sits untouched.
-	//
-	// Both sides' presence is compared as well as their content: a side appearing or
-	// disappearing changes what must be lexed even when the text that remains is identical.
+	// Each present side by its own path's language, since a rename that changes the extension
+	// really is two languages. It parses whole sides, so call it only from the job that read them.
+	FileTokens ColourSides(const FileTexts& texts, const std::filesystem::path& oldPath,
+						   const std::filesystem::path& newPath);
+
+	// A working-tree refresh brings a new object even when the file has not changed, so this
+	// compares both sides' bytes and presence, never the pointer.
 	bool TokensStillGood(const FileTexts* held, const FileTexts& fresh);
 
-	// One owner's hold on a file's whole-file texts and the tokens lexed from them, plus the
+	// One owner's hold on a file's whole-file texts and the tokens that came with them, plus the
 	// rules for keeping the two in step with whichever file is on screen.
 	//
 	// It exists because both owners of a DiffView — the docked panel and a detached tab —
@@ -110,20 +112,17 @@ namespace Graphite {
 		std::optional<Core::Oid> Commit;
 		std::filesystem::path Key;
 
-		// Points this binding at `file` as it stood in `commit`, asks the model for its texts,
-		// and re-lexes only when the model hands back a different object than last time — the
-		// text is immutable once fetched, so the pointer alone says whether the tokens are
-		// still good, and re-lexing every frame is the mistake ColourFileText's own header warns
-		// against. Safe to call every frame; that is how it is meant to be called.
+		// Called every frame, so it copies the tokens only when the model hands back a different
+		// texts object; copying a whole file's tokens every frame would cost the frame.
 		//
-		// A binary file is not fetched, cached or lexed at all: its bytes can never be drawn
+		// A binary file is not fetched, cached or coloured at all: its bytes can never be drawn
 		// as text, nothing on this path caps how many of them there are, and the pane says so
 		// without needing any of them.
 		void Update(GitModel& model, const Core::Oid& commit, const Core::FileDiff& file);
 
 		// The same job for the working tree's own text, which has no commit to be keyed by and
-		// arrives as a single slot the model replaces. Re-lexes only when the text actually
-		// differs - see TokensStillGood.
+		// arrives as a single slot the model replaces. Copies the tokens only when the text
+		// actually differs - see TokensStillGood.
 		void UpdateFromWorkingTree(GitModel& model, const Core::FileDiff& file);
 
 		// Drops the model's entry for the file this binding points at, but only if that entry

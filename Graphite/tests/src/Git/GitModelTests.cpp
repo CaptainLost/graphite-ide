@@ -4,6 +4,7 @@
 
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Git/Diff/SyntaxRuns.h"
 #include "Workspace/Workspace.h"
 
 #include <filesystem>
@@ -1748,10 +1749,137 @@ TEST_CASE("The tokens are not rebuilt while the texts stay the same")
 	binding.Update(model, IdOf(1), ModifiedFile("a.cpp"));
 	binding.Update(model, IdOf(1), ModifiedFile("a.cpp"));
 
-	// The text is immutable once fetched, so an unchanged pointer means the tokens are still
-	// good. Re-lexing a whole file every frame is the waste ColourFileText's header warns of.
+	// An unchanged pointer means unchanged texts, so their tokens must not be copied again
+	// every frame.
 	CHECK(binding.Texts.get() == held);
 	CHECK(binding.Tokens.New.data() == firstLine);
+}
+
+namespace {
+
+	constexpr const char* kCSharpWidget = "class Widget { }";
+
+	bool HasTokenOfKind(const std::vector<Graphite::Token>& tokens, Graphite::TokenKind kind)
+	{
+		for (const Graphite::Token& token : tokens)
+		{
+			if (token.Kind == kind)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
+TEST_CASE("A commit's C# texts arrive from the model coloured by the C# grammar")
+{
+	FakePort port;
+	port.Texts = TextsNaming(kCSharpWidget);
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestTextsFor(IdOf(1), "Widget.cs", "Widget.cs", "Widget.cs");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	const Core::Ref<const Graphite::FileTexts> texts = model.GetTextsFor(IdOf(1), "Widget.cs");
+
+	REQUIRE(texts != nullptr);
+	REQUIRE(texts->Tokens.Old.size() == 1);
+	REQUIRE(texts->Tokens.New.size() == 1);
+
+	// The C++ lexer colours a declared name as a bare identifier; only the grammar calls it a type.
+	CHECK(HasTokenOfKind(texts->Tokens.Old.front(), Graphite::TokenKind::SemanticType));
+	CHECK(HasTokenOfKind(texts->Tokens.New.front(), Graphite::TokenKind::SemanticType));
+}
+
+TEST_CASE("A commit's C++ texts carry exactly the tokens ColourFileText gives them")
+{
+	FakePort port;
+
+	Graphite::FileTexts texts;
+	texts.Old = "/* opened\nclosed */ int x;\n";
+	texts.New = "int y = 2;\n#define Z 3\n";
+	texts.HasOld = true;
+	texts.HasNew = true;
+	port.TextsByPaths[FakePort::PathsKey("old.cpp", "new.cpp")] = texts;
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestTextsFor(IdOf(1), "new.cpp", "old.cpp", "new.cpp");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	const Core::Ref<const Graphite::FileTexts> delivered = model.GetTextsFor(IdOf(1), "new.cpp");
+
+	REQUIRE(delivered != nullptr);
+	CHECK_FALSE(delivered->Tokens.Old.empty());
+	CHECK_FALSE(delivered->Tokens.New.empty());
+	CHECK(delivered->Tokens.Old == Graphite::ColourFileText(texts.Old, "old.cpp"));
+	CHECK(delivered->Tokens.New == Graphite::ColourFileText(texts.New, "new.cpp"));
+}
+
+TEST_CASE("A side a commit does not have arrives with no tokens")
+{
+	FakePort port;
+	port.TextsByPaths[FakePort::PathsKey("", "Widget.cs")] = NewSideOnly(kCSharpWidget);
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestTextsFor(IdOf(1), "Widget.cs", "", "Widget.cs");
+	model.OnUpdate(Core::Timestep{0.016f});
+
+	const Core::Ref<const Graphite::FileTexts> texts = model.GetTextsFor(IdOf(1), "Widget.cs");
+
+	REQUIRE(texts != nullptr);
+	CHECK(texts->Tokens.Old.empty());
+	CHECK_FALSE(texts->Tokens.New.empty());
+}
+
+TEST_CASE("A working-tree diff's C# text arrives from the model coloured by the C# grammar")
+{
+	FakePort port;
+
+	Core::FileDiff file;
+	file.OldPath = "Widget.cs";
+	file.NewPath = "Widget.cs";
+	port.Diff.Files.push_back(file);
+
+	port.WorkingTreeTexts = TextsNaming(kCSharpWidget);
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestWorkingTreeDiff({.Target = Core::DiffTarget::WorkTreeToIndex, .File = "Widget.cs"});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	const Core::Ref<const Graphite::FileTexts> texts = model.GetWorkingTreeTexts();
+
+	REQUIRE(texts != nullptr);
+	REQUIRE(texts->Tokens.New.size() == 1);
+	CHECK(HasTokenOfKind(texts->Tokens.New.front(), Graphite::TokenKind::SemanticType));
+	CHECK(texts->Tokens.Old == Graphite::ColourFileText(kCSharpWidget, "Widget.cs"));
+}
+
+TEST_CASE("The binding hands on the tokens its texts arrived with")
+{
+	FakePort port;
+	port.Texts = TextsNaming(kCSharpWidget);
+
+	Graphite::GitModel model{port, Inline()};
+	model.SetRoot("C:/repo");
+
+	Graphite::FileTextsBinding binding;
+
+	Settle(binding, model, IdOf(1), ModifiedFile("Widget.cs"));
+
+	REQUIRE(binding.Texts != nullptr);
+	CHECK_FALSE(binding.Tokens.New.empty());
+	CHECK(binding.Tokens.Old == binding.Texts->Tokens.Old);
+	CHECK(binding.Tokens.New == binding.Texts->Tokens.New);
 }
 
 TEST_CASE("A refresh asks about the history again, not only the status")

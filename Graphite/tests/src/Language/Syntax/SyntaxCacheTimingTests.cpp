@@ -4,35 +4,11 @@
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Syntax/SyntaxCache.h"
 
+#include "SyntaxFixtures.h"
+
 #include <algorithm>
 #include <chrono>
 #include <string>
-
-namespace {
-
-	constexpr std::size_t kMembers = 3300;
-
-	std::string TenThousandLinesOfCSharp()
-	{
-		std::string text = "namespace Demo;\npublic class Big\n{\n";
-
-		for (std::size_t memberIndex = 0; memberIndex < kMembers; ++memberIndex)
-		{
-			const std::string number = std::to_string(memberIndex);
-			text += "    public int Field" + number + " = " + number + ";\n";
-			text += "    public void Method" + number + "(string label) { System.Console.WriteLine($\"{label}: {Field" + number + "}\"); }\n";
-			text += "    // member " + number + "\n";
-		}
-
-		text += "}\n";
-		return text;
-	}
-
-	double MillisecondsSince(std::chrono::steady_clock::time_point start)
-	{
-		return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-	}
-}
 
 TEST_CASE("Typing in a ten-thousand-line C# file costs less than the per-keystroke budget" * doctest::skip())
 {

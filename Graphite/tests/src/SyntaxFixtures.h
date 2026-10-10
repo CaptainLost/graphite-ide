@@ -5,6 +5,7 @@
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Syntax/Token.h"
 
+#include <chrono>
 #include <cstddef>
 #include <string>
 #include <string_view>
@@ -111,6 +112,28 @@ inline std::string ManyCSharpClasses(std::size_t count)
 	}
 
 	return text;
+}
+
+inline std::string TenThousandLinesOfCSharp()
+{
+	constexpr std::size_t kMembers = 3300;
+	std::string text = "namespace Demo;\npublic class Big\n{\n";
+
+	for (std::size_t memberIndex = 0; memberIndex < kMembers; ++memberIndex)
+	{
+		const std::string number = std::to_string(memberIndex);
+		text += "    public int Field" + number + " = " + number + ";\n";
+		text += "    public void Method" + number + "(string label) { System.Console.WriteLine($\"{label}: {Field" + number + "}\"); }\n";
+		text += "    // member " + number + "\n";
+	}
+
+	text += "}\n";
+	return text;
+}
+
+inline double MillisecondsSince(std::chrono::steady_clock::time_point start)
+{
+	return std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
 }
 
 inline constexpr std::string_view kCSharpFixture = R"cs(using System.Collections.Generic;

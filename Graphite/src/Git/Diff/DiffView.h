@@ -27,22 +27,17 @@
 
 namespace Graphite {
 
-	// Draws one file's diff. Holds the mode, the scope and the syntax toggle below, plus a small cache of
-	// the file's own lines split out of its texts — rebuilt only when the FileTexts pointer
-	// changes, for the same reason the caller's token cache is: splitting a whole file's text
-	// on every frame is the same wasted pass ColourFileText's own header warns against, just for
-	// raw lines instead of tokens. Everything else — the rows themselves — is rebuilt from the
-	// file each frame, because the file comes from a snapshot that may be replaced between
-	// frames and rows cached across that swap would point into a diff that is no longer on
-	// screen.
+	// The file's lines are split out of its texts only when the FileTexts pointer changes, since
+	// splitting a whole file every frame would cost the frame. The rows are rebuilt every frame,
+	// because rows cached across a snapshot swap would point into a diff no longer on screen.
 	class DiffView
 	{
 	public:
 		// `texts` is null while the whole-file texts are still in flight, after a failure, or
 		// before the owner has asked at all — Render falls back to the hunks-only view in every
 		// one of those cases, which needs no text and is what the reader already had. `tokens`
-		// is whatever the owner has lexed for the current `texts`; an empty side means no lexer
-		// for that language, or no text yet, and both draw as plain text.
+		// are the ones that came with `texts`; an empty side means no syntax for that language,
+		// or no text yet, and both draw as plain text.
 		// `selection` is the editor scheme's selection colour: the diff draws code in the
 		// editor's palette, so a selection in it looks the way one does in the editor.
 		// `wordWrap` is the setting for diffs, which every diff shares and the toolbar's

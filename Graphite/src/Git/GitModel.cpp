@@ -314,7 +314,10 @@ namespace Graphite {
 					// else. The diff itself still draws, so this is not the diff's failure to report.
 					if (read.HasValue())
 					{
+						// Coloured here rather than in the delivery, which runs on the UI thread:
+						// a C# side is a whole-file parse with no budget.
 						texts = std::move(read).GetValue();
+						texts->Tokens = ColourSides(*texts, file.OldPath, file.NewPath);
 					}
 				}
 			}
@@ -506,6 +509,14 @@ namespace Graphite {
 
 		m_Submit([this, commit, path, oldPath, newPath, generation = *generation]() {
 			auto result = m_Port.ReadFileTexts(commit, oldPath, newPath);
+
+			// Coloured here rather than in the delivery, which runs on the UI thread: a C# side is
+			// a whole-file parse with no budget.
+			if (result.HasValue())
+			{
+				FileTexts& texts = result.GetValue();
+				texts.Tokens = ColourSides(texts, oldPath, newPath);
+			}
 
 			Deliver([this, commit, path, generation, result = std::move(result)]() mutable {
 				const TextsKey key{commit, path};
