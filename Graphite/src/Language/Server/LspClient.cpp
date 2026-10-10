@@ -285,12 +285,23 @@ namespace Graphite {
 										   .Solution = launch.Solution};
 		m_Shared->Problem = launch.Adapter->ProjectProblemAt(m_Shared->Context);
 
+		m_Shared->ProjectsLoading = launch.Adapter->LoadsProjectsFrom(m_Shared->Context);
+
 		m_Shared->Status.Name = std::string(launch.Server->DisplayName);
 		m_Shared->Status.State = ServerState::Starting;
 	}
 
 	void LspClient::Settle(Shared& shared)
 	{
+		if (shared.ProjectsLoading)
+		{
+			shared.Status.State = ServerState::Indexing;
+			shared.Status.Loading = *shared.ProjectsLoading;
+			return;
+		}
+
+		shared.Status.Loading.clear();
+
 		if (shared.Problem)
 		{
 			shared.Status.State = ServerState::ProjectIncomplete;
@@ -937,8 +948,21 @@ namespace Graphite {
 			return;
 		}
 
-		// window/logMessage and telemetry still have nowhere to go, and dropping a notification
-		// is always allowed.
+		if (shared.Adapter->HandleNotification(shared.Context, notification.Method, notification.Payload) ==
+			NotificationEffect::ProjectsLoaded)
+		{
+			const std::lock_guard<std::mutex> state(shared.StateMutex);
+
+			shared.ProjectsLoading.reset();
+
+			if (shared.ProgressTokens.empty())
+			{
+				Settle(shared);
+				shared.Status.Percent = -1;
+			}
+		}
+
+		// Anything else - window/logMessage, telemetry, a server's own notifications - may be dropped.
 	}
 
 	void LspClient::RecordServerMessage(Shared& shared, const nlohmann::json& params)

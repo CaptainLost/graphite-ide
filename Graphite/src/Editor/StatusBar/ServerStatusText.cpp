@@ -55,6 +55,12 @@ namespace Graphite {
 			{
 				return status.Name + ": indexing " + std::to_string(status.Percent) + "%";
 			}
+
+			if (!status.Loading.empty())
+			{
+				return status.Name + ": loading " + status.Loading;
+			}
+
 			return status.Name + ": indexing";
 
 		case ServerState::ProjectIncomplete:

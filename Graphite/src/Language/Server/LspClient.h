@@ -222,6 +222,9 @@ namespace Graphite {
 			// the two never name the same token. Under StateMutex, with the Status it decides.
 			std::vector<nlohmann::json> ProgressTokens;
 
+			// Under StateMutex, like ProgressTokens: the server is not settled while either says it is still busy.
+			std::optional<std::string> ProjectsLoading;
+
 			std::mutex ProtocolMutex;
 			JsonRpc Rpc;
 			std::unordered_map<RequestId, Asked> Pending;

@@ -235,6 +235,7 @@ namespace Graphite {
 		int Percent = -1;	// -1 means no percentage reported; meaningful only while State is Indexing
 		std::size_t Restarts = 0;
 		ProjectProblem Problem;
+		std::string Loading; // what an Indexing server loads before it reports progress of its own, e.g. "Demo.slnx"
 	};
 
 	enum class ServerMessageKind : std::uint8_t

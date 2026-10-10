@@ -79,6 +79,27 @@ namespace {
 		return drained.Status;
 	}
 
+	class ProjectLoadingAdapter final : public Graphite::ServerAdapter
+	{
+	public:
+		Graphite::NotificationEffect HandleNotification(const Graphite::AdapterContext&, std::string_view method,
+																const nlohmann::json&) const override
+		{
+			return method == "test/projectsLoaded" ? Graphite::NotificationEffect::ProjectsLoaded : Graphite::NotificationEffect::None;
+		}
+
+		std::optional<std::string> LoadsProjectsFrom(const Graphite::AdapterContext&) const override
+		{
+			return std::string{"Demo.slnx"};
+		}
+	};
+
+	constexpr std::string_view kHandshakeAnswer = R"({"jsonrpc":"2.0","id":1,"result":{"capabilities":{}}})";
+	constexpr std::string_view kProjectsLoaded = R"({"jsonrpc":"2.0","method":"test/projectsLoaded","params":null})";
+	constexpr std::string_view kRestoreBegins =
+		R"({"jsonrpc":"2.0","method":"$/progress","params":{"token":"restore","value":{"kind":"begin","title":"Restore"}}})";
+	constexpr std::string_view kRestoreEnds = R"({"jsonrpc":"2.0","method":"$/progress","params":{"token":"restore","value":{"kind":"end"}}})";
+
 	// The id BeginHandshake allocates, since it is the first request a client ever makes.
 	constexpr Graphite::RequestId kInitializeId = 1;
 }
@@ -1052,4 +1073,63 @@ TEST_CASE("A configuration request with no items gets no entries from a plain se
 
 	REQUIRE(sent.size() == 1);
 	CHECK(sent[0].find(R"("result":[])") != std::string::npos);
+}
+
+TEST_CASE("A server that loads projects stays indexing after the handshake until it says they are loaded")
+{
+	TempDirectory temp;
+	const ProjectLoadingAdapter adapter;
+	Graphite::ServerLaunch launch = ClangdLaunch();
+	launch.Adapter = &adapter;
+	Graphite::LspClient client = OfflineWith(launch, temp.GetPath());
+
+	client.Deliver(std::string{kHandshakeAnswer});
+
+	const Graphite::ServerStatus loading = StatusOf(client);
+	CHECK(loading.State == Graphite::ServerState::Indexing);
+	CHECK(loading.Loading == "Demo.slnx");
+
+	client.Deliver(std::string{kProjectsLoaded});
+
+	const Graphite::ServerStatus loaded = StatusOf(client);
+	CHECK(loaded.State == Graphite::ServerState::Ready);
+	CHECK(loaded.Loading.empty());
+}
+
+TEST_CASE("Progress that ends while projects are still loading leaves the server indexing")
+{
+	TempDirectory temp;
+	const ProjectLoadingAdapter adapter;
+	Graphite::ServerLaunch launch = ClangdLaunch();
+	launch.Adapter = &adapter;
+	Graphite::LspClient client = OfflineWith(launch, temp.GetPath());
+
+	client.Deliver(std::string{kHandshakeAnswer});
+	client.Deliver(std::string{kRestoreBegins});
+	client.Deliver(std::string{kRestoreEnds});
+
+	CHECK(StatusOf(client).State == Graphite::ServerState::Indexing);
+
+	client.Deliver(std::string{kProjectsLoaded});
+
+	CHECK(StatusOf(client).State == Graphite::ServerState::Ready);
+}
+
+TEST_CASE("Projects reported loaded while progress still runs settle when the progress ends")
+{
+	TempDirectory temp;
+	const ProjectLoadingAdapter adapter;
+	Graphite::ServerLaunch launch = ClangdLaunch();
+	launch.Adapter = &adapter;
+	Graphite::LspClient client = OfflineWith(launch, temp.GetPath());
+
+	client.Deliver(std::string{kHandshakeAnswer});
+	client.Deliver(std::string{kRestoreBegins});
+	client.Deliver(std::string{kProjectsLoaded});
+
+	CHECK(StatusOf(client).State == Graphite::ServerState::Indexing);
+
+	client.Deliver(std::string{kRestoreEnds});
+
+	CHECK(StatusOf(client).State == Graphite::ServerState::Ready);
 }

@@ -219,3 +219,16 @@ TEST_CASE("A configured path that does not exist is named in the tooltip")
 	CHECK(Graphite::ServerStatusText(status) == "clangd: not found");
 	CHECK(Graphite::ServerStatusDetail(status).find("D:\\Gone\\clangd.exe") != std::string::npos);
 }
+
+TEST_CASE("A server loading its projects says what it loads until it reports a percentage")
+{
+	Graphite::ServerStatus status;
+	status.Name = "Roslyn";
+	status.State = Graphite::ServerState::Indexing;
+	status.Loading = "Demo.slnx";
+
+	CHECK(Graphite::ServerStatusText(status) == "Roslyn: loading Demo.slnx");
+
+	status.Percent = 40;
+	CHECK(Graphite::ServerStatusText(status) == "Roslyn: indexing 40%");
+}

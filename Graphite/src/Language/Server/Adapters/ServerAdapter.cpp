@@ -81,6 +81,16 @@ namespace Graphite {
 		return std::nullopt;
 	}
 
+	NotificationEffect ServerAdapter::HandleNotification(const AdapterContext&, std::string_view, const nlohmann::json&) const
+	{
+		return NotificationEffect::None;
+	}
+
+	std::optional<std::string> ServerAdapter::LoadsProjectsFrom(const AdapterContext&) const
+	{
+		return std::nullopt;
+	}
+
 	std::optional<ProjectProblem> ServerAdapter::ProjectProblemAt(const AdapterContext&) const
 	{
 		return std::nullopt;
