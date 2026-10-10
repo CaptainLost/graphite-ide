@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "Language/Syntax/Grammar.h"
 #include "Language/Syntax/Grammars/CSharpGrammar.h"
 #include "Language/Syntax/SyntaxTree.h"
 #include "SyntaxFixtures.h"
@@ -241,6 +242,18 @@ TEST_CASE("A text above the size limit gets no tree and no tokens")
 	CHECK(tree.AdvanceToEnd());
 	CHECK_FALSE(tree.HasTree());
 	CHECK(tree.GetRowCount() == 0);
+}
+
+TEST_CASE("A grammar with no language is refused, so no parse is left pending")
+{
+	const Graphite::Grammar grammar(nullptr, "(identifier) @variable");
+	Graphite::SyntaxTree tree(grammar);
+
+	tree.Retarget("class C { }");
+
+	CHECK_FALSE(tree.IsParsing());
+	CHECK(tree.AdvanceToEnd());
+	CHECK_FALSE(tree.HasTree());
 }
 
 TEST_CASE("An empty text has one empty row with nothing on it")

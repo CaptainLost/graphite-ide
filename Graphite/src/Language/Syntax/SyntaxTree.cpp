@@ -22,9 +22,8 @@ namespace Graphite {
 			std::uint32_t Pattern = 0;
 		};
 
-		const char* ReadText(void* payload, std::uint32_t byteIndex, TSPoint position, std::uint32_t* bytesRead)
+		const char* ReadText(void* payload, std::uint32_t byteIndex, TSPoint, std::uint32_t* bytesRead)
 		{
-			static_cast<void>(position);
 			const std::string& text = *static_cast<const std::string*>(payload);
 
 			if (byteIndex >= text.size())
@@ -66,7 +65,7 @@ namespace Graphite {
 				std::upper_bound(rowStarts.begin(), rowStarts.end(), byteOffset);
 			const std::size_t row = static_cast<std::size_t>(firstRowAfter - rowStarts.begin()) - 1;
 
-			return TSPoint{Core::Narrow<std::uint32_t>(row), Core::Narrow<std::uint32_t>(byteOffset - rowStarts[row])};
+			return TSPoint{.row = Core::Narrow<std::uint32_t>(row), .column = Core::Narrow<std::uint32_t>(byteOffset - rowStarts[row])};
 		}
 
 		TSPoint PointAfter(std::string_view text, std::size_t fromByte, TSPoint fromPoint, std::size_t toByte)
@@ -127,14 +126,12 @@ namespace Graphite {
 			const std::size_t newEnd = after.size() - suffixLength;
 			const TSPoint startPoint = PointInRows(beforeRowStarts, prefixLength);
 
-			TSInputEdit edit{};
-			edit.start_byte = Core::Narrow<std::uint32_t>(prefixLength);
-			edit.old_end_byte = Core::Narrow<std::uint32_t>(oldEnd);
-			edit.new_end_byte = Core::Narrow<std::uint32_t>(newEnd);
-			edit.start_point = startPoint;
-			edit.old_end_point = PointInRows(beforeRowStarts, oldEnd);
-			edit.new_end_point = PointAfter(after, prefixLength, startPoint, newEnd);
-			return edit;
+			return TSInputEdit{.start_byte = Core::Narrow<std::uint32_t>(prefixLength),
+							   .old_end_byte = Core::Narrow<std::uint32_t>(oldEnd),
+							   .new_end_byte = Core::Narrow<std::uint32_t>(newEnd),
+							   .start_point = startPoint,
+							   .old_end_point = PointInRows(beforeRowStarts, oldEnd),
+							   .new_end_point = PointAfter(after, prefixLength, startPoint, newEnd)};
 		}
 
 		bool IsPaintedEarlier(const RowCapture& left, const RowCapture& right)
@@ -148,10 +145,10 @@ namespace Graphite {
 		}
 
 		// Painted widest first, so a narrower node overwrites the one around it and, for one node,
-		// a later pattern overwrites an earlier one.
+		// a later pattern overwrites an earlier one. The sort is stable, so ties keep the query's order.
 		void AppendPaintedTokens(std::vector<RowCapture>& captures, std::size_t rowLength, std::vector<Token>& out)
 		{
-			std::sort(captures.begin(), captures.end(), IsPaintedEarlier);
+			std::stable_sort(captures.begin(), captures.end(), IsPaintedEarlier);
 
 			constexpr std::size_t kUnpainted = std::numeric_limits<std::size_t>::max();
 			std::vector<std::size_t> painterOfByte(rowLength, kUnpainted);
@@ -189,7 +186,8 @@ namespace Graphite {
 	SyntaxTree::SyntaxTree(const Grammar& grammar)
 		: m_Grammar(grammar), m_Parser(ts_parser_new()), m_Cursor(ts_query_cursor_new())
 	{
-		m_LanguageAccepted = ts_parser_set_language(m_Parser, grammar.GetLanguage());
+		// The runtime accepts a null language, and a parse with none never finishes.
+		m_LanguageAccepted = grammar.GetLanguage() != nullptr && ts_parser_set_language(m_Parser, grammar.GetLanguage());
 	}
 
 	SyntaxTree::~SyntaxTree()
@@ -343,7 +341,8 @@ namespace Graphite {
 		const std::string_view rowText = RowText(row);
 		const std::uint32_t queriedRow = Core::Narrow<std::uint32_t>(row);
 
-		ts_query_cursor_set_point_range(m_Cursor, TSPoint{queriedRow, 0}, TSPoint{queriedRow + 1, 0});
+		ts_query_cursor_set_point_range(m_Cursor, TSPoint{.row = queriedRow, .column = 0},
+										TSPoint{.row = queriedRow + 1, .column = 0});
 		ts_query_cursor_exec(m_Cursor, highlights, ts_tree_root_node(m_Tree));
 
 		std::vector<RowCapture> captures;
