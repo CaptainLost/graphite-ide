@@ -10,6 +10,8 @@
 #include "Core/FileSystem/RelativePath.h"
 
 #include <cstdint>
+#include <format>
+#include <string>
 #include <system_error>
 #include <vector>
 
@@ -26,6 +28,13 @@ namespace Graphite {
 		{
 			std::error_code ignoredError;
 			std::filesystem::remove_all(path, ignoredError);
+		}
+
+		std::filesystem::path AsideNameOf(const std::filesystem::path& directory, int attempt)
+		{
+			const std::string counter = attempt == 0 ? std::string{} : std::to_string(attempt);
+			const std::string asideName = TemporaryNameOf(std::format("{}.removing{}", Core::ToUtf8(directory.filename()), counter));
+			return directory.parent_path() / Core::FromUtf8(asideName);
 		}
 
 		// Absent or null means the source published none; anything else must read as a checksum.
@@ -195,7 +204,16 @@ namespace Graphite {
 
 			for (const Core::DirectoryEntry& entry : entries.GetValue())
 			{
-				if (IsLeftover(entry, serverDirectory, outcome))
+				if (!IsLeftover(entry, serverDirectory, outcome))
+				{
+					continue;
+				}
+
+				if (entry.IsDirectory && !IsWorkingLeftover(entry, serverDirectory))
+				{
+					RemoveDirectoryWhole(entry.Path);
+				}
+				else
 				{
 					RemoveQuietly(entry.Path);
 				}
@@ -287,6 +305,35 @@ namespace Graphite {
 		}
 
 		return InstalledServer{.Record = std::move(*record), .Command = command};
+	}
+
+	bool RemoveDirectoryWhole(const std::filesystem::path& directory)
+	{
+		std::error_code statusError;
+
+		if (!std::filesystem::exists(directory, statusError))
+		{
+			return !statusError;
+		}
+
+		const Core::Result<std::filesystem::path> aside =
+			Core::PickAvailablePath([&directory](int attempt) { return AsideNameOf(directory, attempt); });
+
+		if (!aside)
+		{
+			return false;
+		}
+
+		std::error_code renameError;
+		std::filesystem::rename(directory, aside.GetValue(), renameError);
+
+		if (renameError)
+		{
+			return false;
+		}
+
+		RemoveQuietly(aside.GetValue());
+		return true;
 	}
 
 	void SweepServersDirectory(const std::filesystem::path& serversDirectory)

@@ -2,6 +2,7 @@
 
 #include "Language/Install/InstallJson.h"
 #include "Language/Install/InstalledServer.h"
+#include "Language/Install/PackageNames.h"
 
 #include "Core/Base/ScopeExit.h"
 #include "Core/FileSystem/FileLock.h"
@@ -16,6 +17,7 @@
 #include <optional>
 #include <ostream>
 #include <string>
+#include <vector>
 
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
@@ -242,5 +244,89 @@ TEST_CASE("The sweep keeps every version while the record cannot be read")
 	CHECK(std::filesystem::exists(clangd / "22.1.0"));
 	CHECK_FALSE(std::filesystem::exists(clangd / "24.0.0.tmp"));
 	CHECK_FALSE(std::filesystem::exists(clangd / ".download"));
+}
+#endif
+
+TEST_CASE("Removing a directory whole leaves nothing of it behind")
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path clangd = temporaryDirectory.GetPath() / "clangd";
+	MakeServerFile(clangd / "22.1.0" / "bin" / "server.exe");
+	MakeServerFile(clangd / "22.1.0" / "lib" / "a.dll");
+	MakeServerFile(clangd / "22.1.0.removing.tmp" / "left by an earlier attempt.dll");
+
+	CHECK(Graphite::RemoveDirectoryWhole(clangd / "22.1.0"));
+
+	CHECK_FALSE(std::filesystem::exists(clangd / "22.1.0"));
+	const Core::Result<std::vector<Core::DirectoryEntry>> entries = Core::ReadDirectory(clangd);
+	REQUIRE(entries);
+
+	for (const Core::DirectoryEntry& entry : entries.GetValue())
+	{
+		INFO(entry.Name);
+		CHECK(Graphite::IsTemporaryName(entry.Name));
+	}
+
+	CHECK(Graphite::RemoveDirectoryWhole(clangd / "21.0.0"));
+}
+
+#ifdef CORE_PLATFORM_WINDOWS
+namespace {
+
+	// Without FILE_SHARE_DELETE, as a running server holds its own executable.
+	HANDLE OpenAsARunningServer(const std::filesystem::path& file)
+	{
+		return ::CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
+							 nullptr);
+	}
+}
+
+TEST_CASE("Removing a directory whole leaves all of it while one of its files is held open")
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path version = temporaryDirectory.GetPath() / "clangd" / "22.1.0";
+	MakeServerFile(version / "bin" / "runtime.dll");
+	MakeServerFile(version / "bin" / "server.exe");
+	MakeServerFile(version / "lib" / "a.dll");
+
+	const HANDLE serverHandle = OpenAsARunningServer(version / "bin" / "server.exe");
+	REQUIRE(serverHandle != INVALID_HANDLE_VALUE);
+	const Core::ScopeExit closeHandle{[serverHandle] { ::CloseHandle(serverHandle); }};
+
+	CHECK_FALSE(Graphite::RemoveDirectoryWhole(version));
+
+	// runtime.dll sorts before the held server.exe, so a removal that is not all-or-nothing deletes it first.
+	CHECK(std::filesystem::exists(version / "bin" / "runtime.dll"));
+	CHECK(std::filesystem::exists(version / "bin" / "server.exe"));
+	CHECK(std::filesystem::exists(version / "lib" / "a.dll"));
+}
+
+TEST_CASE("The sweep leaves a version whole while one of its files is held open")
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path servers = temporaryDirectory.GetPath() / "servers";
+	const std::filesystem::path clangd = Graphite::ServerDirectoryOf(servers, "clangd");
+	MakeServerFile(clangd / "23.1.0" / "clangd_23.1.0" / "bin" / "clangd.exe");
+	MakeServerFile(clangd / "22.1.0" / "bin" / "runtime.dll");
+	MakeServerFile(clangd / "22.1.0" / "bin" / "server.exe");
+	MakeServerFile(clangd / "22.1.0" / "lib" / "a.dll");
+	REQUIRE(Graphite::WriteInstallRecord(clangd, ClangdRecord()));
+
+	{
+		const HANDLE serverHandle = OpenAsARunningServer(clangd / "22.1.0" / "bin" / "server.exe");
+		REQUIRE(serverHandle != INVALID_HANDLE_VALUE);
+		const Core::ScopeExit closeHandle{[serverHandle] { ::CloseHandle(serverHandle); }};
+
+		Graphite::SweepServersDirectory(servers);
+
+		CHECK(std::filesystem::exists(clangd / "22.1.0" / "bin" / "runtime.dll"));
+		CHECK(std::filesystem::exists(clangd / "22.1.0" / "bin" / "server.exe"));
+		CHECK(std::filesystem::exists(clangd / "22.1.0" / "lib" / "a.dll"));
+	}
+
+	Graphite::SweepServersDirectory(servers);
+
+	CHECK_FALSE(std::filesystem::exists(clangd / "22.1.0"));
+	CHECK(std::filesystem::exists(clangd / "23.1.0" / "clangd_23.1.0" / "bin" / "clangd.exe"));
 }
 #endif

@@ -22,6 +22,7 @@
 #include <map>
 #include <mutex>
 #include <system_error>
+#include <thread>
 #include <utility>
 #include <variant>
 
@@ -37,6 +38,8 @@ namespace Graphite {
 	namespace {
 
 		constexpr std::string_view kPartialSuffix = ".part";
+		constexpr int kPlacementAttempts = 10;
+		constexpr std::chrono::milliseconds kPlacementRetryDelay{100};
 
 		struct InstallJob
 		{
@@ -161,23 +164,42 @@ namespace Graphite {
 			return InstalledCommand{.Runner = LaunchRunner::Executable, .RelativePath = package.ExecutableInArchive};
 		}
 
+		Core::Error PlacementError(const std::filesystem::path& versionDirectory, std::string_view reason)
+		{
+			return Core::Error{.Code = Core::ErrorCode::IoFailure,
+							   .Message = std::format("cannot put the new version at '{}': {}; another program may be holding "
+													  "its files",
+													  Core::ToUtf8(versionDirectory), reason)};
+		}
+
+		// A scanner or an indexer may hold a file it has just seen extracted for a moment, which fails one rename.
+		std::error_code RenameRetrying(const std::filesystem::path& from, const std::filesystem::path& to)
+		{
+			std::error_code renameError;
+			std::filesystem::rename(from, to, renameError);
+
+			for (int attempt = 1; renameError && attempt < kPlacementAttempts; ++attempt)
+			{
+				std::this_thread::sleep_for(kPlacementRetryDelay);
+				std::filesystem::rename(from, to, renameError);
+			}
+
+			return renameError;
+		}
+
 		// A directory of this version left by an uninstall whose files were in use is replaced, never merged into.
 		Core::Result<void> PlaceVersion(const std::filesystem::path& stagingDirectory, const std::filesystem::path& versionDirectory)
 		{
-			std::error_code placementError;
-			std::filesystem::remove_all(versionDirectory, placementError);
-
-			if (!placementError)
+			if (!RemoveDirectoryWhole(versionDirectory))
 			{
-				std::filesystem::rename(stagingDirectory, versionDirectory, placementError);
+				return PlacementError(versionDirectory, "the directory already there cannot be moved aside");
 			}
 
-			if (placementError)
+			const std::error_code renameError = RenameRetrying(stagingDirectory, versionDirectory);
+
+			if (renameError)
 			{
-				return Core::Error{.Code = Core::ErrorCode::IoFailure,
-								   .Message = std::format("cannot put the new version at '{}': {}; a server running from "
-														  "there may still hold its files",
-														  Core::ToUtf8(versionDirectory), placementError.message())};
+				return PlacementError(versionDirectory, renameError.message());
 			}
 
 			return Core::Result<void>::Ok();
@@ -288,7 +310,8 @@ namespace Graphite {
 				return command.GetError();
 			}
 
-			const Core::Result<void> placed = PlaceVersion(stagingDirectory, job.ServerDirectory / Core::FromUtf8(package.Version));
+			const std::filesystem::path versionDirectory = job.ServerDirectory / Core::FromUtf8(package.Version);
+			const Core::Result<void> placed = PlaceVersion(stagingDirectory, versionDirectory);
 
 			if (!placed)
 			{
@@ -304,6 +327,7 @@ namespace Graphite {
 
 			if (!recorded)
 			{
+				RemoveDirectoryWhole(versionDirectory);
 				return recorded.GetError();
 			}
 
@@ -356,8 +380,8 @@ namespace Graphite {
 				return ChangeOf(job, InstallStep::Uninstalled);
 			}
 
-			// Files a running server still holds stay behind for the start-up sweep.
-			RemoveQuietly(job.ServerDirectory / Core::FromUtf8(record->Version));
+			// A version a running server still holds stays whole, for a later start-up sweep to remove.
+			RemoveDirectoryWhole(job.ServerDirectory / Core::FromUtf8(record->Version));
 			return ChangeOf(job, InstallStep::Uninstalled, record->Version);
 		}
 

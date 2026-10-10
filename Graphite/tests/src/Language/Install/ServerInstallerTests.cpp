@@ -4,6 +4,7 @@
 #include "Language/Install/ServerInstaller.h"
 
 #include "Core/Base/ByteText.h"
+#include "Core/Base/ScopeExit.h"
 #include "Core/FileSystem/FileLock.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Jobs/JobQueue.h"
@@ -27,6 +28,10 @@
 #include <string>
 #include <thread>
 #include <vector>
+
+#ifdef CORE_PLATFORM_WINDOWS
+#include <windows.h>
+#endif
 
 namespace {
 
@@ -492,6 +497,56 @@ TEST_CASE("A directory left behind by an earlier uninstall is replaced by the ne
 	CHECK_FALSE(std::filesystem::exists(stale));
 	CHECK(std::filesystem::exists(fixture.ToolDirectory() / "1.0.0" / "tool_1.0.0" / "bin" / "tool.exe"));
 }
+
+#ifdef CORE_PLATFORM_WINDOWS
+TEST_CASE("A version left behind that a running server holds fails the install and stays whole")
+{
+	InstallerFixture fixture;
+	const std::filesystem::path leftover = fixture.ToolDirectory() / "1.0.0" / "tool_1.0.0" / "bin";
+	std::filesystem::create_directories(leftover);
+	std::ofstream{leftover / "runtime.dll"} << "a library the server loads later";
+	std::ofstream{leftover / "tool.exe"} << "the running server";
+	ServeRelease(*fixture.Http, "1.0.0", ToolZip("1.0.0"), std::nullopt);
+
+	const HANDLE serverHandle = ::CreateFileW((leftover / "tool.exe").c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+											  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+	REQUIRE(serverHandle != INVALID_HANDLE_VALUE);
+	const Core::ScopeExit closeHandle{[serverHandle] { ::CloseHandle(serverHandle); }};
+
+	REQUIRE(fixture.Installer.Install(kGitHubTool));
+	const std::vector<Graphite::InstallProgress> changes = fixture.Drain();
+
+	REQUIRE_FALSE(changes.empty());
+	CHECK(changes.back().Step == Graphite::InstallStep::Failed);
+	CHECK(changes.back().Failure.find("another program may be holding its files") != std::string::npos);
+	CHECK(std::filesystem::exists(leftover / "runtime.dll"));
+	CHECK(std::filesystem::exists(leftover / "tool.exe"));
+	CHECK_FALSE(std::filesystem::exists(fixture.ToolDirectory() / "1.0.0.tmp"));
+	CHECK_FALSE(std::filesystem::exists(Graphite::RecordFileOf(fixture.ToolDirectory())));
+}
+
+TEST_CASE("A record that cannot be written leaves no new version behind")
+{
+	InstallerFixture fixture;
+	std::filesystem::create_directories(fixture.ToolDirectory());
+	std::ofstream{Graphite::RecordFileOf(fixture.ToolDirectory())} << "{}";
+	ServeRelease(*fixture.Http, "1.0.0", ToolZip("1.0.0"), std::nullopt);
+
+	const HANDLE recordHandle = ::CreateFileW(Graphite::RecordFileOf(fixture.ToolDirectory()).c_str(), GENERIC_READ, 0,
+											  nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+	REQUIRE(recordHandle != INVALID_HANDLE_VALUE);
+	const Core::ScopeExit closeHandle{[recordHandle] { ::CloseHandle(recordHandle); }};
+
+	REQUIRE(fixture.Installer.Install(kGitHubTool));
+	const std::vector<Graphite::InstallProgress> changes = fixture.Drain();
+
+	REQUIRE_FALSE(changes.empty());
+	CHECK(changes.back().Step == Graphite::InstallStep::Failed);
+	CHECK(CountOfStep(changes, Graphite::InstallStep::Extracting) == 1);
+	CHECK_FALSE(std::filesystem::exists(fixture.ToolDirectory() / "1.0.0"));
+	CHECK_FALSE(std::filesystem::exists(fixture.ToolDirectory() / "1.0.0.tmp"));
+}
+#endif
 
 TEST_CASE("An install on a worker thread reports through Drain")
 {

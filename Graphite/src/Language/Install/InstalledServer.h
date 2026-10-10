@@ -52,6 +52,10 @@ namespace Graphite {
 	// A record whose command is no longer on disk reads as nothing installed.
 	std::optional<InstalledServer> FindInstalledServer(const std::filesystem::path& serverDirectory);
 
+	// Renamed to a temporary name before anything inside is deleted, so a directory with a file in use stays whole and
+	// answers false; whatever the deletion leaves under the temporary name, the next sweep removes.
+	bool RemoveDirectoryWhole(const std::filesystem::path& directory);
+
 	// A server whose lock another Graphite window holds is left alone: its download and its half-extracted version are
 	// still in use.
 	void SweepServersDirectory(const std::filesystem::path& serversDirectory);
