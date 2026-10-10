@@ -16,8 +16,6 @@ namespace Graphite {
 
 	namespace {
 
-		constexpr std::string_view kRecordFileName = "installed.json";
-		constexpr std::string_view kLockFileName = "install.lock";
 		constexpr std::uintmax_t kLargestRecordBytes = 64 * 1024;
 		constexpr int kRecordIndent = 2;
 		constexpr std::string_view kDownloadDirectoryName = ".download";
@@ -78,16 +76,17 @@ namespace Graphite {
 			return {.State = state, .Record = std::move(record)};
 		}
 
-		bool IsRemovedWhenRecordIsUnknown(const Core::DirectoryEntry& entry)
+		bool IsWorkingLeftover(const Core::DirectoryEntry& entry, const std::filesystem::path& serverDirectory)
 		{
-			return IsTemporaryName(entry.Name) || (entry.IsDirectory && entry.Name == kDownloadDirectoryName);
+			return IsTemporaryName(entry.Name) || (entry.IsDirectory && entry.Path == DownloadDirectoryOf(serverDirectory));
 		}
 
-		bool IsLeftover(const Core::DirectoryEntry& entry, const RecordOutcome& outcome)
+		bool IsLeftover(const Core::DirectoryEntry& entry, const std::filesystem::path& serverDirectory,
+						const RecordOutcome& outcome)
 		{
 			if (outcome.State == RecordState::Unreadable)
 			{
-				return IsRemovedWhenRecordIsUnknown(entry);
+				return IsWorkingLeftover(entry, serverDirectory);
 			}
 
 			if (!entry.IsDirectory)
@@ -120,7 +119,7 @@ namespace Graphite {
 
 			for (const Core::DirectoryEntry& entry : entries.GetValue())
 			{
-				if (IsLeftover(entry, outcome))
+				if (IsLeftover(entry, serverDirectory, outcome))
 				{
 					RemoveQuietly(entry.Path);
 				}
@@ -141,6 +140,16 @@ namespace Graphite {
 	std::filesystem::path LockFileOf(const std::filesystem::path& serverDirectory)
 	{
 		return serverDirectory / Core::FromUtf8(kLockFileName);
+	}
+
+	std::filesystem::path DownloadDirectoryOf(const std::filesystem::path& serverDirectory)
+	{
+		return serverDirectory / Core::FromUtf8(kDownloadDirectoryName);
+	}
+
+	std::filesystem::path StagingDirectoryOf(const std::filesystem::path& serverDirectory, std::string_view version)
+	{
+		return serverDirectory / Core::FromUtf8(TemporaryNameOf(version));
 	}
 
 	std::string SerialiseInstallRecord(const InstallRecord& record)

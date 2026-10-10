@@ -35,6 +35,10 @@ namespace Graphite {
 
 	std::filesystem::path LockFileOf(const std::filesystem::path& serverDirectory);
 
+	std::filesystem::path DownloadDirectoryOf(const std::filesystem::path& serverDirectory);
+
+	std::filesystem::path StagingDirectoryOf(const std::filesystem::path& serverDirectory, std::string_view version);
+
 	std::string SerialiseInstallRecord(const InstallRecord& record);
 
 	// A record whose version or command could lead outside the server's directory reads as nothing, like a broken one.

@@ -122,6 +122,7 @@ TEST_CASE("The sweep keeps the recorded version and removes everything else left
 	MakeServerFile(clangd / "24.0.0.tmp" / "half.exe");
 	MakeServerFile(clangd / ".download" / "clangd-windows-24.0.0.zip.part");
 	MakeServerFile(clangd / "installed.json.tmp");
+	MakeServerFile(clangd / "installed.json.tmp1");
 	REQUIRE(Graphite::WriteInstallRecord(clangd, ClangdRecord()));
 
 	Graphite::SweepServersDirectory(servers);
@@ -132,7 +133,29 @@ TEST_CASE("The sweep keeps the recorded version and removes everything else left
 	CHECK_FALSE(std::filesystem::exists(clangd / "24.0.0.tmp"));
 	CHECK_FALSE(std::filesystem::exists(clangd / ".download"));
 	CHECK_FALSE(std::filesystem::exists(clangd / "installed.json.tmp"));
+	CHECK_FALSE(std::filesystem::exists(clangd / "installed.json.tmp1"));
 	CHECK_FALSE(std::filesystem::exists(clangd / "install.lock"));
+}
+
+TEST_CASE("The installer's working folders are ones the sweep clears")
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path servers = temporaryDirectory.GetPath() / "servers";
+	const std::filesystem::path clangd = Graphite::ServerDirectoryOf(servers, "clangd");
+
+	CHECK(Graphite::DownloadDirectoryOf(clangd) == clangd / ".download");
+	CHECK(Graphite::StagingDirectoryOf(clangd, "24.0.0") == clangd / "24.0.0.tmp");
+
+	MakeServerFile(Graphite::DownloadDirectoryOf(clangd) / "clangd-windows-24.0.0.zip.part");
+	MakeServerFile(Graphite::StagingDirectoryOf(clangd, "24.0.0") / "half.exe");
+	MakeServerFile(clangd / "23.1.0" / "clangd_23.1.0" / "bin" / "clangd.exe");
+	REQUIRE(Graphite::WriteInstallRecord(clangd, ClangdRecord()));
+
+	Graphite::SweepServersDirectory(servers);
+
+	CHECK_FALSE(std::filesystem::exists(Graphite::DownloadDirectoryOf(clangd)));
+	CHECK_FALSE(std::filesystem::exists(Graphite::StagingDirectoryOf(clangd, "24.0.0")));
+	CHECK(std::filesystem::exists(clangd / "23.1.0"));
 }
 
 TEST_CASE("The sweep removes every version of a server whose record is corrupt")

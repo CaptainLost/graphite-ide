@@ -56,8 +56,24 @@ TEST_CASE("A version or an id names a directory only when it can neither leave n
 	CHECK_FALSE(Graphite::IsSafeDirectoryName("1.0.TMP"));
 	CHECK_FALSE(Graphite::IsSafeDirectoryName(".download"));
 	CHECK_FALSE(Graphite::IsSafeDirectoryName(std::string(65, '1')));
+	CHECK_FALSE(Graphite::IsSafeDirectoryName("CON"));
+	CHECK_FALSE(Graphite::IsSafeDirectoryName("nul.1"));
+	CHECK_FALSE(Graphite::IsSafeDirectoryName("installed.json"));
+	CHECK_FALSE(Graphite::IsSafeDirectoryName("Install.Lock"));
+	CHECK_FALSE(Graphite::IsSafeDirectoryName("1.0.tmp2"));
 
 	CHECK(Graphite::IsTemporaryName("24.0.0.tmp"));
 	CHECK(Graphite::IsTemporaryName("installed.json.TMP"));
+	CHECK(Graphite::IsTemporaryName("installed.json.tmp1"));
+	CHECK(Graphite::IsTemporaryName("installed.json.tmp42"));
 	CHECK_FALSE(Graphite::IsTemporaryName("tmp"));
+	CHECK_FALSE(Graphite::IsTemporaryName("tmp1"));
+	CHECK_FALSE(Graphite::IsTemporaryName("23.1.0"));
+}
+
+TEST_CASE("A temporary name made from a version is one the sweep recognises")
+{
+	CHECK(Graphite::TemporaryNameOf("24.0.0") == "24.0.0.tmp");
+	CHECK(Graphite::IsTemporaryName(Graphite::TemporaryNameOf("24.0.0")));
+	CHECK(Graphite::IsTemporaryName(Graphite::TemporaryNameOf("22.1.0.removing")));
 }

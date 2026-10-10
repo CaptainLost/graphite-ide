@@ -36,9 +36,7 @@ namespace Graphite {
 
 	namespace {
 
-		constexpr std::string_view kDownloadFolder = ".download";
 		constexpr std::string_view kPartialSuffix = ".part";
-		constexpr std::string_view kStagingSuffix = ".tmp";
 
 		struct InstallJob
 		{
@@ -224,9 +222,8 @@ namespace Graphite {
 				return InstalledOutcome(job, package.Version, installed->Record.VerifiedChecksum.has_value());
 			}
 
-			const std::filesystem::path downloadDirectory = job.ServerDirectory / Core::FromUtf8(kDownloadFolder);
-			const std::filesystem::path stagingDirectory =
-				job.ServerDirectory / Core::FromUtf8(package.Version + std::string{kStagingSuffix});
+			const std::filesystem::path downloadDirectory = DownloadDirectoryOf(job.ServerDirectory);
+			const std::filesystem::path stagingDirectory = StagingDirectoryOf(job.ServerDirectory, package.Version);
 
 			// Runs on success too: a finished install leaves only its version directory and its record.
 			const Core::ScopeExit removeWorkingFolders{[&downloadDirectory, &stagingDirectory] {

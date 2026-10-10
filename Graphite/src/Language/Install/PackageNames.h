@@ -26,7 +26,14 @@ namespace Graphite {
 
 	std::string_view ExecutableSuffix(Core::OperatingSystem system);
 
+	// No version may take one of these names: a release tagged "installed.json" would replace the record.
+	inline constexpr std::string_view kRecordFileName = "installed.json";
+	inline constexpr std::string_view kLockFileName = "install.lock";
+
+	// Core::WriteFileAtomically falls back to ".tmp1", ".tmp2" and on, which the sweep must clear too.
 	bool IsTemporaryName(std::string_view name);
+
+	std::string TemporaryNameOf(std::string_view name);
 
 	// A temporary name is refused too, because the start-up sweep removes anything so named.
 	bool IsSafeDirectoryName(std::string_view name);

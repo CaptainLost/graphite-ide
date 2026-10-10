@@ -1,6 +1,7 @@
 #include "Language/Install/PackageNames.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/FileSystem/RelativePath.h"
 
 #include <format>
 #include <optional>
@@ -11,6 +12,7 @@ namespace Graphite {
 
 		constexpr std::size_t kLongestDirectoryName = 64;
 		constexpr std::string_view kTemporarySuffix = ".tmp";
+		constexpr std::string_view kDigits = "0123456789";
 
 		bool IsLetterOrDigit(char character)
 		{
@@ -23,6 +25,11 @@ namespace Graphite {
 		bool IsDirectoryNameCharacter(char character)
 		{
 			return IsLetterOrDigit(character) || character == '.' || character == '-' || character == '_' || character == '+';
+		}
+
+		bool IsInstallerFileName(std::string_view name)
+		{
+			return Core::EqualsIgnoringCase(name, kRecordFileName) || Core::EqualsIgnoringCase(name, kLockFileName);
 		}
 
 		std::string_view RuntimeSystemName(Core::OperatingSystem system)
@@ -160,14 +167,22 @@ namespace Graphite {
 
 	bool IsTemporaryName(std::string_view name)
 	{
-		return name.size() >= kTemporarySuffix.size() &&
-			   Core::EqualsIgnoringCase(name.substr(name.size() - kTemporarySuffix.size()), kTemporarySuffix);
+		const std::string_view withoutCounter = Core::WithoutTrailing(name, kDigits);
+
+		return withoutCounter.size() >= kTemporarySuffix.size() &&
+			   Core::EqualsIgnoringCase(withoutCounter.substr(withoutCounter.size() - kTemporarySuffix.size()),
+										kTemporarySuffix);
+	}
+
+	std::string TemporaryNameOf(std::string_view name)
+	{
+		return std::string{name} + std::string{kTemporarySuffix};
 	}
 
 	bool IsSafeDirectoryName(std::string_view name)
 	{
 		if (name.empty() || name.size() > kLongestDirectoryName || !IsLetterOrDigit(name.front()) || name.ends_with('.') ||
-			IsTemporaryName(name))
+			IsTemporaryName(name) || IsInstallerFileName(name) || !Core::IsSafeRelativePath(name))
 		{
 			return false;
 		}
