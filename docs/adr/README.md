@@ -598,4 +598,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0566](0566-store-nested-values-in-graphite-json.md) | Store nested values in graphite.json | proposed | 2026-10-09 |
 | [0567](0567-keep-server-specific-behaviour-in-adapters.md) | Keep server-specific behaviour in adapters | proposed | 2026-10-09 |
 | [0568](0568-colour-a-language-through-tree-sitter.md) | Colour a language through tree-sitter | proposed | 2026-10-10 |
+| [0569](0569-install-a-language-server-on-request-from-its-own-release-channel.md) | Install a language server on request from its own release channel | proposed | 2026-10-10 |
 <!-- /adr-index -->
