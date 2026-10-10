@@ -59,7 +59,7 @@ namespace Graphite {
 			 .ProtocolLanguageId = "csharp",
 			 .DefaultArguments = kRoslynArguments,
 			 .RootMarkers = kCSharpRootMarkers,
-			 .Adapter = AdapterKind::Plain,
+			 .Adapter = AdapterKind::Roslyn,
 			 .Package = NuGetToolPackage{.PackageIdTemplate = "roslyn-language-server.{rid}", .AllowPrerelease = true},
 			 .Runtime = kDotnet10},
 			{.Id = "csharp-ls",

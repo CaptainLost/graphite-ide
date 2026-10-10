@@ -2,6 +2,7 @@
 
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/Adapters/ClangdAdapter.h"
+#include "Language/Server/Adapters/RoslynAdapter.h"
 
 #include <string>
 #include <vector>
@@ -101,6 +102,11 @@ namespace Graphite {
 		return false;
 	}
 
+	bool ServerAdapter::FollowsSelectedSolution() const
+	{
+		return false;
+	}
+
 	bool ServerAdapter::WarmUpNeedsOpen() const
 	{
 		return false;
@@ -115,6 +121,7 @@ namespace Graphite {
 	{
 		static const ServerAdapter plain{};
 		static const ClangdAdapter clangd{};
+		static const RoslynAdapter roslyn{};
 
 		switch (kind)
 		{
@@ -122,6 +129,8 @@ namespace Graphite {
 			return plain;
 		case AdapterKind::Clangd:
 			return clangd;
+		case AdapterKind::Roslyn:
+			return roslyn;
 		}
 
 		return plain;

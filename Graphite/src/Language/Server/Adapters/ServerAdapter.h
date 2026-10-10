@@ -63,6 +63,9 @@ namespace Graphite {
 		virtual bool SupportsSwitchSourceHeader() const;
 
 		virtual bool AnswersEmptyConfigurationWithOneEntry() const;
+
+		// A server that loads the solution it is handed must restart when the user selects another.
+		virtual bool FollowsSelectedSolution() const;
 	};
 
 	const ServerAdapter& AdapterOf(AdapterKind kind);

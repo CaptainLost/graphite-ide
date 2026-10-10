@@ -1133,3 +1133,23 @@ TEST_CASE("Projects reported loaded while progress still runs settle when the pr
 
 	CHECK(StatusOf(client).State == Graphite::ServerState::Ready);
 }
+
+TEST_CASE("Roslyn reads as loading its solution until it reports the projects initialized")
+{
+	TempDirectory temp;
+	Graphite::ServerLaunch launch = Graphite::LaunchFor(*Graphite::FindServer("roslyn"), {}, {});
+	launch.Solution = temp.GetPath() / "Demo.slnx";
+	Graphite::LspClient client = OfflineWith(launch, temp.GetPath());
+
+	client.Deliver(std::string{kHandshakeAnswer});
+
+	CHECK(AnySent(client.TakeSent(), "solution/open"));
+
+	const Graphite::ServerStatus loading = StatusOf(client);
+	CHECK(loading.State == Graphite::ServerState::Indexing);
+	CHECK(loading.Loading == "Demo.slnx");
+
+	client.Deliver(R"({"jsonrpc":"2.0","method":"workspace/projectInitializationComplete","params":null})");
+
+	CHECK(StatusOf(client).State == Graphite::ServerState::Ready);
+}

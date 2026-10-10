@@ -15,7 +15,8 @@ namespace Graphite {
 	enum class AdapterKind : std::uint8_t
 	{
 		Plain,
-		Clangd
+		Clangd,
+		Roslyn
 	};
 
 	enum class RuntimeKind : std::uint8_t
