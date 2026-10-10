@@ -24,6 +24,7 @@
 #include "Language/Analysis/FileTextSource.h"
 #include "Language/Analysis/WorkspaceAnalysisCoordinator.h"
 #include "Language/Diagnostics/DiagnosticsModel.h"
+#include "Language/Install/ServerInstalls.h"
 #include "Language/Server/LanguageServices.h"
 #include "Sessions/SessionWindows.h"
 #include "Terminal/TerminalWindows.h"
@@ -154,6 +155,11 @@ namespace Graphite {
 
 		void PublishServerMessages();
 
+		static Core::Ref<Core::HttpClient> CreateInstallClient();
+		void ApplyFinishedInstalls();
+		bool CanInstallChosenServerFor(const std::filesystem::path& path);
+		void InstallChosenServerFor(LanguageId language);
+
 		GlobalState CaptureGlobalState();
 
 		// The open folder's file tabs, session windows and diff windows, as one snapshot.
@@ -191,6 +197,11 @@ namespace Graphite {
 		// Owns every language server the editor talks to; the status bar reads its state each
 		// frame through StatusFor.
 		LanguageServices m_LanguageServices{m_Workspace.GetRoot()};
+
+		// Before m_ServerInstalls, so it is destroyed after it: the installer cancels its jobs, then this joins them.
+		Core::JobQueue m_InstallJobs{1};
+		ServerInstalls m_ServerInstalls{CreateInstallClient(), UserDirectories::ServersDirectory(),
+										[this](std::function<void()> job) { m_InstallJobs.Submit(std::move(job)); }};
 
 		// Declared after m_LanguageServices, which fills it each frame in OnImGuiRender, and
 		// before m_DocumentWindows and m_Panels, both of which hold this by reference: the model

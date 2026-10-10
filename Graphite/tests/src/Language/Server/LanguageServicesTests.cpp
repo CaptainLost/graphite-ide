@@ -2015,3 +2015,17 @@ TEST_CASE("Selecting the same solution again or under a server that does not fol
 
 	CHECK(spy.Made == 1);
 }
+
+TEST_CASE("A language's chosen server is reported until it is turned off")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	std::string chosen = "csharp-ls";
+
+	services.SetChoiceProvider([&chosen](Graphite::LanguageId language) { return Graphite::ChooseServer(language, chosen); });
+	CHECK(services.ChosenServer(Graphite::LanguageId::CSharp) == Graphite::FindServer("csharp-ls"));
+
+	chosen = std::string{Graphite::kServerTurnedOff};
+	services.Reconfigure(Graphite::LanguageId::CSharp);
+	CHECK(services.ChosenServer(Graphite::LanguageId::CSharp) == nullptr);
+}

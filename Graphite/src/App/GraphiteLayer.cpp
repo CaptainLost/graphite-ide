@@ -40,7 +40,9 @@
 #include "App/LanguageServerChoice.h"
 #include "App/SampleToasts.h"
 
+#include "App/Version.h"
 #include "Core/App/Application.h"
+#include "Core/Network/HttpClient.h"
 #include "Core/App/Redraw.h"
 
 #include "Core/Base/Log.h"
@@ -209,6 +211,11 @@ namespace Graphite {
 		// Every root is judged by itself: LanguageServices gives a file with no marker above it the
 		// open folder or its own directory as a root, never an empty one.
 		m_LanguageServices.SetRootPermission([this](const std::filesystem::path& root) { return m_Trust.IsTrusted(root); });
+
+		// Before OpenStartupFolder, whose warm-up may start a server from Graphite's install.
+		m_LanguageServices.SetServersDirectory(m_ServerInstalls.GetServersDirectory());
+		m_LanguageServices.SetLogDirectory(UserDirectories::LogFile().parent_path());
+		m_ServerInstalls.SweepAtStartup();
 
 		std::vector<Core::Scope<SettingsSection>> sections;
 
@@ -381,6 +388,17 @@ namespace Graphite {
 
 		m_Keys.SetDefault(kFindReferencesCommand,
 						  {.Primary = Core::Chord::Key(ImGuiMod_Shift | ImGuiKey_F12)});
+
+		m_Commands.Add({.Id = "languageServers.install",
+						.Label = "Install Language Server",
+						.Run = [this] {
+							if (const std::optional<std::filesystem::path> path = ActiveTextDocument(m_Documents))
+							{
+								InstallChosenServerFor(LanguageOfPath(*path));
+							} },
+						.Enabled = [this] {
+							const std::optional<std::filesystem::path> path = ActiveTextDocument(m_Documents);
+							return path.has_value() && CanInstallChosenServerFor(*path); }});
 
 #ifdef CORE_DEBUG
 		m_Commands.Add({.Id = "debug.logTestEntries",
@@ -674,6 +692,69 @@ namespace Graphite {
 		m_AppSettings.Flush();
 	}
 
+	Core::Ref<Core::HttpClient> GraphiteLayer::CreateInstallClient()
+	{
+		Core::Result<Core::Scope<Core::HttpClient>> created = Core::CreateHttpClient(std::string{"Graphite/"} + Version::String());
+
+		if (!created)
+		{
+			APP_WARN("Language servers cannot be downloaded: {}", created.GetError().Message);
+			return nullptr;
+		}
+
+		return Core::Ref<Core::HttpClient>{std::move(created.GetValue())};
+	}
+
+	void GraphiteLayer::ApplyFinishedInstalls()
+	{
+		m_ServerInstalls.Poll();
+
+		std::vector<InstallProgress> finished;
+		m_ServerInstalls.TakeFinished(finished);
+
+		for (const InstallProgress& outcome : finished)
+		{
+			switch (outcome.Step)
+			{
+			case InstallStep::Installed:
+			case InstallStep::Uninstalled:
+				for (const LanguageId language : LanguagesServedBy(outcome.ServerId))
+				{
+					m_LanguageServices.Reconfigure(language);
+				}
+				break;
+			case InstallStep::Failed:
+				m_Events.Publish(ApplicationToast(Core::ToastKind::Error, outcome.ServerId, outcome.Failure));
+				break;
+			case InstallStep::Resolving:
+			case InstallStep::Downloading:
+			case InstallStep::Verifying:
+			case InstallStep::Extracting:
+			case InstallStep::UpToDate:
+			case InstallStep::UpdateAvailable:
+			case InstallStep::Cancelled:
+				break;
+			}
+		}
+	}
+
+	bool GraphiteLayer::CanInstallChosenServerFor(const std::filesystem::path& path)
+	{
+		const LanguageId language = LanguageOfPath(path);
+		const ServerDefinition* server = m_LanguageServices.ChosenServer(language);
+
+		return server != nullptr && !m_ServerInstalls.IsBusy(server->Id) &&
+			   m_LanguageServices.StatusFor(path, language).State == ServerState::NotInstalled;
+	}
+
+	void GraphiteLayer::InstallChosenServerFor(LanguageId language)
+	{
+		if (const ServerDefinition* server = m_LanguageServices.ChosenServer(language))
+		{
+			m_ServerInstalls.Install(server->Id);
+		}
+	}
+
 	void GraphiteLayer::PublishServerMessages()
 	{
 		std::vector<ServerMessage> messages;
@@ -777,6 +858,7 @@ namespace Graphite {
 		// appears there is nothing to read at all.
 		m_LanguageServices.Poll();
 		PublishServerMessages();
+		ApplyFinishedInstalls();
 
 		// Before anything draws, for the reason the Tick below gives: the panels render at 512
 		// and DocumentWindows drains its own answers at 516, so a model fed any later is read by

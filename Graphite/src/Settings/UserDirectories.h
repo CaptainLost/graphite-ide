@@ -25,6 +25,7 @@ namespace Graphite {
 		static std::filesystem::path SessionsCacheFile();
 		static std::filesystem::path LogFile();
 		static std::filesystem::path TrustedFoldersFile();
+		static std::filesystem::path ServersDirectory();
 
 		// Puts every file under `root` for the rest of the process instead of the user's
 		// profile. For a test runner, which must never write the settings of whoever runs it.

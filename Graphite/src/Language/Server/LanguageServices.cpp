@@ -218,6 +218,11 @@ namespace Graphite {
 		return ChoiceFor(language).Kind == ServerChoiceKind::Chosen;
 	}
 
+	const ServerDefinition* LanguageServices::ChosenServer(LanguageId language) const
+	{
+		return ServerFor(language);
+	}
+
 	bool LanguageServices::OffersSwitchSourceHeader(LanguageId language) const
 	{
 		const ServerDefinition* server = ServerFor(language);

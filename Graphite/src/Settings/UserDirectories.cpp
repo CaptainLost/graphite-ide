@@ -122,6 +122,18 @@ namespace Graphite {
 		return GetRoots().Local / "trusted-folders.json";
 	}
 
+	// Local, not roaming: a server is a binary built for this machine's system and processor.
+	std::filesystem::path UserDirectories::ServersDirectory()
+	{
+		static const std::filesystem::path directory = [] {
+			const std::filesystem::path servers = GetRoots().Local / "servers";
+			Ensure(servers);
+			return servers;
+		}();
+
+		return directory;
+	}
+
 	std::filesystem::path UserDirectories::LogFile()
 	{
 		static const std::filesystem::path file = [] {

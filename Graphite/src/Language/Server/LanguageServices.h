@@ -181,6 +181,8 @@ namespace Graphite {
 		// nothing about whether one is installed or running.
 		bool HasChosenServer(LanguageId language) const;
 
+		const ServerDefinition* ChosenServer(LanguageId language) const;
+
 		bool OffersSwitchSourceHeader(LanguageId language) const;
 
 		// The status of the server for this document's own (language, root), Off when its server
