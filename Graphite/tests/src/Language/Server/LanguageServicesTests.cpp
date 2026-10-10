@@ -1986,6 +1986,9 @@ TEST_CASE("Selecting another solution restarts a server that follows it on the n
 	CHECK(AnySentContaining(sent, "solution/open"));
 	CHECK(AnySentContaining(sent, "B.slnx"));
 	CHECK(AnySentContaining(sent, "textDocument/didOpen"));
+
+	services.SetSelectedSolution(temp.GetPath() / "B.slnx");
+	CHECK(spy.Made == 2);
 }
 
 TEST_CASE("Selecting the same solution again or under a server that does not follow it restarts nothing")
