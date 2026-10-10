@@ -3,6 +3,7 @@
 #include "Language/Install/InstallJson.h"
 #include "Language/Install/InstalledServer.h"
 
+#include "Core/Base/ScopeExit.h"
 #include "Core/FileSystem/FileLock.h"
 #include "Core/FileSystem/FileSystem.h"
 
@@ -15,6 +16,10 @@
 #include <optional>
 #include <ostream>
 #include <string>
+
+#ifdef CORE_PLATFORM_WINDOWS
+#include <windows.h>
+#endif
 
 namespace {
 
@@ -158,3 +163,29 @@ TEST_CASE("The sweep leaves alone a server another Graphite window is installing
 	CHECK(std::filesystem::exists(clangd / "24.0.0.tmp" / "half.exe"));
 	CHECK(std::filesystem::exists(clangd / ".download" / "clangd-windows-24.0.0.zip.part"));
 }
+
+#ifdef CORE_PLATFORM_WINDOWS
+TEST_CASE("The sweep keeps every version while the record cannot be read")
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path servers = temporaryDirectory.GetPath() / "servers";
+	const std::filesystem::path clangd = Graphite::ServerDirectoryOf(servers, "clangd");
+	MakeServerFile(clangd / "23.1.0" / "clangd_23.1.0" / "bin" / "clangd.exe");
+	MakeServerFile(clangd / "22.1.0" / "clangd_22.1.0" / "bin" / "clangd.exe");
+	MakeServerFile(clangd / "24.0.0.tmp" / "half.exe");
+	MakeServerFile(clangd / ".download" / "clangd-windows-24.0.0.zip.part");
+	REQUIRE(Graphite::WriteInstallRecord(clangd, ClangdRecord()));
+
+	const HANDLE exclusiveHandle = ::CreateFileW(Graphite::RecordFileOf(clangd).c_str(), GENERIC_READ, 0, nullptr,
+												 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+	REQUIRE(exclusiveHandle != INVALID_HANDLE_VALUE);
+	const Core::ScopeExit closeHandle{[exclusiveHandle] { ::CloseHandle(exclusiveHandle); }};
+
+	Graphite::SweepServersDirectory(servers);
+
+	CHECK(std::filesystem::exists(clangd / "23.1.0"));
+	CHECK(std::filesystem::exists(clangd / "22.1.0"));
+	CHECK_FALSE(std::filesystem::exists(clangd / "24.0.0.tmp"));
+	CHECK_FALSE(std::filesystem::exists(clangd / ".download"));
+}
+#endif

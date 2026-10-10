@@ -3,6 +3,7 @@
 #include "Language/Install/InstallJson.h"
 #include "Language/Install/PackageNames.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/FileSystem/AtomicWrite.h"
 #include "Core/FileSystem/FileLock.h"
 #include "Core/FileSystem/FileSystem.h"
@@ -19,6 +20,7 @@ namespace Graphite {
 		constexpr std::string_view kLockFileName = "install.lock";
 		constexpr std::uintmax_t kLargestRecordBytes = 64 * 1024;
 		constexpr int kRecordIndent = 2;
+		constexpr std::string_view kDownloadDirectoryName = ".download";
 
 		void RemoveQuietly(const std::filesystem::path& path)
 		{
@@ -47,6 +49,58 @@ namespace Graphite {
 			return checksum;
 		}
 
+		enum class RecordState
+		{
+			AbsentOrInvalid,
+			Valid,
+			Unreadable
+		};
+
+		struct RecordOutcome
+		{
+			RecordState State = RecordState::AbsentOrInvalid;
+			std::optional<InstallRecord> Record;
+		};
+
+		RecordOutcome ReadRecordOutcome(const std::filesystem::path& serverDirectory)
+		{
+			const Core::Result<std::string> text = Core::ReadFileBytes(RecordFileOf(serverDirectory), kLargestRecordBytes);
+
+			if (!text)
+			{
+				const bool isAbsent = text.GetError().Code == Core::ErrorCode::NotFound;
+				return {.State = isAbsent ? RecordState::AbsentOrInvalid : RecordState::Unreadable, .Record = std::nullopt};
+			}
+
+			std::optional<InstallRecord> record = ParseInstallRecord(text.GetValue());
+			const RecordState state = record ? RecordState::Valid : RecordState::AbsentOrInvalid;
+
+			return {.State = state, .Record = std::move(record)};
+		}
+
+		bool IsRemovedWhenRecordIsUnknown(const Core::DirectoryEntry& entry)
+		{
+			return IsTemporaryName(entry.Name) || (entry.IsDirectory && entry.Name == kDownloadDirectoryName);
+		}
+
+		bool IsLeftover(const Core::DirectoryEntry& entry, const RecordOutcome& outcome)
+		{
+			if (outcome.State == RecordState::Unreadable)
+			{
+				return IsRemovedWhenRecordIsUnknown(entry);
+			}
+
+			if (!entry.IsDirectory)
+			{
+				return IsTemporaryName(entry.Name);
+			}
+
+			const bool isRecordedVersion =
+				outcome.Record.has_value() && Core::EqualsIgnoringCase(entry.Name, outcome.Record->Version);
+
+			return !isRecordedVersion;
+		}
+
 		void SweepServerDirectory(const std::filesystem::path& serverDirectory)
 		{
 			const Core::Result<Core::FileLock> lock = Core::FileLock::TryAcquire(LockFileOf(serverDirectory));
@@ -56,7 +110,7 @@ namespace Graphite {
 				return;
 			}
 
-			const std::optional<InstallRecord> record = ReadInstallRecord(serverDirectory);
+			const RecordOutcome outcome = ReadRecordOutcome(serverDirectory);
 			const Core::Result<std::vector<Core::DirectoryEntry>> entries = Core::ReadDirectory(serverDirectory);
 
 			if (!entries)
@@ -66,10 +120,7 @@ namespace Graphite {
 
 			for (const Core::DirectoryEntry& entry : entries.GetValue())
 			{
-				const bool isRecordedVersion = entry.IsDirectory && record.has_value() && entry.Name == record->Version;
-				const bool isLeftover = entry.IsDirectory ? !isRecordedVersion : IsTemporaryName(entry.Name);
-
-				if (isLeftover)
+				if (IsLeftover(entry, outcome))
 				{
 					RemoveQuietly(entry.Path);
 				}
