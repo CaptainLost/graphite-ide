@@ -5,6 +5,7 @@
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Timestep.h"
 #include "Core/Events/EventBus.h"
+#include "Core/Jobs/JobSubmitter.h"
 #include "Git/Debouncer.h"
 #include "Git/DeliveryInbox.h"
 #include "Git/Diff/FileTexts.h"
@@ -27,9 +28,7 @@
 
 namespace Graphite {
 
-	// How a query reaches a worker. Injected rather than taken as a Core::JobQueue so the
-	// tests can run a job where they submitted it and stay free of threads.
-	using JobSubmitter = std::function<void(std::function<void()>)>;
+	using Core::JobSubmitter;
 
 	// What a discard is asked to do, as two lists rather than one. They are two different
 	// outcomes — restored from the index, and deleted from disk — and merging them would
