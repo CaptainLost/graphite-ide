@@ -10,7 +10,7 @@ Date: 2026-10-10
 ## Decision
 
 Core gains generic pieces. Each has a Windows backend and returns `Unsupported` elsewhere ([0002](0002-keep-core-free-of-ide-knowledge.md)):
-- `HttpClient` over WinHTTP: HTTPS only, the system proxy, redirects followed, compressed answers decompressed;
+- `HttpClient` over WinHTTP: HTTPS only, the system proxy, redirects followed. A fetched answer is decompressed when it comes compressed; a download never is, so its bytes are hashed exactly as served;
 - SHA-256 and SHA-512 through BCrypt;
 - zip extraction through miniz, a submodule ([0003](0003-vendor-dependencies-as-git-submodules-built-by-premake.md)). It refuses the whole archive when any entry could land outside the destination;
 - an exclusive lock file that is deleted when released.
@@ -25,7 +25,9 @@ It then:
 3. extracts to `<version>.tmp/` and renames that to `<version>/`;
 4. writes `installed.json` atomically, with the version, source, checksum, date and command.
 
-For GitHub the command comes from the row's executable template; for NuGet, from the package's `DotnetToolSettings.xml`. `servers/<id>/install.lock` is held for the whole job. The start-up sweep removes every directory the record does not name, and skips a server whose lock it cannot take. Nothing installs by itself: the user asks for it. Starting a server stays gated by trust ([0532](0532-open-an-unknown-folder-in-restricted-mode-until-the-user-trusts-it.md)).
+For GitHub the command comes from the row's executable template; for NuGet, from the package's `DotnetToolSettings.xml`. `servers/<id>/install.lock` is held for the whole of an install or an uninstall; a check for updates only reads. The start-up sweep removes every directory the record does not name, and skips a server whose lock it cannot take. While the record cannot be read, the sweep keeps every version. `installed.json` carries a format number, and a record written by a newer format is left alone together with every version beside it. Nothing installs by itself: the user asks for it. Starting a server stays gated by trust ([0532](0532-open-an-unknown-folder-in-restricted-mode-until-the-user-trusts-it.md)).
+
+A version directory is removed whole or not at all, whether by the sweep, by an uninstall or by an install replacing a leftover: it is first renamed to a temporary name, and only then deleted. A rename fails while any file inside is open, so a running server's version is protected once a server's window holds its command file open. Whatever a deletion leaves under the temporary name, the next sweep removes.
 
 ## Rationale
 
@@ -51,9 +53,9 @@ For GitHub the command comes from the row's executable template; for NuGet, from
 - A first install needs the network.
 - GitHub's unauthenticated API allows 60 calls an hour from one address.
 - A source that publishes no checksum is trusted on HTTPS alone.
-- A replaced version's directory stays until the next start, because a running server may still hold it.
+- A replaced version's directory stays until a later start, which removes it once nothing holds its files.
 - `.tar.gz` packages are not extracted until a platform needs them.
-- Cancelling waits for the request stage in progress, which can take up to 30 seconds on a stalled connection.
+- Cancelling during the version lookup takes effect when the lookup ends; during a download, within one request stage of up to 30 seconds.
 
 ### Neutral
 
