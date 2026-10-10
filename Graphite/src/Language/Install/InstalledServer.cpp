@@ -30,7 +30,7 @@ namespace Graphite {
 			std::filesystem::remove_all(path, ignoredError);
 		}
 
-		std::filesystem::path AsideNameOf(const std::filesystem::path& directory, int attempt)
+		std::filesystem::path AsidePathOf(const std::filesystem::path& directory, int attempt)
 		{
 			const std::string counter = attempt == 0 ? std::string{} : std::to_string(attempt);
 			const std::string asideName = TemporaryNameOf(std::format("{}.removing{}", Core::ToUtf8(directory.filename()), counter));
@@ -317,7 +317,7 @@ namespace Graphite {
 		}
 
 		const Core::Result<std::filesystem::path> aside =
-			Core::PickAvailablePath([&directory](int attempt) { return AsideNameOf(directory, attempt); });
+			Core::PickAvailablePath([&directory](int attempt) { return AsidePathOf(directory, attempt); });
 
 		if (!aside)
 		{
