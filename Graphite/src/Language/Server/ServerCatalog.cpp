@@ -16,6 +16,14 @@ namespace Graphite {
 		// --pch-storage=disk keeps preambles out of memory, which is what lets the background index hold several files at once.
 		constexpr std::array<std::string_view, 2> kClangdArguments{"--background-index", "--pch-storage=disk"};
 
+		// Only the build this was verified against; a port adds its platform's row once its asset name is checked.
+		constexpr std::array<GitHubAsset, 1> kClangdAssets{{
+			{.Platform = {.System = Core::OperatingSystem::Windows, .Machine = Core::Architecture::X64},
+			 .AssetTemplate = "clangd-{os}-{version}.zip",
+			 .Archive = ArchiveKind::Zip,
+			 .ExecutableTemplate = "clangd_{version}/bin/clangd{exe}"},
+		}};
+
 		constexpr std::array<ServerDefinition, 1> kServers{{
 			{.Id = "clangd",
 			 .DisplayName = "clangd",
@@ -23,7 +31,8 @@ namespace Graphite {
 			 .ProtocolLanguageId = "cpp",
 			 .DefaultArguments = kClangdArguments,
 			 .RootMarkers = kClangdRootMarkers,
-			 .Adapter = AdapterKind::Clangd},
+			 .Adapter = AdapterKind::Clangd,
+			 .Package = GitHubReleasePackage{.Repository = "clangd/clangd", .Assets = kClangdAssets}},
 		}};
 
 		// The error_code overload: a directory that denies access reads as "not there" instead of throwing across the boundary ADR 0004 guards.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Language/Api/LanguageId.h"
+#include "Language/Server/ServerPackage.h"
 
 #include <cstdint>
 #include <filesystem>
@@ -26,6 +27,7 @@ namespace Graphite {
 		std::span<const std::string_view> DefaultArguments;
 		std::span<const std::string_view> RootMarkers;
 		AdapterKind Adapter = AdapterKind::Plain;
+		ServerPackage Package;
 	};
 
 	std::span<const ServerDefinition> AllServers();

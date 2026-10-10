@@ -1,20 +1,28 @@
 #include <doctest/doctest.h>
 
+#include "Language/Install/PackageNames.h"
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/ServerCatalog.h"
 #include "Language/Server/ServerDiscovery.h"
+#include "Language/Server/ServerPackage.h"
 #include "TempDirectory.h"
 
+#include "Core/FileSystem/RelativePath.h"
+#include "Core/Platform/CurrentPlatform.h"
 #include "Core/Platform/Process.h"
 
 #include <cstdlib>
 #include <fstream>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 namespace {
+
+	constexpr Core::PlatformTarget kWindowsX64{.System = Core::OperatingSystem::Windows, .Machine = Core::Architecture::X64};
 
 	void Touch(const std::filesystem::path& path)
 	{
@@ -144,4 +152,48 @@ TEST_CASE("FindServerBinary reports not found rather than an empty path")
 
 	CHECK_FALSE(found);
 	CHECK(found.GetError().Code == Core::ErrorCode::NotFound);
+}
+
+TEST_CASE("clangd comes from its GitHub releases as a zip with the server inside")
+{
+	const Graphite::ServerDefinition& clangd = *Graphite::FindServer("clangd");
+	const Graphite::GitHubReleasePackage* release = std::get_if<Graphite::GitHubReleasePackage>(&clangd.Package);
+
+	REQUIRE(release != nullptr);
+	CHECK(release->Repository == "clangd/clangd");
+
+	const Graphite::GitHubAsset* windows = Graphite::FindAssetFor(*release, kWindowsX64);
+
+	REQUIRE(windows != nullptr);
+	CHECK(windows->AssetTemplate == "clangd-{os}-{version}.zip");
+	CHECK(windows->Archive == Graphite::ArchiveKind::Zip);
+	CHECK(windows->ExecutableTemplate == "clangd_{version}/bin/clangd{exe}");
+}
+
+TEST_CASE("Every server installs on Windows x64 and every template it uses expands")
+{
+	for (const Graphite::ServerDefinition& server : Graphite::AllServers())
+	{
+		INFO(std::string{server.Id});
+		CHECK(Graphite::IsSafeDirectoryName(server.Id));
+		CHECK(Graphite::IsAvailableOn(server.Package, kWindowsX64));
+
+		if (const Graphite::GitHubReleasePackage* release = std::get_if<Graphite::GitHubReleasePackage>(&server.Package))
+		{
+			for (const Graphite::GitHubAsset& asset : release->Assets)
+			{
+				const Graphite::TemplateValues values{.Version = "1.0.0", .Platform = asset.Platform};
+				const Core::Result<std::string> executable = Graphite::ExpandPackageTemplate(asset.ExecutableTemplate, values);
+
+				CHECK(Graphite::ExpandPackageTemplate(asset.AssetTemplate, values));
+				REQUIRE(executable);
+				CHECK(Core::IsSafeRelativePath(executable.GetValue()));
+			}
+		}
+
+		if (const Graphite::NuGetToolPackage* tool = std::get_if<Graphite::NuGetToolPackage>(&server.Package))
+		{
+			CHECK(Graphite::ExpandPackageTemplate(tool->PackageIdTemplate, {.Version = "", .Platform = kWindowsX64}));
+		}
+	}
 }
