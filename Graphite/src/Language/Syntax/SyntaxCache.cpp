@@ -262,6 +262,9 @@ namespace Graphite {
 
 		if (pausing)
 		{
+			// A deadline lasts one wait, so a frame landing in the pause has used it up and must
+			// ask for the pause's end again.
+			Core::Redraw::RequestIn(*m_RanOutAt + m_ParseBudget.PauseAfterRunningOut - now);
 			return;
 		}
 

@@ -359,6 +359,23 @@ TEST_CASE("Running out of parse time asks for a frame when the pause ends")
 	CHECK(Core::Redraw::TakeDeadline().has_value());
 }
 
+TEST_CASE("A frame that lands during the pause asks again for a frame when the pause ends")
+{
+	const Core::TextBuffer buffer{ManyCSharpClasses(2000)};
+	Graphite::SyntaxCache cache = CSharpCache();
+	cache.SetParseBudget(Graphite::ParseBudget{.PerAttempt = std::chrono::microseconds{0}, .PauseAfterRunningOut = std::chrono::hours{1}});
+	Core::Redraw::TakeDeadline();
+
+	CHECK(cache.TokensOf(buffer, 5).empty());
+	REQUIRE(Core::Redraw::TakeDeadline().has_value());
+
+	// The frame above used up the first deadline; without asking again, the parse would wait
+	// for the caret blink or the idle tick.
+	CHECK(cache.TokensOf(buffer, 5).empty());
+
+	CHECK(Core::Redraw::TakeDeadline().has_value());
+}
+
 TEST_CASE("A text too large to parse has no tokens until it shrinks under the limit")
 {
 	Core::TextBuffer buffer{std::string(Graphite::kLargestParsedText, ' ') + "\nint x;"};
