@@ -793,6 +793,69 @@ TEST_CASE("A publication still waiting to be drained when its document closes is
 	CHECK(drained.Diagnostics[0].Path == std::filesystem::path{"C:/src/Other.cpp"});
 }
 
+TEST_CASE("Diagnostics for a document opened through a lower-case drive name the path it was opened with")
+{
+	Graphite::LspClient client = Offline("C:/src");
+
+	client.OpenDocument(std::filesystem::path{L"d:\\Repos\\x.cpp"}, "int x;\n");
+
+	for (const char* uri : {"file:///D:/Repos/x.cpp", "file:///d%3A/Repos/x.cpp"})
+	{
+		client.Deliver(std::string(R"({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":")") + uri +
+					   R"(","version":1,"diagnostics":[]}})");
+	}
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	REQUIRE(drained.Diagnostics.size() == 2);
+	CHECK(drained.Diagnostics[0].Path.native() == std::wstring{L"d:\\Repos\\x.cpp"});
+	CHECK(drained.Diagnostics[1].Path.native() == std::wstring{L"d:\\Repos\\x.cpp"});
+}
+
+TEST_CASE("A definition naming an open document comes back under the path it was opened with")
+{
+	Graphite::LspClient client = Offline("C:/src");
+	client.Deliver(std::string{kHandshakeAnswer});
+
+	const std::filesystem::path opened{L"d:\\Repos\\x.cpp"};
+	client.OpenDocument(opened, "int x;\nint y = x;\n");
+
+	const Graphite::RequestId id = client.AskDefinition({opened, 1, Graphite::Utf16Column{8}});
+
+	client.Deliver(R"({"jsonrpc":"2.0","id":)" + std::to_string(id) +
+				   R"(,"result":[{"uri":"file:///D:/Repos/x.cpp","range":{"start":{"line":0,"character":4},"end":{"line":0,"character":5}}}]})");
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	REQUIRE(drained.Answers.size() == 1);
+	REQUIRE(drained.Answers[0].Locations.size() == 1);
+	CHECK(drained.Answers[0].Locations[0].Path.native() == std::wstring{L"d:\\Repos\\x.cpp"});
+}
+
+TEST_CASE("A references answer leaves out the position asked from in a document opened through a lower-case drive")
+{
+	Graphite::LspClient client = Offline("C:/src");
+	client.Deliver(std::string{kHandshakeAnswer});
+
+	const std::filesystem::path opened{L"d:\\Repos\\x.cpp"};
+	client.OpenDocument(opened, "int x;\nint y = x;\n");
+
+	const Graphite::RequestId id = client.AskReferences({opened, 0, Graphite::Utf16Column{4}});
+
+	client.Deliver(R"({"jsonrpc":"2.0","id":)" + std::to_string(id) +
+				   R"(,"result":[{"uri":"file:///D:/Repos/x.cpp","range":{"start":{"line":0,"character":4}}},)"
+				   R"({"uri":"file:///D:/Repos/x.cpp","range":{"start":{"line":1,"character":8}}}]})");
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	REQUIRE(drained.Answers.size() == 1);
+	REQUIRE(drained.Answers[0].Locations.size() == 1);
+	CHECK(drained.Answers[0].Locations[0].Line == 1);
+}
+
 TEST_CASE("The version a document is sent under is the one that goes out on the wire")
 {
 	Graphite::LspClient client = Offline("C:/src");

@@ -425,7 +425,10 @@ namespace Graphite {
 			// answering a version this reopen has not reached yet (see LastVersions' own comment).
 			int& lastVersion = m_Shared->LastVersions[uri];
 			++lastVersion;
-			m_Shared->Documents[uri].Version = lastVersion;
+
+			Document& document = m_Shared->Documents[uri];
+			document.Version = lastVersion;
+			document.Path = path;
 			version = lastVersion;
 		}
 
@@ -1010,13 +1013,30 @@ namespace Graphite {
 		// CloseDocument already take them in, and nothing takes them the other way round.
 		const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
 
-		if (!shared.Documents.contains(uri))
+		const std::unordered_map<std::string, Document>::const_iterator open = shared.Documents.find(uri);
+
+		if (open == shared.Documents.end())
 		{
 			return;
 		}
 
+		published.Path = open->second.Path;
+
 		const std::lock_guard<std::mutex> state(shared.StateMutex);
 		shared.Diagnostics.push_back(std::move(published));
+	}
+
+	void LspClient::NameOpenDocumentsAsOpened(const Shared& shared, std::vector<Location>& locations)
+	{
+		for (Location& location : locations)
+		{
+			const std::unordered_map<std::string, Document>::const_iterator open = shared.Documents.find(ToFileUri(location.Path));
+
+			if (open != shared.Documents.end())
+			{
+				location.Path = open->second.Path;
+			}
+		}
 	}
 
 	void LspClient::HandleReply(Shared& shared, const IncomingMessage& reply)
@@ -1042,6 +1062,27 @@ namespace Graphite {
 		// caller converts them against the buffer it is about to move the caret in — which is the
 		// only copy of the file that is certainly the one the user is looking at.
 		Answer answer = ReadAnswer(asked, reply, shared.SemanticLegend);
+
+		{
+			const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
+			NameOpenDocumentsAsOpened(shared, answer.Locations);
+		}
+
+		// Nobody is shown the line they asked from. The protocol counts a declaration as a
+		// reference to itself, so a count drawn over a definition would otherwise include that
+		// definition and read one too high, and the list opened from it would lead its results
+		// with the row already on screen. Only for references: a definition reply naming the
+		// place asked about is the answer, not noise, and ResolveDefinition is what decides there
+		// is nowhere to go.
+		if (asked.Kind == Question::References && asked.From)
+		{
+			const FilePosition& from = *asked.From;
+
+			std::erase_if(answer.Locations, [&from](const Location& location) {
+				return location.Line == from.Line && location.Column == from.Column &&
+					   location.Path == from.Path;
+			});
+		}
 
 		const std::lock_guard<std::mutex> state(shared.StateMutex);
 		shared.Answers.push_back(std::move(answer));
@@ -1103,22 +1144,6 @@ namespace Graphite {
 		}
 
 		answer.Locations = ParseLocations(reply.Payload);
-
-		// Nobody is shown the line they asked from. The protocol counts a declaration as a
-		// reference to itself, so a count drawn over a definition would otherwise include that
-		// definition and read one too high, and the list opened from it would lead its results
-		// with the row already on screen. Only for references: a definition reply naming the
-		// place asked about is the answer, not noise, and ResolveDefinition is what decides there
-		// is nowhere to go.
-		if (asked.Kind == Question::References && asked.From)
-		{
-			const FilePosition& from = *asked.From;
-
-			std::erase_if(answer.Locations, [&from](const Location& location) {
-				return location.Line == from.Line && location.Column == from.Column &&
-					   location.Path == from.Path;
-			});
-		}
 
 		return answer;
 	}

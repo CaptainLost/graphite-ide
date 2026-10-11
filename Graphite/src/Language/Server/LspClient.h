@@ -163,13 +163,16 @@ namespace Graphite {
 			Hover
 		};
 
-		// The server's copy of an open document, as far as this side knows it: only the version,
-		// because the protocol requires it to increase per document. The text is not kept — the
-		// client has no reason to measure anything against it any more, and a second copy of every
-		// open file is not free.
+		// The server's copy of an open document, as far as this side knows it: the version, because
+		// the protocol requires it to increase per document, and the path it was opened under. The
+		// text is not kept — the client has no reason to measure anything against it any more, and
+		// a second copy of every open file is not free.
 		struct Document
 		{
 			int Version = 0;
+
+			// Paths compare by spelling, drive letter included, so anything reported about this document must carry this path rather than one read back from a URI.
+			std::filesystem::path Path;
 		};
 
 		// What was asked under an id. The protocol does not echo the method back, so the question
@@ -321,6 +324,9 @@ namespace Graphite {
 		static void HandleReply(Shared& shared, const IncomingMessage& reply);
 
 		static void PublishDiagnostics(Shared& shared, const nlohmann::json& params);
+
+		// ProtocolMutex held by the caller.
+		static void NameOpenDocumentsAsOpened(const Shared& shared, std::vector<Location>& locations);
 
 		// Takes StateMutex itself, so it is called with no lock held.
 		static void RecordServerMessage(Shared& shared, const nlohmann::json& params);
