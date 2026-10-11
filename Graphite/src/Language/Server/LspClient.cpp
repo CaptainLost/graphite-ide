@@ -296,6 +296,7 @@ namespace Graphite {
 
 		m_Shared->Status.Name = std::string(launch.Server->DisplayName);
 		m_Shared->Status.State = ServerState::Starting;
+		m_Shared->Status.Detail = launch.Description.empty() ? Core::ToUtf8(launch.Binary) : launch.Description;
 	}
 
 	void LspClient::Settle(Shared& shared)
@@ -322,7 +323,6 @@ namespace Graphite {
 	LspClient::LspClient(const ServerLaunch& launch, std::filesystem::path root)
 	{
 		Adopt(launch, root);
-		m_Shared->Status.Detail = Core::ToUtf8(launch.Binary);
 
 		Core::Result<Core::Scope<Core::ChildProcess>> started = Core::ChildProcess::Start(launch.Binary, launch.Arguments, root);
 

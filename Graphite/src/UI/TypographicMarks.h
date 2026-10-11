@@ -10,6 +10,9 @@ namespace Graphite {
 	// U+00B7 MIDDLE DOT with one space either side: joins the parts of a one-line summary.
 	inline constexpr std::string_view kMiddleDotSeparator = " \xC2\xB7 ";
 
+	// U+2014 EM DASH with one space either side: sets a server's problem apart from its name.
+	inline constexpr std::string_view kEmDashSeparator = " \xE2\x80\x94 ";
+
 	// U+2212 MINUS SIGN: as wide as '+', so a column of signed counts lines up.
 	inline constexpr std::string_view kMinusSign = "\xE2\x88\x92";
 

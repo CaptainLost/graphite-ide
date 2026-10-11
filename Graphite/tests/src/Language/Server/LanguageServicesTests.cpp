@@ -84,6 +84,35 @@ TEST_CASE("A configured server with no binary reports NotFound and names what is
 	CHECK_FALSE(status.Detail.empty());
 }
 
+TEST_CASE("Every status names the language it is about")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	UseClangdAt(services, temp.GetPath() / "absent.exe");
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+
+	CHECK(services.StatusFor(Graphite::LanguageId::Cpp).Language == Graphite::LanguageId::Cpp);
+	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).Language == Graphite::LanguageId::Cpp);
+	REQUIRE(services.OverallStatus().has_value());
+	CHECK(services.OverallStatus()->Language == Graphite::LanguageId::Cpp);
+	CHECK(services.StatusFor(Graphite::LanguageId::CSharp).Language == Graphite::LanguageId::CSharp);
+}
+
+TEST_CASE("A language turned off reads Off for that language")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	services.SetChoiceProvider([](Graphite::LanguageId language) { return Graphite::ChooseServer(language, std::string{Graphite::kServerTurnedOff}); });
+
+	const Graphite::ServerStatus status = services.StatusFor(temp.GetPath() / "Program.cs", Graphite::LanguageId::CSharp);
+
+	CHECK(status.State == Graphite::ServerState::Off);
+	CHECK(status.Language == Graphite::LanguageId::CSharp);
+}
+
 // The shape the editor is in on a machine with no clangd, which is every machine until one is
 // installed: the language IS configured, so a server entry exists and reports NotFound, but it
 // never got a client. That is a different path from a language with no entry at all, and it is

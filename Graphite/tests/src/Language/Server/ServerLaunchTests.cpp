@@ -43,3 +43,13 @@ TEST_CASE("A launch puts the runner's arguments first and fills in the log direc
 	CHECK(launch.Arguments == std::vector<std::string>{"C:\\servers\\roslyn.dll", "--stdio", "--logLevel", "Information",
 														"--extensionLogDirectory", "D:\\Logs/roslyn"});
 }
+
+TEST_CASE("A launch describes the program with the arguments that pick what it runs")
+{
+	const Graphite::ServerOverrides noOverrides;
+	const Graphite::LaunchPlaces places{.LeadingArguments = {"C:\\servers\\csharp-ls\\CSharpLanguageServer.dll"}, .LogDirectory = {}};
+
+	const Graphite::ServerLaunch launch = Graphite::LaunchFor(*Graphite::FindServer("csharp-ls"), "C:\\dotnet\\dotnet.exe", noOverrides, places);
+
+	CHECK(launch.Description == "C:\\dotnet\\dotnet.exe C:\\servers\\csharp-ls\\CSharpLanguageServer.dll");
+}

@@ -24,6 +24,19 @@ namespace Graphite {
 		}
 	}
 
+	std::string DescribeProgram(const std::filesystem::path& program, std::span<const std::string> leadingArguments)
+	{
+		std::string description = Core::ToUtf8(program);
+
+		for (const std::string& argument : leadingArguments)
+		{
+			description += ' ';
+			description += argument;
+		}
+
+		return description;
+	}
+
 	ServerLaunch LaunchFor(const ServerDefinition& server, std::filesystem::path program, const ServerOverrides& overrides,
 						   const LaunchPlaces& places)
 	{
@@ -39,10 +52,13 @@ namespace Graphite {
 			arguments.push_back(WithPlacesFilledIn(extraArgument, places));
 		}
 
+		std::string description = DescribeProgram(program, places.LeadingArguments);
+
 		return ServerLaunch{.Server = &server,
 							.Adapter = &AdapterOf(server.Adapter),
 							.Binary = std::move(program),
 							.Arguments = std::move(arguments),
+							.Description = std::move(description),
 							.InitializationOptions = overrides.InitializationOptions,
 							.Settings = overrides.Settings};
 	}

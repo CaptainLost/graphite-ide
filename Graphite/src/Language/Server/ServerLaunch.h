@@ -6,6 +6,7 @@
 
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,7 @@ namespace Graphite {
 		const ServerAdapter* Adapter = nullptr;
 		std::filesystem::path Binary;
 		std::vector<std::string> Arguments;
+		std::string Description;
 		nlohmann::json InitializationOptions;
 		nlohmann::json Settings;
 		std::optional<std::filesystem::path> Solution;
@@ -41,4 +43,6 @@ namespace Graphite {
 
 	ServerLaunch LaunchFor(const ServerDefinition& server, std::filesystem::path program, const ServerOverrides& overrides,
 						   const LaunchPlaces& places = {});
+
+	std::string DescribeProgram(const std::filesystem::path& program, std::span<const std::string> leadingArguments);
 }

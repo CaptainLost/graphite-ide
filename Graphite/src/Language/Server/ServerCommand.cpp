@@ -3,6 +3,7 @@
 #include "Language/Install/InstalledServer.h"
 #include "Language/Install/ToolSettings.h"
 #include "Language/Server/ServerDiscovery.h"
+#include "Language/Server/ServerLaunch.h"
 
 #include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
@@ -20,6 +21,12 @@ namespace Graphite {
 		{
 			std::error_code failure;
 			return std::filesystem::is_regular_file(path, failure) && !failure;
+		}
+
+		bool IsDirectory(const std::filesystem::path& path)
+		{
+			std::error_code failure;
+			return std::filesystem::is_directory(path, failure) && !failure;
 		}
 
 		bool IsDotnetAssembly(const std::filesystem::path& path)
@@ -73,8 +80,14 @@ namespace Graphite {
 		{
 			if (!IsRegularFile(configured))
 			{
-				return Unavailable(ServerState::NotFound,
-								   std::format("the configured path '{}' does not exist", Core::ToUtf8(configured)));
+				const std::string shown = Core::ToUtf8(configured);
+
+				if (IsDirectory(configured))
+				{
+					return Unavailable(ServerState::NotFound, std::format("the configured path '{}' is a folder, not a program", shown));
+				}
+
+				return Unavailable(ServerState::NotFound, std::format("the configured path '{}' does not exist", shown));
 			}
 
 			const LaunchRunner runner = IsDotnetAssembly(configured) ? LaunchRunner::Dotnet : LaunchRunner::Executable;
@@ -99,7 +112,7 @@ namespace Graphite {
 
 		if (places.ServersDirectory.empty())
 		{
-			return Unavailable(ServerState::NotFound, "it is neither beside the application nor on PATH");
+			return Unavailable(ServerState::NotInstalled, "it is neither beside the application nor on PATH");
 		}
 
 		return Unavailable(ServerState::NotInstalled, "it is not in Graphite's servers folder, beside the application or on PATH");
@@ -107,14 +120,6 @@ namespace Graphite {
 
 	std::string DescribeCommand(const ServerCommand& command)
 	{
-		std::string description = Core::ToUtf8(command.Program);
-
-		for (const std::string& argument : command.LeadingArguments)
-		{
-			description += ' ';
-			description += argument;
-		}
-
-		return description;
+		return DescribeProgram(command.Program, command.LeadingArguments);
 	}
 }

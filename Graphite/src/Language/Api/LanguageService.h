@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Language/Api/LanguageId.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -236,6 +238,7 @@ namespace Graphite {
 		std::size_t Restarts = 0;
 		ProjectProblem Problem;
 		std::string Loading; // what an Indexing server loads before it reports progress of its own, e.g. "Demo.slnx"
+		LanguageId Language = LanguageId::PlainText;
 	};
 
 	enum class ServerMessageKind : std::uint8_t

@@ -89,11 +89,28 @@ TEST_CASE("A .NET server without a new enough runtime is MissingRuntime naming t
 	CHECK(Graphite::FindServerCommand(*Graphite::FindServer("csharp-ls"), {}, noDotnet).State == Graphite::ServerState::MissingRuntime);
 }
 
-TEST_CASE("A server found nowhere is NotInstalled where Graphite installs servers and NotFound otherwise")
+TEST_CASE("A server found nowhere is NotInstalled and says where it was looked for")
 {
 	TempDirectory temp;
-
 	const Graphite::ServerCommandPlaces installs{.ServersDirectory = temp.GetPath() / "servers", .Dotnet = {}};
-	CHECK(Graphite::FindServerCommand(kNowhere, {}, installs).State == Graphite::ServerState::NotInstalled);
-	CHECK(Graphite::FindServerCommand(kNowhere, {}, Graphite::ServerCommandPlaces{}).State == Graphite::ServerState::NotFound);
+
+	const Graphite::ServerCommand withServersDirectory = Graphite::FindServerCommand(kNowhere, {}, installs);
+	const Graphite::ServerCommand withoutServersDirectory = Graphite::FindServerCommand(kNowhere, {}, Graphite::ServerCommandPlaces{});
+
+	CHECK(withServersDirectory.State == Graphite::ServerState::NotInstalled);
+	CHECK(withServersDirectory.Detail == "it is not in Graphite's servers folder, beside the application or on PATH");
+	CHECK(withoutServersDirectory.State == Graphite::ServerState::NotInstalled);
+	CHECK(withoutServersDirectory.Detail == "it is neither beside the application nor on PATH");
+}
+
+TEST_CASE("A configured path naming a folder is NotFound saying it is a folder")
+{
+	TempDirectory temp;
+	const std::filesystem::path folder = temp.GetPath() / "clangd";
+	std::filesystem::create_directories(folder);
+
+	const Graphite::ServerCommand command = Graphite::FindServerCommand(*Graphite::FindServer("clangd"), folder, Graphite::ServerCommandPlaces{});
+
+	CHECK(command.State == Graphite::ServerState::NotFound);
+	CHECK(command.Detail == "the configured path '" + Core::ToUtf8(folder) + "' is a folder, not a program");
 }

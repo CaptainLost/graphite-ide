@@ -1235,3 +1235,15 @@ TEST_CASE("Roslyn without a solution opens the project in its root and reads as 
 
 	CHECK(StatusOf(client).State == Graphite::ServerState::Ready);
 }
+
+TEST_CASE("A client describes what it runs as its launch does")
+{
+	TempDirectory temp;
+	const Graphite::ServerOverrides noOverrides;
+	const Graphite::LaunchPlaces places{.LeadingArguments = {"C:\\servers\\csharp-ls\\CSharpLanguageServer.dll"}, .LogDirectory = {}};
+	const Graphite::ServerLaunch launch = Graphite::LaunchFor(*Graphite::FindServer("csharp-ls"), "C:\\dotnet\\dotnet.exe", noOverrides, places);
+
+	Graphite::LspClient client = OfflineWith(launch, temp.GetPath());
+
+	CHECK(StatusOf(client).Detail == "C:\\dotnet\\dotnet.exe C:\\servers\\csharp-ls\\CSharpLanguageServer.dll");
+}

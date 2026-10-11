@@ -1,6 +1,7 @@
 #include "Editor/StatusBar/ServerStatusText.h"
 
 #include "Language/Registry/LanguageRegistry.h"
+#include "UI/TypographicMarks.h"
 
 #include "Core/Base/ByteSize.h"
 
@@ -21,6 +22,23 @@ namespace Graphite {
 				   (status.Restarts == 1 ? " time" : " times");
 		}
 
+		std::string LanguagePrefix(LanguageId language)
+		{
+			const std::string_view name = LanguageDisplayName(language);
+
+			return name.empty() ? std::string{} : std::string{name} + ": ";
+		}
+
+		std::string Phrase(const ServerStatus& status, std::string_view words)
+		{
+			return LanguagePrefix(status.Language) + status.Name + " " + std::string{words};
+		}
+
+		std::string SetApart(const ServerStatus& status, std::string_view words)
+		{
+			return LanguagePrefix(status.Language) + status.Name + std::string{kEmDashSeparator} + std::string{words};
+		}
+
 	}
 
 	std::string ServerStatusText(const ServerStatus& status)
@@ -31,46 +49,45 @@ namespace Graphite {
 			return {};
 
 		case ServerState::Off:
-			return status.Name + ": language server off";
+			return LanguagePrefix(status.Language) + "language server off";
 
 		case ServerState::NotFound:
-			return status.Name + ": not found";
+			return Phrase(status, "not found at the configured path");
 
 		case ServerState::NotInstalled:
-			return status.Name + ": not installed";
+			return Phrase(status, "not installed");
 
 		case ServerState::MissingRuntime:
-			return status.Name + ": " + status.Detail;
+			return Phrase(status, status.Detail);
 
 		case ServerState::Restricted:
-			return status.Name + ": restricted mode";
+			return SetApart(status, "restricted mode");
 
 		case ServerState::Starting:
-			return status.Name + ": starting";
+			return Phrase(status, "starting");
 
 		case ServerState::Indexing:
-			// Percent is -1 for "not reported" — a hard-coded 0% while a server starts up would
-			// be a worse lie than saying nothing.
+			// Percent is -1 for "not reported": a 0% while a server starts up would be a worse lie than no number.
 			if (status.Percent >= 0)
 			{
-				return status.Name + ": indexing " + std::to_string(status.Percent) + "%";
+				return Phrase(status, "indexing " + std::to_string(status.Percent) + "%");
 			}
 
 			if (!status.Loading.empty())
 			{
-				return status.Name + ": loading " + status.Loading;
+				return Phrase(status, "loading " + status.Loading);
 			}
 
-			return status.Name + ": indexing";
+			return Phrase(status, "indexing");
 
 		case ServerState::ProjectIncomplete:
-			return status.Name + ": " + status.Problem.Summary;
+			return SetApart(status, status.Problem.Summary);
 
 		case ServerState::Ready:
-			return status.Name + ": ready";
+			return Phrase(status, "ready");
 
 		case ServerState::Failed:
-			return status.Name + ": failed";
+			return Phrase(status, "failed");
 		}
 
 		return {};
@@ -83,17 +100,10 @@ namespace Graphite {
 			return ServerStatusText(status);
 		}
 
-		return status.Name + ": analysing " + fileName;
+		return Phrase(status, "analysing " + fileName);
 	}
 
 	std::string NoServerText(LanguageId language)
-	{
-		const std::string_view name = LanguageDisplayName(language);
-
-		return name.empty() ? std::string{} : std::string{name} + ": no language server";
-	}
-
-	std::string NoServerDetail(LanguageId language)
 	{
 		const std::string_view name = LanguageDisplayName(language);
 
@@ -102,11 +112,28 @@ namespace Graphite {
 			return {};
 		}
 
-		// Says what is absent and what still works, because the question this answers is "why is
-		// nothing happening in this file" and half an answer invites a hunt for a broken setting.
-		return "No language server is configured for " + std::string{name} +
-			   ", so go to definition and reference counts are unavailable here. Syntax "
-			   "highlighting does not depend on a server and is unaffected.";
+		return std::string{name} + (LanguageHasServers(language) ? ": no language support" : ": no language server");
+	}
+
+	std::string NoServerDetail(LanguageId language)
+	{
+		const std::string name{LanguageDisplayName(language)};
+
+		if (name.empty())
+		{
+			return {};
+		}
+
+		if (LanguageHasServers(language))
+		{
+			return "No language server is chosen for " + name +
+				   ", so go to definition, completion and diagnostics are unavailable here. Choose one in Settings, under "
+				   "Languages. Syntax highlighting does not depend on a server and is unaffected.";
+		}
+
+		return "No language server is configured for " + name +
+			   ", so go to definition and reference counts are unavailable here. Syntax highlighting does not "
+			   "depend on a server and is unaffected.";
 	}
 
 	std::string ServerStatusDetail(const ServerStatus& status)
@@ -123,12 +150,13 @@ namespace Graphite {
 			break;
 
 		case ServerState::NotFound:
-			detail = status.Name + " was not found: " +
-					 (status.Detail.empty() ? std::string{"it is neither beside the application nor on PATH"} : status.Detail) + ".";
+			detail = status.Detail.empty() ? status.Name + " was not found at the path configured for it."
+										   : status.Name + " was not found: " + status.Detail + ".";
 			break;
 
 		case ServerState::NotInstalled:
-			detail = status.Name + " is not installed: " + status.Detail + ".";
+			detail = status.Detail.empty() ? status.Name + " is not installed."
+										   : status.Name + " is not installed: " + status.Detail + ".";
 			break;
 
 		case ServerState::MissingRuntime:
@@ -164,7 +192,7 @@ namespace Graphite {
 		case ServerState::Indexing:
 		case ServerState::Ready:
 		case ServerState::Failed:
-			// The binary path while starting, the version the handshake reported once it is up.
+			// The command while starting, the version the handshake reported once it is up.
 			detail = status.Detail;
 			break;
 		}

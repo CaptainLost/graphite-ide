@@ -10,6 +10,7 @@ namespace {
 	{
 		ServerStatus status;
 		status.State = state;
+		status.Language = LanguageId::Cpp;
 		status.Name = "clangd";
 		status.Detail = "clangd version 19";
 
@@ -44,7 +45,7 @@ TEST_CASE("The active document's own server outranks everything else")
 	const std::optional<ServerLine> line = ChooseServerLine(inputs);
 
 	REQUIRE(line.has_value());
-	CHECK(line->Text == "clangd: ready");
+	CHECK(line->Text == "C++: clangd ready");
 	CHECK(line->Detail == ServerStatusDetail(inputs.Active));
 }
 
@@ -58,7 +59,7 @@ TEST_CASE("A document whose answers are still coming is named while its server i
 	const std::optional<ServerLine> line = ChooseServerLine(inputs);
 
 	REQUIRE(line.has_value());
-	CHECK(line->Text == "clangd: analysing main.cpp");
+	CHECK(line->Text == "C++: clangd analysing main.cpp");
 	CHECK(line->Detail == ServerStatusDetail(inputs.Active));
 }
 
@@ -73,7 +74,7 @@ TEST_CASE("A recognised language with no server says so ahead of restricted mode
 	const std::optional<ServerLine> line = ChooseServerLine(inputs);
 
 	REQUIRE(line.has_value());
-	CHECK(line->Text == "C#: no language server");
+	CHECK(line->Text == "C#: no language support");
 	CHECK(line->Detail == NoServerDetail(LanguageId::CSharp));
 }
 
@@ -101,7 +102,7 @@ TEST_CASE("With nothing open to speak for, the workspace's servers as a whole ar
 	const std::optional<ServerLine> line = ChooseServerLine(inputs);
 
 	REQUIRE(line.has_value());
-	CHECK(line->Text == "clangd: indexing");
+	CHECK(line->Text == "C++: clangd indexing");
 	CHECK(line->Detail == "clangd version 19");
 }
 

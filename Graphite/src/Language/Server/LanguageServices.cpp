@@ -28,6 +28,12 @@ namespace Graphite {
 		{
 			return std::find(languages.begin(), languages.end(), language) != languages.end();
 		}
+
+		ServerStatus WithLanguage(ServerStatus status, LanguageId language)
+		{
+			status.Language = language;
+			return status;
+		}
 	}
 
 	std::chrono::steady_clock::duration RestartBackoff(std::size_t restarts)
@@ -399,7 +405,7 @@ namespace Graphite {
 
 	ServerStatus LanguageServices::OffStatus(LanguageId language) const
 	{
-		return ServerStatus{.State = ServerState::Off, .Name = std::string{LanguageDisplayName(language)}};
+		return ServerStatus{.State = ServerState::Off, .Name = std::string{LanguageDisplayName(language)}, .Language = language};
 	}
 
 	void LanguageServices::StartServer(ManagedServer& server, const Key& key)
@@ -494,13 +500,13 @@ namespace Graphite {
 		{
 			if (key.Language == language)
 			{
-				return server.Status;
+				return WithLanguage(server.Status, language);
 			}
 		}
 
 		// No entry at all: never configured, or never started. Both read the same way to a
-		// caller — ServerStatus{} defaults to State == NotConfigured.
-		return {};
+		// caller — State defaults to NotConfigured.
+		return ServerStatus{.Language = language};
 	}
 
 	ServerStatus LanguageServices::StatusFor(const std::filesystem::path& path, LanguageId language)
@@ -514,12 +520,12 @@ namespace Graphite {
 
 		if (Resolve(path, language, key) == nullptr)
 		{
-			return {};
+			return ServerStatus{.Language = language};
 		}
 
 		const auto found = m_Servers.find(key);
 
-		return found != m_Servers.end() ? found->second.Status : ServerStatus{};
+		return found != m_Servers.end() ? WithLanguage(found->second.Status, language) : ServerStatus{.Language = language};
 	}
 
 	std::optional<ServerStatus> LanguageServices::OverallStatus() const
@@ -553,6 +559,7 @@ namespace Graphite {
 		};
 
 		const ServerStatus* best = nullptr;
+		LanguageId bestLanguage = LanguageId::PlainText;
 
 		for (const auto& [key, server] : m_Servers)
 		{
@@ -564,10 +571,11 @@ namespace Graphite {
 			if (best == nullptr || rank(server.Status.State) > rank(best->State))
 			{
 				best = &server.Status;
+				bestLanguage = key.Language;
 			}
 		}
 
-		return best != nullptr ? std::optional<ServerStatus>{*best} : std::nullopt;
+		return best != nullptr ? std::optional<ServerStatus>{WithLanguage(*best, bestLanguage)} : std::nullopt;
 	}
 
 	LanguageServices::Ticket LanguageServices::IssueTicket()
