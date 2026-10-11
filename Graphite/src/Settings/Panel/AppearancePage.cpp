@@ -271,7 +271,7 @@ namespace Graphite {
 		const std::vector<std::string>& names = m_Draft.GetNames();
 		std::size_t selected = IndexOfName(names, m_Draft.GetSelected());
 
-		if (!SettingsLayout::Choice("##colourScheme", names, selected))
+		if (!SettingsLayout::Choice("##colourScheme", names, selected, m_Draft.GetSelected()))
 		{
 			return;
 		}

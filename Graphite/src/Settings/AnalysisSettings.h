@@ -7,7 +7,7 @@ namespace Graphite {
 
 	class AppSettings;
 
-	// One owner of the two persisted background-analysis settings. The section edits it and
+	// One owner of the two persisted background-analysis settings. The Background Analysis page edits it and
 	// GraphiteLayer reads it; without this they would each hold their own copy and drift apart the
 	// first time one of them forgot to reload. The same reason SearchSettings exists next door.
 	class AnalysisSettings

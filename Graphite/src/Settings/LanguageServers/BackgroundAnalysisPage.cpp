@@ -21,6 +21,11 @@ namespace Graphite {
 		return ICON_MDI_PROGRESS_CLOCK;
 	}
 
+	void BackgroundAnalysisPage::OnDeactivated()
+	{
+		m_PendingBudgetMegabytes.reset();
+	}
+
 	std::vector<SettingsCard> BackgroundAnalysisPage::Describe()
 	{
 		const std::string concurrencyDescription = m_Analysis.IsConcurrencyAutomatic()

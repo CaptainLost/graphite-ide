@@ -74,7 +74,8 @@ namespace Graphite {
 		static void DrawGroupDivider();
 		static bool DrawNavigationEntry(const char* icon, std::string_view title, bool selected, bool dimmed);
 
-		// A combo of the options; true on the frame another is chosen.
-		static bool Choice(const char* id, std::span<const std::string> options, std::size_t& selected);
+		// A combo of the options; true on the frame another is chosen. A selected index past the options
+		// shows unlistedPreview, for a value the file holds that the list does not.
+		static bool Choice(const char* id, std::span<const std::string> options, std::size_t& selected, const std::string& unlistedPreview = {});
 	};
 }

@@ -339,7 +339,20 @@ TEST_CASE("Opening a block found by its title opens it unfiltered")
 	fixture.Panel.OpenSearchHit({"keyBindings"}, "");
 
 	CHECK(fixture.Panel.GetOpenPath() == std::vector<std::string>{"keyBindings"});
-	CHECK(fixture.KeyBindings->GetOpenedFromSearch().empty());
+	CHECK(fixture.KeyBindings->GetOpenedFromSearch() == std::vector<std::string>{""});
+}
+
+TEST_CASE("Opening a block found by its title clears the filter an earlier search left")
+{
+	PanelFixture fixture;
+	fixture.Panel.SetQuery("save");
+	fixture.Panel.OpenSearchHit({"keyBindings"}, "1 command matches");
+	fixture.Panel.SetQuery("shortcut");
+
+	fixture.Panel.OpenSearchHit({"keyBindings"}, "");
+
+	REQUIRE(fixture.KeyBindings->GetOpenedFromSearch().size() == 2);
+	CHECK(fixture.KeyBindings->GetOpenedFromSearch().back().empty());
 }
 
 TEST_CASE("Every page is updated and asked for its dialogs each frame, open or not")
@@ -403,6 +416,67 @@ TEST_CASE("The padding of the panel's child windows does not reach what is drawn
 
 	CHECK(fixture.Controls.PaddingInside.x == outside.x);
 	CHECK(fixture.Controls.PaddingInside.y == outside.y);
+}
+
+namespace {
+
+	// The lowest point at which the mouse is over an item of the named window; nothing is clicked.
+	ImVec2 LowestItemIn(PanelFixture& fixture, std::string_view windowName)
+	{
+		for (float y = 590.0f; y > 0.0f; y -= 4.0f)
+		{
+			for (float x = 20.0f; x < 980.0f; x += 20.0f)
+			{
+				ImGui::GetIO().AddMousePosEvent(x, y);
+				fixture.Frames.Next([&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
+
+				const ImGuiContext& context = *ImGui::GetCurrentContext();
+				const bool inWindow =
+					context.HoveredWindow != nullptr && std::string_view(context.HoveredWindow->Name).find(windowName) != std::string_view::npos;
+
+				if (inWindow && context.HoveredId != 0)
+				{
+					return ImVec2(x, y);
+				}
+			}
+		}
+
+		return ImVec2(-1.0f, -1.0f);
+	}
+}
+
+TEST_CASE("Clicking Open on a result opens the page, ends the search and tells the page the query")
+{
+	PanelFixture fixture;
+	fixture.Panel.SetQuery("save");
+	fixture.DrawFrames();
+	const ImVec2 openButton = LowestItemIn(fixture, "##results");
+	REQUIRE(openButton.x > 0.0f);
+
+	fixture.Frames.Click(openButton, [&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
+
+	CHECK_FALSE(fixture.Panel.IsSearching());
+	CHECK(fixture.Panel.GetOpenPath() == std::vector<std::string>{"keyBindings"});
+	CHECK(fixture.KeyBindings->GetOpenedFromSearch() == std::vector<std::string>{"save"});
+}
+
+TEST_CASE("Clicking a sidebar entry during a search opens its page without touching any page's filter")
+{
+	PanelFixture fixture;
+	fixture.Panel.SetQuery("save");
+	fixture.DrawFrames();
+	const ImVec2 lastEntry = LowestItemIn(fixture, "##sidebar");
+	REQUIRE(lastEntry.x > 0.0f);
+
+	fixture.Frames.Click(lastEntry, [&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
+
+	CHECK_FALSE(fixture.Panel.IsSearching());
+	CHECK(fixture.Panel.GetOpenPath() == std::vector<std::string>{"git"});
+
+	for (const FakeSettingsPage* page : fixture.AllPages())
+	{
+		CHECK(page->GetOpenedFromSearch().empty());
+	}
 }
 
 // The entries of a list of pages must fit "Background Analysis" and its icon, so the list is padded like the sidebar, not like a page.

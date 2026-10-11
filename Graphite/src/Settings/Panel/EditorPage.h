@@ -28,6 +28,8 @@ namespace Graphite {
 
 		std::vector<SettingsCard> Describe() override;
 
+		void OnDeactivated() override;
+
 	private:
 		SettingsCard DescribeText();
 		SettingsCard DescribeIndentation();

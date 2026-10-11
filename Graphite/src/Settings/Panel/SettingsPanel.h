@@ -42,7 +42,8 @@ namespace Graphite {
 
 		bool IsSearching() const;
 
-		// A block found by what it holds inside is told the query, so it opens showing those matches.
+		// The page opened is told the query when the block was found by what it holds inside, and an
+		// empty one otherwise, so a filter an earlier search left on it is cleared.
 		void OpenSearchHit(const std::vector<std::string>& path, std::string_view matchesInside);
 
 	private:
@@ -50,6 +51,7 @@ namespace Graphite {
 		{
 			std::vector<std::string> Path;
 			std::string MatchesInside;
+			bool FromResults = false;
 		};
 
 		std::optional<std::vector<std::string>> ResolvePath(const std::vector<std::string>& path) const;
@@ -91,6 +93,7 @@ namespace Graphite {
 		std::string m_Query;
 		std::vector<SettingsPageHits> m_Hits;
 		std::optional<PendingOpen> m_PendingOpen;
+		std::string m_ResultsQuery;
 		bool m_WasDrawnLastFrame = false;
 	};
 }

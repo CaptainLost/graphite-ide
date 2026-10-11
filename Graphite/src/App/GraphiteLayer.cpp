@@ -40,6 +40,7 @@
 #include "Search/SearchPanel.h"
 
 #include "Settings/AppSettings.h"
+#include "Settings/Panel/SettingsPanel.h"
 
 #include "App/GraphiteMenu.h"
 #include "App/LanguageServerChoice.h"
@@ -66,7 +67,6 @@
 
 #include "Core/Events/ApplicationEvent.h"
 
-#include "Settings/Panel/SettingsPanel.h"
 #include "UI/DialogLayout.h"
 #include "UI/LanguageSupportBar.h"
 #include "UI/RestrictedModeBar.h"
@@ -77,8 +77,6 @@
 
 #include "Core/Platform/Process.h"
 #include "Core/Platform/Shell.h"
-
-#include <IconsMaterialDesignIcons.h>
 
 #include <imgui.h>
 
@@ -298,7 +296,7 @@ namespace Graphite {
 
 		// Enabled only where the toggle can say something true: with a folder open, and not when
 		// an entry above the folder is what trusts it - revoking the folder itself would change
-		// nothing, and the settings section is where that entry is.
+		// nothing, and the Trusted Folders page is where that entry is.
 		m_Commands.Add({.Id = "workspace.toggleTrust",
 						.Label = "Trust This Folder",
 						.Run =

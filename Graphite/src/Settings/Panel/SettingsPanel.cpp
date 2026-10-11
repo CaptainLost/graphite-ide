@@ -190,14 +190,14 @@ namespace Graphite {
 	{
 		const std::string query = Core::Trimmed(m_Query);
 
-		if (!Open(path) || matchesInside.empty())
+		if (!Open(path))
 		{
 			return;
 		}
 
 		if (SettingsPage* open = GetOpenPage(); open != nullptr)
 		{
-			open->OnOpenedFromSearch(query);
+			open->OnOpenedFromSearch(matchesInside.empty() ? std::string_view{} : std::string_view{query});
 		}
 	}
 
@@ -381,6 +381,13 @@ namespace Graphite {
 
 	void SettingsPanel::DrawResults()
 	{
+		// One child serves every query, so a new query would otherwise open part-way down the last one's list.
+		if (m_ResultsQuery != m_Query)
+		{
+			ImGui::SetNextWindowScroll(ImVec2(0.0f, 0.0f));
+			m_ResultsQuery = m_Query;
+		}
+
 		if (BeginPaddedChild("##results", ImVec2(0.0f, 0.0f), SettingsLayout::kPageMargin))
 		{
 			if (m_Hits.empty())
@@ -435,7 +442,7 @@ namespace Graphite {
 	{
 		if (ImGui::Button(kOpenLabels.front().c_str()))
 		{
-			m_PendingOpen = PendingOpen{.Path = path, .MatchesInside = matchesInside};
+			m_PendingOpen = PendingOpen{.Path = path, .MatchesInside = matchesInside, .FromResults = true};
 		}
 	}
 
@@ -461,7 +468,15 @@ namespace Graphite {
 
 		const PendingOpen pending = std::move(*m_PendingOpen);
 		m_PendingOpen.reset();
-		OpenSearchHit(pending.Path, pending.MatchesInside);
+
+		if (pending.FromResults)
+		{
+			OpenSearchHit(pending.Path, pending.MatchesInside);
+		}
+		else
+		{
+			Open(pending.Path);
+		}
 	}
 
 	ImU32 SettingsPanel::ProblemColour() const

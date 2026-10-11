@@ -136,7 +136,7 @@ namespace Graphite {
 		bool m_WasEnabled = true;
 
 		// The trust list's revision last seen, so a change made anywhere - the bar, the menu, the
-		// settings section - reaches the language servers through one compare per frame.
+		// Trusted Folders page - reaches the language servers through one compare per frame.
 		std::uint64_t m_SeenTrustRevision = 0;
 
 		// Whether the open folder was trusted last frame, for the edge that warms its servers.

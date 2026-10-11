@@ -348,7 +348,7 @@ namespace Graphite {
 	void SchemeDraft::Fail(std::string title, std::string message)
 	{
 		// The themes directory is the application's, not the open folder's: the toast outlives
-		// the folder. Queued, so two failures before the section drains are two toasts.
+		// the folder. Queued, so two failures before the Appearance page drains are two toasts.
 		m_Failures.push_back(ApplicationToast(Core::ToastKind::Error, std::move(title), std::move(message)));
 	}
 }

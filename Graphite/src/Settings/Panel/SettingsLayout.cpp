@@ -444,7 +444,7 @@ namespace Graphite {
 		const ImVec2 size(ImGui::GetContentRegionAvail().x, Core::Scaled(kNavigationEntryHeight));
 
 		ImGui::PushID(title.data(), title.data() + title.size());
-		const bool clicked = ImGui::InvisibleButton("##entry", size);
+		const bool clicked = ImGui::InvisibleButton("##entry", size, ImGuiButtonFlags_EnableNav);
 		const float hover = Core::Animation::HoverAmount(ImGui::GetItemID(), ImGui::IsItemHovered());
 		ImGui::PopID();
 
@@ -467,9 +467,10 @@ namespace Graphite {
 		return clicked;
 	}
 
-	bool SettingsLayout::Choice(const char* id, std::span<const std::string> options, std::size_t& selected)
+	bool SettingsLayout::Choice(const char* id, std::span<const std::string> options, std::size_t& selected,
+							   const std::string& unlistedPreview)
 	{
-		const char* preview = selected < options.size() ? options[selected].c_str() : "";
+		const char* preview = selected < options.size() ? options[selected].c_str() : unlistedPreview.c_str();
 
 		if (!ImGui::BeginCombo(id, preview))
 		{

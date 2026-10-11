@@ -152,6 +152,14 @@ namespace {
 			ImGui::End();
 		}
 
+		void DrawEntryFocused()
+		{
+			BeginSidebar();
+			ImGui::SetKeyboardFocusHere();
+			EntryClicked = Graphite::SettingsLayout::DrawNavigationEntry("", "Editor", false, false) || EntryClicked;
+			ImGui::End();
+		}
+
 		void DrawEntry()
 		{
 			BeginSidebar();
@@ -371,4 +379,16 @@ TEST_CASE("A search result's page label is followed by a gap before its first ca
 
 	CHECK(lastItemSize.x == 0.0f);
 	CHECK(lastItemSize.y > 0.0f);
+}
+
+TEST_CASE("A focused navigation entry is clicked by Space")
+{
+	SidebarScreen screen;
+	ImGui::GetIO().ConfigNavCursorVisibleAlways = true;
+	screen.Frames.Next([&screen] { screen.DrawEntryFocused(); });
+	screen.Frames.Next([&screen] { screen.DrawEntry(); });
+
+	screen.Frames.PressKey(ImGuiKey_Space, [&screen] { screen.DrawEntry(); });
+
+	CHECK(screen.EntryClicked);
 }

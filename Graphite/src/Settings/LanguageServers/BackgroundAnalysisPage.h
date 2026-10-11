@@ -23,6 +23,8 @@ namespace Graphite {
 
 		std::vector<SettingsCard> Describe() override;
 
+		void OnDeactivated() override;
+
 	private:
 		void DrawEnabled();
 		void DrawBudget();

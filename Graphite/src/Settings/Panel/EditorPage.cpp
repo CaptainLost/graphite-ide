@@ -60,6 +60,12 @@ namespace Graphite {
 		return ICON_MDI_PENCIL_OUTLINE;
 	}
 
+	void EditorPage::OnDeactivated()
+	{
+		m_PendingFontSize.reset();
+		m_PendingHoverDelay.reset();
+	}
+
 	std::vector<SettingsCard> EditorPage::Describe()
 	{
 		return {DescribeText(), DescribeIndentation(), DescribeHover(), DescribeGitChanges()};

@@ -12,7 +12,7 @@
 
 namespace Graphite {
 
-	// The scheme the settings section is looking at, and every decision it can make about it.
+	// The scheme the Appearance page is looking at, and every decision it can make about it.
 	// Takes its directory rather than asking AppSettings for one, so the whole of this class can
 	// be exercised against a temporary directory instead of the user's own themes directory.
 	//
@@ -80,7 +80,7 @@ namespace Graphite {
 		bool DeleteSelected();
 
 		// The toasts for each Save, Duplicate or DeleteSelected that failed, oldest first and each
-		// handed out once, for the section to publish: the draft holds no event bus, and is tested
+		// handed out once, for the Appearance page to publish: the draft holds no event bus, and is tested
 		// without one. A failed rename is not kept here - the rename dialog says why in place.
 		std::optional<ToastEvent> TakeFailure();
 
