@@ -27,12 +27,13 @@ namespace {
 	{
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
 
-		while (session.GetTurns().size() != turns)
+		while (session.GetTurns().size() != turns && std::chrono::steady_clock::now() < deadline)
 		{
 			live.Take(session);
-			REQUIRE(std::chrono::steady_clock::now() < deadline);
 			std::this_thread::sleep_for(std::chrono::milliseconds{5});
 		}
+
+		REQUIRE(session.GetTurns().size() == turns);
 	}
 }
 
@@ -71,12 +72,13 @@ TEST_CASE("The timeline follows the transcript and restarts with it")
 
 	{
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
-		while (timeline.GetRequests().size() != 2)
+		while (timeline.GetRequests().size() != 2 && std::chrono::steady_clock::now() < deadline)
 		{
 			live.Take(session, timeline);
-			REQUIRE(std::chrono::steady_clock::now() < deadline);
 			std::this_thread::sleep_for(std::chrono::milliseconds{5});
 		}
+
+		REQUIRE(timeline.GetRequests().size() == 2);
 	}
 
 	const std::uint64_t versionBefore = timeline.GetVersion();
@@ -90,12 +92,13 @@ TEST_CASE("The timeline follows the transcript and restarts with it")
 
 	{
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
-		while (timeline.GetRequests().size() != 1)
+		while (timeline.GetRequests().size() != 1 && std::chrono::steady_clock::now() < deadline)
 		{
 			live.Take(session, timeline);
-			REQUIRE(std::chrono::steady_clock::now() < deadline);
 			std::this_thread::sleep_for(std::chrono::milliseconds{5});
 		}
+
+		REQUIRE(timeline.GetRequests().size() == 1);
 	}
 
 	// A restart moves the timeline's version too, distinct from ordinary growth.
@@ -192,12 +195,13 @@ TEST_CASE("Subagent usage arrives with the transcript and again when a subagent 
 	live.Poll();
 
 	const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
-	while (!subagents.contains("a1"))
+	while (!subagents.contains("a1") && std::chrono::steady_clock::now() < deadline)
 	{
 		live.TakeSubagents(subagents, links);
-		REQUIRE(std::chrono::steady_clock::now() < deadline);
 		std::this_thread::sleep_for(std::chrono::milliseconds{5});
 	}
+
+	REQUIRE(subagents.contains("a1"));
 
 	CHECK(subagents.at("a1") == UsageByModel{{{"claude-opus-5", false}, {5, 6, 0, 0, 0}}});
 }
@@ -211,12 +215,14 @@ namespace {
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
 		SubagentLinks discarded;
 
-		while (!subagents.contains(id) || subagents.at(id) != expected)
+		while ((!subagents.contains(id) || subagents.at(id) != expected) && std::chrono::steady_clock::now() < deadline)
 		{
 			live.TakeSubagents(subagents, links ? *links : discarded);
-			REQUIRE(std::chrono::steady_clock::now() < deadline);
 			std::this_thread::sleep_for(std::chrono::milliseconds{5});
 		}
+
+		REQUIRE(subagents.contains(id));
+		CHECK(subagents.at(id) == expected);
 	}
 
 	// Takes the subagents' links until `toolUseId` is among them, or fails after five seconds.
@@ -225,12 +231,13 @@ namespace {
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
 		SubagentUsage usage;
 
-		while (!links.contains(toolUseId))
+		while (!links.contains(toolUseId) && std::chrono::steady_clock::now() < deadline)
 		{
 			live.TakeSubagents(usage, links);
-			REQUIRE(std::chrono::steady_clock::now() < deadline);
 			std::this_thread::sleep_for(std::chrono::milliseconds{5});
 		}
+
+		REQUIRE(links.contains(toolUseId));
 	}
 
 	// Polls until both the first pass and the subagent walk are done, or fails after five seconds.
@@ -238,11 +245,13 @@ namespace {
 	{
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
 
-		while (!live.GetProgress().FirstPassDone || !live.GetProgress().SubagentsWalked)
+		while ((!live.GetProgress().FirstPassDone || !live.GetProgress().SubagentsWalked) && std::chrono::steady_clock::now() < deadline)
 		{
-			REQUIRE(std::chrono::steady_clock::now() < deadline);
 			std::this_thread::sleep_for(std::chrono::milliseconds{5});
 		}
+
+		REQUIRE(live.GetProgress().FirstPassDone);
+		REQUIRE(live.GetProgress().SubagentsWalked);
 	}
 }
 
@@ -284,17 +293,16 @@ namespace {
 	{
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{seconds};
 
-		while (true)
-		{
-			const LiveTranscript::LoadProgress progress = live.GetProgress();
-			if (done(progress))
-			{
-				return progress;
-			}
+		LiveTranscript::LoadProgress progress = live.GetProgress();
 
-			REQUIRE(std::chrono::steady_clock::now() < deadline);
+		while (!done(progress) && std::chrono::steady_clock::now() < deadline)
+		{
 			std::this_thread::sleep_for(std::chrono::milliseconds{1});
+			progress = live.GetProgress();
 		}
+
+		REQUIRE(done(progress));
+		return progress;
 	}
 
 	bool AllRead(const LiveTranscript::LoadProgress& progress)

@@ -27,28 +27,33 @@ namespace {
 		IndexDelivery all;
 		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
 
-		while (true)
+		bool settled = false;
+
+		while (!settled && std::chrono::steady_clock::now() < deadline)
 		{
 			IndexDelivery delivery;
 			index.Take(delivery);
 			all.Updated.insert(all.Updated.end(), delivery.Updated.begin(), delivery.Updated.end());
 			all.Removed.insert(all.Removed.end(), delivery.Removed.begin(), delivery.Removed.end());
 
-			if (!index.IsScanning())
+			if (index.IsScanning())
 			{
-				// A fresh delivery: Take accumulates into what it is given, and this one
-				// already holds what the check above collected — reusing it here would count
-				// that batch twice.
-				IndexDelivery last;
-				index.Take(last);
-				all.Updated.insert(all.Updated.end(), last.Updated.begin(), last.Updated.end());
-				all.Removed.insert(all.Removed.end(), last.Removed.begin(), last.Removed.end());
-				return all;
+				std::this_thread::sleep_for(std::chrono::milliseconds{5});
+				continue;
 			}
 
-			REQUIRE(std::chrono::steady_clock::now() < deadline);
-			std::this_thread::sleep_for(std::chrono::milliseconds{5});
+			// A fresh delivery: Take accumulates into what it is given, and this one
+			// already holds what the check above collected — reusing it here would count
+			// that batch twice.
+			IndexDelivery last;
+			index.Take(last);
+			all.Updated.insert(all.Updated.end(), last.Updated.begin(), last.Updated.end());
+			all.Removed.insert(all.Removed.end(), last.Removed.begin(), last.Removed.end());
+			settled = true;
 		}
+
+		REQUIRE(settled);
+		return all;
 	}
 }
 
