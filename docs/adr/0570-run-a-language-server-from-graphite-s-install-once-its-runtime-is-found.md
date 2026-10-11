@@ -23,7 +23,7 @@ A running server holds its installed command open, sharing only read access, so 
 
 C# lists Roslyn (recommended), csharp-ls and OmniSharp, and runs none until one is chosen. C++ keeps clangd when nothing is chosen. A document opened while its language has no server chosen is kept with its latest text, and is opened on the server chosen later.
 
-Roslyn's adapter sends `solution/open` with the solution in use after `initialized`. It reports "no solution" when the root has none, stays indexing until `workspace/projectInitializationComplete`, and is restarted when the Explorer selects another solution. The solution in use is the selected one when it lies inside the server's root, and otherwise the root's first `.sln` or `.slnx` by name.
+Roslyn's adapter sends `solution/open` with the solution in use after `initialized`. A root with no solution but with `.csproj` files directly in it is sent `project/open` with all of them instead; they are listed on the UI thread before the client starts. The adapter reports "no project" when the root has neither, stays indexing until `workspace/projectInitializationComplete`, which Roslyn sends after either request, and is restarted when the Explorer selects another solution. The solution in use is the selected one when it lies inside the server's root, and otherwise the root's first solution by name, the `.slnx` when a `.sln` shares its name.
 
 ## Rationale
 
@@ -47,6 +47,8 @@ Roslyn's adapter sends `solution/open` with the solution in use after `initializ
 - A runtime of a newer major version counts as enough, though a server whose runtime does not roll forward across majors would still fail on it.
 - Selecting another solution restarts every server of a language whose server follows it, including servers of other roots.
 - `installed.json` is read on the UI thread once per server start.
+- A stopped server's files stay locked for a moment after it is ended, so removing its version right after a stop can fail and must wait or retry.
+- Where Graphite installs servers, a C++ machine with no clangd now reads 'not installed' and is offered the install, ahead of stage 5.
 
 ### Neutral
 
