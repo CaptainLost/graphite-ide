@@ -15,6 +15,7 @@
 #include <array>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -68,6 +69,7 @@ namespace Graphite {
 		void RenderToolbar();
 		void RenderEmptyState();
 		void RenderFilteredTree();
+		void RenderSearching();
 		void RebuildFilteredTreeWhenOutOfDate();
 		void NoteFilesChanged(const WorkspaceFilesChangedEvent& changed);
 		void RenderNode(Core::FileNode& node);
@@ -150,5 +152,8 @@ namespace Graphite {
 		std::string m_FilteredTreeText;
 		std::uint64_t m_FilteredTreeListingVersion = 0;
 		bool m_ReopenFilteredFolders = false;
+
+		// When, in ImGui's clock, the filter started waiting for the first listing of the folder.
+		std::optional<double> m_SearchingSince;
 	};
 }

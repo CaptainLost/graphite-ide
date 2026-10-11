@@ -1,12 +1,14 @@
 #include "Explorer/FileTreeView.h"
 
 #include "Core/ImGui/UiScale.h"
+#include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileOperations.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
 
@@ -24,6 +26,7 @@
 #include <IconsMaterialDesignIcons.h>
 
 #include <algorithm>
+#include <chrono>
 #include <format>
 #include <string>
 #include <string_view>
@@ -123,6 +126,7 @@ namespace Graphite {
 			else
 			{
 				m_FilteredTreeText.clear();
+				m_SearchingSince.reset();
 				RenderNode(m_Workspace.GetTree().GetRoot());
 			}
 
@@ -253,10 +257,11 @@ namespace Graphite {
 
 		if (!m_Listing.HasListing())
 		{
-			ImGui::TextDisabled("Searching...");
+			RenderSearching();
 			return;
 		}
 
+		m_SearchingSince.reset();
 		RebuildFilteredTreeWhenOutOfDate();
 
 		// ImGui keeps a folder's open state by its ID, which here would be the same as the real
@@ -275,6 +280,30 @@ namespace Graphite {
 			ImGui::TextWrapped("No files match \"%s\"", m_Filter.InputBuf);
 			ImGui::PopStyleColor();
 		}
+	}
+
+	void FileTreeView::RenderSearching()
+	{
+		// A small folder is read in a few milliseconds; shown at once, the loader would flash
+		// for one frame and read as a glitch.
+		constexpr double kSecondsBeforeLoaderShows = 0.2;
+
+		const double now = ImGui::GetTime();
+
+		if (!m_SearchingSince.has_value())
+		{
+			m_SearchingSince = now;
+		}
+
+		const double secondsSearching = now - *m_SearchingSince;
+
+		if (secondsSearching < kSecondsBeforeLoaderShows)
+		{
+			Core::Redraw::RequestIn(std::chrono::duration<double>(kSecondsBeforeLoaderShows - secondsSearching));
+			return;
+		}
+
+		Core::LoadingState("Searching");
 	}
 
 	void FileTreeView::RebuildFilteredTreeWhenOutOfDate()

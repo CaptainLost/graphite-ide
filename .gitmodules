@@ -35,3 +35,6 @@
 [submodule "vendor/miniz"]
 	path = vendor/miniz
 	url = https://github.com/richgel999/miniz.git
+[submodule "vendor/imspinner"]
+	path = vendor/imspinner
+	url = https://github.com/dalerank/imspinner.git

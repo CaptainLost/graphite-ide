@@ -43,6 +43,7 @@ project "Core"
         "%{IncludeDir.MinizExport}",
         "%{IncludeDir.ImAnim}",
         "%{IncludeDir.ImPlot}",
+        "%{IncludeDir.ImSpinner}",
         "%{IncludeDir.json}",
         "%{IncludeDir.MdiIcons}",
         "%{IncludeDir.spdlog}"

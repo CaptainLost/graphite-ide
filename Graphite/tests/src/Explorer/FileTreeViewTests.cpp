@@ -3,10 +3,12 @@
 #include "Explorer/FileTreeView.h"
 #include "Workspace/Workspace.h"
 
+#include "DeferredJobs.h"
 #include "ImGuiFrames.h"
 #include "TempAppSettings.h"
 #include "TempDirectory.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileTree.h"
 #include "Core/Text/DocumentSet.h"
@@ -16,8 +18,10 @@
 
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -66,7 +70,8 @@ namespace {
 	class ExplorerScreen
 	{
 	public:
-		explicit ExplorerScreen(const std::filesystem::path& folder)
+		explicit ExplorerScreen(const std::filesystem::path& folder, Core::JobSubmitter submitJob = RunJobsAtOnce())
+			: View{Workspace, Documents, Events, std::move(submitJob)}
 		{
 			REQUIRE(Workspace.OpenFolder(folder));
 
@@ -105,6 +110,18 @@ namespace {
 			Next();
 		}
 
+		// ImGuiFrames steps the clock by a sixtieth of a second a frame.
+		void WaitSeconds(double seconds)
+		{
+			constexpr double kFramesPerSecond = 60.0;
+			const int frameCount = static_cast<int>(seconds * kFramesPerSecond) + 1;
+
+			for (int frameIndex = 0; frameIndex < frameCount; ++frameIndex)
+			{
+				Next();
+			}
+		}
+
 		void ClearFilterWithEscape()
 		{
 			Frames.PressKey(ImGuiKey_Escape, [this] { Draw(); });
@@ -129,7 +146,7 @@ namespace {
 		Core::EventBus Events;
 		Graphite::Workspace Workspace{Events, Settings.Get()};
 		Core::DocumentSet Documents;
-		Graphite::FileTreeView View{Workspace, Documents, Events, RunJobsAtOnce()};
+		Graphite::FileTreeView View;
 		std::vector<std::filesystem::path> OpenedFiles;
 	};
 }
@@ -164,4 +181,49 @@ TEST_CASE("Clearing the filter leaves closed the folders it opened")
 	const Core::FileNode* source = ChildNamed(screen.Workspace.GetTree().GetRoot(), "src");
 	REQUIRE(source != nullptr);
 	CHECK_FALSE(source->Expanded);
+}
+
+TEST_CASE("While the first read of the folder is new, the file tree draws nothing and wakes itself when the wait is over")
+{
+	TempDirectory folder;
+	folder.MakeFile("src/Deep.cpp");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+	screen.TypeInFilter("Deep");
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	screen.Next();
+
+	const std::optional<Core::Redraw::Clock::time_point> wake = Core::Redraw::TakeDeadline();
+	REQUIRE(wake.has_value());
+	CHECK(*wake > Core::Redraw::Clock::now());
+}
+
+TEST_CASE("A read of the folder that takes a while is shown by a moving loader until it finishes")
+{
+	TempDirectory folder;
+	folder.MakeFile("src/Deep.cpp");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+	screen.TypeInFilter("Deep");
+
+	const double pastTheWait = 0.25;
+	screen.WaitSeconds(pastTheWait);
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	screen.Next();
+
+	const std::optional<Core::Redraw::Clock::time_point> nextFrame = Core::Redraw::TakeDeadline();
+	REQUIRE(nextFrame.has_value());
+	CHECK(*nextFrame <= Core::Redraw::Clock::now());
+
+	jobs.RunAll();
+	screen.Next();
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	screen.Next();
+
+	CHECK_FALSE(Core::Redraw::TakeDeadline().has_value());
 }
