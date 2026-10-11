@@ -10,6 +10,7 @@
 #include <fstream>
 #include <iterator>
 #include <optional>
+#include <ostream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -397,9 +398,9 @@ TEST_CASE("Removing a path that is not there leaves an empty object beside it al
 TEST_CASE("Setting a value through a key that holds no object replaces that key with an object")
 {
 	JsonFile file;
-	file.Set("lsp", "fast");
+	file.Set("tools", "fast");
 
-	const std::vector<std::string> path{"lsp", "clangd", "binary", "path"};
+	const std::vector<std::string> path{"tools", "formatter", "settings", "path"};
 	file.SetJsonAt(path, R"("C:\\clangd.exe")");
 
 	CHECK(file.GetJsonAt(path) == std::optional<std::string>{R"("C:\\clangd.exe")"});
@@ -408,21 +409,21 @@ TEST_CASE("Setting a value through a key that holds no object replaces that key 
 TEST_CASE("Removing through a key that holds no object changes nothing")
 {
 	JsonFile file;
-	file.Set("lsp", "fast");
+	file.Set("tools", "fast");
 
-	const std::vector<std::string> path{"lsp", "clangd", "binary"};
+	const std::vector<std::string> path{"tools", "formatter", "settings"};
 	file.RemoveAt(path);
 
-	CHECK(file.Get("lsp") == "fast");
+	CHECK(file.Get("tools") == "fast");
 }
 
 TEST_CASE("Removing a top-level path removes that key")
 {
 	JsonFile file;
-	file.Set("languageServerBinary", "C:\\clangd.exe");
+	file.Set("legacyPath", "C:\\clangd.exe");
 	file.Set("wordWrap", "true");
 
-	const std::vector<std::string> path{"languageServerBinary"};
+	const std::vector<std::string> path{"legacyPath"};
 	file.RemoveAt(path);
 
 	CHECK_FALSE(file.GetJsonAt(path).has_value());

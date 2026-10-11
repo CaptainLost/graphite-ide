@@ -55,9 +55,7 @@ namespace Graphite {
 		// different things to say, none of which this is.
 		std::optional<std::string> Background;
 
-		// The longer text behind Background. Joins the single tooltip the bar already hangs off
-		// its whole right-hand side, because splitting that into separately hoverable items is a
-		// change to how the bar draws for the sake of a second tooltip.
+		// Shown over the background pass and the caret and format after it, which are drawn as one item.
 		std::optional<std::string> BackgroundDetail;
 
 		// GitStatusText's output. Unset when there is nothing to say about git at all — no

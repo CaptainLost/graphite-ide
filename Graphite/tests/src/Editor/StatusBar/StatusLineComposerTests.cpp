@@ -2,6 +2,10 @@
 
 #include "Editor/StatusBar/StatusLineComposer.h"
 
+#include <optional>
+#include <ostream>
+#include <string>
+
 using namespace Graphite;
 
 namespace {
@@ -138,14 +142,20 @@ TEST_CASE("An install under way speaks for the active document's language first"
 	CHECK(installing->SettingsLanguage == LanguageId::CSharp);
 
 	inputs.ActiveJob->Percent.reset();
-	CHECK(ChooseServerLine(inputs)->Text == "C#: installing Roslyn");
+	const std::optional<ServerLine> installingWithoutPercent = ChooseServerLine(inputs);
+	REQUIRE(installingWithoutPercent.has_value());
+	CHECK(installingWithoutPercent->Text == "C#: installing Roslyn");
 
 	inputs.ActiveJob = ServerJob{.Kind = InstallJobKind::Uninstall, .Server = "Roslyn"};
-	CHECK(ChooseServerLine(inputs)->Text == "C#: uninstalling Roslyn");
-	CHECK(ChooseServerLine(inputs)->Detail == "Graphite is removing its install of Roslyn.");
+	const std::optional<ServerLine> uninstalling = ChooseServerLine(inputs);
+	REQUIRE(uninstalling.has_value());
+	CHECK(uninstalling->Text == "C#: uninstalling Roslyn");
+	CHECK(uninstalling->Detail == "Graphite is removing its install of Roslyn.");
 
 	inputs.ActiveJob = ServerJob{.Kind = InstallJobKind::CheckForUpdates, .Server = "Roslyn"};
-	CHECK(ChooseServerLine(inputs)->Text == "C++: clangd ready");
+	const std::optional<ServerLine> checking = ChooseServerLine(inputs);
+	REQUIRE(checking.has_value());
+	CHECK(checking->Text == "C++: clangd ready");
 }
 
 TEST_CASE("The server's words open the settings of the language they speak for")
@@ -153,23 +163,33 @@ TEST_CASE("The server's words open the settings of the language they speak for")
 	ServerLineInputs active;
 	active.Active = Clangd(ServerState::Ready);
 	active.ActiveLanguage = LanguageId::Cpp;
-	CHECK(ChooseServerLine(active)->SettingsLanguage == LanguageId::Cpp);
+	const std::optional<ServerLine> activeLine = ChooseServerLine(active);
+	REQUIRE(activeLine.has_value());
+	CHECK(activeLine->SettingsLanguage == LanguageId::Cpp);
 
 	ServerLineInputs unserved;
 	unserved.ActiveLanguage = LanguageId::CSharp;
-	CHECK(ChooseServerLine(unserved)->SettingsLanguage == LanguageId::CSharp);
+	const std::optional<ServerLine> unservedLine = ChooseServerLine(unserved);
+	REQUIRE(unservedLine.has_value());
+	CHECK(unservedLine->SettingsLanguage == LanguageId::CSharp);
 
 	ServerLineInputs typeScript;
 	typeScript.ActiveLanguage = LanguageId::TypeScript;
-	CHECK_FALSE(ChooseServerLine(typeScript)->SettingsLanguage.has_value());
+	const std::optional<ServerLine> typeScriptLine = ChooseServerLine(typeScript);
+	REQUIRE(typeScriptLine.has_value());
+	CHECK_FALSE(typeScriptLine->SettingsLanguage.has_value());
 
 	ServerLineInputs restricted;
 	restricted.FolderOpen = true;
-	CHECK_FALSE(ChooseServerLine(restricted)->SettingsLanguage.has_value());
+	const std::optional<ServerLine> restrictedLine = ChooseServerLine(restricted);
+	REQUIRE(restrictedLine.has_value());
+	CHECK_FALSE(restrictedLine->SettingsLanguage.has_value());
 
 	ServerLineInputs workspace;
 	workspace.FolderOpen = true;
 	workspace.FolderTrusted = true;
 	workspace.Overall = Clangd(ServerState::Indexing);
-	CHECK(ChooseServerLine(workspace)->SettingsLanguage == LanguageId::Cpp);
+	const std::optional<ServerLine> workspaceLine = ChooseServerLine(workspace);
+	REQUIRE(workspaceLine.has_value());
+	CHECK(workspaceLine->SettingsLanguage == LanguageId::Cpp);
 }

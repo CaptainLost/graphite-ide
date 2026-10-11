@@ -3,6 +3,7 @@
 #include "Core/Platform/CurrentPlatform.h"
 
 #include <format>
+#include <string_view>
 
 namespace Graphite {
 

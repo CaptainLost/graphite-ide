@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <fstream>
+#include <ostream>
 #include <thread>
 
 namespace {

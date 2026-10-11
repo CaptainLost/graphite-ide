@@ -93,8 +93,8 @@ namespace Graphite {
 			ImGui::TextUnformatted(text.c_str());
 		}
 
-		// One piece of the bar that may take a click: a git piece, or the server's words. Clickable pieces show a hand and take a click; the
-		// greyed "No repository" is inert.
+		// One piece of the bar that may take a click: a git piece, or the server's words. Clickable pieces show a
+		// hand and take a click; the greyed "No repository" is inert.
 		//
 		// A clickable piece is an invisible button with the text drawn over it, not a text item
 		// asked IsItemClicked. A text item has no id, so a press on it is a press on the bar's
@@ -277,7 +277,7 @@ namespace Graphite {
 		std::string server;
 		std::string afterServer;
 
-		// Problems first, then the server, then the background pass, then the caret: see each field's own comment.
+		// Problems first and the background pass last: a count of what is wrong is read before what is still indexing.
 		if (messages.Problems && !messages.Problems->empty())
 		{
 			beforeServer = *messages.Problems;
@@ -333,6 +333,7 @@ namespace Graphite {
 			ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - width - ImGui::GetStyle().WindowPadding.x - BellWidth() - ImGui::GetFontSize(),
 									   CentredTextY(height)));
 
+			// SameLine places relative to the item before it, so it needs one; the server is drawn on frames where nothing precedes it.
 			bool placed = false;
 
 			if (!beforeServer.empty())

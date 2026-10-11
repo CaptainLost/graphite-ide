@@ -28,7 +28,7 @@ namespace Graphite {
 
 		ClaudeSettings& m_Settings;
 
-		// The path being typed, written on release like LanguageSection's sliders: every
+		// The path being typed, written on release like LanguagesSection's sliders: every
 		// keystroke would otherwise rewrite the settings file.
 		std::string m_PendingBinary;
 		bool m_EditingBinary = false;
