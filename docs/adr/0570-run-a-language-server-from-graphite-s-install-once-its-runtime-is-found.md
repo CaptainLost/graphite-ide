@@ -15,7 +15,7 @@ A server's command is looked for in one order, and the first match is the one th
 3. beside the executable;
 4. PATH.
 
-Nothing found reads NotInstalled where Graphite installs servers, and NotFound otherwise.
+Nothing found reads NotInstalled. A configured path that is wrong is the only NotFound, so the status can say so ([0571](0571-choose-and-install-language-servers-from-settings-and-the-editor.md)).
 
 A row names the runtime it needs. A .NET server needs a `dotnet` with a runtime of at least that major version. Installations are looked for in `DOTNET_ROOT`, beside `dotnet` on PATH and under Program Files, and versions are read from the directory names under `shared/Microsoft.NETCore.App`. Without such a runtime the server reads MissingRuntime with the version and does not start. A tool whose record names the `dotnet` runner starts as `dotnet <assembly>`.
 
@@ -46,7 +46,7 @@ Roslyn's adapter sends `solution/open` with the solution in use after `initializ
 - A C# folder runs no server until the user chooses one.
 - A runtime of a newer major version counts as enough, though a server whose runtime does not roll forward across majors would still fail on it.
 - Selecting another solution restarts every server of a language whose server follows it, including servers of other roots.
-- `installed.json` is read on the UI thread once per server start.
+- `installed.json` is read on the UI thread once per server start. Settings reads what is installed off the UI thread ([0571](0571-choose-and-install-language-servers-from-settings-and-the-editor.md)).
 - A stopped server's files stay locked for a moment after it is ended, so removing its version right after a stop can fail and must wait or retry.
 - Where Graphite installs servers, a C++ machine with no clangd now reads 'not installed' and is offered the install, ahead of stage 5.
 
