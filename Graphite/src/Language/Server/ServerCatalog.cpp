@@ -191,6 +191,13 @@ namespace Graphite {
 		return nullptr;
 	}
 
+	std::string ServerDisplayName(std::string_view id)
+	{
+		const ServerDefinition* server = FindServer(id);
+
+		return std::string{server != nullptr ? server->DisplayName : id};
+	}
+
 	const ServerDefinition* RecommendedServerFor(LanguageId language)
 	{
 		const std::span<const std::string_view> servers = DefinitionOf(language).Servers;

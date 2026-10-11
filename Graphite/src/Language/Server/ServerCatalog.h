@@ -49,6 +49,8 @@ namespace Graphite {
 
 	const ServerDefinition* FindServer(std::string_view id);
 
+	std::string ServerDisplayName(std::string_view id);
+
 	const ServerDefinition* RecommendedServerFor(LanguageId language);
 
 	std::vector<std::string> DefaultArgumentsOf(const ServerDefinition& server);

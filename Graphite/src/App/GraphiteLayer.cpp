@@ -12,6 +12,7 @@
 #include "Editor/StatusBar/StatusMessageEvent.h"
 #include "Editor/TextEditorWidget.h"
 #include "Language/Registry/LanguageRegistry.h"
+#include "Language/Server/ServerCatalog.h"
 
 #include "Git/Changes/ChangesPanel.h"
 #include "Theme/GitPalette.h"
@@ -724,7 +725,7 @@ namespace Graphite {
 				}
 				break;
 			case InstallStep::Failed:
-				m_Events.Publish(ApplicationToast(Core::ToastKind::Error, outcome.ServerId, outcome.Failure));
+				m_Events.Publish(ApplicationToast(Core::ToastKind::Error, ServerDisplayName(outcome.ServerId), outcome.Failure));
 				break;
 			case InstallStep::Resolving:
 			case InstallStep::Downloading:

@@ -243,6 +243,13 @@ TEST_CASE("A literal marker listed beside patterns still counts")
 	CHECK_FALSE(Graphite::DirectoryHoldsAnyMarker(temp.GetPath() / "repo" / "src", kSolutionMarkers));
 }
 
+TEST_CASE("A server is named by its display name and an unknown one by its id")
+{
+	CHECK(Graphite::ServerDisplayName("roslyn") == "Roslyn");
+	CHECK(Graphite::ServerDisplayName("omnisharp") == "OmniSharp");
+	CHECK(Graphite::ServerDisplayName("no-such-server") == "no-such-server");
+}
+
 TEST_CASE("A folder holding only a solution file is not a nested project root")
 {
 	TempDirectory temp;
