@@ -17,7 +17,5 @@ namespace Graphite {
 		std::vector<Token> Tokens;
 	};
 
-	// Read and coloured once when the popup first draws it: coloured every frame, a grammar would re-parse each
-	// candidate's file every frame.
 	CandidateLine LoadCandidateLine(const Core::DocumentSet& documents, const Location& location, std::size_t tabWidth);
 }

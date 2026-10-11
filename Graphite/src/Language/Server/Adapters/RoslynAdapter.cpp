@@ -2,12 +2,9 @@
 
 #include "Language/Server/LspProtocol.h"
 
-#include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
 
-#include <algorithm>
 #include <format>
-#include <system_error>
 
 namespace Graphite {
 

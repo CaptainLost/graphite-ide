@@ -885,7 +885,7 @@ namespace Graphite {
 		// revalidates them when the trust list moves, and starts, restarts or stops the walk and
 		// the store. Before Poll, so a server this starts is drained on this same frame.
 		m_AnalysisCoordinator.Update(AnalysisSwitches{.Root = m_Workspace.GetRoot(),
-														.SelectedSolution = m_Workspace.GetSelectedSolution(),
+													  .SelectedSolution = m_Workspace.GetSelectedSolution(),
 													  .Trusted = workspaceTrusted,
 													  .SettingEnabled = m_AnalysisSettings.IsEnabled(),
 													  .TrustRevision = m_Trust.GetRevision()});

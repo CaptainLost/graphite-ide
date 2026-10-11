@@ -114,7 +114,7 @@ TEST_CASE("A failed answer is remembered as failed for its question until one su
 TEST_CASE("A preview is coloured once for a tab width and again only when the width changes")
 {
 	HoverState hover;
-	hover.Preview = Graphite::DefinitionPreview{.Path = "C:/project/Widget.cs", .FirstLine = 0, .Lines = {"	public int Size;"}};
+	hover.Preview = Graphite::DefinitionPreview{.Path = "C:/project/Widget.cs", .FirstLine = 0, .Lines = {"\tpublic int Size;"}};
 
 	const Graphite::ColouredPreview& first = Graphite::ColouredPreviewOf(hover, 4);
 

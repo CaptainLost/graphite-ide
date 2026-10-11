@@ -13,12 +13,8 @@
 
 namespace Graphite {
 
-	// Calls onFile for every file under root whose language has a configured server, skipping
-	// everything else. Synchronous, and tested that way — the class below is the thread.
-	//
-	// Does not consult gitignore: that needs a libgit2 repository handle, which is not safe to
-	// share between threads and so is opened by whoever is doing the walking. AnalysisWalk opens
-	// one and hands the predicate down.
+	// A file of a language served within a solution is passed on only inside the selected solution's scope, not
+	// everywhere below root. Gitignore is not consulted: a libgit2 handle is not safe to share between threads.
 	void CollectAnalysable(const std::filesystem::path& root, const std::filesystem::path& selectedSolution,
 						   const Core::CancellationToken& token, const std::function<void(const std::filesystem::path&)>& onFile);
 

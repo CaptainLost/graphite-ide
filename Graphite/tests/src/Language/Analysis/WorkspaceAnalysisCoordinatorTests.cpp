@@ -285,12 +285,22 @@ namespace {
 
 	void RunFramesAndExpectTotal(Harness& harness, std::size_t expected)
 	{
-		constexpr int kLaterFrames = 20;
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
 
-		for (int frame = 0; frame < kLaterFrames; ++frame)
+		harness.Frame();
+
+		while (harness.Coordinator.GetPass().Progress().Walking && std::chrono::steady_clock::now() < deadline)
 		{
-			harness.Frame();
 			std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			harness.Frame();
+		}
+
+		constexpr int kSettlingFrames = 5;
+
+		for (int frame = 0; frame < kSettlingFrames; ++frame)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			harness.Frame();
 		}
 
 		CHECK(harness.Coordinator.GetPass().Progress().Total == expected);

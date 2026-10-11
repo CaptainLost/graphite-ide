@@ -10,8 +10,8 @@
 #include "Core/Text/TextBuffer.h"
 
 #include <cstddef>
-#include <deque>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <functional>
 #include <map>
