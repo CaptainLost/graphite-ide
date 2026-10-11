@@ -19,8 +19,8 @@ namespace Graphite {
 	// Does not consult gitignore: that needs a libgit2 repository handle, which is not safe to
 	// share between threads and so is opened by whoever is doing the walking. AnalysisWalk opens
 	// one and hands the predicate down.
-	void CollectAnalysable(const std::filesystem::path& root, const Core::CancellationToken& token,
-						   const std::function<void(const std::filesystem::path&)>& onFile);
+	void CollectAnalysable(const std::filesystem::path& root, const std::filesystem::path& selectedSolution,
+						   const Core::CancellationToken& token, const std::function<void(const std::filesystem::path&)>& onFile);
 
 	// The walk that fills WorkspaceAnalysis's queue, on a worker, cancellable.
 	//
@@ -40,7 +40,7 @@ namespace Graphite {
 		// Cancels a walk still running: what it is finding is about the folder that was open a
 		// moment ago. Calling this again is what makes switching folders quickly cost one walk
 		// rather than a queue of them.
-		void Start(std::filesystem::path root, bool respectGitIgnore);
+		void Start(std::filesystem::path root, std::filesystem::path selectedSolution, bool respectGitIgnore);
 
 		// Free when there is nothing to cancel, and safe to call every frame because of it: the
 		// render loop does exactly that while the feature is switched off, and this allocates a

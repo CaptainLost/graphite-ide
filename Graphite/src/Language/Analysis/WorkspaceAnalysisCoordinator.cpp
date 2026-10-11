@@ -34,6 +34,12 @@ namespace Graphite {
 		m_WasEnabled = m_Enabled;
 
 		const bool rootChanged = switches.Root != m_WarmedRoot;
+		const bool solutionChanged = switches.SelectedSolution != m_WalkedSolution;
+
+		if (solutionChanged)
+		{
+			m_WalkedSolution = switches.SelectedSolution;
+		}
 
 		// Any change to the list, from anywhere, reaches the servers here - before Poll, so a
 		// server trust has just started is drained on this same frame.
@@ -76,7 +82,7 @@ namespace Graphite {
 
 			if (!m_WarmedRoot.empty() && m_Enabled)
 			{
-				m_Walk.Start(m_WarmedRoot, true);
+				m_Walk.Start(m_WarmedRoot, m_WalkedSolution, true);
 			}
 			else
 			{
@@ -89,12 +95,17 @@ namespace Graphite {
 			// already started the walk for it above, and this must not start a second one over the
 			// top. Nothing to start with no folder open, hence the root check. The queue needs no
 			// clearing: switching the feature off emptied it on the way down.
-			m_Walk.Start(m_WarmedRoot, true);
+			m_Walk.Start(m_WarmedRoot, m_WalkedSolution, true);
 
 			// Re-attached with the walk, because this is the transition that undoes the detach: a
 			// pass restarted against a detached store would ask the server about every file the
 			// last session already answered for.
 			m_Store.SetRoot(m_WarmedRoot);
+		}
+		else if (solutionChanged && m_Enabled && !m_WarmedRoot.empty())
+		{
+			m_Pass.Clear();
+			m_Walk.Start(m_WarmedRoot, m_WalkedSolution, true);
 		}
 		else if (switchedOff)
 		{

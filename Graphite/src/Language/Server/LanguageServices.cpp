@@ -13,6 +13,7 @@
 #include "Language/Server/ProjectSearch.h"
 #include "Language/Server/ServerLaunch.h"
 #include "Language/Server/SolutionForRoot.h"
+#include "Language/Server/SolutionScope.h"
 #include "Search/FileEnumerator.h"
 
 #include <algorithm>
@@ -210,12 +211,19 @@ namespace Graphite {
 			OpenDocument(document.Path, language, std::move(document.Text));
 		}
 
+		if (HasChosenServer(language))
+		{
+			WarmOpenFolderAgain();
+		}
+	}
+
+	void LanguageServices::WarmOpenFolderAgain()
+	{
 		// The folder the last warm-up walked may have been closed or replaced since.
-		const bool warmedFolderIsOpen = m_LastWarmUp.has_value() &&
-										Core::IsSameOrWithin(m_LastWarmUp->Root, m_FallbackRoot) &&
+		const bool warmedFolderIsOpen = m_LastWarmUp.has_value() && Core::IsSameOrWithin(m_LastWarmUp->Root, m_FallbackRoot) &&
 										Core::IsSameOrWithin(m_FallbackRoot, m_LastWarmUp->Root);
 
-		if (warmedFolderIsOpen && HasChosenServer(language))
+		if (warmedFolderIsOpen)
 		{
 			WarmUp(m_LastWarmUp->Root, m_LastWarmUp->RespectGitIgnore);
 		}
@@ -378,12 +386,24 @@ namespace Graphite {
 
 		m_SelectedSolution = solution;
 
+		bool warmsAgain = false;
+
 		for (const LanguageId language : LanguagesWithServers())
 		{
 			if (FollowsSelectedSolution(language) && RunsServersOf(language))
 			{
 				Reconfigure(language);
 			}
+			else if (LanguageRootsAtSolution(language) && HasChosenServer(language))
+			{
+				warmsAgain = true;
+			}
+		}
+
+		// The warm-up's scope moved with the selection; a language reconfigured above was warmed again already.
+		if (warmsAgain)
+		{
+			WarmOpenFolderAgain();
 		}
 	}
 
@@ -1098,12 +1118,14 @@ namespace Graphite {
 			return;
 		}
 
-		m_Jobs.Submit([warm = m_Warm, token = m_WarmToken, root = std::move(root),
+		m_Jobs.Submit([warm = m_Warm, token = m_WarmToken, root = std::move(root), selectedSolution = m_SelectedSolution,
 					   respectGitIgnore, wanted = std::move(wanted)] {
 			std::vector<LanguageId> seen;
 
 			EnumerationInput enumeration;
 			enumeration.Root = root;
+
+			SolutionScope scope{root, selectedSolution};
 
 			// Opened on this thread rather than shared with the workspace's: libgit2 handles are
 			// not safe to use from two threads, which is the same reason SearchService opens its
@@ -1134,6 +1156,11 @@ namespace Graphite {
 
 				if (!ContainsLanguage(wanted, language) ||
 					std::find(seen.begin(), seen.end(), language) != seen.end())
+				{
+					return;
+				}
+
+				if (LanguageRootsAtSolution(language) && !scope.Includes(file))
 				{
 					return;
 				}

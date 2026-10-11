@@ -10,11 +10,11 @@
 
 namespace {
 
-	std::vector<std::string> AnalysableUnder(const std::filesystem::path& root)
+	std::vector<std::string> AnalysableUnder(const std::filesystem::path& root, const std::filesystem::path& selectedSolution = {})
 	{
 		std::vector<std::string> names;
 
-		Graphite::CollectAnalysable(root, Core::CancellationToken{},
+		Graphite::CollectAnalysable(root, selectedSolution, Core::CancellationToken{},
 									[&names](const std::filesystem::path& file) { names.push_back(file.filename().string()); });
 
 		std::sort(names.begin(), names.end());
@@ -48,7 +48,7 @@ TEST_CASE("A cancelled walk stops rather than finishing quietly")
 	Core::CancellationToken token;
 	std::size_t seen = 0;
 
-	Graphite::CollectAnalysable(temp.GetPath(), token, [&](const std::filesystem::path&) {
+	Graphite::CollectAnalysable(temp.GetPath(), {}, token, [&](const std::filesystem::path&) {
 		++seen;
 		token.Cancel();
 	});
@@ -110,4 +110,33 @@ TEST_CASE("The workspace's own markers do not exclude the workspace")
 	const std::vector<std::string> found = AnalysableUnder(temp.GetPath());
 
 	CHECK(found == std::vector<std::string>{"a.cpp"});
+}
+
+TEST_CASE("The walk reads a solution's language only under the selected solution and outside solutions nested below it")
+{
+	TempDirectory temp;
+	temp.MakeFile("main.cpp", "int x;");
+	temp.MakeFile("app/App.slnx", "");
+	temp.MakeFile("app/Program.cs", "class Program { }");
+	temp.MakeFile("app/samples/Sample.slnx", "");
+	temp.MakeFile("app/samples/Sample.cs", "class Sample { }");
+	temp.MakeFile("app/samples/sample.cpp", "int y;");
+	temp.MakeFile("other/Other.cs", "class Other { }");
+
+	const std::vector<std::string> found = AnalysableUnder(temp.GetPath(), temp.GetPath() / "app" / "App.slnx");
+
+	CHECK(found == std::vector<std::string>{"Program.cs", "main.cpp", "sample.cpp"});
+}
+
+TEST_CASE("With no solution selected the walk skips a folder holding a solution for C# alone")
+{
+	TempDirectory temp;
+	temp.MakeFile("Loose.cs", "class Loose { }");
+	temp.MakeFile("tool/Tool.sln", "");
+	temp.MakeFile("tool/Tool.cs", "class Tool { }");
+	temp.MakeFile("tool/tool.cpp", "int x;");
+
+	const std::vector<std::string> found = AnalysableUnder(temp.GetPath());
+
+	CHECK(found == std::vector<std::string>{"Loose.cs", "tool.cpp"});
 }

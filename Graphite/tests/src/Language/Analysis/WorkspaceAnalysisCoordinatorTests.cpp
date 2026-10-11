@@ -74,6 +74,7 @@ namespace {
 		WorkspaceAnalysisCoordinator Coordinator{Servers, Port, Texts, Cache};
 
 		std::filesystem::path Root;
+		std::filesystem::path SelectedSolution;
 		bool Trusted = true;
 		bool SettingEnabled = true;
 		std::uint64_t TrustRevision = 0;
@@ -84,6 +85,7 @@ namespace {
 		void Frame()
 		{
 			Coordinator.Update(AnalysisSwitches{.Root = Root,
+												.SelectedSolution = SelectedSolution,
 												.Trusted = Trusted,
 												.SettingEnabled = SettingEnabled,
 												.TrustRevision = TrustRevision});
@@ -244,4 +246,26 @@ TEST_CASE("With no folder open nothing is warmed, walked or stored")
 	CHECK(harness.Servers.Revalidations == 0);
 	CHECK(harness.Coordinator.GetStore().GetRoot().empty());
 	CHECK(harness.Coordinator.GetPass().Progress().Total == 0);
+}
+
+TEST_CASE("Selecting another solution walks the folder again for it")
+{
+	TempDirectory folder;
+	folder.MakeFile("main.cpp", "int a;");
+	folder.MakeFile("app/App.slnx", "");
+	folder.MakeFile("app/Program.cs", "class Program { }");
+	folder.MakeFile("tool/Tool.slnx", "");
+	folder.MakeFile("tool/Tool.cs", "class Tool { }");
+	folder.MakeFile("tool/Helper.cs", "class Helper { }");
+
+	Harness harness;
+	harness.Root = folder.GetPath();
+	harness.SelectedSolution = folder.GetPath() / "app" / "App.slnx";
+
+	REQUIRE(harness.FramesUntilQueued(2));
+
+	harness.SelectedSolution = folder.GetPath() / "tool" / "Tool.slnx";
+
+	CHECK(harness.FramesUntilQueued(3));
+	CHECK(harness.Servers.WarmedUp == std::vector<std::filesystem::path>{folder.GetPath()});
 }

@@ -41,6 +41,7 @@ namespace Graphite {
 	{
 		// Empty when no folder is open.
 		const std::filesystem::path& Root;
+		const std::filesystem::path& SelectedSolution;
 
 		// The open folder is trusted. False when no folder is open.
 		bool Trusted = false;
@@ -127,6 +128,7 @@ namespace Graphite {
 		// The root the servers were last warmed and the walk last started for, so the comparison
 		// in Update fires once per folder rather than once per frame.
 		std::filesystem::path m_WarmedRoot;
+		std::filesystem::path m_WalkedSolution;
 
 		// The switch as it was last frame, so turning it back on restarts the walk. Starts at the
 		// setting's own default, so a session that loads that default sees no edge on its first

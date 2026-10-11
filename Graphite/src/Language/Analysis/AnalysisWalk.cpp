@@ -4,6 +4,7 @@
 
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/ServerCatalog.h"
+#include "Language/Server/SolutionScope.h"
 #include "Search/FileEnumerator.h"
 
 #include "Core/App/Redraw.h"
@@ -18,9 +19,11 @@ namespace Graphite {
 
 		// A file is worth queueing only when its language has a server configured to say
 		// anything about it — asking about anything else would just be a wasted round trip.
-		bool IsAnalysable(const std::filesystem::path& file)
+		bool BelongsToWalk(const std::filesystem::path& file, SolutionScope& scope)
 		{
-			return LanguageHasServers(LanguageOfPath(file));
+			const LanguageId language = LanguageOfPath(file);
+
+			return LanguageHasServers(language) && (!LanguageRootsAtSolution(language) || scope.Includes(file));
 		}
 
 		// Stops the walk at the edge of somebody else's project. A directory carrying its own
@@ -42,15 +45,17 @@ namespace Graphite {
 		}
 	}
 
-	void CollectAnalysable(const std::filesystem::path& root, const Core::CancellationToken& token,
-						   const std::function<void(const std::filesystem::path&)>& onFile)
+	void CollectAnalysable(const std::filesystem::path& root, const std::filesystem::path& selectedSolution,
+						   const Core::CancellationToken& token, const std::function<void(const std::filesystem::path&)>& onFile)
 	{
 		EnumerationInput enumeration;
 		enumeration.Root = root;
 		enumeration.Ignored = SkipNestedProjects(root);
 
-		EnumerateFiles(enumeration, token, [&onFile](const std::filesystem::path& file) {
-			if (!IsAnalysable(file))
+		SolutionScope scope{root, selectedSolution};
+
+		EnumerateFiles(enumeration, token, [&onFile, &scope](const std::filesystem::path& file) {
+			if (!BelongsToWalk(file, scope))
 			{
 				return;
 			}
@@ -64,7 +69,7 @@ namespace Graphite {
 		m_Token.Cancel();
 	}
 
-	void AnalysisWalk::Start(std::filesystem::path root, bool respectGitIgnore)
+	void AnalysisWalk::Start(std::filesystem::path root, std::filesystem::path selectedSolution, bool respectGitIgnore)
 	{
 		Cancel();
 
@@ -78,7 +83,7 @@ namespace Graphite {
 		}
 
 		m_Jobs.Submit([findings = m_Findings, token = m_Token, root = std::move(root),
-					   respectGitIgnore] {
+					   selectedSolution = std::move(selectedSolution), respectGitIgnore] {
 			EnumerationInput enumeration;
 			enumeration.Root = root;
 
@@ -110,8 +115,10 @@ namespace Graphite {
 				return repository && repository->IsIgnored(path);
 			};
 
-			EnumerateFiles(enumeration, token, [&findings](const std::filesystem::path& file) {
-				if (!IsAnalysable(file))
+			SolutionScope scope{root, selectedSolution};
+
+			EnumerateFiles(enumeration, token, [&findings, &scope](const std::filesystem::path& file) {
+				if (!BelongsToWalk(file, scope))
 				{
 					return;
 				}
