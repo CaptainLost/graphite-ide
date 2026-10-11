@@ -1,0 +1,497 @@
+#include "Settings/Panel/SettingsLayout.h"
+
+#include "UI/IconButton.h"
+
+#include "Core/ImGui/Animation.h"
+#include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/TextInput.h"
+#include "Core/ImGui/Toggle.h"
+#include "Core/ImGui/UiScale.h"
+
+#include <IconsMaterialDesignIcons.h>
+
+#include <imgui.h>
+
+#include <algorithm>
+#include <vector>
+
+namespace Graphite {
+
+	namespace {
+
+		constexpr float kCardPadding = 14.0f;
+		constexpr float kRowPadding = 10.0f;
+		constexpr float kTextControlGap = 16.0f;
+		constexpr float kStackBelowCardWidth = 420.0f;
+		constexpr float kMaxCardWidth = 760.0f;
+		constexpr float kCardRounding = 6.0f;
+		constexpr float kCardGap = 18.0f;
+		constexpr float kPageTitleGap = 10.0f;
+		constexpr float kPageTitleScale = 1.4f;
+		constexpr float kResultsLabelScale = 1.15f;
+		constexpr float kSliderWidth = 200.0f;
+		constexpr float kNumberWidth = 120.0f;
+		constexpr float kMinimumComboWidth = 140.0f;
+		constexpr float kMinimumFillHeight = 300.0f;
+		constexpr float kNavigationEntryHeight = 28.0f;
+		constexpr float kNavigationEntryInset = 8.0f;
+		constexpr float kNavigationEntryRounding = 5.0f;
+		constexpr float kIconSlotFontSizes = 1.6f;
+		constexpr float kGroupGap = 10.0f;
+		constexpr float kSearchFieldRounding = 6.0f;
+		constexpr const char* kSearchHint = "Search settings\xE2\x80\xA6";
+
+		constexpr int kCardLayerCount = 2;
+		constexpr int kBackgroundLayer = 0;
+		constexpr int kForegroundLayer = 1;
+		constexpr int kCardColourCount = 3;
+
+		CardMeasures MeasuresFor(float cardWidth)
+		{
+			return CardMeasures{.CardWidth = cardWidth,
+								.Padding = Core::Scaled(kCardPadding),
+								.Gap = Core::Scaled(kTextControlGap),
+								.StackBelowWidth = Core::Scaled(kStackBelowCardWidth)};
+		}
+
+		float CardWidthHere()
+		{
+			return std::min(ImGui::GetContentRegionAvail().x, Core::Scaled(kMaxCardWidth));
+		}
+
+		// Frames one step up from the card's own colour, or a combo or a field would vanish into it.
+		void PushCardColours()
+		{
+			ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered));
+			ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive));
+			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
+		}
+
+		void PopCardColours()
+		{
+			ImGui::PopStyleColor(kCardColourCount);
+		}
+
+		float TextHeight(const std::string& text, float wrapWidth)
+		{
+			return text.empty() ? 0.0f : ImGui::CalcTextSize(text.c_str(), nullptr, false, wrapWidth).y;
+		}
+
+		float MeasureRowText(const SettingsRow& row, float wrapWidth)
+		{
+			const float spacing = ImGui::GetStyle().ItemSpacing.y;
+			float height = TextHeight(row.Title, wrapWidth);
+
+			if (!row.Description.empty())
+			{
+				height += spacing + TextHeight(row.Description, wrapWidth);
+			}
+
+			if (!row.Problem.empty())
+			{
+				height += spacing + TextHeight(row.Problem, wrapWidth);
+			}
+
+			return height;
+		}
+
+		void TextInColour(const std::string& text, ImU32 colour)
+		{
+			ImGui::PushStyleColor(ImGuiCol_Text, colour);
+			ImGui::TextUnformatted(text.c_str());
+			ImGui::PopStyleColor();
+		}
+
+		// A group, so every line after the first starts where the first did rather than at the window's edge.
+		void DrawRowText(const SettingsRow& row, float wrapRightScreenX, ImU32 problemColour)
+		{
+			ImGui::BeginGroup();
+			ImGui::PushTextWrapPos(wrapRightScreenX - ImGui::GetWindowPos().x + ImGui::GetScrollX());
+			ImGui::TextUnformatted(row.Title.c_str());
+
+			if (!row.Description.empty())
+			{
+				TextInColour(row.Description, ImGui::GetColorU32(ImGuiCol_TextDisabled));
+			}
+
+			if (!row.Problem.empty())
+			{
+				TextInColour(row.Problem, problemColour);
+			}
+
+			ImGui::PopTextWrapPos();
+			ImGui::EndGroup();
+		}
+
+		bool HasControl(const SettingsRow& row)
+		{
+			return row.DrawControl && (row.WideControl || row.ControlWidth > 0.0f);
+		}
+
+		void DrawControlRow(const SettingsRow& row, float cardWidth, ImU32 problemColour)
+		{
+			const CardMeasures measures = MeasuresFor(cardWidth);
+			const bool hasControl = HasControl(row);
+			const RowColumns columns = LayOutRowColumns(measures, hasControl ? row.ControlWidth : 0.0f, hasControl && row.WideControl);
+			const RowContent content{.TextHeight = MeasureRowText(row, columns.TextWidth),
+									 .ControlHeight = hasControl ? ImGui::GetFrameHeight() : 0.0f,
+									 .Padding = Core::Scaled(kRowPadding),
+									 .Spacing = ImGui::GetStyle().ItemSpacing.y};
+			const RowHeights heights = MeasureRowHeights(columns, content);
+
+			const ImVec2 rowTopLeft = ImGui::GetCursorScreenPos();
+			const float insideLeft = rowTopLeft.x + measures.Padding;
+
+			ImGui::SetCursorScreenPos(ImVec2(insideLeft, rowTopLeft.y + heights.TextTop));
+			DrawRowText(row, insideLeft + columns.TextWidth, problemColour);
+
+			if (hasControl)
+			{
+				ImGui::SetCursorScreenPos(ImVec2(insideLeft + columns.ControlX, rowTopLeft.y + heights.ControlTop));
+				ImGui::PushItemWidth(columns.ControlWidth);
+				ImGui::BeginGroup();
+				row.DrawControl();
+				ImGui::EndGroup();
+				ImGui::PopItemWidth();
+			}
+
+			ImGui::SetCursorScreenPos(rowTopLeft);
+			ImGui::Dummy(ImVec2(cardWidth, heights.Row));
+		}
+
+		float FillHeightBelowCursor()
+		{
+			const float rest = ImGui::GetContentRegionAvail().y - 2.0f * Core::Scaled(kRowPadding) - Core::Scaled(kCardGap);
+			return std::max(rest, Core::Scaled(kMinimumFillHeight));
+		}
+
+		void DrawBlockRow(const SettingsRow& row, float cardWidth)
+		{
+			const float padding = Core::Scaled(kCardPadding);
+			const float rowPadding = Core::Scaled(kRowPadding);
+			const ImVec2 rowTopLeft = ImGui::GetCursorScreenPos();
+			const float height = row.FillsHeight ? FillHeightBelowCursor() : 0.0f;
+			const ImGuiChildFlags flags = row.FillsHeight ? ImGuiChildFlags_None : ImGuiChildFlags_AutoResizeY;
+
+			ImGui::SetCursorScreenPos(ImVec2(rowTopLeft.x + padding, rowTopLeft.y + rowPadding));
+
+			if (ImGui::BeginChild("##block", ImVec2(cardWidth - 2.0f * padding, height), flags))
+			{
+				row.DrawBlock();
+			}
+
+			ImGui::EndChild();
+
+			const float blockBottom = ImGui::GetItemRectMax().y;
+			ImGui::SetCursorScreenPos(rowTopLeft);
+			ImGui::Dummy(ImVec2(cardWidth, blockBottom + rowPadding - rowTopLeft.y));
+		}
+
+		void DrawRow(const SettingsRow& row, float cardWidth, ImU32 problemColour)
+		{
+			const std::string_view key = row.GetKey();
+			ImGui::PushID(key.data(), key.data() + key.size());
+
+			if (row.IsBlock())
+			{
+				DrawBlockRow(row, cardWidth);
+			}
+			else
+			{
+				DrawControlRow(row, cardWidth, problemColour);
+			}
+
+			ImGui::PopID();
+		}
+
+		void DrawCardHeading(const SettingsCard& card, float cardWidth)
+		{
+			if (!card.Heading.empty())
+			{
+				ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), 0.0f);
+				ImGui::TextUnformatted(card.Heading.c_str());
+				ImGui::PopFont();
+			}
+
+			if (!card.Note.empty())
+			{
+				ImGui::PushTextWrapPos(ImGui::GetCursorPos().x + cardWidth);
+				TextInColour(card.Note, ImGui::GetColorU32(ImGuiCol_TextDisabled));
+				ImGui::PopTextWrapPos();
+			}
+		}
+
+		// PushFont takes the size before the interface scale is applied, so it is built from
+		// FontSizeBase and never from GetFontSize, which already carries the scale.
+		void DrawScaledBoldText(std::string_view text, float scale)
+		{
+			ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), ImGui::GetStyle().FontSizeBase * scale);
+			ImGui::TextUnformatted(text.data(), text.data() + text.size());
+			ImGui::PopFont();
+		}
+	}
+
+	RowColumns LayOutRowColumns(const CardMeasures& card, float controlWidth, bool wideControl)
+	{
+		const float insideWidth = std::max(card.CardWidth - 2.0f * card.Padding, 0.0f);
+		const bool hasControl = wideControl || controlWidth > 0.0f;
+
+		if (!hasControl)
+		{
+			return RowColumns{.TextWidth = insideWidth};
+		}
+
+		if (card.CardWidth < card.StackBelowWidth)
+		{
+			const float stackedWidth = wideControl ? insideWidth : std::min(controlWidth, insideWidth);
+			return RowColumns{.Stacked = true, .TextWidth = insideWidth, .ControlX = 0.0f, .ControlWidth = stackedWidth};
+		}
+
+		const float halfWidth = insideWidth * 0.5f;
+		const float sideWidth = wideControl ? halfWidth : std::min(controlWidth, halfWidth);
+
+		return RowColumns{.TextWidth = insideWidth - sideWidth - card.Gap, .ControlX = insideWidth - sideWidth, .ControlWidth = sideWidth};
+	}
+
+	RowHeights MeasureRowHeights(const RowColumns& columns, const RowContent& content)
+	{
+		if (columns.Stacked)
+		{
+			const float controlTop = content.Padding + content.TextHeight + content.Spacing;
+			return RowHeights{.Row = controlTop + content.ControlHeight + content.Padding, .TextTop = content.Padding, .ControlTop = controlTop};
+		}
+
+		const float tallest = std::max(content.TextHeight, content.ControlHeight);
+
+		return RowHeights{.Row = tallest + 2.0f * content.Padding,
+						  .TextTop = content.Padding + (tallest - content.TextHeight) * 0.5f,
+						  .ControlTop = content.Padding + (tallest - content.ControlHeight) * 0.5f};
+	}
+
+	float SettingsLayout::ToggleWidth()
+	{
+		return Core::Scaled(Core::kToggleWidth);
+	}
+
+	float SettingsLayout::SliderWidth()
+	{
+		return Core::Scaled(kSliderWidth);
+	}
+
+	float SettingsLayout::NumberWidth()
+	{
+		return Core::Scaled(kNumberWidth);
+	}
+
+	float SettingsLayout::ComboWidth(std::span<const std::string> options)
+	{
+		float widestOption = 0.0f;
+
+		for (const std::string& option : options)
+		{
+			widestOption = std::max(widestOption, ImGui::CalcTextSize(option.c_str()).x);
+		}
+
+		const float width = widestOption + ImGui::GetStyle().FramePadding.x * 2.0f + ImGui::GetFrameHeight();
+
+		return std::max(width, Core::Scaled(kMinimumComboWidth));
+	}
+
+	float SettingsLayout::ButtonsWidth(std::span<const std::string> labels)
+	{
+		const ImGuiStyle& style = ImGui::GetStyle();
+		float width = 0.0f;
+
+		for (const std::string& label : labels)
+		{
+			width += ImGui::CalcTextSize(label.c_str()).x + style.FramePadding.x * 2.0f;
+		}
+
+		if (!labels.empty())
+		{
+			width += style.ItemSpacing.x * static_cast<float>(labels.size() - 1);
+		}
+
+		return width;
+	}
+
+	void SettingsLayout::DrawPageTitle(std::string_view title)
+	{
+		DrawScaledBoldText(title, kPageTitleScale);
+		ImGui::Dummy(ImVec2(0.0f, Core::Scaled(kPageTitleGap)));
+	}
+
+	void SettingsLayout::DrawResultsLabel(std::string_view label)
+	{
+		DrawScaledBoldText(label, kResultsLabelScale);
+	}
+
+	void SettingsLayout::DrawCard(const SettingsCard& card, ImU32 problemColour)
+	{
+		const float cardWidth = CardWidthHere();
+		DrawCardHeading(card, cardWidth);
+
+		if (card.Rows.empty())
+		{
+			return;
+		}
+
+		const float spacing = ImGui::GetStyle().ItemSpacing.y;
+		const float padding = Core::Scaled(kCardPadding);
+		const ImU32 surface = ImGui::GetColorU32(ImGuiCol_FrameBg);
+		const ImU32 divider = ImGui::GetColorU32(ImGuiCol_Separator);
+		const ImVec2 cardTopLeft = ImGui::GetCursorScreenPos();
+
+		// A splitter of its own rather than the draw list's: a table inside a row splits the draw
+		// list too, and the draw list's own splitter cannot be split twice.
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		ImDrawListSplitter layers;
+		layers.Split(drawList, kCardLayerCount);
+		layers.SetCurrentChannel(drawList, kForegroundLayer);
+		PushCardColours();
+
+		for (std::size_t rowIndex = 0; rowIndex < card.Rows.size(); ++rowIndex)
+		{
+			if (rowIndex > 0)
+			{
+				const float dividerY = ImGui::GetCursorScreenPos().y - spacing * 0.5f;
+				drawList->AddLine(ImVec2(cardTopLeft.x + padding, dividerY), ImVec2(cardTopLeft.x + cardWidth - padding, dividerY), divider);
+			}
+
+			DrawRow(card.Rows[rowIndex], cardWidth, problemColour);
+		}
+
+		PopCardColours();
+
+		const float cardBottom = ImGui::GetCursorScreenPos().y - spacing;
+		layers.SetCurrentChannel(drawList, kBackgroundLayer);
+		drawList->AddRectFilled(cardTopLeft, ImVec2(cardTopLeft.x + cardWidth, cardBottom), surface, Core::Scaled(kCardRounding));
+		layers.Merge(drawList);
+
+		ImGui::Dummy(ImVec2(0.0f, Core::Scaled(kCardGap)));
+	}
+
+	void SettingsLayout::DrawPageBody(SettingsPage& page, ImU32 problemColour)
+	{
+		DrawPageTitle(page.GetTitle());
+
+		const std::vector<SettingsCard> cards = page.Describe();
+
+		for (std::size_t cardIndex = 0; cardIndex < cards.size(); ++cardIndex)
+		{
+			ImGui::PushID(static_cast<int>(cardIndex));
+			DrawCard(cards[cardIndex], problemColour);
+			ImGui::PopID();
+		}
+	}
+
+	bool SettingsLayout::DrawSearchField(std::string& query)
+	{
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const ImVec2 framePadding = style.FramePadding;
+		const float iconWidth = ImGui::CalcTextSize(ICON_MDI_MAGNIFY).x;
+		const bool showsClear = !query.empty();
+		const float clearWidth = showsClear ? IconButtonSize() + style.ItemSpacing.x : 0.0f;
+
+		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, Core::Scaled(kSearchFieldRounding));
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(framePadding.x * 2.0f + iconWidth, framePadding.y));
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - clearWidth);
+		bool edited = Core::InputTextWithHint("##searchSettings", kSearchHint, query, ImGuiInputTextFlags_EscapeClearsAll);
+		ImGui::PopStyleVar(2);
+
+		const ImVec2 fieldTopLeft = ImGui::GetItemRectMin();
+		ImGui::GetWindowDrawList()->AddText(ImVec2(fieldTopLeft.x + framePadding.x, fieldTopLeft.y + framePadding.y),
+											ImGui::GetColorU32(ImGuiCol_TextDisabled), ICON_MDI_MAGNIFY);
+
+		if (showsClear)
+		{
+			ImGui::SameLine();
+			const bool engaged = false;
+
+			if (DrawIconButton("##clearSearch", ICON_MDI_CLOSE, engaged, "Clear the search"))
+			{
+				query.clear();
+				edited = true;
+			}
+		}
+
+		return edited;
+	}
+
+	void SettingsLayout::DrawGroupTitle(std::string_view title)
+	{
+		ImGui::Dummy(ImVec2(0.0f, Core::Scaled(kGroupGap)));
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + Core::Scaled(kNavigationEntryInset));
+		ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+		ImGui::TextUnformatted(title.data(), title.data() + title.size());
+		ImGui::PopStyleColor();
+	}
+
+	void SettingsLayout::DrawGroupDivider()
+	{
+		ImGui::Dummy(ImVec2(0.0f, Core::Scaled(kGroupGap) * 0.5f));
+		ImGui::Separator();
+		ImGui::Dummy(ImVec2(0.0f, Core::Scaled(kGroupGap) * 0.5f));
+	}
+
+	bool SettingsLayout::DrawNavigationEntry(const char* icon, std::string_view title, bool selected, bool dimmed)
+	{
+		const ImVec2 topLeft = ImGui::GetCursorScreenPos();
+		const ImVec2 size(ImGui::GetContentRegionAvail().x, Core::Scaled(kNavigationEntryHeight));
+
+		ImGui::PushID(title.data(), title.data() + title.size());
+		const bool clicked = ImGui::InvisibleButton("##entry", size);
+		const float hover = Core::Animation::HoverAmount(ImGui::GetItemID(), ImGui::IsItemHovered());
+		ImGui::PopID();
+
+		const ImVec4 hovered = ImGui::GetStyleColorVec4(ImGuiCol_Header);
+		const ImVec4 resting(hovered.x, hovered.y, hovered.z, 0.0f);
+		const ImVec4 background = selected ? ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) : Core::Animation::Blend(resting, hovered, hover);
+
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		drawList->AddRectFilled(topLeft, ImVec2(topLeft.x + size.x, topLeft.y + size.y), ImGui::GetColorU32(background),
+								Core::Scaled(kNavigationEntryRounding));
+
+		const ImU32 textColour = ImGui::GetColorU32(dimmed ? ImGuiCol_TextDisabled : ImGuiCol_Text);
+		const float textTop = topLeft.y + (size.y - ImGui::GetFontSize()) * 0.5f;
+		const float iconLeft = topLeft.x + Core::Scaled(kNavigationEntryInset);
+		const float titleLeft = iconLeft + ImGui::GetFontSize() * kIconSlotFontSizes;
+
+		drawList->AddText(ImVec2(iconLeft, textTop), textColour, icon);
+		drawList->AddText(ImVec2(titleLeft, textTop), textColour, title.data(), title.data() + title.size());
+
+		return clicked;
+	}
+
+	bool SettingsLayout::Choice(const char* id, std::span<const std::string> options, std::size_t& selected)
+	{
+		const char* preview = selected < options.size() ? options[selected].c_str() : "";
+
+		if (!ImGui::BeginCombo(id, preview))
+		{
+			return false;
+		}
+
+		bool changed = false;
+
+		for (std::size_t optionIndex = 0; optionIndex < options.size(); ++optionIndex)
+		{
+			const bool isSelected = optionIndex == selected;
+
+			if (ImGui::Selectable(options[optionIndex].c_str(), isSelected) && !isSelected)
+			{
+				selected = optionIndex;
+				changed = true;
+			}
+
+			if (isSelected)
+			{
+				ImGui::SetItemDefaultFocus();
+			}
+		}
+
+		ImGui::EndCombo();
+
+		return changed;
+	}
+}
