@@ -34,6 +34,15 @@ TEST_CASE("A root whose selected solution lies elsewhere uses its own first solu
 	CHECK(solution == temp.GetPath() / "repo" / "alpha.sln");
 }
 
+TEST_CASE("A root with a solution in both formats uses the newer one")
+{
+	TempDirectory temp;
+	temp.MakeFile("repo/Demo.sln", "");
+	temp.MakeFile("repo/Demo.slnx", "");
+
+	CHECK(Graphite::SolutionForRoot(temp.GetPath() / "repo", {}) == temp.GetPath() / "repo" / "Demo.slnx");
+}
+
 TEST_CASE("A root holding no solution file has no solution")
 {
 	TempDirectory temp;

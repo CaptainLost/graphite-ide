@@ -20,9 +20,23 @@ namespace Graphite {
 			return entry.is_regular_file(kindError) && (extension == ".sln" || extension == ".slnx");
 		}
 
+		bool IsNewerFormat(const std::filesystem::path& solution)
+		{
+			return Core::LoweredExtension(solution) == ".slnx";
+		}
+
+		// Comparing whole file names would put Demo.sln, the older format of the same solution, before Demo.slnx.
 		bool ComesFirstByName(const std::filesystem::path& left, const std::filesystem::path& right)
 		{
-			return Core::Lowered(Core::ToUtf8(left.filename())) < Core::Lowered(Core::ToUtf8(right.filename()));
+			const std::string leftStem = Core::Lowered(Core::ToUtf8(left.stem()));
+			const std::string rightStem = Core::Lowered(Core::ToUtf8(right.stem()));
+
+			if (leftStem != rightStem)
+			{
+				return leftStem < rightStem;
+			}
+
+			return IsNewerFormat(left) && !IsNewerFormat(right);
 		}
 	}
 
