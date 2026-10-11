@@ -20,7 +20,7 @@ namespace Graphite {
 
 	class PreviewSemantics;
 
-	// A window of its own, unlike SearchSection in the settings panel: this is where a query is
+	// A window of its own, unlike FindInFilesPage in the settings panel: this is where a query is
 	// typed and run, not where its two persisted toggles are edited.
 	class SearchPanel final : public Core::Panel
 	{

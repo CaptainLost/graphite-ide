@@ -66,12 +66,14 @@
 #include "Core/Events/ApplicationEvent.h"
 
 #include "Settings/ClaudeSection.h"
-#include "Settings/EditorSection.h"
 #include "Settings/InterfaceSection.h"
 #include "Settings/KeyBindingsSection.h"
 #include "Settings/LanguagesSection.h"
 #include "Settings/SchemeSection.h"
-#include "Settings/SearchSection.h"
+#include "Settings/Panel/EditorPage.h"
+#include "Settings/Panel/ExplorerPage.h"
+#include "Settings/Panel/FindInFilesPage.h"
+#include "Settings/Panel/GitPage.h"
 #include "Settings/Panel/SectionPage.h"
 #include "Settings/Panel/SettingsDirectory.h"
 #include "Settings/Panel/SettingsPanel.h"
@@ -815,10 +817,10 @@ namespace Graphite {
 		general.Pages.push_back(Core::CreateScope<SectionPage>("trustedFolders", ICON_MDI_SHIELD_CHECK_OUTLINE, Core::CreateScope<TrustSection>(m_Trust)));
 
 		SettingsGroup panels{.Title = "Panels"};
-		panels.Pages.push_back(
-			Core::CreateScope<SectionPage>("editor", ICON_MDI_PENCIL_OUTLINE, Core::CreateScope<EditorSection>(m_EditorSettings, m_Commands)));
-		panels.Pages.push_back(
-			Core::CreateScope<SectionPage>("findInFiles", ICON_MDI_TEXT_SEARCH, Core::CreateScope<SearchSection>(m_SearchSettings, m_SolutionLoaded)));
+		panels.Pages.push_back(Core::CreateScope<EditorPage>(m_EditorSettings, m_Commands));
+		panels.Pages.push_back(Core::CreateScope<ExplorerPage>(m_Commands));
+		panels.Pages.push_back(Core::CreateScope<FindInFilesPage>(m_SearchSettings, m_SolutionLoaded));
+		panels.Pages.push_back(Core::CreateScope<GitPage>(m_EditorSettings));
 		panels.Pages.push_back(Core::CreateScope<SectionPage>("terminal", ICON_MDI_CONSOLE, Core::CreateScope<TerminalSection>(m_AppSettings, m_Terminals)));
 		panels.Pages.push_back(Core::CreateScope<SectionPage>("claudeSessions", ICON_MDI_ROBOT_OUTLINE, Core::CreateScope<ClaudeSection>(m_ClaudeSettings)));
 

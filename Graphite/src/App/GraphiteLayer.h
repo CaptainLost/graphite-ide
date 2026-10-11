@@ -287,10 +287,10 @@ namespace Graphite {
 		SearchService m_Search;
 		SearchSettings m_SearchSettings{m_AppSettings};
 
-		// Declared before m_Panels for the same reason as m_Search: SearchSection holds a
+		// Declared before m_Panels for the same reason as m_Search: FindInFilesPage holds a
 		// reference to this, and a member declared after m_Panels would be destroyed first.
-		// Read by SearchSection to grey out "projects only" when there is nothing to limit to,
-		// and updated every frame rather than reached for through Workspace: a section knows
+		// Read by FindInFilesPage to grey out "projects only" when there is nothing to limit to,
+		// and updated every frame rather than reached for through Workspace: a page knows
 		// nothing about Workspace, by design.
 		bool m_SolutionLoaded = false;
 

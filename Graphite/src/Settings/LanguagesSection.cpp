@@ -406,7 +406,7 @@ namespace Graphite {
 						   "opened, so that a file opens already coloured. The pass waits while "
 						   "the file you are reading has questions of its own outstanding.");
 
-		// Disabled rather than hidden, the same reasoning SearchSection gives for its own
+		// Disabled rather than hidden, the same reasoning FindInFilesPage gives for its own
 		// project-only checkbox: a control that vanishes reads as a bug, and there is nothing to
 		// budget once the pass itself is off.
 		ImGui::BeginDisabled(!enabled);
@@ -415,7 +415,7 @@ namespace Graphite {
 
 		// Set on release, not on every frame of the drag: SetBudgetMegabytes changes AppSettings,
 		// which GraphiteLayer writes out at the end of any frame that changed it, and a drag across
-		// the range produces a new value every frame. Same shape EditorSection
+		// the range produces a new value every frame. Same shape EditorPage
 		// uses for its font-size and tab-width sliders, and the same reason.
 		if (ImGui::SliderInt("Analysis kept (MB)", &budget,
 							 static_cast<int>(AnalysisSettings::kMinimumBudgetMegabytes),
