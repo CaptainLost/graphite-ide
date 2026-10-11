@@ -437,9 +437,17 @@ namespace Graphite {
 		return *m_Dotnet;
 	}
 
-	ServerCommandPlaces LanguageServices::CommandPlaces() const
+	ServerCommandPlaces LanguageServices::CommandPlacesFor(const ServerDefinition& server) const
 	{
-		return ServerCommandPlaces{.ServersDirectory = m_ServersDirectory, .Dotnet = DotnetInstallations()};
+		ServerCommandPlaces places{.ServersDirectory = m_ServersDirectory};
+
+		// Finding .NET lists folders on the disk, on the UI thread.
+		if (server.Runtime.Kind == RuntimeKind::Dotnet)
+		{
+			places.Dotnet = DotnetInstallations();
+		}
+
+		return places;
 	}
 
 	ServerStatus LanguageServices::OffStatus(LanguageId language) const
@@ -459,7 +467,7 @@ namespace Graphite {
 			return;
 		}
 
-		server.Command = FindServerCommand(*server.Definition, server.Overrides.Binary, CommandPlaces());
+		server.Command = FindServerCommand(*server.Definition, server.Overrides.Binary, CommandPlacesFor(*server.Definition));
 
 		if (server.Command.State != ServerState::Starting)
 		{

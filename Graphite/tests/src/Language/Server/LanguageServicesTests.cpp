@@ -1287,6 +1287,25 @@ namespace {
 	}
 }
 
+TEST_CASE("Starting a server that needs no runtime looks for no .NET")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+	std::size_t lookups = 0;
+
+	services.SetDotnetLocator([&lookups] {
+		++lookups;
+		return std::vector<Graphite::DotnetInstallation>{};
+	});
+
+	StartWithSpy(services, temp, spy, clock, temp.GetPath() / "main.cpp");
+
+	REQUIRE(spy.Made == 1);
+	CHECK(lookups == 0);
+}
+
 namespace {
 
 	Graphite::ServerChoice ChooseNothing(Graphite::LanguageId language)

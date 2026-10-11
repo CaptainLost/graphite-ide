@@ -22,6 +22,6 @@ namespace Graphite {
 
 	const char* InstallActionLabel(InstallAction action);
 
-		// Empty when the command runs from Graphite's install.
-		std::string RunningElsewhereNote(const ServerCommand& command, bool customPathSet);
+	// Empty when the command runs from Graphite's install.
+	std::string RunningElsewhereNote(const ServerCommand& command, bool customPathSet);
 }

@@ -546,7 +546,7 @@ namespace Graphite {
 		ChoiceProvider m_ChoiceProvider;
 		mutable std::map<LanguageId, ServerChoice> m_Choices;
 
-		ServerCommandPlaces CommandPlaces() const;
+		ServerCommandPlaces CommandPlacesFor(const ServerDefinition& server) const;
 
 		std::filesystem::path m_ServersDirectory;
 		DotnetLocator m_DotnetLocator;

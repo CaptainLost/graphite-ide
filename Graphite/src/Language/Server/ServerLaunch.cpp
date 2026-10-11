@@ -15,9 +15,13 @@ namespace Graphite {
 
 		std::string WithPlacesFilledIn(std::string argument, const LaunchPlaces& places)
 		{
-			if (const std::size_t placeholder = argument.find(kLogsPlaceholder); placeholder != std::string::npos)
+			const std::string logDirectory = Core::ToUtf8(places.LogDirectory);
+
+			// Searched past what was put in, so a log directory whose name holds the placeholder cannot loop.
+			for (std::size_t placeholder = argument.find(kLogsPlaceholder); placeholder != std::string::npos;
+				 placeholder = argument.find(kLogsPlaceholder, placeholder + logDirectory.size()))
 			{
-				argument.replace(placeholder, kLogsPlaceholder.size(), Core::ToUtf8(places.LogDirectory));
+				argument.replace(placeholder, kLogsPlaceholder.size(), logDirectory);
 			}
 
 			return argument;

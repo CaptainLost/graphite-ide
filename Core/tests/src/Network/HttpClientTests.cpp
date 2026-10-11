@@ -68,12 +68,12 @@ TEST_CASE("A live HTTPS API answers with JSON" * doctest::skip())
 	const Core::Scope<Core::HttpClient> client = MakeClient();
 
 	const Core::Result<Core::HttpResponse> answer =
-		client->Fetch({.Url = "https://api.github.com/repos/clangd/clangd/releases/latest",
-					   .Headers = {{.Name = "Accept", .Value = "application/vnd.github+json"}}});
+		client->Fetch({.Url = "https://httpbin.org/json",
+					   .Headers = {{.Name = "Accept", .Value = "application/json"}}});
 
 	REQUIRE(answer);
 	CHECK(answer.GetValue().Status == 200);
-	CHECK(answer.GetValue().Body.find("\"tag_name\"") != std::string::npos);
+	CHECK(answer.GetValue().Body.find("\"slideshow\"") != std::string::npos);
 }
 
 TEST_CASE("A gzip-compressed answer arrives as plain JSON" * doctest::skip())
@@ -81,18 +81,18 @@ TEST_CASE("A gzip-compressed answer arrives as plain JSON" * doctest::skip())
 	const Core::Scope<Core::HttpClient> client = MakeClient();
 
 	const Core::Result<Core::HttpResponse> answer =
-		client->Fetch({.Url = "https://api.nuget.org/v3/registration5-gz-semver2/csharp-ls/index.json"});
+		client->Fetch({.Url = "https://httpbin.org/gzip"});
 
 	REQUIRE(answer);
 	CHECK(answer.GetValue().Status == 200);
 	CHECK(answer.GetValue().Body.starts_with("{"));
-	CHECK(answer.GetValue().Body.find("catalogEntry") != std::string::npos);
+	CHECK(answer.GetValue().Body.find("\"gzipped\"") != std::string::npos);
 }
 
 TEST_CASE("A file downloads through a redirect and reports progress" * doctest::skip())
 {
 	TempDirectory temporaryDirectory;
-	const std::filesystem::path target = temporaryDirectory.GetPath() / "SHA256SUMS";
+	const std::filesystem::path target = temporaryDirectory.GetPath() / "payload.bin";
 	const Core::Scope<Core::HttpClient> client = MakeClient();
 	Core::DownloadProgress lastProgress;
 	const Core::DownloadObserver observer = [&lastProgress](const Core::DownloadProgress& progress) {
@@ -100,7 +100,7 @@ TEST_CASE("A file downloads through a redirect and reports progress" * doctest::
 	};
 
 	const Core::Result<void> downloaded = client->Download(
-		{.Url = "https://github.com/OmniSharp/omnisharp-roslyn/releases/download/v2.0.0/SHA256SUMS"}, target, observer,
+		{.Url = "https://httpbin.org/redirect-to?url=https%3A%2F%2Fhttpbin.org%2Fbytes%2F4096"}, target, observer,
 		Core::CancellationToken{});
 
 	REQUIRE(downloaded);
@@ -112,13 +112,13 @@ TEST_CASE("A file downloads through a redirect and reports progress" * doctest::
 TEST_CASE("A download cancelled midway stops and leaves no file" * doctest::skip())
 {
 	TempDirectory temporaryDirectory;
-	const std::filesystem::path target = temporaryDirectory.GetPath() / "clangd.zip";
+	const std::filesystem::path target = temporaryDirectory.GetPath() / "archive.bin";
 	const Core::Scope<Core::HttpClient> client = MakeClient();
 	Core::CancellationToken token;
 	const Core::DownloadObserver observer = [&token](const Core::DownloadProgress&) { token.Cancel(); };
 
 	const Core::Result<void> downloaded = client->Download(
-		{.Url = "https://github.com/clangd/clangd/releases/download/23.1.0/clangd-windows-23.1.0.zip"}, target, observer,
+		{.Url = "https://httpbin.org/bytes/102400"}, target, observer,
 		token);
 
 	REQUIRE_FALSE(downloaded);

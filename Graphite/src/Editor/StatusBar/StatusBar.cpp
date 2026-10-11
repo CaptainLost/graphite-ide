@@ -93,8 +93,8 @@ namespace Graphite {
 			ImGui::TextUnformatted(text.c_str());
 		}
 
-		// One piece of the bar that may take a click: a git piece, or the server's words. Clickable pieces show a
-		// hand and take a click; the greyed "No repository" is inert.
+		// One piece of the bar that may take a click: a git piece, or the server's words. Clickable
+		// pieces show a hand and take a click; the greyed "No repository" is inert.
 		//
 		// A clickable piece is an invisible button with the text drawn over it, not a text item
 		// asked IsItemClicked. A text item has no id, so a press on it is a press on the bar's

@@ -67,3 +67,13 @@ TEST_CASE("A launch carries DOTNET_ROOT when it was given one and nothing otherw
 	CHECK(dotnet.Environment[0].Value == "C:\\dotnet");
 	CHECK(plain.Environment.empty());
 }
+
+TEST_CASE("Every logs placeholder in an argument is filled in")
+{
+	const Graphite::ServerOverrides overrides{.ExtraArguments = {"--trace={logs}/one;{logs}/two"}};
+	const Graphite::LaunchPlaces places{.LeadingArguments = {}, .LogDirectory = "D:/Logs"};
+
+	const Graphite::ServerLaunch launch = Graphite::LaunchFor(*Graphite::FindServer("clangd"), "C:/clangd.exe", overrides, places);
+
+	CHECK(launch.Arguments.back() == "--trace=D:/Logs/one;D:/Logs/two");
+}
