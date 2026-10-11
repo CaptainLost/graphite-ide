@@ -24,6 +24,11 @@ namespace Core {
 			static const ImGuiID channel = ImHashStr("Core::Animation::Hover");
 			return channel;
 		}
+
+		float SmoothStep(float progress)
+		{
+			return progress * progress * (3.0f - 2.0f * progress);
+		}
 	}
 
 	void Animation::BeginFrame()
@@ -62,6 +67,34 @@ namespace Core {
 		}
 
 		return amount;
+	}
+
+	// Kept in the window's state storage rather than in ImAnim: ImAnim starts every tween from one
+	// fixed value, so a switch first drawn on would slide in from off as its page opened.
+	float Animation::SwitchAmount(ImGuiID id, bool on)
+	{
+		const float target = on ? 1.0f : 0.0f;
+		float* progress = ImGui::GetStateStorage()->GetFloatRef(id, target);
+
+		const float step = std::min(ImGui::GetIO().DeltaTime, kLongestStepSeconds) / kSwitchSeconds;
+
+		if (*progress < target)
+		{
+			*progress = std::min(*progress + step, target);
+		}
+		else if (*progress > target)
+		{
+			*progress = std::max(*progress - step, target);
+		}
+
+		const bool moving = *progress != target;
+
+		if (moving)
+		{
+			Redraw::RequestIn(Redraw::Clock::duration::zero());
+		}
+
+		return SmoothStep(*progress);
 	}
 
 	ImVec4 Animation::Blend(const ImVec4& from, const ImVec4& to, float amount)

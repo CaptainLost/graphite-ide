@@ -52,6 +52,26 @@ namespace {
 			return amount;
 		}
 
+		// Runs one frame and returns where the switch's knob stands in it.
+		float NextSwitch(ImGuiID id, bool on)
+		{
+			ImGui::NewFrame();
+			Core::Animation::BeginFrame();
+			const float amount = Core::Animation::SwitchAmount(id, on);
+			ImGui::EndFrame();
+			return amount;
+		}
+
+		float SwitchAfter(float seconds, ImGuiID id, bool on)
+		{
+			float amount = 0.0f;
+			for (float elapsed = 0.0f; elapsed < seconds; elapsed += kFrameSeconds)
+			{
+				amount = NextSwitch(id, on);
+			}
+			return amount;
+		}
+
 	private:
 		ImGuiContext* m_Context = nullptr;
 	};
@@ -162,4 +182,57 @@ TEST_CASE("A hover under way asks for the next frame, and a settled one does not
 
 	frames.Next(kItem, true);
 	CHECK_FALSE(Core::Redraw::TakeDeadline().has_value());
+}
+
+TEST_CASE("A switch first seen on stands at one rather than sliding in")
+{
+	Frames frames;
+
+	CHECK(frames.NextSwitch(kItem, true) == doctest::Approx(1.0f));
+}
+
+TEST_CASE("A switch first seen off stands at zero")
+{
+	Frames frames;
+
+	CHECK(frames.NextSwitch(kItem, false) == doctest::Approx(0.0f));
+}
+
+TEST_CASE("A flipped switch slides over the switch time and settles at the other end")
+{
+	Frames frames;
+	frames.NextSwitch(kItem, true);
+
+	const float early = frames.NextSwitch(kItem, false);
+	CHECK(early < 1.0f);
+	CHECK(early > 0.0f);
+
+	CHECK(frames.SwitchAfter(Core::Animation::kSwitchSeconds + 0.05f, kItem, false) == doctest::Approx(0.0f));
+}
+
+TEST_CASE("A switch under way asks for the next frame, and a settled one does not")
+{
+	Frames frames;
+	frames.NextSwitch(kItem, false);
+	(void)Core::Redraw::TakeDeadline();
+
+	frames.NextSwitch(kItem, true);
+	CHECK(Core::Redraw::TakeDeadline().has_value());
+
+	frames.SwitchAfter(Core::Animation::kSwitchSeconds + 0.05f, kItem, true);
+	(void)Core::Redraw::TakeDeadline();
+
+	frames.NextSwitch(kItem, true);
+	CHECK_FALSE(Core::Redraw::TakeDeadline().has_value());
+}
+
+TEST_CASE("One switch's slide does not move another's")
+{
+	Frames frames;
+	frames.NextSwitch(kOtherItem, false);
+	frames.NextSwitch(kItem, false);
+
+	frames.NextSwitch(kItem, true);
+
+	CHECK(frames.NextSwitch(kOtherItem, false) == doctest::Approx(0.0f));
 }

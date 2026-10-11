@@ -32,6 +32,14 @@ namespace Core {
 		// for the next frame for as long as the fade is under way.
 		static float HoverAmount(ImGuiID id, bool hovered);
 
+		// How long a switch's knob takes to cross from one end to the other.
+		static constexpr float kSwitchSeconds = 0.12f;
+
+		// Where a switch's knob stands, from 0 off to 1 on, eased at both ends. A switch seen for
+		// the first time stands where its value is. Asks the frame loop for the next frame while
+		// the knob moves.
+		static float SwitchAmount(ImGuiID id, bool on);
+
 		// A colour part of the way from one to the other, alpha included.
 		static ImVec4 Blend(const ImVec4& from, const ImVec4& to, float amount);
 	};
