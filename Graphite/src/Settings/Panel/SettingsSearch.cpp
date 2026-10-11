@@ -23,6 +23,19 @@ namespace Graphite {
 
 		constexpr std::size_t kMostFindingsShown = 8;
 
+		bool AnyTextContains(std::span<const std::string_view> texts, std::string_view loweredWord)
+		{
+			for (const std::string_view text : texts)
+			{
+				if (Core::LoweredTextContains(text, loweredWord))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
 		std::vector<std::string_view> SearchedTextsOf(const SettingsRow& row, std::string_view cardHeading,
 													  std::span<const std::string_view> pageTitles)
 		{
@@ -164,14 +177,7 @@ namespace Graphite {
 	{
 		for (const std::string& word : words)
 		{
-			bool found = false;
-
-			for (const std::string_view text : texts)
-			{
-				found = found || Core::LoweredTextContains(text, word);
-			}
-
-			if (!found)
+			if (!AnyTextContains(texts, word))
 			{
 				return false;
 			}

@@ -30,7 +30,6 @@
 
 #include <imgui.h>
 
-#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -244,8 +243,17 @@ TEST_CASE("Searching for a command's name or a word of its shortcut lists it und
 		std::vector<Graphite::SettingsPageHits> hits;
 		frames.Next([&hits, &directory, query] { hits = Graphite::FindSettings(directory, query); });
 
-		const auto keyBindings = std::find_if(hits.begin(), hits.end(), [](const Graphite::SettingsPageHits& page) { return page.Label == "Key Bindings"; });
-		REQUIRE(keyBindings != hits.end());
+		const Graphite::SettingsPageHits* keyBindings = nullptr;
+
+		for (const Graphite::SettingsPageHits& page : hits)
+		{
+			if (page.Label == "Key Bindings")
+			{
+				keyBindings = &page;
+			}
+		}
+
+		REQUIRE(keyBindings != nullptr);
 		REQUIRE(keyBindings->Cards.size() == 1);
 		REQUIRE(keyBindings->Cards[0].Rows.size() == 1);
 		CHECK(keyBindings->Cards[0].Rows[0].Title == "Save File");
