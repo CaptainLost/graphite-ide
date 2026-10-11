@@ -33,6 +33,7 @@ namespace {
 		bool WordWrap = false;
 		std::string Path;
 		ImVec2 WordWrapMin;
+		float ScrollMaxY = 0.0f;
 	};
 
 	void DrawWordWrap(SampleControls& controls)
@@ -88,6 +89,7 @@ namespace {
 			ImGui::PopID();
 		}
 
+		controls.ScrollMaxY = ImGui::GetScrollMaxY();
 		ImGui::End();
 	}
 
@@ -284,6 +286,17 @@ TEST_CASE("Cards draw every kind of row, wide and narrow, without an ImGui asser
 	}
 
 	CHECK(controls.WordWrapMin.x > 0.0f);
+}
+
+TEST_CASE("A block that fills the page leaves nothing to scroll")
+{
+	ImGuiFrames frames;
+	SampleControls controls;
+
+	frames.Next([&controls] { DrawCardsInWindow(controls, 900.0f); });
+	frames.Next([&controls] { DrawCardsInWindow(controls, 900.0f); });
+
+	CHECK(controls.ScrollMaxY == doctest::Approx(0.0f));
 }
 
 TEST_CASE("In a wide card the control stands at the card's right edge")

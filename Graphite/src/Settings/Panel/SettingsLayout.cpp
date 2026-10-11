@@ -161,7 +161,9 @@ namespace Graphite {
 
 		float FillHeightBelowCursor()
 		{
-			const float rest = ImGui::GetContentRegionAvail().y - 2.0f * Core::Scaled(kRowPadding) - Core::Scaled(kCardGap);
+			// ImGui puts one item spacing after the row's Dummy, before the card gap's.
+			const float rest =
+				ImGui::GetContentRegionAvail().y - 2.0f * Core::Scaled(kRowPadding) - ImGui::GetStyle().ItemSpacing.y - Core::Scaled(kCardGap);
 			return std::max(rest, Core::Scaled(kMinimumFillHeight));
 		}
 
