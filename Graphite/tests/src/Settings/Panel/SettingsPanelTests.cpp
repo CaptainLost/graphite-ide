@@ -11,6 +11,7 @@
 #include "Core/Events/KeyEvent.h"
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/Toggle.h"
+#include "Core/ImGui/UiScale.h"
 
 #include <imgui.h>
 
@@ -402,4 +403,26 @@ TEST_CASE("The padding of the panel's child windows does not reach what is drawn
 
 	CHECK(fixture.Controls.PaddingInside.x == outside.x);
 	CHECK(fixture.Controls.PaddingInside.y == outside.y);
+}
+
+// The entries of a list of pages must fit "Background Analysis" and its icon, so the list is padded like the sidebar, not like a page.
+TEST_CASE("The list of pages inside a page is padded like the sidebar")
+{
+	PanelFixture fixture;
+	REQUIRE(fixture.Panel.Open({"languageServers", "CSharp"}));
+	fixture.DrawFrames();
+
+	const ImGuiWindow* innerList = nullptr;
+
+	for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+	{
+		if (std::string_view(window->Name).find("##innerList") != std::string_view::npos)
+		{
+			innerList = window;
+		}
+	}
+
+	REQUIRE(innerList != nullptr);
+	CHECK(innerList->WindowPadding.x == Core::Scaled(10.0f));
+	CHECK(innerList->WindowPadding.y == Core::Scaled(10.0f));
 }

@@ -27,6 +27,7 @@ namespace Graphite {
 		constexpr float kCardRounding = 6.0f;
 		constexpr float kCardGap = 18.0f;
 		constexpr float kPageTitleGap = 10.0f;
+		constexpr float kResultsLabelGap = 5.0f;
 		constexpr float kPageTitleScale = 1.4f;
 		constexpr float kResultsLabelScale = 1.15f;
 		constexpr float kSliderWidth = 200.0f;
@@ -326,6 +327,7 @@ namespace Graphite {
 	void SettingsLayout::DrawResultsLabel(std::string_view label)
 	{
 		DrawScaledBoldText(label, kResultsLabelScale);
+		ImGui::Dummy(ImVec2(0.0f, Core::Scaled(kResultsLabelGap)));
 	}
 
 	void SettingsLayout::DrawCard(const SettingsCard& card, ImU32 problemColour)

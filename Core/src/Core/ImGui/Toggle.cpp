@@ -16,6 +16,9 @@ namespace Core {
 
 		// How much of the text colour a fully hovered track takes on.
 		constexpr float kHoverTint = 0.12f;
+
+		// A switch's knob is white on every scheme: the text colour is near black in the light one, and the knob would read as a hole in the track.
+		constexpr ImVec4 kKnobColour(1.0f, 1.0f, 1.0f, 1.0f);
 	}
 
 	bool Toggle(const char* id, bool* value)
@@ -50,7 +53,7 @@ namespace Core {
 
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		drawList->AddRectFilled(trackTopLeft, trackBottomRight, ImGui::GetColorU32(track), trackRadius);
-		drawList->AddCircleFilled(knobCentre, knobRadius, ImGui::GetColorU32(ImGuiCol_Text));
+		drawList->AddCircleFilled(knobCentre, knobRadius, ImGui::GetColorU32(kKnobColour));
 
 		return clicked;
 	}

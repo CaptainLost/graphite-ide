@@ -361,8 +361,15 @@ namespace Graphite {
 		const ImVec2 size(Core::Scaled(SettingsLayout::kInnerListWidth), 0.0f);
 		const std::vector<SettingsPageHits> noHits;
 
-		if (BeginPaddedChild("##innerList", size, SettingsLayout::kPageMargin))
+		if (BeginPaddedChild("##innerList", size, kSidebarPadding))
 		{
+			// Drawn inside the child: the page beside it paints its background from the child's right edge.
+			const ImVec2 windowTopLeft = ImGui::GetWindowPos();
+			const ImVec2 windowSize = ImGui::GetWindowSize();
+			const float dividerX = windowTopLeft.x + windowSize.x - 1.0f;
+			ImGui::GetWindowDrawList()->AddLine(ImVec2(dividerX, windowTopLeft.y), ImVec2(dividerX, windowTopLeft.y + windowSize.y),
+												ImGui::GetColorU32(ImGuiCol_Separator));
+
 			if (std::optional<std::string> clicked = DrawNavigation(children, m_OpenPath.back(), noHits); clicked.has_value())
 			{
 				m_PendingOpen = PendingOpen{.Path = {m_OpenPath.front(), *clicked}};
@@ -370,11 +377,6 @@ namespace Graphite {
 		}
 
 		ImGui::EndChild();
-
-		const ImVec2 listTopLeft = ImGui::GetItemRectMin();
-		const ImVec2 listBottomRight = ImGui::GetItemRectMax();
-		ImGui::GetWindowDrawList()->AddLine(ImVec2(listBottomRight.x, listTopLeft.y), listBottomRight,
-											ImGui::GetColorU32(ImGuiCol_Separator));
 	}
 
 	void SettingsPanel::DrawResults()

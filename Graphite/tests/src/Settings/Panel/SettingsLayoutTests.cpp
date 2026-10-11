@@ -356,3 +356,19 @@ TEST_CASE("A navigation entry reports a click")
 
 	CHECK(screen.EntryClicked);
 }
+
+TEST_CASE("A search result's page label is followed by a gap before its first card")
+{
+	ImGuiFrames frames;
+	ImVec2 lastItemSize;
+
+	frames.Next([&lastItemSize] {
+		ImGui::Begin("Results");
+		Graphite::SettingsLayout::DrawResultsLabel("Key Bindings");
+		lastItemSize = ImGui::GetItemRectSize();
+		ImGui::End();
+	});
+
+	CHECK(lastItemSize.x == 0.0f);
+	CHECK(lastItemSize.y > 0.0f);
+}
