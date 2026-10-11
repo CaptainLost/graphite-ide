@@ -243,6 +243,14 @@ TEST_CASE("A literal marker listed beside patterns still counts")
 	CHECK_FALSE(Graphite::DirectoryHoldsAnyMarker(temp.GetPath() / "repo" / "src", kSolutionMarkers));
 }
 
+TEST_CASE("A folder holding only a solution file is not a nested project root")
+{
+	TempDirectory temp;
+	Touch(temp.GetPath() / "sub" / "Tool.sln");
+
+	CHECK_FALSE(Graphite::IsProjectRoot(temp.GetPath() / "sub"));
+}
+
 TEST_CASE("C# offers Roslyn first then csharp-ls and OmniSharp")
 {
 	const std::span<const std::string_view> servers = Graphite::DefinitionOf(Graphite::LanguageId::CSharp).Servers;

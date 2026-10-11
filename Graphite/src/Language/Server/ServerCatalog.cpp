@@ -95,6 +95,50 @@ namespace Graphite {
 			return marker.starts_with(kExtensionPatternPrefix);
 		}
 
+		bool ListsAPattern(std::span<const std::string_view> markers)
+		{
+			for (const std::string_view marker : markers)
+			{
+				if (IsExtensionPattern(marker))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		bool DirectoryHoldsLiteralMarker(const std::filesystem::path& directory, std::span<const std::string_view> markers)
+		{
+			for (const std::string_view marker : markers)
+			{
+				if (!IsExtensionPattern(marker) && Exists(directory / marker))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		bool IsSameSpan(std::span<const std::string_view> left, std::span<const std::string_view> right)
+		{
+			return left.data() == right.data() && left.size() == right.size();
+		}
+
+		bool SharesMarkersWithAnEarlierRow(std::size_t row)
+		{
+			for (std::size_t earlier = 0; earlier < row; ++earlier)
+			{
+				if (IsSameSpan(kServers[earlier].RootMarkers, kServers[row].RootMarkers))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
 		bool MatchesExtensionPattern(std::string_view loweredExtension, std::span<const std::string_view> markers)
 		{
 			for (const std::string_view marker : markers)
@@ -197,30 +241,14 @@ namespace Graphite {
 
 	bool DirectoryHoldsAnyMarker(const std::filesystem::path& directory, std::span<const std::string_view> markers)
 	{
-		bool listsAPattern = false;
-
-		for (const std::string_view marker : markers)
-		{
-			if (IsExtensionPattern(marker))
-			{
-				listsAPattern = true;
-				continue;
-			}
-
-			if (Exists(directory / marker))
-			{
-				return true;
-			}
-		}
-
-		return listsAPattern && HoldsFileMatchingPattern(directory, markers);
+		return DirectoryHoldsLiteralMarker(directory, markers) || (ListsAPattern(markers) && HoldsFileMatchingPattern(directory, markers));
 	}
 
 	bool IsProjectRoot(const std::filesystem::path& directory)
 	{
-		for (const ServerDefinition& server : kServers)
+		for (std::size_t row = 0; row < kServers.size(); ++row)
 		{
-			if (DirectoryHoldsAnyMarker(directory, server.RootMarkers))
+			if (!SharesMarkersWithAnEarlierRow(row) && DirectoryHoldsLiteralMarker(directory, kServers[row].RootMarkers))
 			{
 				return true;
 			}

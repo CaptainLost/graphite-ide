@@ -85,6 +85,18 @@ TEST_CASE("A directory carrying its own compile database is a project of its own
 	CHECK(found == std::vector<std::string>{"a.cpp"});
 }
 
+TEST_CASE("A C++ file beside a solution in a subfolder is still analysed")
+{
+	TempDirectory temp;
+	temp.MakeFile("main.cpp", "int x;");
+	temp.MakeFile("sub/Tool.sln", "");
+	temp.MakeFile("sub/a.cpp", "int y;");
+
+	const std::vector<std::string> found = AnalysableUnder(temp.GetPath());
+
+	CHECK(found == std::vector<std::string>{"a.cpp", "main.cpp"});
+}
+
 TEST_CASE("The workspace's own markers do not exclude the workspace")
 {
 	TempDirectory temp;

@@ -60,6 +60,6 @@ namespace Graphite {
 	// A marker written "*.ext" stands for any file with that extension; every other marker is a path.
 	bool DirectoryHoldsAnyMarker(const std::filesystem::path& directory, std::span<const std::string_view> markers);
 
-	// A submodule carries its own .git, so a walk stops here rather than reading somebody else's project.
+	// A submodule carries its own .git, so a walk stops here rather than reading somebody else's project. Only literal markers count: a folder holding a solution file is still walked for its C++.
 	bool IsProjectRoot(const std::filesystem::path& directory);
 }
