@@ -72,6 +72,7 @@ namespace Graphite {
 	class ExplorerPanel;
 	class SearchPanel;
 	class SettingsPanel;
+	class SettingsDirectory;
 	class LanguagesSection;
 	class ReferencesPanel;
 
@@ -160,6 +161,7 @@ namespace Graphite {
 		void RevealPanel(std::string_view id);
 
 		void OpenLanguageSettings(LanguageId language);
+		SettingsDirectory BuildSettingsDirectory();
 
 		void PublishServerMessages();
 
@@ -405,7 +407,6 @@ namespace Graphite {
 		ReferencesPanel* m_ReferencesPanel = nullptr;
 		SettingsPanel* m_SettingsPanel = nullptr;
 		LanguagesSection* m_LanguagesSection = nullptr;
-		std::size_t m_LanguagesSectionIndex = 0;
 
 		StateKeeper m_StateKeeper{
 			[this](const GlobalState& state) { m_AppSettings.SetGlobalState(state); },

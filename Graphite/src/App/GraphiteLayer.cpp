@@ -72,7 +72,9 @@
 #include "Settings/LanguagesSection.h"
 #include "Settings/SchemeSection.h"
 #include "Settings/SearchSection.h"
-#include "Settings/SettingsPanel.h"
+#include "Settings/Panel/SectionPage.h"
+#include "Settings/Panel/SettingsDirectory.h"
+#include "Settings/Panel/SettingsPanel.h"
 #include "Settings/TerminalSection.h"
 #include "Settings/TrustSection.h"
 #include "UI/DialogLayout.h"
@@ -85,6 +87,8 @@
 
 #include "Core/Platform/Process.h"
 #include "Core/Platform/Shell.h"
+
+#include <IconsMaterialDesignIcons.h>
 
 #include <imgui.h>
 
@@ -239,25 +243,7 @@ namespace Graphite {
 		m_LanguageServices.SetLogDirectory(UserDirectories::LogFile().parent_path());
 		m_ServerInstalls.SweepAtStartup();
 
-		std::vector<Core::Scope<SettingsSection>> sections;
-
-		sections.push_back(Core::CreateScope<EditorSection>(m_EditorSettings, m_Commands));
-		sections.push_back(Core::CreateScope<SchemeSection>(m_ActiveScheme, m_AppSettings, m_Modals, m_Events));
-		sections.push_back(Core::CreateScope<InterfaceSection>(m_AppSettings));
-		sections.push_back(Core::CreateScope<KeyBindingsSection>(
-			m_Commands, m_Keys, m_Modals, [this] { m_AppSettings.SetKeyBindings(m_Keys); }));
-		sections.push_back(
-			Core::CreateScope<SearchSection>(m_SearchSettings, m_SolutionLoaded));
-		Core::Scope<LanguagesSection> languages = Core::CreateScope<LanguagesSection>(m_AnalysisSettings, m_AppSettings, m_ServerInstalls,
-																						m_LanguageServices, m_ActiveScheme);
-		m_LanguagesSection = languages.get();
-		m_LanguagesSectionIndex = sections.size();
-		sections.push_back(std::move(languages));
-		sections.push_back(Core::CreateScope<TrustSection>(m_Trust));
-		sections.push_back(Core::CreateScope<TerminalSection>(m_AppSettings, m_Terminals));
-		sections.push_back(Core::CreateScope<ClaudeSection>(m_ClaudeSettings));
-
-		m_SettingsPanel = m_Panels.Add(Core::CreateScope<SettingsPanel>(std::move(sections)));
+		m_SettingsPanel = m_Panels.Add(Core::CreateScope<SettingsPanel>(BuildSettingsDirectory(), m_ActiveScheme));
 
 		ReportConflictingKeyBindings();
 		SubscribeToWorkspaceEvents();
@@ -812,9 +798,39 @@ namespace Graphite {
 		Core::Redraw::Request();
 	}
 
+	SettingsDirectory GraphiteLayer::BuildSettingsDirectory()
+	{
+		Core::Scope<LanguagesSection> languages =
+			Core::CreateScope<LanguagesSection>(m_AnalysisSettings, m_AppSettings, m_ServerInstalls, m_LanguageServices, m_ActiveScheme);
+		m_LanguagesSection = languages.get();
+
+		SettingsGroup general{.Title = "General"};
+		general.Pages.push_back(Core::CreateScope<SectionPage>(
+			"colours", ICON_MDI_PALETTE_OUTLINE, Core::CreateScope<SchemeSection>(m_ActiveScheme, m_AppSettings, m_Modals, m_Events)));
+		general.Pages.push_back(Core::CreateScope<SectionPage>("interface", ICON_MDI_PALETTE_OUTLINE, Core::CreateScope<InterfaceSection>(m_AppSettings)));
+		general.Pages.push_back(Core::CreateScope<SectionPage>(
+			"keyBindings", ICON_MDI_KEYBOARD_OUTLINE,
+			Core::CreateScope<KeyBindingsSection>(m_Commands, m_Keys, m_Modals, [this] { m_AppSettings.SetKeyBindings(m_Keys); })));
+		general.Pages.push_back(Core::CreateScope<SectionPage>("languages", ICON_MDI_SERVER_OUTLINE, std::move(languages)));
+		general.Pages.push_back(Core::CreateScope<SectionPage>("trustedFolders", ICON_MDI_SHIELD_CHECK_OUTLINE, Core::CreateScope<TrustSection>(m_Trust)));
+
+		SettingsGroup panels{.Title = "Panels"};
+		panels.Pages.push_back(
+			Core::CreateScope<SectionPage>("editor", ICON_MDI_PENCIL_OUTLINE, Core::CreateScope<EditorSection>(m_EditorSettings, m_Commands)));
+		panels.Pages.push_back(
+			Core::CreateScope<SectionPage>("findInFiles", ICON_MDI_TEXT_SEARCH, Core::CreateScope<SearchSection>(m_SearchSettings, m_SolutionLoaded)));
+		panels.Pages.push_back(Core::CreateScope<SectionPage>("terminal", ICON_MDI_CONSOLE, Core::CreateScope<TerminalSection>(m_AppSettings, m_Terminals)));
+		panels.Pages.push_back(Core::CreateScope<SectionPage>("claudeSessions", ICON_MDI_ROBOT_OUTLINE, Core::CreateScope<ClaudeSection>(m_ClaudeSettings)));
+
+		std::vector<SettingsGroup> groups;
+		groups.push_back(std::move(general));
+		groups.push_back(std::move(panels));
+
+		return SettingsDirectory{std::move(groups)};
+	}
 	void GraphiteLayer::OpenLanguageSettings(LanguageId language)
 	{
-		m_SettingsPanel->SelectSection(m_LanguagesSectionIndex);
+		m_SettingsPanel->Open({"languages"});
 		m_LanguagesSection->SelectLanguage(language);
 		RevealPanel("settings");
 	}
