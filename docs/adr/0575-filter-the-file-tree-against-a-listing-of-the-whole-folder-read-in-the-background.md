@@ -38,6 +38,11 @@ whether each of them is ignored costs more than reading them.
   file opened from the results is revealed once the filter is cleared.
 - Let rename, delete, duplicate and new file in the results act through the
   real tree as before; the results follow on the next read.
+- Filter the solution view the same way from the solution's own model, which
+  holds every project's files once the solution is read: leave out a row that
+  neither passes by its own name nor holds a row that does, open every row
+  holding a match when the filter text changes, hide the references while
+  filtering, and draw the rows under an ImGui ID scope of their own.
 
 ## Rationale
 
@@ -54,6 +59,8 @@ thread, and leaves no open state to restore when the filter is cleared.
 - Any file outside an ignored folder can be found by name, whether its folder
   was ever opened or not.
 - Clearing the filter returns the tree exactly as the user left it.
+- The solution view finds a file in a project nobody opened, as the file tree
+  does.
 
 ### Negative
 
@@ -65,8 +72,8 @@ thread, and leaves no open state to restore when the filter is cleared.
 
 ### Neutral
 
-- The solution view's filter reads the solution's own model and is not covered
-  by this record.
+- A row that passes by its own name but holds no match, in either view, is
+  shown closed and opens empty: the filter narrows what is inside it too.
 
 ## Alternatives Considered
 
