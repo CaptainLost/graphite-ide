@@ -1192,6 +1192,22 @@ TEST_CASE("A server that loads projects stays indexing after the handshake until
 	CHECK(loaded.Loading.empty());
 }
 
+TEST_CASE("A projects-loaded notification after the client failed leaves it failed")
+{
+	TempDirectory temp;
+	const ProjectLoadingAdapter adapter;
+	Graphite::ServerLaunch launch = ClangdLaunch();
+	launch.Adapter = &adapter;
+	Graphite::LspClient client = OfflineWith(launch, temp.GetPath());
+
+	client.Deliver(R"({"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"gone"}})");
+	REQUIRE(StatusOf(client).State == Graphite::ServerState::Failed);
+
+	client.Deliver(std::string{kProjectsLoaded});
+
+	CHECK(StatusOf(client).State == Graphite::ServerState::Failed);
+}
+
 TEST_CASE("Progress that ends while projects are still loading leaves the server indexing")
 {
 	TempDirectory temp;

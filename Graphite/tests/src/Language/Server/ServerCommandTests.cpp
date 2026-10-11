@@ -75,6 +75,29 @@ TEST_CASE("A server Graphite installed runs from its install through the runner 
 	CHECK(Graphite::DescribeCommand(command) == "C:/dotnet/dotnet.exe " + Core::ToUtf8(assembly));
 }
 
+TEST_CASE("A .NET server is told where the runtime it was checked against lives")
+{
+	TempDirectory temp;
+	InstallCsharpLsIn(temp.GetPath() / "servers");
+
+	const Graphite::ServerCommand csharpLs =
+		Graphite::FindServerCommand(*Graphite::FindServer("csharp-ls"), {}, WithDotnet(temp.GetPath() / "servers", "10.0.10"));
+
+	REQUIRE(csharpLs.State == Graphite::ServerState::Starting);
+	CHECK(csharpLs.DotnetRoot == std::filesystem::path{"C:/dotnet"});
+}
+
+TEST_CASE("A server that needs no runtime is told of none")
+{
+	TempDirectory temp;
+	const std::filesystem::path clangd = temp.MakeFile("clangd.exe", "");
+
+	const Graphite::ServerCommand command = Graphite::FindServerCommand(*Graphite::FindServer("clangd"), clangd, Graphite::ServerCommandPlaces{});
+
+	REQUIRE(command.State == Graphite::ServerState::Starting);
+	CHECK(command.DotnetRoot.empty());
+}
+
 TEST_CASE("A .NET server without a new enough runtime is MissingRuntime naming the version")
 {
 	TempDirectory temp;

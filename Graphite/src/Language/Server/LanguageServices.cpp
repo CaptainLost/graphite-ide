@@ -1342,7 +1342,8 @@ namespace Graphite {
 														const Key& key) const
 	{
 		ServerLaunch launch = LaunchFor(*server.Definition, server.Command.Program, server.Overrides,
-											  LaunchPlaces{.LeadingArguments = server.Command.LeadingArguments, .LogDirectory = m_LogDirectory});
+											  LaunchPlaces{.LeadingArguments = server.Command.LeadingArguments, .LogDirectory = m_LogDirectory,
+													  .DotnetRoot = server.Command.DotnetRoot});
 
 		launch.Solution = SolutionForRoot(key.Root, m_SelectedSolution);
 

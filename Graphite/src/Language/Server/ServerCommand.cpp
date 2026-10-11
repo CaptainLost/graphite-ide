@@ -63,6 +63,8 @@ namespace Graphite {
 				return Unavailable(ServerState::MissingRuntime, std::format("needs .NET {}", server.Runtime.MinimumMajor));
 			}
 
+			command.DotnetRoot = dotnet->Executable.parent_path();
+
 			if (runner == LaunchRunner::Dotnet)
 			{
 				command.Program = dotnet->Executable;

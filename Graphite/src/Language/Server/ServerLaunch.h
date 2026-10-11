@@ -2,6 +2,8 @@
 
 #include "Language/Server/ServerCatalog.h"
 
+#include "Core/Platform/ChildProcess.h"
+
 #include <nlohmann/json.hpp>
 
 #include <filesystem>
@@ -29,6 +31,7 @@ namespace Graphite {
 		std::filesystem::path Binary;
 		std::vector<std::string> Arguments;
 		std::string Description;
+		std::vector<Core::EnvironmentVariable> Environment;
 		nlohmann::json InitializationOptions;
 		nlohmann::json Settings;
 		std::optional<std::filesystem::path> Solution;
@@ -39,6 +42,7 @@ namespace Graphite {
 	{
 		std::vector<std::string> LeadingArguments;
 		std::filesystem::path LogDirectory;
+		std::filesystem::path DotnetRoot;
 	};
 
 	ServerLaunch LaunchFor(const ServerDefinition& server, std::filesystem::path program, const ServerOverrides& overrides,

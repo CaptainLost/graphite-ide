@@ -54,11 +54,20 @@ namespace Graphite {
 
 		std::string description = DescribeProgram(program, places.LeadingArguments);
 
+		std::vector<Core::EnvironmentVariable> environment;
+
+		// An .exe server built on .NET looks for its runtime here, not on PATH.
+		if (!places.DotnetRoot.empty())
+		{
+			environment.push_back(Core::EnvironmentVariable{.Name = "DOTNET_ROOT", .Value = Core::ToUtf8(places.DotnetRoot)});
+		}
+
 		return ServerLaunch{.Server = &server,
 							.Adapter = &AdapterOf(server.Adapter),
 							.Binary = std::move(program),
 							.Arguments = std::move(arguments),
 							.Description = std::move(description),
+							.Environment = std::move(environment),
 							.InitializationOptions = overrides.InitializationOptions,
 							.Settings = overrides.Settings};
 	}

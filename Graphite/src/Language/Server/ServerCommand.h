@@ -24,6 +24,7 @@ namespace Graphite {
 		std::filesystem::path Program;
 		std::vector<std::string> LeadingArguments;
 		std::filesystem::path InstalledFile;
+		std::filesystem::path DotnetRoot;
 	};
 
 	// A configured path that does not exist is NotFound even when another copy could be found: running a server

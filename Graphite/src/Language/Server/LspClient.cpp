@@ -324,7 +324,7 @@ namespace Graphite {
 	{
 		Adopt(launch, root);
 
-		Core::Result<Core::Scope<Core::ChildProcess>> started = Core::ChildProcess::Start(launch.Binary, launch.Arguments, root);
+		Core::Result<Core::Scope<Core::ChildProcess>> started = Core::ChildProcess::Start(launch.Binary, launch.Arguments, root, launch.Environment);
 
 		if (!started)
 		{
@@ -965,7 +965,10 @@ namespace Graphite {
 
 			shared.ProjectsLoading.reset();
 
-			if (shared.ProgressTokens.empty())
+			// A server whose handshake failed answers nothing, whatever it says about its projects.
+			const bool answering = shared.Initialized && shared.Status.State != ServerState::Failed;
+
+			if (answering && shared.ProgressTokens.empty())
 			{
 				Settle(shared);
 				shared.Status.Percent = -1;
