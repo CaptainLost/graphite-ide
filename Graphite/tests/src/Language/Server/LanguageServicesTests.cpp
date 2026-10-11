@@ -2358,8 +2358,9 @@ TEST_CASE("The warm-up starts a solution-rooted server at the selected solution'
 TEST_CASE("Selecting a solution after the warm-up warms the server for its folder")
 {
 	TempDirectory temp;
-	temp.MakeFile("app/App.slnx", "");
-	temp.MakeFile("app/src/Program.cs", "class Program { }\n");
+	temp.MakeFile("outer/Outer.slnx", "");
+	temp.MakeFile("outer/inner/Inner.slnx", "");
+	temp.MakeFile("outer/inner/src/Program.cs", "class Program { }\n");
 	InstallCsharpLsIn(temp.GetPath() / "servers");
 	Graphite::LanguageServices services{temp.GetPath()};
 	ClientFactorySpy spy;
@@ -2381,10 +2382,10 @@ TEST_CASE("Selecting a solution after the warm-up warms the server for its folde
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
 
-	// No solution is selected and app/ holds one, so its files lie outside the scope.
+	// No solution is selected: inner/ lies below outer/, which has no C# of its own.
 	REQUIRE(spy.Made == 0);
 
-	services.SetSelectedSolution(temp.GetPath() / "app" / "App.slnx");
+	services.SetSelectedSolution(temp.GetPath() / "outer" / "inner" / "Inner.slnx");
 
 	constexpr int kMaxAttempts = 500;
 
@@ -2395,5 +2396,35 @@ TEST_CASE("Selecting a solution after the warm-up warms the server for its folde
 	}
 
 	CHECK(spy.Made == 1);
-	CHECK(spy.LastRoot == temp.GetPath() / "app");
+	CHECK(spy.LastRoot == temp.GetPath() / "outer" / "inner");
+}
+
+TEST_CASE("With no solution selected the warm-up starts the server of a solution below the root")
+{
+	TempDirectory temp;
+	temp.MakeFile("src/App.sln", "");
+	temp.MakeFile("src/App/Program.cs", "class Program { }\n");
+	InstallCsharpLsIn(temp.GetPath() / "servers");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	services.SetClock(clock.Get());
+	services.SetClientFactory(spy.Get());
+	services.SetServersDirectory(temp.GetPath() / "servers");
+	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "10.0.10"));
+	services.SetChoiceProvider(ChooseCsharpLs);
+
+	services.WarmUp(temp.GetPath(), false);
+
+	constexpr int kMaxAttempts = 500;
+
+	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	CHECK(spy.Made == 1);
+	CHECK(spy.LastRoot == temp.GetPath() / "src");
 }

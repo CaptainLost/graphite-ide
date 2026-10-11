@@ -128,15 +128,18 @@ TEST_CASE("The walk reads a solution's language only under the selected solution
 	CHECK(found == std::vector<std::string>{"Program.cs", "main.cpp", "sample.cpp"});
 }
 
-TEST_CASE("With no solution selected the walk skips a folder holding a solution for C# alone")
+TEST_CASE("With no solution selected the walk reads the outermost solution folders and skips solutions nested below them")
 {
 	TempDirectory temp;
 	temp.MakeFile("Loose.cs", "class Loose { }");
 	temp.MakeFile("tool/Tool.sln", "");
 	temp.MakeFile("tool/Tool.cs", "class Tool { }");
 	temp.MakeFile("tool/tool.cpp", "int x;");
+	temp.MakeFile("tool/samples/Sample.sln", "");
+	temp.MakeFile("tool/samples/Sample.cs", "class Sample { }");
+	temp.MakeFile("tool/samples/sample.cpp", "int y;");
 
 	const std::vector<std::string> found = AnalysableUnder(temp.GetPath());
 
-	CHECK(found == std::vector<std::string>{"Loose.cs", "tool.cpp"});
+	CHECK(found == std::vector<std::string>{"Loose.cs", "Tool.cs", "sample.cpp", "tool.cpp"});
 }

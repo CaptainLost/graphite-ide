@@ -56,3 +56,18 @@ TEST_CASE("A cancelled search finds nothing")
 
 	CHECK(Graphite::FindProjectsBelow(temp.GetPath(), ".csproj", Graphite::kMostProjectsLoaded, token).Kept.empty());
 }
+
+TEST_CASE("Projects in a nested repository or below another solution are left to their own servers")
+{
+	TempDirectory temp;
+	temp.MakeFile("App/App.csproj", "");
+	temp.MakeFile("vendor/lib/.git", "gitdir: ../../.git/modules/lib");
+	temp.MakeFile("vendor/lib/Lib.csproj", "");
+	temp.MakeFile("samples/Samples.sln", "");
+	temp.MakeFile("samples/Demo/Demo.csproj", "");
+
+	const Graphite::ProjectsBelow found =
+		Graphite::FindProjectsBelow(temp.GetPath(), ".csproj", Graphite::kMostProjectsLoaded, Core::CancellationToken{});
+
+	CHECK(found.Kept == std::vector<std::filesystem::path>{temp.GetPath() / "App" / "App.csproj"});
+}

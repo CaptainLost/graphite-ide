@@ -81,6 +81,22 @@ namespace Graphite {
 		return m_Folder;
 	}
 
+	bool DirectoryHoldsSolution(const std::filesystem::path& directory)
+	{
+		std::error_code listError;
+		std::filesystem::directory_iterator entries{directory, listError};
+
+		for (; !listError && entries != std::filesystem::directory_iterator{}; entries.increment(listError))
+		{
+			if (IsSolutionFile(*entries))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
 	bool SolutionScope::Includes(const std::filesystem::path& file)
 	{
 		if (!Core::IsSameOrWithin(file, m_Folder))
@@ -88,15 +104,27 @@ namespace Graphite {
 			return false;
 		}
 
+		int solutionDirectories = 0;
+
 		for (std::filesystem::path directory = file.parent_path(); LiesBelow(directory, m_Folder); directory = directory.parent_path())
 		{
 			if (HoldsSolution(directory))
+			{
+				++solutionDirectories;
+			}
+
+			if (solutionDirectories > 1)
 			{
 				return false;
 			}
 		}
 
-		return true;
+		if (HoldsSolution(m_Folder))
+		{
+			++solutionDirectories;
+		}
+
+		return solutionDirectories <= 1;
 	}
 
 	bool SolutionScope::HoldsSolution(const std::filesystem::path& directory)
@@ -108,18 +136,7 @@ namespace Graphite {
 			return known->second;
 		}
 
-		bool holds = false;
-		std::error_code listError;
-		std::filesystem::directory_iterator entries{directory, listError};
-
-		for (; !listError && entries != std::filesystem::directory_iterator{}; entries.increment(listError))
-		{
-			if (IsSolutionFile(*entries))
-			{
-				holds = true;
-				break;
-			}
-		}
+		const bool holds = DirectoryHoldsSolution(directory);
 
 		m_HoldsSolution.emplace(directory, holds);
 		return holds;

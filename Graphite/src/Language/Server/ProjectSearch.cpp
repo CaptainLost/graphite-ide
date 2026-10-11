@@ -1,5 +1,7 @@
 #include "Language/Server/ProjectSearch.h"
 
+#include "Language/Server/ServerCatalog.h"
+#include "Language/Server/SolutionScope.h"
 #include "Search/FileEnumerator.h"
 
 #include "Core/Base/Ascii.h"
@@ -39,6 +41,11 @@ namespace Graphite {
 			return name.starts_with('.') || IsOneOf(name, kSkippedFolders);
 		}
 
+		bool BelongsToAnotherServer(const std::filesystem::path& directory)
+		{
+			return IsProjectRoot(directory) || DirectoryHoldsSolution(directory);
+		}
+
 		bool LiesInTestFolder(const std::filesystem::path& project, const std::filesystem::path& root)
 		{
 			for (const std::filesystem::path& folder : project.parent_path().lexically_relative(root))
@@ -66,7 +73,7 @@ namespace Graphite {
 		EnumerationInput enumeration;
 		enumeration.Root = root;
 		enumeration.Ignored = [&root](const std::filesystem::path& path, bool isDirectory) {
-			return isDirectory && path != root && IsSkippedFolder(path);
+			return isDirectory && path != root && (IsSkippedFolder(path) || BelongsToAnotherServer(path));
 		};
 
 		EnumerateFiles(enumeration, token, [&projects, extension](const std::filesystem::path& file) {
