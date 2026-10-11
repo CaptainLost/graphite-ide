@@ -889,7 +889,7 @@ namespace Graphite {
 			// rest of the application unreachable from inside it. Asked as Global because that is
 			// the scope the shortcut router fires from here; a chord only an editor can use is
 			// bound to nothing as far as this view is concerned. The chord is built the way
-			// KeyBindingsSection builds one, so the two agree about what a binding is.
+			// KeyBindingsPage builds one, so the two agree about what a binding is.
 			const Core::Chord chord = Core::Chord::Key(io.KeyMods | key);
 
 			if (!m_Keys.BoundTo(chord, Core::ShortcutScope::Global, m_Commands).empty())

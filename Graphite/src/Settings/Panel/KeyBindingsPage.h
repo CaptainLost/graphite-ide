@@ -2,14 +2,14 @@
 
 #include "Core/Command/Chord.h"
 #include "UI/ModalQuestion.h"
-#include "Settings/SettingsSection.h"
+#include "Settings/Panel/SettingsPage.h"
 
-#include <array>
 #include <cstddef>
 #include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace Core {
 
@@ -20,21 +20,33 @@ namespace Core {
 
 namespace Graphite {
 
-	class KeyBindingsSection final : public SettingsSection
+	class KeyBindingsPage final : public SettingsPage
 	{
 	public:
-		KeyBindingsSection(Core::CommandRegistry& commands, Core::Keymap& keys, ModalGate& modals,
-						   std::function<void()> onChanged);
+		KeyBindingsPage(Core::CommandRegistry& commands, Core::Keymap& keys, ModalGate& modals, std::function<void()> onChanged);
+
+		std::string_view GetId() const override { return "keyBindings"; }
 
 		std::string_view GetTitle() const override { return "Key Bindings"; }
 
-		void OnImGuiRender() override;
+		const char* GetIcon() const override;
+
+		std::vector<SettingsCard> Describe() override;
+
+		void RenderDialogs() override;
 
 		void OnEvent(Core::Event& event) override;
 
-		// The question's popup is torn down with the section that renders it, and only this
-		// section's render can release the gate — so it has to be given back here.
+		// Only RenderDialogs releases the modal gate when a question is answered, so a question still
+		// open when the page is left has to be given back here.
 		void OnDeactivated() override;
+
+		void OnOpenedFromSearch(std::string_view query) override;
+
+		const std::string& GetFilter() const { return m_Filter; }
+
+		// "3 commands match" for the commands the table's filter would show for the query; empty when none.
+		std::string DescribeCommandsMatching(std::string_view query) const;
 
 	private:
 		// One chord the user tried to bind and could not simply have, with the cell it was meant
@@ -75,7 +87,13 @@ namespace Graphite {
 
 		void TakeFromOwner(const Conflict& conflict);
 
-		bool Matches(const Core::Command& command) const;
+		void DrawRestoreAllDefaults();
+
+		void DrawShortcuts();
+
+		bool CommandMatches(const Core::Command& command, std::string_view loweredNeedle) const;
+
+		void CountIfMatches(const Core::Command& command, std::string_view loweredNeedle, std::size_t& matching) const;
 
 		Core::CommandRegistry& m_Commands;
 		Core::Keymap& m_Keys;
@@ -103,6 +121,6 @@ namespace Graphite {
 		// "no", and the capture it interrupted must not resume.
 		bool m_ConflictPending = false;
 
-		std::array<char, 128> m_Filter{};
+		std::string m_Filter;
 	};
 }

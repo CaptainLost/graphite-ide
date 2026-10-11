@@ -1,4 +1,4 @@
-#include "Settings/KeyBindingsSection.h"
+#include "Settings/Panel/KeyBindingsPage.h"
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
@@ -11,10 +11,15 @@
 #include "Core/Command/Trigger.h"
 #include "Core/Events/KeyEvent.h"
 #include "Core/ImGui/ImGuiKeys.h"
+#include "Core/ImGui/TextInput.h"
+#include "Settings/Panel/SettingsLayout.h"
 
+#include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 
 #include <algorithm>
+#include <array>
+#include <format>
 #include <string_view>
 
 #include <utility>
@@ -26,6 +31,8 @@ namespace Graphite {
 		constexpr const char* kConflictPopup = "Shortcut already taken##keybindings";
 
 		constexpr const char* kRestorePopup = "Restore all defaults##keybindings";
+
+		const std::array<std::string, 1> kRestoreLabels{"Restore All Defaults"};
 
 		// The list has no menu around a command, so a command whose menu label only makes sense
 		// under its submenu names itself in full here.
@@ -194,14 +201,14 @@ namespace Graphite {
 		}
 	}
 
-	KeyBindingsSection::KeyBindingsSection(Core::CommandRegistry& commands, Core::Keymap& keys,
+	KeyBindingsPage::KeyBindingsPage(Core::CommandRegistry& commands, Core::Keymap& keys,
 										   ModalGate& modals, std::function<void()> onChanged)
 		: m_Commands(commands), m_Keys(keys), m_OnChanged(std::move(onChanged)),
 		  m_ConflictQuestion(modals, kConflictPopup), m_RestoreQuestion(modals, kRestorePopup)
 	{
 	}
 
-	void KeyBindingsSection::OnDeactivated()
+	void KeyBindingsPage::OnDeactivated()
 	{
 		m_ConflictQuestion.Withdraw();
 		m_RestoreQuestion.Withdraw();
@@ -209,57 +216,119 @@ namespace Graphite {
 		CancelCapture();
 	}
 
-	void KeyBindingsSection::OnImGuiRender()
+	const char* KeyBindingsPage::GetIcon() const
 	{
-		m_WasFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+		return ICON_MDI_KEYBOARD_OUTLINE;
+	}
 
+	std::vector<SettingsCard> KeyBindingsPage::Describe()
+	{
+		SettingsCard restore;
+		restore.Rows.push_back(SettingsRow{.Title = "Restore all defaults",
+										   .Description = "Drops every shortcut you changed and asks first.",
+										   .Keywords = {"reset", "shortcut"},
+										   .ControlWidth = SettingsLayout::ButtonsWidth(kRestoreLabels),
+										   .DrawControl = [this] { DrawRestoreAllDefaults(); }});
+
+		SettingsCard shortcuts{.Heading = "Shortcuts"};
+		shortcuts.Rows.push_back(SettingsRow{.Title = "Shortcuts",
+											 .Keywords = {"shortcut", "hotkey", "keyboard", "key"},
+											 .DrawBlock = [this] { DrawShortcuts(); },
+											 .FillsHeight = true,
+											 .DescribeMatches = [this](std::string_view query) { return DescribeCommandsMatching(query); }});
+
+		return {restore, shortcuts};
+	}
+
+	void KeyBindingsPage::DrawRestoreAllDefaults()
+	{
 		bool anyOverridden = false;
-		m_Keys.ForEachOverride(
-			[&anyOverridden](const std::string&, const Core::Binding&) { anyOverridden = true; });
+		m_Keys.ForEachOverride([&anyOverridden](const std::string&, const Core::Binding&) { anyOverridden = true; });
 
 		ImGui::BeginDisabled(!anyOverridden);
 
-		if (ImGui::Button("Restore All Defaults") && !m_RestoreQuestion.IsAsked())
+		if (ImGui::Button(kRestoreLabels.front().c_str()) && !m_RestoreQuestion.IsAsked())
 		{
 			CancelCapture();
 			m_RestoreQuestion.Ask(true);
 		}
 
 		ImGui::EndDisabled();
-		ImGui::SameLine();
+	}
 
-		ImGui::SetNextItemWidth(-1.0f);
-		ImGui::InputTextWithHint("##keybindingsFilter", "Filter by command or shortcut",
-								 m_Filter.data(), m_Filter.size());
+	void KeyBindingsPage::DrawShortcuts()
+	{
+		m_WasFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
-		constexpr ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
-										  ImGuiTableFlags_SizingStretchProp;
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		Core::InputTextWithHint("##keybindingsFilter", "Filter by command or shortcut", m_Filter);
 
-		if (ImGui::BeginTable("bindings", 4, flags))
+		constexpr ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp;
+
+		if (!ImGui::BeginTable("bindings", 4, flags))
 		{
-			ImGui::TableSetupColumn("Command", ImGuiTableColumnFlags_WidthStretch, 3.0f);
-			ImGui::TableSetupColumn("Shortcut", ImGuiTableColumnFlags_WidthStretch, 2.0f);
-			ImGui::TableSetupColumn("Alternates", ImGuiTableColumnFlags_WidthStretch, 3.0f);
-			ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-			ImGui::TableSetupScrollFreeze(0, 1);
-			ImGui::TableHeadersRow();
-
-			m_Commands.ForEach(
-				[this](const Core::Command& command) {
-					if (Matches(command))
-					{
-						RenderRow(command);
-					}
-				});
-
-			ImGui::EndTable();
+			return;
 		}
 
+		ImGui::TableSetupColumn("Command", ImGuiTableColumnFlags_WidthStretch, 3.0f);
+		ImGui::TableSetupColumn("Shortcut", ImGuiTableColumnFlags_WidthStretch, 2.0f);
+		ImGui::TableSetupColumn("Alternates", ImGuiTableColumnFlags_WidthStretch, 3.0f);
+		ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		ImGui::TableSetupScrollFreeze(0, 1);
+		ImGui::TableHeadersRow();
+
+		const std::string needle = Core::Lowered(m_Filter);
+
+		m_Commands.ForEach([this, &needle](const Core::Command& command) {
+			if (CommandMatches(command, needle))
+			{
+				RenderRow(command);
+			}
+		});
+
+		ImGui::EndTable();
+	}
+
+	void KeyBindingsPage::RenderDialogs()
+	{
 		RenderConflictQuestion();
 		RenderRestoreQuestion();
 	}
 
-	void KeyBindingsSection::OnEvent(Core::Event& event)
+	void KeyBindingsPage::OnOpenedFromSearch(std::string_view query)
+	{
+		m_Filter = std::string{query};
+	}
+
+	std::string KeyBindingsPage::DescribeCommandsMatching(std::string_view query) const
+	{
+		const std::string needle = Core::Lowered(query);
+		std::size_t matching = 0;
+
+		m_Commands.ForEach([this, &needle, &matching](const Core::Command& command) { CountIfMatches(command, needle, matching); });
+
+		if (matching == 0)
+		{
+			return {};
+		}
+
+		if (matching == 1)
+		{
+			return "1 command matches";
+		}
+
+		return std::format("{} commands match", matching);
+	}
+
+	void KeyBindingsPage::CountIfMatches(const Core::Command& command, std::string_view loweredNeedle, std::size_t& matching) const
+	{
+		if (CommandMatches(command, loweredNeedle))
+		{
+			++matching;
+		}
+	}
+
+	void KeyBindingsPage::OnEvent(Core::Event& event)
 	{
 		if (!IsWaitingForChord())
 		{
@@ -326,36 +395,33 @@ namespace Graphite {
 			});
 	}
 
-	bool KeyBindingsSection::IsWaitingForChord() const
+	bool KeyBindingsPage::IsWaitingForChord() const
 	{
 		return !m_Capturing.empty() && !m_ConflictQuestion.IsAsked() && m_WasFocused;
 	}
 
-	void KeyBindingsSection::CancelCapture()
+	void KeyBindingsPage::CancelCapture()
 	{
 		m_Capturing.clear();
 		m_TapMods = 0;
 	}
 
-	bool KeyBindingsSection::Matches(const Core::Command& command) const
+	bool KeyBindingsPage::CommandMatches(const Core::Command& command, std::string_view loweredNeedle) const
 	{
-		const std::string needle = Core::Lowered(m_Filter.data());
-
-		if (needle.empty())
+		if (loweredNeedle.empty())
 		{
 			return true;
 		}
 
-		if (Core::Lowered(LabelOf(command)).find(needle) != std::string::npos)
+		if (Core::Lowered(LabelOf(command)).find(loweredNeedle) != std::string::npos)
 		{
 			return true;
 		}
 
-		return Core::Lowered(AllChordText(m_Keys.For(command.Id))).find(needle) !=
-			   std::string::npos;
+		return Core::Lowered(AllChordText(m_Keys.For(command.Id))).find(loweredNeedle) != std::string::npos;
 	}
 
-	void KeyBindingsSection::RenderRow(const Core::Command& command)
+	void KeyBindingsPage::RenderRow(const Core::Command& command)
 	{
 		const Core::Binding* binding = m_Keys.For(command.Id);
 
@@ -398,7 +464,7 @@ namespace Graphite {
 		ImGui::PopID();
 	}
 
-	void KeyBindingsSection::RenderSlot(const std::string& id, std::size_t slot,
+	void KeyBindingsPage::RenderSlot(const std::string& id, std::size_t slot,
 										const std::string& text)
 	{
 		ImGui::PushID(static_cast<int>(slot));
@@ -458,14 +524,14 @@ namespace Graphite {
 		ImGui::PopID();
 	}
 
-	bool KeyBindingsSection::CaptureOwnsKeyboard(bool selfActive, bool anyActive)
+	bool KeyBindingsPage::CaptureOwnsKeyboard(bool selfActive, bool anyActive)
 	{
 		const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
 		return focused && (!anyActive || selfActive);
 	}
 
-	std::optional<Core::Chord> KeyBindingsSection::CaptureWheelChord(bool pointerOverCell)
+	std::optional<Core::Chord> KeyBindingsPage::CaptureWheelChord(bool pointerOverCell)
 	{
 		const ImGuiIO& io = ImGui::GetIO();
 
@@ -483,7 +549,7 @@ namespace Graphite {
 		return std::nullopt;
 	}
 
-	void KeyBindingsSection::Offer(const std::string& id, std::size_t slot, const Core::Chord& chord)
+	void KeyBindingsPage::Offer(const std::string& id, std::size_t slot, const Core::Chord& chord)
 	{
 		if (const std::string_view reason = ReservedReasonFor(chord); !reason.empty())
 		{
@@ -502,13 +568,13 @@ namespace Graphite {
 		AskConflict(Conflict{chord, std::string(owner), {}, id, slot});
 	}
 
-	void KeyBindingsSection::AskConflict(Conflict conflict)
+	void KeyBindingsPage::AskConflict(Conflict conflict)
 	{
 		m_ConflictQuestion.Ask(std::move(conflict));
 		m_ConflictPending = true;
 	}
 
-	void KeyBindingsSection::Apply(const std::string& id, std::size_t slot, const Core::Chord& chord)
+	void KeyBindingsPage::Apply(const std::string& id, std::size_t slot, const Core::Chord& chord)
 	{
 		std::vector<Core::Chord> chords = Flatten(m_Keys.For(id));
 
@@ -529,7 +595,7 @@ namespace Graphite {
 		m_OnChanged();
 	}
 
-	void KeyBindingsSection::RenderConflictQuestion()
+	void KeyBindingsPage::RenderConflictQuestion()
 	{
 		// Asked from here rather than where the conflict was noticed: a popup's id is relative
 		// to the ID stack it is opened under, and there it sits inside the table's per-row
@@ -596,7 +662,7 @@ namespace Graphite {
 		}
 	}
 
-	void KeyBindingsSection::RenderRestoreQuestion()
+	void KeyBindingsPage::RenderRestoreQuestion()
 	{
 		if (!m_RestoreQuestion.Begin())
 		{
@@ -624,7 +690,7 @@ namespace Graphite {
 		m_RestoreQuestion.End();
 	}
 
-	void KeyBindingsSection::TakeFromOwner(const Conflict& conflict)
+	void KeyBindingsPage::TakeFromOwner(const Conflict& conflict)
 	{
 		if (const Core::Binding* current = m_Keys.For(conflict.Owner); current != nullptr)
 		{

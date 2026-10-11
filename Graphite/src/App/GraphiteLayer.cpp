@@ -66,7 +66,7 @@
 #include "Core/Events/ApplicationEvent.h"
 
 #include "Settings/ClaudeSection.h"
-#include "Settings/KeyBindingsSection.h"
+#include "Settings/Panel/KeyBindingsPage.h"
 #include "Settings/LanguagesSection.h"
 #include "Settings/Panel/AppearancePage.h"
 #include "Settings/Panel/EditorPage.h"
@@ -808,9 +808,8 @@ namespace Graphite {
 		SettingsGroup general{.Title = "General"};
 		general.Pages.push_back(
 			Core::CreateScope<AppearancePage>(m_ActiveScheme, m_AppSettings, m_Modals, m_Events, AppSettings::ThemesDirectory()));
-		general.Pages.push_back(Core::CreateScope<SectionPage>(
-			"keyBindings", ICON_MDI_KEYBOARD_OUTLINE,
-			Core::CreateScope<KeyBindingsSection>(m_Commands, m_Keys, m_Modals, [this] { m_AppSettings.SetKeyBindings(m_Keys); })));
+		general.Pages.push_back(
+			Core::CreateScope<KeyBindingsPage>(m_Commands, m_Keys, m_Modals, [this] { m_AppSettings.SetKeyBindings(m_Keys); }));
 		general.Pages.push_back(Core::CreateScope<SectionPage>("languages", ICON_MDI_SERVER_OUTLINE, std::move(languages)));
 		general.Pages.push_back(Core::CreateScope<SectionPage>("trustedFolders", ICON_MDI_SHIELD_CHECK_OUTLINE, Core::CreateScope<TrustSection>(m_Trust)));
 
