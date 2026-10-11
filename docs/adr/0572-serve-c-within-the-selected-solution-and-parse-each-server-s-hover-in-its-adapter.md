@@ -22,7 +22,7 @@ The tooltip draws a declaration line by line, coloured by the language's grammar
 **The selected solution.** These rules hold for a language whose servers root at a solution:
 - the background pass and the warm-up take that language's files only under the selected solution's folder;
 - they skip every folder below it that holds another solution;
-- with no solution selected, they start from the open folder and skip the same folders.
+- with no solution selected, they start from the open folder, read each outermost folder that holds a solution, and skip every solution folder nested below another.
 
 Opening a file in a skipped folder still starts its own server. Other languages are walked as before.
 
@@ -36,7 +36,7 @@ A file whose server cannot run is counted done at once. A server cannot run when
 - turned off;
 - failed with no restarts left.
 
-**Projects without a solution.** Roslyn without a solution is handed every `.csproj` below its root. They are searched for on a worker before it starts. The search skips `node_modules`, `bin`, `obj` and every folder whose name starts with a dot. Above 500 projects, those under a `test` or `tests` folder are dropped first, then the rest past 500.
+**Projects without a solution.** Roslyn without a solution is handed every `.csproj` below its root. They are searched for on a worker before it starts. The search skips `node_modules`, `bin`, `obj` and every folder whose name starts with a dot. It also skips a folder that holds a solution or is another repository's root, as the background pass does. Above 500 projects, those under a `test` or `tests` folder are dropped first, then the rest past 500.
 
 **The runtime.** A server that needs .NET starts with `DOTNET_ROOT` set to the installation whose runtime Graphite checked.
 
@@ -71,6 +71,7 @@ A file whose server cannot run is counted done at once. A server cannot run when
 
 - A C# tooltip has no heading line: the C# servers name no symbol kind.
 - The warm-up runs again when the selected solution changes.
+- With no solution selected, each outermost folder that holds a solution gets a server of its own.
 - clangd's background indexing no longer holds the C++ queue: an indexing server answers about the file it is asked about.
 
 ## Alternatives Considered
@@ -78,6 +79,7 @@ A file whose server cannot run is counted done at once. A server cannot run when
 - **Keep the 60-second limit, per language.** A large solution takes longer than that to load, and the pass would then ask questions that get no answers.
 - **Skip a folder holding a nested solution for every language.** A C++ file there belongs to the same C++ server as the rest of the folder, and would go unanalysed for nothing.
 - **One queue that steps past a waiting head.** Every frame would walk past every waiting file; a queue per language asks once per language.
+- **Skip every folder that holds a solution when none is selected.** Solutions are looked for only at the top of the open folder, so a repository whose only solution sits in `src/` would get no background analysis at all.
 
 ## Related
 
