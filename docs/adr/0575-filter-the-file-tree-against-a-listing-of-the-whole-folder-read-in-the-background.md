@@ -64,8 +64,9 @@ thread, and leaves no open state to restore when the filter is cleared.
 
 ### Negative
 
-- The first keystroke in a large folder shows "Searching..." until the read
-  ends.
+- After the first keystroke in a large folder, the results wait for the read
+  to end, with a loader in their place once the wait passes 200 ms
+  ([0576](0576-draw-a-loading-indicator-through-a-core-facade-over-imspinner.md)).
 - Build output and other ignored content cannot be found through the filter.
 - A file created or duplicated from the results shows up there only after the
   next read, so its inline rename may not start.

@@ -605,4 +605,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0573](0573-describe-settings-pages-as-data-and-draw-them-with-one-layout.md) | Describe settings pages as data and draw them with one layout | accepted | 2026-10-11 |
 | [0574](0574-list-what-a-settings-block-holds-as-rows-of-its-own-in-the-search.md) | List what a settings block holds as rows of its own in the search | accepted | 2026-10-11 |
 | [0575](0575-filter-the-file-tree-against-a-listing-of-the-whole-folder-read-in-the-background.md) | Filter the file tree against a listing of the whole folder read in the background | proposed | 2026-10-11 |
+| [0576](0576-draw-a-loading-indicator-through-a-core-facade-over-imspinner.md) | Draw a loading indicator through a Core facade over imspinner | proposed | 2026-10-11 |
 <!-- /adr-index -->
