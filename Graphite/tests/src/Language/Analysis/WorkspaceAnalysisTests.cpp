@@ -120,6 +120,8 @@ namespace {
 	public:
 		void Request(const std::filesystem::path& path) override
 		{
+			Requested.push_back(path);
+
 			FileText text;
 			text.Path = path;
 			text.Text = "int x;\n";
@@ -141,6 +143,7 @@ namespace {
 
 		bool Readable = true;
 		std::vector<FileText> Pending;
+		std::vector<std::filesystem::path> Requested;
 	};
 
 	LanguageServices::Answer Colours(LanguageServices::Ticket ticket)
@@ -588,6 +591,7 @@ TEST_CASE("A file whose language has no chosen server is counted done without be
 	analysis.Tick(2.0, false, NobodyElse);
 
 	CHECK(port.Calls.empty());
+	CHECK(texts.Requested.empty());
 	CHECK(analysis.Progress().Done == analysis.Progress().Total);
 }
 

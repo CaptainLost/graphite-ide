@@ -312,6 +312,14 @@ namespace Graphite {
 				continue;
 			}
 
+			if (!m_Port.HasChosenServer(LanguageOfPath(path)))
+			{
+				// Nothing serves this language, so there is nobody to ask. Counted as done rather
+				// than left in the queue: it is as finished as it will ever be.
+				++m_Done;
+				continue;
+			}
+
 			m_AwaitingText.push_back(path);
 			m_Texts.Request(path);
 		}
@@ -369,10 +377,9 @@ namespace Graphite {
 
 			const LanguageId language = LanguageOfPath(text.Path);
 
+			// Asked again: the choice can be unset while the text is being read.
 			if (!m_Port.HasChosenServer(language))
 			{
-				// Nothing serves this language, so there is nobody to ask. Counted as done rather
-				// than left in the queue: it is as finished as it will ever be.
 				++m_Done;
 				continue;
 			}
