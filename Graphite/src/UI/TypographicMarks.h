@@ -22,6 +22,10 @@ namespace Graphite {
 	// U+2192 RIGHTWARDS ARROW: from one value to the next, or to a return type.
 	inline constexpr std::string_view kRightwardsArrow = "\xE2\x86\x92";
 
+	// U+203A SINGLE RIGHT-POINTING ANGLE QUOTATION MARK with one space either side: from a page to
+	// the page inside it, as in "Language Servers › C#".
+	inline constexpr std::string_view kBreadcrumbSeparator = " \xE2\x80\xBA ";
+
 	// U+201C and U+201D: open and close a quotation.
 	inline constexpr std::string_view kLeftDoubleQuotationMark = "\xE2\x80\x9C";
 	inline constexpr std::string_view kRightDoubleQuotationMark = "\xE2\x80\x9D";
