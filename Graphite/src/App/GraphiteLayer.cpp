@@ -67,7 +67,7 @@
 #include "Settings/EditorSection.h"
 #include "Settings/InterfaceSection.h"
 #include "Settings/KeyBindingsSection.h"
-#include "Settings/LanguageSection.h"
+#include "Settings/LanguagesSection.h"
 #include "Settings/SchemeSection.h"
 #include "Settings/SearchSection.h"
 #include "Settings/SettingsPanel.h"
@@ -230,13 +230,16 @@ namespace Graphite {
 			m_Commands, m_Keys, m_Modals, [this] { m_AppSettings.SetKeyBindings(m_Keys); }));
 		sections.push_back(
 			Core::CreateScope<SearchSection>(m_SearchSettings, m_SolutionLoaded));
-		sections.push_back(Core::CreateScope<LanguageSection>(m_AnalysisSettings, m_AppSettings,
-																	  [this] { m_LanguageServices.Reconfigure(LanguageId::Cpp); }));
+		Core::Scope<LanguagesSection> languages = Core::CreateScope<LanguagesSection>(m_AnalysisSettings, m_AppSettings, m_ServerInstalls,
+																						m_LanguageServices, m_ActiveScheme);
+		m_LanguagesSection = languages.get();
+		m_LanguagesSectionIndex = sections.size();
+		sections.push_back(std::move(languages));
 		sections.push_back(Core::CreateScope<TrustSection>(m_Trust));
 		sections.push_back(Core::CreateScope<TerminalSection>(m_AppSettings, m_Terminals));
 		sections.push_back(Core::CreateScope<ClaudeSection>(m_ClaudeSettings));
 
-		m_Panels.Add(Core::CreateScope<SettingsPanel>(std::move(sections)));
+		m_SettingsPanel = m_Panels.Add(Core::CreateScope<SettingsPanel>(std::move(sections)));
 
 		ReportConflictingKeyBindings();
 		SubscribeToWorkspaceEvents();
@@ -403,6 +406,13 @@ namespace Graphite {
 						.Enabled = [this] {
 							const std::optional<std::filesystem::path> path = ActiveTextDocument(m_Documents);
 							return path.has_value() && CanInstallChosenServerFor(*path); }});
+
+		m_Commands.Add({.Id = "languageServers.settings",
+						.Label = "Language Server Settings",
+						.Run = [this] {
+							const std::optional<std::filesystem::path> path = ActiveTextDocument(m_Documents);
+							const LanguageId active = path ? LanguageOfPath(*path) : LanguageId::PlainText;
+							OpenLanguageSettings(LanguageHasServers(active) ? active : LanguagesWithServers().front()); }});
 
 #ifdef CORE_DEBUG
 		m_Commands.Add({.Id = "debug.logTestEntries",
@@ -782,6 +792,13 @@ namespace Graphite {
 		m_Panels.SetVisible(id, true);
 		panel->RequestFocus();
 		Core::Redraw::Request();
+	}
+
+	void GraphiteLayer::OpenLanguageSettings(LanguageId language)
+	{
+		m_SettingsPanel->SelectSection(m_LanguagesSectionIndex);
+		m_LanguagesSection->SelectLanguage(language);
+		RevealPanel("settings");
 	}
 
 	void GraphiteLayer::ApplyChromeIfSchemeChanged()

@@ -11,6 +11,40 @@ namespace Graphite {
 		return std::string{server.DisplayName} + (recommended ? " (recommended)" : "");
 	}
 
+	std::string ChoicePreview(LanguageId language, const ServerChoice& choice)
+	{
+		switch (choice.Kind)
+		{
+		case ServerChoiceKind::NotConfigured:
+			return "Not chosen";
+		case ServerChoiceKind::Off:
+			return "None";
+		case ServerChoiceKind::Chosen:
+			break;
+		}
+
+		return ServerOptionLabel(*choice.Server, choice.Server == RecommendedServerFor(language));
+	}
+
+	const char* InstallActionLabel(InstallAction action)
+	{
+		switch (action)
+		{
+		case InstallAction::Install:
+			return "Install";
+		case InstallAction::Cancel:
+			return "Cancel";
+		case InstallAction::CheckForUpdates:
+			return "Check for updates";
+		case InstallAction::Update:
+			return "Update";
+		case InstallAction::Uninstall:
+			break;
+		}
+
+		return "Uninstall";
+	}
+
 	bool RuntimeFound(const ServerRuntime& runtime, std::span<const DotnetInstallation> installations)
 	{
 		switch (runtime.Kind)

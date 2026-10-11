@@ -71,4 +71,30 @@ namespace Core {
 											ToUtf8(path))};
 #endif
 	}
+
+	Result<void> Shell::OpenInBrowser(std::string_view url)
+	{
+		constexpr std::string_view kSecureScheme = "https://";
+
+		if (!url.starts_with(kSecureScheme))
+		{
+			return Error{.Code = ErrorCode::InvalidArgument, .Message = std::format("'{}' is not an https address", url)};
+		}
+
+#ifdef CORE_PLATFORM_WINDOWS
+		const std::wstring address = ToUtf16(url);
+		const HINSTANCE launchResult = ::ShellExecuteW(nullptr, L"open", address.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+		const bool launched = reinterpret_cast<INT_PTR>(launchResult) > kLargestShellExecuteErrorCode;
+
+		if (!launched)
+		{
+			return Error{.Code = ErrorCode::IoFailure, .Message = std::format("cannot open '{}' in the browser", url)};
+		}
+
+		return Result<void>::Ok();
+#else
+		return Error{.Code = ErrorCode::Unsupported,
+					 .Message = std::format("opening '{}' in a browser is not implemented on this platform", url)};
+#endif
+	}
 }

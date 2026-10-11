@@ -69,6 +69,8 @@ namespace Graphite {
 
 	class ExplorerPanel;
 	class SearchPanel;
+	class SettingsPanel;
+	class LanguagesSection;
 	class ReferencesPanel;
 
 	class GraphiteLayer final : public Core::Layer
@@ -153,6 +155,8 @@ namespace Graphite {
 
 		void RevealPanel(std::string_view id);
 
+		void OpenLanguageSettings(LanguageId language);
+
 		void PublishServerMessages();
 
 		static Core::Ref<Core::HttpClient> CreateInstallClient();
@@ -219,7 +223,7 @@ namespace Graphite {
 		// which it forwards to, and before m_DocumentWindows, which holds it by reference.
 		DocumentServicesPort m_DocumentPort{m_LanguageServices};
 
-		// Read by LanguageSection, which m_Panels owns, so this is declared before m_Panels for
+		// Read by LanguagesSection, which m_Panels owns, so this is declared before m_Panels for
 		// the same reason m_EditorSettings is.
 		AnalysisSettings m_AnalysisSettings{m_AppSettings};
 
@@ -392,6 +396,9 @@ namespace Graphite {
 		ExplorerPanel* m_Explorer = nullptr;
 		SearchPanel* m_SearchPanel = nullptr;
 		ReferencesPanel* m_ReferencesPanel = nullptr;
+		SettingsPanel* m_SettingsPanel = nullptr;
+		LanguagesSection* m_LanguagesSection = nullptr;
+		std::size_t m_LanguagesSectionIndex = 0;
 
 		StateKeeper m_StateKeeper{
 			[this](const GlobalState& state) { m_AppSettings.SetGlobalState(state); },
