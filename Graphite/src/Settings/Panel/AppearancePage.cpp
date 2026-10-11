@@ -34,7 +34,6 @@ namespace Graphite {
 		constexpr const char* kBuiltInSchemeDescription = "Built-in schemes cannot be edited. Duplicate one to change it.";
 		constexpr const char* kOwnSchemeDescription = "A copy of your own: rename it, delete it, or change its colours below.";
 		constexpr const char* kColourNote = "Dimmed names are inherited from the built-in scheme. \xE2\x86\xBA puts an overridden colour back.";
-		constexpr const char* kInheritedColourDescription = "Inherited from the built-in scheme.";
 		constexpr float kColourCellWidth = 230.0f;
 		constexpr float kPercentPerScale = 100.0f;
 
@@ -270,7 +269,7 @@ namespace Graphite {
 
 			rows.push_back(SettingsRow{.Key = name,
 									   .Title = name,
-									   .Description = inherited ? kInheritedColourDescription : "",
+									   .DimmedTitle = inherited,
 									   .ControlWidth = controlWidth,
 									   .DrawControl = [this, which] { DrawColourResult(which); }});
 		}

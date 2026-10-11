@@ -106,7 +106,15 @@ namespace Graphite {
 		{
 			ImGui::BeginGroup();
 			ImGui::PushTextWrapPos(wrapRightScreenX - ImGui::GetWindowPos().x + ImGui::GetScrollX());
-			ImGui::TextUnformatted(row.Title.c_str());
+
+			if (row.DimmedTitle)
+			{
+				TextInColour(row.Title, ImGui::GetColorU32(ImGuiCol_TextDisabled));
+			}
+			else
+			{
+				ImGui::TextUnformatted(row.Title.c_str());
+			}
 
 			if (!row.Description.empty())
 			{

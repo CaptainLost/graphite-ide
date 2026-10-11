@@ -200,7 +200,7 @@ TEST_CASE("An own scheme with an overridden colour draws wide and narrow without
 	CHECK_FALSE(screen.Modals.IsBusy());
 }
 
-TEST_CASE("In an own scheme an inherited colour's row says so and an overridden one's does not")
+TEST_CASE("In an own scheme an inherited colour's row is dimmed and an overridden one's is not")
 {
 	AppearanceScreen screen(true);
 
@@ -211,9 +211,11 @@ TEST_CASE("In an own scheme an inherited colour's row says so and an overridden 
 	const std::vector<Graphite::SettingsRow> keyword = FindInFrame(screen, *block, "keyword");
 
 	REQUIRE(comment.size() == 1);
+	CHECK_FALSE(comment[0].DimmedTitle);
 	CHECK(comment[0].Description.empty());
 	REQUIRE_FALSE(keyword.empty());
-	CHECK(keyword[0].Description == "Inherited from the built-in scheme.");
+	CHECK(keyword[0].DimmedTitle);
+	CHECK(keyword[0].Description.empty());
 }
 
 TEST_CASE("A found colour row's control is as wide as the swatch, and wider in an own scheme for the reset icon")

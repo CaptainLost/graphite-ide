@@ -28,6 +28,10 @@ namespace Graphite {
 		std::string Title;
 		std::string Description;
 		std::string Problem;
+
+		// Draws the title in the disabled text colour, as the colour grid draws a colour the scheme inherits.
+		bool DimmedTitle = false;
+
 		std::vector<std::string> Keywords;
 
 		float ControlWidth = 0.0f;
