@@ -30,7 +30,7 @@ namespace {
 		SettingsPageFrames Frames{Page};
 	};
 
-	constexpr std::size_t kThemeAndInterfaceRows = 3;
+	constexpr std::size_t kThemeAndInterfaceCards = 2;
 }
 
 TEST_CASE("The appearance page holds the theme, the interface and a card for each group of colours")
@@ -41,15 +41,51 @@ TEST_CASE("The appearance page holds the theme, the interface and a card for eac
 																   "Application colours", "Git colours", "Claude sessions colours"});
 }
 
-TEST_CASE("Every colour of every group has a row of its own")
+TEST_CASE("Each group of colours is one block row under the theme and the interface")
 {
 	AppearanceScreen screen;
 
-	const std::size_t colours = static_cast<std::size_t>(Graphite::TokenKind::Count) + static_cast<std::size_t>(Graphite::EditorColor::Count) +
-								static_cast<std::size_t>(Graphite::ChromeColor::Count) + static_cast<std::size_t>(Graphite::GitColor::Count) +
-								static_cast<std::size_t>(Graphite::SessionColor::Count);
+	CHECK(screen.Frames.RowTitles() == std::vector<std::string>{"Colour scheme", "This scheme", "Interface scale", "Syntax colours",
+																"Editor colours", "Application colours", "Git colours",
+																"Claude sessions colours"});
 
-	CHECK(screen.Frames.RowTitles().size() == kThemeAndInterfaceRows + colours);
+	const std::vector<Graphite::SettingsCard> cards = screen.Frames.DescribeInFrame();
+
+	for (std::size_t cardIndex = kThemeAndInterfaceCards; cardIndex < cards.size(); ++cardIndex)
+	{
+		REQUIRE(cards[cardIndex].Rows.size() == 1);
+		CHECK(cards[cardIndex].Rows.front().IsBlock());
+	}
+}
+
+TEST_CASE("A colour is found by its name through its group's block")
+{
+	AppearanceScreen screen;
+
+	const std::optional<Graphite::SettingsRow> block = screen.Frames.FindRow("Syntax colours");
+
+	REQUIRE(block.has_value());
+	REQUIRE(block->DescribeMatches);
+	CHECK(block->DescribeMatches("comment") == "Comment");
+	CHECK(block->DescribeMatches("COMMENT") == "Comment");
+	CHECK(block->DescribeMatches("zzz").empty());
+	CHECK(block->DescribeMatches("semantic") == "6 colours match");
+}
+
+TEST_CASE("An own scheme's colour cards explain dimmed names and the reset icon")
+{
+	AppearanceScreen screen;
+
+	CHECK(screen.Frames.DescribeInFrame()[kThemeAndInterfaceCards].Note.empty());
+
+	screen.Frames.ClickControl("This scheme");
+
+	const std::vector<Graphite::SettingsCard> cards = screen.Frames.DescribeInFrame();
+
+	for (std::size_t cardIndex = kThemeAndInterfaceCards; cardIndex < cards.size(); ++cardIndex)
+	{
+		CHECK(cards[cardIndex].Note == "Dimmed names are inherited from the built-in scheme. \xE2\x86\xBA puts an overridden colour back.");
+	}
 }
 
 TEST_CASE("A built-in scheme says it cannot be edited")

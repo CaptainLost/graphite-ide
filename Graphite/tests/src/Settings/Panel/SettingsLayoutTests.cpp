@@ -315,8 +315,8 @@ TEST_CASE("In a wide card the control stands at the card's right edge")
 	frames.Next([&controls] { DrawCardsInWindow(controls, 900.0f); });
 	frames.Next([&controls] { DrawCardsInWindow(controls, 900.0f); });
 
-	// The window's padding is 8; the card is capped at 760 and padded by 14 inside.
-	CHECK(controls.WordWrapMin.x == doctest::Approx(8.0f + 760.0f - 14.0f - Core::kToggleWidth));
+	// The window's padding is 8; the card takes the whole 884 px of content and is padded by 14 inside.
+	CHECK(controls.WordWrapMin.x == doctest::Approx(8.0f + 884.0f - 14.0f - Core::kToggleWidth));
 }
 
 TEST_CASE("In a narrow card the control stands under the text at the card's left")

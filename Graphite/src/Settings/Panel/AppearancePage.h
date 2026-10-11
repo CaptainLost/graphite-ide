@@ -56,7 +56,7 @@ namespace Graphite {
 		SettingsCard DescribeTheme();
 		SettingsCard DescribeInterface();
 
-		// Templated over the enum so every group of colours shares one row, rather than a copy per
+		// Templated over the enum so every group of colours shares one grid, rather than a copy per
 		// group drifting apart.
 		template<typename Which>
 			requires std::is_enum_v<Which>
@@ -64,10 +64,13 @@ namespace Graphite {
 
 		template<typename Which>
 			requires std::is_enum_v<Which>
+		void DrawColourGrid(std::size_t count);
+
+		template<typename Which>
+			requires std::is_enum_v<Which>
 		void DrawColour(Which which);
 
 		std::vector<std::string> SchemeActionLabels() const;
-		float ColourControlWidth() const;
 
 		void DrawSchemeChoice();
 		void DrawSchemeActions();

@@ -23,7 +23,6 @@ namespace Graphite {
 		constexpr float kRowPadding = 10.0f;
 		constexpr float kTextControlGap = 16.0f;
 		constexpr float kStackBelowCardWidth = 420.0f;
-		constexpr float kMaxCardWidth = 760.0f;
 		constexpr float kCardRounding = 6.0f;
 		constexpr float kCardGap = 18.0f;
 		constexpr float kPageTitleGap = 10.0f;
@@ -57,7 +56,7 @@ namespace Graphite {
 
 		float CardWidthHere()
 		{
-			return std::min(ImGui::GetContentRegionAvail().x, Core::Scaled(kMaxCardWidth));
+			return ImGui::GetContentRegionAvail().x;
 		}
 
 		// Frames one step up from the card's own colour, or a combo or a field would vanish into it.

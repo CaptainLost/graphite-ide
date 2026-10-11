@@ -7,10 +7,13 @@
 #include "Theme/ColorScheme.h"
 #include "Theme/Palettes.h"
 #include "UI/DialogLayout.h"
+#include "UI/IconButton.h"
 #include "UI/ToastEvent.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/Events/EventBus.h"
 #include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/UiScale.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -18,6 +21,7 @@
 #include <algorithm>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -27,8 +31,8 @@ namespace Graphite {
 
 		constexpr const char* kBuiltInSchemeDescription = "Built-in schemes cannot be edited. Duplicate one to change it.";
 		constexpr const char* kOwnSchemeDescription = "A copy of your own: rename it, delete it, or change its colours below.";
-		constexpr const char* kInheritedLabel = "inherited";
-		constexpr const char* kResetLabel = "Reset";
+		constexpr const char* kColourNote = "Dimmed names are inherited from the built-in scheme. \xE2\x86\xBA puts an overridden colour back.";
+		constexpr float kColourCellWidth = 230.0f;
 		constexpr float kPercentPerScale = 100.0f;
 
 		const std::vector<std::string> kColourKeywords{"colour", "color"};
@@ -69,6 +73,50 @@ namespace Graphite {
 			}
 
 			return kInterfaceScalePercents.size();
+		}
+
+		template<typename Which>
+			requires std::is_enum_v<Which>
+		std::vector<std::string> ColourNames(std::size_t count)
+		{
+			std::vector<std::string> names;
+
+			for (std::size_t colourIndex = 0; colourIndex < count; ++colourIndex)
+			{
+				names.push_back(std::string{LabelOf(static_cast<Which>(colourIndex))});
+			}
+
+			return names;
+		}
+
+		template<typename Which>
+			requires std::is_enum_v<Which>
+		std::string DescribeColourMatches(std::size_t count, std::string_view query)
+		{
+			const std::string loweredQuery = Core::Lowered(query);
+			std::string match;
+			std::size_t matchCount = 0;
+
+			for (const std::string& name : ColourNames<Which>(count))
+			{
+				if (Core::LoweredTextContains(name, loweredQuery))
+				{
+					match = name;
+					++matchCount;
+				}
+			}
+
+			if (matchCount == 0)
+			{
+				return {};
+			}
+
+			return matchCount == 1 ? match : std::to_string(matchCount) + " colours match";
+		}
+
+		int ColumnsFor(float availableWidth)
+		{
+			return std::max(1, static_cast<int>(availableWidth / Core::Scaled(kColourCellWidth)));
 		}
 	}
 
@@ -157,6 +205,19 @@ namespace Graphite {
 			m_ColourEdited = true;
 		}
 
+		ImGui::SameLine();
+		ImGui::AlignTextToFramePadding();
+
+		const std::string label{LabelOf(which)};
+
+		if (!readOnly && !overridden)
+		{
+			ImGui::TextDisabled("%s", label.c_str());
+			return;
+		}
+
+		ImGui::TextUnformatted(label.c_str());
+
 		if (readOnly)
 		{
 			return;
@@ -164,14 +225,9 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		if (!overridden)
-		{
-			ImGui::AlignTextToFramePadding();
-			ImGui::TextDisabled("%s", kInheritedLabel);
-			return;
-		}
+		const bool engaged = false;
 
-		if (ImGui::SmallButton(kResetLabel))
+		if (DrawIconButton("##reset", ICON_MDI_RESTORE, engaged, "Put back the inherited colour"))
 		{
 			m_Draft.Revert(which);
 			Apply();
@@ -181,19 +237,43 @@ namespace Graphite {
 
 	template<typename Which>
 		requires std::is_enum_v<Which>
-	SettingsCard AppearancePage::DescribeColours(const char* heading, std::size_t count)
+	void AppearancePage::DrawColourGrid(std::size_t count)
 	{
-		SettingsCard card{.Heading = heading};
+		const int columns = ColumnsFor(ImGui::GetContentRegionAvail().x);
+
+		if (!ImGui::BeginTable("##colours", columns, ImGuiTableFlags_SizingStretchSame))
+		{
+			return;
+		}
 
 		for (std::size_t colourIndex = 0; colourIndex < count; ++colourIndex)
 		{
-			const Which which = static_cast<Which>(colourIndex);
-
-			card.Rows.push_back(SettingsRow{.Title = std::string{LabelOf(which)},
-											.Keywords = kColourKeywords,
-											.ControlWidth = ColourControlWidth(),
-											.DrawControl = [this, which] { DrawColour(which); }});
+			ImGui::TableNextColumn();
+			ImGui::PushID(static_cast<int>(colourIndex));
+			DrawColour(static_cast<Which>(colourIndex));
+			ImGui::PopID();
 		}
+
+		ImGui::EndTable();
+	}
+
+	template<typename Which>
+		requires std::is_enum_v<Which>
+	SettingsCard AppearancePage::DescribeColours(const char* heading, std::size_t count)
+	{
+		SettingsCard card{.Heading = heading, .Note = m_Draft.IsReadOnly() ? "" : kColourNote};
+
+		std::vector<std::string> keywords = kColourKeywords;
+
+		for (std::string& name : ColourNames<Which>(count))
+		{
+			keywords.push_back(std::move(name));
+		}
+
+		card.Rows.push_back(SettingsRow{.Title = heading,
+										.Keywords = std::move(keywords),
+										.DrawBlock = [this, count] { DrawColourGrid<Which>(count); },
+										.DescribeMatches = [count](std::string_view query) { return DescribeColourMatches<Which>(count, query); }});
 
 		return card;
 	}
@@ -248,22 +328,6 @@ namespace Graphite {
 		}
 
 		return {"Duplicate", "Rename", "Delete"};
-	}
-
-	float AppearancePage::ColourControlWidth() const
-	{
-		const float swatchWidth = ImGui::GetFrameHeight();
-
-		if (m_Draft.IsReadOnly())
-		{
-			return swatchWidth;
-		}
-
-		const ImGuiStyle& style = ImGui::GetStyle();
-		const float resetWidth = ImGui::CalcTextSize(kResetLabel).x + style.FramePadding.x * 2.0f;
-		const float inheritedWidth = ImGui::CalcTextSize(kInheritedLabel).x;
-
-		return swatchWidth + style.ItemSpacing.x + std::max(resetWidth, inheritedWidth);
 	}
 
 	void AppearancePage::DrawSchemeChoice()
