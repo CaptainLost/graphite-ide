@@ -1942,6 +1942,27 @@ TEST_CASE("A C# server without its runtime reads MissingRuntime and starts nothi
 	CHECK(services.OverallStatus()->State == Graphite::ServerState::MissingRuntime);
 }
 
+TEST_CASE("A server configured as an assembly starts through dotnet though its definition names no runtime")
+{
+	TempDirectory temp;
+	const std::filesystem::path assembly = temp.MakeFile("tools/clangd.dll", "");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	services.SetClock(clock.Get());
+	services.SetClientFactory(spy.Get());
+	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "8.0.11"));
+	UseClangdAt(services, assembly);
+
+	services.EnsureStarted(temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
+
+	REQUIRE(spy.Made == 1);
+	CHECK(spy.LastLaunch.Binary == temp.GetPath() / "dotnet" / "dotnet.exe");
+	REQUIRE_FALSE(spy.LastLaunch.Arguments.empty());
+	CHECK(spy.LastLaunch.Arguments[0] == Core::ToUtf8(assembly));
+}
+
 TEST_CASE("A server Graphite is uninstalling is not started and reads not installed")
 {
 	TempDirectory temp;

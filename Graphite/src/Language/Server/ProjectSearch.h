@@ -11,7 +11,13 @@ namespace Graphite {
 
 	inline constexpr std::size_t kMostProjectsLoaded = 500;
 
+	struct ProjectsBelow
+	{
+		std::vector<std::filesystem::path> Kept;
+		std::size_t DroppedAboveLimit = 0;
+	};
+
 	// Walks the whole tree below the root: call it on a worker, never in a frame.
-	std::vector<std::filesystem::path> FindProjectsBelow(const std::filesystem::path& root, std::string_view extension,
-														 std::size_t most, const Core::CancellationToken& token);
+	ProjectsBelow FindProjectsBelow(const std::filesystem::path& root, std::string_view extension, std::size_t most,
+									const Core::CancellationToken& token);
 }

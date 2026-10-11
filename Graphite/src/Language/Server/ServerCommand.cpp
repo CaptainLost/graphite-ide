@@ -54,13 +54,18 @@ namespace Graphite {
 				return command;
 			}
 
+			const std::vector<DotnetInstallation> installations = places.ListDotnet ? places.ListDotnet() : std::vector<DotnetInstallation>{};
+
 			// Checked before starting: a .NET server without its runtime exits at once, and a server that keeps
 			// dying says nothing about why.
-			const DotnetInstallation* dotnet = FirstWithRuntimeAtLeast(places.Dotnet, server.Runtime.MinimumMajor);
+			const DotnetInstallation* dotnet = FirstWithRuntimeAtLeast(installations, server.Runtime.MinimumMajor);
 
 			if (dotnet == nullptr)
 			{
-				return Unavailable(ServerState::MissingRuntime, std::format("needs .NET {}", server.Runtime.MinimumMajor));
+				const bool namesAVersion = server.Runtime.MinimumMajor != 0;
+
+				return Unavailable(ServerState::MissingRuntime,
+								   namesAVersion ? std::format("needs .NET {}", server.Runtime.MinimumMajor) : std::string{"needs .NET"});
 			}
 
 			command.DotnetRoot = dotnet->Executable.parent_path();

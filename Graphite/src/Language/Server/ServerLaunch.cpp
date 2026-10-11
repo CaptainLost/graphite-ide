@@ -3,7 +3,9 @@
 #include "Language/Server/Adapters/ServerAdapter.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Platform/CurrentPlatform.h"
 
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -25,6 +27,19 @@ namespace Graphite {
 			}
 
 			return argument;
+		}
+
+		std::string_view ArchitectureDotnetRootName(Core::Architecture machine)
+		{
+			switch (machine)
+			{
+			case Core::Architecture::X64:
+				return "DOTNET_ROOT_X64";
+			case Core::Architecture::Arm64:
+				break;
+			}
+
+			return "DOTNET_ROOT_ARM64";
 		}
 	}
 
@@ -60,10 +75,15 @@ namespace Graphite {
 
 		std::vector<Core::EnvironmentVariable> environment;
 
-		// An .exe server built on .NET looks for its runtime here, not on PATH.
+		// An .exe server built on .NET looks for its runtime here, not on PATH. The architecture's own variable wins
+		// over DOTNET_ROOT, so one inherited from the user's environment would point the server at another runtime.
 		if (!places.DotnetRoot.empty())
 		{
-			environment.push_back(Core::EnvironmentVariable{.Name = "DOTNET_ROOT", .Value = Core::ToUtf8(places.DotnetRoot)});
+			const std::string dotnetRoot = Core::ToUtf8(places.DotnetRoot);
+
+			environment.push_back(Core::EnvironmentVariable{.Name = "DOTNET_ROOT", .Value = dotnetRoot});
+			environment.push_back(Core::EnvironmentVariable{.Name = std::string{ArchitectureDotnetRootName(Core::CurrentPlatform().Machine)},
+															.Value = dotnetRoot});
 		}
 
 		return ServerLaunch{.Server = &server,

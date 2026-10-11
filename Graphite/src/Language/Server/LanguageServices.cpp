@@ -9,8 +9,8 @@
 #include "Core/Text/FileProbe.h"
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/Adapters/ServerAdapter.h"
-#include "Language/Server/ServerCommand.h"
 #include "Language/Server/ProjectSearch.h"
+#include "Language/Server/ServerCommand.h"
 #include "Language/Server/ServerLaunch.h"
 #include "Language/Server/SolutionForRoot.h"
 #include "Language/Server/SolutionScope.h"
@@ -437,17 +437,9 @@ namespace Graphite {
 		return *m_Dotnet;
 	}
 
-	ServerCommandPlaces LanguageServices::CommandPlacesFor(const ServerDefinition& server) const
+	ServerCommandPlaces LanguageServices::CommandPlaces() const
 	{
-		ServerCommandPlaces places{.ServersDirectory = m_ServersDirectory};
-
-		// Finding .NET lists folders on the disk, on the UI thread.
-		if (server.Runtime.Kind == RuntimeKind::Dotnet)
-		{
-			places.Dotnet = DotnetInstallations();
-		}
-
-		return places;
+		return ServerCommandPlaces{.ServersDirectory = m_ServersDirectory, .ListDotnet = [this] { return DotnetInstallations(); }};
 	}
 
 	ServerStatus LanguageServices::OffStatus(LanguageId language) const
@@ -467,7 +459,7 @@ namespace Graphite {
 			return;
 		}
 
-		server.Command = FindServerCommand(*server.Definition, server.Overrides.Binary, CommandPlacesFor(*server.Definition));
+		server.Command = FindServerCommand(*server.Definition, server.Overrides.Binary, CommandPlaces());
 
 		if (server.Command.State != ServerState::Starting)
 		{
@@ -1211,7 +1203,7 @@ namespace Graphite {
 		const std::string extension{*AdapterOf(server.Definition->Adapter).ProjectFileExtension()};
 
 		m_Jobs.Submit([searches = m_ProjectSearches, token = m_ProjectSearchToken, key, search = server.ProjectSearch, extension] {
-			std::vector<std::filesystem::path> projects = FindProjectsBelow(key.Root, extension, kMostProjectsLoaded, token);
+			ProjectsBelow projects = FindProjectsBelow(key.Root, extension, kMostProjectsLoaded, token);
 
 			if (token.IsCancelled())
 			{
@@ -1247,8 +1239,22 @@ namespace Graphite {
 			}
 
 			ManagedServer& server = entry->second;
+			const std::string root = Core::ToUtf8(search.Server.Root);
+			const std::size_t keptCount = search.Projects.Kept.size();
+			const std::size_t droppedCount = search.Projects.DroppedAboveLimit;
+
+			if (droppedCount == 0)
+			{
+				APP_INFO("Found {} projects for {} below {}", keptCount, server.Definition->DisplayName, root);
+			}
+			else
+			{
+				APP_WARN("Found {} projects for {} below {}, loading {} and leaving out {} past the limit", keptCount + droppedCount,
+						 server.Definition->DisplayName, root, keptCount, droppedCount);
+			}
+
 			server.ProjectSearch = 0;
-			server.Projects = std::move(search.Projects);
+			server.Projects = std::move(search.Projects.Kept);
 			server.Client = MakeClient(server, search.Server);
 			server.Status.Detail = DescribeCommand(server.Command);
 

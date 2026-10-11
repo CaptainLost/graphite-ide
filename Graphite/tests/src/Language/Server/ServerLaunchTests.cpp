@@ -3,6 +3,8 @@
 #include "Language/Server/Adapters/ServerAdapter.h"
 #include "Language/Server/ServerLaunch.h"
 
+#include "Core/Platform/CurrentPlatform.h"
+
 #include <nlohmann/json.hpp>
 
 #include <ostream>
@@ -54,17 +56,21 @@ TEST_CASE("A launch describes the program with the arguments that pick what it r
 	CHECK(launch.Description == "C:\\dotnet\\dotnet.exe C:\\servers\\csharp-ls\\CSharpLanguageServer.dll");
 }
 
-TEST_CASE("A launch carries DOTNET_ROOT when it was given one and nothing otherwise")
+TEST_CASE("A launch carries DOTNET_ROOT and the variable of the platform's architecture when it was given one and nothing otherwise")
 {
 	const Graphite::ServerOverrides noOverrides;
 	const Graphite::LaunchPlaces withRuntime{.LeadingArguments = {}, .LogDirectory = {}, .DotnetRoot = "C:\\dotnet"};
+	const std::string architectureVariable =
+		Core::CurrentPlatform().Machine == Core::Architecture::X64 ? "DOTNET_ROOT_X64" : "DOTNET_ROOT_ARM64";
 
 	const Graphite::ServerLaunch dotnet = Graphite::LaunchFor(*Graphite::FindServer("omnisharp"), "C:\\servers\\OmniSharp.exe", noOverrides, withRuntime);
 	const Graphite::ServerLaunch plain = Graphite::LaunchFor(*Graphite::FindServer("clangd"), "C:\\clangd.exe", noOverrides);
 
-	REQUIRE(dotnet.Environment.size() == 1);
+	REQUIRE(dotnet.Environment.size() == 2);
 	CHECK(dotnet.Environment[0].Name == "DOTNET_ROOT");
 	CHECK(dotnet.Environment[0].Value == "C:\\dotnet");
+	CHECK(dotnet.Environment[1].Name == architectureVariable);
+	CHECK(dotnet.Environment[1].Value == "C:\\dotnet");
 	CHECK(plain.Environment.empty());
 }
 

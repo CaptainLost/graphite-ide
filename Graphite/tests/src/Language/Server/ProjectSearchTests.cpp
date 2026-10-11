@@ -21,11 +21,12 @@ TEST_CASE("Projects are found below the root and not in build output")
 	temp.MakeFile(".hidden/Hidden.csproj", "");
 	temp.MakeFile("App/Notes.txt", "");
 
-	const std::vector<std::filesystem::path> found =
+	const Graphite::ProjectsBelow found =
 		Graphite::FindProjectsBelow(temp.GetPath(), ".csproj", Graphite::kMostProjectsLoaded, Core::CancellationToken{});
 
-	CHECK(found == std::vector<std::filesystem::path>{temp.GetPath() / "App" / "App.csproj",
-													  temp.GetPath() / "src" / "Library" / "Library.CSPROJ"});
+	CHECK(found.Kept == std::vector<std::filesystem::path>{temp.GetPath() / "App" / "App.csproj",
+														   temp.GetPath() / "src" / "Library" / "Library.CSPROJ"});
+	CHECK(found.DroppedAboveLimit == 0);
 }
 
 TEST_CASE("Above the limit projects in test folders are dropped first")
@@ -36,12 +37,14 @@ TEST_CASE("Above the limit projects in test folders are dropped first")
 	temp.MakeFile("Test/B.Tests/B.Tests.csproj", "");
 	temp.MakeFile("tests/A.Tests/A.Tests.csproj", "");
 
-	const std::vector<std::filesystem::path> three = Graphite::FindProjectsBelow(temp.GetPath(), ".csproj", 3, Core::CancellationToken{});
-	const std::vector<std::filesystem::path> one = Graphite::FindProjectsBelow(temp.GetPath(), ".csproj", 1, Core::CancellationToken{});
+	const Graphite::ProjectsBelow three = Graphite::FindProjectsBelow(temp.GetPath(), ".csproj", 3, Core::CancellationToken{});
+	const Graphite::ProjectsBelow one = Graphite::FindProjectsBelow(temp.GetPath(), ".csproj", 1, Core::CancellationToken{});
 
-	CHECK(three == std::vector<std::filesystem::path>{temp.GetPath() / "A" / "A.csproj", temp.GetPath() / "B" / "B.csproj",
-													  temp.GetPath() / "Test" / "B.Tests" / "B.Tests.csproj"});
-	CHECK(one == std::vector<std::filesystem::path>{temp.GetPath() / "A" / "A.csproj"});
+	CHECK(three.Kept == std::vector<std::filesystem::path>{temp.GetPath() / "A" / "A.csproj", temp.GetPath() / "B" / "B.csproj",
+														   temp.GetPath() / "Test" / "B.Tests" / "B.Tests.csproj"});
+	CHECK(three.DroppedAboveLimit == 1);
+	CHECK(one.Kept == std::vector<std::filesystem::path>{temp.GetPath() / "A" / "A.csproj"});
+	CHECK(one.DroppedAboveLimit == 3);
 }
 
 TEST_CASE("A cancelled search finds nothing")
@@ -51,5 +54,5 @@ TEST_CASE("A cancelled search finds nothing")
 	Core::CancellationToken token;
 	token.Cancel();
 
-	CHECK(Graphite::FindProjectsBelow(temp.GetPath(), ".csproj", Graphite::kMostProjectsLoaded, token).empty());
+	CHECK(Graphite::FindProjectsBelow(temp.GetPath(), ".csproj", Graphite::kMostProjectsLoaded, token).Kept.empty());
 }

@@ -7,6 +7,7 @@
 #include "Language/Api/LanguageService.h"
 #include "Language/Server/DotnetRuntime.h"
 #include "Language/Server/LspClient.h"
+#include "Language/Server/ProjectSearch.h"
 #include "Language/Server/ServerCatalog.h"
 #include "Language/Server/ServerChoice.h"
 #include "Language/Server/ServerCommand.h"
@@ -528,7 +529,7 @@ namespace Graphite {
 		{
 			Key Server;
 			std::uint64_t Search = 0;
-			std::vector<std::filesystem::path> Projects;
+			ProjectsBelow Projects;
 		};
 
 		struct ProjectSearches
@@ -546,7 +547,7 @@ namespace Graphite {
 		ChoiceProvider m_ChoiceProvider;
 		mutable std::map<LanguageId, ServerChoice> m_Choices;
 
-		ServerCommandPlaces CommandPlacesFor(const ServerDefinition& server) const;
+		ServerCommandPlaces CommandPlaces() const;
 
 		std::filesystem::path m_ServersDirectory;
 		DotnetLocator m_DotnetLocator;

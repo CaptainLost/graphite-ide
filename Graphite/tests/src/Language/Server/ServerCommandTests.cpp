@@ -21,9 +21,10 @@ namespace {
 
 	Graphite::ServerCommandPlaces WithDotnet(const std::filesystem::path& serversDirectory, std::string runtimeVersion)
 	{
-		return Graphite::ServerCommandPlaces{
-			.ServersDirectory = serversDirectory,
-			.Dotnet = {Graphite::DotnetInstallation{.Executable = "C:/dotnet/dotnet.exe", .RuntimeVersions = {std::move(runtimeVersion)}}}};
+		const std::vector<Graphite::DotnetInstallation> installations{
+			Graphite::DotnetInstallation{.Executable = "C:/dotnet/dotnet.exe", .RuntimeVersions = {std::move(runtimeVersion)}}};
+
+		return Graphite::ServerCommandPlaces{.ServersDirectory = serversDirectory, .ListDotnet = [installations] { return installations; }};
 	}
 }
 
@@ -108,14 +109,58 @@ TEST_CASE("A .NET server without a new enough runtime is MissingRuntime naming t
 	CHECK(withOldRuntime.State == Graphite::ServerState::MissingRuntime);
 	CHECK(withOldRuntime.Detail == "needs .NET 10");
 
-	const Graphite::ServerCommandPlaces noDotnet{.ServersDirectory = temp.GetPath() / "servers", .Dotnet = {}};
+	const Graphite::ServerCommandPlaces noDotnet{.ServersDirectory = temp.GetPath() / "servers", .ListDotnet = {}};
 	CHECK(Graphite::FindServerCommand(*Graphite::FindServer("csharp-ls"), {}, noDotnet).State == Graphite::ServerState::MissingRuntime);
+}
+
+TEST_CASE("A .NET server configured as a program of its own is told where its runtime lives")
+{
+	TempDirectory temp;
+	const std::filesystem::path omniSharp = temp.MakeFile("OmniSharp.exe", "");
+
+	const Graphite::ServerCommand command = Graphite::FindServerCommand(*Graphite::FindServer("omnisharp"), omniSharp, WithDotnet({}, "10.0.10"));
+
+	REQUIRE(command.State == Graphite::ServerState::Starting);
+	CHECK(command.Program == omniSharp);
+	CHECK(command.LeadingArguments.empty());
+	CHECK(command.DotnetRoot == std::filesystem::path{"C:/dotnet"});
+}
+
+TEST_CASE("An assembly configured for a server that names no runtime runs through dotnet")
+{
+	TempDirectory temp;
+	const std::filesystem::path assembly = temp.MakeFile("clangd.dll", "");
+
+	const Graphite::ServerCommand withDotnet = Graphite::FindServerCommand(*Graphite::FindServer("clangd"), assembly, WithDotnet({}, "8.0.11"));
+	const Graphite::ServerCommand withoutDotnet = Graphite::FindServerCommand(*Graphite::FindServer("clangd"), assembly, Graphite::ServerCommandPlaces{});
+
+	REQUIRE(withDotnet.State == Graphite::ServerState::Starting);
+	CHECK(withDotnet.Program == std::filesystem::path{"C:/dotnet/dotnet.exe"});
+	CHECK(withDotnet.LeadingArguments == std::vector<std::string>{Core::ToUtf8(assembly)});
+	CHECK(withoutDotnet.State == Graphite::ServerState::MissingRuntime);
+	CHECK(withoutDotnet.Detail == "needs .NET");
+}
+
+TEST_CASE("Only a command that runs on .NET lists the .NET installations")
+{
+	TempDirectory temp;
+	const std::filesystem::path clangd = temp.MakeFile("clangd.exe", "");
+	std::size_t listings = 0;
+	const Graphite::ServerCommandPlaces counted{.ServersDirectory = {}, .ListDotnet = [&listings] {
+													++listings;
+													return std::vector<Graphite::DotnetInstallation>{};
+												}};
+
+	const Graphite::ServerCommand command = Graphite::FindServerCommand(*Graphite::FindServer("clangd"), clangd, counted);
+
+	REQUIRE(command.State == Graphite::ServerState::Starting);
+	CHECK(listings == 0);
 }
 
 TEST_CASE("A server found nowhere is NotInstalled and says where it was looked for")
 {
 	TempDirectory temp;
-	const Graphite::ServerCommandPlaces installs{.ServersDirectory = temp.GetPath() / "servers", .Dotnet = {}};
+	const Graphite::ServerCommandPlaces installs{.ServersDirectory = temp.GetPath() / "servers", .ListDotnet = {}};
 
 	const Graphite::ServerCommand withServersDirectory = Graphite::FindServerCommand(kNowhere, {}, installs);
 	const Graphite::ServerCommand withoutServersDirectory = Graphite::FindServerCommand(kNowhere, {}, Graphite::ServerCommandPlaces{});

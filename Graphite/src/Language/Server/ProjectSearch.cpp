@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <span>
 #include <string>
+#include <utility>
 
 namespace Graphite {
 
@@ -57,8 +58,8 @@ namespace Graphite {
 		}
 	}
 
-	std::vector<std::filesystem::path> FindProjectsBelow(const std::filesystem::path& root, std::string_view extension,
-														 std::size_t most, const Core::CancellationToken& token)
+	ProjectsBelow FindProjectsBelow(const std::filesystem::path& root, std::string_view extension, std::size_t most,
+									const Core::CancellationToken& token)
 	{
 		std::vector<std::filesystem::path> projects;
 
@@ -77,6 +78,8 @@ namespace Graphite {
 
 		std::sort(projects.begin(), projects.end(), ComesFirstByPath);
 
+		const std::size_t foundCount = projects.size();
+
 		// From the end of the order, and only as many as the limit needs.
 		for (std::size_t index = projects.size(); index > 0 && projects.size() > most; --index)
 		{
@@ -91,6 +94,8 @@ namespace Graphite {
 			projects.erase(projects.begin() + static_cast<std::ptrdiff_t>(most), projects.end());
 		}
 
-		return projects;
+		const std::size_t droppedCount = foundCount - projects.size();
+
+		return ProjectsBelow{.Kept = std::move(projects), .DroppedAboveLimit = droppedCount};
 	}
 }

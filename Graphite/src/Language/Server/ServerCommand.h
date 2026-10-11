@@ -5,6 +5,7 @@
 #include "Language/Server/ServerCatalog.h"
 
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -13,7 +14,8 @@ namespace Graphite {
 	struct ServerCommandPlaces
 	{
 		std::filesystem::path ServersDirectory;
-		std::vector<DotnetInstallation> Dotnet;
+		// Called only for a command that runs on .NET: listing the installations reads folders on the disk.
+		std::function<std::vector<DotnetInstallation>()> ListDotnet;
 	};
 
 	struct ServerCommand
