@@ -66,10 +66,9 @@
 #include "Core/Events/ApplicationEvent.h"
 
 #include "Settings/ClaudeSection.h"
-#include "Settings/InterfaceSection.h"
 #include "Settings/KeyBindingsSection.h"
 #include "Settings/LanguagesSection.h"
-#include "Settings/SchemeSection.h"
+#include "Settings/Panel/AppearancePage.h"
 #include "Settings/Panel/EditorPage.h"
 #include "Settings/Panel/ExplorerPage.h"
 #include "Settings/Panel/FindInFilesPage.h"
@@ -807,9 +806,8 @@ namespace Graphite {
 		m_LanguagesSection = languages.get();
 
 		SettingsGroup general{.Title = "General"};
-		general.Pages.push_back(Core::CreateScope<SectionPage>(
-			"colours", ICON_MDI_PALETTE_OUTLINE, Core::CreateScope<SchemeSection>(m_ActiveScheme, m_AppSettings, m_Modals, m_Events)));
-		general.Pages.push_back(Core::CreateScope<SectionPage>("interface", ICON_MDI_PALETTE_OUTLINE, Core::CreateScope<InterfaceSection>(m_AppSettings)));
+		general.Pages.push_back(
+			Core::CreateScope<AppearancePage>(m_ActiveScheme, m_AppSettings, m_Modals, m_Events, AppSettings::ThemesDirectory()));
 		general.Pages.push_back(Core::CreateScope<SectionPage>(
 			"keyBindings", ICON_MDI_KEYBOARD_OUTLINE,
 			Core::CreateScope<KeyBindingsSection>(m_Commands, m_Keys, m_Modals, [this] { m_AppSettings.SetKeyBindings(m_Keys); })));
