@@ -9,6 +9,7 @@
 #include "Editor/EditorSettings.h"
 #include "Editor/Server/LanguageServicesPort.h"
 #include "App/AboutDialog.h"
+#include "UI/LanguageSupportBar.h"
 #include "UI/ModalQuestion.h"
 #include "Editor/Server/PreviewSemantics.h"
 #include "App/TitleBar.h"
@@ -61,6 +62,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <set>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -124,6 +126,8 @@ namespace Graphite {
 		void RenderDropConfirm();
 
 		void RenderRestrictedModeBar(bool trusted);
+
+		void RenderLanguageSupportBar(const LanguagePrompt& prompt);
 
 		void RenderTrustParentConfirm();
 
@@ -206,6 +210,9 @@ namespace Graphite {
 		Core::JobQueue m_InstallJobs{1};
 		ServerInstalls m_ServerInstalls{CreateInstallClient(), UserDirectories::ServersDirectory(),
 										[this](std::function<void()> job) { m_InstallJobs.Submit(std::move(job)); }};
+
+		// Not now hides a language's bar until Graphite restarts.
+		std::set<LanguageId> m_DismissedLanguagePrompts;
 
 		// Declared after m_LanguageServices, which fills it each frame in OnImGuiRender, and
 		// before m_DocumentWindows and m_Panels, both of which hold this by reference: the model

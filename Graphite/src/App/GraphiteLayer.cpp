@@ -11,8 +11,10 @@
 #include "Editor/StatusBar/StatusLineComposer.h"
 #include "Editor/StatusBar/StatusMessageEvent.h"
 #include "Editor/TextEditorWidget.h"
+#include "Language/Install/InstallSummary.h"
 #include "Language/Install/ServerInstallActions.h"
 #include "Language/Registry/LanguageRegistry.h"
+#include "Language/Server/DotnetRuntime.h"
 #include "Language/Server/ServerCatalog.h"
 
 #include "Git/Changes/ChangesPanel.h"
@@ -74,6 +76,7 @@
 #include "Settings/TerminalSection.h"
 #include "Settings/TrustSection.h"
 #include "UI/DialogLayout.h"
+#include "UI/LanguageSupportBar.h"
 #include "UI/RestrictedModeBar.h"
 #include "UI/ToastEvent.h"
 #include "Workspace/WorkspaceTrust.h"
@@ -81,6 +84,7 @@
 #include "Core/FileSystem/FileSystem.h"
 
 #include "Core/Platform/Process.h"
+#include "Core/Platform/Shell.h"
 
 #include <imgui.h>
 
@@ -952,6 +956,22 @@ namespace Graphite {
 			status = m_LanguageServices.StatusFor(*shownDocument, activeLanguage);
 		}
 
+		std::optional<LanguagePrompt> languagePrompt;
+
+		if (shownDocument)
+		{
+			const ServerChoice& choice = m_LanguageServices.ChoiceFor(activeLanguage);
+
+			// Without the overrides: the bar needs only which server, and they hold JSON that would be copied every frame.
+			languagePrompt = LanguagePromptFor(LanguagePromptInputs{
+				.Language = activeLanguage,
+				.Choice = ServerChoice{.Kind = choice.Kind, .Server = choice.Server},
+				.State = status.State,
+				.Install = choice.Server != nullptr ? InstallInputsFor(m_ServerInstalls, *choice.Server) : InstallInputs{},
+				.Dismissed = m_DismissedLanguagePrompts.contains(activeLanguage),
+				.RestrictedModeShown = m_Workspace.IsOpen() && !workspaceTrusted});
+		}
+
 		ServerLineInputs serverInputs{.Active = status,
 									  .ActiveLanguage = activeLanguage,
 									  .FolderOpen = m_Workspace.IsOpen(),
@@ -1032,7 +1052,14 @@ namespace Graphite {
 		// Every frame rather than once: the caption follows the interface scale, which the
 		// monitor the window is on or the settings can change at any moment.
 		m_Layout.MenuBarHeight = m_CustomTitleBar ? Core::Scaled(kCaptionHeight) : 0.0f;
-		m_DockSpace.Begin(m_Layout, [this, workspaceTrusted] { RenderRestrictedModeBar(workspaceTrusted); });
+		m_DockSpace.Begin(m_Layout, [this, workspaceTrusted, &languagePrompt] {
+			RenderRestrictedModeBar(workspaceTrusted);
+
+			if (languagePrompt)
+			{
+				RenderLanguageSupportBar(*languagePrompt);
+			}
+		});
 		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.MenuBarHeight, [this] { m_TitleBar.RenderLogo(Core::Application::Get().GetWindow()); }, [this] { m_TitleBar.Render(Core::Application::Get().GetWindow()); });
 		RenderEmptyEditorArea();
 		m_DockSpace.End();
@@ -1263,6 +1290,39 @@ namespace Graphite {
 		}
 
 		m_DockSpace.CenterEmptyState("Open a file from the Explorer, or drop one here.");
+	}
+
+	void GraphiteLayer::RenderLanguageSupportBar(const LanguagePrompt& prompt)
+	{
+		switch (DrawLanguageSupportBar(prompt))
+		{
+		case LanguageBarChoice::None:
+			break;
+
+		case LanguageBarChoice::Configure:
+		case LanguageBarChoice::OpenSettings:
+			OpenLanguageSettings(prompt.Language);
+			break;
+
+		case LanguageBarChoice::Install:
+			m_ServerInstalls.Install(prompt.ServerId);
+			break;
+
+		case LanguageBarChoice::Cancel:
+			m_ServerInstalls.Cancel(prompt.ServerId);
+			break;
+
+		case LanguageBarChoice::GetRuntime:
+			if (const Core::Result<void> opened = Core::Shell::OpenInBrowser(DotnetDownloadUrl(prompt.RuntimeMajor)); !opened)
+			{
+				m_Events.Publish(ApplicationToast(Core::ToastKind::Error, "Cannot open the browser", opened.GetError().Message));
+			}
+			break;
+
+		case LanguageBarChoice::NotNow:
+			m_DismissedLanguagePrompts.insert(prompt.Language);
+			break;
+		}
 	}
 
 	void GraphiteLayer::RenderRestrictedModeBar(bool trusted)

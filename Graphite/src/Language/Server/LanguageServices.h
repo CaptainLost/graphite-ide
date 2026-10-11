@@ -193,6 +193,9 @@ namespace Graphite {
 
 		const ServerDefinition* ChosenServer(LanguageId language) const;
 
+		// The choice as last read; Reconfigure reads it again.
+		const ServerChoice& ChoiceFor(LanguageId language) const;
+
 		bool OffersSwitchSourceHeader(LanguageId language) const;
 
 		// The status of the server for this document's own (language, root), Off when its server
@@ -398,8 +401,6 @@ namespace Graphite {
 
 		bool FollowsSelectedSolution(LanguageId language) const;
 		bool RunsServersOf(LanguageId language) const;
-
-		const ServerChoice& ChoiceFor(LanguageId language) const;
 
 		struct HeldDocument
 		{
