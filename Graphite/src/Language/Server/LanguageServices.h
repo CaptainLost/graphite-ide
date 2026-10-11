@@ -193,6 +193,9 @@ namespace Graphite {
 
 		const ServerDefinition* ChosenServer(LanguageId language) const;
 
+		// The command a running server of this language was started with; Settings says where it runs from.
+		std::optional<ServerCommand> FoundCommandFor(LanguageId language) const;
+
 		// The choice as last read; Reconfigure reads it again.
 		const ServerChoice& ChoiceFor(LanguageId language) const;
 

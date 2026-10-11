@@ -17,6 +17,7 @@
 
 #include <imgui.h>
 
+#include <cstddef>
 #include <filesystem>
 #include <optional>
 #include <ostream>
@@ -172,4 +173,34 @@ TEST_CASE("Uninstalling from the tab starts the uninstall")
 	screen.Section.Run(Graphite::InstallAction::Uninstall, "csharp-ls");
 
 	CHECK(screen.Installs.RunningJobOf("csharp-ls") == Graphite::InstallJobKind::Uninstall);
+}
+
+TEST_CASE("Choosing the server already chosen reconfigures nothing")
+{
+	LanguagesScreen screen;
+	std::size_t asked = 0;
+
+	screen.Services.SetChoiceProvider([&screen, &asked](Graphite::LanguageId language) {
+		++asked;
+		return Graphite::ReadServerChoice(screen.Settings.Get(), language);
+	});
+
+	// The choice is asked for again only after a reconfigure cleared it, so asking after each selection shows whether one happened.
+	screen.Section.SelectServer(Graphite::LanguageId::CSharp, "csharp-ls");
+	screen.Services.ChosenServer(Graphite::LanguageId::CSharp);
+	const std::size_t askedAfterChoosing = asked;
+	REQUIRE(askedAfterChoosing > 0);
+
+	screen.Section.SelectServer(Graphite::LanguageId::CSharp, "csharp-ls");
+	screen.Services.ChosenServer(Graphite::LanguageId::CSharp);
+	CHECK(asked == askedAfterChoosing);
+
+	screen.Section.SelectServer(Graphite::LanguageId::CSharp, Graphite::kServerTurnedOff);
+	screen.Services.ChosenServer(Graphite::LanguageId::CSharp);
+	const std::size_t askedAfterTurningOff = asked;
+	CHECK(askedAfterTurningOff > askedAfterChoosing);
+
+	screen.Section.SelectServer(Graphite::LanguageId::CSharp, Graphite::kServerTurnedOff);
+	screen.Services.ChosenServer(Graphite::LanguageId::CSharp);
+	CHECK(asked == askedAfterTurningOff);
 }

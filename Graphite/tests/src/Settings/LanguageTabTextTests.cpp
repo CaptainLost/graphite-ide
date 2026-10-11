@@ -3,6 +3,7 @@
 #include "Language/Install/InstallSummary.h"
 #include "Language/Server/ServerCatalog.h"
 #include "Language/Server/ServerChoice.h"
+#include "Language/Server/ServerCommand.h"
 #include "Settings/LanguageTabText.h"
 
 #include <optional>
@@ -49,4 +50,27 @@ TEST_CASE("Each install action has its button label")
 	CHECK(std::string{Graphite::InstallActionLabel(Graphite::InstallAction::CheckForUpdates)} == "Check for updates");
 	CHECK(std::string{Graphite::InstallActionLabel(Graphite::InstallAction::Update)} == "Update");
 	CHECK(std::string{Graphite::InstallActionLabel(Graphite::InstallAction::Uninstall)} == "Uninstall");
+}
+
+TEST_CASE("A server running from Graphite's install needs no note")
+{
+	const Graphite::ServerCommand command{.Program = "C:/servers/clangd/clangd.exe", .InstalledFile = "C:/servers/clangd/clangd.exe"};
+
+	CHECK(Graphite::RunningElsewhereNote(command, false).empty());
+	CHECK(Graphite::RunningElsewhereNote(command, true).empty());
+}
+
+TEST_CASE("A server running from a custom path says so")
+{
+	const Graphite::ServerCommand command{.Program = "C:/tools/clangd.exe"};
+
+	CHECK(Graphite::RunningElsewhereNote(command, true) == "In use: " + Graphite::DescribeCommand(command) + ", from the custom path.");
+}
+
+TEST_CASE("A server found outside Graphite's install says where installing would put its own copy")
+{
+	const Graphite::ServerCommand command{.Program = "C:/app/clangd.exe"};
+
+	CHECK(Graphite::RunningElsewhereNote(command, false) ==
+		  "In use: " + Graphite::DescribeCommand(command) + ", found outside Graphite's install. Installing puts Graphite's copy ahead of it.");
 }

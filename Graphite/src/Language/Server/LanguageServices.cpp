@@ -229,6 +229,19 @@ namespace Graphite {
 		return ServerFor(language);
 	}
 
+	std::optional<ServerCommand> LanguageServices::FoundCommandFor(LanguageId language) const
+	{
+		for (const std::pair<const Key, ManagedServer>& entry : m_Servers)
+		{
+			if (entry.first.Language == language && entry.second.Client != nullptr)
+			{
+				return entry.second.Command;
+			}
+		}
+
+		return std::nullopt;
+	}
+
 	bool LanguageServices::OffersSwitchSourceHeader(LanguageId language) const
 	{
 		const ServerDefinition* server = ServerFor(language);

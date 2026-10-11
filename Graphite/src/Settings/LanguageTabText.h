@@ -4,6 +4,7 @@
 #include "Language/Server/DotnetRuntime.h"
 #include "Language/Server/ServerCatalog.h"
 #include "Language/Server/ServerChoice.h"
+#include "Language/Server/ServerCommand.h"
 
 #include <span>
 #include <string>
@@ -20,4 +21,7 @@ namespace Graphite {
 	std::string ChoicePreview(LanguageId language, const ServerChoice& choice);
 
 	const char* InstallActionLabel(InstallAction action);
+
+		// Empty when the command runs from Graphite's install.
+		std::string RunningElsewhereNote(const ServerCommand& command, bool customPathSet);
 }

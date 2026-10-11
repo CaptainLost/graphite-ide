@@ -49,7 +49,7 @@ namespace Graphite {
 		void RenderLanguage(LanguageId language);
 		void RenderServerChoice(LanguageId language, const ServerChoice& choice);
 		void RenderRuntime(LanguageId language, const ServerDefinition& server);
-		void RenderInstall(const ServerDefinition& server);
+		void RenderInstall(LanguageId language, const ServerDefinition& server, const LanguageServerSettings& stored);
 		void RenderCustomPath(const ServerDefinition& server, const LanguageServerSettings& stored);
 		void RenderArguments(const ServerDefinition& server, const LanguageServerSettings& stored);
 		void RenderBackgroundAnalysis();

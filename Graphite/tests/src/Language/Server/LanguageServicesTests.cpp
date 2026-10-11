@@ -2121,3 +2121,35 @@ TEST_CASE("A language's chosen server is reported until it is turned off")
 	services.Reconfigure(Graphite::LanguageId::CSharp);
 	CHECK(services.ChosenServer(Graphite::LanguageId::CSharp) == nullptr);
 }
+
+TEST_CASE("The command a language's server was started with is reported only once one runs")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	CHECK_FALSE(services.FoundCommandFor(Graphite::LanguageId::Cpp).has_value());
+
+	StartWithSpy(services, temp, spy, clock, temp.GetPath() / "main.cpp");
+
+	const std::optional<Graphite::ServerCommand> found = services.FoundCommandFor(Graphite::LanguageId::Cpp);
+
+	REQUIRE(found.has_value());
+	CHECK(found->Program == temp.GetPath() / "stand-in-clangd.exe");
+	CHECK_FALSE(services.FoundCommandFor(Graphite::LanguageId::CSharp).has_value());
+}
+
+TEST_CASE("A server that was not found has no command to report")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+
+	services.SetClientFactory(spy.Get());
+	UseClangdAt(services, temp.GetPath() / "missing-clangd.exe");
+	services.EnsureStarted(temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
+
+	CHECK(spy.Made == 0);
+	CHECK_FALSE(services.FoundCommandFor(Graphite::LanguageId::Cpp).has_value());
+}

@@ -6,6 +6,7 @@
 #include "Language/Server/DotnetRuntime.h"
 #include "Language/Server/LanguageServices.h"
 #include "Language/Server/ServerChoice.h"
+#include "Language/Server/ServerCommand.h"
 #include "Settings/AnalysisSettings.h"
 #include "Settings/AppSettings.h"
 #include "Settings/ArgumentLine.h"
@@ -23,6 +24,7 @@
 
 #include <algorithm>
 #include <format>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -86,7 +88,14 @@ namespace Graphite {
 
 	void LanguagesSection::SelectServer(LanguageId language, std::string_view serverId)
 	{
-		m_Store.SetLanguageServerChoice(DefinitionOf(language).SettingsName, serverId);
+		const std::string_view settingsName = DefinitionOf(language).SettingsName;
+
+		if (m_Store.GetLanguageServerChoice(settingsName) == serverId)
+		{
+			return;
+		}
+
+		m_Store.SetLanguageServerChoice(settingsName, serverId);
 		m_Services.Reconfigure(language);
 	}
 
@@ -132,7 +141,7 @@ namespace Graphite {
 	{
 		m_Browse.Poll();
 
-		if (ImGui::BeginTabBar("##languages"))
+		if (ImGui::BeginTabBar("##languages", ImGuiTabBarFlags_DrawSelectedOverline))
 		{
 			for (const LanguageId language : LanguagesWithServers())
 			{
@@ -148,9 +157,8 @@ namespace Graphite {
 			}
 
 			ImGui::EndTabBar();
+			m_RequestedLanguage.reset();
 		}
-
-		m_RequestedLanguage.reset();
 
 		RenderBackgroundAnalysis();
 	}
@@ -191,14 +199,18 @@ namespace Graphite {
 				RenderRuntime(language, server);
 			}
 
+			ImGui::PushID(std::string{server.Id}.c_str());
+
 			LabelCell("State");
-			RenderInstall(server);
+			RenderInstall(language, server, stored);
 
 			LabelCell("Custom path");
 			RenderCustomPath(server, stored);
 
 			LabelCell("Arguments");
 			RenderArguments(server, stored);
+
+			ImGui::PopID();
 			break;
 		}
 		}
@@ -218,7 +230,9 @@ namespace Graphite {
 			return;
 		}
 
-		if (ImGui::Selectable("None", choice.Kind == ServerChoiceKind::Off))
+		const bool turnedOff = choice.Kind == ServerChoiceKind::Off;
+
+		if (ImGui::Selectable("None", turnedOff) && !turnedOff)
 		{
 			SelectServer(language, kServerTurnedOff);
 		}
@@ -235,7 +249,7 @@ namespace Graphite {
 			const bool selected = choice.Kind == ServerChoiceKind::Chosen && choice.Server == server;
 			const std::string label = ServerOptionLabel(*server, index == 0);
 
-			if (ImGui::Selectable(label.c_str(), selected))
+			if (ImGui::Selectable(label.c_str(), selected) && !selected)
 			{
 				SelectServer(language, server->Id);
 			}
@@ -271,7 +285,7 @@ namespace Graphite {
 		}
 	}
 
-	void LanguagesSection::RenderInstall(const ServerDefinition& server)
+	void LanguagesSection::RenderInstall(LanguageId language, const ServerDefinition& server, const LanguageServerSettings& stored)
 	{
 		const InstallSummary summary = SummariseInstall(InstallInputsFor(m_Installs, server));
 
@@ -291,6 +305,16 @@ namespace Graphite {
 		if (!summary.Note.empty())
 		{
 			DimmedWrapped(summary.Note);
+		}
+
+		if (const std::optional<ServerCommand> found = m_Services.FoundCommandFor(language); found.has_value())
+		{
+			const std::string runningElsewhere = RunningElsewhereNote(*found, !stored.BinaryPath.empty());
+
+			if (!runningElsewhere.empty())
+			{
+				DimmedWrapped(runningElsewhere);
+			}
 		}
 
 		if (!summary.Failure.empty())

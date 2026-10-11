@@ -45,6 +45,21 @@ namespace Graphite {
 		return "Uninstall";
 	}
 
+	std::string RunningElsewhereNote(const ServerCommand& command, bool customPathSet)
+	{
+		if (!command.InstalledFile.empty())
+		{
+			return {};
+		}
+
+		if (customPathSet)
+		{
+			return std::format("In use: {}, from the custom path.", DescribeCommand(command));
+		}
+
+		return std::format("In use: {}, found outside Graphite's install. Installing puts Graphite's copy ahead of it.", DescribeCommand(command));
+	}
+
 	bool RuntimeFound(const ServerRuntime& runtime, std::span<const DotnetInstallation> installations)
 	{
 		switch (runtime.Kind)
