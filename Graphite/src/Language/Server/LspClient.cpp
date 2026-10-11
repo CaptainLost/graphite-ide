@@ -285,11 +285,6 @@ namespace Graphite {
 										   .Solution = launch.Solution,
 										   .Projects = launch.Projects};
 
-		if (!m_Shared->Context.Solution && m_Shared->Context.Projects.empty())
-		{
-			m_Shared->Context.Projects = launch.Adapter->ProjectsAt(m_Shared->Context);
-		}
-
 		m_Shared->Problem = launch.Adapter->ProjectProblemAt(m_Shared->Context);
 
 		m_Shared->ProjectsLoading = launch.Adapter->LoadsProjectsFrom(m_Shared->Context);

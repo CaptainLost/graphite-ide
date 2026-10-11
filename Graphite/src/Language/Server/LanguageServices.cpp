@@ -10,6 +10,7 @@
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/Adapters/ServerAdapter.h"
 #include "Language/Server/ServerCommand.h"
+#include "Language/Server/ProjectSearch.h"
 #include "Language/Server/ServerLaunch.h"
 #include "Language/Server/SolutionForRoot.h"
 #include "Search/FileEnumerator.h"
@@ -64,6 +65,7 @@ namespace Graphite {
 		// m_Jobs joins the warm-up walk, which otherwise runs to the end of a tree with no source
 		// of any server.
 		m_WarmToken.Cancel();
+		m_ProjectSearchToken.Cancel();
 
 		// Asked to leave politely, but not waited on: a server wedged on something has no way to
 		// tell us apart from one that is merely slow, and the UI thread closing down cannot sit
@@ -462,6 +464,12 @@ namespace Graphite {
 			{
 				APP_WARN("Cannot hold {} open while it runs: {}", Core::ToUtf8(server.Command.InstalledFile), held.GetError().Message);
 			}
+		}
+
+		if (NeedsProjectSearch(server, key))
+		{
+			BeginProjectSearch(server, key);
+			return;
 		}
 
 		server.Client = MakeClient(server, key);
@@ -1015,6 +1023,7 @@ namespace Graphite {
 		server.Restarts = 0;
 		server.RestartPending = false;
 
+		server.ProjectSearch = 0;
 		MarkRestricted(server);
 	}
 
@@ -1150,6 +1159,68 @@ namespace Graphite {
 		});
 	}
 
+	bool LanguageServices::NeedsProjectSearch(const ManagedServer& server, const Key& key) const
+	{
+		return !server.Projects && AdapterOf(server.Definition->Adapter).ProjectFileExtension().has_value() &&
+			   !SolutionForRoot(key.Root, m_SelectedSolution).has_value();
+	}
+
+	void LanguageServices::BeginProjectSearch(ManagedServer& server, const Key& key)
+	{
+		server.ProjectSearch = m_NextProjectSearch++;
+		server.Status.State = ServerState::Starting;
+		server.Status.Detail = "looking for projects";
+
+		APP_INFO("Looking for projects for {} below {}", server.Definition->DisplayName, Core::ToUtf8(key.Root));
+
+		const std::string extension{*AdapterOf(server.Definition->Adapter).ProjectFileExtension()};
+
+		m_Jobs.Submit([searches = m_ProjectSearches, token = m_ProjectSearchToken, key, search = server.ProjectSearch, extension] {
+			std::vector<std::filesystem::path> projects = FindProjectsBelow(key.Root, extension, kMostProjectsLoaded, token);
+
+			if (token.IsCancelled())
+			{
+				return;
+			}
+
+			{
+				const std::lock_guard<std::mutex> guard(searches->Mutex);
+				searches->Found.push_back(FoundProjects{.Server = key, .Search = search, .Projects = std::move(projects)});
+			}
+
+			Core::Redraw::Request();
+		});
+	}
+
+	void LanguageServices::StartSearchedServers()
+	{
+		std::vector<FoundProjects> found;
+
+		{
+			const std::lock_guard<std::mutex> guard(m_ProjectSearches->Mutex);
+			found.swap(m_ProjectSearches->Found);
+		}
+
+		for (FoundProjects& search : found)
+		{
+			const std::map<Key, ManagedServer>::iterator entry = m_Servers.find(search.Server);
+
+			// Stopped, restricted or started again since this search began.
+			if (entry == m_Servers.end() || entry->second.ProjectSearch != search.Search)
+			{
+				continue;
+			}
+
+			ManagedServer& server = entry->second;
+			server.ProjectSearch = 0;
+			server.Projects = std::move(search.Projects);
+			server.Client = MakeClient(server, search.Server);
+			server.Status.Detail = DescribeCommand(server.Command);
+
+			ReplayOpenDocuments(server);
+		}
+	}
+
 	void LanguageServices::Poll()
 	{
 		// What the warm-up walk found, turned into servers here rather than on the worker: every
@@ -1174,6 +1245,8 @@ namespace Graphite {
 				CloseDocument(finding.Path, finding.Language);
 			}
 		}
+
+		StartSearchedServers();
 
 		const std::chrono::steady_clock::time_point now = m_Clock ? m_Clock() : std::chrono::steady_clock::now();
 
@@ -1346,6 +1419,11 @@ namespace Graphite {
 													  .DotnetRoot = server.Command.DotnetRoot});
 
 		launch.Solution = SolutionForRoot(key.Root, m_SelectedSolution);
+
+		if (server.Projects)
+		{
+			launch.Projects = *server.Projects;
+		}
 
 		if (m_ClientFactory)
 		{

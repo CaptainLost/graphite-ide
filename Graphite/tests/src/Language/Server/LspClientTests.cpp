@@ -1266,11 +1266,12 @@ TEST_CASE("Roslyn reads as loading its solution until it reports the projects in
 	CHECK(StatusOf(client).State == Graphite::ServerState::Ready);
 }
 
-TEST_CASE("Roslyn without a solution opens the project in its root and reads as loading it")
+TEST_CASE("Roslyn without a solution opens the projects it is launched with and reads as loading them")
 {
 	TempDirectory temp;
-	temp.MakeFile("Demo.csproj");
-	Graphite::LspClient client = OfflineWith(Graphite::LaunchFor(*Graphite::FindServer("roslyn"), {}, {}), temp.GetPath());
+	Graphite::ServerLaunch launch = Graphite::LaunchFor(*Graphite::FindServer("roslyn"), {}, {});
+	launch.Projects = {temp.MakeFile("Demo.csproj")};
+	Graphite::LspClient client = OfflineWith(launch, temp.GetPath());
 
 	client.Deliver(std::string{kHandshakeAnswer});
 

@@ -9,7 +9,7 @@ namespace Graphite {
 	public:
 		void AfterInitialized(const AdapterContext& context, std::vector<OutgoingNotification>& notifications) const override;
 
-		std::vector<std::filesystem::path> ProjectsAt(const AdapterContext& context) const override;
+		std::optional<std::string_view> ProjectFileExtension() const override;
 
 		std::optional<ProjectProblem> ProjectProblemAt(const AdapterContext& context) const override;
 

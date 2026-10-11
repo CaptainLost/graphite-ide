@@ -9,6 +9,7 @@
 #include <optional>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -92,19 +93,11 @@ TEST_CASE("Roslyn without a solution opens the projects in its root")
 	CHECK_FALSE(Roslyn().ProjectProblemAt(ContextWithProjects({demo})).has_value());
 }
 
-TEST_CASE("Roslyn's projects are the project files directly in its root sorted by name")
+TEST_CASE("Roslyn looks for C# projects and the other adapters for none")
 {
-	TempDirectory temp;
-	temp.MakeFile("B.csproj");
-	temp.MakeFile("a.csproj");
-	temp.MakeDirectory("x.csproj");
-	temp.MakeFile("sub/c.csproj");
-
-	const Graphite::AdapterContext context{.Root = temp.GetPath(), .InitializationOptions = nullptr, .Settings = nullptr};
-	const Graphite::AdapterContext unreadable{.Root = temp.GetPath() / "missing", .InitializationOptions = nullptr, .Settings = nullptr};
-
-	CHECK(Roslyn().ProjectsAt(context) == std::vector<std::filesystem::path>{temp.GetPath() / "a.csproj", temp.GetPath() / "B.csproj"});
-	CHECK(Roslyn().ProjectsAt(unreadable).empty());
+	CHECK(Roslyn().ProjectFileExtension() == std::optional<std::string_view>{".csproj"});
+	CHECK_FALSE(Graphite::AdapterOf(Graphite::AdapterKind::Plain).ProjectFileExtension().has_value());
+	CHECK_FALSE(Graphite::AdapterOf(Graphite::AdapterKind::Clangd).ProjectFileExtension().has_value());
 }
 
 TEST_CASE("Roslyn's projects are loaded when it says their initialization is complete")

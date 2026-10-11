@@ -355,6 +355,12 @@ namespace Graphite {
 			std::filesystem::path Root;
 			ServerCommand Command; // found once; a restart reuses it rather than searching again
 
+			// Found once; a restart reuses them rather than searching again.
+			std::optional<std::vector<std::filesystem::path>> Projects;
+
+			// Zero when no search is awaited; a result whose number differs is stale.
+			std::uint64_t ProjectSearch = 0;
+
 			// Before Client so it outlives the client, though the process the client ended still holds its files for tens of milliseconds after both are gone.
 			std::optional<Core::FileHold> Hold;
 			Core::Scope<LspClient> Client; // null when no process was started
@@ -472,6 +478,9 @@ namespace Graphite {
 
 		bool Permits(const std::filesystem::path& root) const;
 		void MarkRestricted(ManagedServer& server);
+		bool NeedsProjectSearch(const ManagedServer& server, const Key& key) const;
+		void BeginProjectSearch(ManagedServer& server, const Key& key);
+		void StartSearchedServers();
 		void Restrict(const Key& key, ManagedServer& server);
 		// Drops every m_NamedBy entry that points at this server.
 		void ForgetNamedBy(const Key& key);
@@ -513,6 +522,23 @@ namespace Graphite {
 
 		Core::Ref<WarmFindings> m_Warm = Core::CreateRef<WarmFindings>();
 		Core::CancellationToken m_WarmToken;
+
+		struct FoundProjects
+		{
+			Key Server;
+			std::uint64_t Search = 0;
+			std::vector<std::filesystem::path> Projects;
+		};
+
+		struct ProjectSearches
+		{
+			std::mutex Mutex;
+			std::vector<FoundProjects> Found;
+		};
+
+		Core::Ref<ProjectSearches> m_ProjectSearches = Core::CreateRef<ProjectSearches>();
+		std::uint64_t m_NextProjectSearch = 1;
+		Core::CancellationToken m_ProjectSearchToken;
 
 		std::filesystem::path m_FallbackRoot;
 		std::optional<WarmUpRequest> m_LastWarmUp;

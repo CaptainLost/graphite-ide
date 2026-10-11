@@ -13,18 +13,6 @@ namespace Graphite {
 
 	namespace {
 
-		bool IsProjectFile(const std::filesystem::directory_entry& entry)
-		{
-			std::error_code kindError;
-
-			return entry.is_regular_file(kindError) && Core::LoweredExtension(entry.path()) == ".csproj";
-		}
-
-		bool ComesFirstByName(const std::filesystem::path& left, const std::filesystem::path& right)
-		{
-			return Core::Lowered(Core::ToUtf8(left.filename())) < Core::Lowered(Core::ToUtf8(right.filename()));
-		}
-
 		nlohmann::json FileUrisOf(const std::vector<std::filesystem::path>& projects)
 		{
 			nlohmann::json uris = nlohmann::json::array();
@@ -55,23 +43,9 @@ namespace Graphite {
 		}
 	}
 
-	std::vector<std::filesystem::path> RoslynAdapter::ProjectsAt(const AdapterContext& context) const
+	std::optional<std::string_view> RoslynAdapter::ProjectFileExtension() const
 	{
-		std::vector<std::filesystem::path> projects;
-		std::error_code listError;
-		std::filesystem::directory_iterator entries{context.Root, listError};
-
-		for (; !listError && entries != std::filesystem::directory_iterator{}; entries.increment(listError))
-		{
-			if (IsProjectFile(*entries))
-			{
-				projects.push_back(entries->path());
-			}
-		}
-
-		std::sort(projects.begin(), projects.end(), ComesFirstByName);
-
-		return projects;
+		return ".csproj";
 	}
 
 	std::optional<ProjectProblem> RoslynAdapter::ProjectProblemAt(const AdapterContext& context) const

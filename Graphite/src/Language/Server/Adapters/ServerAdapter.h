@@ -37,7 +37,7 @@ namespace Graphite {
 		ProjectsLoaded
 	};
 
-	// ProjectsAt and ProjectProblemAt are the hooks that run on the UI thread, before the client starts, and may read the disk. The rest run on the client's reader thread with its protocol lock held, so they must not block or touch the filesystem.
+	// ProjectProblemAt may read the disk: it runs on the UI thread, before the client starts. Every other hook may run on a client's reader thread with its protocol lock held, so none may block or touch the filesystem.
 	class ServerAdapter
 	{
 	public:
@@ -60,7 +60,8 @@ namespace Graphite {
 		// Nothing when the server can answer as soon as its handshake ends.
 		virtual std::optional<std::string> LoadsProjectsFrom(const AdapterContext& context) const;
 
-		virtual std::vector<std::filesystem::path> ProjectsAt(const AdapterContext& context) const;
+		// Lower case, with its dot.
+		virtual std::optional<std::string_view> ProjectFileExtension() const;
 
 		virtual std::optional<ProjectProblem> ProjectProblemAt(const AdapterContext& context) const;
 

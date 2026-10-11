@@ -2153,3 +2153,87 @@ TEST_CASE("A server that was not found has no command to report")
 	CHECK(spy.Made == 0);
 	CHECK_FALSE(services.FoundCommandFor(Graphite::LanguageId::Cpp).has_value());
 }
+
+TEST_CASE("Roslyn without a solution starts with the projects found below its root")
+{
+	TempDirectory temp;
+	const std::filesystem::path roslyn = temp.MakeFile("tools/roslyn-language-server.exe", "");
+	const std::filesystem::path app = temp.MakeFile("src/App/App.csproj", "");
+	const std::filesystem::path library = temp.MakeFile("src/Library/Library.csproj", "");
+	temp.MakeFile("src/App/bin/Debug/App.csproj", "");
+	const std::filesystem::path source = temp.MakeFile("src/App/Program.cs", "class Program { }\n");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+
+	services.SetClientFactory(spy.Get());
+	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "10.0.10"));
+	services.SetChoiceProvider([roslyn](Graphite::LanguageId language) { return ChooseRoslynAt(language, roslyn); });
+
+	services.EnsureStarted(source, Graphite::LanguageId::CSharp);
+	services.OpenDocument(source, Graphite::LanguageId::CSharp, "class Program { }\n");
+
+	CHECK(spy.Made == 0);
+	CHECK(services.StatusFor(source, Graphite::LanguageId::CSharp).State == Graphite::ServerState::Starting);
+	CHECK(services.StatusFor(source, Graphite::LanguageId::CSharp).Detail == "looking for projects");
+
+	constexpr int kMaxAttempts = 500;
+
+	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	REQUIRE(spy.Made == 1);
+	CHECK(spy.LastLaunch.Projects == std::vector<std::filesystem::path>{app, library});
+
+	// A restart reuses the list: the project removed here is still handed to the new client.
+	// Kill refuses the handshake, so it comes before any Answer.
+	std::filesystem::remove(library);
+	spy.Kill();
+	services.Poll();
+
+	REQUIRE(spy.Made == 2);
+	CHECK(spy.LastLaunch.Projects == std::vector<std::filesystem::path>{app, library});
+
+	spy.Answer();
+	const std::vector<std::string> sent = spy.Latest->TakeSent();
+	CHECK(AnySentContaining(sent, "project/open"));
+	CHECK(AnySentContaining(sent, "textDocument/didOpen"));
+}
+
+TEST_CASE("A project search overtaken by a newer one starts one client")
+{
+	TempDirectory temp;
+	const std::filesystem::path roslyn = temp.MakeFile("tools/roslyn-language-server.exe", "");
+	temp.MakeFile("src/App/App.csproj", "");
+	const std::filesystem::path source = temp.MakeFile("src/App/Program.cs", "class Program { }\n");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+
+	services.SetClientFactory(spy.Get());
+	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "10.0.10"));
+	services.SetChoiceProvider([roslyn](Graphite::LanguageId language) { return ChooseRoslynAt(language, roslyn); });
+
+	services.EnsureStarted(source, Graphite::LanguageId::CSharp);
+	services.OpenDocument(source, Graphite::LanguageId::CSharp, "class Program { }\n");
+	services.Reconfigure(Graphite::LanguageId::CSharp);
+
+	constexpr int kMaxAttempts = 500;
+
+	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	constexpr int kSettleAttempts = 30;
+
+	for (int attempt = 0; attempt < kSettleAttempts; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	CHECK(spy.Made == 1);
+}
