@@ -12,7 +12,7 @@ Date: 2026-10-11
 A server's command is looked for in one order, and the first match is the one that runs:
 1. the configured path. When one is configured and does not exist, the server reads NotFound and names the path;
 2. Graphite's install;
-3. beside the executable;
+3. beside the executable, until [0577](0577-install-clangd-on-request-like-every-other-language-server.md) ended it;
 4. PATH.
 
 Nothing found reads NotInstalled. A configured path that is wrong is the only NotFound, so the status can say so ([0571](0571-choose-and-install-language-servers-from-settings-and-the-editor.md)).
