@@ -82,7 +82,8 @@ namespace Graphite {
 	{
 		const ServerDefinition* server = FindServer(serverId);
 
-		return NoteStarted(serverId, InstallJobKind::Install, m_Http != nullptr && server != nullptr && m_Installer.Install(*server));
+		return NoteStarted(serverId, InstallJobKind::Install,
+						   !IsBusy(serverId) && m_Http != nullptr && server != nullptr && m_Installer.Install(*server));
 	}
 
 	bool ServerInstalls::CheckForUpdates(std::string_view serverId)
@@ -90,16 +91,17 @@ namespace Graphite {
 		const ServerDefinition* server = FindServer(serverId);
 
 		return NoteStarted(serverId, InstallJobKind::CheckForUpdates,
-						   m_Http != nullptr && server != nullptr && m_Installer.CheckForUpdates(*server));
+						   !IsBusy(serverId) && m_Http != nullptr && server != nullptr && m_Installer.CheckForUpdates(*server));
 	}
 
 	bool ServerInstalls::Uninstall(std::string_view serverId)
 	{
 		const ServerDefinition* server = FindServer(serverId);
 
-		return NoteStarted(serverId, InstallJobKind::Uninstall, server != nullptr && m_Installer.Uninstall(*server));
+		return NoteStarted(serverId, InstallJobKind::Uninstall, !IsBusy(serverId) && server != nullptr && m_Installer.Uninstall(*server));
 	}
 
+	// A job is refused until the last one's outcome has been polled: that outcome would erase the newer job's state.
 	bool ServerInstalls::NoteStarted(std::string_view serverId, InstallJobKind kind, bool started)
 	{
 		if (started)
@@ -122,7 +124,7 @@ namespace Graphite {
 
 	bool ServerInstalls::IsBusy(std::string_view serverId) const
 	{
-		return m_Installer.IsBusy(serverId);
+		return m_Running.contains(serverId) || m_Installer.IsBusy(serverId);
 	}
 
 	bool ServerInstalls::CanDownload() const

@@ -184,3 +184,27 @@ TEST_CASE("Downloads are possible only with an HTTP client")
 	CHECK_FALSE(Graphite::ServerInstalls{nullptr, temp.GetPath(), RunWhereSubmitted()}.CanDownload());
 	CHECK(Graphite::ServerInstalls{Core::CreateRef<FakeHttpClient>(), temp.GetPath(), RunWhereSubmitted()}.CanDownload());
 }
+
+TEST_CASE("A job for a server waits until the last one's outcome has been polled")
+{
+	TempDirectory temp;
+	InstallCsharpLsIn(temp.GetPath() / "servers");
+	DeferredJobs jobs;
+	Graphite::ServerInstalls installs{nullptr, temp.GetPath() / "servers", jobs.Submitter()};
+
+	installs.SweepAtStartup();
+	jobs.RunAll();
+	installs.Poll();
+
+	REQUIRE(installs.Uninstall("csharp-ls"));
+	jobs.RunAll();
+
+	CHECK_FALSE(installs.Uninstall("csharp-ls"));
+	CHECK(installs.IsBusy("csharp-ls"));
+	CHECK(installs.RunningJobOf("csharp-ls") == Graphite::InstallJobKind::Uninstall);
+
+	installs.Poll();
+
+	CHECK_FALSE(installs.IsBusy("csharp-ls"));
+	CHECK_FALSE(installs.RunningJobOf("csharp-ls").has_value());
+}
