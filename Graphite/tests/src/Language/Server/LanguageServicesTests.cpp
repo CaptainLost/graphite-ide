@@ -2237,3 +2237,39 @@ TEST_CASE("A project search overtaken by a newer one starts one client")
 
 	CHECK(spy.Made == 1);
 }
+
+TEST_CASE("A document changed during the project search reaches the first client with its changed text")
+{
+	TempDirectory temp;
+	const std::filesystem::path roslyn = temp.MakeFile("tools/roslyn-language-server.exe", "");
+	temp.MakeFile("src/App/App.csproj", "");
+	const std::filesystem::path source = temp.MakeFile("src/App/Program.cs", "class Program { }\n");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+
+	services.SetClientFactory(spy.Get());
+	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "10.0.10"));
+	services.SetChoiceProvider([roslyn](Graphite::LanguageId language) { return ChooseRoslynAt(language, roslyn); });
+
+	services.EnsureStarted(source, Graphite::LanguageId::CSharp);
+	services.OpenDocument(source, Graphite::LanguageId::CSharp, "class Program { }\n");
+	services.ChangeDocument(source, Graphite::LanguageId::CSharp, "class Edited { }\n");
+
+	REQUIRE(spy.Made == 0);
+
+	constexpr int kMaxAttempts = 500;
+
+	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	REQUIRE(spy.Made == 1);
+
+	spy.Answer();
+	const std::vector<std::string> sent = spy.Latest->TakeSent();
+	CHECK(AnySentContaining(sent, "textDocument/didOpen"));
+	CHECK(AnySentContaining(sent, "class Edited"));
+	CHECK_FALSE(AnySentContaining(sent, "class Program"));
+}
