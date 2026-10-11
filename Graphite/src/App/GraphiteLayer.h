@@ -363,7 +363,7 @@ namespace Graphite {
 		// declared before m_Panels, which is where GitView is constructed.
 		DiffWindows m_DiffWindows;
 
-		// Before m_Panels: SessionsPanel holds a reference to each, and ClaudeSection to the
+		// Before m_Panels: SessionsPanel holds a reference to each, and ClaudeSessionsPage to the
 		// settings. m_SessionWindows owns a worker per open session; those join in its own
 		// destructor, and nothing it refers to is declared after it.
 		ClaudeSettings m_ClaudeSettings{m_AppSettings};

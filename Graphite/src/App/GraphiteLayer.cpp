@@ -65,19 +65,18 @@
 
 #include "Core/Events/ApplicationEvent.h"
 
-#include "Settings/ClaudeSection.h"
 #include "Settings/Panel/KeyBindingsPage.h"
 #include "Settings/LanguageServers/LanguageServersPage.h"
 #include "Settings/Panel/AppearancePage.h"
+#include "Settings/Panel/ClaudeSessionsPage.h"
 #include "Settings/Panel/EditorPage.h"
 #include "Settings/Panel/ExplorerPage.h"
 #include "Settings/Panel/FindInFilesPage.h"
 #include "Settings/Panel/GitPage.h"
-#include "Settings/Panel/SectionPage.h"
 #include "Settings/Panel/SettingsDirectory.h"
 #include "Settings/Panel/SettingsPanel.h"
-#include "Settings/TerminalSection.h"
-#include "Settings/TrustSection.h"
+#include "Settings/Panel/TerminalPage.h"
+#include "Settings/Panel/TrustedFoldersPage.h"
 #include "UI/DialogLayout.h"
 #include "UI/LanguageSupportBar.h"
 #include "UI/RestrictedModeBar.h"
@@ -807,15 +806,15 @@ namespace Graphite {
 		general.Pages.push_back(
 			Core::CreateScope<KeyBindingsPage>(m_Commands, m_Keys, m_Modals, [this] { m_AppSettings.SetKeyBindings(m_Keys); }));
 		general.Pages.push_back(Core::CreateScope<LanguageServersPage>(m_AnalysisSettings, m_AppSettings, m_ServerInstalls, m_LanguageServices));
-		general.Pages.push_back(Core::CreateScope<SectionPage>("trustedFolders", ICON_MDI_SHIELD_CHECK_OUTLINE, Core::CreateScope<TrustSection>(m_Trust)));
+		general.Pages.push_back(Core::CreateScope<TrustedFoldersPage>(m_Trust));
 
 		SettingsGroup panels{.Title = "Panels"};
 		panels.Pages.push_back(Core::CreateScope<EditorPage>(m_EditorSettings, m_Commands));
 		panels.Pages.push_back(Core::CreateScope<ExplorerPage>(m_Commands));
 		panels.Pages.push_back(Core::CreateScope<FindInFilesPage>(m_SearchSettings, m_SolutionLoaded));
 		panels.Pages.push_back(Core::CreateScope<GitPage>(m_EditorSettings));
-		panels.Pages.push_back(Core::CreateScope<SectionPage>("terminal", ICON_MDI_CONSOLE, Core::CreateScope<TerminalSection>(m_AppSettings, m_Terminals)));
-		panels.Pages.push_back(Core::CreateScope<SectionPage>("claudeSessions", ICON_MDI_ROBOT_OUTLINE, Core::CreateScope<ClaudeSection>(m_ClaudeSettings)));
+		panels.Pages.push_back(Core::CreateScope<TerminalPage>(m_AppSettings, m_Terminals));
+		panels.Pages.push_back(Core::CreateScope<ClaudeSessionsPage>(m_ClaudeSettings));
 
 		std::vector<SettingsGroup> groups;
 		groups.push_back(std::move(general));
