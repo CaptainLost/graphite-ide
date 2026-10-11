@@ -26,7 +26,7 @@ namespace Graphite {
 
 		if (!m_EditingServerPath)
 		{
-			m_PendingServerPath = Core::ToUtf8(m_Store.GetLanguageServerBinary());
+			m_PendingServerPath = Core::ToUtf8(m_Store.GetLanguageServerSettings("clangd").BinaryPath);
 		}
 
 		ImGui::TextUnformatted("C++ language server");
@@ -39,9 +39,9 @@ namespace Graphite {
 		{
 			const std::filesystem::path editedPath = Core::FromUtf8(m_PendingServerPath);
 
-			if (editedPath != m_Store.GetLanguageServerBinary())
+			if (editedPath != m_Store.GetLanguageServerSettings("clangd").BinaryPath)
 			{
-				m_Store.SetLanguageServerBinary(editedPath);
+				m_Store.SetLanguageServerBinaryPath("clangd", editedPath);
 				m_OnCppServerChanged();
 			}
 		}

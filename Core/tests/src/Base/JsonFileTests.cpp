@@ -394,6 +394,55 @@ TEST_CASE("Removing a path that is not there leaves an empty object beside it al
 	CHECK(file.GetJsonAt(emptyOptionsPath) == std::optional<std::string>{"{}"});
 }
 
+TEST_CASE("Setting a value through a key that holds no object replaces that key with an object")
+{
+	JsonFile file;
+	file.Set("lsp", "fast");
+
+	const std::vector<std::string> path{"lsp", "clangd", "binary", "path"};
+	file.SetJsonAt(path, R"("C:\\clangd.exe")");
+
+	CHECK(file.GetJsonAt(path) == std::optional<std::string>{R"("C:\\clangd.exe")"});
+}
+
+TEST_CASE("Removing through a key that holds no object changes nothing")
+{
+	JsonFile file;
+	file.Set("lsp", "fast");
+
+	const std::vector<std::string> path{"lsp", "clangd", "binary"};
+	file.RemoveAt(path);
+
+	CHECK(file.Get("lsp") == "fast");
+}
+
+TEST_CASE("Removing a top-level path removes that key")
+{
+	JsonFile file;
+	file.Set("languageServerBinary", "C:\\clangd.exe");
+	file.Set("wordWrap", "true");
+
+	const std::vector<std::string> path{"languageServerBinary"};
+	file.RemoveAt(path);
+
+	CHECK_FALSE(file.GetJsonAt(path).has_value());
+	CHECK(file.Get("wordWrap") == "true");
+}
+
+TEST_CASE("An empty path reads as absent and neither sets nor removes anything")
+{
+	JsonFile file;
+	file.Set("wordWrap", "true");
+
+	const std::vector<std::string> empty;
+	file.SetJsonAt(empty, R"("x")");
+	file.RemoveAt(empty);
+
+	CHECK_FALSE(file.GetJsonAt(empty).has_value());
+	CHECK(file.GetCount() == 1);
+	CHECK(file.Get("wordWrap") == "true");
+}
+
 TEST_CASE("Setting text that does not parse changes nothing")
 {
 	JsonFile file;

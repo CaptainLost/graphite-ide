@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Settings/JsonText.h"
+
 #include <nlohmann/json.hpp>
 
 #include <optional>
@@ -9,13 +11,6 @@
 namespace Graphite {
 
 	// Each reader answers a missing key or a value of another type with nothing; nlohmann's own accessors throw.
-
-	inline nlohmann::json ParseJsonText(std::string_view text)
-	{
-		const nlohmann::json::parser_callback_t noParseCallback = nullptr;
-		const bool allowExceptions = false;
-		return nlohmann::json::parse(text.begin(), text.end(), noParseCallback, allowExceptions);
-	}
 
 	inline std::optional<std::string> TextAt(const nlohmann::json& object, const char* key)
 	{

@@ -134,17 +134,15 @@ namespace Graphite {
 		std::string GetColorScheme() const;
 		void SetColorScheme(std::string_view name);
 
-		// Where to find the C++ language server, for a user who wants neither the copy beside the
-		// application nor whichever one is on PATH. Empty — the default — means "search as usual".
-		// This is the "configured location" the status bar's "not found" message names, and the
-		// only thing that makes that sentence true.
-		std::filesystem::path GetLanguageServerBinary() const;
-		void SetLanguageServerBinary(const std::filesystem::path& binary);
-
 		std::optional<std::string> GetLanguageServerChoice(std::string_view languageName) const;
 		void SetLanguageServerChoice(std::string_view languageName, std::string_view serverId);
 
+		// clangd's path may still sit under the flat key used before servers had settings of their own.
 		LanguageServerSettings GetLanguageServerSettings(std::string_view serverId) const;
+
+		// An empty path or list is removed rather than stored, so the server is looked for again.
+		void SetLanguageServerBinaryPath(std::string_view serverId, const std::filesystem::path& path);
+		void SetLanguageServerArguments(std::string_view serverId, const std::vector<std::string>& arguments);
 
 		// Where claude.exe is, when it is not the one on PATH. Empty means "use PATH".
 		std::filesystem::path GetClaudeBinary() const;

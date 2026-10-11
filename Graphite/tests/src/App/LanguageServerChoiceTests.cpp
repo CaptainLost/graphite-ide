@@ -44,9 +44,11 @@ TEST_CASE("C++ reads its server and the user's overrides for it from graphite.js
 TEST_CASE("A C++ server path stored under the old key still starts clangd")
 {
 	const TempDirectory temp;
-	Graphite::AppSettings settings{temp.GetPath() / "graphite.json"};
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
 
-	settings.SetLanguageServerBinary(L"D:\\Old\\clangd.exe");
+	WriteText(file, R"({"languageServerBinary": "D:\\Old\\clangd.exe"})");
+
+	const Graphite::AppSettings settings{file};
 
 	CHECK(Graphite::ReadServerChoice(settings, Graphite::LanguageId::Cpp).Overrides.Binary ==
 		  std::filesystem::path{L"D:\\Old\\clangd.exe"});

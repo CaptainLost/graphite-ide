@@ -1,6 +1,7 @@
 #include "Settings/AppSettings.h"
 
 #include "Settings/InterfaceScale.h"
+#include "Settings/JsonText.h"
 #include "Settings/SettingsBackup.h"
 #include "Settings/SettingsVersion.h"
 #include "Settings/UserDirectories.h"
@@ -67,25 +68,6 @@ namespace Graphite {
 		constexpr const char* kInitializationOptionsKey = "initialization_options";
 		constexpr const char* kServerSettingsKey = "settings";
 
-		nlohmann::json ParsedOrNull(const std::optional<std::string>& json)
-		{
-			if (!json)
-			{
-				return nullptr;
-			}
-
-			const nlohmann::json::parser_callback_t noParseCallback = nullptr;
-			const bool allowExceptions = false;
-			nlohmann::json parsed = nlohmann::json::parse(*json, noParseCallback, allowExceptions);
-
-			if (parsed.is_discarded())
-			{
-				return nullptr;
-			}
-
-			return parsed;
-		}
-
 		const nlohmann::json& MemberOrNull(const nlohmann::json& value, std::string_view key)
 		{
 			static const nlohmann::json absent;
@@ -128,6 +110,23 @@ namespace Graphite {
 		std::string ObjectTextOrEmpty(const nlohmann::json& value)
 		{
 			return value.is_object() ? value.dump() : std::string{};
+		}
+
+		constexpr std::string_view kLegacyPathServerId = "clangd";
+
+		std::vector<std::string> BinaryPathOf(std::string_view serverId)
+		{
+			return {kServersKey, std::string{serverId}, kBinaryKey, kBinaryPathKey};
+		}
+
+		std::vector<std::string> BinaryArgumentsOf(std::string_view serverId)
+		{
+			return {kServersKey, std::string{serverId}, kBinaryKey, kBinaryArgumentsKey};
+		}
+
+		std::string AsJsonText(const nlohmann::json& value)
+		{
+			return value.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
 		}
 
 		bool IsStrictlyUnder(const std::vector<std::string>& path, const std::vector<std::string>& prefix)
@@ -497,22 +496,10 @@ namespace Graphite {
 		Set(kColorSchemeKey, std::string{name});
 	}
 
-	std::filesystem::path AppSettings::GetLanguageServerBinary() const
-	{
-		// Through FromUtf8, like the folder above it: the settings file is UTF-8 and a path on
-		// this platform is not.
-		return Core::FromUtf8(Get(kLanguageServerBinaryKey));
-	}
-
-	void AppSettings::SetLanguageServerBinary(const std::filesystem::path& binary)
-	{
-		Set(kLanguageServerBinaryKey, Core::ToUtf8(binary));
-	}
-
 	std::optional<std::string> AppSettings::GetLanguageServerChoice(std::string_view languageName) const
 	{
 		const std::vector<std::string> path{kLanguagesKey, std::string{languageName}, kLanguageServerKey};
-		const std::string choice = StringOrEmpty(ParsedOrNull(m_Document.GetJsonAt(path)));
+		const std::string choice = StringOrEmpty(ParseJsonText(m_Document.GetJsonAt(path).value_or(std::string{})));
 
 		if (choice.empty())
 		{
@@ -526,21 +513,66 @@ namespace Graphite {
 	{
 		const std::vector<std::string> path{kLanguagesKey, std::string{languageName}, kLanguageServerKey};
 
-		m_Document.SetJsonAt(path, nlohmann::json(std::string{serverId}).dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
+		m_Document.SetJsonAt(path, AsJsonText(nlohmann::json(std::string{serverId})));
 		m_Unwritten = true;
 	}
 
 	LanguageServerSettings AppSettings::GetLanguageServerSettings(std::string_view serverId) const
 	{
 		const std::vector<std::string> path{kServersKey, std::string{serverId}};
-		const nlohmann::json entry = ParsedOrNull(m_Document.GetJsonAt(path));
+		const nlohmann::json entry = ParseJsonText(m_Document.GetJsonAt(path).value_or(std::string{}));
 		const nlohmann::json& binary = MemberOrNull(entry, kBinaryKey);
 
-		return LanguageServerSettings{
+		LanguageServerSettings settings{
 			.BinaryPath = Core::FromUtf8(StringOrEmpty(MemberOrNull(binary, kBinaryPathKey))),
 			.Arguments = StringsIn(MemberOrNull(binary, kBinaryArgumentsKey)),
 			.InitializationOptionsJson = ObjectTextOrEmpty(MemberOrNull(entry, kInitializationOptionsKey)),
 			.SettingsJson = ObjectTextOrEmpty(MemberOrNull(entry, kServerSettingsKey))};
+
+		if (settings.BinaryPath.empty() && serverId == kLegacyPathServerId)
+		{
+			settings.BinaryPath = Core::FromUtf8(Get(kLanguageServerBinaryKey));
+		}
+
+		return settings;
+	}
+
+	void AppSettings::SetLanguageServerBinaryPath(std::string_view serverId, const std::filesystem::path& path)
+	{
+		const std::vector<std::string> keyPath = BinaryPathOf(serverId);
+
+		if (path.empty())
+		{
+			m_Document.RemoveAt(keyPath);
+		}
+		else
+		{
+			m_Document.SetJsonAt(keyPath, AsJsonText(nlohmann::json(Core::ToUtf8(path))));
+		}
+
+		// Left behind, the old key would come back as clangd's path the moment the new one was cleared.
+		if (serverId == kLegacyPathServerId)
+		{
+			m_Document.Remove(kLanguageServerBinaryKey);
+		}
+
+		m_Unwritten = true;
+	}
+
+	void AppSettings::SetLanguageServerArguments(std::string_view serverId, const std::vector<std::string>& arguments)
+	{
+		const std::vector<std::string> keyPath = BinaryArgumentsOf(serverId);
+
+		if (arguments.empty())
+		{
+			m_Document.RemoveAt(keyPath);
+		}
+		else
+		{
+			m_Document.SetJsonAt(keyPath, AsJsonText(nlohmann::json(arguments)));
+		}
+
+		m_Unwritten = true;
 	}
 
 	std::filesystem::path AppSettings::GetClaudeBinary() const

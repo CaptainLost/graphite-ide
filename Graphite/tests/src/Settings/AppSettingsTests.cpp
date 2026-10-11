@@ -69,7 +69,7 @@ TEST_CASE("AppSettings keeps what was set across a flush and a reload")
 	CHECK(reloaded.GetClaudePrices()[0].first == "opus");
 }
 
-TEST_CASE("AppSettings keeps the default shell and the language server path across a reload")
+TEST_CASE("AppSettings keeps the default shell and a server's path across a reload")
 {
 	const TempDirectory temp;
 	const std::filesystem::path file = temp.GetPath() / "graphite.json";
@@ -77,20 +77,20 @@ TEST_CASE("AppSettings keeps the default shell and the language server path acro
 	{
 		const Graphite::AppSettings fresh{file};
 		CHECK(fresh.GetDefaultShell().empty());
-		CHECK(fresh.GetLanguageServerBinary().empty());
+		CHECK(fresh.GetLanguageServerSettings("clangd").BinaryPath.empty());
 	}
 
 	{
 		Graphite::AppSettings settings{file};
 		settings.SetDefaultShell("Command Prompt");
-		settings.SetLanguageServerBinary(std::filesystem::path{"D:\\tools\\clangd\\clangd.exe"});
+		settings.SetLanguageServerBinaryPath("clangd", std::filesystem::path{"D:\\tools\\clangd\\clangd.exe"});
 		settings.Flush();
 	}
 
 	const Graphite::AppSettings reloaded{file};
 
 	CHECK(reloaded.GetDefaultShell() == "Command Prompt");
-	CHECK(reloaded.GetLanguageServerBinary() == std::filesystem::path{"D:\\tools\\clangd\\clangd.exe"});
+	CHECK(reloaded.GetLanguageServerSettings("clangd").BinaryPath == std::filesystem::path{"D:\\tools\\clangd\\clangd.exe"});
 }
 
 TEST_CASE("AppSettings writes nothing until it is flushed, and nothing when nothing changed")
@@ -477,6 +477,72 @@ TEST_CASE("AppSettings keeps a nested value edited by hand while it runs")
 
 	CHECK(reloaded.GetLanguageServerSettings("clangd").BinaryPath == std::filesystem::path{L"C:\\clangd.exe"});
 	CHECK(reloaded.GetEditorFontSize() == doctest::Approx(15.0f));
+}
+
+TEST_CASE("Clearing a server's path removes it from graphite.json")
+{
+	const TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
+
+	WriteText(file, R"({"lsp": {"roslyn": {"binary": {"path": "D:\\Roslyn\\roslyn.exe", "arguments": ["--logLevel", "Trace"]}}}})");
+
+	{
+		Graphite::AppSettings settings{file};
+		settings.SetLanguageServerBinaryPath("roslyn", {});
+		settings.Flush();
+	}
+
+	CHECK(ReadBytes(file).find("roslyn.exe") == std::string::npos);
+
+	const Graphite::AppSettings reloaded{file};
+
+	CHECK(reloaded.GetLanguageServerSettings("roslyn").BinaryPath.empty());
+	CHECK(reloaded.GetLanguageServerSettings("roslyn").Arguments == std::vector<std::string>{"--logLevel", "Trace"});
+}
+
+TEST_CASE("A server's arguments are stored as a list and an empty list removes them")
+{
+	TempAppSettings settings;
+
+	settings.Get().SetLanguageServerArguments("csharp-ls", {"--loglevel", "two words"});
+	CHECK(settings.Reload().GetLanguageServerSettings("csharp-ls").Arguments == std::vector<std::string>{"--loglevel", "two words"});
+
+	settings.Get().SetLanguageServerArguments("csharp-ls", {});
+	CHECK(settings.Reload().GetLanguageServerSettings("csharp-ls").Arguments.empty());
+	CHECK(ReadBytes(settings.GetFile()).find("arguments") == std::string::npos);
+}
+
+TEST_CASE("The old key's path is clangd's alone")
+{
+	const TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
+
+	WriteText(file, R"({"languageServerBinary": "D:\\Old\\clangd.exe"})");
+
+	const Graphite::AppSettings settings{file};
+
+	CHECK(settings.GetLanguageServerSettings("clangd").BinaryPath == std::filesystem::path{L"D:\\Old\\clangd.exe"});
+	CHECK(settings.GetLanguageServerSettings("roslyn").BinaryPath.empty());
+}
+
+TEST_CASE("Setting clangd's path moves it off the old key")
+{
+	const TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
+
+	WriteText(file, R"({"languageServerBinary": "D:\\Old\\clangd.exe"})");
+
+	{
+		Graphite::AppSettings settings{file};
+		settings.SetLanguageServerBinaryPath("clangd", std::filesystem::path{L"D:\\New\\clangd.exe"});
+		settings.Flush();
+	}
+
+	CHECK(ReadBytes(file).find("languageServerBinary") == std::string::npos);
+
+	const Graphite::AppSettings reloaded{file};
+
+	CHECK(reloaded.GetLanguageServerSettings("clangd").BinaryPath == std::filesystem::path{L"D:\\New\\clangd.exe"});
 }
 
 TEST_CASE("An empty object that gains a value keeps what another instance wrote beneath it")
