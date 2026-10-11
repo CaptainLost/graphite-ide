@@ -196,6 +196,36 @@ TEST_CASE("A child given variables still inherits the rest and a given variable 
 	CHECK(output.find("=winner") != std::string::npos);
 }
 
+TEST_CASE("A variable without a name or with an equals sign or a null in its name is refused before anything starts")
+{
+	using namespace std::string_literals;
+
+	const std::array<Core::EnvironmentVariable, 4> refused{{{.Name = "", .Value = "value"},
+															{.Name = "CORE_TEST=SPLIT", .Value = "value"},
+															{.Name = "CORE_TEST\0NULL"s, .Value = "value"},
+															{.Name = "CORE_TEST_NULL_VALUE", .Value = "cut\0short"s}}};
+
+	for (const Core::EnvironmentVariable& variable : refused)
+	{
+		const std::array<Core::EnvironmentVariable, 1> environment{variable};
+
+		StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "echo started"}, std::filesystem::current_path(), environment);
+
+		REQUIRE_FALSE(started);
+		CHECK(started.GetError().Code == Core::ErrorCode::InvalidArgument);
+	}
+}
+
+TEST_CASE("A variable whose name starts with an equals sign is given as the drive entries are")
+{
+	const std::array<Core::EnvironmentVariable, 1> environment{{{.Name = "=Z:", .Value = "Z:\\"}}};
+
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "echo started"}, std::filesystem::current_path(), environment);
+	REQUIRE(started);
+
+	CHECK(ReadAll(*started.GetValue()).find("started") != std::string::npos);
+}
+
 TEST_CASE("A child runs as long as a process it started runs")
 {
 	// cmd starts ping in the background and exits at once; ping goes on for about two seconds.

@@ -60,20 +60,42 @@ namespace Core {
 			return FromUtf8(text).wstring();
 		}
 
-		// CreateProcessW wants each "NAME=value" ended by a null, the block ended by one more, sorted by name ignoring case.
-		std::wstring EnvironmentBlockWith(std::span<const EnvironmentVariable> overrides)
+		// A name ending early or a value cut short would set some other variable than the caller asked for, or none.
+		bool IsWellFormed(const EnvironmentVariable& variable)
 		{
+			const bool nameEndsAtItsEnd = variable.Name.find('=', 1) == std::string::npos;
+			const bool holdsNoNull = variable.Name.find('\0') == std::string::npos && variable.Value.find('\0') == std::string::npos;
+
+			return !variable.Name.empty() && nameEndsAtItsEnd && holdsNoNull;
+		}
+
+		// CreateProcessW wants each "NAME=value" ended by a null, the block ended by one more, sorted by name ignoring case.
+		Result<std::wstring> EnvironmentBlockWith(std::span<const EnvironmentVariable> overrides)
+		{
+			for (const EnvironmentVariable& variable : overrides)
+			{
+				if (!IsWellFormed(variable))
+				{
+					return Error{.Code = ErrorCode::InvalidArgument,
+								 .Message = "an environment variable needs a name without '=' and a name and value without a null"};
+				}
+			}
+
+			wchar_t* inherited = ::GetEnvironmentStringsW();
+
+			if (inherited == nullptr)
+			{
+				return Error{.Code = ErrorCodeFromWin32(::GetLastError()), .Message = "cannot read this process's environment"};
+			}
+
 			std::vector<std::wstring> entries;
 
-			if (wchar_t* inherited = ::GetEnvironmentStringsW(); inherited != nullptr)
+			for (const wchar_t* entry = inherited; *entry != L'\0'; entry += std::wcslen(entry) + 1)
 			{
-				for (const wchar_t* entry = inherited; *entry != L'\0'; entry += std::wcslen(entry) + 1)
-				{
-					entries.emplace_back(entry);
-				}
-
-				::FreeEnvironmentStringsW(inherited);
+				entries.emplace_back(entry);
 			}
+
+			::FreeEnvironmentStringsW(inherited);
 
 			for (const EnvironmentVariable& variable : overrides)
 			{
@@ -119,9 +141,27 @@ namespace Core {
 	Result<Scope<ChildProcess>> ChildProcess::Start([[maybe_unused]] const std::filesystem::path& program,
 													[[maybe_unused]] const std::vector<std::string>& arguments,
 													[[maybe_unused]] const std::filesystem::path& workingDirectory,
-														[[maybe_unused]] std::span<const EnvironmentVariable> environment)
+													[[maybe_unused]] std::span<const EnvironmentVariable> environment)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
+		std::wstring environmentBlock;
+		LPVOID environmentPointer = nullptr;
+		DWORD creationFlags = CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED;
+
+		if (!environment.empty())
+		{
+			Result<std::wstring> block = EnvironmentBlockWith(environment);
+
+			if (!block)
+			{
+				return block.GetError();
+			}
+
+			environmentBlock = std::move(block).GetValue();
+			environmentPointer = environmentBlock.data();
+			creationFlags |= CREATE_UNICODE_ENVIRONMENT;
+		}
+
 		SECURITY_ATTRIBUTES inheritable{.nLength = sizeof(SECURITY_ATTRIBUTES), .bInheritHandle = TRUE};
 
 		UniqueHandle childStdinRead;
@@ -243,19 +283,7 @@ namespace Core {
 		std::wstring commandLine = BuildWindowsCommandLine(program, arguments);
 		const std::wstring nativeWorkingDirectory = workingDirectory.wstring();
 
-		std::wstring environmentBlock;
-		LPVOID environmentPointer = nullptr;
-		DWORD creationFlags = CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED;
-
-		if (!environment.empty())
-		{
-			environmentBlock = EnvironmentBlockWith(environment);
-			environmentPointer = environmentBlock.data();
-			creationFlags |= CREATE_UNICODE_ENVIRONMENT;
-		}
-
-		const BOOL started = ::CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, kInheritListedHandles,
-											  creationFlags,
+		const BOOL started = ::CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, kInheritListedHandles, creationFlags,
 											  environmentPointer, nativeWorkingDirectory.c_str(), &startupInfo.StartupInfo,
 											  &processInformation);
 
