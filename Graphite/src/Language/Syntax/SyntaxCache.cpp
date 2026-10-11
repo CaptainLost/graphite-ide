@@ -219,7 +219,8 @@ namespace Graphite {
 
 		if (!rowTokens.has_value())
 		{
-			rowTokens = ExpandedRowTokens(*m_Tree, line, m_TabWidth);
+			rowTokens = buffer.LineLength(line) > kLongestTreeColouredRow ? std::vector<Token>{}
+																		   : ExpandedRowTokens(*m_Tree, line, m_TabWidth);
 		}
 
 		const bool treeLags = m_TreeRevision != buffer.GetRevision();

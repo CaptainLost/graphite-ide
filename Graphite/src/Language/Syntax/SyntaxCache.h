@@ -19,6 +19,10 @@ namespace Graphite {
 
 	class SyntaxTree;
 
+	// A row longer than this is drawn plain: its tokens would be queried whole after every revision, at eight bytes per
+	// byte of the row, and such a row is generated text nobody reads by its colours.
+	inline constexpr std::size_t kLongestTreeColouredRow = 16 * 1024;
+
 	struct ParseBudget
 	{
 		std::chrono::microseconds PerAttempt{4000};

@@ -47,6 +47,35 @@ TEST_CASE("ColourLines colours a raw string that spans C# lines")
 	CHECK(DescribeTokens(lines[2], tokens[2]) == "string '          \"\"\"' | punctuation ';'");
 }
 
+TEST_CASE("An interpolation's braces are coloured as the string they sit in")
+{
+	const std::vector<std::string_view> lines{R"(var s = $"{name}!";)"};
+	const std::vector<std::vector<Token>> tokens = ColourLines(LanguageId::CSharp, lines);
+	const std::size_t opening = lines[0].find('{');
+	const std::size_t closing = lines[0].find('}');
+
+	REQUIRE(tokens.size() == 1);
+
+	Graphite::TokenKind openingKind = Graphite::TokenKind::Text;
+	Graphite::TokenKind closingKind = Graphite::TokenKind::Text;
+
+	for (const Token& token : tokens[0])
+	{
+		if (token.From <= opening && opening < token.To)
+		{
+			openingKind = token.Kind;
+		}
+
+		if (token.From <= closing && closing < token.To)
+		{
+			closingKind = token.Kind;
+		}
+	}
+
+	CHECK(openingKind == Graphite::TokenKind::String);
+	CHECK(closingKind == Graphite::TokenKind::String);
+}
+
 TEST_CASE("ColourLines colours nothing for a language with no syntax or for no lines")
 {
 	const std::vector<std::string_view> lines{"plain text"};

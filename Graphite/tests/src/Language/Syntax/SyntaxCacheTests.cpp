@@ -204,6 +204,17 @@ namespace {
 	}
 }
 
+TEST_CASE("A row too long to colour from its tree is drawn plain while its neighbours keep their colours")
+{
+	const std::string longRow = "var s = \"" + std::string(Graphite::kLongestTreeColouredRow + 1, 'x') + "\";";
+	const Core::TextBuffer buffer{"class A {}\n" + longRow + "\nclass B {}\n"};
+	Graphite::SyntaxCache cache = CSharpCache();
+
+	CHECK(cache.TokensOf(buffer, 1).empty());
+	CHECK_FALSE(cache.TokensOf(buffer, 0).empty());
+	CHECK_FALSE(cache.TokensOf(buffer, 2).empty());
+}
+
 TEST_CASE("SyntaxCache colours a C# document through its grammar")
 {
 	const Core::TextBuffer buffer{std::string(kCSharpFixture)};

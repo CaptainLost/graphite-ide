@@ -137,6 +137,16 @@ TEST_CASE("A deleted special member ends at its semicolon")
 	CHECK(ExtentOf({"Foo(const Foo&) = delete;", "int x;"}, 0).Last == 0);
 }
 
+TEST_CASE("An expression-bodied member with an interpolation ends at its semicolon")
+{
+	const std::vector<std::string> lines{R"(public string Describe() => $"{Name} is ")", "    + Age.ToString();", "public int Age { get; }"};
+
+	const LineRange range = ExtentIn(Graphite::LanguageId::CSharp, lines, 0);
+
+	CHECK(range.First == 0);
+	CHECK(range.Last == 1);
+}
+
 TEST_CASE("A C# class ends at its matching brace")
 {
 	const std::vector<std::string> lines{"public class Widget", "{", "    public int Count { get; set; }", "}", "class Next { }"};

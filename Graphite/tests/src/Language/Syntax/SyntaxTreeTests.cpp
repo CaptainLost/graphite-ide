@@ -94,7 +94,7 @@ TEST_CASE("Interpolated and raw strings colour as strings around the code inside
 	Graphite::SyntaxTree tree(Graphite::CSharpGrammar());
 	ParsedFixture(tree);
 
-	CHECK(DescribeRow(tree, 12) == "keyword 'var' | identifier 's' | punctuation '=' | string '$' | string '\"' | punctuation '{' | identifier 'label' | punctuation '}' | string ': ' | punctuation '{' | identifier 'count' | punctuation ',' | number '5' | punctuation '}' | string '\"' | punctuation ';'");
+	CHECK(DescribeRow(tree, 12) == "keyword 'var' | identifier 's' | punctuation '=' | string '$' | string '\"' | string '{' | identifier 'label' | string '}' | string ': ' | string '{' | identifier 'count' | punctuation ',' | number '5' | string '}' | string '\"' | punctuation ';'");
 	CHECK(DescribeRow(tree, 13) == "keyword 'var' | identifier 'raw' | punctuation '=' | string '\"\"\"'");
 	CHECK(DescribeRow(tree, 14) == "string '          raw \"text\"'");
 	CHECK(DescribeRow(tree, 15) == "string '          \"\"\"' | punctuation ';'");

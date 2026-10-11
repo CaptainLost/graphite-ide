@@ -80,6 +80,7 @@ namespace Graphite {
   (interpolated_string_expression)
   (interpolation_start)
   (interpolation_quote)
+  (interpolation_brace)
 ] @string
 
 (escape_sequence) @string.escape
@@ -118,7 +119,6 @@ namespace Graphite {
 
 [
   "(" ")" "[" "]" "{" "}"
-  (interpolation_brace)
 ] @punctuation.bracket
 
 [
