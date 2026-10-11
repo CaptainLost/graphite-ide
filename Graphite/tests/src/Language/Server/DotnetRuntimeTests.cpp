@@ -104,3 +104,8 @@ TEST_CASE("The last place dotnet is looked for is under Program Files")
 	REQUIRE_FALSE(roots.empty());
 	CHECK(roots.back() == *programFiles / "dotnet");
 }
+
+TEST_CASE("The download page is the one for the major version needed")
+{
+	CHECK(Graphite::DotnetDownloadUrl(10) == "https://dotnet.microsoft.com/download/dotnet/10.0");
+}

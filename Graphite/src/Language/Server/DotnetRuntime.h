@@ -19,6 +19,8 @@ namespace Graphite {
 
 	std::vector<std::filesystem::path> DotnetCandidateRoots();
 
+	std::string DotnetDownloadUrl(int major);
+
 	bool HasRuntimeAtLeast(const DotnetInstallation& dotnet, int minimumMajor);
 
 	const DotnetInstallation* FirstWithRuntimeAtLeast(std::span<const DotnetInstallation> installations, int minimumMajor);

@@ -312,3 +312,15 @@ TEST_CASE("Roslyn and csharp-ls come from NuGet and OmniSharp from its GitHub re
 	CHECK(roslynArguments == std::vector<std::string>{"--stdio", "--logLevel", "Information", "--extensionLogDirectory", "{logs}/roslyn"});
 	CHECK(Graphite::DefaultArgumentsOf(*Graphite::FindServer("omnisharp")) == std::vector<std::string>{"-lsp"});
 }
+
+TEST_CASE("Every server describes itself in one line")
+{
+	for (const Graphite::ServerDefinition& server : Graphite::AllServers())
+	{
+		INFO(std::string{server.Id});
+		CHECK_FALSE(server.Description.empty());
+		CHECK(server.Description.back() == '.');
+	}
+
+	CHECK(Graphite::FindServer("roslyn")->Description == "Microsoft's official C# language server.");
+}

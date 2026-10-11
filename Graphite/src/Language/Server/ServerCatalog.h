@@ -36,6 +36,7 @@ namespace Graphite {
 	{
 		std::string_view Id;
 		std::string_view DisplayName;
+		std::string_view Description;
 		std::string_view ExecutableName;
 		std::string_view ProtocolLanguageId;
 		std::span<const std::string_view> DefaultArguments;

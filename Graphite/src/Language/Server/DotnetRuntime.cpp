@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <format>
 #include <optional>
 #include <string_view>
 #include <system_error>
@@ -166,5 +167,10 @@ namespace Graphite {
 		}
 
 		return nullptr;
+	}
+
+	std::string DotnetDownloadUrl(int major)
+	{
+		return std::format("https://dotnet.microsoft.com/download/dotnet/{}.0", major);
 	}
 }
