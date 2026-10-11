@@ -77,11 +77,27 @@ namespace Graphite {
 
 		void RenderFilter();
 		void RenderFolder(const Folder& folder, const std::string& path);
+		void RenderChildFolder(const Folder& folder, const std::string& path);
 		void RenderProject(const Project& project, const std::string& folder);
 		void RenderReferences(const std::vector<std::string>& references);
 		void RenderContentFolder(const ContentFolder& folder);
 		void RenderContentFile(const ContentFile& file);
 		void RenderEmptyState();
+
+		// While the filter has text, a row is drawn when its own name passes or it holds a row
+		// that does. Each answer is kept until the text or the solution changes, so a large
+		// project is walked once rather than on every frame.
+		bool IsShown(const Folder& folder);
+		bool IsShown(const Project& project);
+		bool IsShown(const ContentFolder& folder);
+		bool HoldsMatch(const Folder& folder);
+		bool HoldsMatch(const Project& project);
+		bool HoldsMatch(const ContentFolder& folder);
+		bool AnyFilePasses(const ContentFolder& folder) const;
+		bool AnyFolderShown(const ContentFolder& folder);
+		bool AnyFolderShown(const Folder& folder);
+		bool AnyProjectShown(const Folder& folder);
+		void ForgetStaleFilterMatches();
 
 		// The most important decoration among the content files a project or solution folder
 		// holds. Computed the first time a row asks and kept until the solution is reloaded or the
@@ -112,6 +128,15 @@ namespace Graphite {
 		const Core::DocumentSet& m_Documents;
 		Core::EventBus& m_Events;
 		ImGuiTextFilter m_Filter;
+
+		// What m_HoldsMatch was worked out for: the filter's text and the load of the solution.
+		std::string m_FilterMatchText;
+		std::uint64_t m_FilterMatchLoad = 0;
+		std::unordered_map<const void*, bool> m_HoldsMatch;
+
+		// Set for the one walk after the filter text changes: every row holding a match opens and
+		// every other row closes; after that the rows stay as the user leaves them.
+		bool m_ReopenFilteredRows = false;
 
 		GitDecorationView m_GitDecorations;
 

@@ -101,21 +101,38 @@ namespace Graphite {
 			return;
 		}
 
-		FollowActiveDocument();
+		// Held back while filtering, so a document opened from the results is revealed once the
+		// filter is cleared: revealed in rows that are not drawn, it would be lost.
+		if (!m_Filter.IsActive())
+		{
+			FollowActiveDocument();
+		}
+
 		RenderFilter();
 		ImGui::Separator();
 
 		const Solution& solution = *m_Workspace.GetLoadedSolution();
 
 		ForgetStaleGroupDecorations();
+		ForgetStaleFilterMatches();
 
 		if (ImGui::BeginChild("##solutionBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
 							  ImGuiWindowFlags_HorizontalScrollbar))
 		{
+			constexpr const char* kFilteredTreeScope = "##filteredTree";
+			const bool filtering = m_Filter.IsActive();
+
+			// ImGui keeps a row's open state by its ID: without a scope of their own, the rows
+			// the filter opens would stay open once it is cleared.
+			if (filtering)
+			{
+				ImGui::PushID(kFilteredTreeScope);
+			}
+
 			const std::string label =
 				solution.Name + " (" + std::to_string(solution.ProjectCount) + " projects)";
 
-			if (OpensToward(solution.Root) || m_RenameWhenListed.IsLooking())
+			if (OpensToward(solution.Root) || m_RenameWhenListed.IsLooking() || m_ReopenFilteredRows)
 			{
 				ImGui::SetNextItemOpen(true);
 			}
@@ -131,9 +148,22 @@ namespace Graphite {
 				RenderFolder(solution.Root, "");
 				ImGui::TreePop();
 			}
+
+			if (filtering)
+			{
+				ImGui::PopID();
+			}
+
+			if (filtering && !HoldsMatch(solution.Root))
+			{
+				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+				ImGui::TextWrapped("No files match \"%s\"", m_Filter.InputBuf);
+				ImGui::PopStyleColor();
+			}
 		}
 
 		ImGui::EndChild();
+		m_ReopenFilteredRows = false;
 		m_RevealPath.clear();
 		m_RenameWhenListed.EndFrame();
 
@@ -182,42 +212,56 @@ namespace Graphite {
 	{
 		for (const Folder& child : folder.Folders)
 		{
-			const std::string childPath = ChildPath(path, child.Name);
-
-			// A folder just added, now that the reloaded solution lists it.
-			if (m_RenameWhenListed.Take(childPath))
+			if (IsShown(child))
 			{
-				StartRenamingFolder(child, childPath);
-			}
-
-			if (RenderFolderRenameEditor(child, childPath))
-			{
-				continue;
-			}
-
-			const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.Name;
-
-			if (OpensToward(child) || m_RenameWhenListed.LeadsTo(childPath))
-			{
-				ImGui::SetNextItemOpen(true);
-			}
-
-			const bool open = ImGui::TreeNodeEx(
-				label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
-
-			DrawGroupMarker(child);
-			RenderContextMenu(child, childPath);
-
-			if (open)
-			{
-				RenderFolder(child, childPath);
-				ImGui::TreePop();
+				RenderChildFolder(child, ChildPath(path, child.Name));
 			}
 		}
 
 		for (const Project& project : folder.Projects)
 		{
-			RenderProject(project, path);
+			if (IsShown(project))
+			{
+				RenderProject(project, path);
+			}
+		}
+	}
+
+	void SolutionTreeView::RenderChildFolder(const Folder& folder, const std::string& path)
+	{
+		// A folder just added, now that the reloaded solution lists it.
+		if (m_RenameWhenListed.Take(path))
+		{
+			StartRenamingFolder(folder, path);
+		}
+
+		if (RenderFolderRenameEditor(folder, path))
+		{
+			return;
+		}
+
+		const std::string label = std::string{ICON_MDI_FOLDER} + "  " + folder.Name;
+
+		if (m_ReopenFilteredRows)
+		{
+			ImGui::SetNextItemOpen(HoldsMatch(folder));
+		}
+
+		if (OpensToward(folder) || m_RenameWhenListed.LeadsTo(path))
+		{
+			ImGui::SetNextItemOpen(true);
+		}
+
+		const bool open = ImGui::TreeNodeEx(
+			label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+
+		DrawGroupMarker(folder);
+		RenderContextMenu(folder, path);
+
+		if (open)
+		{
+			RenderFolder(folder, path);
+			ImGui::TreePop();
 		}
 	}
 
@@ -239,6 +283,11 @@ namespace Graphite {
 		if (!project.Exists)
 		{
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+		}
+
+		if (m_ReopenFilteredRows)
+		{
+			ImGui::SetNextItemOpen(HoldsMatch(project));
 		}
 
 		if (OpensToward(project))
@@ -263,7 +312,11 @@ namespace Graphite {
 
 		if (project.ContentRead)
 		{
-			RenderReferences(project.Content.References);
+			if (!m_Filter.IsActive())
+			{
+				RenderReferences(project.Content.References);
+			}
+
 			RenderContentFolder(project.Content.Root);
 		}
 
@@ -289,17 +342,25 @@ namespace Graphite {
 	{
 		for (const ContentFolder& child : folder.Folders)
 		{
-			const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.Name;
-
-			if (OpensToward(child))
+			if (IsShown(child))
 			{
-				ImGui::SetNextItemOpen(true);
-			}
+				const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.Name;
 
-			if (ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth))
-			{
-				RenderContentFolder(child);
-				ImGui::TreePop();
+				if (m_ReopenFilteredRows)
+				{
+					ImGui::SetNextItemOpen(HoldsMatch(child));
+				}
+
+				if (OpensToward(child))
+				{
+					ImGui::SetNextItemOpen(true);
+				}
+
+				if (ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth))
+				{
+					RenderContentFolder(child);
+					ImGui::TreePop();
+				}
 			}
 		}
 
@@ -377,6 +438,125 @@ namespace Graphite {
 			m_Workspace.SelectFile(file.Path);
 			m_Workspace.RequestOpenFile(file.Path, OpensPermanently());
 		}
+	}
+
+	void SolutionTreeView::ForgetStaleFilterMatches()
+	{
+		const std::string filterText = m_Filter.InputBuf;
+		const std::uint64_t load = m_Workspace.GetSolutionLoad();
+		const bool filterTextChanged = filterText != m_FilterMatchText;
+
+		if (!filterTextChanged && load == m_FilterMatchLoad)
+		{
+			return;
+		}
+
+		m_HoldsMatch.clear();
+		m_FilterMatchText = filterText;
+		m_FilterMatchLoad = load;
+
+		if (filterTextChanged && m_Filter.IsActive())
+		{
+			m_ReopenFilteredRows = true;
+		}
+	}
+
+	bool SolutionTreeView::IsShown(const Folder& folder)
+	{
+		return !m_Filter.IsActive() || m_Filter.PassFilter(folder.Name.c_str()) || HoldsMatch(folder);
+	}
+
+	bool SolutionTreeView::IsShown(const Project& project)
+	{
+		return !m_Filter.IsActive() || m_Filter.PassFilter(project.DisplayName.c_str()) || HoldsMatch(project);
+	}
+
+	bool SolutionTreeView::IsShown(const ContentFolder& folder)
+	{
+		return !m_Filter.IsActive() || m_Filter.PassFilter(folder.Name.c_str()) || HoldsMatch(folder);
+	}
+
+	bool SolutionTreeView::HoldsMatch(const Folder& folder)
+	{
+		if (m_HoldsMatch.contains(&folder))
+		{
+			return m_HoldsMatch.at(&folder);
+		}
+
+		const bool holdsMatch = AnyFolderShown(folder) || AnyProjectShown(folder);
+		m_HoldsMatch.emplace(&folder, holdsMatch);
+
+		return holdsMatch;
+	}
+
+	bool SolutionTreeView::HoldsMatch(const Project& project)
+	{
+		return project.ContentRead && HoldsMatch(project.Content.Root);
+	}
+
+	bool SolutionTreeView::HoldsMatch(const ContentFolder& folder)
+	{
+		if (m_HoldsMatch.contains(&folder))
+		{
+			return m_HoldsMatch.at(&folder);
+		}
+
+		const bool holdsMatch = AnyFilePasses(folder) || AnyFolderShown(folder);
+		m_HoldsMatch.emplace(&folder, holdsMatch);
+
+		return holdsMatch;
+	}
+
+	bool SolutionTreeView::AnyFilePasses(const ContentFolder& folder) const
+	{
+		for (const ContentFile& file : folder.Files)
+		{
+			if (m_Filter.PassFilter(file.Name.c_str()))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	bool SolutionTreeView::AnyFolderShown(const ContentFolder& folder)
+	{
+		for (const ContentFolder& child : folder.Folders)
+		{
+			if (IsShown(child))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	bool SolutionTreeView::AnyFolderShown(const Folder& folder)
+	{
+		for (const Folder& child : folder.Folders)
+		{
+			if (IsShown(child))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	bool SolutionTreeView::AnyProjectShown(const Folder& folder)
+	{
+		for (const Project& project : folder.Projects)
+		{
+			if (IsShown(project))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	void SolutionTreeView::ForgetStaleGroupDecorations()
