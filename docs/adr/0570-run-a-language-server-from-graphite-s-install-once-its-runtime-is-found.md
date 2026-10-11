@@ -21,7 +21,7 @@ A row names the runtime it needs. A .NET server needs a `dotnet` with a runtime 
 
 A running server holds its installed command open, sharing only read access, so an update or an uninstall cannot remove the directory under it. A child process is started inside a job object that is killed as a whole when the server is ended or Graphite exits, because Roslyn's executable is a launcher with a child of its own.
 
-C# lists Roslyn (recommended), csharp-ls and OmniSharp, and runs none until one is chosen. C++ keeps clangd when nothing is chosen. A document opened while its language has no server chosen is kept with its latest text, and is opened on the server chosen later.
+C# lists Roslyn (recommended), csharp-ls and OmniSharp, and runs none until one is chosen. Until [0577](0577-install-clangd-on-request-like-every-other-language-server.md) C++ kept clangd when nothing was chosen. A document opened while its language has no server chosen is kept with its latest text, and is opened on the server chosen later.
 
 Roslyn's adapter sends `solution/open` with the solution in use after `initialized`. A root with no solution but with `.csproj` files directly in it is sent `project/open` with all of them instead; they are listed on the UI thread before the client starts. The adapter reports "no project" when the root has neither, stays indexing until `workspace/projectInitializationComplete`, which Roslyn sends after either request, and is restarted when the Explorer selects another solution. The solution in use is the selected one when it lies inside the server's root, and otherwise the root's first solution by name, the `.slnx` when a `.sln` shares its name.
 

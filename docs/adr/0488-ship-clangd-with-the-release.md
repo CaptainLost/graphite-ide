@@ -1,6 +1,6 @@
 # 0488. Ship clangd with the release
 
-Status: proposed
+Status: superseded by 0577
 Date: 2026-08-16
 
 ## Context

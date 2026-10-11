@@ -517,7 +517,7 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0485](0485-take-code-intelligence-from-external-language-servers.md) | Take code intelligence from external language servers | proposed | 2026-08-16 |
 | [0486](0486-insert-non-document-rows-above-rowmap-rather-than-inside-it.md) | Insert non-document rows above RowMap rather than inside it | proposed | 2026-08-16 |
 | [0487](0487-correct-adr-0482s-premise-about-project-data.md) | Correct ADR 0482's premise about project data | proposed | 2026-08-16 |
-| [0488](0488-ship-clangd-with-the-release.md) | Ship clangd with the release | proposed | 2026-08-16 |
+| [0488](0488-ship-clangd-with-the-release.md) | Ship clangd with the release | superseded by 0577 | 2026-08-16 |
 | [0489](0489-open-a-previewed-file-with-the-language-server.md) | Open a previewed file with the language server | proposed | 2026-08-20 |
 | [0490](0490-colour-the-application-chrome-from-the-active-scheme.md) | Colour the application chrome from the active scheme | proposed | 2026-08-20 |
 | [0491](0491-keep-git-data-in-core-and-git-freshness-in-graphite.md) | Keep git data in Core and git freshness in Graphite | proposed | 2026-08-20 |
@@ -606,4 +606,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0574](0574-list-what-a-settings-block-holds-as-rows-of-its-own-in-the-search.md) | List what a settings block holds as rows of its own in the search | accepted | 2026-10-11 |
 | [0575](0575-filter-the-file-tree-against-a-listing-of-the-whole-folder-read-in-the-background.md) | Filter the file tree against a listing of the whole folder read in the background | proposed | 2026-10-11 |
 | [0576](0576-draw-a-loading-indicator-through-a-core-facade-over-imspinner.md) | Draw a loading indicator through a Core facade over imspinner | proposed | 2026-10-11 |
+| [0577](0577-install-clangd-on-request-like-every-other-language-server.md) | Install clangd on request like every other language server | proposed | 2026-10-12 |
 <!-- /adr-index -->
