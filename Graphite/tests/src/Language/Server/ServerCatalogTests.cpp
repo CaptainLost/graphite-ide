@@ -324,3 +324,17 @@ TEST_CASE("Every server describes itself in one line")
 
 	CHECK(Graphite::FindServer("roslyn")->Description == "Microsoft's official C# language server.");
 }
+
+TEST_CASE("A server beside the application is not found")
+{
+	const Core::Result<std::filesystem::path> directory = Core::ExecutableDirectory();
+	REQUIRE(directory);
+	const std::filesystem::path beside = directory.GetValue() / "graphite-beside-probe-5c1e.exe";
+
+	Touch(beside);
+	const Core::Result<std::filesystem::path> found = Graphite::FindServerBinary("graphite-beside-probe-5c1e", {});
+	std::error_code removeError;
+	std::filesystem::remove(beside, removeError);
+
+	CHECK_FALSE(found);
+}

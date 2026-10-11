@@ -92,18 +92,12 @@ project "Graphite"
     -- MSBuild's $(SolutionDir), which only points at the repository root when the build goes
     -- through the solution. Building a .vcxproj directly sets it to the project's own
     -- directory, and the copy then looks for the fonts inside Graphite/.
-    -- The clangd copy is a plain cmd `if exist` guard rather than {COPYFILE}: the binary is
-    -- ~100MB, downloaded rather than built (see vendor/bin/clangd/README.md), and is not
-    -- committed to this repository, so it is absent on every machine until someone places it.
-    -- {COPYFILE} would fail the build in that — currently universal — case; the guard makes a
-    -- missing server binary the degraded-but-working state ADR 0488 intends, not a build error.
     postbuildcommands
     {
         '{COPYFILE} "../vendor/fonts/materialdesignicons-webfont.ttf" "%{cfg.targetdir}"',
         '{COPYFILE} "../vendor/fonts/JetBrainsMono-Regular.ttf" "%{cfg.targetdir}"',
         '{COPYFILE} "../vendor/fonts/JetBrainsMono-Bold.ttf" "%{cfg.targetdir}"',
-        '{COPYFILE} "../THIRD_PARTY_NOTICES.txt" "%{cfg.targetdir}"',
-        'if exist "..\\vendor\\bin\\clangd\\clangd.exe" copy /Y "..\\vendor\\bin\\clangd\\clangd.exe" "%{cfg.targetdir}"'
+        '{COPYFILE} "../THIRD_PARTY_NOTICES.txt" "%{cfg.targetdir}"'
     }
 
     files { "src/Main.cpp", "resources/Graphite.rc" }

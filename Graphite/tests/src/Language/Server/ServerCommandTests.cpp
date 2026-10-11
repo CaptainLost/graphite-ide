@@ -166,9 +166,9 @@ TEST_CASE("A server found nowhere is NotInstalled and says where it was looked f
 	const Graphite::ServerCommand withoutServersDirectory = Graphite::FindServerCommand(kNowhere, {}, Graphite::ServerCommandPlaces{});
 
 	CHECK(withServersDirectory.State == Graphite::ServerState::NotInstalled);
-	CHECK(withServersDirectory.Detail == "it is not in Graphite's servers folder, beside the application or on PATH");
+	CHECK(withServersDirectory.Detail == "it is not in Graphite's servers folder or on PATH");
 	CHECK(withoutServersDirectory.State == Graphite::ServerState::NotInstalled);
-	CHECK(withoutServersDirectory.Detail == "it is neither beside the application nor on PATH");
+	CHECK(withoutServersDirectory.Detail == "it is not on PATH");
 }
 
 TEST_CASE("A configured path naming a folder is NotFound saying it is a folder")

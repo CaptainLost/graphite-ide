@@ -2,7 +2,6 @@
 
 #include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
-#include "Core/Platform/Process.h"
 #include "Core/Platform/ShellProfiles.h"
 
 #include <system_error>
@@ -12,9 +11,9 @@ namespace Graphite {
 	namespace {
 
 		// The error_code overload, never the throwing one. Every path tested below comes from
-		// outside this function — a value the user typed into graphite.json, the executable's own
-		// directory, an entry of PATH — and a disconnected drive or an unreachable UNC share makes
-		// the throwing overload raise a filesystem_error out through StartServer, across a boundary
+		// outside this function — a value the user typed into graphite.json, an entry of PATH — and
+		// a disconnected drive or an unreachable UNC share makes the throwing overload raise a
+		// filesystem_error out through StartServer, across a boundary
 		// ADR 0004 says nothing throws across. "Cannot tell" reads as "not there", which is what an
 		// unexaminable candidate means to a search looking for one. Same helper, same reasoning, as
 		// ServerCatalog.cpp's; not shared, because a one-line wrapper is cheaper to repeat than a
@@ -49,15 +48,6 @@ namespace Graphite {
 		}
 
 		const std::filesystem::path executableName = ExecutableNameFor(command);
-
-		if (const auto exeDir = Core::ExecutableDirectory())
-		{
-			if (const std::filesystem::path beside = exeDir.GetValue() / executableName;
-				Exists(beside))
-			{
-				return beside;
-			}
-		}
 
 		// Through Core's search, which reads PATH wide: the narrow one turned every character
 		// outside the ANSI code page into '?', and a server installed under such a directory was

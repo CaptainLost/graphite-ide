@@ -7,6 +7,9 @@
 # over a declaration reads far too low. A compilation database names every file, so the server
 # indexes the project and answers about all of it.
 #
+# Never leave a compile_flags.txt beside it: clangd prefers that file over compile_commands.json,
+# so one left behind silently turns the background index off again.
+#
 # Generated rather than committed, for the same reason the project files are: premake globs its
 # sources, so any list written by hand goes stale the first time someone adds a file.
 

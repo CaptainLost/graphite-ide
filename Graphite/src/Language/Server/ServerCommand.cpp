@@ -119,10 +119,10 @@ namespace Graphite {
 
 		if (places.ServersDirectory.empty())
 		{
-			return Unavailable(ServerState::NotInstalled, "it is neither beside the application nor on PATH");
+			return Unavailable(ServerState::NotInstalled, "it is not on PATH");
 		}
 
-		return Unavailable(ServerState::NotInstalled, "it is not in Graphite's servers folder, beside the application or on PATH");
+		return Unavailable(ServerState::NotInstalled, "it is not in Graphite's servers folder or on PATH");
 	}
 
 	std::string DescribeCommand(const ServerCommand& command)

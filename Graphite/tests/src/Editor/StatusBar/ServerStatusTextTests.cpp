@@ -220,8 +220,8 @@ TEST_CASE("A server that is not installed or lacks its runtime says so")
 	CHECK(Graphite::ServerStatusText(status) == "C#: Roslyn not installed");
 	CHECK(Graphite::ServerStatusDetail(status) == "Roslyn is not installed.");
 
-	status.Detail = "it is not in Graphite's servers folder, beside the application or on PATH";
-	CHECK(Graphite::ServerStatusDetail(status) == "Roslyn is not installed: it is not in Graphite's servers folder, beside the application or on PATH.");
+	status.Detail = "it is not in Graphite's servers folder or on PATH";
+	CHECK(Graphite::ServerStatusDetail(status) == "Roslyn is not installed: it is not in Graphite's servers folder or on PATH.");
 
 	status.State = Graphite::ServerState::MissingRuntime;
 	status.Detail = "needs .NET 10";
