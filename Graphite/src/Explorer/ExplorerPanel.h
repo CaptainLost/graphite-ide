@@ -5,6 +5,7 @@
 #include "Explorer/SolutionTreeView.h"
 #include "Workspace/Workspace.h"
 
+#include "Core/Jobs/JobSubmitter.h"
 #include "Core/UI/Panel.h"
 
 #include <filesystem>
@@ -31,7 +32,7 @@ namespace Graphite {
 	{
 	public:
 		ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents, AppSettings& settings,
-					  Core::EventBus& events);
+					  Core::EventBus& events, Core::JobSubmitter submitJob);
 
 		void OnImGuiRender() override;
 

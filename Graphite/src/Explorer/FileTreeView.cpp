@@ -13,6 +13,7 @@
 #include "UI/ClipboardCopy.h"
 #include "Terminal/TerminalRules.h"
 #include "Explorer/FileRow.h"
+#include "Explorer/FilteredTree.h"
 #include "Explorer/TreeReveal.h"
 #include "UI/IconButton.h"
 #include "UI/OpenGesture.h"
@@ -63,9 +64,23 @@ namespace Graphite {
 	}
 
 	FileTreeView::FileTreeView(Workspace& workspace, const Core::DocumentSet& documents,
-							   Core::EventBus& events)
-		: m_Workspace(workspace), m_Documents(documents), m_Events(events)
+							   Core::EventBus& events, Core::JobSubmitter submitJob)
+		: m_Workspace(workspace), m_Documents(documents), m_Events(events), m_Listing(std::move(submitJob))
 	{
+		events.Subscribe<WorkspaceFilesChangedEvent>(
+			[this](const WorkspaceFilesChangedEvent& changed) { NoteFilesChanged(changed); });
+	}
+
+	void FileTreeView::NoteFilesChanged(const WorkspaceFilesChangedEvent& changed)
+	{
+		if (changed.Everything)
+		{
+			m_Listing.NoteEverythingChanged();
+		}
+		else
+		{
+			m_Listing.NoteChangedDirectories(changed.Directories);
+		}
 	}
 
 	void FileTreeView::Render()
@@ -74,6 +89,7 @@ namespace Graphite {
 		{
 			ForgetRenames();
 			m_KnownRoot.clear();
+			m_Listing.SetRoot({});
 			RenderEmptyState();
 			return;
 		}
@@ -83,9 +99,16 @@ namespace Graphite {
 		{
 			ForgetRenames();
 			m_KnownRoot = m_Workspace.GetRoot();
+			m_Listing.SetRoot(m_KnownRoot);
 		}
 
-		FollowActiveDocument();
+		// Held back while filtering, so a document opened from the results is revealed once the
+		// filter is cleared: revealed in a tree that is not drawn, its folders would close again.
+		if (!m_Filter.IsActive())
+		{
+			FollowActiveDocument();
+		}
+
 		ResolvePendingRename();
 		RenderToolbar();
 		ImGui::Separator();
@@ -93,16 +116,14 @@ namespace Graphite {
 		if (ImGui::BeginChild("##fileTreeBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
 							  ImGuiWindowFlags_HorizontalScrollbar))
 		{
-			Core::FileNode& root = m_Workspace.GetTree().GetRoot();
-			RenderNode(root);
-
-			// The root's own name matching shows its row but no file, so it is the children
-			// that decide, by the same test that draws them.
-			if (m_Filter.IsActive() && !AnyChildPassesFilter(root))
+			if (m_Filter.IsActive())
 			{
-				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-				ImGui::TextWrapped("No files match \"%s\"", m_Filter.InputBuf);
-				ImGui::PopStyleColor();
+				RenderFilteredTree();
+			}
+			else
+			{
+				m_FilteredTreeText.clear();
+				RenderNode(m_Workspace.GetTree().GetRoot());
 			}
 
 			RenderBackgroundMenu();
@@ -166,6 +187,7 @@ namespace Graphite {
 		if (ImGui::Button(ICON_MDI_REFRESH))
 		{
 			m_Workspace.Reload();
+			m_Listing.NoteEverythingChanged();
 			Core::FileNode& root = m_Workspace.GetTree().GetRoot();
 
 			if (root.Readable)
@@ -220,6 +242,62 @@ namespace Graphite {
 		if (clicked)
 		{
 			OpenFolderInteractively(m_Workspace);
+		}
+	}
+
+	void FileTreeView::RenderFilteredTree()
+	{
+		constexpr const char* kFilteredTreeScope = "##filteredTree";
+
+		m_Listing.Update();
+
+		if (!m_Listing.HasListing())
+		{
+			ImGui::TextDisabled("Searching...");
+			return;
+		}
+
+		RebuildFilteredTreeWhenOutOfDate();
+
+		// ImGui keeps a folder's open state by its ID, which here would be the same as the real
+		// tree's row for that folder: a folder opened by the filter would stay open after it.
+		ImGui::PushID(kFilteredTreeScope);
+		RenderNode(m_FilteredTree);
+		ImGui::PopID();
+
+		m_ReopenFilteredFolders = false;
+
+		// The root's own name matching shows its row but no file, so it is the children that
+		// decide, by the same test that draws them.
+		if (!AnyChildPassesFilter(m_FilteredTree))
+		{
+			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+			ImGui::TextWrapped("No files match \"%s\"", m_Filter.InputBuf);
+			ImGui::PopStyleColor();
+		}
+	}
+
+	void FileTreeView::RebuildFilteredTreeWhenOutOfDate()
+	{
+		const std::string filterText = m_Filter.InputBuf;
+		const bool filterTextChanged = filterText != m_FilteredTreeText;
+		const bool listingChanged = m_Listing.GetVersion() != m_FilteredTreeListingVersion;
+
+		if (!filterTextChanged && !listingChanged)
+		{
+			return;
+		}
+
+		m_FilteredTree = BuildFilteredTree(m_Workspace.GetTree().GetRoot(), m_Listing.GetEntries(),
+										   [this](const ListedEntry& entry) { return m_Filter.PassFilter(entry.Name.c_str()); });
+		m_FilteredTreeText = filterText;
+		m_FilteredTreeListingVersion = m_Listing.GetVersion();
+
+		// A listing read again keeps the folders the user closed in the results; new text opens
+		// every folder holding a match.
+		if (filterTextChanged)
+		{
+			m_ReopenFilteredFolders = true;
 		}
 	}
 
@@ -612,6 +690,8 @@ namespace Graphite {
 		{
 			m_Workspace.GetTree().Refresh(*node);
 		}
+
+		m_Listing.NoteChangedDirectories({action.Target});
 	}
 
 	void FileTreeView::HandleRename(const PendingAction& action)
@@ -955,6 +1035,11 @@ namespace Graphite {
 
 	void FileTreeView::RenderDirectoryRow(Core::FileNode& node)
 	{
+		if (m_ReopenFilteredFolders)
+		{
+			ImGui::SetNextItemOpen(node.Expanded);
+		}
+
 		if (const auto forced = std::find(m_ForceOpen.begin(), m_ForceOpen.end(), node.Path);
 			forced != m_ForceOpen.end())
 		{

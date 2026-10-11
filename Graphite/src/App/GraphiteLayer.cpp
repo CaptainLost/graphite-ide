@@ -155,7 +155,9 @@ namespace Graphite {
 		Core::ImGuiRenderer::SetInterfaceScale(
 			static_cast<float>(m_AppSettings.GetInterfaceScalePercent()) / 100.0f);
 
-		auto* explorer = m_Panels.Add(Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents, m_AppSettings, m_Events));
+		const Core::JobSubmitter submitToSharedQueue = [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); };
+		auto* explorer = m_Panels.Add(
+			Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents, m_AppSettings, m_Events, submitToSharedQueue));
 		m_Explorer = explorer;
 
 		m_Panels.Add(Core::CreateScope<ConsolePanel>(m_Sink, m_Events));

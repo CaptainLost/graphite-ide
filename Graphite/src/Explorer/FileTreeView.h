@@ -2,15 +2,18 @@
 
 #include "Workspace/GitIgnoredDisplay.h"
 #include "Workspace/Workspace.h"
+#include "Explorer/FolderListing.h"
 #include "Explorer/RenameSelection.h"
 #include "Git/GitDecorationView.h"
 
 #include "Core/FileSystem/FileTree.h"
 #include "Core/ImGui/ToastStack.h"
+#include "Core/Jobs/JobSubmitter.h"
 
 #include <imgui.h>
 
 #include <array>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -28,7 +31,8 @@ namespace Graphite {
 	class FileTreeView final
 	{
 	public:
-		FileTreeView(Workspace& workspace, const Core::DocumentSet& documents, Core::EventBus& events);
+		FileTreeView(Workspace& workspace, const Core::DocumentSet& documents, Core::EventBus& events,
+					 Core::JobSubmitter submitJob);
 
 		void Render();
 
@@ -63,6 +67,9 @@ namespace Graphite {
 		void FollowActiveDocument();
 		void RenderToolbar();
 		void RenderEmptyState();
+		void RenderFilteredTree();
+		void RebuildFilteredTreeWhenOutOfDate();
+		void NoteFilesChanged(const WorkspaceFilesChangedEvent& changed);
 		void RenderNode(Core::FileNode& node);
 		void RenderFileRow(const Core::FileNode& node);
 		void RenderDirectoryRow(Core::FileNode& node);
@@ -135,5 +142,13 @@ namespace Graphite {
 		std::filesystem::path m_OpenWhenNamed;
 		GitIgnoredDisplay m_GitIgnoredDisplay = GitIgnoredDisplay::Dim;
 		GitDecorationView m_GitDecorations;
+
+		// What the tree shows while the filter has text, built from the listing rather than from
+		// the tree, which holds only the folders the user has opened.
+		FolderListing m_Listing;
+		Core::FileNode m_FilteredTree;
+		std::string m_FilteredTreeText;
+		std::uint64_t m_FilteredTreeListingVersion = 0;
+		bool m_ReopenFilteredFolders = false;
 	};
 }
