@@ -3,6 +3,7 @@
 #include "Editor/StatusBar/ServerStatusText.h"
 #include "Language/Api/LanguageId.h"
 #include "Language/Api/LanguageService.h"
+#include "Language/Install/ServerInstaller.h"
 
 #include <cstddef>
 #include <optional>
@@ -20,11 +21,21 @@ namespace Graphite {
 	// leaves the slot unoccupied.
 	std::optional<std::string> ProblemCountText(std::size_t errors, std::size_t warnings);
 
+	// An install or an uninstall of the active language's chosen server; a check for updates is none.
+	struct ServerJob
+	{
+		InstallJobKind Kind = InstallJobKind::Install;
+		std::string Server;
+		std::optional<int> Percent;
+	};
+
 	struct ServerLineInputs
 	{
 		// The active text document's own server, or NotConfigured when there is no active text
 		// document or its language has no server started for it.
 		ServerStatus Active;
+
+		std::optional<ServerJob> ActiveJob;
 
 		// The active document's file name while it still has questions outstanding, so a ready
 		// server can name the file whose colours have not arrived yet. Empty otherwise.
@@ -44,10 +55,12 @@ namespace Graphite {
 	{
 		std::string Text;
 		std::string Detail;
+		std::optional<LanguageId> SettingsLanguage;
 	};
 
 	// The server slot's phrase and tooltip, first match wins:
 	//
+	// 0. an install or an uninstall of the active language's server;
 	// 1. the active document's own server, named "analysing <file>" while its answers are coming;
 	// 2. a language recognised but unserved ("C#: no language server");
 	// 3. "Restricted mode" for an open folder that is not trusted;

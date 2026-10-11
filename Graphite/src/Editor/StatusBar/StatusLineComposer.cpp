@@ -1,6 +1,46 @@
 #include "Editor/StatusBar/StatusLineComposer.h"
 
+#include "Language/Registry/LanguageRegistry.h"
+
 namespace Graphite {
+
+	namespace {
+
+		std::optional<LanguageId> SettingsOf(LanguageId language)
+		{
+			if (!LanguageHasServers(language))
+			{
+				return std::nullopt;
+			}
+
+			return language;
+		}
+
+		std::optional<ServerLine> JobLine(LanguageId language, const ServerJob& job)
+		{
+			const std::string prefix = std::string{LanguageDisplayName(language)} + ": ";
+
+			switch (job.Kind)
+			{
+			case InstallJobKind::Install:
+			{
+				const std::string percent = job.Percent ? " " + std::to_string(*job.Percent) + "%" : std::string{};
+
+				return ServerLine{.Text = prefix + "installing " + job.Server + percent,
+								  .Detail = "Graphite is downloading and installing " + job.Server + ". It starts as soon as it is in place.",
+								  .SettingsLanguage = SettingsOf(language)};
+			}
+			case InstallJobKind::Uninstall:
+				return ServerLine{.Text = prefix + "uninstalling " + job.Server,
+								  .Detail = "Graphite is removing its install of " + job.Server + ".",
+								  .SettingsLanguage = SettingsOf(language)};
+			case InstallJobKind::CheckForUpdates:
+				break;
+			}
+
+			return std::nullopt;
+		}
+	}
 
 	std::optional<std::string> ProblemCountText(std::size_t errors, std::size_t warnings)
 	{
@@ -31,6 +71,14 @@ namespace Graphite {
 
 	std::optional<ServerLine> ChooseServerLine(const ServerLineInputs& inputs)
 	{
+		if (inputs.ActiveJob)
+		{
+			if (std::optional<ServerLine> job = JobLine(inputs.ActiveLanguage, *inputs.ActiveJob))
+			{
+				return job;
+			}
+		}
+
 		if (inputs.Active.State != ServerState::NotConfigured)
 		{
 			// The active document's own language has something to say, and it outranks everything
@@ -42,7 +90,8 @@ namespace Graphite {
 			return ServerLine{.Text = inputs.AnalysingFile
 										  ? AnalysingText(inputs.Active, *inputs.AnalysingFile)
 										  : ServerStatusText(inputs.Active),
-							  .Detail = ServerStatusDetail(inputs.Active)};
+							  .Detail = ServerStatusDetail(inputs.Active),
+							  .SettingsLanguage = SettingsOf(inputs.Active.Language)};
 		}
 
 		if (std::string unserved = NoServerText(inputs.ActiveLanguage); !unserved.empty())
@@ -51,7 +100,8 @@ namespace Graphite {
 			// because the expectation of go to definition is reasonable here and silence would
 			// read as something broken rather than something absent.
 			return ServerLine{.Text = std::move(unserved),
-							  .Detail = NoServerDetail(inputs.ActiveLanguage)};
+							  .Detail = NoServerDetail(inputs.ActiveLanguage),
+							  .SettingsLanguage = SettingsOf(inputs.ActiveLanguage)};
 		}
 
 		if (inputs.FolderOpen && !inputs.FolderTrusted)
@@ -73,7 +123,8 @@ namespace Graphite {
 			// is opened, which looks like the feature is not working. Only with a folder open: a
 			// server left over from the folder just closed is not the workspace's.
 			return ServerLine{.Text = ServerStatusText(*inputs.Overall),
-							  .Detail = ServerStatusDetail(*inputs.Overall)};
+							  .Detail = ServerStatusDetail(*inputs.Overall),
+							  .SettingsLanguage = SettingsOf(inputs.Overall->Language)};
 		}
 
 		return std::nullopt;

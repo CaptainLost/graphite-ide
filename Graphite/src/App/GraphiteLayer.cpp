@@ -107,6 +107,20 @@ namespace Graphite {
 			return Core::Application::Get().GetWindow().IsFocused();
 		}
 
+		std::optional<ServerJob> ServerJobFor(const ServerInstalls& installs, const ServerDefinition& server)
+		{
+			const std::optional<InstallJobKind> running = installs.RunningJobOf(server.Id);
+
+			if (!running || *running == InstallJobKind::CheckForUpdates)
+			{
+				return std::nullopt;
+			}
+
+			const std::optional<InstallProgress> latest = installs.ProgressOf(server.Id);
+
+			return ServerJob{.Kind = *running, .Server = std::string{server.DisplayName}, .Percent = latest ? InstallPercent(*latest) : std::nullopt};
+		}
+
 		Core::ToastKind ToastKindOf(ServerMessageKind kind)
 		{
 			switch (kind)
@@ -983,10 +997,19 @@ namespace Graphite {
 			serverInputs.AnalysingFile = Core::ToUtf8(shownDocument->filename());
 		}
 
+		if (const ServerDefinition* chosen = m_LanguageServices.ChosenServer(activeLanguage); shownDocument && chosen != nullptr)
+		{
+			serverInputs.ActiveJob = ServerJobFor(m_ServerInstalls, *chosen);
+		}
+
+		std::optional<LanguageId> serverSettingsLanguage;
+
 		if (std::optional<ServerLine> line = ChooseServerLine(serverInputs))
 		{
 			messages.Server = std::move(line->Text);
 			messages.ServerDetail = std::move(line->Detail);
+			messages.ServerOpensSettings = line->SettingsLanguage.has_value();
+			serverSettingsLanguage = line->SettingsLanguage;
 		}
 
 		// Its own slot beside the server's, because it answers a different question: the server
@@ -1039,6 +1062,13 @@ namespace Graphite {
 
 		case StatusBarClick::GitChanges:
 			RevealPanel("changes");
+			break;
+
+		case StatusBarClick::Server:
+			if (serverSettingsLanguage)
+			{
+				OpenLanguageSettings(*serverSettingsLanguage);
+			}
 			break;
 
 		case StatusBarClick::Notifications:

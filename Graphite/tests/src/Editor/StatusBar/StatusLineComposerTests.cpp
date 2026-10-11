@@ -122,3 +122,54 @@ TEST_CASE("No folder, no document and no server leaves the server slot empty")
 
 	CHECK_FALSE(ChooseServerLine(closed).has_value());
 }
+
+TEST_CASE("An install under way speaks for the active document's language first")
+{
+	ServerLineInputs inputs;
+	inputs.Active = Clangd(ServerState::Ready);
+	inputs.ActiveLanguage = LanguageId::CSharp;
+	inputs.ActiveJob = ServerJob{.Kind = InstallJobKind::Install, .Server = "Roslyn", .Percent = 34};
+
+	const std::optional<ServerLine> installing = ChooseServerLine(inputs);
+
+	REQUIRE(installing.has_value());
+	CHECK(installing->Text == "C#: installing Roslyn 34%");
+	CHECK(installing->Detail == "Graphite is downloading and installing Roslyn. It starts as soon as it is in place.");
+	CHECK(installing->SettingsLanguage == LanguageId::CSharp);
+
+	inputs.ActiveJob->Percent.reset();
+	CHECK(ChooseServerLine(inputs)->Text == "C#: installing Roslyn");
+
+	inputs.ActiveJob = ServerJob{.Kind = InstallJobKind::Uninstall, .Server = "Roslyn"};
+	CHECK(ChooseServerLine(inputs)->Text == "C#: uninstalling Roslyn");
+	CHECK(ChooseServerLine(inputs)->Detail == "Graphite is removing its install of Roslyn.");
+
+	inputs.ActiveJob = ServerJob{.Kind = InstallJobKind::CheckForUpdates, .Server = "Roslyn"};
+	CHECK(ChooseServerLine(inputs)->Text == "C++: clangd ready");
+}
+
+TEST_CASE("The server's words open the settings of the language they speak for")
+{
+	ServerLineInputs active;
+	active.Active = Clangd(ServerState::Ready);
+	active.ActiveLanguage = LanguageId::Cpp;
+	CHECK(ChooseServerLine(active)->SettingsLanguage == LanguageId::Cpp);
+
+	ServerLineInputs unserved;
+	unserved.ActiveLanguage = LanguageId::CSharp;
+	CHECK(ChooseServerLine(unserved)->SettingsLanguage == LanguageId::CSharp);
+
+	ServerLineInputs typeScript;
+	typeScript.ActiveLanguage = LanguageId::TypeScript;
+	CHECK_FALSE(ChooseServerLine(typeScript)->SettingsLanguage.has_value());
+
+	ServerLineInputs restricted;
+	restricted.FolderOpen = true;
+	CHECK_FALSE(ChooseServerLine(restricted)->SettingsLanguage.has_value());
+
+	ServerLineInputs workspace;
+	workspace.FolderOpen = true;
+	workspace.FolderTrusted = true;
+	workspace.Overall = Clangd(ServerState::Indexing);
+	CHECK(ChooseServerLine(workspace)->SettingsLanguage == LanguageId::Cpp);
+}

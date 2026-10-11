@@ -39,6 +39,9 @@ namespace Graphite {
 		// above already guards against into string parsing instead.
 		std::optional<std::string> ServerDetail;
 
+		// The server's words take a click and open that language's settings; "Restricted mode" opens nothing.
+		bool ServerOpensSettings = false;
+
 		// Preformatted from DiagnosticsModel::Total(), the same way Server is preformatted from a
 		// ServerStatus rather than handed over raw — StatusBar.cpp stays free of DiagnosticsModel
 		// entirely. Unset, not a zeroed Counts, when both counts are zero: an empty slot is the
@@ -75,6 +78,7 @@ namespace Graphite {
 		None,
 		GitBranch,
 		GitChanges,
+		Server,
 		Notifications
 	};
 

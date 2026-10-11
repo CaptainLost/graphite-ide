@@ -8,6 +8,8 @@
 
 #include <imgui_internal.h>
 
+#include <IconsMaterialDesignIcons.h>
+
 #include <filesystem>
 #include <optional>
 
@@ -18,10 +20,15 @@ namespace {
 		Core::DocumentSet Documents;
 		Graphite::StatusMessages Messages;
 		bool BellClicked = false;
+		Graphite::StatusBarClick LastClick = Graphite::StatusBarClick::None;
 
 		void Draw()
 		{
 			const Graphite::StatusBarClick clicked = Graphite::DrawStatusBar(Documents, std::nullopt, std::filesystem::path(), Messages);
+			if (clicked != Graphite::StatusBarClick::None)
+			{
+				LastClick = clicked;
+			}
 			if (clicked == Graphite::StatusBarClick::Notifications)
 			{
 				BellClicked = true;
@@ -96,4 +103,67 @@ TEST_CASE("The bell is drawn in the dim text colour at rest and in the text colo
 
 	CHECK(DrawsInColour(StatusBarScreen::BarDrawing(), textColour));
 	CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), dimColour));
+}
+
+TEST_CASE("A click on the server's words reports the server when they open its settings")
+{
+	StatusBarScreen screen;
+	screen.Messages.Server = "C#: Roslyn ready";
+	screen.Messages.ServerOpensSettings = true;
+
+	float wordsRight = 0.0f;
+	float wordsWidth = 0.0f;
+	float barMiddle = 0.0f;
+
+	const auto drawAndMeasure = [&] {
+		screen.Draw();
+		const ImGuiWindow* bar = ImGui::FindWindowByName("##StatusBar");
+		REQUIRE(bar != nullptr);
+		wordsRight = bar->Pos.x + bar->Size.x - bar->WindowPadding.x - ImGui::CalcTextSize(ICON_MDI_BELL_OUTLINE).x - ImGui::GetFontSize();
+		wordsWidth = ImGui::CalcTextSize("C#: Roslyn ready").x;
+		barMiddle = bar->Pos.y + bar->Size.y * 0.5f;
+	};
+
+	screen.Frames.Next(drawAndMeasure);
+	screen.Frames.Click(ImVec2(wordsRight - wordsWidth * 0.5f, barMiddle), drawAndMeasure);
+
+	CHECK(screen.LastClick == Graphite::StatusBarClick::Server);
+}
+
+TEST_CASE("Server words that open nothing take no click")
+{
+	StatusBarScreen screen;
+	screen.Messages.Server = "Restricted mode";
+
+	float wordsRight = 0.0f;
+	float wordsWidth = 0.0f;
+	float barMiddle = 0.0f;
+
+	const auto drawAndMeasure = [&] {
+		screen.Draw();
+		const ImGuiWindow* bar = ImGui::FindWindowByName("##StatusBar");
+		REQUIRE(bar != nullptr);
+		wordsRight = bar->Pos.x + bar->Size.x - bar->WindowPadding.x - ImGui::CalcTextSize(ICON_MDI_BELL_OUTLINE).x - ImGui::GetFontSize();
+		wordsWidth = ImGui::CalcTextSize("Restricted mode").x;
+		barMiddle = bar->Pos.y + bar->Size.y * 0.5f;
+	};
+
+	screen.Frames.Next(drawAndMeasure);
+	screen.Frames.Click(ImVec2(wordsRight - wordsWidth * 0.5f, barMiddle), drawAndMeasure);
+
+	CHECK(screen.LastClick == Graphite::StatusBarClick::None);
+}
+
+TEST_CASE("Problems and the background pass beside clickable server words complete a frame without an ImGui assertion")
+{
+	StatusBarScreen screen;
+	screen.Messages.Problems = "2 errors";
+	screen.Messages.Server = "C++: clangd indexing 40%";
+	screen.Messages.ServerOpensSettings = true;
+	screen.Messages.Background = "analysing workspace: 42 of 385";
+
+	screen.Frames.Next([&] { screen.Draw(); });
+	screen.Frames.Next([&] { screen.Draw(); });
+
+	CHECK(screen.LastClick == Graphite::StatusBarClick::None);
 }

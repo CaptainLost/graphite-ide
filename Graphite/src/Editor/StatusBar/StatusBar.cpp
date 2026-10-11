@@ -40,19 +40,6 @@ namespace Graphite {
 			return (barHeight - ImGui::GetTextLineHeight()) * 0.5f;
 		}
 
-		// Positioned outright rather than through SameLine, as DrawCentred beside it already is.
-		// SameLine places relative to the item before it, so it silently needs one - and the
-		// server's state is drawn on frames where no document is open and nothing precedes it.
-		void DrawRightAligned(const std::string& text, float barHeight, float reservedOnTheRight)
-		{
-			const float width = ImGui::CalcTextSize(text.c_str()).x;
-
-			ImGui::SetCursorPos(
-				ImVec2(ImGui::GetWindowWidth() - width - ImGui::GetStyle().WindowPadding.x - reservedOnTheRight,
-					   CentredTextY(barHeight)));
-			ImGui::TextUnformatted(text.c_str());
-		}
-
 		constexpr float kDotShareOfFont = 0.18f;
 
 		float BellWidth()
@@ -65,7 +52,7 @@ namespace Graphite {
 			return ImGui::GetColorU32(ImVec4(colour.R, colour.G, colour.B, colour.A));
 		}
 
-		// A button rather than a text item, for the reason DrawGitPiece gives.
+		// A button rather than a text item, for the reason DrawClickablePiece gives.
 		bool DrawNotificationBell(const std::optional<Core::Color>& missedColour, float barHeight)
 		{
 			const ImVec2 glyphSize = ImGui::CalcTextSize(ICON_MDI_BELL_OUTLINE);
@@ -106,7 +93,7 @@ namespace Graphite {
 			ImGui::TextUnformatted(text.c_str());
 		}
 
-		// One piece of the git segment. Clickable pieces show a hand and take a click; the
+		// One piece of the bar that may take a click: a git piece, or the server's words. Clickable pieces show a hand and take a click; the
 		// greyed "No repository" is inert.
 		//
 		// A clickable piece is an invisible button with the text drawn over it, not a text item
@@ -117,15 +104,22 @@ namespace Graphite {
 		// focus - the bar - so the panel stayed buried. A button owns the press, so the bar is
 		// never refocused, and it reports the click on release, after the press has settled.
 		// Not a Selectable: its hover highlight would fill the bar's height around one word.
-		bool DrawGitPiece(const char* id, const std::string& text, bool clickable,
-						  const std::string& tooltip)
+		bool DrawClickablePiece(const char* id, const std::string& text, bool clickable, const std::string& tooltip,
+								bool dimmedWhenInert = true)
 		{
 			const ImVec2 size = ImGui::CalcTextSize(text.c_str());
 
 			// InvisibleButton refuses a zero size, so an empty piece is drawn as inert text.
 			if (!clickable || size.x <= 0.0f)
 			{
-				ImGui::TextDisabled("%s", text.c_str());
+				if (dimmedWhenInert)
+				{
+					ImGui::TextDisabled("%s", text.c_str());
+				}
+				else
+				{
+					ImGui::TextUnformatted(text.c_str());
+				}
 
 				if (ImGui::IsItemHovered() && !tooltip.empty())
 				{
@@ -164,7 +158,7 @@ namespace Graphite {
 
 			ImGui::SetCursorPos(ImVec2(ImGui::GetStyle().WindowPadding.x, CentredTextY(barHeight)));
 
-			if (DrawGitPiece("##GitBranch", segment.Branch, segment.HasRepository, segment.BranchTooltip))
+			if (DrawClickablePiece("##GitBranch", segment.Branch, segment.HasRepository, segment.BranchTooltip))
 			{
 				clicked = StatusBarClick::GitBranch;
 			}
@@ -184,7 +178,7 @@ namespace Graphite {
 			{
 				ImGui::SameLine(0.0f, ImGui::GetFontSize());
 
-				if (DrawGitPiece("##GitChanges", segment.Changes, true, segment.ChangesTooltip))
+				if (DrawClickablePiece("##GitChanges", segment.Changes, true, segment.ChangesTooltip))
 				{
 					clicked = StatusBarClick::GitChanges;
 				}
@@ -278,82 +272,104 @@ namespace Graphite {
 			ImGui::TextUnformatted(DescribeDocument(documents.At(*shown), root).c_str());
 		}
 
-		std::string rightAligned;
+		const std::string separator = "    ";
+		std::string beforeServer;
+		std::string server;
+		std::string afterServer;
 
-		// Problems first, ahead of the server phrase: a count of what is wrong is worth seeing
-		// before a description of what is still indexing. Absent whenever there is nothing to
-		// report — see the field's own comment on StatusMessages.
+		// Problems first, then the server, then the background pass, then the caret: see each field's own comment.
 		if (messages.Problems && !messages.Problems->empty())
 		{
-			rightAligned = *messages.Problems;
+			beforeServer = *messages.Problems;
 		}
 
-		// Server next, and only when there is something to say — a language with no server
-		// configured contributes nothing to the bar, not even a separator.
-		//
 		// Outside the has-a-document branch deliberately: a server is started when the folder
 		// opens, before anything has been opened from it, so the frames where its indexing most
 		// wants reporting are exactly the ones with no document to hang the report off.
 		if (messages.Server && !messages.Server->empty())
 		{
-			if (!rightAligned.empty())
-			{
-				rightAligned += "    ";
-			}
-
-			rightAligned += *messages.Server;
+			server = *messages.Server;
 		}
 
-		// Last of the three, so it sits furthest from the caret and encoding figures the eye goes
-		// to. It is the slowest-moving thing in the bar and the one nobody needs to find quickly.
 		if (messages.Background && !messages.Background->empty())
 		{
-			if (!rightAligned.empty())
-			{
-				rightAligned += "    ";
-			}
-
-			rightAligned += *messages.Background;
+			afterServer = *messages.Background;
 		}
 
 		if (hasDocument)
 		{
 			const Core::OpenItem& item = documents.At(*shown);
 
-			if (!rightAligned.empty())
+			if (!afterServer.empty())
 			{
-				rightAligned += "    ";
+				afterServer += separator;
 			}
 
-			rightAligned += DescribeCaret(item) + "    " + DescribeTextFormat(item);
+			afterServer += DescribeCaret(item) + separator + DescribeTextFormat(item);
 		}
 
-		if (!rightAligned.empty())
+		if (!server.empty())
 		{
-			DrawRightAligned(rightAligned, height, BellWidth() + ImGui::GetFontSize());
-
-			if (ImGui::IsItemHovered())
+			if (!beforeServer.empty())
 			{
-				std::string tooltip;
+				beforeServer += separator;
+			}
 
-				if (messages.ServerDetail && !messages.ServerDetail->empty())
+			if (!afterServer.empty())
+			{
+				afterServer = separator + afterServer;
+			}
+		}
+		else if (!beforeServer.empty() && !afterServer.empty())
+		{
+			beforeServer += separator;
+		}
+
+		const float width = ImGui::CalcTextSize(beforeServer.c_str()).x + ImGui::CalcTextSize(server.c_str()).x +
+							ImGui::CalcTextSize(afterServer.c_str()).x;
+
+		if (width > 0.0f)
+		{
+			ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - width - ImGui::GetStyle().WindowPadding.x - BellWidth() - ImGui::GetFontSize(),
+									   CentredTextY(height)));
+
+			bool placed = false;
+
+			if (!beforeServer.empty())
+			{
+				ImGui::TextUnformatted(beforeServer.c_str());
+				placed = true;
+			}
+
+			if (!server.empty())
+			{
+				if (placed)
 				{
-					tooltip = *messages.ServerDetail;
+					ImGui::SameLine(0.0f, 0.0f);
 				}
 
-				if (messages.BackgroundDetail && !messages.BackgroundDetail->empty())
-				{
-					if (!tooltip.empty())
-					{
-						tooltip += "\n\n";
-					}
+				const std::string serverTooltip = messages.ServerDetail.value_or(std::string{});
 
-					tooltip += *messages.BackgroundDetail;
+				if (DrawClickablePiece("##ServerStatus", server, messages.ServerOpensSettings, serverTooltip, false))
+				{
+					clicked = StatusBarClick::Server;
 				}
 
-				if (!tooltip.empty())
+				placed = true;
+			}
+
+			if (!afterServer.empty())
+			{
+				if (placed)
 				{
-					ImGui::SetTooltip("%s", tooltip.c_str());
+					ImGui::SameLine(0.0f, 0.0f);
+				}
+
+				ImGui::TextUnformatted(afterServer.c_str());
+
+				if (ImGui::IsItemHovered() && messages.BackgroundDetail && !messages.BackgroundDetail->empty())
+				{
+					ImGui::SetTooltip("%s", messages.BackgroundDetail->c_str());
 				}
 			}
 		}
