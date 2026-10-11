@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <map>
 #include <string>
 #include <thread>
 #include <vector>
@@ -53,7 +54,15 @@ namespace {
 			return static_cast<LanguageServices::Ticket>(++Tickets);
 		}
 
-		bool IsServerReady(const std::filesystem::path&, LanguageId) override { return Ready; }
+		ServerReadiness ReadinessOf(const std::filesystem::path&, LanguageId language) override
+		{
+			const std::map<LanguageId, ServerReadiness>::const_iterator found = Readiness.find(language);
+
+			return found != Readiness.end() ? found->second : ServerReadiness::Ready;
+		}
+
+		// A language not listed reads Ready, so every case not about a server coming up reads as though one had.
+		std::map<LanguageId, ServerReadiness> Readiness;
 
 		bool HasChosenServer(Graphite::LanguageId language) override
 		{
@@ -107,10 +116,6 @@ namespace {
 
 		std::vector<Call> Calls;
 		std::uint64_t Tickets = 0;
-
-		// Ready by default so every case that is not about a server coming up reads as though one
-		// already had.
-		bool Ready = true;
 	};
 
 	// Answers every request it is given, in the order it was given them, and out of the same
@@ -1134,14 +1139,12 @@ TEST_CASE("Nothing is asked of a server that is still starting up")
 	AnalysisCache cache{1024 * 1024};
 	WorkspaceAnalysis analysis{port, texts, cache, nullptr};
 
-	port.Ready = false;
+	port.Readiness[LanguageId::Cpp] = ServerReadiness::ComingUp;
 	analysis.Enqueue({"a.cpp", "b.cpp"});
 
 	analysis.Tick(1.0, false, NobodyElse);
 	analysis.Tick(2.0, false, NobodyElse);
 
-	// Asking a server that has not finished coming up buys a question it will not answer, and
-	// the file is then given up on at the analysis timeout rather than analysed at all.
 	CHECK(port.Calls.empty());
 	CHECK(analysis.Progress().Done == 0);
 	CHECK(analysis.Progress().Total == 2);
@@ -1154,14 +1157,14 @@ TEST_CASE("The queue proceeds once the server can answer")
 	AnalysisCache cache{1024 * 1024};
 	WorkspaceAnalysis analysis{port, texts, cache, nullptr};
 
-	port.Ready = false;
+	port.Readiness[LanguageId::Cpp] = ServerReadiness::ComingUp;
 	analysis.Enqueue({"a.cpp"});
 
 	analysis.Tick(1.0, false, NobodyElse);
 
 	REQUIRE(port.Calls.empty());
 
-	port.Ready = true;
+	port.Readiness[LanguageId::Cpp] = ServerReadiness::Ready;
 
 	analysis.Tick(2.0, false, NobodyElse);
 	analysis.Tick(3.0, false, NobodyElse);
@@ -1169,25 +1172,82 @@ TEST_CASE("The queue proceeds once the server can answer")
 	CHECK(port.CountOf("open") == 1);
 }
 
-TEST_CASE("A server that never comes up stops holding the pass back for ever")
+TEST_CASE("A server coming up holds its language for as long as it takes")
 {
 	FakePort port;
 	FakeTexts texts;
 	AnalysisCache cache{1024 * 1024};
 	WorkspaceAnalysis analysis{port, texts, cache, nullptr};
 
-	port.Ready = false;
+	port.Readiness[LanguageId::Cpp] = ServerReadiness::ComingUp;
 	analysis.Enqueue({"a.cpp"});
 
 	analysis.Tick(1.0, false, NobodyElse);
+	analysis.Tick(1.0 + 1000.0, false, NobodyElse);
 
-	REQUIRE(port.Calls.empty());
+	CHECK(port.Calls.empty());
+	CHECK(analysis.Progress().Done == 0);
+}
 
-	// A server configured but never installed reports itself unready for the rest of the
-	// session. Waiting on it for ever would switch the feature off on exactly the machine
-	// where nobody would think to look for it.
-	analysis.Tick(1.0 + 200.0, false, NobodyElse);
-	analysis.Tick(1.0 + 201.0, false, NobodyElse);
+TEST_CASE("A server loading its projects holds its own language and no other")
+{
+	FakePort port;
+	FakeTexts texts;
+	AnalysisCache cache{1024 * 1024};
+	WorkspaceAnalysis analysis{port, texts, cache, nullptr};
 
-	CHECK(port.CountOf("open") == 1);
+	analysis.SetConcurrency(2);
+	port.Readiness[LanguageId::CSharp] = ServerReadiness::ComingUp;
+	analysis.Enqueue({"a.cs", "b.cpp"});
+
+	analysis.Tick(1.0, false, NobodyElse);
+	analysis.Tick(2.0, false, NobodyElse);
+
+	REQUIRE(port.CountOf("open") == 1);
+	CHECK(port.Calls.front().Path == std::filesystem::path{"b.cpp"});
+
+	port.Readiness[LanguageId::CSharp] = ServerReadiness::Ready;
+
+	analysis.Tick(3.0, false, NobodyElse);
+	analysis.Tick(4.0, false, NobodyElse);
+
+	CHECK(port.CountOf("open") == 2);
+}
+
+TEST_CASE("A file whose server cannot run is counted done at once")
+{
+	FakePort port;
+	FakeTexts texts;
+	AnalysisCache cache{1024 * 1024};
+	WorkspaceAnalysis analysis{port, texts, cache, nullptr};
+
+	port.Readiness[LanguageId::CSharp] = ServerReadiness::CannotRun;
+	analysis.Enqueue({"a.cs", "b.cs", "c.cs"});
+
+	analysis.Tick(1.0, false, NobodyElse);
+
+	CHECK(port.Calls.empty());
+	CHECK(analysis.Progress().Done == 3);
+	CHECK(analysis.Progress().Total == 3);
+}
+
+TEST_CASE("A server reads as coming up only while it starts or loads its projects")
+{
+	CHECK(ReadinessFrom(ServerStatus{.State = ServerState::Starting}) == ServerReadiness::ComingUp);
+	CHECK(ReadinessFrom(ServerStatus{.State = ServerState::Indexing, .Loading = "Demo.slnx"}) == ServerReadiness::ComingUp);
+	CHECK(ReadinessFrom(ServerStatus{.State = ServerState::Indexing}) == ServerReadiness::Ready);
+	CHECK(ReadinessFrom(ServerStatus{.State = ServerState::Ready}) == ServerReadiness::Ready);
+	CHECK(ReadinessFrom(ServerStatus{.State = ServerState::ProjectIncomplete}) == ServerReadiness::Ready);
+	CHECK(ReadinessFrom(ServerStatus{.State = ServerState::NotConfigured}) == ServerReadiness::Ready);
+}
+
+TEST_CASE("A server that cannot run reads so and a failed one only once its restarts are spent")
+{
+	CHECK(ReadinessFrom(ServerStatus{.State = ServerState::NotFound}) == ServerReadiness::CannotRun);
+	CHECK(ReadinessFrom(ServerStatus{.State = ServerState::NotInstalled}) == ServerReadiness::CannotRun);
+	CHECK(ReadinessFrom(ServerStatus{.State = ServerState::MissingRuntime}) == ServerReadiness::CannotRun);
+	CHECK(ReadinessFrom(ServerStatus{.State = ServerState::Restricted}) == ServerReadiness::CannotRun);
+	CHECK(ReadinessFrom(ServerStatus{.State = ServerState::Off}) == ServerReadiness::CannotRun);
+	CHECK(ReadinessFrom(ServerStatus{.State = ServerState::Failed, .Restarts = 0}) == ServerReadiness::ComingUp);
+	CHECK(ReadinessFrom(ServerStatus{.State = ServerState::Failed, .Restarts = kMaximumRestarts}) == ServerReadiness::CannotRun);
 }

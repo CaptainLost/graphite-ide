@@ -28,19 +28,31 @@ namespace Graphite {
 		// that a server merely slow to index still gets the whole floor, short enough that the
 		// broken case costs one wait rather than a session.
 		constexpr double kForegroundYieldCapSeconds = 10.0;
+	}
 
-		// How long to wait for a server to finish coming up before asking it anyway.
-		//
-		// Asking one that is still starting buys a question it does not answer, and the file is
-		// then given up on at kAnalysisTimeoutSeconds rather than analysed at all — so a cold
-		// clangd used to cost the first files of a session and two minutes of a counter sitting
-		// at zero while nothing anywhere was busy. Waiting costs a few seconds once; not waiting
-		// costs the timeout, every session, on the files most likely to be opened first.
-		//
-		// Bounded for the same reason the yield above is: a server configured but never installed
-		// reports itself unready for the rest of the session, and an unbounded wait would switch
-		// the feature off on exactly the machine where nobody would think to look for it.
-		constexpr double kServerWaitCapSeconds = 60.0;
+	ServerReadiness ReadinessFrom(const ServerStatus& status)
+	{
+		switch (status.State)
+		{
+		case ServerState::Starting:
+			return ServerReadiness::ComingUp;
+		case ServerState::Indexing:
+			return status.Loading.empty() ? ServerReadiness::Ready : ServerReadiness::ComingUp;
+		case ServerState::Failed:
+			return MayRestart(status.Restarts) ? ServerReadiness::ComingUp : ServerReadiness::CannotRun;
+		case ServerState::NotFound:
+		case ServerState::NotInstalled:
+		case ServerState::MissingRuntime:
+		case ServerState::Restricted:
+		case ServerState::Off:
+			return ServerReadiness::CannotRun;
+		case ServerState::Ready:
+		case ServerState::ProjectIncomplete:
+		case ServerState::NotConfigured:
+			break;
+		}
+
+		return ServerReadiness::Ready;
 	}
 
 	WorkspaceAnalysis::WorkspaceAnalysis(WorkspaceAnalysisPort& port, FileTextSource& texts,
@@ -101,7 +113,7 @@ namespace Graphite {
 
 		for (std::filesystem::path& path : paths)
 		{
-			m_Queue.push_back(std::move(path));
+			m_Queues[LanguageOfPath(path)].push_back(std::move(path));
 			++m_Queued;
 		}
 	}
@@ -110,7 +122,7 @@ namespace Graphite {
 	{
 		DropAll();
 
-		m_Queue.clear();
+		m_Queues.clear();
 		m_AwaitingText.clear();
 		m_Arrived.clear();
 		m_Done = 0;
@@ -219,29 +231,11 @@ namespace Graphite {
 			return;
 		}
 
-		StartNext(now, heldElsewhere);
-	}
-
-	bool WorkspaceAnalysis::ServerHeldBack(double now, const std::filesystem::path& path)
-	{
-		if (m_Port.IsServerReady(path, LanguageOfPath(path)))
-		{
-			// Reset on the first ready frame, so a server that restarts mid-session gets the
-			// whole wait again rather than whatever was left of an earlier one.
-			m_ServerUnreadySince.reset();
-			return false;
-		}
-
-		if (!m_ServerUnreadySince)
-		{
-			m_ServerUnreadySince = now;
-		}
-
-		return now - *m_ServerUnreadySince <= kServerWaitCapSeconds;
+		StartNext(heldElsewhere);
 	}
 
 	void WorkspaceAnalysis::StartNext(
-		double now, const std::function<bool(const std::filesystem::path&)>& heldElsewhere)
+		const std::function<bool(const std::filesystem::path&)>& heldElsewhere)
 	{
 		if (m_Store != nullptr && !m_Store->IsReady())
 		{
@@ -262,66 +256,71 @@ namespace Graphite {
 		// Awaited reads count against the limit alongside pending analyses: a read on its way is a
 		// slot already spoken for, and counting only what a server has been told about would let
 		// the whole queue be read at once.
-		while (m_Pending.size() + m_AwaitingText.size() < m_Limit && !m_Queue.empty())
+		for (auto& [language, queue] : m_Queues)
 		{
-			// Normalised here, on the way in, so that everything downstream is comparing the same
-			// spelling: IsOutstanding's equality, the store's lookup — which normalises its own
-			// keys — and the path this class hands the server. Two spellings of one file reaching
-			// the queue would otherwise both pass IsOutstanding and produce two didOpens for one
-			// document entry, which is the failure ADR 0512 is about.
-			const std::filesystem::path path = Core::NormalizePath(m_Queue.front());
-
-			if (ServerHeldBack(now, path))
+			while (m_Pending.size() + m_AwaitingText.size() < m_Limit && !queue.empty())
 			{
-				// Asked before the queue is popped, so waiting keeps the file rather than spending
-				// it: the next frame asks the same question about the same path.
-				//
-				// Head of the queue only. With one configured language that is the whole queue;
-				// with two it would hold a Python file behind a clangd still coming up, which is
-				// worth revisiting when a second server exists rather than solving in advance.
-				return;
+				// Normalised here, on the way in, so that everything downstream is comparing the same
+				// spelling: IsOutstanding's equality, the store's lookup — which normalises its own
+				// keys — and the path this class hands the server. Two spellings of one file reaching
+				// the queue would otherwise both pass IsOutstanding and produce two didOpens for one
+				// document entry, which is the failure ADR 0512 is about.
+				const std::filesystem::path path = Core::NormalizePath(queue.front());
+				const ServerReadiness readiness = m_Port.ReadinessOf(path, language);
+
+				// Asked before the queue is popped, so a wait keeps the file for the next frame. Only this language waits.
+				if (readiness == ServerReadiness::ComingUp)
+				{
+					break;
+				}
+
+				queue.pop_front();
+
+				if (readiness == ServerReadiness::CannotRun)
+				{
+					++m_Done;
+					continue;
+				}
+
+				if (IsOutstanding(path))
+				{
+					// The same file reached the queue twice. Counted all the same: it was counted into
+					// the total when it was queued, and a skip that did not count would leave the bar
+					// permanently short of its own figure. See IsOutstanding for why it is skipped.
+					++m_Done;
+					continue;
+				}
+
+				if (m_Store != nullptr && m_Store->Has(path))
+				{
+					// A previous session already asked about this version of this file. The whole of
+					// what makes a second launch cheap: neither a server nor a worker is troubled, and
+					// the entry is read from the disk in the frame a document opens it.
+					++m_Done;
+					continue;
+				}
+
+				if (heldElsewhere(path))
+				{
+					// Whoever holds this file opened it with the server themselves and asks their own
+					// questions about the buffer, which may already differ from what is on disk. The
+					// skip happens here, before the read is asked for, so a file somebody already
+					// holds costs neither a server nor a worker.
+					++m_Done;
+					continue;
+				}
+
+				if (!m_Port.HasChosenServer(language))
+				{
+					// Nothing serves this language, so there is nobody to ask. Counted as done rather
+					// than left in the queue: it is as finished as it will ever be.
+					++m_Done;
+					continue;
+				}
+
+				m_AwaitingText.push_back(path);
+				m_Texts.Request(path);
 			}
-
-			m_Queue.pop_front();
-
-			if (IsOutstanding(path))
-			{
-				// The same file reached the queue twice. Counted all the same: it was counted into
-				// the total when it was queued, and a skip that did not count would leave the bar
-				// permanently short of its own figure. See IsOutstanding for why it is skipped.
-				++m_Done;
-				continue;
-			}
-
-			if (m_Store != nullptr && m_Store->Has(path))
-			{
-				// A previous session already asked about this version of this file. The whole of
-				// what makes a second launch cheap: neither a server nor a worker is troubled, and
-				// the entry is read from the disk in the frame a document opens it.
-				++m_Done;
-				continue;
-			}
-
-			if (heldElsewhere(path))
-			{
-				// Whoever holds this file opened it with the server themselves and asks their own
-				// questions about the buffer, which may already differ from what is on disk. The
-				// skip happens here, before the read is asked for, so a file somebody already
-				// holds costs neither a server nor a worker.
-				++m_Done;
-				continue;
-			}
-
-			if (!m_Port.HasChosenServer(LanguageOfPath(path)))
-			{
-				// Nothing serves this language, so there is nobody to ask. Counted as done rather
-				// than left in the queue: it is as finished as it will ever be.
-				++m_Done;
-				continue;
-			}
-
-			m_AwaitingText.push_back(path);
-			m_Texts.Request(path);
 		}
 	}
 

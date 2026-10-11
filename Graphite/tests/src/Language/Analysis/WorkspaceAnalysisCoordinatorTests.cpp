@@ -49,7 +49,7 @@ namespace {
 
 		void Close(const std::filesystem::path&, LanguageId) override {}
 
-		bool IsServerReady(const std::filesystem::path&, LanguageId) override { return true; }
+		ServerReadiness ReadinessOf(const std::filesystem::path&, LanguageId) override { return ServerReadiness::Ready; }
 
 		bool HasChosenServer(Graphite::LanguageId language) override { return Graphite::LanguageHasServers(language); }
 
