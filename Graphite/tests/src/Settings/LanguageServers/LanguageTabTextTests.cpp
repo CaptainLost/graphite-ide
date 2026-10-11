@@ -4,7 +4,7 @@
 #include "Language/Server/ServerCatalog.h"
 #include "Language/Server/ServerChoice.h"
 #include "Language/Server/ServerCommand.h"
-#include "Settings/LanguageTabText.h"
+#include "Settings/LanguageServers/LanguageTabText.h"
 
 #include <optional>
 #include <ostream>

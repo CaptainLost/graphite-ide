@@ -1,4 +1,4 @@
-#include "Settings/LanguageTabText.h"
+#include "Settings/LanguageServers/LanguageTabText.h"
 
 #include "UI/TypographicMarks.h"
 

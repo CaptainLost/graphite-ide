@@ -67,7 +67,7 @@
 
 #include "Settings/ClaudeSection.h"
 #include "Settings/Panel/KeyBindingsPage.h"
-#include "Settings/LanguagesSection.h"
+#include "Settings/LanguageServers/LanguageServersPage.h"
 #include "Settings/Panel/AppearancePage.h"
 #include "Settings/Panel/EditorPage.h"
 #include "Settings/Panel/ExplorerPage.h"
@@ -801,16 +801,12 @@ namespace Graphite {
 
 	SettingsDirectory GraphiteLayer::BuildSettingsDirectory()
 	{
-		Core::Scope<LanguagesSection> languages =
-			Core::CreateScope<LanguagesSection>(m_AnalysisSettings, m_AppSettings, m_ServerInstalls, m_LanguageServices, m_ActiveScheme);
-		m_LanguagesSection = languages.get();
-
 		SettingsGroup general{.Title = "General"};
 		general.Pages.push_back(
 			Core::CreateScope<AppearancePage>(m_ActiveScheme, m_AppSettings, m_Modals, m_Events, AppSettings::ThemesDirectory()));
 		general.Pages.push_back(
 			Core::CreateScope<KeyBindingsPage>(m_Commands, m_Keys, m_Modals, [this] { m_AppSettings.SetKeyBindings(m_Keys); }));
-		general.Pages.push_back(Core::CreateScope<SectionPage>("languages", ICON_MDI_SERVER_OUTLINE, std::move(languages)));
+		general.Pages.push_back(Core::CreateScope<LanguageServersPage>(m_AnalysisSettings, m_AppSettings, m_ServerInstalls, m_LanguageServices));
 		general.Pages.push_back(Core::CreateScope<SectionPage>("trustedFolders", ICON_MDI_SHIELD_CHECK_OUTLINE, Core::CreateScope<TrustSection>(m_Trust)));
 
 		SettingsGroup panels{.Title = "Panels"};
@@ -829,8 +825,7 @@ namespace Graphite {
 	}
 	void GraphiteLayer::OpenLanguageSettings(LanguageId language)
 	{
-		m_SettingsPanel->Open({"languages"});
-		m_LanguagesSection->SelectLanguage(language);
+		m_SettingsPanel->Open({"languageServers", std::string{DefinitionOf(language).SettingsName}});
 		RevealPanel("settings");
 	}
 
