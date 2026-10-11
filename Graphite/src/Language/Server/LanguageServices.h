@@ -124,7 +124,6 @@ namespace Graphite {
 
 		// Shuts down every server of `language` and opens the documents they held on what is chosen now. Call it when the choice, path, arguments, initialization options or settings change.
 		void Reconfigure(LanguageId language);
-		void WarmOpenFolderAgain();
 
 		// Decides whether a server may run for a project root - whether its folder is trusted.
 		// A refused root still gets an entry, in ServerState::Restricted, so the documents opened
@@ -412,6 +411,7 @@ namespace Graphite {
 		const ServerDefinition* ServerFor(LanguageId language) const;
 
 		bool FollowsSelectedSolution(LanguageId language) const;
+		void WarmOpenFolderAgain();
 		bool RunsServersOf(LanguageId language) const;
 
 		struct HeldDocument

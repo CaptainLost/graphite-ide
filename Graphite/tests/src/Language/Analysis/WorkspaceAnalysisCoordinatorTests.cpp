@@ -269,3 +269,115 @@ TEST_CASE("Selecting another solution walks the folder again for it")
 	CHECK(harness.FramesUntilQueued(3));
 	CHECK(harness.Servers.WarmedUp == std::vector<std::filesystem::path>{folder.GetPath()});
 }
+
+namespace {
+
+	void MakeTwoSolutions(TempDirectory& folder)
+	{
+		folder.MakeFile("main.cpp", "int a;");
+		folder.MakeFile("app/App.slnx", "");
+		folder.MakeFile("app/Program.cs", "class Program { }");
+		folder.MakeFile("tool/Tool.slnx", "");
+		folder.MakeFile("tool/Tool.cs", "class Tool { }");
+		folder.MakeFile("tool/Helper.cs", "class Helper { }");
+		folder.MakeFile("tool/Other.cs", "class Other { }");
+	}
+
+	void RunFramesAndExpectTotal(Harness& harness, std::size_t expected)
+	{
+		constexpr int kLaterFrames = 20;
+
+		for (int frame = 0; frame < kLaterFrames; ++frame)
+		{
+			harness.Frame();
+			std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		}
+
+		CHECK(harness.Coordinator.GetPass().Progress().Total == expected);
+		CHECK_FALSE(harness.Coordinator.GetPass().Progress().Walking);
+	}
+}
+
+TEST_CASE("A solution selected while the analysis is off is the one walked when it comes back on")
+{
+	TempDirectory folder;
+	MakeTwoSolutions(folder);
+
+	Harness harness;
+	harness.Root = folder.GetPath();
+	harness.SelectedSolution = folder.GetPath() / "app" / "App.slnx";
+
+	REQUIRE(harness.FramesUntilQueued(2));
+
+	harness.SettingEnabled = false;
+	harness.Frame();
+	harness.SelectedSolution = folder.GetPath() / "tool" / "Tool.slnx";
+	harness.Frame();
+	harness.Frame();
+
+	REQUIRE(harness.Coordinator.GetPass().Progress().Total == 0);
+
+	harness.SettingEnabled = true;
+
+	CHECK(harness.FramesUntilQueued(4));
+	RunFramesAndExpectTotal(harness, 4);
+}
+
+TEST_CASE("A solution selected in the frame the analysis goes off queues nothing")
+{
+	TempDirectory folder;
+	MakeTwoSolutions(folder);
+
+	Harness harness;
+	harness.Root = folder.GetPath();
+	harness.SelectedSolution = folder.GetPath() / "app" / "App.slnx";
+
+	REQUIRE(harness.FramesUntilQueued(2));
+
+	harness.SettingEnabled = false;
+	harness.SelectedSolution = folder.GetPath() / "tool" / "Tool.slnx";
+	harness.Frame();
+
+	CHECK(harness.Coordinator.GetStore().GetRoot().empty());
+	RunFramesAndExpectTotal(harness, 0);
+	CHECK(harness.Coordinator.GetStore().GetRoot().empty());
+}
+
+TEST_CASE("A solution selected in the frame the root changes is walked once for the new root")
+{
+	TempDirectory first;
+	first.MakeFile("a.cpp", "int a;");
+
+	TempDirectory second;
+	MakeTwoSolutions(second);
+
+	Harness harness;
+	harness.Root = first.GetPath();
+
+	REQUIRE(harness.FramesUntilQueued(1));
+
+	harness.Root = second.GetPath();
+	harness.SelectedSolution = second.GetPath() / "tool" / "Tool.slnx";
+
+	CHECK(harness.FramesUntilQueued(4));
+	RunFramesAndExpectTotal(harness, 4);
+}
+
+TEST_CASE("A solution selected in the frame the analysis comes on is walked once")
+{
+	TempDirectory folder;
+	MakeTwoSolutions(folder);
+
+	Harness harness;
+	harness.Root = folder.GetPath();
+	harness.SelectedSolution = folder.GetPath() / "app" / "App.slnx";
+	harness.SettingEnabled = false;
+	harness.Frame();
+
+	harness.SettingEnabled = true;
+	harness.SelectedSolution = folder.GetPath() / "tool" / "Tool.slnx";
+
+	CHECK(harness.FramesUntilQueued(4));
+	RunFramesAndExpectTotal(harness, 4);
+	CHECK(harness.Coordinator.GetStore().GetRoot() == folder.GetPath());
+}
