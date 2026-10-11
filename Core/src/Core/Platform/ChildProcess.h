@@ -14,12 +14,20 @@
 
 namespace Core {
 
+	struct EnvironmentVariable
+	{
+		std::string Name;
+		std::string Value;
+	};
+
 	class ChildProcess : NonCopyable
 	{
 	public:
+		// The child inherits this process's environment, with `environment` set over it.
 		static Result<Scope<ChildProcess>> Start(const std::filesystem::path& program,
 												 const std::vector<std::string>& arguments,
-												 const std::filesystem::path& workingDirectory);
+												 const std::filesystem::path& workingDirectory,
+												 std::span<const EnvironmentVariable> environment = {});
 
 		// Terminates the child: one outliving this object would be writing into pipes that no longer
 		// have a reader.
@@ -34,6 +42,7 @@ namespace Core {
 		// object would pull them out from beneath that thread.
 		void Terminate();
 
+		// True while any process of the child's job runs, not only the one Start launched.
 		bool IsRunning() const;
 
 	private:

@@ -4,9 +4,12 @@
 
 #include "TempDirectory.h"
 
+#include <array>
 #include <chrono>
 #include <string>
 #include <thread>
+
+#include <windows.h>
 
 namespace {
 
@@ -28,6 +31,30 @@ namespace {
 
 		return text;
 	}
+
+	// Clears the variable on every path out of a test, a failed REQUIRE included.
+	class ScopedProcessVariable
+	{
+	public:
+		ScopedProcessVariable(const wchar_t* name, const wchar_t* value) : m_Name(name)
+		{
+			m_Set = ::SetEnvironmentVariableW(m_Name, value) != FALSE;
+		}
+
+		~ScopedProcessVariable()
+		{
+			::SetEnvironmentVariableW(m_Name, nullptr);
+		}
+
+		ScopedProcessVariable(const ScopedProcessVariable&) = delete;
+		ScopedProcessVariable& operator=(const ScopedProcessVariable&) = delete;
+
+		bool WasSet() const { return m_Set; }
+
+	private:
+		const wchar_t* m_Name;
+		bool m_Set = false;
+	};
 
 	// The output pipe closes as the child is torn down, which can be a moment before its process
 	// object is signalled, so the exit gets a bounded time to become visible.
@@ -136,4 +163,47 @@ TEST_CASE("Terminating a child ends the processes it started so its output close
 	ReadAll(child);
 
 	CHECK(std::chrono::steady_clock::now() - terminatedAt < std::chrono::seconds{10});
+}
+
+TEST_CASE("A variable given to a child reaches it")
+{
+	const std::array<Core::EnvironmentVariable, 1> environment{{{.Name = "CORE_TEST_CHILD_VARIABLE", .Value = "given"}}};
+
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "echo %CORE_TEST_CHILD_VARIABLE%"},
+													 std::filesystem::current_path(), environment);
+	REQUIRE(started);
+
+	CHECK(ReadAll(*started.GetValue()).find("given") != std::string::npos);
+}
+
+TEST_CASE("A child given variables still inherits the rest and a given variable wins over an inherited one")
+{
+	const ScopedProcessVariable inherited(L"CORE_TEST_INHERITED_VARIABLE", L"inherited");
+	const ScopedProcessVariable replaced(L"CORE_TEST_REPLACED_VARIABLE", L"parent");
+	REQUIRE(inherited.WasSet());
+	REQUIRE(replaced.WasSet());
+
+	const std::array<Core::EnvironmentVariable, 1> environment{{{.Name = "core_test_replaced_variable", .Value = "child"}}};
+
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "echo %CORE_TEST_INHERITED_VARIABLE% %CORE_TEST_REPLACED_VARIABLE%"},
+													 std::filesystem::current_path(), environment);
+	REQUIRE(started);
+
+	CHECK(ReadAll(*started.GetValue()).find("inherited child") != std::string::npos);
+}
+
+TEST_CASE("A child runs as long as a process it started runs")
+{
+	// cmd starts ping in the background and exits at once; ping goes on for about two seconds.
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "start /b ping -n 3 127.0.0.1 >nul"},
+													 std::filesystem::current_path());
+	REQUIRE(started);
+	Core::ChildProcess& child = *started.GetValue();
+
+	std::this_thread::sleep_for(std::chrono::milliseconds{500});
+
+	const bool running = child.IsRunning();
+	child.Terminate();
+
+	CHECK(running);
 }

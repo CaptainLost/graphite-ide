@@ -8,6 +8,9 @@
 #include "Core/Platform/Win32Owners.h"
 #include "Core/Platform/Win32Error.h"
 
+#include <algorithm>
+#include <cwchar>
+
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
 #endif
@@ -26,6 +29,64 @@ namespace Core {
 		constexpr UINT kTerminatedExitCode = 0;
 		constexpr DWORD kPollWithoutWaiting = 0;
 		constexpr const wchar_t* kNullDevice = L"NUL";
+		constexpr DWORD kResumeFailed = static_cast<DWORD>(-1);
+		constexpr BOOL kIgnoreCase = TRUE;
+		constexpr wchar_t kNameEnd = L'=';
+
+		bool NamesVariable(const std::wstring& entry, const std::wstring& name)
+		{
+			return entry.size() > name.size() && entry[name.size()] == kNameEnd &&
+				   ::CompareStringOrdinal(entry.data(), static_cast<int>(name.size()), name.data(), static_cast<int>(name.size()),
+										  kIgnoreCase) == CSTR_EQUAL;
+		}
+
+		bool ComesFirstIgnoringCase(const std::wstring& left, const std::wstring& right)
+		{
+			return ::CompareStringOrdinal(left.c_str(), -1, right.c_str(), -1, kIgnoreCase) == CSTR_LESS_THAN;
+		}
+
+		// FromUtf8 is Core's one UTF-8 to UTF-16 conversion. A variable is no path, but its bytes convert the same way.
+		std::wstring Widened(const std::string& text)
+		{
+			return FromUtf8(text).wstring();
+		}
+
+		// CreateProcessW wants each "NAME=value" ended by a null, the block ended by one more, sorted by name ignoring case.
+		std::wstring EnvironmentBlockWith(std::span<const EnvironmentVariable> overrides)
+		{
+			std::vector<std::wstring> entries;
+
+			if (wchar_t* inherited = ::GetEnvironmentStringsW(); inherited != nullptr)
+			{
+				for (const wchar_t* entry = inherited; *entry != L'\0'; entry += std::wcslen(entry) + 1)
+				{
+					entries.emplace_back(entry);
+				}
+
+				::FreeEnvironmentStringsW(inherited);
+			}
+
+			for (const EnvironmentVariable& variable : overrides)
+			{
+				const std::wstring name = Widened(variable.Name);
+
+				std::erase_if(entries, [&name](const std::wstring& entry) { return NamesVariable(entry, name); });
+				entries.push_back(name + kNameEnd + Widened(variable.Value));
+			}
+
+			std::sort(entries.begin(), entries.end(), ComesFirstIgnoringCase);
+
+			std::wstring block;
+
+			for (const std::wstring& entry : entries)
+			{
+				block += entry;
+				block.push_back(L'\0');
+			}
+
+			block.push_back(L'\0');
+			return block;
+		}
 
 		Result<void> CreateInheritablePipe(SECURITY_ATTRIBUTES& inheritable, UniqueHandle& readEnd, UniqueHandle& writeEnd, const char* failureMessage)
 		{
@@ -48,7 +109,8 @@ namespace Core {
 
 	Result<Scope<ChildProcess>> ChildProcess::Start([[maybe_unused]] const std::filesystem::path& program,
 													[[maybe_unused]] const std::vector<std::string>& arguments,
-													[[maybe_unused]] const std::filesystem::path& workingDirectory)
+													[[maybe_unused]] const std::filesystem::path& workingDirectory,
+														[[maybe_unused]] std::span<const EnvironmentVariable> environment)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
 		SECURITY_ATTRIBUTES inheritable{.nLength = sizeof(SECURITY_ATTRIBUTES), .bInheritHandle = TRUE};
@@ -172,9 +234,20 @@ namespace Core {
 		std::wstring commandLine = BuildWindowsCommandLine(program, arguments);
 		const std::wstring nativeWorkingDirectory = workingDirectory.wstring();
 
+		std::wstring environmentBlock;
+		LPVOID environmentPointer = nullptr;
+		DWORD creationFlags = CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED;
+
+		if (!environment.empty())
+		{
+			environmentBlock = EnvironmentBlockWith(environment);
+			environmentPointer = environmentBlock.data();
+			creationFlags |= CREATE_UNICODE_ENVIRONMENT;
+		}
+
 		const BOOL started = ::CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, kInheritListedHandles,
-											  CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED,
-											  nullptr, nativeWorkingDirectory.c_str(), &startupInfo.StartupInfo,
+											  creationFlags,
+											  environmentPointer, nativeWorkingDirectory.c_str(), &startupInfo.StartupInfo,
 											  &processInformation);
 
 		if (!started)
@@ -196,7 +269,13 @@ namespace Core {
 						 .Message = std::format("cannot place '{}' in its job", ToUtf8(program))};
 		}
 
-		::ResumeThread(primaryThread.Get());
+		if (::ResumeThread(primaryThread.Get()) == kResumeFailed)
+		{
+			const DWORD resumeErrorCode = ::GetLastError();
+			::TerminateJobObject(job.Get(), kTerminatedExitCode);
+
+			return Error{.Code = ErrorCodeFromWin32(resumeErrorCode), .Message = std::format("cannot resume '{}'", ToUtf8(program))};
+		}
 
 		// The parent's copies of the child's ends close now: kept open, they would stop the pipes
 		// from signalling closure when the child exits.
@@ -291,6 +370,14 @@ namespace Core {
 		if (!m_Process)
 		{
 			return false;
+		}
+
+		JOBOBJECT_BASIC_ACCOUNTING_INFORMATION accounting{};
+
+		if (m_Job && ::QueryInformationJobObject(m_Job.Get(), JobObjectBasicAccountingInformation, &accounting, sizeof(accounting),
+												 nullptr) != FALSE)
+		{
+			return accounting.ActiveProcesses > 0;
 		}
 
 		// Not GetExitCodeProcess: a child may exit with 259, which is also STILL_ACTIVE, the code
