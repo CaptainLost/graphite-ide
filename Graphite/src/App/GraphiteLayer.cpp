@@ -11,6 +11,7 @@
 #include "Editor/StatusBar/StatusLineComposer.h"
 #include "Editor/StatusBar/StatusMessageEvent.h"
 #include "Editor/TextEditorWidget.h"
+#include "Language/Install/ServerInstallActions.h"
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/ServerCatalog.h"
 
@@ -31,6 +32,7 @@
 #include "Terminal/TerminalWindows.h"
 #include "Persistence/RestrictedRestore.h"
 
+#include <format>
 #include <optional>
 
 #include "Search/SearchPanel.h"
@@ -205,6 +207,7 @@ namespace Graphite {
 
 		// Before any document opens: a choice is read at the first query for a language, and again after Reconfigure.
 		m_LanguageServices.SetChoiceProvider([this](LanguageId language) { return ReadServerChoice(m_AppSettings, language); });
+		m_LanguageServices.SetUninstallingQuery([this](std::string_view serverId) { return m_ServerInstalls.RunningJobOf(serverId) == InstallJobKind::Uninstall; });
 
 		// Set before any document opens: the first
 		// EnsureStarted is where a refused root must already be refused (ADR 0532).
@@ -715,14 +718,13 @@ namespace Graphite {
 
 		for (const InstallProgress& outcome : finished)
 		{
+			RestartServersAfter(outcome, m_LanguageServices);
+
 			switch (outcome.Step)
 			{
 			case InstallStep::Installed:
-			case InstallStep::Uninstalled:
-				for (const LanguageId language : LanguagesServedBy(outcome.ServerId))
-				{
-					m_LanguageServices.Reconfigure(language);
-				}
+				m_Events.Publish(ApplicationToast(Core::ToastKind::Success, "Language server installed",
+												  std::format("{} {} installed", ServerDisplayName(outcome.ServerId), outcome.Version)));
 				break;
 			case InstallStep::Failed:
 				m_Events.Publish(ApplicationToast(Core::ToastKind::Error, ServerDisplayName(outcome.ServerId), outcome.Failure));
@@ -733,6 +735,7 @@ namespace Graphite {
 			case InstallStep::Extracting:
 			case InstallStep::UpToDate:
 			case InstallStep::UpdateAvailable:
+			case InstallStep::Uninstalled:
 			case InstallStep::Cancelled:
 				break;
 			}
@@ -741,11 +744,9 @@ namespace Graphite {
 
 	bool GraphiteLayer::CanInstallChosenServerFor(const std::filesystem::path& path)
 	{
-		const LanguageId language = LanguageOfPath(path);
-		const ServerDefinition* server = m_LanguageServices.ChosenServer(language);
+		const ServerDefinition* server = m_LanguageServices.ChosenServer(LanguageOfPath(path));
 
-		return server != nullptr && !m_ServerInstalls.IsBusy(server->Id) &&
-			   m_LanguageServices.StatusFor(path, language).State == ServerState::NotInstalled;
+		return server != nullptr && MayInstall(m_ServerInstalls, *server);
 	}
 
 	void GraphiteLayer::InstallChosenServerFor(LanguageId language)

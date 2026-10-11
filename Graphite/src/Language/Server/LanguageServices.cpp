@@ -191,7 +191,7 @@ namespace Graphite {
 
 	void LanguageServices::Reconfigure(LanguageId language)
 	{
-		ReleasedServers released = ReleaseServersOf(language);
+		std::vector<HeldDocument> held = ReleaseServersOf(language);
 
 		m_Choices.erase(language);
 		m_Dotnet.reset();
@@ -199,10 +199,10 @@ namespace Graphite {
 
 		for (HeldDocument& parked : TakeParkedDocumentsOf(language))
 		{
-			released.Held.push_back(std::move(parked));
+			held.push_back(std::move(parked));
 		}
 
-		for (HeldDocument& document : released.Held)
+		for (HeldDocument& document : held)
 		{
 			EnsureStarted(document.Path, language);
 			OpenDocument(document.Path, language, std::move(document.Text));
@@ -213,7 +213,7 @@ namespace Graphite {
 										Core::IsSameOrWithin(m_LastWarmUp->Root, m_FallbackRoot) &&
 										Core::IsSameOrWithin(m_FallbackRoot, m_LastWarmUp->Root);
 
-		if (released.ReleasedWorkspaceServer && warmedFolderIsOpen)
+		if (warmedFolderIsOpen && HasChosenServer(language))
 		{
 			WarmUp(m_LastWarmUp->Root, m_LastWarmUp->RespectGitIgnore);
 		}
@@ -255,9 +255,9 @@ namespace Graphite {
 		return taken;
 	}
 
-	LanguageServices::ReleasedServers LanguageServices::ReleaseServersOf(LanguageId language)
+	std::vector<LanguageServices::HeldDocument> LanguageServices::ReleaseServersOf(LanguageId language)
 	{
-		ReleasedServers released;
+		std::vector<HeldDocument> held;
 
 		for (std::map<Key, ManagedServer>::iterator entry = m_Servers.begin(); entry != m_Servers.end();)
 		{
@@ -271,7 +271,7 @@ namespace Graphite {
 
 			for (auto& [path, document] : server.OpenDocuments)
 			{
-				released.Held.push_back(HeldDocument{.Path = path, .Text = std::move(document.Text)});
+				held.push_back(HeldDocument{.Path = path, .Text = std::move(document.Text)});
 				m_DocumentKeys.erase(path);
 
 				if (server.Client)
@@ -291,11 +291,10 @@ namespace Graphite {
 			}
 
 			// m_NamedBy stays: a header reached through a definition is re-rooted through it.
-			released.ReleasedWorkspaceServer = released.ReleasedWorkspaceServer || IsWorkspaceRoot(key.Root);
 			entry = m_Servers.erase(entry);
 		}
 
-		return released;
+		return held;
 	}
 
 	bool LanguageServices::IsWorkspaceRoot(const std::filesystem::path& root) const
@@ -343,6 +342,11 @@ namespace Graphite {
 	{
 		m_DotnetLocator = std::move(locator);
 		m_Dotnet.reset();
+	}
+
+	void LanguageServices::SetUninstallingQuery(UninstallingQuery query)
+	{
+		m_Uninstalling = std::move(query);
 	}
 
 	void LanguageServices::SetLogDirectory(std::filesystem::path directory)
@@ -410,10 +414,17 @@ namespace Graphite {
 
 	void LanguageServices::StartServer(ManagedServer& server, const Key& key)
 	{
-		server.Command = FindServerCommand(*server.Definition, server.Overrides.Binary, CommandPlaces());
-
 		server.Status.Name = std::string(server.Definition->DisplayName);
 		server.Status.Restarts = server.Restarts;
+
+		if (m_Uninstalling && m_Uninstalling(server.Definition->Id))
+		{
+			server.Status.State = ServerState::NotInstalled;
+			server.Status.Detail = "it is being uninstalled";
+			return;
+		}
+
+		server.Command = FindServerCommand(*server.Definition, server.Overrides.Binary, CommandPlaces());
 
 		if (server.Command.State != ServerState::Starting)
 		{
@@ -425,12 +436,8 @@ namespace Graphite {
 			return;
 		}
 
-		// Logged at the moment a process is about to exist, with everything needed to explain a
-		// later answer: which language it serves, which binary is running, and the root it was
-		// given - a server rooted somewhere unexpected answers about the wrong project, and this
-		// line is where that becomes visible instead of mysterious.
-		APP_INFO("Starting {} for {} at {}", server.Definition->DisplayName, LanguageDisplayName(key.Language),
-				 Core::ToUtf8(key.Root));
+		APP_INFO("Starting {} for {} at {}: {}", server.Definition->DisplayName, LanguageDisplayName(key.Language),
+				 Core::ToUtf8(key.Root), DescribeCommand(server.Command));
 
 		if (!server.Command.InstalledFile.empty())
 		{
@@ -1146,44 +1153,8 @@ namespace Graphite {
 		{
 			EnsureStarted(finding.Path, finding.Language);
 
-			// Opened and closed straight away, to make the server load its compilation database.
-			// This is a workaround and worth naming as one.
-			//
-			// clangd loads that database lazily - on the first document it is asked about - and
-			// loading it is what starts the background index. Verified against clangd 22: twelve
-			// seconds after initialize with no document open produces no progress of any kind,
-			// and the first didOpen produces it immediately. So without this a server starts,
-			// reports itself ready, and then sits idle until the user opens a file - which is
-			// exactly the work opening the folder was meant to have underway already.
-			//
-			// One document is enough for all of them: on an empty index cache, a single didOpen
-			// takes the reported work from 0/1 to 0/201 within a tenth of a second - the whole
-			// compilation database, not just the file sent - and it keeps going after the close.
-			//
-			// Two better-looking routes were tried and neither works. workspace/symbol, being a
-			// question about the whole project rather than a claim about one document, answers
-			// instantly with nothing and loads no database. --compile-commands-dir, which reads
-			// as "here is the database, load it", changes nothing either: with an empty cache and
-			// that flag set, eighteen seconds after initialize produced no indexing and created
-			// no index directory at all. Nothing else in LSP or in clangd's flags says "load your
-			// project".
-			//
-			// What this does say is true, which is why it is a workaround rather than a lie:
-			// didOpen means the client owns this URI's content, and for those two messages it
-			// does - the content sent is what is on disk. It is closed again immediately because
-			// nothing is looking at it, the index task it started is a background one that
-			// outlives the document, and leaving it open would collide with a real didOpen if
-			// the user later opened that same file.
-			//
-			// If clangd ever loads its database eagerly, this stops having any effect and
-			// nothing breaks - the failure mode is a return to indexing on first open, not a
-			// wrong answer.
-			//
-			// Skipped when the server already holds that document: a tab open on it - restored at
-			// startup, or replayed by Revalidate the moment its folder was trusted - has already
-			// sent it and primed the database. Opening it again would overwrite the tab's text with
-			// the disk's, and the close would make the server forget the tab, so every edit after
-			// it would be dropped as a change to a document it was never told about.
+			// Opened and closed at once for a server that loads its project only for its first document (WarmUpNeedsOpen).
+			// Skipped when the document is already held: a second didOpen would replace a tab's text with the disk's.
 			if (!finding.Text.empty() && !Holds(finding.Path, finding.Language) && WarmUpNeedsOpen(finding.Language))
 			{
 				OpenDocument(finding.Path, finding.Language, std::move(finding.Text));
@@ -1197,8 +1168,7 @@ namespace Graphite {
 		{
 			if (!server.Client)
 			{
-				// Never got a process (NotFound), or settled at Failed after exhausting its
-				// restarts below — either way there is nothing running to drain.
+				// No process: none could be started, or it settled at Failed after its restarts.
 				continue;
 			}
 

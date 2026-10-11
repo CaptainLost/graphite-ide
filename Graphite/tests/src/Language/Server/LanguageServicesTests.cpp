@@ -1923,6 +1923,69 @@ TEST_CASE("A C# server without its runtime reads MissingRuntime and starts nothi
 	CHECK(services.OverallStatus()->State == Graphite::ServerState::MissingRuntime);
 }
 
+TEST_CASE("A server Graphite is uninstalling is not started and reads not installed")
+{
+	TempDirectory temp;
+	InstallCsharpLsIn(temp.GetPath() / "servers");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	const std::filesystem::path source = temp.GetPath() / "Demo" / "Program.cs";
+
+	services.SetClientFactory(spy.Get());
+	services.SetServersDirectory(temp.GetPath() / "servers");
+	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "10.0.10"));
+	services.SetChoiceProvider(ChooseCsharpLs);
+	services.SetUninstallingQuery([](std::string_view serverId) { return serverId == "csharp-ls"; });
+
+	services.EnsureStarted(source, Graphite::LanguageId::CSharp);
+
+	CHECK(spy.Made == 0);
+	CHECK(services.StatusFor(source, Graphite::LanguageId::CSharp).State == Graphite::ServerState::NotInstalled);
+	CHECK(services.StatusFor(source, Graphite::LanguageId::CSharp).Detail == "it is being uninstalled");
+}
+
+TEST_CASE("Choosing a server for the first time starts it for the open folder")
+{
+	TempDirectory temp;
+	temp.MakeFile("Demo/Program.cs", "class Program {}\n");
+	InstallCsharpLsIn(temp.GetPath() / "servers");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+	bool chosen = false;
+
+	services.SetClock(clock.Get());
+	services.SetClientFactory(spy.Get());
+	services.SetServersDirectory(temp.GetPath() / "servers");
+	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "10.0.10"));
+	services.SetChoiceProvider([&chosen](Graphite::LanguageId language) { return chosen ? ChooseCsharpLs(language) : Graphite::ChooseServer(language, std::nullopt); });
+	services.WarmUp(temp.GetPath(), false);
+
+	constexpr int kSettleAttempts = 50;
+
+	for (int attempt = 0; attempt < kSettleAttempts; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	REQUIRE(spy.Made == 0);
+
+	chosen = true;
+	services.Reconfigure(Graphite::LanguageId::CSharp);
+
+	constexpr int kMaxAttempts = 500;
+
+	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	CHECK(spy.Made == 1);
+	CHECK(spy.LastRoot == temp.GetPath());
+}
+
 TEST_CASE("A running server's installed files cannot be removed until it stops")
 {
 	TempDirectory temp;

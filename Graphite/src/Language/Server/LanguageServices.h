@@ -25,6 +25,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -151,6 +152,15 @@ namespace Graphite {
 		using DotnetLocator = std::function<std::vector<DotnetInstallation>()>;
 
 		void SetDotnetLocator(DotnetLocator locator);
+
+		// Read from the disk at the first call after Reconfigure, and cheap after that.
+		const std::vector<DotnetInstallation>& DotnetInstallations() const;
+
+		// Answers whether Graphite is removing a server's install. Such a server is not started from the files being
+		// removed, and reads NotInstalled until Reconfigure.
+		using UninstallingQuery = std::function<bool(std::string_view serverId)>;
+
+		void SetUninstallingQuery(UninstallingQuery query);
 
 		// Filled into a server argument that names {logs}; the system's temporary directory until set.
 		void SetLogDirectory(std::filesystem::path directory);
@@ -339,7 +349,7 @@ namespace Graphite {
 
 			// Before Client so it outlives the client, though the process the client ended still holds its files for tens of milliseconds after both are gone.
 			std::optional<Core::FileHold> Hold;
-			Core::Scope<LspClient> Client; // null when the binary was never found
+			Core::Scope<LspClient> Client; // null when no process was started
 			ServerStatus Status;
 			std::size_t Restarts = 0;
 
@@ -409,12 +419,6 @@ namespace Graphite {
 
 		std::vector<HeldDocument> TakeParkedDocumentsOf(LanguageId language);
 
-		struct ReleasedServers
-		{
-			std::vector<HeldDocument> Held;
-			bool ReleasedWorkspaceServer = false;
-		};
-
 		// What WarmUp was last asked, so Reconfigure can start the workspace's server again.
 		struct WarmUpRequest
 		{
@@ -422,7 +426,7 @@ namespace Graphite {
 			bool RespectGitIgnore = false;
 		};
 
-		ReleasedServers ReleaseServersOf(LanguageId language);
+		std::vector<HeldDocument> ReleaseServersOf(LanguageId language);
 
 		// Whether a server rooted here is the open folder's own: at it, inside it, or above it.
 		bool IsWorkspaceRoot(const std::filesystem::path& root) const;
@@ -510,10 +514,10 @@ namespace Graphite {
 		mutable std::map<LanguageId, ServerChoice> m_Choices;
 
 		ServerCommandPlaces CommandPlaces() const;
-		const std::vector<DotnetInstallation>& DotnetInstallations() const;
 
 		std::filesystem::path m_ServersDirectory;
 		DotnetLocator m_DotnetLocator;
+		UninstallingQuery m_Uninstalling;
 		mutable std::optional<std::vector<DotnetInstallation>> m_Dotnet;
 		std::filesystem::path m_LogDirectory;
 		std::filesystem::path m_SelectedSolution;
