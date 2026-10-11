@@ -40,9 +40,18 @@ namespace Core {
 										  kIgnoreCase) == CSTR_EQUAL;
 		}
 
+		// A name ends at the first '=' after the first character: the drive-current-directory entries
+		// begin with one, as in "=C:=C:/dir".
+		int NameLength(const std::wstring& entry)
+		{
+			const std::size_t nameEnd = entry.find(kNameEnd, 1);
+
+			return static_cast<int>(nameEnd == std::wstring::npos ? entry.size() : nameEnd);
+		}
+
 		bool ComesFirstIgnoringCase(const std::wstring& left, const std::wstring& right)
 		{
-			return ::CompareStringOrdinal(left.c_str(), -1, right.c_str(), -1, kIgnoreCase) == CSTR_LESS_THAN;
+			return ::CompareStringOrdinal(left.data(), NameLength(left), right.data(), NameLength(right), kIgnoreCase) == CSTR_LESS_THAN;
 		}
 
 		// FromUtf8 is Core's one UTF-8 to UTF-16 conversion. A variable is no path, but its bytes convert the same way.

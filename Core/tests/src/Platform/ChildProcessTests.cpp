@@ -183,13 +183,17 @@ TEST_CASE("A child given variables still inherits the rest and a given variable 
 	REQUIRE(inherited.WasSet());
 	REQUIRE(replaced.WasSet());
 
-	const std::array<Core::EnvironmentVariable, 1> environment{{{.Name = "core_test_replaced_variable", .Value = "child"}}};
+	// "winner" sorts after "parent", so a block that kept both entries would put the inherited one first.
+	const std::array<Core::EnvironmentVariable, 1> environment{{{.Name = "core_test_replaced_variable", .Value = "winner"}}};
 
-	StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "echo %CORE_TEST_INHERITED_VARIABLE% %CORE_TEST_REPLACED_VARIABLE%"},
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "echo %CORE_TEST_INHERITED_VARIABLE% %CORE_TEST_REPLACED_VARIABLE% & set CORE_TEST_REPLACED_VARIABLE"},
 													 std::filesystem::current_path(), environment);
 	REQUIRE(started);
+	const std::string output = ReadAll(*started.GetValue());
 
-	CHECK(ReadAll(*started.GetValue()).find("inherited child") != std::string::npos);
+	CHECK(output.find("inherited winner") != std::string::npos);
+	CHECK(output.find("parent") == std::string::npos);
+	CHECK(output.find("=winner") != std::string::npos);
 }
 
 TEST_CASE("A child runs as long as a process it started runs")
