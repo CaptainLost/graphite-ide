@@ -3,8 +3,8 @@
 #include "Language/Server/LspClient.h"
 #include "Language/Server/Adapters/ServerAdapter.h"
 #include "Language/Server/ServerCatalog.h"
-#include "Language/Server/ServerDiscovery.h"
 #include "Language/Server/ServerLaunch.h"
+#include "LiveInstalls.h"
 #include "TempDirectory.h"
 
 #include <chrono>
@@ -671,20 +671,18 @@ TEST_CASE("A client whose child never speaks the protocol still shuts down")
 	CHECK(answers.empty());
 }
 
-// Skipped by default: a machine with no clangd would otherwise get a red suite for something
-// it cannot fix. Run with --no-skip to exercise the real handshake.
-TEST_CASE("clangd answers a definition request" * doctest::skip(true))
+// Downloads clangd through the installer, so it is skipped by default. Run with --no-skip to exercise the real handshake.
+TEST_CASE("clangd installed by Graphite answers a definition request" * doctest::skip())
 {
-	const auto binary = Graphite::FindServerBinary("clangd", {});
-	REQUIRE(binary);
-
 	TempDirectory temp;
-	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+	const Graphite::InstalledServer clangd = RequireInstalled(*Graphite::FindServer("clangd"), temp.GetPath() / "servers");
+	const std::filesystem::path project = temp.MakeDirectory("project");
+	const std::filesystem::path source = project / "main.cpp";
 
-	std::ofstream{temp.GetPath() / "compile_flags.txt"} << "-std=c++20\n";
+	std::ofstream{project / "compile_flags.txt"} << "-std=c++20\n";
 	std::ofstream{source} << "int Answer() { return 42; }\nint Main() { return Answer(); }\n";
 
-	Graphite::LspClient client{ClangdLaunchAt(binary.GetValue()), temp.GetPath()};
+	Graphite::LspClient client{ClangdLaunchAt(clangd.Command), project};
 
 	const std::string text = "int Answer() { return 42; }\nint Main() { return Answer(); }\n";
 	client.OpenDocument(source, text);

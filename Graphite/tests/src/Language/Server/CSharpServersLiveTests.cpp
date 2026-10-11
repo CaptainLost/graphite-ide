@@ -1,17 +1,13 @@
 #include <doctest/doctest.h>
 
 #include "Language/Api/HoverInfo.h"
-#include "Language/Install/InstalledServer.h"
-#include "Language/Install/ServerInstaller.h"
 #include "Language/Server/LanguageServices.h"
 #include "Language/Server/ServerCatalog.h"
 #include "Language/Server/ServerChoice.h"
+#include "LiveInstalls.h"
 #include "TempDirectory.h"
 
 #include "Editor/StatusBar/ServerStatusText.h"
-
-#include "Core/Network/HttpClient.h"
-#include "Core/Platform/CurrentPlatform.h"
 
 #include <chrono>
 #include <filesystem>
@@ -44,22 +40,6 @@ namespace {
 	constexpr const char* kProgram = "namespace Demo;\n"
 									 "static class Greeter { public static string Hello(string name) => $\"Hello {name}\"; }\n"
 									 "static class Program { static void Main() { System.Console.WriteLine(Greeter.Hello(\"x\")); } }\n";
-
-	void InstallForReal(std::string_view serverId, const std::filesystem::path& servers)
-	{
-		Core::Result<Core::Scope<Core::HttpClient>> created = Core::CreateHttpClient("Graphite-tests");
-		REQUIRE(created);
-		const Core::Ref<Core::HttpClient> http{std::move(created).GetValue()};
-		Graphite::ServerInstaller installer{http, servers, Core::CurrentPlatform(), [](std::function<void()> job) { job(); }};
-
-		REQUIRE(installer.Install(*Graphite::FindServer(serverId)));
-
-		std::vector<Graphite::InstallProgress> changes;
-		installer.Drain(changes);
-		REQUIRE_FALSE(changes.empty());
-		INFO(changes.back().Failure);
-		REQUIRE(changes.back().Step == Graphite::InstallStep::Installed);
-	}
 
 	bool WaitUntilReady(Graphite::LanguageServices& services, const std::filesystem::path& source)
 	{
@@ -208,7 +188,7 @@ namespace {
 	void ServeAndCheck(TempDirectory& temp, const DemoFolder& folder, std::string_view serverId, const ServedCheck& check)
 	{
 		const std::filesystem::path servers = temp.GetPath() / "servers";
-		InstallForReal(serverId, servers);
+		RequireInstalled(*Graphite::FindServer(serverId), servers);
 		const std::string chosen{serverId};
 
 		Graphite::LanguageServices services{folder.Root};
