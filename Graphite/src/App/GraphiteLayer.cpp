@@ -44,6 +44,7 @@
 #include "App/GraphiteMenu.h"
 #include "App/LanguageServerChoice.h"
 #include "App/SampleToasts.h"
+#include "App/SettingsPages.h"
 
 #include "App/Version.h"
 #include "Core/App/Application.h"
@@ -65,18 +66,7 @@
 
 #include "Core/Events/ApplicationEvent.h"
 
-#include "Settings/Panel/KeyBindingsPage.h"
-#include "Settings/LanguageServers/LanguageServersPage.h"
-#include "Settings/Panel/AppearancePage.h"
-#include "Settings/Panel/ClaudeSessionsPage.h"
-#include "Settings/Panel/EditorPage.h"
-#include "Settings/Panel/ExplorerPage.h"
-#include "Settings/Panel/FindInFilesPage.h"
-#include "Settings/Panel/GitPage.h"
-#include "Settings/Panel/SettingsDirectory.h"
 #include "Settings/Panel/SettingsPanel.h"
-#include "Settings/Panel/TerminalPage.h"
-#include "Settings/Panel/TrustedFoldersPage.h"
 #include "UI/DialogLayout.h"
 #include "UI/LanguageSupportBar.h"
 #include "UI/RestrictedModeBar.h"
@@ -243,7 +233,24 @@ namespace Graphite {
 		m_LanguageServices.SetLogDirectory(UserDirectories::LogFile().parent_path());
 		m_ServerInstalls.SweepAtStartup();
 
-		m_SettingsPanel = m_Panels.Add(Core::CreateScope<SettingsPanel>(BuildSettingsDirectory(), m_ActiveScheme));
+		const SettingsSources settingsSources{.Store = m_AppSettings,
+											  .Editor = m_EditorSettings,
+											  .Search = m_SearchSettings,
+											  .Analysis = m_AnalysisSettings,
+											  .Claude = m_ClaudeSettings,
+											  .Scheme = m_ActiveScheme,
+											  .Commands = m_Commands,
+											  .Keys = m_Keys,
+											  .Modals = m_Modals,
+											  .Events = m_Events,
+											  .Trust = m_Trust,
+											  .Terminals = m_Terminals,
+											  .Installs = m_ServerInstalls,
+											  .Services = m_LanguageServices,
+											  .SolutionLoaded = m_SolutionLoaded,
+											  .ThemesDirectory = AppSettings::ThemesDirectory(),
+											  .OnKeyBindingsChanged = [this] { m_AppSettings.SetKeyBindings(m_Keys); }};
+		m_SettingsPanel = m_Panels.Add(Core::CreateScope<SettingsPanel>(BuildSettingsDirectory(settingsSources), m_ActiveScheme));
 
 		ReportConflictingKeyBindings();
 		SubscribeToWorkspaceEvents();
@@ -798,30 +805,6 @@ namespace Graphite {
 		Core::Redraw::Request();
 	}
 
-	SettingsDirectory GraphiteLayer::BuildSettingsDirectory()
-	{
-		SettingsGroup general{.Title = "General"};
-		general.Pages.push_back(
-			Core::CreateScope<AppearancePage>(m_ActiveScheme, m_AppSettings, m_Modals, m_Events, AppSettings::ThemesDirectory()));
-		general.Pages.push_back(
-			Core::CreateScope<KeyBindingsPage>(m_Commands, m_Keys, m_Modals, [this] { m_AppSettings.SetKeyBindings(m_Keys); }));
-		general.Pages.push_back(Core::CreateScope<LanguageServersPage>(m_AnalysisSettings, m_AppSettings, m_ServerInstalls, m_LanguageServices));
-		general.Pages.push_back(Core::CreateScope<TrustedFoldersPage>(m_Trust));
-
-		SettingsGroup panels{.Title = "Panels"};
-		panels.Pages.push_back(Core::CreateScope<EditorPage>(m_EditorSettings, m_Commands));
-		panels.Pages.push_back(Core::CreateScope<ExplorerPage>(m_Commands));
-		panels.Pages.push_back(Core::CreateScope<FindInFilesPage>(m_SearchSettings, m_SolutionLoaded));
-		panels.Pages.push_back(Core::CreateScope<GitPage>(m_EditorSettings));
-		panels.Pages.push_back(Core::CreateScope<TerminalPage>(m_AppSettings, m_Terminals));
-		panels.Pages.push_back(Core::CreateScope<ClaudeSessionsPage>(m_ClaudeSettings));
-
-		std::vector<SettingsGroup> groups;
-		groups.push_back(std::move(general));
-		groups.push_back(std::move(panels));
-
-		return SettingsDirectory{std::move(groups)};
-	}
 	void GraphiteLayer::OpenLanguageSettings(LanguageId language)
 	{
 		m_SettingsPanel->Open({"languageServers", std::string{DefinitionOf(language).SettingsName}});

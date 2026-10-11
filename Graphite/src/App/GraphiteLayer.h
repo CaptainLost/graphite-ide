@@ -72,7 +72,6 @@ namespace Graphite {
 	class ExplorerPanel;
 	class SearchPanel;
 	class SettingsPanel;
-	class SettingsDirectory;
 	class ReferencesPanel;
 
 	class GraphiteLayer final : public Core::Layer
@@ -160,7 +159,6 @@ namespace Graphite {
 		void RevealPanel(std::string_view id);
 
 		void OpenLanguageSettings(LanguageId language);
-		SettingsDirectory BuildSettingsDirectory();
 
 		void PublishServerMessages();
 
