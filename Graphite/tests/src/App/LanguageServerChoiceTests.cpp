@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "App/LanguageServerChoice.h"
+#include "Language/Server/ServerCatalog.h"
 #include "Settings/AppSettings.h"
 #include "TempDirectory.h"
 
@@ -41,7 +42,7 @@ TEST_CASE("C++ reads its server and the user's overrides for it from graphite.js
 	CHECK(choice.Overrides.InitializationOptions.is_null());
 }
 
-TEST_CASE("A C++ server path stored under the old key still starts clangd")
+TEST_CASE("A C++ server path stored under the old key is moved and starts clangd")
 {
 	const TempDirectory temp;
 	const std::filesystem::path file = temp.GetPath() / "graphite.json";
@@ -52,6 +53,7 @@ TEST_CASE("A C++ server path stored under the old key still starts clangd")
 
 	CHECK(Graphite::ReadServerChoice(settings, Graphite::LanguageId::Cpp).Overrides.Binary ==
 		  std::filesystem::path{L"D:\\Old\\clangd.exe"});
+	CHECK(Graphite::ReadServerChoice(settings, Graphite::LanguageId::Cpp).Server == Graphite::FindServer("clangd"));
 }
 
 TEST_CASE("A path stored for clangd under lsp wins over the old key")

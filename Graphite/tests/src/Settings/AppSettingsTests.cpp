@@ -513,37 +513,97 @@ TEST_CASE("A server's arguments are stored as a list and an empty list removes t
 	CHECK(ReadBytes(settings.GetFile()).find("arguments") == std::string::npos);
 }
 
-TEST_CASE("The old key's path is clangd's alone")
+TEST_CASE("The old server path moves to clangd and chooses clangd for C++")
 {
 	const TempDirectory temp;
 	const std::filesystem::path file = temp.GetPath() / "graphite.json";
 
-	WriteText(file, R"({"languageServerBinary": "D:\\Old\\clangd.exe"})");
-
-	const Graphite::AppSettings settings{file};
-
-	CHECK(settings.GetLanguageServerSettings("clangd").BinaryPath == std::filesystem::path{L"D:\\Old\\clangd.exe"});
-	CHECK(settings.GetLanguageServerSettings("roslyn").BinaryPath.empty());
-}
-
-TEST_CASE("Setting clangd's path moves it off the old key")
-{
-	const TempDirectory temp;
-	const std::filesystem::path file = temp.GetPath() / "graphite.json";
-
-	WriteText(file, R"({"languageServerBinary": "D:\\Old\\clangd.exe"})");
+	WriteText(file, R"({"languageServerBinary": "D:\\Old\\clangd.exe", "wordWrap": "true"})");
 
 	{
 		Graphite::AppSettings settings{file};
-		settings.SetLanguageServerBinaryPath("clangd", std::filesystem::path{L"D:\\New\\clangd.exe"});
+
+		CHECK(settings.GetLanguageServerSettings("clangd").BinaryPath == std::filesystem::path{L"D:\\Old\\clangd.exe"});
+		CHECK(settings.GetLanguageServerChoice("Cpp") == std::optional<std::string>{"clangd"});
+		CHECK(settings.GetLanguageServerSettings("roslyn").BinaryPath.empty());
+
+		settings.Flush();
+	}
+
+	const std::string written = ReadBytes(file);
+	CHECK(written.find("languageServerBinary") == std::string::npos);
+	CHECK(written.find("wordWrap") != std::string::npos);
+
+	const Graphite::AppSettings reloaded{file};
+	CHECK(reloaded.GetLanguageServerSettings("clangd").BinaryPath == std::filesystem::path{L"D:\\Old\\clangd.exe"});
+	CHECK(reloaded.GetLanguageServerChoice("Cpp") == std::optional<std::string>{"clangd"});
+}
+
+TEST_CASE("A clangd path stored under lsp wins over the old one and the old key still goes")
+{
+	const TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
+
+	WriteText(file, R"({"languageServerBinary": "D:\\Old\\clangd.exe", "lsp": {"clangd": {"binary": {"path": "D:\\New\\clangd.exe"}}}})");
+
+	{
+		Graphite::AppSettings settings{file};
+
+		CHECK(settings.GetLanguageServerSettings("clangd").BinaryPath == std::filesystem::path{L"D:\\New\\clangd.exe"});
+		CHECK(settings.GetLanguageServerChoice("Cpp") == std::optional<std::string>{"clangd"});
+
 		settings.Flush();
 	}
 
 	CHECK(ReadBytes(file).find("languageServerBinary") == std::string::npos);
+}
 
-	const Graphite::AppSettings reloaded{file};
+TEST_CASE("An explicit C++ choice survives the move of the old path")
+{
+	const TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
 
-	CHECK(reloaded.GetLanguageServerSettings("clangd").BinaryPath == std::filesystem::path{L"D:\\New\\clangd.exe"});
+	WriteText(file, R"({"languageServerBinary": "D:\\Old\\clangd.exe", "languages": {"Cpp": {"language_server": "none"}}})");
+
+	const Graphite::AppSettings settings{file};
+
+	CHECK(settings.GetLanguageServerChoice("Cpp") == std::optional<std::string>{"none"});
+	CHECK(settings.GetLanguageServerSettings("clangd").BinaryPath == std::filesystem::path{L"D:\\Old\\clangd.exe"});
+}
+
+TEST_CASE("A blank old server path is dropped and chooses nothing")
+{
+	const TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
+
+	WriteText(file, R"({"languageServerBinary": "   "})");
+
+	{
+		Graphite::AppSettings settings{file};
+
+		CHECK_FALSE(settings.GetLanguageServerChoice("Cpp").has_value());
+		CHECK(settings.GetLanguageServerSettings("clangd").BinaryPath.empty());
+
+		settings.Flush();
+	}
+
+	CHECK(ReadBytes(file).find("languageServerBinary") == std::string::npos);
+}
+
+TEST_CASE("A file without the old server path is not rewritten when it loads")
+{
+	const TempDirectory temp;
+	const std::filesystem::path file = temp.GetPath() / "graphite.json";
+	const std::string original = R"({"wordWrap": "true"})";
+
+	WriteText(file, original);
+
+	{
+		Graphite::AppSettings settings{file};
+		settings.Flush();
+	}
+
+	CHECK(ReadBytes(file) == original);
 }
 
 TEST_CASE("An empty object that gains a value keeps what another instance wrote beneath it")

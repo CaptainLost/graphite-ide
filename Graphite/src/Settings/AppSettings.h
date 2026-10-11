@@ -137,7 +137,6 @@ namespace Graphite {
 		std::optional<std::string> GetLanguageServerChoice(std::string_view languageName) const;
 		void SetLanguageServerChoice(std::string_view languageName, std::string_view serverId);
 
-		// clangd's path may still sit under the flat key used before servers had settings of their own.
 		LanguageServerSettings GetLanguageServerSettings(std::string_view serverId) const;
 
 		// An empty path or list is removed rather than stored, so the server is looked for again.
@@ -177,6 +176,9 @@ namespace Graphite {
 	private:
 		std::string Get(std::string_view key) const;
 		void Set(std::string_view key, std::string value);
+
+		// Before any reader, and after m_Written is taken, so the next Flush writes the move to disk.
+		void MoveOldServerPath();
 
 		// What the file held as of load or the last write, leaf by leaf, so Flush can tell which leaves
 		// this process changed since.

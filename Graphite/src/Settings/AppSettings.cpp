@@ -8,6 +8,7 @@
 
 #include "Persistence/StateCodec.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
 #include "Core/Base/Strings.h"
@@ -112,7 +113,8 @@ namespace Graphite {
 			return value.is_object() ? value.dump() : std::string{};
 		}
 
-		constexpr std::string_view kLegacyPathServerId = "clangd";
+		constexpr std::string_view kServerOfOldPath = "clangd";
+		constexpr std::string_view kLanguageOfOldPath = "Cpp";
 
 		std::vector<std::string> BinaryPathOf(std::string_view serverId)
 		{
@@ -165,6 +167,38 @@ namespace Graphite {
 		}
 
 		m_Written = TakeSnapshot(m_Document);
+		MoveOldServerPath();
+	}
+
+	void AppSettings::MoveOldServerPath()
+	{
+		const std::vector<std::string> oldKey{kLanguageServerBinaryKey};
+
+		if (!m_Document.GetJsonAt(oldKey).has_value())
+		{
+			return;
+		}
+
+		const std::string oldPath = Core::Trimmed(Get(kLanguageServerBinaryKey));
+		m_Document.Remove(kLanguageServerBinaryKey);
+		m_Unwritten = true;
+
+		if (oldPath.empty())
+		{
+			return;
+		}
+
+		if (GetLanguageServerSettings(kServerOfOldPath).BinaryPath.empty())
+		{
+			m_Document.SetJsonAt(BinaryPathOf(kServerOfOldPath), AsJsonText(nlohmann::json(oldPath)));
+		}
+
+		if (!GetLanguageServerChoice(kLanguageOfOldPath).has_value())
+		{
+			SetLanguageServerChoice(kLanguageOfOldPath, kServerOfOldPath);
+		}
+
+		APP_INFO("Moved '{}' to clangd's own path and chose clangd for C++ where nothing was chosen", kLanguageServerBinaryKey);
 	}
 
 	void AppSettings::Flush()
@@ -529,11 +563,6 @@ namespace Graphite {
 			.InitializationOptionsJson = ObjectTextOrEmpty(MemberOrNull(entry, kInitializationOptionsKey)),
 			.SettingsJson = ObjectTextOrEmpty(MemberOrNull(entry, kServerSettingsKey))};
 
-		if (settings.BinaryPath.empty() && serverId == kLegacyPathServerId)
-		{
-			settings.BinaryPath = Core::FromUtf8(Get(kLanguageServerBinaryKey));
-		}
-
 		return settings;
 	}
 
@@ -548,12 +577,6 @@ namespace Graphite {
 		else
 		{
 			m_Document.SetJsonAt(keyPath, AsJsonText(nlohmann::json(Core::ToUtf8(path))));
-		}
-
-		// Left behind, the old key would come back as clangd's path the moment the new one was cleared.
-		if (serverId == kLegacyPathServerId)
-		{
-			m_Document.Remove(kLanguageServerBinaryKey);
 		}
 
 		m_Unwritten = true;
