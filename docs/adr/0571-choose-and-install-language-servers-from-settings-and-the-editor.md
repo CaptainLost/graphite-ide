@@ -25,9 +25,9 @@ NotFound means only a configured path that is wrong. A server found nowhere is N
 
 What is installed is read once, on the install queue after the start-up sweep. From then on it follows this window's own outcomes. The install command, the bar and the tab offer an install from that record, never from the server's state.
 
-An uninstall:
-1. starts its job;
-2. stops the servers running that server. They stay stopped while the job runs.
+An uninstall runs in four steps:
+1. The uninstall job starts.
+2. The servers running that server are stopped, and they stay stopped while the job runs.
 3. The job retries removing the version for about a second while the stopped processes exit.
 4. However the job ends, those servers are reconfigured.
 
