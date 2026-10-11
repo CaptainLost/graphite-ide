@@ -35,7 +35,7 @@ namespace Graphite {
 
 		if (!storedChoice)
 		{
-			return DefinitionOf(language).UsesRecommendedServerUntilChosen ? RecommendedChoice(language) : ServerChoice{};
+			return ServerChoice{};
 		}
 
 		if (*storedChoice == kServerTurnedOff)

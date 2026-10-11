@@ -40,7 +40,9 @@ TEST_CASE("The server list shows the choice as the user made it")
 		  "Roslyn (recommended)");
 	CHECK(Graphite::ChoicePreview(Graphite::LanguageId::CSharp, Graphite::ChooseServer(Graphite::LanguageId::CSharp, std::string{"omnisharp"})) ==
 		  "OmniSharp");
-	CHECK(Graphite::ChoicePreview(Graphite::LanguageId::Cpp, Graphite::ChooseServer(Graphite::LanguageId::Cpp, std::nullopt)) == "clangd (recommended)");
+	CHECK(Graphite::ChoicePreview(Graphite::LanguageId::Cpp, Graphite::ChooseServer(Graphite::LanguageId::Cpp, std::nullopt)) == "Not chosen");
+	CHECK(Graphite::ChoicePreview(Graphite::LanguageId::Cpp, Graphite::ChooseServer(Graphite::LanguageId::Cpp, std::string{"clangd"})) ==
+		  "clangd (recommended)");
 }
 
 TEST_CASE("Each install action has its button label")

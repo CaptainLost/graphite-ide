@@ -38,9 +38,6 @@ namespace Graphite {
 		SyntaxKind Syntax = SyntaxKind::None;
 		MemberContext DeclarationContext;
 		std::span<const std::string_view> Servers;
-		// Set for C++ alone, until clangd stops shipping: a settings file written before languages had
-		// a choice stores none, and C++ must keep the server it always had.
-		bool UsesRecommendedServerUntilChosen = false;
 	};
 
 	const LanguageDefinition& DefinitionOf(LanguageId language);

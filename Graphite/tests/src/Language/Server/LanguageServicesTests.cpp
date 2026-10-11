@@ -2428,3 +2428,26 @@ TEST_CASE("With no solution selected the warm-up starts the server of a solution
 	CHECK(spy.Made == 1);
 	CHECK(spy.LastRoot == temp.GetPath() / "src");
 }
+
+TEST_CASE("With no server chosen for C++ the warm-up starts nothing")
+{
+	TempDirectory temp;
+	const std::filesystem::path source = temp.MakeFile("main.cpp", "int main() { return 0; }\n");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+
+	services.SetClientFactory(spy.Get());
+	services.WarmUp(temp.GetPath(), false);
+
+	constexpr int kSettleAttempts = 50;
+
+	for (int attempt = 0; attempt < kSettleAttempts; ++attempt)
+	{
+		services.Poll();
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	}
+
+	CHECK(spy.Made == 0);
+	CHECK_FALSE(services.HasChosenServer(Graphite::LanguageId::Cpp));
+	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).State == Graphite::ServerState::NotConfigured);
+}

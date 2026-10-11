@@ -156,3 +156,15 @@ TEST_CASE("Every kind of bar draws without an ImGui assertion")
 	frames.Next([&runtime] { DrawInWindow(*runtime); });
 	frames.Next([&runtime] { DrawInWindow(*runtime); });
 }
+
+TEST_CASE("C++ with no server chosen offers to choose one")
+{
+	const std::optional<Graphite::LanguagePrompt> prompt = Graphite::LanguagePromptFor(
+		Graphite::LanguagePromptInputs{.Language = Graphite::LanguageId::Cpp,
+									   .Choice = Graphite::ChooseServer(Graphite::LanguageId::Cpp, std::nullopt),
+									   .State = Graphite::ServerState::NotConfigured});
+
+	REQUIRE(prompt.has_value());
+	CHECK(prompt->Message == "No C++ language support. Choose a language server to enable go to definition, completion and diagnostics.");
+	CHECK(prompt->Buttons == Buttons{Graphite::LanguageBarChoice::Configure, Graphite::LanguageBarChoice::NotNow});
+}
