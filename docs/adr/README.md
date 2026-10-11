@@ -599,4 +599,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0567](0567-keep-server-specific-behaviour-in-adapters.md) | Keep server-specific behaviour in adapters | proposed | 2026-10-09 |
 | [0568](0568-colour-a-language-through-tree-sitter.md) | Colour a language through tree-sitter | proposed | 2026-10-10 |
 | [0569](0569-install-a-language-server-on-request-from-its-own-release-channel.md) | Install a language server on request from its own release channel | proposed | 2026-10-10 |
+| [0570](0570-run-a-language-server-from-graphite-s-install-once-its-runtime-is-found.md) | Run a language server from Graphite's install once its runtime is found | proposed | 2026-10-11 |
 <!-- /adr-index -->
