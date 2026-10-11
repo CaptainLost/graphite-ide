@@ -603,4 +603,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0571](0571-choose-and-install-language-servers-from-settings-and-the-editor.md) | Choose and install language servers from Settings and the editor | proposed | 2026-10-11 |
 | [0572](0572-serve-c-within-the-selected-solution-and-parse-each-server-s-hover-in-its-adapter.md) | Serve C# within the selected solution and parse each server's hover in its adapter | proposed | 2026-10-11 |
 | [0573](0573-describe-settings-pages-as-data-and-draw-them-with-one-layout.md) | Describe settings pages as data and draw them with one layout | accepted | 2026-10-11 |
+| [0574](0574-list-what-a-settings-block-holds-as-rows-of-its-own-in-the-search.md) | List what a settings block holds as rows of its own in the search | accepted | 2026-10-11 |
 <!-- /adr-index -->
