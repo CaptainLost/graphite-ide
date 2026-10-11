@@ -19,6 +19,15 @@ namespace Graphite {
 		CSharpGrammar
 	};
 
+	// A grammar given a server's declaration alone reads it as a statement: in C#, `void Console.WriteLine()` becomes a
+	// local function named Console. Set inside these rows, it reads as the member it declares.
+	struct MemberContext
+	{
+		std::string_view Opening;
+		std::string_view Closing;
+		std::span<const std::string_view> TopLevelKeywords;
+	};
+
 	struct LanguageDefinition
 	{
 		LanguageId Id = LanguageId::PlainText;
@@ -27,6 +36,7 @@ namespace Graphite {
 		std::span<const std::string_view> Extensions;
 		std::string_view LineComment;
 		SyntaxKind Syntax = SyntaxKind::None;
+		MemberContext DeclarationContext;
 		std::span<const std::string_view> Servers;
 		// Set for C++ alone, until clangd stops shipping: a settings file written before languages had
 		// a choice stores none, and C++ must keep the server it always had.

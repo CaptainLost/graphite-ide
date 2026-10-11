@@ -23,6 +23,11 @@ namespace Graphite {
 
 		constexpr std::string_view kSlashSlashComment = "//";
 
+		constexpr std::array<std::string_view, 7> kCSharpTopLevelKeywords{"namespace", "class", "struct", "interface", "enum", "record", "delegate"};
+
+		// The closing row's ';' ends a method declared without a body, which would otherwise end in a missing token.
+		constexpr MemberContext kCSharpMemberContext{.Opening = "class Declared {", .Closing = ";}", .TopLevelKeywords = kCSharpTopLevelKeywords};
+
 		constexpr std::array<LanguageDefinition, kAllLanguages.size()> kDefinitions{{
 			{.Id = LanguageId::PlainText},
 			{.Id = LanguageId::Cpp,
@@ -39,6 +44,7 @@ namespace Graphite {
 			 .Extensions = kCSharpExtensions,
 			 .LineComment = kSlashSlashComment,
 			 .Syntax = SyntaxKind::CSharpGrammar,
+			 .DeclarationContext = kCSharpMemberContext,
 			 .Servers = kCSharpServers},
 			{.Id = LanguageId::TypeScript,
 			 .SettingsName = "TypeScript",

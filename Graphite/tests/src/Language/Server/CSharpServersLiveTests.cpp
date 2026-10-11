@@ -182,11 +182,16 @@ namespace {
 		const std::optional<Graphite::HoverInfo> hover = HoverOverWriteLine(services, source);
 		REQUIRE(hover.has_value());
 		MESSAGE(hover->Declaration);
+		MESSAGE(hover->OverloadNote);
 		MESSAGE(hover->Documentation);
 
 		CHECK(hover->Declaration.find("WriteLine") != std::string::npos);
 		CHECK_FALSE(hover->Documentation.empty());
 		CHECK(hover->Declaration.find('\r') == std::string::npos);
+		CHECK(hover->Declaration.find("&nbsp;") == std::string::npos);
+		CHECK(hover->Declaration.find("\\.") == std::string::npos);
+		CHECK(hover->Declaration.find("```") == std::string::npos);
+		CHECK(hover->Declaration.find("(+") == std::string::npos);
 		CHECK(hover->Documentation.find('\r') == std::string::npos);
 		CHECK(hover->Documentation.find("&nbsp;") == std::string::npos);
 		CHECK(hover->Documentation.find("\\.") == std::string::npos);

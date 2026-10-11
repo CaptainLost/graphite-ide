@@ -12,6 +12,7 @@ namespace Graphite {
 
 		constexpr std::string_view kFence = "```";
 		constexpr std::string_view kBlanks = " \t";
+		constexpr std::string_view kOverloadNoteOpening = "(+";
 		constexpr char kBackslash = '\\';
 		constexpr char kBacktick = '`';
 		constexpr char kAmpersand = '&';
@@ -149,8 +150,7 @@ namespace Graphite {
 			return joined;
 		}
 
-		// Blank lines at either end of a block say nothing.
-		std::string DeclarationFrom(std::vector<std::string> lines)
+		std::vector<std::string> WithoutBlankEnds(std::vector<std::string> lines)
 		{
 			while (!lines.empty() && lines.back().empty())
 			{
@@ -165,7 +165,48 @@ namespace Graphite {
 			}
 
 			lines.erase(lines.begin(), lines.begin() + static_cast<std::ptrdiff_t>(firstWritten));
-			return JoinedLines(lines);
+			return lines;
+		}
+
+		bool IsDigit(char character)
+		{
+			return character >= '0' && character <= '9';
+		}
+
+		// The word after the count is in the server's own language, so nothing but "(+", the count and ")" is looked for.
+		std::size_t OverloadNoteStart(std::string_view line)
+		{
+			const std::size_t noteStart = line.rfind(kOverloadNoteOpening);
+
+			if (noteStart == std::string_view::npos || !line.ends_with(')'))
+			{
+				return std::string_view::npos;
+			}
+
+			const std::string_view before = line.substr(0, noteStart);
+			const std::string_view inside = line.substr(noteStart + kOverloadNoteOpening.size(),
+														line.size() - 1 - noteStart - kOverloadNoteOpening.size());
+			const std::size_t countStart = inside.find_first_not_of(kBlanks);
+
+			const bool followsTheDeclaration = before.ends_with(' ') && !Trimmed(before).empty();
+			const bool opensWithACount = countStart != std::string_view::npos && IsDigit(inside[countStart]);
+			const bool closesOnlyAtTheEnd = inside.find_first_of("()") == std::string_view::npos;
+
+			return followsTheDeclaration && opensWithACount && closesOnlyAtTheEnd ? noteStart : std::string_view::npos;
+		}
+
+		std::string TakeOverloadNote(std::string& line)
+		{
+			const std::size_t noteStart = OverloadNoteStart(line);
+
+			if (noteStart == std::string_view::npos)
+			{
+				return {};
+			}
+
+			std::string note = line.substr(noteStart);
+			line = std::string{TrimmedRight(std::string_view(line).substr(0, noteStart))};
+			return note;
 		}
 
 		class Paragraphs
@@ -246,7 +287,14 @@ namespace Graphite {
 			documentation.Add(insideFence ? std::string{Trimmed(line)} : PlainTextOf(line));
 		}
 
-		info.Declaration = DeclarationFrom(std::move(declaration));
+		std::vector<std::string> declarationLines = WithoutBlankEnds(std::move(declaration));
+
+		if (!declarationLines.empty())
+		{
+			info.OverloadNote = TakeOverloadNote(declarationLines.back());
+		}
+
+		info.Declaration = JoinedLines(declarationLines);
 		info.Documentation = documentation.Text();
 		info.Parsed = !info.Declaration.empty() || !info.Documentation.empty();
 

@@ -20,6 +20,7 @@
 #include <array>
 #include <format>
 #include <functional>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -176,9 +177,8 @@ namespace Graphite {
 
 		using SpansOfLine = std::function<std::vector<SemanticSpan>(std::string_view, const std::vector<Token>&)>;
 
-		// `expanded`, lexed as `tokens` say, its identifiers coloured as `spansOf` says — no server
-		// colours the tooltip's text — behind a `label` in the text colour, and wrapped to
-		// `maxContentWidth` as the editor's rows would be.
+		using LinesColouring = std::vector<std::vector<Token>> (*)(LanguageId, std::span<const std::string_view>);
+
 		void DrawCodeLine(std::string_view label, const std::string& expanded, std::vector<Token> tokens,
 						  const SpansOfLine& spansOf, const HoverTooltipLook& look, float maxContentWidth)
 		{
@@ -224,8 +224,8 @@ namespace Graphite {
 
 		// A multi-line declaration is coloured as one text: a grammar given each line alone would parse fragments.
 		template<typename Spans>
-		void DrawCode(std::string_view label, std::string_view code, const Spans& spansOf, const HoverTooltipLook& look,
-					  float maxContentWidth)
+		void DrawCode(std::string_view label, std::string_view code, LinesColouring colouring, const Spans& spansOf,
+					  const HoverTooltipLook& look, float maxContentWidth)
 		{
 			std::vector<std::string> expandedLines;
 
@@ -235,7 +235,7 @@ namespace Graphite {
 			}
 
 			const std::vector<std::string_view> lineViews(expandedLines.begin(), expandedLines.end());
-			std::vector<std::vector<Token>> coloured = ColourLines(look.Language, lineViews);
+			std::vector<std::vector<Token>> coloured = colouring(look.Language, lineViews);
 
 			for (std::size_t index = 0; index < expandedLines.size(); ++index)
 			{
@@ -313,18 +313,34 @@ namespace Graphite {
 			{
 				const TokenKind nameKind = KindOfHoverSymbol(info.Kind);
 				const bool spansNeeded = NeedsDeclarationSpans(look.Language);
+				const float declarationLeft = ImGui::GetCursorScreenPos().x;
 
 				DrawCode(
-					"", info.Declaration,
+					"", info.Declaration, ColourDeclaration,
 					[&](std::string_view text, const std::vector<Token>& tokens) {
 						return spansNeeded ? DeclarationSpans(text, tokens, info.Name, nameKind) : std::vector<SemanticSpan>{};
 					},
 					look, maxContentWidth);
+
+				if (!info.OverloadNote.empty())
+				{
+					// Text after SameLine wraps at the wrap position, not where it began: a note that does not fit
+					// beside the declaration would come out a word to a row.
+					const float noteLeft = ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x;
+					const float noteWidth = ImGui::CalcTextSize(info.OverloadNote.c_str()).x;
+
+					if (noteLeft + noteWidth <= declarationLeft + maxContentWidth)
+					{
+						ImGui::SameLine();
+					}
+
+					DisabledText(info.OverloadNote);
+				}
 			}
 
 			if (!info.ReturnType.empty())
 			{
-				DrawCode("\xE2\x86\x92 ", info.ReturnType, TypeSpans, look, // "→ "
+				DrawCode("\xE2\x86\x92 ", info.ReturnType, ColourLines, TypeSpans, look, // "→ "
 						 maxContentWidth);
 			}
 
@@ -335,7 +351,7 @@ namespace Graphite {
 
 				for (const std::string& parameter : info.Parameters)
 				{
-					DrawCode("", parameter, ParameterSpans, look, maxContentWidth);
+					DrawCode("", parameter, ColourLines, ParameterSpans, look, maxContentWidth);
 				}
 
 				ImGui::Unindent();
@@ -343,7 +359,7 @@ namespace Graphite {
 
 			if (!info.Type.empty())
 			{
-				DrawCode("Type: ", info.Type, TypeSpans, look, maxContentWidth);
+				DrawCode("Type: ", info.Type, ColourLines, TypeSpans, look, maxContentWidth);
 
 				if (!info.TypeAka.empty())
 				{
@@ -355,7 +371,7 @@ namespace Graphite {
 
 			if (!info.Value.empty())
 			{
-				DrawCode("Value = ", info.Value, NoSpans, look, maxContentWidth);
+				DrawCode("Value = ", info.Value, ColourLines, NoSpans, look, maxContentWidth);
 			}
 
 			// A field has an offset, and a padding only then; a type has a size and an alignment
@@ -391,7 +407,11 @@ namespace Graphite {
 
 			if (!info.Documentation.empty())
 			{
-				ImGui::Separator();
+				if (heading || body)
+				{
+					ImGui::Separator();
+				}
+
 				PlainText(info.Documentation);
 			}
 		}

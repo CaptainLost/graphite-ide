@@ -15,6 +15,7 @@ namespace Graphite {
 		std::string Access;					 // "public", "private", "protected", or empty
 		std::vector<std::string> Qualifiers; // "virtual", "static", "const", in declaration order
 		std::string Declaration;			 // the code block's declaration line, access prefix removed
+		std::string OverloadNote;			 // "(+ 19 overloads)", taken off the declaration's last line
 		std::string ReturnType;
 		std::vector<std::string> Parameters;
 		std::string Type;
@@ -27,7 +28,7 @@ namespace Graphite {
 		std::string Documentation; // paragraphs joined by "\n\n"
 		std::string Raw;		   // the markdown as received
 
-		// False when not even the "### " heading was found: the tooltip then shows Raw as text.
+		// Left false, the tooltip draws Raw as plain text and ignores every other field.
 		bool Parsed = false;
 	};
 }

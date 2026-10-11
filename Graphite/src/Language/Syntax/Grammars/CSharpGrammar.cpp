@@ -29,6 +29,9 @@ namespace Graphite {
 (struct_declaration (identifier) @type)
 (record_declaration (identifier) @type)
 
+(explicit_interface_specifier (identifier) @type)
+(explicit_interface_specifier (qualified_name name: (identifier) @type))
+
 (namespace_declaration name: (identifier) @namespace)
 (namespace_declaration name: (qualified_name name: (identifier) @namespace))
 (file_scoped_namespace_declaration name: (identifier) @namespace)
