@@ -114,17 +114,22 @@ TEST_CASE("A failed answer is remembered as failed for its question until one su
 TEST_CASE("A preview is coloured once for a tab width and again only when the width changes")
 {
 	HoverState hover;
-	hover.Preview = Graphite::DefinitionPreview{.Path = "C:/project/Widget.cs", .FirstLine = 0, .Lines = {"\tpublic int Size;"}};
+	hover.Preview = Graphite::DefinitionPreview{.Path = "C:/project/Widget.cs", .FirstLine = 0, .Lines = {"	public int Size;"}};
 
-	const Graphite::ColouredPreview* first = &Graphite::ColouredPreviewOf(hover, 4);
-	const Graphite::ColouredPreview* again = &Graphite::ColouredPreviewOf(hover, 4);
+	const Graphite::ColouredPreview& first = Graphite::ColouredPreviewOf(hover, 4);
 
-	CHECK(first == again);
-	REQUIRE(first->Tokens.size() == 1);
-	CHECK_FALSE(first->Tokens[0].empty());
-	CHECK(first->Dedented.Lines == std::vector<std::string>{"public int Size;"});
+	REQUIRE(first.Tokens.size() == 1);
+	CHECK_FALSE(first.Tokens[0].empty());
+	CHECK(first.Dedented.Lines == std::vector<std::string>{"public int Size;"});
 
-	CHECK(Graphite::ColouredPreviewOf(hover, 8).TabWidth == 8);
+	hover.PreviewColours->Dedented.Lines[0] = "marker";
+
+	CHECK(Graphite::ColouredPreviewOf(hover, 4).Dedented.Lines[0] == "marker");
+
+	const Graphite::ColouredPreview& wider = Graphite::ColouredPreviewOf(hover, 8);
+
+	CHECK(wider.TabWidth == 8);
+	CHECK(wider.Dedented.Lines[0] == "public int Size;");
 }
 
 TEST_CASE("A new preview answer drops the colours of the last one")
