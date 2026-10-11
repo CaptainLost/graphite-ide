@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -173,28 +174,14 @@ namespace Graphite {
 			ImGui::Dummy(ImVec2(static_cast<float>(column) * look.CellWidth, look.LineHeight));
 		}
 
-		std::vector<Token> ColourOne(LanguageId language, std::string_view text)
+		using SpansOfLine = std::function<std::vector<SemanticSpan>(std::string_view, const std::vector<Token>&)>;
+
+		// `expanded`, lexed as `tokens` say, its identifiers coloured as `spansOf` says — no server
+		// colours the tooltip's text — behind a `label` in the text colour, and wrapped to
+		// `maxContentWidth` as the editor's rows would be.
+		void DrawCodeLine(std::string_view label, const std::string& expanded, std::vector<Token> tokens,
+						  const SpansOfLine& spansOf, const HoverTooltipLook& look, float maxContentWidth)
 		{
-			const std::array<std::string_view, 1> lines{text};
-			std::vector<std::vector<Token>> coloured = ColourLines(language, lines);
-
-			if (coloured.empty())
-			{
-				return {};
-			}
-
-			return std::move(coloured.front());
-		}
-
-		// `code`, lexed in the hovered document's language, its identifiers coloured as `spansOf`
-		// says — no server colours the tooltip's text — behind a `label` in the text colour, and
-		// wrapped to `maxContentWidth` as the editor's rows would be.
-		template<typename Spans>
-		void DrawCode(std::string_view label, std::string_view code, const Spans& spansOf,
-					  const HoverTooltipLook& look, float maxContentWidth)
-		{
-			const std::string expanded = Core::ExpandTabs(code, look.TabWidth);
-			std::vector<Token> tokens = ColourOne(look.Language, expanded);
 			std::vector<SemanticSpan> spans = spansOf(std::string_view(expanded), tokens);
 
 			// The label is no code, so it is lexed with none: an arrow or a colon in it would come
@@ -233,6 +220,29 @@ namespace Graphite {
 			ImGui::PopStyleVar();
 
 			DrawColouredRow(text, tokens, spans, from, text.size(), look);
+		}
+
+		// A multi-line declaration is coloured as one text: a grammar given each line alone would parse fragments.
+		template<typename Spans>
+		void DrawCode(std::string_view label, std::string_view code, const Spans& spansOf, const HoverTooltipLook& look,
+					  float maxContentWidth)
+		{
+			std::vector<std::string> expandedLines;
+
+			for (const std::string_view line : CodeLinesOf(code))
+			{
+				expandedLines.push_back(Core::ExpandTabs(line, look.TabWidth));
+			}
+
+			const std::vector<std::string_view> lineViews(expandedLines.begin(), expandedLines.end());
+			std::vector<std::vector<Token>> coloured = ColourLines(look.Language, lineViews);
+
+			for (std::size_t index = 0; index < expandedLines.size(); ++index)
+			{
+				std::vector<Token> tokens = index < coloured.size() ? std::move(coloured[index]) : std::vector<Token>{};
+				DrawCodeLine(index == 0 ? label : std::string_view{}, expandedLines[index], std::move(tokens), spansOf, look,
+							 maxContentWidth);
+			}
 		}
 
 		std::vector<SemanticSpan> NoSpans(std::string_view, const std::vector<Token>&)
@@ -288,12 +298,13 @@ namespace Graphite {
 				DisabledText(where);
 			}
 
+			const bool heading = !info.Kind.empty() || !info.Name.empty() || !where.empty();
 			const bool body = !info.Declaration.empty() || !info.ReturnType.empty() ||
 							  !info.Parameters.empty() || !info.Type.empty() ||
 							  !info.Value.empty() || !info.Offset.empty() || !info.Size.empty() ||
 							  !info.Alignment.empty();
 
-			if (body)
+			if (body && heading)
 			{
 				ImGui::Separator();
 			}
@@ -301,11 +312,12 @@ namespace Graphite {
 			if (!info.Declaration.empty())
 			{
 				const TokenKind nameKind = KindOfHoverSymbol(info.Kind);
+				const bool spansNeeded = NeedsDeclarationSpans(look.Language);
 
 				DrawCode(
 					"", info.Declaration,
 					[&](std::string_view text, const std::vector<Token>& tokens) {
-						return DeclarationSpans(text, tokens, info.Name, nameKind);
+						return spansNeeded ? DeclarationSpans(text, tokens, info.Name, nameKind) : std::vector<SemanticSpan>{};
 					},
 					look, maxContentWidth);
 			}

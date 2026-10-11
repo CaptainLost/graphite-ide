@@ -1,11 +1,13 @@
 #pragma once
 
 #include "Editor/Overlays/SemanticOverlay.h"
+#include "Language/Api/LanguageId.h"
 
 #include <imgui.h>
 
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Graphite {
@@ -28,6 +30,11 @@ namespace Graphite {
 	// since ColourOf matches spans by where they start and nothing starts there any more.
 	std::vector<SemanticSpan> DedentSpans(const std::vector<SemanticSpan>& spans,
 										  std::size_t removed);
+
+	std::vector<std::string_view> CodeLinesOf(std::string_view code);
+
+	// The C++ lexer leaves every name an Identifier for the tooltip to name; a grammar has named them already.
+	bool NeedsDeclarationSpans(LanguageId language);
 
 	// How wide the preview's rows are for a widest line of `widestColumns` cells. Beside the
 	// tooltip's vertical scrollbar it keeps a cell clear of it: glyphs drawn flush against the

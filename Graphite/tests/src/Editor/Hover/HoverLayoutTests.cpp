@@ -2,7 +2,9 @@
 
 #include "Editor/Hover/HoverLayout.h"
 
+#include <ostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace Graphite;
@@ -162,4 +164,17 @@ TEST_CASE("A tooltip is kept inside the editor's right edge, and never past its 
 	const TooltipPlacement wide = PlaceTooltip(kAnchorMin, kAnchorMax, ImVec2(1000.0f, 100.0f),
 											   kBoundsMin, kBoundsMax);
 	CHECK(wide.Position.x == doctest::Approx(100.0f));
+}
+
+TEST_CASE("A declaration's code splits into its lines")
+{
+	CHECK(Graphite::CodeLinesOf("int Sum()") == std::vector<std::string_view>{"int Sum()"});
+	CHECK(Graphite::CodeLinesOf("void Draw(\r\n    int width)") == std::vector<std::string_view>{"void Draw(", "    int width)"});
+}
+
+TEST_CASE("Only a lexer-coloured language has its declaration's identifiers named by the tooltip")
+{
+	CHECK(Graphite::NeedsDeclarationSpans(Graphite::LanguageId::Cpp));
+	CHECK_FALSE(Graphite::NeedsDeclarationSpans(Graphite::LanguageId::CSharp));
+	CHECK_FALSE(Graphite::NeedsDeclarationSpans(Graphite::LanguageId::PlainText));
 }

@@ -2,6 +2,8 @@
 
 #include "Core/Text/Columns.h"
 
+#include "Language/Registry/LanguageRegistry.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -94,5 +96,36 @@ namespace Graphite {
 		placed.MaxHeight = flip ? above : below;
 
 		return placed;
+	}
+
+	std::vector<std::string_view> CodeLinesOf(std::string_view code)
+	{
+		std::vector<std::string_view> lines;
+		std::size_t start = 0;
+
+		while (true)
+		{
+			const std::size_t end = code.find('\n', start);
+			std::string_view line = code.substr(start, end == std::string_view::npos ? std::string_view::npos : end - start);
+
+			if (line.ends_with('\r'))
+			{
+				line.remove_suffix(1);
+			}
+
+			lines.push_back(line);
+
+			if (end == std::string_view::npos)
+			{
+				return lines;
+			}
+
+			start = end + 1;
+		}
+	}
+
+	bool NeedsDeclarationSpans(LanguageId language)
+	{
+		return DefinitionOf(language).Syntax == SyntaxKind::CppLexer;
 	}
 }
