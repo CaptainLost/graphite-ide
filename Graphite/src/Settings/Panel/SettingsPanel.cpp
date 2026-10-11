@@ -22,6 +22,17 @@ namespace Graphite {
 
 		const std::array<std::string, 1> kOpenLabels{"Open"};
 
+		// The padding is read by Begin, so it is popped before anything inside the child is drawn: the
+		// combos, tooltips and dialogs drawn there copy the window padding.
+		bool BeginPaddedChild(const char* id, ImVec2 size, float padding)
+		{
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Core::Scaled(ImVec2(padding, padding)));
+			const bool visible = ImGui::BeginChild(id, size, ImGuiChildFlags_AlwaysUseWindowPadding);
+			ImGui::PopStyleVar();
+
+			return visible;
+		}
+
 		std::string JoinPath(const std::vector<std::string>& path)
 		{
 			std::string joined;
@@ -243,12 +254,13 @@ namespace Graphite {
 
 	void SettingsPanel::DrawSidebar()
 	{
-		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Core::Scaled(ImVec2(kSidebarPadding, kSidebarPadding)));
-
 		const ImVec2 size(Core::Scaled(SettingsLayout::kSidebarWidth), 0.0f);
 
-		if (ImGui::BeginChild("##sidebar", size, ImGuiChildFlags_AlwaysUseWindowPadding))
+		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
+		const bool visible = BeginPaddedChild("##sidebar", size, kSidebarPadding);
+		ImGui::PopStyleColor();
+
+		if (visible)
 		{
 			std::string query = m_Query;
 
@@ -272,8 +284,6 @@ namespace Graphite {
 		}
 
 		ImGui::EndChild();
-		ImGui::PopStyleVar();
-		ImGui::PopStyleColor();
 	}
 
 	std::optional<std::string> SettingsPanel::DrawNavigation(const SettingsDirectory& directory, std::string_view selectedId,
@@ -312,9 +322,6 @@ namespace Graphite {
 
 	void SettingsPanel::DrawContent()
 	{
-		const float margin = SettingsLayout::kPageMargin;
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Core::Scaled(ImVec2(margin, margin)));
-
 		if (IsSearching())
 		{
 			DrawResults();
@@ -323,8 +330,6 @@ namespace Graphite {
 		{
 			DrawOpenPage();
 		}
-
-		ImGui::PopStyleVar();
 	}
 
 	void SettingsPanel::DrawOpenPage()
@@ -343,7 +348,7 @@ namespace Graphite {
 		// One child per page, so each page keeps its own scroll position.
 		const std::string childId = "##page/" + JoinPath(m_OpenPath);
 
-		if (ImGui::BeginChild(childId.c_str(), ImVec2(0.0f, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding) && page != nullptr)
+		if (BeginPaddedChild(childId.c_str(), ImVec2(0.0f, 0.0f), SettingsLayout::kPageMargin) && page != nullptr)
 		{
 			SettingsLayout::DrawPageBody(*page, ProblemColour());
 		}
@@ -356,7 +361,7 @@ namespace Graphite {
 		const ImVec2 size(Core::Scaled(SettingsLayout::kInnerListWidth), 0.0f);
 		const std::vector<SettingsPageHits> noHits;
 
-		if (ImGui::BeginChild("##innerList", size, ImGuiChildFlags_AlwaysUseWindowPadding))
+		if (BeginPaddedChild("##innerList", size, SettingsLayout::kPageMargin))
 		{
 			if (std::optional<std::string> clicked = DrawNavigation(children, m_OpenPath.back(), noHits); clicked.has_value())
 			{
@@ -374,7 +379,7 @@ namespace Graphite {
 
 	void SettingsPanel::DrawResults()
 	{
-		if (ImGui::BeginChild("##results", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding))
+		if (BeginPaddedChild("##results", ImVec2(0.0f, 0.0f), SettingsLayout::kPageMargin))
 		{
 			if (m_Hits.empty())
 			{

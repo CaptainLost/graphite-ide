@@ -26,10 +26,12 @@ namespace {
 	{
 		bool WordWrap = false;
 		ImVec2 WordWrapCentre;
+		ImVec2 PaddingInside;
 	};
 
 	void DrawWordWrap(ControlState& state)
 	{
+		state.PaddingInside = ImGui::GetStyle().WindowPadding;
 		Core::Toggle("##wordWrap", &state.WordWrap);
 		const ImVec2 itemMin = ImGui::GetItemRectMin();
 		const ImVec2 itemMax = ImGui::GetItemRectMax();
@@ -381,4 +383,23 @@ TEST_CASE("A toggle in the search results changes its setting")
 	fixture.Frames.Click(fixture.Controls.WordWrapCentre, [&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
 
 	CHECK(fixture.Controls.WordWrap);
+}
+
+// ImGui reads the padding at Begin; what is drawn inside the page copies it for its combos, tooltips and dialogs.
+TEST_CASE("The padding of the panel's child windows does not reach what is drawn inside them")
+{
+	PanelFixture fixture;
+	REQUIRE(fixture.Panel.Open({"editor"}));
+	fixture.DrawFrames();
+	const ImVec2 outside = ImGui::GetStyle().WindowPadding;
+
+	CHECK(fixture.Controls.PaddingInside.x == outside.x);
+	CHECK(fixture.Controls.PaddingInside.y == outside.y);
+
+	fixture.Controls.PaddingInside = ImVec2(-1.0f, -1.0f);
+	fixture.Panel.SetQuery("wrap");
+	fixture.DrawFrames();
+
+	CHECK(fixture.Controls.PaddingInside.x == outside.x);
+	CHECK(fixture.Controls.PaddingInside.y == outside.y);
 }
