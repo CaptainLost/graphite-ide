@@ -113,6 +113,7 @@ TEST_CASE("Uninstalling a running server stops it and holds it stopped until the
 	CHECK(running.State() == Graphite::ServerState::NotInstalled);
 	CHECK_FALSE(std::filesystem::exists(running.Version));
 	CHECK(running.Services.Holds(running.Source, Graphite::LanguageId::CSharp));
+	CHECK(running.Services.StatusFor(running.Source, Graphite::LanguageId::CSharp).Detail != "it is being uninstalled");
 }
 
 TEST_CASE("A failed uninstall starts the stopped server again")

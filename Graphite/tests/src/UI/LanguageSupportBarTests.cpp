@@ -121,6 +121,14 @@ TEST_CASE("No bar is offered where there is nothing to offer or it was dismissed
 	CHECK_FALSE(Graphite::LanguagePromptFor(RoslynIn(Graphite::ServerState::Restricted)).has_value());
 }
 
+TEST_CASE("An install job running over a ready server puts no bar over the editor")
+{
+	Graphite::LanguagePromptInputs updating = RoslynIn(Graphite::ServerState::Ready);
+	updating.Install.Running = Graphite::InstallJobKind::Install;
+
+	CHECK_FALSE(Graphite::LanguagePromptFor(updating).has_value());
+}
+
 TEST_CASE("Each bar button has its label")
 {
 	CHECK(std::string{Graphite::LanguageBarChoiceLabel(Graphite::LanguageBarChoice::Configure)} == "Configure");

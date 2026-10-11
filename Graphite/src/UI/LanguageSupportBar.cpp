@@ -85,7 +85,7 @@ namespace Graphite {
 		const ServerDefinition& server = *inputs.Choice.Server;
 		const InstallSummary summary = SummariseInstall(inputs.Install);
 
-		if (inputs.Install.Running == InstallJobKind::Install)
+		if (inputs.Install.Running == InstallJobKind::Install && inputs.State == ServerState::NotInstalled)
 		{
 			return InstallingPrompt(inputs.Language, server, summary);
 		}

@@ -134,6 +134,32 @@ TEST_CASE("An install records the version it placed and its job ends")
 	CHECK_FALSE(installs.RunningJobOf("clangd").has_value());
 }
 
+TEST_CASE("An install that finds the version already there records it")
+{
+	TempDirectory temp;
+	const Core::Ref<FakeHttpClient> firstHttp = Core::CreateRef<FakeHttpClient>();
+	const Core::Ref<FakeHttpClient> secondHttp = Core::CreateRef<FakeHttpClient>();
+	ServeClangd(*firstHttp, "23.1.0");
+	ServeClangd(*secondHttp, "23.1.0");
+	Graphite::ServerInstalls first{firstHttp, temp.GetPath() / "servers", RunWhereSubmitted()};
+	Graphite::ServerInstalls second{secondHttp, temp.GetPath() / "servers", RunWhereSubmitted()};
+
+	second.SweepAtStartup();
+	second.Poll();
+	CHECK_FALSE(second.InstalledVersionOf("clangd").has_value());
+
+	REQUIRE(first.Install("clangd"));
+	first.Poll();
+
+	REQUIRE(second.Install("clangd"));
+	second.Poll();
+
+	REQUIRE(second.ProgressOf("clangd").has_value());
+	CHECK(second.ProgressOf("clangd")->Step == Graphite::InstallStep::UpToDate);
+	REQUIRE(second.InstalledVersionOf("clangd").has_value());
+	CHECK(second.InstalledVersionOf("clangd")->Version == "23.1.0");
+}
+
 TEST_CASE("A job is known by its kind from the moment it is asked for until its outcome is polled")
 {
 	TempDirectory temp;

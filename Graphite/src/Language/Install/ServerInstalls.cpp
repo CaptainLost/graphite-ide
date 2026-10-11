@@ -219,6 +219,13 @@ namespace Graphite {
 		case InstallStep::Installed:
 			m_Installed.insert_or_assign(outcome.ServerId, InstalledVersion{.Version = outcome.Version, .HasChecksum = outcome.HasChecksum});
 			break;
+		case InstallStep::UpToDate:
+			if (outcome.Kind == InstallJobKind::Install)
+			{
+				m_Installed.insert_or_assign(outcome.ServerId, InstalledVersion{.Version = outcome.Version, .HasChecksum = outcome.HasChecksum});
+			}
+
+			break;
 		case InstallStep::Uninstalled:
 			m_Installed.erase(outcome.ServerId);
 			break;
@@ -226,7 +233,6 @@ namespace Graphite {
 		case InstallStep::Downloading:
 		case InstallStep::Verifying:
 		case InstallStep::Extracting:
-		case InstallStep::UpToDate:
 		case InstallStep::UpdateAvailable:
 		case InstallStep::Cancelled:
 		case InstallStep::Failed:
