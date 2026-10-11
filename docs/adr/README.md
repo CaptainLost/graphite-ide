@@ -601,4 +601,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0569](0569-install-a-language-server-on-request-from-its-own-release-channel.md) | Install a language server on request from its own release channel | proposed | 2026-10-10 |
 | [0570](0570-run-a-language-server-from-graphite-s-install-once-its-runtime-is-found.md) | Run a language server from Graphite's install once its runtime is found | proposed | 2026-10-11 |
 | [0571](0571-choose-and-install-language-servers-from-settings-and-the-editor.md) | Choose and install language servers from Settings and the editor | proposed | 2026-10-11 |
+| [0572](0572-serve-c-within-the-selected-solution-and-parse-each-server-s-hover-in-its-adapter.md) | Serve C# within the selected solution and parse each server's hover in its adapter | proposed | 2026-10-11 |
 <!-- /adr-index -->

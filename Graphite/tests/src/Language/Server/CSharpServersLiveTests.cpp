@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "Language/Api/HoverInfo.h"
 #include "Language/Install/InstalledServer.h"
 #include "Language/Install/ServerInstaller.h"
 #include "Language/Server/LanguageServices.h"
@@ -99,6 +100,29 @@ namespace {
 		return false;
 	}
 
+	std::optional<Graphite::LanguageServices::Answer> AwaitAnswer(Graphite::LanguageServices& services, Graphite::LanguageServices::Ticket ticket,
+																  std::chrono::steady_clock::time_point deadline)
+	{
+		while (std::chrono::steady_clock::now() < deadline)
+		{
+			std::this_thread::sleep_for(std::chrono::milliseconds{100});
+			services.Poll();
+
+			std::vector<Graphite::LanguageServices::Answer> answers;
+			services.TakeAnswers(answers);
+
+			for (Graphite::LanguageServices::Answer& answer : answers)
+			{
+				if (answer.For == ticket)
+				{
+					return std::move(answer);
+				}
+			}
+		}
+
+		return std::nullopt;
+	}
+
 	// A server still loading may answer a definition with nothing, so it is asked again until it names something.
 	std::optional<Graphite::Location> DefinitionOfHello(Graphite::LanguageServices& services, const std::filesystem::path& source)
 	{
@@ -108,27 +132,65 @@ namespace {
 		while (std::chrono::steady_clock::now() < deadline)
 		{
 			const Graphite::LanguageServices::Ticket ticket = services.AskDefinition(source, Graphite::LanguageId::CSharp, hello);
-			std::vector<Graphite::LanguageServices::Answer> answers;
+			const std::optional<Graphite::LanguageServices::Answer> answer = AwaitAnswer(services, ticket, deadline);
 
-			while (answers.empty() && std::chrono::steady_clock::now() < deadline)
+			if (answer && !answer->Locations.empty())
 			{
-				std::this_thread::sleep_for(std::chrono::milliseconds{100});
-				services.Poll();
-				services.TakeAnswers(answers);
-			}
-
-			for (const Graphite::LanguageServices::Answer& answer : answers)
-			{
-				if (answer.For == ticket && !answer.Locations.empty())
-				{
-					return answer.Locations.front();
-				}
+				return answer->Locations.front();
 			}
 
 			std::this_thread::sleep_for(std::chrono::seconds{1});
 		}
 
 		return std::nullopt;
+	}
+
+	// A server still loading may answer a hover with nothing, so it is asked again until it says something.
+	std::optional<Graphite::HoverInfo> HoverOverWriteLine(Graphite::LanguageServices& services, const std::filesystem::path& source)
+	{
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kLiveTimeout;
+		const Graphite::FilePosition insideWriteLine{.Path = source, .Line = 2, .Column = Graphite::Utf16Column{61}};
+
+		while (std::chrono::steady_clock::now() < deadline)
+		{
+			const Graphite::LanguageServices::Ticket ticket = services.AskHover(source, Graphite::LanguageId::CSharp, insideWriteLine);
+			const std::optional<Graphite::LanguageServices::Answer> answer = AwaitAnswer(services, ticket, deadline);
+
+			if (answer && !answer->Hover.Declaration.empty())
+			{
+				return answer->Hover;
+			}
+
+			std::this_thread::sleep_for(std::chrono::seconds{1});
+		}
+
+		return std::nullopt;
+	}
+
+	using ServedCheck = std::function<void(Graphite::LanguageServices& services, const std::filesystem::path& source)>;
+
+	void CheckDefinitionOfHello(Graphite::LanguageServices& services, const std::filesystem::path& source)
+	{
+		const std::optional<Graphite::Location> definition = DefinitionOfHello(services, source);
+		REQUIRE(definition.has_value());
+		CHECK(definition->Line == 1);
+		CHECK(definition->Column == Graphite::Utf16Column{44});
+	}
+
+	void CheckHoverOverWriteLine(Graphite::LanguageServices& services, const std::filesystem::path& source)
+	{
+		const std::optional<Graphite::HoverInfo> hover = HoverOverWriteLine(services, source);
+		REQUIRE(hover.has_value());
+		MESSAGE(hover->Declaration);
+		MESSAGE(hover->Documentation);
+
+		CHECK(hover->Declaration.find("WriteLine") != std::string::npos);
+		CHECK_FALSE(hover->Documentation.empty());
+		CHECK(hover->Declaration.find('\r') == std::string::npos);
+		CHECK(hover->Documentation.find('\r') == std::string::npos);
+		CHECK(hover->Documentation.find("&nbsp;") == std::string::npos);
+		CHECK(hover->Documentation.find("\\.") == std::string::npos);
+		CHECK(hover->Documentation.find("```") == std::string::npos);
 	}
 
 	struct DemoFolder
@@ -138,7 +200,7 @@ namespace {
 		std::optional<std::filesystem::path> SelectedSolution;
 	};
 
-	void AnswerDefinitionIn(TempDirectory& temp, const DemoFolder& folder, std::string_view serverId)
+	void ServeAndCheck(TempDirectory& temp, const DemoFolder& folder, std::string_view serverId, const ServedCheck& check)
 	{
 		const std::filesystem::path servers = temp.GetPath() / "servers";
 		InstallForReal(serverId, servers);
@@ -159,34 +221,31 @@ namespace {
 
 		REQUIRE(WaitUntilReady(services, folder.Source));
 
-		const std::optional<Graphite::Location> definition = DefinitionOfHello(services, folder.Source);
-		REQUIRE(definition.has_value());
-		CHECK(definition->Line == 1);
-		CHECK(definition->Column == Graphite::Utf16Column{44});
+		check(services, folder.Source);
 	}
 
-	void ServeDemoWith(std::string_view serverId)
+	void ServeDemoWith(std::string_view serverId, const ServedCheck& check)
 	{
 		TempDirectory temp;
 		temp.MakeFile("project/Demo.slnx", kSolution);
 		temp.MakeFile("project/Demo/Demo.csproj", kProject);
 
-		AnswerDefinitionIn(temp,
-						   DemoFolder{.Root = temp.GetPath() / "project",
-									  .Source = temp.MakeFile("project/Demo/Program.cs", kProgram),
-									  .SelectedSolution = temp.GetPath() / "project" / "Demo.slnx"},
-						   serverId);
+		ServeAndCheck(temp,
+					  DemoFolder{.Root = temp.GetPath() / "project",
+								 .Source = temp.MakeFile("project/Demo/Program.cs", kProgram),
+								 .SelectedSolution = temp.GetPath() / "project" / "Demo.slnx"},
+					  serverId, check);
 	}
 }
 
 TEST_CASE("csharp-ls installed by Graphite answers a definition in a solution" * doctest::skip())
 {
-	ServeDemoWith("csharp-ls");
+	ServeDemoWith("csharp-ls", CheckDefinitionOfHello);
 }
 
 TEST_CASE("Roslyn installed by Graphite loads the solution and answers a definition" * doctest::skip())
 {
-	ServeDemoWith("roslyn");
+	ServeDemoWith("roslyn", CheckDefinitionOfHello);
 }
 
 TEST_CASE("Roslyn installed by Graphite loads a lone project and answers a definition" * doctest::skip())
@@ -194,10 +253,35 @@ TEST_CASE("Roslyn installed by Graphite loads a lone project and answers a defin
 	TempDirectory temp;
 	temp.MakeFile("project/Demo.csproj", kProject);
 
-	AnswerDefinitionIn(temp, DemoFolder{.Root = temp.GetPath() / "project", .Source = temp.MakeFile("project/Program.cs", kProgram)}, "roslyn");
+	ServeAndCheck(temp, DemoFolder{.Root = temp.GetPath() / "project", .Source = temp.MakeFile("project/Program.cs", kProgram)}, "roslyn",
+				  CheckDefinitionOfHello);
 }
 
 TEST_CASE("OmniSharp installed by Graphite answers a definition in a solution" * doctest::skip())
 {
-	ServeDemoWith("omnisharp");
+	ServeDemoWith("omnisharp", CheckDefinitionOfHello);
+}
+
+TEST_CASE("Roslyn installed by Graphite loads projects found below a folder without a solution" * doctest::skip())
+{
+	TempDirectory temp;
+	temp.MakeFile("project/src/Demo/Demo.csproj", kProject);
+
+	ServeAndCheck(temp, DemoFolder{.Root = temp.GetPath() / "project", .Source = temp.MakeFile("project/src/Demo/Program.cs", kProgram)},
+				  "roslyn", CheckDefinitionOfHello);
+}
+
+TEST_CASE("csharp-ls installed by Graphite answers a hover as a declaration and its documentation" * doctest::skip())
+{
+	ServeDemoWith("csharp-ls", CheckHoverOverWriteLine);
+}
+
+TEST_CASE("Roslyn installed by Graphite answers a hover as a declaration and its documentation" * doctest::skip())
+{
+	ServeDemoWith("roslyn", CheckHoverOverWriteLine);
+}
+
+TEST_CASE("OmniSharp installed by Graphite answers a hover as a declaration and its documentation" * doctest::skip())
+{
+	ServeDemoWith("omnisharp", CheckHoverOverWriteLine);
 }
