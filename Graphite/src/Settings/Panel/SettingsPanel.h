@@ -42,15 +42,15 @@ namespace Graphite {
 
 		bool IsSearching() const;
 
-		// The page opened is told the query when the block was found by what it holds inside, and an
-		// empty one otherwise, so a filter an earlier search left on it is cleared.
-		void OpenSearchHit(const std::vector<std::string>& path, std::string_view matchesInside);
+		// The page opened is told exactly openWith, which is empty for a block found by its own words, so
+		// a filter an earlier search left on it is cleared.
+		void OpenSearchHit(const std::vector<std::string>& path, std::string_view openWith);
 
 	private:
 		struct PendingOpen
 		{
 			std::vector<std::string> Path;
-			std::string MatchesInside;
+			std::string OpenWith;
 			bool FromResults = false;
 		};
 
@@ -77,7 +77,7 @@ namespace Graphite {
 
 		SettingsCard ResultCard(const SettingsPageHits& page, const SettingsCardHits& card);
 
-		void DrawOpenButton(const std::vector<std::string>& path, const std::string& matchesInside);
+		void DrawOpenButton(const std::vector<std::string>& path, const std::string& openWith);
 
 		void RenderDialogs(const std::vector<SettingsPage*>& pages);
 

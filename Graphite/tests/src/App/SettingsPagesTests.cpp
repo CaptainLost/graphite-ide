@@ -14,12 +14,15 @@
 #include "Sessions/ClaudeSettings.h"
 #include "Settings/AnalysisSettings.h"
 #include "Settings/Panel/SettingsPanel.h"
+#include "Settings/Panel/SettingsSearch.h"
 #include "Terminal/TerminalWindows.h"
 #include "Theme/ActiveScheme.h"
 #include "UI/ModalGate.h"
 #include "Workspace/Workspace.h"
 #include "Workspace/WorkspaceTrust.h"
 
+#include "Core/Command/Binding.h"
+#include "Core/Command/Command.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Events/EventBus.h"
@@ -27,6 +30,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -224,4 +228,28 @@ TEST_CASE("Drawing and searching every page writes nothing to graphite.json")
 	parts.Settings.Get().Flush();
 
 	CHECK(ReadText(parts.Settings.GetFile()) == before);
+}
+
+TEST_CASE("Searching for a command's name or a word of its shortcut lists it under Key Bindings")
+{
+	ApplicationParts parts;
+	parts.Commands.Add(Core::Command{.Id = "file.save", .Label = "Save File"});
+	parts.Keys.SetDefault("file.save", Core::Binding{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_S)});
+	const Graphite::SettingsDirectory directory = Graphite::BuildSettingsDirectory(parts.Sources());
+	ImGuiFrames frames;
+
+	for (const char* query : {"save file", "ctrl save"})
+	{
+		CAPTURE(query);
+		std::vector<Graphite::SettingsPageHits> hits;
+		frames.Next([&hits, &directory, query] { hits = Graphite::FindSettings(directory, query); });
+
+		const auto keyBindings = std::find_if(hits.begin(), hits.end(), [](const Graphite::SettingsPageHits& page) { return page.Label == "Key Bindings"; });
+		REQUIRE(keyBindings != hits.end());
+		REQUIRE(keyBindings->Cards.size() == 1);
+		REQUIRE(keyBindings->Cards[0].Rows.size() == 1);
+		CHECK(keyBindings->Cards[0].Rows[0].Title == "Save File");
+		CHECK(keyBindings->Cards[0].Rows[0].Description == "Ctrl+S");
+		CHECK(keyBindings->Cards[0].Rows[0].OpenWith == "Save File");
+	}
 }

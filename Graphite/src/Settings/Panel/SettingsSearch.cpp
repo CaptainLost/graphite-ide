@@ -5,8 +5,10 @@
 #include "Core/Base/Ascii.h"
 
 #include <array>
-#include <optional>
+#include <cstddef>
+#include <iterator>
 #include <span>
+#include <string>
 #include <utility>
 
 namespace Graphite {
@@ -19,31 +21,7 @@ namespace Graphite {
 			std::string Query;
 		};
 
-		bool AnyTextContains(const std::vector<std::string_view>& texts, std::string_view loweredWord)
-		{
-			for (const std::string_view text : texts)
-			{
-				if (Core::LoweredTextContains(text, loweredWord))
-				{
-					return true;
-				}
-			}
-
-			return false;
-		}
-
-		bool EveryWordFound(const std::vector<std::string>& words, const std::vector<std::string_view>& texts)
-		{
-			for (const std::string& word : words)
-			{
-				if (!AnyTextContains(texts, word))
-				{
-					return false;
-				}
-			}
-
-			return true;
-		}
+		constexpr std::size_t kMostFindingsShown = 8;
 
 		std::vector<std::string_view> SearchedTextsOf(const SettingsRow& row, std::string_view cardHeading,
 													  std::span<const std::string_view> pageTitles)
@@ -59,25 +37,47 @@ namespace Graphite {
 			return texts;
 		}
 
-		std::optional<SettingsRowHit> MatchRow(const SettingsRow& row, std::string_view cardHeading,
-											   std::span<const std::string_view> pageTitles, const SearchTerms& terms)
+		SettingsRow RowForTheRest(std::size_t count, const std::string& query)
 		{
-			if (row.IsBlock() && row.DescribeMatches)
-			{
-				std::string matchesInside = row.DescribeMatches(terms.Query);
+			return SettingsRow{.Key = "more",
+							   .Title = count == 1 ? "1 more match" : std::to_string(count) + " more matches",
+							   .Description = "Open the page to see them all.",
+							   .OpenWith = query};
+		}
 
-				if (!matchesInside.empty())
+		std::vector<SettingsRow> ShownOf(std::vector<SettingsRow> findings, const std::string& query)
+		{
+			if (findings.size() <= kMostFindingsShown)
+			{
+				return findings;
+			}
+
+			const std::size_t hidden = findings.size() - kMostFindingsShown;
+			findings.resize(kMostFindingsShown);
+			findings.push_back(RowForTheRest(hidden, query));
+
+			return findings;
+		}
+
+		std::vector<SettingsRow> MatchRow(const SettingsRow& row, std::string_view cardHeading, std::span<const std::string_view> pageTitles,
+										  const SearchTerms& terms)
+		{
+			if (row.FindInside)
+			{
+				std::vector<SettingsRow> findings = row.FindInside(terms.Words);
+
+				if (!findings.empty())
 				{
-					return SettingsRowHit{.Row = row, .MatchesInside = std::move(matchesInside)};
+					return ShownOf(std::move(findings), terms.Query);
 				}
 			}
 
 			if (EveryWordFound(terms.Words, SearchedTextsOf(row, cardHeading, pageTitles)))
 			{
-				return SettingsRowHit{.Row = row};
+				return {row};
 			}
 
-			return std::nullopt;
+			return {};
 		}
 
 		SettingsCardHits MatchCard(const SettingsCard& card, std::span<const std::string_view> pageTitles, const SearchTerms& terms)
@@ -86,10 +86,8 @@ namespace Graphite {
 
 			for (const SettingsRow& row : card.Rows)
 			{
-				if (std::optional<SettingsRowHit> hit = MatchRow(row, card.Heading, pageTitles, terms); hit.has_value())
-				{
-					cardHits.Rows.push_back(std::move(*hit));
-				}
+				std::vector<SettingsRow> hits = MatchRow(row, card.Heading, pageTitles, terms);
+				cardHits.Rows.insert(cardHits.Rows.end(), std::make_move_iterator(hits.begin()), std::make_move_iterator(hits.end()));
 			}
 
 			return cardHits;
@@ -160,6 +158,26 @@ namespace Graphite {
 	bool IsSearchQuery(std::string_view query)
 	{
 		return !SplitQueryWords(query).empty();
+	}
+
+	bool EveryWordFound(std::span<const std::string> words, std::span<const std::string_view> texts)
+	{
+		for (const std::string& word : words)
+		{
+			bool found = false;
+
+			for (const std::string_view text : texts)
+			{
+				found = found || Core::LoweredTextContains(text, word);
+			}
+
+			if (!found)
+			{
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	std::vector<SettingsPageHits> FindSettings(const SettingsDirectory& directory, std::string_view query)

@@ -1,6 +1,5 @@
 #include "Settings/Panel/KeyBindingsPage.h"
 
-#include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
 #include "Core/Command/Binding.h"
 #include "Core/Command/Command.h"
@@ -13,15 +12,16 @@
 #include "Core/ImGui/ImGuiKeys.h"
 #include "Core/ImGui/TextInput.h"
 #include "Settings/Panel/SettingsLayout.h"
+#include "Settings/Panel/SettingsSearch.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 
 #include <algorithm>
 #include <array>
-#include <format>
+#include <span>
+#include <string>
 #include <string_view>
-
 #include <utility>
 #include <vector>
 
@@ -159,6 +159,24 @@ namespace Graphite {
 			return chords;
 		}
 
+		std::string ShortcutsOf(const Core::Binding* binding)
+		{
+			std::string text;
+
+			for (const Core::Chord& chord : Flatten(binding))
+			{
+				if (chord.IsEmpty())
+				{
+					continue;
+				}
+
+				text += text.empty() ? "" : ", ";
+				text += chord.ToString();
+			}
+
+			return text.empty() ? "No shortcut" : text;
+		}
+
 		bool CanAppendAlternate(const Core::Binding* binding)
 		{
 			return binding != nullptr && !binding->Primary.IsEmpty();
@@ -234,7 +252,7 @@ namespace Graphite {
 		shortcuts.Rows.push_back(SettingsRow{.Title = "Shortcuts",
 											 .Keywords = {"shortcut", "hotkey", "keyboard", "key"},
 											 .DrawBlock = [this] { DrawShortcuts(); },
-											 .DescribeMatches = [this](std::string_view query) { return DescribeCommandsMatching(query); }});
+											 .FindInside = [this](std::span<const std::string> words) { return FindCommands(words); }});
 
 		return {restore, shortcuts};
 	}
@@ -275,10 +293,10 @@ namespace Graphite {
 		ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthStretch, 1.0f);
 		ImGui::TableHeadersRow();
 
-		const std::string needle = Core::Lowered(m_Filter);
+		const std::vector<std::string> words = SplitQueryWords(m_Filter);
 
-		m_Commands.ForEach([this, &needle](const Core::Command& command) {
-			if (CommandMatches(command, needle))
+		m_Commands.ForEach([this, &words](const Core::Command& command) {
+			if (CommandMatches(command, words))
 			{
 				RenderRow(command);
 			}
@@ -298,32 +316,31 @@ namespace Graphite {
 		m_Filter = std::string{query};
 	}
 
-	std::string KeyBindingsPage::DescribeCommandsMatching(std::string_view query) const
+	std::vector<SettingsRow> KeyBindingsPage::FindCommands(std::span<const std::string> words) const
 	{
-		const std::string needle = Core::Lowered(query);
-		std::size_t matching = 0;
+		std::vector<SettingsRow> rows;
 
-		m_Commands.ForEach([this, &needle, &matching](const Core::Command& command) { CountIfMatches(command, needle, matching); });
-
-		if (matching == 0)
+		if (words.empty())
 		{
-			return {};
+			return rows;
 		}
 
-		if (matching == 1)
-		{
-			return "1 command matches";
-		}
+		m_Commands.ForEach([this, words, &rows](const Core::Command& command) { AppendIfMatching(command, words, rows); });
 
-		return std::format("{} commands match", matching);
+		return rows;
 	}
 
-	void KeyBindingsPage::CountIfMatches(const Core::Command& command, std::string_view loweredNeedle, std::size_t& matching) const
+	void KeyBindingsPage::AppendIfMatching(const Core::Command& command, std::span<const std::string> words, std::vector<SettingsRow>& rows) const
 	{
-		if (CommandMatches(command, loweredNeedle))
+		if (!CommandMatches(command, words))
 		{
-			++matching;
+			return;
 		}
+
+		rows.push_back(SettingsRow{.Key = command.Id,
+								   .Title = LabelOf(command),
+								   .Description = ShortcutsOf(m_Keys.For(command.Id)),
+								   .OpenWith = LabelOf(command)});
 	}
 
 	void KeyBindingsPage::OnEvent(Core::Event& event)
@@ -404,19 +421,13 @@ namespace Graphite {
 		m_TapMods = 0;
 	}
 
-	bool KeyBindingsPage::CommandMatches(const Core::Command& command, std::string_view loweredNeedle) const
+	bool KeyBindingsPage::CommandMatches(const Core::Command& command, std::span<const std::string> words) const
 	{
-		if (loweredNeedle.empty())
-		{
-			return true;
-		}
+		const std::string label = LabelOf(command);
+		const std::string shortcuts = AllChordText(m_Keys.For(command.Id));
+		const std::array<std::string_view, 2> texts{label, shortcuts};
 
-		if (Core::Lowered(LabelOf(command)).find(loweredNeedle) != std::string::npos)
-		{
-			return true;
-		}
-
-		return Core::Lowered(AllChordText(m_Keys.For(command.Id))).find(loweredNeedle) != std::string::npos;
+		return EveryWordFound(words, texts);
 	}
 
 	void KeyBindingsPage::RenderRow(const Core::Command& command)

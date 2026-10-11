@@ -6,17 +6,21 @@
 
 #include "Settings/AppSettings.h"
 #include "Settings/Panel/AppearancePage.h"
+#include "Settings/Panel/SettingsSearch.h"
 #include "Theme/ActiveScheme.h"
 #include "Theme/ColorScheme.h"
 #include "UI/ModalGate.h"
 
 #include "Core/Events/EventBus.h"
 
+#include <imgui.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <fstream>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -51,6 +55,26 @@ namespace {
 	};
 
 	constexpr std::size_t kThemeAndInterfaceCards = 2;
+
+	std::vector<Graphite::SettingsRow> FindInFrame(AppearanceScreen& screen, const Graphite::SettingsRow& block, std::string_view query)
+	{
+		std::vector<Graphite::SettingsRow> found;
+		const std::vector<std::string> words = Graphite::SplitQueryWords(query);
+		screen.Frames.GetFrames().Next([&found, &block, &words] { found = block.FindInside(words); });
+
+		return found;
+	}
+
+	void DrawControlInFrame(AppearanceScreen& screen, const Graphite::SettingsRow& row)
+	{
+		screen.Frames.GetFrames().Next([&row] {
+			ImGui::Begin("Found");
+			ImGui::PushID(row.Key.c_str());
+			row.DrawControl();
+			ImGui::PopID();
+			ImGui::End();
+		});
+	}
 }
 
 TEST_CASE("The appearance page holds the theme, the interface and a card for each group of colours")
@@ -78,18 +102,26 @@ TEST_CASE("Each group of colours is one block row under the theme and the interf
 	}
 }
 
-TEST_CASE("A colour is found by its name through its group's block")
+TEST_CASE("A colour is found by its name through its group's block, as a row of its own")
 {
 	AppearanceScreen screen;
 
 	const std::optional<Graphite::SettingsRow> block = screen.Frames.FindRow("Syntax colours");
 
 	REQUIRE(block.has_value());
-	REQUIRE(block->DescribeMatches);
-	CHECK(block->DescribeMatches("comment") == "Comment");
-	CHECK(block->DescribeMatches("COMMENT") == "Comment");
-	CHECK(block->DescribeMatches("zzz").empty());
-	CHECK(block->DescribeMatches("semantic") == "6 colours match");
+	REQUIRE(block->FindInside);
+
+	const std::vector<Graphite::SettingsRow> comment = FindInFrame(screen, *block, "comment");
+	REQUIRE(comment.size() == 1);
+	CHECK(comment[0].Title == "Comment");
+	CHECK(comment[0].Key == "Comment");
+	CHECK(comment[0].Description.empty());
+	CHECK(comment[0].DrawControl);
+
+	CHECK(FindInFrame(screen, *block, "COMMENT").size() == 1);
+	CHECK(FindInFrame(screen, *block, "zzz").empty());
+	CHECK(FindInFrame(screen, *block, "semantic").size() == 6);
+	CHECK(FindInFrame(screen, *block, "syntax comment").empty());
 }
 
 TEST_CASE("An own scheme's colour cards explain dimmed names and the reset icon")
@@ -166,4 +198,62 @@ TEST_CASE("An own scheme with an overridden colour draws wide and narrow without
 	screen.Frames.DrawPageTwice(320.0f);
 
 	CHECK_FALSE(screen.Modals.IsBusy());
+}
+
+TEST_CASE("In an own scheme an inherited colour's row says so and an overridden one's does not")
+{
+	AppearanceScreen screen(true);
+
+	const std::optional<Graphite::SettingsRow> block = screen.Frames.FindRow("Syntax colours");
+	REQUIRE(block.has_value());
+
+	const std::vector<Graphite::SettingsRow> comment = FindInFrame(screen, *block, "comment");
+	const std::vector<Graphite::SettingsRow> keyword = FindInFrame(screen, *block, "keyword");
+
+	REQUIRE(comment.size() == 1);
+	CHECK(comment[0].Description.empty());
+	REQUIRE_FALSE(keyword.empty());
+	CHECK(keyword[0].Description == "Inherited from the built-in scheme.");
+}
+
+TEST_CASE("A found colour row's control is as wide as the swatch, and wider in an own scheme for the reset icon")
+{
+	AppearanceScreen builtIn;
+	AppearanceScreen own(true);
+
+	const std::optional<Graphite::SettingsRow> builtInBlock = builtIn.Frames.FindRow("Syntax colours");
+	const std::optional<Graphite::SettingsRow> ownBlock = own.Frames.FindRow("Syntax colours");
+	REQUIRE(builtInBlock.has_value());
+	REQUIRE(ownBlock.has_value());
+
+	const std::vector<Graphite::SettingsRow> builtInRows = FindInFrame(builtIn, *builtInBlock, "comment");
+	const std::vector<Graphite::SettingsRow> ownRows = FindInFrame(own, *ownBlock, "comment");
+
+	REQUIRE(builtInRows.size() == 1);
+	REQUIRE(ownRows.size() == 1);
+	CHECK(builtInRows[0].ControlWidth > 0.0f);
+	CHECK(ownRows[0].ControlWidth > builtInRows[0].ControlWidth);
+}
+
+TEST_CASE("A found colour row's control draws, built-in and own, overridden and inherited, without an ImGui assertion")
+{
+	AppearanceScreen builtIn;
+	AppearanceScreen own(true);
+
+	for (AppearanceScreen* screen : {&builtIn, &own})
+	{
+		const std::optional<Graphite::SettingsRow> block = screen->Frames.FindRow("Syntax colours");
+		REQUIRE(block.has_value());
+
+		for (const char* query : {"comment", "keyword"})
+		{
+			const std::vector<Graphite::SettingsRow> rows = FindInFrame(*screen, *block, query);
+			REQUIRE_FALSE(rows.empty());
+
+			DrawControlInFrame(*screen, rows[0]);
+			DrawControlInFrame(*screen, rows[0]);
+		}
+	}
+
+	CHECK_FALSE(own.Modals.IsBusy());
 }

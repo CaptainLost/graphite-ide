@@ -3,6 +3,7 @@
 #include "Core/Base/NonCopyable.h"
 
 #include <functional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -35,9 +36,12 @@ namespace Graphite {
 
 		std::function<void()> DrawBlock;
 
-		// What a block finds inside itself for a query, as a sentence ("3 commands match"); empty
-		// when it finds nothing.
-		std::function<std::string(std::string_view query)> DescribeMatches;
+		// The rows a block shows in the search results for the query's lowered words, one per thing
+		// inside it that matches every word; empty when nothing does.
+		std::function<std::vector<SettingsRow>(std::span<const std::string> words)> FindInside;
+
+		// What the [Open] of a found row with no control of its own hands the page's OnOpenedFromSearch.
+		std::string OpenWith;
 
 		std::string_view GetKey() const { return Key.empty() ? std::string_view{Title} : std::string_view{Key}; }
 

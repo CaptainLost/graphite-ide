@@ -10,6 +10,7 @@
 #include <array>
 #include <cstddef>
 #include <filesystem>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -68,7 +69,23 @@ namespace Graphite {
 
 		template<typename Which>
 			requires std::is_enum_v<Which>
+		void DrawColourSwatch(Which which);
+
+		template<typename Which>
+			requires std::is_enum_v<Which>
+		void DrawColourReset(Which which);
+
+		template<typename Which>
+			requires std::is_enum_v<Which>
 		void DrawColour(Which which);
+
+		template<typename Which>
+			requires std::is_enum_v<Which>
+		void DrawColourResult(Which which);
+
+		template<typename Which>
+			requires std::is_enum_v<Which>
+		std::vector<SettingsRow> FindColours(std::size_t count, std::span<const std::string> words);
 
 		std::vector<std::string> SchemeActionLabels() const;
 

@@ -6,6 +6,9 @@
 
 #include "Core/Base/Base.h"
 
+#include <array>
+#include <cstddef>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -18,9 +21,36 @@ namespace {
 		return Graphite::SettingsRow{.Title = std::move(title), .Description = std::move(description), .Keywords = std::move(keywords)};
 	}
 
-	std::string CommandsMatching(std::string_view query)
+	constexpr std::size_t kMostFindingsShown = 8;
+
+	// A query of exactly one word: "wrap" finds one command, "many" finds more than are shown, "exactly" the most that are.
+	std::vector<Graphite::SettingsRow> FindCommands(std::span<const std::string> words)
 	{
-		return query == "wrap" ? "1 command matches" : "";
+		const std::string query = words.size() == 1 ? words.front() : "";
+		std::size_t count = 0;
+
+		if (query == "wrap")
+		{
+			count = 1;
+		}
+		else if (query == "many")
+		{
+			count = 11;
+		}
+		else if (query == "exactly")
+		{
+			count = kMostFindingsShown;
+		}
+
+		std::vector<Graphite::SettingsRow> rows;
+
+		for (std::size_t commandIndex = 0; commandIndex < count; ++commandIndex)
+		{
+			const std::string number = std::to_string(commandIndex);
+			rows.push_back(Graphite::SettingsRow{.Key = "command." + number, .Title = "Command " + number, .Description = "Ctrl+" + number, .OpenWith = "Command " + number});
+		}
+
+		return rows;
 	}
 
 	Graphite::SettingsDirectory SampleDirectory()
@@ -39,7 +69,7 @@ namespace {
 		shortcuts.Rows.push_back(Graphite::SettingsRow{.Title = "Shortcuts",
 													   .Keywords = {"shortcut", "hotkey"},
 													   .DrawBlock = [] {},
-													   .DescribeMatches = CommandsMatching});
+													   .FindInside = FindCommands});
 
 		Graphite::SettingsCard server{.Heading = "Server"};
 		server.Rows.push_back(Row("Language server", "Roslyn is recommended."));
@@ -75,9 +105,9 @@ namespace {
 		{
 			for (const Graphite::SettingsCardHits& card : page.Cards)
 			{
-				for (const Graphite::SettingsRowHit& row : card.Rows)
+				for (const Graphite::SettingsRow& row : card.Rows)
 				{
-					titles.push_back(row.Row.Title);
+					titles.push_back(row.Title);
 				}
 			}
 		}
@@ -156,18 +186,67 @@ TEST_CASE("A page inside a page is found by its parent's title")
 	CHECK(TitlesOf(Graphite::FindSettings(directory, "language servers")) == std::vector<std::string>{"Language server"});
 }
 
-TEST_CASE("A block is found by what it finds inside before its title")
+TEST_CASE("A block's findings come back as the hits instead of the block")
 {
 	const Graphite::SettingsDirectory directory = SampleDirectory();
 
-	const std::vector<Graphite::SettingsPageHits> byCommand = Graphite::FindSettings(directory, "wrap");
-	REQUIRE_FALSE(byCommand.empty());
-	CHECK(byCommand[0].Cards[0].Rows[0].MatchesInside == "1 command matches");
+	const std::vector<Graphite::SettingsPageHits> hits = Graphite::FindSettings(directory, "wrap");
 
-	const std::vector<Graphite::SettingsPageHits> byKeyword = Graphite::FindSettings(directory, "hotkey");
-	REQUIRE(byKeyword.size() == 1);
-	CHECK(byKeyword[0].Cards[0].Rows[0].Row.Title == "Shortcuts");
-	CHECK(byKeyword[0].Cards[0].Rows[0].MatchesInside.empty());
+	REQUIRE_FALSE(hits.empty());
+	REQUIRE(hits[0].Cards[0].Rows.size() == 1);
+	CHECK(hits[0].Cards[0].Rows[0].Title == "Command 0");
+	CHECK(hits[0].Cards[0].Rows[0].Description == "Ctrl+0");
+	CHECK(hits[0].Cards[0].Rows[0].OpenWith == "Command 0");
+}
+
+TEST_CASE("A block that finds nothing inside is found by its keywords as itself")
+{
+	const Graphite::SettingsDirectory directory = SampleDirectory();
+
+	const std::vector<Graphite::SettingsPageHits> hits = Graphite::FindSettings(directory, "hotkey");
+
+	REQUIRE(hits.size() == 1);
+	REQUIRE(hits[0].Cards[0].Rows.size() == 1);
+	CHECK(hits[0].Cards[0].Rows[0].Title == "Shortcuts");
+	CHECK(hits[0].Cards[0].Rows[0].OpenWith.empty());
+}
+
+TEST_CASE("A block with more findings than are shown gets a row for the rest")
+{
+	const Graphite::SettingsDirectory directory = SampleDirectory();
+
+	const std::vector<Graphite::SettingsPageHits> hits = Graphite::FindSettings(directory, " many ");
+
+	REQUIRE(hits.size() == 1);
+	const std::vector<Graphite::SettingsRow>& rows = hits[0].Cards[0].Rows;
+	REQUIRE(rows.size() == kMostFindingsShown + 1);
+	CHECK(rows[kMostFindingsShown - 1].Title == "Command 7");
+	CHECK(rows.back().Key == "more");
+	CHECK(rows.back().Title == "3 more matches");
+	CHECK(rows.back().Description == "Open the page to see them all.");
+	CHECK(rows.back().OpenWith == "many");
+	CHECK_FALSE(rows.back().DrawControl);
+}
+
+TEST_CASE("A block with exactly as many findings as are shown gets no row for the rest")
+{
+	const Graphite::SettingsDirectory directory = SampleDirectory();
+
+	const std::vector<Graphite::SettingsPageHits> hits = Graphite::FindSettings(directory, "exactly");
+
+	REQUIRE(hits.size() == 1);
+	CHECK(hits[0].Cards[0].Rows.size() == kMostFindingsShown);
+}
+
+TEST_CASE("Every word must be found in at least one of the texts, whatever the case of the texts")
+{
+	const std::vector<std::string> saveCtrl{"save", "ctrl"};
+	const std::vector<std::string> saveShift{"save", "shift"};
+	const std::vector<std::string_view> texts{"SAVE", "Ctrl+S"};
+
+	CHECK(Graphite::EveryWordFound(saveCtrl, texts));
+	CHECK_FALSE(Graphite::EveryWordFound(saveShift, texts));
+	CHECK(Graphite::EveryWordFound(std::vector<std::string>{}, texts));
 }
 
 TEST_CASE("An empty query or one of spaces finds nothing")

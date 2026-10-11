@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <functional>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -45,8 +46,9 @@ namespace Graphite {
 
 		const std::string& GetFilter() const { return m_Filter; }
 
-		// "3 commands match" for the commands the table's filter would show for the query; empty when none.
-		std::string DescribeCommandsMatching(std::string_view query) const;
+		// One row per command, in registry order, that the table's filter would show for the same lowered
+		// words; nothing for no words.
+		std::vector<SettingsRow> FindCommands(std::span<const std::string> words) const;
 
 	private:
 		// One chord the user tried to bind and could not simply have, with the cell it was meant
@@ -91,9 +93,9 @@ namespace Graphite {
 
 		void DrawShortcuts();
 
-		bool CommandMatches(const Core::Command& command, std::string_view loweredNeedle) const;
+		bool CommandMatches(const Core::Command& command, std::span<const std::string> words) const;
 
-		void CountIfMatches(const Core::Command& command, std::string_view loweredNeedle, std::size_t& matching) const;
+		void AppendIfMatching(const Core::Command& command, std::span<const std::string> words, std::vector<SettingsRow>& rows) const;
 
 		Core::CommandRegistry& m_Commands;
 		Core::Keymap& m_Keys;

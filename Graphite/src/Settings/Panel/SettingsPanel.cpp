@@ -186,10 +186,8 @@ namespace Graphite {
 		return IsSearchQuery(m_Query);
 	}
 
-	void SettingsPanel::OpenSearchHit(const std::vector<std::string>& path, std::string_view matchesInside)
+	void SettingsPanel::OpenSearchHit(const std::vector<std::string>& path, std::string_view openWith)
 	{
-		const std::string query = Core::Trimmed(m_Query);
-
 		if (!Open(path))
 		{
 			return;
@@ -197,7 +195,7 @@ namespace Graphite {
 
 		if (SettingsPage* open = GetOpenPage(); open != nullptr)
 		{
-			open->OnOpenedFromSearch(matchesInside.empty() ? std::string_view{} : std::string_view{query});
+			open->OnOpenedFromSearch(openWith);
 		}
 	}
 
@@ -419,30 +417,30 @@ namespace Graphite {
 	{
 		SettingsCard result{.Heading = card.Heading, .Note = card.Note};
 
-		for (const SettingsRowHit& hit : card.Rows)
+		for (const SettingsRow& hit : card.Rows)
 		{
-			if (!hit.Row.IsBlock())
+			if (hit.DrawControl)
 			{
-				result.Rows.push_back(hit.Row);
+				result.Rows.push_back(hit);
 				continue;
 			}
 
-			result.Rows.push_back(SettingsRow{
-				.Key = std::string{hit.Row.GetKey()},
-				.Title = hit.Row.Title,
-				.Description = hit.MatchesInside,
-				.ControlWidth = SettingsLayout::ButtonsWidth(kOpenLabels),
-				.DrawControl = [this, path = page.Path, matchesInside = hit.MatchesInside] { DrawOpenButton(path, matchesInside); }});
+			result.Rows.push_back(SettingsRow{.Key = std::string{hit.GetKey()},
+											  .Title = hit.Title,
+											  .Description = hit.Description,
+											  .Problem = hit.Problem,
+											  .ControlWidth = SettingsLayout::ButtonsWidth(kOpenLabels),
+											  .DrawControl = [this, path = page.Path, openWith = hit.OpenWith] { DrawOpenButton(path, openWith); }});
 		}
 
 		return result;
 	}
 
-	void SettingsPanel::DrawOpenButton(const std::vector<std::string>& path, const std::string& matchesInside)
+	void SettingsPanel::DrawOpenButton(const std::vector<std::string>& path, const std::string& openWith)
 	{
 		if (ImGui::Button(kOpenLabels.front().c_str()))
 		{
-			m_PendingOpen = PendingOpen{.Path = path, .MatchesInside = matchesInside, .FromResults = true};
+			m_PendingOpen = PendingOpen{.Path = path, .OpenWith = openWith, .FromResults = true};
 		}
 	}
 
@@ -471,7 +469,7 @@ namespace Graphite {
 
 		if (pending.FromResults)
 		{
-			OpenSearchHit(pending.Path, pending.MatchesInside);
+			OpenSearchHit(pending.Path, pending.OpenWith);
 		}
 		else
 		{

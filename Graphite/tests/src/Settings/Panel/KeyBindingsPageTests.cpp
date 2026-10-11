@@ -3,6 +3,7 @@
 #include "SettingsPageFrames.h"
 
 #include "Settings/Panel/KeyBindingsPage.h"
+#include "Settings/Panel/SettingsSearch.h"
 #include "UI/ModalGate.h"
 
 #include "Core/Command/Binding.h"
@@ -16,6 +17,7 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -33,38 +35,122 @@ namespace {
 			Commands.Add(Core::Command{.Id = "editor.toggleWordWrap", .Label = "Word Wrap"});
 			Commands.Add(Core::Command{.Id = "file.save", .Label = "Save"});
 			Commands.Add(Core::Command{.Id = "file.saveAll", .Label = "Save All"});
+
+			Keys.SetDefault("file.save", Core::Binding{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_S)});
+			Keys.SetDefault("file.saveAll", Core::Binding{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S),
+														  .Alternates = {Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Alt | ImGuiKey_S)}});
 		}
 	};
+
+	std::vector<std::string> TitlesOf(const std::vector<Graphite::SettingsRow>& rows)
+	{
+		std::vector<std::string> titles;
+
+		for (const Graphite::SettingsRow& row : rows)
+		{
+			titles.push_back(row.Title);
+		}
+
+		return titles;
+	}
+
+	// Header row included: the table keeps the index of the row it drew last.
+	int RowsInBindingsTable()
+	{
+		ImGuiContext& context = *ImGui::GetCurrentContext();
+
+		for (int tableIndex = 0; tableIndex < context.Tables.GetMapSize(); ++tableIndex)
+		{
+			if (const ImGuiTable* table = context.Tables.TryGetMapData(tableIndex); table != nullptr && table->LastFrameActive == context.FrameCount)
+			{
+				return table->CurrentRow + 1;
+			}
+		}
+
+		return 0;
+	}
 }
 
-TEST_CASE("The key bindings page says how many commands its table would show for a query")
+TEST_CASE("Commands are found word by word across their name and their shortcuts")
 {
 	KeyBindingsScreen screen;
 
-	CHECK(screen.Page.DescribeCommandsMatching("save") == "2 commands match");
-	CHECK(screen.Page.DescribeCommandsMatching("WRAP") == "1 command matches");
-	CHECK(screen.Page.DescribeCommandsMatching("nothing like it").empty());
+	CHECK(TitlesOf(screen.Page.FindCommands(Graphite::SplitQueryWords("save"))) == std::vector<std::string>{"Save", "Save All"});
+	CHECK(TitlesOf(screen.Page.FindCommands(Graphite::SplitQueryWords("save ctrl"))) == std::vector<std::string>{"Save", "Save All"});
+	CHECK(TitlesOf(screen.Page.FindCommands(Graphite::SplitQueryWords("ctrl shift"))) == std::vector<std::string>{"Save All"});
+	CHECK(TitlesOf(screen.Page.FindCommands(Graphite::SplitQueryWords("all ctrl alt"))) == std::vector<std::string>{"Save All"});
+	CHECK(TitlesOf(screen.Page.FindCommands(Graphite::SplitQueryWords("WRAP"))) == std::vector<std::string>{"Word Wrap"});
+	CHECK(screen.Page.FindCommands(Graphite::SplitQueryWords("save tabs")).empty());
 }
 
-TEST_CASE("The shortcuts block is found by the commands in it")
+TEST_CASE("A found command is a row with its id, its name, its shortcuts and no control")
+{
+	KeyBindingsScreen screen;
+
+	const std::vector<Graphite::SettingsRow> save = screen.Page.FindCommands(Graphite::SplitQueryWords("all"));
+	const std::vector<Graphite::SettingsRow> wrap = screen.Page.FindCommands(Graphite::SplitQueryWords("wrap"));
+
+	REQUIRE(save.size() == 1);
+	CHECK(save[0].Key == "file.saveAll");
+	CHECK(save[0].Title == "Save All");
+	CHECK(save[0].Description == "Ctrl+Shift+S, Ctrl+Alt+S");
+	CHECK(save[0].OpenWith == "Save All");
+	CHECK_FALSE(save[0].DrawControl);
+
+	REQUIRE(wrap.size() == 1);
+	CHECK(wrap[0].Description == "No shortcut");
+	CHECK(wrap[0].OpenWith == "Word Wrap");
+}
+
+TEST_CASE("A search with no words lists no command")
+{
+	KeyBindingsScreen screen;
+
+	CHECK(screen.Page.FindCommands({}).empty());
+}
+
+TEST_CASE("The shortcuts block finds the commands inside itself")
 {
 	KeyBindingsScreen screen;
 
 	const std::optional<Graphite::SettingsRow> row = screen.Frames.FindRow("Shortcuts");
 
 	REQUIRE(row.has_value());
-	REQUIRE(row->DescribeMatches);
+	REQUIRE(row->FindInside);
 	CHECK(row->IsBlock());
-	CHECK(row->DescribeMatches("wrap") == "1 command matches");
+	CHECK(TitlesOf(row->FindInside(Graphite::SplitQueryWords("wrap"))) == std::vector<std::string>{"Word Wrap"});
 }
 
-TEST_CASE("Opening the page from a search filters its table by the query")
+TEST_CASE("The table's filter shows the commands a search for the same words finds")
 {
 	KeyBindingsScreen screen;
 
-	screen.Page.OnOpenedFromSearch("save");
+	screen.Page.OnOpenedFromSearch("");
+	screen.Frames.DrawPageTwice();
+	CHECK(RowsInBindingsTable() == 1 + 3);
 
-	CHECK(screen.Page.GetFilter() == "save");
+	screen.Page.OnOpenedFromSearch("SAVE ctrl");
+	screen.Frames.DrawPageTwice();
+	CHECK(RowsInBindingsTable() == 1 + 2);
+
+	screen.Page.OnOpenedFromSearch("shift save");
+	screen.Frames.DrawPageTwice();
+	CHECK(RowsInBindingsTable() == 1 + 1);
+
+	screen.Page.OnOpenedFromSearch("save tabs");
+	screen.Frames.DrawPageTwice();
+	CHECK(RowsInBindingsTable() == 1);
+}
+
+TEST_CASE("Opening the page from a search filters its table by the text it is handed")
+{
+	KeyBindingsScreen screen;
+
+	screen.Page.OnOpenedFromSearch("Close Tab");
+	CHECK(screen.Page.GetFilter() == "Close Tab");
+
+	screen.Page.OnOpenedFromSearch("");
+	CHECK(screen.Page.GetFilter().empty());
 }
 
 TEST_CASE("Deactivating the page withdraws the restore question it asked")

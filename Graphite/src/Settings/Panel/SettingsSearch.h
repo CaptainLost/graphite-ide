@@ -3,26 +3,18 @@
 #include "Settings/Panel/SettingsDirectory.h"
 #include "Settings/Panel/SettingsPage.h"
 
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace Graphite {
 
-	struct SettingsRowHit
-	{
-		SettingsRow Row;
-
-		// What a block found inside itself ("3 commands match"); empty for a plain row, and for a
-		// block found only by its title or keywords.
-		std::string MatchesInside;
-	};
-
 	struct SettingsCardHits
 	{
 		std::string Heading;
 		std::string Note;
-		std::vector<SettingsRowHit> Rows;
+		std::vector<SettingsRow> Rows;
 	};
 
 	struct SettingsPageHits
@@ -36,6 +28,10 @@ namespace Graphite {
 	std::vector<std::string> SplitQueryWords(std::string_view query);
 
 	bool IsSearchQuery(std::string_view query);
+
+	// True when every word, already lowered, is found in at least one of the texts whatever its case;
+	// true for no words.
+	bool EveryWordFound(std::span<const std::string> words, std::span<const std::string_view> texts);
 
 	std::vector<SettingsPageHits> FindSettings(const SettingsDirectory& directory, std::string_view query);
 

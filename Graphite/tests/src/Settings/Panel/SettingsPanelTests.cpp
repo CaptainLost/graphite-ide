@@ -15,6 +15,7 @@
 
 #include <imgui.h>
 
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -26,6 +27,7 @@ namespace {
 	struct ControlState
 	{
 		bool WordWrap = false;
+		bool FoundClicked = false;
 		ImVec2 WordWrapCentre;
 		ImVec2 PaddingInside;
 	};
@@ -42,11 +44,6 @@ namespace {
 	void DrawTable()
 	{
 		ImGui::TextUnformatted("table");
-	}
-
-	std::string CommandsMatching(std::string_view query)
-	{
-		return query == "save" ? "1 command matches" : "";
 	}
 
 	void DrawInWindow(Graphite::SettingsPanel& panel, float width)
@@ -81,6 +78,44 @@ namespace {
 
 		PanelFixture() : Panel(Build(), Scheme) {}
 
+		std::vector<Graphite::SettingsRow> FindInKeyBindings(std::span<const std::string> words)
+		{
+			if (words.empty() || words.front() != "save")
+			{
+				return {};
+			}
+
+			return {Graphite::SettingsRow{.Key = "file.save", .Title = "Save File", .Description = "Ctrl+S", .OpenWith = "Save File"}};
+		}
+
+		std::vector<Graphite::SettingsRow> FindInKeyBindingsWithControl(std::span<const std::string> words)
+		{
+			if (words.empty() || words.front() != "found")
+			{
+				return {};
+			}
+
+			return {Graphite::SettingsRow{
+				.Key = "found", .Title = "Found Here", .ControlWidth = 80.0f, .DrawControl = [this] { FoundClicked(); }}};
+		}
+
+		void FoundClicked()
+		{
+			if (ImGui::Button("found"))
+			{
+				Controls.FoundClicked = true;
+			}
+		}
+
+		std::vector<Graphite::SettingsRow> FindInside(std::span<const std::string> words)
+		{
+			std::vector<Graphite::SettingsRow> found = FindInKeyBindings(words);
+			std::vector<Graphite::SettingsRow> withControl = FindInKeyBindingsWithControl(words);
+			found.insert(found.end(), withControl.begin(), withControl.end());
+
+			return found;
+		}
+
 		Graphite::SettingsDirectory Build()
 		{
 			Graphite::SettingsCard text{.Heading = "Text"};
@@ -94,7 +129,8 @@ namespace {
 
 			Graphite::SettingsCard shortcuts{.Heading = "Shortcuts"};
 			shortcuts.Rows.push_back(Graphite::SettingsRow{
-				.Title = "Shortcuts", .Keywords = {"shortcut"}, .DrawBlock = DrawTable, .DescribeMatches = CommandsMatching});
+				.Title = "Shortcuts", .Keywords = {"shortcut"}, .DrawBlock = DrawTable,
+				.FindInside = [this](std::span<const std::string> words) { return FindInside(words); }});
 
 			Graphite::SettingsCard server{.Heading = "Server"};
 			server.Rows.push_back(Graphite::SettingsRow{.Title = "Language server", .Description = "Roslyn is recommended."});
@@ -318,16 +354,16 @@ TEST_CASE("Hiding the panel deactivates every page, open or not")
 	}
 }
 
-TEST_CASE("Opening a block found by what it holds tells its page the query")
+TEST_CASE("Opening a found row tells its page what the row says to show, not the query")
 {
 	PanelFixture fixture;
 	REQUIRE(fixture.Panel.Open({"editor"}));
 	fixture.Panel.SetQuery(" save ");
 
-	fixture.Panel.OpenSearchHit({"keyBindings"}, "1 command matches");
+	fixture.Panel.OpenSearchHit({"keyBindings"}, "Save File");
 
 	CHECK(fixture.Panel.GetOpenPath() == std::vector<std::string>{"keyBindings"});
-	CHECK(fixture.KeyBindings->GetOpenedFromSearch() == std::vector<std::string>{"save"});
+	CHECK(fixture.KeyBindings->GetOpenedFromSearch() == std::vector<std::string>{"Save File"});
 	CHECK_FALSE(fixture.Panel.IsSearching());
 }
 
@@ -346,7 +382,7 @@ TEST_CASE("Opening a block found by its title clears the filter an earlier searc
 {
 	PanelFixture fixture;
 	fixture.Panel.SetQuery("save");
-	fixture.Panel.OpenSearchHit({"keyBindings"}, "1 command matches");
+	fixture.Panel.OpenSearchHit({"keyBindings"}, "Save File");
 	fixture.Panel.SetQuery("shortcut");
 
 	fixture.Panel.OpenSearchHit({"keyBindings"}, "");
@@ -445,7 +481,7 @@ namespace {
 	}
 }
 
-TEST_CASE("Clicking Open on a result opens the page, ends the search and tells the page the query")
+TEST_CASE("Clicking Open on a found row opens the page, ends the search and hands the page what the row says to show")
 {
 	PanelFixture fixture;
 	fixture.Panel.SetQuery("save");
@@ -457,7 +493,22 @@ TEST_CASE("Clicking Open on a result opens the page, ends the search and tells t
 
 	CHECK_FALSE(fixture.Panel.IsSearching());
 	CHECK(fixture.Panel.GetOpenPath() == std::vector<std::string>{"keyBindings"});
-	CHECK(fixture.KeyBindings->GetOpenedFromSearch() == std::vector<std::string>{"save"});
+	CHECK(fixture.KeyBindings->GetOpenedFromSearch() == std::vector<std::string>{"Save File"});
+}
+
+TEST_CASE("A found row with a control of its own is drawn with that control and no Open button")
+{
+	PanelFixture fixture;
+	fixture.Panel.SetQuery("found");
+	fixture.DrawFrames();
+	const ImVec2 control = LowestItemIn(fixture, "##results");
+	REQUIRE(control.x > 0.0f);
+
+	fixture.Frames.Click(control, [&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
+
+	CHECK(fixture.Controls.FoundClicked);
+	CHECK(fixture.Panel.IsSearching());
+	CHECK(fixture.KeyBindings->GetOpenedFromSearch().empty());
 }
 
 TEST_CASE("Clicking a sidebar entry during a search opens its page without touching any page's filter")
