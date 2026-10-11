@@ -30,6 +30,7 @@ namespace Graphite {
 		nlohmann::json InitializationOptions;
 		nlohmann::json Settings;
 		std::optional<std::filesystem::path> Solution;
+		std::vector<std::filesystem::path> Projects;
 	};
 
 	struct LaunchPlaces

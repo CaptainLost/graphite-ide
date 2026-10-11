@@ -7,6 +7,8 @@
 #include "Language/Server/ServerChoice.h"
 #include "TempDirectory.h"
 
+#include "Editor/StatusBar/ServerStatusText.h"
+
 #include "Core/Network/HttpClient.h"
 #include "Core/Platform/CurrentPlatform.h"
 
@@ -60,13 +62,24 @@ namespace {
 
 	bool WaitUntilReady(Graphite::LanguageServices& services, const std::filesystem::path& source)
 	{
-		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kLiveTimeout;
+		const std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
+		const std::chrono::steady_clock::time_point deadline = started + kLiveTimeout;
+		std::string lastSaid;
 
 		while (std::chrono::steady_clock::now() < deadline)
 		{
 			services.Poll();
 
 			const Graphite::ServerStatus status = services.StatusFor(source, Graphite::LanguageId::CSharp);
+			const std::string said = Graphite::ServerStatusText(status);
+
+			if (said != lastSaid)
+			{
+				const std::chrono::milliseconds elapsed =
+					std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started);
+				MESSAGE(std::format("{} ms: {}", elapsed.count(), said));
+				lastSaid = said;
+			}
 
 			if (status.State == Graphite::ServerState::Ready)
 			{
@@ -118,32 +131,51 @@ namespace {
 		return std::nullopt;
 	}
 
-	void ServeDemoWith(std::string_view serverId)
+	struct DemoFolder
 	{
-		TempDirectory temp;
+		std::filesystem::path Root;
+		std::filesystem::path Source;
+		std::optional<std::filesystem::path> SelectedSolution;
+	};
+
+	void AnswerDefinitionIn(TempDirectory& temp, const DemoFolder& folder, std::string_view serverId)
+	{
 		const std::filesystem::path servers = temp.GetPath() / "servers";
 		InstallForReal(serverId, servers);
-
-		temp.MakeFile("project/Demo.slnx", kSolution);
-		temp.MakeFile("project/Demo/Demo.csproj", kProject);
-		const std::filesystem::path source = temp.MakeFile("project/Demo/Program.cs", kProgram);
 		const std::string chosen{serverId};
 
-		Graphite::LanguageServices services{temp.GetPath() / "project"};
+		Graphite::LanguageServices services{folder.Root};
 		services.SetServersDirectory(servers);
 		services.SetLogDirectory(temp.MakeDirectory("logs"));
 		services.SetChoiceProvider([chosen](Graphite::LanguageId language) { return Graphite::ChooseServer(language, chosen); });
-		services.SetSelectedSolution(temp.GetPath() / "project" / "Demo.slnx");
 
-		services.EnsureStarted(source, Graphite::LanguageId::CSharp);
-		services.OpenDocument(source, Graphite::LanguageId::CSharp, kProgram);
+		if (folder.SelectedSolution)
+		{
+			services.SetSelectedSolution(*folder.SelectedSolution);
+		}
 
-		REQUIRE(WaitUntilReady(services, source));
+		services.EnsureStarted(folder.Source, Graphite::LanguageId::CSharp);
+		services.OpenDocument(folder.Source, Graphite::LanguageId::CSharp, kProgram);
 
-		const std::optional<Graphite::Location> definition = DefinitionOfHello(services, source);
+		REQUIRE(WaitUntilReady(services, folder.Source));
+
+		const std::optional<Graphite::Location> definition = DefinitionOfHello(services, folder.Source);
 		REQUIRE(definition.has_value());
 		CHECK(definition->Line == 1);
 		CHECK(definition->Column == Graphite::Utf16Column{44});
+	}
+
+	void ServeDemoWith(std::string_view serverId)
+	{
+		TempDirectory temp;
+		temp.MakeFile("project/Demo.slnx", kSolution);
+		temp.MakeFile("project/Demo/Demo.csproj", kProject);
+
+		AnswerDefinitionIn(temp,
+						   DemoFolder{.Root = temp.GetPath() / "project",
+									  .Source = temp.MakeFile("project/Demo/Program.cs", kProgram),
+									  .SelectedSolution = temp.GetPath() / "project" / "Demo.slnx"},
+						   serverId);
 	}
 }
 
@@ -155,6 +187,14 @@ TEST_CASE("csharp-ls installed by Graphite answers a definition in a solution" *
 TEST_CASE("Roslyn installed by Graphite loads the solution and answers a definition" * doctest::skip())
 {
 	ServeDemoWith("roslyn");
+}
+
+TEST_CASE("Roslyn installed by Graphite loads a lone project and answers a definition" * doctest::skip())
+{
+	TempDirectory temp;
+	temp.MakeFile("project/Demo.csproj", kProject);
+
+	AnswerDefinitionIn(temp, DemoFolder{.Root = temp.GetPath() / "project", .Source = temp.MakeFile("project/Program.cs", kProgram)}, "roslyn");
 }
 
 TEST_CASE("OmniSharp installed by Graphite answers a definition in a solution" * doctest::skip())

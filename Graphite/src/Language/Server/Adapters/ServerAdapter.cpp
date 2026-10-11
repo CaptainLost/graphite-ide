@@ -92,6 +92,11 @@ namespace Graphite {
 		return std::nullopt;
 	}
 
+	std::vector<std::filesystem::path> ServerAdapter::ProjectsAt(const AdapterContext&) const
+	{
+		return {};
+	}
+
 	std::optional<ProjectProblem> ServerAdapter::ProjectProblemAt(const AdapterContext&) const
 	{
 		return std::nullopt;

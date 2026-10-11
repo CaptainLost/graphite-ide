@@ -3,6 +3,7 @@
 #include "Language/Server/Adapters/ServerAdapter.h"
 #include "Language/Server/LspProtocol.h"
 #include "Language/Server/ServerCatalog.h"
+#include "TempDirectory.h"
 
 #include <filesystem>
 #include <optional>
@@ -23,6 +24,15 @@ namespace {
 										.InitializationOptions = nullptr,
 										.Settings = nullptr,
 										.Solution = std::move(solution)};
+	}
+
+	Graphite::AdapterContext ContextWithProjects(std::vector<std::filesystem::path> projects)
+	{
+		return Graphite::AdapterContext{.Root = "D:/Work",
+										.InitializationOptions = nullptr,
+										.Settings = nullptr,
+										.Solution = std::nullopt,
+										.Projects = std::move(projects)};
 	}
 }
 
@@ -48,7 +58,7 @@ TEST_CASE("Roslyn is told to open the solution once initialized")
 	CHECK_FALSE(Roslyn().ProjectProblemAt(ContextWith(solution)).has_value());
 }
 
-TEST_CASE("Roslyn without a solution reports no solution and sends no solution/open")
+TEST_CASE("Roslyn without a solution or a project reports no project and sends nothing to open")
 {
 	std::vector<Graphite::OutgoingNotification> notifications;
 
@@ -59,7 +69,42 @@ TEST_CASE("Roslyn without a solution reports no solution and sends no solution/o
 
 	const std::optional<Graphite::ProjectProblem> problem = Roslyn().ProjectProblemAt(ContextWith(std::nullopt));
 	REQUIRE(problem.has_value());
-	CHECK(problem->Summary == "no solution");
+	CHECK(problem->Summary == "no project");
+	CHECK(problem->Explanation ==
+		  "No .sln, .slnx or .csproj file was found for this folder, so Roslyn reads each C# file on its own, without its project's "
+		  "references or the rest of its project.");
+}
+
+TEST_CASE("Roslyn without a solution opens the projects in its root")
+{
+	const std::filesystem::path demo{L"D:/Work/Demo.csproj"};
+	const std::filesystem::path tool{L"D:/Work/Tool.csproj"};
+	std::vector<Graphite::OutgoingNotification> notifications;
+
+	Roslyn().AfterInitialized(ContextWithProjects({demo, tool}), notifications);
+
+	REQUIRE(notifications.size() == 1);
+	CHECK(notifications[0].Method == "project/open");
+	CHECK(notifications[0].Params ==
+		  nlohmann::json{{"projects", nlohmann::json::array({Graphite::ToFileUri(demo), Graphite::ToFileUri(tool)})}});
+	CHECK(Roslyn().LoadsProjectsFrom(ContextWithProjects({demo})) == std::optional<std::string>{"Demo.csproj"});
+	CHECK(Roslyn().LoadsProjectsFrom(ContextWithProjects({demo, tool})) == std::optional<std::string>{"2 projects"});
+	CHECK_FALSE(Roslyn().ProjectProblemAt(ContextWithProjects({demo})).has_value());
+}
+
+TEST_CASE("Roslyn's projects are the project files directly in its root sorted by name")
+{
+	TempDirectory temp;
+	temp.MakeFile("B.csproj");
+	temp.MakeFile("a.csproj");
+	temp.MakeDirectory("x.csproj");
+	temp.MakeFile("sub/c.csproj");
+
+	const Graphite::AdapterContext context{.Root = temp.GetPath(), .InitializationOptions = nullptr, .Settings = nullptr};
+	const Graphite::AdapterContext unreadable{.Root = temp.GetPath() / "missing", .InitializationOptions = nullptr, .Settings = nullptr};
+
+	CHECK(Roslyn().ProjectsAt(context) == std::vector<std::filesystem::path>{temp.GetPath() / "a.csproj", temp.GetPath() / "B.csproj"});
+	CHECK(Roslyn().ProjectsAt(unreadable).empty());
 }
 
 TEST_CASE("Roslyn's projects are loaded when it says their initialization is complete")
