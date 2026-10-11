@@ -1,5 +1,9 @@
 #include "Editor/Hover/HoverState.h"
 
+#include "Language/Registry/LanguageRegistry.h"
+#include "Language/Syntax/ColourLines.h"
+
+#include <string_view>
 #include <utility>
 
 namespace Graphite {
@@ -30,6 +34,7 @@ namespace Graphite {
 
 		hover.PreviewFailedFor.reset();
 		hover.PreviewFor = question;
+		hover.PreviewColours.reset();
 
 		if (answer.Locations.empty())
 		{
@@ -44,5 +49,20 @@ namespace Graphite {
 		// the same terms F12's own preview of a definition is shown on.
 		const Location& where = answer.Locations.front();
 		hover.Preview = LoadDefinitionPreview(documents, where.Path, where.Line);
+	}
+
+	const ColouredPreview& ColouredPreviewOf(HoverState& hover, std::size_t tabWidth)
+	{
+		const bool current = hover.PreviewColours.has_value() && hover.PreviewColours->TabWidth == tabWidth;
+
+		if (!current)
+		{
+			ColouredPreview coloured{.TabWidth = tabWidth, .Dedented = DedentPreview(hover.Preview->Lines, tabWidth)};
+			const std::vector<std::string_view> lines(coloured.Dedented.Lines.begin(), coloured.Dedented.Lines.end());
+			coloured.Tokens = ColourLines(LanguageOfPath(hover.Preview->Path), lines);
+			hover.PreviewColours = std::move(coloured);
+		}
+
+		return *hover.PreviewColours;
 	}
 }

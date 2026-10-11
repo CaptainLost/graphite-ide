@@ -5,6 +5,10 @@
 #include "Core/Text/DocumentSet.h"
 #include "Language/Server/ClangdHover.h"
 
+#include <ostream>
+#include <string>
+#include <vector>
+
 using Graphite::HoverQuestion;
 using Graphite::HoverState;
 using Graphite::LanguageServices;
@@ -105,4 +109,33 @@ TEST_CASE("A failed answer is remembered as failed for its question until one su
 
 	Graphite::HoldPreviewAnswer(hover, QuestionAt(1), LanguageServices::Answer{}, documents);
 	CHECK_FALSE(hover.PreviewFailedFor.has_value());
+}
+
+TEST_CASE("A preview is coloured once for a tab width and again only when the width changes")
+{
+	HoverState hover;
+	hover.Preview = Graphite::DefinitionPreview{.Path = "C:/project/Widget.cs", .FirstLine = 0, .Lines = {"\tpublic int Size;"}};
+
+	const Graphite::ColouredPreview* first = &Graphite::ColouredPreviewOf(hover, 4);
+	const Graphite::ColouredPreview* again = &Graphite::ColouredPreviewOf(hover, 4);
+
+	CHECK(first == again);
+	REQUIRE(first->Tokens.size() == 1);
+	CHECK_FALSE(first->Tokens[0].empty());
+	CHECK(first->Dedented.Lines == std::vector<std::string>{"public int Size;"});
+
+	CHECK(Graphite::ColouredPreviewOf(hover, 8).TabWidth == 8);
+}
+
+TEST_CASE("A new preview answer drops the colours of the last one")
+{
+	HoverState hover;
+	hover.Preview = Graphite::DefinitionPreview{.Path = "C:/project/Widget.cs", .FirstLine = 0, .Lines = {"public int Size;"}};
+	Graphite::ColouredPreviewOf(hover, 4);
+	REQUIRE(hover.PreviewColours.has_value());
+
+	const Core::DocumentSet documents;
+	Graphite::HoldPreviewAnswer(hover, QuestionAt(1), LanguageServices::Answer{}, documents);
+
+	CHECK_FALSE(hover.PreviewColours.has_value());
 }

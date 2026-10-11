@@ -6,6 +6,7 @@
 #include "Editor/EditorWidgetState.h"
 #include "Editor/Find/FindBar.h"
 #include "Editor/Hover/HoverState.h"
+#include "Editor/Navigation/CandidateLine.h"
 #include "Editor/Overlays/AnalysisCache.h"
 #include "Editor/ExpectedWrites.h"
 #include "Editor/Overlays/LensModel.h"
@@ -27,7 +28,6 @@
 
 #include "Search/ReferencesPanel.h"
 #include "Persistence/PersistedState.h"
-#include "Search/PreviewContent.h"
 
 #include "Core/Base/Timestep.h"
 #include "Core/ImGui/TabCloseRequests.h"
@@ -551,10 +551,9 @@ namespace Graphite {
 		// the mouse pointer, which is the one place F12 must never put it.
 		CaretScreenPosition m_DefinitionChoicesAt;
 
-		// Its own PreviewContent rather than borrowing SyntaxFor's caches: the choices can name
-		// several different files, none of which need be open, and the popup outlives none of
-		// them — a fresh Show per row is what a search preview already does for the same reason.
-		PreviewContent m_DefinitionPreview;
+		// One per choice, built the first time the popup draws for a tab width.
+		std::vector<CandidateLine> m_DefinitionChoiceLines;
+		std::size_t m_DefinitionChoiceLinesTabWidth = 0;
 
 		// What DiagnosticFor last built the overlay from - the buffer revision, the tab width,
 		// and the generation of the answer m_Diagnostics held for this path, so a rebuild is

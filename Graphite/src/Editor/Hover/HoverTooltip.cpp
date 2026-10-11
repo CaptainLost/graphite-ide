@@ -396,8 +396,10 @@ namespace Graphite {
 			}
 		}
 
-		void DrawPreview(const DefinitionPreview& preview, const HoverTooltipLook& look)
+		void DrawPreview(HoverState& hover, const HoverTooltipLook& look)
 		{
+			const DefinitionPreview& preview = *hover.Preview;
+
 			const std::string file = Core::ToUtf8(preview.Path.filename());
 
 			if (preview.TooLarge)
@@ -420,11 +422,8 @@ namespace Graphite {
 				look.Semantics->Declare(preview.Path, preview.Text, look.TabWidth, false);
 			}
 
-			// Expanded and dedented once per frame for the width and the drawing alike. A
-			// preview is a definition's extent, a few dozen lines as a rule, so colouring it every
-			// frame it shows costs less than keeping a cache of it honest would.
-			const DedentedPreview dedented = DedentPreview(preview.Lines, look.TabWidth);
-			const std::vector<std::string>& expanded = dedented.Lines;
+			const ColouredPreview& coloured = ColouredPreviewOf(hover, look.TabWidth);
+			const std::vector<std::string>& expanded = coloured.Dedented.Lines;
 
 			std::size_t widest = 0;
 
@@ -435,8 +434,7 @@ namespace Graphite {
 
 			// Coloured from the definition's first line, not the file's: reading the file from the
 			// top would cost what the size limit exists to avoid.
-			const std::vector<std::string_view> previewLines(expanded.begin(), expanded.end());
-			const std::vector<std::vector<Token>> previewTokens = ColourLines(LanguageOfPath(preview.Path), previewLines);
+			const std::vector<std::vector<Token>>& previewTokens = coloured.Tokens;
 			const std::vector<Token> noTokens;
 
 			const std::vector<SemanticSpan> none;
@@ -473,7 +471,7 @@ namespace Graphite {
 						: declared					   ? look.Semantics->SpansOn(preview.Path, fileLine)
 													   : none;
 
-					DrawColouredRow(expanded[index], index < previewTokens.size() ? previewTokens[index] : noTokens, DedentSpans(said, dedented.Removed),
+					DrawColouredRow(expanded[index], index < previewTokens.size() ? previewTokens[index] : noTokens, DedentSpans(said, coloured.Dedented.Removed),
 									0, expanded[index].size(), look);
 				}
 			}
@@ -660,7 +658,7 @@ namespace Graphite {
 
 		if (showPreview)
 		{
-			DrawPreview(*hover.Preview, look);
+			DrawPreview(hover, look);
 		}
 
 		ImGui::PopTextWrapPos();

@@ -2,17 +2,27 @@
 
 #include "Editor/Navigation/DefinitionPreview.h"
 #include "Editor/Overlays/DiagnosticOverlay.h"
+#include "Editor/Hover/HoverLayout.h"
 #include "Editor/Hover/HoverTracker.h"
 #include "Editor/Server/LspAnswerRouter.h"
 
 #include "Language/Api/HoverInfo.h"
+#include "Language/Syntax/Token.h"
 
 #include <imgui.h>
 
+#include <cstddef>
 #include <optional>
 #include <vector>
 
 namespace Graphite {
+
+	struct ColouredPreview
+	{
+		std::size_t TabWidth = 0;
+		DedentedPreview Dedented;
+		std::vector<std::vector<Token>> Tokens;
+	};
 
 	// One document's hover: when to ask and what to show, the answers held, and what the tooltip
 	// looked like last frame. Kept per document by DocumentWindows, which fills in the answers;
@@ -28,6 +38,9 @@ namespace Graphite {
 									   // HoverInfo with Parsed false and Raw empty
 		std::optional<HoverQuestion> PreviewFor;
 		std::optional<DefinitionPreview> Preview;
+
+		// Coloured once, not every frame the tooltip shows: for a grammar that is a parse.
+		std::optional<ColouredPreview> PreviewColours;
 
 		// The question whose last answer failed, of each kind. A failure is not held, so it
 		// never "arrives"; this is how the tracker learns of it and asks once more. Cleared by
@@ -79,4 +92,7 @@ namespace Graphite {
 	void HoldPreviewAnswer(HoverState& hover, const HoverQuestion& question,
 						   const LanguageServices::Answer& answer,
 						   const Core::DocumentSet& documents);
+
+	// Only while hover.Preview holds a value.
+	const ColouredPreview& ColouredPreviewOf(HoverState& hover, std::size_t tabWidth);
 }

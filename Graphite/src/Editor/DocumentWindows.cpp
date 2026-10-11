@@ -1994,6 +1994,7 @@ namespace Graphite {
 			}
 
 			m_DefinitionChoices = std::move(candidates);
+			m_DefinitionChoiceLines.clear();
 
 			// At the caret, not the mouse: a keyboard-triggered F12 never touches the pointer,
 			// which could be anywhere — another panel, another monitor — so a popup that opened
@@ -2030,6 +2031,7 @@ namespace Graphite {
 				!ImGui::IsPopupOpen(kDefinitionChoicesTitle))
 			{
 				m_DefinitionChoices.clear();
+				m_DefinitionChoiceLines.clear();
 				m_Modals.Close(kDefinitionChoicesTitle);
 			}
 
@@ -2039,7 +2041,19 @@ namespace Graphite {
 		const EditorPalette editorPalette = ReadEditorPalette(scheme);
 		const SyntaxPalette syntaxPalette = ReadSyntaxPalette(scheme);
 
-		m_DefinitionPreview.SetTabWidth(tabWidth);
+		const bool linesCurrent = m_DefinitionChoiceLines.size() == m_DefinitionChoices.size() && m_DefinitionChoiceLinesTabWidth == tabWidth;
+
+		if (!linesCurrent)
+		{
+			m_DefinitionChoiceLines.clear();
+
+			for (const Location& choice : m_DefinitionChoices)
+			{
+				m_DefinitionChoiceLines.push_back(LoadCandidateLine(m_Documents, choice, tabWidth));
+			}
+
+			m_DefinitionChoiceLinesTabWidth = tabWidth;
+		}
 
 		for (std::size_t index = 0; index < m_DefinitionChoices.size(); ++index)
 		{
@@ -2056,17 +2070,12 @@ namespace Graphite {
 				ImGui::CloseCurrentPopup();
 			}
 
-			// The line the location names, coloured the way the editor would draw it -
-			// PreviewContent already knows how to lex and colour one line without this owning a
-			// whole SyntaxCache per candidate.
-			m_DefinitionPreview.Show(location.Path, m_Documents);
+			const CandidateLine& choiceLine = m_DefinitionChoiceLines[index];
 
-			if (const Core::TextBuffer* buffer = m_DefinitionPreview.GetBuffer();
-				buffer != nullptr && location.Line < buffer->GetLineCount())
+			if (!choiceLine.Text.empty())
 			{
-				const std::string expanded =
-					Core::ExpandTabs(buffer->LineText(location.Line), tabWidth);
-				const std::vector<Token>& tokens = m_DefinitionPreview.TokensOf(location.Line);
+				const std::string& expanded = choiceLine.Text;
+				const std::vector<Token>& tokens = choiceLine.Tokens;
 
 				ImGui::Indent();
 
