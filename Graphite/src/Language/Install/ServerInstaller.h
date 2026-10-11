@@ -48,6 +48,7 @@ namespace Graphite {
 		std::optional<std::uint64_t> TotalBytes;
 		bool HasChecksum = false;
 		std::string Failure;
+		InstallJobKind Kind = InstallJobKind::Install;
 	};
 
 	bool IsFinished(InstallStep step);

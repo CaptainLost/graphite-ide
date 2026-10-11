@@ -3,6 +3,7 @@
 #include "Language/Install/InstalledServer.h"
 #include "Language/Install/ServerInstaller.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Base/ByteText.h"
 #include "Core/Base/ScopeExit.h"
 #include "Core/FileSystem/FileLock.h"
@@ -410,7 +411,7 @@ TEST_CASE("An install another Graphite window holds the lock for is refused with
 
 	REQUIRE_FALSE(changes.empty());
 	CHECK(changes.back().Step == Graphite::InstallStep::Failed);
-	CHECK(changes.back().Failure == "another Graphite window is installing Tool");
+	CHECK(changes.back().Failure == "another Graphite window is installing or removing Tool");
 	CHECK(fixture.Http->Requests.empty());
 }
 
@@ -425,6 +426,7 @@ TEST_CASE("Checking for updates compares the latest release with the installed o
 
 	REQUIRE_FALSE(newer.empty());
 	CHECK(newer.back().Step == Graphite::InstallStep::UpdateAvailable);
+	CHECK(newer.back().Kind == Graphite::InstallJobKind::CheckForUpdates);
 	CHECK(newer.back().Version == "1.1.0");
 	CHECK(CountOfRequestsFor(*fixture.Http, DownloadUrlOf("1.1.0")) == 0);
 
@@ -461,6 +463,7 @@ TEST_CASE("Uninstalling removes the record and the version directory")
 	REQUIRE_FALSE(changes.empty());
 	CHECK(changes.back().Step == Graphite::InstallStep::Uninstalled);
 	CHECK(changes.back().Version == "1.0.0");
+	CHECK(changes.back().Kind == Graphite::InstallJobKind::Uninstall);
 	CHECK_FALSE(std::filesystem::exists(Graphite::RecordFileOf(fixture.ToolDirectory())));
 	CHECK_FALSE(std::filesystem::exists(fixture.ToolDirectory() / "1.0.0"));
 	CHECK_FALSE(Graphite::FindInstalledServer(fixture.ToolDirectory()).has_value());
@@ -637,6 +640,30 @@ TEST_CASE("A version left behind that a running server holds fails the install a
 	CHECK_FALSE(std::filesystem::exists(Graphite::RecordFileOf(fixture.ToolDirectory())));
 }
 
+TEST_CASE("An uninstall waits for a server stopped a moment ago to let go of its files")
+{
+	InstallerFixture fixture;
+	fixture.InstallVersion("1.0.0");
+	const std::filesystem::path executable = fixture.ToolDirectory() / "1.0.0" / "tool_1.0.0" / "bin" / "tool.exe";
+
+	const HANDLE serverHandle = ::CreateFileW(executable.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+											  FILE_ATTRIBUTE_NORMAL, nullptr);
+	REQUIRE(serverHandle != INVALID_HANDLE_VALUE);
+
+	std::thread exitingServer{[serverHandle] {
+		std::this_thread::sleep_for(std::chrono::milliseconds(300));
+		::CloseHandle(serverHandle);
+	}};
+
+	REQUIRE(fixture.Installer.Uninstall(kGitHubTool));
+	exitingServer.join();
+	const std::vector<Graphite::InstallProgress> changes = fixture.Drain();
+
+	REQUIRE_FALSE(changes.empty());
+	CHECK(changes.back().Step == Graphite::InstallStep::Uninstalled);
+	CHECK_FALSE(std::filesystem::exists(fixture.ToolDirectory() / "1.0.0"));
+}
+
 TEST_CASE("A record that cannot be written leaves no new version behind")
 {
 	InstallerFixture fixture;
@@ -659,6 +686,16 @@ TEST_CASE("A record that cannot be written leaves no new version behind")
 	CHECK_FALSE(std::filesystem::exists(fixture.ToolDirectory() / "1.0.0.tmp"));
 }
 #endif
+
+TEST_CASE("A job's changes ask for a frame so the screen follows them while the mouse is still")
+{
+	InstallerFixture fixture;
+	Core::Redraw::TakeRequest();
+
+	fixture.InstallVersion("1.0.0");
+
+	CHECK(Core::Redraw::TakeRequest());
+}
 
 TEST_CASE("An install on a worker thread reports through Drain")
 {

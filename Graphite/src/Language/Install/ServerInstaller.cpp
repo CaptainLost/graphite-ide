@@ -8,6 +8,7 @@
 #include "Language/Install/ResolvedPackage.h"
 #include "Language/Install/ToolSettings.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Assert.h"
 #include "Core/Base/ScopeExit.h"
@@ -54,34 +55,43 @@ namespace Graphite {
 
 		InstallProgress ChangeOf(const InstallJob& job, InstallStep step, std::string_view version = {})
 		{
-			return InstallProgress{.ServerId = std::string{job.Server->Id}, .Step = step, .Version = std::string{version}};
+			return InstallProgress{.ServerId = std::string{job.Server->Id}, .Step = step, .Version = std::string{version}, .Kind = job.Kind};
 		}
 
 		// Consecutive download progress for one server collapses into the latest, so a long download does not queue
 		// a change per piece between two frames.
 		void Report(InstallerState& state, InstallProgress change)
 		{
-			const std::scoped_lock lock{state.Mutex};
-			const bool continuesADownload = change.Step == InstallStep::Downloading && !state.Changes.empty() &&
-											state.Changes.back().ServerId == change.ServerId &&
-											state.Changes.back().Step == InstallStep::Downloading;
-
-			if (continuesADownload)
 			{
-				state.Changes.back() = std::move(change);
-				return;
+				const std::scoped_lock lock{state.Mutex};
+				const bool continuesADownload = change.Step == InstallStep::Downloading && !state.Changes.empty() &&
+												state.Changes.back().ServerId == change.ServerId &&
+												state.Changes.back().Step == InstallStep::Downloading;
+
+				if (continuesADownload)
+				{
+					state.Changes.back() = std::move(change);
+				}
+				else
+				{
+					state.Changes.push_back(std::move(change));
+				}
 			}
 
-			state.Changes.push_back(std::move(change));
+			Core::Redraw::Request();
 		}
 
 		// One step under the lock, so IsBusy turns false exactly when the outcome can be drained.
 		void Finish(InstallerState& state, InstallProgress outcome)
 		{
-			const std::scoped_lock lock{state.Mutex};
-			const std::string serverId = outcome.ServerId;
-			state.Changes.push_back(std::move(outcome));
-			state.Running.erase(serverId);
+			{
+				const std::scoped_lock lock{state.Mutex};
+				const std::string serverId = outcome.ServerId;
+				state.Changes.push_back(std::move(outcome));
+				state.Running.erase(serverId);
+			}
+
+			Core::Redraw::Request();
 		}
 
 		// A cancel often surfaces as some other failure, such as a lookup that timed out while the user waited.
@@ -140,7 +150,7 @@ namespace Graphite {
 			if (!lock && lock.GetError().Code == Core::ErrorCode::AccessDenied)
 			{
 				return Core::Error{.Code = Core::ErrorCode::AccessDenied,
-								   .Message = std::format("another Graphite window is installing {}", job.Server->DisplayName)};
+								   .Message = std::format("another Graphite window is installing or removing {}", job.Server->DisplayName)};
 			}
 
 			return lock;
@@ -369,6 +379,15 @@ namespace Graphite {
 			return ChangeOf(job, InstallStep::UpdateAvailable, latest);
 		}
 
+		// A server stopped a moment ago keeps its files locked until its processes have exited.
+		void RemoveVersionOnceItsServerHasExited(const std::filesystem::path& versionDirectory)
+		{
+			for (int attempt = 1; !RemoveDirectoryWhole(versionDirectory) && attempt < kPlacementAttempts; ++attempt)
+			{
+				std::this_thread::sleep_for(kPlacementRetryDelay);
+			}
+		}
+
 		Core::Result<InstallProgress> UninstallServer(const InstallJob& job)
 		{
 			const Core::Result<Core::FileLock> lock = LockServer(job);
@@ -395,7 +414,7 @@ namespace Graphite {
 			}
 
 			// A version a running server still holds stays whole, for a later start-up sweep to remove.
-			RemoveDirectoryWhole(job.ServerDirectory / Core::FromUtf8(record->Version));
+			RemoveVersionOnceItsServerHasExited(job.ServerDirectory / Core::FromUtf8(record->Version));
 			return ChangeOf(job, InstallStep::Uninstalled, record->Version);
 		}
 
