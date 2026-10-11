@@ -18,7 +18,7 @@ namespace {
 		const std::filesystem::path folder = temporaryDirectory.GetPath() / Core::FromUtf8("wersja Ω");
 		std::filesystem::create_directories(folder);
 
-		const std::filesystem::path file = folder / "Server.dll";
+		const std::filesystem::path file = folder / "Library.dll";
 		std::ofstream{file} << "an assembly";
 		return file;
 	}

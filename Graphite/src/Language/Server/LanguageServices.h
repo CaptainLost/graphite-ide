@@ -337,7 +337,7 @@ namespace Graphite {
 			std::filesystem::path Root;
 			ServerCommand Command; // found once; a restart reuses it rather than searching again
 
-			// Before Client, so the process ends before its files are let go.
+			// Before Client so it outlives the client, though the process the client ended still holds its files for tens of milliseconds after both are gone.
 			std::optional<Core::FileHold> Hold;
 			Core::Scope<LspClient> Client; // null when the binary was never found
 			ServerStatus Status;
