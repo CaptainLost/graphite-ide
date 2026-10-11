@@ -34,7 +34,6 @@ namespace Graphite {
 		std::function<void()> DrawControl;
 
 		std::function<void()> DrawBlock;
-		bool FillsHeight = false;
 
 		// What a block finds inside itself for a query, as a sentence ("3 commands match"); empty
 		// when it finds nothing.

@@ -10,6 +10,9 @@
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 
+#include <imgui.h>
+#include <imgui_internal.h>
+
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -52,7 +55,6 @@ TEST_CASE("The shortcuts block is found by the commands in it")
 	REQUIRE(row.has_value());
 	REQUIRE(row->DescribeMatches);
 	CHECK(row->IsBlock());
-	CHECK(row->FillsHeight);
 	CHECK(row->DescribeMatches("wrap") == "1 command matches");
 }
 
@@ -88,4 +90,33 @@ TEST_CASE("The key bindings page draws wide and narrow without an ImGui assertio
 	screen.Frames.DrawPageTwice(320.0f);
 
 	CHECK(screen.Changes == 0);
+}
+
+TEST_CASE("The key bindings scroll with their page rather than in a window of their own")
+{
+	KeyBindingsScreen screen;
+
+	for (int commandIndex = 0; commandIndex < 60; ++commandIndex)
+	{
+		const std::string number = std::to_string(commandIndex);
+		screen.Commands.Add(Core::Command{.Id = "test.command." + number, .Label = "Test command " + number});
+	}
+
+	// A third frame: the page's scroll range follows the content size of the frame before.
+	screen.Frames.DrawPageTwice(900.0f);
+	screen.Frames.DrawPage(900.0f);
+
+	const ImGuiWindow* page = ImGui::FindWindowByName("Settings");
+	REQUIRE(page != nullptr);
+	CHECK(page->ScrollMax.y > 0.0f);
+
+	for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+	{
+		const bool isInsidePage = window != page && window->RootWindow == page;
+
+		if (isInsidePage)
+		{
+			CHECK_FALSE(window->ScrollbarY);
+		}
+	}
 }

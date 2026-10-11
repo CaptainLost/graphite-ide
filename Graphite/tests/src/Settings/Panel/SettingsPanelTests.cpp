@@ -94,7 +94,7 @@ namespace {
 
 			Graphite::SettingsCard shortcuts{.Heading = "Shortcuts"};
 			shortcuts.Rows.push_back(Graphite::SettingsRow{
-				.Title = "Shortcuts", .Keywords = {"shortcut"}, .DrawBlock = DrawTable, .FillsHeight = true, .DescribeMatches = CommandsMatching});
+				.Title = "Shortcuts", .Keywords = {"shortcut"}, .DrawBlock = DrawTable, .DescribeMatches = CommandsMatching});
 
 			Graphite::SettingsCard server{.Heading = "Server"};
 			server.Rows.push_back(Graphite::SettingsRow{.Title = "Language server", .Description = "Roslyn is recommended."});

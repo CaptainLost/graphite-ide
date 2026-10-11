@@ -234,7 +234,6 @@ namespace Graphite {
 		shortcuts.Rows.push_back(SettingsRow{.Title = "Shortcuts",
 											 .Keywords = {"shortcut", "hotkey", "keyboard", "key"},
 											 .DrawBlock = [this] { DrawShortcuts(); },
-											 .FillsHeight = true,
 											 .DescribeMatches = [this](std::string_view query) { return DescribeCommandsMatching(query); }});
 
 		return {restore, shortcuts};
@@ -263,7 +262,7 @@ namespace Graphite {
 		ImGui::SetNextItemWidth(-FLT_MIN);
 		Core::InputTextWithHint("##keybindingsFilter", "Filter by command or shortcut", m_Filter);
 
-		constexpr ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp;
+		constexpr ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp;
 
 		if (!ImGui::BeginTable("bindings", 4, flags))
 		{
@@ -274,7 +273,6 @@ namespace Graphite {
 		ImGui::TableSetupColumn("Shortcut", ImGuiTableColumnFlags_WidthStretch, 2.0f);
 		ImGui::TableSetupColumn("Alternates", ImGuiTableColumnFlags_WidthStretch, 3.0f);
 		ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthStretch, 1.0f);
-		ImGui::TableSetupScrollFreeze(0, 1);
 		ImGui::TableHeadersRow();
 
 		const std::string needle = Core::Lowered(m_Filter);

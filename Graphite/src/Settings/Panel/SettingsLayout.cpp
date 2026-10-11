@@ -32,7 +32,6 @@ namespace Graphite {
 		constexpr float kSliderWidth = 200.0f;
 		constexpr float kNumberWidth = 120.0f;
 		constexpr float kMinimumComboWidth = 140.0f;
-		constexpr float kMinimumFillHeight = 300.0f;
 		constexpr float kNavigationEntryHeight = 28.0f;
 		constexpr float kNavigationEntryInset = 8.0f;
 		constexpr float kNavigationEntryRounding = 5.0f;
@@ -159,25 +158,15 @@ namespace Graphite {
 			ImGui::Dummy(ImVec2(cardWidth, heights.Row));
 		}
 
-		float FillHeightBelowCursor()
-		{
-			// ImGui puts one item spacing after the row's Dummy, before the card gap's.
-			const float rest =
-				ImGui::GetContentRegionAvail().y - 2.0f * Core::Scaled(kRowPadding) - ImGui::GetStyle().ItemSpacing.y - Core::Scaled(kCardGap);
-			return std::max(rest, Core::Scaled(kMinimumFillHeight));
-		}
-
 		void DrawBlockRow(const SettingsRow& row, float cardWidth)
 		{
 			const float padding = Core::Scaled(kCardPadding);
 			const float rowPadding = Core::Scaled(kRowPadding);
 			const ImVec2 rowTopLeft = ImGui::GetCursorScreenPos();
-			const float height = row.FillsHeight ? FillHeightBelowCursor() : 0.0f;
-			const ImGuiChildFlags flags = row.FillsHeight ? ImGuiChildFlags_None : ImGuiChildFlags_AutoResizeY;
 
 			ImGui::SetCursorScreenPos(ImVec2(rowTopLeft.x + padding, rowTopLeft.y + rowPadding));
 
-			if (ImGui::BeginChild("##block", ImVec2(cardWidth - 2.0f * padding, height), flags))
+			if (ImGui::BeginChild("##block", ImVec2(cardWidth - 2.0f * padding, 0.0f), ImGuiChildFlags_AutoResizeY))
 			{
 				row.DrawBlock();
 			}

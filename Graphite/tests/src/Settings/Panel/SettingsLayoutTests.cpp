@@ -68,7 +68,7 @@ namespace {
 
 		Graphite::SettingsCard blocks{.Heading = "Blocks"};
 		blocks.Rows.push_back(Graphite::SettingsRow{.Title = "Prices", .DrawBlock = DrawTable});
-		blocks.Rows.push_back(Graphite::SettingsRow{.Title = "Shortcuts", .DrawBlock = DrawTable, .FillsHeight = true});
+		blocks.Rows.push_back(Graphite::SettingsRow{.Title = "Shortcuts", .DrawBlock = DrawTable});
 
 		return {rows, blocks};
 	}
@@ -296,7 +296,7 @@ TEST_CASE("Cards draw every kind of row, wide and narrow, without an ImGui asser
 	CHECK(controls.WordWrapMin.x > 0.0f);
 }
 
-TEST_CASE("A block that fills the page leaves nothing to scroll")
+TEST_CASE("Cards that fit the window leave nothing to scroll")
 {
 	ImGuiFrames frames;
 	SampleControls controls;
