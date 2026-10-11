@@ -89,19 +89,17 @@ namespace Graphite {
 			return names;
 		}
 
-		template<typename Which>
-			requires std::is_enum_v<Which>
-		std::string DescribeColourMatches(std::size_t count, std::string_view query)
+		std::string DescribeColourMatches(const std::vector<std::string>& names, std::string_view query)
 		{
 			const std::string loweredQuery = Core::Lowered(query);
-			std::string match;
+			std::string matchingName;
 			std::size_t matchCount = 0;
 
-			for (const std::string& name : ColourNames<Which>(count))
+			for (const std::string& name : names)
 			{
 				if (Core::LoweredTextContains(name, loweredQuery))
 				{
-					match = name;
+					matchingName = name;
 					++matchCount;
 				}
 			}
@@ -111,7 +109,7 @@ namespace Graphite {
 				return {};
 			}
 
-			return matchCount == 1 ? match : std::to_string(matchCount) + " colours match";
+			return matchCount == 1 ? matchingName : std::to_string(matchCount) + " colours match";
 		}
 
 		int ColumnsFor(float availableWidth)
@@ -239,9 +237,9 @@ namespace Graphite {
 		requires std::is_enum_v<Which>
 	void AppearancePage::DrawColourGrid(std::size_t count)
 	{
-		const int columns = ColumnsFor(ImGui::GetContentRegionAvail().x);
+		const int columnCount = ColumnsFor(ImGui::GetContentRegionAvail().x);
 
-		if (!ImGui::BeginTable("##colours", columns, ImGuiTableFlags_SizingStretchSame))
+		if (!ImGui::BeginTable("##colours", columnCount, ImGuiTableFlags_SizingStretchSame))
 		{
 			return;
 		}
@@ -273,7 +271,7 @@ namespace Graphite {
 		card.Rows.push_back(SettingsRow{.Title = heading,
 										.Keywords = std::move(keywords),
 										.DrawBlock = [this, count] { DrawColourGrid<Which>(count); },
-										.DescribeMatches = [count](std::string_view query) { return DescribeColourMatches<Which>(count, query); }});
+										.DescribeMatches = [names = ColourNames<Which>(count)](std::string_view query) { return DescribeColourMatches(names, query); }});
 
 		return card;
 	}

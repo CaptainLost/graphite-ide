@@ -12,17 +12,37 @@
 
 #include "Core/Events/EventBus.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <fstream>
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace {
 
-	struct AppearanceScreen
+	// With an own scheme, "mine" is written with one overridden colour and chosen before the page is built.
+	struct AppearanceParts
 	{
+		explicit AppearanceParts(bool withOwnScheme)
+		{
+			if (withOwnScheme)
+			{
+				std::ofstream file(Themes.GetPath() / "mine.json");
+				file << R"({"base":"dark","syntax.comment":"6A9955"})";
+				file.close();
+				Settings.Get().SetColorScheme("mine");
+			}
+		}
+
 		TempDirectory Themes;
 		TempAppSettings Settings;
+	};
+
+	struct AppearanceScreen : AppearanceParts
+	{
+		explicit AppearanceScreen(bool withOwnScheme = false) : AppearanceParts(withOwnScheme) {}
+
 		Graphite::ActiveScheme Scheme;
 		Graphite::ModalGate Modals;
 		Core::EventBus Events;
@@ -76,7 +96,12 @@ TEST_CASE("An own scheme's colour cards explain dimmed names and the reset icon"
 {
 	AppearanceScreen screen;
 
-	CHECK(screen.Frames.DescribeInFrame()[kThemeAndInterfaceCards].Note.empty());
+	const std::vector<Graphite::SettingsCard> builtInCards = screen.Frames.DescribeInFrame();
+
+	for (std::size_t cardIndex = kThemeAndInterfaceCards; cardIndex < builtInCards.size(); ++cardIndex)
+	{
+		CHECK(builtInCards[cardIndex].Note.empty());
+	}
 
 	screen.Frames.ClickControl("This scheme");
 
@@ -119,6 +144,26 @@ TEST_CASE("The appearance page draws wide and narrow, built-in and own, without 
 	screen.Frames.DrawPageTwice(320.0f);
 	screen.Frames.ClickControl("This scheme");
 	screen.Frames.DrawPageTwice(900.0f);
+
+	CHECK_FALSE(screen.Modals.IsBusy());
+}
+
+TEST_CASE("A colour card's block is found by the colour names it holds")
+{
+	AppearanceScreen screen;
+
+	const std::optional<Graphite::SettingsRow> block = screen.Frames.FindRow("Syntax colours");
+
+	REQUIRE(block.has_value());
+	CHECK(std::find(block->Keywords.begin(), block->Keywords.end(), "Comment") != block->Keywords.end());
+}
+
+TEST_CASE("An own scheme with an overridden colour draws wide and narrow without an ImGui assertion")
+{
+	AppearanceScreen screen(true);
+
+	screen.Frames.DrawPageTwice(900.0f);
+	screen.Frames.DrawPageTwice(320.0f);
 
 	CHECK_FALSE(screen.Modals.IsBusy());
 }
