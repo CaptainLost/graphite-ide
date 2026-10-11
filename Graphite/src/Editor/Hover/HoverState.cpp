@@ -15,7 +15,7 @@ namespace Graphite {
 
 		hover.InfoFailedFor.reset();
 		hover.InfoFor = question;
-		hover.Info = ParseClangdHover(answer.Text);
+		hover.Info = answer.Hover;
 	}
 
 	void HoldPreviewAnswer(HoverState& hover, const HoverQuestion& question,

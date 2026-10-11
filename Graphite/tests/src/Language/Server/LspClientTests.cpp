@@ -952,6 +952,38 @@ TEST_CASE("A hover request carries the position and its markdown reply lands in 
 	CHECK(drained.Answers[0].Text == "### field `x`");
 }
 
+TEST_CASE("A hover reply reaches the answer read by the server's adapter")
+{
+	TempDirectory temp;
+	const Graphite::ServerOverrides noOverrides;
+	Graphite::LspClient clangd = Offline(temp.GetPath());
+	Graphite::LspClient csharp = OfflineWith(Graphite::LaunchFor(*Graphite::FindServer("csharp-ls"), "C:\\dotnet\\dotnet.exe", noOverrides), temp.GetPath());
+
+	for (Graphite::LspClient* client : {&clangd, &csharp})
+	{
+		client->Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
+		client->TakeSent();
+	}
+
+	const Graphite::RequestId clangdId = clangd.AskHover(Graphite::FilePosition{});
+	const Graphite::RequestId csharpId = csharp.AskHover(Graphite::FilePosition{});
+
+	clangd.Deliver(R"({"jsonrpc":"2.0","id":)" + std::to_string(clangdId) +
+				   R"(,"result":{"contents":{"kind":"markdown","value":"### field `x`"}}})");
+	csharp.Deliver(R"({"jsonrpc":"2.0","id":)" + std::to_string(csharpId) +
+				   R"(,"result":{"contents":{"kind":"markdown","value":"```csharp\nint x\n```"}}})");
+
+	Graphite::LspClient::Drained clangdDrained;
+	Graphite::LspClient::Drained csharpDrained;
+	clangd.Drain(clangdDrained);
+	csharp.Drain(csharpDrained);
+
+	REQUIRE(clangdDrained.Answers.size() == 1);
+	REQUIRE(csharpDrained.Answers.size() == 1);
+	CHECK(clangdDrained.Answers[0].Hover.Name == "x");
+	CHECK(csharpDrained.Answers[0].Hover.Declaration == "int x");
+}
+
 TEST_CASE("A null hover reply is an answer with no text")
 {
 	TempDirectory temp;

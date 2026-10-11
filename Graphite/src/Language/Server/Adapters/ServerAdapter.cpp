@@ -3,6 +3,7 @@
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/Adapters/ClangdAdapter.h"
 #include "Language/Server/Adapters/RoslynAdapter.h"
+#include "Language/Server/MarkdownHover.h"
 
 #include <string>
 #include <vector>
@@ -85,6 +86,11 @@ namespace Graphite {
 	NotificationEffect ServerAdapter::HandleNotification(const AdapterContext&, std::string_view, const nlohmann::json&) const
 	{
 		return NotificationEffect::None;
+	}
+
+	HoverInfo ServerAdapter::ParseHover(std::string_view markdown) const
+	{
+		return ParseMarkdownHover(markdown);
 	}
 
 	std::optional<std::string> ServerAdapter::LoadsProjectsFrom(const AdapterContext&) const

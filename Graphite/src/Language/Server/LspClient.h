@@ -3,6 +3,7 @@
 #include "Core/Base/Base.h"
 
 #include "Core/Platform/ChildProcess.h"
+#include "Language/Api/HoverInfo.h"
 #include "Language/Api/LanguageService.h"
 #include "Language/Server/JsonRpc.h"
 #include "Language/Server/LspProtocol.h"
@@ -88,6 +89,8 @@ namespace Graphite {
 			// The hover reply's markdown; empty for every other question, and for a hover with
 			// nothing to say.
 			std::string Text;
+			// The hover reply as the server's adapter read it; default for every other question.
+			HoverInfo Hover;
 			bool Failed = false;
 		};
 

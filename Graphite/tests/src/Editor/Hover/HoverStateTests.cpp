@@ -3,6 +3,7 @@
 #include "Editor/Hover/HoverState.h"
 
 #include "Core/Text/DocumentSet.h"
+#include "Language/Server/ClangdHover.h"
 
 using Graphite::HoverQuestion;
 using Graphite::HoverState;
@@ -24,7 +25,7 @@ TEST_CASE("A failed hover answer leaves what was held, so the token is asked abo
 	HoverState hover;
 
 	LanguageServices::Answer answered;
-	answered.Text = "### function `Sum`";
+	answered.Hover = Graphite::ParseClangdHover("### function `Sum`");
 	Graphite::HoldHoverAnswer(hover, QuestionAt(1), answered);
 
 	LanguageServices::Answer failed;
@@ -35,6 +36,19 @@ TEST_CASE("A failed hover answer leaves what was held, so the token is asked abo
 	CHECK(*hover.InfoFor == QuestionAt(1));
 	REQUIRE(hover.Info.has_value());
 	CHECK((hover.Info->Parsed || !hover.Info->Raw.empty()));
+}
+
+TEST_CASE("A hover answer is held as its adapter read it")
+{
+	HoverState hover;
+
+	LanguageServices::Answer answered;
+	answered.Hover.Parsed = true;
+	answered.Hover.Declaration = "int Sum()";
+	Graphite::HoldHoverAnswer(hover, QuestionAt(1), answered);
+
+	REQUIRE(hover.Info.has_value());
+	CHECK(hover.Info->Declaration == "int Sum()");
 }
 
 TEST_CASE("An empty hover answer is held: the question has been answered, with nothing")

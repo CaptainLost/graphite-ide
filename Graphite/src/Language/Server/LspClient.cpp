@@ -1070,6 +1070,11 @@ namespace Graphite {
 		// only copy of the file that is certainly the one the user is looking at.
 		Answer answer = ReadAnswer(asked, reply, shared.SemanticLegend);
 
+		if (asked.Kind == Question::Hover)
+		{
+			answer.Hover = shared.Adapter->ParseHover(answer.Text);
+		}
+
 		{
 			const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
 			NameOpenDocumentsAsOpened(shared, answer.Locations);

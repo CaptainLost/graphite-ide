@@ -1,5 +1,6 @@
 #include "Language/Server/Adapters/ClangdAdapter.h"
 
+#include "Language/Server/ClangdHover.h"
 #include "Language/Server/ServerCatalog.h"
 
 #include <array>
@@ -34,6 +35,11 @@ namespace Graphite {
 	{
 		// clangd holds its progress reporting until every item is answered, and an empty object is the answer it takes.
 		return nlohmann::json::object();
+	}
+
+	HoverInfo ClangdAdapter::ParseHover(std::string_view markdown) const
+	{
+		return ParseClangdHover(markdown);
 	}
 
 	std::optional<ProjectProblem> ClangdAdapter::ProjectProblemAt(const AdapterContext& context) const

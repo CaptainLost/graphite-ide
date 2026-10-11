@@ -2,6 +2,7 @@
 
 #include "Core/Base/Base.h"
 
+#include "Language/Api/HoverInfo.h"
 #include "Language/Api/LanguageId.h"
 #include "Language/Api/LanguageService.h"
 #include "Language/Server/DotnetRuntime.h"
@@ -262,6 +263,7 @@ namespace Graphite {
 			// The hover reply's markdown; empty for every other question, and for a hover with
 			// nothing to say.
 			std::string Text;
+			HoverInfo Hover;
 			bool Failed = false;
 		};
 

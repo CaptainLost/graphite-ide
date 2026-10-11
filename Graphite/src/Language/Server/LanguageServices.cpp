@@ -1215,6 +1215,7 @@ namespace Graphite {
 				delivered.Declarations = std::move(answer.Declarations);
 				delivered.SemanticTokens = std::move(answer.SemanticTokens);
 				delivered.Text = std::move(answer.Text);
+				delivered.Hover = std::move(answer.Hover);
 				delivered.Failed = answer.Failed;
 
 				m_Answers.push_back(std::move(delivered));

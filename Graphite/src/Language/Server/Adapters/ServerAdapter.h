@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Language/Api/HoverInfo.h"
 #include "Language/Api/LanguageId.h"
 #include "Language/Api/LanguageService.h"
 #include "Language/Server/ServerCatalog.h"
@@ -53,6 +54,8 @@ namespace Graphite {
 
 		virtual NotificationEffect HandleNotification(const AdapterContext& context, std::string_view method,
 													  const nlohmann::json& params) const;
+
+		virtual HoverInfo ParseHover(std::string_view markdown) const;
 
 		// Nothing when the server can answer as soon as its handshake ends.
 		virtual std::optional<std::string> LoadsProjectsFrom(const AdapterContext& context) const;

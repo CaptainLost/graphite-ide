@@ -4,6 +4,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include <ostream>
+#include <string>
+
 namespace {
 
 	Graphite::AdapterContext ContextWithSettings(nlohmann::json settings)
@@ -61,4 +64,16 @@ TEST_CASE("The plain adapter passes the user's initialization options through an
 	CHECK(plain.InitializationOptions(context) == options);
 	CHECK(notifications.empty());
 	CHECK_FALSE(plain.AnswerRequest(context, "workspace/anything", nlohmann::json::object()).has_value());
+}
+
+TEST_CASE("The clangd adapter reads clangd's hover and every other adapter reads markdown")
+{
+	const Graphite::HoverInfo clangd = Graphite::AdapterOf(Graphite::AdapterKind::Clangd).ParseHover("### function `Sum`");
+	const Graphite::HoverInfo roslyn = Graphite::AdapterOf(Graphite::AdapterKind::Roslyn).ParseHover("```csharp\nint Sum()\n```");
+	const Graphite::HoverInfo plain = Graphite::AdapterOf(Graphite::AdapterKind::Plain).ParseHover("```csharp\nint Sum()\n```");
+
+	CHECK(clangd.Parsed);
+	CHECK(clangd.Name == "Sum");
+	CHECK(roslyn.Declaration == "int Sum()");
+	CHECK(plain.Declaration == "int Sum()");
 }
