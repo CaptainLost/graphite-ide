@@ -512,7 +512,7 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0480](0480-drive-input-from-events-and-leave-the-drawn-gestures-to-the-gui.md) | Drive input from events and leave the drawn gestures to the GUI | accepted | 2026-08-13 |
 | [0481](0481-lex-one-line-at-a-time-carrying-a-resumable-state.md) | Lex one line at a time carrying a resumable state | proposed | 2026-08-13 |
 | [0482](0482-keep-the-language-layer-in-graphite-rather-than-core.md) | Keep the language layer in Graphite rather than Core | proposed | 2026-08-13 |
-| [0483](0483-show-settings-as-sections-inside-one-panel.md) | Show settings as sections inside one panel | proposed | 2026-08-13 |
+| [0483](0483-show-settings-as-sections-inside-one-panel.md) | Show settings as sections inside one panel | superseded by 0573 | 2026-08-13 |
 | [0484](0484-keep-cross-line-lexer-state-opaque.md) | Keep cross-line lexer state opaque | proposed | 2026-08-14 |
 | [0485](0485-take-code-intelligence-from-external-language-servers.md) | Take code intelligence from external language servers | proposed | 2026-08-16 |
 | [0486](0486-insert-non-document-rows-above-rowmap-rather-than-inside-it.md) | Insert non-document rows above RowMap rather than inside it | proposed | 2026-08-16 |
@@ -602,4 +602,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0570](0570-run-a-language-server-from-graphite-s-install-once-its-runtime-is-found.md) | Run a language server from Graphite's install once its runtime is found | proposed | 2026-10-11 |
 | [0571](0571-choose-and-install-language-servers-from-settings-and-the-editor.md) | Choose and install language servers from Settings and the editor | proposed | 2026-10-11 |
 | [0572](0572-serve-c-within-the-selected-solution-and-parse-each-server-s-hover-in-its-adapter.md) | Serve C# within the selected solution and parse each server's hover in its adapter | proposed | 2026-10-11 |
+| [0573](0573-describe-settings-pages-as-data-and-draw-them-with-one-layout.md) | Describe settings pages as data and draw them with one layout | accepted | 2026-10-11 |
 <!-- /adr-index -->

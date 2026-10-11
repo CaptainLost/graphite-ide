@@ -1,6 +1,6 @@
 # 0483. Show settings as sections inside one panel
 
-Status: proposed
+Status: superseded by 0573
 Date: 2026-08-13
 
 ## Context

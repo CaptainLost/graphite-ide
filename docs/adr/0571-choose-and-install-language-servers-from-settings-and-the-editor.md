@@ -61,3 +61,7 @@ An install or an uninstall restarts only the languages whose chosen server it is
 ### Neutral
 
 - The status bar's words changed for C++ too: `C++: clangd ready` where it said `clangd: ready`.
+
+## Related
+
+- [0573](0573-describe-settings-pages-as-data-and-draw-them-with-one-layout.md) — the Languages tabs this record describes are now pages inside Language Servers, opened by the path `{"languageServers", "<SettingsName>"}`.
