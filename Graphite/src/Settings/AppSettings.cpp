@@ -185,20 +185,29 @@ namespace Graphite {
 
 		if (oldPath.empty())
 		{
+			APP_INFO("Dropped '{}': it was blank", kLanguageServerBinaryKey);
 			return;
 		}
 
-		if (GetLanguageServerSettings(kServerOfOldPath).BinaryPath.empty())
+		const bool pathStored = !GetLanguageServerSettings(kServerOfOldPath).BinaryPath.empty();
+
+		if (!pathStored)
 		{
 			m_Document.SetJsonAt(BinaryPathOf(kServerOfOldPath), AsJsonText(nlohmann::json(oldPath)));
 		}
 
-		if (!GetLanguageServerChoice(kLanguageOfOldPath).has_value())
+		const bool choiceStored = GetLanguageServerChoice(kLanguageOfOldPath).has_value();
+
+		if (!choiceStored)
 		{
 			SetLanguageServerChoice(kLanguageOfOldPath, kServerOfOldPath);
 		}
 
-		APP_INFO("Moved '{}' to clangd's own path and chose clangd for C++ where nothing was chosen", kLanguageServerBinaryKey);
+		APP_INFO("'{}': {}; {} for {}",
+			kLanguageServerBinaryKey,
+			pathStored ? "dropped because a path was already stored" : "moved to the server's own path",
+			choiceStored ? "the existing choice is kept" : "chose it",
+			kLanguageOfOldPath);
 	}
 
 	void AppSettings::Flush()
