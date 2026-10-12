@@ -46,6 +46,9 @@ namespace Graphite {
 		// This frame's git status, set before Render. A view with no index decorates nothing.
 		void SetGitDecorations(const GitDecorationView& decorations) { m_GitDecorations = decorations; }
 
+		// The file whose tab is in front in the editor, empty when none is; set before Render.
+		void SetShownFile(const std::filesystem::path& path) { m_ShownFile = path; }
+
 	private:
 		struct PendingAction
 		{
@@ -144,6 +147,7 @@ namespace Graphite {
 		std::filesystem::path m_OpenWhenNamed;
 		GitIgnoredDisplay m_GitIgnoredDisplay = GitIgnoredDisplay::Dim;
 		GitDecorationView m_GitDecorations;
+		std::filesystem::path m_ShownFile;
 
 		// What the tree shows while the filter has text, built from the listing rather than from
 		// the tree, which holds only the folders the user has opened.

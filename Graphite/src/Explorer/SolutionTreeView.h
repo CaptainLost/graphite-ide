@@ -40,6 +40,9 @@ namespace Graphite {
 		// This frame's git status, set before the tree renders.
 		void SetGitDecorations(const GitDecorationView& decorations) { m_GitDecorations = decorations; }
 
+		// The file whose tab is in front in the editor, empty when none is; set before the tree renders.
+		void SetShownFile(const std::filesystem::path& path) { m_ShownFile = path; }
+
 	private:
 		struct PendingAction
 		{
@@ -139,6 +142,7 @@ namespace Graphite {
 		bool m_ReopenFilteredRows = false;
 
 		GitDecorationView m_GitDecorations;
+		std::filesystem::path m_ShownFile;
 
 		// What m_GroupDecorations were computed from: the load of the solution, and the status
 		// index with its version (the pointer alone can repeat across rebuilds).

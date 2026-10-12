@@ -43,6 +43,9 @@ namespace Graphite {
 		// This frame's git status for the trees, set before the panel renders.
 		void SetGitDecorations(const GitDecorationView& decorations);
 
+		// The file whose tab is in front in the editor, empty when none is; set before the panel renders.
+		void SetShownFile(const std::filesystem::path& path);
+
 	private:
 		enum class Mode
 		{

@@ -77,6 +77,12 @@ namespace Graphite {
 		m_Solution.SetGitDecorations(decorations);
 	}
 
+	void ExplorerPanel::SetShownFile(const std::filesystem::path& path)
+	{
+		m_Files.SetShownFile(path);
+		m_Solution.SetShownFile(path);
+	}
+
 	void ExplorerPanel::SyncModeWithWorkspace()
 	{
 		if (m_Workspace.GetRoot() == m_ModeLoadedFor)

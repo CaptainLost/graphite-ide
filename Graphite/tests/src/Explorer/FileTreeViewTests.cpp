@@ -4,6 +4,7 @@
 #include "Workspace/Workspace.h"
 
 #include "DeferredJobs.h"
+#include "DrawnColours.h"
 #include "ImGuiFrames.h"
 #include "TempAppSettings.h"
 #include "TempDirectory.h"
@@ -181,6 +182,33 @@ TEST_CASE("Clearing the filter leaves closed the folders it opened")
 	const Core::FileNode* source = ChildNamed(screen.Workspace.GetTree().GetRoot(), "src");
 	REQUIRE(source != nullptr);
 	CHECK_FALSE(source->Expanded);
+}
+
+TEST_CASE("The file tree marks the active file only while its tab is the one in front in the editor")
+{
+	TempDirectory folder;
+	folder.MakeFile("Shown.cpp", "int x;");
+
+	ExplorerScreen screen{folder.GetPath()};
+	const Core::FileNode* file = ChildNamed(screen.Workspace.GetTree().GetRoot(), "Shown.cpp");
+	REQUIRE(file != nullptr);
+	const std::filesystem::path filePath = file->Path;
+	REQUIRE(screen.Documents.Open(filePath, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+
+	const std::filesystem::path noFileInFront;
+	screen.View.SetShownFile(noFileInFront);
+	screen.Next();
+
+	const ImGuiWindow* body = FindTreeBody();
+	REQUIRE(body != nullptr);
+	CHECK_FALSE(MarksARow(*body->DrawList));
+
+	screen.View.SetShownFile(filePath);
+	screen.Next();
+
+	body = FindTreeBody();
+	REQUIRE(body != nullptr);
+	CHECK(MarksARow(*body->DrawList));
 }
 
 TEST_CASE("While the first read of the folder is new, the file tree draws nothing and wakes itself when the wait is over")

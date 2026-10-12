@@ -1000,10 +1000,8 @@ namespace Graphite {
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 		}
 
-		// Read from the DocumentSet rather than from the workspace selection, which only
-		// moves when a row here is clicked and so misses tab switches in the editor.
-		const auto active = m_Documents.GetActiveIndex();
-		const bool isActive = active.has_value() && m_Documents.At(*active).Path == node.Path;
+		// Not the active document, which stays active behind Settings or the Git view.
+		const bool isShownInEditor = !m_ShownFile.empty() && m_ShownFile == node.Path;
 		const bool isOpen = m_Documents.Find(node.Path).has_value();
 
 		const std::string label =
@@ -1016,7 +1014,7 @@ namespace Graphite {
 
 		// An open file is marked by a dot, not by a background, which would read as several
 		// selected rows, nor by the name's colour, which says what git thinks of it.
-		const bool clicked = ImGui::Selectable(id.c_str(), isActive, ImGuiSelectableFlags_AllowDoubleClick,
+		const bool clicked = ImGui::Selectable(id.c_str(), isShownInEditor, ImGuiSelectableFlags_AllowDoubleClick,
 											   ImVec2(layout.Width, 0.0f));
 
 		// Only for a row on screen: the lookup builds a path key, and an expanded tree can hold
@@ -1050,7 +1048,6 @@ namespace Graphite {
 
 		if (clicked)
 		{
-			m_Workspace.SelectFile(node.Path);
 			m_Workspace.RequestOpenFile(node.Path, OpensPermanently());
 		}
 

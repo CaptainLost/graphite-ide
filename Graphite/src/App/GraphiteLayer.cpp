@@ -949,10 +949,13 @@ namespace Graphite {
 
 		// What the bar describes is the document on screen, not the active one: the active
 		// document outlives its tab being covered by another, and the bar went on naming it.
-		const std::optional<std::size_t> shownIndex = ShownActiveDocument(
-			m_Documents, [this](const std::filesystem::path& path) { return m_DocumentWindows.IsShown(path); });
+		const auto isShown = [this](const std::filesystem::path& path) { return m_DocumentWindows.IsShown(path); };
+		const std::optional<std::size_t> shownIndex = ShownActiveDocument(m_Documents, isShown);
 		const std::optional<std::filesystem::path> shownDocument =
 			shownIndex ? std::optional{m_Documents.At(*shownIndex).Path} : std::nullopt;
+
+		const std::optional<std::size_t> shownTab = ShownActiveTab(m_Documents, isShown);
+		m_Explorer->SetShownFile(shownTab ? m_Documents.At(*shownTab).Path : std::filesystem::path{});
 
 		ServerStatus status;
 		LanguageId activeLanguage = LanguageId::PlainText;

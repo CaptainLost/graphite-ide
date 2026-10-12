@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "DrawnColours.h"
 #include "ImGuiFrames.h"
 
 #include "Editor/StatusBar/StatusBar.h"
@@ -50,18 +51,6 @@ namespace {
 			return *bar->DrawList;
 		}
 	};
-
-	bool DrawsInColour(const ImDrawList& drawing, ImU32 colour)
-	{
-		for (const ImDrawVert& vertex : drawing.VtxBuffer)
-		{
-			if (vertex.col == colour)
-			{
-				return true;
-			}
-		}
-		return false;
-	}
 }
 
 TEST_CASE("A click on the bell at the status bar's right end reports the notifications")

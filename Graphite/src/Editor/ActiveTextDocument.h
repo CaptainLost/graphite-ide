@@ -23,4 +23,10 @@ namespace Graphite {
 	std::optional<std::size_t> ShownActiveDocument(
 		const Core::DocumentSet& documents,
 		const std::function<bool(const std::filesystem::path&)>& isShown);
+
+	// Text or not: a tab that stayed open to say its file could not be read is still that file
+	// in front of the reader.
+	std::optional<std::size_t> ShownActiveTab(
+		const Core::DocumentSet& documents,
+		const std::function<bool(const std::filesystem::path&)>& isShown);
 }

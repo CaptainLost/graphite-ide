@@ -53,11 +53,6 @@ namespace Graphite {
 	{
 	};
 
-	struct FileSelectedEvent
-	{
-		std::filesystem::path Path;
-	};
-
 	struct OpenFileRequested
 	{
 		std::filesystem::path Path;
@@ -114,8 +109,6 @@ namespace Graphite {
 
 		void Reload();
 
-		void SelectFile(const std::filesystem::path& path);
-
 		// Inline so a panel built into the tests, which do not link Workspace.cpp, can call it:
 		// all it does is publish.
 		void RequestOpenFile(const std::filesystem::path& path, bool permanent)
@@ -133,10 +126,6 @@ namespace Graphite {
 		const std::filesystem::path& GetRoot() const { return m_Root; }
 		Core::FileTree& GetTree() { return m_Tree; }
 		const Core::FileTree& GetTree() const { return m_Tree; }
-		const std::filesystem::path& GetSelectedFile() const
-		{
-			return m_SelectedFile;
-		}
 
 		const std::optional<Solution>& GetLoadedSolution() const
 		{
@@ -209,7 +198,6 @@ namespace Graphite {
 
 		bool m_WatcherResumed = false;
 		std::filesystem::path m_Root;
-		std::filesystem::path m_SelectedFile;
 
 		std::optional<Solution> m_Solution;
 		std::uint64_t m_SolutionLoads = 0;

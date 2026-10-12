@@ -62,6 +62,22 @@ TEST_CASE("The active text document is the shown one only while its tab is on sc
 	CHECK(Graphite::ShownActiveDocument(documents, bothShown) == std::optional<std::size_t>{1});
 }
 
+TEST_CASE("The active tab is the shown one only while it is on screen, whether or not it holds text")
+{
+	TempDirectory temp;
+	const std::filesystem::path readable = temp.MakeFile("readable.cpp", "int x;");
+
+	Core::DocumentSet documents;
+	REQUIRE(documents.Open(readable, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+	REQUIRE(documents.Open(temp.GetPath() / "missing.cpp", Core::TabKind::Permanent) == Core::OpenOutcome::Failed);
+
+	const auto allShown = [](const std::filesystem::path&) { return true; };
+	CHECK(Graphite::ShownActiveTab(documents, allShown) == std::optional<std::size_t>{1});
+
+	const auto onlyReadableShown = [&readable](const std::filesystem::path& path) { return path == readable; };
+	CHECK_FALSE(Graphite::ShownActiveTab(documents, onlyReadableShown).has_value());
+}
+
 TEST_CASE("A shown tab whose file could not be read is not a shown text document")
 {
 	TempDirectory temp;

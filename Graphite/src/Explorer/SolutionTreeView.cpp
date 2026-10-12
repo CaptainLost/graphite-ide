@@ -375,11 +375,8 @@ namespace Graphite {
 
 	void SolutionTreeView::RenderContentFile(const ContentFile& file)
 	{
-		// The active document as well as the clicked row: a document opened some other way,
-		// by go-to-definition or from a tab, is what the reveal just opened the tree to show.
-		const auto active = m_Documents.GetActiveIndex();
-		const bool selected = m_Workspace.GetSelectedFile() == file.Path ||
-							  (active.has_value() && m_Documents.At(*active).Path == file.Path);
+		// Not the active document, which stays active behind Settings or the Git view.
+		const bool isShownInEditor = !m_ShownFile.empty() && m_ShownFile == file.Path;
 
 		std::string label =
 			std::string{Core::IconForExtension(Core::ToUtf8(file.Path.extension()))} + "  " +
@@ -400,7 +397,7 @@ namespace Graphite {
 		const ImGuiSelectableFlags flags =
 			ImGuiSelectableFlags_AllowDoubleClick | (file.Exists ? 0 : ImGuiSelectableFlags_Disabled);
 
-		const bool clicked = ImGui::Selectable(id.c_str(), selected, flags, ImVec2(layout.Width, 0.0f));
+		const bool clicked = ImGui::Selectable(id.c_str(), isShownInEditor, flags, ImVec2(layout.Width, 0.0f));
 
 		// Only for a row on screen: the lookup builds a path key. A file the disk lacks keeps its
 		// missing look and shows no status.
@@ -432,10 +429,8 @@ namespace Graphite {
 			ImGui::SetScrollHereY(0.5f);
 		}
 
-		// As in the file tree: a click selects and opens a preview, a double click keeps it.
 		if (clicked)
 		{
-			m_Workspace.SelectFile(file.Path);
 			m_Workspace.RequestOpenFile(file.Path, OpensPermanently());
 		}
 	}

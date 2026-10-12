@@ -25,16 +25,23 @@ namespace Graphite {
 		const Core::DocumentSet& documents,
 		const std::function<bool(const std::filesystem::path&)>& isShown)
 	{
-		const std::optional<std::size_t> active = documents.GetActiveIndex();
+		const std::optional<std::size_t> shown = ShownActiveTab(documents, isShown);
 
-		if (!active)
+		if (!shown || !documents.At(*shown).Document)
 		{
 			return std::nullopt;
 		}
 
-		const Core::OpenItem& item = documents.At(*active);
+		return shown;
+	}
 
-		if (!item.Document || !isShown(item.Path))
+	std::optional<std::size_t> ShownActiveTab(
+		const Core::DocumentSet& documents,
+		const std::function<bool(const std::filesystem::path&)>& isShown)
+	{
+		const std::optional<std::size_t> active = documents.GetActiveIndex();
+
+		if (!active || !isShown(documents.At(*active).Path))
 		{
 			return std::nullopt;
 		}

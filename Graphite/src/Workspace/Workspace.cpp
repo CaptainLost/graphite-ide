@@ -67,7 +67,6 @@ namespace Graphite {
 
 		m_Tree = std::move(candidate);
 		m_Root = root;
-		m_SelectedFile.clear();
 
 		TryOpenRepository();
 		m_Tree.Refresh(m_Tree.GetRoot());
@@ -226,7 +225,6 @@ namespace Graphite {
 		m_Repository.reset();
 		m_Tree = Core::FileTree{};
 		m_Root.clear();
-		m_SelectedFile.clear();
 
 		ResetSolutionState();
 
@@ -240,12 +238,6 @@ namespace Graphite {
 		m_Events.Publish(WorkspaceClosedEvent{});
 
 		APP_INFO("Workspace closed: '{}'", Core::ToUtf8(closed));
-	}
-
-	void Workspace::SelectFile(const std::filesystem::path& path)
-	{
-		m_SelectedFile = path;
-		m_Events.Publish(FileSelectedEvent{path});
 	}
 
 	void Workspace::Update()
@@ -479,13 +471,6 @@ namespace Graphite {
 
 		m_Root = to;
 		m_Tree.Rebase(to);
-
-		if (!m_SelectedFile.empty())
-		{
-			const std::filesystem::path relative = m_SelectedFile.lexically_relative(from);
-
-			m_SelectedFile = relative.empty() ? std::filesystem::path{} : to / relative;
-		}
 
 		// The watcher's handle still works — it followed the directory, which is how the
 		// move was noticed — but the copy of the root inside its thread is stale, and that

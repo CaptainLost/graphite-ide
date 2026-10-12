@@ -3,6 +3,7 @@
 #include "Explorer/SolutionTreeView.h"
 #include "Workspace/Workspace.h"
 
+#include "DrawnColours.h"
 #include "ImGuiFrames.h"
 #include "TempAppSettings.h"
 #include "TempDirectory.h"
@@ -13,6 +14,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <cfloat>
 #include <cmath>
 #include <filesystem>
 #include <string_view>
@@ -57,7 +59,6 @@ namespace {
 	{
 		return ImGui::GetFontSize() + ImGui::GetStyle().ItemSpacing.y;
 	}
-
 	class SolutionScreen
 	{
 	public:
@@ -108,6 +109,12 @@ namespace {
 				Frames.PressKey(ImGuiKey_Backspace, [this] { Draw(); });
 			}
 
+			Next();
+		}
+
+		void MoveMouseAway()
+		{
+			ImGui::GetIO().AddMousePosEvent(-FLT_MAX, -FLT_MAX);
 			Next();
 		}
 
@@ -165,6 +172,39 @@ TEST_CASE("The solution view's filter finds a file in a project nobody opened, a
 
 	REQUIRE(screen.OpenedFiles.size() == 1);
 	CHECK(std::filesystem::equivalent(screen.OpenedFiles[0], folder.GetPath() / "Engine" / "Render" / "Deep.cs"));
+}
+
+TEST_CASE("The solution view marks the row last clicked only while its file's tab is the one in front in the editor")
+{
+	TempDirectory folder;
+	const std::filesystem::path solution = MakeSampleSolution(folder);
+
+	SolutionScreen screen{solution};
+	screen.TypeInFilter("Deep");
+
+	const int deepRow = 4;
+	const int deepDepth = 4;
+	screen.ClickRow(deepRow, deepDepth);
+
+	REQUIRE(screen.OpenedFiles.size() == 1);
+	const std::filesystem::path clicked = screen.OpenedFiles[0];
+	REQUIRE(screen.Documents.Open(clicked, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+	screen.MoveMouseAway();
+
+	const std::filesystem::path noFileInFront;
+	screen.View.SetShownFile(noFileInFront);
+	screen.Next();
+
+	const ImGuiWindow* body = FindSolutionBody();
+	REQUIRE(body != nullptr);
+	CHECK_FALSE(MarksARow(*body->DrawList));
+
+	screen.View.SetShownFile(clicked);
+	screen.Next();
+
+	body = FindSolutionBody();
+	REQUIRE(body != nullptr);
+	CHECK(MarksARow(*body->DrawList));
 }
 
 TEST_CASE("The solution view's filter leaves out the projects and folders that hold no match")
