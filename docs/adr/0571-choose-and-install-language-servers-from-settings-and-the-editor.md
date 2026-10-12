@@ -13,7 +13,12 @@ Settings has a Languages section with a tab for each language that has servers. 
 - the server list, with None first and the recommended server marked;
 - the chosen server's description and the runtime it needs;
 - its install state, with Install, Cancel, Check for updates, Update and Uninstall as the state allows;
-- a custom path and extra arguments.
+- a custom path and extra arguments; until 2026-10-12 the path showed for every chosen server.
+
+Since 2026-10-12 the server list ends with Custom:
+- A chosen server with a stored path reads as Custom. It shows its path, its arguments and, for a language with several servers, the server type, and no install state. Choosing Custom stores nothing until a path is set.
+- Picking a listed server clears its stored path, so it runs from Graphite's install, else from PATH.
+- A server that runs from outside Graphite's install, while Graphite's copy is not installed, reads Found on PATH and offers Install Graphite's copy.
 
 A change to the choice, the path or the arguments reconfigures the language at once. A cleared path or argument list is removed from `graphite.json` rather than stored empty. Until [0577](0577-install-clangd-on-request-like-every-other-language-server.md), clangd's path under the old `languageServerBinary` key showed in the C++ tab and the first edit there moved it; the key now moves when the settings load.
 
