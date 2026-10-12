@@ -1,6 +1,7 @@
 #include "Settings/LanguageServers/LanguageTabText.h"
 
 #include "Editor/StatusBar/ServerStatusText.h"
+#include "Language/Registry/LanguageRegistry.h"
 #include "UI/TypographicMarks.h"
 
 #include <format>
@@ -113,11 +114,18 @@ namespace Graphite {
 		return InstallActionLabel(action);
 	}
 
-	PathRowText CustomPathRowText(const std::filesystem::path& storedPath, const ServerStatus& status)
+	PathRowText CustomPathRowText(LanguageId language, const std::filesystem::path& storedPath, const ServerStatus& status)
 	{
 		if (storedPath.empty())
 		{
 			return PathRowText{.Description = "Choose the program to run."};
+		}
+
+		const bool notStartedYet = status.State == ServerState::NotConfigured;
+
+		if (notStartedYet)
+		{
+			return PathRowText{.Description = std::format("Starts when a {} file is opened.", LanguageDisplayName(language))};
 		}
 
 		std::string detail = ServerStatusDetail(status);

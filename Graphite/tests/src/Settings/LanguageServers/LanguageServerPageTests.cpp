@@ -17,6 +17,10 @@
 #include "Settings/LanguageServers/LanguageServerPage.h"
 #include "Settings/Panel/SettingsLayout.h"
 
+#include "Core/ImGui/Animation.h"
+
+#include <imgui.h>
+
 #include <cstddef>
 #include <filesystem>
 #include <optional>
@@ -27,6 +31,23 @@
 
 namespace {
 
+	constexpr float kControlWidth = 300.0f;
+
+	// A group's size would not do: an empty group still reaches out to the item before it, the window's title bar.
+	bool DrawControlAlone(const Graphite::SettingsRow& row)
+	{
+		Core::Animation::BeginFrame();
+		ImGui::Begin("Control alone");
+		ImGui::PushItemWidth(kControlWidth);
+		const float cursorBefore = ImGui::GetCursorPosY();
+		row.DrawControl();
+		const float cursorAfter = ImGui::GetCursorPosY();
+		ImGui::PopItemWidth();
+		ImGui::End();
+
+		return cursorAfter > cursorBefore;
+	}
+
 	// A language's page, C# unless another is named, over an installer whose jobs wait for RunAll.
 	struct LanguageServerScreen
 	{
@@ -36,13 +57,36 @@ namespace {
 		DeferredJobs Jobs;
 		Graphite::ServerInstalls Installs{Core::CreateRef<FakeHttpClient>(), Servers, Jobs.Submitter()};
 		Graphite::LanguageServices Services{Temp.GetPath()};
+		Graphite::LanguageId Language;
+		std::size_t ChoiceAsks = 0;
 		Graphite::LanguageServerPage Page;
 		SettingsPageFrames Frames{Page};
 
 		explicit LanguageServerScreen(Graphite::LanguageId language = Graphite::LanguageId::CSharp)
-			: Page{language, Settings.Get(), Installs, Services}
+			: Language{language}, Page{language, Settings.Get(), Installs, Services}
 		{
-			Services.SetChoiceProvider([this](Graphite::LanguageId language) { return Graphite::ReadServerChoice(Settings.Get(), language); });
+			Services.SetChoiceProvider([this](Graphite::LanguageId language) { return AskChoice(language); });
+		}
+
+		Graphite::ServerChoice AskChoice(Graphite::LanguageId language)
+		{
+			++ChoiceAsks;
+			return Graphite::ReadServerChoice(Settings.Get(), language);
+		}
+
+		// The services ask for the choice again only after a reconfigure cleared it, so the count from one settled
+		// choice to the next is the number of reconfigures between them.
+		std::size_t SettledChoiceAsks()
+		{
+			Services.ChosenServer(Language);
+			return ChoiceAsks;
+		}
+
+		bool ControlDrawsSomething(const Graphite::SettingsRow& row)
+		{
+			bool drewSomething = false;
+			Frames.GetFrames().Next([&row, &drewSomething] { drewSomething = DrawControlAlone(row); });
+			return drewSomething;
 		}
 
 		std::optional<std::string> StoredChoice() { return Settings.Get().GetLanguageServerChoice(Page.GetId()); }
@@ -347,6 +391,11 @@ TEST_CASE("A stored path makes the page read as Custom")
 	screen.StoreCustomServer("roslyn", kRoslynCopy);
 
 	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Custom server"});
+
+	const std::optional<Graphite::SettingsRow> pathRow = screen.Frames.FindRow("Path");
+
+	REQUIRE(pathRow.has_value());
+	CHECK(pathRow->Description == "Starts when a C# file is opened.");
 }
 
 TEST_CASE("Opening a page that reads as Custom writes nothing to the settings")
@@ -599,4 +648,87 @@ TEST_CASE("A server neither installed nor running still reads Not installed")
 	REQUIRE(row.has_value());
 	CHECK(row->Title == "Not installed");
 	CHECK(row->ControlWidth == screen.ButtonsWidth({"Install"}));
+}
+
+TEST_CASE("A page with a server chosen from the list is still found by path and binary")
+{
+	LanguageServerScreen screen;
+	screen.Page.SelectServer("roslyn");
+
+	const std::optional<Graphite::SettingsRow> row = screen.Frames.FindRow("Language server");
+
+	REQUIRE(row.has_value());
+	CHECK(HasKeyword(*row, "path"));
+	CHECK(HasKeyword(*row, "binary"));
+}
+
+TEST_CASE("Setting the path under Custom from nothing chosen reconfigures the language once")
+{
+	LanguageServerScreen screen;
+	screen.Page.SelectCustom();
+	const std::size_t askedBefore = screen.SettledChoiceAsks();
+
+	screen.Page.SetCustomPath(kRoslynCopy);
+
+	CHECK(screen.SettledChoiceAsks() == askedBefore + 1);
+}
+
+TEST_CASE("Changing the server type with a path in use reconfigures the language once")
+{
+	LanguageServerScreen screen;
+	screen.StoreCustomServer("roslyn", kRoslynCopy);
+	const std::size_t askedBefore = screen.SettledChoiceAsks();
+
+	screen.Page.SetCustomServerType("csharp-ls");
+
+	CHECK(screen.SettledChoiceAsks() == askedBefore + 1);
+}
+
+TEST_CASE("Choosing a listed server from a stored Custom reconfigures the language once")
+{
+	LanguageServerScreen screen;
+	screen.StoreCustomServer("roslyn", kRoslynCopy);
+	const std::size_t askedBeforeOtherServer = screen.SettledChoiceAsks();
+
+	screen.Page.SelectServer("csharp-ls");
+
+	CHECK(screen.SettledChoiceAsks() == askedBeforeOtherServer + 1);
+
+	LanguageServerScreen cppScreen{Graphite::LanguageId::Cpp};
+	cppScreen.StoreCustomServer("clangd", kClangdCopy);
+	const std::size_t askedBeforeSameServer = cppScreen.SettledChoiceAsks();
+
+	cppScreen.Page.SelectServer("clangd");
+
+	CHECK(cppScreen.SettledChoiceAsks() == askedBeforeSameServer + 1);
+}
+
+TEST_CASE("A row described for a server the page no longer shows draws nothing")
+{
+	LanguageServerScreen screen;
+	screen.StoreCustomServer("roslyn", kRoslynCopy);
+	const std::optional<Graphite::SettingsRow> pathBeforeTypeChange = screen.Frames.FindRow("Path");
+	const std::optional<Graphite::SettingsRow> argumentsBeforeTypeChange = screen.Frames.FindRow("Arguments");
+	REQUIRE(pathBeforeTypeChange.has_value());
+	REQUIRE(argumentsBeforeTypeChange.has_value());
+
+	screen.Page.SetCustomServerType("csharp-ls");
+
+	const std::optional<Graphite::SettingsRow> pathAfterTypeChange = screen.Frames.FindRow("Path");
+	REQUIRE(pathAfterTypeChange.has_value());
+
+	CHECK_FALSE(screen.ControlDrawsSomething(*pathBeforeTypeChange));
+	CHECK_FALSE(screen.ControlDrawsSomething(*argumentsBeforeTypeChange));
+	CHECK(screen.ControlDrawsSomething(*pathAfterTypeChange));
+
+	screen.Page.SelectServer("omnisharp");
+	const std::optional<Graphite::SettingsRow> advancedArguments = screen.Frames.FindRow("Arguments");
+	REQUIRE(advancedArguments.has_value());
+
+	screen.Page.SelectServer("roslyn");
+	const std::optional<Graphite::SettingsRow> currentArguments = screen.Frames.FindRow("Arguments");
+	REQUIRE(currentArguments.has_value());
+
+	CHECK_FALSE(screen.ControlDrawsSomething(*advancedArguments));
+	CHECK(screen.ControlDrawsSomething(*currentArguments));
 }

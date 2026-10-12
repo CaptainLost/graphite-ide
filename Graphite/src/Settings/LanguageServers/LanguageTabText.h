@@ -41,5 +41,5 @@ namespace Graphite {
 		std::string Problem;
 	};
 
-	PathRowText CustomPathRowText(const std::filesystem::path& storedPath, const ServerStatus& status);
+	PathRowText CustomPathRowText(LanguageId language, const std::filesystem::path& storedPath, const ServerStatus& status);
 }

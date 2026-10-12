@@ -53,6 +53,7 @@ namespace Graphite {
 		bool ListsServer(const ServerDefinition* server) const;
 		std::filesystem::path CustomPathInUse(const ServerDefinition& server) const;
 		const ServerDefinition* CustomServer() const;
+		const ServerDefinition* ShownServer() const;
 
 		void StoreChoice(std::string_view serverId);
 		void ForgetCustomPath(std::string_view serverId);

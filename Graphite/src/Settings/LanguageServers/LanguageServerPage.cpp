@@ -336,6 +336,21 @@ namespace Graphite {
 		return m_PageCustomServer;
 	}
 
+	// A row described before a change made earlier in the same frame is still drawn that frame, so a control
+	// whose server is no longer the one shown draws nothing rather than that server's emptied values.
+	const ServerDefinition* LanguageServerPage::ShownServer() const
+	{
+		if (const ServerDefinition* customServer = CustomServer(); customServer != nullptr)
+		{
+			return customServer;
+		}
+
+		const ServerChoice choice = CurrentChoice();
+		const bool serverChosen = choice.Kind == ServerChoiceKind::Chosen;
+
+		return serverChosen ? choice.Server : nullptr;
+	}
+
 	void LanguageServerPage::StoreChoice(std::string_view serverId)
 	{
 		const std::string_view settingsName = DefinitionOf(m_Language).SettingsName;
@@ -485,7 +500,7 @@ namespace Graphite {
 
 	SettingsRow LanguageServerPage::DescribeCustomPath(const ServerDefinition& server)
 	{
-		const PathRowText text = CustomPathRowText(CustomPathInUse(server), m_Services.StatusFor(m_Language));
+		const PathRowText text = CustomPathRowText(m_Language, CustomPathInUse(server), m_Services.StatusFor(m_Language));
 
 		return SettingsRow{.Title = "Path",
 						   .Description = text.Description,
@@ -542,6 +557,8 @@ namespace Graphite {
 		}
 
 		keywords.emplace_back("custom");
+		keywords.emplace_back("path");
+		keywords.emplace_back("binary");
 
 		return keywords;
 	}
@@ -588,9 +605,9 @@ namespace Graphite {
 	void LanguageServerPage::DrawCustomServerType()
 	{
 		const ServerDefinition* customServer = CustomServer();
+		const bool rowIsStale = customServer == nullptr;
 
-		// Rows described before a choice made earlier in the same frame left Custom are still drawn.
-		if (customServer == nullptr)
+		if (rowIsStale)
 		{
 			return;
 		}
@@ -638,6 +655,13 @@ namespace Graphite {
 
 	void LanguageServerPage::DrawCustomPath(const ServerDefinition& server)
 	{
+		const bool rowIsStale = CustomServer() != &server;
+
+		if (rowIsStale)
+		{
+			return;
+		}
+
 		const std::filesystem::path pathInUse = CustomPathInUse(server);
 
 		if (!m_EditingPath || m_PathServer != server.Id)
@@ -686,6 +710,13 @@ namespace Graphite {
 
 	void LanguageServerPage::DrawArguments(const ServerDefinition& server)
 	{
+		const bool rowIsStale = ShownServer() != &server;
+
+		if (rowIsStale)
+		{
+			return;
+		}
+
 		const LanguageServerSettings stored = m_Store.GetLanguageServerSettings(server.Id);
 
 		if (!m_EditingArguments || m_ArgumentsServer != server.Id)

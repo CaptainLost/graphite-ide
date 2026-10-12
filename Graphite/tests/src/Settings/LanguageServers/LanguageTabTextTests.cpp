@@ -110,19 +110,67 @@ TEST_CASE("The custom path row asks for a program until one is stored and then t
 										  .Detail = "the configured path 'D:/Tools/clangd.exe' does not exist"};
 	const Graphite::ServerStatus failed{.State = Graphite::ServerState::Failed, .Name = "clangd", .Detail = "D:/Tools/clangd.exe"};
 
-	const Graphite::PathRowText asking = Graphite::CustomPathRowText(noPath, ready);
+	const Graphite::PathRowText asking = Graphite::CustomPathRowText(Graphite::LanguageId::Cpp, noPath, ready);
 	CHECK(asking.Description == "Choose the program to run.");
 	CHECK(asking.Problem.empty());
 
-	const Graphite::PathRowText running = Graphite::CustomPathRowText(storedPath, ready);
+	const Graphite::PathRowText running = Graphite::CustomPathRowText(Graphite::LanguageId::Cpp, storedPath, ready);
 	CHECK(running.Description == Graphite::ServerStatusDetail(ready));
 	CHECK(running.Problem.empty());
 
-	const Graphite::PathRowText missing = Graphite::CustomPathRowText(storedPath, notFound);
+	const Graphite::PathRowText missing = Graphite::CustomPathRowText(Graphite::LanguageId::Cpp, storedPath, notFound);
 	CHECK(missing.Description.empty());
 	CHECK(missing.Problem == Graphite::ServerStatusDetail(notFound));
 
-	const Graphite::PathRowText broken = Graphite::CustomPathRowText(storedPath, failed);
+	const Graphite::PathRowText broken = Graphite::CustomPathRowText(Graphite::LanguageId::Cpp, storedPath, failed);
 	CHECK(broken.Description.empty());
 	CHECK(broken.Problem == Graphite::ServerStatusDetail(failed));
+}
+
+TEST_CASE("A custom path whose server has not started yet says what starts it")
+{
+	const std::filesystem::path storedPath{"D:/Tools/clangd.exe"};
+	const Graphite::ServerStatus cppNotStarted{.Language = Graphite::LanguageId::Cpp};
+	const Graphite::ServerStatus csharpNotStarted{.Language = Graphite::LanguageId::CSharp};
+
+	const Graphite::PathRowText cppText = Graphite::CustomPathRowText(Graphite::LanguageId::Cpp, storedPath, cppNotStarted);
+	const Graphite::PathRowText csharpText = Graphite::CustomPathRowText(Graphite::LanguageId::CSharp, storedPath, csharpNotStarted);
+
+	CHECK(cppText.Description == "Starts when a C++ file is opened.");
+	CHECK(cppText.Problem.empty());
+	CHECK(csharpText.Description == "Starts when a C# file is opened.");
+}
+
+TEST_CASE("Found on PATH replaces exactly the install states that read Not installed")
+{
+	const Graphite::InstalledVersion version{.Version = "22.1.0"};
+	const Graphite::InstallProgress failedInstall{.Step = Graphite::InstallStep::Failed, .Failure = "the download was refused"};
+	const Graphite::InstallProgress updateAvailable{.Step = Graphite::InstallStep::UpdateAvailable, .Version = "22.2.0"};
+	const Graphite::InstallProgress upToDate{.Step = Graphite::InstallStep::UpToDate, .Version = "22.1.0"};
+
+	const std::vector<Graphite::InstallInputs> everyState{
+		Graphite::InstallInputs{},
+		Graphite::InstallInputs{.CanDownload = false},
+		Graphite::InstallInputs{.Latest = failedInstall},
+		Graphite::InstallInputs{.AvailableOnPlatform = false},
+		Graphite::InstallInputs{.HasReadInstalls = false},
+		Graphite::InstallInputs{.Running = Graphite::InstallJobKind::Install},
+		Graphite::InstallInputs{.Running = Graphite::InstallJobKind::Install, .Cancelling = true},
+		Graphite::InstallInputs{.Installed = version, .Running = Graphite::InstallJobKind::CheckForUpdates},
+		Graphite::InstallInputs{.Installed = version, .Running = Graphite::InstallJobKind::Uninstall},
+		Graphite::InstallInputs{.Installed = version},
+		Graphite::InstallInputs{.Installed = version, .Latest = updateAvailable},
+		Graphite::InstallInputs{.Installed = version, .Latest = upToDate},
+		Graphite::InstallInputs{.CanDownload = false, .Installed = version},
+	};
+	const std::optional<Graphite::ServerCommand> fromPath = Graphite::ServerCommand{.Program = "C:/app/clangd.exe"};
+	const std::filesystem::path noCustomPath;
+
+	for (const Graphite::InstallInputs& inputs : everyState)
+	{
+		const bool foundOnPath = Graphite::IsFoundOnPath(inputs, fromPath, noCustomPath);
+		const bool readsNotInstalled = Graphite::SummariseInstall(inputs).State == "Not installed";
+
+		CHECK(foundOnPath == readsNotInstalled);
+	}
 }
