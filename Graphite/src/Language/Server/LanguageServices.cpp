@@ -68,17 +68,11 @@ namespace Graphite {
 		m_WarmToken.Cancel();
 		m_ProjectSearchToken.Cancel();
 
-		// Asked to leave politely, but not waited on: a server wedged on something has no way to
-		// tell us apart from one that is merely slow, and the UI thread closing down cannot sit
-		// here to find out which. Each client's own destructor is what actually bounds this —
-		// it terminates the process and joins its threads unconditionally, whether or not either
-		// message was ever read.
+		// m_Jobs runs what it still holds before joining its workers, and it goes before every
+		// other member, so each server has had its grace before anything it might touch is gone.
 		for (auto& [key, server] : m_Servers)
 		{
-			if (server.Client)
-			{
-				server.Client->RequestShutdown();
-			}
+			Retire(std::move(server.Client));
 		}
 	}
 
@@ -308,10 +302,7 @@ namespace Graphite {
 				Fail(ticket);
 			}
 
-			if (server.Client)
-			{
-				server.Client->RequestShutdown();
-			}
+			Retire(std::move(server.Client));
 
 			// m_NamedBy stays: a header reached through a definition is re-rooted through it.
 			entry = m_Servers.erase(entry);
@@ -375,6 +366,35 @@ namespace Graphite {
 	void LanguageServices::SetLogDirectory(std::filesystem::path directory)
 	{
 		m_LogDirectory = std::move(directory);
+	}
+
+	void LanguageServices::SetTemporaryFilesDirectory(std::filesystem::path directory)
+	{
+		Core::Result<ClaimedTemporaryDirectory> claimed = ClaimedTemporaryDirectory::Claim(directory);
+
+		if (claimed)
+		{
+			m_TemporaryFiles.emplace(std::move(claimed.GetValue()));
+		}
+		else
+		{
+			APP_WARN("Language servers keep their temporary files where the system does: {}", claimed.GetError().Message);
+		}
+
+		// Submitted after the claim, whose held lock is what keeps this Graphite's own directory out of the sweep.
+		m_Jobs.Submit([directory] { SweepUnclaimedTemporaryDirectories(directory); });
+	}
+
+	void LanguageServices::Retire(Core::Scope<LspClient> client)
+	{
+		if (!client)
+		{
+			return;
+		}
+
+		const Core::Ref<LspClient> leaving{std::move(client)};
+
+		m_Jobs.Submit([leaving] { leaving->ShutDown(LspClient::kShutdownGrace); });
 	}
 
 	void LanguageServices::SetSelectedSolution(const std::filesystem::path& solution)
@@ -1021,8 +1041,6 @@ namespace Graphite {
 
 		if (server.Client)
 		{
-			server.Client->RequestShutdown();
-
 			// Whatever it published is about a process that is going away. A closed note is
 			// what makes a reader drop it, the same as a restart's.
 			for (const auto& [path, document] : server.OpenDocuments)
@@ -1030,8 +1048,7 @@ namespace Graphite {
 				m_Diagnostics.Closed.push_back(path);
 			}
 
-			// The destructor terminates the process and joins its threads, as it does at exit.
-			server.Client.reset();
+			Retire(std::move(server.Client));
 		}
 
 		for (auto& entry : server.Pending)
@@ -1455,9 +1472,11 @@ namespace Graphite {
 	Core::Scope<LspClient> LanguageServices::MakeClient(const ManagedServer& server,
 														const Key& key) const
 	{
+		const std::filesystem::path temporaryDirectory = m_TemporaryFiles ? m_TemporaryFiles->GetPath() : std::filesystem::path{};
+
 		ServerLaunch launch = LaunchFor(*server.Definition, server.Command.Program, server.Overrides,
 											  LaunchPlaces{.LeadingArguments = server.Command.LeadingArguments, .LogDirectory = m_LogDirectory,
-													  .DotnetRoot = server.Command.DotnetRoot});
+													  .DotnetRoot = server.Command.DotnetRoot, .TemporaryDirectory = temporaryDirectory});
 
 		launch.Solution = SolutionForRoot(key.Root, m_SelectedSolution);
 
@@ -1520,15 +1539,14 @@ namespace Graphite {
 				APP_INFO("Stopping {} for {} at {}: unused for {} minutes", server.Status.Name,
 						 LanguageDisplayName(it->first.Language), Core::ToUtf8(root),
 						 std::chrono::duration_cast<std::chrono::minutes>(kIdleShutdown).count());
-				server.Client->RequestShutdown();
+				Retire(std::move(server.Client));
 			}
 
 			// What this server named goes with it, so the map stays bounded by the servers alive:
 			// a file it pointed at is judged by its own directory again, not by a root nothing runs at.
 			ForgetNamedBy(it->first);
 
-			// Erasing the entry is the whole shutdown: the client's destructor ends the process,
-			// and the next EnsureStarted for this root starts a fresh one, as for a first open.
+			// The next EnsureStarted for this root starts a fresh server, as for a first open.
 			it = m_Servers.erase(it);
 		}
 	}

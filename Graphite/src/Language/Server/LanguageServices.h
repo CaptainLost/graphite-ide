@@ -5,6 +5,7 @@
 #include "Language/Api/HoverInfo.h"
 #include "Language/Api/LanguageId.h"
 #include "Language/Api/LanguageService.h"
+#include "Language/Server/ClaimedTemporaryDirectory.h"
 #include "Language/Server/DotnetRuntime.h"
 #include "Language/Server/LspClient.h"
 #include "Language/Server/ProjectSearch.h"
@@ -166,6 +167,10 @@ namespace Graphite {
 
 		// Filled into a server argument that names {logs}; the system's temporary directory until set.
 		void SetLogDirectory(std::filesystem::path directory);
+
+		// Servers keep their temporary files in a directory of this Graphite's own claimed under `directory`, and what
+		// ended Graphites left there is swept away; the system's temporary directory until set.
+		void SetTemporaryFilesDirectory(std::filesystem::path directory);
 
 		// Restarts every server whose adapter follows the selected solution; cheap when nothing changed, so it may be called every frame.
 		void SetSelectedSolution(const std::filesystem::path& solution);
@@ -478,6 +483,9 @@ namespace Graphite {
 		// The one place a client is constructed: through m_ClientFactory when one is set.
 		Core::Scope<LspClient> MakeClient(const ManagedServer& server, const Key& key) const;
 
+		// The one place a running client is let go of: it shuts down on a worker, where its grace costs the UI thread nothing.
+		void Retire(Core::Scope<LspClient> client);
+
 		bool Permits(const std::filesystem::path& root) const;
 		void MarkRestricted(ManagedServer& server);
 		bool NeedsProjectSearch(const ManagedServer& server, const Key& key) const;
@@ -554,6 +562,7 @@ namespace Graphite {
 		UninstallingQuery m_Uninstalling;
 		mutable std::optional<std::vector<DotnetInstallation>> m_Dotnet;
 		std::filesystem::path m_LogDirectory;
+		std::optional<ClaimedTemporaryDirectory> m_TemporaryFiles;
 		std::filesystem::path m_SelectedSolution;
 
 		std::map<Key, ManagedServer> m_Servers;

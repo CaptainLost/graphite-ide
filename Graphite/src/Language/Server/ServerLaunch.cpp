@@ -86,6 +86,15 @@ namespace Graphite {
 															.Value = dotnetRoot});
 		}
 
+		// Both: GetTempPathW reads TMP first, while other runtimes read TEMP alone, and setting one would split a server's files between two places.
+		if (!places.TemporaryDirectory.empty())
+		{
+			const std::string temporaryDirectory = Core::ToUtf8(places.TemporaryDirectory);
+
+			environment.push_back(Core::EnvironmentVariable{.Name = "TMP", .Value = temporaryDirectory});
+			environment.push_back(Core::EnvironmentVariable{.Name = "TEMP", .Value = temporaryDirectory});
+		}
+
 		return ServerLaunch{.Server = &server,
 							.Adapter = &AdapterOf(server.Adapter),
 							.Binary = std::move(program),

@@ -136,12 +136,13 @@ namespace Graphite {
 
 		void Cancel(RequestId id);
 
-		// Sends "shutdown" then "exit", queued the same way any other message is and not waited
-		// on — this class has no way to know whether a server is well enough to answer, and
-		// waiting here would be the UI thread blocking on a process that may be wedged. Owned by
-		// whoever manages this client's lifetime, called right before destroying it; the
-		// destructor's Terminate is the backstop for a server that ignores both.
-		void RequestShutdown();
+		// clangd leaves within about half a second of exit; the rest is for a machine under load.
+		static constexpr std::chrono::seconds kShutdownGrace{2};
+
+		// Blocks for up to `grace`, so it is not for the UI thread. A server ended before it could
+		// leave on its own leaves its temporary files behind, clangd's preamble of every open file
+		// among them, and that is all the destructor alone gives it.
+		void ShutDown(std::chrono::milliseconds grace);
 
 		// One message body, handled exactly as the reader thread handles what arrives on the pipe.
 		// The reader calls this too, so a test that feeds a body drives the same code a server
@@ -301,6 +302,10 @@ namespace Graphite {
 
 		// Sends initialize and records the id its reply will carry. ProtocolMutex NOT held.
 		void BeginHandshake(const std::filesystem::path& root);
+
+		// False when the handshake never finished: shutdown and exit are then held back with
+		// everything else and never reach the server.
+		bool RequestShutdown();
 
 		void Adopt(const ServerLaunch& launch, const std::filesystem::path& root);
 

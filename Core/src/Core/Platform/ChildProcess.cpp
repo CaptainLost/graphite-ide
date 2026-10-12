@@ -28,6 +28,9 @@ namespace Core {
 		constexpr DWORD kHandleListAttributeCount = 1;
 		constexpr UINT kTerminatedExitCode = 0;
 		constexpr DWORD kPollWithoutWaiting = 0;
+
+		// INFINITE is one past it, and a wait asked for in milliseconds is never meant to be endless.
+		constexpr long long kLongestFiniteWait = INFINITE - 1;
 		constexpr const wchar_t* kNullDevice = L"NUL";
 		constexpr DWORD kResumeFailed = static_cast<DWORD>(-1);
 		constexpr BOOL kIgnoreCase = TRUE;
@@ -422,6 +425,22 @@ namespace Core {
 		return ::WaitForSingleObject(m_Process.Get(), kPollWithoutWaiting) == WAIT_TIMEOUT;
 #else
 		return false;
+#endif
+	}
+
+	bool ChildProcess::WaitForExit([[maybe_unused]] std::chrono::milliseconds timeout) const
+	{
+#ifdef CORE_PLATFORM_WINDOWS
+		if (!m_Process)
+		{
+			return true;
+		}
+
+		const long long waitMilliseconds = std::clamp<long long>(timeout.count(), 0, kLongestFiniteWait);
+
+		return ::WaitForSingleObject(m_Process.Get(), static_cast<DWORD>(waitMilliseconds)) == WAIT_OBJECT_0;
+#else
+		return true;
 #endif
 	}
 }

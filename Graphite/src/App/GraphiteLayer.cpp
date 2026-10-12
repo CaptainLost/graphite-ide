@@ -231,6 +231,7 @@ namespace Graphite {
 		// Before OpenStartupFolder, whose warm-up may start a server from Graphite's install.
 		m_LanguageServices.SetServersDirectory(m_ServerInstalls.GetServersDirectory());
 		m_LanguageServices.SetLogDirectory(UserDirectories::LogFile().parent_path());
+		m_LanguageServices.SetTemporaryFilesDirectory(UserDirectories::ServerTemporaryFilesDirectory());
 		m_ServerInstalls.SweepAtStartup();
 
 		const SettingsSources settingsSources{.Store = m_AppSettings,

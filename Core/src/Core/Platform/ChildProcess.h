@@ -5,6 +5,7 @@
 #include "Core/Base/Result.h"
 #include "Core/Platform/UniqueHandle.h"
 
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <span>
@@ -44,6 +45,9 @@ namespace Core {
 
 		// True while any process of the child's job runs, not only the one Start launched.
 		bool IsRunning() const;
+
+		// Waits for the process Start launched alone: one it started may still be running when this returns true.
+		bool WaitForExit(std::chrono::milliseconds timeout) const;
 
 	private:
 		ChildProcess() = default;

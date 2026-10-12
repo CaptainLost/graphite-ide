@@ -4,6 +4,7 @@
 #include "Language/Server/Adapters/ServerAdapter.h"
 #include "Language/Server/ServerCatalog.h"
 #include "Language/Server/ServerLaunch.h"
+#include "FakeLanguageServer.h"
 #include "LiveInstalls.h"
 #include "TempDirectory.h"
 
@@ -671,6 +672,68 @@ TEST_CASE("A client whose child never speaks the protocol still shuts down")
 	CHECK(answers.empty());
 }
 
+TEST_CASE("Shutting down an answered client sends shutdown and then exit")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+	client.Deliver(std::string{kHandshakeAnswer});
+	client.TakeSent();
+
+	const std::chrono::milliseconds noServerToWaitFor{0};
+	client.ShutDown(noServerToWaitFor);
+
+	const std::vector<std::string> sent = client.TakeSent();
+	REQUIRE(sent.size() == 2);
+	CHECK(sent[0].find(R"("method":"shutdown")") != std::string::npos);
+	CHECK(sent[1].find(R"("method":"exit")") != std::string::npos);
+}
+
+TEST_CASE("Shutting down a server that leaves on exit lets it leave instead of ending it")
+{
+	TempDirectory temp;
+	const FakeLanguageServer server = WriteFakeLanguageServer(temp, "obedient", FakeServerTemper::LeavesOnExit);
+	Graphite::LspClient client{FakeServerLaunch(server), temp.GetPath()};
+	REQUIRE(WaitUntilAnswered(client));
+
+	const std::chrono::seconds generousGrace{60};
+	const std::chrono::steady_clock::time_point shutdownStart = std::chrono::steady_clock::now();
+	client.ShutDown(generousGrace);
+	const std::chrono::steady_clock::duration waited = std::chrono::steady_clock::now() - shutdownStart;
+
+	CHECK(std::filesystem::exists(server.ExitHeard));
+	CHECK(waited < std::chrono::seconds{30});
+}
+
+TEST_CASE("Shutting down a server that ignores exit ends it once its grace is over")
+{
+	TempDirectory temp;
+	const FakeLanguageServer server = WriteFakeLanguageServer(temp, "stubborn", FakeServerTemper::IgnoresExit);
+	Graphite::LspClient client{FakeServerLaunch(server), temp.GetPath()};
+	REQUIRE(WaitUntilAnswered(client));
+
+	const std::chrono::milliseconds grace{500};
+	const std::chrono::steady_clock::time_point shutdownStart = std::chrono::steady_clock::now();
+	client.ShutDown(grace);
+	const std::chrono::steady_clock::duration waited = std::chrono::steady_clock::now() - shutdownStart;
+
+	CHECK(std::filesystem::exists(server.ExitHeard));
+	CHECK(waited >= grace);
+	CHECK(waited < std::chrono::seconds{30});
+}
+
+TEST_CASE("Shutting down a server that never answered its handshake does not wait for it")
+{
+	// cmd.exe answers nothing, so shutdown and exit stay behind the handshake and never reach it.
+	TempDirectory temp;
+	Graphite::LspClient client{ClangdLaunchAt("cmd.exe"), temp.GetPath()};
+
+	const std::chrono::seconds grace{60};
+	const std::chrono::steady_clock::time_point shutdownStart = std::chrono::steady_clock::now();
+	client.ShutDown(grace);
+
+	CHECK(std::chrono::steady_clock::now() - shutdownStart < std::chrono::seconds{30});
+}
+
 // Downloads clangd through the installer, so it is skipped by default. Run with --no-skip to exercise the real handshake.
 TEST_CASE("clangd installed by Graphite answers a definition request" * doctest::skip())
 {
@@ -704,6 +767,46 @@ TEST_CASE("clangd installed by Graphite answers a definition request" * doctest:
 	CHECK(answers[0].Id == id);
 	REQUIRE(answers[0].Locations.size() == 1);
 	CHECK(answers[0].Locations[0].Line == 0);
+}
+
+namespace {
+
+	bool HoldsAnything(const std::filesystem::path& directory)
+	{
+		std::error_code listError;
+		return !std::filesystem::is_empty(directory, listError) && !listError;
+	}
+}
+
+// Downloads clangd through the installer, so it is skipped by default. Run with --no-skip to see a real preamble go.
+TEST_CASE("clangd shut down by Graphite takes the preamble of an open file with it" * doctest::skip())
+{
+	TempDirectory temp;
+	const Graphite::InstalledServer clangd = RequireInstalled(*Graphite::FindServer("clangd"), temp.GetPath() / "servers");
+	const std::filesystem::path project = temp.MakeDirectory("project");
+	const std::filesystem::path temporaryFiles = temp.MakeDirectory("server-temp");
+	const std::filesystem::path source = project / "main.cpp";
+
+	// The include is what gives the file a preamble to build.
+	const std::string text = "#include <vector>\nint Main() { return static_cast<int>(std::vector<int>{1}.size()); }\n";
+	std::ofstream{project / "compile_flags.txt"} << "-std=c++20\n";
+	std::ofstream{source} << text;
+
+	const Graphite::ServerOverrides noOverrides;
+	const Graphite::LaunchPlaces places{.TemporaryDirectory = temporaryFiles};
+	Graphite::LspClient client{Graphite::LaunchFor(*Graphite::FindServer("clangd"), clangd.Command, noOverrides, places), project};
+	client.OpenDocument(source, text);
+
+	for (int attempt = 0; attempt < 1200 && !HoldsAnything(temporaryFiles); ++attempt)
+	{
+		std::this_thread::sleep_for(std::chrono::milliseconds(50));
+	}
+
+	REQUIRE(HoldsAnything(temporaryFiles));
+
+	client.ShutDown(Graphite::LspClient::kShutdownGrace);
+
+	CHECK_FALSE(HoldsAnything(temporaryFiles));
 }
 
 TEST_CASE("A publication for an open document leaves through Drain")

@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "FakeLanguageServer.h"
 #include "InstalledServers.h"
 #include "Language/Install/InstalledServer.h"
 #include "Language/Server/DotnetRuntime.h"
@@ -2450,4 +2451,112 @@ TEST_CASE("With no server chosen for C++ the warm-up starts nothing")
 	CHECK(spy.Made == 0);
 	CHECK_FALSE(services.HasChosenServer(Graphite::LanguageId::Cpp));
 	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).State == Graphite::ServerState::NotConfigured);
+}
+
+namespace {
+
+	// Hands LanguageServices clients that run `Server`, and keeps a pointer to the newest one, good until the
+	// services stop it.
+	struct FakeServerFactory
+	{
+		FakeLanguageServer Server;
+		Graphite::LspClient* Latest = nullptr;
+
+		Graphite::LanguageServices::ClientFactory Get()
+		{
+			return [this](const Graphite::ServerLaunch&, const std::filesystem::path& root) { return Make(root); };
+		}
+
+		Core::Scope<Graphite::LspClient> Make(const std::filesystem::path& root)
+		{
+			Core::Scope<Graphite::LspClient> client = Core::CreateScope<Graphite::LspClient>(FakeServerLaunch(Server), root);
+			Latest = client.get();
+			return client;
+		}
+	};
+
+	void StartFakeServer(Graphite::LanguageServices& services, TempDirectory& temp, FakeServerFactory& factory)
+	{
+		temp.MakeFile("stand-in-clangd.exe", "");
+
+		services.SetClientFactory(factory.Get());
+		UseClangdAt(services, temp.GetPath() / "stand-in-clangd.exe");
+		services.EnsureStarted(temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
+	}
+
+	std::optional<std::filesystem::path> TemporaryDirectoryOf(const Graphite::ServerLaunch& launch)
+	{
+		for (const Core::EnvironmentVariable& variable : launch.Environment)
+		{
+			if (variable.Name == "TMP")
+			{
+				return Core::FromUtf8(variable.Value);
+			}
+		}
+
+		return std::nullopt;
+	}
+}
+
+TEST_CASE("Closing the services gives a running server time to leave on its own")
+{
+	TempDirectory temp;
+	FakeServerFactory factory{.Server = WriteFakeLanguageServer(temp, "obedient", FakeServerTemper::LeavesOnExit)};
+
+	{
+		Graphite::LanguageServices services{temp.GetPath()};
+		StartFakeServer(services, temp, factory);
+
+		REQUIRE(factory.Latest != nullptr);
+		REQUIRE(WaitUntilAnswered(*factory.Latest));
+	}
+
+	CHECK(std::filesystem::exists(factory.Server.ExitHeard));
+}
+
+TEST_CASE("Stopping a server that ignores exit does not hold up the caller for its grace")
+{
+	TempDirectory temp;
+	FakeServerFactory factory{.Server = WriteFakeLanguageServer(temp, "stubborn", FakeServerTemper::IgnoresExit)};
+	Graphite::LanguageServices services{temp.GetPath()};
+	StartFakeServer(services, temp, factory);
+
+	REQUIRE(factory.Latest != nullptr);
+	REQUIRE(WaitUntilAnswered(*factory.Latest));
+
+	const std::chrono::steady_clock::time_point stopStart = std::chrono::steady_clock::now();
+	services.Reconfigure(Graphite::LanguageId::Cpp);
+
+	CHECK(std::chrono::steady_clock::now() - stopStart < Graphite::LspClient::kShutdownGrace / 2);
+}
+
+TEST_CASE("A server keeps its temporary files in a directory claimed under the one the services were given")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+	const std::filesystem::path temporaryFiles = temp.GetPath() / "server-temp";
+
+	services.SetTemporaryFilesDirectory(temporaryFiles);
+	StartWithSpy(services, temp, spy, clock, temp.GetPath() / "main.cpp");
+
+	REQUIRE(spy.Made == 1);
+	const std::optional<std::filesystem::path> serverTemporaryDirectory = TemporaryDirectoryOf(spy.LastLaunch);
+	REQUIRE(serverTemporaryDirectory.has_value());
+	CHECK(serverTemporaryDirectory->parent_path() == temporaryFiles);
+	CHECK(std::filesystem::is_directory(*serverTemporaryDirectory));
+}
+
+TEST_CASE("Giving the services a directory for temporary files clears what an ended Graphite left in it")
+{
+	TempDirectory temp;
+	const std::filesystem::path leftover = temp.MakeFile("server-temp/3/preamble-11adb3.pch", "left by a killed server");
+
+	{
+		Graphite::LanguageServices services{temp.GetPath()};
+		services.SetTemporaryFilesDirectory(temp.GetPath() / "server-temp");
+	}
+
+	CHECK_FALSE(std::filesystem::exists(leftover.parent_path()));
 }

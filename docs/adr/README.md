@@ -607,4 +607,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0575](0575-filter-the-file-tree-against-a-listing-of-the-whole-folder-read-in-the-background.md) | Filter the file tree against a listing of the whole folder read in the background | proposed | 2026-10-11 |
 | [0576](0576-draw-a-loading-indicator-through-a-core-facade-over-imspinner.md) | Draw a loading indicator through a Core facade over imspinner | proposed | 2026-10-11 |
 | [0577](0577-install-clangd-on-request-like-every-other-language-server.md) | Install clangd on request like every other language server | proposed | 2026-10-12 |
+| [0578](0578-let-a-language-server-leave-on-its-own-and-keep-its-temporary-files-where-graphite-sweeps-them.md) | Let a language server leave on its own and keep its temporary files where Graphite sweeps them | proposed | 2026-10-12 |
 <!-- /adr-index -->

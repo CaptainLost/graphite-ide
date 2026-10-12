@@ -134,6 +134,19 @@ namespace Graphite {
 		return directory;
 	}
 
+	// Local, not roaming, and not the system's temporary directory: what a server killed before it could clean up
+	// leaves here is found and removed the next time Graphite starts.
+	std::filesystem::path UserDirectories::ServerTemporaryFilesDirectory()
+	{
+		static const std::filesystem::path directory = [] {
+			const std::filesystem::path temporaryFiles = GetRoots().Local / "server-temp";
+			Ensure(temporaryFiles);
+			return temporaryFiles;
+		}();
+
+		return directory;
+	}
+
 	std::filesystem::path UserDirectories::LogFile()
 	{
 		static const std::filesystem::path file = [] {

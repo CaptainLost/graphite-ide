@@ -7,10 +7,27 @@
 
 #include <nlohmann/json.hpp>
 
+#include <optional>
 #include <ostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
+namespace {
+
+	std::optional<std::string> ValueOf(const std::vector<Core::EnvironmentVariable>& environment, std::string_view name)
+	{
+		for (const Core::EnvironmentVariable& variable : environment)
+		{
+			if (variable.Name == name)
+			{
+				return variable.Value;
+			}
+		}
+
+		return std::nullopt;
+	}
+}
 TEST_CASE("A launch runs the server's own arguments first and the user's after them")
 {
 	const Graphite::ServerOverrides overrides{.Binary = {}, .ExtraArguments = {"--log=verbose"}, .InitializationOptions = nullptr, .Settings = nullptr};
@@ -82,4 +99,18 @@ TEST_CASE("Every logs placeholder in an argument is filled in")
 	const Graphite::ServerLaunch launch = Graphite::LaunchFor(*Graphite::FindServer("clangd"), "C:/clangd.exe", overrides, places);
 
 	CHECK(launch.Arguments.back() == "--trace=D:/Logs/one;D:/Logs/two");
+}
+
+TEST_CASE("A launch given a temporary directory points TMP and TEMP at it and one given none leaves both to be inherited")
+{
+	const Graphite::ServerOverrides noOverrides;
+	const Graphite::LaunchPlaces withTemporaryDirectory{.LeadingArguments = {}, .LogDirectory = {}, .TemporaryDirectory = "D:\\Temp\\server-temp\\1"};
+
+	const Graphite::ServerLaunch redirected = Graphite::LaunchFor(*Graphite::FindServer("clangd"), "C:\\clangd.exe", noOverrides, withTemporaryDirectory);
+	const Graphite::ServerLaunch inherited = Graphite::LaunchFor(*Graphite::FindServer("clangd"), "C:\\clangd.exe", noOverrides);
+
+	CHECK(ValueOf(redirected.Environment, "TMP") == "D:\\Temp\\server-temp\\1");
+	CHECK(ValueOf(redirected.Environment, "TEMP") == "D:\\Temp\\server-temp\\1");
+	CHECK_FALSE(ValueOf(inherited.Environment, "TMP").has_value());
+	CHECK_FALSE(ValueOf(inherited.Environment, "TEMP").has_value());
 }

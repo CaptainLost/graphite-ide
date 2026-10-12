@@ -28,6 +28,7 @@ TEST_CASE("Every user file lives under the redirected root while tests run")
 	CHECK(IsWithin(Graphite::UserDirectories::LogFile(), root));
 	CHECK(IsWithin(Graphite::UserDirectories::TrustedFoldersFile(), root));
 	CHECK(IsWithin(Graphite::UserDirectories::ServersDirectory(), root));
+	CHECK(IsWithin(Graphite::UserDirectories::ServerTemporaryFilesDirectory(), root));
 }
 
 TEST_CASE("No user file resolves into the real profile while tests run")
@@ -44,4 +45,5 @@ TEST_CASE("The directories a file is written into exist before anything writes t
 	CHECK(std::filesystem::is_directory(Graphite::UserDirectories::SessionsCacheFile().parent_path()));
 	CHECK(std::filesystem::is_directory(Graphite::UserDirectories::LogFile().parent_path()));
 	CHECK(std::filesystem::is_directory(Graphite::UserDirectories::ServersDirectory()));
+	CHECK(std::filesystem::is_directory(Graphite::UserDirectories::ServerTemporaryFilesDirectory()));
 }

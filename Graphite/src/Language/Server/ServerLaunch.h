@@ -43,6 +43,7 @@ namespace Graphite {
 		std::vector<std::string> LeadingArguments;
 		std::filesystem::path LogDirectory;
 		std::filesystem::path DotnetRoot;
+		std::filesystem::path TemporaryDirectory;
 	};
 
 	ServerLaunch LaunchFor(const ServerDefinition& server, std::filesystem::path program, const ServerOverrides& overrides,

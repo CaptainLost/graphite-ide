@@ -3,6 +3,7 @@
 #include "Core/Base/Base.h"
 
 #include "Core/App/Redraw.h"
+#include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Language/Server/MessageStream.h"
 
@@ -388,9 +389,8 @@ namespace Graphite {
 
 		// Killing the child is what releases both threads at once: it closes the pipe the reader
 		// is blocked reading, and it breaks the pipe the writer may be blocked writing into.
-		// Asking the server to shut down politely and waiting for it to agree would hold the UI
-		// thread here for as long as a wedged server felt like, and a language server holds
-		// nothing that is not rebuildable from the files on disk.
+		// Waiting here for the server to leave on its own would hold the UI thread for as long as
+		// a wedged server felt like; ShutDown is where it gets that time, off the UI thread.
 		if (m_Shared->Process)
 		{
 			m_Shared->Process->Terminate();
@@ -660,7 +660,7 @@ namespace Graphite {
 		SendLocked(*m_Shared, m_Shared->Rpc.Cancel(id));
 	}
 
-	void LspClient::RequestShutdown()
+	bool LspClient::RequestShutdown()
 	{
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
@@ -672,6 +672,26 @@ namespace Graphite {
 		SendLocked(*m_Shared, std::move(bytes));
 
 		SendLocked(*m_Shared, m_Shared->Rpc.Notification("exit", nullptr));
+
+		return m_Shared->Initialized;
+	}
+
+	void LspClient::ShutDown(std::chrono::milliseconds grace)
+	{
+		const bool serverWasAsked = RequestShutdown();
+
+		// The writer sends everything already queued before it stops, exit included.
+		m_Shared->Stopping.store(true);
+		m_Shared->Outbound.notify_all();
+
+		if (serverWasAsked && m_Shared->Process && !m_Shared->Process->WaitForExit(grace))
+		{
+			const std::lock_guard<std::mutex> state(m_Shared->StateMutex);
+
+			APP_WARN("{} did not leave within {} ms of being asked to, so it was ended", m_Shared->Status.Name, grace.count());
+		}
+
+		StopThreads();
 	}
 
 	void LspClient::ExpireHandshakeIfStalled(std::chrono::steady_clock::time_point now)

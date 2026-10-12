@@ -58,7 +58,7 @@ namespace {
 
 	// The output pipe closes as the child is torn down, which can be a moment before its process
 	// object is signalled, so the exit gets a bounded time to become visible.
-	void WaitForExit(const Core::ChildProcess& process)
+	void WaitUntilNotRunning(const Core::ChildProcess& process)
 	{
 		for (int attempt = 0; attempt < kExitPollAttempts && process.IsRunning(); ++attempt)
 		{
@@ -115,7 +115,7 @@ TEST_CASE("ChildProcess terminating the child releases a thread blocked in Read"
 
 	process.Terminate();
 	blockedReader.join();
-	WaitForExit(process);
+	WaitUntilNotRunning(process);
 
 	CHECK_FALSE(process.IsRunning());
 }
@@ -141,7 +141,7 @@ TEST_CASE("ChildProcess reports a child that exited with code 259 which is also 
 
 	ReadAll(process);
 
-	WaitForExit(process);
+	WaitUntilNotRunning(process);
 
 	CHECK_FALSE(process.IsRunning());
 }
@@ -240,4 +240,34 @@ TEST_CASE("A child runs as long as a process it started runs")
 	child.Terminate();
 
 	CHECK(running);
+}
+
+TEST_CASE("Waiting for a child that exits returns once it has, not when the wait runs out")
+{
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", {"/c", "exit 0"}, std::filesystem::current_path());
+	REQUIRE(started);
+	Core::ChildProcess& child = *started.GetValue();
+
+	const std::chrono::steady_clock::time_point waitStart = std::chrono::steady_clock::now();
+	const bool exited = child.WaitForExit(std::chrono::seconds{60});
+
+	CHECK(exited);
+	CHECK(std::chrono::steady_clock::now() - waitStart < std::chrono::seconds{30});
+}
+
+TEST_CASE("Waiting for a child that keeps running gives up once the wait runs out and leaves it running")
+{
+	const std::vector<std::string> noArgumentsSoItWaitsOnItsInputForever;
+	StartedChild started = Core::ChildProcess::Start("cmd.exe", noArgumentsSoItWaitsOnItsInputForever, std::filesystem::current_path());
+	REQUIRE(started);
+	Core::ChildProcess& child = *started.GetValue();
+
+	const std::chrono::milliseconds wait{200};
+	const std::chrono::steady_clock::time_point waitStart = std::chrono::steady_clock::now();
+	const bool exited = child.WaitForExit(wait);
+	const std::chrono::steady_clock::duration waited = std::chrono::steady_clock::now() - waitStart;
+
+	CHECK_FALSE(exited);
+	CHECK(waited >= wait);
+	CHECK(child.IsRunning());
 }
