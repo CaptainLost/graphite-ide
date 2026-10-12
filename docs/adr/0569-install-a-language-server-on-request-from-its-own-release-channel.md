@@ -72,7 +72,7 @@ A version directory is removed whole or not at all, whether by the sweep, by an 
 
 - [0002](0002-keep-core-free-of-ide-knowledge.md): why the HTTP, hash, zip and lock pieces are generic.
 - [0003](0003-vendor-dependencies-as-git-submodules-built-by-premake.md): how miniz is built.
-- [0488](0488-ship-clangd-with-the-release.md): what this will supersede.
+- [0488](0488-ship-clangd-with-the-release.md): superseded by [0577](0577-install-clangd-on-request-like-every-other-language-server.md).
 - [0532](0532-open-an-unknown-folder-in-restricted-mode-until-the-user-trusts-it.md): trust still gates starting a server.
 - [0567](0567-keep-server-specific-behaviour-in-adapters.md): the server rows this installs from.
 - The spec `2026-10-09-language-servers-design.md`, which is not tracked.

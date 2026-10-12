@@ -49,7 +49,7 @@ A server is looked for at its configured path, then in Graphite's install, then 
 
 ### Neutral
 
-- A clangd found on `PATH` still runs, and Settings says it comes from outside Graphite's install.
+- A clangd found on `PATH` still runs once clangd is chosen, and Settings says it comes from outside Graphite's install.
 - `vendor/bin/clangd/` stays ignored by git, for developers who keep a local copy there.
 
 ## Alternatives Considered

@@ -15,7 +15,7 @@ Settings has a Languages section with a tab for each language that has servers. 
 - its install state, with Install, Cancel, Check for updates, Update and Uninstall as the state allows;
 - a custom path and extra arguments.
 
-A change to the choice, the path or the arguments reconfigures the language at once. A cleared path or argument list is removed from `graphite.json` rather than stored empty. clangd's path under the old `languageServerBinary` key shows in the C++ tab, and the first edit there moves it.
+A change to the choice, the path or the arguments reconfigures the language at once. A cleared path or argument list is removed from `graphite.json` rather than stored empty. Until [0577](0577-install-clangd-on-request-like-every-other-language-server.md), clangd's path under the old `languageServerBinary` key showed in the C++ tab and the first edit there moved it; the key now moves when the settings load.
 
 A bar above the editor offers what the shown document's language is missing: a choice, an install, or a .NET runtime, whose download page opens in the browser. Only one bar shows at a time, and restricted mode wins. Not now hides a language's bar until Graphite restarts. While the chosen server installs, the bar shows the install's progress and offers Cancel.
 

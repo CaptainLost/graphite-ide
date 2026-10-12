@@ -48,7 +48,7 @@ Roslyn's adapter sends `solution/open` with the solution in use after `initializ
 - Selecting another solution restarts every server of a language whose server follows it, including servers of other roots.
 - `installed.json` is read on the UI thread once per server start. Settings reads what is installed off the UI thread ([0571](0571-choose-and-install-language-servers-from-settings-and-the-editor.md)).
 - A stopped server's files stay locked for a moment after it is ended, so removing its version right after a stop can fail and must wait or retry.
-- Where Graphite installs servers, a C++ machine with no clangd now reads 'not installed' and is offered the install, ahead of stage 5.
+- Until [0577](0577-install-clangd-on-request-like-every-other-language-server.md), a C++ machine with no clangd read 'not installed' and was offered the install; since then C++ starts with no server chosen, and such a machine reads 'No C++ language support' until clangd is chosen.
 
 ### Neutral
 
