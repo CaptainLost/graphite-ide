@@ -10,18 +10,24 @@
 #include "App/LanguageServerChoice.h"
 #include "Language/Install/ServerInstalls.h"
 #include "Language/Server/LanguageServices.h"
+#include "Language/Server/LspClient.h"
 #include "Language/Server/ServerChoice.h"
+#include "Language/Server/ServerCommand.h"
+#include "Settings/AppSettings.h"
 #include "Settings/LanguageServers/LanguageServerPage.h"
+#include "Settings/Panel/SettingsLayout.h"
 
 #include <cstddef>
 #include <filesystem>
 #include <optional>
+#include <ostream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
 
-	// The C# page over an installer whose jobs wait for RunAll.
+	// A language's page, C# unless another is named, over an installer whose jobs wait for RunAll.
 	struct LanguageServerScreen
 	{
 		TempDirectory Temp;
@@ -30,12 +36,50 @@ namespace {
 		DeferredJobs Jobs;
 		Graphite::ServerInstalls Installs{Core::CreateRef<FakeHttpClient>(), Servers, Jobs.Submitter()};
 		Graphite::LanguageServices Services{Temp.GetPath()};
-		Graphite::LanguageServerPage Page{Graphite::LanguageId::CSharp, Settings.Get(), Installs, Services};
+		Graphite::LanguageServerPage Page;
 		SettingsPageFrames Frames{Page};
 
-		LanguageServerScreen()
+		explicit LanguageServerScreen(Graphite::LanguageId language = Graphite::LanguageId::CSharp)
+			: Page{language, Settings.Get(), Installs, Services}
 		{
 			Services.SetChoiceProvider([this](Graphite::LanguageId language) { return Graphite::ReadServerChoice(Settings.Get(), language); });
+		}
+
+		std::optional<std::string> StoredChoice() { return Settings.Get().GetLanguageServerChoice(Page.GetId()); }
+
+		Graphite::LanguageServerSettings Stored(std::string_view serverId) { return Settings.Get().GetLanguageServerSettings(serverId); }
+
+		void StoreCustomServer(std::string_view serverId, const std::filesystem::path& path)
+		{
+			Settings.Get().SetLanguageServerChoice(Page.GetId(), serverId);
+			Settings.Get().SetLanguageServerBinaryPath(serverId, path);
+		}
+
+		std::vector<std::string> RowTitlesIn(std::string_view heading)
+		{
+			std::vector<std::string> titles;
+
+			for (const Graphite::SettingsCard& card : Frames.DescribeInFrame())
+			{
+				if (card.Heading != heading)
+				{
+					continue;
+				}
+
+				for (const Graphite::SettingsRow& row : card.Rows)
+				{
+					titles.push_back(row.Title);
+				}
+			}
+
+			return titles;
+		}
+
+		float ButtonsWidth(const std::vector<std::string>& labels)
+		{
+			float width = 0.0f;
+			Frames.GetFrames().Next([&width, &labels] { width = Graphite::SettingsLayout::ButtonsWidth(labels); });
+			return width;
 		}
 
 		void ReadInstalls()
@@ -71,6 +115,21 @@ namespace {
 
 		return false;
 	}
+
+	Graphite::ServerChoice ClangdRunningFrom(Graphite::LanguageId language, const std::filesystem::path& binary)
+	{
+		Graphite::ServerChoice choice = Graphite::ChooseServer(language, std::string{"clangd"});
+		choice.Overrides.Binary = binary;
+		return choice;
+	}
+
+	Core::Scope<Graphite::LspClient> MakeStandInClient(const Graphite::ServerLaunch& launch, const std::filesystem::path& root)
+	{
+		return Core::CreateScope<Graphite::LspClient>(launch, root, Graphite::LspClient::WithoutServer{});
+	}
+
+	const std::filesystem::path kRoslynCopy{L"D:\\Tools\\Roslyn\\roslyn.exe"};
+	const std::filesystem::path kClangdCopy{L"D:\\Tools\\clangd\\clangd.exe"};
 }
 
 TEST_CASE("A language's page is named after the language and shows the install only once a server is chosen")
@@ -231,4 +290,313 @@ TEST_CASE("A server's name finds its language's page")
 	REQUIRE(row.has_value());
 	CHECK(HasKeyword(*row, "roslyn"));
 	CHECK(HasKeyword(*row, "Roslyn"));
+}
+
+TEST_CASE("The word custom finds a language's page")
+{
+	LanguageServerScreen screen;
+
+	const std::optional<Graphite::SettingsRow> row = screen.Frames.FindRow("Language server");
+
+	REQUIRE(row.has_value());
+	CHECK(HasKeyword(*row, "custom"));
+}
+
+TEST_CASE("A server chosen from the list shows Install and an Advanced card with Arguments alone")
+{
+	LanguageServerScreen screen;
+
+	screen.Page.SelectServer("roslyn");
+
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Install", "Advanced"});
+	CHECK(screen.RowTitlesIn("Advanced") == std::vector<std::string>{"Arguments"});
+}
+
+TEST_CASE("Choosing Custom shows the custom server card and stores nothing until a path is set")
+{
+	LanguageServerScreen screen;
+
+	screen.Page.SelectCustom();
+	screen.Frames.DrawPageTwice();
+
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Custom server"});
+	CHECK(screen.RowTitlesIn("Custom server") == std::vector<std::string>{"Server type", "Path", "Arguments"});
+	CHECK_FALSE(screen.StoredChoice().has_value());
+	CHECK(screen.Stored("roslyn").BinaryPath.empty());
+
+	screen.Settings.Get().Flush();
+	CHECK_FALSE(std::filesystem::exists(screen.Settings.GetFile()));
+}
+
+TEST_CASE("Choosing Custom while a server is chosen keeps that choice stored as it was")
+{
+	LanguageServerScreen screen;
+	screen.Page.SelectServer("csharp-ls");
+
+	screen.Page.SelectCustom();
+
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Custom server"});
+	CHECK(screen.StoredChoice() == std::optional<std::string>{"csharp-ls"});
+	CHECK(screen.Stored("csharp-ls").BinaryPath.empty());
+}
+
+TEST_CASE("A stored path makes the page read as Custom")
+{
+	LanguageServerScreen screen;
+
+	screen.StoreCustomServer("roslyn", kRoslynCopy);
+
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Custom server"});
+}
+
+TEST_CASE("Opening a page that reads as Custom writes nothing to the settings")
+{
+	LanguageServerScreen screen{Graphite::LanguageId::Cpp};
+	screen.StoreCustomServer("clangd", kClangdCopy);
+	screen.Settings.Get().Flush();
+	std::filesystem::remove(screen.Settings.GetFile());
+
+	screen.Frames.DrawPageTwice();
+	screen.Frames.DrawPageTwice(320.0f);
+	screen.Page.OnDeactivated();
+
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Custom server"});
+
+	screen.Settings.Get().Flush();
+	CHECK_FALSE(std::filesystem::exists(screen.Settings.GetFile()));
+}
+
+TEST_CASE("Setting the path under Custom chooses the server type and stores the path")
+{
+	LanguageServerScreen screen;
+
+	screen.Page.SelectCustom();
+	screen.Page.SetCustomPath(kRoslynCopy);
+
+	CHECK(screen.StoredChoice() == std::optional<std::string>{"roslyn"});
+	CHECK(screen.Stored("roslyn").BinaryPath == kRoslynCopy);
+	CHECK(screen.Services.ChosenServer(Graphite::LanguageId::CSharp) == Graphite::FindServer("roslyn"));
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Custom server"});
+}
+
+TEST_CASE("Setting the path under Custom keeps the server already chosen as the server type")
+{
+	LanguageServerScreen screen;
+	screen.Page.SelectServer("omnisharp");
+
+	screen.Page.SelectCustom();
+	screen.Page.SetCustomPath(kRoslynCopy);
+
+	CHECK(screen.StoredChoice() == std::optional<std::string>{"omnisharp"});
+	CHECK(screen.Stored("omnisharp").BinaryPath == kRoslynCopy);
+	CHECK(screen.Stored("roslyn").BinaryPath.empty());
+}
+
+TEST_CASE("Clearing the path under Custom removes it and keeps the custom server card")
+{
+	LanguageServerScreen screen;
+	screen.StoreCustomServer("roslyn", kRoslynCopy);
+
+	const std::filesystem::path noPath;
+	screen.Page.SetCustomPath(noPath);
+
+	CHECK(screen.Stored("roslyn").BinaryPath.empty());
+	CHECK(screen.StoredChoice() == std::optional<std::string>{"roslyn"});
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Custom server"});
+}
+
+TEST_CASE("Changing the server type under Custom moves the path and arguments to the new server")
+{
+	LanguageServerScreen screen;
+	screen.StoreCustomServer("roslyn", kRoslynCopy);
+	screen.Settings.Get().SetLanguageServerArguments("roslyn", {"--logLevel", "Trace"});
+
+	screen.Page.SetCustomServerType("csharp-ls");
+
+	CHECK(screen.StoredChoice() == std::optional<std::string>{"csharp-ls"});
+	CHECK(screen.Stored("csharp-ls").BinaryPath == kRoslynCopy);
+	CHECK(screen.Stored("csharp-ls").Arguments == std::vector<std::string>{"--logLevel", "Trace"});
+	CHECK(screen.Stored("roslyn").BinaryPath.empty());
+	CHECK(screen.Stored("roslyn").Arguments.empty());
+	CHECK(screen.Services.ChosenServer(Graphite::LanguageId::CSharp) == Graphite::FindServer("csharp-ls"));
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Custom server"});
+}
+
+TEST_CASE("Changing the server type before a path is set changes only the page")
+{
+	LanguageServerScreen screen;
+	screen.Page.SelectCustom();
+
+	screen.Page.SetCustomServerType("csharp-ls");
+
+	CHECK_FALSE(screen.StoredChoice().has_value());
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Custom server"});
+
+	screen.Page.SetCustomPath(kRoslynCopy);
+
+	CHECK(screen.StoredChoice() == std::optional<std::string>{"csharp-ls"});
+	CHECK(screen.Stored("csharp-ls").BinaryPath == kRoslynCopy);
+}
+
+TEST_CASE("Choosing a server from the list leaves Custom and clears the custom path")
+{
+	LanguageServerScreen screen;
+	screen.StoreCustomServer("roslyn", kRoslynCopy);
+
+	screen.Page.SelectServer("csharp-ls");
+
+	CHECK(screen.StoredChoice() == std::optional<std::string>{"csharp-ls"});
+	CHECK(screen.Stored("roslyn").BinaryPath.empty());
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Install", "Advanced"});
+}
+
+TEST_CASE("Choosing the custom server's own entry in the list runs it from Graphite's install again")
+{
+	LanguageServerScreen screen{Graphite::LanguageId::Cpp};
+	screen.StoreCustomServer("clangd", kClangdCopy);
+
+	screen.Page.SelectServer("clangd");
+
+	CHECK(screen.StoredChoice() == std::optional<std::string>{"clangd"});
+	CHECK(screen.Stored("clangd").BinaryPath.empty());
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Install", "Advanced"});
+}
+
+TEST_CASE("Choosing a listed server whose path was left from before does not read as Custom")
+{
+	LanguageServerScreen screen;
+	screen.Settings.Get().SetLanguageServerChoice("CSharp", "roslyn");
+	screen.Settings.Get().SetLanguageServerBinaryPath("csharp-ls", kRoslynCopy);
+
+	screen.Page.SelectServer("csharp-ls");
+
+	CHECK(screen.Stored("csharp-ls").BinaryPath.empty());
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Install", "Advanced"});
+}
+
+TEST_CASE("Choosing a server from the list leaves a Custom with no path yet")
+{
+	LanguageServerScreen screen;
+	screen.Page.SelectCustom();
+
+	screen.Page.SelectServer("roslyn");
+
+	CHECK(screen.StoredChoice() == std::optional<std::string>{"roslyn"});
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Install", "Advanced"});
+}
+
+TEST_CASE("Choosing None from Custom clears the custom path and turns the language off")
+{
+	LanguageServerScreen screen;
+	screen.StoreCustomServer("roslyn", kRoslynCopy);
+
+	screen.Page.SelectServer(Graphite::kServerTurnedOff);
+
+	CHECK(screen.StoredChoice() == std::optional<std::string>{"none"});
+	CHECK(screen.Stored("roslyn").BinaryPath.empty());
+	CHECK(screen.Services.StatusFor(Graphite::LanguageId::CSharp).State == Graphite::ServerState::Off);
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server"});
+}
+
+TEST_CASE("The C++ page under Custom has no server type row")
+{
+	LanguageServerScreen screen{Graphite::LanguageId::Cpp};
+
+	screen.Page.SelectCustom();
+
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Custom server"});
+	CHECK(screen.RowTitlesIn("Custom server") == std::vector<std::string>{"Path", "Arguments"});
+
+	screen.Page.SetCustomPath(kClangdCopy);
+
+	CHECK(screen.StoredChoice() == std::optional<std::string>{"clangd"});
+	CHECK(screen.RowTitlesIn("Custom server") == std::vector<std::string>{"Path", "Arguments"});
+}
+
+TEST_CASE("The custom server card draws with and without a path without an ImGui assertion")
+{
+	LanguageServerScreen screen;
+	screen.ReadInstalls();
+
+	screen.Page.SelectCustom();
+	screen.Frames.DrawPageTwice();
+	screen.Frames.DrawPageTwice(320.0f);
+
+	screen.Page.SetCustomPath(kRoslynCopy);
+	screen.Frames.DrawPageTwice();
+	screen.Frames.DrawPageTwice(320.0f);
+
+	screen.Page.SetCustomServerType("omnisharp");
+	screen.Frames.DrawPageTwice();
+	screen.Frames.DrawPageTwice(320.0f);
+
+	const std::filesystem::path noPath;
+	screen.Page.SetCustomPath(noPath);
+	screen.Frames.DrawPageTwice();
+	screen.Frames.DrawPageTwice(320.0f);
+
+	screen.Page.SelectServer("roslyn");
+	screen.Frames.DrawPageTwice();
+
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Install", "Advanced"});
+
+	LanguageServerScreen cppScreen{Graphite::LanguageId::Cpp};
+	cppScreen.StoreCustomServer("clangd", kClangdCopy);
+	cppScreen.Frames.DrawPageTwice();
+	cppScreen.Frames.DrawPageTwice(320.0f);
+
+	CHECK(cppScreen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Custom server"});
+}
+
+TEST_CASE("A custom path that does not exist shows as the path's problem")
+{
+	LanguageServerScreen screen{Graphite::LanguageId::Cpp};
+	const std::filesystem::path missingCopy = screen.Temp.GetPath() / "missing" / "clangd.exe";
+	screen.Page.SelectCustom();
+	screen.Page.SetCustomPath(missingCopy);
+
+	screen.Services.EnsureStarted(screen.Temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
+	const std::optional<Graphite::SettingsRow> row = screen.Frames.FindRow("Path");
+
+	REQUIRE(row.has_value());
+	CHECK(row->Description.empty());
+	CHECK(row->Problem.find("does not exist") != std::string::npos);
+}
+
+TEST_CASE("A server running from outside Graphite's install reads Found on PATH and offers to install Graphite's copy")
+{
+	LanguageServerScreen screen{Graphite::LanguageId::Cpp};
+	const std::filesystem::path outsideCopy = screen.Temp.MakeFile("tools/clangd.exe");
+	screen.Services.SetClientFactory(MakeStandInClient);
+	screen.Page.SelectServer("clangd");
+	screen.ReadInstalls();
+
+	// Handed to the services alone, so the settings the page reads store no path, as for a copy found on PATH.
+	screen.Services.SetChoiceProvider([outsideCopy](Graphite::LanguageId language) { return ClangdRunningFrom(language, outsideCopy); });
+	screen.Services.EnsureStarted(screen.Temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
+
+	const std::optional<Graphite::ServerCommand> found = screen.Services.FoundCommandFor(Graphite::LanguageId::Cpp);
+	const std::optional<Graphite::SettingsRow> row = screen.InstallRow();
+
+	REQUIRE(found.has_value());
+	REQUIRE(row.has_value());
+	CHECK(row->Title == "Found on PATH");
+	CHECK(row->Description == "In use: " + Graphite::DescribeCommand(*found) + ". Installing puts Graphite's copy ahead of it.");
+	CHECK(row->ControlWidth == screen.ButtonsWidth({"Install Graphite's copy"}));
+
+	screen.Frames.DrawPageTwice();
+	screen.Frames.DrawPageTwice(320.0f);
+}
+
+TEST_CASE("A server neither installed nor running still reads Not installed")
+{
+	LanguageServerScreen screen{Graphite::LanguageId::Cpp};
+	screen.Page.SelectServer("clangd");
+	screen.ReadInstalls();
+
+	const std::optional<Graphite::SettingsRow> row = screen.InstallRow();
+
+	REQUIRE(row.has_value());
+	CHECK(row->Title == "Not installed");
+	CHECK(row->ControlWidth == screen.ButtonsWidth({"Install"}));
 }

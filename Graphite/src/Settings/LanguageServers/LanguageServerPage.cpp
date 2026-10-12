@@ -23,6 +23,7 @@
 
 #include <imgui.h>
 
+#include <cstddef>
 #include <format>
 #include <optional>
 #include <utility>
@@ -35,6 +36,8 @@ namespace Graphite {
 		constexpr std::size_t kGetDotnetButton = 0;
 		constexpr std::size_t kCheckAgainButton = 1;
 		constexpr const char* kBrowseLabel = "Browse";
+
+		using ActionLabeller = const char* (*)(InstallAction action);
 
 		Core::AsyncDialog::Picker ProgramPickerFor(const ServerDefinition& server)
 		{
@@ -86,16 +89,29 @@ namespace Graphite {
 			return first + " " + second;
 		}
 
-		std::vector<std::string> ActionLabels(const std::vector<InstallAction>& actions)
+		std::vector<std::string> ActionLabels(const std::vector<InstallAction>& actions, ActionLabeller labelOf)
 		{
 			std::vector<std::string> labels;
 
 			for (const InstallAction action : actions)
 			{
-				labels.emplace_back(InstallActionLabel(action));
+				labels.emplace_back(labelOf(action));
 			}
 
 			return labels;
+		}
+
+		std::size_t PositionOf(const std::vector<const ServerDefinition*>& servers, const ServerDefinition* wanted)
+		{
+			for (std::size_t serverIndex = 0; serverIndex < servers.size(); ++serverIndex)
+			{
+				if (servers[serverIndex] == wanted)
+				{
+					return serverIndex;
+				}
+			}
+
+			return servers.size();
 		}
 
 		const char* LanguageIcon(LanguageId language)
@@ -147,15 +163,79 @@ namespace Graphite {
 
 	void LanguageServerPage::SelectServer(std::string_view serverId)
 	{
-		const std::string_view settingsName = DefinitionOf(m_Language).SettingsName;
+		const ServerDefinition* leftCustomServer = CustomServer();
+		m_PageCustomServer = nullptr;
 
-		if (m_Store.GetLanguageServerChoice(settingsName) == serverId)
+		// Cleared before the choice is stored, so the server is not started once from a path that is about to go.
+		ForgetCustomPath(serverId);
+		StoreChoice(serverId);
+
+		if (leftCustomServer != nullptr)
+		{
+			ForgetCustomPath(leftCustomServer->Id);
+		}
+	}
+
+	void LanguageServerPage::SelectCustom()
+	{
+		if (CustomServer() != nullptr)
 		{
 			return;
 		}
 
-		m_Store.SetLanguageServerChoice(settingsName, serverId);
-		m_Services.Reconfigure(m_Language);
+		const ServerChoice choice = CurrentChoice();
+		const bool serverChosen = choice.Kind == ServerChoiceKind::Chosen;
+
+		m_PageCustomServer = serverChosen ? choice.Server : RecommendedServerFor(m_Language);
+	}
+
+	void LanguageServerPage::SetCustomPath(const std::filesystem::path& path)
+	{
+		const ServerDefinition* customServer = CustomServer();
+
+		if (customServer == nullptr)
+		{
+			return;
+		}
+
+		m_PageCustomServer = customServer;
+
+		if (path.empty())
+		{
+			ForgetCustomPath(customServer->Id);
+			return;
+		}
+
+		// Stored before the choice, so a server that is not chosen yet restarts once, when it is.
+		SetServerPath(customServer->Id, path);
+		StoreChoice(customServer->Id);
+	}
+
+	void LanguageServerPage::SetCustomServerType(std::string_view serverId)
+	{
+		const ServerDefinition* oldServer = CustomServer();
+		const ServerDefinition* newServer = FindServer(serverId);
+		const bool typeChanges = oldServer != nullptr && ListsServer(newServer) && newServer != oldServer;
+
+		if (!typeChanges)
+		{
+			return;
+		}
+
+		m_PageCustomServer = newServer;
+
+		if (CustomPathInUse(*oldServer).empty())
+		{
+			return;
+		}
+
+		const LanguageServerSettings moved = m_Store.GetLanguageServerSettings(oldServer->Id);
+		const std::filesystem::path noPath;
+		const std::vector<std::string> noArguments;
+
+		StoreServerBinary(newServer->Id, moved.BinaryPath, moved.Arguments);
+		StoreChoice(newServer->Id);
+		StoreServerBinary(oldServer->Id, noPath, noArguments);
 	}
 
 	void LanguageServerPage::SetServerPath(std::string_view serverId, const std::filesystem::path& path)
@@ -201,10 +281,102 @@ namespace Graphite {
 		return ChooseServer(m_Language, m_Store.GetLanguageServerChoice(DefinitionOf(m_Language).SettingsName));
 	}
 
+	std::vector<const ServerDefinition*> LanguageServerPage::ListedServers() const
+	{
+		std::vector<const ServerDefinition*> servers;
+
+		for (const std::string_view serverId : DefinitionOf(m_Language).Servers)
+		{
+			if (const ServerDefinition* server = FindServer(serverId); server != nullptr)
+			{
+				servers.push_back(server);
+			}
+		}
+
+		return servers;
+	}
+
+	bool LanguageServerPage::ListsServer(const ServerDefinition* server) const
+	{
+		for (const ServerDefinition* listed : ListedServers())
+		{
+			if (listed == server)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	// A path stored for a server that is not the chosen one runs nothing, so it is not shown as the custom path.
+	std::filesystem::path LanguageServerPage::CustomPathInUse(const ServerDefinition& server) const
+	{
+		const ServerChoice choice = CurrentChoice();
+		const bool serverChosen = choice.Kind == ServerChoiceKind::Chosen && choice.Server == &server;
+
+		if (!serverChosen)
+		{
+			return {};
+		}
+
+		return m_Store.GetLanguageServerSettings(server.Id).BinaryPath;
+	}
+
+	const ServerDefinition* LanguageServerPage::CustomServer() const
+	{
+		const ServerChoice choice = CurrentChoice();
+		const bool chosenRunsFromCustomPath = choice.Kind == ServerChoiceKind::Chosen && !CustomPathInUse(*choice.Server).empty();
+
+		if (chosenRunsFromCustomPath)
+		{
+			return choice.Server;
+		}
+
+		return m_PageCustomServer;
+	}
+
+	void LanguageServerPage::StoreChoice(std::string_view serverId)
+	{
+		const std::string_view settingsName = DefinitionOf(m_Language).SettingsName;
+
+		if (m_Store.GetLanguageServerChoice(settingsName) == serverId)
+		{
+			return;
+		}
+
+		m_Store.SetLanguageServerChoice(settingsName, serverId);
+		m_Services.Reconfigure(m_Language);
+	}
+
+	void LanguageServerPage::ForgetCustomPath(std::string_view serverId)
+	{
+		if (m_Store.GetLanguageServerSettings(serverId).BinaryPath.empty())
+		{
+			return;
+		}
+
+		const std::filesystem::path noPath;
+		SetServerPath(serverId, noPath);
+	}
+
+	void LanguageServerPage::StoreServerBinary(std::string_view serverId, const std::filesystem::path& path, const std::vector<std::string>& arguments)
+	{
+		m_Store.SetLanguageServerBinaryPath(serverId, path);
+		m_Store.SetLanguageServerArguments(serverId, arguments);
+		ReconfigureLanguagesRunning(m_Services, serverId);
+	}
+
 	std::vector<SettingsCard> LanguageServerPage::Describe()
 	{
 		const ServerChoice choice = CurrentChoice();
 		std::vector<SettingsCard> cards{DescribeServer(choice)};
+
+		if (const ServerDefinition* customServer = CustomServer(); customServer != nullptr)
+		{
+			cards.push_back(DescribeCustomServer(*customServer));
+			return cards;
+		}
 
 		if (choice.Kind == ServerChoiceKind::Chosen)
 		{
@@ -252,19 +424,29 @@ namespace Graphite {
 
 	SettingsCard LanguageServerPage::DescribeInstall(const ServerDefinition& server)
 	{
+		const InstallInputs inputs = InstallInputsFor(m_Installs, server);
+		const InstallSummary summary = SummariseInstall(inputs);
+		const std::optional<ServerCommand> found = m_Services.FoundCommandFor(m_Language);
 		const LanguageServerSettings stored = m_Store.GetLanguageServerSettings(server.Id);
-		const InstallSummary summary = SummariseInstall(InstallInputsFor(m_Installs, server));
 
 		SettingsRow row{.Key = "install",
 						.Title = summary.State,
-						.Description = JoinSentences(summary.Note, RunningElsewhere(stored)),
+						.Description = summary.Note,
 						.Problem = summary.Failure,
 						.Keywords = {"install", "update", "uninstall", "version"}};
+		std::vector<std::string> labels = ActionLabels(summary.Actions, InstallActionLabel);
+
+		if (IsFoundOnPath(inputs, found, stored.BinaryPath))
+		{
+			row.Title = FoundOnPathTitle();
+			row.Description = JoinSentences(FoundOnPathNote(*found), summary.Note);
+			labels = ActionLabels(summary.Actions, FoundOnPathActionLabel);
+		}
 
 		if (!summary.Actions.empty())
 		{
-			row.ControlWidth = SettingsLayout::ButtonsWidth(ActionLabels(summary.Actions));
-			row.DrawControl = [this, serverId = std::string{server.Id}, actions = summary.Actions] { DrawInstallActions(serverId, actions); };
+			row.ControlWidth = SettingsLayout::ButtonsWidth(labels);
+			row.DrawControl = [this, serverId = std::string{server.Id}, actions = summary.Actions, labels] { DrawInstallActions(serverId, actions, labels); };
 		}
 
 		SettingsCard card{.Heading = "Install"};
@@ -276,34 +458,75 @@ namespace Graphite {
 	SettingsCard LanguageServerPage::DescribeAdvanced(const ServerDefinition& server)
 	{
 		SettingsCard card{.Heading = "Advanced"};
-
-		card.Rows.push_back(SettingsRow{.Title = "Custom path",
-										.Description = "Empty: Graphite's install, then PATH.",
-										.Keywords = {"binary", "executable"},
-										.WideControl = true,
-										.DrawControl = [this, &server] { DrawCustomPath(server); }});
-		card.Rows.push_back(SettingsRow{.Title = "Arguments",
-										.Description = "Passed after the server's own arguments.",
-										.Keywords = {"command line", "flags"},
-										.WideControl = true,
-										.DrawControl = [this, &server] { DrawArguments(server); }});
+		card.Rows.push_back(DescribeArguments(server));
 
 		return card;
 	}
 
+	SettingsCard LanguageServerPage::DescribeCustomServer(const ServerDefinition& server)
+	{
+		SettingsCard card{.Heading = "Custom server"};
+		const bool languageListsSeveralServers = ListedServers().size() > 1;
+
+		if (languageListsSeveralServers)
+		{
+			card.Rows.push_back(SettingsRow{.Title = "Server type",
+											.Description = "How Graphite talks to the program at the path.",
+											.Keywords = {"custom", "kind", "protocol"},
+											.ControlWidth = SettingsLayout::ComboWidth(ServerLabels()),
+											.DrawControl = [this] { DrawCustomServerType(); }});
+		}
+
+		card.Rows.push_back(DescribeCustomPath(server));
+		card.Rows.push_back(DescribeArguments(server));
+
+		return card;
+	}
+
+	SettingsRow LanguageServerPage::DescribeCustomPath(const ServerDefinition& server)
+	{
+		const PathRowText text = CustomPathRowText(CustomPathInUse(server), m_Services.StatusFor(m_Language));
+
+		return SettingsRow{.Title = "Path",
+						   .Description = text.Description,
+						   .Problem = text.Problem,
+						   .Keywords = {"binary", "executable", "custom"},
+						   .WideControl = true,
+						   .DrawControl = [this, &server] { DrawCustomPath(server); }};
+	}
+
+	SettingsRow LanguageServerPage::DescribeArguments(const ServerDefinition& server)
+	{
+		return SettingsRow{.Title = "Arguments",
+						   .Description = "Passed after the server's own arguments.",
+						   .Keywords = {"command line", "flags"},
+						   .WideControl = true,
+						   .DrawControl = [this, &server] { DrawArguments(server); }};
+	}
+
+	std::vector<std::string> LanguageServerPage::ServerLabels() const
+	{
+		const ServerDefinition* recommended = RecommendedServerFor(m_Language);
+		std::vector<std::string> labels;
+
+		for (const ServerDefinition* server : ListedServers())
+		{
+			labels.push_back(ServerOptionLabel(*server, server == recommended));
+		}
+
+		return labels;
+	}
+
 	std::vector<std::string> LanguageServerPage::ServerOptionLabels() const
 	{
-		const LanguageDefinition& definition = DefinitionOf(m_Language);
 		std::vector<std::string> labels{"None"};
 
-		for (std::size_t serverIndex = 0; serverIndex < definition.Servers.size(); ++serverIndex)
+		for (std::string& serverLabel : ServerLabels())
 		{
-			if (const ServerDefinition* server = FindServer(definition.Servers[serverIndex]); server != nullptr)
-			{
-				const bool recommended = serverIndex == 0;
-				labels.push_back(ServerOptionLabel(*server, recommended));
-			}
+			labels.push_back(std::move(serverLabel));
 		}
+
+		labels.emplace_back(CustomChoiceLabel());
 
 		return labels;
 	}
@@ -312,62 +535,41 @@ namespace Graphite {
 	{
 		std::vector<std::string> keywords;
 
-		for (const std::string_view serverId : DefinitionOf(m_Language).Servers)
+		for (const ServerDefinition* server : ListedServers())
 		{
-			if (const ServerDefinition* server = FindServer(serverId); server != nullptr)
-			{
-				keywords.emplace_back(server->Id);
-				keywords.emplace_back(server->DisplayName);
-			}
+			keywords.emplace_back(server->Id);
+			keywords.emplace_back(server->DisplayName);
 		}
+
+		keywords.emplace_back("custom");
 
 		return keywords;
-	}
-
-	std::string LanguageServerPage::RunningElsewhere(const LanguageServerSettings& stored) const
-	{
-		const std::optional<ServerCommand> found = m_Services.FoundCommandFor(m_Language);
-
-		if (!found.has_value())
-		{
-			return {};
-		}
-
-		const bool customPathSet = !stored.BinaryPath.empty();
-
-		return RunningElsewhereNote(*found, customPathSet);
 	}
 
 	void LanguageServerPage::DrawServerChoice()
 	{
 		const ServerChoice choice = CurrentChoice();
-		const LanguageDefinition& definition = DefinitionOf(m_Language);
-		const std::string preview = ChoicePreview(m_Language, choice);
+		const bool readsAsCustom = CustomServer() != nullptr;
+		const std::string preview = readsAsCustom ? std::string{CustomChoiceLabel()} : ChoicePreview(m_Language, choice);
 
 		if (!ImGui::BeginCombo("##server", preview.c_str()))
 		{
 			return;
 		}
 
-		const bool turnedOff = choice.Kind == ServerChoiceKind::Off;
+		const bool turnedOff = !readsAsCustom && choice.Kind == ServerChoiceKind::Off;
 
 		if (ImGui::Selectable("None", turnedOff) && !turnedOff)
 		{
 			SelectServer(kServerTurnedOff);
 		}
 
-		for (std::size_t serverIndex = 0; serverIndex < definition.Servers.size(); ++serverIndex)
+		const ServerDefinition* recommended = RecommendedServerFor(m_Language);
+
+		for (const ServerDefinition* server : ListedServers())
 		{
-			const ServerDefinition* server = FindServer(definition.Servers[serverIndex]);
-
-			if (server == nullptr)
-			{
-				continue;
-			}
-
-			const bool selected = choice.Kind == ServerChoiceKind::Chosen && choice.Server == server;
-			const bool recommended = serverIndex == 0;
-			const std::string label = ServerOptionLabel(*server, recommended);
+			const bool selected = !readsAsCustom && choice.Kind == ServerChoiceKind::Chosen && choice.Server == server;
+			const std::string label = ServerOptionLabel(*server, server == recommended);
 
 			if (ImGui::Selectable(label.c_str(), selected) && !selected)
 			{
@@ -375,7 +577,31 @@ namespace Graphite {
 			}
 		}
 
+		if (ImGui::Selectable(CustomChoiceLabel(), readsAsCustom) && !readsAsCustom)
+		{
+			SelectCustom();
+		}
+
 		ImGui::EndCombo();
+	}
+
+	void LanguageServerPage::DrawCustomServerType()
+	{
+		const ServerDefinition* customServer = CustomServer();
+
+		// Rows described before a choice made earlier in the same frame left Custom are still drawn.
+		if (customServer == nullptr)
+		{
+			return;
+		}
+
+		const std::vector<const ServerDefinition*> servers = ListedServers();
+		std::size_t selected = PositionOf(servers, customServer);
+
+		if (SettingsLayout::Choice("##serverType", ServerLabels(), selected))
+		{
+			SetCustomServerType(servers[selected]->Id);
+		}
 	}
 
 	void LanguageServerPage::DrawRuntimeButtons(const ServerDefinition& server)
@@ -393,33 +619,30 @@ namespace Graphite {
 		}
 	}
 
-	void LanguageServerPage::DrawInstallActions(const std::string& serverId, const std::vector<InstallAction>& actions)
+	void LanguageServerPage::DrawInstallActions(const std::string& serverId, const std::vector<InstallAction>& actions,
+												const std::vector<std::string>& labels)
 	{
-		bool firstAction = true;
-
-		for (const InstallAction action : actions)
+		for (std::size_t actionIndex = 0; actionIndex < actions.size(); ++actionIndex)
 		{
-			if (!firstAction)
+			if (actionIndex > 0)
 			{
 				ImGui::SameLine();
 			}
 
-			firstAction = false;
-
-			if (ImGui::Button(InstallActionLabel(action)))
+			if (ImGui::Button(labels[actionIndex].c_str()))
 			{
-				Run(action, serverId);
+				Run(actions[actionIndex], serverId);
 			}
 		}
 	}
 
 	void LanguageServerPage::DrawCustomPath(const ServerDefinition& server)
 	{
-		const LanguageServerSettings stored = m_Store.GetLanguageServerSettings(server.Id);
+		const std::filesystem::path pathInUse = CustomPathInUse(server);
 
 		if (!m_EditingPath || m_PathServer != server.Id)
 		{
-			m_PathText = Core::ToUtf8(stored.BinaryPath);
+			m_PathText = Core::ToUtf8(pathInUse);
 			m_PathServer = std::string{server.Id};
 		}
 
@@ -434,9 +657,9 @@ namespace Graphite {
 		{
 			const std::filesystem::path edited = Core::FromUtf8(m_PathText);
 
-			if (edited != stored.BinaryPath)
+			if (edited != pathInUse)
 			{
-				SetServerPath(server.Id, edited);
+				SetCustomPath(edited);
 			}
 		}
 
@@ -453,10 +676,10 @@ namespace Graphite {
 
 	void LanguageServerPage::StartBrowsing(const ServerDefinition& server)
 	{
-		m_Browse.Start(ProgramPickerFor(server), [this, serverId = std::string{server.Id}](Core::Result<std::filesystem::path> picked) {
+		m_Browse.Start(ProgramPickerFor(server), [this](Core::Result<std::filesystem::path> picked) {
 			if (picked)
 			{
-				SetServerPath(serverId, picked.GetValue());
+				SetCustomPath(picked.GetValue());
 			}
 		});
 	}
