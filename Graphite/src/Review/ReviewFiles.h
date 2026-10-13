@@ -35,6 +35,10 @@ namespace Graphite {
 	// "feature/x" for "refs/heads/feature/x", "origin/main" for "refs/remotes/origin/main".
 	std::string ShortBranchName(const std::string& fullName);
 
+	// A commit's own change: the range from its first parent to it. Every commit a review lists
+	// descends from the merge base, so it has a parent.
+	RangeEnds EndsOfCommit(const Core::CommitSummary& commit);
+
 	struct LineCounts
 	{
 		std::size_t Added = 0;

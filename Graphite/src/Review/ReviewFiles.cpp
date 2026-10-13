@@ -209,6 +209,13 @@ namespace Graphite {
 		return fullName;
 	}
 
+	RangeEnds EndsOfCommit(const Core::CommitSummary& commit)
+	{
+		const Core::Oid noParent;
+		const Core::Oid firstParent = commit.Parents.empty() ? noParent : commit.Parents.front();
+		return RangeEnds{.MergeBase = firstParent, .Tip = commit.Id};
+	}
+
 	LineCounts CountLines(const Core::FileDiff& file)
 	{
 		LineCounts counts;

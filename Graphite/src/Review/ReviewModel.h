@@ -24,6 +24,25 @@
 
 namespace Graphite {
 
+	// What a range's diff is cached by: the same ends with and without white space are two answers.
+	struct RangeDiffKey
+	{
+		RangeEnds Ends;
+		Core::WhitespaceInDiff Whitespace = Core::WhitespaceInDiff::Shown;
+
+		friend bool operator==(const RangeDiffKey&, const RangeDiffKey&) = default;
+	};
+
+	struct RangeDiffKeyHash
+	{
+		std::size_t operator()(const RangeDiffKey& key) const noexcept
+		{
+			const std::size_t endsHash = RangeEndsHash{}(key.Ends);
+			const std::size_t whitespaceHash = static_cast<std::size_t>(key.Whitespace);
+			return endsHash ^ (whitespaceHash << 1);
+		}
+	};
+
 	// What the review tabs draw, and when it is stale. GitModel's rules hold here too: answers are
 	// immutable and handed out by shared pointer, every request carries a generation, and an answer
 	// becomes visible only in OnUpdate, on the UI thread.
@@ -67,9 +86,9 @@ namespace Graphite {
 
 		// A range's diff never changes, so it is held once fetched. Asking about one already held,
 		// in flight or failed does nothing; Retry is the way back from a failure.
-		void RequestCommittedDiff(const RangeEnds& ends);
-		Core::Ref<const Core::Diff> GetCommittedDiff(const RangeEnds& ends) const;
-		bool IsCommittedDiffFailed(const RangeEnds& ends) const;
+		void RequestCommittedDiff(const RangeDiffKey& key);
+		Core::Ref<const Core::Diff> GetCommittedDiff(const RangeDiffKey& key) const;
+		bool IsCommittedDiffFailed(const RangeDiffKey& key) const;
 		const std::optional<Core::Error>& GetCommittedDiffError() const { return m_CommittedDiffError; }
 
 		// Keyed by the range and the path the list shows the file under. A binary file is never read.
@@ -79,7 +98,8 @@ namespace Graphite {
 		// Called on every frame a tab with the toggle on is drawn. The first call starts watching the
 		// worktree, and a call naming another worktree starts over. A change under the worktree
 		// marks the answer stale once the burst of changes settles.
-		void RequestUncommitted(const ReviewKey& key, const std::filesystem::path& worktree);
+		void RequestUncommitted(const ReviewKey& key, const std::filesystem::path& worktree,
+								 Core::WhitespaceInDiff whitespace);
 		Core::Ref<const Core::Diff> GetUncommitted(const ReviewKey& key) const;
 		const Core::Error* GetUncommittedError(const ReviewKey& key) const;
 		bool IsUncommittedLoading(const ReviewKey& key) const;
@@ -135,6 +155,7 @@ namespace Graphite {
 			GenerationSlot<Core::Diff> Diff;
 			bool Asked = false;
 			bool Stale = false;
+			Core::WhitespaceInDiff Whitespace = Core::WhitespaceInDiff::Shown;
 
 			std::filesystem::path TextsPath;
 			std::uint64_t TextsForDiff = 0;
@@ -157,7 +178,7 @@ namespace Graphite {
 
 		void LandRange(const ReviewKey& key, std::uint64_t incarnation, std::uint64_t generation,
 					   Core::Result<ReviewRange> answer);
-		void LandCommittedDiff(const RangeEnds& ends, std::uint64_t generation, Core::Result<Core::Diff> answer);
+		void LandCommittedDiff(const RangeDiffKey& key, std::uint64_t generation, Core::Result<Core::Diff> answer);
 		void LandCommittedTexts(const TextsKey& key, std::uint64_t generation, Core::Result<FileTexts> answer);
 
 		ReviewPort& m_Port;
@@ -168,7 +189,7 @@ namespace Graphite {
 		std::uint64_t m_NextIncarnation = 0;
 		std::unordered_map<ReviewKey, RangeState, ReviewKeyHash> m_Ranges;
 
-		LruResultCache<RangeEnds, Core::Diff, RangeEndsHash> m_CommittedDiffs{kCachedDiffs};
+		LruResultCache<RangeDiffKey, Core::Diff, RangeDiffKeyHash> m_CommittedDiffs{kCachedDiffs};
 		LruResultCache<TextsKey, FileTexts, TextsKeyHash> m_CommittedTexts{kCachedTexts};
 		std::optional<Core::Error> m_CommittedDiffError;
 

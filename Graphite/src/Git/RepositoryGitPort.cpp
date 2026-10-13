@@ -863,7 +863,7 @@ namespace Graphite {
 		return range;
 	}
 
-	Core::Result<Core::Diff> RepositoryGitPort::QueryRangeDiff(const RangeEnds& ends)
+	Core::Result<Core::Diff> RepositoryGitPort::QueryRangeDiff(const RangeEnds& ends, Core::WhitespaceInDiff whitespace)
 	{
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
@@ -876,6 +876,7 @@ namespace Graphite {
 		request.Target = Core::DiffTarget::RevisionToRevision;
 		request.From = ends.MergeBase;
 		request.To = ends.Tip;
+		request.Whitespace = whitespace;
 
 		return opened.GetValue()->QueryDiff(request);
 	}
@@ -910,7 +911,8 @@ namespace Graphite {
 		return TextsOf(std::move(oldSide).GetValue(), std::move(newSide).GetValue());
 	}
 
-	Core::Result<Core::Diff> RepositoryGitPort::QueryWorktreeDiff(const std::filesystem::path& worktree)
+	Core::Result<Core::Diff> RepositoryGitPort::QueryWorktreeDiff(const std::filesystem::path& worktree,
+																				 Core::WhitespaceInDiff whitespace)
 	{
 		// Not cached per thread: a cached handle would hold an index the worktree's own git has
 		// since rewritten. Opened exactly: a folder that lost its `.git` file would otherwise be read
@@ -926,6 +928,7 @@ namespace Graphite {
 
 		Core::DiffRequest request;
 		request.Target = Core::DiffTarget::WorkTreeToHead;
+		request.Whitespace = whitespace;
 
 		return repository.QueryDiff(request);
 	}

@@ -297,3 +297,19 @@ TEST_CASE("A row's label splits the directory from the name and says where a ren
 	CHECK(topLevel.Directory.empty());
 	CHECK(topLevel.Name == "README.md");
 }
+
+TEST_CASE("A commit's diff is the range from its first parent to it")
+{
+	Core::CommitSummary commit;
+	commit.Id.Bytes[0] = 9;
+	Core::Oid firstParent;
+	firstParent.Bytes[0] = 8;
+	Core::Oid secondParent;
+	secondParent.Bytes[0] = 7;
+	commit.Parents = {firstParent, secondParent};
+
+	const Graphite::RangeEnds ends = Graphite::EndsOfCommit(commit);
+
+	CHECK(ends.MergeBase == firstParent);
+	CHECK(ends.Tip == commit.Id);
+}

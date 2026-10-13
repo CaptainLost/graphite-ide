@@ -7,6 +7,7 @@
 
 #include <string>
 
+using Graphite::RangeDiffKey;
 using Graphite::RangeEnds;
 using Graphite::ReviewKey;
 using Graphite::ReviewModel;
@@ -145,15 +146,16 @@ TEST_CASE("A range's diff is fetched once for the same ends")
 	DeferredJobs jobs;
 	ReviewModel model{port, jobs.Submitter(), NoWatches()};
 	const RangeEnds ends = RangeWithTip(2).Ends;
+	const RangeDiffKey diffKey{.Ends = ends, .Whitespace = Core::WhitespaceInDiff::Shown};
 
-	model.RequestCommittedDiff(ends);
+	model.RequestCommittedDiff(diffKey);
 	Settle(model, jobs);
-	model.RequestCommittedDiff(ends);
+	model.RequestCommittedDiff(diffKey);
 	Settle(model, jobs);
 
 	CHECK(port.RangeDiffQueries == 1);
-	REQUIRE(model.GetCommittedDiff(ends) != nullptr);
-	CHECK(model.GetCommittedDiff(ends)->Files.size() == 1);
+	REQUIRE(model.GetCommittedDiff(diffKey) != nullptr);
+	CHECK(model.GetCommittedDiff(diffKey)->Files.size() == 1);
 }
 
 TEST_CASE("A failed range diff is asked again only after a retry")
@@ -164,24 +166,25 @@ TEST_CASE("A failed range diff is asked again only after a retry")
 	DeferredJobs jobs;
 	ReviewModel model{port, jobs.Submitter(), NoWatches()};
 	const RangeEnds ends = port.Range.Ends;
+	const RangeDiffKey diffKey{.Ends = ends, .Whitespace = Core::WhitespaceInDiff::Shown};
 	model.RequestRange(kKey);
-	model.RequestCommittedDiff(ends);
+	model.RequestCommittedDiff(diffKey);
 	Settle(model, jobs);
 
-	CHECK(model.IsCommittedDiffFailed(ends));
+	CHECK(model.IsCommittedDiffFailed(diffKey));
 	CHECK(model.GetCommittedDiffError().has_value());
 
-	model.RequestCommittedDiff(ends);
+	model.RequestCommittedDiff(diffKey);
 	Settle(model, jobs);
 	CHECK(port.RangeDiffQueries == 1);
 
 	port.RangeDiffFailure.reset();
 	model.Retry(kKey);
-	model.RequestCommittedDiff(ends);
+	model.RequestCommittedDiff(diffKey);
 	Settle(model, jobs);
 
 	CHECK(port.RangeDiffQueries == 2);
-	CHECK(model.GetCommittedDiff(ends) != nullptr);
+	CHECK(model.GetCommittedDiff(diffKey) != nullptr);
 	CHECK_FALSE(model.GetCommittedDiffError().has_value());
 }
 
@@ -244,12 +247,38 @@ TEST_CASE("Clearing drops every review and every held diff")
 	DeferredJobs jobs;
 	ReviewModel model{port, jobs.Submitter(), NoWatches()};
 	const RangeEnds ends = port.Range.Ends;
+	const RangeDiffKey diffKey{.Ends = ends, .Whitespace = Core::WhitespaceInDiff::Shown};
 	model.RequestRange(kKey);
-	model.RequestCommittedDiff(ends);
+	model.RequestCommittedDiff(diffKey);
 	Settle(model, jobs);
 
 	model.Clear();
 
 	CHECK(model.GetRange(kKey) == nullptr);
-	CHECK(model.GetCommittedDiff(ends) == nullptr);
+	CHECK(model.GetCommittedDiff(diffKey) == nullptr);
+}
+
+TEST_CASE("A range's diff is held apart for each white space setting and the port is told which")
+{
+	FakeReviewPort port;
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	const RangeEnds ends = RangeWithTip(2).Ends;
+	const Graphite::RangeDiffKey shown{.Ends = ends, .Whitespace = Core::WhitespaceInDiff::Shown};
+	const Graphite::RangeDiffKey ignored{.Ends = ends, .Whitespace = Core::WhitespaceInDiff::Ignored};
+
+	model.RequestCommittedDiff(shown);
+	Settle(model, jobs);
+	CHECK(port.LastRangeWhitespace == Core::WhitespaceInDiff::Shown);
+
+	model.RequestCommittedDiff(ignored);
+	Settle(model, jobs);
+	CHECK(port.LastRangeWhitespace == Core::WhitespaceInDiff::Ignored);
+
+	model.RequestCommittedDiff(shown);
+	Settle(model, jobs);
+
+	CHECK(port.RangeDiffQueries == 2);
+	CHECK(model.GetCommittedDiff(shown) != nullptr);
+	CHECK(model.GetCommittedDiff(ignored) != nullptr);
 }

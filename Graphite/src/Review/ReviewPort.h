@@ -6,6 +6,7 @@
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Oid.h"
+#include "Core/Git/Requests.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -89,7 +90,7 @@ namespace Graphite {
 
 		virtual Core::Result<ReviewRange> ResolveRange(const ReviewKey& key) = 0;
 
-		virtual Core::Result<Core::Diff> QueryRangeDiff(const RangeEnds& ends) = 0;
+		virtual Core::Result<Core::Diff> QueryRangeDiff(const RangeEnds& ends, Core::WhitespaceInDiff whitespace) = 0;
 
 		// The old side at the merge base, the new side at the tip. A side with an empty path is absent.
 		virtual Core::Result<FileTexts> ReadRangeTexts(const RangeEnds& ends,
@@ -97,7 +98,8 @@ namespace Graphite {
 													   const std::filesystem::path& newPath) = 0;
 
 		// The worktree's files on disk against its HEAD, which is the branch tip.
-		virtual Core::Result<Core::Diff> QueryWorktreeDiff(const std::filesystem::path& worktree) = 0;
+		virtual Core::Result<Core::Diff> QueryWorktreeDiff(const std::filesystem::path& worktree,
+															   Core::WhitespaceInDiff whitespace) = 0;
 
 		virtual Core::Result<FileTexts> ReadWorktreeTexts(const std::filesystem::path& worktree,
 														  const std::filesystem::path& oldPath,

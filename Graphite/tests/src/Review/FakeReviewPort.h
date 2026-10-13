@@ -32,9 +32,10 @@ public:
 		return Range;
 	}
 
-	Core::Result<Core::Diff> QueryRangeDiff(const Graphite::RangeEnds&) override
+	Core::Result<Core::Diff> QueryRangeDiff(const Graphite::RangeEnds&, Core::WhitespaceInDiff whitespace) override
 	{
 		++RangeDiffQueries;
+		LastRangeWhitespace = whitespace;
 
 		if (RangeDiffFailure.has_value())
 		{
@@ -57,9 +58,10 @@ public:
 		return Texts;
 	}
 
-	Core::Result<Core::Diff> QueryWorktreeDiff(const std::filesystem::path& worktree) override
+	Core::Result<Core::Diff> QueryWorktreeDiff(const std::filesystem::path& worktree, Core::WhitespaceInDiff whitespace) override
 	{
 		++WorktreeDiffQueries;
+		LastWorktreeWhitespace = whitespace;
 
 		if (WorktreeFailure.has_value())
 		{
@@ -78,6 +80,12 @@ public:
 														const std::filesystem::path&) override
 	{
 		++WorktreeTextReads;
+
+		if (WorktreeTextsFailure.has_value())
+		{
+			return *WorktreeTextsFailure;
+		}
+
 		return Texts;
 	}
 
@@ -94,6 +102,10 @@ public:
 
 	Graphite::FileTexts Texts;
 	std::optional<Core::Error> RangeTextsFailure;
+	std::optional<Core::Error> WorktreeTextsFailure;
+
+	Core::WhitespaceInDiff LastRangeWhitespace = Core::WhitespaceInDiff::Shown;
+	Core::WhitespaceInDiff LastWorktreeWhitespace = Core::WhitespaceInDiff::Shown;
 
 	int RangeQueries = 0;
 	int RangeDiffQueries = 0;

@@ -81,7 +81,7 @@ namespace {
 
 	void AskAndSettle(ReviewModel& model, DeferredJobs& jobs, const std::filesystem::path& worktree)
 	{
-		model.RequestUncommitted(kKey, worktree);
+		model.RequestUncommitted(kKey, worktree, Core::WhitespaceInDiff::Shown);
 		Settle(model, jobs);
 	}
 
@@ -150,7 +150,7 @@ TEST_CASE("A worktree that keeps changing is asked about once per debounce burst
 	for (int frame = 0; frame < 12; ++frame)
 	{
 		model.OnUpdate(kTenthOfASecond);
-		model.RequestUncommitted(kKey, kWorktree);
+		model.RequestUncommitted(kKey, kWorktree, Core::WhitespaceInDiff::Shown);
 		jobs.RunAll();
 	}
 
@@ -357,12 +357,51 @@ TEST_CASE("A diff still on its way when the review moves to another worktree doe
 	DeferredJobs jobs;
 	WatchControl watches;
 	ReviewModel model{port, jobs.Submitter(), FakeWatches(watches)};
-	model.RequestUncommitted(kKey, kWorktree);
-	model.RequestUncommitted(kKey, kOtherWorktree);
+	model.RequestUncommitted(kKey, kWorktree, Core::WhitespaceInDiff::Shown);
+	model.RequestUncommitted(kKey, kOtherWorktree, Core::WhitespaceInDiff::Shown);
 
 	Settle(model, jobs);
 
 	REQUIRE(model.GetUncommitted(kKey) != nullptr);
 	REQUIRE(model.GetUncommitted(kKey)->Files.size() == 1);
 	CHECK(model.GetUncommitted(kKey)->Files[0].NewPath == std::filesystem::path{"new.cpp"});
+}
+
+TEST_CASE("Changing the white space setting asks for the uncommitted diff again")
+{
+	FakeReviewPort port;
+	DeferredJobs jobs;
+	WatchControl watches;
+	ReviewModel model{port, jobs.Submitter(), FakeWatches(watches)};
+	AskAndSettle(model, jobs, kWorktree);
+
+	model.RequestUncommitted(kKey, kWorktree, Core::WhitespaceInDiff::Ignored);
+	Settle(model, jobs);
+
+	CHECK(port.WorktreeDiffQueries == 2);
+	CHECK(port.LastWorktreeWhitespace == Core::WhitespaceInDiff::Ignored);
+}
+
+TEST_CASE("A failed uncommitted text read is tried again after a refresh that leaves the file unchanged")
+{
+	FakeReviewPort port;
+	port.WorktreeDiff.Files.push_back(TextFile("a.cpp"));
+	port.WorktreeTextsFailure = Core::Error{Core::ErrorCode::IoFailure, "locked"};
+	DeferredJobs jobs;
+	WatchControl watches;
+	ReviewModel model{port, jobs.Submitter(), FakeWatches(watches)};
+	const Core::FileDiff file = TextFile("a.cpp");
+	AskAndSettle(model, jobs, kWorktree);
+	model.RequestUncommittedTexts(kKey, file);
+	Settle(model, jobs);
+	CHECK(model.GetUncommittedTexts(kKey, file) == nullptr);
+
+	port.WorktreeTextsFailure.reset();
+	model.Retry(kKey);
+	AskAndSettle(model, jobs, kWorktree);
+	model.RequestUncommittedTexts(kKey, file);
+	Settle(model, jobs);
+
+	CHECK(port.WorktreeTextReads == 2);
+	CHECK(model.GetUncommittedTexts(kKey, file) != nullptr);
 }

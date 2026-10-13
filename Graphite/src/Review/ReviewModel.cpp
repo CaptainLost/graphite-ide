@@ -220,7 +220,11 @@ namespace Graphite {
 
 			if (const Core::Ref<const ReviewRange> held = range.Slot.Get(); held != nullptr)
 			{
-				const bool forgotDiff = m_CommittedDiffs.ForgetFailed(held->Ends);
+				const RangeDiffKey shownKey{.Ends = held->Ends, .Whitespace = Core::WhitespaceInDiff::Shown};
+				const RangeDiffKey ignoredKey{.Ends = held->Ends, .Whitespace = Core::WhitespaceInDiff::Ignored};
+				const bool forgotShown = m_CommittedDiffs.ForgetFailed(shownKey);
+				const bool forgotIgnored = m_CommittedDiffs.ForgetFailed(ignoredKey);
+				const bool forgotDiff = forgotShown || forgotIgnored;
 
 				if (forgotDiff)
 				{
@@ -246,30 +250,30 @@ namespace Graphite {
 		m_Uncommitted.erase(key);
 	}
 
-	void ReviewModel::RequestCommittedDiff(const RangeEnds& ends)
+	void ReviewModel::RequestCommittedDiff(const RangeDiffKey& key)
 	{
-		const std::optional<std::uint64_t> generation = m_CommittedDiffs.Request(ends);
+		const std::optional<std::uint64_t> generation = m_CommittedDiffs.Request(key);
 
 		if (!generation.has_value())
 		{
 			return;
 		}
 
-		m_Submit([this, ends, generation = *generation]() {
-			Core::Result<Core::Diff> answer = m_Port.QueryRangeDiff(ends);
+		m_Submit([this, key, generation = *generation]() {
+			Core::Result<Core::Diff> answer = m_Port.QueryRangeDiff(key.Ends, key.Whitespace);
 
-			m_Inbox.Post([this, ends, generation, answer = std::move(answer)]() mutable {
-				LandCommittedDiff(ends, generation, std::move(answer));
+			m_Inbox.Post([this, key, generation, answer = std::move(answer)]() mutable {
+				LandCommittedDiff(key, generation, std::move(answer));
 			});
 		});
 	}
 
-	void ReviewModel::LandCommittedDiff(const RangeEnds& ends, std::uint64_t generation,
+	void ReviewModel::LandCommittedDiff(const RangeDiffKey& key, std::uint64_t generation,
 										Core::Result<Core::Diff> answer)
 	{
 		if (!answer.HasValue())
 		{
-			if (m_CommittedDiffs.Fail(ends, generation))
+			if (m_CommittedDiffs.Fail(key, generation))
 			{
 				m_CommittedDiffError = answer.GetError();
 			}
@@ -279,20 +283,20 @@ namespace Graphite {
 
 		Core::Ref<const Core::Diff> diff = Core::CreateRef<const Core::Diff>(std::move(answer).GetValue());
 
-		if (m_CommittedDiffs.Succeed(ends, generation, std::move(diff)))
+		if (m_CommittedDiffs.Succeed(key, generation, std::move(diff)))
 		{
 			m_CommittedDiffError.reset();
 		}
 	}
 
-	Core::Ref<const Core::Diff> ReviewModel::GetCommittedDiff(const RangeEnds& ends) const
+	Core::Ref<const Core::Diff> ReviewModel::GetCommittedDiff(const RangeDiffKey& key) const
 	{
-		return m_CommittedDiffs.Get(ends);
+		return m_CommittedDiffs.Get(key);
 	}
 
-	bool ReviewModel::IsCommittedDiffFailed(const RangeEnds& ends) const
+	bool ReviewModel::IsCommittedDiffFailed(const RangeDiffKey& key) const
 	{
-		return m_CommittedDiffs.IsFailed(ends);
+		return m_CommittedDiffs.IsFailed(key);
 	}
 
 	void ReviewModel::RequestCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file)
@@ -384,7 +388,8 @@ namespace Graphite {
 		return uncommitted;
 	}
 
-	void ReviewModel::RequestUncommitted(const ReviewKey& key, const std::filesystem::path& worktree)
+	void ReviewModel::RequestUncommitted(const ReviewKey& key, const std::filesystem::path& worktree,
+										 Core::WhitespaceInDiff whitespace)
 	{
 		UncommittedState& uncommitted = m_Uncommitted[key];
 
@@ -402,6 +407,12 @@ namespace Graphite {
 			uncommitted.Watch = m_Watch(worktree);
 		}
 
+		if (uncommitted.Whitespace != whitespace)
+		{
+			uncommitted.Whitespace = whitespace;
+			uncommitted.Stale = true;
+		}
+
 		const bool answeredAndFresh = uncommitted.Asked && !uncommitted.Stale;
 
 		if (uncommitted.Diff.IsInFlight() || answeredAndFresh)
@@ -415,8 +426,8 @@ namespace Graphite {
 		const std::uint64_t generation = uncommitted.Diff.Begin();
 		const std::uint64_t incarnation = uncommitted.Incarnation;
 
-		m_Submit([this, key, worktree, generation, incarnation]() {
-			Core::Result<Core::Diff> answer = m_Port.QueryWorktreeDiff(worktree);
+		m_Submit([this, key, worktree, whitespace, generation, incarnation]() {
+			Core::Result<Core::Diff> answer = m_Port.QueryWorktreeDiff(worktree, whitespace);
 
 			m_Inbox.Post([this, key, generation, incarnation, answer = std::move(answer)]() mutable {
 				LandUncommitted(key, incarnation, generation, std::move(answer));
@@ -447,7 +458,7 @@ namespace Graphite {
 		const bool textsLanded = uncommitted->TextsRequested != 0 && uncommitted->TextsApplied == uncommitted->TextsRequested;
 		const bool textsBelongToReplaced = textsLanded && uncommitted->TextsForDiff == replacedGeneration;
 
-		if (textsBelongToReplaced && replaced != nullptr &&
+		if (textsBelongToReplaced && replaced != nullptr && uncommitted->Texts != nullptr &&
 			SameFileInBoth(*replaced, *uncommitted->Diff.Get(), uncommitted->TextsPath))
 		{
 			uncommitted->TextsForDiff = uncommitted->Diff.GetApplied();

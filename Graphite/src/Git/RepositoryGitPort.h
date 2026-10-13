@@ -72,10 +72,11 @@ namespace Graphite {
 		// ReviewPort. The range is read through the same per-thread handle as every query above; a
 		// worktree is opened afresh on every call, being another repository than the open folder's.
 		Core::Result<ReviewRange> ResolveRange(const ReviewKey& key) override;
-		Core::Result<Core::Diff> QueryRangeDiff(const RangeEnds& ends) override;
+		Core::Result<Core::Diff> QueryRangeDiff(const RangeEnds& ends, Core::WhitespaceInDiff whitespace) override;
 		Core::Result<FileTexts> ReadRangeTexts(const RangeEnds& ends, const std::filesystem::path& oldPath,
 											   const std::filesystem::path& newPath) override;
-		Core::Result<Core::Diff> QueryWorktreeDiff(const std::filesystem::path& worktree) override;
+		Core::Result<Core::Diff> QueryWorktreeDiff(const std::filesystem::path& worktree,
+															   Core::WhitespaceInDiff whitespace) override;
 		Core::Result<FileTexts> ReadWorktreeTexts(const std::filesystem::path& worktree,
 												  const std::filesystem::path& oldPath,
 												  const std::filesystem::path& newPath) override;

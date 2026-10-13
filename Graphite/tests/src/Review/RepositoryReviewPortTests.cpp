@@ -115,7 +115,7 @@ TEST_CASE("The range diff holds what the branch changed and nothing its base cha
 	Graphite::RepositoryGitPort port{repository.GetPath()};
 	const ReviewRange range = ResolvedRange(port, kSideAgainstMaster);
 
-	const Core::Result<Core::Diff> diff = port.QueryRangeDiff(range.Ends);
+	const Core::Result<Core::Diff> diff = port.QueryRangeDiff(range.Ends, Core::WhitespaceInDiff::Shown);
 	REQUIRE(diff.HasValue());
 
 	REQUIRE(diff.GetValue().Files.size() == 2);
@@ -151,7 +151,7 @@ TEST_CASE("A worktree's diff and texts are its files on disk against the branch 
 	REQUIRE(range.Worktree.has_value());
 	CHECK(std::filesystem::equivalent(*range.Worktree, worktree));
 
-	const Core::Result<Core::Diff> diff = port.QueryWorktreeDiff(*range.Worktree);
+	const Core::Result<Core::Diff> diff = port.QueryWorktreeDiff(*range.Worktree, Core::WhitespaceInDiff::Shown);
 	REQUIRE(diff.HasValue());
 	REQUIRE(diff.GetValue().Files.size() == 1);
 	CHECK(diff.GetValue().Files.front().NewPath == std::filesystem::path{"b.txt"});
@@ -171,7 +171,7 @@ TEST_CASE("A folder inside the repository that is no worktree is not read as one
 	std::filesystem::create_directories(notAWorktree);
 	Graphite::RepositoryGitPort port{repository.GetPath()};
 
-	const Core::Result<Core::Diff> diff = port.QueryWorktreeDiff(notAWorktree);
+	const Core::Result<Core::Diff> diff = port.QueryWorktreeDiff(notAWorktree, Core::WhitespaceInDiff::Shown);
 	const Core::Result<Graphite::FileTexts> texts = port.ReadWorktreeTexts(notAWorktree, "a.txt", "a.txt");
 
 	REQUIRE_FALSE(diff.HasValue());

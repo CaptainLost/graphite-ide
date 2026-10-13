@@ -293,18 +293,19 @@ namespace Graphite {
 			input.Model.StopUncommitted(*key);
 		}
 
-		input.Model.RequestCommittedDiff(range->Ends);
+		const RangeDiffKey diffKey{.Ends = range->Ends, .Whitespace = Core::WhitespaceInDiff::Shown};
+		input.Model.RequestCommittedDiff(diffKey);
 
 		const bool showUncommitted = tab.IncludeUncommitted && range->Worktree.has_value();
 
 		if (showUncommitted)
 		{
-			input.Model.RequestUncommitted(*key, *range->Worktree);
+			input.Model.RequestUncommitted(*key, *range->Worktree, Core::WhitespaceInDiff::Shown);
 		}
 
 		const LoadedReview review{.Key = *key,
 								  .Range = range,
-								  .Committed = input.Model.GetCommittedDiff(range->Ends),
+								  .Committed = input.Model.GetCommittedDiff(diffKey),
 								  .Uncommitted = showUncommitted ? input.Model.GetUncommitted(*key) : nullptr};
 
 		if (review.Committed != nullptr)
@@ -314,7 +315,7 @@ namespace Graphite {
 			return;
 		}
 
-		const bool failed = input.Model.IsCommittedDiffFailed(range->Ends);
+		const bool failed = input.Model.IsCommittedDiffFailed(diffKey);
 
 		if (!failed && tab.LastLoaded.has_value())
 		{
