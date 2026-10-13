@@ -72,6 +72,13 @@ namespace Core {
 		RevisionToRevision
 	};
 
+	// Whether a diff counts lines that differ only in white space, which `git diff -w` does not.
+	enum class WhitespaceInDiff
+	{
+		Shown,
+		Ignored
+	};
+
 	struct DiffRequest
 	{
 		DiffTarget Target = DiffTarget::WorkTreeToHead;
@@ -83,6 +90,8 @@ namespace Core {
 
 		// Relative to the working directory; without a value, the whole tree.
 		std::optional<std::filesystem::path> File;
+
+		WhitespaceInDiff Whitespace = WhitespaceInDiff::Shown;
 
 		friend bool operator==(const DiffRequest&, const DiffRequest&) = default;
 	};

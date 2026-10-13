@@ -16,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct git_repository;
@@ -77,6 +78,15 @@ namespace Core {
 		// No encoding is assumed. NotFound when the commit's tree has no such path, which is the
 		// ordinary answer for the older side of an added file.
 		Result<std::string> ReadBlob(const std::filesystem::path& path, const Oid& revision) const;
+
+		// NotFound when the object database does not hold the blob: a version that was only ever on
+		// disk, or one `git gc` pruned after a rewrite.
+		Result<std::string> ReadBlobById(const Oid& blob) const;
+
+		// Two texts compared as one file at `path`. Equal texts give a file with no hunks. Needs no
+		// repository, so it is static; the caller sets the blob ids it knows.
+		static Result<FileDiff> DiffTexts(std::string_view oldText, std::string_view newText,
+										  const std::filesystem::path& path, WhitespaceInDiff whitespace);
 
 		// NotFound on an unborn HEAD, which is a repository with no commit yet rather than a broken one.
 		Result<Oid> HeadCommit() const;

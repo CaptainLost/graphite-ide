@@ -41,6 +41,31 @@ namespace Core {
 		}
 	}
 
+	Result<std::string> Repository::ReadBlobById(const Oid& blob) const
+	{
+		if (m_Handle == nullptr)
+		{
+			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
+
+		const git_oid blobId = ToGitOid(blob);
+		BlobHandle found;
+		const int lookupResult = git_blob_lookup(Out(found), m_Handle.get(), &blobId);
+
+		if (lookupResult == GIT_ENOTFOUND)
+		{
+			return Error{ErrorCode::NotFound, std::format("no blob {} in the repository", blob.ShortHex())};
+		}
+
+		if (lookupResult != 0)
+		{
+			return Error{ErrorCode::IoFailure,
+						 std::format("cannot read blob {}: {}", blob.ShortHex(), LastLibgit2Message())};
+		}
+
+		return BlobBytes(found.get());
+	}
+
 	Result<std::string> Repository::ReadBlob(const std::filesystem::path& path, const Oid& revision) const
 	{
 		if (m_Handle == nullptr)

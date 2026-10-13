@@ -255,6 +255,11 @@ namespace Core {
 
 		git_diff_options options = GIT_DIFF_OPTIONS_INIT;
 
+		if (request.Whitespace == WhitespaceInDiff::Ignored)
+		{
+			options.flags |= GIT_DIFF_IGNORE_WHITESPACE;
+		}
+
 		const bool comparesWorkTree =
 			request.Target == DiffTarget::WorkTreeToIndex || request.Target == DiffTarget::WorkTreeToHead;
 
@@ -463,5 +468,45 @@ namespace Core {
 		}
 
 		return collected;
+	}
+
+	Result<FileDiff> Repository::DiffTexts(std::string_view oldText, std::string_view newText,
+										   const std::filesystem::path& path, WhitespaceInDiff whitespace)
+	{
+		EnsureLibgit2Initialised();
+
+		git_diff_options options = GIT_DIFF_OPTIONS_INIT;
+
+		if (whitespace == WhitespaceInDiff::Ignored)
+		{
+			options.flags |= GIT_DIFF_IGNORE_WHITESPACE;
+		}
+
+		const std::string gitPath = ToGitPath(path);
+		Diff collected;
+		git_diff_binary_cb noBinaryCallback = nullptr;
+
+		const int diffResult = git_diff_buffers(oldText.data(), oldText.size(), gitPath.c_str(), newText.data(),
+												newText.size(), gitPath.c_str(), &options, AppendFile,
+												noBinaryCallback, AppendHunk, AppendLine, &collected);
+
+		if (diffResult != 0)
+		{
+			return Error{ErrorCode::IoFailure, std::format("cannot diff two texts: {}", LastLibgit2Message())};
+		}
+
+		FileDiff file;
+
+		if (!collected.Files.empty())
+		{
+			file = std::move(collected.Files.front());
+		}
+
+		// Both sides exist here, whatever status libgit2 reported for the pair.
+		file.OldPath = path;
+		file.NewPath = path;
+		file.Change = file.Hunks.empty() ? FileChange::Unmodified : FileChange::Modified;
+
+		return file;
 	}
 }
