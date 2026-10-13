@@ -18,6 +18,7 @@ namespace Graphite {
 	// What a branch's menu offers: a review of that branch against the base it would go into.
 	struct ReviewOffer
 	{
+		// Empty while HEAD is detached: nothing is offered then.
 		std::string Label;
 		std::string Branch;
 

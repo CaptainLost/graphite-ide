@@ -203,15 +203,9 @@ namespace Graphite {
 																m_Events));
 		gitView->Subscribe();
 
-		gitView->OnReview = [this](const ReviewOffer& offer) {
-			if (!offer.Base.has_value())
-			{
-				return;
-			}
-
-			m_ReviewStore.GetSessions().Start(offer.Branch, *offer.Base);
-			m_ReviewWindows.Open(offer.Branch);
-		};
+		gitView->ReviewMenuOf = [this](const Core::Branch& branch) { return ReviewMenuOfBranch(branch); };
+		gitView->OnReviewMenuItem = [this](const ReviewMenuItem& item) { ApplyReviewMenuItem(item); };
+		gitView->ReviewBadgeOf = [this](const Core::Branch& branch) { return ReviewBadgeOfBranch(branch); };
 
 		gitView->OnBranchRenamed = [this](const std::string& from, const std::string& to) {
 			m_ReviewWindows.NoteRename(from, to);
@@ -541,6 +535,7 @@ namespace Graphite {
 			// The diff tabs' trap again: a drop replaces the folder without a close, so the previous
 			// folder's reviews and marks are let go here, before this folder's come back.
 			m_ReviewWindows.CloseAll(m_Reviews);
+			m_ReviewBadges.Clear();
 			m_ReviewStore.Close();
 			m_ReviewStore.Open(event.Root);
 			m_ReviewWindows.RestoreState(restorable.Reviews, m_ReviewStore.GetSessions());
@@ -608,6 +603,7 @@ namespace Graphite {
 			m_DiffWindows.CloseAll();
 
 			m_ReviewWindows.CloseAll(m_Reviews);
+			m_ReviewBadges.Clear();
 			m_ReviewStore.Close();
 			m_ReviewedBranches.reset();
 
@@ -748,6 +744,60 @@ namespace Graphite {
 
 		m_ReviewStore.GetSessions().Prune(*branches);
 		m_Reviews.InvalidateRanges();
+	}
+
+	ReviewMenu GraphiteLayer::ReviewMenuOfBranch(const Core::Branch& branch) const
+	{
+		const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches();
+
+		if (branches == nullptr)
+		{
+			return ReviewMenu{};
+		}
+
+		return ReviewMenuFor(branch, *branches, m_ReviewStore.GetSessions());
+	}
+
+	void GraphiteLayer::ApplyReviewMenuItem(const ReviewMenuItem& item)
+	{
+		switch (item.Action)
+		{
+		case ReviewAction::Start:
+			m_ReviewStore.GetSessions().Start(item.Branch, item.Base);
+			m_ReviewWindows.Open(item.Branch);
+			break;
+		case ReviewAction::Open:
+			m_ReviewWindows.Open(item.Branch);
+			break;
+		case ReviewAction::End:
+			m_ReviewWindows.AskToEnd(item.Branch);
+			break;
+		}
+	}
+
+	std::string GraphiteLayer::ReviewBadgeOfBranch(const Core::Branch& branch)
+	{
+		const ReviewSession* session = m_ReviewStore.GetSessions().Find(branch.FullName);
+
+		if (session == nullptr)
+		{
+			return std::string{};
+		}
+
+		const ReviewKey key{.Branch = branch.FullName, .Base = session->Base};
+		m_Reviews.RequestRange(key);
+		const Core::Ref<const ReviewRange> range = m_Reviews.GetRange(key);
+
+		Core::Ref<const Core::Diff> committed;
+
+		if (range != nullptr && range->Problem == RangeProblem::None)
+		{
+			const RangeDiffKey diffKey{.Ends = range->Ends, .Whitespace = session->Settings.Whitespace};
+			m_Reviews.RequestCommittedDiff(diffKey);
+			committed = m_Reviews.GetCommittedDiff(diffKey);
+		}
+
+		return m_ReviewBadges.TextFor(m_ReviewStore.GetSessions(), branch.FullName, range, committed);
 	}
 
 	GlobalState GraphiteLayer::CaptureGlobalState()

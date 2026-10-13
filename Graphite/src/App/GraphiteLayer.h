@@ -30,6 +30,7 @@
 #include "Sessions/SessionWindows.h"
 #include "Terminal/TerminalWindows.h"
 #include "Persistence/StateKeeper.h"
+#include "Review/ReviewMenu.h"
 #include "Review/ReviewModel.h"
 #include "Review/ReviewStore.h"
 #include "Review/ReviewWindows.h"
@@ -179,6 +180,12 @@ namespace Graphite {
 		// Hands a new branch snapshot to the reviews: renames followed by tabs and marks alike,
 		// marks of gone branches dropped, and every range asked again.
 		void FollowBranchesIntoReviews();
+
+		// What the Git window's branch menu offers about reviewing `branch`; nothing before the
+		// first branch snapshot.
+		ReviewMenu ReviewMenuOfBranch(const Core::Branch& branch) const;
+		void ApplyReviewMenuItem(const ReviewMenuItem& item);
+		std::string ReviewBadgeOfBranch(const Core::Branch& branch);
 
 		static constexpr float kReloadAfterSecondsAway = 2.0f;
 
@@ -376,6 +383,7 @@ namespace Graphite {
 		// panel has focus. GitView reaches them only through callbacks bound to this layer.
 		ReviewWindows m_ReviewWindows{m_Modals};
 		ReviewStore m_ReviewStore;
+		ReviewBadges m_ReviewBadges;
 
 		// The branch snapshot the reviews last followed. A different one may mean a branch moved,
 		// was renamed or is gone.

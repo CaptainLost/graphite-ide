@@ -13,7 +13,7 @@
 #include "Editor/EditorSettings.h"
 #include "Git/EditorBuffers.h"
 #include "Git/GitModel.h"
-#include "Review/ReviewFiles.h"
+#include "Review/ReviewMenu.h"
 #include "Git/History/HistoryFilter.h"
 #include "Theme/ActiveScheme.h"
 
@@ -50,6 +50,9 @@ namespace Graphite {
 	// the way the commit list cuts its cells. `cut`, when given, says which.
 	std::string FitToLine(std::string_view text, bool* cut = nullptr);
 
+	// `text` as it fits in `room` pixels: whole, or cut with an ellipsis. `cut`, when given, says which.
+	std::string FitToWidth(std::string_view text, float room, bool* cut = nullptr);
+
 	// The whole history in one panel: refs down the left, and on the right the commit list
 	// above the diff of whichever file is selected under an expanded commit.
 	//
@@ -83,9 +86,15 @@ namespace Graphite {
 		// On the bus the constructor was given.
 		void Subscribe();
 
-		// Opens the review a branch's menu offers. Set once by whoever owns the review tabs; unset
-		// hides the menu item.
-		std::function<void(const ReviewOffer&)> OnReview;
+		// What a branch's menu offers about reviewing it. Unset hides the review items.
+		std::function<ReviewMenu(const Core::Branch& branch)> ReviewMenuOf;
+
+		// Told of the review item the reader picked.
+		std::function<void(const ReviewMenuItem& item)> OnReviewMenuItem;
+
+		// The text beside a branch under review, empty for any other. Asked only for rows on screen;
+		// unset draws none.
+		std::function<std::string(const Core::Branch& branch)> ReviewBadgeOf;
 
 		// Told of every rename sent from here, by full name, so what is kept by branch can follow it
 		// once the branch list shows the new name.

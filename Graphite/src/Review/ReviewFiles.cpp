@@ -17,7 +17,6 @@ namespace Graphite {
 		constexpr std::string_view kRemotePrefix = "refs/remotes/";
 
 		constexpr std::string_view kReviewAgainst = "Review against ";
-		constexpr std::string_view kReviewChoosingBase = "Review…";
 
 		constexpr std::string_view kRenameArrow = " → ";
 
@@ -130,7 +129,7 @@ namespace Graphite {
 
 		if (checkedOut == nullptr)
 		{
-			return ReviewOffer{.Label = std::string{kReviewChoosingBase}, .Branch = branch.FullName, .Base = std::nullopt};
+			return ReviewOffer{.Label = std::string{}, .Branch = branch.FullName, .Base = std::nullopt};
 		}
 
 		return ReviewOffer{.Label = std::string{kReviewAgainst} + checkedOut->Name,

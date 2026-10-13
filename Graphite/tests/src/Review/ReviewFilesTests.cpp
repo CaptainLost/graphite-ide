@@ -98,7 +98,7 @@ TEST_CASE("With HEAD detached a branch is offered with no base yet")
 	const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(branches[1], branches);
 
 	REQUIRE(offer.has_value());
-	CHECK(offer->Label == "Review\xE2\x80\xA6");
+	CHECK(offer->Label.empty());
 	CHECK_FALSE(offer->Base.has_value());
 }
 

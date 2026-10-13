@@ -517,16 +517,41 @@ namespace Graphite {
 				// rather than at the column's edge, and is said whole in a tooltip.
 				const std::string label = RefLabel(branch);
 
+				// Asked only of rows on screen: the layer works the badge out from the branch's
+				// review, which a long list of branches must not do every frame.
+				std::string badge;
+
+				if (ReviewBadgeOf &&
+					ImGui::IsRectVisible(ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetFrameHeight())))
+				{
+					badge = ReviewBadgeOf(branch);
+				}
+
+				const float rowWidth = ImGui::GetContentRegionAvail().x;
+				const float badgeWidth = badge.empty() ? 0.0f : ImGui::CalcTextSize(badge.c_str()).x;
+				const float labelRoom =
+					badge.empty() ? rowWidth : rowWidth - badgeWidth - ImGui::GetStyle().ItemSpacing.x;
+				const ImVec2 rowStart = ImGui::GetCursorScreenPos();
+
 				bool cut = false;
-				const std::string fitted = FitToLine(label, &cut);
+				const std::string fitted = FitToWidth(label, labelRoom, &cut);
 
 				const bool clicked = HighlightedSelectable("##ref", selected, fitted, refFilter);
+
+				// Inside the group: after EndGroup the menu below would ask about the badge, not
+				// the row.
+				if (!badge.empty())
+				{
+					ImGui::SetCursorScreenPos(ImVec2(rowStart.x + rowWidth - badgeWidth, rowStart.y));
+					ImGui::TextDisabled("%s", badge.c_str());
+				}
 
 				ImGui::EndGroup();
 
 				if (cut)
 				{
-					ImGui::SetItemTooltip("%s", label.c_str());
+					const std::string whole = badge.empty() ? label : std::format("{}  {}", label, badge);
+					ImGui::SetItemTooltip("%s", whole.c_str());
 				}
 
 				RenderRefMenu(branch);
@@ -652,29 +677,51 @@ namespace Graphite {
 
 	void GitView::RenderReviewItem(const Core::Branch& branch)
 	{
-		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
-
-		if (!OnReview || branches == nullptr)
+		if (!ReviewMenuOf)
 		{
 			return;
 		}
 
-		const std::optional<ReviewOffer> offer = OfferReview(branch, *branches);
+		const ReviewMenu menu = ReviewMenuOf(branch);
 
-		if (!offer.has_value())
+		if (menu.Items.empty())
 		{
 			return;
 		}
 
 		ImGui::Separator();
 
-		if (ImGui::MenuItem(offer->Label.c_str()))
+		const bool inSubmenu = !menu.Submenu.empty();
+
+		if (inSubmenu && !ImGui::BeginMenu(menu.Submenu.c_str()))
 		{
-			OnReview(*offer);
+			return;
+		}
+
+		for (std::size_t index = 0; index < menu.Items.size(); ++index)
+		{
+			ImGui::PushID(static_cast<int>(index));
+
+			if (ImGui::MenuItem(menu.Items[index].Label.c_str()) && OnReviewMenuItem)
+			{
+				OnReviewMenuItem(menu.Items[index]);
+			}
+
+			ImGui::PopID();
+		}
+
+		if (inSubmenu)
+		{
+			ImGui::EndMenu();
 		}
 	}
 
 	std::string FitToLine(std::string_view text, bool* cut)
+	{
+		return FitToWidth(text, ImGui::GetContentRegionAvail().x, cut);
+	}
+
+	std::string FitToWidth(std::string_view text, float room, bool* cut)
 	{
 		// Guarded because an empty view may carry no pointer at all, and CalcTextSize reads a
 		// null end as "up to the terminator".
@@ -684,7 +731,7 @@ namespace Graphite {
 
 		// Given back the pixel CalcTextSize rounds up by, for the reason the commit list gives.
 		const std::optional<std::size_t> at =
-			CutToFit(text, ImGui::GetContentRegionAvail().x + 1.0f, widthOf(Ellipsis), widthOf);
+			CutToFit(text, room + 1.0f, widthOf(Ellipsis), widthOf);
 
 		if (cut != nullptr)
 		{
