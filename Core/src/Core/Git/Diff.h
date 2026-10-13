@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Git/Oid.h"
+
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -59,6 +61,11 @@ namespace Core {
 		std::filesystem::path NewPath;
 
 		FileChange Change = FileChange::Unmodified;
+
+		// Zero for a side that does not exist. A working-tree side has the id git gives its current
+		// content, so the pair names this exact change of the file whatever the target.
+		Oid OldId;
+		Oid NewId;
 
 		// A binary delta has no hunks, so an empty Hunks cannot tell it from a hunkless change; check
 		// this flag before drawing lines.

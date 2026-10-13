@@ -78,6 +78,19 @@ namespace Core {
 				file.NewPath = FromUtf8(delta->new_file.path);
 			}
 
+			const bool oldIdIsKnown = (delta->old_file.flags & GIT_DIFF_FLAG_VALID_ID) != 0;
+			const bool newIdIsKnown = (delta->new_file.flags & GIT_DIFF_FLAG_VALID_ID) != 0;
+
+			if (file.Change != FileChange::Added && oldIdIsKnown)
+			{
+				file.OldId = ToOid(delta->old_file.id);
+			}
+
+			if (file.Change != FileChange::Deleted && newIdIsKnown)
+			{
+				file.NewId = ToOid(delta->new_file.id);
+			}
+
 			collected.Files.push_back(std::move(file));
 			return 0;
 		}
@@ -203,6 +216,33 @@ namespace Core {
 			}
 
 			return TreeOfCommit(commit.get());
+		}
+
+		// libgit2 leaves a working-tree side's id unset whenever it did not need to hash the file,
+		// as for an untracked one or one whose size alone showed it changed. Hashed here through the
+		// repository's filters, so the id is the one `git hash-object` gives.
+		void FillWorkingTreeIds(git_repository* handle, Diff& diff)
+		{
+			const char* noPathForFilters = nullptr;
+
+			for (FileDiff& file : diff.Files)
+			{
+				const bool newSideExists = !file.NewPath.empty();
+
+				if (!newSideExists || !file.NewId.IsZero())
+				{
+					continue;
+				}
+
+				git_oid contentId{};
+				const int hashResult = git_repository_hashfile(&contentId, handle, ToGitPath(file.NewPath).c_str(),
+															   GIT_OBJECT_BLOB, noPathForFilters);
+
+				if (hashResult == 0)
+				{
+					file.NewId = ToOid(contentId);
+				}
+			}
 		}
 	}
 
@@ -415,6 +455,11 @@ namespace Core {
 		if (foreachResult != 0)
 		{
 			return Error{ErrorCode::IoFailure, std::format("cannot read the diff: {}", LastLibgit2Message())};
+		}
+
+		if (comparesWorkTree)
+		{
+			FillWorkingTreeIds(m_Handle.get(), collected);
 		}
 
 		return collected;
