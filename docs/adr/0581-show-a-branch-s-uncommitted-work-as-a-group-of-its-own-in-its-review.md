@@ -15,7 +15,9 @@ Uncommitted work is off by default. A toggle in the tab turns it on. The toggle 
 
 When it is on, the worktree holding the branch is diffed against its HEAD, which is the tip of the branch. Those files are listed under their own heading, "Uncommitted in worktree". Committed and uncommitted work are never mixed in one diff. An untracked file counts as an added file ([0504](0504-treat-an-untracked-file-as-an-added-file-in-a-working-tree-diff.md)).
 
-The worktree is watched only while the toggle is on and the tab is open. Changes are debounced. A tab that is hidden does no git work.
+The worktree is watched only while the toggle is on and the tab is open. Changes are debounced. A tab that is hidden does no git work. The worktree's diff is asked again when the watch reports a settled change and when the branch's tip moves, since a commit made in the worktree changes no file the watch reports. A branch list that leaves the tip where it was asks for nothing.
+
+The worktree is opened at exactly its folder. A folder that lost its `.git` file reads as gone, never as the repository around it, and a worktree whose folder is gone holds no branch.
 
 When a refresh arrives and the selected file's pair of blob ids is unchanged, its texts carry forward and are not read again. A working-tree side that libgit2 left unhashed is hashed through the repository's filters, so the pair is comparable.
 

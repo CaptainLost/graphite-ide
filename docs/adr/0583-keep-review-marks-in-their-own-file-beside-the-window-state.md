@@ -14,6 +14,7 @@ Viewed marks ([0582](0582-key-a-viewed-mark-by-its-group-its-path-and-the-pair-o
 Review marks live in `<folder>/.graphite/reviews.json`, a versioned JSON file.
 
 - It is written atomically, two seconds after the last change, and at once when the folder closes or another folder opens, and when the application shuts down.
+- A file whose marks could not be taken in is never simply written over. One that does not parse, or is of a version this build does not know, is first copied to `reviews.json.bak`, and is not written over if the copy fails. One that cannot be read at all is not written until the folder is opened again.
 - `workspace.json` keeps only the open review tabs, under `restore.review.*`.
 - Line comments will be kept in `reviews.json` too.
 
@@ -25,6 +26,8 @@ Review marks live in `<folder>/.graphite/reviews.json`, a versioned JSON file.
 
 **A version field allows change.** The file will gain comments, and the reader of an older file must be able to tell what it holds.
 
+**What was not read is not written over.** A file that opened with no marks because it could not be taken in still holds the reader's earlier work. Writing the first new mark over it would lose all of that work.
+
 ## Consequences
 
 ### Positive
@@ -32,10 +35,12 @@ Review marks live in `<folder>/.graphite/reviews.json`, a versioned JSON file.
 - Closing a tab does not lose its marks.
 - The per-frame snapshot of the window never touches the marks.
 - Comments have a home when they come.
+- A hand edit that breaks the file, or a file written by a newer build, is kept as `reviews.json.bak`.
 
 ### Negative
 
 - A crash within two seconds of the last click loses that click.
+- Marks made while the file cannot be read are lost when the folder closes.
 - There is one more file in `.graphite/` to keep in step with the folder.
 
 ### Neutral

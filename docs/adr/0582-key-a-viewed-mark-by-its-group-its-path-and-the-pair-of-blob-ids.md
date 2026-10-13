@@ -17,7 +17,7 @@ A viewed mark is keyed by the branch, the group, the path as shown, the old blob
 - The same group and path with another pair: the file is changed since viewed, and its row says `changed`.
 - The group is part of the key, so marking a file among the commits does not mark it among the uncommitted work.
 
-Marks of a branch missing from a branch list read whole are dropped. A rename sent from Graphite carries the marks to the new name.
+Marks of a branch missing from two branch lists read whole in a row are dropped. A rename sent from Graphite carries the marks to the new name, and a review against a renamed base follows it too.
 
 ## Rationale
 
@@ -27,7 +27,7 @@ Marks of a branch missing from a branch list read whole are dropped. A rename se
 
 **The group keeps two rows apart.** The same path in both groups has different blob pairs and different meanings.
 
-**Dropping on a whole read is safe.** A snapshot read whole lists every branch. A branch missing from it is gone, and its marks have no place to be shown.
+**Dropping after two whole reads is safe.** A snapshot read whole lists every branch, but a read that races `git pack-refs` can miss one for that one read. A branch missing from two in a row is gone, and its marks have no place to be shown.
 
 ## Consequences
 
