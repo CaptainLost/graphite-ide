@@ -1,4 +1,4 @@
-# 0580. Key a viewed mark by its group, its path and the pair of blob ids
+# 0582. Key a viewed mark by its group, its path and the pair of blob ids
 
 Status: proposed
 Date: 2026-10-13
@@ -7,7 +7,7 @@ Date: 2026-10-13
 
 A reader marks a file of a review as viewed and expects the mark to mean "I have read this file as it is now". The branch keeps moving. A commit, a rebase or an edit in the worktree can change the file after it was marked. A mark that outlives such a change tells the reader something false.
 
-One file can be listed twice in a review, once among the commits and once among the uncommitted work ([0579](0579-show-a-branch-s-uncommitted-work-as-a-group-of-its-own-in-its-review.md)).
+One file can be listed twice in a review, once among the commits and once among the uncommitted work ([0581](0581-show-a-branch-s-uncommitted-work-as-a-group-of-its-own-in-its-review.md)).
 
 ## Decision
 
@@ -17,7 +17,7 @@ A viewed mark is keyed by the branch, the group, the path as shown, the old blob
 - The same group and path with another pair: the file is changed since viewed, and its row says `changed`.
 - The group is part of the key, so marking a file among the commits does not mark it among the uncommitted work.
 
-Marks of a branch missing from a snapshot of GitModel that was read whole are dropped. A rename sent from Graphite carries the marks to the new name.
+Marks of a branch missing from a branch list read whole are dropped. A rename sent from Graphite carries the marks to the new name.
 
 ## Rationale
 
@@ -54,6 +54,6 @@ Marks of a branch missing from a snapshot of GitModel that was read whole are dr
 
 ## Related
 
-- [0578](0578-review-a-branch-against-its-merge-base-with-the-base-taken-from-head.md): the range whose files are marked.
-- [0579](0579-show-a-branch-s-uncommitted-work-as-a-group-of-its-own-in-its-review.md): the two groups.
-- [0581](0581-keep-review-marks-in-their-own-file-beside-the-window-state.md): where the marks are kept.
+- [0580](0580-review-a-branch-against-its-merge-base-with-the-base-taken-from-head.md): the range whose files are marked.
+- [0581](0581-show-a-branch-s-uncommitted-work-as-a-group-of-its-own-in-its-review.md): the two groups.
+- [0583](0583-keep-review-marks-in-their-own-file-beside-the-window-state.md): where the marks are kept.

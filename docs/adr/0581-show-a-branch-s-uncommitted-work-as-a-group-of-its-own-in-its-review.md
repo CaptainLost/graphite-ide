@@ -1,11 +1,11 @@
-# 0579. Show a branch's uncommitted work as a group of its own in its review
+# 0581. Show a branch's uncommitted work as a group of its own in its review
 
 Status: proposed
 Date: 2026-10-13
 
 ## Context
 
-A review reads the committed range of a branch ([0578](0578-review-a-branch-against-its-merge-base-with-the-base-taken-from-head.md)). The author of that branch often has edits not yet committed, in the worktree that holds it, and wants to see them beside the committed work. Mixing the two in one diff would make a line's place in history unclear. It would also change a file's diff on every save to disk.
+A review reads the committed range of a branch ([0580](0580-review-a-branch-against-its-merge-base-with-the-base-taken-from-head.md)). The author of that branch often has edits not yet committed, in the worktree that holds it, and wants to see them beside the committed work. Mixing the two in one diff would make a line's place in history unclear. It would also change a file's diff on every save to disk.
 
 Watching a worktree and diffing it costs git work, and Graphite draws only when there is reason to ([0530](0530-draw-a-frame-only-when-there-is-reason-to.md)).
 
@@ -25,7 +25,7 @@ When a refresh arrives and the selected file's pair of blob ids is unchanged, it
 
 **Off by default keeps the cost off.** Most reviews are of work that is done. They need no watcher and no worktree diff.
 
-**Watch only what is on screen.** A tab nobody sees has no reason to run git. With a review tab open and nothing changing, the instance used 0.6 s of CPU over 60 s.
+**A hidden tab does no git work.** A tab nobody sees has no reason to run git, so its refreshes wait until it is drawn. With a review tab open and nothing changing, the instance used 0.6 s of CPU over 60 s.
 
 ## Consequences
 
@@ -52,7 +52,7 @@ When a refresh arrives and the selected file's pair of blob ids is unchanged, it
 
 ## Related
 
-- [0578](0578-review-a-branch-against-its-merge-base-with-the-base-taken-from-head.md): the committed range.
+- [0580](0580-review-a-branch-against-its-merge-base-with-the-base-taken-from-head.md): the committed range.
 - [0504](0504-treat-an-untracked-file-as-an-added-file-in-a-working-tree-diff.md): how an untracked file is shown.
 - [0530](0530-draw-a-frame-only-when-there-is-reason-to.md): why a hidden tab stays quiet.
-- [0580](0580-key-a-viewed-mark-by-its-group-its-path-and-the-pair-of-blob-ids.md): marks per group.
+- [0582](0582-key-a-viewed-mark-by-its-group-its-path-and-the-pair-of-blob-ids.md): marks per group.

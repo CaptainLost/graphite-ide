@@ -1,4 +1,4 @@
-# 0578. Review a branch against its merge base with the base taken from HEAD
+# 0580. Review a branch against its merge base with the base taken from HEAD
 
 Status: proposed
 Date: 2026-10-13
@@ -14,7 +14,7 @@ Most branches are reviewed against the branch the user has checked out, and that
 A review is the diff from `git merge-base branch base` to the tip of the branch. It never shows the base's later commits.
 
 The base defaults from HEAD:
-- while a branch is checked out, the base is that branch;
+- for any other branch, the base is the checked-out branch;
 - for the checked-out branch itself, the base is its upstream;
 - while HEAD is detached, there is no base until the user picks one in the tab.
 
@@ -22,7 +22,7 @@ The tab's base field changes the base to any branch.
 
 A missing branch, a missing base and no common ancestor are answers the tab states in a sentence. They are not failures. The tab of a deleted branch offers Close.
 
-A branch move keeps the last loaded review on screen until the new diff arrives. The tab does not show "Loading..." for each commit.
+A branch move keeps the last loaded review on screen until the new diff arrives. The tab does not show "Loading…" for each commit.
 
 Core gained `ResolveReference`, `MergeBase`, `WorktreeHolding`, `FileDiff::OldId` and `FileDiff::NewId`, and `LogRequest::Exclude`. Nothing in Core knows about reviews ([0002](0002-keep-core-free-of-ide-knowledge.md)).
 
@@ -47,7 +47,7 @@ Core gained `ResolveReference`, `MergeBase`, `WorktreeHolding`, `FileDiff::OldId
 ### Negative
 
 - Detached HEAD has no default, so the user picks a base before the first review.
-- For the checked-out branch, a branch with no upstream has no default either.
+- The checked-out branch has no default base when it has no upstream.
 - The screen can show a review one move behind until the new diff arrives.
 
 ### Neutral
@@ -63,5 +63,5 @@ Core gained `ResolveReference`, `MergeBase`, `WorktreeHolding`, `FileDiff::OldId
 ## Related
 
 - [0002](0002-keep-core-free-of-ide-knowledge.md): the queries added to Core name no review.
-- [0579](0579-show-a-branch-s-uncommitted-work-as-a-group-of-its-own-in-its-review.md): uncommitted work in the same tab.
-- [0580](0580-key-a-viewed-mark-by-its-group-its-path-and-the-pair-of-blob-ids.md): the viewed marks of a review.
+- [0581](0581-show-a-branch-s-uncommitted-work-as-a-group-of-its-own-in-its-review.md): uncommitted work in the same tab.
+- [0582](0582-key-a-viewed-mark-by-its-group-its-path-and-the-pair-of-blob-ids.md): the viewed marks of a review.
