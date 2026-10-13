@@ -613,4 +613,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0581](0581-show-a-branch-s-uncommitted-work-as-a-group-of-its-own-in-its-review.md) | Show a branch's uncommitted work as a group of its own in its review | proposed | 2026-10-13 |
 | [0582](0582-key-a-viewed-mark-by-its-group-its-path-and-the-pair-of-blob-ids.md) | Key a viewed mark by its group, its path and the pair of blob ids | proposed | 2026-10-13 |
 | [0583](0583-keep-review-marks-in-their-own-file-beside-the-window-state.md) | Keep review marks in their own file beside the window state | proposed | 2026-10-13 |
+| [0584](0584-read-a-publication-without-a-version-as-describing-the-version-last-sent.md) | Read a publication without a version as describing the version last sent | proposed | 2026-10-13 |
 <!-- /adr-index -->

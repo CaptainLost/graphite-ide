@@ -1049,6 +1049,14 @@ namespace Graphite {
 
 		published.Path = open->second.Path;
 
+		// OmniSharp names version 0 and csharp-ls none at all, and this client never sends 0, so
+		// such a publication can only describe the text the server has: the version last sent
+		// (ADR 0584). Read as written it would compare older than everything sent and stay dimmed.
+		if (published.Version == DocumentVersion{})
+		{
+			published.Version = DocumentVersion{open->second.Version};
+		}
+
 		const std::lock_guard<std::mutex> state(shared.StateMutex);
 		shared.Diagnostics.push_back(std::move(published));
 	}

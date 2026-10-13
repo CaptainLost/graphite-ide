@@ -1401,6 +1401,30 @@ TEST_CASE("A client describes what it runs as its launch does")
 	CHECK(StatusOf(client).Detail == "C:\\dotnet\\dotnet.exe C:\\servers\\csharp-ls\\CSharpLanguageServer.dll");
 }
 
+// OmniSharp publishes version 0 and csharp-ls in push mode none at all; this client never sends 0.
+// Read as written, every such publication compares older than what was sent and is dimmed for good.
+TEST_CASE("A publication naming no version describes the version last sent")
+{
+	Graphite::LspClient client = Offline("C:/src");
+
+	client.OpenDocument("C:/src/Main.cs", "class A {}\n");
+	client.ChangeDocument("C:/src/Main.cs", "class A { }\n");
+
+	client.Deliver(R"({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{
+		"uri":"file:///C:/src/Main.cs",
+		"diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":1,"message":"none"}]}})");
+	client.Deliver(R"({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{
+		"uri":"file:///C:/src/Main.cs","version":0,
+		"diagnostics":[{"range":{"start":{"line":0,"character":0},"end":{"line":0,"character":1}},"severity":1,"message":"zero"}]}})");
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	REQUIRE(drained.Diagnostics.size() == 2);
+	CHECK(drained.Diagnostics[0].Version == Graphite::DocumentVersion{2});
+	CHECK(drained.Diagnostics[1].Version == Graphite::DocumentVersion{2});
+}
+
 TEST_CASE("The handshake declares every token name this editor colours with the C# servers' own among them")
 {
 	TempDirectory temp;

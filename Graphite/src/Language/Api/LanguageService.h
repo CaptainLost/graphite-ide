@@ -139,8 +139,9 @@ namespace Graphite {
 		DocumentVersion() = default;
 		explicit constexpr DocumentVersion(int value) : Value(value) {}
 
-		// Zero is "never sent", and what a reply naming no version reads as. It compares less
-		// than every real version, so such a reply reads as stale rather than as current.
+		// Zero is "never sent". A publication that names no version, or names 0, is stamped by
+		// LspClient with the version last sent (ADR 0584), so zero never arrives as an answer from
+		// a client; it still compares less than every real version.
 		int Value = 0;
 
 		// A defaulted three-way comparison declares == alongside it, so both spellings work
