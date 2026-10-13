@@ -11,12 +11,15 @@
 #include "UI/IconButton.h"
 #include "UI/ToastEvent.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Events/EventBus.h"
+#include "Core/ImGui/Animation.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/UiScale.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <array>
@@ -34,8 +37,15 @@ namespace Graphite {
 		constexpr const char* kBuiltInSchemeDescription = "Built-in schemes cannot be edited. Duplicate one to change it.";
 		constexpr const char* kOwnSchemeDescription = "A copy of your own: rename it, delete it, or change its colours below.";
 		constexpr const char* kColourNote = "Dimmed names are inherited from the built-in scheme. \xE2\x86\xBA puts an overridden colour back.";
+		constexpr const char* kBuiltInColourDescription = "Built-in scheme: duplicate it to change this colour.";
 		constexpr float kColourCellWidth = 230.0f;
 		constexpr float kPercentPerScale = 100.0f;
+		constexpr float kRevealSeconds = 1.5f;
+		constexpr float kRevealStartOpacity = 0.35f;
+
+		// Two, not one: a block drawn for the first time is measured only at the end of its frame, so
+		// a colour below it is placed right only on the next.
+		constexpr int kRevealScrolls = 2;
 
 		const std::vector<std::string> kColourKeywords{"colour", "color"};
 
@@ -95,6 +105,32 @@ namespace Graphite {
 		{
 			return std::max(1, static_cast<int>(availableWidth / Core::Scaled(kColourCellWidth)));
 		}
+
+		std::string ColourGroupPrefix(std::string_view heading)
+		{
+			return std::string{heading} + "/";
+		}
+
+		// Not the name alone: Text and Background are in more than one group.
+		std::string ColourOpenWith(std::string_view heading, std::string_view name)
+		{
+			return ColourGroupPrefix(heading) + std::string{name};
+		}
+
+		bool GrowsWithItsContent(const ImGuiWindow& window)
+		{
+			return (window.ChildFlags & ImGuiChildFlags_AutoResizeY) != 0;
+		}
+
+		ImGuiWindow* ScrollingWindowAround(ImGuiWindow* window)
+		{
+			while (GrowsWithItsContent(*window) && window->ParentWindow != nullptr)
+			{
+				window = window->ParentWindow;
+			}
+
+			return window;
+		}
 	}
 
 	// Constructed before GraphiteLayer calls ActiveScheme::Load, so this reads the setting rather than
@@ -124,12 +160,67 @@ namespace Graphite {
 		m_DeleteQuestion.Withdraw();
 		m_RenameQuestion.Withdraw();
 		m_RenameShown = false;
+		m_Revealed.reset();
 
 		FlushColourEdit();
 		m_Draft.Select(m_Settings.GetColorScheme());
 		Apply();
 
 		PublishDraftFailure();
+	}
+
+	void AppearancePage::OnOpenedFromSearch(std::string_view openWith)
+	{
+		m_Revealed = RevealedColour{.OpenWith = std::string{openWith}, .ScrollsLeft = kRevealScrolls};
+	}
+
+	bool AppearancePage::IsRevealed(std::string_view heading, std::string_view name) const
+	{
+		return m_Revealed.has_value() && m_Revealed->OpenWith == ColourOpenWith(heading, name);
+	}
+
+	bool AppearancePage::IsScrollingToGroup(std::string_view heading) const
+	{
+		return m_Revealed.has_value() && m_Revealed->ScrollsLeft > 0 && m_Revealed->OpenWith.starts_with(ColourGroupPrefix(heading));
+	}
+
+	ImU32 AppearancePage::RevealHighlight() const
+	{
+		const float progress = std::min(m_Revealed->SecondsShown / kRevealSeconds, 1.0f);
+		ImVec4 colour = ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive);
+		colour.w = kRevealStartOpacity * (1.0f - progress * progress);
+
+		return ImGui::GetColorU32(colour);
+	}
+
+	// Reads the item drawn last, so it is called straight after the colour's group ends.
+	void AppearancePage::ScrollToRevealedColour()
+	{
+		if (m_Revealed->ScrollsLeft == 0)
+		{
+			return;
+		}
+
+		--m_Revealed->ScrollsLeft;
+
+		const ImRect colourRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+		ImGui::ScrollToRect(ScrollingWindowAround(ImGui::GetCurrentWindow()), colourRect,
+							ImGuiScrollFlags_AlwaysCenterY | ImGuiScrollFlags_NoScrollParent);
+	}
+
+	void AppearancePage::AdvanceReveal()
+	{
+		if (!m_Revealed.has_value())
+		{
+			return;
+		}
+
+		m_Revealed->SecondsShown += std::min(ImGui::GetIO().DeltaTime, Core::Animation::kLongestStepSeconds);
+
+		if (m_Revealed->SecondsShown >= kRevealSeconds)
+		{
+			m_Revealed.reset();
+		}
 	}
 
 	void AppearancePage::PublishDraftFailure()
@@ -233,16 +324,26 @@ namespace Graphite {
 	{
 		DrawColourSwatch(which);
 
-		if (!m_Draft.IsReadOnly() && m_Draft.IsOverridden(which))
+		if (m_Draft.IsReadOnly())
 		{
-			ImGui::SameLine();
+			return;
+		}
+
+		ImGui::SameLine();
+
+		if (m_Draft.IsOverridden(which))
+		{
 			DrawColourReset(which);
+		}
+		else
+		{
+			ImGui::Dummy(ImVec2(IconButtonSize(), ImGui::GetFrameHeight()));
 		}
 	}
 
 	template<typename Which>
 		requires std::is_enum_v<Which>
-	std::vector<SettingsRow> AppearancePage::FindColours(std::size_t count, std::span<const std::string> words)
+	std::vector<SettingsRow> AppearancePage::FindColours(const char* heading, std::size_t count, std::span<const std::string> words)
 	{
 		const bool ownScheme = !m_Draft.IsReadOnly();
 		float controlWidth = ImGui::GetFrameHeight();
@@ -269,9 +370,11 @@ namespace Graphite {
 
 			rows.push_back(SettingsRow{.Key = name,
 									   .Title = name,
+									   .Description = ownScheme ? "" : kBuiltInColourDescription,
 									   .DimmedTitle = inherited,
 									   .ControlWidth = controlWidth,
-									   .DrawControl = [this, which] { DrawColourResult(which); }});
+									   .DrawControl = [this, which] { DrawColourResult(which); },
+									   .OpenWith = ColourOpenWith(heading, name)});
 		}
 
 		return rows;
@@ -279,7 +382,7 @@ namespace Graphite {
 
 	template<typename Which>
 		requires std::is_enum_v<Which>
-	void AppearancePage::DrawColourGrid(std::size_t count)
+	void AppearancePage::DrawColourGrid(const char* heading, std::size_t count)
 	{
 		const int columnCount = ColumnsFor(ImGui::GetContentRegionAvail().x);
 
@@ -290,10 +393,27 @@ namespace Graphite {
 
 		for (std::size_t colourIndex = 0; colourIndex < count; ++colourIndex)
 		{
+			const Which which = static_cast<Which>(colourIndex);
+			const bool revealed = IsRevealed(heading, LabelOf(which));
+
 			ImGui::TableNextColumn();
+
+			if (revealed)
+			{
+				ImGui::TableSetBgColor(ImGuiTableBgTarget_CellBg, RevealHighlight());
+			}
+
 			ImGui::PushID(static_cast<int>(colourIndex));
-			DrawColour(static_cast<Which>(colourIndex));
+			ImGui::BeginGroup();
+			DrawColour(which);
+			ImGui::EndGroup();
 			ImGui::PopID();
+
+			if (revealed)
+			{
+				ScrollToRevealedColour();
+				Core::Redraw::RequestIn(Core::Redraw::Clock::duration::zero());
+			}
 		}
 
 		ImGui::EndTable();
@@ -314,8 +434,11 @@ namespace Graphite {
 
 		card.Rows.push_back(SettingsRow{.Title = heading,
 										.Keywords = std::move(keywords),
-										.DrawBlock = [this, count] { DrawColourGrid<Which>(count); },
-										.FindInside = [this, count](std::span<const std::string> words) { return FindColours<Which>(count, words); }});
+										.DrawBlock = [this, heading, count] { DrawColourGrid<Which>(heading, count); },
+										.DrawnEvenOutOfSight = IsScrollingToGroup(heading),
+										.FindInside = [this, heading, count](std::span<const std::string> words) {
+											return FindColours<Which>(heading, count, words);
+										}});
 
 		return card;
 	}
@@ -444,6 +567,8 @@ namespace Graphite {
 		{
 			FlushColourEdit();
 		}
+
+		AdvanceReveal();
 	}
 
 	void AppearancePage::RenderDialogs()

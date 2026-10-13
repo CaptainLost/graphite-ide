@@ -608,4 +608,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0576](0576-draw-a-loading-indicator-through-a-core-facade-over-imspinner.md) | Draw a loading indicator through a Core facade over imspinner | proposed | 2026-10-11 |
 | [0577](0577-install-clangd-on-request-like-every-other-language-server.md) | Install clangd on request like every other language server | proposed | 2026-10-12 |
 | [0578](0578-let-a-language-server-leave-on-its-own-and-keep-its-temporary-files-where-graphite-sweeps-them.md) | Let a language server leave on its own and keep its temporary files where Graphite sweeps them | proposed | 2026-10-12 |
+| [0579](0579-offer-open-beside-a-found-colour-and-scroll-its-page-to-it.md) | Offer Open beside a found colour and scroll its page to it | accepted | 2026-10-13 |
 <!-- /adr-index -->

@@ -40,11 +40,16 @@ namespace Graphite {
 
 		std::function<void()> DrawBlock;
 
+		// ImGui skips a block scrolled out of sight, so nothing inside it could scroll the page to
+		// itself. This costs the block that saving, so set it only for as long as the scroll takes.
+		bool DrawnEvenOutOfSight = false;
+
 		// The rows a block shows in the search results for the query's lowered words, one per thing
 		// inside it that matches every word; empty when nothing does.
 		std::function<std::vector<SettingsRow>(std::span<const std::string> words)> FindInside;
 
-		// What the [Open] of a found row with no control of its own hands the page's OnOpenedFromSearch.
+		// What a found row's [Open] hands the page's OnOpenedFromSearch. A row with a control of its own
+		// is given an [Open] after the control only when it sets this.
 		std::string OpenWith;
 
 		std::string_view GetKey() const { return Key.empty() ? std::string_view{Title} : std::string_view{Key}; }

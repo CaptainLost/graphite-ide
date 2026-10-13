@@ -174,7 +174,14 @@ namespace Graphite {
 
 			ImGui::SetCursorScreenPos(ImVec2(rowTopLeft.x + padding, rowTopLeft.y + rowPadding));
 
-			if (ImGui::BeginChild("##block", ImVec2(cardWidth - 2.0f * padding, 0.0f), ImGuiChildFlags_AutoResizeY))
+			ImGuiChildFlags blockFlags = ImGuiChildFlags_AutoResizeY;
+
+			if (row.DrawnEvenOutOfSight)
+			{
+				blockFlags |= ImGuiChildFlags_AlwaysAutoResize;
+			}
+
+			if (ImGui::BeginChild("##block", ImVec2(cardWidth - 2.0f * padding, 0.0f), blockFlags))
 			{
 				row.DrawBlock();
 			}

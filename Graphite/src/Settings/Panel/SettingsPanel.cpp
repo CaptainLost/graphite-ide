@@ -419,21 +419,44 @@ namespace Graphite {
 
 		for (const SettingsRow& hit : card.Rows)
 		{
-			if (hit.DrawControl)
+			if (!hit.DrawControl)
+			{
+				result.Rows.push_back(RowWithOpenButton(page, hit));
+			}
+			else if (!hit.OpenWith.empty())
+			{
+				result.Rows.push_back(RowWithControlAndOpenButton(page, hit));
+			}
+			else
 			{
 				result.Rows.push_back(hit);
-				continue;
 			}
-
-			result.Rows.push_back(SettingsRow{.Key = std::string{hit.GetKey()},
-											  .Title = hit.Title,
-											  .Description = hit.Description,
-											  .Problem = hit.Problem,
-											  .ControlWidth = SettingsLayout::ButtonsWidth(kOpenLabels),
-											  .DrawControl = [this, path = page.Path, openWith = hit.OpenWith] { DrawOpenButton(path, openWith); }});
 		}
 
 		return result;
+	}
+
+	SettingsRow SettingsPanel::RowWithOpenButton(const SettingsPageHits& page, const SettingsRow& hit)
+	{
+		return SettingsRow{.Key = std::string{hit.GetKey()},
+						   .Title = hit.Title,
+						   .Description = hit.Description,
+						   .Problem = hit.Problem,
+						   .ControlWidth = SettingsLayout::ButtonsWidth(kOpenLabels),
+						   .DrawControl = [this, path = page.Path, openWith = hit.OpenWith] { DrawOpenButton(path, openWith); }};
+	}
+
+	SettingsRow SettingsPanel::RowWithControlAndOpenButton(const SettingsPageHits& page, const SettingsRow& hit)
+	{
+		SettingsRow row = hit;
+		row.ControlWidth += ImGui::GetStyle().ItemSpacing.x + SettingsLayout::ButtonsWidth(kOpenLabels);
+		row.DrawControl = [this, control = hit.DrawControl, path = page.Path, openWith = hit.OpenWith] {
+			control();
+			ImGui::SameLine();
+			DrawOpenButton(path, openWith);
+		};
+
+		return row;
 	}
 
 	void SettingsPanel::DrawOpenButton(const std::vector<std::string>& path, const std::string& openWith)

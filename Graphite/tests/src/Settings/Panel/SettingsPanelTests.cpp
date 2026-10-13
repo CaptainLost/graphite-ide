@@ -28,7 +28,10 @@ namespace {
 	{
 		bool WordWrap = false;
 		bool FoundClicked = false;
+		bool SwatchClicked = false;
 		ImVec2 WordWrapCentre;
+		ImVec2 SwatchCentre;
+		float SwatchRight = 0.0f;
 		ImVec2 PaddingInside;
 	};
 
@@ -107,11 +110,40 @@ namespace {
 			}
 		}
 
+		std::vector<Graphite::SettingsRow> FindInKeyBindingsWithControlAndOpen(std::span<const std::string> words)
+		{
+			if (words.empty() || words.front() != "swatch")
+			{
+				return {};
+			}
+
+			return {Graphite::SettingsRow{.Key = "swatch",
+										  .Title = "Swatch Here",
+										  .ControlWidth = 60.0f,
+										  .DrawControl = [this] { SwatchClicked(); },
+										  .OpenWith = "Swatch Here"}};
+		}
+
+		void SwatchClicked()
+		{
+			if (ImGui::Button("swatch"))
+			{
+				Controls.SwatchClicked = true;
+			}
+
+			const ImVec2 itemMin = ImGui::GetItemRectMin();
+			const ImVec2 itemMax = ImGui::GetItemRectMax();
+			Controls.SwatchCentre = ImVec2((itemMin.x + itemMax.x) * 0.5f, (itemMin.y + itemMax.y) * 0.5f);
+			Controls.SwatchRight = itemMax.x;
+		}
+
 		std::vector<Graphite::SettingsRow> FindInside(std::span<const std::string> words)
 		{
 			std::vector<Graphite::SettingsRow> found = FindInKeyBindings(words);
 			std::vector<Graphite::SettingsRow> withControl = FindInKeyBindingsWithControl(words);
+			std::vector<Graphite::SettingsRow> withControlAndOpen = FindInKeyBindingsWithControlAndOpen(words);
 			found.insert(found.end(), withControl.begin(), withControl.end());
+			found.insert(found.end(), withControlAndOpen.begin(), withControlAndOpen.end());
 
 			return found;
 		}
@@ -456,24 +488,42 @@ TEST_CASE("The padding of the panel's child windows does not reach what is drawn
 
 namespace {
 
-	// The lowest point at which the mouse is over an item of the named window; nothing is clicked.
+	// Draws a frame with the mouse at the point; nothing is clicked.
+	bool IsOverItemOf(PanelFixture& fixture, std::string_view windowName, ImVec2 point)
+	{
+		ImGui::GetIO().AddMousePosEvent(point.x, point.y);
+		fixture.Frames.Next([&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
+
+		const ImGuiContext& context = *ImGui::GetCurrentContext();
+		const bool inWindow =
+			context.HoveredWindow != nullptr && std::string_view(context.HoveredWindow->Name).find(windowName) != std::string_view::npos;
+
+		return inWindow && context.HoveredId != 0;
+	}
+
 	ImVec2 LowestItemIn(PanelFixture& fixture, std::string_view windowName)
 	{
 		for (float y = 590.0f; y > 0.0f; y -= 4.0f)
 		{
 			for (float x = 20.0f; x < 980.0f; x += 20.0f)
 			{
-				ImGui::GetIO().AddMousePosEvent(x, y);
-				fixture.Frames.Next([&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
-
-				const ImGuiContext& context = *ImGui::GetCurrentContext();
-				const bool inWindow =
-					context.HoveredWindow != nullptr && std::string_view(context.HoveredWindow->Name).find(windowName) != std::string_view::npos;
-
-				if (inWindow && context.HoveredId != 0)
+				if (IsOverItemOf(fixture, windowName, ImVec2(x, y)))
 				{
 					return ImVec2(x, y);
 				}
+			}
+		}
+
+		return ImVec2(-1.0f, -1.0f);
+	}
+
+	ImVec2 RightmostItemOnLine(PanelFixture& fixture, std::string_view windowName, float y)
+	{
+		for (float x = 990.0f; x > 0.0f; x -= 4.0f)
+		{
+			if (IsOverItemOf(fixture, windowName, ImVec2(x, y)))
+			{
+				return ImVec2(x, y);
 			}
 		}
 
@@ -496,7 +546,7 @@ TEST_CASE("Clicking Open on a found row opens the page, ends the search and hand
 	CHECK(fixture.KeyBindings->GetOpenedFromSearch() == std::vector<std::string>{"Save File"});
 }
 
-TEST_CASE("A found row with a control of its own is drawn with that control and no Open button")
+TEST_CASE("A found row with a control of its own and nothing to open with is drawn with that control and no Open button")
 {
 	PanelFixture fixture;
 	fixture.Panel.SetQuery("found");
@@ -509,6 +559,28 @@ TEST_CASE("A found row with a control of its own is drawn with that control and 
 	CHECK(fixture.Controls.FoundClicked);
 	CHECK(fixture.Panel.IsSearching());
 	CHECK(fixture.KeyBindings->GetOpenedFromSearch().empty());
+}
+
+TEST_CASE("A found row with a control of its own and something to open with is drawn with that control and an Open button after it")
+{
+	PanelFixture fixture;
+	fixture.Panel.SetQuery("swatch");
+	fixture.DrawFrames();
+	REQUIRE(fixture.Controls.SwatchCentre.x > 0.0f);
+	const ImVec2 control = fixture.Controls.SwatchCentre;
+	const ImVec2 openButton = RightmostItemOnLine(fixture, "##results", control.y);
+	REQUIRE(openButton.x > fixture.Controls.SwatchRight);
+
+	fixture.Frames.Click(control, [&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
+
+	CHECK(fixture.Controls.SwatchClicked);
+	CHECK(fixture.Panel.IsSearching());
+
+	fixture.Frames.Click(openButton, [&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
+
+	CHECK_FALSE(fixture.Panel.IsSearching());
+	CHECK(fixture.Panel.GetOpenPath() == std::vector<std::string>{"keyBindings"});
+	CHECK(fixture.KeyBindings->GetOpenedFromSearch() == std::vector<std::string>{"Swatch Here"});
 }
 
 TEST_CASE("Clicking a sidebar entry during a search opens its page without touching any page's filter")

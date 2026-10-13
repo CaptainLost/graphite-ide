@@ -10,6 +10,7 @@
 #include <array>
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -53,7 +54,16 @@ namespace Graphite {
 		// painted from something that was never written down.
 		void OnDeactivated() override;
 
+		void OnOpenedFromSearch(std::string_view openWith) override;
+
 	private:
+		struct RevealedColour
+		{
+			std::string OpenWith;
+			int ScrollsLeft = 0;
+			float SecondsShown = 0.0f;
+		};
+
 		SettingsCard DescribeTheme();
 		SettingsCard DescribeInterface();
 
@@ -65,7 +75,7 @@ namespace Graphite {
 
 		template<typename Which>
 			requires std::is_enum_v<Which>
-		void DrawColourGrid(std::size_t count);
+		void DrawColourGrid(const char* heading, std::size_t count);
 
 		template<typename Which>
 			requires std::is_enum_v<Which>
@@ -85,7 +95,13 @@ namespace Graphite {
 
 		template<typename Which>
 			requires std::is_enum_v<Which>
-		std::vector<SettingsRow> FindColours(std::size_t count, std::span<const std::string> words);
+		std::vector<SettingsRow> FindColours(const char* heading, std::size_t count, std::span<const std::string> words);
+
+		bool IsRevealed(std::string_view heading, std::string_view name) const;
+		bool IsScrollingToGroup(std::string_view heading) const;
+		ImU32 RevealHighlight() const;
+		void ScrollToRevealedColour();
+		void AdvanceReveal();
 
 		std::vector<std::string> SchemeActionLabels() const;
 
@@ -120,5 +136,7 @@ namespace Graphite {
 		std::string m_RenameError;
 
 		bool m_ColourEdited = false;
+
+		std::optional<RevealedColour> m_Revealed;
 	};
 }

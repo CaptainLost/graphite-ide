@@ -296,6 +296,57 @@ TEST_CASE("Cards draw every kind of row, wide and narrow, without an ImGui asser
 	CHECK(controls.WordWrapMin.x > 0.0f);
 }
 
+namespace {
+
+	struct BlockDraws
+	{
+		int Plain = 0;
+		int DrawnEvenOutOfSight = 0;
+	};
+
+	// The card stands below the bottom of a short window, out of sight.
+	void DrawBlocksOutOfSight(BlockDraws& draws)
+	{
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(600.0f, 200.0f));
+		ImGui::Begin("Short");
+		ImGui::Dummy(ImVec2(0.0f, 1000.0f));
+
+		Graphite::SettingsCard blocks{.Heading = "Blocks"};
+		blocks.Rows.push_back(Graphite::SettingsRow{.Title = "Plain", .DrawBlock = [&draws] {
+														++draws.Plain;
+														DrawTable();
+													}});
+		blocks.Rows.push_back(Graphite::SettingsRow{.Title = "Kept",
+													.DrawBlock = [&draws] {
+														++draws.DrawnEvenOutOfSight;
+														DrawTable();
+													},
+													.DrawnEvenOutOfSight = true});
+		Graphite::SettingsLayout::DrawCard(blocks, IM_COL32(255, 80, 80, 255));
+
+		ImGui::End();
+	}
+}
+
+TEST_CASE("Out of sight, a block is drawn only when it asks to be")
+{
+	ImGuiFrames frames;
+	BlockDraws draws;
+
+	for (int frameIndex = 0; frameIndex < 4; ++frameIndex)
+	{
+		frames.Next([&draws] { DrawBlocksOutOfSight(draws); });
+	}
+
+	draws = BlockDraws{};
+	frames.Next([&draws] { DrawBlocksOutOfSight(draws); });
+	frames.Next([&draws] { DrawBlocksOutOfSight(draws); });
+
+	CHECK(draws.Plain == 0);
+	CHECK(draws.DrawnEvenOutOfSight == 2);
+}
+
 TEST_CASE("Cards that fit the window leave nothing to scroll")
 {
 	ImGuiFrames frames;

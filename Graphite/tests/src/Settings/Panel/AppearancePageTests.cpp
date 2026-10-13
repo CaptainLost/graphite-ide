@@ -11,6 +11,7 @@
 #include "Theme/ColorScheme.h"
 #include "UI/ModalGate.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Events/EventBus.h"
 
 #include <imgui.h>
@@ -55,6 +56,9 @@ namespace {
 	};
 
 	constexpr std::size_t kThemeAndInterfaceCards = 2;
+
+	// One colour to a line, so the page is taller than its window.
+	constexpr float kNarrowWidth = 400.0f;
 
 	std::vector<Graphite::SettingsRow> FindInFrame(AppearanceScreen& screen, const Graphite::SettingsRow& block, std::string_view query)
 	{
@@ -115,8 +119,8 @@ TEST_CASE("A colour is found by its name through its group's block, as a row of 
 	REQUIRE(comment.size() == 1);
 	CHECK(comment[0].Title == "Comment");
 	CHECK(comment[0].Key == "Comment");
-	CHECK(comment[0].Description.empty());
 	CHECK(comment[0].DrawControl);
+	CHECK_FALSE(comment[0].OpenWith.empty());
 
 	CHECK(FindInFrame(screen, *block, "COMMENT").size() == 1);
 	CHECK(FindInFrame(screen, *block, "zzz").empty());
@@ -216,6 +220,196 @@ TEST_CASE("In an own scheme an inherited colour's row is dimmed and an overridde
 	REQUIRE_FALSE(keyword.empty());
 	CHECK(keyword[0].DimmedTitle);
 	CHECK(keyword[0].Description.empty());
+}
+
+TEST_CASE("A found colour of a built-in scheme says how to change it, and one of an own scheme says nothing")
+{
+	AppearanceScreen builtIn;
+	AppearanceScreen own(true);
+
+	const std::optional<Graphite::SettingsRow> builtInBlock = builtIn.Frames.FindRow("Syntax colours");
+	const std::optional<Graphite::SettingsRow> ownBlock = own.Frames.FindRow("Syntax colours");
+	REQUIRE(builtInBlock.has_value());
+	REQUIRE(ownBlock.has_value());
+
+	const std::vector<Graphite::SettingsRow> builtInRows = FindInFrame(builtIn, *builtInBlock, "string");
+	const std::vector<Graphite::SettingsRow> ownRows = FindInFrame(own, *ownBlock, "string");
+
+	REQUIRE(builtInRows.size() == 1);
+	REQUIRE(ownRows.size() == 1);
+	CHECK(builtInRows[0].Description == "Built-in scheme: duplicate it to change this colour.");
+	CHECK(ownRows[0].Description.empty());
+}
+
+TEST_CASE("Colours of one name in two groups are opened with different words")
+{
+	AppearanceScreen screen;
+
+	const std::optional<Graphite::SettingsRow> syntax = screen.Frames.FindRow("Syntax colours");
+	const std::optional<Graphite::SettingsRow> editor = screen.Frames.FindRow("Editor colours");
+	REQUIRE(syntax.has_value());
+	REQUIRE(editor.has_value());
+
+	const std::vector<Graphite::SettingsRow> syntaxText = FindInFrame(screen, *syntax, "text");
+	const std::vector<Graphite::SettingsRow> editorText = FindInFrame(screen, *editor, "text");
+	REQUIRE_FALSE(syntaxText.empty());
+	REQUIRE_FALSE(editorText.empty());
+	REQUIRE(syntaxText[0].Title == "Text");
+	REQUIRE(editorText[0].Title == "Text");
+
+	CHECK(syntaxText[0].OpenWith != editorText[0].OpenWith);
+}
+
+namespace {
+
+	enum class PageBefore
+	{
+		NeverDrawn,
+		Drawn
+	};
+
+	// Opened from the found colour Accent, halfway down the page: such a colour can be centred, so the
+	// page is not scrolled to its end.
+	std::string OpenWithForAccent(AppearanceScreen& screen)
+	{
+		const std::optional<Graphite::SettingsRow> block = screen.Frames.FindRow("Application colours");
+		REQUIRE(block.has_value());
+		const std::vector<Graphite::SettingsRow> found = FindInFrame(screen, *block, "accent");
+		REQUIRE(found.size() == 1);
+
+		return found[0].OpenWith;
+	}
+
+	float ScrollAfterOpeningAccent(PageBefore pageBefore)
+	{
+		AppearanceScreen screen;
+
+		if (pageBefore == PageBefore::Drawn)
+		{
+			screen.Frames.DrawPageTwice(kNarrowWidth);
+		}
+
+		screen.Page.OnOpenedFromSearch(OpenWithForAccent(screen));
+		screen.Frames.DrawPageTwice(kNarrowWidth);
+		screen.Frames.DrawPageTwice(kNarrowWidth);
+
+		const ImGuiWindow* window = ImGui::FindWindowByName("Settings");
+		REQUIRE(window != nullptr);
+		CHECK(window->Scroll.y < window->ScrollMax.y);
+
+		return window->Scroll.y;
+	}
+
+	// The light's 1.5 s at the test frames' 1/60 s each.
+	constexpr int kFramesTheLightLasts = 90;
+}
+
+TEST_CASE("Opening a found colour scrolls the page to it, whether or not the page was drawn before")
+{
+	const float afterDrawing = ScrollAfterOpeningAccent(PageBefore::Drawn);
+	const float fresh = ScrollAfterOpeningAccent(PageBefore::NeverDrawn);
+
+	CHECK(afterDrawing > 0.0f);
+	CHECK(fresh == doctest::Approx(afterDrawing));
+}
+
+TEST_CASE("Opening the page with words that name no colour does not scroll it")
+{
+	AppearanceScreen screen;
+
+	screen.Page.OnOpenedFromSearch("background");
+	screen.Frames.DrawPageTwice(kNarrowWidth);
+	screen.Frames.DrawPageTwice(kNarrowWidth);
+
+	const ImGuiWindow* window = ImGui::FindWindowByName("Settings");
+	REQUIRE(window != nullptr);
+	CHECK(window->Scroll.y == 0.0f);
+}
+
+TEST_CASE("A found colour asks for the next frame while its light fades, and for none once it has")
+{
+	AppearanceScreen screen;
+	const std::string openWith = OpenWithForAccent(screen);
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	screen.Page.OnOpenedFromSearch(openWith);
+	int framesAskedFor = 0;
+
+	for (int frameIndex = 0; frameIndex < kFramesTheLightLasts + 5; ++frameIndex)
+	{
+		screen.Frames.DrawPage(kNarrowWidth);
+
+		if (Core::Redraw::TakeDeadline().has_value())
+		{
+			++framesAskedFor;
+		}
+	}
+
+	screen.Frames.DrawPage(kNarrowWidth);
+
+	CHECK(framesAskedFor >= kFramesTheLightLasts - 2);
+	CHECK(framesAskedFor <= kFramesTheLightLasts);
+	CHECK_FALSE(Core::Redraw::TakeDeadline().has_value());
+}
+
+TEST_CASE("Opening the page with words that name no colour asks for no frames")
+{
+	AppearanceScreen screen;
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	screen.Page.OnOpenedFromSearch("background");
+	int framesAskedFor = 0;
+
+	for (int frameIndex = 0; frameIndex < 5; ++frameIndex)
+	{
+		screen.Frames.DrawPage(kNarrowWidth);
+
+		if (Core::Redraw::TakeDeadline().has_value())
+		{
+			++framesAskedFor;
+		}
+	}
+
+	CHECK(framesAskedFor == 0);
+}
+
+namespace {
+
+	float DrawnControlWidth(AppearanceScreen& screen, const Graphite::SettingsRow& row)
+	{
+		float width = 0.0f;
+
+		screen.Frames.GetFrames().Next([&row, &width] {
+			ImGui::Begin("Found");
+			ImGui::PushID(row.Key.c_str());
+			ImGui::BeginGroup();
+			row.DrawControl();
+			ImGui::EndGroup();
+			width = ImGui::GetItemRectSize().x;
+			ImGui::PopID();
+			ImGui::End();
+		});
+
+		return width;
+	}
+}
+
+TEST_CASE("In an own scheme a found inherited colour keeps the reset icon's room, so what follows it lines up")
+{
+	AppearanceScreen screen(true);
+
+	const std::optional<Graphite::SettingsRow> block = screen.Frames.FindRow("Syntax colours");
+	REQUIRE(block.has_value());
+	const std::vector<Graphite::SettingsRow> overridden = FindInFrame(screen, *block, "comment");
+	const std::vector<Graphite::SettingsRow> inherited = FindInFrame(screen, *block, "keyword");
+	REQUIRE(overridden.size() == 1);
+	REQUIRE_FALSE(inherited.empty());
+	REQUIRE(inherited[0].DimmedTitle);
+
+	const float overriddenWidth = DrawnControlWidth(screen, overridden[0]);
+
+	CHECK(overriddenWidth == doctest::Approx(overridden[0].ControlWidth));
+	CHECK(DrawnControlWidth(screen, inherited[0]) == doctest::Approx(overriddenWidth));
 }
 
 TEST_CASE("A found colour row's control is as wide as the swatch, and wider in an own scheme for the reset icon")

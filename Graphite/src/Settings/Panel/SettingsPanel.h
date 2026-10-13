@@ -77,6 +77,10 @@ namespace Graphite {
 
 		SettingsCard ResultCard(const SettingsPageHits& page, const SettingsCardHits& card);
 
+		SettingsRow RowWithOpenButton(const SettingsPageHits& page, const SettingsRow& hit);
+
+		SettingsRow RowWithControlAndOpenButton(const SettingsPageHits& page, const SettingsRow& hit);
+
 		void DrawOpenButton(const std::vector<std::string>& path, const std::string& openWith);
 
 		void RenderDialogs(const std::vector<SettingsPage*>& pages);
