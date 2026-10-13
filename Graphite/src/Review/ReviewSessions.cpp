@@ -414,6 +414,47 @@ namespace Graphite {
 		++m_Version;
 	}
 
+	std::optional<SinceViewedRequest> SinceViewedRequestFor(const ReviewSessions& sessions, const std::string& branch,
+															ReviewGroup group, const Core::FileDiff& file,
+															const ReviewRange& range, Core::WhitespaceInDiff whitespace)
+	{
+		const bool hasText = file.Change != Core::FileChange::Deleted && !file.IsBinary;
+
+		if (!hasText || sessions.StateOf(branch, group, file) != ViewedState::ChangedSinceViewed)
+		{
+			return std::nullopt;
+		}
+
+		const std::optional<ViewedMark> mark = sessions.MarkOf(branch, group, file);
+
+		if (!mark.has_value() || mark->New == file.NewId)
+		{
+			return std::nullopt;
+		}
+
+		SinceViewedRequest request{.ViewedBlob = mark->New,
+								   .CurrentBlob = file.NewId,
+								   .Path = ShownPath(file),
+								   .Whitespace = whitespace};
+
+		switch (group)
+		{
+		case ReviewGroup::Commits:
+			request.Tip = range.Ends.Tip;
+			return request;
+		case ReviewGroup::Uncommitted:
+			if (!range.Worktree.has_value())
+			{
+				return std::nullopt;
+			}
+
+			request.Worktree = range.Worktree;
+			return request;
+		}
+
+		return std::nullopt;
+	}
+
 	std::string EncodeReviewSessions(const ReviewSessions::Sessions& sessions)
 	{
 		nlohmann::json encoded = nlohmann::json::object();

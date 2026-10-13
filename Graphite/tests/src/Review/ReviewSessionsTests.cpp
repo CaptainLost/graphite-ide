@@ -44,6 +44,14 @@ namespace {
 		branch.FullName = fullName;
 		return branch;
 	}
+
+	Graphite::ReviewRange RangeWithTipAndWorktree(std::uint8_t tip, const std::optional<std::filesystem::path>& worktree)
+	{
+		Graphite::ReviewRange range;
+		range.Ends.Tip = IdNumbered(tip);
+		range.Worktree = worktree;
+		return range;
+	}
 }
 
 TEST_CASE("A file is viewed while its change is the one that was marked")
@@ -426,4 +434,65 @@ TEST_CASE("A session without a base is left out and the others are kept")
 	CHECK_FALSE(decoded.Sessions.contains("refs/heads/a"));
 	REQUIRE(decoded.Sessions.contains("refs/heads/b"));
 	CHECK(decoded.Sessions.at("refs/heads/b").Settings == Graphite::SessionSettings{});
+}
+
+TEST_CASE("A committed file changed since it was viewed is diffed from the viewed version to the tip")
+{
+	ReviewSessions sessions;
+	sessions.Start(kBranch, kBase);
+	sessions.Mark(kBranch, ReviewGroup::Commits, ModifiedFile("src/a.cpp", 1, 2));
+	const Graphite::ReviewRange range = RangeWithTipAndWorktree(9, std::nullopt);
+
+	const std::optional<Graphite::SinceViewedRequest> request = Graphite::SinceViewedRequestFor(
+		sessions, kBranch, ReviewGroup::Commits, ModifiedFile("src/a.cpp", 1, 3), range, Core::WhitespaceInDiff::Ignored);
+
+	REQUIRE(request.has_value());
+	CHECK(request->ViewedBlob == IdNumbered(2));
+	CHECK(request->CurrentBlob == IdNumbered(3));
+	CHECK(request->Path == std::filesystem::path{"src/a.cpp"});
+	CHECK(request->Whitespace == Core::WhitespaceInDiff::Ignored);
+	CHECK(request->Tip == std::optional<Core::Oid>{IdNumbered(9)});
+	CHECK_FALSE(request->Worktree.has_value());
+}
+
+TEST_CASE("An uncommitted file changed since it was viewed is diffed against its worktree and not without one")
+{
+	ReviewSessions sessions;
+	sessions.Start(kBranch, kBase);
+	sessions.Mark(kBranch, ReviewGroup::Uncommitted, ModifiedFile("a.cpp", 1, 2));
+	const Core::FileDiff now = ModifiedFile("a.cpp", 1, 3);
+	const std::filesystem::path worktree = "D:/work/side";
+
+	const std::optional<Graphite::SinceViewedRequest> request = Graphite::SinceViewedRequestFor(
+		sessions, kBranch, ReviewGroup::Uncommitted, now, RangeWithTipAndWorktree(9, worktree),
+		Core::WhitespaceInDiff::Shown);
+
+	REQUIRE(request.has_value());
+	CHECK(request->Worktree == std::optional<std::filesystem::path>{worktree});
+	CHECK_FALSE(request->Tip.has_value());
+
+	CHECK_FALSE(Graphite::SinceViewedRequestFor(sessions, kBranch, ReviewGroup::Uncommitted, now,
+												RangeWithTipAndWorktree(9, std::nullopt),
+												Core::WhitespaceInDiff::Shown)
+					.has_value());
+}
+
+TEST_CASE("A file viewed as it is, changed only in its base, or deleted has no diff since it was viewed")
+{
+	ReviewSessions sessions;
+	sessions.Start(kBranch, kBase);
+	sessions.Mark(kBranch, ReviewGroup::Commits, ModifiedFile("a.cpp", 1, 2));
+	const Graphite::ReviewRange range = RangeWithTipAndWorktree(9, std::nullopt);
+	const Core::WhitespaceInDiff shown = Core::WhitespaceInDiff::Shown;
+
+	CHECK_FALSE(Graphite::SinceViewedRequestFor(sessions, kBranch, ReviewGroup::Commits, ModifiedFile("a.cpp", 1, 2),
+												range, shown)
+					.has_value());
+	CHECK_FALSE(Graphite::SinceViewedRequestFor(sessions, kBranch, ReviewGroup::Commits, ModifiedFile("a.cpp", 5, 2),
+												range, shown)
+					.has_value());
+
+	Core::FileDiff deleted = ModifiedFile("a.cpp", 1, 0);
+	deleted.Change = Core::FileChange::Deleted;
+	CHECK_FALSE(Graphite::SinceViewedRequestFor(sessions, kBranch, ReviewGroup::Commits, deleted, range, shown).has_value());
 }

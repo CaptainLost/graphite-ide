@@ -107,6 +107,22 @@ namespace Graphite {
 	// "merge-base 77d5037 · 3 commits"; a list cut at its ceiling reads "500+ commits".
 	std::string RangeSummary(const ReviewRange& range);
 
+	std::optional<std::size_t> IndexOfCommit(const std::vector<Core::CommitSummary>& commits, const Core::Oid& id);
+
+	// "Commits (3)", or "Commits (500+)" for a list cut at its ceiling.
+	std::string CommitsTabLabel(const ReviewRange& range);
+
+	// "77d5037 · Ada · 2 files +2 -1"; without the counts while the commit's diff is on its way.
+	std::string CommitLine(const Core::CommitSummary& commit, const Core::Diff* diff);
+
+	// The picked commit while the range still lists it.
+	std::optional<Core::Oid> FollowCommit(const std::optional<Core::Oid>& selected,
+										  const std::vector<Core::CommitSummary>& commits);
+
+	// One commit up or down the list, staying put at either end; the first one when none is picked.
+	std::optional<Core::Oid> NeighbourCommit(const std::optional<Core::Oid>& selected,
+											 const std::vector<Core::CommitSummary>& commits, ListStep step);
+
 	std::string RangeProblemMessage(RangeProblem problem, const std::string& branchFullName,
 									const std::string& baseFullName);
 
@@ -121,4 +137,7 @@ namespace Graphite {
 	};
 
 	PathLabel LabelOf(const Core::FileDiff& file);
+
+	// A file listed as modified that has no lines left once white space is ignored.
+	bool OnlyWhitespaceChanged(const Core::FileDiff& file, Core::WhitespaceInDiff whitespace);
 }

@@ -2,6 +2,7 @@
 
 #include "Git/History/CommitLabels.h"
 #include "UI/IconButton.h"
+#include "UI/SplitResults.h"
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
@@ -11,6 +12,7 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <chrono>
 #include <format>
 #include <functional>
 #include <optional>
@@ -26,7 +28,21 @@ namespace Graphite {
 		constexpr float kFileColumnEms = 24.0f;
 		constexpr int kReviewColumnCount = 2;
 		constexpr std::size_t kCommitsInTooltip = 20;
-		constexpr float kToolbarButtonCount = 2.0f;
+		constexpr float kCommitTooltipWrapEms = 35.0f;
+
+		// The toolbar's buttons after the filter: the shape, and Hide viewed for a list with marks.
+		constexpr float kButtonsWithMarks = 2.0f;
+		constexpr float kButtonsWithoutMarks = 1.0f;
+
+		constexpr const char* kOnlyWhitespace = "Only whitespace changed.";
+		constexpr const char* kDiffUnreadable = "The diff could not be read.";
+
+		// Whether the version a changed file was viewed at can still be read from the repository.
+		enum class ViewedVersion
+		{
+			Available,
+			Gone
+		};
 
 		SessionSettings ReadSettings(const ReviewSessions& sessions, const std::string& branch)
 		{
@@ -146,8 +162,22 @@ namespace Graphite {
 			return clicked;
 		}
 
+		// A folder's viewed count, which a list without marks has none of.
+		std::string FolderCountText(const ReviewTreeRow& row, RowMarks marks)
+		{
+			switch (marks)
+			{
+			case RowMarks::Shown:
+				return ViewedOfTotalText(row);
+			case RowMarks::Hidden:
+				return std::string{};
+			}
+
+			return std::string{};
+		}
+
 		// Drawn over one Selectable as tall as the row, so the whole row folds the folder.
-		bool DrawFolderRow(const ReviewTreeRow& row, float indent, float rowHeight)
+		bool DrawFolderRow(const ReviewTreeRow& row, float indent, float rowHeight, RowMarks marks)
 		{
 			const ImVec2 rowStart = ImGui::GetCursorPos();
 			const float rowRight = rowStart.x + ImGui::GetContentRegionAvail().x;
@@ -162,12 +192,16 @@ namespace Graphite {
 			ImGui::TextUnformatted(row.Folded ? ICON_MDI_FOLDER : ICON_MDI_FOLDER_OPEN);
 			ImGui::SameLine();
 
-			const std::string viewedText = ViewedOfTotalText(row);
+			const std::string countText = FolderCountText(row, marks);
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;
-			const float labelRoom = rowRight - MeasureText(viewedText) - spacing - ImGui::GetCursorPosX();
+			const float countWidth = countText.empty() ? 0.0f : MeasureText(countText) + spacing;
+			const float labelRoom = rowRight - countWidth - ImGui::GetCursorPosX();
 			ImGui::TextUnformatted(FittedText(row.Label, labelRoom).c_str());
 
-			DrawAtRight(viewedText, rowRight);
+			if (!countText.empty())
+			{
+				DrawAtRight(countText, rowRight);
+			}
 
 			return clicked;
 		}
@@ -210,6 +244,7 @@ namespace Graphite {
 		struct FileRowLook
 		{
 			bool IsSelected = false;
+			RowMarks Marks = RowMarks::Shown;
 			ViewedState Viewed = ViewedState::NotViewed;
 			bool CanOpen = false;
 			float RowHeight = 0.0f;
@@ -260,8 +295,8 @@ namespace Graphite {
 			return changeName != nullptr ? std::string{changeName} : std::string{};
 		}
 
-		// The checkbox, the change letter, the label and - at the right edge - the line counts, laid
-		// over one Selectable as tall as the row so a click anywhere else selects it.
+		// The checkbox in a list with marks, the change letter, the label and - at the right edge - the line
+		// counts, laid over one Selectable as tall as the row so a click anywhere else selects it.
 		FileRowActions DrawFileRow(const Core::FileDiff& file, const PathLabel& label, const FileRowLook& look,
 								   const GitPalette& palette)
 		{
@@ -285,10 +320,21 @@ namespace Graphite {
 
 			ImGui::SetCursorPos(ImVec2(rowStart.x + look.Indent, rowStart.y));
 
-			bool viewed = look.Viewed == ViewedState::Viewed;
-			actions.ToggledViewed = ImGui::Checkbox("##viewed", &viewed);
+			switch (look.Marks)
+			{
+			case RowMarks::Shown:
+			{
+				bool viewed = look.Viewed == ViewedState::Viewed;
+				actions.ToggledViewed = ImGui::Checkbox("##viewed", &viewed);
+				ImGui::SameLine();
+				break;
+			}
+			case RowMarks::Hidden:
+				// Without the checkbox's frame first on the line, the letter would sit at the row's top.
+				ImGui::AlignTextToFramePadding();
+				break;
+			}
 
-			ImGui::SameLine();
 			const std::string letter(1, ChangeLetter(file.Change));
 			ImGui::PushStyleColor(ImGuiCol_Text, ChangeColor(file.Change, palette));
 			ImGui::TextUnformatted(letter.c_str());
@@ -357,10 +403,14 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		void DrawListToolbar(std::span<char> filter, ReviewSessions& sessions, const std::string& branch)
+		// The filter and the shape, and Hide viewed for a list with marks. The filter is the tab's and the
+		// settings the session's, so both pages narrow and shape their lists alike.
+		void DrawListToolbar(std::span<char> filter, ReviewSessions& sessions, const std::string& branch,
+							 RowMarks marks)
 		{
 			const SessionSettings settings = ReadSettings(sessions, branch);
-			const float buttonsWidth = kToolbarButtonCount * (ImGui::GetStyle().ItemSpacing.x + IconButtonSize());
+			const float buttonCount = marks == RowMarks::Shown ? kButtonsWithMarks : kButtonsWithoutMarks;
+			const float buttonsWidth = buttonCount * (ImGui::GetStyle().ItemSpacing.x + IconButtonSize());
 
 			ImGui::SetNextItemWidth(-buttonsWidth);
 			ImGui::InputTextWithHint("##reviewFilter", ICON_MDI_MAGNIFY "  Filter files", filter.data(), filter.size());
@@ -376,6 +426,11 @@ namespace Graphite {
 				SessionSettings changed = settings;
 				changed.Shape = isTree ? ListShape::Flat : ListShape::Tree;
 				sessions.SetSettings(branch, changed);
+			}
+
+			if (marks == RowMarks::Hidden)
+			{
+				return;
 			}
 
 			ImGui::SameLine();
@@ -417,6 +472,150 @@ namespace Graphite {
 			}
 
 			ImGui::EndTooltip();
+		}
+
+		// The author, then the whole message.
+		void DrawCommitTooltip(const Core::CommitSummary& commit)
+		{
+			if (!ImGui::BeginItemTooltip())
+			{
+				return;
+			}
+
+			const std::string author = std::format("{} <{}>", commit.Author.Name, commit.Author.Email);
+			ImGui::TextUnformatted(author.c_str());
+
+			ImGui::PushTextWrapPos(ImGui::GetFontSize() * kCommitTooltipWrapEms);
+			ImGui::TextUnformatted(commit.Summary.c_str());
+
+			if (!commit.Body.empty())
+			{
+				ImGui::TextUnformatted(commit.Body.c_str());
+			}
+
+			ImGui::PopTextWrapPos();
+			ImGui::EndTooltip();
+		}
+
+		// The dimmed short hash, the summary cut to the room left and the dimmed age at the right edge, laid
+		// over one Selectable as tall as the row so a click anywhere on it picks the commit.
+		bool DrawCommitRow(const Core::CommitSummary& commit, bool isPicked, std::chrono::sys_seconds now,
+						   float rowHeight)
+		{
+			const ImVec2 rowStart = ImGui::GetCursorPos();
+			const float rowRight = rowStart.x + ImGui::GetContentRegionAvail().x;
+			const bool clicked =
+				ImGui::Selectable("##commit", isPicked, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, rowHeight));
+
+			DrawCommitTooltip(commit);
+
+			ImGui::SetCursorPos(rowStart);
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextDisabled("%s", commit.Id.ShortHex().c_str());
+			ImGui::SameLine();
+
+			const std::string age = RelativeAge(commit.Author.When, now);
+			const float spacing = ImGui::GetStyle().ItemSpacing.x;
+			const float summaryRoom = rowRight - MeasureText(age) - spacing - ImGui::GetCursorPosX();
+			ImGui::TextUnformatted(FittedText(commit.Summary, summaryRoom).c_str());
+
+			DrawAtRight(age, rowRight);
+
+			return clicked;
+		}
+
+		const Core::CommitSummary* PickedCommitIn(const ReviewRange& range, const std::optional<Core::Oid>& picked)
+		{
+			if (!picked.has_value())
+			{
+				return nullptr;
+			}
+
+			const std::optional<std::size_t> commitIndex = IndexOfCommit(range.Commits, *picked);
+			return commitIndex.has_value() ? &range.Commits[*commitIndex] : nullptr;
+		}
+
+		RangeDiffKey CommitDiffKey(const Core::CommitSummary& commit, const SessionSettings& settings)
+		{
+			return RangeDiffKey{.Ends = EndsOfCommit(commit), .Whitespace = settings.Whitespace};
+		}
+
+		// All changes for a file with no diff since it was viewed, or whose viewed version is gone, whatever
+		// the session's setting says.
+		ChangedFileView ShownViewOf(const std::optional<SinceViewedRequest>& sinceViewed, ViewedVersion viewedVersion,
+									const SessionSettings& settings)
+		{
+			const bool canShowSinceViewed = sinceViewed.has_value() && viewedVersion == ViewedVersion::Available;
+			return canShowSinceViewed ? settings.ChangedFiles : ChangedFileView::AllChanges;
+		}
+
+		void SetChangedFiles(ReviewSessions& sessions, const std::string& branch, const SessionSettings& settings,
+							 ChangedFileView view)
+		{
+			SessionSettings changed = settings;
+			changed.ChangedFiles = view;
+			sessions.SetSettings(branch, changed);
+		}
+
+		// "All changes | Since you viewed", the second disabled once the version viewed is gone.
+		void DrawChangedFileSwitch(ReviewSessions& sessions, const std::string& branch, const SessionSettings& settings,
+								   ChangedFileView shownView, ViewedVersion viewedVersion)
+		{
+			if (ImGui::RadioButton("All changes", shownView == ChangedFileView::AllChanges))
+			{
+				SetChangedFiles(sessions, branch, settings, ChangedFileView::AllChanges);
+			}
+
+			ImGui::SameLine();
+
+			const bool viewedVersionIsGone = viewedVersion == ViewedVersion::Gone;
+			ImGui::BeginDisabled(viewedVersionIsGone);
+
+			if (ImGui::RadioButton("Since you viewed", shownView == ChangedFileView::SinceViewed))
+			{
+				SetChangedFiles(sessions, branch, settings, ChangedFileView::SinceViewed);
+			}
+
+			ImGui::EndDisabled();
+
+			if (viewedVersionIsGone && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
+			{
+				ImGui::SetTooltip("The version you viewed is no longer available");
+			}
+		}
+
+		// A file marked viewed whose own version is still the one viewed: only the base it is diffed against
+		// moved since.
+		bool OnlyBaseMoved(const ReviewSessions& sessions, const std::string& branch, ReviewGroup group,
+						   const Core::FileDiff& file)
+		{
+			if (sessions.StateOf(branch, group, file) != ViewedState::ChangedSinceViewed)
+			{
+				return false;
+			}
+
+			const std::optional<ViewedMark> mark = sessions.MarkOf(branch, group, file);
+			return mark.has_value() && mark->New == file.NewId;
+		}
+
+		// Places itself at the right end of the diff column's header row. A caller that drew something on the
+		// row first ends it with SameLine.
+		void DrawHideWhitespace(ReviewSessions& sessions, const std::string& branch, const SessionSettings& settings)
+		{
+			const char* label = "Hide whitespace";
+			const float rowRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
+			const float width = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x + MeasureText(label);
+
+			ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), rowRight - width));
+
+			bool hidden = settings.Whitespace == Core::WhitespaceInDiff::Ignored;
+
+			if (ImGui::Checkbox(label, &hidden))
+			{
+				SessionSettings changed = settings;
+				changed.Whitespace = hidden ? Core::WhitespaceInDiff::Ignored : Core::WhitespaceInDiff::Shown;
+				sessions.SetSettings(branch, changed);
+			}
 		}
 	}
 
@@ -536,7 +735,7 @@ namespace Graphite {
 		}
 
 		const std::optional<Core::Error>& diffError = input.Model.GetCommittedDiffError();
-		const std::string message = diffError.has_value() ? diffError->Message : std::string{"The diff could not be read."};
+		const std::string message = diffError.has_value() ? diffError->Message : std::string{kDiffUnreadable};
 
 		if (Core::EmptyState(message, "Retry"))
 		{
@@ -604,6 +803,7 @@ namespace Graphite {
 	void ReviewWindows::RenderBody(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review)
 	{
 		RefreshRows(tab, input.Sessions, ReadSettings(input.Sessions, tab.Branch), review);
+		FollowCommits(tab, *review.Range);
 
 		const ReviewGroups groups = GroupsOf(tab, review);
 		const OpenRelativeFile openFile = OpenFileIn(*review.Range);
@@ -654,37 +854,64 @@ namespace Graphite {
 			ImGui::TableNextRow();
 
 			ImGui::TableSetColumnIndex(0);
-			RenderFileList(tab, input, groups, openFile);
+			RenderPages(tab, input, review, groups, openFile);
 
 			ImGui::TableSetColumnIndex(1);
-			RenderSelectedDiff(tab, input, review, groups, openFile);
+			RenderDiffColumn(tab, input, review, groups, openFile);
 
 			ImGui::EndTable();
 		}
 	}
 
-	void ReviewWindows::RenderFileList(Tab& tab, const ReviewRenderInput& input, const ReviewGroups& groups,
+	void ReviewWindows::RenderPages(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review,
+									const ReviewGroups& groups, const OpenRelativeFile& openFile)
+	{
+		if (!ImGui::BeginTabBar("##reviewPages"))
+		{
+			return;
+		}
+
+		if (ImGui::BeginTabItem("Files"))
+		{
+			tab.Page = ReviewPage::Files;
+			DrawListToolbar(tab.Filter, input.Sessions, tab.Branch, RowMarks::Shown);
+			RenderFileList(tab, input, FilesPageList(tab, groups), openFile);
+			ImGui::EndTabItem();
+		}
+
+		// The count after a new commit changes the label; the identity after ### keeps the tab the same one.
+		const std::string commitsLabel = CommitsTabLabel(*review.Range) + "###commits";
+
+		if (ImGui::BeginTabItem(commitsLabel.c_str()))
+		{
+			tab.Page = ReviewPage::Commits;
+			RenderCommitsPage(tab, input, *review.Range, openFile);
+			ImGui::EndTabItem();
+		}
+
+		ImGui::EndTabBar();
+	}
+
+	void ReviewWindows::RenderFileList(Tab& tab, const ReviewRenderInput& input, const FileList& list,
 									   const OpenRelativeFile& openFile)
 	{
-		DrawListToolbar(tab.Filter, input.Sessions, tab.Branch);
-
-		const ImVec2 fillTheCell{0.0f, 0.0f};
+		const ImVec2 fillTheRest{0.0f, 0.0f};
 
 		// NoNavInputs: the arrow keys and Space are this list's own, below, rather than ImGui's
 		// keyboard navigation, which would also toggle whichever checkbox it had reached.
 		// AlwaysUseWindowPadding: ImGui gives a child without a border no padding, and the rows then
 		// touch its left edge and the counts at their right run under the scrollbar.
-		if (ImGui::BeginChild("##reviewFiles", fillTheCell, ImGuiChildFlags_AlwaysUseWindowPadding,
+		if (ImGui::BeginChild(list.ChildId, fillTheRest, ImGuiChildFlags_AlwaysUseWindowPadding,
 							  ImGuiWindowFlags_NoNavInputs))
 		{
-			const std::vector<ReviewTreeRow>& rows = tab.Rows.Rows;
+			const std::vector<ReviewTreeRow>& rows = list.Rows.Rows;
 
 			ImGuiListClipper clipper;
 			clipper.Begin(static_cast<int>(rows.size()), ImGui::GetFrameHeightWithSpacing());
 
-			if (tab.ScrollToSelected)
+			if (list.ScrollToSelected)
 			{
-				const std::optional<std::size_t> selectedRow = RowOfSelection(tab.Selected, groups, rows);
+				const std::optional<std::size_t> selectedRow = RowOfSelection(list.Selected, list.Groups, rows);
 
 				if (selectedRow.has_value())
 				{
@@ -692,7 +919,7 @@ namespace Graphite {
 				}
 				else
 				{
-					tab.ScrollToSelected = false;
+					list.ScrollToSelected = false;
 				}
 			}
 
@@ -703,18 +930,24 @@ namespace Graphite {
 					const ReviewTreeRow& row = rows[static_cast<std::size_t>(rowIndex)];
 
 					ImGui::PushID(static_cast<int>(IndexOf(row.Group)));
-					RenderTreeRow(tab, input, groups, row, openFile);
+					RenderTreeRow(tab, input, list, row, openFile);
 					ImGui::PopID();
 				}
 			}
 
-			HandleListKeys(tab, input.Sessions, groups);
+			// The Files page's headings say it for their groups; a commit's list has no heading to say it.
+			if (rows.empty() && !list.Rows.Filter.empty())
+			{
+				ImGui::TextDisabled("No files match.");
+			}
+
+			HandleListKeys(tab, input.Sessions, list);
 		}
 
 		ImGui::EndChild();
 	}
 
-	void ReviewWindows::RenderTreeRow(Tab& tab, const ReviewRenderInput& input, const ReviewGroups& groups,
+	void ReviewWindows::RenderTreeRow(Tab& tab, const ReviewRenderInput& input, const FileList& list,
 									  const ReviewTreeRow& row, const OpenRelativeFile& openFile)
 	{
 		const float rowHeight = ImGui::GetFrameHeight();
@@ -722,7 +955,8 @@ namespace Graphite {
 		switch (row.Kind)
 		{
 		case TreeRowKind::Heading:
-			if (DrawHeadingRow(row, HeadingNote(row, tab.Rows.Filter), tab.Rows.GroupCounts[IndexOf(row.Group)], rowHeight))
+			if (DrawHeadingRow(row, HeadingNote(row, list.Rows.Filter), list.Rows.GroupCounts[IndexOf(row.Group)],
+							   rowHeight))
 			{
 				bool& collapsed = tab.Collapsed[IndexOf(row.Group)];
 				collapsed = !collapsed;
@@ -734,60 +968,64 @@ namespace Graphite {
 			const float indent = static_cast<float>(row.Depth) * ImGui::GetStyle().IndentSpacing;
 
 			ImGui::PushID(Core::ToUtf8(row.FolderPath).c_str());
-			const bool clicked = DrawFolderRow(row, indent, rowHeight);
+			const bool clicked = DrawFolderRow(row, indent, rowHeight, list.Marks);
 			ImGui::PopID();
 
 			// The tree is drawn unfolded while a filter or Hide viewed is on, so a fold would not show.
-			const bool listIsNarrowed = !tab.Rows.Filter.empty() || tab.Rows.HideViewed;
+			const bool listIsNarrowed = !list.Rows.Filter.empty() || list.Rows.HideViewed;
 
 			if (clicked && !listIsNarrowed)
 			{
-				ToggleFolder(tab.Folded, row);
-				++tab.FoldsVersion;
+				ToggleFolder(list.Folded, row);
+				++list.FoldsVersion;
 			}
 
 			return;
 		}
 		case TreeRowKind::File:
-			RenderFileRow(tab, input, groups, row, openFile);
+			RenderFileRow(tab, input, list, row, openFile);
 			return;
 		}
 	}
 
-	void ReviewWindows::RenderFileRow(Tab& tab, const ReviewRenderInput& input, const ReviewGroups& groups,
+	void ReviewWindows::RenderFileRow(Tab& tab, const ReviewRenderInput& input, const FileList& list,
 									  const ReviewTreeRow& row, const OpenRelativeFile& openFile)
 	{
-		const Core::FileDiff& file = FileOfTreeRow(groups, row);
+		const Core::FileDiff& file = FileOfTreeRow(list.Groups, row);
 		const std::filesystem::path& path = ShownPath(file);
 		const bool fileIsOnDisk = file.Change != Core::FileChange::Deleted;
-		const bool isSelected = tab.Selected.has_value() && IsRowOfSelection(row, groups, *tab.Selected);
+		const bool isSelected = list.Selected.has_value() && IsRowOfSelection(row, list.Groups, *list.Selected);
+		const bool showsMarks = list.Marks == RowMarks::Shown;
+		const ViewedState viewed =
+			showsMarks ? input.Sessions.StateOf(tab.Branch, row.Group, file) : ViewedState::NotViewed;
 
 		ImGui::PushID(Core::ToUtf8(path).c_str());
 
 		const FileRowLook look{.IsSelected = isSelected,
-							   .Viewed = input.Sessions.StateOf(tab.Branch, row.Group, file),
+							   .Marks = list.Marks,
+							   .Viewed = viewed,
 							   .CanOpen = openFile != nullptr && fileIsOnDisk,
 							   .RowHeight = ImGui::GetFrameHeight(),
 							   .Indent = static_cast<float>(row.Depth) * ImGui::GetStyle().IndentSpacing,
-							   .Counts = tab.Rows.FileCounts[IndexOf(row.Group)][row.FileIndex]};
+							   .Counts = list.Rows.FileCounts[IndexOf(row.Group)][row.FileIndex]};
 
-		const FileRowActions actions = DrawFileRow(file, LabelInShape(file, tab.Rows.Shape), look, input.Palette);
+		const FileRowActions actions = DrawFileRow(file, LabelInShape(file, list.Rows.Shape), look, input.Palette);
 
 		ImGui::PopID();
 
-		if (isSelected && tab.ScrollToSelected)
+		if (isSelected && list.ScrollToSelected)
 		{
 			if (!ImGui::IsItemVisible())
 			{
 				ImGui::SetScrollHereY();
 			}
 
-			tab.ScrollToSelected = false;
+			list.ScrollToSelected = false;
 		}
 
 		if (actions.Selected)
 		{
-			tab.Selected = ReviewSelection{.Group = row.Group, .Path = path};
+			list.Selected = ReviewSelection{.Group = row.Group, .Path = path};
 		}
 
 		if (actions.ToggledViewed)
@@ -806,66 +1044,368 @@ namespace Graphite {
 		}
 	}
 
-	void ReviewWindows::HandleListKeys(Tab& tab, ReviewSessions& sessions, const ReviewGroups& groups)
+	void ReviewWindows::HandleListKeys(Tab& tab, ReviewSessions& sessions, const FileList& list)
 	{
 		if (!ImGui::IsWindowFocused())
 		{
 			return;
 		}
 
-		const std::vector<ReviewTreeRow>& rows = tab.Rows.Rows;
+		const std::vector<ReviewTreeRow>& rows = list.Rows.Rows;
 
 		if (ImGui::IsKeyPressed(ImGuiKey_DownArrow))
 		{
-			tab.Selected = NeighbourFileOf(tab.Selected, groups, rows, ListStep::Next, tab.Rows.Shape);
-			tab.ScrollToSelected = true;
+			list.Selected = NeighbourFileOf(list.Selected, list.Groups, rows, ListStep::Next, list.Rows.Shape);
+			list.ScrollToSelected = true;
 		}
 
 		if (ImGui::IsKeyPressed(ImGuiKey_UpArrow))
 		{
-			tab.Selected = NeighbourFileOf(tab.Selected, groups, rows, ListStep::Previous, tab.Rows.Shape);
-			tab.ScrollToSelected = true;
+			list.Selected = NeighbourFileOf(list.Selected, list.Groups, rows, ListStep::Previous, list.Rows.Shape);
+			list.ScrollToSelected = true;
 		}
 
 		const bool noRepeat = false;
+		const bool listHasMarks = list.Marks == RowMarks::Shown;
 
-		if (!ImGui::IsKeyPressed(ImGuiKey_Space, noRepeat) || !tab.Selected.has_value())
+		if (!listHasMarks || !ImGui::IsKeyPressed(ImGuiKey_Space, noRepeat) || !list.Selected.has_value())
 		{
 			return;
 		}
 
-		const Core::FileDiff* file = SelectedFile(groups, *tab.Selected);
+		const Core::FileDiff* file = SelectedFile(list.Groups, *list.Selected);
 
 		if (file != nullptr)
 		{
-			ToggleViewed(tab, sessions, tab.Selected->Group, *file);
+			ToggleViewed(tab, sessions, list.Selected->Group, *file);
+		}
+	}
+
+	void ReviewWindows::RenderCommitsPage(Tab& tab, const ReviewRenderInput& input, const ReviewRange& range,
+										  const OpenRelativeFile& openFile)
+	{
+		const std::function<void()> drawCommits = [this, &tab, &range] { RenderCommitList(tab, range); };
+		const std::function<void()> drawPicked = [this, &tab, &input, &range, &openFile]
+		{ RenderPickedCommit(tab, input, range, openFile); };
+
+		DrawSplitResults(SplitResultsInput{.HasSelection = tab.SelectedCommit.has_value(),
+										   .ResultsHeight = tab.CommitListHeight,
+										   .DrawResults = drawCommits,
+										   .DrawPreview = drawPicked,
+										   .ResultsChildId = "##reviewCommits",
+										   .PreviewChildId = "##reviewCommit",
+										   .SplitterId = "##reviewCommitSplit"});
+	}
+
+	void ReviewWindows::RenderCommitList(Tab& tab, const ReviewRange& range)
+	{
+		const ImVec2 fillThePane{0.0f, 0.0f};
+
+		// A child of its own inside the one DrawSplitResults opens, for the flags the Files page's list has:
+		// the arrow keys are this list's own, and the rows keep clear of its edges and its scrollbar.
+		if (ImGui::BeginChild("##reviewCommitRows", fillThePane, ImGuiChildFlags_AlwaysUseWindowPadding,
+							  ImGuiWindowFlags_NoNavInputs))
+		{
+			if (range.Commits.empty())
+			{
+				Core::EmptyState("No commits.");
+			}
+			else
+			{
+				RenderCommitRows(tab, range);
+			}
+
+			HandleCommitKeys(tab, range);
+		}
+
+		ImGui::EndChild();
+	}
+
+	void ReviewWindows::RenderCommitRows(Tab& tab, const ReviewRange& range)
+	{
+		const std::vector<Core::CommitSummary>& commits = range.Commits;
+		const std::chrono::sys_seconds now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
+		const float rowHeight = ImGui::GetFrameHeight();
+
+		ImGuiListClipper clipper;
+		clipper.Begin(static_cast<int>(commits.size()), ImGui::GetFrameHeightWithSpacing());
+
+		if (tab.ScrollToCommit)
+		{
+			const std::optional<std::size_t> pickedRow =
+				tab.SelectedCommit.has_value() ? IndexOfCommit(commits, *tab.SelectedCommit) : std::nullopt;
+
+			if (pickedRow.has_value())
+			{
+				clipper.IncludeItemByIndex(static_cast<int>(*pickedRow));
+			}
+			else
+			{
+				tab.ScrollToCommit = false;
+			}
+		}
+
+		while (clipper.Step())
+		{
+			for (int rowIndex = clipper.DisplayStart; rowIndex < clipper.DisplayEnd; ++rowIndex)
+			{
+				const Core::CommitSummary& commit = commits[static_cast<std::size_t>(rowIndex)];
+				const bool isPicked = tab.SelectedCommit == commit.Id;
+
+				ImGui::PushID(rowIndex);
+				const bool clicked = DrawCommitRow(commit, isPicked, now, rowHeight);
+				ImGui::PopID();
+
+				if (isPicked && tab.ScrollToCommit)
+				{
+					if (!ImGui::IsItemVisible())
+					{
+						ImGui::SetScrollHereY();
+					}
+
+					tab.ScrollToCommit = false;
+				}
+
+				if (clicked)
+				{
+					PickCommit(tab, commit.Id);
+				}
+			}
+		}
+
+		if (!range.CommitsComplete)
+		{
+			ImGui::TextDisabled("Only the newest %zu commits are listed.", commits.size());
+		}
+	}
+
+	void ReviewWindows::HandleCommitKeys(Tab& tab, const ReviewRange& range)
+	{
+		if (!ImGui::IsWindowFocused())
+		{
+			return;
+		}
+
+		if (ImGui::IsKeyPressed(ImGuiKey_DownArrow))
+		{
+			PickCommit(tab, NeighbourCommit(tab.SelectedCommit, range.Commits, ListStep::Next));
+			tab.ScrollToCommit = true;
+		}
+
+		if (ImGui::IsKeyPressed(ImGuiKey_UpArrow))
+		{
+			PickCommit(tab, NeighbourCommit(tab.SelectedCommit, range.Commits, ListStep::Previous));
+			tab.ScrollToCommit = true;
+		}
+	}
+
+	void ReviewWindows::RenderPickedCommit(Tab& tab, const ReviewRenderInput& input, const ReviewRange& range,
+										   const OpenRelativeFile& openFile)
+	{
+		const Core::CommitSummary* commit = PickedCommitIn(range, tab.SelectedCommit);
+
+		// Drawn only with a commit picked, and FollowCommits has let go of one the range no longer lists.
+		if (commit == nullptr)
+		{
+			return;
+		}
+
+		const SessionSettings settings = ReadSettings(input.Sessions, tab.Branch);
+		const RangeDiffKey diffKey = CommitDiffKey(*commit, settings);
+
+		input.Model.RequestCommittedDiff(diffKey);
+		const Core::Ref<const Core::Diff> commitDiff = input.Model.GetCommittedDiff(diffKey);
+
+		if (commitDiff != nullptr)
+		{
+			RefreshCommitRows(tab, settings, *commit, commitDiff);
+		}
+
+		// The line with its counts is made with the rows, once per diff: counting every line of a large
+		// commit on every frame would cost the frame.
+		const std::string line = commitDiff != nullptr ? tab.CommitRows.Summary : CommitLine(*commit, nullptr);
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float closeWidth = MeasureText(ICON_MDI_CLOSE) + style.FramePadding.x * 2.0f;
+
+		ImGui::TextUnformatted(
+			FittedText(line, ImGui::GetContentRegionAvail().x - closeWidth - style.ItemSpacing.x).c_str());
+
+		if (DrawPaneClose())
+		{
+			PickCommit(tab, std::nullopt);
+			return;
+		}
+
+		DrawListToolbar(tab.Filter, input.Sessions, tab.Branch, RowMarks::Hidden);
+
+		if (commitDiff == nullptr)
+		{
+			Core::EmptyState(input.Model.IsCommittedDiffFailed(diffKey) ? kDiffUnreadable : "Loading…");
+			return;
+		}
+
+		RenderFileList(tab, input, CommitFileList(tab, *commitDiff), openFile);
+	}
+
+	void ReviewWindows::RenderDiffColumn(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review,
+										 const ReviewGroups& groups, const OpenRelativeFile& openFile)
+	{
+		switch (tab.Page)
+		{
+		case ReviewPage::Files:
+			RenderSelectedDiff(tab, input, review, groups, openFile);
+			return;
+		case ReviewPage::Commits:
+			RenderCommitFileDiff(tab, input, *review.Range, openFile);
+			return;
 		}
 	}
 
 	void ReviewWindows::RenderSelectedDiff(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review,
 										   const ReviewGroups& groups, const OpenRelativeFile& openFile)
 	{
+		const SessionSettings settings = ReadSettings(input.Sessions, tab.Branch);
+		const Core::FileDiff* file = tab.Selected.has_value() ? SelectedFile(groups, *tab.Selected) : nullptr;
+		const std::optional<SinceViewedRequest> sinceViewed =
+			file != nullptr ? SinceViewedRequestFor(input.Sessions, tab.Branch, tab.Selected->Group, *file,
+													*review.Range, settings.Whitespace)
+							: std::nullopt;
+		const bool viewedVersionIsGone = sinceViewed.has_value() && input.Model.IsSinceViewedUnavailable(*sinceViewed);
+		const ViewedVersion viewedVersion = viewedVersionIsGone ? ViewedVersion::Gone : ViewedVersion::Available;
+		const ChangedFileView shownView = ShownViewOf(sinceViewed, viewedVersion, settings);
+
+		if (sinceViewed.has_value())
+		{
+			DrawChangedFileSwitch(input.Sessions, tab.Branch, settings, shownView, viewedVersion);
+			ImGui::SameLine();
+		}
+		else if (file != nullptr && OnlyBaseMoved(input.Sessions, tab.Branch, tab.Selected->Group, *file))
+		{
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextDisabled("Only the base moved since you viewed this file.");
+			ImGui::SameLine();
+		}
+
+		DrawHideWhitespace(input.Sessions, tab.Branch, settings);
+
 		if (ImGui::BeginChild("##reviewDiff"))
 		{
-			const Core::FileDiff* file = tab.Selected.has_value() ? SelectedFile(groups, *tab.Selected) : nullptr;
+			const bool showsSinceViewed = shownView == ChangedFileView::SinceViewed && sinceViewed.has_value();
 
 			if (file == nullptr)
 			{
 				const bool reviewHasFiles = tab.Rows.Viewed.Total > 0;
 				Core::EmptyState(reviewHasFiles ? "Select a file to see its changes." : "Nothing to review.");
 			}
+			else if (showsSinceViewed)
+			{
+				RenderSinceViewed(tab, input, *sinceViewed, openFile);
+			}
+			else if (OnlyWhitespaceChanged(*file, settings.Whitespace))
+			{
+				Core::EmptyState(kOnlyWhitespace);
+			}
 			else
 			{
 				UpdateTexts(tab, input.Model, review, *file);
-
-				tab.View.OnOpenFile = openFile;
-				tab.View.OnCopied = OnCopied;
-				tab.View.OnSetWordWrap = OnSetWordWrap;
-				tab.View.Render(*file, input.Palette, input.Syntax, input.Selection, tab.Texts, tab.Tokens,
-								input.WordWrap);
+				RenderFileDiff(tab, input, *file, openFile);
 			}
 		}
 
 		ImGui::EndChild();
+	}
+
+	void ReviewWindows::RenderSinceViewed(Tab& tab, const ReviewRenderInput& input, const SinceViewedRequest& request,
+										  const OpenRelativeFile& openFile)
+	{
+		input.Model.RequestSinceViewed(request);
+		const Core::Ref<const SinceViewedAnswer> answer = input.Model.GetSinceViewed(request);
+
+		if (answer == nullptr)
+		{
+			Core::EmptyState("Loading…");
+			return;
+		}
+
+		if (OnlyWhitespaceChanged(answer->Diff, request.Whitespace))
+		{
+			Core::EmptyState(kOnlyWhitespace);
+			return;
+		}
+
+		// Aliasing the answer rather than copying its texts out: the texts live as long as the answer, and
+		// the pointer HoldTexts compares changes only when the answer does.
+		HoldTexts(tab, Core::Ref<const FileTexts>(answer, &answer->Texts));
+		RenderFileDiff(tab, input, answer->Diff, openFile);
+	}
+
+	void ReviewWindows::RenderCommitFileDiff(Tab& tab, const ReviewRenderInput& input, const ReviewRange& range,
+											 const OpenRelativeFile& openFile)
+	{
+		const SessionSettings settings = ReadSettings(input.Sessions, tab.Branch);
+
+		DrawHideWhitespace(input.Sessions, tab.Branch, settings);
+
+		if (ImGui::BeginChild("##reviewDiff"))
+		{
+			RenderPickedFileDiff(tab, input, range, settings, openFile);
+		}
+
+		ImGui::EndChild();
+	}
+
+	void ReviewWindows::RenderPickedFileDiff(Tab& tab, const ReviewRenderInput& input, const ReviewRange& range,
+											 const SessionSettings& settings, const OpenRelativeFile& openFile)
+	{
+		const Core::CommitSummary* commit = PickedCommitIn(range, tab.SelectedCommit);
+
+		if (commit == nullptr)
+		{
+			Core::EmptyState("Select a commit to see its changes.");
+			return;
+		}
+
+		const RangeDiffKey diffKey = CommitDiffKey(*commit, settings);
+
+		input.Model.RequestCommittedDiff(diffKey);
+		const Core::Ref<const Core::Diff> commitDiff = input.Model.GetCommittedDiff(diffKey);
+
+		if (commitDiff == nullptr)
+		{
+			Core::EmptyState(input.Model.IsCommittedDiffFailed(diffKey) ? kDiffUnreadable : "Loading…");
+			return;
+		}
+
+		const ReviewGroups groups{.Commits = commitDiff.get()};
+		const Core::FileDiff* file =
+			tab.SelectedCommitFile.has_value() ? SelectedFile(groups, *tab.SelectedCommitFile) : nullptr;
+
+		if (file == nullptr)
+		{
+			const bool commitHasFiles = !commitDiff->Files.empty();
+			Core::EmptyState(commitHasFiles ? "Select a file to see its changes." : "This commit changes no files.");
+			return;
+		}
+
+		if (OnlyWhitespaceChanged(*file, settings.Whitespace))
+		{
+			Core::EmptyState(kOnlyWhitespace);
+			return;
+		}
+
+		const RangeEnds ends = EndsOfCommit(*commit);
+
+		input.Model.RequestCommittedTexts(ends, *file);
+		HoldTexts(tab, input.Model.GetCommittedTexts(ends, *file));
+		RenderFileDiff(tab, input, *file, openFile);
+	}
+
+	void ReviewWindows::RenderFileDiff(Tab& tab, const ReviewRenderInput& input, const Core::FileDiff& file,
+									   const OpenRelativeFile& openFile)
+	{
+		tab.View.OnOpenFile = openFile;
+		tab.View.OnCopied = OnCopied;
+		tab.View.OnSetWordWrap = OnSetWordWrap;
+		tab.View.Render(file, input.Palette, input.Syntax, input.Selection, tab.Texts, tab.Tokens, input.WordWrap);
 	}
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Review/ReviewPort.h"
 #include "Review/ReviewTree.h"
 #include "Review/ViewedMarks.h"
 
@@ -88,6 +89,13 @@ namespace Graphite {
 		std::uint64_t m_Version = 0;
 		std::set<std::string> m_MissingLastTime;
 	};
+
+	// The diff from the version a file was viewed at to the version it has now. Only for a file whose
+	// mark no longer matches and whose own version moved - a file whose base alone moved has nothing
+	// new in it - and never for a deleted or binary file. The uncommitted group needs a worktree.
+	std::optional<SinceViewedRequest> SinceViewedRequestFor(const ReviewSessions& sessions, const std::string& branch,
+															ReviewGroup group, const Core::FileDiff& file,
+															const ReviewRange& range, Core::WhitespaceInDiff whitespace);
 
 	// The text of `.graphite/reviews.json`, version 2.
 	std::string EncodeReviewSessions(const ReviewSessions::Sessions& sessions);

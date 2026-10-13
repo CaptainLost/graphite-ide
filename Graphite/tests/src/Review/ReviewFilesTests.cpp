@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 
+using Graphite::ListStep;
 using Graphite::ReviewGroup;
 using Graphite::ReviewGroups;
 using Graphite::ReviewSelection;
@@ -278,4 +279,72 @@ TEST_CASE("A group heading says how many files are left on screen out of how man
 	CHECK(Graphite::GroupHeadingText(ReviewGroup::Commits, 40, 40) == "Commits (40)");
 	CHECK(Graphite::GroupHeadingText(ReviewGroup::Commits, 12, 40) == "Commits (12 of 40)");
 	CHECK(Graphite::GroupHeadingText(ReviewGroup::Uncommitted, 0, 3) == "Uncommitted in worktree (0 of 3)");
+}
+
+TEST_CASE("The commits tab counts the range's commits and says when the list was cut")
+{
+	Graphite::ReviewRange range;
+	range.Commits.resize(3);
+
+	CHECK(Graphite::CommitsTabLabel(range) == "Commits (3)");
+
+	range.CommitsComplete = false;
+	CHECK(Graphite::CommitsTabLabel(range) == "Commits (3+)");
+}
+
+TEST_CASE("A commit's line names its hash and author and then what it changed")
+{
+	Core::CommitSummary commit;
+	commit.Id.Bytes[0] = 0x77;
+	commit.Author.Name = "Ada";
+
+	CHECK(Graphite::CommitLine(commit, nullptr) == "7700000 \xC2\xB7 Ada");
+
+	const Core::Diff diff = DiffOfFiles({"a.cpp"});
+	CHECK(Graphite::CommitLine(commit, &diff) == "7700000 \xC2\xB7 Ada \xC2\xB7 1 file +0 -0");
+}
+
+TEST_CASE("A picked commit is kept while the range lists it and let go once it does not")
+{
+	std::vector<Core::CommitSummary> commits(2);
+	commits[0].Id.Bytes[0] = 1;
+	commits[1].Id.Bytes[0] = 2;
+	const std::optional<Core::Oid> picked = commits[1].Id;
+
+	CHECK(Graphite::FollowCommit(picked, commits) == picked);
+
+	commits.pop_back();
+	CHECK_FALSE(Graphite::FollowCommit(picked, commits).has_value());
+}
+
+TEST_CASE("The arrow keys step through the commits and stop at either end")
+{
+	std::vector<Core::CommitSummary> commits(3);
+	commits[0].Id.Bytes[0] = 1;
+	commits[1].Id.Bytes[0] = 2;
+	commits[2].Id.Bytes[0] = 3;
+	const std::optional<Core::Oid> nonePicked;
+	const std::vector<Core::CommitSummary> noCommits;
+
+	CHECK(Graphite::NeighbourCommit(nonePicked, commits, ListStep::Next) == commits[0].Id);
+	CHECK(Graphite::NeighbourCommit(commits[0].Id, commits, ListStep::Next) == commits[1].Id);
+	CHECK(Graphite::NeighbourCommit(commits[2].Id, commits, ListStep::Next) == commits[2].Id);
+	CHECK(Graphite::NeighbourCommit(commits[0].Id, commits, ListStep::Previous) == commits[0].Id);
+	CHECK_FALSE(Graphite::NeighbourCommit(nonePicked, noCommits, ListStep::Next).has_value());
+}
+
+TEST_CASE("Only a modified text file left with no lines once white space is ignored changed only in white space")
+{
+	Core::FileDiff file = FileAt("a.cpp");
+
+	CHECK(Graphite::OnlyWhitespaceChanged(file, Core::WhitespaceInDiff::Ignored));
+	CHECK_FALSE(Graphite::OnlyWhitespaceChanged(file, Core::WhitespaceInDiff::Shown));
+
+	Core::FileDiff binary = FileAt("a.png");
+	binary.IsBinary = true;
+	CHECK_FALSE(Graphite::OnlyWhitespaceChanged(binary, Core::WhitespaceInDiff::Ignored));
+
+	Core::FileDiff renamed = FileAt("b.cpp");
+	renamed.Change = Core::FileChange::Renamed;
+	CHECK_FALSE(Graphite::OnlyWhitespaceChanged(renamed, Core::WhitespaceInDiff::Ignored));
 }

@@ -287,6 +287,30 @@ namespace Graphite {
 							.Collapsed = tab.Collapsed};
 	}
 
+	ReviewWindows::FileList ReviewWindows::FilesPageList(Tab& tab, const ReviewGroups& groups)
+	{
+		return FileList{.Rows = tab.Rows,
+						.Groups = groups,
+						.Selected = tab.Selected,
+						.Folded = tab.Folded,
+						.FoldsVersion = tab.FoldsVersion,
+						.ScrollToSelected = tab.ScrollToSelected,
+						.Marks = RowMarks::Shown,
+						.ChildId = "##reviewFiles"};
+	}
+
+	ReviewWindows::FileList ReviewWindows::CommitFileList(Tab& tab, const Core::Diff& commitDiff)
+	{
+		return FileList{.Rows = tab.CommitRows,
+						.Groups = ReviewGroups{.Commits = &commitDiff},
+						.Selected = tab.SelectedCommitFile,
+						.Folded = tab.FoldedInCommit,
+						.FoldsVersion = tab.FoldsInCommitVersion,
+						.ScrollToSelected = tab.ScrollToCommitFile,
+						.Marks = RowMarks::Hidden,
+						.ChildId = "##reviewCommitFiles"};
+	}
+
 	void ReviewWindows::FollowSessions(const ReviewSessions& sessions, ReviewModel& model)
 	{
 		for (std::size_t tabIndex = 0; tabIndex < m_Tabs.size();)
@@ -451,8 +475,12 @@ namespace Graphite {
 			texts = model.GetUncommittedTexts(review.Key, file);
 		}
 
-		// Copied only when a different texts object arrives: copying a whole file's tokens every
-		// frame would cost the frame.
+		HoldTexts(tab, texts);
+	}
+
+	void ReviewWindows::HoldTexts(Tab& tab, const Core::Ref<const FileTexts>& texts)
+	{
+		// Copying a whole file's tokens every frame would cost the frame.
 		if (texts == tab.Texts)
 		{
 			return;
@@ -460,6 +488,74 @@ namespace Graphite {
 
 		tab.Texts = texts;
 		tab.Tokens = texts != nullptr ? texts->Tokens : FileTokens{};
+	}
+
+	void ReviewWindows::PickCommit(Tab& tab, const std::optional<Core::Oid>& commit)
+	{
+		if (tab.SelectedCommit == commit)
+		{
+			return;
+		}
+
+		tab.SelectedCommit = commit;
+		tab.SelectedCommitFile.reset();
+
+		// Built again even when the rows were built from this commit's diff - picked, left for another
+		// whose diff never arrived, and picked again - so that its first file is picked once more.
+		tab.CommitRows.Built = false;
+	}
+
+	void ReviewWindows::FollowCommits(Tab& tab, const ReviewRange& range)
+	{
+		tab.SelectedCommit = FollowCommit(tab.SelectedCommit, range.Commits);
+
+		if (!tab.SelectedCommit.has_value())
+		{
+			tab.SelectedCommitFile.reset();
+		}
+	}
+
+	void ReviewWindows::RefreshCommitRows(Tab& tab, const SessionSettings& settings, const Core::CommitSummary& commit,
+										  const Core::Ref<const Core::Diff>& commitDiff)
+	{
+		RowsCache& cache = tab.CommitRows;
+		const std::string_view filter{tab.Filter.data()};
+
+		const bool diffChanged = !cache.Built || cache.Committed != commitDiff;
+		const bool sameList = !diffChanged && cache.Filter == filter && cache.Shape == settings.Shape &&
+							  cache.FoldsVersion == tab.FoldsInCommitVersion;
+
+		if (sameList)
+		{
+			return;
+		}
+
+		const ReviewGroups groups{.Commits = commitDiff.get()};
+		const ReviewTreeInput input{.Groups = groups,
+									.Shape = settings.Shape,
+									.Headings = GroupHeadings::Hidden,
+									.Filter = std::string{filter},
+									.HideViewed = false,
+									.FoldedFolders = &tab.FoldedInCommit};
+
+		cache.Rows = BuildReviewTree(input);
+		cache.Filter = input.Filter;
+		cache.Shape = settings.Shape;
+		cache.FoldsVersion = tab.FoldsInCommitVersion;
+		cache.Built = true;
+
+		if (!diffChanged)
+		{
+			return;
+		}
+
+		cache.Committed = commitDiff;
+		cache.FileCounts[IndexOf(ReviewGroup::Commits)] = LineCountsOfEach(*commitDiff);
+		cache.Summary = CommitLine(commit, commitDiff.get());
+
+		tab.SelectedCommitFile =
+			FollowSelection(tab.SelectedCommitFile, tab.LastCommitPaths, groups, FirstFileOf(groups, cache.Rows));
+		tab.LastCommitPaths = ShownPathsByName(*commitDiff);
 	}
 
 	ReviewWindows::OpenRelativeFile ReviewWindows::OpenFileIn(const ReviewRange& range) const

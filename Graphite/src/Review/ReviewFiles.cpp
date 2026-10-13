@@ -24,6 +24,8 @@ namespace Graphite {
 		constexpr const char* kCommitsHeading = "Commits";
 		constexpr const char* kUncommittedHeading = "Uncommitted in worktree";
 
+		constexpr const char* kSeparator = " \xC2\xB7 ";
+
 		const char* HeadingOf(ReviewGroup group)
 		{
 			switch (group)
@@ -317,6 +319,75 @@ namespace Graphite {
 						   exactlyOne ? "commit" : "commits");
 	}
 
+	std::optional<std::size_t> IndexOfCommit(const std::vector<Core::CommitSummary>& commits, const Core::Oid& id)
+	{
+		for (std::size_t commitIndex = 0; commitIndex < commits.size(); ++commitIndex)
+		{
+			if (commits[commitIndex].Id == id)
+			{
+				return commitIndex;
+			}
+		}
+
+		return std::nullopt;
+	}
+
+	std::string CommitsTabLabel(const ReviewRange& range)
+	{
+		const char* more = range.CommitsComplete ? "" : "+";
+		return std::format("Commits ({}{})", range.Commits.size(), more);
+	}
+
+	std::string CommitLine(const Core::CommitSummary& commit, const Core::Diff* diff)
+	{
+		const std::string line = commit.Id.ShortHex() + kSeparator + commit.Author.Name;
+
+		if (diff == nullptr)
+		{
+			return line;
+		}
+
+		return line + kSeparator + ChangeSummary(*diff);
+	}
+
+	std::optional<Core::Oid> FollowCommit(const std::optional<Core::Oid>& selected,
+										  const std::vector<Core::CommitSummary>& commits)
+	{
+		if (!selected.has_value() || !IndexOfCommit(commits, *selected).has_value())
+		{
+			return std::nullopt;
+		}
+
+		return selected;
+	}
+
+	std::optional<Core::Oid> NeighbourCommit(const std::optional<Core::Oid>& selected,
+											 const std::vector<Core::CommitSummary>& commits, ListStep step)
+	{
+		if (commits.empty())
+		{
+			return std::nullopt;
+		}
+
+		const std::optional<std::size_t> picked =
+			selected.has_value() ? IndexOfCommit(commits, *selected) : std::nullopt;
+
+		if (!picked.has_value())
+		{
+			return commits.front().Id;
+		}
+
+		switch (step)
+		{
+		case ListStep::Previous:
+			return commits[*picked == 0 ? 0 : *picked - 1].Id;
+		case ListStep::Next:
+			return commits[std::min(*picked + 1, commits.size() - 1)].Id;
+		}
+
+		return selected;
+	}
+
 	std::string RangeProblemMessage(RangeProblem problem, const std::string& branchFullName,
 									const std::string& baseFullName)
 	{
@@ -366,5 +437,11 @@ namespace Graphite {
 		}
 
 		return label;
+	}
+
+	bool OnlyWhitespaceChanged(const Core::FileDiff& file, Core::WhitespaceInDiff whitespace)
+	{
+		return whitespace == Core::WhitespaceInDiff::Ignored && file.Change == Core::FileChange::Modified &&
+			   !file.IsBinary && file.Hunks.empty();
 	}
 }
