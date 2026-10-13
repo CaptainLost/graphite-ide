@@ -470,12 +470,25 @@ namespace Core {
 		return collected;
 	}
 
+	namespace {
+
+		// An empty view may carry a null pointer, and libgit2 reads a null buffer as no file at
+		// all, which is not what an empty text means.
+		const char* DataOrEmptyString(std::string_view text)
+		{
+			return text.empty() ? "" : text.data();
+		}
+	}
+
 	Result<FileDiff> Repository::DiffTexts(std::string_view oldText, std::string_view newText,
 										   const std::filesystem::path& path, WhitespaceInDiff whitespace)
 	{
 		EnsureLibgit2Initialised();
 
 		git_diff_options options = GIT_DIFF_OPTIONS_INIT;
+
+		// Without this a stray NUL turns the answer into "binary", which silently has no hunks.
+		options.flags |= GIT_DIFF_FORCE_TEXT;
 
 		if (whitespace == WhitespaceInDiff::Ignored)
 		{
@@ -486,7 +499,7 @@ namespace Core {
 		Diff collected;
 		git_diff_binary_cb noBinaryCallback = nullptr;
 
-		const int diffResult = git_diff_buffers(oldText.data(), oldText.size(), gitPath.c_str(), newText.data(),
+		const int diffResult = git_diff_buffers(DataOrEmptyString(oldText), oldText.size(), gitPath.c_str(), DataOrEmptyString(newText),
 												newText.size(), gitPath.c_str(), &options, AppendFile,
 												noBinaryCallback, AppendHunk, AppendLine, &collected);
 
@@ -496,16 +509,21 @@ namespace Core {
 		}
 
 		FileDiff file;
+		file.Change = FileChange::Unmodified;
 
 		if (!collected.Files.empty())
 		{
 			file = std::move(collected.Files.front());
 		}
 
-		// Both sides exist here, whatever status libgit2 reported for the pair.
+		// Both sides exist here, so the pair is Modified or Unmodified whatever else libgit2 called
+		// it. A pair libgit2 listed as changed stays Modified when white space alone differs and
+		// its hunks are gone.
+		const bool libgit2ListedChange = file.Change != FileChange::Unmodified;
+		const bool differs = libgit2ListedChange || !file.Hunks.empty();
 		file.OldPath = path;
 		file.NewPath = path;
-		file.Change = file.Hunks.empty() ? FileChange::Unmodified : FileChange::Modified;
+		file.Change = differs ? FileChange::Modified : FileChange::Unmodified;
 
 		return file;
 	}

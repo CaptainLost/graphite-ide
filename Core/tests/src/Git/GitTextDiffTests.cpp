@@ -92,6 +92,19 @@ TEST_CASE("Equal texts give a file with no hunks")
 	CHECK(diff.GetValue().Hunks.empty());
 }
 
+TEST_CASE("Two texts that differ and hold a NUL byte still give hunks")
+{
+	const std::string oldText("a\0b\n", 4);
+	const std::string newText("a\0c\n", 4);
+
+	const Core::Result<Core::FileDiff> diff =
+		Core::Repository::DiffTexts(oldText, newText, "f.txt", Core::WhitespaceInDiff::Shown);
+
+	REQUIRE(diff.HasValue());
+	CHECK(diff.GetValue().Change == Core::FileChange::Modified);
+	CHECK_FALSE(diff.GetValue().Hunks.empty());
+}
+
 TEST_CASE("A change of white space alone has hunks unless white space is ignored")
 {
 	const Core::Result<Core::FileDiff> shown =
