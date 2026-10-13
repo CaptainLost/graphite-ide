@@ -375,26 +375,45 @@ TEST_CASE("Opening the page with words that name no colour asks for no frames")
 
 namespace {
 
-	float DrawnControlWidth(AppearanceScreen& screen, const Graphite::SettingsRow& row)
+	struct DrawnControl
 	{
-		float width = 0.0f;
+		float Width = 0.0f;
+		float Top = 0.0f;
+		float LastItemWidth = 0.0f;
+		float LastItemTop = 0.0f;
+		float FollowerTop = 0.0f;
+		float SwatchWidth = 0.0f;
+	};
 
-		screen.Frames.GetFrames().Next([&row, &width] {
+	// Followed on its line by a button, as the search results follow it with Open.
+	DrawnControl DrawControlMeasured(AppearanceScreen& screen, const Graphite::SettingsRow& row)
+	{
+		DrawnControl drawn;
+
+		screen.Frames.GetFrames().Next([&row, &drawn] {
 			ImGui::Begin("Found");
 			ImGui::PushID(row.Key.c_str());
+			const ImVec2 start = ImGui::GetCursorScreenPos();
 			ImGui::BeginGroup();
 			row.DrawControl();
+			drawn.Width = ImGui::GetItemRectMax().x - start.x;
+			drawn.Top = start.y;
+			drawn.LastItemWidth = ImGui::GetItemRectSize().x;
+			drawn.LastItemTop = ImGui::GetItemRectMin().y;
+			drawn.SwatchWidth = ImGui::GetFrameHeight();
+			ImGui::SameLine();
+			ImGui::Button("follower");
+			drawn.FollowerTop = ImGui::GetItemRectMin().y;
 			ImGui::EndGroup();
-			width = ImGui::GetItemRectSize().x;
 			ImGui::PopID();
 			ImGui::End();
 		});
 
-		return width;
+		return drawn;
 	}
 }
 
-TEST_CASE("In an own scheme a found inherited colour keeps the reset icon's room, so what follows it lines up")
+TEST_CASE("A found colour's swatch ends its control whether overridden or inherited so the swatches line up beside what follows")
 {
 	AppearanceScreen screen(true);
 
@@ -406,13 +425,18 @@ TEST_CASE("In an own scheme a found inherited colour keeps the reset icon's room
 	REQUIRE_FALSE(inherited.empty());
 	REQUIRE(inherited[0].DimmedTitle);
 
-	const float overriddenWidth = DrawnControlWidth(screen, overridden[0]);
+	for (const Graphite::SettingsRow& row : {overridden[0], inherited[0]})
+	{
+		const DrawnControl drawn = DrawControlMeasured(screen, row);
 
-	CHECK(overriddenWidth == doctest::Approx(overridden[0].ControlWidth));
-	CHECK(DrawnControlWidth(screen, inherited[0]) == doctest::Approx(overriddenWidth));
+		CHECK(drawn.Width == doctest::Approx(row.ControlWidth));
+		CHECK(drawn.LastItemWidth == doctest::Approx(drawn.SwatchWidth));
+		CHECK(drawn.LastItemTop == doctest::Approx(drawn.Top));
+		CHECK(drawn.FollowerTop == doctest::Approx(drawn.Top));
+	}
 }
 
-TEST_CASE("A found colour row's control is as wide as the swatch, and wider in an own scheme for the reset icon")
+TEST_CASE("A found colour row's control is as wide as the swatch and wider for an overridden colour's reset icon")
 {
 	AppearanceScreen builtIn;
 	AppearanceScreen own(true);
@@ -423,12 +447,15 @@ TEST_CASE("A found colour row's control is as wide as the swatch, and wider in a
 	REQUIRE(ownBlock.has_value());
 
 	const std::vector<Graphite::SettingsRow> builtInRows = FindInFrame(builtIn, *builtInBlock, "comment");
-	const std::vector<Graphite::SettingsRow> ownRows = FindInFrame(own, *ownBlock, "comment");
+	const std::vector<Graphite::SettingsRow> ownOverridden = FindInFrame(own, *ownBlock, "comment");
+	const std::vector<Graphite::SettingsRow> ownInherited = FindInFrame(own, *ownBlock, "keyword");
 
 	REQUIRE(builtInRows.size() == 1);
-	REQUIRE(ownRows.size() == 1);
+	REQUIRE(ownOverridden.size() == 1);
+	REQUIRE_FALSE(ownInherited.empty());
 	CHECK(builtInRows[0].ControlWidth > 0.0f);
-	CHECK(ownRows[0].ControlWidth > builtInRows[0].ControlWidth);
+	CHECK(ownOverridden[0].ControlWidth > builtInRows[0].ControlWidth);
+	CHECK(ownInherited[0].ControlWidth == doctest::Approx(builtInRows[0].ControlWidth));
 }
 
 TEST_CASE("A found colour row's control draws, built-in and own, overridden and inherited, without an ImGui assertion")

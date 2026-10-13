@@ -320,25 +320,26 @@ namespace Graphite {
 
 	template<typename Which>
 		requires std::is_enum_v<Which>
+	bool AppearancePage::ShowsReset(Which which) const
+	{
+		return !m_Draft.IsReadOnly() && m_Draft.IsOverridden(which);
+	}
+
+	template<typename Which>
+		requires std::is_enum_v<Which>
 	void AppearancePage::DrawColourResult(Which which)
 	{
-		DrawColourSwatch(which);
-
-		if (m_Draft.IsReadOnly())
+		if (ShowsReset(which))
 		{
-			return;
-		}
-
-		ImGui::SameLine();
-
-		if (m_Draft.IsOverridden(which))
-		{
+			// In a group of its own: the icon moves down to centre itself in the line, and everything
+			// after it on the line, the swatch and the search's Open, would follow it down.
+			ImGui::BeginGroup();
 			DrawColourReset(which);
+			ImGui::EndGroup();
+			ImGui::SameLine();
 		}
-		else
-		{
-			ImGui::Dummy(ImVec2(IconButtonSize(), ImGui::GetFrameHeight()));
-		}
+
+		DrawColourSwatch(which);
 	}
 
 	template<typename Which>
@@ -346,12 +347,8 @@ namespace Graphite {
 	std::vector<SettingsRow> AppearancePage::FindColours(const char* heading, std::size_t count, std::span<const std::string> words)
 	{
 		const bool ownScheme = !m_Draft.IsReadOnly();
-		float controlWidth = ImGui::GetFrameHeight();
-
-		if (ownScheme)
-		{
-			controlWidth += ImGui::GetStyle().ItemSpacing.x + IconButtonSize();
-		}
+		const float swatchWidth = ImGui::GetFrameHeight();
+		const float swatchAndResetWidth = swatchWidth + ImGui::GetStyle().ItemSpacing.x + IconButtonSize();
 
 		std::vector<SettingsRow> rows;
 
@@ -372,7 +369,7 @@ namespace Graphite {
 									   .Title = name,
 									   .Description = ownScheme ? "" : kBuiltInColourDescription,
 									   .DimmedTitle = inherited,
-									   .ControlWidth = controlWidth,
+									   .ControlWidth = ShowsReset(which) ? swatchAndResetWidth : swatchWidth,
 									   .DrawControl = [this, which] { DrawColourResult(which); },
 									   .OpenWith = ColourOpenWith(heading, name)});
 		}

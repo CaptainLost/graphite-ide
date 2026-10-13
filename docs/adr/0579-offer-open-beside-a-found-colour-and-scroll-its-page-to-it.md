@@ -13,7 +13,7 @@ Date: 2026-10-13
 - **A found colour sets `OpenWith` to its group's heading and its name**, such as `Syntax colours/String`. A name alone is not enough: Text and Background are in more than one group.
 - **Opening the Appearance page with a colour's words scrolls the page so the colour is in the middle**, and lights its cell for a second and a half. Words that name no colour, such as the query an "N more matches" row hands on, open the page where it was left, as every page keeps its own scroll.
 - **A block whose content must scroll the page sets `SettingsRow::DrawnEvenOutOfSight`** for as long as the scroll takes. ImGui skips the content of a block scrolled out of sight, so a colour in it could not otherwise scroll the page to itself.
-- **A found colour of a built-in scheme says under its name how to change it**: "Built-in scheme: duplicate it to change this colour." A colour of the user's own scheme says nothing, as its swatch works. In an own scheme an inherited colour keeps the reset icon's room, so the Open buttons line up.
+- **A found colour of a built-in scheme says under its name how to change it**: "Built-in scheme: duplicate it to change this colour." A colour of the user's own scheme says nothing, as its swatch works. In the results an overridden colour's reset icon stands left of its swatch, so the swatches and the Open buttons line up without a gap where an inherited colour has no icon.
 - Every other row with a control of its own keeps that control alone.
 
 ## Rationale

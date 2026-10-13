@@ -91,6 +91,10 @@ namespace Graphite {
 
 		template<typename Which>
 			requires std::is_enum_v<Which>
+		bool ShowsReset(Which which) const;
+
+		template<typename Which>
+			requires std::is_enum_v<Which>
 		void DrawColourResult(Which which);
 
 		template<typename Which>
