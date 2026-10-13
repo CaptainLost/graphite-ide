@@ -3,6 +3,7 @@
 #include "Core/Git/Repository.h"
 #include "Git/Changes/ChangeBases.h"
 #include "Git/GitPort.h"
+#include "Review/ReviewPort.h"
 
 #include <atomic>
 #include <cstddef>
@@ -14,7 +15,7 @@
 
 namespace Graphite {
 
-	// Answers both GitModel's and ChangeMarkersModel's questions from a real repository on disk.
+	// Answers GitModel's, ChangeMarkersModel's and ReviewModel's questions from a real repository on disk.
 	//
 	// Each worker thread gets its own libgit2 handle, because a git_repository must not be
 	// used from two threads at once. They are cached per thread and per root, so a blame
@@ -22,7 +23,7 @@ namespace Graphite {
 	// behind one another. A handle lives until its thread ends or its root is superseded;
 	// there are a handful of worker threads and one root at a time, so that costs nothing
 	// worth reclaiming beyond what SetRoot already invalidates.
-	class RepositoryGitPort final : public GitPort, public ChangeBasePort
+	class RepositoryGitPort final : public GitPort, public ChangeBasePort, public ReviewPort
 	{
 	public:
 		explicit RepositoryGitPort(std::filesystem::path root);
@@ -67,6 +68,17 @@ namespace Graphite {
 
 		// ChangeBasePort. Uses the same per-thread handle as every query above.
 		Core::Result<ChangeBases> ReadBases(const std::filesystem::path& absolutePath) override;
+
+		// ReviewPort. The range is read through the same per-thread handle as every query above; a
+		// worktree is opened afresh on every call, being another repository than the open folder's.
+		Core::Result<ReviewRange> ResolveRange(const ReviewKey& key) override;
+		Core::Result<Core::Diff> QueryRangeDiff(const RangeEnds& ends) override;
+		Core::Result<FileTexts> ReadRangeTexts(const RangeEnds& ends, const std::filesystem::path& oldPath,
+											   const std::filesystem::path& newPath) override;
+		Core::Result<Core::Diff> QueryWorktreeDiff(const std::filesystem::path& worktree) override;
+		Core::Result<FileTexts> ReadWorktreeTexts(const std::filesystem::path& worktree,
+												  const std::filesystem::path& oldPath,
+												  const std::filesystem::path& newPath) override;
 
 		void SetRoot(std::filesystem::path root);
 

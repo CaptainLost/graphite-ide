@@ -749,4 +749,213 @@ namespace Graphite {
 			headSide.Present ? std::optional<std::string>{std::move(headSide.Text)} : std::nullopt,
 			indexSide.Present ? std::optional<std::string>{std::move(indexSide.Text)} : std::nullopt);
 	}
+
+	namespace {
+
+		// More than any branch under review holds; a range past it says so rather than listing them all.
+		constexpr std::size_t kRangeCommitsListed = 500;
+
+		bool IsNotFound(const Core::Error& error)
+		{
+			return error.Code == Core::ErrorCode::NotFound;
+		}
+
+		Core::Result<SideText> ReadBlobSide(Core::Repository& repository, const std::filesystem::path& path,
+											const Core::Oid& revision)
+		{
+			if (path.empty())
+			{
+				return SideText{};
+			}
+
+			return ReadSideText(repository.ReadBlob(path, revision));
+		}
+
+		FileTexts TextsOf(SideText oldText, SideText newText)
+		{
+			FileTexts texts;
+			texts.HasOld = oldText.Present;
+			texts.Old = std::move(oldText.Text);
+			texts.HasNew = newText.Present;
+			texts.New = std::move(newText.Text);
+			return texts;
+		}
+	}
+
+	Core::Result<ReviewRange> RepositoryGitPort::ResolveRange(const ReviewKey& key)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+		ReviewRange range;
+
+		const Core::Result<Core::Oid> tip = repository->ResolveReference(key.Branch);
+
+		if (!tip.HasValue())
+		{
+			if (!IsNotFound(tip.GetError()))
+			{
+				return tip.GetError();
+			}
+
+			range.Problem = RangeProblem::BranchMissing;
+			return range;
+		}
+
+		// A lookup that failed reads as held nowhere: the review still works, and only the
+		// uncommitted toggle is not offered.
+		const Core::Result<std::optional<std::filesystem::path>> holding = repository->WorktreeHolding(key.Branch);
+
+		if (holding.HasValue())
+		{
+			range.Worktree = holding.GetValue();
+		}
+
+		const Core::Result<Core::Oid> baseTip = repository->ResolveReference(key.Base);
+
+		if (!baseTip.HasValue())
+		{
+			if (!IsNotFound(baseTip.GetError()))
+			{
+				return baseTip.GetError();
+			}
+
+			range.Problem = RangeProblem::BaseMissing;
+			return range;
+		}
+
+		const Core::Result<Core::Oid> mergeBase = repository->MergeBase(tip.GetValue(), baseTip.GetValue());
+
+		if (!mergeBase.HasValue())
+		{
+			if (!IsNotFound(mergeBase.GetError()))
+			{
+				return mergeBase.GetError();
+			}
+
+			range.Problem = RangeProblem::NoCommonAncestor;
+			return range;
+		}
+
+		range.Ends = RangeEnds{.MergeBase = mergeBase.GetValue(), .Tip = tip.GetValue()};
+
+		Core::LogRequest commitsSinceMergeBase;
+		commitsSinceMergeBase.Ref = key.Branch;
+		commitsSinceMergeBase.Exclude = range.Ends.MergeBase;
+		commitsSinceMergeBase.MaxCount = kRangeCommitsListed;
+
+		Core::Result<Core::LogPage> page = repository->QueryLog(commitsSinceMergeBase);
+
+		if (!page.HasValue())
+		{
+			return page.GetError();
+		}
+
+		Core::LogPage commits = std::move(page).GetValue();
+		range.Commits = std::move(commits.Commits);
+		range.CommitsComplete = commits.Complete;
+
+		return range;
+	}
+
+	Core::Result<Core::Diff> RepositoryGitPort::QueryRangeDiff(const RangeEnds& ends)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::DiffRequest request;
+		request.Target = Core::DiffTarget::RevisionToRevision;
+		request.From = ends.MergeBase;
+		request.To = ends.Tip;
+
+		return opened.GetValue()->QueryDiff(request);
+	}
+
+	Core::Result<FileTexts> RepositoryGitPort::ReadRangeTexts(const RangeEnds& ends,
+															  const std::filesystem::path& oldPath,
+															  const std::filesystem::path& newPath)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		Core::Result<SideText> oldSide = ReadBlobSide(*repository, oldPath, ends.MergeBase);
+
+		if (!oldSide.HasValue())
+		{
+			return oldSide.GetError();
+		}
+
+		Core::Result<SideText> newSide = ReadBlobSide(*repository, newPath, ends.Tip);
+
+		if (!newSide.HasValue())
+		{
+			return newSide.GetError();
+		}
+
+		return TextsOf(std::move(oldSide).GetValue(), std::move(newSide).GetValue());
+	}
+
+	Core::Result<Core::Diff> RepositoryGitPort::QueryWorktreeDiff(const std::filesystem::path& worktree)
+	{
+		// Not cached per thread: a cached handle would hold an index the worktree's own git has
+		// since rewritten.
+		Core::Result<Core::Repository> opened = Core::Repository::Open(worktree);
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		const Core::Repository repository = std::move(opened).GetValue();
+
+		Core::DiffRequest request;
+		request.Target = Core::DiffTarget::WorkTreeToHead;
+
+		return repository.QueryDiff(request);
+	}
+
+	Core::Result<FileTexts> RepositoryGitPort::ReadWorktreeTexts(const std::filesystem::path& worktree,
+																 const std::filesystem::path& oldPath,
+																 const std::filesystem::path& newPath)
+	{
+		Core::Result<Core::Repository> opened = Core::Repository::Open(worktree);
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository repository = std::move(opened).GetValue();
+
+		Core::Result<SideText> oldSide = ReadOneSide(repository, TextSide::Head, oldPath);
+
+		if (!oldSide.HasValue())
+		{
+			return oldSide.GetError();
+		}
+
+		Core::Result<SideText> newSide = ReadOneSide(repository, TextSide::WorkingTree, newPath);
+
+		if (!newSide.HasValue())
+		{
+			return newSide.GetError();
+		}
+
+		return TextsOf(std::move(oldSide).GetValue(), std::move(newSide).GetValue());
+	}
 }
