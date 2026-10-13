@@ -26,6 +26,10 @@ namespace Core {
 		// "refs/heads/main", not a short one.
 		std::optional<std::string> Ref;
 
+		// Leaves out every commit reachable from this one, as `git log <exclude>..<ref>` does: given
+		// a branch's fork point, the branch's own commits. Ignored for a stash.
+		std::optional<Oid> Exclude;
+
 		// Shows this stash alone instead of walking. Git stores a stash as a merge whose other
 		// parents hold the index and the untracked files, so the row names only the first parent;
 		// Filter still applies, while File, Lines, the walk bounds and the upstream are ignored.

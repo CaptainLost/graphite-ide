@@ -312,6 +312,18 @@ namespace Core {
 			return emptyHistory;
 		}
 
+		if (request.Exclude.has_value())
+		{
+			const git_oid excludedCommit = ToGitOid(*request.Exclude);
+
+			if (git_revwalk_hide(walk.get(), &excludedCommit) != 0)
+			{
+				const std::string message = LastLibgit2Message();
+				return Error{ErrorCode::NotFound,
+							 std::format("cannot leave out {}: {}", request.Exclude->ShortHex(), message)};
+			}
+		}
+
 		// Measured against the ref itself, not the page: it is a property of the branch, so a
 		// filtered page still marks the rows it does show correctly.
 		UnpushedCommits unpushed = CollectUnpushed(m_Handle.get(), request.Ref, request.MaxWalk);
