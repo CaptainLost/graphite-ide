@@ -35,9 +35,21 @@ namespace Core {
 			return branch;
 		}
 
+		// Whether a linked worktree whose folder is gone still counts. Its HEAD stays on record in the
+		// main repository's `worktrees` directory until `git worktree prune` runs.
+		enum class GoneWorktrees
+		{
+			// Counted like any other, as the refusal to delete a checked-out branch always has.
+			Counted,
+
+			// Left out: there is no folder to read the branch's work from.
+			Skipped
+		};
+
 		// Empty when the branch is checked out in this repository's own working tree, or when the
 		// lookup fails; the caller's plain refusal is still true then.
-		std::string LinkedWorktreeHoldingBranch(git_repository* handle, const char* branchReference)
+		std::string LinkedWorktreeHoldingBranch(git_repository* handle, const char* branchReference,
+												GoneWorktrees goneWorktrees)
 		{
 			git_strarray worktreeNames{};
 
@@ -72,10 +84,20 @@ namespace Core {
 
 				WorktreeHandle worktree;
 
-				if (git_worktree_lookup(Out(worktree), handle, worktreeName) == 0)
+				if (git_worktree_lookup(Out(worktree), handle, worktreeName) != 0)
 				{
-					worktreePath = git_worktree_path(worktree.get());
+					continue;
 				}
+
+				const bool skippedAsGone =
+					goneWorktrees == GoneWorktrees::Skipped && git_worktree_validate(worktree.get()) != 0;
+
+				if (skippedAsGone)
+				{
+					continue;
+				}
+
+				worktreePath = git_worktree_path(worktree.get());
 			}
 
 			git_strarray_dispose(&worktreeNames);
@@ -151,7 +173,8 @@ namespace Core {
 			return std::optional<std::filesystem::path>{m_WorkingDirectory};
 		}
 
-		const std::string linkedWorktree = LinkedWorktreeHoldingBranch(m_Handle.get(), branchFullName.c_str());
+		const std::string linkedWorktree =
+			LinkedWorktreeHoldingBranch(m_Handle.get(), branchFullName.c_str(), GoneWorktrees::Skipped);
 
 		if (!linkedWorktree.empty())
 		{
@@ -313,7 +336,8 @@ namespace Core {
 
 		if (checkedOutResult == kBranchIsCheckedOut)
 		{
-			const std::string holdingWorktree = LinkedWorktreeHoldingBranch(m_Handle.get(), git_reference_name(branch));
+			const std::string holdingWorktree =
+				LinkedWorktreeHoldingBranch(m_Handle.get(), git_reference_name(branch), GoneWorktrees::Counted);
 
 			if (!holdingWorktree.empty())
 			{

@@ -124,6 +124,40 @@ TEST_CASE("A worktree with a detached HEAD holds no branch")
 	CHECK(IsHeldNowhere(repository, "refs/heads/side"));
 }
 
+TEST_CASE("A linked worktree's folder opens exactly as that worktree")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("one");
+	fixture.Branch("side");
+
+	TempDirectory outside;
+	const std::filesystem::path worktreePath = outside.GetPath() / "side-tree";
+	AddWorktree(fixture, "side", worktreePath);
+
+	Core::Result<Core::Repository> opened = Core::Repository::OpenExactly(worktreePath);
+
+	REQUIRE(opened.HasValue());
+	CHECK(std::filesystem::equivalent(opened.GetValue().GetWorkingDirectory(), worktreePath));
+}
+
+TEST_CASE("A linked worktree whose folder was deleted by hand holds no branch")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("one");
+	fixture.Branch("side");
+
+	TempDirectory outside;
+	const std::filesystem::path worktreePath = outside.GetPath() / "side-tree";
+	AddWorktree(fixture, "side", worktreePath);
+	std::filesystem::remove_all(worktreePath);
+
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	CHECK(IsHeldNowhere(repository, "refs/heads/side"));
+}
+
 TEST_CASE("Asked from a linked worktree the main checkout's branch is held by the main checkout")
 {
 	GitFixture fixture;

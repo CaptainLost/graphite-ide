@@ -913,8 +913,9 @@ namespace Graphite {
 	Core::Result<Core::Diff> RepositoryGitPort::QueryWorktreeDiff(const std::filesystem::path& worktree)
 	{
 		// Not cached per thread: a cached handle would hold an index the worktree's own git has
-		// since rewritten.
-		Core::Result<Core::Repository> opened = Core::Repository::Open(worktree);
+		// since rewritten. Opened exactly: a folder that lost its `.git` file would otherwise be read
+		// as the repository around it, and that checkout's changes listed as the worktree's.
+		Core::Result<Core::Repository> opened = Core::Repository::OpenExactly(worktree);
 
 		if (!opened.HasValue())
 		{
@@ -933,7 +934,7 @@ namespace Graphite {
 																 const std::filesystem::path& oldPath,
 																 const std::filesystem::path& newPath)
 	{
-		Core::Result<Core::Repository> opened = Core::Repository::Open(worktree);
+		Core::Result<Core::Repository> opened = Core::Repository::OpenExactly(worktree);
 
 		if (!opened.HasValue())
 		{

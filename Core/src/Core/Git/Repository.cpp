@@ -47,15 +47,25 @@ namespace Core {
 
 	Result<Repository> Repository::Open(const std::filesystem::path& anyPathInside)
 	{
+		const unsigned int noOpenFlags = 0;
+		return OpenWith(anyPathInside, noOpenFlags);
+	}
+
+	Result<Repository> Repository::OpenExactly(const std::filesystem::path& directory)
+	{
+		return OpenWith(directory, GIT_REPOSITORY_OPEN_NO_SEARCH);
+	}
+
+	Result<Repository> Repository::OpenWith(const std::filesystem::path& where, unsigned int openFlags)
+	{
 		EnsureLibgit2Initialised();
 
 		git_repository* openedHandle = nullptr;
-		const std::string path = ToUtf8(anyPathInside);
+		const std::string path = ToUtf8(where);
 
-		const unsigned int noOpenFlags = 0;
 		const char* const searchUpToTheFilesystemRootLikeGit = nullptr;
 		const int openResult =
-			git_repository_open_ext(&openedHandle, path.c_str(), noOpenFlags, searchUpToTheFilesystemRootLikeGit);
+			git_repository_open_ext(&openedHandle, path.c_str(), openFlags, searchUpToTheFilesystemRootLikeGit);
 
 		if (openResult != 0 || openedHandle == nullptr)
 		{

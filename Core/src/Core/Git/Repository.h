@@ -32,6 +32,11 @@ namespace Core {
 	public:
 		static Result<Repository> Open(const std::filesystem::path& anyPathInside);
 
+		// The repository this directory is the working directory of, or the git directory of, and
+		// no other: nothing is searched for above it, so a worktree folder that lost its `.git` file
+		// answers NotFound rather than the repository around it.
+		static Result<Repository> OpenExactly(const std::filesystem::path& directory);
+
 		// A folder that is already a repository is re-initialised in place, which git treats as
 		// harmless. The first branch is named from the user's init.defaultBranch.
 		static Result<Repository> Init(const std::filesystem::path& existingDirectory);
@@ -86,7 +91,8 @@ namespace Core {
 
 		// The working directory the branch is checked out in: this repository's own, a linked
 		// worktree's, or - asked from a linked worktree - the main checkout's. Empty when none holds
-		// it; a worktree whose HEAD is detached, as during a rebase, holds no branch.
+		// it; a worktree whose HEAD is detached, as during a rebase, holds no branch, and nor does a
+		// linked worktree whose folder is gone.
 		Result<std::optional<std::filesystem::path>> WorktreeHolding(const std::string& branchFullName) const;
 
 		// Unlike HeadCommit, answers for a repository with no commits and for a detached HEAD.
@@ -171,6 +177,9 @@ namespace Core {
 
 	private:
 		Repository() = default;
+
+		// The flags are libgit2's GIT_REPOSITORY_OPEN_* bits.
+		static Result<Repository> OpenWith(const std::filesystem::path& where, unsigned int openFlags);
 
 		// Defined in Repository.cpp, because no header under Core/Git includes <git2.h>.
 		struct Free

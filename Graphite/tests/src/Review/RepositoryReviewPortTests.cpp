@@ -161,3 +161,21 @@ TEST_CASE("A worktree's diff and texts are its files on disk against the branch 
 	CHECK(texts.GetValue().Old == "new on side\n");
 	CHECK(texts.GetValue().New == "edited in the worktree\n");
 }
+
+TEST_CASE("A folder inside the repository that is no worktree is not read as one")
+{
+	ReviewRepository repository;
+	MakeForkedHistory(repository);
+	repository.Write("a.txt", "edited in the main checkout\n");
+	const std::filesystem::path notAWorktree = repository.GetPath() / "not-a-worktree";
+	std::filesystem::create_directories(notAWorktree);
+	Graphite::RepositoryGitPort port{repository.GetPath()};
+
+	const Core::Result<Core::Diff> diff = port.QueryWorktreeDiff(notAWorktree);
+	const Core::Result<Graphite::FileTexts> texts = port.ReadWorktreeTexts(notAWorktree, "a.txt", "a.txt");
+
+	REQUIRE_FALSE(diff.HasValue());
+	CHECK(diff.GetError().Code == Core::ErrorCode::NotFound);
+	REQUIRE_FALSE(texts.HasValue());
+	CHECK(texts.GetError().Code == Core::ErrorCode::NotFound);
+}

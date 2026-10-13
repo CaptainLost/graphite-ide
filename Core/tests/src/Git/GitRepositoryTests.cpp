@@ -117,6 +117,29 @@ TEST_CASE("Opening succeeds from a directory inside the repository")
 	REQUIRE(opened.HasValue());
 }
 
+TEST_CASE("Opening exactly a repository's own directory succeeds")
+{
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+
+	Result<Repository> opened = Repository::OpenExactly(temp.GetPath());
+
+	REQUIRE(opened.HasValue());
+	CHECK(std::filesystem::equivalent(opened.GetValue().GetWorkingDirectory(), temp.GetPath()));
+}
+
+TEST_CASE("Opening exactly a directory inside a repository does not find the repository around it")
+{
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	temp.MakeDirectory("deep/nested");
+
+	Result<Repository> opened = Repository::OpenExactly(temp.GetPath() / "deep" / "nested");
+
+	REQUIRE_FALSE(opened.HasValue());
+	CHECK(opened.GetError().Code == Core::ErrorCode::NotFound);
+}
+
 TEST_CASE("A file matching a rule is reported as ignored")
 {
 	TempDirectory temp;
