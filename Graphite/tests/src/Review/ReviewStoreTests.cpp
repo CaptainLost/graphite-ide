@@ -61,7 +61,7 @@ namespace {
 	{
 		ReviewStore reopened;
 		reopened.Open(root);
-		return reopened.GetMarks().StateOf(kBranch, ReviewGroup::Commits, MarkedFile()) == ViewedState::Viewed;
+		return reopened.GetSessions().StateOf(kBranch, ReviewGroup::Commits, MarkedFile()) == ViewedState::Viewed;
 	}
 }
 
@@ -71,7 +71,8 @@ TEST_CASE("Marks are saved once they stand unchanged for the delay and read back
 	ReviewStore store;
 	store.Open(folder.GetPath());
 
-	store.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	store.GetSessions().Start(kBranch, "refs/heads/main");
+	store.GetSessions().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
 	Wait(store, 0.0f);
 	Wait(store, ReviewStore::kSaveDelaySeconds - 0.5f);
 	CHECK_FALSE(std::filesystem::exists(ReviewStore::FileFor(folder.GetPath())));
@@ -81,7 +82,7 @@ TEST_CASE("Marks are saved once they stand unchanged for the delay and read back
 
 	ReviewStore reopened;
 	reopened.Open(folder.GetPath());
-	CHECK(reopened.GetMarks().StateOf(kBranch, ReviewGroup::Commits, MarkedFile()) == ViewedState::Viewed);
+	CHECK(reopened.GetSessions().StateOf(kBranch, ReviewGroup::Commits, MarkedFile()) == ViewedState::Viewed);
 }
 
 TEST_CASE("A change keeps restarting the save delay")
@@ -90,11 +91,12 @@ TEST_CASE("A change keeps restarting the save delay")
 	ReviewStore store;
 	store.Open(folder.GetPath());
 
-	store.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	store.GetSessions().Start(kBranch, "refs/heads/main");
+	store.GetSessions().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
 	Wait(store, 0.0f);
 	Wait(store, ReviewStore::kSaveDelaySeconds - 0.5f);
 
-	store.GetMarks().Unmark(kBranch, ReviewGroup::Commits, MarkedFile());
+	store.GetSessions().Unmark(kBranch, ReviewGroup::Commits, MarkedFile());
 	Wait(store, 0.0f);
 	Wait(store, 1.0f);
 
@@ -106,14 +108,15 @@ TEST_CASE("Closing the folder writes what was not saved yet")
 	TempDirectory folder;
 	ReviewStore store;
 	store.Open(folder.GetPath());
-	store.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	store.GetSessions().Start(kBranch, "refs/heads/main");
+	store.GetSessions().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
 
 	store.Close();
 
 	ReviewStore reopened;
 	reopened.Open(folder.GetPath());
-	CHECK(reopened.GetMarks().StateOf(kBranch, ReviewGroup::Commits, MarkedFile()) == ViewedState::Viewed);
-	CHECK(store.GetMarks().GetAll().empty());
+	CHECK(reopened.GetSessions().StateOf(kBranch, ReviewGroup::Commits, MarkedFile()) == ViewedState::Viewed);
+	CHECK(store.GetSessions().GetAll().empty());
 }
 
 TEST_CASE("A folder without a reviews file opens with no marks and writes nothing")
@@ -125,7 +128,7 @@ TEST_CASE("A folder without a reviews file opens with no marks and writes nothin
 	Wait(store, ReviewStore::kSaveDelaySeconds * 2.0f);
 	store.Close();
 
-	CHECK(store.GetMarks().GetAll().empty());
+	CHECK(store.GetSessions().GetAll().empty());
 	CHECK_FALSE(std::filesystem::exists(ReviewStore::FileFor(folder.GetPath())));
 }
 
@@ -135,7 +138,8 @@ TEST_CASE("A moved folder saves its marks to its new place")
 	TempDirectory after;
 	ReviewStore store;
 	store.Open(before.GetPath());
-	store.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	store.GetSessions().Start(kBranch, "refs/heads/main");
+	store.GetSessions().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
 
 	store.MoveTo(after.GetPath());
 	store.Flush();
@@ -153,7 +157,7 @@ TEST_CASE("A malformed reviews file opens with no marks")
 	ReviewStore store;
 	store.Open(folder.GetPath());
 
-	CHECK(store.GetMarks().GetAll().empty());
+	CHECK(store.GetSessions().GetAll().empty());
 }
 
 TEST_CASE("A malformed reviews file is copied aside before the first mark is written over it")
@@ -164,7 +168,8 @@ TEST_CASE("A malformed reviews file is copied aside before the first mark is wri
 	ReviewStore store;
 	store.Open(folder.GetPath());
 
-	store.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	store.GetSessions().Start(kBranch, "refs/heads/main");
+	store.GetSessions().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
 	store.Flush();
 
 	REQUIRE(std::filesystem::exists(BackupFor(folder.GetPath())));
@@ -175,12 +180,13 @@ TEST_CASE("A malformed reviews file is copied aside before the first mark is wri
 TEST_CASE("A reviews file of another version is copied aside before the first mark is written over it")
 {
 	TempDirectory folder;
-	const std::string otherVersion = R"({"version": 2, "branches": {"refs/heads/side": [{"note": "kept"}]}})";
+	const std::string otherVersion = R"({"version": 3, "sessions": {"refs/heads/side": {"note": "kept"}}})";
 	WriteReviewsFile(folder.GetPath(), otherVersion);
 	ReviewStore store;
 	store.Open(folder.GetPath());
 
-	store.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	store.GetSessions().Start(kBranch, "refs/heads/main");
+	store.GetSessions().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
 	store.Flush();
 
 	REQUIRE(std::filesystem::exists(BackupFor(folder.GetPath())));
@@ -193,12 +199,13 @@ TEST_CASE("A readable reviews file is written over without a copy")
 	TempDirectory folder;
 	ReviewStore first;
 	first.Open(folder.GetPath());
-	first.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	first.GetSessions().Start(kBranch, "refs/heads/main");
+	first.GetSessions().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
 	first.Close();
 
 	ReviewStore second;
 	second.Open(folder.GetPath());
-	second.GetMarks().Unmark(kBranch, ReviewGroup::Commits, MarkedFile());
+	second.GetSessions().Unmark(kBranch, ReviewGroup::Commits, MarkedFile());
 	second.Close();
 
 	CHECK_FALSE(std::filesystem::exists(BackupFor(folder.GetPath())));
@@ -214,7 +221,8 @@ TEST_CASE("A reviews file that cannot be read is left as it is after a mark and 
 	ReviewStore store;
 	store.Open(folder.GetPath());
 
-	store.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	store.GetSessions().Start(kBranch, "refs/heads/main");
+	store.GetSessions().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
 	store.Flush();
 	store.Close();
 
@@ -232,7 +240,8 @@ TEST_CASE("A reviews file that could not be read is not written for the rest of 
 	store.Open(folder.GetPath());
 	std::filesystem::remove(unreadable);
 
-	store.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	store.GetSessions().Start(kBranch, "refs/heads/main");
+	store.GetSessions().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
 	Wait(store, 0.0f);
 	Wait(store, ReviewStore::kSaveDelaySeconds * 2.0f);
 	store.Flush();
@@ -246,7 +255,8 @@ TEST_CASE("Marks waiting for their save ask for the frame the save falls due on"
 	TempDirectory folder;
 	ReviewStore store;
 	store.Open(folder.GetPath());
-	store.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	store.GetSessions().Start(kBranch, "refs/heads/main");
+	store.GetSessions().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
 	Wait(store, 0.0f);
 	Core::Redraw::TakeDeadline();
 
@@ -257,4 +267,20 @@ TEST_CASE("Marks waiting for their save ask for the frame the save falls due on"
 	REQUIRE(deadline.has_value());
 	CHECK(*deadline <= Core::Redraw::Clock::now() +
 						   std::chrono::duration<double>(ReviewStore::kSaveDelaySeconds - waited));
+}
+
+TEST_CASE("A version 1 reviews file is copied aside and the folder opens with no sessions")
+{
+	TempDirectory folder;
+	const std::string versionOne = R"({"version": 1, "branches": {"refs/heads/side": []}})";
+	WriteReviewsFile(folder.GetPath(), versionOne);
+
+	ReviewStore store;
+	store.Open(folder.GetPath());
+	CHECK(store.GetSessions().GetAll().empty());
+
+	store.GetSessions().Start(kBranch, "refs/heads/main");
+	store.Flush();
+
+	CHECK(ReadWhole(BackupFor(folder.GetPath())) == versionOne);
 }

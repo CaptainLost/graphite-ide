@@ -204,6 +204,11 @@ namespace Graphite {
 		gitView->Subscribe();
 
 		gitView->OnReview = [this](const ReviewOffer& offer) {
+			if (offer.Base.has_value())
+			{
+				m_ReviewStore.GetSessions().Start(offer.Branch, *offer.Base);
+			}
+
 			m_ReviewWindows.Open(ReviewTarget{.Branch = offer.Branch, .Base = offer.Base});
 		};
 
@@ -737,10 +742,10 @@ namespace Graphite {
 
 		for (const BranchRename& rename : m_ReviewWindows.FollowBranches(*branches, m_Reviews))
 		{
-			m_ReviewStore.GetMarks().Rename(rename.From, rename.To);
+			m_ReviewStore.GetSessions().Rename(rename.From, rename.To);
 		}
 
-		m_ReviewStore.GetMarks().Prune(*branches);
+		m_ReviewStore.GetSessions().Prune(*branches);
 		m_Reviews.InvalidateRanges();
 	}
 
@@ -1195,7 +1200,7 @@ namespace Graphite {
 		const SyntaxPalette reviewSyntax = ReadSyntaxPalette(m_ActiveScheme.Get());
 
 		m_ReviewWindows.Render(ReviewRenderInput{.Model = m_Reviews,
-												 .Marks = m_ReviewStore.GetMarks(),
+												 .Sessions = m_ReviewStore.GetSessions(),
 												 .Branches = m_Git.GetBranches(),
 												 .Palette = reviewPalette,
 												 .Syntax = reviewSyntax,

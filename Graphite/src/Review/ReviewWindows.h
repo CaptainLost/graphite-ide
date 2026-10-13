@@ -7,7 +7,7 @@
 #include "Persistence/PersistedState.h"
 #include "Review/ReviewFiles.h"
 #include "Review/ReviewModel.h"
-#include "Review/ViewedMarks.h"
+#include "Review/ReviewSessions.h"
 #include "Theme/GitPalette.h"
 #include "Theme/Palettes.h"
 
@@ -52,7 +52,7 @@ namespace Graphite {
 	struct ReviewRenderInput
 	{
 		ReviewModel& Model;
-		ViewedMarks& Marks;
+		ReviewSessions& Sessions;
 
 		// Null until the first snapshot; the base field then offers nothing to pick.
 		Core::Ref<const std::vector<Core::Branch>> Branches;
@@ -178,9 +178,9 @@ namespace Graphite {
 		// The base under its new name covers the same range, so the selection is kept.
 		static void FollowBaseRename(Tab& tab, ReviewModel& model, const std::string& renamedBase);
 		static void SetIncludeUncommitted(Tab& tab, ReviewModel& model, bool include);
-		static void ToggleViewed(const Tab& tab, ViewedMarks& marks, ReviewGroup group, const Core::FileDiff& file);
+		static void ToggleViewed(const Tab& tab, ReviewSessions& sessions, ReviewGroup group, const Core::FileDiff& file);
 		static void RefreshRows(Tab& tab, const LoadedReview& review);
-		static ViewedCount ViewedCountOf(Tab& tab, const ViewedMarks& marks, const ReviewGroups& groups);
+		static ViewedCount ViewedCountOf(Tab& tab, const ReviewSessions& sessions, const ReviewGroups& groups);
 		static void UpdateTexts(Tab& tab, ReviewModel& model, const LoadedReview& review, const Core::FileDiff& file);
 
 		// Joined onto the worktree holding the branch, whose files are the branch's version; null
@@ -197,7 +197,7 @@ namespace Graphite {
 		void RenderFileRow(Tab& tab, const ReviewRenderInput& input, const ReviewGroups& groups,
 						   const ReviewListRow& row, const LineCounts& counts, bool isSelected,
 						   const OpenRelativeFile& openFile);
-		void HandleListKeys(Tab& tab, ViewedMarks& marks, const ReviewGroups& groups);
+		void HandleListKeys(Tab& tab, ReviewSessions& sessions, const ReviewGroups& groups);
 		void RenderSelectedDiff(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review,
 								const ReviewGroups& groups, const OpenRelativeFile& openFile);
 

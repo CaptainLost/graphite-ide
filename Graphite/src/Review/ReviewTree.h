@@ -66,7 +66,7 @@ namespace Graphite {
 		ReviewGroups Groups;
 
 		// Unset for a list without marks, whose files then all read NotViewed.
-		std::function<ViewedState(ReviewGroup group, const Core::FileDiff& file)> StateOf;
+		ViewedStateOf StateOf;
 
 		ListShape Shape = ListShape::Tree;
 		GroupHeadings Headings = GroupHeadings::Shown;

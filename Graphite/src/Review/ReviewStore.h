@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Review/ViewedMarks.h"
+#include "Review/ReviewSessions.h"
 
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Timestep.h"
@@ -10,14 +10,14 @@
 
 namespace Graphite {
 
-	// The open folder's viewed marks and the file they live in, `.graphite/reviews.json`. Kept apart
+	// The open folder's review sessions and the file they live in, `.graphite/reviews.json`. Kept apart
 	// from workspace.json, which holds the window layout and is rewritten from a snapshot every frame:
 	// these are data the reader made.
 	//
-	// Written once the marks have stood unchanged for kSaveDelaySeconds, so a crash loses at most
+	// Written once the sessions have stood unchanged for kSaveDelaySeconds, so a crash loses at most
 	// that much and ticking through a list does not write a file per click, and at once on Close.
 	//
-	// A file that holds marks this build could not take in is never simply written over: one that
+	// A file that holds sessions this build could not take in is never simply written over: one that
 	// does not parse, or is of another version, is first copied to `reviews.json.bak`, and one that
 	// could not be read at all is not written until the folder is opened again.
 	class ReviewStore : Core::NonCopyable
@@ -27,10 +27,10 @@ namespace Graphite {
 
 		static std::filesystem::path FileFor(const std::filesystem::path& root);
 
-		// A missing, unreadable, malformed or other-version file leaves no marks.
+		// A missing, unreadable, malformed or other-version file leaves no sessions.
 		void Open(std::filesystem::path root);
 
-		// Writes what is unsaved, then forgets the folder and its marks.
+		// Writes what is unsaved, then forgets the folder and its sessions.
 		void Close();
 
 		// The folder was moved or renamed while open: later writes go to its new place.
@@ -41,8 +41,8 @@ namespace Graphite {
 		// Writes now if anything is unsaved.
 		void Flush();
 
-		ViewedMarks& GetMarks() { return m_Marks; }
-		const ViewedMarks& GetMarks() const { return m_Marks; }
+		ReviewSessions& GetSessions() { return m_Sessions; }
+		const ReviewSessions& GetSessions() const { return m_Sessions; }
 
 	private:
 		// What may be done to the file Open found.
@@ -63,10 +63,10 @@ namespace Graphite {
 		bool CopyAsideBeforeFirstWrite(const std::filesystem::path& file);
 
 		std::filesystem::path m_Root;
-		ViewedMarks m_Marks;
+		ReviewSessions m_Sessions;
 
 		FileOnOpen m_FileOnOpen = FileOnOpen::Writable;
-		MarksText m_TextOnOpen = MarksText::Read;
+		ReviewsText m_TextOnOpen = ReviewsText::Read;
 		bool m_CopyFailureLogged = false;
 
 		std::uint64_t m_SavedVersion = 0;

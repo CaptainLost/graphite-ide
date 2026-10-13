@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Review/ReviewFiles.h"
+#include "Review/ReviewSessions.h"
 
 #include <filesystem>
 #include <optional>
@@ -244,10 +245,13 @@ TEST_CASE("The viewed count covers every file of every present group")
 	const Core::Diff committed = DiffOfFiles({"a.cpp", "b.cpp"});
 	const Core::Diff uncommitted = DiffOfFiles({"a.cpp"});
 	const ReviewGroups groups{.Commits = &committed, .Uncommitted = &uncommitted};
-	Graphite::ViewedMarks marks;
-	marks.Mark("refs/heads/side", ReviewGroup::Commits, committed.Files[0]);
+	Graphite::ReviewSessions sessions;
+	sessions.Start("refs/heads/side", "refs/heads/main");
+	sessions.Mark("refs/heads/side", ReviewGroup::Commits, committed.Files[0]);
 
-	const Graphite::ViewedCount count = Graphite::CountViewed(groups, marks, "refs/heads/side");
+	const Graphite::ViewedCount count = Graphite::CountViewed(
+		groups, [&sessions](Graphite::ReviewGroup group, const Core::FileDiff& file)
+		{ return sessions.StateOf("refs/heads/side", group, file); });
 
 	CHECK(count.Viewed == 1);
 	CHECK(count.Total == 3);

@@ -304,16 +304,16 @@ namespace Graphite {
 		}
 	}
 
-	void ReviewWindows::ToggleViewed(const Tab& tab, ViewedMarks& marks, ReviewGroup group,
+	void ReviewWindows::ToggleViewed(const Tab& tab, ReviewSessions& sessions, ReviewGroup group,
 									 const Core::FileDiff& file)
 	{
-		if (marks.StateOf(tab.Target.Branch, group, file) == ViewedState::Viewed)
+		if (sessions.StateOf(tab.Target.Branch, group, file) == ViewedState::Viewed)
 		{
-			marks.Unmark(tab.Target.Branch, group, file);
+			sessions.Unmark(tab.Target.Branch, group, file);
 			return;
 		}
 
-		marks.Mark(tab.Target.Branch, group, file);
+		sessions.Mark(tab.Target.Branch, group, file);
 	}
 
 	void ReviewWindows::RefreshRows(Tab& tab, const LoadedReview& review)
@@ -354,14 +354,16 @@ namespace Graphite {
 							 .Built = true};
 	}
 
-	ViewedCount ReviewWindows::ViewedCountOf(Tab& tab, const ViewedMarks& marks, const ReviewGroups& groups)
+	ViewedCount ReviewWindows::ViewedCountOf(Tab& tab, const ReviewSessions& sessions, const ReviewGroups& groups)
 	{
-		const bool countIsCurrent = tab.Rows.ViewedCounted && tab.Rows.ViewedForVersion == marks.GetVersion();
+		const bool countIsCurrent = tab.Rows.ViewedCounted && tab.Rows.ViewedForVersion == sessions.GetVersion();
 
 		if (!countIsCurrent)
 		{
-			tab.Rows.Viewed = CountViewed(groups, marks, tab.Target.Branch);
-			tab.Rows.ViewedForVersion = marks.GetVersion();
+			const std::string& branch = tab.Target.Branch;
+			tab.Rows.Viewed = CountViewed(groups, [&sessions, &branch](ReviewGroup group, const Core::FileDiff& file)
+										  { return sessions.StateOf(branch, group, file); });
+			tab.Rows.ViewedForVersion = sessions.GetVersion();
 			tab.Rows.ViewedCounted = true;
 		}
 

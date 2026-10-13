@@ -116,7 +116,7 @@ namespace Graphite {
 		std::size_t Total = 0;
 	};
 
-	ViewedCount CountViewed(const ReviewGroups& groups, const ViewedMarks& marks, const std::string& branch);
+	ViewedCount CountViewed(const ReviewGroups& groups, const ViewedStateOf& stateOf);
 
 	// "merge-base 77d5037 · 3 commits"; a list cut at its ceiling reads "500+ commits".
 	std::string RangeSummary(const ReviewRange& range);

@@ -20,15 +20,15 @@ namespace Graphite {
 		constexpr const char* kStateDirectory = ".graphite";
 		constexpr const char* kReviewsFile = "reviews.json";
 
-		std::string_view WhyNotTakenIn(MarksText text)
+		std::string_view WhyNotTakenIn(ReviewsText text)
 		{
 			switch (text)
 			{
-			case MarksText::Read:
+			case ReviewsText::Read:
 				return "was read";
-			case MarksText::Malformed:
+			case ReviewsText::Malformed:
 				return "does not parse";
-			case MarksText::OtherVersion:
+			case ReviewsText::OtherVersion:
 				return "is of a version this build does not know";
 			}
 
@@ -45,20 +45,20 @@ namespace Graphite {
 	{
 		m_Root = std::move(root);
 		m_FileOnOpen = FileOnOpen::Writable;
-		m_TextOnOpen = MarksText::Read;
+		m_TextOnOpen = ReviewsText::Read;
 		m_CopyFailureLogged = false;
 
-		ViewedMarks::Marks stored;
+		ReviewSessions::Sessions stored;
 		const std::filesystem::path file = FileFor(m_Root);
 
 		std::error_code statError;
 		const bool fileExists = std::filesystem::exists(file, statError);
 
 		// A failed stat is not "nothing is there": taking it for absence would write over a file
-		// whose marks were never read.
+		// whose sessions were never read.
 		if (statError)
 		{
-			APP_WARN("Cannot tell whether {} exists: {}; viewed marks will not be saved until the folder is opened again",
+			APP_WARN("Cannot tell whether {} exists: {}; review sessions will not be saved until the folder is opened again",
 					 Core::ToUtf8(file), statError.message());
 			m_FileOnOpen = FileOnOpen::LeftAlone;
 		}
@@ -68,21 +68,21 @@ namespace Graphite {
 
 			if (text.HasValue())
 			{
-				DecodedMarks decoded = DecodeViewedMarksText(text.GetValue());
-				stored = std::move(decoded.Marks);
+				DecodedSessions decoded = DecodeReviewSessionsText(text.GetValue());
+				stored = std::move(decoded.Sessions);
 				m_TextOnOpen = decoded.Text;
-				m_FileOnOpen = decoded.Text == MarksText::Read ? FileOnOpen::Writable : FileOnOpen::CopyAsideFirst;
+				m_FileOnOpen = decoded.Text == ReviewsText::Read ? FileOnOpen::Writable : FileOnOpen::CopyAsideFirst;
 			}
 			else
 			{
-				APP_WARN("{}; viewed marks will not be saved until the folder is opened again",
+				APP_WARN("{}; review sessions will not be saved until the folder is opened again",
 						 text.GetError().Message);
 				m_FileOnOpen = FileOnOpen::LeftAlone;
 			}
 		}
 
-		m_Marks.Replace(std::move(stored));
-		m_SavedVersion = m_Marks.GetVersion();
+		m_Sessions.Replace(std::move(stored));
+		m_SavedVersion = m_Sessions.GetVersion();
 		m_SeenVersion = m_SavedVersion;
 		m_UnchangedFor = 0.0f;
 	}
@@ -92,11 +92,11 @@ namespace Graphite {
 		Flush();
 
 		m_Root.clear();
-		m_Marks.Replace(ViewedMarks::Marks{});
+		m_Sessions.Replace(ReviewSessions::Sessions{});
 		m_FileOnOpen = FileOnOpen::Writable;
-		m_TextOnOpen = MarksText::Read;
+		m_TextOnOpen = ReviewsText::Read;
 		m_CopyFailureLogged = false;
-		m_SavedVersion = m_Marks.GetVersion();
+		m_SavedVersion = m_Sessions.GetVersion();
 		m_SeenVersion = m_SavedVersion;
 		m_UnchangedFor = 0.0f;
 	}
@@ -113,9 +113,9 @@ namespace Graphite {
 			return;
 		}
 
-		if (m_Marks.GetVersion() != m_SeenVersion)
+		if (m_Sessions.GetVersion() != m_SeenVersion)
 		{
-			m_SeenVersion = m_Marks.GetVersion();
+			m_SeenVersion = m_Sessions.GetVersion();
 			m_UnchangedFor = 0.0f;
 			Core::Redraw::RequestIn(std::chrono::duration<double>(kSaveDelaySeconds));
 			return;
@@ -143,7 +143,7 @@ namespace Graphite {
 
 	void ReviewStore::Flush()
 	{
-		if (m_Root.empty() || m_Marks.GetVersion() == m_SavedVersion || m_FileOnOpen == FileOnOpen::LeftAlone)
+		if (m_Root.empty() || m_Sessions.GetVersion() == m_SavedVersion || m_FileOnOpen == FileOnOpen::LeftAlone)
 		{
 			return;
 		}
@@ -159,18 +159,18 @@ namespace Graphite {
 		std::error_code directoryError;
 		std::filesystem::create_directories(file.parent_path(), directoryError);
 
-		const Core::Result<void> written = Core::WriteFileAtomically(file, EncodeViewedMarks(m_Marks.GetAll()));
+		const Core::Result<void> written = Core::WriteFileAtomically(file, EncodeReviewSessions(m_Sessions.GetAll()));
 
 		if (!written.HasValue())
 		{
-			// Left unsaved: Update tries again once the marks have stood another kSaveDelaySeconds,
+			// Left unsaved: Update tries again once the sessions have stood another kSaveDelaySeconds,
 			// and Close tries once more.
 			APP_WARN("Cannot write {}: {}", Core::ToUtf8(file), written.GetError().Message);
 			m_UnchangedFor = 0.0f;
 			return;
 		}
 
-		m_SavedVersion = m_Marks.GetVersion();
+		m_SavedVersion = m_Sessions.GetVersion();
 		m_SeenVersion = m_SavedVersion;
 	}
 

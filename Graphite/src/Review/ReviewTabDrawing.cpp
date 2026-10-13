@@ -439,7 +439,7 @@ namespace Graphite {
 		const ReviewGroups groups = GroupsOf(tab, review);
 		const OpenRelativeFile openFile = OpenFileIn(*review.Range);
 
-		RenderHeader(tab, input, review.Range.get(), ViewedCountOf(tab, input.Marks, groups));
+		RenderHeader(tab, input, review.Range.get(), ViewedCountOf(tab, input.Sessions, groups));
 
 		const bool alreadyMerged = review.Range->Ends.MergeBase == review.Range->Ends.Tip;
 
@@ -546,7 +546,7 @@ namespace Graphite {
 				}
 			}
 
-			HandleListKeys(tab, input.Marks, groups);
+			HandleListKeys(tab, input.Sessions, groups);
 		}
 
 		ImGui::EndChild();
@@ -563,7 +563,7 @@ namespace Graphite {
 		ImGui::PushID(Core::ToUtf8(path).c_str());
 
 		const FileRowLook look{.IsSelected = isSelected,
-							   .Viewed = input.Marks.StateOf(tab.Target.Branch, row.Group, file),
+							   .Viewed = input.Sessions.StateOf(tab.Target.Branch, row.Group, file),
 							   .CanOpen = openFile != nullptr && fileIsOnDisk,
 							   .RowHeight = ImGui::GetFrameHeight(),
 							   .Counts = counts};
@@ -579,7 +579,7 @@ namespace Graphite {
 
 		if (actions.ToggledViewed)
 		{
-			ToggleViewed(tab, input.Marks, row.Group, file);
+			ToggleViewed(tab, input.Sessions, row.Group, file);
 		}
 
 		if (actions.OpenInEditor && openFile)
@@ -593,7 +593,7 @@ namespace Graphite {
 		}
 	}
 
-	void ReviewWindows::HandleListKeys(Tab& tab, ViewedMarks& marks, const ReviewGroups& groups)
+	void ReviewWindows::HandleListKeys(Tab& tab, ReviewSessions& sessions, const ReviewGroups& groups)
 	{
 		if (!ImGui::IsWindowFocused())
 		{
@@ -625,7 +625,7 @@ namespace Graphite {
 
 		if (file != nullptr)
 		{
-			ToggleViewed(tab, marks, tab.Selected->Group, *file);
+			ToggleViewed(tab, sessions, tab.Selected->Group, *file);
 		}
 	}
 

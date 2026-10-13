@@ -112,8 +112,7 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		void AddViewed(ViewedCount& count, const Core::Diff* diff, ReviewGroup group, const ViewedMarks& marks,
-					   const std::string& branch)
+		void AddViewed(ViewedCount& count, const Core::Diff* diff, ReviewGroup group, const ViewedStateOf& stateOf)
 		{
 			if (diff == nullptr)
 			{
@@ -124,7 +123,7 @@ namespace Graphite {
 			{
 				++count.Total;
 
-				if (marks.StateOf(branch, group, file) == ViewedState::Viewed)
+				if (stateOf(group, file) == ViewedState::Viewed)
 				{
 					++count.Viewed;
 				}
@@ -363,11 +362,11 @@ namespace Graphite {
 		return files[atTop ? 0 : *position - 1];
 	}
 
-	ViewedCount CountViewed(const ReviewGroups& groups, const ViewedMarks& marks, const std::string& branch)
+	ViewedCount CountViewed(const ReviewGroups& groups, const ViewedStateOf& stateOf)
 	{
 		ViewedCount count;
-		AddViewed(count, groups.Commits, ReviewGroup::Commits, marks, branch);
-		AddViewed(count, groups.Uncommitted, ReviewGroup::Uncommitted, marks, branch);
+		AddViewed(count, groups.Commits, ReviewGroup::Commits, stateOf);
+		AddViewed(count, groups.Uncommitted, ReviewGroup::Uncommitted, stateOf);
 		return count;
 	}
 
