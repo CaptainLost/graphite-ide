@@ -117,11 +117,22 @@ namespace Graphite {
 			Core::Ref<const Core::Diff> Uncommitted;
 			std::array<bool, kReviewGroupCount> Collapsed{};
 			std::vector<ReviewListRow> Rows;
+
+			// Parallel to Rows; read only for a file.
+			std::vector<LineCounts> Counts;
 			bool Built = false;
 
 			ViewedCount Viewed;
 			std::uint64_t ViewedForVersion = 0;
 			bool ViewedCounted = false;
+		};
+
+		struct LoadedReview
+		{
+			ReviewKey Key;
+			Core::Ref<const ReviewRange> Range;
+			Core::Ref<const Core::Diff> Committed;
+			Core::Ref<const Core::Diff> Uncommitted;
 		};
 
 		struct Tab
@@ -144,17 +155,17 @@ namespace Graphite {
 			bool Fresh = true;
 			bool Focus = true;
 			bool Restored = false;
+			bool CloseRequested = false;
+
+			// The last review whose committed diff had arrived, drawn while the next one loads so a
+			// commit to the branch does not blank the tab.
+			std::optional<LoadedReview> LastLoaded;
+
+			// The worktree the range last named, for saying it is gone once it no longer does.
+			std::optional<std::filesystem::path> LastWorktree;
 
 			// A restored tab before the first branch snapshot, which decides whether it stays.
 			bool AwaitingBranches = false;
-		};
-
-		struct LoadedReview
-		{
-			ReviewKey Key;
-			Core::Ref<const ReviewRange> Range;
-			Core::Ref<const Core::Diff> Committed;
-			Core::Ref<const Core::Diff> Uncommitted;
 		};
 
 		using OpenRelativeFile = std::function<void(const std::filesystem::path&)>;
@@ -181,7 +192,8 @@ namespace Graphite {
 		void RenderFileList(Tab& tab, const ReviewRenderInput& input, const ReviewGroups& groups,
 							const OpenRelativeFile& openFile);
 		void RenderFileRow(Tab& tab, const ReviewRenderInput& input, const ReviewGroups& groups,
-						   const ReviewListRow& row, bool isSelected, const OpenRelativeFile& openFile);
+						   const ReviewListRow& row, const LineCounts& counts, bool isSelected,
+						   const OpenRelativeFile& openFile);
 		void HandleListKeys(Tab& tab, ViewedMarks& marks, const ReviewGroups& groups);
 		void RenderSelectedDiff(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review,
 								const ReviewGroups& groups, const OpenRelativeFile& openFile);

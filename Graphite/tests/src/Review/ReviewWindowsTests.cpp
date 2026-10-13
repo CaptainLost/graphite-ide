@@ -101,7 +101,12 @@ TEST_CASE("A rename is followed once the snapshot shows it and is handed on for 
 	DeferredJobs jobs;
 	Graphite::ReviewModel model{port, jobs.Submitter(), NoWatches()};
 	ReviewWindows windows;
-	windows.Open(ReviewTarget{.Branch = "refs/heads/before", .Base = "refs/heads/main"});
+	const Graphite::ReviewKey oldKey{.Branch = "refs/heads/before", .Base = "refs/heads/main"};
+	model.RequestRange(oldKey);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(model.GetRange(oldKey) != nullptr);
+	windows.Open(ReviewTarget{.Branch = oldKey.Branch, .Base = oldKey.Base});
 	windows.NoteRename("refs/heads/before", "refs/heads/after");
 
 	const std::vector<BranchRename> notYet =
@@ -117,6 +122,26 @@ TEST_CASE("A rename is followed once the snapshot shows it and is handed on for 
 	CHECK(followed.front().To == "refs/heads/after");
 	CHECK(windows.IsOpen("refs/heads/after"));
 	CHECK_FALSE(windows.IsOpen("refs/heads/before"));
+	CHECK(model.GetRange(oldKey) == nullptr);
+}
+
+TEST_CASE("A rename onto a branch with a tab of its own closes the old tab instead of doubling the identity")
+{
+	FakeReviewPort port;
+	DeferredJobs jobs;
+	Graphite::ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	ReviewWindows windows;
+	windows.Open(ReviewTarget{.Branch = "refs/heads/before", .Base = "refs/heads/main"});
+	windows.Open(ReviewTarget{.Branch = "refs/heads/after", .Base = "refs/heads/main"});
+	windows.NoteRename("refs/heads/before", "refs/heads/after");
+
+	const std::vector<BranchRename> followed =
+		windows.FollowBranches({BranchNamed("refs/heads/main"), BranchNamed("refs/heads/after")}, model);
+
+	CHECK(windows.GetCount() == 1);
+	CHECK(windows.IsOpen("refs/heads/after"));
+	REQUIRE(followed.size() == 1);
+	CHECK(followed.front().To == "refs/heads/after");
 }
 
 TEST_CASE("Closing every tab forgets what the model held for them")

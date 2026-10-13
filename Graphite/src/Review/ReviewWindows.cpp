@@ -184,19 +184,34 @@ namespace Graphite {
 				continue;
 			}
 
-			for (Tab& tab : m_Tabs)
+			const bool targetHasItsOwnTab = IsOpen(rename.To);
+
+			for (std::size_t tabIndex = 0; tabIndex < m_Tabs.size();)
 			{
+				Tab& tab = m_Tabs[tabIndex];
+
 				if (tab.Target.Branch != rename.From)
 				{
+					++tabIndex;
 					continue;
 				}
 
 				ForgetTab(tab, model);
+
+				if (targetHasItsOwnTab)
+				{
+					m_Tabs.erase(m_Tabs.begin() + static_cast<std::ptrdiff_t>(tabIndex));
+					continue;
+				}
+
 				tab.Target.Branch = rename.To;
+				tab.LastLoaded.reset();
+				tab.LastWorktree.reset();
 
 				// A new identity: ImGui has no place for this window yet, so it is docked again.
 				tab.Fresh = true;
 				tab.Focus = true;
+				++tabIndex;
 			}
 
 			followed.push_back(std::move(rename));
@@ -244,11 +259,14 @@ namespace Graphite {
 		tab.Selected.reset();
 		tab.LastPaths = {};
 		tab.Rows = RowsCache{};
+		tab.LastLoaded.reset();
+		tab.LastWorktree.reset();
 	}
 
 	void ReviewWindows::SetIncludeUncommitted(Tab& tab, ReviewModel& model, bool include)
 	{
 		tab.IncludeUncommitted = include;
+		tab.Rows.Built = false;
 
 		if (include)
 		{
@@ -295,6 +313,13 @@ namespace Graphite {
 
 		const ReviewGroups groups = GroupsOf(tab, review);
 		std::vector<ReviewListRow> rows = BuildReviewRows(groups);
+		std::vector<LineCounts> counts;
+		counts.reserve(rows.size());
+
+		for (const ReviewListRow& row : rows)
+		{
+			counts.push_back(row.IsHeading ? LineCounts{} : CountLines(FileOfRow(groups, row)));
+		}
 
 		const std::vector<std::filesystem::path> noPathsBefore;
 		const std::vector<std::filesystem::path>& pathsBefore =
@@ -310,6 +335,7 @@ namespace Graphite {
 							 .Uncommitted = review.Uncommitted,
 							 .Collapsed = tab.Collapsed,
 							 .Rows = std::move(rows),
+							 .Counts = std::move(counts),
 							 .Built = true};
 	}
 
@@ -417,7 +443,7 @@ namespace Graphite {
 
 			ImGui::End();
 
-			if (!open)
+			if (!open || tab.CloseRequested)
 			{
 				ForgetTab(tab, input.Model);
 				m_Tabs.erase(m_Tabs.begin() + static_cast<std::ptrdiff_t>(tabIndex));

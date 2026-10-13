@@ -116,6 +116,7 @@ namespace Graphite {
 			ViewedState Viewed = ViewedState::NotViewed;
 			bool CanOpen = false;
 			float RowHeight = 0.0f;
+			LineCounts Counts;
 		};
 
 		struct FileRowActions
@@ -164,7 +165,7 @@ namespace Graphite {
 				ImGui::SetItemTooltip("%s", changeName);
 			}
 
-			const LineCounts counts = CountLines(file);
+			const LineCounts& counts = look.Counts;
 			const std::string countsText =
 				file.IsBinary ? std::string{"binary"} : std::format("+{} -{}", counts.Added, counts.Removed);
 			const bool changedSinceViewed = look.Viewed == ViewedState::ChangedSinceViewed;
@@ -191,6 +192,19 @@ namespace Graphite {
 			ImGui::TextDisabled("%s", countsText.c_str());
 
 			return actions;
+		}
+
+		bool HasFileRow(const std::vector<ReviewListRow>& rows)
+		{
+			for (const ReviewListRow& row : rows)
+			{
+				if (!row.IsHeading)
+				{
+					return true;
+				}
+			}
+
+			return false;
 		}
 
 		std::optional<std::size_t> RowOfSelection(const std::optional<ReviewSelection>& selected,
@@ -252,8 +266,30 @@ namespace Graphite {
 		if (range->Problem != RangeProblem::None)
 		{
 			RenderHeader(tab, input, range.get(), std::nullopt);
-			Core::EmptyState(RangeProblemMessage(range->Problem, tab.Target.Branch, *tab.Target.Base));
+
+			const std::string problem = RangeProblemMessage(range->Problem, tab.Target.Branch, *tab.Target.Base);
+
+			if (range->Problem == RangeProblem::BranchMissing)
+			{
+				if (Core::EmptyState(problem, "Close"))
+				{
+					tab.CloseRequested = true;
+				}
+
+				return;
+			}
+
+			Core::EmptyState(problem);
 			return;
+		}
+
+		if (range->Worktree.has_value())
+		{
+			tab.LastWorktree = range->Worktree;
+		}
+		else if (tab.IncludeUncommitted)
+		{
+			input.Model.StopUncommitted(*key);
 		}
 
 		input.Model.RequestCommittedDiff(range->Ends);
@@ -272,13 +308,23 @@ namespace Graphite {
 
 		if (review.Committed != nullptr)
 		{
+			tab.LastLoaded = review;
 			RenderBody(tab, input, review);
+			return;
+		}
+
+		const bool failed = input.Model.IsCommittedDiffFailed(range->Ends);
+
+		if (!failed && tab.LastLoaded.has_value())
+		{
+			const LoadedReview previous = *tab.LastLoaded;
+			RenderBody(tab, input, previous);
 			return;
 		}
 
 		RenderHeader(tab, input, range.get(), std::nullopt);
 
-		if (!input.Model.IsCommittedDiffFailed(range->Ends))
+		if (!failed)
 		{
 			Core::EmptyState("Loading…");
 			return;
@@ -314,10 +360,14 @@ namespace Graphite {
 				{
 					const bool isCurrent = tab.Target.Base == choice->FullName;
 
+					ImGui::PushID(choice->FullName.c_str());
+
 					if (ImGui::Selectable(choice->Name.c_str(), isCurrent) && !isCurrent)
 					{
 						ChangeBase(tab, input.Model, choice->FullName);
 					}
+
+					ImGui::PopID();
 				}
 			}
 
@@ -329,10 +379,8 @@ namespace Graphite {
 			ImGui::SameLine();
 			ImGui::TextDisabled("%s", RangeSummary(*range).c_str());
 
-			if (ImGui::IsItemHovered() && !range->Commits.empty())
+			if (!range->Commits.empty() && ImGui::BeginItemTooltip())
 			{
-				ImGui::BeginTooltip();
-
 				const std::size_t shown = std::min(range->Commits.size(), kCommitsInTooltip);
 
 				for (std::size_t commitIndex = 0; commitIndex < shown; ++commitIndex)
@@ -366,7 +414,7 @@ namespace Graphite {
 
 		ImGui::EndDisabled();
 
-		if (!canInclude)
+		if (range != nullptr && !range->Worktree.has_value())
 		{
 			ImGui::SetItemTooltip("Not checked out in any worktree");
 		}
@@ -413,6 +461,13 @@ namespace Graphite {
 			}
 		}
 
+		const bool worktreeGone = tab.IncludeUncommitted && !review.Range->Worktree.has_value() && tab.LastWorktree.has_value();
+
+		if (worktreeGone)
+		{
+			ImGui::TextDisabled("%s", std::format("The worktree at {} is gone.", Core::ToUtf8(*tab.LastWorktree)).c_str());
+		}
+
 		if (ImGui::BeginTable("review", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
 		{
 			ImGui::TableSetupColumn("files", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * kFileColumnEms);
@@ -443,7 +498,7 @@ namespace Graphite {
 			const std::optional<std::size_t> selectedRow = RowOfSelection(tab.Selected, groups, rows);
 
 			ImGuiListClipper clipper;
-			clipper.Begin(static_cast<int>(rows.size()), rowHeight);
+			clipper.Begin(static_cast<int>(rows.size()), ImGui::GetFrameHeightWithSpacing());
 
 			if (tab.ScrollToSelected && selectedRow.has_value())
 			{
@@ -472,13 +527,17 @@ namespace Graphite {
 					{
 						const bool isSelected = selectedRow == rowPosition;
 
+						RenderFileRow(tab, input, groups, row, tab.Rows.Counts[rowPosition], isSelected, openFile);
+
 						if (isSelected && tab.ScrollToSelected)
 						{
-							ImGui::SetScrollHereY();
+							if (!ImGui::IsItemVisible())
+							{
+								ImGui::SetScrollHereY();
+							}
+
 							tab.ScrollToSelected = false;
 						}
-
-						RenderFileRow(tab, input, groups, row, isSelected, openFile);
 					}
 
 					ImGui::PopID();
@@ -492,7 +551,8 @@ namespace Graphite {
 	}
 
 	void ReviewWindows::RenderFileRow(Tab& tab, const ReviewRenderInput& input, const ReviewGroups& groups,
-									  const ReviewListRow& row, bool isSelected, const OpenRelativeFile& openFile)
+									  const ReviewListRow& row, const LineCounts& counts, bool isSelected,
+									  const OpenRelativeFile& openFile)
 	{
 		const Core::FileDiff& file = FileOfRow(groups, row);
 		const std::filesystem::path& path = ShownPath(file);
@@ -503,7 +563,8 @@ namespace Graphite {
 		const FileRowLook look{.IsSelected = isSelected,
 							   .Viewed = input.Marks.StateOf(tab.Target.Branch, row.Group, file),
 							   .CanOpen = openFile != nullptr && fileIsOnDisk,
-							   .RowHeight = ImGui::GetFrameHeight()};
+							   .RowHeight = ImGui::GetFrameHeight(),
+							   .Counts = counts};
 
 		const FileRowActions actions = DrawFileRow(file, look, input.Palette);
 
@@ -575,9 +636,7 @@ namespace Graphite {
 
 			if (file == nullptr)
 			{
-				const bool nothingListed = tab.Rows.Rows.empty() || review.Committed->Files.empty();
-				Core::EmptyState(nothingListed && review.Uncommitted == nullptr ? "Nothing to review."
-																				: "Select a file to see its changes.");
+				Core::EmptyState(HasFileRow(tab.Rows.Rows) ? "Select a file to see its changes." : "Nothing to review.");
 			}
 			else
 			{
