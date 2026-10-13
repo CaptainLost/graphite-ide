@@ -90,8 +90,10 @@ namespace Graphite {
 
 	std::optional<ReviewSelection> FirstFileOf(const ReviewGroups& groups, const std::vector<ReviewTreeRow>& rows);
 
-	// One file up or down, folders and headings skipped and groups crossed, staying put at either end.
+	// One file up or down, folders and headings skipped and groups crossed, staying put at either end. A
+	// selection the rows no longer list - hidden as viewed, folded away, filtered out - steps to the listed file
+	// on that side of where the shape would list it.
 	std::optional<ReviewSelection> NeighbourFileOf(const std::optional<ReviewSelection>& selected,
 												   const ReviewGroups& groups,
-												   const std::vector<ReviewTreeRow>& rows, ListStep step);
+												   const std::vector<ReviewTreeRow>& rows, ListStep step, ListShape shape);
 }

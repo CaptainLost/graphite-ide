@@ -39,36 +39,9 @@ namespace Graphite {
 
 		constexpr const char* kEndQuestionTitle = "###ReviewEnd";
 
-		std::vector<LineCounts> LineCountsOfEach(const Core::Diff* diff)
+		std::vector<LineCounts> LineCountsOfEachIn(const Core::Diff* groupDiff)
 		{
-			std::vector<LineCounts> counts;
-
-			if (diff == nullptr)
-			{
-				return counts;
-			}
-
-			counts.reserve(diff->Files.size());
-
-			for (const Core::FileDiff& file : diff->Files)
-			{
-				counts.push_back(CountLines(file));
-			}
-
-			return counts;
-		}
-
-		LineCounts SumOf(const std::vector<LineCounts>& counts)
-		{
-			LineCounts total;
-
-			for (const LineCounts& fileCounts : counts)
-			{
-				total.Added += fileCounts.Added;
-				total.Removed += fileCounts.Removed;
-			}
-
-			return total;
+			return groupDiff != nullptr ? LineCountsOfEach(*groupDiff) : std::vector<LineCounts>{};
 		}
 
 		ViewedCount ViewedOfHeadings(const std::vector<ReviewTreeRow>& rows)
@@ -439,11 +412,11 @@ namespace Graphite {
 
 		cache.Committed = review.Committed;
 		cache.Uncommitted = review.Uncommitted;
-		cache.FileCounts[IndexOf(ReviewGroup::Commits)] = LineCountsOfEach(review.Committed.get());
-		cache.FileCounts[IndexOf(ReviewGroup::Uncommitted)] = LineCountsOfEach(review.Uncommitted.get());
+		cache.FileCounts[IndexOf(ReviewGroup::Commits)] = LineCountsOfEachIn(review.Committed.get());
+		cache.FileCounts[IndexOf(ReviewGroup::Uncommitted)] = LineCountsOfEachIn(review.Uncommitted.get());
 		cache.GroupCounts[IndexOf(ReviewGroup::Commits)] = SumOf(cache.FileCounts[IndexOf(ReviewGroup::Commits)]);
 		cache.GroupCounts[IndexOf(ReviewGroup::Uncommitted)] = SumOf(cache.FileCounts[IndexOf(ReviewGroup::Uncommitted)]);
-		cache.Summary = ChangeSummary(*review.Committed);
+		cache.Summary = ChangeSummary(review.Committed->Files.size(), cache.GroupCounts[IndexOf(ReviewGroup::Commits)]);
 
 		FollowNewDiffs(tab, review);
 	}

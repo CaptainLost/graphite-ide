@@ -44,6 +44,11 @@ namespace Graphite {
 
 	LineCounts CountLines(const Core::FileDiff& file);
 
+	// Each file's counts, in the diff's own order.
+	std::vector<LineCounts> LineCountsOfEach(const Core::Diff& diff);
+
+	LineCounts SumOf(const std::vector<LineCounts>& counts);
+
 	struct ReviewGroups
 	{
 		const Core::Diff* Commits = nullptr;
@@ -58,6 +63,9 @@ namespace Graphite {
 
 	// What the header says of the committed range: "2 files +2 -1".
 	std::string ChangeSummary(const Core::Diff& diff);
+
+	// The same from counts already made.
+	std::string ChangeSummary(std::size_t fileCount, const LineCounts& lines);
 
 	// "Commits (40)", or "Commits (12 of 40)" while a filter or Hide viewed leaves some out.
 	std::string GroupHeadingText(ReviewGroup group, std::size_t shown, std::size_t total);

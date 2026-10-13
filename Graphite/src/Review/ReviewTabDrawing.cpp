@@ -1,6 +1,7 @@
 #include "Review/ReviewWindows.h"
 
 #include "Git/History/CommitLabels.h"
+#include "UI/IconButton.h"
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
@@ -26,10 +27,6 @@ namespace Graphite {
 		constexpr int kReviewColumnCount = 2;
 		constexpr std::size_t kCommitsInTooltip = 20;
 		constexpr float kToolbarButtonCount = 2.0f;
-
-		constexpr const char* kTreeShapeButton = ICON_MDI_FILE_TREE "###reviewShape";
-		constexpr const char* kFlatShapeButton = ICON_MDI_FORMAT_LIST_BULLETED "###reviewShape";
-		constexpr const char* kHideViewedButton = ICON_MDI_EYE_OFF "###reviewHideViewed";
 
 		SessionSettings ReadSettings(const ReviewSessions& sessions, const std::string& branch)
 		{
@@ -86,8 +83,23 @@ namespace Graphite {
 			ImGui::TextDisabled("%s", text.c_str());
 		}
 
-		// Drawn over one Selectable as tall as the row, so the whole row folds the group.
-		bool DrawHeadingRow(const ReviewTreeRow& row, const LineCounts& groupCounts, float rowHeight)
+		// Said after a heading whose files are all off the screen; empty while some are on it.
+		std::string HeadingNote(const ReviewTreeRow& row, const std::string& filter)
+		{
+			const bool noneLeftOnScreen = row.Total > 0 && row.Shown == 0;
+
+			if (!noneLeftOnScreen)
+			{
+				return std::string{};
+			}
+
+			return filter.empty() ? std::string{"All viewed."} : std::string{"No files match."};
+		}
+
+		// Drawn over one Selectable as tall as the row, so the whole row folds the group. The heading and its
+		// note are cut to the room the counts at the right leave them.
+		bool DrawHeadingRow(const ReviewTreeRow& row, const std::string& note, const LineCounts& groupCounts,
+							float rowHeight)
 		{
 			const ImVec2 rowStart = ImGui::GetCursorPos();
 			const float rowRight = rowStart.x + ImGui::GetContentRegionAvail().x;
@@ -99,28 +111,36 @@ namespace Graphite {
 			ImGui::AlignTextToFramePadding();
 			ImGui::TextDisabled("%s", row.Folded ? ICON_MDI_CHEVRON_RIGHT : ICON_MDI_CHEVRON_DOWN);
 			ImGui::SameLine();
-			ImGui::TextUnformatted(GroupHeadingText(row.Group, row.Shown, row.Total).c_str());
-
-			const bool noneLeftOnScreen = row.Total > 0 && row.Shown == 0;
-
-			if (noneLeftOnScreen)
-			{
-				ImGui::SameLine();
-				ImGui::TextDisabled("No files match.");
-			}
-
-			const std::string viewedText = ViewedOfTotalText(row);
-
-			if (row.Group != ReviewGroup::Uncommitted)
-			{
-				DrawAtRight(viewedText, rowRight);
-				return clicked;
-			}
 
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;
-			const float countsRight = rowRight - MeasureText(viewedText) - spacing;
-			DrawAtRight(CountsText(groupCounts), countsRight);
+			const std::string viewedText = ViewedOfTotalText(row);
+			const bool showsLineCounts = row.Group == ReviewGroup::Uncommitted;
+			const std::string countsText = showsLineCounts ? CountsText(groupCounts) : std::string{};
+			const float trailingWidth =
+				MeasureText(viewedText) + (showsLineCounts ? MeasureText(countsText) + spacing : 0.0f);
+			const float textRoom = rowRight - trailingWidth - spacing - ImGui::GetCursorPosX();
+
+			const std::string heading = FittedText(GroupHeadingText(row.Group, row.Shown, row.Total), textRoom);
+			ImGui::TextUnformatted(heading.c_str());
+
+			const float noteRoom = textRoom - MeasureText(heading) - spacing;
+			const bool noteHasRoom = !note.empty() && noteRoom > MeasureText(Ellipsis);
+
+			if (noteHasRoom)
+			{
+				ImGui::SameLine();
+				ImGui::TextDisabled("%s", FittedText(note, noteRoom).c_str());
+			}
+
 			ImGui::SameLine();
+			ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), rowRight - trailingWidth));
+
+			if (showsLineCounts)
+			{
+				ImGui::TextDisabled("%s", countsText.c_str());
+				ImGui::SameLine();
+			}
+
 			ImGui::TextDisabled("%s", viewedText.c_str());
 
 			return clicked;
@@ -221,6 +241,25 @@ namespace Graphite {
 			return wholePath;
 		}
 
+		// The change letter's tooltip. A label that leaves out where a rename or a copy came from says it here.
+		std::string ChangeTooltip(const Core::FileDiff& file, const PathLabel& label)
+		{
+			const bool originIsHidden = label.Origin.empty() && !LabelOf(file).Origin.empty();
+
+			if (originIsHidden && file.Change == Core::FileChange::Renamed)
+			{
+				return std::format("Renamed from {}", Core::ToGenericUtf8(file.OldPath));
+			}
+
+			if (originIsHidden && file.Change == Core::FileChange::Copied)
+			{
+				return std::format("Copied from {}", Core::ToGenericUtf8(file.OldPath));
+			}
+
+			const char* changeName = ChangeName(file.Change);
+			return changeName != nullptr ? std::string{changeName} : std::string{};
+		}
+
 		// The checkbox, the change letter, the label and - at the right edge - the line counts, laid
 		// over one Selectable as tall as the row so a click anywhere else selects it.
 		FileRowActions DrawFileRow(const Core::FileDiff& file, const PathLabel& label, const FileRowLook& look,
@@ -255,9 +294,14 @@ namespace Graphite {
 			ImGui::TextUnformatted(letter.c_str());
 			ImGui::PopStyleColor();
 
-			if (const char* changeName = ChangeName(file.Change); changeName != nullptr)
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
 			{
-				ImGui::SetItemTooltip("%s", changeName);
+				const std::string tooltip = ChangeTooltip(file, label);
+
+				if (!tooltip.empty())
+				{
+					ImGui::SetTooltip("%s", tooltip.c_str());
+				}
 			}
 
 			const LineCounts& counts = look.Counts;
@@ -313,57 +357,31 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		// ImGui centres a button's label inside the frame less FramePadding: on a square as wide as
-		// the frame is tall, the horizontal padding leaves less room than the glyph, which then sits
-		// off centre.
-		bool DrawSquareIconButton(const char* label)
-		{
-			const float side = ImGui::GetFrameHeight();
-			const float noHorizontalPadding = 0.0f;
-
-			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(noHorizontalPadding, ImGui::GetStyle().FramePadding.y));
-			const bool clicked = ImGui::Button(label, ImVec2(side, side));
-			ImGui::PopStyleVar();
-
-			return clicked;
-		}
-
 		void DrawListToolbar(std::span<char> filter, ReviewSessions& sessions, const std::string& branch)
 		{
 			const SessionSettings settings = ReadSettings(sessions, branch);
-			const float buttonsWidth = kToolbarButtonCount * (ImGui::GetStyle().ItemSpacing.x + ImGui::GetFrameHeight());
+			const float buttonsWidth = kToolbarButtonCount * (ImGui::GetStyle().ItemSpacing.x + IconButtonSize());
 
 			ImGui::SetNextItemWidth(-buttonsWidth);
 			ImGui::InputTextWithHint("##reviewFilter", ICON_MDI_MAGNIFY "  Filter files", filter.data(), filter.size());
 
 			const bool isTree = settings.Shape == ListShape::Tree;
+			const bool notEngaged = false;
 
 			ImGui::SameLine();
 
-			if (DrawSquareIconButton(isTree ? kTreeShapeButton : kFlatShapeButton))
+			if (DrawIconButton("##reviewShape", isTree ? ICON_MDI_FILE_TREE : ICON_MDI_FORMAT_LIST_BULLETED, notEngaged,
+							   isTree ? "Show as a list" : "Show as a tree"))
 			{
 				SessionSettings changed = settings;
 				changed.Shape = isTree ? ListShape::Flat : ListShape::Tree;
 				sessions.SetSettings(branch, changed);
 			}
 
-			ImGui::SetItemTooltip("%s", isTree ? "Show as a list" : "Show as a tree");
-
 			ImGui::SameLine();
 
-			if (settings.HideViewed)
-			{
-				ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
-			}
-
-			const bool hideViewedClicked = DrawSquareIconButton(kHideViewedButton);
-
-			if (settings.HideViewed)
-			{
-				ImGui::PopStyleColor();
-			}
-
-			ImGui::SetItemTooltip("Hide viewed files");
+			const bool hideViewedClicked =
+				DrawIconButton("##reviewHideViewed", ICON_MDI_EYE_OFF, settings.HideViewed, "Hide viewed files");
 
 			if (hideViewedClicked)
 			{
@@ -704,7 +722,7 @@ namespace Graphite {
 		switch (row.Kind)
 		{
 		case TreeRowKind::Heading:
-			if (DrawHeadingRow(row, tab.Rows.GroupCounts[IndexOf(row.Group)], rowHeight))
+			if (DrawHeadingRow(row, HeadingNote(row, tab.Rows.Filter), tab.Rows.GroupCounts[IndexOf(row.Group)], rowHeight))
 			{
 				bool& collapsed = tab.Collapsed[IndexOf(row.Group)];
 				collapsed = !collapsed;
@@ -799,13 +817,13 @@ namespace Graphite {
 
 		if (ImGui::IsKeyPressed(ImGuiKey_DownArrow))
 		{
-			tab.Selected = NeighbourFileOf(tab.Selected, groups, rows, ListStep::Next);
+			tab.Selected = NeighbourFileOf(tab.Selected, groups, rows, ListStep::Next, tab.Rows.Shape);
 			tab.ScrollToSelected = true;
 		}
 
 		if (ImGui::IsKeyPressed(ImGuiKey_UpArrow))
 		{
-			tab.Selected = NeighbourFileOf(tab.Selected, groups, rows, ListStep::Previous);
+			tab.Selected = NeighbourFileOf(tab.Selected, groups, rows, ListStep::Previous, tab.Rows.Shape);
 			tab.ScrollToSelected = true;
 		}
 

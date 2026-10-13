@@ -321,6 +321,71 @@ namespace Graphite {
 
 			return std::nullopt;
 		}
+
+		// The order BuildReviewTree lists files in: groups in turn, then by path in the flat shape; in the tree,
+		// by name at the first folder where the paths part, and a file inside a further folder before a file
+		// beside that folder, as folders come before files.
+		bool IsListedBefore(const ReviewSelection& left, const ReviewSelection& right, ListShape shape)
+		{
+			if (left.Group != right.Group)
+			{
+				return IndexOf(left.Group) < IndexOf(right.Group);
+			}
+
+			if (shape == ListShape::Flat)
+			{
+				return left.Path < right.Path;
+			}
+
+			const std::vector<std::string> leftFolders = FolderNamesOf(left.Path);
+			const std::vector<std::string> rightFolders = FolderNamesOf(right.Path);
+			const std::size_t sharedDepth = std::min(leftFolders.size(), rightFolders.size());
+
+			for (std::size_t depth = 0; depth < sharedDepth; ++depth)
+			{
+				if (leftFolders[depth] != rightFolders[depth])
+				{
+					return leftFolders[depth] < rightFolders[depth];
+				}
+			}
+
+			if (leftFolders.size() != rightFolders.size())
+			{
+				return leftFolders.size() > rightFolders.size();
+			}
+
+			return left.Path.filename() < right.Path.filename();
+		}
+
+		std::optional<ReviewSelection> FirstListedAfter(const ReviewSelection& unlisted,
+														const std::vector<ReviewSelection>& files, ListShape shape)
+		{
+			for (const ReviewSelection& file : files)
+			{
+				if (IsListedBefore(unlisted, file, shape))
+				{
+					return file;
+				}
+			}
+
+			return std::nullopt;
+		}
+
+		std::optional<ReviewSelection> LastListedBefore(const ReviewSelection& unlisted,
+														const std::vector<ReviewSelection>& files, ListShape shape)
+		{
+			for (std::size_t position = files.size(); position > 0; --position)
+			{
+				const ReviewSelection& file = files[position - 1];
+
+				if (IsListedBefore(file, unlisted, shape))
+				{
+					return file;
+				}
+			}
+
+			return std::nullopt;
+		}
 	}
 
 	bool MatchesFilter(const std::filesystem::path& path, const std::string& filter)
@@ -369,7 +434,7 @@ namespace Graphite {
 
 	std::optional<ReviewSelection> NeighbourFileOf(const std::optional<ReviewSelection>& selected,
 												   const ReviewGroups& groups,
-												   const std::vector<ReviewTreeRow>& rows, ListStep step)
+												   const std::vector<ReviewTreeRow>& rows, ListStep step, ListShape shape)
 	{
 		const std::vector<ReviewSelection> files = FileSelectionsOf(groups, rows);
 
@@ -378,12 +443,19 @@ namespace Graphite {
 			return selected;
 		}
 
-		const std::optional<std::size_t> position =
-			selected.has_value() ? PositionOf(files, *selected) : std::optional<std::size_t>{};
+		if (!selected.has_value())
+		{
+			return files.front();
+		}
+
+		const std::optional<std::size_t> position = PositionOf(files, *selected);
 
 		if (!position.has_value())
 		{
-			return files.front();
+			const std::optional<ReviewSelection> neighbour = step == ListStep::Next
+																 ? FirstListedAfter(*selected, files, shape)
+																 : LastListedBefore(*selected, files, shape);
+			return neighbour.has_value() ? neighbour : selected;
 		}
 
 		const std::size_t lastPosition = files.size() - 1;

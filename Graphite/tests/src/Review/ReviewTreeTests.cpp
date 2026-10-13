@@ -205,9 +205,56 @@ TEST_CASE("The first file and the arrow keys walk files across groups and skip f
 
 	CHECK(Graphite::FirstFileOf(groups, rows) == std::optional<ReviewSelection>{first});
 	CHECK(Graphite::NeighbourFileOf(ReviewSelection{.Group = ReviewGroup::Commits, .Path = "a/y.h"}, groups, rows,
-									ListStep::Next) == std::optional<ReviewSelection>{last});
-	CHECK(Graphite::NeighbourFileOf(last, groups, rows, ListStep::Next) == std::optional<ReviewSelection>{last});
-	CHECK(Graphite::NeighbourFileOf(first, groups, rows, ListStep::Previous) == std::optional<ReviewSelection>{first});
+									ListStep::Next, ListShape::Tree) == std::optional<ReviewSelection>{last});
+	CHECK(Graphite::NeighbourFileOf(last, groups, rows, ListStep::Next, ListShape::Tree) ==
+		  std::optional<ReviewSelection>{last});
+	CHECK(Graphite::NeighbourFileOf(first, groups, rows, ListStep::Previous, ListShape::Tree) ==
+		  std::optional<ReviewSelection>{first});
+}
+
+TEST_CASE("A selection the list no longer shows steps to the files on either side of where it would stand")
+{
+	const Core::Diff committed = DiffOfFiles({"lib/z.h", "src/a.h", "src/b.h", "src/c.h", "on.h"});
+	const ReviewGroups groups{.Commits = &committed};
+	const ReviewSelection fileZ{.Group = ReviewGroup::Commits, .Path = "lib/z.h"};
+	const ReviewSelection fileA{.Group = ReviewGroup::Commits, .Path = "src/a.h"};
+	const ReviewSelection fileB{.Group = ReviewGroup::Commits, .Path = "src/b.h"};
+	const ReviewSelection fileC{.Group = ReviewGroup::Commits, .Path = "src/c.h"};
+	const ReviewSelection fileOn{.Group = ReviewGroup::Commits, .Path = "on.h"};
+
+	ReviewTreeInput hidingB{.Groups = groups, .HideViewed = true};
+	hidingB.StateOf = [](ReviewGroup, const Core::FileDiff& file) { return ViewedIfNamed(file, "b.h"); };
+	const std::vector<ReviewTreeRow> withoutB = Graphite::BuildReviewTree(hidingB);
+
+	CHECK(Graphite::NeighbourFileOf(fileB, groups, withoutB, ListStep::Next, ListShape::Tree) ==
+		  std::optional<ReviewSelection>{fileC});
+	CHECK(Graphite::NeighbourFileOf(fileB, groups, withoutB, ListStep::Previous, ListShape::Tree) ==
+		  std::optional<ReviewSelection>{fileA});
+
+	ReviewTreeInput hidingZ{.Groups = groups, .HideViewed = true};
+	hidingZ.StateOf = [](ReviewGroup, const Core::FileDiff& file) { return ViewedIfNamed(file, "z.h"); };
+	const std::vector<ReviewTreeRow> withoutZ = Graphite::BuildReviewTree(hidingZ);
+
+	CHECK(Graphite::NeighbourFileOf(fileZ, groups, withoutZ, ListStep::Previous, ListShape::Tree) ==
+		  std::optional<ReviewSelection>{fileZ});
+
+	const std::set<Graphite::MarkKey> folded = {Graphite::MarkKey{.Group = ReviewGroup::Commits, .Path = "src"}};
+	const std::vector<ReviewTreeRow> srcFolded =
+		Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups, .FoldedFolders = &folded});
+
+	CHECK(Graphite::NeighbourFileOf(fileB, groups, srcFolded, ListStep::Next, ListShape::Tree) ==
+		  std::optional<ReviewSelection>{fileOn});
+	CHECK(Graphite::NeighbourFileOf(fileB, groups, srcFolded, ListStep::Previous, ListShape::Tree) ==
+		  std::optional<ReviewSelection>{fileZ});
+
+	ReviewTreeInput flatHidingA{.Groups = groups, .Shape = ListShape::Flat, .HideViewed = true};
+	flatHidingA.StateOf = [](ReviewGroup, const Core::FileDiff& file) { return ViewedIfNamed(file, "a.h"); };
+	const std::vector<ReviewTreeRow> flatWithoutA = Graphite::BuildReviewTree(flatHidingA);
+
+	CHECK(Graphite::NeighbourFileOf(fileA, groups, flatWithoutA, ListStep::Previous, ListShape::Flat) ==
+		  std::optional<ReviewSelection>{fileOn});
+	CHECK(Graphite::NeighbourFileOf(fileA, groups, flatWithoutA, ListStep::Next, ListShape::Flat) ==
+		  std::optional<ReviewSelection>{fileB});
 }
 
 TEST_CASE("The filter matches a part of the path whatever its case")

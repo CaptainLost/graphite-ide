@@ -181,6 +181,32 @@ namespace Graphite {
 		return counts;
 	}
 
+	std::vector<LineCounts> LineCountsOfEach(const Core::Diff& diff)
+	{
+		std::vector<LineCounts> counts;
+		counts.reserve(diff.Files.size());
+
+		for (const Core::FileDiff& file : diff.Files)
+		{
+			counts.push_back(CountLines(file));
+		}
+
+		return counts;
+	}
+
+	LineCounts SumOf(const std::vector<LineCounts>& counts)
+	{
+		LineCounts total;
+
+		for (const LineCounts& fileCounts : counts)
+		{
+			total.Added += fileCounts.Added;
+			total.Removed += fileCounts.Removed;
+		}
+
+		return total;
+	}
+
 	const Core::Diff* DiffOf(const ReviewGroups& groups, ReviewGroup group)
 	{
 		switch (group)
@@ -196,18 +222,13 @@ namespace Graphite {
 
 	std::string ChangeSummary(const Core::Diff& diff)
 	{
-		LineCounts total;
+		return ChangeSummary(diff.Files.size(), SumOf(LineCountsOfEach(diff)));
+	}
 
-		for (const Core::FileDiff& file : diff.Files)
-		{
-			const LineCounts counts = CountLines(file);
-			total.Added += counts.Added;
-			total.Removed += counts.Removed;
-		}
-
-		const std::size_t fileCount = diff.Files.size();
+	std::string ChangeSummary(std::size_t fileCount, const LineCounts& lines)
+	{
 		const char* noun = fileCount == 1 ? "file" : "files";
-		return std::format("{} {} +{} -{}", fileCount, noun, total.Added, total.Removed);
+		return std::format("{} {} +{} -{}", fileCount, noun, lines.Added, lines.Removed);
 	}
 
 	std::string GroupHeadingText(ReviewGroup group, std::size_t shown, std::size_t total)
