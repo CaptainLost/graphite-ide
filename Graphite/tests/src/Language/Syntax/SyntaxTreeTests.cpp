@@ -294,3 +294,23 @@ TEST_CASE("An empty text has one empty row with nothing on it")
 	CHECK(DescribeRow(tree, 0).empty());
 	CHECK(DescribeRow(tree, 1).empty());
 }
+
+TEST_CASE("A generic method call colours as a function and a return type as a type")
+{
+	const std::vector<std::string> rows = DescribeFreshParse("class Builder\n"
+															 "{\n"
+															 "    BuiltFloor Build(Spawner spawner)\n"
+															 "    {\n"
+															 "        var room = spawner.GetComponent<Room>();\n"
+															 "        return Find<BuiltFloor>();\n"
+															 "    }\n"
+															 "}\n");
+
+	REQUIRE(rows.size() >= 6);
+	CAPTURE(rows[2]);
+	CHECK(rows[2].find("type 'BuiltFloor' | function 'Build'") != std::string::npos);
+	CAPTURE(rows[4]);
+	CHECK(rows[4].find("function 'GetComponent' | punctuation '<' | type 'Room'") != std::string::npos);
+	CAPTURE(rows[5]);
+	CHECK(rows[5].find("function 'Find' | punctuation '<' | type 'BuiltFloor'") != std::string::npos);
+}

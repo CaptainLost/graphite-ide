@@ -42,6 +42,14 @@ namespace Graphite {
 (qualified_name qualifier: (qualified_name name: (identifier) @namespace))
 
 (generic_name (identifier) @type)
+
+; After generic_name, because the later of two captures of one node wins: a generic name
+; that is called is a method, and a method's return type sits in returns:, not type:.
+(invocation_expression function: (generic_name (identifier) @function))
+(invocation_expression function: (member_access_expression name: (generic_name (identifier) @function)))
+(method_declaration returns: (identifier) @type)
+(method_declaration returns: (qualified_name name: (identifier) @type))
+
 (type_parameter (identifier) @type)
 (parameter type: (identifier) @type)
 (type_argument_list (identifier) @type)
