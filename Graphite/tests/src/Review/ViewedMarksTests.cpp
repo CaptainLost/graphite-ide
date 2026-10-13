@@ -8,6 +8,8 @@
 #include <string>
 #include <vector>
 
+using Graphite::MarkKey;
+using Graphite::MarksText;
 using Graphite::ReviewGroup;
 using Graphite::ViewedMarks;
 using Graphite::ViewedState;
@@ -116,22 +118,43 @@ TEST_CASE("A renamed file is marked under its new path and a deleted one under i
 	marks.Mark(kBranch, ReviewGroup::Commits, renamed);
 	marks.Mark(kBranch, ReviewGroup::Commits, deleted);
 
-	const std::vector<Graphite::ViewedMark>& held = marks.GetAll().at(kBranch);
+	const ViewedMarks::BranchMarks& held = marks.GetAll().at(kBranch);
 	REQUIRE(held.size() == 2);
-	CHECK(held[0].Path == std::filesystem::path{"src/new.cpp"});
-	CHECK(held[1].Path == std::filesystem::path{"src/gone.cpp"});
+	CHECK(held.contains(MarkKey{.Group = ReviewGroup::Commits, .Path = "src/new.cpp"}));
+	CHECK(held.contains(MarkKey{.Group = ReviewGroup::Commits, .Path = "src/gone.cpp"}));
 }
 
-TEST_CASE("Pruning drops the marks of every branch the snapshot no longer lists")
+TEST_CASE("Pruning drops the marks of a branch only once two snapshots in a row no longer list it")
 {
 	ViewedMarks marks;
 	marks.Mark("refs/heads/kept", ReviewGroup::Commits, ModifiedFile("a.cpp", 1, 2));
 	marks.Mark("refs/heads/gone", ReviewGroup::Commits, ModifiedFile("a.cpp", 1, 2));
+	const std::vector<Core::Branch> withoutGone = {BranchNamed("refs/heads/kept"),
+												   BranchNamed("refs/remotes/origin/kept")};
 
-	marks.Prune({BranchNamed("refs/heads/kept"), BranchNamed("refs/remotes/origin/kept")});
+	marks.Prune(withoutGone);
+
+	CHECK(marks.GetAll().contains("refs/heads/gone"));
+
+	marks.Prune(withoutGone);
 
 	CHECK(marks.GetAll().contains("refs/heads/kept"));
 	CHECK_FALSE(marks.GetAll().contains("refs/heads/gone"));
+}
+
+TEST_CASE("A branch listed again by the next snapshot starts its misses over")
+{
+	ViewedMarks marks;
+	const Core::FileDiff file = ModifiedFile("a.cpp", 1, 2);
+	marks.Mark(kBranch, ReviewGroup::Commits, file);
+	const std::vector<Core::Branch> withoutBranch;
+	const std::vector<Core::Branch> withBranch = {BranchNamed(kBranch)};
+
+	marks.Prune(withoutBranch);
+	marks.Prune(withBranch);
+	marks.Prune(withoutBranch);
+
+	CHECK(marks.StateOf(kBranch, ReviewGroup::Commits, file) == ViewedState::Viewed);
 }
 
 TEST_CASE("A rename moves a branch's marks to its new name")
@@ -189,5 +212,55 @@ TEST_CASE("An entry with a bad id is left out and the rest are kept")
 
 	REQUIRE(decoded.contains("refs/heads/x"));
 	REQUIRE(decoded.at("refs/heads/x").size() == 1);
-	CHECK(decoded.at("refs/heads/x").front().Path == std::filesystem::path{"a.cpp"});
+	CHECK(decoded.at("refs/heads/x").contains(MarkKey{.Group = ReviewGroup::Commits, .Path = "a.cpp"}));
+}
+
+TEST_CASE("Decoding tells a file this build reads from a malformed one and from another version")
+{
+	CHECK(Graphite::DecodeViewedMarksText(R"({"version": 1, "branches": {}})").Text == MarksText::Read);
+	CHECK(Graphite::DecodeViewedMarksText(R"({"version": 2, "branches": {}})").Text == MarksText::OtherVersion);
+	CHECK(Graphite::DecodeViewedMarksText("not json").Text == MarksText::Malformed);
+	CHECK(Graphite::DecodeViewedMarksText("").Text == MarksText::Malformed);
+	CHECK(Graphite::DecodeViewedMarksText(R"({"version": "1", "branches": {}})").Text == MarksText::Malformed);
+	CHECK(Graphite::DecodeViewedMarksText(R"({"version": 1})").Text == MarksText::Malformed);
+}
+
+TEST_CASE("Marks are written in the shape the reviews file has always had")
+{
+	ViewedMarks marks;
+	marks.Mark("refs/heads/x", ReviewGroup::Uncommitted, ModifiedFile("b.cpp", 3, 4));
+	const std::string oldId = IdNumbered(3).ToHex();
+	const std::string newId = IdNumbered(4).ToHex();
+
+	const std::string expected = std::string{"{\n"} +
+								 "  \"branches\": {\n" +
+								 "    \"refs/heads/x\": [\n" +
+								 "      {\n" +
+								 "        \"group\": \"uncommitted\",\n" +
+								 "        \"new\": \"" + newId + "\",\n" +
+								 "        \"old\": \"" + oldId + "\",\n" +
+								 "        \"path\": \"b.cpp\"\n" +
+								 "      }\n" +
+								 "    ]\n" +
+								 "  },\n" +
+								 "  \"version\": 1\n" +
+								 "}";
+
+	CHECK(Graphite::EncodeViewedMarks(marks.GetAll()) == expected);
+}
+
+TEST_CASE("Decoding a file that marks one file twice in a group keeps the later mark")
+{
+	const std::string oldId = IdNumbered(1).ToHex();
+	const std::string earlierNewId = IdNumbered(2).ToHex();
+	const std::string laterNewId = IdNumbered(3).ToHex();
+	const std::string json = std::string{R"({"version": 1, "branches": {"refs/heads/x": [)"} +
+							 R"({"group": "commits", "path": "a.cpp", "old": ")" + oldId + R"(", "new": ")" + earlierNewId + R"("},)" +
+							 R"({"group": "commits", "path": "a.cpp", "old": ")" + oldId + R"(", "new": ")" + laterNewId + R"("}]}})";
+
+	ViewedMarks marks;
+	marks.Replace(Graphite::DecodeViewedMarks(json));
+
+	CHECK(marks.GetAll().at("refs/heads/x").size() == 1);
+	CHECK(marks.StateOf("refs/heads/x", ReviewGroup::Commits, ModifiedFile("a.cpp", 1, 3)) == ViewedState::Viewed);
 }

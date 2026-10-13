@@ -30,25 +30,6 @@ namespace Graphite {
 		constexpr const char* kCommitsGroupName = "commits";
 		constexpr const char* kUncommittedGroupName = "uncommitted";
 
-		bool IsMarkOf(const ViewedMark& mark, ReviewGroup group, const std::filesystem::path& path)
-		{
-			return mark.Group == group && mark.Path == path;
-		}
-
-		const ViewedMark* FindMark(const std::vector<ViewedMark>& marks, ReviewGroup group,
-								   const std::filesystem::path& path)
-		{
-			for (const ViewedMark& mark : marks)
-			{
-				if (IsMarkOf(mark, group, path))
-				{
-					return &mark;
-				}
-			}
-
-			return nullptr;
-		}
-
 		bool ListsBranch(const std::vector<Core::Branch>& branches, const std::string& fullName)
 		{
 			for (const Core::Branch& branch : branches)
@@ -60,12 +41,6 @@ namespace Graphite {
 			}
 
 			return false;
-		}
-
-		bool IsUnlistedBranch(const std::vector<Core::Branch>& branches, const ViewedMarks::Marks::value_type& entry)
-		{
-			const auto& [fullName, branchMarks] = entry;
-			return !ListsBranch(branches, fullName);
 		}
 
 		std::string NameOfGroup(ReviewGroup group)
@@ -122,7 +97,13 @@ namespace Graphite {
 			return value->get<std::string>();
 		}
 
-		std::optional<ViewedMark> DecodeMark(const nlohmann::json& entry)
+		struct DecodedEntry
+		{
+			MarkKey Key;
+			ViewedMark Mark;
+		};
+
+		std::optional<DecodedEntry> DecodeEntry(const nlohmann::json& entry)
 		{
 			if (!entry.is_object())
 			{
@@ -148,57 +129,69 @@ namespace Graphite {
 				return std::nullopt;
 			}
 
-			return ViewedMark{.Group = *group, .Path = Core::FromUtf8(*path), .Old = *oldId, .New = *newId};
+			return DecodedEntry{.Key = MarkKey{.Group = *group, .Path = Core::FromUtf8(*path)},
+								.Mark = ViewedMark{.Old = *oldId, .New = *newId}};
+		}
+
+		ViewedMarks::BranchMarks DecodeBranchMarks(const nlohmann::json& entries)
+		{
+			ViewedMarks::BranchMarks branchMarks;
+
+			for (const nlohmann::json& entry : entries)
+			{
+				const std::optional<DecodedEntry> decoded = DecodeEntry(entry);
+
+				if (decoded.has_value())
+				{
+					branchMarks.insert_or_assign(decoded->Key, decoded->Mark);
+				}
+			}
+
+			return branchMarks;
 		}
 	}
 
 	ViewedState ViewedMarks::StateOf(const std::string& branch, ReviewGroup group, const Core::FileDiff& file) const
 	{
-		const Marks::const_iterator branchMarks = m_Marks.find(branch);
-
-		if (branchMarks == m_Marks.end())
+		if (!m_Marks.contains(branch))
 		{
 			return ViewedState::NotViewed;
 		}
 
-		const ViewedMark* mark = FindMark(branchMarks->second, group, ShownPath(file));
+		const BranchMarks& branchMarks = m_Marks.at(branch);
+		const MarkKey key{.Group = group, .Path = ShownPath(file)};
 
-		if (mark == nullptr)
+		if (!branchMarks.contains(key))
 		{
 			return ViewedState::NotViewed;
 		}
 
-		const bool sameChange = mark->Old == file.OldId && mark->New == file.NewId;
+		const ViewedMark& mark = branchMarks.at(key);
+		const bool sameChange = mark.Old == file.OldId && mark.New == file.NewId;
 		return sameChange ? ViewedState::Viewed : ViewedState::ChangedSinceViewed;
 	}
 
 	void ViewedMarks::Mark(const std::string& branch, ReviewGroup group, const Core::FileDiff& file)
 	{
-		const std::filesystem::path& path = ShownPath(file);
-		std::vector<ViewedMark>& branchMarks = m_Marks[branch];
-
-		std::erase_if(branchMarks, [group, &path](const ViewedMark& mark) { return IsMarkOf(mark, group, path); });
-		branchMarks.push_back(ViewedMark{.Group = group, .Path = path, .Old = file.OldId, .New = file.NewId});
+		const MarkKey key{.Group = group, .Path = ShownPath(file)};
+		m_Marks[branch].insert_or_assign(key, ViewedMark{.Old = file.OldId, .New = file.NewId});
 
 		++m_Version;
 	}
 
 	void ViewedMarks::Unmark(const std::string& branch, ReviewGroup group, const Core::FileDiff& file)
 	{
-		const Marks::iterator branchMarks = m_Marks.find(branch);
-
-		if (branchMarks == m_Marks.end())
+		if (!m_Marks.contains(branch))
 		{
 			return;
 		}
 
-		const std::filesystem::path& path = ShownPath(file);
-		const std::size_t removed = std::erase_if(
-			branchMarks->second, [group, &path](const ViewedMark& mark) { return IsMarkOf(mark, group, path); });
+		BranchMarks& branchMarks = m_Marks.at(branch);
+		const std::size_t removed = branchMarks.erase(MarkKey{.Group = group, .Path = ShownPath(file)});
 
-		if (branchMarks->second.empty())
+		if (branchMarks.empty())
 		{
-			m_Marks.erase(branchMarks);
+			m_Marks.erase(branch);
 		}
 
 		if (removed > 0)
@@ -209,10 +202,33 @@ namespace Graphite {
 
 	void ViewedMarks::Prune(const std::vector<Core::Branch>& branches)
 	{
-		const std::size_t removed = std::erase_if(
-			m_Marks, [&branches](const Marks::value_type& entry) { return IsUnlistedBranch(branches, entry); });
+		std::set<std::string> missingNow;
+		std::vector<std::string> missingTwice;
 
-		if (removed > 0)
+		for (const auto& [fullName, branchMarks] : m_Marks)
+		{
+			if (ListsBranch(branches, fullName))
+			{
+				continue;
+			}
+
+			if (m_MissingLastTime.contains(fullName))
+			{
+				missingTwice.push_back(fullName);
+				continue;
+			}
+
+			missingNow.insert(fullName);
+		}
+
+		for (const std::string& fullName : missingTwice)
+		{
+			m_Marks.erase(fullName);
+		}
+
+		m_MissingLastTime = std::move(missingNow);
+
+		if (!missingTwice.empty())
 		{
 			++m_Version;
 		}
@@ -227,8 +243,12 @@ namespace Graphite {
 			return;
 		}
 
-		std::vector<ViewedMark>& target = m_Marks[to];
-		target.insert(target.end(), moved.mapped().begin(), moved.mapped().end());
+		BranchMarks& target = m_Marks[to];
+
+		for (const auto& [key, mark] : moved.mapped())
+		{
+			target.insert_or_assign(key, mark);
+		}
 
 		++m_Version;
 	}
@@ -236,6 +256,7 @@ namespace Graphite {
 	void ViewedMarks::Replace(Marks marks)
 	{
 		m_Marks = std::move(marks);
+		m_MissingLastTime.clear();
 		++m_Version;
 	}
 
@@ -247,10 +268,10 @@ namespace Graphite {
 		{
 			nlohmann::json entries = nlohmann::json::array();
 
-			for (const ViewedMark& mark : branchMarks)
+			for (const auto& [key, mark] : branchMarks)
 			{
-				entries.push_back(nlohmann::json{{kGroupKey, NameOfGroup(mark.Group)},
-												 {kPathKey, Core::ToUtf8(mark.Path)},
+				entries.push_back(nlohmann::json{{kGroupKey, NameOfGroup(key.Group)},
+												 {kPathKey, Core::ToUtf8(key.Path)},
 												 {kOldKey, mark.Old.ToHex()},
 												 {kNewKey, mark.New.ToHex()}});
 			}
@@ -263,9 +284,9 @@ namespace Graphite {
 		return document.dump(kIndentWidth, kIndentCharacter, kKeepNonAscii, nlohmann::json::error_handler_t::replace);
 	}
 
-	ViewedMarks::Marks DecodeViewedMarks(std::string_view json)
+	DecodedMarks DecodeViewedMarksText(std::string_view json)
 	{
-		ViewedMarks::Marks marks;
+		const DecodedMarks malformed{.Text = MarksText::Malformed};
 
 		const nlohmann::json::parser_callback_t noCallback = nullptr;
 		const bool allowExceptions = false;
@@ -273,22 +294,29 @@ namespace Graphite {
 
 		if (document.is_discarded() || !document.is_object())
 		{
-			return marks;
+			return malformed;
 		}
 
 		const nlohmann::json::const_iterator version = document.find(kVersionKey);
 
-		if (version == document.end() || !version->is_number_integer() || version->get<int>() != kFormatVersion)
+		if (version == document.end() || !version->is_number_integer())
 		{
-			return marks;
+			return malformed;
+		}
+
+		if (version->get<int>() != kFormatVersion)
+		{
+			return DecodedMarks{.Text = MarksText::OtherVersion};
 		}
 
 		const nlohmann::json::const_iterator branches = document.find(kBranchesKey);
 
 		if (branches == document.end() || !branches->is_object())
 		{
-			return marks;
+			return malformed;
 		}
+
+		DecodedMarks decoded{.Text = MarksText::Read};
 
 		for (const auto& [fullName, entries] : branches->items())
 		{
@@ -297,24 +325,19 @@ namespace Graphite {
 				continue;
 			}
 
-			std::vector<ViewedMark> branchMarks;
-
-			for (const nlohmann::json& entry : entries)
-			{
-				std::optional<ViewedMark> mark = DecodeMark(entry);
-
-				if (mark.has_value())
-				{
-					branchMarks.push_back(std::move(*mark));
-				}
-			}
+			ViewedMarks::BranchMarks branchMarks = DecodeBranchMarks(entries);
 
 			if (!branchMarks.empty())
 			{
-				marks[fullName] = std::move(branchMarks);
+				decoded.Marks[fullName] = std::move(branchMarks);
 			}
 		}
 
-		return marks;
+		return decoded;
+	}
+
+	ViewedMarks::Marks DecodeViewedMarks(std::string_view json)
+	{
+		return DecodeViewedMarksText(json).Marks;
 	}
 }
