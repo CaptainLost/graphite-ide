@@ -31,6 +31,7 @@ namespace Graphite {
 		constexpr std::string_view kSessionCount = "restore.session.count";
 		constexpr std::string_view kDiffCount = "restore.diff.count";
 		constexpr std::string_view kTerminalCount = "restore.terminal.count";
+		constexpr std::string_view kReviewCount = "restore.review.count";
 
 		// More tabs than anybody keeps open, and a ceiling on what a damaged count can cost.
 		// Sessions, diffs and terminals are windows of the same kind and share it.
@@ -76,6 +77,36 @@ namespace Graphite {
 		std::string TerminalKey(std::size_t index, std::string_view field)
 		{
 			return IndexedKey("restore.terminal", index, field);
+		}
+
+		std::string ReviewTabKey(std::size_t index, std::string_view field)
+		{
+			return IndexedKey("restore.review", index, field);
+		}
+
+		// The branch is what the tab reviews; without one there is nothing to reopen.
+		std::optional<ReviewTabState> ReadReview(const Core::JsonFile& file, std::size_t index)
+		{
+			ReviewTabState review;
+			review.Branch = file.Get(ReviewTabKey(index, "branch"));
+
+			if (review.Branch.empty())
+			{
+				return std::nullopt;
+			}
+
+			if (const std::string base = file.Get(ReviewTabKey(index, "base")); !base.empty())
+			{
+				review.Base = base;
+			}
+
+			const bool hiddenByDefault = false;
+			review.IncludeUncommitted = ReadFlag(file.Get(ReviewTabKey(index, "uncommitted")), hiddenByDefault);
+			review.Selected = Core::FromUtf8(file.Get(ReviewTabKey(index, "selected")));
+			review.SelectedIsUncommitted =
+				ReadFlag(file.Get(ReviewTabKey(index, "selectedUncommitted")), hiddenByDefault);
+
+			return review;
 		}
 
 		std::size_t ReadCount(const Core::JsonFile& file, std::string_view key)
@@ -357,6 +388,20 @@ namespace Graphite {
 			file.Set(DiffKey(index, "path"), Core::ToUtf8(diff.Path));
 		}
 
+		file.Set(kReviewCount, std::to_string(state.Reviews.size()));
+
+		for (std::size_t index = 0; index < state.Reviews.size(); ++index)
+		{
+			const ReviewTabState& review = state.Reviews[index];
+			const std::string noBase;
+
+			file.Set(ReviewTabKey(index, "branch"), review.Branch);
+			file.Set(ReviewTabKey(index, "base"), review.Base.value_or(noBase));
+			file.Set(ReviewTabKey(index, "uncommitted"), Flag(review.IncludeUncommitted));
+			file.Set(ReviewTabKey(index, "selected"), Core::ToUtf8(review.Selected));
+			file.Set(ReviewTabKey(index, "selectedUncommitted"), Flag(review.SelectedIsUncommitted));
+		}
+
 		if (state.Terminals)
 		{
 			file.Set(kTerminalCount, std::to_string(state.Terminals->size()));
@@ -430,6 +475,16 @@ namespace Graphite {
 			if (std::optional<DiffTabState> diff = ReadDiff(file, index))
 			{
 				state.Diffs.push_back(std::move(*diff));
+			}
+		}
+
+		const std::size_t reviews = ReadCount(file, kReviewCount);
+
+		for (std::size_t index = 0; index < reviews; ++index)
+		{
+			if (std::optional<ReviewTabState> review = ReadReview(file, index))
+			{
+				state.Reviews.push_back(std::move(*review));
 			}
 		}
 

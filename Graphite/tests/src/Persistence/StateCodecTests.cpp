@@ -3,10 +3,12 @@
 #include "Persistence/StateCodec.h"
 
 #include "Core/Base/JsonFile.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include <cctype>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 using namespace Graphite;
 
@@ -543,4 +545,34 @@ TEST_CASE("A path that is the folder itself reads back as the folder, a drive ro
 		REQUIRE(read.Terminals->size() == 1);
 		CHECK((*read.Terminals)[0].WorkingDirectory == driveRoot);
 	}
+}
+
+TEST_CASE("Open review tabs survive a write and a read with slashes and non-ASCII characters in their names")
+{
+	WorkspaceState state;
+	state.Reviews.push_back(ReviewTabState{.Branch = "refs/heads/feature/x",
+										   .Base = "refs/remotes/origin/main",
+										   .IncludeUncommitted = true,
+										   .Selected = Core::FromUtf8("\xC5\xB9r\xC3\xB3" "d\xC5\x82" "a/plik.cpp"),
+										   .SelectedIsUncommitted = true});
+	state.Reviews.push_back(ReviewTabState{.Branch = "refs/heads/side"});
+
+	Core::JsonFile file;
+	WriteWorkspaceState(state, kRoot, file);
+
+	CHECK(ReadWorkspaceState(file, kRoot).Reviews == state.Reviews);
+}
+
+TEST_CASE("A stored review without a branch is dropped and one without a base reads with none")
+{
+	Core::JsonFile file;
+	file.Set("restore.review.count", "2");
+	file.Set("restore.review.0.branch", "");
+	file.Set("restore.review.1.branch", "refs/heads/side");
+
+	const std::vector<ReviewTabState> reviews = ReadWorkspaceState(file, kRoot).Reviews;
+
+	REQUIRE(reviews.size() == 1);
+	CHECK(reviews.front().Branch == "refs/heads/side");
+	CHECK_FALSE(reviews.front().Base.has_value());
 }

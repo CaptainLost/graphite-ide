@@ -94,12 +94,31 @@ namespace Graphite {
 		friend bool operator==(const TerminalTabState&, const TerminalTabState&) = default;
 	};
 
+	// One open review tab: the branch, what it is compared against, whether the worktree's
+	// uncommitted changes are shown, and the file on screen.
+	struct ReviewTabState
+	{
+		std::string Branch;
+
+		// Absent until the reader chose one, as a review opened with HEAD detached starts.
+		std::optional<std::string> Base;
+
+		bool IncludeUncommitted = false;
+
+		// Relative to the repository; empty when no file was selected.
+		std::filesystem::path Selected;
+		bool SelectedIsUncommitted = false;
+
+		friend bool operator==(const ReviewTabState&, const ReviewTabState&) = default;
+	};
+
 	struct WorkspaceState
 	{
 		std::vector<TabState> Tabs;
 		std::optional<std::filesystem::path> Active;
 		std::vector<SessionTabState> Sessions;
 		std::vector<DiffTabState> Diffs;
+		std::vector<ReviewTabState> Reviews;
 
 		// Absent when this folder's state was written before terminals were kept, or never
 		// written: the folder then opens one default terminal. Present and empty when every
