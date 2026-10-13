@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <vector>
 
@@ -50,13 +51,20 @@ public:
 		return Texts;
 	}
 
-	Core::Result<Core::Diff> QueryWorktreeDiff(const std::filesystem::path&) override
+	Core::Result<Core::Diff> QueryWorktreeDiff(const std::filesystem::path& worktree) override
 	{
 		++WorktreeDiffQueries;
 
 		if (WorktreeFailure.has_value())
 		{
 			return *WorktreeFailure;
+		}
+
+		const std::map<std::filesystem::path, Core::Diff>::const_iterator own = WorktreeDiffsByPath.find(worktree);
+
+		if (own != WorktreeDiffsByPath.end())
+		{
+			return own->second;
 		}
 
 		return WorktreeDiff;
@@ -78,6 +86,7 @@ public:
 
 	Core::Diff WorktreeDiff;
 	std::optional<Core::Error> WorktreeFailure;
+	std::map<std::filesystem::path, Core::Diff> WorktreeDiffsByPath;
 
 	Graphite::FileTexts Texts;
 

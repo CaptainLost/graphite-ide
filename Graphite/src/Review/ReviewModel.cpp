@@ -7,6 +7,36 @@
 
 namespace Graphite {
 
+	namespace {
+
+		const Core::FileDiff* FindShownFile(const Core::Diff& diff, const std::filesystem::path& shownPath)
+		{
+			for (const Core::FileDiff& file : diff.Files)
+			{
+				if (ShownPath(file) == shownPath)
+				{
+					return &file;
+				}
+			}
+
+			return nullptr;
+		}
+
+		// Texts read for the old diff still describe the file when both diffs name the same blob pair for it.
+		bool SameFileInBoth(const Core::Diff& replaced, const Core::Diff& current, const std::filesystem::path& shownPath)
+		{
+			const Core::FileDiff* before = FindShownFile(replaced, shownPath);
+			const Core::FileDiff* after = FindShownFile(current, shownPath);
+
+			if (before == nullptr || after == nullptr)
+			{
+				return false;
+			}
+
+			return before->OldId == after->OldId && before->NewId == after->NewId;
+		}
+	}
+
 	ReviewModel::ReviewModel(ReviewPort& port, Core::JobSubmitter submit, WorktreeWatchFactory watch)
 		: m_Port(port), m_Submit(std::move(submit)), m_Watch(std::move(watch))
 	{
@@ -378,7 +408,24 @@ namespace Graphite {
 			return;
 		}
 
-		uncommitted->Diff.Land(generation, std::move(answer));
+		const Core::Ref<const Core::Diff> replaced = uncommitted->Diff.Get();
+		const std::uint64_t replacedGeneration = uncommitted->Diff.GetApplied();
+
+		const SlotLanding landing = uncommitted->Diff.Land(generation, std::move(answer));
+
+		if (landing != SlotLanding::Applied)
+		{
+			return;
+		}
+
+		const bool textsLanded = uncommitted->TextsRequested != 0 && uncommitted->TextsApplied == uncommitted->TextsRequested;
+		const bool textsBelongToReplaced = textsLanded && uncommitted->TextsForDiff == replacedGeneration;
+
+		if (textsBelongToReplaced && replaced != nullptr &&
+			SameFileInBoth(*replaced, *uncommitted->Diff.Get(), uncommitted->TextsPath))
+		{
+			uncommitted->TextsForDiff = uncommitted->Diff.GetApplied();
+		}
 	}
 
 	Core::Ref<const Core::Diff> ReviewModel::GetUncommitted(const ReviewKey& key) const
@@ -459,6 +506,9 @@ namespace Graphite {
 		{
 			return;
 		}
+
+		// A text that cannot be read costs the pane its colouring and its whole-file view, and the
+		// diff still draws, so the failure is held to stop a retry per frame and not reported.
 
 		uncommitted->TextsApplied = generation;
 		uncommitted->Texts = answer.HasValue() ? Core::CreateRef<const FileTexts>(std::move(answer).GetValue()) : nullptr;

@@ -1,4 +1,4 @@
-﻿#include <doctest/doctest.h>
+#include <doctest/doctest.h>
 
 #include "Review/ReviewModel.h"
 
@@ -194,6 +194,7 @@ TEST_CASE("Uncommitted texts belong to the diff they were read beside")
 	REQUIRE(model.GetUncommittedTexts(kKey, file) != nullptr);
 	CHECK(model.GetUncommittedTexts(kKey, file)->New == "edited\n");
 
+	port.WorktreeDiff.Files[0].NewId.Bytes[0] = 1;
 	model.InvalidateRanges();
 	AskAndSettle(model, jobs, kWorktree);
 	CHECK(model.GetUncommittedTexts(kKey, file) == nullptr);
@@ -236,4 +237,87 @@ TEST_CASE("Forgetting a review stops its watch too")
 	model.Forget(kKey);
 
 	CHECK(watches.Live == 0);
+}
+
+TEST_CASE("Uncommitted texts survive a refresh that leaves their file as it was")
+{
+	FakeReviewPort port;
+	port.WorktreeDiff.Files.push_back(TextFile("a.cpp"));
+	port.Texts.HasNew = true;
+	DeferredJobs jobs;
+	WatchControl watches;
+	ReviewModel model{port, jobs.Submitter(), FakeWatches(watches)};
+	const Core::FileDiff file = TextFile("a.cpp");
+	AskAndSettle(model, jobs, kWorktree);
+	model.RequestUncommittedTexts(kKey, file);
+	Settle(model, jobs);
+
+	model.InvalidateRanges();
+	AskAndSettle(model, jobs, kWorktree);
+	model.RequestUncommittedTexts(kKey, file);
+
+	CHECK(port.WorktreeDiffQueries == 2);
+	CHECK(model.GetUncommittedTexts(kKey, file) != nullptr);
+	CHECK(port.WorktreeTextReads == 1);
+}
+
+TEST_CASE("Uncommitted texts are read again when the refresh changes their file")
+{
+	FakeReviewPort port;
+	port.WorktreeDiff.Files.push_back(TextFile("a.cpp"));
+	port.Texts.HasNew = true;
+	DeferredJobs jobs;
+	WatchControl watches;
+	ReviewModel model{port, jobs.Submitter(), FakeWatches(watches)};
+	const Core::FileDiff file = TextFile("a.cpp");
+	AskAndSettle(model, jobs, kWorktree);
+	model.RequestUncommittedTexts(kKey, file);
+	Settle(model, jobs);
+
+	port.WorktreeDiff.Files[0].NewId.Bytes[0] = 1;
+	model.InvalidateRanges();
+	AskAndSettle(model, jobs, kWorktree);
+	CHECK(model.GetUncommittedTexts(kKey, file) == nullptr);
+	model.RequestUncommittedTexts(kKey, file);
+	Settle(model, jobs);
+
+	CHECK(model.GetUncommittedTexts(kKey, file) != nullptr);
+	CHECK(port.WorktreeTextReads == 2);
+}
+
+TEST_CASE("Asking for the same uncommitted texts every frame reads them once")
+{
+	FakeReviewPort port;
+	port.WorktreeDiff.Files.push_back(TextFile("a.cpp"));
+	DeferredJobs jobs;
+	WatchControl watches;
+	ReviewModel model{port, jobs.Submitter(), FakeWatches(watches)};
+	const Core::FileDiff file = TextFile("a.cpp");
+	AskAndSettle(model, jobs, kWorktree);
+
+	for (int frame = 0; frame < 10; ++frame)
+	{
+		model.RequestUncommittedTexts(kKey, file);
+		Settle(model, jobs);
+	}
+
+	CHECK(port.WorktreeTextReads == 1);
+}
+
+TEST_CASE("A diff still on its way when the review moves to another worktree does not land there")
+{
+	FakeReviewPort port;
+	port.WorktreeDiffsByPath[kWorktree].Files.push_back(TextFile("old.cpp"));
+	port.WorktreeDiffsByPath[kOtherWorktree].Files.push_back(TextFile("new.cpp"));
+	DeferredJobs jobs;
+	WatchControl watches;
+	ReviewModel model{port, jobs.Submitter(), FakeWatches(watches)};
+	model.RequestUncommitted(kKey, kWorktree);
+	model.RequestUncommitted(kKey, kOtherWorktree);
+
+	Settle(model, jobs);
+
+	REQUIRE(model.GetUncommitted(kKey) != nullptr);
+	REQUIRE(model.GetUncommitted(kKey)->Files.size() == 1);
+	CHECK(model.GetUncommitted(kKey)->Files[0].NewPath == std::filesystem::path{"new.cpp"});
 }

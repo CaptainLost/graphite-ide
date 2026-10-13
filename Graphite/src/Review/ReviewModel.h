@@ -83,12 +83,14 @@ namespace Graphite {
 		bool IsUncommittedLoading(const ReviewKey& key) const;
 
 		// The texts of the one file on screen, read for the uncommitted diff now held: null while they
-		// are on their way, once that diff is replaced, and for a binary file.
+		// are on their way, once that diff is replaced by one that changes the file, after a failed read,
+		// and for a binary file.
 		void RequestUncommittedTexts(const ReviewKey& key, const Core::FileDiff& file);
 		Core::Ref<const FileTexts> GetUncommittedTexts(const ReviewKey& key, const Core::FileDiff& file) const;
 
 		// The toggle went off: the watch stops and what was held is dropped.
 		void StopUncommitted(const ReviewKey& key);
+
 		// A whole branch's diff is far larger than one commit's, so fewer are held than GitModel holds.
 		static constexpr std::size_t kCachedDiffs = 8;
 		static constexpr std::size_t kCachedTexts = 32;
