@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <map>
 #include <string_view>
 
 namespace Graphite {
@@ -19,6 +20,9 @@ namespace Graphite {
 			std::string Name;
 			std::filesystem::path Path;
 			std::vector<FolderNode> Folders;
+
+			// Position in Folders by name, so finding a child stays logarithmic with thousands of siblings.
+			std::map<std::string, std::size_t> FolderPositions;
 			std::vector<std::size_t> Files;
 			std::size_t Viewed = 0;
 			std::size_t Total = 0;
@@ -62,14 +66,12 @@ namespace Graphite {
 
 		FolderNode& ChildFolderNamed(FolderNode& parent, const std::string& name)
 		{
-			for (FolderNode& child : parent.Folders)
+			if (parent.FolderPositions.contains(name))
 			{
-				if (child.Name == name)
-				{
-					return child;
-				}
+				return parent.Folders[parent.FolderPositions.at(name)];
 			}
 
+			parent.FolderPositions.emplace(name, parent.Folders.size());
 			parent.Folders.push_back(FolderNode{.Name = name, .Path = parent.Path / Core::FromUtf8(name)});
 			return parent.Folders.back();
 		}

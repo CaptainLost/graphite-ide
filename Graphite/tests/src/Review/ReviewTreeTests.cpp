@@ -216,3 +216,26 @@ TEST_CASE("The filter matches a part of the path whatever its case")
 	CHECK(Graphite::MatchesFilter("a.cpp", ""));
 	CHECK_FALSE(Graphite::MatchesFilter("a.cpp", "b"));
 }
+
+TEST_CASE("A folder with thousands of sibling folders is listed in full and in name order")
+{
+	constexpr std::size_t siblingCount = 3000;
+	std::vector<std::filesystem::path> paths;
+
+	for (std::size_t number = 0; number < siblingCount; ++number)
+	{
+		paths.push_back(std::filesystem::path{"cases"} / ("c" + std::to_string(number)) / "x.h");
+	}
+
+	const Core::Diff committed = DiffOfFiles(paths);
+	const ReviewGroups groups{.Commits = &committed};
+
+	const std::vector<ReviewTreeRow> rows = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups});
+
+	REQUIRE(rows.size() == 1 + 1 + 2 * siblingCount);
+	CHECK(rows[1].Label == "cases");
+	CHECK(rows[2].Label == "c0");
+	CHECK(rows[4].Label == "c1");
+	CHECK(rows[6].Label == "c10");
+	CHECK(rows[1].Total == siblingCount);
+}
