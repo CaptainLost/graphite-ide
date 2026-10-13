@@ -8,6 +8,7 @@
 #include "Review/ReviewFiles.h"
 #include "Review/ReviewModel.h"
 #include "Review/ReviewSessions.h"
+#include "Review/ReviewTree.h"
 #include "Theme/GitPalette.h"
 #include "Theme/Palettes.h"
 #include "UI/ModalGate.h"
@@ -24,6 +25,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -114,22 +116,36 @@ namespace Graphite {
 		std::function<void(std::string_view what, const std::string& text)> CopyText;
 
 	private:
-		// The file list as last built, rebuilt only when a diff or a fold changed: sorting every
-		// file of a large branch by path on every frame would cost the frame.
+		static constexpr std::size_t kFilterCapacity = 256;
+
+		// The file list as last built and what it was built from, rebuilt only when one of those
+		// changes: sorting every file of a large branch into a tree on every frame would cost the frame.
 		struct RowsCache
 		{
 			Core::Ref<const Core::Diff> Committed;
 			Core::Ref<const Core::Diff> Uncommitted;
 			std::array<bool, kReviewGroupCount> Collapsed{};
-			std::vector<ReviewListRow> Rows;
+			std::string Filter;
+			ListShape Shape = ListShape::Tree;
+			bool HideViewed = false;
+			std::uint64_t FoldsVersion = 0;
 
-			// Parallel to Rows; read only for a file.
-			std::vector<LineCounts> Counts;
+			// The viewed counts of the folders and the headings follow the marks.
+			std::uint64_t SessionsVersion = 0;
 			bool Built = false;
 
+			std::vector<ReviewTreeRow> Rows;
+
+			// Worked out only when a diff changes, so typing in the filter does not count every line
+			// again. Each group's files by their index into its diff.
+			std::array<std::vector<LineCounts>, kReviewGroupCount> FileCounts;
+			std::array<LineCounts, kReviewGroupCount> GroupCounts{};
+
+			// The header's "2 files +2 -1".
+			std::string Summary;
+
+			// Summed from the heading rows, for the header's "3/7 viewed".
 			ViewedCount Viewed;
-			std::uint64_t ViewedForVersion = 0;
-			bool ViewedCounted = false;
 		};
 
 		struct LoadedReview
@@ -152,6 +168,11 @@ namespace Graphite {
 			// disappears gives way to the one that took its place.
 			std::array<std::vector<std::filesystem::path>, kReviewGroupCount> LastPaths;
 			std::array<bool, kReviewGroupCount> Collapsed{};
+			std::array<char, kFilterCapacity> Filter{};
+
+			// Folded folders by group and path, for the run of the program only.
+			std::set<MarkKey> Folded;
+			std::uint64_t FoldsVersion = 0;
 			RowsCache Rows;
 
 			DiffView View;
@@ -181,8 +202,12 @@ namespace Graphite {
 		static ReviewGroups GroupsOf(const Tab& tab, const LoadedReview& review);
 		static void SetIncludeUncommitted(Tab& tab, ReviewSessions& sessions, ReviewModel& model, bool include);
 		static void ToggleViewed(const Tab& tab, ReviewSessions& sessions, ReviewGroup group, const Core::FileDiff& file);
-		static void RefreshRows(Tab& tab, const LoadedReview& review);
-		static ViewedCount ViewedCountOf(Tab& tab, const ReviewSessions& sessions, const ReviewGroups& groups);
+		static void RefreshRows(Tab& tab, const ReviewSessions& sessions, const SessionSettings& settings,
+								const LoadedReview& review);
+
+		// Only for new diffs: a filter, Hide viewed or a fold keeps the selection even when it hides
+		// the selected file, whose diff stays on the right.
+		static void FollowNewDiffs(Tab& tab, const LoadedReview& review);
 		static void UpdateTexts(Tab& tab, ReviewModel& model, const LoadedReview& review, const Core::FileDiff& file);
 
 		// Joined onto the worktree holding the branch, whose files are the branch's version; null
@@ -191,14 +216,16 @@ namespace Graphite {
 
 		// In ReviewTabDrawing.cpp.
 		void RenderTab(Tab& tab, const ReviewRenderInput& input);
-		void RenderHeader(Tab& tab, const ReviewRenderInput& input, const ReviewRange* range,
-						  const std::optional<ViewedCount>& viewed);
+
+		// Without rows while the review has no diff to list: no change summary and no viewed count yet.
+		void RenderHeader(Tab& tab, const ReviewRenderInput& input, const ReviewRange* range, const RowsCache* rows);
 		void RenderBody(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review);
 		void RenderFileList(Tab& tab, const ReviewRenderInput& input, const ReviewGroups& groups,
 							const OpenRelativeFile& openFile);
+		void RenderTreeRow(Tab& tab, const ReviewRenderInput& input, const ReviewGroups& groups,
+						   const ReviewTreeRow& row, const OpenRelativeFile& openFile);
 		void RenderFileRow(Tab& tab, const ReviewRenderInput& input, const ReviewGroups& groups,
-						   const ReviewListRow& row, const LineCounts& counts, bool isSelected,
-						   const OpenRelativeFile& openFile);
+						   const ReviewTreeRow& row, const OpenRelativeFile& openFile);
 		void HandleListKeys(Tab& tab, ReviewSessions& sessions, const ReviewGroups& groups);
 		void RenderSelectedDiff(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review,
 								const ReviewGroups& groups, const OpenRelativeFile& openFile);

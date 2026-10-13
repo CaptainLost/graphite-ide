@@ -21,6 +21,22 @@ namespace Graphite {
 
 		constexpr std::string_view kRenameArrow = " → ";
 
+		constexpr const char* kCommitsHeading = "Commits";
+		constexpr const char* kUncommittedHeading = "Uncommitted in worktree";
+
+		const char* HeadingOf(ReviewGroup group)
+		{
+			switch (group)
+			{
+			case ReviewGroup::Commits:
+				return kCommitsHeading;
+			case ReviewGroup::Uncommitted:
+				return kUncommittedHeading;
+			}
+
+			return kCommitsHeading;
+		}
+
 		const Core::Branch* CheckedOutBranch(const std::vector<Core::Branch>& branches)
 		{
 			for (const Core::Branch& branch : branches)
@@ -66,50 +82,6 @@ namespace Graphite {
 					  [&diff](std::size_t left, std::size_t right) { return IsShownBefore(diff, left, right); });
 
 			return indices;
-		}
-
-		void AppendGroupRows(std::vector<ReviewListRow>& rows, ReviewGroup group, const Core::Diff& diff, bool collapsed)
-		{
-			rows.push_back(ReviewListRow{.Group = group, .IsHeading = true, .FileIndex = 0, .FileCount = diff.Files.size()});
-
-			if (collapsed)
-			{
-				return;
-			}
-
-			for (const std::size_t fileIndex : FileIndicesByPath(diff))
-			{
-				rows.push_back(ReviewListRow{.Group = group, .IsHeading = false, .FileIndex = fileIndex, .FileCount = 0});
-			}
-		}
-
-		std::vector<ReviewSelection> FileSelectionsInOrder(const ReviewGroups& groups, const std::vector<ReviewListRow>& rows)
-		{
-			std::vector<ReviewSelection> selections;
-
-			for (const ReviewListRow& row : rows)
-			{
-				if (!row.IsHeading)
-				{
-					selections.push_back(ReviewSelection{.Group = row.Group, .Path = ShownPath(FileOfRow(groups, row))});
-				}
-			}
-
-			return selections;
-		}
-
-		std::optional<std::size_t> PositionOf(const std::vector<ReviewSelection>& selections,
-											  const ReviewSelection& wanted)
-		{
-			for (std::size_t position = 0; position < selections.size(); ++position)
-			{
-				if (selections[position] == wanted)
-				{
-					return position;
-				}
-			}
-
-			return std::nullopt;
 		}
 
 		void AddViewed(ViewedCount& count, const Core::Diff* diff, ReviewGroup group, const ViewedStateOf& stateOf)
@@ -222,28 +194,30 @@ namespace Graphite {
 		return nullptr;
 	}
 
-	std::vector<ReviewListRow> BuildReviewRows(const ReviewGroups& groups)
+	std::string ChangeSummary(const Core::Diff& diff)
 	{
-		std::vector<ReviewListRow> rows;
+		LineCounts total;
 
-		if (groups.Commits != nullptr)
+		for (const Core::FileDiff& file : diff.Files)
 		{
-			AppendGroupRows(rows, ReviewGroup::Commits, *groups.Commits,
-							groups.Collapsed[IndexOf(ReviewGroup::Commits)]);
+			const LineCounts counts = CountLines(file);
+			total.Added += counts.Added;
+			total.Removed += counts.Removed;
 		}
 
-		if (groups.Uncommitted != nullptr)
-		{
-			AppendGroupRows(rows, ReviewGroup::Uncommitted, *groups.Uncommitted,
-							groups.Collapsed[IndexOf(ReviewGroup::Uncommitted)]);
-		}
-
-		return rows;
+		const std::size_t fileCount = diff.Files.size();
+		const char* noun = fileCount == 1 ? "file" : "files";
+		return std::format("{} {} +{} -{}", fileCount, noun, total.Added, total.Removed);
 	}
 
-	const Core::FileDiff& FileOfRow(const ReviewGroups& groups, const ReviewListRow& row)
+	std::string GroupHeadingText(ReviewGroup group, std::size_t shown, std::size_t total)
 	{
-		return DiffOf(groups, row.Group)->Files[row.FileIndex];
+		if (shown == total)
+		{
+			return std::format("{} ({})", HeadingOf(group), total);
+		}
+
+		return std::format("{} ({} of {})", HeadingOf(group), shown, total);
 	}
 
 	const Core::FileDiff* SelectedFile(const ReviewGroups& groups, const ReviewSelection& selection)
@@ -278,19 +252,6 @@ namespace Graphite {
 		return paths;
 	}
 
-	std::optional<ReviewSelection> FirstListedFile(const ReviewGroups& groups, const std::vector<ReviewListRow>& rows)
-	{
-		for (const ReviewListRow& row : rows)
-		{
-			if (!row.IsHeading)
-			{
-				return ReviewSelection{.Group = row.Group, .Path = ShownPath(FileOfRow(groups, row))};
-			}
-		}
-
-		return std::nullopt;
-	}
-
 	std::optional<ReviewSelection> FollowSelection(const std::optional<ReviewSelection>& selected,
 												   const std::vector<std::filesystem::path>& groupPathsBefore,
 												   const ReviewGroups& groups, const std::optional<ReviewSelection>& firstListed)
@@ -314,36 +275,6 @@ namespace Graphite {
 		}
 
 		return firstListed;
-	}
-
-	std::optional<ReviewSelection> NeighbourSelection(const std::optional<ReviewSelection>& selected,
-													  const ReviewGroups& groups,
-													  const std::vector<ReviewListRow>& rows, ListStep step)
-	{
-		const std::vector<ReviewSelection> files = FileSelectionsInOrder(groups, rows);
-
-		if (files.empty())
-		{
-			return selected;
-		}
-
-		const std::optional<std::size_t> position =
-			selected.has_value() ? PositionOf(files, *selected) : std::optional<std::size_t>{};
-
-		if (!position.has_value())
-		{
-			return files.front();
-		}
-
-		const std::size_t lastPosition = files.size() - 1;
-
-		if (step == ListStep::Next)
-		{
-			return files[std::min(*position + 1, lastPosition)];
-		}
-
-		const bool atTop = *position == 0;
-		return files[atTop ? 0 : *position - 1];
 	}
 
 	ViewedCount CountViewed(const ReviewGroups& groups, const ViewedStateOf& stateOf)

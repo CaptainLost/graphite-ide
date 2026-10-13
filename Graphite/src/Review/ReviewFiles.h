@@ -56,23 +56,11 @@ namespace Graphite {
 
 	const Core::Diff* DiffOf(const ReviewGroups& groups, ReviewGroup group);
 
-	// A group's heading, or one file of that group's diff.
-	struct ReviewListRow
-	{
-		ReviewGroup Group = ReviewGroup::Commits;
-		bool IsHeading = false;
+	// What the header says of the committed range: "2 files +2 -1".
+	std::string ChangeSummary(const Core::Diff& diff);
 
-		// Into the group's diff; read only for a file.
-		std::size_t FileIndex = 0;
-
-		// How many files the group holds; read only for a heading.
-		std::size_t FileCount = 0;
-	};
-
-	// Each present group's heading, then - unless it is folded - its files ordered by path.
-	std::vector<ReviewListRow> BuildReviewRows(const ReviewGroups& groups);
-
-	const Core::FileDiff& FileOfRow(const ReviewGroups& groups, const ReviewListRow& row);
+	// "Commits (40)", or "Commits (12 of 40)" while a filter or Hide viewed leaves some out.
+	std::string GroupHeadingText(ReviewGroup group, std::size_t shown, std::size_t total);
 
 	struct ReviewSelection
 	{
@@ -94,18 +82,11 @@ namespace Graphite {
 												   const std::vector<std::filesystem::path>& groupPathsBefore,
 												   const ReviewGroups& groups, const std::optional<ReviewSelection>& firstListed);
 
-	std::optional<ReviewSelection> FirstListedFile(const ReviewGroups& groups, const std::vector<ReviewListRow>& rows);
-
 	enum class ListStep
 	{
 		Previous,
 		Next
 	};
-
-	// One file up or down the list, headings skipped and groups crossed, staying put at either end.
-	std::optional<ReviewSelection> NeighbourSelection(const std::optional<ReviewSelection>& selected,
-													  const ReviewGroups& groups,
-													  const std::vector<ReviewListRow>& rows, ListStep step);
 
 	struct ViewedCount
 	{

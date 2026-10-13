@@ -38,6 +38,54 @@ namespace Graphite {
 		}
 
 		constexpr const char* kEndQuestionTitle = "###ReviewEnd";
+
+		std::vector<LineCounts> LineCountsOfEach(const Core::Diff* diff)
+		{
+			std::vector<LineCounts> counts;
+
+			if (diff == nullptr)
+			{
+				return counts;
+			}
+
+			counts.reserve(diff->Files.size());
+
+			for (const Core::FileDiff& file : diff->Files)
+			{
+				counts.push_back(CountLines(file));
+			}
+
+			return counts;
+		}
+
+		LineCounts SumOf(const std::vector<LineCounts>& counts)
+		{
+			LineCounts total;
+
+			for (const LineCounts& fileCounts : counts)
+			{
+				total.Added += fileCounts.Added;
+				total.Removed += fileCounts.Removed;
+			}
+
+			return total;
+		}
+
+		ViewedCount ViewedOfHeadings(const std::vector<ReviewTreeRow>& rows)
+		{
+			ViewedCount count;
+
+			for (const ReviewTreeRow& row : rows)
+			{
+				if (row.Kind == TreeRowKind::Heading)
+				{
+					count.Viewed += row.Viewed;
+					count.Total += row.Total;
+				}
+			}
+
+			return count;
+		}
 	}
 
 	ReviewWindows::ReviewWindows(ModalGate& modals)
@@ -347,58 +395,71 @@ namespace Graphite {
 		sessions.Mark(tab.Branch, group, file);
 	}
 
-	void ReviewWindows::RefreshRows(Tab& tab, const LoadedReview& review)
+	void ReviewWindows::RefreshRows(Tab& tab, const ReviewSessions& sessions, const SessionSettings& settings,
+									const LoadedReview& review)
 	{
-		const bool sameAnswers = tab.Rows.Built && tab.Rows.Committed == review.Committed &&
-								 tab.Rows.Uncommitted == review.Uncommitted && tab.Rows.Collapsed == tab.Collapsed;
+		RowsCache& cache = tab.Rows;
+		const std::string_view filter{tab.Filter.data()};
 
-		if (sameAnswers)
+		const bool diffsChanged =
+			!cache.Built || cache.Committed != review.Committed || cache.Uncommitted != review.Uncommitted;
+		const bool sameList = !diffsChanged && cache.Collapsed == tab.Collapsed && cache.Filter == filter &&
+							  cache.Shape == settings.Shape && cache.HideViewed == settings.HideViewed &&
+							  cache.FoldsVersion == tab.FoldsVersion && cache.SessionsVersion == sessions.GetVersion();
+
+		if (sameList)
 		{
 			return;
 		}
 
-		const ReviewGroups groups = GroupsOf(tab, review);
-		std::vector<ReviewListRow> rows = BuildReviewRows(groups);
-		std::vector<LineCounts> counts;
-		counts.reserve(rows.size());
+		const std::string& branch = tab.Branch;
+		const ReviewTreeInput input{.Groups = GroupsOf(tab, review),
+									.StateOf = [&sessions, &branch](ReviewGroup group, const Core::FileDiff& file)
+									{ return sessions.StateOf(branch, group, file); },
+									.Shape = settings.Shape,
+									.Headings = GroupHeadings::Shown,
+									.Filter = std::string{filter},
+									.HideViewed = settings.HideViewed,
+									.FoldedFolders = &tab.Folded};
 
-		for (const ReviewListRow& row : rows)
+		cache.Rows = BuildReviewTree(input);
+		cache.Viewed = ViewedOfHeadings(cache.Rows);
+		cache.Collapsed = tab.Collapsed;
+		cache.Filter = input.Filter;
+		cache.Shape = settings.Shape;
+		cache.HideViewed = settings.HideViewed;
+		cache.FoldsVersion = tab.FoldsVersion;
+		cache.SessionsVersion = sessions.GetVersion();
+		cache.Built = true;
+
+		if (!diffsChanged)
 		{
-			counts.push_back(row.IsHeading ? LineCounts{} : CountLines(FileOfRow(groups, row)));
+			return;
 		}
 
+		cache.Committed = review.Committed;
+		cache.Uncommitted = review.Uncommitted;
+		cache.FileCounts[IndexOf(ReviewGroup::Commits)] = LineCountsOfEach(review.Committed.get());
+		cache.FileCounts[IndexOf(ReviewGroup::Uncommitted)] = LineCountsOfEach(review.Uncommitted.get());
+		cache.GroupCounts[IndexOf(ReviewGroup::Commits)] = SumOf(cache.FileCounts[IndexOf(ReviewGroup::Commits)]);
+		cache.GroupCounts[IndexOf(ReviewGroup::Uncommitted)] = SumOf(cache.FileCounts[IndexOf(ReviewGroup::Uncommitted)]);
+		cache.Summary = ChangeSummary(*review.Committed);
+
+		FollowNewDiffs(tab, review);
+	}
+
+	void ReviewWindows::FollowNewDiffs(Tab& tab, const LoadedReview& review)
+	{
+		const ReviewGroups groups = GroupsOf(tab, review);
 		const std::vector<std::filesystem::path> noPathsBefore;
 		const std::vector<std::filesystem::path>& pathsBefore =
 			tab.Selected.has_value() ? tab.LastPaths[IndexOf(tab.Selected->Group)] : noPathsBefore;
 
-		tab.Selected = FollowSelection(tab.Selected, pathsBefore, groups, FirstListedFile(groups, rows));
+		tab.Selected = FollowSelection(tab.Selected, pathsBefore, groups, FirstFileOf(groups, tab.Rows.Rows));
 
 		tab.LastPaths[IndexOf(ReviewGroup::Commits)] = ShownPathsByName(*review.Committed);
 		tab.LastPaths[IndexOf(ReviewGroup::Uncommitted)] =
 			review.Uncommitted != nullptr ? ShownPathsByName(*review.Uncommitted) : std::vector<std::filesystem::path>{};
-
-		tab.Rows = RowsCache{.Committed = review.Committed,
-							 .Uncommitted = review.Uncommitted,
-							 .Collapsed = tab.Collapsed,
-							 .Rows = std::move(rows),
-							 .Counts = std::move(counts),
-							 .Built = true};
-	}
-
-	ViewedCount ReviewWindows::ViewedCountOf(Tab& tab, const ReviewSessions& sessions, const ReviewGroups& groups)
-	{
-		const bool countIsCurrent = tab.Rows.ViewedCounted && tab.Rows.ViewedForVersion == sessions.GetVersion();
-
-		if (!countIsCurrent)
-		{
-			const std::string& branch = tab.Branch;
-			tab.Rows.Viewed = CountViewed(groups, [&sessions, &branch](ReviewGroup group, const Core::FileDiff& file)
-										  { return sessions.StateOf(branch, group, file); });
-			tab.Rows.ViewedForVersion = sessions.GetVersion();
-			tab.Rows.ViewedCounted = true;
-		}
-
-		return tab.Rows.Viewed;
 	}
 
 	void ReviewWindows::UpdateTexts(Tab& tab, ReviewModel& model, const LoadedReview& review,

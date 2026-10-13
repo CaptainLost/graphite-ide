@@ -13,6 +13,8 @@
 #include <format>
 #include <functional>
 #include <optional>
+#include <set>
+#include <span>
 #include <string>
 #include <string_view>
 
@@ -23,22 +25,11 @@ namespace Graphite {
 		constexpr float kFileColumnEms = 24.0f;
 		constexpr int kReviewColumnCount = 2;
 		constexpr std::size_t kCommitsInTooltip = 20;
+		constexpr float kToolbarButtonCount = 2.0f;
 
-		constexpr const char* kCommitsHeading = "Commits";
-		constexpr const char* kUncommittedHeading = "Uncommitted in worktree";
-
-		const char* HeadingOf(ReviewGroup group)
-		{
-			switch (group)
-			{
-			case ReviewGroup::Commits:
-				return kCommitsHeading;
-			case ReviewGroup::Uncommitted:
-				return kUncommittedHeading;
-			}
-
-			return kCommitsHeading;
-		}
+		constexpr const char* kTreeShapeButton = ICON_MDI_FILE_TREE "###reviewShape";
+		constexpr const char* kFlatShapeButton = ICON_MDI_FORMAT_LIST_BULLETED "###reviewShape";
+		constexpr const char* kHideViewedButton = ICON_MDI_EYE_OFF "###reviewHideViewed";
 
 		SessionSettings ReadSettings(const ReviewSessions& sessions, const std::string& branch)
 		{
@@ -77,21 +68,101 @@ namespace Graphite {
 			return std::format("Uncommitted changes could not be read: {}", error.Message);
 		}
 
+		std::string CountsText(const LineCounts& counts)
+		{
+			return std::format("+{} -{}", counts.Added, counts.Removed);
+		}
+
+		std::string ViewedOfTotalText(const ReviewTreeRow& row)
+		{
+			return std::format("{}/{}", row.Viewed, row.Total);
+		}
+
+		// Dimmed, ending at the row's right edge, after whatever the row drew last.
+		void DrawAtRight(const std::string& text, float rowRight)
+		{
+			ImGui::SameLine();
+			ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), rowRight - MeasureText(text)));
+			ImGui::TextDisabled("%s", text.c_str());
+		}
+
 		// Drawn over one Selectable as tall as the row, so the whole row folds the group.
-		bool DrawGroupHeading(ReviewGroup group, std::size_t fileCount, bool collapsed, float rowHeight)
+		bool DrawHeadingRow(const ReviewTreeRow& row, const LineCounts& groupCounts, float rowHeight)
 		{
 			const ImVec2 rowStart = ImGui::GetCursorPos();
+			const float rowRight = rowStart.x + ImGui::GetContentRegionAvail().x;
 			const bool notSelected = false;
 			const bool clicked =
 				ImGui::Selectable("##heading", notSelected, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, rowHeight));
 
 			ImGui::SetCursorPos(rowStart);
 			ImGui::AlignTextToFramePadding();
-			ImGui::TextDisabled("%s", collapsed ? ICON_MDI_CHEVRON_RIGHT : ICON_MDI_CHEVRON_DOWN);
+			ImGui::TextDisabled("%s", row.Folded ? ICON_MDI_CHEVRON_RIGHT : ICON_MDI_CHEVRON_DOWN);
 			ImGui::SameLine();
-			ImGui::TextUnformatted(std::format("{} ({})", HeadingOf(group), fileCount).c_str());
+			ImGui::TextUnformatted(GroupHeadingText(row.Group, row.Shown, row.Total).c_str());
+
+			const bool noneLeftOnScreen = row.Total > 0 && row.Shown == 0;
+
+			if (noneLeftOnScreen)
+			{
+				ImGui::SameLine();
+				ImGui::TextDisabled("No files match.");
+			}
+
+			const std::string viewedText = ViewedOfTotalText(row);
+
+			if (row.Group != ReviewGroup::Uncommitted)
+			{
+				DrawAtRight(viewedText, rowRight);
+				return clicked;
+			}
+
+			const float spacing = ImGui::GetStyle().ItemSpacing.x;
+			const float countsRight = rowRight - MeasureText(viewedText) - spacing;
+			DrawAtRight(CountsText(groupCounts), countsRight);
+			ImGui::SameLine();
+			ImGui::TextDisabled("%s", viewedText.c_str());
 
 			return clicked;
+		}
+
+		// Drawn over one Selectable as tall as the row, so the whole row folds the folder.
+		bool DrawFolderRow(const ReviewTreeRow& row, float indent, float rowHeight)
+		{
+			const ImVec2 rowStart = ImGui::GetCursorPos();
+			const float rowRight = rowStart.x + ImGui::GetContentRegionAvail().x;
+			const bool notSelected = false;
+			const bool clicked =
+				ImGui::Selectable("##folder", notSelected, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, rowHeight));
+
+			ImGui::SetCursorPos(ImVec2(rowStart.x + indent, rowStart.y));
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextDisabled("%s", row.Folded ? ICON_MDI_CHEVRON_RIGHT : ICON_MDI_CHEVRON_DOWN);
+			ImGui::SameLine();
+			ImGui::TextUnformatted(row.Folded ? ICON_MDI_FOLDER : ICON_MDI_FOLDER_OPEN);
+			ImGui::SameLine();
+
+			const std::string viewedText = ViewedOfTotalText(row);
+			const float spacing = ImGui::GetStyle().ItemSpacing.x;
+			const float labelRoom = rowRight - MeasureText(viewedText) - spacing - ImGui::GetCursorPosX();
+			ImGui::TextUnformatted(FittedText(row.Label, labelRoom).c_str());
+
+			DrawAtRight(viewedText, rowRight);
+
+			return clicked;
+		}
+
+		void ToggleFolder(std::set<MarkKey>& folded, const ReviewTreeRow& row)
+		{
+			const MarkKey folder{.Group = row.Group, .Path = row.FolderPath};
+
+			if (folded.contains(folder))
+			{
+				folded.erase(folder);
+				return;
+			}
+
+			folded.insert(folder);
 		}
 
 		void DrawPathLabel(const PathLabel& label, float room)
@@ -122,6 +193,7 @@ namespace Graphite {
 			ViewedState Viewed = ViewedState::NotViewed;
 			bool CanOpen = false;
 			float RowHeight = 0.0f;
+			float Indent = 0.0f;
 			LineCounts Counts;
 		};
 
@@ -133,9 +205,26 @@ namespace Graphite {
 			bool CopyPath = false;
 		};
 
-		// The checkbox, the change letter, the path and - at the right edge - the line counts, laid
+		// The file name alone in the tree, under its folder; the whole path in the flat list.
+		PathLabel LabelInShape(const Core::FileDiff& file, ListShape shape)
+		{
+			const PathLabel wholePath = LabelOf(file);
+
+			switch (shape)
+			{
+			case ListShape::Tree:
+				return PathLabel{.Name = wholePath.Name};
+			case ListShape::Flat:
+				return wholePath;
+			}
+
+			return wholePath;
+		}
+
+		// The checkbox, the change letter, the label and - at the right edge - the line counts, laid
 		// over one Selectable as tall as the row so a click anywhere else selects it.
-		FileRowActions DrawFileRow(const Core::FileDiff& file, const FileRowLook& look, const GitPalette& palette)
+		FileRowActions DrawFileRow(const Core::FileDiff& file, const PathLabel& label, const FileRowLook& look,
+								   const GitPalette& palette)
 		{
 			FileRowActions actions;
 
@@ -155,7 +244,7 @@ namespace Graphite {
 				ImGui::EndPopup();
 			}
 
-			ImGui::SetCursorPos(rowStart);
+			ImGui::SetCursorPos(ImVec2(rowStart.x + look.Indent, rowStart.y));
 
 			bool viewed = look.Viewed == ViewedState::Viewed;
 			actions.ToggledViewed = ImGui::Checkbox("##viewed", &viewed);
@@ -172,8 +261,7 @@ namespace Graphite {
 			}
 
 			const LineCounts& counts = look.Counts;
-			const std::string countsText =
-				file.IsBinary ? std::string{"binary"} : std::format("+{} -{}", counts.Added, counts.Removed);
+			const std::string countsText = file.IsBinary ? std::string{"binary"} : CountsText(counts);
 			const bool changedSinceViewed = look.Viewed == ViewedState::ChangedSinceViewed;
 			const std::string changedText = changedSinceViewed ? std::string{"changed"} : std::string{};
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;
@@ -181,7 +269,7 @@ namespace Graphite {
 				MeasureText(countsText) + (changedSinceViewed ? MeasureText(changedText) + spacing : 0.0f);
 
 			ImGui::SameLine();
-			DrawPathLabel(LabelOf(file), rowRight - trailingWidth - spacing - ImGui::GetCursorPosX());
+			DrawPathLabel(label, rowRight - trailingWidth - spacing - ImGui::GetCursorPosX());
 
 			ImGui::SameLine();
 			ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), rowRight - trailingWidth));
@@ -200,21 +288,14 @@ namespace Graphite {
 			return actions;
 		}
 
-		bool HasFileRow(const std::vector<ReviewListRow>& rows)
+		bool IsRowOfSelection(const ReviewTreeRow& row, const ReviewGroups& groups, const ReviewSelection& selected)
 		{
-			for (const ReviewListRow& row : rows)
-			{
-				if (!row.IsHeading)
-				{
-					return true;
-				}
-			}
-
-			return false;
+			return row.Kind == TreeRowKind::File && row.Group == selected.Group &&
+				   ShownPath(FileOfTreeRow(groups, row)) == selected.Path;
 		}
 
 		std::optional<std::size_t> RowOfSelection(const std::optional<ReviewSelection>& selected,
-												  const ReviewGroups& groups, const std::vector<ReviewListRow>& rows)
+												  const ReviewGroups& groups, const std::vector<ReviewTreeRow>& rows)
 		{
 			if (!selected.has_value())
 			{
@@ -223,15 +304,101 @@ namespace Graphite {
 
 			for (std::size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
 			{
-				const ReviewListRow& row = rows[rowIndex];
-
-				if (!row.IsHeading && row.Group == selected->Group && ShownPath(FileOfRow(groups, row)) == selected->Path)
+				if (IsRowOfSelection(rows[rowIndex], groups, *selected))
 				{
 					return rowIndex;
 				}
 			}
 
 			return std::nullopt;
+		}
+
+		// ImGui centres a button's label inside the frame less FramePadding: on a square as wide as
+		// the frame is tall, the horizontal padding leaves less room than the glyph, which then sits
+		// off centre.
+		bool DrawSquareIconButton(const char* label)
+		{
+			const float side = ImGui::GetFrameHeight();
+			const float noHorizontalPadding = 0.0f;
+
+			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(noHorizontalPadding, ImGui::GetStyle().FramePadding.y));
+			const bool clicked = ImGui::Button(label, ImVec2(side, side));
+			ImGui::PopStyleVar();
+
+			return clicked;
+		}
+
+		void DrawListToolbar(std::span<char> filter, ReviewSessions& sessions, const std::string& branch)
+		{
+			const SessionSettings settings = ReadSettings(sessions, branch);
+			const float buttonsWidth = kToolbarButtonCount * (ImGui::GetStyle().ItemSpacing.x + ImGui::GetFrameHeight());
+
+			ImGui::SetNextItemWidth(-buttonsWidth);
+			ImGui::InputTextWithHint("##reviewFilter", ICON_MDI_MAGNIFY "  Filter files", filter.data(), filter.size());
+
+			const bool isTree = settings.Shape == ListShape::Tree;
+
+			ImGui::SameLine();
+
+			if (DrawSquareIconButton(isTree ? kTreeShapeButton : kFlatShapeButton))
+			{
+				SessionSettings changed = settings;
+				changed.Shape = isTree ? ListShape::Flat : ListShape::Tree;
+				sessions.SetSettings(branch, changed);
+			}
+
+			ImGui::SetItemTooltip("%s", isTree ? "Show as a list" : "Show as a tree");
+
+			ImGui::SameLine();
+
+			if (settings.HideViewed)
+			{
+				ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
+			}
+
+			const bool hideViewedClicked = DrawSquareIconButton(kHideViewedButton);
+
+			if (settings.HideViewed)
+			{
+				ImGui::PopStyleColor();
+			}
+
+			ImGui::SetItemTooltip("Hide viewed files");
+
+			if (hideViewedClicked)
+			{
+				SessionSettings changed = settings;
+				changed.HideViewed = !settings.HideViewed;
+				sessions.SetSettings(branch, changed);
+			}
+		}
+
+		// The change summary's tooltip: the range, then its newest commits.
+		void DrawCommitsTooltip(const ReviewRange& range)
+		{
+			if (!ImGui::BeginItemTooltip())
+			{
+				return;
+			}
+
+			ImGui::TextUnformatted(RangeSummary(range).c_str());
+
+			const std::size_t shown = std::min(range.Commits.size(), kCommitsInTooltip);
+
+			for (std::size_t commitIndex = 0; commitIndex < shown; ++commitIndex)
+			{
+				const Core::CommitSummary& commit = range.Commits[commitIndex];
+				ImGui::TextDisabled("%s", commit.Id.ShortHex().c_str());
+				ImGui::SameLine();
+				ImGui::TextUnformatted(commit.Summary.c_str());
+			}
+
+			if (range.Commits.size() > shown)
+			{
+				ImGui::TextDisabled("and %zu more", range.Commits.size() - shown);
+			}
+
+			ImGui::EndTooltip();
 		}
 	}
 
@@ -247,13 +414,14 @@ namespace Graphite {
 
 		const ReviewKey key = *tab.Key;
 		const SessionSettings settings = session->Settings;
+		const RowsCache* noRowsYet = nullptr;
 
 		input.Model.RequestRange(key);
 		const Core::Ref<const ReviewRange> range = input.Model.GetRange(key);
 
 		if (range == nullptr)
 		{
-			RenderHeader(tab, input, nullptr, std::nullopt);
+			RenderHeader(tab, input, nullptr, noRowsYet);
 
 			const Core::Error* error = input.Model.GetRangeError(key);
 
@@ -273,7 +441,7 @@ namespace Graphite {
 
 		if (range->Problem != RangeProblem::None)
 		{
-			RenderHeader(tab, input, range.get(), std::nullopt);
+			RenderHeader(tab, input, range.get(), noRowsYet);
 
 			const std::string problem = RangeProblemMessage(range->Problem, tab.Branch, session->Base);
 
@@ -341,7 +509,7 @@ namespace Graphite {
 			return;
 		}
 
-		RenderHeader(tab, input, range.get(), std::nullopt);
+		RenderHeader(tab, input, range.get(), noRowsYet);
 
 		if (!failed)
 		{
@@ -359,42 +527,30 @@ namespace Graphite {
 	}
 
 	void ReviewWindows::RenderHeader(Tab& tab, const ReviewRenderInput& input, const ReviewRange* range,
-									 const std::optional<ViewedCount>& viewed)
+									 const RowsCache* rows)
 	{
 		const ReviewSession* session = input.Sessions.Find(tab.Branch);
 		const SessionSettings settings = session != nullptr ? session->Settings : SessionSettings{};
 
 		ImGui::AlignTextToFramePadding();
+		ImGui::TextUnformatted(ShortBranchName(tab.Branch).c_str());
 
 		if (session != nullptr)
 		{
-			ImGui::TextDisabled("against %s", ShortBranchName(session->Base).c_str());
+			const float noOffset = 0.0f;
+			const float noSpacing = 0.0f;
+
+			ImGui::SameLine(noOffset, noSpacing);
+			ImGui::TextDisabled(" against %s", ShortBranchName(session->Base).c_str());
 		}
 
-		if (range != nullptr && range->Problem == RangeProblem::None)
+		const bool changeSummaryIsKnown = rows != nullptr && range != nullptr && range->Problem == RangeProblem::None;
+
+		if (changeSummaryIsKnown)
 		{
 			ImGui::SameLine();
-			ImGui::TextDisabled("%s", RangeSummary(*range).c_str());
-
-			if (!range->Commits.empty() && ImGui::BeginItemTooltip())
-			{
-				const std::size_t shown = std::min(range->Commits.size(), kCommitsInTooltip);
-
-				for (std::size_t commitIndex = 0; commitIndex < shown; ++commitIndex)
-				{
-					const Core::CommitSummary& commit = range->Commits[commitIndex];
-					ImGui::TextDisabled("%s", commit.Id.ShortHex().c_str());
-					ImGui::SameLine();
-					ImGui::TextUnformatted(commit.Summary.c_str());
-				}
-
-				if (range->Commits.size() > shown)
-				{
-					ImGui::TextDisabled("and %zu more", range->Commits.size() - shown);
-				}
-
-				ImGui::EndTooltip();
-			}
+			ImGui::TextDisabled("%s", rows->Summary.c_str());
+			DrawCommitsTooltip(*range);
 		}
 
 		ImGui::SameLine();
@@ -416,9 +572,9 @@ namespace Graphite {
 			ImGui::SetItemTooltip("Not checked out in any worktree");
 		}
 
-		if (viewed.has_value())
+		if (rows != nullptr)
 		{
-			const std::string viewedText = std::format("{}/{} viewed", viewed->Viewed, viewed->Total);
+			const std::string viewedText = std::format("{}/{} viewed", rows->Viewed.Viewed, rows->Viewed.Total);
 
 			ImGui::SameLine();
 			const float right = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
@@ -429,12 +585,12 @@ namespace Graphite {
 
 	void ReviewWindows::RenderBody(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review)
 	{
-		RefreshRows(tab, review);
+		RefreshRows(tab, input.Sessions, ReadSettings(input.Sessions, tab.Branch), review);
 
 		const ReviewGroups groups = GroupsOf(tab, review);
 		const OpenRelativeFile openFile = OpenFileIn(*review.Range);
 
-		RenderHeader(tab, input, review.Range.get(), ViewedCountOf(tab, input.Sessions, groups));
+		RenderHeader(tab, input, review.Range.get(), &tab.Rows);
 
 		const bool alreadyMerged = review.Range->Ends.MergeBase == review.Range->Ends.Tip;
 
@@ -492,59 +648,44 @@ namespace Graphite {
 	void ReviewWindows::RenderFileList(Tab& tab, const ReviewRenderInput& input, const ReviewGroups& groups,
 									   const OpenRelativeFile& openFile)
 	{
-		// NoNavInputs: the arrow keys and Space are this list's own, below, rather than ImGui's
-		// keyboard navigation, which would also toggle whichever checkbox it had reached.
+		DrawListToolbar(tab.Filter, input.Sessions, tab.Branch);
+
 		const ImVec2 fillTheCell{0.0f, 0.0f};
 
-		if (ImGui::BeginChild("##reviewFiles", fillTheCell, ImGuiChildFlags_None, ImGuiWindowFlags_NoNavInputs))
+		// NoNavInputs: the arrow keys and Space are this list's own, below, rather than ImGui's
+		// keyboard navigation, which would also toggle whichever checkbox it had reached.
+		// AlwaysUseWindowPadding: ImGui gives a child without a border no padding, and the rows then
+		// touch its left edge and the counts at their right run under the scrollbar.
+		if (ImGui::BeginChild("##reviewFiles", fillTheCell, ImGuiChildFlags_AlwaysUseWindowPadding,
+							  ImGuiWindowFlags_NoNavInputs))
 		{
-			const std::vector<ReviewListRow>& rows = tab.Rows.Rows;
-			const float rowHeight = ImGui::GetFrameHeight();
-			const std::optional<std::size_t> selectedRow = RowOfSelection(tab.Selected, groups, rows);
+			const std::vector<ReviewTreeRow>& rows = tab.Rows.Rows;
 
 			ImGuiListClipper clipper;
 			clipper.Begin(static_cast<int>(rows.size()), ImGui::GetFrameHeightWithSpacing());
 
-			if (tab.ScrollToSelected && selectedRow.has_value())
+			if (tab.ScrollToSelected)
 			{
-				clipper.IncludeItemByIndex(static_cast<int>(*selectedRow));
+				const std::optional<std::size_t> selectedRow = RowOfSelection(tab.Selected, groups, rows);
+
+				if (selectedRow.has_value())
+				{
+					clipper.IncludeItemByIndex(static_cast<int>(*selectedRow));
+				}
+				else
+				{
+					tab.ScrollToSelected = false;
+				}
 			}
 
 			while (clipper.Step())
 			{
 				for (int rowIndex = clipper.DisplayStart; rowIndex < clipper.DisplayEnd; ++rowIndex)
 				{
-					const std::size_t rowPosition = static_cast<std::size_t>(rowIndex);
-					const ReviewListRow& row = rows[rowPosition];
+					const ReviewTreeRow& row = rows[static_cast<std::size_t>(rowIndex)];
 
 					ImGui::PushID(static_cast<int>(IndexOf(row.Group)));
-
-					if (row.IsHeading)
-					{
-						bool& collapsed = tab.Collapsed[IndexOf(row.Group)];
-
-						if (DrawGroupHeading(row.Group, row.FileCount, collapsed, rowHeight))
-						{
-							collapsed = !collapsed;
-						}
-					}
-					else
-					{
-						const bool isSelected = selectedRow == rowPosition;
-
-						RenderFileRow(tab, input, groups, row, tab.Rows.Counts[rowPosition], isSelected, openFile);
-
-						if (isSelected && tab.ScrollToSelected)
-						{
-							if (!ImGui::IsItemVisible())
-							{
-								ImGui::SetScrollHereY();
-							}
-
-							tab.ScrollToSelected = false;
-						}
-					}
-
+					RenderTreeRow(tab, input, groups, row, openFile);
 					ImGui::PopID();
 				}
 			}
@@ -555,13 +696,53 @@ namespace Graphite {
 		ImGui::EndChild();
 	}
 
-	void ReviewWindows::RenderFileRow(Tab& tab, const ReviewRenderInput& input, const ReviewGroups& groups,
-									  const ReviewListRow& row, const LineCounts& counts, bool isSelected,
-									  const OpenRelativeFile& openFile)
+	void ReviewWindows::RenderTreeRow(Tab& tab, const ReviewRenderInput& input, const ReviewGroups& groups,
+									  const ReviewTreeRow& row, const OpenRelativeFile& openFile)
 	{
-		const Core::FileDiff& file = FileOfRow(groups, row);
+		const float rowHeight = ImGui::GetFrameHeight();
+
+		switch (row.Kind)
+		{
+		case TreeRowKind::Heading:
+			if (DrawHeadingRow(row, tab.Rows.GroupCounts[IndexOf(row.Group)], rowHeight))
+			{
+				bool& collapsed = tab.Collapsed[IndexOf(row.Group)];
+				collapsed = !collapsed;
+			}
+
+			return;
+		case TreeRowKind::Folder:
+		{
+			const float indent = static_cast<float>(row.Depth) * ImGui::GetStyle().IndentSpacing;
+
+			ImGui::PushID(Core::ToUtf8(row.FolderPath).c_str());
+			const bool clicked = DrawFolderRow(row, indent, rowHeight);
+			ImGui::PopID();
+
+			// The tree is drawn unfolded while a filter or Hide viewed is on, so a fold would not show.
+			const bool listIsNarrowed = !tab.Rows.Filter.empty() || tab.Rows.HideViewed;
+
+			if (clicked && !listIsNarrowed)
+			{
+				ToggleFolder(tab.Folded, row);
+				++tab.FoldsVersion;
+			}
+
+			return;
+		}
+		case TreeRowKind::File:
+			RenderFileRow(tab, input, groups, row, openFile);
+			return;
+		}
+	}
+
+	void ReviewWindows::RenderFileRow(Tab& tab, const ReviewRenderInput& input, const ReviewGroups& groups,
+									  const ReviewTreeRow& row, const OpenRelativeFile& openFile)
+	{
+		const Core::FileDiff& file = FileOfTreeRow(groups, row);
 		const std::filesystem::path& path = ShownPath(file);
 		const bool fileIsOnDisk = file.Change != Core::FileChange::Deleted;
+		const bool isSelected = tab.Selected.has_value() && IsRowOfSelection(row, groups, *tab.Selected);
 
 		ImGui::PushID(Core::ToUtf8(path).c_str());
 
@@ -569,11 +750,22 @@ namespace Graphite {
 							   .Viewed = input.Sessions.StateOf(tab.Branch, row.Group, file),
 							   .CanOpen = openFile != nullptr && fileIsOnDisk,
 							   .RowHeight = ImGui::GetFrameHeight(),
-							   .Counts = counts};
+							   .Indent = static_cast<float>(row.Depth) * ImGui::GetStyle().IndentSpacing,
+							   .Counts = tab.Rows.FileCounts[IndexOf(row.Group)][row.FileIndex]};
 
-		const FileRowActions actions = DrawFileRow(file, look, input.Palette);
+		const FileRowActions actions = DrawFileRow(file, LabelInShape(file, tab.Rows.Shape), look, input.Palette);
 
 		ImGui::PopID();
+
+		if (isSelected && tab.ScrollToSelected)
+		{
+			if (!ImGui::IsItemVisible())
+			{
+				ImGui::SetScrollHereY();
+			}
+
+			tab.ScrollToSelected = false;
+		}
 
 		if (actions.Selected)
 		{
@@ -603,17 +795,17 @@ namespace Graphite {
 			return;
 		}
 
-		const std::vector<ReviewListRow>& rows = tab.Rows.Rows;
+		const std::vector<ReviewTreeRow>& rows = tab.Rows.Rows;
 
 		if (ImGui::IsKeyPressed(ImGuiKey_DownArrow))
 		{
-			tab.Selected = NeighbourSelection(tab.Selected, groups, rows, ListStep::Next);
+			tab.Selected = NeighbourFileOf(tab.Selected, groups, rows, ListStep::Next);
 			tab.ScrollToSelected = true;
 		}
 
 		if (ImGui::IsKeyPressed(ImGuiKey_UpArrow))
 		{
-			tab.Selected = NeighbourSelection(tab.Selected, groups, rows, ListStep::Previous);
+			tab.Selected = NeighbourFileOf(tab.Selected, groups, rows, ListStep::Previous);
 			tab.ScrollToSelected = true;
 		}
 
@@ -641,7 +833,8 @@ namespace Graphite {
 
 			if (file == nullptr)
 			{
-				Core::EmptyState(HasFileRow(tab.Rows.Rows) ? "Select a file to see its changes." : "Nothing to review.");
+				const bool reviewHasFiles = tab.Rows.Viewed.Total > 0;
+				Core::EmptyState(reviewHasFiles ? "Select a file to see its changes." : "Nothing to review.");
 			}
 			else
 			{

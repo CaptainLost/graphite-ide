@@ -2,17 +2,17 @@
 
 #include "Review/ReviewFiles.h"
 #include "Review/ReviewSessions.h"
+#include "Review/ReviewTree.h"
 
 #include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
 
-using Graphite::ListStep;
 using Graphite::ReviewGroup;
 using Graphite::ReviewGroups;
-using Graphite::ReviewListRow;
 using Graphite::ReviewSelection;
+using Graphite::ReviewTreeInput;
 
 namespace {
 
@@ -135,44 +135,14 @@ TEST_CASE("A file's added and removed lines are counted from its hunks")
 	CHECK(counts.Removed == 1);
 }
 
-TEST_CASE("The list shows each present group's heading and then its files by path")
-{
-	const Core::Diff committed = DiffOfFiles({"src/b.cpp", "src/a.cpp"});
-	const Core::Diff uncommitted = DiffOfFiles({"z.cpp"});
-	const ReviewGroups groups{.Commits = &committed, .Uncommitted = &uncommitted};
-
-	const std::vector<ReviewListRow> rows = Graphite::BuildReviewRows(groups);
-
-	REQUIRE(rows.size() == 5);
-	CHECK(rows[0].IsHeading);
-	CHECK(rows[0].FileCount == 2);
-	CHECK(Graphite::FileOfRow(groups, rows[1]).NewPath == std::filesystem::path{"src/a.cpp"});
-	CHECK(Graphite::FileOfRow(groups, rows[2]).NewPath == std::filesystem::path{"src/b.cpp"});
-	CHECK(rows[3].IsHeading);
-	CHECK(rows[3].Group == ReviewGroup::Uncommitted);
-	CHECK(Graphite::FileOfRow(groups, rows[4]).NewPath == std::filesystem::path{"z.cpp"});
-}
-
-TEST_CASE("A folded group shows only its heading and an absent one shows nothing")
-{
-	const Core::Diff committed = DiffOfFiles({"a.cpp", "b.cpp"});
-	ReviewGroups groups{.Commits = &committed};
-	groups.Collapsed[Graphite::IndexOf(ReviewGroup::Commits)] = true;
-
-	const std::vector<ReviewListRow> rows = Graphite::BuildReviewRows(groups);
-
-	REQUIRE(rows.size() == 1);
-	CHECK(rows[0].IsHeading);
-}
-
 TEST_CASE("A selection is kept by path across a refresh")
 {
 	const Core::Diff committed = DiffOfFiles({"a.cpp", "b.cpp"});
 	const ReviewGroups groups{.Commits = &committed};
-	const std::vector<ReviewListRow> rows = Graphite::BuildReviewRows(groups);
+	const std::vector<Graphite::ReviewTreeRow> rows = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups});
 
 	const std::optional<ReviewSelection> followed =
-		Graphite::FollowSelection(CommitsSelection("b.cpp"), {"a.cpp", "b.cpp"}, groups, Graphite::FirstListedFile(groups, rows));
+		Graphite::FollowSelection(CommitsSelection("b.cpp"), {"a.cpp", "b.cpp"}, groups, Graphite::FirstFileOf(groups, rows));
 
 	CHECK(followed == std::optional<ReviewSelection>{CommitsSelection("b.cpp")});
 }
@@ -181,10 +151,10 @@ TEST_CASE("A selected file that is gone gives way to the file that took its plac
 {
 	const Core::Diff committed = DiffOfFiles({"a.cpp", "c.cpp"});
 	const ReviewGroups groups{.Commits = &committed};
-	const std::vector<ReviewListRow> rows = Graphite::BuildReviewRows(groups);
+	const std::vector<Graphite::ReviewTreeRow> rows = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups});
 
 	const std::optional<ReviewSelection> followed =
-		Graphite::FollowSelection(CommitsSelection("b.cpp"), {"a.cpp", "b.cpp", "c.cpp"}, groups, Graphite::FirstListedFile(groups, rows));
+		Graphite::FollowSelection(CommitsSelection("b.cpp"), {"a.cpp", "b.cpp", "c.cpp"}, groups, Graphite::FirstFileOf(groups, rows));
 
 	CHECK(followed == std::optional<ReviewSelection>{CommitsSelection("c.cpp")});
 }
@@ -193,9 +163,9 @@ TEST_CASE("With nothing selected the first file listed is")
 {
 	const Core::Diff committed = DiffOfFiles({"b.cpp", "a.cpp"});
 	const ReviewGroups groups{.Commits = &committed};
-	const std::vector<ReviewListRow> rows = Graphite::BuildReviewRows(groups);
+	const std::vector<Graphite::ReviewTreeRow> rows = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups});
 
-	const std::optional<ReviewSelection> followed = Graphite::FollowSelection(std::nullopt, {}, groups, Graphite::FirstListedFile(groups, rows));
+	const std::optional<ReviewSelection> followed = Graphite::FollowSelection(std::nullopt, {}, groups, Graphite::FirstFileOf(groups, rows));
 
 	CHECK(followed == std::optional<ReviewSelection>{CommitsSelection("a.cpp")});
 }
@@ -204,28 +174,12 @@ TEST_CASE("A selection in a group still loading is kept")
 {
 	const Core::Diff committed = DiffOfFiles({"a.cpp"});
 	const ReviewGroups groups{.Commits = &committed};
-	const std::vector<ReviewListRow> rows = Graphite::BuildReviewRows(groups);
+	const std::vector<Graphite::ReviewTreeRow> rows = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups});
 	const ReviewSelection waiting{.Group = ReviewGroup::Uncommitted, .Path = "z.cpp"};
 
-	const std::optional<ReviewSelection> followed = Graphite::FollowSelection(waiting, {}, groups, Graphite::FirstListedFile(groups, rows));
+	const std::optional<ReviewSelection> followed = Graphite::FollowSelection(waiting, {}, groups, Graphite::FirstFileOf(groups, rows));
 
 	CHECK(followed == std::optional<ReviewSelection>{waiting});
-}
-
-TEST_CASE("The arrow keys step through files across groups and stop at either end")
-{
-	const Core::Diff committed = DiffOfFiles({"a.cpp", "b.cpp"});
-	const Core::Diff uncommitted = DiffOfFiles({"a.cpp"});
-	const ReviewGroups groups{.Commits = &committed, .Uncommitted = &uncommitted};
-	const std::vector<ReviewListRow> rows = Graphite::BuildReviewRows(groups);
-	const ReviewSelection lastFile{.Group = ReviewGroup::Uncommitted, .Path = "a.cpp"};
-
-	CHECK(Graphite::NeighbourSelection(CommitsSelection("b.cpp"), groups, rows, ListStep::Next) ==
-		  std::optional<ReviewSelection>{lastFile});
-	CHECK(Graphite::NeighbourSelection(lastFile, groups, rows, ListStep::Next) ==
-		  std::optional<ReviewSelection>{lastFile});
-	CHECK(Graphite::NeighbourSelection(CommitsSelection("a.cpp"), groups, rows, ListStep::Previous) ==
-		  std::optional<ReviewSelection>{CommitsSelection("a.cpp")});
 }
 
 TEST_CASE("The viewed count covers every file of every present group")
@@ -304,4 +258,24 @@ TEST_CASE("A commit's diff is the range from its first parent to it")
 
 	CHECK(ends.MergeBase == firstParent);
 	CHECK(ends.Tip == commit.Id);
+}
+
+TEST_CASE("A change summary counts the files and their lines")
+{
+	Core::Diff diff = DiffOfFiles({"a.cpp", "b.cpp"});
+	Core::Hunk hunk;
+	hunk.Lines = {Core::DiffLine{.Kind = Core::DiffLineKind::Added},
+				  Core::DiffLine{.Kind = Core::DiffLineKind::Removed},
+				  Core::DiffLine{.Kind = Core::DiffLineKind::Added}};
+	diff.Files[0].Hunks.push_back(hunk);
+
+	CHECK(Graphite::ChangeSummary(diff) == "2 files +2 -1");
+	CHECK(Graphite::ChangeSummary(DiffOfFiles({"a.cpp"})) == "1 file +0 -0");
+}
+
+TEST_CASE("A group heading says how many files are left on screen out of how many")
+{
+	CHECK(Graphite::GroupHeadingText(ReviewGroup::Commits, 40, 40) == "Commits (40)");
+	CHECK(Graphite::GroupHeadingText(ReviewGroup::Commits, 12, 40) == "Commits (12 of 40)");
+	CHECK(Graphite::GroupHeadingText(ReviewGroup::Uncommitted, 0, 3) == "Uncommitted in worktree (0 of 3)");
 }
