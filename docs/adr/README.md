@@ -614,4 +614,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0582](0582-key-a-viewed-mark-by-its-group-its-path-and-the-pair-of-blob-ids.md) | Key a viewed mark by its group, its path and the pair of blob ids | proposed | 2026-10-13 |
 | [0583](0583-keep-review-marks-in-their-own-file-beside-the-window-state.md) | Keep review marks in their own file beside the window state | proposed | 2026-10-13 |
 | [0584](0584-read-a-publication-without-a-version-as-describing-the-version-last-sent.md) | Read a publication without a version as describing the version last sent | proposed | 2026-10-13 |
+| [0585](0585-pull-diagnostics-for-documents-shown-in-tabs-and-ask-their-colours-again-after-each-pull.md) | Pull diagnostics for documents shown in tabs and ask their colours again after each pull | proposed | 2026-10-13 |
 <!-- /adr-index -->

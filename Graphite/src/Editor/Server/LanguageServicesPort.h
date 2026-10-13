@@ -116,7 +116,8 @@ namespace Graphite {
 		void OpenDocument(const std::filesystem::path& path, LanguageId language,
 						  std::string text) override
 		{
-			m_Services.OpenDocument(path, language, std::move(text));
+			// A tab's document: the one kind whose diagnostics are pulled (DocumentRole).
+			m_Services.OpenDocument(path, language, std::move(text), DocumentRole::Shown);
 		}
 
 		void ChangeDocument(const std::filesystem::path& path, LanguageId language,
@@ -190,6 +191,11 @@ namespace Graphite {
 		void TakeAnswers(std::vector<LanguageServices::Answer>& answers) override
 		{
 			m_Services.TakeAnswers(answers);
+		}
+
+		void TakeRecolour(std::vector<std::filesystem::path>& paths) override
+		{
+			m_Services.TakeRecolour(paths);
 		}
 
 	private:

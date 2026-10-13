@@ -89,6 +89,12 @@ namespace {
 			Queued.clear();
 		}
 
+		void TakeRecolour(std::vector<std::filesystem::path>& paths) override
+		{
+			paths.insert(paths.end(), Recolour.begin(), Recolour.end());
+			Recolour.clear();
+		}
+
 		// Queues an answer for the next Collect.
 		void Reply(Ticket ticket, bool failed = false)
 		{
@@ -129,6 +135,7 @@ namespace {
 		std::vector<Ticket> Cancelled;
 		std::vector<std::filesystem::path> Started;
 		std::vector<LanguageServices::Answer> Queued;
+		std::vector<std::filesystem::path> Recolour;
 
 	private:
 		Ticket Record(const char* what, const std::filesystem::path& path)
@@ -313,6 +320,24 @@ TEST_CASE("A followed document is analysing until its declarations and colours h
 
 	CHECK_FALSE(h.Router.IsAnalysing(kSource));
 	CHECK(h.Target.Semantic.size() == 1);
+}
+
+TEST_CASE("A followed document the server recolours is asked for its colours again and others are not")
+{
+	Harness h;
+	h.Router.Track(kSource);
+
+	h.Server.Recolour = {kSource, kSource, "C:/project/closed.cpp"};
+	h.Router.Collect(h.Target);
+
+	REQUIRE(h.Server.CountOf("semantic") == 1);
+	CHECK(h.Server.Asks.back().Path == kSource);
+
+	h.Server.Reply(h.Server.LastOf("semantic"));
+	h.Router.Collect(h.Target);
+
+	REQUIRE(h.Target.Semantic.size() == 1);
+	CHECK(h.Target.Semantic[0] == kSource);
 }
 
 TEST_CASE("A failed colours answer clears analysing without applying anything")

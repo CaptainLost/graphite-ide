@@ -293,6 +293,22 @@ namespace Graphite {
 
 	void LspAnswerRouter::Collect(LspAnswerTarget& target)
 	{
+		std::vector<std::filesystem::path> recolour;
+		m_Server.TakeRecolour(recolour);
+
+		// Several pulls of one document can be answered in one frame; one question covers them.
+		std::sort(recolour.begin(), recolour.end());
+		recolour.erase(std::unique(recolour.begin(), recolour.end()), recolour.end());
+
+		for (const std::filesystem::path& path : recolour)
+		{
+			// Only a tab this router follows: a path it has forgotten belongs to a tab that closed.
+			if (m_Schedules.contains(path))
+			{
+				AskSemanticTokens(path);
+			}
+		}
+
 		std::vector<LanguageServices::Answer> answers;
 
 		m_Server.TakeAnswers(answers);

@@ -28,6 +28,8 @@ namespace Graphite {
 		DocumentServerPort& operator=(const DocumentServerPort&) = delete;
 
 		// The document's life with its server: see the LanguageServices methods of the same names.
+		// Every document opened through this port is in an editor tab, so the production port
+		// opens it Shown.
 		virtual void EnsureStarted(const std::filesystem::path& path, LanguageId language) = 0;
 		virtual void OpenDocument(const std::filesystem::path& path, LanguageId language,
 								  std::string text) = 0;
@@ -63,5 +65,9 @@ namespace Graphite {
 		// Everything answered since the last call. The single drain point: see
 		// LanguageServices::TakeAnswers.
 		virtual void TakeAnswers(std::vector<LanguageServices::Answer>& answers) = 0;
+
+		// Documents whose colours should be asked for again since the last call: see
+		// LanguageServices::TakeRecolour.
+		virtual void TakeRecolour(std::vector<std::filesystem::path>& paths) = 0;
 	};
 }

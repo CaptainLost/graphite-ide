@@ -186,8 +186,9 @@ namespace Graphite {
 		// DocumentWindows::IsAnalysing.
 		bool IsAnalysing(const std::filesystem::path& path) const;
 
-		// Takes everything the servers have answered and routes each answer to `target`. The only
-		// place answers are collected: DocumentServerPort::TakeAnswers is the single drain point.
+		// Takes everything the servers have answered and routes each answer to `target`, after
+		// asking colours again for every followed document a server has since recoloured. The
+		// only place answers are collected: DocumentServerPort::TakeAnswers is the single drain point.
 		void Collect(LspAnswerTarget& target);
 
 	private:
