@@ -77,6 +77,16 @@ namespace Graphite {
 		Utf16Column EndColumn;
 	};
 
+	// Why a document is open with its server. Shown is a document in an editor tab, the only kind
+	// whose diagnostics are pulled from a server that offers pulls. Consulted is everything opened
+	// only so the server can be asked about it - a preview pane, the background pass, the warm-up -
+	// where a pull would have the server compute diagnostics nobody reads.
+	enum class DocumentRole : std::uint8_t
+	{
+		Consulted,
+		Shown
+	};
+
 	// What a server says an identifier *is*, which no lexer can know: it sees `Application`,
 	// `s_Instance` and `CORE_ASSERT` as the same kind of word, and only something that has
 	// compiled the code can tell a type from a static member from a macro.

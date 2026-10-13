@@ -57,8 +57,11 @@ namespace Graphite {
 		// Each returns the version it sent the document under, which is the only thing that can
 		// later say whether an answer describes the text on screen. ChangeDocument returns a
 		// default-constructed version for a document the server was never told about, which is
-		// the same "nothing was sent" its early-out has always meant but never said.
-		DocumentVersion OpenDocument(const std::filesystem::path& path, const std::string& text);
+		// the same "nothing was sent" its early-out has always meant but never said. A Shown
+		// document's diagnostics are pulled from a server that offers pulls; opening a path again
+		// gives it the role this call names.
+		DocumentVersion OpenDocument(const std::filesystem::path& path, const std::string& text,
+									 DocumentRole role = DocumentRole::Consulted);
 		DocumentVersion ChangeDocument(const std::filesystem::path& path, const std::string& text);
 		void SaveDocument(const std::filesystem::path& path);
 		void CloseDocument(const std::filesystem::path& path);
@@ -126,6 +129,11 @@ namespace Graphite {
 			ServerStatus Status;
 			std::vector<PublishedDiagnostics> Diagnostics;
 			std::vector<ServerMessage> Messages;
+
+			// Documents whose colours should be asked for again: the server has answered a
+			// diagnostics pull for each since. Roslyn colours from what it has compiled, and a pull
+			// is what makes it compile the document's whole project.
+			std::vector<std::filesystem::path> Recolour;
 		};
 
 		// UI thread only. Moves everything the server has said since the last call into
@@ -164,7 +172,8 @@ namespace Graphite {
 			Symbols,
 			SemanticTokens,
 			SwitchSourceHeader,
-			Hover
+			Hover,
+			Diagnostics
 		};
 
 		// The server's copy of an open document, as far as this side knows it: the version, because
@@ -177,6 +186,17 @@ namespace Graphite {
 
 			// Paths compare by spelling, drive letter included, so anything reported about this document must carry this path rather than one read back from a URI.
 			std::filesystem::path Path;
+
+			DocumentRole Role = DocumentRole::Consulted;
+
+			// The diagnostics pull in flight, 0 when none. One at a time: a trigger that lands
+			// while one is in flight sets PullAgain, and the answer sends the next.
+			RequestId Pull = 0;
+			bool PullAgain = false;
+
+			// The pull in flight was sent because the one before it failed asking to be
+			// retriggered; a second such failure waits for the next trigger instead.
+			bool Retriggered = false;
 		};
 
 		// What was asked under an id. The protocol does not echo the method back, so the question
@@ -191,6 +211,11 @@ namespace Graphite {
 			// line they are standing on, so it is dropped on the way out. Kept here because
 			// this is the only place that still knows it by the time the reply arrives.
 			std::optional<FilePosition> From;
+
+			// For a diagnostics pull: the document asked about and the version it was asked at,
+			// which is the version its answer describes.
+			std::string Uri;
+			DocumentVersion Version;
 		};
 
 		// Held through a shared_ptr so a reader thread still winding down after this object is
@@ -200,7 +225,7 @@ namespace Graphite {
 		// deadlock this shape exists to prevent is one where the UI thread waits to write while
 		// the server waits for us to read. Add a message and reach for the right one:
 		//
-		//   StateMutex     Answers, Status, Diagnostics and Messages. What Drain collects, and nothing else.
+		//   StateMutex     Answers, Status, Diagnostics, Messages and Recolour. What Drain collects, and nothing else.
 		//   ProtocolMutex  Bookkeeping only: id allocation, the outstanding table, the document
 		//                  versions, the pre-handshake queue, InitializeId, Initialized,
 		//                  ReaderStopped. Never held across any I/O whatsoever.
@@ -222,6 +247,7 @@ namespace Graphite {
 			ServerStatus Status;
 			std::vector<PublishedDiagnostics> Diagnostics;
 			std::vector<ServerMessage> Messages;
+			std::vector<std::filesystem::path> Recolour;
 
 			// The $/progress tokens that have begun and not yet ended. A server may run several at
 			// once, and Indexing ends only when the last of them does - the first to finish says
@@ -253,6 +279,10 @@ namespace Graphite {
 			// asking for integers nobody could interpret. Under ProtocolMutex with the rest of the
 			// bookkeeping.
 			std::vector<SemanticKind> SemanticLegend;
+
+			// The server answers diagnostic pulls, read once from the handshake like the legend.
+			// Under ProtocolMutex.
+			bool PullsDiagnostics = false;
 
 			// The handshake will never finish: initialize was answered with an error, it ran out
 			// of time, or there was never a process to answer it. Initialized stays false in all
@@ -332,6 +362,17 @@ namespace Graphite {
 		static void HandleReply(Shared& shared, const IncomingMessage& reply);
 
 		static void PublishDiagnostics(Shared& shared, const nlohmann::json& params);
+
+		// Sends a diagnostics pull for one open document, or marks it to be pulled again when one
+		// is already in flight. Does nothing for a Consulted document, for a server that offers no
+		// pulls, or while the server is loading its projects. ProtocolMutex held by the caller.
+		static void PullLocked(Shared& shared, const std::string& uri);
+
+		// PullLocked for every open document. ProtocolMutex held by the caller.
+		static void PullShownLocked(Shared& shared);
+
+		// The answer to a pull, as a publication and a recolour. Takes the locks it needs.
+		static void ReceivePull(Shared& shared, const Asked& asked, const IncomingMessage& reply);
 
 		// ProtocolMutex held by the caller.
 		static void NameOpenDocumentsAsOpened(const Shared& shared, std::vector<Location>& locations);

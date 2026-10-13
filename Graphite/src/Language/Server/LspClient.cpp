@@ -93,6 +93,27 @@ namespace Graphite {
 			return false;
 		}
 
+		// A failed pull may carry data.retriggerRequest: the server cancelled it (Roslyn does when
+		// its solution moved under the request) and expects to be asked again.
+		bool AsksToBeRetriggered(const nlohmann::json& error)
+		{
+			if (!error.is_object())
+			{
+				return false;
+			}
+
+			const nlohmann::json::const_iterator data = error.find("data");
+
+			if (data == error.end() || !data->is_object())
+			{
+				return false;
+			}
+
+			const nlohmann::json::const_iterator retrigger = data->find("retriggerRequest");
+
+			return retrigger != data->end() && retrigger->is_boolean() && retrigger->get<bool>();
+		}
+
 		std::optional<ServerMessageKind> ShownMessageKind(const nlohmann::json& params)
 		{
 			const nlohmann::json::const_iterator type = params.find("type");
@@ -147,6 +168,16 @@ namespace Graphite {
 				 "extensionMethod", "extensionMethodName", "recordClass", "recordStruct",
 				 "delegate", "delegateName"});
 			capabilities["textDocument"]["semanticTokens"]["tokenModifiers"] = nlohmann::json::array();
+
+			// Pulled, not pushed, from a server that offers it: Roslyn answers only pulls, and
+			// csharp-ls stops publishing once this is declared. Dynamic registration is refused so
+			// the offer arrives in the handshake, where CompleteHandshake reads it.
+			capabilities["textDocument"]["diagnostic"]["dynamicRegistration"] = false;
+			capabilities["textDocument"]["diagnostic"]["relatedDocumentSupport"] = false;
+
+			// Roslyn asks for fresh pulls through this once its projects have loaded and whenever
+			// its solution changes under it.
+			capabilities["workspace"]["diagnostics"]["refreshSupport"] = true;
 			// Markdown first: clangd's markdown reply is the one ParseClangdHover reads into
 			// fields.
 			capabilities["textDocument"]["hover"]["contentFormat"] =
@@ -414,7 +445,7 @@ namespace Graphite {
 	}
 
 	DocumentVersion LspClient::OpenDocument(const std::filesystem::path& path,
-											const std::string& text)
+											const std::string& text, DocumentRole role)
 	{
 		const std::string uri = ToFileUri(path);
 
@@ -433,6 +464,7 @@ namespace Graphite {
 			Document& document = m_Shared->Documents[uri];
 			document.Version = lastVersion;
 			document.Path = path;
+			document.Role = role;
 			version = lastVersion;
 		}
 
@@ -449,6 +481,7 @@ namespace Graphite {
 
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 		SendLocked(*m_Shared, std::move(bytes));
+		PullLocked(*m_Shared, uri);
 
 		return DocumentVersion{version};
 	}
@@ -492,6 +525,10 @@ namespace Graphite {
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 		SendLocked(*m_Shared, std::move(bytes));
 
+		// Every shown document, not only this one: a C# file's diagnostics depend on the rest of
+		// its project whatever a server declares (csharp-ls says interFileDependencies is false).
+		PullShownLocked(*m_Shared);
+
 		return DocumentVersion{version};
 	}
 
@@ -518,10 +555,22 @@ namespace Graphite {
 
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
-		if (m_Shared->Documents.erase(uri) == 0)
+		const auto open = m_Shared->Documents.find(uri);
+
+		if (open == m_Shared->Documents.end())
 		{
 			return;
 		}
+
+		// A pull in flight asks about a document that is going: cancelled, and forgotten, so an
+		// answer still on its way is dropped like any cancelled reply.
+		if (const RequestId pull = open->second.Pull; pull != 0)
+		{
+			m_Shared->Pending.erase(pull);
+			SendLocked(*m_Shared, m_Shared->Rpc.Cancel(pull));
+		}
+
+		m_Shared->Documents.erase(open);
 
 		// Publications for this document that arrived while it was open but have not been drained
 		// yet go with it. Drained after the close, they would reach DiagnosticsModel in the same
@@ -759,6 +808,11 @@ namespace Graphite {
 
 		m_Shared->Messages.clear();
 
+		drained.Recolour.insert(drained.Recolour.end(), std::make_move_iterator(m_Shared->Recolour.begin()),
+								std::make_move_iterator(m_Shared->Recolour.end()));
+
+		m_Shared->Recolour.clear();
+
 		drained.Status = m_Shared->Status;
 	}
 
@@ -978,18 +1032,25 @@ namespace Graphite {
 		if (shared.Adapter->HandleNotification(shared.Context, notification.Method, notification.Payload) ==
 			NotificationEffect::ProjectsLoaded)
 		{
-			const std::lock_guard<std::mutex> state(shared.StateMutex);
-
-			shared.ProjectsLoading.reset();
-
-			// A server whose handshake failed answers nothing, whatever it says about its projects.
-			const bool answering = shared.Initialized && shared.Status.State != ServerState::Failed;
-
-			if (answering && shared.ProgressTokens.empty())
 			{
-				Settle(shared);
-				shared.Status.Percent = -1;
+				const std::lock_guard<std::mutex> state(shared.StateMutex);
+
+				shared.ProjectsLoading.reset();
+
+				// A server whose handshake failed answers nothing, whatever it says about its projects.
+				const bool answering = shared.Initialized && shared.Status.State != ServerState::Failed;
+
+				if (answering && shared.ProgressTokens.empty())
+				{
+					Settle(shared);
+					shared.Status.Percent = -1;
+				}
 			}
+
+			// After StateMutex is released, since the two nest only the other way round: the pulls
+			// PullLocked held back while the projects loaded.
+			const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
+			PullShownLocked(shared);
 		}
 
 		// Anything else - window/logMessage, telemetry, a server's own notifications - may be dropped.
@@ -1061,6 +1122,91 @@ namespace Graphite {
 		shared.Diagnostics.push_back(std::move(published));
 	}
 
+	void LspClient::PullLocked(Shared& shared, const std::string& uri)
+	{
+		const auto found = shared.Documents.find(uri);
+
+		if (!shared.PullsDiagnostics || shared.ReaderStopped || found == shared.Documents.end() ||
+			found->second.Role != DocumentRole::Shown)
+		{
+			return;
+		}
+
+		{
+			// Roslyn would answer from a reading of the file outside any project, an error on every
+			// name the project defines. ProjectsLoaded pulls everything held back here.
+			const std::lock_guard<std::mutex> state(shared.StateMutex);
+
+			if (shared.ProjectsLoading)
+			{
+				return;
+			}
+		}
+
+		Document& document = found->second;
+
+		if (document.Pull != 0)
+		{
+			document.PullAgain = true;
+			return;
+		}
+
+		nlohmann::json params;
+		params["textDocument"]["uri"] = uri;
+
+		auto [id, bytes] = shared.Rpc.Request("textDocument/diagnostic", params);
+
+		shared.Pending[id] = Asked{.Kind = Question::Diagnostics, .Uri = uri, .Version = DocumentVersion{document.Version}};
+		document.Pull = id;
+		document.PullAgain = false;
+
+		SendLocked(shared, std::move(bytes));
+	}
+
+	void LspClient::PullShownLocked(Shared& shared)
+	{
+		for (const auto& entry : shared.Documents)
+		{
+			PullLocked(shared, entry.first);
+		}
+	}
+
+	void LspClient::ReceivePull(Shared& shared, const Asked& asked, const IncomingMessage& reply)
+	{
+		const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
+
+		const auto found = shared.Documents.find(asked.Uri);
+
+		if (found == shared.Documents.end())
+		{
+			return;
+		}
+
+		Document& document = found->second;
+		document.Pull = 0;
+
+		const bool retrigger = reply.IsError && !document.Retriggered && AsksToBeRetriggered(reply.Payload);
+
+		if (!reply.IsError)
+		{
+			if (std::optional<std::vector<Diagnostic>> items = ParseDiagnosticReport(reply.Payload))
+			{
+				const std::lock_guard<std::mutex> state(shared.StateMutex);
+
+				shared.Diagnostics.push_back(PublishedDiagnostics{.Path = document.Path, .Version = asked.Version, .Items = std::move(*items)});
+				shared.Recolour.push_back(document.Path);
+			}
+		}
+
+		if (document.PullAgain || retrigger)
+		{
+			PullLocked(shared, asked.Uri);
+		}
+
+		// Set after the pull it describes has gone out: PullLocked knows nothing of why it was called.
+		document.Retriggered = retrigger;
+	}
+
 	void LspClient::NameOpenDocumentsAsOpened(const Shared& shared, std::vector<Location>& locations)
 	{
 		for (Location& location : locations)
@@ -1091,6 +1237,12 @@ namespace Graphite {
 
 			asked = found->second;
 			shared.Pending.erase(found);
+		}
+
+		if (asked.Kind == Question::Diagnostics)
+		{
+			ReceivePull(shared, asked, reply);
+			return;
 		}
 
 		// Parse, correlate, hand over. The columns stay in the protocol's UTF-16 units, and the
@@ -1198,6 +1350,13 @@ namespace Graphite {
 			return;
 		}
 
+		if (request.Method == "workspace/diagnostic/refresh")
+		{
+			SendNowLocked(shared, shared.Rpc.Reply(id, nullptr));
+			PullShownLocked(shared);
+			return;
+		}
+
 		if (request.Method == "window/showMessageRequest")
 		{
 			RecordServerMessage(shared, request.Payload);
@@ -1249,6 +1408,7 @@ namespace Graphite {
 		// integers mean nothing without it, and it is server-specific: the same index is a macro
 		// to one server and a parameter to another.
 		shared.SemanticLegend = ParseSemanticLegend(result);
+		shared.PullsDiagnostics = OffersDiagnosticPulls(result);
 
 		std::string detail;
 
@@ -1292,6 +1452,10 @@ namespace Graphite {
 		}
 
 		shared.Queued.clear();
+
+		// Every document a tab opened while the handshake was in flight, now that the server has
+		// said whether it answers pulls.
+		PullShownLocked(shared);
 
 		const std::lock_guard<std::mutex> state(shared.StateMutex);
 

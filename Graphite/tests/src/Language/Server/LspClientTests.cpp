@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <fstream>
 #include <ostream>
 #include <thread>
@@ -1443,4 +1444,282 @@ TEST_CASE("The handshake declares every token name this editor colours with the 
 		CAPTURE(name);
 		CHECK(std::find(declared.begin(), declared.end(), nlohmann::json(name)) != declared.end());
 	}
+}
+
+namespace {
+
+	std::vector<nlohmann::json> PullsSent(Graphite::LspClient& client)
+	{
+		return MessagesFor(client.TakeSent(), "textDocument/diagnostic");
+	}
+
+	void AnswerEveryPull(Graphite::LspClient& client)
+	{
+		for (const nlohmann::json& pull : PullsSent(client))
+		{
+			client.Deliver(FullReport(IdOf(pull), ""));
+		}
+	}
+
+	constexpr std::string_view kOneError =
+		R"({"range":{"start":{"line":0,"character":4},"end":{"line":0,"character":8}},"severity":1,"message":"boom"})";
+
+	std::string FailedPull(std::int64_t id, bool retrigger)
+	{
+		return R"({"jsonrpc":"2.0","id":)" + std::to_string(id) + R"(,"error":{"code":-32802,"message":"cancelled")" +
+			   (retrigger ? std::string{R"(,"data":{"retriggerRequest":true})"} : std::string{}) + "}}";
+	}
+}
+
+TEST_CASE("The handshake declares pull diagnostics and their refresh")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+
+	const std::vector<std::string> sent = client.TakeSent();
+	REQUIRE(sent.size() == 1);
+
+	nlohmann::json body = BodyOf(sent[0]);
+	nlohmann::json& capabilities = body["params"]["capabilities"];
+
+	CHECK(capabilities["textDocument"]["diagnostic"]["dynamicRegistration"] == false);
+	CHECK(capabilities["workspace"]["diagnostics"]["refreshSupport"] == true);
+}
+
+TEST_CASE("A shown document is pulled once a handshake offering pulls completes")
+{
+	Graphite::LspClient client = Offline("C:/src");
+	client.OpenDocument("C:/src/Main.cs", "class A {}\n", Graphite::DocumentRole::Shown);
+	client.TakeSent();
+
+	client.Deliver(std::string{kHandshakeOfferingPulls});
+
+	const std::vector<std::string> sent = client.TakeSent();
+	const std::vector<nlohmann::json> pulls = MessagesFor(sent, "textDocument/diagnostic");
+
+	REQUIRE(pulls.size() == 1);
+	CHECK(UriOf(pulls[0]) == "file:///C:/src/Main.cs");
+
+	// After the didOpen it asks about, never before it.
+	const auto position = [&sent](std::string_view needle) {
+		return std::find_if(sent.begin(), sent.end(), [needle](const std::string& message) { return message.find(needle) != std::string::npos; }) -
+			   sent.begin();
+	};
+	CHECK(position("textDocument/didOpen") < position("textDocument/diagnostic"));
+}
+
+TEST_CASE("A document opened only to be asked about is never pulled")
+{
+	Graphite::LspClient client = Offline("C:/src");
+	client.OpenDocument("C:/src/Main.cs", "class A {}\n");
+	client.Deliver(std::string{kHandshakeOfferingPulls});
+	client.ChangeDocument("C:/src/Main.cs", "class A { }\n");
+
+	CHECK(PullsSent(client).empty());
+}
+
+// A preview pane opens a file Consulted; when a tab then opens the same file, the tab's open is
+// what decides, and from then on the file is pulled.
+TEST_CASE("A document a preview opened is pulled once a tab opens it")
+{
+	Graphite::LspClient client = Offline("C:/src");
+	client.OpenDocument("C:/src/Main.cs", "class A {}\n");
+	client.Deliver(std::string{kHandshakeOfferingPulls});
+	REQUIRE(PullsSent(client).empty());
+
+	client.OpenDocument("C:/src/Main.cs", "class A {}\n", Graphite::DocumentRole::Shown);
+
+	const std::vector<nlohmann::json> pulls = PullsSent(client);
+	REQUIRE(pulls.size() == 1);
+	CHECK(UriOf(pulls[0]) == "file:///C:/src/Main.cs");
+}
+
+TEST_CASE("A server that offers no pulls is never asked and recolours nothing")
+{
+	Graphite::LspClient client = Offline("C:/src");
+	client.OpenDocument("C:/src/Main.cpp", "int main() {}\n", Graphite::DocumentRole::Shown);
+	client.Deliver(std::string{kHandshakeAnswer});
+	client.ChangeDocument("C:/src/Main.cpp", "int main() { }\n");
+
+	CHECK(PullsSent(client).empty());
+
+	client.Deliver(R"({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{
+		"uri":"file:///C:/src/Main.cpp","version":2,"diagnostics":[]}})");
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	CHECK(drained.Diagnostics.size() == 1);
+	CHECK(drained.Recolour.empty());
+}
+
+TEST_CASE("Pulls wait while the server loads its projects")
+{
+	TempDirectory temp;
+	const ProjectLoadingAdapter adapter;
+	Graphite::ServerLaunch launch = ClangdLaunch();
+	launch.Adapter = &adapter;
+	Graphite::LspClient client = OfflineWith(launch, temp.GetPath());
+	const std::filesystem::path source = temp.GetPath() / "Program.cs";
+
+	client.OpenDocument(source, "class Program {}\n", Graphite::DocumentRole::Shown);
+	client.Deliver(std::string{kHandshakeOfferingPulls});
+	client.ChangeDocument(source, "class Program { }\n");
+
+	CHECK(PullsSent(client).empty());
+
+	client.Deliver(std::string{kProjectsLoaded});
+
+	const std::vector<nlohmann::json> pulls = PullsSent(client);
+	REQUIRE(pulls.size() == 1);
+	CHECK(UriOf(pulls[0]) == Graphite::ToFileUri(source));
+}
+
+TEST_CASE("A pull's answer is published under the version it asked about and recolours its document")
+{
+	Graphite::LspClient client = Offline("C:/src");
+	client.OpenDocument("C:/src/Main.cs", "class A {}\n", Graphite::DocumentRole::Shown);
+	client.Deliver(std::string{kHandshakeOfferingPulls});
+
+	const std::vector<nlohmann::json> pulls = PullsSent(client);
+	REQUIRE(pulls.size() == 1);
+
+	// Typed over before the answer came: the answer still describes version 1.
+	client.ChangeDocument("C:/src/Main.cs", "class A { }\n");
+	client.Deliver(FullReport(IdOf(pulls[0]), kOneError));
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	REQUIRE(drained.Diagnostics.size() == 1);
+	CHECK(drained.Diagnostics[0].Path == std::filesystem::path{"C:/src/Main.cs"});
+	CHECK(drained.Diagnostics[0].Version == Graphite::DocumentVersion{1});
+	REQUIRE(drained.Diagnostics[0].Items.size() == 1);
+	CHECK(drained.Diagnostics[0].Items[0].Message == "boom");
+	REQUIRE(drained.Recolour.size() == 1);
+	CHECK(drained.Recolour[0] == std::filesystem::path{"C:/src/Main.cs"});
+}
+
+// csharp-ls declares interFileDependencies false yet stops publishing once pulls are declared,
+// so an edit to one file must pull the others too or an error it causes there goes unseen.
+TEST_CASE("A change pulls every shown document again")
+{
+	Graphite::LspClient client = Offline("C:/src");
+	client.OpenDocument("C:/src/Main.cs", "class A {}\n", Graphite::DocumentRole::Shown);
+	client.OpenDocument("C:/src/Other.cs", "class B {}\n", Graphite::DocumentRole::Shown);
+	client.Deliver(std::string{kHandshakeOfferingPulls});
+	AnswerEveryPull(client);
+
+	client.ChangeDocument("C:/src/Main.cs", "class A { }\n");
+
+	const std::vector<nlohmann::json> pulls = PullsSent(client);
+	REQUIRE(pulls.size() == 2);
+
+	std::vector<std::string> uris{UriOf(pulls[0]), UriOf(pulls[1])};
+	std::sort(uris.begin(), uris.end());
+	CHECK(uris == std::vector<std::string>{"file:///C:/src/Main.cs", "file:///C:/src/Other.cs"});
+}
+
+TEST_CASE("Changes during a pull are answered by one more pull once it returns")
+{
+	Graphite::LspClient client = Offline("C:/src");
+	client.OpenDocument("C:/src/Main.cs", "class A {}\n", Graphite::DocumentRole::Shown);
+	client.Deliver(std::string{kHandshakeOfferingPulls});
+
+	const std::vector<nlohmann::json> first = PullsSent(client);
+	REQUIRE(first.size() == 1);
+
+	client.ChangeDocument("C:/src/Main.cs", "class A { }\n");
+	client.ChangeDocument("C:/src/Main.cs", "class A {  }\n");
+	CHECK(PullsSent(client).empty());
+
+	client.Deliver(FullReport(IdOf(first[0]), ""));
+
+	CHECK(PullsSent(client).size() == 1);
+}
+
+TEST_CASE("A refresh request is answered with null and pulls every shown document")
+{
+	Graphite::LspClient client = Offline("C:/src");
+	client.OpenDocument("C:/src/Main.cs", "class A {}\n", Graphite::DocumentRole::Shown);
+	client.Deliver(std::string{kHandshakeOfferingPulls});
+	AnswerEveryPull(client);
+
+	client.Deliver(R"({"jsonrpc":"2.0","id":41,"method":"workspace/diagnostic/refresh","params":null})");
+
+	const std::vector<std::string> sent = client.TakeSent();
+
+	bool answered = false;
+	for (const std::string& framed : sent)
+	{
+		const nlohmann::json body = BodyOf(framed);
+		answered = answered || (body.contains("id") && body["id"] == 41 && body.contains("result") && body["result"].is_null());
+	}
+
+	CHECK(answered);
+	CHECK(MessagesFor(sent, "textDocument/diagnostic").size() == 1);
+}
+
+TEST_CASE("A failed pull asking to be retriggered is asked once more and no more")
+{
+	Graphite::LspClient client = Offline("C:/src");
+	client.OpenDocument("C:/src/Main.cs", "class A {}\n", Graphite::DocumentRole::Shown);
+	client.Deliver(std::string{kHandshakeOfferingPulls});
+
+	std::vector<nlohmann::json> pulls = PullsSent(client);
+	REQUIRE(pulls.size() == 1);
+	client.Deliver(FailedPull(IdOf(pulls[0]), true));
+
+	pulls = PullsSent(client);
+	REQUIRE(pulls.size() == 1);
+	client.Deliver(FailedPull(IdOf(pulls[0]), true));
+
+	CHECK(PullsSent(client).empty());
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+	CHECK(drained.Diagnostics.empty());
+	CHECK(drained.Recolour.empty());
+
+	client.ChangeDocument("C:/src/Main.cs", "class A { }\n");
+	CHECK(PullsSent(client).size() == 1);
+}
+
+TEST_CASE("A failed pull that does not ask to be retriggered waits for the next change")
+{
+	Graphite::LspClient client = Offline("C:/src");
+	client.OpenDocument("C:/src/Main.cs", "class A {}\n", Graphite::DocumentRole::Shown);
+	client.Deliver(std::string{kHandshakeOfferingPulls});
+
+	const std::vector<nlohmann::json> pulls = PullsSent(client);
+	REQUIRE(pulls.size() == 1);
+	client.Deliver(FailedPull(IdOf(pulls[0]), false));
+
+	CHECK(PullsSent(client).empty());
+
+	client.ChangeDocument("C:/src/Main.cs", "class A { }\n");
+	CHECK(PullsSent(client).size() == 1);
+}
+
+TEST_CASE("Closing a document cancels its pull and drops the answer")
+{
+	Graphite::LspClient client = Offline("C:/src");
+	client.OpenDocument("C:/src/Main.cs", "class A {}\n", Graphite::DocumentRole::Shown);
+	client.Deliver(std::string{kHandshakeOfferingPulls});
+
+	const std::vector<nlohmann::json> pulls = PullsSent(client);
+	REQUIRE(pulls.size() == 1);
+
+	client.CloseDocument("C:/src/Main.cs");
+
+	const std::vector<nlohmann::json> cancels = MessagesFor(client.TakeSent(), "$/cancelRequest");
+	REQUIRE(cancels.size() == 1);
+	CHECK(cancels[0]["params"]["id"] == IdOf(pulls[0]));
+
+	client.Deliver(FullReport(IdOf(pulls[0]), kOneError));
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+	CHECK(drained.Diagnostics.empty());
+	CHECK(drained.Recolour.empty());
 }
