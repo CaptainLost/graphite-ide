@@ -329,13 +329,13 @@ namespace Graphite {
 		// Declared before m_Panels for the same reason as m_Search: the git views will hold
 		// references to these.
 		//
-		// The order among these four is not the declaration order the naive reading suggests.
+		// The order among these five is not the declaration order the naive reading suggests.
 		// Every job GitModel submits captures `this`, so the queue behind the submitter must
 		// be destroyed - and its workers joined - before the model goes away, and the port
 		// must outlive every query a worker might still be running against it. Members are
-		// destroyed in reverse declaration order, so m_Jobs is declared LAST of the four: its
-		// destructor runs FIRST, joining every worker before m_Git, m_ChangeMarkers or m_GitPort
-		// can be torn down. Declaring m_Jobs first would compile without complaint and fail only under
+		// destroyed in reverse declaration order, so m_Jobs is declared LAST of the five: its
+		// destructor runs FIRST, joining every worker before m_Git, m_ChangeMarkers, m_Reviews or
+		// m_GitPort can be torn down. Declaring m_Jobs first would compile without complaint and fail only under
 		// real threading, when a worker is mid-query as the model it points into disappears.
 		// m_ChangeMarkers sits with m_Git before m_Jobs for the same reason: every job it submits
 		// captures `this` and reads the port as a ChangeBasePort. m_Reviews sits with them for the

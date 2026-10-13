@@ -3,6 +3,7 @@
 #include "Git/History/CommitLabels.h"
 #include "Workspace/Workspace.h"
 
+#include <optional>
 #include <utility>
 
 namespace Graphite {
@@ -34,6 +35,17 @@ namespace Graphite {
 			}
 
 			return before->OldId == after->OldId && before->NewId == after->NewId;
+		}
+
+		// Nothing for a range that did not resolve, whose ends mean nothing.
+		std::optional<Core::Oid> TipOf(const ReviewRange* range)
+		{
+			if (range == nullptr || range->Problem != RangeProblem::None)
+			{
+				return std::nullopt;
+			}
+
+			return range->Ends.Tip;
 		}
 	}
 
@@ -144,7 +156,23 @@ namespace Graphite {
 			return;
 		}
 
-		range->Slot.Land(generation, std::move(answer));
+		const Core::Ref<const ReviewRange> replaced = range->Slot.Get();
+		const SlotLanding landing = range->Slot.Land(generation, std::move(answer));
+
+		if (landing != SlotLanding::Applied)
+		{
+			return;
+		}
+
+		// A commit made in the worktree moves the tip without changing a file its watch reports, so
+		// the tip moving is what makes the worktree's diff against it stale.
+		const bool tipMoved = TipOf(replaced.get()) != TipOf(range->Slot.Get().get());
+		UncommittedState* uncommitted = FindUncommitted(key);
+
+		if (tipMoved && uncommitted != nullptr)
+		{
+			uncommitted->Stale = true;
+		}
 	}
 
 	Core::Ref<const ReviewRange> ReviewModel::GetRange(const ReviewKey& key) const
@@ -177,11 +205,6 @@ namespace Graphite {
 		{
 			range.Stale = true;
 		}
-
-		for (auto& [key, uncommitted] : m_Uncommitted)
-		{
-			uncommitted.Stale = true;
-		}
 	}
 
 	void ReviewModel::Retry(const ReviewKey& key)
@@ -203,6 +226,9 @@ namespace Graphite {
 				{
 					m_CommittedDiffError.reset();
 				}
+
+				const RangeEnds ends = held->Ends;
+				m_CommittedTexts.ForgetFailedWhere([&ends](const TextsKey& texts) { return texts.Ends == ends; });
 			}
 		}
 

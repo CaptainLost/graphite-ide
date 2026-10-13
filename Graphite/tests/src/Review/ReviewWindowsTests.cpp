@@ -144,6 +144,30 @@ TEST_CASE("A rename onto a branch with a tab of its own closes the old tab inste
 	CHECK(followed.front().To == "refs/heads/after");
 }
 
+TEST_CASE("A rename of a tab's base is followed by the tab's base")
+{
+	FakeReviewPort port;
+	DeferredJobs jobs;
+	Graphite::ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	ReviewWindows windows;
+	const Graphite::ReviewKey oldKey{.Branch = "refs/heads/side", .Base = "refs/heads/main"};
+	model.RequestRange(oldKey);
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.016f});
+	REQUIRE(model.GetRange(oldKey) != nullptr);
+	windows.Open(ReviewTarget{.Branch = oldKey.Branch, .Base = oldKey.Base});
+	windows.NoteRename("refs/heads/main", "refs/heads/trunk");
+
+	const std::vector<BranchRename> followed =
+		windows.FollowBranches({BranchNamed("refs/heads/trunk"), BranchNamed("refs/heads/side")}, model);
+
+	REQUIRE(followed.size() == 1);
+	CHECK(windows.IsOpen("refs/heads/side"));
+	REQUIRE(windows.CaptureState().size() == 1);
+	CHECK(windows.CaptureState().front().Base == std::optional<std::string>{"refs/heads/trunk"});
+	CHECK(model.GetRange(oldKey) == nullptr);
+}
+
 TEST_CASE("Closing every tab forgets what the model held for them")
 {
 	FakeReviewPort port;

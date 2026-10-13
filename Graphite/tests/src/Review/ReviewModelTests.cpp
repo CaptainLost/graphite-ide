@@ -209,6 +209,34 @@ TEST_CASE("Committed texts are read once per file and never for a binary one")
 	CHECK(model.GetCommittedTexts(ends, binary) == nullptr);
 }
 
+TEST_CASE("Failed committed texts are read again after a retry")
+{
+	FakeReviewPort port;
+	port.Range = RangeWithTip(2);
+	port.RangeTextsFailure = Core::Error{Core::ErrorCode::IoFailure, "locked"};
+	port.Texts.HasNew = true;
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	const RangeEnds ends = port.Range.Ends;
+	const Core::FileDiff file = TextFile("a.cpp");
+	model.RequestRange(kKey);
+	model.RequestCommittedTexts(ends, file);
+	Settle(model, jobs);
+	model.RequestCommittedTexts(ends, file);
+	Settle(model, jobs);
+
+	CHECK(port.RangeTextReads == 1);
+	CHECK(model.GetCommittedTexts(ends, file) == nullptr);
+
+	port.RangeTextsFailure.reset();
+	model.Retry(kKey);
+	model.RequestCommittedTexts(ends, file);
+	Settle(model, jobs);
+
+	CHECK(port.RangeTextReads == 2);
+	CHECK(model.GetCommittedTexts(ends, file) != nullptr);
+}
+
 TEST_CASE("Clearing drops every review and every held diff")
 {
 	FakeReviewPort port;

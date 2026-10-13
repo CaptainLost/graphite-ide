@@ -114,6 +114,13 @@ namespace Graphite {
 			return true;
 		}
 
+		// ForgetFailed for every failed key `matches` accepts. Answers how many were dropped.
+		std::size_t ForgetFailedWhere(const std::function<bool(const Key&)>& matches)
+		{
+			return std::erase_if(m_Entries,
+								 [&matches](const typename EntryMap::value_type& entry) { return IsFailedMatch(entry, matches); });
+		}
+
 		// Null while the answer is in flight, after a failure, and for a key never asked about
 		// or since evicted.
 		Core::Ref<const T> Get(const Key& key) const
@@ -165,7 +172,16 @@ namespace Graphite {
 			std::uint64_t LastTouched = 0;
 		};
 
+		using EntryMap = std::unordered_map<Key, Entry, Hash>;
+
 		static bool IsInFlight(const Entry& entry) { return entry.Requested != entry.Applied; }
+
+		static bool IsFailedMatch(const typename EntryMap::value_type& entry,
+								  const std::function<bool(const Key&)>& matches)
+		{
+			const auto& [key, held] = entry;
+			return held.Failed && matches(key);
+		}
 
 		void Touch(Entry& entry) const { entry.LastTouched = ++m_Clock; }
 

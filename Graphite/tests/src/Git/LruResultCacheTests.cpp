@@ -2,7 +2,9 @@
 
 #include "Git/LruResultCache.h"
 
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 using Graphite::LruResultCache;
@@ -165,4 +167,36 @@ TEST_CASE("Forgetting a failed entry lets it be asked for again, and leaves a he
 	CHECK(cache.Request(2).has_value());
 
 	CHECK_FALSE(cache.ForgetFailed(3));
+}
+
+namespace {
+
+	bool IsEven(int key)
+	{
+		return key % 2 == 0;
+	}
+
+	void FailKey(Cache& cache, int key)
+	{
+		const std::optional<std::uint64_t> generation = cache.Request(key);
+		REQUIRE(generation.has_value());
+		REQUIRE(cache.Fail(key, *generation));
+	}
+}
+
+TEST_CASE("Forgetting the failed entries a test accepts leaves the others and every held one alone")
+{
+	Cache cache(8);
+	Fill(cache, 2, "two");
+	FailKey(cache, 3);
+	FailKey(cache, 4);
+	FailKey(cache, 6);
+
+	CHECK(cache.ForgetFailedWhere(IsEven) == 2);
+
+	CHECK(Holds(cache, 2));
+	CHECK(cache.IsFailed(3));
+	CHECK_FALSE(cache.IsFailed(4));
+	CHECK_FALSE(cache.IsFailed(6));
+	CHECK(cache.Request(4).has_value());
 }

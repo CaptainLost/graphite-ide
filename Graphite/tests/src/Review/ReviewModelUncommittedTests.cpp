@@ -6,6 +6,7 @@
 #include "Git/Debouncer.h"
 #include "Review/FakeReviewPort.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <vector>
 
@@ -64,6 +65,14 @@ namespace {
 		return file;
 	}
 
+	Graphite::ReviewRange RangeWithTip(std::uint8_t tipNumber)
+	{
+		Graphite::ReviewRange range;
+		range.Ends.MergeBase.Bytes[0] = 1;
+		range.Ends.Tip.Bytes[0] = tipNumber;
+		return range;
+	}
+
 	void Settle(ReviewModel& model, DeferredJobs& jobs)
 	{
 		jobs.RunAll();
@@ -74,6 +83,21 @@ namespace {
 	{
 		model.RequestUncommitted(kKey, worktree);
 		Settle(model, jobs);
+	}
+
+	void ResolveRangeAndSettle(ReviewModel& model, DeferredJobs& jobs)
+	{
+		model.RequestRange(kKey);
+		Settle(model, jobs);
+	}
+
+	// A change under the worktree that has settled past the debounce.
+	void ChangeWorktree(ReviewModel& model, WatchControl& watches)
+	{
+		watches.Changed = true;
+		model.OnUpdate(kFrame);
+		watches.Changed = false;
+		model.OnUpdate(Core::Timestep{Graphite::Debouncer::kQuietSeconds});
 	}
 }
 
@@ -136,15 +160,36 @@ TEST_CASE("A worktree that keeps changing is asked about once per debounce burst
 TEST_CASE("A branch moving marks the uncommitted diff stale too")
 {
 	FakeReviewPort port;
+	port.RangeAnswers = {RangeWithTip(2), RangeWithTip(3)};
 	DeferredJobs jobs;
 	WatchControl watches;
 	ReviewModel model{port, jobs.Submitter(), FakeWatches(watches)};
+	ResolveRangeAndSettle(model, jobs);
 	AskAndSettle(model, jobs, kWorktree);
 
 	model.InvalidateRanges();
+	ResolveRangeAndSettle(model, jobs);
 	AskAndSettle(model, jobs, kWorktree);
 
 	CHECK(port.WorktreeDiffQueries == 2);
+}
+
+TEST_CASE("A branch snapshot that leaves the tip where it was keeps the uncommitted diff")
+{
+	FakeReviewPort port;
+	port.RangeAnswers = {RangeWithTip(2), RangeWithTip(2)};
+	DeferredJobs jobs;
+	WatchControl watches;
+	ReviewModel model{port, jobs.Submitter(), FakeWatches(watches)};
+	ResolveRangeAndSettle(model, jobs);
+	AskAndSettle(model, jobs, kWorktree);
+
+	model.InvalidateRanges();
+	ResolveRangeAndSettle(model, jobs);
+	AskAndSettle(model, jobs, kWorktree);
+
+	CHECK(port.RangeQueries == 2);
+	CHECK(port.WorktreeDiffQueries == 1);
 }
 
 TEST_CASE("Turning the toggle off stops the watch and drops the answer")
@@ -195,7 +240,7 @@ TEST_CASE("Uncommitted texts belong to the diff they were read beside")
 	CHECK(model.GetUncommittedTexts(kKey, file)->New == "edited\n");
 
 	port.WorktreeDiff.Files[0].NewId.Bytes[0] = 1;
-	model.InvalidateRanges();
+	ChangeWorktree(model, watches);
 	AskAndSettle(model, jobs, kWorktree);
 	CHECK(model.GetUncommittedTexts(kKey, file) == nullptr);
 
@@ -252,7 +297,7 @@ TEST_CASE("Uncommitted texts survive a refresh that leaves their file as it was"
 	model.RequestUncommittedTexts(kKey, file);
 	Settle(model, jobs);
 
-	model.InvalidateRanges();
+	ChangeWorktree(model, watches);
 	AskAndSettle(model, jobs, kWorktree);
 	model.RequestUncommittedTexts(kKey, file);
 
@@ -275,7 +320,7 @@ TEST_CASE("Uncommitted texts are read again when the refresh changes their file"
 	Settle(model, jobs);
 
 	port.WorktreeDiff.Files[0].NewId.Bytes[0] = 1;
-	model.InvalidateRanges();
+	ChangeWorktree(model, watches);
 	AskAndSettle(model, jobs, kWorktree);
 	CHECK(model.GetUncommittedTexts(kKey, file) == nullptr);
 	model.RequestUncommittedTexts(kKey, file);

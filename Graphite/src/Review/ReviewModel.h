@@ -53,10 +53,12 @@ namespace Graphite {
 
 		bool IsRangeLoading(const ReviewKey& key) const;
 
-		// A branch moved: every review may now cover a different range.
+		// A branch moved: every review may now cover a different range. A review's uncommitted diff is
+		// asked again only once the new range has moved its tip; the worktree's watch covers the rest.
 		void InvalidateRanges();
 
-		// The reader's Retry: the review's range is asked again and the failed answers it shows are forgotten.
+		// The reader's Retry: the review's range and uncommitted diff are asked again, and the failed
+		// answers held for its range - the diff and any file's texts - are forgotten.
 		void Retry(const ReviewKey& key);
 
 		// The tab closed or changed its base. An answer still in flight for it is dropped when it

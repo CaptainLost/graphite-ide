@@ -22,6 +22,7 @@ namespace Graphite {
 
 		constexpr float kBaseFieldEms = 14.0f;
 		constexpr float kFileColumnEms = 24.0f;
+		constexpr int kReviewColumnCount = 2;
 		constexpr std::size_t kCommitsInTooltip = 20;
 
 		constexpr const char* kCommitsHeading = "Commits";
@@ -468,7 +469,7 @@ namespace Graphite {
 			ImGui::TextDisabled("%s", std::format("The worktree at {} is gone.", Core::ToUtf8(*tab.LastWorktree)).c_str());
 		}
 
-		if (ImGui::BeginTable("review", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
+		if (ImGui::BeginTable("review", kReviewColumnCount, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
 		{
 			ImGui::TableSetupColumn("files", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * kFileColumnEms);
 			ImGui::TableSetupColumn("diff", ImGuiTableColumnFlags_WidthStretch);

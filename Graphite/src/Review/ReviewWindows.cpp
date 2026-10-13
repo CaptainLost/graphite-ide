@@ -186,6 +186,14 @@ namespace Graphite {
 
 			const bool targetHasItsOwnTab = IsOpen(rename.To);
 
+			for (Tab& tab : m_Tabs)
+			{
+				if (tab.Target.Base == rename.From)
+				{
+					FollowBaseRename(tab, model, rename.To);
+				}
+			}
+
 			for (std::size_t tabIndex = 0; tabIndex < m_Tabs.size();)
 			{
 				Tab& tab = m_Tabs[tabIndex];
@@ -261,6 +269,13 @@ namespace Graphite {
 		tab.Rows = RowsCache{};
 		tab.LastLoaded.reset();
 		tab.LastWorktree.reset();
+	}
+
+	void ReviewWindows::FollowBaseRename(Tab& tab, ReviewModel& model, const std::string& renamedBase)
+	{
+		ForgetTab(tab, model);
+		tab.Target.Base = renamedBase;
+		tab.LastLoaded.reset();
 	}
 
 	void ReviewWindows::SetIncludeUncommitted(Tab& tab, ReviewModel& model, bool include)

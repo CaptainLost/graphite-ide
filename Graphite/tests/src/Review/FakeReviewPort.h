@@ -48,6 +48,12 @@ public:
 													 const std::filesystem::path&) override
 	{
 		++RangeTextReads;
+
+		if (RangeTextsFailure.has_value())
+		{
+			return *RangeTextsFailure;
+		}
+
 		return Texts;
 	}
 
@@ -60,11 +66,9 @@ public:
 			return *WorktreeFailure;
 		}
 
-		const std::map<std::filesystem::path, Core::Diff>::const_iterator own = WorktreeDiffsByPath.find(worktree);
-
-		if (own != WorktreeDiffsByPath.end())
+		if (WorktreeDiffsByPath.contains(worktree))
 		{
-			return own->second;
+			return WorktreeDiffsByPath.at(worktree);
 		}
 
 		return WorktreeDiff;
@@ -89,6 +93,7 @@ public:
 	std::map<std::filesystem::path, Core::Diff> WorktreeDiffsByPath;
 
 	Graphite::FileTexts Texts;
+	std::optional<Core::Error> RangeTextsFailure;
 
 	int RangeQueries = 0;
 	int RangeDiffQueries = 0;

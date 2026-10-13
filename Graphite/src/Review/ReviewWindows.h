@@ -89,8 +89,8 @@ namespace Graphite {
 		void NoteRename(std::string from, std::string to);
 
 		// Called with every new branch snapshot. Follows the renames that took effect, retargeting
-		// their tabs, and closes a restored tab whose branch the first snapshot lacks. Answers the
-		// renames it followed.
+		// the tabs of a renamed branch and the tabs reviewing against one, and closes a restored tab
+		// whose branch the first snapshot lacks. Answers the renames it followed.
 		[[nodiscard]] std::vector<BranchRename> FollowBranches(const std::vector<Core::Branch>& branches,
 															   ReviewModel& model);
 
@@ -174,6 +174,9 @@ namespace Graphite {
 		static void ForgetTab(const Tab& tab, ReviewModel& model);
 		static ReviewGroups GroupsOf(const Tab& tab, const LoadedReview& review);
 		static void ChangeBase(Tab& tab, ReviewModel& model, const std::string& base);
+
+		// The base under its new name covers the same range, so the selection is kept.
+		static void FollowBaseRename(Tab& tab, ReviewModel& model, const std::string& renamedBase);
 		static void SetIncludeUncommitted(Tab& tab, ReviewModel& model, bool include);
 		static void ToggleViewed(const Tab& tab, ViewedMarks& marks, ReviewGroup group, const Core::FileDiff& file);
 		static void RefreshRows(Tab& tab, const LoadedReview& review);
