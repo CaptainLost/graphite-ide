@@ -184,6 +184,17 @@ namespace Graphite {
 
 		m_DiffWindows.OnSetWordWrap = [this](bool wrap) { m_EditorSettings.SetDiffWordWrap(wrap); };
 
+		m_ReviewWindows.OpenFile = [this](const std::filesystem::path& path) {
+			const bool permanentTab = true;
+			m_DocumentWindows.RequestOpen(path, permanentTab);
+		};
+
+		m_ReviewWindows.OnCopied = [this](std::string_view text) { ReportCopied(m_Events, "selection", text); };
+		m_ReviewWindows.OnSetWordWrap = [this](bool wrap) { m_EditorSettings.SetDiffWordWrap(wrap); };
+		m_ReviewWindows.CopyText = [this](std::string_view what, const std::string& text) {
+			CopyToClipboard(m_Events, what, text);
+		};
+
 		// m_Toasts.OnCopied is left unset: Copy in a toast's menu only fills the clipboard. A
 		// "Copied" toast raised by copying a toast would be a toast about a toast.
 
@@ -191,6 +202,14 @@ namespace Graphite {
 																m_DiffWindows, m_Modals, m_DocumentBuffers,
 																m_Events));
 		gitView->Subscribe();
+
+		gitView->OnReview = [this](const ReviewOffer& offer) {
+			m_ReviewWindows.Open(ReviewTarget{.Branch = offer.Branch, .Base = offer.Base});
+		};
+
+		gitView->OnBranchRenamed = [this](const std::string& from, const std::string& to) {
+			m_ReviewWindows.NoteRename(from, to);
+		};
 
 		m_Panels.Add(Core::CreateScope<ChangesPanel>(m_Git, m_Modals, m_Documents,
 													 m_DocumentWindows, m_ActiveScheme,
@@ -464,6 +483,7 @@ namespace Graphite {
 	{
 		m_Git.SubscribeTo(m_Events);
 		m_ChangeMarkers.SubscribeTo(m_Events);
+		m_Reviews.SubscribeTo(m_Events);
 
 		m_Events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent& event) {
 			// First, before RestoreState below adds this folder's tabs: a tab opened with the
@@ -511,6 +531,14 @@ namespace Graphite {
 			// After CloseAll, never before: the diffs this folder had open last time are the
 			// only ones that belong to it.
 			m_DiffWindows.RestoreState(restorable.Diffs);
+
+			// The diff tabs' trap again: a drop replaces the folder without a close, so the previous
+			// folder's reviews and marks are let go here, before this folder's come back.
+			m_ReviewWindows.CloseAll(m_Reviews);
+			m_ReviewStore.Close();
+			m_ReviewStore.Open(event.Root);
+			m_ReviewWindows.RestoreState(restorable.Reviews);
+			m_ReviewedBranches.reset();
 
 			// Same trap, same reason: an expectation registered against the folder this drop
 			// replaced has no business claiming a path in the one that just opened. Dropping a
@@ -573,6 +601,10 @@ namespace Graphite {
 			// A diff of a commit in a folder that is no longer open is a tab about nothing.
 			m_DiffWindows.CloseAll();
 
+			m_ReviewWindows.CloseAll(m_Reviews);
+			m_ReviewStore.Close();
+			m_ReviewedBranches.reset();
+
 			// An expectation registered against one repository has no business claiming a
 			// path in whatever folder opens next. DocumentWindows has no closed-handler of
 			// its own to put this in - this event handler is where the rest of the per-folder
@@ -588,6 +620,7 @@ namespace Graphite {
 		m_Events.Subscribe<WorkspaceRootMovedEvent>([this](const WorkspaceRootMovedEvent& event) {
 			m_DocumentWindows.HandleRootMoved(event.From, event.To);
 			m_StateKeeper.MoveWorkspace(event.To);
+			m_ReviewStore.MoveTo(event.To);
 		});
 
 		m_Events.Subscribe<WorkspaceFilesChangedEvent>(
@@ -638,6 +671,10 @@ namespace Graphite {
 
 		m_ChangeMarkers.OnUpdate(ts);
 
+		FollowBranchesIntoReviews();
+		m_Reviews.OnUpdate(ts);
+		m_ReviewStore.Update(ts);
+
 		m_Panels.OnUpdate(ts);
 		m_Terminals.Update();
 
@@ -685,6 +722,28 @@ namespace Graphite {
 		}
 	}
 
+	void GraphiteLayer::FollowBranchesIntoReviews()
+	{
+		const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches();
+
+		// GitModel replaces its snapshot only with a list it read whole, so a snapshot that lacks a
+		// branch means the branch is gone, never that the read failed.
+		if (branches == nullptr || branches == m_ReviewedBranches)
+		{
+			return;
+		}
+
+		m_ReviewedBranches = branches;
+
+		for (const BranchRename& rename : m_ReviewWindows.FollowBranches(*branches, m_Reviews))
+		{
+			m_ReviewStore.GetMarks().Rename(rename.From, rename.To);
+		}
+
+		m_ReviewStore.GetMarks().Prune(*branches);
+		m_Reviews.InvalidateRanges();
+	}
+
 	GlobalState GraphiteLayer::CaptureGlobalState()
 	{
 		GlobalState state;
@@ -705,6 +764,7 @@ namespace Graphite {
 		WorkspaceState state = m_DocumentWindows.CaptureState();
 		state.Sessions = m_SessionWindows.CaptureState();
 		state.Diffs = m_DiffWindows.CaptureState();
+		state.Reviews = m_ReviewWindows.CaptureState();
 		state.Terminals = m_Terminals.CaptureState();
 
 		return state;
@@ -713,6 +773,7 @@ namespace Graphite {
 	void GraphiteLayer::OnDetach()
 	{
 		m_StateKeeper.Flush();
+		m_ReviewStore.Flush();
 
 		// After StateKeeper, whose flush hands the window state to the settings.
 		m_AppSettings.Flush();
@@ -1129,6 +1190,19 @@ namespace Graphite {
 							 ReadEditorPalette(m_ActiveScheme.Get()).Selection,
 							 m_EditorSettings.IsDiffWordWrap(), m_DockSpace.GetCenterNodeId(),
 							 m_TabCloseRequests);
+
+		const GitPalette reviewPalette = ReadGitPalette(m_ActiveScheme.Get());
+		const SyntaxPalette reviewSyntax = ReadSyntaxPalette(m_ActiveScheme.Get());
+
+		m_ReviewWindows.Render(ReviewRenderInput{.Model = m_Reviews,
+												 .Marks = m_ReviewStore.GetMarks(),
+												 .Branches = m_Git.GetBranches(),
+												 .Palette = reviewPalette,
+												 .Syntax = reviewSyntax,
+												 .Selection = ReadEditorPalette(m_ActiveScheme.Get()).Selection,
+												 .WordWrap = m_EditorSettings.IsDiffWordWrap(),
+												 .CentreNode = m_DockSpace.GetCenterNodeId(),
+												 .CloseRequests = m_TabCloseRequests});
 
 		m_SessionWindows.Render(m_DockSpace.GetCenterNodeId(), ReadSessionPalette(m_ActiveScheme.Get()),
 								m_TabCloseRequests);

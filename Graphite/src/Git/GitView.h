@@ -13,6 +13,7 @@
 #include "Editor/EditorSettings.h"
 #include "Git/EditorBuffers.h"
 #include "Git/GitModel.h"
+#include "Review/ReviewFiles.h"
 #include "Git/History/HistoryFilter.h"
 #include "Theme/ActiveScheme.h"
 
@@ -29,6 +30,7 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -80,6 +82,14 @@ namespace Graphite {
 		// nothing the new page ever re-requests.
 		// On the bus the constructor was given.
 		void Subscribe();
+
+		// Opens the review a branch's menu offers. Set once by whoever owns the review tabs; unset
+		// hides the menu item.
+		std::function<void(const ReviewOffer&)> OnReview;
+
+		// Told of every rename sent from here, by full name, so what is kept by branch can follow it
+		// once the branch list shows the new name.
+		std::function<void(const std::string& from, const std::string& to)> OnBranchRenamed;
 
 	private:
 		// What the checkout dialog asks about. Two asks about one target are one question.
@@ -168,6 +178,10 @@ namespace Graphite {
 
 		void RenderRefs(const std::vector<Core::Branch>& branches);
 		void RenderRefMenu(const Core::Branch& branch);
+
+		// The review this branch is offered, if any, as the menu's last item. Not a write, so it is
+		// not greyed out while one is in flight.
+		void RenderReviewItem(const Core::Branch& branch);
 
 		// One section's heading, with how many rows it holds, as a row that folds the section
 		// on a click. Returns whether the section is open.

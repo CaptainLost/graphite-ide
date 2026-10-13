@@ -646,7 +646,32 @@ namespace Graphite {
 		}
 
 		ImGui::EndDisabled();
+		RenderReviewItem(branch);
 		ImGui::EndPopup();
+	}
+
+	void GitView::RenderReviewItem(const Core::Branch& branch)
+	{
+		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+
+		if (!OnReview || branches == nullptr)
+		{
+			return;
+		}
+
+		const std::optional<ReviewOffer> offer = OfferReview(branch, *branches);
+
+		if (!offer.has_value())
+		{
+			return;
+		}
+
+		ImGui::Separator();
+
+		if (ImGui::MenuItem(offer->Label.c_str()))
+		{
+			OnReview(*offer);
+		}
 	}
 
 	std::string FitToLine(std::string_view text, bool* cut)

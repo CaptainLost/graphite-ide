@@ -351,6 +351,11 @@ namespace Graphite {
 			{
 				m_Model.RequestRenameBranch(from, name);
 
+				if (OnBranchRenamed)
+				{
+					OnBranchRenamed("refs/heads/" + from, "refs/heads/" + name);
+				}
+
 				// Followed once the branches list shows the new name - see FollowSelectedRef.
 				if (m_SelectedRef == "refs/heads/" + from)
 				{

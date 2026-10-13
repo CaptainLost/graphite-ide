@@ -30,6 +30,10 @@
 #include "Sessions/SessionWindows.h"
 #include "Terminal/TerminalWindows.h"
 #include "Persistence/StateKeeper.h"
+#include "Review/ReviewModel.h"
+#include "Review/ReviewStore.h"
+#include "Review/ReviewWindows.h"
+#include "Review/WorktreeWatch.h"
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
 #include "Sessions/ClaudeSettings.h"
@@ -171,6 +175,10 @@ namespace Graphite {
 
 		// The open folder's file tabs, session windows and diff windows, as one snapshot.
 		WorkspaceState CaptureWorkspaceState() const;
+
+		// Hands a new branch snapshot to the reviews: renames followed by tabs and marks alike,
+		// marks of gone branches dropped, and every range asked again.
+		void FollowBranchesIntoReviews();
 
 		static constexpr float kReloadAfterSecondsAway = 2.0f;
 
@@ -330,7 +338,8 @@ namespace Graphite {
 		// can be torn down. Declaring m_Jobs first would compile without complaint and fail only under
 		// real threading, when a worker is mid-query as the model it points into disappears.
 		// m_ChangeMarkers sits with m_Git before m_Jobs for the same reason: every job it submits
-		// captures `this` and reads the port as a ChangeBasePort.
+		// captures `this` and reads the port as a ChangeBasePort. m_Reviews sits with them for the
+		// same reason: every job it submits captures this and reads the port as a ReviewPort.
 		//
 		// m_Events, declared far above, is a related trap: it is destroyed AFTER m_Git even
 		// though m_Git subscribes handlers into it that capture `this`. That is not reachable
@@ -342,6 +351,8 @@ namespace Graphite {
 					   [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		ChangeMarkersModel m_ChangeMarkers{
 			m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
+		ReviewModel m_Reviews{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
+							  WatchWithDirectoryWatcher()};
 		Core::JobQueue m_Jobs;
 
 		// GitModel's applied-write count as OnUpdate last saw it. A change means this process
@@ -360,6 +371,15 @@ namespace Graphite {
 		// about outliving what refers to it: GitView takes a DiffWindows&, so this must be
 		// declared before m_Panels, which is where GitView is constructed.
 		DiffWindows m_DiffWindows;
+
+		// Beside the diff tabs and for the same reason: they are drawn by this layer, whichever
+		// panel has focus. GitView reaches them only through callbacks bound to this layer.
+		ReviewWindows m_ReviewWindows;
+		ReviewStore m_ReviewStore;
+
+		// The branch snapshot the reviews last followed. A different one may mean a branch moved,
+		// was renamed or is gone.
+		Core::Ref<const std::vector<Core::Branch>> m_ReviewedBranches;
 
 		// Before m_Panels: SessionsPanel holds a reference to each, and ClaudeSessionsPage to the
 		// settings. m_SessionWindows owns a worker per open session; those join in its own
