@@ -780,6 +780,28 @@ namespace Graphite {
 			texts.New = std::move(newText.Text);
 			return texts;
 		}
+
+		Core::Result<std::string> ReadCurrentVersion(Core::Repository& repository, const SinceViewedRequest& request)
+		{
+			if (request.Tip.has_value())
+			{
+				return repository.ReadBlob(request.Path, *request.Tip);
+			}
+
+			if (!request.Worktree.has_value())
+			{
+				return Core::Error{Core::ErrorCode::InvalidArgument, "a since-viewed request names neither a tip nor a worktree"};
+			}
+
+			Core::Result<Core::Repository> worktree = Core::Repository::OpenExactly(*request.Worktree);
+
+			if (!worktree.HasValue())
+			{
+				return worktree.GetError();
+			}
+
+			return worktree.GetValue().ReadWorkingTreeFile(request.Path);
+		}
 	}
 
 	Core::Result<ReviewRange> RepositoryGitPort::ResolveRange(const ReviewKey& key)
@@ -961,5 +983,51 @@ namespace Graphite {
 		}
 
 		return TextsOf(std::move(oldSide).GetValue(), std::move(newSide).GetValue());
+	}
+
+	Core::Result<SinceViewedAnswer> RepositoryGitPort::ReadSinceViewed(const SinceViewedRequest& request)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		// A linked worktree shares this repository's object database, so the viewed blob is read here
+		// whichever side the current version comes from.
+		Core::Result<std::string> viewed = repository->ReadBlobById(request.ViewedBlob);
+
+		if (!viewed.HasValue())
+		{
+			return viewed.GetError();
+		}
+
+		Core::Result<std::string> current = ReadCurrentVersion(*repository, request);
+
+		if (!current.HasValue())
+		{
+			return current.GetError();
+		}
+
+		Core::Result<Core::FileDiff> diff =
+			Core::Repository::DiffTexts(viewed.GetValue(), current.GetValue(), request.Path, request.Whitespace);
+
+		if (!diff.HasValue())
+		{
+			return diff.GetError();
+		}
+
+		SinceViewedAnswer answer;
+		answer.Diff = std::move(diff).GetValue();
+		answer.Diff.OldId = request.ViewedBlob;
+		answer.Diff.NewId = request.CurrentBlob;
+		answer.Texts.Old = std::move(viewed).GetValue();
+		answer.Texts.HasOld = true;
+		answer.Texts.New = std::move(current).GetValue();
+		answer.Texts.HasNew = true;
+		return answer;
 	}
 }

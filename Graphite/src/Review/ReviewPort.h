@@ -81,6 +81,55 @@ namespace Graphite {
 		bool CommitsComplete = true;
 	};
 
+	// A changed file read from the version a viewed mark recorded to its current one. The current
+	// version comes from Tip when that is set, and from the Worktree's file on disk otherwise.
+	struct SinceViewedRequest
+	{
+		Core::Oid ViewedBlob;
+		Core::Oid CurrentBlob;
+		std::filesystem::path Path;
+		Core::WhitespaceInDiff Whitespace = Core::WhitespaceInDiff::Shown;
+		std::optional<Core::Oid> Tip;
+		std::optional<std::filesystem::path> Worktree;
+	};
+
+	// What a since-viewed answer is cached by: where the version was read from does not change it.
+	struct SinceViewedKey
+	{
+		Core::Oid ViewedBlob;
+		Core::Oid CurrentBlob;
+		std::filesystem::path Path;
+		Core::WhitespaceInDiff Whitespace = Core::WhitespaceInDiff::Shown;
+
+		friend bool operator==(const SinceViewedKey&, const SinceViewedKey&) = default;
+	};
+
+	struct SinceViewedKeyHash
+	{
+		std::size_t operator()(const SinceViewedKey& key) const noexcept
+		{
+			const std::size_t viewedHash = std::hash<Core::Oid>{}(key.ViewedBlob);
+			const std::size_t currentHash = std::hash<Core::Oid>{}(key.CurrentBlob);
+			const std::size_t pathHash = std::hash<std::filesystem::path>{}(key.Path);
+			const std::size_t whitespaceHash = static_cast<std::size_t>(key.Whitespace);
+			return viewedHash ^ (currentHash << 1) ^ (pathHash << 2) ^ (whitespaceHash << 3);
+		}
+	};
+
+	inline SinceViewedKey KeyOf(const SinceViewedRequest& request)
+	{
+		return SinceViewedKey{.ViewedBlob = request.ViewedBlob,
+							  .CurrentBlob = request.CurrentBlob,
+							  .Path = request.Path,
+							  .Whitespace = request.Whitespace};
+	}
+
+	struct SinceViewedAnswer
+	{
+		Core::FileDiff Diff;
+		FileTexts Texts;
+	};
+
 	// What ReviewModel needs a repository for, and nothing else. Every method is called on a
 	// worker thread.
 	class ReviewPort
@@ -104,5 +153,8 @@ namespace Graphite {
 		virtual Core::Result<FileTexts> ReadWorktreeTexts(const std::filesystem::path& worktree,
 														  const std::filesystem::path& oldPath,
 														  const std::filesystem::path& newPath) = 0;
+
+		// NotFound when the viewed blob is no longer in the repository.
+		virtual Core::Result<SinceViewedAnswer> ReadSinceViewed(const SinceViewedRequest& request) = 0;
 	};
 }

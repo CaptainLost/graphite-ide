@@ -80,6 +80,7 @@ namespace Graphite {
 		Core::Result<FileTexts> ReadWorktreeTexts(const std::filesystem::path& worktree,
 												  const std::filesystem::path& oldPath,
 												  const std::filesystem::path& newPath) override;
+		Core::Result<SinceViewedAnswer> ReadSinceViewed(const SinceViewedRequest& request) override;
 
 		void SetRoot(std::filesystem::path root);
 

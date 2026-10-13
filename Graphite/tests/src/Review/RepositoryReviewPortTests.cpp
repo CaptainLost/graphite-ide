@@ -179,3 +179,36 @@ TEST_CASE("A folder inside the repository that is no worktree is not read as one
 	REQUIRE_FALSE(texts.HasValue());
 	CHECK(texts.GetError().Code == Core::ErrorCode::NotFound);
 }
+
+TEST_CASE("Since the viewed version reads the viewed blob against the tip and says when the blob is gone")
+{
+	ReviewRepository repository;
+	MakeForkedHistory(repository);
+	Graphite::RepositoryGitPort port{repository.GetPath()};
+	const ReviewRange range = ResolvedRange(port, kSideAgainstMaster);
+
+	const Core::Result<Core::Diff> diff = port.QueryRangeDiff(range.Ends, Core::WhitespaceInDiff::Shown);
+	REQUIRE(diff.HasValue());
+	const Core::FileDiff& aText = diff.GetValue().Files[0];
+
+	const Graphite::SinceViewedRequest present{.ViewedBlob = aText.OldId,
+											   .CurrentBlob = aText.NewId,
+											   .Path = "a.txt",
+											   .Whitespace = Core::WhitespaceInDiff::Shown,
+											   .Tip = range.Ends.Tip,
+											   .Worktree = std::nullopt};
+	const Core::Result<Graphite::SinceViewedAnswer> answer = port.ReadSinceViewed(present);
+
+	REQUIRE(answer.HasValue());
+	CHECK(answer.GetValue().Texts.Old == "one\n");
+	CHECK(answer.GetValue().Texts.New == "side\n");
+	CHECK_FALSE(answer.GetValue().Diff.Hunks.empty());
+	CHECK(answer.GetValue().Diff.OldId == aText.OldId);
+
+	Graphite::SinceViewedRequest missing = present;
+	missing.ViewedBlob.Bytes[0] ^= 0xFF;
+	const Core::Result<Graphite::SinceViewedAnswer> gone = port.ReadSinceViewed(missing);
+
+	REQUIRE_FALSE(gone.HasValue());
+	CHECK(gone.GetError().Code == Core::ErrorCode::NotFound);
+}

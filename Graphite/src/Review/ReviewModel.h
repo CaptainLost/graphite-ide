@@ -95,6 +95,12 @@ namespace Graphite {
 		void RequestCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file);
 		Core::Ref<const FileTexts> GetCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file) const;
 
+		// A changed file's diff from the version a viewed mark recorded, held once read. Unavailable
+		// when the repository no longer holds that version; Retry asks again.
+		void RequestSinceViewed(const SinceViewedRequest& request);
+		Core::Ref<const SinceViewedAnswer> GetSinceViewed(const SinceViewedRequest& request) const;
+		bool IsSinceViewedUnavailable(const SinceViewedRequest& request) const;
+
 		// Called on every frame a tab with the toggle on is drawn. The first call starts watching the
 		// worktree, and a call naming another worktree starts over. A change under the worktree
 		// marks the answer stale once the burst of changes settles.
@@ -180,6 +186,7 @@ namespace Graphite {
 					   Core::Result<ReviewRange> answer);
 		void LandCommittedDiff(const RangeDiffKey& key, std::uint64_t generation, Core::Result<Core::Diff> answer);
 		void LandCommittedTexts(const TextsKey& key, std::uint64_t generation, Core::Result<FileTexts> answer);
+		void LandSinceViewed(const SinceViewedKey& key, std::uint64_t generation, Core::Result<SinceViewedAnswer> answer);
 
 		ReviewPort& m_Port;
 		Core::JobSubmitter m_Submit;
@@ -192,6 +199,7 @@ namespace Graphite {
 		LruResultCache<RangeDiffKey, Core::Diff, RangeDiffKeyHash> m_CommittedDiffs{kCachedDiffs};
 		LruResultCache<TextsKey, FileTexts, TextsKeyHash> m_CommittedTexts{kCachedTexts};
 		std::optional<Core::Error> m_CommittedDiffError;
+		LruResultCache<SinceViewedKey, SinceViewedAnswer, SinceViewedKeyHash> m_SinceViewed{kCachedTexts};
 
 		std::uint64_t m_NextTextsGeneration = 0;
 		std::unordered_map<ReviewKey, UncommittedState, ReviewKeyHash> m_Uncommitted;

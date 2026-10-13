@@ -89,6 +89,24 @@ public:
 		return Texts;
 	}
 
+	Core::Result<Graphite::SinceViewedAnswer> ReadSinceViewed(const Graphite::SinceViewedRequest& request) override
+	{
+		++SinceViewedReads;
+		LastSinceViewed = request;
+
+		if (SinceViewedFailure.has_value())
+		{
+			return *SinceViewedFailure;
+		}
+
+		return SinceViewed;
+	}
+
+	Graphite::SinceViewedAnswer SinceViewed;
+	std::optional<Core::Error> SinceViewedFailure;
+	int SinceViewedReads = 0;
+	std::optional<Graphite::SinceViewedRequest> LastSinceViewed;
+
 	Graphite::ReviewRange Range;
 	std::vector<Graphite::ReviewRange> RangeAnswers;
 	std::optional<Core::Error> RangeFailure;

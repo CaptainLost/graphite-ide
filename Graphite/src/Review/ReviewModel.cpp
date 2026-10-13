@@ -86,6 +86,7 @@ namespace Graphite {
 		m_Uncommitted.clear();
 		m_CommittedDiffs.Clear();
 		m_CommittedTexts.Clear();
+		m_SinceViewed.Clear();
 		m_CommittedDiffError.reset();
 	}
 
@@ -236,6 +237,9 @@ namespace Graphite {
 			}
 		}
 
+		// A failed since-viewed answer is keyed by blobs, not by the review, so Retry forgets them all.
+		m_SinceViewed.ForgetFailedWhere([](const SinceViewedKey&) { return true; });
+
 		UncommittedState* uncommitted = FindUncommitted(key);
 
 		if (uncommitted != nullptr)
@@ -348,6 +352,55 @@ namespace Graphite {
 	Core::Ref<const FileTexts> ReviewModel::GetCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file) const
 	{
 		return m_CommittedTexts.Get(TextsKey{.Ends = ends, .Path = ShownPath(file)});
+	}
+
+	void ReviewModel::RequestSinceViewed(const SinceViewedRequest& request)
+	{
+		const SinceViewedKey key = KeyOf(request);
+		const std::optional<std::uint64_t> generation = m_SinceViewed.Request(key);
+
+		if (!generation.has_value())
+		{
+			return;
+		}
+
+		m_Submit([this, key, request, generation = *generation]() {
+			Core::Result<SinceViewedAnswer> answer = m_Port.ReadSinceViewed(request);
+
+			// Coloured here, on the worker: a C# side is a whole-file parse with no budget.
+			if (answer.HasValue())
+			{
+				SinceViewedAnswer& since = answer.GetValue();
+				since.Texts.Tokens = ColourSides(since.Texts, request.Path, request.Path);
+			}
+
+			m_Inbox.Post([this, key, generation, answer = std::move(answer)]() mutable {
+				LandSinceViewed(key, generation, std::move(answer));
+			});
+		});
+	}
+
+	void ReviewModel::LandSinceViewed(const SinceViewedKey& key, std::uint64_t generation,
+									  Core::Result<SinceViewedAnswer> answer)
+	{
+		if (!answer.HasValue())
+		{
+			m_SinceViewed.Fail(key, generation);
+			return;
+		}
+
+		Core::Ref<const SinceViewedAnswer> since = Core::CreateRef<const SinceViewedAnswer>(std::move(answer).GetValue());
+		m_SinceViewed.Succeed(key, generation, std::move(since));
+	}
+
+	Core::Ref<const SinceViewedAnswer> ReviewModel::GetSinceViewed(const SinceViewedRequest& request) const
+	{
+		return m_SinceViewed.Get(KeyOf(request));
+	}
+
+	bool ReviewModel::IsSinceViewedUnavailable(const SinceViewedRequest& request) const
+	{
+		return m_SinceViewed.IsFailed(KeyOf(request));
 	}
 
 	ReviewModel::UncommittedState* ReviewModel::FindUncommitted(const ReviewKey& key)
