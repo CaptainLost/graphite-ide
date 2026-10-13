@@ -2,6 +2,12 @@
 
 #include "Explorer/FileRow.h"
 
+#include "TempDirectory.h"
+
+#include "Core/Text/DocumentSet.h"
+
+#include <filesystem>
+#include <optional>
 #include <string>
 
 namespace {
@@ -169,4 +175,47 @@ TEST_CASE("MarkerTooltipOf covers every decoration, as a letter and as a dot")
 		status.Dot = true;
 		CHECK(std::string{Graphite::MarkerTooltipOf(status)} == expected.Dot);
 	}
+}
+
+TEST_CASE("OpenTabOf: a file in the preview tab reads as a preview until the tab is made permanent")
+{
+	TempDirectory folder;
+	const std::filesystem::path previewed = folder.MakeFile("Previewed.cpp", "int previewed;");
+	const std::filesystem::path permanent = folder.MakeFile("Permanent.cpp", "int permanent;");
+	const std::filesystem::path closed = folder.MakeFile("Closed.cpp", "int closed;");
+
+	Core::DocumentSet documents;
+	REQUIRE(documents.Open(permanent, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+	REQUIRE(documents.Open(previewed, Core::TabKind::Preview) == Core::OpenOutcome::Opened);
+
+	CHECK(Graphite::OpenTabOf(documents, previewed) == Graphite::OpenTab::Preview);
+	CHECK(Graphite::OpenTabOf(documents, permanent) == Graphite::OpenTab::Permanent);
+	CHECK(Graphite::OpenTabOf(documents, closed) == Graphite::OpenTab::None);
+
+	const std::optional<std::size_t> previewIndex = documents.Find(previewed);
+	REQUIRE(previewIndex.has_value());
+	documents.Promote(*previewIndex);
+
+	CHECK(Graphite::OpenTabOf(documents, previewed) == Graphite::OpenTab::Permanent);
+}
+
+TEST_CASE("OpenTabOf: previewing another file moves the preview mark to it")
+{
+	TempDirectory folder;
+	const std::filesystem::path first = folder.MakeFile("First.cpp", "int first;");
+	const std::filesystem::path second = folder.MakeFile("Second.cpp", "int second;");
+
+	Core::DocumentSet documents;
+	REQUIRE(documents.Open(first, Core::TabKind::Preview) == Core::OpenOutcome::Opened);
+	REQUIRE(documents.Open(second, Core::TabKind::Preview) == Core::OpenOutcome::Opened);
+
+	CHECK(Graphite::OpenTabOf(documents, first) == Graphite::OpenTab::None);
+	CHECK(Graphite::OpenTabOf(documents, second) == Graphite::OpenTab::Preview);
+}
+
+TEST_CASE("OpenTabTooltipOf: a preview tab says it is one, a permanent tab that the file is open")
+{
+	CHECK(std::string{Graphite::OpenTabTooltipOf(Graphite::OpenTab::Permanent)} == "Open in an editor tab");
+	CHECK(std::string{Graphite::OpenTabTooltipOf(Graphite::OpenTab::Preview)} == "Open in a preview tab");
+	CHECK(Graphite::OpenTabTooltipOf(Graphite::OpenTab::None) == nullptr);
 }

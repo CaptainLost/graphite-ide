@@ -4,8 +4,15 @@
 
 #include <imgui.h>
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
+
+namespace Core {
+
+	class DocumentSet;
+
+}
 
 namespace Graphite {
 
@@ -48,15 +55,27 @@ namespace Graphite {
 	// for, or what a dot says lies beneath its folder. Null for a row with no marker.
 	const char* MarkerTooltipOf(const RowStatus& status);
 
+	enum class OpenTab : std::uint8_t
+	{
+		None,
+		Preview,
+		Permanent
+	};
+
+	OpenTab OpenTabOf(const Core::DocumentSet& documents, const std::filesystem::path& path);
+
+	// Null for a file open in no tab.
+	const char* OpenTabTooltipOf(OpenTab tab);
+
 	// How a file row's label is drawn.
 	struct FileRowLook
 	{
 		// The name's colour.
 		ImU32 Ink = 0;
 
-		// Marked by a dot in the accent colour in the gap left of the label, where a folder has
-		// its arrow, so the label itself does not move.
-		bool IsOpenInTab = false;
+		// Marked in the accent colour in the gap left of the label, where a folder has its arrow,
+		// so the label itself does not move: a filled dot for a permanent tab, a ring for the preview.
+		OpenTab Tab = OpenTab::None;
 
 		RowStatus Status;
 	};
@@ -74,7 +93,7 @@ namespace Graphite {
 
 	// After the row's Selectable, which `layout.Width` sized. Draws nothing for a row that is
 	// scrolled out of view. A name long enough to reach the status letter is clipped short of it.
-	// The open-tab dot and the marker each explain themselves in a tooltip when the mouse
+	// The open-tab mark and the marker each explain themselves in a tooltip when the mouse
 	// rests on them, and only then, so the rest of the row stays quiet.
 	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& label);
 

@@ -1002,7 +1002,6 @@ namespace Graphite {
 
 		// Not the active document, which stays active behind Settings or the Git view.
 		const bool isShownInEditor = !m_ShownFile.empty() && m_ShownFile == node.Path;
-		const bool isOpen = m_Documents.Find(node.Path).has_value();
 
 		const std::string label =
 			std::string{Core::IconForExtension(Core::ToUtf8(node.Path.extension()))} + "  " +
@@ -1012,7 +1011,7 @@ namespace Graphite {
 
 		const std::string id = "##" + Core::ToUtf8(node.Path);
 
-		// An open file is marked by a dot, not by a background, which would read as several
+		// An open file is marked left of its name, not by a background, which would read as several
 		// selected rows, nor by the name's colour, which says what git thinks of it.
 		const bool clicked = ImGui::Selectable(id.c_str(), isShownInEditor, ImGuiSelectableFlags_AllowDoubleClick,
 											   ImVec2(layout.Width, 0.0f));
@@ -1021,7 +1020,7 @@ namespace Graphite {
 		// thousands of rows.
 		if (ImGui::IsItemVisible())
 		{
-			FileRowLook look{.Ink = ImGui::GetColorU32(ImGuiCol_Text), .IsOpenInTab = isOpen};
+			FileRowLook look{.Ink = ImGui::GetColorU32(ImGuiCol_Text), .Tab = OpenTabOf(m_Documents, node.Path)};
 
 			// An ignored file shows only its own entry: a tracked file under an ignore pattern
 			// still has a status, but what lies inside an untracked directory stays plain.

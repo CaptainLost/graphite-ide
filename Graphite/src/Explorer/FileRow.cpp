@@ -1,8 +1,11 @@
 #include "Explorer/FileRow.h"
 
+#include "Core/Text/DocumentSet.h"
+
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <optional>
 
 namespace Graphite {
 
@@ -10,10 +13,21 @@ namespace Graphite {
 		// The dot is drawn rather than typed: a shape needs no glyph in whichever font the tree
 		// is drawn in, and comes out round at any interface scale.
 		constexpr float kDotRadiusShare = 0.2f;
+		constexpr float kRingThicknessShare = 0.08f;
+		constexpr float kThinnestRing = 1.0f;
+
+		// AddCircle strokes half a pixel inside the radius it is given and AddCircleFilled does
+		// not, so a ring passed the dot's radius comes out half a pixel smaller than the dot.
+		constexpr float kAddCircleInset = 0.5f;
 
 		float DotRadius()
 		{
 			return ImGui::GetFontSize() * kDotRadiusShare;
+		}
+
+		float RingThickness()
+		{
+			return std::max(kThinnestRing, ImGui::GetFontSize() * kRingThicknessShare);
 		}
 
 		// The screen x a row's marker ends at. InnerRect, not the content region: the content
@@ -74,6 +88,35 @@ namespace Graphite {
 
 			return nullptr;
 		}
+
+		void DrawOpenTabMark(const FileRowLayout& layout, OpenTab tab)
+		{
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			const ImU32 accent = ImGui::GetColorU32(ImGuiCol_CheckMark);
+
+			// Centred in the gap before the label, where a sibling folder draws its arrow.
+			const float gap = layout.LabelAt.x - layout.RowAt.x;
+			const ImVec2 centre(layout.RowAt.x + gap * 0.5f, layout.LabelAt.y + ImGui::GetFontSize() * 0.5f);
+
+			switch (tab)
+			{
+			case OpenTab::None:
+				return;
+			case OpenTab::Preview:
+			{
+				const float thickness = RingThickness();
+				const float radiusEndingAtDotEdge = DotRadius() + kAddCircleInset - thickness * 0.5f;
+				drawList->AddCircle(centre, radiusEndingAtDotEdge, accent, 0, thickness);
+				break;
+			}
+			case OpenTab::Permanent:
+				drawList->AddCircleFilled(centre, DotRadius(), accent);
+				break;
+			}
+
+			TooltipOver(ImVec2(layout.RowAt.x, layout.LabelAt.y),
+						ImVec2(layout.LabelAt.x, layout.LabelAt.y + ImGui::GetFontSize()), OpenTabTooltipOf(tab));
+		}
 	}
 
 	const char* MarkerTooltipOf(const RowStatus& status)
@@ -91,6 +134,30 @@ namespace Graphite {
 		}
 
 		return status.Letter != '\0' ? LetterTooltipOf(status.Decoration) : nullptr;
+	}
+
+	OpenTab OpenTabOf(const Core::DocumentSet& documents, const std::filesystem::path& path)
+	{
+		const std::optional<std::size_t> index = documents.Find(path);
+
+		if (!index)
+		{
+			return OpenTab::None;
+		}
+
+		return documents.At(*index).Preview ? OpenTab::Preview : OpenTab::Permanent;
+	}
+
+	const char* OpenTabTooltipOf(OpenTab tab)
+	{
+		switch (tab)
+		{
+		case OpenTab::Preview: return "Open in a preview tab";
+		case OpenTab::Permanent: return "Open in an editor tab";
+		case OpenTab::None: break;
+		}
+
+		return nullptr;
 	}
 
 	RowStatus FileRowStatusOf(const GitDecorationView& view, const std::filesystem::path& absolute,
@@ -200,16 +267,7 @@ namespace Graphite {
 
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-		if (look.IsOpenInTab)
-		{
-			// Centred in the gap before the label, where a sibling folder draws its arrow.
-			const float gap = layout.LabelAt.x - layout.RowAt.x;
-			const ImVec2 centre(layout.RowAt.x + gap * 0.5f, layout.LabelAt.y + ImGui::GetFontSize() * 0.5f);
-			drawList->AddCircleFilled(centre, DotRadius(), ImGui::GetColorU32(ImGuiCol_CheckMark));
-
-			TooltipOver(ImVec2(layout.RowAt.x, layout.LabelAt.y),
-						ImVec2(layout.LabelAt.x, layout.LabelAt.y + ImGui::GetFontSize()), "Open in an editor tab");
-		}
+		DrawOpenTabMark(layout, look.Tab);
 
 		if (!look.Status.HasMarker())
 		{

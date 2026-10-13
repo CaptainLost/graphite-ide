@@ -17,6 +17,7 @@
 #include <cfloat>
 #include <cmath>
 #include <filesystem>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -205,6 +206,46 @@ TEST_CASE("The solution view marks the row last clicked only while its file's ta
 	body = FindSolutionBody();
 	REQUIRE(body != nullptr);
 	CHECK(MarksARow(*body->DrawList));
+}
+
+TEST_CASE("The solution view marks a file in the preview tab with a ring and one in a permanent tab with a dot")
+{
+	TempDirectory folder;
+	const std::filesystem::path solution = MakeSampleSolution(folder);
+
+	SolutionScreen screen{solution};
+	screen.TypeInFilter("Deep");
+
+	const int deepRow = 4;
+	const int deepDepth = 4;
+	screen.ClickRow(deepRow, deepDepth);
+
+	REQUIRE(screen.OpenedFiles.size() == 1);
+	const std::filesystem::path deep = screen.OpenedFiles[0];
+
+	// The default check mark shares its colour with the selection and the slider grabs.
+	ImGui::GetStyle().Colors[ImGuiCol_CheckMark] = ImVec4(0.9f, 0.4f, 0.1f, 1.0f);
+	const ImU32 openTabMark = ImGui::GetColorU32(ImGuiCol_CheckMark);
+
+	screen.MoveMouseAway();
+	const ImGuiWindow* body = FindSolutionBody();
+	REQUIRE(body != nullptr);
+	CHECK_FALSE(DrawsInColour(*body->DrawList, openTabMark));
+
+	REQUIRE(screen.Documents.Open(deep, Core::TabKind::Preview) == Core::OpenOutcome::Opened);
+	screen.Next();
+	body = FindSolutionBody();
+	REQUIRE(body != nullptr);
+	CHECK(DrawsInColour(*body->DrawList, openTabMark));
+	CHECK_FALSE(FillsMiddleInColour(*body->DrawList, openTabMark));
+
+	const std::optional<std::size_t> previewIndex = screen.Documents.Find(deep);
+	REQUIRE(previewIndex.has_value());
+	screen.Documents.Promote(*previewIndex);
+	screen.Next();
+	body = FindSolutionBody();
+	REQUIRE(body != nullptr);
+	CHECK(FillsMiddleInColour(*body->DrawList, openTabMark));
 }
 
 TEST_CASE("The solution view's filter leaves out the projects and folders that hold no match")

@@ -211,6 +211,41 @@ TEST_CASE("The file tree marks the active file only while its tab is the one in 
 	CHECK(MarksARow(*body->DrawList));
 }
 
+TEST_CASE("The file tree marks a file in the preview tab with a ring and one in a permanent tab with a dot")
+{
+	TempDirectory folder;
+	folder.MakeFile("Previewed.cpp", "int x;");
+
+	ExplorerScreen screen{folder.GetPath()};
+	const Core::FileNode* file = ChildNamed(screen.Workspace.GetTree().GetRoot(), "Previewed.cpp");
+	REQUIRE(file != nullptr);
+	const std::filesystem::path filePath = file->Path;
+
+	// The default check mark shares its colour with the selection and the slider grabs.
+	ImGui::GetStyle().Colors[ImGuiCol_CheckMark] = ImVec4(0.9f, 0.4f, 0.1f, 1.0f);
+	const ImU32 openTabMark = ImGui::GetColorU32(ImGuiCol_CheckMark);
+
+	screen.Next();
+	const ImGuiWindow* body = FindTreeBody();
+	REQUIRE(body != nullptr);
+	CHECK_FALSE(DrawsInColour(*body->DrawList, openTabMark));
+
+	REQUIRE(screen.Documents.Open(filePath, Core::TabKind::Preview) == Core::OpenOutcome::Opened);
+	screen.Next();
+	body = FindTreeBody();
+	REQUIRE(body != nullptr);
+	CHECK(DrawsInColour(*body->DrawList, openTabMark));
+	CHECK_FALSE(FillsMiddleInColour(*body->DrawList, openTabMark));
+
+	const std::optional<std::size_t> previewIndex = screen.Documents.Find(filePath);
+	REQUIRE(previewIndex.has_value());
+	screen.Documents.Promote(*previewIndex);
+	screen.Next();
+	body = FindTreeBody();
+	REQUIRE(body != nullptr);
+	CHECK(FillsMiddleInColour(*body->DrawList, openTabMark));
+}
+
 TEST_CASE("While the first read of the folder is new, the file tree draws nothing and wakes itself when the wait is over")
 {
 	TempDirectory folder;

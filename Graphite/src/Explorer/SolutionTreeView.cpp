@@ -407,7 +407,7 @@ namespace Graphite {
 
 			if (file.Exists)
 			{
-				look.IsOpenInTab = m_Documents.Find(file.Path).has_value();
+				look.Tab = OpenTabOf(m_Documents, file.Path);
 				look.Status = FileRowStatusOf(m_GitDecorations, file.Path);
 
 				if (look.Status.Decoration != GitDecoration::None)
