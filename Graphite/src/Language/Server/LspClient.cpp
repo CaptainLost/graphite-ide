@@ -481,6 +481,7 @@ namespace Graphite {
 
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 		SendLocked(*m_Shared, std::move(bytes));
+		MarkSentLocked(*m_Shared, uri, version);
 		PullLocked(*m_Shared, uri);
 
 		return DocumentVersion{version};
@@ -524,6 +525,7 @@ namespace Graphite {
 
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 		SendLocked(*m_Shared, std::move(bytes));
+		MarkSentLocked(*m_Shared, uri, version);
 
 		// Every shown document, not only this one: a C# file's diagnostics depend on the rest of
 		// its project whatever a server declares (csharp-ls says interFileDependencies is false).
@@ -1115,19 +1117,28 @@ namespace Graphite {
 		// (ADR 0584). Read as written it would compare older than everything sent and stay dimmed.
 		if (published.Version == DocumentVersion{})
 		{
-			published.Version = DocumentVersion{open->second.Version};
+			published.Version = DocumentVersion{open->second.Sent};
 		}
 
 		const std::lock_guard<std::mutex> state(shared.StateMutex);
 		shared.Diagnostics.push_back(std::move(published));
 	}
 
+	void LspClient::MarkSentLocked(Shared& shared, const std::string& uri, int version)
+	{
+		if (const auto open = shared.Documents.find(uri); open != shared.Documents.end())
+		{
+			open->second.Sent = version;
+		}
+	}
+
 	void LspClient::PullLocked(Shared& shared, const std::string& uri)
 	{
 		const auto found = shared.Documents.find(uri);
 
+		// Sent is 0 until the didOpen is queued; OpenDocument pulls once it is.
 		if (!shared.PullsDiagnostics || shared.ReaderStopped || found == shared.Documents.end() ||
-			found->second.Role != DocumentRole::Shown)
+			found->second.Role != DocumentRole::Shown || found->second.Sent == 0)
 		{
 			return;
 		}
@@ -1156,7 +1167,7 @@ namespace Graphite {
 
 		auto [id, bytes] = shared.Rpc.Request("textDocument/diagnostic", params);
 
-		shared.Pending[id] = Asked{.Kind = Question::Diagnostics, .Uri = uri, .Version = DocumentVersion{document.Version}};
+		shared.Pending[id] = Asked{.Kind = Question::Diagnostics, .Uri = uri, .Version = DocumentVersion{document.Sent}};
 		document.Pull = id;
 		document.PullAgain = false;
 

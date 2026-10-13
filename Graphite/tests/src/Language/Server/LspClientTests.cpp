@@ -10,6 +10,7 @@
 #include "TempDirectory.h"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <fstream>
@@ -1424,6 +1425,68 @@ TEST_CASE("A publication naming no version describes the version last sent")
 	REQUIRE(drained.Diagnostics.size() == 2);
 	CHECK(drained.Diagnostics[0].Version == Graphite::DocumentVersion{2});
 	CHECK(drained.Diagnostics[1].Version == Graphite::DocumentVersion{2});
+}
+
+// ChangeDocument numbers the edit, builds its JSON outside the lock and only then queues it. A
+// publication the reader stamps in between must not name the edit still being built: the server
+// has not been sent that text, so the diagnostics would read as current while they are not.
+TEST_CASE("A publication without a version is never stamped with an edit not yet queued")
+{
+	Graphite::LspClient client = Offline("C:/src");
+	client.Deliver(std::string{kHandshakeAnswer});
+	client.OpenDocument("C:/src/Main.cs", "class A {}\n");
+
+	int queued = 0;
+	const auto countQueued = [&client, &queued] {
+		for (const std::string& message : client.TakeSent())
+		{
+			if (message.find("textDocument/didOpen") != std::string::npos || message.find("textDocument/didChange") != std::string::npos)
+			{
+				++queued;
+			}
+		}
+	};
+	countQueued();
+	REQUIRE(queued == 1);
+
+	// Large enough that building the didChange takes far longer than one turn of the loop below.
+	const std::string large(1024 * 1024, 'x');
+	std::atomic<bool> editing{true};
+
+	std::thread editor([&client, &large, &editing] {
+		for (int edit = 0; edit < 40; ++edit)
+		{
+			client.ChangeDocument("C:/src/Main.cs", large);
+		}
+
+		editing = false;
+	});
+
+	int stampedAhead = 0;
+
+	while (editing)
+	{
+		client.Deliver(R"({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{
+			"uri":"file:///C:/src/Main.cs","diagnostics":[]}})");
+
+		Graphite::LspClient::Drained drained;
+		client.Drain(drained);
+
+		// Everything queued up to now, which includes everything queued before the stamp.
+		countQueued();
+
+		for (const Graphite::PublishedDiagnostics& published : drained.Diagnostics)
+		{
+			if (published.Version.Value > queued)
+			{
+				++stampedAhead;
+			}
+		}
+	}
+
+	editor.join();
+
+	CHECK(stampedAhead == 0);
 }
 
 TEST_CASE("The handshake declares every token name this editor colours with the C# servers' own among them")

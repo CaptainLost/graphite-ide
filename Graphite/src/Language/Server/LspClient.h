@@ -189,6 +189,12 @@ namespace Graphite {
 
 			DocumentRole Role = DocumentRole::Consulted;
 
+			// The version of the last didOpen or didChange actually queued. Version runs ahead of
+			// it while that message's JSON is built outside the lock, and the server has not been
+			// sent that text yet, so a pull and an unversioned publication name this one instead.
+			// 0 until the first is queued, and nothing is pulled before then.
+			int Sent = 0;
+
 			// The diagnostics pull in flight, 0 when none. One at a time: a trigger that lands
 			// while one is in flight sets PullAgain, and the answer sends the next.
 			RequestId Pull = 0;
@@ -362,6 +368,10 @@ namespace Graphite {
 		static void HandleReply(Shared& shared, const IncomingMessage& reply);
 
 		static void PublishDiagnostics(Shared& shared, const nlohmann::json& params);
+
+		// Records that the didOpen or didChange for `version` is queued, in the same locked stretch
+		// that queued it. ProtocolMutex held by the caller.
+		static void MarkSentLocked(Shared& shared, const std::string& uri, int version);
 
 		// Sends a diagnostics pull for one open document, or marks it to be pulled again when one
 		// is already in flight. Does nothing for a Consulted document, for a server that offers no
