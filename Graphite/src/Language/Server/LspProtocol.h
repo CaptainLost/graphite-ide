@@ -72,4 +72,13 @@ namespace Graphite {
 	// protocol and are not drawn anywhere in this application; dropping them at the boundary is
 	// what stops every downstream switch from needing a case that cannot happen.
 	PublishedDiagnostics ParseDiagnostics(const nlohmann::json& params);
+
+	// One textDocument/diagnostic answer: the items of a full report, read exactly as a
+	// publication's items are. nullopt for an "unchanged" report, which this client never asks
+	// for since it sends no previousResultId, and for anything that is not a report at all.
+	std::optional<std::vector<Diagnostic>> ParseDiagnosticReport(const nlohmann::json& result);
+
+	// Whether the initialize result offers diagnostic pulls (capabilities.diagnosticProvider). A
+	// server that only publishes leaves it out: clangd does, Roslyn and csharp-ls do not.
+	bool OffersDiagnosticPulls(const nlohmann::json& initializeResult);
 }

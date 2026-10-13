@@ -632,6 +632,74 @@ namespace Graphite {
 				return std::nullopt; // Information, Hint, or something invented
 			}
 		}
+
+		// A publication's "diagnostics" and a pull report's "items" are the same array.
+		std::vector<Diagnostic> ParseDiagnosticItems(const nlohmann::json& items)
+		{
+			std::vector<Diagnostic> diagnostics;
+
+			if (!items.is_array())
+			{
+				return diagnostics;
+			}
+
+			for (const nlohmann::json& item : items)
+			{
+				if (!item.is_object())
+				{
+					continue;
+				}
+
+				const std::optional<DiagnosticSeverity> severity = SeverityOf(item);
+
+				if (!severity)
+				{
+					continue;
+				}
+
+				Diagnostic diagnostic;
+				diagnostic.Severity = *severity;
+
+				if (const nlohmann::json* range = FirstOf(item, {"range"}))
+				{
+					if (const nlohmann::json* start = FirstOf(*range, {"start"}))
+					{
+						diagnostic.Line = ReadUnsigned(*start, "line");
+						diagnostic.Column = Utf16Column{ReadUnsigned(*start, "character")};
+					}
+
+					// An end the server did not give collapses onto the start rather than onto
+					// (0, 0): a zero-length span at the right place is drawable, one at the top of
+					// the file is a squiggle under text nobody complained about.
+					if (const nlohmann::json* end = FirstOf(*range, {"end"}))
+					{
+						diagnostic.EndLine = ReadUnsigned(*end, "line");
+						diagnostic.EndColumn = Utf16Column{ReadUnsigned(*end, "character")};
+					}
+					else
+					{
+						diagnostic.EndLine = diagnostic.Line;
+						diagnostic.EndColumn = diagnostic.Column;
+					}
+				}
+
+				if (const nlohmann::json* message = FirstOf(item, {"message"});
+					message != nullptr && message->is_string())
+				{
+					diagnostic.Message = message->get<std::string>();
+				}
+
+				if (const nlohmann::json* source = FirstOf(item, {"source"});
+					source != nullptr && source->is_string())
+				{
+					diagnostic.Source = source->get<std::string>();
+				}
+
+				diagnostics.push_back(std::move(diagnostic));
+			}
+
+			return diagnostics;
+		}
 	}
 
 	PublishedDiagnostics ParseDiagnostics(const nlohmann::json& params)
@@ -653,68 +721,40 @@ namespace Graphite {
 			published.Version = DocumentVersion{version->get<int>()};
 		}
 
-		const nlohmann::json* items = FirstOf(params, {"diagnostics"});
-
-		if (items == nullptr || !items->is_array())
+		if (const nlohmann::json* items = FirstOf(params, {"diagnostics"}))
 		{
-			return published;
-		}
-
-		for (const nlohmann::json& item : *items)
-		{
-			if (!item.is_object())
-			{
-				continue;
-			}
-
-			const std::optional<DiagnosticSeverity> severity = SeverityOf(item);
-
-			if (!severity)
-			{
-				continue;
-			}
-
-			Diagnostic diagnostic;
-			diagnostic.Severity = *severity;
-
-			if (const nlohmann::json* range = FirstOf(item, {"range"}))
-			{
-				if (const nlohmann::json* start = FirstOf(*range, {"start"}))
-				{
-					diagnostic.Line = ReadUnsigned(*start, "line");
-					diagnostic.Column = Utf16Column{ReadUnsigned(*start, "character")};
-				}
-
-				// An end the server did not give collapses onto the start rather than onto
-				// (0, 0): a zero-length span at the right place is drawable, one at the top of
-				// the file is a squiggle under text nobody complained about.
-				if (const nlohmann::json* end = FirstOf(*range, {"end"}))
-				{
-					diagnostic.EndLine = ReadUnsigned(*end, "line");
-					diagnostic.EndColumn = Utf16Column{ReadUnsigned(*end, "character")};
-				}
-				else
-				{
-					diagnostic.EndLine = diagnostic.Line;
-					diagnostic.EndColumn = diagnostic.Column;
-				}
-			}
-
-			if (const nlohmann::json* message = FirstOf(item, {"message"});
-				message != nullptr && message->is_string())
-			{
-				diagnostic.Message = message->get<std::string>();
-			}
-
-			if (const nlohmann::json* source = FirstOf(item, {"source"});
-				source != nullptr && source->is_string())
-			{
-				diagnostic.Source = source->get<std::string>();
-			}
-
-			published.Items.push_back(std::move(diagnostic));
+			published.Items = ParseDiagnosticItems(*items);
 		}
 
 		return published;
+	}
+
+	std::optional<std::vector<Diagnostic>> ParseDiagnosticReport(const nlohmann::json& result)
+	{
+		const nlohmann::json* kind = FirstOf(result, {"kind"});
+
+		if (kind == nullptr || !kind->is_string() || kind->get<std::string>() != "full")
+		{
+			return std::nullopt;
+		}
+
+		const nlohmann::json* items = FirstOf(result, {"items"});
+
+		return items == nullptr ? std::vector<Diagnostic>{} : ParseDiagnosticItems(*items);
+	}
+
+	bool OffersDiagnosticPulls(const nlohmann::json& initializeResult)
+	{
+		const nlohmann::json* capabilities = FirstOf(initializeResult, {"capabilities"});
+
+		if (capabilities == nullptr)
+		{
+			return false;
+		}
+
+		// An options object in practice; true is accepted too, as the protocol allows for other providers.
+		const nlohmann::json* provider = FirstOf(*capabilities, {"diagnosticProvider"});
+
+		return provider != nullptr && (provider->is_object() || (provider->is_boolean() && provider->get<bool>()));
 	}
 }

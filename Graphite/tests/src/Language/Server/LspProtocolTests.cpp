@@ -300,6 +300,52 @@ TEST_CASE("A path with a non-ASCII character round-trips through its escaped byt
 	CHECK(Graphite::FromFileUri(uri) == path);
 }
 
+TEST_CASE("A full pull report reads its items as a publication's items")
+{
+	const auto items = Graphite::ParseDiagnosticReport(nlohmann::json::parse(R"({
+		"kind": "full", "resultId": "7",
+		"items": [
+			{"range": {"start": {"line": 3, "character": 8}, "end": {"line": 3, "character": 14}},
+			 "severity": 1, "code": "CS0246", "message": "type not found", "source": "csharp"},
+			{"range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+			 "severity": 3, "message": "namespace does not match folder"}
+		]
+	})"));
+
+	REQUIRE(items.has_value());
+	REQUIRE(items->size() == 1); // Information is dropped as it is from a publication
+	CHECK((*items)[0].Line == 3);
+	CHECK((*items)[0].Column == Graphite::Utf16Column{8});
+	CHECK((*items)[0].EndColumn == Graphite::Utf16Column{14});
+	CHECK((*items)[0].Severity == Graphite::DiagnosticSeverity::Error);
+	CHECK((*items)[0].Message == "type not found");
+	CHECK((*items)[0].Source == "csharp");
+}
+
+TEST_CASE("A full pull report with no items reads as all clear")
+{
+	const auto items = Graphite::ParseDiagnosticReport(nlohmann::json::parse(R"({"kind":"full","items":[]})"));
+
+	REQUIRE(items.has_value());
+	CHECK(items->empty());
+}
+
+TEST_CASE("An unchanged or malformed pull report reads as no report")
+{
+	CHECK_FALSE(Graphite::ParseDiagnosticReport(nlohmann::json::parse(R"({"kind":"unchanged","resultId":"7"})")).has_value());
+	CHECK_FALSE(Graphite::ParseDiagnosticReport(nlohmann::json::parse(R"({"items":[]})")).has_value());
+	CHECK_FALSE(Graphite::ParseDiagnosticReport(nlohmann::json()).has_value());
+}
+
+TEST_CASE("A server offering pulls is told apart from one that only publishes")
+{
+	CHECK(Graphite::OffersDiagnosticPulls(nlohmann::json::parse(
+		R"({"capabilities":{"diagnosticProvider":{"interFileDependencies":true,"workspaceDiagnostics":false}}})")));
+	CHECK_FALSE(Graphite::OffersDiagnosticPulls(nlohmann::json::parse(R"({"capabilities":{}})")));
+	CHECK_FALSE(Graphite::OffersDiagnosticPulls(nlohmann::json::parse(R"({"capabilities":{"diagnosticProvider":null}})")));
+	CHECK_FALSE(Graphite::OffersDiagnosticPulls(nlohmann::json()));
+}
+
 TEST_CASE("A publication is parsed into a path, a version and its diagnostics")
 {
 	const nlohmann::json params = nlohmann::json::parse(R"({
