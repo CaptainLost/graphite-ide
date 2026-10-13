@@ -2,6 +2,7 @@
 
 #include "Core/Base/Base.h"
 
+#include "Git/Debouncer.h"
 #include "Git/DeliveryInbox.h"
 #include "Git/Diff/FileTexts.h"
 #include "Git/GenerationSlot.h"
@@ -73,6 +74,21 @@ namespace Graphite {
 		void RequestCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file);
 		Core::Ref<const FileTexts> GetCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file) const;
 
+		// Called on every frame a tab with the toggle on is drawn. The first call starts watching the
+		// worktree, and a call naming another worktree starts over. A change under the worktree
+		// marks the answer stale once the burst of changes settles.
+		void RequestUncommitted(const ReviewKey& key, const std::filesystem::path& worktree);
+		Core::Ref<const Core::Diff> GetUncommitted(const ReviewKey& key) const;
+		const Core::Error* GetUncommittedError(const ReviewKey& key) const;
+		bool IsUncommittedLoading(const ReviewKey& key) const;
+
+		// The texts of the one file on screen, read for the uncommitted diff now held: null while they
+		// are on their way, once that diff is replaced, and for a binary file.
+		void RequestUncommittedTexts(const ReviewKey& key, const Core::FileDiff& file);
+		Core::Ref<const FileTexts> GetUncommittedTexts(const ReviewKey& key, const Core::FileDiff& file) const;
+
+		// The toggle went off: the watch stops and what was held is dropped.
+		void StopUncommitted(const ReviewKey& key);
 		// A whole branch's diff is far larger than one commit's, so fewer are held than GitModel holds.
 		static constexpr std::size_t kCachedDiffs = 8;
 		static constexpr std::size_t kCachedTexts = 32;
@@ -106,6 +122,32 @@ namespace Graphite {
 			}
 		};
 
+		struct UncommittedState
+		{
+			std::uint64_t Incarnation = 0;
+			std::filesystem::path Worktree;
+			Core::Scope<WorktreeWatch> Watch;
+			Debouncer Debounce;
+			GenerationSlot<Core::Diff> Diff;
+			bool Asked = false;
+			bool Stale = false;
+
+			std::filesystem::path TextsPath;
+			std::uint64_t TextsForDiff = 0;
+			std::uint64_t TextsRequested = 0;
+			std::uint64_t TextsApplied = 0;
+			Core::Ref<const FileTexts> Texts;
+		};
+
+		UncommittedState* FindUncommitted(const ReviewKey& key);
+		const UncommittedState* FindUncommitted(const ReviewKey& key) const;
+		UncommittedState* FindUncommittedOf(const ReviewKey& key, std::uint64_t incarnation);
+
+		void LandUncommitted(const ReviewKey& key, std::uint64_t incarnation, std::uint64_t generation,
+							 Core::Result<Core::Diff> answer);
+		void LandUncommittedTexts(const ReviewKey& key, std::uint64_t incarnation, std::uint64_t generation,
+								  Core::Result<FileTexts> answer);
+
 		RangeState* FindRange(const ReviewKey& key, std::uint64_t incarnation);
 		const RangeState* FindRange(const ReviewKey& key) const;
 
@@ -125,5 +167,8 @@ namespace Graphite {
 		LruResultCache<RangeEnds, Core::Diff, RangeEndsHash> m_CommittedDiffs{kCachedDiffs};
 		LruResultCache<TextsKey, FileTexts, TextsKeyHash> m_CommittedTexts{kCachedTexts};
 		std::optional<Core::Error> m_CommittedDiffError;
+
+		std::uint64_t m_NextTextsGeneration = 0;
+		std::unordered_map<ReviewKey, UncommittedState, ReviewKeyHash> m_Uncommitted;
 	};
 }

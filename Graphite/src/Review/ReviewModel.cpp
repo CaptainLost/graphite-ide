@@ -18,14 +18,30 @@ namespace Graphite {
 		events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) { Clear(); });
 	}
 
-	void ReviewModel::OnUpdate(Core::Timestep)
+	void ReviewModel::OnUpdate(Core::Timestep ts)
 	{
+		for (auto& [key, uncommitted] : m_Uncommitted)
+		{
+			const bool worktreeChanged = uncommitted.Watch != nullptr && uncommitted.Watch->TakeChanged();
+
+			if (worktreeChanged)
+			{
+				uncommitted.Debounce.Mark();
+			}
+
+			if (uncommitted.Debounce.Advance(ts))
+			{
+				uncommitted.Stale = true;
+			}
+		}
+
 		m_Inbox.Drain();
 	}
 
 	void ReviewModel::Clear()
 	{
 		m_Ranges.clear();
+		m_Uncommitted.clear();
 		m_CommittedDiffs.Clear();
 		m_CommittedTexts.Clear();
 		m_CommittedDiffError.reset();
@@ -131,6 +147,11 @@ namespace Graphite {
 		{
 			range.Stale = true;
 		}
+
+		for (auto& [key, uncommitted] : m_Uncommitted)
+		{
+			uncommitted.Stale = true;
+		}
 	}
 
 	void ReviewModel::Retry(const ReviewKey& key)
@@ -154,11 +175,19 @@ namespace Graphite {
 				}
 			}
 		}
+
+		UncommittedState* uncommitted = FindUncommitted(key);
+
+		if (uncommitted != nullptr)
+		{
+			uncommitted->Stale = true;
+		}
 	}
 
 	void ReviewModel::Forget(const ReviewKey& key)
 	{
 		m_Ranges.erase(key);
+		m_Uncommitted.erase(key);
 	}
 
 	void ReviewModel::RequestCommittedDiff(const RangeEnds& ends)
@@ -259,5 +288,200 @@ namespace Graphite {
 	Core::Ref<const FileTexts> ReviewModel::GetCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file) const
 	{
 		return m_CommittedTexts.Get(TextsKey{.Ends = ends, .Path = ShownPath(file)});
+	}
+
+	ReviewModel::UncommittedState* ReviewModel::FindUncommitted(const ReviewKey& key)
+	{
+		for (auto& [heldKey, uncommitted] : m_Uncommitted)
+		{
+			if (heldKey == key)
+			{
+				return &uncommitted;
+			}
+		}
+
+		return nullptr;
+	}
+
+	const ReviewModel::UncommittedState* ReviewModel::FindUncommitted(const ReviewKey& key) const
+	{
+		for (const auto& [heldKey, uncommitted] : m_Uncommitted)
+		{
+			if (heldKey == key)
+			{
+				return &uncommitted;
+			}
+		}
+
+		return nullptr;
+	}
+
+	ReviewModel::UncommittedState* ReviewModel::FindUncommittedOf(const ReviewKey& key, std::uint64_t incarnation)
+	{
+		UncommittedState* uncommitted = FindUncommitted(key);
+
+		if (uncommitted == nullptr || uncommitted->Incarnation != incarnation)
+		{
+			return nullptr;
+		}
+
+		return uncommitted;
+	}
+
+	void ReviewModel::RequestUncommitted(const ReviewKey& key, const std::filesystem::path& worktree)
+	{
+		UncommittedState& uncommitted = m_Uncommitted[key];
+
+		const bool watchingAnotherWorktree = uncommitted.Incarnation != 0 && uncommitted.Worktree != worktree;
+
+		if (watchingAnotherWorktree)
+		{
+			uncommitted = UncommittedState{};
+		}
+
+		if (uncommitted.Incarnation == 0)
+		{
+			uncommitted.Incarnation = ++m_NextIncarnation;
+			uncommitted.Worktree = worktree;
+			uncommitted.Watch = m_Watch(worktree);
+		}
+
+		const bool answeredAndFresh = uncommitted.Asked && !uncommitted.Stale;
+
+		if (uncommitted.Diff.IsInFlight() || answeredAndFresh)
+		{
+			return;
+		}
+
+		uncommitted.Asked = true;
+		uncommitted.Stale = false;
+
+		const std::uint64_t generation = uncommitted.Diff.Begin();
+		const std::uint64_t incarnation = uncommitted.Incarnation;
+
+		m_Submit([this, key, worktree, generation, incarnation]() {
+			Core::Result<Core::Diff> answer = m_Port.QueryWorktreeDiff(worktree);
+
+			m_Inbox.Post([this, key, generation, incarnation, answer = std::move(answer)]() mutable {
+				LandUncommitted(key, incarnation, generation, std::move(answer));
+			});
+		});
+	}
+
+	void ReviewModel::LandUncommitted(const ReviewKey& key, std::uint64_t incarnation, std::uint64_t generation,
+									  Core::Result<Core::Diff> answer)
+	{
+		UncommittedState* uncommitted = FindUncommittedOf(key, incarnation);
+
+		if (uncommitted == nullptr)
+		{
+			return;
+		}
+
+		uncommitted->Diff.Land(generation, std::move(answer));
+	}
+
+	Core::Ref<const Core::Diff> ReviewModel::GetUncommitted(const ReviewKey& key) const
+	{
+		const UncommittedState* uncommitted = FindUncommitted(key);
+		return uncommitted == nullptr ? nullptr : uncommitted->Diff.Get();
+	}
+
+	const Core::Error* ReviewModel::GetUncommittedError(const ReviewKey& key) const
+	{
+		const UncommittedState* uncommitted = FindUncommitted(key);
+
+		if (uncommitted == nullptr || !uncommitted->Diff.GetError().has_value())
+		{
+			return nullptr;
+		}
+
+		return &*uncommitted->Diff.GetError();
+	}
+
+	bool ReviewModel::IsUncommittedLoading(const ReviewKey& key) const
+	{
+		const UncommittedState* uncommitted = FindUncommitted(key);
+		return uncommitted != nullptr && uncommitted->Diff.IsInFlight();
+	}
+
+	void ReviewModel::RequestUncommittedTexts(const ReviewKey& key, const Core::FileDiff& file)
+	{
+		UncommittedState* uncommitted = FindUncommitted(key);
+
+		if (uncommitted == nullptr || file.IsBinary || uncommitted->Diff.Get() == nullptr)
+		{
+			return;
+		}
+
+		const std::filesystem::path& shownPath = ShownPath(file);
+		const std::uint64_t diffAnswer = uncommitted->Diff.GetApplied();
+
+		const bool askedForThisDiff = uncommitted->TextsRequested != 0 && uncommitted->TextsPath == shownPath &&
+									  uncommitted->TextsForDiff == diffAnswer;
+		const bool textsInFlight = uncommitted->TextsRequested != uncommitted->TextsApplied;
+
+		if (askedForThisDiff || textsInFlight)
+		{
+			return;
+		}
+
+		uncommitted->TextsPath = shownPath;
+		uncommitted->TextsForDiff = diffAnswer;
+		uncommitted->TextsRequested = ++m_NextTextsGeneration;
+
+		const std::uint64_t generation = uncommitted->TextsRequested;
+		const std::uint64_t incarnation = uncommitted->Incarnation;
+
+		m_Submit([this, key, incarnation, generation, worktree = uncommitted->Worktree, oldPath = file.OldPath,
+				  newPath = file.NewPath]() {
+			Core::Result<FileTexts> answer = m_Port.ReadWorktreeTexts(worktree, oldPath, newPath);
+
+			// Coloured here, on the worker: a C# side is a whole-file parse with no budget.
+			if (answer.HasValue())
+			{
+				FileTexts& texts = answer.GetValue();
+				texts.Tokens = ColourSides(texts, oldPath, newPath);
+			}
+
+			m_Inbox.Post([this, key, incarnation, generation, answer = std::move(answer)]() mutable {
+				LandUncommittedTexts(key, incarnation, generation, std::move(answer));
+			});
+		});
+	}
+
+	void ReviewModel::LandUncommittedTexts(const ReviewKey& key, std::uint64_t incarnation, std::uint64_t generation,
+										   Core::Result<FileTexts> answer)
+	{
+		UncommittedState* uncommitted = FindUncommittedOf(key, incarnation);
+
+		if (uncommitted == nullptr || generation != uncommitted->TextsRequested)
+		{
+			return;
+		}
+
+		uncommitted->TextsApplied = generation;
+		uncommitted->Texts = answer.HasValue() ? Core::CreateRef<const FileTexts>(std::move(answer).GetValue()) : nullptr;
+	}
+
+	Core::Ref<const FileTexts> ReviewModel::GetUncommittedTexts(const ReviewKey& key, const Core::FileDiff& file) const
+	{
+		const UncommittedState* uncommitted = FindUncommitted(key);
+
+		if (uncommitted == nullptr)
+		{
+			return nullptr;
+		}
+
+		const bool forThisFile = uncommitted->TextsPath == ShownPath(file);
+		const bool forThisDiff = uncommitted->TextsForDiff == uncommitted->Diff.GetApplied();
+		const bool landed = uncommitted->TextsApplied == uncommitted->TextsRequested;
+
+		return forThisFile && forThisDiff && landed ? uncommitted->Texts : nullptr;
+	}
+
+	void ReviewModel::StopUncommitted(const ReviewKey& key)
+	{
+		m_Uncommitted.erase(key);
 	}
 }
