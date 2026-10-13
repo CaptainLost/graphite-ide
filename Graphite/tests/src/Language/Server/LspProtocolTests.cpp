@@ -100,6 +100,31 @@ TEST_CASE("A semantic token legend maps the server's own indices onto what this 
 	CHECK(legend[6] == Graphite::SemanticKind::Member); // property is a member
 }
 
+// Roslyn and csharp-ls say "constant" and "event" where clangd has no such kind, Roslyn
+// "recordClass" and "extensionMethod", OmniSharp "fieldName", "delegateName" and
+// "extensionMethodName". Each must colour as the kind it means.
+TEST_CASE("Token names only the C# servers use colour as the kinds they mean")
+{
+	const auto legend = Graphite::ParseSemanticLegend(nlohmann::json::parse(
+		R"({"capabilities":{"semanticTokensProvider":{"legend":{"tokenTypes":
+			 ["field","fieldName","constant","constantName","event",
+			  "extensionMethod","extensionMethodName",
+			  "recordClass","recordStruct","delegate","delegateName"]}}}})"));
+
+	REQUIRE(legend.size() == 11);
+	CHECK(legend[0] == Graphite::SemanticKind::Member);
+	CHECK(legend[1] == Graphite::SemanticKind::Member);
+	CHECK(legend[2] == Graphite::SemanticKind::Member);
+	CHECK(legend[3] == Graphite::SemanticKind::Member);
+	CHECK(legend[4] == Graphite::SemanticKind::Member);
+	CHECK(legend[5] == Graphite::SemanticKind::Function);
+	CHECK(legend[6] == Graphite::SemanticKind::Function);
+	CHECK(legend[7] == Graphite::SemanticKind::Type);
+	CHECK(legend[8] == Graphite::SemanticKind::Type);
+	CHECK(legend[9] == Graphite::SemanticKind::Type);
+	CHECK(legend[10] == Graphite::SemanticKind::Type);
+}
+
 TEST_CASE("A server that offers no semantic tokens yields an empty legend rather than a wrong one")
 {
 	CHECK(Graphite::ParseSemanticLegend(nlohmann::json::parse(R"({"capabilities":{}})")).empty());

@@ -6,8 +6,10 @@
 #include "Language/Server/ServerLaunch.h"
 #include "FakeLanguageServer.h"
 #include "LiveInstalls.h"
+#include "LspMessages.h"
 #include "TempDirectory.h"
 
+#include <algorithm>
 #include <chrono>
 #include <fstream>
 #include <ostream>
@@ -1397,4 +1399,24 @@ TEST_CASE("A client describes what it runs as its launch does")
 	Graphite::LspClient client = OfflineWith(launch, temp.GetPath());
 
 	CHECK(StatusOf(client).Detail == "C:\\dotnet\\dotnet.exe C:\\servers\\csharp-ls\\CSharpLanguageServer.dll");
+}
+
+TEST_CASE("The handshake declares every token name this editor colours with the C# servers' own among them")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+
+	const std::vector<std::string> sent = client.TakeSent();
+	REQUIRE(sent.size() == 1);
+
+	nlohmann::json body = BodyOf(sent[0]);
+	const nlohmann::json& declared = body["params"]["capabilities"]["textDocument"]["semanticTokens"]["tokenTypes"];
+	REQUIRE(declared.is_array());
+
+	for (const char* name : {"field", "fieldName", "constant", "constantName", "event", "extensionMethod",
+							 "extensionMethodName", "recordClass", "recordStruct", "delegate", "delegateName"})
+	{
+		CAPTURE(name);
+		CHECK(std::find(declared.begin(), declared.end(), nlohmann::json(name)) != declared.end());
+	}
 }

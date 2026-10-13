@@ -143,7 +143,9 @@ namespace Graphite {
 			capabilities["textDocument"]["semanticTokens"]["tokenTypes"] = nlohmann::json::array(
 				{"namespace", "type", "class", "enum", "interface", "struct", "typeParameter",
 				 "concept", "parameter", "variable", "property", "enumMember", "function",
-				 "method", "macro"});
+				 "method", "macro", "event", "field", "fieldName", "constant", "constantName",
+				 "extensionMethod", "extensionMethodName", "recordClass", "recordStruct",
+				 "delegate", "delegateName"});
 			capabilities["textDocument"]["semanticTokens"]["tokenModifiers"] = nlohmann::json::array();
 			// Markdown first: clangd's markdown reply is the one ParseClangdHover reads into
 			// fields.

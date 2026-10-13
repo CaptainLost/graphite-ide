@@ -460,6 +460,11 @@ namespace Graphite {
 		// The protocol's own token-type names, mapped onto the far smaller set this editor
 		// colours. Anything unlisted is Other, which leaves the lexer's colour standing — the
 		// right answer for a name whose kind makes no visible difference.
+		//
+		// The C# servers name some kinds their own way: Roslyn and csharp-ls say "constant" and
+		// "event", Roslyn "recordClass" and "extensionMethod", OmniSharp "fieldName",
+		// "delegateName" and "extensionMethodName". Each sits beside the name it means, so a field
+		// reads as a member whichever server named it.
 		SemanticKind KindForTokenType(std::string_view name)
 		{
 			if (name == "namespace")
@@ -471,12 +476,15 @@ namespace Graphite {
 			// and concept where another server might send only "type", and a reader wants them
 			// coloured alike regardless.
 			if (name == "type" || name == "class" || name == "enum" || name == "struct" ||
-				name == "interface" || name == "typeParameter" || name == "concept")
+				name == "interface" || name == "typeParameter" || name == "concept" ||
+				name == "recordClass" || name == "recordStruct" || name == "delegate" ||
+				name == "delegateName")
 			{
 				return SemanticKind::Type;
 			}
 
-			if (name == "function" || name == "method")
+			if (name == "function" || name == "method" || name == "extensionMethod" ||
+				name == "extensionMethodName")
 			{
 				return SemanticKind::Function;
 			}
@@ -486,7 +494,8 @@ namespace Graphite {
 				return SemanticKind::Macro;
 			}
 
-			if (name == "property" || name == "field" || name == "enumMember")
+			if (name == "property" || name == "field" || name == "fieldName" || name == "constant" ||
+				name == "constantName" || name == "enumMember" || name == "event")
 			{
 				return SemanticKind::Member;
 			}
