@@ -21,7 +21,7 @@ namespace Graphite {
 		std::string Label;
 		std::string Branch;
 
-		// Absent while HEAD is detached: the tab asks for one.
+		// Absent while HEAD is detached: there is no default base to review against.
 		std::optional<std::string> Base;
 	};
 

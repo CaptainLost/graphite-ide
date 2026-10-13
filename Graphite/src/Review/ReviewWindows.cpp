@@ -102,6 +102,17 @@ namespace Graphite {
 
 		m_Tabs.clear();
 		m_PendingRenames.clear();
+
+		// A yes after the folder changed would end a same-named branch's session in the new folder.
+		if (m_EndQuestion.IsAsked())
+		{
+			m_EndQuestion.Withdraw();
+		}
+	}
+
+	bool ReviewWindows::IsAskingToEnd() const
+	{
+		return m_EndQuestion.IsAsked();
 	}
 
 	std::vector<ReviewTabState> ReviewWindows::CaptureState() const
@@ -459,8 +470,9 @@ namespace Graphite {
 		DialogLayout::MutedText("Ending a review cannot be undone.");
 		DialogLayout::Gap();
 
+		const DialogLayout::ButtonSpec noSafeChoice;
 		const DialogLayout::Choice choice =
-			DialogLayout::ButtonRow({}, {.Label = "End review"}, kErrorTextColour);
+			DialogLayout::ButtonRow(noSafeChoice, {.Label = "End review"}, input.Danger);
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{

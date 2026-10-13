@@ -95,10 +95,10 @@ namespace Graphite {
 				return std::nullopt;
 			}
 
-			const bool hiddenByDefault = false;
+			const bool committedByDefault = false;
 			review.Selected = Core::FromUtf8(file.Get(ReviewTabKey(index, "selected")));
 			review.SelectedIsUncommitted =
-				ReadFlag(file.Get(ReviewTabKey(index, "selectedUncommitted")), hiddenByDefault);
+				ReadFlag(file.Get(ReviewTabKey(index, "selectedUncommitted")), committedByDefault);
 
 			return review;
 		}

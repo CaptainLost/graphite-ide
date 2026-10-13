@@ -1202,6 +1202,7 @@ namespace Graphite {
 
 		m_ReviewWindows.Render(ReviewRenderInput{.Model = m_Reviews,
 												 .Sessions = m_ReviewStore.GetSessions(),
+												 .Danger = DangerColourOf(m_ActiveScheme.Get()),
 												 .Palette = reviewPalette,
 												 .Syntax = reviewSyntax,
 												 .Selection = ReadEditorPalette(m_ActiveScheme.Get()).Selection,

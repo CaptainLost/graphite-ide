@@ -47,6 +47,7 @@ namespace Graphite {
 	{
 		ReviewModel& Model;
 		ReviewSessions& Sessions;
+		ImVec4 Danger;
 		const GitPalette& Palette;
 		const SyntaxPalette& Syntax;
 		ImU32 Selection = 0;
@@ -95,6 +96,8 @@ namespace Graphite {
 		// Asks before ending the branch's review. A yes forgets what the model held for it, ends its
 		// session - marks and all - and closes its tab.
 		void AskToEnd(const std::string& branch);
+
+		bool IsAskingToEnd() const;
 
 		void Render(const ReviewRenderInput& input);
 

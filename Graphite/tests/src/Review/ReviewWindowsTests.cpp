@@ -64,8 +64,7 @@ TEST_CASE("Opening a branch already under review raises its tab rather than addi
 TEST_CASE("Open review tabs come back as they were captured")
 {
 	ReviewSessions sessions = SessionsOf({kSide});
-	Graphite::SessionSettings withUncommitted;
-	withUncommitted.IncludeUncommitted = true;
+	const Graphite::SessionSettings withUncommitted{.IncludeUncommitted = true};
 	sessions.SetSettings(kSide, withUncommitted);
 	Graphite::ModalGate modals;
 	ReviewWindows before{modals};
@@ -213,6 +212,37 @@ TEST_CASE("A tab follows its session's renamed base, forgets the range it held a
 	CHECK(windows.IsOpen(kSide));
 	CHECK(model.GetRange(oldKey) == nullptr);
 	CHECK(windows.CaptureState().front().Selected == "src/a.cpp");
+}
+
+TEST_CASE("A tab the reader opened stays when its branch is missing so it can say so")
+{
+	FakeReviewPort port;
+	DeferredJobs jobs;
+	Graphite::ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	const ReviewSessions sessions = SessionsOf({"refs/heads/gone"});
+	Graphite::ModalGate modals;
+	ReviewWindows windows{modals};
+	windows.Open("refs/heads/gone");
+	windows.FollowSessions(sessions, model);
+
+	static_cast<void>(windows.FollowBranches(kMainAndSide, model)); // no rename was noted
+
+	CHECK(windows.IsOpen("refs/heads/gone"));
+}
+
+TEST_CASE("Closing every tab withdraws a question about ending a review")
+{
+	FakeReviewPort port;
+	DeferredJobs jobs;
+	Graphite::ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	Graphite::ModalGate modals;
+	ReviewWindows windows{modals};
+	windows.AskToEnd(kSide);
+	REQUIRE(windows.IsAskingToEnd());
+
+	windows.CloseAll(model);
+
+	CHECK_FALSE(windows.IsAskingToEnd());
 }
 
 TEST_CASE("Closing every tab forgets what the model held for them")
