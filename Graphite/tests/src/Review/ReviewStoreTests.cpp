@@ -4,8 +4,13 @@
 
 #include "TempDirectory.h"
 
+#include "Core/App/Redraw.h"
+
+#include <chrono>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+#include <optional>
 #include <string>
 
 using Graphite::ReviewGroup;
@@ -30,6 +35,33 @@ namespace {
 	void Wait(ReviewStore& store, float seconds)
 	{
 		store.Update(Core::Timestep{seconds});
+	}
+
+	void WriteReviewsFile(const std::filesystem::path& root, const std::string& text)
+	{
+		std::filesystem::create_directories(ReviewStore::FileFor(root).parent_path());
+		std::ofstream{ReviewStore::FileFor(root), std::ios::binary} << text;
+	}
+
+	std::filesystem::path BackupFor(const std::filesystem::path& root)
+	{
+		std::filesystem::path backup = ReviewStore::FileFor(root);
+		backup += ".bak";
+		return backup;
+	}
+
+	std::string ReadWhole(const std::filesystem::path& path)
+	{
+		std::ifstream file{path, std::ios::binary};
+		const std::istreambuf_iterator<char> endOfFile;
+		return std::string{std::istreambuf_iterator<char>{file}, endOfFile};
+	}
+
+	bool ReopenedHoldsTheMark(const std::filesystem::path& root)
+	{
+		ReviewStore reopened;
+		reopened.Open(root);
+		return reopened.GetMarks().StateOf(kBranch, ReviewGroup::Commits, MarkedFile()) == ViewedState::Viewed;
 	}
 }
 
@@ -122,4 +154,107 @@ TEST_CASE("A malformed reviews file opens with no marks")
 	store.Open(folder.GetPath());
 
 	CHECK(store.GetMarks().GetAll().empty());
+}
+
+TEST_CASE("A malformed reviews file is copied aside before the first mark is written over it")
+{
+	TempDirectory folder;
+	const std::string malformed = "{ not json";
+	WriteReviewsFile(folder.GetPath(), malformed);
+	ReviewStore store;
+	store.Open(folder.GetPath());
+
+	store.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	store.Flush();
+
+	REQUIRE(std::filesystem::exists(BackupFor(folder.GetPath())));
+	CHECK(ReadWhole(BackupFor(folder.GetPath())) == malformed);
+	CHECK(ReopenedHoldsTheMark(folder.GetPath()));
+}
+
+TEST_CASE("A reviews file of another version is copied aside before the first mark is written over it")
+{
+	TempDirectory folder;
+	const std::string otherVersion = R"({"version": 2, "branches": {"refs/heads/side": [{"note": "kept"}]}})";
+	WriteReviewsFile(folder.GetPath(), otherVersion);
+	ReviewStore store;
+	store.Open(folder.GetPath());
+
+	store.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	store.Flush();
+
+	REQUIRE(std::filesystem::exists(BackupFor(folder.GetPath())));
+	CHECK(ReadWhole(BackupFor(folder.GetPath())) == otherVersion);
+	CHECK(ReopenedHoldsTheMark(folder.GetPath()));
+}
+
+TEST_CASE("A readable reviews file is written over without a copy")
+{
+	TempDirectory folder;
+	ReviewStore first;
+	first.Open(folder.GetPath());
+	first.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	first.Close();
+
+	ReviewStore second;
+	second.Open(folder.GetPath());
+	second.GetMarks().Unmark(kBranch, ReviewGroup::Commits, MarkedFile());
+	second.Close();
+
+	CHECK_FALSE(std::filesystem::exists(BackupFor(folder.GetPath())));
+	CHECK_FALSE(ReopenedHoldsTheMark(folder.GetPath()));
+}
+
+TEST_CASE("A reviews file that cannot be read is left as it is after a mark and a flush")
+{
+	TempDirectory folder;
+	const std::filesystem::path unreadable = ReviewStore::FileFor(folder.GetPath());
+	std::filesystem::create_directories(unreadable);
+	std::ofstream{unreadable / "inside.txt"} << "kept";
+	ReviewStore store;
+	store.Open(folder.GetPath());
+
+	store.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	store.Flush();
+	store.Close();
+
+	CHECK(std::filesystem::is_directory(unreadable));
+	CHECK(ReadWhole(unreadable / "inside.txt") == "kept");
+	CHECK_FALSE(std::filesystem::exists(BackupFor(folder.GetPath())));
+}
+
+TEST_CASE("A reviews file that could not be read is not written for the rest of the session")
+{
+	TempDirectory folder;
+	const std::filesystem::path unreadable = ReviewStore::FileFor(folder.GetPath());
+	std::filesystem::create_directories(unreadable);
+	ReviewStore store;
+	store.Open(folder.GetPath());
+	std::filesystem::remove(unreadable);
+
+	store.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	Wait(store, 0.0f);
+	Wait(store, ReviewStore::kSaveDelaySeconds * 2.0f);
+	store.Flush();
+	store.Close();
+
+	CHECK_FALSE(std::filesystem::exists(unreadable));
+}
+
+TEST_CASE("Marks waiting for their save ask for the frame the save falls due on")
+{
+	TempDirectory folder;
+	ReviewStore store;
+	store.Open(folder.GetPath());
+	store.GetMarks().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
+	Wait(store, 0.0f);
+	Core::Redraw::TakeDeadline();
+
+	const float waited = 0.5f;
+	Wait(store, waited);
+
+	const std::optional<Core::Redraw::Clock::time_point> deadline = Core::Redraw::TakeDeadline();
+	REQUIRE(deadline.has_value());
+	CHECK(*deadline <= Core::Redraw::Clock::now() +
+						   std::chrono::duration<double>(ReviewStore::kSaveDelaySeconds - waited));
 }

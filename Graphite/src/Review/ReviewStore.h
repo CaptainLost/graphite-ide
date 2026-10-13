@@ -16,6 +16,10 @@ namespace Graphite {
 	//
 	// Written once the marks have stood unchanged for kSaveDelaySeconds, so a crash loses at most
 	// that much and ticking through a list does not write a file per click, and at once on Close.
+	//
+	// A file that holds marks this build could not take in is never simply written over: one that
+	// does not parse, or is of another version, is first copied to `reviews.json.bak`, and one that
+	// could not be read at all is not written until the folder is opened again.
 	class ReviewStore : Core::NonCopyable
 	{
 	public:
@@ -23,7 +27,7 @@ namespace Graphite {
 
 		static std::filesystem::path FileFor(const std::filesystem::path& root);
 
-		// A missing or unreadable file leaves no marks.
+		// A missing, unreadable, malformed or other-version file leaves no marks.
 		void Open(std::filesystem::path root);
 
 		// Writes what is unsaved, then forgets the folder and its marks.
@@ -41,8 +45,29 @@ namespace Graphite {
 		const ViewedMarks& GetMarks() const { return m_Marks; }
 
 	private:
+		// What may be done to the file Open found.
+		enum class FileOnOpen
+		{
+			// Absent, or read: written over as it is.
+			Writable,
+
+			// Not parsed, or of another version: copied aside before the first write over it.
+			CopyAsideFirst,
+
+			// There but not readable: what it holds is unknown, so it is never written.
+			LeftAlone
+		};
+
+		// False, saying so once, when the file Open could not take in is still there and could not
+		// be copied: it must not be written over then.
+		bool CopyAsideBeforeFirstWrite(const std::filesystem::path& file);
+
 		std::filesystem::path m_Root;
 		ViewedMarks m_Marks;
+
+		FileOnOpen m_FileOnOpen = FileOnOpen::Writable;
+		MarksText m_TextOnOpen = MarksText::Read;
+		bool m_CopyFailureLogged = false;
 
 		std::uint64_t m_SavedVersion = 0;
 		std::uint64_t m_SeenVersion = 0;

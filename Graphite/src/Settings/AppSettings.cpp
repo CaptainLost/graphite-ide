@@ -2,10 +2,10 @@
 
 #include "Settings/InterfaceScale.h"
 #include "Settings/JsonText.h"
-#include "Settings/SettingsBackup.h"
 #include "Settings/SettingsVersion.h"
 #include "Settings/UserDirectories.h"
 
+#include "Persistence/FileBackup.h"
 #include "Persistence/StateCodec.h"
 
 #include "Core/Base/Ascii.h"
@@ -221,7 +221,7 @@ namespace Graphite {
 
 		// What a file that does not parse held is in nothing written below, so it is set aside
 		// first. Without that copy the file is left alone, unwritten, and tried again next time.
-		if (onDisk.IsMalformed() && !BackUpMalformedSettings(m_File))
+		if (onDisk.IsMalformed() && !BackUpBeforeWritingOver(m_File, "does not parse"))
 		{
 			if (!m_WriteFailed)
 			{

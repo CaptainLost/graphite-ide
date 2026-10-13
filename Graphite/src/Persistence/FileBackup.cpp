@@ -1,4 +1,4 @@
-#include "Settings/SettingsBackup.h"
+#include "Persistence/FileBackup.h"
 
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
@@ -7,7 +7,7 @@
 
 namespace Graphite {
 
-	bool BackUpMalformedSettings(const std::filesystem::path& file)
+	bool BackUpBeforeWritingOver(const std::filesystem::path& file, std::string_view why)
 	{
 		std::filesystem::path backup = file;
 		backup += ".bak";
@@ -20,8 +20,7 @@ namespace Graphite {
 			return false;
 		}
 
-		APP_WARN("'{}' does not parse; kept it as '{}' before writing over it", Core::ToUtf8(file),
-				 Core::ToUtf8(backup));
+		APP_WARN("'{}' {}; kept it as '{}' before writing over it", Core::ToUtf8(file), why, Core::ToUtf8(backup));
 		return true;
 	}
 }

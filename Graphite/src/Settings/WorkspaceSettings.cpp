@@ -1,7 +1,6 @@
 #include "Settings/WorkspaceSettings.h"
 
-#include "Settings/SettingsBackup.h"
-
+#include "Persistence/FileBackup.h"
 #include "Persistence/StateCodec.h"
 
 #include "Core/Base/JsonFile.h"
@@ -71,7 +70,7 @@ namespace Graphite {
 
 		Core::JsonFile file = Core::JsonFile::Load(GetFilePath());
 
-		if (file.IsMalformed() && !BackUpMalformedSettings(GetFilePath()))
+		if (file.IsMalformed() && !BackUpBeforeWritingOver(GetFilePath(), "does not parse"))
 		{
 			APP_WARN("Not writing '{}': it does not parse and could not be copied aside", Core::ToUtf8(GetFilePath()));
 			return;
