@@ -5,7 +5,9 @@
 #include "Language/Install/InstalledServer.h"
 #include "Language/Server/DotnetRuntime.h"
 #include "Language/Server/LanguageServices.h"
+#include "Language/Server/LspProtocol.h"
 #include "Language/Server/ServerChoice.h"
+#include "LspMessages.h"
 #include "TempDirectory.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -2559,4 +2561,84 @@ TEST_CASE("Giving the services a directory for temporary files clears what an en
 	}
 
 	CHECK_FALSE(std::filesystem::exists(leftover.parent_path()));
+}
+
+TEST_CASE("A restarted server pulls the documents shown in tabs and not the ones only consulted")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+	const std::filesystem::path shown = temp.GetPath() / "shown.cpp";
+	const std::filesystem::path consulted = temp.GetPath() / "consulted.cpp";
+
+	StartWithSpy(services, temp, spy, clock, shown);
+	services.EnsureStarted(consulted, Graphite::LanguageId::Cpp);
+	services.OpenDocument(shown, Graphite::LanguageId::Cpp, "int shown;\n", Graphite::DocumentRole::Shown);
+	services.OpenDocument(consulted, Graphite::LanguageId::Cpp, "int consulted;\n");
+
+	spy.Kill();
+	services.Poll();
+	REQUIRE(spy.Made == 2);
+
+	spy.Latest->Deliver(std::string{kHandshakeOfferingPulls});
+	const std::vector<nlohmann::json> pulls = MessagesFor(spy.Latest->TakeSent(), "textDocument/diagnostic");
+
+	REQUIRE(pulls.size() == 1);
+	CHECK(UriOf(pulls[0]) == Graphite::ToFileUri(shown));
+}
+
+TEST_CASE("A document opened in a tab before any server was chosen is pulled by the server chosen later")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	services.SetClock(clock.Get());
+	services.SetClientFactory(spy.Get());
+	services.SetChoiceProvider(ChooseNothing);
+
+	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
+	services.OpenDocument(source, Graphite::LanguageId::Cpp, "int first;\n", Graphite::DocumentRole::Shown);
+
+	temp.MakeFile("stand-in-clangd.exe", "");
+	UseClangdAt(services, temp.GetPath() / "stand-in-clangd.exe");
+	services.Reconfigure(Graphite::LanguageId::Cpp);
+	REQUIRE(spy.Made == 1);
+
+	spy.Latest->Deliver(std::string{kHandshakeOfferingPulls});
+	const std::vector<nlohmann::json> pulls = MessagesFor(spy.Latest->TakeSent(), "textDocument/diagnostic");
+
+	REQUIRE(pulls.size() == 1);
+	CHECK(UriOf(pulls[0]) == Graphite::ToFileUri(source));
+}
+
+TEST_CASE("A pull's answer comes out of TakeRecolour as the path the document was opened under")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	StartWithSpy(services, temp, spy, clock, source);
+	services.OpenDocument(source, Graphite::LanguageId::Cpp, "int x;\n", Graphite::DocumentRole::Shown);
+	spy.Latest->Deliver(std::string{kHandshakeOfferingPulls});
+
+	const std::vector<nlohmann::json> pulls = MessagesFor(spy.Latest->TakeSent(), "textDocument/diagnostic");
+	REQUIRE(pulls.size() == 1);
+	spy.Latest->Deliver(FullReport(IdOf(pulls[0]), ""));
+
+	services.Poll();
+
+	std::vector<std::filesystem::path> recolour;
+	services.TakeRecolour(recolour);
+	REQUIRE(recolour.size() == 1);
+	CHECK(recolour[0] == source);
+
+	recolour.clear();
+	services.TakeRecolour(recolour);
+	CHECK(recolour.empty());
 }

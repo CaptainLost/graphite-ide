@@ -297,6 +297,10 @@ namespace Graphite {
 		// warnings servers have shown since the last call, moved out.
 		void TakeMessages(std::vector<ServerMessage>& messages);
 
+		// UI thread only, once a frame, like TakeDiagnostics: the documents whose colours should be
+		// asked for again because their server has since answered a diagnostics pull for each.
+		void TakeRecolour(std::vector<std::filesystem::path>& paths);
+
 		void Cancel(Ticket ticket);
 
 		// Forwarded to the matching client and remembered here, so a restart can tell it again —
@@ -308,8 +312,12 @@ namespace Graphite {
 		// reference: the caller has just materialised the whole buffer for this call and keeps
 		// nothing, so a reference here only bought a second copy of the file on the UI thread —
 		// once per keystroke, since a full-text didChange goes out on every edited frame.
+		//
+		// A Shown document - one in an editor tab - has its diagnostics pulled from a server that
+		// offers pulls, and keeps that role through a restart and a change of server; everything
+		// else opens Consulted.
 		void OpenDocument(const std::filesystem::path& path, LanguageId language,
-						  std::string text);
+						  std::string text, DocumentRole role = DocumentRole::Consulted);
 		void ChangeDocument(const std::filesystem::path& path, LanguageId language,
 							std::string text);
 
@@ -390,6 +398,7 @@ namespace Graphite {
 			{
 				std::string Text;
 				DocumentVersion Version;
+				DocumentRole Role = DocumentRole::Consulted;
 			};
 
 			std::map<std::filesystem::path, SentDocument> OpenDocuments;
@@ -424,6 +433,7 @@ namespace Graphite {
 		{
 			std::filesystem::path Path;
 			std::string Text;
+			DocumentRole Role = DocumentRole::Consulted;
 		};
 
 		// A document of a language that lists servers but has none chosen, kept so the server chosen
@@ -432,6 +442,7 @@ namespace Graphite {
 		{
 			LanguageId Language = LanguageId::PlainText;
 			std::string Text;
+			DocumentRole Role = DocumentRole::Consulted;
 		};
 
 		std::map<std::filesystem::path, ParkedDocument> m_Parked;
@@ -597,6 +608,7 @@ namespace Graphite {
 		std::uint64_t m_NextTicket = 1;
 		std::vector<Answer> m_Answers;
 		DiagnosticsUpdate m_Diagnostics;
+		std::vector<std::filesystem::path> m_Recolour;
 		std::vector<ServerMessage> m_Messages;
 
 		// Last, deliberately: members are destroyed in reverse order of declaration, so this one

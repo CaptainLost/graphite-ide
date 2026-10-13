@@ -202,7 +202,7 @@ namespace Graphite {
 		for (HeldDocument& document : held)
 		{
 			EnsureStarted(document.Path, language);
-			OpenDocument(document.Path, language, std::move(document.Text));
+			OpenDocument(document.Path, language, std::move(document.Text), document.Role);
 		}
 
 		if (HasChosenServer(language))
@@ -265,7 +265,7 @@ namespace Graphite {
 				continue;
 			}
 
-			taken.push_back(HeldDocument{.Path = parked->first, .Text = std::move(parked->second.Text)});
+			taken.push_back(HeldDocument{.Path = parked->first, .Text = std::move(parked->second.Text), .Role = parked->second.Role});
 			parked = m_Parked.erase(parked);
 		}
 
@@ -288,7 +288,7 @@ namespace Graphite {
 
 			for (auto& [path, document] : server.OpenDocuments)
 			{
-				held.push_back(HeldDocument{.Path = path, .Text = std::move(document.Text)});
+				held.push_back(HeldDocument{.Path = path, .Text = std::move(document.Text), .Role = document.Role});
 				m_DocumentKeys.erase(path);
 
 				if (server.Client)
@@ -762,6 +762,12 @@ namespace Graphite {
 		m_Messages.clear();
 	}
 
+	void LanguageServices::TakeRecolour(std::vector<std::filesystem::path>& paths)
+	{
+		paths.insert(paths.end(), std::make_move_iterator(m_Recolour.begin()), std::make_move_iterator(m_Recolour.end()));
+		m_Recolour.clear();
+	}
+
 	void LanguageServices::TakeDiagnostics(DiagnosticsUpdate& update)
 	{
 		update.Published.insert(update.Published.end(),
@@ -802,7 +808,7 @@ namespace Graphite {
 	}
 
 	void LanguageServices::OpenDocument(const std::filesystem::path& path, LanguageId language,
-										std::string text)
+										std::string text, DocumentRole role)
 	{
 		Key key;
 
@@ -810,7 +816,7 @@ namespace Graphite {
 		{
 			if (LanguageHasServers(language))
 			{
-				m_Parked[path] = ParkedDocument{.Language = language, .Text = std::move(text)};
+				m_Parked[path] = ParkedDocument{.Language = language, .Text = std::move(text), .Role = role};
 			}
 
 			return;
@@ -836,6 +842,7 @@ namespace Graphite {
 		// just died.
 		ManagedServer::SentDocument& kept = server.OpenDocuments[path];
 		kept.Text = std::move(text);
+		kept.Role = role;
 
 		// The kept copy, not a second one: `text` has been moved from, and the client only reads
 		// what it is given long enough to escape it into JSON.
@@ -844,7 +851,7 @@ namespace Graphite {
 			// LspClient::OpenDocument always sends and always returns a non-default version, so
 			// nothing here needs to guard against a default one - `if (server.Client)` above is
 			// what suppresses the note on a machine with no live process to send it to.
-			kept.Version = server.Client->OpenDocument(path, kept.Text);
+			kept.Version = server.Client->OpenDocument(path, kept.Text, kept.Role);
 			m_Diagnostics.Versions.push_back(DocumentVersionNote{path, kept.Version});
 		}
 	}
@@ -1068,7 +1075,7 @@ namespace Graphite {
 	{
 		for (auto& [path, document] : server.OpenDocuments)
 		{
-			document.Version = server.Client->OpenDocument(path, document.Text);
+			document.Version = server.Client->OpenDocument(path, document.Text, document.Role);
 
 			m_Diagnostics.Closed.push_back(path);
 			m_Diagnostics.Versions.push_back(DocumentVersionNote{path, document.Version});
@@ -1361,6 +1368,9 @@ namespace Graphite {
 
 			m_Messages.insert(m_Messages.end(), std::make_move_iterator(drained.Messages.begin()),
 							  std::make_move_iterator(drained.Messages.end()));
+
+			m_Recolour.insert(m_Recolour.end(), std::make_move_iterator(drained.Recolour.begin()),
+							  std::make_move_iterator(drained.Recolour.end()));
 
 			// A server that stays up without crashing earns the restart budget back, measured on
 			// the same clock as the backoff below. Moving between up states (indexing finishing,
