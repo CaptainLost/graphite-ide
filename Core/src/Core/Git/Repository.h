@@ -84,6 +84,11 @@ namespace Core {
 		// share no commit, which is an answer rather than a failure.
 		Result<Oid> MergeBase(const Oid& one, const Oid& other) const;
 
+		// The working directory the branch is checked out in: this repository's own, a linked
+		// worktree's, or - asked from a linked worktree - the main checkout's. Empty when none holds
+		// it; a worktree whose HEAD is detached, as during a rebase, holds no branch.
+		Result<std::optional<std::filesystem::path>> WorktreeHolding(const std::string& branchFullName) const;
+
 		// Unlike HeadCommit, answers for a repository with no commits and for a detached HEAD.
 		Result<HeadState> QueryHead() const;
 

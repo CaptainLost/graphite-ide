@@ -2,13 +2,17 @@
 
 #include "Core/Git/Repository.h"
 
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/GitHandles.h"
 #include "Core/Git/Libgit2Support.h"
 
 #include <git2.h>
 
 #include <cstring>
+#include <filesystem>
 #include <format>
+#include <memory>
+#include <optional>
 #include <string>
 
 namespace Core {
@@ -77,6 +81,43 @@ namespace Core {
 			git_strarray_dispose(&worktreeNames);
 			return worktreePath;
 		}
+
+		constexpr int kRepositoryIsLinkedWorktree = 1;
+
+		using RepositoryHandle = std::unique_ptr<git_repository, decltype(&git_repository_free)>;
+
+		// A detached or unborn HEAD has no branch's name, so it reads as holding none.
+		bool HeadIsBranch(git_repository* handle, const std::string& branchFullName)
+		{
+			ReferenceHandle head;
+
+			// The handle takes the reference only when the call's full expression ends, so it is
+			// read in a second statement, never in the same condition.
+			const int headLookupResult = git_repository_head(Out(head), handle);
+
+			return headLookupResult == 0 && branchFullName == git_reference_name(head.get());
+		}
+
+		std::optional<std::filesystem::path> MainCheckoutHolding(git_repository* linkedWorktree,
+																 const std::string& branchFullName)
+		{
+			git_repository* opened = nullptr;
+
+			if (git_repository_open(&opened, git_repository_commondir(linkedWorktree)) != 0)
+			{
+				return std::nullopt;
+			}
+
+			const RepositoryHandle mainRepository{opened, &git_repository_free};
+			const char* mainWorkingDirectory = git_repository_workdir(mainRepository.get());
+
+			if (mainWorkingDirectory == nullptr || !HeadIsBranch(mainRepository.get(), branchFullName))
+			{
+				return std::nullopt;
+			}
+
+			return FromUtf8(mainWorkingDirectory);
+		}
 	}
 
 	bool Repository::IsValidBranchName(const std::string& name)
@@ -96,6 +137,33 @@ namespace Core {
 		}
 
 		return validFlag == kBranchNameIsValid;
+	}
+
+	Result<std::optional<std::filesystem::path>> Repository::WorktreeHolding(const std::string& branchFullName) const
+	{
+		if (m_Handle == nullptr)
+		{
+			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
+
+		if (HeadIsBranch(m_Handle.get(), branchFullName))
+		{
+			return std::optional<std::filesystem::path>{m_WorkingDirectory};
+		}
+
+		const std::string linkedWorktree = LinkedWorktreeHoldingBranch(m_Handle.get(), branchFullName.c_str());
+
+		if (!linkedWorktree.empty())
+		{
+			return std::optional<std::filesystem::path>{FromUtf8(linkedWorktree)};
+		}
+
+		if (git_repository_is_worktree(m_Handle.get()) == kRepositoryIsLinkedWorktree)
+		{
+			return MainCheckoutHolding(m_Handle.get(), branchFullName);
+		}
+
+		return std::optional<std::filesystem::path>{};
 	}
 
 	Result<void> Repository::CreateBranch(const std::string& name, const Oid& from)
