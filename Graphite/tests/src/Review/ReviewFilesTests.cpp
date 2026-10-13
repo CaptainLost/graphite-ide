@@ -183,7 +183,7 @@ TEST_CASE("A selection is kept by path across a refresh")
 	const std::vector<ReviewListRow> rows = Graphite::BuildReviewRows(groups);
 
 	const std::optional<ReviewSelection> followed =
-		Graphite::FollowSelection(CommitsSelection("b.cpp"), {"a.cpp", "b.cpp"}, groups, rows);
+		Graphite::FollowSelection(CommitsSelection("b.cpp"), {"a.cpp", "b.cpp"}, groups, Graphite::FirstListedFile(groups, rows));
 
 	CHECK(followed == std::optional<ReviewSelection>{CommitsSelection("b.cpp")});
 }
@@ -195,7 +195,7 @@ TEST_CASE("A selected file that is gone gives way to the file that took its plac
 	const std::vector<ReviewListRow> rows = Graphite::BuildReviewRows(groups);
 
 	const std::optional<ReviewSelection> followed =
-		Graphite::FollowSelection(CommitsSelection("b.cpp"), {"a.cpp", "b.cpp", "c.cpp"}, groups, rows);
+		Graphite::FollowSelection(CommitsSelection("b.cpp"), {"a.cpp", "b.cpp", "c.cpp"}, groups, Graphite::FirstListedFile(groups, rows));
 
 	CHECK(followed == std::optional<ReviewSelection>{CommitsSelection("c.cpp")});
 }
@@ -206,7 +206,7 @@ TEST_CASE("With nothing selected the first file listed is")
 	const ReviewGroups groups{.Commits = &committed};
 	const std::vector<ReviewListRow> rows = Graphite::BuildReviewRows(groups);
 
-	const std::optional<ReviewSelection> followed = Graphite::FollowSelection(std::nullopt, {}, groups, rows);
+	const std::optional<ReviewSelection> followed = Graphite::FollowSelection(std::nullopt, {}, groups, Graphite::FirstListedFile(groups, rows));
 
 	CHECK(followed == std::optional<ReviewSelection>{CommitsSelection("a.cpp")});
 }
@@ -218,7 +218,7 @@ TEST_CASE("A selection in a group still loading is kept")
 	const std::vector<ReviewListRow> rows = Graphite::BuildReviewRows(groups);
 	const ReviewSelection waiting{.Group = ReviewGroup::Uncommitted, .Path = "z.cpp"};
 
-	const std::optional<ReviewSelection> followed = Graphite::FollowSelection(waiting, {}, groups, rows);
+	const std::optional<ReviewSelection> followed = Graphite::FollowSelection(waiting, {}, groups, Graphite::FirstListedFile(groups, rows));
 
 	CHECK(followed == std::optional<ReviewSelection>{waiting});
 }

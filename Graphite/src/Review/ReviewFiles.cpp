@@ -83,19 +83,6 @@ namespace Graphite {
 			}
 		}
 
-		std::optional<ReviewSelection> FirstFile(const ReviewGroups& groups, const std::vector<ReviewListRow>& rows)
-		{
-			for (const ReviewListRow& row : rows)
-			{
-				if (!row.IsHeading)
-				{
-					return ReviewSelection{.Group = row.Group, .Path = ShownPath(FileOfRow(groups, row))};
-				}
-			}
-
-			return std::nullopt;
-		}
-
 		std::vector<ReviewSelection> FileSelectionsInOrder(const ReviewGroups& groups, const std::vector<ReviewListRow>& rows)
 		{
 			std::vector<ReviewSelection> selections;
@@ -308,9 +295,22 @@ namespace Graphite {
 		return paths;
 	}
 
+	std::optional<ReviewSelection> FirstListedFile(const ReviewGroups& groups, const std::vector<ReviewListRow>& rows)
+	{
+		for (const ReviewListRow& row : rows)
+		{
+			if (!row.IsHeading)
+			{
+				return ReviewSelection{.Group = row.Group, .Path = ShownPath(FileOfRow(groups, row))};
+			}
+		}
+
+		return std::nullopt;
+	}
+
 	std::optional<ReviewSelection> FollowSelection(const std::optional<ReviewSelection>& selected,
 												   const std::vector<std::filesystem::path>& groupPathsBefore,
-												   const ReviewGroups& groups, const std::vector<ReviewListRow>& rows)
+												   const ReviewGroups& groups, const std::optional<ReviewSelection>& firstListed)
 	{
 		if (selected.has_value())
 		{
@@ -330,7 +330,7 @@ namespace Graphite {
 			}
 		}
 
-		return FirstFile(groups, rows);
+		return firstListed;
 	}
 
 	std::optional<ReviewSelection> NeighbourSelection(const std::optional<ReviewSelection>& selected,

@@ -95,7 +95,9 @@ namespace Graphite {
 	// none to take its place, the first file listed.
 	std::optional<ReviewSelection> FollowSelection(const std::optional<ReviewSelection>& selected,
 												   const std::vector<std::filesystem::path>& groupPathsBefore,
-												   const ReviewGroups& groups, const std::vector<ReviewListRow>& rows);
+												   const ReviewGroups& groups, const std::optional<ReviewSelection>& firstListed);
+
+	std::optional<ReviewSelection> FirstListedFile(const ReviewGroups& groups, const std::vector<ReviewListRow>& rows);
 
 	enum class ListStep
 	{

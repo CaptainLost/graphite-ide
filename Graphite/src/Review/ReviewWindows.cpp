@@ -340,7 +340,7 @@ namespace Graphite {
 		const std::vector<std::filesystem::path>& pathsBefore =
 			tab.Selected.has_value() ? tab.LastPaths[IndexOf(tab.Selected->Group)] : noPathsBefore;
 
-		tab.Selected = FollowSelection(tab.Selected, pathsBefore, groups, rows);
+		tab.Selected = FollowSelection(tab.Selected, pathsBefore, groups, FirstListedFile(groups, rows));
 
 		tab.LastPaths[IndexOf(ReviewGroup::Commits)] = ShownPathsByName(*review.Committed);
 		tab.LastPaths[IndexOf(ReviewGroup::Uncommitted)] =
