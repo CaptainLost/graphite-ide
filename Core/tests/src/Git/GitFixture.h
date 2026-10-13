@@ -170,6 +170,14 @@ public:
 		REQUIRE(git_repository_set_head_detached(m_Repository, &headCommitId) == 0);
 	}
 
+	// libgit2 attaches HEAD to a branch that does not exist yet without complaint, so the next
+	// Commit has no parent and starts a history of its own.
+	void StartOrphan(const std::string& name)
+	{
+		const std::string reference = "refs/heads/" + name;
+		REQUIRE(git_repository_set_head(m_Repository, reference.c_str()) == 0);
+	}
+
 	// Records two parents over the tree of the current HEAD rather than merging the two trees:
 	// the log and the graph are tested against topology, and a real three-way merge would add
 	// failure modes that belong to the branch-operations tests.

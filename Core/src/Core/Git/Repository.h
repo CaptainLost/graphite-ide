@@ -76,6 +76,14 @@ namespace Core {
 		// NotFound on an unborn HEAD, which is a repository with no commit yet rather than a broken one.
 		Result<Oid> HeadCommit() const;
 
+		// A full name such as "refs/heads/main" or "refs/remotes/origin/main". NotFound when there
+		// is no such reference, which is the ordinary answer for a branch deleted since it was listed.
+		Result<Oid> ResolveReference(const std::string& fullName) const;
+
+		// The best common ancestor, as `git merge-base` gives it. NotFound when the two histories
+		// share no commit, which is an answer rather than a failure.
+		Result<Oid> MergeBase(const Oid& one, const Oid& other) const;
+
 		// Unlike HeadCommit, answers for a repository with no commits and for a detached HEAD.
 		Result<HeadState> QueryHead() const;
 
