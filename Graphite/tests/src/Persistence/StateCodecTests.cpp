@@ -551,8 +551,6 @@ TEST_CASE("Open review tabs survive a write and a read with slashes and non-ASCI
 {
 	WorkspaceState state;
 	state.Reviews.push_back(ReviewTabState{.Branch = "refs/heads/feature/x",
-										   .Base = "refs/remotes/origin/main",
-										   .IncludeUncommitted = true,
 										   .Selected = Core::FromUtf8("\xC5\xB9r\xC3\xB3" "d\xC5\x82" "a/plik.cpp"),
 										   .SelectedIsUncommitted = true});
 	state.Reviews.push_back(ReviewTabState{.Branch = "refs/heads/side"});
@@ -561,9 +559,10 @@ TEST_CASE("Open review tabs survive a write and a read with slashes and non-ASCI
 	WriteWorkspaceState(state, kRoot, file);
 
 	CHECK(ReadWorkspaceState(file, kRoot).Reviews == state.Reviews);
+	CHECK(file.Get("restore.review.0.base").empty());
 }
 
-TEST_CASE("A stored review without a branch is dropped and one without a base reads with none")
+TEST_CASE("A stored review without a branch is dropped")
 {
 	Core::JsonFile file;
 	file.Set("restore.review.count", "2");
@@ -574,5 +573,4 @@ TEST_CASE("A stored review without a branch is dropped and one without a base re
 
 	REQUIRE(reviews.size() == 1);
 	CHECK(reviews.front().Branch == "refs/heads/side");
-	CHECK_FALSE(reviews.front().Base.has_value());
 }

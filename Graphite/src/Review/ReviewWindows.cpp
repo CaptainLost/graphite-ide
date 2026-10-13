@@ -1,5 +1,7 @@
 #include "Review/ReviewWindows.h"
 
+#include "Theme/Palettes.h"
+#include "UI/DialogLayout.h"
 #include "UI/RememberedPlace.h"
 
 #include "Core/Base/Log.h"
@@ -34,6 +36,13 @@ namespace Graphite {
 		{
 			return selectedIsUncommitted ? ReviewGroup::Uncommitted : ReviewGroup::Commits;
 		}
+
+		constexpr const char* kEndQuestionTitle = "###ReviewEnd";
+	}
+
+	ReviewWindows::ReviewWindows(ModalGate& modals)
+		: m_EndQuestion(modals, kEndQuestionTitle)
+	{
 	}
 
 	std::string ReviewWindowIdentity(const std::string& branchFullName)
@@ -47,31 +56,19 @@ namespace Graphite {
 			   ReviewWindowIdentity(branchFullName);
 	}
 
-	std::optional<ReviewKey> ReviewWindows::KeyOf(const Tab& tab)
-	{
-		if (!tab.Target.Base.has_value())
-		{
-			return std::nullopt;
-		}
-
-		return ReviewKey{.Branch = tab.Target.Branch, .Base = *tab.Target.Base};
-	}
-
 	void ReviewWindows::ForgetTab(const Tab& tab, ReviewModel& model)
 	{
-		const std::optional<ReviewKey> key = KeyOf(tab);
-
-		if (key.has_value())
+		if (tab.Key.has_value())
 		{
-			model.Forget(*key);
+			model.Forget(*tab.Key);
 		}
 	}
 
-	void ReviewWindows::Open(const ReviewTarget& target)
+	void ReviewWindows::Open(const std::string& branch)
 	{
 		for (Tab& tab : m_Tabs)
 		{
-			if (tab.Target.Branch == target.Branch)
+			if (tab.Branch == branch)
 			{
 				tab.Focus = true;
 				return;
@@ -79,7 +76,7 @@ namespace Graphite {
 		}
 
 		Tab tab;
-		tab.Target = target;
+		tab.Branch = branch;
 		m_Tabs.push_back(std::move(tab));
 	}
 
@@ -87,7 +84,7 @@ namespace Graphite {
 	{
 		for (const Tab& tab : m_Tabs)
 		{
-			if (tab.Target.Branch == branchFullName)
+			if (tab.Branch == branchFullName)
 			{
 				return true;
 			}
@@ -114,9 +111,7 @@ namespace Graphite {
 
 		for (const Tab& tab : m_Tabs)
 		{
-			ReviewTabState review{.Branch = tab.Target.Branch,
-								  .Base = tab.Target.Base,
-								  .IncludeUncommitted = tab.IncludeUncommitted};
+			ReviewTabState review{.Branch = tab.Branch};
 
 			if (tab.Selected.has_value())
 			{
@@ -130,7 +125,7 @@ namespace Graphite {
 		return reviews;
 	}
 
-	void ReviewWindows::RestoreState(const std::vector<ReviewTabState>& reviews)
+	void ReviewWindows::RestoreState(const std::vector<ReviewTabState>& reviews, const ReviewSessions& sessions)
 	{
 		for (const ReviewTabState& stored : reviews)
 		{
@@ -139,12 +134,19 @@ namespace Graphite {
 				continue;
 			}
 
-			Tab tab;
-			tab.Target = ReviewTarget{.Branch = stored.Branch, .Base = stored.Base};
-			tab.IncludeUncommitted = stored.IncludeUncommitted;
+			const ReviewSession* session = sessions.Find(stored.Branch);
 
-			const bool selectionCanShow =
-				!stored.Selected.empty() && (stored.IncludeUncommitted || !stored.SelectedIsUncommitted);
+			if (session == nullptr)
+			{
+				APP_INFO("Not reopening the review of '{}': it has no session", stored.Branch);
+				continue;
+			}
+
+			Tab tab;
+			tab.Branch = stored.Branch;
+
+			const bool selectionCanShow = !stored.Selected.empty() &&
+										  (session->Settings.IncludeUncommitted || !stored.SelectedIsUncommitted);
 
 			if (selectionCanShow)
 			{
@@ -186,19 +188,11 @@ namespace Graphite {
 
 			const bool targetHasItsOwnTab = IsOpen(rename.To);
 
-			for (Tab& tab : m_Tabs)
-			{
-				if (tab.Target.Base == rename.From)
-				{
-					FollowBaseRename(tab, model, rename.To);
-				}
-			}
-
 			for (std::size_t tabIndex = 0; tabIndex < m_Tabs.size();)
 			{
 				Tab& tab = m_Tabs[tabIndex];
 
-				if (tab.Target.Branch != rename.From)
+				if (tab.Branch != rename.From)
 				{
 					++tabIndex;
 					continue;
@@ -212,7 +206,8 @@ namespace Graphite {
 					continue;
 				}
 
-				tab.Target.Branch = rename.To;
+				tab.Key.reset();
+				tab.Branch = rename.To;
 				tab.LastLoaded.reset();
 				tab.LastWorktree.reset();
 
@@ -239,13 +234,13 @@ namespace Graphite {
 
 			tab.AwaitingBranches = false;
 
-			if (ListsBranchNamed(branches, tab.Target.Branch))
+			if (ListsBranchNamed(branches, tab.Branch))
 			{
 				++tabIndex;
 				continue;
 			}
 
-			APP_INFO("Not reopening the review of '{}': that branch is gone", tab.Target.Branch);
+			APP_INFO("Not reopening the review of '{}': that branch is gone", tab.Branch);
 			ForgetTab(tab, model);
 			m_Tabs.erase(m_Tabs.begin() + static_cast<std::ptrdiff_t>(tabIndex));
 		}
@@ -260,27 +255,54 @@ namespace Graphite {
 							.Collapsed = tab.Collapsed};
 	}
 
-	void ReviewWindows::ChangeBase(Tab& tab, ReviewModel& model, const std::string& base)
+	void ReviewWindows::FollowSessions(const ReviewSessions& sessions, ReviewModel& model)
 	{
-		ForgetTab(tab, model);
-		tab.Target.Base = base;
-		tab.Selected.reset();
-		tab.LastPaths = {};
-		tab.Rows = RowsCache{};
-		tab.LastLoaded.reset();
-		tab.LastWorktree.reset();
+		for (std::size_t tabIndex = 0; tabIndex < m_Tabs.size();)
+		{
+			Tab& tab = m_Tabs[tabIndex];
+			const ReviewSession* session = sessions.Find(tab.Branch);
+
+			if (session == nullptr)
+			{
+				ForgetTab(tab, model);
+				m_Tabs.erase(m_Tabs.begin() + static_cast<std::ptrdiff_t>(tabIndex));
+				continue;
+			}
+
+			const ReviewKey key{.Branch = tab.Branch, .Base = session->Base};
+
+			// The selection stays: the base under its new name covers the same range.
+			if (tab.Key.has_value() && *tab.Key != key)
+			{
+				model.Forget(*tab.Key);
+				tab.LastLoaded.reset();
+			}
+
+			tab.Key = key;
+			++tabIndex;
+		}
 	}
 
-	void ReviewWindows::FollowBaseRename(Tab& tab, ReviewModel& model, const std::string& renamedBase)
+	void ReviewWindows::AskToEnd(const std::string& branch)
 	{
-		ForgetTab(tab, model);
-		tab.Target.Base = renamedBase;
-		tab.LastLoaded.reset();
+		if (!m_EndQuestion.Asked(branch))
+		{
+			m_EndQuestion.Ask(branch);
+		}
 	}
 
-	void ReviewWindows::SetIncludeUncommitted(Tab& tab, ReviewModel& model, bool include)
+	void ReviewWindows::SetIncludeUncommitted(Tab& tab, ReviewSessions& sessions, ReviewModel& model, bool include)
 	{
-		tab.IncludeUncommitted = include;
+		const ReviewSession* session = sessions.Find(tab.Branch);
+
+		if (session == nullptr)
+		{
+			return;
+		}
+
+		SessionSettings settings = session->Settings;
+		settings.IncludeUncommitted = include;
+		sessions.SetSettings(tab.Branch, settings);
 		tab.Rows.Built = false;
 
 		if (include)
@@ -288,11 +310,9 @@ namespace Graphite {
 			return;
 		}
 
-		const std::optional<ReviewKey> key = KeyOf(tab);
-
-		if (key.has_value())
+		if (tab.Key.has_value())
 		{
-			model.StopUncommitted(*key);
+			model.StopUncommitted(*tab.Key);
 		}
 
 		const bool selectionWasUncommitted =
@@ -307,13 +327,13 @@ namespace Graphite {
 	void ReviewWindows::ToggleViewed(const Tab& tab, ReviewSessions& sessions, ReviewGroup group,
 									 const Core::FileDiff& file)
 	{
-		if (sessions.StateOf(tab.Target.Branch, group, file) == ViewedState::Viewed)
+		if (sessions.StateOf(tab.Branch, group, file) == ViewedState::Viewed)
 		{
-			sessions.Unmark(tab.Target.Branch, group, file);
+			sessions.Unmark(tab.Branch, group, file);
 			return;
 		}
 
-		sessions.Mark(tab.Target.Branch, group, file);
+		sessions.Mark(tab.Branch, group, file);
 	}
 
 	void ReviewWindows::RefreshRows(Tab& tab, const LoadedReview& review)
@@ -360,7 +380,7 @@ namespace Graphite {
 
 		if (!countIsCurrent)
 		{
-			const std::string& branch = tab.Target.Branch;
+			const std::string& branch = tab.Branch;
 			tab.Rows.Viewed = CountViewed(groups, [&sessions, &branch](ReviewGroup group, const Core::FileDiff& file)
 										  { return sessions.StateOf(branch, group, file); });
 			tab.Rows.ViewedForVersion = sessions.GetVersion();
@@ -408,12 +428,69 @@ namespace Graphite {
 		return [this, worktree](const std::filesystem::path& relative) { OpenFile(worktree / relative); };
 	}
 
+	void ReviewWindows::RenderEndDialog(const ReviewRenderInput& input)
+	{
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
+
+		const bool open = m_EndQuestion.Begin(
+			[&input](const std::string& branch) { return input.Sessions.Find(branch) != nullptr; },
+			[](const std::string& branch) { return "End the review of " + ShortBranchName(branch); });
+
+		DialogLayout::AfterBegin();
+
+		if (!open)
+		{
+			return;
+		}
+
+		const std::string* current = m_EndQuestion.GetCurrent();
+
+		if (current == nullptr)
+		{
+			ImGui::CloseCurrentPopup();
+			m_EndQuestion.End();
+			return;
+		}
+
+		const std::string branch = *current;
+
+		DialogLayout::Text("End the review of " + ShortBranchName(branch) + "? Its viewed marks are deleted with it.");
+		DialogLayout::Gap();
+		DialogLayout::MutedText("Ending a review cannot be undone.");
+		DialogLayout::Gap();
+
+		const DialogLayout::Choice choice =
+			DialogLayout::ButtonRow({}, {.Label = "End review"}, kErrorTextColour);
+
+		if (choice == DialogLayout::Choice::Destructive)
+		{
+			const ReviewSession* session = input.Sessions.Find(branch);
+
+			if (session != nullptr)
+			{
+				input.Model.Forget(ReviewKey{.Branch = branch, .Base = session->Base});
+			}
+
+			input.Sessions.End(branch);
+			FollowSessions(input.Sessions, input.Model);
+			m_EndQuestion.Answer();
+		}
+		else if (choice == DialogLayout::Choice::Cancel)
+		{
+			m_EndQuestion.Answer();
+		}
+
+		m_EndQuestion.End();
+	}
+
 	void ReviewWindows::Render(const ReviewRenderInput& input)
 	{
+		FollowSessions(input.Sessions, input.Model);
+
 		for (std::size_t tabIndex = 0; tabIndex < m_Tabs.size();)
 		{
 			Tab& tab = m_Tabs[tabIndex];
-			const std::string name = ReviewWindowName(tab.Target.Branch);
+			const std::string name = ReviewWindowName(tab.Branch);
 
 			// Docked only on the frame its identity is new, as the diff tabs are: docking every frame
 			// would fight a reader who dragged the tab elsewhere.
@@ -469,5 +546,7 @@ namespace Graphite {
 
 			++tabIndex;
 		}
+
+		RenderEndDialog(input);
 	}
 }

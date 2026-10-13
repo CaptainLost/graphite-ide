@@ -4,16 +4,21 @@
 
 #include "DeferredJobs.h"
 #include "Review/FakeReviewPort.h"
+#include "UI/ModalGate.h"
 
 #include <string>
 #include <vector>
 
 using Graphite::BranchRename;
+using Graphite::ReviewKey;
+using Graphite::ReviewSessions;
 using Graphite::ReviewTabState;
-using Graphite::ReviewTarget;
 using Graphite::ReviewWindows;
 
 namespace {
+
+	const std::string kMain = "refs/heads/main";
+	const std::string kSide = "refs/heads/side";
 
 	Core::Branch BranchNamed(const std::string& fullName)
 	{
@@ -22,47 +27,81 @@ namespace {
 		return branch;
 	}
 
-	const std::vector<Core::Branch> kMainAndSide = {BranchNamed("refs/heads/main"), BranchNamed("refs/heads/side")};
+	const std::vector<Core::Branch> kMainAndSide = {BranchNamed(kMain), BranchNamed(kSide)};
+
+	ReviewSessions SessionsOf(const std::vector<std::string>& branches)
+	{
+		ReviewSessions sessions;
+
+		for (const std::string& branch : branches)
+		{
+			sessions.Start(branch, kMain);
+		}
+
+		return sessions;
+	}
+
+	// What a drawn tab leaves the model holding.
+	void HoldRange(Graphite::ReviewModel& model, DeferredJobs& jobs, const ReviewKey& key)
+	{
+		model.RequestRange(key);
+		jobs.RunAll();
+		model.OnUpdate(Core::Timestep{0.016f});
+	}
 }
 
 TEST_CASE("Opening a branch already under review raises its tab rather than adding one")
 {
-	ReviewWindows windows;
+	Graphite::ModalGate modals;
+	ReviewWindows windows{modals};
 
-	windows.Open(ReviewTarget{.Branch = "refs/heads/side", .Base = "refs/heads/main"});
-	windows.Open(ReviewTarget{.Branch = "refs/heads/side", .Base = "refs/heads/other"});
+	windows.Open(kSide);
+	windows.Open(kSide);
 
 	CHECK(windows.GetCount() == 1);
-	REQUIRE(windows.CaptureState().size() == 1);
-	CHECK(windows.CaptureState().front().Base == std::optional<std::string>{"refs/heads/main"});
 }
 
 TEST_CASE("Open review tabs come back as they were captured")
 {
-	ReviewWindows before;
-	before.RestoreState({ReviewTabState{.Branch = "refs/heads/side",
-										.Base = "refs/heads/main",
-										.IncludeUncommitted = true,
-										.Selected = "src/a.cpp",
-										.SelectedIsUncommitted = true}});
+	ReviewSessions sessions = SessionsOf({kSide});
+	Graphite::SessionSettings withUncommitted;
+	withUncommitted.IncludeUncommitted = true;
+	sessions.SetSettings(kSide, withUncommitted);
+	Graphite::ModalGate modals;
+	ReviewWindows before{modals};
+	before.RestoreState({ReviewTabState{.Branch = kSide, .Selected = "src/a.cpp", .SelectedIsUncommitted = true}},
+						sessions);
 
-	ReviewWindows after;
-	after.RestoreState(before.CaptureState());
+	ReviewWindows after{modals};
+	after.RestoreState(before.CaptureState(), sessions);
 
 	REQUIRE(after.CaptureState().size() == 1);
 	CHECK(after.CaptureState() == before.CaptureState());
+	CHECK(after.CaptureState().front().Selected == "src/a.cpp");
 }
 
-TEST_CASE("A restored selection among uncommitted files is dropped when the toggle was off")
+TEST_CASE("A restored selection among uncommitted files is dropped when the session leaves them out")
 {
-	ReviewWindows windows;
-	windows.RestoreState({ReviewTabState{.Branch = "refs/heads/side",
-										 .Base = "refs/heads/main",
-										 .IncludeUncommitted = false,
-										 .Selected = "src/a.cpp",
-										 .SelectedIsUncommitted = true}});
+	const ReviewSessions sessions = SessionsOf({kSide});
+	Graphite::ModalGate modals;
+	ReviewWindows windows{modals};
+
+	windows.RestoreState({ReviewTabState{.Branch = kSide, .Selected = "src/a.cpp", .SelectedIsUncommitted = true}},
+						 sessions);
 
 	CHECK(windows.CaptureState().front().Selected.empty());
+}
+
+TEST_CASE("A stored tab whose branch has no session is not reopened")
+{
+	const ReviewSessions sessions = SessionsOf({kSide});
+	Graphite::ModalGate modals;
+	ReviewWindows windows{modals};
+
+	windows.RestoreState({ReviewTabState{.Branch = kSide}, ReviewTabState{.Branch = "refs/heads/ended"}}, sessions);
+
+	CHECK(windows.IsOpen(kSide));
+	CHECK_FALSE(windows.IsOpen("refs/heads/ended"));
 }
 
 TEST_CASE("A restored tab waits for the first branch snapshot and closes only when it lacks its branch")
@@ -70,52 +109,41 @@ TEST_CASE("A restored tab waits for the first branch snapshot and closes only wh
 	FakeReviewPort port;
 	DeferredJobs jobs;
 	Graphite::ReviewModel model{port, jobs.Submitter(), NoWatches()};
-	ReviewWindows windows;
-	windows.RestoreState({ReviewTabState{.Branch = "refs/heads/side", .Base = "refs/heads/main"},
-						  ReviewTabState{.Branch = "refs/heads/gone", .Base = "refs/heads/main"}});
+	const ReviewSessions sessions = SessionsOf({kSide, "refs/heads/gone"});
+	Graphite::ModalGate modals;
+	ReviewWindows windows{modals};
+	windows.RestoreState({ReviewTabState{.Branch = kSide}, ReviewTabState{.Branch = "refs/heads/gone"}}, sessions);
 
 	CHECK(windows.GetCount() == 2);
 
 	static_cast<void>(windows.FollowBranches(kMainAndSide, model)); // no rename was noted
 
-	CHECK(windows.IsOpen("refs/heads/side"));
+	CHECK(windows.IsOpen(kSide));
 	CHECK_FALSE(windows.IsOpen("refs/heads/gone"));
 }
 
-TEST_CASE("A tab the reader opened stays when its branch is missing so it can say so")
+TEST_CASE("A rename is followed once the snapshot shows it and is handed on for the sessions")
 {
 	FakeReviewPort port;
 	DeferredJobs jobs;
 	Graphite::ReviewModel model{port, jobs.Submitter(), NoWatches()};
-	ReviewWindows windows;
-	windows.Open(ReviewTarget{.Branch = "refs/heads/gone", .Base = "refs/heads/main"});
-
-	static_cast<void>(windows.FollowBranches(kMainAndSide, model)); // no rename was noted
-
-	CHECK(windows.IsOpen("refs/heads/gone"));
-}
-
-TEST_CASE("A rename is followed once the snapshot shows it and is handed on for the marks")
-{
-	FakeReviewPort port;
-	DeferredJobs jobs;
-	Graphite::ReviewModel model{port, jobs.Submitter(), NoWatches()};
-	ReviewWindows windows;
-	const Graphite::ReviewKey oldKey{.Branch = "refs/heads/before", .Base = "refs/heads/main"};
-	model.RequestRange(oldKey);
-	jobs.RunAll();
-	model.OnUpdate(Core::Timestep{0.016f});
+	const ReviewSessions sessions = SessionsOf({"refs/heads/before"});
+	const ReviewKey oldKey{.Branch = "refs/heads/before", .Base = kMain};
+	HoldRange(model, jobs, oldKey);
 	REQUIRE(model.GetRange(oldKey) != nullptr);
-	windows.Open(ReviewTarget{.Branch = oldKey.Branch, .Base = oldKey.Base});
+	Graphite::ModalGate modals;
+	ReviewWindows windows{modals};
+	windows.Open("refs/heads/before");
+	windows.FollowSessions(sessions, model);
 	windows.NoteRename("refs/heads/before", "refs/heads/after");
 
 	const std::vector<BranchRename> notYet =
-		windows.FollowBranches({BranchNamed("refs/heads/main"), BranchNamed("refs/heads/before")}, model);
+		windows.FollowBranches({BranchNamed(kMain), BranchNamed("refs/heads/before")}, model);
 	CHECK(notYet.empty());
 	CHECK(windows.IsOpen("refs/heads/before"));
 
 	const std::vector<BranchRename> followed =
-		windows.FollowBranches({BranchNamed("refs/heads/main"), BranchNamed("refs/heads/after")}, model);
+		windows.FollowBranches({BranchNamed(kMain), BranchNamed("refs/heads/after")}, model);
 
 	REQUIRE(followed.size() == 1);
 	CHECK(followed.front().From == "refs/heads/before");
@@ -130,13 +158,14 @@ TEST_CASE("A rename onto a branch with a tab of its own closes the old tab inste
 	FakeReviewPort port;
 	DeferredJobs jobs;
 	Graphite::ReviewModel model{port, jobs.Submitter(), NoWatches()};
-	ReviewWindows windows;
-	windows.Open(ReviewTarget{.Branch = "refs/heads/before", .Base = "refs/heads/main"});
-	windows.Open(ReviewTarget{.Branch = "refs/heads/after", .Base = "refs/heads/main"});
+	Graphite::ModalGate modals;
+	ReviewWindows windows{modals};
+	windows.Open("refs/heads/before");
+	windows.Open("refs/heads/after");
 	windows.NoteRename("refs/heads/before", "refs/heads/after");
 
 	const std::vector<BranchRename> followed =
-		windows.FollowBranches({BranchNamed("refs/heads/main"), BranchNamed("refs/heads/after")}, model);
+		windows.FollowBranches({BranchNamed(kMain), BranchNamed("refs/heads/after")}, model);
 
 	CHECK(windows.GetCount() == 1);
 	CHECK(windows.IsOpen("refs/heads/after"));
@@ -144,28 +173,46 @@ TEST_CASE("A rename onto a branch with a tab of its own closes the old tab inste
 	CHECK(followed.front().To == "refs/heads/after");
 }
 
-TEST_CASE("A rename of a tab's base is followed by the tab's base")
+TEST_CASE("A tab closes once its session ends and what the model held for it is forgotten")
 {
 	FakeReviewPort port;
 	DeferredJobs jobs;
 	Graphite::ReviewModel model{port, jobs.Submitter(), NoWatches()};
-	ReviewWindows windows;
-	const Graphite::ReviewKey oldKey{.Branch = "refs/heads/side", .Base = "refs/heads/main"};
-	model.RequestRange(oldKey);
-	jobs.RunAll();
-	model.OnUpdate(Core::Timestep{0.016f});
-	REQUIRE(model.GetRange(oldKey) != nullptr);
-	windows.Open(ReviewTarget{.Branch = oldKey.Branch, .Base = oldKey.Base});
-	windows.NoteRename("refs/heads/main", "refs/heads/trunk");
+	ReviewSessions sessions = SessionsOf({kSide});
+	const ReviewKey key{.Branch = kSide, .Base = kMain};
+	HoldRange(model, jobs, key);
+	Graphite::ModalGate modals;
+	ReviewWindows windows{modals};
+	windows.Open(kSide);
+	windows.FollowSessions(sessions, model);
+	REQUIRE(windows.IsOpen(kSide));
 
-	const std::vector<BranchRename> followed =
-		windows.FollowBranches({BranchNamed("refs/heads/trunk"), BranchNamed("refs/heads/side")}, model);
+	sessions.End(kSide);
+	windows.FollowSessions(sessions, model);
 
-	REQUIRE(followed.size() == 1);
-	CHECK(windows.IsOpen("refs/heads/side"));
-	REQUIRE(windows.CaptureState().size() == 1);
-	CHECK(windows.CaptureState().front().Base == std::optional<std::string>{"refs/heads/trunk"});
+	CHECK_FALSE(windows.IsOpen(kSide));
+	CHECK(model.GetRange(key) == nullptr);
+}
+
+TEST_CASE("A tab follows its session's renamed base, forgets the range it held and keeps its selection")
+{
+	FakeReviewPort port;
+	DeferredJobs jobs;
+	Graphite::ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	ReviewSessions sessions = SessionsOf({kSide});
+	const ReviewKey oldKey{.Branch = kSide, .Base = kMain};
+	HoldRange(model, jobs, oldKey);
+	Graphite::ModalGate modals;
+	ReviewWindows windows{modals};
+	windows.RestoreState({ReviewTabState{.Branch = kSide, .Selected = "src/a.cpp"}}, sessions);
+	windows.FollowSessions(sessions, model);
+
+	sessions.Rename(kMain, "refs/heads/trunk");
+	windows.FollowSessions(sessions, model);
+
+	CHECK(windows.IsOpen(kSide));
 	CHECK(model.GetRange(oldKey) == nullptr);
+	CHECK(windows.CaptureState().front().Selected == "src/a.cpp");
 }
 
 TEST_CASE("Closing every tab forgets what the model held for them")
@@ -173,12 +220,13 @@ TEST_CASE("Closing every tab forgets what the model held for them")
 	FakeReviewPort port;
 	DeferredJobs jobs;
 	Graphite::ReviewModel model{port, jobs.Submitter(), NoWatches()};
-	const Graphite::ReviewKey key{.Branch = "refs/heads/side", .Base = "refs/heads/main"};
-	model.RequestRange(key);
-	jobs.RunAll();
-	model.OnUpdate(Core::Timestep{0.016f});
-	ReviewWindows windows;
-	windows.Open(ReviewTarget{.Branch = key.Branch, .Base = key.Base});
+	const ReviewSessions sessions = SessionsOf({kSide});
+	const ReviewKey key{.Branch = kSide, .Base = kMain};
+	HoldRange(model, jobs, key);
+	Graphite::ModalGate modals;
+	ReviewWindows windows{modals};
+	windows.Open(kSide);
+	windows.FollowSessions(sessions, model);
 
 	windows.CloseAll(model);
 

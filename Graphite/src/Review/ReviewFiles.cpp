@@ -164,22 +164,6 @@ namespace Graphite {
 						   .Base = checkedOut->FullName};
 	}
 
-	std::vector<const Core::Branch*> BaseChoices(const std::vector<Core::Branch>& branches,
-												 const std::string& reviewedFullName)
-	{
-		std::vector<const Core::Branch*> choices;
-
-		for (const Core::Branch& branch : branches)
-		{
-			if (branch.FullName != reviewedFullName)
-			{
-				choices.push_back(&branch);
-			}
-		}
-
-		return choices;
-	}
-
 	std::string ShortBranchName(const std::string& fullName)
 	{
 		if (fullName.starts_with(kLocalPrefix))
@@ -394,7 +378,7 @@ namespace Graphite {
 		case RangeProblem::BranchMissing:
 			return std::format("{} no longer exists.", branch);
 		case RangeProblem::BaseMissing:
-			return std::format("{} no longer exists. Pick a base.", base);
+			return std::format("{} no longer exists.", base);
 		case RangeProblem::NoCommonAncestor:
 			return std::format("{} has no common ancestor with {}.", branch, base);
 		}

@@ -204,12 +204,13 @@ namespace Graphite {
 		gitView->Subscribe();
 
 		gitView->OnReview = [this](const ReviewOffer& offer) {
-			if (offer.Base.has_value())
+			if (!offer.Base.has_value())
 			{
-				m_ReviewStore.GetSessions().Start(offer.Branch, *offer.Base);
+				return;
 			}
 
-			m_ReviewWindows.Open(ReviewTarget{.Branch = offer.Branch, .Base = offer.Base});
+			m_ReviewStore.GetSessions().Start(offer.Branch, *offer.Base);
+			m_ReviewWindows.Open(offer.Branch);
 		};
 
 		gitView->OnBranchRenamed = [this](const std::string& from, const std::string& to) {
@@ -542,7 +543,7 @@ namespace Graphite {
 			m_ReviewWindows.CloseAll(m_Reviews);
 			m_ReviewStore.Close();
 			m_ReviewStore.Open(event.Root);
-			m_ReviewWindows.RestoreState(restorable.Reviews);
+			m_ReviewWindows.RestoreState(restorable.Reviews, m_ReviewStore.GetSessions());
 			m_ReviewedBranches.reset();
 
 			// Same trap, same reason: an expectation registered against the folder this drop
@@ -1201,7 +1202,6 @@ namespace Graphite {
 
 		m_ReviewWindows.Render(ReviewRenderInput{.Model = m_Reviews,
 												 .Sessions = m_ReviewStore.GetSessions(),
-												 .Branches = m_Git.GetBranches(),
 												 .Palette = reviewPalette,
 												 .Syntax = reviewSyntax,
 												 .Selection = ReadEditorPalette(m_ActiveScheme.Get()).Selection,

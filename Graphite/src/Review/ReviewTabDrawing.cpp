@@ -20,7 +20,6 @@ namespace Graphite {
 
 	namespace {
 
-		constexpr float kBaseFieldEms = 14.0f;
 		constexpr float kFileColumnEms = 24.0f;
 		constexpr int kReviewColumnCount = 2;
 		constexpr std::size_t kCommitsInTooltip = 20;
@@ -39,6 +38,12 @@ namespace Graphite {
 			}
 
 			return kCommitsHeading;
+		}
+
+		SessionSettings ReadSettings(const ReviewSessions& sessions, const std::string& branch)
+		{
+			const ReviewSession* session = sessions.Find(branch);
+			return session != nullptr ? session->Settings : SessionSettings{};
 		}
 
 		float MeasureText(std::string_view text)
@@ -232,23 +237,25 @@ namespace Graphite {
 
 	void ReviewWindows::RenderTab(Tab& tab, const ReviewRenderInput& input)
 	{
-		const std::optional<ReviewKey> key = KeyOf(tab);
+		const ReviewSession* session = input.Sessions.Find(tab.Branch);
 
-		if (!key.has_value())
+		// FollowSessions ran first thing in Render, so a tab drawn here has its session and its key.
+		if (session == nullptr || !tab.Key.has_value())
 		{
-			RenderHeader(tab, input, nullptr, std::nullopt);
-			Core::EmptyState("Pick a base to review this branch against.");
 			return;
 		}
 
-		input.Model.RequestRange(*key);
-		const Core::Ref<const ReviewRange> range = input.Model.GetRange(*key);
+		const ReviewKey key = *tab.Key;
+		const SessionSettings settings = session->Settings;
+
+		input.Model.RequestRange(key);
+		const Core::Ref<const ReviewRange> range = input.Model.GetRange(key);
 
 		if (range == nullptr)
 		{
 			RenderHeader(tab, input, nullptr, std::nullopt);
 
-			const Core::Error* error = input.Model.GetRangeError(*key);
+			const Core::Error* error = input.Model.GetRangeError(key);
 
 			if (error == nullptr)
 			{
@@ -258,7 +265,7 @@ namespace Graphite {
 
 			if (Core::EmptyState(error->Message, "Retry"))
 			{
-				input.Model.Retry(*key);
+				input.Model.Retry(key);
 			}
 
 			return;
@@ -268,13 +275,23 @@ namespace Graphite {
 		{
 			RenderHeader(tab, input, range.get(), std::nullopt);
 
-			const std::string problem = RangeProblemMessage(range->Problem, tab.Target.Branch, *tab.Target.Base);
+			const std::string problem = RangeProblemMessage(range->Problem, tab.Branch, session->Base);
 
 			if (range->Problem == RangeProblem::BranchMissing)
 			{
 				if (Core::EmptyState(problem, "Close"))
 				{
 					tab.CloseRequested = true;
+				}
+
+				return;
+			}
+
+			if (range->Problem == RangeProblem::BaseMissing)
+			{
+				if (Core::EmptyState(problem, "End review"))
+				{
+					AskToEnd(tab.Branch);
 				}
 
 				return;
@@ -288,25 +305,25 @@ namespace Graphite {
 		{
 			tab.LastWorktree = range->Worktree;
 		}
-		else if (tab.IncludeUncommitted)
+		else if (settings.IncludeUncommitted)
 		{
-			input.Model.StopUncommitted(*key);
+			input.Model.StopUncommitted(key);
 		}
 
-		const RangeDiffKey diffKey{.Ends = range->Ends, .Whitespace = Core::WhitespaceInDiff::Shown};
+		const RangeDiffKey diffKey{.Ends = range->Ends, .Whitespace = settings.Whitespace};
 		input.Model.RequestCommittedDiff(diffKey);
 
-		const bool showUncommitted = tab.IncludeUncommitted && range->Worktree.has_value();
+		const bool showUncommitted = settings.IncludeUncommitted && range->Worktree.has_value();
 
 		if (showUncommitted)
 		{
-			input.Model.RequestUncommitted(*key, *range->Worktree, Core::WhitespaceInDiff::Shown);
+			input.Model.RequestUncommitted(key, *range->Worktree, settings.Whitespace);
 		}
 
-		const LoadedReview review{.Key = *key,
+		const LoadedReview review{.Key = key,
 								  .Range = range,
 								  .Committed = input.Model.GetCommittedDiff(diffKey),
-								  .Uncommitted = showUncommitted ? input.Model.GetUncommitted(*key) : nullptr};
+								  .Uncommitted = showUncommitted ? input.Model.GetUncommitted(key) : nullptr};
 
 		if (review.Committed != nullptr)
 		{
@@ -337,43 +354,21 @@ namespace Graphite {
 
 		if (Core::EmptyState(message, "Retry"))
 		{
-			input.Model.Retry(*key);
+			input.Model.Retry(key);
 		}
 	}
 
 	void ReviewWindows::RenderHeader(Tab& tab, const ReviewRenderInput& input, const ReviewRange* range,
 									 const std::optional<ViewedCount>& viewed)
 	{
+		const ReviewSession* session = input.Sessions.Find(tab.Branch);
+		const SessionSettings settings = session != nullptr ? session->Settings : SessionSettings{};
+
 		ImGui::AlignTextToFramePadding();
-		ImGui::TextUnformatted("Base");
-		ImGui::SameLine();
 
-		const bool baseMissing = range != nullptr && range->Problem == RangeProblem::BaseMissing;
-		const std::string shownBase =
-			tab.Target.Base.has_value() && !baseMissing ? ShortBranchName(*tab.Target.Base) : std::string{};
-
-		ImGui::SetNextItemWidth(ImGui::GetFontSize() * kBaseFieldEms);
-
-		if (ImGui::BeginCombo("##base", shownBase.c_str()))
+		if (session != nullptr)
 		{
-			if (input.Branches != nullptr)
-			{
-				for (const Core::Branch* choice : BaseChoices(*input.Branches, tab.Target.Branch))
-				{
-					const bool isCurrent = tab.Target.Base == choice->FullName;
-
-					ImGui::PushID(choice->FullName.c_str());
-
-					if (ImGui::Selectable(choice->Name.c_str(), isCurrent) && !isCurrent)
-					{
-						ChangeBase(tab, input.Model, choice->FullName);
-					}
-
-					ImGui::PopID();
-				}
-			}
-
-			ImGui::EndCombo();
+			ImGui::TextDisabled("against %s", ShortBranchName(session->Base).c_str());
 		}
 
 		if (range != nullptr && range->Problem == RangeProblem::None)
@@ -405,13 +400,13 @@ namespace Graphite {
 		ImGui::SameLine();
 
 		const bool canInclude = range != nullptr && range->Worktree.has_value();
-		bool include = tab.IncludeUncommitted && canInclude;
+		bool include = settings.IncludeUncommitted && canInclude;
 
 		ImGui::BeginDisabled(!canInclude);
 
 		if (ImGui::Checkbox("Include uncommitted", &include))
 		{
-			SetIncludeUncommitted(tab, input.Model, include);
+			SetIncludeUncommitted(tab, input.Sessions, input.Model, include);
 		}
 
 		ImGui::EndDisabled();
@@ -445,11 +440,19 @@ namespace Graphite {
 
 		if (alreadyMerged)
 		{
-			ImGui::TextDisabled("%s", AlreadyMergedMessage(tab.Target.Branch, *tab.Target.Base).c_str());
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextDisabled("%s", AlreadyMergedMessage(tab.Branch, review.Key.Base).c_str());
+			ImGui::SameLine();
+
+			if (ImGui::SmallButton("End review"))
+			{
+				AskToEnd(tab.Branch);
+			}
 		}
 
+		const bool includeUncommitted = ReadSettings(input.Sessions, tab.Branch).IncludeUncommitted;
 		const Core::Error* uncommittedError =
-			tab.IncludeUncommitted ? input.Model.GetUncommittedError(review.Key) : nullptr;
+			includeUncommitted ? input.Model.GetUncommittedError(review.Key) : nullptr;
 
 		if (uncommittedError != nullptr && review.Range->Worktree.has_value())
 		{
@@ -463,7 +466,7 @@ namespace Graphite {
 			}
 		}
 
-		const bool worktreeGone = tab.IncludeUncommitted && !review.Range->Worktree.has_value() && tab.LastWorktree.has_value();
+		const bool worktreeGone = includeUncommitted && !review.Range->Worktree.has_value() && tab.LastWorktree.has_value();
 
 		if (worktreeGone)
 		{
@@ -563,7 +566,7 @@ namespace Graphite {
 		ImGui::PushID(Core::ToUtf8(path).c_str());
 
 		const FileRowLook look{.IsSelected = isSelected,
-							   .Viewed = input.Sessions.StateOf(tab.Target.Branch, row.Group, file),
+							   .Viewed = input.Sessions.StateOf(tab.Branch, row.Group, file),
 							   .CanOpen = openFile != nullptr && fileIsOnDisk,
 							   .RowHeight = ImGui::GetFrameHeight(),
 							   .Counts = counts};

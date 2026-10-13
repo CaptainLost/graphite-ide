@@ -374,7 +374,7 @@ namespace Graphite {
 
 		// Beside the diff tabs and for the same reason: they are drawn by this layer, whichever
 		// panel has focus. GitView reaches them only through callbacks bound to this layer.
-		ReviewWindows m_ReviewWindows;
+		ReviewWindows m_ReviewWindows{m_Modals};
 		ReviewStore m_ReviewStore;
 
 		// The branch snapshot the reviews last followed. A different one may mean a branch moved,

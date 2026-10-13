@@ -10,6 +10,8 @@
 #include "Review/ReviewSessions.h"
 #include "Theme/GitPalette.h"
 #include "Theme/Palettes.h"
+#include "UI/ModalGate.h"
+#include "UI/ModalQuestion.h"
 
 #include "Core/Git/Ref.h"
 #include "Core/ImGui/TabCloseRequests.h"
@@ -28,14 +30,6 @@
 
 namespace Graphite {
 
-	struct ReviewTarget
-	{
-		std::string Branch;
-
-		// Absent until the reader picks one.
-		std::optional<std::string> Base;
-	};
-
 	// A rename of a branch that took effect, for whatever keeps data by branch to follow too.
 	struct BranchRename
 	{
@@ -53,10 +47,6 @@ namespace Graphite {
 	{
 		ReviewModel& Model;
 		ReviewSessions& Sessions;
-
-		// Null until the first snapshot; the base field then offers nothing to pick.
-		Core::Ref<const std::vector<Core::Branch>> Branches;
-
 		const GitPalette& Palette;
 		const SyntaxPalette& Syntax;
 		ImU32 Selection = 0;
@@ -70,8 +60,11 @@ namespace Graphite {
 	class ReviewWindows
 	{
 	public:
-		// A branch already under review has its tab raised, keeping the base it has.
-		void Open(const ReviewTarget& target);
+		explicit ReviewWindows(ModalGate& modals);
+
+		// Opens the branch's tab, or raises it when it is open. Start the branch's session first: a tab
+		// whose branch has no session closes on the next FollowSessions.
+		void Open(const std::string& branch);
 
 		bool IsOpen(const std::string& branchFullName) const;
 		std::size_t GetCount() const { return m_Tabs.size(); }
@@ -81,18 +74,27 @@ namespace Graphite {
 
 		std::vector<ReviewTabState> CaptureState() const;
 
-		// Reopens what CaptureState returned. None is brought forward, and each goes back to the
-		// place imgui.ini remembers for it.
-		void RestoreState(const std::vector<ReviewTabState>& reviews);
+		// Reopens what CaptureState returned, leaving out a branch whose session is gone. A selection
+		// among uncommitted files is dropped when the session leaves them out. None is brought
+		// forward, and each goes back to the place imgui.ini remembers for it.
+		void RestoreState(const std::vector<ReviewTabState>& reviews, const ReviewSessions& sessions);
 
 		// A rename sent from the Git window, followed once a branch snapshot shows it took effect.
 		void NoteRename(std::string from, std::string to);
 
-		// Called with every new branch snapshot. Follows the renames that took effect, retargeting
-		// the tabs of a renamed branch and the tabs reviewing against one, and closes a restored tab
-		// whose branch the first snapshot lacks. Answers the renames it followed.
+		// Called with every new branch snapshot. Follows the renames that took effect to the renamed
+		// branch's tab, and closes a restored tab whose branch the first snapshot lacks. Answers the
+		// renames it followed, for the sessions.
 		[[nodiscard]] std::vector<BranchRename> FollowBranches(const std::vector<Core::Branch>& branches,
 															   ReviewModel& model);
+
+		// Called first thing in every Render. A tab whose session is gone closes; a tab whose session
+		// now names its base differently forgets the range it held and keeps its selection.
+		void FollowSessions(const ReviewSessions& sessions, ReviewModel& model);
+
+		// Asks before ending the branch's review. A yes forgets what the model held for it, ends its
+		// session - marks and all - and closes its tab.
+		void AskToEnd(const std::string& branch);
 
 		void Render(const ReviewRenderInput& input);
 
@@ -137,8 +139,10 @@ namespace Graphite {
 
 		struct Tab
 		{
-			ReviewTarget Target;
-			bool IncludeUncommitted = false;
+			std::string Branch;
+
+			// The key this tab last asked the model about.
+			std::optional<ReviewKey> Key;
 			std::optional<ReviewSelection> Selected;
 
 			// What each group listed when the rows were last built, so a selected file that
@@ -170,14 +174,9 @@ namespace Graphite {
 
 		using OpenRelativeFile = std::function<void(const std::filesystem::path&)>;
 
-		static std::optional<ReviewKey> KeyOf(const Tab& tab);
 		static void ForgetTab(const Tab& tab, ReviewModel& model);
 		static ReviewGroups GroupsOf(const Tab& tab, const LoadedReview& review);
-		static void ChangeBase(Tab& tab, ReviewModel& model, const std::string& base);
-
-		// The base under its new name covers the same range, so the selection is kept.
-		static void FollowBaseRename(Tab& tab, ReviewModel& model, const std::string& renamedBase);
-		static void SetIncludeUncommitted(Tab& tab, ReviewModel& model, bool include);
+		static void SetIncludeUncommitted(Tab& tab, ReviewSessions& sessions, ReviewModel& model, bool include);
 		static void ToggleViewed(const Tab& tab, ReviewSessions& sessions, ReviewGroup group, const Core::FileDiff& file);
 		static void RefreshRows(Tab& tab, const LoadedReview& review);
 		static ViewedCount ViewedCountOf(Tab& tab, const ReviewSessions& sessions, const ReviewGroups& groups);
@@ -201,7 +200,10 @@ namespace Graphite {
 		void RenderSelectedDiff(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review,
 								const ReviewGroups& groups, const OpenRelativeFile& openFile);
 
+		void RenderEndDialog(const ReviewRenderInput& input);
+
 		std::vector<Tab> m_Tabs;
+		ModalQuestion<std::string> m_EndQuestion;
 		std::vector<BranchRename> m_PendingRenames;
 	};
 }

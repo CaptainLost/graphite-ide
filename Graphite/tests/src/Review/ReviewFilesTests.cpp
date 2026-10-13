@@ -112,18 +112,6 @@ TEST_CASE("A remote branch is offered for review against the checked-out branch"
 	CHECK(offer->Base == std::optional<std::string>{"refs/heads/main"});
 }
 
-TEST_CASE("Every branch but the reviewed one can be the base")
-{
-	const std::vector<Core::Branch> branches = {LocalBranch("main", true), LocalBranch("side", false),
-												RemoteBranch("origin/main")};
-
-	const std::vector<const Core::Branch*> choices = Graphite::BaseChoices(branches, "refs/heads/side");
-
-	REQUIRE(choices.size() == 2);
-	CHECK(choices[0]->Name == "main");
-	CHECK(choices[1]->Name == "origin/main");
-}
-
 TEST_CASE("A full branch name is shortened to what the branch list shows")
 {
 	CHECK(Graphite::ShortBranchName("refs/heads/feature/x") == "feature/x");
@@ -277,7 +265,7 @@ TEST_CASE("Each range problem is said in words that name the branches")
 	CHECK(Graphite::RangeProblemMessage(Graphite::RangeProblem::BranchMissing, "refs/heads/side", "refs/heads/main") ==
 		  "side no longer exists.");
 	CHECK(Graphite::RangeProblemMessage(Graphite::RangeProblem::BaseMissing, "refs/heads/side", "refs/heads/main") ==
-		  "main no longer exists. Pick a base.");
+		  "main no longer exists.");
 	CHECK(Graphite::RangeProblemMessage(Graphite::RangeProblem::NoCommonAncestor, "refs/heads/side",
 										"refs/heads/main") == "side has no common ancestor with main.");
 	CHECK(Graphite::AlreadyMergedMessage("refs/heads/side", "refs/heads/main") ==

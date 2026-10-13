@@ -29,9 +29,6 @@ namespace Graphite {
 	// checked-out branch itself, which is offered nothing without one.
 	std::optional<ReviewOffer> OfferReview(const Core::Branch& branch, const std::vector<Core::Branch>& branches);
 
-	std::vector<const Core::Branch*> BaseChoices(const std::vector<Core::Branch>& branches,
-												 const std::string& reviewedFullName);
-
 	// "feature/x" for "refs/heads/feature/x", "origin/main" for "refs/remotes/origin/main".
 	std::string ShortBranchName(const std::string& fullName);
 

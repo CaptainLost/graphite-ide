@@ -95,13 +95,7 @@ namespace Graphite {
 				return std::nullopt;
 			}
 
-			if (const std::string base = file.Get(ReviewTabKey(index, "base")); !base.empty())
-			{
-				review.Base = base;
-			}
-
 			const bool hiddenByDefault = false;
-			review.IncludeUncommitted = ReadFlag(file.Get(ReviewTabKey(index, "uncommitted")), hiddenByDefault);
 			review.Selected = Core::FromUtf8(file.Get(ReviewTabKey(index, "selected")));
 			review.SelectedIsUncommitted =
 				ReadFlag(file.Get(ReviewTabKey(index, "selectedUncommitted")), hiddenByDefault);
@@ -393,11 +387,8 @@ namespace Graphite {
 		for (std::size_t index = 0; index < state.Reviews.size(); ++index)
 		{
 			const ReviewTabState& review = state.Reviews[index];
-			const std::string noBase;
 
 			file.Set(ReviewTabKey(index, "branch"), review.Branch);
-			file.Set(ReviewTabKey(index, "base"), review.Base.value_or(noBase));
-			file.Set(ReviewTabKey(index, "uncommitted"), Flag(review.IncludeUncommitted));
 			file.Set(ReviewTabKey(index, "selected"), Core::ToUtf8(review.Selected));
 			file.Set(ReviewTabKey(index, "selectedUncommitted"), Flag(review.SelectedIsUncommitted));
 		}
