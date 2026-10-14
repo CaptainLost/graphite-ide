@@ -429,34 +429,33 @@ namespace Graphite {
 		cache.SessionsVersion = sessions.GetVersion();
 		cache.Built = true;
 
-		if (!diffsChanged)
+		if (diffsChanged)
 		{
-			return;
+			cache.Committed = review.Committed;
+			cache.Uncommitted = review.Uncommitted;
+			cache.FileCounts[IndexOf(ReviewGroup::Commits)] = LineCountsOfEachIn(review.Committed.get());
+			cache.FileCounts[IndexOf(ReviewGroup::Uncommitted)] = LineCountsOfEachIn(review.Uncommitted.get());
+			cache.GroupCounts[IndexOf(ReviewGroup::Commits)] = SumOf(cache.FileCounts[IndexOf(ReviewGroup::Commits)]);
+			cache.GroupCounts[IndexOf(ReviewGroup::Uncommitted)] =
+				SumOf(cache.FileCounts[IndexOf(ReviewGroup::Uncommitted)]);
+			cache.Summary =
+				ChangeSummary(review.Committed->Files.size(), cache.GroupCounts[IndexOf(ReviewGroup::Commits)]);
+
+			FollowNewDiffs(tab, review);
 		}
 
-		cache.Committed = review.Committed;
-		cache.Uncommitted = review.Uncommitted;
-		cache.FileCounts[IndexOf(ReviewGroup::Commits)] = LineCountsOfEachIn(review.Committed.get());
-		cache.FileCounts[IndexOf(ReviewGroup::Uncommitted)] = LineCountsOfEachIn(review.Uncommitted.get());
-		cache.GroupCounts[IndexOf(ReviewGroup::Commits)] = SumOf(cache.FileCounts[IndexOf(ReviewGroup::Commits)]);
-		cache.GroupCounts[IndexOf(ReviewGroup::Uncommitted)] = SumOf(cache.FileCounts[IndexOf(ReviewGroup::Uncommitted)]);
-		cache.Summary = ChangeSummary(review.Committed->Files.size(), cache.GroupCounts[IndexOf(ReviewGroup::Commits)]);
-
-		FollowNewDiffs(tab, review);
+		tab.LastPaths[IndexOf(ReviewGroup::Commits)] = ListedPathsOf(input.Groups, cache.Rows, ReviewGroup::Commits);
+		tab.LastPaths[IndexOf(ReviewGroup::Uncommitted)] =
+			ListedPathsOf(input.Groups, cache.Rows, ReviewGroup::Uncommitted);
 	}
 
 	void ReviewWindows::FollowNewDiffs(Tab& tab, const LoadedReview& review)
 	{
-		const ReviewGroups groups = GroupsOf(tab, review);
 		const std::vector<std::filesystem::path> noPathsBefore;
 		const std::vector<std::filesystem::path>& pathsBefore =
 			tab.Selected.has_value() ? tab.LastPaths[IndexOf(tab.Selected->Group)] : noPathsBefore;
 
-		tab.Selected = FollowSelection(tab.Selected, pathsBefore, groups, FirstFileOf(groups, tab.Rows.Rows));
-
-		tab.LastPaths[IndexOf(ReviewGroup::Commits)] = ShownPathsByName(*review.Committed);
-		tab.LastPaths[IndexOf(ReviewGroup::Uncommitted)] =
-			review.Uncommitted != nullptr ? ShownPathsByName(*review.Uncommitted) : std::vector<std::filesystem::path>{};
+		tab.Selected = FollowSelection(tab.Selected, pathsBefore, GroupsOf(tab, review), tab.Rows.Rows);
 	}
 
 	void ReviewWindows::UpdateTexts(Tab& tab, ReviewModel& model, const LoadedReview& review,
@@ -544,18 +543,20 @@ namespace Graphite {
 		cache.FoldsVersion = tab.FoldsInCommitVersion;
 		cache.Built = true;
 
-		if (!diffChanged)
+		if (diffChanged)
 		{
-			return;
+			cache.Committed = commitDiff;
+			cache.FileCounts[IndexOf(ReviewGroup::Commits)] = LineCountsOfEach(*commitDiff);
+			cache.Summary = CommitLine(commit, commitDiff.get());
+
+			tab.SelectedCommitFile = FollowSelection(tab.SelectedCommitFile, tab.LastCommitPaths, groups, cache.Rows);
+
+			// The list's child is the same one for every commit, so without this it keeps the scroll the
+			// last commit's list was left at.
+			tab.ScrollToCommitFile = true;
 		}
 
-		cache.Committed = commitDiff;
-		cache.FileCounts[IndexOf(ReviewGroup::Commits)] = LineCountsOfEach(*commitDiff);
-		cache.Summary = CommitLine(commit, commitDiff.get());
-
-		tab.SelectedCommitFile =
-			FollowSelection(tab.SelectedCommitFile, tab.LastCommitPaths, groups, FirstFileOf(groups, cache.Rows));
-		tab.LastCommitPaths = ShownPathsByName(*commitDiff);
+		tab.LastCommitPaths = ListedPathsOf(groups, cache.Rows, ReviewGroup::Commits);
 	}
 
 	ReviewWindows::OpenRelativeFile ReviewWindows::OpenFileIn(const ReviewRange& range) const

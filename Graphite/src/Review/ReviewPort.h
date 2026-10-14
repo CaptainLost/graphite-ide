@@ -139,6 +139,7 @@ namespace Graphite {
 
 		virtual Core::Result<ReviewRange> ResolveRange(const ReviewKey& key) = 0;
 
+		// A zero MergeBase is the empty tree: a root commit's own change.
 		virtual Core::Result<Core::Diff> QueryRangeDiff(const RangeEnds& ends, Core::WhitespaceInDiff whitespace) = 0;
 
 		// The old side at the merge base, the new side at the tip. A side with an empty path is absent.
@@ -154,7 +155,7 @@ namespace Graphite {
 														  const std::filesystem::path& oldPath,
 														  const std::filesystem::path& newPath) = 0;
 
-		// NotFound when the viewed blob is no longer in the repository.
+		// NotFound when the viewed blob is no longer in the repository, and only then.
 		virtual Core::Result<SinceViewedAnswer> ReadSinceViewed(const SinceViewedRequest& request) = 0;
 	};
 }

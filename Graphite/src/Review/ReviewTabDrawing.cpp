@@ -36,13 +36,34 @@ namespace Graphite {
 
 		constexpr const char* kOnlyWhitespace = "Only whitespace changed.";
 		constexpr const char* kDiffUnreadable = "The diff could not be read.";
+		constexpr const char* kSinceViewedUnreadable = "The diff since you viewed could not be read.";
 
-		// Whether the version a changed file was viewed at can still be read from the repository.
-		enum class ViewedVersion
+		constexpr int kPageTabColourCount = 5;
+
+		// Whether a changed file's diff since it was viewed can be shown: not once the repository no longer
+		// holds the version viewed, and not after its read failed for another reason.
+		enum class SinceViewedDiff
 		{
 			Available,
-			Gone
+			ViewedVersionGone,
+			Unreadable
 		};
+
+		// The theme's tab colours are made for the document tabs, whose selected tab merges into the window
+		// below it; in a tab bar inside a window they leave the open page flat and the other one boxed. Here
+		// the open page is boxed and overlined, focused or not, and the other lies flat on the background.
+		void PushPageTabColours()
+		{
+			const ImVec4 boxed = ImGui::GetStyleColorVec4(ImGuiCol_Tab);
+			const ImVec4 flat = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
+			const ImVec4 overline = ImGui::GetStyleColorVec4(ImGuiCol_TabSelectedOverline);
+
+			ImGui::PushStyleColor(ImGuiCol_TabSelected, boxed);
+			ImGui::PushStyleColor(ImGuiCol_TabDimmedSelected, boxed);
+			ImGui::PushStyleColor(ImGuiCol_Tab, flat);
+			ImGui::PushStyleColor(ImGuiCol_TabDimmed, flat);
+			ImGui::PushStyleColor(ImGuiCol_TabDimmedSelectedOverline, overline);
+		}
 
 		SessionSettings ReadSettings(const ReviewSessions& sessions, const std::string& branch)
 		{
@@ -112,8 +133,9 @@ namespace Graphite {
 			return filter.empty() ? std::string{"All viewed."} : std::string{"No files match."};
 		}
 
-		// Drawn over one Selectable as tall as the row, so the whole row folds the group. The heading and its
-		// note are cut to the room the counts at the right leave them.
+		// Drawn over one Selectable as tall as the row, so the whole row folds the group. The heading is cut to
+		// the room the counts at the right leave it, and its note is left out unless it fits whole: the
+		// heading's "(0 of 3)" already says it.
 		bool DrawHeadingRow(const ReviewTreeRow& row, const std::string& note, const LineCounts& groupCounts,
 							float rowHeight)
 		{
@@ -140,12 +162,12 @@ namespace Graphite {
 			ImGui::TextUnformatted(heading.c_str());
 
 			const float noteRoom = textRoom - MeasureText(heading) - spacing;
-			const bool noteHasRoom = !note.empty() && noteRoom > MeasureText(Ellipsis);
+			const bool noteFitsWhole = !note.empty() && FittedText(note, noteRoom) == note;
 
-			if (noteHasRoom)
+			if (noteFitsWhole)
 			{
 				ImGui::SameLine();
-				ImGui::TextDisabled("%s", FittedText(note, noteRoom).c_str());
+				ImGui::TextDisabled("%s", note.c_str());
 			}
 
 			ImGui::SameLine();
@@ -540,12 +562,27 @@ namespace Graphite {
 			return RangeDiffKey{.Ends = EndsOfCommit(commit), .Whitespace = settings.Whitespace};
 		}
 
-		// All changes for a file with no diff since it was viewed, or whose viewed version is gone, whatever
-		// the session's setting says.
-		ChangedFileView ShownViewOf(const std::optional<SinceViewedRequest>& sinceViewed, ViewedVersion viewedVersion,
+		SinceViewedDiff SinceViewedDiffOf(const ReviewModel& model, const SinceViewedRequest& request)
+		{
+			if (model.IsSinceViewedUnavailable(request))
+			{
+				return SinceViewedDiff::ViewedVersionGone;
+			}
+
+			if (model.IsSinceViewedFailed(request))
+			{
+				return SinceViewedDiff::Unreadable;
+			}
+
+			return SinceViewedDiff::Available;
+		}
+
+		// All changes for a file with no diff since it was viewed, or whose diff since cannot be shown,
+		// whatever the session's setting says.
+		ChangedFileView ShownViewOf(const std::optional<SinceViewedRequest>& sinceViewed, SinceViewedDiff sinceViewedDiff,
 									const SessionSettings& settings)
 		{
-			const bool canShowSinceViewed = sinceViewed.has_value() && viewedVersion == ViewedVersion::Available;
+			const bool canShowSinceViewed = sinceViewed.has_value() && sinceViewedDiff == SinceViewedDiff::Available;
 			return canShowSinceViewed ? settings.ChangedFiles : ChangedFileView::AllChanges;
 		}
 
@@ -557,9 +594,10 @@ namespace Graphite {
 			sessions.SetSettings(branch, changed);
 		}
 
-		// "All changes | Since you viewed", the second disabled once the version viewed is gone.
+		// "All changes | Since you viewed", the second disabled once the version viewed is gone, and followed
+		// by a note when the diff since could not be read for another reason.
 		void DrawChangedFileSwitch(ReviewSessions& sessions, const std::string& branch, const SessionSettings& settings,
-								   ChangedFileView shownView, ViewedVersion viewedVersion)
+								   ChangedFileView shownView, SinceViewedDiff sinceViewedDiff)
 		{
 			if (ImGui::RadioButton("All changes", shownView == ChangedFileView::AllChanges))
 			{
@@ -568,7 +606,7 @@ namespace Graphite {
 
 			ImGui::SameLine();
 
-			const bool viewedVersionIsGone = viewedVersion == ViewedVersion::Gone;
+			const bool viewedVersionIsGone = sinceViewedDiff == SinceViewedDiff::ViewedVersionGone;
 			ImGui::BeginDisabled(viewedVersionIsGone);
 
 			if (ImGui::RadioButton("Since you viewed", shownView == ChangedFileView::SinceViewed))
@@ -581,6 +619,12 @@ namespace Graphite {
 			if (viewedVersionIsGone && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 			{
 				ImGui::SetTooltip("The version you viewed is no longer available");
+			}
+
+			if (sinceViewedDiff == SinceViewedDiff::Unreadable)
+			{
+				ImGui::SameLine();
+				ImGui::TextDisabled("%s", kSinceViewedUnreadable);
 			}
 		}
 
@@ -672,17 +716,13 @@ namespace Graphite {
 				return;
 			}
 
-			if (range->Problem == RangeProblem::BaseMissing)
+			// The base is fixed for the session, so a base that is gone or shares no history with the
+			// branch leaves nothing to do but end the review.
+			if (Core::EmptyState(problem, "End review"))
 			{
-				if (Core::EmptyState(problem, "End review"))
-				{
-					AskToEnd(tab.Branch);
-				}
-
-				return;
+				AskToEnd(tab.Branch);
 			}
 
-			Core::EmptyState(problem);
 			return;
 		}
 
@@ -866,30 +906,32 @@ namespace Graphite {
 	void ReviewWindows::RenderPages(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review,
 									const ReviewGroups& groups, const OpenRelativeFile& openFile)
 	{
-		if (!ImGui::BeginTabBar("##reviewPages"))
+		PushPageTabColours();
+
+		if (ImGui::BeginTabBar("##reviewPages", ImGuiTabBarFlags_DrawSelectedOverline))
 		{
-			return;
+			if (ImGui::BeginTabItem("Files"))
+			{
+				tab.Page = ReviewPage::Files;
+				DrawListToolbar(tab.Filter, input.Sessions, tab.Branch, RowMarks::Shown);
+				RenderFileList(tab, input, FilesPageList(tab, groups), openFile);
+				ImGui::EndTabItem();
+			}
+
+			// The count after a new commit changes the label; the identity after ### keeps the tab the same one.
+			const std::string commitsLabel = CommitsTabLabel(*review.Range) + "###commits";
+
+			if (ImGui::BeginTabItem(commitsLabel.c_str()))
+			{
+				tab.Page = ReviewPage::Commits;
+				RenderCommitsPage(tab, input, *review.Range, openFile);
+				ImGui::EndTabItem();
+			}
+
+			ImGui::EndTabBar();
 		}
 
-		if (ImGui::BeginTabItem("Files"))
-		{
-			tab.Page = ReviewPage::Files;
-			DrawListToolbar(tab.Filter, input.Sessions, tab.Branch, RowMarks::Shown);
-			RenderFileList(tab, input, FilesPageList(tab, groups), openFile);
-			ImGui::EndTabItem();
-		}
-
-		// The count after a new commit changes the label; the identity after ### keeps the tab the same one.
-		const std::string commitsLabel = CommitsTabLabel(*review.Range) + "###commits";
-
-		if (ImGui::BeginTabItem(commitsLabel.c_str()))
-		{
-			tab.Page = ReviewPage::Commits;
-			RenderCommitsPage(tab, input, *review.Range, openFile);
-			ImGui::EndTabItem();
-		}
-
-		ImGui::EndTabBar();
+		ImGui::PopStyleColor(kPageTabColourCount);
 	}
 
 	void ReviewWindows::RenderFileList(Tab& tab, const ReviewRenderInput& input, const FileList& list,
@@ -1270,13 +1312,13 @@ namespace Graphite {
 			file != nullptr ? SinceViewedRequestFor(input.Sessions, tab.Branch, tab.Selected->Group, *file,
 													*review.Range, settings.Whitespace)
 							: std::nullopt;
-		const bool viewedVersionIsGone = sinceViewed.has_value() && input.Model.IsSinceViewedUnavailable(*sinceViewed);
-		const ViewedVersion viewedVersion = viewedVersionIsGone ? ViewedVersion::Gone : ViewedVersion::Available;
-		const ChangedFileView shownView = ShownViewOf(sinceViewed, viewedVersion, settings);
+		const SinceViewedDiff sinceViewedDiff =
+			sinceViewed.has_value() ? SinceViewedDiffOf(input.Model, *sinceViewed) : SinceViewedDiff::Available;
+		const ChangedFileView shownView = ShownViewOf(sinceViewed, sinceViewedDiff, settings);
 
 		if (sinceViewed.has_value())
 		{
-			DrawChangedFileSwitch(input.Sessions, tab.Branch, settings, shownView, viewedVersion);
+			DrawChangedFileSwitch(input.Sessions, tab.Branch, settings, shownView, sinceViewedDiff);
 			ImGui::SameLine();
 		}
 		else if (file != nullptr && OnlyBaseMoved(input.Sessions, tab.Branch, tab.Selected->Group, *file))

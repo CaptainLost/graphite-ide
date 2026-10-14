@@ -33,8 +33,8 @@ namespace Graphite {
 	// "feature/x" for "refs/heads/feature/x", "origin/main" for "refs/remotes/origin/main".
 	std::string ShortBranchName(const std::string& fullName);
 
-	// A commit's own change: the range from its first parent to it. Every commit a review lists
-	// descends from the merge base, so it has a parent.
+	// A commit's own change: the range from its first parent to it. A root commit - listed once the
+	// branch has merged an unrelated history - has no parent, and its range starts at a zero id.
 	RangeEnds EndsOfCommit(const Core::CommitSummary& commit);
 
 	struct LineCounts
@@ -81,15 +81,6 @@ namespace Graphite {
 
 	// Null when the selection's group is not loaded or no longer has that file.
 	const Core::FileDiff* SelectedFile(const ReviewGroups& groups, const ReviewSelection& selection);
-
-	std::vector<std::filesystem::path> ShownPathsByName(const Core::Diff& diff);
-
-	// The selection kept by path across a refresh, and kept while its group is still loading.
-	// When its file is gone, the file that took its place in the same group; with no selection, or
-	// none to take its place, the first file listed.
-	std::optional<ReviewSelection> FollowSelection(const std::optional<ReviewSelection>& selected,
-												   const std::vector<std::filesystem::path>& groupPathsBefore,
-												   const ReviewGroups& groups, const std::optional<ReviewSelection>& firstListed);
 
 	enum class ListStep
 	{
@@ -139,6 +130,6 @@ namespace Graphite {
 
 	PathLabel LabelOf(const Core::FileDiff& file);
 
-	// A file listed as modified that has no lines left once white space is ignored.
+	// A file listed as modified, whose content changed, that has no lines left once white space is ignored.
 	bool OnlyWhitespaceChanged(const Core::FileDiff& file, Core::WhitespaceInDiff whitespace);
 }

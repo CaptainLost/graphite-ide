@@ -270,7 +270,7 @@ namespace Graphite {
 		static void FollowCommits(Tab& tab, const ReviewRange& range);
 
 		// The picked commit's rows, built as RefreshRows builds the Files page's. A new diff picks the
-		// file that took the place of the one picked, or the first file listed.
+		// file that took the place of the one picked, or the first file listed, and scrolls it into view.
 		static void RefreshCommitRows(Tab& tab, const SessionSettings& settings, const Core::CommitSummary& commit,
 									  const Core::Ref<const Core::Diff>& commitDiff);
 

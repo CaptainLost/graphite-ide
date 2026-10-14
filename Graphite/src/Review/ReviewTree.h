@@ -90,6 +90,17 @@ namespace Graphite {
 
 	std::optional<ReviewSelection> FirstFileOf(const ReviewGroups& groups, const std::vector<ReviewTreeRow>& rows);
 
+	// One group's files in the order the rows list them.
+	std::vector<std::filesystem::path> ListedPathsOf(const ReviewGroups& groups, const std::vector<ReviewTreeRow>& rows,
+													 ReviewGroup group);
+
+	// The selection kept by path across new diffs, and kept while its group is still loading. When its file
+	// is gone, the file the rows now list in its place in the same group - `groupPathsBefore` being what
+	// ListedPathsOf gave for that group before; with no selection, or none to take its place, the first file listed.
+	std::optional<ReviewSelection> FollowSelection(const std::optional<ReviewSelection>& selected,
+												   const std::vector<std::filesystem::path>& groupPathsBefore,
+												   const ReviewGroups& groups, const std::vector<ReviewTreeRow>& rows);
+
 	// One file up or down, folders and headings skipped and groups crossed, staying put at either end. A
 	// selection the rows no longer list - hidden as viewed, folded away, filtered out - steps to the listed file
 	// on that side of where the shape would list it.

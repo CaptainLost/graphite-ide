@@ -1,6 +1,5 @@
 #include "Review/ReviewFiles.h"
 
-#include "Git/Changes/ChangesRows.h"
 #include "Git/History/CommitLabels.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -62,27 +61,6 @@ namespace Graphite {
 			}
 
 			return nullptr;
-		}
-
-		bool IsShownBefore(const Core::Diff& diff, std::size_t leftIndex, std::size_t rightIndex)
-		{
-			return ShownPath(diff.Files[leftIndex]) < ShownPath(diff.Files[rightIndex]);
-		}
-
-		std::vector<std::size_t> FileIndicesByPath(const Core::Diff& diff)
-		{
-			std::vector<std::size_t> indices;
-			indices.reserve(diff.Files.size());
-
-			for (std::size_t fileIndex = 0; fileIndex < diff.Files.size(); ++fileIndex)
-			{
-				indices.push_back(fileIndex);
-			}
-
-			std::sort(indices.begin(), indices.end(),
-					  [&diff](std::size_t left, std::size_t right) { return IsShownBefore(diff, left, right); });
-
-			return indices;
 		}
 
 		void AddViewed(ViewedCount& count, const Core::Diff* diff, ReviewGroup group, const ViewedStateOf& stateOf)
@@ -262,43 +240,6 @@ namespace Graphite {
 		return nullptr;
 	}
 
-	std::vector<std::filesystem::path> ShownPathsByName(const Core::Diff& diff)
-	{
-		std::vector<std::filesystem::path> paths;
-
-		for (const std::size_t fileIndex : FileIndicesByPath(diff))
-		{
-			paths.push_back(ShownPath(diff.Files[fileIndex]));
-		}
-
-		return paths;
-	}
-
-	std::optional<ReviewSelection> FollowSelection(const std::optional<ReviewSelection>& selected,
-												   const std::vector<std::filesystem::path>& groupPathsBefore,
-												   const ReviewGroups& groups, const std::optional<ReviewSelection>& firstListed)
-	{
-		if (selected.has_value())
-		{
-			const Core::Diff* diff = DiffOf(groups, selected->Group);
-
-			if (diff == nullptr || SelectedFile(groups, *selected) != nullptr)
-			{
-				return selected;
-			}
-
-			const std::optional<std::filesystem::path> neighbour =
-				NextSelection(selected->Path, groupPathsBefore, ShownPathsByName(*diff));
-
-			if (neighbour.has_value())
-			{
-				return ReviewSelection{.Group = selected->Group, .Path = *neighbour};
-			}
-		}
-
-		return firstListed;
-	}
-
 	ViewedCount CountViewed(const ReviewGroups& groups, const ViewedStateOf& stateOf)
 	{
 		ViewedCount count;
@@ -440,7 +381,11 @@ namespace Graphite {
 
 	bool OnlyWhitespaceChanged(const Core::FileDiff& file, Core::WhitespaceInDiff whitespace)
 	{
+		// A FileDiff has no mode, so a change of mode alone arrives Modified with no hunks too; its
+		// blob is the same on both sides.
+		const bool contentChanged = file.OldId != file.NewId;
+
 		return whitespace == Core::WhitespaceInDiff::Ignored && file.Change == Core::FileChange::Modified &&
-			   !file.IsBinary && file.Hunks.empty();
+			   !file.IsBinary && contentChanged && file.Hunks.empty();
 	}
 }

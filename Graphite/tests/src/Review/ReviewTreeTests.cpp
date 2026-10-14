@@ -3,6 +3,7 @@
 #include "Review/ReviewTree.h"
 
 #include <filesystem>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -67,6 +68,27 @@ namespace {
 	ViewedState ViewedIfNamed(const Core::FileDiff& file, const std::string& name)
 	{
 		return file.NewPath.filename() == std::filesystem::path{name} ? ViewedState::Viewed : ViewedState::NotViewed;
+	}
+
+	// x.h is viewed, y.h changed since it was viewed, and nothing else was viewed.
+	ViewedState XViewedAndYChangedSince(const Core::FileDiff& file)
+	{
+		if (file.NewPath == std::filesystem::path{"x.h"})
+		{
+			return ViewedState::Viewed;
+		}
+
+		if (file.NewPath == std::filesystem::path{"y.h"})
+		{
+			return ViewedState::ChangedSinceViewed;
+		}
+
+		return ViewedState::NotViewed;
+	}
+
+	ReviewSelection CommitsSelection(const std::filesystem::path& path)
+	{
+		return ReviewSelection{.Group = ReviewGroup::Commits, .Path = path};
 	}
 }
 
@@ -157,11 +179,7 @@ TEST_CASE("Hide viewed leaves out viewed files and keeps the ones changed since"
 	const Core::Diff committed = DiffOfFiles({"x.h", "y.h", "z.h"});
 	const ReviewGroups groups{.Commits = &committed};
 	ReviewTreeInput input{.Groups = groups, .HideViewed = true};
-	input.StateOf = [](ReviewGroup, const Core::FileDiff& file) {
-		return file.NewPath == std::filesystem::path{"x.h"} ? ViewedState::Viewed
-			   : file.NewPath == std::filesystem::path{"y.h"} ? ViewedState::ChangedSinceViewed
-																: ViewedState::NotViewed;
-	};
+	input.StateOf = [](ReviewGroup, const Core::FileDiff& file) { return XViewedAndYChangedSince(file); };
 
 	const std::vector<ReviewTreeRow> rows = Graphite::BuildReviewTree(input);
 
@@ -255,6 +273,78 @@ TEST_CASE("A selection the list no longer shows steps to the files on either sid
 		  std::optional<ReviewSelection>{fileOn});
 	CHECK(Graphite::NeighbourFileOf(fileA, groups, flatWithoutA, ListStep::Next, ListShape::Flat) ==
 		  std::optional<ReviewSelection>{fileB});
+}
+
+TEST_CASE("A selection is kept by path across a refresh")
+{
+	const Core::Diff committed = DiffOfFiles({"a.cpp", "b.cpp"});
+	const ReviewGroups groups{.Commits = &committed};
+	const std::vector<ReviewTreeRow> rows = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups});
+	const std::vector<std::filesystem::path> listedBefore = {"a.cpp", "b.cpp"};
+
+	const std::optional<ReviewSelection> followed =
+		Graphite::FollowSelection(CommitsSelection("b.cpp"), listedBefore, groups, rows);
+
+	CHECK(followed == std::optional<ReviewSelection>{CommitsSelection("b.cpp")});
+}
+
+TEST_CASE("A selected file that is gone gives way to the file that took its place")
+{
+	const Core::Diff committed = DiffOfFiles({"a.cpp", "c.cpp"});
+	const ReviewGroups groups{.Commits = &committed};
+	const std::vector<ReviewTreeRow> rows = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups});
+	const std::vector<std::filesystem::path> listedBefore = {"a.cpp", "b.cpp", "c.cpp"};
+
+	const std::optional<ReviewSelection> followed =
+		Graphite::FollowSelection(CommitsSelection("b.cpp"), listedBefore, groups, rows);
+
+	CHECK(followed == std::optional<ReviewSelection>{CommitsSelection("c.cpp")});
+}
+
+TEST_CASE("A selected file that is gone gives way to the file the tree now lists in its place")
+{
+	const Core::Diff before = DiffOfFiles({"src/one.cpp", "src/two.cpp", "a.cpp", "z.cpp"});
+	const ReviewGroups groupsBefore{.Commits = &before};
+	const std::vector<ReviewTreeRow> rowsBefore = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groupsBefore});
+	const std::vector<std::filesystem::path> listedBefore =
+		Graphite::ListedPathsOf(groupsBefore, rowsBefore, ReviewGroup::Commits);
+
+	const Core::Diff after = DiffOfFiles({"src/one.cpp", "a.cpp", "z.cpp"});
+	const ReviewGroups groupsAfter{.Commits = &after};
+	const std::vector<ReviewTreeRow> rowsAfter = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groupsAfter});
+
+	const std::optional<ReviewSelection> followed =
+		Graphite::FollowSelection(CommitsSelection("src/two.cpp"), listedBefore, groupsAfter, rowsAfter);
+
+	CHECK(listedBefore == std::vector<std::filesystem::path>{"src/one.cpp", "src/two.cpp", "a.cpp", "z.cpp"});
+	CHECK(followed == std::optional<ReviewSelection>{CommitsSelection("a.cpp")});
+}
+
+TEST_CASE("With nothing selected the first file listed is")
+{
+	const Core::Diff committed = DiffOfFiles({"b.cpp", "a.cpp"});
+	const ReviewGroups groups{.Commits = &committed};
+	const std::vector<ReviewTreeRow> rows = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups});
+	const std::optional<ReviewSelection> nothingSelected;
+	const std::vector<std::filesystem::path> nothingListedBefore;
+
+	const std::optional<ReviewSelection> followed =
+		Graphite::FollowSelection(nothingSelected, nothingListedBefore, groups, rows);
+
+	CHECK(followed == std::optional<ReviewSelection>{CommitsSelection("a.cpp")});
+}
+
+TEST_CASE("A selection in a group still loading is kept")
+{
+	const Core::Diff committed = DiffOfFiles({"a.cpp"});
+	const ReviewGroups groups{.Commits = &committed};
+	const std::vector<ReviewTreeRow> rows = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups});
+	const ReviewSelection waiting{.Group = ReviewGroup::Uncommitted, .Path = "z.cpp"};
+	const std::vector<std::filesystem::path> nothingListedBefore;
+
+	const std::optional<ReviewSelection> followed = Graphite::FollowSelection(waiting, nothingListedBefore, groups, rows);
+
+	CHECK(followed == std::optional<ReviewSelection>{waiting});
 }
 
 TEST_CASE("The filter matches a part of the path whatever its case")

@@ -802,6 +802,18 @@ namespace Graphite {
 
 			return worktree.GetValue().ReadWorkingTreeFile(request.Path);
 		}
+
+		// A since-viewed answer keeps NotFound for the viewed blob alone: a current version that is not
+		// found - a file deleted on disk since the diff, a worktree removed - is a read that failed.
+		Core::Error AsFailedRead(Core::Error error)
+		{
+			if (error.Code == Core::ErrorCode::NotFound)
+			{
+				error.Code = Core::ErrorCode::IoFailure;
+			}
+
+			return error;
+		}
 	}
 
 	Core::Result<ReviewRange> RepositoryGitPort::ResolveRange(const ReviewKey& key)
@@ -896,9 +908,14 @@ namespace Graphite {
 
 		Core::DiffRequest request;
 		request.Target = Core::DiffTarget::RevisionToRevision;
-		request.From = ends.MergeBase;
 		request.To = ends.Tip;
 		request.Whitespace = whitespace;
+
+		// A From left unset is the empty tree; a zero id would be looked up as a commit and not found.
+		if (!ends.MergeBase.IsZero())
+		{
+			request.From = ends.MergeBase;
+		}
 
 		return opened.GetValue()->QueryDiff(request);
 	}
@@ -1009,7 +1026,7 @@ namespace Graphite {
 
 		if (!current.HasValue())
 		{
-			return current.GetError();
+			return AsFailedRead(current.GetError());
 		}
 
 		Core::Result<Core::FileDiff> diff =

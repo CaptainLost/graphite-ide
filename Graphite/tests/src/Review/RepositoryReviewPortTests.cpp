@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Git/RepositoryGitPort.h"
+#include "Review/ReviewFiles.h"
 #include "Review/ReviewPort.h"
 
 #include "Review/ReviewRepository.h"
@@ -211,4 +212,50 @@ TEST_CASE("Since the viewed version reads the viewed blob against the tip and sa
 
 	REQUIRE_FALSE(gone.HasValue());
 	CHECK(gone.GetError().Code == Core::ErrorCode::NotFound);
+}
+
+TEST_CASE("Since the viewed version reads a current version it cannot find as a failed read and not as a gone one")
+{
+	ReviewRepository repository;
+	MakeForkedHistory(repository);
+	Graphite::RepositoryGitPort port{repository.GetPath()};
+	const ReviewRange range = ResolvedRange(port, kSideAgainstMaster);
+
+	const Core::Result<Core::Diff> diff = port.QueryRangeDiff(range.Ends, Core::WhitespaceInDiff::Shown);
+	REQUIRE(diff.HasValue());
+	const Core::FileDiff& aText = diff.GetValue().Files[0];
+
+	const Graphite::SinceViewedRequest currentMissing{.ViewedBlob = aText.OldId,
+													  .CurrentBlob = aText.NewId,
+													  .Path = "not-at-the-tip.txt",
+													  .Whitespace = Core::WhitespaceInDiff::Shown,
+													  .Tip = range.Ends.Tip,
+													  .Worktree = std::nullopt};
+	const Core::Result<Graphite::SinceViewedAnswer> answer = port.ReadSinceViewed(currentMissing);
+
+	REQUIRE_FALSE(answer.HasValue());
+	CHECK(answer.GetError().Code != Core::ErrorCode::NotFound);
+}
+
+TEST_CASE("A root commit's own change is read from the empty tree")
+{
+	ReviewRepository repository;
+	repository.Write("a.txt", "one\n");
+	Core::CommitSummary root;
+	root.Id = repository.Commit("a root");
+	Graphite::RepositoryGitPort port{repository.GetPath()};
+	const Graphite::RangeEnds ends = Graphite::EndsOfCommit(root);
+
+	const Core::Result<Core::Diff> diff = port.QueryRangeDiff(ends, Core::WhitespaceInDiff::Shown);
+
+	REQUIRE(diff.HasValue());
+	REQUIRE(diff.GetValue().Files.size() == 1);
+	const Core::FileDiff& added = diff.GetValue().Files.front();
+	CHECK(added.Change == Core::FileChange::Added);
+	CHECK(added.NewPath == std::filesystem::path{"a.txt"});
+
+	const Core::Result<Graphite::FileTexts> texts = port.ReadRangeTexts(ends, added.OldPath, added.NewPath);
+	REQUIRE(texts.HasValue());
+	CHECK_FALSE(texts.GetValue().HasOld);
+	CHECK(texts.GetValue().New == "one\n");
 }

@@ -1,5 +1,6 @@
 #include "Review/ReviewTree.h"
 
+#include "Git/Changes/ChangesRows.h"
 #include "Git/History/CommitLabels.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -430,6 +431,47 @@ namespace Graphite {
 		}
 
 		return files.front();
+	}
+
+	std::vector<std::filesystem::path> ListedPathsOf(const ReviewGroups& groups, const std::vector<ReviewTreeRow>& rows,
+													 ReviewGroup group)
+	{
+		std::vector<std::filesystem::path> paths;
+
+		for (const ReviewTreeRow& row : rows)
+		{
+			if (row.Kind == TreeRowKind::File && row.Group == group)
+			{
+				paths.push_back(ShownPath(FileOfTreeRow(groups, row)));
+			}
+		}
+
+		return paths;
+	}
+
+	std::optional<ReviewSelection> FollowSelection(const std::optional<ReviewSelection>& selected,
+												   const std::vector<std::filesystem::path>& groupPathsBefore,
+												   const ReviewGroups& groups, const std::vector<ReviewTreeRow>& rows)
+	{
+		if (selected.has_value())
+		{
+			const Core::Diff* diff = DiffOf(groups, selected->Group);
+
+			if (diff == nullptr || SelectedFile(groups, *selected) != nullptr)
+			{
+				return selected;
+			}
+
+			const std::optional<std::filesystem::path> neighbour =
+				NextSelection(selected->Path, groupPathsBefore, ListedPathsOf(groups, rows, selected->Group));
+
+			if (neighbour.has_value())
+			{
+				return ReviewSelection{.Group = selected->Group, .Path = *neighbour};
+			}
+		}
+
+		return FirstFileOf(groups, rows);
 	}
 
 	std::optional<ReviewSelection> NeighbourFileOf(const std::optional<ReviewSelection>& selected,

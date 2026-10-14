@@ -2,7 +2,6 @@
 
 #include "Review/ReviewFiles.h"
 #include "Review/ReviewSessions.h"
-#include "Review/ReviewTree.h"
 
 #include <filesystem>
 #include <optional>
@@ -12,8 +11,6 @@
 using Graphite::ListStep;
 using Graphite::ReviewGroup;
 using Graphite::ReviewGroups;
-using Graphite::ReviewSelection;
-using Graphite::ReviewTreeInput;
 
 namespace {
 
@@ -45,6 +42,15 @@ namespace {
 		return file;
 	}
 
+	// A file whose content changed: its old and new blobs differ.
+	Core::FileDiff ChangedFileAt(const std::filesystem::path& path)
+	{
+		Core::FileDiff file = FileAt(path);
+		file.OldId.Bytes[0] = 1;
+		file.NewId.Bytes[0] = 2;
+		return file;
+	}
+
 	Core::Diff DiffOfFiles(const std::vector<std::filesystem::path>& paths)
 	{
 		Core::Diff diff;
@@ -55,11 +61,6 @@ namespace {
 		}
 
 		return diff;
-	}
-
-	ReviewSelection CommitsSelection(const std::filesystem::path& path)
-	{
-		return ReviewSelection{.Group = ReviewGroup::Commits, .Path = path};
 	}
 }
 
@@ -134,53 +135,6 @@ TEST_CASE("A file's added and removed lines are counted from its hunks")
 
 	CHECK(counts.Added == 2);
 	CHECK(counts.Removed == 1);
-}
-
-TEST_CASE("A selection is kept by path across a refresh")
-{
-	const Core::Diff committed = DiffOfFiles({"a.cpp", "b.cpp"});
-	const ReviewGroups groups{.Commits = &committed};
-	const std::vector<Graphite::ReviewTreeRow> rows = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups});
-
-	const std::optional<ReviewSelection> followed =
-		Graphite::FollowSelection(CommitsSelection("b.cpp"), {"a.cpp", "b.cpp"}, groups, Graphite::FirstFileOf(groups, rows));
-
-	CHECK(followed == std::optional<ReviewSelection>{CommitsSelection("b.cpp")});
-}
-
-TEST_CASE("A selected file that is gone gives way to the file that took its place")
-{
-	const Core::Diff committed = DiffOfFiles({"a.cpp", "c.cpp"});
-	const ReviewGroups groups{.Commits = &committed};
-	const std::vector<Graphite::ReviewTreeRow> rows = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups});
-
-	const std::optional<ReviewSelection> followed =
-		Graphite::FollowSelection(CommitsSelection("b.cpp"), {"a.cpp", "b.cpp", "c.cpp"}, groups, Graphite::FirstFileOf(groups, rows));
-
-	CHECK(followed == std::optional<ReviewSelection>{CommitsSelection("c.cpp")});
-}
-
-TEST_CASE("With nothing selected the first file listed is")
-{
-	const Core::Diff committed = DiffOfFiles({"b.cpp", "a.cpp"});
-	const ReviewGroups groups{.Commits = &committed};
-	const std::vector<Graphite::ReviewTreeRow> rows = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups});
-
-	const std::optional<ReviewSelection> followed = Graphite::FollowSelection(std::nullopt, {}, groups, Graphite::FirstFileOf(groups, rows));
-
-	CHECK(followed == std::optional<ReviewSelection>{CommitsSelection("a.cpp")});
-}
-
-TEST_CASE("A selection in a group still loading is kept")
-{
-	const Core::Diff committed = DiffOfFiles({"a.cpp"});
-	const ReviewGroups groups{.Commits = &committed};
-	const std::vector<Graphite::ReviewTreeRow> rows = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups});
-	const ReviewSelection waiting{.Group = ReviewGroup::Uncommitted, .Path = "z.cpp"};
-
-	const std::optional<ReviewSelection> followed = Graphite::FollowSelection(waiting, {}, groups, Graphite::FirstFileOf(groups, rows));
-
-	CHECK(followed == std::optional<ReviewSelection>{waiting});
 }
 
 TEST_CASE("The viewed count covers every file of every present group")
@@ -335,16 +289,25 @@ TEST_CASE("The arrow keys step through the commits and stop at either end")
 
 TEST_CASE("Only a modified text file left with no lines once white space is ignored changed only in white space")
 {
-	Core::FileDiff file = FileAt("a.cpp");
+	const Core::FileDiff file = ChangedFileAt("a.cpp");
 
 	CHECK(Graphite::OnlyWhitespaceChanged(file, Core::WhitespaceInDiff::Ignored));
 	CHECK_FALSE(Graphite::OnlyWhitespaceChanged(file, Core::WhitespaceInDiff::Shown));
 
-	Core::FileDiff binary = FileAt("a.png");
+	Core::FileDiff binary = ChangedFileAt("a.png");
 	binary.IsBinary = true;
 	CHECK_FALSE(Graphite::OnlyWhitespaceChanged(binary, Core::WhitespaceInDiff::Ignored));
 
-	Core::FileDiff renamed = FileAt("b.cpp");
+	Core::FileDiff renamed = ChangedFileAt("b.cpp");
 	renamed.Change = Core::FileChange::Renamed;
 	CHECK_FALSE(Graphite::OnlyWhitespaceChanged(renamed, Core::WhitespaceInDiff::Ignored));
+}
+
+TEST_CASE("A modified file with the same blob on both sides changed its mode and not its white space")
+{
+	Core::FileDiff modeOnly = FileAt("run.sh");
+	modeOnly.OldId.Bytes[0] = 7;
+	modeOnly.NewId = modeOnly.OldId;
+
+	CHECK_FALSE(Graphite::OnlyWhitespaceChanged(modeOnly, Core::WhitespaceInDiff::Ignored));
 }
