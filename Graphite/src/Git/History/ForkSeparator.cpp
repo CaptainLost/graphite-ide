@@ -70,12 +70,11 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		// WARNING: A branch and its own upstream are one line of history, not a branch and where it
-		// began. The trunk is offered its upstream for a review, but in the history it has no fork point.
+		// WARNING: A remote branch against the local one that tracks it is one line of history, not a
+		// branch and where it began.
 		const bool isUpstreamOfBase = base->Upstream == branch->Name;
-		const bool hasBaseAsUpstream = branch->Upstream == base->Name;
 
-		if (isUpstreamOfBase || hasBaseAsUpstream)
+		if (isUpstreamOfBase)
 		{
 			return std::nullopt;
 		}
@@ -92,7 +91,7 @@ namespace Graphite {
 	std::optional<ForkSeparator> FindForkSeparator(const Core::LogPage& page, const Core::LogPage& ownCommits,
 												   const std::string& baseName)
 	{
-		if (!ownCommits.Complete)
+		if (!ownCommits.Complete || ownCommits.Commits.empty())
 		{
 			return std::nullopt;
 		}
@@ -111,10 +110,8 @@ namespace Graphite {
 				continue;
 			}
 
-			const char* lead = own.empty() ? "No new commits" : "Earlier history";
-
 			return ForkSeparator{.BeforeCommit = commitIndex,
-								 .Text = std::string{lead} + " \xC2\xB7 already in " + baseName};
+								 .Text = "Earlier history \xC2\xB7 already in " + baseName};
 		}
 
 		return std::nullopt;

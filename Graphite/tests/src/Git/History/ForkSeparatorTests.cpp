@@ -93,9 +93,12 @@ TEST_CASE("A selected ref that is not a branch has nothing to measure")
 	CHECK_FALSE(Graphite::FindForkBase("refs/heads/gone", Repository()).has_value());
 }
 
-TEST_CASE("The default branch has no fork point, since its base is only its own upstream")
+TEST_CASE("The default branch is measured against its upstream")
 {
-	CHECK_FALSE(Graphite::FindForkBase("refs/heads/main", Repository()).has_value());
+	const std::optional<Graphite::ForkBase> fork = Graphite::FindForkBase("refs/heads/main", Repository());
+
+	REQUIRE(fork.has_value());
+	CHECK(fork->BaseName == "origin/main");
 }
 
 TEST_CASE("The remote of the default branch has no fork point either")
@@ -122,16 +125,12 @@ TEST_CASE("The separator sits before the first commit the branch does not own")
 	CHECK(separator->Text == "Earlier history · already in main");
 }
 
-TEST_CASE("A branch with no commits of its own gets the separator on top and says so")
+TEST_CASE("A branch with no commits of its own has nothing above a separator, so it gets none")
 {
 	const Core::LogPage page = PageOf({3, 4});
 	const Core::LogPage own = PageOf({});
 
-	const std::optional<Graphite::ForkSeparator> separator = Graphite::FindForkSeparator(page, own, "main");
-
-	REQUIRE(separator.has_value());
-	CHECK(separator->BeforeCommit == 0);
-	CHECK(separator->Text == "No new commits · already in main");
+	CHECK_FALSE(Graphite::FindForkSeparator(page, own, "main").has_value());
 }
 
 TEST_CASE("A page made only of the branch's own commits has nothing to separate yet")

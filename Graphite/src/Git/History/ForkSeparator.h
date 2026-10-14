@@ -33,9 +33,9 @@ namespace Graphite {
 		std::string Text;
 	};
 
-	// WARNING: `ownCommits` must be the branch's log without what its base already holds. A page that
-	// ends before the first foreign commit, or an own list cut short, gives no separator: it would
-	// stand in the wrong place.
+	// WARNING: `ownCommits` must be the branch's log without what its base already holds. A branch
+	// with none of its own, a page that ends before the first foreign commit and an own list cut short
+	// all give no separator: there is nothing above it, or it would stand in the wrong place.
 	std::optional<ForkSeparator> FindForkSeparator(const Core::LogPage& page, const Core::LogPage& ownCommits,
 												   const std::string& baseName);
 }

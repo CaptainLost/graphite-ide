@@ -410,12 +410,8 @@ namespace Graphite {
 			[&](std::size_t commitIndex) { return FileRowCountUnder(page, commitIndex, diffOf); },
 			hasSeparator ? std::optional<std::size_t>{separator->BeforeCommit} : std::nullopt);
 
-		// WARNING: With no commit of its own above it the separator dims the whole list, which says
-		// nothing, so the row is drawn and the history is left as it is.
-		const bool hasOwnCommitsAbove = hasSeparator && separator->BeforeCommit > 0;
-
 		const std::optional<std::size_t> separatorRow =
-			hasOwnCommitsAbove ? std::optional<std::size_t>{rows.RowOfCommit[separator->BeforeCommit] - 1} : std::nullopt;
+			hasSeparator ? std::optional<std::size_t>{rows.RowOfCommit[separator->BeforeCommit] - 1} : std::nullopt;
 
 		const std::chrono::sys_seconds now =
 			std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
