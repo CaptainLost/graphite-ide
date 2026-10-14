@@ -116,8 +116,7 @@ namespace Graphite {
 		ForgetStaleGroupDecorations();
 		ForgetStaleFilterMatches();
 
-		if (ImGui::BeginChild("##solutionBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
-							  ImGuiWindowFlags_HorizontalScrollbar))
+		if (ImGui::BeginChild("##solutionBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None))
 		{
 			constexpr const char* kFilteredTreeScope = "##filteredTree";
 			const bool filtering = m_Filter.IsActive();
@@ -387,7 +386,7 @@ namespace Graphite {
 			label += " (missing)";
 		}
 
-		const FileRowLayout layout = LayoutFileRow(label, m_GitDecorations.Index != nullptr);
+		const FileRowLayout layout = LayoutFileRow();
 
 		// Keyed by the full path: ImGui gives same-labelled siblings the same id, and two
 		// projects can hold files of the same name.

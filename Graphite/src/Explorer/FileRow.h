@@ -81,18 +81,15 @@ namespace Graphite {
 	};
 
 	// Taken at the cursor, before the row's Selectable: that item pads its rect out by half the
-	// item spacing, so the rect's corner is not where a folder's label would start. The width
-	// is what the label needs at least, so a long name still extends the scrollable width. With
-	// `reserveMarker` that includes the room for the marker column, so the end of a long name
-	// can be scrolled clear of the status letter; pass whether the tree has a decoration index.
-	FileRowLayout LayoutFileRow(const std::string& label, bool reserveMarker);
+	// item spacing, so the rect's corner is not where a folder's label would start. The width is
+	// the room the window has left: the trees do not scroll sideways, a long name is cut short.
+	FileRowLayout LayoutFileRow();
 
-	// The width of the column a row's marker is drawn in, as wide as the widest letter. Shared by
-	// the drawing and by the layout that reserves room for it.
+	// The width of the column a row's marker is drawn in, as wide as the widest letter.
 	float RowMarkerColumnWidth();
 
 	// After the row's Selectable, which `layout.Width` sized. Draws nothing for a row that is
-	// scrolled out of view. A name long enough to reach the status letter is clipped short of it.
+	// scrolled out of view. A name too long for the row ends in an ellipsis short of the status letter.
 	// The open-tab mark and the marker each explain themselves in a tooltip when the mouse
 	// rests on them, and only then, so the rest of the row stays quiet.
 	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& label);

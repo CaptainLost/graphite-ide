@@ -116,8 +116,7 @@ namespace Graphite {
 		RenderToolbar();
 		ImGui::Separator();
 
-		if (ImGui::BeginChild("##fileTreeBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
-							  ImGuiWindowFlags_HorizontalScrollbar))
+		if (ImGui::BeginChild("##fileTreeBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None))
 		{
 			if (m_Filter.IsActive())
 			{
@@ -1007,7 +1006,7 @@ namespace Graphite {
 			std::string{Core::IconForExtension(Core::ToUtf8(node.Path.extension()))} + "  " +
 			node.Name;
 
-		const FileRowLayout layout = LayoutFileRow(label, m_GitDecorations.Index != nullptr);
+		const FileRowLayout layout = LayoutFileRow();
 
 		const std::string id = "##" + Core::ToUtf8(node.Path);
 

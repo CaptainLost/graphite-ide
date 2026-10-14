@@ -205,21 +205,15 @@ namespace Graphite {
 		return ImGui::CalcTextSize("M").x;
 	}
 
-	FileRowLayout LayoutFileRow(const std::string& label, bool reserveMarker)
+	FileRowLayout LayoutFileRow()
 	{
 		const float labelOffset = ImGui::GetTreeNodeToLabelSpacing();
 		const ImVec2 cursor = ImGui::GetCursorScreenPos();
 
-		// The marker sits at the visible right edge, with a gap each side of it to the label and to
-		// the edge, so a name scrolled fully into view still ends short of it.
-		const float markerRoom =
-			reserveMarker ? RowMarkerColumnWidth() + 2.0f * ImGui::GetStyle().ItemSpacing.x : 0.0f;
-
 		FileRowLayout layout;
 		layout.RowAt = cursor;
 		layout.LabelAt = ImVec2(cursor.x + labelOffset, cursor.y);
-		layout.Width = std::max(ImGui::GetContentRegionAvail().x,
-								labelOffset + ImGui::CalcTextSize(label.c_str()).x + markerRoom);
+		layout.Width = ImGui::GetContentRegionAvail().x;
 
 		return layout;
 	}
@@ -269,21 +263,21 @@ namespace Graphite {
 
 		DrawOpenTabMark(layout, look.Tab);
 
-		if (!look.Status.HasMarker())
+		float labelRightEdge = MarkerRight();
+
+		if (look.Status.HasMarker())
 		{
-			drawList->AddText(layout.LabelAt, look.Ink, label.c_str());
-			return;
+			labelRightEdge = DrawRowMarker(look.Status, layout.LabelAt.y) - ImGui::GetStyle().ItemSpacing.x;
 		}
 
-		const float markerLeft = DrawRowMarker(look.Status, layout.LabelAt.y);
+		labelRightEdge = std::max(labelRightEdge, layout.LabelAt.x);
 
-		// Clipped short of the letter rather than drawn under it. Intersected with the window's
-		// own clip rect, so the label never draws outside the tree either.
-		const ImVec2 clipMin = drawList->GetClipRectMin();
-		const ImVec2 clipMax(markerLeft - ImGui::GetStyle().ItemSpacing.x, drawList->GetClipRectMax().y);
+		const ImVec2 fullLabelSize = ImGui::CalcTextSize(label.c_str());
+		const ImVec2 labelBottomRight(labelRightEdge, layout.LabelAt.y + fullLabelSize.y);
 
-		ImGui::PushClipRect(clipMin, ImVec2(std::max(clipMin.x, clipMax.x), clipMax.y), true);
-		drawList->AddText(layout.LabelAt, look.Ink, label.c_str());
-		ImGui::PopClipRect();
+		ImGui::PushStyleColor(ImGuiCol_Text, look.Ink);
+		ImGui::RenderTextEllipsis(drawList, layout.LabelAt, labelBottomRight, labelRightEdge, label.c_str(),
+								  nullptr, &fullLabelSize);
+		ImGui::PopStyleColor();
 	}
 }
