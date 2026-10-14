@@ -11,13 +11,11 @@
 #include <iterator>
 #include <string>
 
-// Every path below is judged lexically, so none of them has to exist.
-
 namespace {
 	std::string ReadText(const std::filesystem::path& file)
 	{
-		std::ifstream in(file, std::ios::binary);
-		return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+		std::ifstream input(file, std::ios::binary);
+		return {std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>()};
 	}
 }
 
@@ -50,7 +48,6 @@ TEST_CASE("Trust ignores case, slash direction and a trailing separator")
 	CHECK(trust.GetEntries().front() == std::filesystem::path{"D:\\Repos"});
 }
 
-// The prefix trap: as strings, "D:\Repos2" starts with "D:\Repos".
 TEST_CASE("A sibling whose name starts with a trusted folder's is not trusted")
 {
 	Graphite::WorkspaceTrust trust;
@@ -141,7 +138,6 @@ TEST_CASE("The trust list survives being written and read back")
 	CHECK(reread.GetEntries().size() == 2);
 }
 
-// Failing closed: a list nobody can read trusts nothing, rather than guessing.
 TEST_CASE("An unreadable trust file trusts nothing")
 {
 	TempDirectory temp;
@@ -167,9 +163,6 @@ TEST_CASE("A trust file from a newer version is read but never written")
 	CHECK(ReadText(file) == newer);
 }
 
-// A trust file that is there but cannot be opened - held open without sharing by something else
-// for the moment Graphite starts - is not the same as no file. Loading it as empty and then
-// writing the next change over it would wipe every folder the user had trusted.
 TEST_CASE("A trust file that exists but cannot be opened is never written")
 {
 	TempDirectory temp;
@@ -177,7 +170,6 @@ TEST_CASE("A trust file that exists but cannot be opened is never written")
 	temp.MakeFile("trusted-folders.json", listed);
 	const std::filesystem::path file = temp.GetPath() / "trusted-folders.json";
 
-	// No sharing at all, so the constructor's open fails the way a transient lock makes it fail.
 	const HANDLE held = CreateFileW(file.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING,
 									FILE_ATTRIBUTE_NORMAL, nullptr);
 	REQUIRE(held != INVALID_HANDLE_VALUE);
@@ -199,7 +191,6 @@ TEST_CASE("The parent offered for trust is the folder's own parent")
 		  std::filesystem::path{"D:\\Downloads"});
 }
 
-// One click must not trust a whole drive.
 TEST_CASE("No parent is offered when it would be a drive root")
 {
 	CHECK_FALSE(Graphite::ParentWorthTrusting("D:\\evil-repo").has_value());

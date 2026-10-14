@@ -28,10 +28,6 @@ namespace Graphite {
 
 	class AppSettings;
 
-	// A folder is about to replace whatever was open, published once it is known to open and
-	// before it reads anything about itself. What belonged to the folder before - its toasts -
-	// goes here rather than on WorkspaceOpenedEvent, which comes after the new folder has already
-	// reported its own failures, a solution that would not read among them.
 	struct WorkspaceOpeningEvent
 	{
 		std::filesystem::path Root;
@@ -42,8 +38,6 @@ namespace Graphite {
 		std::filesystem::path Root;
 	};
 
-	// The user opened a solution by name (menu or drop), as opposed to picking one among the
-	// folder's candidates. The folder is already open by now.
 	struct SolutionOpenedEvent
 	{
 		std::filesystem::path Solution;
@@ -59,7 +53,6 @@ namespace Graphite {
 		bool Permanent = false;
 	};
 
-	// A shell asked for in `Directory`, from the Explorer's menu.
 	struct OpenTerminalRequested
 	{
 		std::filesystem::path Directory;
@@ -77,13 +70,6 @@ namespace Graphite {
 		bool Everything = false;
 	};
 
-	// The repository's own state changed under the application - a commit, a checkout, a
-	// fetch or a rebase run in a terminal beside it. Carried apart from
-	// WorkspaceFilesChangedEvent because the working tree did not change: nothing in the
-	// file tree has anything to redraw, and everything that draws git data is stale.
-	//
-	// Empty on purpose. What moved is a question every subscriber answers by asking git
-	// again, and naming the file that moved would invite a subscriber to guess instead.
 	struct RepositoryChangedEvent
 	{
 	};
@@ -109,14 +95,13 @@ namespace Graphite {
 
 		void Reload();
 
-		// Inline so a panel built into the tests, which do not link Workspace.cpp, can call it:
+		// WARNING: defined inline because panels built into the tests do not link Workspace.cpp;
 		// all it does is publish.
 		void RequestOpenFile(const std::filesystem::path& path, bool permanent)
 		{
 			m_Events.Publish(OpenFileRequested{path, permanent});
 		}
 
-		// Inline for the same reason as RequestOpenFile.
 		void RequestOpenTerminal(const std::filesystem::path& directory)
 		{
 			m_Events.Publish(OpenTerminalRequested{directory});
@@ -132,10 +117,7 @@ namespace Graphite {
 			return m_Solution;
 		}
 
-		// Changes whenever the loaded solution is replaced, reread or dropped, the failed
-		// reads among them, so a view can tell that what it waits for has had its chance.
 		std::uint64_t GetSolutionLoad() const { return m_SolutionLoads; }
-		// Kept even when the Explorer cannot read the solution: a language server may read it all the same.
 		const std::filesystem::path& GetSelectedSolution() const { return m_SelectedSolution; }
 
 		const std::vector<std::filesystem::path>& GetSolutionCandidates() const
@@ -148,15 +130,10 @@ namespace Graphite {
 		WorkspaceSettings& GetFolderSettings() { return m_Settings; }
 		const WorkspaceSettings& GetFolderSettings() const { return m_Settings; }
 
-		// The one system dialog the application has open at a time. Here because every dialog
-		// there is picks something for the workspace, and every place that opens one already
-		// holds it. Polled by Update, so an answer arrives on a later frame.
 		Core::AsyncDialog& GetDialog() { return m_Dialog; }
 		const Core::AsyncDialog& GetDialog() const { return m_Dialog; }
 		bool IsDialogOpen() const { return m_Dialog.IsOpen(); }
 
-		// A dialog that could not be shown, in an application toast: for the callbacks given to
-		// GetDialog, which hold the workspace and not the event bus.
 		void ReportDialogFailure(const Core::Error& error);
 
 		void RegisterCommands(Core::CommandRegistry& commands);
@@ -169,6 +146,8 @@ namespace Graphite {
 		void StartWatching(const std::filesystem::path& root, std::string_view failureContext);
 		void RereadEverything();
 		bool IsInsideRoot(const std::filesystem::path& path) const;
+		bool IsIgnoredByRepository(const std::filesystem::path& path) const;
+		Core::Result<void> RefuseToOpenSolution(Core::Error error);
 		void RememberSolutionCandidate(const std::filesystem::path& path);
 		bool HasRepositoryVanished() const;
 

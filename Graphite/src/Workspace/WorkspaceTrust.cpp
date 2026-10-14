@@ -6,7 +6,8 @@
 
 #include <nlohmann/json.hpp>
 
-#include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -14,30 +15,38 @@
 namespace Graphite {
 
 	namespace {
-		constexpr const char* kVersionKey = "version";
-		constexpr const char* kFoldersKey = "folders";
+		constexpr const char* kTrustFileVersionKey = "version";
+		constexpr const char* kTrustFileFoldersKey = "folders";
+		constexpr int kJsonIndentWidth = 4;
+		constexpr char kJsonIndentCharacter = ' ';
+		constexpr bool kJsonEscapeNonAscii = false;
 
-		// The form a folder is kept and shown in: absolute, normalised, backslashes, and no
-		// trailing separator except a drive root's own. Empty for a path that cannot name a
-		// trusted folder.
-		std::filesystem::path Tidy(const std::filesystem::path& folder)
+		std::filesystem::path NormalisedAbsoluteFolder(const std::filesystem::path& folder)
 		{
 			if (folder.empty() || !folder.is_absolute())
 			{
-				return {};
+				return std::filesystem::path();
 			}
 
-			std::filesystem::path tidy = folder.lexically_normal();
-			tidy.make_preferred();
+			std::filesystem::path normalised = folder.lexically_normal();
+			normalised.make_preferred();
 
-			// lexically_normal leaves "D:\Repos\" with its separator, which would make it a
-			// different string from "D:\Repos".
-			if (!tidy.has_filename() && tidy != tidy.root_path())
+			// WARNING: lexically_normal leaves "D:\Repos\" with its trailing separator, which
+			// would make it a different string from "D:\Repos".
+			const bool endsInSeparator = !normalised.has_filename();
+			const bool isDriveRoot = normalised == normalised.root_path();
+
+			if (endsInSeparator && !isDriveRoot)
 			{
-				tidy = tidy.parent_path();
+				normalised = normalised.parent_path();
 			}
 
-			return tidy;
+			return normalised;
+		}
+
+		bool EntryHasKey(const std::filesystem::path& entry, const Core::PathKeyText& key)
+		{
+			return Core::PathKey(entry) == key;
 		}
 	}
 
@@ -48,15 +57,15 @@ namespace Graphite {
 			return;
 		}
 
-		const Core::Result<std::string> bytes = Core::ReadFileBytes(m_File);
+		const Core::Result<std::string> fileBytes = Core::ReadFileBytes(m_File);
 
-		if (!bytes)
+		if (!fileBytes)
 		{
-			// No file is an empty list. A file that is there but cannot be read - held without
-			// sharing by something else for a moment - is a list that could not be read, and
-			// writing the next change over it would wipe every folder it names. When existence
-			// itself cannot be told, the same caution applies: only NotFound means absent.
-			if (bytes.GetError().Code != Core::ErrorCode::NotFound)
+			const bool fileIsAbsent = fileBytes.GetError().Code == Core::ErrorCode::NotFound;
+
+			// WARNING: Only NotFound means the list is empty. A file that exists but cannot be
+			// read stays unwritten, or the next change would wipe every folder it names.
+			if (!fileIsAbsent)
 			{
 				m_Writable = false;
 				APP_WARN("Cannot open '{}': no folder is trusted this session, and changes to trust "
@@ -67,7 +76,7 @@ namespace Graphite {
 			return;
 		}
 
-		const nlohmann::json json = nlohmann::json::parse(bytes.GetValue(), nullptr, false);
+		const nlohmann::json json = nlohmann::json::parse(fileBytes.GetValue(), nullptr, false);
 
 		if (json.is_discarded() || !json.is_object())
 		{
@@ -76,33 +85,36 @@ namespace Graphite {
 			return;
 		}
 
-		if (const auto version = json.find(kVersionKey);
-			version != json.end() && version->is_number_integer() &&
-			version->get<std::int64_t>() > kFileVersion)
+		const nlohmann::json::const_iterator versionEntry = json.find(kTrustFileVersionKey);
+		const bool writtenByNewerVersion = versionEntry != json.end() && versionEntry->is_number_integer() &&
+										   versionEntry->get<std::int64_t>() > kFileVersion;
+
+		if (writtenByNewerVersion)
 		{
 			m_Writable = false;
 			APP_WARN("'{}' was written by a newer version of Graphite; changes to trust will not be saved",
 					 Core::ToUtf8(m_File));
 		}
 
-		const auto folders = json.find(kFoldersKey);
+		const nlohmann::json::const_iterator foldersEntry = json.find(kTrustFileFoldersKey);
 
-		if (folders == json.end() || !folders->is_array())
+		if (foldersEntry == json.end() || !foldersEntry->is_array())
 		{
 			return;
 		}
 
-		for (const nlohmann::json& folder : *folders)
+		for (const nlohmann::json& folder : *foldersEntry)
 		{
 			if (!folder.is_string())
 			{
 				continue;
 			}
 
-			// The parser has already rejected invalid UTF-8, so FromUtf8 cannot meet any.
-			if (std::filesystem::path tidy = Tidy(Core::FromUtf8(folder.get<std::string>())); !tidy.empty())
+			std::filesystem::path normalised = NormalisedAbsoluteFolder(Core::FromUtf8(folder.get<std::string>()));
+
+			if (!normalised.empty())
 			{
-				m_Entries.push_back(std::move(tidy));
+				m_Entries.push_back(std::move(normalised));
 			}
 		}
 	}
@@ -114,16 +126,16 @@ namespace Graphite {
 
 	std::optional<std::filesystem::path> WorkspaceTrust::TrustedThrough(const std::filesystem::path& folder) const
 	{
-		const std::filesystem::path tidy = Tidy(folder);
+		const std::filesystem::path normalised = NormalisedAbsoluteFolder(folder);
 
-		if (tidy.empty())
+		if (normalised.empty())
 		{
 			return std::nullopt;
 		}
 
 		for (const std::filesystem::path& entry : m_Entries)
 		{
-			if (Core::IsSameOrWithin(tidy, entry))
+			if (Core::IsSameOrWithin(normalised, entry))
 			{
 				return entry;
 			}
@@ -134,33 +146,46 @@ namespace Graphite {
 
 	bool WorkspaceTrust::IsEntry(const std::filesystem::path& folder) const
 	{
-		const auto key = Core::PathKey(Tidy(folder));
+		const Core::PathKeyText key = Core::PathKey(NormalisedAbsoluteFolder(folder));
 
-		return !key.empty() && std::any_of(m_Entries.begin(), m_Entries.end(),
-										   [&key](const std::filesystem::path& entry) { return Core::PathKey(entry) == key; });
+		if (key.empty())
+		{
+			return false;
+		}
+
+		for (const std::filesystem::path& entry : m_Entries)
+		{
+			if (EntryHasKey(entry, key))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	void WorkspaceTrust::Trust(const std::filesystem::path& folder)
 	{
-		std::filesystem::path tidy = Tidy(folder);
+		std::filesystem::path normalised = NormalisedAbsoluteFolder(folder);
 
-		if (tidy.empty() || IsEntry(tidy))
+		if (normalised.empty() || IsEntry(normalised))
 		{
 			return;
 		}
 
-		m_Entries.push_back(std::move(tidy));
+		m_Entries.push_back(std::move(normalised));
 		++m_Revision;
 		Save();
 	}
 
 	void WorkspaceTrust::Revoke(const std::filesystem::path& entry)
 	{
-		const auto key = Core::PathKey(Tidy(entry));
+		const Core::PathKeyText key = Core::PathKey(NormalisedAbsoluteFolder(entry));
 
-		const auto removed = std::erase_if(m_Entries, [&key](const std::filesystem::path& listed) { return Core::PathKey(listed) == key; });
+		const std::size_t removedCount = std::erase_if(
+			m_Entries, [&key](const std::filesystem::path& listed) { return EntryHasKey(listed, key); });
 
-		if (removed == 0)
+		if (removedCount == 0)
 		{
 			return;
 		}
@@ -192,10 +217,13 @@ namespace Graphite {
 		}
 
 		nlohmann::json json = nlohmann::json::object();
-		json[kVersionKey] = kFileVersion;
-		json[kFoldersKey] = std::move(folders);
+		json[kTrustFileVersionKey] = kFileVersion;
+		json[kTrustFileFoldersKey] = std::move(folders);
 
-		if (!Core::WriteFileAtomically(m_File, json.dump(4, ' ', false, nlohmann::json::error_handler_t::replace)))
+		const std::string text = json.dump(kJsonIndentWidth, kJsonIndentCharacter, kJsonEscapeNonAscii,
+										   nlohmann::json::error_handler_t::replace);
+
+		if (!Core::WriteFileAtomically(m_File, text))
 		{
 			APP_WARN("Cannot write '{}'", Core::ToUtf8(m_File));
 		}
@@ -203,14 +231,14 @@ namespace Graphite {
 
 	std::optional<std::filesystem::path> ParentWorthTrusting(const std::filesystem::path& folder)
 	{
-		const std::filesystem::path tidy = Tidy(folder);
+		const std::filesystem::path normalised = NormalisedAbsoluteFolder(folder);
 
-		if (tidy.empty() || tidy == tidy.root_path())
+		if (normalised.empty() || normalised == normalised.root_path())
 		{
 			return std::nullopt;
 		}
 
-		std::filesystem::path parent = tidy.parent_path();
+		std::filesystem::path parent = normalised.parent_path();
 
 		if (parent == parent.root_path())
 		{

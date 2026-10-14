@@ -6,9 +6,6 @@
 
 namespace {
 
-	// The drop callback hands over paths that exist on disk, so the tests answer for the
-	// paths they name rather than reaching for a temporary directory: what is under test is
-	// the routing, not the file system.
 	Graphite::DirectoryPredicate DirectoriesAre(
 		std::vector<std::filesystem::path> directories)
 	{
@@ -18,12 +15,16 @@ namespace {
 		};
 	}
 
-	const Graphite::DirectoryPredicate kNothingIsADirectory = DirectoriesAre({});
+	const std::vector<std::filesystem::path> kNoDirectories;
+	const std::vector<std::filesystem::path> kNothingDropped;
+	const std::filesystem::path kNothingOpen;
+	const Graphite::DropRouting kEmptyRouting;
+	const Graphite::DirectoryPredicate kNothingIsADirectory = DirectoriesAre(kNoDirectories);
 }
 
 TEST_CASE("An empty drop routes nowhere")
 {
-	const Graphite::DropRouting routing = Graphite::ClassifyDrop({}, kNothingIsADirectory);
+	const Graphite::DropRouting routing = Graphite::ClassifyDrop(kNothingDropped, kNothingIsADirectory);
 
 	CHECK(routing.Target == Graphite::DropTarget::None);
 	CHECK(routing.Files.empty());
@@ -118,48 +119,47 @@ TEST_CASE("A second solution is left alone rather than opened as a document")
 
 TEST_CASE("A drop that opens nothing replaces no workspace")
 {
-	CHECK_FALSE(Graphite::ReplacesWorkspace({}, "D:/a"));
+	CHECK_FALSE(Graphite::ReplacesWorkspace(kEmptyRouting, "D:/a"));
 }
 
 TEST_CASE("A folder dropped with nothing open replaces nothing")
 {
-	const Graphite::DropRouting routing{Graphite::DropTarget::Folder, "D:/a", {}};
+	const Graphite::DropRouting routing{.Target = Graphite::DropTarget::Folder, .Root = "D:/a"};
 
-	CHECK_FALSE(Graphite::ReplacesWorkspace(routing, {}));
+	CHECK_FALSE(Graphite::ReplacesWorkspace(routing, kNothingOpen));
 }
 
 TEST_CASE("A folder dropped over an open workspace replaces it")
 {
-	const Graphite::DropRouting routing{Graphite::DropTarget::Folder, "D:/b", {}};
+	const Graphite::DropRouting routing{.Target = Graphite::DropTarget::Folder, .Root = "D:/b"};
 
 	CHECK(Graphite::ReplacesWorkspace(routing, "D:/a"));
 }
 
 TEST_CASE("Dropping the folder already open replaces nothing")
 {
-	const Graphite::DropRouting routing{Graphite::DropTarget::Folder, "D:/a", {}};
+	const Graphite::DropRouting routing{.Target = Graphite::DropTarget::Folder, .Root = "D:/a"};
 
 	CHECK_FALSE(Graphite::ReplacesWorkspace(routing, "D:/a"));
 }
 
 TEST_CASE("A solution inside the open workspace replaces nothing")
 {
-	const Graphite::DropRouting routing{
-		Graphite::DropTarget::Solution, "D:/a/sub/App.sln", {}};
+	const Graphite::DropRouting routing{.Target = Graphite::DropTarget::Solution, .Root = "D:/a/sub/App.sln"};
 
 	CHECK_FALSE(Graphite::ReplacesWorkspace(routing, "D:/a"));
 }
 
 TEST_CASE("A solution outside the open workspace replaces it, since opening it moves the root")
 {
-	const Graphite::DropRouting routing{Graphite::DropTarget::Solution, "D:/b/App.sln", {}};
+	const Graphite::DropRouting routing{.Target = Graphite::DropTarget::Solution, .Root = "D:/b/App.sln"};
 
 	CHECK(Graphite::ReplacesWorkspace(routing, "D:/a"));
 }
 
 TEST_CASE("A neighbour whose name merely starts with the root is outside it")
 {
-	const Graphite::DropRouting routing{Graphite::DropTarget::Folder, "D:/abc", {}};
+	const Graphite::DropRouting routing{.Target = Graphite::DropTarget::Folder, .Root = "D:/abc"};
 
 	CHECK(Graphite::ReplacesWorkspace(routing, "D:/ab"));
 }
