@@ -14,7 +14,6 @@ namespace Core {
 
 namespace Graphite {
 
-	// How the Explorer shows files Git ignores, each the command the View menu runs.
 	inline const std::array<CommandChoice, 3> kIgnoredFileChoices{CommandChoice{.Label = "Show", .CommandId = "git.ignored.show"},
 																  CommandChoice{.Label = "Dim", .CommandId = "git.ignored.dim"},
 																  CommandChoice{.Label = "Hide", .CommandId = "git.ignored.hide"}};

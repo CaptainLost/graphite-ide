@@ -18,7 +18,6 @@ namespace Graphite {
 
 	const char* CustomChoiceLabel();
 
-	// Empty for a server that needs no runtime.
 	std::string RuntimeLine(const ServerRuntime& runtime, std::span<const DotnetInstallation> installations);
 
 	bool RuntimeFound(const ServerRuntime& runtime, std::span<const DotnetInstallation> installations);

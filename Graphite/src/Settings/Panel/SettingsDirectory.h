@@ -16,7 +16,6 @@ namespace Graphite {
 		std::vector<Core::Scope<SettingsPage>> Pages;
 	};
 
-	// The pages of one navigation list, in groups. A group with no title is drawn as a divider.
 	class SettingsDirectory
 	{
 	public:
@@ -36,6 +35,5 @@ namespace Graphite {
 		std::vector<SettingsGroup> m_Groups;
 	};
 
-	// Every page in the order the lists show them, each page's own pages straight after it.
 	std::vector<SettingsPage*> CollectPages(const SettingsDirectory& directory);
 }

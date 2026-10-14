@@ -67,7 +67,6 @@ namespace Graphite {
 		}
 	}
 
-	// Disabled rather than hidden while the pass is off: a control that vanishes reads as a bug.
 	void BackgroundAnalysisPage::DrawBudget()
 	{
 		ImGui::BeginDisabled(!m_Analysis.IsEnabled());
@@ -103,8 +102,6 @@ namespace Graphite {
 		ImGui::EndDisabled();
 	}
 
-	// An input rather than a slider, whose grab covers a range this short. A typed value is not bounded
-	// by the widget, so it is clamped here.
 	void BackgroundAnalysisPage::DrawConcurrency()
 	{
 		ImGui::BeginDisabled(!m_Analysis.IsEnabled() || m_Analysis.IsConcurrencyAutomatic());

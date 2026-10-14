@@ -58,22 +58,28 @@ namespace Graphite {
 			return ImGui::GetContentRegionAvail().x;
 		}
 
-		// Frames one step up from the card's own colour, or a combo or a field would vanish into it.
-		void PushCardColours()
+		void PushFramesOneStepUpFromCardColour()
 		{
 			ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered));
 			ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive));
 			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 		}
 
-		void PopCardColours()
+		void PopFramesOneStepUpFromCardColour()
 		{
 			ImGui::PopStyleColor(kCardColourCount);
 		}
 
 		float TextHeight(const std::string& text, float wrapWidth)
 		{
-			return text.empty() ? 0.0f : ImGui::CalcTextSize(text.c_str(), nullptr, false, wrapWidth).y;
+			if (text.empty())
+			{
+				return 0.0f;
+			}
+
+			const bool hideTextAfterDoubleHash = false;
+
+			return ImGui::CalcTextSize(text.c_str(), nullptr, hideTextAfterDoubleHash, wrapWidth).y;
 		}
 
 		float MeasureRowText(const SettingsRow& row, float wrapWidth)
@@ -101,7 +107,7 @@ namespace Graphite {
 			ImGui::PopStyleColor();
 		}
 
-		// A group, so every line after the first starts where the first did rather than at the window's edge.
+		// WARNING: The group makes every line after the first start where the first did, not at the window's edge.
 		void DrawRowText(const SettingsRow& row, float wrapRightScreenX, ImU32 problemColour)
 		{
 			ImGui::BeginGroup();
@@ -227,8 +233,8 @@ namespace Graphite {
 			}
 		}
 
-		// PushFont takes the size before the interface scale is applied, so it is built from
-		// FontSizeBase and never from GetFontSize, which already carries the scale.
+		// WARNING: PushFont takes the size before the interface scale is applied, so build it from
+		// FontSizeBase, never from GetFontSize, which already carries the scale.
 		void DrawScaledBoldText(std::string_view text, float scale)
 		{
 			ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), ImGui::GetStyle().FontSizeBase * scale);
@@ -349,13 +355,13 @@ namespace Graphite {
 		const ImU32 divider = ImGui::GetColorU32(ImGuiCol_Separator);
 		const ImVec2 cardTopLeft = ImGui::GetCursorScreenPos();
 
-		// A splitter of its own rather than the draw list's: a table inside a row splits the draw
-		// list too, and the draw list's own splitter cannot be split twice.
+		// WARNING: This is a splitter of its own, not the draw list's: a table inside a row splits the
+		// draw list too, and the draw list's own splitter cannot be split twice.
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		ImDrawListSplitter layers;
 		layers.Split(drawList, kCardLayerCount);
 		layers.SetCurrentChannel(drawList, kForegroundLayer);
-		PushCardColours();
+		PushFramesOneStepUpFromCardColour();
 
 		for (std::size_t rowIndex = 0; rowIndex < card.Rows.size(); ++rowIndex)
 		{
@@ -368,7 +374,7 @@ namespace Graphite {
 			DrawRow(card.Rows[rowIndex], cardWidth, problemColour);
 		}
 
-		PopCardColours();
+		PopFramesOneStepUpFromCardColour();
 
 		const float cardBottom = ImGui::GetCursorScreenPos().y - spacing;
 		layers.SetCurrentChannel(drawList, kBackgroundLayer);
@@ -471,7 +477,7 @@ namespace Graphite {
 	}
 
 	bool SettingsLayout::Choice(const char* id, std::span<const std::string> options, std::size_t& selected,
-							   const std::string& unlistedPreview)
+								const std::string& unlistedPreview)
 	{
 		const char* preview = selected < options.size() ? options[selected].c_str() : unlistedPreview.c_str();
 

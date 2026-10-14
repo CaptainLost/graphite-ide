@@ -18,8 +18,11 @@ namespace {
 	const Graphite::CardMeasures kWideCard{.CardWidth = 800.0f, .Padding = 14.0f, .Gap = 16.0f, .StackBelowWidth = 420.0f};
 	const Graphite::CardMeasures kNarrowCard{.CardWidth = 400.0f, .Padding = 14.0f, .Gap = 16.0f, .StackBelowWidth = 420.0f};
 
-	// Tall enough that nothing scrolls: a scrollbar would take its width off the cards.
-	constexpr float kWindowHeight = 2000.0f;
+	constexpr float kWindowHeightThatNeverScrolls = 2000.0f;
+	constexpr bool kCompactControl = false;
+	constexpr bool kWideControl = true;
+	constexpr bool kNotSelected = false;
+	constexpr bool kNotDimmed = false;
 
 	ImVec2 CentreOfLastItem()
 	{
@@ -77,7 +80,7 @@ namespace {
 	{
 		Core::Animation::BeginFrame();
 		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-		ImGui::SetNextWindowSize(ImVec2(width, kWindowHeight));
+		ImGui::SetNextWindowSize(ImVec2(width, kWindowHeightThatNeverScrolls));
 		ImGui::Begin("Settings");
 
 		const std::vector<Graphite::SettingsCard> cards = SampleCards(controls);
@@ -156,7 +159,7 @@ namespace {
 		{
 			BeginSidebar();
 			ImGui::SetKeyboardFocusHere();
-			EntryClicked = Graphite::SettingsLayout::DrawNavigationEntry("", "Editor", false, false) || EntryClicked;
+			EntryClicked = Graphite::SettingsLayout::DrawNavigationEntry("", "Editor", kNotSelected, kNotDimmed) || EntryClicked;
 			ImGui::End();
 		}
 
@@ -174,7 +177,7 @@ namespace {
 
 TEST_CASE("A row's control stands at the right of a wide card")
 {
-	const Graphite::RowColumns columns = Graphite::LayOutRowColumns(kWideCard, 100.0f, false);
+	const Graphite::RowColumns columns = Graphite::LayOutRowColumns(kWideCard, 100.0f, kCompactControl);
 
 	CHECK_FALSE(columns.Stacked);
 	CHECK(columns.ControlWidth == doctest::Approx(100.0f));
@@ -184,7 +187,7 @@ TEST_CASE("A row's control stands at the right of a wide card")
 
 TEST_CASE("A compact control is never wider than half the card")
 {
-	const Graphite::RowColumns columns = Graphite::LayOutRowColumns(kWideCard, 500.0f, false);
+	const Graphite::RowColumns columns = Graphite::LayOutRowColumns(kWideCard, 500.0f, kCompactControl);
 
 	CHECK(columns.ControlWidth == doctest::Approx(386.0f));
 	CHECK(columns.ControlX == doctest::Approx(386.0f));
@@ -193,7 +196,7 @@ TEST_CASE("A compact control is never wider than half the card")
 
 TEST_CASE("A wide control takes half the card")
 {
-	const Graphite::RowColumns columns = Graphite::LayOutRowColumns(kWideCard, 0.0f, true);
+	const Graphite::RowColumns columns = Graphite::LayOutRowColumns(kWideCard, 0.0f, kWideControl);
 
 	CHECK(columns.ControlWidth == doctest::Approx(386.0f));
 	CHECK_FALSE(columns.Stacked);
@@ -201,8 +204,8 @@ TEST_CASE("A wide control takes half the card")
 
 TEST_CASE("A card narrower than the threshold puts the control under the text")
 {
-	const Graphite::RowColumns compact = Graphite::LayOutRowColumns(kNarrowCard, 100.0f, false);
-	const Graphite::RowColumns wide = Graphite::LayOutRowColumns(kNarrowCard, 0.0f, true);
+	const Graphite::RowColumns compact = Graphite::LayOutRowColumns(kNarrowCard, 100.0f, kCompactControl);
+	const Graphite::RowColumns wide = Graphite::LayOutRowColumns(kNarrowCard, 0.0f, kWideControl);
 
 	CHECK(compact.Stacked);
 	CHECK(compact.TextWidth == doctest::Approx(372.0f));
@@ -214,8 +217,8 @@ TEST_CASE("A card narrower than the threshold puts the control under the text")
 
 TEST_CASE("A row without a control gives its text the whole inside of the card")
 {
-	const Graphite::RowColumns wideCard = Graphite::LayOutRowColumns(kWideCard, 0.0f, false);
-	const Graphite::RowColumns narrowCard = Graphite::LayOutRowColumns(kNarrowCard, 0.0f, false);
+	const Graphite::RowColumns wideCard = Graphite::LayOutRowColumns(kWideCard, 0.0f, kCompactControl);
+	const Graphite::RowColumns narrowCard = Graphite::LayOutRowColumns(kNarrowCard, 0.0f, kCompactControl);
 
 	CHECK_FALSE(wideCard.Stacked);
 	CHECK(wideCard.TextWidth == doctest::Approx(772.0f));
@@ -224,7 +227,7 @@ TEST_CASE("A row without a control gives its text the whole inside of the card")
 
 TEST_CASE("Beside taller text a control is centred on it")
 {
-	const Graphite::RowColumns columns = Graphite::LayOutRowColumns(kWideCard, 100.0f, false);
+	const Graphite::RowColumns columns = Graphite::LayOutRowColumns(kWideCard, 100.0f, kCompactControl);
 
 	const Graphite::RowHeights heights =
 		Graphite::MeasureRowHeights(columns, Graphite::RowContent{.TextHeight = 40.0f, .ControlHeight = 23.0f, .Padding = 10.0f, .Spacing = 5.0f});
@@ -236,7 +239,7 @@ TEST_CASE("Beside taller text a control is centred on it")
 
 TEST_CASE("Beside a taller control the text is centred on it")
 {
-	const Graphite::RowColumns columns = Graphite::LayOutRowColumns(kWideCard, 100.0f, false);
+	const Graphite::RowColumns columns = Graphite::LayOutRowColumns(kWideCard, 100.0f, kCompactControl);
 
 	const Graphite::RowHeights heights =
 		Graphite::MeasureRowHeights(columns, Graphite::RowContent{.TextHeight = 17.0f, .ControlHeight = 23.0f, .Padding = 10.0f, .Spacing = 5.0f});
@@ -248,7 +251,7 @@ TEST_CASE("Beside a taller control the text is centred on it")
 
 TEST_CASE("A stacked control sits one spacing under the text")
 {
-	const Graphite::RowColumns columns = Graphite::LayOutRowColumns(kNarrowCard, 100.0f, false);
+	const Graphite::RowColumns columns = Graphite::LayOutRowColumns(kNarrowCard, 100.0f, kCompactControl);
 
 	const Graphite::RowHeights heights =
 		Graphite::MeasureRowHeights(columns, Graphite::RowContent{.TextHeight = 40.0f, .ControlHeight = 23.0f, .Padding = 10.0f, .Spacing = 5.0f});
@@ -304,8 +307,7 @@ namespace {
 		int DrawnEvenOutOfSight = 0;
 	};
 
-	// The card stands below the bottom of a short window, out of sight.
-	void DrawBlocksOutOfSight(BlockDraws& draws)
+	void DrawBlocksBelowShortWindow(BlockDraws& draws)
 	{
 		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 		ImGui::SetNextWindowSize(ImVec2(600.0f, 200.0f));
@@ -336,12 +338,12 @@ TEST_CASE("Out of sight, a block is drawn only when it asks to be")
 
 	for (int frameIndex = 0; frameIndex < 4; ++frameIndex)
 	{
-		frames.Next([&draws] { DrawBlocksOutOfSight(draws); });
+		frames.Next([&draws] { DrawBlocksBelowShortWindow(draws); });
 	}
 
 	draws = BlockDraws{};
-	frames.Next([&draws] { DrawBlocksOutOfSight(draws); });
-	frames.Next([&draws] { DrawBlocksOutOfSight(draws); });
+	frames.Next([&draws] { DrawBlocksBelowShortWindow(draws); });
+	frames.Next([&draws] { DrawBlocksBelowShortWindow(draws); });
 
 	CHECK(draws.Plain == 0);
 	CHECK(draws.DrawnEvenOutOfSight == 2);
@@ -366,8 +368,10 @@ TEST_CASE("In a wide card the control stands at the card's right edge")
 	frames.Next([&controls] { DrawCardsInWindow(controls, 900.0f); });
 	frames.Next([&controls] { DrawCardsInWindow(controls, 900.0f); });
 
-	// The window's padding is 8; the card takes the whole 884 px of content and is padded by 14 inside.
-	CHECK(controls.WordWrapMin.x == doctest::Approx(8.0f + 884.0f - 14.0f - Core::kToggleWidth));
+	const float windowPadding = 8.0f;
+	const float cardInsidePadding = 14.0f;
+	const float cardContentWidth = 884.0f;
+	CHECK(controls.WordWrapMin.x == doctest::Approx(windowPadding + cardContentWidth - cardInsidePadding - Core::kToggleWidth));
 }
 
 TEST_CASE("In a narrow card the control stands under the text at the card's left")

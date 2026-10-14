@@ -12,6 +12,8 @@ namespace Graphite {
 
 	namespace {
 		constexpr const char* kApplicationFolder = "Graphite";
+		constexpr const char* kRoamingFolderName = "roaming";
+		constexpr const char* kLocalFolderName = "local";
 
 		struct Roots
 		{
@@ -31,64 +33,69 @@ namespace Graphite {
 			return resolved;
 		}
 
-		std::filesystem::path Beside(const Core::Result<std::filesystem::path>& profileFolder,
-									 const char* what)
+		std::filesystem::path ApplicationFolderIn(const Core::Result<std::filesystem::path>& profileFolder,
+												  const char* folderDescription)
 		{
 			if (profileFolder)
 			{
 				return profileFolder.GetValue() / kApplicationFolder;
 			}
 
-			// Falling back rather than failing keeps the application usable, the way it was
-			// before these folders were used; the warning is what explains settings that
-			// silently stayed beside the executable.
-			const auto executable = Core::ExecutableDirectory();
+			const Core::Result<std::filesystem::path> executable = Core::ExecutableDirectory();
 
 			if (executable)
 			{
 				APP_WARN("Cannot locate the {} folder, keeping its files beside the executable: {}",
-						 what, profileFolder.GetError().Message);
+						 folderDescription, profileFolder.GetError().Message);
 				return executable.GetValue();
 			}
 
 			APP_WARN("Cannot locate the {} folder or the executable, using the working directory: {}",
-					 what, profileFolder.GetError().Message);
+					 folderDescription, profileFolder.GetError().Message);
 			return std::filesystem::path{"."};
 		}
 
-		void Ensure(const std::filesystem::path& directory)
+		void EnsureDirectoryExists(const std::filesystem::path& directory)
 		{
-			std::error_code code;
-			std::filesystem::create_directories(directory, code);
+			std::error_code createError;
+			std::filesystem::create_directories(directory, createError);
 
-			if (code)
+			if (createError)
 			{
-				APP_WARN("Cannot create '{}': {}", Core::ToUtf8(directory), code.message());
+				APP_WARN("Cannot create '{}': {}", Core::ToUtf8(directory), createError.message());
 			}
+		}
+
+		std::filesystem::path EnsuredDirectory(const std::filesystem::path& directory)
+		{
+			EnsureDirectoryExists(directory);
+			return directory;
+		}
+
+		Roots ResolveRoots()
+		{
+			RootsResolved() = true;
+
+			Roots resolved;
+
+			if (const std::optional<std::filesystem::path>& redirectedRoot = Redirection())
+			{
+				resolved = Roots{*redirectedRoot / kRoamingFolderName, *redirectedRoot / kLocalFolderName};
+			}
+			else
+			{
+				resolved = Roots{ApplicationFolderIn(Core::RoamingDataDirectory(), "roaming application data"),
+								 ApplicationFolderIn(Core::LocalDataDirectory(), "local application data")};
+			}
+
+			EnsureDirectoryExists(resolved.Roaming);
+			EnsureDirectoryExists(resolved.Local);
+			return resolved;
 		}
 
 		const Roots& GetRoots()
 		{
-			static const Roots roots = [] {
-				RootsResolved() = true;
-
-				Roots resolved;
-
-				if (const auto& redirected = Redirection())
-				{
-					resolved = Roots{*redirected / "roaming", *redirected / "local"};
-				}
-				else
-				{
-					resolved = Roots{Beside(Core::RoamingDataDirectory(), "roaming application data"),
-									 Beside(Core::LocalDataDirectory(), "local application data")};
-				}
-
-				Ensure(resolved.Roaming);
-				Ensure(resolved.Local);
-				return resolved;
-			}();
-
+			static const Roots roots = ResolveRoots();
 			return roots;
 		}
 	}
@@ -103,8 +110,7 @@ namespace Graphite {
 		return GetRoots().Roaming / "imgui.ini";
 	}
 
-	// Not created here: SaveScheme creates it when the first scheme is saved, and a user who
-	// never makes one never gets an empty directory.
+	// WARNING: Not created here: SaveScheme creates it when the first scheme is saved.
 	std::filesystem::path UserDirectories::ThemesDirectory()
 	{
 		return GetRoots().Roaming / "themes";
@@ -115,45 +121,31 @@ namespace Graphite {
 		return GetRoots().Local / "sessions-cache.json";
 	}
 
-	// Local, not roaming: the entries are paths on this machine, and trusting D:\Repos here says
-	// nothing about whatever D:\Repos is on another one.
+	// WARNING: Local, not roaming: the entries are paths on this machine.
 	std::filesystem::path UserDirectories::TrustedFoldersFile()
 	{
 		return GetRoots().Local / "trusted-folders.json";
 	}
 
-	// Local, not roaming: a server is a binary built for this machine's system and processor.
+	// WARNING: Local, not roaming: a server is a binary built for this machine's system and processor.
 	std::filesystem::path UserDirectories::ServersDirectory()
 	{
-		static const std::filesystem::path directory = [] {
-			const std::filesystem::path servers = GetRoots().Local / "servers";
-			Ensure(servers);
-			return servers;
-		}();
+		static const std::filesystem::path directory = EnsuredDirectory(GetRoots().Local / "servers");
 
 		return directory;
 	}
 
-	// Local, not roaming, and not the system's temporary directory: what a server killed before it could clean up
-	// leaves here is found and removed the next time Graphite starts.
+	// WARNING: Local, not roaming, and not the system's temporary directory: what a killed server leaves here is removed the next time Graphite starts.
 	std::filesystem::path UserDirectories::ServerTemporaryFilesDirectory()
 	{
-		static const std::filesystem::path directory = [] {
-			const std::filesystem::path temporaryFiles = GetRoots().Local / "server-temp";
-			Ensure(temporaryFiles);
-			return temporaryFiles;
-		}();
+		static const std::filesystem::path directory = EnsuredDirectory(GetRoots().Local / "server-temp");
 
 		return directory;
 	}
 
 	std::filesystem::path UserDirectories::LogFile()
 	{
-		static const std::filesystem::path file = [] {
-			const std::filesystem::path logs = GetRoots().Local / "logs";
-			Ensure(logs);
-			return logs / "graphite.log";
-		}();
+		static const std::filesystem::path file = EnsuredDirectory(GetRoots().Local / "logs") / "graphite.log";
 
 		return file;
 	}

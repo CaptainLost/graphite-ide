@@ -36,6 +36,8 @@ namespace Graphite {
 		constexpr std::size_t kGetDotnetButton = 0;
 		constexpr std::size_t kCheckAgainButton = 1;
 		constexpr const char* kBrowseLabel = "Browse";
+		constexpr const char* kNoHint = "";
+		constexpr float kPaddingSides = 2.0f;
 
 		using ActionLabeller = const char* (*)(InstallAction action);
 
@@ -166,7 +168,7 @@ namespace Graphite {
 		const ServerDefinition* leftCustomServer = CustomServer();
 		m_PageCustomServer = nullptr;
 
-		// Cleared before the choice is stored, so the server is not started once from a path that is about to go.
+		// WARNING: The path is cleared before the choice is stored, so the server is not started once from a path that is about to go.
 		ForgetCustomPath(serverId);
 		StoreChoice(serverId);
 
@@ -206,7 +208,7 @@ namespace Graphite {
 			return;
 		}
 
-		// Stored before the choice, so a server that is not chosen yet restarts once, when it is.
+		// WARNING: The path is stored before the choice, so a server that is not chosen yet restarts once, when it is.
 		SetServerPath(customServer->Id, path);
 		StoreChoice(customServer->Id);
 	}
@@ -309,7 +311,6 @@ namespace Graphite {
 		return false;
 	}
 
-	// A path stored for a server that is not the chosen one runs nothing, so it is not shown as the custom path.
 	std::filesystem::path LanguageServerPage::CustomPathInUse(const ServerDefinition& server) const
 	{
 		const ServerChoice choice = CurrentChoice();
@@ -336,7 +337,7 @@ namespace Graphite {
 		return m_PageCustomServer;
 	}
 
-	// A row described before a change made earlier in the same frame is still drawn that frame, so a control
+	// WARNING: A row described before a change made earlier in the same frame is still drawn that frame, so a control
 	// whose server is no longer the one shown draws nothing rather than that server's emptied values.
 	const ServerDefinition* LanguageServerPage::ShownServer() const
 	{
@@ -420,7 +421,7 @@ namespace Graphite {
 		return card;
 	}
 
-	// The server is an entry of the static catalogue, so a row's lambda may keep a reference to it.
+	// WARNING: The server is an entry of the static catalogue, so a row's lambda may keep a reference to it.
 	SettingsRow LanguageServerPage::DescribeRuntime(const ServerDefinition& server)
 	{
 		const std::vector<DotnetInstallation>& installations = m_Services.DotnetInstallations();
@@ -671,10 +672,10 @@ namespace Graphite {
 		}
 
 		const ImGuiStyle& style = ImGui::GetStyle();
-		const float browseWidth = ImGui::CalcTextSize(kBrowseLabel).x + style.FramePadding.x * 2.0f;
+		const float browseWidth = ImGui::CalcTextSize(kBrowseLabel).x + style.FramePadding.x * kPaddingSides;
 
 		ImGui::SetNextItemWidth(ImGui::CalcItemWidth() - browseWidth - style.ItemSpacing.x);
-		Core::InputTextWithHint("##path", "", m_PathText);
+		Core::InputTextWithHint("##path", kNoHint, m_PathText);
 		m_EditingPath = ImGui::IsItemActive();
 
 		if (ImGui::IsItemDeactivatedAfterEdit())

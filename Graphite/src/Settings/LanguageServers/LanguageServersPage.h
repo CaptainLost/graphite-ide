@@ -13,7 +13,6 @@ namespace Graphite {
 	class LanguageServices;
 	class ServerInstalls;
 
-	// A page per language with servers, then Background Analysis, listed beside whichever is open.
 	class LanguageServersPage final : public SettingsPage
 	{
 	public:
@@ -25,7 +24,6 @@ namespace Graphite {
 
 		const char* GetIcon() const override;
 
-		// Never drawn: the panel draws the page open in the inner list instead.
 		std::vector<SettingsCard> Describe() override { return {}; }
 
 		SettingsDirectory* GetChildren() override { return &m_Children; }

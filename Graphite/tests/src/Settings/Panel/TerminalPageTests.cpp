@@ -17,6 +17,9 @@
 
 namespace {
 
+	constexpr float kWidePageWidth = 900.0f;
+	constexpr float kNarrowPageWidth = 320.0f;
+
 	struct TerminalScreen
 	{
 		TempDirectory Temp;
@@ -42,8 +45,8 @@ TEST_CASE("The terminal page draws whatever shells this machine has without an I
 {
 	TerminalScreen screen;
 
-	screen.Frames.DrawPageTwice(900.0f);
-	screen.Frames.DrawPageTwice(320.0f);
+	screen.Frames.DrawPageTwice(kWidePageWidth);
+	screen.Frames.DrawPageTwice(kNarrowPageWidth);
 
 	CHECK(screen.Frames.RowTitles().size() == 1);
 }

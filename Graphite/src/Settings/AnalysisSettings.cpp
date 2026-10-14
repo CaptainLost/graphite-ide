@@ -7,27 +7,32 @@
 
 namespace Graphite {
 
+	namespace {
+		constexpr std::size_t kAbsentFigure = 0;
+		constexpr unsigned int kCoreCountUnknown = 0;
+		constexpr unsigned int kCoresPerAnalysisFile = 4;
+		constexpr std::size_t kMinimumAutomaticConcurrency = 2;
+		constexpr std::size_t kMaximumAutomaticConcurrency = 6;
+	}
+
 	void AnalysisSettings::Load()
 	{
 		m_Enabled = m_Store.IsBackgroundAnalysisEnabled();
 
-		const std::size_t saved = m_Store.GetAnalysisBudgetMegabytes();
+		const std::size_t savedBudget = m_Store.GetAnalysisBudgetMegabytes();
 
-		m_BudgetMegabytes = saved == 0
+		m_BudgetMegabytes = savedBudget == kAbsentFigure
 								? kDefaultBudgetMegabytes
-								: std::clamp(saved, kMinimumBudgetMegabytes, kMaximumBudgetMegabytes);
+								: std::clamp(savedBudget, kMinimumBudgetMegabytes, kMaximumBudgetMegabytes);
 
 		const std::size_t savedConcurrency = m_Store.GetAnalysisConcurrency();
 
-		m_ConcurrencyAutomatic = savedConcurrency == 0;
+		m_ConcurrencyAutomatic = savedConcurrency == kAbsentFigure;
 
 		if (!m_ConcurrencyAutomatic)
 		{
 			m_Concurrency = std::clamp(savedConcurrency, kMinimumConcurrency, kMaximumConcurrency);
-
-			// A persisted manual figure is itself a remembered choice, so a tick-then-untick of
-			// automatic later in this session returns it rather than the machine's figure.
-			m_RememberedConcurrency = m_Concurrency;
+			m_ConcurrencyChosenThisSession = m_Concurrency;
 		}
 	}
 
@@ -44,30 +49,28 @@ namespace Graphite {
 
 	void AnalysisSettings::SetBudgetMegabytes(std::size_t megabytes)
 	{
-		const std::size_t clamped = std::clamp(megabytes, kMinimumBudgetMegabytes, kMaximumBudgetMegabytes);
+		const std::size_t clampedMegabytes = std::clamp(megabytes, kMinimumBudgetMegabytes, kMaximumBudgetMegabytes);
 
-		if (m_BudgetMegabytes == clamped)
+		if (m_BudgetMegabytes == clampedMegabytes)
 		{
 			return;
 		}
 
-		m_BudgetMegabytes = clamped;
-		m_Store.SetAnalysisBudgetMegabytes(clamped);
+		m_BudgetMegabytes = clampedMegabytes;
+		m_Store.SetAnalysisBudgetMegabytes(clampedMegabytes);
 	}
 
 	std::size_t AnalysisSettings::AutomaticConcurrency()
 	{
-		// hardware_concurrency() is allowed to return 0 when it cannot tell; that is "cannot
-		// tell", not "no cores", so it falls back to the floor rather than dividing by four and
-		// clamping a zero up to the same floor by accident.
-		const unsigned int cores = std::thread::hardware_concurrency();
+		// WARNING: hardware_concurrency() returns 0 when it cannot tell, which is not "no cores".
+		const unsigned int coreCount = std::thread::hardware_concurrency();
 
-		if (cores == 0)
+		if (coreCount == kCoreCountUnknown)
 		{
 			return kMinimumConcurrency;
 		}
 
-		return std::clamp<std::size_t>(cores / 4, 2, 6);
+		return std::clamp<std::size_t>(coreCount / kCoresPerAnalysisFile, kMinimumAutomaticConcurrency, kMaximumAutomaticConcurrency);
 	}
 
 	std::size_t AnalysisSettings::GetConcurrency() const
@@ -86,31 +89,25 @@ namespace Graphite {
 
 		if (!automatic)
 		{
-			// Restore whatever was chosen by hand this session, if anything was; only a machine
-			// nobody has overridden yet falls back to the automatic figure. Reseeding from
-			// AutomaticConcurrency() unconditionally here would forget a deliberate choice the
-			// moment somebody ticked the box on to peek at the machine's figure and ticked it
-			// back off.
-			m_Concurrency = m_RememberedConcurrency.value_or(AutomaticConcurrency());
+			m_Concurrency = m_ConcurrencyChosenThisSession.value_or(AutomaticConcurrency());
 		}
 
-		// Zero means automatic to AppSettings, the same idiom the budget uses for "absent".
-		m_Store.SetAnalysisConcurrency(automatic ? 0 : m_Concurrency);
+		m_Store.SetAnalysisConcurrency(automatic ? kAbsentFigure : m_Concurrency);
 	}
 
 	void AnalysisSettings::SetConcurrency(std::size_t concurrency)
 	{
-		const std::size_t clamped = std::clamp(concurrency, kMinimumConcurrency, kMaximumConcurrency);
+		const std::size_t clampedConcurrency = std::clamp(concurrency, kMinimumConcurrency, kMaximumConcurrency);
 
-		m_RememberedConcurrency = clamped;
+		m_ConcurrencyChosenThisSession = clampedConcurrency;
 
-		if (!m_ConcurrencyAutomatic && m_Concurrency == clamped)
+		if (!m_ConcurrencyAutomatic && m_Concurrency == clampedConcurrency)
 		{
 			return;
 		}
 
 		m_ConcurrencyAutomatic = false;
-		m_Concurrency = clamped;
-		m_Store.SetAnalysisConcurrency(clamped);
+		m_Concurrency = clampedConcurrency;
+		m_Store.SetAnalysisConcurrency(clampedConcurrency);
 	}
 }

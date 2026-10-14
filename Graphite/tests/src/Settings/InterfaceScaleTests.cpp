@@ -25,7 +25,6 @@ TEST_CASE("A stored interface scale that is offered is read back as it was writt
 
 TEST_CASE("A stored interface scale that is not offered settles on the nearest that is")
 {
-	// Hand-edited graphite.json, or a list of choices that changed between versions.
 	CHECK(InterfaceScalePercentOrDefault("130") == 125);
 	CHECK(InterfaceScalePercentOrDefault("140") == 150);
 	CHECK(InterfaceScalePercentOrDefault("10") == kInterfaceScalePercents.front());

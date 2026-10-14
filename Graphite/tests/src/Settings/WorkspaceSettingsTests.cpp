@@ -4,20 +4,11 @@
 
 #include "Core/Base/JsonFile.h"
 
+#include "FileFixtures.h"
 #include "TempDirectory.h"
 
 #include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <string>
-
-namespace {
-	std::string ReadBytes(const std::filesystem::path& path)
-	{
-		std::ifstream stream{path, std::ios::binary};
-		return {std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()};
-	}
-}
 
 TEST_CASE("WorkspaceSettings keeps what was written and reads it back")
 {
@@ -31,8 +22,6 @@ TEST_CASE("WorkspaceSettings keeps what was written and reads it back")
 	CHECK(Graphite::WorkspaceSettings{temp.GetPath()}.Read("b") == "2");
 }
 
-// Every write loads the file, changes it and saves it back; a file that does not parse loads
-// as empty, so the save would leave only the one key written. The bytes are set aside first.
 TEST_CASE("WorkspaceSettings keeps a copy of a corrupt file before a write goes over it")
 {
 	TempDirectory temp;
@@ -45,6 +34,6 @@ TEST_CASE("WorkspaceSettings keeps a copy of a corrupt file before a write goes 
 	const std::filesystem::path backup = temp.GetPath() / ".graphite" / "workspace.json.bak";
 
 	REQUIRE(std::filesystem::exists(backup));
-	CHECK(ReadBytes(backup) == corrupt);
+	CHECK(ReadWholeFile(backup) == corrupt);
 	CHECK(Core::JsonFile::Load(file).Get("b") == "2");
 }

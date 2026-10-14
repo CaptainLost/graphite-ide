@@ -19,11 +19,14 @@ namespace Graphite {
 	namespace {
 
 		constexpr float kSidebarPadding = 10.0f;
+		constexpr float kDividerThickness = 1.0f;
+		constexpr float kNoSpacing = 0.0f;
+		constexpr ImVec2 kFillRemainingSpace(0.0f, 0.0f);
 
 		const std::array<std::string, 1> kOpenLabels{"Open"};
 
-		// The padding is read by Begin, so it is popped before anything inside the child is drawn: the
-		// combos, tooltips and dialogs drawn there copy the window padding.
+		// WARNING: ImGui reads the padding at Begin, so it is popped before anything inside the child is drawn;
+		// the combos, tooltips and dialogs drawn there copy the window padding.
 		bool BeginPaddedChild(const char* id, ImVec2 size, float padding)
 		{
 			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, Core::Scaled(ImVec2(padding, padding)));
@@ -199,12 +202,12 @@ namespace Graphite {
 		}
 	}
 
+	// WARNING: Every page is deactivated, not only the open one: a search shows rows of pages that are not
+	// open, and one of them may have left a question waiting that only its own OnDeactivated can withdraw.
 	void SettingsPanel::OnUpdate(Core::Timestep)
 	{
 		const bool drawn = HasBeenDrawnOnLatestFrame();
 
-		// Every page, not only the open one: a search shows rows of pages that are not open, and one of
-		// them may have left a question waiting that only its own OnDeactivated can withdraw.
 		if (m_WasDrawnLastFrame && !drawn)
 		{
 			for (SettingsPage* page : CollectPages(m_Directory))
@@ -244,7 +247,7 @@ namespace Graphite {
 		}
 
 		DrawSidebar();
-		ImGui::SameLine(0.0f, 0.0f);
+		ImGui::SameLine(kNoSpacing, kNoSpacing);
 		DrawContent();
 		RenderDialogs(pages);
 		RunPendingOpen();
@@ -338,15 +341,14 @@ namespace Graphite {
 		if (children != nullptr)
 		{
 			DrawInnerList(*children);
-			ImGui::SameLine(0.0f, 0.0f);
+			ImGui::SameLine(kNoSpacing, kNoSpacing);
 		}
 
 		SettingsPage* page = GetOpenPage();
 
-		// One child per page, so each page keeps its own scroll position.
-		const std::string childId = "##page/" + JoinPath(m_OpenPath);
+		const std::string childIdPerPage = "##page/" + JoinPath(m_OpenPath);
 
-		if (BeginPaddedChild(childId.c_str(), ImVec2(0.0f, 0.0f), SettingsLayout::kPageMargin) && page != nullptr)
+		if (BeginPaddedChild(childIdPerPage.c_str(), kFillRemainingSpace, SettingsLayout::kPageMargin) && page != nullptr)
 		{
 			SettingsLayout::DrawPageBody(*page, ProblemColour());
 		}
@@ -361,10 +363,11 @@ namespace Graphite {
 
 		if (BeginPaddedChild("##innerList", size, kSidebarPadding))
 		{
-			// Drawn inside the child: the page beside it paints its background from the child's right edge.
+			// WARNING: The divider is drawn inside the child because the page beside it paints its background
+			// from the child's right edge.
 			const ImVec2 windowTopLeft = ImGui::GetWindowPos();
 			const ImVec2 windowSize = ImGui::GetWindowSize();
-			const float dividerX = windowTopLeft.x + windowSize.x - 1.0f;
+			const float dividerX = windowTopLeft.x + windowSize.x - kDividerThickness;
 			ImGui::GetWindowDrawList()->AddLine(ImVec2(dividerX, windowTopLeft.y), ImVec2(dividerX, windowTopLeft.y + windowSize.y),
 												ImGui::GetColorU32(ImGuiCol_Separator));
 
@@ -379,14 +382,16 @@ namespace Graphite {
 
 	void SettingsPanel::DrawResults()
 	{
-		// One child serves every query, so a new query would otherwise open part-way down the last one's list.
-		if (m_ResultsQuery != m_Query)
+		// WARNING: One child serves every query, so a new query would otherwise open part-way down the last one's list.
+		const bool isNewQuery = m_ResultsQuery != m_Query;
+
+		if (isNewQuery)
 		{
 			ImGui::SetNextWindowScroll(ImVec2(0.0f, 0.0f));
 			m_ResultsQuery = m_Query;
 		}
 
-		if (BeginPaddedChild("##results", ImVec2(0.0f, 0.0f), SettingsLayout::kPageMargin))
+		if (BeginPaddedChild("##results", kFillRemainingSpace, SettingsLayout::kPageMargin))
 		{
 			if (m_Hits.empty())
 			{
@@ -467,8 +472,8 @@ namespace Graphite {
 		}
 	}
 
-	// In the panel's own window and under the page's address, the same every frame: a popup's id is
-	// relative to the id stack it is opened under.
+	// WARNING: Dialogs are drawn in the panel's own window and under the page's address, the same every frame,
+	// because a popup's id is relative to the id stack it is opened under.
 	void SettingsPanel::RenderDialogs(const std::vector<SettingsPage*>& pages)
 	{
 		for (SettingsPage* page : pages)
@@ -479,7 +484,7 @@ namespace Graphite {
 		}
 	}
 
-	// After the frame is drawn: opening a page mid-draw would change the rows being walked.
+	// WARNING: Runs after the frame is drawn, because opening a page mid-draw would change the rows being walked.
 	void SettingsPanel::RunPendingOpen()
 	{
 		if (!m_PendingOpen.has_value())

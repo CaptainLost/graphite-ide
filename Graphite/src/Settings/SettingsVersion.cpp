@@ -1,39 +1,32 @@
 #include "Settings/SettingsVersion.h"
 
 #include "Core/Base/JsonFile.h"
+#include "Core/Base/Strings.h"
 
-#include <charconv>
 #include <string>
-#include <system_error>
 
 namespace Graphite {
 
 	namespace {
-		constexpr const char* kVersionKey = "settingsVersion";
+		constexpr const char* kSettingsVersionKey = "settingsVersion";
+		constexpr int kUnversionedFile = 0;
 
 		int StoredVersion(const Core::JsonFile& file)
 		{
-			const std::string stored = file.Get(kVersionKey);
-			int version = 0;
-			const auto [end, error] = std::from_chars(stored.data(), stored.data() + stored.size(), version);
-
-			if (error != std::errc{} || end != stored.data() + stored.size())
-			{
-				return 0;
-			}
-
-			return version;
+			return Core::ParseNumber<int>(file.Get(kSettingsVersionKey)).value_or(kUnversionedFile);
 		}
 	}
 
 	bool StampSettingsVersion(Core::JsonFile& file)
 	{
-		if (StoredVersion(file) > kSettingsVersion)
+		const bool writtenByNewerBuild = StoredVersion(file) > kSettingsVersion;
+
+		if (writtenByNewerBuild)
 		{
 			return false;
 		}
 
-		file.Set(kVersionKey, std::to_string(kSettingsVersion));
+		file.Set(kSettingsVersionKey, std::to_string(kSettingsVersion));
 		return true;
 	}
 }

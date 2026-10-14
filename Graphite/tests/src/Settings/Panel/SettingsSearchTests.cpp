@@ -22,9 +22,9 @@ namespace {
 	}
 
 	constexpr std::size_t kMostFindingsShown = 8;
+	constexpr std::size_t kMoreThanAreShown = 11;
 
-	// A query of exactly one word: "wrap" finds one command, "many" finds more than are shown, "exactly" the most that are.
-	std::vector<Graphite::SettingsRow> FindCommands(std::span<const std::string> words)
+	std::vector<Graphite::SettingsRow> FindCommandsForOneWordQuery(std::span<const std::string> words)
 	{
 		const std::string query = words.size() == 1 ? words.front() : "";
 		std::size_t count = 0;
@@ -35,7 +35,7 @@ namespace {
 		}
 		else if (query == "many")
 		{
-			count = 11;
+			count = kMoreThanAreShown;
 		}
 		else if (query == "exactly")
 		{
@@ -69,7 +69,7 @@ namespace {
 		shortcuts.Rows.push_back(Graphite::SettingsRow{.Title = "Shortcuts",
 													   .Keywords = {"shortcut", "hotkey"},
 													   .DrawBlock = [] {},
-													   .FindInside = FindCommands});
+													   .FindInside = FindCommandsForOneWordQuery});
 
 		Graphite::SettingsCard server{.Heading = "Server"};
 		server.Rows.push_back(Row("Language server", "Roslyn is recommended."));

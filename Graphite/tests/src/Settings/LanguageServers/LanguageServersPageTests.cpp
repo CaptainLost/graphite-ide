@@ -49,8 +49,10 @@ namespace {
 		void Draw()
 		{
 			Core::Animation::BeginFrame();
-			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-			ImGui::SetNextWindowSize(ImVec2(1100.0f, 700.0f));
+			const ImVec2 windowOrigin(0.0f, 0.0f);
+			const ImVec2 windowSize(1100.0f, 700.0f);
+			ImGui::SetNextWindowPos(windowOrigin);
+			ImGui::SetNextWindowSize(windowSize);
 			ImGui::Begin("Settings");
 			Panel.OnImGuiRender();
 			ImGui::End();

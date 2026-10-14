@@ -6,12 +6,12 @@
 #include "Core/Base/JsonFile.h"
 #include "Core/FileSystem/FileSystem.h"
 
+#include "FileFixtures.h"
 #include "TempAppSettings.h"
 #include "TempDirectory.h"
 
 #include <filesystem>
 #include <fstream>
-#include <iterator>
 #include <nlohmann/json.hpp>
 #include <optional>
 #include <ostream>
@@ -20,12 +20,6 @@
 #include <vector>
 
 namespace {
-	std::string ReadBytes(const std::filesystem::path& path)
-	{
-		std::ifstream stream{path, std::ios::binary};
-		return {std::istreambuf_iterator<char>(stream), std::istreambuf_iterator<char>()};
-	}
-
 	void WriteText(const std::filesystem::path& path, std::string_view text)
 	{
 		std::ofstream{path, std::ios::binary} << text;
@@ -66,8 +60,13 @@ TEST_CASE("AppSettings keeps what was set across a flush and a reload")
 	CHECK(reloaded.IsWordWrapEnabled());
 	CHECK_FALSE(reloaded.IsExplorerFollowingActiveFile());
 	CHECK(reloaded.GetColorScheme() == "Light");
-	REQUIRE(reloaded.GetClaudePrices().size() == 1);
-	CHECK(reloaded.GetClaudePrices()[0].first == "opus");
+	const std::vector<std::pair<std::string, std::string>> prices = reloaded.GetClaudePrices();
+
+	REQUIRE(prices.size() == 1);
+
+	const auto& [model, price] = prices[0];
+
+	CHECK(model == "opus");
 }
 
 TEST_CASE("AppSettings keeps the default shell and a server's path across a reload")
@@ -113,9 +112,6 @@ TEST_CASE("AppSettings writes nothing until it is flushed, and nothing when noth
 	CHECK(std::filesystem::exists(file));
 }
 
-// A setter changes the copy in memory and never reads the file. A flush reads it once and lays
-// only the keys this process changed over what is there, so a key edited by hand while the
-// application runs survives the write, and the flush reads it into memory.
 TEST_CASE("AppSettings keeps a hand edit made while it runs, and reads it back on the next flush")
 {
 	TempDirectory temp;
@@ -165,14 +161,14 @@ TEST_CASE("Two instances on one file keep each other's changes")
 	const TempDirectory temp;
 	const std::filesystem::path file = temp.GetPath() / "graphite.json";
 
-	Graphite::AppSettings first{file};
-	Graphite::AppSettings second{file};
+	Graphite::AppSettings firstInstance{file};
+	Graphite::AppSettings secondInstance{file};
 
-	first.SetEditorFontSize(17.0f);
-	second.SetWordWrap(true);
+	firstInstance.SetEditorFontSize(17.0f);
+	secondInstance.SetWordWrap(true);
 
-	first.Flush();
-	second.Flush();
+	firstInstance.Flush();
+	secondInstance.Flush();
 
 	const Graphite::AppSettings reloaded{file};
 
@@ -180,8 +176,6 @@ TEST_CASE("Two instances on one file keep each other's changes")
 	CHECK(reloaded.IsWordWrapEnabled());
 }
 
-// A directory where the file should be makes the write fail. The change stays unwritten, so
-// the next flush - the one on exit, if nothing else - writes it once the way is clear.
 TEST_CASE("AppSettings keeps a change whose write failed and writes it on the next flush")
 {
 	TempDirectory temp;
@@ -197,9 +191,6 @@ TEST_CASE("AppSettings keeps a change whose write failed and writes it on the ne
 	CHECK(Graphite::AppSettings{file}.IsWordWrapEnabled());
 }
 
-// The rule JsonFile::Load has always had: a file that does not parse reads as an empty one.
-// Loading it, reading it and flushing with nothing changed must leave its bytes alone, so a
-// hand-edit with a typo in it survives a launch that changes no setting.
 TEST_CASE("AppSettings reads a corrupt file as defaults and leaves it as it was")
 {
 	TempDirectory temp;
@@ -213,11 +204,9 @@ TEST_CASE("AppSettings reads a corrupt file as defaults and leaves it as it was"
 
 	settings.Flush();
 
-	CHECK(ReadBytes(file) == corrupt);
+	CHECK(ReadWholeFile(file) == corrupt);
 }
 
-// A typo in a hand edit made before launch: the file reads as defaults, and the first change
-// would write those defaults over every setting the file held. The bytes are set aside first.
 TEST_CASE("AppSettings keeps a copy of a corrupt file before its first write goes over it")
 {
 	TempDirectory temp;
@@ -231,7 +220,7 @@ TEST_CASE("AppSettings keeps a copy of a corrupt file before its first write goe
 	settings.Flush();
 
 	REQUIRE(std::filesystem::exists(backup));
-	CHECK(ReadBytes(backup) == corrupt);
+	CHECK(ReadWholeFile(backup) == corrupt);
 	CHECK(Core::JsonFile::Load(file).Get("indentWidth") == "2");
 }
 
@@ -263,7 +252,7 @@ TEST_CASE("AppSettings never writes over a file a newer version wrote")
 	settings.SetWordWrap(false);
 	settings.Flush();
 
-	CHECK(ReadBytes(file) == newer);
+	CHECK(ReadWholeFile(file) == newer);
 }
 
 TEST_CASE("AppSettings stamps the version it writes")
@@ -295,12 +284,15 @@ TEST_CASE("AppSettings forgets a removed Claude price on the next write")
 
 	const Graphite::AppSettings reloaded{file};
 
-	REQUIRE(reloaded.GetClaudePrices().size() == 1);
-	CHECK(reloaded.GetClaudePrices()[0].first == "haiku");
+	const std::vector<std::pair<std::string, std::string>> prices = reloaded.GetClaudePrices();
+
+	REQUIRE(prices.size() == 1);
+
+	const auto& [model, price] = prices[0];
+
+	CHECK(model == "haiku");
 }
 
-// Nothing on disk can be kept from a file that does not parse, so the write falls back to the
-// copy in memory, as every write did before flushes merged.
 TEST_CASE("AppSettings writes what it holds over a file that stopped parsing while it ran")
 {
 	TempDirectory temp;
@@ -319,9 +311,6 @@ TEST_CASE("AppSettings writes what it holds over a file that stopped parsing whi
 	CHECK(written.Get("indentWidth") == "2");
 }
 
-// A file gone or emptied while the application ran - deleted, truncated, or caught halfway
-// through another instance's write - has nothing on it to merge onto. Merging onto that
-// emptiness would write, and then adopt, only the keys this session changed.
 TEST_CASE("AppSettings keeps every setting when the file vanished while it ran")
 {
 	TempDirectory temp;
@@ -422,7 +411,7 @@ TEST_CASE("AppSettings reads hand-written language entries of the wrong shape as
 	settings.SetEditorFontSize(15.0f);
 	settings.Flush();
 
-	const std::string written = ReadBytes(file);
+	const std::string written = ReadWholeFile(file);
 
 	CHECK(written.find(R"("fast")") != std::string::npos);
 	CHECK(written.find(R"("binary": 3)") != std::string::npos);
@@ -447,14 +436,14 @@ TEST_CASE("Two instances on one file keep each other's nested changes")
 	const TempDirectory temp;
 	const std::filesystem::path file = temp.GetPath() / "graphite.json";
 
-	Graphite::AppSettings first{file};
-	Graphite::AppSettings second{file};
+	Graphite::AppSettings firstInstance{file};
+	Graphite::AppSettings secondInstance{file};
 
-	first.SetLanguageServerChoice("Cpp", "clangd");
-	second.SetLanguageServerChoice("CSharp", "roslyn");
+	firstInstance.SetLanguageServerChoice("Cpp", "clangd");
+	secondInstance.SetLanguageServerChoice("CSharp", "roslyn");
 
-	first.Flush();
-	second.Flush();
+	firstInstance.Flush();
+	secondInstance.Flush();
 
 	const Graphite::AppSettings reloaded{file};
 
@@ -489,11 +478,12 @@ TEST_CASE("Clearing a server's path removes it from graphite.json")
 
 	{
 		Graphite::AppSettings settings{file};
-		settings.SetLanguageServerBinaryPath("roslyn", {});
+		const std::filesystem::path noPath;
+		settings.SetLanguageServerBinaryPath("roslyn", noPath);
 		settings.Flush();
 	}
 
-	CHECK(ReadBytes(file).find("roslyn.exe") == std::string::npos);
+	CHECK(ReadWholeFile(file).find("roslyn.exe") == std::string::npos);
 
 	const Graphite::AppSettings reloaded{file};
 
@@ -508,9 +498,10 @@ TEST_CASE("A server's arguments are stored as a list and an empty list removes t
 	settings.Get().SetLanguageServerArguments("csharp-ls", {"--loglevel", "two words"});
 	CHECK(settings.Reload().GetLanguageServerSettings("csharp-ls").Arguments == std::vector<std::string>{"--loglevel", "two words"});
 
-	settings.Get().SetLanguageServerArguments("csharp-ls", {});
+	const std::vector<std::string> noArguments;
+	settings.Get().SetLanguageServerArguments("csharp-ls", noArguments);
 	CHECK(settings.Reload().GetLanguageServerSettings("csharp-ls").Arguments.empty());
-	CHECK(ReadBytes(settings.GetFile()).find("arguments") == std::string::npos);
+	CHECK(ReadWholeFile(settings.GetFile()).find("arguments") == std::string::npos);
 }
 
 TEST_CASE("The old server path moves to clangd and chooses clangd for C++")
@@ -530,7 +521,7 @@ TEST_CASE("The old server path moves to clangd and chooses clangd for C++")
 		settings.Flush();
 	}
 
-	const std::string written = ReadBytes(file);
+	const std::string written = ReadWholeFile(file);
 	CHECK(written.find("languageServerBinary") == std::string::npos);
 	CHECK(written.find("wordWrap") != std::string::npos);
 
@@ -555,7 +546,7 @@ TEST_CASE("A clangd path stored under lsp wins over the old one and the old key 
 		settings.Flush();
 	}
 
-	CHECK(ReadBytes(file).find("languageServerBinary") == std::string::npos);
+	CHECK(ReadWholeFile(file).find("languageServerBinary") == std::string::npos);
 }
 
 TEST_CASE("An explicit C++ choice survives the move of the old path")
@@ -587,7 +578,7 @@ TEST_CASE("A blank old server path is dropped and chooses nothing")
 		settings.Flush();
 	}
 
-	CHECK(ReadBytes(file).find("languageServerBinary") == std::string::npos);
+	CHECK(ReadWholeFile(file).find("languageServerBinary") == std::string::npos);
 }
 
 TEST_CASE("A file without the old server path is not rewritten when it loads")
@@ -603,7 +594,7 @@ TEST_CASE("A file without the old server path is not rewritten when it loads")
 		settings.Flush();
 	}
 
-	CHECK(ReadBytes(file) == original);
+	CHECK(ReadWholeFile(file) == original);
 }
 
 TEST_CASE("An empty object that gains a value keeps what another instance wrote beneath it")
@@ -619,14 +610,14 @@ TEST_CASE("An empty object that gains a value keeps what another instance wrote 
 	CHECK(startingLeaves[0].Path == std::vector<std::string>{"languages"});
 	CHECK(startingLeaves[0].Json == "{}");
 
-	Graphite::AppSettings first{file};
-	Graphite::AppSettings second{file};
+	Graphite::AppSettings firstInstance{file};
+	Graphite::AppSettings secondInstance{file};
 
-	second.SetLanguageServerChoice("CSharp", "roslyn");
-	second.Flush();
+	secondInstance.SetLanguageServerChoice("CSharp", "roslyn");
+	secondInstance.Flush();
 
-	first.SetLanguageServerChoice("Cpp", "clangd");
-	first.Flush();
+	firstInstance.SetLanguageServerChoice("Cpp", "clangd");
+	firstInstance.Flush();
 
 	const Graphite::AppSettings reloaded{file};
 
@@ -641,14 +632,14 @@ TEST_CASE("A value this process replaced is read back as the new one and a sibli
 
 	WriteText(file, R"({"languages": {"Cpp": {"language_server": {"old": 1}}}})");
 
-	Graphite::AppSettings first{file};
-	Graphite::AppSettings second{file};
+	Graphite::AppSettings firstInstance{file};
+	Graphite::AppSettings secondInstance{file};
 
-	second.SetLanguageServerChoice("CSharp", "roslyn");
-	second.Flush();
+	secondInstance.SetLanguageServerChoice("CSharp", "roslyn");
+	secondInstance.Flush();
 
-	first.SetLanguageServerChoice("Cpp", "clangd");
-	first.Flush();
+	firstInstance.SetLanguageServerChoice("Cpp", "clangd");
+	firstInstance.Flush();
 
 	const Graphite::AppSettings reloaded{file};
 

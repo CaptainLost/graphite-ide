@@ -9,25 +9,25 @@
 #include "Core/FileSystem/FileOperations.h"
 
 #include <filesystem>
+#include <system_error>
 #include <utility>
 
 namespace Graphite {
 
 	namespace {
-		constexpr const char* kDirectory = ".graphite";
-		constexpr const char* kFile = "workspace.json";
+		constexpr const char* kWorkspaceDirectory = ".graphite";
+		constexpr const char* kWorkspaceFileName = "workspace.json";
 
 		bool EnsureDirectoryExists(const std::filesystem::path& directory)
 		{
-			// MakeDirectory reports an error when the directory is already there, which is
-			// every write after the first.
-			std::error_code code;
-			if (std::filesystem::exists(directory, code))
+			// WARNING: MakeDirectory reports an error when the directory is already there, which is every write after the first.
+			std::error_code existsError;
+			if (std::filesystem::exists(directory, existsError))
 			{
 				return true;
 			}
 
-			if (const auto made = Core::MakeDirectory(directory); !made)
+			if (const Core::Result<void> made = Core::MakeDirectory(directory); !made)
 			{
 				APP_WARN("Cannot create '{}': {}", Core::ToUtf8(directory), made.GetError().Message);
 				return false;
@@ -43,7 +43,7 @@ namespace Graphite {
 
 	std::filesystem::path WorkspaceSettings::GetFilePath() const
 	{
-		return m_Root / kDirectory / kFile;
+		return m_Root / kWorkspaceDirectory / kWorkspaceFileName;
 	}
 
 	std::string WorkspaceSettings::Read(std::string_view key) const
@@ -63,7 +63,7 @@ namespace Graphite {
 
 	void WorkspaceSettings::Modify(const std::function<void(Core::JsonFile&)>& edit)
 	{
-		if (m_Root.empty() || !EnsureDirectoryExists(m_Root / kDirectory))
+		if (m_Root.empty() || !EnsureDirectoryExists(m_Root / kWorkspaceDirectory))
 		{
 			return;
 		}

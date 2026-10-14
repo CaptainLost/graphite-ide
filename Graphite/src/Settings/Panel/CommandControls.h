@@ -19,10 +19,9 @@ namespace Graphite {
 		std::string CommandId;
 	};
 
-	// Drawn from the command that owns the setting, so this toggle and the View menu's tick cannot disagree.
 	void DrawCommandToggle(Core::CommandRegistry& commands, std::string_view commandId);
 
-	// The number of choices when no choice's command says it is checked.
+	// WARNING: Returns choices.size() when no choice's command is checked.
 	std::size_t CheckedChoice(const Core::CommandRegistry& commands, std::span<const CommandChoice> choices);
 
 	void RunChoice(Core::CommandRegistry& commands, const CommandChoice& choice);

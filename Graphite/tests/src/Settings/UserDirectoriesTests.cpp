@@ -6,14 +6,11 @@
 
 #include <filesystem>
 
-// The test runner redirects every user directory before any case runs (see Main.cpp), so a
-// setter exercised by another suite writes into build output, never into the real profile.
-// These cases hold that promise to account.
 namespace {
 	bool IsWithin(const std::filesystem::path& path, const std::filesystem::path& root)
 	{
-		const std::filesystem::path relative = path.lexically_relative(root);
-		return !relative.empty() && *relative.begin() != "..";
+		const std::filesystem::path pathFromRoot = path.lexically_relative(root);
+		return !pathFromRoot.empty() && *pathFromRoot.begin() != "..";
 	}
 }
 

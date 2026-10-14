@@ -33,8 +33,6 @@ TEST_CASE("A settings file from a newer version is refused and left as it was")
 	CHECK(file.Get("settingsVersion") == newer);
 }
 
-// A hand-edited value that is not a number says nothing about which version wrote the file.
-// Treating it as newer would lock the user out of every later change until they found it.
 TEST_CASE("An unreadable settings version is replaced rather than refused")
 {
 	Core::JsonFile file;

@@ -25,13 +25,10 @@ namespace Graphite {
 
 		void OnImGuiRender() override;
 
-		// Runs whether or not the panel is drawn, which is what makes it the place to notice that it
-		// stopped being drawn.
-		void OnUpdate(Core::Timestep ts) override;
+		void OnUpdate(Core::Timestep timestep) override;
 
 		void OnEvent(Core::Event& event) override;
 
-		// False, changing nothing, when the path names no page. Opening a page ends a search.
 		bool Open(const std::vector<std::string>& path);
 
 		const std::vector<std::string>& GetOpenPath() const { return m_OpenPath; }
@@ -42,8 +39,6 @@ namespace Graphite {
 
 		bool IsSearching() const;
 
-		// The page opened is told exactly openWith, which is empty for a block found by its own words, so
-		// a filter an earlier search left on it is cleared.
 		void OpenSearchHit(const std::vector<std::string>& path, std::string_view openWith);
 
 	private:

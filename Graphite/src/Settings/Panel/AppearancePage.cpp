@@ -42,10 +42,10 @@ namespace Graphite {
 		constexpr float kPercentPerScale = 100.0f;
 		constexpr float kRevealSeconds = 1.5f;
 		constexpr float kRevealStartOpacity = 0.35f;
-
-		// Two, not one: a block drawn for the first time is measured only at the end of its frame, so
-		// a colour below it is placed right only on the next.
-		constexpr int kRevealScrolls = 2;
+		constexpr int kRevealScrollsUntilLayoutSettles = 2;
+		constexpr const char* kNoText = "";
+		constexpr unsigned char kUtf8ContinuationMask = 0xC0;
+		constexpr unsigned char kUtf8ContinuationBits = 0x80;
 
 		const std::vector<std::string> kColourKeywords{"colour", "color"};
 
@@ -111,7 +111,6 @@ namespace Graphite {
 			return std::string{heading} + "/";
 		}
 
-		// Not the name alone: Text and Background are in more than one group.
 		std::string ColourOpenWith(std::string_view heading, std::string_view name)
 		{
 			return ColourGroupPrefix(heading) + std::string{name};
@@ -133,7 +132,7 @@ namespace Graphite {
 		}
 	}
 
-	// Constructed before GraphiteLayer calls ActiveScheme::Load, so this reads the setting rather than
+	// WARNING: Constructed before GraphiteLayer calls ActiveScheme::Load, so this reads the setting rather than
 	// the resolved value; the two agree, because Load reads the same key.
 	AppearancePage::AppearancePage(ActiveScheme& scheme, AppSettings& settings, ModalGate& modals, Core::EventBus& events,
 								   std::filesystem::path themesDirectory)
@@ -155,8 +154,8 @@ namespace Graphite {
 
 	void AppearancePage::OnDeactivated()
 	{
-		// The question's popup is torn down with the page that renders it, and only this page's
-		// render can release the gate, so it has to be given back here.
+		// WARNING: The questions' popups are torn down with the page that renders them, and only this page
+		// can release the modal gate, so it has to be given back here.
 		m_DeleteQuestion.Withdraw();
 		m_RenameQuestion.Withdraw();
 		m_RenameShown = false;
@@ -171,7 +170,7 @@ namespace Graphite {
 
 	void AppearancePage::OnOpenedFromSearch(std::string_view openWith)
 	{
-		m_Revealed = RevealedColour{.OpenWith = std::string{openWith}, .ScrollsLeft = kRevealScrolls};
+		m_Revealed = RevealedColour{.OpenWith = std::string{openWith}, .ScrollsLeft = kRevealScrollsUntilLayoutSettles};
 	}
 
 	bool AppearancePage::IsRevealed(std::string_view heading, std::string_view name) const
@@ -193,7 +192,7 @@ namespace Graphite {
 		return ImGui::GetColorU32(colour);
 	}
 
-	// Reads the item drawn last, so it is called straight after the colour's group ends.
+	// WARNING: Reads the item drawn last, so it is called straight after the colour's group ends.
 	void AppearancePage::ScrollToRevealedColour()
 	{
 		if (m_Revealed->ScrollsLeft == 0)
@@ -252,22 +251,20 @@ namespace Graphite {
 		const bool readOnly = m_Draft.IsReadOnly();
 		const Core::Color& shown = ColourFromScheme(m_Draft.GetPreview(), which);
 
-		// A local array rather than &shown.R: the four floats are almost certainly contiguous, but
-		// "almost certainly" is not a thing to hand a pointer to.
-		float rgba[4] = {shown.R, shown.G, shown.B, shown.A};
+		std::array<float, 4> channels = {shown.R, shown.G, shown.B, shown.A};
 
 		ImGuiColorEditFlags flags = ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf | ImGuiColorEditFlags_NoInputs;
 
-		// A built-in's swatch is for looking at: a picker would let a drag flicker it to the dragged
+		// WARNING: A built-in's swatch is for looking at: a picker would let a drag flicker it to the dragged
 		// value before the draft's refusal snaps it back.
 		if (readOnly)
 		{
 			flags |= ImGuiColorEditFlags_NoPicker | ImGuiColorEditFlags_NoOptions;
 		}
 
-		if (ImGui::ColorEdit4("##swatch", rgba, flags) && !readOnly)
+		if (ImGui::ColorEdit4("##swatch", channels.data(), flags) && !readOnly)
 		{
-			m_Draft.SetColor(which, Core::Color{rgba[0], rgba[1], rgba[2], rgba[3]});
+			m_Draft.SetColor(which, Core::Color{channels[0], channels[1], channels[2], channels[3]});
 			Apply();
 			m_ColourEdited = true;
 		}
@@ -331,7 +328,7 @@ namespace Graphite {
 	{
 		if (ShowsReset(which))
 		{
-			// In a group of its own: the icon moves down to centre itself in the line, and everything
+			// WARNING: In a group of its own: the icon moves down to centre itself in the line, and everything
 			// after it on the line, the swatch and the search's Open, would follow it down.
 			ImGui::BeginGroup();
 			DrawColourReset(which);
@@ -367,7 +364,7 @@ namespace Graphite {
 
 			rows.push_back(SettingsRow{.Key = name,
 									   .Title = name,
-									   .Description = ownScheme ? "" : kBuiltInColourDescription,
+									   .Description = ownScheme ? kNoText : kBuiltInColourDescription,
 									   .DimmedTitle = inherited,
 									   .ControlWidth = ShowsReset(which) ? swatchAndResetWidth : swatchWidth,
 									   .DrawControl = [this, which] { DrawColourResult(which); },
@@ -420,7 +417,7 @@ namespace Graphite {
 		requires std::is_enum_v<Which>
 	SettingsCard AppearancePage::DescribeColours(const char* heading, std::size_t count)
 	{
-		SettingsCard card{.Heading = heading, .Note = m_Draft.IsReadOnly() ? "" : kColourNote};
+		SettingsCard card{.Heading = heading, .Note = m_Draft.IsReadOnly() ? kNoText : kColourNote};
 
 		std::vector<std::string> keywords = kColourKeywords;
 
@@ -433,9 +430,7 @@ namespace Graphite {
 										.Keywords = std::move(keywords),
 										.DrawBlock = [this, heading, count] { DrawColourGrid<Which>(heading, count); },
 										.DrawnEvenOutOfSight = IsScrollingToGroup(heading),
-										.FindInside = [this, heading, count](std::span<const std::string> words) {
-											return FindColours<Which>(heading, count, words);
-										}});
+										.FindInside = [this, heading, count](std::span<const std::string> words) { return FindColours<Which>(heading, count, words); }});
 
 		return card;
 	}
@@ -573,13 +568,9 @@ namespace Graphite {
 		RenderRenameDialog();
 		RenderDeleteDialog();
 
-		// Last, after every place that saves, duplicates or deletes.
 		PublishDraftFailure();
 	}
 
-	// Asked before deleting because the file is the user's own work and there is no undo.
-	// A scheme that was renamed or deleted between the ask and the answer is no longer worth
-	// asking about, which is what the predicate is for.
 	void AppearancePage::RenderDeleteDialog()
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
@@ -594,20 +585,20 @@ namespace Graphite {
 			return;
 		}
 
-		const std::string* current = m_DeleteQuestion.GetCurrent();
+		const std::string* askedName = m_DeleteQuestion.GetCurrent();
 
-		if (current == nullptr)
+		if (askedName == nullptr)
 		{
 			ImGui::CloseCurrentPopup();
 			m_DeleteQuestion.End();
 			return;
 		}
 
-		DialogLayout::Text("Delete \"" + *current + "\"? This cannot be undone.");
+		DialogLayout::Text("Delete \"" + *askedName + "\"? This cannot be undone.");
 		DialogLayout::Gap();
 
-		// No safe action, so Enter does nothing; Escape cancels.
-		const DialogLayout::Choice choice = DialogLayout::ButtonRow({}, {.Label = "Delete"}, DangerColour());
+		const DialogLayout::ButtonSpec noSafeAction{};
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow(noSafeAction, {.Label = "Delete"}, DangerColour());
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{
@@ -642,9 +633,9 @@ namespace Graphite {
 			return;
 		}
 
-		const std::string* current = m_RenameQuestion.GetCurrent();
+		const std::string* askedName = m_RenameQuestion.GetCurrent();
 
-		if (current == nullptr)
+		if (askedName == nullptr)
 		{
 			ImGui::CloseCurrentPopup();
 			m_RenameQuestion.End();
@@ -652,35 +643,33 @@ namespace Graphite {
 			return;
 		}
 
-		// Copied out before Answer(), which drops the payload `current` points at.
-		const std::string from = *current;
+		// WARNING: Copied out before Answer(), which drops the payload askedName points at.
+		const std::string originalName = *askedName;
 
-		const bool first = !m_RenameShown;
+		const bool firstFrame = !m_RenameShown;
 
-		if (first)
+		if (firstFrame)
 		{
 			m_RenameShown = true;
 			m_RenameError.clear();
 			m_RenameBuffer.fill('\0');
 
-			// A name written outside Graphite can be longer than the field; it is cut at the
-			// start of a character, never inside one.
-			std::size_t length = std::min(from.size(), m_RenameBuffer.size() - 1);
+			std::size_t copiedLength = std::min(originalName.size(), m_RenameBuffer.size() - 1);
 
-			while (length > 0 && length < from.size() && (static_cast<unsigned char>(from[length]) & 0xC0) == 0x80)
+			while (copiedLength > 0 && copiedLength < originalName.size() &&
+				   (static_cast<unsigned char>(originalName[copiedLength]) & kUtf8ContinuationMask) == kUtf8ContinuationBits)
 			{
-				--length;
+				--copiedLength;
 			}
 
-			from.copy(m_RenameBuffer.data(), length);
+			originalName.copy(m_RenameBuffer.data(), copiedLength);
 
-			// The field is what the dialog is for, so it takes the keyboard as it opens.
 			ImGui::SetKeyboardFocusHere();
 		}
 
 		ImGui::SetNextItemWidth(-FLT_MIN);
-		const bool entered = ImGui::InputTextWithHint("##schemeName", "Scheme name", m_RenameBuffer.data(),
-													  m_RenameBuffer.size(), ImGuiInputTextFlags_EnterReturnsTrue);
+		const bool enterPressed = ImGui::InputTextWithHint("##schemeName", "Scheme name", m_RenameBuffer.data(),
+														   m_RenameBuffer.size(), ImGuiInputTextFlags_EnterReturnsTrue);
 
 		if (ImGui::IsItemEdited())
 		{
@@ -688,12 +677,11 @@ namespace Graphite {
 		}
 
 		const std::string name(m_RenameBuffer.data());
-		const bool unchanged = name == from;
+		const bool unchanged = name == originalName;
 		const std::optional<std::string> problem = m_Draft.NameProblem(name);
+		const bool problemNeedsSaying = problem.has_value() && !name.empty() && !unchanged;
 
-		// An empty field says so through its hint and the disabled button, and so does the name it
-		// started with; anything else that will not do is said under the field.
-		if (problem.has_value() && !name.empty() && !unchanged)
+		if (problemNeedsSaying)
 		{
 			DialogLayout::ErrorText(*problem, DangerColour());
 		}
@@ -710,7 +698,7 @@ namespace Graphite {
 		const DialogLayout::Choice choice =
 			DialogLayout::ButtonRow({.Label = "Rename", .Enabled = acceptable}, {}, DangerColour());
 
-		if (acceptable && (choice == DialogLayout::Choice::Safe || entered))
+		if (acceptable && (choice == DialogLayout::Choice::Safe || enterPressed))
 		{
 			FlushColourEdit();
 
@@ -723,7 +711,6 @@ namespace Graphite {
 			}
 			else
 			{
-				// Kept open: the file may be in use or read-only, and the name can be tried again.
 				m_RenameError = "Could not rename the scheme. Its file may be in use or read-only.";
 			}
 		}

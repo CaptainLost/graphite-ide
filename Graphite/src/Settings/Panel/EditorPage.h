@@ -49,8 +49,7 @@ namespace Graphite {
 		EditorSettings& m_Settings;
 		Core::CommandRegistry& m_Commands;
 
-		// A slider's value while it is dragged, written on release: every changed frame rewrites graphite.json.
-		std::optional<float> m_PendingFontSize;
-		std::optional<int> m_PendingHoverDelay;
+		std::optional<float> m_FontSizeWhileDragged;
+		std::optional<int> m_HoverDelayWhileDragged;
 	};
 }

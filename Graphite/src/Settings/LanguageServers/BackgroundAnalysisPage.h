@@ -33,7 +33,6 @@ namespace Graphite {
 
 		AnalysisSettings& m_Analysis;
 
-		// The slider's value while it is dragged, committed on release so a drag writes graphite.json once.
 		std::optional<int> m_PendingBudgetMegabytes;
 	};
 }

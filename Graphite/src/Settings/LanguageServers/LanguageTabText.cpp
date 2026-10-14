@@ -78,7 +78,6 @@ namespace Graphite {
 		return "Custom";
 	}
 
-	// The same inputs SummariseInstall reads as Not installed; the two change together.
 	bool IsFoundOnPath(const InstallInputs& inputs, const std::optional<ServerCommand>& found, const std::filesystem::path& customPath)
 	{
 		const bool readsNotInstalled = inputs.AvailableOnPlatform && inputs.HasReadInstalls && !inputs.Running.has_value() && !inputs.Installed.has_value();
@@ -169,7 +168,8 @@ namespace Graphite {
 			return needed + "not found";
 		}
 
-		// Highest first, and this installation has one at or above the major needed, so the first is the one that runs.
-		return needed + "found " + found->RuntimeVersions.front();
+		const std::string& highestRuntimeVersion = found->RuntimeVersions.front();
+
+		return needed + "found " + highestRuntimeVersion;
 	}
 }

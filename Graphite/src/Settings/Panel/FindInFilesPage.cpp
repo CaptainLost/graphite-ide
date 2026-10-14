@@ -48,7 +48,6 @@ namespace Graphite {
 		}
 	}
 
-	// Disabled rather than hidden: a control that vanishes reads as a bug, and the description says why.
 	void FindInFilesPage::DrawProjectsOnly()
 	{
 		bool projectsOnly = m_Settings.Get().ProjectsOnly;

@@ -17,6 +17,9 @@
 
 namespace {
 
+	constexpr float kWideWindowWidth = 900.0f;
+	constexpr float kNarrowWindowWidth = 320.0f;
+
 	struct ClaudeScreen
 	{
 		TempDirectory Temp;
@@ -53,8 +56,8 @@ TEST_CASE("The Claude page draws wide and narrow without an ImGui assertion")
 {
 	ClaudeScreen screen;
 
-	screen.Frames.DrawPageTwice(900.0f);
-	screen.Frames.DrawPageTwice(320.0f);
+	screen.Frames.DrawPageTwice(kWideWindowWidth);
+	screen.Frames.DrawPageTwice(kNarrowWindowWidth);
 
 	CHECK(screen.Frames.CardHeadings().size() == 2);
 }

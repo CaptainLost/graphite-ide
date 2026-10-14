@@ -19,7 +19,6 @@ namespace Graphite {
 		float StackBelowWidth = 0.0f;
 	};
 
-	// Where a row's text and control go, measured from the inside left edge of the card.
 	struct RowColumns
 	{
 		bool Stacked = false;
@@ -36,7 +35,6 @@ namespace Graphite {
 		float Spacing = 0.0f;
 	};
 
-	// Measured from the row's top edge.
 	struct RowHeights
 	{
 		float Row = 0.0f;
@@ -48,7 +46,6 @@ namespace Graphite {
 
 	RowHeights MeasureRowHeights(const RowColumns& columns, const RowContent& content);
 
-	// Draws what every settings page has in common, so that every page looks the same.
 	class SettingsLayout final
 	{
 	public:
@@ -74,8 +71,6 @@ namespace Graphite {
 		static void DrawGroupDivider();
 		static bool DrawNavigationEntry(const char* icon, std::string_view title, bool selected, bool dimmed);
 
-		// A combo of the options; true on the frame another is chosen. A selected index past the options
-		// shows unlistedPreview, for a value the file holds that the list does not.
 		static bool Choice(const char* id, std::span<const std::string> options, std::size_t& selected, const std::string& unlistedPreview = {});
 	};
 }

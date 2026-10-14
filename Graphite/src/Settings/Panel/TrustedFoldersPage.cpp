@@ -47,7 +47,7 @@ namespace Graphite {
 		return {card};
 	}
 
-	// Revoking while the rows are drawn is safe: they are a copy, not the trust list itself.
+	// WARNING: Revoking while the rows are drawn is safe because they are a copy, not the trust list itself.
 	void TrustedFoldersPage::DrawRemove(const std::filesystem::path& folder)
 	{
 		if (ImGui::Button(kRemoveLabels.front().c_str()))

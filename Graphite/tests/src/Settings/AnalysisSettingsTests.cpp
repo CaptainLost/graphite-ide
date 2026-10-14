@@ -4,8 +4,6 @@
 
 #include "TempAppSettings.h"
 
-// Every case gets its own AppSettings over a temporary file (TempAppSettings), so a case starts
-// from the defaults whatever an earlier one set, and the user's own settings are never touched.
 TEST_CASE("The budget is offered in megabytes and used in bytes")
 {
 	TempAppSettings store;
@@ -76,7 +74,6 @@ TEST_CASE("Concurrency is automatic until somebody says otherwise")
 	CHECK_FALSE(settings.IsConcurrencyAutomatic());
 	CHECK(settings.GetConcurrency() == 2);
 
-	// Back to automatic, and the machine's answer returns rather than the number that was typed.
 	settings.SetConcurrencyAutomatic(true);
 
 	CHECK(settings.GetConcurrency() == Graphite::AnalysisSettings::AutomaticConcurrency());
@@ -91,8 +88,6 @@ TEST_CASE("Unticking automatic keeps the figure it had rather than dropping to t
 
 	settings.SetConcurrencyAutomatic(false);
 
-	// Nothing was dragged, so this should read as "still what automatic chose", not as
-	// having quietly fallen back to kMinimumConcurrency.
 	CHECK(settings.GetConcurrency() == Graphite::AnalysisSettings::AutomaticConcurrency());
 }
 
@@ -107,7 +102,6 @@ TEST_CASE("A round trip through automatic returns the number that was chosen, no
 	settings.SetConcurrencyAutomatic(true);
 	settings.SetConcurrencyAutomatic(false);
 
-	// The deliberate 2 comes back, not whatever AutomaticConcurrency() happens to say.
 	CHECK(settings.GetConcurrency() == 2);
 }
 
@@ -121,8 +115,6 @@ TEST_CASE("While automatic is on, the remembered choice does not leak into what 
 
 	settings.SetConcurrencyAutomatic(true);
 
-	// Automatic means automatic: the number on screen is the machine's, not the one that was
-	// typed before the box was ticked back on.
 	CHECK(settings.GetConcurrency() == Graphite::AnalysisSettings::AutomaticConcurrency());
 }
 

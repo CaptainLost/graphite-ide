@@ -69,6 +69,13 @@ namespace Graphite {
 		constexpr const char* kInitializationOptionsKey = "initialization_options";
 		constexpr const char* kServerSettingsKey = "settings";
 
+		constexpr bool kOnWhenAbsent = true;
+		constexpr bool kOffWhenAbsent = false;
+
+		constexpr int kCompactIndent = -1;
+		constexpr char kIndentCharacter = ' ';
+		constexpr bool kEscapeNonAscii = false;
+
 		const nlohmann::json& MemberOrNull(const nlohmann::json& value, std::string_view key)
 		{
 			static const nlohmann::json absent;
@@ -128,7 +135,7 @@ namespace Graphite {
 
 		std::string AsJsonText(const nlohmann::json& value)
 		{
-			return value.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+			return value.dump(kCompactIndent, kIndentCharacter, kEscapeNonAscii, nlohmann::json::error_handler_t::replace);
 		}
 
 		bool IsStrictlyUnder(const std::vector<std::string>& path, const std::vector<std::string>& prefix)
@@ -149,7 +156,6 @@ namespace Graphite {
 			return true;
 		}
 
-		// Zero is "absent" for every number stored here, so a malformed one reads as absent too.
 		template<typename Number>
 			requires std::integral<Number> || std::floating_point<Number>
 		Number NumberOrZero(std::string_view stored)
@@ -204,10 +210,10 @@ namespace Graphite {
 		}
 
 		APP_INFO("'{}': {}; {} for {}",
-			kLanguageServerBinaryKey,
-			pathStored ? "dropped because a path was already stored" : "moved to the server's own path",
-			choiceStored ? "the existing choice is kept" : "chose it",
-			kLanguageOfOldPath);
+				 kLanguageServerBinaryKey,
+				 pathStored ? "dropped because a path was already stored" : "moved to the server's own path",
+				 choiceStored ? "the existing choice is kept" : "chose it",
+				 kLanguageOfOldPath);
 	}
 
 	void AppSettings::Flush()
@@ -219,8 +225,6 @@ namespace Graphite {
 
 		Core::JsonFile onDisk = Core::JsonFile::Load(m_File);
 
-		// What a file that does not parse held is in nothing written below, so it is set aside
-		// first. Without that copy the file is left alone, unwritten, and tried again next time.
 		if (onDisk.IsMalformed() && !BackUpBeforeWritingOver(m_File, "does not parse"))
 		{
 			if (!m_WriteFailed)
@@ -232,42 +236,33 @@ namespace Graphite {
 			return;
 		}
 
-		// An empty read has nothing on it to keep, whatever the reason: a file that does not parse,
-		// one deleted or truncated while this ran, or one caught halfway through another
-		// instance's write. Merging onto it would write, and then adopt, only the keys changed
-		// here, so the copy in memory is written whole instead.
 		const bool unreadable = onDisk.GetCount() == 0;
 
 		if (!unreadable)
 		{
-			// Only the keys this process changed since the last write go over what is on disk, so
-			// everything else there - a hand edit, another instance's change - is kept.
-			const Snapshot current = TakeSnapshot(m_Document);
+			const Snapshot currentSnapshot = TakeSnapshot(m_Document);
 
-			for (const auto& [path, json] : m_Written)
+			for (const auto& [leafPath, leafJson] : m_Written)
 			{
-				if (!current.contains(path) && !HasLeafUnder(current, path))
+				if (!currentSnapshot.contains(leafPath) && !HasLeafUnder(currentSnapshot, leafPath))
 				{
-					onDisk.RemoveAt(path);
+					onDisk.RemoveAt(leafPath);
 				}
 			}
 
-			for (const auto& [path, json] : current)
+			for (const auto& [leafPath, leafJson] : currentSnapshot)
 			{
-				const bool unchanged = m_Written.contains(path) && m_Written.at(path) == json;
+				const bool unchanged = m_Written.contains(leafPath) && m_Written.at(leafPath) == leafJson;
 
 				if (!unchanged)
 				{
-					onDisk.SetJsonAt(path, json);
+					onDisk.SetJsonAt(leafPath, leafJson);
 				}
 			}
 		}
 
 		Core::JsonFile& toWrite = unreadable ? m_Document : onDisk;
 
-		// Every write of graphite.json goes through here, so none of them can skip the
-		// version check and overwrite a file a newer build wrote. Not retried: the file will not
-		// get older by waiting.
 		if (!StampSettingsVersion(toWrite))
 		{
 			m_Unwritten = false;
@@ -275,20 +270,17 @@ namespace Graphite {
 			return;
 		}
 
-		if (const Core::Result<void> saved = toWrite.Save(m_File); !saved)
+		if (const Core::Result<void> saveResult = toWrite.Save(m_File); !saveResult)
 		{
-			// Left unwritten so the next Flush tries again; logged once per run of failures rather
-			// than on every frame that retries.
 			if (!m_WriteFailed)
 			{
-				APP_WARN("Cannot write '{}': {}", Core::ToUtf8(m_File), saved.GetError().Message);
+				APP_WARN("Cannot write '{}': {}", Core::ToUtf8(m_File), saveResult.GetError().Message);
 			}
 
 			m_WriteFailed = true;
 			return;
 		}
 
-		// What was written is now what this process holds, hand edits from disk included.
 		if (!unreadable)
 		{
 			m_Document = std::move(onDisk);
@@ -311,11 +303,12 @@ namespace Graphite {
 		return snapshot;
 	}
 
+	// WARNING: a leaf that became an object keeps its path in the old snapshot, and removing that path would wipe what was just set beneath it.
 	bool AppSettings::HasLeafUnder(const Snapshot& snapshot, const std::vector<std::string>& prefix)
 	{
-		for (const auto& [path, json] : snapshot)
+		for (const auto& [leafPath, leafJson] : snapshot)
 		{
-			if (IsStrictlyUnder(path, prefix))
+			if (IsStrictlyUnder(leafPath, prefix))
 			{
 				return true;
 			}
@@ -357,7 +350,7 @@ namespace Graphite {
 
 	bool AppSettings::IsExplorerFollowingActiveFile() const
 	{
-		return ReadFlag(Get(kExplorerFollowsActiveFileKey), true);
+		return ReadFlag(Get(kExplorerFollowsActiveFileKey), kOnWhenAbsent);
 	}
 
 	void AppSettings::SetExplorerFollowsActiveFile(bool follow)
@@ -387,7 +380,7 @@ namespace Graphite {
 
 	bool AppSettings::IsIndentingWithSpaces() const
 	{
-		return ReadFlag(Get(kIndentWithSpacesKey), true);
+		return ReadFlag(Get(kIndentWithSpacesKey), kOnWhenAbsent);
 	}
 
 	void AppSettings::SetIndentWithSpaces(bool useSpaces)
@@ -407,7 +400,7 @@ namespace Graphite {
 
 	bool AppSettings::IsWordWrapEnabled() const
 	{
-		return ReadFlag(Get(kWordWrapKey), false);
+		return ReadFlag(Get(kWordWrapKey), kOffWhenAbsent);
 	}
 
 	void AppSettings::SetWordWrap(bool wrap)
@@ -417,7 +410,7 @@ namespace Graphite {
 
 	bool AppSettings::IsDiffWordWrapEnabled() const
 	{
-		return ReadFlag(Get(kDiffWordWrapKey), false);
+		return ReadFlag(Get(kDiffWordWrapKey), kOffWhenAbsent);
 	}
 
 	void AppSettings::SetDiffWordWrap(bool wrap)
@@ -425,11 +418,9 @@ namespace Graphite {
 		Set(kDiffWordWrapKey, Flag(wrap));
 	}
 
-	// Both default on: a file that predates the switches, and so has neither key, keeps showing
-	// the markers it always showed.
 	bool AppSettings::HasGutterChangeMarkers() const
 	{
-		return ReadFlag(Get(kGutterChangeMarkersKey), true);
+		return ReadFlag(Get(kGutterChangeMarkersKey), kOnWhenAbsent);
 	}
 
 	void AppSettings::SetGutterChangeMarkers(bool show)
@@ -439,7 +430,7 @@ namespace Graphite {
 
 	bool AppSettings::HasScrollbarChangeMarkers() const
 	{
-		return ReadFlag(Get(kScrollbarChangeMarkersKey), true);
+		return ReadFlag(Get(kScrollbarChangeMarkersKey), kOnWhenAbsent);
 	}
 
 	void AppSettings::SetScrollbarChangeMarkers(bool show)
@@ -449,7 +440,7 @@ namespace Graphite {
 
 	bool AppSettings::IsHoverInfoEnabled() const
 	{
-		return ReadFlag(Get(kHoverInfoKey), true);
+		return ReadFlag(Get(kHoverInfoKey), kOnWhenAbsent);
 	}
 
 	void AppSettings::SetHoverInfo(bool show)
@@ -472,14 +463,14 @@ namespace Graphite {
 		return NumberOrZero<int>(Get(kHoverDelayKey));
 	}
 
-	void AppSettings::SetHoverDelayMs(int ms)
+	void AppSettings::SetHoverDelayMs(int milliseconds)
 	{
-		Set(kHoverDelayKey, std::to_string(ms));
+		Set(kHoverDelayKey, std::to_string(milliseconds));
 	}
 
 	bool AppSettings::IsSearchRespectingGitIgnore() const
 	{
-		return ReadFlag(Get(kSearchRespectGitIgnoreKey), true);
+		return ReadFlag(Get(kSearchRespectGitIgnoreKey), kOnWhenAbsent);
 	}
 
 	void AppSettings::SetSearchRespectGitIgnore(bool respect)
@@ -489,7 +480,7 @@ namespace Graphite {
 
 	bool AppSettings::IsSearchProjectsOnly() const
 	{
-		return ReadFlag(Get(kSearchProjectsOnlyKey), false);
+		return ReadFlag(Get(kSearchProjectsOnlyKey), kOffWhenAbsent);
 	}
 
 	void AppSettings::SetSearchProjectsOnly(bool projectsOnly)
@@ -499,9 +490,7 @@ namespace Graphite {
 
 	bool AppSettings::IsBackgroundAnalysisEnabled() const
 	{
-		// Absent means on: the feature is the default, and a settings file written before it
-		// existed must not read as a decision to switch it off.
-		return ReadFlag(Get(kBackgroundAnalysisKey), true);
+		return ReadFlag(Get(kBackgroundAnalysisKey), kOnWhenAbsent);
 	}
 
 	void AppSettings::SetBackgroundAnalysis(bool enabled)
@@ -566,13 +555,13 @@ namespace Graphite {
 		const nlohmann::json entry = ParseJsonText(m_Document.GetJsonAt(path).value_or(std::string{}));
 		const nlohmann::json& binary = MemberOrNull(entry, kBinaryKey);
 
-		LanguageServerSettings settings{
+		LanguageServerSettings serverSettings{
 			.BinaryPath = Core::FromUtf8(StringOrEmpty(MemberOrNull(binary, kBinaryPathKey))),
 			.Arguments = StringsIn(MemberOrNull(binary, kBinaryArgumentsKey)),
 			.InitializationOptionsJson = ObjectTextOrEmpty(MemberOrNull(entry, kInitializationOptionsKey)),
 			.SettingsJson = ObjectTextOrEmpty(MemberOrNull(entry, kServerSettingsKey))};
 
-		return settings;
+		return serverSettings;
 	}
 
 	void AppSettings::SetLanguageServerBinaryPath(std::string_view serverId, const std::filesystem::path& path)
@@ -669,16 +658,16 @@ namespace Graphite {
 				continue;
 			}
 
-			const std::string id = key.substr(kKeyBindingPrefix.size());
+			const std::string commandId = key.substr(kKeyBindingPrefix.size());
 			const std::optional<Core::Binding> binding = Core::ParseBinding(m_Document.Get(key));
 
 			if (!binding.has_value())
 			{
-				APP_WARN("Ignoring the unreadable key binding stored for '{}'", id);
+				APP_WARN("Ignoring the unreadable key binding stored for '{}'", commandId);
 				continue;
 			}
 
-			keys.Override(id, *binding);
+			keys.Override(commandId, *binding);
 		}
 	}
 

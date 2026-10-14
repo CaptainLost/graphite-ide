@@ -1,6 +1,7 @@
 #include "Settings/Panel/KeyBindingsPage.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Base/Strings.h"
 #include "Core/Command/Binding.h"
 #include "Core/Command/Command.h"
 #include "Core/Command/CommandRegistry.h"
@@ -17,8 +18,9 @@
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 
-#include <algorithm>
 #include <array>
+#include <cfloat>
+#include <cstddef>
 #include <span>
 #include <string>
 #include <string_view>
@@ -34,64 +36,83 @@ namespace Graphite {
 
 		const std::array<std::string, 1> kRestoreLabels{"Restore All Defaults"};
 
-		// The list has no menu around a command, so a command whose menu label only makes sense
-		// under its submenu names itself in full here.
-		std::string LabelOf(const Core::Command& command)
+		constexpr std::size_t kPrimarySlotIndex = 0;
+
+		constexpr int kTableColumnCount = 4;
+
+		constexpr float kCommandColumnWeight = 3.0f;
+		constexpr float kShortcutColumnWeight = 2.0f;
+		constexpr float kAlternatesColumnWeight = 3.0f;
+		constexpr float kDefaultColumnWeight = 1.0f;
+
+		constexpr float kFillAvailableWidth = -FLT_MIN;
+
+		constexpr const char* kWindowSwitcherReason = "the window switcher uses it";
+
+		std::string ListLabelOf(const Core::Command& command)
 		{
 			const std::string& label = command.ListLabel.empty() ? command.Label : command.ListLabel;
-			const std::size_t tab = label.find('\t');
+			const std::size_t tabPosition = label.find('\t');
 
-			if (tab == std::string::npos)
+			if (tabPosition == std::string::npos)
 			{
 				return label;
 			}
 
-			return label.substr(0, tab);
+			return label.substr(0, tabPosition);
 		}
 
-		std::string TextOf(const Core::Binding* binding, std::size_t slot)
+		std::string ChordTextInSlot(const Core::Binding* binding, std::size_t slotIndex)
 		{
 			if (binding == nullptr)
 			{
 				return {};
 			}
 
-			if (slot == 0)
+			if (slotIndex == kPrimarySlotIndex)
 			{
 				return binding->Primary.ToString();
 			}
 
-			if (slot - 1 < binding->Alternates.size())
+			const std::size_t alternateIndex = slotIndex - 1;
+
+			if (alternateIndex < binding->Alternates.size())
 			{
-				return binding->Alternates[slot - 1].ToString();
+				return binding->Alternates[alternateIndex].ToString();
 			}
 
 			return {};
 		}
 
-		std::string AllChordText(const Core::Binding* binding)
+		std::vector<Core::Chord> Flatten(const Core::Binding* binding)
 		{
 			if (binding == nullptr)
 			{
 				return {};
 			}
 
-			std::string text = binding->Primary.ToString();
+			std::vector<Core::Chord> chords;
+			chords.reserve(binding->Alternates.size() + 1);
+			chords.push_back(binding->Primary);
+			chords.insert(chords.end(), binding->Alternates.begin(), binding->Alternates.end());
 
-			for (const Core::Chord& alternate : binding->Alternates)
-			{
-				text.append(" ");
-				text.append(alternate.ToString());
-			}
-
-			return text;
+			return chords;
 		}
 
-		// Chords the GUI toolkit routes for itself, before any window sees them. Binding one
-		// would not replace what it already does — both would happen on the same keystroke,
-		// which is how Ctrl+Tab came to open the window switcher and indent the document
-		// behind it. Refused at the point of binding rather than at the point of firing, so
-		// the answer arrives while the user is still choosing.
+		std::string AllChordText(const Core::Binding* binding)
+		{
+			std::vector<std::string> chordTexts;
+
+			for (const Core::Chord& chord : Flatten(binding))
+			{
+				chordTexts.push_back(chord.ToString());
+			}
+
+			return Core::JoinedWith(chordTexts, " ");
+		}
+
+		// WARNING: ImGui routes these chords itself before any window sees them, so binding one would
+		// make both actions happen on the same keystroke. They are refused when bound, not when fired.
 		struct ReservedChord
 		{
 			ImGuiKeyChord Keys;
@@ -99,8 +120,8 @@ namespace Graphite {
 		};
 
 		constexpr ReservedChord kReservedChords[] = {
-			{ImGuiMod_Ctrl | ImGuiKey_Tab, "the window switcher uses it"},
-			{ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Tab, "the window switcher uses it"},
+			{ImGuiMod_Ctrl | ImGuiKey_Tab, kWindowSwitcherReason},
+			{ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Tab, kWindowSwitcherReason},
 		};
 
 		std::string_view ReservedReasonFor(const Core::Chord& chord)
@@ -121,9 +142,9 @@ namespace Graphite {
 			return {};
 		}
 
-		std::string CaptureLabel(ImGuiKeyChord mods)
+		std::string CaptureLabel(ImGuiKeyChord heldModifiers)
 		{
-			if (mods == ImGuiMod_None)
+			if (heldModifiers == ImGuiMod_None)
 			{
 				return "Press a key... (Esc cancels)";
 			}
@@ -132,7 +153,7 @@ namespace Graphite {
 
 			for (const Core::ModifierName& modifier : Core::kModifiers)
 			{
-				if ((mods & modifier.Bit) != 0)
+				if ((heldModifiers & modifier.Bit) != 0)
 				{
 					text += modifier.Name;
 					text += '+';
@@ -144,35 +165,19 @@ namespace Graphite {
 			return text;
 		}
 
-		std::vector<Core::Chord> Flatten(const Core::Binding* binding)
-		{
-			if (binding == nullptr)
-			{
-				return {};
-			}
-
-			std::vector<Core::Chord> chords;
-			chords.reserve(binding->Alternates.size() + 1);
-			chords.push_back(binding->Primary);
-			chords.insert(chords.end(), binding->Alternates.begin(), binding->Alternates.end());
-
-			return chords;
-		}
-
 		std::string ShortcutsOf(const Core::Binding* binding)
 		{
-			std::string text;
+			std::vector<std::string> chordTexts;
 
 			for (const Core::Chord& chord : Flatten(binding))
 			{
-				if (chord.IsEmpty())
+				if (!chord.IsEmpty())
 				{
-					continue;
+					chordTexts.push_back(chord.ToString());
 				}
-
-				text += text.empty() ? "" : ", ";
-				text += chord.ToString();
 			}
+
+			const std::string text = Core::JoinedWith(chordTexts, ", ");
 
 			return text.empty() ? "No shortcut" : text;
 		}
@@ -182,28 +187,32 @@ namespace Graphite {
 			return binding != nullptr && !binding->Primary.IsEmpty();
 		}
 
-		// The same chord twice in one command reaches it no more often than once. The user
-		// put it in keptSlot, so it leaves the slot it was in.
-		void DropDuplicatesOfChord(std::vector<Core::Chord>& chords, const Core::Chord& chord,
-								   std::size_t& keptSlot)
+		void DropDuplicatesOfChord(std::vector<Core::Chord>& chords, const Core::Chord& chord, std::size_t& keptSlotIndex)
 		{
-			for (std::size_t index = chords.size(); index > 0; --index)
+			for (std::size_t reverseIndex = chords.size(); reverseIndex > 0; --reverseIndex)
 			{
-				if (index - 1 != keptSlot && chords[index - 1] == chord)
-				{
-					chords.erase(chords.begin() + static_cast<std::ptrdiff_t>(index - 1));
+				const std::size_t chordIndex = reverseIndex - 1;
 
-					if (index - 1 < keptSlot)
+				if (chordIndex != keptSlotIndex && chords[chordIndex] == chord)
+				{
+					chords.erase(chords.begin() + static_cast<std::ptrdiff_t>(chordIndex));
+
+					if (chordIndex < keptSlotIndex)
 					{
-						--keptSlot;
+						--keptSlotIndex;
 					}
 				}
 			}
 		}
 
+		bool IsEmptyChord(const Core::Chord& chord)
+		{
+			return chord.IsEmpty();
+		}
+
 		Core::Binding Rebuild(std::vector<Core::Chord> chords)
 		{
-			std::erase_if(chords, [](const Core::Chord& chord) { return chord.IsEmpty(); });
+			std::erase_if(chords, IsEmptyChord);
 
 			Core::Binding binding;
 
@@ -219,10 +228,9 @@ namespace Graphite {
 		}
 	}
 
-	KeyBindingsPage::KeyBindingsPage(Core::CommandRegistry& commands, Core::Keymap& keys,
-										   ModalGate& modals, std::function<void()> onChanged)
-		: m_Commands(commands), m_Keys(keys), m_OnChanged(std::move(onChanged)),
-		  m_ConflictQuestion(modals, kConflictPopup), m_RestoreQuestion(modals, kRestorePopup)
+	KeyBindingsPage::KeyBindingsPage(Core::CommandRegistry& commands, Core::Keymap& keys, ModalGate& modals, std::function<void()> onChanged)
+		: m_Commands(commands), m_Keys(keys), m_OnChanged(std::move(onChanged)), m_ConflictQuestion(modals, kConflictPopup),
+		  m_RestoreQuestion(modals, kRestorePopup)
 	{
 	}
 
@@ -230,7 +238,7 @@ namespace Graphite {
 	{
 		m_ConflictQuestion.Withdraw();
 		m_RestoreQuestion.Withdraw();
-		m_ConflictPending = false;
+		m_IsConflictAwaitingAnswer = false;
 		CancelCapture();
 	}
 
@@ -267,7 +275,9 @@ namespace Graphite {
 		if (ImGui::Button(kRestoreLabels.front().c_str()) && !m_RestoreQuestion.IsAsked())
 		{
 			CancelCapture();
-			m_RestoreQuestion.Ask(true);
+
+			const bool restoreEveryBinding = true;
+			m_RestoreQuestion.Ask(restoreEveryBinding);
 		}
 
 		ImGui::EndDisabled();
@@ -275,22 +285,22 @@ namespace Graphite {
 
 	void KeyBindingsPage::DrawShortcuts()
 	{
-		m_WasFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+		m_WasFocusedLastFrame = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
-		ImGui::SetNextItemWidth(-FLT_MIN);
+		ImGui::SetNextItemWidth(kFillAvailableWidth);
 		Core::InputTextWithHint("##keybindingsFilter", "Filter by command or shortcut", m_Filter);
 
-		constexpr ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp;
+		constexpr ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp;
 
-		if (!ImGui::BeginTable("bindings", 4, flags))
+		if (!ImGui::BeginTable("bindings", kTableColumnCount, tableFlags))
 		{
 			return;
 		}
 
-		ImGui::TableSetupColumn("Command", ImGuiTableColumnFlags_WidthStretch, 3.0f);
-		ImGui::TableSetupColumn("Shortcut", ImGuiTableColumnFlags_WidthStretch, 2.0f);
-		ImGui::TableSetupColumn("Alternates", ImGuiTableColumnFlags_WidthStretch, 3.0f);
-		ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthStretch, 1.0f);
+		ImGui::TableSetupColumn("Command", ImGuiTableColumnFlags_WidthStretch, kCommandColumnWeight);
+		ImGui::TableSetupColumn("Shortcut", ImGuiTableColumnFlags_WidthStretch, kShortcutColumnWeight);
+		ImGui::TableSetupColumn("Alternates", ImGuiTableColumnFlags_WidthStretch, kAlternatesColumnWeight);
+		ImGui::TableSetupColumn("Default", ImGuiTableColumnFlags_WidthStretch, kDefaultColumnWeight);
 		ImGui::TableHeadersRow();
 
 		const std::vector<std::string> words = SplitQueryWords(m_Filter);
@@ -338,9 +348,9 @@ namespace Graphite {
 		}
 
 		rows.push_back(SettingsRow{.Key = command.Id,
-								   .Title = LabelOf(command),
+								   .Title = ListLabelOf(command),
 								   .Description = ShortcutsOf(m_Keys.For(command.Id)),
-								   .OpenWith = LabelOf(command)});
+								   .OpenWith = ListLabelOf(command)});
 	}
 
 	void KeyBindingsPage::OnEvent(Core::Event& event)
@@ -352,78 +362,73 @@ namespace Graphite {
 
 		Core::EventDispatcher dispatcher{event};
 
-		dispatcher.Dispatch<Core::KeyPressedEvent>(
-			[this](Core::KeyPressedEvent& pressed) {
-				const ImGuiKey key = Core::ToImGuiKey(pressed.GetKeyCode());
+		dispatcher.Dispatch<Core::KeyPressedEvent>([this](Core::KeyPressedEvent& pressed) {
+			const ImGuiKey key = Core::ToImGuiKey(pressed.GetKeyCode());
 
-				// Escape leaves the capture, which is why Escape cannot itself be bound: the
-				// alternative is a cell the user cannot get out of.
-				if (key == ImGuiKey_Escape)
-				{
-					CancelCapture();
-					return true;
-				}
-
-				// A modifier going down is not an answer yet: only what happens next tells a
-				// chord from a tap.
-				if (const ImGuiKeyChord bit = Core::ModifierBitOf(pressed.GetKeyCode()); bit != 0)
-				{
-					if (!pressed.IsRepeat())
-					{
-						m_TapMods |= bit;
-					}
-
-					return false;
-				}
-
-				m_TapMods = 0;
-
-				if (key == ImGuiKey_None)
-				{
-					return false;
-				}
-
-				const std::string id = m_Capturing;
-				const std::size_t slot = m_CapturingSlot;
-
-				Offer(id, slot, Core::Chord::Key(Core::ToImGuiModifiers(pressed.GetModifiers()) | key));
+			if (key == ImGuiKey_Escape)
+			{
+				CancelCapture();
 				return true;
-			});
+			}
 
-		// Modifiers released with nothing pressed in between: the gesture is the modifiers
-		// themselves, and only the release tells it apart from the start of a chord.
-		dispatcher.Dispatch<Core::KeyReleasedEvent>(
-			[this](Core::KeyReleasedEvent& released) {
-				if (Core::ModifierBitOf(released.GetKeyCode()) == 0 || m_TapMods == 0)
+			if (const ImGuiKeyChord modifierBit = Core::ModifierBitOf(pressed.GetKeyCode()); modifierBit != ImGuiMod_None)
+			{
+				if (!pressed.IsRepeat())
 				{
-					return false;
+					m_PendingTapModifiers |= modifierBit;
 				}
 
-				const ImGuiKeyChord tapped = m_TapMods;
-				m_TapMods = 0;
+				return false;
+			}
 
-				const std::string id = m_Capturing;
-				const std::size_t slot = m_CapturingSlot;
+			m_PendingTapModifiers = ImGuiMod_None;
 
-				Offer(id, slot, Core::Chord::ModifierTap(tapped));
-				return true;
-			});
+			if (key == ImGuiKey_None)
+			{
+				return false;
+			}
+
+			const std::string capturingCommandId = m_CapturingCommandId;
+			const std::size_t capturingSlotIndex = m_CapturingSlotIndex;
+			const ImGuiKeyChord chordKeys = Core::ToImGuiModifiers(pressed.GetModifiers()) | key;
+
+			Offer(capturingCommandId, capturingSlotIndex, Core::Chord::Key(chordKeys));
+			return true;
+		});
+
+		dispatcher.Dispatch<Core::KeyReleasedEvent>([this](Core::KeyReleasedEvent& released) {
+			const bool releasedKeyIsModifier = Core::ModifierBitOf(released.GetKeyCode()) != ImGuiMod_None;
+
+			if (!releasedKeyIsModifier || m_PendingTapModifiers == ImGuiMod_None)
+			{
+				return false;
+			}
+
+			const ImGuiKeyChord tappedModifiers = m_PendingTapModifiers;
+			m_PendingTapModifiers = ImGuiMod_None;
+
+			const std::string capturingCommandId = m_CapturingCommandId;
+			const std::size_t capturingSlotIndex = m_CapturingSlotIndex;
+
+			Offer(capturingCommandId, capturingSlotIndex, Core::Chord::ModifierTap(tappedModifiers));
+			return true;
+		});
 	}
 
 	bool KeyBindingsPage::IsWaitingForChord() const
 	{
-		return !m_Capturing.empty() && !m_ConflictQuestion.IsAsked() && m_WasFocused;
+		return !m_CapturingCommandId.empty() && !m_ConflictQuestion.IsAsked() && m_WasFocusedLastFrame;
 	}
 
 	void KeyBindingsPage::CancelCapture()
 	{
-		m_Capturing.clear();
-		m_TapMods = 0;
+		m_CapturingCommandId.clear();
+		m_PendingTapModifiers = ImGuiMod_None;
 	}
 
 	bool KeyBindingsPage::CommandMatches(const Core::Command& command, std::span<const std::string> words) const
 	{
-		const std::string label = LabelOf(command);
+		const std::string label = ListLabelOf(command);
 		const std::string shortcuts = AllChordText(m_Keys.For(command.Id));
 		const std::array<std::string_view, 2> texts{label, shortcuts};
 
@@ -438,24 +443,25 @@ namespace Graphite {
 		ImGui::TableNextRow();
 
 		ImGui::TableNextColumn();
-		ImGui::TextUnformatted(LabelOf(command).c_str());
+		ImGui::TextUnformatted(ListLabelOf(command).c_str());
 
 		ImGui::TableNextColumn();
-		RenderSlot(command.Id, 0, TextOf(binding, 0));
+		RenderSlot(command.Id, kPrimarySlotIndex, ChordTextInSlot(binding, kPrimarySlotIndex));
 
 		ImGui::TableNextColumn();
-		const std::size_t alternates = binding != nullptr ? binding->Alternates.size() : 0;
+		const std::size_t alternateCount = binding != nullptr ? binding->Alternates.size() : 0;
 
-		for (std::size_t index = 0; index < alternates; ++index)
+		for (std::size_t alternateIndex = 0; alternateIndex < alternateCount; ++alternateIndex)
 		{
-			RenderSlot(command.Id, index + 1, TextOf(binding, index + 1));
+			const std::size_t slotIndex = alternateIndex + 1;
+			RenderSlot(command.Id, slotIndex, ChordTextInSlot(binding, slotIndex));
 		}
 
-		// One slot past the end appends. With no primary the appended chord would land at
-		// index 0 and fill the Shortcut column instead of this one.
 		if (CanAppendAlternate(binding))
 		{
-			RenderSlot(command.Id, alternates + 1, {});
+			const std::size_t appendSlotIndex = alternateCount + 1;
+			const std::string noChordText;
+			RenderSlot(command.Id, appendSlotIndex, noChordText);
 		}
 
 		ImGui::TableNextColumn();
@@ -473,19 +479,18 @@ namespace Graphite {
 		ImGui::PopID();
 	}
 
-	void KeyBindingsPage::RenderSlot(const std::string& id, std::size_t slot,
-										const std::string& text)
+	void KeyBindingsPage::RenderSlot(const std::string& commandId, std::size_t slotIndex, const std::string& chordText)
 	{
-		ImGui::PushID(static_cast<int>(slot));
+		ImGui::PushID(static_cast<int>(slotIndex));
 
-		const bool capturing = m_Capturing == id && m_CapturingSlot == slot;
-		std::string label = capturing ? CaptureLabel(ImGui::GetIO().KeyMods) : text;
+		const bool capturing = m_CapturingCommandId == commandId && m_CapturingSlotIndex == slotIndex;
+		std::string label = capturing ? CaptureLabel(ImGui::GetIO().KeyMods) : chordText;
 
 		const bool placeholder = label.empty();
 
 		if (placeholder)
 		{
-			label = slot == 0 ? "(none)" : "+ Add";
+			label = slotIndex == kPrimarySlotIndex ? "(none)" : "+ Add";
 		}
 
 		label.append("###slot");
@@ -504,126 +509,121 @@ namespace Graphite {
 
 		if (clicked)
 		{
-			m_Capturing = id;
-			m_CapturingSlot = slot;
+			m_CapturingCommandId = commandId;
+			m_CapturingSlotIndex = slotIndex;
 		}
 
-		// All three are about the Selectable just drawn: ImGui's last-item state belongs to
-		// the next widget as soon as one is submitted.
-		const bool hovered = ImGui::IsItemHovered();
-		const bool selfActive = ImGui::IsItemActive();
-		const bool anyActive = ImGui::IsAnyItemActive();
+		// WARNING: These read the Selectable just drawn; ImGui's last-item state belongs to the next
+		// widget as soon as one is submitted.
+		const bool pointerOverCell = ImGui::IsItemHovered();
+		const bool cellIsActive = ImGui::IsItemActive();
+		const bool anyItemIsActive = ImGui::IsAnyItemActive();
 
-		// Not while the conflict question is up: the keys that answer it would otherwise
-		// read as a fresh capture.
 		if (capturing && !m_ConflictQuestion.IsAsked())
 		{
-			// Capture reads raw key state, which no widget owns: without this fence, typing
-			// into the filter box while a cell waits would bind whatever was typed.
-			if (!CaptureOwnsKeyboard(selfActive, anyActive))
+			if (!CaptureOwnsKeyboard(cellIsActive, anyItemIsActive))
 			{
-				m_Capturing.clear();
+				m_CapturingCommandId.clear();
 			}
-			else if (const std::optional<Core::Chord> chord = CaptureWheelChord(hovered); chord.has_value())
+			else if (const std::optional<Core::Chord> wheelChord = CaptureWheelChord(pointerOverCell); wheelChord.has_value())
 			{
-				Offer(id, slot, *chord);
+				Offer(commandId, slotIndex, *wheelChord);
 			}
 		}
 
 		ImGui::PopID();
 	}
 
-	bool KeyBindingsPage::CaptureOwnsKeyboard(bool selfActive, bool anyActive)
+	bool KeyBindingsPage::CaptureOwnsKeyboard(bool cellIsActive, bool anyItemIsActive)
 	{
 		const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+		const bool noOtherItemIsActive = !anyItemIsActive || cellIsActive;
 
-		return focused && (!anyActive || selfActive);
+		return focused && noOtherItemIsActive;
 	}
 
 	std::optional<Core::Chord> KeyBindingsPage::CaptureWheelChord(bool pointerOverCell)
 	{
 		const ImGuiIO& io = ImGui::GetIO();
 
-		// The keys arrive as events; the wheel does not, because its meaning depends on what
-		// it points at, which is known only while drawing. Only over the cell itself, so a
-		// scroll aimed at the table does not overwrite the row that is waiting, and only
-		// with a modifier: a bare WheelUp would be bound while scrolling to find another
-		// row, and would then fire once per notch in every editor.
-		if (pointerOverCell && io.MouseWheel != 0.0f && io.KeyMods != ImGuiMod_None)
+		const bool wheelTurned = io.MouseWheel != 0.0f;
+		const bool modifierHeld = io.KeyMods != ImGuiMod_None;
+
+		if (pointerOverCell && wheelTurned && modifierHeld)
 		{
-			return Core::Chord::Wheel(io.KeyMods, io.MouseWheel > 0.0f ? Core::Trigger::WheelUp : Core::Trigger::WheelDown,
-									  Core::ShortcutScope::HoveredEditor);
+			const Core::Trigger wheelTrigger = io.MouseWheel > 0.0f ? Core::Trigger::WheelUp : Core::Trigger::WheelDown;
+
+			return Core::Chord::Wheel(io.KeyMods, wheelTrigger, Core::ShortcutScope::HoveredEditor);
 		}
 
 		return std::nullopt;
 	}
 
-	void KeyBindingsPage::Offer(const std::string& id, std::size_t slot, const Core::Chord& chord)
+	void KeyBindingsPage::Offer(const std::string& commandId, std::size_t slotIndex, const Core::Chord& chord)
 	{
 		if (const std::string_view reason = ReservedReasonFor(chord); !reason.empty())
 		{
-			AskConflict(Conflict{chord, {}, std::string(reason), id, slot});
+			AskConflict(ContestedChord{chord, {}, std::string(reason), commandId, slotIndex});
 			return;
 		}
 
 		const std::string_view owner = m_Keys.BoundTo(chord);
 
-		if (owner.empty() || owner == id)
+		if (owner.empty() || owner == commandId)
 		{
-			Apply(id, slot, chord);
+			Apply(commandId, slotIndex, chord);
 			return;
 		}
 
-		AskConflict(Conflict{chord, std::string(owner), {}, id, slot});
+		AskConflict(ContestedChord{chord, std::string(owner), {}, commandId, slotIndex});
 	}
 
-	void KeyBindingsPage::AskConflict(Conflict conflict)
+	void KeyBindingsPage::AskConflict(ContestedChord conflict)
 	{
 		m_ConflictQuestion.Ask(std::move(conflict));
-		m_ConflictPending = true;
+		m_IsConflictAwaitingAnswer = true;
 	}
 
-	void KeyBindingsPage::Apply(const std::string& id, std::size_t slot, const Core::Chord& chord)
+	void KeyBindingsPage::Apply(const std::string& commandId, std::size_t slotIndex, const Core::Chord& chord)
 	{
-		std::vector<Core::Chord> chords = Flatten(m_Keys.For(id));
+		std::vector<Core::Chord> chords = Flatten(m_Keys.For(commandId));
 
-		if (slot < chords.size())
+		if (slotIndex < chords.size())
 		{
-			chords[slot] = chord;
+			chords[slotIndex] = chord;
 		}
 		else
 		{
 			chords.push_back(chord);
-			slot = chords.size() - 1;
+			slotIndex = chords.size() - 1;
 		}
 
-		DropDuplicatesOfChord(chords, chord, slot);
+		DropDuplicatesOfChord(chords, chord, slotIndex);
 
-		m_Keys.Override(id, Rebuild(std::move(chords)));
-		m_Capturing.clear();
+		m_Keys.Override(commandId, Rebuild(std::move(chords)));
+		m_CapturingCommandId.clear();
 		m_OnChanged();
 	}
 
+	// WARNING: Asked from here rather than where the conflict was noticed: a popup's id is relative to
+	// the ID stack it is opened under, and where the conflict is noticed that stack holds the table's
+	// per-row and per-cell ids.
 	void KeyBindingsPage::RenderConflictQuestion()
 	{
-		// Asked from here rather than where the conflict was noticed: a popup's id is relative
-		// to the ID stack it is opened under, and there it sits inside the table's per-row
-		// and per-cell PushIDs.
 		if (m_ConflictQuestion.Begin())
 		{
-			const Conflict& conflict = *m_ConflictQuestion.GetCurrent();
+			const ContestedChord& conflict = *m_ConflictQuestion.GetCurrent();
 
-			// A reserved chord names no owner to take it from: the answer is only that it cannot
-			// be had, so the question loses its first button and becomes a statement.
-			if (!conflict.Reason.empty())
+			const bool isRefusal = !conflict.Reason.empty();
+
+			if (isRefusal)
 			{
-				ImGui::Text("%s cannot be bound: %s.", conflict.Chord.ToString().c_str(),
-							conflict.Reason.c_str());
+				ImGui::Text("%s cannot be bound: %s.", conflict.Chord.ToString().c_str(), conflict.Reason.c_str());
 
 				if (ImGui::Button("OK"))
 				{
-					m_Capturing.clear();
-					m_ConflictPending = false;
+					m_CapturingCommandId.clear();
+					m_IsConflictAwaitingAnswer = false;
 					m_ConflictQuestion.Answer();
 				}
 
@@ -631,30 +631,29 @@ namespace Graphite {
 				return;
 			}
 
-			const Core::Command* owner = m_Commands.Find(conflict.Owner);
-			const std::string ownerLabel = owner != nullptr ? LabelOf(*owner) : conflict.Owner;
+			const Core::Command* owner = m_Commands.Find(conflict.OwnerCommandId);
+			const std::string ownerLabel = owner != nullptr ? ListLabelOf(*owner) : conflict.OwnerCommandId;
 
-			ImGui::Text("%s is already bound to %s.", conflict.Chord.ToString().c_str(),
-						ownerLabel.c_str());
+			ImGui::Text("%s is already bound to %s.", conflict.Chord.ToString().c_str(), ownerLabel.c_str());
 
 			if (ImGui::Button("Take it"))
 			{
-				// Copied out: Answer releases the question's payload.
-				const Conflict taken = conflict;
+				// WARNING: Answer releases the question's payload, so the conflict is copied out first.
+				const ContestedChord taken = conflict;
 
 				TakeFromOwner(taken);
-				m_ConflictPending = false;
+				m_IsConflictAwaitingAnswer = false;
 				m_ConflictQuestion.Answer();
 
-				APP_INFO("'{}' took {} from '{}'", taken.Id, taken.Chord.ToString(), taken.Owner);
+				APP_INFO("'{}' took {} from '{}'", taken.CommandId, taken.Chord.ToString(), taken.OwnerCommandId);
 			}
 
 			ImGui::SameLine();
 
 			if (ImGui::Button("Cancel"))
 			{
-				m_Capturing.clear();
-				m_ConflictPending = false;
+				m_CapturingCommandId.clear();
+				m_IsConflictAwaitingAnswer = false;
 				m_ConflictQuestion.Answer();
 			}
 
@@ -662,12 +661,12 @@ namespace Graphite {
 			return;
 		}
 
-		// Closed by something other than the buttons — Escape, or the panel being hidden and
-		// shown again. A dismissed question is a "no", and the capture it interrupted ends.
-		if (m_ConflictPending && !m_ConflictQuestion.IsAsked())
+		const bool questionDismissedWithoutAnswer = m_IsConflictAwaitingAnswer && !m_ConflictQuestion.IsAsked();
+
+		if (questionDismissedWithoutAnswer)
 		{
-			m_Capturing.clear();
-			m_ConflictPending = false;
+			m_CapturingCommandId.clear();
+			m_IsConflictAwaitingAnswer = false;
 		}
 	}
 
@@ -699,18 +698,18 @@ namespace Graphite {
 		m_RestoreQuestion.End();
 	}
 
-	void KeyBindingsPage::TakeFromOwner(const Conflict& conflict)
+	void KeyBindingsPage::TakeFromOwner(const ContestedChord& conflict)
 	{
-		if (const Core::Binding* current = m_Keys.For(conflict.Owner); current != nullptr)
+		if (const Core::Binding* current = m_Keys.For(conflict.OwnerCommandId); current != nullptr)
 		{
 			std::vector<Core::Chord> chords = Flatten(current);
 			std::erase(chords, conflict.Chord);
 
-			// Stored even when empty, as an override that binds nothing: clearing the
-			// override would hand the previous owner its factory chord straight back.
-			m_Keys.Override(conflict.Owner, Rebuild(std::move(chords)));
+			// WARNING: Stored even when empty, as an override that binds nothing: clearing the override
+			// would hand the previous owner its factory chord straight back.
+			m_Keys.Override(conflict.OwnerCommandId, Rebuild(std::move(chords)));
 		}
 
-		Apply(conflict.Id, conflict.Slot, conflict.Chord);
+		Apply(conflict.CommandId, conflict.SlotIndex, conflict.Chord);
 	}
 }

@@ -10,8 +10,6 @@ namespace Graphite {
 
 	class WorkspaceTrust;
 
-	// Folders are trusted from the restricted-mode bar and the File menu, where the folder in question
-	// is at hand; this is where trust is reviewed and taken back.
 	class TrustedFoldersPage final : public SettingsPage
 	{
 	public:

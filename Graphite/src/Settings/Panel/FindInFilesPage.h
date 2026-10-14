@@ -12,7 +12,6 @@ namespace Graphite {
 	class FindInFilesPage final : public SettingsPage
 	{
 	public:
-		// The flag is the application's own, kept up to date as solutions open and close.
 		FindInFilesPage(SearchSettings& settings, const bool& solutionLoaded) : m_Settings(settings), m_SolutionLoaded(solutionLoaded) {}
 
 		std::string_view GetId() const override { return "findInFiles"; }

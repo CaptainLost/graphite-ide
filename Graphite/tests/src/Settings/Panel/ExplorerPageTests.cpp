@@ -14,7 +14,9 @@
 
 namespace {
 
-	// The Explorer's own commands, with the state they would change in the panel.
+	constexpr float kWideWindowWidth = 900.0f;
+	constexpr float kNarrowWindowWidth = 320.0f;
+
 	struct ExplorerScreen
 	{
 		bool Follows = false;
@@ -76,8 +78,8 @@ TEST_CASE("The explorer page draws wide and narrow without an ImGui assertion")
 {
 	ExplorerScreen screen;
 
-	screen.Frames.DrawPageTwice(900.0f);
-	screen.Frames.DrawPageTwice(320.0f);
+	screen.Frames.DrawPageTwice(kWideWindowWidth);
+	screen.Frames.DrawPageTwice(kNarrowWindowWidth);
 
 	CHECK(screen.Display == "show");
 }

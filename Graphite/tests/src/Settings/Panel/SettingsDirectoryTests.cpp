@@ -26,7 +26,9 @@ namespace {
 
 	Graphite::SettingsDirectory ServersWithTwoLanguages()
 	{
-		Graphite::SettingsGroup languages = GroupOf("");
+		const std::string untitled;
+
+		Graphite::SettingsGroup languages = GroupOf(untitled);
 		languages.Pages.push_back(Core::CreateScope<FakeSettingsPage>("Cpp", "C++"));
 		languages.Pages.push_back(Core::CreateScope<FakeSettingsPage>("CSharp", "C#"));
 

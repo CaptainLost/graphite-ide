@@ -17,6 +17,13 @@
 
 namespace Graphite {
 
+	namespace {
+
+		constexpr double kNoStep = 0.0;
+		constexpr double kNoFastStep = 0.0;
+		constexpr const char* kPriceFormat = "%.3f";
+	}
+
 	const char* ClaudeSessionsPage::GetIcon() const
 	{
 		return ICON_MDI_ROBOT_OUTLINE;
@@ -61,39 +68,41 @@ namespace Graphite {
 	{
 		if (!m_EditingBinary)
 		{
-			m_PendingBinary = Core::ToUtf8(m_Settings.GetBinary());
+			m_BinaryBeingTyped = Core::ToUtf8(m_Settings.GetBinary());
 		}
 
-		Core::InputTextWithHint("##claudeBinary", "claude.exe from PATH", m_PendingBinary);
+		Core::InputTextWithHint("##claudeBinary", "claude.exe from PATH", m_BinaryBeingTyped);
 		m_EditingBinary = ImGui::IsItemActive();
 
 		if (ImGui::IsItemDeactivatedAfterEdit())
 		{
-			m_Settings.SetBinary(Core::FromUtf8(m_PendingBinary));
+			m_Settings.SetBinary(Core::FromUtf8(m_BinaryBeingTyped));
 		}
 	}
 
 	void ClaudeSessionsPage::DrawPrices()
 	{
-		constexpr ImGuiTableFlags kFlags = ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp;
+		constexpr ImGuiTableFlags kTableFlags = ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_SizingStretchProp;
+		constexpr int kColumnCount = 7;
+		constexpr float kModelColumnWeight = 3.0f;
+		constexpr float kPriceColumnWeight = 1.0f;
 
-		if (!ImGui::BeginTable("##claudePrices", 7, kFlags))
+		if (!ImGui::BeginTable("##claudePrices", kColumnCount, kTableFlags))
 		{
 			return;
 		}
 
-		ImGui::TableSetupColumn("Model", ImGuiTableColumnFlags_WidthStretch, 3.0f);
+		ImGui::TableSetupColumn("Model", ImGuiTableColumnFlags_WidthStretch, kModelColumnWeight);
 		for (const char* column : {"Input", "Output", "Write 5m", "Write 1h", "Read"})
 		{
-			ImGui::TableSetupColumn(column, ImGuiTableColumnFlags_WidthStretch, 1.0f);
+			ImGui::TableSetupColumn(column, ImGuiTableColumnFlags_WidthStretch, kPriceColumnWeight);
 		}
 		ImGui::TableSetupColumn("##reset", ImGuiTableColumnFlags_WidthFixed);
 		ImGui::TableHeadersRow();
 
-		// Copied first: SetPrice and ResetPrice change the map being walked.
-		const std::map<std::string, Price> entries = m_Settings.GetPricing().GetEntries();
+		const std::map<std::string, Price> entriesCopiedBecauseEditsChangeTheMap = m_Settings.GetPricing().GetEntries();
 
-		for (const auto& [model, price] : entries)
+		for (const auto& [model, price] : entriesCopiedBecauseEditsChangeTheMap)
 		{
 			ImGui::PushID(model.c_str());
 			ImGui::TableNextRow();
@@ -110,7 +119,7 @@ namespace Graphite {
 				ImGui::TableNextColumn();
 				ImGui::PushID(static_cast<int>(fieldIndex));
 				ImGui::SetNextItemWidth(-1.0f);
-				ImGui::InputDouble("##price", fields[fieldIndex], 0.0, 0.0, "%.3f");
+				ImGui::InputDouble("##price", fields[fieldIndex], kNoStep, kNoFastStep, kPriceFormat);
 				committed = committed || ImGui::IsItemDeactivatedAfterEdit();
 				ImGui::PopID();
 			}
@@ -150,16 +159,15 @@ namespace Graphite {
 			ImGui::TableNextColumn();
 			ImGui::PushID(static_cast<int>(fieldIndex));
 			ImGui::SetNextItemWidth(-1.0f);
-			ImGui::InputDouble("##price", fields[fieldIndex], 0.0, 0.0, "%.3f");
+			ImGui::InputDouble("##price", fields[fieldIndex], kNoStep, kNoFastStep, kPriceFormat);
 			ImGui::PopID();
 		}
 
 		ImGui::TableNextColumn();
 
-		// An empty id would price nothing, and a model's id is matched exactly, so surrounding spaces
-		// from a paste are not part of it.
 		const std::string model = Core::Trimmed(m_NewModel);
-		ImGui::BeginDisabled(model.empty());
+		const bool modelIdIsEmpty = model.empty();
+		ImGui::BeginDisabled(modelIdIsEmpty);
 
 		if (ImGui::SmallButton("Add"))
 		{

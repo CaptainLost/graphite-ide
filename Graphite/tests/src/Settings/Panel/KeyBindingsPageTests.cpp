@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -54,8 +55,7 @@ namespace {
 		return titles;
 	}
 
-	// Header row included: the table keeps the index of the row it drew last.
-	int RowsInBindingsTable()
+	int RowsInBindingsTableIncludingHeader()
 	{
 		ImGuiContext& context = *ImGui::GetCurrentContext();
 
@@ -87,26 +87,28 @@ TEST_CASE("A found command is a row with its id, its name, its shortcuts and no 
 {
 	KeyBindingsScreen screen;
 
-	const std::vector<Graphite::SettingsRow> save = screen.Page.FindCommands(Graphite::SplitQueryWords("all"));
-	const std::vector<Graphite::SettingsRow> wrap = screen.Page.FindCommands(Graphite::SplitQueryWords("wrap"));
+	const std::vector<Graphite::SettingsRow> saveAllRows = screen.Page.FindCommands(Graphite::SplitQueryWords("all"));
+	const std::vector<Graphite::SettingsRow> wrapRows = screen.Page.FindCommands(Graphite::SplitQueryWords("wrap"));
 
-	REQUIRE(save.size() == 1);
-	CHECK(save[0].Key == "file.saveAll");
-	CHECK(save[0].Title == "Save All");
-	CHECK(save[0].Description == "Ctrl+Shift+S, Ctrl+Alt+S");
-	CHECK(save[0].OpenWith == "Save All");
-	CHECK_FALSE(save[0].DrawControl);
+	REQUIRE(saveAllRows.size() == 1);
+	CHECK(saveAllRows[0].Key == "file.saveAll");
+	CHECK(saveAllRows[0].Title == "Save All");
+	CHECK(saveAllRows[0].Description == "Ctrl+Shift+S, Ctrl+Alt+S");
+	CHECK(saveAllRows[0].OpenWith == "Save All");
+	CHECK_FALSE(saveAllRows[0].DrawControl);
 
-	REQUIRE(wrap.size() == 1);
-	CHECK(wrap[0].Description == "No shortcut");
-	CHECK(wrap[0].OpenWith == "Word Wrap");
+	REQUIRE(wrapRows.size() == 1);
+	CHECK(wrapRows[0].Description == "No shortcut");
+	CHECK(wrapRows[0].OpenWith == "Word Wrap");
 }
 
 TEST_CASE("A search with no words lists no command")
 {
 	KeyBindingsScreen screen;
 
-	CHECK(screen.Page.FindCommands({}).empty());
+	const std::vector<std::string> noWords;
+
+	CHECK(screen.Page.FindCommands(noWords).empty());
 }
 
 TEST_CASE("The shortcuts block finds the commands inside itself")
@@ -125,21 +127,23 @@ TEST_CASE("The table's filter shows the commands a search for the same words fin
 {
 	KeyBindingsScreen screen;
 
-	screen.Page.OnOpenedFromSearch("");
+	const std::string_view emptyQuery;
+
+	screen.Page.OnOpenedFromSearch(emptyQuery);
 	screen.Frames.DrawPageTwice();
-	CHECK(RowsInBindingsTable() == 1 + 3);
+	CHECK(RowsInBindingsTableIncludingHeader() == 1 + 3);
 
 	screen.Page.OnOpenedFromSearch("SAVE ctrl");
 	screen.Frames.DrawPageTwice();
-	CHECK(RowsInBindingsTable() == 1 + 2);
+	CHECK(RowsInBindingsTableIncludingHeader() == 1 + 2);
 
 	screen.Page.OnOpenedFromSearch("shift save");
 	screen.Frames.DrawPageTwice();
-	CHECK(RowsInBindingsTable() == 1 + 1);
+	CHECK(RowsInBindingsTableIncludingHeader() == 1 + 1);
 
 	screen.Page.OnOpenedFromSearch("save tabs");
 	screen.Frames.DrawPageTwice();
-	CHECK(RowsInBindingsTable() == 1);
+	CHECK(RowsInBindingsTableIncludingHeader() == 1);
 }
 
 TEST_CASE("Opening the page from a search filters its table by the text it is handed")
@@ -149,17 +153,18 @@ TEST_CASE("Opening the page from a search filters its table by the text it is ha
 	screen.Page.OnOpenedFromSearch("Close Tab");
 	CHECK(screen.Page.GetFilter() == "Close Tab");
 
-	screen.Page.OnOpenedFromSearch("");
+	screen.Page.OnOpenedFromSearch(std::string_view{});
 	CHECK(screen.Page.GetFilter().empty());
 }
 
 TEST_CASE("Deactivating the page withdraws the restore question it asked")
 {
 	KeyBindingsScreen screen;
-	screen.Keys.Override("file.save", Core::Binding{});
+	const Core::Binding unbound;
+	screen.Keys.Override("file.save", unbound);
 
-	// No frame of the whole page in between: the question's popup belongs to the window the button
-	// was clicked in, and drawing another window would let it notice it is gone and withdraw itself.
+	// WARNING: No frame of the whole page in between: the question's popup belongs to the window the
+	// button was clicked in, and drawing another window would let it notice it is gone and withdraw itself.
 	screen.Frames.ClickControl("Restore all defaults");
 	REQUIRE(screen.Modals.IsBusy());
 
@@ -172,8 +177,11 @@ TEST_CASE("The key bindings page draws wide and narrow without an ImGui assertio
 {
 	KeyBindingsScreen screen;
 
-	screen.Frames.DrawPageTwice(900.0f);
-	screen.Frames.DrawPageTwice(320.0f);
+	constexpr float wideWidth = 900.0f;
+	constexpr float narrowWidth = 320.0f;
+
+	screen.Frames.DrawPageTwice(wideWidth);
+	screen.Frames.DrawPageTwice(narrowWidth);
 
 	CHECK(screen.Changes == 0);
 }
@@ -182,15 +190,18 @@ TEST_CASE("The key bindings scroll with their page rather than in a window of th
 {
 	KeyBindingsScreen screen;
 
-	for (int commandIndex = 0; commandIndex < 60; ++commandIndex)
+	constexpr int extraCommandCount = 60;
+	constexpr float pageWidth = 900.0f;
+
+	for (int commandIndex = 0; commandIndex < extraCommandCount; ++commandIndex)
 	{
 		const std::string number = std::to_string(commandIndex);
 		screen.Commands.Add(Core::Command{.Id = "test.command." + number, .Label = "Test command " + number});
 	}
 
-	// A third frame: the page's scroll range follows the content size of the frame before.
-	screen.Frames.DrawPageTwice(900.0f);
-	screen.Frames.DrawPage(900.0f);
+	// WARNING: A third frame is needed: the page's scroll range follows the content size of the frame before.
+	screen.Frames.DrawPageTwice(pageWidth);
+	screen.Frames.DrawPage(pageWidth);
 
 	const ImGuiWindow* page = ImGui::FindWindowByName("Settings");
 	REQUIRE(page != nullptr);

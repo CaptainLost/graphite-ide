@@ -26,7 +26,6 @@
 
 namespace {
 
-	// With an own scheme, "mine" is written with one overridden colour and chosen before the page is built.
 	struct AppearanceParts
 	{
 		explicit AppearanceParts(bool withOwnScheme)
@@ -57,7 +56,6 @@ namespace {
 
 	constexpr std::size_t kThemeAndInterfaceCards = 2;
 
-	// One colour to a line, so the page is taller than its window.
 	constexpr float kNarrowWidth = 400.0f;
 
 	std::vector<Graphite::SettingsRow> FindInFrame(AppearanceScreen& screen, const Graphite::SettingsRow& block, std::string_view query)
@@ -268,9 +266,7 @@ namespace {
 		Drawn
 	};
 
-	// Opened from the found colour Accent, halfway down the page: such a colour can be centred, so the
-	// page is not scrolled to its end.
-	std::string OpenWithForAccent(AppearanceScreen& screen)
+	std::string OpenWithForAccentHalfwayDownThePage(AppearanceScreen& screen)
 	{
 		const std::optional<Graphite::SettingsRow> block = screen.Frames.FindRow("Application colours");
 		REQUIRE(block.has_value());
@@ -289,7 +285,7 @@ namespace {
 			screen.Frames.DrawPageTwice(kNarrowWidth);
 		}
 
-		screen.Page.OnOpenedFromSearch(OpenWithForAccent(screen));
+		screen.Page.OnOpenedFromSearch(OpenWithForAccentHalfwayDownThePage(screen));
 		screen.Frames.DrawPageTwice(kNarrowWidth);
 		screen.Frames.DrawPageTwice(kNarrowWidth);
 
@@ -300,7 +296,6 @@ namespace {
 		return window->Scroll.y;
 	}
 
-	// The light's 1.5 s at the test frames' 1/60 s each.
 	constexpr int kFramesTheLightLasts = 90;
 }
 
@@ -329,7 +324,7 @@ TEST_CASE("Opening the page with words that name no colour does not scroll it")
 TEST_CASE("A found colour asks for the next frame while its light fades, and for none once it has")
 {
 	AppearanceScreen screen;
-	const std::string openWith = OpenWithForAccent(screen);
+	const std::string openWith = OpenWithForAccentHalfwayDownThePage(screen);
 	static_cast<void>(Core::Redraw::TakeDeadline());
 
 	screen.Page.OnOpenedFromSearch(openWith);
@@ -385,8 +380,7 @@ namespace {
 		float SwatchWidth = 0.0f;
 	};
 
-	// Followed on its line by a button, as the search results follow it with Open.
-	DrawnControl DrawControlMeasured(AppearanceScreen& screen, const Graphite::SettingsRow& row)
+	DrawnControl DrawControlMeasuredBeforeAFollowerButton(AppearanceScreen& screen, const Graphite::SettingsRow& row)
 	{
 		DrawnControl drawn;
 
@@ -427,7 +421,7 @@ TEST_CASE("A found colour's swatch ends its control whether overridden or inheri
 
 	for (const Graphite::SettingsRow& row : {overridden[0], inherited[0]})
 	{
-		const DrawnControl drawn = DrawControlMeasured(screen, row);
+		const DrawnControl drawn = DrawControlMeasuredBeforeAFollowerButton(screen, row);
 
 		CHECK(drawn.Width == doctest::Approx(row.ControlWidth));
 		CHECK(drawn.LastItemWidth == doctest::Approx(drawn.SwatchWidth));

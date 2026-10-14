@@ -32,8 +32,9 @@
 namespace {
 
 	constexpr float kControlWidth = 300.0f;
+	constexpr float kNarrowPageWidth = 320.0f;
 
-	// A group's size would not do: an empty group still reaches out to the item before it, the window's title bar.
+	// WARNING: A group's size would not do: an empty group still reaches out to the item before it, the window's title bar.
 	bool DrawControlAlone(const Graphite::SettingsRow& row)
 	{
 		Core::Animation::BeginFrame();
@@ -48,7 +49,6 @@ namespace {
 		return cursorAfter > cursorBefore;
 	}
 
-	// A language's page, C# unless another is named, over an installer whose jobs wait for RunAll.
 	struct LanguageServerScreen
 	{
 		TempDirectory Temp;
@@ -74,7 +74,7 @@ namespace {
 			return Graphite::ReadServerChoice(Settings.Get(), language);
 		}
 
-		// The services ask for the choice again only after a reconfigure cleared it, so the count from one settled
+		// WARNING: The services ask for the choice again only after a reconfigure cleared it, so the count from one settled
 		// choice to the next is the number of reconfigures between them.
 		std::size_t SettledChoiceAsks()
 		{
@@ -203,7 +203,7 @@ TEST_CASE("A language's page draws every install state without an ImGui assertio
 
 	screen.Page.Run(Graphite::InstallAction::Install, "roslyn");
 	screen.Frames.DrawPageTwice();
-	screen.Frames.DrawPageTwice(320.0f);
+	screen.Frames.DrawPageTwice(kNarrowPageWidth);
 
 	screen.Page.Run(Graphite::InstallAction::Cancel, "roslyn");
 	screen.Frames.DrawPageTwice();
@@ -288,7 +288,7 @@ TEST_CASE("Choosing the server already chosen reconfigures nothing")
 		return Graphite::ReadServerChoice(screen.Settings.Get(), language);
 	});
 
-	// The choice is asked for again only after a reconfigure cleared it, so asking after each selection shows whether one happened.
+	// WARNING: The choice is asked for again only after a reconfigure cleared it, so asking after each selection shows whether one happened.
 	screen.Page.SelectServer("csharp-ls");
 	screen.Services.ChosenServer(Graphite::LanguageId::CSharp);
 	const std::size_t askedAfterChoosing = asked;
@@ -406,7 +406,7 @@ TEST_CASE("Opening a page that reads as Custom writes nothing to the settings")
 	std::filesystem::remove(screen.Settings.GetFile());
 
 	screen.Frames.DrawPageTwice();
-	screen.Frames.DrawPageTwice(320.0f);
+	screen.Frames.DrawPageTwice(kNarrowPageWidth);
 	screen.Page.OnDeactivated();
 
 	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Custom server"});
@@ -569,20 +569,20 @@ TEST_CASE("The custom server card draws with and without a path without an ImGui
 
 	screen.Page.SelectCustom();
 	screen.Frames.DrawPageTwice();
-	screen.Frames.DrawPageTwice(320.0f);
+	screen.Frames.DrawPageTwice(kNarrowPageWidth);
 
 	screen.Page.SetCustomPath(kRoslynCopy);
 	screen.Frames.DrawPageTwice();
-	screen.Frames.DrawPageTwice(320.0f);
+	screen.Frames.DrawPageTwice(kNarrowPageWidth);
 
 	screen.Page.SetCustomServerType("omnisharp");
 	screen.Frames.DrawPageTwice();
-	screen.Frames.DrawPageTwice(320.0f);
+	screen.Frames.DrawPageTwice(kNarrowPageWidth);
 
 	const std::filesystem::path noPath;
 	screen.Page.SetCustomPath(noPath);
 	screen.Frames.DrawPageTwice();
-	screen.Frames.DrawPageTwice(320.0f);
+	screen.Frames.DrawPageTwice(kNarrowPageWidth);
 
 	screen.Page.SelectServer("roslyn");
 	screen.Frames.DrawPageTwice();
@@ -592,7 +592,7 @@ TEST_CASE("The custom server card draws with and without a path without an ImGui
 	LanguageServerScreen cppScreen{Graphite::LanguageId::Cpp};
 	cppScreen.StoreCustomServer("clangd", kClangdCopy);
 	cppScreen.Frames.DrawPageTwice();
-	cppScreen.Frames.DrawPageTwice(320.0f);
+	cppScreen.Frames.DrawPageTwice(kNarrowPageWidth);
 
 	CHECK(cppScreen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Custom server"});
 }
@@ -620,7 +620,7 @@ TEST_CASE("A server running from outside Graphite's install reads Found on PATH 
 	screen.Page.SelectServer("clangd");
 	screen.ReadInstalls();
 
-	// Handed to the services alone, so the settings the page reads store no path, as for a copy found on PATH.
+	// WARNING: Handed to the services alone, so the settings the page reads store no path, as for a copy found on PATH.
 	screen.Services.SetChoiceProvider([outsideCopy](Graphite::LanguageId language) { return ClangdRunningFrom(language, outsideCopy); });
 	screen.Services.EnsureStarted(screen.Temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
 
@@ -634,7 +634,7 @@ TEST_CASE("A server running from outside Graphite's install reads Found on PATH 
 	CHECK(row->ControlWidth == screen.ButtonsWidth({"Install Graphite's copy"}));
 
 	screen.Frames.DrawPageTwice();
-	screen.Frames.DrawPageTwice(320.0f);
+	screen.Frames.DrawPageTwice(kNarrowPageWidth);
 }
 
 TEST_CASE("A server neither installed nor running still reads Not installed")

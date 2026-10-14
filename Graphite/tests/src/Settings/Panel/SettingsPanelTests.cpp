@@ -23,7 +23,25 @@
 
 namespace {
 
-	// What the fake pages' controls write to, so a test can see a click land.
+	constexpr float kHalf = 0.5f;
+	constexpr float kWindowHeight = 600.0f;
+	constexpr float kWideWidth = 1000.0f;
+	constexpr float kNarrowWidth = 500.0f;
+	constexpr float kSmallWindowWidth = 800.0f;
+	constexpr float kFoundControlWidth = 80.0f;
+	constexpr float kSwatchControlWidth = 60.0f;
+	constexpr float kSidebarPadding = 10.0f;
+	constexpr float kUnset = 0.0f;
+	constexpr float kProbeStartY = 590.0f;
+	constexpr float kProbeStepY = 4.0f;
+	constexpr float kProbeStartX = 20.0f;
+	constexpr float kProbeEndX = 980.0f;
+	constexpr float kProbeStepX = 20.0f;
+	constexpr float kRightmostProbeX = 990.0f;
+	constexpr float kProbeStepBackX = 4.0f;
+	constexpr ImVec2 kWindowOrigin(0.0f, 0.0f);
+	constexpr ImVec2 kNoPoint(-1.0f, -1.0f);
+
 	struct ControlState
 	{
 		bool WordWrap = false;
@@ -31,7 +49,7 @@ namespace {
 		bool SwatchClicked = false;
 		ImVec2 WordWrapCentre;
 		ImVec2 SwatchCentre;
-		float SwatchRight = 0.0f;
+		float SwatchRight = kUnset;
 		ImVec2 PaddingInside;
 	};
 
@@ -41,7 +59,7 @@ namespace {
 		Core::Toggle("##wordWrap", &state.WordWrap);
 		const ImVec2 itemMin = ImGui::GetItemRectMin();
 		const ImVec2 itemMax = ImGui::GetItemRectMax();
-		state.WordWrapCentre = ImVec2((itemMin.x + itemMax.x) * 0.5f, (itemMin.y + itemMax.y) * 0.5f);
+		state.WordWrapCentre = ImVec2((itemMin.x + itemMax.x) * kHalf, (itemMin.y + itemMax.y) * kHalf);
 	}
 
 	void DrawTable()
@@ -52,8 +70,8 @@ namespace {
 	void DrawInWindow(Graphite::SettingsPanel& panel, float width)
 	{
 		Core::Animation::BeginFrame();
-		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-		ImGui::SetNextWindowSize(ImVec2(width, 600.0f));
+		ImGui::SetNextWindowPos(kWindowOrigin);
+		ImGui::SetNextWindowSize(ImVec2(width, kWindowHeight));
 		ImGui::Begin("Settings");
 		panel.OnImGuiRender();
 		ImGui::End();
@@ -65,7 +83,6 @@ namespace {
 		panel.OnEvent(event);
 	}
 
-	// General: Key Bindings, Language Servers (C++, C#). Panels: Editor, Git.
 	struct PanelFixture
 	{
 		ControlState Controls;
@@ -99,7 +116,7 @@ namespace {
 			}
 
 			return {Graphite::SettingsRow{
-				.Key = "found", .Title = "Found Here", .ControlWidth = 80.0f, .DrawControl = [this] { FoundClicked(); }}};
+				.Key = "found", .Title = "Found Here", .ControlWidth = kFoundControlWidth, .DrawControl = [this] { FoundClicked(); }}};
 		}
 
 		void FoundClicked()
@@ -119,7 +136,7 @@ namespace {
 
 			return {Graphite::SettingsRow{.Key = "swatch",
 										  .Title = "Swatch Here",
-										  .ControlWidth = 60.0f,
+										  .ControlWidth = kSwatchControlWidth,
 										  .DrawControl = [this] { SwatchClicked(); },
 										  .OpenWith = "Swatch Here"}};
 		}
@@ -133,7 +150,7 @@ namespace {
 
 			const ImVec2 itemMin = ImGui::GetItemRectMin();
 			const ImVec2 itemMax = ImGui::GetItemRectMax();
-			Controls.SwatchCentre = ImVec2((itemMin.x + itemMax.x) * 0.5f, (itemMin.y + itemMax.y) * 0.5f);
+			Controls.SwatchCentre = ImVec2((itemMin.x + itemMax.x) * kHalf, (itemMin.y + itemMax.y) * kHalf);
 			Controls.SwatchRight = itemMax.x;
 		}
 
@@ -161,8 +178,7 @@ namespace {
 
 			Graphite::SettingsCard shortcuts{.Heading = "Shortcuts"};
 			shortcuts.Rows.push_back(Graphite::SettingsRow{
-				.Title = "Shortcuts", .Keywords = {"shortcut"}, .DrawBlock = DrawTable,
-				.FindInside = [this](std::span<const std::string> words) { return FindInside(words); }});
+				.Title = "Shortcuts", .Keywords = {"shortcut"}, .DrawBlock = DrawTable, .FindInside = [this](std::span<const std::string> words) { return FindInside(words); }});
 
 			Graphite::SettingsCard server{.Heading = "Server"};
 			server.Rows.push_back(Graphite::SettingsRow{.Title = "Language server", .Description = "Roslyn is recommended."});
@@ -207,7 +223,7 @@ namespace {
 
 		std::vector<FakeSettingsPage*> AllPages() const { return {KeyBindings, Servers, Cpp, CSharp, Editor, Git}; }
 
-		void DrawFrames(float width = 1000.0f)
+		void DrawFrames(float width = kWideWidth)
 		{
 			Frames.Next([this, width] { DrawInWindow(Panel, width); });
 			Frames.Next([this, width] { DrawInWindow(Panel, width); });
@@ -222,8 +238,7 @@ TEST_CASE("SettingsPanel opens on the first page of its first group")
 	CHECK(fixture.Panel.GetOpenPath() == std::vector<std::string>{"keyBindings"});
 }
 
-// The rule that keeps the key binding editor from swallowing keystrokes aimed at a page the user is looking at.
-TEST_CASE("SettingsPanel offers an event to the open page only")
+TEST_CASE("SettingsPanel offers an event to the open page only, so the key binding editor cannot swallow keystrokes aimed at another page")
 {
 	PanelFixture fixture;
 
@@ -255,7 +270,7 @@ TEST_CASE("SettingsPanel with no pages answers without indexing anything")
 	ImGuiFrames frames;
 
 	Press(panel);
-	frames.Next([&panel] { DrawInWindow(panel, 800.0f); });
+	frames.Next([&panel] { DrawInWindow(panel, kSmallWindowWidth); });
 
 	CHECK(panel.GetOpenPath().empty());
 	CHECK_FALSE(panel.Open({"editor"}));
@@ -271,8 +286,7 @@ TEST_CASE("SettingsPanel tells a page it is being left")
 	CHECK(fixture.Editor->GetDeactivationCount() == 0);
 }
 
-// Clicking the highlighted entry is not a change, and would otherwise drop a chord capture in progress.
-TEST_CASE("SettingsPanel does not deactivate a page opened again")
+TEST_CASE("SettingsPanel does not deactivate a page opened again, which would drop a chord capture in progress")
 {
 	PanelFixture fixture;
 
@@ -374,9 +388,11 @@ TEST_CASE("Hiding the panel deactivates every page, open or not")
 {
 	PanelFixture fixture;
 
-	fixture.Panel.SetDrawnOnLatestFrame(true);
+	const bool drawn = true;
+	const bool hidden = false;
+	fixture.Panel.SetDrawnOnLatestFrame(drawn);
 	fixture.Panel.OnUpdate(Core::Timestep{});
-	fixture.Panel.SetDrawnOnLatestFrame(false);
+	fixture.Panel.SetDrawnOnLatestFrame(hidden);
 	fixture.Panel.OnUpdate(Core::Timestep{});
 	fixture.Panel.OnUpdate(Core::Timestep{});
 
@@ -427,7 +443,7 @@ TEST_CASE("Every page is updated and asked for its dialogs each frame, open or n
 {
 	PanelFixture fixture;
 
-	fixture.Frames.Next([&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
+	fixture.Frames.Next([&fixture] { DrawInWindow(fixture.Panel, kWideWidth); });
 
 	for (const FakeSettingsPage* page : fixture.AllPages())
 	{
@@ -443,12 +459,12 @@ TEST_CASE("The panel draws a page, a page holding pages and search results, wide
 	fixture.DrawFrames();
 	REQUIRE(fixture.Panel.Open({"editor"}));
 	fixture.DrawFrames();
-	fixture.DrawFrames(500.0f);
+	fixture.DrawFrames(kNarrowWidth);
 	REQUIRE(fixture.Panel.Open({"languageServers", "CSharp"}));
 	fixture.DrawFrames();
 	fixture.Panel.SetQuery("wrap");
 	fixture.DrawFrames();
-	fixture.DrawFrames(500.0f);
+	fixture.DrawFrames(kNarrowWidth);
 	fixture.Panel.SetQuery("nothing matches this");
 	fixture.DrawFrames();
 
@@ -460,14 +476,13 @@ TEST_CASE("A toggle in the search results changes its setting")
 	PanelFixture fixture;
 	fixture.Panel.SetQuery("wrap");
 	fixture.DrawFrames();
-	REQUIRE(fixture.Controls.WordWrapCentre.x > 0.0f);
+	REQUIRE(fixture.Controls.WordWrapCentre.x > kUnset);
 
-	fixture.Frames.Click(fixture.Controls.WordWrapCentre, [&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
+	fixture.Frames.Click(fixture.Controls.WordWrapCentre, [&fixture] { DrawInWindow(fixture.Panel, kWideWidth); });
 
 	CHECK(fixture.Controls.WordWrap);
 }
 
-// ImGui reads the padding at Begin; what is drawn inside the page copies it for its combos, tooltips and dialogs.
 TEST_CASE("The padding of the panel's child windows does not reach what is drawn inside them")
 {
 	PanelFixture fixture;
@@ -478,7 +493,7 @@ TEST_CASE("The padding of the panel's child windows does not reach what is drawn
 	CHECK(fixture.Controls.PaddingInside.x == outside.x);
 	CHECK(fixture.Controls.PaddingInside.y == outside.y);
 
-	fixture.Controls.PaddingInside = ImVec2(-1.0f, -1.0f);
+	fixture.Controls.PaddingInside = kNoPoint;
 	fixture.Panel.SetQuery("wrap");
 	fixture.DrawFrames();
 
@@ -488,11 +503,10 @@ TEST_CASE("The padding of the panel's child windows does not reach what is drawn
 
 namespace {
 
-	// Draws a frame with the mouse at the point; nothing is clicked.
-	bool IsOverItemOf(PanelFixture& fixture, std::string_view windowName, ImVec2 point)
+	bool MoveMouseAndTestForItem(PanelFixture& fixture, std::string_view windowName, ImVec2 point)
 	{
 		ImGui::GetIO().AddMousePosEvent(point.x, point.y);
-		fixture.Frames.Next([&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
+		fixture.Frames.Next([&fixture] { DrawInWindow(fixture.Panel, kWideWidth); });
 
 		const ImGuiContext& context = *ImGui::GetCurrentContext();
 		const bool inWindow =
@@ -503,31 +517,31 @@ namespace {
 
 	ImVec2 LowestItemIn(PanelFixture& fixture, std::string_view windowName)
 	{
-		for (float y = 590.0f; y > 0.0f; y -= 4.0f)
+		for (float y = kProbeStartY; y > 0.0f; y -= kProbeStepY)
 		{
-			for (float x = 20.0f; x < 980.0f; x += 20.0f)
+			for (float x = kProbeStartX; x < kProbeEndX; x += kProbeStepX)
 			{
-				if (IsOverItemOf(fixture, windowName, ImVec2(x, y)))
+				if (MoveMouseAndTestForItem(fixture, windowName, ImVec2(x, y)))
 				{
 					return ImVec2(x, y);
 				}
 			}
 		}
 
-		return ImVec2(-1.0f, -1.0f);
+		return kNoPoint;
 	}
 
 	ImVec2 RightmostItemOnLine(PanelFixture& fixture, std::string_view windowName, float y)
 	{
-		for (float x = 990.0f; x > 0.0f; x -= 4.0f)
+		for (float x = kRightmostProbeX; x > 0.0f; x -= kProbeStepBackX)
 		{
-			if (IsOverItemOf(fixture, windowName, ImVec2(x, y)))
+			if (MoveMouseAndTestForItem(fixture, windowName, ImVec2(x, y)))
 			{
 				return ImVec2(x, y);
 			}
 		}
 
-		return ImVec2(-1.0f, -1.0f);
+		return kNoPoint;
 	}
 }
 
@@ -537,9 +551,9 @@ TEST_CASE("Clicking Open on a found row opens the page, ends the search and hand
 	fixture.Panel.SetQuery("save");
 	fixture.DrawFrames();
 	const ImVec2 openButton = LowestItemIn(fixture, "##results");
-	REQUIRE(openButton.x > 0.0f);
+	REQUIRE(openButton.x > kUnset);
 
-	fixture.Frames.Click(openButton, [&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
+	fixture.Frames.Click(openButton, [&fixture] { DrawInWindow(fixture.Panel, kWideWidth); });
 
 	CHECK_FALSE(fixture.Panel.IsSearching());
 	CHECK(fixture.Panel.GetOpenPath() == std::vector<std::string>{"keyBindings"});
@@ -552,9 +566,9 @@ TEST_CASE("A found row with a control of its own and nothing to open with is dra
 	fixture.Panel.SetQuery("found");
 	fixture.DrawFrames();
 	const ImVec2 control = LowestItemIn(fixture, "##results");
-	REQUIRE(control.x > 0.0f);
+	REQUIRE(control.x > kUnset);
 
-	fixture.Frames.Click(control, [&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
+	fixture.Frames.Click(control, [&fixture] { DrawInWindow(fixture.Panel, kWideWidth); });
 
 	CHECK(fixture.Controls.FoundClicked);
 	CHECK(fixture.Panel.IsSearching());
@@ -566,17 +580,17 @@ TEST_CASE("A found row with a control of its own and something to open with is d
 	PanelFixture fixture;
 	fixture.Panel.SetQuery("swatch");
 	fixture.DrawFrames();
-	REQUIRE(fixture.Controls.SwatchCentre.x > 0.0f);
+	REQUIRE(fixture.Controls.SwatchCentre.x > kUnset);
 	const ImVec2 control = fixture.Controls.SwatchCentre;
 	const ImVec2 openButton = RightmostItemOnLine(fixture, "##results", control.y);
 	REQUIRE(openButton.x > fixture.Controls.SwatchRight);
 
-	fixture.Frames.Click(control, [&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
+	fixture.Frames.Click(control, [&fixture] { DrawInWindow(fixture.Panel, kWideWidth); });
 
 	CHECK(fixture.Controls.SwatchClicked);
 	CHECK(fixture.Panel.IsSearching());
 
-	fixture.Frames.Click(openButton, [&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
+	fixture.Frames.Click(openButton, [&fixture] { DrawInWindow(fixture.Panel, kWideWidth); });
 
 	CHECK_FALSE(fixture.Panel.IsSearching());
 	CHECK(fixture.Panel.GetOpenPath() == std::vector<std::string>{"keyBindings"});
@@ -589,9 +603,9 @@ TEST_CASE("Clicking a sidebar entry during a search opens its page without touch
 	fixture.Panel.SetQuery("save");
 	fixture.DrawFrames();
 	const ImVec2 lastEntry = LowestItemIn(fixture, "##sidebar");
-	REQUIRE(lastEntry.x > 0.0f);
+	REQUIRE(lastEntry.x > kUnset);
 
-	fixture.Frames.Click(lastEntry, [&fixture] { DrawInWindow(fixture.Panel, 1000.0f); });
+	fixture.Frames.Click(lastEntry, [&fixture] { DrawInWindow(fixture.Panel, kWideWidth); });
 
 	CHECK_FALSE(fixture.Panel.IsSearching());
 	CHECK(fixture.Panel.GetOpenPath() == std::vector<std::string>{"git"});
@@ -602,8 +616,7 @@ TEST_CASE("Clicking a sidebar entry during a search opens its page without touch
 	}
 }
 
-// The entries of a list of pages must fit "Background Analysis" and its icon, so the list is padded like the sidebar, not like a page.
-TEST_CASE("The list of pages inside a page is padded like the sidebar")
+TEST_CASE("The list of pages inside a page is padded like the sidebar, not like a page, so its entries fit \"Background Analysis\" and its icon")
 {
 	PanelFixture fixture;
 	REQUIRE(fixture.Panel.Open({"languageServers", "CSharp"}));
@@ -620,6 +633,6 @@ TEST_CASE("The list of pages inside a page is padded like the sidebar")
 	}
 
 	REQUIRE(innerList != nullptr);
-	CHECK(innerList->WindowPadding.x == Core::Scaled(10.0f));
-	CHECK(innerList->WindowPadding.y == Core::Scaled(10.0f));
+	CHECK(innerList->WindowPadding.x == Core::Scaled(kSidebarPadding));
+	CHECK(innerList->WindowPadding.y == Core::Scaled(kSidebarPadding));
 }

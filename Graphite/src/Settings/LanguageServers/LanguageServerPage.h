@@ -19,7 +19,6 @@ namespace Graphite {
 	struct ServerChoice;
 	struct ServerDefinition;
 
-	// One language's server: which one, whether it is installed, and how it is started.
 	class LanguageServerPage final : public SettingsPage
 	{
 	public:
@@ -37,7 +36,6 @@ namespace Graphite {
 
 		void OnDeactivated() override;
 
-		// Leaves Custom and clears the custom path, so the server runs from Graphite's install, else from PATH.
 		void SelectServer(std::string_view serverId);
 		void SelectCustom();
 		void SetCustomPath(const std::filesystem::path& path);
@@ -84,12 +82,10 @@ namespace Graphite {
 		ServerInstalls& m_Installs;
 		LanguageServices& m_Services;
 
-		// Never stored: Custom chosen before a path is set lasts only as long as the page, and a path
-		// cleared under Custom keeps the card where the user is working.
 		const ServerDefinition* m_PageCustomServer = nullptr;
 
-		// A field's text while it is edited, and whose it is, so the stored value does not overwrite what
-		// is being typed, and a server switched mid-edit does not show another server's text.
+		// WARNING: A field's text is kept while it is edited, with whose it is, so the stored value does not overwrite what
+		// is being typed and a server switched mid-edit does not show another server's text.
 		std::string m_PathText;
 		std::string m_PathServer;
 		bool m_EditingPath = false;

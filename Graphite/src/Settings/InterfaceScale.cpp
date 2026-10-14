@@ -6,25 +6,26 @@ namespace Graphite {
 
 	int InterfaceScalePercentOrDefault(const std::string& stored)
 	{
-		char* end = nullptr;
-		const long parsed = std::strtol(stored.c_str(), &end, 10);
+		constexpr int decimalBase = 10;
+		char* parsedEnd = nullptr;
+		const long parsedPercent = std::strtol(stored.c_str(), &parsedEnd, decimalBase);
+		const bool parsedNothing = parsedEnd == stored.c_str();
 
-		// strtol leaves end at the start of the string when it parsed nothing.
-		if (end == stored.c_str() || parsed <= 0)
+		if (parsedNothing || parsedPercent <= 0)
 		{
 			return kDefaultInterfaceScalePercent;
 		}
 
-		int nearest = kInterfaceScalePercents.front();
+		int nearestPercent = kInterfaceScalePercents.front();
 
-		for (const int percent : kInterfaceScalePercents)
+		for (const int offeredPercent : kInterfaceScalePercents)
 		{
-			if (std::labs(percent - parsed) < std::labs(nearest - parsed))
+			if (std::labs(offeredPercent - parsedPercent) < std::labs(nearestPercent - parsedPercent))
 			{
-				nearest = percent;
+				nearestPercent = offeredPercent;
 			}
 		}
 
-		return nearest;
+		return nearestPercent;
 	}
 }

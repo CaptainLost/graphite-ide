@@ -38,56 +38,49 @@ namespace Graphite {
 
 		void OnEvent(Core::Event& event) override;
 
-		// Only RenderDialogs releases the modal gate when a question is answered, so a question still
-		// open when the page is left has to be given back here.
 		void OnDeactivated() override;
 
 		void OnOpenedFromSearch(std::string_view query) override;
 
 		const std::string& GetFilter() const { return m_Filter; }
 
-		// One row per command, in registry order, that the table's filter would show for the same lowered
-		// words; nothing for no words.
 		std::vector<SettingsRow> FindCommands(std::span<const std::string> words) const;
 
 	private:
-		// One chord the user tried to bind and could not simply have, with the cell it was meant
-		// for. The owner is empty when the chord is one the toolkit keeps for itself, which is a
-		// refusal rather than a question: there is nobody to take it from, and Reason says why.
-		struct Conflict
+		struct ContestedChord
 		{
 			Core::Chord Chord;
-			std::string Owner;
+			std::string OwnerCommandId;
 			std::string Reason;
-			std::string Id;
-			std::size_t Slot = 0;
+			std::string CommandId;
+			std::size_t SlotIndex = 0;
 
-			bool operator==(const Conflict&) const = default;
+			bool operator==(const ContestedChord&) const = default;
 		};
 
 		bool IsWaitingForChord() const;
 
 		void CancelCapture();
 
-		static bool CaptureOwnsKeyboard(bool selfActive, bool anyActive);
+		static bool CaptureOwnsKeyboard(bool cellIsActive, bool anyItemIsActive);
 
 		std::optional<Core::Chord> CaptureWheelChord(bool pointerOverCell);
 
 		void RenderRow(const Core::Command& command);
 
-		void RenderSlot(const std::string& id, std::size_t slot, const std::string& text);
+		void RenderSlot(const std::string& commandId, std::size_t slotIndex, const std::string& chordText);
 
-		void Offer(const std::string& id, std::size_t slot, const Core::Chord& chord);
+		void Offer(const std::string& commandId, std::size_t slotIndex, const Core::Chord& chord);
 
-		void Apply(const std::string& id, std::size_t slot, const Core::Chord& chord);
+		void Apply(const std::string& commandId, std::size_t slotIndex, const Core::Chord& chord);
 
-		void AskConflict(Conflict conflict);
+		void AskConflict(ContestedChord conflict);
 
 		void RenderConflictQuestion();
 
 		void RenderRestoreQuestion();
 
-		void TakeFromOwner(const Conflict& conflict);
+		void TakeFromOwner(const ContestedChord& conflict);
 
 		void DrawRestoreAllDefaults();
 
@@ -101,27 +94,18 @@ namespace Graphite {
 		Core::Keymap& m_Keys;
 		std::function<void()> m_OnChanged;
 
-		// Events arrive before the frame they belong to, so a capture is judged against the
-		// focus of the frame just past.
-		bool m_WasFocused = false;
+		bool m_WasFocusedLastFrame = false;
 
-		// The modifiers held since the first went down, cleared as soon as anything else is
-		// pressed. Non-zero means a modifier release still counts as a tap.
-		ImGuiKeyChord m_TapMods = 0;
+		ImGuiKeyChord m_PendingTapModifiers = 0;
 
-		std::string m_Capturing;
-		std::size_t m_CapturingSlot = 0;
+		std::string m_CapturingCommandId;
+		std::size_t m_CapturingSlotIndex = 0;
 
-		ModalQuestion<Conflict> m_ConflictQuestion;
+		ModalQuestion<ContestedChord> m_ConflictQuestion;
 
-		// Whether to put every binding back at once. The payload says nothing: there is only one
-		// such question.
 		ModalQuestion<bool> m_RestoreQuestion;
 
-		// True from the moment a conflict is asked until the capture it belonged to is dealt
-		// with. A question that vanishes without an answer — Escape, or the panel hidden — is a
-		// "no", and the capture it interrupted must not resume.
-		bool m_ConflictPending = false;
+		bool m_IsConflictAwaitingAnswer = false;
 
 		std::string m_Filter;
 	};

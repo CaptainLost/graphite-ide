@@ -62,8 +62,8 @@ namespace Graphite {
 
 	void EditorPage::OnDeactivated()
 	{
-		m_PendingFontSize.reset();
-		m_PendingHoverDelay.reset();
+		m_FontSizeWhileDragged.reset();
+		m_HoverDelayWhileDragged.reset();
 	}
 
 	std::vector<SettingsCard> EditorPage::Describe()
@@ -149,17 +149,17 @@ namespace Graphite {
 
 	void EditorPage::DrawFontSize()
 	{
-		float fontSize = m_PendingFontSize.value_or(m_Settings.GetFontSize());
+		float fontSize = m_FontSizeWhileDragged.value_or(m_Settings.GetFontSize());
 
 		if (ImGui::SliderFloat("##fontSize", &fontSize, kMinimumFontSize, kMaximumFontSize, "%.1f"))
 		{
-			m_PendingFontSize = fontSize;
+			m_FontSizeWhileDragged = fontSize;
 		}
 
-		if (ImGui::IsItemDeactivatedAfterEdit() && m_PendingFontSize.has_value())
+		if (ImGui::IsItemDeactivatedAfterEdit() && m_FontSizeWhileDragged.has_value())
 		{
-			m_Settings.SetFontSize(*m_PendingFontSize);
-			m_PendingFontSize.reset();
+			m_Settings.SetFontSize(*m_FontSizeWhileDragged);
+			m_FontSizeWhileDragged.reset();
 		}
 	}
 
@@ -178,15 +178,13 @@ namespace Graphite {
 		}
 	}
 
-	// An input rather than a slider: the grab of a slider this short covers the number. A typed value
-	// is not bounded by the widget, so it is clamped here.
 	void EditorPage::DrawTabWidth()
 	{
-		int width = static_cast<int>(m_Settings.GetIndentStyle().Width);
+		int typedWidth = static_cast<int>(m_Settings.GetIndentStyle().Width);
 
-		if (ImGui::InputInt("##tabWidth", &width))
+		if (ImGui::InputInt("##tabWidth", &typedWidth))
 		{
-			m_Settings.SetIndentWidth(static_cast<std::size_t>(std::clamp(width, kMinimumTabWidth, kMaximumTabWidth)));
+			m_Settings.SetIndentWidth(static_cast<std::size_t>(std::clamp(typedWidth, kMinimumTabWidth, kMaximumTabWidth)));
 		}
 	}
 
@@ -212,17 +210,17 @@ namespace Graphite {
 
 	void EditorPage::DrawHoverDelay()
 	{
-		int delay = m_PendingHoverDelay.value_or(m_Settings.GetHoverSettings().DelayMs);
+		int delay = m_HoverDelayWhileDragged.value_or(m_Settings.GetHoverSettings().DelayMs);
 
 		if (ImGui::SliderInt("##hoverDelay", &delay, kMinimumHoverDelayMs, kMaximumHoverDelayMs, "%d ms"))
 		{
-			m_PendingHoverDelay = delay;
+			m_HoverDelayWhileDragged = delay;
 		}
 
-		if (ImGui::IsItemDeactivatedAfterEdit() && m_PendingHoverDelay.has_value())
+		if (ImGui::IsItemDeactivatedAfterEdit() && m_HoverDelayWhileDragged.has_value())
 		{
-			m_Settings.SetHoverDelayMs(*m_PendingHoverDelay);
-			m_PendingHoverDelay.reset();
+			m_Settings.SetHoverDelayMs(*m_HoverDelayWhileDragged);
+			m_HoverDelayWhileDragged.reset();
 		}
 	}
 
