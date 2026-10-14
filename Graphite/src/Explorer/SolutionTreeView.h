@@ -11,6 +11,7 @@
 #include <imgui.h>
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -33,17 +34,15 @@ namespace Graphite {
 
 		void Render();
 
-		// Off, the tree is left as the user arranged it; turned back on, it reveals the
-		// active document straight away.
 		void SetFollowsActiveFile(bool follow) { m_FollowsActiveFile = follow; }
 
-		// This frame's git status, set before the tree renders.
 		void SetGitDecorations(const GitDecorationView& decorations) { m_GitDecorations = decorations; }
 
-		// The file whose tab is in front in the editor, empty when none is; set before the tree renders.
 		void SetShownFile(const std::filesystem::path& path) { m_ShownFile = path; }
 
 	private:
+		static constexpr std::size_t kRenameBufferSize = 256;
+
 		struct PendingAction
 		{
 			enum class Kind
@@ -65,18 +64,12 @@ namespace Graphite {
 
 		void FollowActiveDocument();
 
-		// The editor cannot write every solution format; its menu items are disabled, with
-		// the reason on hover, rather than failing when used.
 		bool CanEditSolution() const;
 		static void ExplainNotEditable(bool editable);
 
-		// Whether the walk opens `node` because the file being revealed lies under it. The
-		// search runs only on the frame of a reveal.
-		template<typename Node>
-		bool OpensToward(const Node& node) const
-		{
-			return !m_RevealPath.empty() && HoldsFile(node, m_RevealPath);
-		}
+		bool OpensToward(const Folder& folder) const;
+		bool OpensToward(const Project& project) const;
+		bool OpensToward(const ContentFolder& folder) const;
 
 		void RenderFilter();
 		void RenderFolder(const Folder& folder, const std::string& path);
@@ -87,9 +80,6 @@ namespace Graphite {
 		void RenderContentFile(const ContentFile& file);
 		void RenderEmptyState();
 
-		// While the filter has text, a row is drawn when its own name passes or it holds a row
-		// that does. Each answer is kept until the text or the solution changes, so a large
-		// project is walked once rather than on every frame.
 		bool IsShown(const Folder& folder);
 		bool IsShown(const Project& project);
 		bool IsShown(const ContentFolder& folder);
@@ -102,15 +92,10 @@ namespace Graphite {
 		bool AnyProjectShown(const Folder& folder);
 		void ForgetStaleFilterMatches();
 
-		// The most important decoration among the content files a project or solution folder
-		// holds. Computed the first time a row asks and kept until the solution is reloaded or the
-		// status index rebuilt, so a collapsed project's files are walked once, not every frame.
 		GitDecoration GroupDecorationOf(const Project& project);
 		GitDecoration GroupDecorationOf(const Folder& folder);
 		void ForgetStaleGroupDecorations();
 
-		// A dot on the right of the row just submitted, in the colour of its group's decoration.
-		// Drawn only for a row on screen.
 		void DrawGroupMarker(const Project& project);
 		void DrawGroupMarker(const Folder& folder);
 		void DrawGroupMarker(GitDecoration decoration);
@@ -125,6 +110,8 @@ namespace Graphite {
 		void RenderRemoveConfirmation();
 		void ExecutePendingAction();
 		Core::Result<void> Apply(const PendingAction& action);
+		void OnProjectFilePicked(PendingAction action, Core::Result<std::filesystem::path> picked);
+		void ReportEditFailure(const Core::Error& error);
 		void ApplyAndReport(const PendingAction& action);
 
 		Workspace& m_Workspace;
@@ -132,28 +119,20 @@ namespace Graphite {
 		Core::EventBus& m_Events;
 		ImGuiTextFilter m_Filter;
 
-		// What m_HoldsMatch was worked out for: the filter's text and the load of the solution.
 		std::string m_FilterMatchText;
 		std::uint64_t m_FilterMatchLoad = 0;
 		std::unordered_map<const void*, bool> m_HoldsMatch;
 
-		// Set for the one walk after the filter text changes: every row holding a match opens and
-		// every other row closes; after that the rows stay as the user leaves them.
 		bool m_ReopenFilteredRows = false;
 
 		GitDecorationView m_GitDecorations;
 		std::filesystem::path m_ShownFile;
 
-		// What m_GroupDecorations were computed from: the load of the solution, and the status
-		// index with its version (the pointer alone can repeat across rebuilds).
 		std::uint64_t m_GroupLoad = 0;
 		const GitDecorations* m_GroupIndex = nullptr;
 		std::uint64_t m_GroupVersion = 0;
 		std::unordered_map<const void*, GitDecoration> m_GroupDecorations;
 
-		// The active document the tree last revealed, and the file the next walk opens every
-		// row on the way to and scrolls into view. Spent by that one walk, so a row the user
-		// closes afterwards stays closed.
 		std::filesystem::path m_FollowedPath;
 		bool m_FollowsActiveFile = true;
 		std::filesystem::path m_RevealPath;
@@ -162,12 +141,10 @@ namespace Graphite {
 		std::filesystem::path m_RemoveCandidate;
 		std::string m_RemoveCandidateName;
 		bool m_OpenRemoveConfirmation = false;
-		std::array<char, 256> m_RenameBuffer{};
+		std::array<char, kRenameBufferSize> m_RenameBuffer{};
 		std::string m_RenamingFolder;
 		bool m_FocusRenameField = false;
 
-		// A folder just written to the solution file, which the reload has yet to list; its
-		// rename starts on the frame the walk reaches it.
 		PendingFolderRename m_RenameWhenListed;
 	};
 }

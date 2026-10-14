@@ -11,11 +11,14 @@ namespace Graphite {
 
 		using EntryIndices = std::vector<std::size_t>;
 
+		constexpr bool kNotKept = false;
+		constexpr bool kHoldsNoMatchYet = false;
+
 		class FilteredTreeBuilder
 		{
 		public:
 			FilteredTreeBuilder(const std::vector<ListedEntry>& entries, const ListedEntryFilter& passes)
-				: m_Entries(entries), m_Kept(entries.size(), false), m_HoldsMatch(entries.size(), false),
+				: m_Entries(entries), m_Kept(entries.size(), kNotKept), m_HoldsMatch(entries.size(), kHoldsNoMatchYet),
 				  m_ChildrenOf(entries.size())
 			{
 				for (std::size_t entryIndex = 0; entryIndex < entries.size(); ++entryIndex)

@@ -9,15 +9,25 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace {
 
-	using Graphite::GitDecoration;
 	using Core::StatusFlags;
+	using Graphite::GitDecoration;
 
 	constexpr ImU32 kAdded = 0x11111111u;
 	constexpr ImU32 kModified = 0x22222222u;
 	constexpr ImU32 kRemoved = 0x33333333u;
+	constexpr bool kOwnEntryOnly = true;
+
+	struct TooltipCase
+	{
+		GitDecoration Decoration;
+		const char* Letter;
+		const char* Dot;
+	};
 
 	Core::FileStatus Entry(const char8_t* path, StatusFlags workTree)
 	{
@@ -57,8 +67,8 @@ namespace {
 
 TEST_CASE("FileRowStatusOf: a changed file gets its letter and its colour")
 {
-	const auto index = IndexOf({Entry(u8"src/a.cpp", StatusFlags::Modified), Entry(u8"src/b.cpp", StatusFlags::New)});
-	const auto view = ViewOf(index);
+	const Graphite::GitDecorations index = IndexOf({Entry(u8"src/a.cpp", StatusFlags::Modified), Entry(u8"src/b.cpp", StatusFlags::New)});
+	const Graphite::GitDecorationView view = ViewOf(index);
 
 	const Graphite::RowStatus modified = Graphite::FileRowStatusOf(view, "C:/repo/src/a.cpp");
 	CHECK(modified.Decoration == GitDecoration::Modified);
@@ -74,8 +84,8 @@ TEST_CASE("FileRowStatusOf: a changed file gets its letter and its colour")
 
 TEST_CASE("FileRowStatusOf: a clean file, or one outside the repository, has no marker")
 {
-	const auto index = IndexOf({Entry(u8"src/a.cpp", StatusFlags::Modified)});
-	const auto view = ViewOf(index);
+	const Graphite::GitDecorations index = IndexOf({Entry(u8"src/a.cpp", StatusFlags::Modified)});
+	const Graphite::GitDecorationView view = ViewOf(index);
 
 	CHECK_FALSE(Graphite::FileRowStatusOf(view, "C:/repo/src/clean.cpp").HasMarker());
 	CHECK_FALSE(Graphite::FileRowStatusOf(view, "C:/other/src/a.cpp").HasMarker());
@@ -87,8 +97,8 @@ TEST_CASE("FolderRowStatusOf: a folder with a change beneath it gets a dot in th
 	Core::FileStatus conflicted = Entry(u8"src/deep/c.cpp", StatusFlags::Modified);
 	conflicted.IsConflicted = true;
 
-	const auto index = IndexOf({Entry(u8"src/a.cpp", StatusFlags::Modified), conflicted});
-	const auto view = ViewOf(index);
+	const Graphite::GitDecorations index = IndexOf({Entry(u8"src/a.cpp", StatusFlags::Modified), conflicted});
+	const Graphite::GitDecorationView view = ViewOf(index);
 
 	const Graphite::RowStatus folder = Graphite::FolderRowStatusOf(view, "C:/repo/src");
 	CHECK(folder.Decoration == GitDecoration::Conflicted);
@@ -102,8 +112,8 @@ TEST_CASE("FolderRowStatusOf: a folder with a change beneath it gets a dot in th
 
 TEST_CASE("FolderRowStatusOf: an untracked directory shows U, the folders above it a dot")
 {
-	const auto index = IndexOf({UntrackedDirectory(u8"build/gen")});
-	const auto view = ViewOf(index);
+	const Graphite::GitDecorations index = IndexOf({UntrackedDirectory(u8"build/gen")});
+	const Graphite::GitDecorationView view = ViewOf(index);
 
 	const Graphite::RowStatus untracked = Graphite::FolderRowStatusOf(view, "C:/repo/build/gen");
 	CHECK(untracked.Letter == 'U');
@@ -120,21 +130,21 @@ TEST_CASE("FolderRowStatusOf: an untracked directory shows U, the folders above 
 
 TEST_CASE("FileRowStatusOf: an ignored row keeps its own status but not an untracked directory's")
 {
-	const auto index = IndexOf({UntrackedDirectory(u8"gen"), Entry(u8"out/tracked.cpp", StatusFlags::Modified)});
-	const auto view = ViewOf(index);
+	const Graphite::GitDecorations index = IndexOf({UntrackedDirectory(u8"gen"), Entry(u8"out/tracked.cpp", StatusFlags::Modified)});
+	const Graphite::GitDecorationView view = ViewOf(index);
 
-	const Graphite::RowStatus tracked = Graphite::FileRowStatusOf(view, "C:/repo/out/tracked.cpp", true);
+	const Graphite::RowStatus tracked = Graphite::FileRowStatusOf(view, "C:/repo/out/tracked.cpp", kOwnEntryOnly);
 	CHECK(tracked.Decoration == GitDecoration::Modified);
 	CHECK(tracked.Letter == 'M');
 
 	CHECK(Graphite::FileRowStatusOf(view, "C:/repo/gen/a.cpp").Letter == 'U');
-	CHECK_FALSE(Graphite::FileRowStatusOf(view, "C:/repo/gen/a.cpp", true).HasMarker());
+	CHECK_FALSE(Graphite::FileRowStatusOf(view, "C:/repo/gen/a.cpp", kOwnEntryOnly).HasMarker());
 }
 
 TEST_CASE("MarkerTooltipOf: a letter names its state, a dot what lies beneath")
 {
-	const auto index = IndexOf({Entry(u8"src/a.cpp", StatusFlags::Modified), UntrackedDirectory(u8"build/gen")});
-	const auto view = ViewOf(index);
+	const Graphite::GitDecorations index = IndexOf({Entry(u8"src/a.cpp", StatusFlags::Modified), UntrackedDirectory(u8"build/gen")});
+	const Graphite::GitDecorationView view = ViewOf(index);
 
 	CHECK(std::string{Graphite::MarkerTooltipOf(Graphite::FileRowStatusOf(view, "C:/repo/src/a.cpp"))} == "Modified");
 	CHECK(std::string{Graphite::MarkerTooltipOf(Graphite::FolderRowStatusOf(view, "C:/repo/src"))} ==
@@ -149,12 +159,7 @@ TEST_CASE("MarkerTooltipOf: a letter names its state, a dot what lies beneath")
 
 TEST_CASE("MarkerTooltipOf covers every decoration, as a letter and as a dot")
 {
-	const struct
-	{
-		GitDecoration Decoration;
-		const char* Letter;
-		const char* Dot;
-	} cases[] = {
+	const TooltipCase cases[] = {
 		{GitDecoration::Untracked, "Untracked", "Contains untracked files"},
 		{GitDecoration::Added, "Added", "Contains added files"},
 		{GitDecoration::Renamed, "Renamed", "Contains renamed files"},
@@ -162,7 +167,7 @@ TEST_CASE("MarkerTooltipOf covers every decoration, as a letter and as a dot")
 		{GitDecoration::Conflicted, "Conflicted", "Contains files with conflicts"},
 	};
 
-	for (const auto& expected : cases)
+	for (const TooltipCase& expected : cases)
 	{
 		CAPTURE(expected.Letter);
 

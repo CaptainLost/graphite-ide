@@ -20,6 +20,9 @@ namespace Graphite {
 		constexpr const char* kModeKey = "explorerMode";
 		constexpr const char* kFileSystemLabel = "File System";
 		constexpr const char* kSolutionLabel = "Visual Studio Solution";
+		constexpr float kFillAvailableWidth = -1.0f;
+		constexpr bool kPersist = true;
+		constexpr bool kDoNotPersist = false;
 
 		struct DisplayMode
 		{
@@ -29,10 +32,6 @@ namespace Graphite {
 			GitIgnoredDisplay Display;
 		};
 
-		// Which files these three are about is said by the submenu they hang under, so the
-		// labels only have to say what happens to them. The settings screen, which has a
-		// heading of its own, passes its own labels. The list of key bindings has neither, so
-		// it reads the longer ones.
 		constexpr DisplayMode kDisplayModes[] = {
 			{"git.ignored.show", "Show", "Ignored Files: Show", GitIgnoredDisplay::Show},
 			{"git.ignored.dim", "Dim", "Ignored Files: Dim", GitIgnoredDisplay::Dim},
@@ -46,9 +45,8 @@ namespace Graphite {
 		  m_AppSettings(settings), m_Files(workspace, documents, events, std::move(submitJob)),
 		  m_Solution(workspace, documents, events)
 	{
-		// The folder's stored mode is read when the panel first sees a folder, and would put a
-		// just-opened solution back behind the file tree. Handled here, after the workspace has
-		// finished switching, and the folder is marked as seen so that read does not follow.
+		// WARNING: The stored mode is read when the panel first sees a folder and would put a
+		// just-opened solution back behind the file tree, so the folder is marked as seen here.
 		events.Subscribe<SolutionOpenedEvent>([this](const SolutionOpenedEvent&) {
 			m_ModeLoadedFor = m_Workspace.GetRoot();
 			SetMode(Mode::Solution);
@@ -122,11 +120,11 @@ namespace Graphite {
 
 	void ExplorerPanel::RenderModeCombo()
 	{
-		const char* current = m_Mode == Mode::Files ? kFileSystemLabel : kSolutionLabel;
+		const char* currentLabel = m_Mode == Mode::Files ? kFileSystemLabel : kSolutionLabel;
 
-		ImGui::SetNextItemWidth(-1.0f);
+		ImGui::SetNextItemWidth(kFillAvailableWidth);
 
-		if (ImGui::BeginCombo("##explorerMode", current))
+		if (ImGui::BeginCombo("##explorerMode", currentLabel))
 		{
 			if (ImGui::Selectable(kFileSystemLabel, m_Mode == Mode::Files))
 			{
@@ -144,12 +142,11 @@ namespace Graphite {
 
 	void ExplorerPanel::RenderSolutionChooser()
 	{
-		// A value, not a reference: the false branch below is a temporary that a const
-		// reference would be left dangling on.
+		// WARNING: This must be a value, not a reference: the empty branch is a temporary.
 		const std::filesystem::path loaded =
 			m_Workspace.GetLoadedSolution() ? m_Workspace.GetLoadedSolution()->Path : std::filesystem::path{};
 
-		ImGui::SetNextItemWidth(-1.0f);
+		ImGui::SetNextItemWidth(kFillAvailableWidth);
 
 		if (!ImGui::BeginCombo("##solutionChoice", Core::ToUtf8(loaded.filename()).c_str()))
 		{
@@ -171,24 +168,24 @@ namespace Graphite {
 
 	void ExplorerPanel::LoadSettings()
 	{
-		Apply(GitIgnoredDisplayFromString(m_AppSettings.GetGitIgnoredDisplay()), false);
-		ApplyFollowsActiveFile(m_AppSettings.IsExplorerFollowingActiveFile(), false);
+		Apply(GitIgnoredDisplayFromString(m_AppSettings.GetGitIgnoredDisplay()), kDoNotPersist);
+		ApplyFollowsActiveFile(m_AppSettings.IsExplorerFollowingActiveFile(), kDoNotPersist);
 	}
 
 	void ExplorerPanel::RegisterCommands(Core::CommandRegistry& commands)
 	{
-		for (const DisplayMode& mode : kDisplayModes)
+		for (const DisplayMode& displayMode : kDisplayModes)
 		{
-			commands.Add({.Id = mode.Id,
-						  .Label = mode.Label,
-						  .ListLabel = mode.ListLabel,
-						  .Run = [this, mode] { Apply(mode.Display, true); },
-						  .Checked = [this, mode] { return m_Display == mode.Display; }});
+			commands.Add({.Id = displayMode.Id,
+						  .Label = displayMode.Label,
+						  .ListLabel = displayMode.ListLabel,
+						  .Run = [this, displayMode] { Apply(displayMode.Display, kPersist); },
+						  .Checked = [this, displayMode] { return m_Display == displayMode.Display; }});
 		}
 
 		commands.Add({.Id = "explorer.followActiveFile",
 					  .Label = "Follow Active File",
-					  .Run = [this] { ApplyFollowsActiveFile(!m_FollowsActiveFile, true); },
+					  .Run = [this] { ApplyFollowsActiveFile(!m_FollowsActiveFile, kPersist); },
 					  .Checked = [this] { return m_FollowsActiveFile; }});
 	}
 

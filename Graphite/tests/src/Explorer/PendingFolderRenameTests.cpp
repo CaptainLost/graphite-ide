@@ -4,6 +4,12 @@
 
 using Graphite::PendingFolderRename;
 
+namespace {
+
+	constexpr bool editable = true;
+	constexpr bool notEditable = false;
+}
+
 TEST_CASE("A pending folder rename waits, without looking, until the solution loads again")
 {
 	PendingFolderRename rename;
@@ -11,7 +17,7 @@ TEST_CASE("A pending folder rename waits, without looking, until the solution lo
 
 	for (int frame = 0; frame < 3; ++frame)
 	{
-		rename.BeginFrame(true, 4);
+		rename.BeginFrame(editable, 4);
 
 		CHECK_FALSE(rename.IsLooking());
 		CHECK_FALSE(rename.LeadsTo("Tools"));
@@ -26,7 +32,7 @@ TEST_CASE("A pending folder rename starts on the load that lists the folder")
 {
 	PendingFolderRename rename;
 	rename.Request("Tools/New Folder", 4);
-	rename.BeginFrame(true, 5);
+	rename.BeginFrame(editable, 5);
 
 	CHECK(rename.IsLooking());
 	CHECK(rename.LeadsTo("Tools"));
@@ -43,13 +49,12 @@ TEST_CASE("A pending folder rename is dropped by a load whose walk did not reach
 {
 	PendingFolderRename rename;
 	rename.Request("New Folder", 4);
-	rename.BeginFrame(true, 5);
+	rename.BeginFrame(editable, 5);
 	rename.EndFrame();
 
 	CHECK_FALSE(rename.IsPending());
 
-	// A later load that does list the folder no longer renames it.
-	rename.BeginFrame(true, 6);
+	rename.BeginFrame(editable, 6);
 	CHECK_FALSE(rename.IsLooking());
 	CHECK_FALSE(rename.Take("New Folder"));
 }
@@ -58,7 +63,7 @@ TEST_CASE("A pending folder rename is dropped when the solution is gone or canno
 {
 	PendingFolderRename rename;
 	rename.Request("New Folder", 4);
-	rename.BeginFrame(false, 4);
+	rename.BeginFrame(notEditable, 4);
 
 	CHECK_FALSE(rename.IsPending());
 	CHECK_FALSE(rename.IsLooking());

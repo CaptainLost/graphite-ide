@@ -18,7 +18,6 @@ namespace {
 
 	const std::filesystem::path kRoot = "D:/Work/proj";
 
-	// Entries are added folder before content, as a walk of the disk lists them.
 	class ListingBuilder
 	{
 	public:

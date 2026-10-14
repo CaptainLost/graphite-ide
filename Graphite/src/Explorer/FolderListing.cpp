@@ -82,8 +82,8 @@ namespace Graphite {
 
 	std::vector<ListedEntry> ListFolder(const std::filesystem::path& root, const Core::CancellationToken& cancellation)
 	{
-		// Opened on the thread that reads: a libgit2 handle must not be shared with the thread
-		// that draws the tree.
+		// WARNING: A libgit2 handle must not be shared with the thread that draws the tree, so the
+		// repository is opened here, on the thread that reads.
 		const std::optional<Core::Repository> repository = OpenRepositoryAt(root);
 
 		std::vector<ListedEntry> entries;
@@ -103,8 +103,6 @@ namespace Graphite {
 	{
 		std::mutex Mutex;
 
-		// A read hands its entries over only while it is still the one wanted, so a read of a
-		// previous root can never overwrite the read that replaced it.
 		std::uint64_t WantedGeneration = 0;
 		std::uint64_t Generation = 0;
 		bool Ready = false;
@@ -171,7 +169,7 @@ namespace Graphite {
 		{
 			StartRead();
 
-			// A job that runs where it is submitted has finished by now.
+			// WARNING: A job that runs where it is submitted has already finished here.
 			TakeFinishedRead();
 		}
 	}

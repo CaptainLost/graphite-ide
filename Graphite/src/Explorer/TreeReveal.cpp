@@ -1,9 +1,36 @@
 #include "Explorer/TreeReveal.h"
 
-#include <algorithm>
 #include <iterator>
 
 namespace Graphite {
+
+	namespace {
+		Core::FileNode* FindChildFolder(Core::FileNode& parent, const std::filesystem::path& folderName)
+		{
+			for (Core::FileNode& candidate : parent.Children)
+			{
+				if (candidate.IsDirectory && candidate.Path.filename() == folderName)
+				{
+					return &candidate;
+				}
+			}
+
+			return nullptr;
+		}
+
+		bool ListsFile(const ContentFolder& folder, const std::filesystem::path& file)
+		{
+			for (const ContentFile& entry : folder.Files)
+			{
+				if (entry.Path == file)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+	}
 
 	std::vector<std::filesystem::path> ExpandToward(Core::FileTree& tree,
 													const std::filesystem::path& file)
@@ -18,30 +45,28 @@ namespace Graphite {
 
 		std::vector<std::filesystem::path> opened;
 
-		// Every component but the last names a folder; the last is the file itself.
-		for (auto component = relative.begin(); component != relative.end(); ++component)
+		for (std::filesystem::path::const_iterator component = relative.begin(); component != relative.end();
+			 ++component)
 		{
 			// A folder row, so Expand cannot fail; an unreadable folder it logs and marks.
 			static_cast<void>(tree.Expand(*node));
 			opened.push_back(node->Path);
 
-			if (std::next(component) == relative.end())
+			const bool isFileItself = std::next(component) == relative.end();
+
+			if (isFileItself)
 			{
 				break;
 			}
 
-			const auto child = std::find_if(node->Children.begin(), node->Children.end(),
-											[&component](const Core::FileNode& candidate) {
-												return candidate.IsDirectory &&
-													   candidate.Path.filename() == *component;
-											});
+			Core::FileNode* child = FindChildFolder(*node, *component);
 
-			if (child == node->Children.end())
+			if (child == nullptr)
 			{
 				break;
 			}
 
-			node = &*child;
+			node = child;
 		}
 
 		return opened;
@@ -49,11 +74,20 @@ namespace Graphite {
 
 	bool HoldsFile(const ContentFolder& folder, const std::filesystem::path& file)
 	{
-		const bool here = std::any_of(folder.Files.begin(), folder.Files.end(),
-									  [&file](const ContentFile& entry) { return entry.Path == file; });
+		if (ListsFile(folder, file))
+		{
+			return true;
+		}
 
-		return here || std::any_of(folder.Folders.begin(), folder.Folders.end(),
-								   [&file](const ContentFolder& child) { return HoldsFile(child, file); });
+		for (const ContentFolder& child : folder.Folders)
+		{
+			if (HoldsFile(child, file))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	bool HoldsFile(const Project& project, const std::filesystem::path& file)
@@ -63,10 +97,22 @@ namespace Graphite {
 
 	bool HoldsFile(const Folder& folder, const std::filesystem::path& file)
 	{
-		const bool here = std::any_of(folder.Projects.begin(), folder.Projects.end(),
-									  [&file](const Project& project) { return HoldsFile(project, file); });
+		for (const Project& project : folder.Projects)
+		{
+			if (HoldsFile(project, file))
+			{
+				return true;
+			}
+		}
 
-		return here || std::any_of(folder.Folders.begin(), folder.Folders.end(),
-								   [&file](const Folder& child) { return HoldsFile(child, file); });
+		for (const Folder& child : folder.Folders)
+		{
+			if (HoldsFile(child, file))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 }

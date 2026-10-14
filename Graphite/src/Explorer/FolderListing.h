@@ -21,17 +21,11 @@ namespace Graphite {
 		bool IsDirectory = false;
 		bool Ignored = false;
 
-		// The index, in the same listing, of the folder holding this entry; none for an entry
-		// directly in the root.
 		std::optional<std::size_t> Parent;
 	};
 
-	// Every file and folder under the root, each folder before what it holds. A folder git
-	// ignores, and .git itself, are listed but not entered: what they hold is never read.
 	std::vector<ListedEntry> ListFolder(const std::filesystem::path& root, const Core::CancellationToken& cancellation);
 
-	// The whole open folder as a list, read on a worker so a folder of any size never holds up a
-	// frame. Read only while someone wants it, and read again once the disk has changed.
 	class FolderListing final
 	{
 	public:
@@ -46,13 +40,10 @@ namespace Graphite {
 		void NoteChangedDirectories(const std::vector<std::filesystem::path>& directories);
 		void NoteEverythingChanged();
 
-		// Called on every frame the listing is wanted: starts a read when the listing is missing
-		// or out of date and none is running, and takes a read that has finished.
 		void Update();
 
 		bool HasListing() const { return m_HasListing; }
 
-		// Changes whenever the entries are replaced.
 		std::uint64_t GetVersion() const { return m_Version; }
 
 		const std::vector<ListedEntry>& GetEntries() const { return m_Entries; }

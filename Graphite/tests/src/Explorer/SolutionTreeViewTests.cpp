@@ -25,11 +25,11 @@ namespace {
 
 	constexpr ImVec2 kExplorerSize{400.0f, 600.0f};
 
-	// Over the filter box, which fills the view's first line.
-	constexpr ImVec2 kFilterBox{200.0f, 17.0f};
+	constexpr ImVec2 kInsideTheFilterBox{200.0f, 17.0f};
 
 	constexpr float kTreeIndentForEachLevel = 21.0f;
 	constexpr float kIntoTheLabel = 40.0f;
+	constexpr float kHalf = 0.5f;
 
 	constexpr const char* kSolution = R"(<Solution>
   <Folder Name="/Group/">
@@ -97,7 +97,7 @@ namespace {
 
 		void TypeInFilter(const char* text)
 		{
-			Click(kFilterBox);
+			Click(kInsideTheFilterBox);
 			ImGui::GetIO().AddInputCharactersUTF8(text);
 			Next();
 			Next();
@@ -119,14 +119,13 @@ namespace {
 			Next();
 		}
 
-		// Rows are counted from the top of the tree, the solution's own row being 0.
-		void ClickRow(int rowIndex, int depth)
+		void ClickRowCountedFromSolutionRowZero(int rowIndex, int depth)
 		{
 			const ImGuiWindow* body = FindSolutionBody();
 			REQUIRE(body != nullptr);
 
 			const float x = body->DC.CursorStartPos.x + static_cast<float>(depth) * kTreeIndentForEachLevel + kIntoTheLabel;
-			const float y = body->DC.CursorStartPos.y + static_cast<float>(rowIndex) * RowPitch() + ImGui::GetFontSize() * 0.5f;
+			const float y = body->DC.CursorStartPos.y + static_cast<float>(rowIndex) * RowPitch() + ImGui::GetFontSize() * kHalf;
 
 			Click(ImVec2(x, y));
 		}
@@ -169,7 +168,7 @@ TEST_CASE("The solution view's filter finds a file in a project nobody opened, a
 
 	const int deepRow = 4;
 	const int deepDepth = 4;
-	screen.ClickRow(deepRow, deepDepth);
+	screen.ClickRowCountedFromSolutionRowZero(deepRow, deepDepth);
 
 	REQUIRE(screen.OpenedFiles.size() == 1);
 	CHECK(std::filesystem::equivalent(screen.OpenedFiles[0], folder.GetPath() / "Engine" / "Render" / "Deep.cs"));
@@ -185,7 +184,7 @@ TEST_CASE("The solution view marks the row last clicked only while its file's ta
 
 	const int deepRow = 4;
 	const int deepDepth = 4;
-	screen.ClickRow(deepRow, deepDepth);
+	screen.ClickRowCountedFromSolutionRowZero(deepRow, deepDepth);
 
 	REQUIRE(screen.OpenedFiles.size() == 1);
 	const std::filesystem::path clicked = screen.OpenedFiles[0];
@@ -218,26 +217,25 @@ TEST_CASE("The solution view marks a file in the preview tab with a ring and one
 
 	const int deepRow = 4;
 	const int deepDepth = 4;
-	screen.ClickRow(deepRow, deepDepth);
+	screen.ClickRowCountedFromSolutionRowZero(deepRow, deepDepth);
 
 	REQUIRE(screen.OpenedFiles.size() == 1);
 	const std::filesystem::path deep = screen.OpenedFiles[0];
 
-	// The default check mark shares its colour with the selection and the slider grabs.
 	ImGui::GetStyle().Colors[ImGuiCol_CheckMark] = ImVec4(0.9f, 0.4f, 0.1f, 1.0f);
-	const ImU32 openTabMark = ImGui::GetColorU32(ImGuiCol_CheckMark);
+	const ImU32 checkMarkColourNothingElseShares = ImGui::GetColorU32(ImGuiCol_CheckMark);
 
 	screen.MoveMouseAway();
 	const ImGuiWindow* body = FindSolutionBody();
 	REQUIRE(body != nullptr);
-	CHECK_FALSE(DrawsInColour(*body->DrawList, openTabMark));
+	CHECK_FALSE(DrawsInColour(*body->DrawList, checkMarkColourNothingElseShares));
 
 	REQUIRE(screen.Documents.Open(deep, Core::TabKind::Preview) == Core::OpenOutcome::Opened);
 	screen.Next();
 	body = FindSolutionBody();
 	REQUIRE(body != nullptr);
-	CHECK(DrawsInColour(*body->DrawList, openTabMark));
-	CHECK_FALSE(FillsMiddleInColour(*body->DrawList, openTabMark));
+	CHECK(DrawsInColour(*body->DrawList, checkMarkColourNothingElseShares));
+	CHECK_FALSE(FillsMiddleInColour(*body->DrawList, checkMarkColourNothingElseShares));
 
 	const std::optional<std::size_t> previewIndex = screen.Documents.Find(deep);
 	REQUIRE(previewIndex.has_value());
@@ -245,7 +243,7 @@ TEST_CASE("The solution view marks a file in the preview tab with a ring and one
 	screen.Next();
 	body = FindSolutionBody();
 	REQUIRE(body != nullptr);
-	CHECK(FillsMiddleInColour(*body->DrawList, openTabMark));
+	CHECK(FillsMiddleInColour(*body->DrawList, checkMarkColourNothingElseShares));
 }
 
 TEST_CASE("The solution view's filter leaves out the projects and folders that hold no match")

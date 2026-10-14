@@ -48,11 +48,11 @@ TEST_CASE("ExpandToward opens every folder from the root down to the file, root 
 	const Core::FileNode& root = tree.GetRoot();
 	CHECK(root.Expanded);
 
-	const Core::FileNode* src = ChildNamed(root, "src");
-	REQUIRE(src != nullptr);
-	CHECK(src->Expanded);
+	const Core::FileNode* sourceFolder = ChildNamed(root, "src");
+	REQUIRE(sourceFolder != nullptr);
+	CHECK(sourceFolder->Expanded);
 
-	const Core::FileNode* core = ChildNamed(*src, "Core");
+	const Core::FileNode* core = ChildNamed(*sourceFolder, "Core");
 	REQUIRE(core != nullptr);
 
 	const Core::FileNode* app = ChildNamed(*core, "App");

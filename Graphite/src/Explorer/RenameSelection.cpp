@@ -7,13 +7,14 @@ namespace Graphite {
 		if (!isFolder)
 		{
 			const std::size_t lastDot = name.rfind('.');
+			const bool hasExtension = lastDot != std::string_view::npos && lastDot > 0;
 
-			if (lastDot != std::string_view::npos && lastDot > 0)
+			if (hasExtension)
 			{
-				return {0, lastDot};
+				return RenameSpan{.Start = 0, .End = lastDot};
 			}
 		}
 
-		return {0, name.size()};
+		return RenameSpan{.Start = 0, .End = name.size()};
 	}
 }
