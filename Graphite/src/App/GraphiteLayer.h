@@ -177,8 +177,8 @@ namespace Graphite {
 		// The open folder's file tabs, session windows and diff windows, as one snapshot.
 		WorkspaceState CaptureWorkspaceState() const;
 
-		// Hands a new branch snapshot to the reviews: renames followed by tabs and marks alike,
-		// marks of gone branches dropped, and every range asked again.
+		// Hands a new branch snapshot to the reviews: renames followed by tabs and sessions alike,
+		// sessions of gone branches dropped, and every range asked again.
 		void FollowBranchesIntoReviews();
 
 		// What the Git window's branch menu offers about reviewing `branch`; nothing before the

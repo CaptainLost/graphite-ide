@@ -80,6 +80,24 @@ TEST_CASE("A failure keeps the last good answer, and the next success clears the
 	CHECK_FALSE(slot.GetError().has_value());
 }
 
+TEST_CASE("An answer equal to the held one keeps the held pointer and clears the error")
+{
+	GenerationSlot<std::string> slot;
+
+	REQUIRE(slot.Land(slot.Begin(), Answer("same")) == SlotLanding::Applied);
+	const Core::Ref<const std::string> held = slot.Get();
+	REQUIRE(slot.Land(slot.Begin(), Failure("broken")) == SlotLanding::Failed);
+
+	const std::uint64_t generation = slot.Begin();
+
+	CHECK(slot.LandSameAsHeld(generation) == SlotLanding::Applied);
+	const bool keptThePointer = slot.Get() == held;
+	CHECK(keptThePointer);
+	CHECK_FALSE(slot.GetError().has_value());
+	CHECK_FALSE(slot.IsInFlight());
+	CHECK(slot.LandSameAsHeld(generation) == SlotLanding::Stale);
+}
+
 TEST_CASE("Clearing a slot forgets its answer and drops one still in flight")
 {
 	GenerationSlot<std::string> slot;

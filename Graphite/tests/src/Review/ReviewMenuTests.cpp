@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -23,6 +24,7 @@ namespace {
 	constexpr bool kCheckedOut = true;
 	constexpr bool kNotCheckedOut = false;
 	const std::string kNothingMore;
+	const Core::Error* const kNoRangeError = nullptr;
 
 	Core::Branch LocalBranch(const std::string& name, bool isHead)
 	{
@@ -153,7 +155,7 @@ TEST_CASE("A branch without a session has no badge")
 	const ReviewRange range = RangeFrom(1, 2);
 	const Core::Diff committed;
 
-	CHECK(Graphite::ReviewBadgeText(sessions, kSide, &range, &committed).empty());
+	CHECK(Graphite::ReviewBadgeText(sessions, kSide, &range, kNoRangeError, &committed).empty());
 }
 
 TEST_CASE("The badge counts the viewed files of the committed range")
@@ -166,7 +168,7 @@ TEST_CASE("The badge counts the viewed files of the committed range")
 	sessions.Mark(kSide, Graphite::ReviewGroup::Uncommitted, committed.Files[1]);
 	const ReviewRange range = RangeFrom(1, 2);
 
-	CHECK(Graphite::ReviewBadgeText(sessions, kSide, &range, &committed) == Badge(" 1/3"));
+	CHECK(Graphite::ReviewBadgeText(sessions, kSide, &range, kNoRangeError, &committed) == Badge(" 1/3"));
 }
 
 TEST_CASE("The badge says merged once the merge base is the tip")
@@ -175,7 +177,7 @@ TEST_CASE("The badge says merged once the merge base is the tip")
 	sessions.Start(kSide, kMain);
 	const ReviewRange range = RangeFrom(7, 7);
 
-	CHECK(Graphite::ReviewBadgeText(sessions, kSide, &range, nullptr) == std::string{ICON_MDI_CHECK} + " merged");
+	CHECK(Graphite::ReviewBadgeText(sessions, kSide, &range, kNoRangeError, nullptr) == std::string{ICON_MDI_CHECK} + " merged");
 }
 
 TEST_CASE("The badge says nothing while loading and asks when its base is gone")
@@ -186,9 +188,54 @@ TEST_CASE("The badge says nothing while loading and asks when its base is gone")
 	missingBase.Problem = Graphite::RangeProblem::BaseMissing;
 	const ReviewRange range = RangeFrom(1, 2);
 
-	CHECK(Graphite::ReviewBadgeText(sessions, kSide, nullptr, nullptr) == Badge(kNothingMore));
-	CHECK(Graphite::ReviewBadgeText(sessions, kSide, &range, nullptr) == Badge(kNothingMore));
-	CHECK(Graphite::ReviewBadgeText(sessions, kSide, &missingBase, nullptr) == Badge(" ?"));
+	CHECK(Graphite::ReviewBadgeText(sessions, kSide, nullptr, kNoRangeError, nullptr) == Badge(kNothingMore));
+	CHECK(Graphite::ReviewBadgeText(sessions, kSide, &range, kNoRangeError, nullptr) == Badge(kNothingMore));
+	CHECK(Graphite::ReviewBadgeText(sessions, kSide, &missingBase, kNoRangeError, nullptr) == Badge(" ?"));
+}
+
+TEST_CASE("The badge asks once its range could not be read")
+{
+	ReviewSessions sessions;
+	sessions.Start(kSide, kMain);
+	const Core::Error unreadable{.Code = Core::ErrorCode::IoFailure, .Message = "the disk is gone"};
+	const Core::Ref<const ReviewRange> noRange;
+	const Core::Ref<const Core::Diff> noDiff;
+	Graphite::ReviewBadges badges;
+
+	CHECK(Graphite::ReviewBadgeText(sessions, kSide, nullptr, &unreadable, nullptr) == Badge(" ?"));
+
+	CHECK(badges.TextFor(sessions, kSide, noRange, kNoRangeError, noDiff) == Badge(kNothingMore));
+	CHECK(badges.TextFor(sessions, kSide, noRange, &unreadable, noDiff) == Badge(" ?"));
+}
+
+TEST_CASE("A held badge answers without its diff for the same range and sessions but not after a mark or for a new range")
+{
+	ReviewSessions sessions;
+	sessions.Start(kSide, kMain);
+	const Core::Ref<const ReviewRange> range = Core::CreateRef<const ReviewRange>(RangeFrom(1, 2));
+	const Core::Ref<const ReviewRange> moved = Core::CreateRef<const ReviewRange>(RangeFrom(1, 3));
+	const Core::Ref<const ReviewRange> merged = Core::CreateRef<const ReviewRange>(RangeFrom(7, 7));
+	Core::Diff diff;
+	diff.Files = {ModifiedFile("a.cpp", 1, 2)};
+	const Core::Ref<const Core::Diff> committed = Core::CreateRef<const Core::Diff>(diff);
+	const Core::Ref<const Core::Diff> diffOnItsWay;
+	Graphite::ReviewBadges badges;
+
+	CHECK_FALSE(badges.HeldFor(sessions, kSide, range).has_value());
+
+	CHECK(badges.TextFor(sessions, kSide, range, kNoRangeError, diffOnItsWay) == Badge(kNothingMore));
+	CHECK_FALSE(badges.HeldFor(sessions, kSide, range).has_value());
+
+	CHECK(badges.TextFor(sessions, kSide, range, kNoRangeError, committed) == Badge(" 0/1"));
+	CHECK(badges.HeldFor(sessions, kSide, range) == std::optional<std::string>{Badge(" 0/1")});
+	CHECK_FALSE(badges.HeldFor(sessions, kSide, moved).has_value());
+
+	sessions.Mark(kSide, Graphite::ReviewGroup::Commits, committed->Files[0]);
+	CHECK_FALSE(badges.HeldFor(sessions, kSide, range).has_value());
+
+	const std::string mergedText = std::string{ICON_MDI_CHECK} + " merged";
+	CHECK(badges.TextFor(sessions, kSide, merged, kNoRangeError, diffOnItsWay) == mergedText);
+	CHECK(badges.HeldFor(sessions, kSide, merged) == std::optional<std::string>{mergedText});
 }
 
 TEST_CASE("A held badge is worked out again once a file is marked")
@@ -201,11 +248,11 @@ TEST_CASE("A held badge is worked out again once a file is marked")
 	const Core::Ref<const Core::Diff> committed = Core::CreateRef<const Core::Diff>(diff);
 	Graphite::ReviewBadges badges;
 
-	CHECK(badges.TextFor(sessions, kSide, range, committed) == Badge(" 0/2"));
+	CHECK(badges.TextFor(sessions, kSide, range, kNoRangeError, committed) == Badge(" 0/2"));
 
 	sessions.Mark(kSide, Graphite::ReviewGroup::Commits, committed->Files[1]);
 
-	CHECK(badges.TextFor(sessions, kSide, range, committed) == Badge(" 1/2"));
+	CHECK(badges.TextFor(sessions, kSide, range, kNoRangeError, committed) == Badge(" 1/2"));
 }
 
 TEST_CASE("A held badge is kept while its range, diff and sessions stay the same")
@@ -218,11 +265,11 @@ TEST_CASE("A held badge is kept while its range, diff and sessions stay the same
 	const Core::Ref<const Core::Diff> committed = diff;
 	Graphite::ReviewBadges badges;
 
-	CHECK(badges.TextFor(sessions, kSide, range, committed) == Badge(" 0/1"));
+	CHECK(badges.TextFor(sessions, kSide, range, kNoRangeError, committed) == Badge(" 0/1"));
 
 	diff->Files.push_back(ModifiedFile("b.cpp", 3, 4));
 
-	CHECK(badges.TextFor(sessions, kSide, range, committed) == Badge(" 0/1"));
+	CHECK(badges.TextFor(sessions, kSide, range, kNoRangeError, committed) == Badge(" 0/1"));
 }
 
 TEST_CASE("A held badge is worked out again for a new range")
@@ -236,8 +283,8 @@ TEST_CASE("A held badge is worked out again for a new range")
 	const Core::Ref<const Core::Diff> committed = Core::CreateRef<const Core::Diff>(diff);
 	Graphite::ReviewBadges badges;
 
-	CHECK(badges.TextFor(sessions, kSide, range, committed) == Badge(" 0/1"));
-	CHECK(badges.TextFor(sessions, kSide, merged, committed) == std::string{ICON_MDI_CHECK} + " merged");
+	CHECK(badges.TextFor(sessions, kSide, range, kNoRangeError, committed) == Badge(" 0/1"));
+	CHECK(badges.TextFor(sessions, kSide, merged, kNoRangeError, committed) == std::string{ICON_MDI_CHECK} + " merged");
 }
 
 TEST_CASE("A held badge is worked out again for a new diff")
@@ -253,6 +300,6 @@ TEST_CASE("A held badge is worked out again for a new diff")
 	const Core::Ref<const Core::Diff> second = Core::CreateRef<const Core::Diff>(twoFiles);
 	Graphite::ReviewBadges badges;
 
-	CHECK(badges.TextFor(sessions, kSide, range, first) == Badge(" 0/1"));
-	CHECK(badges.TextFor(sessions, kSide, range, second) == Badge(" 0/2"));
+	CHECK(badges.TextFor(sessions, kSide, range, kNoRangeError, first) == Badge(" 0/1"));
+	CHECK(badges.TextFor(sessions, kSide, range, kNoRangeError, second) == Badge(" 0/2"));
 }

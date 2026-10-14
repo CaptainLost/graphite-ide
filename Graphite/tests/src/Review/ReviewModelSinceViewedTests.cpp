@@ -12,6 +12,8 @@ namespace {
 
 	const Core::Timestep kFrame{0.016f};
 
+	const Graphite::ReviewKey kAnyReview{.Branch = "refs/heads/side", .Base = "refs/heads/main"};
+
 	Core::Oid IdNumbered(std::uint8_t number)
 	{
 		Core::Oid id;
@@ -73,6 +75,33 @@ TEST_CASE("A viewed version missing from the repository reads as unavailable")
 
 	CHECK(model.GetSinceViewed(request) == nullptr);
 	CHECK(model.IsSinceViewedUnavailable(request));
+	CHECK(model.IsSinceViewedFailed(request));
+
+	port.SinceViewedFailure.reset();
+	model.Retry(kAnyReview);
+	model.RequestSinceViewed(request);
+	Settle(model, jobs);
+
+	CHECK(port.SinceViewedReads == 2);
+	CHECK_FALSE(model.IsSinceViewedUnavailable(request));
+	CHECK_FALSE(model.IsSinceViewedFailed(request));
+	CHECK(model.GetSinceViewed(request) != nullptr);
+}
+
+TEST_CASE("A since-viewed read that failed for another reason is not read as a viewed version gone")
+{
+	FakeReviewPort port;
+	port.SinceViewedFailure = Core::Error{Core::ErrorCode::TooLarge, "the file on disk is too large"};
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	const SinceViewedRequest request = RequestFor(1, 2, Core::WhitespaceInDiff::Shown);
+
+	model.RequestSinceViewed(request);
+	Settle(model, jobs);
+
+	CHECK(model.GetSinceViewed(request) == nullptr);
+	CHECK_FALSE(model.IsSinceViewedUnavailable(request));
+	CHECK(model.IsSinceViewedFailed(request));
 }
 
 TEST_CASE("The since-viewed answer is held apart for each white space setting")

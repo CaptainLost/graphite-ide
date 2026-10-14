@@ -777,7 +777,8 @@ namespace Graphite {
 
 	std::string GraphiteLayer::ReviewBadgeOfBranch(const Core::Branch& branch)
 	{
-		const ReviewSession* session = m_ReviewStore.GetSessions().Find(branch.FullName);
+		const ReviewSessions& sessions = m_ReviewStore.GetSessions();
+		const ReviewSession* session = sessions.Find(branch.FullName);
 
 		if (session == nullptr)
 		{
@@ -788,6 +789,15 @@ namespace Graphite {
 		m_Reviews.RequestRange(key);
 		const Core::Ref<const ReviewRange> range = m_Reviews.GetRange(key);
 
+		// Asking for a diff on every frame keeps it among the model's few held diffs, so badges that
+		// kept asking for theirs would push each other's diffs out and have them read again.
+		const std::optional<std::string> held = m_ReviewBadges.HeldFor(sessions, branch.FullName, range);
+
+		if (held.has_value())
+		{
+			return *held;
+		}
+
 		Core::Ref<const Core::Diff> committed;
 
 		if (range != nullptr && range->Problem == RangeProblem::None)
@@ -797,7 +807,7 @@ namespace Graphite {
 			committed = m_Reviews.GetCommittedDiff(diffKey);
 		}
 
-		return m_ReviewBadges.TextFor(m_ReviewStore.GetSessions(), branch.FullName, range, committed);
+		return m_ReviewBadges.TextFor(sessions, branch.FullName, range, m_Reviews.GetRangeError(key), committed);
 	}
 
 	GlobalState GraphiteLayer::CaptureGlobalState()

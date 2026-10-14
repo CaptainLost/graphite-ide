@@ -64,6 +64,22 @@ namespace Graphite {
 			return SlotLanding::Applied;
 		}
 
+		// Lands an answer the caller found equal to the snapshot held: applied as a success, but the
+		// held snapshot stays, so a reader that compares pointers sees nothing new.
+		SlotLanding LandSameAsHeld(std::uint64_t generation)
+		{
+			CORE_ASSERT(m_Value != nullptr, "only an answer equal to a held snapshot can keep it");
+
+			if (generation <= m_Applied)
+			{
+				return SlotLanding::Stale;
+			}
+
+			m_Applied = generation;
+			m_Error.reset();
+			return SlotLanding::Applied;
+		}
+
 		// Null until the first successful answer has landed, and after a Clear.
 		Core::Ref<const T> Get() const { return m_Value; }
 

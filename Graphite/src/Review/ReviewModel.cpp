@@ -47,6 +47,41 @@ namespace Graphite {
 
 			return range->Ends.Tip;
 		}
+
+		bool SameCommitIds(const std::vector<Core::CommitSummary>& held, const std::vector<Core::CommitSummary>& answer)
+		{
+			if (held.size() != answer.size())
+			{
+				return false;
+			}
+
+			for (std::size_t commitIndex = 0; commitIndex < held.size(); ++commitIndex)
+			{
+				if (held[commitIndex].Id != answer[commitIndex].Id)
+				{
+					return false;
+				}
+			}
+
+			return true;
+		}
+
+		// Everything a tab or a badge draws from a range. A commit's id covers the rest of its summary.
+		bool IsSameRange(const ReviewRange& held, const ReviewRange& answer)
+		{
+			const bool sameEnds = held.Problem == answer.Problem && held.Ends == answer.Ends;
+			const bool sameWorktree = held.Worktree == answer.Worktree;
+			const bool sameCommits =
+				held.CommitsComplete == answer.CommitsComplete && SameCommitIds(held.Commits, answer.Commits);
+
+			return sameEnds && sameWorktree && sameCommits;
+		}
+
+		// A failed since-viewed answer is keyed by blobs, not by the review, so Retry forgets them all.
+		bool IsAnySinceViewedKey(const SinceViewedKey&)
+		{
+			return true;
+		}
 	}
 
 	ReviewModel::ReviewModel(ReviewPort& port, Core::JobSubmitter submit, WorktreeWatchFactory watch)
@@ -87,6 +122,7 @@ namespace Graphite {
 		m_CommittedDiffs.Clear();
 		m_CommittedTexts.Clear();
 		m_SinceViewed.Clear();
+		m_ViewedVersionsGone.clear();
 		m_CommittedDiffError.reset();
 	}
 
@@ -157,8 +193,12 @@ namespace Graphite {
 			return;
 		}
 
+		// Branches are read again on every save, and a new pointer for the same range would have every
+		// badge and tab work out again what they show.
 		const Core::Ref<const ReviewRange> replaced = range->Slot.Get();
-		const SlotLanding landing = range->Slot.Land(generation, std::move(answer));
+		const bool answerIsUnchanged = answer.HasValue() && replaced != nullptr && IsSameRange(*replaced, answer.GetValue());
+		const SlotLanding landing = answerIsUnchanged ? range->Slot.LandSameAsHeld(generation)
+													  : range->Slot.Land(generation, std::move(answer));
 
 		if (landing != SlotLanding::Applied)
 		{
@@ -237,8 +277,8 @@ namespace Graphite {
 			}
 		}
 
-		// A failed since-viewed answer is keyed by blobs, not by the review, so Retry forgets them all.
-		m_SinceViewed.ForgetFailedWhere([](const SinceViewedKey&) { return true; });
+		m_SinceViewed.ForgetFailedWhere(IsAnySinceViewedKey);
+		m_ViewedVersionsGone.clear();
 
 		UncommittedState* uncommitted = FindUncommitted(key);
 
@@ -364,6 +404,8 @@ namespace Graphite {
 			return;
 		}
 
+		m_ViewedVersionsGone.erase(key);
+
 		m_Submit([this, key, request, generation = *generation]() {
 			Core::Result<SinceViewedAnswer> answer = m_Port.ReadSinceViewed(request);
 
@@ -385,7 +427,14 @@ namespace Graphite {
 	{
 		if (!answer.HasValue())
 		{
-			m_SinceViewed.Fail(key, generation);
+			const bool failureLanded = m_SinceViewed.Fail(key, generation);
+			const bool viewedVersionIsGone = answer.GetError().Code == Core::ErrorCode::NotFound;
+
+			if (failureLanded && viewedVersionIsGone)
+			{
+				m_ViewedVersionsGone.insert(key);
+			}
+
 			return;
 		}
 
@@ -398,9 +447,15 @@ namespace Graphite {
 		return m_SinceViewed.Get(KeyOf(request));
 	}
 
-	bool ReviewModel::IsSinceViewedUnavailable(const SinceViewedRequest& request) const
+	bool ReviewModel::IsSinceViewedFailed(const SinceViewedRequest& request) const
 	{
 		return m_SinceViewed.IsFailed(KeyOf(request));
+	}
+
+	bool ReviewModel::IsSinceViewedUnavailable(const SinceViewedRequest& request) const
+	{
+		const SinceViewedKey key = KeyOf(request);
+		return m_SinceViewed.IsFailed(key) && m_ViewedVersionsGone.contains(key);
 	}
 
 	ReviewModel::UncommittedState* ReviewModel::FindUncommitted(const ReviewKey& key)

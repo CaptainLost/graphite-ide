@@ -97,6 +97,35 @@ TEST_CASE("Invalidating the ranges asks again on the next request")
 	CHECK(model.GetRange(kKey)->Ends.Tip == IdNumbered(3));
 }
 
+TEST_CASE("A range answered again unchanged keeps the pointer it handed out")
+{
+	FakeReviewPort port;
+	port.Range = RangeWithTip(2);
+	port.Range.Commits.resize(1);
+	port.Range.Commits.front().Id = IdNumbered(2);
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	model.RequestRange(kKey);
+	Settle(model, jobs);
+	const Core::Ref<const ReviewRange> first = model.GetRange(kKey);
+
+	model.InvalidateRanges();
+	model.RequestRange(kKey);
+	Settle(model, jobs);
+
+	CHECK(port.RangeQueries == 2);
+	CHECK(model.GetRange(kKey) == first);
+
+	port.Range.Worktree = std::filesystem::path{"side-tree"};
+	model.InvalidateRanges();
+	model.RequestRange(kKey);
+	Settle(model, jobs);
+
+	REQUIRE(model.GetRange(kKey) != nullptr);
+	CHECK(model.GetRange(kKey) != first);
+	CHECK(model.GetRange(kKey)->Worktree == std::optional<std::filesystem::path>{"side-tree"});
+}
+
 TEST_CASE("An answer for a forgotten review is dropped even when the review is asked about again")
 {
 	FakeReviewPort port;

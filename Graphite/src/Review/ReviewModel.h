@@ -21,6 +21,7 @@
 #include <functional>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace Graphite {
 
@@ -95,10 +96,12 @@ namespace Graphite {
 		void RequestCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file);
 		Core::Ref<const FileTexts> GetCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file) const;
 
-		// A changed file's diff from the version a viewed mark recorded, held once read. Unavailable
-		// when the repository no longer holds that version; Retry asks again.
+		// A changed file's diff from the version a viewed mark recorded, held once read. Failed after
+		// any failed read, and also unavailable when the repository no longer holds that version;
+		// Retry asks again.
 		void RequestSinceViewed(const SinceViewedRequest& request);
 		Core::Ref<const SinceViewedAnswer> GetSinceViewed(const SinceViewedRequest& request) const;
+		bool IsSinceViewedFailed(const SinceViewedRequest& request) const;
 		bool IsSinceViewedUnavailable(const SinceViewedRequest& request) const;
 
 		// Called on every frame a tab with the toggle on is drawn. The first call starts watching the
@@ -200,6 +203,9 @@ namespace Graphite {
 		LruResultCache<TextsKey, FileTexts, TextsKeyHash> m_CommittedTexts{kCachedTexts};
 		std::optional<Core::Error> m_CommittedDiffError;
 		LruResultCache<SinceViewedKey, SinceViewedAnswer, SinceViewedKeyHash> m_SinceViewed{kCachedTexts};
+
+		// The failed since-viewed answers whose viewed version the repository no longer holds.
+		std::unordered_set<SinceViewedKey, SinceViewedKeyHash> m_ViewedVersionsGone;
 
 		std::uint64_t m_NextTextsGeneration = 0;
 		std::unordered_map<ReviewKey, UncommittedState, ReviewKeyHash> m_Uncommitted;
