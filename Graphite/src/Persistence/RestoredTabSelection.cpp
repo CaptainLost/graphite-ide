@@ -5,12 +5,12 @@ namespace Graphite {
 	void RestoredTabSelection::Restore(SessionTab tab)
 	{
 		m_Tab = tab;
-		m_Asked = false;
+		m_HasAsked = false;
 	}
 
 	bool RestoredTabSelection::ShouldSelect(SessionTab tab) const
 	{
-		return m_Tab == tab && !m_Asked;
+		return m_Tab == tab && !m_HasAsked;
 	}
 
 	void RestoredTabSelection::AfterTabBar(SessionTab selected)
@@ -20,16 +20,17 @@ namespace Graphite {
 			return;
 		}
 
-		// Shown, or asked for a frame ago and answered: either way the tab bar now says what
-		// the reader sees.
-		if (selected == *m_Tab || m_Asked)
+		const bool tabBarShowsRestoredTab = selected == *m_Tab;
+		const bool tabBarHasAnsweredTheAsk = m_HasAsked;
+
+		if (tabBarShowsRestoredTab || tabBarHasAnsweredTheAsk)
 		{
 			m_Tab.reset();
-			m_Asked = false;
+			m_HasAsked = false;
 			return;
 		}
 
-		m_Asked = true;
+		m_HasAsked = true;
 	}
 
 	SessionTab RestoredTabSelection::Reported(SessionTab selected) const

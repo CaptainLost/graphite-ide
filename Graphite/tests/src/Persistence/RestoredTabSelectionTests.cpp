@@ -9,21 +9,18 @@ TEST_CASE("A restored view is asked for once and reported until the tab bar show
 	RestoredTabSelection selection;
 	selection.Restore(SessionTab::Cost);
 
-	// The frame that asks: the tab bar still draws the conversation as selected.
 	CHECK(selection.ShouldSelect(SessionTab::Cost));
 	CHECK_FALSE(selection.ShouldSelect(SessionTab::Conversation));
 	selection.AfterTabBar(SessionTab::Conversation);
 
 	CHECK(selection.Reported(SessionTab::Conversation) == SessionTab::Cost);
 
-	// The next frame the ask has taken effect, and it is not repeated.
 	CHECK_FALSE(selection.ShouldSelect(SessionTab::Cost));
 	selection.AfterTabBar(SessionTab::Cost);
 
 	CHECK_FALSE(selection.IsPending());
 	CHECK(selection.Reported(SessionTab::Cost) == SessionTab::Cost);
 
-	// From here the reader's own choice is what is reported.
 	selection.AfterTabBar(SessionTab::Requests);
 	CHECK(selection.Reported(SessionTab::Requests) == SessionTab::Requests);
 }
@@ -46,8 +43,6 @@ TEST_CASE("A reader who picks another view as the restored one is asked for keep
 
 	selection.AfterTabBar(SessionTab::Conversation);
 
-	// The tab bar answered with the reader's click rather than the ask: it is not asked again,
-	// and what it shows is reported.
 	CHECK_FALSE(selection.ShouldSelect(SessionTab::Requests));
 	selection.AfterTabBar(SessionTab::Cost);
 

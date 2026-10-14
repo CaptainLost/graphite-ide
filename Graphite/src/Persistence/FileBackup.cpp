@@ -7,20 +7,20 @@
 
 namespace Graphite {
 
-	bool BackUpBeforeWritingOver(const std::filesystem::path& file, std::string_view why)
+	bool BackUpBeforeWritingOver(const std::filesystem::path& file, std::string_view reason)
 	{
 		std::filesystem::path backup = file;
 		backup += ".bak";
 
-		std::error_code error;
-		std::filesystem::copy_file(file, backup, std::filesystem::copy_options::overwrite_existing, error);
+		std::error_code copyError;
+		std::filesystem::copy_file(file, backup, std::filesystem::copy_options::overwrite_existing, copyError);
 
-		if (error)
+		if (copyError)
 		{
 			return false;
 		}
 
-		APP_WARN("'{}' {}; kept it as '{}' before writing over it", Core::ToUtf8(file), why, Core::ToUtf8(backup));
+		APP_WARN("'{}' {}; kept it as '{}' before writing over it", Core::ToUtf8(file), reason, Core::ToUtf8(backup));
 		return true;
 	}
 }

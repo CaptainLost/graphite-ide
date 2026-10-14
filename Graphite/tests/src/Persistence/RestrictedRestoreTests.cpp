@@ -8,10 +8,10 @@
 
 using namespace Graphite;
 
-// Every path below is judged lexically, so none of them has to exist.
-
 namespace {
 	const std::filesystem::path kRoot = std::filesystem::path{"D:\\Work\\Repo"};
+	constexpr bool kTrusted = true;
+	constexpr bool kRestricted = false;
 
 	TabState Tab(const std::filesystem::path& path)
 	{
@@ -23,8 +23,6 @@ namespace {
 		return DiffTabState{.Target = Core::DiffTarget::WorkTreeToIndex, .Path = path};
 	}
 
-	// The state a crafted .graphite/workspace.json reads back as: tabs and diffs pointing
-	// outside the folder alongside ones inside it.
 	WorkspaceState Crafted()
 	{
 		WorkspaceState state;
@@ -40,7 +38,7 @@ namespace {
 
 TEST_CASE("A folder in restricted mode restores only the tabs inside it")
 {
-	const WorkspaceState restorable = RestorableState(Crafted(), kRoot, false);
+	const WorkspaceState restorable = RestorableState(Crafted(), kRoot, kRestricted);
 
 	CHECK(restorable.Tabs == std::vector<TabState>{Tab(kRoot / "src" / "main.cpp")});
 }
@@ -50,11 +48,11 @@ TEST_CASE("A folder in restricted mode activates no tab it dropped")
 	WorkspaceState state = Crafted();
 	state.Active = "C:\\Windows\\win.ini";
 
-	CHECK(RestorableState(state, kRoot, false).Active == std::nullopt);
+	CHECK(RestorableState(state, kRoot, kRestricted).Active == std::nullopt);
 
 	state.Active = "D:\\Work\\Repo\\..\\x";
 
-	CHECK(RestorableState(state, kRoot, false).Active == std::nullopt);
+	CHECK(RestorableState(state, kRoot, kRestricted).Active == std::nullopt);
 }
 
 TEST_CASE("A folder in restricted mode keeps an active tab inside it")
@@ -62,28 +60,25 @@ TEST_CASE("A folder in restricted mode keeps an active tab inside it")
 	WorkspaceState state = Crafted();
 	state.Active = kRoot / "src" / "main.cpp";
 
-	CHECK(RestorableState(state, kRoot, false).Active == kRoot / "src" / "main.cpp");
+	CHECK(RestorableState(state, kRoot, kRestricted).Active == kRoot / "src" / "main.cpp");
 }
 
 TEST_CASE("A folder in restricted mode restores only the diffs whose path stays inside the repository")
 {
-	const WorkspaceState restorable = RestorableState(Crafted(), kRoot, false);
+	const WorkspaceState restorable = RestorableState(Crafted(), kRoot, kRestricted);
 
 	CHECK(restorable.Diffs == std::vector<DiffTabState>{WorkingDiff("src\\main.cpp")});
 }
 
 TEST_CASE("A folder in restricted mode drops any diff path with a parent step, even one that comes back")
 {
-	// Opened a level below the repository: git joins a diff's path onto the working directory
-	// D:\Work\Repo, so "..\sub\secret" reads D:\Work\sub\secret although, joined onto the folder,
-	// it would look like D:\Work\Repo\sub\secret. Git never reports "..", so none is kept.
 	const std::filesystem::path root = kRoot / "sub";
 
 	WorkspaceState state;
 	state.Diffs = {WorkingDiff("..\\sub\\secret"), WorkingDiff("src\\..\\main.cpp"), WorkingDiff("../sub/x"),
 				   WorkingDiff("sub\\main.cpp")};
 
-	CHECK(RestorableState(state, root, false).Diffs == std::vector<DiffTabState>{WorkingDiff("sub\\main.cpp")});
+	CHECK(RestorableState(state, root, kRestricted).Diffs == std::vector<DiffTabState>{WorkingDiff("sub\\main.cpp")});
 }
 
 TEST_CASE("A folder in restricted mode drops a diff path that is drive-relative, root-relative or UNC")
@@ -92,7 +87,7 @@ TEST_CASE("A folder in restricted mode drops a diff path that is drive-relative,
 	state.Diffs = {WorkingDiff("C:foo"), WorkingDiff("\\Windows\\win.ini"), WorkingDiff("\\\\server\\share\\x"),
 				   WorkingDiff("src/main.cpp")};
 
-	CHECK(RestorableState(state, kRoot, false).Diffs == std::vector<DiffTabState>{WorkingDiff("src/main.cpp")});
+	CHECK(RestorableState(state, kRoot, kRestricted).Diffs == std::vector<DiffTabState>{WorkingDiff("src/main.cpp")});
 }
 
 TEST_CASE("A folder in restricted mode keeps an inside tab however its case and slashes are spelled")
@@ -100,7 +95,7 @@ TEST_CASE("A folder in restricted mode keeps an inside tab however its case and 
 	WorkspaceState state;
 	state.Tabs = {Tab("d:\\work\\repo\\SRC\\a.cpp"), Tab("D:/Work/Repo/src/b.cpp")};
 
-	CHECK(RestorableState(state, kRoot, false).Tabs == state.Tabs);
+	CHECK(RestorableState(state, kRoot, kRestricted).Tabs == state.Tabs);
 }
 
 TEST_CASE("A folder in restricted mode drops a tab path that names no place inside it")
@@ -109,7 +104,7 @@ TEST_CASE("A folder in restricted mode drops a tab path that names no place insi
 	state.Tabs = {Tab("src\\main.cpp"), Tab("C:foo"), Tab("\\\\server\\share\\x"), Tab("\\Windows\\win.ini")};
 	state.Active = "\\Windows\\win.ini";
 
-	const WorkspaceState restorable = RestorableState(state, kRoot, false);
+	const WorkspaceState restorable = RestorableState(state, kRoot, kRestricted);
 
 	CHECK(restorable.Tabs.empty());
 	CHECK(restorable.Active == std::nullopt);
@@ -120,7 +115,7 @@ TEST_CASE("A folder in restricted mode leaves the rest of its state to the rules
 	WorkspaceState state = Crafted();
 	state.Sessions = {SessionTabState{"s1", "Session", SessionTab::Cost}};
 
-	const WorkspaceState restorable = RestorableState(state, kRoot, false);
+	const WorkspaceState restorable = RestorableState(state, kRoot, kRestricted);
 
 	CHECK(restorable.Sessions == state.Sessions);
 	CHECK(restorable.Terminals == state.Terminals);
@@ -131,5 +126,5 @@ TEST_CASE("A trusted folder restores everything it saved, outside it or not")
 	WorkspaceState state = Crafted();
 	state.Active = "C:\\Windows\\win.ini";
 
-	CHECK(RestorableState(state, kRoot, true) == state);
+	CHECK(RestorableState(state, kRoot, kTrusted) == state);
 }

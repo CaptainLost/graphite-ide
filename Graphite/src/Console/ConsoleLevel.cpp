@@ -4,7 +4,6 @@ namespace Graphite {
 
 	bool IsShownAtLevel(Core::LogLevel level, Core::LogLevel minimum)
 	{
-		// The enumerators are declared quietest first, so the order is the severity.
 		return static_cast<int>(level) >= static_cast<int>(minimum);
 	}
 
@@ -27,13 +26,13 @@ namespace Graphite {
 		return "?";
 	}
 
-	std::string ConsoleEntryCount(std::size_t shown, std::size_t total)
+	std::string ConsoleEntryCount(std::size_t shownCount, std::size_t totalCount)
 	{
-		if (shown == total)
+		if (shownCount == totalCount)
 		{
-			return std::to_string(total) + " entries";
+			return std::to_string(totalCount) + " entries";
 		}
 
-		return std::to_string(shown) + " / " + std::to_string(total) + " entries";
+		return std::to_string(shownCount) + " / " + std::to_string(totalCount) + " entries";
 	}
 }

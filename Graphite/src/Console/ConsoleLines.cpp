@@ -12,21 +12,25 @@
 namespace Graphite {
 
 	namespace {
+		constexpr float kRoundToNearestBoundary = 0.5f;
+		constexpr float kTruncateToCharacterUnderPoint = 0.0f;
+		constexpr std::size_t kStartOfLine = 0;
+
 		std::size_t ColumnsIn(std::string_view message)
 		{
 			return Core::ColumnCount(message, Core::DefaultTabWidth);
 		}
 
-		std::int64_t LineOf(const Core::LogEntry& entry)
+		std::int64_t LineNumberOf(const Core::LogEntry& entry)
 		{
 			return static_cast<std::int64_t>(entry.Sequence);
 		}
 
-		const Core::LogEntry* Find(const std::vector<Core::LogEntry>& shown, std::int64_t line)
+		const Core::LogEntry* FindEntryOnLine(const std::vector<Core::LogEntry>& shown, std::int64_t line)
 		{
 			for (const Core::LogEntry& entry : shown)
 			{
-				if (LineOf(entry) == line)
+				if (LineNumberOf(entry) == line)
 				{
 					return &entry;
 				}
@@ -35,11 +39,9 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		// An end of the selection moved from columns to bytes of its entry. An entry that is not
-		// shown has no text to convert against, and nothing is joined from it anyway.
-		Core::TextPoint ToBytes(const std::vector<Core::LogEntry>& shown, Core::TextPoint at)
+		Core::TextPoint WithByteColumn(const std::vector<Core::LogEntry>& shown, Core::TextPoint at)
 		{
-			if (const Core::LogEntry* entry = Find(shown, at.Line))
+			if (const Core::LogEntry* entry = FindEntryOnLine(shown, at.Line))
 			{
 				at.Column = Core::ByteOfColumn(entry->Message, at.Column, Core::DefaultTabWidth);
 			}
@@ -47,51 +49,49 @@ namespace Graphite {
 			return at;
 		}
 
-		// PointAt and CharacterAt, which differ only in `bias`: 0.5 rounds to the nearest
-		// boundary, 0 truncates to the character the point is over.
 		std::optional<Core::TextPoint> OnRows(const std::vector<Core::LogEntry>& shown,
-											  const ConsoleLayout& layout, float x, float y, float bias)
+											  const ConsoleLayout& layout, float x, float y,
+											  float roundingBias)
 		{
 			if (shown.empty() || layout.RowHeight <= 0.0f || layout.CellWidth <= 0.0f)
 			{
 				return std::nullopt;
 			}
 
-			const float rows = (y - layout.OriginY) / layout.RowHeight;
+			const float rowsFromOrigin = (y - layout.OriginY) / layout.RowHeight;
 
-			if (rows < 0.0f)
+			if (rowsFromOrigin < 0.0f)
 			{
-				return Core::TextPoint{LineOf(shown.front()), 0};
+				return Core::TextPoint{LineNumberOf(shown.front()), kStartOfLine};
 			}
 
-			const std::size_t row = static_cast<std::size_t>(rows);
+			const std::size_t row = static_cast<std::size_t>(rowsFromOrigin);
 
 			if (row >= shown.size())
 			{
-				return Core::TextPoint{LineOf(shown.back()), ColumnsIn(shown.back().Message)};
+				return Core::TextPoint{LineNumberOf(shown.back()), ColumnsIn(shown.back().Message)};
 			}
 
-			const std::size_t columns = ColumnsIn(shown[row].Message);
-			const float cells = (x - layout.OriginX) / layout.CellWidth + bias;
+			const std::size_t columnsInRow = ColumnsIn(shown[row].Message);
+			const float cellsFromOrigin = (x - layout.OriginX) / layout.CellWidth + roundingBias;
 			const std::size_t column =
-				cells <= 0.0f ? 0 : std::min(static_cast<std::size_t>(cells), columns);
+				cellsFromOrigin <= 0.0f ? kStartOfLine
+										: std::min(static_cast<std::size_t>(cellsFromOrigin), columnsInRow);
 
-			return Core::TextPoint{LineOf(shown[row]), column};
+			return Core::TextPoint{LineNumberOf(shown[row]), column};
 		}
 	}
 
 	std::optional<Core::TextPoint> PointAt(const std::vector<Core::LogEntry>& shown,
 										   const ConsoleLayout& layout, float x, float y)
 	{
-		// Rounded rather than truncated: the boundary the pointer is nearest to is the one the
-		// sweep should stop at, so the right half of a character selects it.
-		return OnRows(shown, layout, x, y, 0.5f);
+		return OnRows(shown, layout, x, y, kRoundToNearestBoundary);
 	}
 
 	std::optional<Core::TextPoint> CharacterAt(const std::vector<Core::LogEntry>& shown,
 											   const ConsoleLayout& layout, float x, float y)
 	{
-		return OnRows(shown, layout, x, y, 0.0f);
+		return OnRows(shown, layout, x, y, kTruncateToCharacterUnderPoint);
 	}
 
 	std::string SelectedConsoleText(const Core::TextSelection& selection,
@@ -102,23 +102,23 @@ namespace Graphite {
 			return {};
 		}
 
-		Core::TextSelection inBytes;
-		inBytes.Select(ToBytes(shown, selection.First()), ToBytes(shown, selection.Last()));
+		Core::TextSelection selectionInBytes;
+		selectionInBytes.Select(WithByteColumn(shown, selection.First()), WithByteColumn(shown, selection.Last()));
 
 		std::vector<Core::SelectableLine> lines;
 		lines.reserve(shown.size());
 
 		for (const Core::LogEntry& entry : shown)
 		{
-			lines.push_back(Core::SelectableLine{LineOf(entry), entry.Message});
+			lines.push_back(Core::SelectableLine{LineNumberOf(entry), entry.Message});
 		}
 
-		return Core::JoinSelected(inBytes, lines);
+		return Core::JoinSelected(selectionInBytes, lines);
 	}
 
 	Core::ColumnSpan ConsoleWordAt(const std::vector<Core::LogEntry>& shown, Core::TextPoint at)
 	{
-		const Core::LogEntry* entry = Find(shown, at.Line);
+		const Core::LogEntry* entry = FindEntryOnLine(shown, at.Line);
 
 		if (entry == nullptr)
 		{
@@ -126,9 +126,34 @@ namespace Graphite {
 		}
 
 		const std::size_t byte = Core::ByteOfColumn(entry->Message, at.Column, Core::DefaultTabWidth);
-		const Core::ColumnSpan bytes = Core::WordSpanAt(entry->Message, byte, Core::WordKind::Code);
+		const Core::ColumnSpan wordInBytes = Core::WordSpanAt(entry->Message, byte, Core::WordKind::Code);
 
-		return Core::ColumnSpan{Core::ColumnOfByte(entry->Message, bytes.From, Core::DefaultTabWidth),
-								Core::ColumnOfByte(entry->Message, bytes.To, Core::DefaultTabWidth)};
+		return Core::ColumnSpan{Core::ColumnOfByte(entry->Message, wordInBytes.From, Core::DefaultTabWidth),
+								Core::ColumnOfByte(entry->Message, wordInBytes.To, Core::DefaultTabWidth)};
+	}
+
+	std::size_t ConsoleLineLength(const std::vector<Core::LogEntry>& shown, std::int64_t line)
+	{
+		const Core::LogEntry* entry = FindEntryOnLine(shown, line);
+
+		if (entry == nullptr)
+		{
+			return 0;
+		}
+
+		return ColumnsIn(entry->Message);
+	}
+
+	std::pair<Core::TextPoint, Core::TextPoint> EverythingShown(const std::vector<Core::LogEntry>& shown)
+	{
+		if (shown.empty())
+		{
+			return {};
+		}
+
+		const Core::TextPoint start{LineNumberOf(shown.front()), kStartOfLine};
+		const Core::TextPoint end{LineNumberOf(shown.back()), ColumnsIn(shown.back().Message)};
+
+		return {start, end};
 	}
 }

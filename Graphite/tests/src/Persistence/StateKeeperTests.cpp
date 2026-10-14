@@ -2,24 +2,32 @@
 
 #include "Persistence/StateKeeper.h"
 
-#include <utility>
 #include <vector>
 
 using namespace Graphite;
 
 namespace {
+	struct WorkspaceWrite
+	{
+		std::filesystem::path Root;
+		WorkspaceState State;
+	};
+
 	struct Recorder
 	{
 		std::vector<GlobalState> Global;
-		std::vector<std::pair<std::filesystem::path, WorkspaceState>> Workspace;
+		std::vector<WorkspaceWrite> Workspace;
+
+		void RecordWorkspace(const std::filesystem::path& root, const WorkspaceState& state)
+		{
+			Workspace.push_back(WorkspaceWrite{root, state});
+		}
 
 		StateKeeper MakeKeeper()
 		{
 			return StateKeeper{
 				[this](const GlobalState& state) { Global.push_back(state); },
-				[this](const std::filesystem::path& root, const WorkspaceState& state) {
-					Workspace.emplace_back(root, state);
-				}};
+				[this](const std::filesystem::path& root, const WorkspaceState& state) { RecordWorkspace(root, state); }};
 		}
 	};
 
@@ -96,8 +104,8 @@ TEST_CASE("Moving the caret writes the folder's file and not the global one")
 
 	CHECK(recorder.Global.empty());
 	REQUIRE(recorder.Workspace.size() == 1);
-	CHECK(recorder.Workspace[0].first == kRepo);
-	CHECK(recorder.Workspace[0].second == CaretOn(2));
+	CHECK(recorder.Workspace[0].Root == kRepo);
+	CHECK(recorder.Workspace[0].State == CaretOn(2));
 }
 
 TEST_CASE("Flush writes what differs at once")
@@ -128,8 +136,8 @@ TEST_CASE("Closing a folder writes its tabs to it, and the next folder never rec
 	keeper.CloseWorkspace();
 
 	REQUIRE(recorder.Workspace.size() == 1);
-	CHECK(recorder.Workspace[0].first == kRepo);
-	CHECK(recorder.Workspace[0].second == CaretOn(7));
+	CHECK(recorder.Workspace[0].Root == kRepo);
+	CHECK(recorder.Workspace[0].State == CaretOn(7));
 
 	keeper.AdoptWorkspace(kOther, CaretOn(3));
 	keeper.Observe(0.0, GlobalState{}, CaretOn(3));
@@ -148,7 +156,7 @@ TEST_CASE("Adopting another folder while one is open writes the first one first"
 	keeper.AdoptWorkspace(kOther, CaretOn(0));
 
 	REQUIRE(recorder.Workspace.size() == 1);
-	CHECK(recorder.Workspace[0].first == kRepo);
+	CHECK(recorder.Workspace[0].Root == kRepo);
 }
 
 TEST_CASE("Tabs seen with no folder open are never written")
@@ -174,5 +182,5 @@ TEST_CASE("A folder that moves is written at its new place")
 	keeper.Flush();
 
 	REQUIRE(recorder.Workspace.size() == 1);
-	CHECK(recorder.Workspace[0].first == kOther);
+	CHECK(recorder.Workspace[0].Root == kOther);
 }

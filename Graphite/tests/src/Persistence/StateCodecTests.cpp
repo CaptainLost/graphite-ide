@@ -83,8 +83,10 @@ TEST_CASE("Negative window coordinates, from a monitor left of the primary, are 
 TEST_CASE("Workspace state survives a write and a read")
 {
 	WorkspaceState state;
-	state.Tabs = {TabState{kRoot / "src" / "Main.cpp", false, 199, 12, 180},
-				  TabState{kRoot / "README.md", true, 0, 0, 0}};
+	const bool isPreview = true;
+	const bool isPinned = false;
+	state.Tabs = {TabState{kRoot / "src" / "Main.cpp", isPinned, 199, 12, 180},
+				  TabState{kRoot / "README.md", isPreview, 0, 0, 0}};
 	state.Active = kRoot / "src" / "Main.cpp";
 
 	Core::JsonFile file;
@@ -153,7 +155,6 @@ TEST_CASE("A damaged tab list reads as what can be salvaged")
 	file.Set("restore.tab.count", "3");
 	file.Set("restore.tab.0.path", "a.cpp");
 	file.Set("restore.tab.0.line", "many");
-	// Tab 1 has no path at all.
 	file.Set("restore.tab.2.path", "c.cpp");
 	file.Set("restore.tab.2.line", "7");
 
@@ -273,32 +274,26 @@ TEST_CASE("A diff with an unreadable commit, target or path is dropped")
 	Core::JsonFile file;
 	file.Set("restore.diff.count", "7");
 
-	// Not hex.
 	file.Set("restore.diff.0.commit", "not-a-commit-at-all-not-a-commit-at-all!");
 	file.Set("restore.diff.0.target", "commit");
 	file.Set("restore.diff.0.path", "a.cpp");
 
-	// One digit short.
 	file.Set("restore.diff.1.commit", good.substr(1));
 	file.Set("restore.diff.1.target", "commit");
 	file.Set("restore.diff.1.path", "b.cpp");
 
-	// A target no version ever wrote.
 	file.Set("restore.diff.2.target", "sideways");
 	file.Set("restore.diff.2.path", "c.cpp");
 
-	// No path.
 	file.Set("restore.diff.3.commit", good);
 	file.Set("restore.diff.3.target", "commit");
 
-	// A commit's diff with no commit, and a working-tree diff with one: neither can be shown.
 	file.Set("restore.diff.4.target", "commit");
 	file.Set("restore.diff.4.path", "e.cpp");
 	file.Set("restore.diff.5.commit", good);
 	file.Set("restore.diff.5.target", "staged");
 	file.Set("restore.diff.5.path", "f.cpp");
 
-	// The one that survives, its hex in upper case.
 	std::string upper = good;
 	for (char& digit : upper)
 	{
@@ -351,13 +346,12 @@ TEST_CASE("Absurd session and diff counts are capped")
 	CHECK(read.Sessions.size() == 1);
 	CHECK(read.Diffs.size() == 1);
 
-	// Every entry written, past the ceiling: only the ceiling's worth come back.
 	Core::JsonFile full;
 	full.Set("restore.session.count", "300");
 
-	for (int index = 0; index < 300; ++index)
+	for (int sessionIndex = 0; sessionIndex < 300; ++sessionIndex)
 	{
-		full.Set("restore.session." + std::to_string(index) + ".id", "s" + std::to_string(index));
+		full.Set("restore.session." + std::to_string(sessionIndex) + ".id", "s" + std::to_string(sessionIndex));
 	}
 
 	CHECK(ReadWorkspaceState(full, kRoot).Sessions.size() == 256);
@@ -430,8 +424,6 @@ TEST_CASE("A terminal written before titles were kept reads with an empty title"
 
 TEST_CASE("No terminals written at all reads as absent, and an empty list as empty")
 {
-	// Absent is a folder never opened with this version, and opens one default terminal;
-	// empty is a folder whose terminals were all closed, and opens none.
 	Core::JsonFile never;
 	WriteWorkspaceState(WorkspaceState{}, kRoot, never);
 
@@ -487,7 +479,6 @@ TEST_CASE("A flag reads as what was written, and anything else as the stated def
 	CHECK(ReadFlag(Flag(true), false));
 	CHECK_FALSE(ReadFlag(Flag(false), true));
 
-	// Absent, empty or hand-mangled: the call site's default, whichever way it points.
 	for (const std::string stored : {std::string{}, std::string{"yes"}, std::string{"2"}, std::string{"true"}})
 	{
 		CHECK(ReadFlag(stored, true));
@@ -513,7 +504,6 @@ TEST_CASE("A negative stored count or caret falls back to zero")
 
 TEST_CASE("A path that is the folder itself reads back as the folder, a drive root included")
 {
-	// A terminal started in the folder itself comes back started in the folder.
 	{
 		WorkspaceState state;
 		state.Terminals = std::vector<TerminalTabState>{TerminalTabState{"{T}", "cmd", kRoot}};
@@ -528,8 +518,6 @@ TEST_CASE("A path that is the folder itself reads back as the folder, a drive ro
 		CHECK((*read.Terminals)[0].WorkingDirectory == kRoot);
 	}
 
-	// The same when the folder is a whole drive, whose path is the one that ends in a separator
-	// of its own and so the one a stripped trailing separator would break.
 	{
 		const std::filesystem::path driveRoot = std::filesystem::path{R"(D:\)"};
 
@@ -551,7 +539,9 @@ TEST_CASE("Open review tabs survive a write and a read with slashes and non-ASCI
 {
 	WorkspaceState state;
 	state.Reviews.push_back(ReviewTabState{.Branch = "refs/heads/feature/x",
-										   .Selected = Core::FromUtf8("\xC5\xB9r\xC3\xB3" "d\xC5\x82" "a/plik.cpp"),
+										   .Selected = Core::FromUtf8("\xC5\xB9r\xC3\xB3"
+																	  "d\xC5\x82"
+																	  "a/plik.cpp"),
 										   .SelectedIsUncommitted = true});
 	state.Reviews.push_back(ReviewTabState{.Branch = "refs/heads/side"});
 

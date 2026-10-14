@@ -29,7 +29,6 @@ TEST_CASE("A caret on a line the file no longer has lands at the end of the file
 
 TEST_CASE("A caret inside a multi-byte character lands at its start")
 {
-	// "zażółć": z a then 'ż' is two bytes at 2-3, 'ó' at 4-5.
 	const Core::TextBuffer buffer{"za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87"};
 
 	CHECK(RestoredCaretOffset(buffer, 0, 3) == 2);

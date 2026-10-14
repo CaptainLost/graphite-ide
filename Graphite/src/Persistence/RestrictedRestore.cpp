@@ -2,15 +2,30 @@
 
 #include "Core/FileSystem/FileSystem.h"
 
-#include <algorithm>
-
 namespace Graphite {
 
 	namespace {
-		// A diff's path is relative to the repository's working directory, which is not known
-		// until git has opened it and may lie above the folder - so the folder cannot be what it
-		// is judged against. Git never reports a path with ".." in it, so one that has any is
-		// refused outright, and with it every way out of whichever directory it is joined to.
+		bool IsParentStep(const std::filesystem::path& element)
+		{
+			return element == "..";
+		}
+
+		bool HasParentStep(const std::filesystem::path& relative)
+		{
+			for (const std::filesystem::path& element : relative)
+			{
+				if (IsParentStep(element))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		// WARNING: A diff's path is joined onto the repository's working directory, which may lie
+		// above the opened folder, so it cannot be judged against that folder. Git never reports
+		// ".." in a path, so any path that has one is refused.
 		bool StaysInside(const std::filesystem::path& relative)
 		{
 			if (!relative.is_relative() || relative.has_root_name() || relative.has_root_directory())
@@ -18,8 +33,17 @@ namespace Graphite {
 				return false;
 			}
 
-			return std::none_of(relative.begin(), relative.end(),
-								[](const std::filesystem::path& element) { return element == ".."; });
+			return !HasParentStep(relative);
+		}
+
+		bool IsTabOutside(const TabState& tab, const std::filesystem::path& root)
+		{
+			return !Core::IsSameOrWithin(tab.Path, root);
+		}
+
+		bool IsDiffOutside(const DiffTabState& diff)
+		{
+			return !StaysInside(diff.Path);
 		}
 	}
 
@@ -30,14 +54,14 @@ namespace Graphite {
 			return stored;
 		}
 
-		std::erase_if(stored.Tabs, [&root](const TabState& tab) { return !Core::IsSameOrWithin(tab.Path, root); });
+		std::erase_if(stored.Tabs, [&root](const TabState& tab) { return IsTabOutside(tab, root); });
 
 		if (stored.Active && !Core::IsSameOrWithin(*stored.Active, root))
 		{
 			stored.Active.reset();
 		}
 
-		std::erase_if(stored.Diffs, [](const DiffTabState& diff) { return !StaysInside(diff.Path); });
+		std::erase_if(stored.Diffs, IsDiffOutside);
 
 		return stored;
 	}
