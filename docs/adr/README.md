@@ -618,4 +618,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0586](0586-treat-a-branch-review-as-a-session-with-a-fixed-base.md) | Treat a branch review as a session with a fixed base | proposed | 2026-10-14 |
 | [0587](0587-show-a-changed-file-s-diff-since-the-version-that-was-viewed.md) | Show a changed file's diff since the version that was viewed | proposed | 2026-10-14 |
 | [0588](0588-draw-checkboxes-with-a-tick-box-of-the-app-s-own.md) | Draw checkboxes with a tick box of the app's own | proposed | 2026-10-14 |
+| [0589](0589-default-a-review-s-base-to-the-branch-tracking-origin-s-head.md) | Default a review's base to the branch tracking origin's HEAD | proposed | 2026-10-14 |
 <!-- /adr-index -->

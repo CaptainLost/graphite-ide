@@ -26,6 +26,10 @@ namespace Core {
 
 		bool IsHead = false;
 
+		// The remote branch its remote's HEAD names: origin/main while refs/remotes/origin/HEAD
+		// points at it. Only a clone writes that HEAD, so a repository can have no such branch.
+		bool IsRemoteDefault = false;
+
 		std::optional<std::string> Upstream;
 
 		// Commits this branch has that its upstream lacks, and the reverse. Zero and zero

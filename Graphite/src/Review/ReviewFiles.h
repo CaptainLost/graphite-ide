@@ -26,8 +26,9 @@ namespace Graphite {
 		std::optional<std::string> Base;
 	};
 
-	// Against the checked-out branch for every other branch; against its upstream for the
-	// checked-out branch itself, which is offered nothing without one.
+	// Against the default branch - the local branch tracking origin's HEAD, or that remote branch
+	// when none does - and against the checked-out branch only in a repository without one. The
+	// base itself is offered against its upstream, and nothing without one.
 	std::optional<ReviewOffer> OfferReview(const Core::Branch& branch, const std::vector<Core::Branch>& branches);
 
 	// "feature/x" for "refs/heads/feature/x", "origin/main" for "refs/remotes/origin/main".

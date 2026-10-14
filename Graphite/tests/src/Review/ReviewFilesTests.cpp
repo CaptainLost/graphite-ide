@@ -33,6 +33,19 @@ namespace {
 		return branch;
 	}
 
+	Core::Branch RemoteDefault(const std::string& name)
+	{
+		Core::Branch branch = RemoteBranch(name);
+		branch.IsRemoteDefault = true;
+		return branch;
+	}
+
+	Core::Branch Tracking(Core::Branch branch, const std::string& upstream)
+	{
+		branch.Upstream = upstream;
+		return branch;
+	}
+
 	Core::FileDiff FileAt(const std::filesystem::path& path)
 	{
 		Core::FileDiff file;
@@ -111,6 +124,86 @@ TEST_CASE("A remote branch is offered for review against the checked-out branch"
 
 	REQUIRE(offer.has_value());
 	CHECK(offer->Branch == "refs/remotes/origin/feature");
+	CHECK(offer->Base == std::optional<std::string>{"refs/heads/main"});
+}
+
+TEST_CASE("With a remote default every other branch is offered for review against the local branch tracking it")
+{
+	const std::vector<Core::Branch> branches = {Tracking(LocalBranch("main", false), "origin/main"),
+												LocalBranch("refactor", true), LocalBranch("side", false),
+												RemoteBranch("origin/feature"), RemoteDefault("origin/main")};
+
+	for (const Core::Branch& reviewed : {branches[1], branches[2], branches[3]})
+	{
+		CAPTURE(reviewed.Name);
+
+		const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(reviewed, branches);
+
+		REQUIRE(offer.has_value());
+		CHECK(offer->Label == "Review against main");
+		CHECK(offer->Branch == reviewed.FullName);
+		CHECK(offer->Base == std::optional<std::string>{"refs/heads/main"});
+	}
+}
+
+TEST_CASE("The local branch tracking the remote default is offered for review against its upstream")
+{
+	const std::vector<Core::Branch> branches = {Tracking(LocalBranch("main", false), "origin/main"),
+												LocalBranch("refactor", true), RemoteDefault("origin/main")};
+
+	const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(branches[0], branches);
+
+	REQUIRE(offer.has_value());
+	CHECK(offer->Label == "Review against origin/main");
+	CHECK(offer->Base == std::optional<std::string>{"refs/remotes/origin/main"});
+}
+
+TEST_CASE("With HEAD detached a remote default still gives a branch its base")
+{
+	const std::vector<Core::Branch> branches = {Tracking(LocalBranch("main", false), "origin/main"),
+												LocalBranch("side", false), RemoteDefault("origin/main")};
+
+	const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(branches[1], branches);
+
+	REQUIRE(offer.has_value());
+	CHECK(offer->Label == "Review against main");
+	CHECK(offer->Base == std::optional<std::string>{"refs/heads/main"});
+}
+
+TEST_CASE("With no local branch tracking the remote default the remote branch is the base")
+{
+	const std::vector<Core::Branch> branches = {LocalBranch("side", true), LocalBranch("feature", false),
+												RemoteDefault("origin/main")};
+
+	const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(branches[1], branches);
+
+	REQUIRE(offer.has_value());
+	CHECK(offer->Label == "Review against origin/main");
+	CHECK(offer->Base == std::optional<std::string>{"refs/remotes/origin/main"});
+
+	CHECK_FALSE(Graphite::OfferReview(branches[2], branches).has_value());
+}
+
+TEST_CASE("Of several local branches tracking the remote default the one named like it is the base")
+{
+	const std::vector<Core::Branch> branches = {Tracking(LocalBranch("alpha", false), "origin/main"),
+												Tracking(LocalBranch("main", false), "origin/main"),
+												LocalBranch("feature", true), RemoteDefault("origin/main")};
+
+	const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(branches[2], branches);
+
+	REQUIRE(offer.has_value());
+	CHECK(offer->Base == std::optional<std::string>{"refs/heads/main"});
+}
+
+TEST_CASE("The default of a remote other than origin is not a base")
+{
+	const std::vector<Core::Branch> branches = {LocalBranch("main", true), LocalBranch("side", false),
+												RemoteDefault("upstream/develop")};
+
+	const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(branches[1], branches);
+
+	REQUIRE(offer.has_value());
 	CHECK(offer->Base == std::optional<std::string>{"refs/heads/main"});
 }
 

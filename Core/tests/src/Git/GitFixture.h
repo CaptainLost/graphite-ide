@@ -258,6 +258,19 @@ public:
 		git_config_free(config);
 	}
 
+	// Only a clone writes refs/remotes/origin/HEAD; a fetch or a push never does.
+	void SetRemoteHead(const std::string& branch)
+	{
+		const std::string target = "refs/remotes/origin/" + branch;
+
+		const int overwriteExisting = 1;
+		const char* noReflogMessage = nullptr;
+		git_reference* createdReference = nullptr;
+		REQUIRE(git_reference_symbolic_create(&createdReference, m_Repository, "refs/remotes/origin/HEAD",
+											  target.c_str(), overwriteExisting, noReflogMessage) == 0);
+		git_reference_free(createdReference);
+	}
+
 	void StartConflict(const std::string& branchChangingTheSameFile)
 	{
 		const std::string reference = "refs/heads/" + branchChangingTheSameFile;

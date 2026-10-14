@@ -64,6 +64,7 @@ Core gained `ResolveReference`, `MergeBase`, `WorktreeHolding`, `FileDiff::OldId
 
 ## Related
 
+- [0589](0589-default-a-review-s-base-to-the-branch-tracking-origin-s-head.md): replaces the default from HEAD with the branch tracking origin's HEAD, where there is one.
 - [0002](0002-keep-core-free-of-ide-knowledge.md): the queries added to Core name no review.
 - [0581](0581-show-a-branch-s-uncommitted-work-as-a-group-of-its-own-in-its-review.md): uncommitted work in the same tab.
 - [0586](0586-treat-a-branch-review-as-a-session-with-a-fixed-base.md): the session that fixes the base.

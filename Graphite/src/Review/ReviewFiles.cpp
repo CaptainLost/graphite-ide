@@ -14,6 +14,7 @@ namespace Graphite {
 
 		constexpr std::string_view kLocalPrefix = "refs/heads/";
 		constexpr std::string_view kRemotePrefix = "refs/remotes/";
+		constexpr std::string_view kOriginPrefix = "origin/";
 
 		constexpr std::string_view kReviewAgainst = "Review against ";
 
@@ -64,6 +65,80 @@ namespace Graphite {
 			return nullptr;
 		}
 
+		const Core::Branch* OriginDefault(const std::vector<Core::Branch>& branches)
+		{
+			for (const Core::Branch& branch : branches)
+			{
+				if (branch.Kind == Core::RefKind::Remote && branch.IsRemoteDefault &&
+					branch.Name.starts_with(kOriginPrefix))
+				{
+					return &branch;
+				}
+			}
+
+			return nullptr;
+		}
+
+		const Core::Branch* DefaultBranch(const std::vector<Core::Branch>& branches)
+		{
+			const Core::Branch* originDefault = OriginDefault(branches);
+
+			if (originDefault == nullptr)
+			{
+				return nullptr;
+			}
+
+			const std::string_view sameName = std::string_view{originDefault->Name}.substr(kOriginPrefix.size());
+			const Core::Branch* firstTracking = nullptr;
+
+			for (const Core::Branch& branch : branches)
+			{
+				const bool tracksOriginDefault =
+					branch.Kind == Core::RefKind::Local && branch.Upstream == originDefault->Name;
+
+				if (!tracksOriginDefault)
+				{
+					continue;
+				}
+
+				if (branch.Name == sameName)
+				{
+					return &branch;
+				}
+
+				if (firstTracking == nullptr)
+				{
+					firstTracking = &branch;
+				}
+			}
+
+			return firstTracking != nullptr ? firstTracking : originDefault;
+		}
+
+		ReviewOffer OfferAgainst(const Core::Branch& branch, const Core::Branch& base)
+		{
+			return ReviewOffer{
+				.Label = std::string{kReviewAgainst} + base.Name, .Branch = branch.FullName, .Base = base.FullName};
+		}
+
+		std::optional<ReviewOffer> OfferAgainstUpstream(const Core::Branch& branch,
+														const std::vector<Core::Branch>& branches)
+		{
+			if (!branch.Upstream.has_value())
+			{
+				return std::nullopt;
+			}
+
+			const Core::Branch* upstream = RemoteBranchNamed(branches, *branch.Upstream);
+
+			if (upstream == nullptr)
+			{
+				return std::nullopt;
+			}
+
+			return OfferAgainst(branch, *upstream);
+		}
+
 		void AddViewed(ViewedCount& count, const Core::Diff* diff, ReviewGroup group, const ViewedStateOf& stateOf)
 		{
 			if (diff == nullptr)
@@ -85,35 +160,20 @@ namespace Graphite {
 
 	std::optional<ReviewOffer> OfferReview(const Core::Branch& branch, const std::vector<Core::Branch>& branches)
 	{
-		if (branch.IsHead)
-		{
-			if (!branch.Upstream.has_value())
-			{
-				return std::nullopt;
-			}
+		const Core::Branch* defaultBranch = DefaultBranch(branches);
+		const Core::Branch* base = defaultBranch != nullptr ? defaultBranch : CheckedOutBranch(branches);
 
-			const Core::Branch* upstream = RemoteBranchNamed(branches, *branch.Upstream);
-
-			if (upstream == nullptr)
-			{
-				return std::nullopt;
-			}
-
-			return ReviewOffer{.Label = std::string{kReviewAgainst} + upstream->Name,
-							   .Branch = branch.FullName,
-							   .Base = upstream->FullName};
-		}
-
-		const Core::Branch* checkedOut = CheckedOutBranch(branches);
-
-		if (checkedOut == nullptr)
+		if (base == nullptr)
 		{
 			return ReviewOffer{.Label = std::string{}, .Branch = branch.FullName, .Base = std::nullopt};
 		}
 
-		return ReviewOffer{.Label = std::string{kReviewAgainst} + checkedOut->Name,
-						   .Branch = branch.FullName,
-						   .Base = checkedOut->FullName};
+		if (base->FullName == branch.FullName)
+		{
+			return OfferAgainstUpstream(branch, branches);
+		}
+
+		return OfferAgainst(branch, *base);
 	}
 
 	std::string ShortBranchName(const std::string& fullName)
