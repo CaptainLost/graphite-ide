@@ -12,17 +12,20 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace Graphite {
 
 	namespace {
 		constexpr std::size_t kConsoleCapacity = 4096;
+		constexpr int kInitialWindowWidth = 1600;
+		constexpr int kInitialWindowHeight = 900;
 		constexpr std::size_t kLogFileSize = 5u * 1024u * 1024u;
 		constexpr std::size_t kLogFileCount = 3;
 
-		// The command line, read once. The log spec is asked for before the application is made,
-		// and both need it, so they must see one reading rather than two that could disagree.
 		const CommandLine& ProcessCommandLine()
 		{
 			static const CommandLine parsed = ParseCommandLine(ReadProcessCommandLine());
@@ -30,15 +33,10 @@ namespace Graphite {
 		}
 	}
 
-	// The one copy of graphite.json for the whole process. The application owns it rather than
-	// GraphiteLayer because the window placement it holds is needed to open the window, before any
-	// layer exists; the layer is handed a reference.
-	//
-	// A base listed before Core::Application rather than a member: bases are constructed in order,
-	// so the placement can be read from it while Core::Application is built, and destroyed in
-	// reverse, so it outlives Core::Application's LayerStack. That matters when Run is left by an
-	// exception: the LayerStack then detaches GraphiteLayer from its own destructor, and the
-	// layer's OnDetach flushes these settings.
+	// WARNING: This is a base listed before Core::Application, not a member. Bases are constructed
+	// in order, so the window placement can be read while Core::Application is built, and they are
+	// destroyed in reverse, so the settings outlive the LayerStack that flushes them from
+	// GraphiteLayer::OnDetach when Run is left by an exception.
 	struct ApplicationSettings
 	{
 		AppSettings Settings;
@@ -51,8 +49,8 @@ namespace Graphite {
 							AppSettings settings)
 			: ApplicationSettings{std::move(settings)},
 			  Core::Application(Core::ApplicationSpec{.Name = "Graphite IDE",
-													  .Width = 1600,
-													  .Height = 900,
+													  .Width = kInitialWindowWidth,
+													  .Height = kInitialWindowHeight,
 													  .CustomTitleBar = true,
 													  .Placement = Settings.GetGlobalState().Window,
 													  .LayoutFile = UserDirectories::LayoutFile()}),
@@ -79,7 +77,6 @@ namespace Graphite {
 }
 Core::LogSpec Core::CreateLogSpec()
 {
-	// Before anything asks where a user file lives, the log file included.
 	const Graphite::CommandLine& commandLine = Graphite::ProcessCommandLine();
 	if (commandLine.UserData)
 	{
@@ -100,16 +97,15 @@ Core::Scope<Core::Application> Core::CreateApplication(Core::ApplicationCommandL
 
 	APP_INFO("Graphite IDE {}", Graphite::Version::String());
 
-	if (const auto root = Graphite::UserDirectories::RedirectedRoot())
+	if (const std::optional<std::filesystem::path> redirectedRoot = Graphite::UserDirectories::RedirectedRoot())
 	{
-		APP_INFO("User data redirected to '{}'", Core::ToUtf8(*root));
+		APP_INFO("User data redirected to '{}'", Core::ToUtf8(*redirectedRoot));
 	}
 
-	// The parse ignores an option left without a value; saying so is for here, once there is a log.
-	// This looks at the arguments only to name that mistake, not to decide anything.
 	if (!Graphite::ProcessCommandLine().UserData)
 	{
-		for (const std::wstring& argument : Graphite::ReadProcessCommandLine())
+		const std::vector<std::wstring> arguments = Graphite::ReadProcessCommandLine();
+		for (const std::wstring& argument : arguments)
 		{
 			if (argument == L"--user-data")
 			{
@@ -119,12 +115,8 @@ Core::Scope<Core::Application> Core::CreateApplication(Core::ApplicationCommandL
 		}
 	}
 
-	// The folder comes from the same reading that decided the redirect, not from args: that is
-	// narrow, and has no idea "--user-data" is not a folder.
 	static_cast<void>(args);
 
-	// The settings file is resolved here, after CreateLogSpec has applied any --user-data
-	// redirect: Core::Log::Init asks for the log spec before CreateApplication is called.
 	return Core::CreateScope<Graphite::GraphiteApplication>(
 		consoleSink, Graphite::ProcessCommandLine().Folder,
 		Graphite::AppSettings{Graphite::UserDirectories::SettingsFile()});

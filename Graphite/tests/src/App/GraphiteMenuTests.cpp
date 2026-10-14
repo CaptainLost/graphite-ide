@@ -23,8 +23,32 @@ namespace {
 		return nullptr;
 	}
 
-	// A section and everything drawn under it, up to the next section. This is the block the
-	// reader sees under one heading, so it is what the tests below make claims about.
+	bool ListsCommand(const std::vector<MenuItem>& items, const std::string& commandId)
+	{
+		for (const MenuItem& item : items)
+		{
+			if (item.GetText() == commandId)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	std::size_t IndexOfGroup(const std::vector<MenuItem>& items, const std::string& groupName)
+	{
+		for (std::size_t itemIndex = 0; itemIndex < items.size(); ++itemIndex)
+		{
+			if (items[itemIndex].GetKind() == MenuItem::Kind::Group && items[itemIndex].GetText() == groupName)
+			{
+				return itemIndex;
+			}
+		}
+
+		return items.size();
+	}
+
 	std::vector<const MenuItem*> SectionBody(const std::vector<MenuItem>& items,
 											 const std::string& heading)
 	{
@@ -71,8 +95,6 @@ namespace {
 
 TEST_CASE("The panels submenu holds every panel, under a heading per role")
 {
-	// The sections are filled from the group a panel registers itself into, so a panel added
-	// later appears under its own heading without this tree being touched.
 	const std::vector<MenuItem> tree = Graphite::BuildMenuTree();
 	const MenuItem* view = FindSubmenu(tree, "View");
 
@@ -112,8 +134,6 @@ TEST_CASE("The panels submenu opens the view menu, ahead of the settings it is l
 
 TEST_CASE("The editor's own view settings stay on the top level, where their shortcuts show")
 {
-	// A shortcut is worth printing only if it is read without being hunted for, so these
-	// keep the level the menu opens on.
 	const std::vector<MenuItem> tree = Graphite::BuildMenuTree();
 	const MenuItem* view = FindSubmenu(tree, "View");
 
@@ -136,9 +156,6 @@ TEST_CASE("The editor's own view settings stay on the top level, where their sho
 
 TEST_CASE("The explorer's ignored-file modes are reached through the panel that obeys them")
 {
-	// They used to hang under a submenu called "Git", which in this menu already means the
-	// git panel. Both names on the way down now say whose setting this is: the explorer's,
-	// about the files git ignores.
 	const std::vector<MenuItem> tree = Graphite::BuildMenuTree();
 	const MenuItem* view = FindSubmenu(tree, "View");
 
@@ -175,16 +192,13 @@ TEST_CASE("Following the active file is switched among the explorer's options")
 
 	REQUIRE(options != nullptr);
 
-	const bool listed = std::any_of(options->GetChildren().begin(), options->GetChildren().end(),
-									[](const MenuItem& item) { return item.GetText() == "explorer.followActiveFile"; });
+	const bool listed = ListsCommand(options->GetChildren(), "explorer.followActiveFile");
 
 	CHECK(listed);
 }
 
 TEST_CASE("The settings panel is reached from the top level, not from among the panels")
 {
-	// It is how the application is configured rather than a view of the work, so it keeps
-	// the company of Reset Layout instead of hiding behind Panels with the rest.
 	const std::vector<MenuItem> tree = Graphite::BuildMenuTree();
 	const MenuItem* view = FindSubmenu(tree, "View");
 
@@ -200,13 +214,11 @@ TEST_CASE("The settings panel is reached from the top level, not from among the 
 	}
 
 	const std::vector<MenuItem>& top = view->GetChildren();
-	const auto window = std::find_if(top.begin(), top.end(), [](const MenuItem& item) {
-		return item.GetKind() == MenuItem::Kind::Group && item.GetText() == "panels.window";
-	});
+	const std::size_t windowIndex = IndexOfGroup(top, "panels.window");
 
-	REQUIRE(window != top.end());
-	REQUIRE(std::next(window) != top.end());
-	CHECK(std::next(window)->GetText() == "view.resetLayout");
+	REQUIRE(windowIndex != top.size());
+	REQUIRE(windowIndex + 1 != top.size());
+	CHECK(top[windowIndex + 1].GetText() == "view.resetLayout");
 }
 
 TEST_CASE("The File menu offers to trust the open folder, after closing it")
@@ -225,8 +237,8 @@ TEST_CASE("The File menu offers to trust the open folder, after closing it")
 		}
 	}
 
-	const auto close = std::find(commands.begin(), commands.end(), "workspace.close");
-	const auto trust = std::find(commands.begin(), commands.end(), "workspace.toggleTrust");
+	const std::vector<std::string>::const_iterator close = std::find(commands.begin(), commands.end(), "workspace.close");
+	const std::vector<std::string>::const_iterator trust = std::find(commands.begin(), commands.end(), "workspace.toggleTrust");
 
 	REQUIRE(close != commands.end());
 	REQUIRE(trust != commands.end());

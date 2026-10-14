@@ -8,9 +8,16 @@
 
 #include <imgui.h>
 
+#include <filesystem>
+#include <string>
 #include <utility>
 
 namespace Graphite {
+
+	namespace {
+		constexpr float kLicencesHeight = 260.0f;
+		constexpr float kWrapAtWindowEdge = 0.0f;
+	}
 
 	AboutDialog::AboutDialog(ModalGate& gate)
 		: m_Question(gate, kTitle)
@@ -30,14 +37,14 @@ namespace Graphite {
 
 	std::string AboutDialog::LoadNotices()
 	{
-		const auto directory = Core::ExecutableDirectory();
+		const Core::Result<std::filesystem::path> directory = Core::ExecutableDirectory();
 
 		if (!directory)
 		{
 			return "The third-party licences could not be found: the application's folder is unknown.";
 		}
 
-		auto text = Core::ReadFileBytes(directory.GetValue() / kNoticesFile);
+		Core::Result<std::string> text = Core::ReadFileBytes(directory.GetValue() / kNoticesFile);
 
 		if (!text)
 		{
@@ -51,10 +58,10 @@ namespace Graphite {
 	void AboutDialog::Render()
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kWideWidth);
-		const bool open = m_Question.Begin();
+		const bool isOpen = m_Question.Begin();
 		DialogLayout::AfterBegin();
 
-		if (!open)
+		if (!isOpen)
 		{
 			return;
 		}
@@ -66,9 +73,9 @@ namespace Graphite {
 		DialogLayout::Gap();
 		ImGui::TextUnformatted("Third-party licences");
 
-		if (ImGui::BeginChild("##Licences", ImVec2(0.0f, Core::Scaled(260.0f)), ImGuiChildFlags_Borders))
+		if (ImGui::BeginChild("##Licences", ImVec2(0.0f, Core::Scaled(kLicencesHeight)), ImGuiChildFlags_Borders))
 		{
-			ImGui::PushTextWrapPos(0.0f);
+			ImGui::PushTextWrapPos(kWrapAtWindowEdge);
 			ImGui::TextUnformatted(m_Notices.c_str(), m_Notices.c_str() + m_Notices.size());
 			ImGui::PopTextWrapPos();
 		}
@@ -76,13 +83,15 @@ namespace Graphite {
 		ImGui::EndChild();
 		DialogLayout::Gap();
 
-		const float width = Core::Scaled(DialogLayout::kButtonMinWidth);
-		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - width);
+		const float buttonWidth = Core::Scaled(DialogLayout::kButtonMinWidth);
+		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - buttonWidth);
 
-		const bool escape = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-							!ImGui::IsWindowAppearing() && ImGui::IsKeyPressed(ImGuiKey_Escape, false);
+		const bool repeatWhileHeld = false;
+		const bool escapePressed = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+								   !ImGui::IsWindowAppearing() &&
+								   ImGui::IsKeyPressed(ImGuiKey_Escape, repeatWhileHeld);
 
-		if (ImGui::Button("Close", ImVec2(width, 0.0f)) || escape)
+		if (ImGui::Button("Close", ImVec2(buttonWidth, 0.0f)) || escapePressed)
 		{
 			m_Question.Answer();
 		}

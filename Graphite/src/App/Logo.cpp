@@ -11,57 +11,58 @@
 namespace Graphite {
 
 	namespace {
-		const LogoShape& Shape()
+		const LogoShape& EmbeddedLogoShape()
 		{
-			// Parsed once, on first draw: the SVG is in the executable and cannot change.
 			static const LogoShape shape =
 				ParseLogoSvg(std::string_view(reinterpret_cast<const char*>(kLogoSvg), kLogoSvgSize));
 			return shape;
+		}
+
+		ImVec2 PlaceInScreen(ImVec2 point, ImVec2 screenCentre, ImVec2 shapeCentre, float scale)
+		{
+			return ImVec2(screenCentre.x + (point.x - shapeCentre.x) * scale,
+						  screenCentre.y + (point.y - shapeCentre.y) * scale);
 		}
 	}
 
 	float LogoWidth(float height)
 	{
-		const LogoShape& shape = Shape();
-		const float tall = shape.Max.y - shape.Min.y;
+		const LogoShape& shape = EmbeddedLogoShape();
+		const float shapeHeight = shape.Max.y - shape.Min.y;
 
-		return tall > 0.0f ? height * (shape.Max.x - shape.Min.x) / tall : 0.0f;
+		return shapeHeight > 0.0f ? height * (shape.Max.x - shape.Min.x) / shapeHeight : 0.0f;
 	}
 
-	void DrawLogo(ImDrawList* draw, ImVec2 centre, float height)
+	void DrawLogo(ImDrawList* drawList, ImVec2 centre, float height)
 	{
-		const LogoShape& shape = Shape();
-		const float tall = shape.Max.y - shape.Min.y;
+		const LogoShape& shape = EmbeddedLogoShape();
+		const float shapeHeight = shape.Max.y - shape.Min.y;
 
-		if (tall <= 0.0f)
+		if (shapeHeight <= 0.0f)
 		{
 			return;
 		}
 
-		// Centred on the faces' own bounds rather than on the SVG's canvas.
-		const float scale = height / tall;
-		const ImVec2 middle((shape.Min.x + shape.Max.x) * 0.5f, (shape.Min.y + shape.Max.y) * 0.5f);
+		const float scale = height / shapeHeight;
+		const ImVec2 facesCentre((shape.Min.x + shape.Max.x) * 0.5f, (shape.Min.y + shape.Max.y) * 0.5f);
 
-		const auto place = [&](ImVec2 point) {
-			return ImVec2(centre.x + (point.x - middle.x) * scale, centre.y + (point.y - middle.y) * scale);
-		};
-
-		std::vector<ImVec2> points;
+		std::vector<ImVec2> screenPoints;
 
 		for (const LogoFace& face : shape.Faces)
 		{
-			points.clear();
+			screenPoints.clear();
 
 			for (const ImVec2& point : face.Points)
 			{
-				points.push_back(place(point));
+				screenPoints.push_back(PlaceInScreen(point, centre, facesCentre, scale));
 			}
 
-			// Filled flat, then shaded: the draw list has no gradient fill of its own.
-			const int first = draw->VtxBuffer.Size;
-			draw->AddConcavePolyFilled(points.data(), static_cast<int>(points.size()), face.FromColour);
-			ImGui::ShadeVertsLinearColorGradientKeepAlpha(draw, first, draw->VtxBuffer.Size, place(face.From),
-														  place(face.To), face.FromColour, face.ToColour);
+			// WARNING: The draw list has no gradient fill, so the face is filled flat and its vertices are shaded afterwards.
+			const int firstVertexIndex = drawList->VtxBuffer.Size;
+			drawList->AddConcavePolyFilled(screenPoints.data(), static_cast<int>(screenPoints.size()), face.FromColour);
+			ImGui::ShadeVertsLinearColorGradientKeepAlpha(
+				drawList, firstVertexIndex, drawList->VtxBuffer.Size, PlaceInScreen(face.From, centre, facesCentre, scale),
+				PlaceInScreen(face.To, centre, facesCentre, scale), face.FromColour, face.ToColour);
 		}
 	}
 }

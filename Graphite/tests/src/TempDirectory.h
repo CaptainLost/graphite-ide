@@ -6,27 +6,27 @@
 #include <process.h>
 #include <string>
 #include <system_error>
+#include <utility>
 
 class TempDirectory
 {
 public:
 	TempDirectory()
 	{
-		static std::atomic<int> counter{0};
-		const int id = counter.fetch_add(1);
+		static std::atomic<int> nextDirectoryNumber{0};
+		const int directoryNumber = nextDirectoryNumber.fetch_add(1);
 
 		m_Path = std::filesystem::temp_directory_path() /
-				 ("graphite-tests-" + std::to_string(id) + "-" + std::to_string(::_getpid()));
+				 ("graphite-tests-" + std::to_string(directoryNumber) + "-" + std::to_string(::_getpid()));
 
-		std::error_code ec;
-		std::filesystem::remove_all(m_Path, ec);
-		std::filesystem::create_directories(m_Path, ec);
+		std::error_code errorCode;
+		std::filesystem::remove_all(m_Path, errorCode);
+		std::filesystem::create_directories(m_Path, errorCode);
 
-		// Resolved once the directory exists, so tests can compare this against a path
-		// the OS reported back to them. TEMP may be spelled with a short 8.3 name or in
-		// a different case than the filesystem stores, and either would make an
-		// otherwise correct comparison fail on someone else's machine.
-		if (auto resolved = std::filesystem::canonical(m_Path, ec); !ec)
+		// WARNING: The path is resolved once the directory exists. TEMP may be spelled with a short
+		// 8.3 name or in another case than the filesystem stores, which would fail comparisons
+		// against paths the OS reports back.
+		if (std::filesystem::path resolved = std::filesystem::canonical(m_Path, errorCode); !errorCode)
 		{
 			m_Path = std::move(resolved);
 		}
@@ -34,8 +34,8 @@ public:
 
 	~TempDirectory()
 	{
-		std::error_code ec;
-		std::filesystem::remove_all(m_Path, ec);
+		std::error_code errorCode;
+		std::filesystem::remove_all(m_Path, errorCode);
 	}
 
 	TempDirectory(const TempDirectory&) = delete;
@@ -46,16 +46,16 @@ public:
 	std::filesystem::path MakeDirectory(const std::string& relative)
 	{
 		const std::filesystem::path full = m_Path / relative;
-		std::error_code ec;
-		std::filesystem::create_directories(full, ec);
+		std::error_code errorCode;
+		std::filesystem::create_directories(full, errorCode);
 		return full;
 	}
 
 	std::filesystem::path MakeFile(const std::string& relative, const std::string& contents = "")
 	{
 		const std::filesystem::path full = m_Path / relative;
-		std::error_code ec;
-		std::filesystem::create_directories(full.parent_path(), ec);
+		std::error_code errorCode;
+		std::filesystem::create_directories(full.parent_path(), errorCode);
 
 		std::ofstream stream{full, std::ios::binary | std::ios::trunc};
 		stream << contents;

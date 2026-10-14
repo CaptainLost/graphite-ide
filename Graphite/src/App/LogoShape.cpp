@@ -3,8 +3,8 @@
 #include <pugixml.hpp>
 
 #include <algorithm>
-#include <charconv>
 #include <cctype>
+#include <charconv>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -12,148 +12,183 @@
 namespace Graphite {
 
 	namespace {
+		constexpr std::size_t kHexColourLength = 7;
+		constexpr int kHexadecimalBase = 16;
+		constexpr unsigned int kByteMask = 0xFF;
+		constexpr unsigned int kRedShift = 16;
+		constexpr unsigned int kGreenShift = 8;
+		constexpr unsigned int kOpaqueAlpha = 0xFF;
+
+		constexpr float kDefaultGradientStartX = 0.0f;
+		constexpr float kDefaultGradientStartY = 0.0f;
+		constexpr float kDefaultGradientEndX = 1.0f;
+		constexpr float kDefaultGradientEndY = 0.0f;
+
+		constexpr char kNoCommand = 0;
+		constexpr std::size_t kNumbersPerPoint = 2;
+		constexpr std::size_t kMinimumOutlinePoints = 3;
+
+		constexpr std::string_view kUserSpaceUnits = "userSpaceOnUse";
+		constexpr std::string_view kUrlPrefix = "url(#";
+		constexpr std::string_view kUrlSuffix = ")";
+
 		struct Gradient
 		{
 			ImVec2 From;
 			ImVec2 To;
 			ImU32 FromColour = 0;
 			ImU32 ToColour = 0;
-
-			// userSpaceOnUse: From and To are in the SVG's units. Otherwise they are fractions
-			// of the filled face's bounds, which is SVG's default.
-			bool UserSpace = false;
+			bool IsInUserSpaceUnits = false;
 		};
+
+		using GradientsById = std::unordered_map<std::string, Gradient>;
 
 		std::optional<ImU32> ParseColour(std::string_view text)
 		{
-			if (text.size() != 7 || text[0] != '#')
+			if (text.size() != kHexColourLength || text[0] != '#')
 			{
 				return std::nullopt;
 			}
 
 			unsigned int rgb = 0;
-			const auto [end, error] = std::from_chars(text.data() + 1, text.data() + text.size(), rgb, 16);
+			const char* digitsBegin = text.data() + 1;
+			const char* digitsEnd = text.data() + text.size();
+			const auto [parseEnd, parseError] = std::from_chars(digitsBegin, digitsEnd, rgb, kHexadecimalBase);
 
-			if (error != std::errc() || end != text.data() + text.size())
+			if (parseError != std::errc() || parseEnd != digitsEnd)
 			{
 				return std::nullopt;
 			}
 
-			return IM_COL32((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF, 0xFF);
+			return IM_COL32((rgb >> kRedShift) & kByteMask, (rgb >> kGreenShift) & kByteMask, rgb & kByteMask, kOpaqueAlpha);
 		}
 
 		std::optional<Gradient> ReadGradient(const pugi::xml_node& node)
 		{
-			const pugi::xml_node first = node.child("stop");
-			pugi::xml_node last = first;
+			const pugi::xml_node firstStop = node.child("stop");
+			pugi::xml_node lastStop = firstStop;
 
-			for (pugi::xml_node stop = first; stop; stop = stop.next_sibling("stop"))
+			for (pugi::xml_node stop = firstStop; stop; stop = stop.next_sibling("stop"))
 			{
-				last = stop;
+				lastStop = stop;
 			}
 
-			if (!first)
+			if (!firstStop)
 			{
 				return std::nullopt;
 			}
 
-			const auto fromColour = ParseColour(first.attribute("stop-color").as_string());
-			const auto toColour = ParseColour(last.attribute("stop-color").as_string());
+			const std::optional<ImU32> fromColour = ParseColour(firstStop.attribute("stop-color").as_string());
+			const std::optional<ImU32> toColour = ParseColour(lastStop.attribute("stop-color").as_string());
 
 			if (!fromColour || !toColour)
 			{
 				return std::nullopt;
 			}
 
-			// SVG's defaults: left to right across the bounds.
 			Gradient gradient;
-			gradient.From = ImVec2(node.attribute("x1").as_float(0.0f), node.attribute("y1").as_float(0.0f));
-			gradient.To = ImVec2(node.attribute("x2").as_float(1.0f), node.attribute("y2").as_float(0.0f));
+			gradient.From = ImVec2(node.attribute("x1").as_float(kDefaultGradientStartX), node.attribute("y1").as_float(kDefaultGradientStartY));
+			gradient.To = ImVec2(node.attribute("x2").as_float(kDefaultGradientEndX), node.attribute("y2").as_float(kDefaultGradientEndY));
 			gradient.FromColour = *fromColour;
 			gradient.ToColour = *toColour;
-			gradient.UserSpace = std::string_view(node.attribute("gradientUnits").as_string()) == "userSpaceOnUse";
+			gradient.IsInUserSpaceUnits = std::string_view(node.attribute("gradientUnits").as_string()) == kUserSpaceUnits;
 			return gradient;
 		}
 
-		// Absolute M, L and Z only, and a single outline: a second M would start a hole or a
-		// second piece, which one concave fill cannot draw.
-		std::optional<std::vector<ImVec2>> ParseOutline(std::string_view d)
+		bool MoveNumbersToPoints(std::vector<float>& numbers, std::vector<ImVec2>& points)
+		{
+			if (numbers.size() % kNumbersPerPoint != 0)
+			{
+				return false;
+			}
+
+			for (std::size_t numberIndex = 0; numberIndex < numbers.size(); numberIndex += kNumbersPerPoint)
+			{
+				points.emplace_back(numbers[numberIndex], numbers[numberIndex + 1]);
+			}
+
+			numbers.clear();
+			return true;
+		}
+
+		bool IsSupportedCommand(char command)
+		{
+			return command == 'M' || command == 'L' || command == 'Z';
+		}
+
+		std::optional<std::vector<ImVec2>> ParseSingleAbsoluteOutline(std::string_view pathData)
 		{
 			std::vector<ImVec2> points;
 			std::vector<float> numbers;
-			char command = 0;
+			char command = kNoCommand;
 			bool closed = false;
+			std::size_t position = 0;
 
-			const auto flush = [&]() -> bool {
-				if (numbers.size() % 2 != 0)
-				{
-					return false;
-				}
-
-				for (std::size_t i = 0; i < numbers.size(); i += 2)
-				{
-					points.emplace_back(numbers[i], numbers[i + 1]);
-				}
-
-				numbers.clear();
-				return true;
-			};
-
-			std::size_t at = 0;
-
-			while (at < d.size())
+			while (position < pathData.size())
 			{
-				const char c = d[at];
+				const char character = pathData[position];
 
-				if (std::isspace(static_cast<unsigned char>(c)) || c == ',')
+				if (std::isspace(static_cast<unsigned char>(character)) || character == ',')
 				{
-					++at;
+					++position;
 					continue;
 				}
 
-				if (std::isalpha(static_cast<unsigned char>(c)))
+				if (std::isalpha(static_cast<unsigned char>(character)))
 				{
-					if (!flush())
+					if (!MoveNumbersToPoints(numbers, points))
 					{
 						return std::nullopt;
 					}
 
-					const bool repeatedMove = c == 'M' && command != 0;
+					const bool isFirstCommand = command == kNoCommand;
+					const bool repeatedMove = character == 'M' && !isFirstCommand;
+					const bool startsWithoutMove = isFirstCommand && character != 'M';
 
-					if ((c != 'M' && c != 'L' && c != 'Z') || repeatedMove || closed || (command == 0 && c != 'M'))
+					if (!IsSupportedCommand(character) || repeatedMove || closed || startsWithoutMove)
 					{
 						return std::nullopt;
 					}
 
-					command = c;
-					closed = c == 'Z';
-					++at;
+					command = character;
+					closed = character == 'Z';
+					++position;
 					continue;
 				}
 
-				if (command == 0 || closed)
+				if (command == kNoCommand || closed)
 				{
 					return std::nullopt;
 				}
 
 				float value = 0.0f;
-				const auto [end, error] = std::from_chars(d.data() + at, d.data() + d.size(), value);
+				const auto [parseEnd, parseError] = std::from_chars(pathData.data() + position, pathData.data() + pathData.size(), value);
 
-				if (error != std::errc())
+				if (parseError != std::errc())
 				{
 					return std::nullopt;
 				}
 
 				numbers.push_back(value);
-				at = static_cast<std::size_t>(end - d.data());
+				position = static_cast<std::size_t>(parseEnd - pathData.data());
 			}
 
-			if (!flush() || points.size() < 3)
+			if (!MoveNumbersToPoints(numbers, points) || points.size() < kMinimumOutlinePoints)
 			{
 				return std::nullopt;
 			}
 
 			return points;
+		}
+
+		ImVec2 GradientPointInFace(const Gradient& gradient, ImVec2 point, ImVec2 faceMin, ImVec2 faceMax)
+		{
+			if (gradient.IsInUserSpaceUnits)
+			{
+				return point;
+			}
+
+			return ImVec2(faceMin.x + point.x * (faceMax.x - faceMin.x), faceMin.y + point.y * (faceMax.y - faceMin.y));
 		}
 	}
 
@@ -163,20 +198,20 @@ namespace Graphite {
 
 		if (!document.load_buffer(svg.data(), svg.size()))
 		{
-			return {};
+			return LogoShape{};
 		}
 
 		const pugi::xml_node root = document.child("svg");
 
-		std::unordered_map<std::string, Gradient> gradients;
+		GradientsById gradients;
 
 		for (const pugi::xml_node& node : root.child("defs").children("linearGradient"))
 		{
-			auto gradient = ReadGradient(node);
+			const std::optional<Gradient> gradient = ReadGradient(node);
 
 			if (!gradient)
 			{
-				return {};
+				return LogoShape{};
 			}
 
 			gradients.emplace(node.attribute("id").as_string(), *gradient);
@@ -186,68 +221,65 @@ namespace Graphite {
 
 		for (const pugi::xml_node& node : root.children("path"))
 		{
-			auto outline = ParseOutline(node.attribute("d").as_string());
+			std::optional<std::vector<ImVec2>> outline = ParseSingleAbsoluteOutline(node.attribute("d").as_string());
 
 			if (!outline)
 			{
-				return {};
+				return LogoShape{};
 			}
 
 			LogoFace face;
 			face.Points = std::move(*outline);
 
-			ImVec2 min = face.Points.front();
-			ImVec2 max = face.Points.front();
+			ImVec2 faceMin = face.Points.front();
+			ImVec2 faceMax = face.Points.front();
 
 			for (const ImVec2& point : face.Points)
 			{
-				min = ImVec2(std::min(min.x, point.x), std::min(min.y, point.y));
-				max = ImVec2(std::max(max.x, point.x), std::max(max.y, point.y));
+				faceMin = ImVec2(std::min(faceMin.x, point.x), std::min(faceMin.y, point.y));
+				faceMax = ImVec2(std::max(faceMax.x, point.x), std::max(faceMax.y, point.y));
 			}
 
 			const std::string_view fill = node.attribute("fill").as_string();
 
-			if (fill.starts_with("url(#") && fill.ends_with(")"))
+			if (fill.starts_with(kUrlPrefix) && fill.ends_with(kUrlSuffix))
 			{
-				const auto found = gradients.find(std::string(fill.substr(5, fill.size() - 6)));
+				const std::size_t gradientIdLength = fill.size() - kUrlPrefix.size() - kUrlSuffix.size();
+				const GradientsById::const_iterator found = gradients.find(std::string(fill.substr(kUrlPrefix.size(), gradientIdLength)));
 
 				if (found == gradients.end())
 				{
-					return {};
+					return LogoShape{};
 				}
 
-				const Gradient& gradient = found->second;
-				const auto place = [&](ImVec2 at) {
-					return gradient.UserSpace ? at
-											  : ImVec2(min.x + at.x * (max.x - min.x), min.y + at.y * (max.y - min.y));
-				};
+				[[maybe_unused]] const auto& [gradientId, gradient] = *found;
 
-				face.From = place(gradient.From);
-				face.To = place(gradient.To);
+				face.From = GradientPointInFace(gradient, gradient.From, faceMin, faceMax);
+				face.To = GradientPointInFace(gradient, gradient.To, faceMin, faceMax);
 				face.FromColour = gradient.FromColour;
 				face.ToColour = gradient.ToColour;
 			}
-			else if (const auto colour = ParseColour(fill))
+			else if (const std::optional<ImU32> flatColour = ParseColour(fill))
 			{
-				face.From = min;
-				face.To = max;
-				face.FromColour = *colour;
-				face.ToColour = *colour;
+				face.From = faceMin;
+				face.To = faceMax;
+				face.FromColour = *flatColour;
+				face.ToColour = *flatColour;
 			}
 			else
 			{
-				return {};
+				return LogoShape{};
 			}
 
 			if (shape.Faces.empty())
 			{
-				shape.Min = min;
-				shape.Max = max;
+				shape.Min = faceMin;
+				shape.Max = faceMax;
 			}
 			else
 			{
-				shape.Min = ImVec2(std::min(shape.Min.x, min.x), std::min(shape.Min.y, min.y));
-				shape.Max = ImVec2(std::max(shape.Max.x, max.x), std::max(shape.Max.y, max.y));
+				shape.Min = ImVec2(std::min(shape.Min.x, faceMin.x), std::min(shape.Min.y, faceMin.y));
+				shape.Max = ImVec2(std::max(shape.Max.x, faceMax.x), std::max(shape.Max.y, faceMax.y));
 			}
 
 			shape.Faces.push_back(std::move(face));

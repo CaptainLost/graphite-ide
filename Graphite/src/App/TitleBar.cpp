@@ -21,8 +21,9 @@ namespace Graphite {
 		constexpr float kButtonWidth = 46.0f;
 		constexpr float kVersionGap = 12.0f;
 
-		// The mark's height against the caption's.
 		constexpr float kLogoHeightRatio = 0.6f;
+
+		constexpr float kHalf = 0.5f;
 
 		constexpr ImVec4 kCloseHovered{0.75f, 0.16f, 0.16f, 1.0f};
 
@@ -31,71 +32,56 @@ namespace Graphite {
 		{
 			ImGui::SetCursorPos(ImVec2(rect.X, rect.Y));
 
-			const ImVec2 min = ImGui::GetCursorScreenPos();
-			const ImVec2 max(min.x + rect.Width, min.y + rect.Height);
+			const ImVec2 buttonMin = ImGui::GetCursorScreenPos();
+			const ImVec2 buttonMax(buttonMin.x + rect.Width, buttonMin.y + rect.Height);
 
 			ImGui::BeginDisabled(systemOwnsPointer);
 			const bool pressed = ImGui::InvisibleButton(id, ImVec2(rect.Width, rect.Height));
 			const bool held = ImGui::IsItemActive();
 			const bool hovered = ImGui::IsItemHovered();
-			// Asked every frame, held or not, so the fade out starts from wherever it had got to.
-			const float hover = Core::Animation::HoverAmount(ImGui::GetItemID(), hovered);
+			// WARNING: Ask for the hover amount every frame, held or not, so the fade out starts from wherever it had got to.
+			const float hoverAmount = Core::Animation::HoverAmount(ImGui::GetItemID(), hovered);
 			ImGui::EndDisabled();
 
-			ImDrawList* draw = ImGui::GetWindowDrawList();
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-			// A press answers at once; only hovering fades, by the hover colour's alpha.
 			if (held)
 			{
-				draw->AddRectFilled(min, max, heldColour);
+				drawList->AddRectFilled(buttonMin, buttonMax, heldColour);
 			}
-			else if (hover > 0.0f)
+			else if (hoverAmount > 0.0f)
 			{
-				ImVec4 fill = ImGui::ColorConvertU32ToFloat4(hoveredColour);
-				fill.w *= hover;
-				draw->AddRectFilled(min, max, ImGui::ColorConvertFloat4ToU32(fill));
+				ImVec4 fadedFill = ImGui::ColorConvertU32ToFloat4(hoveredColour);
+				fadedFill.w *= hoverAmount;
+				drawList->AddRectFilled(buttonMin, buttonMax, ImGui::ColorConvertFloat4ToU32(fadedFill));
 			}
 
-			// Floored, not rounded: CalcTextSize rounds up, so a centred glyph placed on a
-			// half pixel would be resampled and read blurrier than the menu text beside it.
+			// WARNING: Floor the position, do not round it. CalcTextSize rounds up, so a glyph centred on a half pixel is resampled and reads blurrier than the menu text beside it.
 			const ImVec2 glyphSize = ImGui::CalcTextSize(glyph);
-			const ImVec2 at(std::floor(min.x + (rect.Width - glyphSize.x) * 0.5f),
-							std::floor(min.y + (rect.Height - glyphSize.y) * 0.5f));
+			const ImVec2 glyphPosition(std::floor(buttonMin.x + (rect.Width - glyphSize.x) * kHalf),
+									   std::floor(buttonMin.y + (rect.Height - glyphSize.y) * kHalf));
 
-			draw->AddText(at, ImGui::GetColorU32(ImGuiCol_Text), glyph);
+			drawList->AddText(glyphPosition, ImGui::GetColorU32(ImGuiCol_Text), glyph);
 
 			return pressed;
 		}
 
 		void DrawVersionLabel(const Core::CaptionRect& slot, const std::string& version)
 		{
-			// No centring formula on y: BeginMenuBar() already called
-			// AlignTextToFramePadding(), and that baseline offset survives SetCursorPos, so a
-			// second one on top of it would push the label low.
+			// WARNING: Do not centre the label on y. BeginMenuBar() already called AlignTextToFramePadding() and that baseline offset survives SetCursorPos, so a second one pushes the label low.
 			ImGui::SetCursorPos(ImVec2(slot.X, 0.0f));
 			ImGui::TextDisabled("%s", version.c_str());
 		}
 
 		Core::CaptionMetrics MeasureDragRegion(float dragBegin, float dragEnd)
 		{
-			// The span itself, not "the cursor is over it": the moment the hit test answers
-			// HTCAPTION the pointer belongs to the non-client area, GLFW gets WM_MOUSELEAVE
-			// and the backend pushes an invalid mouse position, so an answer computed from
-			// GetMousePos() would flip the hit test back and forth under a still cursor.
-			//
-			// These x values are window-local while the hit test asks in client coordinates.
-			// They coincide only because the dockspace host sits at the main viewport's
-			// WorkPos, which the bottom-docked status bar leaves equal to the client's
-			// top-left; a bar docked along the top or the left would need the offset between
-			// GetWindowPos() and the viewport's Pos added here.
+			// WARNING: The drag span is passed on whole, never computed from GetMousePos(): once the hit test answers HTCAPTION the pointer belongs to the non-client area and the backend reports an invalid mouse position, which would flip the answer back and forth under a still cursor.
+			// WARNING: dragBegin and dragEnd are window-local while the hit test asks in client coordinates. They coincide only because the dockspace host sits at the main viewport's WorkPos, which a bottom-docked status bar leaves equal to the client's top-left.
 			Core::CaptionMetrics metrics;
 			metrics.Height = Core::Scaled(kCaptionHeight);
 			metrics.DragBegin = dragBegin;
 			metrics.DragEnd = dragEnd;
 
-			// An open menu is the one thing a free-caption click has to reach the application
-			// for: it should close the menu, and a drag would swallow it. Unlike a hover test
-			// this stays true while the pointer is off in the non-client area.
 			metrics.DragSuppressed = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
 
 			return metrics;
@@ -103,15 +89,7 @@ namespace Graphite {
 
 		bool PointerBelongsToSystem(Core::Window& window, const Core::CaptionMetrics& metrics)
 		{
-			// The same metrics the hit test is given, so the button highlights follow it
-			// rather than guessing alongside it. The client size, the point and the maximized
-			// flag are not shared with the frame, only equal: they agree because of how the
-			// GLFW backend sits on Win32, and a framebuffer scaled against the client
-			// rectangle would part them.
-			//
-			// An invalid mouse position — what the backend reports while the pointer is away
-			// in the non-client area — lands far outside the client rectangle and reads as an
-			// edge, which is the wanted answer anyway.
+			// WARNING: The client size, the point and the maximized flag are not shared with the hit test, only equal to what it sees. They agree because of how the GLFW backend sits on Win32; a framebuffer scaled against the client rectangle would part them.
 			int clientWidth = 0;
 			int clientHeight = 0;
 			window.FramebufferSize(clientWidth, clientHeight);
@@ -130,19 +108,19 @@ namespace Graphite {
 		void DrawWindowButtons(Core::Window& window, const Core::CaptionLayout& layout,
 							   bool systemOwnsPointer)
 		{
-			const ImU32 hovered = ImGui::GetColorU32(ImGuiCol_ButtonHovered);
-			const ImU32 held = ImGui::GetColorU32(ImGuiCol_ButtonActive);
+			const ImU32 hoveredColour = ImGui::GetColorU32(ImGuiCol_ButtonHovered);
+			const ImU32 heldColour = ImGui::GetColorU32(ImGuiCol_ButtonActive);
 
 			if (CaptionButton("CaptionMinimize", ICON_MDI_WINDOW_MINIMIZE, layout.Minimize,
-							  hovered, held, systemOwnsPointer))
+							  hoveredColour, heldColour, systemOwnsPointer))
 			{
 				window.Minimize();
 			}
 
-			const char* middle =
+			const char* maximizeGlyph =
 				window.IsMaximized() ? ICON_MDI_WINDOW_RESTORE : ICON_MDI_WINDOW_MAXIMIZE;
 
-			if (CaptionButton("CaptionMaximize", middle, layout.Maximize, hovered, held,
+			if (CaptionButton("CaptionMaximize", maximizeGlyph, layout.Maximize, hoveredColour, heldColour,
 							  systemOwnsPointer))
 			{
 				window.ToggleMaximize();
@@ -160,7 +138,6 @@ namespace Graphite {
 
 	void TitleBar::RenderLogo(Core::Window& window)
 	{
-		// A system caption shows the icon itself.
 		if (!window.HasCustomTitleBar())
 		{
 			return;
@@ -170,19 +147,11 @@ namespace Graphite {
 		const float height = std::round(rowHeight * kLogoHeightRatio);
 		const float width = LogoWidth(height);
 
-		// Starts where the bar's cursor does, which is the window padding everything below
-		// the bar is inset by, so the mark lines up with the left edge of the panels. Placed
-		// against the row rather than the cursor in y, which BeginMenuBar() has already moved
-		// down by the frame padding.
 		const ImVec2 origin(ImGui::GetWindowPos().x + ImGui::GetCursorPosX(), ImGui::GetWindowPos().y);
-		DrawLogo(ImGui::GetWindowDrawList(), ImVec2(origin.x + width * 0.5f, origin.y + rowHeight * 0.5f),
-				 height);
+		DrawLogo(ImGui::GetWindowDrawList(), ImVec2(origin.x + width * kHalf, origin.y + rowHeight * kHalf), height);
 
-		// The menu bar lays out horizontally, so this moves the menus along after the mark.
-		// Two item spacings apart, the same gap BeginMenu() leaves between one menu's title
-		// and the next: the bar adds one spacing after this item and the menu half of one
-		// before its title, so the dummy carries the remaining half.
-		ImGui::Dummy(ImVec2(width + ImGui::GetStyle().ItemSpacing.x * 0.5f, 0.0f));
+		const float halfItemSpacing = ImGui::GetStyle().ItemSpacing.x * kHalf;
+		ImGui::Dummy(ImVec2(width + halfItemSpacing, 0.0f));
 	}
 
 	void TitleBar::Render(Core::Window& window)
@@ -197,13 +166,10 @@ namespace Graphite {
 
 		const float menuEnd = ImGui::GetCursorPosX();
 
-		// BeginMenuBar() does not open a child window — it repositions the cursor of the
-		// dockspace host window that is already current, so this is that host window's
-		// width, which is exactly the width the row spans.
-		const float barWidth = ImGui::GetWindowWidth();
+		const float dockspaceHostWidth = ImGui::GetWindowWidth();
 
 		const Core::CaptionLayout layout = Core::LayOutCaption(
-			barWidth, Core::Scaled(kCaptionHeight), Core::Scaled(kButtonWidth), versionWidth, Core::Scaled(kVersionGap), menuEnd);
+			dockspaceHostWidth, Core::Scaled(kCaptionHeight), Core::Scaled(kButtonWidth), versionWidth, Core::Scaled(kVersionGap), menuEnd);
 
 		if (layout.VersionVisible)
 		{

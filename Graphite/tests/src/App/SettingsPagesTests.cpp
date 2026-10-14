@@ -38,7 +38,10 @@
 
 namespace {
 
-	// Every object the application hands the settings pages, as test doubles where it has them.
+	constexpr float kPanelHeight = 700.0f;
+	constexpr float kWidePanelWidth = 1100.0f;
+	constexpr float kNarrowPanelWidth = 600.0f;
+
 	struct ApplicationParts
 	{
 		TempDirectory Temp;
@@ -131,14 +134,13 @@ namespace {
 	{
 		Core::Animation::BeginFrame();
 		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-		ImGui::SetNextWindowSize(ImVec2(width, 700.0f));
+		ImGui::SetNextWindowSize(ImVec2(width, kPanelHeight));
 		ImGui::Begin("Settings");
 		panel.OnImGuiRender();
 		ImGui::End();
 	}
 
-	// Empty for a file that does not exist: a settings file nothing was ever written to.
-	std::string ReadText(const std::filesystem::path& file)
+	std::string ReadTextOrEmptyWhenMissing(const std::filesystem::path& file)
 	{
 		std::ifstream stream{file, std::ios::binary};
 		std::ostringstream text;
@@ -147,8 +149,7 @@ namespace {
 	}
 
 	const std::vector<std::vector<std::string>> kEveryPagePath{
-		{"appearance"}, {"keyBindings"}, {"languageServers", "Cpp"}, {"languageServers", "CSharp"}, {"languageServers", "backgroundAnalysis"},
-		{"trustedFolders"}, {"editor"}, {"explorer"}, {"findInFiles"}, {"git"}, {"terminal"}, {"claudeSessions"}};
+		{"appearance"}, {"keyBindings"}, {"languageServers", "Cpp"}, {"languageServers", "CSharp"}, {"languageServers", "backgroundAnalysis"}, {"trustedFolders"}, {"editor"}, {"explorer"}, {"findInFiles"}, {"git"}, {"terminal"}, {"claudeSessions"}};
 
 	void DrawEveryPageAndSearch(Graphite::SettingsPanel& panel, ImGuiFrames& frames)
 	{
@@ -156,15 +157,15 @@ namespace {
 		{
 			CAPTURE(path.back());
 			REQUIRE(panel.Open(path));
-			frames.Next([&panel] { DrawInWindow(panel, 1100.0f); });
-			frames.Next([&panel] { DrawInWindow(panel, 600.0f); });
+			frames.Next([&panel] { DrawInWindow(panel, kWidePanelWidth); });
+			frames.Next([&panel] { DrawInWindow(panel, kNarrowPanelWidth); });
 		}
 
 		for (const char* query : {"wrap", "git", "colour", "server"})
 		{
 			panel.SetQuery(query);
-			frames.Next([&panel] { DrawInWindow(panel, 1100.0f); });
-			frames.Next([&panel] { DrawInWindow(panel, 600.0f); });
+			frames.Next([&panel] { DrawInWindow(panel, kWidePanelWidth); });
+			frames.Next([&panel] { DrawInWindow(panel, kNarrowPanelWidth); });
 		}
 	}
 }
@@ -214,19 +215,18 @@ TEST_CASE("Every page draws inside the panel, and the search over all of them, w
 	CHECK(panel.IsSearching());
 }
 
-// The pages only show what is stored; nothing is written until a control is used.
-TEST_CASE("Drawing and searching every page writes nothing to graphite.json")
+TEST_CASE("Drawing and searching every page writes nothing to graphite.json, since nothing is written until a control is used")
 {
 	ApplicationParts parts;
 	parts.Settings.Get().Flush();
-	const std::string before = ReadText(parts.Settings.GetFile());
+	const std::string before = ReadTextOrEmptyWhenMissing(parts.Settings.GetFile());
 	Graphite::SettingsPanel panel{Graphite::BuildSettingsDirectory(parts.Sources()), parts.Scheme};
 	ImGuiFrames frames;
 
 	DrawEveryPageAndSearch(panel, frames);
 	parts.Settings.Get().Flush();
 
-	CHECK(ReadText(parts.Settings.GetFile()) == before);
+	CHECK(ReadTextOrEmptyWhenMissing(parts.Settings.GetFile()) == before);
 }
 
 TEST_CASE("Searching for a command's name or a word of its shortcut lists it under Key Bindings")

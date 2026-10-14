@@ -8,8 +8,6 @@
 
 TEST_CASE("The licences text is never empty, whether or not the notices file sits next to the executable")
 {
-	// The test executable has no notices file beside it, so this is the graceful path; where
-	// the file is present the text is the file. Either way the dialog has something to show.
 	const std::string notices = Graphite::AboutDialog::LoadNotices();
 
 	CHECK_FALSE(notices.empty());

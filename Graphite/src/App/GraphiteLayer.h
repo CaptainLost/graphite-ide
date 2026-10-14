@@ -82,14 +82,13 @@ namespace Graphite {
 	class GraphiteLayer final : public Core::Layer
 	{
 	public:
-		// `settings` is the application's, and outlives the layer: the layer reads and changes it, and
-		// writes it at the end of every frame that changed it.
+		// WARNING: `settings` must outlive the layer, which reads it, changes it and writes it at the end of every frame that changed it.
 		GraphiteLayer(Core::Ref<Core::RingBufferSink> sink, std::filesystem::path initialFolder,
 					  AppSettings& settings);
 
 		void OnAttach() override;
 		void OnDetach() override;
-		void OnUpdate(Core::Timestep ts) override;
+		void OnUpdate(Core::Timestep timestep) override;
 		void OnImGuiRender() override;
 		void OnEvent(Core::Event& event) override;
 
@@ -102,14 +101,12 @@ namespace Graphite {
 			CloseWorkspace
 		};
 
-		// The part of a drop that replaces the workspace, kept while the user is asked
-		// whether it may. Comparable because ModalQuestion refuses to queue a question it is
-		// already asking, and dropping the same folder twice is one question.
 		struct DroppedWorkspace
 		{
 			DropTarget Target = DropTarget::None;
 			std::filesystem::path Root;
 
+			// WARNING: Comparable because ModalQuestion refuses to queue a question it is already asking.
 			bool operator==(const DroppedWorkspace&) const = default;
 		};
 
@@ -151,14 +148,17 @@ namespace Graphite {
 
 		void ListModifiedDocuments() const;
 
+		bool IsDocumentOpen(const std::filesystem::path& path) const;
+
+		bool IsDocumentShown(const std::filesystem::path& path) const;
+
 		ClosePurpose AskedPurposeOrExit() const;
 
-		void UpdateFocusReload(Core::Timestep ts);
+		void UpdateFocusReload(Core::Timestep timestep);
 
 		void ApplyChromeIfSchemeChanged();
 
-		// Rebuilds the git decorations when GitModel holds a different status snapshot, and hands
-		// this frame's view of them to the Explorer. Before the panels render.
+		// WARNING: Call before the panels render, because the Explorer is handed this frame's view of the decorations.
 		void UpdateGitDecorations();
 
 		void RevealPanel(std::string_view id);
@@ -174,15 +174,10 @@ namespace Graphite {
 
 		GlobalState CaptureGlobalState();
 
-		// The open folder's file tabs, session windows and diff windows, as one snapshot.
 		WorkspaceState CaptureWorkspaceState() const;
 
-		// Hands a new branch snapshot to the reviews: renames followed by tabs and sessions alike,
-		// sessions of gone branches dropped, and every range asked again.
 		void FollowBranchesIntoReviews();
 
-		// What the Git window's branch menu offers about reviewing `branch`; nothing before the
-		// first branch snapshot.
 		ReviewMenu ReviewMenuOfBranch(const Core::Branch& branch) const;
 		void ApplyReviewMenuItem(const ReviewMenuItem& item);
 		std::string ReviewBadgeOfBranch(const Core::Branch& branch);
@@ -199,123 +194,96 @@ namespace Graphite {
 		Core::Ref<Core::RingBufferSink> m_Sink;
 		std::filesystem::path m_InitialFolder;
 
-		// Before every member below that holds it: they are all constructed from this reference.
+		// WARNING: Declared before every member below that holds it, because they are all constructed from this reference.
 		AppSettings& m_AppSettings;
 
 		Core::EventBus m_Events;
 
-		// Keyboard input that reached neither a panel nor the shortcut router, kept for the
-		// editors to read while they draw.
 		Core::FrameInput m_FrameInput;
 
 		Workspace m_Workspace{m_Events, m_AppSettings};
 		Core::DocumentSet m_Documents;
 
-		// Before m_LanguageServices, whose root permission reads it, so it is destroyed after.
+		// WARNING: Declared before m_LanguageServices, whose root permission reads it, so it is destroyed after.
 		WorkspaceTrust m_Trust{UserDirectories::TrustedFoldersFile()};
 
-		// Declared after m_Workspace so its fallback root can read m_Workspace's — member
-		// initialisers run in declaration order regardless of the order they are listed in.
-		// Owns every language server the editor talks to; the status bar reads its state each
-		// frame through StatusFor.
+		// WARNING: Declared after m_Workspace, because its fallback root reads m_Workspace's;
+		// member initialisers run in declaration order regardless of the order they are listed in.
 		LanguageServices m_LanguageServices{m_Workspace.GetRoot()};
 
-		// Before m_ServerInstalls, so it is destroyed after it: the installer cancels its jobs, then this joins them.
+		// WARNING: Declared before m_ServerInstalls so it is destroyed after it: the installer cancels its jobs, then this joins them.
 		Core::JobQueue m_InstallJobs{1};
 		ServerInstalls m_ServerInstalls{CreateInstallClient(), UserDirectories::ServersDirectory(),
 										[this](std::function<void()> job) { m_InstallJobs.Submit(std::move(job)); }};
 
-		// Not now hides a language's bar until Graphite restarts.
-		std::set<LanguageId> m_DismissedLanguagePrompts;
+		std::set<LanguageId> m_LanguagePromptsDismissedUntilRestart;
 
-		// Declared after m_LanguageServices, which fills it each frame in OnImGuiRender, and
-		// before m_DocumentWindows and m_Panels, both of which hold this by reference: the model
-		// must outlive every reader of it through teardown.
+		// WARNING: Declared after m_LanguageServices, which fills it each frame, and before
+		// m_DocumentWindows and m_Panels, which hold it by reference and read it through teardown.
 		DiagnosticsModel m_Diagnostics;
 
 		ModalGate m_Modals;
 
-		// Declared after m_LanguageServices, which the port forwards to, and before
-		// m_DocumentWindows and m_Panels, both of which hold this by reference.
+		// WARNING: Declared after m_LanguageServices, which the port forwards to, and before
+		// m_DocumentWindows and m_Panels, which hold the preview members by reference.
 		LanguageServicesPort m_PreviewPort{m_LanguageServices};
 		PreviewSemantics m_PreviewSemantics{m_PreviewPort};
 
-		// What m_DocumentWindows asks the servers through. Declared after m_LanguageServices,
-		// which it forwards to, and before m_DocumentWindows, which holds it by reference.
+		// WARNING: Declared after m_LanguageServices, which it forwards to, and before m_DocumentWindows, which holds it by reference.
 		DocumentServicesPort m_DocumentPort{m_LanguageServices};
 
-		// Read by the background analysis page, which m_Panels owns, so this is declared before m_Panels for
-		// the same reason m_EditorSettings is.
+		// WARNING: Declared before m_Panels, which owns the background analysis page that reads it.
 		AnalysisSettings m_AnalysisSettings{m_AppSettings};
 
-		// Ahead of both its producers, so it outlives them: m_AnalysisCoordinator's pass writes
-		// entries into it and m_DocumentWindows reads them back when a tab opens, and either
-		// holding a reference to a destroyed cache is the failure this order prevents.
-		AnalysisCache m_Analysis{AnalysisSettings::kDefaultBudgetMegabytes * 1024ull * 1024ull};
+		// WARNING: Declared ahead of both its producers, m_AnalysisCoordinator and m_DocumentWindows,
+		// so that neither is left holding a reference to a destroyed cache.
+		AnalysisCache m_Analysis{AnalysisSettings::kDefaultBudgetMegabytes * AnalysisSettings::kBytesPerMegabyte};
 
-		// The reader's worker, declared before the coordinator whose pass asks it for text, so the
-		// requests stop arriving before the thread is joined.
+		// WARNING: Declared before the coordinator whose pass asks it for text, so the requests stop arriving before the thread is joined.
 		DiskFileTexts m_AnalysisTexts;
 
-		// Declared after m_LanguageServices, which both ports forward to, and before
-		// m_AnalysisCoordinator, which holds them: the pass closes whatever it had open from its
-		// own destructor, so the ports and the servers behind them must both still be there.
+		// WARNING: Declared after m_LanguageServices, which both ports forward to, and before
+		// m_AnalysisCoordinator: the pass closes its open documents from its own destructor,
+		// so the ports and the servers behind them must both still be there.
 		WorkspaceAnalysisServicesPort m_AnalysisPort{m_LanguageServices};
 		LanguageServicesWorkspacePort m_AnalysisServers{m_LanguageServices};
 
-		// Owns the background analysis - its store, its pass and its walk, in that order inside
-		// it - and notices the folder, its trust and the setting changing. After everything it
-		// holds a reference to (the ports and the reader just above, m_Analysis further up), so
-		// all of them outlive it. Before m_DocumentWindows, which holds its store and its pass by
-		// reference and reads both back whenever a tab opens: declared first, it is destroyed
-		// last, so neither reference can dangle. Inside it the walk is destroyed first, joining
-		// its thread before the pass it feeds goes away, and the store last, after the pass that
-		// writes into it.
+		// WARNING: Declared after everything it holds a reference to (the ports, m_AnalysisTexts, m_Analysis)
+		// and before m_DocumentWindows, which holds its store and its pass by reference and reads both whenever
+		// a tab opens, so neither reference can dangle.
 		WorkspaceAnalysisCoordinator m_AnalysisCoordinator{m_AnalysisServers, m_AnalysisPort,
 														   m_AnalysisTexts, m_Analysis};
 
-		// Tabs a context menu asked to close, taken by their owners on the next frame.
 		Core::TabCloseRequests m_TabCloseRequests;
 
-		// Declared after m_DocumentPort, which it holds by reference: it opens each document
-		// with the matching server and feeds the reference-count rows from the answers. After
-		// m_Analysis and m_AnalysisCoordinator too, whose cache, store and pass it holds by
-		// reference.
-		//
-		// m_ChangeMarkers is declared further down, with the git group, and so is not yet
-		// constructed here. That is fine: only a reference to it is bound, and nothing reaches
-		// through that reference until the first frame.
+		// WARNING: Declared after m_DocumentPort, m_Analysis and m_AnalysisCoordinator, which it holds by reference.
+		// m_ChangeMarkers is declared further down and is not yet constructed here; only a reference to it
+		// is bound, and nothing reaches through that reference until the first frame.
 		DocumentWindows m_DocumentWindows{m_Documents, m_Modals, m_DocumentPort,
 										  m_Diagnostics, m_ChangeMarkers, m_PreviewSemantics,
 										  m_Analysis, m_AnalysisCoordinator.GetStore(),
 										  m_AnalysisCoordinator.GetPass(), m_Events};
 
-		// The Git panel's view of the editor, over the two members above. Declared after both
-		// and before m_Panels, where GitView holds it by reference.
+		// WARNING: Declared after m_Documents and m_DocumentWindows and before m_Panels, where GitView holds it by reference.
 		DocumentBuffers m_DocumentBuffers{m_Documents, m_DocumentWindows};
 
-		// Declared before m_Panels, like m_Workspace and m_Documents above: SearchPanel holds
-		// references to both, so both must outlive it through teardown.
+		// WARNING: Declared before m_Panels, because SearchPanel holds references to m_Workspace, m_Documents,
+		// m_Search and m_SearchSettings, and a member declared after m_Panels is destroyed first.
 		SearchService m_Search;
 		SearchSettings m_SearchSettings{m_AppSettings};
 
-		// Declared before m_Panels for the same reason as m_Search: FindInFilesPage holds a
-		// reference to this, and a member declared after m_Panels would be destroyed first.
-		// Read by FindInFilesPage to grey out "projects only" when there is nothing to limit to,
-		// and updated every frame rather than reached for through Workspace: a page knows
-		// nothing about Workspace, by design.
+		// WARNING: Declared before m_Panels, because FindInFilesPage holds a reference to it.
 		bool m_SolutionLoaded = false;
 
-		// Declared before m_Panels for the same reason as m_Search: SearchPanel holds a
-		// reference to each — it previews a file in the editor's font, at the editor's tab
-		// width, in the editor's colours — and a member declared after m_Panels would be
-		// destroyed while the panel still held it.
+		// WARNING: Declared before m_Panels, because SearchPanel holds a reference to each
+		// and a member declared after m_Panels is destroyed while the panel still holds it.
 		EditorSettings m_EditorSettings{m_AppSettings};
 		ActiveScheme m_ActiveScheme;
 
-		// The scheme version the chrome was last painted from. Zero is "never", and
-		// ActiveScheme starts at one, so the first frame always applies.
-		std::uint32_t m_AppliedSchemeVersion = 0;
+		static constexpr std::uint32_t kSchemeNeverApplied = 0;
+
+		// WARNING: ActiveScheme versions start at one, so the first frame always applies the scheme.
+		std::uint32_t m_AppliedSchemeVersion = kSchemeNeverApplied;
 
 		static constexpr const char* kUnsavedWorkTitle = "Unsaved changes##ExitUnsavedWork";
 
@@ -330,29 +298,13 @@ namespace Graphite {
 
 		static constexpr const char* kTrustParentTitle = "Trust all folders##TrustParentFolders";
 
-		// The parent folder the user asked to trust whole, kept while they are asked to confirm.
 		ModalQuestion<std::filesystem::path> m_TrustParentQuestion;
 
-		// Declared before m_Panels for the same reason as m_Search: the git views will hold
-		// references to these.
-		//
-		// The order among these five is not the declaration order the naive reading suggests.
-		// Every job GitModel submits captures `this`, so the queue behind the submitter must
-		// be destroyed - and its workers joined - before the model goes away, and the port
-		// must outlive every query a worker might still be running against it. Members are
-		// destroyed in reverse declaration order, so m_Jobs is declared LAST of the five: its
-		// destructor runs FIRST, joining every worker before m_Git, m_ChangeMarkers, m_Reviews or
-		// m_GitPort can be torn down. Declaring m_Jobs first would compile without complaint and fail only under
-		// real threading, when a worker is mid-query as the model it points into disappears.
-		// m_ChangeMarkers sits with m_Git before m_Jobs for the same reason: every job it submits
-		// captures `this` and reads the port as a ChangeBasePort. m_Reviews sits with them for the
-		// same reason: every job it submits captures this and reads the port as a ReviewPort.
-		//
-		// m_Events, declared far above, is a related trap: it is destroyed AFTER m_Git even
-		// though m_Git subscribes handlers into it that capture `this`. That is not reachable
-		// today - nothing publishes from a destructor and EventBus has no unsubscribe - but a
-		// member declared between m_Events and this group must not change that, so it is
-		// recorded here rather than left for the next reader to rediscover.
+		// WARNING: Declared before m_Panels, which constructs the git views that hold references to these.
+		// The order among these five is deliberate. Every job that GitModel, ChangeMarkersModel and ReviewModel
+		// submit captures `this` and reads m_GitPort, so m_Jobs is declared LAST of the five:
+		// members are destroyed in reverse order, which joins every worker before the models and the port go away.
+		// Declaring m_Jobs first compiles and fails only under real threading.
 		RepositoryGitPort m_GitPort{std::filesystem::path{}};
 		GitModel m_Git{m_GitPort,
 					   [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
@@ -362,41 +314,31 @@ namespace Graphite {
 							  WatchWithDirectoryWatcher()};
 		Core::JobQueue m_Jobs;
 
-		// GitModel's applied-write count as OnUpdate last saw it. A change means this process
-		// moved HEAD or the index itself, and the change markers are told directly rather than
-		// left to the file watcher.
+		// WARNING: m_Events is destroyed after m_Git although m_Git subscribes handlers into it that capture `this`.
+		// That is unreachable today, because nothing publishes from a destructor and EventBus has no unsubscribe;
+		// a member declared between m_Events and the group above must not change that.
 		std::uint64_t m_SeenGitWrites = 0;
 
-		// The trees' git decorations and the status snapshot they were built from. Rebuilt only
-		// when GitModel hands out a different snapshot, never per frame. Declared before
-		// m_Panels: the Explorer holds a pointer into m_Decorations between rebuilds.
+		// WARNING: Declared before m_Panels, because the Explorer holds a pointer into m_Decorations between rebuilds.
 		Core::Ref<const Core::WorkingTreeStatus> m_DecoratedStatus;
 		std::unique_ptr<GitDecorations> m_Decorations;
 		std::uint64_t m_DecorationsVersion = 0;
 
-		// Holds no reference to m_Git or the queue above, so its place in this group is only
-		// about outliving what refers to it: GitView takes a DiffWindows&, so this must be
-		// declared before m_Panels, which is where GitView is constructed.
+		// WARNING: Declared before m_Panels, where GitView, which takes a DiffWindows&, is constructed.
 		DiffWindows m_DiffWindows;
 
-		// Beside the diff tabs and for the same reason: they are drawn by this layer, whichever
-		// panel has focus. GitView reaches them only through callbacks bound to this layer.
 		ReviewWindows m_ReviewWindows{m_Modals};
 		ReviewStore m_ReviewStore;
 		ReviewBadges m_ReviewBadges;
 
-		// The branch snapshot the reviews last followed. A different one may mean a branch moved,
-		// was renamed or is gone.
 		Core::Ref<const std::vector<Core::Branch>> m_ReviewedBranches;
 
-		// Before m_Panels: SessionsPanel holds a reference to each, and ClaudeSessionsPage to the
-		// settings. m_SessionWindows owns a worker per open session; those join in its own
-		// destructor, and nothing it refers to is declared after it.
+		// WARNING: Declared before m_Panels, because SessionsPanel holds a reference to each and ClaudeSessionsPage to the settings.
+		// m_SessionWindows joins a worker per open session in its own destructor, and nothing it refers to is declared after it.
 		ClaudeSettings m_ClaudeSettings{m_AppSettings};
 		SessionWindows m_SessionWindows{m_Events, m_ClaudeSettings};
 
-		// Before m_Panels: GitView holds a reference to it. The one owner of the toasts;
-		// anything that reports through one is handed this by reference.
+		// WARNING: Declared before m_Panels, because GitView holds a reference to m_Toasts.
 		Core::Toasts m_Toasts;
 		NotificationHistory m_Notifications;
 		NotificationsPopup m_NotificationsPopup;
@@ -409,22 +351,18 @@ namespace Graphite {
 
 		Core::Keymap m_Keys;
 
-		// After m_Keys and m_Workspace, which it refers to. Owns a reader thread per terminal;
-		// they join in its destructor.
+		// WARNING: Declared after m_Keys and m_Workspace, which it refers to; it joins a reader thread per terminal in its destructor.
 		TerminalWindows m_Terminals{m_Workspace, m_Keys, m_Commands, m_AppSettings, m_Events};
 
-		// After every member whose commands it holds - each captures its owner, `this` or a
-		// panel - so it is destroyed before any of them and no stored command outlives what it
-		// points into. Nothing reads it from a member initialiser; commands are registered in
-		// the constructor's body, once every member exists.
+		// WARNING: Declared after every member whose commands it holds, because each command captures its owner,
+		// so it is destroyed before any of them. Nothing reads it from a member initialiser;
+		// commands are registered in the constructor's body, once every member exists.
 		Core::CommandRegistry m_Commands;
 		Core::ShortcutRouter m_Router;
 		Core::MenuBar m_MenuBar;
 
 		std::vector<Core::MenuItem> m_MenuTree;
 
-		// The text editors' right-click menu. Built once and handed to every editor through
-		// CommandContext, so the widget draws commands without naming any.
 		std::vector<Core::MenuItem> m_EditorContextMenu = BuildEditorContextMenu();
 
 		ExplorerPanel* m_Explorer = nullptr;

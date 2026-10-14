@@ -26,7 +26,6 @@ namespace Graphite {
 	class TerminalWindows;
 	class WorkspaceTrust;
 
-	// Everything the settings pages read and change. The application owns all of it.
 	struct SettingsSources
 	{
 		AppSettings& Store;
@@ -48,7 +47,5 @@ namespace Graphite {
 		std::function<void()> OnKeyBindingsChanged;
 	};
 
-	// The sidebar's groups in order. A page is named as the View menu names the part of the window
-	// it configures.
 	SettingsDirectory BuildSettingsDirectory(const SettingsSources& sources);
 }

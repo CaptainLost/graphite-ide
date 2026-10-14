@@ -6,9 +6,6 @@
 
 #include <filesystem>
 
-// An AppSettings over graphite.json in a fresh temporary directory, so a case starts from the
-// defaults and never touches the settings of whoever runs the suite. Nothing is written until a
-// case calls Flush; Reload stands in for the next launch.
 class TempAppSettings
 {
 public:
@@ -16,7 +13,6 @@ public:
 
 	const std::filesystem::path& GetFile() const { return m_File; }
 
-	// Writes what is held and reads it back into a fresh instance, as a restart would.
 	Graphite::AppSettings& Reload()
 	{
 		m_Settings.Flush();

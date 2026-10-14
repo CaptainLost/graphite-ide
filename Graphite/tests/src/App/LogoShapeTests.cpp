@@ -24,13 +24,11 @@ TEST_CASE("LogoShape: the embedded logo is its six faces without the disc")
 
 	REQUIRE(shape.Faces.size() == 6);
 
-	// The faces' bounds, well inside the disc's 22..1002.
 	CHECK(shape.Min.x == doctest::Approx(221.8f));
 	CHECK(shape.Max.x == doctest::Approx(802.2f));
 	CHECK(shape.Min.y == doctest::Approx(176.9f));
 	CHECK(shape.Max.y == doctest::Approx(847.1f));
 
-	// The first face is the left one, shaded by its user-space gradient's end stops.
 	CHECK(shape.Faces[0].Points.size() == 6);
 	CHECK(shape.Faces[0].From.x == doctest::Approx(248.0f));
 	CHECK(shape.Faces[0].To.y == doctest::Approx(811.0f));
@@ -47,7 +45,7 @@ TEST_CASE("LogoShape: a flat fill gives both ends one colour")
 	CHECK(shape.Faces[0].ToColour == shape.Faces[0].FromColour);
 }
 
-TEST_CASE("LogoShape: a gradient in bounding-box units spans the face it fills")
+TEST_CASE("LogoShape: a gradient in bounding-box units spans the face it fills and keeps only its first and last stops")
 {
 	const LogoShape shape = ParseLogoSvg(Svg(
 		R"svg(<defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">)svg"
@@ -61,7 +59,6 @@ TEST_CASE("LogoShape: a gradient in bounding-box units spans the face it fills")
 	CHECK(shape.Faces[0].To.x == doctest::Approx(10.0f));
 	CHECK(shape.Faces[0].To.y == doctest::Approx(60.0f));
 
-	// The middle stop is dropped.
 	CHECK(shape.Faces[0].FromColour == IM_COL32(0x00, 0x00, 0x00, 0xff));
 	CHECK(shape.Faces[0].ToColour == IM_COL32(0xff, 0xff, 0xff, 0xff));
 }
@@ -76,16 +73,25 @@ TEST_CASE("LogoShape: a circle is background and left out")
 	CHECK(shape.Max.y == doctest::Approx(40.0f));
 }
 
-TEST_CASE("LogoShape: a path the reader cannot follow empties the whole shape")
+TEST_CASE("LogoShape: a curve, a relative command, a second outline, an unknown gradient or an odd coordinate empties the whole shape")
 {
-	const std::string good = R"svg(<path d="M10 10 L50 10 L50 40 Z" fill="#ffffff"/>)svg";
+	const std::string validFace = R"svg(<path d="M10 10 L50 10 L50 40 Z" fill="#ffffff"/>)svg";
 
-	// A curve, a relative command, a second outline, an unknown gradient, an odd coordinate.
-	CHECK(ParseLogoSvg(Svg(good + R"svg(<path d="M0 0 C1 1 2 2 3 3 Z" fill="#ffffff"/>)svg")).Faces.empty());
-	CHECK(ParseLogoSvg(Svg(good + R"svg(<path d="M0 0 l10 0 l0 10 Z" fill="#ffffff"/>)svg")).Faces.empty());
-	CHECK(ParseLogoSvg(Svg(good + R"svg(<path d="M0 0 L1 0 L1 1 Z M5 5 L6 5 L6 6 Z" fill="#ffffff"/>)svg")).Faces.empty());
-	CHECK(ParseLogoSvg(Svg(good + R"svg(<path d="M0 0 L1 0 L1 1 Z" fill="url(#missing)"/>)svg")).Faces.empty());
-	CHECK(ParseLogoSvg(Svg(good + R"svg(<path d="M0 0 L1 0 L1 Z" fill="#ffffff"/>)svg")).Faces.empty());
+	CHECK(ParseLogoSvg(Svg(validFace + R"svg(<path d="M0 0 C1 1 2 2 3 3 Z" fill="#ffffff"/>)svg")).Faces.empty());
+	CHECK(ParseLogoSvg(Svg(validFace + R"svg(<path d="M0 0 l10 0 l0 10 Z" fill="#ffffff"/>)svg")).Faces.empty());
+	CHECK(ParseLogoSvg(Svg(validFace + R"svg(<path d="M0 0 L1 0 L1 1 Z M5 5 L6 5 L6 6 Z" fill="#ffffff"/>)svg")).Faces.empty());
+	CHECK(ParseLogoSvg(Svg(validFace + R"svg(<path d="M0 0 L1 0 L1 1 Z" fill="url(#missing)"/>)svg")).Faces.empty());
+	CHECK(ParseLogoSvg(Svg(validFace + R"svg(<path d="M0 0 L1 0 L1 Z" fill="#ffffff"/>)svg")).Faces.empty());
+}
+
+TEST_CASE("LogoShape: faces keep the order of the document, so a later face paints over an earlier one")
+{
+	const LogoShape shape = ParseLogoSvg(Svg(R"svg(<path d="M10 10 L50 10 L50 40 Z" fill="#111111"/>)svg"
+											 R"svg(<path d="M20 20 L60 20 L60 50 Z" fill="#222222"/>)svg"));
+
+	REQUIRE(shape.Faces.size() == 2);
+	CHECK(shape.Faces[0].FromColour == IM_COL32(0x11, 0x11, 0x11, 0xff));
+	CHECK(shape.Faces[1].FromColour == IM_COL32(0x22, 0x22, 0x22, 0xff));
 }
 
 TEST_CASE("LogoShape: text that is not XML gives no faces")

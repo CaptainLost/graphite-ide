@@ -35,6 +35,8 @@
 #include "Persistence/RestrictedRestore.h"
 
 #include <format>
+#include <functional>
+
 #include <optional>
 
 #include "Search/SearchPanel.h"
@@ -90,13 +92,16 @@
 namespace Graphite {
 
 	namespace {
-		// The main window alone, not the process: a stale-content sweep only makes sense for
-		// the window whose editors are on screen. ImGuiIO::AppFocusLost is not this — the
-		// backend sets it on focus *loss*, so it fires as the user leaves rather than as they
-		// come back.
+		// WARNING: ImGuiIO::AppFocusLost cannot stand in for this: the backend sets it on focus loss, so it fires as the user leaves rather than as they come back.
 		bool MainWindowHasFocus()
 		{
 			return Core::Application::Get().GetWindow().IsFocused();
+		}
+
+		bool IsDirectoryOnDisk(const std::filesystem::path& path)
+		{
+			std::error_code code;
+			return std::filesystem::is_directory(path, code);
 		}
 
 		std::optional<ServerJob> ServerJobFor(const ServerInstalls& installs, const ServerDefinition& server)
@@ -138,15 +143,10 @@ namespace Graphite {
 	{
 		m_Layout.Left = {"files", "changes"};
 
-		// Beside the console rather than floating: a results list is something you read while
-		// looking at the code it points into, which is what the bottom row is for. Without an
-		// entry here a panel has nowhere to land and opens as a window of its own.
+		// WARNING: A panel absent from every layout list has nowhere to land and opens as a window of its own.
 		m_Layout.Bottom = {"console", "problems", "search", "references"};
 		m_Layout.Center = {"settings", "git", "sessions"};
 
-		// Only when the caption is ours to draw: the window is allowed to refuse to hide the
-		// system one, and then TitleBar::Render draws nothing and the taller row would be
-		// empty. The layer is constructed after Window::Create, so the window can answer.
 		m_CustomTitleBar = Core::Application::Get().GetWindow().HasCustomTitleBar();
 	}
 
@@ -156,7 +156,7 @@ namespace Graphite {
 			static_cast<float>(m_AppSettings.GetInterfaceScalePercent()) / 100.0f);
 
 		const Core::JobSubmitter submitToSharedQueue = [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); };
-		auto* explorer = m_Panels.Add(
+		ExplorerPanel* explorer = m_Panels.Add(
 			Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents, m_AppSettings, m_Events, submitToSharedQueue));
 		m_Explorer = explorer;
 
@@ -172,10 +172,9 @@ namespace Graphite {
 
 		m_Panels.Add(Core::CreateScope<ProblemsPanel>(m_Diagnostics, m_Documents, m_ActiveScheme));
 
-		// Permanent, not a preview: pressing a button to open the file is as deliberate as
-		// choosing "Open File" from the Changes panel's menu.
 		m_DiffWindows.OpenFile = [this](const std::filesystem::path& path) {
-			m_DocumentWindows.RequestOpen(path, true);
+			const bool permanentTab = true;
+			m_DocumentWindows.RequestOpen(path, permanentTab);
 		};
 
 		m_DiffWindows.OnCopied = [this](std::string_view text) {
@@ -195,12 +194,11 @@ namespace Graphite {
 			CopyToClipboard(m_Events, what, text);
 		};
 
-		// m_Toasts.OnCopied is left unset: Copy in a toast's menu only fills the clipboard. A
-		// "Copied" toast raised by copying a toast would be a toast about a toast.
+		// WARNING: m_Toasts.OnCopied stays unset, because a Copied toast raised by copying a toast would be a toast about a toast.
 
-		auto* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_EditorSettings,
-																m_DiffWindows, m_Modals, m_DocumentBuffers,
-																m_Events));
+		GitView* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_EditorSettings,
+																   m_DiffWindows, m_Modals, m_DocumentBuffers,
+																   m_Events));
 		gitView->Subscribe();
 
 		gitView->ReviewMenuOf = [this](const Core::Branch& branch) { return ReviewMenuOfBranch(branch); };
@@ -232,22 +230,16 @@ namespace Graphite {
 		m_Terminals.RegisterCommands(m_Commands, m_Keys);
 		RegisterApplicationCommands();
 
-		// After every default registered above, so an override shadows the binding it
-		// replaces rather than being shadowed by it.
+		// WARNING: Apply the overrides after every default is registered, so an override shadows the binding it replaces.
 		m_AppSettings.ApplyKeyBindings(m_Keys);
 
-		// Before any document opens: a choice is read at the first query for a language, and again after Reconfigure.
+		// WARNING: Set both providers before any document opens: a server choice is read at the first query for a language, and the first EnsureStarted is where a refused root must already be refused.
 		m_LanguageServices.SetChoiceProvider([this](LanguageId language) { return ReadServerChoice(m_AppSettings, language); });
 		m_LanguageServices.SetUninstallingQuery([this](std::string_view serverId) { return m_ServerInstalls.RunningJobOf(serverId) == InstallJobKind::Uninstall; });
 
-		// Set before any document opens: the first
-		// EnsureStarted is where a refused root must already be refused (ADR 0532).
-		//
-		// Every root is judged by itself: LanguageServices gives a file with no marker above it the
-		// open folder or its own directory as a root, never an empty one.
 		m_LanguageServices.SetRootPermission([this](const std::filesystem::path& root) { return m_Trust.IsTrusted(root); });
 
-		// Before OpenStartupFolder, whose warm-up may start a server from Graphite's install.
+		// WARNING: Set the servers directory before OpenStartupFolder, whose warm-up may start a server from Graphite's install.
 		m_LanguageServices.SetServersDirectory(m_ServerInstalls.GetServersDirectory());
 		m_LanguageServices.SetLogDirectory(UserDirectories::LogFile().parent_path());
 		m_LanguageServices.SetTemporaryFilesDirectory(UserDirectories::ServerTemporaryFilesDirectory());
@@ -275,7 +267,6 @@ namespace Graphite {
 		ReportConflictingKeyBindings();
 		SubscribeToWorkspaceEvents();
 
-		// After every panel is registered and before the first frame draws any of them.
 		const GlobalState stored = m_AppSettings.GetGlobalState();
 
 		for (const auto& [id, visible] : stored.PanelVisibility)
@@ -293,32 +284,24 @@ namespace Graphite {
 		m_ActiveScheme.Load(m_AppSettings);
 		m_SearchSettings.Load();
 
-		// Beside the other settings, and before OpenStartupFolder below sets the root the first
-		// frame will start a walk for: a pass begun under the default budget and only then
-		// resized would evict its way down to the saved one for nothing.
+		// WARNING: Load these before OpenStartupFolder sets the root: a pass begun under the default budget and then resized would evict its way down to the saved one for nothing.
 		m_AnalysisSettings.Load();
 		m_Analysis.SetBudget(m_AnalysisSettings.GetBudgetBytes());
 		m_AnalysisCoordinator.GetPass().SetEnabled(m_AnalysisSettings.IsEnabled());
 
 		OpenStartupFolder();
 
-		// Last, after every command there is: the tree names ids, so one built earlier would
-		// draw a bar of disabled entries showing raw ids.
+		// WARNING: Build the menu tree last, after every command is registered: the tree names ids, and one built earlier would draw disabled entries showing raw ids.
 		m_MenuTree = BuildMenuTree();
 	}
 
 	void GraphiteLayer::RegisterApplicationCommands()
 	{
-		// "Workspace" rather than "Folder": closing drops the solution and the selection
-		// along with the folder.
 		m_Commands.Add({.Id = "workspace.close",
 						.Label = "Close Workspace",
 						.Run = [this] { RequestCloseConfirmation(ClosePurpose::CloseWorkspace); },
 						.Enabled = [this] { return m_Workspace.IsOpen(); }});
 
-		// Enabled only where the toggle can say something true: with a folder open, and not when
-		// an entry above the folder is what trusts it - revoking the folder itself would change
-		// nothing, and the Trusted Folders page is where that entry is.
 		m_Commands.Add({.Id = "workspace.toggleTrust",
 						.Label = "Trust This Folder",
 						.Run =
@@ -337,16 +320,13 @@ namespace Graphite {
 						.Enabled =
 							[this] {
 								const std::filesystem::path& root = m_Workspace.GetRoot();
-								return m_Workspace.IsOpen() && (!m_Trust.IsTrusted(root) || m_Trust.IsEntry(root));
+								const bool trustComesFromAnEntryAboveTheFolder = m_Trust.IsTrusted(root) && !m_Trust.IsEntry(root);
+								return m_Workspace.IsOpen() && !trustComesFromAnEntryAboveTheFolder;
 							},
 						.Checked = [this] { return m_Workspace.IsOpen() && m_Trust.IsTrusted(m_Workspace.GetRoot()); }});
 
-		// Through the window's close flag, not Application::Close(): the main loop only asks
-		// a layer's OnCloseRequested when Window::ShouldClose() is true, and Close() alone
-		// never sets it, so this is what puts Exit through the same question as Alt+F4.
-		//
-		// Alt+F4 is in the label rather than in the keymap: it is Windows' shortcut, and a
-		// binding for it would advertise something that cannot be rebound.
+		// WARNING: Exit goes through the window's close flag, not Application::Close(), because the main loop asks OnCloseRequested only when Window::ShouldClose() is true.
+		// WARNING: Alt+F4 is in the label rather than the keymap because it is Windows' shortcut and cannot be rebound.
 		m_Commands.Add({.Id = "app.exit",
 						.Label = "Exit\tAlt+F4",
 						.Run = [] { Core::Application::Get().GetWindow().RequestClose(); }});
@@ -364,22 +344,17 @@ namespace Graphite {
 							APP_INFO("Layout restored to the default");
 						}});
 
-		// Bound to nothing by default: there is no established chord for it yet, and a command
-		// with no binding is still reachable through the command palette and the panels menu.
 		m_Commands.Add({.Id = "search.focus",
 						.Label = "Find in Files",
 						.Run = [this] { m_SearchPanel->Focus(); }});
 
-		// The active document, not the focused one: which editor holds the keyboard is only
-		// knowable while drawing, and a command runs before any of them has drawn. Activating a
-		// tab is what makes a document the one being worked in, so it is the same document
-		// either way in every case a user can produce.
+		// WARNING: These commands act on the active document, not the focused one: which editor holds the keyboard is only knowable while drawing, and a command runs before any editor has drawn.
 		m_Commands.Add({.Id = "find.open",
 						.Label = "Find",
 						.Run = [this] {
-							if (const auto path = ActiveTextDocument(m_Documents))
+							if (const std::optional<std::filesystem::path> path = ActiveTextDocument(m_Documents))
 							{
-								if (const auto index = m_Documents.Find(*path))
+								if (const std::optional<std::size_t> index = m_Documents.Find(*path))
 								{
 									m_DocumentWindows.OpenFind(m_Documents.At(*index));
 								}
@@ -388,40 +363,34 @@ namespace Graphite {
 
 		m_Keys.SetDefault("find.open", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_F)});
 
-		// The active document, for the same reason find.open above reads it rather than whatever
-		// holds the keyboard: F12 runs before anything has drawn this frame, and activating a tab
-		// is what makes it the document a command means either way.
 		m_Commands.Add({.Id = kGoToDefinitionCommand,
 						.Label = "Go to Definition",
 						.Run = [this] {
-							if (const auto path = ActiveTextDocument(m_Documents))
+							if (const std::optional<std::filesystem::path> path = ActiveTextDocument(m_Documents))
 							{
-								if (const auto index = m_Documents.Find(*path))
+								if (const std::optional<std::size_t> index = m_Documents.Find(*path))
 								{
 									m_DocumentWindows.RequestDefinition(*index);
 								}
 							} },
 						.Enabled = [this] {
-							const auto path = ActiveTextDocument(m_Documents);
+							const std::optional<std::filesystem::path> path = ActiveTextDocument(m_Documents);
 							return path.has_value() && m_LanguageServices.HasChosenServer(LanguageOfPath(*path)); }});
 
 		m_Keys.SetDefault(kGoToDefinitionCommand, {.Primary = Core::Chord::Key(ImGuiKey_F12)});
 
-		// The active document, for the same reason editor.goToDefinition reads it rather than
-		// whatever holds the keyboard: Shift+F12 runs before anything has drawn this frame, and
-		// activating a tab is what makes it the document a command means either way.
 		m_Commands.Add({.Id = kFindReferencesCommand,
 						.Label = "Find All References",
 						.Run = [this] {
-							if (const auto path = ActiveTextDocument(m_Documents))
+							if (const std::optional<std::filesystem::path> path = ActiveTextDocument(m_Documents))
 							{
-								if (const auto index = m_Documents.Find(*path))
+								if (const std::optional<std::size_t> index = m_Documents.Find(*path))
 								{
 									m_DocumentWindows.RequestReferences(*index, *m_ReferencesPanel);
 								}
 							} },
 						.Enabled = [this] {
-							const auto path = ActiveTextDocument(m_Documents);
+							const std::optional<std::filesystem::path> path = ActiveTextDocument(m_Documents);
 							return path.has_value() && m_LanguageServices.HasChosenServer(LanguageOfPath(*path)); }});
 
 		m_Keys.SetDefault(kFindReferencesCommand,
@@ -469,9 +438,6 @@ namespace Graphite {
 
 	void GraphiteLayer::ReportConflictingKeyBindings()
 	{
-		// The defaults are assembled across five files, each of which believes it is claiming
-		// a free chord. An error rather than an assertion: a duplicate binding is a wiring
-		// mistake worth shouting about, not a reason to refuse to start.
 		for (const Core::BindingConflict& conflict : m_Keys.FindConflicts())
 		{
 			APP_ERROR("'{}' and '{}' are both bound to {}", conflict.FirstCommandId, conflict.SecondCommandId,
@@ -486,32 +452,19 @@ namespace Graphite {
 		m_Reviews.SubscribeTo(m_Events);
 
 		m_Events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent& event) {
-			// First, before RestoreState below adds this folder's tabs: a tab opened with the
-			// server resolves its root once and keeps it (server-roots spec), so the fallback must
-			// already name this folder the first time any of them is resolved - including when the
-			// folder is opened from the menu in the middle of a frame.
+			// WARNING: Set the fallback root before RestoreState: a tab opened with a server resolves its root once and keeps it.
 			m_LanguageServices.SetFallbackRoot(event.Root);
 
-			// A folder dropped over another replaces it without a WorkspaceClosedEvent, so the
-			// one being replaced is written here, before the new folder's tabs join the list.
+			// WARNING: A folder dropped over another replaces it without a WorkspaceClosedEvent, so everything belonging to the replaced folder is let go here, before this folder's state comes back.
 			m_StateKeeper.CloseWorkspace();
 
-			// Its documents stay open, but they are that folder's tabs, already written to it
-			// just above, and recording them for this one would mix the two. At startup nothing
-			// is open, so nothing is carried.
 			m_DocumentWindows.CarryOverOpenDocuments();
 
-			// Session windows follow the same rule: a session is not tied to a folder, so its
-			// window stays open, but it was the replaced folder's to record.
 			m_SessionWindows.CarryOverOpenSessions();
 			m_Terminals.CarryOverOpenTerminals();
 
-			// Asked once, here: trusting the folder later in the session reopens nothing and
-			// starts nothing, because what restricted mode left closed stays the reader's to open.
 			const bool trusted = m_Trust.IsTrusted(event.Root);
 
-			// The keeper is told what is on disk, as it always is; the windows get only what
-			// restricted mode lets them reopen (ADR 0532).
 			const WorkspaceState stored = WorkspaceSettings{event.Root}.LoadState();
 			const WorkspaceState restorable = RestorableState(stored, event.Root, trusted);
 			m_DocumentWindows.RestoreState(restorable);
@@ -521,19 +474,11 @@ namespace Graphite {
 
 			m_GitPort.SetRoot(event.Root);
 
-			// A drop that replaces the workspace publishes no WorkspaceClosedEvent for the
-			// folder it replaces - GitModel.cpp documents the same trap and clears on both
-			// events for the same reason. Without this, a diff tab opened against the old
-			// repository survives into the new one, showing "no longer loaded" and offering
-			// a Reload that would ask the new repository for a commit it never had.
 			m_DiffWindows.CloseAll();
 
-			// After CloseAll, never before: the diffs this folder had open last time are the
-			// only ones that belong to it.
+			// WARNING: Restore the diffs after CloseAll, never before: only the diffs this folder had open last time belong to it.
 			m_DiffWindows.RestoreState(restorable.Diffs);
 
-			// The diff tabs' trap again: a drop replaces the folder without a close, so the previous
-			// folder's reviews and marks are let go here, before this folder's come back.
 			m_ReviewWindows.CloseAll(m_Reviews);
 			m_ReviewBadges.Clear();
 			m_ReviewStore.Close();
@@ -541,18 +486,10 @@ namespace Graphite {
 			m_ReviewWindows.RestoreState(restorable.Reviews, m_ReviewStore.GetSessions());
 			m_ReviewedBranches.reset();
 
-			// Same trap, same reason: an expectation registered against the folder this drop
-			// replaced has no business claiming a path in the one that just opened. Dropping a
-			// new folder onto the window is a folder close as far as the user is concerned, even
-			// though no WorkspaceClosedEvent says so.
 			m_DocumentWindows.ClearExpectedWrites();
 		});
 
-		// A failure reported for the folder being replaced - by a drop too, which publishes no
-		// WorkspaceClosedEvent - is about a folder no longer open; an error toast would otherwise
-		// linger for its twelve seconds over the new one. Here and not on WorkspaceOpenedEvent:
-		// by then the new folder has reported its own failures, and clearing would take those
-		// with it. Only the folder's: a toast about the application still applies.
+		// WARNING: Cleared on WorkspaceOpeningEvent, not WorkspaceOpenedEvent: by then the new folder has reported its own failures, and clearing would take those with it.
 		m_Events.Subscribe<WorkspaceOpeningEvent>([this](const WorkspaceOpeningEvent&) {
 			m_Toasts.Clear(ToastGroupOf(ToastScope::Folder));
 		});
@@ -561,45 +498,34 @@ namespace Graphite {
 			m_DocumentWindows.RequestOpen(event.Path, event.Permanent);
 		});
 
-		// Delivered synchronously, from the Explorer's menu, which is drawn by m_Panels before
-		// m_Terminals.Render in OnImGuiRender - so the new entry is never pushed inside the loop
-		// over the open terminals that OpenShellIn must not be called from.
+		// WARNING: OpenShellIn must not be called from inside the loop over the open terminals; this event arrives from the Explorer's menu, which draws before m_Terminals.Render.
 		m_Events.Subscribe<OpenTerminalRequested>([this](const OpenTerminalRequested& event) {
 			static_cast<void>(m_Terminals.OpenDefaultShellIn(event.Directory)); // reports its own failure
 		});
 
-		// Any panel can speak through the status bar by publishing this; the editor's own
-		// transient slot is where the bar reads it from.
 		m_Events.Subscribe<StatusMessageEvent>([this](const StatusMessageEvent& event) {
 			m_DocumentWindows.SetTransientMessage(event.Text);
 		});
 
-		// And raise a toast the same way, so no feature holds the toasts themselves. The scope
-		// becomes the toast's group, which the folder handlers above and below clear by.
 		m_Events.Subscribe<ToastEvent>([this](const ToastEvent& event) {
 			ShowToast(event.Kind, event.Title, event.Message, event.CopyText, event.Scope);
 		});
 
 		m_Events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) {
-			// No folder is open, so a file with no marker is rooted at its own directory again.
-			m_LanguageServices.SetFallbackRoot({});
+			const std::filesystem::path noRoot;
 
-			// From the last frame's snapshot, so it does not matter that the documents are
-			// closed just below.
+			m_LanguageServices.SetFallbackRoot(noRoot);
+
+			// WARNING: StateKeeper writes from the last frame's snapshot, so closing the documents below does not affect what it writes.
 			m_StateKeeper.CloseWorkspace();
 
-			// The shells stay open, as they always have, but they were this folder's: a folder
-			// opened next must not save them as its own.
 			m_Terminals.CarryOverOpenTerminals();
 
 			m_Documents.CloseAll();
 
-			// Without this, GitModel stops asking - it handles this same event - but the
-			// port's cached repository handles outlive the folder they were opened on,
-			// which is exactly what blocks the user's own deletion of .git on Windows.
-			m_GitPort.SetRoot({});
+			// WARNING: Clearing the root releases the port's cached repository handles, which otherwise block the user from deleting .git on Windows.
+			m_GitPort.SetRoot(noRoot);
 
-			// A diff of a commit in a folder that is no longer open is a tab about nothing.
 			m_DiffWindows.CloseAll();
 
 			m_ReviewWindows.CloseAll(m_Reviews);
@@ -607,15 +533,8 @@ namespace Graphite {
 			m_ReviewStore.Close();
 			m_ReviewedBranches.reset();
 
-			// An expectation registered against one repository has no business claiming a
-			// path in whatever folder opens next. DocumentWindows has no closed-handler of
-			// its own to put this in - this event handler is where the rest of the per-folder
-			// state above is already dropped, so the expectations join it here.
 			m_DocumentWindows.ClearExpectedWrites();
 
-			// An error toast stays up for twelve seconds, so one about a git write in this folder
-			// would outlive it. GitModel drops the failures nobody took yet on the same event.
-			// Only the folder's toasts go; one about the application outlives the folder.
 			m_Toasts.Clear(ToastGroupOf(ToastScope::Folder));
 		});
 
@@ -646,64 +565,59 @@ namespace Graphite {
 			static_cast<void>(m_Workspace.OpenFolder(startFolder));
 		}
 
-		// No folder to restore terminals for: one default shell, as the terminal always opened.
 		if (!m_Workspace.IsOpen())
 		{
 			static_cast<void>(m_Terminals.OpenStartupShell()); // reports its own failure
 		}
 	}
 
-	void GraphiteLayer::OnUpdate(Core::Timestep ts)
+	void GraphiteLayer::OnUpdate(Core::Timestep timestep)
 	{
 		m_Workspace.Update();
 
-		// Before the panels, so the model applies whatever a worker finished this frame -
-		// and picks up any workspace event just published - before any panel reads a
-		// snapshot this frame.
-		m_Git.OnUpdate(ts);
+		// WARNING: Update the model before the panels, so it applies whatever a worker finished this frame and any workspace event just published before a panel reads a snapshot.
+		m_Git.OnUpdate(timestep);
 
-		// A stage, discard or commit from this process reaches the gutter here, not only
-		// through the watcher, which never sees `.git/` when the workspace is a subfolder of the
-		// repository or a linked worktree.
+		// WARNING: The file watcher never sees `.git/` when the workspace is a subfolder of the repository or a linked worktree, so writes made by this process are reported here.
 		if (const std::uint64_t writes = m_Git.GetAppliedWriteCount(); writes != m_SeenGitWrites)
 		{
 			m_SeenGitWrites = writes;
 			m_ChangeMarkers.Invalidate();
 		}
 
-		m_ChangeMarkers.OnUpdate(ts);
+		m_ChangeMarkers.OnUpdate(timestep);
 
 		FollowBranchesIntoReviews();
-		m_Reviews.OnUpdate(ts);
-		m_ReviewStore.Update(ts);
+		m_Reviews.OnUpdate(timestep);
+		m_ReviewStore.Update(timestep);
 
-		m_Panels.OnUpdate(ts);
+		m_Panels.OnUpdate(timestep);
 		m_Terminals.Update();
 
 		m_SolutionLoaded = m_Workspace.GetLoadedSolution().has_value();
-		// In OnUpdate, ahead of the Poll in OnImGuiRender, so a server started this frame starts on this selection.
+		// WARNING: Set in OnUpdate, ahead of the Poll in OnImGuiRender, so a server started this frame starts on this selection.
 		m_LanguageServices.SetSelectedSolution(m_Workspace.GetSelectedSolution());
 
-		UpdateFocusReload(ts);
+		UpdateFocusReload(timestep);
 
-		m_DocumentWindows.TickExpectedWrites(ts);
+		m_DocumentWindows.TickExpectedWrites(timestep);
 
-		// Watchers drop events — buffer overflow, or a tool touching many files at once — and
-		// returning from another application is exactly when that matters.
+		// WARNING: Watchers drop events on a buffer overflow or when a tool touches many files at once, and returning from another application is when that matters.
 		m_DocumentWindows.NotifyWindowFocus(MainWindowHasFocus());
 
-		m_StateKeeper.Observe(ts.GetSeconds(), CaptureGlobalState(),
-							  m_Workspace.IsOpen() ? std::optional<WorkspaceState>{CaptureWorkspaceState()}
-												   : std::nullopt);
+		const GlobalState globalState = CaptureGlobalState();
+		const std::optional<WorkspaceState> workspaceState =
+			m_Workspace.IsOpen() ? std::optional<WorkspaceState>{CaptureWorkspaceState()} : std::nullopt;
+
+		m_StateKeeper.Observe(timestep.GetSeconds(), globalState, workspaceState);
 	}
 
-	void GraphiteLayer::UpdateFocusReload(Core::Timestep ts)
+	void GraphiteLayer::UpdateFocusReload(Core::Timestep timestep)
 	{
-		// The process, not the main window: a panel dragged out into its own viewport is a
-		// separate OS window, and working in one is not having left the application.
+		// WARNING: Tests the process, not the main window: a panel dragged out into its own viewport is a separate OS window, and working in one is not having left the application.
 		if (!Core::IsProcessInForeground())
 		{
-			m_SecondsInBackground += ts.GetSeconds();
+			m_SecondsInBackground += timestep.GetSeconds();
 			m_AppForeground = false;
 			return;
 		}
@@ -712,8 +626,6 @@ namespace Graphite {
 		{
 			m_AppForeground = true;
 
-			// Reload does nothing without an open folder, but the trace below would still
-			// claim a reload happened.
 			if (m_SecondsInBackground >= kReloadAfterSecondsAway && m_Workspace.IsOpen())
 			{
 				APP_TRACE("Reloading the workspace after {:.1f}s away", m_SecondsInBackground);
@@ -728,8 +640,7 @@ namespace Graphite {
 	{
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches();
 
-		// GitModel replaces its snapshot only with a list it read whole, so a snapshot that lacks a
-		// branch means the branch is gone, never that the read failed.
+		// WARNING: GitModel replaces its snapshot only with a list it read whole, so a snapshot that lacks a branch means the branch is gone, never that the read failed.
 		if (branches == nullptr || branches == m_ReviewedBranches)
 		{
 			return;
@@ -789,8 +700,7 @@ namespace Graphite {
 		m_Reviews.RequestRange(key);
 		const Core::Ref<const ReviewRange> range = m_Reviews.GetRange(key);
 
-		// Asking for a diff on every frame keeps it among the model's few held diffs, so badges that
-		// kept asking for theirs would push each other's diffs out and have them read again.
+		// WARNING: Asking for a diff on every frame keeps it among the model's few held diffs, so badges that kept asking for theirs would push each other's diffs out and have them read again.
 		const std::optional<std::string> held = m_ReviewBadges.HeldFor(sessions, branch.FullName, range);
 
 		if (held.has_value())
@@ -841,7 +751,7 @@ namespace Graphite {
 		m_StateKeeper.Flush();
 		m_ReviewStore.Flush();
 
-		// After StateKeeper, whose flush hands the window state to the settings.
+		// WARNING: Flush after StateKeeper, whose flush hands the window state to the settings.
 		m_AppSettings.Flush();
 	}
 
@@ -917,8 +827,7 @@ namespace Graphite {
 		}
 	}
 
-	// Shows a panel that was hidden and brings it to the front of its dock node. The focus
-	// is applied on the panel's next Begin, which is next frame for a panel just made visible.
+	// WARNING: The focus request is applied on the panel's next Begin, which is next frame for a panel just made visible.
 	void GraphiteLayer::RevealPanel(std::string_view id)
 	{
 		Core::Panel* panel = m_Panels.Find(id);
@@ -928,7 +837,8 @@ namespace Graphite {
 			return;
 		}
 
-		m_Panels.SetVisible(id, true);
+		const bool visible = true;
+		m_Panels.SetVisible(id, visible);
 		panel->RequestFocus();
 		Core::Redraw::Request();
 	}
@@ -956,8 +866,7 @@ namespace Graphite {
 
 	void GraphiteLayer::UpdateGitDecorations()
 	{
-		// Compared by pointer: GitModel hands out a new snapshot for every status it applies, so an
-		// unchanged pointer is an unchanged status and the index built from it still holds.
+		// WARNING: Status snapshots are compared by pointer: GitModel hands out a new snapshot for every status it applies, so an unchanged pointer is an unchanged status.
 		if (Core::Ref<const Core::WorkingTreeStatus> status = m_Git.GetStatus(); status != m_DecoratedStatus)
 		{
 			m_Decorations = status ? std::make_unique<GitDecorations>(*status) : nullptr;
@@ -967,9 +876,10 @@ namespace Graphite {
 
 		GitDecorationView view;
 
-		// No folder, or a folder that is not a repository (no status ever arrives): nothing is
-		// decorated, and the Explorer looks as it does without git.
-		if (m_Workspace.IsOpen() && m_Decorations)
+		const bool decorationsAvailable = m_Workspace.IsOpen() && m_Decorations != nullptr;
+
+		if (decorationsAvailable)
+
 		{
 			const GitPalette palette = ReadGitPalette(m_ActiveScheme.Get());
 
@@ -987,97 +897,61 @@ namespace Graphite {
 
 	void GraphiteLayer::OnImGuiRender()
 	{
-		// First statement, before any window is begun: ImGuiStyle::Colors must not change
-		// between a Begin and its End.
+		// WARNING: Apply the chrome first, before any window is begun: ImGuiStyle::Colors must not change between a Begin and its End.
 		ApplyChromeIfSchemeChanged();
 
 		StatusMessages messages{m_DocumentWindows.GetStatusMessage(),
 								m_SearchPanel->GetStatusMessage()};
 
-		// Read once and spent everywhere below - the analysis's switches, the status bar's server
-		// slot and the restricted-mode bar. Separate reads of the same getter are chances for those
-		// to disagree, and a bar saying "finding files" for a walk that was switched off is
-		// exactly what disagreement looks like. Includes whether a folder is open: an empty root is
-		// never trusted.
+		// WARNING: Read once and shared by the analysis switches, the status bar and the restricted-mode bar, because separate reads could disagree.
 		const bool workspaceTrusted = m_Workspace.IsOpen() && m_Trust.IsTrusted(m_Workspace.GetRoot());
 
-		// The folder, its trust and the setting, compared against last frame's: warms the servers,
-		// revalidates them when the trust list moves, and starts, restarts or stops the walk and
-		// the store. Before Poll, so a server this starts is drained on this same frame.
+		// WARNING: Update the coordinator before Poll, so a server this starts is drained on this same frame.
 		m_AnalysisCoordinator.Update(AnalysisSwitches{.Root = m_Workspace.GetRoot(),
 													  .SelectedSolution = m_Workspace.GetSelectedSolution(),
 													  .Trusted = workspaceTrusted,
 													  .SettingEnabled = m_AnalysisSettings.IsEnabled(),
 													  .TrustRevision = m_Trust.GetRevision()});
 
-		// Before anything reads a status, not after. Poll is what turns a warm-up's findings into
-		// started servers and what moves a running one from Starting to Indexing to Ready — so a
-		// status read ahead of it is always one frame stale, and on the frame a server first
-		// appears there is nothing to read at all.
+		// WARNING: Poll before anything reads a status: a status read ahead of it is always one frame stale, and on the frame a server first appears there is nothing to read at all.
 		m_LanguageServices.Poll();
 		PublishServerMessages();
 		ApplyFinishedInstalls();
 
-		// Before anything draws, for the reason the Tick below gives: the panels render at 512
-		// and DocumentWindows drains its own answers at 516, so a model fed any later is read by
-		// the panel one frame before it is written - and on every frame a diagnostic arrives,
-		// the squiggle and the panel row disagree.
+		// WARNING: Feed the diagnostics model before anything draws: a model fed later is read by the panel one frame before it is written, and the squiggle and the panel row disagree.
 		DiagnosticsUpdate diagnostics;
 		m_LanguageServices.TakeDiagnostics(diagnostics);
 		m_Diagnostics.Apply(diagnostics);
 
-		// The same "is this document open" predicate ProblemsPanel filters its own rows by - see
-		// DiagnosticsModel::Total's own comment for why.
-		const auto isOpenDocument = [this](const std::filesystem::path& path) { return m_Documents.Find(path).has_value(); };
+		const std::function<bool(const std::filesystem::path&)> isOpenDocument = [this](const std::filesystem::path& path) { return IsDocumentOpen(path); };
 
-		// Preformatted here rather than handed to StatusBar.cpp as a Counts, the same way Server
-		// is preformatted from a ServerStatus below: it keeps DiagnosticsModel out of a file whose
-		// only other dependency is Core::DocumentSet.
 		const DiagnosticsModel::Counts counts = m_Diagnostics.Total(isOpenDocument);
 		messages.Problems = ProblemCountText(counts.Errors, counts.Warnings);
 
-		// Before the panels draw, so what they declare this frame is stamped with this frame's
-		// number, and so an entry nothing declared last frame is closed before anything asks
-		// about it again.
+		// WARNING: Tick before the panels draw, so what they declare is stamped with this frame's number and an entry nothing declared last frame is closed before anything asks about it.
 		m_PreviewSemantics.Tick(static_cast<std::size_t>(ImGui::GetFrameCount()),
 								ImGui::GetTime());
 
-		// The open document's own questions come first. IsAnalysing is what the Server slot below
-		// already asks to decide whether to say "analysing" rather than "ready", which makes it
-		// exactly the condition worth yielding to.
 		const std::optional<std::filesystem::path> activeDocument = ActiveTextDocument(m_Documents);
 		const bool foregroundBusy = activeDocument && m_DocumentWindows.IsAnalysing(*activeDocument);
 
-		// After Poll and after PreviewSemantics::Tick: the pass asks whether a server is ready and
-		// whether a preview pane holds a document, and both are settled for this frame only now.
-		//
-		// The budget and the concurrency are read every frame rather than on a change
-		// notification: both are a comparison against a value that almost never differs, and a
-		// settings object with no observers is one less thing to keep in step.
-		//
-		// "Somebody else already holds this document with the server", not "a tab does".
-		// LanguageServices::OpenDocuments counts no references, so whichever of the three openers
-		// sends a didClose takes the file away from all of them - and a preview pane holds no
-		// DocumentSet entry, so a tab check alone would let the background pass close a document a
-		// pane is still asking about. See ADR 0512.
+		// WARNING: Tick after Poll and PreviewSemantics::Tick, because the pass asks whether a server is ready and whether a preview pane holds a document.
+		// WARNING: HeldElsewhere means somebody else already holds this document with the server, not that a tab does: LanguageServices::OpenDocuments counts no references, so whichever opener sends a didClose takes the file away from all of them, and a preview pane holds no DocumentSet entry.
 		m_AnalysisCoordinator.Tick(AnalysisTickInputs{
 			.Now = ImGui::GetTime(),
 			.ForegroundBusy = foregroundBusy,
 			.BudgetBytes = m_AnalysisSettings.GetBudgetBytes(),
 			.Concurrency = m_AnalysisSettings.GetConcurrency(),
 			.TabWidth = m_EditorSettings.GetIndentStyle().Width,
-			.HeldElsewhere = [this](const std::filesystem::path& path) { return m_Documents.Find(path).has_value() || m_PreviewSemantics.Holds(path); }});
+			.HeldElsewhere = [this](const std::filesystem::path& path) { return IsDocumentOpen(path) || m_PreviewSemantics.Holds(path); }});
 
-		// EnsureStarted is safe to call every frame the document stays active — see its own
-		// comment; the common case is a single map lookup.
 		if (activeDocument)
 		{
 			m_LanguageServices.EnsureStarted(*activeDocument, LanguageOfPath(*activeDocument));
 		}
 
-		// What the bar describes is the document on screen, not the active one: the active
-		// document outlives its tab being covered by another, and the bar went on naming it.
-		const auto isShown = [this](const std::filesystem::path& path) { return m_DocumentWindows.IsShown(path); };
+		// WARNING: The bar describes the document on screen, not the active one, which outlives its tab being covered by another.
+		const std::function<bool(const std::filesystem::path&)> isShown = [this](const std::filesystem::path& path) { return IsDocumentShown(path); };
 		const std::optional<std::size_t> shownIndex = ShownActiveDocument(m_Documents, isShown);
 		const std::optional<std::filesystem::path> shownDocument =
 			shownIndex ? std::optional{m_Documents.At(*shownIndex).Path} : std::nullopt;
@@ -1100,13 +974,13 @@ namespace Graphite {
 		{
 			const ServerChoice& choice = m_LanguageServices.ChoiceFor(activeLanguage);
 
-			// Without the overrides: the bar needs only which server, and they hold JSON that would be copied every frame.
+			// WARNING: ServerChoice is copied without its overrides, which hold JSON that would be copied every frame.
 			languagePrompt = LanguagePromptFor(LanguagePromptInputs{
 				.Language = activeLanguage,
 				.Choice = ServerChoice{.Kind = choice.Kind, .Server = choice.Server},
 				.State = status.State,
 				.Install = choice.Server != nullptr ? InstallInputsFor(m_ServerInstalls, *choice.Server) : InstallInputs{},
-				.Dismissed = m_DismissedLanguagePrompts.contains(activeLanguage),
+				.Dismissed = m_LanguagePromptsDismissedUntilRestart.contains(activeLanguage),
 				.RestrictedModeShown = m_Workspace.IsOpen() && !workspaceTrusted});
 		}
 
@@ -1128,18 +1002,14 @@ namespace Graphite {
 
 		std::optional<LanguageId> serverSettingsLanguage;
 
-		if (std::optional<ServerLine> line = ChooseServerLine(serverInputs))
+		if (std::optional<ServerLine> serverLine = ChooseServerLine(serverInputs))
 		{
-			messages.Server = std::move(line->Text);
-			messages.ServerDetail = std::move(line->Detail);
-			messages.ServerOpensSettings = line->SettingsLanguage.has_value();
-			serverSettingsLanguage = line->SettingsLanguage;
+			messages.Server = std::move(serverLine->Text);
+			messages.ServerDetail = std::move(serverLine->Detail);
+			messages.ServerOpensSettings = serverLine->SettingsLanguage.has_value();
+			serverSettingsLanguage = serverLine->SettingsLanguage;
 		}
 
-		// Its own slot beside the server's, because it answers a different question: the server
-		// phrase is about the file on screen, this one is about the tree behind it. Empty while
-		// there is nothing to say, which is what leaves the slot unoccupied rather than resting on
-		// a finished count nobody is waiting for.
 		if (std::string background = BackgroundAnalysisText(m_AnalysisCoordinator.GetPass().Progress());
 			!background.empty())
 		{
@@ -1149,9 +1019,9 @@ namespace Graphite {
 		}
 
 		{
-			const auto head = m_Git.GetHead();
-			const auto branches = m_Git.GetBranches();
-			const auto gitStatus = m_Git.GetStatus();
+			const Core::Ref<const Core::HeadState> head = m_Git.GetHead();
+			const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches();
+			const Core::Ref<const Core::WorkingTreeStatus> gitStatus = m_Git.GetStatus();
 
 			messages.Git = GitStatusText({
 				.FolderOpen = m_Workspace.IsOpen(),
@@ -1162,15 +1032,13 @@ namespace Graphite {
 			});
 		}
 
-		// Drained here rather than after the toasts draw, so a toast cleared with its folder since
-		// the last frame already counts for the bell this frame.
+		// WARNING: Drain the departures before the toasts draw, so a toast cleared with its folder since the last frame already counts for the bell this frame.
 		for (const Core::ToastDeparture& departure : m_Toasts.TakeDepartures())
 		{
 			m_Notifications.NoteDeparture(departure);
 		}
 
-		// Not while the popup is open: it marks everything seen when it draws, after the bar, and
-		// the dot would flash for the frame between.
+		// WARNING: The popup marks everything seen when it draws, after the bar, so the dot would flash for a frame while it is open.
 		const std::optional<Core::ToastKind> missedKind = m_Notifications.MostSevereMissed();
 		const bool missedOutsideTheOpenList = missedKind.has_value() && !m_NotificationsPopup.IsOpen();
 		if (missedOutsideTheOpenList)
@@ -1203,8 +1071,6 @@ namespace Graphite {
 			break;
 		}
 
-		// Every frame rather than once: the caption follows the interface scale, which the
-		// monitor the window is on or the settings can change at any moment.
 		m_Layout.MenuBarHeight = m_CustomTitleBar ? Core::Scaled(kCaptionHeight) : 0.0f;
 		m_DockSpace.Begin(m_Layout, [this, workspaceTrusted, &languagePrompt] {
 			RenderRestrictedModeBar(workspaceTrusted);
@@ -1218,9 +1084,7 @@ namespace Graphite {
 		RenderEmptyEditorArea();
 		m_DockSpace.End();
 
-		// Outside the dockspace host's Begin/End above, and outside every other window: a
-		// modal popup must not be opened from inside a window that may not be current when
-		// the popup needs to draw.
+		// WARNING: Open modal popups outside the dockspace host's Begin/End and every other window: a popup must not be opened from inside a window that may not be current when it needs to draw.
 		RenderCloseConfirm();
 		RenderDropConfirm();
 		m_About.Render();
@@ -1228,8 +1092,7 @@ namespace Graphite {
 
 		UpdateGitDecorations();
 
-		// Panels render outside the host window — inside it they would dock as ordinary child
-		// windows instead of landing in the dockspace nodes.
+		// WARNING: Panels render outside the host window, because inside it they would dock as ordinary child windows instead of landing in the dockspace nodes.
 		m_Panels.OnImGuiRender(m_TabCloseRequests);
 
 		const CommandContext commandContext{.Commands = &m_Commands,
@@ -1293,41 +1156,34 @@ namespace Graphite {
 											   .LayoutRebuilt = m_DockSpace.HasBuiltLayoutThisFrame()},
 						   ReadEditorPalette(m_ActiveScheme.Get()), m_TabCloseRequests);
 
-		// Drained here, not in a git panel, so a failure is reported with both panels closed
-		// and only once with both open.
+		// WARNING: Drained here, not in a git panel, so a failure is reported with both panels closed and only once with both open.
 		while (std::optional<GitModel::WriteFailure> failure = m_Git.TakeWriteError())
 		{
-			// Paths inside the repository read relative to it on screen; Copy keeps them whole.
 			std::string title(WriteFailureTitle(failure->Kind));
 			std::string shown = RelativiseUnder(failure->Error.Message, m_Git.GetWorkingDirectory());
 			std::string copied = title + "\n" + failure->Error.Message;
 
-			// About the open repository, so the folder's close or replacement clears it.
 			ShowToast(Core::ToastKind::Error, std::move(title), std::move(shown), std::move(copied), ToastScope::Folder);
 		}
 
-		// Last of what draws, so the toasts sit over every panel and terminal.
+		// WARNING: Draw the toasts last, so they sit over every panel and terminal.
 		const Core::ToastPalette toastPalette = ToastPaletteFor(m_ActiveScheme.Get());
 		m_NotificationsPopup.Render(m_Notifications, toastPalette, m_Workspace.GetRoot(), m_LocalTimeZone);
 		m_Toasts.Render(toastPalette);
 
-		// After every owner has drawn: what nobody took this frame belonged to a window that
-		// went some other way, and what the menus asked this frame becomes due for the next.
+		// WARNING: End the frame of close requests after every owner has drawn: what nobody took belonged to a window that went some other way.
 		m_TabCloseRequests.EndFrame();
 
-		// The last point in the frame that reads the queue: what a frame drains is exactly
-		// what arrived since the previous one was drawn.
+		// WARNING: Clear the input only here, the last point in the frame that reads the queue.
 		m_FrameInput.Clear();
 
-		// Last, after everything that can change a setting this frame - the panels and the commands
-		// they ran here, StateKeeper in OnUpdate - so one frame's changes make one write.
+		// WARNING: Flush last, after everything that can change a setting this frame, so one frame's changes make one write.
 		m_AppSettings.Flush();
 	}
 
 	void GraphiteLayer::OnEvent(Core::Event& event)
 	{
-		// Before the panels: a drop is not input anybody is competing for, and routing it
-		// through the shortcut path would only give the panels a chance to swallow it.
+		// WARNING: Handle the drop before the panels: it is not input anybody competes for, and routing it through the shortcut path would only let the panels swallow it.
 		HandleFileDrop(event);
 
 		if (event.Handled)
@@ -1335,9 +1191,7 @@ namespace Graphite {
 			return;
 		}
 
-		// The panels first, and only those that drew: a chord being recorded is consumed
-		// there, so the router never sees it. Capturing Ctrl+Shift+S would otherwise bind it
-		// and save everything in the same keystroke.
+		// WARNING: Panels see the event before the router: a chord being recorded is consumed there, and capturing Ctrl+Shift+S would otherwise bind it and save everything in the same keystroke.
 		m_Panels.OnEvent(event);
 
 		if (event.Handled)
@@ -1361,15 +1215,9 @@ namespace Graphite {
 
 		dispatcher.Dispatch<Core::FileDropEvent>([this](Core::FileDropEvent& dropped) {
 			const DropRouting routing =
-				ClassifyDrop(dropped.GetPaths(), [](const std::filesystem::path& path) {
-					std::error_code code;
-					return std::filesystem::is_directory(path, code);
-				});
+				ClassifyDrop(dropped.GetPaths(), IsDirectoryOnDisk);
 
-			// The workspace before the files, so a file dropped along with the folder it
-			// lives in opens into that folder rather than the one being replaced. Waiting
-			// for an answer is the exception: the question is not worth holding the files
-			// hostage, and opening a folder leaves open documents where they are.
+			// WARNING: Open the workspace before the files, so a file dropped with its folder opens into that folder rather than the one being replaced; a question being asked does not hold the files back.
 			if (routing.Target != DropTarget::None)
 			{
 				const DroppedWorkspace workspace{routing.Target, routing.Root};
@@ -1384,11 +1232,11 @@ namespace Graphite {
 				}
 			}
 
-			// Permanently, not as a preview: dragging a file onto the window is as deliberate
-			// as double-clicking one in the tree.
+			const bool permanentTab = true;
+
 			for (const std::filesystem::path& file : routing.Files)
 			{
-				m_Workspace.RequestOpenFile(file, true);
+				m_Workspace.RequestOpenFile(file, permanentTab);
 			}
 
 			return true;
@@ -1403,14 +1251,13 @@ namespace Graphite {
 			break;
 
 		case DropTarget::Folder:
-			// OpenFolder reports its own failures, the way the folder picker's caller leaves
-			// them to it.
+			// OpenFolder reports its own failures.
 			static_cast<void>(m_Workspace.OpenFolder(dropped.Root));
 			break;
 
 		case DropTarget::Solution:
 			// Logged only: OpenSolution reports every failure in a toast itself.
-			if (const auto opened = m_Workspace.OpenSolution(dropped.Root); !opened)
+			if (const Core::Result<void> opened = m_Workspace.OpenSolution(dropped.Root); !opened)
 			{
 				APP_ERROR("Cannot open the solution: {}", opened.GetError().Message);
 			}
@@ -1437,12 +1284,8 @@ namespace Graphite {
 
 	void GraphiteLayer::RenderEmptyEditorArea()
 	{
-		// The explorer beside it already says no folder is open, so this says what can be done
-		// instead. The button stays: the explorer can be closed, and then this is the only way
-		// in on screen. A file dropped without a folder still opens as a document.
 		if (!m_Workspace.IsOpen())
 		{
-			// Greyed out while a dialog is open, as the explorer's button is.
 			ImGui::BeginDisabled(m_Workspace.IsDialogOpen());
 			const bool clicked =
 				m_DockSpace.CenterEmptyState("Open a folder to start working, or drop a file here.", "Open Folder");
@@ -1487,7 +1330,7 @@ namespace Graphite {
 			break;
 
 		case LanguageBarChoice::NotNow:
-			m_DismissedLanguagePrompts.insert(prompt.Language);
+			m_LanguagePromptsDismissedUntilRestart.insert(prompt.Language);
 			break;
 		}
 	}
@@ -1499,8 +1342,7 @@ namespace Graphite {
 			return;
 		}
 
-		// Copied: trusting writes the list, and nothing here should hold a reference into state
-		// that the click is about to change.
+		// WARNING: Copy the root: trusting writes the list, and nothing here should hold a reference into state that the click is about to change.
 		const std::filesystem::path root = m_Workspace.GetRoot();
 		const std::optional<std::filesystem::path> parent = ParentWorthTrusting(root);
 
@@ -1514,7 +1356,6 @@ namespace Graphite {
 			break;
 
 		case RestrictedBarChoice::TrustParent:
-			// Asked first: this trusts every folder under the parent, not just this one.
 			m_TrustParentQuestion.Ask(*parent);
 			break;
 		}
@@ -1522,12 +1363,8 @@ namespace Graphite {
 
 	void GraphiteLayer::RenderTrustParentConfirm()
 	{
-		// Fixed width, so a long parent path wraps rather than widening the dialog.
 		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
 
-		// A question still queued when its folder closed, was replaced, or got trusted some other
-		// way is dropped rather than asked about a parent that no longer has anything to do with
-		// what is open.
 		const bool open = m_TrustParentQuestion.Begin([this](const std::filesystem::path& parent) {
 			if (!m_Workspace.IsOpen())
 			{
@@ -1554,17 +1391,16 @@ namespace Graphite {
 			return;
 		}
 
-		// Copied out: Answer clears what GetCurrent points at, and trusting writes the list.
+		// WARNING: Copy the parent out: Answer clears what GetCurrent points at, and trusting writes the list.
 		const std::filesystem::path parent = *asked;
 
 		DialogLayout::Text(TrustAllMessage(parent));
 		DialogLayout::Gap();
 
-		// Trust All is the dangerous choice, so it is the destructive role: Enter does nothing,
-		// and Escape cancels as the Cancel button does.
-		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
-			{}, {.Label = "Trust All"},
-			ImGui::ColorConvertU32ToFloat4(ReadEditorPalette(m_ActiveScheme.Get()).DiagnosticError));
+		const DialogLayout::ButtonSpec noSafeButton{};
+		const DialogLayout::ButtonSpec trustAllButton{.Label = "Trust All"};
+		const DialogLayout::Choice choice =
+			DialogLayout::ButtonRow(noSafeButton, trustAllButton, DangerColourOf(m_ActiveScheme.Get()));
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{
@@ -1586,8 +1422,7 @@ namespace Graphite {
 			return;
 		}
 
-		// Copied out before anything is opened: Answer clears what GetCurrent points at, and
-		// opening a workspace is not something to do with a dangling pointer to its path.
+		// WARNING: Copy the dropped workspace out before anything is opened: Answer clears what GetCurrent points at.
 		const DroppedWorkspace* asked = m_DropQuestion.GetCurrent();
 		const DroppedWorkspace dropped = asked != nullptr ? *asked : DroppedWorkspace{};
 
@@ -1624,7 +1459,6 @@ namespace Graphite {
 			return m_Router.OnKeyReleased(m_Commands, m_Keys, released);
 		});
 
-		// A modifier held for a Ctrl+click is not a tap, however it is released afterwards.
 		dispatcher.Dispatch<Core::MouseButtonPressedEvent>([this](Core::MouseButtonPressedEvent&) {
 			m_Router.CancelTap();
 			return false;
@@ -1633,13 +1467,8 @@ namespace Graphite {
 
 	void GraphiteLayer::QueueForFocusedEditor(Core::Event& event)
 	{
-		// Queued rather than handed to an editor here: which document holds the keyboard is
-		// decided by ImGui's window focus, which is only knowable while drawing, and by then
-		// the event object is long gone.
-		//
-		// Both handlers return false: the queue is read by at most one focused editor, and
-		// often by none at all, so reporting the key as consumed would claim it landed
-		// somewhere.
+		// WARNING: Queue rather than hand the event to an editor here: which document holds the keyboard is only knowable while drawing, and by then the event is gone.
+		// WARNING: Both handlers return false: the queue is read by at most one focused editor, so reporting the key as consumed would claim it landed somewhere.
 		Core::EventDispatcher dispatcher{event};
 
 		dispatcher.Dispatch<Core::KeyPressedEvent>([this](Core::KeyPressedEvent& pressed) {
@@ -1655,18 +1484,13 @@ namespace Graphite {
 
 	bool GraphiteLayer::OnCloseRequested()
 	{
-		// Save All having succeeded, or Discard All having been chosen, already answered this
-		// — see FinishClose. Re-checking for dirty documents here would reopen the modal on
-		// Discard All, which never touches document content.
+		// WARNING: Re-checking for dirty documents after Save All or Discard All would reopen the modal on Discard All, which never touches document content.
 		if (m_CloseApproved)
 		{
 			return true;
 		}
 
-		// Any unresolved close question, not only this purpose's: "Close Workspace" asks the
-		// same question, and Alt+F4 reaches here regardless of what ImGui thinks holds input
-		// focus, so testing the purpose would overwrite a pending workspace close with an
-		// application exit under a dialog the user is already reading.
+		// WARNING: Any unresolved close question blocks this, not only this purpose's: Alt+F4 reaches here whatever ImGui thinks holds input focus, so testing the purpose would overwrite a pending workspace close.
 		if (m_CloseQuestion.IsAsked())
 		{
 			return false;
@@ -1689,9 +1513,7 @@ namespace Graphite {
 			return;
 		}
 
-		// One close question at a time, whatever raised it. Ask queues rather than replaces,
-		// so without this a second "Close Workspace" from the menu would close the workspace
-		// twice, once per answer.
+		// WARNING: One close question at a time, whatever raised it: Ask queues rather than replaces, so a second Close Workspace would close the workspace twice.
 		if (m_CloseQuestion.IsAsked())
 		{
 			return;
@@ -1705,8 +1527,7 @@ namespace Graphite {
 		switch (purpose)
 		{
 		case ClosePurpose::ExitApplication:
-			// OnCloseRequested refusing earlier — to raise this very modal — cleared Window's
-			// close flag for good, and nothing but this call re-raises it.
+			// WARNING: OnCloseRequested refusing earlier, to raise this very modal, cleared Window's close flag for good, and nothing but this call re-raises it.
 			m_CloseApproved = true;
 			Core::Application::Get().GetWindow().RequestClose();
 			break;
@@ -1724,13 +1545,23 @@ namespace Graphite {
 			return true;
 		}
 
-		// The question went stale while it waited its turn, the request behind it did not:
-		// the user asked to close and nothing now stands in the way.
+		// WARNING: The question went stale while it waited its turn but the request behind it did not, so the close goes ahead.
 		FinishClose(purpose);
 		return false;
 	}
 
+	bool GraphiteLayer::IsDocumentOpen(const std::filesystem::path& path) const
+	{
+		return m_Documents.Find(path).has_value();
+	}
+
+	bool GraphiteLayer::IsDocumentShown(const std::filesystem::path& path) const
+	{
+		return m_DocumentWindows.IsShown(path);
+	}
+
 	void GraphiteLayer::ListModifiedDocuments() const
+
 	{
 		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
 		{
@@ -1762,8 +1593,6 @@ namespace Graphite {
 		ImGui::TextUnformatted("These files have unsaved changes:");
 		ImGui::Separator();
 
-		// Listed afresh every frame, so a Save All that saved some and not others shows what
-		// it actually left behind.
 		ListModifiedDocuments();
 
 		ImGui::Separator();
@@ -1772,10 +1601,7 @@ namespace Graphite {
 
 		if (ImGui::Button("Save All"))
 		{
-			// A stopped batch and one that skipped a conflicted document both come back
-			// false, and both mean some dirty document is not on disk, so the modal stays up
-			// rather than closing on a promise it did not keep. SaveAllModified has already
-			// put which one happened in the status bar.
+			// WARNING: SaveAllModified returns false for a stopped batch and for one that skipped a conflicted document, so the modal stays up rather than closing on a promise it did not keep.
 			if (m_DocumentWindows.SaveAllModified())
 			{
 				FinishClose(purpose);

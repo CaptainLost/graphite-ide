@@ -18,6 +18,7 @@ namespace Graphite {
 
 	namespace {
 		constexpr const wchar_t* kUserDataOption = L"--user-data";
+		constexpr int kFirstArgumentAfterProgramName = 1;
 	}
 
 	CommandLine ParseCommandLine(const std::vector<std::wstring>& arguments)
@@ -25,18 +26,16 @@ namespace Graphite {
 		CommandLine result;
 		bool haveFolder = false;
 
-		for (std::size_t i = 0; i < arguments.size(); ++i)
+		for (std::size_t argumentIndex = 0; argumentIndex < arguments.size(); ++argumentIndex)
 		{
-			const std::wstring& argument = arguments[i];
+			const std::wstring& argument = arguments[argumentIndex];
 
 			if (argument == kUserDataOption)
 			{
-				// The value is the next argument whatever it looks like; with none left the
-				// option names nothing, and must not go on to swallow the folder.
-				if (i + 1 < arguments.size())
+				if (argumentIndex + 1 < arguments.size())
 				{
-					++i;
-					result.UserData = std::filesystem::path(arguments[i]);
+					++argumentIndex;
+					result.UserData = std::filesystem::path(arguments[argumentIndex]);
 				}
 				continue;
 			}
@@ -56,17 +55,16 @@ namespace Graphite {
 		std::vector<std::wstring> arguments;
 
 #ifdef CORE_PLATFORM_WINDOWS
-		int count = 0;
-		wchar_t** argv = ::CommandLineToArgvW(::GetCommandLineW(), &count);
+		int argumentCount = 0;
+		wchar_t** argv = ::CommandLineToArgvW(::GetCommandLineW(), &argumentCount);
 		if (argv == nullptr)
 		{
 			return arguments;
 		}
 
-		// argv[0] is the program name.
-		for (int i = 1; i < count; ++i)
+		for (int argumentIndex = kFirstArgumentAfterProgramName; argumentIndex < argumentCount; ++argumentIndex)
 		{
-			arguments.emplace_back(argv[i]);
+			arguments.emplace_back(argv[argumentIndex]);
 		}
 
 		::LocalFree(argv);

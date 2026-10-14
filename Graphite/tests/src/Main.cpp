@@ -6,13 +6,13 @@
 #include "Core/Platform/Process.h"
 
 #include <cstdio>
+#include <filesystem>
 
-// Several suites exercise setters that write graphite.json. Without this they would write into
-// the real %APPDATA%\Graphite and overwrite the settings of whoever runs the tests; redirected,
-// they land in build output beside this executable, which is disposable.
+// WARNING: Suites that exercise setters write graphite.json. Without the redirect they would
+// overwrite the real %APPDATA%\Graphite settings of whoever runs the tests.
 int main(int argc, char** argv)
 {
-	const auto directory = Core::ExecutableDirectory();
+	const Core::Result<std::filesystem::path> directory = Core::ExecutableDirectory();
 
 	if (!directory)
 	{
