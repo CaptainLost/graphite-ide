@@ -112,7 +112,7 @@ TEST_CASE("A distance is shown as arrows, up for commits to push and down for co
 	branch.Ahead = 2;
 	branch.Behind = 3;
 
-	CHECK(Graphite::RefLabel(branch) == std::string{"main  "} + ICON_MDI_ARROW_UP + "2 " + ICON_MDI_ARROW_DOWN + "3");
+	CHECK(Graphite::RefLabel(branch) == std::string{"main "} + ICON_MDI_ARROW_UP + "2 " + ICON_MDI_ARROW_DOWN + "3");
 }
 
 TEST_CASE("Only the side with commits gets an arrow")
@@ -121,12 +121,12 @@ TEST_CASE("Only the side with commits gets an arrow")
 	branch.DistanceKnown = true;
 	branch.Ahead = 2;
 
-	CHECK(Graphite::RefLabel(branch) == std::string{"main  "} + ICON_MDI_ARROW_UP + "2");
+	CHECK(Graphite::RefLabel(branch) == std::string{"main "} + ICON_MDI_ARROW_UP + "2");
 
 	branch.Ahead = 0;
 	branch.Behind = 3;
 
-	CHECK(Graphite::RefLabel(branch) == std::string{"main  "} + ICON_MDI_ARROW_DOWN + "3");
+	CHECK(Graphite::RefLabel(branch) == std::string{"main "} + ICON_MDI_ARROW_DOWN + "3");
 }
 
 TEST_CASE("A measured distance of zero shows no numbers, because in sync is the ordinary state")

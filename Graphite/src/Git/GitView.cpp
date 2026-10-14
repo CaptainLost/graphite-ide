@@ -107,12 +107,12 @@ namespace Graphite {
 
 		if (branch.Ahead > 0)
 		{
-			label += std::format("  {}{}", ICON_MDI_ARROW_UP, branch.Ahead);
+			label += std::format(" {}{}", ICON_MDI_ARROW_UP, branch.Ahead);
 		}
 
 		if (branch.Behind > 0)
 		{
-			label += std::format("{}{}{}", branch.Ahead > 0 ? " " : "  ", ICON_MDI_ARROW_DOWN, branch.Behind);
+			label += std::format(" {}{}", ICON_MDI_ARROW_DOWN, branch.Behind);
 		}
 
 		return label;
@@ -663,6 +663,19 @@ namespace Graphite {
 
 		ImGui::EndDisabled();
 		RenderReviewItem(branch);
+
+		ImGui::Separator();
+
+		if (ImGui::MenuItem("Copy Branch Name"))
+		{
+			CopyToClipboard(m_Events, "branch name", branch.Name);
+		}
+
+		if (ImGui::MenuItem("Copy Tip Hash"))
+		{
+			CopyToClipboard(m_Events, "tip hash", branch.Tip.ToHex());
+		}
+
 		ImGui::EndPopup();
 	}
 
