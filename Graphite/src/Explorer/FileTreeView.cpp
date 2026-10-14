@@ -1085,10 +1085,14 @@ namespace Graphite {
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 		}
 
-		const bool open =
-			ImGui::TreeNodeEx(Core::ToUtf8(node.Path).c_str(), flags, "%s  %s",
-							  node.Expanded ? ICON_MDI_FOLDER_OPEN : ICON_MDI_FOLDER,
-							  node.Name.c_str());
+		const bool open = ImGui::TreeNodeEx(Core::ToUtf8(node.Path).c_str(), flags, "%s", "");
+
+		const RowStatus folderStatus =
+			node.Ignored ? RowStatus{} : FolderRowStatusOf(m_GitDecorations, node.Path);
+
+		const std::string label =
+			std::string{node.Expanded ? ICON_MDI_FOLDER_OPEN : ICON_MDI_FOLDER} + "  " + node.Name;
+		DrawTreeRowLabel(label, folderStatus.HasMarker());
 
 		if (dimmed)
 		{
@@ -1106,7 +1110,7 @@ namespace Graphite {
 		{
 			const ImVec2 rowMin = ImGui::GetItemRectMin();
 			const float textTop = rowMin.y + (ImGui::GetItemRectSize().y - ImGui::GetFontSize()) * 0.5f;
-			DrawRowMarker(FolderRowStatusOf(m_GitDecorations, node.Path), textTop);
+			DrawRowMarker(folderStatus, textTop);
 		}
 
 		RenderContextMenu(node);

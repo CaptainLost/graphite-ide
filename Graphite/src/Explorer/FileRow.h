@@ -94,6 +94,12 @@ namespace Graphite {
 	// rests on them, and only then, so the rest of the row stays quiet.
 	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& label);
 
+	// The label of a tree row whose arrow `TreeNodeEx` has just drawn with an empty label, in the
+	// text colour in force. A name too long for the row ends in an ellipsis short of the marker
+	// when `hasMarker` says one is drawn on the row, and short of the row's edge otherwise.
+	// Call it while the row's own item is the last one, before the row's marker is drawn.
+	void DrawTreeRowLabel(const std::string& label, bool hasMarker);
+
 	// Draws `status`'s marker with its right edge at the visible right edge of the current
 	// window, on the line of text whose top is `textTop`. The edge stays put while the window
 	// scrolls sideways, so the marker is always in view. Returns the marker's left edge, or the

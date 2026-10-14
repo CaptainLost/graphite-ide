@@ -40,6 +40,19 @@ namespace Graphite {
 			return window->InnerRect.Max.x - window->WindowPadding.x - ImGui::GetStyle().ItemSpacing.x;
 		}
 
+		// A marker is drawn only when at least one letter of the label fits beside it. Narrower than
+		// that it would sit on the row's arrow, and a row's own name is the more useful of the two.
+		// Measured from the last item, which is the row.
+		bool MarkerHasRoom()
+		{
+			const float markerColumn = RowMarkerColumnWidth();
+			const float labelLeftEdge = ImGui::GetItemRectMin().x + ImGui::GetTreeNodeToLabelSpacing();
+			const float markerLeftEdge = MarkerRight() - markerColumn;
+			const float roomForOneLetter = markerColumn;
+
+			return markerLeftEdge - ImGui::GetStyle().ItemSpacing.x - labelLeftEdge >= roomForOneLetter;
+		}
+
 		// A mark drawn on the row is no item of its own, so its tooltip goes by the row's hover
 		// and the mouse's place on it. Padded by half the item spacing each way: a dot is a few
 		// pixels across and a target that small is hard to rest on.
@@ -222,7 +235,7 @@ namespace Graphite {
 	{
 		const float right = MarkerRight();
 
-		if (!status.HasMarker())
+		if (!status.HasMarker() || !MarkerHasRoom())
 		{
 			return right;
 		}
@@ -250,6 +263,33 @@ namespace Graphite {
 		drawList->AddText(ImVec2(left, textTop), status.Ink, text);
 
 		return std::min(left, right - column);
+	}
+
+	void DrawTreeRowLabel(const std::string& label, bool hasMarker)
+	{
+		if (!ImGui::IsItemVisible())
+		{
+			return;
+		}
+
+		const ImVec2 rowTopLeft = ImGui::GetItemRectMin();
+		const float labelLeftEdge = rowTopLeft.x + ImGui::GetTreeNodeToLabelSpacing();
+
+		float labelRightEdge = MarkerRight();
+
+		if (hasMarker && MarkerHasRoom())
+		{
+			labelRightEdge -= RowMarkerColumnWidth() + ImGui::GetStyle().ItemSpacing.x;
+		}
+
+		labelRightEdge = std::max(labelRightEdge, labelLeftEdge);
+
+		const ImVec2 fullLabelSize = ImGui::CalcTextSize(label.c_str());
+		const ImVec2 labelTopLeft(labelLeftEdge, rowTopLeft.y);
+		const ImVec2 labelBottomRight(labelRightEdge, rowTopLeft.y + fullLabelSize.y);
+
+		ImGui::RenderTextEllipsis(ImGui::GetWindowDrawList(), labelTopLeft, labelBottomRight, labelRightEdge,
+								  label.c_str(), nullptr, &fullLabelSize);
 	}
 
 	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& label)

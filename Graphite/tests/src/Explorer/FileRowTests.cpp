@@ -184,6 +184,45 @@ TEST_CASE("A file row with a name far longer than the window does not widen the 
 	CHECK(scrollableWidth == doctest::Approx(0.0f));
 }
 
+TEST_CASE("A row's marker is drawn only when a letter of the label fits beside it")
+{
+	ImGuiFrames frames;
+
+	Graphite::RowStatus dot;
+	dot.Dot = true;
+	dot.Ink = 0xFFFFFFFFu;
+
+	const auto markerLeftEdgeInWindowOfWidth = [&](float windowWidth)
+	{
+		float markerLeftEdge = 0.0f;
+		float rightEdge = 0.0f;
+
+		const auto drawRow = [&]
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(windowWidth, 300.0f));
+			ImGui::Begin("##markerWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+			ImGui::Selectable("##row", false, ImGuiSelectableFlags_None, ImVec2(0.0f, 0.0f));
+			rightEdge = Graphite::DrawRowMarker(Graphite::RowStatus{}, ImGui::GetItemRectMin().y);
+			markerLeftEdge = Graphite::DrawRowMarker(dot, ImGui::GetItemRectMin().y);
+
+			ImGui::End();
+		};
+
+		frames.Next(drawRow);
+		frames.Next(drawRow);
+
+		return std::pair{markerLeftEdge, rightEdge};
+	};
+
+	const auto [wideLeftEdge, wideRightEdge] = markerLeftEdgeInWindowOfWidth(400.0f);
+	CHECK(wideLeftEdge < wideRightEdge);
+
+	const auto [narrowLeftEdge, narrowRightEdge] = markerLeftEdgeInWindowOfWidth(50.0f);
+	CHECK(narrowLeftEdge == doctest::Approx(narrowRightEdge));
+}
+
 TEST_CASE("MarkerTooltipOf covers every decoration, as a letter and as a dot")
 {
 	const struct

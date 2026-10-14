@@ -137,7 +137,8 @@ namespace Graphite {
 			}
 
 			const bool rootOpen = ImGui::TreeNodeEx(
-				label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+				label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth, "%s", "");
+			DrawTreeRowLabel(label, ImGui::IsItemVisible() && GroupDecorationOf(solution.Root) != GitDecoration::None);
 
 			DrawGroupMarker(solution.Root);
 			RenderContextMenu(solution.Root, "");
@@ -252,7 +253,8 @@ namespace Graphite {
 		}
 
 		const bool open = ImGui::TreeNodeEx(
-			label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+			label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth, "%s", "");
+		DrawTreeRowLabel(label, ImGui::IsItemVisible() && GroupDecorationOf(folder) != GitDecoration::None);
 
 		DrawGroupMarker(folder);
 		RenderContextMenu(folder, path);
@@ -294,7 +296,8 @@ namespace Graphite {
 			ImGui::SetNextItemOpen(true);
 		}
 
-		const bool open = ImGui::TreeNodeEx(label.c_str(), flags);
+		const bool open = ImGui::TreeNodeEx(label.c_str(), flags, "%s", "");
+		DrawTreeRowLabel(label, ImGui::IsItemVisible() && GroupDecorationOf(project) != GitDecoration::None);
 
 		if (!project.Exists)
 		{
