@@ -19,7 +19,8 @@ namespace Graphite {
 
 		constexpr std::string_view kRenameArrow = " → ";
 
-		constexpr const char* kCommitsHeading = "Commits";
+		// Not "Commits": the Commits page beside it counts commits, and this heading counts files.
+		constexpr const char* kCommitsHeading = "Files";
 		constexpr const char* kUncommittedHeading = "Uncommitted in worktree";
 
 		constexpr const char* kSeparator = " \xC2\xB7 ";

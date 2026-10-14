@@ -230,8 +230,8 @@ TEST_CASE("A change summary counts the files and their lines")
 
 TEST_CASE("A group heading says how many files are left on screen out of how many")
 {
-	CHECK(Graphite::GroupHeadingText(ReviewGroup::Commits, 40, 40) == "Commits (40)");
-	CHECK(Graphite::GroupHeadingText(ReviewGroup::Commits, 12, 40) == "Commits (12 of 40)");
+	CHECK(Graphite::GroupHeadingText(ReviewGroup::Commits, 40, 40) == "Files (40)");
+	CHECK(Graphite::GroupHeadingText(ReviewGroup::Commits, 12, 40) == "Files (12 of 40)");
 	CHECK(Graphite::GroupHeadingText(ReviewGroup::Uncommitted, 0, 3) == "Uncommitted in worktree (0 of 3)");
 }
 

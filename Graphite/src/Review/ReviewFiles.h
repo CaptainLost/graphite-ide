@@ -68,7 +68,7 @@ namespace Graphite {
 	// The same from counts already made.
 	std::string ChangeSummary(std::size_t fileCount, const LineCounts& lines);
 
-	// "Commits (40)", or "Commits (12 of 40)" while a filter or Hide viewed leaves some out.
+	// "Files (40)", or "Files (12 of 40)" while a filter or Hide viewed leaves some out.
 	std::string GroupHeadingText(ReviewGroup group, std::size_t shown, std::size_t total);
 
 	struct ReviewSelection
