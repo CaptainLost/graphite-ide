@@ -59,7 +59,6 @@ namespace Graphite {
 			return CountViewed(groups, stateOf);
 		}
 
-		// A range that resolved and is not merged yet: its badge counts the viewed files of its diff.
 		bool BadgeCountsDiff(const ReviewRange& range)
 		{
 			return range.Problem == RangeProblem::None && range.Ends.MergeBase != range.Ends.Tip;

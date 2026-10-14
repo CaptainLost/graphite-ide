@@ -54,7 +54,7 @@ namespace Graphite {
 		std::error_code statError;
 		const bool fileExists = std::filesystem::exists(file, statError);
 
-		// A failed stat is not "nothing is there": taking it for absence would write over a file
+		// WARNING: A failed stat is not "nothing is there": taking it for absence would write over a file
 		// whose sessions were never read.
 		if (statError)
 		{
@@ -84,7 +84,7 @@ namespace Graphite {
 		m_Sessions.Replace(std::move(stored));
 		m_SavedVersion = m_Sessions.GetVersion();
 		m_SeenVersion = m_SavedVersion;
-		m_UnchangedFor = 0.0f;
+		m_UnchangedFor = kNoSecondsUnchanged;
 	}
 
 	void ReviewStore::Close()
@@ -98,7 +98,7 @@ namespace Graphite {
 		m_CopyFailureLogged = false;
 		m_SavedVersion = m_Sessions.GetVersion();
 		m_SeenVersion = m_SavedVersion;
-		m_UnchangedFor = 0.0f;
+		m_UnchangedFor = kNoSecondsUnchanged;
 	}
 
 	void ReviewStore::MoveTo(std::filesystem::path root)
@@ -106,7 +106,7 @@ namespace Graphite {
 		m_Root = std::move(root);
 	}
 
-	void ReviewStore::Update(Core::Timestep ts)
+	void ReviewStore::Update(Core::Timestep timestep)
 	{
 		if (m_Root.empty() || m_FileOnOpen == FileOnOpen::LeftAlone)
 		{
@@ -116,7 +116,7 @@ namespace Graphite {
 		if (m_Sessions.GetVersion() != m_SeenVersion)
 		{
 			m_SeenVersion = m_Sessions.GetVersion();
-			m_UnchangedFor = 0.0f;
+			m_UnchangedFor = kNoSecondsUnchanged;
 			Core::Redraw::RequestIn(std::chrono::duration<double>(kSaveDelaySeconds));
 			return;
 		}
@@ -126,14 +126,14 @@ namespace Graphite {
 			return;
 		}
 
-		m_UnchangedFor += ts.GetSeconds();
+		m_UnchangedFor += timestep.GetSeconds();
 
 		if (m_UnchangedFor >= kSaveDelaySeconds)
 		{
 			Flush();
 		}
 
-		// A requested deadline lasts for one wait, so a save still to come asks again every frame
+		// WARNING: A requested deadline lasts for one wait, so a save still to come asks again every frame
 		// for the frame it falls due on.
 		if (m_SavedVersion != m_SeenVersion)
 		{
@@ -152,7 +152,7 @@ namespace Graphite {
 
 		if (m_FileOnOpen == FileOnOpen::CopyAsideFirst && !CopyAsideBeforeFirstWrite(file))
 		{
-			m_UnchangedFor = 0.0f;
+			m_UnchangedFor = kNoSecondsUnchanged;
 			return;
 		}
 
@@ -163,10 +163,8 @@ namespace Graphite {
 
 		if (!written.HasValue())
 		{
-			// Left unsaved: Update tries again once the sessions have stood another kSaveDelaySeconds,
-			// and Close tries once more.
 			APP_WARN("Cannot write {}: {}", Core::ToUtf8(file), written.GetError().Message);
-			m_UnchangedFor = 0.0f;
+			m_UnchangedFor = kNoSecondsUnchanged;
 			return;
 		}
 

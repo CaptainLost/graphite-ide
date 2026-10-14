@@ -14,8 +14,6 @@
 #include <fstream>
 #include <string>
 
-// A repository on disk whose history a test builds through libgit2 directly: commits on HEAD,
-// branches, checkouts, orphans and linked worktrees.
 class ReviewRepository
 {
 public:

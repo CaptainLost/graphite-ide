@@ -23,7 +23,6 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		// Texts read for the old diff still describe the file when both diffs name the same blob pair for it.
 		bool SameFileInBoth(const Core::Diff& replaced, const Core::Diff& current, const std::filesystem::path& shownPath)
 		{
 			const Core::FileDiff* before = FindShownFile(replaced, shownPath);
@@ -37,7 +36,6 @@ namespace Graphite {
 			return before->OldId == after->OldId && before->NewId == after->NewId;
 		}
 
-		// Nothing for a range that did not resolve, whose ends mean nothing.
 		std::optional<Core::Oid> TipOf(const ReviewRange* range)
 		{
 			if (range == nullptr || range->Problem != RangeProblem::None)
@@ -66,7 +64,6 @@ namespace Graphite {
 			return true;
 		}
 
-		// Everything a tab or a badge draws from a range. A commit's id covers the rest of its summary.
 		bool IsSameRange(const ReviewRange& held, const ReviewRange& answer)
 		{
 			const bool sameEnds = held.Problem == answer.Problem && held.Ends == answer.Ends;
@@ -77,7 +74,6 @@ namespace Graphite {
 			return sameEnds && sameWorktree && sameCommits;
 		}
 
-		// A failed since-viewed answer is keyed by blobs, not by the review, so Retry forgets them all.
 		bool IsAnySinceViewedKey(const SinceViewedKey&)
 		{
 			return true;
@@ -95,7 +91,7 @@ namespace Graphite {
 		events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) { Clear(); });
 	}
 
-	void ReviewModel::OnUpdate(Core::Timestep ts)
+	void ReviewModel::OnUpdate(Core::Timestep timestep)
 	{
 		for (auto& [key, uncommitted] : m_Uncommitted)
 		{
@@ -106,7 +102,7 @@ namespace Graphite {
 				uncommitted.Debounce.Mark();
 			}
 
-			if (uncommitted.Debounce.Advance(ts))
+			if (uncommitted.Debounce.Advance(timestep))
 			{
 				uncommitted.Stale = true;
 			}
@@ -193,8 +189,8 @@ namespace Graphite {
 			return;
 		}
 
-		// Branches are read again on every save, and a new pointer for the same range would have every
-		// badge and tab work out again what they show.
+		// WARNING: Branches are read again on every save, and a new pointer for the same range would
+		// have every badge and tab work out again what they show.
 		const Core::Ref<const ReviewRange> replaced = range->Slot.Get();
 		const bool answerIsUnchanged = answer.HasValue() && replaced != nullptr && IsSameRange(*replaced, answer.GetValue());
 		const SlotLanding landing = answerIsUnchanged ? range->Slot.LandSameAsHeld(generation)
@@ -205,8 +201,6 @@ namespace Graphite {
 			return;
 		}
 
-		// A commit made in the worktree moves the tip without changing a file its watch reports, so
-		// the tip moving is what makes the worktree's diff against it stale.
 		const bool tipMoved = TipOf(replaced.get()) != TipOf(range->Slot.Get().get());
 		UncommittedState* uncommitted = FindUncommitted(key);
 
@@ -361,7 +355,6 @@ namespace Graphite {
 		m_Submit([this, key, oldPath = file.OldPath, newPath = file.NewPath, generation = *generation]() {
 			Core::Result<FileTexts> answer = m_Port.ReadRangeTexts(key.Ends, oldPath, newPath);
 
-			// Coloured here, on the worker: a C# side is a whole-file parse with no budget.
 			if (answer.HasValue())
 			{
 				FileTexts& texts = answer.GetValue();
@@ -377,8 +370,8 @@ namespace Graphite {
 	void ReviewModel::LandCommittedTexts(const TextsKey& key, std::uint64_t generation,
 										 Core::Result<FileTexts> answer)
 	{
-		// A text that cannot be read costs the pane its colouring and its whole-file view, and the
-		// diff still draws, so the failure is held to stop a retry per frame and not reported.
+		// WARNING: A text that cannot be read costs the pane its colouring and whole-file view while the
+		// diff still draws, so the failure is held to stop a retry per frame and is not reported.
 		if (!answer.HasValue())
 		{
 			m_CommittedTexts.Fail(key, generation);
@@ -409,7 +402,6 @@ namespace Graphite {
 		m_Submit([this, key, request, generation = *generation]() {
 			Core::Result<SinceViewedAnswer> answer = m_Port.ReadSinceViewed(request);
 
-			// Coloured here, on the worker: a C# side is a whole-file parse with no budget.
 			if (answer.HasValue())
 			{
 				SinceViewedAnswer& since = answer.GetValue();
@@ -629,7 +621,6 @@ namespace Graphite {
 				  newPath = file.NewPath]() {
 			Core::Result<FileTexts> answer = m_Port.ReadWorktreeTexts(worktree, oldPath, newPath);
 
-			// Coloured here, on the worker: a C# side is a whole-file parse with no budget.
 			if (answer.HasValue())
 			{
 				FileTexts& texts = answer.GetValue();
@@ -651,9 +642,6 @@ namespace Graphite {
 		{
 			return;
 		}
-
-		// A text that cannot be read costs the pane its colouring and its whole-file view, and the
-		// diff still draws, so the failure is held to stop a retry per frame and not reported.
 
 		uncommitted->TextsApplied = generation;
 		uncommitted->Texts = answer.HasValue() ? Core::CreateRef<const FileTexts>(std::move(answer).GetValue()) : nullptr;

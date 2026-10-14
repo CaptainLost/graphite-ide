@@ -37,7 +37,6 @@ namespace {
 		return diff;
 	}
 
-	// "Folder Core/src/Core/Git @1", "File Diff.h @2", "Heading @0" - what a test compares rows by.
 	std::vector<std::string> Describe(const ReviewGroups& groups, const std::vector<ReviewTreeRow>& rows)
 	{
 		std::vector<std::string> lines;
@@ -70,7 +69,6 @@ namespace {
 		return file.NewPath.filename() == std::filesystem::path{name} ? ViewedState::Viewed : ViewedState::NotViewed;
 	}
 
-	// x.h is viewed, y.h changed since it was viewed, and nothing else was viewed.
 	ViewedState XViewedAndYChangedSince(const Core::FileDiff& file)
 	{
 		if (file.NewPath == std::filesystem::path{"x.h"})
@@ -375,4 +373,35 @@ TEST_CASE("A folder with thousands of sibling folders is listed in full and in n
 	CHECK(rows[4].Label == "c1");
 	CHECK(rows[6].Label == "c10");
 	CHECK(rows[1].Total == siblingCount);
+}
+
+TEST_CASE("Each present group is listed in turn and a file row carries its place in its group's diff")
+{
+	const Core::Diff committed = DiffOfFiles({"b.h", "a.h"});
+	const Core::Diff uncommitted = DiffOfFiles({"c.h"});
+	const ReviewGroups groups{.Commits = &committed, .Uncommitted = &uncommitted};
+
+	const std::vector<ReviewTreeRow> rows = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups});
+
+	REQUIRE(rows.size() == 5);
+	CHECK(Describe(groups, rows) ==
+		  std::vector<std::string>{"Heading @0", "File a.h @1", "File b.h @1", "Heading @0", "File c.h @1"});
+	CHECK(rows[1].FileIndex == 1);
+	CHECK(rows[2].FileIndex == 0);
+	CHECK(rows[4].FileIndex == 0);
+}
+
+TEST_CASE("A heading counts the viewed files out of all of its group and the files left on screen")
+{
+	const Core::Diff committed = DiffOfFiles({"x.h", "y.h", "z.h"});
+	const ReviewGroups groups{.Commits = &committed};
+	ReviewTreeInput input{.Groups = groups, .HideViewed = true};
+	input.StateOf = [](ReviewGroup, const Core::FileDiff& file) { return ViewedIfNamed(file, "x.h"); };
+
+	const std::vector<ReviewTreeRow> rows = Graphite::BuildReviewTree(input);
+
+	REQUIRE(rows[0].Kind == TreeRowKind::Heading);
+	CHECK(rows[0].Viewed == 1);
+	CHECK(rows[0].Total == 3);
+	CHECK(rows[0].Shown == 2);
 }

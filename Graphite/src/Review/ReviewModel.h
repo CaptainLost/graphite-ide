@@ -25,7 +25,6 @@
 
 namespace Graphite {
 
-	// What a range's diff is cached by: the same ends with and without white space are two answers.
 	struct RangeDiffKey
 	{
 		RangeEnds Ends;
@@ -44,93 +43,62 @@ namespace Graphite {
 		}
 	};
 
-	// What the review tabs draw, and when it is stale. GitModel's rules hold here too: answers are
-	// immutable and handed out by shared pointer, every request carries a generation, and an answer
-	// becomes visible only in OnUpdate, on the UI thread.
-	//
-	// Every job captures `this`, so the queue behind the submitter must be destroyed, and its
+	// WARNING: Every job captures `this`, so the queue behind the submitter must be destroyed, and its
 	// workers joined, before this object is. An owner holding both declares this BEFORE the queue.
 	class ReviewModel : Core::NonCopyable
 	{
 	public:
 		ReviewModel(ReviewPort& port, Core::JobSubmitter submit, WorktreeWatchFactory watch);
 
-		// Everything held is about the folder that was open.
 		void SubscribeTo(Core::EventBus& events);
 
-		void OnUpdate(Core::Timestep ts);
+		void OnUpdate(Core::Timestep timestep);
 		void Clear();
 
-		// Called on every frame a tab is drawn. Resolves the range the first time, and again once
-		// InvalidateRanges or Retry marked it stale; one query at a time per review.
 		void RequestRange(const ReviewKey& key);
 
-		// Null until the first answer, and after a failure with nothing good before it.
 		Core::Ref<const ReviewRange> GetRange(const ReviewKey& key) const;
 
-		// Null unless the last answer was a failure.
 		const Core::Error* GetRangeError(const ReviewKey& key) const;
 
 		bool IsRangeLoading(const ReviewKey& key) const;
 
-		// A branch moved: every review may now cover a different range. A review's uncommitted diff is
-		// asked again only once the new range has moved its tip; the worktree's watch covers the rest.
 		void InvalidateRanges();
 
-		// The reader's Retry: the review's range and uncommitted diff are asked again, and the failed
-		// answers held for its range - the diff and any file's texts - are forgotten.
 		void Retry(const ReviewKey& key);
 
-		// The tab closed or changed its base. An answer still in flight for it is dropped when it
-		// lands, even if the same review is asked about again meanwhile.
 		void Forget(const ReviewKey& key);
 
-		// A range's diff never changes, so it is held once fetched. Asking about one already held,
-		// in flight or failed does nothing; Retry is the way back from a failure.
 		void RequestCommittedDiff(const RangeDiffKey& key);
 		Core::Ref<const Core::Diff> GetCommittedDiff(const RangeDiffKey& key) const;
 		bool IsCommittedDiffFailed(const RangeDiffKey& key) const;
 		const std::optional<Core::Error>& GetCommittedDiffError() const { return m_CommittedDiffError; }
 
-		// Keyed by the range and the path the list shows the file under. A binary file is never read.
 		void RequestCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file);
 		Core::Ref<const FileTexts> GetCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file) const;
 
-		// A changed file's diff from the version a viewed mark recorded, held once read. Failed after
-		// any failed read, and also unavailable when the repository no longer holds that version;
-		// Retry asks again.
 		void RequestSinceViewed(const SinceViewedRequest& request);
 		Core::Ref<const SinceViewedAnswer> GetSinceViewed(const SinceViewedRequest& request) const;
 		bool IsSinceViewedFailed(const SinceViewedRequest& request) const;
 		bool IsSinceViewedUnavailable(const SinceViewedRequest& request) const;
 
-		// Called on every frame a tab with the toggle on is drawn. The first call starts watching the
-		// worktree, and a call naming another worktree starts over. A change under the worktree
-		// marks the answer stale once the burst of changes settles.
 		void RequestUncommitted(const ReviewKey& key, const std::filesystem::path& worktree,
-								 Core::WhitespaceInDiff whitespace);
+								Core::WhitespaceInDiff whitespace);
 		Core::Ref<const Core::Diff> GetUncommitted(const ReviewKey& key) const;
 		const Core::Error* GetUncommittedError(const ReviewKey& key) const;
 		bool IsUncommittedLoading(const ReviewKey& key) const;
 
-		// The texts of the one file on screen, read for the uncommitted diff now held: null while they
-		// are on their way, once that diff is replaced by one that changes the file, after a failed read,
-		// and for a binary file.
 		void RequestUncommittedTexts(const ReviewKey& key, const Core::FileDiff& file);
 		Core::Ref<const FileTexts> GetUncommittedTexts(const ReviewKey& key, const Core::FileDiff& file) const;
 
-		// The toggle went off: the watch stops and what was held is dropped.
 		void StopUncommitted(const ReviewKey& key);
 
-		// A whole branch's diff is far larger than one commit's, so fewer are held than GitModel holds.
 		static constexpr std::size_t kCachedDiffs = 8;
 		static constexpr std::size_t kCachedTexts = 32;
 
 	private:
 		struct RangeState
 		{
-			// From a model-wide counter, so an answer can tell whether the review it was asked for is
-			// still the one held under its key.
 			std::uint64_t Incarnation = 0;
 			GenerationSlot<ReviewRange> Slot;
 			bool Asked = false;
@@ -204,7 +172,6 @@ namespace Graphite {
 		std::optional<Core::Error> m_CommittedDiffError;
 		LruResultCache<SinceViewedKey, SinceViewedAnswer, SinceViewedKeyHash> m_SinceViewed{kCachedTexts};
 
-		// The failed since-viewed answers whose viewed version the repository no longer holds.
 		std::unordered_set<SinceViewedKey, SinceViewedKeyHash> m_ViewedVersionsGone;
 
 		std::uint64_t m_NextTextsGeneration = 0;

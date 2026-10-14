@@ -11,8 +11,6 @@
 
 namespace Graphite {
 
-	// The two lists a review shows: what the branch's commits changed since the merge base, and
-	// what its worktree changed on top of the tip.
 	enum class ReviewGroup
 	{
 		Commits,
@@ -33,8 +31,6 @@ namespace Graphite {
 		ChangedSinceViewed
 	};
 
-	// Where a mark sits: one file of one group, by the path the list shows it under - the new path,
-	// or the old one for a delete.
 	struct MarkKey
 	{
 		ReviewGroup Group = ReviewGroup::Commits;
@@ -44,7 +40,6 @@ namespace Graphite {
 		friend std::strong_ordering operator<=>(const MarkKey&, const MarkKey&) = default;
 	};
 
-	// The file as the reader looked at it: the pair of blob ids names that exact change.
 	struct ViewedMark
 	{
 		Core::Oid Old;
@@ -53,10 +48,8 @@ namespace Graphite {
 		friend bool operator==(const ViewedMark&, const ViewedMark&) = default;
 	};
 
-	// One branch's marks, ordered by key so a row finds its mark without walking the others.
 	using BranchMarks = std::map<MarkKey, ViewedMark>;
 
-	// Says how far a file of a group has been looked at.
 	using ViewedStateOf = std::function<ViewedState(ReviewGroup group, const Core::FileDiff& file)>;
 
 	ViewedState StateIn(const BranchMarks& marks, ReviewGroup group, const Core::FileDiff& file);

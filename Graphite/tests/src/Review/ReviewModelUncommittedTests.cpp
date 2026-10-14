@@ -17,6 +17,8 @@ namespace {
 
 	const Core::Timestep kFrame{0.016f};
 	const Core::Timestep kTenthOfASecond{0.1f};
+	const int kQuietFrameCount = 10;
+	const int kBurstFrameCount = 12;
 
 	const ReviewKey kKey{.Branch = "refs/heads/side", .Base = "refs/heads/main"};
 	const std::filesystem::path kWorktree{"D:/work/side-tree"};
@@ -91,8 +93,7 @@ namespace {
 		Settle(model, jobs);
 	}
 
-	// A change under the worktree that has settled past the debounce.
-	void ChangeWorktree(ReviewModel& model, WatchControl& watches)
+	void ChangeWorktreeAndSettlePastDebounce(ReviewModel& model, WatchControl& watches)
 	{
 		watches.Changed = true;
 		model.OnUpdate(kFrame);
@@ -109,7 +110,7 @@ TEST_CASE("The uncommitted diff is asked once and held while the worktree is qui
 	WatchControl watches;
 	ReviewModel model{port, jobs.Submitter(), FakeWatches(watches)};
 
-	for (int frame = 0; frame < 10; ++frame)
+	for (int frame = 0; frame < kQuietFrameCount; ++frame)
 	{
 		AskAndSettle(model, jobs, kWorktree);
 	}
@@ -128,10 +129,7 @@ TEST_CASE("A change in the worktree asks for the uncommitted diff again once the
 	ReviewModel model{port, jobs.Submitter(), FakeWatches(watches)};
 	AskAndSettle(model, jobs, kWorktree);
 
-	watches.Changed = true;
-	model.OnUpdate(kFrame);
-	watches.Changed = false;
-	model.OnUpdate(Core::Timestep{Graphite::Debouncer::kQuietSeconds});
+	ChangeWorktreeAndSettlePastDebounce(model, watches);
 	AskAndSettle(model, jobs, kWorktree);
 
 	CHECK(port.WorktreeDiffQueries == 2);
@@ -147,7 +145,7 @@ TEST_CASE("A worktree that keeps changing is asked about once per debounce burst
 
 	watches.Changed = true;
 
-	for (int frame = 0; frame < 12; ++frame)
+	for (int frame = 0; frame < kBurstFrameCount; ++frame)
 	{
 		model.OnUpdate(kTenthOfASecond);
 		model.RequestUncommitted(kKey, kWorktree, Core::WhitespaceInDiff::Shown);
@@ -240,7 +238,7 @@ TEST_CASE("Uncommitted texts belong to the diff they were read beside")
 	CHECK(model.GetUncommittedTexts(kKey, file)->New == "edited\n");
 
 	port.WorktreeDiff.Files[0].NewId.Bytes[0] = 1;
-	ChangeWorktree(model, watches);
+	ChangeWorktreeAndSettlePastDebounce(model, watches);
 	AskAndSettle(model, jobs, kWorktree);
 	CHECK(model.GetUncommittedTexts(kKey, file) == nullptr);
 
@@ -297,7 +295,7 @@ TEST_CASE("Uncommitted texts survive a refresh that leaves their file as it was"
 	model.RequestUncommittedTexts(kKey, file);
 	Settle(model, jobs);
 
-	ChangeWorktree(model, watches);
+	ChangeWorktreeAndSettlePastDebounce(model, watches);
 	AskAndSettle(model, jobs, kWorktree);
 	model.RequestUncommittedTexts(kKey, file);
 
@@ -320,7 +318,7 @@ TEST_CASE("Uncommitted texts are read again when the refresh changes their file"
 	Settle(model, jobs);
 
 	port.WorktreeDiff.Files[0].NewId.Bytes[0] = 1;
-	ChangeWorktree(model, watches);
+	ChangeWorktreeAndSettlePastDebounce(model, watches);
 	AskAndSettle(model, jobs, kWorktree);
 	CHECK(model.GetUncommittedTexts(kKey, file) == nullptr);
 	model.RequestUncommittedTexts(kKey, file);
@@ -340,7 +338,7 @@ TEST_CASE("Asking for the same uncommitted texts every frame reads them once")
 	const Core::FileDiff file = TextFile("a.cpp");
 	AskAndSettle(model, jobs, kWorktree);
 
-	for (int frame = 0; frame < 10; ++frame)
+	for (int frame = 0; frame < kQuietFrameCount; ++frame)
 	{
 		model.RequestUncommittedTexts(kKey, file);
 		Settle(model, jobs);

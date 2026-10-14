@@ -19,8 +19,7 @@ namespace Graphite {
 
 		constexpr std::string_view kRenameArrow = " → ";
 
-		// Not "Commits": the Commits page beside it counts commits, and this heading counts files.
-		constexpr const char* kCommitsHeading = "Files";
+		constexpr const char* kCommittedFilesHeading = "Files";
 		constexpr const char* kUncommittedHeading = "Uncommitted in worktree";
 
 		constexpr const char* kSeparator = " \xC2\xB7 ";
@@ -30,12 +29,12 @@ namespace Graphite {
 			switch (group)
 			{
 			case ReviewGroup::Commits:
-				return kCommitsHeading;
+				return kCommittedFilesHeading;
 			case ReviewGroup::Uncommitted:
 				return kUncommittedHeading;
 			}
 
-			return kCommitsHeading;
+			return kCommittedFilesHeading;
 		}
 
 		const Core::Branch* CheckedOutBranch(const std::vector<Core::Branch>& branches)
@@ -275,8 +274,8 @@ namespace Graphite {
 
 	std::string CommitsTabLabel(const ReviewRange& range)
 	{
-		const char* more = range.CommitsComplete ? "" : "+";
-		return std::format("Commits ({}{})", range.Commits.size(), more);
+		const char* truncationMark = range.CommitsComplete ? "" : "+";
+		return std::format("Commits ({}{})", range.Commits.size(), truncationMark);
 	}
 
 	std::string CommitLine(const Core::CommitSummary& commit, const Core::Diff* diff)
@@ -382,11 +381,9 @@ namespace Graphite {
 
 	bool OnlyWhitespaceChanged(const Core::FileDiff& file, Core::WhitespaceInDiff whitespace)
 	{
-		// A FileDiff has no mode, so a change of mode alone arrives Modified with no hunks too; its
-		// blob is the same on both sides.
-		const bool contentChanged = file.OldId != file.NewId;
+		const bool blobsDiffer = file.OldId != file.NewId;
 
 		return whitespace == Core::WhitespaceInDiff::Ignored && file.Change == Core::FileChange::Modified &&
-			   !file.IsBinary && contentChanged && file.Hunks.empty();
+			   !file.IsBinary && blobsDiffer && file.Hunks.empty();
 	}
 }

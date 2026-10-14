@@ -210,7 +210,9 @@ TEST_CASE("Marks survive an encode and a decode with slashes and non-ASCII chara
 {
 	ReviewSessions sessions;
 	sessions.Start(kBranch, kBase);
-	const std::filesystem::path nonAsciiPath = Core::FromUtf8("\xC5\xB9r\xC3\xB3" "d\xC5\x82" "a/plik.cpp");
+	const std::filesystem::path nonAsciiPath = Core::FromUtf8("\xC5\xB9r\xC3\xB3"
+															  "d\xC5\x82"
+															  "a/plik.cpp");
 	sessions.Mark(kBranch, ReviewGroup::Commits, ModifiedFile(nonAsciiPath, 1, 2));
 	sessions.Mark(kBranch, ReviewGroup::Uncommitted, ModifiedFile("src/a.cpp", 3, 4));
 

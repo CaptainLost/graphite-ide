@@ -17,7 +17,6 @@
 
 namespace Graphite {
 
-	// One review: a branch against the branch it would go into, both by full name.
 	struct ReviewKey
 	{
 		std::string Branch;
@@ -36,8 +35,6 @@ namespace Graphite {
 		}
 	};
 
-	// What the committed part of a review is the diff between. Two reviews of the same range
-	// share one answer, so this is also what that answer is cached by.
 	struct RangeEnds
 	{
 		Core::Oid MergeBase;
@@ -56,7 +53,6 @@ namespace Graphite {
 		}
 	};
 
-	// The ordinary answers that leave nothing to diff. A tab says which; none of them is a failure.
 	enum class RangeProblem
 	{
 		None,
@@ -69,20 +65,14 @@ namespace Graphite {
 	{
 		RangeProblem Problem = RangeProblem::None;
 
-		// Read only when Problem is None.
 		RangeEnds Ends;
 
-		// Filled whenever the branch exists, so the uncommitted toggle is offered even while the
-		// base is missing.
 		std::optional<std::filesystem::path> Worktree;
 
-		// The branch's own commits since the merge base, newest first.
 		std::vector<Core::CommitSummary> Commits;
 		bool CommitsComplete = true;
 	};
 
-	// A changed file read from the version a viewed mark recorded to its current one. The current
-	// version comes from Tip when that is set, and from the Worktree's file on disk otherwise.
 	struct SinceViewedRequest
 	{
 		Core::Oid ViewedBlob;
@@ -93,7 +83,6 @@ namespace Graphite {
 		std::optional<std::filesystem::path> Worktree;
 	};
 
-	// What a since-viewed answer is cached by: where the version was read from does not change it.
 	struct SinceViewedKey
 	{
 		Core::Oid ViewedBlob;
@@ -130,8 +119,7 @@ namespace Graphite {
 		FileTexts Texts;
 	};
 
-	// What ReviewModel needs a repository for, and nothing else. Every method is called on a
-	// worker thread.
+	// WARNING: Every method is called on a worker thread.
 	class ReviewPort
 	{
 	public:
@@ -139,23 +127,21 @@ namespace Graphite {
 
 		virtual Core::Result<ReviewRange> ResolveRange(const ReviewKey& key) = 0;
 
-		// A zero MergeBase is the empty tree: a root commit's own change.
+		// WARNING: A zero MergeBase is the empty tree: a root commit's own change.
 		virtual Core::Result<Core::Diff> QueryRangeDiff(const RangeEnds& ends, Core::WhitespaceInDiff whitespace) = 0;
 
-		// The old side at the merge base, the new side at the tip. A side with an empty path is absent.
 		virtual Core::Result<FileTexts> ReadRangeTexts(const RangeEnds& ends,
 													   const std::filesystem::path& oldPath,
 													   const std::filesystem::path& newPath) = 0;
 
-		// The worktree's files on disk against its HEAD, which is the branch tip.
 		virtual Core::Result<Core::Diff> QueryWorktreeDiff(const std::filesystem::path& worktree,
-															   Core::WhitespaceInDiff whitespace) = 0;
+														   Core::WhitespaceInDiff whitespace) = 0;
 
 		virtual Core::Result<FileTexts> ReadWorktreeTexts(const std::filesystem::path& worktree,
 														  const std::filesystem::path& oldPath,
 														  const std::filesystem::path& newPath) = 0;
 
-		// NotFound when the viewed blob is no longer in the repository, and only then.
+		// WARNING: NotFound means the viewed blob is no longer in the repository, and only that.
 		virtual Core::Result<SinceViewedAnswer> ReadSinceViewed(const SinceViewedRequest& request) = 0;
 	};
 }

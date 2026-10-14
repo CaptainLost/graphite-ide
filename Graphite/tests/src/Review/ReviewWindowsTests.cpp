@@ -41,12 +41,13 @@ namespace {
 		return sessions;
 	}
 
-	// What a drawn tab leaves the model holding.
+	const Core::Timestep kFrame{0.016f};
+
 	void HoldRange(Graphite::ReviewModel& model, DeferredJobs& jobs, const ReviewKey& key)
 	{
 		model.RequestRange(key);
 		jobs.RunAll();
-		model.OnUpdate(Core::Timestep{0.016f});
+		model.OnUpdate(kFrame);
 	}
 }
 

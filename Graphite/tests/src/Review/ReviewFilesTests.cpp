@@ -3,6 +3,7 @@
 #include "Review/ReviewFiles.h"
 #include "Review/ReviewSessions.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -13,6 +14,10 @@ using Graphite::ReviewGroup;
 using Graphite::ReviewGroups;
 
 namespace {
+
+	constexpr bool kCheckedOut = true;
+	constexpr bool kNotCheckedOut = false;
+	constexpr std::uint8_t kFirstIdByte = 0x77;
 
 	Core::Branch LocalBranch(const std::string& name, bool isHead)
 	{
@@ -42,7 +47,6 @@ namespace {
 		return file;
 	}
 
-	// A file whose content changed: its old and new blobs differ.
 	Core::FileDiff ChangedFileAt(const std::filesystem::path& path)
 	{
 		Core::FileDiff file = FileAt(path);
@@ -66,7 +70,7 @@ namespace {
 
 TEST_CASE("Any branch but the checked-out one is offered for review against the checked-out branch")
 {
-	const std::vector<Core::Branch> branches = {LocalBranch("main", true), LocalBranch("side", false)};
+	const std::vector<Core::Branch> branches = {LocalBranch("main", kCheckedOut), LocalBranch("side", kNotCheckedOut)};
 
 	const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(branches[1], branches);
 
@@ -78,7 +82,7 @@ TEST_CASE("Any branch but the checked-out one is offered for review against the 
 
 TEST_CASE("The checked-out branch is offered for review against its upstream and not at all without one")
 {
-	Core::Branch main = LocalBranch("main", true);
+	Core::Branch main = LocalBranch("main", kCheckedOut);
 	main.Upstream = "origin/main";
 	const std::vector<Core::Branch> branches = {main, RemoteBranch("origin/main")};
 
@@ -88,13 +92,13 @@ TEST_CASE("The checked-out branch is offered for review against its upstream and
 	CHECK(offer->Label == "Review against origin/main");
 	CHECK(offer->Base == std::optional<std::string>{"refs/remotes/origin/main"});
 
-	const std::vector<Core::Branch> withoutUpstream = {LocalBranch("main", true)};
+	const std::vector<Core::Branch> withoutUpstream = {LocalBranch("main", kCheckedOut)};
 	CHECK_FALSE(Graphite::OfferReview(withoutUpstream[0], withoutUpstream).has_value());
 }
 
 TEST_CASE("With HEAD detached a branch is offered with no base yet")
 {
-	const std::vector<Core::Branch> branches = {LocalBranch("main", false), LocalBranch("side", false)};
+	const std::vector<Core::Branch> branches = {LocalBranch("main", kNotCheckedOut), LocalBranch("side", kNotCheckedOut)};
 
 	const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(branches[1], branches);
 
@@ -105,7 +109,7 @@ TEST_CASE("With HEAD detached a branch is offered with no base yet")
 
 TEST_CASE("A remote branch is offered for review against the checked-out branch")
 {
-	const std::vector<Core::Branch> branches = {LocalBranch("main", true), RemoteBranch("origin/feature")};
+	const std::vector<Core::Branch> branches = {LocalBranch("main", kCheckedOut), RemoteBranch("origin/feature")};
 
 	const std::optional<Graphite::ReviewOffer> offer = Graphite::OfferReview(branches[1], branches);
 
@@ -147,8 +151,7 @@ TEST_CASE("The viewed count covers every file of every present group")
 	sessions.Mark("refs/heads/side", ReviewGroup::Commits, committed.Files[0]);
 
 	const Graphite::ViewedCount count = Graphite::CountViewed(
-		groups, [&sessions](Graphite::ReviewGroup group, const Core::FileDiff& file)
-		{ return sessions.StateOf("refs/heads/side", group, file); });
+		groups, [&sessions](Graphite::ReviewGroup group, const Core::FileDiff& file) { return sessions.StateOf("refs/heads/side", group, file); });
 
 	CHECK(count.Viewed == 1);
 	CHECK(count.Total == 3);
@@ -157,7 +160,7 @@ TEST_CASE("The viewed count covers every file of every present group")
 TEST_CASE("The range summary names the merge base and counts the commits")
 {
 	Graphite::ReviewRange range;
-	range.Ends.MergeBase.Bytes[0] = 0x77;
+	range.Ends.MergeBase.Bytes[0] = kFirstIdByte;
 	range.Commits.resize(1);
 
 	CHECK(Graphite::RangeSummary(range) == "merge-base 7700000 \xC2\xB7 1 commit");
@@ -249,7 +252,7 @@ TEST_CASE("The commits tab counts the range's commits and says when the list was
 TEST_CASE("A commit's line names its hash and author and then what it changed")
 {
 	Core::CommitSummary commit;
-	commit.Id.Bytes[0] = 0x77;
+	commit.Id.Bytes[0] = kFirstIdByte;
 	commit.Author.Name = "Ada";
 
 	CHECK(Graphite::CommitLine(commit, nullptr) == "7700000 \xC2\xB7 Ada");
@@ -310,4 +313,51 @@ TEST_CASE("A modified file with the same blob on both sides changed its mode and
 	modeOnly.NewId = modeOnly.OldId;
 
 	CHECK_FALSE(Graphite::OnlyWhitespaceChanged(modeOnly, Core::WhitespaceInDiff::Ignored));
+}
+
+TEST_CASE("A root commit has no parent so its range starts at a zero id")
+{
+	Core::CommitSummary root;
+	root.Id.Bytes[0] = 9;
+
+	const Graphite::RangeEnds ends = Graphite::EndsOfCommit(root);
+
+	CHECK(ends.MergeBase == Core::Oid{});
+	CHECK(ends.Tip == root.Id);
+}
+
+TEST_CASE("Each file's line counts come in the diff's own order and add up to the change summary")
+{
+	Core::Diff diff = DiffOfFiles({"a.cpp", "b.cpp"});
+	Core::Hunk addedOnly;
+	addedOnly.Lines = {Core::DiffLine{.Kind = Core::DiffLineKind::Added}};
+	Core::Hunk removedTwice;
+	removedTwice.Lines = {Core::DiffLine{.Kind = Core::DiffLineKind::Removed},
+						  Core::DiffLine{.Kind = Core::DiffLineKind::Removed}};
+	diff.Files[0].Hunks.push_back(addedOnly);
+	diff.Files[1].Hunks.push_back(removedTwice);
+
+	const std::vector<Graphite::LineCounts> counts = Graphite::LineCountsOfEach(diff);
+
+	REQUIRE(counts.size() == 2);
+	CHECK(counts[0].Added == 1);
+	CHECK(counts[0].Removed == 0);
+	CHECK(counts[1].Added == 0);
+	CHECK(counts[1].Removed == 2);
+	CHECK(Graphite::SumOf(counts).Added == 1);
+	CHECK(Graphite::SumOf(counts).Removed == 2);
+}
+
+TEST_CASE("A selected file is found in its own group and is null when the group is not loaded or lacks the file")
+{
+	const Core::Diff committed = DiffOfFiles({"a.cpp"});
+	const ReviewGroups groups{.Commits = &committed};
+
+	const Graphite::ReviewSelection present{.Group = ReviewGroup::Commits, .Path = "a.cpp"};
+	const Graphite::ReviewSelection gone{.Group = ReviewGroup::Commits, .Path = "b.cpp"};
+	const Graphite::ReviewSelection notLoaded{.Group = ReviewGroup::Uncommitted, .Path = "a.cpp"};
+
+	CHECK(Graphite::SelectedFile(groups, present) == &committed.Files[0]);
+	CHECK(Graphite::SelectedFile(groups, gone) == nullptr);
+	CHECK(Graphite::SelectedFile(groups, notLoaded) == nullptr);
 }

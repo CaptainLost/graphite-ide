@@ -8,6 +8,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/TextMetrics.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -31,7 +32,6 @@ namespace Graphite {
 		constexpr std::size_t kCommitsInTooltip = 20;
 		constexpr float kCommitTooltipWrapEms = 35.0f;
 
-		// The toolbar's buttons after the filter: the shape, and Hide viewed for a list with marks.
 		constexpr float kButtonsWithMarks = 2.0f;
 		constexpr float kButtonsWithoutMarks = 1.0f;
 
@@ -41,8 +41,6 @@ namespace Graphite {
 
 		constexpr int kPageTabColourCount = 5;
 
-		// Whether a changed file's diff since it was viewed can be shown: not once the repository no longer
-		// holds the version viewed, and not after its read failed for another reason.
 		enum class SinceViewedDiff
 		{
 			Available,
@@ -50,10 +48,7 @@ namespace Graphite {
 			Unreadable
 		};
 
-		// The theme's tab colours are made for the document tabs, whose selected tab merges into the window
-		// below it; in a tab bar inside a window they leave the open page flat and the other one boxed. Here
-		// the open page is boxed and overlined, focused or not, and the other lies flat on the background.
-		void PushPageTabColours()
+		void PushBoxedOpenPageColours()
 		{
 			const ImVec4 boxed = ImGui::GetStyleColorVec4(ImGuiCol_Tab);
 			const ImVec4 flat = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
@@ -72,18 +67,13 @@ namespace Graphite {
 			return session != nullptr ? session->Settings : SessionSettings{};
 		}
 
-		float MeasureText(std::string_view text)
-		{
-			return text.empty() ? 0.0f : ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
-		}
-
-		// CalcTextSize rounds each run up, so a cut measured against the room left gives that pixel back.
+		// WARNING: CalcTextSize rounds each run up, so a cut measured against the room left gives that pixel back.
 		std::string FittedText(const std::string& text, float room)
 		{
 			const float roundedUpPixel = 1.0f;
-			const std::function<float(std::string_view)> widthOf = MeasureText;
+			const std::function<float(std::string_view)> widthOf = Core::TextWidth;
 			const std::optional<std::size_t> cut =
-				CutToFit(text, room + roundedUpPixel, MeasureText(Ellipsis), widthOf);
+				CutToFit(text, room + roundedUpPixel, Core::TextWidth(Ellipsis), widthOf);
 
 			if (!cut.has_value())
 			{
@@ -113,15 +103,13 @@ namespace Graphite {
 			return std::format("{}/{}", row.Viewed, row.Total);
 		}
 
-		// Dimmed, ending at the row's right edge, after whatever the row drew last.
 		void DrawAtRight(const std::string& text, float rowRight)
 		{
 			ImGui::SameLine();
-			ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), rowRight - MeasureText(text)));
+			ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), rowRight - Core::TextWidth(text)));
 			ImGui::TextDisabled("%s", text.c_str());
 		}
 
-		// Said after a heading whose files are all off the screen; empty while some are on it.
 		std::string HeadingNote(const ReviewTreeRow& row, const std::string& filter)
 		{
 			const bool noneLeftOnScreen = row.Total > 0 && row.Shown == 0;
@@ -134,9 +122,6 @@ namespace Graphite {
 			return filter.empty() ? std::string{"All viewed."} : std::string{"No files match."};
 		}
 
-		// Drawn over one Selectable as tall as the row, so the whole row folds the group. The heading is cut to
-		// the room the counts at the right leave it, and its note is left out unless it fits whole: the
-		// heading's "(0 of 3)" already says it.
 		bool DrawHeadingRow(const ReviewTreeRow& row, const std::string& note, const LineCounts& groupCounts,
 							float rowHeight)
 		{
@@ -156,13 +141,13 @@ namespace Graphite {
 			const bool showsLineCounts = row.Group == ReviewGroup::Uncommitted;
 			const std::string countsText = showsLineCounts ? CountsText(groupCounts) : std::string{};
 			const float trailingWidth =
-				MeasureText(viewedText) + (showsLineCounts ? MeasureText(countsText) + spacing : 0.0f);
+				Core::TextWidth(viewedText) + (showsLineCounts ? Core::TextWidth(countsText) + spacing : 0.0f);
 			const float textRoom = rowRight - trailingWidth - spacing - ImGui::GetCursorPosX();
 
 			const std::string heading = FittedText(GroupHeadingText(row.Group, row.Shown, row.Total), textRoom);
 			ImGui::TextUnformatted(heading.c_str());
 
-			const float noteRoom = textRoom - MeasureText(heading) - spacing;
+			const float noteRoom = textRoom - Core::TextWidth(heading) - spacing;
 			const bool noteFitsWhole = !note.empty() && FittedText(note, noteRoom) == note;
 
 			if (noteFitsWhole)
@@ -185,7 +170,6 @@ namespace Graphite {
 			return clicked;
 		}
 
-		// A folder's viewed count, which a list without marks has none of.
 		std::string FolderCountText(const ReviewTreeRow& row, RowMarks marks)
 		{
 			switch (marks)
@@ -199,7 +183,6 @@ namespace Graphite {
 			return std::string{};
 		}
 
-		// Drawn over one Selectable as tall as the row, so the whole row folds the folder.
 		bool DrawFolderRow(const ReviewTreeRow& row, float indent, float rowHeight, RowMarks marks)
 		{
 			const ImVec2 rowStart = ImGui::GetCursorPos();
@@ -217,7 +200,7 @@ namespace Graphite {
 
 			const std::string countText = FolderCountText(row, marks);
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;
-			const float countWidth = countText.empty() ? 0.0f : MeasureText(countText) + spacing;
+			const float countWidth = countText.empty() ? 0.0f : Core::TextWidth(countText) + spacing;
 			const float labelRoom = rowRight - countWidth - ImGui::GetCursorPosX();
 			ImGui::TextUnformatted(FittedText(row.Label, labelRoom).c_str());
 
@@ -242,7 +225,6 @@ namespace Graphite {
 			folded.insert(folder);
 		}
 
-		// How a file's name is drawn: a viewed file's fades, so what is left to read stands out.
 		enum class NameTone
 		{
 			Bright,
@@ -252,8 +234,8 @@ namespace Graphite {
 		void DrawPathLabel(const PathLabel& label, float room, NameTone tone)
 		{
 			const std::string prefix = label.Origin + label.Directory;
-			const float prefixRoom = room - MeasureText(label.Name);
-			const bool prefixHasRoom = !prefix.empty() && prefixRoom > MeasureText(Ellipsis);
+			const float prefixRoom = room - Core::TextWidth(label.Name);
+			const bool prefixHasRoom = !prefix.empty() && prefixRoom > Core::TextWidth(Ellipsis);
 
 			float nameRoom = room;
 
@@ -265,7 +247,7 @@ namespace Graphite {
 
 				ImGui::TextDisabled("%s", shownPrefix.c_str());
 				ImGui::SameLine(noOffset, noSpacing);
-				nameRoom -= MeasureText(shownPrefix);
+				nameRoom -= Core::TextWidth(shownPrefix);
 			}
 
 			const std::string shownName = FittedText(label.Name, nameRoom);
@@ -281,7 +263,6 @@ namespace Graphite {
 			}
 		}
 
-		// A file changed since it was viewed has its box outlined in the colour its "changed" word uses.
 		bool DrawViewedBox(bool* viewed, ViewedState state, const GitPalette& palette)
 		{
 			switch (state)
@@ -315,7 +296,6 @@ namespace Graphite {
 			bool CopyPath = false;
 		};
 
-		// The file name alone in the tree, under its folder; the whole path in the flat list.
 		PathLabel LabelInShape(const Core::FileDiff& file, ListShape shape)
 		{
 			const PathLabel wholePath = LabelOf(file);
@@ -331,7 +311,6 @@ namespace Graphite {
 			return wholePath;
 		}
 
-		// The change letter's tooltip. A label that leaves out where a rename or a copy came from says it here.
 		std::string ChangeTooltip(const Core::FileDiff& file, const PathLabel& label)
 		{
 			const bool originIsHidden = label.Origin.empty() && !LabelOf(file).Origin.empty();
@@ -350,8 +329,6 @@ namespace Graphite {
 			return changeName != nullptr ? std::string{changeName} : std::string{};
 		}
 
-		// The checkbox in a list with marks, the change letter, the label and - at the right edge - the line
-		// counts, laid over one Selectable as tall as the row so a click anywhere else selects it.
 		FileRowActions DrawFileRow(const Core::FileDiff& file, const PathLabel& label, const FileRowLook& look,
 								   const GitPalette& palette)
 		{
@@ -379,13 +356,13 @@ namespace Graphite {
 			{
 			case RowMarks::Shown:
 			{
-				bool viewed = look.Viewed == ViewedState::Viewed;
-				actions.ToggledViewed = DrawViewedBox(&viewed, look.Viewed, palette);
+				bool viewedChecked = look.Viewed == ViewedState::Viewed;
+				actions.ToggledViewed = DrawViewedBox(&viewedChecked, look.Viewed, palette);
 				ImGui::SameLine();
 				break;
 			}
 			case RowMarks::Hidden:
-				// Without the checkbox's frame first on the line, the letter would sit at the row's top.
+				// WARNING: Without the checkbox's frame first on the line, the letter would sit at the row's top.
 				ImGui::AlignTextToFramePadding();
 				break;
 			}
@@ -416,7 +393,7 @@ namespace Graphite {
 			const std::string changedText = changedSinceViewed ? std::string{"changed"} : std::string{};
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;
 			const float trailingWidth =
-				MeasureText(countsText) + (changedSinceViewed ? MeasureText(changedText) + spacing : 0.0f);
+				Core::TextWidth(countsText) + (changedSinceViewed ? Core::TextWidth(changedText) + spacing : 0.0f);
 
 			ImGui::SameLine();
 			DrawPathLabel(label, rowRight - trailingWidth - spacing - ImGui::GetCursorPosX(), tone);
@@ -463,8 +440,6 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		// The filter and the shape, and Hide viewed for a list with marks. The filter is the tab's and the
-		// settings the session's, so both pages narrow and shape their lists alike.
 		void DrawListToolbar(std::span<char> filter, ReviewSessions& sessions, const std::string& branch,
 							 RowMarks marks)
 		{
@@ -506,7 +481,6 @@ namespace Graphite {
 			}
 		}
 
-		// The change summary's tooltip: the range, then its newest commits.
 		void DrawCommitsTooltip(const ReviewRange& range)
 		{
 			if (!ImGui::BeginItemTooltip())
@@ -534,7 +508,6 @@ namespace Graphite {
 			ImGui::EndTooltip();
 		}
 
-		// The author, then the whole message.
 		void DrawCommitTooltip(const Core::CommitSummary& commit)
 		{
 			if (!ImGui::BeginItemTooltip())
@@ -557,8 +530,6 @@ namespace Graphite {
 			ImGui::EndTooltip();
 		}
 
-		// The dimmed short hash, the summary cut to the room left and the dimmed age at the right edge, laid
-		// over one Selectable as tall as the row so a click anywhere on it picks the commit.
 		bool DrawCommitRow(const Core::CommitSummary& commit, bool isPicked, std::chrono::sys_seconds now,
 						   float rowHeight)
 		{
@@ -576,7 +547,7 @@ namespace Graphite {
 
 			const std::string age = RelativeAge(commit.Author.When, now);
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;
-			const float summaryRoom = rowRight - MeasureText(age) - spacing - ImGui::GetCursorPosX();
+			const float summaryRoom = rowRight - Core::TextWidth(age) - spacing - ImGui::GetCursorPosX();
 			ImGui::TextUnformatted(FittedText(commit.Summary, summaryRoom).c_str());
 
 			DrawAtRight(age, rowRight);
@@ -615,8 +586,6 @@ namespace Graphite {
 			return SinceViewedDiff::Available;
 		}
 
-		// All changes for a file with no diff since it was viewed, or whose diff since cannot be shown,
-		// whatever the session's setting says.
 		ChangedFileView ShownViewOf(const std::optional<SinceViewedRequest>& sinceViewed, SinceViewedDiff sinceViewedDiff,
 									const SessionSettings& settings)
 		{
@@ -632,8 +601,6 @@ namespace Graphite {
 			sessions.SetSettings(branch, changed);
 		}
 
-		// "All changes | Since you viewed", the second disabled once the version viewed is gone, and followed
-		// by a note when the diff since could not be read for another reason.
 		void DrawChangedFileSwitch(ReviewSessions& sessions, const std::string& branch, const SessionSettings& settings,
 								   ChangedFileView shownView, SinceViewedDiff sinceViewedDiff)
 		{
@@ -666,8 +633,6 @@ namespace Graphite {
 			}
 		}
 
-		// A file marked viewed whose own version is still the one viewed: only the base it is diffed against
-		// moved since.
 		bool OnlyBaseMoved(const ReviewSessions& sessions, const std::string& branch, ReviewGroup group,
 						   const Core::FileDiff& file)
 		{
@@ -680,8 +645,6 @@ namespace Graphite {
 			return mark.has_value() && mark->New == file.NewId;
 		}
 
-		// Places itself at the right end of the diff column's header row. A caller that drew something on the
-		// row first ends it with SameLine.
 		void DrawHideWhitespace(ReviewSessions& sessions, const std::string& branch, const SessionSettings& settings)
 		{
 			const char* label = "Hide whitespace";
@@ -705,7 +668,6 @@ namespace Graphite {
 	{
 		const ReviewSession* session = input.Sessions.Find(tab.Branch);
 
-		// FollowSessions ran first thing in Render, so a tab drawn here has its session and its key.
 		if (session == nullptr || !tab.Key.has_value())
 		{
 			return;
@@ -754,8 +716,6 @@ namespace Graphite {
 				return;
 			}
 
-			// The base is fixed for the session, so a base that is gone or shares no history with the
-			// branch leaves nothing to do but end the review.
 			if (Core::EmptyState(problem, "End review"))
 			{
 				AskToEnd(tab.Branch);
@@ -872,8 +832,8 @@ namespace Graphite {
 			const std::string viewedText = std::format("{}/{} viewed", rows->Viewed.Viewed, rows->Viewed.Total);
 
 			ImGui::SameLine();
-			const float right = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
-			ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), right - MeasureText(viewedText)));
+			const float rowRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
+			ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), rowRight - Core::TextWidth(viewedText)));
 			ImGui::TextDisabled("%s", viewedText.c_str());
 		}
 	}
@@ -944,7 +904,7 @@ namespace Graphite {
 	void ReviewWindows::RenderPages(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review,
 									const ReviewGroups& groups, const OpenRelativeFile& openFile)
 	{
-		PushPageTabColours();
+		PushBoxedOpenPageColours();
 
 		if (ImGui::BeginTabBar("##reviewPages", ImGuiTabBarFlags_DrawSelectedOverline))
 		{
@@ -956,7 +916,7 @@ namespace Graphite {
 				ImGui::EndTabItem();
 			}
 
-			// The count after a new commit changes the label; the identity after ### keeps the tab the same one.
+			// WARNING: The label carries the commit count and changes with it; the identity after ### keeps the tab the same one.
 			const std::string commitsLabel = CommitsTabLabel(*review.Range) + "###commits";
 
 			if (ImGui::BeginTabItem(commitsLabel.c_str()))
@@ -977,10 +937,8 @@ namespace Graphite {
 	{
 		const ImVec2 fillTheRest{0.0f, 0.0f};
 
-		// NoNavInputs: the arrow keys and Space are this list's own, below, rather than ImGui's
-		// keyboard navigation, which would also toggle whichever checkbox it had reached.
-		// AlwaysUseWindowPadding: ImGui gives a child without a border no padding, and the rows then
-		// touch its left edge and the counts at their right run under the scrollbar.
+		// WARNING: NoNavInputs keeps ImGui's keyboard navigation from toggling a checkbox on Space. AlwaysUseWindowPadding is
+		// needed because ImGui gives a child without a border no padding.
 		if (ImGui::BeginChild(list.ChildId, fillTheRest, ImGuiChildFlags_AlwaysUseWindowPadding,
 							  ImGuiWindowFlags_NoNavInputs))
 		{
@@ -1015,7 +973,6 @@ namespace Graphite {
 				}
 			}
 
-			// The Files page's headings say it for their groups; a commit's list has no heading to say it.
 			if (rows.empty() && !list.Rows.Filter.empty())
 			{
 				ImGui::TextDisabled("No files match.");
@@ -1051,7 +1008,6 @@ namespace Graphite {
 			const bool clicked = DrawFolderRow(row, indent, rowHeight, list.Marks);
 			ImGui::PopID();
 
-			// The tree is drawn unfolded while a filter or Hide viewed is on, so a fold would not show.
 			const bool listIsNarrowed = !list.Rows.Filter.empty() || list.Rows.HideViewed;
 
 			if (clicked && !listIsNarrowed)
@@ -1165,8 +1121,7 @@ namespace Graphite {
 										  const OpenRelativeFile& openFile)
 	{
 		const std::function<void()> drawCommits = [this, &tab, &range] { RenderCommitList(tab, range); };
-		const std::function<void()> drawPicked = [this, &tab, &input, &range, &openFile]
-		{ RenderPickedCommit(tab, input, range, openFile); };
+		const std::function<void()> drawPicked = [this, &tab, &input, &range, &openFile] { RenderPickedCommit(tab, input, range, openFile); };
 
 		DrawSplitResults(SplitResultsInput{.HasSelection = tab.SelectedCommit.has_value(),
 										   .ResultsHeight = tab.CommitListHeight,
@@ -1181,8 +1136,6 @@ namespace Graphite {
 	{
 		const ImVec2 fillThePane{0.0f, 0.0f};
 
-		// A child of its own inside the one DrawSplitResults opens, for the flags the Files page's list has:
-		// the arrow keys are this list's own, and the rows keep clear of its edges and its scrollbar.
 		if (ImGui::BeginChild("##reviewCommitRows", fillThePane, ImGuiChildFlags_AlwaysUseWindowPadding,
 							  ImGuiWindowFlags_NoNavInputs))
 		{
@@ -1284,7 +1237,6 @@ namespace Graphite {
 	{
 		const Core::CommitSummary* commit = PickedCommitIn(range, tab.SelectedCommit);
 
-		// Drawn only with a commit picked, and FollowCommits has let go of one the range no longer lists.
 		if (commit == nullptr)
 		{
 			return;
@@ -1301,11 +1253,12 @@ namespace Graphite {
 			RefreshCommitRows(tab, settings, *commit, commitDiff);
 		}
 
-		// The line with its counts is made with the rows, once per diff: counting every line of a large
-		// commit on every frame would cost the frame.
+		// WARNING: The line with its counts is made with the rows, once per diff; counting every line of a large commit on
+		// every frame would cost the frame.
 		const std::string line = commitDiff != nullptr ? tab.CommitRows.Summary : CommitLine(*commit, nullptr);
 		const ImGuiStyle& style = ImGui::GetStyle();
-		const float closeWidth = MeasureText(ICON_MDI_CLOSE) + style.FramePadding.x * 2.0f;
+		const float bothSides = 2.0f;
+		const float closeWidth = Core::TextWidth(ICON_MDI_CLOSE) + style.FramePadding.x * bothSides;
 
 		ImGui::TextUnformatted(
 			FittedText(line, ImGui::GetContentRegionAvail().x - closeWidth - style.ItemSpacing.x).c_str());
@@ -1413,8 +1366,8 @@ namespace Graphite {
 			return;
 		}
 
-		// Aliasing the answer rather than copying its texts out: the texts live as long as the answer, and
-		// the pointer HoldTexts compares changes only when the answer does.
+		// WARNING: The texts alias the answer rather than being copied, because HoldTexts compares the pointer and it must
+		// change only when the answer does.
 		HoldTexts(tab, Core::Ref<const FileTexts>(answer, &answer->Texts));
 		RenderFileDiff(tab, input, answer->Diff, openFile);
 	}

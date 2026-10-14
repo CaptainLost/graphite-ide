@@ -22,8 +22,7 @@ namespace Graphite {
 			std::filesystem::path Path;
 			std::vector<FolderNode> Folders;
 
-			// Position in Folders by name, so finding a child stays logarithmic with thousands of siblings.
-			std::map<std::string, std::size_t> FolderPositions;
+			std::map<std::string, std::size_t> FolderPositionByName;
 			std::vector<std::size_t> Files;
 			std::size_t Viewed = 0;
 			std::size_t Total = 0;
@@ -67,12 +66,12 @@ namespace Graphite {
 
 		FolderNode& ChildFolderNamed(FolderNode& parent, const std::string& name)
 		{
-			if (parent.FolderPositions.contains(name))
+			if (parent.FolderPositionByName.contains(name))
 			{
-				return parent.Folders[parent.FolderPositions.at(name)];
+				return parent.Folders[parent.FolderPositionByName.at(name)];
 			}
 
-			parent.FolderPositions.emplace(name, parent.Folders.size());
+			parent.FolderPositionByName.emplace(name, parent.Folders.size());
 			parent.Folders.push_back(FolderNode{.Name = name, .Path = parent.Path / Core::FromUtf8(name)});
 			return parent.Folders.back();
 		}
@@ -323,9 +322,6 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		// The order BuildReviewTree lists files in: groups in turn, then by path in the flat shape; in the tree,
-		// by name at the first folder where the paths part, and a file inside a further folder before a file
-		// beside that folder, as folders come before files.
 		bool IsListedBefore(const ReviewSelection& left, const ReviewSelection& right, ListShape shape)
 		{
 			if (left.Group != right.Group)

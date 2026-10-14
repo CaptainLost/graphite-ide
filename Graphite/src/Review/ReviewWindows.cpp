@@ -124,7 +124,6 @@ namespace Graphite {
 		m_Tabs.clear();
 		m_PendingRenames.clear();
 
-		// A yes after the folder changed would end a same-named branch's session in the new folder.
 		if (m_EndQuestion.IsAsked())
 		{
 			m_EndQuestion.Withdraw();
@@ -212,8 +211,9 @@ namespace Graphite {
 				continue;
 			}
 
-			// Gone under its old name and absent under its new one: the rename did not take.
-			if (!ListsBranchNamed(branches, rename.To))
+			const bool renameTookEffect = ListsBranchNamed(branches, rename.To);
+
+			if (!renameTookEffect)
 			{
 				continue;
 			}
@@ -243,7 +243,6 @@ namespace Graphite {
 				tab.LastLoaded.reset();
 				tab.LastWorktree.reset();
 
-				// A new identity: ImGui has no place for this window yet, so it is docked again.
 				tab.Fresh = true;
 				tab.Focus = true;
 				++tabIndex;
@@ -327,7 +326,6 @@ namespace Graphite {
 
 			const ReviewKey key{.Branch = tab.Branch, .Base = session->Base};
 
-			// The selection stays: the base under its new name covers the same range.
 			if (tab.Key.has_value() && *tab.Key != key)
 			{
 				model.Forget(*tab.Key);
@@ -411,8 +409,7 @@ namespace Graphite {
 
 		const std::string& branch = tab.Branch;
 		const ReviewTreeInput input{.Groups = GroupsOf(tab, review),
-									.StateOf = [&sessions, &branch](ReviewGroup group, const Core::FileDiff& file)
-									{ return sessions.StateOf(branch, group, file); },
+									.StateOf = [&sessions, &branch](ReviewGroup group, const Core::FileDiff& file) { return sessions.StateOf(branch, group, file); },
 									.Shape = settings.Shape,
 									.Headings = GroupHeadings::Shown,
 									.Filter = std::string{filter},
@@ -479,7 +476,7 @@ namespace Graphite {
 
 	void ReviewWindows::HoldTexts(Tab& tab, const Core::Ref<const FileTexts>& texts)
 	{
-		// Copying a whole file's tokens every frame would cost the frame.
+		// WARNING: Copying a whole file's tokens every frame would cost the frame.
 		if (texts == tab.Texts)
 		{
 			return;
@@ -499,8 +496,8 @@ namespace Graphite {
 		tab.SelectedCommit = commit;
 		tab.SelectedCommitFile.reset();
 
-		// Built again even when the rows were built from this commit's diff - picked, left for another
-		// whose diff never arrived, and picked again - so that its first file is picked once more.
+		// WARNING: The rows are built again even when they were built from this commit's diff, so that
+		// its first file is picked once more after the commit was left for one whose diff never arrived.
 		tab.CommitRows.Built = false;
 	}
 
@@ -551,8 +548,8 @@ namespace Graphite {
 
 			tab.SelectedCommitFile = FollowSelection(tab.SelectedCommitFile, tab.LastCommitPaths, groups, cache.Rows);
 
-			// The list's child is the same one for every commit, so without this it keeps the scroll the
-			// last commit's list was left at.
+			// WARNING: The list's child is the same one for every commit, so without this it keeps the
+			// scroll the last commit's list was left at.
 			tab.ScrollToCommitFile = true;
 		}
 
@@ -635,8 +632,6 @@ namespace Graphite {
 			Tab& tab = m_Tabs[tabIndex];
 			const std::string name = ReviewWindowName(tab.Branch);
 
-			// Docked only on the frame its identity is new, as the diff tabs are: docking every frame
-			// would fight a reader who dragged the tab elsewhere.
 			bool restored = false;
 
 			if (tab.Fresh)
@@ -659,11 +654,11 @@ namespace Graphite {
 
 			bool open = true;
 
-			// A restored window must not take focus on the frame it appears, or the last one drawn
-			// would take the front of its dock node from whatever imgui.ini remembers there.
+			// WARNING: A restored window must not take focus on the frame it appears, or the last one
+			// drawn would take the front of its dock node from whatever imgui.ini remembers there.
 			const ImGuiWindowFlags windowFlags = restored ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
 
-			// Begin returning false still needs its End.
+			// WARNING: Begin returning false still needs its End.
 			const bool visible = ImGui::Begin(name.c_str(), &open, windowFlags);
 
 			if (input.CloseRequests.Take(name))

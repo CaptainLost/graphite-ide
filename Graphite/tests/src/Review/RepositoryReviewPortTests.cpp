@@ -6,6 +6,7 @@
 
 #include "Review/ReviewRepository.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 
@@ -15,8 +16,8 @@ using Graphite::ReviewRange;
 
 namespace {
 
-	// master and side fork at "fork point"; master then changes a.txt, side adds b.txt and
-	// changes a.txt its own way. HEAD is left on master, so side is checked out nowhere.
+	constexpr std::uint8_t kFlipEveryBit = 0xFF;
+
 	struct ForkedHistory
 	{
 		Core::Oid ForkPoint;
@@ -207,7 +208,7 @@ TEST_CASE("Since the viewed version reads the viewed blob against the tip and sa
 	CHECK(answer.GetValue().Diff.OldId == aText.OldId);
 
 	Graphite::SinceViewedRequest missing = present;
-	missing.ViewedBlob.Bytes[0] ^= 0xFF;
+	missing.ViewedBlob.Bytes[0] ^= kFlipEveryBit;
 	const Core::Result<Graphite::SinceViewedAnswer> gone = port.ReadSinceViewed(missing);
 
 	REQUIRE_FALSE(gone.HasValue());

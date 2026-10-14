@@ -20,6 +20,11 @@ using Graphite::ViewedState;
 namespace {
 
 	const std::string kBranch = "refs/heads/side";
+	constexpr float kNoTime = 0.0f;
+	constexpr float kHalfSecond = 0.5f;
+	constexpr float kOneSecond = 1.0f;
+	const float kJustBeforeTheDelay = ReviewStore::kSaveDelaySeconds - kHalfSecond;
+	const float kWellPastTheDelay = ReviewStore::kSaveDelaySeconds * 2.0f;
 
 	Core::FileDiff MarkedFile()
 	{
@@ -73,11 +78,11 @@ TEST_CASE("Marks are saved once they stand unchanged for the delay and read back
 
 	store.GetSessions().Start(kBranch, "refs/heads/main");
 	store.GetSessions().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
-	Wait(store, 0.0f);
-	Wait(store, ReviewStore::kSaveDelaySeconds - 0.5f);
+	Wait(store, kNoTime);
+	Wait(store, kJustBeforeTheDelay);
 	CHECK_FALSE(std::filesystem::exists(ReviewStore::FileFor(folder.GetPath())));
 
-	Wait(store, 1.0f);
+	Wait(store, kOneSecond);
 	CHECK(std::filesystem::exists(ReviewStore::FileFor(folder.GetPath())));
 
 	ReviewStore reopened;
@@ -93,12 +98,12 @@ TEST_CASE("A change keeps restarting the save delay")
 
 	store.GetSessions().Start(kBranch, "refs/heads/main");
 	store.GetSessions().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
-	Wait(store, 0.0f);
-	Wait(store, ReviewStore::kSaveDelaySeconds - 0.5f);
+	Wait(store, kNoTime);
+	Wait(store, kJustBeforeTheDelay);
 
 	store.GetSessions().Unmark(kBranch, ReviewGroup::Commits, MarkedFile());
-	Wait(store, 0.0f);
-	Wait(store, 1.0f);
+	Wait(store, kNoTime);
+	Wait(store, kOneSecond);
 
 	CHECK_FALSE(std::filesystem::exists(ReviewStore::FileFor(folder.GetPath())));
 }
@@ -125,7 +130,7 @@ TEST_CASE("A folder without a reviews file opens with no marks and writes nothin
 	ReviewStore store;
 	store.Open(folder.GetPath());
 
-	Wait(store, ReviewStore::kSaveDelaySeconds * 2.0f);
+	Wait(store, kWellPastTheDelay);
 	store.Close();
 
 	CHECK(store.GetSessions().GetAll().empty());
@@ -242,8 +247,8 @@ TEST_CASE("A reviews file that could not be read is not written for the rest of 
 
 	store.GetSessions().Start(kBranch, "refs/heads/main");
 	store.GetSessions().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
-	Wait(store, 0.0f);
-	Wait(store, ReviewStore::kSaveDelaySeconds * 2.0f);
+	Wait(store, kNoTime);
+	Wait(store, kWellPastTheDelay);
 	store.Flush();
 	store.Close();
 
@@ -257,10 +262,10 @@ TEST_CASE("Marks waiting for their save ask for the frame the save falls due on"
 	store.Open(folder.GetPath());
 	store.GetSessions().Start(kBranch, "refs/heads/main");
 	store.GetSessions().Mark(kBranch, ReviewGroup::Commits, MarkedFile());
-	Wait(store, 0.0f);
+	Wait(store, kNoTime);
 	Core::Redraw::TakeDeadline();
 
-	const float waited = 0.5f;
+	const float waited = kHalfSecond;
 	Wait(store, waited);
 
 	const std::optional<Core::Redraw::Clock::time_point> deadline = Core::Redraw::TakeDeadline();

@@ -9,8 +9,6 @@
 #include <optional>
 #include <vector>
 
-// Answers every question from its fields and counts how often each was asked. ResolveRange hands
-// out RangeAnswers in order while any are left, then Range.
 class FakeReviewPort final : public Graphite::ReviewPort
 {
 public:
