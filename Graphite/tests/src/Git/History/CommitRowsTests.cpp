@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <functional>
+#include <optional>
 #include <vector>
 
 using Graphite::CommitRowKind;
@@ -101,6 +102,47 @@ TEST_CASE("Every row's commit index is in range and every commit has a row")
 		REQUIRE(row < rows.Rows.size());
 		CHECK(rows.Rows[row].Kind == CommitRowKind::Commit);
 		CHECK(rows.Rows[row].Commit == commit);
+	}
+}
+
+TEST_CASE("A separator is a row of its own before the commit it precedes, and moves that commit down")
+{
+	const CommitRows rows = Graphite::BuildCommitRows(3, FileRowCountsFrom({0, 0, 0}), 2);
+
+	REQUIRE(rows.Rows.size() == 4);
+	CHECK(rows.Rows[2].Kind == CommitRowKind::Separator);
+	CHECK(rows.Rows[3].Kind == CommitRowKind::Commit);
+	CHECK(rows.Rows[3].Commit == 2);
+
+	CHECK(rows.RowOfCommit[1] == 1);
+	CHECK(rows.RowOfCommit[2] == 3);
+}
+
+TEST_CASE("A separator before the first commit is the top row")
+{
+	const CommitRows rows = Graphite::BuildCommitRows(2, FileRowCountsFrom({0, 0}), 0);
+
+	REQUIRE(rows.Rows.size() == 3);
+	CHECK(rows.Rows[0].Kind == CommitRowKind::Separator);
+	CHECK(rows.RowOfCommit[0] == 1);
+}
+
+TEST_CASE("A separator after an expanded commit comes after that commit's file rows")
+{
+	const CommitRows rows = Graphite::BuildCommitRows(2, FileRowCountsFrom({2, 0}), 1);
+
+	REQUIRE(rows.Rows.size() == 5);
+	CHECK(rows.Rows[3].Kind == CommitRowKind::Separator);
+	CHECK(rows.RowOfCommit[1] == 4);
+}
+
+TEST_CASE("Without a separator every row is a commit or a file")
+{
+	const CommitRows rows = Graphite::BuildCommitRows(2, FileRowCountsFrom({1, 0}), std::nullopt);
+
+	for (const Graphite::CommitRow& row : rows.Rows)
+	{
+		CHECK(row.Kind != CommitRowKind::Separator);
 	}
 }
 

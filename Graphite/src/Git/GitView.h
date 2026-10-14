@@ -8,6 +8,7 @@
 #include "Git/History/CommitLabels.h"
 #include "Git/History/CommitListView.h"
 #include "Git/History/CommitDetailsView.h"
+#include "Git/History/ForkSeparator.h"
 #include "Git/Diff/DiffView.h"
 #include "Git/Diff/DiffWindows.h"
 #include "Editor/EditorSettings.h"
@@ -203,6 +204,19 @@ namespace Graphite {
 		void UpdateForNewPage();
 
 		void RequestLog(std::optional<std::size_t> maxCount);
+
+		std::optional<ForkSeparator> ForkSeparatorFor(const Core::LogPage& page,
+													   const std::vector<Core::Branch>& branches);
+
+		struct OwnCommitsAsked
+		{
+			std::string Branch;
+			Core::Oid BaseTip;
+
+			friend bool operator==(const OwnCommitsAsked&, const OwnCommitsAsked&) = default;
+		};
+
+		std::optional<OwnCommitsAsked> m_OwnCommitsAsked;
 
 		GitModel& m_Model;
 		const ActiveScheme& m_Scheme;

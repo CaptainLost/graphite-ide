@@ -87,6 +87,12 @@ namespace Graphite {
 		void RequestStashes();
 		void RequestHead();
 		void RequestLog(Core::LogRequest request);
+
+		// The commits a branch has that its base lacks, kept beside the log so that the history can
+		// tell them from the rest. It is refreshed with the log, and stays until it is forgotten.
+		void RequestOwnCommits(Core::LogRequest request);
+		void ForgetOwnCommits();
+
 		void RequestWorkingTreeDiff(Core::DiffRequest request);
 
 		void RequestDiffFor(const Core::Oid& commit);
@@ -122,6 +128,7 @@ namespace Graphite {
 		Core::Ref<const std::vector<Core::StashEntry>> GetStashes() const { return m_Stashes.Get(); }
 		Core::Ref<const Core::HeadState> GetHead() const { return m_Head.Get(); }
 		Core::Ref<const Core::LogPage> GetLog() const { return m_Log.Get(); }
+		Core::Ref<const Core::LogPage> GetOwnCommits() const { return m_OwnLog.Get(); }
 
 		Core::Ref<const Core::Diff> GetWorkingTreeDiff() const
 		{
@@ -380,6 +387,9 @@ namespace Graphite {
 		GenerationSlot<Core::LogPage> m_Log;
 
 		std::optional<Core::LogRequest> m_LastLogRequest;
+
+		GenerationSlot<Core::LogPage> m_OwnLog;
+		std::optional<Core::LogRequest> m_LastOwnRequest;
 
 		GenerationSlot<Core::Diff> m_WorkingTreeDiff;
 		Core::Ref<const FileTexts> m_WorkingTreeTexts;

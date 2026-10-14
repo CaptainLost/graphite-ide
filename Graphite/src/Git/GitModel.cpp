@@ -50,6 +50,7 @@ namespace Graphite {
 		m_Log.Clear();
 
 		m_LastLogRequest.reset();
+		ForgetOwnCommits();
 		m_WorkingTreeDiff.Clear();
 		m_WorkingTreeTexts.reset();
 		m_WantedWorkingTreeDiff.reset();
@@ -124,6 +125,11 @@ namespace Graphite {
 			if (m_LastLogRequest.has_value())
 			{
 				RequestLog(*m_LastLogRequest);
+			}
+
+			if (m_LastOwnRequest.has_value())
+			{
+				RequestOwnCommits(*m_LastOwnRequest);
 			}
 
 			m_WorkingTreeDiffStale = true;
@@ -214,6 +220,32 @@ namespace Graphite {
 				m_Log.Land(generation, std::move(result));
 			});
 		});
+	}
+
+	void GitModel::RequestOwnCommits(Core::LogRequest request)
+	{
+		if (!HasOpenFolder())
+		{
+			return;
+		}
+
+		const std::uint64_t generation = m_OwnLog.Begin();
+
+		m_LastOwnRequest = request;
+
+		m_Submit([this, generation, request = std::move(request)]() {
+			Core::Result<Core::LogPage> result = m_Port.QueryLog(request);
+
+			Deliver([this, generation, result = std::move(result)]() mutable {
+				m_OwnLog.Land(generation, std::move(result));
+			});
+		});
+	}
+
+	void GitModel::ForgetOwnCommits()
+	{
+		m_OwnLog.Clear();
+		m_LastOwnRequest.reset();
 	}
 
 	void GitModel::RequestWorkingTreeDiff(Core::DiffRequest request)

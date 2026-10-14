@@ -13,14 +13,23 @@ namespace Graphite {
 	}
 
 	CommitRows BuildCommitRows(std::size_t commitCount,
-							   const std::function<std::size_t(std::size_t)>& fileRowsUnder)
+							   const std::function<std::size_t(std::size_t)>& fileRowsUnder,
+							   std::optional<std::size_t> separatorBeforeCommit)
 	{
 		CommitRows rows;
 		rows.RowOfCommit.reserve(commitCount);
-		rows.Rows.reserve(commitCount);
+		rows.Rows.reserve(commitCount + 1);
 
 		for (std::size_t commit = 0; commit < commitCount; ++commit)
 		{
+			if (separatorBeforeCommit == commit)
+			{
+				CommitRow separator;
+				separator.Kind = CommitRowKind::Separator;
+				separator.Commit = commit;
+				rows.Rows.push_back(separator);
+			}
+
 			rows.RowOfCommit.push_back(rows.Rows.size());
 
 			CommitRow row;

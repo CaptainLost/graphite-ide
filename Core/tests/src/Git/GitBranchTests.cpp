@@ -111,6 +111,55 @@ TEST_CASE("A branch with no upstream has an unknown distance, so its zero counts
 	CHECK_FALSE(branches.GetValue().front().DistanceKnown);
 }
 
+TEST_CASE("The remote branch its remote's HEAD names is marked as that remote's default")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	const std::string tip = fixture.Commit("add a");
+	fixture.PushTo("master", tip);
+	fixture.PushTo("side", tip);
+	fixture.SetRemoteHead("master");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	Core::Result<std::vector<Branch>> branches = repository.QueryBranches();
+
+	REQUIRE(branches.HasValue());
+
+	const Branch* remoteMaster = FindBranchNamed(branches.GetValue(), "origin/master");
+	const Branch* remoteSide = FindBranchNamed(branches.GetValue(), "origin/side");
+	const Branch* localMaster = FindBranchNamed(branches.GetValue(), "master");
+
+	REQUIRE(remoteMaster != nullptr);
+	REQUIRE(remoteSide != nullptr);
+	REQUIRE(localMaster != nullptr);
+	CHECK(remoteMaster->IsRemoteDefault);
+	CHECK_FALSE(remoteSide->IsRemoteDefault);
+	CHECK_FALSE(localMaster->IsRemoteDefault);
+}
+
+TEST_CASE("Without a remote HEAD no branch is marked as a remote's default")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	const std::string tip = fixture.Commit("add a");
+	fixture.PushTo("master", tip);
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	Core::Result<std::vector<Branch>> branches = repository.QueryBranches();
+
+	REQUIRE(branches.HasValue());
+	REQUIRE(FindBranchNamed(branches.GetValue(), "origin/master") != nullptr);
+
+	for (const Branch& branch : branches.GetValue())
+	{
+		CHECK_FALSE(branch.IsRemoteDefault);
+	}
+}
+
 TEST_CASE("Listing branches in a repository with no commits is empty rather than an error")
 {
 	GitFixture fixture;

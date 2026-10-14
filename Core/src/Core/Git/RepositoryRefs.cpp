@@ -104,6 +104,7 @@ namespace Core {
 		}
 
 		std::vector<Branch> branches;
+		std::vector<std::string> remoteHeadTargets;
 
 		git_branch_t branchType = GIT_BRANCH_LOCAL;
 
@@ -138,6 +139,13 @@ namespace Core {
 
 			if (tipId == nullptr)
 			{
+				const char* symbolicTarget = git_reference_symbolic_target(reference.get());
+
+				if (branch.Kind == RefKind::Remote && symbolicTarget != nullptr)
+				{
+					remoteHeadTargets.emplace_back(symbolicTarget);
+				}
+
 				continue;
 			}
 
@@ -175,6 +183,12 @@ namespace Core {
 		{
 			const std::string message = LastLibgit2Message();
 			return Error{ErrorCode::IoFailure, std::format("cannot list the branches: {}", message)};
+		}
+
+		// Marked only once the listing is complete: origin/HEAD sorts before the branch it names.
+		for (Branch& branch : branches)
+		{
+			branch.IsRemoteDefault = std::ranges::find(remoteHeadTargets, branch.FullName) != remoteHeadTargets.end();
 		}
 
 		std::sort(branches.begin(), branches.end(), ComesBeforeInBranchList);

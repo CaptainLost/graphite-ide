@@ -1,5 +1,6 @@
 #include "Git/GitView.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/Base/Base.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -748,6 +749,45 @@ namespace Graphite {
 		m_Searching = true;
 	}
 
+	std::optional<ForkSeparator> GitView::ForkSeparatorFor(const Core::LogPage& page,
+															const std::vector<Core::Branch>& branches)
+	{
+		const HistoryFilter& filter = m_Filter.Get();
+		const bool showsWholeHistory = filter.Text.empty() && Core::Trimmed(filter.Path).empty() &&
+									   !m_SelectedStash.has_value();
+
+		const std::optional<ForkBase> fork =
+			showsWholeHistory ? FindForkBase(m_SelectedRef, branches) : std::nullopt;
+
+		if (!fork.has_value())
+		{
+			m_Model.ForgetOwnCommits();
+			m_OwnCommitsAsked.reset();
+			return std::nullopt;
+		}
+
+		const OwnCommitsAsked wanted{.Branch = *fork->OwnCommits.Ref, .BaseTip = *fork->OwnCommits.Exclude};
+
+		if (m_OwnCommitsAsked != wanted)
+		{
+			m_Model.ForgetOwnCommits();
+			m_Model.RequestOwnCommits(fork->OwnCommits);
+			m_OwnCommitsAsked = wanted;
+		}
+
+		// WARNING: The log is replaced when another branch is picked, a frame or more after the
+		// branches are, so a separator is only drawn on the log that starts at the branch's tip.
+		const bool isLogOfThisBranch = !page.Commits.empty() && page.Commits.front().Id == fork->BranchTip;
+		const Core::Ref<const Core::LogPage> own = m_Model.GetOwnCommits();
+
+		if (!isLogOfThisBranch || !own)
+		{
+			return std::nullopt;
+		}
+
+		return FindForkSeparator(page, *own, fork->BaseName);
+	}
+
 	void GitView::UpdateForNewPage()
 	{
 		const Core::Ref<const Core::LogPage> page = m_Model.GetLog();
@@ -860,8 +900,11 @@ namespace Graphite {
 
 			const auto diffFailed = [this](const Core::Oid& commit) { return m_Model.IsDiffFailed(commit); };
 
+			const std::optional<ForkSeparator> separator =
+				ForkSeparatorFor(*page, branches ? *branches : std::vector<Core::Branch>{});
+
 			m_Commits.Render(*page, graph, palette, LocalOffset(), diffOf, diffFailed, m_CommitRefs,
-							 m_Filter.Get().Text, m_Filter.Get().Path);
+							 m_Filter.Get().Text, m_Filter.Get().Path, separator);
 
 			ApplyCommitAction();
 

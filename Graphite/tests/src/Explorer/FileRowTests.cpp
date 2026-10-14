@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Explorer/FileRow.h"
+#include "ImGuiFrames.h"
 
 #include "TempDirectory.h"
 
@@ -155,6 +156,81 @@ TEST_CASE("MarkerTooltipOf: a letter names its state, a dot what lies beneath")
 		  "Contains untracked files");
 
 	CHECK(Graphite::MarkerTooltipOf(Graphite::FileRowStatusOf(view, "C:/repo/src/b.cpp")) == nullptr);
+}
+
+TEST_CASE("A file row with a name far longer than the window does not widen the window's content")
+{
+	ImGuiFrames frames;
+
+	const float windowWidth = 200.0f;
+	const std::string longLabel(300, 'x');
+
+	float rowWidth = 0.0f;
+	float availableWidth = 0.0f;
+	float scrollableWidth = -1.0f;
+
+	const auto drawFileRow = [&]
+	{
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(windowWidth, 300.0f));
+		ImGui::Begin("##fileRowWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+		availableWidth = ImGui::GetContentRegionAvail().x;
+
+		const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
+		rowWidth = layout.Width;
+
+		ImGui::Selectable("##row", false, ImGuiSelectableFlags_None, ImVec2(layout.Width, 0.0f));
+		Graphite::DrawFileRowLabel(layout, Graphite::FileRowLook{.Ink = 0xFFFFFFFFu}, longLabel);
+
+		scrollableWidth = ImGui::GetCurrentWindow()->ScrollMax.x;
+		ImGui::End();
+	};
+
+	frames.Next(drawFileRow);
+	frames.Next(drawFileRow);
+
+	CHECK(rowWidth == doctest::Approx(availableWidth));
+	CHECK(scrollableWidth == doctest::Approx(0.0f));
+}
+
+TEST_CASE("A row's marker is drawn only when a letter of the label fits beside it")
+{
+	ImGuiFrames frames;
+
+	Graphite::RowStatus dot;
+	dot.Dot = true;
+	dot.Ink = 0xFFFFFFFFu;
+
+	const auto markerLeftEdgeInWindowOfWidth = [&](float windowWidth)
+	{
+		float markerLeftEdge = 0.0f;
+		float rightEdge = 0.0f;
+
+		const auto drawRow = [&]
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(windowWidth, 300.0f));
+			ImGui::Begin("##markerWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+			ImGui::Selectable("##row", false, ImGuiSelectableFlags_None, ImVec2(0.0f, 0.0f));
+			rightEdge = Graphite::DrawRowMarker(Graphite::RowStatus{}, ImGui::GetItemRectMin().y);
+			markerLeftEdge = Graphite::DrawRowMarker(dot, ImGui::GetItemRectMin().y);
+
+			ImGui::End();
+		};
+
+		frames.Next(drawRow);
+		frames.Next(drawRow);
+
+		return std::pair{markerLeftEdge, rightEdge};
+	};
+
+	const auto [wideLeftEdge, wideRightEdge] = markerLeftEdgeInWindowOfWidth(400.0f);
+	CHECK(wideLeftEdge < wideRightEdge);
+
+	const auto [narrowLeftEdge, narrowRightEdge] = markerLeftEdgeInWindowOfWidth(50.0f);
+	CHECK(narrowLeftEdge == doctest::Approx(narrowRightEdge));
 }
 
 TEST_CASE("MarkerTooltipOf covers every decoration, as a letter and as a dot")

@@ -392,7 +392,8 @@ namespace Graphite {
 								const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf,
 								const std::function<bool(const Core::Oid&)>& diffFailed,
 								const CommitRefMap& refs, std::string_view highlight,
-								std::string_view pathHighlight)
+								std::string_view pathHighlight,
+								const std::optional<ForkSeparator>& separator)
 	{
 		if (page.Commits.empty())
 		{
@@ -402,10 +403,15 @@ namespace Graphite {
 
 		const GraphMetrics metrics = MetricsForCurrentFont();
 
-		const CommitRows rows =
-			BuildCommitRows(page.Commits.size(), [&](std::size_t commitIndex) {
-				return FileRowCountUnder(page, commitIndex, diffOf);
-			});
+		const bool hasSeparator = separator.has_value() && separator->BeforeCommit < page.Commits.size();
+
+		const CommitRows rows = BuildCommitRows(
+			page.Commits.size(),
+			[&](std::size_t commitIndex) { return FileRowCountUnder(page, commitIndex, diffOf); },
+			hasSeparator ? std::optional<std::size_t>{separator->BeforeCommit} : std::nullopt);
+
+		const std::optional<std::size_t> separatorRow =
+			hasSeparator ? std::optional<std::size_t>{rows.RowOfCommit[separator->BeforeCommit] - 1} : std::nullopt;
 
 		const std::chrono::sys_seconds now =
 			std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
@@ -487,9 +493,15 @@ namespace Graphite {
 					graphOrigin = ImVec2(graphCell.x, graphCell.y - cellPaddingY -
 														  static_cast<float>(displayRow) * metrics.RowHeight);
 
-					if (row.Kind == CommitRowKind::Commit)
+					if (row.Kind == CommitRowKind::Separator)
 					{
-						RenderCommitRow(page, commit, palette, refs, highlight, now, offset);
+						RenderSeparatorRow(separator->Text);
+					}
+					else if (row.Kind == CommitRowKind::Commit)
+					{
+						const bool isEarlierHistory = separatorRow.has_value() && static_cast<std::size_t>(displayRow) > *separatorRow;
+
+						RenderCommitRow(page, commit, palette, refs, highlight, now, offset, isEarlierHistory);
 					}
 					else
 					{
@@ -529,7 +541,7 @@ namespace Graphite {
 	void CommitListView::RenderCommitRow(const Core::LogPage& page, const Core::CommitSummary& commit,
 										 const GitPalette& palette, const CommitRefMap& refs,
 										 std::string_view highlight, std::chrono::sys_seconds now,
-										 std::chrono::minutes offset)
+										 std::chrono::minutes offset, bool isEarlierHistory)
 	{
 		const bool expanded = IsExpanded(commit.Id);
 		const bool isSelectedCommit = m_SelectedCommit == commit.Id;
@@ -613,7 +625,7 @@ namespace Graphite {
 			RefLabels(refs.at(commit.Id), palette, commit.Summary);
 		}
 
-		FittedText(commit.Summary, kThemeTextColor, highlight);
+		FittedText(commit.Summary, isEarlierHistory ? dimmedInk : kThemeTextColor, highlight);
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Author));
 		FittedText(AuthorName(commit.Author), dimmedInk, highlight);
@@ -645,6 +657,12 @@ namespace Graphite {
 			m_SelectedCommit = commit.Id;
 			m_SelectedFile.reset();
 		}
+	}
+
+	void CommitListView::RenderSeparatorRow(const std::string& text)
+	{
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
+		FittedText(text, ImGui::GetColorU32(ImGuiCol_TextDisabled), kNoHighlight);
 	}
 
 	void CommitListView::RenderFileRow(

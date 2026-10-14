@@ -40,6 +40,18 @@ namespace Graphite {
 			return window->InnerRect.Max.x - window->WindowPadding.x - ImGui::GetStyle().ItemSpacing.x;
 		}
 
+		bool MarkerHasRoomForOneLetterOfLabel()
+		{
+			const float markerColumn = RowMarkerColumnWidth();
+			const float labelLeftEdge = ImGui::GetItemRectMin().x + ImGui::GetTreeNodeToLabelSpacing();
+			const float markerLeftEdge = MarkerRight() - markerColumn;
+			const float roomForOneLetter = markerColumn;
+
+			return markerLeftEdge - ImGui::GetStyle().ItemSpacing.x - labelLeftEdge >= roomForOneLetter;
+		}
+
+		// WARNING: A mark drawn on the row is no item of its own, so its tooltip goes by the row's hover
+		// and the mouse's place on it.
 		void TooltipOver(ImVec2 rectMin, ImVec2 rectMax, const char* text)
 		{
 			if (text == nullptr || !ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
@@ -217,19 +229,15 @@ namespace Graphite {
 		return ImGui::CalcTextSize("M").x;
 	}
 
-	FileRowLayout LayoutFileRow(const std::string& label, bool reserveMarker)
+	FileRowLayout LayoutFileRow()
 	{
 		const float labelOffset = ImGui::GetTreeNodeToLabelSpacing();
 		const ImVec2 cursor = ImGui::GetCursorScreenPos();
 
-		const float markerRoom =
-			reserveMarker ? RowMarkerColumnWidth() + kGapsAroundMarker * ImGui::GetStyle().ItemSpacing.x : 0.0f;
-
 		FileRowLayout layout;
 		layout.RowAt = cursor;
 		layout.LabelAt = ImVec2(cursor.x + labelOffset, cursor.y);
-		layout.Width = std::max(ImGui::GetContentRegionAvail().x,
-								labelOffset + ImGui::CalcTextSize(label.c_str()).x + markerRoom);
+		layout.Width = ImGui::GetContentRegionAvail().x;
 
 		return layout;
 	}
@@ -238,7 +246,7 @@ namespace Graphite {
 	{
 		const float right = MarkerRight();
 
-		if (!status.HasMarker())
+		if (!status.HasMarker() || !MarkerHasRoomForOneLetterOfLabel())
 		{
 			return right;
 		}
@@ -266,6 +274,33 @@ namespace Graphite {
 		return std::min(left, right - columnWidth);
 	}
 
+	void DrawTreeRowLabel(const std::string& label, bool hasMarker)
+	{
+		if (!ImGui::IsItemVisible())
+		{
+			return;
+		}
+
+		const ImVec2 rowTopLeft = ImGui::GetItemRectMin();
+		const float labelLeftEdge = rowTopLeft.x + ImGui::GetTreeNodeToLabelSpacing();
+
+		float labelRightEdge = MarkerRight();
+
+		if (hasMarker && MarkerHasRoomForOneLetterOfLabel())
+		{
+			labelRightEdge -= RowMarkerColumnWidth() + ImGui::GetStyle().ItemSpacing.x;
+		}
+
+		labelRightEdge = std::max(labelRightEdge, labelLeftEdge);
+
+		const ImVec2 fullLabelSize = ImGui::CalcTextSize(label.c_str());
+		const ImVec2 labelTopLeft(labelLeftEdge, rowTopLeft.y);
+		const ImVec2 labelBottomRight(labelRightEdge, rowTopLeft.y + fullLabelSize.y);
+
+		ImGui::RenderTextEllipsis(ImGui::GetWindowDrawList(), labelTopLeft, labelBottomRight, labelRightEdge,
+								  label.c_str(), nullptr, &fullLabelSize);
+	}
+
 	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& label)
 	{
 		if (!ImGui::IsItemVisible())
@@ -277,19 +312,21 @@ namespace Graphite {
 
 		DrawOpenTabMark(layout, look.Tab);
 
-		if (!look.Status.HasMarker())
+		float labelRightEdge = MarkerRight();
+
+		if (look.Status.HasMarker())
 		{
-			drawList->AddText(layout.LabelAt, look.Ink, label.c_str());
-			return;
+			labelRightEdge = DrawRowMarker(look.Status, layout.LabelAt.y) - ImGui::GetStyle().ItemSpacing.x;
 		}
 
-		const float markerLeft = DrawRowMarker(look.Status, layout.LabelAt.y);
+		labelRightEdge = std::max(labelRightEdge, layout.LabelAt.x);
 
-		const ImVec2 clipMin = drawList->GetClipRectMin();
-		const ImVec2 clipMax(markerLeft - ImGui::GetStyle().ItemSpacing.x, drawList->GetClipRectMax().y);
+		const ImVec2 fullLabelSize = ImGui::CalcTextSize(label.c_str());
+		const ImVec2 labelBottomRight(labelRightEdge, layout.LabelAt.y + fullLabelSize.y);
 
-		ImGui::PushClipRect(clipMin, ImVec2(std::max(clipMin.x, clipMax.x), clipMax.y), kIntersectWithCurrentClipRect);
-		drawList->AddText(layout.LabelAt, look.Ink, label.c_str());
-		ImGui::PopClipRect();
+		ImGui::PushStyleColor(ImGuiCol_Text, look.Ink);
+		ImGui::RenderTextEllipsis(drawList, layout.LabelAt, labelBottomRight, labelRightEdge, label.c_str(),
+								  nullptr, &fullLabelSize);
+		ImGui::PopStyleColor();
 	}
 }

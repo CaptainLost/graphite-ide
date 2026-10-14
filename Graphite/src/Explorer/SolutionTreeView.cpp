@@ -120,8 +120,7 @@ namespace Graphite {
 		ForgetStaleGroupDecorations();
 		ForgetStaleFilterMatches();
 
-		if (ImGui::BeginChild("##solutionBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None,
-							  ImGuiWindowFlags_HorizontalScrollbar))
+		if (ImGui::BeginChild("##solutionBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None))
 		{
 			constexpr const char* kFilteredTreeScope = "##filteredTree";
 			const bool filtering = m_Filter.IsActive();
@@ -142,7 +141,8 @@ namespace Graphite {
 			}
 
 			const bool rootOpen = ImGui::TreeNodeEx(
-				label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+				label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth, "%s", "");
+			DrawTreeRowLabel(label, ImGui::IsItemVisible() && GroupDecorationOf(solution.Root) != GitDecoration::None);
 
 			DrawGroupMarker(solution.Root);
 			RenderContextMenu(solution.Root, kSolutionRootPath);
@@ -253,7 +253,8 @@ namespace Graphite {
 		}
 
 		const bool isOpen = ImGui::TreeNodeEx(
-			label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+			label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth, "%s", "");
+		DrawTreeRowLabel(label, ImGui::IsItemVisible() && GroupDecorationOf(folder) != GitDecoration::None);
 
 		DrawGroupMarker(folder);
 		RenderContextMenu(folder, path);
@@ -295,7 +296,8 @@ namespace Graphite {
 			ImGui::SetNextItemOpen(kOpenTheRow);
 		}
 
-		const bool isOpen = ImGui::TreeNodeEx(label.c_str(), flags);
+		const bool isOpen = ImGui::TreeNodeEx(label.c_str(), flags, "%s", "");
+		DrawTreeRowLabel(label, ImGui::IsItemVisible() && GroupDecorationOf(project) != GitDecoration::None);
 
 		if (!project.Exists)
 		{
@@ -386,7 +388,7 @@ namespace Graphite {
 			label += " (missing)";
 		}
 
-		const FileRowLayout layout = LayoutFileRow(label, m_GitDecorations.Index != nullptr);
+		const FileRowLayout layout = LayoutFileRow();
 
 		// WARNING: ImGui gives same-labelled siblings the same id, and two projects can hold files of the
 		// same name, so the id is the full path.

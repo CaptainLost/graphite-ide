@@ -61,13 +61,16 @@ namespace Graphite {
 
 	// WARNING: Call this at the cursor before the row's Selectable. That item pads its rect out
 	// by half the item spacing, so its corner is not where a folder's label would start.
-	FileRowLayout LayoutFileRow(const std::string& label, bool reserveMarker);
+	FileRowLayout LayoutFileRow();
 
 	float RowMarkerColumnWidth();
 
 	// WARNING: Selectable cannot offset its text from the highlight, so the label is drawn by
 	// hand, after the row's Selectable that `layout.Width` sized.
 	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& label);
+
+	// WARNING: Call this while the row's own item is the last one, before the row's marker is drawn.
+	void DrawTreeRowLabel(const std::string& label, bool hasMarker);
 
 	// WARNING: Call this while the row's own item is the last one: the marker's tooltip is shown
 	// only while that item is hovered.

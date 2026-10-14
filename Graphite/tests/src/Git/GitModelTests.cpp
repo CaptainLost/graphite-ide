@@ -667,6 +667,85 @@ TEST_CASE("A log is not requested without an open workspace")
 	CHECK(model.GetLog() == nullptr);
 }
 
+TEST_CASE("The commits a branch owns are asked apart from the log and readable after the next update")
+{
+	FakePort port;
+	port.Log.Commits.resize(2);
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	Core::LogRequest request;
+	request.Ref = "refs/heads/topic";
+	request.Exclude = OidWithFirstByte(7);
+
+	model.RequestOwnCommits(request);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	REQUIRE(model.GetOwnCommits() != nullptr);
+	CHECK(model.GetOwnCommits()->Commits.size() == 2);
+	CHECK(model.GetLog() == nullptr);
+
+	REQUIRE(port.LastLogRequest.has_value());
+	CHECK(port.LastLogRequest->Exclude == request.Exclude);
+}
+
+TEST_CASE("The commits a branch owns are not requested without an open workspace")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	model.RequestOwnCommits(Core::LogRequest{});
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(port.LogCalls == 0);
+	CHECK(model.GetOwnCommits() == nullptr);
+}
+
+TEST_CASE("A refresh asks the owned commits again, and a forgotten request is not asked")
+{
+	Core::EventBus events;
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestOwnCommits(Core::LogRequest{});
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+	REQUIRE(port.LogCalls == 1);
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+	CHECK(port.LogCalls == 2);
+
+	model.ForgetOwnCommits();
+	CHECK(model.GetOwnCommits() == nullptr);
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+	CHECK(port.LogCalls == 2);
+}
+
+TEST_CASE("Closing the workspace forgets the owned commits")
+{
+	Core::EventBus events;
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestOwnCommits(Core::LogRequest{});
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+	REQUIRE(model.GetOwnCommits() != nullptr);
+
+	events.Publish(Graphite::WorkspaceClosedEvent{});
+
+	CHECK(model.GetOwnCommits() == nullptr);
+}
+
 TEST_CASE("A requested diff becomes readable after the next update")
 {
 	FakePort port;

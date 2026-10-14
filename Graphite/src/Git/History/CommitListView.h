@@ -4,6 +4,7 @@
 
 #include "Git/History/CommitGraphView.h"
 #include "Git/History/CommitRefs.h"
+#include "Git/History/ForkSeparator.h"
 #include "Theme/GitPalette.h"
 #include "Git/History/GraphGeometry.h"
 
@@ -61,7 +62,8 @@ namespace Graphite {
 					const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf,
 					const std::function<bool(const Core::Oid&)>& diffFailed, const CommitRefMap& refs,
 					std::string_view highlight = {},
-					std::string_view pathHighlight = {});
+					std::string_view pathHighlight = {},
+					const std::optional<ForkSeparator>& separator = std::nullopt);
 
 		void KeepSelectionWithin(const Core::LogPage& page);
 
@@ -93,7 +95,9 @@ namespace Graphite {
 		void RenderCommitRow(const Core::LogPage& page, const Core::CommitSummary& commit,
 							 const GitPalette& palette, const CommitRefMap& refs,
 							 std::string_view highlight, std::chrono::sys_seconds now,
-							 std::chrono::minutes offset);
+							 std::chrono::minutes offset, bool isEarlierHistory);
+
+		void RenderSeparatorRow(const std::string& text);
 
 		void RenderFileRow(const Core::CommitSummary& commit, std::size_t fileIndex,
 						   const GitPalette& palette,
