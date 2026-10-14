@@ -1,6 +1,4 @@
-#include "corepch.h"
-
-#include "Core/ImGui/Checkbox.h"
+#include "UI/TickBox.h"
 
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/UiScale.h"
@@ -11,7 +9,7 @@
 #include <array>
 #include <optional>
 
-namespace Core {
+namespace Graphite {
 
 	namespace {
 
@@ -37,7 +35,7 @@ namespace Core {
 
 		float WidthOf(const ImVec2& labelSize)
 		{
-			const float box = Scaled(kCheckboxSize);
+			const float box = Core::Scaled(kTickBoxSize);
 
 			if (labelSize.x <= 0.0f)
 			{
@@ -57,10 +55,10 @@ namespace Core {
 			return ImVec4(colour.x, colour.y, colour.z, colour.w * alpha);
 		}
 
-		bool DrawCheckbox(const char* label, bool* value, const std::optional<ImVec4>& outline)
+		bool DrawBox(const char* label, bool* value, const std::optional<ImVec4>& outline)
 		{
 			const ImVec2 labelSize = LabelSize(label);
-			const float side = Scaled(kCheckboxSize);
+			const float side = Core::Scaled(kTickBoxSize);
 			const ImVec2 itemSize(WidthOf(labelSize), ImGui::GetFrameHeight());
 			const ImVec2 itemTopLeft = ImGui::GetCursorScreenPos();
 
@@ -76,19 +74,19 @@ namespace Core {
 				ImGui::MarkItemEdited(itemId);
 			}
 
-			const float ticked = Animation::SwitchAmount(itemId, *value);
-			const float hover = Animation::HoverAmount(itemId, ImGui::IsItemHovered());
+			const float ticked = Core::Animation::SwitchAmount(itemId, *value);
+			const float hover = Core::Animation::HoverAmount(itemId, ImGui::IsItemHovered());
 
 			const ImVec4 restingOutline = outline.value_or(ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive));
 			const ImVec4 hoveredOutline =
-				Animation::Blend(restingOutline, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), hover);
+				Core::Animation::Blend(restingOutline, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), hover);
 			const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
-			const ImVec4 boxOutline = Animation::Blend(hoveredOutline, accent, ticked);
+			const ImVec4 boxOutline = Core::Animation::Blend(hoveredOutline, accent, ticked);
 
 			const ImVec2 boxTopLeft(itemTopLeft.x, itemTopLeft.y + (itemSize.y - side) * 0.5f);
 			const ImVec2 boxBottomRight(boxTopLeft.x + side, boxTopLeft.y + side);
-			const float radius = Scaled(kCornerRadius);
-			const float outlineWidth = Scaled(kOutlineWidth);
+			const float radius = Core::Scaled(kCornerRadius);
+			const float outlineWidth = Core::Scaled(kOutlineWidth);
 
 			// A stroke is centred on its rectangle; inset by half its width, it stays inside the box.
 			const float inset = outlineWidth * 0.5f;
@@ -107,7 +105,7 @@ namespace Core {
 													PointIn(boxTopLeft, side, kTickEnd)};
 				drawList->AddPolyline(tick.data(), static_cast<int>(tick.size()),
 									  ImGui::GetColorU32(WithAlpha(accent, ticked)), ImDrawFlags_None,
-									  Scaled(kTickWidth));
+									  Core::Scaled(kTickWidth));
 			}
 
 			if (labelSize.x > 0.0f)
@@ -122,18 +120,18 @@ namespace Core {
 		}
 	}
 
-	bool Checkbox(const char* label, bool* value)
+	bool DrawTickBox(const char* label, bool* value)
 	{
 		const std::optional<ImVec4> styleOutline;
-		return DrawCheckbox(label, value, styleOutline);
+		return DrawBox(label, value, styleOutline);
 	}
 
-	bool Checkbox(const char* label, bool* value, const ImVec4& outline)
+	bool DrawTickBox(const char* label, bool* value, const ImVec4& outline)
 	{
-		return DrawCheckbox(label, value, outline);
+		return DrawBox(label, value, outline);
 	}
 
-	float CheckboxWidth(const char* label)
+	float TickBoxWidth(const char* label)
 	{
 		return WidthOf(LabelSize(label));
 	}

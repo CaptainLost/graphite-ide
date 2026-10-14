@@ -617,4 +617,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0585](0585-pull-diagnostics-for-documents-shown-in-tabs-and-ask-their-colours-again-after-each-pull.md) | Pull diagnostics for documents shown in tabs and ask their colours again after each pull | proposed | 2026-10-13 |
 | [0586](0586-treat-a-branch-review-as-a-session-with-a-fixed-base.md) | Treat a branch review as a session with a fixed base | proposed | 2026-10-14 |
 | [0587](0587-show-a-changed-file-s-diff-since-the-version-that-was-viewed.md) | Show a changed file's diff since the version that was viewed | proposed | 2026-10-14 |
+| [0588](0588-draw-checkboxes-with-a-tick-box-of-the-app-s-own.md) | Draw checkboxes with a tick box of the app's own | proposed | 2026-10-14 |
 <!-- /adr-index -->

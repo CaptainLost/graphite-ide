@@ -3,7 +3,6 @@
 #include "Core/Base/Base.h"
 
 #include "Core/Base/Narrow.h"
-#include "Core/ImGui/Checkbox.h"
 #include "Core/ImGui/EmptyState.h"
 
 #include "Sessions/Requests/RequestRow.h"
@@ -13,6 +12,7 @@
 #include "Sessions/Transcript/ToolFacts.h"
 #include "UI/SideBySide.h"
 #include "UI/SplitResults.h"
+#include "UI/TickBox.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -278,14 +278,14 @@ namespace Graphite {
 
 	void RequestsView::DrawFilters(const RequestTimeline& timeline, const Pricing& pricing)
 	{
-		if (Core::Checkbox("Group by turn", &m_GroupByTurn))
+		if (DrawTickBox("Group by turn", &m_GroupByTurn))
 		{
 			m_FilterDirty = true;
 		}
 
 		ImGui::SameLine();
 
-		if (Core::Checkbox("Cache rebuilt only", &m_RebuiltOnly))
+		if (DrawTickBox("Cache rebuilt only", &m_RebuiltOnly))
 		{
 			m_FilterDirty = true;
 		}

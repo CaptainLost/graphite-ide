@@ -3,10 +3,10 @@
 #include "Git/History/CommitLabels.h"
 #include "UI/IconButton.h"
 #include "UI/SplitResults.h"
+#include "UI/TickBox.h"
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
-#include "Core/ImGui/Checkbox.h"
 #include "Core/ImGui/EmptyState.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -242,7 +242,14 @@ namespace Graphite {
 			folded.insert(folder);
 		}
 
-		void DrawPathLabel(const PathLabel& label, float room)
+		// How a file's name is drawn: a viewed file's fades, so what is left to read stands out.
+		enum class NameTone
+		{
+			Bright,
+			Dimmed
+		};
+
+		void DrawPathLabel(const PathLabel& label, float room, NameTone tone)
 		{
 			const std::string prefix = label.Origin + label.Directory;
 			const float prefixRoom = room - MeasureText(label.Name);
@@ -261,7 +268,32 @@ namespace Graphite {
 				nameRoom -= MeasureText(shownPrefix);
 			}
 
-			ImGui::TextUnformatted(FittedText(label.Name, nameRoom).c_str());
+			const std::string shownName = FittedText(label.Name, nameRoom);
+
+			switch (tone)
+			{
+			case NameTone::Bright:
+				ImGui::TextUnformatted(shownName.c_str());
+				break;
+			case NameTone::Dimmed:
+				ImGui::TextDisabled("%s", shownName.c_str());
+				break;
+			}
+		}
+
+		// A file changed since it was viewed has its box outlined in the colour its "changed" word uses.
+		bool DrawViewedBox(bool* viewed, ViewedState state, const GitPalette& palette)
+		{
+			switch (state)
+			{
+			case ViewedState::ChangedSinceViewed:
+				return DrawTickBox("##viewed", viewed, ImGui::ColorConvertU32ToFloat4(palette.GutterModified));
+			case ViewedState::NotViewed:
+			case ViewedState::Viewed:
+				return DrawTickBox("##viewed", viewed);
+			}
+
+			return DrawTickBox("##viewed", viewed);
 		}
 
 		struct FileRowLook
@@ -348,7 +380,7 @@ namespace Graphite {
 			case RowMarks::Shown:
 			{
 				bool viewed = look.Viewed == ViewedState::Viewed;
-				actions.ToggledViewed = Core::Checkbox("##viewed", &viewed);
+				actions.ToggledViewed = DrawViewedBox(&viewed, look.Viewed, palette);
 				ImGui::SameLine();
 				break;
 			}
@@ -358,8 +390,13 @@ namespace Graphite {
 				break;
 			}
 
+			const bool viewed = look.Viewed == ViewedState::Viewed;
+			const NameTone tone = viewed ? NameTone::Dimmed : NameTone::Bright;
+			const ImU32 letterColour =
+				viewed ? ImGui::GetColorU32(ImGuiCol_TextDisabled) : ChangeColor(file.Change, palette);
+
 			const std::string letter(1, ChangeLetter(file.Change));
-			ImGui::PushStyleColor(ImGuiCol_Text, ChangeColor(file.Change, palette));
+			ImGui::PushStyleColor(ImGuiCol_Text, letterColour);
 			ImGui::TextUnformatted(letter.c_str());
 			ImGui::PopStyleColor();
 
@@ -382,7 +419,7 @@ namespace Graphite {
 				MeasureText(countsText) + (changedSinceViewed ? MeasureText(changedText) + spacing : 0.0f);
 
 			ImGui::SameLine();
-			DrawPathLabel(label, rowRight - trailingWidth - spacing - ImGui::GetCursorPosX());
+			DrawPathLabel(label, rowRight - trailingWidth - spacing - ImGui::GetCursorPosX(), tone);
 
 			ImGui::SameLine();
 			ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), rowRight - trailingWidth));
@@ -649,13 +686,13 @@ namespace Graphite {
 		{
 			const char* label = "Hide whitespace";
 			const float rowRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
-			const float width = Core::CheckboxWidth(label);
+			const float width = TickBoxWidth(label);
 
 			ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), rowRight - width));
 
 			bool hidden = settings.Whitespace == Core::WhitespaceInDiff::Ignored;
 
-			if (Core::Checkbox(label, &hidden))
+			if (DrawTickBox(label, &hidden))
 			{
 				SessionSettings changed = settings;
 				changed.Whitespace = hidden ? Core::WhitespaceInDiff::Ignored : Core::WhitespaceInDiff::Shown;
@@ -818,7 +855,7 @@ namespace Graphite {
 
 		ImGui::BeginDisabled(!canInclude);
 
-		if (Core::Checkbox("Include uncommitted", &include))
+		if (DrawTickBox("Include uncommitted", &include))
 		{
 			SetIncludeUncommitted(tab, input.Sessions, input.Model, include);
 		}

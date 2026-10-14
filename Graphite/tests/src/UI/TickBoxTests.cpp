@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Core/ImGui/Animation.h"
-#include "Core/ImGui/Checkbox.h"
+#include "UI/TickBox.h"
 
 #include <imgui.h>
 
@@ -10,7 +10,7 @@
 namespace {
 
 	constexpr float kFrameSeconds = 1.0f / 60.0f;
-	const ImVec2 kCheckboxPosition(20.0f, 30.0f);
+	const ImVec2 kTickBoxPosition(20.0f, 30.0f);
 	const ImVec4 kChangedOutline(0.9f, 0.6f, 0.2f, 1.0f);
 
 	enum class OutlineChoice
@@ -19,11 +19,11 @@ namespace {
 		Custom
 	};
 
-	// One checkbox in a window of its own, drawn a frame at a time as the application draws it.
-	class CheckboxFrames
+	// One tick box in a window of its own, drawn a frame at a time as the application draws it.
+	class TickBoxFrames
 	{
 	public:
-		explicit CheckboxFrames(const char* label, OutlineChoice outline = OutlineChoice::Style)
+		explicit TickBoxFrames(const char* label, OutlineChoice outline = OutlineChoice::Style)
 			: m_Label(label), m_Outline(outline)
 		{
 			m_Context = ImGui::CreateContext();
@@ -37,10 +37,10 @@ namespace {
 			io.Fonts->Build();
 		}
 
-		~CheckboxFrames() { ImGui::DestroyContext(m_Context); }
+		~TickBoxFrames() { ImGui::DestroyContext(m_Context); }
 
-		CheckboxFrames(const CheckboxFrames&) = delete;
-		CheckboxFrames& operator=(const CheckboxFrames&) = delete;
+		TickBoxFrames(const TickBoxFrames&) = delete;
+		TickBoxFrames& operator=(const TickBoxFrames&) = delete;
 
 		void Next(bool& value) { Draw(value, DrawMode::Normal); }
 
@@ -74,7 +74,7 @@ namespace {
 
 		float GetReportedWidth() const { return m_ReportedWidth; }
 
-		// How far below the checkbox's top the text after it starts.
+		// How far below the tick box's top the text after it starts.
 		float GetTextAfterOffset() const { return m_TextAfterOffset; }
 
 	private:
@@ -103,8 +103,8 @@ namespace {
 			Core::Animation::BeginFrame();
 			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 			ImGui::SetNextWindowSize(ImVec2(400.0f, 300.0f));
-			ImGui::Begin("checkbox");
-			ImGui::SetCursorScreenPos(kCheckboxPosition);
+			ImGui::Begin("tick box");
+			ImGui::SetCursorScreenPos(kTickBoxPosition);
 
 			if (mode == DrawMode::Focus)
 			{
@@ -112,7 +112,7 @@ namespace {
 			}
 
 			ImGui::BeginDisabled(mode == DrawMode::Disabled);
-			const bool flipped = DrawCheckbox(value);
+			const bool flipped = DrawBox(value);
 			ImGui::EndDisabled();
 
 			if (flipped)
@@ -122,11 +122,11 @@ namespace {
 
 			const ImVec2 itemMin = ImGui::GetItemRectMin();
 			const ImVec2 itemMax = ImGui::GetItemRectMax();
-			const float side = Core::kCheckboxSize;
+			const float side = Graphite::kTickBoxSize;
 			m_BoxCentre = ImVec2(itemMin.x + side * 0.5f, (itemMin.y + itemMax.y) * 0.5f);
 			m_LabelPoint = ImVec2(itemMax.x - 3.0f, (itemMin.y + itemMax.y) * 0.5f);
 			m_ItemSize = ImVec2(itemMax.x - itemMin.x, itemMax.y - itemMin.y);
-			m_ReportedWidth = Core::CheckboxWidth(m_Label);
+			m_ReportedWidth = Graphite::TickBoxWidth(m_Label);
 
 			if (mode == DrawMode::TextAfter)
 			{
@@ -139,14 +139,14 @@ namespace {
 			ImGui::EndFrame();
 		}
 
-		bool DrawCheckbox(bool& value)
+		bool DrawBox(bool& value)
 		{
 			switch (m_Outline)
 			{
 			case OutlineChoice::Style:
-				return Core::Checkbox(m_Label, &value);
+				return Graphite::DrawTickBox(m_Label, &value);
 			case OutlineChoice::Custom:
-				return Core::Checkbox(m_Label, &value, kChangedOutline);
+				return Graphite::DrawTickBox(m_Label, &value, kChangedOutline);
 			}
 
 			return false;
@@ -164,9 +164,9 @@ namespace {
 	};
 }
 
-TEST_CASE("A click on a checkbox's box flips it once")
+TEST_CASE("A click on a tick box's box flips it once")
 {
-	CheckboxFrames frames{"Auto-scroll"};
+	TickBoxFrames frames{"Auto-scroll"};
 	bool value = false;
 	frames.Next(value);
 
@@ -176,9 +176,9 @@ TEST_CASE("A click on a checkbox's box flips it once")
 	CHECK(frames.GetFlipCount() == 1);
 }
 
-TEST_CASE("A click on a checkbox's label flips it too")
+TEST_CASE("A click on a tick box's label flips it too")
 {
-	CheckboxFrames frames{"Auto-scroll"};
+	TickBoxFrames frames{"Auto-scroll"};
 	bool value = true;
 	frames.Next(value);
 
@@ -188,9 +188,9 @@ TEST_CASE("A click on a checkbox's label flips it too")
 	CHECK(frames.GetFlipCount() == 1);
 }
 
-TEST_CASE("A focused checkbox flips on Space")
+TEST_CASE("A focused tick box flips on Space")
 {
-	CheckboxFrames frames{"Auto-scroll"};
+	TickBoxFrames frames{"Auto-scroll"};
 	bool value = false;
 	frames.NextFocusing(value);
 	frames.Next(value);
@@ -200,9 +200,9 @@ TEST_CASE("A focused checkbox flips on Space")
 	CHECK(value);
 }
 
-TEST_CASE("A disabled checkbox does not flip on a click")
+TEST_CASE("A disabled tick box does not flip on a click")
 {
-	CheckboxFrames frames{"Auto-scroll"};
+	TickBoxFrames frames{"Auto-scroll"};
 	bool value = false;
 	frames.NextDisabled(value);
 
@@ -212,34 +212,34 @@ TEST_CASE("A disabled checkbox does not flip on a click")
 	CHECK(frames.GetFlipCount() == 0);
 }
 
-TEST_CASE("A checkbox is as tall as a frame and as wide as its box and spacing and label")
+TEST_CASE("A tick box is as tall as a frame and as wide as its box and spacing and label")
 {
-	CheckboxFrames frames{"Auto-scroll"};
+	TickBoxFrames frames{"Auto-scroll"};
 	bool value = false;
 
 	frames.Next(value);
 
 	const float expected =
-		Core::kCheckboxSize + ImGui::GetStyle().ItemInnerSpacing.x + ImGui::CalcTextSize("Auto-scroll").x;
+		Graphite::kTickBoxSize + ImGui::GetStyle().ItemInnerSpacing.x + ImGui::CalcTextSize("Auto-scroll").x;
 	CHECK(frames.GetItemSize().x == doctest::Approx(expected));
 	CHECK(frames.GetItemSize().y == doctest::Approx(ImGui::GetFrameHeight()));
 	CHECK(frames.GetReportedWidth() == doctest::Approx(expected));
 }
 
-TEST_CASE("A checkbox whose label is only an id is as wide as its box")
+TEST_CASE("A tick box whose label is only an id is as wide as its box")
 {
-	CheckboxFrames frames{"##viewed"};
+	TickBoxFrames frames{"##viewed"};
 	bool value = false;
 
 	frames.Next(value);
 
-	CHECK(frames.GetItemSize().x == doctest::Approx(Core::kCheckboxSize));
-	CHECK(frames.GetReportedWidth() == doctest::Approx(Core::kCheckboxSize));
+	CHECK(frames.GetItemSize().x == doctest::Approx(Graphite::kTickBoxSize));
+	CHECK(frames.GetReportedWidth() == doctest::Approx(Graphite::kTickBoxSize));
 }
 
-TEST_CASE("Text after a checkbox on the same line sits where it sits after a frame")
+TEST_CASE("Text after a tick box on the same line sits where it sits after a frame")
 {
-	CheckboxFrames frames{"##viewed"};
+	TickBoxFrames frames{"##viewed"};
 	bool value = false;
 
 	frames.NextWithTextAfter(value);
@@ -247,9 +247,9 @@ TEST_CASE("Text after a checkbox on the same line sits where it sits after a fra
 	CHECK(frames.GetTextAfterOffset() == doctest::Approx(ImGui::GetStyle().FramePadding.y));
 }
 
-TEST_CASE("A checkbox with its own outline colour flips like any other")
+TEST_CASE("A tick box with its own outline colour flips like any other")
 {
-	CheckboxFrames frames{"##viewed", OutlineChoice::Custom};
+	TickBoxFrames frames{"##viewed", OutlineChoice::Custom};
 	bool value = false;
 	frames.Next(value);
 

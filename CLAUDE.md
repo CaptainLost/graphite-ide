@@ -100,3 +100,5 @@ record is malformed or missing from the index, so it is safe to wire into a
 hook or a check.
 
 `scripts/Test-NoPathString.ps1` fails on any `.string()` in `Core/src` or `Graphite/src` not marked `// not a path`; paths go through `Core::ToUtf8`.
+
+`scripts/Test-NoImGuiCheckbox.ps1` fails on any `ImGui::Checkbox` in `Core/src` or `Graphite/src`; checkboxes go through `Graphite::DrawTickBox`.

@@ -11,13 +11,13 @@
 #include "Git/InitRepositoryPrompt.h"
 #include "Theme/ChromePalette.h"
 #include "UI/DialogLayout.h"
+#include "UI/TickBox.h"
 #include "UI/ToastEvent.h"
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
-#include "Core/ImGui/Checkbox.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
@@ -1155,7 +1155,7 @@ namespace Graphite {
 
 		// Beside the button rather than on a line of its own: amend changes what the button
 		// will do, so the two are read together.
-		const float amendWidth = Core::CheckboxWidth("Amend");
+		const float amendWidth = TickBoxWidth("Amend");
 
 		// Stash is a square icon button, so Commit keeps its label: the row's one wide control
 		// is the one the panel exists for.
@@ -1238,7 +1238,7 @@ namespace Graphite {
 		ImGui::SameLine();
 
 		ImGui::BeginDisabled(inFlight);
-		Core::Checkbox("Amend", &m_Amend);
+		DrawTickBox("Amend", &m_Amend);
 		ImGui::EndDisabled();
 	}
 
@@ -1490,7 +1490,7 @@ namespace Graphite {
 		Core::InputTextWithHint("##stash-message", "Message (optional)", m_StashMessage);
 
 		DialogLayout::Gap();
-		Core::Checkbox("Include untracked files", &m_StashIncludeUntracked);
+		DrawTickBox("Include untracked files", &m_StashIncludeUntracked);
 		DialogLayout::Gap();
 
 		const ImVec4 danger = ImGui::ColorConvertU32ToFloat4(ReadEditorPalette(m_Scheme.Get()).DiagnosticError);

@@ -6,9 +6,9 @@
 #include "Search/FileEnumerator.h"
 #include "Search/HitList.h"
 #include "UI/SplitResults.h"
+#include "UI/TickBox.h"
 
 #include "Core/FileSystem/FileSystem.h"
-#include "Core/ImGui/Checkbox.h"
 #include "Core/Text/Caret.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -164,9 +164,9 @@ namespace Graphite {
 								 m_MaskBuffer.size());
 
 		ImGui::SameLine();
-		Core::Checkbox("Match case", &m_MatchCase);
+		DrawTickBox("Match case", &m_MatchCase);
 		ImGui::SameLine();
-		Core::Checkbox("Whole word", &m_WholeWord);
+		DrawTickBox("Whole word", &m_WholeWord);
 		ImGui::SameLine();
 
 		// Enter in the field or the button, never every keystroke: a search per character on a
