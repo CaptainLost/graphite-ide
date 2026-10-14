@@ -73,7 +73,8 @@ namespace Graphite {
 
 			const std::optional<std::string> versionText = TextAt(*entry, "version");
 			const std::optional<std::string> catalogUrl = TextAt(*entry, "@id");
-			const bool isListed = FlagAt(*entry, "listed").value_or(true);
+			const bool listedWhenUnstated = true;
+			const bool isListed = FlagAt(*entry, "listed").value_or(listedWhenUnstated);
 
 			if (!versionText || !catalogUrl || !isListed)
 			{
@@ -154,7 +155,7 @@ namespace Graphite {
 			return highest;
 		}
 
-		// A hash that is there but cannot be read fails: a checksum Graphite cannot check is not one that passed.
+		// WARNING: A hash that is present but cannot be read fails, because a checksum that cannot be checked is not one that passed.
 		Core::Result<std::optional<Checksum>> PackageHashIn(const nlohmann::json& catalogEntry, std::string_view packageId,
 															std::string_view version)
 		{

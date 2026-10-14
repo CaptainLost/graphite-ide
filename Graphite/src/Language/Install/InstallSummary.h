@@ -41,7 +41,7 @@ namespace Graphite {
 
 	InstallInputs InstallInputsFor(const ServerInstalls& installs, const ServerDefinition& server);
 
-	// Takes no server state on purpose: an untrusted folder holds its server at Restricted, where installing is still allowed.
+	// WARNING: Takes no server state on purpose: an untrusted folder holds its server at Restricted, where installing is still allowed.
 	InstallSummary SummariseInstall(const InstallInputs& inputs);
 
 	std::string InstallProgressText(const InstallProgress& progress);

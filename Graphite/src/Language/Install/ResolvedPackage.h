@@ -16,7 +16,7 @@ namespace Graphite {
 		std::optional<Checksum> ExpectedChecksum;
 		ArchiveKind Archive = ArchiveKind::Zip;
 
-		// Empty for a NuGet tool, whose command is known only once its DotnetToolSettings.xml is read.
+		// WARNING: Empty for a NuGet tool, whose command is known only once its DotnetToolSettings.xml is read.
 		std::string ExecutableInArchive;
 	};
 }

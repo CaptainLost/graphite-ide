@@ -288,7 +288,7 @@ TEST_CASE("Removing a directory whole leaves nothing of it behind")
 #ifdef CORE_PLATFORM_WINDOWS
 namespace {
 
-	// Without FILE_SHARE_DELETE, as a running server holds its own executable.
+	// WARNING: Without FILE_SHARE_DELETE, as a running server holds its own executable.
 	HANDLE OpenAsARunningServer(const std::filesystem::path& file)
 	{
 		return ::CreateFileW(file.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
@@ -310,7 +310,7 @@ TEST_CASE("Removing a directory whole leaves all of it while one of its files is
 
 	CHECK_FALSE(Graphite::RemoveDirectoryWhole(version));
 
-	// runtime.dll sorts before the held server.exe, so a removal that is not all-or-nothing deletes it first.
+	// WARNING: runtime.dll sorts before the held server.exe, so a removal that is not all-or-nothing deletes it first.
 	CHECK(std::filesystem::exists(version / "bin" / "runtime.dll"));
 	CHECK(std::filesystem::exists(version / "bin" / "server.exe"));
 	CHECK(std::filesystem::exists(version / "lib" / "a.dll"));

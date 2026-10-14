@@ -34,6 +34,11 @@ namespace Graphite {
 			return false;
 		}
 
+		InstalledVersion InstalledVersionOfOutcome(const InstallProgress& outcome)
+		{
+			return InstalledVersion{.Version = outcome.Version, .HasChecksum = outcome.HasChecksum};
+		}
+
 		void ReadInstalledVersions(const std::filesystem::path& serversDirectory, InstalledVersionsRead& read)
 		{
 			std::map<std::string, InstalledVersion, std::less<>> found;
@@ -81,27 +86,32 @@ namespace Graphite {
 	bool ServerInstalls::Install(std::string_view serverId)
 	{
 		const ServerDefinition* server = FindServer(serverId);
+		const bool mayStart = !IsBusy(serverId) && m_Http != nullptr && server != nullptr;
+		const bool started = mayStart && m_Installer.Install(*server);
 
-		return NoteStarted(serverId, InstallJobKind::Install,
-						   !IsBusy(serverId) && m_Http != nullptr && server != nullptr && m_Installer.Install(*server));
+		return NoteStarted(serverId, InstallJobKind::Install, started);
 	}
 
 	bool ServerInstalls::CheckForUpdates(std::string_view serverId)
 	{
 		const ServerDefinition* server = FindServer(serverId);
+		const bool mayStart = !IsBusy(serverId) && m_Http != nullptr && server != nullptr;
+		const bool started = mayStart && m_Installer.CheckForUpdates(*server);
 
-		return NoteStarted(serverId, InstallJobKind::CheckForUpdates,
-						   !IsBusy(serverId) && m_Http != nullptr && server != nullptr && m_Installer.CheckForUpdates(*server));
+		return NoteStarted(serverId, InstallJobKind::CheckForUpdates, started);
 	}
 
 	bool ServerInstalls::Uninstall(std::string_view serverId)
 	{
 		const ServerDefinition* server = FindServer(serverId);
+		const bool mayStart = !IsBusy(serverId) && server != nullptr;
+		const bool started = mayStart && m_Installer.Uninstall(*server);
 
-		return NoteStarted(serverId, InstallJobKind::Uninstall, !IsBusy(serverId) && server != nullptr && m_Installer.Uninstall(*server));
+		return NoteStarted(serverId, InstallJobKind::Uninstall, started);
 	}
 
-	// A job is refused until the last one's outcome has been polled: that outcome would erase the newer job's state.
+	// WARNING: A job is refused until the last one's outcome has been polled, because that outcome would erase the
+	// newer job's state.
 	bool ServerInstalls::NoteStarted(std::string_view serverId, InstallJobKind kind, bool started)
 	{
 		if (started)
@@ -146,7 +156,8 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		return installed->second;
+		const auto& [installedServerId, version] = *installed;
+		return version;
 	}
 
 	std::optional<InstallJobKind> ServerInstalls::RunningJobOf(std::string_view serverId) const
@@ -158,7 +169,8 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		return running->second;
+		const auto& [runningServerId, kind] = *running;
+		return kind;
 	}
 
 	bool ServerInstalls::IsCancelling(std::string_view serverId) const
@@ -186,7 +198,8 @@ namespace Graphite {
 		}
 	}
 
-	// Before any outcome is noted: the read ran ahead of every job on the queue, so an outcome is newer.
+	// WARNING: Adopted before any outcome is noted, because the read ran ahead of every job on the queue, so an
+	// outcome is newer.
 	void ServerInstalls::AdoptInstalledRead()
 	{
 		if (m_HaveReadInstalls)
@@ -217,12 +230,12 @@ namespace Graphite {
 		switch (outcome.Step)
 		{
 		case InstallStep::Installed:
-			m_Installed.insert_or_assign(outcome.ServerId, InstalledVersion{.Version = outcome.Version, .HasChecksum = outcome.HasChecksum});
+			m_Installed.insert_or_assign(outcome.ServerId, InstalledVersionOfOutcome(outcome));
 			break;
 		case InstallStep::UpToDate:
 			if (outcome.Kind == InstallJobKind::Install)
 			{
-				m_Installed.insert_or_assign(outcome.ServerId, InstalledVersion{.Version = outcome.Version, .HasChecksum = outcome.HasChecksum});
+				m_Installed.insert_or_assign(outcome.ServerId, InstalledVersionOfOutcome(outcome));
 			}
 
 			break;
@@ -249,7 +262,8 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		return latest->second;
+		const auto& [latestServerId, progress] = *latest;
+		return progress;
 	}
 
 	void ServerInstalls::TakeFinished(std::vector<InstallProgress>& finished)

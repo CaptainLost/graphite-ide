@@ -29,7 +29,6 @@ namespace Graphite {
 
 	Core::Result<ToolCommand> ParseDotnetToolSettings(std::string_view xml);
 
-	// The path is inside the version directory, '/'-separated, as installed.json keeps it.
 	struct InstalledCommand
 	{
 		LaunchRunner Runner = LaunchRunner::Executable;

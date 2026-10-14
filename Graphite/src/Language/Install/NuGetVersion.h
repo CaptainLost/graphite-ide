@@ -23,7 +23,7 @@ namespace Graphite {
 	private:
 		std::array<std::uint64_t, 4> m_Numbers{};
 
-		// Lower-cased when parsed, since NuGet compares labels without regard to case.
+		// WARNING: Lower-cased when parsed, since NuGet compares labels without regard to case.
 		std::vector<std::string> m_Labels;
 	};
 }

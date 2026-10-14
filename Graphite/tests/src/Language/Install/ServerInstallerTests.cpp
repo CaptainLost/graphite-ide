@@ -59,6 +59,14 @@ namespace {
 		.ProtocolLanguageId = "csharp",
 		.Package = Graphite::NuGetToolPackage{.PackageIdTemplate = "Example.Tool", .AllowPrerelease = false}};
 
+	constexpr std::size_t kSeveralDownloadPiecesBytes = 5000;
+	constexpr std::uint32_t kXorshift32Seed = 2463534242u;
+	constexpr std::uint32_t kLowByteMask = 0xFF;
+	constexpr std::chrono::seconds kWorkerDeadline{10};
+	constexpr std::chrono::milliseconds kWorkerPollInterval{5};
+	constexpr std::chrono::milliseconds kServerExitDelay{300};
+	constexpr std::size_t kSingleWorker = 1;
+
 	constexpr const char* kLatestUrl = "https://api.github.com/repos/example/tool/releases/latest";
 
 	Core::JobSubmitter RunWhereSubmitted()
@@ -78,18 +86,17 @@ namespace {
 		return "sha256:" + Core::BytesToHex(digest.GetValue());
 	}
 
-	// xorshift32: bytes a zip cannot shrink, so an archive spans several of the fake's download pieces.
 	std::string UncompressibleBytes(std::size_t count)
 	{
 		std::string bytes(count, '\0');
-		std::uint32_t state = 2463534242u;
+		std::uint32_t state = kXorshift32Seed;
 
 		for (char& byte : bytes)
 		{
 			state ^= state << 13;
 			state ^= state >> 17;
 			state ^= state << 5;
-			byte = static_cast<char>(state & 0xFF);
+			byte = static_cast<char>(state & kLowByteMask);
 		}
 
 		return bytes;
@@ -258,7 +265,7 @@ TEST_CASE("Installing a GitHub release downloads and verifies and extracts and r
 TEST_CASE("Download progress for one server collapses into its latest between two drains")
 {
 	InstallerFixture fixture;
-	const std::string archive = ToolZip("1.0.0", UncompressibleBytes(5000));
+	const std::string archive = ToolZip("1.0.0", UncompressibleBytes(kSeveralDownloadPiecesBytes));
 	ServeRelease(*fixture.Http, "1.0.0", archive, std::nullopt);
 	REQUIRE(archive.size() > 2 * FakeHttpClient::kPieceBytes);
 
@@ -310,7 +317,7 @@ TEST_CASE("Cancelling an update mid-download keeps the installed version and lea
 	InstallerFixture fixture;
 	fixture.InstallVersion("1.0.0");
 
-	const std::string secondArchive = ToolZip("2.0.0", UncompressibleBytes(5000));
+	const std::string secondArchive = ToolZip("2.0.0", UncompressibleBytes(kSeveralDownloadPiecesBytes));
 	ServeRelease(*fixture.Http, "2.0.0", secondArchive, Sha256Of(secondArchive));
 	fixture.Http->AfterPiece = [&fixture](std::uint64_t) { fixture.Installer.Cancel("tool"); };
 
@@ -651,7 +658,7 @@ TEST_CASE("An uninstall waits for a server stopped a moment ago to let go of its
 	REQUIRE(serverHandle != INVALID_HANDLE_VALUE);
 
 	std::thread exitingServer{[serverHandle] {
-		std::this_thread::sleep_for(std::chrono::milliseconds(300));
+		std::this_thread::sleep_for(kServerExitDelay);
 		::CloseHandle(serverHandle);
 	}};
 
@@ -703,19 +710,19 @@ TEST_CASE("An install on a worker thread reports through Drain")
 	const Core::Ref<FakeHttpClient> http = Core::CreateRef<FakeHttpClient>();
 	const std::string archive = ToolZip("1.0.0");
 	ServeRelease(*http, "1.0.0", archive, Sha256Of(archive));
-	Core::JobQueue jobs{1};
+	Core::JobQueue jobs{kSingleWorker};
 	Graphite::ServerInstaller installer{http, temporaryDirectory.GetPath() / "servers", kWindowsX64,
 										[&jobs](std::function<void()> job) { jobs.Submit(std::move(job)); }};
 
 	REQUIRE(installer.Install(kGitHubTool));
 
 	std::vector<Graphite::InstallProgress> changes;
-	const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds{10};
+	const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kWorkerDeadline;
 
 	while ((changes.empty() || !Graphite::IsFinished(changes.back().Step)) && std::chrono::steady_clock::now() < deadline)
 	{
 		installer.Drain(changes);
-		std::this_thread::sleep_for(std::chrono::milliseconds{5});
+		std::this_thread::sleep_for(kWorkerPollInterval);
 	}
 
 	REQUIRE_FALSE(changes.empty());

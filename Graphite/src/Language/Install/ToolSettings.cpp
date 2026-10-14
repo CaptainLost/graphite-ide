@@ -37,7 +37,7 @@ namespace Graphite {
 			std::filesystem::path File;
 		};
 
-		// Compared as numbers, since "net10.0" sorts below "net8.0" as text.
+		// WARNING: Framework folders are compared as numbers, since "net10.0" sorts below "net8.0" as text.
 		FrameworkVersion FrameworkVersionOf(std::string_view framework)
 		{
 			FrameworkVersion version;
@@ -48,15 +48,15 @@ namespace Graphite {
 			}
 
 			const std::string_view numbers = framework.substr(kFrameworkPrefix.size());
-			const char* const end = numbers.data() + numbers.size();
-			const std::from_chars_result major = std::from_chars(numbers.data(), end, version.Major);
+			const char* const numbersEnd = numbers.data() + numbers.size();
+			const std::from_chars_result major = std::from_chars(numbers.data(), numbersEnd, version.Major);
 
-			if (major.ec != std::errc{} || major.ptr == end || *major.ptr != '.')
+			if (major.ec != std::errc{} || major.ptr == numbersEnd || *major.ptr != '.')
 			{
 				return version;
 			}
 
-			const std::from_chars_result minor = std::from_chars(major.ptr + 1, end, version.Minor);
+			const std::from_chars_result minor = std::from_chars(major.ptr + 1, numbersEnd, version.Minor);
 
 			if (minor.ec != std::errc{})
 			{

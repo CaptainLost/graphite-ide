@@ -9,7 +9,7 @@
 
 namespace Graphite {
 
-	// GitHub's "latest" is the newest release that is neither a draft nor a prerelease.
+	// WARNING: GitHub's "latest" is the newest release that is neither a draft nor a prerelease.
 	Core::Result<ResolvedPackage> ResolveGitHubRelease(Core::HttpClient& http, const GitHubReleasePackage& package,
 													   Core::PlatformTarget platform);
 }

@@ -30,7 +30,8 @@ namespace Graphite {
 
 	bool UninstallStoppingServers(ServerInstalls& installs, LanguageServices& services, std::string_view serverId)
 	{
-		// Started before the stop, so the servers the stop releases find it held back rather than start again.
+		// WARNING: The uninstall is started before the stop, so the servers the stop releases find it held back rather than
+		// start again.
 		if (!installs.Uninstall(serverId))
 		{
 			return false;

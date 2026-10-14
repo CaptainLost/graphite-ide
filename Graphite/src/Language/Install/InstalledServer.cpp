@@ -21,6 +21,7 @@ namespace Graphite {
 
 		constexpr std::uintmax_t kLargestRecordBytes = 64 * 1024;
 		constexpr int kRecordIndent = 2;
+		constexpr bool kKeepNonAscii = false;
 		constexpr std::int64_t kRecordFormat = 1;
 		constexpr std::string_view kDownloadDirectoryName = ".download";
 
@@ -37,7 +38,6 @@ namespace Graphite {
 			return directory.parent_path() / Core::FromUtf8(asideName);
 		}
 
-		// Absent or null means the source published none; anything else must read as a checksum.
 		Core::Result<std::optional<Checksum>> ChecksumIn(const nlohmann::json& root)
 		{
 			const nlohmann::json::const_iterator field = root.find("checksum");
@@ -65,7 +65,6 @@ namespace Graphite {
 			Unknown
 		};
 
-		// A record without a format predates the field and is read as the first format.
 		RecordFormat FormatOf(const nlohmann::json& root)
 		{
 			const nlohmann::json::const_iterator field = root.find("format");
@@ -149,7 +148,7 @@ namespace Graphite {
 
 			const nlohmann::json root = ParseJsonText(text.GetValue());
 
-			// A newer Graphite's record names versions this build cannot tell apart from leftovers.
+			// WARNING: A newer Graphite's record names versions this build cannot tell apart from leftovers.
 			if (FormatOf(root) == RecordFormat::Newer)
 			{
 				return {.State = RecordState::Unreadable, .Record = std::nullopt};
@@ -261,7 +260,7 @@ namespace Graphite {
 		root["installedAt"] = record.InstalledAt;
 		root["command"] = command;
 
-		return root.dump(kRecordIndent, ' ', false, nlohmann::json::error_handler_t::replace);
+		return root.dump(kRecordIndent, ' ', kKeepNonAscii, nlohmann::json::error_handler_t::replace);
 	}
 
 	std::optional<InstallRecord> ParseInstallRecord(std::string_view json)

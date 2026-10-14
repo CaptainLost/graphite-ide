@@ -28,7 +28,6 @@ namespace Graphite {
 
 	struct InstalledVersionsRead;
 
-	// Without an HTTP client, installs and update checks are refused; uninstalling and the sweep still work.
 	class ServerInstalls
 	{
 	public:
@@ -36,8 +35,8 @@ namespace Graphite {
 
 		const std::filesystem::path& GetServersDirectory() const;
 
-		// Submitted before any install can be, so a queue with one worker runs it first; what is installed is read on
-		// the queue after it, never on the UI thread.
+		// WARNING: Submitted before any install can be, so a queue with one worker runs it first; what is installed
+		// is read on the queue after it, never on the UI thread.
 		void SweepAtStartup();
 
 		bool Install(std::string_view serverId);
@@ -48,18 +47,16 @@ namespace Graphite {
 
 		bool CanDownload() const;
 
-		// False until the read that follows the sweep has been polled in.
 		bool HasReadInstalls() const;
 
-		// Follows this window's own installs and uninstalls; another window's are seen at the next start.
+		// WARNING: Follows this window's own installs and uninstalls; another window's are seen at the next start.
 		std::optional<InstalledVersion> InstalledVersionOf(std::string_view serverId) const;
 
-		// From the call that started a job until Poll has taken its outcome.
 		std::optional<InstallJobKind> RunningJobOf(std::string_view serverId) const;
 
 		bool IsCancelling(std::string_view serverId) const;
 
-		// UI thread, once a frame.
+		// WARNING: Call from the UI thread, once a frame.
 		void Poll();
 
 		std::optional<InstallProgress> ProgressOf(std::string_view serverId) const;

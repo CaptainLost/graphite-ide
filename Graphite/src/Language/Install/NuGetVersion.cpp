@@ -49,8 +49,7 @@ namespace Graphite {
 			return !text.empty();
 		}
 
-		// Nothing for a number too large for 64 bits as well as for anything that is not a number.
-		std::optional<std::uint64_t> NumberOf(std::string_view digits)
+		std::optional<std::uint64_t> NumberFittingSixtyFourBits(std::string_view digits)
 		{
 			if (!IsAllDigits(digits))
 			{
@@ -68,8 +67,7 @@ namespace Graphite {
 			return value;
 		}
 
-		// Keeps empty parts, so "1..0" fails rather than reading as "1.0".
-		std::vector<std::string_view> SplitOnDots(std::string_view text)
+		std::vector<std::string_view> SplitOnDotsKeepingEmptyParts(std::string_view text)
 		{
 			std::vector<std::string_view> parts;
 			std::size_t partStart = 0;
@@ -89,7 +87,7 @@ namespace Graphite {
 			}
 		}
 
-		// Two numbers compare by value, compared as digit strings so no length overflows.
+		// WARNING: Two numeric labels compare as digit strings, so no length overflows.
 		std::strong_ordering CompareLabels(std::string_view left, std::string_view right)
 		{
 			const bool leftIsNumber = IsAllDigits(left);
@@ -121,7 +119,7 @@ namespace Graphite {
 	{
 		const std::string_view withoutMetadata = text.substr(0, text.find('+'));
 		const std::size_t labelStart = withoutMetadata.find('-');
-		const std::vector<std::string_view> numberParts = SplitOnDots(withoutMetadata.substr(0, labelStart));
+		const std::vector<std::string_view> numberParts = SplitOnDotsKeepingEmptyParts(withoutMetadata.substr(0, labelStart));
 
 		if (numberParts.size() > kLargestNumberCount)
 		{
@@ -132,7 +130,7 @@ namespace Graphite {
 
 		for (std::size_t partIndex = 0; partIndex < numberParts.size(); ++partIndex)
 		{
-			const std::optional<std::uint64_t> number = NumberOf(numberParts[partIndex]);
+			const std::optional<std::uint64_t> number = NumberFittingSixtyFourBits(numberParts[partIndex]);
 
 			if (!number)
 			{
@@ -147,7 +145,7 @@ namespace Graphite {
 			return version;
 		}
 
-		for (const std::string_view label : SplitOnDots(withoutMetadata.substr(labelStart + 1)))
+		for (const std::string_view label : SplitOnDotsKeepingEmptyParts(withoutMetadata.substr(labelStart + 1)))
 		{
 			if (!IsLabel(label))
 			{

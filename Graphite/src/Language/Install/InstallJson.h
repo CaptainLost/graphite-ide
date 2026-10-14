@@ -10,7 +10,7 @@
 
 namespace Graphite {
 
-	// Each reader answers a missing key or a value of another type with nothing; nlohmann's own accessors throw.
+	// WARNING: Each reader answers a missing key or a value of another type with nothing; nlohmann's own accessors throw.
 
 	inline std::optional<std::string> TextAt(const nlohmann::json& object, const char* key)
 	{

@@ -27,7 +27,7 @@ namespace Graphite {
 			}
 		}
 
-		// The job before this one stays the latest change until this one reports its first step.
+		// WARNING: The job before this one stays the latest change until this one reports its first step.
 		bool HasReported(const std::optional<InstallProgress>& latest)
 		{
 			return latest.has_value() && latest->Kind == InstallJobKind::Install && !IsFinished(latest->Step);

@@ -47,7 +47,6 @@ namespace {
 		return {Graphite::DotnetInstallation{.Executable = "C:/dotnet/dotnet.exe", .RuntimeVersions = {"10.0.10"}}};
 	}
 
-	// csharp-ls installed, chosen for C#, and running for one open document, with its jobs held until RunAll.
 	struct RunningCsharpLs
 	{
 		TempDirectory Temp;

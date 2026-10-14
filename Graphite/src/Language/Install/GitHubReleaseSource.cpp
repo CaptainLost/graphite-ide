@@ -10,6 +10,8 @@ namespace Graphite {
 	namespace {
 
 		constexpr std::string_view kGitHubApi = "https://api.github.com/repos/";
+		constexpr int kCompactDump = -1;
+		constexpr bool kKeepNonAscii = false;
 		constexpr int kStatusOk = 200;
 		constexpr int kStatusNotFound = 404;
 
@@ -63,7 +65,7 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		// A digest that is there but cannot be read fails: a checksum Graphite cannot check is not one that passed.
+		// WARNING: A digest that is there but cannot be read fails: a checksum Graphite cannot check is not one that passed.
 		Core::Result<std::optional<Checksum>> DigestOf(const nlohmann::json& asset, std::string_view assetName)
 		{
 			const nlohmann::json::const_iterator digest = asset.find("digest");
@@ -79,7 +81,7 @@ namespace Graphite {
 			{
 				return Core::Error{.Code = Core::ErrorCode::InvalidArgument,
 								   .Message = std::format("GitHub's digest for {} cannot be read: {}", assetName,
-														  digest->dump(-1, ' ', false, nlohmann::json::error_handler_t::replace))};
+														  digest->dump(kCompactDump, ' ', kKeepNonAscii, nlohmann::json::error_handler_t::replace))};
 			}
 
 			return checksum;

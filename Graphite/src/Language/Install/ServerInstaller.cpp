@@ -58,8 +58,6 @@ namespace Graphite {
 			return InstallProgress{.ServerId = std::string{job.Server->Id}, .Step = step, .Version = std::string{version}, .Kind = job.Kind};
 		}
 
-		// Consecutive download progress for one server collapses into the latest, so a long download does not queue
-		// a change per piece between two frames.
 		void Report(InstallerState& state, InstallProgress change)
 		{
 			{
@@ -81,7 +79,8 @@ namespace Graphite {
 			Core::Redraw::Request();
 		}
 
-		// One step under the lock, so IsBusy turns false exactly when the outcome can be drained.
+		// WARNING: The outcome is queued and the job forgotten under one lock, so IsBusy turns false exactly when the
+		// outcome can be drained.
 		void Finish(InstallerState& state, InstallProgress outcome)
 		{
 			{
@@ -94,7 +93,7 @@ namespace Graphite {
 			Core::Redraw::Request();
 		}
 
-		// A cancel often surfaces as some other failure, such as a lookup that timed out while the user waited.
+		// WARNING: A cancel often surfaces as some other failure, such as a lookup that timed out while the user waited.
 		InstallProgress OutcomeOf(const InstallJob& job, const Core::Error& error)
 		{
 			const bool wasCancelled = error.Code == Core::ErrorCode::Cancelled || job.Token.IsCancelled();
@@ -145,15 +144,15 @@ namespace Graphite {
 														  creationError.message())};
 			}
 
-			Core::Result<Core::FileLock> lock = Core::FileLock::TryAcquire(LockFileOf(job.ServerDirectory));
+			Core::Result<Core::FileLock> serverLock = Core::FileLock::TryAcquire(LockFileOf(job.ServerDirectory));
 
-			if (!lock && lock.GetError().Code == Core::ErrorCode::AccessDenied)
+			if (!serverLock && serverLock.GetError().Code == Core::ErrorCode::AccessDenied)
 			{
 				return Core::Error{.Code = Core::ErrorCode::AccessDenied,
 								   .Message = std::format("another Graphite window is installing or removing {}", job.Server->DisplayName)};
 			}
 
-			return lock;
+			return serverLock;
 		}
 
 		Core::Result<InstalledCommand> CommandOf(const ResolvedPackage& package, const std::filesystem::path& stagingDirectory,
@@ -184,7 +183,7 @@ namespace Graphite {
 													  Core::ToUtf8(versionDirectory), reason)};
 		}
 
-		// A scanner or an indexer may hold a file it has just seen extracted for a moment, which fails one rename.
+		// WARNING: A scanner or an indexer may hold a file it has just seen extracted for a moment, which fails one rename.
 		std::error_code RenameRetrying(const std::filesystem::path& from, const std::filesystem::path& to)
 		{
 			std::error_code renameError;
@@ -199,8 +198,7 @@ namespace Graphite {
 			return renameError;
 		}
 
-		// A directory of this version left by an uninstall whose files were in use is replaced, never merged into.
-		Core::Result<void> PlaceVersion(const std::filesystem::path& stagingDirectory, const std::filesystem::path& versionDirectory)
+		Core::Result<void> ReplaceVersionDirectory(const std::filesystem::path& stagingDirectory, const std::filesystem::path& versionDirectory)
 		{
 			if (!RemoveDirectoryWhole(versionDirectory))
 			{
@@ -226,11 +224,11 @@ namespace Graphite {
 
 		Core::Result<InstallProgress> InstallLatest(const InstallJob& job, InstallerState& state)
 		{
-			const Core::Result<Core::FileLock> lock = LockServer(job);
+			const Core::Result<Core::FileLock> serverLock = LockServer(job);
 
-			if (!lock)
+			if (!serverLock)
 			{
-				return lock.GetError();
+				return serverLock.GetError();
 			}
 
 			Report(state, ChangeOf(job, InstallStep::Resolving));
@@ -255,7 +253,8 @@ namespace Graphite {
 														  job.Server->DisplayName)};
 			}
 
-			// UpToDate, so that nothing acting on Installed, such as restarting servers, acts on an install that changed nothing.
+			// WARNING: This ends as UpToDate, not Installed, so that nothing acting on Installed, such as restarting
+			// servers, acts on an install that changed nothing.
 			if (const std::optional<InstalledServer> installed = FindInstalledServer(job.ServerDirectory);
 				installed && Core::EqualsIgnoringCase(installed->Record.Version, package.Version))
 			{
@@ -266,7 +265,6 @@ namespace Graphite {
 			const std::filesystem::path downloadDirectory = DownloadDirectoryOf(job.ServerDirectory);
 			const std::filesystem::path stagingDirectory = StagingDirectoryOf(job.ServerDirectory, package.Version);
 
-			// Runs on success too: a finished install leaves only its version directory and its record.
 			const Core::ScopeExit removeWorkingFolders{[&downloadDirectory, &stagingDirectory] {
 				RemoveQuietly(downloadDirectory);
 				RemoveQuietly(stagingDirectory);
@@ -330,7 +328,7 @@ namespace Graphite {
 			}
 
 			const std::filesystem::path versionDirectory = job.ServerDirectory / Core::FromUtf8(package.Version);
-			const Core::Result<void> placed = PlaceVersion(stagingDirectory, versionDirectory);
+			const Core::Result<void> placed = ReplaceVersionDirectory(stagingDirectory, versionDirectory);
 
 			if (!placed)
 			{
@@ -379,7 +377,8 @@ namespace Graphite {
 			return ChangeOf(job, InstallStep::UpdateAvailable, latest);
 		}
 
-		// A server stopped a moment ago keeps its files locked until its processes have exited.
+		// WARNING: A server stopped a moment ago keeps its files locked until its processes have exited. A version a
+		// server still holds after the last attempt stays whole, for a later start-up sweep to remove.
 		void RemoveVersionOnceItsServerHasExited(const std::filesystem::path& versionDirectory)
 		{
 			for (int attempt = 1; !RemoveDirectoryWhole(versionDirectory) && attempt < kPlacementAttempts; ++attempt)
@@ -390,11 +389,11 @@ namespace Graphite {
 
 		Core::Result<InstallProgress> UninstallServer(const InstallJob& job)
 		{
-			const Core::Result<Core::FileLock> lock = LockServer(job);
+			const Core::Result<Core::FileLock> serverLock = LockServer(job);
 
-			if (!lock)
+			if (!serverLock)
 			{
-				return lock.GetError();
+				return serverLock.GetError();
 			}
 
 			const std::optional<InstallRecord> record = ReadInstallRecord(job.ServerDirectory);
@@ -413,12 +412,10 @@ namespace Graphite {
 				return ChangeOf(job, InstallStep::Uninstalled);
 			}
 
-			// A version a running server still holds stays whole, for a later start-up sweep to remove.
 			RemoveVersionOnceItsServerHasExited(job.ServerDirectory / Core::FromUtf8(record->Version));
 			return ChangeOf(job, InstallStep::Uninstalled, record->Version);
 		}
 
-		// A job cancelled while it waited, as the installer's destructor does at shutdown, neither locks nor fetches.
 		Core::Result<InstallProgress> RunJob(const InstallJob& job, InstallerState& state)
 		{
 			if (job.Token.IsCancelled())
@@ -467,6 +464,7 @@ namespace Graphite {
 		return true;
 	}
 
+	// WARNING: A GitHub tag need not sort, so any tag other than the installed one, case aside, counts as newer.
 	bool IsNewerRelease(const ServerPackage& package, std::string_view latest, std::string_view installed)
 	{
 		if (std::holds_alternative<NuGetToolPackage>(package))
@@ -497,9 +495,9 @@ namespace Graphite {
 	{
 		const std::scoped_lock lock{m_State->Mutex};
 
-		for (const std::pair<const std::string, Core::CancellationToken>& running : m_State->Running)
+		for (const auto& [serverId, token] : m_State->Running)
 		{
-			running.second.Cancel();
+			token.Cancel();
 		}
 	}
 
@@ -526,7 +524,8 @@ namespace Graphite {
 
 		if (running != m_State->Running.end())
 		{
-			running->second.Cancel();
+			const auto& [runningServerId, token] = *running;
+			token.Cancel();
 		}
 	}
 
@@ -567,7 +566,8 @@ namespace Graphite {
 							 .Token = token};
 		const Core::Ref<InstallerState> state = m_State;
 
-		// Submitted outside the lock: a submitter that runs the job where it is submitted reports through the same mutex.
+		// WARNING: Submitted outside the lock, because a submitter that runs the job where it is submitted reports
+		// through the same mutex.
 		m_Submit([job, state] { RunAndFinish(job, state); });
 		return true;
 	}

@@ -41,7 +41,7 @@ namespace Graphite {
 
 	std::string SerialiseInstallRecord(const InstallRecord& record);
 
-	// A record whose version or command could lead outside the server's directory reads as nothing, like a broken one,
+	// WARNING: A record whose version or command could lead outside the server's directory reads as nothing, like a broken one,
 	// and so does a record a newer Graphite wrote in a later format.
 	std::optional<InstallRecord> ParseInstallRecord(std::string_view json);
 
@@ -49,14 +49,13 @@ namespace Graphite {
 
 	std::optional<InstallRecord> ReadInstallRecord(const std::filesystem::path& serverDirectory);
 
-	// A record whose command is no longer on disk reads as nothing installed.
 	std::optional<InstalledServer> FindInstalledServer(const std::filesystem::path& serverDirectory);
 
-	// Renamed to a temporary name before anything inside is deleted, so a directory with a file in use stays whole and
+	// WARNING: Renamed to a temporary name before anything inside is deleted, so a directory with a file in use stays whole and
 	// answers false; whatever the deletion leaves under the temporary name, the next sweep removes.
 	bool RemoveDirectoryWhole(const std::filesystem::path& directory);
 
-	// A server whose lock another Graphite window holds is left alone: its download and its half-extracted version are
+	// WARNING: A server whose lock another Graphite window holds is left alone: its download and its half-extracted version are
 	// still in use.
 	void SweepServersDirectory(const std::filesystem::path& serversDirectory);
 }

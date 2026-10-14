@@ -38,7 +38,6 @@ namespace Graphite {
 		Uninstall
 	};
 
-	// A job's last change is its outcome: Installed, UpToDate, UpdateAvailable, Uninstalled, Cancelled or Failed.
 	struct InstallProgress
 	{
 		std::string ServerId;
@@ -53,7 +52,6 @@ namespace Graphite {
 
 	bool IsFinished(InstallStep step);
 
-	// A GitHub tag need not sort, so any tag other than the installed one, case aside, counts as newer.
 	bool IsNewerRelease(const ServerPackage& package, std::string_view latest, std::string_view installed);
 
 	struct InstallerState;
@@ -68,8 +66,7 @@ namespace Graphite {
 		ServerInstaller(const ServerInstaller&) = delete;
 		ServerInstaller& operator=(const ServerInstaller&) = delete;
 
-		// Each answers false and starts nothing while a job for that server is waiting or running. The definition
-		// must outlive the job; the catalogue's rows live for the whole run.
+		// WARNING: The definition must outlive the job; the catalogue's rows live for the whole run.
 		bool Install(const ServerDefinition& server);
 		bool CheckForUpdates(const ServerDefinition& server);
 		bool Uninstall(const ServerDefinition& server);
@@ -78,7 +75,7 @@ namespace Graphite {
 
 		bool IsBusy(std::string_view serverId) const;
 
-		// UI thread. Appends every change since the last call, oldest first.
+		// WARNING: Call from the UI thread. Appends every change since the last call, oldest first.
 		void Drain(std::vector<InstallProgress>& changes);
 
 	private:

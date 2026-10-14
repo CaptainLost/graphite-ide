@@ -76,9 +76,9 @@ TEST_CASE("An uninstall that ran is reported once as finished and its progress i
 	REQUIRE(progress.has_value());
 	CHECK(progress->Step == Graphite::InstallStep::Uninstalled);
 
-	std::vector<Graphite::InstallProgress> again;
-	installs.TakeFinished(again);
-	CHECK(again.empty());
+	std::vector<Graphite::InstallProgress> finishedAgain;
+	installs.TakeFinished(finishedAgain);
+	CHECK(finishedAgain.empty());
 }
 
 TEST_CASE("The start-up sweep removes what an interrupted install left")
@@ -141,23 +141,23 @@ TEST_CASE("An install that finds the version already there records it")
 	const Core::Ref<FakeHttpClient> secondHttp = Core::CreateRef<FakeHttpClient>();
 	ServeClangd(*firstHttp, "23.1.0");
 	ServeClangd(*secondHttp, "23.1.0");
-	Graphite::ServerInstalls first{firstHttp, temp.GetPath() / "servers", RunWhereSubmitted()};
-	Graphite::ServerInstalls second{secondHttp, temp.GetPath() / "servers", RunWhereSubmitted()};
+	Graphite::ServerInstalls firstWindow{firstHttp, temp.GetPath() / "servers", RunWhereSubmitted()};
+	Graphite::ServerInstalls secondWindow{secondHttp, temp.GetPath() / "servers", RunWhereSubmitted()};
 
-	second.SweepAtStartup();
-	second.Poll();
-	CHECK_FALSE(second.InstalledVersionOf("clangd").has_value());
+	secondWindow.SweepAtStartup();
+	secondWindow.Poll();
+	CHECK_FALSE(secondWindow.InstalledVersionOf("clangd").has_value());
 
-	REQUIRE(first.Install("clangd"));
-	first.Poll();
+	REQUIRE(firstWindow.Install("clangd"));
+	firstWindow.Poll();
 
-	REQUIRE(second.Install("clangd"));
-	second.Poll();
+	REQUIRE(secondWindow.Install("clangd"));
+	secondWindow.Poll();
 
-	REQUIRE(second.ProgressOf("clangd").has_value());
-	CHECK(second.ProgressOf("clangd")->Step == Graphite::InstallStep::UpToDate);
-	REQUIRE(second.InstalledVersionOf("clangd").has_value());
-	CHECK(second.InstalledVersionOf("clangd")->Version == "23.1.0");
+	REQUIRE(secondWindow.ProgressOf("clangd").has_value());
+	CHECK(secondWindow.ProgressOf("clangd")->Step == Graphite::InstallStep::UpToDate);
+	REQUIRE(secondWindow.InstalledVersionOf("clangd").has_value());
+	CHECK(secondWindow.InstalledVersionOf("clangd")->Version == "23.1.0");
 }
 
 TEST_CASE("A job is known by its kind from the moment it is asked for until its outcome is polled")
