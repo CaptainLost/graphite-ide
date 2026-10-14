@@ -8,6 +8,7 @@
 #include "UI/SplitResults.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/Checkbox.h"
 #include "Core/Text/Caret.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -163,9 +164,9 @@ namespace Graphite {
 								 m_MaskBuffer.size());
 
 		ImGui::SameLine();
-		ImGui::Checkbox("Match case", &m_MatchCase);
+		Core::Checkbox("Match case", &m_MatchCase);
 		ImGui::SameLine();
-		ImGui::Checkbox("Whole word", &m_WholeWord);
+		Core::Checkbox("Whole word", &m_WholeWord);
 		ImGui::SameLine();
 
 		// Enter in the field or the button, never every keystroke: a search per character on a

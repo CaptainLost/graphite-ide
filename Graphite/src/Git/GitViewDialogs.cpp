@@ -9,6 +9,7 @@
 #include "Core/Base/Base.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/Checkbox.h"
 #include "Core/ImGui/Icons.h"
 #include "Git/StashBranch.h"
 #include "Theme/Palettes.h"
@@ -174,12 +175,12 @@ namespace Graphite {
 		{
 			bool forced = true;
 			ImGui::BeginDisabled();
-			ImGui::Checkbox("Include untracked files in Discard and Stash", &forced);
+			Core::Checkbox("Include untracked files in Discard and Stash", &forced);
 			ImGui::EndDisabled();
 		}
 		else
 		{
-			ImGui::Checkbox("Include untracked files in Discard and Stash", &m_IncludeUntracked);
+			Core::Checkbox("Include untracked files in Discard and Stash", &m_IncludeUntracked);
 		}
 
 		DialogLayout::Gap();
@@ -324,7 +325,7 @@ namespace Graphite {
 		if (mode == BranchNameMode::New)
 		{
 			DialogLayout::Gap();
-			ImGui::Checkbox("Checkout after creating", &m_CheckoutAfter);
+			Core::Checkbox("Checkout after creating", &m_CheckoutAfter);
 		}
 
 		DialogLayout::Gap();

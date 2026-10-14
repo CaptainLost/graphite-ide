@@ -17,6 +17,7 @@
 #include "Core/Base/Log.h"
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/Checkbox.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
@@ -1154,8 +1155,7 @@ namespace Graphite {
 
 		// Beside the button rather than on a line of its own: amend changes what the button
 		// will do, so the two are read together.
-		const float amendWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
-								 ImGui::CalcTextSize("Amend").x;
+		const float amendWidth = Core::CheckboxWidth("Amend");
 
 		// Stash is a square icon button, so Commit keeps its label: the row's one wide control
 		// is the one the panel exists for.
@@ -1238,7 +1238,7 @@ namespace Graphite {
 		ImGui::SameLine();
 
 		ImGui::BeginDisabled(inFlight);
-		ImGui::Checkbox("Amend", &m_Amend);
+		Core::Checkbox("Amend", &m_Amend);
 		ImGui::EndDisabled();
 	}
 
@@ -1490,7 +1490,7 @@ namespace Graphite {
 		Core::InputTextWithHint("##stash-message", "Message (optional)", m_StashMessage);
 
 		DialogLayout::Gap();
-		ImGui::Checkbox("Include untracked files", &m_StashIncludeUntracked);
+		Core::Checkbox("Include untracked files", &m_StashIncludeUntracked);
 		DialogLayout::Gap();
 
 		const ImVec4 danger = ImGui::ColorConvertU32ToFloat4(ReadEditorPalette(m_Scheme.Get()).DiagnosticError);

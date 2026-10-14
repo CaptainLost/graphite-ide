@@ -13,6 +13,7 @@
 #include "Core/Base/Log.h"
 #include "Core/Base/Uuid.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/Checkbox.h"
 #include "Core/ImGui/TextInput.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/Platform/Process.h"
@@ -412,7 +413,7 @@ namespace Graphite {
 	void SessionsPanel::RenderToolbar()
 	{
 		ImGui::BeginDisabled(!m_Workspace.IsOpen());
-		ImGui::Checkbox("This workspace only", &m_WorkspaceOnly);
+		Core::Checkbox("This workspace only", &m_WorkspaceOnly);
 		ImGui::EndDisabled();
 
 		ImGui::SameLine();

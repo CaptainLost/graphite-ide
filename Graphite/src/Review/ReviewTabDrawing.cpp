@@ -6,6 +6,7 @@
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
+#include "Core/ImGui/Checkbox.h"
 #include "Core/ImGui/EmptyState.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -347,7 +348,7 @@ namespace Graphite {
 			case RowMarks::Shown:
 			{
 				bool viewed = look.Viewed == ViewedState::Viewed;
-				actions.ToggledViewed = ImGui::Checkbox("##viewed", &viewed);
+				actions.ToggledViewed = Core::Checkbox("##viewed", &viewed);
 				ImGui::SameLine();
 				break;
 			}
@@ -648,13 +649,13 @@ namespace Graphite {
 		{
 			const char* label = "Hide whitespace";
 			const float rowRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
-			const float width = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x + MeasureText(label);
+			const float width = Core::CheckboxWidth(label);
 
 			ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX(), rowRight - width));
 
 			bool hidden = settings.Whitespace == Core::WhitespaceInDiff::Ignored;
 
-			if (ImGui::Checkbox(label, &hidden))
+			if (Core::Checkbox(label, &hidden))
 			{
 				SessionSettings changed = settings;
 				changed.Whitespace = hidden ? Core::WhitespaceInDiff::Ignored : Core::WhitespaceInDiff::Shown;
@@ -817,7 +818,7 @@ namespace Graphite {
 
 		ImGui::BeginDisabled(!canInclude);
 
-		if (ImGui::Checkbox("Include uncommitted", &include))
+		if (Core::Checkbox("Include uncommitted", &include))
 		{
 			SetIncludeUncommitted(tab, input.Sessions, input.Model, include);
 		}

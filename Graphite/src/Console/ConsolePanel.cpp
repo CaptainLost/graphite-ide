@@ -4,6 +4,7 @@
 
 #include "Core/Base/Base.h"
 
+#include "Core/ImGui/Checkbox.h"
 #include "Core/ImGui/SelectionGesture.h"
 #include "Core/ImGui/TextInput.h"
 #include "Core/ImGui/TextMetrics.h"
@@ -140,7 +141,7 @@ namespace Graphite {
 		}
 
 		ImGui::SameLine();
-		ImGui::Checkbox("Auto-scroll", &m_AutoScroll);
+		Core::Checkbox("Auto-scroll", &m_AutoScroll);
 
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(Core::Scaled(240.0f));
