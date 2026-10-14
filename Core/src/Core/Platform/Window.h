@@ -55,6 +55,10 @@ namespace Core {
 
 		virtual void CancelClose() = 0;
 
+		// Takes the window off the screen while the process lives on. GetPlacement still answers
+		// as it did when the window was shown.
+		virtual void Hide() = 0;
+
 		virtual void FramebufferSize(int& width, int& height) const = 0;
 		virtual void SetVSync(bool enabled) = 0;
 

@@ -390,6 +390,11 @@ namespace Core {
 		glfwSetWindowShouldClose(m_Handle, GLFW_TRUE);
 	}
 
+	void GlfwWindow::Hide()
+	{
+		glfwHideWindow(m_Handle);
+	}
+
 	void GlfwWindow::CancelClose()
 	{
 		glfwSetWindowShouldClose(m_Handle, GLFW_FALSE);

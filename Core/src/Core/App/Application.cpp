@@ -255,6 +255,10 @@ namespace Core {
 
 		Redraw::SetWaker(nullptr);
 
+		// Teardown can wait on child processes, language servers among them, and a window left up
+		// while it does would look frozen. Placement is read from a hidden window just the same.
+		m_Window->Hide();
+
 		OnShutdown();
 
 		m_Layers.Clear();

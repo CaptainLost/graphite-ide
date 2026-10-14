@@ -32,6 +32,7 @@ namespace Core {
 
 		bool ShouldClose() const override;
 		void RequestClose() override;
+		void Hide() override;
 		void CancelClose() override;
 
 		void FramebufferSize(int& width, int& height) const override;
