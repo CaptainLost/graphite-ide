@@ -1,8 +1,9 @@
 #include "Solution/SlnParser.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Text/Encoding.h"
 
-#include <algorithm>
 #include <format>
 #include <sstream>
 #include <string_view>
@@ -18,33 +19,26 @@ namespace Graphite {
 
 		constexpr std::string_view kHeader = "Microsoft Visual Studio Solution File";
 
-		constexpr std::string_view kByteOrderMark = "\xEF\xBB\xBF";
-
 		constexpr int kHeaderSearchLines = 4;
+
+		constexpr std::size_t kFieldsPerEntry = 4;
+		constexpr std::size_t kTypeIdField = 0;
+		constexpr std::size_t kNameField = 1;
+		constexpr std::size_t kLocationField = 2;
+		constexpr std::size_t kIdField = 3;
 
 		struct Entry
 		{
 			std::string TypeId;
 			std::string Name;
-			// A relative path for a project, the name again for a folder.
 			std::string Location;
 			std::string Id;
 			bool IsFolder = false;
 		};
 
-		std::string_view Trim(std::string_view text)
+		std::string_view TrimmedSolutionLine(std::string_view text)
 		{
-			while (!text.empty() && (text.front() == ' ' || text.front() == '\t'))
-			{
-				text.remove_prefix(1);
-			}
-
-			while (!text.empty() && (text.back() == ' ' || text.back() == '\t' || text.back() == '\r'))
-			{
-				text.remove_suffix(1);
-			}
-
-			return text;
+			return Core::WithoutTrailing(Core::WithoutLeading(text, " \t"), " \t\r");
 		}
 
 		std::vector<std::string> QuotedFields(std::string_view line)
@@ -52,24 +46,20 @@ namespace Graphite {
 			std::vector<std::string> fields;
 			std::size_t position = 0;
 
-			while (true)
+			std::size_t openingQuote = line.find('"', position);
+
+			while (openingQuote != std::string_view::npos)
 			{
-				const std::size_t open = line.find('"', position);
+				const std::size_t closingQuote = line.find('"', openingQuote + 1);
 
-				if (open == std::string_view::npos)
+				if (closingQuote == std::string_view::npos)
 				{
 					break;
 				}
 
-				const std::size_t close = line.find('"', open + 1);
-
-				if (close == std::string_view::npos)
-				{
-					break;
-				}
-
-				fields.emplace_back(line.substr(open + 1, close - open - 1));
-				position = close + 1;
+				fields.emplace_back(line.substr(openingQuote + 1, closingQuote - openingQuote - 1));
+				position = closingQuote + 1;
+				openingQuote = line.find('"', position);
 			}
 
 			return fields;
@@ -79,41 +69,38 @@ namespace Graphite {
 		{
 			const std::vector<std::string> fields = QuotedFields(line);
 
-			if (fields.size() < 4)
+			if (fields.size() < kFieldsPerEntry)
 			{
 				return false;
 			}
 
-			entry.TypeId = fields[0];
-			entry.Name = fields[1];
-			entry.Location = fields[2];
-			entry.Id = fields[3];
+			entry.TypeId = fields[kTypeIdField];
+			entry.Name = fields[kNameField];
+			entry.Location = fields[kLocationField];
+			entry.Id = fields[kIdField];
 			entry.IsFolder = entry.TypeId == kFolderType;
 
 			return true;
 		}
 
+		// WARNING: Visual Studio writes a UTF-8 byte-order mark and then a blank line before the
+		// header, so the header is neither on line one nor at column zero.
 		bool ConsumeSolutionHeader(std::istream& stream)
 		{
 			std::string rawLine;
 
-			// Visual Studio writes a UTF-8 byte-order mark and then a blank line before the
-			// header, so the header is neither on line one nor at column zero.
-			for (int line = 0; line < kHeaderSearchLines && std::getline(stream, rawLine); ++line)
+			for (int lineNumber = 0; lineNumber < kHeaderSearchLines && std::getline(stream, rawLine);
+				 ++lineNumber)
 			{
-				std::string_view candidate = Trim(rawLine);
-
-				if (candidate.starts_with(kByteOrderMark))
-				{
-					candidate.remove_prefix(kByteOrderMark.size());
-				}
+				const std::string_view candidate =
+					Core::WithoutUtf8ByteOrderMark(TrimmedSolutionLine(rawLine));
 
 				if (candidate.empty())
 				{
 					continue;
 				}
 
-				return candidate.find(kHeader) == 0;
+				return candidate.starts_with(kHeader);
 			}
 
 			return false;
@@ -133,12 +120,12 @@ namespace Graphite {
 
 			while (std::getline(stream, rawLine))
 			{
-				const std::string_view line = Trim(rawLine);
+				const std::string_view line = TrimmedSolutionLine(rawLine);
 
 				if (line.starts_with("Project("))
 				{
-					// A line that does not parse costs that line rather than the whole view:
-					// hand-edited and merge-conflicted solutions exist.
+					// WARNING: A line that does not parse costs that line rather than the whole view,
+					// because hand-edited and merge-conflicted solutions exist.
 					if (Entry entry; ParseEntry(line, entry))
 					{
 						body.Entries.push_back(std::move(entry));
@@ -164,20 +151,19 @@ namespace Graphite {
 					continue;
 				}
 
-				// Every line of this section reads `{child} = {parent}`, and nothing else.
-				const std::size_t equals = line.find('=');
+				const std::size_t equalsPosition = line.find('=');
 
-				if (equals == std::string_view::npos)
+				if (equalsPosition == std::string_view::npos)
 				{
 					continue;
 				}
 
-				const std::string_view child = Trim(line.substr(0, equals));
-				const std::string_view parent = Trim(line.substr(equals + 1));
+				const std::string_view childId = TrimmedSolutionLine(line.substr(0, equalsPosition));
+				const std::string_view parentId = TrimmedSolutionLine(line.substr(equalsPosition + 1));
 
-				if (!child.empty() && !parent.empty())
+				if (!childId.empty() && !parentId.empty())
 				{
-					body.ParentIdByChildId.emplace(child, parent);
+					body.ParentIdByChildId.emplace(childId, parentId);
 				}
 			}
 
@@ -186,68 +172,80 @@ namespace Graphite {
 
 		std::vector<std::size_t> ResolveParents(const Body& body)
 		{
-			const std::size_t count = body.Entries.size();
-			const std::size_t noParent = count;
+			const std::size_t entryCount = body.Entries.size();
+			const std::size_t noParent = entryCount;
 
 			std::unordered_map<std::string, std::size_t> indexById;
 
-			for (std::size_t i = 0; i < count; ++i)
+			for (std::size_t entryIndex = 0; entryIndex < entryCount; ++entryIndex)
 			{
-				indexById.emplace(body.Entries[i].Id, i);
+				indexById.emplace(body.Entries[entryIndex].Id, entryIndex);
 			}
 
-			std::vector<std::size_t> parentOfIndex(count, noParent);
+			std::vector<std::size_t> parentOfIndex(entryCount, noParent);
 
-			for (std::size_t i = 0; i < count; ++i)
+			for (std::size_t entryIndex = 0; entryIndex < entryCount; ++entryIndex)
 			{
-				const auto link = body.ParentIdByChildId.find(body.Entries[i].Id);
+				const std::unordered_map<std::string, std::string>::const_iterator link =
+					body.ParentIdByChildId.find(body.Entries[entryIndex].Id);
 
 				if (link == body.ParentIdByChildId.end())
 				{
 					continue;
 				}
 
-				const auto parent = indexById.find(link->second);
+				const auto& [childIdOfLink, parentIdOfLink] = *link;
 
-				if (parent == indexById.end() || parent->second == i ||
-					!body.Entries[parent->second].IsFolder)
+				const std::unordered_map<std::string, std::size_t>::const_iterator parent =
+					indexById.find(parentIdOfLink);
+
+				if (parent == indexById.end())
 				{
 					continue;
 				}
 
-				parentOfIndex[i] = parent->second;
+				const auto& [parentId, parentIndex] = *parent;
+				const bool isOwnParent = parentIndex == entryIndex;
+
+				if (isOwnParent || !body.Entries[parentIndex].IsFolder)
+				{
+					continue;
+				}
+
+				parentOfIndex[entryIndex] = parentIndex;
 			}
 
 			return parentOfIndex;
 		}
 
+		// WARNING: Cycles are detected against the untouched links and applied afterwards.
+		// Rewriting as it walks would let the first entry freed from a cycle make the second
+		// one's chain look sound.
 		void RootEntriesInCycles(std::vector<std::size_t>& parentOfIndex)
 		{
-			const std::size_t count = parentOfIndex.size();
-			const std::size_t noParent = count;
+			const std::size_t entryCount = parentOfIndex.size();
+			const std::size_t noParent = entryCount;
 
-			// Detected against the untouched links and applied afterwards: rewriting as it
-			// walks would let the first entry freed from a cycle make the second one's chain
-			// look sound.
-			std::vector<bool> inCycle(count, false);
+			const bool startsOutsideCycle = false;
+			std::vector<bool> inCycle(entryCount, startsOutsideCycle);
 
-			for (std::size_t i = 0; i < count; ++i)
+			for (std::size_t entryIndex = 0; entryIndex < entryCount; ++entryIndex)
 			{
-				std::size_t walker = parentOfIndex[i];
+				std::size_t ancestor = parentOfIndex[entryIndex];
 
-				for (std::size_t steps = 0; walker != noParent && steps <= count; ++steps)
+				for (std::size_t step = 0; ancestor != noParent && step <= entryCount; ++step)
 				{
-					walker = parentOfIndex[walker];
+					ancestor = parentOfIndex[ancestor];
 				}
 
-				inCycle[i] = walker != noParent;
+				inCycle[entryIndex] = ancestor != noParent;
 			}
 
-			for (std::size_t i = 0; i < count; ++i)
+			for (std::size_t entryIndex = 0; entryIndex < entryCount; ++entryIndex)
 			{
-				if (inCycle[i])
+				if (inCycle[entryIndex])
 				{
-					parentOfIndex[i] = noParent;
+					parentOfIndex[entryIndex] = noParent;
 				}
 			}
 		}
@@ -262,6 +260,44 @@ namespace Graphite {
 			}
 
 			return total;
+		}
+
+		Project ProjectFromEntry(const Entry& entry, const std::filesystem::path& solutionDirectory)
+		{
+			Project project;
+			project.DisplayName = entry.Name;
+			project.TypeId = entry.TypeId;
+			project.Path = (solutionDirectory / Core::FromUtf8(entry.Location)).lexically_normal();
+			project.Path.make_preferred();
+
+			std::error_code existsError;
+			project.Exists = std::filesystem::is_regular_file(project.Path, existsError);
+
+			return project;
+		}
+
+		// WARNING: Built by value, children first. A map of id to Folder* appended through would
+		// dangle the moment a sibling append reallocated the vector holding it.
+		Folder BuildFolder(std::size_t entryIndex, const std::vector<Entry>& entries,
+						   const std::vector<std::vector<std::size_t>>& childrenOf,
+						   const std::filesystem::path& solutionDirectory)
+		{
+			Folder folder;
+			folder.Name = entries[entryIndex].Name;
+
+			for (const std::size_t childIndex : childrenOf[entryIndex])
+			{
+				if (entries[childIndex].IsFolder)
+				{
+					folder.Folders.push_back(BuildFolder(childIndex, entries, childrenOf, solutionDirectory));
+				}
+				else
+				{
+					folder.Projects.push_back(ProjectFromEntry(entries[childIndex], solutionDirectory));
+				}
+			}
+
+			return folder;
 		}
 	}
 
@@ -283,73 +319,39 @@ namespace Graphite {
 		solution.Path = path;
 		solution.Name = Core::ToUtf8(path.stem());
 
-		const std::filesystem::path directory = path.parent_path();
+		const std::filesystem::path solutionDirectory = path.parent_path();
 
-		const std::size_t count = entries.size();
-		const std::size_t noParent = count;
+		const std::size_t entryCount = entries.size();
+		const std::size_t noParent = entryCount;
 
 		std::vector<std::size_t> parentOfIndex = ResolveParents(body);
 
 		RootEntriesInCycles(parentOfIndex);
 
-		std::vector<std::vector<std::size_t>> childrenOf(count);
+		std::vector<std::vector<std::size_t>> childrenOf(entryCount);
 		std::vector<std::size_t> roots;
 
-		for (std::size_t i = 0; i < count; ++i)
+		for (std::size_t entryIndex = 0; entryIndex < entryCount; ++entryIndex)
 		{
-			if (parentOfIndex[i] == noParent)
+			if (parentOfIndex[entryIndex] == noParent)
 			{
-				roots.push_back(i);
+				roots.push_back(entryIndex);
 			}
 			else
 			{
-				childrenOf[parentOfIndex[i]].push_back(i);
+				childrenOf[parentOfIndex[entryIndex]].push_back(entryIndex);
 			}
 		}
 
-		const auto makeProject = [&](const Entry& entry) {
-			Project project;
-			project.DisplayName = entry.Name;
-			project.TypeId = entry.TypeId;
-			project.Path = (directory / Core::FromUtf8(entry.Location)).lexically_normal();
-			project.Path.make_preferred();
-
-			std::error_code exists;
-			project.Exists = std::filesystem::is_regular_file(project.Path, exists);
-
-			return project;
-		};
-
-		// Built by value, children first: a map of id to Folder* appended through would
-		// dangle the moment a sibling append reallocated the vector holding it.
-		const auto buildFolder = [&](std::size_t index, auto&& self) -> Folder {
-			Folder folder;
-			folder.Name = entries[index].Name;
-
-			for (const std::size_t child : childrenOf[index])
-			{
-				if (entries[child].IsFolder)
-				{
-					folder.Folders.push_back(self(child, self));
-				}
-				else
-				{
-					folder.Projects.push_back(makeProject(entries[child]));
-				}
-			}
-
-			return folder;
-		};
-
-		for (const std::size_t index : roots)
+		for (const std::size_t rootIndex : roots)
 		{
-			if (entries[index].IsFolder)
+			if (entries[rootIndex].IsFolder)
 			{
-				solution.Root.Folders.push_back(buildFolder(index, buildFolder));
+				solution.Root.Folders.push_back(BuildFolder(rootIndex, entries, childrenOf, solutionDirectory));
 			}
 			else
 			{
-				solution.Root.Projects.push_back(makeProject(entries[index]));
+				solution.Root.Projects.push_back(ProjectFromEntry(entries[rootIndex], solutionDirectory));
 			}
 		}
 

@@ -4,10 +4,8 @@
 
 #include <string>
 
-TEST_CASE("pugixml parses a document and reads attributes")
+TEST_CASE("pugixml is compiled in and parses a .slnx-shaped document and reads attributes")
 {
-	// Proves the library is compiled in and callable, not merely on the include path. The
-	// shape mirrors a .slnx: nested elements carrying their meaning in attributes.
 	constexpr const char* kDocument =
 		R"(<Solution><Folder Name="/App/"><Project Path="IDE\IDE.vcxproj" /></Folder></Solution>)";
 
@@ -21,9 +19,8 @@ TEST_CASE("pugixml parses a document and reads attributes")
 	CHECK(std::string{folder.child("Project").attribute("Path").value()} == "IDE\\IDE.vcxproj");
 }
 
-TEST_CASE("pugixml reports a parse failure instead of throwing")
+TEST_CASE("pugixml reports a parse failure instead of throwing, which the Result-returning readers rely on")
 {
-	// The whole module returns Core::Result rather than throwing, which relies on this.
 	pugi::xml_document document;
 	const pugi::xml_parse_result result = document.load_string("<Solution><unclosed>");
 

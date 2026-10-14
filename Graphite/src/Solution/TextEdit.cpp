@@ -2,6 +2,40 @@
 
 namespace Graphite {
 
+	namespace {
+		constexpr const char* kDefaultIndentUnit = "  ";
+		constexpr std::size_t kSelfClosingSlashDistanceFromTagEnd = 2;
+
+		enum class TagKind
+		{
+			Opening,
+			Closing,
+		};
+
+		bool IsLineSpace(char character)
+		{
+			return character == ' ' || character == '\t';
+		}
+
+		bool IsNameTerminator(char character)
+		{
+			return character == ' ' || character == '\t' || character == '\r' || character == '\n' ||
+				   character == '>';
+		}
+
+		bool NameEndsHere(std::string_view text, std::size_t nameEnd, TagKind tagKind)
+		{
+			const char following = nameEnd < text.size() ? text[nameEnd] : '\0';
+
+			if (IsNameTerminator(following))
+			{
+				return true;
+			}
+
+			return tagKind == TagKind::Opening && following == '/';
+		}
+	}
+
 	std::string DetectLineEnding(std::string_view text)
 	{
 		const std::size_t newline = text.find('\n');
@@ -11,7 +45,9 @@ namespace Graphite {
 			return "\n";
 		}
 
-		return newline > 0 && text[newline - 1] == '\r' ? "\r\n" : "\n";
+		const bool newlineFollowsCarriageReturn = newline > 0 && text[newline - 1] == '\r';
+
+		return newlineFollowsCarriageReturn ? "\r\n" : "\n";
 	}
 
 	std::string IndentUnit(std::string_view text)
@@ -27,39 +63,43 @@ namespace Graphite {
 				break;
 			}
 
-			std::size_t run = newline + 1;
+			const std::size_t lineStart = newline + 1;
+			std::size_t indentEnd = lineStart;
 
-			while (run < text.size() && (text[run] == ' ' || text[run] == '\t'))
+			while (indentEnd < text.size() && IsLineSpace(text[indentEnd]))
 			{
-				++run;
+				++indentEnd;
 			}
 
-			// A line that is only whitespace teaches nothing about indentation.
-			if (run > newline + 1 && run < text.size() && text[run] != '\r' && text[run] != '\n')
+			const bool lineIsIndented = indentEnd > lineStart;
+			const bool lineHasContent =
+				indentEnd < text.size() && text[indentEnd] != '\r' && text[indentEnd] != '\n';
+
+			if (lineIsIndented && lineHasContent)
 			{
-				return std::string{text.substr(newline + 1, run - newline - 1)};
+				return std::string{text.substr(lineStart, indentEnd - lineStart)};
 			}
 
-			position = newline + 1;
+			position = lineStart;
 		}
 
-		return "  ";
+		return kDefaultIndentUnit;
 	}
 
 	std::size_t OpeningTagEnd(std::string_view text, std::size_t offset)
 	{
-		bool inQuotes = false;
-		char quote = '\0';
+		bool insideQuotes = false;
+		char openingQuote = '\0';
 
-		for (std::size_t i = offset; i < text.size(); ++i)
+		for (std::size_t position = offset; position < text.size(); ++position)
 		{
-			const char character = text[i];
+			const char character = text[position];
 
-			if (inQuotes)
+			if (insideQuotes)
 			{
-				if (character == quote)
+				if (character == openingQuote)
 				{
-					inQuotes = false;
+					insideQuotes = false;
 				}
 
 				continue;
@@ -67,14 +107,14 @@ namespace Graphite {
 
 			if (character == '"' || character == '\'')
 			{
-				inQuotes = true;
-				quote = character;
+				insideQuotes = true;
+				openingQuote = character;
 				continue;
 			}
 
 			if (character == '>')
 			{
-				return i + 1;
+				return position + 1;
 			}
 		}
 
@@ -83,22 +123,8 @@ namespace Graphite {
 
 	bool EndsSelfClosingTag(std::string_view text, std::size_t tagEnd)
 	{
-		return tagEnd >= 2 && text[tagEnd - 2] == '/';
-	}
-
-	namespace {
-		bool NameEndsHere(std::string_view text, std::size_t after, bool opening)
-		{
-			const char following = after < text.size() ? text[after] : '\0';
-
-			if (following == ' ' || following == '\t' || following == '\r' || following == '\n' || following == '>')
-			{
-				return true;
-			}
-
-			// Only an opening tag may be followed by the slash of "/>".
-			return opening && following == '/';
-		}
+		return tagEnd >= kSelfClosingSlashDistanceFromTagEnd &&
+			   text[tagEnd - kSelfClosingSlashDistanceFromTagEnd] == '/';
 	}
 
 	std::size_t ElementEnd(std::string_view text, std::size_t offset, std::string_view name)
@@ -110,49 +136,48 @@ namespace Graphite {
 			return tagEnd;
 		}
 
-		// Nesting is counted so a child of the same name does not end the parent early.
-		const std::string open = std::string{"<"} + std::string{name};
-		const std::string close = std::string{"</"} + std::string{name};
+		const std::string openingPrefix = std::string{"<"} + std::string{name};
+		const std::string closingPrefix = std::string{"</"} + std::string{name};
 
-		std::size_t depth = 1;
+		std::size_t nestingDepth = 1;
 		std::size_t position = tagEnd;
 
 		while (position < text.size())
 		{
-			const std::size_t nextOpen = text.find(open, position);
-			const std::size_t nextClose = text.find(close, position);
+			const std::size_t nextOpening = text.find(openingPrefix, position);
+			const std::size_t nextClosing = text.find(closingPrefix, position);
 
-			if (nextClose == std::string_view::npos)
+			if (nextClosing == std::string_view::npos)
 			{
 				return text.size();
 			}
 
-			if (nextOpen != std::string_view::npos && nextOpen < nextClose)
+			if (nextOpening != std::string_view::npos && nextOpening < nextClosing)
 			{
-				// A self-closing child has no closing tag of its own, so counting it would
-				// leave the depth one too high and swallow the rest of the file.
-				const bool selfClosing =
-					EndsSelfClosingTag(text, OpeningTagEnd(text, nextOpen + 1));
+				const bool childIsSelfClosing =
+					EndsSelfClosingTag(text, OpeningTagEnd(text, nextOpening + 1));
+				const bool childHasSameName =
+					NameEndsHere(text, nextOpening + openingPrefix.size(), TagKind::Opening);
 
-				if (NameEndsHere(text, nextOpen + open.size(), true) && !selfClosing)
+				if (childHasSameName && !childIsSelfClosing)
 				{
-					++depth;
+					++nestingDepth;
 				}
 
-				position = nextOpen + open.size();
+				position = nextOpening + openingPrefix.size();
 				continue;
 			}
 
-			if (!NameEndsHere(text, nextClose + close.size(), false))
+			if (!NameEndsHere(text, nextClosing + closingPrefix.size(), TagKind::Closing))
 			{
-				position = nextClose + close.size();
+				position = nextClosing + closingPrefix.size();
 				continue;
 			}
 
-			--depth;
-			position = OpeningTagEnd(text, nextClose + 1);
+			--nestingDepth;
+			position = OpeningTagEnd(text, nextClosing + 1);
 
-			if (depth == 0)
+			if (nestingDepth == 0)
 			{
 				return position;
 			}
@@ -163,16 +188,16 @@ namespace Graphite {
 
 	std::pair<std::size_t, std::size_t> LineExtent(std::string_view text, std::size_t position)
 	{
-		std::size_t begin = position;
+		std::size_t lineBegin = position;
 
-		while (begin > 0 && text[begin - 1] != '\n')
+		while (lineBegin > 0 && text[lineBegin - 1] != '\n')
 		{
-			--begin;
+			--lineBegin;
 		}
 
 		const std::size_t newline = text.find('\n', position);
-		const std::size_t end = newline == std::string_view::npos ? text.size() : newline + 1;
+		const std::size_t lineEnd = newline == std::string_view::npos ? text.size() : newline + 1;
 
-		return {begin, end};
+		return {lineBegin, lineEnd};
 	}
 }

@@ -1,43 +1,44 @@
 #include "Solution/SolutionEditor.h"
 
 #include "Core/Base/Base.h"
-
 #include "Core/Base/Uuid.h"
-
 #include "Core/FileSystem/FileSystem.h"
-
 #include "Solution/SlnxEditor.h"
 
-#include <algorithm>
-
 #include <format>
-
 #include <fstream>
-
 #include <sstream>
-
 #include <system_error>
 
 namespace Graphite {
 
+	namespace {
+		bool HasFolderNamed(const Folder& parent, const std::string& name)
+		{
+			for (const Folder& folder : parent.Folders)
+			{
+				if (Core::CompareNames(folder.Name, name) == 0)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+	}
+
 	std::string NewGuid()
 	{
-		// Both solution formats wrap the identifier in braces and write it uppercase.
 		return std::format("{{{}}}", Core::Uuid::Generate().ToString());
 	}
 
 	std::string UniqueFolderName(const Folder& parent, std::string_view base)
 	{
-		const auto taken = [&parent](const std::string& name) {
-			return std::any_of(parent.Folders.begin(), parent.Folders.end(),
-							   [&name](const Folder& folder) { return Core::CompareNames(folder.Name, name) == 0; });
-		};
-
 		std::string name{base};
 
-		for (int number = 2; taken(name); ++number)
+		for (int suffixNumber = 2; HasFolderNamed(parent, name); ++suffixNumber)
 		{
-			name = std::format("{} {}", base, number);
+			name = std::format("{} {}", base, suffixNumber);
 		}
 
 		return name;
@@ -45,22 +46,20 @@ namespace Graphite {
 
 	bool SolutionEditor::CanEdit(const std::filesystem::path& solution)
 	{
-		// .sln is readable but not yet writable.
 		return Core::LoweredExtension(solution) == ".slnx";
 	}
 
 	Core::Result<Core::Scope<SolutionEditor>> SolutionEditor::Open(
 		const std::filesystem::path& solution)
 	{
-		std::error_code code;
+		std::error_code fileStatusError;
 
-		if (!std::filesystem::is_regular_file(solution, code))
+		if (!std::filesystem::is_regular_file(solution, fileStatusError))
 		{
 			return Core::Error{Core::ErrorCode::NotFound,
 							   std::format("no solution file at '{}'", Core::ToUtf8(solution))};
 		}
 
-		// Refusing here keeps a caller from discovering that halfway through an edit.
 		if (!CanEdit(solution))
 		{
 			return Core::Error{Core::ErrorCode::Unsupported,
@@ -79,8 +78,7 @@ namespace Graphite {
 		std::ostringstream buffer;
 		buffer << stream.rdbuf();
 
-		Core::Scope<SolutionEditor> editor =
-			Core::CreateScope<SlnxEditor>(solution, buffer.str());
+		Core::Scope<SolutionEditor> editor = Core::CreateScope<SlnxEditor>(solution, buffer.str());
 
 		return editor;
 	}

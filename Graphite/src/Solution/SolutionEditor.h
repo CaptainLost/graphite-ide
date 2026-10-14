@@ -14,8 +14,6 @@ namespace Graphite {
 
 	std::string NewGuid();
 
-	// `base`, or `base` followed by the first number from 2 up that no folder directly under
-	// `parent` already goes by. Folder names compare the way file names do.
 	std::string UniqueFolderName(const Folder& parent, std::string_view base);
 
 	class SolutionEditor
@@ -26,8 +24,6 @@ namespace Graphite {
 		SolutionEditor(const SolutionEditor&) = delete;
 		SolutionEditor& operator=(const SolutionEditor&) = delete;
 
-		// Whether Open can edit this solution's format, so a caller can say so before it offers an
-		// edit that is bound to fail.
 		static bool CanEdit(const std::filesystem::path& solution);
 
 		static Core::Result<Core::Scope<SolutionEditor>> Open(

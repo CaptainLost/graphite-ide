@@ -13,8 +13,6 @@ namespace Graphite {
 		std::string Name;
 		std::filesystem::path Path;
 
-		// A project may list a file that is gone from the disk. A project that lists its
-		// files from the disk itself never has a missing one.
 		bool Exists = true;
 	};
 

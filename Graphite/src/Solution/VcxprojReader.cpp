@@ -1,5 +1,6 @@
 #include "Solution/VcxprojReader.h"
 
+#include "Core/Base/Strings.h"
 #include "Core/FileSystem/FileSystem.h"
 
 #include <pugixml.hpp>
@@ -18,66 +19,35 @@ namespace Graphite {
 	namespace {
 		constexpr std::string_view kFileItems[] = {"ClCompile", "ClInclude", "None"};
 
-		std::vector<std::string> SplitFilter(std::string_view filter)
+		constexpr char kFilterSeparator = '\\';
+
+		using FilterAssignments = std::unordered_map<std::string, std::string>;
+
+		bool IsFileItem(std::string_view itemName)
 		{
-			std::vector<std::string> parts;
-			std::size_t start = 0;
-
-			while (start < filter.size())
+			for (const std::string_view fileItem : kFileItems)
 			{
-				const std::size_t slash = filter.find('\\', start);
-				const std::size_t end = slash == std::string_view::npos ? filter.size() : slash;
-
-				if (end > start)
+				if (itemName == fileItem)
 				{
-					parts.emplace_back(filter.substr(start, end - start));
+					return true;
 				}
-
-				if (slash == std::string_view::npos)
-				{
-					break;
-				}
-
-				start = slash + 1;
 			}
 
-			return parts;
+			return false;
 		}
 
-		ContentFolder& EnsureContentFolder(ContentFolder& root,
-										   const std::vector<std::string>& parts)
+		bool IsNameBefore(const std::string& left, const std::string& right)
 		{
-			ContentFolder* current = &root;
-
-			for (const std::string& part : parts)
-			{
-				const auto match =
-					std::find_if(current->Folders.begin(), current->Folders.end(),
-								 [&part](const ContentFolder& f) { return f.Name == part; });
-
-				if (match != current->Folders.end())
-				{
-					current = &*match;
-					continue;
-				}
-
-				ContentFolder created;
-				created.Name = part;
-				current->Folders.push_back(std::move(created));
-				current = &current->Folders.back();
-			}
-
-			return *current;
+			return Core::CompareNames(left, right) < 0;
 		}
 
-		std::unordered_map<std::string, std::string> ReadFilterAssignments(
-			const std::filesystem::path& filters)
+		FilterAssignments ReadFilterAssignments(const std::filesystem::path& filters)
 		{
-			std::unordered_map<std::string, std::string> assignments;
+			FilterAssignments assignments;
 
-			std::error_code code;
+			std::error_code errorCode;
 
-			if (!std::filesystem::is_regular_file(filters, code))
+			if (!std::filesystem::is_regular_file(filters, errorCode))
 			{
 				return assignments;
 			}
@@ -107,20 +77,6 @@ namespace Graphite {
 
 			return assignments;
 		}
-
-		void SortContent(ContentFolder& folder)
-		{
-			std::sort(folder.Folders.begin(), folder.Folders.end(),
-					  [](const ContentFolder& left, const ContentFolder& right) { return Core::CompareNames(left.Name, right.Name) < 0; });
-
-			std::sort(folder.Files.begin(), folder.Files.end(),
-					  [](const ContentFile& left, const ContentFile& right) { return Core::CompareNames(left.Name, right.Name) < 0; });
-
-			for (ContentFolder& child : folder.Folders)
-			{
-				SortContent(child);
-			}
-		}
 	}
 
 	bool VcxprojReader::Handles(const std::filesystem::path& project) const
@@ -130,30 +86,28 @@ namespace Graphite {
 
 	Core::Result<ProjectContent> VcxprojReader::Read(const std::filesystem::path& project) const
 	{
-		std::error_code code;
+		std::error_code errorCode;
 
-		if (!std::filesystem::is_regular_file(project, code))
+		if (!std::filesystem::is_regular_file(project, errorCode))
 		{
 			return Core::Error{Core::ErrorCode::NotFound,
 							   std::format("no project file at '{}'", Core::ToUtf8(project))};
 		}
 
 		pugi::xml_document document;
-		const pugi::xml_parse_result parsed = document.load_file(project.c_str());
+		const pugi::xml_parse_result parseResult = document.load_file(project.c_str());
 
-		if (!parsed)
+		if (!parseResult)
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument,
 							   std::format("cannot parse '{}': {}", Core::ToUtf8(project),
-										   parsed.description())};
+										   parseResult.description())};
 		}
 
-		// The .filters file sits beside the project with the extension appended, so
-		// App.vcxproj is paired with App.vcxproj.filters.
 		std::filesystem::path filtersPath = project;
 		filtersPath += ".filters";
 
-		const auto assignments = ReadFilterAssignments(filtersPath);
+		const FilterAssignments assignments = ReadFilterAssignments(filtersPath);
 		const std::filesystem::path directory = project.parent_path();
 
 		ProjectContent content;
@@ -173,7 +127,7 @@ namespace Graphite {
 					continue;
 				}
 
-				if (std::find(std::begin(kFileItems), std::end(kFileItems), name) == std::end(kFileItems))
+				if (!IsFileItem(name))
 				{
 					continue;
 				}
@@ -190,20 +144,19 @@ namespace Graphite {
 				file.Path.make_preferred();
 				file.Name = Core::ToUtf8(file.Path.filename());
 
-				// A project lists files it may no longer have on disk.
-				std::error_code existsCode;
-				file.Exists = std::filesystem::is_regular_file(file.Path, existsCode);
+				std::error_code existsError;
+				file.Exists = std::filesystem::is_regular_file(file.Path, existsError);
 
-				const auto assignment = assignments.find(include);
+				const FilterAssignments::const_iterator assignment = assignments.find(include);
 
-				// Visual Studio shows a file with no .filters entry at the project root.
 				if (assignment == assignments.end())
 				{
 					content.Root.Files.push_back(std::move(file));
 					continue;
 				}
 
-				const std::vector<std::string> parts = SplitFilter(assignment->second);
+				const auto& [assignedInclude, filterPath] = *assignment;
+				const std::vector<std::string> parts = Core::SplitSkippingEmpty(filterPath, kFilterSeparator);
 
 				if (parts.empty())
 				{
@@ -211,16 +164,14 @@ namespace Graphite {
 				}
 				else
 				{
-					EnsureContentFolder(content.Root, parts).Files.push_back(std::move(file));
+					EnsureFolderPath(content.Root, parts).Files.push_back(std::move(file));
 				}
 			}
 		}
 
-		SortContent(content.Root);
+		SortContentByName(content.Root);
 
-		// Visual Studio lists references sorted.
-		std::sort(content.References.begin(), content.References.end(),
-				  [](const std::string& left, const std::string& right) { return Core::CompareNames(left, right) < 0; });
+		std::sort(content.References.begin(), content.References.end(), IsNameBefore);
 
 		return content;
 	}
