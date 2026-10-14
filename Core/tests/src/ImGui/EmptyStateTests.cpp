@@ -12,8 +12,6 @@ using Core::CentredLine;
 using Core::CentreLines;
 
 namespace {
-	// A context of its own with the default font built, which is all CentreLines measures
-	// with. Every test runs inside one frame, so the font is the current one.
 	class Frame
 	{
 	public:
@@ -76,7 +74,6 @@ TEST_CASE("CentreLines wraps a message wider than the region and centres every l
 
 	for (const CentredLine& line : lines)
 	{
-		// Each fits, carries no blank at either end, and is centred by its own width.
 		CHECK(WidthOf(line.Text) <= region.x);
 		CHECK(line.Text.front() != ' ');
 		CHECK(line.Text.back() != ' ');
@@ -88,7 +85,6 @@ TEST_CASE("CentreLines wraps a message wider than the region and centres every l
 
 	CHECK(joined == message);
 
-	// Stacked a line apart, and centred as one block.
 	const float lineHeight = ImGui::GetTextLineHeight();
 	CHECK(lines[1].Offset.y - lines[0].Offset.y == doctest::Approx(lineHeight));
 	CHECK(lines[0].Offset.y == doctest::Approx((region.y - lineHeight * 2.0f) * 0.5f));
@@ -148,7 +144,6 @@ TEST_CASE("EmptyState claims the whole region left in the window, so the window 
 
 	CHECK_FALSE(Core::EmptyState("Nothing here.", "Open"));
 
-	// The last item is the region itself, so the cursor sits one item spacing below it.
 	CHECK(ImGui::GetItemRectMin().y == doctest::Approx(origin.y));
 	CHECK(ImGui::GetItemRectMax().y == doctest::Approx(origin.y + available.y));
 	CHECK(ImGui::GetItemRectMax().x == doctest::Approx(origin.x + available.x));

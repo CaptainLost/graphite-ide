@@ -40,3 +40,10 @@ TEST_CASE("ToImVec4 passes a NaN channel through")
 {
 	CHECK(std::isnan(Core::ToImVec4(Core::Color{.R = std::numeric_limits<float>::quiet_NaN()}).x));
 }
+
+TEST_CASE("WithBrightnessScaled keeps a NaN channel")
+{
+	const float notANumber = std::numeric_limits<float>::quiet_NaN();
+
+	CHECK(std::isnan(Core::WithBrightnessScaled(ImVec4(notANumber, 0.0f, 0.0f, 1.0f), 1.5f).x));
+}

@@ -3,12 +3,19 @@
 #include "Core/ImGui/ToastStack.h"
 
 #include <chrono>
+#include <cstdint>
+#include <string>
 
 namespace {
 	using Clock = Core::ToastStack::Clock;
 	using namespace std::chrono_literals;
 
 	const Clock::time_point kStart{};
+	const std::string kNoCopyText;
+	constexpr std::uint32_t kFolderGroup = 1;
+	constexpr std::uint32_t kUngrouped = 0;
+	constexpr bool kPointerArrives = true;
+	constexpr bool kPointerLeaves = false;
 }
 
 TEST_CASE("A warning leaves once its lifetime has run and is removed after the fade")
@@ -70,12 +77,12 @@ TEST_CASE("The pointer on an error pauses its countdown")
 	stack.Show(Core::ToastKind::Error, "Title", "failed", kStart);
 	const std::uint64_t errorId = stack.Get()[0].Id;
 
-	stack.SetHovered(errorId, true, kStart + 10s);
+	stack.SetHovered(errorId, kPointerArrives, kStart + 10s);
 	stack.Update(kStart + 1min);
 	REQUIRE(stack.Get().size() == 1);
 	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
 
-	stack.SetHovered(errorId, false, kStart + 1min);
+	stack.SetHovered(errorId, kPointerLeaves, kStart + 1min);
 	stack.Update(kStart + 1min + 1900ms);
 	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
 
@@ -103,15 +110,14 @@ TEST_CASE("Hovering pauses the countdown and leaving the toast resumes it with t
 {
 	Core::ToastStack stack;
 	stack.Show(Core::ToastKind::Success, "Title", "done", kStart);
-	const std::uint64_t id = stack.Get()[0].Id;
+	const std::uint64_t toastId = stack.Get()[0].Id;
 
-	stack.SetHovered(id, true, kStart + 2s);
+	stack.SetHovered(toastId, kPointerArrives, kStart + 2s);
 	stack.Update(kStart + 30s);
 	REQUIRE(stack.Get().size() == 1);
 	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
 
-	// 4 s were left when the pointer arrived.
-	stack.SetHovered(id, false, kStart + 30s);
+	stack.SetHovered(toastId, kPointerLeaves, kStart + 30s);
 	stack.Update(kStart + 33s);
 	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
 
@@ -123,10 +129,10 @@ TEST_CASE("Hover reported every frame does not restart the pause")
 {
 	Core::ToastStack stack;
 	stack.Show(Core::ToastKind::Success, "Title", "done", kStart);
-	const std::uint64_t id = stack.Get()[0].Id;
+	const std::uint64_t toastId = stack.Get()[0].Id;
 
-	stack.SetHovered(id, false, kStart + 1s);
-	stack.SetHovered(id, false, kStart + 2s);
+	stack.SetHovered(toastId, kPointerLeaves, kStart + 1s);
+	stack.SetHovered(toastId, kPointerLeaves, kStart + 2s);
 	stack.Update(kStart + 6s);
 	CHECK(stack.Get()[0].LeavingSince.has_value());
 }
@@ -203,13 +209,13 @@ TEST_CASE("The next change is the end of an animation or else the earliest expir
 	CHECK_FALSE(stack.NextChange(kStart).has_value());
 
 	stack.Show(Core::ToastKind::Warning, "Title", "w", kStart);
-	// Entering: the renderer wants every frame until the fade-in ends.
+
 	CHECK(stack.NextChange(kStart) == kStart);
 
 	stack.Update(kStart + 1s);
 	CHECK(stack.NextChange(kStart + 1s) == kStart + 6s);
 
-	stack.SetHovered(stack.Get()[0].Id, true, kStart + 1s);
+	stack.SetHovered(stack.Get()[0].Id, kPointerArrives, kStart + 1s);
 	CHECK_FALSE(stack.NextChange(kStart + 1s).has_value());
 }
 
@@ -225,12 +231,11 @@ TEST_CASE("Hover reported on two frames takes the time it had counted off only o
 {
 	Core::ToastStack stack;
 	stack.Show(Core::ToastKind::Success, "Title", "done", kStart);
-	const std::uint64_t id = stack.Get()[0].Id;
+	const std::uint64_t toastId = stack.Get()[0].Id;
 
-	// 4 s left when the pointer arrives; the second report must not take another 3 s off.
-	stack.SetHovered(id, true, kStart + 2s);
-	stack.SetHovered(id, true, kStart + 5s);
-	stack.SetHovered(id, false, kStart + 10s);
+	stack.SetHovered(toastId, kPointerArrives, kStart + 2s);
+	stack.SetHovered(toastId, kPointerArrives, kStart + 5s);
+	stack.SetHovered(toastId, kPointerLeaves, kStart + 10s);
 
 	stack.Update(kStart + 13900ms);
 	REQUIRE(stack.Get().size() == 1);
@@ -245,9 +250,9 @@ TEST_CASE("A message merged into a hovered twin keeps it paused and gives it the
 {
 	Core::ToastStack stack;
 	stack.Show(Core::ToastKind::Warning, "Title", "same", kStart);
-	const std::uint64_t id = stack.Get()[0].Id;
+	const std::uint64_t toastId = stack.Get()[0].Id;
 
-	stack.SetHovered(id, true, kStart + 2s);
+	stack.SetHovered(toastId, kPointerArrives, kStart + 2s);
 	stack.Show(Core::ToastKind::Warning, "Title", "same", kStart + 3s);
 
 	REQUIRE(stack.Get().size() == 1);
@@ -259,7 +264,7 @@ TEST_CASE("A message merged into a hovered twin keeps it paused and gives it the
 	REQUIRE(stack.Get().size() == 1);
 	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
 
-	stack.SetHovered(id, false, kStart + 30s);
+	stack.SetHovered(toastId, kPointerLeaves, kStart + 30s);
 	stack.Update(kStart + 35900ms);
 	REQUIRE(stack.Get().size() == 1);
 	CHECK_FALSE(stack.Get()[0].LeavingSince.has_value());
@@ -286,15 +291,15 @@ TEST_CASE("Clear drops every toast and leaves nothing to wait for")
 TEST_CASE("Clearing a group drops only that group's toasts and keeps the rest as they were")
 {
 	Core::ToastStack stack;
-	stack.Show(Core::ToastKind::Error, "Commit failed", "locked", kStart, {}, 1);
-	stack.Show(Core::ToastKind::Error, "Theme failed", "bad file", kStart, {}, 0);
-	stack.Show(Core::ToastKind::Warning, "Push failed", "rejected", kStart, {}, 1);
+	stack.Show(Core::ToastKind::Error, "Commit failed", "locked", kStart, kNoCopyText, kFolderGroup);
+	stack.Show(Core::ToastKind::Error, "Theme failed", "bad file", kStart, kNoCopyText, kUngrouped);
+	stack.Show(Core::ToastKind::Warning, "Push failed", "rejected", kStart, kNoCopyText, kFolderGroup);
 
-	stack.Clear(1);
+	stack.Clear(kFolderGroup);
 
 	REQUIRE(stack.Get().size() == 1);
 	CHECK(stack.Get()[0].Title == "Theme failed");
-	CHECK(stack.Get()[0].Group == 0);
+	CHECK(stack.Get()[0].Group == kUngrouped);
 	CHECK(stack.Get()[0].Count == 1);
 }
 
@@ -304,21 +309,20 @@ TEST_CASE("A toast shown with no group is in group zero")
 	stack.Show(Core::ToastKind::Error, "Title", "e", kStart);
 
 	REQUIRE(stack.Get().size() == 1);
-	CHECK(stack.Get()[0].Group == 0);
+	CHECK(stack.Get()[0].Group == kUngrouped);
 }
 
 TEST_CASE("The same message in another group is a toast of its own")
 {
 	Core::ToastStack stack;
-	stack.Show(Core::ToastKind::Error, "Save failed", "access denied", kStart, {}, 0);
-	stack.Show(Core::ToastKind::Error, "Save failed", "access denied", kStart, {}, 1);
+	stack.Show(Core::ToastKind::Error, "Save failed", "access denied", kStart, kNoCopyText, kUngrouped);
+	stack.Show(Core::ToastKind::Error, "Save failed", "access denied", kStart, kNoCopyText, kFolderGroup);
 
 	REQUIRE(stack.Get().size() == 2);
 	CHECK(stack.Get()[0].Count == 1);
 	CHECK(stack.Get()[1].Count == 1);
 
-	// The merge still applies within a group.
-	stack.Show(Core::ToastKind::Error, "Save failed", "access denied", kStart + 1s, {}, 1);
+	stack.Show(Core::ToastKind::Error, "Save failed", "access denied", kStart + 1s, kNoCopyText, kFolderGroup);
 	REQUIRE(stack.Get().size() == 2);
 	CHECK(stack.Get()[1].Count == 2);
 }
@@ -346,11 +350,11 @@ TEST_CASE("A hovered toast keeps the share of lifetime it had when the pointer a
 {
 	Core::ToastStack stack;
 	stack.Show(Core::ToastKind::Success, "Title", "done", kStart);
-	stack.SetHovered(stack.Get()[0].Id, true, kStart + 3s);
+	stack.SetHovered(stack.Get()[0].Id, kPointerArrives, kStart + 3s);
 
 	CHECK(Core::ToastStack::ShareOfLifetimeLeft(stack.Get()[0], kStart + 30s) == doctest::Approx(0.5f));
 
-	stack.SetHovered(stack.Get()[0].Id, false, kStart + 30s);
+	stack.SetHovered(stack.Get()[0].Id, kPointerLeaves, kStart + 30s);
 	CHECK(Core::ToastStack::ShareOfLifetimeLeft(stack.Get()[0], kStart + 31500ms) == doctest::Approx(0.25f));
 }
 
@@ -377,7 +381,7 @@ TEST_CASE("A toast closed while hovered keeps the share it had when the pointer 
 {
 	Core::ToastStack stack;
 	stack.Show(Core::ToastKind::Success, "Title", "done", kStart);
-	stack.SetHovered(stack.Get()[0].Id, true, kStart + 3s);
+	stack.SetHovered(stack.Get()[0].Id, kPointerArrives, kStart + 3s);
 	stack.Close(stack.Get()[0].Id, kStart + 10s);
 
 	CHECK(Core::ToastStack::ShareOfLifetimeLeft(stack.Get()[0], kStart + 10s + 100ms) == doctest::Approx(0.5f));
@@ -410,10 +414,10 @@ TEST_CASE("A countdown runs while a toast is up and the pointer is elsewhere")
 	stack.Show(Core::ToastKind::Success, "Title", "done", kStart);
 	CHECK(stack.IsAnyCountdownRunning());
 
-	stack.SetHovered(stack.Get()[0].Id, true, kStart + 1s);
+	stack.SetHovered(stack.Get()[0].Id, kPointerArrives, kStart + 1s);
 	CHECK_FALSE(stack.IsAnyCountdownRunning());
 
-	stack.SetHovered(stack.Get()[0].Id, false, kStart + 2s);
+	stack.SetHovered(stack.Get()[0].Id, kPointerLeaves, kStart + 2s);
 	stack.Close(stack.Get()[0].Id, kStart + 3s);
 	CHECK_FALSE(stack.IsAnyCountdownRunning());
 }
@@ -485,8 +489,8 @@ TEST_CASE("A toast the pointer rested on is reported as hovered when it leaves")
 {
 	Core::ToastStack stack;
 	const std::uint64_t shownId = stack.Show(Core::ToastKind::Success, "Title", "done", kStart);
-	stack.SetHovered(shownId, true, kStart + 1s);
-	stack.SetHovered(shownId, false, kStart + 2s);
+	stack.SetHovered(shownId, kPointerArrives, kStart + 1s);
+	stack.SetHovered(shownId, kPointerLeaves, kStart + 2s);
 	stack.Update(kStart + 7s);
 
 	const std::vector<Core::ToastDeparture> departures = stack.TakeDepartures();
@@ -517,7 +521,7 @@ TEST_CASE("Clearing reports as cleared only the toasts that were not already lea
 	const std::uint64_t closedId = stack.Show(Core::ToastKind::Error, "Title", "closed", kStart);
 	const std::uint64_t standingId = stack.Show(Core::ToastKind::Error, "Title", "standing", kStart);
 	stack.Close(closedId, kStart + 1s);
-	static_cast<void>(stack.TakeDepartures()); // the close is not what this test is about
+	static_cast<void>(stack.TakeDepartures());
 
 	stack.Clear();
 
@@ -530,10 +534,10 @@ TEST_CASE("Clearing reports as cleared only the toasts that were not already lea
 TEST_CASE("Clearing a group reports only that group's toasts")
 {
 	Core::ToastStack stack;
-	const std::uint64_t folderId = stack.Show(Core::ToastKind::Error, "Commit failed", "locked", kStart, {}, 1);
-	stack.Show(Core::ToastKind::Error, "Theme failed", "bad file", kStart, {}, 0);
+	const std::uint64_t folderId = stack.Show(Core::ToastKind::Error, "Commit failed", "locked", kStart, kNoCopyText, kFolderGroup);
+	stack.Show(Core::ToastKind::Error, "Theme failed", "bad file", kStart, kNoCopyText, kUngrouped);
 
-	stack.Clear(1);
+	stack.Clear(kFolderGroup);
 
 	const std::vector<Core::ToastDeparture> departures = stack.TakeDepartures();
 	REQUIRE(departures.size() == 1);
@@ -547,6 +551,6 @@ TEST_CASE("Taking the departures empties the queue")
 	const std::uint64_t shownId = stack.Show(Core::ToastKind::Error, "Title", "failed", kStart);
 	stack.Close(shownId, kStart + 1s);
 
-	static_cast<void>(stack.TakeDepartures()); // emptying the queue is what is under test
+	static_cast<void>(stack.TakeDepartures());
 	CHECK(stack.TakeDepartures().empty());
 }

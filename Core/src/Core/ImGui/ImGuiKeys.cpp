@@ -4,6 +4,10 @@
 
 namespace Core {
 
+	namespace {
+		constexpr ImGuiKeyChord kNoModifier = 0;
+	}
+
 	ImGuiKey ToImGuiKey(KeyCode key)
 	{
 		switch (key)
@@ -248,13 +252,13 @@ namespace Core {
 		case KeyCode::RightSuper:
 			return ImGuiMod_Super;
 		default:
-			return 0;
+			return kNoModifier;
 		}
 	}
 
 	ImGuiKeyChord ToImGuiModifiers(KeyModifier modifiers)
 	{
-		ImGuiKeyChord chord = 0;
+		ImGuiKeyChord chord = kNoModifier;
 
 		if (HasModifier(modifiers, KeyModifier::Control))
 		{

@@ -5,17 +5,16 @@
 namespace Core {
 
 	namespace {
-		// Called by ImGui when the text outgrows the buffer it was handed: the string grows to
-		// fit and ImGui carries on in its new storage - the same callback imgui_stdlib uses.
-		int Resize(ImGuiInputTextCallbackData* data)
+		// WARNING: ImGui keeps writing into the callback data's Buf, so it must point at the string's new storage after the resize.
+		int Resize(ImGuiInputTextCallbackData* callbackData)
 		{
-			if (data->EventFlag == ImGuiInputTextFlags_CallbackResize)
+			if (callbackData->EventFlag == ImGuiInputTextFlags_CallbackResize)
 			{
-				auto* text = static_cast<std::string*>(data->UserData);
-				IM_ASSERT(data->Buf == text->data());
+				auto* text = static_cast<std::string*>(callbackData->UserData);
+				IM_ASSERT(callbackData->Buf == text->data());
 
-				text->resize(static_cast<std::size_t>(data->BufTextLen));
-				data->Buf = text->data();
+				text->resize(static_cast<std::size_t>(callbackData->BufTextLen));
+				callbackData->Buf = text->data();
 			}
 
 			return 0;

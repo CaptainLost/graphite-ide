@@ -1,40 +1,49 @@
 #include <doctest/doctest.h>
 
 #include "Core/ImGui/ToastText.h"
+#include "Core/Text/Encoding.h"
 
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace {
+	constexpr float kRoomyLineWidth = 100.0f;
+	constexpr float kGapTolerance = 0.001f;
+	constexpr float kBoldWidthFactor = 2.0f;
+	constexpr float kRegularWidthFactor = 1.0f;
+
 	using Core::LayoutToastText;
 	using Core::ToastTextLine;
 	using Core::ToastTextStyle;
 
-	// One unit per byte in either face, so widths are character counts.
-	float Monospace(std::string_view text, bool)
+	float OneUnitPerByte(std::string_view text, bool)
 	{
 		return static_cast<float>(text.size());
 	}
 
-	// What the line reads as: a gap between two runs is the space the layout left there.
-	std::string TextOf(const ToastTextLine& line)
+	std::string TextWithGapsAsSpaces(const ToastTextLine& line)
 	{
 		std::string text;
-		float end = 0.0f;
+		float previousRunEnd = 0.0f;
 
 		for (const Core::ToastTextRun& run : line.Runs)
 		{
-			if (!text.empty() && run.X > end + 0.001f)
+			if (!text.empty() && run.X > previousRunEnd + kGapTolerance)
 			{
 				text += ' ';
 			}
 
 			text += run.Text;
-			end = run.X + run.Width;
+			previousRunEnd = run.X + run.Width;
 		}
 
 		return text;
+	}
+
+	float DoubleWidthWhenBold(std::string_view text, bool bold)
+	{
+		return static_cast<float>(text.size()) * (bold ? kBoldWidthFactor : kRegularWidthFactor);
 	}
 
 	std::vector<std::string> TextsOf(const std::vector<ToastTextLine>& lines)
@@ -43,7 +52,7 @@ namespace {
 
 		for (const ToastTextLine& line : lines)
 		{
-			texts.push_back(TextOf(line));
+			texts.push_back(TextWithGapsAsSpaces(line));
 		}
 
 		return texts;
@@ -52,10 +61,10 @@ namespace {
 
 TEST_CASE("A quoted name is a strong span and a path starts a line of its own")
 {
-	const auto lines = LayoutToastText("'side' is checked out in D:/Repos/IDE/.claude/worktrees/side", 40.0f, Monospace);
+	const std::vector<ToastTextLine> lines = LayoutToastText("'side' is checked out in D:/Repos/IDE/.claude/worktrees/side", 40.0f, OneUnitPerByte);
 
 	REQUIRE(lines.size() == 2);
-	CHECK(TextOf(lines[0]) == "'side' is checked out in");
+	CHECK(TextWithGapsAsSpaces(lines[0]) == "'side' is checked out in");
 	REQUIRE(lines[0].Runs.size() == 2);
 	CHECK(lines[0].Runs[0].Text == "'side'");
 	CHECK(lines[0].Runs[0].Style == ToastTextStyle::Strong);
@@ -70,7 +79,7 @@ TEST_CASE("A quoted name is a strong span and a path starts a line of its own")
 TEST_CASE("A path too long for a line breaks only after a separator")
 {
 	const std::string path = "D:/Repos/IDE/.claude/projects/D--Repos-IDE/abc.jsonl";
-	const auto lines = LayoutToastText(path, 20.0f, Monospace);
+	const std::vector<ToastTextLine> lines = LayoutToastText(path, 20.0f, OneUnitPerByte);
 
 	CHECK(TextsOf(lines) == std::vector<std::string>{"D:/Repos/IDE/", ".claude/projects/", "D--Repos-IDE/", "abc.jsonl"});
 
@@ -84,18 +93,18 @@ TEST_CASE("A path too long for a line breaks only after a separator")
 
 TEST_CASE("A path never breaks at a dash, even where that would fill the line")
 {
-	const auto lines = LayoutToastText("C:\\x\\D--Repos-IDE\\y", 15.0f, Monospace);
+	const std::vector<ToastTextLine> lines = LayoutToastText("C:\\x\\D--Repos-IDE\\y", 15.0f, OneUnitPerByte);
 
 	CHECK(TextsOf(lines) == std::vector<std::string>{"C:\\x\\", "D--Repos-IDE\\y"});
 }
 
 TEST_CASE("A path that fits stays whole, and the words after it follow on its line")
 {
-	const auto lines = LayoutToastText("see /tmp/a/b.txt for details", 30.0f, Monospace);
+	const std::vector<ToastTextLine> lines = LayoutToastText("see /tmp/a/b.txt for details", 30.0f, OneUnitPerByte);
 
 	REQUIRE(lines.size() == 2);
-	CHECK(TextOf(lines[0]) == "see");
-	CHECK(TextOf(lines[1]) == "/tmp/a/b.txt for details");
+	CHECK(TextWithGapsAsSpaces(lines[0]) == "see");
+	CHECK(TextWithGapsAsSpaces(lines[1]) == "/tmp/a/b.txt for details");
 	CHECK(lines[1].Runs[0].Style == ToastTextStyle::Path);
 	CHECK(lines[1].Runs[0].Text == "/tmp/a/b.txt");
 	CHECK(lines[1].Runs.back().Style == ToastTextStyle::Plain);
@@ -107,7 +116,7 @@ TEST_CASE("Every kind of path start is recognised and anything else is plain")
 	{
 		const std::string shown(path);
 		CAPTURE(shown);
-		const auto lines = LayoutToastText(std::string("x ") + std::string(path), 100.0f, Monospace);
+		const std::vector<ToastTextLine> lines = LayoutToastText(std::string("x ") + std::string(path), kRoomyLineWidth, OneUnitPerByte);
 
 		REQUIRE(lines.size() == 2);
 		REQUIRE(lines[1].Runs.size() == 1);
@@ -118,7 +127,7 @@ TEST_CASE("Every kind of path start is recognised and anything else is plain")
 	{
 		const std::string shown(word);
 		CAPTURE(shown);
-		const auto lines = LayoutToastText(std::string("x ") + std::string(word), 100.0f, Monospace);
+		const std::vector<ToastTextLine> lines = LayoutToastText(std::string("x ") + std::string(word), kRoomyLineWidth, OneUnitPerByte);
 
 		REQUIRE(lines.size() == 1);
 		CHECK(lines[0].Runs.back().Style == ToastTextStyle::Plain);
@@ -127,7 +136,7 @@ TEST_CASE("Every kind of path start is recognised and anything else is plain")
 
 TEST_CASE("Plain text wraps at spaces, and a line exactly the width fits")
 {
-	const auto lines = LayoutToastText("the quick brown fox jumps over the lazy dog", 15.0f, Monospace);
+	const std::vector<ToastTextLine> lines = LayoutToastText("the quick brown fox jumps over the lazy dog", 15.0f, OneUnitPerByte);
 
 	CHECK(TextsOf(lines) == std::vector<std::string>{"the quick brown", "fox jumps over", "the lazy dog"});
 
@@ -140,21 +149,21 @@ TEST_CASE("Plain text wraps at spaces, and a line exactly the width fits")
 
 TEST_CASE("A word longer than a line breaks anywhere")
 {
-	const auto lines = LayoutToastText("abcdefghijklmnopqrstuvwxyz", 10.0f, Monospace);
+	const std::vector<ToastTextLine> lines = LayoutToastText("abcdefghijklmnopqrstuvwxyz", 10.0f, OneUnitPerByte);
 
 	CHECK(TextsOf(lines) == std::vector<std::string>{"abcdefghij", "klmnopqrst", "uvwxyz"});
 }
 
 TEST_CASE("A path segment longer than a line breaks anywhere, starting on the line it is on")
 {
-	const auto lines = LayoutToastText("/abcdefghijklmno/x", 10.0f, Monospace);
+	const std::vector<ToastTextLine> lines = LayoutToastText("/abcdefghijklmno/x", 10.0f, OneUnitPerByte);
 
 	CHECK(TextsOf(lines) == std::vector<std::string>{"/abcdefghi", "jklmno/x"});
 }
 
 TEST_CASE("A quoted span never breaks inside, spaces and all")
 {
-	const auto lines = LayoutToastText("branch 'my long name' here", 16.0f, Monospace);
+	const std::vector<ToastTextLine> lines = LayoutToastText("branch 'my long name' here", 16.0f, OneUnitPerByte);
 
 	CHECK(TextsOf(lines) == std::vector<std::string>{"branch", "'my long name'", "here"});
 	REQUIRE(lines.size() == 3);
@@ -164,10 +173,10 @@ TEST_CASE("A quoted span never breaks inside, spaces and all")
 
 TEST_CASE("Punctuation after a quoted span sits against it, in the plain face")
 {
-	const auto lines = LayoutToastText("branch 'side': gone", 100.0f, Monospace);
+	const std::vector<ToastTextLine> lines = LayoutToastText("branch 'side': gone", kRoomyLineWidth, OneUnitPerByte);
 
 	REQUIRE(lines.size() == 1);
-	CHECK(TextOf(lines[0]) == "branch 'side': gone");
+	CHECK(TextWithGapsAsSpaces(lines[0]) == "branch 'side': gone");
 	REQUIRE(lines[0].Runs.size() == 3);
 	CHECK(lines[0].Runs[1].Text == "'side'");
 	CHECK(lines[0].Runs[2].Text == ": gone");
@@ -176,7 +185,7 @@ TEST_CASE("Punctuation after a quoted span sits against it, in the plain face")
 
 TEST_CASE("An apostrophe inside a word opens no strong span")
 {
-	const auto lines = LayoutToastText("don't stop, it's fine", 100.0f, Monospace);
+	const std::vector<ToastTextLine> lines = LayoutToastText("don't stop, it's fine", kRoomyLineWidth, OneUnitPerByte);
 
 	REQUIRE(lines.size() == 1);
 	REQUIRE(lines[0].Runs.size() == 1);
@@ -186,11 +195,7 @@ TEST_CASE("An apostrophe inside a word opens no strong span")
 
 TEST_CASE("A strong span is measured in the bold face")
 {
-	const auto wide = [](std::string_view text, bool bold) {
-		return static_cast<float>(text.size()) * (bold ? 2.0f : 1.0f);
-	};
-
-	const auto lines = LayoutToastText("'ab' cd", 100.0f, wide);
+	const std::vector<ToastTextLine> lines = LayoutToastText("'ab' cd", kRoomyLineWidth, DoubleWidthWhenBold);
 
 	REQUIRE(lines.size() == 1);
 	REQUIRE(lines[0].Runs.size() == 2);
@@ -201,20 +206,20 @@ TEST_CASE("A strong span is measured in the bold face")
 
 TEST_CASE("A newline starts a new line and trailing whitespace adds none")
 {
-	const auto lines = LayoutToastText("first line\r\nsecond\n\nfourth\n", 100.0f, Monospace);
+	const std::vector<ToastTextLine> lines = LayoutToastText("first line\r\nsecond\n\nfourth\n", kRoomyLineWidth, OneUnitPerByte);
 
 	CHECK(TextsOf(lines) == std::vector<std::string>{"first line", "second", "", "fourth"});
 }
 
 TEST_CASE("An empty message lays out no lines")
 {
-	CHECK(LayoutToastText("", 100.0f, Monospace).empty());
-	CHECK(LayoutToastText("  \n ", 100.0f, Monospace).empty());
+	CHECK(LayoutToastText("", kRoomyLineWidth, OneUnitPerByte).empty());
+	CHECK(LayoutToastText("  \n ", kRoomyLineWidth, OneUnitPerByte).empty());
 }
 
 TEST_CASE("A quoted path stays bold but starts its own line and breaks only after a separator")
 {
-	const auto lines = LayoutToastText("could not open 'C:/Repos/IDE/.claude/x.jsonl': denied", 20.0f, Monospace);
+	const std::vector<ToastTextLine> lines = LayoutToastText("could not open 'C:/Repos/IDE/.claude/x.jsonl': denied", 20.0f, OneUnitPerByte);
 
 	CHECK(TextsOf(lines) ==
 		  std::vector<std::string>{"could not open", "'C:/Repos/IDE/", ".claude/x.jsonl':", "denied"});
@@ -228,7 +233,7 @@ TEST_CASE("A quoted path stays bold but starts its own line and breaks only afte
 
 TEST_CASE("A quoted path that fits a line still starts one of its own")
 {
-	const auto lines = LayoutToastText("open 'C:/a/b' now", 100.0f, Monospace);
+	const std::vector<ToastTextLine> lines = LayoutToastText("open 'C:/a/b' now", kRoomyLineWidth, OneUnitPerByte);
 
 	CHECK(TextsOf(lines) == std::vector<std::string>{"open", "'C:/a/b' now"});
 	REQUIRE(lines.size() == 2);
@@ -241,10 +246,10 @@ TEST_CASE("A path in double quotes or brackets is a path")
 	{
 		const std::string shown(wrapped);
 		CAPTURE(shown);
-		const auto lines = LayoutToastText("open " + shown + " now", 100.0f, Monospace);
+		const std::vector<ToastTextLine> lines = LayoutToastText("open " + shown + " now", kRoomyLineWidth, OneUnitPerByte);
 
 		REQUIRE(lines.size() == 2);
-		CHECK(TextOf(lines[1]) == shown + " now");
+		CHECK(TextWithGapsAsSpaces(lines[1]) == shown + " now");
 		CHECK(lines[1].Runs[0].Style == ToastTextStyle::Path);
 		CHECK(lines[1].Runs[0].Text == shown);
 	}
@@ -256,7 +261,7 @@ TEST_CASE("A separator on its own is not a path")
 	{
 		const std::string shown(message);
 		CAPTURE(shown);
-		const auto lines = LayoutToastText(message, 100.0f, Monospace);
+		const std::vector<ToastTextLine> lines = LayoutToastText(message, kRoomyLineWidth, OneUnitPerByte);
 
 		REQUIRE(lines.size() == 1);
 		REQUIRE(lines[0].Runs.size() == 1);
@@ -267,22 +272,21 @@ TEST_CASE("A separator on its own is not a path")
 
 TEST_CASE("A line narrower than one character still makes progress")
 {
-	const auto lines = LayoutToastText("abc", 0.5f, Monospace);
+	const std::vector<ToastTextLine> lines = LayoutToastText("abc", 0.5f, OneUnitPerByte);
 
 	CHECK(TextsOf(lines) == std::vector<std::string>{"a", "b", "c"});
 }
 
-TEST_CASE("A multi-byte character is never split")
+TEST_CASE("A multi-byte character, such as the last four letters of a Polish word, is never split")
 {
-	// A Polish word whose last four letters take two bytes each.
-	const auto lines = LayoutToastText("za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87", 3.0f, Monospace);
+	const std::vector<ToastTextLine> lines = LayoutToastText("za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87", 3.0f, OneUnitPerByte);
 
 	for (const ToastTextLine& line : lines)
 	{
 		for (const Core::ToastTextRun& run : line.Runs)
 		{
 			REQUIRE_FALSE(run.Text.empty());
-			CHECK((static_cast<unsigned char>(run.Text.front()) & 0xC0) != 0x80);
+			CHECK_FALSE(Core::IsUtf8ContinuationByte(run.Text.front()));
 		}
 	}
 
@@ -294,4 +298,24 @@ TEST_CASE("A multi-byte character is never split")
 	}
 
 	CHECK(joined == "za\xC5\xBC\xC3\xB3\xC5\x82\xC4\x87");
+}
+
+TEST_CASE("A letter outside ASCII is a letter, so an apostrophe after it opens no strong span")
+{
+	const std::vector<ToastTextLine> lines = LayoutToastText("Å¼'a' b", kRoomyLineWidth, OneUnitPerByte);
+
+	REQUIRE(lines.size() == 1);
+	REQUIRE(lines[0].Runs.size() == 1);
+	CHECK(lines[0].Runs[0].Style == ToastTextStyle::Plain);
+	CHECK(lines[0].Runs[0].Text == "Å¼'a' b");
+}
+
+TEST_CASE("An apostrophe inside a quoted span does not close it, only one before a non-word does")
+{
+	const std::vector<ToastTextLine> lines = LayoutToastText("'it's' ok", kRoomyLineWidth, OneUnitPerByte);
+
+	REQUIRE(lines.size() == 1);
+	REQUIRE(lines[0].Runs.size() == 2);
+	CHECK(lines[0].Runs[0].Text == "'it's'");
+	CHECK(lines[0].Runs[0].Style == ToastTextStyle::Strong);
 }

@@ -20,7 +20,7 @@
 #include <string>
 
 #ifdef CORE_PLATFORM_WINDOWS
-// <GL/gl.h> on Windows depends on typedefs from <windows.h>, so windows.h comes first.
+// WARNING: <GL/gl.h> on Windows depends on typedefs from <windows.h>, so windows.h comes first.
 #include <windows.h>
 
 #include <GL/gl.h>
@@ -34,12 +34,22 @@ namespace Core {
 
 	namespace {
 		constexpr float kBaseFontSize = 15.0f;
+		constexpr float kIconBaselineLift = 1.5f;
+		constexpr char kAdvanceSampleCharacter = '0';
+		constexpr float kOpaqueAlpha = 1.0f;
+		constexpr float kStyleScaleNotBuilt = 0.0f;
+		constexpr float kViewportDpiNotReported = 0.0f;
+		constexpr bool kInstallPlatformCallbacks = true;
+		constexpr const char* kAnyPopupName = nullptr;
+		constexpr int kViewportOrigin = 0;
+		constexpr float kClearRed = 0.106f;
+		constexpr float kClearGreen = 0.114f;
+		constexpr float kClearBlue = 0.129f;
+		constexpr float kClearAlpha = 1.0f;
 
 		ImFont* g_monoFont = nullptr;
 		ImFont* g_boldFont = nullptr;
 
-		// Every way out of ImGui ends here, so the font pointer - which points into the context's
-		// atlas - never outlives the context it came from.
 		void DestroyContexts()
 		{
 			ImPlot::DestroyContext();
@@ -48,39 +58,43 @@ namespace Core {
 			g_boldFont = nullptr;
 		}
 
-		ImFont* LoadTextFont(ImGuiIO& io, const Result<std::filesystem::path>& directory)
+		// WARNING: without NoLoadError a missing .ttf trips ImGui's IM_ASSERT_USER_ERROR before
+		// the call returns nullptr, which crashes a Debug build instead of letting the warning run.
+		void AllowMissingFontFile(ImFontConfig& config)
+		{
+			config.Flags |= ImFontFlags_NoLoadError;
+		}
+
+		ImFont* LoadTextFont(ImGuiIO& inputOutput, const Result<std::filesystem::path>& directory)
 		{
 			ImFontConfig config;
 			config.SizePixels = kBaseFontSize;
-			// Without this a missing .ttf trips ImGui's IM_ASSERT_USER_ERROR before the call
-			// returns nullptr, which crashes a Debug build instead of letting the warning run.
-			config.Flags |= ImFontFlags_NoLoadError;
+			AllowMissingFontFile(config);
 
 			if (directory)
 			{
-				const auto path = directory.GetValue() / "JetBrainsMono-Regular.ttf";
+				const std::filesystem::path path = directory.GetValue() / "JetBrainsMono-Regular.ttf";
 
-				if (ImFont* loaded = io.Fonts->AddFontFromFileTTF(ToUtf8(path).c_str(),
-																  kBaseFontSize, &config))
+				if (ImFont* loaded = inputOutput.Fonts->AddFontFromFileTTF(
+						ToUtf8(path).c_str(), kBaseFontSize, &config))
 				{
 					return loaded;
 				}
 			}
 
-			// ProggyClean has no glyphs beyond Latin-1, so Polish file names will show as
-			// empty boxes — but an IDE that starts is better than one that does not.
+			// WARNING: ProggyClean has no glyphs beyond Latin-1, so Polish file names show as
+			// empty boxes.
 			CORE_WARN("Could not load JetBrains Mono, falling back to the built-in font");
 
 			ImFontConfig fallbackConfig;
 			fallbackConfig.SizePixels = kBaseFontSize;
 
-			return io.Fonts->AddFontDefault(&fallbackConfig);
+			return inputOutput.Fonts->AddFontDefault(&fallbackConfig);
 		}
 
-		// Must run immediately after the text face is added: ImGui's dynamic atlas merges onto
-		// whichever font was added last, so any face added in between would take the merge
-		// with it and leave the text face without icons.
-		void MergeIconFont(ImGuiIO& io, const Result<std::filesystem::path>& directory)
+		// WARNING: must run immediately after the text face is added, because ImGui's dynamic
+		// atlas merges onto whichever font was added last.
+		void MergeIconFont(ImGuiIO& inputOutput, const Result<std::filesystem::path>& directory)
 		{
 			if (!directory)
 			{
@@ -91,37 +105,26 @@ namespace Core {
 
 			ImFontConfig config;
 			config.MergeMode = true;
-			// Setting the minimum advance to the font size rather than enabling PixelSnapH,
-			// which rounds each glyph's advance to a whole pixel and visibly skews a small
-			// round icon.
+			// WARNING: PixelSnapH rounds each glyph's advance to a whole pixel and visibly
+			// skews a small round icon, so the minimum advance is set instead.
 			config.GlyphMinAdvanceX = kBaseFontSize;
-			// The icon webfont declares vertical metrics built for CSS line-height rather than
-			// for a text baseline, so merged as-is its glyphs sit above the surrounding text.
-			config.GlyphOffset = ImVec2(0.0f, 1.5f);
-			// Without this a missing .ttf trips ImGui's IM_ASSERT_USER_ERROR before the call
-			// returns nullptr, which crashes a Debug build instead of letting the warning run.
-			config.Flags |= ImFontFlags_NoLoadError;
+			config.GlyphOffset = ImVec2(0.0f, kIconBaselineLift);
+			AllowMissingFontFile(config);
 
-			const auto path = directory.GetValue() / "materialdesignicons-webfont.ttf";
+			const std::filesystem::path path = directory.GetValue() / "materialdesignicons-webfont.ttf";
 
-			if (io.Fonts->AddFontFromFileTTF(ToUtf8(path).c_str(), kBaseFontSize, &config,
-											 UsedGlyphRanges()) == nullptr)
+			if (inputOutput.Fonts->AddFontFromFileTTF(ToUtf8(path).c_str(), kBaseFontSize, &config,
+													  UsedGlyphRanges()) == nullptr)
 			{
 				CORE_WARN("Could not load the icon font, the UI will show text only: {}",
 						  ToUtf8(path));
 			}
 		}
 
-		// Box drawing and Latin are JetBrains Mono's, but the symbols a terminal program draws
-		// its interface with are not: Claude Code alone uses ⏵ ⏺ ⎿ ✻ ✢ ※ ⧉ and more, which
-		// would otherwise show as empty boxes. Segoe UI Symbol has every one of them and ships
-		// with Windows. Merged last, so it is consulted only for what the faces before it lack.
-		//
-		// Its glyphs are proportional, and the terminal draws a run of cells with one AddText
-		// call that advances by each glyph's own width, so a wider symbol would push the rest of
-		// its row off the cells it belongs to. Pinning the advance to the text face's own makes
-		// every fallback glyph exactly one cell wide, centred in it.
-		void MergeSymbolFallback(ImGuiIO& io, ImFont* textFont)
+		// WARNING: the terminal draws a run of cells with one AddText call, so a proportional
+		// symbol wider than a cell would push the rest of its row off its cells. The advance is
+		// pinned to the text face's own to keep every fallback glyph one cell wide.
+		void MergeSymbolFallback(ImGuiIO& inputOutput, ImFont* textFont)
 		{
 			const Result<std::filesystem::path> fonts = SystemFontsDirectory();
 
@@ -132,31 +135,27 @@ namespace Core {
 				return;
 			}
 
-			const float cellAdvance = textFont->GetFontBaked(kBaseFontSize)->GetCharAdvance('0');
+			const float cellAdvance = textFont->GetFontBaked(kBaseFontSize)->GetCharAdvance(kAdvanceSampleCharacter);
 
 			ImFontConfig config;
 			config.MergeMode = true;
 			config.GlyphMinAdvanceX = cellAdvance;
 			config.GlyphMaxAdvanceX = cellAdvance;
-			// Without this a missing .ttf trips ImGui's IM_ASSERT_USER_ERROR before the call
-			// returns nullptr, which crashes a Debug build instead of letting the warning run.
-			config.Flags |= ImFontFlags_NoLoadError;
+			AllowMissingFontFile(config);
 
-			const auto path = fonts.GetValue() / "seguisym.ttf";
+			const std::filesystem::path path = fonts.GetValue() / "seguisym.ttf";
 
-			if (io.Fonts->AddFontFromFileTTF(ToUtf8(path).c_str(), kBaseFontSize, &config) ==
-				nullptr)
+			if (inputOutput.Fonts->AddFontFromFileTTF(ToUtf8(path).c_str(), kBaseFontSize,
+													  &config) == nullptr)
 			{
 				CORE_WARN("Could not load the symbol font, symbols will show as boxes: {}",
 						  ToUtf8(path));
 			}
 		}
 
-		// Must run after every merge onto the text face: ImGui's dynamic atlas merges onto
-		// whichever font was added last, so adding this one earlier would hand it the icons or
-		// the symbol fallback and leave the text face without them. Not merged with anything
-		// itself - a title has no icons in it.
-		ImFont* LoadBoldFont(ImGuiIO& io, const Result<std::filesystem::path>& directory)
+		// WARNING: must run after every merge onto the text face, because ImGui's dynamic atlas
+		// merges onto whichever font was added last.
+		ImFont* LoadBoldFont(ImGuiIO& inputOutput, const Result<std::filesystem::path>& directory)
 		{
 			if (!directory)
 			{
@@ -167,12 +166,11 @@ namespace Core {
 
 			ImFontConfig config;
 			config.SizePixels = kBaseFontSize;
-			// Without this a missing .ttf trips ImGui's IM_ASSERT_USER_ERROR before the call
-			// returns nullptr, which crashes a Debug build instead of letting the warning run.
-			config.Flags |= ImFontFlags_NoLoadError;
+			AllowMissingFontFile(config);
 
-			const auto path = directory.GetValue() / "JetBrainsMono-Bold.ttf";
-			ImFont* loaded = io.Fonts->AddFontFromFileTTF(ToUtf8(path).c_str(), kBaseFontSize, &config);
+			const std::filesystem::path path = directory.GetValue() / "JetBrainsMono-Bold.ttf";
+			ImFont* loaded =
+				inputOutput.Fonts->AddFontFromFileTTF(ToUtf8(path).c_str(), kBaseFontSize, &config);
 
 			if (loaded == nullptr)
 			{
@@ -199,17 +197,13 @@ namespace Core {
 		return g_boldFont;
 	}
 
-	// Exists because applying a palette is not a complete operation on its own: Theme::Apply
-	// paints the colours, and an undocked panel's system window needs an opaque background
-	// that the palette's own may not be. Every caller outside Core reaches for this rather
-	// than Theme::Apply, so a re-apply mid-run leaves the style where startup left it.
 	void ImGuiRenderer::ApplyTheme(const ChromePalette& palette)
 	{
 		Theme::Apply(palette);
 
 		if (ViewportsEnabled())
 		{
-			ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w = 1.0f;
+			ImGui::GetStyle().Colors[ImGuiCol_WindowBg].w = kOpaqueAlpha;
 		}
 	}
 
@@ -220,28 +214,23 @@ namespace Core {
 
 	void ImGuiRenderer::UpdateStyleScale()
 	{
-		// Zero until ImGui has placed the main viewport on a monitor, at the end of the first
-		// frame's NewFrame.
 		const float viewportDpi = ImGui::GetMainViewport()->DpiScale;
-		const float dpi = viewportDpi > 0.0f ? viewportDpi : m_InitialDpiScale;
+		const bool viewportDpiReported = viewportDpi > kViewportDpiNotReported;
+		const float dpi = viewportDpiReported ? viewportDpi : m_InitialDpiScale;
 
 		ImGuiStyle& style = ImGui::GetStyle();
 		const float scale = style.FontScaleMain * dpi;
 
-		// The first frame is built from the window's own content scale, the next ones from the
-		// viewport's. Whatever differs between the two is a correction of the source, not a change
-		// the user made, and the layout restored at startup is already at the scale it was saved at.
-		const bool sourceSwitched = viewportDpi > 0.0f && !m_ViewportDpiKnown;
-		m_ViewportDpiKnown = viewportDpi > 0.0f;
+		const bool sourceSwitched = viewportDpiReported && !m_ViewportDpiKnown;
+		m_ViewportDpiKnown = viewportDpiReported;
 
 		if (scale == m_StyleScale)
 		{
 			return;
 		}
 
-		// Here, between frames, and not where the scale is set: dock nodes are laid out during a
-		// frame. The reference sizes are pixels, and a layout restored at startup is already at the
-		// scale it was saved at - the first change is from zero, which scales nothing.
+		// WARNING: this runs between frames and not where the scale is set, because dock nodes
+		// are laid out during a frame.
 		if (!sourceSwitched)
 		{
 			ScaleDockNodeSizes(ScaleChangeFactor(m_StyleScale, scale));
@@ -270,7 +259,7 @@ namespace Core {
 
 	Result<Scope<ImGuiRenderer>> ImGuiRenderer::Create(Window& window, const std::filesystem::path& layoutFile)
 	{
-		// Not make_unique: the constructor is private, and this is the only creator.
+		// WARNING: not make_unique, because the constructor is private.
 		Scope<ImGuiRenderer> renderer{new ImGuiRenderer};
 
 		if (Result<void> initialised = renderer->Init(window, layoutFile); !initialised)
@@ -287,53 +276,41 @@ namespace Core {
 		ImGui::CreateContext();
 		m_ErrorLog.Attach(*ImGui::GetCurrentContext());
 
-		// Beside ImGui's own and for exactly as long: every plot call reads it through a
-		// global, as ImGui's calls read theirs.
 		ImPlot::CreateContext();
 
-		ImGuiIO& io = ImGui::GetIO();
-		io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-		io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-		io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+		ImGuiIO& inputOutput = ImGui::GetIO();
+		inputOutput.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+		inputOutput.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
+		inputOutput.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 		m_LayoutFile = layoutFile.empty() ? std::string{} : ToUtf8(layoutFile);
-		io.IniFilename = m_LayoutFile.empty() ? nullptr : m_LayoutFile.c_str();
+		inputOutput.IniFilename = m_LayoutFile.empty() ? nullptr : m_LayoutFile.c_str();
 
-		// Otherwise a window can be dragged by any empty part of its body, which makes
-		// context menus and popups draggable — they have no title bar, so their whole
-		// surface counts.
-		io.ConfigWindowsMoveFromTitleBarOnly = true;
+		inputOutput.ConfigWindowsMoveFromTitleBarOnly = true;
 
-		// The text in each window follows the scale of the monitor that window is on. The
-		// style's sizes cannot follow per window - ImGui has one style - so they follow the
-		// main window's monitor, in UpdateStyleScale.
-		io.ConfigDpiScaleFonts = true;
+		inputOutput.ConfigDpiScaleFonts = true;
 
 #ifndef CORE_DEBUG
-		// A misuse of ImGui's API that it knows how to recover from - an unbalanced
-		// Begin/End, a cursor moved past the last item - asserts by default, which a user
-		// sees as the IDE vanishing. Outside Debug it is recovered from and written to the
-		// log instead; the tooltip ImGui would otherwise draw over the window is for the
-		// developer, not the user.
-		io.ConfigErrorRecoveryEnableAssert = false;
-		io.ConfigErrorRecoveryEnableTooltip = false;
+		inputOutput.ConfigErrorRecoveryEnableAssert = false;
+		inputOutput.ConfigErrorRecoveryEnableTooltip = false;
 #endif
 
-		const auto executableDirectory = ExecutableDirectory();
+		const Result<std::filesystem::path> executableDirectory = ExecutableDirectory();
 
-		g_monoFont = LoadTextFont(io, executableDirectory);
-		MergeIconFont(io, executableDirectory);
-		MergeSymbolFallback(io, g_monoFont);
-		g_boldFont = LoadBoldFont(io, executableDirectory);
+		g_monoFont = LoadTextFont(inputOutput, executableDirectory);
+		MergeIconFont(inputOutput, executableDirectory);
+		MergeSymbolFallback(inputOutput, g_monoFont);
+		g_boldFont = LoadBoldFont(inputOutput, executableDirectory);
 
 		ApplyTheme(Theme::DefaultPalette());
 
-		auto* handle = static_cast<GLFWwindow*>(window.GetNativeHandle());
+		GLFWwindow* handle = static_cast<GLFWwindow*>(window.GetNativeHandle());
 
 		float contentScaleY = 1.0f;
 		glfwGetWindowContentScale(handle, &m_InitialDpiScale, &contentScaleY);
 		ImGui::GetStyle().FontScaleDpi = m_InitialDpiScale;
-		m_StyleScale = 0.0f;
-		if (!ImGui_ImplGlfw_InitForOpenGL(handle, true))
+		m_StyleScale = kStyleScaleNotBuilt;
+
+		if (!ImGui_ImplGlfw_InitForOpenGL(handle, kInstallPlatformCallbacks))
 		{
 			DestroyContexts();
 			return Error{ErrorCode::Unsupported, "ImGui_ImplGlfw_InitForOpenGL failed"};
@@ -358,19 +335,18 @@ namespace Core {
 
 	void ImGuiRenderer::OnEvent(Event& event)
 	{
-		const ImGuiIO& io = ImGui::GetIO();
+		const ImGuiIO& inputOutput = ImGui::GetIO();
 
-		const bool popupOpen =
-			ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
+		const bool popupOpen = ImGui::IsPopupOpen(
+			kAnyPopupName, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
 
-		if (event.IsInCategory(EventCategory::Keyboard) && GuiConsumesKeyboard(io.WantTextInput, popupOpen))
+		if (event.IsInCategory(EventCategory::Keyboard) &&
+			GuiConsumesKeyboard(inputOutput.WantTextInput, popupOpen))
 		{
 			event.Handled = true;
 		}
 
-		// WantCaptureMouse is used directly: keyboard navigation does not inflate it the way
-		// it does WantCaptureKeyboard, so it still means what it says.
-		if (event.IsInCategory(EventCategory::Mouse) && io.WantCaptureMouse)
+		if (event.IsInCategory(EventCategory::Mouse) && inputOutput.WantCaptureMouse)
 		{
 			event.Handled = true;
 		}
@@ -405,19 +381,19 @@ namespace Core {
 		int height = 0;
 		window.FramebufferSize(width, height);
 
-		glViewport(0, 0, width, height);
-		glClearColor(0.106f, 0.114f, 0.129f, 1.0f);
+		glViewport(kViewportOrigin, kViewportOrigin, width, height);
+		glClearColor(kClearRed, kClearGreen, kClearBlue, kClearAlpha);
 		glClear(GL_COLOR_BUFFER_BIT);
 
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
-		const ImGuiIO& io = ImGui::GetIO();
-		if ((io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0)
+		const ImGuiIO& inputOutput = ImGui::GetIO();
+		if ((inputOutput.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0)
 		{
-			GLFWwindow* context = glfwGetCurrentContext();
+			GLFWwindow* previousContext = glfwGetCurrentContext();
 			ImGui::UpdatePlatformWindows();
 			ImGui::RenderPlatformWindowsDefault();
-			glfwMakeContextCurrent(context);
+			glfwMakeContextCurrent(previousContext);
 		}
 	}
 }

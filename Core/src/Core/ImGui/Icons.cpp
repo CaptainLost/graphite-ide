@@ -14,19 +14,15 @@
 namespace Core {
 
 	namespace {
-		// Decoded here because ImGui's own decoder is not part of its public API. The icon
-		// strings are the font header's own constants, so one that is not UTF-8 is a broken
-		// header: asserted, and baked as U+FFFD rather than as a range that ends the list.
-		ImWchar DecodeIcon(const char* utf8)
+		// WARNING: decoded here because ImGui's own decoder is not part of its public API. An icon that is not UTF-8 is baked as U+FFFD, since a zero would end the list of ranges.
+		ImWchar DecodeIcon(const char* iconUtf8)
 		{
 			std::size_t offset = 0;
-			const std::optional<char32_t> codePoint = DecodeUtf8(utf8, offset);
+			const std::optional<char32_t> codePoint = DecodeUtf8(iconUtf8, offset);
 			CORE_ASSERT(codePoint.has_value(), "An icon constant is not valid UTF-8");
 			return static_cast<ImWchar>(codePoint.value_or(kReplacementCharacter));
 		}
 
-		// The one list UsedGlyphRanges bakes from: an icon added here is baked, and one that
-		// is not here has no glyph to draw.
 		constexpr const char* kUsedIcons[] = {
 			ICON_MDI_FILE,
 			ICON_MDI_FOLDER,
@@ -96,6 +92,34 @@ namespace Core {
 
 		constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);
 
+		constexpr std::size_t kEntriesPerRange = 2;
+		constexpr std::size_t kTerminatorEntryCount = 2;
+		constexpr std::size_t kGlyphRangeEntryCount = kEntriesPerRange * kUsedIconCount + kTerminatorEntryCount;
+
+		using GlyphRanges = std::array<ImWchar, kGlyphRangeEntryCount>;
+
+		GlyphRanges BuildGlyphRanges()
+		{
+			GlyphRanges ranges{};
+
+			for (std::size_t iconIndex = 0; iconIndex < kUsedIconCount; ++iconIndex)
+			{
+				const ImWchar codepoint = DecodeIcon(kUsedIcons[iconIndex]);
+				const std::size_t rangeStart = kEntriesPerRange * iconIndex;
+				ranges[rangeStart] = codepoint;
+				ranges[rangeStart + 1] = codepoint;
+			}
+
+			return ranges;
+		}
+
+		bool IsCppExtension(const std::string& dottedExtension)
+		{
+			return dottedExtension == ".cpp" || dottedExtension == ".cc" ||
+				   dottedExtension == ".cxx" || dottedExtension == ".h" ||
+				   dottedExtension == ".hpp" || dottedExtension == ".hxx";
+		}
+
 		std::string ToLowerWithDot(std::string_view extension)
 		{
 			std::string lower = Lowered(extension);
@@ -111,45 +135,42 @@ namespace Core {
 
 	const char* IconForExtension(std::string_view extension)
 	{
-		const std::string lower = ToLowerWithDot(extension);
+		const std::string dottedExtension = ToLowerWithDot(extension);
 
-		// A project is told apart by its language, as the source files it holds are. The
-		// project extension fixes the language of its tree.
-		if (lower == ".vcxproj")
+		if (dottedExtension == ".vcxproj")
 		{
 			return ICON_MDI_LANGUAGE_CPP;
 		}
-		if (lower == ".csproj")
+		if (dottedExtension == ".csproj")
 		{
 			return ICON_MDI_LANGUAGE_CSHARP;
 		}
 
-		if (lower == ".c")
+		if (dottedExtension == ".c")
 		{
 			return ICON_MDI_LANGUAGE_C;
 		}
-		if (lower == ".cpp" || lower == ".cc" || lower == ".cxx" || lower == ".h" ||
-			lower == ".hpp" || lower == ".hxx")
+		if (IsCppExtension(dottedExtension))
 		{
 			return ICON_MDI_LANGUAGE_CPP;
 		}
-		if (lower == ".cs")
+		if (dottedExtension == ".cs")
 		{
 			return ICON_MDI_LANGUAGE_CSHARP;
 		}
-		if (lower == ".lua")
+		if (dottedExtension == ".lua")
 		{
 			return ICON_MDI_LANGUAGE_LUA;
 		}
-		if (lower == ".json")
+		if (dottedExtension == ".json")
 		{
 			return ICON_MDI_CODE_JSON;
 		}
-		if (lower == ".md")
+		if (dottedExtension == ".md")
 		{
 			return ICON_MDI_LANGUAGE_MARKDOWN;
 		}
-		if (lower == ".py")
+		if (dottedExtension == ".py")
 		{
 			return ICON_MDI_LANGUAGE_PYTHON;
 		}
@@ -157,22 +178,10 @@ namespace Core {
 		return ICON_MDI_FILE;
 	}
 
+	// WARNING: ImGui keeps the pointer for the atlas's lifetime, so the ranges live in static storage.
 	const ImWchar* UsedGlyphRanges()
 	{
-		// Built once by the static's own initialiser, which the language makes thread-safe, and
-		// zero-terminated by the two entries the loop leaves alone.
-		static const std::array<ImWchar, 2 * kUsedIconCount + 2> ranges = [] {
-			std::array<ImWchar, 2 * kUsedIconCount + 2> built{};
-
-			for (std::size_t i = 0; i < kUsedIconCount; ++i)
-			{
-				const ImWchar codepoint = DecodeIcon(kUsedIcons[i]);
-				built[2 * i] = codepoint;
-				built[2 * i + 1] = codepoint;
-			}
-
-			return built;
-		}();
+		static const GlyphRanges ranges = BuildGlyphRanges();
 
 		return ranges.data();
 	}

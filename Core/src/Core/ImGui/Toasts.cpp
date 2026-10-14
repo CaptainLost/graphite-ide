@@ -3,6 +3,8 @@
 #include "Core/ImGui/Toasts.h"
 
 #include "Core/App/Redraw.h"
+#include "Core/Base/Timestep.h"
+#include "Core/ImGui/Animation.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/ToastBorder.h"
 #include "Core/ImGui/ToastStyle.h"
@@ -27,55 +29,38 @@ namespace Core {
 
 	namespace {
 		constexpr float kMaxBodyLines = 8.0f;
-
-		// Between two cards.
-		constexpr float kSpacing = 8.0f;
-
-		// Inside the card: between the kind's icon and the text, and between the title and the
-		// message.
-		constexpr float kIconGap = 12.0f;
-		constexpr float kTitleGap = 4.0f;
-
-		constexpr float kRounding = 8.0f;
+		constexpr float kSpacingBetweenCards = 8.0f;
+		constexpr float kGapBetweenIconAndText = 12.0f;
+		constexpr float kGapBetweenTitleAndMessage = 4.0f;
+		constexpr float kCardRounding = 8.0f;
 		constexpr float kBorderWidth = 1.5f;
-
-		// The border in the kind's colour at this much of its alpha: at full strength it and the
-		// icon spoke louder than the words they frame.
 		constexpr float kBorderAlpha = 0.55f;
-
-		// Not zero: the card would lose its edge once the countdown has drained the border.
-		constexpr float kDrainedBorderAlpha = 0.18f;
-
-		// As AddRect insets its own path: a stroke centred on the card's edge would hang half outside it.
+		constexpr float kDrainedBorderAlphaKeepingCardEdge = 0.18f;
 		constexpr float kStrokeInset = 0.5f;
-
-		// Sixty frames a second keep the draining border smooth; the monitor's rate for the whole
-		// countdown would redraw the application several times over for nothing.
 		constexpr std::chrono::duration<double> kCountdownFrameInterval{1.0 / 60.0};
+		constexpr float kFadeInRise = 8.0f;
+		constexpr float kMoveToNewPlaceSeconds = 0.15f;
+		constexpr float kSettledDistancePixels = 0.01f;
+		constexpr float kHalf = 0.5f;
+		constexpr float kShortestWidth = 1.0f;
+		constexpr float kKeepFontSize = 0.0f;
+		constexpr float kNoWrap = 0.0f;
+		constexpr float kNoBorderSize = 0.0f;
+		constexpr float kTransparentBackgroundAlpha = 0.0f;
+		constexpr float kInstantSeconds = 0.0f;
+		constexpr float kInitialValueOffTarget = 1.0f;
+		constexpr int kWindowOnlyStyleVarCount = 2;
+		constexpr int kCloseButtonColourCount = 2;
+		constexpr int kBodyColourCount = 2;
+		constexpr std::string_view kWindowPrefix = "##toast";
 
-		// How far below its resting place a toast starts as it fades in.
-		constexpr float kRise = 8.0f;
-
-		// How long a toast takes to move to its new place when one below it comes or goes.
-		constexpr float kMoveSeconds = 0.15f;
-
-		// Closer than this to its resting place a moving toast has arrived: a hundredth of a
-		// pixel is below what a display shows.
-		constexpr float kSettledEpsilon = 0.01f;
-
-		// As Animation::HoverAmount caps it, for the same reason: the first frame after the
-		// loop has slept carries the whole sleep in DeltaTime.
-		constexpr float kLongestStepSeconds = 0.1f;
-
-		// ImAnim keys a tween by item and channel; the toasts' resting y has a channel of its
-		// own, so it never collides with a hover under the same id.
 		ImGuiID RestingYChannel()
 		{
 			static const ImGuiID channel = ImHashStr("Core::Toasts::RestingY");
 			return channel;
 		}
 
-		ImVec4 ToImVec4(const Color& color, float alpha = 1.0f)
+		ImVec4 ToImVec4WithAlphaScaled(const Color& color, float alpha = 1.0f)
 		{
 			return ImVec4(color.R, color.G, color.B, color.A * alpha);
 		}
@@ -91,10 +76,10 @@ namespace Core {
 			return converted;
 		}
 
-		void DrawOpenPath(ImDrawList& draw, const std::vector<BorderPoint>& path, ImU32 colour, float thickness)
+		void DrawOpenPath(ImDrawList& drawList, const std::vector<BorderPoint>& path, ImU32 colour, float thickness)
 		{
 			const std::vector<ImVec2> points = ToImVec2s(path);
-			draw.AddPolyline(points.data(), static_cast<int>(points.size()), colour, thickness, ImDrawFlags_None);
+			drawList.AddPolyline(points.data(), static_cast<int>(points.size()), colour, thickness, ImDrawFlags_None);
 		}
 
 		struct CountdownColours
@@ -103,19 +88,19 @@ namespace Core {
 			ImU32 Drained = 0;
 		};
 
-		int SegmentsPerCorner(const ImDrawList& draw, float rounding)
+		int SegmentsPerCorner(const ImDrawList& drawList, float rounding)
 		{
 			constexpr int kCornersInACircle = 4;
-			const int segmentsInWholeCircle = draw._CalcCircleAutoSegmentCount(rounding);
+			const int segmentsInWholeCircle = drawList._CalcCircleAutoSegmentCount(rounding);
 			return (segmentsInWholeCircle + kCornersInACircle - 1) / kCornersInACircle;
 		}
 
-		void DrawCountdownBorder(ImDrawList& draw, ImVec2 cardMin, ImVec2 cardMax, float rounding,
+		void DrawCountdownBorder(ImDrawList& drawList, ImVec2 cardMin, ImVec2 cardMax, float rounding,
 								 float shareOfLifetimeLeft, const CountdownColours& colours)
 		{
 			const std::vector<BorderPoint> outline =
 				TraceToastBorder(cardMin.x + kStrokeInset, cardMin.y + kStrokeInset, cardMax.x - kStrokeInset,
-								 cardMax.y - kStrokeInset, rounding, SegmentsPerCorner(draw, rounding));
+								 cardMax.y - kStrokeInset, rounding, SegmentsPerCorner(drawList, rounding));
 			const float thickness = Scaled(kBorderWidth);
 
 			const bool wholeOutlineRemains = shareOfLifetimeLeft >= 1.0f;
@@ -123,41 +108,50 @@ namespace Core {
 			{
 				const std::vector<ImVec2> loop = ToImVec2s(outline);
 				const int pointsWithoutRepeatedStart = static_cast<int>(loop.size()) - 1;
-				draw.AddPolyline(loop.data(), pointsWithoutRepeatedStart, colours.Remaining, thickness, ImDrawFlags_Closed);
+				drawList.AddPolyline(loop.data(), pointsWithoutRepeatedStart, colours.Remaining, thickness,
+									 ImDrawFlags_Closed);
 				return;
 			}
 
 			const SplitBorder split = SplitToastBorder(outline, shareOfLifetimeLeft);
-			DrawOpenPath(draw, split.Drained, colours.Drained, thickness);
-			DrawOpenPath(draw, split.Remaining, colours.Remaining, thickness);
+			DrawOpenPath(drawList, split.Drained, colours.Drained, thickness);
+			DrawOpenPath(drawList, split.Remaining, colours.Remaining, thickness);
 		}
 
-		float Seconds(ToastClock::duration duration)
+		float Seconds(SteadyClock::duration duration)
 		{
 			return std::chrono::duration<float>(duration).count();
 		}
 
-		// Every toast window's name starts with this; the number after it is the toast's id.
-		constexpr std::string_view kWindowPrefix = "##toast";
-
-		// A toast window, a child of one - the scrolling body - or a popup opened from one, its
-		// Copy menu.
 		bool BelongsToToast(const ImGuiWindow& window)
 		{
 			const ImGuiWindow* const root = window.RootWindowPopupTree;
 			return root != nullptr && std::string_view(root->Name).starts_with(kWindowPrefix);
 		}
 
-		// Measured in the face the text is drawn in: the bold face is wider than the regular
-		// one, so a title measured in the regular face would wrap later than it is drawn.
-		float WrappedHeight(ImFont* font, const std::string& text, float wrap)
+		ImFont* FontForRun(bool strong, ImFont* boldFont, ImFont* regularFont)
 		{
+			return strong && boldFont != nullptr ? boldFont : regularFont;
+		}
+
+		// CalcTextSize rounds each run up, so runs placed by rounded widths drift apart from where AddText
+		// ends them.
+		float UnroundedTextWidth(ImFont* font, float fontSize, std::string_view text)
+		{
+			return font->CalcTextSizeA(fontSize, FLT_MAX, kNoWrap, text.data(), text.data() + text.size()).x;
+		}
+
+		float WrappedHeight(ImFont* font, const std::string& text, float wrapWidth)
+		{
+			const char* const textEnd = nullptr;
+			const bool hideTextAfterDoubleHash = false;
+
 			if (font != nullptr)
 			{
-				ImGui::PushFont(font, 0.0f);
+				ImGui::PushFont(font, kKeepFontSize);
 			}
 
-			const float height = ImGui::CalcTextSize(text.c_str(), nullptr, false, wrap).y;
+			const float height = ImGui::CalcTextSize(text.c_str(), textEnd, hideTextAfterDoubleHash, wrapWidth).y;
 
 			if (font != nullptr)
 			{
@@ -169,14 +163,14 @@ namespace Core {
 	}
 
 	std::uint64_t Toasts::Show(ToastKind kind, std::string title, std::string message, std::string copyText,
-					  std::uint32_t group)
+							   std::uint32_t group)
 	{
-		return m_Stack.Show(kind, std::move(title), std::move(message), ToastClock::now(), std::move(copyText), group);
+		return m_Stack.Show(kind, std::move(title), std::move(message), SteadyClock::now(), std::move(copyText), group);
 	}
 
 	void Toasts::Render(const ToastPalette& palette)
 	{
-		const ToastClock::time_point now = ToastClock::now();
+		const SteadyClock::time_point now = SteadyClock::now();
 		m_Stack.Update(now);
 
 		const ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -185,267 +179,222 @@ namespace Core {
 		const float paddingX = ToastPaddingX();
 		const float paddingY = ToastPaddingY();
 		const float iconDiameter = ToastIconDiameter();
-		const float buttonWidth = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
-		const float closeWidth = style.ItemSpacing.x + buttonWidth;
+		const float closeButtonWidth = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
+		const float closeButtonSlotWidth = style.ItemSpacing.x + closeButtonWidth;
 
-		// The title and the message share one left edge, the column after the icon, so the
-		// message reads under the title rather than under the icon. In card coordinates, which
-		// are the window's: 0 is the card's left edge.
-		const float textLeft = paddingX + iconDiameter + Scaled(kIconGap);
-
-		// The message runs to the card's right padding; the close button shares the title's
-		// row, so the title's wrap stops short of it.
+		const float textLeft = paddingX + iconDiameter + Scaled(kGapBetweenIconAndText);
 		const float messageWidth = width - textLeft - paddingX;
-		const float titleWrap = messageWidth - closeWidth;
+		const float titleWrapWidth = messageWidth - closeButtonSlotWidth;
 
-		// Null when the bold face did not load: the title and the message's quoted names are
-		// then drawn in the current font.
-		ImFont* const bold = ImGuiRenderer::GetBoldFont();
-		ImFont* const regular = ImGui::GetFont();
+		ImFont* const boldFont = ImGuiRenderer::GetBoldFont();
+		ImFont* const regularFont = ImGui::GetFont();
 		const float fontSize = ImGui::GetFontSize();
 
-		// The message is laid out by Core::LayoutToastText and drawn run by run, so it is
-		// measured the way AddText advances, unrounded: CalcTextSize rounds each run up, and
-		// runs placed by rounded widths drift apart from where the text actually ends.
-		const ToastTextMeasure measure = [&](std::string_view text, bool strong) {
-			ImFont* const font = strong && bold != nullptr ? bold : regular;
-			return font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, text.data(), text.data() + text.size()).x;
-		};
+		const ToastTextMeasure measureText = [&](std::string_view text, bool strong) { return UnroundedTextWidth(FontForRun(strong, boldFont, regularFont), fontSize, text); };
 
-		// As Animation::HoverAmount takes it; see kLongestStepSeconds.
-		const float step = std::min(ImGui::GetIO().DeltaTime, kLongestStepSeconds);
+		const float frameStepSeconds = std::min(ImGui::GetIO().DeltaTime, Animation::kLongestStepSeconds);
 
-		// Bottom-up: the newest toast sits lowest, nearest the status bar, and older ones are
-		// pushed up as new ones arrive. Laid out from where each toast rests, never from where
-		// its tween has got to, so a move under way does not shift the toasts above it twice.
-		float bottom = viewport->WorkPos.y + viewport->WorkSize.y - ToastMargin();
+		float nextCardBottom = viewport->WorkPos.y + viewport->WorkSize.y - ToastMargin();
 
-		// Copied: SetHovered and Close below change the stack while it is walked.
 		const std::vector<Toast> toasts = m_Stack.Get();
 
-		// Rebuilt every frame, so a toast that has gone leaves no entry behind.
-		std::unordered_set<std::uint64_t> drawn;
-		bool moving = false;
+		std::unordered_set<std::uint64_t> drawnIds;
+		bool anyToastMoving = false;
 
-		// Newest first, as they are drawn; raised in the other order once all are drawn.
-		std::vector<ImGuiWindow*> raised;
-		raised.reserve(toasts.size());
+		std::vector<ImGuiWindow*> raisedWindows;
+		raisedWindows.reserve(toasts.size());
 
-		// The toast that holds the keyboard, if one does; see the hand-back after the loop.
 		ImGuiWindow* focusedToast = nullptr;
 
-		for (auto it = toasts.rbegin(); it != toasts.rend(); ++it)
+		for (std::vector<Toast>::const_reverse_iterator toastIterator = toasts.rbegin(); toastIterator != toasts.rend();
+			 ++toastIterator)
 		{
-			const Toast& toast = *it;
+			const Toast& toast = *toastIterator;
 
-			// In: a fade with a slight rise, no overshoot. Out: a fade where it stands.
-			const float enter = std::clamp(Seconds(now - toast.Shown) / Seconds(ToastStack::kEnter), 0.0f, 1.0f);
-			const float entered = iam_eval_preset(iam_ease_out_cubic, enter);
+			const float fadeInProgress =
+				std::clamp(Seconds(now - toast.Shown) / Seconds(ToastStack::kEnter), 0.0f, 1.0f);
+			const float fadeInEased = iam_eval_preset(iam_ease_out_cubic, fadeInProgress);
 
-			float alpha = entered;
+			float alpha = fadeInEased;
 
 			if (toast.LeavingSince.has_value())
 			{
-				const float leave =
+				const float fadeOutProgress =
 					std::clamp(Seconds(now - *toast.LeavingSince) / Seconds(ToastStack::kLeave), 0.0f, 1.0f);
-				alpha *= 1.0f - iam_eval_preset(iam_ease_in_quad, leave);
+				alpha *= 1.0f - iam_eval_preset(iam_ease_in_quad, fadeOutProgress);
 			}
 
-			// The count follows the title in the regular face, so the title wraps short of it.
-			const std::string count = toast.Count > 1 ? std::format("(x{})", toast.Count) : std::string();
-			const float countWidth = count.empty() ? 0.0f : style.ItemSpacing.x + ImGui::CalcTextSize(count.c_str()).x;
-			const float titleWidth = std::max(titleWrap - countWidth, 1.0f);
+			const std::string repeatCountText = toast.Count > 1 ? std::format("(x{})", toast.Count) : std::string();
+			const float repeatCountWidth =
+				repeatCountText.empty() ? 0.0f : style.ItemSpacing.x + ImGui::CalcTextSize(repeatCountText.c_str()).x;
+			const float titleWidth = std::max(titleWrapWidth - repeatCountWidth, kShortestWidth);
 
-			// At least one line tall: the close button sits in the title's row.
-			const float titleHeight = std::max(WrappedHeight(bold, toast.Title, titleWidth), fontSize);
+			const float titleHeight = std::max(WrappedHeight(boldFont, toast.Title, titleWidth), fontSize);
 
-			// Only the message scrolls; the title stays above it, whatever the message's length.
-			// A message that scrolls is laid out again short of the scrollbar, which takes its
-			// width from the body's.
 			float layoutWidth = messageWidth;
-			std::vector<ToastTextLine> lines = LayoutToastText(toast.Message, layoutWidth, measure);
+			std::vector<ToastTextLine> lines = LayoutToastText(toast.Message, layoutWidth, measureText);
 
 			if (static_cast<float>(lines.size()) > kMaxBodyLines)
 			{
-				layoutWidth = std::max(messageWidth - style.ScrollbarSize, 1.0f);
-				lines = LayoutToastText(toast.Message, layoutWidth, measure);
+				layoutWidth = std::max(messageWidth - style.ScrollbarSize, kShortestWidth);
+				lines = LayoutToastText(toast.Message, layoutWidth, measureText);
 			}
 
-			// At least a line, as ImGui measures an empty text: a body of no height would take
-			// the rest of the card.
 			const float messageHeight = static_cast<float>(std::max<std::size_t>(lines.size(), 1)) * fontSize;
 			const float bodyHeight = std::min(messageHeight, fontSize * kMaxBodyLines);
-			const float textHeight = titleHeight + Scaled(kTitleGap) + bodyHeight;
+			const float textHeight = titleHeight + Scaled(kGapBetweenTitleAndMessage) + bodyHeight;
 
-			// The icon is centred on the title's first line, which names what happened, rather
-			// than on the whole block: beside a long message it would drift away from the title.
-			// Taller than a line, it reaches a little into the padding above.
-			const float iconCentreY = paddingY + fontSize * 0.5f;
+			const float iconCentreY = paddingY + fontSize * kHalf;
 			const float height =
-				std::max(paddingY + textHeight + paddingY, iconCentreY + iconDiameter * 0.5f + paddingY);
+				std::max(paddingY + textHeight + paddingY, iconCentreY + iconDiameter * kHalf + paddingY);
 
-			const std::string name = std::format("{}{}", kWindowPrefix, toast.Id);
+			const std::string windowName = std::format("{}{}", kWindowPrefix, toast.Id);
 
-			// The resting place moves smoothly when a toast below comes or goes. A toast seen
-			// for the first time is cut to its place - it rises in by the offset below instead -
-			// whatever tween an earlier stack left under the same id.
-			const float targetY = bottom - height;
-			const ImGuiID tweenId = ImHashStr(name.c_str());
-			float restY = targetY;
+			const float restingY = nextCardBottom - height;
+			const ImGuiID tweenId = ImHashStr(windowName.c_str());
+			float tweenedRestingY = restingY;
 
 			if (!m_Drawn.contains(toast.Id))
 			{
-				// An init value off the target makes ImAnim create the channel rather than skip
-				// it, so the next frame's move has a channel to start from.
-				restY = iam_tween_float(tweenId, RestingYChannel(), targetY, 0.0f, iam_ease_preset(iam_ease_out_cubic),
-										iam_policy_cut, step, targetY + 1.0f);
+				// An init value off the target makes ImAnim create the channel rather than skip it, so the next
+				// frame's move has a channel to start from.
+				tweenedRestingY = iam_tween_float(tweenId, RestingYChannel(), restingY, kInstantSeconds,
+												  iam_ease_preset(iam_ease_out_cubic), iam_policy_cut,
+												  frameStepSeconds, restingY + kInitialValueOffTarget);
 			}
 			else
 			{
-				// Crossfade, as a hover does: a toast already moving turns towards a new place
-				// from where it is. The channel exists since the cut above, so the init value
-				// goes unused.
-				restY = iam_tween_float(tweenId, RestingYChannel(), targetY, kMoveSeconds,
-										iam_ease_preset(iam_ease_out_cubic), iam_policy_crossfade, step, targetY);
+				tweenedRestingY = iam_tween_float(tweenId, RestingYChannel(), restingY, kMoveToNewPlaceSeconds,
+												  iam_ease_preset(iam_ease_out_cubic), iam_policy_crossfade,
+												  frameStepSeconds, restingY);
 			}
 
-			drawn.insert(toast.Id);
-			moving = moving || std::fabs(restY - targetY) > kSettledEpsilon;
+			drawnIds.insert(toast.Id);
+			anyToastMoving = anyToastMoving || std::fabs(tweenedRestingY - restingY) > kSettledDistancePixels;
 
 			const float cardX = viewport->WorkPos.x + viewport->WorkSize.x - ToastMargin() - width;
-			const float cardY = restY + (1.0f - entered) * Scaled(kRise);
+			const float cardY = tweenedRestingY + (1.0f - fadeInEased) * Scaled(kFadeInRise);
 
-			// The window is the card.
 			ImGui::SetNextWindowPos(ImVec2(cardX, cardY));
 			ImGui::SetNextWindowSize(ImVec2(width, height));
 			ImGui::SetNextWindowViewport(viewport->ID);
-			ImGui::SetNextWindowBgAlpha(0.0f);
+			ImGui::SetNextWindowBgAlpha(kTransparentBackgroundAlpha);
 
-			// The alpha for everything the toast draws, its menu included; the padding and the
-			// border only for the window's own Begin, which places its contents by hand and
-			// draws its own card.
+			const ImVec2 noWindowPadding(0.0f, 0.0f);
+
 			ImGui::PushStyleVar(ImGuiStyleVar_Alpha, alpha);
-			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-			ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, noWindowPadding);
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, kNoBorderSize);
 
-			constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking |
-												ImGuiWindowFlags_NoSavedSettings |
-												ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
-												ImGuiWindowFlags_NoMove;
+			constexpr ImGuiWindowFlags kWindowFlags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoDocking |
+													  ImGuiWindowFlags_NoSavedSettings |
+													  ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
+													  ImGuiWindowFlags_NoMove;
 
-			const bool open = ImGui::Begin(name.c_str(), nullptr, kFlags);
-			ImGui::PopStyleVar(2);
+			const bool windowOpen = ImGui::Begin(windowName.c_str(), nullptr, kWindowFlags);
+			ImGui::PopStyleVar(kWindowOnlyStyleVarCount);
 
 			bool hovered = false;
 
-			if (open)
+			if (windowOpen)
 			{
 				ImGuiWindow* const window = ImGui::GetCurrentWindow();
-				raised.push_back(window);
+				raisedWindows.push_back(window);
 
-				ImDrawList* draw = ImGui::GetWindowDrawList();
-				const ImVec2 min = ImGui::GetWindowPos();
-				const ImVec2 max(min.x + width, min.y + height);
-				const float rounding = Scaled(kRounding);
-				const ImVec4 border = ToImVec4(ToastAccentOf(palette, toast.Kind), kBorderAlpha);
-				const ImVec4 drainedBorder = ToImVec4(ToastAccentOf(palette, toast.Kind), kDrainedBorderAlpha);
-				const ImVec4 surface = ToImVec4(palette.Surface);
+				ImDrawList* const cardDrawList = ImGui::GetWindowDrawList();
+				const ImVec2 cardMin = ImGui::GetWindowPos();
+				const ImVec2 cardMax(cardMin.x + width, cardMin.y + height);
+				const float rounding = Scaled(kCardRounding);
+				const ImVec4 border = ToImVec4WithAlphaScaled(ToastAccentOf(palette, toast.Kind), kBorderAlpha);
+				const ImVec4 drainedBorder =
+					ToImVec4WithAlphaScaled(ToastAccentOf(palette, toast.Kind), kDrainedBorderAlphaKeepingCardEdge);
+				const ImVec4 surface = ToImVec4WithAlphaScaled(palette.Surface);
 
-				// GetColorU32 multiplies in the toast's fade.
-				draw->AddRectFilled(min, max, ImGui::GetColorU32(surface), rounding);
-				DrawCountdownBorder(*draw, min, max, rounding, ToastStack::ShareOfLifetimeLeft(toast, now),
+				cardDrawList->AddRectFilled(cardMin, cardMax, ImGui::GetColorU32(surface), rounding);
+				DrawCountdownBorder(*cardDrawList, cardMin, cardMax, rounding,
+									ToastStack::ShareOfLifetimeLeft(toast, now),
 									{.Remaining = ImGui::GetColorU32(border), .Drained = ImGui::GetColorU32(drainedBorder)});
 
-				const ImVec2 iconCentre(min.x + paddingX + iconDiameter * 0.5f, min.y + iconCentreY);
-				DrawToastIcon(*draw, toast.Kind, iconCentre, palette);
+				const ImVec2 iconCentre(cardMin.x + paddingX + iconDiameter * kHalf, cardMin.y + iconCentreY);
+				DrawToastIcon(*cardDrawList, toast.Kind, iconCentre, palette);
 
 				const float rowY = paddingY;
-				const float left = textLeft;
 
-				// The title, in the bold face, wrapped short of the count and the close button.
-				ImGui::SetCursorPos(ImVec2(left, rowY));
-				ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4(palette.Text));
+				ImGui::SetCursorPos(ImVec2(textLeft, rowY));
+				ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4WithAlphaScaled(palette.Text));
 
-				if (bold != nullptr)
+				if (boldFont != nullptr)
 				{
-					ImGui::PushFont(bold, 0.0f);
+					ImGui::PushFont(boldFont, kKeepFontSize);
 				}
 
-				ImGui::PushTextWrapPos(left + titleWidth);
+				ImGui::PushTextWrapPos(textLeft + titleWidth);
 				ImGui::TextUnformatted(toast.Title.c_str());
 				ImGui::PopTextWrapPos();
 
-				if (bold != nullptr)
+				if (boldFont != nullptr)
 				{
 					ImGui::PopFont();
 				}
 
 				ImGui::PopStyleColor();
 
-				if (!count.empty())
+				if (!repeatCountText.empty())
 				{
 					ImGui::SameLine();
-					ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4(palette.TextDim));
-					ImGui::TextUnformatted(count.c_str());
+					ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4WithAlphaScaled(palette.TextDim));
+					ImGui::TextUnformatted(repeatCountText.c_str());
 					ImGui::PopStyleColor();
 				}
 
-				// On the title's row, outside the body, so it never scrolls away. No frame of its
-				// own: only the style's hover and press colours light it up, and the glyph goes
-				// from the dimmed text colour to the text colour under the pointer - asked before
-				// the button is drawn, so it is the pointer's place rather than ImGui's hover state.
-				// The button is as tall as a line, so the title's first line centres it.
-				const ImVec2 closeMin(min.x + width - paddingX - buttonWidth, min.y + rowY);
-				const ImVec2 closeMax(closeMin.x + buttonWidth, closeMin.y + fontSize);
-				const bool overClose =
+				const ImVec2 closeMin(cardMin.x + width - paddingX - closeButtonWidth, cardMin.y + rowY);
+				const ImVec2 closeMax(closeMin.x + closeButtonWidth, closeMin.y + fontSize);
+				const bool pointerOverClose =
 					ImGui::IsWindowHovered(ImGuiHoveredFlags_None) && ImGui::IsMouseHoveringRect(closeMin, closeMax);
 
-				ImGui::SetCursorPos(ImVec2(width - paddingX - buttonWidth, rowY));
-				ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-				ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4(overClose ? palette.Text : palette.TextDim));
+				const ImVec4 transparentColour(0.0f, 0.0f, 0.0f, 0.0f);
+
+				ImGui::SetCursorPos(ImVec2(width - paddingX - closeButtonWidth, rowY));
+				ImGui::PushStyleColor(ImGuiCol_Button, transparentColour);
+				ImGui::PushStyleColor(ImGuiCol_Text,
+									  ToImVec4WithAlphaScaled(pointerOverClose ? palette.Text : palette.TextDim));
 
 				if (ImGui::SmallButton(ICON_MDI_CLOSE "##close"))
 				{
 					m_Stack.Close(toast.Id, now);
 				}
 
-				ImGui::PopStyleColor(2);
+				ImGui::PopStyleColor(kCloseButtonColourCount);
 
-				// The message, a little dimmer than the title, which scrolls past kMaxBodyLines.
-				// On the card's surface rather than a background of its own, and with no padding
-				// of its own, so it starts at the title's x.
-				ImGui::SetCursorPos(ImVec2(left, rowY + titleHeight + Scaled(kTitleGap)));
-				ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-				ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
-				ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+				ImGui::SetCursorPos(ImVec2(textLeft, rowY + titleHeight + Scaled(kGapBetweenTitleAndMessage)));
+				ImGui::PushStyleColor(ImGuiCol_ChildBg, transparentColour);
+				ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, transparentColour);
+				ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, noWindowPadding);
 
 				const bool bodyOpen = ImGui::BeginChild("body", ImVec2(messageWidth, bodyHeight));
 
 				ImGui::PopStyleVar();
-				ImGui::PopStyleColor(2);
+				ImGui::PopStyleColor(kBodyColourCount);
 
 				if (bodyOpen)
 				{
-					// Drawn run by run where the layout put each, a quoted name in the bold face
-					// and the title's colour, everything else in the message's. The dummy after
-					// is the block's item: it gives the body its scroll range and ends the child
-					// on an item rather than on a bare cursor.
-					ImDrawList* const body = ImGui::GetWindowDrawList();
+					ImDrawList* const bodyDrawList = ImGui::GetWindowDrawList();
 					const ImVec2 origin = ImGui::GetCursorScreenPos();
-					const ImU32 plainColour = ImGui::GetColorU32(ToImVec4(ToastMessageColour(palette)));
-					const ImU32 strongColour = ImGui::GetColorU32(ToImVec4(palette.Text));
+					const ImU32 plainColour = ImGui::GetColorU32(ToImVec4WithAlphaScaled(ToastMessageColour(palette)));
+					const ImU32 strongColour = ImGui::GetColorU32(ToImVec4WithAlphaScaled(palette.Text));
 
-					for (std::size_t line = 0; line < lines.size(); ++line)
+					for (std::size_t lineIndex = 0; lineIndex < lines.size(); ++lineIndex)
 					{
-						const float y = origin.y + static_cast<float>(line) * fontSize;
+						const float lineY = origin.y + static_cast<float>(lineIndex) * fontSize;
 
-						for (const ToastTextRun& run : lines[line].Runs)
+						for (const ToastTextRun& run : lines[lineIndex].Runs)
 						{
 							const bool strong = run.Style == ToastTextStyle::Strong;
-							ImFont* const font = strong && bold != nullptr ? bold : regular;
+							ImFont* const font = FontForRun(strong, boldFont, regularFont);
 
-							body->AddText(font, fontSize, ImVec2(origin.x + run.X, y), strong ? strongColour : plainColour,
-										  run.Text.data(), run.Text.data() + run.Text.size());
+							bodyDrawList->AddText(font, fontSize, ImVec2(origin.x + run.X, lineY),
+												  strong ? strongColour : plainColour, run.Text.data(),
+												  run.Text.data() + run.Text.size());
 						}
 					}
 
@@ -454,10 +403,8 @@ namespace Core {
 
 				ImGui::EndChild();
 
-				// Opened from anywhere on the toast - the title row as much as the body - rather
-				// than through Core::BeginRightClickPopup, which answers only to the last item.
-				// Otherwise the same: opened on release, and begun with NoMove for the reason
-				// ContextMenu.h gives. The id lives in the toast window's own id stack.
+				// Core::BeginRightClickPopup answers only to the last item, so it cannot open a menu from
+				// anywhere on the toast.
 				if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
 					ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByPopup))
 				{
@@ -466,8 +413,8 @@ namespace Core {
 
 				if (ImGui::BeginPopup("##toastMenu", ImGuiWindowFlags_NoMove))
 				{
-					// Raised every frame it is open: the toast under it is not raised while a
-					// popup is open, but one raised on the frame the menu opened would cover it.
+					// A toast under an open popup is not raised, but one raised on the frame the menu opened
+					// would cover it.
 					ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
 
 					if (ImGui::MenuItem("Copy"))
@@ -490,73 +437,53 @@ namespace Core {
 
 				hovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByPopup);
 
-				// NoFocusOnAppearing covers only the appearing: a click on the body, its scrollbar
-				// or the close button focuses the toast as it would any window, and the editor
-				// loses the keyboard to a box that has nothing to type into. Asked after the
-				// toast's items: a press on the close button or the scrollbar focuses the toast
-				// inside the item's behaviour. The popup hierarchy is left out: the toast's own
-				// menu holds focus while open, and refocusing the editor then would close it.
+				// NoFocusOnAppearing covers only the appearing: a later click focuses the toast like any
+				// window and the editor loses the keyboard. Asked after the toast's items, because a press
+				// on the close button or the scrollbar focuses the toast inside the item's behaviour.
 				if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows | ImGuiFocusedFlags_NoPopupHierarchy))
 				{
 					focusedToast = window;
 				}
 			}
 
-			// Reported even when Begin returned false, so a stale hover cannot outlive the window.
 			m_Stack.SetHovered(toast.Id, hovered, now);
 
 			ImGui::End();
 			ImGui::PopStyleVar();
 
-			bottom = targetY - Scaled(kSpacing);
+			nextCardBottom = restingY - Scaled(kSpacingBetweenCards);
 		}
 
-		m_Drawn = std::move(drawn);
+		m_Drawn = std::move(drawnIds);
 
-		// The keyboard goes back to the window that held it before the click, once the click
-		// is over: no button down - during the press it would end a drag of the scrollbar - and
-		// no item active. Not inside the loop, ahead of the toast's own items: on the frame the
-		// button comes up the close button is still active, and focusing another window clears
-		// the active item, so the release would never count as a click. After the loop every
-		// toast has had its release, and the item clears its own active state as it takes it.
-		// ImGui moves focus on a click only at the end of the frame, so until a toast is
-		// focused the window recorded below is still the one from before the click.
+		// Run after the loop: inside it the close button is still active on the frame its release comes,
+		// and focusing another window clears the active item, so the click would never count.
 		if (focusedToast != nullptr && ImGui::GetActiveID() == 0 && !ImGui::IsAnyMouseDown())
 		{
 			ImGuiWindow* const holder = ImGui::FindWindowByID(m_FocusBeforeToasts);
 
-			// A window that has gone since - a popup the click closed - leaves the keyboard to
-			// whichever window was focused before this toast.
 			if (holder != nullptr && holder->WasActive)
 			{
 				ImGui::FocusWindow(holder);
 			}
 			else
 			{
-				ImGui::FocusTopMostWindowUnderOne(focusedToast, focusedToast, nullptr, ImGuiFocusRequestFlags_None);
+				ImGuiViewport* const anyViewport = nullptr;
+				ImGui::FocusTopMostWindowUnderOne(focusedToast, focusedToast, anyViewport, ImGuiFocusRequestFlags_None);
 			}
 		}
 
-		// Over every window, floating ones clicked after the toast appeared included, yet
-		// without focus: NoFocusOnAppearing keeps the keyboard in the editor. Oldest first, so
-		// a newer toast sits in front of the older ones above it wherever they overlap - as
-		// one rises in or glides into place. But a popup, a context menu or a modal is raised only on the frame it
-		// appears; a toast raised every frame would cover it from its second frame on and take
-		// its hover - the toast's own Copy menu included, opened in the loop above. So toasts go
-		// to the front only while none is open.
+		// A toast raised every frame while a popup is open would cover it from its second frame on and take
+		// its hover, the toast's own Copy menu included.
 		if (!ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel))
 		{
-			for (auto it = raised.rbegin(); it != raised.rend(); ++it)
+			for (std::vector<ImGuiWindow*>::const_reverse_iterator raisedIterator = raisedWindows.rbegin();
+				 raisedIterator != raisedWindows.rend(); ++raisedIterator)
 			{
-				ImGui::BringWindowToDisplayFront(*it);
+				ImGui::BringWindowToDisplayFront(*raisedIterator);
 			}
 		}
 
-		// Remembered only while no toast holds focus: once one does, the focused window is the
-		// toast itself, and the one to hand back to is the window recorded before the click.
-		// Nor is a window of a toast's own ever recorded - the toast, its body, its Copy menu -
-		// whatever the checks above missed: handed the keyboard back, a toast would keep it, so
-		// the window from before the click stays recorded instead.
 		if (focusedToast == nullptr)
 		{
 			const ImGuiWindow* const holder = ImGui::GetCurrentContext()->NavWindow;
@@ -571,9 +498,7 @@ namespace Core {
 			}
 		}
 
-		// A move under way asks for its own frames: it starts when a toast below goes, after
-		// the stack's own schedule has nothing left to animate.
-		if (moving)
+		if (anyToastMoving)
 		{
 			Redraw::RequestIn(Redraw::Clock::duration::zero());
 		}
@@ -583,9 +508,9 @@ namespace Core {
 			Redraw::RequestIn(kCountdownFrameInterval);
 		}
 
-		if (const std::optional<ToastClock::time_point> next = m_Stack.NextChange(now); next.has_value())
+		if (const std::optional<SteadyClock::time_point> nextChange = m_Stack.NextChange(now); nextChange.has_value())
 		{
-			Redraw::RequestIn(std::max(*next - now, ToastClock::duration::zero()));
+			Redraw::RequestIn(std::max(*nextChange - now, SteadyClock::duration::zero()));
 		}
 	}
 }

@@ -16,7 +16,7 @@ namespace Core {
 		std::vector<BorderPoint> Remaining;
 	};
 
-	// The first and last points are the same, so a closed polyline drawn from it must leave one out.
+	// WARNING: the first and last points are the same, so a closed polyline drawn from them must leave one out.
 	std::vector<BorderPoint> TraceToastBorder(float left, float top, float right, float bottom,
 											  float cornerRadius, int segmentsPerCorner);
 

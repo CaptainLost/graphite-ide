@@ -32,13 +32,14 @@ namespace Core {
 	std::optional<TextPoint> PressPoint(SelectionAction action, const SelectionSource& source,
 										ImVec2 screen, std::optional<TextPoint> boundary)
 	{
-		const bool character = action == SelectionAction::SelectWord || action == SelectionAction::SelectLine;
+		const bool actsOnCharacterUnderPointer =
+			action == SelectionAction::SelectWord || action == SelectionAction::SelectLine;
 
-		if (character && source.CharacterAt)
+		if (actsOnCharacterUnderPointer && source.CharacterAt)
 		{
-			if (std::optional<TextPoint> under = source.CharacterAt(screen))
+			if (std::optional<TextPoint> characterUnderPointer = source.CharacterAt(screen))
 			{
-				return under;
+				return characterUnderPointer;
 			}
 		}
 
@@ -46,9 +47,15 @@ namespace Core {
 	}
 
 	namespace {
-		std::optional<TextPoint> PointUnder(const SelectionSource& source, ImVec2 mouse)
+		constexpr const char* kScrollStepSample = "0";
+		constexpr std::size_t kLineStartColumn = 0;
+		constexpr std::size_t kUnknownLineLength = 0;
+		constexpr bool kKeyRepeatCounts = false;
+		constexpr bool kMenuItemIsSelected = false;
+
+		std::optional<TextPoint> PointUnder(const SelectionSource& source, ImVec2 mousePosition)
 		{
-			return source.PointAt ? source.PointAt(mouse) : std::nullopt;
+			return source.PointAt ? source.PointAt(mousePosition) : std::nullopt;
 		}
 
 		void SelectEverything(TextSelection& selection, const SelectionSource& source)
@@ -62,7 +69,7 @@ namespace Core {
 			selection.Select(from, to);
 		}
 
-		void Copy(const SelectionSource& source, SelectionGestureResult& result)
+		void CopySelectedText(const SelectionSource& source, SelectionGestureResult& result)
 		{
 			if (!source.SelectedText)
 			{
@@ -87,28 +94,27 @@ namespace Core {
 													const SelectionGestureOptions& options)
 	{
 		SelectionGestureResult result;
-		const ImGuiIO& io = ImGui::GetIO();
-		const ImVec2 mouse = ImGui::GetMousePos();
+		const ImGuiIO& inputState = ImGui::GetIO();
+		const ImVec2 mousePosition = ImGui::GetMousePos();
 
 		const bool claimed =
-			ImGui::IsAnyItemActive() || (source.Claims && source.Claims(mouse));
+			ImGui::IsAnyItemActive() || (source.Claims && source.Claims(mousePosition));
 
 		if (!claimed && ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left))
 		{
-			// A child nothing focused never sees a key: without this the copy shortcut would
-			// go wherever the focus happened to be.
+			// WARNING: a child nothing focused never sees a key, so without this the copy
+			// shortcut goes wherever the focus happened to be.
 			ImGui::SetWindowFocus();
 
-			const std::optional<TextPoint> boundary = PointUnder(source, mouse);
-			const SelectionAction action =
-				DecidePress({ImGui::GetMouseClickedCount(ImGuiMouseButton_Left), io.KeyShift,
-							 boundary.has_value(), !selection.IsEmpty()});
+			const std::optional<TextPoint> boundary = PointUnder(source, mousePosition);
+			const GestureInput pressInput{ImGui::GetMouseClickedCount(ImGuiMouseButton_Left),
+										  inputState.KeyShift, boundary.has_value(),
+										  !selection.IsEmpty()};
+			const SelectionAction action = DecidePress(pressInput);
 
-			// A word or a line is the one under the pointer, not the one past the nearest
-			// boundary; a sweep and a single press keep the boundary.
-			const std::optional<TextPoint> point = PressPoint(action, source, mouse, boundary);
+			const std::optional<TextPoint> point =
+				PressPoint(action, source, mousePosition, boundary);
 
-			// Every press settles the sweep first, so no gesture order leaves it stuck.
 			m_Sweeping = false;
 
 			switch (action)
@@ -123,14 +129,15 @@ namespace Core {
 				break;
 			case SelectionAction::SelectWord:
 			{
-				const ColumnSpan span = source.WordAt ? source.WordAt(*point) : ColumnSpan{};
-				selection.Select({point->Line, span.From}, {point->Line, span.To});
+				const ColumnSpan wordSpan = source.WordAt ? source.WordAt(*point) : ColumnSpan{};
+				selection.Select({point->Line, wordSpan.From}, {point->Line, wordSpan.To});
 				break;
 			}
 			case SelectionAction::SelectLine:
 			{
-				const std::size_t length = source.LineLength ? source.LineLength(point->Line) : 0;
-				selection.Select({point->Line, 0}, {point->Line, length});
+				const std::size_t lineLength =
+					source.LineLength ? source.LineLength(point->Line) : kUnknownLineLength;
+				selection.Select({point->Line, kLineStartColumn}, {point->Line, lineLength});
 				break;
 			}
 			case SelectionAction::Clear:
@@ -149,26 +156,24 @@ namespace Core {
 			}
 			else
 			{
-				if (const std::optional<TextPoint> point = PointUnder(source, mouse))
+				if (const std::optional<TextPoint> pointUnderMouse = PointUnder(source, mousePosition))
 				{
-					selection.ExtendTo(*point);
+					selection.ExtendTo(*pointUnderMouse);
 				}
 
-				// Dragging out of the top or the bottom scrolls after the pointer, so a
-				// selection can reach further than the window is tall.
 				if (options.ScrollsVertically)
 				{
 					const float top = ImGui::GetWindowPos().y;
 					const float bottom = top + ImGui::GetWindowSize().y;
-					const float step = ImGui::GetTextLineHeightWithSpacing();
+					const float scrollStep = ImGui::GetTextLineHeightWithSpacing();
 
-					if (mouse.y < top)
+					if (mousePosition.y < top)
 					{
-						ImGui::SetScrollY(ImGui::GetScrollY() - step);
+						ImGui::SetScrollY(ImGui::GetScrollY() - scrollStep);
 					}
-					else if (mouse.y > bottom)
+					else if (mousePosition.y > bottom)
 					{
-						ImGui::SetScrollY(ImGui::GetScrollY() + step);
+						ImGui::SetScrollY(ImGui::GetScrollY() + scrollStep);
 					}
 				}
 
@@ -176,28 +181,28 @@ namespace Core {
 				{
 					const float left = ImGui::GetWindowPos().x;
 					const float right = left + ImGui::GetWindowSize().x;
-					const float step = ImGui::CalcTextSize("0").x;
+					const float scrollStep = ImGui::CalcTextSize(kScrollStepSample).x;
 
-					if (mouse.x < left)
+					if (mousePosition.x < left)
 					{
-						ImGui::SetScrollX(ImGui::GetScrollX() - step);
+						ImGui::SetScrollX(ImGui::GetScrollX() - scrollStep);
 					}
-					else if (mouse.x > right)
+					else if (mousePosition.x > right)
 					{
-						ImGui::SetScrollX(ImGui::GetScrollX() + step);
+						ImGui::SetScrollX(ImGui::GetScrollX() + scrollStep);
 					}
 				}
 			}
 		}
 
-		if (ImGui::IsWindowFocused() && !ImGui::IsAnyItemActive() && io.KeyCtrl && !io.KeyAlt)
+		if (ImGui::IsWindowFocused() && !ImGui::IsAnyItemActive() && inputState.KeyCtrl && !inputState.KeyAlt)
 		{
-			// Ctrl+Alt is AltGr on some layouts (Polish letters), so it is not a shortcut.
-			if (options.CopyKey && ImGui::IsKeyPressed(ImGuiKey_C, false))
+			// WARNING: Ctrl+Alt is AltGr on some layouts (Polish letters), so it is not a shortcut.
+			if (options.CopyKey && ImGui::IsKeyPressed(ImGuiKey_C, kKeyRepeatCounts))
 			{
-				Copy(source, result);
+				CopySelectedText(source, result);
 			}
-			else if (options.SelectAllKey && ImGui::IsKeyPressed(ImGuiKey_A, false))
+			else if (options.SelectAllKey && ImGui::IsKeyPressed(ImGuiKey_A, kKeyRepeatCounts))
 			{
 				SelectEverything(selection, source);
 			}
@@ -205,22 +210,24 @@ namespace Core {
 
 		if (options.MenuId != nullptr && ImGui::BeginPopupContextWindow(options.MenuId))
 		{
-			if (ImGui::MenuItem("Copy", "Ctrl+C", false, !selection.IsEmpty()))
+			if (ImGui::MenuItem("Copy", "Ctrl+C", kMenuItemIsSelected, !selection.IsEmpty()))
 			{
-				Copy(source, result);
+				CopySelectedText(source, result);
 				result.FromMenu = result.Copied;
 			}
 
-			bool anything = false;
+			bool hasAnythingToSelect = false;
 
 			if (source.Everything)
 			{
 				const auto [from, to] = source.Everything();
-				anything = from != to;
+				hasAnythingToSelect = from != to;
 			}
 
-			if (ImGui::MenuItem("Select All", options.SelectAllKey ? "Ctrl+A" : nullptr, false,
-								anything))
+			const char* selectAllShortcut = options.SelectAllKey ? "Ctrl+A" : nullptr;
+
+			if (ImGui::MenuItem("Select All", selectAllShortcut, kMenuItemIsSelected,
+								hasAnythingToSelect))
 			{
 				SelectEverything(selection, source);
 			}
@@ -239,7 +246,9 @@ namespace Core {
 			return;
 		}
 
+		const ImU32 fillColour =
+			colour.has_value() ? *colour : ImGui::GetColorU32(ImGuiCol_TextSelectedBg);
 		drawList.AddRectFilled(ImVec2(fromX, top), ImVec2(toX, top + height),
-							   colour.has_value() ? *colour : ImGui::GetColorU32(ImGuiCol_TextSelectedBg));
+							   fillColour);
 	}
 }

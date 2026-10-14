@@ -24,8 +24,6 @@ TEST_CASE("A close request is taken exactly once in the next frame")
 
 TEST_CASE("A close request nobody takes is dropped after its frame")
 {
-	// The window closed some other way before its turn came; a later window of the same name
-	// must not inherit the request.
 	TabCloseRequests requests;
 	requests.Request("main.cpp###doc1");
 	requests.EndFrame();
@@ -48,8 +46,6 @@ TEST_CASE("Taking one name leaves the others due")
 
 TEST_CASE("A close request survives the visible part of the name changing")
 {
-	// A session's title can update, or a document gain a disambiguating suffix, between the
-	// frame the menu asks and the frame the owner takes; ImGui still sees the same window.
 	TabCloseRequests requests;
 	requests.Request("Old title###session-1");
 	requests.EndFrame();

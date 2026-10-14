@@ -7,7 +7,6 @@
 #include <string>
 
 namespace {
-	// A context of its own with one window holding the field, drawn a frame at a time.
 	class Field
 	{
 	public:
@@ -30,12 +29,12 @@ namespace {
 		Field(const Field&) = delete;
 		Field& operator=(const Field&) = delete;
 
-		bool Next(std::string& text, bool focus = false)
+		bool Next(std::string& text, bool focusWithKeyboard = false)
 		{
 			ImGui::NewFrame();
 			ImGui::Begin("Field");
 
-			if (focus)
+			if (focusWithKeyboard)
 			{
 				ImGui::SetKeyboardFocusHere();
 			}
@@ -52,23 +51,22 @@ namespace {
 	};
 }
 
-// A fixed char buffer cut a long value off where it ended, and the cut value was then saved.
 TEST_CASE("InputTextWithHint grows its string rather than cutting typed text off")
 {
 	Field field;
 	std::string text = "abc";
 
-	field.Next(text, true);
+	const bool focusWithKeyboard = true;
+	field.Next(text, focusWithKeyboard);
 	field.Next(text);
 
 	const std::string typed(2000, 'x');
 
-	for (const char c : typed)
+	for (const char typedCharacter : typed)
 	{
-		ImGui::GetIO().AddInputCharacter(static_cast<unsigned int>(c));
+		ImGui::GetIO().AddInputCharacter(static_cast<unsigned int>(typedCharacter));
 	}
 
-	// Focusing a field from the keyboard selects what it holds, so the typing replaces "abc".
 	CHECK(field.Next(text));
 	CHECK(text == typed);
 }

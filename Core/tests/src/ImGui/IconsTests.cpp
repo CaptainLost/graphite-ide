@@ -9,6 +9,28 @@
 using Core::IconForExtension;
 using Core::UsedGlyphRanges;
 
+namespace {
+	constexpr unsigned int kFourByteLeadMask = 0x07u;
+	constexpr unsigned int kContinuationMask = 0x3Fu;
+	constexpr unsigned int kLeadShift = 18;
+	constexpr unsigned int kSecondShift = 12;
+	constexpr unsigned int kThirdShift = 6;
+	constexpr int kEntriesPerRange = 2;
+
+	ImWchar DecodeFourByteUtf8(const char* icon)
+	{
+		const auto firstByte = static_cast<unsigned char>(icon[0]);
+		const auto secondByte = static_cast<unsigned char>(icon[1]);
+		const auto thirdByte = static_cast<unsigned char>(icon[2]);
+		const auto fourthByte = static_cast<unsigned char>(icon[3]);
+
+		return static_cast<ImWchar>(((firstByte & kFourByteLeadMask) << kLeadShift) |
+									((secondByte & kContinuationMask) << kSecondShift) |
+									((thirdByte & kContinuationMask) << kThirdShift) |
+									(fourthByte & kContinuationMask));
+	}
+}
+
 TEST_CASE("IconForExtension recognizes known source extensions")
 {
 	CHECK(std::strcmp(IconForExtension(".c"), ICON_MDI_LANGUAGE_C) == 0);
@@ -51,8 +73,6 @@ TEST_CASE("UsedGlyphRanges covers every icon this app can display, zero-terminat
 	const ImWchar* ranges = UsedGlyphRanges();
 	REQUIRE(ranges != nullptr);
 
-	// Decode each icon's UTF-8 by hand (every MDI glyph used here is a 4-byte sequence,
-	// since they all sit above U+FFFF) and check it appears as a [c, c] pair.
 	const char* icons[] = {
 		ICON_MDI_FILE,
 		ICON_MDI_FOLDER,
@@ -100,17 +120,12 @@ TEST_CASE("UsedGlyphRanges covers every icon this app can display, zero-terminat
 
 	for (const char* icon : icons)
 	{
-		const auto b0 = static_cast<unsigned char>(icon[0]);
-		const auto b1 = static_cast<unsigned char>(icon[1]);
-		const auto b2 = static_cast<unsigned char>(icon[2]);
-		const auto b3 = static_cast<unsigned char>(icon[3]);
-		const auto codepoint = static_cast<ImWchar>(((b0 & 0x07u) << 18) | ((b1 & 0x3Fu) << 12) |
-													((b2 & 0x3Fu) << 6) | (b3 & 0x3Fu));
+		const ImWchar codepoint = DecodeFourByteUtf8(icon);
 
 		bool found = false;
-		for (int i = 0; ranges[i] != 0 || ranges[i + 1] != 0; i += 2)
+		for (int rangeStart = 0; ranges[rangeStart] != 0 || ranges[rangeStart + 1] != 0; rangeStart += kEntriesPerRange)
 		{
-			if (ranges[i] == codepoint && ranges[i + 1] == codepoint)
+			if (ranges[rangeStart] == codepoint && ranges[rangeStart + 1] == codepoint)
 			{
 				found = true;
 				break;
@@ -120,11 +135,11 @@ TEST_CASE("UsedGlyphRanges covers every icon this app can display, zero-terminat
 		CHECK(found);
 	}
 
-	int count = 0;
-	while (ranges[count] != 0 || ranges[count + 1] != 0)
+	int terminatorStart = 0;
+	while (ranges[terminatorStart] != 0 || ranges[terminatorStart + 1] != 0)
 	{
-		count += 2;
+		terminatorStart += kEntriesPerRange;
 	}
-	CHECK(ranges[count] == 0);
-	CHECK(ranges[count + 1] == 0);
+	CHECK(ranges[terminatorStart] == 0);
+	CHECK(ranges[terminatorStart + 1] == 0);
 }

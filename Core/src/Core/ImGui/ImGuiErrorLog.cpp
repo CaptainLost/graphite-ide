@@ -19,19 +19,19 @@ namespace Core {
 		context.ErrorCallbackUserData = this;
 	}
 
-	void ImGuiErrorLog::OnError(ImGuiContext* context, void* self, const char* message)
+	void ImGuiErrorLog::OnError(ImGuiContext* context, void* userData, const char* message)
 	{
-		auto& log = *static_cast<ImGuiErrorLog*>(self);
+		ImGuiErrorLog& errorLog = *static_cast<ImGuiErrorLog*>(userData);
 
-		if (!log.m_Reported.emplace(message).second)
+		const auto [reportedMessage, isFirstReport] = errorLog.m_ReportedMessages.emplace(message);
+
+		if (!isFirstReport)
 		{
 			return;
 		}
 
-		// The window is named only on the first report: a message that recurs in another
-		// window is the same mistake, and a tab titled by its path would make every one new.
 		const ImGuiWindow* window = context->CurrentWindow;
-		log.m_Logger.error("ImGui error in window '{}': {}", window ? window->Name : "none",
-						   message);
+		const char* windowName = window ? window->Name : "none";
+		errorLog.m_Logger.error("ImGui error in window '{}': {}", windowName, message);
 	}
 }

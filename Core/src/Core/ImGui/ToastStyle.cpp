@@ -13,48 +13,65 @@ namespace Core {
 		constexpr float kPaddingY = 12.0f;
 		constexpr float kIconDiameter = 24.0f;
 		constexpr float kMarkThickness = 2.0f;
+		constexpr float kHalf = 0.5f;
 
-		// The dim colour alone is too faint to read a several-line git message in; the full one
-		// would leave the bold title nothing but its weight to stand apart by.
-		constexpr float kMessageBrightness = 0.85f;
+		constexpr float kMessageShareTowardsText = 0.85f;
+
+		constexpr int kPointsInStroke = 2;
+		constexpr int kPointsInTick = 3;
+
+		constexpr ImVec2 kTickStart(-5.0f, 0.0f);
+		constexpr ImVec2 kTickBend(-1.5f, 3.5f);
+		constexpr ImVec2 kTickEnd(5.0f, -3.5f);
+
+		constexpr ImVec2 kStemTop(0.0f, -5.0f);
+		constexpr ImVec2 kStemBottom(0.0f, 1.5f);
+		constexpr ImVec2 kStemDot(0.0f, 4.5f);
+		constexpr float kStemDotRadius = 1.2f;
+
+		constexpr ImVec2 kCrossTopLeft(-5.0f, -5.0f);
+		constexpr ImVec2 kCrossBottomRight(5.0f, 5.0f);
+		constexpr ImVec2 kCrossBottomLeft(-5.0f, 5.0f);
+		constexpr ImVec2 kCrossTopRight(5.0f, -5.0f);
 
 		ImVec4 ToImVec4(const Color& colour)
 		{
 			return ImVec4(colour.R, colour.G, colour.B, colour.A);
 		}
 
-		// The kind's mark, drawn rather than typed: a glyph from the icon font sits where its
-		// font's metrics put it, which is never quite the circle's centre, and is drawn thin.
-		// Lengths are at 100% and in pixels from the centre, y downwards. Every stroke is a
-		// polyline, never AddLine, which shifts both ends by half a pixel and would put the
-		// cross and the exclamation stem off the circle's centre.
-		void DrawMark(ImDrawList& draw, ToastKind kind, ImVec2 centre, ImU32 colour)
+		ImVec2 PointFromCentre(ImVec2 centre, ImVec2 offsetAtFullScale)
 		{
-			const float thickness = Scaled(kMarkThickness);
-			const auto at = [&](float x, float y) { return ImVec2(centre.x + Scaled(x), centre.y + Scaled(y)); };
-			const auto stroke = [&](ImVec2 from, ImVec2 to) {
-				const ImVec2 points[] = {from, to};
-				draw.AddPolyline(points, 2, colour, thickness, ImDrawFlags_None);
-			};
+			return ImVec2(centre.x + Scaled(offsetAtFullScale.x), centre.y + Scaled(offsetAtFullScale.y));
+		}
 
+		// WARNING: a stroke is a polyline, never AddLine, which shifts both ends by half a pixel and would put the cross and the exclamation stem off the circle's centre.
+		void DrawStroke(ImDrawList& drawList, ImVec2 from, ImVec2 to, ImU32 colour)
+		{
+			const ImVec2 points[] = {from, to};
+			drawList.AddPolyline(points, kPointsInStroke, colour, Scaled(kMarkThickness), ImDrawFlags_None);
+		}
+
+		void DrawMark(ImDrawList& drawList, ToastKind kind, ImVec2 centre, ImU32 colour)
+		{
 			switch (kind)
 			{
 			case ToastKind::Success:
 			{
-				const ImVec2 tick[] = {at(-5.0f, 0.0f), at(-1.5f, 3.5f), at(5.0f, -3.5f)};
-				draw.AddPolyline(tick, 3, colour, thickness, ImDrawFlags_None);
+				const ImVec2 tick[] = {PointFromCentre(centre, kTickStart), PointFromCentre(centre, kTickBend),
+									   PointFromCentre(centre, kTickEnd)};
+				drawList.AddPolyline(tick, kPointsInTick, colour, Scaled(kMarkThickness), ImDrawFlags_None);
 				return;
 			}
 			case ToastKind::Warning:
-				stroke(at(0.0f, -5.0f), at(0.0f, 1.5f));
-				draw.AddCircleFilled(at(0.0f, 4.5f), Scaled(1.2f), colour);
+				DrawStroke(drawList, PointFromCentre(centre, kStemTop), PointFromCentre(centre, kStemBottom), colour);
+				drawList.AddCircleFilled(PointFromCentre(centre, kStemDot), Scaled(kStemDotRadius), colour);
 				return;
 			case ToastKind::Error:
 				break;
 			}
 
-			stroke(at(-5.0f, -5.0f), at(5.0f, 5.0f));
-			stroke(at(-5.0f, 5.0f), at(5.0f, -5.0f));
+			DrawStroke(drawList, PointFromCentre(centre, kCrossTopLeft), PointFromCentre(centre, kCrossBottomRight), colour);
+			DrawStroke(drawList, PointFromCentre(centre, kCrossBottomLeft), PointFromCentre(centre, kCrossTopRight), colour);
 		}
 	}
 
@@ -100,19 +117,23 @@ namespace Core {
 
 	Color ToastMessageColour(const ToastPalette& palette)
 	{
-		const Color& from = palette.TextDim;
-		const Color& to = palette.Text;
-		const float towardsText = kMessageBrightness;
+		const Color& dimText = palette.TextDim;
+		const Color& fullText = palette.Text;
 
-		return {.R = from.R + (to.R - from.R) * towardsText,
-				.G = from.G + (to.G - from.G) * towardsText,
-				.B = from.B + (to.B - from.B) * towardsText,
-				.A = from.A + (to.A - from.A) * towardsText};
+		return {.R = dimText.R + (fullText.R - dimText.R) * kMessageShareTowardsText,
+				.G = dimText.G + (fullText.G - dimText.G) * kMessageShareTowardsText,
+				.B = dimText.B + (fullText.B - dimText.B) * kMessageShareTowardsText,
+				.A = dimText.A + (fullText.A - dimText.A) * kMessageShareTowardsText};
 	}
 
-	void DrawToastIcon(ImDrawList& draw, ToastKind kind, ImVec2 centre, const ToastPalette& palette)
+	// WARNING: GetColorU32 applies ImGui's style alpha, so a toast fading out fades its icon with it.
+	void DrawToastIcon(ImDrawList& drawList, ToastKind kind, ImVec2 centre, const ToastPalette& palette)
 	{
-		draw.AddCircleFilled(centre, ToastIconDiameter() * 0.5f, ImGui::GetColorU32(ToImVec4(ToastAccentOf(palette, kind))));
-		DrawMark(draw, kind, centre, ImGui::GetColorU32(ToImVec4(palette.Surface)));
+		const float iconRadius = ToastIconDiameter() * kHalf;
+		const ImU32 accentColour = ImGui::GetColorU32(ToImVec4(ToastAccentOf(palette, kind)));
+		const ImU32 markColour = ImGui::GetColorU32(ToImVec4(palette.Surface));
+
+		drawList.AddCircleFilled(centre, iconRadius, accentColour);
+		DrawMark(drawList, kind, centre, markColour);
 	}
 }

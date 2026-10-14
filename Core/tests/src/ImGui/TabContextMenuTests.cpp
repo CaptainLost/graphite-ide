@@ -17,12 +17,8 @@ namespace {
 	constexpr ImVec2 kWindowPos(100.0f, 100.0f);
 	constexpr ImVec2 kWindowSize(300.0f, 200.0f);
 
-	// A point a few pixels into the title bar, which is where Begin puts the item a floating
-	// window's tab is.
 	constexpr ImVec2 kOverTitleBar(kWindowPos.x + 50.0f, kWindowPos.y + 5.0f);
 
-	// A context of its own with one floating window at a known place, drawn a frame at a
-	// time the way an owner draws it: Begin, then the menu straight after.
 	class TabWindow
 	{
 	public:
@@ -51,8 +47,6 @@ namespace {
 			bool MenuOpen = false;
 		};
 
-		// Runs one frame and reports what the window's title bar and menu looked like right
-		// after the menu was drawn.
 		Frame Next()
 		{
 			Frame frame;
@@ -122,8 +116,6 @@ TEST_CASE("A clicked tab missing from the list closes only itself, and only thro
 
 TEST_CASE("Drawing the menu leaves the title bar reported as hovered")
 {
-	// An owner asks about the tab after the menu too - a preview document promotes itself on
-	// a double click - so reading the window must not stop ImGui answering for its tab.
 	TabWindow window;
 	window.Next();
 
@@ -142,10 +134,13 @@ TEST_CASE("A right click on the title bar opens the menu on release")
 	io.AddMousePosEvent(kOverTitleBar.x, kOverTitleBar.y);
 	REQUIRE_FALSE(window.Next().MenuOpen);
 
-	io.AddMouseButtonEvent(ImGuiMouseButton_Right, true);
+	const bool pressed = true;
+	const bool released = false;
+
+	io.AddMouseButtonEvent(ImGuiMouseButton_Right, pressed);
 	REQUIRE_FALSE(window.Next().MenuOpen);
 
-	io.AddMouseButtonEvent(ImGuiMouseButton_Right, false);
+	io.AddMouseButtonEvent(ImGuiMouseButton_Right, released);
 	window.Next();
 
 	CHECK(window.Next().MenuOpen);

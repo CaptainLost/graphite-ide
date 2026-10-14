@@ -11,8 +11,10 @@ namespace {
 
 	constexpr float kFrameSeconds = 1.0f / 60.0f;
 	const ImVec2 kTogglePosition(20.0f, 30.0f);
+	const ImVec2 kDisplaySize(400.0f, 300.0f);
+	const ImVec2 kWindowOrigin(0.0f, 0.0f);
+	constexpr float kHalf = 0.5f;
 
-	// One toggle in a window of its own, drawn a frame at a time as the application draws it.
 	class ToggleFrames
 	{
 	public:
@@ -21,7 +23,7 @@ namespace {
 			m_Context = ImGui::CreateContext();
 
 			ImGuiIO& io = ImGui::GetIO();
-			io.DisplaySize = ImVec2(400.0f, 300.0f);
+			io.DisplaySize = kDisplaySize;
 			io.DeltaTime = kFrameSeconds;
 			io.IniFilename = nullptr;
 			io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
@@ -80,8 +82,8 @@ namespace {
 		{
 			ImGui::NewFrame();
 			Core::Animation::BeginFrame();
-			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-			ImGui::SetNextWindowSize(ImVec2(400.0f, 300.0f));
+			ImGui::SetNextWindowPos(kWindowOrigin);
+			ImGui::SetNextWindowSize(kDisplaySize);
 			ImGui::Begin("toggle");
 			ImGui::SetCursorScreenPos(kTogglePosition);
 
@@ -101,7 +103,7 @@ namespace {
 
 			const ImVec2 itemMin = ImGui::GetItemRectMin();
 			const ImVec2 itemMax = ImGui::GetItemRectMax();
-			m_Centre = ImVec2((itemMin.x + itemMax.x) * 0.5f, (itemMin.y + itemMax.y) * 0.5f);
+			m_Centre = ImVec2((itemMin.x + itemMax.x) * kHalf, (itemMin.y + itemMax.y) * kHalf);
 			m_ItemSize = ImVec2(itemMax.x - itemMin.x, itemMax.y - itemMin.y);
 
 			ImGui::End();

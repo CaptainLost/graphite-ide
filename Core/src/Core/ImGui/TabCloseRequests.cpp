@@ -5,37 +5,35 @@
 namespace Core {
 
 	namespace {
-		// The part of a window name ImGui identifies the window by: from the last "###" on,
-		// marker included, or the whole name when there is none. ImGui's string hash starts
-		// over at every "###", so two names that agree from there on are one window.
-		std::string_view Identity(std::string_view name)
+		std::string_view WindowIdentityOf(std::string_view name)
 		{
-			const std::size_t marker = name.rfind("###");
+			const std::size_t identityMarkerPosition = name.rfind("###");
 
-			return marker == std::string_view::npos ? name : name.substr(marker);
+			return identityMarkerPosition == std::string_view::npos ? name : name.substr(identityMarkerPosition);
 		}
 	}
 
 	void TabCloseRequests::Request(std::string_view name)
 	{
-		m_Asked.emplace(Identity(name));
+		m_AskedWindowIdentities.emplace(WindowIdentityOf(name));
 	}
 
 	bool TabCloseRequests::Take(std::string_view name)
 	{
-		const auto found = m_Due.find(Identity(name));
+		const std::set<std::string, std::less<>>::iterator dueRequest =
+			m_DueWindowIdentities.find(WindowIdentityOf(name));
 
-		if (found == m_Due.end())
+		if (dueRequest == m_DueWindowIdentities.end())
 		{
 			return false;
 		}
 
-		m_Due.erase(found);
+		m_DueWindowIdentities.erase(dueRequest);
 		return true;
 	}
 
 	void TabCloseRequests::EndFrame()
 	{
-		m_Due = std::exchange(m_Asked, {});
+		m_DueWindowIdentities = std::exchange(m_AskedWindowIdentities, {});
 	}
 }

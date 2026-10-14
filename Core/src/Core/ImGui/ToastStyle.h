@@ -16,6 +16,5 @@ namespace Core {
 	const Color& ToastAccentOf(const ToastPalette& palette, ToastKind kind);
 	Color ToastMessageColour(const ToastPalette& palette);
 
-	// Takes ImGui's style alpha, so a toast fading out fades its icon with it.
-	void DrawToastIcon(ImDrawList& draw, ToastKind kind, ImVec2 centre, const ToastPalette& palette);
+	void DrawToastIcon(ImDrawList& drawList, ToastKind kind, ImVec2 centre, const ToastPalette& palette);
 }

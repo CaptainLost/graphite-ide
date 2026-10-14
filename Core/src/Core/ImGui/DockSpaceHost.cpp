@@ -16,24 +16,24 @@ namespace Core {
 
 		void DockPanels(ImGuiID nodeId, const std::vector<std::string>& panelIds)
 		{
-			for (const std::string& id : panelIds)
+			for (const std::string& panelId : panelIds)
 			{
-				ImGui::DockBuilderDockWindow(id.c_str(), nodeId);
+				ImGui::DockBuilderDockWindow(panelId.c_str(), nodeId);
 			}
 		}
 
 		bool WasRestoredFromIni(ImGuiID dockSpaceId)
 		{
-			const ImGuiDockNode* node = ImGui::DockBuilderGetNode(dockSpaceId);
+			const ImGuiDockNode* dockSpaceNode = ImGui::DockBuilderGetNode(dockSpaceId);
 
-			return node != nullptr && node->IsSplitNode();
+			return dockSpaceNode != nullptr && dockSpaceNode->IsSplitNode();
 		}
 
-		void BuildDefaultLayout(ImGuiID dockSpaceId, const DockLayout& layout, ImVec2 size)
+		void BuildDefaultLayout(ImGuiID dockSpaceId, const DockLayout& layout, ImVec2 hostSize)
 		{
 			ImGui::DockBuilderRemoveNode(dockSpaceId);
 			ImGui::DockBuilderAddNode(dockSpaceId, ImGuiDockNodeFlags_DockSpace);
-			ImGui::DockBuilderSetNodeSize(dockSpaceId, size);
+			ImGui::DockBuilderSetNodeSize(dockSpaceId, hostSize);
 
 			ImGuiID centerId = dockSpaceId;
 			const ImGuiID leftId = ImGui::DockBuilderSplitNode(
@@ -45,9 +45,6 @@ namespace Core {
 			DockPanels(bottomId, layout.Bottom);
 			DockPanels(centerId, layout.Center);
 
-			// Lets GetCenterNodeId find it later without recomputing the split tree, and gives
-			// a caller with nothing else to go on somewhere to land. imgui.ini saves the flag,
-			// so it survives into sessions that only restore the layout.
 			if (ImGuiDockNode* centerNode = ImGui::DockBuilderGetNode(centerId); centerNode != nullptr)
 			{
 				centerNode->SetLocalFlags(centerNode->LocalFlags | ImGuiDockNodeFlags_CentralNode);
@@ -57,19 +54,17 @@ namespace Core {
 			CORE_INFO("Built default dock layout");
 		}
 
-		// ImGui selects a docked tab on a right press or release over it, before any owner
-		// gets to ask about the click. The tab bars are submitted inside DockSpace, so locking
-		// the right button for exactly that call keeps a right click from switching tabs; the
-		// lock is lifted straight after, and the tab's own context menu still sees the click.
+		// WARNING: ImGui selects a docked tab on a right press or release before any owner can ask about the click, and the tab bars are submitted inside DockSpace. The right button is locked for exactly that call and restored straight after, so the tab's own context menu still sees the click.
 		void DockSpaceIgnoringRightClick(ImGuiID dockSpaceId)
 		{
-			ImGuiKeyOwnerData* owner = ImGui::GetKeyOwnerData(ImGui::GetCurrentContext(), ImGuiKey_MouseRight);
-			const ImGuiKeyOwnerData saved = *owner;
-			owner->LockThisFrame = true;
+			ImGuiKeyOwnerData* rightButtonOwner = ImGui::GetKeyOwnerData(ImGui::GetCurrentContext(), ImGuiKey_MouseRight);
+			const ImGuiKeyOwnerData ownerBeforeLock = *rightButtonOwner;
+			rightButtonOwner->LockThisFrame = true;
 
-			ImGui::DockSpace(dockSpaceId, ImVec2(0.0f, 0.0f), ImGuiDockNodeFlags_None);
+			const ImVec2 sizeFillingWindow(0.0f, 0.0f);
+			ImGui::DockSpace(dockSpaceId, sizeFillingWindow, ImGuiDockNodeFlags_None);
 
-			*owner = saved;
+			*rightButtonOwner = ownerBeforeLock;
 		}
 	}
 
@@ -83,9 +78,14 @@ namespace Core {
 		ImGui::SetNextWindowSize(viewport->WorkSize);
 		ImGui::SetNextWindowViewport(viewport->ID);
 
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+		constexpr float kNoRounding = 0.0f;
+		constexpr float kNoBorder = 0.0f;
+		const ImVec2 noPadding(0.0f, 0.0f);
+		constexpr int hostStyleVarCount = 3;
+
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, kNoRounding);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, kNoBorder);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, noPadding);
 
 		constexpr ImGuiWindowFlags hostFlags =
 			ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
@@ -93,16 +93,14 @@ namespace Core {
 			ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoDocking |
 			ImGuiWindowFlags_MenuBar;
 
-		// A window's menu-bar height is fixed the instant Begin() runs, from FramePadding, so
-		// the override has to span exactly this call. Left pushed as far as DockSpace() it
-		// would also size every docked node's own tab bar and push each panel's content down.
+		// WARNING: a window's menu-bar height is fixed when Begin runs, from FramePadding, so the override must span exactly that call. Pushed as far as DockSpace it would also size every docked node's tab bar and push each panel's content down.
 		const bool overrideMenuBarHeight = layout.MenuBarHeight > 0.0f;
 		if (overrideMenuBarHeight)
 		{
 			const ImGuiStyle& style = ImGui::GetStyle();
+			const float paddingCentringText = (layout.MenuBarHeight - ImGui::GetFontSize()) * 0.5f;
 			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
-								ImVec2(style.FramePadding.x,
-									   (layout.MenuBarHeight - ImGui::GetFontSize()) * 0.5f));
+								ImVec2(style.FramePadding.x, paddingCentringText));
 		}
 
 		ImGui::Begin(kHostWindowName, nullptr, hostFlags);
@@ -112,7 +110,7 @@ namespace Core {
 			ImGui::PopStyleVar();
 		}
 
-		ImGui::PopStyleVar(3);
+		ImGui::PopStyleVar(hostStyleVarCount);
 
 		if (aboveDockSpace)
 		{
@@ -130,12 +128,11 @@ namespace Core {
 
 		m_LayoutBuilt = true;
 
-		// A layout restored from imgui.ini takes precedence at startup, but an explicit reset
-		// is exactly the request to overwrite what the user has on screen.
-		const bool forced = m_ForceRebuild;
+		const bool layoutResetRequested = m_ForceRebuild;
 		m_ForceRebuild = false;
 
-		if (!forced && WasRestoredFromIni(dockSpaceId))
+		const bool keepRestoredLayout = !layoutResetRequested && WasRestoredFromIni(dockSpaceId);
+		if (keepRestoredLayout)
 		{
 			return;
 		}
@@ -162,9 +159,9 @@ namespace Core {
 
 	bool DockSpaceHost::IsCenterEmpty() const
 	{
-		const ImGuiDockNode* node = ImGui::DockBuilderGetNode(GetCenterNodeId());
+		const ImGuiDockNode* centerNode = ImGui::DockBuilderGetNode(GetCenterNodeId());
 
-		return node != nullptr && node->IsEmpty();
+		return centerNode != nullptr && centerNode->IsEmpty();
 	}
 
 	bool DockSpaceHost::CenterEmptyState(std::string_view message, const char* action) const
@@ -174,13 +171,9 @@ namespace Core {
 			return false;
 		}
 
-		// Into the window DockSpace() opened inside the host, not the host itself: that window
-		// paints the empty node's background over anything the host drew there. Beginning it
-		// again this frame appends to it, above that background, and it is also the window
-		// the node's clicks go to. Every docked window draws above it in turn, so the message
-		// cannot land on a tab that arrives later in the frame.
-		const ImGuiDockNode* node = ImGui::DockBuilderGetNode(GetCenterNodeId());
-		ImGuiWindow* dockSpaceWindow = node->HostWindow;
+		// WARNING: this draws into the window DockSpace opened inside the host, not the host: that window paints the empty node's background over anything the host drew there. Beginning it again appends above that background, and every docked window draws above it, so the message cannot land on a later tab.
+		const ImGuiDockNode* centerNode = ImGui::DockBuilderGetNode(GetCenterNodeId());
+		ImGuiWindow* dockSpaceWindow = centerNode->HostWindow;
 
 		if (dockSpaceWindow == nullptr)
 		{
@@ -189,11 +182,11 @@ namespace Core {
 
 		ImGui::Begin(dockSpaceWindow->Name, nullptr, dockSpaceWindow->Flags);
 
-		ImGui::SetCursorScreenPos(node->Pos);
-		const bool clicked = EmptyState(message, action, node->Size);
+		ImGui::SetCursorScreenPos(centerNode->Pos);
+		const bool clicked = EmptyState(message, action, centerNode->Size);
 
 		ImGui::End();
 
 		return clicked;
 	}
-}
+}

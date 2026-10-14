@@ -24,9 +24,6 @@ namespace Core {
 	class DockSpaceHost final : NonCopyable
 	{
 	public:
-		// `aboveDockSpace`, when given, is drawn at the top of the host window, below the menu
-		// bar, and the dockspace takes the space left under it - a place for a bar that has to
-		// sit above every docked panel without being one.
 		void Begin(const DockLayout& layout, const std::function<void()>& aboveDockSpace = {});
 		void End();
 
@@ -38,21 +35,12 @@ namespace Core {
 
 		unsigned int GetCenterNodeId() const;
 
-		// True from the Begin that built the default layout - at first launch with no imgui.ini,
-		// or after RequestLayoutReset - until the next Begin. Something that docks windows of its
-		// own after Begin can tell from it that their nodes were just removed.
 		bool HasBuiltLayoutThisFrame() const { return m_BuiltLayoutThisFrame; }
 
-		// The dockspace's root node, 0 before the first Begin.
 		unsigned int GetDockSpaceId() const { return m_DockSpaceId; }
 
-		// Between Begin and End. True while the central node holds no window, so the area a
-		// document would open into shows nothing but the dockspace's background.
 		bool IsCenterEmpty() const;
 
-		// Between Begin and End. While the central node is empty, says why in its middle
-		// through EmptyState, with `action` as a button under the message; returns true on
-		// the frame that button is clicked. Submits nothing while the node holds a window.
 		bool CenterEmptyState(std::string_view message, const char* action = nullptr) const;
 
 	private:

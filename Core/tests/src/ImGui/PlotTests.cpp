@@ -3,14 +3,23 @@
 #include <imgui.h>
 #include <implot.h>
 
+namespace {
+	const ImVec2 kDisplaySize(800.0f, 600.0f);
+	constexpr float kFrameSeconds = 1.0f / 60.0f;
+	constexpr int kSeriesCount = 2;
+	constexpr int kGroupCount = 3;
+	constexpr double kBarWidthShare = 0.67;
+	constexpr double kNoShift = 0.0;
+}
+
 TEST_CASE("A stacked bar chart draws inside an ImGui frame")
 {
-	ImGuiContext* context = ImGui::CreateContext();
-	ImPlotContext* plots = ImPlot::CreateContext();
+	ImGuiContext* imguiContext = ImGui::CreateContext();
+	ImPlotContext* plotContext = ImPlot::CreateContext();
 
 	ImGuiIO& io = ImGui::GetIO();
-	io.DisplaySize = ImVec2(800.0f, 600.0f);
-	io.DeltaTime = 1.0f / 60.0f;
+	io.DisplaySize = kDisplaySize;
+	io.DeltaTime = kFrameSeconds;
 	io.Fonts->Build();
 
 	const char* labels[] = {"input", "output"};
@@ -23,7 +32,7 @@ TEST_CASE("A stacked bar chart draws inside an ImGui frame")
 
 	if (ImPlot::BeginPlot("##cost"))
 	{
-		ImPlot::PlotBarGroups(labels, values, 2, 3, 0.67, 0, ImPlotBarGroupsFlags_Stacked);
+		ImPlot::PlotBarGroups(labels, values, kSeriesCount, kGroupCount, kBarWidthShare, kNoShift, ImPlotBarGroupsFlags_Stacked);
 		ImPlot::EndPlot();
 		plotted = true;
 	}
@@ -33,6 +42,6 @@ TEST_CASE("A stacked bar chart draws inside an ImGui frame")
 
 	CHECK(plotted);
 
-	ImPlot::DestroyContext(plots);
-	ImGui::DestroyContext(context);
+	ImPlot::DestroyContext(plotContext);
+	ImGui::DestroyContext(imguiContext);
 }

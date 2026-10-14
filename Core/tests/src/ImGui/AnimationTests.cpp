@@ -8,8 +8,6 @@
 namespace {
 	constexpr float kFrameSeconds = 1.0f / 60.0f;
 
-	// A context of its own per test: ImAnim reads its clock from ImGui's frame step, so the
-	// frames have to be real ones.
 	class Frames
 	{
 	public:
@@ -31,7 +29,6 @@ namespace {
 		Frames(const Frames&) = delete;
 		Frames& operator=(const Frames&) = delete;
 
-		// Runs one frame and returns the hover amount the item reports in it.
 		float Next(ImGuiID id, bool hovered)
 		{
 			ImGui::NewFrame();
@@ -41,7 +38,6 @@ namespace {
 			return amount;
 		}
 
-		// Runs frames until at least the given time has passed and returns the last amount.
 		float After(float seconds, ImGuiID id, bool hovered)
 		{
 			float amount = 0.0f;
@@ -52,7 +48,6 @@ namespace {
 			return amount;
 		}
 
-		// Runs one frame and returns where the switch's knob stands in it.
 		float NextSwitch(ImGuiID id, bool on)
 		{
 			ImGui::NewFrame();
@@ -78,6 +73,14 @@ namespace {
 
 	constexpr ImGuiID kItem = 0x1234;
 	constexpr ImGuiID kOtherItem = 0x5678;
+
+	constexpr bool kHovered = true;
+	constexpr bool kNotHovered = false;
+	constexpr bool kSwitchedOn = true;
+	constexpr bool kSwitchedOff = false;
+
+	constexpr float kSettleMarginSeconds = 0.05f;
+	constexpr int kHoveredFrames = 30;
 }
 
 static_assert(Core::Animation::kLongestStepSeconds == 0.1f);
@@ -86,51 +89,47 @@ TEST_CASE("An item never hovered rests at zero")
 {
 	Frames frames;
 
-	CHECK(frames.After(0.5f, kItem, false) == doctest::Approx(0.0f));
+	CHECK(frames.After(0.5f, kItem, kNotHovered) == doctest::Approx(0.0f));
 }
 
 TEST_CASE("A hover fades in over the hover-in time rather than arriving at once")
 {
 	Frames frames;
-	frames.Next(kItem, false);
+	frames.Next(kItem, kNotHovered);
 
-	// The frame that changes the target still reports where the fade starts from; the fade
-	// is under way from the one after.
-	frames.Next(kItem, true);
-	const float early = frames.Next(kItem, true);
+	frames.Next(kItem, kHovered);
+	const float early = frames.Next(kItem, kHovered);
 	CHECK(early > 0.0f);
 	CHECK(early < 1.0f);
 
-	CHECK(frames.After(Core::Animation::kHoverInSeconds + 0.05f, kItem, true) ==
+	CHECK(frames.After(Core::Animation::kHoverInSeconds + kSettleMarginSeconds, kItem, kHovered) ==
 		  doctest::Approx(1.0f));
 }
 
 TEST_CASE("Leaving an item fades it back to rest over the hover-out time")
 {
 	Frames frames;
-	frames.After(Core::Animation::kHoverInSeconds + 0.05f, kItem, true);
+	frames.After(Core::Animation::kHoverInSeconds + kSettleMarginSeconds, kItem, kHovered);
 
-	frames.Next(kItem, false);
-	const float early = frames.Next(kItem, false);
+	frames.Next(kItem, kNotHovered);
+	const float early = frames.Next(kItem, kNotHovered);
 	CHECK(early < 1.0f);
 	CHECK(early > 0.0f);
 
-	CHECK(frames.After(Core::Animation::kHoverOutSeconds + 0.05f, kItem, false) ==
+	CHECK(frames.After(Core::Animation::kHoverOutSeconds + kSettleMarginSeconds, kItem, kNotHovered) ==
 		  doctest::Approx(0.0f));
 }
 
 TEST_CASE("Leaving mid-fade turns around from where the fade had got to")
 {
 	Frames frames;
-	frames.Next(kItem, false);
-	const float midway = frames.After(Core::Animation::kHoverInSeconds * 0.5f, kItem, true);
+	frames.Next(kItem, kNotHovered);
+	const float midway = frames.After(Core::Animation::kHoverInSeconds * 0.5f, kItem, kHovered);
 	REQUIRE(midway > 0.0f);
 	REQUIRE(midway < 1.0f);
 
-	// The fade turns around from its value in the frame the pointer left, which is one frame
-	// further on than the last hovered one - so no jump, then downward from there.
-	const float leaving = frames.Next(kItem, false);
-	const float turned = frames.Next(kItem, false);
+	const float leaving = frames.Next(kItem, kNotHovered);
+	const float turned = frames.Next(kItem, kNotHovered);
 
 	CHECK(leaving == doctest::Approx(midway).epsilon(0.1));
 	CHECK(turned < leaving);
@@ -140,12 +139,12 @@ TEST_CASE("Leaving mid-fade turns around from where the fade had got to")
 TEST_CASE("One item's hover does not move another's")
 {
 	Frames frames;
-	frames.Next(kOtherItem, false);
+	frames.Next(kOtherItem, kNotHovered);
 
-	for (int i = 0; i < 30; ++i)
+	for (int frameIndex = 0; frameIndex < kHoveredFrames; ++frameIndex)
 	{
-		frames.Next(kItem, true);
-		CHECK(frames.Next(kOtherItem, false) == doctest::Approx(0.0f));
+		frames.Next(kItem, kHovered);
+		CHECK(frames.Next(kOtherItem, kNotHovered) == doctest::Approx(0.0f));
 	}
 }
 
@@ -171,16 +170,16 @@ TEST_CASE("Blend goes from one colour to the other, alpha included")
 TEST_CASE("A hover under way asks for the next frame, and a settled one does not")
 {
 	Frames frames;
-	frames.Next(kItem, false);
+	frames.Next(kItem, kNotHovered);
 	(void)Core::Redraw::TakeDeadline();
 
-	frames.Next(kItem, true);
+	frames.Next(kItem, kHovered);
 	CHECK(Core::Redraw::TakeDeadline().has_value());
 
-	frames.After(Core::Animation::kHoverInSeconds + 0.05f, kItem, true);
+	frames.After(Core::Animation::kHoverInSeconds + kSettleMarginSeconds, kItem, kHovered);
 	(void)Core::Redraw::TakeDeadline();
 
-	frames.Next(kItem, true);
+	frames.Next(kItem, kHovered);
 	CHECK_FALSE(Core::Redraw::TakeDeadline().has_value());
 }
 
@@ -188,51 +187,51 @@ TEST_CASE("A switch first seen on stands at one rather than sliding in")
 {
 	Frames frames;
 
-	CHECK(frames.NextSwitch(kItem, true) == doctest::Approx(1.0f));
+	CHECK(frames.NextSwitch(kItem, kSwitchedOn) == doctest::Approx(1.0f));
 }
 
 TEST_CASE("A switch first seen off stands at zero")
 {
 	Frames frames;
 
-	CHECK(frames.NextSwitch(kItem, false) == doctest::Approx(0.0f));
+	CHECK(frames.NextSwitch(kItem, kSwitchedOff) == doctest::Approx(0.0f));
 }
 
 TEST_CASE("A flipped switch slides over the switch time and settles at the other end")
 {
 	Frames frames;
-	frames.NextSwitch(kItem, true);
+	frames.NextSwitch(kItem, kSwitchedOn);
 
-	const float early = frames.NextSwitch(kItem, false);
+	const float early = frames.NextSwitch(kItem, kSwitchedOff);
 	CHECK(early < 1.0f);
 	CHECK(early > 0.0f);
 
-	CHECK(frames.SwitchAfter(Core::Animation::kSwitchSeconds + 0.05f, kItem, false) == doctest::Approx(0.0f));
+	CHECK(frames.SwitchAfter(Core::Animation::kSwitchSeconds + kSettleMarginSeconds, kItem, kSwitchedOff) == doctest::Approx(0.0f));
 }
 
 TEST_CASE("A switch under way asks for the next frame, and a settled one does not")
 {
 	Frames frames;
-	frames.NextSwitch(kItem, false);
+	frames.NextSwitch(kItem, kSwitchedOff);
 	(void)Core::Redraw::TakeDeadline();
 
-	frames.NextSwitch(kItem, true);
+	frames.NextSwitch(kItem, kSwitchedOn);
 	CHECK(Core::Redraw::TakeDeadline().has_value());
 
-	frames.SwitchAfter(Core::Animation::kSwitchSeconds + 0.05f, kItem, true);
+	frames.SwitchAfter(Core::Animation::kSwitchSeconds + kSettleMarginSeconds, kItem, kSwitchedOn);
 	(void)Core::Redraw::TakeDeadline();
 
-	frames.NextSwitch(kItem, true);
+	frames.NextSwitch(kItem, kSwitchedOn);
 	CHECK_FALSE(Core::Redraw::TakeDeadline().has_value());
 }
 
 TEST_CASE("One switch's slide does not move another's")
 {
 	Frames frames;
-	frames.NextSwitch(kOtherItem, false);
-	frames.NextSwitch(kItem, false);
+	frames.NextSwitch(kOtherItem, kSwitchedOff);
+	frames.NextSwitch(kItem, kSwitchedOff);
 
-	frames.NextSwitch(kItem, true);
+	frames.NextSwitch(kItem, kSwitchedOn);
 
-	CHECK(frames.NextSwitch(kOtherItem, false) == doctest::Approx(0.0f));
+	CHECK(frames.NextSwitch(kOtherItem, kSwitchedOff) == doctest::Approx(0.0f));
 }

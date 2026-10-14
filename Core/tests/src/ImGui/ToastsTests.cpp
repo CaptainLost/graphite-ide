@@ -11,10 +11,20 @@
 #include <cstdint>
 #include <format>
 #include <functional>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
+#include <vector>
 
 namespace {
+	constexpr int kFramesToSettle = 30;
+	constexpr int kFramesInASecondOfAnimation = 60;
+	constexpr int kFramesAfterFadeIn = 3;
+	const std::chrono::milliseconds kFadeInSafetyMargin{50};
+	const std::chrono::milliseconds kJustUnderASixtieth{16};
+	const std::chrono::milliseconds kJustOverASixtieth{17};
+
 	class Frames
 	{
 	public:
@@ -40,11 +50,10 @@ namespace {
 			ImGui::EndFrame();
 		}
 
-		// With `before` drawn first, as the application draws its panels before the toasts.
-		void Next(Core::Toasts& toasts, const std::function<void()>& before)
+		void Next(Core::Toasts& toasts, const std::function<void()>& drawBeforeToasts)
 		{
 			ImGui::NewFrame();
-			before();
+			drawBeforeToasts();
 			toasts.Render(Core::ToastPalette{});
 			ImGui::EndFrame();
 		}
@@ -52,6 +61,15 @@ namespace {
 	private:
 		ImGuiContext* m_Context = nullptr;
 	};
+
+	bool AsksOnlyForTheCountdown(Frames& frames, Core::Toasts& toasts)
+	{
+		(void)Core::Redraw::TakeDeadline();
+		const Core::Redraw::Clock::time_point beforeFrame = Core::Redraw::Clock::now();
+		frames.Next(toasts);
+		const std::optional<Core::Redraw::Clock::time_point> deadline = Core::Redraw::TakeDeadline();
+		return deadline.has_value() && *deadline >= beforeFrame + kJustUnderASixtieth;
+	}
 }
 
 TEST_CASE("Drawing a toast of every kind completes a frame without an ImGui assertion")
@@ -63,7 +81,7 @@ TEST_CASE("Drawing a toast of every kind completes a frame without an ImGui asse
 	toasts.Show(Core::ToastKind::Warning, "Title", "careful");
 	toasts.Show(Core::ToastKind::Error, "Title", std::string(2000, 'x'));
 
-	for (int i = 0; i < 30; ++i)
+	for (int frameIndex = 0; frameIndex < kFramesToSettle; ++frameIndex)
 	{
 		frames.Next(toasts);
 	}
@@ -76,12 +94,10 @@ TEST_CASE("A title long enough to wrap, under a count, completes a frame without
 	Frames frames;
 	Core::Toasts toasts;
 
-	// Without the renderer there is no bold face, so this also covers drawing the title in
-	// the current font.
 	toasts.Show(Core::ToastKind::Error, std::string(300, 't'), "same");
 	toasts.Show(Core::ToastKind::Error, std::string(300, 't'), "same");
 
-	for (int i = 0; i < 30; ++i)
+	for (int frameIndex = 0; frameIndex < kFramesToSettle; ++frameIndex)
 	{
 		frames.Next(toasts);
 	}
@@ -99,7 +115,7 @@ TEST_CASE("A toast still fading in asks for the next frame")
 	toasts.Show(Core::ToastKind::Error, "Title", "e");
 	frames.Next(toasts);
 
-	const auto deadline = Core::Redraw::TakeDeadline();
+	const std::optional<Core::Redraw::Clock::time_point> deadline = Core::Redraw::TakeDeadline();
 	REQUIRE(deadline.has_value());
 	CHECK(*deadline <= Core::Redraw::Clock::now());
 }
@@ -112,18 +128,15 @@ TEST_CASE("A toast counting down asks for frames often enough to drain its borde
 	toasts.Show(Core::ToastKind::Warning, "Title", "w");
 	frames.Next(toasts);
 
-	// Past the fade-in, wall-clock: the renderer reads the real clock.
-	std::this_thread::sleep_for(Core::ToastStack::kEnter + std::chrono::milliseconds(50));
+	std::this_thread::sleep_for(Core::ToastStack::kEnter + kFadeInSafetyMargin);
 	(void)Core::Redraw::TakeDeadline();
 	const Core::Redraw::Clock::time_point beforeFrame = Core::Redraw::Clock::now();
 	frames.Next(toasts);
 
 	const std::optional<Core::Redraw::Clock::time_point> deadline = Core::Redraw::TakeDeadline();
-	const std::chrono::milliseconds justUnderASixtieth{16};
-	const std::chrono::milliseconds justOverASixtieth{17};
 	REQUIRE(deadline.has_value());
-	CHECK(*deadline >= beforeFrame + justUnderASixtieth);
-	CHECK(*deadline <= Core::Redraw::Clock::now() + justOverASixtieth);
+	CHECK(*deadline >= beforeFrame + kJustUnderASixtieth);
+	CHECK(*deadline <= Core::Redraw::Clock::now() + kJustOverASixtieth);
 }
 
 TEST_CASE("A toast pushed up by a newer one asks for frames until it arrives")
@@ -131,46 +144,31 @@ TEST_CASE("A toast pushed up by a newer one asks for frames until it arrives")
 	Frames frames;
 	Core::Toasts toasts;
 
-	// Once the toasts have faded in, their countdowns ask for a frame no sooner than a sixtieth
-	// of a second away, while a move asks for the very next one.
-	const std::chrono::milliseconds justUnderASixtieth{16};
-	const auto asksOnlyForTheCountdown = [&] {
-		(void)Core::Redraw::TakeDeadline();
-		const Core::Redraw::Clock::time_point beforeFrame = Core::Redraw::Clock::now();
-		frames.Next(toasts);
-		const std::optional<Core::Redraw::Clock::time_point> deadline = Core::Redraw::TakeDeadline();
-		return deadline.has_value() && *deadline >= beforeFrame + justUnderASixtieth;
-	};
-
 	toasts.Show(Core::ToastKind::Error, "Title", "older");
 	frames.Next(toasts);
 
-	std::this_thread::sleep_for(Core::ToastStack::kEnter + std::chrono::milliseconds(50));
+	std::this_thread::sleep_for(Core::ToastStack::kEnter + kFadeInSafetyMargin);
 	frames.Next(toasts);
-	REQUIRE(asksOnlyForTheCountdown());
+	REQUIRE(AsksOnlyForTheCountdown(frames, toasts));
 
-	// The newer one takes the bottom; the older one starts moving up to make room.
 	toasts.Show(Core::ToastKind::Error, "Title", "newer");
 	frames.Next(toasts);
 
-	// Past the newer one's fade-in, so only the move is left to ask. ImAnim's clock moves only
-	// with its own frames, which this test has not run yet, so the move is still under way.
-	std::this_thread::sleep_for(Core::ToastStack::kEnter + std::chrono::milliseconds(50));
+	std::this_thread::sleep_for(Core::ToastStack::kEnter + kFadeInSafetyMargin);
 	(void)Core::Redraw::TakeDeadline();
 	frames.Next(toasts);
-	const auto moving = Core::Redraw::TakeDeadline();
-	REQUIRE(moving.has_value());
-	CHECK(*moving <= Core::Redraw::Clock::now());
+	const std::optional<Core::Redraw::Clock::time_point> deadlineWhileMoving = Core::Redraw::TakeDeadline();
+	REQUIRE(deadlineWhileMoving.has_value());
+	CHECK(*deadlineWhileMoving <= Core::Redraw::Clock::now());
 
-	// A second of ImAnim's frames takes the move to its end.
-	for (int frameIndex = 0; frameIndex < 60; ++frameIndex)
+	for (int frameIndex = 0; frameIndex < kFramesInASecondOfAnimation; ++frameIndex)
 	{
 		Core::Animation::BeginFrame();
 		frames.Next(toasts);
 	}
 
 	Core::Animation::BeginFrame();
-	CHECK(asksOnlyForTheCountdown());
+	CHECK(AsksOnlyForTheCountdown(frames, toasts));
 }
 
 TEST_CASE("Nothing shown asks for no frame")
@@ -185,8 +183,16 @@ TEST_CASE("Nothing shown asks for no frame")
 }
 
 namespace {
-	// A window that holds the keyboard, as the editor does, and the toasts drawn over it. The
-	// first frame focuses it; ImGui then keeps it focused until something else is clicked.
+	constexpr float kCardRightPadding = 14.0f;
+	constexpr float kInsideCloseButton = 2.0f;
+	constexpr float kCardTopPadding = 12.0f;
+	constexpr float kHalfALineDown = 6.0f;
+	constexpr float kInsideMessageLeft = 80.0f;
+	constexpr float kCardBottomPadding = 12.0f;
+	constexpr float kInsideMessageRow = 4.0f;
+	constexpr float kInsideTitleLeft = 60.0f;
+	constexpr float kInsideMenuItem = 4.0f;
+
 	class EditorAndToasts
 	{
 	public:
@@ -196,43 +202,31 @@ namespace {
 
 		void Next()
 		{
-			m_Frames.Next(Toasts, [this] {
-				if (m_FocusEditor)
-				{
-					ImGui::SetNextWindowFocus();
-					m_FocusEditor = false;
-				}
-
-				ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f));
-				ImGui::SetNextWindowSize(ImVec2(200.0f, 100.0f));
-				ImGui::Begin("Editor");
-				ImGui::TextUnformatted("text");
-				ImGui::End();
-			});
+			m_Frames.Next(Toasts, [this] { DrawEditor(); });
 		}
 
-		// Past the fade-in and its rise, so every toast stands where it rests.
 		void Settle()
 		{
 			Next();
-			std::this_thread::sleep_for(Core::ToastStack::kEnter + std::chrono::milliseconds(50));
+			std::this_thread::sleep_for(Core::ToastStack::kEnter + kFadeInSafetyMargin);
 
-			for (int i = 0; i < 3; ++i)
+			for (int frameIndex = 0; frameIndex < kFramesAfterFadeIn; ++frameIndex)
 			{
 				Next();
 			}
 		}
 
-		// One event a frame, as a person clicks: over the point, down, up.
-		void Click(ImVec2 at, ImGuiMouseButton button = ImGuiMouseButton_Left)
+		void Click(ImVec2 clickPosition, ImGuiMouseButton button = ImGuiMouseButton_Left)
 		{
 			ImGuiIO& io = ImGui::GetIO();
+			constexpr bool kButtonDown = true;
+			constexpr bool kButtonUp = false;
 
-			io.AddMousePosEvent(at.x, at.y);
+			io.AddMousePosEvent(clickPosition.x, clickPosition.y);
 			Next();
-			io.AddMouseButtonEvent(button, true);
+			io.AddMouseButtonEvent(button, kButtonDown);
 			Next();
-			io.AddMouseButtonEvent(button, false);
+			io.AddMouseButtonEvent(button, kButtonUp);
 			Next();
 		}
 
@@ -250,6 +244,21 @@ namespace {
 		}
 
 	private:
+		void DrawEditor()
+		{
+			if (m_FocusEditor)
+			{
+				ImGui::SetNextWindowFocus();
+				m_FocusEditor = false;
+			}
+
+			ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f));
+			ImGui::SetNextWindowSize(ImVec2(200.0f, 100.0f));
+			ImGui::Begin("Editor");
+			ImGui::TextUnformatted("text");
+			ImGui::End();
+		}
+
 		Frames m_Frames;
 		bool m_FocusEditor = true;
 	};
@@ -262,9 +271,9 @@ TEST_CASE("A click on the close button closes the toast and hands the keyboard b
 	screen.Settle();
 	REQUIRE(EditorAndToasts::Focused() == "Editor");
 
-	// Inside the close button: the card's right padding, then the button, on the title's row.
 	const ImGuiWindow& card = EditorAndToasts::ToastWindow(screen.Toasts.GetStack().Get()[0].Id);
-	screen.Click(ImVec2(card.Pos.x + card.Size.x - 14.0f - 2.0f, card.Pos.y + 12.0f + 6.0f));
+	screen.Click(ImVec2(card.Pos.x + card.Size.x - kCardRightPadding - kInsideCloseButton,
+						card.Pos.y + kCardTopPadding + kHalfALineDown));
 
 	REQUIRE(screen.Toasts.GetStack().Get().size() == 1);
 	CHECK(screen.Toasts.GetStack().Get()[0].LeavingSince.has_value());
@@ -277,9 +286,9 @@ TEST_CASE("A click on a toast's message hands the keyboard back and leaves the t
 	screen.Toasts.Show(Core::ToastKind::Error, "Title", "a message long enough to be clicked on");
 	screen.Settle();
 
-	// Inside the message, under the title and to the right of the icon.
 	const ImGuiWindow& card = EditorAndToasts::ToastWindow(screen.Toasts.GetStack().Get()[0].Id);
-	screen.Click(ImVec2(card.Pos.x + 80.0f, card.Pos.y + card.Size.y - 12.0f - 4.0f));
+	screen.Click(ImVec2(card.Pos.x + kInsideMessageLeft,
+						card.Pos.y + card.Size.y - kCardBottomPadding - kInsideMessageRow));
 
 	REQUIRE(screen.Toasts.GetStack().Get().size() == 1);
 	CHECK_FALSE(screen.Toasts.GetStack().Get()[0].LeavingSince.has_value());
@@ -287,24 +296,24 @@ TEST_CASE("A click on a toast's message hands the keyboard back and leaves the t
 }
 
 namespace {
-	// Right-clicks the toast's title and picks Copy from the menu that opens.
 	std::string CopyFromTitle(EditorAndToasts& screen)
 	{
 		std::string copied;
 		screen.Toasts.OnCopied = [&](std::string_view text) { copied = std::string(text); };
 
 		const ImGuiWindow& card = EditorAndToasts::ToastWindow(screen.Toasts.GetStack().Get()[0].Id);
-		screen.Click(ImVec2(card.Pos.x + 60.0f, card.Pos.y + 12.0f + 6.0f), ImGuiMouseButton_Right);
+		screen.Click(ImVec2(card.Pos.x + kInsideTitleLeft, card.Pos.y + kCardTopPadding + kHalfALineDown),
+					 ImGuiMouseButton_Right);
 
-		// A popup sizes itself on the frame it appears and shows from the next.
 		screen.Next();
 
-		const ImGuiContext& g = *ImGui::GetCurrentContext();
-		REQUIRE(g.OpenPopupStack.Size == 1);
-		const ImGuiWindow* menu = g.OpenPopupStack[0].Window;
+		const ImGuiContext& imguiContext = *ImGui::GetCurrentContext();
+		REQUIRE(imguiContext.OpenPopupStack.Size == 1);
+		const ImGuiWindow* menu = imguiContext.OpenPopupStack[0].Window;
 		REQUIRE(menu != nullptr);
 
-		screen.Click(ImVec2(menu->Pos.x + menu->WindowPadding.x + 4.0f, menu->Pos.y + menu->WindowPadding.y + 4.0f));
+		screen.Click(ImVec2(menu->Pos.x + menu->WindowPadding.x + kInsideMenuItem,
+							menu->Pos.y + menu->WindowPadding.y + kInsideMenuItem));
 
 		return copied;
 	}
@@ -333,10 +342,9 @@ TEST_CASE("A toast drawn with a bold face for its quoted names and a path comple
 	Frames frames;
 	Core::Toasts toasts;
 
-	// Long enough to scroll, so the body is laid out short of its scrollbar too.
 	std::string message = "'side' is checked out in D:/Repos/IDE/.claude/worktrees/side";
 
-	for (int i = 0; i < 20; ++i)
+	for (int repeatIndex = 0; repeatIndex < 20; ++repeatIndex)
 	{
 		message += " and more words";
 	}
@@ -344,7 +352,7 @@ TEST_CASE("A toast drawn with a bold face for its quoted names and a path comple
 	toasts.Show(Core::ToastKind::Success, "Title", message);
 	toasts.Show(Core::ToastKind::Warning, "Title", "");
 
-	for (int i = 0; i < 30; ++i)
+	for (int frameIndex = 0; frameIndex < kFramesToSettle; ++frameIndex)
 	{
 		frames.Next(toasts);
 	}
@@ -354,11 +362,14 @@ TEST_CASE("A toast drawn with a bold face for its quoted names and a path comple
 
 TEST_CASE("Toasts::Clear with a group drops only the toasts shown in that group")
 {
+	constexpr std::uint32_t kCheckoutGroup = 1;
+	const std::string noCopyText;
+
 	Core::Toasts toasts;
-	toasts.Show(Core::ToastKind::Error, "Checkout failed", "locked", {}, 1);
+	toasts.Show(Core::ToastKind::Error, "Checkout failed", "locked", noCopyText, kCheckoutGroup);
 	toasts.Show(Core::ToastKind::Success, "Copied", "path: a.cpp");
 
-	toasts.Clear(1);
+	toasts.Clear(kCheckoutGroup);
 
 	REQUIRE(toasts.GetStack().Get().size() == 1);
 	CHECK(toasts.GetStack().Get()[0].Title == "Copied");

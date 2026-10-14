@@ -48,7 +48,6 @@ TEST_CASE("A word or a line press acts on the character under the pointer, not t
 	CHECK(PressPoint(SelectionAction::SelectWord, source, ImVec2(0.0f, 0.0f), boundary) == TextPoint{4, 1});
 	CHECK(PressPoint(SelectionAction::SelectLine, source, ImVec2(0.0f, 0.0f), boundary) == TextPoint{4, 1});
 
-	// A single press and a Shift+click keep the boundary.
 	CHECK(PressPoint(SelectionAction::Begin, source, ImVec2(0.0f, 0.0f), boundary) == boundary);
 	CHECK(PressPoint(SelectionAction::Extend, source, ImVec2(0.0f, 0.0f), boundary) == boundary);
 }
@@ -66,18 +65,24 @@ TEST_CASE("A word press falls back to the boundary when the owner names no chara
 }
 
 namespace {
-	// Kept off the system clipboard: the gesture's copy would otherwise replace whatever the
-	// person running the tests had on it.
-	void KeepClipboard(ImGuiContext*, const char*) {}
+	constexpr int kFrameThatOpensMenu = 0;
+	constexpr int kFrameThatFindsCopyItem = 2;
+	constexpr int kFrameThatMovesOntoCopyItem = 3;
+	constexpr int kFrameThatPressesCopyItem = 4;
+	constexpr int kFrameThatReleasesCopyItem = 5;
 
-	SelectionGestureResult PressCtrlC(bool ctrl)
+	// WARNING: the gesture's copy would otherwise replace whatever the person running the
+	// tests had on the system clipboard.
+	void DiscardClipboardText(ImGuiContext*, const char*) {}
+
+	SelectionGestureResult PressCtrlC(bool ctrlHeld)
 	{
 		ImGuiContext* context = ImGui::CreateContext();
-		ImGuiIO& io = ImGui::GetIO();
-		io.DisplaySize = ImVec2(800.0f, 600.0f);
-		io.DeltaTime = 1.0f / 60.0f;
-		io.Fonts->Build();
-		ImGui::GetPlatformIO().Platform_SetClipboardTextFn = &KeepClipboard;
+		ImGuiIO& inputOutput = ImGui::GetIO();
+		inputOutput.DisplaySize = ImVec2(800.0f, 600.0f);
+		inputOutput.DeltaTime = 1.0f / 60.0f;
+		inputOutput.Fonts->Build();
+		ImGui::GetPlatformIO().Platform_SetClipboardTextFn = &DiscardClipboardText;
 
 		TextSelection selection;
 		selection.Select({0, 0}, {0, 5});
@@ -90,11 +95,10 @@ namespace {
 
 		for (int frame = 0; frame < 3; ++frame)
 		{
-			// Ctrl+C goes down on the last frame only, after the window has been focused.
 			if (frame == 2)
 			{
-				io.AddKeyEvent(ImGuiMod_Ctrl, ctrl);
-				io.AddKeyEvent(ImGuiKey_C, true);
+				inputOutput.AddKeyEvent(ImGuiMod_Ctrl, ctrlHeld);
+				inputOutput.AddKeyEvent(ImGuiKey_C, true);
 			}
 
 			ImGui::NewFrame();
@@ -135,11 +139,11 @@ TEST_CASE("C without Ctrl copies nothing")
 TEST_CASE("The context menu's Copy copies the selection and says it came from the menu")
 {
 	ImGuiContext* context = ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO();
-	io.DisplaySize = ImVec2(800.0f, 600.0f);
-	io.DeltaTime = 1.0f / 60.0f;
-	io.Fonts->Build();
-	ImGui::GetPlatformIO().Platform_SetClipboardTextFn = &KeepClipboard;
+	ImGuiIO& inputOutput = ImGui::GetIO();
+	inputOutput.DisplaySize = ImVec2(800.0f, 600.0f);
+	inputOutput.DeltaTime = 1.0f / 60.0f;
+	inputOutput.Fonts->Build();
+	ImGui::GetPlatformIO().Platform_SetClipboardTextFn = &DiscardClipboardText;
 
 	TextSelection selection;
 	selection.Select({0, 0}, {0, 5});
@@ -154,21 +158,19 @@ TEST_CASE("The context menu's Copy copies the selection and says it came from th
 	SelectionGestureResult copied;
 	ImVec2 copyItem(-1.0f, -1.0f);
 
-	// Frame 0 opens the menu as a right-click would; frames 1-2 let it appear and find where
-	// its first item, Copy, is; frame 3 moves onto it, 4 presses, 5 releases.
 	for (int frame = 0; frame < 8; ++frame)
 	{
-		if (frame == 3)
+		if (frame == kFrameThatMovesOntoCopyItem)
 		{
-			io.AddMousePosEvent(copyItem.x, copyItem.y);
+			inputOutput.AddMousePosEvent(copyItem.x, copyItem.y);
 		}
-		else if (frame == 4)
+		else if (frame == kFrameThatPressesCopyItem)
 		{
-			io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+			inputOutput.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
 		}
-		else if (frame == 5)
+		else if (frame == kFrameThatReleasesCopyItem)
 		{
-			io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+			inputOutput.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
 		}
 
 		ImGui::NewFrame();
@@ -176,9 +178,8 @@ TEST_CASE("The context menu's Copy copies the selection and says it came from th
 		ImGui::SetNextWindowSize(ImVec2(300.0f, 200.0f));
 		ImGui::Begin("Gesture");
 
-		if (frame == 0)
+		if (frame == kFrameThatOpensMenu)
 		{
-			// The id BeginPopupContextWindow derives from MenuId in this same window.
 			ImGui::OpenPopup(options.MenuId);
 		}
 
@@ -191,11 +192,11 @@ TEST_CASE("The context menu's Copy copies the selection and says it came from th
 
 		ImGui::End();
 
-		if (frame == 2)
+		if (frame == kFrameThatFindsCopyItem)
 		{
-			ImGuiContext& g = *GImGui;
-			REQUIRE(g.OpenPopupStack.Size == 1);
-			const ImGuiWindow* menu = g.OpenPopupStack[0].Window;
+			ImGuiContext& imGuiContext = *GImGui;
+			REQUIRE(imGuiContext.OpenPopupStack.Size == 1);
+			const ImGuiWindow* menu = imGuiContext.OpenPopupStack[0].Window;
 			REQUIRE(menu != nullptr);
 			copyItem = ImVec2(menu->Pos.x + menu->WindowPadding.x + 4.0f,
 							  menu->Pos.y + menu->WindowPadding.y + ImGui::GetFontSize() * 0.5f);

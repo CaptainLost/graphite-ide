@@ -2,97 +2,111 @@
 
 #include "Core/ImGui/ToastText.h"
 
-#include <algorithm>
+#include "Core/Base/Ascii.h"
+#include "Core/FileSystem/FileSystem.h"
+#include "Core/Text/Encoding.h"
+
+#include <array>
 #include <cctype>
 #include <cstddef>
+#include <numeric>
 #include <optional>
+#include <utility>
 
 namespace Core {
 
 	namespace {
-		// Whitespace other than a newline, which ends a line rather than separating words.
-		bool IsSpace(char c)
+		constexpr unsigned char kFirstNonAsciiByte = 0x80;
+		constexpr char kQuote = '\'';
+		constexpr char kNewline = '\n';
+		constexpr bool kRegularFace = false;
+		constexpr float kNoGap = 0.0f;
+		constexpr std::size_t kAtLeastOneByte = 1;
+		constexpr std::size_t kDrivePrefixLength = 3;
+		constexpr std::size_t kDotAndOneCharacterLength = 2;
+		constexpr std::array<std::string_view, 6> kRelativePrefixes = {"./", ".\\", "../", "..\\", "~/", "~\\"};
+
+		bool IsSpaceWithinLine(char character)
 		{
-			return c == ' ' || c == '\t' || c == '\r' || c == '\f' || c == '\v';
+			return character == ' ' || character == '\t' || character == '\r' || character == '\f' || character == '\v';
 		}
 
-		bool IsWhitespace(char c)
+		bool IsWordCharacter(char character)
 		{
-			return IsSpace(c) || c == '\n';
+			const auto byte = static_cast<unsigned char>(character);
+			return byte >= kFirstNonAsciiByte || std::isalnum(byte) != 0 || character == '_';
 		}
 
-		// Any byte of a multi-byte UTF-8 character counts: a letter outside ASCII is a letter.
-		bool IsWordChar(char c)
+		bool ContainsWordCharacter(std::string_view text)
 		{
-			const auto byte = static_cast<unsigned char>(c);
-			return byte >= 0x80 || std::isalnum(byte) != 0 || c == '_';
+			for (const char character : text)
+			{
+				if (IsWordCharacter(character))
+				{
+					return true;
+				}
+			}
+
+			return false;
 		}
 
-		bool IsSeparator(char c)
+		std::optional<std::size_t> ClosingQuoteOfStrongSpan(std::string_view text, std::size_t openIndex)
 		{
-			return c == '/' || c == '\\';
-		}
-
-		bool IsContinuationByte(char c)
-		{
-			return (static_cast<unsigned char>(c) & 0xC0) == 0x80;
-		}
-
-		// Where the strong span opened by a quote at `open` closes, if that quote opens one. An
-		// apostrophe inside a word - "don't" - opens nothing, and one only closes a span where
-		// a word ends, so "'it's'" is one span.
-		std::optional<std::size_t> StrongEnd(std::string_view text, std::size_t open)
-		{
-			if (text[open] != '\'' || (open > 0 && IsWordChar(text[open - 1])))
+			if (text[openIndex] != kQuote || (openIndex > 0 && IsWordCharacter(text[openIndex - 1])))
 			{
 				return std::nullopt;
 			}
 
-			for (std::size_t i = open + 2; i < text.size(); ++i)
+			const std::size_t firstIndexAfterOneInnerCharacter = openIndex + 2;
+
+			for (std::size_t scanIndex = firstIndexAfterOneInnerCharacter; scanIndex < text.size(); ++scanIndex)
 			{
-				if (text[i] == '\n')
+				if (text[scanIndex] == kNewline)
 				{
 					return std::nullopt;
 				}
 
-				if (text[i] == '\'' && (i + 1 == text.size() || !IsWordChar(text[i + 1])))
+				const bool endsText = scanIndex + 1 == text.size();
+
+				if (text[scanIndex] == kQuote && (endsText || !IsWordCharacter(text[scanIndex + 1])))
 				{
-					return i;
+					return scanIndex;
 				}
 			}
 
 			return std::nullopt;
 		}
 
-		// A run with a separator in it that starts the way only a path does: a drive, the
-		// root, the current or parent folder, home, or a hidden folder such as ".claude/".
-		// "src/a.cpp" or "and/or" stay words, and so does a separator on its own, as in "A / B".
-		// A path in double quotes or brackets, the way git and libgit2 print one, is a path all
-		// the same.
-		bool IsPath(std::string_view run)
+		bool IsOpeningPunctuation(char character)
 		{
-			while (!run.empty() && (run.front() == '"' || run.front() == '(' || run.front() == '[' || run.front() == '<'))
+			return character == '"' || character == '(' || character == '[' || character == '<';
+		}
+
+		bool LooksLikePath(std::string_view run)
+		{
+			while (!run.empty() && IsOpeningPunctuation(run.front()))
 			{
 				run.remove_prefix(1);
 			}
 
-			if (run.find_first_of("/\\") == std::string_view::npos || std::ranges::none_of(run, IsWordChar))
+			const bool hasSeparator = run.find_first_of("/\\") != std::string_view::npos;
+
+			if (!hasSeparator || !ContainsWordCharacter(run))
 			{
 				return false;
 			}
 
-			if (run.size() >= 3 && std::isalpha(static_cast<unsigned char>(run[0])) != 0 && run[1] == ':' &&
-				IsSeparator(run[2]))
+			const bool startsWithDrive = run.size() >= kDrivePrefixLength &&
+										 std::isalpha(static_cast<unsigned char>(run[0])) != 0 && run[1] == ':' &&
+										 IsPathSeparator(run[2]);
+			const bool startsAtRoot = IsPathSeparator(run[0]);
+
+			if (startsWithDrive || startsAtRoot)
 			{
 				return true;
 			}
 
-			if (IsSeparator(run[0]))
-			{
-				return true;
-			}
-
-			for (const std::string_view prefix : {"./", ".\\", "../", "..\\", "~/", "~\\"})
+			for (const std::string_view prefix : kRelativePrefixes)
 			{
 				if (run.starts_with(prefix))
 				{
@@ -100,93 +114,101 @@ namespace Core {
 				}
 			}
 
-			return run.size() >= 2 && run[0] == '.' && IsWordChar(run[1]);
+			const bool startsWithHiddenName =
+				run.size() >= kDotAndOneCharacterLength && run[0] == '.' && IsWordCharacter(run[1]);
+
+			return startsWithHiddenName;
 		}
 
 		struct Piece
 		{
 			std::string_view Text;
 			ToastTextStyle Style = ToastTextStyle::Plain;
-
-			// Starts a line of its own and breaks only after a separator: a path, or a quoted
-			// span with a path inside, which keeps its bold face but breaks as the path it is.
 			bool BreaksAsPath = false;
 		};
 
-		// Pieces with no whitespace between them - a quoted span and the colon after it - which
-		// only break apart when together they are wider than a line.
-		struct Group
+		struct GluedPieces
 		{
 			std::vector<Piece> Pieces;
-
-			// How many newlines came between this group and the one before.
-			int Breaks = 0;
+			int NewlinesBefore = 0;
 		};
 
-		std::vector<Group> Tokenise(std::string_view text)
+		std::size_t PlainRunEnd(std::string_view text, std::size_t runStart)
 		{
-			std::vector<Group> groups;
-			int breaks = 0;
-			bool glued = false;
-			std::size_t i = 0;
+			std::size_t runEnd = runStart + 1;
 
-			while (i < text.size())
+			while (runEnd < text.size() && !IsAsciiWhitespace(text[runEnd]) &&
+				   !ClosingQuoteOfStrongSpan(text, runEnd).has_value())
 			{
-				const char c = text[i];
+				++runEnd;
+			}
 
-				if (c == '\n')
+			return runEnd;
+		}
+
+		std::vector<GluedPieces> Tokenise(std::string_view text)
+		{
+			std::vector<GluedPieces> groups;
+			int newlinesSinceLastGroup = 0;
+			bool gluedToPreviousPiece = false;
+			std::size_t position = 0;
+
+			while (position < text.size())
+			{
+				const char character = text[position];
+
+				if (character == kNewline)
 				{
-					++breaks;
-					glued = false;
-					++i;
+					++newlinesSinceLastGroup;
+					gluedToPreviousPiece = false;
+					++position;
 					continue;
 				}
 
-				if (IsSpace(c))
+				if (IsSpaceWithinLine(character))
 				{
-					glued = false;
-					++i;
+					gluedToPreviousPiece = false;
+					++position;
 					continue;
 				}
 
 				Piece piece;
 
-				if (const std::optional<std::size_t> close = StrongEnd(text, i); close.has_value())
+				if (const std::optional<std::size_t> closingQuote = ClosingQuoteOfStrongSpan(text, position);
+					closingQuote.has_value())
 				{
-					piece = Piece{text.substr(i, *close - i + 1), ToastTextStyle::Strong,
-								  IsPath(text.substr(i + 1, *close - i - 1))};
-					i = *close + 1;
+					const std::size_t spanLength = *closingQuote - position + 1;
+					const std::size_t innerLength = *closingQuote - position - 1;
+					const std::string_view inner = text.substr(position + 1, innerLength);
+
+					piece = Piece{.Text = text.substr(position, spanLength),
+								  .Style = ToastTextStyle::Strong,
+								  .BreaksAsPath = LooksLikePath(inner)};
+					position = *closingQuote + 1;
 				}
 				else
 				{
-					// To the next whitespace, or to a quote that opens a span of its own.
-					std::size_t end = i + 1;
+					const std::size_t runEnd = PlainRunEnd(text, position);
+					const std::string_view run = text.substr(position, runEnd - position);
+					const bool startsAsPath = !gluedToPreviousPiece && LooksLikePath(run);
 
-					while (end < text.size() && !IsWhitespace(text[end]) && !StrongEnd(text, end).has_value())
-					{
-						++end;
-					}
-
-					const std::string_view run = text.substr(i, end - i);
-
-					// Only a run that starts a word is a path: one glued to a quoted span is the
-					// span's tail.
-					const bool path = !glued && IsPath(run);
-					piece = Piece{run, path ? ToastTextStyle::Path : ToastTextStyle::Plain, path};
-					i = end;
+					piece = Piece{.Text = run,
+								  .Style = startsAsPath ? ToastTextStyle::Path : ToastTextStyle::Plain,
+								  .BreaksAsPath = startsAsPath};
+					position = runEnd;
 				}
 
-				if (glued && !groups.empty())
+				if (gluedToPreviousPiece && !groups.empty())
 				{
 					groups.back().Pieces.push_back(piece);
 				}
 				else
 				{
-					groups.push_back(Group{{piece}, breaks});
-					breaks = 0;
+					groups.push_back(GluedPieces{.Pieces = {piece}, .NewlinesBefore = newlinesSinceLastGroup});
+					newlinesSinceLastGroup = 0;
 				}
 
-				glued = true;
+				gluedToPreviousPiece = true;
 			}
 
 			return groups;
@@ -195,165 +217,171 @@ namespace Core {
 		class Layout
 		{
 		public:
-			Layout(float width, const ToastTextMeasure& measure)
-				: m_Width(width), m_Measure(measure), m_Space(measure(" ", false))
+			Layout(float lineWidth, const ToastTextMeasure& measure)
+				: m_LineWidth(lineWidth), m_Measure(measure), m_SpaceWidth(measure(" ", kRegularFace))
 			{
 			}
 
-			void Add(const Group& group, bool first)
+			void Add(const GluedPieces& glued, bool isFirstGroup)
 			{
-				if (first)
+				if (isFirstGroup)
 				{
 					NewLine();
 				}
 				else
 				{
-					// The first newline ends the line; each one after leaves an empty line.
-					for (int i = 0; i < group.Breaks; ++i)
+					for (int newlineIndex = 0; newlineIndex < glued.NewlinesBefore; ++newlineIndex)
 					{
 						NewLine();
 					}
 				}
 
-				if (group.Pieces.front().BreaksAsPath && m_X > 0.0f)
+				if (glued.Pieces.front().BreaksAsPath && LineHasContent())
 				{
 					NewLine();
 				}
 
-				float total = 0.0f;
+				float groupWidth = 0.0f;
 
-				for (const Piece& piece : group.Pieces)
+				for (const Piece& piece : glued.Pieces)
 				{
-					total += Measure(piece);
+					groupWidth += Measure(piece);
 				}
 
-				float gap = m_X > 0.0f ? m_Space : 0.0f;
+				float gap = LineHasContent() ? m_SpaceWidth : kNoGap;
 
-				if (m_X > 0.0f && m_X + gap + total > m_Width)
+				if (LineHasContent() && m_CursorX + gap + groupWidth > m_LineWidth)
 				{
 					NewLine();
-					gap = 0.0f;
+					gap = kNoGap;
 				}
 
-				for (const Piece& piece : group.Pieces)
+				for (const Piece& piece : glued.Pieces)
 				{
 					Place(piece, gap);
-					gap = 0.0f;
+					gap = kNoGap;
 				}
 			}
 
 			std::vector<ToastTextLine> Take() { return std::move(m_Lines); }
 
 		private:
-			float m_Width;
+			float m_LineWidth;
 			const ToastTextMeasure& m_Measure;
-			float m_Space;
+			float m_SpaceWidth;
 
 			std::vector<ToastTextLine> m_Lines;
-			float m_X = 0.0f;
+			float m_CursorX = 0.0f;
 
 			static bool Bold(ToastTextStyle style) { return style == ToastTextStyle::Strong; }
+
+			bool LineHasContent() const { return m_CursorX > 0.0f; }
 
 			float Measure(const Piece& piece) const { return m_Measure(piece.Text, Bold(piece.Style)); }
 
 			void NewLine()
 			{
 				m_Lines.emplace_back();
-				m_X = 0.0f;
+				m_CursorX = 0.0f;
 			}
 
+			// WARNING: only plain words merge into one run, because a space measured in the regular face between two bold spans would not be the space the bold face draws.
 			void Append(std::string_view text, ToastTextStyle style, float width, float gap)
 			{
 				std::vector<ToastTextRun>& runs = m_Lines.back().Runs;
+				bool mergesWithPreviousRun = false;
 
-				// Plain words that follow one another make one run, drawn in one call. Only
-				// plain ones: a space measured in the regular face between two bold spans
-				// would not be the space the bold face draws.
-				if (style == ToastTextStyle::Plain && !runs.empty() && runs.back().Style == ToastTextStyle::Plain &&
-					runs.back().X + runs.back().Width == m_X)
+				if (style == ToastTextStyle::Plain && !runs.empty())
 				{
-					ToastTextRun& last = runs.back();
+					const ToastTextRun& previousRun = runs.back();
+					mergesWithPreviousRun =
+						previousRun.Style == ToastTextStyle::Plain && previousRun.X + previousRun.Width == m_CursorX;
+				}
+
+				if (mergesWithPreviousRun)
+				{
+					ToastTextRun& previousRun = runs.back();
 
 					if (gap > 0.0f)
 					{
-						last.Text += ' ';
+						previousRun.Text += ' ';
 					}
 
-					last.Text += text;
-					last.Width += gap + width;
+					previousRun.Text += text;
+					previousRun.Width += gap + width;
 				}
 				else
 				{
-					runs.push_back(ToastTextRun{std::string(text), style, m_X + gap, width});
+					runs.push_back(
+						ToastTextRun{.Text = std::string(text), .Style = style, .X = m_CursorX + gap, .Width = width});
 				}
 
-				m_X += gap + width;
+				m_CursorX += gap + width;
 			}
 
-			// The longest prefix ending on a character boundary no wider than `room`; 0 if
-			// not even one character fits. The width only grows with the prefix, so a binary
-			// search over the boundaries finds it.
-			std::size_t FitCharacters(std::string_view text, bool bold, float room) const
+			// WARNING: binary-searches the boundaries because each probe measures a whole prefix with the real font, and a linear scan would measure one per character.
+			std::size_t FittingCharacterPrefixLength(std::string_view text, bool bold, float room) const
 			{
 				std::vector<std::size_t> boundaries;
 
-				for (std::size_t i = 1; i <= text.size(); ++i)
+				for (std::size_t offset = 1; offset <= text.size(); ++offset)
 				{
-					if (i == text.size() || !IsContinuationByte(text[i]))
+					if (offset == text.size() || !IsUtf8ContinuationByte(text[offset]))
 					{
-						boundaries.push_back(i);
+						boundaries.push_back(offset);
 					}
 				}
 
-				std::size_t low = 0;
-				std::size_t high = boundaries.size();
+				std::size_t fittingCount = 0;
+				std::size_t searchEnd = boundaries.size();
 
-				while (low < high)
+				while (fittingCount < searchEnd)
 				{
-					const std::size_t mid = (low + high) / 2;
+					const std::size_t probe = std::midpoint(fittingCount, searchEnd);
 
-					if (m_Measure(text.substr(0, boundaries[mid]), bold) <= room)
+					if (m_Measure(text.substr(0, boundaries[probe]), bold) <= room)
 					{
-						low = mid + 1;
+						fittingCount = probe + 1;
 					}
 					else
 					{
-						high = mid;
+						searchEnd = probe;
 					}
 				}
 
-				return low == 0 ? 0 : boundaries[low - 1];
+				return fittingCount == 0 ? 0 : boundaries[fittingCount - 1];
 			}
 
-			// The longest prefix of a path that ends just after a separator and fits `room`.
-			// When the segment after it is wider than a whole line, it has to break anywhere
-			// sooner or later, so it starts doing so here rather than on a line of its own.
-			std::size_t FitPath(std::string_view text, bool bold, float room) const
+			std::size_t FittingPathPrefixLength(std::string_view text, bool bold, float room) const
 			{
-				std::size_t fit = 0;
+				std::size_t afterLastFittingSeparator = 0;
 
-				for (std::size_t i = 0; i < text.size(); ++i)
+				for (std::size_t offset = 0; offset < text.size(); ++offset)
 				{
-					if (IsSeparator(text[i]))
+					if (IsPathSeparator(text[offset]))
 					{
-						if (m_Measure(text.substr(0, i + 1), bold) > room)
+						if (m_Measure(text.substr(0, offset + 1), bold) > room)
 						{
 							break;
 						}
 
-						fit = i + 1;
+						afterLastFittingSeparator = offset + 1;
 					}
 				}
 
-				std::size_t segmentEnd = text.find_first_of("/\\", fit);
+				std::size_t segmentEnd = text.find_first_of("/\\", afterLastFittingSeparator);
 				segmentEnd = segmentEnd == std::string_view::npos ? text.size() : segmentEnd + 1;
 
-				if (m_Measure(text.substr(fit, segmentEnd - fit), bold) > m_Width)
+				const std::string_view nextSegment =
+					text.substr(afterLastFittingSeparator, segmentEnd - afterLastFittingSeparator);
+				const bool segmentWiderThanWholeLine = m_Measure(nextSegment, bold) > m_LineWidth;
+
+				if (segmentWiderThanWholeLine)
 				{
-					return FitCharacters(text, bold, room);
+					return FittingCharacterPrefixLength(text, bold, room);
 				}
 
-				return fit;
+				return afterLastFittingSeparator;
 			}
 
 			void Place(const Piece& piece, float gap)
@@ -365,37 +393,31 @@ namespace Core {
 				{
 					const float width = m_Measure(text, bold);
 
-					if (m_X + gap + width <= m_Width)
+					if (m_CursorX + gap + width <= m_LineWidth)
 					{
 						Append(text, piece.Style, width, gap);
 						return;
 					}
 
-					const float room = m_Width - m_X - gap;
-					std::size_t fit = piece.BreaksAsPath ? FitPath(text, bold, room) : FitCharacters(text, bold, room);
+					const float room = m_LineWidth - m_CursorX - gap;
+					std::size_t fitLength = piece.BreaksAsPath ? FittingPathPrefixLength(text, bold, room)
+															   : FittingCharacterPrefixLength(text, bold, room);
 
-					if (fit == 0)
+					if (fitLength == 0)
 					{
-						if (m_X > 0.0f)
+						if (LineHasContent())
 						{
 							NewLine();
-							gap = 0.0f;
+							gap = kNoGap;
 							continue;
 						}
 
-						// Not one character fits an empty line: one goes anyway, or the
-						// layout would never end.
-						fit = 1;
-
-						while (fit < text.size() && IsContinuationByte(text[fit]))
-						{
-							++fit;
-						}
+						fitLength = CharacterBoundaryAtOrAfter(text, kAtLeastOneByte);
 					}
 
-					const std::string_view head = text.substr(0, fit);
+					const std::string_view head = text.substr(0, fitLength);
 					Append(head, piece.Style, m_Measure(head, bold), gap);
-					text.remove_prefix(fit);
+					text.remove_prefix(fitLength);
 
 					if (text.empty())
 					{
@@ -403,26 +425,27 @@ namespace Core {
 					}
 
 					NewLine();
-					gap = 0.0f;
+					gap = kNoGap;
 				}
 			}
 		};
 	}
 
-	std::vector<ToastTextLine> LayoutToastText(std::string_view message, float width, const ToastTextMeasure& measure)
+	std::vector<ToastTextLine> LayoutToastText(std::string_view message, float lineWidth, const ToastTextMeasure& measure)
 	{
-		const std::vector<Group> groups = Tokenise(message);
+		const std::vector<GluedPieces> groups = Tokenise(message);
 
 		if (groups.empty())
 		{
 			return {};
 		}
 
-		Layout layout(width, measure);
+		Layout layout(lineWidth, measure);
 
-		for (std::size_t i = 0; i < groups.size(); ++i)
+		for (std::size_t groupIndex = 0; groupIndex < groups.size(); ++groupIndex)
 		{
-			layout.Add(groups[i], i == 0);
+			const bool isFirstGroup = groupIndex == 0;
+			layout.Add(groups[groupIndex], isFirstGroup);
 		}
 
 		return layout.Take();

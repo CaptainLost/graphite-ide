@@ -2,6 +2,9 @@
 
 #include "Core/ImGui/EmptyState.h"
 
+#include "Core/Base/Ascii.h"
+#include "Core/ImGui/TextMetrics.h"
+
 #include <imgui_internal.h>
 
 #include <algorithm>
@@ -9,32 +12,33 @@
 namespace Core {
 
 	namespace {
-		// A block bigger than the space it is centred in starts at the space's edge: centred
-		// regardless, its first line would sit above the top, where no scrolling reaches it.
-		float CentredStart(float space, float extent)
+		constexpr std::string_view kTrailingBlanks = " \t\r";
+		constexpr float kNarrowestWrapWidth = 1.0f;
+		constexpr float kTopFilledInLater = 0.0f;
+		constexpr float kHalf = 0.5f;
+
+		// WARNING: a block bigger than the space starts at the space's edge: centred regardless, its first line would sit above the top, where no scrolling reaches it.
+		float CentredStart(float availableSpace, float blockExtent)
 		{
-			return std::max(0.0f, (space - extent) * 0.5f);
+			return std::max(0.0f, (availableSpace - blockExtent) * kHalf);
 		}
 
-		std::string_view TrimTrailingBlanks(std::string_view line)
+		// WARNING: clamped because a window squeezed below its padding reports less than nothing left, and a negative Dummy would pull the cursor back over what came before.
+		float RegionExtent(float requestedExtent, float availableExtent)
 		{
-			while (!line.empty() && (line.back() == ' ' || line.back() == '\t' || line.back() == '\r'))
-			{
-				line.remove_suffix(1);
-			}
+			const float extent = requestedExtent > 0.0f ? requestedExtent : availableExtent;
 
-			return line;
+			return std::max(extent, 0.0f);
 		}
 
-		float WidthOf(std::string_view text)
+		float ButtonTop(const std::vector<CentredLine>& lines, float regionHeight, float buttonHeight, float itemSpacingHeight)
 		{
-			// Guarded because an empty view may carry no pointer at all.
-			if (text.empty())
+			if (lines.empty())
 			{
-				return 0.0f;
+				return CentredStart(regionHeight, buttonHeight);
 			}
 
-			return ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
+			return lines.back().Offset.y + ImGui::GetTextLineHeight() + itemSpacingHeight;
 		}
 	}
 
@@ -48,41 +52,41 @@ namespace Core {
 		}
 
 		ImFont* font = ImGui::GetFont();
-		const float size = ImGui::GetFontSize();
+		const float fontSize = ImGui::GetFontSize();
 
-		// Never narrower than nothing: a window squeezed to its padding would otherwise wrap
-		// at a negative width, which ImGui treats as one character a line.
-		const float wrapWidth = std::max(region.x, 1.0f);
+		// WARNING: a wrap width of nothing or less makes ImGui treat every character as a line of its own.
+		const float wrapWidth = std::max(region.x, kNarrowestWrapWidth);
 
-		const char* begin = text.data();
-		const char* const end = begin + text.size();
+		const char* lineBegin = text.data();
+		const char* const textEnd = lineBegin + text.size();
 
-		while (begin < end)
+		while (lineBegin < textEnd)
 		{
-			const char* lineEnd = font->CalcWordWrapPosition(size, begin, end, wrapWidth);
+			const char* lineEnd = font->CalcWordWrapPosition(fontSize, lineBegin, textEnd, wrapWidth);
 
-			// ImGui already cuts a word too long for a line, but a line that took nothing would
-			// never end this loop.
-			if (lineEnd == begin && *begin != '\n')
+			// WARNING: a line that took nothing would never end this loop.
+			const bool lineTookNothing = lineEnd == lineBegin && *lineBegin != '\n';
+			if (lineTookNothing)
 			{
-				lineEnd = begin + ImTextCountUtf8BytesFromChar(begin, end);
+				lineEnd = lineBegin + ImTextCountUtf8BytesFromChar(lineBegin, textEnd);
 			}
 
 			const std::string_view line =
-				TrimTrailingBlanks(std::string_view(begin, static_cast<std::size_t>(lineEnd - begin)));
+				WithoutTrailing(std::string_view(lineBegin, static_cast<std::size_t>(lineEnd - lineBegin)), kTrailingBlanks);
 
-			lines.push_back(CentredLine{line, ImVec2(CentredStart(region.x, WidthOf(line)), 0.0f)});
+			const float lineLeft = CentredStart(region.x, TextWidth(line));
+			lines.push_back(CentredLine{.Text = line, .Offset = ImVec2(lineLeft, kTopFilledInLater)});
 
-			begin = ImTextCalcWordWrapNextLineStart(lineEnd, end);
+			lineBegin = ImTextCalcWordWrapNextLineStart(lineEnd, textEnd);
 		}
 
 		const float lineHeight = ImGui::GetTextLineHeight();
-		const float top =
+		const float blockTop =
 			CentredStart(region.y, lineHeight * static_cast<float>(lines.size()) + below);
 
-		for (std::size_t index = 0; index < lines.size(); ++index)
+		for (std::size_t lineIndex = 0; lineIndex < lines.size(); ++lineIndex)
 		{
-			lines[index].Offset.y = top + lineHeight * static_cast<float>(index);
+			lines[lineIndex].Offset.y = blockTop + lineHeight * static_cast<float>(lineIndex);
 		}
 
 		return lines;
@@ -91,10 +95,7 @@ namespace Core {
 	bool EmptyState(std::string_view message, const char* action, ImVec2 size)
 	{
 		const ImVec2 available = ImGui::GetContentRegionAvail();
-		// Clamped because a window squeezed below its padding reports less than nothing left,
-		// and a negative Dummy would pull the cursor back over what came before.
-		const ImVec2 region(std::max(size.x > 0.0f ? size.x : available.x, 0.0f),
-							std::max(size.y > 0.0f ? size.y : available.y, 0.0f));
+		const ImVec2 region(RegionExtent(size.x, available.x), RegionExtent(size.y, available.y));
 		const ImVec2 origin = ImGui::GetCursorScreenPos();
 		const ImGuiStyle& style = ImGui::GetStyle();
 
@@ -103,9 +104,12 @@ namespace Core {
 
 		if (action != nullptr)
 		{
-			buttonSize = ImGui::CalcItemSize(ImVec2(0.0f, 0.0f),
-											 ImGui::CalcTextSize(action, nullptr, true).x + style.FramePadding.x * 2.0f,
-											 ImGui::GetFrameHeight());
+			constexpr bool hideTextAfterDoubleHash = true;
+			const ImVec2 sizeFromContent(0.0f, 0.0f);
+			const float buttonWidth =
+				ImGui::CalcTextSize(action, nullptr, hideTextAfterDoubleHash).x + style.FramePadding.x * 2.0f;
+
+			buttonSize = ImGui::CalcItemSize(sizeFromContent, buttonWidth, ImGui::GetFrameHeight());
 			below = style.ItemSpacing.y + buttonSize.y;
 		}
 
@@ -116,34 +120,31 @@ namespace Core {
 
 		for (const CentredLine& line : lines)
 		{
-			drawList->AddText(ImVec2(origin.x + line.Offset.x, origin.y + line.Offset.y), colour, line.Text.data(),
-							  line.Text.data() + line.Text.size());
+			const ImVec2 lineOrigin(origin.x + line.Offset.x, origin.y + line.Offset.y);
+			drawList->AddText(lineOrigin, colour, line.Text.data(), line.Text.data() + line.Text.size());
 		}
 
 		bool clicked = false;
 
 		if (action != nullptr)
 		{
-			const float textBottom = lines.empty()
-										 ? CentredStart(region.y, buttonSize.y)
-										 : lines.back().Offset.y + ImGui::GetTextLineHeight() + style.ItemSpacing.y;
+			const float buttonTop = ButtonTop(lines, region.y, buttonSize.y, style.ItemSpacing.y);
 
 			ImGui::SetCursorScreenPos(
-				ImVec2(origin.x + CentredStart(region.x, buttonSize.x), origin.y + textBottom));
+				ImVec2(origin.x + CentredStart(region.x, buttonSize.x), origin.y + buttonTop));
 			clicked = ImGui::Button(action, buttonSize);
 		}
 
-		// Last, and an item: a window whose final act was SetCursorScreenPos past its content
-		// fails ImGui's check on the way out. Reset to the origin first so the claim covers
-		// the region itself, not the region measured from under the button. Never shorter than
-		// the message and its button: a block too tall for the region starts at its top, and
-		// only a claim reaching its bottom lets the window scroll to the rest, and keeps what
-		// the caller draws next off the button.
 		const float lineHeight = ImGui::GetTextLineHeight();
-		const float block = lines.empty() ? below : lines.back().Offset.y + lineHeight + below;
+		float blockHeight = below;
+		if (!lines.empty())
+		{
+			blockHeight = lines.back().Offset.y + lineHeight + below;
+		}
 
+		// WARNING: a window whose last act was SetCursorScreenPos past its content fails ImGui's check on the way out, so this ends on a Dummy. It is never shorter than the message and button, or the window could not scroll to a block taller than the region.
 		ImGui::SetCursorScreenPos(origin);
-		ImGui::Dummy(ImVec2(region.x, std::max(region.y, block)));
+		ImGui::Dummy(ImVec2(region.x, std::max(region.y, blockHeight)));
 
 		return clicked;
 	}

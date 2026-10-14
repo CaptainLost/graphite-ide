@@ -8,28 +8,46 @@
 namespace Core {
 
 	namespace {
-		Toast* Find(std::vector<Toast>& toasts, std::uint64_t id)
+		Toast* FindToast(std::vector<Toast>& toasts, std::uint64_t id)
 		{
-			const auto found = std::ranges::find(toasts, id, &Toast::Id);
+			const std::vector<Toast>::iterator found = std::ranges::find(toasts, id, &Toast::Id);
 			return found != toasts.end() ? &*found : nullptr;
+		}
+
+		Toast* FindTwin(std::vector<Toast>& toasts, ToastKind kind, const std::string& title, const std::string& message,
+						std::uint32_t group)
+		{
+			for (Toast& toast : toasts)
+			{
+				const bool isTwin = !toast.LeavingSince.has_value() && toast.Kind == kind && toast.Title == title &&
+									toast.Message == message && toast.Group == group;
+				if (isTwin)
+				{
+					return &toast;
+				}
+			}
+
+			return nullptr;
+		}
+
+		bool HasFinishedLeaving(const Toast& toast, ToastStack::Clock::time_point now)
+		{
+			return toast.LeavingSince.has_value() && now >= *toast.LeavingSince + ToastStack::kLeave;
 		}
 	}
 
 	std::uint64_t ToastStack::Show(ToastKind kind, std::string title, std::string message, Clock::time_point now,
-							  std::string copyText, std::uint32_t group)
+								   std::string copyText, std::uint32_t group)
 	{
-		const auto twin = std::ranges::find_if(m_Toasts, [&](const Toast& toast) {
-			return !toast.LeavingSince.has_value() && toast.Kind == kind && toast.Title == title &&
-				   toast.Message == message && toast.Group == group;
-		});
+		Toast* const twin = FindTwin(m_Toasts, kind, title, message, group);
 
-		if (twin != m_Toasts.end())
+		if (twin != nullptr)
 		{
 			++twin->Count;
 			twin->Left = LifetimeOf(kind);
 
-			// A hovered twin stays paused; the full lifetime starts when the pointer leaves.
-			if (twin->CountingFrom.has_value())
+			const bool twinIsCountingDown = twin->CountingFrom.has_value();
+			if (twinIsCountingDown)
 			{
 				twin->CountingFrom = now;
 			}
@@ -83,7 +101,8 @@ namespace Core {
 
 	std::vector<ToastDeparture> ToastStack::TakeDepartures()
 	{
-		return std::exchange(m_Departures, {});
+		std::vector<ToastDeparture> noDepartures;
+		return std::exchange(m_Departures, std::move(noDepartures));
 	}
 
 	void ToastStack::NoteDeparture(const Toast& toast, ToastDepartureReason reason)
@@ -93,7 +112,7 @@ namespace Core {
 
 	void ToastStack::SetHovered(std::uint64_t id, bool hovered, Clock::time_point now)
 	{
-		Toast* toast = Find(m_Toasts, id);
+		Toast* const toast = FindToast(m_Toasts, id);
 
 		if (toast == nullptr || toast->LeavingSince.has_value())
 		{
@@ -120,7 +139,7 @@ namespace Core {
 
 	void ToastStack::Close(std::uint64_t id, Clock::time_point now)
 	{
-		if (Toast* toast = Find(m_Toasts, id); toast != nullptr && !toast->LeavingSince.has_value())
+		if (Toast* const toast = FindToast(m_Toasts, id); toast != nullptr && !toast->LeavingSince.has_value())
 		{
 			toast->LeavingSince = now;
 			NoteDeparture(*toast, ToastDepartureReason::ClosedByUser);
@@ -137,8 +156,8 @@ namespace Core {
 				continue;
 			}
 
-			// The fade starts at the moment the countdown ran out, not at the frame that
-			// noticed: a frame late by a long sleep must not stretch the toast's life.
+			// The fade starts when the countdown ran out, not at the frame that noticed: a frame late by a
+			// long sleep must not stretch the toast's life.
 			if (const Clock::time_point expiry = *toast.CountingFrom + toast.Left; now >= expiry)
 			{
 				toast.LeavingSince = expiry;
@@ -146,14 +165,12 @@ namespace Core {
 			}
 		}
 
-		std::erase_if(m_Toasts, [&](const Toast& toast) {
-			return toast.LeavingSince.has_value() && now >= *toast.LeavingSince + kLeave;
-		});
+		std::erase_if(m_Toasts, [now](const Toast& toast) { return HasFinishedLeaving(toast, now); });
 	}
 
 	std::optional<ToastStack::Clock::time_point> ToastStack::NextChange(Clock::time_point now) const
 	{
-		std::optional<Clock::time_point> next;
+		std::optional<Clock::time_point> earliestExpiry;
 
 		for (const Toast& toast : m_Toasts)
 		{
@@ -167,11 +184,11 @@ namespace Core {
 			if (toast.CountingFrom.has_value())
 			{
 				const Clock::time_point expiry = *toast.CountingFrom + toast.Left;
-				next = next.has_value() ? std::min(*next, expiry) : expiry;
+				earliestExpiry = earliestExpiry.has_value() ? std::min(*earliestExpiry, expiry) : expiry;
 			}
 		}
 
-		return next;
+		return earliestExpiry;
 	}
 
 	bool ToastStack::IsAnyCountdownRunning() const

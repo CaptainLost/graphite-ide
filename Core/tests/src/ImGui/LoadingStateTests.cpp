@@ -13,8 +13,6 @@ namespace {
 
 	constexpr ImVec2 kWindowSize{400.0f, 300.0f};
 
-	// A context of its own with the default font built, and one window filling a known
-	// rectangle, so where the loader lands can be measured against it.
 	class LoaderWindow
 	{
 	public:
@@ -22,11 +20,11 @@ namespace {
 		{
 			m_Context = ImGui::CreateContext();
 
-			ImGuiIO& io = ImGui::GetIO();
-			io.DisplaySize = ImVec2(800.0f, 600.0f);
-			io.DeltaTime = 1.0f / 60.0f;
-			io.IniFilename = nullptr;
-			io.Fonts->Build();
+			ImGuiIO& inputOutput = ImGui::GetIO();
+			inputOutput.DisplaySize = ImVec2(800.0f, 600.0f);
+			inputOutput.DeltaTime = 1.0f / 60.0f;
+			inputOutput.IniFilename = nullptr;
+			inputOutput.Fonts->Build();
 		}
 
 		~LoaderWindow() { ImGui::DestroyContext(m_Context); }
@@ -34,7 +32,6 @@ namespace {
 		LoaderWindow(const LoaderWindow&) = delete;
 		LoaderWindow& operator=(const LoaderWindow&) = delete;
 
-		// Draws the loader in a window of `size` and returns the rectangle it took.
 		ImRect DrawLoader(const char* text, ImVec2 size = kWindowSize)
 		{
 			ImGui::NewFrame();

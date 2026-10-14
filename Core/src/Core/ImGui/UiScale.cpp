@@ -11,6 +11,23 @@
 
 namespace Core {
 
+	namespace {
+		constexpr float kUnchangedFactor = 1.0f;
+		constexpr float kHairlineThickness = 1.0f;
+		constexpr float kSquareCorners = 0.0f;
+		constexpr float kOpaque = 1.0f;
+
+		// WARNING: ScaleAllSizes truncates, so below a scale of 1 a 1px line comes out 0 and is not drawn at all.
+		void KeepHairline(float& scaledThickness, float unscaledThickness)
+		{
+			if (unscaledThickness > 0.0f && scaledThickness < kHairlineThickness)
+			{
+				scaledThickness = std::min(unscaledThickness, kHairlineThickness);
+			}
+		}
+	}
+
+	// WARNING: only meaningful while a window is being drawn. EndFrame leaves no viewport current, which resets FontScaleDpi to 1, so a call between frames quietly loses the monitor's scale.
 	float UiScale()
 	{
 		const ImGuiStyle& style = ImGui::GetStyle();
@@ -28,19 +45,26 @@ namespace Core {
 		return ImVec2(size.x * scale, size.y * scale);
 	}
 
-	float ScaleChangeFactor(float previous, float next)
+	float ScaleChangeFactor(float previousScale, float nextScale)
 	{
-		if (previous <= 0.0f || next <= 0.0f)
+		const bool previousIsNotAScale = previousScale <= 0.0f;
+		const bool nextIsNotAScale = nextScale <= 0.0f;
+
+		if (previousIsNotAScale || nextIsNotAScale)
 		{
-			return 1.0f;
+			return kUnchangedFactor;
 		}
 
-		return next / previous;
+		return nextScale / previousScale;
 	}
 
+	// WARNING: call between frames only, because dock nodes are being laid out while a frame runs.
 	void ScaleDockNodeSizes(float factor)
 	{
-		if (factor == 1.0f || factor <= 0.0f)
+		const bool changesNothing = factor == kUnchangedFactor;
+		const bool isNotAScale = factor <= 0.0f;
+
+		if (changesNothing || isNotAScale)
 		{
 			return;
 		}
@@ -52,16 +76,14 @@ namespace Core {
 			return;
 		}
 
-		// Every node the context holds, not just the tree under one dockspace: a floating layout
-		// has nodes of its own. The storage is only read here, and the nodes only written to.
-		for (const ImGuiStoragePair& pair : context->DockContext.Nodes.Data)
+		for (const ImGuiStoragePair& dockNodeEntry : context->DockContext.Nodes.Data)
 		{
-			ImGuiDockNode* node = static_cast<ImGuiDockNode*>(pair.val_p);
+			ImGuiDockNode* dockNode = static_cast<ImGuiDockNode*>(dockNodeEntry.val_p);
 
-			if (node != nullptr)
+			if (dockNode != nullptr)
 			{
-				node->SizeRef.x *= factor;
-				node->SizeRef.y *= factor;
+				dockNode->SizeRef.x *= factor;
+				dockNode->SizeRef.y *= factor;
 			}
 		}
 	}
@@ -73,43 +95,33 @@ namespace Core {
 
 		if (squareViewportWindows)
 		{
-			style.WindowRounding = 0.0f;
+			style.WindowRounding = kSquareCorners;
 		}
 
-		const ImGuiStyle unscaled = style;
+		const ImGuiStyle unscaledStyle = style;
 		style.ScaleAllSizes(scale);
 
-		// ScaleAllSizes truncates, so below 1 a 1px line comes out 0 and is not drawn at all:
-		// borders, separators, the caret in every text field. A line that was there stays
-		// at least a pixel thick; one the theme switched off stays off.
-		const auto keepHairline = [](float& scaled, float before) {
-			if (before > 0.0f && scaled < 1.0f)
-			{
-				scaled = std::min(before, 1.0f);
-			}
-		};
-
-		keepHairline(style.WindowBorderSize, unscaled.WindowBorderSize);
-		keepHairline(style.ChildBorderSize, unscaled.ChildBorderSize);
-		keepHairline(style.PopupBorderSize, unscaled.PopupBorderSize);
-		keepHairline(style.FrameBorderSize, unscaled.FrameBorderSize);
-		keepHairline(style.ImageBorderSize, unscaled.ImageBorderSize);
-		keepHairline(style.TabBorderSize, unscaled.TabBorderSize);
-		keepHairline(style.TabBarBorderSize, unscaled.TabBarBorderSize);
-		keepHairline(style.TabBarOverlineSize, unscaled.TabBarOverlineSize);
-		keepHairline(style.TreeLinesSize, unscaled.TreeLinesSize);
-		keepHairline(style.DragDropTargetBorderSize, unscaled.DragDropTargetBorderSize);
-		keepHairline(style.InputTextCursorSize, unscaled.InputTextCursorSize);
-		keepHairline(style.SeparatorSize, unscaled.SeparatorSize);
-		keepHairline(style.SeparatorTextBorderSize, unscaled.SeparatorTextBorderSize);
-		keepHairline(style.DockingSeparatorSize, unscaled.DockingSeparatorSize);
-		keepHairline(style.MouseCursorScale, unscaled.MouseCursorScale);
+		KeepHairline(style.WindowBorderSize, unscaledStyle.WindowBorderSize);
+		KeepHairline(style.ChildBorderSize, unscaledStyle.ChildBorderSize);
+		KeepHairline(style.PopupBorderSize, unscaledStyle.PopupBorderSize);
+		KeepHairline(style.FrameBorderSize, unscaledStyle.FrameBorderSize);
+		KeepHairline(style.ImageBorderSize, unscaledStyle.ImageBorderSize);
+		KeepHairline(style.TabBorderSize, unscaledStyle.TabBorderSize);
+		KeepHairline(style.TabBarBorderSize, unscaledStyle.TabBarBorderSize);
+		KeepHairline(style.TabBarOverlineSize, unscaledStyle.TabBarOverlineSize);
+		KeepHairline(style.TreeLinesSize, unscaledStyle.TreeLinesSize);
+		KeepHairline(style.DragDropTargetBorderSize, unscaledStyle.DragDropTargetBorderSize);
+		KeepHairline(style.InputTextCursorSize, unscaledStyle.InputTextCursorSize);
+		KeepHairline(style.SeparatorSize, unscaledStyle.SeparatorSize);
+		KeepHairline(style.SeparatorTextBorderSize, unscaledStyle.SeparatorTextBorderSize);
+		KeepHairline(style.DockingSeparatorSize, unscaledStyle.DockingSeparatorSize);
+		KeepHairline(style.MouseCursorScale, unscaledStyle.MouseCursorScale);
 
 		std::copy(std::begin(current.Colors), std::end(current.Colors), std::begin(style.Colors));
 
 		if (squareViewportWindows)
 		{
-			style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+			style.Colors[ImGuiCol_WindowBg].w = kOpaque;
 		}
 
 		style.FontSizeBase = current.FontSizeBase;

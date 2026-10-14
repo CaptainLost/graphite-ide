@@ -13,9 +13,6 @@ using Core::DockLayout;
 using Core::DockSpaceHost;
 
 namespace {
-	// A docking context of its own with the default font built. Frames are driven by hand:
-	// a window docked by the default layout only lands in its node once it has been
-	// submitted, so a check is only meaningful a few frames in.
 	class DockingContext
 	{
 	public:
@@ -23,12 +20,12 @@ namespace {
 		{
 			m_Context = ImGui::CreateContext();
 
-			ImGuiIO& io = ImGui::GetIO();
-			io.DisplaySize = ImVec2(800.0f, 600.0f);
-			io.DeltaTime = 1.0f / 60.0f;
-			io.IniFilename = nullptr;
-			io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-			io.Fonts->Build();
+			ImGuiIO& imGuiIo = ImGui::GetIO();
+			imGuiIo.DisplaySize = ImVec2(800.0f, 600.0f);
+			imGuiIo.DeltaTime = 1.0f / 60.0f;
+			imGuiIo.IniFilename = nullptr;
+			imGuiIo.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+			imGuiIo.Fonts->Build();
 		}
 
 		~DockingContext() { ImGui::DestroyContext(m_Context); }
@@ -36,8 +33,6 @@ namespace {
 		DockingContext(const DockingContext&) = delete;
 		DockingContext& operator=(const DockingContext&) = delete;
 
-		// One frame: the host, `insideHost` between its Begin and End, then every window the
-		// layout names.
 		void Frame(DockSpaceHost& host, const DockLayout& layout, const std::function<void()>& insideHost = {})
 		{
 			ImGui::NewFrame();
@@ -49,11 +44,11 @@ namespace {
 			}
 			host.End();
 
-			for (const std::vector<std::string>* names : {&layout.Left, &layout.Bottom, &layout.Center})
+			for (const std::vector<std::string>* panelNames : {&layout.Left, &layout.Bottom, &layout.Center})
 			{
-				for (const std::string& name : *names)
+				for (const std::string& panelName : *panelNames)
 				{
-					ImGui::Begin(name.c_str());
+					ImGui::Begin(panelName.c_str());
 					ImGui::End();
 				}
 			}
@@ -67,9 +62,7 @@ namespace {
 
 	constexpr int kSettleFrames = 3;
 
-	// A panel beside the central node, so the node is a split of the dockspace rather than
-	// all of it: an empty split with no window in it is merged away.
-	DockLayout WithExplorer()
+	DockLayout LayoutWithPanelBesideCenter()
 	{
 		DockLayout layout;
 		layout.Left = {"Explorer"};
@@ -81,7 +74,7 @@ TEST_CASE("The central node counts as empty while no window is docked in it")
 {
 	DockingContext context;
 	DockSpaceHost host;
-	const DockLayout layout = WithExplorer();
+	const DockLayout layout = LayoutWithPanelBesideCenter();
 
 	bool empty = false;
 	for (int frame = 0; frame < kSettleFrames; ++frame)
@@ -96,7 +89,7 @@ TEST_CASE("The central node stops counting as empty once a window is docked in i
 {
 	DockingContext context;
 	DockSpaceHost host;
-	DockLayout layout = WithExplorer();
+	DockLayout layout = LayoutWithPanelBesideCenter();
 	layout.Center = {"Document"};
 
 	bool empty = true;
@@ -108,23 +101,21 @@ TEST_CASE("The central node stops counting as empty once a window is docked in i
 	CHECK_FALSE(empty);
 }
 
-// Into the window DockSpace() opens inside the host, which paints the empty node's
-// background: whatever the host itself drew there would sit underneath it, unseen.
 TEST_CASE("CenterEmptyState claims exactly the central node, in the window that paints its background")
 {
 	DockingContext context;
 	DockSpaceHost host;
-	const DockLayout layout = WithExplorer();
+	const DockLayout layout = LayoutWithPanelBesideCenter();
 
 	for (int frame = 0; frame < kSettleFrames; ++frame)
 	{
 		context.Frame(host, layout);
 	}
 
-	ImVec2 claimed;
+	ImVec2 claimedMax;
 	ImVec2 nodeMax;
-	int vertices = 0;
-	int verticesBefore = 0;
+	int vertexCountAfter = 0;
+	int vertexCountBefore = 0;
 
 	context.Frame(host, layout, [&] {
 		const ImGuiDockNode* node = ImGui::DockBuilderGetNode(host.GetCenterNodeId());
@@ -132,25 +123,25 @@ TEST_CASE("CenterEmptyState claims exactly the central node, in the window that 
 		REQUIRE(node->HostWindow != nullptr);
 		REQUIRE(node->HostWindow != ImGui::GetCurrentWindow());
 
-		verticesBefore = node->HostWindow->DrawList->VtxBuffer.Size;
+		vertexCountBefore = node->HostWindow->DrawList->VtxBuffer.Size;
 
 		CHECK_FALSE(host.CenterEmptyState("Nothing open.", "Open"));
 
-		vertices = node->HostWindow->DrawList->VtxBuffer.Size;
-		claimed = node->HostWindow->DC.CursorMaxPos;
+		vertexCountAfter = node->HostWindow->DrawList->VtxBuffer.Size;
+		claimedMax = node->HostWindow->DC.CursorMaxPos;
 		nodeMax = ImVec2(node->Pos.x + node->Size.x, node->Pos.y + node->Size.y);
 	});
 
-	CHECK(vertices > verticesBefore);
-	CHECK(claimed.x == doctest::Approx(nodeMax.x));
-	CHECK(claimed.y == doctest::Approx(nodeMax.y));
+	CHECK(vertexCountAfter > vertexCountBefore);
+	CHECK(claimedMax.x == doctest::Approx(nodeMax.x));
+	CHECK(claimedMax.y == doctest::Approx(nodeMax.y));
 }
 
 TEST_CASE("CenterEmptyState submits nothing while a window is docked in the central node")
 {
 	DockingContext context;
 	DockSpaceHost host;
-	DockLayout layout = WithExplorer();
+	DockLayout layout = LayoutWithPanelBesideCenter();
 	layout.Center = {"Document"};
 
 	for (int frame = 0; frame < kSettleFrames; ++frame)
@@ -159,14 +150,14 @@ TEST_CASE("CenterEmptyState submits nothing while a window is docked in the cent
 	}
 
 	context.Frame(host, layout, [&] {
-		const ImGuiID before = ImGui::GetItemID();
-		const ImVec2 cursor = ImGui::GetCursorScreenPos();
+		const ImGuiID itemIdBefore = ImGui::GetItemID();
+		const ImVec2 cursorBefore = ImGui::GetCursorScreenPos();
 
 		CHECK_FALSE(host.CenterEmptyState("Nothing open.", "Open"));
 
-		CHECK(ImGui::GetItemID() == before);
-		CHECK(ImGui::GetCursorScreenPos().x == doctest::Approx(cursor.x));
-		CHECK(ImGui::GetCursorScreenPos().y == doctest::Approx(cursor.y));
+		CHECK(ImGui::GetItemID() == itemIdBefore);
+		CHECK(ImGui::GetCursorScreenPos().x == doctest::Approx(cursorBefore.x));
+		CHECK(ImGui::GetCursorScreenPos().y == doctest::Approx(cursorBefore.y));
 	});
 }
 
@@ -176,18 +167,21 @@ TEST_CASE("DockSpaceHost draws what it is given above the dockspace and gives th
 	DockSpaceHost host;
 	bool drawn = false;
 	float bannerBottom = 0.0f;
+	constexpr float kBannerWidth = 10.0f;
+	constexpr float kBannerHeight = 24.0f;
+	constexpr float kPixelTolerance = 1.0f;
+	const DockLayout emptyLayout;
 
 	const auto banner = [&] {
 		drawn = true;
-		ImGui::Dummy(ImVec2(10.0f, 24.0f));
+		ImGui::Dummy(ImVec2(kBannerWidth, kBannerHeight));
 		bannerBottom = ImGui::GetCursorScreenPos().y;
 	};
 
-	// A few frames: the dockspace's node takes its position from the frame it is laid out in.
 	for (int frame = 0; frame < kSettleFrames; ++frame)
 	{
 		ImGui::NewFrame();
-		host.Begin(DockLayout{}, banner);
+		host.Begin(emptyLayout, banner);
 		host.End();
 		ImGui::EndFrame();
 	}
@@ -196,11 +190,10 @@ TEST_CASE("DockSpaceHost draws what it is given above the dockspace and gives th
 
 	CHECK(drawn);
 	REQUIRE(node != nullptr);
-	CHECK(node->Pos.y >= bannerBottom - 1.0f);
+	CHECK(node->Pos.y >= bannerBottom - kPixelTolerance);
 }
 
 namespace {
-	// The center of the tab `name` was given last frame.
 	ImVec2 TabCenter(const char* name)
 	{
 		const ImGuiWindow* window = ImGui::FindWindowByName(name);
@@ -220,13 +213,11 @@ namespace {
 	}
 }
 
-// ImGui selects a tab on a right press or release over it, so a context menu shows on the tab
-// it was opened for. Here the menu belongs to the tab under the pointer without switching to it.
 TEST_CASE("A right click on a tab that is not selected leaves the selection where it was")
 {
 	DockingContext context;
 	DockSpaceHost host;
-	DockLayout layout = WithExplorer();
+	DockLayout layout = LayoutWithPanelBesideCenter();
 	layout.Center = {"First", "Second"};
 
 	for (int frame = 0; frame < kSettleFrames; ++frame)
@@ -234,26 +225,27 @@ TEST_CASE("A right click on a tab that is not selected leaves the selection wher
 		context.Frame(host, layout);
 	}
 
-	const ImGuiID selected = SelectedTab(host);
-	const char* other = selected == ImGui::FindWindowByName("First")->TabId ? "Second" : "First";
+	const ImGuiID selectedTab = SelectedTab(host);
+	const char* unselectedTabName = selectedTab == ImGui::FindWindowByName("First")->TabId ? "Second" : "First";
 
-	ImGuiIO& io = ImGui::GetIO();
-	io.AddMousePosEvent(TabCenter(other).x, TabCenter(other).y);
+	ImGuiIO& imGuiIo = ImGui::GetIO();
+	imGuiIo.AddMousePosEvent(TabCenter(unselectedTabName).x, TabCenter(unselectedTabName).y);
 	context.Frame(host, layout);
 
-	bool pressSeen = false;
-	io.AddMouseButtonEvent(ImGuiMouseButton_Right, true);
-	context.Frame(host, layout, [&] { pressSeen = ImGui::IsMouseClicked(ImGuiMouseButton_Right); });
+	constexpr bool kButtonDown = true;
+	constexpr bool kButtonUp = false;
+	bool pressSeenPastDockSpace = false;
+	imGuiIo.AddMouseButtonEvent(ImGuiMouseButton_Right, kButtonDown);
+	context.Frame(host, layout, [&] { pressSeenPastDockSpace = ImGui::IsMouseClicked(ImGuiMouseButton_Right); });
 
-	bool releaseSeen = false;
-	io.AddMouseButtonEvent(ImGuiMouseButton_Right, false);
-	context.Frame(host, layout, [&] { releaseSeen = ImGui::IsMouseReleased(ImGuiMouseButton_Right); });
+	bool releaseSeenPastDockSpace = false;
+	imGuiIo.AddMouseButtonEvent(ImGuiMouseButton_Right, kButtonUp);
+	context.Frame(host, layout, [&] { releaseSeenPastDockSpace = ImGui::IsMouseReleased(ImGuiMouseButton_Right); });
 
 	context.Frame(host, layout);
 
-	CHECK(SelectedTab(host) == selected);
+	CHECK(SelectedTab(host) == selectedTab);
 
-	// Past the dockspace the click is there as ever: it is what opens the tab's menu.
-	CHECK(pressSeen);
-	CHECK(releaseSeen);
+	CHECK(pressSeenPastDockSpace);
+	CHECK(releaseSeenPastDockSpace);
 }

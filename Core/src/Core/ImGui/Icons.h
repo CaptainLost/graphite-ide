@@ -9,4 +9,4 @@ namespace Core {
 	const char* IconForExtension(std::string_view extension);
 
 	const ImWchar* UsedGlyphRanges();
-}
+}

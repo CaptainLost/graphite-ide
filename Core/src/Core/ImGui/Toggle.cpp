@@ -11,17 +11,16 @@
 namespace Core {
 
 	namespace {
-		// How far the knob sits inside the track, as a share of the track's height.
 		constexpr float kKnobInsetShare = 0.15f;
+		constexpr float kHoveredTrackTextShare = 0.12f;
+		constexpr float kHalf = 0.5f;
+		constexpr float kTrackEndCount = 2.0f;
 
-		// How much of the text colour a fully hovered track takes on.
-		constexpr float kHoverTint = 0.12f;
-
-		// A switch's knob is white on every scheme: the text colour is near black in the light one, and the knob would read as a hole in the track.
+		// WARNING: the knob is white on every scheme, because the text colour is near black in the light one and the knob would read as a hole in the track.
 		constexpr ImVec4 kKnobColour(1.0f, 1.0f, 1.0f, 1.0f);
 	}
 
-	bool Toggle(const char* id, bool* value)
+	bool Toggle(const char* id, bool* isOn)
 	{
 		const ImVec2 trackSize = Scaled(ImVec2(kToggleWidth, kToggleHeight));
 		const ImVec2 itemSize(trackSize.x, ImGui::GetFrameHeight());
@@ -32,24 +31,24 @@ namespace Core {
 
 		if (clicked)
 		{
-			*value = !*value;
+			*isOn = !*isOn;
 			ImGui::MarkItemEdited(itemId);
 		}
 
-		const float slide = Animation::SwitchAmount(itemId, *value);
-		const float hover = Animation::HoverAmount(itemId, ImGui::IsItemHovered());
+		const float knobSlideAmount = Animation::SwitchAmount(itemId, *isOn);
+		const float hoverAmount = Animation::HoverAmount(itemId, ImGui::IsItemHovered());
 
 		const ImVec4 restingTrack =
-			Animation::Blend(ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive), ImGui::GetStyleColorVec4(ImGuiCol_CheckMark), slide);
-		const ImVec4 hoveredTrack = Animation::Blend(restingTrack, ImGui::GetStyleColorVec4(ImGuiCol_Text), kHoverTint);
-		const ImVec4 track = Animation::Blend(restingTrack, hoveredTrack, hover);
+			Animation::Blend(ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive), ImGui::GetStyleColorVec4(ImGuiCol_CheckMark), knobSlideAmount);
+		const ImVec4 hoveredTrack = Animation::Blend(restingTrack, ImGui::GetStyleColorVec4(ImGuiCol_Text), kHoveredTrackTextShare);
+		const ImVec4 track = Animation::Blend(restingTrack, hoveredTrack, hoverAmount);
 
-		const ImVec2 trackTopLeft(itemTopLeft.x, itemTopLeft.y + (itemSize.y - trackSize.y) * 0.5f);
+		const ImVec2 trackTopLeft(itemTopLeft.x, itemTopLeft.y + (itemSize.y - trackSize.y) * kHalf);
 		const ImVec2 trackBottomRight(trackTopLeft.x + trackSize.x, trackTopLeft.y + trackSize.y);
-		const float trackRadius = trackSize.y * 0.5f;
+		const float trackRadius = trackSize.y * kHalf;
 		const float knobRadius = trackRadius - trackSize.y * kKnobInsetShare;
-		const float knobTravel = trackSize.x - 2.0f * trackRadius;
-		const ImVec2 knobCentre(trackTopLeft.x + trackRadius + knobTravel * slide, trackTopLeft.y + trackRadius);
+		const float knobTravel = trackSize.x - kTrackEndCount * trackRadius;
+		const ImVec2 knobCentre(trackTopLeft.x + trackRadius + knobTravel * knobSlideAmount, trackTopLeft.y + trackRadius);
 
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		drawList->AddRectFilled(trackTopLeft, trackBottomRight, ImGui::GetColorU32(track), trackRadius);

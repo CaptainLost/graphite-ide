@@ -2,40 +2,36 @@
 
 #include "Core/ImGui/ImGuiRenderer.h"
 
+namespace {
+	constexpr bool kWantsTextInput = true;
+	constexpr bool kWantsNoTextInput = false;
+	constexpr bool kPopupOpen = true;
+	constexpr bool kNoPopupOpen = false;
+}
+
 TEST_CASE("Keyboard navigation being available does not entitle the GUI to a keystroke")
 {
-	// The regression this exists for: the decision was once made on ImGui's
-	// WantCaptureKeyboard, which is true whenever keyboard navigation is active — and
-	// ImGuiConfigFlags_NavEnableKeyboard makes that true for any focused window that allows
-	// navigation, which is nearly all of them. Every keystroke was consumed before it could
-	// reach a panel recording a shortcut, so a chord could be armed but never finished.
-	CHECK_FALSE(Core::GuiConsumesKeyboard(false, false));
+	CHECK_FALSE(Core::GuiConsumesKeyboard(kWantsNoTextInput, kNoPopupOpen));
 }
 
-TEST_CASE("A field being typed into takes the keystroke")
+TEST_CASE("A field being typed into takes the keystroke, so naming a file runs no command bound to a letter of the name")
 {
-	// The case worth protecting: naming a file must not also run the commands bound to the
-	// letters of the name.
-	CHECK(Core::GuiConsumesKeyboard(true, false));
+	CHECK(Core::GuiConsumesKeyboard(kWantsTextInput, kNoPopupOpen));
 }
 
-TEST_CASE("A widget merely being interacted with does not take the keystroke")
+TEST_CASE("A widget merely being interacted with, such as a held selection drag, does not take the keystroke")
 {
-	// Held mouse buttons make an item active for as long as they are held, so deciding on
-	// "some item is active" stopped the keyboard working for the whole of a selection drag
-	// in an editor. Wanting text input is the narrower question, and the right one.
-	const bool draggingASelection = false; // an active item, but nothing wants text
+	const bool draggingASelection = kWantsNoTextInput;
 
-	CHECK_FALSE(Core::GuiConsumesKeyboard(draggingASelection, false));
+	CHECK_FALSE(Core::GuiConsumesKeyboard(draggingASelection, kNoPopupOpen));
 }
 
-TEST_CASE("An open modal takes the keystroke")
+TEST_CASE("An open modal takes the keystroke because it is the only thing the user may answer")
 {
-	// A modal is on screen precisely because it is the only thing the user may answer.
-	CHECK(Core::GuiConsumesKeyboard(false, true));
+	CHECK(Core::GuiConsumesKeyboard(kWantsNoTextInput, kPopupOpen));
 }
 
 TEST_CASE("A field inside a popup still takes the keystroke")
 {
-	CHECK(Core::GuiConsumesKeyboard(true, true));
+	CHECK(Core::GuiConsumesKeyboard(kWantsTextInput, kPopupOpen));
 }

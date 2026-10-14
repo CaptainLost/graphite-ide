@@ -9,23 +9,22 @@
 using Core::ScaledStyle;
 
 namespace {
-	// A context of its own, so the style read and written is not another test's.
-	class Context
+	class IsolatedImGuiContext
 	{
 	public:
-		Context()
+		IsolatedImGuiContext()
 			: m_Context(ImGui::CreateContext())
 		{
 			ImGui::GetIO().IniFilename = nullptr;
 		}
 
-		~Context()
+		~IsolatedImGuiContext()
 		{
 			ImGui::DestroyContext(m_Context);
 		}
 
-		Context(const Context&) = delete;
-		Context& operator=(const Context&) = delete;
+		IsolatedImGuiContext(const IsolatedImGuiContext&) = delete;
+		IsolatedImGuiContext& operator=(const IsolatedImGuiContext&) = delete;
 
 	private:
 		ImGuiContext* m_Context = nullptr;
@@ -88,7 +87,7 @@ TEST_CASE("ScaledStyle squares off windows and makes their background opaque for
 
 TEST_CASE("UiScale is the product of the user's scale and the monitor's")
 {
-	Context context;
+	IsolatedImGuiContext context;
 	ImGui::GetStyle().FontScaleMain = 1.25f;
 	ImGui::GetStyle().FontScaleDpi = 2.0f;
 
@@ -97,10 +96,8 @@ TEST_CASE("UiScale is the product of the user's scale and the monitor's")
 	CHECK(Core::Scaled(ImVec2(2.0f, 4.0f)).y == doctest::Approx(10.0f));
 }
 
-TEST_CASE("ScaledStyle below one keeps every hairline at least a pixel thick")
+TEST_CASE("ScaledStyle below one keeps every hairline at least a pixel thick and a size the theme sets to zero at zero")
 {
-	// ImGui truncates each scaled size, so a 1px border at 75% would become 0 and vanish -
-	// and with it the caret of every text field.
 	const ImGuiStyle style = ScaledStyle(ImGuiStyle{}, 0.75f, false);
 
 	CHECK(style.WindowBorderSize == doctest::Approx(1.0f));
@@ -109,7 +106,6 @@ TEST_CASE("ScaledStyle below one keeps every hairline at least a pixel thick")
 	CHECK(style.SeparatorSize >= 1.0f);
 	CHECK(style.InputTextCursorSize >= 1.0f);
 	CHECK(style.MouseCursorScale >= 1.0f);
-	// A size the theme sets to zero stays zero.
 	CHECK(style.FrameBorderSize == doctest::Approx(0.0f));
 }
 
@@ -120,18 +116,16 @@ TEST_CASE("A change of scale multiplies by the ratio of the two")
 	CHECK(Core::ScaleChangeFactor(1.25f, 1.25f) == doctest::Approx(1.0f));
 }
 
-TEST_CASE("The first scale and a scale that is not one change nothing")
+TEST_CASE("The first scale, which is zero before the first frame, and a scale that is not one change nothing")
 {
-	// Zero is the scale before the first frame: the layout is then the saved one, at the scale it
-	// was saved at.
 	CHECK(Core::ScaleChangeFactor(0.0f, 1.5f) == doctest::Approx(1.0f));
 	CHECK(Core::ScaleChangeFactor(1.5f, 0.0f) == doctest::Approx(1.0f));
 	CHECK(Core::ScaleChangeFactor(-1.0f, 1.5f) == doctest::Approx(1.0f));
 }
 
-TEST_CASE("Scaling the dock nodes multiplies their reference sizes")
+TEST_CASE("Scaling the dock nodes multiplies their reference sizes and leaves a zero reference size at zero")
 {
-	Context context;
+	IsolatedImGuiContext context;
 
 	const ImGuiID first = ImGui::DockBuilderAddNode(0x100, ImGuiDockNodeFlags_None);
 	const ImGuiID second = ImGui::DockBuilderAddNode(0x200, ImGuiDockNodeFlags_None);
@@ -142,8 +136,6 @@ TEST_CASE("Scaling the dock nodes multiplies their reference sizes")
 
 	CHECK(ImGui::DockBuilderGetNode(first)->SizeRef.x == doctest::Approx(450.0f));
 	CHECK(ImGui::DockBuilderGetNode(first)->SizeRef.y == doctest::Approx(300.0f));
-	// A node with no reference size on an axis has none afterwards either: the layout reads zero as
-	// "take what is left".
 	CHECK(ImGui::DockBuilderGetNode(second)->SizeRef.x == doctest::Approx(0.0f));
 	CHECK(ImGui::DockBuilderGetNode(second)->SizeRef.y == doctest::Approx(180.0f));
 

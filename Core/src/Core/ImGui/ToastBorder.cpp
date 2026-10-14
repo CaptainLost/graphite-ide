@@ -11,8 +11,7 @@ namespace Core {
 	namespace {
 		constexpr float kQuarterTurn = std::numbers::pi_v<float> / 2.0f;
 
-		// ImGui gives a segment shorter than this a direction at random, and the joint after it
-		// draws as a blob; the head of a split can land that close to a vertex.
+		// WARNING: ImGui gives a segment shorter than this a random direction and draws a blob at the joint after it.
 		constexpr float kShortestSegmentToDraw = 0.01f;
 
 		struct Corner

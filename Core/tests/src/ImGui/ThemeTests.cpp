@@ -16,8 +16,6 @@ namespace {
 		float A;
 	};
 
-	// All eight colours, all four channels. Anything less leaves most of the palette free to
-	// move without a test noticing, which is the whole of what this file is for.
 	constexpr PaletteEntry kExpected[] = {
 		{"Background", &Core::ChromePalette::Background, 0.106f, 0.114f, 0.129f, 1.0f},
 		{"Surface", &Core::ChromePalette::Surface, 0.145f, 0.157f, 0.176f, 1.0f},
@@ -30,9 +28,6 @@ namespace {
 	};
 }
 
-// The dark scheme in Graphite transcribes these bytes. Nothing can check that across the two
-// projects — Theme/ is deliberately free of ImGui and Core is deliberately free of schemes —
-// so this pins the side that would otherwise move silently.
 TEST_CASE("The default chrome palette is the one the application shipped with")
 {
 	const Core::ChromePalette palette = Core::Theme::DefaultPalette();
