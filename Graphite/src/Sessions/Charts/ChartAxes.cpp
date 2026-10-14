@@ -1,6 +1,7 @@
 #include "Sessions/Charts/ChartAxes.h"
 
 #include "Core/Base/Base.h"
+#include "Core/ImGui/ImGuiColors.h"
 
 #include <imgui.h>
 #include <implot.h>
@@ -12,6 +13,28 @@
 
 namespace Graphite {
 
+	namespace {
+		constexpr double kWholeNumberTolerance = 1e-9;
+		constexpr float kBandAlpha = 0.18f;
+		constexpr float kMinBandEms = 0.5f;
+		constexpr float kHalfOfSpan = 0.5f;
+		constexpr double kHalfOfSlot = 0.5;
+		constexpr double kBandBaselineY = 0.0;
+
+		int FormatWholeNumberTick(double value, char* buffer, int bufferSize, void*)
+		{
+			if (std::abs(value - std::round(value)) > kWholeNumberTolerance)
+			{
+				buffer[0] = '\0';
+				return 0;
+			}
+
+			const std::format_to_n_result<char*> formatted = std::format_to_n(buffer, bufferSize - 1, "{:.0f}", value);
+			*formatted.out = '\0';
+			return static_cast<int>(formatted.out - buffer);
+		}
+	}
+
 	void FollowingAxis::Setup(double low, double high)
 	{
 		if (!m_FitPending || m_ViewMoved)
@@ -19,27 +42,33 @@ namespace Graphite {
 			return;
 		}
 
+		// WARNING: ImPlotCond_Always applies for this one frame only, because an axis set that way
+		// takes no input.
 		ImPlot::SetupAxisLimits(ImAxis_X1, low, high, ImPlotCond_Always);
 		m_FitPending = false;
 	}
 
 	void FollowingAxis::Track()
 	{
-		// ImPlot works out the legend's hover as it draws it in EndPlot, so this is the last
-		// frame's, which is where the mouse was when a button under it was pressed.
+		// WARNING: ImPlot works out the legend's hover while drawing it in EndPlot, so this is the
+		// previous frame's, which is where the mouse was when a button under it was pressed.
 		if (ImPlot::GetCurrentPlot()->Items.Legend.Hovered)
 		{
 			return;
 		}
 
-		if (!ImPlot::IsPlotHovered() && !ImPlot::IsAxisHovered(ImAxis_X1))
+		const bool overPlotOrXAxis = ImPlot::IsPlotHovered() || ImPlot::IsAxisHovered(ImAxis_X1);
+
+		if (!overPlotOrXAxis)
 		{
 			return;
 		}
 
-		// A pan with the left button, a box zoom with the right, or the wheel.
-		if (ImGui::IsMouseDragging(ImGuiMouseButton_Left) || ImGui::IsMouseDragging(ImGuiMouseButton_Right) ||
-			ImGui::GetIO().MouseWheel != 0.0f)
+		const bool panned = ImGui::IsMouseDragging(ImGuiMouseButton_Left);
+		const bool boxZoomed = ImGui::IsMouseDragging(ImGuiMouseButton_Right);
+		const bool wheelTurned = ImGui::GetIO().MouseWheel != 0.0f;
+
+		if (panned || boxZoomed || wheelTurned)
 		{
 			m_ViewMoved = true;
 		}
@@ -52,69 +81,50 @@ namespace Graphite {
 
 	void SetupCountedAxis()
 	{
-		ImPlot::SetupAxisFormat(
-			ImAxis_X1,
-			[](double value, char* buffer, int size, void*) -> int {
-				// A tick between two whole numbers keeps its grid line and loses its label.
-				if (std::abs(value - std::round(value)) > 1e-9)
-				{
-					buffer[0] = '\0';
-					return 0;
-				}
-
-				// ImPlot hands over the buffer, so the text is written into it, cut to fit.
-				const auto written = std::format_to_n(buffer, size - 1, "{:.0f}", value);
-				*written.out = '\0';
-				return static_cast<int>(written.out - buffer);
-			});
+		ImPlot::SetupAxisFormat(ImAxis_X1, FormatWholeNumberTick);
 	}
 
 	void DrawAxisCaptions(const char* left, const char* right)
 	{
 		const ImPlotPlot& plot = *ImPlot::GetCurrentPlot();
 		const ImPlotStyle& style = ImPlot::GetStyle();
-		const ImU32 colour = ImPlot::GetStyleColorU32(ImPlotCol_AxisText);
-		ImDrawList* list = ImGui::GetWindowDrawList();
+		const ImU32 captionColour = ImPlot::GetStyleColorU32(ImPlotCol_AxisText);
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-		// Over the tick labels of the axis each names, on the line above the plot area.
 		const float y = plot.PlotRect.Min.y - ImGui::GetTextLineHeight() - style.LabelPadding.y;
 
 		if (left != nullptr)
 		{
-			list->AddText(ImVec2(plot.FrameRect.Min.x + style.PlotPadding.x, y), colour, left);
+			drawList->AddText(ImVec2(plot.FrameRect.Min.x + style.PlotPadding.x, y), captionColour, left);
 		}
 
 		if (right != nullptr)
 		{
-			const float width = ImGui::CalcTextSize(right).x;
-			list->AddText(ImVec2(plot.FrameRect.Max.x - style.PlotPadding.x - width, y), colour, right);
+			const float rightWidth = ImGui::CalcTextSize(right).x;
+			drawList->AddText(ImVec2(plot.FrameRect.Max.x - style.PlotPadding.x - rightWidth, y), captionColour, right);
 		}
 	}
 
 	void DrawColumnBand(double x, double slot, ImU32 accent)
 	{
-		// How strongly the band is drawn, and its narrowest, in font sizes.
-		constexpr float kBandAlpha = 0.18f;
-		constexpr float kMinBandEms = 0.5f;
+		const double halfSlot = slot * kHalfOfSlot;
+		float left = ImPlot::PlotToPixels(x - halfSlot, kBandBaselineY, ImAxis_X1, ImAxis_Y1).x;
+		float right = ImPlot::PlotToPixels(x + halfSlot, kBandBaselineY, ImAxis_X1, ImAxis_Y1).x;
 
-		float left = ImPlot::PlotToPixels(x - slot * 0.5, 0.0, ImAxis_X1, ImAxis_Y1).x;
-		float right = ImPlot::PlotToPixels(x + slot * 0.5, 0.0, ImAxis_X1, ImAxis_Y1).x;
+		const float shortfall = std::max(0.0f, ImGui::GetFontSize() * kMinBandEms - (right - left));
+		const float widenEachSide = shortfall * kHalfOfSpan;
+		left -= widenEachSide;
+		right += widenEachSide;
 
-		// Widened symmetrically about the column's centre, which left and right already are
-		// equidistant from.
-		const float widen = std::max(0.0f, ImGui::GetFontSize() * kMinBandEms - (right - left)) * 0.5f;
-		left -= widen;
-		right += widen;
+		const ImVec4 bandColour = Core::WithAlphaScaled(ImGui::ColorConvertU32ToFloat4(accent), kBandAlpha);
 
-		ImVec4 colour = ImGui::ColorConvertU32ToFloat4(accent);
-		colour.w *= kBandAlpha;
-
-		const ImVec2 plotPos = ImPlot::GetPlotPos();
+		const ImVec2 plotPosition = ImPlot::GetPlotPos();
 		const ImVec2 plotSize = ImPlot::GetPlotSize();
 
 		ImPlot::PushPlotClipRect();
-		ImPlot::GetPlotDrawList()->AddRectFilled(ImVec2(left, plotPos.y), ImVec2(right, plotPos.y + plotSize.y),
-												 ImGui::GetColorU32(colour));
+		ImPlot::GetPlotDrawList()->AddRectFilled(ImVec2(left, plotPosition.y),
+												 ImVec2(right, plotPosition.y + plotSize.y),
+												 ImGui::GetColorU32(bandColour));
 		ImPlot::PopPlotClipRect();
 	}
 }

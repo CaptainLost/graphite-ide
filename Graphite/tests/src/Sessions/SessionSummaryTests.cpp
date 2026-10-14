@@ -148,8 +148,10 @@ TEST_CASE("A session in the workspace or below it belongs to the workspace")
 
 TEST_CASE("A timestamp parses to the millisecond")
 {
-	const auto parsed = ParseTimestamp("2026-09-17T09:29:50.246Z");
-	const auto later = ParseTimestamp("2026-09-17T09:29:51.000Z");
+	const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> parsed =
+		ParseTimestamp("2026-09-17T09:29:50.246Z");
+	const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> later =
+		ParseTimestamp("2026-09-17T09:29:51.000Z");
 
 	REQUIRE(parsed.has_value());
 	REQUIRE(later.has_value());
@@ -159,7 +161,6 @@ TEST_CASE("A timestamp parses to the millisecond")
 
 TEST_CASE("Truncating never cuts a character in half")
 {
-	// "ż" is two bytes; a limit of 3 falls inside the second one.
 	CHECK(TruncateUtf8("a\xc5\xbc\xc5\xbc", 4) == "a\xc5\xbc");
 	CHECK(TruncateUtf8("short", 100) == "short");
 }

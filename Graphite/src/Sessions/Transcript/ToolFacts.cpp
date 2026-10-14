@@ -1,12 +1,14 @@
 #include "Sessions/Transcript/ToolFacts.h"
 
 #include "Core/Base/ByteSize.h"
+#include "Core/Base/Strings.h"
 #include "Core/FileSystem/FileSystem.h"
 
 #include "Sessions/Transcript/JsonAccess.h"
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/Transcript/TranscriptReader.h"
+#include "UI/TypographicMarks.h"
 
 #include <nlohmann/json.hpp>
 
@@ -16,11 +18,18 @@
 namespace Graphite {
 
 	namespace {
-		constexpr const char* kDot = " \xc2\xb7 ";
+		constexpr std::string_view kClaudeModelPrefix = "claude-";
+		constexpr std::string_view kAgentFilePrefix = "agent-";
+		constexpr std::string_view kModelNamesSeparator = "+";
+		constexpr std::uint64_t kTranscriptStart = 0;
+		constexpr std::uint64_t kPercentScale = 100;
+		constexpr std::uint64_t kTokensPerThousand = 1000;
+		constexpr std::uint64_t kTokensPerMillion = 1'000'000;
+		constexpr std::size_t kDigitsPerGroup = 3;
 
 		std::string ShortModel(std::string_view model)
 		{
-			return std::string{model.starts_with("claude-") ? model.substr(7) : model};
+			return std::string{model.starts_with(kClaudeModelPrefix) ? model.substr(kClaudeModelPrefix.size()) : model};
 		}
 
 		std::string LinesText(std::uint64_t lines)
@@ -28,9 +37,20 @@ namespace Graphite {
 			return std::to_string(lines) + (lines == 1 ? " line" : " lines");
 		}
 
+		std::uint64_t LineCountOf(const std::string& content)
+		{
+			if (content.empty())
+			{
+				return 0;
+			}
+
+			const std::uint64_t newlineCount = std::count(content.begin(), content.end(), '\n');
+			return 1 + newlineCount;
+		}
+
 		std::string PatchDetail(const nlohmann::json& result)
 		{
-			const auto patch = result.find("structuredPatch");
+			const nlohmann::json::const_iterator patch = result.find("structuredPatch");
 			if (patch == result.end() || !patch->is_array())
 			{
 				return {};
@@ -39,8 +59,7 @@ namespace Graphite {
 			if (patch->empty() && StringAt(result, "type") == "create")
 			{
 				const std::string content = StringAt(result, "content");
-				const std::uint64_t lines = content.empty() ? 0 : 1 + std::count(content.begin(), content.end(), '\n');
-				return "new file, " + LinesText(lines);
+				return "new file, " + LinesText(LineCountOf(content));
 			}
 
 			std::uint64_t added = 0;
@@ -48,13 +67,13 @@ namespace Graphite {
 
 			for (const nlohmann::json& hunk : *patch)
 			{
-				const auto lines = hunk.is_object() ? hunk.find("lines") : hunk.end();
-				if (!hunk.is_object() || lines == hunk.end() || !lines->is_array())
+				const nlohmann::json::const_iterator hunkLines = hunk.is_object() ? hunk.find("lines") : hunk.end();
+				if (!hunk.is_object() || hunkLines == hunk.end() || !hunkLines->is_array())
 				{
 					continue;
 				}
 
-				for (const nlohmann::json& line : *lines)
+				for (const nlohmann::json& line : *hunkLines)
 				{
 					if (!line.is_string() || line.get_ref<const std::string&>().empty())
 					{
@@ -66,43 +85,43 @@ namespace Graphite {
 				}
 			}
 
-			return "+" + std::to_string(added) + " \xe2\x88\x92" + std::to_string(removed);
+			return std::format("+{} {}{}", added, kMinusSign, removed);
 		}
 	}
 
-	ToolCategory CategoryOf(std::string_view name)
+	ToolCategory CategoryOf(std::string_view toolName)
 	{
-		for (const std::string_view read : {"Read", "Grep", "Glob", "NotebookRead", "ToolSearch"})
+		for (const std::string_view readTool : {"Read", "Grep", "Glob", "NotebookRead", "ToolSearch"})
 		{
-			if (name == read)
+			if (toolName == readTool)
 			{
 				return ToolCategory::Read;
 			}
 		}
-		for (const std::string_view edit : {"Edit", "Write", "NotebookEdit", "MultiEdit"})
+		for (const std::string_view editTool : {"Edit", "Write", "NotebookEdit", "MultiEdit"})
 		{
-			if (name == edit)
+			if (toolName == editTool)
 			{
 				return ToolCategory::Edit;
 			}
 		}
-		for (const std::string_view run : {"Bash", "PowerShell", "Monitor"})
+		for (const std::string_view runTool : {"Bash", "PowerShell", "Monitor"})
 		{
-			if (name == run)
+			if (toolName == runTool)
 			{
 				return ToolCategory::Run;
 			}
 		}
-		for (const std::string_view agent : {"Agent", "Task", "SendMessage", "Workflow", "Skill"})
+		for (const std::string_view agentTool : {"Agent", "Task", "SendMessage", "Workflow", "Skill"})
 		{
-			if (name == agent)
+			if (toolName == agentTool)
 			{
 				return ToolCategory::Agent;
 			}
 		}
-		for (const std::string_view web : {"WebFetch", "WebSearch"})
+		for (const std::string_view webTool : {"WebFetch", "WebSearch"})
 		{
-			if (name == web)
+			if (toolName == webTool)
 			{
 				return ToolCategory::Web;
 			}
@@ -119,21 +138,21 @@ namespace Graphite {
 	SubagentUsage LoadSubagentUsage(const std::filesystem::path& sessionFile)
 	{
 		SubagentUsage usage;
-		std::error_code status;
+		std::error_code directoryStatus;
 
-		for (std::filesystem::directory_iterator it{SubagentDirectory(sessionFile), status}, end;
-			 !status && it != end; it.increment(status))
+		for (std::filesystem::directory_iterator entryIterator{SubagentDirectory(sessionFile), directoryStatus}, endOfDirectory;
+			 !directoryStatus && entryIterator != endOfDirectory; entryIterator.increment(directoryStatus))
 		{
-			const std::string stem = Core::ToUtf8(it->path().stem());
+			const std::string stem = Core::ToUtf8(entryIterator->path().stem());
 
-			if (it->path().extension() != ".jsonl" || !stem.starts_with("agent-"))
+			if (entryIterator->path().extension() != ".jsonl" || !stem.starts_with(kAgentFilePrefix))
 			{
 				continue;
 			}
 
 			UsageTally tally;
 
-			if (Core::Result<TranscriptRead> read = ReadTranscript(it->path(), 0))
+			if (Core::Result<TranscriptRead> read = ReadTranscript(entryIterator->path(), kTranscriptStart))
 			{
 				for (const TranscriptRecord& record : read.GetValue().Chunk.Records)
 				{
@@ -141,7 +160,7 @@ namespace Graphite {
 				}
 			}
 
-			usage[stem.substr(6)] = tally.Get();
+			usage[stem.substr(kAgentFilePrefix.size())] = tally.Get();
 		}
 
 		return usage;
@@ -166,22 +185,22 @@ namespace Graphite {
 			return 0;
 		}
 
-		return static_cast<int>(std::min<std::uint64_t>(cacheRead, context) * 100 / context);
+		return static_cast<int>(std::min<std::uint64_t>(cacheRead, context) * kPercentScale / context);
 	}
 
 	std::string FormatTokens(std::uint64_t tokens)
 	{
-		if (tokens < 1000)
+		if (tokens < kTokensPerThousand)
 		{
 			return std::format("{}", tokens);
 		}
 
-		if (tokens < 1'000'000)
+		if (tokens < kTokensPerMillion)
 		{
-			return std::format("{:.1f}k", static_cast<double>(tokens) / 1000.0);
+			return std::format("{:.1f}k", static_cast<double>(tokens) / static_cast<double>(kTokensPerThousand));
 		}
 
-		return std::format("{:.1f}M", static_cast<double>(tokens) / 1'000'000.0);
+		return std::format("{:.1f}M", static_cast<double>(tokens) / static_cast<double>(kTokensPerMillion));
 	}
 
 	std::string FormatTokensExact(std::uint64_t tokens)
@@ -189,15 +208,16 @@ namespace Graphite {
 		const std::string digits = std::to_string(tokens);
 		std::string grouped;
 
-		for (std::size_t index = 0; index < digits.size(); ++index)
+		for (std::size_t digitIndex = 0; digitIndex < digits.size(); ++digitIndex)
 		{
-			// A comma before every group of three counted from the right, never in front.
-			if (index > 0 && (digits.size() - index) % 3 == 0)
+			const std::size_t digitsFromRight = digits.size() - digitIndex;
+			const bool startsGroup = digitIndex > 0 && digitsFromRight % kDigitsPerGroup == 0;
+			if (startsGroup)
 			{
 				grouped += ',';
 			}
 
-			grouped += digits[index];
+			grouped += digits[digitIndex];
 		}
 
 		return grouped;
@@ -212,29 +232,28 @@ namespace Graphite {
 
 		if (tool.Name == "Read")
 		{
-			if (const auto file = result.find("file"); file != result.end() && file->is_object())
+			const nlohmann::json::const_iterator file = result.find("file");
+			if (file != result.end() && file->is_object())
 			{
-				if (const auto lines = OptionalCountAt(*file, "numLines"))
+				if (const std::optional<std::uint64_t> lineCount = OptionalCountAt(*file, "numLines"))
 				{
-					facts.Size = LinesText(*lines);
+					facts.Size = LinesText(*lineCount);
 				}
 			}
 		}
 		else if (tool.Name == "Bash" || tool.Name == "PowerShell")
 		{
-			// Output that was too large to keep inline is stored apart; its size says how big
-			// it really was, where stdout holds only the head.
-			if (const auto stored = OptionalCountAt(result, "persistedOutputSize"))
+			if (const std::optional<std::uint64_t> persistedOutputSize = OptionalCountAt(result, "persistedOutputSize"))
 			{
-				facts.Size = Core::FormatByteSize(*stored);
+				facts.Size = Core::FormatByteSize(*persistedOutputSize);
 			}
 			else if (result.contains("stdout") || result.contains("stderr"))
 			{
 				facts.Size = Core::FormatByteSize(StringAt(result, "stdout").size() + StringAt(result, "stderr").size());
 			}
 
-			if (const auto interrupted = result.find("interrupted");
-				interrupted != result.end() && interrupted->is_boolean() && interrupted->get<bool>())
+			const nlohmann::json::const_iterator interrupted = result.find("interrupted");
+			if (interrupted != result.end() && interrupted->is_boolean() && interrupted->get<bool>())
 			{
 				facts.Detail = "interrupted";
 			}
@@ -245,16 +264,16 @@ namespace Graphite {
 		}
 		else if (tool.Name == "Grep")
 		{
-			const auto files = OptionalCountAt(result, "numFiles");
-			const auto lines = OptionalCountAt(result, "numLines");
+			const std::optional<std::uint64_t> fileCount = OptionalCountAt(result, "numFiles");
+			const std::optional<std::uint64_t> lineCount = OptionalCountAt(result, "numLines");
 
-			if (StringAt(result, "mode") == "content" && lines && files)
+			if (StringAt(result, "mode") == "content" && lineCount && fileCount)
 			{
-				facts.Detail = std::to_string(*lines) + " matches in " + std::to_string(*files) + " files";
+				facts.Detail = std::to_string(*lineCount) + " matches in " + std::to_string(*fileCount) + " files";
 			}
-			else if (files)
+			else if (fileCount)
 			{
-				facts.Detail = std::to_string(*files) + " files";
+				facts.Detail = std::to_string(*fileCount) + " files";
 			}
 		}
 		else if (IsAgentCall(tool))
@@ -264,26 +283,27 @@ namespace Graphite {
 
 			if (const std::string model = StringAt(result, "resolvedModel"); !model.empty())
 			{
-				detail += (detail.empty() ? "" : kDot) + ShortModel(model);
+				Core::AppendSeparated(detail, kMiddleDotSeparator, ShortModel(model));
 			}
 
-			// No transcript yet — the subagent is still starting — means no cost, not $0.00.
-			if (const auto found = subagents.find(StringAt(result, "agentId")); found != subagents.end())
+			const SubagentUsage::const_iterator subagentUsage = subagents.find(StringAt(result, "agentId"));
+			if (subagentUsage != subagents.end())
 			{
-				detail += (detail.empty() ? "" : kDot) + FormatCost(pricing.CostOf(found->second));
+				const auto& [agentId, usageByModel] = *subagentUsage;
+				Core::AppendSeparated(detail, kMiddleDotSeparator, FormatCost(pricing.CostOf(usageByModel)));
 			}
 
 			facts.Detail = detail;
 		}
 		else if (tool.Name == "WebFetch")
 		{
-			if (const auto bytes = OptionalCountAt(result, "bytes"))
+			if (const std::optional<std::uint64_t> byteCount = OptionalCountAt(result, "bytes"))
 			{
-				facts.Size = Core::FormatByteSize(*bytes);
+				facts.Size = Core::FormatByteSize(*byteCount);
 			}
-			if (const auto code = OptionalCountAt(result, "code"))
+			if (const std::optional<std::uint64_t> statusCode = OptionalCountAt(result, "code"))
 			{
-				facts.Detail = "HTTP " + std::to_string(*code);
+				facts.Detail = "HTTP " + std::to_string(*statusCode);
 			}
 		}
 
@@ -307,16 +327,22 @@ namespace Graphite {
 			const std::string name = ShortModel(key.Model) + (key.Fast ? " fast" : "");
 			if (models.find(name) == std::string::npos)
 			{
-				models += (models.empty() ? "" : "+") + name;
+				Core::AppendSeparated(models, kModelNamesSeparator, name);
 			}
 		}
 
-		const std::uint64_t input = total.Input + total.CacheWrite5m + total.CacheWrite1h + total.CacheRead;
-		const int cached = CachedPercent(total.CacheRead, input);
+		const std::uint64_t inputTokens = total.Input + total.CacheWrite5m + total.CacheWrite1h + total.CacheRead;
+		const int cachedPercent = CachedPercent(total.CacheRead, inputTokens);
 
-		std::string line = std::to_string(requests) + (requests == 1 ? " request" : " requests") + kDot;
-		line += models + kDot + FormatTokens(input) + " in (" + std::to_string(cached) + "% cache)" + kDot +
-				FormatTokens(total.Output) + " out" + kDot + FormatCost(pricing.CostOf(usage));
+		std::string line = std::to_string(requests) + (requests == 1 ? " request" : " requests");
+		line += kMiddleDotSeparator;
+		line += models;
+		line += kMiddleDotSeparator;
+		line += FormatTokens(inputTokens) + " in (" + std::to_string(cachedPercent) + "% cache)";
+		line += kMiddleDotSeparator;
+		line += FormatTokens(total.Output) + " out";
+		line += kMiddleDotSeparator;
+		line += FormatCost(pricing.CostOf(usage));
 		return line;
 	}
 }

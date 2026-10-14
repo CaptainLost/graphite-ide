@@ -17,7 +17,7 @@ namespace {
 
 TEST_CASE("FormatLocalTime writes each style with zero-padded fields")
 {
-	const auto time = At(2026, 9, 3, 8, 5, 7);
+	const std::chrono::local_seconds time = At(2026, 9, 3, 8, 5, 7);
 
 	CHECK(FormatLocalTime(time, ClockStyle::Time) == "08:05:07");
 	CHECK(FormatLocalTime(time, ClockStyle::MonthDayTime) == "09-03 08:05:07");

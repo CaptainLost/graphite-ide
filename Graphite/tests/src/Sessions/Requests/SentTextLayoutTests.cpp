@@ -34,23 +34,27 @@ TEST_CASE("A line with no space breaks where the width runs out")
 
 TEST_CASE("Width is counted in characters and a break never splits one")
 {
-	// "zażółć" is six characters in ten bytes; "gęślą" five in eight.
 	const std::string text = "za\xc5\xbc\xc3\xb3\xc5\x82\xc4\x87 g\xc4\x99\xc5\x9bl\xc4\x85";
 	REQUIRE(text.size() == 19);
-
-	// The space the break fell on starts no row.
 	CHECK(WrapLines(text, 6) == Lines{{0, 10}, {11, 19}});
 }
 
 TEST_CASE("A row broken right before a space does not start the next row with it")
 {
 	CHECK(WrapLines("abc def", 3) == Lines{{0, 3}, {4, 7}});
-
-	// A line's own leading space is text, not a break's leftover.
 	CHECK(WrapLines(" abc", 80) == Lines{{0, 4}});
 	CHECK(WrapLines("ab\n cd", 80) == Lines{{0, 2}, {3, 6}});
+	CHECK(WrapLines("abc ", 3) == Lines{{0, 3}});
+}
 
-	// A space the width ran out on at the very end leaves no empty row behind.
+TEST_CASE("A line's own leading space is text, not a break's leftover")
+{
+	CHECK(WrapLines(" abc", 80) == Lines{{0, 4}});
+	CHECK(WrapLines("ab\n cd", 80) == Lines{{0, 2}, {3, 6}});
+}
+
+TEST_CASE("A space the width ran out on at the very end leaves no empty row behind")
+{
 	CHECK(WrapLines("abc ", 3) == Lines{{0, 3}});
 }
 

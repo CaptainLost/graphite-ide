@@ -12,6 +12,13 @@
 using namespace Graphite;
 
 namespace {
+	constexpr std::chrono::seconds kSettleTimeout{5};
+	constexpr std::chrono::milliseconds kSettlePollInterval{5};
+	constexpr int kCancellableFileCount = 20;
+	constexpr int kLiveWriteRounds = 20;
+
+	const std::vector<SessionSummary> kNoCachedSummaries;
+
 	std::vector<SessionSummary> ScanAll(const std::filesystem::path& projects,
 										const std::vector<SessionSummary>& cached = {})
 	{
@@ -21,11 +28,10 @@ namespace {
 		return found;
 	}
 
-	// Drains the index until it is idle, or fails the test after five seconds.
 	IndexDelivery Settle(SessionIndex& index)
 	{
 		IndexDelivery all;
-		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{5};
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kSettleTimeout;
 
 		bool settled = false;
 
@@ -38,17 +44,16 @@ namespace {
 
 			if (index.IsScanning())
 			{
-				std::this_thread::sleep_for(std::chrono::milliseconds{5});
+				std::this_thread::sleep_for(kSettlePollInterval);
 				continue;
 			}
 
-			// A fresh delivery: Take accumulates into what it is given, and this one
-			// already holds what the check above collected — reusing it here would count
-			// that batch twice.
-			IndexDelivery last;
-			index.Take(last);
-			all.Updated.insert(all.Updated.end(), last.Updated.begin(), last.Updated.end());
-			all.Removed.insert(all.Removed.end(), last.Removed.begin(), last.Removed.end());
+			IndexDelivery freshDeliveryBecauseTakeAccumulates;
+			index.Take(freshDeliveryBecauseTakeAccumulates);
+			all.Updated.insert(all.Updated.end(), freshDeliveryBecauseTakeAccumulates.Updated.begin(),
+							   freshDeliveryBecauseTakeAccumulates.Updated.end());
+			all.Removed.insert(all.Removed.end(), freshDeliveryBecauseTakeAccumulates.Removed.begin(),
+							   freshDeliveryBecauseTakeAccumulates.Removed.end());
 			settled = true;
 		}
 
@@ -104,20 +109,20 @@ TEST_CASE("A cached summary whose file changed is summarised again")
 TEST_CASE("A cancelled scan stops rather than finishing quietly")
 {
 	TempDirectory temp;
-	for (int index = 0; index < 20; ++index)
+	for (int fileNumber = 0; fileNumber < kCancellableFileCount; ++fileNumber)
 	{
-		temp.MakeFile("p/s" + std::to_string(index) + ".jsonl", Fixtures::UserPrompt("x"));
+		temp.MakeFile("p/s" + std::to_string(fileNumber) + ".jsonl", Fixtures::UserPrompt("x"));
 	}
 
 	Core::CancellationToken token;
-	std::size_t seen = 0;
+	std::size_t summariesSeen = 0;
 
-	ScanProjects(temp.GetPath(), {}, token, [&](SessionSummary) {
-		++seen;
+	ScanProjects(temp.GetPath(), kNoCachedSummaries, token, [&](SessionSummary) {
+		++summariesSeen;
 		token.Cancel();
 	});
 
-	CHECK(seen == 1);
+	CHECK(summariesSeen == 1);
 }
 
 TEST_CASE("A change inside a session's own folder names that session")
@@ -137,7 +142,7 @@ TEST_CASE("The index delivers every session, then what changed, then what was de
 	temp.MakeFile("p/b.jsonl", Fixtures::UserPrompt("b"));
 
 	SessionIndex index;
-	index.Start(temp.GetPath(), {});
+	index.Start(temp.GetPath(), kNoCachedSummaries);
 
 	CHECK(Settle(index).Updated.size() == 2);
 
@@ -185,18 +190,16 @@ TEST_CASE("A transcript that cannot be read is neither delivered nor remembered,
 	TempDirectory temp;
 	temp.MakeFile("p/a.jsonl", Fixtures::UserPrompt("a"));
 
-	// A directory where a transcript should be: it exists, and reading it fails.
-	const std::filesystem::path unreadable = temp.MakeDirectory("p/x.jsonl");
+	const std::filesystem::path directoryWhereTranscriptShouldBe = temp.MakeDirectory("p/x.jsonl");
 
 	SessionIndex index;
-	index.Start(temp.GetPath(), {});
+	index.Start(temp.GetPath(), kNoCachedSummaries);
 	CHECK(Settle(index).Updated.size() == 1);
 
 	index.Refresh({temp.GetPath() / "p" / "x"});
 	CHECK(Settle(index).Updated.empty());
 
-	// Had its fingerprint been kept, its disappearance would now be reported as a removal.
-	std::filesystem::remove(unreadable);
+	std::filesystem::remove(directoryWhereTranscriptShouldBe);
 	index.Refresh({temp.GetPath() / "p"});
 	const IndexDelivery after = Settle(index);
 
@@ -212,7 +215,7 @@ TEST_CASE("The initial scan reports its progress and is done once every file has
 	temp.MakeFile("p2/c.jsonl", Fixtures::UserPrompt("c"));
 
 	SessionIndex index;
-	index.Start(temp.GetPath(), {});
+	index.Start(temp.GetPath(), kNoCachedSummaries);
 	Settle(index);
 
 	const ScanProgress progress = index.InitialScan();
@@ -227,12 +230,11 @@ TEST_CASE("Refreshes after the initial scan do not bring it back")
 	const std::filesystem::path file = temp.MakeFile("p/a.jsonl", Fixtures::UserPrompt("a"));
 
 	SessionIndex index;
-	index.Start(temp.GetPath(), {});
+	index.Start(temp.GetPath(), kNoCachedSummaries);
 	Settle(index);
 	REQUIRE(index.InitialScan().Done);
 
-	// A session being written to, as a live terminal does: the watcher keeps reporting it.
-	for (int round = 0; round < 20; ++round)
+	for (int round = 0; round < kLiveWriteRounds; ++round)
 	{
 		std::ofstream{file, std::ios::app} << Fixtures::UserPrompt("more");
 		index.Refresh({file.parent_path()});

@@ -91,11 +91,10 @@ TEST_CASE("Odd inputs parse without losing text")
 
 TEST_CASE("Words wrap at the width, keeping their span")
 {
-	// Every character is 1 wide.
-	const auto measure = [](std::string_view text, SpanStyle) { return static_cast<float>(text.size()); };
+	const auto measureOneUnitPerCharacter = [](std::string_view text, SpanStyle) { return static_cast<float>(text.size()); };
 
 	const std::vector<PlacedWord> words =
-		LayoutSpans({{SpanStyle::Plain, "aaa bbb "}, {SpanStyle::Bold, "ccc"}}, 8.0f, measure);
+		LayoutSpans({{SpanStyle::Plain, "aaa bbb "}, {SpanStyle::Bold, "ccc"}}, 8.0f, measureOneUnitPerCharacter);
 
 	REQUIRE(words.size() == 3);
 	CHECK(words[0].Line == 0);
@@ -108,10 +107,10 @@ TEST_CASE("Words wrap at the width, keeping their span")
 
 TEST_CASE("A word wider than the whole width gets a line of its own and layout ends")
 {
-	const auto measure = [](std::string_view text, SpanStyle) { return static_cast<float>(text.size()); };
+	const auto measureOneUnitPerCharacter = [](std::string_view text, SpanStyle) { return static_cast<float>(text.size()); };
 
 	const std::vector<PlacedWord> words =
-		LayoutSpans({{SpanStyle::Plain, "a D:\\very\\long\\path\\that\\never\\fits b"}}, 6.0f, measure);
+		LayoutSpans({{SpanStyle::Plain, "a D:\\very\\long\\path\\that\\never\\fits b"}}, 6.0f, measureOneUnitPerCharacter);
 
 	REQUIRE(words.size() == 3);
 	CHECK(words[1].Line == 1);
@@ -134,4 +133,35 @@ TEST_CASE("Each line of a table is a paragraph of its own")
 	CHECK(blocks[2].Spans == std::vector<Span>{{SpanStyle::Plain, "|---|---|"}});
 	CHECK(blocks[3].Spans == std::vector<Span>{{SpanStyle::Plain, "| 1 | 2 |"}});
 	CHECK(blocks[4].Spans == std::vector<Span>{{SpanStyle::Plain, "after"}});
+}
+
+TEST_CASE("Headings deeper than three levels render as level three, and seven hashes are no heading")
+{
+	const std::vector<MarkdownBlock> blocks = ParseMarkdown("##### Deep\n####### Not a heading");
+
+	REQUIRE(blocks.size() == 2);
+	CHECK(blocks[0].Kind == MarkdownKind::Heading);
+	CHECK(blocks[0].Level == 3);
+	CHECK(blocks[1].Kind == MarkdownKind::Paragraph);
+}
+
+TEST_CASE("Star and dash items get a bullet marker, and an ordered item keeps its number and dot")
+{
+	const std::vector<MarkdownBlock> blocks = ParseMarkdown("* star\n- dash\n12. twelve");
+
+	REQUIRE(blocks.size() == 3);
+	CHECK(blocks[0].Marker == "\xe2\x80\xa2");
+	CHECK(blocks[1].Marker == "\xe2\x80\xa2");
+	CHECK(blocks[2].Marker == "12.");
+}
+
+TEST_CASE("A word travels with the spaces placed after it")
+{
+	const auto measureOneUnitPerCharacter = [](std::string_view text, SpanStyle) { return static_cast<float>(text.size()); };
+
+	const std::vector<PlacedWord> words = LayoutSpans({{SpanStyle::Plain, "ab cd"}}, 100.0f, measureOneUnitPerCharacter);
+
+	REQUIRE(words.size() == 2);
+	CHECK(words[0].Text == "ab ");
+	CHECK(words[1].Text == "cd");
 }

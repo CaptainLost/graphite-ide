@@ -9,8 +9,6 @@ namespace Graphite {
 
 	class AppSettings;
 
-	// What the user configured about Claude: which program to run and what each model costs.
-	// Changes go to AppSettings at once, as every other setting here does.
 	class ClaudeSettings
 	{
 	public:
@@ -25,7 +23,6 @@ namespace Graphite {
 		void SetPrice(const std::string& model, const Price& price);
 		void ResetPrice(const std::string& model);
 
-		// The program "New Claude session" runs; empty when there is none.
 		std::filesystem::path ResolveProgram() const;
 
 	private:

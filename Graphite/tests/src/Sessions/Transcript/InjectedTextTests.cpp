@@ -66,16 +66,17 @@ TEST_CASE("A first line that fits is its own label, and one that does not is cut
 
 TEST_CASE("A label is cut before a character, never inside one")
 {
+	constexpr int kCharactersInText = 100;
+	constexpr int kCharactersThatFitBeforeEllipsis = 58;
+
 	std::string text;
-	for (int i = 0; i < 100; ++i)
+	for (int characterIndex = 0; characterIndex < kCharactersInText; ++characterIndex)
 	{
 		text += "\xc5\xbc";
 	}
 
-	// 117 bytes leave room for the ellipsis; the 117th is the first half of a character,
-	// so the cut backs off to 116.
 	std::string expected;
-	for (int i = 0; i < 58; ++i)
+	for (int characterIndex = 0; characterIndex < kCharactersThatFitBeforeEllipsis; ++characterIndex)
 	{
 		expected += "\xc5\xbc";
 	}

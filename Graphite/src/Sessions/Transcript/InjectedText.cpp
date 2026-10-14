@@ -1,6 +1,10 @@
 #include "Sessions/Transcript/InjectedText.h"
 
+#include "Core/Base/Strings.h"
+#include "Core/FileSystem/FileSystem.h"
+
 #include "Sessions/SessionSummary.h"
+#include "UI/TypographicMarks.h"
 
 #include <array>
 
@@ -9,9 +13,7 @@ namespace Graphite {
 	namespace {
 		struct Marker
 		{
-			// The text the injected text opens with: a tag, or the bracketed line Claude Code
-			// writes when the user stops a request.
-			std::string_view Tag;
+			std::string_view OpeningText;
 			std::string_view Label;
 		};
 
@@ -25,19 +27,22 @@ namespace Graphite {
 			Marker{"[Request interrupted by user", "Interrupted by user"},
 		};
 
-		std::string_view Trimmed(std::string_view text)
+		constexpr std::string_view kWhitespace = " \t\r\n";
+		constexpr std::string_view kImageOpening = "[Image: source: ";
+
+		std::string_view WithoutLeadingWhitespace(std::string_view text)
 		{
-			const std::size_t start = text.find_first_not_of(" \t\r\n");
-			return start == std::string_view::npos ? std::string_view{} : text.substr(start);
+			const std::size_t firstNonWhitespace = text.find_first_not_of(kWhitespace);
+			return firstNonWhitespace == std::string_view::npos ? std::string_view{} : text.substr(firstNonWhitespace);
 		}
 
 		const Marker* MarkerOf(std::string_view text)
 		{
-			const std::string_view trimmed = Trimmed(text);
+			const std::string_view trimmed = WithoutLeadingWhitespace(text);
 
 			for (const Marker& marker : kMarkers)
 			{
-				if (trimmed.starts_with(marker.Tag))
+				if (trimmed.starts_with(marker.OpeningText))
 				{
 					return &marker;
 				}
@@ -46,21 +51,22 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		// The text between <tag> and </tag>, or nothing when either is missing.
-		std::string_view Between(std::string_view text, std::string_view tag)
+		std::string_view TextBetweenTags(std::string_view text, std::string_view tagName)
 		{
-			const std::string open = "<" + std::string{tag} + ">";
-			const std::string close = "</" + std::string{tag} + ">";
+			const std::string openingTag = "<" + std::string{tagName} + ">";
+			const std::string closingTag = "</" + std::string{tagName} + ">";
 
-			const std::size_t start = text.find(open);
-			if (start == std::string_view::npos)
+			const std::size_t openingTagStart = text.find(openingTag);
+			if (openingTagStart == std::string_view::npos)
 			{
 				return {};
 			}
 
-			const std::size_t from = start + open.size();
-			const std::size_t end = text.find(close, from);
-			return end == std::string_view::npos ? std::string_view{} : Trimmed(text.substr(from, end - from));
+			const std::size_t contentStart = openingTagStart + openingTag.size();
+			const std::size_t contentEnd = text.find(closingTag, contentStart);
+			return contentEnd == std::string_view::npos
+					   ? std::string_view{}
+					   : WithoutLeadingWhitespace(text.substr(contentStart, contentEnd - contentStart));
 		}
 	}
 
@@ -78,15 +84,15 @@ namespace Graphite {
 			return "Injected text";
 		}
 
-		if (marker->Tag == "<task-notification>")
+		if (marker->OpeningText == "<task-notification>")
 		{
-			const std::string_view summary = Between(text, "summary");
+			const std::string_view summary = TextBetweenTags(text, "summary");
 			return summary.empty() ? std::string{marker->Label} : std::string{summary};
 		}
 
-		if (marker->Tag == "<command-name>")
+		if (marker->OpeningText == "<command-name>")
 		{
-			const std::string_view name = Between(text, "command-name");
+			const std::string_view name = TextBetweenTags(text, "command-name");
 			return name.empty() ? std::string{marker->Label} : "Command " + std::string{name};
 		}
 
@@ -95,19 +101,13 @@ namespace Graphite {
 
 	std::string FirstLineLabel(std::string_view text, std::size_t maxBytes)
 	{
-		const std::string_view line = text.substr(0, text.find('\n'));
+		const std::string_view line = Core::FirstLine(text);
 		std::string label;
-
-		// Claude Code writes this line beside an image pasted into a prompt. The path is long
-		// and its head is the same folder every time, so a cut would keep everything but the
-		// part that tells two images apart.
-		constexpr std::string_view kImageOpening = "[Image: source: ";
 
 		if (line.starts_with(kImageOpening) && line.ends_with(']'))
 		{
 			const std::string_view path = line.substr(kImageOpening.size(), line.size() - kImageOpening.size() - 1);
-			const std::size_t slash = path.find_last_of("\\/");
-			const std::string_view name = slash == std::string_view::npos ? path : path.substr(slash + 1);
+			const std::string_view name = Core::AfterLastPathSeparator(path);
 
 			if (!name.empty())
 			{
@@ -125,9 +125,7 @@ namespace Graphite {
 			return label;
 		}
 
-		// The ellipsis counts within the budget, so a cut label is never longer than one that
-		// just fits.
-		constexpr std::string_view ellipsis = "\xe2\x80\xa6";
-		return TruncateUtf8(label, maxBytes > ellipsis.size() ? maxBytes - ellipsis.size() : 0) + std::string{ellipsis};
+		const std::size_t bytesBeforeEllipsis = maxBytes > kEllipsis.size() ? maxBytes - kEllipsis.size() : 0;
+		return TruncateUtf8(label, bytesBeforeEllipsis) + std::string{kEllipsis};
 	}
 }

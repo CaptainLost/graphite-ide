@@ -19,9 +19,8 @@
 namespace Graphite {
 
 	namespace {
-		// Small enough that a chunk parses in a moment even in a Debug build, so the reader
-		// sees the conversation fill in and closing a tab waits for no more than one chunk.
 		constexpr std::uint64_t kChunkBytes = 1024 * 1024;
+		constexpr std::string_view kAgentPrefix = "agent-";
 	}
 
 	bool LiveTranscript::ReadMain(const std::filesystem::path& file, Inbox& inbox)
@@ -35,37 +34,35 @@ namespace Graphite {
 
 		while (true)
 		{
-			// A missing or locked file leaves the offset where it was; the next poll retries.
-			// The file is read outside the lock, so the UI never waits on the disk.
-			Core::Result<TranscriptRead> read = ReadTranscriptChunk(file, offset, kChunkBytes);
+			// WARNING: The file is read before the lock is taken, so the UI never waits on the disk.
+			Core::Result<TranscriptRead> chunkRead = ReadTranscriptChunk(file, offset, kChunkBytes);
 
 			const std::lock_guard<std::mutex> guard(inbox.Mutex);
 
-			if (!read.HasValue())
+			if (!chunkRead.HasValue())
 			{
 				return !inbox.Stopping;
 			}
 
-			TranscriptRead& value = read.GetValue();
+			TranscriptRead& transcriptRead = chunkRead.GetValue();
 
-			if (value.Restarted)
+			if (transcriptRead.Restarted)
 			{
 				inbox.Records.clear();
 				inbox.Restarted = true;
 				inbox.Skipped = 0;
 			}
 
-			for (TranscriptRecord& record : value.Chunk.Records)
+			for (TranscriptRecord& record : transcriptRead.Chunk.Records)
 			{
 				inbox.Records.push_back(std::move(record));
 			}
 
-			inbox.Skipped += value.Chunk.Skipped;
-			inbox.Offset = value.NextOffset;
-			inbox.Progress.Bytes = value.NextOffset;
-			inbox.Progress.Total = value.FileSize;
+			inbox.Skipped += transcriptRead.Chunk.Skipped;
+			inbox.Offset = transcriptRead.NextOffset;
+			inbox.Progress.Bytes = transcriptRead.NextOffset;
+			inbox.Progress.Total = transcriptRead.FileSize;
 
-			// Per chunk, so a long transcript fills in and its progress bar moves as it loads.
 			Core::Redraw::Request();
 
 			if (inbox.Stopping)
@@ -73,59 +70,59 @@ namespace Graphite {
 				return false;
 			}
 
-			// Done at the end of the file, or at a last line still being written, which a
-			// chunk leaves unread and the next poll picks up.
-			if (value.NextOffset >= value.FileSize || (value.NextOffset == offset && !value.Restarted))
+			const bool reachedEndOfFile = transcriptRead.NextOffset >= transcriptRead.FileSize;
+			const bool stoppedAtUnfinishedLine = transcriptRead.NextOffset == offset && !transcriptRead.Restarted;
+			if (reachedEndOfFile || stoppedAtUnfinishedLine)
 			{
 				return true;
 			}
 
-			offset = value.NextOffset;
+			offset = transcriptRead.NextOffset;
 		}
 	}
 
 	std::optional<LiveTranscript::SubagentState> LiveTranscript::FollowSubagents(
 		const std::filesystem::path& sessionFile, SubagentFiles& subagents, Inbox& inbox)
 	{
-		std::map<std::filesystem::path, SubagentFile>& files = subagents.Files;
-		bool moved = false;
-		std::vector<std::filesystem::path> present;
-		std::error_code status;
+		using SubagentFileMap = std::map<std::filesystem::path, SubagentFile>;
 
-		// Listed before any is read, so the progress knows how many there are.
-		for (std::filesystem::directory_iterator it{SubagentDirectory(sessionFile), status}, end;
-			 !status && it != end; it.increment(status))
+		SubagentFileMap& files = subagents.Files;
+		bool anythingMoved = false;
+		std::vector<std::filesystem::path> presentFiles;
+		std::error_code directoryStatus;
+
+		for (std::filesystem::directory_iterator entryIterator{SubagentDirectory(sessionFile), directoryStatus}, endOfDirectory;
+			 !directoryStatus && entryIterator != endOfDirectory; entryIterator.increment(directoryStatus))
 		{
-			const std::filesystem::path& path = it->path();
+			const std::filesystem::path& entryPath = entryIterator->path();
 
-			if (path.extension() == ".jsonl" && Core::ToUtf8(path.stem()).starts_with("agent-"))
+			if (entryPath.extension() == ".jsonl" && Core::ToUtf8(entryPath.stem()).starts_with(kAgentPrefix))
 			{
-				present.push_back(path);
+				presentFiles.push_back(entryPath);
 			}
 		}
 
-		// Counted through only on the first walk. A later one reads just what moved, in a
-		// moment, and counting it through would flash the view's "reading subagents" line
-		// on every poll of a live session.
-		bool counting = false;
+		// WARNING: Progress is counted only on the first walk. A later walk reads just what moved,
+		// in a moment, and counting it would flash the view's "reading subagents" line on every poll.
+		bool countingProgress = false;
 
 		{
 			const std::lock_guard<std::mutex> guard(inbox.Mutex);
-			counting = !inbox.Progress.SubagentsWalked;
+			countingProgress = !inbox.Progress.SubagentsWalked;
 
-			if (counting)
+			if (countingProgress)
 			{
 				inbox.Progress.SubagentsDone = 0;
-				inbox.Progress.SubagentsTotal = present.size();
+				inbox.Progress.SubagentsTotal = presentFiles.size();
 			}
 		}
 
-		std::set<std::filesystem::path> seen;
+		std::set<std::filesystem::path> seenFiles;
 
-		for (std::size_t index = 0; index < present.size(); ++index)
+		for (std::size_t presentIndex = 0; presentIndex < presentFiles.size(); ++presentIndex)
 		{
-			// Checked before every file rather than once per walk: a closing tab must not wait
-			// for dozens of them.
+			// WARNING: Stopping is checked before every file, not once per walk, so a closing tab
+			// does not wait for dozens of them.
 			{
 				const std::lock_guard<std::mutex> guard(inbox.Mutex);
 
@@ -134,102 +131,106 @@ namespace Graphite {
 					return std::nullopt;
 				}
 
-				if (counting)
+				if (countingProgress)
 				{
-					inbox.Progress.SubagentsDone = index;
+					inbox.Progress.SubagentsDone = presentIndex;
 				}
 			}
 
 			Core::Redraw::Request();
 
-			const std::filesystem::path& path = present[index];
+			const std::filesystem::path& subagentPath = presentFiles[presentIndex];
 
-			std::error_code sizeStatus;
-			const std::uintmax_t size = std::filesystem::file_size(path, sizeStatus);
-			if (sizeStatus)
+			std::error_code fileSizeStatus;
+			const std::uintmax_t fileSize = std::filesystem::file_size(subagentPath, fileSizeStatus);
+			if (fileSizeStatus)
 			{
 				continue;
 			}
 
-			seen.insert(path);
+			seenFiles.insert(subagentPath);
 
-			const auto [found, added] = files.try_emplace(path);
-			SubagentFile& file = found->second;
-			moved = moved || added;
+			const auto [entryPosition, wasAdded] = files.try_emplace(subagentPath);
+			auto& [placedPath, subagentFile] = *entryPosition;
+			anythingMoved = anythingMoved || wasAdded;
 
-			if (!file.Link)
+			if (!subagentFile.Link)
 			{
-				file.Link = ReadSubagentMeta(path);
-				moved = moved || file.Link.has_value();
+				subagentFile.Link = ReadSubagentMeta(subagentPath);
+				anythingMoved = anythingMoved || subagentFile.Link.has_value();
 			}
 
-			if (!added && size == file.Size)
-			{
-				continue;
-			}
-
-			// A missing or locked file keeps what was read of it; the next poll retries.
-			Core::Result<TranscriptRead> read = ReadTranscript(path, file.Offset);
-			if (!read)
+			if (!wasAdded && fileSize == subagentFile.Size)
 			{
 				continue;
 			}
 
-			TranscriptRead& value = read.GetValue();
-
-			// Shorter than what was read: rewritten, so its usage is counted afresh.
-			if (value.Restarted)
+			Core::Result<TranscriptRead> transcriptRead = ReadTranscript(subagentPath, subagentFile.Offset);
+			if (!transcriptRead)
 			{
-				file.Tally = {};
-				moved = true;
+				continue;
 			}
 
-			for (const TranscriptRecord& record : value.Chunk.Records)
+			TranscriptRead& readValue = transcriptRead.GetValue();
+
+			if (readValue.Restarted)
 			{
-				file.Tally.Add(record);
+				subagentFile.Tally = UsageTally{};
+				anythingMoved = true;
 			}
 
-			moved = moved || !value.Chunk.Records.empty();
-			file.Offset = value.NextOffset;
-			file.Size = size;
+			for (const TranscriptRecord& record : readValue.Chunk.Records)
+			{
+				subagentFile.Tally.Add(record);
+			}
+
+			anythingMoved = anythingMoved || !readValue.Chunk.Records.empty();
+			subagentFile.Offset = readValue.NextOffset;
+			subagentFile.Size = fileSize;
 		}
 
 		{
 			const std::lock_guard<std::mutex> guard(inbox.Mutex);
-			inbox.Progress.SubagentsDone = present.size();
-			inbox.Progress.SubagentsTotal = present.size();
+			inbox.Progress.SubagentsDone = presentFiles.size();
+			inbox.Progress.SubagentsTotal = presentFiles.size();
 		}
 
-		// Files not seen have gone, but only when the walk saw the whole folder: one cut short
-		// by an error has not seen them, and forgetting them would read them again from zero.
-		const bool walked = !status || status == std::errc::no_such_file_or_directory;
+		// WARNING: Unseen files are forgotten only when the walk saw the whole folder. A walk cut
+		// short by an error has not seen them, and forgetting them would read them again from zero.
+		const bool sawWholeFolder = !directoryStatus || directoryStatus == std::errc::no_such_file_or_directory;
 
-		for (auto it = files.begin(); walked && it != files.end();)
+		std::vector<std::filesystem::path> goneFiles;
+
+		if (sawWholeFolder)
 		{
-			if (seen.contains(it->first))
+			for (const auto& [knownPath, knownFile] : files)
 			{
-				++it;
-			}
-			else
-			{
-				it = files.erase(it);
-				moved = true;
+				if (!seenFiles.contains(knownPath))
+				{
+					goneFiles.push_back(knownPath);
+				}
 			}
 		}
 
-		if (!moved)
+		for (const std::filesystem::path& gonePath : goneFiles)
+		{
+			files.erase(gonePath);
+			anythingMoved = true;
+		}
+
+		if (!anythingMoved)
 		{
 			return std::nullopt;
 		}
 
 		SubagentState state;
-		for (const auto& [path, file] : files)
+		for (const auto& [subagentPath, subagentFile] : files)
 		{
-			state.Usage[Core::ToUtf8(path.stem()).substr(6)] = file.Tally.Get();
+			state.Usage[Core::ToUtf8(subagentPath.stem()).substr(kAgentPrefix.size())] = subagentFile.Tally.Get();
 
-			if (file.Link)
+			if (subagentFile.Link)
 			{
-				state.Links.insert(*file.Link);
+				state.Links.insert(*subagentFile.Link);
 			}
 		}
 
@@ -259,7 +260,6 @@ namespace Graphite {
 		}
 
 		m_Jobs.Submit([inbox = m_Inbox, subagentFiles = m_Subagents, file = m_File] {
-			// However the read ends, what it published last has to be drawn.
 			const Core::ScopeExit wakeOnExit{[] { Core::Redraw::Request(); }};
 
 			while (true)
@@ -276,35 +276,31 @@ namespace Graphite {
 					inbox->Again = false;
 				}
 
-				// The conversation is published before the subagents are looked at, so a
+				// WARNING: The conversation is published before the subagents are looked at, so a
 				// subagent's write never holds back what the main transcript already said.
-				const bool going = ReadMain(file, *inbox);
+				const bool mainTranscriptOpen = ReadMain(file, *inbox);
 
 				{
 					const std::lock_guard<std::mutex> guard(inbox->Mutex);
 
-					// Ended even when the file could not be read: a view waiting for the first
-					// pass would otherwise wait on a file that may never appear.
 					inbox->Progress.FirstPassDone = true;
 
-					if (!going)
+					if (!mainTranscriptOpen)
 					{
 						inbox->Reading = false;
 						return;
 					}
 				}
 
-				std::optional<SubagentState> subagents = FollowSubagents(file, *subagentFiles, *inbox);
+				std::optional<SubagentState> followedSubagents = FollowSubagents(file, *subagentFiles, *inbox);
 
 				const std::lock_guard<std::mutex> guard(inbox->Mutex);
 
-				if (subagents.has_value())
+				if (followedSubagents.has_value())
 				{
-					inbox->Subagents = std::move(*subagents);
+					inbox->Subagents = std::move(*followedSubagents);
 				}
 
-				// Marked with the usage it produced, so whoever sees the walk done can take it.
-				// A walk cut short by closing is not done.
 				if (!inbox->Stopping)
 				{
 					inbox->Progress.SubagentsWalked = true;
@@ -337,7 +333,8 @@ namespace Graphite {
 		{
 			const std::lock_guard<std::mutex> guard(m_Inbox->Mutex);
 			records.swap(m_Inbox->Records);
-			restarted = std::exchange(m_Inbox->Restarted, false);
+			constexpr bool kRestartHandled = false;
+			restarted = std::exchange(m_Inbox->Restarted, kRestartHandled);
 		}
 
 		if (restarted)

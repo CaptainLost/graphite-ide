@@ -1,9 +1,16 @@
 #include "Sessions/Session.h"
 
+#include "Core/Base/Strings.h"
 #include "Sessions/Transcript/InjectedText.h"
 #include "Sessions/Requests/RequestUsageAccumulator.h"
 
 namespace Graphite {
+
+	namespace {
+		constexpr std::size_t kMetaTextLabelBytes = 120;
+
+		using IndexByKey = std::unordered_map<std::string, std::size_t>;
+	}
 
 	Turn& Session::CurrentTurn()
 	{
@@ -24,14 +31,15 @@ namespace Graphite {
 		{
 			if (block.Kind == BlockKind::ToolResult)
 			{
-				const auto found = m_ToolById.find(block.ToolUseId);
+				const IndexByKey::const_iterator foundTool = m_ToolById.find(block.ToolUseId);
 
-				if (found == m_ToolById.end())
+				if (foundTool == m_ToolById.end())
 				{
 					continue;
 				}
 
-				ToolCall& tool = m_Tools[found->second];
+				const auto& [toolId, toolIndex] = *foundTool;
+				ToolCall& tool = m_Tools[toolIndex];
 				tool.HasResult = true;
 				tool.IsError = block.IsError;
 				tool.Result = block.Text;
@@ -47,15 +55,11 @@ namespace Graphite {
 					continue;
 				}
 
-				// Words Claude Code put in the user's mouth fold into the turn they arrived in;
-				// only what the user typed starts a turn.
 				if (record.IsMeta || IsInjectedText(block.Text))
 				{
-					// Meta text with no known opening, a skill's body say, has no kind to name, so
-					// its first line says what it is.
 					const std::string label = IsInjectedText(block.Text)
 												  ? InjectedLabel(block.Text)
-												  : FirstLineLabel(block.Text, 120);
+												  : FirstLineLabel(block.Text, kMetaTextLabelBytes);
 					CurrentTurn().Items.push_back(
 						{.Kind = ItemKind::Injected, .Text = block.Text, .Label = label, .At = record.Timestamp});
 					continue;
@@ -63,11 +67,7 @@ namespace Graphite {
 
 				startsTurn = true;
 
-				if (!prompt.empty())
-				{
-					prompt += '\n';
-				}
-				prompt += block.Text;
+				Core::AppendSeparated(prompt, "\n", block.Text);
 			}
 		}
 
@@ -95,7 +95,7 @@ namespace Graphite {
 	{
 		Turn& turn = CurrentTurn();
 
-		for (auto item = turn.Items.rbegin(); item != turn.Items.rend(); ++item)
+		for (std::vector<TurnItem>::reverse_iterator item = turn.Items.rbegin(); item != turn.Items.rend(); ++item)
 		{
 			if (item->Kind != ItemKind::Compaction)
 			{
@@ -119,16 +119,15 @@ namespace Graphite {
 		Turn& turn = CurrentTurn();
 		const std::string& key = record.RequestId.empty() ? record.Uuid : record.RequestId;
 
-		// Same rule as UsageTally: a response's usage rides on every record of it, counted once
-		// under the model its first record names, keeping the counts MergeResponseUsage picks.
 		if (record.Usage.has_value())
 		{
-			const auto seen = key.empty() ? m_RequestTurn.end() : m_RequestTurn.find(key);
+			const IndexByKey::const_iterator seenRequest =
+				key.empty() ? m_RequestTurn.end() : m_RequestTurn.find(key);
 
-			if (seen == m_RequestTurn.end())
+			if (seenRequest == m_RequestTurn.end())
 			{
 				RequestUsage& request = turn.Requests[key];
-				request = {record.Model, record.Fast, {}};
+				request = {.Model = record.Model, .Fast = record.Fast};
 				RequestUsageAccumulator counted;
 				counted.Add(*record.Usage, &turn.Usage[{record.Model, record.Fast}]);
 				request.Usage = counted.GetCounts();
@@ -140,7 +139,8 @@ namespace Graphite {
 			}
 			else
 			{
-				Turn& owner = m_Turns[seen->second];
+				const auto& [seenKey, ownerTurnIndex] = *seenRequest;
+				Turn& owner = m_Turns[ownerTurnIndex];
 				RequestUsage& request = owner.Requests[key];
 				RequestUsageAccumulator counted{request.Usage};
 				counted.Add(*record.Usage, &owner.Usage[{request.Model, request.Fast}]);
@@ -176,7 +176,6 @@ namespace Graphite {
 			}
 			case BlockKind::ToolResult:
 			case BlockKind::Image:
-				// Neither is something a response writes; the conversation has no row for them.
 				break;
 			case BlockKind::Other:
 				turn.Items.push_back(
@@ -216,10 +215,6 @@ namespace Graphite {
 			{
 				AddCompaction(record);
 			}
-
-			// Other attachments, other system records and unknown record types are bookkeeping —
-			// modes, reminders, snapshots — not conversation. The summary reads what it needs
-			// of them; the conversation view does not draw them.
 		}
 
 		++m_Version;

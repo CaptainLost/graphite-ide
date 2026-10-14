@@ -10,31 +10,35 @@ namespace Graphite {
 
 	namespace {
 
-		TurnSummary Summarise(std::size_t turn, const std::vector<std::size_t>& positions,
-							  const std::vector<ApiRequest>& requests, const Pricing& pricing)
+		constexpr std::size_t kFirstTurn = 0;
+		constexpr std::int64_t kNoDelta = 0;
+		constexpr std::chrono::milliseconds kNoWait{0};
+		constexpr std::string_view kMixedModelsLabel = "mixed";
+
+		TurnSummary SummariseTurnRequests(std::size_t turnIndex, const std::vector<std::size_t>& positions,
+										  const std::vector<ApiRequest>& requests, const Pricing& pricing)
 		{
 			TurnSummary summary;
-			summary.Turn = turn;
+			summary.Turn = turnIndex;
 			summary.Count = positions.size();
 
-			// The earliest and the latest request by Index, whatever order `positions` is in.
-			const ApiRequest* first = nullptr;
-			const ApiRequest* last = nullptr;
-			const ApiRequest* lastWithUsage = nullptr;
-			UsageByModel usage;
+			const ApiRequest* earliestRequest = nullptr;
+			const ApiRequest* latestRequest = nullptr;
+			const ApiRequest* latestRequestWithUsage = nullptr;
+			UsageByModel usageByModel;
 
 			for (const std::size_t position : positions)
 			{
 				const ApiRequest& request = requests[position];
 
-				if (first == nullptr || request.Index < first->Index)
+				if (earliestRequest == nullptr || request.Index < earliestRequest->Index)
 				{
-					first = &request;
+					earliestRequest = &request;
 				}
 
-				if (last == nullptr || request.Index > last->Index)
+				if (latestRequest == nullptr || request.Index > latestRequest->Index)
 				{
-					last = &request;
+					latestRequest = &request;
 				}
 
 				if (!request.Model.empty())
@@ -52,12 +56,12 @@ namespace Graphite {
 
 				if (request.ContextDelta)
 				{
-					summary.Delta = summary.Delta.value_or(0) + *request.ContextDelta;
+					summary.Delta = summary.Delta.value_or(kNoDelta) + *request.ContextDelta;
 				}
 
 				if (request.Waited)
 				{
-					summary.Waited = summary.Waited.value_or(std::chrono::milliseconds{0}) + *request.Waited;
+					summary.Waited = summary.Waited.value_or(kNoWait) + *request.Waited;
 				}
 
 				if (request.CacheRebuilt)
@@ -74,111 +78,118 @@ namespace Graphite {
 				summary.CacheRead += request.Usage.CacheRead;
 				summary.ContextSum += request.Context;
 				summary.Output += request.Usage.Output;
-				usage[UsageKey{request.Model, request.Fast}] += request.Usage;
+				usageByModel[UsageKey{request.Model, request.Fast}] += request.Usage;
 
-				if (lastWithUsage == nullptr || request.Index > lastWithUsage->Index)
+				if (latestRequestWithUsage == nullptr || request.Index > latestRequestWithUsage->Index)
 				{
-					lastWithUsage = &request;
+					latestRequestWithUsage = &request;
 				}
 			}
 
-			if (first != nullptr)
+			if (earliestRequest != nullptr)
 			{
-				summary.FirstIndex = first->Index;
-				summary.FirstRespondedAt = first->RespondedAt;
+				summary.FirstIndex = earliestRequest->Index;
+				summary.FirstRespondedAt = earliestRequest->RespondedAt;
 			}
 
-			if (last != nullptr)
+			if (latestRequest != nullptr)
 			{
-				summary.StopReason = last->StopReason;
+				summary.StopReason = latestRequest->StopReason;
 			}
 
-			if (lastWithUsage != nullptr)
+			if (latestRequestWithUsage != nullptr)
 			{
-				summary.Context = lastWithUsage->Context;
+				summary.Context = latestRequestWithUsage->Context;
 			}
 
-			summary.Cost = pricing.CostOf(usage);
+			summary.Cost = pricing.CostOf(usageByModel);
 			return summary;
 		}
 
-		SortValue Numeric(std::optional<double> value)
-		{
-			return value ? SortValue{.Has = true, .Number = *value} : SortValue{};
-		}
-
-		SortValue Textual(std::string text)
-		{
-			const bool has = !text.empty();
-			return {.Has = has, .Text = std::move(text)};
-		}
-
-		// The same columns SortRequests reads, for a turn as a whole.
-		SortValue ValueOf(const TurnSummary& summary, RequestColumn column, const std::vector<std::string>& prompts)
+		SortValue TurnSortValue(const TurnSummary& summary, RequestColumn column, const std::vector<std::string>& prompts)
 		{
 			switch (column)
 			{
 			case RequestColumn::Index:
-				return Numeric(static_cast<double>(summary.FirstIndex));
+				return NumericSortValue(static_cast<double>(summary.FirstIndex));
 			case RequestColumn::Time:
 			{
-				const auto at = ParseTimestamp(summary.FirstRespondedAt);
-				return at ? Numeric(static_cast<double>(at->time_since_epoch().count())) : SortValue{};
+				const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> respondedAt =
+					ParseTimestamp(summary.FirstRespondedAt);
+				return respondedAt ? NumericSortValue(static_cast<double>(respondedAt->time_since_epoch().count()))
+								   : SortValue{};
 			}
 			case RequestColumn::Model:
-				return Textual(summary.MixedModels ? std::string{"mixed"} : summary.Model);
+				return TextualSortValue(summary.MixedModels ? std::string{kMixedModelsLabel} : summary.Model);
 			case RequestColumn::Context:
-				return summary.HasUsage ? Numeric(static_cast<double>(summary.Context)) : SortValue{};
+				return summary.HasUsage ? NumericSortValue(static_cast<double>(summary.Context)) : SortValue{};
 			case RequestColumn::Delta:
-				return summary.Delta ? Numeric(static_cast<double>(*summary.Delta)) : SortValue{};
+				return summary.Delta ? NumericSortValue(static_cast<double>(*summary.Delta)) : SortValue{};
 			case RequestColumn::CachedShare:
-				return summary.ContextSum > 0
-						   ? Numeric(static_cast<double>(summary.CacheRead) / static_cast<double>(summary.ContextSum))
-						   : SortValue{};
+				return summary.ContextSum > 0 ? NumericSortValue(static_cast<double>(summary.CacheRead) /
+																 static_cast<double>(summary.ContextSum))
+											  : SortValue{};
 			case RequestColumn::Output:
-				return summary.HasUsage ? Numeric(static_cast<double>(summary.Output)) : SortValue{};
+				return summary.HasUsage ? NumericSortValue(static_cast<double>(summary.Output)) : SortValue{};
 			case RequestColumn::Cost:
-				return summary.HasUsage && summary.Cost.IsKnown() ? Numeric(summary.Cost.Dollars) : SortValue{};
+				return summary.HasUsage && summary.Cost.IsKnown() ? NumericSortValue(summary.Cost.Dollars)
+																  : SortValue{};
 			case RequestColumn::Wait:
-				return summary.Waited ? Numeric(static_cast<double>(summary.Waited->count())) : SortValue{};
+				return summary.Waited ? NumericSortValue(static_cast<double>(summary.Waited->count())) : SortValue{};
 			case RequestColumn::Stop:
-				return Textual(summary.StopReason);
+				return TextualSortValue(summary.StopReason);
 			case RequestColumn::Tools:
-				return Textual(summary.Turn < prompts.size() ? prompts[summary.Turn] : std::string{});
+				return TextualSortValue(summary.Turn < prompts.size() ? prompts[summary.Turn] : std::string{});
 			case RequestColumn::Rebuilt:
-				return Numeric(static_cast<double>(summary.Rebuilt));
+				return NumericSortValue(static_cast<double>(summary.Rebuilt));
 			}
 
 			return {};
 		}
+
+		struct GroupOrder
+		{
+			const std::vector<SortValue>& Values;
+			const std::vector<TurnGroup>& Groups;
+			bool Textual;
+			bool Ascending;
+
+			bool operator()(std::size_t leftGroup, std::size_t rightGroup) const
+			{
+				const int compared = CompareSortValues(Values[leftGroup], Values[rightGroup], Textual, Ascending);
+				return compared != 0 ? compared < 0 : Groups[leftGroup].Summary.Turn < Groups[rightGroup].Summary.Turn;
+			}
+		};
 	}
 
 	std::vector<std::size_t> TurnOfRequests(const std::vector<ApiRequest>& requests, const std::vector<Turn>& turns)
 	{
-		std::unordered_map<std::string, std::size_t> byKey;
+		std::unordered_map<std::string, std::size_t> turnByKey;
 
-		for (std::size_t turn = 0; turn < turns.size(); ++turn)
+		for (std::size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex)
 		{
-			// Every turn with a keyless response counts it under the empty key, so that key
+			// WARNING: Every turn with a keyless response counts it under the empty key, so that key
 			// names no request in particular.
-			for (const auto& [key, usage] : turns[turn].Requests)
+			for (const auto& [key, usage] : turns[turnIndex].Requests)
 			{
 				if (!key.empty())
 				{
-					byKey.emplace(key, turn);
+					turnByKey.emplace(key, turnIndex);
 				}
 			}
 		}
 
-		std::vector<std::size_t> turnOf(requests.size(), 0);
+		std::vector<std::size_t> turnOf(requests.size(), kFirstTurn);
 
 		for (std::size_t position = 0; position < requests.size(); ++position)
 		{
-			const auto found = requests[position].Key.empty() ? byKey.end() : byKey.find(requests[position].Key);
+			const std::unordered_map<std::string, std::size_t>::iterator found =
+				requests[position].Key.empty() ? turnByKey.end() : turnByKey.find(requests[position].Key);
 
-			if (found != byKey.end())
+			if (found != turnByKey.end())
 			{
-				turnOf[position] = found->second;
+				const auto& [matchedKey, matchedTurn] = *found;
+				turnOf[position] = matchedTurn;
 			}
 			else if (position > 0)
 			{
@@ -198,33 +209,32 @@ namespace Graphite {
 
 		for (const std::size_t position : order)
 		{
-			const std::size_t turn = position < turnOf.size() ? turnOf[position] : 0;
-			const auto [found, added] = groupOfTurn.emplace(turn, groups.size());
+			const std::size_t turnIndex = position < turnOf.size() ? turnOf[position] : kFirstTurn;
+			const auto [found, added] = groupOfTurn.emplace(turnIndex, groups.size());
 
 			if (added)
 			{
 				groups.emplace_back();
-				groups.back().Summary.Turn = turn;
+				groups.back().Summary.Turn = turnIndex;
 			}
 
-			groups[found->second].Positions.push_back(position);
+			const auto& [countedTurn, groupIndex] = *found;
+			groups[groupIndex].Positions.push_back(position);
 		}
 
-		// A turn's requests in session order, whatever order `order` gave them in: the turn moves
-		// as a whole, and its requests read as they happened. Only a column that is itself the
-		// session's order, run back to front, turns them round too, so the whole table does.
-		const bool backwards = !ascending && (column == RequestColumn::Index || column == RequestColumn::Time);
+		const bool columnIsSessionOrder = column == RequestColumn::Index || column == RequestColumn::Time;
+		const bool reverseRequestsWithinTurn = !ascending && columnIsSessionOrder;
 
 		for (TurnGroup& group : groups)
 		{
 			std::sort(group.Positions.begin(), group.Positions.end());
 
-			if (backwards)
+			if (reverseRequestsWithinTurn)
 			{
 				std::reverse(group.Positions.begin(), group.Positions.end());
 			}
 
-			group.Summary = Summarise(group.Summary.Turn, group.Positions, requests, pricing);
+			group.Summary = SummariseTurnRequests(group.Summary.Turn, group.Positions, requests, pricing);
 		}
 
 		const bool textual = IsTextColumn(column);
@@ -233,31 +243,26 @@ namespace Graphite {
 
 		for (const TurnGroup& group : groups)
 		{
-			values.push_back(ValueOf(group.Summary, column, prompts));
+			values.push_back(TurnSortValue(group.Summary, column, prompts));
 		}
 
-		std::vector<std::size_t> sorted(groups.size());
-		for (std::size_t index = 0; index < sorted.size(); ++index)
+		std::vector<std::size_t> sortedGroupIndices(groups.size());
+		for (std::size_t groupIndex = 0; groupIndex < sortedGroupIndices.size(); ++groupIndex)
 		{
-			sorted[index] = index;
+			sortedGroupIndices[groupIndex] = groupIndex;
 		}
 
-		// Ties go by turn, so equal turns keep the session's order in either direction.
-		std::sort(sorted.begin(), sorted.end(),
-				  [&values, &groups, textual, ascending](std::size_t a, std::size_t b) {
-					  const int compared = CompareSortValues(values[a], values[b], textual, ascending);
-					  return compared != 0 ? compared < 0 : groups[a].Summary.Turn < groups[b].Summary.Turn;
-				  });
+		std::sort(sortedGroupIndices.begin(), sortedGroupIndices.end(), GroupOrder{values, groups, textual, ascending});
 
-		std::vector<TurnGroup> result;
-		result.reserve(groups.size());
+		std::vector<TurnGroup> sortedGroups;
+		sortedGroups.reserve(groups.size());
 
-		for (const std::size_t index : sorted)
+		for (const std::size_t groupIndex : sortedGroupIndices)
 		{
-			result.push_back(std::move(groups[index]));
+			sortedGroups.push_back(std::move(groups[groupIndex]));
 		}
 
-		return result;
+		return sortedGroups;
 	}
 
 }

@@ -4,6 +4,7 @@
 
 #include "Core/Base/Narrow.h"
 
+#include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "UI/ClipboardCopy.h"
 #include "Sessions/Requests/RequestRow.h"
@@ -21,29 +22,22 @@
 namespace Graphite {
 
 	namespace {
-		// A header's label is cut to one line and this much before it is fitted, as in the list.
-		constexpr std::size_t kLabelBytes = 400;
+		constexpr float kMarginFontFraction = 0.6f;
+		constexpr float kSelectionBarFontFraction = 0.2f;
+		constexpr float kSelectionBarMinimumWidth = 2.0f;
+		constexpr float kMinimumCellWidth = 1.0f;
+		constexpr float kMinimumRowButtonWidth = 1.0f;
+		constexpr float kMinimumColumns = 8.0f;
+		constexpr float kSelectedTintAlpha = 0.16f;
+		constexpr float kHoveredTintAlpha = 0.07f;
+		constexpr float kFlushRowSpacing = 0.0f;
+		constexpr float kUnlimitedWidth = FLT_MAX;
+		constexpr float kNoWrapWidth = 0.0f;
+		constexpr float kScrollTop = 0.0f;
 
 		ImU32 Tinted(ImU32 colour, float alpha)
 		{
-			ImVec4 tint = ImGui::ColorConvertU32ToFloat4(colour);
-			tint.w = alpha;
-			return ImGui::GetColorU32(tint);
-		}
-
-		// Whether `segment` is the empty-thinking block DisplayText adds its note to, so the
-		// note draws dimmed like other quiet text rather than at full strength.
-		bool IsHiddenThinkingNote(const ApiRequest& request, std::size_t segment)
-		{
-			if (segment < request.Sent.size())
-			{
-				return false;
-			}
-
-			const std::size_t response = segment - request.Sent.size();
-
-			return response < request.Response.size() && request.Response[response].Kind == ResponseKind::Thinking &&
-				   request.Response[response].Text.empty();
+			return ImGui::GetColorU32(Core::WithAlphaReplaced(ImGui::ColorConvertU32ToFloat4(colour), alpha));
 		}
 
 		ItemLook LookOfSegment(const ApiRequest& request, std::size_t segment, const SessionPalette& palette)
@@ -56,8 +50,6 @@ namespace Graphite {
 			return LookOf(request.Response[segment - request.Sent.size()], palette);
 		}
 
-		// What the reader wrote or the model answered reads at full strength; what Claude Code
-		// added on its own is dimmed, as it is in the conversation.
 		bool IsQuiet(const ApiRequest& request, std::size_t segment)
 		{
 			if (segment >= request.Sent.size())
@@ -86,21 +78,20 @@ namespace Graphite {
 			return true;
 		}
 
-		// A row's text with each tab laid out as the columns WrapLines counted for it.
-		std::string Expanded(std::string_view text)
+		std::string TabsExpanded(std::string_view text)
 		{
 			std::string expanded;
 			expanded.reserve(text.size());
 
-			for (const char c : text)
+			for (const char character : text)
 			{
-				if (c == '\t')
+				if (character == '\t')
 				{
 					expanded.append(kTabColumns, ' ');
 				}
 				else
 				{
-					expanded.push_back(c);
+					expanded.push_back(character);
 				}
 			}
 
@@ -112,32 +103,33 @@ namespace Graphite {
 												  std::optional<std::size_t> selected, std::optional<std::size_t> hovered,
 												  const SessionPalette& palette, Core::EventBus& events)
 	{
-		ImFont* mono = Core::ImGuiRenderer::GetMonoFont();
+		ImFont* monospaceFont = Core::ImGuiRenderer::GetMonoFont();
 		const float fontSize = ImGui::GetFontSize();
-		const float cell = mono->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, "M").x;
+		const float cellWidth = monospaceFont->CalcTextSizeA(fontSize, kUnlimitedWidth, kNoWrapWidth, "M").x;
 		const float lineHeight = ImGui::GetTextLineHeight();
-		const float margin = std::round(fontSize * 0.6f);
-		const float bar = std::max(std::round(fontSize * 0.2f), 2.0f);
+		const float margin = std::round(fontSize * kMarginFontFraction);
+		const float selectionBarWidth =
+			std::max(std::round(fontSize * kSelectionBarFontFraction), kSelectionBarMinimumWidth);
 		const float textWidth = ImGui::GetContentRegionAvail().x - margin;
-		const std::size_t columns = static_cast<std::size_t>(std::max(textWidth / std::max(cell, 1.0f), 8.0f));
+		const std::size_t columns = static_cast<std::size_t>(
+			std::max(textWidth / std::max(cellWidth, kMinimumCellWidth), kMinimumColumns));
 
-		const bool otherRequest = !m_Built || request.Key != m_BuiltKey;
+		const bool isOtherRequest = !m_Built || request.Key != m_BuiltKey;
 
-		if (otherRequest || version != m_BuiltVersion || columns != m_BuiltColumns)
+		if (isOtherRequest || version != m_BuiltVersion || columns != m_BuiltColumns)
 		{
-			std::vector<std::string_view> texts;
+			std::vector<std::string_view> segmentTexts;
 
-			for (std::size_t i = 0; i < SegmentCount(request); ++i)
+			for (std::size_t segment = 0; segment < SegmentCount(request); ++segment)
 			{
-				texts.push_back(DisplayText(request, i));
+				segmentTexts.push_back(DisplayText(request, segment));
 			}
 
-			m_Layout.Build(texts, columns);
+			m_Layout.Build(segmentTexts, columns);
 
-			if (otherRequest)
+			if (isOtherRequest)
 			{
-				// A scroll asked for on the request shown before names an item of that one.
-				ImGui::SetScrollY(0.0f);
+				ImGui::SetScrollY(kScrollTop);
 				m_MenuSegment.reset();
 				m_PendingScroll.reset();
 			}
@@ -156,39 +148,41 @@ namespace Graphite {
 			m_PendingScroll.reset();
 		}
 
-		std::optional<std::size_t> clicked;
-		std::optional<std::size_t> underMouse;
-		ImDrawList* draw = ImGui::GetWindowDrawList();
-		const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
+		std::optional<std::size_t> clickedSegment;
+		std::optional<std::size_t> segmentUnderMouse;
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
+		const ImU32 textColour = ImGui::GetColorU32(ImGuiCol_Text);
 
-		// Rows sit flush, so the clipper's row height is the line height and nothing more.
-		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(ImGui::GetStyle().ItemSpacing.x, kFlushRowSpacing));
 
 		ImGuiListClipper clipper;
 		clipper.Begin(Core::Narrow<int>(rows.size()), lineHeight);
 
 		while (clipper.Step())
 		{
-			for (int r = clipper.DisplayStart; r < clipper.DisplayEnd; ++r)
+			for (int rowIndex = clipper.DisplayStart; rowIndex < clipper.DisplayEnd; ++rowIndex)
 			{
-				const SentTextRow& row = rows[static_cast<std::size_t>(r)];
-				const ImVec2 at = ImGui::GetCursorScreenPos();
-				const float right = at.x + ImGui::GetContentRegionAvail().x;
+				const SentTextRow& row = rows[static_cast<std::size_t>(rowIndex)];
+				const ImVec2 rowOrigin = ImGui::GetCursorScreenPos();
+				const float right = rowOrigin.x + ImGui::GetContentRegionAvail().x;
 				const ItemLook look = LookOfSegment(request, row.Segment, palette);
 				const bool isSelected = selected == row.Segment;
 				const bool isHovered = hovered == row.Segment;
 
 				if (isSelected || isHovered)
 				{
-					draw->AddRectFilled(at, ImVec2(right, at.y + lineHeight), Tinted(look.Colour, isSelected ? 0.16f : 0.07f));
+					const float tintAlpha = isSelected ? kSelectedTintAlpha : kHoveredTintAlpha;
+					drawList->AddRectFilled(rowOrigin, ImVec2(right, rowOrigin.y + lineHeight),
+											Tinted(look.Colour, tintAlpha));
 				}
 
 				if (isSelected)
 				{
-					draw->AddRectFilled(at, ImVec2(at.x + bar, at.y + lineHeight), look.Colour);
+					drawList->AddRectFilled(rowOrigin, ImVec2(rowOrigin.x + selectionBarWidth, rowOrigin.y + lineHeight),
+											look.Colour);
 				}
 
-				ImVec2 textAt(at.x + margin, at.y);
+				ImVec2 textOrigin(rowOrigin.x + margin, rowOrigin.y);
 
 				if (row.Header)
 				{
@@ -205,35 +199,35 @@ namespace Graphite {
 						label = request.Response[row.Segment - request.Sent.size()].Label;
 					}
 
-					const float space = ImGui::GetStyle().ItemSpacing.x;
-					DrawPiece(textAt, look.Colour, std::string{look.Icon} + " ");
+					const float itemSpacing = ImGui::GetStyle().ItemSpacing.x;
+					DrawPiece(textOrigin, look.Colour, std::string{look.Icon} + " ");
 
-					const float columnX = std::max(right - ImGui::CalcTextSize(column.c_str()).x, textAt.x);
-					DrawPiece(textAt, look.Colour, Fitted(SingleLineLabel(label, kLabelBytes), columnX - space - textAt.x));
+					const float columnX = std::max(right - ImGui::CalcTextSize(column.c_str()).x, textOrigin.x);
+					DrawPiece(textOrigin, look.Colour,
+							  Fitted(SingleLineLabel(label, kLongestLabelBytes), columnX - itemSpacing - textOrigin.x));
 
-					textAt.x = columnX;
-					DrawPiece(textAt, palette.TextDisabled, Fitted(column, right - textAt.x));
+					textOrigin.x = columnX;
+					DrawPiece(textOrigin, palette.TextDisabled, Fitted(column, right - textOrigin.x));
 				}
 				else
 				{
-					const std::string text =
-						Expanded(DisplayText(request, row.Segment).substr(row.Begin, row.End - row.Begin));
-					const bool quiet = IsQuiet(request, row.Segment) || IsHiddenThinkingNote(request, row.Segment);
-					draw->AddText(mono, fontSize, textAt, quiet ? palette.TextDisabled : ink, text.data(),
-								  text.data() + text.size());
+					const std::string rowText =
+						TabsExpanded(DisplayText(request, row.Segment).substr(row.Begin, row.End - row.Begin));
+					const bool isQuiet = IsQuiet(request, row.Segment) || IsEmptyThinking(request, row.Segment);
+					drawList->AddText(monospaceFont, fontSize, textOrigin, isQuiet ? palette.TextDisabled : textColour,
+									  rowText.data(), rowText.data() + rowText.size());
 				}
 
-				// The row's item: it makes the row one line tall and takes its clicks.
-				ImGui::PushID(r);
+				ImGui::PushID(rowIndex);
 
-				if (ImGui::InvisibleButton("##row", ImVec2(std::max(right - at.x, 1.0f), lineHeight)))
+				if (ImGui::InvisibleButton("##row", ImVec2(std::max(right - rowOrigin.x, kMinimumRowButtonWidth), lineHeight)))
 				{
-					clicked = row.Segment;
+					clickedSegment = row.Segment;
 				}
 
 				if (ImGui::IsItemHovered())
 				{
-					underMouse = row.Segment;
+					segmentUnderMouse = row.Segment;
 				}
 
 				ImGui::PopID();
@@ -244,17 +238,16 @@ namespace Graphite {
 
 		if (ImGui::IsWindowHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
 		{
-			m_MenuSegment = underMouse;
+			m_MenuSegment = segmentUnderMouse;
 			ImGui::OpenPopup("##sentTextMenu");
 		}
 
 		if (ImGui::BeginPopup("##sentTextMenu"))
 		{
-			// The request may have changed under an open menu: an item it no longer has is
-			// not offered.
 			const bool haveItem = m_MenuSegment.has_value() && *m_MenuSegment < SegmentCount(request);
+			const bool itemIsNotChecked = false;
 
-			if (ImGui::MenuItem("Copy this item", nullptr, false, haveItem))
+			if (ImGui::MenuItem("Copy this item", nullptr, itemIsNotChecked, haveItem))
 			{
 				CopyToClipboard(events, "item", std::string{SegmentText(request, *m_MenuSegment)});
 			}
@@ -267,6 +260,6 @@ namespace Graphite {
 			ImGui::EndPopup();
 		}
 
-		return clicked;
+		return clickedSegment;
 	}
 }

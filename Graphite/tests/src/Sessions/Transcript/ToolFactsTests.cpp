@@ -139,9 +139,8 @@ TEST_CASE("Subagent usage is read per agent id from the session's subagents fold
 	CHECK(usage.at("a1") == UsageByModel{{{"claude-opus-5", false}, {5, 6, 0, 0, 0}}});
 }
 
-TEST_CASE("A cached share is a whole percent, cut rather than rounded")
+TEST_CASE("A cached share is a whole percent, cut rather than rounded, so 99.9 percent is not read as all of it")
 {
-	// 99.9% is not all of it: rounded, it would read as 100%.
 	CHECK(CachedPercent(999, 1000) == 99);
 	CHECK(CachedPercent(1000, 1000) == 100);
 	CHECK(CachedPercent(0, 1000) == 0);
@@ -149,6 +148,14 @@ TEST_CASE("A cached share is a whole percent, cut rather than rounded")
 
 	const UsageByModel usage{{{"claude-opus-5", false}, {1, 1, 0, 0, 999}}};
 	CHECK(UsageLine(usage, 1, Pricing::Defaults()).find("(99% cache)") != std::string::npos);
+}
+
+TEST_CASE("An image in a request reads as its type and size, leaving out what is not known down to a bare image")
+{
+	CHECK(ImageText("image/png", 3277) == "[image/png, 3.2 KB]");
+	CHECK(ImageText("image/png", 0) == "[image/png]");
+	CHECK(ImageText("", 3277) == "[image, 3.2 KB]");
+	CHECK(ImageText("", 0) == "[image]");
 }
 
 TEST_CASE("Only Agent and Task calls start a subagent")

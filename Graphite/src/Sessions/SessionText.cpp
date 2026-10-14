@@ -4,7 +4,11 @@
 #include "Sessions/SessionSummary.h"
 #include "Sessions/Transcript/ToolFacts.h"
 
+#include "Core/Base/Ascii.h"
+#include "Core/Base/Strings.h"
 #include "Core/FileSystem/FileSystem.h"
+
+#include "UI/TypographicMarks.h"
 
 #include <nlohmann/json.hpp>
 
@@ -17,28 +21,52 @@ namespace Graphite {
 
 	namespace {
 		constexpr std::size_t kRawSummaryBytes = 80;
+		constexpr std::size_t kActivityBytes = 300;
 
-		void AddLines(std::vector<std::string>& out, const std::string& text, const char* prefix)
+		constexpr double kTraceCostDollars = 0.005;
+		constexpr std::chrono::seconds::rep kSecondsPerMinute = 60;
+		constexpr std::chrono::seconds::rep kSecondsPerHour = 3600;
+
+		const char* const kRemovedLinePrefix = "- ";
+		const char* const kAddedLinePrefix = "+ ";
+
+		void AddLines(std::vector<std::string>& lines, const std::string& text, const char* linePrefix)
 		{
-			std::size_t start = 0;
+			std::size_t lineStart = 0;
 
-			while (start <= text.size())
+			while (lineStart <= text.size())
 			{
-				const std::size_t end = std::min(text.find('\n', start), text.size());
-				out.push_back(prefix + text.substr(start, end - start));
-				start = end + 1;
+				const std::size_t lineEnd = std::min(text.find('\n', lineStart), text.size());
+				lines.push_back(linePrefix + text.substr(lineStart, lineEnd - lineStart));
+				lineStart = lineEnd + 1;
 			}
+		}
+
+		bool IsDearerRequestFirst(const TurnRequest& firstRequest, const TurnRequest& secondRequest)
+		{
+			if (firstRequest.Cost.IsKnown() != secondRequest.Cost.IsKnown())
+			{
+				return firstRequest.Cost.IsKnown();
+			}
+			return firstRequest.Cost.Dollars > secondRequest.Cost.Dollars;
+		}
+
+		bool IsMoreUsedToolFirst(const ToolCount& firstTool, const ToolCount& secondTool)
+		{
+			return firstTool.Count > secondTool.Count;
 		}
 	}
 
 	std::string FormatCost(const CostResult& cost)
 	{
+		// WARNING: A partial sum shown as a total would be a wrong number that looks right, so any unknown
+		// part makes the whole cost "?".
 		if (!cost.IsKnown())
 		{
 			return "?";
 		}
 
-		if (cost.Dollars > 0.0 && cost.Dollars < 0.005)
+		if (cost.Dollars > 0.0 && cost.Dollars < kTraceCostDollars)
 		{
 			return "< $0.01";
 		}
@@ -53,39 +81,33 @@ namespace Graphite {
 			return {};
 		}
 
-		std::string hint = "No price for ";
-
-		for (std::size_t index = 0; index < cost.UnknownModels.size(); ++index)
-		{
-			hint += (index > 0 ? ", " : "") + cost.UnknownModels[index];
-		}
-
-		return hint + ". Add a price under Settings > Claude.";
+		return "No price for " + Core::JoinedWith(cost.UnknownModels, ", ") +
+			   ". Add a price under Settings > Claude.";
 	}
 
-	bool ShowsInSessionList(const SessionSummary& summary, bool live)
+	bool ShowsInSessionList(const SessionSummary& summary, bool isLive)
 	{
-		return live || !summary.IsEmpty();
+		return isLive || !summary.IsEmpty();
 	}
 
-	std::string ScanProgressText(std::size_t done, std::size_t total)
+	std::string ScanProgressText(std::size_t finishedCount, std::size_t totalCount)
 	{
 		std::string text = "Reading transcripts...";
 
-		if (total > 0)
+		if (totalCount > 0)
 		{
-			text += std::format(" {} / {}", std::min(done, total), total);
+			text += std::format(" {} / {}", std::min(finishedCount, totalCount), totalCount);
 		}
 
 		return text;
 	}
 
-	std::string EmptyListMessage(bool scanning, std::size_t done, std::size_t total, bool workspaceOnly,
-								 std::string_view filter)
+	std::string EmptyListMessage(bool isScanning, std::size_t finishedCount, std::size_t totalCount,
+								 bool isWorkspaceOnly, std::string_view filter)
 	{
-		if (scanning)
+		if (isScanning)
 		{
-			return ScanProgressText(done, total);
+			return ScanProgressText(finishedCount, totalCount);
 		}
 
 		if (!filter.empty())
@@ -93,71 +115,70 @@ namespace Graphite {
 			return std::format("No sessions match \"{}\"", filter);
 		}
 
-		return workspaceOnly ? "No sessions in this workspace" : "No sessions.";
+		return isWorkspaceOnly ? "No sessions in this workspace" : "No sessions.";
 	}
 
 	std::string FormatDuration(std::chrono::milliseconds span)
 	{
-		const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(span).count();
+		const std::chrono::seconds::rep wholeSeconds = std::chrono::duration_cast<std::chrono::seconds>(span).count();
 
-		if (seconds < 60)
+		if (wholeSeconds < kSecondsPerMinute)
 		{
-			return std::format("{}s", seconds);
+			return std::format("{}s", wholeSeconds);
 		}
 
-		if (seconds < 3600)
+		if (wholeSeconds < kSecondsPerHour)
 		{
-			return std::format("{}m", seconds / 60);
+			return std::format("{}m", wholeSeconds / kSecondsPerMinute);
 		}
 
-		return std::format("{}h {}m", seconds / 3600, seconds % 3600 / 60);
+		return std::format("{}h {}m", wholeSeconds / kSecondsPerHour,
+						   wholeSeconds % kSecondsPerHour / kSecondsPerMinute);
 	}
 
 	std::string CompactionLabel(const CompactionFacts& facts, const std::string& time)
 	{
-		std::string label = "Context compacted";
-
-		const auto add = [&label](const std::string& piece) { label += " \xc2\xb7 " + piece; };
+		std::vector<std::string> pieces{std::string{"Context compacted"}};
 
 		if (facts.PreTokens && facts.PostTokens)
 		{
-			add(FormatTokens(*facts.PreTokens) + " \xe2\x86\x92 " + FormatTokens(*facts.PostTokens));
+			pieces.push_back(std::format("{} {} {}", FormatTokens(*facts.PreTokens), kRightwardsArrow,
+										 FormatTokens(*facts.PostTokens)));
 		}
 		if (!facts.Trigger.empty())
 		{
-			add(facts.Trigger);
+			pieces.push_back(facts.Trigger);
 		}
 		if (facts.Duration)
 		{
-			add(FormatDuration(*facts.Duration));
+			pieces.push_back(FormatDuration(*facts.Duration));
 		}
 		if (!time.empty())
 		{
-			add(time);
+			pieces.push_back(time);
 		}
 
-		return label;
+		return Core::JoinedWith(pieces, kMiddleDotSeparator);
 	}
 
 	std::string ToolSummary(const ToolCall& tool)
 	{
 		const nlohmann::json input = ObjectOf(tool.InputJson);
 
-		// A subagent is named by its task and the kind of agent given it.
 		if (tool.Name == "Agent")
 		{
 			const std::string task = StringAt(input, "description");
-			const std::string type = StringAt(input, "subagent_type");
+			const std::string agentType = StringAt(input, "subagent_type");
 
 			if (!task.empty())
 			{
-				return type.empty() ? task : task + " (" + type + ")";
+				return agentType.empty() ? task : task + " (" + agentType + ")";
 			}
 		}
 
-		for (const char* key : {"command", "file_path", "pattern", "description", "url", "query", "skill"})
+		for (const char* inputKey : {"command", "file_path", "pattern", "description", "url", "query", "skill"})
 		{
-			if (std::string value = StringAt(input, key); !value.empty())
+			if (std::string value = StringAt(input, inputKey); !value.empty())
 			{
 				return value;
 			}
@@ -176,8 +197,8 @@ namespace Graphite {
 		}
 
 		const nlohmann::json input = ObjectOf(tool.InputJson);
-		AddLines(lines, StringAt(input, "old_string"), "- ");
-		AddLines(lines, StringAt(input, "new_string"), "+ ");
+		AddLines(lines, StringAt(input, "old_string"), kRemovedLinePrefix);
+		AddLines(lines, StringAt(input, "new_string"), kAddedLinePrefix);
 		return lines;
 	}
 
@@ -195,88 +216,77 @@ namespace Graphite {
 
 	std::vector<TurnCost> TurnCosts(const Session& session, const Pricing& pricing)
 	{
-		std::vector<TurnCost> costs;
-		costs.reserve(session.GetTurns().size());
+		std::vector<TurnCost> turnCosts;
+		turnCosts.reserve(session.GetTurns().size());
 
 		for (const Turn& turn : session.GetTurns())
 		{
-			TurnCost cost;
+			TurnCost turnCost;
 
-			for (const auto& [key, counts] : turn.Usage)
+			for (const auto& [usageKey, counts] : turn.Usage)
 			{
-				if (const std::optional<BucketCosts> part = pricing.BucketsOf(key, counts))
+				if (const std::optional<BucketCosts> bucketCosts = pricing.BucketsOf(usageKey, counts))
 				{
-					cost.Buckets.Input += part->Input;
-					cost.Buckets.Output += part->Output;
-					cost.Buckets.CacheWrite += part->CacheWrite;
-					cost.Buckets.CacheRead += part->CacheRead;
+					turnCost.Buckets.Input += bucketCosts->Input;
+					turnCost.Buckets.Output += bucketCosts->Output;
+					turnCost.Buckets.CacheWrite += bucketCosts->CacheWrite;
+					turnCost.Buckets.CacheRead += bucketCosts->CacheRead;
 				}
 				else
 				{
-					cost.Known = false;
+					turnCost.Known = false;
 				}
 			}
 
-			costs.push_back(cost);
+			turnCosts.push_back(turnCost);
 		}
 
-		return costs;
+		return turnCosts;
 	}
 
-	TurnBreakdown BreakDownTurn(const Session& session, std::size_t turn, const RequestTimeline& timeline,
+	TurnBreakdown BreakDownTurn(const Session& session, std::size_t turnIndex, const RequestTimeline& timeline,
 								const Pricing& pricing)
 	{
 		TurnBreakdown breakdown;
 
-		if (turn >= session.GetTurns().size())
+		if (turnIndex >= session.GetTurns().size())
 		{
 			return breakdown;
 		}
 
-		const Turn& at = session.GetTurns()[turn];
+		const Turn& turn = session.GetTurns()[turnIndex];
 
-		for (const auto& [key, request] : at.Requests)
+		for (const auto& [requestKey, request] : turn.Requests)
 		{
-			breakdown.Requests.push_back({.Key = key,
-										  .Position = timeline.IndexOf(key),
-										  .Cost = pricing.CostOf(UsageKey{request.Model, request.Fast}, request.Usage)});
+			breakdown.Requests.push_back(
+				{.Key = requestKey,
+				 .Position = timeline.IndexOf(requestKey),
+				 .Cost = pricing.CostOf(UsageKey{request.Model, request.Fast}, request.Usage)});
 		}
 
-		// Stable, so requests that cost the same keep the order of their keys.
-		std::ranges::stable_sort(breakdown.Requests, [](const TurnRequest& a, const TurnRequest& b) {
-			if (a.Cost.IsKnown() != b.Cost.IsKnown())
-			{
-				return a.Cost.IsKnown();
-			}
-			return a.Cost.Dollars > b.Cost.Dollars;
-		});
+		std::ranges::stable_sort(breakdown.Requests, IsDearerRequestFirst);
 
-		std::map<std::string, std::size_t> counts;
-		for (const TurnItem& item : at.Items)
+		std::map<std::string, std::size_t> callsByToolName;
+		for (const TurnItem& item : turn.Items)
 		{
 			if (item.Kind == ItemKind::Tool && item.Tool < session.GetTools().size())
 			{
-				++counts[session.GetTools()[item.Tool].Name];
+				++callsByToolName[session.GetTools()[item.Tool].Name];
 			}
 		}
 
-		for (const auto& [name, count] : counts)
+		for (const auto& [toolName, callCount] : callsByToolName)
 		{
-			breakdown.Tools.push_back({name, count});
+			breakdown.Tools.push_back({.Name = toolName, .Count = callCount});
 		}
 
-		// Stable over the map's order, so tools used as often read by name.
-		std::ranges::stable_sort(breakdown.Tools,
-								 [](const ToolCount& a, const ToolCount& b) { return a.Count > b.Count; });
+		std::ranges::stable_sort(breakdown.Tools, IsMoreUsedToolFirst);
 
 		return breakdown;
 	}
 
 	std::vector<std::string> RequestActivity(const ApiRequest& request)
 	{
-		// Long enough for any path a row has room for; the row cuts it to its width.
-		constexpr std::size_t kActivityBytes = 300;
-
 		std::vector<std::string> activity;
 
 		for (const ResponseItem& item : request.Response)
@@ -296,7 +306,9 @@ namespace Graphite {
 		{
 			if (item.Kind == ResponseKind::Text && !item.Text.empty())
 			{
-				activity.push_back("\xe2\x80\x9c" + SingleLineLabel(item.Text, kActivityBytes) + "\xe2\x80\x9d");
+				activity.push_back(std::format("{}{}{}", kLeftDoubleQuotationMark,
+											   SingleLineLabel(item.Text, kActivityBytes),
+											   kRightDoubleQuotationMark));
 				break;
 			}
 		}
@@ -308,29 +320,30 @@ namespace Graphite {
 	{
 		std::string label;
 		label.reserve(text.size());
-		bool space = false;
+		constexpr bool kNoSpacePending = false;
+		bool isSpacePending = kNoSpacePending;
 
-		for (const char c : text)
+		for (const char character : text)
 		{
-			if (c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f')
+			if (Core::IsAsciiWhitespace(character))
 			{
-				space = !label.empty();
+				isSpacePending = !label.empty();
 				continue;
 			}
 
-			if (std::exchange(space, false))
+			if (std::exchange(isSpacePending, kNoSpacePending))
 			{
 				label += ' ';
 			}
 
-			// "###" becomes "# # #": a space after every '#' that follows another leaves no
-			// two side by side.
-			if (c == '#' && !label.empty() && label.back() == '#')
+			// WARNING: ImGui takes "##" as the start of a widget's id and hides the rest of the label behind
+			// it, so a space goes after every '#' that follows another: "###" becomes "# # #".
+			if (character == '#' && !label.empty() && label.back() == '#')
 			{
 				label += ' ';
 			}
 
-			label += c;
+			label += character;
 		}
 
 		return TruncateUtf8(label, maxBytes);

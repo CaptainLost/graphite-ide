@@ -11,9 +11,12 @@ namespace Graphite {
 
 	namespace {
 		constexpr double kClockFallbackSeconds = 60.0;
+		constexpr double kMillisecondsPerSecond = 1000.0;
+		constexpr std::chrono::milliseconds kShortCacheLifetime = std::chrono::minutes{5};
+		constexpr std::chrono::milliseconds kLongCacheLifetime = std::chrono::hours{1};
 	}
 
-	ContextLayers LayersOf(const ApiRequest& request)
+	ContextLayers ContextLayersOf(const ApiRequest& request)
 	{
 		const TokenCounts& usage = request.Usage;
 
@@ -44,54 +47,55 @@ namespace Graphite {
 
 	std::vector<double> CumulativeCost(const std::vector<CostResult>& costs)
 	{
-		std::vector<double> total;
-		total.reserve(costs.size());
+		std::vector<double> cumulative;
+		cumulative.reserve(costs.size());
 
-		double sum = 0.0;
+		double runningTotal = 0.0;
 
 		for (const CostResult& cost : costs)
 		{
 			if (cost.IsKnown())
 			{
-				sum += cost.Dollars;
+				runningTotal += cost.Dollars;
 			}
 
-			total.push_back(sum);
+			cumulative.push_back(runningTotal);
 		}
 
-		return total;
+		return cumulative;
 	}
 
 	std::optional<double> ClockSeconds(const ApiRequest& request)
 	{
-		const auto at = ParseTimestamp(request.RespondedAt);
+		const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> respondedAt =
+			ParseTimestamp(request.RespondedAt);
 
-		if (!at)
+		if (!respondedAt)
 		{
 			return std::nullopt;
 		}
 
-		return static_cast<double>(at->time_since_epoch().count()) / 1000.0;
+		return static_cast<double>(respondedAt->time_since_epoch().count()) / kMillisecondsPerSecond;
 	}
 
-	std::optional<std::chrono::milliseconds> GapBefore(const ApiRequest& previous, const ApiRequest& request)
+	std::optional<std::chrono::milliseconds> IdleGapBeforeRequest(const ApiRequest& previous, const ApiRequest& request)
 	{
-		const auto finished = ParseTimestamp(previous.FinishedAt);
-		const auto sent = ParseTimestamp(request.SentAt);
+		const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> finishedAt =
+			ParseTimestamp(previous.FinishedAt);
+		const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> sentAt = ParseTimestamp(request.SentAt);
 
-		if (!finished || !sent)
+		if (!finishedAt || !sentAt)
 		{
 			return std::nullopt;
 		}
 
-		return std::max(std::chrono::milliseconds{*sent - *finished}, std::chrono::milliseconds{0});
+		return std::max(std::chrono::milliseconds{*sentAt - *finishedAt}, std::chrono::milliseconds{0});
 	}
 
 	bool CacheExpired(const ApiRequest& previous, std::chrono::milliseconds gap)
 	{
 		const std::chrono::milliseconds lifetime =
-			previous.Usage.CacheWrite1h > 0 ? std::chrono::milliseconds{std::chrono::hours{1}}
-											: std::chrono::milliseconds{std::chrono::minutes{5}};
+			previous.Usage.CacheWrite1h > 0 ? kLongCacheLifetime : kShortCacheLifetime;
 		return gap > lifetime;
 	}
 
@@ -102,14 +106,15 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		return static_cast<double>(request.Usage.Output) / (static_cast<double>(request.Waited->count()) / 1000.0);
+		return static_cast<double>(request.Usage.Output) / (static_cast<double>(request.Waited->count()) / kMillisecondsPerSecond);
 	}
 
 	double ClockBarWidth(std::vector<double> times)
 	{
 		std::sort(times.begin(), times.end());
 
-		double closest = std::numeric_limits<double>::infinity();
+		constexpr double kNoDistance = std::numeric_limits<double>::infinity();
+		double closestDistance = kNoDistance;
 
 		for (std::size_t index = 1; index < times.size(); ++index)
 		{
@@ -117,10 +122,10 @@ namespace Graphite {
 
 			if (distance > 0.0)
 			{
-				closest = std::min(closest, distance);
+				closestDistance = std::min(closestDistance, distance);
 			}
 		}
 
-		return closest == std::numeric_limits<double>::infinity() ? kClockFallbackSeconds : closest * kBarFraction;
+		return closestDistance == kNoDistance ? kClockFallbackSeconds : closestDistance * kBarFraction;
 	}
 }

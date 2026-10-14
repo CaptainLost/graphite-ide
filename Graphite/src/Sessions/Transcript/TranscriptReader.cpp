@@ -3,6 +3,9 @@
 #include "Sessions/Transcript/JsonAccess.h"
 #include "Sessions/Transcript/ToolFacts.h"
 
+#include "Core/Base/Ascii.h"
+#include "Core/Base/Strings.h"
+
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -20,20 +23,30 @@ namespace Graphite {
 
 	namespace {
 
-		// Like the accessors in JsonAccess.h, these answer a wrong type with a default
-		// instead of throwing.
+		constexpr int kCompactJsonIndent = -1;
+		constexpr int kToolSchemaJsonIndent = 2;
+		constexpr char kJsonIndentCharacter = ' ';
+		constexpr bool kJsonEnsureAscii = false;
+		constexpr bool kParseWithoutThrowing = false;
+		constexpr std::size_t kToolRuleLength = 40;
+		constexpr std::uint64_t kBase64DecodedBytesPerGroup = 3;
+		constexpr std::uint64_t kBase64CharactersPerGroup = 4;
+		constexpr std::uint64_t kMinimumReadStep = 1;
+
+		// WARNING: The `replace` error handler, not the default `strict`: a tool input holding
+		// invalid UTF-8 must not throw out of a reader that promises not to.
+		constexpr nlohmann::json::error_handler_t kJsonInvalidUtf8Handler = nlohmann::json::error_handler_t::replace;
+
 		bool BoolAt(const nlohmann::json& object, const char* key)
 		{
-			const auto found = object.find(key);
+			const nlohmann::json::const_iterator found = object.find(key);
 			return found != object.end() && found->is_boolean() && found->get<bool>();
 		}
 
-		// The string elements of an array field: empty for a missing or non-array field,
-		// skipping any element that is not itself a string.
 		std::vector<std::string> StringsAt(const nlohmann::json& object, const char* key)
 		{
 			std::vector<std::string> values;
-			const auto found = object.find(key);
+			const nlohmann::json::const_iterator found = object.find(key);
 
 			if (found == object.end() || !found->is_array())
 			{
@@ -51,12 +64,12 @@ namespace Graphite {
 			return values;
 		}
 
-		CompactionFacts CompactionOf(const nlohmann::json& json)
+		CompactionFacts CompactionOf(const nlohmann::json& recordJson)
 		{
 			CompactionFacts facts;
-			const auto metadata = json.find("compactMetadata");
+			const nlohmann::json::const_iterator metadata = recordJson.find("compactMetadata");
 
-			if (metadata == json.end() || !metadata->is_object())
+			if (metadata == recordJson.end() || !metadata->is_object())
 			{
 				return facts;
 			}
@@ -65,15 +78,15 @@ namespace Graphite {
 			facts.PreTokens = OptionalCountAt(*metadata, "preTokens");
 			facts.PostTokens = OptionalCountAt(*metadata, "postTokens");
 
-			if (const std::optional<std::uint64_t> ms = OptionalCountAt(*metadata, "durationMs"))
+			if (const std::optional<std::uint64_t> durationMilliseconds = OptionalCountAt(*metadata, "durationMs"))
 			{
-				facts.Duration = std::chrono::milliseconds{static_cast<std::int64_t>(*ms)};
+				facts.Duration = std::chrono::milliseconds{static_cast<std::int64_t>(*durationMilliseconds)};
 			}
 
 			return facts;
 		}
 
-		RecordKind KindOf(const std::string& type)
+		RecordKind RecordKindOf(const std::string& type)
 		{
 			if (type == "user")
 			{
@@ -101,13 +114,9 @@ namespace Graphite {
 
 		std::string Serialised(const nlohmann::json& value)
 		{
-			// `replace` rather than the default `strict`: a tool input holding invalid UTF-8
-			// must not throw out of a reader that promises not to.
-			return value.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+			return value.dump(kCompactJsonIndent, kJsonIndentCharacter, kJsonEnsureAscii, kJsonInvalidUtf8Handler);
 		}
 
-		// A tool result's content is a string or a list of blocks, of which the text ones
-		// are what a reader wants.
 		std::string ResultText(const nlohmann::json& content)
 		{
 			if (content.is_string())
@@ -123,11 +132,7 @@ namespace Graphite {
 				{
 					if (part.is_object() && StringAt(part, "type") == "text")
 					{
-						if (!joined.empty())
-						{
-							joined += '\n';
-						}
-						joined += StringAt(part, "text");
+						Core::AppendSeparated(joined, "\n", StringAt(part, "text"));
 					}
 				}
 			}
@@ -162,7 +167,7 @@ namespace Graphite {
 				parsed.ToolUseId = StringAt(block, "id");
 				parsed.ToolName = StringAt(block, "name");
 
-				if (const auto input = block.find("input"); input != block.end())
+				if (const nlohmann::json::const_iterator input = block.find("input"); input != block.end())
 				{
 					parsed.InputJson = Serialised(*input);
 				}
@@ -173,22 +178,22 @@ namespace Graphite {
 				parsed.ToolUseId = StringAt(block, "tool_use_id");
 				parsed.IsError = BoolAt(block, "is_error");
 
-				if (const auto content = block.find("content"); content != block.end())
+				if (const nlohmann::json::const_iterator content = block.find("content"); content != block.end())
 				{
 					parsed.Text = ResultText(*content);
 				}
 			}
 			else if (type == "image")
 			{
-				// Only what the views say about it: its type and how much of it there is. A
-				// source that is missing or of another shape leaves both unknown.
 				parsed.Kind = BlockKind::Image;
 
-				if (const auto source = block.find("source"); source != block.end() && source->is_object())
+				if (const nlohmann::json::const_iterator source = block.find("source");
+					source != block.end() && source->is_object())
 				{
 					parsed.Text = StringAt(*source, "media_type");
 
-					if (const auto data = source->find("data"); data != source->end() && data->is_string())
+					if (const nlohmann::json::const_iterator data = source->find("data");
+						data != source->end() && data->is_string())
 					{
 						parsed.DataBytes = data->get_ref<const std::string&>().size();
 					}
@@ -203,11 +208,9 @@ namespace Graphite {
 			return parsed;
 		}
 
-		// A field that holds text for the model: a string, or a list whose strings are read a
-		// line apiece. Nothing for a missing field or one of another type.
 		std::optional<std::string> TextAt(const nlohmann::json& object, const char* key)
 		{
-			const auto found = object.find(key);
+			const nlohmann::json::const_iterator found = object.find(key);
 
 			if (found == object.end())
 			{
@@ -222,27 +225,16 @@ namespace Graphite {
 				return std::nullopt;
 			}
 
-			std::string text;
-			bool first = true;
+			std::vector<std::string> elementTexts;
 
 			for (const nlohmann::json& element : *found)
 			{
-				if (!first)
-				{
-					text += '\n';
-				}
-				first = false;
-
-				text += element.is_string() ? element.get<std::string>() : Serialised(element);
+				elementTexts.push_back(element.is_string() ? element.get<std::string>() : Serialised(element));
 			}
 
-			return text;
+			return Core::JoinedWith(elementTexts, "\n");
 		}
 
-		// What an attachment written before `rendered` existed most likely put in front of the
-		// model. The fields are the ones Claude Code wrote the model's text into; an attachment
-		// with none of them is shown as itself, compactly, which is closer to what it cost
-		// than the record around it.
 		std::string ReconstructedText(const nlohmann::json& attachment)
 		{
 			for (const char* key : {"text", "content", "snippet", "prompt", "addedBlocks", "addedLines"})
@@ -256,20 +248,16 @@ namespace Graphite {
 			return Serialised(attachment);
 		}
 
-		// The text an attachment sent, as Claude Code recorded it beside the attachment: one
-		// element per text block, joined a block to a line. Nothing when the record has no
-		// `rendered` list. An element of another shape contributes nothing.
 		std::optional<std::string> RenderedText(const nlohmann::json& record)
 		{
-			const auto found = record.find("rendered");
+			const nlohmann::json::const_iterator found = record.find("rendered");
 
 			if (found == record.end() || !found->is_array())
 			{
 				return std::nullopt;
 			}
 
-			std::string text;
-			bool first = true;
+			std::vector<std::string> contents;
 
 			for (const nlohmann::json& element : *found)
 			{
@@ -278,48 +266,22 @@ namespace Graphite {
 					continue;
 				}
 
-				const auto content = element.find("content");
+				const nlohmann::json::const_iterator content = element.find("content");
 
 				if (content == element.end() || !content->is_string())
 				{
 					continue;
 				}
 
-				if (!first)
-				{
-					text += '\n';
-				}
-				first = false;
-
-				text += content->get_ref<const std::string&>();
+				contents.push_back(content->get_ref<const std::string&>());
 			}
 
-			return text;
+			return Core::JoinedWith(contents, "\n");
 		}
 
-		std::string JoinedWith(const std::vector<std::string>& parts, std::string_view separator)
-		{
-			std::string joined;
-
-			for (std::size_t i = 0; i < parts.size(); ++i)
-			{
-				if (i > 0)
-				{
-					joined += separator;
-				}
-				joined += parts[i];
-			}
-
-			return joined;
-		}
-
-		// A queued prompt as the model got it: the text typed, or, for a prompt Claude Code kept
-		// as blocks because an image was pasted into it, each text block a line apiece and each
-		// image named as the request's own images are, never its data. Nothing when the field
-		// is neither.
 		std::optional<std::string> PromptText(const nlohmann::json& attachment)
 		{
-			const auto found = attachment.find("prompt");
+			const nlohmann::json::const_iterator found = attachment.find("prompt");
 
 			if (found == attachment.end())
 			{
@@ -336,8 +298,6 @@ namespace Graphite {
 
 			std::vector<std::string> lines;
 
-			// Base64 carries three bytes in every four characters. A block of any other kind
-			// is not part of what the user typed.
 			for (const nlohmann::json& element : *found)
 			{
 				const ContentBlock block = ParseBlock(element);
@@ -348,37 +308,25 @@ namespace Graphite {
 				}
 				else if (block.Kind == BlockKind::Image)
 				{
-					lines.push_back(ImageText(block.Text, block.DataBytes * 3 / 4));
+					lines.push_back(ImageText(block.Text, block.DataBytes * kBase64DecodedBytesPerGroup / kBase64CharactersPerGroup));
 				}
 			}
 
-			return JoinedWith(lines, "\n");
+			return Core::JoinedWith(lines, "\n");
 		}
 
-		// Where Claude Code splits the system prompt between the part it caches and the part it
-		// does not: a block of its own, not text the model reads.
-		constexpr std::string_view kDynamicBoundary = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__";
+		constexpr std::string_view kSystemPromptCacheBoundary = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__";
 
-		bool IsDynamicBoundary(std::string_view block)
+		bool IsSystemPromptCacheBoundary(std::string_view block)
 		{
 			constexpr std::string_view whitespace = " \t\r\n";
-			const std::size_t first = block.find_first_not_of(whitespace);
-
-			if (first == std::string_view::npos)
-			{
-				return false;
-			}
-
-			return block.substr(first, block.find_last_not_of(whitespace) + 1 - first) == kDynamicBoundary;
+			return Core::WithoutSurrounding(block, whitespace) == kSystemPromptCacheBoundary;
 		}
 
-		// The CLI prefix and the system prompt's blocks, a blank line between, less the cache
-		// marker. A snapshot with no other blocks has no system prompt, whatever prefix it
-		// carries.
 		std::string SystemPromptText(const nlohmann::json& snapshot)
 		{
 			std::vector<std::string> blocks = StringsAt(snapshot, "systemPrompt");
-			std::erase_if(blocks, [](const std::string& block) { return IsDynamicBoundary(block); });
+			std::erase_if(blocks, [](const std::string& block) { return IsSystemPromptCacheBoundary(block); });
 
 			if (blocks.empty())
 			{
@@ -390,33 +338,29 @@ namespace Graphite {
 				blocks.insert(blocks.begin(), std::move(prefix));
 			}
 
-			return JoinedWith(blocks, "\n\n");
+			return Core::JoinedWith(blocks, "\n\n");
 		}
 
-		// A tool's input schema: Claude Code nests the definition it sent under `schema`; one
-		// written with the input schema beside the name is read from there. Nothing when
-		// neither has it.
 		const nlohmann::json* InputSchemaOf(const nlohmann::json& tool)
 		{
-			if (const auto nested = tool.find("schema"); nested != tool.end() && nested->is_object())
+			if (const nlohmann::json::const_iterator nested = tool.find("schema");
+				nested != tool.end() && nested->is_object())
 			{
-				if (const auto schema = nested->find("input_schema"); schema != nested->end())
+				if (const nlohmann::json::const_iterator nestedInputSchema = nested->find("input_schema");
+					nestedInputSchema != nested->end())
 				{
-					return &*schema;
+					return &*nestedInputSchema;
 				}
 			}
 
-			const auto schema = tool.find("input_schema");
-			return schema != tool.end() ? &*schema : nullptr;
+			const nlohmann::json::const_iterator inputSchema = tool.find("input_schema");
+			return inputSchema != tool.end() ? &*inputSchema : nullptr;
 		}
 
-		// Each tool as the model reads its definition: name, description, and input schema
-		// laid out two spaces an indent, the parts a blank line apart and a rule between
-		// tools. An element that is not an object is not a tool.
 		std::string ToolSchemasText(const nlohmann::json& snapshot, std::size_t& count)
 		{
 			std::vector<std::string> tools;
-			const auto found = snapshot.find("tools");
+			const nlohmann::json::const_iterator found = snapshot.find("tools");
 
 			if (found != snapshot.end() && found->is_array())
 			{
@@ -436,50 +380,46 @@ namespace Graphite {
 
 					if (const nlohmann::json* schema = InputSchemaOf(tool))
 					{
-						parts.push_back(schema->dump(2, ' ', false, nlohmann::json::error_handler_t::replace));
+						parts.push_back(schema->dump(kToolSchemaJsonIndent, kJsonIndentCharacter, kJsonEnsureAscii, kJsonInvalidUtf8Handler));
 					}
 
-					tools.push_back(JoinedWith(parts, "\n\n"));
+					tools.push_back(Core::JoinedWith(parts, "\n\n"));
 				}
 			}
 
 			count = tools.size();
-			return JoinedWith(tools, "\n\n" + std::string(40, '-') + "\n\n");
+			return Core::JoinedWith(tools, "\n\n" + std::string(kToolRuleLength, '-') + "\n\n");
 		}
 
-		using Version = std::array<unsigned, 3>;
+		using ClaudeCodeVersion = std::array<unsigned, 3>;
 
-		// The first Claude Code that records what an attachment sent. From it on, an
-		// attachment with no record of that was not sent at all.
-		constexpr Version kRenderedSince{2, 1, 260};
+		constexpr ClaudeCodeVersion kFirstVersionRecordingRenderedText{2, 1, 260};
 
-		// "2.1.280" as its three numbers; whatever follows the third is ignored. Nothing when
-		// the text does not start with three dot-separated numbers.
-		std::optional<Version> ParseVersion(const std::string& text)
+		std::optional<ClaudeCodeVersion> ParseVersion(const std::string& text)
 		{
-			Version parts{};
-			const char* at = text.data();
-			const char* end = text.data() + text.size();
+			ClaudeCodeVersion parts{};
+			const char* cursor = text.data();
+			const char* textEnd = text.data() + text.size();
 
-			for (std::size_t i = 0; i < parts.size(); ++i)
+			for (std::size_t partIndex = 0; partIndex < parts.size(); ++partIndex)
 			{
-				if (i > 0)
+				if (partIndex > 0)
 				{
-					if (at == end || *at != '.')
+					if (cursor == textEnd || *cursor != '.')
 					{
 						return std::nullopt;
 					}
-					++at;
+					++cursor;
 				}
 
-				const auto [next, error] = std::from_chars(at, end, parts[i]);
+				const auto [numberEnd, conversionError] = std::from_chars(cursor, textEnd, parts[partIndex]);
 
-				if (error != std::errc{})
+				if (conversionError != std::errc{})
 				{
 					return std::nullopt;
 				}
 
-				at = next;
+				cursor = numberEnd;
 			}
 
 			return parts;
@@ -492,22 +432,20 @@ namespace Graphite {
 			counts.Output = CountAt(usage, "output_tokens");
 			counts.CacheRead = CountAt(usage, "cache_read_input_tokens");
 
-			const std::uint64_t written = CountAt(usage, "cache_creation_input_tokens");
+			const std::uint64_t totalCacheWritten = CountAt(usage, "cache_creation_input_tokens");
 
-			if (const auto split = usage.find("cache_creation");
+			if (const nlohmann::json::const_iterator split = usage.find("cache_creation");
 				split != usage.end() && split->is_object())
 			{
 				counts.CacheWrite5m = CountAt(*split, "ephemeral_5m_input_tokens");
 				counts.CacheWrite1h = CountAt(*split, "ephemeral_1h_input_tokens");
 			}
 
-			// Older records have the total and no split. Whatever the split does not account
-			// for is priced as the cheaper, five-minute write — the default lifetime.
-			const std::uint64_t accounted = counts.CacheWrite5m + counts.CacheWrite1h;
+			const std::uint64_t cacheWrittenInSplit = counts.CacheWrite5m + counts.CacheWrite1h;
 
-			if (accounted < written)
+			if (cacheWrittenInSplit < totalCacheWritten)
 			{
-				counts.CacheWrite5m += written - accounted;
+				counts.CacheWrite5m += totalCacheWritten - cacheWrittenInSplit;
 			}
 
 			return counts;
@@ -516,56 +454,53 @@ namespace Graphite {
 
 	std::optional<TranscriptRecord> ParseRecord(std::string_view line)
 	{
-		const nlohmann::json json = nlohmann::json::parse(line, nullptr, false);
+		const nlohmann::json::parser_callback_t noParseCallback = nullptr;
+		const nlohmann::json lineJson = nlohmann::json::parse(line, noParseCallback, kParseWithoutThrowing);
 
-		if (json.is_discarded() || !json.is_object())
+		if (lineJson.is_discarded() || !lineJson.is_object())
 		{
 			return std::nullopt;
 		}
 
 		TranscriptRecord record;
-		record.TypeName = StringAt(json, "type");
-		record.Kind = KindOf(record.TypeName);
-		record.Uuid = StringAt(json, "uuid");
-		record.Timestamp = StringAt(json, "timestamp");
-		record.Cwd = StringAt(json, "cwd");
-		record.RequestId = StringAt(json, "requestId");
-		record.IsCompactSummary = BoolAt(json, "isCompactSummary");
-		record.IsMeta = BoolAt(json, "isMeta") || record.IsCompactSummary;
+		record.TypeName = StringAt(lineJson, "type");
+		record.Kind = RecordKindOf(record.TypeName);
+		record.Uuid = StringAt(lineJson, "uuid");
+		record.Timestamp = StringAt(lineJson, "timestamp");
+		record.Cwd = StringAt(lineJson, "cwd");
+		record.RequestId = StringAt(lineJson, "requestId");
+		record.IsCompactSummary = BoolAt(lineJson, "isCompactSummary");
+		record.IsMeta = BoolAt(lineJson, "isMeta") || record.IsCompactSummary;
 
-		if (record.Kind == RecordKind::System && StringAt(json, "subtype") == "compact_boundary")
+		if (record.Kind == RecordKind::System && StringAt(lineJson, "subtype") == "compact_boundary")
 		{
 			record.IsCompactBoundary = true;
-			record.Compaction = CompactionOf(json);
+			record.Compaction = CompactionOf(lineJson);
 		}
 
 		if (record.Kind == RecordKind::AiTitle)
 		{
-			record.Title = StringAt(json, "aiTitle");
+			record.Title = StringAt(lineJson, "aiTitle");
 		}
 
-		if (const auto attachment = json.find("attachment");
-			attachment != json.end() && attachment->is_object())
+		if (const nlohmann::json::const_iterator attachment = lineJson.find("attachment");
+			attachment != lineJson.end() && attachment->is_object())
 		{
 			record.AttachmentType = StringAt(*attachment, "type");
 
-			// A queued prompt goes to the model whatever the record says of it: 2.1.261 wrote
-			// some without `rendered` that the model then answered.
 			const bool queued = record.AttachmentType == "queued_command";
 
-			if (std::optional<std::string> rendered = RenderedText(json))
+			if (std::optional<std::string> rendered = RenderedText(lineJson))
 			{
 				record.AttachmentText = std::move(*rendered);
 			}
-			else if (const std::optional<Version> version = ParseVersion(StringAt(json, "version"));
-					 !queued && version.has_value() && *version >= kRenderedSince)
+			else if (const std::optional<ClaudeCodeVersion> version = ParseVersion(StringAt(lineJson, "version"));
+					 !queued && version.has_value() && *version >= kFirstVersionRecordingRenderedText)
 			{
 				record.AttachmentSent = false;
 			}
 			else
 			{
-				// Older than `rendered`, silent about its version, or queued: showing a
-				// reconstruction is better than hiding something that may well have been sent.
 				std::optional<std::string> prompt = queued ? PromptText(*attachment) : std::nullopt;
 				record.AttachmentText = prompt ? std::move(*prompt) : ReconstructedText(*attachment);
 				record.AttachmentApproximate = true;
@@ -596,26 +531,26 @@ namespace Graphite {
 
 			if (queued)
 			{
-				const auto origin = attachment->find("origin");
-				const bool human = origin != attachment->end() && origin->is_object() &&
-								   StringAt(*origin, "kind") == "human";
+				const nlohmann::json::const_iterator origin = attachment->find("origin");
+				const bool typedByHuman = origin != attachment->end() && origin->is_object() &&
+										  StringAt(*origin, "kind") == "human";
 
-				// Other modes (a queued shell command) are not something the user said to Claude.
-				const std::string mode = StringAt(*attachment, "commandMode");
+				const std::string commandMode = StringAt(*attachment, "commandMode");
 
-				if (human && (mode.empty() || mode == "prompt"))
+				if (typedByHuman && (commandMode.empty() || commandMode == "prompt"))
 				{
 					record.QueuedPrompt = PromptText(*attachment).value_or(std::string{});
 				}
 			}
 		}
 
-		if (const auto message = json.find("message"); message != json.end() && message->is_object())
+		if (const nlohmann::json::const_iterator message = lineJson.find("message");
+			message != lineJson.end() && message->is_object())
 		{
 			record.Model = StringAt(*message, "model");
 			record.StopReason = StringAt(*message, "stop_reason");
 
-			if (const auto content = message->find("content"); content != message->end())
+			if (const nlohmann::json::const_iterator content = message->find("content"); content != message->end())
 			{
 				if (content->is_string())
 				{
@@ -630,24 +565,24 @@ namespace Graphite {
 				}
 			}
 
-			if (const auto usage = message->find("usage"); usage != message->end() && usage->is_object())
+			if (const nlohmann::json::const_iterator usage = message->find("usage");
+				usage != message->end() && usage->is_object())
 			{
 				record.Usage = ParseUsage(*usage);
 				record.Fast = StringAt(*usage, "speed") == "fast";
 			}
 		}
 
-		// Claude Code writes the structured result once per record, beside the message rather
-		// than inside the block; a record answers one tool, so every result block gets it.
-		if (const auto result = json.find("toolUseResult"); result != json.end() && result->is_object())
+		if (const nlohmann::json::const_iterator toolUseResult = lineJson.find("toolUseResult");
+			toolUseResult != lineJson.end() && toolUseResult->is_object())
 		{
-			const std::string serialised = Serialised(*result);
+			const std::string serialisedResult = Serialised(*toolUseResult);
 
 			for (ContentBlock& block : record.Blocks)
 			{
 				if (block.Kind == BlockKind::ToolResult)
 				{
-					block.ResultJson = serialised;
+					block.ResultJson = serialisedResult;
 				}
 			}
 		}
@@ -660,18 +595,18 @@ namespace Graphite {
 	TranscriptChunk ParseTranscript(std::string_view bytes)
 	{
 		TranscriptChunk chunk;
-		std::size_t start = 0;
+		std::size_t lineStart = 0;
 
-		while (start < bytes.size())
+		while (lineStart < bytes.size())
 		{
-			const std::size_t end = bytes.find('\n', start);
+			const std::size_t lineEnd = bytes.find('\n', lineStart);
 
-			if (end == std::string_view::npos)
+			if (lineEnd == std::string_view::npos)
 			{
 				break;
 			}
 
-			std::string_view line = bytes.substr(start, end - start);
+			std::string_view line = bytes.substr(lineStart, lineEnd - lineStart);
 
 			if (!line.empty() && line.back() == '\r')
 			{
@@ -690,30 +625,30 @@ namespace Graphite {
 				}
 			}
 
-			start = end + 1;
+			lineStart = lineEnd + 1;
 		}
 
-		chunk.Consumed = start;
+		chunk.Consumed = lineStart;
 		return chunk;
 	}
 
 	Core::Result<TranscriptRead> ReadTranscriptChunk(const std::filesystem::path& file,
 													 std::uint64_t offset, std::uint64_t maxBytes)
 	{
-		std::error_code status;
-		const std::uintmax_t size = std::filesystem::file_size(file, status);
+		std::error_code sizeStatus;
+		const std::uintmax_t size = std::filesystem::file_size(file, sizeStatus);
 
-		if (status)
+		if (sizeStatus)
 		{
 			return Core::Error{Core::ErrorCode::NotFound, "cannot read the transcript's size"};
 		}
 
-		TranscriptRead read;
-		read.FileSize = size;
+		TranscriptRead transcriptRead;
+		transcriptRead.FileSize = size;
 
 		if (size < offset)
 		{
-			read.Restarted = true;
+			transcriptRead.Restarted = true;
 			offset = 0;
 		}
 
@@ -727,28 +662,27 @@ namespace Graphite {
 		stream.seekg(static_cast<std::streamoff>(offset));
 
 		const std::uint64_t available = size - offset;
-		const std::uint64_t step = std::max<std::uint64_t>(maxBytes, 1);
+		const std::uint64_t readStep = std::max<std::uint64_t>(maxBytes, kMinimumReadStep);
 		std::string bytes;
 
-		// Grown a step at a time until the bytes hold a whole line or the file runs out.
 		while (bytes.size() < available)
 		{
-			const std::size_t had = bytes.size();
-			const std::uint64_t wanted = std::min<std::uint64_t>(step, available - had);
+			const std::size_t sizeBeforeRead = bytes.size();
+			const std::uint64_t bytesToRead = std::min<std::uint64_t>(readStep, available - sizeBeforeRead);
 
-			bytes.resize(had + static_cast<std::size_t>(wanted));
-			stream.read(bytes.data() + had, static_cast<std::streamsize>(wanted));
-			bytes.resize(had + static_cast<std::size_t>(stream.gcount()));
+			bytes.resize(sizeBeforeRead + static_cast<std::size_t>(bytesToRead));
+			stream.read(bytes.data() + sizeBeforeRead, static_cast<std::streamsize>(bytesToRead));
+			bytes.resize(sizeBeforeRead + static_cast<std::size_t>(stream.gcount()));
 
-			if (bytes.size() == had || bytes.find('\n', had) != std::string::npos)
+			if (bytes.size() == sizeBeforeRead || bytes.find('\n', sizeBeforeRead) != std::string::npos)
 			{
 				break;
 			}
 		}
 
-		read.Chunk = ParseTranscript(bytes);
-		read.NextOffset = offset + read.Chunk.Consumed;
-		return read;
+		transcriptRead.Chunk = ParseTranscript(bytes);
+		transcriptRead.NextOffset = offset + transcriptRead.Chunk.Consumed;
+		return transcriptRead;
 	}
 
 	Core::Result<TranscriptRead> ReadTranscript(const std::filesystem::path& file,

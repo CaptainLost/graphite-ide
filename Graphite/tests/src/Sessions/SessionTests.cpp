@@ -7,18 +7,9 @@
 
 using namespace Graphite;
 
-namespace {
-	Session Build(const std::string& bytes)
-	{
-		Session session;
-		session.Append(ParseTranscript(bytes).Records);
-		return session;
-	}
-}
-
 TEST_CASE("Each typed prompt starts a turn holding everything up to the next")
 {
-	const Session session = Build(
+	const Session session = Fixtures::SessionFromTranscript(
 		Fixtures::UserPrompt("one", "2026-09-17T09:00:00.000Z") +
 		Fixtures::Assistant("a", Fixtures::ThinkingBlock("think"), Fixtures::Usage(1, 1)) +
 		Fixtures::Assistant("a", Fixtures::TextBlock("answer"), Fixtures::Usage(1, 1)) +
@@ -41,7 +32,7 @@ TEST_CASE("Each typed prompt starts a turn holding everything up to the next")
 
 TEST_CASE("A tool call is paired with its result, error flag and timing")
 {
-	const Session session = Build(
+	const Session session = Fixtures::SessionFromTranscript(
 		Fixtures::UserPrompt("go") +
 		Fixtures::Assistant("a", Fixtures::ToolUseBlock("t1", "Bash", {{"command", "ls"}}), Fixtures::Usage(1, 1),
 							"claude-opus-5", "2026-09-17T09:00:01.000Z") +
@@ -83,22 +74,22 @@ TEST_CASE("A result arriving in a later append still finds its call")
 
 TEST_CASE("Injected user text and tool results do not start turns")
 {
-	const Session session = Build(Fixtures::UserPrompt("go") + Fixtures::MetaUser("skill body") +
-								  Fixtures::ToolResult("orphan", "x"));
+	const Session session = Fixtures::SessionFromTranscript(Fixtures::UserPrompt("go") + Fixtures::MetaUser("skill body") +
+															Fixtures::ToolResult("orphan", "x"));
 
 	CHECK(session.GetTurns().size() == 1);
 }
 
 TEST_CASE("Replies before any prompt land in a turn with no prompt")
 {
-	const Session session = Build(Fixtures::Assistant("a", Fixtures::TextBlock("hello"), Fixtures::Usage(1, 1)));
+	const Session session = Fixtures::SessionFromTranscript(Fixtures::Assistant("a", Fixtures::TextBlock("hello"), Fixtures::Usage(1, 1)));
 
 	REQUIRE(session.GetTurns().size() == 1);
 	CHECK(session.GetTurns()[0].Prompt.empty());
 	CHECK(session.GetTurns()[0].Items.size() == 1);
 }
 
-TEST_CASE("Reset clears turns and tools and moves to a new generation")
+TEST_CASE("Reset clears turns and tools, moves to a new generation, and a later result finds no stale call")
 {
 	Session session;
 	session.Append(ParseTranscript(Fixtures::UserPrompt("go") +
@@ -116,8 +107,6 @@ TEST_CASE("Reset clears turns and tools and moves to a new generation")
 	CHECK(session.GetTools().empty());
 	CHECK(session.GetGeneration() != generationBefore);
 
-	// A result for a tool the reset dropped must not find a stale entry: appending after a
-	// reset behaves like appending to a session that never held it.
 	session.Append(ParseTranscript(Fixtures::ToolResult("t1", "contents")).Records);
 	CHECK(session.GetTools().empty());
 }
@@ -125,8 +114,8 @@ TEST_CASE("Reset clears turns and tools and moves to a new generation")
 TEST_CASE("An unknown block is kept as an item naming its type")
 {
 	const Session session =
-		Build(Fixtures::UserPrompt("go") +
-			  Fixtures::Assistant("a", {{"type", "server_tool_use"}}, Fixtures::Usage(1, 1)));
+		Fixtures::SessionFromTranscript(Fixtures::UserPrompt("go") +
+										Fixtures::Assistant("a", {{"type", "server_tool_use"}}, Fixtures::Usage(1, 1)));
 
 	REQUIRE(session.GetTurns()[0].Items.size() == 1);
 	CHECK(session.GetTurns()[0].Items[0].Kind == ItemKind::Other);
@@ -135,7 +124,7 @@ TEST_CASE("An unknown block is kept as an item naming its type")
 
 TEST_CASE("A paired tool call carries its structured result and the size of its text")
 {
-	const Session session = Build(
+	const Session session = Fixtures::SessionFromTranscript(
 		Fixtures::UserPrompt("go") +
 		Fixtures::Assistant("a", Fixtures::ToolUseBlock("t1", "Grep", {{"pattern", "x"}}), Fixtures::Usage(1, 1)) +
 		Fixtures::ToolResultWith("t1", "12345", {{"numLines", 5}}));
@@ -147,7 +136,7 @@ TEST_CASE("A paired tool call carries its structured result and the size of its 
 
 TEST_CASE("A task notification is an injected item in the current turn, not a new turn")
 {
-	const Session session = Build(
+	const Session session = Fixtures::SessionFromTranscript(
 		Fixtures::UserPrompt("go") +
 		Fixtures::UserPrompt("<task-notification><summary>Agent done</summary></task-notification>",
 							 "2026-09-17T09:00:05.000Z"));
@@ -160,7 +149,7 @@ TEST_CASE("A task notification is an injected item in the current turn, not a ne
 
 TEST_CASE("Injected meta text is an item too, labelled by its first line")
 {
-	const Session session = Build(Fixtures::UserPrompt("go") + Fixtures::MetaUser("Base directory for this skill\nmore"));
+	const Session session = Fixtures::SessionFromTranscript(Fixtures::UserPrompt("go") + Fixtures::MetaUser("Base directory for this skill\nmore"));
 
 	REQUIRE(session.GetTurns()[0].Items.size() == 1);
 	CHECK(session.GetTurns()[0].Items[0].Kind == ItemKind::Injected);
@@ -170,7 +159,7 @@ TEST_CASE("Injected meta text is an item too, labelled by its first line")
 TEST_CASE("Injected meta text naming a pasted image's source is labelled by the image's file name")
 {
 	const Session session =
-		Build(Fixtures::UserPrompt("go") + Fixtures::MetaUser("[Image: source: C:\\Users\\m\\images\\17.png]"));
+		Fixtures::SessionFromTranscript(Fixtures::UserPrompt("go") + Fixtures::MetaUser("[Image: source: C:\\Users\\m\\images\\17.png]"));
 
 	REQUIRE(session.GetTurns()[0].Items.size() == 1);
 	CHECK(session.GetTurns()[0].Items[0].Label == "Image source: 17.png");
@@ -178,7 +167,7 @@ TEST_CASE("Injected meta text naming a pasted image's source is labelled by the 
 
 TEST_CASE("Each item knows its time and request, and a request's usage is kept once per turn")
 {
-	const Session session = Build(
+	const Session session = Fixtures::SessionFromTranscript(
 		Fixtures::UserPrompt("go") +
 		Fixtures::Assistant("r1", Fixtures::ThinkingBlock(""), Fixtures::Usage(10, 20), "claude-opus-5",
 							"2026-09-17T09:00:01.000Z") +
@@ -202,7 +191,7 @@ TEST_CASE("Each item knows its time and request, and a request's usage is kept o
 TEST_CASE("A turn counts a streamed response by its whole output and a refused one by the model's record")
 {
 	const Session session =
-		Build(Fixtures::UserPrompt("go") + Fixtures::kStreamedResponse + Fixtures::kRefusedResponse);
+		Fixtures::SessionFromTranscript(Fixtures::UserPrompt("go") + Fixtures::kStreamedResponse + Fixtures::kRefusedResponse);
 
 	const Turn& turn = session.GetTurns()[0];
 	REQUIRE(turn.Requests.size() == 2);
@@ -215,7 +204,7 @@ TEST_CASE("A turn counts a streamed response by its whole output and a refused o
 
 TEST_CASE("A compaction mid-turn is one compaction item carrying the boundary's facts and the summary")
 {
-	const Session session = Build(
+	const Session session = Fixtures::SessionFromTranscript(
 		Fixtures::UserPrompt("go") +
 		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Bash", {}), Fixtures::Usage(1, 1)) +
 		Fixtures::kCompactBoundary + Fixtures::kCompactSummary +
@@ -237,7 +226,7 @@ TEST_CASE("A compaction mid-turn is one compaction item carrying the boundary's 
 
 TEST_CASE("A compaction summary with no boundary before it is still one compaction item")
 {
-	const Session session = Build(Fixtures::UserPrompt("go") + Fixtures::kCompactSummary);
+	const Session session = Fixtures::SessionFromTranscript(Fixtures::UserPrompt("go") + Fixtures::kCompactSummary);
 
 	REQUIRE(session.GetTurns().size() == 1);
 	REQUIRE(session.GetTurns()[0].Items.size() == 1);
@@ -250,7 +239,7 @@ TEST_CASE("A compaction summary with no boundary before it is still one compacti
 
 TEST_CASE("A compact boundary with no summary after it is a compaction item with no text")
 {
-	const Session session = Build(Fixtures::UserPrompt("go") + Fixtures::kCompactBoundary);
+	const Session session = Fixtures::SessionFromTranscript(Fixtures::UserPrompt("go") + Fixtures::kCompactBoundary);
 
 	REQUIRE(session.GetTurns()[0].Items.size() == 1);
 	CHECK(session.GetTurns()[0].Items[0].Kind == ItemKind::Compaction);
@@ -272,8 +261,8 @@ TEST_CASE("A summary read in a later append fills the compaction its boundary st
 
 TEST_CASE("Two compactions in one turn each keep their own summary")
 {
-	const Session session = Build(Fixtures::UserPrompt("go") + Fixtures::kCompactBoundary + Fixtures::MetaUser("first") +
-								  Fixtures::kCompactSummary + Fixtures::kCompactBoundary + Fixtures::kCompactSummary);
+	const Session session = Fixtures::SessionFromTranscript(Fixtures::UserPrompt("go") + Fixtures::kCompactBoundary + Fixtures::MetaUser("first") +
+															Fixtures::kCompactSummary + Fixtures::kCompactBoundary + Fixtures::kCompactSummary);
 
 	const Turn& turn = session.GetTurns()[0];
 	REQUIRE(turn.Items.size() == 3);
@@ -286,8 +275,8 @@ TEST_CASE("Two compactions in one turn each keep their own summary")
 
 TEST_CASE("Two compactions back to back each keep their own summary")
 {
-	const Session session = Build(Fixtures::UserPrompt("go") + Fixtures::kCompactBoundary + Fixtures::kCompactSummary +
-								  Fixtures::kCompactBoundary + Fixtures::kCompactSummary);
+	const Session session = Fixtures::SessionFromTranscript(Fixtures::UserPrompt("go") + Fixtures::kCompactBoundary + Fixtures::kCompactSummary +
+															Fixtures::kCompactBoundary + Fixtures::kCompactSummary);
 
 	const Turn& turn = session.GetTurns()[0];
 	REQUIRE(turn.Items.size() == 2);
@@ -299,7 +288,7 @@ TEST_CASE("Two compactions back to back each keep their own summary")
 
 TEST_CASE("A compaction before any prompt lands in a turn with no prompt")
 {
-	const Session session = Build(Fixtures::kCompactBoundary + Fixtures::kCompactSummary + Fixtures::UserPrompt("next"));
+	const Session session = Fixtures::SessionFromTranscript(Fixtures::kCompactBoundary + Fixtures::kCompactSummary + Fixtures::UserPrompt("next"));
 
 	REQUIRE(session.GetTurns().size() == 2);
 	CHECK(session.GetTurns()[0].Prompt.empty());
@@ -310,7 +299,7 @@ TEST_CASE("A compaction before any prompt lands in a turn with no prompt")
 
 TEST_CASE("Injected meta text that carries a known tag is labelled by the tag, not its first line")
 {
-	const Session session = Build(Fixtures::UserPrompt("go") + Fixtures::MetaUser("<system-reminder>\nbe brief\n</system-reminder>"));
+	const Session session = Fixtures::SessionFromTranscript(Fixtures::UserPrompt("go") + Fixtures::MetaUser("<system-reminder>\nbe brief\n</system-reminder>"));
 
 	REQUIRE(session.GetTurns()[0].Items.size() == 1);
 	CHECK(session.GetTurns()[0].Items[0].Kind == ItemKind::Injected);
@@ -319,8 +308,8 @@ TEST_CASE("Injected meta text that carries a known tag is labelled by the tag, n
 
 TEST_CASE("An interruption folds into the turn it interrupted rather than starting one")
 {
-	const Session session = Build(Fixtures::UserPrompt("go") +
-								  Fixtures::UserPrompt("[Request interrupted by user for tool use]", "2026-09-17T09:00:05.000Z"));
+	const Session session = Fixtures::SessionFromTranscript(Fixtures::UserPrompt("go") +
+															Fixtures::UserPrompt("[Request interrupted by user for tool use]", "2026-09-17T09:00:05.000Z"));
 
 	REQUIRE(session.GetTurns().size() == 1);
 	REQUIRE(session.GetTurns()[0].Items.size() == 1);
@@ -329,7 +318,7 @@ TEST_CASE("An interruption folds into the turn it interrupted rather than starti
 
 TEST_CASE("A message queued mid-turn is an item of the current turn, not a new turn")
 {
-	const Session session = Build(
+	const Session session = Fixtures::SessionFromTranscript(
 		Fixtures::UserPrompt("go") +
 		Fixtures::Assistant("r1", Fixtures::TextBlock("Working."), Fixtures::Usage(1, 1)) +
 		Fixtures::QueuedCommand("also the tests", "2026-09-17T09:00:03.000Z") +

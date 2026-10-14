@@ -24,21 +24,24 @@
 
 #include <algorithm>
 #include <chrono>
+#include <format>
 #include <system_error>
 
 namespace Graphite {
 
 	namespace {
-		// How often a missing projects directory is looked for, and how often the cache may be
-		// rewritten while summaries keep arriving.
 		constexpr std::chrono::seconds kDirectoryCheckInterval{5};
 		constexpr std::chrono::seconds kCacheSaveInterval{30};
+		constexpr std::chrono::steady_clock::time_point kCheckImmediately{};
+		constexpr std::chrono::steady_clock::time_point kNeverSaved{};
 
-		// A title longer than this is cut: the row has the rest of its line for the details.
 		constexpr std::size_t kTitleBytes = 200;
 
-		// From the fingerprint rather than the file: the index refreshes it whenever the
-		// transcript changes, and asking the filesystem instead is a stat per row per frame.
+		constexpr float kFilterWidthInFontSizes = 16.0f;
+		const ImVec4 kLaunchProblemColour(0.9f, 0.5f, 0.4f, 1.0f);
+
+		// WARNING: Liveness comes from the fingerprint, which the index refreshes whenever the transcript changes.
+		// Asking the filesystem instead would cost a stat per row per frame.
 		bool IsLive(const SessionSummary& summary)
 		{
 			if (summary.Print.WriteTicks == 0)
@@ -53,24 +56,23 @@ namespace Graphite {
 
 		std::string DurationOf(const SessionSummary& summary)
 		{
-			const auto start = ParseTimestamp(summary.StartedAt);
-			const auto end = ParseTimestamp(summary.EndedAt);
+			const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> start = ParseTimestamp(summary.StartedAt);
+			const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> end = ParseTimestamp(summary.EndedAt);
 			return start && end ? FormatDuration(*end - *start) : std::string{};
 		}
 	}
 
-	std::filesystem::path SessionsPanel::WorkspaceRoot() const
+	std::filesystem::path SessionsPanel::WorkspaceRootOrCurrentDirectory() const
 	{
 		if (m_Workspace.IsOpen())
 		{
 			return m_Workspace.GetRoot();
 		}
 
-		// The overload that cannot throw: a working directory deleted from under the process
-		// makes the other one raise out of a frame (ADR 0004). Empty then, which callers take
-		// as "no directory" and let the child process start in its own default.
-		std::error_code ignored;
-		return std::filesystem::current_path(ignored);
+		// WARNING: Use the overload that cannot throw. A working directory deleted from under the process makes
+		// the other one raise out of a frame, and an empty path here means "no directory" to the callers.
+		std::error_code status;
+		return std::filesystem::current_path(status);
 	}
 
 	SessionsPanel::SessionsPanel(const Workspace& workspace, const ClaudeSettings& settings,
@@ -82,8 +84,6 @@ namespace Graphite {
 
 	SessionsPanel::~SessionsPanel()
 	{
-		// Whatever arrived since the last throttled save. The fingerprints make a cache that is
-		// a little behind harmless, but a live session's last turns are worth keeping.
 		if (m_CacheDirty)
 		{
 			SaveCache();
@@ -110,7 +110,7 @@ namespace Graphite {
 			return;
 		}
 
-		const auto now = std::chrono::steady_clock::now();
+		const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
 
 		if (now < m_NextDirectoryCheck)
 		{
@@ -119,8 +119,8 @@ namespace Graphite {
 
 		m_NextDirectoryCheck = now + kDirectoryCheckInterval;
 
-		// Claude Code creates the directory with the first session it writes, so a machine
-		// that has never run it gets one soon after "New Claude session" is first used.
+		// WARNING: Claude Code creates this directory with the first session it writes, so a missing one is not
+		// final; it is looked for again.
 		std::error_code status;
 
 		if (!std::filesystem::is_directory(m_Projects, status))
@@ -142,8 +142,6 @@ namespace Graphite {
 		std::vector<SessionSummary> cached = m_CacheFile.empty() ? std::vector<SessionSummary>{}
 																 : LoadSummaryCache(m_CacheFile);
 
-		// Shown before the scan confirms them: a cached summary is what the session was when
-		// last seen, and the scan replaces whichever changed.
 		for (const SessionSummary& summary : cached)
 		{
 			m_Sessions[summary.File] = summary;
@@ -193,7 +191,6 @@ namespace Graphite {
 
 		if (changes.Overflowed)
 		{
-			// Something was missed; a refresh of everything is cheap because of the fingerprints.
 			m_Index.Refresh({m_Projects});
 			m_Windows.NotifyChanged({m_Projects});
 			return;
@@ -215,10 +212,10 @@ namespace Graphite {
 			return;
 		}
 
-		// The first save is not held back: it is the one that records the initial scan.
-		const auto now = std::chrono::steady_clock::now();
+		const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+		const bool isFirstSave = m_LastCacheSave == kNeverSaved;
 
-		if (m_LastCacheSave != std::chrono::steady_clock::time_point{} && now - m_LastCacheSave < kCacheSaveInterval)
+		if (!isFirstSave && now - m_LastCacheSave < kCacheSaveInterval)
 		{
 			return;
 		}
@@ -252,12 +249,8 @@ namespace Graphite {
 
 	void SessionsPanel::OnUpdate(Core::Timestep)
 	{
-		// Started on the first update rather than in the constructor, so an application that
-		// never shows this panel still pays nothing until it is drawn once.
 		if (!m_Started)
 		{
-			// A session window restored from the last launch needs the index to find its
-			// transcript, whether or not this list has been shown yet.
 			if (!HasBeenDrawnOnLatestFrame() && !m_Windows.IsLookingForSessions())
 			{
 				return;
@@ -271,12 +264,9 @@ namespace Graphite {
 
 		if (m_Indexing)
 		{
-			// Asked before taking: the worker delivers every summary before it marks the scan
-			// done, so a scan reported done here has nothing left to deliver once the take below
-			// is done. Asked after, it could have finished in between and left its last
-			// summaries for the next frame - after the scan had already been declared complete.
-			// Only the first scan counts: refreshes of a session being written to would keep
-			// the index busy, and this list waiting, for as long as the session lives.
+			// WARNING: Progress is read before taking. The worker delivers every summary before it marks the scan
+			// done, so a scan reported done here has nothing left to deliver. Read after, the scan could finish
+			// in between and leave its last summaries for the next frame.
 			const ScanProgress progress = m_Index.InitialScan();
 			m_ScanProgress = progress;
 
@@ -288,27 +278,38 @@ namespace Graphite {
 				m_InitialScan = false;
 			}
 
-			// Every session there is is known once the first full scan is in, so a restored
-			// window still looking for its session now either finds it or never will.
 			if (!m_InitialScan && m_Windows.IsLookingForSessions())
 			{
-				m_Windows.SettleRestored([this](const std::string& id) -> const SessionSummary* {
-					for (const auto& [file, summary] : m_Sessions)
-					{
-						if (SameSessionId(summary.Id, id))
-						{
-							return &summary;
-						}
-					}
-
-					return nullptr;
-				});
+				m_Windows.SettleRestored([this](const std::string& id) { return FindSessionById(id); });
 			}
 
 			SaveCacheWhenSettled();
 		}
 
 		m_Windows.Update();
+	}
+
+	const SessionSummary* SessionsPanel::FindSessionById(const std::string& id) const
+	{
+		for (const auto& [file, summary] : m_Sessions)
+		{
+			if (SameSessionId(summary.Id, id))
+			{
+				return &summary;
+			}
+		}
+
+		return nullptr;
+	}
+
+	bool SessionsPanel::VisibleRowPrecedes(const VisibleRow& earlier, const VisibleRow& later)
+	{
+		if (earlier.Folder != later.Folder)
+		{
+			return earlier.Folder < later.Folder;
+		}
+
+		return earlier.Summary->EndedAt > later.Summary->EndedAt;
 	}
 
 	std::vector<SessionsPanel::VisibleRow> SessionsPanel::VisibleSessions() const
@@ -320,7 +321,9 @@ namespace Graphite {
 
 		for (const auto& [file, summary] : m_Sessions)
 		{
-			if (!ShowsInSessionList(summary, IsLive(summary) || m_Windows.IsOpen(summary.Id)))
+			const bool isLiveOrOpen = IsLive(summary) || m_Windows.IsOpen(summary.Id);
+
+			if (!ShowsInSessionList(summary, isLiveOrOpen))
 			{
 				continue;
 			}
@@ -330,25 +333,17 @@ namespace Graphite {
 				continue;
 			}
 
-			if (!filter.empty() && Core::Lowered(summary.DisplayTitle()).find(filter) == std::string::npos)
+			if (!filter.empty() && !Core::LoweredTextContains(summary.DisplayTitle(), filter))
 			{
 				continue;
 			}
 
-			// Keyed as IsWithinDirectory compares, so two spellings of one folder - as Windows
-			// sees it, case and a trailing separator aside - make one group rather than two.
-			visible.push_back({&summary, limitToWorkspace ? std::filesystem::path::string_type{} : DirectoryKey(summary.Cwd)});
+			const std::filesystem::path::string_type folderKey =
+				limitToWorkspace ? std::filesystem::path::string_type{} : DirectoryKey(summary.Cwd);
+			visible.push_back({&summary, folderKey});
 		}
 
-		// Grouped by where each was started when every project is shown, newest first within.
-		std::sort(visible.begin(), visible.end(), [](const VisibleRow& a, const VisibleRow& b) {
-			if (a.Folder != b.Folder)
-			{
-				return a.Folder < b.Folder;
-			}
-
-			return a.Summary->EndedAt > b.Summary->EndedAt;
-		});
+		std::sort(visible.begin(), visible.end(), VisibleRowPrecedes);
 
 		return visible;
 	}
@@ -363,11 +358,11 @@ namespace Graphite {
 			return;
 		}
 
-		// Lower case, as Claude Code writes the id into the transcript's file name: the pending
-		// tab is matched to the index's summary by it.
+		// WARNING: The id must be lower case, as Claude Code writes it into the transcript's file name; the
+		// pending tab is matched to the index's summary by it.
 		const std::string id = Core::Lowered(Core::Uuid::Generate().ToString());
 
-		if (!m_Launch("Claude", NewSessionCommand(program, id), WorkspaceRoot()))
+		if (!m_Launch("Claude", NewSessionCommand(program, id), WorkspaceRootOrCurrentDirectory()))
 		{
 			m_LaunchProblem = "Claude did not start. The console has the reason.";
 			return;
@@ -376,8 +371,7 @@ namespace Graphite {
 		m_LaunchProblem.reset();
 		m_Windows.OpenPending(id, "New Claude session");
 
-		// The first session on this machine is what creates the projects directory.
-		m_NextDirectoryCheck = {};
+		m_NextDirectoryCheck = kCheckImmediately;
 	}
 
 	void SessionsPanel::ContinueSession(const SessionSummary& summary)
@@ -390,14 +384,9 @@ namespace Graphite {
 			return;
 		}
 
-		// Claude Code looks up the transcript to resume under the project of the directory it
-		// is started in, so this must be the session's own folder - the workspace root would
-		// resume the wrong project, or fail to find one at all, whenever "This workspace only"
-		// is unticked or the session was started in a subfolder of the workspace.
 		std::error_code status;
-		const std::filesystem::path directory =
-			!summary.Cwd.empty() && std::filesystem::is_directory(summary.Cwd, status) ? summary.Cwd
-																					   : WorkspaceRoot();
+		const bool sessionFolderExists = !summary.Cwd.empty() && std::filesystem::is_directory(summary.Cwd, status);
+		const std::filesystem::path directory = sessionFolderExists ? summary.Cwd : WorkspaceRootOrCurrentDirectory();
 
 		if (!m_Launch("Claude", ResumeCommand(program, summary.Id), directory))
 		{
@@ -406,7 +395,7 @@ namespace Graphite {
 		}
 
 		m_LaunchProblem.reset();
-		m_NextDirectoryCheck = {};
+		m_NextDirectoryCheck = kCheckImmediately;
 		m_Windows.Open(summary);
 	}
 
@@ -418,7 +407,7 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 16.0f);
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFilterWidthInFontSizes);
 		Core::InputTextWithHint("##sessionFilter", "Filter by title", m_Filter);
 
 		ImGui::SameLine();
@@ -430,7 +419,7 @@ namespace Graphite {
 
 		if (m_LaunchProblem.has_value())
 		{
-			ImGui::TextColored(ImVec4(0.9f, 0.5f, 0.4f, 1.0f), "%s", m_LaunchProblem->c_str());
+			ImGui::TextColored(kLaunchProblemColour, "%s", m_LaunchProblem->c_str());
 		}
 
 		if (m_InitialScan)
@@ -444,13 +433,13 @@ namespace Graphite {
 		ImGui::PushID(Core::ToUtf8(summary.File).c_str());
 
 		const Pricing& pricing = m_Settings.GetPricing();
-		const CostResult main = pricing.CostOf(summary.Main);
-		CostResult all = main;
-		const CostResult subagents = pricing.CostOf(summary.Subagents);
-		all += subagents;
+		const CostResult mainCost = pricing.CostOf(summary.Main);
+		CostResult totalCost = mainCost;
+		const CostResult subagentCost = pricing.CostOf(summary.Subagents);
+		totalCost += subagentCost;
 
-		const std::string title =
-			(IsLive(summary) ? "\xe2\x97\x8f " : "") + SingleLineLabel(summary.DisplayTitle(), kTitleBytes);
+		const std::string title = (IsLive(summary) ? std::format("{} ", kLiveSessionMark) : std::string{}) +
+								  SingleLineLabel(summary.DisplayTitle(), kTitleBytes);
 
 		if (ImGui::Selectable(title.c_str()))
 		{
@@ -467,11 +456,11 @@ namespace Graphite {
 			ImGui::EndPopup();
 		}
 
-		std::string detail = FormatCost(all);
+		std::string detail = FormatCost(totalCost);
 
 		if (summary.SubagentCount > 0)
 		{
-			detail += " (subagents " + FormatCost(subagents) + ")";
+			detail += " (subagents " + FormatCost(subagentCost) + ")";
 		}
 		if (const std::string duration = DurationOf(summary); !duration.empty())
 		{
@@ -485,7 +474,7 @@ namespace Graphite {
 		ImGui::Indent();
 		ImGui::TextDisabled("%s", detail.c_str());
 
-		if (const std::string hint = UnknownCostHint(all); !hint.empty() && ImGui::IsItemHovered())
+		if (const std::string hint = UnknownCostHint(totalCost); !hint.empty() && ImGui::IsItemHovered())
 		{
 			ImGui::SetTooltip("%s", hint.c_str());
 		}
@@ -498,16 +487,17 @@ namespace Graphite {
 	void SessionsPanel::RenderList()
 	{
 		const std::vector<VisibleRow> visible = VisibleSessions();
+		const bool limitedToWorkspace = m_WorkspaceOnly && m_Workspace.IsOpen();
 
 		if (visible.empty())
 		{
 			Core::EmptyState(EmptyListMessage(m_InitialScan, m_ScanProgress.Scanned, m_ScanProgress.Total,
-											  m_WorkspaceOnly && m_Workspace.IsOpen(), m_Filter)
+											  limitedToWorkspace, m_Filter)
 								 .c_str());
 			return;
 		}
 
-		const bool grouped = !(m_WorkspaceOnly && m_Workspace.IsOpen());
+		const bool grouped = !limitedToWorkspace;
 
 		if (!ImGui::BeginChild("##sessionList"))
 		{
@@ -519,29 +509,29 @@ namespace Graphite {
 		const std::filesystem::path::string_type* group = nullptr;
 		bool groupOpen = true;
 
-		for (std::size_t index = 0; index < visible.size(); ++index)
+		for (std::size_t rowIndex = 0; rowIndex < visible.size(); ++rowIndex)
 		{
-			const SessionSummary& summary = *visible[index].Summary;
-			const std::filesystem::path::string_type& folder = visible[index].Folder;
+			const SessionSummary& summary = *visible[rowIndex].Summary;
+			const std::filesystem::path::string_type& folder = visible[rowIndex].Folder;
 
 			if (grouped && (group == nullptr || *group != folder))
 			{
 				group = &folder;
 
 				CostResult total;
-				for (std::size_t other = index; other < visible.size() && visible[other].Folder == folder; ++other)
+				for (std::size_t groupMemberIndex = rowIndex;
+					 groupMemberIndex < visible.size() && visible[groupMemberIndex].Folder == folder; ++groupMemberIndex)
 				{
-					for (const UsageByModel* usage : {&visible[other].Summary->Main, &visible[other].Summary->Subagents})
+					for (const UsageByModel* usage :
+						 {&visible[groupMemberIndex].Summary->Main, &visible[groupMemberIndex].Summary->Subagents})
 					{
 						total += pricing.CostOf(*usage);
 					}
 				}
 
-				// A transcript with no cwd on any record leaves Cwd empty; the id suffix must
-				// still be non-empty, or ImGui hashes it to the same id as the child window
-				// itself and asserts ("Cannot have an empty ID at the root of a window"). The id
-				// is the group's key, not the spelling shown: that is whichever of its sessions
-				// sorts first, and changes as they do.
+				// WARNING: The id suffix must never be empty. A transcript with no cwd leaves Cwd empty, and ImGui
+				// would hash the header to the child window's own id and assert. The id is the group's key, not the
+				// spelling shown, which changes as the group's sessions do.
 				const std::string cwdText = Core::ToUtf8(summary.Cwd);
 				const std::string label = cwdText.empty() ? "(unknown folder)" : cwdText;
 				const std::string header =
@@ -565,8 +555,8 @@ namespace Graphite {
 
 	void SessionsPanel::OnImGuiRender()
 	{
-		// The toolbar even when there is a problem: "New Claude session" is how a machine with
-		// no transcripts yet gets its first one.
+		// WARNING: The toolbar is drawn even when there is a problem; "New Claude session" is how a machine
+		// with no transcripts gets its first one.
 		RenderToolbar();
 		ImGui::Separator();
 

@@ -13,8 +13,10 @@ using namespace Graphite;
 
 namespace {
 
-	// A request whose whole context was read from the cache, which is the simplest usage
-	// that gives Context, CachedShare and a known cost at once.
+	constexpr bool kAscending = true;
+	constexpr bool kDescending = false;
+	constexpr bool kNumeric = false;
+
 	ApiRequest Request(std::size_t index, std::uint64_t context, std::uint64_t output = 1)
 	{
 		ApiRequest request;
@@ -40,11 +42,10 @@ namespace {
 		return order;
 	}
 
-	// Three requests whose values for the column run middle, low, high: ascending is 1, 0, 2.
 	void CheckBothWays(const std::vector<ApiRequest>& requests, RequestColumn column)
 	{
-		CHECK(Sorted(requests, column, true) == std::vector<std::size_t>{1, 0, 2});
-		CHECK(Sorted(requests, column, false) == std::vector<std::size_t>{2, 0, 1});
+		CHECK(Sorted(requests, column, kAscending) == std::vector<std::size_t>{1, 0, 2});
+		CHECK(Sorted(requests, column, kDescending) == std::vector<std::size_t>{2, 0, 1});
 	}
 }
 
@@ -113,8 +114,8 @@ TEST_CASE("A cost that is not known sorts last whichever way the column runs")
 	std::vector<ApiRequest> requests{Request(1, 5'000), Request(2, 1'000), Request(3, 90'000)};
 	requests[0].Model = "some-model-with-no-price";
 
-	CHECK(Sorted(requests, RequestColumn::Cost, true) == std::vector<std::size_t>{1, 2, 0});
-	CHECK(Sorted(requests, RequestColumn::Cost, false) == std::vector<std::size_t>{2, 1, 0});
+	CHECK(Sorted(requests, RequestColumn::Cost, kAscending) == std::vector<std::size_t>{1, 2, 0});
+	CHECK(Sorted(requests, RequestColumn::Cost, kDescending) == std::vector<std::size_t>{2, 1, 0});
 }
 
 TEST_CASE("A missing delta or wait sorts last whichever way the column runs")
@@ -125,18 +126,18 @@ TEST_CASE("A missing delta or wait sorts last whichever way the column runs")
 	requests[0].Waited = std::chrono::milliseconds{100};
 	requests[2].Waited = std::chrono::milliseconds{10};
 
-	CHECK(Sorted(requests, RequestColumn::Delta, true) == std::vector<std::size_t>{1, 2, 0});
-	CHECK(Sorted(requests, RequestColumn::Delta, false) == std::vector<std::size_t>{2, 1, 0});
-	CHECK(Sorted(requests, RequestColumn::Wait, true) == std::vector<std::size_t>{2, 0, 1});
-	CHECK(Sorted(requests, RequestColumn::Wait, false) == std::vector<std::size_t>{0, 2, 1});
+	CHECK(Sorted(requests, RequestColumn::Delta, kAscending) == std::vector<std::size_t>{1, 2, 0});
+	CHECK(Sorted(requests, RequestColumn::Delta, kDescending) == std::vector<std::size_t>{2, 1, 0});
+	CHECK(Sorted(requests, RequestColumn::Wait, kAscending) == std::vector<std::size_t>{2, 0, 1});
+	CHECK(Sorted(requests, RequestColumn::Wait, kDescending) == std::vector<std::size_t>{0, 2, 1});
 }
 
 TEST_CASE("Equal values keep the session's order in either direction")
 {
 	std::vector<ApiRequest> requests{Request(1, 100), Request(2, 700), Request(3, 100), Request(4, 100)};
 
-	CHECK(Sorted(requests, RequestColumn::Context, true) == std::vector<std::size_t>{0, 2, 3, 1});
-	CHECK(Sorted(requests, RequestColumn::Context, false) == std::vector<std::size_t>{1, 0, 2, 3});
+	CHECK(Sorted(requests, RequestColumn::Context, kAscending) == std::vector<std::size_t>{0, 2, 3, 1});
+	CHECK(Sorted(requests, RequestColumn::Context, kDescending) == std::vector<std::size_t>{1, 0, 2, 3});
 }
 
 TEST_CASE("A rebuilt cache sorts last ascending and first descending")
@@ -144,8 +145,8 @@ TEST_CASE("A rebuilt cache sorts last ascending and first descending")
 	std::vector<ApiRequest> requests{Request(1, 1), Request(2, 1), Request(3, 1)};
 	requests[1].CacheRebuilt = true;
 
-	CHECK(Sorted(requests, RequestColumn::Rebuilt, true) == std::vector<std::size_t>{0, 2, 1});
-	CHECK(Sorted(requests, RequestColumn::Rebuilt, false) == std::vector<std::size_t>{1, 0, 2});
+	CHECK(Sorted(requests, RequestColumn::Rebuilt, kAscending) == std::vector<std::size_t>{0, 2, 1});
+	CHECK(Sorted(requests, RequestColumn::Rebuilt, kDescending) == std::vector<std::size_t>{1, 0, 2});
 }
 
 TEST_CASE("Text columns sort by their text, with an empty one last")
@@ -160,11 +161,11 @@ TEST_CASE("Text columns sort by their text, with an empty one last")
 	requests[1].Response.push_back({.Kind = ResponseKind::ToolCall, .Label = "Read a", .ToolName = "Read"});
 	requests[2].Response.push_back({.Kind = ResponseKind::ToolCall, .Label = "Bash ls", .ToolName = "Bash"});
 
-	CHECK(Sorted(requests, RequestColumn::Stop, true) == std::vector<std::size_t>{1, 0, 2});
-	CHECK(Sorted(requests, RequestColumn::Stop, false) == std::vector<std::size_t>{0, 1, 2});
-	CHECK(Sorted(requests, RequestColumn::Model, true) == std::vector<std::size_t>{2, 1, 0});
-	CHECK(Sorted(requests, RequestColumn::Tools, true) == std::vector<std::size_t>{2, 1, 0});
-	CHECK(Sorted(requests, RequestColumn::Tools, false) == std::vector<std::size_t>{1, 2, 0});
+	CHECK(Sorted(requests, RequestColumn::Stop, kAscending) == std::vector<std::size_t>{1, 0, 2});
+	CHECK(Sorted(requests, RequestColumn::Stop, kDescending) == std::vector<std::size_t>{0, 1, 2});
+	CHECK(Sorted(requests, RequestColumn::Model, kAscending) == std::vector<std::size_t>{2, 1, 0});
+	CHECK(Sorted(requests, RequestColumn::Tools, kAscending) == std::vector<std::size_t>{2, 1, 0});
+	CHECK(Sorted(requests, RequestColumn::Tools, kDescending) == std::vector<std::size_t>{1, 2, 0});
 }
 
 TEST_CASE("A request with no usage sorts last on every usage column")
@@ -173,8 +174,8 @@ TEST_CASE("A request with no usage sorts last on every usage column")
 
 	for (const RequestColumn column : {RequestColumn::Context, RequestColumn::CachedShare, RequestColumn::Output, RequestColumn::Cost})
 	{
-		CHECK(Sorted(requests, column, true).back() == 0);
-		CHECK(Sorted(requests, column, false).back() == 0);
+		CHECK(Sorted(requests, column, kAscending).back() == 0);
+		CHECK(Sorted(requests, column, kDescending).back() == 0);
 	}
 }
 
@@ -183,7 +184,7 @@ TEST_CASE("A fast request sorts as dearer than the same usage at standard speed"
 	std::vector<ApiRequest> requests{Request(1, 1'000), Request(2, 1'000), Request(3, 1'000)};
 	requests[1].Fast = true;
 
-	CHECK(Sorted(requests, RequestColumn::Cost, true) == std::vector<std::size_t>{0, 2, 1});
+	CHECK(Sorted(requests, RequestColumn::Cost, kAscending) == std::vector<std::size_t>{0, 2, 1});
 }
 
 TEST_CASE("A sort value is blank for a missing number or an empty text")
@@ -199,4 +200,17 @@ TEST_CASE("A sort value is blank for a missing number or an empty text")
 	CHECK_FALSE(TextualSortValue("").Has);
 	CHECK(TextualSortValue("x").Has);
 	CHECK(TextualSortValue("x").Text == "x");
+}
+
+TEST_CASE("A blank sort value goes after any value in either direction")
+{
+	const SortValue blank = NumericSortValue(std::nullopt);
+	const SortValue value = NumericSortValue(1.0);
+
+	for (const bool ascending : {true, false})
+	{
+		CHECK(CompareSortValues(value, blank, kNumeric, ascending) < 0);
+		CHECK(CompareSortValues(blank, value, kNumeric, ascending) > 0);
+		CHECK(CompareSortValues(blank, blank, kNumeric, ascending) == 0);
+	}
 }

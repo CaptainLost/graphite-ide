@@ -2,19 +2,19 @@
 
 namespace Graphite {
 
-	bool RequestUsageAccumulator::Add(const TokenCounts& usage, TokenCounts* total)
+	bool RequestUsageAccumulator::Add(const TokenCounts& usage, TokenCounts* runningTotal)
 	{
 		const TokenCounts merged = m_HasUsage ? MergeResponseUsage(m_Counts, usage) : usage;
 		const bool changed = !m_HasUsage || merged != m_Counts;
 
-		if (total != nullptr)
+		if (runningTotal != nullptr)
 		{
 			if (m_HasUsage)
 			{
-				*total -= m_Counts;
+				*runningTotal -= m_Counts;
 			}
 
-			*total += merged;
+			*runningTotal += merged;
 		}
 
 		m_Counts = merged;

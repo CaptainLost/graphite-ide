@@ -1,6 +1,8 @@
 #include "Sessions/Requests/RequestTimeline.h"
 
 #include "Core/Base/ByteSize.h"
+#include "Core/Base/Strings.h"
+#include "Core/Text/Encoding.h"
 
 #include "Sessions/Transcript/InjectedText.h"
 #include "Sessions/Requests/RequestUsageAccumulator.h"
@@ -8,8 +10,11 @@
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/Transcript/ToolFacts.h"
+#include "UI/TypographicMarks.h"
 
 #include <algorithm>
+#include <format>
+#include <span>
 #include <unordered_set>
 #include <utility>
 
@@ -19,47 +24,43 @@ namespace Graphite {
 
 	namespace {
 
-		// Up to `maxNames` names, comma-separated, then an ellipsis for the rest.
+		constexpr std::size_t kMaxNamesShownInToolsLabel = 5;
+		constexpr std::size_t kLabelFirstLineMaxBytes = 120;
+		constexpr std::string_view kImageMediaTypePrefix = "image/";
+		constexpr std::size_t kBase64EncodedGroupBytes = 4;
+		constexpr std::size_t kBase64DecodedGroupBytes = 3;
+		constexpr std::uint64_t kCacheWriteFractionDenominator = 2;
+		constexpr std::size_t kNoToolsLoaded = 0;
+		constexpr int kJsonIndentWidth = 2;
+
+		using Timestamp = std::chrono::sys_time<std::chrono::milliseconds>;
+
 		std::string JoinNames(const std::vector<std::string>& names, std::size_t maxNames)
 		{
-			std::string joined;
-			const std::size_t shown = std::min(names.size(), maxNames);
-
-			for (std::size_t i = 0; i < shown; ++i)
-			{
-				if (i > 0)
-				{
-					joined += ", ";
-				}
-				joined += names[i];
-			}
+			const std::size_t shownCount = std::min(names.size(), maxNames);
+			std::string joined = Core::JoinedWith(std::span<const std::string>(names.data(), shownCount), ", ");
 
 			if (names.size() > maxNames)
 			{
-				joined += ", \xe2\x80\xa6";
+				joined += ", ";
+				joined += kEllipsis;
 			}
 
 			return joined;
 		}
 
-		std::string ToolCount(std::size_t count)
+		std::string ToolCountLabel(std::size_t count)
 		{
 			return std::to_string(count) + (count == 1 ? " tool" : " tools");
 		}
 
-		// These are names only: a deferred tool's schema reaches the model when it is loaded,
-		// not when it is announced.
-		std::string DeferredNames(std::size_t count)
+		std::string DeferredNamesLabel(std::size_t count)
 		{
 			return std::to_string(count) + (count == 1 ? " deferred tool name" : " deferred tool names");
 		}
 
 		std::string ToolsLoadedLabel(const std::vector<std::string>& added, const std::vector<std::string>& removed)
 		{
-			// U+2212 MINUS SIGN, not a hyphen: this is a count going down, drawn the same way a
-			// negative context delta is drawn in the request views.
-			const std::string minus = "\xe2\x88\x92";
-
 			if (added.empty() && removed.empty())
 			{
 				return "tools unchanged";
@@ -67,92 +68,99 @@ namespace Graphite {
 
 			if (added.empty())
 			{
-				return minus + ToolCount(removed.size()) + " removed";
+				return std::string{kMinusSign} + ToolCountLabel(removed.size()) + " removed";
 			}
 
-			std::string label = DeferredNames(added.size()) + ": " + JoinNames(added, 5);
+			std::string label = DeferredNamesLabel(added.size()) + ": " + JoinNames(added, kMaxNamesShownInToolsLabel);
 
 			if (!removed.empty())
 			{
-				label += ", " + minus + std::to_string(removed.size()) + " removed";
+				label += ", " + std::string{kMinusSign} + std::to_string(removed.size()) + " removed";
 			}
 
 			return label;
 		}
 
-		// Characters, not bytes: a reply in Polish has more bytes than letters.
-		std::size_t CodePoints(std::string_view text)
-		{
-			return static_cast<std::size_t>(std::count_if(text.begin(), text.end(), [](char c) { return (static_cast<unsigned char>(c) & 0xC0u) != 0x80u; }));
-		}
-
-		// "Image (png, 212.0 KB)", leaving out whatever the block did not say.
-		std::string ImageLabel(std::string_view mediaType, std::size_t bytes)
+		std::string ImageLabel(std::string_view mediaType, std::size_t byteCount)
 		{
 			std::vector<std::string> parts;
 
 			if (!mediaType.empty())
 			{
-				parts.emplace_back(mediaType.starts_with("image/") ? mediaType.substr(6) : mediaType);
+				parts.emplace_back(mediaType.starts_with(kImageMediaTypePrefix) ? mediaType.substr(kImageMediaTypePrefix.size())
+																				: mediaType);
 			}
-			if (bytes > 0)
+			if (byteCount > 0)
 			{
-				parts.push_back(Core::FormatByteSize(bytes));
+				parts.push_back(Core::FormatByteSize(byteCount));
 			}
 
-			std::string label = "Image";
-
-			for (std::size_t i = 0; i < parts.size(); ++i)
-			{
-				label += (i == 0 ? " (" : ", ") + parts[i];
-			}
-
-			return parts.empty() ? label : label + ")";
+			return parts.empty() ? std::string{"Image"} : "Image (" + Core::JoinedWith(parts, ", ") + ")";
 		}
 
-		// A tool call's input laid out two spaces an indent; the input as written when it does
-		// not parse.
 		std::string PrettyJson(const std::string& json)
 		{
-			const nlohmann::json parsed = nlohmann::json::parse(json, nullptr, false);
+			const nlohmann::json::parser_callback_t noCallback = nullptr;
+			const bool allowExceptions = false;
+			const nlohmann::json parsed = nlohmann::json::parse(json, noCallback, allowExceptions);
 
-			return parsed.is_discarded() ? json : parsed.dump(2, ' ', false, nlohmann::json::error_handler_t::replace);
+			const char indentCharacter = ' ';
+			const bool ensureAscii = false;
+
+			return parsed.is_discarded()
+					   ? json
+					   : parsed.dump(kJsonIndentWidth, indentCharacter, ensureAscii, nlohmann::json::error_handler_t::replace);
 		}
 
-		// From `sentAt` to `finishedAt`; nothing when either does not parse or the clock ran
-		// backwards between them.
 		std::optional<std::chrono::milliseconds> WaitBetween(const std::string& sentAt, const std::string& finishedAt)
 		{
-			const auto sent = ParseTimestamp(sentAt);
-			const auto finished = ParseTimestamp(finishedAt);
+			const std::optional<Timestamp> sentTime = ParseTimestamp(sentAt);
+			const std::optional<Timestamp> finishedTime = ParseTimestamp(finishedAt);
 
-			if (!sent.has_value() || !finished.has_value() || *finished < *sent)
+			if (!sentTime.has_value() || !finishedTime.has_value() || *finishedTime < *sentTime)
 			{
 				return std::nullopt;
 			}
 
-			return *finished - *sent;
+			return *finishedTime - *sentTime;
 		}
 
 		std::string McpLabel(const std::vector<std::string>& names)
 		{
-			std::string joined;
+			return "MCP: " + Core::JoinedWith(names, ", ");
+		}
 
-			for (std::size_t i = 0; i < names.size(); ++i)
+		std::string ThinkingLabel(const std::string& text)
+		{
+			return text.empty() ? "thinking (empty)" : "thinking (" + std::to_string(Core::CharacterCount(text)) + " chars)";
+		}
+
+		std::string InjectedTextLabel(const TranscriptRecord& record, const std::string& text)
+		{
+			if (record.IsCompactSummary)
 			{
-				if (i > 0)
-				{
-					joined += ", ";
-				}
-				joined += names[i];
+				return std::string{kCompactSummaryLabel};
 			}
 
-			return "MCP: " + joined;
+			if (IsInjectedText(text))
+			{
+				return InjectedLabel(text);
+			}
+
+			return FirstLineLabel(text, kLabelFirstLineMaxBytes);
+		}
+
+		bool IsSnapshotItem(const SentItem& item)
+		{
+			return item.Kind == SentKind::SystemPrompt || item.Kind == SentKind::ToolSchemas;
+		}
+
+		bool IsNewToolName(const SentItem& item, const std::unordered_set<std::string>& seenNames)
+		{
+			return item.Kind == SentKind::ToolResult && !item.ToolName.empty() && !seenNames.contains(item.ToolName);
 		}
 	}
 
-	// Recomputes everything Usage derives, for a request that just adopted one — whether at
-	// creation or from a later record of the same key.
 	void RequestTimeline::ApplyUsage(ApiRequest& request, std::size_t index, const TokenCounts& usage)
 	{
 		request.Usage = usage;
@@ -162,27 +170,29 @@ namespace Graphite {
 		request.CachedShare = request.Context > 0
 								  ? static_cast<double>(request.Usage.CacheRead) / static_cast<double>(request.Context)
 								  : 0.0;
-		request.CacheRebuilt =
-			request.Context > 0 && (request.Usage.CacheWrite5m + request.Usage.CacheWrite1h) * 2 >= request.Context;
+
+		const std::uint64_t cacheWrites = request.Usage.CacheWrite5m + request.Usage.CacheWrite1h;
+		request.CacheRebuilt = request.Context > 0 && cacheWrites * kCacheWriteFractionDenominator >= request.Context;
 	}
 
 	std::optional<std::int64_t> RequestTimeline::ContextDeltaFor(std::size_t index) const
 	{
-		// A request with no context — no usage of its own, or the all-zero usage of a response
-		// Claude Code wrote itself for an interrupt or an API error — is neither measured nor
-		// a baseline: its zero would read as a drop, and the next request as adding its whole
-		// context, when no one actually caused either.
-		if (m_Requests[index].Context == 0)
+		// WARNING: A request with no context (no usage, or the all-zero usage of a response Claude Code
+		// wrote itself for an interrupt or an API error) is neither measured nor a baseline: its zero
+		// would read as a drop, and the next request as adding its whole context.
+		const bool hasNoContext = m_Requests[index].Context == 0;
+
+		if (hasNoContext)
 		{
 			return std::nullopt;
 		}
 
-		for (std::size_t j = index; j-- > 0;)
+		for (std::size_t earlierIndex = index; earlierIndex-- > 0;)
 		{
-			if (m_HasUsage[j] && m_Requests[j].Context > 0)
+			if (m_HasUsage[earlierIndex] && m_Requests[earlierIndex].Context > 0)
 			{
 				return static_cast<std::int64_t>(m_Requests[index].Context) -
-					   static_cast<std::int64_t>(m_Requests[j].Context);
+					   static_cast<std::int64_t>(m_Requests[earlierIndex].Context);
 			}
 		}
 
@@ -193,47 +203,44 @@ namespace Graphite {
 	{
 		const std::string& key = record.RequestId.empty() ? record.Uuid : record.RequestId;
 
-		// An empty key means Claude Code gave this response neither a requestId nor a uuid.
-		// Session treats that as "never deduplicate" for the same reason: two such responses
-		// are not the same request just because they share the one key every keyless record
-		// happens to get.
+		// WARNING: An empty key means Claude Code gave this response neither a requestId nor a uuid.
+		// Such responses are never deduplicated: they are not the same request just because they share
+		// the one key every keyless record gets.
 		const bool keyed = !key.empty();
-		const auto found = keyed ? m_ByKey.find(key) : m_ByKey.end();
+		const std::optional<std::size_t> existingIndex = keyed ? IndexOf(key) : std::nullopt;
 		ApiRequest* request = nullptr;
 		std::size_t index = 0;
 
-		if (found == m_ByKey.end())
+		if (!existingIndex.has_value())
 		{
-			ApiRequest fresh;
-			fresh.Index = m_Requests.size() + 1;
-			fresh.Key = key;
-			fresh.Model = record.Model;
-			fresh.Fast = record.Fast;
-			fresh.RespondedAt = record.Timestamp;
-			fresh.SentAt = m_LastTimestamp;
-			fresh.FinishedAt = record.Timestamp;
-			fresh.Waited = WaitBetween(fresh.SentAt, fresh.FinishedAt);
+			ApiRequest newRequest;
+			newRequest.Index = m_Requests.size() + 1;
+			newRequest.Key = key;
+			newRequest.Model = record.Model;
+			newRequest.Fast = record.Fast;
+			newRequest.RespondedAt = record.Timestamp;
+			newRequest.SentAt = m_LastTimestamp;
+			newRequest.FinishedAt = record.Timestamp;
+			newRequest.Waited = WaitBetween(newRequest.SentAt, newRequest.FinishedAt);
 
-			fresh.Sent = std::move(m_Pending);
+			newRequest.Sent = std::move(m_Pending);
 			m_Pending.clear();
-			fresh.ToolsAvailable = m_Tools.size();
-			fresh.ToolsLoaded = std::exchange(m_PendingLoaded, 0);
-			fresh.ToolSchemas = m_SnapshotToolSchemas;
+			newRequest.ToolsAvailable = m_Tools.size();
+			newRequest.ToolsLoaded = std::exchange(m_PendingLoaded, kNoToolsLoaded);
+			newRequest.ToolSchemas = m_SnapshotToolSchemas;
 
 			if (m_Requests.empty())
 			{
-				PlaceSnapshot(fresh);
+				PlaceSnapshot(newRequest);
 			}
 
 			const bool hasUsage = record.Usage.has_value();
 
-			m_Requests.push_back(std::move(fresh));
+			m_Requests.push_back(std::move(newRequest));
 			m_HasUsage.push_back(hasUsage);
 			index = m_Requests.size() - 1;
 			request = &m_Requests[index];
 
-			// A request with no usage yet has nothing to derive a Context or a delta from:
-			// ApplyUsage waits for one, whether this record has it or a later one adopts it.
 			if (hasUsage)
 			{
 				ApplyUsage(*request, index, *record.Usage);
@@ -248,43 +255,38 @@ namespace Graphite {
 		}
 		else
 		{
-			index = found->second;
+			index = *existingIndex;
 			request = &m_Requests[index];
 
-			// Records of a response are written in order, so a later one moves its end; one
-			// whose timestamp does not parse, or reads earlier, leaves it where it was.
-			const auto at = ParseTimestamp(record.Timestamp);
-			const auto finished = ParseTimestamp(request->FinishedAt);
+			const std::optional<Timestamp> recordTime = ParseTimestamp(record.Timestamp);
+			const std::optional<Timestamp> finishedTime = ParseTimestamp(request->FinishedAt);
 
-			if (at.has_value() && (!finished.has_value() || *at > *finished))
+			if (recordTime.has_value() && (!finishedTime.has_value() || *recordTime > *finishedTime))
 			{
 				request->FinishedAt = record.Timestamp;
 				request->Waited = WaitBetween(request->SentAt, request->FinishedAt);
 				changed = true;
 			}
 
-			// Session's rule: usage rides on every record of a response, and the counts kept
-			// are the ones MergeResponseUsage picks from all of them.
 			if (record.Usage.has_value())
 			{
-				RequestUsageAccumulator counted =
+				RequestUsageAccumulator accumulator =
 					m_HasUsage[index] ? RequestUsageAccumulator{request->Usage} : RequestUsageAccumulator{};
 
-				if (counted.Add(*record.Usage))
+				if (accumulator.Add(*record.Usage))
 				{
-					const std::uint64_t context = request->Context;
-					ApplyUsage(*request, index, counted.GetCounts());
+					const std::uint64_t contextBefore = request->Context;
+					ApplyUsage(*request, index, accumulator.GetCounts());
 					m_HasUsage[index] = true;
 					changed = true;
 
-					// A later request measured its delta against this one's context.
-					if (request->Context != context)
+					if (request->Context != contextBefore)
 					{
-						for (std::size_t next = index + 1; next < m_Requests.size(); ++next)
+						for (std::size_t laterIndex = index + 1; laterIndex < m_Requests.size(); ++laterIndex)
 						{
-							if (m_HasUsage[next] && m_Requests[next].Context > 0)
+							if (m_HasUsage[laterIndex] && m_Requests[laterIndex].Context > 0)
 							{
-								m_Requests[next].ContextDelta = ContextDeltaFor(next);
+								m_Requests[laterIndex].ContextDelta = ContextDeltaFor(laterIndex);
 								break;
 							}
 						}
@@ -293,7 +295,7 @@ namespace Graphite {
 			}
 		}
 
-		// A response written as several records repeats its stop reason on the last one; a
+		// WARNING: A response written as several records repeats its stop reason on the last one; a
 		// blank one on an earlier record must not erase it.
 		if (!record.StopReason.empty() && request->StopReason != record.StopReason)
 		{
@@ -307,21 +309,17 @@ namespace Graphite {
 			{
 			case BlockKind::Thinking:
 				request->Response.push_back(
-					{.Kind = ResponseKind::Thinking,
-					 .Label = block.Text.empty() ? "thinking (empty)"
-												 : "thinking (" + std::to_string(CodePoints(block.Text)) + " chars)",
-					 .Text = block.Text});
+					{.Kind = ResponseKind::Thinking, .Label = ThinkingLabel(block.Text), .Text = block.Text});
 				changed = true;
 				break;
 			case BlockKind::Text:
-				request->Response.push_back(
-					{.Kind = ResponseKind::Text, .Label = std::to_string(CodePoints(block.Text)) + " chars", .Text = block.Text});
+				request->Response.push_back({.Kind = ResponseKind::Text,
+											 .Label = std::to_string(Core::CharacterCount(block.Text)) + " chars",
+											 .Text = block.Text});
 				changed = true;
 				break;
 			case BlockKind::ToolUse:
 			{
-				// The summary is all a result needs of its call later; the input is kept once, laid out, as the
-				// text the model wrote.
 				std::string summary = ToolSummary({.Name = block.ToolName, .InputJson = block.InputJson});
 				request->Response.push_back({.Kind = ResponseKind::ToolCall,
 											 .Label = block.ToolName + "  " + summary,
@@ -333,7 +331,6 @@ namespace Graphite {
 			}
 			case BlockKind::ToolResult:
 			case BlockKind::Image:
-				// An assistant record carries neither a tool result nor an image; nothing to add.
 				break;
 			case BlockKind::Other:
 				request->Response.push_back({.Kind = ResponseKind::Other, .Label = block.Text});
@@ -349,18 +346,18 @@ namespace Graphite {
 		{
 			if (block.Kind == BlockKind::ToolResult)
 			{
-				const auto found = m_ToolCalls.find(block.ToolUseId);
 				std::string label = "unknown tool";
 				std::string toolName;
 
-				if (found != m_ToolCalls.end())
+				if (m_ToolCalls.contains(block.ToolUseId))
 				{
-					toolName = found->second.Name;
-					label = toolName + "  " + found->second.Summary;
+					const ToolCallInfo& call = m_ToolCalls.at(block.ToolUseId);
+					toolName = call.Name;
+					label = toolName + "  " + call.Summary;
 				}
 
-				// The result's text only: the structured result beside it is Claude Code's own
-				// record — an Edit's carries the whole file — and never reaches the model.
+				// WARNING: Only the result's text is sent. The structured result beside it is Claude
+				// Code's own record (an Edit's carries the whole file) and never reaches the model.
 				m_Pending.push_back({.Kind = SentKind::ToolResult,
 									 .Label = label,
 									 .ToolName = toolName,
@@ -371,30 +368,25 @@ namespace Graphite {
 			}
 			else if (block.Kind == BlockKind::Image)
 			{
-				// Base64 carries three bytes in every four characters.
-				const std::size_t bytes = block.DataBytes * 3 / 4;
+				const std::size_t decodedBytes = block.DataBytes * kBase64DecodedGroupBytes / kBase64EncodedGroupBytes;
 				m_Pending.push_back({.Kind = SentKind::Image,
-									 .Label = ImageLabel(block.Text, bytes),
-									 .Bytes = bytes,
-									 .Text = ImageText(block.Text, bytes)});
+									 .Label = ImageLabel(block.Text, decodedBytes),
+									 .Bytes = decodedBytes,
+									 .Text = ImageText(block.Text, decodedBytes)});
 				changed = true;
 			}
 			else if (block.Kind == BlockKind::Text)
 			{
 				if (record.IsMeta || IsInjectedText(block.Text))
 				{
-					// Meta text with no known opening, a skill's body say, has no kind to name,
-					// so its first line says what it is.
-					const std::string label = record.IsCompactSummary	   ? std::string{kCompactSummaryLabel}
-											  : IsInjectedText(block.Text) ? InjectedLabel(block.Text)
-																		   : FirstLineLabel(block.Text, 120);
+					const std::string label = InjectedTextLabel(record, block.Text);
 					m_Pending.push_back(
 						{.Kind = SentKind::Injected, .Label = label, .Bytes = block.Text.size(), .Text = block.Text});
 				}
 				else
 				{
 					m_Pending.push_back({.Kind = SentKind::Prompt,
-										 .Label = FirstLineLabel(block.Text, 120),
+										 .Label = FirstLineLabel(block.Text, kLabelFirstLineMaxBytes),
 										 .Bytes = block.Text.size(),
 										 .Text = block.Text});
 				}
@@ -412,8 +404,6 @@ namespace Graphite {
 			return;
 		}
 
-		// Claude Code's own bookkeeping — a hook's outcome, a record of the deferred tools —
-		// that the model never saw.
 		if (!record.AttachmentSent)
 		{
 			return;
@@ -427,7 +417,7 @@ namespace Graphite {
 		if (!record.QueuedPrompt.empty())
 		{
 			item.Kind = SentKind::QueuedPrompt;
-			item.Label = FirstLineLabel(record.QueuedPrompt, 120);
+			item.Label = FirstLineLabel(record.QueuedPrompt, kLabelFirstLineMaxBytes);
 		}
 		else if (record.AttachmentType == "deferred_tools_delta")
 		{
@@ -472,7 +462,6 @@ namespace Graphite {
 
 	void RequestTimeline::AddSnapshot(const TranscriptRecord& record, bool& changed)
 	{
-		// A snapshot with no system prompt says nothing about what was sent.
 		if (record.SystemPromptText.empty())
 		{
 			return;
@@ -486,9 +475,9 @@ namespace Graphite {
 
 		if (record.ToolSchemaCount > 0)
 		{
-			const std::size_t count = record.ToolSchemaCount;
+			const std::size_t schemaCount = record.ToolSchemaCount;
 			m_Snapshot.push_back({.Kind = SentKind::ToolSchemas,
-								  .Label = "Tools (" + std::to_string(count) + (count == 1 ? " schema)" : " schemas)"),
+								  .Label = "Tools (" + std::to_string(schemaCount) + (schemaCount == 1 ? " schema)" : " schemas)"),
 								  .Bytes = record.ToolSchemasText.size(),
 								  .Text = record.ToolSchemasText});
 		}
@@ -498,9 +487,6 @@ namespace Graphite {
 			PlaceSnapshot(m_Requests.front());
 		}
 
-		// The tool set a snapshot describes is the session's, not the first request's alone:
-		// every request already on the timeline picks up the new count, and one created from
-		// here on starts with it too.
 		m_SnapshotToolSchemas = record.ToolSchemaCount;
 
 		for (ApiRequest& request : m_Requests)
@@ -513,7 +499,7 @@ namespace Graphite {
 
 	void RequestTimeline::PlaceSnapshot(ApiRequest& request) const
 	{
-		std::erase_if(request.Sent, [](const SentItem& item) { return item.Kind == SentKind::SystemPrompt || item.Kind == SentKind::ToolSchemas; });
+		std::erase_if(request.Sent, IsSnapshotItem);
 		request.Sent.insert(request.Sent.begin(), m_Snapshot.begin(), m_Snapshot.end());
 	}
 
@@ -536,11 +522,8 @@ namespace Graphite {
 				AddAttachment(record, changed);
 			}
 
-			// System, AiTitle and unrecognised record kinds carry nothing this timeline shows.
-
-			// A malformed timestamp is not "no timestamp": keeping the last one that actually
-			// parsed means the next request's Waited is still measured against real time,
-			// rather than becoming uncomputable because of one bad record in between.
+			// WARNING: A malformed timestamp is not "no timestamp". Keeping the last one that parsed
+			// means the next request's Waited is still measured against real time.
 			if (ParseTimestamp(record.Timestamp).has_value())
 			{
 				m_LastTimestamp = record.Timestamp;
@@ -570,8 +553,12 @@ namespace Graphite {
 
 	std::optional<std::size_t> RequestTimeline::IndexOf(std::string_view key) const
 	{
-		const auto found = m_ByKey.find(std::string(key));
-		return found != m_ByKey.end() ? std::optional<std::size_t>{found->second} : std::nullopt;
+		if (!m_ByKey.contains(std::string(key)))
+		{
+			return std::nullopt;
+		}
+
+		return m_ByKey.at(std::string(key));
 	}
 
 	std::vector<ApiRequest> BuildRequestTimeline(const std::vector<TranscriptRecord>& records)
@@ -584,21 +571,22 @@ namespace Graphite {
 	std::vector<std::string> ToolNamesUsed(const ApiRequest& request)
 	{
 		std::vector<std::string> names;
-		std::unordered_set<std::string> seen;
+		std::unordered_set<std::string> seenNames;
 
-		// Chronologically, what a request sent went out before what it answered with came back.
 		for (const SentItem& item : request.Sent)
 		{
-			if (item.Kind == SentKind::ToolResult && !item.ToolName.empty() && seen.insert(item.ToolName).second)
+			if (IsNewToolName(item, seenNames))
 			{
+				seenNames.insert(item.ToolName);
 				names.push_back(item.ToolName);
 			}
 		}
 
 		for (const ResponseItem& item : request.Response)
 		{
-			if (item.Kind == ResponseKind::ToolCall && !item.ToolName.empty() && seen.insert(item.ToolName).second)
+			if (item.Kind == ResponseKind::ToolCall && !item.ToolName.empty() && !seenNames.contains(item.ToolName))
 			{
+				seenNames.insert(item.ToolName);
 				names.push_back(item.ToolName);
 			}
 		}
@@ -624,12 +612,7 @@ namespace Graphite {
 
 		if (!parts.empty())
 		{
-			label = "Tools: ";
-
-			for (std::size_t i = 0; i < parts.size(); ++i)
-			{
-				label += (i == 0 ? "" : ", ") + parts[i];
-			}
+			label = "Tools: " + Core::JoinedWith(parts, ", ");
 		}
 
 		if (request.ToolsLoaded > 0)
@@ -655,19 +638,24 @@ namespace Graphite {
 			return reference;
 		}
 
-		std::size_t bytes = 0;
+		std::size_t totalBytes = 0;
 		for (const SentItem& item : request.Sent)
 		{
-			bytes += item.Bytes;
+			totalBytes += item.Bytes;
 		}
 
-		return reference + " \xc2\xb7 " + std::to_string(request.Sent.size()) +
-			   (request.Sent.size() == 1 ? " item" : " items") + " \xc2\xb7 " + Core::FormatByteSize(bytes);
+		return std::format("{}{}{}{}{}{}",
+						   reference,
+						   kMiddleDotSeparator,
+						   request.Sent.size(),
+						   request.Sent.size() == 1 ? " item" : " items",
+						   kMiddleDotSeparator,
+						   Core::FormatByteSize(totalBytes));
 	}
 
 	std::string ReplyHeading(const ApiRequest& request)
 	{
-		return request.Response.empty() ? "Model's reply \xe2\x80\x94 nothing yet" : "Model's reply";
+		return request.Response.empty() ? "Model's reply" + std::string{kEmDashSeparator} + "nothing yet" : "Model's reply";
 	}
 
 	std::string ReplySummary(const ApiRequest& request)
@@ -677,52 +665,49 @@ namespace Graphite {
 			return {};
 		}
 
-		std::size_t thinking = 0, text = 0, toolCalls = 0, other = 0;
+		std::size_t thinkingCount = 0;
+		std::size_t textCount = 0;
+		std::size_t toolCallCount = 0;
+		std::size_t otherCount = 0;
 
 		for (const ResponseItem& item : request.Response)
 		{
 			switch (item.Kind)
 			{
 			case ResponseKind::Thinking:
-				++thinking;
+				++thinkingCount;
 				break;
 			case ResponseKind::Text:
-				++text;
+				++textCount;
 				break;
 			case ResponseKind::ToolCall:
-				++toolCalls;
+				++toolCallCount;
 				break;
 			case ResponseKind::Other:
-				++other;
+				++otherCount;
 				break;
 			}
 		}
 
 		std::vector<std::string> parts;
 
-		if (thinking > 0)
+		if (thinkingCount > 0)
 		{
-			parts.push_back(thinking == 1 ? "thinking" : std::to_string(thinking) + " thinking blocks");
+			parts.push_back(thinkingCount == 1 ? "thinking" : std::to_string(thinkingCount) + " thinking blocks");
 		}
-		if (text > 0)
+		if (textCount > 0)
 		{
-			parts.push_back(text == 1 ? "text" : std::to_string(text) + " texts");
+			parts.push_back(textCount == 1 ? "text" : std::to_string(textCount) + " texts");
 		}
-		if (toolCalls > 0)
+		if (toolCallCount > 0)
 		{
-			parts.push_back(std::to_string(toolCalls) + (toolCalls == 1 ? " tool call" : " tool calls"));
+			parts.push_back(std::to_string(toolCallCount) + (toolCallCount == 1 ? " tool call" : " tool calls"));
 		}
-		if (other > 0)
+		if (otherCount > 0)
 		{
-			parts.push_back(std::to_string(other) + " other");
-		}
-
-		std::string summary;
-		for (std::size_t i = 0; i < parts.size(); ++i)
-		{
-			summary += (i == 0 ? "" : " \xc2\xb7 ") + parts[i];
+			parts.push_back(std::to_string(otherCount) + " other");
 		}
 
-		return summary;
+		return Core::JoinedWith(parts, kMiddleDotSeparator);
 	}
 }

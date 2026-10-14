@@ -16,11 +16,17 @@
 
 namespace Graphite {
 
+	namespace {
+		constexpr float kSwatchLineShare = 0.55f;
+		constexpr float kColumnGapSpacings = 2.0f;
+	}
+
 	ImVec4 PlotColour(ImU32 colour)
 	{
 		return ImGui::ColorConvertU32ToFloat4(colour);
 	}
 
+	// WARNING: Call this only after SetupFinish, which pushes the id the legend items are hashed under.
 	bool SeriesShown(const char* label)
 	{
 		const ImPlotItem* item = ImPlot::GetItem(label);
@@ -29,6 +35,7 @@ namespace Graphite {
 
 	bool BeginBarChart(const char* title, const char* id)
 	{
+		// WARNING: ImPlot reads the fit padding in EndPlot, so it stays pushed until EndBarChart.
 		ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0.0f, kFitPadding));
 
 		const std::string plotId = std::string(title) + "###" + id;
@@ -50,10 +57,8 @@ namespace Graphite {
 
 	void FinishBarChartSetup(const BarChartValues& values)
 	{
-		// RangeFit fits each value axis to the bars in view, so a zoomed-in stretch is not
-		// flattened by the rest. ApplyFit pads both ends of the range it fits, and with the
-		// floor free that lifts the bars off the axis; held at zero here, once, so they still
-		// stand on it.
+		// WARNING: ApplyFit pads both ends of the range it fits, so a free floor would lift the bars off the
+		// axis; the limits are held at zero once so the bars stand on it.
 		ImPlot::SetupAxis(ImAxis_Y1, nullptr, ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit | ImPlotAxisFlags_LockMin);
 		ImPlot::SetupAxisLimits(ImAxis_Y1, 0.0, 1.0, ImPlotCond_Once);
 
@@ -64,16 +69,14 @@ namespace Graphite {
 
 		if (values.LineCaption != nullptr)
 		{
-			// A line fitted to its own first and last values would make any growth look like it
-			// filled the chart; one that stands on zero does not.
-			ImPlotAxisFlags flags = ImPlotAxisFlags_AuxDefault | ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
+			ImPlotAxisFlags lineAxisFlags = ImPlotAxisFlags_AuxDefault | ImPlotAxisFlags_AutoFit | ImPlotAxisFlags_RangeFit;
 
 			if (values.LineFromZero)
 			{
-				flags |= ImPlotAxisFlags_LockMin;
+				lineAxisFlags |= ImPlotAxisFlags_LockMin;
 			}
 
-			ImPlot::SetupAxis(ImAxis_Y2, nullptr, flags);
+			ImPlot::SetupAxis(ImAxis_Y2, nullptr, lineAxisFlags);
 
 			if (values.LineFromZero)
 			{
@@ -82,36 +85,44 @@ namespace Graphite {
 		}
 
 		ImPlot::SetupLegend(ImPlotLocation_North, ImPlotLegendFlags_Outside | ImPlotLegendFlags_Horizontal);
+		// WARNING: SetupFinish is called by hand so the legend's show state can be read before anything is
+		// plotted.
 		ImPlot::SetupFinish();
 
 		DrawAxisCaptions(values.BarCaption, values.LineCaption);
 	}
 
-	void PlotStackedBars(std::span<const BarLayer> layers, std::span<const double> xs, double width,
+	// WARNING: The layers are drawn top down, each over the last, instead of through PlotBarGroups, which
+	// fixes its colours from the colormap when an item is first seen where these must follow the scheme.
+	void PlotStackedBars(std::span<const BarLayer> layers, std::span<const double> barPositions, double width,
 						 ImPlotBarsFlags flags)
 	{
 		ImPlot::SetAxes(ImAxis_X1, ImAxis_Y1);
 
-		const int count = Core::Narrow<int>(xs.size());
+		const int barCount = Core::Narrow<int>(barPositions.size());
 
-		for (std::size_t layer = layers.size(); layer-- > 0;)
+		for (std::size_t layerIndex = layers.size(); layerIndex-- > 0;)
 		{
-			const BarLayer& bars = layers[layer];
+			const BarLayer& barLayer = layers[layerIndex];
 
-			// ImPlot reads `count` tops from the pointer it is handed, whatever was allocated.
-			CORE_ASSERT(bars.Tops.size() >= xs.size(), "a bar layer has fewer tops than there are bars");
+			// WARNING: ImPlot reads barCount tops from the pointer it is handed, whatever was allocated.
+			CORE_ASSERT(barLayer.Tops.size() >= barPositions.size(), "a bar layer has fewer tops than there are bars");
 
-			ImPlot::SetNextFillStyle(bars.Colour);
-			ImPlot::SetNextLineStyle(bars.Colour);
-			ImPlot::PlotBars(bars.Id, xs.data(), bars.Tops.data(), count, width, flags);
+			ImPlot::SetNextFillStyle(barLayer.Colour);
+			ImPlot::SetNextLineStyle(barLayer.Colour);
+			ImPlot::PlotBars(barLayer.Id, barPositions.data(), barLayer.Tops.data(), barCount, width, flags);
 		}
 	}
 
+	// WARNING: The drag distance outlives the release that ends a drag, which is what makes it the test for a
+	// click.
 	bool ColumnClicked()
 	{
 		return ImGui::IsMouseReleased(ImGuiMouseButton_Left) && !ImGui::IsMouseDragPastThreshold(ImGuiMouseButton_Left);
 	}
 
+	// WARNING: Asked of the button held now; the drag distance ColumnClicked reads is kept until the next
+	// click and would hide the tooltip after any drag anywhere.
 	bool ChartPanning()
 	{
 		return ImGui::IsMouseDragging(ImGuiMouseButton_Left);
@@ -129,38 +140,38 @@ namespace Graphite {
 		}
 
 		const float lineHeight = ImGui::GetTextLineHeight();
-		const float space = ImGui::GetStyle().ItemSpacing.x;
+		const float itemSpacing = ImGui::GetStyle().ItemSpacing.x;
 		const float indent = ImGui::GetFontSize();
-		const float swatch = std::round(lineHeight * 0.55f);
+		const float swatchSize = std::round(lineHeight * kSwatchLineShare);
+		const float columnGap = kColumnGapSpacings * itemSpacing;
 
 		for (const SwatchRow& row : rows)
 		{
 			const ImVec2 start = ImGui::GetCursorScreenPos();
-			const float swatchTop = std::floor(start.y + (lineHeight - swatch) * 0.5f);
+			const float swatchTop = std::floor(start.y + (lineHeight - swatchSize) * 0.5f);
 
-			ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(start.x + indent, swatchTop),
-													  ImVec2(start.x + indent + swatch, swatchTop + swatch), row.Colour);
+			ImGui::GetWindowDrawList()->AddRectFilled(
+				ImVec2(start.x + indent, swatchTop), ImVec2(start.x + indent + swatchSize, swatchTop + swatchSize),
+				row.Colour);
 
-			ImVec2 at(start.x + indent + swatch + space, start.y);
-			const float numbersRight = at.x + labelWidth + 2.0f * space + numberWidth;
+			ImVec2 pieceOrigin(start.x + indent + swatchSize + itemSpacing, start.y);
+			const float numbersRight = pieceOrigin.x + labelWidth + columnGap + numberWidth;
 
-			DrawPiece(at, ink, row.Label);
+			DrawPiece(pieceOrigin, ink, row.Label);
 
-			at.x = numbersRight - ImGui::CalcTextSize(row.Number.c_str()).x;
-			DrawPiece(at, ink, row.Number);
+			pieceOrigin.x = numbersRight - ImGui::CalcTextSize(row.Number.c_str()).x;
+			DrawPiece(pieceOrigin, ink, row.Number);
 
-			float right = numbersRight;
+			float lineRight = numbersRight;
 
 			if (!row.Note.empty())
 			{
-				at.x = numbersRight + 2.0f * space;
-				DrawPiece(at, row.NoteColour, row.Note);
-				right = std::max(at.x, numbersRight);
+				pieceOrigin.x = numbersRight + columnGap;
+				DrawPiece(pieceOrigin, row.NoteColour, row.Note);
+				lineRight = std::max(pieceOrigin.x, numbersRight);
 			}
 
-			// The pieces go through the draw list; this is the line's one item, as wide as they
-			// reach, so the tooltip is sized to them.
-			ImGui::Dummy(ImVec2(right - start.x, lineHeight));
+			ImGui::Dummy(ImVec2(lineRight - start.x, lineHeight));
 		}
 	}
 }

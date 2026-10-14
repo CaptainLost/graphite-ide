@@ -7,58 +7,58 @@ using namespace Graphite;
 
 TEST_CASE("The first usage a request sees is adopted and added to the total")
 {
-	RequestUsageAccumulator request;
-	TokenCounts total{1, 1, 0, 0, 0};
+	RequestUsageAccumulator accumulator;
+	TokenCounts totalCounts{1, 1, 0, 0, 0};
 
-	CHECK_FALSE(request.HasUsage());
-	CHECK(request.Add({10, 5, 0, 0, 100}, &total));
+	CHECK_FALSE(accumulator.HasUsage());
+	CHECK(accumulator.Add({10, 5, 0, 0, 100}, &totalCounts));
 
-	CHECK(request.HasUsage());
-	CHECK(request.GetCounts() == TokenCounts{10, 5, 0, 0, 100});
-	CHECK(total == TokenCounts{11, 6, 0, 0, 100});
+	CHECK(accumulator.HasUsage());
+	CHECK(accumulator.GetCounts() == TokenCounts{10, 5, 0, 0, 100});
+	CHECK(totalCounts == TokenCounts{11, 6, 0, 0, 100});
 }
 
 TEST_CASE("A later record keeps the larger count per bucket and corrects the total by the difference")
 {
-	RequestUsageAccumulator request;
-	TokenCounts total;
+	RequestUsageAccumulator accumulator;
+	TokenCounts totalCounts;
 
-	request.Add({10, 2, 0, 0, 100}, &total);
-	CHECK(request.Add({10, 30, 0, 0, 90}, &total));
+	accumulator.Add({10, 2, 0, 0, 100}, &totalCounts);
+	CHECK(accumulator.Add({10, 30, 0, 0, 90}, &totalCounts));
 
-	CHECK(request.GetCounts() == TokenCounts{10, 30, 0, 0, 100});
-	CHECK(total == TokenCounts{10, 30, 0, 0, 100});
+	CHECK(accumulator.GetCounts() == TokenCounts{10, 30, 0, 0, 100});
+	CHECK(totalCounts == TokenCounts{10, 30, 0, 0, 100});
 }
 
 TEST_CASE("A record that adds nothing reports no change and leaves the total alone")
 {
-	RequestUsageAccumulator request;
-	TokenCounts total;
+	RequestUsageAccumulator accumulator;
+	TokenCounts totalCounts;
 
-	request.Add({10, 30, 0, 0, 100}, &total);
-	CHECK_FALSE(request.Add({10, 30, 0, 0, 100}, &total));
-	CHECK_FALSE(request.Add({1, 1, 0, 0, 1}, &total));
+	accumulator.Add({10, 30, 0, 0, 100}, &totalCounts);
+	CHECK_FALSE(accumulator.Add({10, 30, 0, 0, 100}, &totalCounts));
+	CHECK_FALSE(accumulator.Add({1, 1, 0, 0, 1}, &totalCounts));
 
-	CHECK(total == TokenCounts{10, 30, 0, 0, 100});
+	CHECK(totalCounts == TokenCounts{10, 30, 0, 0, 100});
 }
 
 TEST_CASE("An accumulator resumed from counts merges into them without touching a total it was not given")
 {
-	RequestUsageAccumulator request{TokenCounts{4, 4, 0, 0, 0}};
+	RequestUsageAccumulator accumulator{TokenCounts{4, 4, 0, 0, 0}};
 
-	CHECK(request.HasUsage());
-	CHECK(request.Add({1, 9, 0, 0, 0}));
-	CHECK(request.GetCounts() == TokenCounts{4, 9, 0, 0, 0});
+	CHECK(accumulator.HasUsage());
+	CHECK(accumulator.Add({1, 9, 0, 0, 0}));
+	CHECK(accumulator.GetCounts() == TokenCounts{4, 9, 0, 0, 0});
 }
 
 TEST_CASE("A request whose first usage is all zero still counts as having usage")
 {
-	RequestUsageAccumulator request;
+	RequestUsageAccumulator accumulator;
 
-	CHECK(request.Add({}));
-	CHECK(request.HasUsage());
-	CHECK(request.Add({0, 3, 0, 0, 0}));
-	CHECK(request.GetCounts().Output == 3);
+	CHECK(accumulator.Add({}));
+	CHECK(accumulator.HasUsage());
+	CHECK(accumulator.Add({0, 3, 0, 0, 0}));
+	CHECK(accumulator.GetCounts().Output == 3);
 }
 
 TEST_CASE("Count accessors read integers and give a missing, negative or mistyped field nothing")

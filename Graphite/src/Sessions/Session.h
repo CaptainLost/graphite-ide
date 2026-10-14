@@ -33,12 +33,8 @@ namespace Graphite {
 		Tool,
 		Injected,
 
-		// A message the user typed while Claude was working. It belongs to the turn it
-		// arrived in rather than starting one.
 		Queued,
 
-		// Where Claude Code compacted the context: the boundary's facts in Compaction, the
-		// summary the model was given instead in Text (empty until it is read).
 		Compaction,
 		Other
 	};
@@ -47,28 +43,19 @@ namespace Graphite {
 	{
 		ItemKind Kind = ItemKind::Other;
 
-		// The text or thinking, or — for Other — the block's type name.
 		std::string Text;
 
-		// For Tool: the call's index in Session::GetTools().
 		std::size_t Tool = 0;
 
-		// For Injected: one line saying what it was. Text keeps the whole of it.
 		std::string Label;
 
-		// When the record holding this item was written.
 		std::string At;
 
-		// The request that produced this item: requestId, else the record's uuid. Empty for
-		// items on the user's side.
 		std::string RequestId;
 
-		// For Compaction: what the boundary reported.
 		CompactionFacts Compaction;
 	};
 
-	// What one API request cost, kept per turn so a view can show it beside the reply or the
-	// steps it produced.
 	struct RequestUsage
 	{
 		std::string Model;
@@ -76,7 +63,6 @@ namespace Graphite {
 		TokenCounts Usage;
 	};
 
-	// A prompt the user typed and everything up to the next one.
 	struct Turn
 	{
 		std::string Prompt;
@@ -86,33 +72,22 @@ namespace Graphite {
 		std::map<std::string, RequestUsage> Requests;
 	};
 
-	// A transcript assembled for reading. Built by appending, so a live session grows by the
-	// records read since last time instead of being rebuilt.
 	class Session
 	{
 	public:
 		void Append(const std::vector<TranscriptRecord>& records);
 
-		// Clears turns, tools and everything derived from them, and moves to a new generation.
-		// Used when a transcript is read again from nothing (it shrank), so a view can tell
-		// this session is not the one it was reading — not just an older version of it.
 		void Reset();
 
 		const std::vector<Turn>& GetTurns() const { return m_Turns; }
 		const std::vector<ToolCall>& GetTools() const { return m_Tools; }
 
-		// Moves whenever an append changed anything, so a view can tell its layout is stale.
 		std::uint64_t GetVersion() const { return m_Version; }
 
-		// Moves only on Reset. A view compares this, not GetVersion(), to tell a restart from
-		// ordinary growth: GetVersion() is not monotonic across a Reset, so a view that rebuilt
-		// against an older, higher version would wrongly treat a fresh session as one it has
-		// already built rows for.
+		// WARNING: GetVersion() is not monotonic across a Reset, so a view tells a restart from growth by this.
 		std::uint64_t GetGeneration() const { return m_Generation; }
 
-		// The latest time any record appended since the last Reset was written, as the
-		// transcript spells it; empty when none said. Timestamps share one fixed-width UTC
-		// format, so the latest is the greatest string.
+		// WARNING: timestamps share one fixed-width UTC format, so the latest is the greatest string.
 		const std::string& GetLastWrittenAt() const { return m_LastWrittenAt; }
 
 	private:
@@ -122,14 +97,11 @@ namespace Graphite {
 		void AddQueued(const TranscriptRecord& record);
 		void AddCompaction(const TranscriptRecord& record);
 
-		// Gives a compaction summary to the current turn's last compaction when that has none
-		// yet, or makes it a compaction of its own: a summary written without a boundary.
 		void AttachCompactSummary(const std::string& text, const std::string& at);
 
 		std::vector<Turn> m_Turns;
 		std::vector<ToolCall> m_Tools;
 		std::unordered_map<std::string, std::size_t> m_ToolById;
-		// The turn each request's usage was counted in, by request key.
 		std::unordered_map<std::string, std::size_t> m_RequestTurn;
 		std::string m_LastWrittenAt;
 		std::uint64_t m_Version = 0;

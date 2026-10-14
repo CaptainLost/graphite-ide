@@ -3,6 +3,7 @@
 #include "Core/Base/Base.h"
 
 #include "Core/Base/Narrow.h"
+#include "Core/Base/Strings.h"
 #include "Core/ImGui/EmptyState.h"
 
 #include "Sessions/Requests/RequestRow.h"
@@ -13,6 +14,7 @@
 #include "UI/SideBySide.h"
 #include "UI/SplitResults.h"
 #include "UI/TickBox.h"
+#include "UI/TypographicMarks.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -24,15 +26,35 @@
 #include <cmath>
 #include <functional>
 #include <iterator>
+#include <optional>
+#include <string>
 #include <utility>
 
 namespace Graphite {
 
 	namespace {
 		constexpr std::size_t kToolNameBytes = 80;
+		constexpr std::size_t kModelLabelBytes = 80;
+		constexpr std::size_t kStopReasonBytes = 60;
+		constexpr std::size_t kTooltipPromptBytes = 2000;
 
-		// The table's columns, in the order they start in. The sort column travels as the
-		// column's user id, so a reader's reordering or hiding never changes what a sort means.
+		constexpr float kToolFilterWidthInFonts = 14.0f;
+		constexpr float kTurnMarkWidthInFonts = 0.2f;
+		constexpr float kTurnMarkMinimumWidth = 2.0f;
+		constexpr float kTurnTooltipWrapInFonts = 35.0f;
+		constexpr float kSplitHandleWidthInFonts = 0.4f;
+		constexpr float kSplitHandleMinimumWidth = 4.0f;
+		constexpr float kSplitHandleCentre = 0.5f;
+		constexpr float kMinimumPaneWidthInFonts = 12.0f;
+		constexpr float kOpeningItemsShare = 0.4f;
+		constexpr float kRevealScrollRatio = 0.5f;
+
+		enum class CellAlignment
+		{
+			Left,
+			Right
+		};
+
 		struct ColumnSpec
 		{
 			const char* Label;
@@ -42,7 +64,6 @@ namespace Graphite {
 			bool Numeric;
 		};
 
-		// "Δ" is U+0394. The last column is the rebuilt mark alone: its header is the mark too.
 		constexpr ColumnSpec kColumns[] = {
 			{"#", RequestColumn::Index, ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_NoHide, 0.6f, true},
 			{"Time", RequestColumn::Time, ImGuiTableColumnFlags_None, 1.1f, false},
@@ -60,28 +81,64 @@ namespace Graphite {
 
 		constexpr int kColumnCount = static_cast<int>(std::size(kColumns));
 
-		// One cell's text, cut to the column so it never runs into the next, and pushed to the
-		// right edge for a number so a column of them lines up.
-		void Cell(const std::string& text, ImU32 colour, bool alignRight)
+		CellAlignment AlignmentOf(const ColumnSpec& columnSpec)
+		{
+			return columnSpec.Numeric ? CellAlignment::Right : CellAlignment::Left;
+		}
+
+		// WARNING: Every path ends on an item, the empty text included, because the cursor was just moved.
+		void DrawTableCell(const std::string& text, ImU32 colour, CellAlignment alignment)
 		{
 			const float room = ImGui::GetContentRegionAvail().x;
 			const std::string fitted = Fitted(text, room);
 
-			if (alignRight)
+			if (alignment == CellAlignment::Right)
 			{
-				const float width = ImGui::CalcTextSize(fitted.c_str(), fitted.c_str() + fitted.size()).x;
-				ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(room - width, 0.0f));
+				const float textWidth = ImGui::CalcTextSize(fitted.c_str(), fitted.c_str() + fitted.size()).x;
+				ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(room - textWidth, 0.0f));
 			}
 
-			// An item on every path, the empty text included: the cursor was just moved.
 			ColouredText(colour, fitted);
+		}
+
+		std::string PromptTooltipText(const std::string& prompt)
+		{
+			if (prompt.empty())
+			{
+				return "(no prompt)";
+			}
+
+			if (prompt.size() > kTooltipPromptBytes)
+			{
+				return SingleLineLabel(prompt, kTooltipPromptBytes);
+			}
+
+			return prompt;
+		}
+
+		ImGuiCol SplitLineColour()
+		{
+			if (ImGui::IsItemActive())
+			{
+				return ImGuiCol_SeparatorActive;
+			}
+
+			if (ImGui::IsItemHovered())
+			{
+				return ImGuiCol_SeparatorHovered;
+			}
+
+			return ImGuiCol_Separator;
+		}
+
+		std::string StopCellText(const std::string& stopReason)
+		{
+			return std::string{StopGlyph(stopReason)} + (stopReason.empty() ? "" : " " + SingleLineLabel(stopReason, kStopReasonBytes));
 		}
 	}
 
 	void RequestsView::Reveal(std::size_t requestIndex, std::uint64_t generation)
 	{
-		// The filters stay unless they hide this request, which Filter finds out once it knows
-		// what the request used.
 		m_Selected = requestIndex;
 		m_PendingReveal = requestIndex;
 		m_RevealGeneration = generation;
@@ -92,17 +149,17 @@ namespace Graphite {
 	{
 		const std::vector<ApiRequest>& requests = timeline.GetRequests();
 
-		// A new generation is the transcript read again from nothing: what was selected or
-		// filtered named other requests. A reveal asked for in this very generation — the
-		// conversation, drawn first, may ask for one on the frame the restart lands — is the one
-		// thing kept.
-		if (session.GetGeneration() != m_BuiltGeneration)
+		const bool isNewGeneration = session.GetGeneration() != m_BuiltGeneration;
+
+		if (isNewGeneration)
 		{
 			m_Selected.reset();
 			m_RebuiltOnly = false;
 			m_ToolFilter.clear();
 
-			if (m_PendingReveal && m_RevealGeneration != session.GetGeneration())
+			const bool revealIsFromAnotherGeneration = m_PendingReveal && m_RevealGeneration != session.GetGeneration();
+
+			if (revealIsFromAnotherGeneration)
 			{
 				m_PendingReveal.reset();
 			}
@@ -117,16 +174,12 @@ namespace Graphite {
 
 			m_Groups.clear();
 			m_RowGroup.clear();
-			m_TurnsVersion = UINT64_MAX;
+			m_TurnsVersion = kNeverBuilt;
 		}
 
-		// Within one generation the timeline only grows. Of what is kept here per request — the
-		// tools it used — only the last request's can still change: the rest of its response is
-		// still being written. An earlier request can change too, when a prompt snapshot puts the
-		// system prompt and the tools at the head of the first one, but those are neither tool
-		// results nor usage, and nothing kept here reads them. So the ones before the last are
-		// kept as they are. A timeline that shrank all the same is built again.
-		if (requests.size() < m_ToolNames.size())
+		const bool timelineShrank = requests.size() < m_ToolNames.size();
+
+		if (timelineShrank)
 		{
 			m_ToolNames.clear();
 			m_ToolLabels.clear();
@@ -134,12 +187,14 @@ namespace Graphite {
 			m_PriceFrom = 0;
 		}
 
-		const std::size_t from = m_ToolNames.empty() ? 0 : m_ToolNames.size() - 1;
+		// WARNING: Only the last request can still change within one generation, so the earlier ones are kept
+		// rather than rebuilt: a live session appends to the timeline every frame.
+		const std::size_t firstPositionToRebuild = m_ToolNames.empty() ? 0 : m_ToolNames.size() - 1;
 
 		m_ToolNames.resize(requests.size());
 		m_ToolLabels.resize(requests.size());
 
-		for (std::size_t position = from; position < requests.size(); ++position)
+		for (std::size_t position = firstPositionToRebuild; position < requests.size(); ++position)
 		{
 			const ApiRequest& request = requests[position];
 
@@ -149,12 +204,12 @@ namespace Graphite {
 			std::string label;
 			for (const std::string& name : m_ToolNames[position])
 			{
-				label += (label.empty() ? "" : ", ") + SingleLineLabel(name, kToolNameBytes);
+				Core::AppendSeparated(label, ", ", SingleLineLabel(name, kToolNameBytes));
 			}
 			m_ToolLabels[position] = std::move(label);
 		}
 
-		m_PriceFrom = std::min(m_PriceFrom, from);
+		m_PriceFrom = std::min(m_PriceFrom, firstPositionToRebuild);
 		m_BuiltVersion = timeline.GetVersion();
 		m_BuiltGeneration = session.GetGeneration();
 		m_FilterDirty = true;
@@ -173,7 +228,6 @@ namespace Graphite {
 		m_TurnsVersion = session.GetVersion();
 		m_TurnsTimelineVersion = timeline.GetVersion();
 
-		// Only the grouped table reads the turns; the flat one has nothing to redo.
 		if (m_GroupByTurn)
 		{
 			m_FilterDirty = true;
@@ -184,8 +238,6 @@ namespace Graphite {
 	{
 		const std::vector<ApiRequest>& requests = timeline.GetRequests();
 
-		// An edited price changes every request's cost, and with a table sorted by cost, the
-		// order too.
 		if (pricing.GetEntries() != m_PricedWith)
 		{
 			m_PricedWith = pricing.GetEntries();
@@ -193,7 +245,9 @@ namespace Graphite {
 			m_FilterDirty = true;
 		}
 
-		if (m_PriceFrom >= requests.size() && m_Costs.size() == requests.size())
+		const bool everyRequestIsPriced = m_PriceFrom >= requests.size() && m_Costs.size() == requests.size();
+
+		if (everyRequestIsPriced)
 		{
 			return;
 		}
@@ -209,25 +263,27 @@ namespace Graphite {
 		m_PriceFrom = requests.size();
 	}
 
+	bool RequestsView::PassesFilters(const std::vector<ApiRequest>& requests, std::size_t position) const
+	{
+		if (m_RebuiltOnly && !requests[position].CacheRebuilt)
+		{
+			return false;
+		}
+
+		const std::vector<std::string>& names = m_ToolNames[position];
+		return m_ToolFilter.empty() || std::find(names.begin(), names.end(), m_ToolFilter) != names.end();
+	}
+
 	void RequestsView::Filter(const RequestTimeline& timeline, const Pricing& pricing)
 	{
 		const std::vector<ApiRequest>& requests = timeline.GetRequests();
 		m_Shown.clear();
 		m_Passes.assign(requests.size(), false);
 
-		const auto passes = [this, &requests](std::size_t position) {
-			if (m_RebuiltOnly && !requests[position].CacheRebuilt)
-			{
-				return false;
-			}
+		const bool revealedRequestIsHidden =
+			m_PendingReveal && *m_PendingReveal < requests.size() && !PassesFilters(requests, *m_PendingReveal);
 
-			const std::vector<std::string>& names = m_ToolNames[position];
-			return m_ToolFilter.empty() || std::find(names.begin(), names.end(), m_ToolFilter) != names.end();
-		};
-
-		// A request asked to be shown has to be in the list, so filters that would hide it are
-		// dropped. Filters it passes are the reader's and stay.
-		if (m_PendingReveal && *m_PendingReveal < requests.size() && !passes(*m_PendingReveal))
+		if (revealedRequestIsHidden)
 		{
 			m_RebuiltOnly = false;
 			m_ToolFilter.clear();
@@ -235,7 +291,7 @@ namespace Graphite {
 
 		for (std::size_t position = 0; position < requests.size(); ++position)
 		{
-			if (!passes(position))
+			if (!PassesFilters(requests, position))
 			{
 				continue;
 			}
@@ -262,8 +318,6 @@ namespace Graphite {
 		m_Groups = GroupByTurn(m_Shown, m_TurnOf, timeline.GetRequests(), m_TurnPrompts, m_SortColumn, m_SortAscending,
 							   pricing);
 
-		// m_Shown in the groups' order: each turn's requests together, in the order GroupByTurn
-		// keeps them.
 		m_Shown.clear();
 
 		for (std::size_t group = 0; group < m_Groups.size(); ++group)
@@ -291,7 +345,7 @@ namespace Graphite {
 		}
 
 		ImGui::SameLine();
-		ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14.0f);
+		ImGui::SetNextItemWidth(ImGui::GetFontSize() * kToolFilterWidthInFonts);
 
 		const std::string preview = m_ToolFilter.empty() ? "Any tool" : SingleLineLabel(m_ToolFilter, kToolNameBytes);
 
@@ -303,12 +357,11 @@ namespace Graphite {
 				m_FilterDirty = true;
 			}
 
-			int index = 0;
+			int toolIndex = 0;
 
 			for (const std::string& name : m_AllTools)
 			{
-				// By place, so two names that read the same once cut to a label stay apart.
-				ImGui::PushID(index++);
+				ImGui::PushID(toolIndex++);
 
 				if (ImGui::Selectable(SingleLineLabel(name, kToolNameBytes).c_str(), name == m_ToolFilter))
 				{
@@ -354,24 +407,23 @@ namespace Graphite {
 		ImGui::TableNextRow();
 		ImGui::PushID(static_cast<int>(position));
 
-		// Cell by cell in the order the columns were set up, which is not the order a reader
-		// may have dragged them into; a hidden one is skipped.
-		for (int column = 0; column < kColumnCount; ++column)
+		for (int columnIndex = 0; columnIndex < kColumnCount; ++columnIndex)
 		{
-			if (!ImGui::TableSetColumnIndex(column))
+			if (!ImGui::TableSetColumnIndex(columnIndex))
 			{
 				continue;
 			}
 
-			const ColumnSpec& spec = kColumns[column];
+			const ColumnSpec& columnSpec = kColumns[columnIndex];
+			const CellAlignment alignment = AlignmentOf(columnSpec);
 
-			switch (spec.Id)
+			switch (columnSpec.Id)
 			{
 			case RequestColumn::Index:
 			{
-				// The row's one item that takes a click, across every column. `#` cannot be
-				// hidden, so the row always has it.
-				if (ImGui::Selectable("##row", m_Selected == position,
+				const bool isSelected = m_Selected == position;
+
+				if (ImGui::Selectable("##row", isSelected,
 									  ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
 				{
 					m_Selected = position;
@@ -380,61 +432,60 @@ namespace Graphite {
 				DrawTurnMark(row, palette);
 
 				ImGui::SameLine(0.0f, 0.0f);
-				Cell(std::to_string(request.Index), ink, spec.Numeric);
+				DrawTableCell(std::to_string(request.Index), ink, alignment);
 				break;
 			}
 			case RequestColumn::Time:
 			{
-				// The day on every row, not only where it changes: a column that switches format as
-				// the sort order changes reads as two different columns, and the width is there.
-				const auto local = m_Clock.LocalTime(request.RespondedAt);
+				const std::optional<std::chrono::local_seconds> localTime = m_Clock.LocalTime(request.RespondedAt);
 
-				if (!local)
+				if (!localTime)
 				{
-					Cell({}, ink, false);
+					DrawTableCell({}, ink, alignment);
 					break;
 				}
 
-				Cell(FormatLocalTime(*local, ClockStyle::MonthDayTime), ink, false);
-				ImGui::SetItemTooltip("%s", FormatLocalTime(*local, ClockStyle::DateTimeWeekday).c_str());
+				DrawTableCell(FormatLocalTime(*localTime, ClockStyle::MonthDayTime), ink, alignment);
+				ImGui::SetItemTooltip("%s", FormatLocalTime(*localTime, ClockStyle::DateTimeWeekday).c_str());
 				break;
 			}
 			case RequestColumn::Model:
-				Cell(request.Model.empty() ? std::string{}
-										   : SingleLineLabel(ModelLabel(request.Model, request.Fast), 80),
-					 ink, false);
+				DrawTableCell(request.Model.empty() ? std::string{}
+													: SingleLineLabel(ModelLabel(request.Model, request.Fast), kModelLabelBytes),
+							  ink, alignment);
 				break;
 			case RequestColumn::Context:
-				Cell(hasUsage ? FormatTokens(request.Context) : std::string{}, ink, true);
+				DrawTableCell(hasUsage ? FormatTokens(request.Context) : std::string{}, ink, alignment);
 				break;
 			case RequestColumn::Delta:
-				Cell(request.ContextDelta ? SignedTokens(*request.ContextDelta) : std::string{}, ink, true);
+				DrawTableCell(request.ContextDelta ? SignedTokens(*request.ContextDelta) : std::string{}, ink,
+							  alignment);
 				break;
 			case RequestColumn::CachedShare:
-				Cell(hasUsage && request.Context > 0
-						 ? std::to_string(CachedPercent(request.Usage.CacheRead, request.Context)) + "%"
-						 : std::string{},
-					 ink, true);
+				DrawTableCell(hasUsage && request.Context > 0
+								  ? std::to_string(CachedPercent(request.Usage.CacheRead, request.Context)) + "%"
+								  : std::string{},
+							  ink, alignment);
 				break;
 			case RequestColumn::Output:
-				Cell(hasUsage ? FormatTokens(request.Usage.Output) : std::string{}, ink, true);
+				DrawTableCell(hasUsage ? FormatTokens(request.Usage.Output) : std::string{}, ink, alignment);
 				break;
 			case RequestColumn::Cost:
-				Cell(hasUsage && position < m_Costs.size() ? FormatCost(m_Costs[position]) : std::string{}, ink, true);
+				DrawTableCell(hasUsage && position < m_Costs.size() ? FormatCost(m_Costs[position]) : std::string{},
+							  ink, alignment);
 				break;
 			case RequestColumn::Wait:
-				Cell(request.Waited ? WaitText(*request.Waited) : std::string{}, ink, true);
+				DrawTableCell(request.Waited ? WaitText(*request.Waited) : std::string{}, ink, alignment);
 				break;
 			case RequestColumn::Stop:
-				Cell(std::string{StopGlyph(request.StopReason)} +
-						 (request.StopReason.empty() ? "" : " " + SingleLineLabel(request.StopReason, 60)),
-					 palette.TextDisabled, false);
+				DrawTableCell(StopCellText(request.StopReason), palette.TextDisabled, alignment);
 				break;
 			case RequestColumn::Tools:
-				Cell(m_ToolLabels[position], palette.TextDisabled, false);
+				DrawTableCell(m_ToolLabels[position], palette.TextDisabled, alignment);
 				break;
 			case RequestColumn::Rebuilt:
-				Cell(request.CacheRebuilt ? std::string{ICON_MDI_CACHED} : std::string{}, palette.Edit, false);
+				DrawTableCell(request.CacheRebuilt ? std::string{ICON_MDI_CACHED} : std::string{}, palette.Edit,
+							  alignment);
 				break;
 			}
 		}
@@ -442,6 +493,8 @@ namespace Graphite {
 		ImGui::PopID();
 	}
 
+	// WARNING: The mark is drawn, not an item, so the row keeps the one item it is clicked with, and it
+	// is clipped to the table because this cell's column may not be the leftmost.
 	void RequestsView::DrawTurnMark(std::size_t row, const SessionPalette& palette)
 	{
 		if (!m_GroupByTurn || row >= m_RowGroup.size())
@@ -452,27 +505,24 @@ namespace Graphite {
 		const std::size_t group = m_RowGroup[row];
 		const TurnSummary& summary = m_Groups[group].Summary;
 
-		// Down the row's left edge, the row's full height: the turns alternate between the two
-		// colours, so where one turn gives way to the next the colour changes. The edge is the
-		// table's, not this cell's — the reader may have dragged another column to the left of
-		// #. The height is the row's Selectable, just drawn, which reaches from one row to the
-		// next: the table's own row bounds are not final until the row ends. Drawn, not an item,
-		// so the row keeps the one item it clicks with, and clipped to the table rather than to
-		// this cell's column, which may not be the leftmost.
 		const ImGuiTable* table = ImGui::GetCurrentTable();
 		const float left = table->WorkRect.Min.x;
-		const float width = std::max(std::round(ImGui::GetFontSize() * 0.2f), 2.0f);
-		const ImVec2 min(left, ImGui::GetItemRectMin().y);
-		const ImVec2 max(left + width, ImGui::GetItemRectMax().y);
+		const float width = std::max(std::round(ImGui::GetFontSize() * kTurnMarkWidthInFonts), kTurnMarkMinimumWidth);
+		const ImVec2 markTopLeft(left, ImGui::GetItemRectMin().y);
+		const ImVec2 markBottomRight(left + width, ImGui::GetItemRectMax().y);
 
 		const ImU32 colour = group % 2 == 0 ? palette.Accent : palette.TextDisabled;
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
-		drawList->PushClipRect(table->BgClipRect.Min, table->BgClipRect.Max, false);
-		drawList->AddRectFilled(min, max, colour);
+		const bool intersectWithCurrentClip = false;
+		drawList->PushClipRect(table->BgClipRect.Min, table->BgClipRect.Max, intersectWithCurrentClip);
+		drawList->AddRectFilled(markTopLeft, markBottomRight, colour);
 		drawList->PopClipRect();
 
-		// What the turn was, over its mark: the prompt, and what its requests came to.
-		if (!ImGui::IsMouseHoveringRect(ImVec2(min.x, min.y), ImVec2(max.x + width, max.y), false) || !ImGui::IsWindowHovered())
+		const bool clipToWindow = false;
+		const bool isOverMark = ImGui::IsMouseHoveringRect(
+			ImVec2(markTopLeft.x, markTopLeft.y), ImVec2(markBottomRight.x + width, markBottomRight.y), clipToWindow);
+
+		if (!isOverMark || !ImGui::IsWindowHovered())
 		{
 			return;
 		}
@@ -480,26 +530,28 @@ namespace Graphite {
 		static const std::string kNoPrompt;
 		const std::string& prompt = summary.Turn < m_TurnPrompts.size() ? m_TurnPrompts[summary.Turn] : kNoPrompt;
 
-		constexpr std::size_t kTooltipBytes = 2000;
-		const std::string shown = prompt.empty()				  ? std::string{"(no prompt)"}
-								  : prompt.size() > kTooltipBytes ? SingleLineLabel(prompt, kTooltipBytes)
-																  : prompt;
+		const std::string shown = PromptTooltipText(prompt);
 
 		std::string totals = std::to_string(summary.Count) + (summary.Count == 1 ? " request" : " requests");
 
 		if (summary.HasUsage)
 		{
-			totals += " \xc2\xb7 " + FormatCost(summary.Cost) + " \xc2\xb7 " + FormatTokens(summary.Output) + " out";
+			totals += kMiddleDotSeparator;
+			totals += FormatCost(summary.Cost);
+			totals += kMiddleDotSeparator;
+			totals += FormatTokens(summary.Output);
+			totals += " out";
 		}
 
 		if (summary.Waited)
 		{
-			totals += " \xc2\xb7 " + WaitText(*summary.Waited);
+			totals += kMiddleDotSeparator;
+			totals += WaitText(*summary.Waited);
 		}
 
 		if (ImGui::BeginTooltip())
 		{
-			ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+			ImGui::PushTextWrapPos(ImGui::GetFontSize() * kTurnTooltipWrapInFonts);
 			ImGui::TextUnformatted(shown.c_str(), shown.c_str() + shown.size());
 			ImGui::PopTextWrapPos();
 			ImGui::TextDisabled("%s", totals.c_str());
@@ -514,19 +566,9 @@ namespace Graphite {
 										   ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY |
 										   ImGuiTableFlags_SizingStretchProp;
 
-		// Fills the child it is in; the table scrolls itself, under its frozen header.
-		//
-		// Its id is a constant rather than BeginTable's hash of the label under the window it is
-		// drawn in. ImGui saves a table's column widths, order, visibility and sort under that
-		// id, so an id taken from the window path lost the reader's columns whenever the
-		// windows around the table were nested differently, and gave each session's tab a
-		// layout of its own that a newly opened session started without. With the constant, the
-		// saved layout outlives changes to what the table is drawn in — it resets once more,
-		// the time this id changed to the constant — and is one layout for every session's
-		// tab. Everything the table keys by id below it — its rows and cells, its header's
-		// context menu — derives from this id, not from the window's. Its scrolling child is
-		// the exception: ImGui names that after the enclosing window, so it and its scroll
-		// stay per session tab, which is what is wanted.
+		// WARNING: The table id is a constant, not BeginTable's hash of the label under the window, because ImGui
+		// saves the columns' widths, order, visibility and sort under it. Changing the string resets every
+		// reader's layout.
 		static const ImGuiID kTableId = ImHashStr("RequestsView.RequestTable");
 
 		if (!ImGui::BeginTableEx("##requestTable", kTableId, kColumnCount, kFlags))
@@ -534,58 +576,58 @@ namespace Graphite {
 			return;
 		}
 
-		// The mark's column is as wide as the mark and the sort arrow its header may show.
-		const float markWidth = ImGui::CalcTextSize(ICON_MDI_CACHED).x + ImGui::GetFontSize();
+		const float markColumnWidth = ImGui::CalcTextSize(ICON_MDI_CACHED).x + ImGui::GetFontSize();
 
-		for (const ColumnSpec& spec : kColumns)
+		for (const ColumnSpec& columnSpec : kColumns)
 		{
-			const float width = (spec.Flags & ImGuiTableColumnFlags_WidthFixed) != 0 ? markWidth : spec.Weight;
-			ImGui::TableSetupColumn(spec.Label, spec.Flags, width, static_cast<ImGuiID>(spec.Id));
+			const bool isFixedWidth = (columnSpec.Flags & ImGuiTableColumnFlags_WidthFixed) != 0;
+			const float columnWidth = isFixedWidth ? markColumnWidth : columnSpec.Weight;
+			ImGui::TableSetupColumn(columnSpec.Label, columnSpec.Flags, columnWidth, static_cast<ImGuiID>(columnSpec.Id));
 		}
 
 		ImGui::TableSetupScrollFreeze(0, 1);
 
-		// Compared with this view's own order as well as read when dirty: the table, and so its
-		// sort, is shared by every session's tab, and whichever tab draws it first in a frame
-		// clears the flag — another tab visible beside it, or one opened after the sort was
-		// set, would otherwise keep an order the header no longer shows.
-		if (ImGuiTableSortSpecs* specs = ImGui::TableGetSortSpecs(); specs != nullptr)
+		// WARNING: The order is compared with this view's own sort as well as read when dirty: the table's
+		// sort is shared by every session's tab, and whichever draws first in a frame clears the dirty
+		// flag, so another tab would keep an order the header no longer shows.
+		if (ImGuiTableSortSpecs* sortSpecs = ImGui::TableGetSortSpecs(); sortSpecs != nullptr)
 		{
-			RequestColumn column = RequestColumn::Index;
-			bool ascending = true;
+			RequestColumn sortColumn = RequestColumn::Index;
+			bool sortAscending = true;
 
-			if (specs->SpecsCount > 0 && specs->Specs[0].ColumnUserID <= static_cast<ImGuiID>(RequestColumn::Rebuilt))
+			const bool hasKnownColumn =
+				sortSpecs->SpecsCount > 0 && sortSpecs->Specs[0].ColumnUserID <= static_cast<ImGuiID>(RequestColumn::Rebuilt);
+
+			if (hasKnownColumn)
 			{
-				column = static_cast<RequestColumn>(specs->Specs[0].ColumnUserID);
-				ascending = specs->Specs[0].SortDirection != ImGuiSortDirection_Descending;
+				sortColumn = static_cast<RequestColumn>(sortSpecs->Specs[0].ColumnUserID);
+				sortAscending = sortSpecs->Specs[0].SortDirection != ImGuiSortDirection_Descending;
 			}
 
-			if (specs->SpecsDirty || column != m_SortColumn || ascending != m_SortAscending)
+			if (sortSpecs->SpecsDirty || sortColumn != m_SortColumn || sortAscending != m_SortAscending)
 			{
-				m_SortColumn = column;
-				m_SortAscending = ascending;
+				m_SortColumn = sortColumn;
+				m_SortAscending = sortAscending;
 				SortRequests(m_Shown, timeline.GetRequests(), m_SortColumn, m_SortAscending, context.Prices);
 				Regroup(timeline, context.Prices);
 			}
 
-			specs->SpecsDirty = false;
+			sortSpecs->SpecsDirty = false;
 		}
 
-		// The header row by hand rather than TableHeadersRow, for the mark's column to say what
-		// the mark means.
 		ImGui::TableNextRow(ImGuiTableRowFlags_Headers);
 
-		for (int column = 0; column < kColumnCount; ++column)
+		for (int columnIndex = 0; columnIndex < kColumnCount; ++columnIndex)
 		{
-			if (!ImGui::TableSetColumnIndex(column))
+			if (!ImGui::TableSetColumnIndex(columnIndex))
 			{
 				continue;
 			}
 
-			ImGui::PushID(column);
-			ImGui::TableHeader(ImGui::TableGetColumnName(column));
+			ImGui::PushID(columnIndex);
+			ImGui::TableHeader(ImGui::TableGetColumnName(columnIndex));
 
-			if (kColumns[column].Id == RequestColumn::Rebuilt)
+			if (kColumns[columnIndex].Id == RequestColumn::Rebuilt)
 			{
 				ImGui::SetItemTooltip("Cache rebuilt: at least half the context was written to the cache");
 			}
@@ -593,13 +635,11 @@ namespace Graphite {
 			ImGui::PopID();
 		}
 
-		// The row to scroll to, in the table's order. Filter dropped whichever filters would hide
-		// the request, so it is there unless the timeline no longer has it.
 		std::optional<int> revealRow;
 
 		if (m_PendingReveal)
 		{
-			const auto found = std::find(m_Shown.begin(), m_Shown.end(), *m_PendingReveal);
+			const std::vector<std::size_t>::iterator found = std::find(m_Shown.begin(), m_Shown.end(), *m_PendingReveal);
 
 			if (found != m_Shown.end())
 			{
@@ -613,7 +653,6 @@ namespace Graphite {
 		ImGuiListClipper clipper;
 		clipper.Begin(Core::Narrow<int>(m_Shown.size()));
 
-		// Drawn whether or not it is in view, so it has a place to scroll to.
 		if (revealRow)
 		{
 			clipper.IncludeItemByIndex(*revealRow);
@@ -628,7 +667,7 @@ namespace Graphite {
 
 				if (revealRow && row == *revealRow)
 				{
-					ImGui::SetScrollHereY(0.5f);
+					ImGui::SetScrollHereY(kRevealScrollRatio);
 				}
 			}
 		}
@@ -641,9 +680,6 @@ namespace Graphite {
 	{
 		const std::vector<ApiRequest>& requests = timeline.GetRequests();
 
-		// Drawn as DrawSplitResults's preview, which Draw asks for only with a request selected
-		// and which pads all four sides itself: the line above the two panes needs no nudge in
-		// from the pane's edge to sit under the table's.
 		const ImGuiStyle& style = ImGui::GetStyle();
 		const ImVec2 padding = style.WindowPadding;
 		const float width = ImGui::GetContentRegionAvail().x;
@@ -655,9 +691,6 @@ namespace Graphite {
 
 		const ApiRequest& request = requests[*m_Selected];
 
-		// Another request, or new items put ahead of the ones this one had — a prompt snapshot
-		// arriving under the first request — and the selected position names some other item.
-		// Items added after them, as a response is written, move nothing.
 		if (request.Key != m_DetailsKey || request.Index != m_DetailsIndex || request.Sent.size() != m_DetailsSent)
 		{
 			m_SelectedItem.reset();
@@ -667,23 +700,16 @@ namespace Graphite {
 			m_DetailsSent = request.Sent.size();
 		}
 
-		// A request whose items shrank under a live transcript's rewrite has no such item.
 		if (m_SelectedItem && *m_SelectedItem >= SegmentCount(request))
 		{
 			m_SelectedItem.reset();
 		}
 
-		// The line stops short of the close DrawPaneClose puts in the pane's corner, with an
-		// item's spacing between them, so a long line is cut rather than drawn under it.
 		const float closeWidth = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
 		ColouredText(ImGui::GetColorU32(ImGuiCol_Text),
 					 Fitted(RequestLine(request, context.Prices, m_Clock, ClockStyle::DateTime),
 							std::max(width - closeWidth - style.ItemSpacing.x, 0.0f)));
 
-		// Last on the line, the way the app's other detail panes end theirs: the close places
-		// itself at the right corner. Dismissing drops the request and what was picked in it, so
-		// the next frame draws the table alone; the rest of this one is not drawn, since it would
-		// be drawn for a request no longer selected.
 		if (DrawPaneClose())
 		{
 			m_Selected.reset();
@@ -695,39 +721,16 @@ namespace Graphite {
 			return;
 		}
 
-		// The items on the left, their text on the right, and between them a handle that moves
-		// the line between the two. Each side keeps some width however far it is dragged.
-		//
-		// Each pane pads its sides, so what it draws at its right keeps a gap before its
-		// scrollbar, as the table's cells do; the rows run to the top and the bottom. The pane
-		// this is drawn in pads its sides too, and the items' rows would then start two paddings
-		// in, a padding right of the line above them — so the items pane starts a padding left
-		// of the cursor, on the pane's inner edge, and its own padding brings its rows back under
-		// the line. The text fills the rest to the content region's right edge and no further:
-		// that puts its scrollbar in line with the table's, which sits inside the same padding,
-		// and nothing reaches past the content region, where the pane's horizontal scrollbar
-		// would start counting it.
-		//
-		// So the two panes share `room`: the width from the items pane's left edge to the
-		// content region's right edge, less the handle and the item spacing either side of it.
-		// SplitSideBySide keeps the sum of the two within it at any width — on a pane too narrow
-		// for both minimums each side gets half — and the text pane, filling the rest, is then
-		// what is left of it (ImGui cuts the items pane to whole pixels, which only gives the
-		// text the fraction). Only below ImGui's smallest child window, which it would widen to
-		// that size and so past the edge, are the two not drawn at all: at that width there is
-		// nothing to read in them anyway.
-		const float handle = std::max(std::round(ImGui::GetFontSize() * 0.4f), 4.0f);
+		const float handle = std::max(std::round(ImGui::GetFontSize() * kSplitHandleWidthInFonts), kSplitHandleMinimumWidth);
 		const float room = width + padding.x - handle - 2.0f * style.ItemSpacing.x;
-		const float minimum = ImGui::GetFontSize() * 12.0f;
+		const float minimum = ImGui::GetFontSize() * kMinimumPaneWidthInFonts;
 
-		// Waits for room to clear twice the minimum before locking in 40% of it: a dock node
-		// still being laid out can hand this a room that is transiently tiny for a frame, and
-		// storing 40% of that would stick the split at the minimum instead of the width it is
-		// meant to open at. Below that threshold SplitSideBySide is still called, with
-		// m_ItemsWidth left negative, and falls back to its own default for the frame.
+		// WARNING: The split is stored only once room clears twice the minimum: a dock node still being laid
+		// out can hand this a tiny room for a frame, and storing a share of that would stick the split at the
+		// minimum. Below that, SplitSideBySide still runs with m_ItemsWidth negative and uses its default.
 		if (m_ItemsWidth < 0.0f && room >= minimum * 2.0f)
 		{
-			m_ItemsWidth = room * 0.4f;
+			m_ItemsWidth = room * kOpeningItemsShare;
 		}
 
 		const SideBySideWidths widths = SplitSideBySide(room, m_ItemsWidth, minimum);
@@ -778,10 +781,8 @@ namespace Graphite {
 			ImGui::SetMouseCursor(ImGuiMouseCursor_ResizeEW);
 		}
 
-		const ImGuiCol lineColour = ImGui::IsItemActive()	 ? ImGuiCol_SeparatorActive
-									: ImGui::IsItemHovered() ? ImGuiCol_SeparatorHovered
-															 : ImGuiCol_Separator;
-		const float lineX = std::floor(handleAt.x + handle * 0.5f);
+		const ImGuiCol lineColour = SplitLineColour();
+		const float lineX = std::floor(handleAt.x + handle * kSplitHandleCentre);
 		ImGui::GetWindowDrawList()->AddLine(ImVec2(lineX, handleAt.y), ImVec2(lineX, handleAt.y + handleHeight),
 											ImGui::GetColorU32(lineColour));
 
@@ -825,8 +826,6 @@ namespace Graphite {
 			return;
 		}
 
-		// Filtered before the chart is drawn, so it dims what the table leaves out from the
-		// frame a request arrives. A filter the reader changes below is taken on the next frame.
 		if (m_FilterDirty)
 		{
 			Filter(timeline, context.Prices);
@@ -846,18 +845,11 @@ namespace Graphite {
 
 		DrawFilters(timeline, context.Prices);
 
-		// The table fills the tab until a request is picked, and then shares it with that
-		// request's details below a divider the reader drags — the layout of the app's other
-		// lists with a detail pane, whose close in the corner hands the tab back to the table.
-		// A selection that names no request any more, after the timeline was read again, shows
-		// no pane rather than an empty one.
 		const bool hasSelection = m_Selected && *m_Selected < timeline.GetRequests().size();
 
-		// Inside a child of its own, with the flags and the padding the table had before it
-		// was drawn in DrawSplitResults: that child is unpadded and scrolls sideways, and the
-		// table is sized to fill whatever holds it and scrolls itself. Drawn straight into it,
-		// the table would lose the padding that sets it in from the chart and the filters above,
-		// and the wheel over it could move that child as well as the table.
+		// WARNING: The table sits in a child of its own with the flags and padding it had before it moved into
+		// DrawSplitResults: drawn straight into that unpadded, sideways-scrolling child it would lose its inset
+		// and the wheel over it could move both.
 		const std::function<void()> drawList = [this, &timeline, &context] {
 			if (ImGui::BeginChild("##requestList", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding,
 								  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
@@ -875,9 +867,7 @@ namespace Graphite {
 			ImGui::EndChild();
 		};
 
-		const std::function<void()> drawDetails = [this, &timeline, &context, &events] {
-			DrawDetails(timeline, context, events);
-		};
+		const std::function<void()> drawDetails = [this, &timeline, &context, &events] { DrawDetails(timeline, context, events); };
 
 		DrawSplitResults(SplitResultsInput{.HasSelection = hasSelection,
 										   .ResultsHeight = m_ListHeight,

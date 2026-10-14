@@ -14,7 +14,7 @@ namespace Graphite {
 
 		for (const auto& [model, text] : m_Store.GetClaudePrices())
 		{
-			// A price that does not parse is ignored rather than zeroed: zero would show a
+			// WARNING: A price that does not parse is ignored rather than zeroed, because zero would show a
 			// confident, wrong cost.
 			if (std::optional<Price> price = ParsePrice(text))
 			{

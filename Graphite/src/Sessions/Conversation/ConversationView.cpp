@@ -2,6 +2,7 @@
 
 #include "Core/ImGui/UiScale.h"
 #include "Core/Base/Base.h"
+#include "Core/Base/Strings.h"
 
 #include "Sessions/Requests/RequestRow.h"
 #include "Sessions/SessionDrawing.h"
@@ -9,6 +10,7 @@
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/Transcript/ToolFacts.h"
+#include "UI/TypographicMarks.h"
 #include "Workspace/Workspace.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -24,46 +26,74 @@
 #include <format>
 #include <map>
 #include <string_view>
-#include <tuple>
 
 namespace Graphite {
 
 	namespace {
-		// How far a block's text sits inside its background, and a coloured bar's row text
-		// from the bar.
 		constexpr float kBlockPadding = 8.0f;
 		constexpr float kBarGap = 8.0f;
 
-		constexpr const char* kTimes = " \xc3\x97";
+		constexpr int kJsonIndent = 2;
+		constexpr std::size_t kToolSummaryMaxBytes = 400;
+		constexpr std::size_t kInjectedLabelMaxBytes = 200;
+		constexpr std::size_t kNamedToolCount = 3;
+
+		constexpr float kLinesAroundText = 2.0f;
+		constexpr float kMarkdownHeightFactor = 1.1f;
+		constexpr float kDividerSpacings = 2.0f;
+		constexpr float kSmallestSelectableWidth = 1.0f;
+		constexpr float kAtEndTolerance = 1.0f;
+
+		constexpr float kLevelOneHeadingScale = 1.35f;
+		constexpr float kLevelTwoHeadingScale = 1.2f;
+		constexpr float kLowerHeadingScale = 1.1f;
+		constexpr float kCodePaddingPerFontSize = 0.3f;
+		constexpr float kMarkerGapPerFontSize = 0.4f;
+		constexpr float kCodeBackgroundRounding = 3.0f;
+		constexpr float kBoldOffset = 1.0f;
+
+		const ImVec2 kNoSize(0.0f, 0.0f);
+
+		constexpr bool kNotSelected = false;
+		constexpr bool kNotMeasured = false;
+
+		float WrappedTextHeight(const std::string& text, float width)
+		{
+			const bool hideTextAfterDoubleHash = false;
+			return ImGui::CalcTextSize(text.c_str(), nullptr, hideTextAfterDoubleHash, width).y;
+		}
 
 		std::string Pretty(const std::string& json)
 		{
-			const nlohmann::json parsed = nlohmann::json::parse(json, nullptr, false);
-			return parsed.is_discarded() ? json
-										 : parsed.dump(2, ' ', false, nlohmann::json::error_handler_t::replace);
+			const bool allowExceptions = false;
+			const nlohmann::json parsed = nlohmann::json::parse(json, nullptr, allowExceptions);
+			const bool escapeNonAscii = false;
+			return parsed.is_discarded()
+					   ? json
+					   : parsed.dump(kJsonIndent, ' ', escapeNonAscii, nlohmann::json::error_handler_t::replace);
 		}
 
 		std::string DurationText(const ToolCall& tool)
 		{
-			const auto start = ParseTimestamp(tool.StartedAt);
-			const auto end = ParseTimestamp(tool.FinishedAt);
+			const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> startedAt =
+				ParseTimestamp(tool.StartedAt);
+			const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> finishedAt =
+				ParseTimestamp(tool.FinishedAt);
 
-			if (!start || !end)
+			if (!startedAt || !finishedAt)
 			{
 				return {};
 			}
 
-			const auto span = *end - *start;
-			if (span < std::chrono::seconds{1})
+			const std::chrono::milliseconds elapsed = *finishedAt - *startedAt;
+			if (elapsed < std::chrono::seconds{1})
 			{
-				return std::to_string(span.count()) + "ms";
+				return std::to_string(elapsed.count()) + "ms";
 			}
 
-			return FormatDuration(span);
+			return FormatDuration(elapsed);
 		}
 
-		// A block with a background: the content is drawn on the upper channel of the window's
-		// draw list, and the rectangle behind it on the lower one once its height is known.
 		struct Block
 		{
 			ImVec2 Start;
@@ -74,14 +104,14 @@ namespace Graphite {
 		{
 			ImGui::Spacing();
 
-			ImDrawList* draw = ImGui::GetWindowDrawList();
-			draw->ChannelsSplit(2);
-			draw->ChannelsSetCurrent(1);
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			const int contentChannel = 1;
+			drawList->ChannelsSplit(2);
+			drawList->ChannelsSetCurrent(contentChannel);
 
 			const Block block{ImGui::GetCursorScreenPos(), ImGui::GetContentRegionAvail().x};
 
-			// The top padding, as tall as the item spacing the last line leaves below it.
-			ImGui::Dummy(ImVec2(0.0f, 0.0f));
+			ImGui::Dummy(kNoSize);
 			ImGui::Indent(Core::Scaled(kBlockPadding));
 			return block;
 		}
@@ -91,43 +121,121 @@ namespace Graphite {
 			ImGui::Unindent(Core::Scaled(kBlockPadding));
 
 			const float bottom = ImGui::GetCursorScreenPos().y;
-			ImDrawList* draw = ImGui::GetWindowDrawList();
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-			draw->ChannelsSetCurrent(0);
-			draw->AddRectFilled(block.Start, ImVec2(block.Start.x + block.Width, bottom), colour,
-								ImGui::GetStyle().FrameRounding);
-			draw->ChannelsMerge();
+			const int backgroundChannel = 0;
+			drawList->ChannelsSetCurrent(backgroundChannel);
+			drawList->AddRectFilled(block.Start, ImVec2(block.Start.x + block.Width, bottom), colour,
+									ImGui::GetStyle().FrameRounding);
+			drawList->ChannelsMerge();
 		}
 
-		using RowIdentity = std::tuple<int, std::size_t, std::size_t, std::size_t, bool>;
+		struct MeasuredHeight
+		{
+			float Height = 0.0f;
+			bool Measured = false;
+		};
+
+		bool IsCodeStyle(SpanStyle style)
+		{
+			return style == SpanStyle::Code || style == SpanStyle::BoldCode;
+		}
+
+		float MeasuredWordWidth(float codePadding, std::string_view word, SpanStyle style)
+		{
+			const float padding = IsCodeStyle(style) ? codePadding : 0.0f;
+			return ImGui::CalcTextSize(word.data(), word.data() + word.size()).x + padding;
+		}
+
+		const char* TextEndWithoutTrailingSpaces(const PlacedWord& word)
+		{
+			const char* textBegin = word.Text.c_str();
+			const char* trimmedEnd = textBegin + word.Text.size();
+			while (trimmedEnd > textBegin && trimmedEnd[-1] == ' ')
+			{
+				--trimmedEnd;
+			}
+			return trimmedEnd;
+		}
+
+		ImVec2 WordPosition(const PlacedWord& word, const ImVec2& origin, float indent, float lineHeight)
+		{
+			return ImVec2(origin.x + indent + word.X, origin.y + static_cast<float>(word.Line) * lineHeight);
+		}
+
+		float TextScaleOf(const MarkdownBlock& block)
+		{
+			if (block.Kind != MarkdownKind::Heading)
+			{
+				return 1.0f;
+			}
+
+			if (block.Level == 1)
+			{
+				return kLevelOneHeadingScale;
+			}
+
+			return block.Level == 2 ? kLevelTwoHeadingScale : kLowerHeadingScale;
+		}
 	}
 
-	void ConversationView::Toggle(std::set<std::pair<std::size_t, std::size_t>>& open,
-								  std::pair<std::size_t, std::size_t> key, std::size_t row)
+	ConversationView::RowIdentity ConversationView::IdentityOf(const Row& row)
 	{
-		if (open.contains(key))
+		return RowIdentity{static_cast<int>(row.Kind), row.TurnIndex, row.PartIndex, row.ItemIndex,
+						   row.WasOpenWhenBuilt};
+	}
+
+	void ConversationView::PushGap(std::vector<Row>& rows, std::optional<std::chrono::milliseconds> pause,
+								   std::size_t turnIndex, std::size_t partIndex)
+	{
+		if (pause)
 		{
-			open.erase(key);
+			rows.push_back({.Kind = RowKind::Gap, .TurnIndex = turnIndex, .PartIndex = partIndex, .Pause = *pause});
+		}
+	}
+
+	void ConversationView::PushGapTo(std::vector<Row>& rows, const std::string& latestTime,
+									 std::string_view nextTime, std::size_t turnIndex, std::size_t partIndex)
+	{
+		if (latestTime.empty() || nextTime.empty())
+		{
+			return;
+		}
+
+		PushGap(rows, GapBetween(latestTime, nextTime), turnIndex, partIndex);
+	}
+
+	void ConversationView::PushGapBeforeItem(std::vector<Row>& rows, const std::string& latestTime,
+											 const TurnItem& item, std::size_t turnIndex, std::size_t partIndex)
+	{
+		if (latestTime.empty() || item.At.empty())
+		{
+			return;
+		}
+
+		PushGap(rows, GapBefore(latestTime, item), turnIndex, partIndex);
+	}
+
+	void ConversationView::Toggle(std::set<std::pair<std::size_t, std::size_t>>& openKeys,
+								  std::pair<std::size_t, std::size_t> key, std::size_t rowIndex)
+	{
+		if (openKeys.contains(key))
+		{
+			openKeys.erase(key);
 		}
 		else
 		{
-			open.insert(key);
+			openKeys.insert(key);
 		}
 
-		m_Measured[row] = false;
+		m_Measured[rowIndex] = false;
 		m_OffsetsDirty = true;
 	}
 
 	void ConversationView::Rebuild(const Session& session, float width)
 	{
-		// A session only grows within one generation, so rows already built stay valid and
-		// keep their measured heights; a different generation (the transcript was read again
-		// from nothing) or a new width starts over. The version is not used to detect this:
-		// it resets to zero on a restart, so it is not monotonic across one and cannot tell
-		// "the same session, grown" from "a different session that happens to be as long".
-		const bool sameSession = m_BuiltGeneration != UINT64_MAX && session.GetGeneration() == m_BuiltGeneration;
+		const bool sameSession = m_BuiltGeneration != kNeverBuilt && session.GetGeneration() == m_BuiltGeneration;
 
-		// Cleared before the rows are built, since the rows depend on which runs are open.
 		if (!sameSession)
 		{
 			m_OpenParts.clear();
@@ -135,130 +243,101 @@ namespace Graphite {
 			m_OpenUsage.clear();
 		}
 
-		const auto identity = [](const Row& row) { return RowIdentity{static_cast<int>(row.Kind), row.Turn, row.Part, row.Item, row.Open}; };
-
-		// Heights are kept by what a row shows, not by its index: opening a run of steps
-		// inserts rows in the middle, and every row after it would otherwise take the height of
-		// whatever used to sit at its index.
-		std::map<RowIdentity, std::pair<float, bool>> kept;
+		using KeptHeights = std::map<RowIdentity, MeasuredHeight>;
+		KeptHeights keptHeights;
 
 		if (sameSession && width == m_BuiltWidth)
 		{
-			for (std::size_t index = 0; index < m_Rows.size(); ++index)
+			for (std::size_t rowIndex = 0; rowIndex < m_Rows.size(); ++rowIndex)
 			{
-				kept.emplace(identity(m_Rows[index]), std::make_pair(m_Heights[index], m_Measured[index]));
+				keptHeights.emplace(IdentityOf(m_Rows[rowIndex]),
+									MeasuredHeight{m_Heights[rowIndex], m_Measured[rowIndex]});
 			}
 		}
 
 		const std::vector<Turn>& turns = session.GetTurns();
 		m_Parts.assign(turns.size(), {});
 
-		// A new version may have brought a tool its result, which changes its facts.
 		m_Facts.assign(session.GetTools().size(), std::nullopt);
 
 		std::vector<Row> rows;
+		std::string latestTime;
 
-		// The latest time seen so far, which a gap is measured from.
-		std::string last;
-
-		const auto pushGap = [&rows](std::optional<std::chrono::milliseconds> gap, std::size_t turn, std::size_t part) {
-			if (gap)
-			{
-				rows.push_back({RowKind::Gap, turn, part, 0, *gap});
-			}
-		};
-
-		const auto gapTo = [&rows, &last, &pushGap](std::string_view next, std::size_t turn, std::size_t part) {
-			if (last.empty() || next.empty())
-			{
-				return;
-			}
-
-			pushGap(GapBetween(last, next), turn, part);
-		};
-
-		// Same as gapTo, but for an item that may be a compaction: its own time is taken off
-		// first, so the divider's duration is not shown again as a pause above it.
-		const auto gapBeforeItem = [&rows, &last, &pushGap](const TurnItem& item, std::size_t turn, std::size_t part) {
-			if (last.empty() || item.At.empty())
-			{
-				return;
-			}
-
-			pushGap(GapBefore(last, item), turn, part);
-		};
-
-		for (std::size_t turn = 0; turn < turns.size(); ++turn)
+		for (std::size_t turnIndex = 0; turnIndex < turns.size(); ++turnIndex)
 		{
-			const Turn& current = turns[turn];
+			const Turn& turn = turns[turnIndex];
 
-			if (!current.Prompt.empty())
+			if (!turn.Prompt.empty())
 			{
-				gapTo(current.StartedAt, turn, kBeforeUser);
-				rows.push_back({RowKind::User, turn, 0, 0, {}});
+				PushGapTo(rows, latestTime, turn.StartedAt, turnIndex, kBeforeUser);
+				rows.push_back({.Kind = RowKind::User, .TurnIndex = turnIndex});
 			}
 
-			if (!current.StartedAt.empty())
+			if (!turn.StartedAt.empty())
 			{
-				last = current.StartedAt;
+				latestTime = turn.StartedAt;
 			}
 
-			m_Parts[turn] = SplitTurn(current, session.GetTools());
+			m_Parts[turnIndex] = SplitTurn(turn, session.GetTools());
 
-			for (std::size_t part = 0; part < m_Parts[turn].size(); ++part)
+			for (std::size_t partIndex = 0; partIndex < m_Parts[turnIndex].size(); ++partIndex)
 			{
-				const TurnPart& split = m_Parts[turn][part];
+				const TurnPart& turnPart = m_Parts[turnIndex][partIndex];
 
-				if (split.Items.empty())
+				if (turnPart.Items.empty())
 				{
 					continue;
 				}
 
-				gapBeforeItem(current.Items[split.Items.front()], turn, part);
+				PushGapBeforeItem(rows, latestTime, turn.Items[turnPart.Items.front()], turnIndex, partIndex);
 
-				const bool open = split.Kind == PartKind::Steps && m_OpenParts.contains({turn, part});
-				rows.push_back({RowKind::Part, turn, part, 0, {}, open});
+				const bool isOpen = turnPart.Kind == PartKind::Steps && m_OpenParts.contains({turnIndex, partIndex});
+				rows.push_back({.Kind = RowKind::Part,
+								.TurnIndex = turnIndex,
+								.PartIndex = partIndex,
+								.WasOpenWhenBuilt = isOpen});
 
-				if (open)
+				if (isOpen)
 				{
-					for (const std::size_t item : split.Items)
+					for (const std::size_t itemIndex : turnPart.Items)
 					{
-						rows.push_back({RowKind::Step, turn, part, item, {}});
+						rows.push_back({.Kind = RowKind::Step,
+										.TurnIndex = turnIndex,
+										.PartIndex = partIndex,
+										.ItemIndex = itemIndex});
 					}
 
-					// The usage line closes the run, below whatever its steps opened to.
-					if (split.Requests > 0)
+					if (turnPart.Requests > 0)
 					{
-						rows.push_back({RowKind::RunUsage, turn, part, 0, {}});
+						rows.push_back({.Kind = RowKind::RunUsage, .TurnIndex = turnIndex, .PartIndex = partIndex});
 					}
 				}
 
-				// When the part last did anything, not when its last item was written: a tool
-				// that ran for a quarter of an hour was not a pause.
-				if (std::string at = LastActivity(current, split, session.GetTools()); !at.empty())
+				if (std::string activityTime = LastActivity(turn, turnPart, session.GetTools()); !activityTime.empty())
 				{
-					last = std::move(at);
+					latestTime = std::move(activityTime);
 				}
 			}
 		}
 
 		m_Heights.assign(rows.size(), 0.0f);
-		m_Measured.assign(rows.size(), false);
+		m_Measured.assign(rows.size(), kNotMeasured);
 
-		for (std::size_t index = 0; index < rows.size(); ++index)
+		for (std::size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex)
 		{
-			if (const auto found = kept.find(identity(rows[index])); found != kept.end())
+			const KeptHeights::const_iterator kept = keptHeights.find(IdentityOf(rows[rowIndex]));
+			if (kept != keptHeights.end())
 			{
-				m_Heights[index] = found->second.first;
-				m_Measured[index] = found->second.second;
+				[[maybe_unused]] const auto& [keptIdentity, keptHeight] = *kept;
+				m_Heights[rowIndex] = keptHeight.Height;
+				m_Measured[rowIndex] = keptHeight.Measured;
 			}
 			else
 			{
-				m_Heights[index] = Estimate(session, rows[index], width);
+				m_Heights[rowIndex] = Estimate(session, rows[rowIndex], width);
 			}
 		}
 
-		// Rows may now stand for other parts; each reply is parsed again when next drawn.
 		m_Markdown.clear();
 
 		m_Rows = std::move(rows);
@@ -270,32 +349,32 @@ namespace Graphite {
 
 	float ConversationView::Estimate(const Session& session, const Row& row, float width) const
 	{
-		const float line = ImGui::GetTextLineHeightWithSpacing();
-		const float spacing = ImGui::GetStyle().ItemSpacing.y;
-		const Turn& turn = session.GetTurns()[row.Turn];
+		const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
+		const float itemSpacingY = ImGui::GetStyle().ItemSpacing.y;
+		const Turn& turn = session.GetTurns()[row.TurnIndex];
 
 		switch (row.Kind)
 		{
 		case RowKind::User:
-			return ImGui::CalcTextSize(turn.Prompt.c_str(), nullptr, false, width).y + 2.0f * line;
+			return WrappedTextHeight(turn.Prompt, width) + kLinesAroundText * lineHeight;
 		case RowKind::Gap:
-			return line + 2.0f * spacing;
+			return lineHeight + kDividerSpacings * itemSpacingY;
 		case RowKind::Step:
-			return line;
+			return lineHeight;
 		case RowKind::Part:
 		case RowKind::RunUsage:
 			break;
 		}
 
-		const TurnPart& part = m_Parts[row.Turn][row.Part];
+		const TurnPart& part = m_Parts[row.TurnIndex][row.PartIndex];
 
-		// An opened usage line lists a line per request under it.
-		const float requests =
-			m_OpenUsage.contains({row.Turn, row.Part}) ? line * static_cast<float>(part.RequestKeys.size()) : 0.0f;
+		const float requestLinesHeight = m_OpenUsage.contains({row.TurnIndex, row.PartIndex})
+											 ? lineHeight * static_cast<float>(part.RequestKeys.size())
+											 : 0.0f;
 
 		if (row.Kind == RowKind::RunUsage)
 		{
-			return line + requests;
+			return lineHeight + requestLinesHeight;
 		}
 
 		switch (part.Kind)
@@ -303,52 +382,52 @@ namespace Graphite {
 		case PartKind::Reply:
 		{
 			const std::string& text = turn.Items[part.Items.front()].Text;
-			return ImGui::CalcTextSize(text.c_str(), nullptr, false, width).y * 1.1f + 2.0f * line + requests;
+			return WrappedTextHeight(text, width) * kMarkdownHeightFactor +
+				   kLinesAroundText * lineHeight + requestLinesHeight;
 		}
 		case PartKind::Steps:
-			// An open run's usage line is a row of its own, after its steps.
-			if (row.Open)
+			if (row.WasOpenWhenBuilt)
 			{
-				return line;
+				return lineHeight;
 			}
 
-			return (part.Requests > 0 ? 2.0f * line : line) + requests;
+			return (part.Requests > 0 ? kLinesAroundText * lineHeight : lineHeight) + requestLinesHeight;
 		case PartKind::Injected:
-			return line;
+			return lineHeight;
 		case PartKind::Queued:
 		{
 			const std::string& text = turn.Items[part.Items.front()].Text;
-			return ImGui::CalcTextSize(text.c_str(), nullptr, false, width).y + 2.0f * line;
+			return WrappedTextHeight(text, width) + kLinesAroundText * lineHeight;
 		}
 		case PartKind::Compaction:
-			return line + 2.0f * spacing;
+			return lineHeight + kDividerSpacings * itemSpacingY;
 		}
 
-		return line;
+		return lineHeight;
 	}
 
-	void ConversationView::DrawHeaderTime(const std::string& at, const ConversationContext& context)
+	void ConversationView::DrawHeaderTime(const std::string& timestamp, const ConversationContext& context)
 	{
-		const std::string time = m_Clock.Format(at, ClockStyle::MonthDayHoursMinutes);
+		const std::string formattedTime = m_Clock.Format(timestamp, ClockStyle::MonthDayHoursMinutes);
 
-		if (time.empty())
+		if (formattedTime.empty())
 		{
 			return;
 		}
 
 		ImGui::SameLine();
-		ColouredText(context.Palette.TextDisabled, time);
-		ImGui::SetItemTooltip("%s", m_Clock.Format(at, ClockStyle::DateTimeWeekday).c_str());
+		ColouredText(context.Palette.TextDisabled, formattedTime);
+		ImGui::SetItemTooltip("%s", m_Clock.Format(timestamp, ClockStyle::DateTimeWeekday).c_str());
 	}
 
-	void ConversationView::DrawUser(const std::string& text, const std::string& at, const ConversationContext& context)
+	void ConversationView::DrawUser(const std::string& text, const std::string& timestamp,
+									const ConversationContext& context)
 	{
 		const Block block = BeginBlock();
 
 		ColouredText(context.Palette.Accent, "User");
-		DrawHeaderTime(at, context);
+		DrawHeaderTime(timestamp, context);
 
-		// The prompt as the user typed it: not markdown, which a prompt rarely is on purpose.
 		ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - Core::Scaled(kBlockPadding));
 		ImGui::TextUnformatted(text.c_str(), text.c_str() + text.size());
 		ImGui::PopTextWrapPos();
@@ -356,68 +435,64 @@ namespace Graphite {
 		EndBlock(block, context.Palette.UserBlock);
 	}
 
-	void ConversationView::DrawUsage(const TurnPart& part, std::size_t row, float width,
+	void ConversationView::DrawUsage(const TurnPart& part, std::size_t rowIndex, float width,
 									 const ConversationContext& context)
 	{
-		const std::pair<std::size_t, std::size_t> key{m_Rows[row].Turn, m_Rows[row].Part};
+		const std::pair<std::size_t, std::size_t> key{m_Rows[rowIndex].TurnIndex, m_Rows[rowIndex].PartIndex};
 		const float lineHeight = ImGui::GetTextLineHeight();
 		const ImVec2 start = ImGui::GetCursorScreenPos();
 
-		// Never zero: a Selectable given no width takes the rest of the window, past the block.
-		width = std::max(width, 1.0f);
-		const float right = start.x + width;
+		const float selectableWidth = std::max(width, kSmallestSelectableWidth);
+		const float right = start.x + selectableWidth;
 
-		if (ImGui::Selectable("##usage", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(width, lineHeight)))
+		if (ImGui::Selectable("##usage", kNotSelected, ImGuiSelectableFlags_AllowOverlap, ImVec2(selectableWidth, lineHeight)))
 		{
-			Toggle(m_OpenUsage, key, row);
+			Toggle(m_OpenUsage, key, rowIndex);
 		}
 
-		// The chevron says the line opens, as a run of steps' does.
-		const bool open = m_OpenUsage.contains(key);
-		ImVec2 at = start;
-		DrawPiece(at, context.Palette.TextDisabled,
-				  Fitted(std::string{open ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " ", right - at.x));
-		DrawPiece(at, context.Palette.TextDisabled,
-				  Fitted(UsageLine(part.Usage, part.Requests, context.Prices), right - at.x));
+		const bool isOpen = m_OpenUsage.contains(key);
+		ImVec2 cursor = start;
+		DrawPiece(cursor, context.Palette.TextDisabled,
+				  Fitted(std::string{isOpen ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " ", right - cursor.x));
+		DrawPiece(cursor, context.Palette.TextDisabled,
+				  Fitted(UsageLine(part.Usage, part.Requests, context.Prices), right - cursor.x));
 
-		if (!open || context.Timeline == nullptr)
+		if (!isOpen || context.Timeline == nullptr)
 		{
 			return;
 		}
 
 		const std::vector<ApiRequest>& requests = context.Timeline->GetRequests();
-		const float space = ImGui::GetStyle().ItemSpacing.x;
-		const float button = ImGui::CalcTextSize(ICON_MDI_ARROW_RIGHT).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+		const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
+		const float buttonWidth = ImGui::CalcTextSize(ICON_MDI_ARROW_RIGHT).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+		const bool canOpenRequest = static_cast<bool>(context.OpenRequest);
 
 		ImGui::Indent();
 
 		for (const std::string& requestKey : part.RequestKeys)
 		{
-			// A key the timeline has not cut a request for has nothing to show.
-			const std::optional<std::size_t> position = context.Timeline->IndexOf(requestKey);
-			if (!position)
+			const std::optional<std::size_t> requestPosition = context.Timeline->IndexOf(requestKey);
+			if (!requestPosition)
 			{
 				continue;
 			}
 
-			// By the request's place in the session, which no other line under this usage shares.
-			ImGui::PushID(static_cast<int>(*position));
+			ImGui::PushID(static_cast<int>(*requestPosition));
 
-			const ImVec2 line = ImGui::GetCursorScreenPos();
-			const float buttonX = std::max(right - button, line.x);
+			const ImVec2 linePosition = ImGui::GetCursorScreenPos();
+			const float buttonX = std::max(right - buttonWidth, linePosition.x);
+			const float lineRight = canOpenRequest ? buttonX - itemSpacingX : right;
 
-			DrawRequestLine(line, context.OpenRequest ? buttonX - space : right, requests[*position], context.Prices,
-							context.Palette, m_Clock);
+			DrawRequestLine(linePosition, lineRight, requests[*requestPosition], context.Prices, context.Palette,
+							m_Clock);
 
-			// The line went through the draw list; the button, or a Dummy, is the item that makes
-			// it one line tall.
-			if (context.OpenRequest)
+			if (canOpenRequest)
 			{
-				ImGui::SetCursorScreenPos(ImVec2(buttonX, line.y));
+				ImGui::SetCursorScreenPos(ImVec2(buttonX, linePosition.y));
 
 				if (ImGui::SmallButton(ICON_MDI_ARROW_RIGHT))
 				{
-					context.OpenRequest(*position);
+					context.OpenRequest(*requestPosition);
 				}
 
 				ImGui::SetItemTooltip("Show in the Requests tab");
@@ -433,10 +508,10 @@ namespace Graphite {
 		ImGui::Unindent();
 	}
 
-	void ConversationView::DrawReply(const Turn& turn, const TurnPart& part, std::size_t row,
+	void ConversationView::DrawReply(const Turn& turn, const TurnPart& part, std::size_t rowIndex,
 									 const ConversationContext& context)
 	{
-		const std::pair<std::size_t, std::size_t> key{m_Rows[row].Turn, m_Rows[row].Part};
+		const std::pair<std::size_t, std::size_t> key{m_Rows[rowIndex].TurnIndex, m_Rows[rowIndex].PartIndex};
 		const TurnItem& item = turn.Items[part.Items.front()];
 		const Block block = BeginBlock();
 
@@ -446,7 +521,7 @@ namespace Graphite {
 		if (part.Requests > 0)
 		{
 			ImGui::SameLine();
-			DrawUsage(part, row, ImGui::GetContentRegionAvail().x - Core::Scaled(kBlockPadding), context);
+			DrawUsage(part, rowIndex, ImGui::GetContentRegionAvail().x - Core::Scaled(kBlockPadding), context);
 		}
 
 		DrawMarkdown(item.Text, key, context);
@@ -455,22 +530,20 @@ namespace Graphite {
 	}
 
 	void ConversationView::DrawStepsHeader(const Session& session, const Turn& turn, const TurnPart& part,
-										   std::size_t row, const ConversationContext& context)
+										   std::size_t rowIndex, const ConversationContext& context)
 	{
-		const std::pair<std::size_t, std::size_t> key{m_Rows[row].Turn, m_Rows[row].Part};
-		const bool open = m_OpenParts.contains(key);
+		const std::pair<std::size_t, std::size_t> key{m_Rows[rowIndex].TurnIndex, m_Rows[rowIndex].PartIndex};
+		const bool isOpen = m_OpenParts.contains(key);
 		const float lineHeight = ImGui::GetTextLineHeight();
 		const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
 
-		// Coloured by the kind of the first call: a run is usually one kind of work, and a
-		// run with a failure in it is marked as failed whatever it was.
-		ImU32 bar = context.Palette.Other;
-		bool finished = true;
-		bool anyTool = false;
+		ImU32 barColour = context.Palette.Other;
+		bool allToolsFinished = true;
+		bool hasTool = false;
 
-		for (const std::size_t index : part.Items)
+		for (const std::size_t itemIndex : part.Items)
 		{
-			const TurnItem& item = turn.Items[index];
+			const TurnItem& item = turn.Items[itemIndex];
 
 			if (item.Kind != ItemKind::Tool)
 			{
@@ -479,92 +552,97 @@ namespace Graphite {
 
 			const ToolCall& tool = session.GetTools()[item.Tool];
 
-			if (!anyTool)
+			if (!hasTool)
 			{
-				bar = context.Palette.CategoryColor(CategoryOf(tool.Name));
+				barColour = context.Palette.CategoryColor(CategoryOf(tool.Name));
 			}
 
-			anyTool = true;
-			finished = finished && tool.HasResult;
+			hasTool = true;
+			allToolsFinished = allToolsFinished && tool.HasResult;
 		}
 
 		if (part.Failures > 0)
 		{
-			bar = context.Palette.Failed;
+			barColour = context.Palette.Failed;
 		}
 
 		const ImVec2 start = ImGui::GetCursorScreenPos();
 		const float right = start.x + ImGui::GetContentRegionAvail().x;
 
-		CategoryBar(bar, lineHeight);
+		CategoryBar(barColour, lineHeight);
 
-		if (ImGui::Selectable("##steps", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, lineHeight)))
+		if (ImGui::Selectable("##steps", kNotSelected, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, lineHeight)))
 		{
-			Toggle(m_OpenParts, key, row);
+			Toggle(m_OpenParts, key, rowIndex);
 
-			// Opening or closing a run adds or removes rows, which only a rebuild does.
-			m_BuiltVersion = UINT64_MAX;
+			m_BuiltVersion = kNeverBuilt;
 		}
 
-		const std::size_t count = part.Items.size();
-		std::string head = std::string{open ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " " +
-						   std::to_string(count) + (count == 1 ? " step" : " steps");
+		const std::size_t stepCount = part.Items.size();
+		std::string headerText = std::string{isOpen ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " " +
+								 std::to_string(stepCount) + (stepCount == 1 ? " step" : " steps");
 
-		constexpr std::size_t kNamed = 3;
+		const std::size_t namedToolTotal = std::min(part.ToolCounts.size(), kNamedToolCount);
+		std::vector<std::string> namedTools;
 
-		for (std::size_t index = 0; index < part.ToolCounts.size() && index < kNamed; ++index)
+		for (std::size_t toolIndex = 0; toolIndex < namedToolTotal; ++toolIndex)
 		{
-			head += index == 0 ? kDot : ", ";
-			head += part.ToolCounts[index].first + kTimes + std::to_string(part.ToolCounts[index].second);
+			const auto& [toolName, callCount] = part.ToolCounts[toolIndex];
+			namedTools.push_back(toolName + " " + std::string{kMultiplicationSign} + std::to_string(callCount));
 		}
 
-		if (part.ToolCounts.size() > kNamed)
+		if (!namedTools.empty())
 		{
-			head += ", + " + std::to_string(part.ToolCounts.size() - kNamed) + " more";
+			headerText += std::string{kMiddleDotSeparator} + Core::JoinedWith(namedTools, ", ");
 		}
 
-		// The duration and the status are drawn after the names, and the names are cut so
-		// that they always fit.
-		const std::string duration = part.Duration.count() > 0 ? kDot + FormatDuration(part.Duration) : std::string{};
-		const bool showStatus = anyTool && finished;
-		const std::string status = !showStatus		   ? std::string{}
-								   : part.Failures > 0 ? std::string{ICON_MDI_CLOSE} + " " + std::to_string(part.Failures)
-													   : std::string{ICON_MDI_CHECK};
-		const std::string statusDot = showStatus ? kDot : "";
+		if (part.ToolCounts.size() > kNamedToolCount)
+		{
+			headerText += ", + " + std::to_string(part.ToolCounts.size() - kNamedToolCount) + " more";
+		}
 
-		const float tail = ImGui::CalcTextSize((duration + statusDot + status).c_str()).x;
-		ImVec2 at(start.x + Core::Scaled(kBarGap), start.y);
+		const std::string durationText =
+			part.Duration.count() > 0 ? std::string{kMiddleDotSeparator} + FormatDuration(part.Duration) : std::string{};
+		const bool showStatus = hasTool && allToolsFinished;
 
-		DrawPiece(at, ink, Fitted(head, right - at.x - tail));
-		DrawPiece(at, context.Palette.TextDisabled, duration + statusDot);
-		DrawPiece(at, part.Failures > 0 ? context.Palette.Failed : ink, status);
+		std::string statusText;
+		if (showStatus)
+		{
+			statusText = part.Failures > 0 ? std::string{ICON_MDI_CLOSE} + " " + std::to_string(part.Failures)
+										   : std::string{ICON_MDI_CHECK};
+		}
 
-		// Open, the run's usage line is a row of its own after the steps: see DrawRunUsage.
-		if (part.Requests > 0 && !open)
+		const std::string statusSeparator = showStatus ? std::string{kMiddleDotSeparator} : std::string{};
+
+		const float trailingWidth = ImGui::CalcTextSize((durationText + statusSeparator + statusText).c_str()).x;
+		ImVec2 cursor(start.x + Core::Scaled(kBarGap), start.y);
+
+		DrawPiece(cursor, ink, Fitted(headerText, right - cursor.x - trailingWidth));
+		DrawPiece(cursor, context.Palette.TextDisabled, durationText + statusSeparator);
+		DrawPiece(cursor, part.Failures > 0 ? context.Palette.Failed : ink, statusText);
+
+		if (part.Requests > 0 && !isOpen)
 		{
 			ImGui::Indent(Core::Scaled(kBarGap));
-			DrawUsage(part, row, ImGui::GetContentRegionAvail().x, context);
+			DrawUsage(part, rowIndex, ImGui::GetContentRegionAvail().x, context);
 			ImGui::Unindent(Core::Scaled(kBarGap));
 		}
 	}
 
-	void ConversationView::DrawRunUsage(const TurnPart& part, std::size_t row, const ConversationContext& context)
+	void ConversationView::DrawRunUsage(const TurnPart& part, std::size_t rowIndex, const ConversationContext& context)
 	{
-		// Indented as a step row is, and past the gap a step leaves for its bar, so the line
-		// starts where the steps' text does. It draws no bar of its own: it is no tool, and a
-		// closed run's usage line has none either.
 		ImGui::Indent();
 		ImGui::Indent(Core::Scaled(kBarGap));
-		DrawUsage(part, row, ImGui::GetContentRegionAvail().x, context);
+		DrawUsage(part, rowIndex, ImGui::GetContentRegionAvail().x, context);
 		ImGui::Unindent(Core::Scaled(kBarGap));
 		ImGui::Unindent();
 	}
 
-	void ConversationView::DrawStep(const Session& session, const TurnItem& item, std::size_t row,
+	void ConversationView::DrawStep(const Session& session, const TurnItem& item, std::size_t rowIndex,
 									const ConversationContext& context, Core::EventBus& events)
 	{
-		const std::pair<std::size_t, std::size_t> key{m_Rows[row].Turn, m_Rows[row].Item};
-		const bool open = m_OpenItems.contains(key);
+		const std::pair<std::size_t, std::size_t> key{m_Rows[rowIndex].TurnIndex, m_Rows[rowIndex].ItemIndex};
+		const bool isOpen = m_OpenItems.contains(key);
 		const SessionPalette& palette = context.Palette;
 
 		switch (item.Kind)
@@ -573,23 +651,22 @@ namespace Graphite {
 			break;
 		case ItemKind::Thinking:
 		{
-			// Empty thinking is never among a run's items; this only guards the row.
 			if (item.Text.empty())
 			{
 				return;
 			}
 
 			const std::string label =
-				std::string{open ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " thinking##thinking";
+				std::string{isOpen ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " thinking##thinking";
 
 			ImGui::PushStyleColor(ImGuiCol_Text, palette.TextDisabled);
 
 			if (ImGui::Selectable(label.c_str()))
 			{
-				Toggle(m_OpenItems, key, row);
+				Toggle(m_OpenItems, key, rowIndex);
 			}
 
-			if (open)
+			if (isOpen)
 			{
 				ImGui::TextWrapped("%s", item.Text.c_str());
 			}
@@ -610,19 +687,18 @@ namespace Graphite {
 
 		const ToolCall& tool = session.GetTools()[item.Tool];
 
-		// Facts parse the tool's result, which is too much to do for every row every frame.
 		if (item.Tool >= m_Facts.size())
 		{
 			m_Facts.resize(session.GetTools().size());
 		}
 
-		std::optional<ToolFacts>& cached = m_Facts[item.Tool];
-		if (!cached)
+		std::optional<ToolFacts>& cachedFacts = m_Facts[item.Tool];
+		if (!cachedFacts)
 		{
-			cached = FactsOf(tool, context.Subagents, context.Prices);
+			cachedFacts = FactsOf(tool, context.Subagents, context.Prices);
 		}
 
-		const ToolFacts& facts = *cached;
+		const ToolFacts& facts = *cachedFacts;
 		const ImU32 colour = tool.IsError ? palette.Failed : palette.CategoryColor(facts.Category);
 		const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
 		const float lineHeight = ImGui::GetTextLineHeight();
@@ -632,75 +708,66 @@ namespace Graphite {
 
 		CategoryBar(colour, lineHeight);
 
-		if (ImGui::Selectable("##step", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, lineHeight)))
+		if (ImGui::Selectable("##step", kNotSelected, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, lineHeight)))
 		{
-			Toggle(m_OpenItems, key, row);
+			Toggle(m_OpenItems, key, rowIndex);
 		}
 
-		// The right column: what came back, the tool's own fact, how long it took, and how it
-		// ended. Pinned to the right edge; the summary gives way to it.
 		std::string column;
 
 		for (const std::string& piece : {facts.Size, facts.Detail, DurationText(tool)})
 		{
-			if (piece.empty())
-			{
-				continue;
-			}
-
-			if (!column.empty())
-			{
-				column += "  ";
-			}
-
-			column += piece;
+			Core::AppendSeparatedIfNotEmpty(column, "  ", piece);
 		}
 
-		const std::string status = !tool.HasResult ? std::string{} : tool.IsError ? ICON_MDI_CLOSE
-																				  : ICON_MDI_CHECK;
-		const float space = ImGui::GetStyle().ItemSpacing.x;
-		const float rightWidth = ImGui::CalcTextSize(column.c_str()).x +
-								 (status.empty() ? 0.0f : space + ImGui::CalcTextSize(status.c_str()).x);
-
-		ImVec2 at(start.x + Core::Scaled(kBarGap), start.y);
-
-		DrawPiece(at, colour, std::string{IconOf(facts.Category)} + " ");
-
-		// The name and the summary are cut as one, so a long name gives way too rather than
-		// running under the right column. The column itself never starts left of the row.
-		const float columnX = std::max(right - rightWidth, at.x);
-
-		DrawPiece(at, ink,
-				  Fitted(tool.Name + "  " + SingleLineLabel(ToolSummary(tool), 400), columnX - space - at.x));
-
-		at.x = columnX;
-		DrawPiece(at, palette.TextDisabled, column);
-
-		if (!status.empty())
+		std::string statusText;
+		if (tool.HasResult)
 		{
-			at.x += space;
-			DrawPiece(at, tool.IsError ? palette.Failed : ink, status);
+			statusText = tool.IsError ? ICON_MDI_CLOSE : ICON_MDI_CHECK;
 		}
 
-		if (!open)
+		const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
+		const float statusWidth = statusText.empty() ? 0.0f : itemSpacingX + ImGui::CalcTextSize(statusText.c_str()).x;
+		const float rightWidth = ImGui::CalcTextSize(column.c_str()).x + statusWidth;
+
+		ImVec2 cursor(start.x + Core::Scaled(kBarGap), start.y);
+
+		DrawPiece(cursor, colour, std::string{IconOf(facts.Category)} + " ");
+
+		const float columnX = std::max(right - rightWidth, cursor.x);
+
+		DrawPiece(cursor, ink,
+				  Fitted(tool.Name + "  " + SingleLineLabel(ToolSummary(tool), kToolSummaryMaxBytes),
+						 columnX - itemSpacingX - cursor.x));
+
+		cursor.x = columnX;
+		DrawPiece(cursor, palette.TextDisabled, column);
+
+		if (!statusText.empty())
+		{
+			cursor.x += itemSpacingX;
+			DrawPiece(cursor, tool.IsError ? palette.Failed : ink, statusText);
+		}
+
+		if (!isOpen)
 		{
 			return;
 		}
 
 		ImGui::Indent();
 
-		if (const std::optional<std::filesystem::path> path = ToolFilePath(tool))
+		if (const std::optional<std::filesystem::path> filePath = ToolFilePath(tool))
 		{
-			const std::string text = Core::ToUtf8(*path);
+			const std::string pathText = Core::ToUtf8(*filePath);
 
-			if (ImGui::SmallButton(text.c_str()))
+			if (ImGui::SmallButton(pathText.c_str()))
 			{
-				events.Publish(OpenFileRequested{*path, false});
+				const bool openPermanently = false;
+				events.Publish(OpenFileRequested{*filePath, openPermanently});
 			}
 		}
 
-		if (context.OpenAgent && context.Links != nullptr && IsAgentCall(tool) &&
-			context.Links->contains(tool.Id))
+		if (context.OpenAgent && context.Links != nullptr && IsAgentCall(tool) && context.Links->contains(tool.Id))
 		{
 			if (ImGui::SmallButton("Open conversation " ICON_MDI_ARROW_RIGHT))
 			{
@@ -708,12 +775,12 @@ namespace Graphite {
 			}
 		}
 
-		if (const std::vector<std::string> lines = EditLines(tool); !lines.empty())
+		if (const std::vector<std::string> editLines = EditLines(tool); !editLines.empty())
 		{
-			for (const std::string& line : lines)
+			for (const std::string& editLine : editLines)
 			{
-				ImGui::PushStyleColor(ImGuiCol_Text, line.starts_with("- ") ? palette.Failed : palette.Run);
-				ImGui::TextWrapped("%s", line.c_str());
+				ImGui::PushStyleColor(ImGuiCol_Text, editLine.starts_with("- ") ? palette.Failed : palette.Run);
+				ImGui::TextWrapped("%s", editLine.c_str());
 				ImGui::PopStyleColor();
 			}
 		}
@@ -726,8 +793,6 @@ namespace Graphite {
 		{
 			ImGui::Separator();
 
-			// Coloured by the style rather than TextColored, which does not wrap: an error is
-			// as long as any other result.
 			if (tool.IsError)
 			{
 				ImGui::PushStyleColor(ImGuiCol_Text, palette.Failed);
@@ -744,39 +809,41 @@ namespace Graphite {
 		ImGui::Unindent();
 	}
 
-	void ConversationView::DrawInjected(const TurnItem& item, std::size_t row, const ConversationContext& context)
+	void ConversationView::DrawInjected(const TurnItem& item, std::size_t rowIndex, const ConversationContext& context)
 	{
-		const std::size_t turn = m_Rows[row].Turn;
-		const std::pair<std::size_t, std::size_t> key{turn, m_Parts[turn][m_Rows[row].Part].Items.front()};
-		const bool open = m_OpenItems.contains(key);
+		const std::size_t turnIndex = m_Rows[rowIndex].TurnIndex;
+		const std::pair<std::size_t, std::size_t> key{turnIndex,
+													  m_Parts[turnIndex][m_Rows[rowIndex].PartIndex].Items.front()};
+		const bool isOpen = m_OpenItems.contains(key);
 		const ImU32 colour = context.Palette.Injected;
 		const float lineHeight = ImGui::GetTextLineHeight();
 
 		const ImVec2 start = ImGui::GetCursorScreenPos();
 		const float right = start.x + ImGui::GetContentRegionAvail().x;
 
-		if (ImGui::Selectable("##injected", false, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, lineHeight)))
+		if (ImGui::Selectable("##injected", kNotSelected, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, lineHeight)))
 		{
-			Toggle(m_OpenItems, key, row);
+			Toggle(m_OpenItems, key, rowIndex);
 		}
 
-		const std::string time = m_Clock.Format(item.At, ClockStyle::MonthDayHoursMinutes);
-		const float timeWidth = ImGui::CalcTextSize(time.c_str()).x;
-		const float space = ImGui::GetStyle().ItemSpacing.x;
+		const std::string formattedTime = m_Clock.Format(item.At, ClockStyle::MonthDayHoursMinutes);
+		const float timeWidth = ImGui::CalcTextSize(formattedTime.c_str()).x;
+		const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
 
-		ImVec2 at(start.x + Core::Scaled(kBarGap), start.y);
+		ImVec2 cursor(start.x + Core::Scaled(kBarGap), start.y);
 
-		DrawPiece(at, colour, std::string{ICON_MDI_BELL_OUTLINE} + " ");
+		DrawPiece(cursor, colour, std::string{ICON_MDI_BELL_OUTLINE} + " ");
 
-		const float timeX = std::max(right - timeWidth, at.x);
+		const float timeX = std::max(right - timeWidth, cursor.x);
 
-		DrawPiece(at, colour,
-				  Fitted(SingleLineLabel(item.Label.empty() ? item.Text : item.Label, 200), timeX - space - at.x));
+		DrawPiece(cursor, colour,
+				  Fitted(SingleLineLabel(item.Label.empty() ? item.Text : item.Label, kInjectedLabelMaxBytes),
+						 timeX - itemSpacingX - cursor.x));
 
-		at.x = timeX;
-		DrawPiece(at, colour, time);
+		cursor.x = timeX;
+		DrawPiece(cursor, colour, formattedTime);
 
-		if (!open)
+		if (!isOpen)
 		{
 			return;
 		}
@@ -788,12 +855,14 @@ namespace Graphite {
 		ImGui::Unindent();
 	}
 
-	void ConversationView::DrawCompaction(const TurnItem& item, std::size_t row, const ConversationContext& context)
+	void ConversationView::DrawCompaction(const TurnItem& item, std::size_t rowIndex,
+										  const ConversationContext& context)
 	{
-		const std::size_t turn = m_Rows[row].Turn;
-		const std::pair<std::size_t, std::size_t> key{turn, m_Parts[turn][m_Rows[row].Part].Items.front()};
+		const std::size_t turnIndex = m_Rows[rowIndex].TurnIndex;
+		const std::pair<std::size_t, std::size_t> key{turnIndex,
+													  m_Parts[turnIndex][m_Rows[rowIndex].PartIndex].Items.front()};
 		const bool hasSummary = !item.Text.empty();
-		const bool open = hasSummary && m_OpenItems.contains(key);
+		const bool isOpen = hasSummary && m_OpenItems.contains(key);
 		const ImU32 colour = context.Palette.Injected;
 		const float lineHeight = ImGui::GetTextLineHeight();
 
@@ -802,13 +871,11 @@ namespace Graphite {
 		const ImVec2 start = ImGui::GetCursorScreenPos();
 		const float width = ImGui::GetContentRegionAvail().x;
 
-		// Only a divider with a summary to open answers the mouse; one without stays one item
-		// tall all the same, so the row keeps the height the pause row has.
 		if (hasSummary)
 		{
-			if (ImGui::Selectable("##compaction", false, ImGuiSelectableFlags_None, ImVec2(width, lineHeight)))
+			if (ImGui::Selectable("##compaction", kNotSelected, ImGuiSelectableFlags_None, ImVec2(width, lineHeight)))
 			{
-				Toggle(m_OpenItems, key, row);
+				Toggle(m_OpenItems, key, rowIndex);
 			}
 		}
 		else
@@ -818,34 +885,34 @@ namespace Graphite {
 
 		if (item.Compaction.PreTokens && item.Compaction.PostTokens)
 		{
-			ImGui::SetItemTooltip("%s \xe2\x86\x92 %s tokens", FormatTokensExact(*item.Compaction.PreTokens).c_str(),
+			ImGui::SetItemTooltip("%s → %s tokens", FormatTokensExact(*item.Compaction.PreTokens).c_str(),
 								  FormatTokensExact(*item.Compaction.PostTokens).c_str());
 		}
 
-		// The label is cut to the width first; the rule shows only in whatever room is left
-		// either side of it, so at a narrow width the rule goes before any of the words do.
-		const std::string label = Fitted(std::string{ICON_MDI_ARROW_COLLAPSE_VERTICAL} + " " +
-											 CompactionLabel(item.Compaction, m_Clock.Format(item.At, ClockStyle::MonthDayHoursMinutes)),
-										 width);
+		const std::string compactionTime = m_Clock.Format(item.At, ClockStyle::MonthDayHoursMinutes);
+		const std::string label =
+			Fitted(std::string{ICON_MDI_ARROW_COLLAPSE_VERTICAL} + " " + CompactionLabel(item.Compaction, compactionTime),
+				   width);
 		const float labelWidth = ImGui::CalcTextSize(label.c_str()).x;
-		const float space = ImGui::GetStyle().ItemSpacing.x;
+		const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
 		const float labelX = start.x + std::max(0.0f, (width - labelWidth) * 0.5f);
-		const float middle = start.y + lineHeight * 0.5f;
-		ImDrawList* draw = ImGui::GetWindowDrawList();
+		const float middleY = start.y + lineHeight * 0.5f;
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-		if (labelX - space > start.x)
+		if (labelX - itemSpacingX > start.x)
 		{
-			draw->AddLine(ImVec2(start.x, middle), ImVec2(labelX - space, middle), colour);
+			drawList->AddLine(ImVec2(start.x, middleY), ImVec2(labelX - itemSpacingX, middleY), colour);
 		}
-		if (labelX + labelWidth + space < start.x + width)
+		if (labelX + labelWidth + itemSpacingX < start.x + width)
 		{
-			draw->AddLine(ImVec2(labelX + labelWidth + space, middle), ImVec2(start.x + width, middle), colour);
+			drawList->AddLine(ImVec2(labelX + labelWidth + itemSpacingX, middleY), ImVec2(start.x + width, middleY),
+							  colour);
 		}
 
-		ImVec2 at(labelX, start.y);
-		DrawPiece(at, colour, label);
+		ImVec2 cursor(labelX, start.y);
+		DrawPiece(cursor, colour, label);
 
-		if (open)
+		if (isOpen)
 		{
 			ImGui::Indent();
 			ImGui::PushStyleColor(ImGuiCol_Text, colour);
@@ -873,10 +940,8 @@ namespace Graphite {
 	void ConversationView::DrawMarkdown(const std::string& text, std::pair<std::size_t, std::size_t> key,
 										const ConversationContext& context)
 	{
-		// Never negative: a split dragged narrower than the block's padding still lays out, one
-		// word to a line, rather than handing the layout and the code box a width below zero.
 		const float width = std::max(0.0f, ImGui::GetContentRegionAvail().x - Core::Scaled(kBlockPadding));
-		ImDrawList* draw = ImGui::GetWindowDrawList();
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
 
 		MarkdownCache& cache = m_Markdown[key];
 
@@ -888,13 +953,12 @@ namespace Graphite {
 			cache.LaidWidth.reset();
 		}
 
-		// Laid out again only when the width or the font size moved: placing the words measures
-		// every one of them, too much for every visible reply every frame.
-		const bool relayout = !cache.LaidWidth || *cache.LaidWidth != width ||
-							  cache.Layouts.size() != cache.Blocks.size() ||
-							  cache.LaidFontSize != ImGui::GetFontSize();
+		const bool widthChanged = !cache.LaidWidth || *cache.LaidWidth != width;
+		const bool blockCountChanged = cache.Layouts.size() != cache.Blocks.size();
+		const bool fontSizeChanged = cache.LaidFontSize != ImGui::GetFontSize();
+		const bool needsLayout = widthChanged || blockCountChanged || fontSizeChanged;
 
-		if (relayout)
+		if (needsLayout)
 		{
 			cache.Layouts.assign(cache.Blocks.size(), {});
 			cache.LaidWidth = width;
@@ -903,24 +967,21 @@ namespace Graphite {
 
 		const std::vector<MarkdownBlock>& blocks = cache.Blocks;
 
-		for (std::size_t index = 0; index < blocks.size(); ++index)
+		for (std::size_t blockIndex = 0; blockIndex < blocks.size(); ++blockIndex)
 		{
-			const MarkdownBlock& block = blocks[index];
+			const MarkdownBlock& block = blocks[blockIndex];
 
 			if (block.Kind == MarkdownKind::Code)
 			{
-				// Its own box and its own sideways scroll: code is never wrapped, and the
-				// conversation itself has no horizontal scrollbar. The box is padded like a
-				// window; its height is the code's lines in the monospace face it is drawn in,
-				// plus that padding, plus room for the scrollbar when the code is wider than the
-				// space inside the padding, so it never also needs a vertical one.
 				const ImGuiStyle& style = ImGui::GetStyle();
-				ImFont* mono = Core::ImGuiRenderer::GetMonoFont();
-				const float lines = static_cast<float>(std::count(block.Code.begin(), block.Code.end(), '\n') + 1);
+				ImFont* monospaceFont = Core::ImGuiRenderer::GetMonoFont();
+				const float lineCount =
+					static_cast<float>(std::count(block.Code.begin(), block.Code.end(), '\n') + 1);
+				const float keepFontSize = 0.0f;
 
-				ImGui::PushFont(mono, 0.0f);
+				ImGui::PushFont(monospaceFont, keepFontSize);
 				const float codeWidth = ImGui::CalcTextSize(block.Code.c_str(), block.Code.c_str() + block.Code.size()).x;
-				float height = lines * ImGui::GetTextLineHeightWithSpacing() + style.WindowPadding.y * 2.0f;
+				float height = lineCount * ImGui::GetTextLineHeightWithSpacing() + style.WindowPadding.y * 2.0f;
 				ImGui::PopFont();
 
 				if (codeWidth > width - style.WindowPadding.x * 2.0f)
@@ -928,32 +989,26 @@ namespace Graphite {
 					height += style.ScrollbarSize;
 				}
 
-				// Identified by the block's place within the row, which the row's own id
-				// qualifies: stable from frame to frame, so the box keeps its scroll.
-				ImGui::PushID(static_cast<int>(index));
+				ImGui::PushID(static_cast<int>(blockIndex));
 				ImGui::PushStyleColor(ImGuiCol_ChildBg, context.Palette.CodeBlock);
 
 				if (ImGui::BeginChild("##code", ImVec2(width, height), ImGuiChildFlags_AlwaysUseWindowPadding,
 									  ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 				{
-					ImGui::PushFont(mono, 0.0f);
+					ImGui::PushFont(monospaceFont, keepFontSize);
 					ImGui::TextUnformatted(block.Code.c_str(), block.Code.c_str() + block.Code.size());
 					ImGui::PopFont();
 				}
 
-				// EndChild whether or not BeginChild returned true.
+				// WARNING: EndChild must be called whether or not BeginChild returned true.
 				ImGui::EndChild();
 				ImGui::PopStyleColor();
 				ImGui::PopID();
 				continue;
 			}
 
-			const float scale = block.Kind == MarkdownKind::Heading
-									? (block.Level == 1 ? 1.35f : block.Level == 2 ? 1.2f
-																				   : 1.1f)
-									: 1.0f;
-
-			ImGui::PushFont(nullptr, ImGui::GetStyle().FontSizeBase * scale);
+			ImFont* const currentFont = nullptr;
+			ImGui::PushFont(currentFont, ImGui::GetStyle().FontSizeBase * TextScaleOf(block));
 
 			const float indent = block.Kind == MarkdownKind::ListItem
 									 ? ImGui::GetFontSize() * (1.0f + static_cast<float>(block.Level))
@@ -961,106 +1016,89 @@ namespace Graphite {
 			const float lineHeight = ImGui::GetTextLineHeightWithSpacing();
 			const ImVec2 origin = ImGui::GetCursorScreenPos();
 			const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
-			const bool bold = block.Kind == MarkdownKind::Heading;
-			const float codePad = ImGui::GetFontSize() * 0.3f;
+			const bool isHeading = block.Kind == MarkdownKind::Heading;
+			const float codePadding = ImGui::GetFontSize() * kCodePaddingPerFontSize;
 
 			if (block.Kind == MarkdownKind::ListItem)
 			{
-				draw->AddText(ImVec2(origin.x + indent - ImGui::CalcTextSize(block.Marker.c_str()).x -
-										 ImGui::GetFontSize() * 0.4f,
-									 origin.y),
-							  ink, block.Marker.c_str());
+				const float markerWidth = ImGui::CalcTextSize(block.Marker.c_str()).x;
+				const float markerGap = ImGui::GetFontSize() * kMarkerGapPerFontSize;
+				drawList->AddText(ImVec2(origin.x + indent - markerWidth - markerGap, origin.y), ink,
+								  block.Marker.c_str());
 			}
 
-			const auto isCode = [](SpanStyle style) { return style == SpanStyle::Code || style == SpanStyle::BoldCode; };
+			const std::function<float(std::string_view, SpanStyle)> measure =
+				std::bind_front(MeasuredWordWidth, codePadding);
 
-			const auto measure = [codePad, &isCode](std::string_view word, SpanStyle style) {
-				const float pad = isCode(style) ? codePad : 0.0f;
-				return ImGui::CalcTextSize(word.data(), word.data() + word.size()).x + pad;
-			};
-
-			if (relayout)
+			if (needsLayout)
 			{
-				cache.Layouts[index] = LayoutSpans(block.Spans, width - indent, measure);
+				cache.Layouts[blockIndex] = LayoutSpans(block.Spans, width - indent, measure);
 			}
 
-			const std::vector<PlacedWord>& words = cache.Layouts[index];
-			int lastLine = 0;
+			const std::vector<PlacedWord>& words = cache.Layouts[blockIndex];
+			int lastLineIndex = 0;
 
-			// The end of a word's text without the spaces placed after it.
-			const auto trimmedEnd = [](const PlacedWord& word) {
-				const char* begin = word.Text.c_str();
-				const char* trimmed = begin + word.Text.size();
-				while (trimmed > begin && trimmed[-1] == ' ')
-				{
-					--trimmed;
-				}
-				return trimmed;
-			};
-			const auto positionOf = [&](const PlacedWord& word) {
-				return ImVec2(origin.x + indent + word.X, origin.y + static_cast<float>(word.Line) * lineHeight);
-			};
-
-			for (std::size_t at = 0; at < words.size(); ++at)
+			for (std::size_t wordIndex = 0; wordIndex < words.size(); ++wordIndex)
 			{
-				const PlacedWord& word = words[at];
+				const PlacedWord& word = words[wordIndex];
 				const SpanStyle style = block.Spans[word.Span].Style;
-				const ImVec2 position = positionOf(word);
-				const char* begin = word.Text.c_str();
-				const char* end = begin + word.Text.size();
+				const ImVec2 position = WordPosition(word, origin, indent, lineHeight);
+				const char* wordBegin = word.Text.c_str();
+				const char* wordEnd = wordBegin + word.Text.size();
 
-				if (isCode(style))
+				if (IsCodeStyle(style))
 				{
-					// One background for the run of words of this span on this line, not one per
-					// word; it covers the words, not the space placed after the last of them.
-					std::size_t last = at;
-					while (last + 1 < words.size() && words[last + 1].Span == word.Span &&
-						   words[last + 1].Line == word.Line)
+					std::size_t lastWordOfRun = wordIndex;
+					while (lastWordOfRun + 1 < words.size() && words[lastWordOfRun + 1].Span == word.Span &&
+						   words[lastWordOfRun + 1].Line == word.Line)
 					{
-						++last;
+						++lastWordOfRun;
 					}
 
-					const PlacedWord& tail = words[last];
-					const ImVec2 tailAt = positionOf(tail);
-					const ImVec2 tailSize = ImGui::CalcTextSize(tail.Text.c_str(), trimmedEnd(tail));
-					draw->AddRectFilled(position,
-										ImVec2(tailAt.x + tailSize.x + codePad, position.y + ImGui::GetTextLineHeight()),
-										context.Palette.CodeBlock, 3.0f);
+					const PlacedWord& runTail = words[lastWordOfRun];
+					const ImVec2 runTailPosition = WordPosition(runTail, origin, indent, lineHeight);
+					const ImVec2 runTailSize =
+						ImGui::CalcTextSize(runTail.Text.c_str(), TextEndWithoutTrailingSpaces(runTail));
+					drawList->AddRectFilled(
+						position,
+						ImVec2(runTailPosition.x + runTailSize.x + codePadding, position.y + ImGui::GetTextLineHeight()),
+						context.Palette.CodeBlock, kCodeBackgroundRounding);
 
-					for (std::size_t each = at; each <= last; ++each)
+					for (std::size_t runIndex = wordIndex; runIndex <= lastWordOfRun; ++runIndex)
 					{
-						const ImVec2 eachAt = positionOf(words[each]);
-						const char* eachBegin = words[each].Text.c_str();
-						const ImVec2 textAt(eachAt.x + codePad * 0.5f, eachAt.y);
-						draw->AddText(textAt, ink, eachBegin, trimmedEnd(words[each]));
+						const ImVec2 runWordPosition = WordPosition(words[runIndex], origin, indent, lineHeight);
+						const char* runWordBegin = words[runIndex].Text.c_str();
+						const ImVec2 textPosition(runWordPosition.x + codePadding * 0.5f, runWordPosition.y);
+						drawList->AddText(textPosition, ink, runWordBegin, TextEndWithoutTrailingSpaces(words[runIndex]));
 
 						if (style == SpanStyle::BoldCode)
 						{
-							draw->AddText(ImVec2(textAt.x + 1.0f, textAt.y), ink, eachBegin, trimmedEnd(words[each]));
+							drawList->AddText(ImVec2(textPosition.x + kBoldOffset, textPosition.y), ink, runWordBegin,
+											  TextEndWithoutTrailingSpaces(words[runIndex]));
 						}
 					}
 
-					lastLine = tail.Line;
-					at = last;
+					lastLineIndex = runTail.Line;
+					wordIndex = lastWordOfRun;
 					continue;
 				}
 
-				draw->AddText(position, ink, begin, end);
+				drawList->AddText(position, ink, wordBegin, wordEnd);
 
-				// There is one text face; bold is the same glyphs drawn twice, a pixel apart.
-				if (bold || style == SpanStyle::Bold)
+				if (isHeading || style == SpanStyle::Bold)
 				{
-					draw->AddText(ImVec2(position.x + 1.0f, position.y), ink, begin, end);
+					drawList->AddText(ImVec2(position.x + kBoldOffset, position.y), ink, wordBegin, wordEnd);
 				}
 
-				lastLine = word.Line;
+				lastLineIndex = word.Line;
 			}
 
 			ImGui::PopFont();
 
-			// The layout drew through the draw list; the cursor has to be moved past it with an
-			// item, or ImGui asserts on the next SetCursorPos.
-			ImGui::Dummy(ImVec2(width, static_cast<float>(words.empty() ? 1 : lastLine + 1) * lineHeight));
+			// WARNING: The words went through the draw list, so an item has to move the cursor past
+			// them, or ImGui asserts on the next SetCursorPos.
+			const int layoutLineCount = words.empty() ? 1 : lastLineIndex + 1;
+			ImGui::Dummy(ImVec2(width, static_cast<float>(layoutLineCount) * lineHeight));
 		}
 	}
 
@@ -1068,11 +1106,10 @@ namespace Graphite {
 								   Core::EventBus& events)
 	{
 		const Row& row = m_Rows[index];
-		const Turn& turn = session.GetTurns()[row.Turn];
+		const Turn& turn = session.GetTurns()[row.TurnIndex];
 
-		// Identified by what the row shows rather than by its index, which moves whenever a run
-		// of steps above it opens: a code box inside keeps its scroll across that.
-		const std::string id = std::format("{}/{}/{}/{}", static_cast<int>(row.Kind), row.Turn, row.Part, row.Item);
+		const std::string id = std::format("{}/{}/{}/{}", static_cast<int>(row.Kind), row.TurnIndex, row.PartIndex,
+										   row.ItemIndex);
 		ImGui::PushID(id.c_str());
 
 		switch (row.Kind)
@@ -1081,11 +1118,11 @@ namespace Graphite {
 			DrawUser(turn.Prompt, turn.StartedAt, context);
 			break;
 		case RowKind::Gap:
-			DrawGap(row.Gap, context);
+			DrawGap(row.Pause, context);
 			break;
 		case RowKind::Part:
 		{
-			const TurnPart& part = m_Parts[row.Turn][row.Part];
+			const TurnPart& part = m_Parts[row.TurnIndex][row.PartIndex];
 
 			switch (part.Kind)
 			{
@@ -1112,11 +1149,11 @@ namespace Graphite {
 		}
 		case RowKind::Step:
 			ImGui::Indent();
-			DrawStep(session, turn.Items[row.Item], index, context, events);
+			DrawStep(session, turn.Items[row.ItemIndex], index, context, events);
 			ImGui::Unindent();
 			break;
 		case RowKind::RunUsage:
-			DrawRunUsage(m_Parts[row.Turn][row.Part], index, context);
+			DrawRunUsage(m_Parts[row.TurnIndex][row.PartIndex], index, context);
 			break;
 		}
 
@@ -1125,18 +1162,14 @@ namespace Graphite {
 
 	void ConversationView::Draw(const Session& session, const ConversationContext& context, Core::EventBus& events)
 	{
-		// No horizontal scrollbar: everything wraps to the window, and a code block scrolls
-		// sideways in a box of its own.
-		// Padded like a window, so the blocks and the right-aligned times keep the same distance
-		// from the scrollbar as from the left edge.
-		if (!ImGui::BeginChild("##conversation", ImVec2(0, 0), ImGuiChildFlags_AlwaysUseWindowPadding,
+		const ImVec2 fillAvailableSpace(0.0f, 0.0f);
+		if (!ImGui::BeginChild("##conversation", fillAvailableSpace, ImGuiChildFlags_AlwaysUseWindowPadding,
 							   ImGuiWindowFlags_None))
 		{
 			ImGui::EndChild();
 			return;
 		}
 
-		// A newer subagent map changes what an Agent call's facts say.
 		if (context.SubagentsVersion != m_FactsSubagentsVersion)
 		{
 			for (std::optional<ToolFacts>& facts : m_Facts)
@@ -1162,53 +1195,53 @@ namespace Graphite {
 		{
 			m_Offsets.assign(m_Rows.size() + 1, 0.0f);
 
-			for (std::size_t index = 0; index < m_Rows.size(); ++index)
+			for (std::size_t rowIndex = 0; rowIndex < m_Rows.size(); ++rowIndex)
 			{
-				m_Offsets[index + 1] = m_Offsets[index] + m_Heights[index];
+				m_Offsets[rowIndex + 1] = m_Offsets[rowIndex] + m_Heights[rowIndex];
 			}
 
 			m_OffsetsDirty = false;
 		}
 
-		const float top = ImGui::GetScrollY();
-		const float bottom = top + ImGui::GetWindowHeight();
-		const float atEnd = ImGui::GetScrollMaxY();
-		const bool wasAtEnd = atEnd <= 0.0f || top >= atEnd - 1.0f;
+		const float scrollTop = ImGui::GetScrollY();
+		const float scrollBottom = scrollTop + ImGui::GetWindowHeight();
+		const float scrollMax = ImGui::GetScrollMaxY();
+		const bool wasAtEnd = scrollMax <= 0.0f || scrollTop >= scrollMax - kAtEndTolerance;
 
-		// Rows overlapping the visible band, plus one either side so a row half in view is drawn.
-		const auto first = std::upper_bound(m_Offsets.begin(), m_Offsets.end(), top);
-		std::size_t begin = first == m_Offsets.begin() ? 0 : static_cast<std::size_t>(first - m_Offsets.begin()) - 1;
-		begin = begin > 0 ? begin - 1 : 0;
+		const std::vector<float>::iterator firstOffsetBelowTop =
+			std::upper_bound(m_Offsets.begin(), m_Offsets.end(), scrollTop);
+		const std::size_t rowAtTop = firstOffsetBelowTop == m_Offsets.begin()
+										 ? 0
+										 : static_cast<std::size_t>(firstOffsetBelowTop - m_Offsets.begin()) - 1;
+		const std::size_t firstRowToDraw = rowAtTop > 0 ? rowAtTop - 1 : 0;
 
 		const float startY = ImGui::GetCursorPosY();
 
-		for (std::size_t index = begin; index < m_Rows.size() && m_Offsets[index] < bottom + m_Heights[index]; ++index)
+		for (std::size_t rowIndex = firstRowToDraw;
+			 rowIndex < m_Rows.size() && m_Offsets[rowIndex] < scrollBottom + m_Heights[rowIndex]; ++rowIndex)
 		{
-			ImGui::SetCursorPosY(startY + m_Offsets[index]);
-			const float before = ImGui::GetCursorPosY();
+			ImGui::SetCursorPosY(startY + m_Offsets[rowIndex]);
+			const float cursorYBefore = ImGui::GetCursorPosY();
 
-			DrawRow(session, index, context, events);
+			DrawRow(session, rowIndex, context, events);
 
-			const float taken = ImGui::GetCursorPosY() - before;
+			const float heightTaken = ImGui::GetCursorPosY() - cursorYBefore;
 
-			if (!m_Measured[index] || taken != m_Heights[index])
+			if (!m_Measured[rowIndex] || heightTaken != m_Heights[rowIndex])
 			{
-				m_Heights[index] = taken;
-				m_Measured[index] = true;
+				m_Heights[rowIndex] = heightTaken;
+				m_Measured[rowIndex] = true;
 				m_OffsetsDirty = true;
 			}
 		}
 
-		// The child's scroll range is the whole conversation, drawn or not. The Dummy closes
-		// the layout: a SetCursorPos with no item after it is an assertion failure in ImGui.
 		ImGui::SetCursorPosY(startY + m_Offsets.back());
-		ImGui::Dummy(ImVec2(0.0f, 0.0f));
+		ImGui::Dummy(kNoSize);
 
-		// A live session keeps its newest line in view while the reader is at the end, and
-		// stops following the moment they scroll up.
 		if (m_FollowTail && wasAtEnd)
 		{
-			ImGui::SetScrollHereY(1.0f);
+			const float bottomOfRow = 1.0f;
+			ImGui::SetScrollHereY(bottomOfRow);
 		}
 
 		m_FollowTail = wasAtEnd;

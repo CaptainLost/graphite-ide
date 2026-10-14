@@ -5,20 +5,31 @@
 
 #include <nlohmann/json.hpp>
 
+#include <cstddef>
+#include <cstdint>
 #include <fstream>
 #include <sstream>
+#include <string>
+#include <vector>
 
 namespace Graphite {
 
 	namespace {
+		constexpr std::size_t kTokenCountsPerModel = 5;
+		constexpr std::nullptr_t kNoCallback = nullptr;
+		constexpr bool kAllowExceptions = false;
+		constexpr int kCompactIndent = -1;
+		constexpr char kIndentCharacter = ' ';
+		constexpr bool kEscapeNonAscii = false;
+
 		nlohmann::json UsageJson(const UsageByModel& usage)
 		{
 			nlohmann::json rows = nlohmann::json::array();
 
-			for (const auto& [key, counts] : usage)
+			for (const auto& [modelKey, counts] : usage)
 			{
-				rows.push_back({{"model", key.Model},
-								{"fast", key.Fast},
+				rows.push_back({{"model", modelKey.Model},
+								{"fast", modelKey.Fast},
 								{"counts",
 								 {counts.Input, counts.Output, counts.CacheWrite5m, counts.CacheWrite1h,
 								  counts.CacheRead}}});
@@ -33,9 +44,9 @@ namespace Graphite {
 
 			for (const nlohmann::json& row : rows)
 			{
-				const auto counts = row.at("counts").get<std::vector<std::uint64_t>>();
+				const std::vector<std::uint64_t> counts = row.at("counts").get<std::vector<std::uint64_t>>();
 
-				if (counts.size() != 5)
+				if (counts.size() != kTokenCountsPerModel)
 				{
 					throw nlohmann::json::other_error::create(501, "counts must have five entries", &row);
 				}
@@ -60,15 +71,15 @@ namespace Graphite {
 		std::stringstream buffer;
 		buffer << stream.rdbuf();
 
-		const nlohmann::json root = nlohmann::json::parse(buffer.str(), nullptr, false);
+		const nlohmann::json root = nlohmann::json::parse(buffer.str(), kNoCallback, kAllowExceptions);
 
-		// Not value("version", 0): it throws when the field is there with another type.
+		// WARNING: Reading the version with value("version", 0) would throw when the field has another type.
 		if (root.is_discarded() || !root.is_object())
 		{
 			return {};
 		}
 
-		const auto version = root.find("version");
+		const nlohmann::json::const_iterator version = root.find("version");
 
 		if (version == root.end() || !version->is_number_integer() || *version != kSummaryCacheVersion)
 		{
@@ -77,27 +88,27 @@ namespace Graphite {
 
 		std::vector<SessionSummary> summaries;
 
-		// `at` and `get` throw on a missing or mistyped field. One malformed entry means the
-		// file is not one this build wrote, so the whole cache goes, not only that entry.
+		// WARNING: at and get throw on a missing or mistyped field. One malformed entry means this
+		// build did not write the file, so the whole cache goes, not only that entry.
 		try
 		{
-			for (const nlohmann::json& entry : root.at("sessions"))
+			for (const nlohmann::json& sessionJson : root.at("sessions"))
 			{
 				SessionSummary summary;
-				summary.Id = entry.at("id").get<std::string>();
-				summary.File = Core::FromUtf8(entry.at("file").get<std::string>());
-				summary.Cwd = Core::FromUtf8(entry.at("cwd").get<std::string>());
-				summary.Title = entry.at("title").get<std::string>();
-				summary.FirstPrompt = entry.at("firstPrompt").get<std::string>();
-				summary.StartedAt = entry.at("startedAt").get<std::string>();
-				summary.EndedAt = entry.at("endedAt").get<std::string>();
-				summary.Main = UsageFrom(entry.at("main"));
-				summary.Subagents = UsageFrom(entry.at("subagents"));
-				summary.SubagentCount = entry.at("subagentCount").get<std::size_t>();
-				summary.SkippedLines = entry.at("skippedLines").get<std::size_t>();
-				summary.Print.WriteTicks = entry.at("writeTicks").get<std::int64_t>();
-				summary.Print.Bytes = entry.at("bytes").get<std::uint64_t>();
-				summary.Print.Files = entry.at("files").get<std::size_t>();
+				summary.Id = sessionJson.at("id").get<std::string>();
+				summary.File = Core::FromUtf8(sessionJson.at("file").get<std::string>());
+				summary.Cwd = Core::FromUtf8(sessionJson.at("cwd").get<std::string>());
+				summary.Title = sessionJson.at("title").get<std::string>();
+				summary.FirstPrompt = sessionJson.at("firstPrompt").get<std::string>();
+				summary.StartedAt = sessionJson.at("startedAt").get<std::string>();
+				summary.EndedAt = sessionJson.at("endedAt").get<std::string>();
+				summary.Main = UsageFrom(sessionJson.at("main"));
+				summary.Subagents = UsageFrom(sessionJson.at("subagents"));
+				summary.SubagentCount = sessionJson.at("subagentCount").get<std::size_t>();
+				summary.SkippedLines = sessionJson.at("skippedLines").get<std::size_t>();
+				summary.Print.WriteTicks = sessionJson.at("writeTicks").get<std::int64_t>();
+				summary.Print.Bytes = sessionJson.at("bytes").get<std::uint64_t>();
+				summary.Print.Files = sessionJson.at("files").get<std::size_t>();
 				summaries.push_back(std::move(summary));
 			}
 		}
@@ -133,8 +144,8 @@ namespace Graphite {
 
 		const nlohmann::json root = {{"version", kSummaryCacheVersion}, {"sessions", std::move(sessions)}};
 
-		// Swapped into place, so a crash mid-write or a second instance saving at the same
-		// moment leaves the old cache or the new one, never a truncated file.
-		return Core::WriteFileAtomically(file, root.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace));
+		const std::string content =
+			root.dump(kCompactIndent, kIndentCharacter, kEscapeNonAscii, nlohmann::json::error_handler_t::replace);
+		return Core::WriteFileAtomically(file, content);
 	}
 }

@@ -9,12 +9,8 @@
 namespace Graphite {
 
 	namespace {
-		// A directory the watcher reports may carry a trailing separator; filename() is then
-		// empty and every lexically_relative comparison below would count one path element too
-		// many, splitting what should be "this project" into "this project" plus a phantom
-		// empty child. parent_path() drops exactly that trailing separator and nothing else —
-		// applied twice it is a no-op, since a path with no trailing separator already has a
-		// non-empty filename().
+		// WARNING: A directory the watcher reports may end in a separator, which makes lexically_relative count
+		// one phantom empty element. parent_path() of such a path drops exactly that separator.
 		std::filesystem::path WithoutTrailingSeparator(const std::filesystem::path& path)
 		{
 			return path.filename().empty() && path.has_relative_path() ? path.parent_path() : path;
@@ -25,23 +21,19 @@ namespace Graphite {
 			std::vector<std::filesystem::path> directories;
 			std::error_code status;
 
-			for (std::filesystem::directory_iterator it{projects, status}, end; !status && it != end;
-				 it.increment(status))
+			for (std::filesystem::directory_iterator entryIterator{projects, status}, endIterator;
+				 !status && entryIterator != endIterator; entryIterator.increment(status))
 			{
-				if (it->is_directory(status))
+				if (entryIterator->is_directory(status))
 				{
-					directories.push_back(it->path());
+					directories.push_back(entryIterator->path());
 				}
 			}
 
 			return directories;
 		}
 
-		// Re-summarises `file` if its fingerprint moved and records what was delivered; a file
-		// that is gone and was known is reported as removed. A file that cannot be read is
-		// neither delivered nor recorded, so the watcher's next report of it tries again.
-		void Examine(const std::filesystem::path& file, std::map<std::filesystem::path, Fingerprint>& prints,
-					 IndexDelivery& out)
+		void Examine(const std::filesystem::path& file, FingerprintsByFile& prints, IndexDelivery& delivery)
 		{
 			std::error_code status;
 
@@ -49,15 +41,15 @@ namespace Graphite {
 			{
 				if (prints.erase(file) > 0)
 				{
-					out.Removed.push_back(file);
+					delivery.Removed.push_back(file);
 				}
 				return;
 			}
 
 			const Fingerprint print = FingerprintOf(file);
-			const auto known = prints.find(file);
+			const bool isUnchanged = prints.contains(file) && prints.at(file) == print;
 
-			if (known != prints.end() && known->second == print)
+			if (isUnchanged)
 			{
 				return;
 			}
@@ -70,7 +62,7 @@ namespace Graphite {
 			}
 
 			prints[file] = summary->Print;
-			out.Updated.push_back(std::move(*summary));
+			delivery.Updated.push_back(std::move(*summary));
 		}
 	}
 
@@ -79,12 +71,12 @@ namespace Graphite {
 		std::vector<std::filesystem::path> files;
 		std::error_code status;
 
-		for (std::filesystem::directory_iterator it{projectDirectory, status}, end; !status && it != end;
-			 it.increment(status))
+		for (std::filesystem::directory_iterator entryIterator{projectDirectory, status}, endIterator;
+			 !status && entryIterator != endIterator; entryIterator.increment(status))
 		{
-			if (it->is_regular_file(status) && it->path().extension() == ".jsonl")
+			if (entryIterator->is_regular_file(status) && entryIterator->path().extension() == ".jsonl")
 			{
-				files.push_back(it->path());
+				files.push_back(entryIterator->path());
 			}
 		}
 
@@ -96,11 +88,11 @@ namespace Graphite {
 													const Core::CancellationToken& token,
 													const std::function<void(SessionSummary)>& onSummary)
 	{
-		std::map<std::filesystem::path, const SessionSummary*> byFile;
+		std::map<std::filesystem::path, const SessionSummary*> cachedSummaryByFile;
 
 		for (const SessionSummary& summary : cached)
 		{
-			byFile[summary.File] = &summary;
+			cachedSummaryByFile[summary.File] = &summary;
 		}
 
 		for (const std::filesystem::path& project : ProjectDirectories(projects))
@@ -112,22 +104,17 @@ namespace Graphite {
 					return {};
 				}
 
-				const auto found = byFile.find(file);
+				std::map<std::filesystem::path, const SessionSummary*>::node_type cachedNode =
+					cachedSummaryByFile.extract(file);
+				const bool isCached = !cachedNode.empty();
 
-				if (found != byFile.end() && found->second->Print == FingerprintOf(file))
+				if (isCached && cachedNode.mapped()->Print == FingerprintOf(file))
 				{
-					onSummary(*found->second);
+					onSummary(*cachedNode.mapped());
 				}
 				else if (std::optional<SessionSummary> summary = TrySummariseSession(file))
 				{
 					onSummary(std::move(*summary));
-				}
-
-				// Found, whether or not it could be read: an unreadable file is still there, and
-				// its cached summary is the best there is until it reads again.
-				if (found != byFile.end())
-				{
-					byFile.erase(found);
 				}
 			}
 		}
@@ -137,15 +124,15 @@ namespace Graphite {
 			return {};
 		}
 
-		std::vector<std::filesystem::path> gone;
-		gone.reserve(byFile.size());
+		std::vector<std::filesystem::path> vanishedFiles;
+		vanishedFiles.reserve(cachedSummaryByFile.size());
 
-		for (const auto& [file, summary] : byFile)
+		for (const auto& [file, summary] : cachedSummaryByFile)
 		{
-			gone.push_back(file);
+			vanishedFiles.push_back(file);
 		}
 
-		return gone;
+		return vanishedFiles;
 	}
 
 	std::optional<std::filesystem::path> SessionFileFor(const std::filesystem::path& projects,
@@ -154,21 +141,21 @@ namespace Graphite {
 		const std::filesystem::path relative =
 			WithoutTrailingSeparator(changedDirectory).lexically_relative(projects);
 
-		auto part = relative.begin();
+		std::filesystem::path::iterator pathElement = relative.begin();
 
-		if (relative.empty() || *part == "..")
+		if (relative.empty() || *pathElement == "..")
 		{
 			return std::nullopt;
 		}
 
-		const std::filesystem::path project = *part++;
+		const std::filesystem::path project = *pathElement++;
 
-		if (part == relative.end())
+		if (pathElement == relative.end())
 		{
 			return std::nullopt;
 		}
 
-		const std::filesystem::path session = *part;
+		const std::filesystem::path session = *pathElement;
 		return projects / project / (session.native() + L".jsonl");
 	}
 
@@ -195,9 +182,21 @@ namespace Graphite {
 				--inbox->Pending;
 			}
 
-			// Covers whatever the work delivered last, and the end of scanning itself.
 			Core::Redraw::Request();
 		});
+	}
+
+	void SessionIndex::DeliverScannedSummary(Inbox& inbox, Known& known, SessionSummary summary)
+	{
+		known.Fingerprints[summary.File] = summary.Print;
+
+		{
+			const std::lock_guard<std::mutex> guard(inbox.Mutex);
+			inbox.Ready.Updated.push_back(std::move(summary));
+		}
+
+		++inbox.Scanned;
+		Core::Redraw::Request();
 	}
 
 	void SessionIndex::Start(std::filesystem::path projects, std::vector<SessionSummary> cached)
@@ -209,41 +208,26 @@ namespace Graphite {
 		m_Projects = projects;
 
 		Submit([projects = std::move(projects), cached = std::move(cached), token = m_Token](Inbox& inbox, Known& known) {
-			// Listing the directories is cheap beside reading the files, and gives the total
-			// the count is shown against.
-			std::size_t total = 0;
+			std::size_t sessionFileTotal = 0;
 			for (const std::filesystem::path& project : ProjectDirectories(projects))
 			{
-				total += SessionFilesUnder(project).size();
+				sessionFileTotal += SessionFilesUnder(project).size();
 			}
-			inbox.Total = total;
+			inbox.Total = sessionFileTotal;
 
-			std::vector<std::filesystem::path> gone =
+			std::vector<std::filesystem::path> removedWhileNotWatching =
 				ScanProjects(projects, cached, token, [&inbox, &known](SessionSummary summary) {
-					known.Prints[summary.File] = summary.Print;
-
-					// Delivered one at a time, so the list fills while the scan runs.
-					{
-						const std::lock_guard<std::mutex> guard(inbox.Mutex);
-						inbox.Ready.Updated.push_back(std::move(summary));
-					}
-
-					++inbox.Scanned;
-					Core::Redraw::Request();
+					DeliverScannedSummary(inbox, known, std::move(summary));
 				});
 
-			// The caller shows the cache before the scan confirms it, so a session whose file
-			// went away while nothing was watching must be taken back out explicitly; no
-			// watcher report will ever name it.
 			const std::lock_guard<std::mutex> guard(inbox.Mutex);
-			for (std::filesystem::path& file : gone)
+			for (std::filesystem::path& file : removedWhileNotWatching)
 			{
 				inbox.Ready.Removed.push_back(std::move(file));
 			}
 
-			// After everything above is in the inbox: a reader that sees the flag and then
-			// takes has the whole scan. A cancelled scan returns early without it, and its
-			// inbox is dropped by the next Start anyway.
+			// WARNING: The flag is set after everything above is in the inbox, so a reader that sees it and then
+			// takes has the whole scan. A cancelled scan never sets it; the next Start drops its inbox anyway.
 			if (!token.IsCancelled())
 			{
 				inbox.Scanned = inbox.Total.load();
@@ -257,9 +241,9 @@ namespace Graphite {
 		Submit([projects = m_Projects, directories = std::move(changedDirectories)](Inbox& inbox, Known& known) {
 			std::set<std::filesystem::path> files;
 
-			for (const std::filesystem::path& raw : directories)
+			for (const std::filesystem::path& reportedDirectory : directories)
 			{
-				const std::filesystem::path directory = WithoutTrailingSeparator(raw);
+				const std::filesystem::path directory = WithoutTrailingSeparator(reportedDirectory);
 
 				if (std::optional<std::filesystem::path> session = SessionFileFor(projects, directory))
 				{
@@ -267,8 +251,6 @@ namespace Graphite {
 					continue;
 				}
 
-				// A project directory, or `projects` itself: everything under it, plus every
-				// session known there, so a deleted one is noticed.
 				const std::filesystem::path relative = directory.lexically_relative(projects);
 				const bool everything = relative.empty() || relative == ".";
 				const std::vector<std::filesystem::path> projectDirectories =
@@ -282,11 +264,11 @@ namespace Graphite {
 					}
 				}
 
-				for (const auto& [file, print] : known.Prints)
+				for (const auto& [knownFile, fingerprint] : known.Fingerprints)
 				{
-					if (everything || file.parent_path() == directory)
+					if (everything || knownFile.parent_path() == directory)
 					{
-						files.insert(file);
+						files.insert(knownFile);
 					}
 				}
 			}
@@ -295,7 +277,7 @@ namespace Graphite {
 
 			for (const std::filesystem::path& file : files)
 			{
-				Examine(file, known.Prints, delivery);
+				Examine(file, known.Fingerprints, delivery);
 			}
 
 			const std::lock_guard<std::mutex> guard(inbox.Mutex);
@@ -318,22 +300,22 @@ namespace Graphite {
 
 	ScanProgress SessionIndex::InitialScan() const
 	{
-		// Done first: the counts only grow, so a reader that sees the flag sees the final ones.
+		// WARNING: Done is read first. The counts only grow, so a reader that sees the flag sees the final ones.
 		const bool done = m_Inbox->InitialScanDone.load();
-		return {done, m_Inbox->Scanned.load(), m_Inbox->Total.load()};
+		return {.Done = done, .Scanned = m_Inbox->Scanned.load(), .Total = m_Inbox->Total.load()};
 	}
 
-	void SessionIndex::Take(IndexDelivery& out)
+	void SessionIndex::Take(IndexDelivery& delivery)
 	{
 		const std::lock_guard<std::mutex> guard(m_Inbox->Mutex);
 
 		for (SessionSummary& summary : m_Inbox->Ready.Updated)
 		{
-			out.Updated.push_back(std::move(summary));
+			delivery.Updated.push_back(std::move(summary));
 		}
 		for (std::filesystem::path& file : m_Inbox->Ready.Removed)
 		{
-			out.Removed.push_back(std::move(file));
+			delivery.Removed.push_back(std::move(file));
 		}
 
 		m_Inbox->Ready = {};

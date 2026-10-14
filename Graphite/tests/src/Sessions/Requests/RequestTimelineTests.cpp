@@ -13,8 +13,6 @@ namespace {
 		return BuildRequestTimeline(ParseTranscript(bytes).Records);
 	}
 
-	// An assistant record with neither a requestId nor a uuid: Fixtures::Assistant always
-	// fills in a uuid, so a truly keyless record has to be built by hand.
 	std::string KeylessAssistant(const nlohmann::json& block, const nlohmann::json& usage,
 								 const std::string& timestamp = "2026-09-17T09:00:01.000Z")
 	{
@@ -27,8 +25,6 @@ namespace {
 								 {"usage", usage}}}});
 	}
 
-	// An assistant record with a requestId but no usage at all, unlike Fixtures::Assistant
-	// which always carries one.
 	std::string AssistantNoUsage(const std::string& requestId, const nlohmann::json& block,
 								 const std::string& timestamp = "2026-09-17T09:00:01.000Z")
 	{
@@ -41,8 +37,6 @@ namespace {
 								{{"role", "assistant"}, {"content", nlohmann::json::array({block})}}}});
 	}
 
-	// A record of an existing request that carries no blocks and no usage, only a stop
-	// reason — the shape a final housekeeping record for a response can take.
 	std::string AssistantStopReasonOnly(const std::string& requestId, const std::string& stopReason,
 										const std::string& timestamp)
 	{
@@ -57,8 +51,6 @@ namespace {
 								 {"stop_reason", stopReason}}}});
 	}
 
-	// A prompt snapshot as Claude Code writes the pair of them: the first before request #1
-	// with the system prompt alone, the second after it with the tools and the CLI prefix.
 	std::string Snapshot(bool withTools)
 	{
 		nlohmann::json attachment = {{"type", "prompt_snapshot"}, {"systemPrompt", nlohmann::json::array({"Be helpful."})}};
@@ -339,8 +331,6 @@ TEST_CASE("An unparseable timestamp does not hide the last good one for Waited")
 
 TEST_CASE("A response waits until its last record, even when a tool's result is written between its records")
 {
-	// Claude Code runs a tool while the response that called it is still being written, so
-	// the tool's result can land between two records of that response.
 	const std::vector<ApiRequest> requests = Build(
 		Fixtures::UserPrompt("go", "2026-09-17T09:00:00.000Z") +
 		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Read", {{"file_path", "a.cpp"}}), Fixtures::Usage(0, 9, 0, 0, 100),
@@ -460,7 +450,6 @@ TEST_CASE("A snapshot arriving after the first request gives it a schema count i
 
 TEST_CASE("A response's character counts are characters, not bytes")
 {
-	// "zażółć": six characters, ten bytes in UTF-8.
 	const std::vector<ApiRequest> requests = Build(
 		Fixtures::Assistant("r1", Fixtures::ThinkingBlock("za\xc5\xbc\xc3\xb3\xc5\x82\xc4\x87"), Fixtures::Usage(1, 1)) +
 		Fixtures::Assistant("r1", Fixtures::TextBlock("za\xc5\xbc\xc3\xb3\xc5\x82\xc4\x87"), Fixtures::Usage(1, 1)));
@@ -482,10 +471,6 @@ TEST_CASE("An attachment is measured by what it carries, not by its transcript l
 
 TEST_CASE("A sent item carries its size in bytes and nothing that guesses at tokens")
 {
-	// A tool result, an image and an attachment in the one request: every kind a sent item can
-	// take size from is measured by its bytes alone. SentItem has no token field to check —
-	// this asserts what stands in its place. SentColumn's "≈ " prefix is Panels, not linked
-	// into this test binary, so it is not asserted here.
 	const std::vector<ApiRequest> requests = Build(
 		Fixtures::UserPrompt("go") +
 		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Read", {{"file_path", "a.cpp"}}), Fixtures::Usage(0, 5, 0, 0, 1000)) +
@@ -508,8 +493,6 @@ TEST_CASE("A sent item carries its size in bytes and nothing that guesses at tok
 
 TEST_CASE("A tool result is measured by the text the model gets, not the metadata kept beside it")
 {
-	// An Edit's result is a line of text; its toolUseResult carries the whole file, which
-	// stays in the transcript and never reaches the model.
 	const std::vector<ApiRequest> requests = Build(
 		Fixtures::UserPrompt("go") +
 		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Edit", {{"file_path", "a.cpp"}}), Fixtures::Usage(0, 5, 0, 0, 1000)) +
@@ -555,9 +538,6 @@ TEST_CASE("An image with nothing known about it is still listed")
 
 TEST_CASE("A synthetic response with an all-zero usage is not the next request's baseline")
 {
-	// Claude Code writes an interrupt or an API error as a `<synthetic>` response: a uuid, no
-	// requestId, and a usage of zeros. Measured against it, the next real request would read
-	// as having added its whole context.
 	const std::vector<ApiRequest> requests = Build(
 		Fixtures::Assistant("r1", Fixtures::TextBlock("a"), Fixtures::Usage(0, 1, 0, 0, 5000)) +
 		KeylessAssistant(Fixtures::TextBlock("[Request interrupted by user]"), Fixtures::Usage(0, 0), "2026-09-17T09:00:02.000Z") +
@@ -589,8 +569,7 @@ TEST_CASE("Every sent and returned item carries the text the model saw or wrote"
 		Fixtures::UserPrompt("go") +
 		Fixtures::Assistant("r1", Fixtures::ToolUseBlock("t1", "Bash", {{"command", "ls"}}), Fixtures::Usage(0, 5, 0, 0, 1000)) +
 		Fixtures::ToolResult("t1", "a.cpp") +
-		// A single-element json initializer list whose element is already a json value collapses to that
-		// value rather than an array of one, so the array has to be built explicitly here.
+		// WARNING: A single-element json initializer list whose element is already a json value collapses to that value, so the array is built explicitly.
 		Fixtures::UserBlocks(nlohmann::json::array({Fixtures::ImageBlock("image/png", std::string(4096, 'A'))}),
 							 "2026-09-17T09:00:03.000Z") +
 		Fixtures::RenderedAttachment({{"type", "date"}, {"date", "2026-09-24"}}, {"Today is 2026-09-24."}, "2.1.280",
@@ -668,15 +647,12 @@ TEST_CASE("The prompt snapshots put the system prompt and the tool schemas first
 	REQUIRE(first.Sent.size() == 3);
 	CHECK(first.Sent[0].Kind == SentKind::SystemPrompt);
 	CHECK(first.Sent[0].Label == "System prompt");
-	// The later snapshot replaced the earlier one rather than adding to it.
 	CHECK(first.Sent[0].Text == "Prefix.\n\nBe helpful.");
 	CHECK(first.Sent[1].Kind == SentKind::ToolSchemas);
 	CHECK(first.Sent[1].Label == "Tools (1 schema)");
 	CHECK(first.Sent[1].Bytes == first.Sent[1].Text.size());
 	CHECK(first.Sent[2].Kind == SentKind::Prompt);
 
-	// The second snapshot's tool count reaches the first request even though it arrived after
-	// it, and every request from then on starts with it.
 	CHECK(first.ToolSchemas == 1);
 
 	REQUIRE(requests[1].Sent.size() == 1);

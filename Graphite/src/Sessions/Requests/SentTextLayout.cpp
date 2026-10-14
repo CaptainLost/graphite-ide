@@ -1,121 +1,100 @@
 #include "Sessions/Requests/SentTextLayout.h"
 
+#include "Core/Text/Encoding.h"
+
 #include <algorithm>
 
 namespace Graphite {
 
 	namespace {
-		// The length of the UTF-8 sequence `lead` begins; a stray continuation byte or an
-		// invalid lead counts as one, so a malformed text still advances.
-		std::size_t SequenceLength(unsigned char lead)
+		void WrapLine(std::string_view text, std::size_t lineBegin, std::size_t lineEnd, std::size_t columns,
+					  ByteRanges& wrappedRanges)
 		{
-			if ((lead & 0x80u) == 0)
+			if (lineBegin == lineEnd)
 			{
-				return 1;
-			}
-			if ((lead & 0xE0u) == 0xC0u)
-			{
-				return 2;
-			}
-			if ((lead & 0xF0u) == 0xE0u)
-			{
-				return 3;
-			}
-			if ((lead & 0xF8u) == 0xF0u)
-			{
-				return 4;
-			}
-			return 1;
-		}
-
-		// Breaks the line [begin, end) of `text` at the width, appending its pieces.
-		void WrapLine(std::string_view text, std::size_t begin, std::size_t end, std::size_t columns,
-					  std::vector<std::pair<std::size_t, std::size_t>>& lines)
-		{
-			if (begin == end)
-			{
-				lines.emplace_back(begin, end);
+				wrappedRanges.emplace_back(lineBegin, lineEnd);
 				return;
 			}
 
-			std::size_t start = begin;
+			std::size_t rowBegin = lineBegin;
 
-			while (start < end)
+			while (rowBegin < lineEnd)
 			{
-				// A row the width broke right before a space would start with it; the space is
-				// the break, so the row starts after it. Only on a row a break began: a line's
-				// own leading space is part of its text.
-				if (start > begin && text[start] == ' ')
-				{
-					++start;
+				const bool rowFollowsBreak = rowBegin > lineBegin;
 
-					if (start == end)
+				if (rowFollowsBreak && text[rowBegin] == ' ')
+				{
+					++rowBegin;
+
+					if (rowBegin == lineEnd)
 					{
 						break;
 					}
 				}
 
-				std::size_t at = start;
-				std::size_t used = 0;
-				std::size_t afterSpace = start;
+				std::size_t position = rowBegin;
+				std::size_t columnsUsed = 0;
+				std::size_t afterLastSpace = rowBegin;
 
-				while (at < end)
+				while (position < lineEnd)
 				{
-					const std::size_t width = text[at] == '\t' ? kTabColumns : 1;
+					const std::size_t characterColumns = text[position] == '\t' ? kTabColumns : 1;
+					const bool isFirstCharacterOfRow = position == rowBegin;
 
-					// The first character goes on the line whatever its width, so a line always
-					// moves on.
-					if (used + width > columns && at > start)
+					if (columnsUsed + characterColumns > columns && !isFirstCharacterOfRow)
 					{
 						break;
 					}
 
-					const std::size_t next = std::min(at + SequenceLength(static_cast<unsigned char>(text[at])), end);
+					const std::size_t nextPosition =
+						std::min(position + Core::Utf8SequenceLength(text[position]), lineEnd);
 
-					if (text[at] == ' ')
+					if (text[position] == ' ')
 					{
-						afterSpace = next;
+						afterLastSpace = nextPosition;
 					}
 
-					used += width;
-					at = next;
+					columnsUsed += characterColumns;
+					position = nextPosition;
 				}
 
-				const std::size_t cut = at < end && afterSpace > start ? afterSpace : at;
-				lines.emplace_back(start, cut);
-				start = cut;
+				const bool breakAtLastSpace = position < lineEnd && afterLastSpace > rowBegin;
+				const std::size_t rowEnd = breakAtLastSpace ? afterLastSpace : position;
+				wrappedRanges.emplace_back(rowBegin, rowEnd);
+				rowBegin = rowEnd;
 			}
 		}
 	}
 
-	std::vector<std::pair<std::size_t, std::size_t>> WrapLines(std::string_view text, std::size_t columns)
+	ByteRanges WrapLines(std::string_view text, std::size_t columns)
 	{
-		std::vector<std::pair<std::size_t, std::size_t>> lines;
-		const std::size_t width = std::max<std::size_t>(columns, 1);
-		std::size_t start = 0;
+		ByteRanges wrappedRanges;
+		const std::size_t usableColumns = std::max<std::size_t>(columns, 1);
+		std::size_t lineBegin = 0;
 
-		while (start < text.size())
+		while (lineBegin < text.size())
 		{
-			const std::size_t newline = text.find('\n', start);
-			const std::size_t lineEnd = newline == std::string_view::npos ? text.size() : newline;
+			const std::size_t newlinePosition = text.find('\n', lineBegin);
+			const bool lastLine = newlinePosition == std::string_view::npos;
+			const std::size_t lineEnd = lastLine ? text.size() : newlinePosition;
 			std::size_t visibleEnd = lineEnd;
 
-			if (visibleEnd > start && text[visibleEnd - 1] == '\r')
+			if (visibleEnd > lineBegin && text[visibleEnd - 1] == '\r')
 			{
 				--visibleEnd;
 			}
 
-			WrapLine(text, start, visibleEnd, width, lines);
+			WrapLine(text, lineBegin, visibleEnd, usableColumns, wrappedRanges);
 
-			if (newline == std::string_view::npos)
+			if (lastLine)
 			{
 				break;
 			}
 
-			start = newline + 1;
+			lineBegin = newlinePosition + 1;
 		}
 
-		return lines;
+		return wrappedRanges;
 	}
 
 	std::size_t SegmentCount(const ApiRequest& request)
@@ -130,23 +109,32 @@ namespace Graphite {
 			return request.Sent[segment].Text;
 		}
 
-		segment -= request.Sent.size();
+		const std::size_t responseIndex = segment - request.Sent.size();
 
-		return segment < request.Response.size() ? std::string_view{request.Response[segment].Text} : std::string_view{};
+		return responseIndex < request.Response.size() ? std::string_view{request.Response[responseIndex].Text}
+													   : std::string_view{};
+	}
+
+	bool IsEmptyThinking(const ApiRequest& request, std::size_t segment)
+	{
+		if (segment < request.Sent.size())
+		{
+			return false;
+		}
+
+		const std::size_t responseIndex = segment - request.Sent.size();
+
+		return responseIndex < request.Response.size() &&
+			   request.Response[responseIndex].Kind == ResponseKind::Thinking &&
+			   request.Response[responseIndex].Text.empty();
 	}
 
 	std::string_view DisplayText(const ApiRequest& request, std::size_t segment)
 	{
-		if (segment >= request.Sent.size())
+		if (IsEmptyThinking(request, segment))
 		{
-			const std::size_t response = segment - request.Sent.size();
-
-			if (response < request.Response.size() && request.Response[response].Kind == ResponseKind::Thinking &&
-				request.Response[response].Text.empty())
-			{
-				return "The model reasoned here, but the API returns reasoning hidden: only an encrypted signature "
-					   "reaches Claude Code, so there is no text to show. Its tokens are part of this reply's output.";
-			}
+			return "The model reasoned here, but the API returns reasoning hidden: only an encrypted signature "
+				   "reaches Claude Code, so there is no text to show. Its tokens are part of this reply's output.";
 		}
 
 		return SegmentText(request, segment);
@@ -154,18 +142,19 @@ namespace Graphite {
 
 	std::string AllSegmentText(const ApiRequest& request)
 	{
-		std::string all;
+		std::string allText;
 
-		for (std::size_t i = 0; i < SegmentCount(request); ++i)
+		for (std::size_t segment = 0; segment < SegmentCount(request); ++segment)
 		{
-			if (i > 0)
+			if (segment > 0)
 			{
-				all += "\n\n";
+				allText += "\n\n";
 			}
-			all += SegmentText(request, i);
+
+			allText += SegmentText(request, segment);
 		}
 
-		return all;
+		return allText;
 	}
 
 	void SentTextLayout::Build(const std::vector<std::string_view>& segments, std::size_t columns)
@@ -178,9 +167,9 @@ namespace Graphite {
 			m_FirstRows.push_back(m_Rows.size());
 			m_Rows.push_back({.Segment = segment, .Header = true});
 
-			for (const auto& [begin, end] : WrapLines(segments[segment], columns))
+			for (const auto& [rowBegin, rowEnd] : WrapLines(segments[segment], columns))
 			{
-				m_Rows.push_back({.Segment = segment, .Begin = begin, .End = end});
+				m_Rows.push_back({.Segment = segment, .Begin = rowBegin, .End = rowEnd});
 			}
 		}
 	}

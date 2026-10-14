@@ -2,20 +2,42 @@
 
 #include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Text/Encoding.h"
 
 #include "Sessions/Transcript/InjectedText.h"
 #include "Sessions/Transcript/TranscriptReader.h"
 
 #include <algorithm>
 #include <charconv>
+#include <functional>
 
 namespace Graphite {
 
 	namespace {
 		constexpr std::size_t kPromptBytes = 160;
+		constexpr std::uint64_t kReadFromStart = 0;
 
-		// A typed prompt, as opposed to text Claude Code put in the user's mouth: an injected
-		// skill (IsMeta) or a notification, command echo or reminder recognised by its tag.
+		constexpr std::size_t kMinimumTimestampLength = 19;
+		constexpr std::size_t kTimestampWithMillisecondsLength = 24;
+
+		constexpr std::size_t kYearStart = 0;
+		constexpr std::size_t kYearWidth = 4;
+		constexpr std::size_t kMonthStart = 5;
+		constexpr std::size_t kDayStart = 8;
+		constexpr std::size_t kHourStart = 11;
+		constexpr std::size_t kMinuteStart = 14;
+		constexpr std::size_t kSecondStart = 17;
+		constexpr std::size_t kMillisecondStart = 20;
+		constexpr std::size_t kMillisecondWidth = 3;
+		constexpr std::size_t kTwoDigitWidth = 2;
+
+		constexpr std::size_t kYearMonthSeparatorIndex = 4;
+		constexpr std::size_t kMonthDaySeparatorIndex = 7;
+		constexpr std::size_t kDateTimeSeparatorIndex = 10;
+		constexpr std::size_t kHourMinuteSeparatorIndex = 13;
+		constexpr std::size_t kMinuteSecondSeparatorIndex = 16;
+		constexpr std::size_t kMillisecondSeparatorIndex = 19;
+
 		std::optional<std::string> TypedPrompt(const TranscriptRecord& record)
 		{
 			if (record.Kind != RecordKind::User || record.IsMeta)
@@ -34,54 +56,92 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		void AddFile(Fingerprint& print, const std::filesystem::path& file)
+		void AddFile(Fingerprint& fingerprint, const std::filesystem::path& file)
 		{
-			std::error_code status;
-			const auto size = std::filesystem::file_size(file, status);
-			if (status)
+			std::error_code fileStatus;
+			const std::uintmax_t fileSize = std::filesystem::file_size(file, fileStatus);
+			if (fileStatus)
 			{
 				return;
 			}
 
-			const auto written = std::filesystem::last_write_time(file, status);
-			if (status)
+			const std::filesystem::file_time_type lastWriteTime = std::filesystem::last_write_time(file, fileStatus);
+			if (fileStatus)
 			{
 				return;
 			}
 
-			print.Bytes += size;
-			print.WriteTicks = std::max<std::int64_t>(print.WriteTicks, written.time_since_epoch().count());
-			++print.Files;
+			fingerprint.Bytes += fileSize;
+			fingerprint.WriteTicks =
+				std::max<std::int64_t>(fingerprint.WriteTicks, lastWriteTime.time_since_epoch().count());
+			++fingerprint.Files;
 		}
 
-		template<std::invocable<const std::filesystem::path&> Visit>
-		void ForEachSubagent(const std::filesystem::path& sessionFile, Visit visit)
+		void ForEachSubagent(const std::filesystem::path& sessionFile,
+							 const std::function<void(const std::filesystem::path&)>& visit)
 		{
-			std::error_code status;
+			std::error_code directoryStatus;
 			const std::filesystem::path directory = SubagentDirectory(sessionFile);
 
-			for (std::filesystem::directory_iterator it{directory, status}, end; !status && it != end;
-				 it.increment(status))
+			for (std::filesystem::directory_iterator entryIterator{directory, directoryStatus}, endOfDirectory;
+				 !directoryStatus && entryIterator != endOfDirectory; entryIterator.increment(directoryStatus))
 			{
-				if (it->path().extension() == ".jsonl")
+				if (entryIterator->path().extension() == ".jsonl")
 				{
-					visit(it->path());
+					visit(entryIterator->path());
 				}
 			}
 		}
 
-		// Parses a fixed-width field at `start`..`start+width` into `value`; returns false if
-		// the field is not entirely digits of that width.
-		bool ParseField(std::string_view text, std::size_t start, std::size_t width, int& value)
+		bool ParseField(std::string_view text, std::size_t fieldStart, std::size_t fieldWidth, int& value)
 		{
-			if (start + width > text.size())
+			if (fieldStart + fieldWidth > text.size())
 			{
 				return false;
 			}
 
-			const std::string_view field = text.substr(start, width);
-			const auto [next, error] = std::from_chars(field.data(), field.data() + field.size(), value);
-			return error == std::errc{} && next == field.data() + field.size();
+			const std::string_view field = text.substr(fieldStart, fieldWidth);
+			const std::from_chars_result parsed = std::from_chars(field.data(), field.data() + field.size(), value);
+			return parsed.ec == std::errc{} && parsed.ptr == field.data() + field.size();
+		}
+
+		bool HasTimestampSeparators(std::string_view text)
+		{
+			return text[kYearMonthSeparatorIndex] == '-' && text[kMonthDaySeparatorIndex] == '-' &&
+				   text[kDateTimeSeparatorIndex] == 'T' && text[kHourMinuteSeparatorIndex] == ':' &&
+				   text[kMinuteSecondSeparatorIndex] == ':';
+		}
+
+		bool HasAnyTokens(const UsageByModel& usage)
+		{
+			for ([[maybe_unused]] const auto& [usageKey, counts] : usage)
+			{
+				if (counts.Total() != 0)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		void AddSubagentUsage(SessionSummary& summary, const std::filesystem::path& subagentFile)
+		{
+			++summary.SubagentCount;
+			UsageTally subagentTally;
+
+			if (Core::Result<TranscriptRead> subagentRead = ReadTranscript(subagentFile, kReadFromStart))
+			{
+				for (const TranscriptRecord& record : subagentRead.GetValue().Chunk.Records)
+				{
+					subagentTally.Add(record);
+				}
+			}
+
+			for (const auto& [usageKey, counts] : subagentTally.Get())
+			{
+				summary.Subagents[usageKey] += counts;
+			}
 		}
 	}
 
@@ -92,20 +152,22 @@ namespace Graphite {
 			return;
 		}
 
-		// A record with no request id is its own request; its uuid keeps it from being
-		// merged with another such record.
-		const std::string& key = record.RequestId.empty() ? record.Uuid : record.RequestId;
-		const UsageKey model{record.Model, record.Fast};
+		const std::string& requestKey = record.RequestId.empty() ? record.Uuid : record.RequestId;
+		const UsageKey usageKey{record.Model, record.Fast};
 
-		if (key.empty())
+		if (requestKey.empty())
 		{
-			m_Usage[model] += *record.Usage;
+			m_Usage[usageKey] += *record.Usage;
 			return;
 		}
 
-		Counted& counted = m_Counted.try_emplace(key, Counted{model, {}}).first->second;
+		if (!m_Counted.contains(requestKey))
+		{
+			m_Counted.emplace(requestKey, Counted{usageKey, {}});
+		}
 
-		// The first record names the model, and the rest only revise the counts it put there.
+		Counted& counted = m_Counted.at(requestKey);
+
 		counted.Usage.Add(*record.Usage, &m_Usage[counted.Key]);
 	}
 
@@ -116,10 +178,11 @@ namespace Graphite {
 
 	Fingerprint FingerprintOf(const std::filesystem::path& sessionFile)
 	{
-		Fingerprint print;
-		AddFile(print, sessionFile);
-		ForEachSubagent(sessionFile, [&print](const std::filesystem::path& file) { AddFile(print, file); });
-		return print;
+		Fingerprint fingerprint;
+		AddFile(fingerprint, sessionFile);
+		ForEachSubagent(sessionFile,
+						[&fingerprint](const std::filesystem::path& file) { AddFile(fingerprint, file); });
+		return fingerprint;
 	}
 
 	std::string SessionSummary::DisplayTitle() const
@@ -134,11 +197,7 @@ namespace Graphite {
 
 	bool SessionSummary::IsEmpty() const
 	{
-		const auto used = [](const UsageByModel& usage) {
-			return std::ranges::any_of(usage, [](const auto& entry) { return entry.second.Total() != 0; });
-		};
-
-		return Title.empty() && FirstPrompt.empty() && !used(Main) && !used(Subagents);
+		return Title.empty() && FirstPrompt.empty() && !HasAnyTokens(Main) && !HasAnyTokens(Subagents);
 	}
 
 	SessionSummary SummariseSession(const std::filesystem::path& sessionFile)
@@ -150,23 +209,21 @@ namespace Graphite {
 			return std::move(*summary);
 		}
 
-		// What the callers of this form have always had for a file that could not be read:
-		// the session's identity and fingerprint, and nothing else.
-		SessionSummary empty;
-		empty.Id = Core::ToUtf8(sessionFile.stem());
-		empty.File = sessionFile;
-		empty.Print = FingerprintOf(sessionFile);
-		return empty;
+		SessionSummary unreadableSummary;
+		unreadableSummary.Id = Core::ToUtf8(sessionFile.stem());
+		unreadableSummary.File = sessionFile;
+		unreadableSummary.Print = FingerprintOf(sessionFile);
+		return unreadableSummary;
 	}
 
 	std::optional<SessionSummary> TrySummariseSession(const std::filesystem::path& sessionFile)
 	{
-		// Fingerprinted before the read, so a line appended in between leaves the print older
-		// than the summary and the next look summarises again, rather than the other way round.
-		const Fingerprint print = FingerprintOf(sessionFile);
-		Core::Result<TranscriptRead> read = ReadTranscript(sessionFile, 0);
+		// WARNING: The file is fingerprinted before it is read, so a line appended in between leaves the
+		// fingerprint older than the summary and the next look summarises again, rather than the other way round.
+		const Fingerprint fingerprint = FingerprintOf(sessionFile);
+		Core::Result<TranscriptRead> transcriptRead = ReadTranscript(sessionFile, kReadFromStart);
 
-		if (!read)
+		if (!transcriptRead)
 		{
 			return std::nullopt;
 		}
@@ -174,14 +231,14 @@ namespace Graphite {
 		SessionSummary summary;
 		summary.Id = Core::ToUtf8(sessionFile.stem());
 		summary.File = sessionFile;
-		summary.Print = print;
-		summary.SkippedLines = read.GetValue().Chunk.Skipped;
+		summary.Print = fingerprint;
+		summary.SkippedLines = transcriptRead.GetValue().Chunk.Skipped;
 
-		UsageTally main;
+		UsageTally mainTally;
 
-		for (const TranscriptRecord& record : read.GetValue().Chunk.Records)
+		for (const TranscriptRecord& record : transcriptRead.GetValue().Chunk.Records)
 		{
-			main.Add(record);
+			mainTally.Add(record);
 
 			if (record.Kind == RecordKind::AiTitle && !record.Title.empty())
 			{
@@ -201,7 +258,7 @@ namespace Graphite {
 				}
 			}
 
-			// ISO 8601 in UTC compares as text in time order.
+			// WARNING: Timestamps are ISO 8601 in UTC, which compares as text in time order.
 			if (!record.Timestamp.empty())
 			{
 				if (summary.StartedAt.empty() || record.Timestamp < summary.StartedAt)
@@ -215,57 +272,44 @@ namespace Graphite {
 			}
 		}
 
-		summary.Main = main.Get();
+		summary.Main = mainTally.Get();
 
-		ForEachSubagent(sessionFile, [&summary](const std::filesystem::path& file) {
-			++summary.SubagentCount;
-			UsageTally tally;
-
-			if (Core::Result<TranscriptRead> agent = ReadTranscript(file, 0))
-			{
-				for (const TranscriptRecord& record : agent.GetValue().Chunk.Records)
-				{
-					tally.Add(record);
-				}
-			}
-
-			for (const auto& [key, counts] : tally.Get())
-			{
-				summary.Subagents[key] += counts;
-			}
-		});
+		ForEachSubagent(sessionFile, [&summary](const std::filesystem::path& subagentFile) { AddSubagentUsage(summary, subagentFile); });
 
 		return summary;
 	}
 
-	bool SameSessionId(std::string_view a, std::string_view b)
+	bool SameSessionId(std::string_view firstId, std::string_view secondId)
 	{
-		return Core::EqualsIgnoringCase(a, b);
+		return Core::EqualsIgnoringCase(firstId, secondId);
 	}
 
 	std::optional<std::chrono::sys_time<std::chrono::milliseconds>> ParseTimestamp(std::string_view text)
 	{
-		// "2026-09-17T09:29:50.246Z": fixed positions for year, month, day, hour, minute,
-		// second and millisecond, with the separators checked so a malformed string is
-		// rejected rather than mis-parsed.
-		if (text.size() < 19 || text[4] != '-' || text[7] != '-' || text[10] != 'T' || text[13] != ':' ||
-			text[16] != ':')
+		if (text.size() < kMinimumTimestampLength || !HasTimestampSeparators(text))
 		{
 			return std::nullopt;
 		}
 
-		int year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, millisecond = 0;
+		int year = 0;
+		int month = 0;
+		int day = 0;
+		int hour = 0;
+		int minute = 0;
+		int second = 0;
+		int millisecond = 0;
 
-		if (!ParseField(text, 0, 4, year) || !ParseField(text, 5, 2, month) || !ParseField(text, 8, 2, day) ||
-			!ParseField(text, 11, 2, hour) || !ParseField(text, 14, 2, minute) ||
-			!ParseField(text, 17, 2, second))
+		if (!ParseField(text, kYearStart, kYearWidth, year) || !ParseField(text, kMonthStart, kTwoDigitWidth, month) ||
+			!ParseField(text, kDayStart, kTwoDigitWidth, day) || !ParseField(text, kHourStart, kTwoDigitWidth, hour) ||
+			!ParseField(text, kMinuteStart, kTwoDigitWidth, minute) ||
+			!ParseField(text, kSecondStart, kTwoDigitWidth, second))
 		{
 			return std::nullopt;
 		}
 
-		if (text.size() >= 24 && text[19] == '.')
+		if (text.size() >= kTimestampWithMillisecondsLength && text[kMillisecondSeparatorIndex] == '.')
 		{
-			ParseField(text, 20, 3, millisecond);
+			ParseField(text, kMillisecondStart, kMillisecondWidth, millisecond);
 		}
 
 		const std::chrono::year_month_day date{std::chrono::year{year},
@@ -297,14 +341,6 @@ namespace Graphite {
 			return std::string{text};
 		}
 
-		std::size_t cut = maxBytes;
-
-		// Continuation bytes are 10xxxxxx; back off until the cut lands before a lead byte.
-		while (cut > 0 && (static_cast<unsigned char>(text[cut]) & 0xC0u) == 0x80u)
-		{
-			--cut;
-		}
-
-		return std::string{text.substr(0, cut)};
+		return std::string{text.substr(0, Core::CharacterBoundaryAtOrBefore(text, maxBytes))};
 	}
 }

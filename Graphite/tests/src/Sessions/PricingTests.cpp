@@ -17,8 +17,16 @@ TEST_CASE("A million tokens in each bucket of Opus 5 costs the list price of eac
 	const CostResult cost = pricing.CostOf(usage);
 
 	REQUIRE(cost.IsKnown());
-	// 5 input + 25 output + 6.25 five-minute write + 10 hour write + 0.5 read.
 	CHECK(cost.Dollars == doctest::Approx(46.75));
+}
+
+TEST_CASE("A standard price writes the cache at 1.25 times input for five minutes and 2 times for an hour")
+{
+	const Price price = StandardPrice(4.0, 20.0, 0.2);
+
+	CHECK(price.CacheWrite5m == doctest::Approx(5.0));
+	CHECK(price.CacheWrite1h == doctest::Approx(8.0));
+	CHECK(price.CacheRead == doctest::Approx(0.2));
 }
 
 TEST_CASE("Opus 5.5 is not priced as Opus 5, although one id begins with the other")

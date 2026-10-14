@@ -93,7 +93,6 @@ TEST_CASE("A turn that used a model with no price is reported as not fully price
 }
 
 namespace {
-	// Two turns: the first with a cheap and a dear request, the second with one of its own.
 	std::string TwoTurnsTranscript()
 	{
 		return Fixtures::UserPrompt("a") +
@@ -149,7 +148,6 @@ TEST_CASE("A turn's tools are counted by name, the most used first")
 	CHECK(first.Tools[1].Name == "Edit");
 	CHECK(first.Tools[1].Count == 1);
 
-	// No request in an empty timeline: listed all the same, with nowhere to go.
 	REQUIRE(first.Requests.size() == 3);
 	CHECK_FALSE(first.Requests[0].Position.has_value());
 
@@ -199,7 +197,6 @@ TEST_CASE("A request's activity names each tool it called, else the start of its
 	CHECK(tools[0] == "Read D:\\a.cpp");
 	CHECK(tools[1] == "Bash ls -la");
 
-	// Quoted, so a reply is not read as a tool's name.
 	const std::vector<std::string> reply = RequestActivity(requests[1]);
 	REQUIRE(reply.size() == 1);
 	CHECK(reply[0] == "\xe2\x80\x9c"

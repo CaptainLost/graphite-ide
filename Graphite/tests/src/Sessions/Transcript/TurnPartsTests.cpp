@@ -58,6 +58,7 @@ TEST_CASE("Empty thinking is dropped, and its request's usage goes with the item
 
 	REQUIRE(parts.size() == 1);
 	CHECK(parts[0].Kind == PartKind::Reply);
+	CHECK(parts[0].Items.size() == 1);
 	CHECK(parts[0].Requests == 1);
 	CHECK(parts[0].Usage == UsageByModel{{{"claude-opus-5", false}, {100, 7, 0, 0, 0}}});
 }
@@ -100,13 +101,11 @@ TEST_CASE("A run of steps was last active when its last tool finished, not when 
 	REQUIRE(parts.size() == 2);
 	REQUIRE(parts[0].Kind == PartKind::Steps);
 
-	const std::string last = LastActivity(turn, parts[0], session.GetTools());
-	CHECK(last == "2026-09-17T09:15:02.000Z");
+	const std::string lastActivity = LastActivity(turn, parts[0], session.GetTools());
+	CHECK(lastActivity == "2026-09-17T09:15:02.000Z");
 
-	// The reply came a minute after the tool finished: no pause, however long the tool ran.
-	CHECK_FALSE(GapBetween(last, turn.Items[parts[1].Items.front()].At).has_value());
+	CHECK_FALSE(GapBetween(lastActivity, turn.Items[parts[1].Items.front()].At).has_value());
 
-	// A reply's own time is its last activity.
 	CHECK(LastActivity(turn, parts[1], session.GetTools()) == "2026-09-17T09:16:02.000Z");
 }
 
@@ -149,10 +148,8 @@ TEST_CASE("A queued message is a part of its own between the parts around it")
 	CHECK(parts[3].Requests == 1);
 }
 
-TEST_CASE("A part lists only the requests it counts")
+TEST_CASE("A part lists only the requests it counts, so a response written without usage promises no request")
 {
-	// A response written without usage is an item of the turn but not one of its requests:
-	// listing its key would promise a request the part's count leaves out.
 	const Session session = Build(
 		Fixtures::UserPrompt("go") +
 		Fixtures::Line({{"type", "assistant"},
@@ -189,26 +186,19 @@ TEST_CASE("A compaction stands on its own between two step runs")
 	CHECK(parts[2].Kind == PartKind::Steps);
 }
 
-TEST_CASE("The pause before a compaction has the time it took itself taken off")
+TEST_CASE("The pause before a compaction has the time it took itself taken off, and other items have nothing taken off")
 {
-	// Real numbers from session f04ede21 compaction 1: last tool result 16:30:20.000Z, the
-	// boundary written at 16:33:10.464Z, 169810 ms after the compaction began.
-	TurnItem compaction{.Kind = ItemKind::Compaction,
-						.At = "2026-08-31T16:33:10.464Z",
-						.Compaction = {.Duration = std::chrono::milliseconds{169810}}};
+	TurnItem compactionWithDuration{.Kind = ItemKind::Compaction,
+									.At = "2026-08-31T16:33:10.464Z",
+									.Compaction = {.Duration = std::chrono::milliseconds{169810}}};
 
-	// The gap is the compaction's own time and nothing else, so it does not clear the threshold.
-	CHECK_FALSE(GapBefore("2026-08-31T16:30:20.000Z", compaction).has_value());
+	CHECK_FALSE(GapBefore("2026-08-31T16:30:20.000Z", compactionWithDuration).has_value());
 
-	// Without a duration there is nothing to take off: the whole span shows as a pause.
-	TurnItem noDuration{.Kind = ItemKind::Compaction, .At = "2026-08-31T16:33:10.464Z"};
-	CHECK(GapBefore("2026-08-31T16:30:20.000Z", noDuration) == std::chrono::milliseconds{170464});
+	TurnItem compactionWithoutDuration{.Kind = ItemKind::Compaction, .At = "2026-08-31T16:33:10.464Z"};
+	CHECK(GapBefore("2026-08-31T16:30:20.000Z", compactionWithoutDuration) == std::chrono::milliseconds{170464});
 
-	// A pause that started well before the compaction still has the compaction's own time
-	// taken off the end of it.
-	CHECK(GapBefore("2026-08-31T16:00:00.000Z", compaction) == std::chrono::milliseconds{1820654});
+	CHECK(GapBefore("2026-08-31T16:00:00.000Z", compactionWithDuration) == std::chrono::milliseconds{1820654});
 
-	// A non-compaction item has nothing to take off: same as GapBetween.
-	TurnItem text{.Kind = ItemKind::Text, .At = "2026-08-31T16:33:10.464Z"};
-	CHECK(GapBefore("2026-08-31T16:30:20.000Z", text) == std::chrono::milliseconds{170464});
+	TurnItem textItem{.Kind = ItemKind::Text, .At = "2026-08-31T16:33:10.464Z"};
+	CHECK(GapBefore("2026-08-31T16:30:20.000Z", textItem) == std::chrono::milliseconds{170464});
 }

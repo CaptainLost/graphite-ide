@@ -14,6 +14,33 @@
 
 using namespace Graphite;
 
+namespace {
+
+	nlohmann::json NestedSchemaTool(const char* name, const char* description)
+	{
+		const nlohmann::json inputSchema = {{"type", "object"}};
+
+		return nlohmann::json{{"name", name},
+							  {"description", description},
+							  {"schema",
+							   {{"name", name},
+								{"description", description},
+								{"input_schema", inputSchema},
+								{"eager_input_streaming", true}}}};
+	}
+}
+
+TEST_CASE("Merged response usage takes the larger count in every bucket")
+{
+	const TokenCounts streamedRecord{5, 100, 7, 1, 40};
+	const TokenCounts lastRecord{9, 20, 3, 8, 40};
+	const TokenCounts refusalRecord{};
+
+	CHECK(MergeResponseUsage(streamedRecord, lastRecord) == TokenCounts{9, 100, 7, 8, 40});
+	CHECK(MergeResponseUsage(lastRecord, streamedRecord) == TokenCounts{9, 100, 7, 8, 40});
+	CHECK(MergeResponseUsage(streamedRecord, refusalRecord) == streamedRecord);
+}
+
 TEST_CASE("A user prompt and an assistant reply parse into their fields")
 {
 	const std::string bytes =
@@ -102,10 +129,11 @@ TEST_CASE("A fast request is marked as such")
 
 TEST_CASE("Tool use and tool result blocks carry their ids, name, input and error flag")
 {
+	constexpr bool resultIsError = true;
 	const std::string bytes =
 		Fixtures::Assistant("req", Fixtures::ToolUseBlock("toolu_1", "Bash", {{"command", "ls"}}),
 							Fixtures::Usage(1, 1)) +
-		Fixtures::ToolResult("toolu_1", "boom", true);
+		Fixtures::ToolResult("toolu_1", "boom", resultIsError);
 
 	const TranscriptChunk chunk = ParseTranscript(bytes);
 
@@ -237,7 +265,6 @@ TEST_CASE("A file read in small chunks yields the same records as one read")
 	std::vector<std::string> chunked;
 	std::uint64_t offset = 0;
 
-	// Small enough that most chunks end in the middle of a line.
 	for (int reads = 0; offset < bytes.size(); ++reads)
 	{
 		REQUIRE(reads < 10'000);
@@ -250,8 +277,6 @@ TEST_CASE("A file read in small chunks yields the same records as one read")
 			chunked.push_back(record.Blocks[0].Text);
 		}
 
-		// A line longer than the limit would never be consumed; the chunk reader must not
-		// stall on one.
 		REQUIRE(read.GetValue().NextOffset > offset);
 		offset = read.GetValue().NextOffset;
 	}
@@ -388,8 +413,6 @@ TEST_CASE("Every record knows how many bytes its line took")
 
 TEST_CASE("An attachment with no rendered text is reconstructed from what it carries, and says so")
 {
-	// No version: the fixtures, like transcripts from before 2.1.260, say nothing about
-	// which Claude Code wrote them.
 	const std::string bytes =
 		Fixtures::Attachment({{"type", "total_tokens_reminder"}, {"text", "12345"}}) +
 		Fixtures::Attachment({{"type", "skill_listing"}, {"content", "- a: does a"}, {"names", {"a"}}}) +
@@ -404,13 +427,11 @@ TEST_CASE("An attachment with no rendered text is reconstructed from what it car
 	REQUIRE(chunk.Records.size() == 7);
 	CHECK(chunk.Records[0].AttachmentText == "12345");
 	CHECK(chunk.Records[1].AttachmentText == "- a: does a");
-	// Joined a line apiece, as the model reads them.
 	CHECK(chunk.Records[2].AttachmentText == "A: a\nB: bb");
 	CHECK(chunk.Records[3].AttachmentText == "## x\nuse x");
 	CHECK(chunk.Records[4].AttachmentText == "int a;");
 	CHECK(chunk.Records[5].AttachmentText == "also this");
 
-	// No content field: the attachment object itself, compactly, and never the whole line.
 	CHECK(chunk.Records[6].AttachmentText == nlohmann::json({{"type", "date"}, {"date", "2026-09-24"}}).dump());
 	CHECK(chunk.Records[6].AttachmentText.size() < chunk.Records[6].Bytes);
 
@@ -471,7 +492,6 @@ TEST_CASE("From 2.1.260 on, an attachment without rendered text was never sent")
 	CHECK(chunk.Records[0].AttachmentText.empty());
 	CHECK_FALSE(chunk.Records[1].AttachmentSent);
 
-	// Older, or unreadable: shown reconstructed rather than hidden.
 	CHECK(chunk.Records[2].AttachmentSent);
 	CHECK(chunk.Records[2].AttachmentApproximate);
 	CHECK(chunk.Records[2].AttachmentText == "old");
@@ -529,24 +549,11 @@ TEST_CASE("An image block with a missing or mistyped source is still an image, w
 
 TEST_CASE("A prompt snapshot carries the system prompt and the tool schemas as text")
 {
-	// As Claude Code writes a tool: its name and description, and the definition the API got
-	// nested under `schema`, the input schema inside it.
-	const nlohmann::json schema = {{"type", "object"}};
-	const auto tool = [&schema](const char* name, const char* description) {
-		return nlohmann::json{{"name", name},
-							  {"description", description},
-							  {"schema",
-							   {{"name", name},
-								{"description", description},
-								{"input_schema", schema},
-								{"eager_input_streaming", true}}}};
-	};
-
 	const std::string bytes = Fixtures::VersionedAttachment(
 		{{"type", "prompt_snapshot"},
 		 {"cliPrefix", "You are Claude Code."},
 		 {"systemPrompt", nlohmann::json::array({"First.", "Second."})},
-		 {"tools", nlohmann::json::array({tool("Read", "Reads a file."), tool("Bash", "Runs.")})}},
+		 {"tools", nlohmann::json::array({NestedSchemaTool("Read", "Reads a file."), NestedSchemaTool("Bash", "Runs.")})}},
 		"2.1.280");
 
 	const TranscriptChunk chunk = ParseTranscript(bytes);
@@ -560,7 +567,6 @@ TEST_CASE("A prompt snapshot carries the system prompt and the tool schemas as t
 	CHECK(record.ToolSchemasText == "Read\n\nReads a file.\n\n{\n  \"type\": \"object\"\n}" + rule +
 										"Bash\n\nRuns.\n\n{\n  \"type\": \"object\"\n}");
 
-	// The snapshot is Claude Code's own record: it is read for what it says, not as something sent.
 	CHECK_FALSE(record.AttachmentSent);
 }
 
@@ -579,7 +585,6 @@ TEST_CASE("A prompt snapshot without tools, or without a system prompt, says onl
 	CHECK(chunk.Records[0].ToolSchemaCount == 0);
 	CHECK(chunk.Records[0].ToolSchemasText.empty());
 
-	// A prefix with no system prompt behind it is not a system prompt.
 	CHECK(chunk.Records[1].SystemPromptText.empty());
 	CHECK(chunk.Records[1].ToolSchemaCount == 1);
 	CHECK(chunk.Records[1].ToolSchemasText == "Read");
@@ -599,8 +604,6 @@ TEST_CASE("A tool with its input schema at the top rather than nested is read al
 
 TEST_CASE("The system prompt leaves out the marker Claude Code splits its cache at")
 {
-	// The marker is Claude Code's own, where the cached part of the prompt ends; it is not
-	// text the model reads.
 	const TranscriptChunk chunk = ParseTranscript(Fixtures::VersionedAttachment(
 		{{"type", "prompt_snapshot"},
 		 {"systemPrompt",
@@ -627,8 +630,6 @@ TEST_CASE("A system prompt that is only the marker is no system prompt")
 
 TEST_CASE("A queued prompt without rendered text was still sent, and is reconstructed")
 {
-	// A queued prompt the model answered was sent whatever the version says: 2.1.261 wrote
-	// some without `rendered`.
 	const TranscriptChunk chunk = ParseTranscript(Fixtures::VersionedAttachment(
 		{{"type", "queued_command"}, {"prompt", "also this"}, {"origin", {{"kind", "human"}}}, {"commandMode", "prompt"}},
 		"2.1.280"));
@@ -642,7 +643,6 @@ TEST_CASE("A queued prompt without rendered text was still sent, and is reconstr
 
 TEST_CASE("A queued prompt given as blocks is its text with a placeholder for each image, not the image's data")
 {
-	// 4096 characters of base64 decode to 3072 bytes.
 	const nlohmann::json blocks = nlohmann::json::array(
 		{Fixtures::TextBlock("look at this [Image #2]"), Fixtures::ImageBlock("image/png", std::string(4096, 'A'))});
 	const nlohmann::json imageOnly = nlohmann::json::array({Fixtures::ImageBlock("image/png", std::string(4096, 'A'))});

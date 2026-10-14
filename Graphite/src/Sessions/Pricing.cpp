@@ -1,11 +1,13 @@
 #include "Sessions/Pricing.h"
 
+#include "Core/Base/Strings.h"
+
 #include "Sessions/Requests/RequestTimeline.h"
 
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <charconv>
+#include <cstdint>
 #include <format>
 
 namespace Graphite {
@@ -13,21 +15,31 @@ namespace Graphite {
 	namespace {
 		constexpr double kPerMillion = 1'000'000.0;
 
-		// Fast mode is priced at twice the standard rate on every model that offers it.
 		constexpr double kFastMultiplier = 2.0;
+
+		constexpr double kCacheWrite5mInputMultiplier = 1.25;
+		constexpr double kCacheWrite1hInputMultiplier = 2.0;
 
 		constexpr std::string_view kSyntheticModel = "<synthetic>";
 
+		constexpr std::string_view kModelPrefix = "claude-";
+
+		constexpr std::size_t kDateSuffixLength = 9;
+
+		constexpr char kPriceFieldSeparator = ',';
+
+		constexpr std::size_t kPriceFieldCount = 5;
+
 		bool IsDateSuffix(std::string_view rest)
 		{
-			if (rest.size() != 9 || rest[0] != '-')
+			if (rest.size() != kDateSuffixLength || rest[0] != '-')
 			{
 				return false;
 			}
 
-			for (const char c : rest.substr(1))
+			for (const char character : rest.substr(1))
 			{
-				if (std::isdigit(static_cast<unsigned char>(c)) == 0)
+				if (std::isdigit(static_cast<unsigned char>(character)) == 0)
 				{
 					return false;
 				}
@@ -47,21 +59,29 @@ namespace Graphite {
 
 			return rest.empty() || rest.front() == '[' || IsDateSuffix(rest);
 		}
+
+		bool ListsModel(const std::vector<std::string>& models, const std::string& model)
+		{
+			return std::find(models.begin(), models.end(), model) != models.end();
+		}
+
+		double DollarsForTokens(std::uint64_t tokens, double dollarsPerMillion, double speedScale)
+		{
+			return static_cast<double>(tokens) / kPerMillion * dollarsPerMillion * speedScale;
+		}
 	}
 
 	Price StandardPrice(double input, double output, double cacheRead)
 	{
-		return {input, output, input * 1.25, input * 2.0, cacheRead};
+		return {input, output, input * kCacheWrite5mInputMultiplier, input * kCacheWrite1hInputMultiplier, cacheRead};
 	}
 
 	Pricing Pricing::Defaults()
 	{
 		Pricing pricing;
 
-		// First-party API list prices, dollars per million tokens. Cache reads are 0.1× input
-		// except where a model's own rate differs. Older models are deliberately absent: an
-		// absent model shows as "?" and can be priced in settings, where a guessed price would
-		// show a wrong number with nothing to say it was guessed.
+		// WARNING: Older models are deliberately absent. An absent model shows as "?" and can be
+		// priced in settings, where a guessed price would show a wrong number with nothing to say it was guessed.
 		pricing.m_Defaults = {
 			{"claude-fable-5-1", StandardPrice(10.0, 50.0, 0.25)},
 			{"claude-fable-5", StandardPrice(10.0, 50.0, 1.0)},
@@ -87,9 +107,10 @@ namespace Graphite {
 
 	void Pricing::Reset(const std::string& model)
 	{
-		if (const auto found = m_Defaults.find(model); found != m_Defaults.end())
+		if (const std::map<std::string, Price>::const_iterator found = m_Defaults.find(model); found != m_Defaults.end())
 		{
-			m_Prices[model] = found->second;
+			const auto& [defaultModel, defaultPrice] = *found;
+			m_Prices[model] = defaultPrice;
 		}
 		else
 		{
@@ -99,26 +120,25 @@ namespace Graphite {
 
 	const Price* Pricing::Find(std::string_view model) const
 	{
-		const Price* best = nullptr;
-		std::size_t bestLength = 0;
+		const Price* bestMatch = nullptr;
+		std::size_t bestNameLength = 0;
 
 		for (const auto& [name, price] : m_Prices)
 		{
-			if (NamesModel(model, name) && name.size() > bestLength)
+			if (NamesModel(model, name) && name.size() > bestNameLength)
 			{
-				best = &price;
-				bestLength = name.size();
+				bestMatch = &price;
+				bestNameLength = name.size();
 			}
 		}
 
-		return best;
+		return bestMatch;
 	}
 
 	std::optional<BucketCosts> Pricing::BucketsOf(const UsageKey& key, const TokenCounts& counts) const
 	{
-		// What Claude Code names on messages it writes itself - an interrupted turn, an API
-		// error shown in the conversation. Nothing was billed for them: no price to list, and no
-		// reason to call the cost unknown.
+		// WARNING: Claude Code names this model on messages it writes itself, such as an interrupted
+		// turn. Nothing was billed for them, so the cost is zero rather than unknown.
 		if (key.Model == kSyntheticModel)
 		{
 			return BucketCosts{};
@@ -131,15 +151,14 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		const double scale = key.Fast ? kFastMultiplier : 1.0;
-		const auto dollars = [scale](std::uint64_t tokens, double perMillion) { return static_cast<double>(tokens) / kPerMillion * perMillion * scale; };
+		const double speedScale = key.Fast ? kFastMultiplier : 1.0;
 
 		BucketCosts costs;
-		costs.Input = dollars(counts.Input, price->Input);
-		costs.Output = dollars(counts.Output, price->Output);
-		costs.CacheWrite = dollars(counts.CacheWrite5m, price->CacheWrite5m) +
-						   dollars(counts.CacheWrite1h, price->CacheWrite1h);
-		costs.CacheRead = dollars(counts.CacheRead, price->CacheRead);
+		costs.Input = DollarsForTokens(counts.Input, price->Input, speedScale);
+		costs.Output = DollarsForTokens(counts.Output, price->Output, speedScale);
+		costs.CacheWrite = DollarsForTokens(counts.CacheWrite5m, price->CacheWrite5m, speedScale) +
+						   DollarsForTokens(counts.CacheWrite1h, price->CacheWrite1h, speedScale);
+		costs.CacheRead = DollarsForTokens(counts.CacheRead, price->CacheRead, speedScale);
 		return costs;
 	}
 
@@ -149,7 +168,7 @@ namespace Graphite {
 
 		for (const std::string& model : other.UnknownModels)
 		{
-			if (std::find(UnknownModels.begin(), UnknownModels.end(), model) == UnknownModels.end())
+			if (!ListsModel(UnknownModels, model))
 			{
 				UnknownModels.push_back(model);
 			}
@@ -160,7 +179,7 @@ namespace Graphite {
 
 	std::string ModelLabel(std::string_view model, bool fast)
 	{
-		std::string label{model.starts_with("claude-") ? model.substr(7) : model};
+		std::string label{model.starts_with(kModelPrefix) ? model.substr(kModelPrefix.size()) : model};
 
 		if (fast)
 		{
@@ -195,8 +214,7 @@ namespace Graphite {
 			{
 				result.Dollars += costs->Total();
 			}
-			else if (std::find(result.UnknownModels.begin(), result.UnknownModels.end(), key.Model) ==
-					 result.UnknownModels.end())
+			else if (!ListsModel(result.UnknownModels, key.Model))
 			{
 				result.UnknownModels.push_back(key.Model);
 			}
@@ -207,38 +225,43 @@ namespace Graphite {
 
 	std::optional<Price> ParsePrice(std::string_view text)
 	{
-		std::array<double, 5> values{};
-		std::size_t index = 0;
-		std::size_t start = 0;
+		std::array<double, kPriceFieldCount> fieldValues{};
+		std::size_t fieldIndex = 0;
+		std::size_t fieldStart = 0;
 
-		while (index < values.size())
+		while (fieldIndex < fieldValues.size())
 		{
-			const std::size_t end = std::min(text.find(',', start), text.size());
-			const std::string_view part = text.substr(start, end - start);
+			const std::size_t fieldEnd = std::min(text.find(kPriceFieldSeparator, fieldStart), text.size());
+			const std::string_view field = text.substr(fieldStart, fieldEnd - fieldStart);
 
-			const auto [next, error] = std::from_chars(part.data(), part.data() + part.size(), values[index]);
+			const std::optional<double> parsedField = Core::ParseNumber<double>(field);
 
-			if (error != std::errc{} || next != part.data() + part.size() || values[index] < 0.0)
+			if (!parsedField || *parsedField < 0.0)
 			{
 				return std::nullopt;
 			}
 
-			++index;
+			fieldValues[fieldIndex] = *parsedField;
+			++fieldIndex;
 
-			if (end == text.size())
+			if (fieldEnd == text.size())
 			{
 				break;
 			}
 
-			start = end + 1;
+			fieldStart = fieldEnd + 1;
 		}
 
-		if (index != values.size())
+		if (fieldIndex != fieldValues.size())
 		{
 			return std::nullopt;
 		}
 
-		return Price{values[0], values[1], values[2], values[3], values[4]};
+		return Price{.Input = fieldValues[0],
+					 .Output = fieldValues[1],
+					 .CacheWrite5m = fieldValues[2],
+					 .CacheWrite1h = fieldValues[3],
+					 .CacheRead = fieldValues[4]};
 	}
 
 	std::string FormatPrice(const Price& price)

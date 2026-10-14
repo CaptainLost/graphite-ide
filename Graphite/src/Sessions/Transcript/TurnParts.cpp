@@ -9,12 +9,16 @@
 namespace Graphite {
 
 	namespace {
+		using Timestamp = std::chrono::sys_time<std::chrono::milliseconds>;
+		using ToolCount = std::pair<std::string, std::size_t>;
+		using RequestPartIndices = std::map<std::string, std::size_t>;
+
 		bool IsVisible(const TurnItem& item)
 		{
 			return !(item.Kind == ItemKind::Thinking && item.Text.empty());
 		}
 
-		PartKind KindOf(const TurnItem& item)
+		PartKind PartKindOf(const TurnItem& item)
 		{
 			switch (item.Kind)
 			{
@@ -31,15 +35,40 @@ namespace Graphite {
 			}
 		}
 
-		void Summarise(TurnPart& part, const Turn& turn, const std::vector<ToolCall>& tools)
+		ToolCount* FindToolCount(std::vector<ToolCount>& toolCounts, const std::string& toolName)
 		{
-			std::vector<std::pair<std::string, std::size_t>> counts;
-			std::optional<std::chrono::sys_time<std::chrono::milliseconds>> first;
-			std::optional<std::chrono::sys_time<std::chrono::milliseconds>> last;
-
-			for (const std::size_t index : part.Items)
+			for (ToolCount& toolCount : toolCounts)
 			{
-				const TurnItem& item = turn.Items[index];
+				const auto& [countedToolName, timesUsed] = toolCount;
+				if (countedToolName == toolName)
+				{
+					return &toolCount;
+				}
+			}
+			return nullptr;
+		}
+
+		bool IsUsedMoreOften(const ToolCount& candidate, const ToolCount& other)
+		{
+			const auto& [candidateName, candidateTimesUsed] = candidate;
+			const auto& [otherName, otherTimesUsed] = other;
+			return candidateTimesUsed > otherTimesUsed;
+		}
+
+		void SortMostUsedFirstKeepingFirstUseOrder(std::vector<ToolCount>& toolCounts)
+		{
+			std::stable_sort(toolCounts.begin(), toolCounts.end(), IsUsedMoreOften);
+		}
+
+		void SummariseToolCalls(TurnPart& part, const Turn& turn, const std::vector<ToolCall>& tools)
+		{
+			std::vector<ToolCount> toolCounts;
+			std::optional<Timestamp> earliestStart;
+			std::optional<Timestamp> latestFinish;
+
+			for (const std::size_t itemIndex : part.Items)
+			{
+				const TurnItem& item = turn.Items[itemIndex];
 				if (item.Kind != ItemKind::Tool)
 				{
 					continue;
@@ -47,15 +76,15 @@ namespace Graphite {
 
 				const ToolCall& tool = tools[item.Tool];
 
-				const auto found = std::find_if(counts.begin(), counts.end(),
-												[&tool](const auto& entry) { return entry.first == tool.Name; });
-				if (found == counts.end())
+				ToolCount* existingCount = FindToolCount(toolCounts, tool.Name);
+				if (existingCount == nullptr)
 				{
-					counts.emplace_back(tool.Name, 1);
+					toolCounts.emplace_back(tool.Name, 1);
 				}
 				else
 				{
-					++found->second;
+					auto& [toolName, timesUsed] = *existingCount;
+					++timesUsed;
 				}
 
 				if (tool.IsError)
@@ -63,24 +92,45 @@ namespace Graphite {
 					++part.Failures;
 				}
 
-				if (const auto start = ParseTimestamp(tool.StartedAt); start && (!first || *start < *first))
+				const std::optional<Timestamp> start = ParseTimestamp(tool.StartedAt);
+				if (start && (!earliestStart || *start < *earliestStart))
 				{
-					first = start;
+					earliestStart = start;
 				}
-				if (const auto end = ParseTimestamp(tool.FinishedAt); end && (!last || *end > *last))
+				const std::optional<Timestamp> finish = ParseTimestamp(tool.FinishedAt);
+				if (finish && (!latestFinish || *finish > *latestFinish))
 				{
-					last = end;
+					latestFinish = finish;
 				}
 			}
 
-			// Stable, so ties keep the order the tools were first used in.
-			std::stable_sort(counts.begin(), counts.end(),
-							 [](const auto& a, const auto& b) { return a.second > b.second; });
-			part.ToolCounts = std::move(counts);
+			SortMostUsedFirstKeepingFirstUseOrder(toolCounts);
+			part.ToolCounts = std::move(toolCounts);
 
-			if (first && last && *last > *first)
+			if (earliestStart && latestFinish && *latestFinish > *earliestStart)
 			{
-				part.Duration = *last - *first;
+				part.Duration = *latestFinish - *earliestStart;
+			}
+		}
+
+		void RememberRequestInFirstSeenOrder(std::vector<std::string>& requestsInFirstSeenOrder,
+											 std::set<std::string>& requestsSeen, const std::string& request)
+		{
+			const auto [position, wasInserted] = requestsSeen.insert(request);
+			if (wasInserted)
+			{
+				requestsInFirstSeenOrder.push_back(request);
+			}
+		}
+
+		void ConsiderTimestamp(std::string& latestText, std::optional<Timestamp>& latestTime,
+							   const std::string& timestampText)
+		{
+			const std::optional<Timestamp> parsed = ParseTimestamp(timestampText);
+			if (parsed && (!latestTime || *parsed > *latestTime))
+			{
+				latestTime = parsed;
+				latestText = timestampText;
 			}
 		}
 	}
@@ -89,89 +139,78 @@ namespace Graphite {
 	{
 		std::vector<TurnPart> parts;
 
-		// Which part shows each request's usage: the part holding its last visible item.
-		// Requests whose items were all dropped (empty thinking only) go with the next visible
-		// item, or, at the end of the turn, with the last part.
-		std::map<std::string, std::size_t> owner;
-		std::set<std::string> pending;
+		RequestPartIndices partOfRequest;
+		std::set<std::string> requestsAwaitingVisibleItem;
 
-		// Every request key seen, in first-seen order, so RequestKeys can be reported that way
-		// once each key's final owner is known — owner itself, a std::map, sorts by key.
-		std::vector<std::string> order;
-		std::set<std::string> seen;
+		std::vector<std::string> requestsInFirstSeenOrder;
+		std::set<std::string> requestsSeen;
 
-		const auto note = [&order, &seen](const std::string& request) {
-			if (seen.insert(request).second)
-			{
-				order.push_back(request);
-			}
-		};
-
-		for (std::size_t index = 0; index < turn.Items.size(); ++index)
+		for (std::size_t itemIndex = 0; itemIndex < turn.Items.size(); ++itemIndex)
 		{
-			const TurnItem& item = turn.Items[index];
+			const TurnItem& item = turn.Items[itemIndex];
 
 			if (!IsVisible(item))
 			{
 				if (!item.RequestId.empty())
 				{
-					pending.insert(item.RequestId);
-					note(item.RequestId);
+					requestsAwaitingVisibleItem.insert(item.RequestId);
+					RememberRequestInFirstSeenOrder(requestsInFirstSeenOrder, requestsSeen, item.RequestId);
 				}
 				continue;
 			}
 
-			const PartKind kind = KindOf(item);
+			const PartKind kind = PartKindOf(item);
 
-			// Only step runs gather; a reply, an injected row, a queued message and a compaction are one item each.
-			if (parts.empty() || kind != PartKind::Steps || parts.back().Kind != PartKind::Steps)
+			const bool continuesStepRun =
+				!parts.empty() && kind == PartKind::Steps && parts.back().Kind == PartKind::Steps;
+			if (!continuesStepRun)
 			{
 				parts.push_back({.Kind = kind});
 			}
 
-			parts.back().Items.push_back(index);
+			parts.back().Items.push_back(itemIndex);
 
-			const std::size_t part = parts.size() - 1;
+			const std::size_t partIndex = parts.size() - 1;
 			if (!item.RequestId.empty())
 			{
-				owner[item.RequestId] = part;
-				note(item.RequestId);
+				partOfRequest[item.RequestId] = partIndex;
+				RememberRequestInFirstSeenOrder(requestsInFirstSeenOrder, requestsSeen, item.RequestId);
 			}
-			for (const std::string& request : pending)
+			for (const std::string& request : requestsAwaitingVisibleItem)
 			{
-				owner[request] = part;
+				partOfRequest[request] = partIndex;
 			}
-			pending.clear();
+			requestsAwaitingVisibleItem.clear();
 		}
 
 		if (!parts.empty())
 		{
-			for (const std::string& request : pending)
+			for (const std::string& request : requestsAwaitingVisibleItem)
 			{
-				owner[request] = parts.size() - 1;
+				partOfRequest[request] = parts.size() - 1;
 			}
 		}
 
-		for (const auto& [request, part] : owner)
+		for (const auto& [request, partIndex] : partOfRequest)
 		{
-			const auto found = turn.Requests.find(request);
-			if (found == turn.Requests.end())
+			const std::map<std::string, RequestUsage>::const_iterator requestUsage = turn.Requests.find(request);
+			if (requestUsage == turn.Requests.end())
 			{
 				continue;
 			}
 
-			parts[part].Usage[{found->second.Model, found->second.Fast}] += found->second.Usage;
-			++parts[part].Requests;
+			const auto& [requestKey, usage] = *requestUsage;
+			parts[partIndex].Usage[{usage.Model, usage.Fast}] += usage.Usage;
+			++parts[partIndex].Requests;
 		}
 
-		// Only the keys counted above: a response written without usage is an item of the turn
-		// but not one of its requests, and listing it would promise a row the count leaves out.
-		for (const std::string& request : order)
+		for (const std::string& request : requestsInFirstSeenOrder)
 		{
-			const auto found = owner.find(request);
-			if (found != owner.end() && turn.Requests.contains(request))
+			const RequestPartIndices::const_iterator owner = partOfRequest.find(request);
+			if (owner != partOfRequest.end() && turn.Requests.contains(request))
 			{
-				parts[found->second].RequestKeys.push_back(request);
+				const auto& [ownedRequest, ownerPartIndex] = *owner;
+				parts[ownerPartIndex].RequestKeys.push_back(request);
 			}
 		}
 
@@ -179,7 +218,7 @@ namespace Graphite {
 		{
 			if (part.Kind == PartKind::Steps)
 			{
-				Summarise(part, turn, tools);
+				SummariseToolCalls(part, turn, tools);
 			}
 		}
 
@@ -188,55 +227,47 @@ namespace Graphite {
 
 	std::string LastActivity(const Turn& turn, const TurnPart& part, const std::vector<ToolCall>& tools)
 	{
-		std::string latest;
-		std::optional<std::chrono::sys_time<std::chrono::milliseconds>> latestTime;
+		std::string latestText;
+		std::optional<Timestamp> latestTime;
 
-		const auto consider = [&latest, &latestTime](const std::string& timestamp) {
-			if (const auto parsed = ParseTimestamp(timestamp); parsed && (!latestTime || *parsed > *latestTime))
-			{
-				latestTime = parsed;
-				latest = timestamp;
-			}
-		};
-
-		for (const std::size_t index : part.Items)
+		for (const std::size_t itemIndex : part.Items)
 		{
-			const TurnItem& item = turn.Items[index];
-			consider(item.At);
+			const TurnItem& item = turn.Items[itemIndex];
+			ConsiderTimestamp(latestText, latestTime, item.At);
 
 			if (item.Kind == ItemKind::Tool)
 			{
-				consider(tools[item.Tool].FinishedAt);
+				ConsiderTimestamp(latestText, latestTime, tools[item.Tool].FinishedAt);
 			}
 		}
 
-		return latest;
+		return latestText;
 	}
 
 	std::optional<std::chrono::milliseconds> GapBetween(std::string_view earlier, std::string_view later)
 	{
-		const auto from = ParseTimestamp(earlier);
-		const auto to = ParseTimestamp(later);
+		const std::optional<Timestamp> earlierTime = ParseTimestamp(earlier);
+		const std::optional<Timestamp> laterTime = ParseTimestamp(later);
 
-		if (!from || !to || *to - *from <= kGapThreshold)
+		if (!earlierTime || !laterTime || *laterTime - *earlierTime <= kGapThreshold)
 		{
 			return std::nullopt;
 		}
 
-		return *to - *from;
+		return *laterTime - *earlierTime;
 	}
 
 	std::optional<std::chrono::milliseconds> GapBefore(std::string_view earlier, const TurnItem& item)
 	{
-		const auto from = ParseTimestamp(earlier);
-		const auto to = ParseTimestamp(item.At);
+		const std::optional<Timestamp> earlierTime = ParseTimestamp(earlier);
+		const std::optional<Timestamp> itemTime = ParseTimestamp(item.At);
 
-		if (!from || !to)
+		if (!earlierTime || !itemTime)
 		{
 			return std::nullopt;
 		}
 
-		std::chrono::milliseconds span = *to - *from;
+		std::chrono::milliseconds span = *itemTime - *earlierTime;
 
 		if (item.Kind == ItemKind::Compaction && item.Compaction.Duration)
 		{

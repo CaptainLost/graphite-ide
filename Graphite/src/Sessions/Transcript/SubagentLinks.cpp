@@ -18,7 +18,8 @@ namespace Graphite {
 
 	std::optional<std::pair<std::string, SubagentInfo>> ParseSubagentMeta(std::string_view json, std::string agentId)
 	{
-		const nlohmann::json parsed = nlohmann::json::parse(json.begin(), json.end(), nullptr, false);
+		constexpr bool kThrowOnMalformedJson = false;
+		const nlohmann::json parsed = nlohmann::json::parse(json.begin(), json.end(), nullptr, kThrowOnMalformedJson);
 		if (!parsed.is_object())
 		{
 			return std::nullopt;
@@ -46,10 +47,10 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		std::filesystem::path meta = transcript;
-		meta.replace_extension(".meta.json");
+		std::filesystem::path metaFile = transcript;
+		metaFile.replace_extension(".meta.json");
 
-		std::ifstream stream{meta, std::ios::binary};
+		std::ifstream stream{metaFile, std::ios::binary};
 		if (!stream)
 		{
 			return std::nullopt;

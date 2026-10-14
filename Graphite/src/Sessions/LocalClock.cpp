@@ -11,9 +11,9 @@ namespace Graphite {
 
 	std::chrono::minutes LocalClock::OffsetAt(std::chrono::sys_time<std::chrono::milliseconds> instant)
 	{
-		// The zone is looked up once. The lookup throws when the time zone database is not
-		// available, which happens on a Windows install without the ICU data chrono reads:
-		// the times then fall back to UTC rather than the view failing to draw.
+		// WARNING: current_zone throws when the time zone database is not available, as on a Windows
+		// install without the data chrono reads. The times then fall back to UTC rather than the view
+		// failing to draw.
 		if (!m_ZoneResolved)
 		{
 			m_ZoneResolved = true;
@@ -33,58 +33,59 @@ namespace Graphite {
 			return std::chrono::minutes{0};
 		}
 
-		// The offset at the instant itself, so a time on the far side of a daylight saving
-		// change is on the clock it was then. The zone's answer holds for a whole span, which
-		// nearly every time in a session falls within, so it is asked again only outside it.
-		if (!m_ZoneInfo || instant < m_ZoneInfo->begin || instant >= m_ZoneInfo->end)
+		const bool cachedSpanCoversInstant =
+			m_CachedZoneInfo.has_value() && instant >= m_CachedZoneInfo->begin && instant < m_CachedZoneInfo->end;
+
+		if (!cachedSpanCoversInstant)
 		{
 			try
 			{
-				m_ZoneInfo = m_Zone->get_info(std::chrono::floor<std::chrono::seconds>(instant));
+				m_CachedZoneInfo = m_Zone->get_info(std::chrono::floor<std::chrono::seconds>(instant));
 			}
 			catch (const std::exception&)
 			{
-				m_ZoneInfo.reset();
+				m_CachedZoneInfo.reset();
 				return std::chrono::minutes{0};
 			}
 		}
 
-		return std::chrono::floor<std::chrono::minutes>(m_ZoneInfo->offset);
+		return std::chrono::floor<std::chrono::minutes>(m_CachedZoneInfo->offset);
 	}
 
 	std::string LocalClock::HoursMinutes(const std::string& timestamp)
 	{
-		const auto parsed = ParseTimestamp(timestamp);
+		const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> parsedInstant = ParseTimestamp(timestamp);
 
-		if (!parsed)
+		if (!parsedInstant)
 		{
 			return {};
 		}
 
-		const auto local = std::chrono::floor<std::chrono::minutes>(*parsed) + OffsetAt(*parsed);
-		const std::chrono::hh_mm_ss clock{local - std::chrono::floor<std::chrono::days>(local)};
+		const std::chrono::sys_time<std::chrono::minutes> localMinutes =
+			std::chrono::floor<std::chrono::minutes>(*parsedInstant) + OffsetAt(*parsedInstant);
+		const std::chrono::hh_mm_ss timeOfDay{localMinutes - std::chrono::floor<std::chrono::days>(localMinutes)};
 
-		return std::format("{:02}:{:02}", clock.hours().count(), clock.minutes().count());
+		return std::format("{:02}:{:02}", timeOfDay.hours().count(), timeOfDay.minutes().count());
 	}
 
 	std::optional<std::chrono::local_seconds> LocalClock::LocalTime(const std::string& timestamp)
 	{
-		const auto parsed = ParseTimestamp(timestamp);
+		const std::optional<std::chrono::sys_time<std::chrono::milliseconds>> parsedInstant = ParseTimestamp(timestamp);
 
-		if (!parsed)
+		if (!parsedInstant)
 		{
 			return std::nullopt;
 		}
 
-		// The offset at the instant itself, as for the other times, then read as the wall clock.
-		const auto shifted = std::chrono::floor<std::chrono::seconds>(*parsed) + OffsetAt(*parsed);
-		return std::chrono::local_seconds{shifted.time_since_epoch()};
+		const std::chrono::sys_time<std::chrono::seconds> shiftedSeconds =
+			std::chrono::floor<std::chrono::seconds>(*parsedInstant) + OffsetAt(*parsedInstant);
+		return std::chrono::local_seconds{shiftedSeconds.time_since_epoch()};
 	}
 
 	std::string LocalClock::Format(const std::string& timestamp, ClockStyle style)
 	{
-		const auto local = LocalTime(timestamp);
-		return local ? FormatLocalTime(*local, style) : std::string{};
+		const std::optional<std::chrono::local_seconds> localTime = LocalTime(timestamp);
+		return localTime ? FormatLocalTime(*localTime, style) : std::string{};
 	}
 
 	std::string LocalClock::HoursMinutesSeconds(const std::string& timestamp)

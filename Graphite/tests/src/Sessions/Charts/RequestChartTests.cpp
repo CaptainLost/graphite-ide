@@ -11,11 +11,8 @@
 using namespace Graphite;
 
 namespace {
+	constexpr ContextLayers kContextLayerValues = {800.0, 30.0, 5.0};
 
-	// read, write, uncached
-	constexpr ContextLayers kLayers = {800.0, 30.0, 5.0};
-
-	// Dollars per million tokens: input, output, 5m write, 1h write, read.
 	Pricing OnePrice()
 	{
 		Pricing pricing;
@@ -31,7 +28,6 @@ namespace {
 		return request;
 	}
 
-	// A request sent at `sentAt` whose response's last record was written at `finishedAt`.
 	ApiRequest Span(const char* sentAt, const char* finishedAt)
 	{
 		ApiRequest request;
@@ -55,7 +51,7 @@ namespace {
 	}
 }
 
-TEST_CASE("LayersOf splits a request's context into cache read, cache write and uncached input")
+TEST_CASE("ContextLayersOf splits a request's context into cache read, cache write and uncached input")
 {
 	ApiRequest request;
 	request.Usage.CacheRead = 800;
@@ -64,7 +60,7 @@ TEST_CASE("LayersOf splits a request's context into cache read, cache write and 
 	request.Usage.Input = 5;
 	request.Usage.Output = 99;
 
-	const ContextLayers layers = LayersOf(request);
+	const ContextLayers layers = ContextLayersOf(request);
 
 	CHECK(layers[0] == 800.0);
 	CHECK(layers[1] == 30.0);
@@ -73,7 +69,7 @@ TEST_CASE("LayersOf splits a request's context into cache read, cache write and 
 
 TEST_CASE("StackedTops stacks every shown layer on the ones below it")
 {
-	const ContextLayers tops = StackedTops(kLayers, {true, true, true});
+	const ContextLayers tops = StackedTops(kContextLayerValues, {true, true, true});
 
 	CHECK(tops[0] == 800.0);
 	CHECK(tops[1] == 830.0);
@@ -82,7 +78,7 @@ TEST_CASE("StackedTops stacks every shown layer on the ones below it")
 
 TEST_CASE("StackedTops leaves a hidden layer at the top of the one below and lowers the ones above")
 {
-	const ContextLayers tops = StackedTops(kLayers, {true, false, true});
+	const ContextLayers tops = StackedTops(kContextLayerValues, {true, false, true});
 
 	CHECK(tops[0] == 800.0);
 	CHECK(tops[1] == 800.0);
@@ -91,7 +87,7 @@ TEST_CASE("StackedTops leaves a hidden layer at the top of the one below and low
 
 TEST_CASE("StackedTops starts from zero when the bottom layer is hidden")
 {
-	const ContextLayers tops = StackedTops(kLayers, {false, true, true});
+	const ContextLayers tops = StackedTops(kContextLayerValues, {false, true, true});
 
 	CHECK(tops[0] == 0.0);
 	CHECK(tops[1] == 30.0);
@@ -100,7 +96,7 @@ TEST_CASE("StackedTops starts from zero when the bottom layer is hidden")
 
 TEST_CASE("StackedTops is flat at zero with every layer hidden")
 {
-	const ContextLayers tops = StackedTops(kLayers, {false, false, false});
+	const ContextLayers tops = StackedTops(kContextLayerValues, {false, false, false});
 
 	CHECK(tops[0] == 0.0);
 	CHECK(tops[1] == 0.0);
@@ -136,8 +132,8 @@ TEST_CASE("CostLayersOf splits a request's cost into cache read, cache write, in
 	CHECK((*layers)[static_cast<std::size_t>(CostLayer::Input)] == doctest::Approx(3.0));
 	CHECK((*layers)[static_cast<std::size_t>(CostLayer::Output)] == doctest::Approx(15.0));
 
-	const double sum = (*layers)[0] + (*layers)[1] + (*layers)[2] + (*layers)[3];
-	CHECK(sum == doctest::Approx(pricing.CostOf({{UsageKey{request.Model, request.Fast}, request.Usage}}).Dollars));
+	const double layerTotal = (*layers)[0] + (*layers)[1] + (*layers)[2] + (*layers)[3];
+	CHECK(layerTotal == doctest::Approx(pricing.CostOf({{UsageKey{request.Model, request.Fast}, request.Usage}}).Dollars));
 }
 
 TEST_CASE("CostLayersOf has nothing for a model with no price")
@@ -151,12 +147,12 @@ TEST_CASE("CostLayersOf has nothing for a model with no price")
 
 TEST_CASE("CumulativeCost runs flat across a request with no price instead of dropping to zero")
 {
-	const std::vector<double> total = CumulativeCost({Known(1.0), Unknown(), Known(2.0)});
+	const std::vector<double> cumulative = CumulativeCost({Known(1.0), Unknown(), Known(2.0)});
 
-	REQUIRE(total.size() == 3);
-	CHECK(total[0] == doctest::Approx(1.0));
-	CHECK(total[1] == doctest::Approx(1.0));
-	CHECK(total[2] == doctest::Approx(3.0));
+	REQUIRE(cumulative.size() == 3);
+	CHECK(cumulative[0] == doctest::Approx(1.0));
+	CHECK(cumulative[1] == doctest::Approx(1.0));
+	CHECK(cumulative[2] == doctest::Approx(3.0));
 }
 
 TEST_CASE("CumulativeCost of no requests is empty")
@@ -166,39 +162,39 @@ TEST_CASE("CumulativeCost of no requests is empty")
 
 TEST_CASE("ClockSeconds reads the response time and has nothing for one that does not parse")
 {
-	const std::optional<double> first = ClockSeconds(At("2026-09-24T10:00:00.000Z"));
-	const std::optional<double> second = ClockSeconds(At("2026-09-24T10:01:00.500Z"));
+	const std::optional<double> earlier = ClockSeconds(At("2026-09-24T10:00:00.000Z"));
+	const std::optional<double> later = ClockSeconds(At("2026-09-24T10:01:00.500Z"));
 
-	REQUIRE(first);
-	REQUIRE(second);
-	CHECK(*second - *first == doctest::Approx(60.5));
+	REQUIRE(earlier);
+	REQUIRE(later);
+	CHECK(*later - *earlier == doctest::Approx(60.5));
 	CHECK_FALSE(ClockSeconds(At("")));
 	CHECK_FALSE(ClockSeconds(At("not a time")));
 }
 
-TEST_CASE("GapBefore is the time from the end of the previous response to this request being sent")
+TEST_CASE("IdleGapBeforeRequest is the time from the end of the previous response to this request being sent")
 {
 	using namespace std::chrono_literals;
 
-	const std::optional<std::chrono::milliseconds> gap = GapBefore(
+	const std::optional<std::chrono::milliseconds> gap = IdleGapBeforeRequest(
 		Span("2026-09-24T10:00:00.000Z", "2026-09-24T10:00:30.000Z"), Span("2026-09-24T10:01:00.000Z", "2026-09-24T10:01:10.000Z"));
 
 	REQUIRE(gap);
 	CHECK(*gap == 30s);
 }
 
-TEST_CASE("GapBefore has nothing without the previous response's end and this request's sending")
+TEST_CASE("IdleGapBeforeRequest has nothing without the previous response's end and this request's sending")
 {
-	CHECK_FALSE(GapBefore(Span("2026-09-24T10:00:00.000Z", ""), Span("2026-09-24T10:01:00.000Z", "2026-09-24T10:01:10.000Z")));
-	CHECK_FALSE(GapBefore(Span("2026-09-24T10:00:00.000Z", "2026-09-24T10:00:30.000Z"), Span("", "2026-09-24T10:01:10.000Z")));
-	CHECK_FALSE(GapBefore(Span("2026-09-24T10:00:00.000Z", "not a time"), Span("2026-09-24T10:01:00.000Z", "2026-09-24T10:01:10.000Z")));
+	CHECK_FALSE(IdleGapBeforeRequest(Span("2026-09-24T10:00:00.000Z", ""), Span("2026-09-24T10:01:00.000Z", "2026-09-24T10:01:10.000Z")));
+	CHECK_FALSE(IdleGapBeforeRequest(Span("2026-09-24T10:00:00.000Z", "2026-09-24T10:00:30.000Z"), Span("", "2026-09-24T10:01:10.000Z")));
+	CHECK_FALSE(IdleGapBeforeRequest(Span("2026-09-24T10:00:00.000Z", "not a time"), Span("2026-09-24T10:01:00.000Z", "2026-09-24T10:01:10.000Z")));
 }
 
-TEST_CASE("GapBefore is zero, never negative, when this request was sent before the previous response ended")
+TEST_CASE("IdleGapBeforeRequest is zero, never negative, when this request was sent before the previous response ended")
 {
 	using namespace std::chrono_literals;
 
-	const std::optional<std::chrono::milliseconds> gap = GapBefore(
+	const std::optional<std::chrono::milliseconds> gap = IdleGapBeforeRequest(
 		Span("2026-09-24T10:00:00.000Z", "2026-09-24T10:01:00.000Z"), Span("2026-09-24T10:00:59.000Z", "2026-09-24T10:01:10.000Z"));
 
 	REQUIRE(gap);
