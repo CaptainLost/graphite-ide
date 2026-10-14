@@ -32,138 +32,78 @@ namespace Graphite {
 	class AppSettings;
 	class Workspace;
 
-	// Where a terminal with nowhere better to go is docked: beside this window (the console
-	// panel's, so the bottom row), else into a bottom row split off the central node again,
-	// else into the central node itself.
 	struct TerminalDockTargets
 	{
 		std::string BesideWindow;
 		unsigned int CentreNode = 0;
 
-		// The windows of the panels the layout puts in the bottom row. Every node one of them is
-		// shown in gets the + and the shell list, as a terminal's own node does, so the row keeps
-		// its buttons whichever of its panels is left open in it.
 		std::vector<std::string> RowWindows;
 
-		// The dockspace's root, which a re-created bottom row is finished against; 0 when there
-		// is no dockspace to split.
 		unsigned int DockSpace = 0;
 
-		// The share of the central node a re-created bottom row takes: the layout's own, so the
-		// row comes back the height a layout reset would give it.
 		float BottomRatio = Core::DockLayout{}.BottomRatio;
 
-		// The dockspace built its default layout this frame, before this Render.
 		bool LayoutRebuilt = false;
 	};
 
-	// The shells running in this window, each a window of its own that can be dragged and docked
-	// anywhere - the DiffWindows pattern (ADR 0494) rather than a panel, because there can be
-	// any number of them. This owns the sessions rather than the views, because a session
-	// outlives the frames its window is drawn in: a build in a tab behind another keeps making
-	// progress, which is why every session is pumped and not just the visible ones.
 	class TerminalWindows final : Core::NonCopyable
 	{
 	public:
-		// The event bus is handed to every view, which reports a copy of its selection on the
-		// status bar through it.
 		TerminalWindows(Workspace& workspace, const Core::Keymap& keys, const Core::CommandRegistry& commands,
 						AppSettings& settings, Core::EventBus& events);
 
-		// The shells found on this machine, in the order a terminal offers them.
 		const std::vector<Core::ShellProfile>& GetShells() const { return m_Shells; }
 
-		// "New Terminal" for the default shell, bound to Ctrl+` by default, and one command
-		// per discovered shell in the terminal.shells group, which the View menu lists.
 		void RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys);
 
-		// Drains every session. Once per frame, before Render.
 		void Update();
 
 		void Render(const TerminalDockTargets& targets, const EditorPalette& palette,
 					Core::TabCloseRequests& closeRequests);
 
-		// The shell chosen in the settings, by profile name; the first discovered shell, the most
-		// capable, when none was chosen or the chosen one is no longer found. False when no shell
-		// was found or it could not be started, which is logged.
 		bool OpenDefaultShell();
 
-		// The default shell, started in `directory` (see OpenShellIn).
 		bool OpenDefaultShellIn(const std::filesystem::path& directory);
 
-		// Where the default shell is among GetShells(). Not for an empty list.
 		std::size_t GetDefaultShellIndex() const;
 
-		// Starts discovered shell `shell` in `directory`, or where a new terminal starts by
-		// default when `directory` is empty, placed by the usual rule. False when there is no
-		// such shell or it could not be started, which is logged. Not for use from inside
-		// Render, whose loop over the open terminals a new one would invalidate.
-		bool OpenShellIn(std::size_t shell, const std::filesystem::path& directory);
+		// WARNING: Not for use from inside Render, whose loop over the open terminals a new one would invalidate.
+		bool OpenShellIn(std::size_t shellIndex, const std::filesystem::path& directory);
 
-		// The default shell opened because no folder was at startup. Marked, so a folder with
-		// terminals of its own saved does not take it in (AdoptTerminals).
 		bool OpenStartupShell();
 
-		// Opens a window running `program` rather than a discovered shell. It behaves as any
-		// other: pumped, resized and closed the same way, closing when the program exits, but it
-		// is never kept for the next launch. False when the program could not be started.
 		bool OpenCommand(const std::string& label, const std::filesystem::path& program,
 						 std::vector<std::string> arguments, const std::filesystem::path& workingDirectory);
 
-		// The shells, as the next launch of this folder starts them again. Absent until the folder
-		// has had a terminal of its own (KeepsTerminals): one carried over from the folder before,
-		// or started by a command, does not make the folder's list empty. A folder in restricted
-		// mode writes back the list it started none of until the reader starts a shell in it.
 		std::optional<std::vector<TerminalTabState>> CaptureState() const;
 
-		// Marks every open terminal as carried over from the folder about to be replaced or
-		// closed: they stay open, but CaptureState leaves them out, as CarryOverOpenSessions does.
 		void CarryOverOpenTerminals();
 
-		// Starts what CaptureState returned last time for the folder being opened, each window
-		// going back to the place imgui.ini remembers. Absent state opens one default shell when
-		// nothing is open (OpensDefaultTerminal). A folder in restricted mode starts nothing at
-		// all, and trusting it later starts nothing either: the reader opens a shell by hand.
-		// Shells nobody owned become the folder's first (AdoptTerminals), except in restricted mode.
 		void RestoreState(const std::optional<std::vector<TerminalTabState>>& saved, bool trusted);
 
-		// View > Reset Layout: every terminal docks again by the rule a new one follows, as the
-		// panels do into the rebuilt layout, instead of being left floating where the removed
-		// nodes dropped it. Takes effect on the first Render whose targets say the layout was
-		// rebuilt - see LayoutRebuilt.
 		void RequestRedock();
 
 	private:
+		enum class EntryOrigin
+		{
+			Requested,
+			Restored
+		};
+
 		struct Entry
 		{
 			Core::Scope<Core::TerminalSession> Session;
 			Core::Scope<TerminalView> View;
 			OpenTerminal Record;
-
-			// Not yet drawn: its first frame decides where it docks.
 			bool Fresh = true;
-
-			// Started by RestoreState and not yet drawn: goes back to where imgui.ini remembers
-			// it, when it remembers anywhere it can still go.
 			bool Restored = false;
-
 			bool Focus = true;
-
-			// Set by the window's ×, middle click, the tab menu or the view's own Close; acted on
-			// after End, since destroying a session joins its reader thread.
+			// WARNING: Acted on only after End, since destroying a session joins its reader thread.
 			bool Closing = false;
-
-			// The node whose tab bar or tab menu asked for this terminal, 0 for none: its first
-			// frame docks it there, ahead of the last-focused rule, while that node still exists.
 			unsigned int DockNode = 0;
-
-			// What the view measured on the frame before, which a narrow grid has to repeat
-			// before the shell is resized to it (TerminalSizeIsPlausible).
 			TerminalGridSize LastMeasured;
 		};
 
-		// A terminal asked for from inside Render - a tab bar's buttons or a tab's menu - and
-		// started once nothing is iterating m_Open any more.
 		struct PendingOpen
 		{
 			std::size_t Shell = 0;
@@ -171,8 +111,8 @@ namespace Graphite {
 		};
 
 		bool Start(const Core::ShellProfile& profile, const std::filesystem::path& workingDirectory,
-				   OpenTerminal record, bool restored);
-		bool StartShell(std::size_t shell, const std::filesystem::path& directory, unsigned int dockNode);
+				   OpenTerminal record, EntryOrigin origin);
+		bool StartShell(std::size_t shellIndex, const std::filesystem::path& directory, unsigned int dockNode);
 		void StartPendingOpens();
 		void RenderTabBarButtons(const TerminalDockTargets& targets);
 		void DrawShellMenuItems(unsigned int dockNode);
@@ -180,6 +120,7 @@ namespace Graphite {
 		Entry* FindEntry(const std::string& id);
 		void PlaceNewWindow(const std::string& name, Entry& entry, const TerminalDockTargets& targets);
 		void RemoveClosed();
+		static bool IsFinished(const Core::Scope<Entry>& entry);
 		void StoreRecords(const std::vector<OpenTerminal>& records);
 		std::vector<OpenTerminal> Records() const;
 
@@ -190,25 +131,17 @@ namespace Graphite {
 		Core::EventBus& m_Events;
 		std::vector<Core::ShellProfile> m_Shells;
 
-		// Scoped, so closing one never moves the others: a TerminalView holds its session by
-		// reference.
+		// WARNING: Scoped so closing one never moves the others: a TerminalView holds its session by reference.
 		std::vector<Core::Scope<Entry>> m_Open;
 
 		std::vector<PendingOpen> m_PendingOpens;
 
-		// The terminal whose window had focus last: a new one docks beside it.
 		std::string m_LastFocused;
 
-		// Whether the open folder has had a terminal of its own, so CaptureState writes a list -
-		// see KeepsTerminals. Set by RestoreState for each folder, and by starting a shell in one.
 		bool m_KeepsTerminals = false;
 
-		// The saved list a folder in restricted mode started none of, which CaptureState writes
-		// back unchanged until the reader starts a shell there - see HeldBackTerminals. Set by
-		// RestoreState for each folder.
 		std::optional<std::vector<TerminalTabState>> m_HeldBack;
 
-		// A layout reset was asked for and its rebuild has not been drawn yet.
 		bool m_RedockPending = false;
 	};
 }

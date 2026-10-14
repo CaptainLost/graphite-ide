@@ -15,76 +15,32 @@
 
 namespace Graphite {
 
-	// What a terminal's tab says, from what its shell announced. A shell's announced title is a
-	// program's own text, and a shell announces the least useful thing it could: PowerShell and
-	// cmd each name their own executable, path and all. That path tells a reader nothing the
-	// profile name does not tell them better, so a title that is only the shell introducing
-	// itself is dropped. A title a program actually chose - vim naming its file, a build naming
-	// its target - is kept, because that is the one worth reading.
 	std::string TerminalTitleFor(const std::string& title, const std::string& profileName);
 
-	// The id of the command that opens a shell, from its profile name rather than its place in
-	// the discovered list, so a key bound to it stays on the same shell when discovery finds one
-	// more or one fewer.
 	std::string NewTerminalCommandId(std::string_view profileName);
 
-	// The index in `shells` of the shell the reader chose as the default, by profile name - the
-	// name terminals are saved under - or the first when nothing was chosen or the chosen shell is
-	// no longer discovered. The first is the most capable, which is what a default should be when
-	// nobody asked. `shells` must not be empty.
 	std::size_t DefaultShellIndex(const std::vector<Core::ShellProfile>& shells, std::string_view chosen);
 
-	// One open terminal as the rules below see it: no session, no view, only what decides
-	// whether and how it is kept.
 	struct OpenTerminal
 	{
 		std::string Id;
 		std::string ProfileName;
 		std::filesystem::path WorkingDirectory;
-
-		// Started by a command - a Claude session - rather than as a shell. Never kept: starting
-		// it again unasked at the next launch would be a surprise.
 		bool FromCommand = false;
-
-		// Still open from a folder another one replaced, and already written to that folder.
 		bool CarriedOver = false;
-
-		// The last title the shell announced, kept so the tab reads the same after a restart until
-		// the new shell announces its own.
 		std::string Title;
-
-		// Opened while no folder was open, so it was never any folder's: the next folder opened
-		// adopts it. A terminal that belonged to a folder is carried over instead.
 		bool Unowned = false;
-
-		// The shell opened at startup because no folder was: unlike one the reader started, it is
-		// adopted only by a folder with no terminals of its own saved.
 		bool AutoOpened = false;
 	};
 
-	// A folder is about to replace or close the one the open terminals belong to: each stays open
-	// but is carried over, so it is not written to the next folder - unless it was never a
-	// folder's (Unowned), which the next folder may adopt.
-	void CarryOverTerminals(std::vector<OpenTerminal>& open);
+	void CarryOverTerminals(std::vector<OpenTerminal>& openTerminals);
 
-	// A folder has opened. Terminals nobody owned become its own, except a command's window and
-	// the startup shell when the folder has a saved list; those are carried over instead. All of
-	// them are owned from here on. Returns whether any was adopted: the folder then has a
-	// terminal of its own, so its list is kept even if empty of anything else.
-	//
-	// A folder in restricted mode (`trusted` false) adopts none of them - neither a shell the
-	// reader opened with no folder nor the startup shell. Adopting one would count as a shell
-	// started in the folder by hand, dropping the saved list HeldBackTerminals keeps and writing
-	// shells the folder never had into its .graphite/workspace.json. They are carried over
-	// instead, but stay nobody's: the next trusted folder opened may still adopt them.
-	bool AdoptTerminals(std::vector<OpenTerminal>& open, bool folderHasSavedList, bool trusted);
+	bool AdoptTerminals(std::vector<OpenTerminal>& openTerminals, bool folderHasSavedList, bool trusted);
 
-	std::vector<TerminalTabState> CaptureTerminals(const std::vector<OpenTerminal>& open);
+	std::vector<TerminalTabState> CaptureTerminals(const std::vector<OpenTerminal>& openTerminals);
 
-	// The title a tab shows: what the shell announces now, else what it announced last time.
 	std::string TerminalLabelTitle(const std::string& live, const std::string& remembered);
 
-	// A grid as a terminal view measured it, in character cells.
 	struct TerminalGridSize
 	{
 		int Columns = 0;
@@ -93,19 +49,11 @@ namespace Graphite {
 		bool operator==(const TerminalGridSize&) const = default;
 	};
 
-	// Whether a measured grid is worth telling the shell about. A window on its first frame, or
-	// one squeezed to nothing, measures a sliver; resizing the pseudo-console to it makes the
-	// console host reflow what it has printed - the banner - out of existence. Below two cells
-	// either way it is never told. A narrow grid the user may really have docked is told once
-	// it measured the same on the frame before as well: a layout still settling changes from
-	// frame to frame, a terminal docked narrow does not.
 	bool TerminalSizeIsPlausible(TerminalGridSize measured, TerminalGridSize previous);
 
 	struct TerminalToStart
 	{
 		std::string Id;
-
-		// Index into the discovered shells.
 		std::size_t Shell = 0;
 		std::filesystem::path WorkingDirectory;
 		std::string Title;
@@ -114,114 +62,59 @@ namespace Graphite {
 	struct TerminalRestorePlan
 	{
 		std::vector<TerminalToStart> Start;
-
-		// Saved ids that are open already: those terminals belong to the folder being opened and
-		// stop being carried over.
 		std::vector<std::string> AlreadyOpen;
-
-		// Saved profile names no discovered shell has, for the log.
 		std::vector<std::string> UnknownProfiles;
 	};
 
-	// `resolveDirectory` turns a saved directory into the one to start in: itself when it still
-	// exists, the folder's root otherwise. Passed in so the rule can be tested without a disk.
-	//
-	// A folder in restricted mode (`trusted` false) plans nothing: its saved list comes from its
-	// own .graphite/workspace.json, so any shell in any directory could be named there, and a
-	// terminal it starts is one the reader never asked for. The reader starts one by hand.
 	TerminalRestorePlan PlanTerminalRestore(
 		const std::vector<TerminalTabState>& saved, const std::vector<Core::ShellProfile>& shells,
-		const std::vector<OpenTerminal>& open,
+		const std::vector<OpenTerminal>& openTerminals,
 		const std::function<std::filesystem::path(const std::filesystem::path&)>& resolveDirectory,
 		bool trusted);
 
-	// A folder that never kept terminals opens one, as the terminal always did; one that kept an
-	// empty list had them all closed on purpose. Either way, terminals already open - carried
-	// over from the folder before - are enough. A folder in restricted mode opens none, for the
-	// reason PlanTerminalRestore gives.
 	bool OpensDefaultTerminal(const std::optional<std::vector<TerminalTabState>>& saved,
 							  std::size_t openCount, bool trusted);
 
-	// Whether a folder just opened has a terminal list of its own to keep: one it saved before,
-	// even an empty one, or the default shell it has just opened. A folder opened while another
-	// one's shells were still up has neither until the reader starts a shell in it, and until
-	// then its list stays absent rather than empty - an empty list is "every terminal closed on
-	// purpose", which would leave the folder opening with no terminal from then on although the
-	// reader never closed one of its own.
 	bool KeepsTerminals(const std::optional<std::vector<TerminalTabState>>& saved, bool openedDefault);
 
-	// The saved list a folder in restricted mode starts none of (`trusted` false), which its
-	// state goes on recording exactly as it was stored: nothing it names is open, and capturing
-	// what is would write an empty list - "every terminal closed on purpose" - so the folder,
-	// once trusted, would reopen with neither its terminals nor the default shell. Absent for a
-	// trusted folder, and for one that saved no list. Dropped once the reader starts a shell by
-	// hand in the folder: from then on its list is what is open, as in any other folder.
 	std::optional<std::vector<TerminalTabState>> HeldBackTerminals(
 		const std::optional<std::vector<TerminalTabState>>& saved, bool trusted);
 
-	// What a folder's state records of its terminals: the held-back list while there is one
-	// (HeldBackTerminals), otherwise absent while it keeps none, otherwise CaptureTerminals -
-	// which may well be empty.
 	std::optional<std::vector<TerminalTabState>> CaptureFolderTerminals(
-		const std::vector<OpenTerminal>& open, bool keepsTerminals,
+		const std::vector<OpenTerminal>& openTerminals, bool keepsTerminals,
 		const std::optional<std::vector<TerminalTabState>>& heldBack);
 
-	// Where a terminal opened on an Explorer entry starts: a folder is itself, a file is the
-	// folder it sits in.
 	std::filesystem::path TerminalDirectoryFor(const std::filesystem::path& path, bool isDirectory);
 
-	// Whether a terminal takes this frame's typed characters with these modifiers held. Only
-	// Control without Alt is a chord rather than typing. Alt alone has to be typing too: GLFW
-	// drops the fake Left Ctrl that AltGr sends on Windows, so the host sees AltGr - and with it
-	// every Polish letter that needs it, ą ć ę ł ń ó ś ź ż - as Alt on its own, while a real
-	// Alt+letter arrives as WM_SYSCHAR and never reaches the character queue at all.
+	// WARNING: GLFW drops the fake Left Ctrl that AltGr sends on Windows, so AltGr arrives as Alt
+	// alone; a real Alt+letter arrives as WM_SYSCHAR and never reaches the character queue.
 	bool TerminalTakesTypedText(Core::KeyModifier held);
 
-	// The modifiers a key press is encoded with. A press that typed a character sends neither
-	// Control nor Alt: passing them through would make EncodeKey turn `ą` into ESC a on top of
-	// itself. A press that typed nothing - Alt+B, Ctrl+Alt+Left - keeps them, and stays a chord.
+	// WARNING: A press that typed a character must not keep Control or Alt, or EncodeKey turns
+	// `ą` into ESC a on top of itself.
 	Core::KeyModifier TerminalKeyModifiers(Core::KeyModifier held, bool producedCharacter);
 
-	// Where a scrollbar's thumb sits within its track, both measured from the top.
 	struct TerminalScrollbarThumb
 	{
 		float Top = 0.0f;
 		float Height = 0.0f;
 	};
 
-	// The thumb for a view `rows` tall that is `offset` lines above the tail of `scrollback`
-	// lines of history. The tail - offset 0 - is the bottom of the track and the oldest line
-	// the top. The thumb is as tall as the visible share of everything there is, never shorter
-	// than `minHeight` so it stays something to grab, and fills the track when there is no
-	// history to scroll through.
 	TerminalScrollbarThumb ComputeTerminalScrollbarThumb(int offset, int rows, int scrollback,
-															 float trackHeight, float minHeight);
+														 float trackHeight, float minHeight);
 
-	// The inverse: the offset a thumb dragged to `thumbTop` stands for, clamped to the history.
 	int TerminalScrollOffsetForThumbTop(float thumbTop, int scrollback, float trackHeight,
 										float thumbHeight);
 
-	// What the view itself does with a key, before the IDE's bindings or the shell see it.
 	enum class TerminalShortcut
 	{
-		// Not one of the view's gestures: the IDE's bindings, then the shell, decide.
 		None,
-
 		Copy,
 		Paste,
-
-		// Ctrl+C with nothing selected: the interrupt the shell is owed.
 		Interrupt,
-
-		// Consumed and answered with nothing. Ctrl+Shift+C with no selection lands here: it is
-		// the copy chord, and a copy of nothing must never fall through to become a ^C.
 		Swallow
 	};
 
-	// Ctrl+C copies a selection and interrupts without one; Ctrl+Shift+C only ever copies.
-	// Ctrl+V and Ctrl+Shift+V both paste, so the plain chord of every other application works
-	// here as well as the one a terminal needs for itself. Alt or Super in the mix makes it
-	// somebody else's chord.
 	TerminalShortcut ClassifyTerminalShortcut(Core::KeyCode key, Core::KeyModifier held,
-											   bool hasSelection);
+											  bool hasSelection);
 }

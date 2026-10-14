@@ -2,6 +2,8 @@
 
 #include "Terminal/TerminalSelection.h"
 
+#include "SelectionFixtures.h"
+
 #include "Core/Terminal/TerminalScreen.h"
 #include "Core/Text/TextSelection.h"
 
@@ -30,7 +32,6 @@ namespace {
 		screen.LineFeed();
 	}
 
-	// "a", a double-width character over two cells, "b", then the row's blank remainder.
 	std::vector<Core::TerminalCell> WideRow()
 	{
 		Core::TerminalScreen screen(6, 1);
@@ -67,19 +68,10 @@ namespace {
 	{
 		return LineOfScreenRow(screen.GetRowsScrolledOff(), row);
 	}
-
-	Core::TextSelection Between(Core::TextPoint from, Core::TextPoint to)
-	{
-		Core::TextSelection selection;
-		selection.Select(from, to);
-		return selection;
-	}
 }
 
 TEST_CASE("TerminalSelection gives a row the same line on the screen and in the scrollback")
 {
-	// A row on screen row 3 with five rows scrolled off; four more scroll off and it sits at
-	// the end of a hundred-line scrollback.
 	CHECK(LineOfScreenRow(5, 3) == 8);
 	CHECK(LineOfScrollbackRow(9, 100, 99) == 8);
 	CHECK(LineOfScreenRow(9, -1) == 8);
@@ -94,7 +86,7 @@ TEST_CASE("TerminalSelection keeps a selection on its text while output scrolls"
 	PrintAscii(screen, "beta");
 
 	const std::int64_t beta = ScreenLine(screen, 1);
-	const Core::TextSelection selection = Between({beta, 0}, {beta, 4});
+	const Core::TextSelection selection = SelectionBetween({beta, 0}, {beta, 4});
 
 	REQUIRE(SelectedTerminalText(selection, screen, 10) == "beta");
 
@@ -114,13 +106,12 @@ TEST_CASE("TerminalSelection knows a selection whose text has left the scrollbac
 	Core::TerminalScreen screen(10, 2, 2);
 
 	PrintAscii(screen, "first");
-	const Core::TextSelection selection = Between({ScreenLine(screen, 0), 0}, {ScreenLine(screen, 0), 5});
+	const Core::TextSelection selection = SelectionBetween({ScreenLine(screen, 0), 0}, {ScreenLine(screen, 0), 5});
 
 	NewLine(screen);
 	NewLine(screen);
 	NewLine(screen);
 
-	// Two rows scrolled off, both still held.
 	CHECK_FALSE(SelectionLeftHistory(selection, screen.GetRowsScrolledOff(), screen.GetScrollbackCount()));
 	CHECK(SelectedTerminalText(selection, screen, 10) == "first");
 
@@ -152,8 +143,7 @@ TEST_CASE("TerminalSelection clamps a start that left the scrollback and clears 
 
 	REQUIRE(first < oldest);
 
-	// Start gone, end on the screen: not left, and clamped to the head of the oldest line held.
-	const Core::TextSelection reaching = Between({first, 2}, {oldest + 1, 3});
+	const Core::TextSelection reaching = SelectionBetween({first, 2}, {oldest + 1, 3});
 
 	CHECK_FALSE(SelectionLeftHistory(reaching, scrolled, held));
 
@@ -162,13 +152,11 @@ TEST_CASE("TerminalSelection clamps a start that left the scrollback and clears 
 	CHECK(clamped.First() == Core::TextPoint{oldest, 0});
 	CHECK(clamped.Last() == Core::TextPoint{oldest + 1, 3});
 
-	// A start that is still held is left alone.
-	const Core::TextSelection held_ = Between({oldest, 1}, {oldest + 1, 3});
+	const Core::TextSelection heldStart = SelectionBetween({oldest, 1}, {oldest + 1, 3});
 
-	CHECK(ClampSelectionToHistory(held_, scrolled, held).First() == Core::TextPoint{oldest, 1});
+	CHECK(ClampSelectionToHistory(heldStart, scrolled, held).First() == Core::TextPoint{oldest, 1});
 
-	// Both ends gone: cleared.
-	CHECK(SelectionLeftHistory(Between({first, 0}, {first, 5}), scrolled, held));
+	CHECK(SelectionLeftHistory(SelectionBetween({first, 0}, {first, 5}), scrolled, held));
 	CHECK(second < oldest + 2);
 }
 
@@ -180,8 +168,8 @@ TEST_CASE("TerminalSelection treats the whole selection as gone once the scrollb
 	NewLine(screen);
 	NewLine(screen);
 
-	const std::int64_t old = LineOfScrollbackRow(screen.GetRowsScrolledOff(), screen.GetScrollbackCount(), 0);
-	const Core::TextSelection selection = Between({old, 0}, {old, 3});
+	const std::int64_t oldLine = LineOfScrollbackRow(screen.GetRowsScrolledOff(), screen.GetScrollbackCount(), 0);
+	const Core::TextSelection selection = SelectionBetween({oldLine, 0}, {oldLine, 3});
 
 	REQUIRE(SelectedTerminalText(selection, screen, 10) == "old");
 
@@ -233,7 +221,6 @@ TEST_CASE("TerminalSelection double-click counts a trailer with its leader")
 {
 	const std::vector<Core::TerminalCell> cells = WideRow();
 
-	// The whole of "a", the wide character and "b", from either half of the wide one.
 	CHECK(TerminalWordAt(cells, 6, 1) == Core::ColumnSpan{0, 4});
 	CHECK(TerminalWordAt(cells, 6, 2) == Core::ColumnSpan{0, 4});
 }
@@ -244,7 +231,6 @@ TEST_CASE("TerminalSelection hit-tests to the nearest boundary and never inside 
 
 	CHECK(TerminalColumnAt(cells, 6, 0.4f) == 0);
 	CHECK(TerminalColumnAt(cells, 6, 0.6f) == 1);
-	// The boundary between the two halves of the wide character, approached from either side.
 	CHECK(TerminalColumnAt(cells, 6, 1.9f) == 1);
 	CHECK(TerminalColumnAt(cells, 6, 2.1f) == 3);
 	CHECK(TerminalColumnAt(cells, 6, -3.0f) == 0);
@@ -257,7 +243,6 @@ TEST_CASE("TerminalSelection names the cell under the pointer, a wide character 
 
 	CHECK(TerminalCellAt(cells, 6, 0.9f) == 0);
 	CHECK(TerminalCellAt(cells, 6, 1.2f) == 1);
-	// The right half of the wide character is still that character.
 	CHECK(TerminalCellAt(cells, 6, 2.7f) == 1);
 	CHECK(TerminalCellAt(cells, 6, 3.1f) == 3);
 	CHECK(TerminalCellAt(cells, 6, -2.0f) == 0);
@@ -276,7 +261,6 @@ TEST_CASE("TerminalSelection double-click on the right half of a word's last cha
 	grid.Columns = 10;
 	grid.VisibleRows = 1;
 
-	// The right half of the 's': the nearest boundary is after it, the cell under it is the 's'.
 	const float x = 18.0f;
 	const std::int64_t line = ScreenLine(screen, 0);
 
@@ -303,9 +287,8 @@ TEST_CASE("TerminalSelection copies a stream across rows, trimming each row's tr
 	PrintAscii(screen, "three");
 
 	const Core::TextSelection selection =
-		Between({ScreenLine(screen, 0), 1}, {ScreenLine(screen, 2), 3});
+		SelectionBetween({ScreenLine(screen, 0), 1}, {ScreenLine(screen, 2), 3});
 
-	// The leading space of the first row is kept; the blank middle row is an empty line.
 	CHECK(SelectedTerminalText(selection, screen, 10) == " one\n\nthr");
 }
 
@@ -323,7 +306,7 @@ TEST_CASE("TerminalSelection copies across the scrollback into the screen")
 
 	const std::int64_t first =
 		LineOfScrollbackRow(screen.GetRowsScrolledOff(), screen.GetScrollbackCount(), 0);
-	const Core::TextSelection selection = Between({first, 4}, {ScreenLine(screen, 1), 10});
+	const Core::TextSelection selection = SelectionBetween({first, 4}, {ScreenLine(screen, 1), 10});
 
 	CHECK(SelectedTerminalText(selection, screen, 10) == "ory\nmiddle\nnow");
 }
@@ -334,7 +317,7 @@ TEST_CASE("TerminalSelection skips rows below the screen without a line break")
 
 	PrintAscii(screen, "top");
 
-	const Core::TextSelection selection = Between({ScreenLine(screen, 0), 0}, {ScreenLine(screen, 5), 4});
+	const Core::TextSelection selection = SelectionBetween({ScreenLine(screen, 0), 0}, {ScreenLine(screen, 5), 4});
 
 	CHECK(SelectedTerminalText(selection, screen, 10) == "top\n");
 }
@@ -349,9 +332,9 @@ TEST_CASE("TerminalSelection copies a wide character half covered by the end of 
 
 	const std::int64_t line = ScreenLine(screen, 0);
 
-	CHECK(SelectedTerminalText(Between({line, 0}, {line, 4}), screen, 6) == "a界"
-																			"b");
-	CHECK(SelectedTerminalText(Between({line, 1}, {line, 3}), screen, 6) == "界");
+	CHECK(SelectedTerminalText(SelectionBetween({line, 0}, {line, 4}), screen, 6) == "a界"
+																					 "b");
+	CHECK(SelectedTerminalText(SelectionBetween({line, 1}, {line, 3}), screen, 6) == "界");
 }
 
 TEST_CASE("TerminalSelection finds the point under the pointer among the rows shown")
@@ -375,14 +358,13 @@ TEST_CASE("TerminalSelection finds the point under the pointer among the rows sh
 	grid.CellHeight = 20.0f;
 	grid.Columns = 10;
 	grid.VisibleRows = 3;
-	grid.ScrollOffset = 1; // "zero" from the scrollback at the top, "two" at the bottom
+	grid.ScrollOffset = 1;
 
 	const std::int64_t zero = LineOfScrollbackRow(screen.GetRowsScrolledOff(), 1, 0);
 
 	CHECK(TerminalPointAt(screen, grid, 122.0f, 55.0f) == Core::TextPoint{zero, 2});
 	CHECK(TerminalPointAt(screen, grid, 128.0f, 75.0f) == Core::TextPoint{zero + 1, 3});
 
-	// Above the grid: the start of the first row shown. Below: the end of the last.
 	CHECK(TerminalPointAt(screen, grid, 150.0f, 10.0f) == Core::TextPoint{zero, 0});
 	CHECK(TerminalPointAt(screen, grid, 120.0f, 500.0f) == Core::TextPoint{zero + 2, 10});
 }
@@ -400,8 +382,7 @@ TEST_CASE("TerminalSelection select all stops at the last row that holds anythin
 	CHECK(from == Core::TextPoint{ScreenLine(screen, 0), 0});
 	CHECK(to == Core::TextPoint{ScreenLine(screen, 1), 10});
 
-	Core::TextSelection selection;
-	selection.Select(from, to);
+	const Core::TextSelection selection = SelectionBetween(from, to);
 
 	CHECK(SelectedTerminalText(selection, screen, 10) == "gone\nprompt>");
 }

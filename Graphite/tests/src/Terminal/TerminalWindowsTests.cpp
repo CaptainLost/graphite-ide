@@ -12,10 +12,10 @@
 #include "Core/Events/EventBus.h"
 
 #include <filesystem>
+#include <string>
 #include <vector>
 
 namespace {
-	// A TerminalWindows with nothing open and every toast it raises collected.
 	struct TerminalFixture
 	{
 		TerminalFixture()
@@ -37,8 +37,9 @@ namespace {
 TEST_CASE("A program that cannot be started is reported in an application toast")
 {
 	TerminalFixture fixture;
+	const std::vector<std::string> noArguments;
 
-	CHECK_FALSE(fixture.Terminals.OpenCommand("Build", fixture.Temp.GetPath() / "missing.exe", {},
+	CHECK_FALSE(fixture.Terminals.OpenCommand("Build", fixture.Temp.GetPath() / "missing.exe", noArguments,
 											  fixture.Temp.GetPath()));
 
 	REQUIRE(fixture.Toasts.size() == 1);
@@ -51,8 +52,9 @@ TEST_CASE("A program that cannot be started is reported in an application toast"
 TEST_CASE("Asking for a shell that is not there is reported in a warning toast")
 {
 	TerminalFixture fixture;
+	const std::filesystem::path noDirectory;
 
-	CHECK_FALSE(fixture.Terminals.OpenShellIn(fixture.Terminals.GetShells().size(), {}));
+	CHECK_FALSE(fixture.Terminals.OpenShellIn(fixture.Terminals.GetShells().size(), noDirectory));
 
 	REQUIRE(fixture.Toasts.size() == 1);
 	CHECK(fixture.Toasts.front().Kind == Core::ToastKind::Warning);

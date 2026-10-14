@@ -18,7 +18,6 @@ namespace {
 				Core::ShellProfile{"Command Prompt", "cmd.exe", {}}};
 	}
 
-	// Every saved directory exists unless it is named "gone".
 	std::filesystem::path Resolve(const std::filesystem::path& saved)
 	{
 		return saved.empty() || saved.filename() == "gone" ? kRoot : saved;
@@ -45,8 +44,8 @@ TEST_CASE("Capture leaves out terminals started by a command and those carried o
 {
 	const std::vector<OpenTerminal> open = {
 		OpenTerminal{"{A}", "PowerShell 7", kRoot},
-		OpenTerminal{"{B}", "claude", kRoot, true, false},
-		OpenTerminal{"{C}", "Command Prompt", kRoot / "src", false, true},
+		OpenTerminal{.Id = "{B}", .ProfileName = "claude", .WorkingDirectory = kRoot, .FromCommand = true},
+		OpenTerminal{.Id = "{C}", .ProfileName = "Command Prompt", .WorkingDirectory = kRoot / "src", .CarriedOver = true},
 		OpenTerminal{"{D}", "Command Prompt", kRoot / "docs"}};
 
 	CHECK(CaptureTerminals(open) == std::vector<TerminalTabState>{
@@ -56,21 +55,17 @@ TEST_CASE("Capture leaves out terminals started by a command and those carried o
 
 TEST_CASE("A shell opened with no folder is adopted by the folder opened next, and not by the one after")
 {
-	// No folder, a shell the reader started.
 	OpenTerminal shell{"{A}", "PowerShell 7", kRoot};
 	shell.Unowned = true;
 	std::vector<OpenTerminal> open = {shell};
 
-	// Open folder A: carry over, then adopt. A has no saved list.
 	CarryOverTerminals(open);
 	CHECK(AdoptTerminals(open, false, true));
 	CHECK(CaptureTerminals(open) == std::vector<TerminalTabState>{TerminalTabState{"{A}", "PowerShell 7", kRoot}});
 	CHECK(CaptureFolderTerminals(open, KeepsTerminals(std::nullopt, true), std::nullopt).has_value());
 
-	// Close A: the shell stays open but is A's, so it is carried over...
 	CarryOverTerminals(open);
 
-	// ...and open B, which adopts nothing: it is not captured, and B keeps no list of its own.
 	CHECK_FALSE(AdoptTerminals(open, false, true));
 	CHECK(CaptureTerminals(open).empty());
 	CHECK_FALSE(CaptureFolderTerminals(open, KeepsTerminals(std::nullopt, false), std::nullopt).has_value());
@@ -78,8 +73,6 @@ TEST_CASE("A shell opened with no folder is adopted by the folder opened next, a
 
 TEST_CASE("Carrying over on its own leaves a shell nobody owned alone")
 {
-	// A folder closing publishes no adoption: a shell opened with no folder must stay adoptable
-	// and must not be written to the folder that closed.
 	OpenTerminal shell{"{A}", "PowerShell 7", kRoot};
 	shell.Unowned = true;
 	std::vector<OpenTerminal> open = {shell};
@@ -105,7 +98,7 @@ TEST_CASE("A terminal carried over from one folder to another is never adopted")
 
 TEST_CASE("A command's window is never adopted")
 {
-	OpenTerminal command{"{B}", "claude", kRoot, true, false};
+	OpenTerminal command{.Id = "{B}", .ProfileName = "claude", .WorkingDirectory = kRoot, .FromCommand = true};
 	command.Unowned = true;
 	std::vector<OpenTerminal> open = {command};
 
@@ -134,7 +127,6 @@ TEST_CASE("The startup shell is adopted only by a folder with no terminals saved
 	REQUIRE(CaptureTerminals(withSaved).size() == 1);
 	CHECK(CaptureTerminals(withSaved)[0].Id == "{U}");
 
-	// Alone, with a saved list to open: nothing adopted, so nothing makes the list kept by itself.
 	std::vector<OpenTerminal> only = {startup};
 	CarryOverTerminals(only);
 	CHECK_FALSE(AdoptTerminals(only, true, true));
@@ -149,7 +141,6 @@ TEST_CASE("A folder in restricted mode adopts neither a shell opened with no fol
 	OpenTerminal chosen{"{U}", "Command Prompt", kRoot};
 	chosen.Unowned = true;
 
-	// With no saved list: nothing adopted, so the folder keeps no list and writes none.
 	std::vector<OpenTerminal> fresh = {startup, chosen};
 	CarryOverTerminals(fresh);
 	CHECK_FALSE(AdoptTerminals(fresh, false, false));
@@ -157,7 +148,6 @@ TEST_CASE("A folder in restricted mode adopts neither a shell opened with no fol
 	CHECK(CaptureFolderTerminals(fresh, KeepsTerminals(std::nullopt, false), HeldBackTerminals(std::nullopt, false)) ==
 		  std::nullopt);
 
-	// With a saved list: it is written back exactly as stored, the open shells not added to it.
 	const std::vector<TerminalTabState> saved = {TerminalTabState{"{T}", "PowerShell 7", kRoot / "tools"}};
 	std::vector<OpenTerminal> withSaved = {startup, chosen};
 	CarryOverTerminals(withSaved);
@@ -171,18 +161,15 @@ TEST_CASE("Shells a restricted folder did not adopt stay nobody's, and the next 
 	chosen.Unowned = true;
 	std::vector<OpenTerminal> open = {chosen};
 
-	// Restricted folder A takes nothing.
 	CarryOverTerminals(open);
 	CHECK_FALSE(AdoptTerminals(open, false, false));
 	CHECK(open[0].Unowned);
 	CHECK(open[0].CarriedOver);
 
-	// A shell started by hand in A does not sweep the unadopted one into A's list.
 	open.push_back(OpenTerminal{"{A}", "PowerShell 7", kRoot});
 	CHECK(CaptureFolderTerminals(open, true, std::nullopt) ==
 		  std::vector<TerminalTabState>{TerminalTabState{"{A}", "PowerShell 7", kRoot}});
 
-	// Trusted folder B opens next: A's own shell is carried over, the unowned one adopted.
 	CarryOverTerminals(open);
 	CHECK(AdoptTerminals(open, false, true));
 	CHECK(CaptureTerminals(open) == std::vector<TerminalTabState>{TerminalTabState{"{U}", "Command Prompt", kRoot}});
@@ -227,11 +214,9 @@ TEST_CASE("A grid measured as a sliver is not worth resizing the shell to")
 
 TEST_CASE("A narrow grid resizes the shell once it measured the same on the frame before")
 {
-	// A layout still settling: the first narrow measurement is held back.
 	CHECK_FALSE(TerminalSizeIsPlausible({19, 25}, {0, 0}));
 	CHECK_FALSE(TerminalSizeIsPlausible({12, 25}, {19, 25}));
 
-	// A terminal the user docked narrow keeps its size, and the shell follows it.
 	CHECK(TerminalSizeIsPlausible({12, 25}, {12, 25}));
 	CHECK(TerminalSizeIsPlausible({2, 2}, {2, 2}));
 }
@@ -276,11 +261,9 @@ TEST_CASE("A saved directory that is gone starts the terminal in the folder inst
 
 TEST_CASE("A saved terminal that is already open is not started twice")
 {
-	// The same folder opened over itself: its terminals were carried over, and the saved list
-	// names them again. The open one is the same window and stays; it belongs to this folder.
 	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "PowerShell 7", kRoot},
 												 TerminalTabState{"{B}", "PowerShell 7", kRoot}};
-	const std::vector<OpenTerminal> open = {OpenTerminal{"{A}", "PowerShell 7", kRoot, false, true}};
+	const std::vector<OpenTerminal> open = {OpenTerminal{.Id = "{A}", .ProfileName = "PowerShell 7", .WorkingDirectory = kRoot, .CarriedOver = true}};
 
 	const TerminalRestorePlan plan = PlanTerminalRestore(saved, Shells(), open, Resolve, true);
 
@@ -306,8 +289,6 @@ TEST_CASE("Only a folder that never kept terminals, with none open, opens a defa
 
 TEST_CASE("A folder in restricted mode starts none of its saved terminals")
 {
-	// The list comes from the folder's own .graphite/workspace.json, which anyone who wrote the
-	// folder could have filled with any shell in any directory.
 	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "PowerShell 7", "C:\\Windows"},
 												 TerminalTabState{"{B}", "Command Prompt", kRoot}};
 
@@ -326,11 +307,8 @@ TEST_CASE("A folder in restricted mode opens no default terminal")
 
 TEST_CASE("A folder whose only terminals were carried over stays absent")
 {
-	// Opened while another folder's shells were still up: no default shell opened, and the
-	// reader started none here. Writing [] would read back as "all closed on purpose", and the
-	// folder would open with no terminal from then on.
 	const bool keeps = KeepsTerminals(std::nullopt, OpensDefaultTerminal(std::nullopt, 1, true));
-	const std::vector<OpenTerminal> open = {OpenTerminal{"{A}", "PowerShell 7", kRoot, false, true}};
+	const std::vector<OpenTerminal> open = {OpenTerminal{.Id = "{A}", .ProfileName = "PowerShell 7", .WorkingDirectory = kRoot, .CarriedOver = true}};
 
 	CHECK_FALSE(keeps);
 	CHECK(CaptureFolderTerminals(open, keeps, std::nullopt) == std::nullopt);
@@ -338,15 +316,13 @@ TEST_CASE("A folder whose only terminals were carried over stays absent")
 
 TEST_CASE("A folder whose only terminals were started by a command stays absent")
 {
-	const std::vector<OpenTerminal> open = {OpenTerminal{"{A}", "claude", kRoot, true, false}};
+	const std::vector<OpenTerminal> open = {OpenTerminal{.Id = "{A}", .ProfileName = "claude", .WorkingDirectory = kRoot, .FromCommand = true}};
 
 	CHECK(CaptureFolderTerminals(open, KeepsTerminals(std::nullopt, false), std::nullopt) == std::nullopt);
 }
 
 TEST_CASE("A folder whose own terminals were all closed is kept empty")
 {
-	// It opened its default shell, so it has had a terminal of its own; with that closed the
-	// list is empty rather than absent, and the next launch opens nothing.
 	const bool keeps = KeepsTerminals(std::nullopt, OpensDefaultTerminal(std::nullopt, 0, true));
 
 	CHECK(keeps);
@@ -365,8 +341,6 @@ TEST_CASE("A folder with a restored list keeps it")
 
 TEST_CASE("A folder in restricted mode records its saved list unchanged although it started none of it")
 {
-	// Nothing started, so nothing is open to capture; writing that would read back as "every
-	// terminal closed on purpose", and the folder, once trusted, would reopen with none.
 	const std::vector<TerminalTabState> saved = {TerminalTabState{"{A}", "PowerShell 7", kRoot},
 												 TerminalTabState{"{B}", "Command Prompt", kRoot / "src"}};
 	const std::optional<std::vector<TerminalTabState>> heldBack = HeldBackTerminals(saved, false);
@@ -374,8 +348,7 @@ TEST_CASE("A folder in restricted mode records its saved list unchanged although
 	CHECK(heldBack == saved);
 	CHECK(CaptureFolderTerminals({}, KeepsTerminals(saved, false), heldBack) == saved);
 
-	// A terminal carried over from the folder before changes nothing either.
-	const std::vector<OpenTerminal> carried = {OpenTerminal{"{C}", "PowerShell 7", kRoot, false, true}};
+	const std::vector<OpenTerminal> carried = {OpenTerminal{.Id = "{C}", .ProfileName = "PowerShell 7", .WorkingDirectory = kRoot, .CarriedOver = true}};
 	CHECK(CaptureFolderTerminals(carried, KeepsTerminals(saved, false), heldBack) == saved);
 }
 
@@ -399,8 +372,6 @@ TEST_CASE("A trusted folder holds nothing back")
 
 TEST_CASE("A terminal started by hand in restricted mode records what is open instead")
 {
-	// Starting a shell drops what was held back (TerminalWindows::StartShell), so the capture
-	// is what is open, as in any other folder - closing it again leaves the list empty.
 	const std::vector<OpenTerminal> open = {OpenTerminal{"{N}", "Command Prompt", kRoot}};
 
 	CHECK(CaptureFolderTerminals(open, true, std::nullopt) ==
@@ -415,9 +386,6 @@ TEST_CASE("A terminal opened on a folder starts in it, and on a file in the file
 	CHECK(TerminalDirectoryFor(kRoot, true) == kRoot);
 }
 
-// GLFW drops the fake Left Ctrl that AltGr sends on Windows, so ImGui sees an AltGr letter as
-// Alt alone. A real Alt+letter arrives as WM_SYSCHAR, which never reaches the character queue,
-// so a character produced under Alt is AltGr typing and nothing else.
 TEST_CASE("A terminal takes typed text under Alt, AltGr and no modifier, but not under Ctrl alone")
 {
 	using Core::KeyModifier;
@@ -434,12 +402,10 @@ TEST_CASE("A key that typed a character sends no Ctrl or Alt along with it")
 {
 	using Core::KeyModifier;
 
-	// AltGr+A for ą, as ImGui reports it on Windows: Alt alone.
 	CHECK(TerminalKeyModifiers(KeyModifier::Alt, true) == KeyModifier::None);
 	CHECK(TerminalKeyModifiers(KeyModifier::Control | KeyModifier::Alt, true) == KeyModifier::None);
 	CHECK(TerminalKeyModifiers(KeyModifier::Alt | KeyModifier::Shift, true) == KeyModifier::Shift);
 
-	// Alt+B and Ctrl+Alt+Left type nothing and stay chords.
 	CHECK(TerminalKeyModifiers(KeyModifier::Alt, false) == KeyModifier::Alt);
 	CHECK(TerminalKeyModifiers(KeyModifier::Control | KeyModifier::Alt, false) ==
 		  (KeyModifier::Control | KeyModifier::Alt));
@@ -486,7 +452,6 @@ TEST_CASE("Other chords are not the view's gestures")
 	CHECK(ClassifyTerminalShortcut(KeyCode::C, KeyModifier::Shift, true) == TerminalShortcut::None);
 	CHECK(ClassifyTerminalShortcut(KeyCode::A, KeyModifier::Control, false) == TerminalShortcut::None);
 
-	// Ctrl+Alt+C is whatever the layout puts there, and Super belongs to the system.
 	CHECK(ClassifyTerminalShortcut(KeyCode::C, KeyModifier::Control | KeyModifier::Alt, true) ==
 		  TerminalShortcut::None);
 	CHECK(ClassifyTerminalShortcut(KeyCode::V, KeyModifier::Control | KeyModifier::Super, false) ==
@@ -495,32 +460,30 @@ TEST_CASE("Other chords are not the view's gestures")
 
 TEST_CASE("The scrollbar thumb sits at the bottom at the tail and at the top at the oldest line")
 {
-	const auto tail = ComputeTerminalScrollbarThumb(0, 10, 90, 100.0f, 8.0f);
+	const TerminalScrollbarThumb tail = ComputeTerminalScrollbarThumb(0, 10, 90, 100.0f, 8.0f);
 	CHECK(tail.Height == doctest::Approx(10.0f));
 	CHECK(tail.Top == doctest::Approx(90.0f));
 
-	const auto oldest = ComputeTerminalScrollbarThumb(90, 10, 90, 100.0f, 8.0f);
+	const TerminalScrollbarThumb oldest = ComputeTerminalScrollbarThumb(90, 10, 90, 100.0f, 8.0f);
 	CHECK(oldest.Top == doctest::Approx(0.0f));
 
-	const auto middle = ComputeTerminalScrollbarThumb(45, 10, 90, 100.0f, 8.0f);
+	const TerminalScrollbarThumb middle = ComputeTerminalScrollbarThumb(45, 10, 90, 100.0f, 8.0f);
 	CHECK(middle.Top == doctest::Approx(45.0f));
 }
 
 TEST_CASE("The scrollbar thumb never shrinks below its minimum and fills the track without history")
 {
-	const auto small = ComputeTerminalScrollbarThumb(0, 10, 9990, 100.0f, 8.0f);
+	const TerminalScrollbarThumb small = ComputeTerminalScrollbarThumb(0, 10, 9990, 100.0f, 8.0f);
 	CHECK(small.Height == doctest::Approx(8.0f));
 	CHECK(small.Top == doctest::Approx(92.0f));
 
-	const auto none = ComputeTerminalScrollbarThumb(0, 10, 0, 100.0f, 8.0f);
+	const TerminalScrollbarThumb none = ComputeTerminalScrollbarThumb(0, 10, 0, 100.0f, 8.0f);
 	CHECK(none.Top == doctest::Approx(0.0f));
 	CHECK(none.Height == doctest::Approx(100.0f));
 
-	// A track shorter than the minimum thumb, and one with no height at all.
 	CHECK(ComputeTerminalScrollbarThumb(0, 10, 50, 5.0f, 8.0f).Height == doctest::Approx(5.0f));
 	CHECK(ComputeTerminalScrollbarThumb(3, 0, 50, 0.0f, 8.0f).Height == doctest::Approx(0.0f));
 
-	// An offset past the history is held to it.
 	CHECK(ComputeTerminalScrollbarThumb(500, 10, 90, 100.0f, 8.0f).Top == doctest::Approx(0.0f));
 }
 
@@ -530,11 +493,9 @@ TEST_CASE("A thumb dragged to a position maps back to the offset it stands for")
 	CHECK(TerminalScrollOffsetForThumbTop(0.0f, 90, 100.0f, 10.0f) == 90);
 	CHECK(TerminalScrollOffsetForThumbTop(45.0f, 90, 100.0f, 10.0f) == 45);
 
-	// Dragged past either end.
 	CHECK(TerminalScrollOffsetForThumbTop(-20.0f, 90, 100.0f, 10.0f) == 90);
 	CHECK(TerminalScrollOffsetForThumbTop(500.0f, 90, 100.0f, 10.0f) == 0);
 
-	// Nothing to scroll, or no room to move the thumb in.
 	CHECK(TerminalScrollOffsetForThumbTop(10.0f, 0, 100.0f, 100.0f) == 0);
 	CHECK(TerminalScrollOffsetForThumbTop(10.0f, 90, 100.0f, 100.0f) == 0);
 }
@@ -543,7 +504,7 @@ TEST_CASE("Dragging a thumb round-trips through the offset")
 {
 	for (int offset = 0; offset <= 90; ++offset)
 	{
-		const auto thumb = ComputeTerminalScrollbarThumb(offset, 10, 90, 100.0f, 8.0f);
+		const TerminalScrollbarThumb thumb = ComputeTerminalScrollbarThumb(offset, 10, 90, 100.0f, 8.0f);
 		CHECK(TerminalScrollOffsetForThumbTop(thumb.Top, 90, 100.0f, thumb.Height) == offset);
 	}
 }

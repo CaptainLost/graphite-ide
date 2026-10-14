@@ -20,7 +20,6 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
-#include <algorithm>
 #include <cstdint>
 #include <format>
 #include <functional>
@@ -30,13 +29,11 @@
 namespace Graphite {
 
 	namespace {
-		// What a session starts at. The first frame measures the window and resizes it to what
-		// actually fitted, so this only has to be a shape a shell can print its prompt into.
 		constexpr std::uint16_t kInitialColumns = 80;
 		constexpr std::uint16_t kInitialRows = 25;
+		constexpr unsigned int kNoDockNode = 0;
 
-		// What ImGui knows a terminal's window by, without the visible half: imgui.ini keeps the
-		// window's place under this, so it must never change for a kept terminal.
+		// WARNING: imgui.ini keeps a window's place under this identity, so it must never change for a kept terminal.
 		std::string WindowIdentity(const std::string& id)
 		{
 			return "###terminal-" + id;
@@ -50,7 +47,46 @@ namespace Graphite {
 
 		bool IsLiveNode(ImGuiID node)
 		{
-			return node != 0 && ImGui::DockBuilderGetNode(node) != nullptr;
+			return node != kNoDockNode && ImGui::DockBuilderGetNode(node) != nullptr;
+		}
+
+		bool ContainsNode(const std::vector<ImGuiDockNode*>& nodes, const ImGuiDockNode* wanted)
+		{
+			for (const ImGuiDockNode* node : nodes)
+			{
+				if (node == wanted)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		void CollectDockNode(const std::string& windowName, std::vector<ImGuiDockNode*>& nodes)
+		{
+			ImGuiWindow* window = ImGui::FindWindowByName(windowName.c_str());
+
+			if (window != nullptr && window->DockIsActive && window->DockNode != nullptr && !ContainsNode(nodes, window->DockNode))
+			{
+				nodes.push_back(window->DockNode);
+			}
+		}
+
+		// WARNING: The amend asserts if the tab bar would start over: not drawn yet this frame, hidden, or in a host that skips its items, which a collapsed floating node is.
+		bool IsAmendable(const ImGuiDockNode* node)
+		{
+			const bool hasDrawableTabBar = node->TabBar != nullptr && !node->IsHiddenTabBar() && !node->IsNoTabBar();
+			const bool hasDrawableHost = node->HostWindow != nullptr && !node->HostWindow->SkipItems;
+
+			return hasDrawableTabBar && hasDrawableHost && node->TabBar->CurrFrameVisible == ImGui::GetFrameCount();
+		}
+
+		std::filesystem::path ResolveRestoredDirectory(const std::filesystem::path& directory,
+													   const std::filesystem::path& fallbackRoot)
+		{
+			std::error_code error;
+			return !directory.empty() && std::filesystem::is_directory(directory, error) ? directory : fallbackRoot;
 		}
 	}
 
@@ -70,33 +106,28 @@ namespace Graphite {
 					  .Run = [this] { static_cast<void>(OpenDefaultShell()); },
 					  .Enabled = [this] { return !m_Shells.empty(); }});
 
-		// The way back to a terminal once the whole bottom row is closed: with no terminal and
-		// no bottom-row panel on screen there is no tab bar left to carry the + button.
 		keys.SetDefault("terminal.new",
 						{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_GraveAccent)});
 
-		for (std::size_t index = 0; index < m_Shells.size(); ++index)
+		for (std::size_t shellIndex = 0; shellIndex < m_Shells.size(); ++shellIndex)
 		{
-			const std::string id = NewTerminalCommandId(m_Shells[index].Name);
+			const std::string commandId = NewTerminalCommandId(m_Shells[shellIndex].Name);
 
-			// Two shells whose names slug alike would claim one id; the first, the more capable
-			// one in discovery order, keeps it.
-			if (commands.Find(id) != nullptr)
+			if (commands.Find(commandId) != nullptr)
 			{
 				continue;
 			}
 
-			commands.Add({.Id = id,
-						  .Label = "New " + m_Shells[index].Name,
+			commands.Add({.Id = commandId,
+						  .Label = "New " + m_Shells[shellIndex].Name,
 						  .Group = "terminal.shells",
-						  .Run = [this, index] { static_cast<void>(OpenShellIn(index, {})); }}); // logs its own failure
+						  .Run = [this, shellIndex] { static_cast<void>(OpenShellIn(shellIndex, std::filesystem::path{})); }}); // logs its own failure
 		}
 	}
 
+	// WARNING: Every session is drained, not only the visible ones: a build in a tab behind another must keep emptying its pipe, or the shell blocks on a full pseudo-console.
 	void TerminalWindows::Update()
 	{
-		// Every session, not only the visible ones: a build running in a tab behind another must
-		// keep draining its pipe, or the shell blocks on a full pseudo-console and stops.
 		for (const Core::Scope<Entry>& entry : m_Open)
 		{
 			entry->Session->ApplyQueuedOutput();
@@ -106,12 +137,7 @@ namespace Graphite {
 	void TerminalWindows::Render(const TerminalDockTargets& targets, const EditorPalette& palette,
 								 Core::TabCloseRequests& closeRequests)
 	{
-		// On the frame the layout was rebuilt, not necessarily the one the reset was asked on. The
-		// menu bar is drawn inside DockSpaceHost::Begin, so a reset chosen there comes after this
-		// frame's Begin and is built by the next one, whose DockBuilderRemoveNode would undock
-		// every terminal placed here again. Waiting for LayoutRebuilt holds wherever the request
-		// came from: by the time this runs on that frame, the new nodes exist and the panels are
-		// already docked into them, so the terminals join them in the same frame.
+		// WARNING: Waits for LayoutRebuilt, not for the request: a reset chosen in the menu bar arrives after this frame's Begin, and building it on the next frame would undock every terminal placed here again.
 		if (m_RedockPending && targets.LayoutRebuilt)
 		{
 			m_RedockPending = false;
@@ -119,81 +145,70 @@ namespace Graphite {
 			for (const Core::Scope<Entry>& entry : m_Open)
 			{
 				entry->Fresh = true;
-				entry->DockNode = 0;
+				entry->DockNode = kNoDockNode;
 				entry->Restored = false;
 			}
 
-			// The node the last-focused terminal was in is gone, and "beside it" would only put
-			// each terminal next to one placed a moment earlier; the console's row is the place a
-			// reset gives them.
 			m_LastFocused.clear();
 		}
 
-		// Counted by position, so the tabs always read 1..N; the identity after ### is what ImGui
-		// keys each window on, so renumbering moves nothing.
-		std::size_t number = 0;
+		std::size_t tabNumber = 0;
 
-		for (const Core::Scope<Entry>& owned : m_Open)
+		for (const Core::Scope<Entry>& ownedEntry : m_Open)
 		{
-			Entry& entry = *owned;
-			++number;
+			Entry& entry = *ownedEntry;
+			++tabNumber;
 
-			// The title the shell announced last time stands until it announces one now, so a
-			// restored tab reads as it did; what is announced is remembered for the next launch.
-			const std::string& live = entry.Session->GetScreen().GetTitle();
+			const std::string& announcedTitle = entry.Session->GetScreen().GetTitle();
 
-			if (!live.empty())
+			if (!announcedTitle.empty())
 			{
-				entry.Record.Title = live;
+				entry.Record.Title = announcedTitle;
 			}
 
-			const std::string identity = WindowIdentity(entry.Record.Id);
-			const std::string name = ICON_MDI_CONSOLE "  " + std::to_string(number) + ": " + TerminalTitleFor(TerminalLabelTitle(live, entry.Record.Title), entry.Session->GetProfileName()) + identity;
+			const std::string windowIdentity = WindowIdentity(entry.Record.Id);
+			const std::string tabTitle =
+				TerminalTitleFor(TerminalLabelTitle(announcedTitle, entry.Record.Title), entry.Session->GetProfileName());
+			const std::string windowName = ICON_MDI_CONSOLE "  " + std::to_string(tabNumber) + ": " + tabTitle + windowIdentity;
 
-			// Its first frame measures a window that is still settling into its dock node.
 			const bool appearing = entry.Fresh;
+			entry.Fresh = false;
 
-			// Docked only on the frame this identity is new, as SessionWindows does: every frame
-			// would fight a reader who dragged the tab elsewhere.
 			bool restored = false;
 
-			if (std::exchange(entry.Fresh, false))
+			if (appearing)
 			{
-				restored = std::exchange(entry.Restored, false);
+				restored = entry.Restored;
+				entry.Restored = false;
 
-				if (!restored || !HasRememberedPlace(name))
+				if (!restored || !HasRememberedPlace(windowName))
 				{
-					PlaceNewWindow(name, entry, targets);
+					PlaceNewWindow(windowName, entry, targets);
 				}
 			}
 
-			if (std::exchange(entry.Focus, false))
+			const bool focusRequested = entry.Focus;
+			entry.Focus = false;
+
+			if (focusRequested)
 			{
 				ImGui::SetNextWindowFocus();
 			}
 
-			// Restored windows must not take focus on the frame they appear, or the last one drawn
-			// would take the front of its node from whatever imgui.ini remembers there.
-			const ImGuiWindowFlags flags = restored ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
+			const ImGuiWindowFlags windowFlags = restored ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
 
-			// A terminal floating on its own keeps a node, and so a tab bar, rather than becoming a
-			// bare window with a title bar: the bar is where the + and the tab menu are. The class
-			// id stays 0, the one every other window has, so a terminal still docks with anything.
 			ImGuiWindowClass windowClass;
 			windowClass.DockingAlwaysTabBar = true;
 			ImGui::SetNextWindowClass(&windowClass);
 
-			bool open = true;
-			const bool visible = ImGui::Begin(name.c_str(), &open, flags);
+			bool stayOpen = true;
+			const bool contentVisible = ImGui::Begin(windowName.c_str(), &stayOpen, windowFlags);
 
-			// A tab's menu asked for this one last frame: the same as its close button.
-			if (closeRequests.Take(name))
+			if (closeRequests.Take(windowName))
 			{
-				open = false;
+				stayOpen = false;
 			}
 
-			// With no shell to offer, nothing extra - not even the separator the menu draws below
-			// whatever it is given.
 			std::function<void()> newTerminalItems;
 
 			if (!m_Shells.empty())
@@ -214,56 +229,45 @@ namespace Graphite {
 				m_LastFocused = entry.Record.Id;
 			}
 
-			if (visible)
+			if (contentVisible)
 			{
 				const Core::CursorPosition fitted = entry.View->Draw(palette);
 				const TerminalGridSize measured{fitted.Column, fitted.Row};
 
-				// What fitted is what the shell is told about, which is what makes dragging the
-				// window's edge behave like resizing a console window.
-				// Not a sliver: the shell would reflow its banner away (TerminalSizeIsPlausible).
 				if (!appearing && TerminalSizeIsPlausible(measured, entry.LastMeasured))
 				{
 					entry.Session->Resize(fitted.Column, fitted.Row);
 				}
 
-				// The appearing frame's sliver is no evidence of a size the user chose.
 				entry.LastMeasured = appearing ? TerminalGridSize{} : measured;
 
-				// After the draw, so the menu sits over the grid it acts on. Closing is this
-				// class's because the session is; the view only reports the choice.
 				if (entry.View->DrawContextMenu())
 				{
-					open = false;
+					stayOpen = false;
 				}
 			}
 
-			// Begin() returning false still needs its End().
+			// WARNING: Begin returning false still needs its End.
 			ImGui::End();
 
-			entry.Closing = entry.Closing || !open;
+			entry.Closing = entry.Closing || !stayOpen;
 		}
 
-		// After every window's End, never inside one: erasing destroys a session, whose destructor
-		// terminates the process and joins the reader thread.
 		RemoveClosed();
 
 		RenderTabBarButtons(targets);
 
-		// Last, once: the loop above is done with m_Open, which a start appends to, and the tab
-		// bars are closed again, so nothing is begun inside a host window re-opened for them. A
-		// start only appends an entry - its window is first begun by the next frame's loop - so
-		// one pass here, after the buttons rather than also before them, costs no frame.
+		// WARNING: Must stay last: a start appends to m_Open, which the loop above iterates, and the tab bars must be closed again.
 		StartPendingOpens();
 	}
 
 	void TerminalWindows::DrawShellMenuItems(unsigned int dockNode)
 	{
-		for (std::size_t index = 0; index < m_Shells.size(); ++index)
+		for (std::size_t shellIndex = 0; shellIndex < m_Shells.size(); ++shellIndex)
 		{
-			if (ImGui::MenuItem(m_Shells[index].Name.c_str()))
+			if (ImGui::MenuItem(m_Shells[shellIndex].Name.c_str()))
 			{
-				m_PendingOpens.push_back(PendingOpen{index, dockNode});
+				m_PendingOpens.push_back(PendingOpen{.Shell = shellIndex, .DockNode = dockNode});
 			}
 		}
 	}
@@ -275,58 +279,36 @@ namespace Graphite {
 			return;
 		}
 
-		// Every node a terminal is shown in, and every node a bottom-row panel is: each gets one
-		// pair of buttons, however many of them share it.
 		std::vector<ImGuiDockNode*> nodes;
-
-		const auto collect = [&nodes](const std::string& windowName) {
-			ImGuiWindow* window = ImGui::FindWindowByName(windowName.c_str());
-
-			if (window != nullptr && window->DockIsActive && window->DockNode != nullptr && std::find(nodes.begin(), nodes.end(), window->DockNode) == nodes.end())
-			{
-				nodes.push_back(window->DockNode);
-			}
-		};
 
 		for (const Core::Scope<Entry>& entry : m_Open)
 		{
-			collect(WindowIdentity(entry->Record.Id));
+			CollectDockNode(WindowIdentity(entry->Record.Id), nodes);
 		}
 
-		for (const std::string& window : targets.RowWindows)
+		for (const std::string& rowWindow : targets.RowWindows)
 		{
-			collect(window);
+			CollectDockNode(rowWindow, nodes);
 		}
 
 		for (ImGuiDockNode* node : nodes)
 		{
-			// Only a bar drawn this frame and still drawable can be appended to: the amend begins
-			// the host window again and appends to its tab bar, and asserts if that bar would
-			// instead start over - not drawn yet this frame, hidden, or in a host that skips its
-			// items, which is what a collapsed floating node is.
-			const bool amendable = node->TabBar != nullptr && !node->IsHiddenTabBar() && !node->IsNoTabBar() && node->HostWindow != nullptr && !node->HostWindow->SkipItems && node->TabBar->CurrFrameVisible == ImGui::GetFrameCount();
-
-			if (!amendable)
+			if (!IsAmendable(node))
 			{
 				continue;
 			}
 
 			if (ImGui::DockNodeBeginAmendTabBar(node))
 			{
-				// Every node's buttons and popup must have ids of their own, and the node's id is in
-				// each label rather than pushed. The amend has already pushed node->ID as the seed,
-				// and PushID(node->ID) on top of that hashes a value under itself - a CRC32 that
-				// comes out the same constant for every node - so every bar's + got one id, and
-				// only the first bar drawn could be clicked. Under the amend's seed and with the
-				// node's id in the label, the ids differ even if that seed ever stops differing.
-				const std::string suffix = std::to_string(node->ID);
-				const std::string newLabel = ICON_MDI_PLUS "##terminalNew" + suffix;
-				const std::string shellsLabel = ICON_MDI_CHEVRON_DOWN "##terminalShellsButton" + suffix;
-				const std::string shellsPopup = "##terminalShells" + suffix;
+				// WARNING: The node's id goes in each label rather than being pushed: the amend has already pushed it as the seed, and pushing it again hashes a value under itself into the same constant for every node, so only the first bar's + could be clicked.
+				const std::string nodeSuffix = std::to_string(node->ID);
+				const std::string newLabel = ICON_MDI_PLUS "##terminalNew" + nodeSuffix;
+				const std::string shellsLabel = ICON_MDI_CHEVRON_DOWN "##terminalShellsButton" + nodeSuffix;
+				const std::string shellsPopup = "##terminalShells" + nodeSuffix;
 
 				if (ImGui::TabItemButton(newLabel.c_str(), ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
 				{
-					m_PendingOpens.push_back(PendingOpen{GetDefaultShellIndex(), node->ID});
+					m_PendingOpens.push_back(PendingOpen{.Shell = GetDefaultShellIndex(), .DockNode = node->ID});
 				}
 
 				ImGui::SetItemTooltip("New terminal");
@@ -351,51 +333,41 @@ namespace Graphite {
 
 	void TerminalWindows::StartPendingOpens()
 	{
-		// Taken first: a start that fails leaves nothing behind to be retried every frame.
-		const std::vector<PendingOpen> pending = std::exchange(m_PendingOpens, {});
+		const std::vector<PendingOpen> pendingOpens = std::move(m_PendingOpens);
+		m_PendingOpens.clear();
 
-		for (const PendingOpen& open : pending)
+		for (const PendingOpen& pendingOpen : pendingOpens)
 		{
-			static_cast<void>(StartShell(open.Shell, {}, open.DockNode)); // logs its own failure
+			static_cast<void>(StartShell(pendingOpen.Shell, std::filesystem::path{}, pendingOpen.DockNode)); // logs its own failure
 		}
 	}
 
 	void TerminalWindows::PlaceNewWindow(const std::string& name, Entry& entry, const TerminalDockTargets& targets)
 	{
-		// Into the node whose + or tab menu asked for it: the reader pointed at that bar, which
-		// says more than which terminal had focus last. Unless the node went away meanwhile.
 		if (IsLiveNode(entry.DockNode))
 		{
 			ImGui::DockBuilderDockWindow(name.c_str(), entry.DockNode);
 			return;
 		}
 
-		// Beside the terminal used last, wherever the reader put it. A FindEntry guard, because
-		// the one used last may have closed since. Floating on its own counts too: with
-		// DockingAlwaysTabBar every terminal's first Begin gives it a node, so a window that was
-		// drawn last frame always has one to dock into.
 		if (!m_LastFocused.empty() && m_LastFocused != entry.Record.Id && FindEntry(m_LastFocused) != nullptr)
 		{
-			if (ImGuiWindow* last = FindLiveWindow(WindowIdentity(m_LastFocused));
-				last != nullptr && IsLiveNode(last->DockId))
+			if (ImGuiWindow* lastFocusedWindow = FindLiveWindow(WindowIdentity(m_LastFocused));
+				lastFocusedWindow != nullptr && IsLiveNode(lastFocusedWindow->DockId))
 			{
-				ImGui::DockBuilderDockWindow(name.c_str(), last->DockId);
+				ImGui::DockBuilderDockWindow(name.c_str(), lastFocusedWindow->DockId);
 				return;
 			}
 		}
 
-		// No terminal to stand beside: the bottom row, where the console is.
-		if (ImGuiWindow* beside = ImGui::FindWindowByName(targets.BesideWindow.c_str());
-			beside != nullptr && IsLiveNode(beside->DockId))
+		if (ImGuiWindow* besideWindow = ImGui::FindWindowByName(targets.BesideWindow.c_str());
+			besideWindow != nullptr && IsLiveNode(besideWindow->DockId))
 		{
-			ImGui::DockBuilderDockWindow(name.c_str(), beside->DockId);
+			ImGui::DockBuilderDockWindow(name.c_str(), besideWindow->DockId);
 			return;
 		}
 
-		// Beside any other terminal that has a node, before a new row is made for this one:
-		// several terminals restored in one frame with no place remembered, none of them focused
-		// yet, would otherwise each split a row of its own. By name rather than FindLiveWindow,
-		// because one placed earlier this frame has been begun but was not yet active last frame.
+		// WARNING: Looked up by name, not FindLiveWindow: a terminal placed earlier this frame has been begun but was not yet active last frame.
 		for (const Core::Scope<Entry>& other : m_Open)
 		{
 			if (other.get() == &entry || other->Fresh)
@@ -403,30 +375,23 @@ namespace Graphite {
 				continue;
 			}
 
-			if (ImGuiWindow* window = ImGui::FindWindowByName(WindowIdentity(other->Record.Id).c_str());
-				window != nullptr && IsLiveNode(window->DockId))
+			if (ImGuiWindow* otherWindow = ImGui::FindWindowByName(WindowIdentity(other->Record.Id).c_str());
+				otherWindow != nullptr && IsLiveNode(otherWindow->DockId))
 			{
-				ImGui::DockBuilderDockWindow(name.c_str(), window->DockId);
+				ImGui::DockBuilderDockWindow(name.c_str(), otherWindow->DockId);
 				return;
 			}
 		}
 
-		// The whole bottom row is closed: make it again, as a layout reset would - split off the
-		// bottom of the central node, so it sits under the documents and beside the left column
-		// rather than under both. Splitting the dockspace's root would also work (ImGui splits an
-		// already split node, which is how docking against the dockspace's outer edge works) but
-		// would give a row the width of the window, which no layout of this application has. The
-		// documents and the central flag go to the upper half, the one the split leaves the old
-		// contents in. Only a leaf can be split this way: a CentreNode split earlier this frame
-		// is a parent now, and its id is stale until the next frame's targets.
 		if (targets.DockSpace != 0)
 		{
-			if (const ImGuiDockNode* centre = ImGui::DockBuilderGetNode(targets.CentreNode);
-				centre != nullptr && centre->IsLeafNode())
+			// WARNING: Only a leaf can be split: a CentreNode split earlier this frame is a parent now, and its id is stale until the next frame's targets.
+			if (const ImGuiDockNode* centreNode = ImGui::DockBuilderGetNode(targets.CentreNode);
+				centreNode != nullptr && centreNode->IsLeafNode())
 			{
-				const ImGuiID bottom =
+				const ImGuiID bottomNode =
 					ImGui::DockBuilderSplitNode(targets.CentreNode, ImGuiDir_Down, targets.BottomRatio, nullptr, nullptr);
-				ImGui::DockBuilderDockWindow(name.c_str(), bottom);
+				ImGui::DockBuilderDockWindow(name.c_str(), bottomNode);
 				ImGui::DockBuilderFinish(targets.DockSpace);
 				return;
 			}
@@ -440,15 +405,7 @@ namespace Graphite {
 
 	bool TerminalWindows::OpenDefaultShell()
 	{
-		if (m_Shells.empty())
-		{
-			APP_WARN("No shell found to open a terminal with");
-			m_Events.Publish(ApplicationToast(Core::ToastKind::Warning, "No shell found",
-											  "No shell was found on this machine to open a terminal with"));
-			return false;
-		}
-
-		return OpenDefaultShellIn({});
+		return OpenDefaultShellIn(std::filesystem::path{});
 	}
 
 	bool TerminalWindows::OpenDefaultShellIn(const std::filesystem::path& directory)
@@ -469,34 +426,36 @@ namespace Graphite {
 		return DefaultShellIndex(m_Shells, m_Settings.GetDefaultShell());
 	}
 
-	bool TerminalWindows::OpenShellIn(std::size_t shell, const std::filesystem::path& directory)
+	bool TerminalWindows::OpenShellIn(std::size_t shellIndex, const std::filesystem::path& directory)
 	{
-		return StartShell(shell, directory, 0);
+		return StartShell(shellIndex, directory, kNoDockNode);
 	}
 
-	bool TerminalWindows::StartShell(std::size_t shell, const std::filesystem::path& directory, unsigned int dockNode)
+	bool TerminalWindows::StartShell(std::size_t shellIndex, const std::filesystem::path& directory, unsigned int dockNode)
 	{
-		if (shell >= m_Shells.size())
+		if (shellIndex >= m_Shells.size())
 		{
-			APP_WARN("No shell {} to open a terminal with: {} found", shell, m_Shells.size());
+			APP_WARN("No shell {} to open a terminal with: {} found", shellIndex, m_Shells.size());
 			m_Events.Publish(ApplicationToast(Core::ToastKind::Warning, "No shell found",
-											  std::format("Shell {} is not available: {} were found", shell, m_Shells.size())));
+											  std::format("Shell {} is not available: {} were found", shellIndex, m_Shells.size())));
 			return false;
 		}
 
+		const Core::ShellProfile& profile = m_Shells[shellIndex];
 		const std::filesystem::path workingDirectory = directory.empty() ? DefaultWorkingDirectory() : directory;
 
-		if (!Start(m_Shells[shell], workingDirectory,
-				   OpenTerminal{Core::Uuid::Generate().ToString(), m_Shells[shell].Name, workingDirectory, false, false, {}, !m_Workspace.IsOpen()},
-				   false))
+		OpenTerminal record{.Id = Core::Uuid::Generate().ToString(),
+							.ProfileName = profile.Name,
+							.WorkingDirectory = workingDirectory,
+							.Unowned = !m_Workspace.IsOpen()};
+
+		if (!Start(profile, workingDirectory, std::move(record), EntryOrigin::Requested))
 		{
 			return false;
 		}
 
 		m_Open.back()->DockNode = dockNode;
 
-		// A shell the reader started makes the open folder's list one worth keeping, even once it
-		// is closed again. A command's window does not come through here.
 		if (m_Workspace.IsOpen())
 		{
 			m_KeepsTerminals = true;
@@ -510,42 +469,44 @@ namespace Graphite {
 									  std::vector<std::string> arguments,
 									  const std::filesystem::path& workingDirectory)
 	{
-		// A program is started the way a shell is: a profile is only a name, a path and its
-		// arguments, and TerminalSession needs nothing more.
 		const Core::ShellProfile profile{label, program, std::move(arguments)};
 
-		return Start(profile, workingDirectory,
-					 OpenTerminal{Core::Uuid::Generate().ToString(), label, workingDirectory, true, false}, false);
+		OpenTerminal record{.Id = Core::Uuid::Generate().ToString(),
+							.ProfileName = label,
+							.WorkingDirectory = workingDirectory,
+							.FromCommand = true};
+
+		return Start(profile, workingDirectory, std::move(record), EntryOrigin::Requested);
 	}
 
 	bool TerminalWindows::Start(const Core::ShellProfile& profile, const std::filesystem::path& workingDirectory,
-								OpenTerminal record, bool restored)
+								OpenTerminal record, EntryOrigin origin)
 	{
-		Core::Result<Core::Scope<Core::TerminalSession>> result =
+		Core::Result<Core::Scope<Core::TerminalSession>> startResult =
 			Core::TerminalSession::Start(profile, workingDirectory, kInitialColumns, kInitialRows);
 
-		if (!result)
+		if (!startResult)
 		{
-			// No window: an empty one would look like a shell that had simply printed nothing.
-			APP_ERROR("Cannot start {}: {}", profile.Name, result.GetError().Message);
+			APP_ERROR("Cannot start {}: {}", profile.Name, startResult.GetError().Message);
 			m_Events.Publish(ApplicationToast(Core::ToastKind::Error, "Terminal failed to start",
-											  std::format("{}: {}", profile.Name, result.GetError().Message)));
+											  std::format("{}: {}", profile.Name, startResult.GetError().Message)));
 			return false;
 		}
 
-		auto entry = Core::CreateScope<Entry>();
-		entry->Session = std::move(result).GetValue();
+		const bool restored = origin == EntryOrigin::Restored;
+
+		Core::Scope<Entry> entry = Core::CreateScope<Entry>();
+		entry->Session = std::move(startResult).GetValue();
 		entry->View = Core::CreateScope<TerminalView>(*entry->Session, m_Keys, m_Commands, m_Events);
 		entry->Record = std::move(record);
 		entry->Restored = restored;
-
-		// A restored window does not pull itself forward; one the reader asked for does.
 		entry->Focus = !restored;
 
 		m_Open.push_back(std::move(entry));
 		return true;
 	}
 
+	// WARNING: current_path is called with an error code because the throwing overload raises out of a frame when the working directory was deleted from under the process. The empty result then means no directory.
 	std::filesystem::path TerminalWindows::DefaultWorkingDirectory() const
 	{
 		if (m_Workspace.IsOpen())
@@ -553,7 +514,6 @@ namespace Graphite {
 			return m_Workspace.GetRoot();
 		}
 
-		// No folder: the user's home, not wherever the process happened to be launched from.
 		const Core::Result<std::filesystem::path> home = Core::HomeDirectory();
 
 		if (home)
@@ -563,18 +523,21 @@ namespace Graphite {
 
 		APP_TRACE("No home directory for a terminal to start in: {}", home.GetError().Message);
 
-		// The overload that cannot throw: a working directory deleted from under the process
-		// makes the other one raise out of a frame (ADR 0004). Empty then, which callers take
-		// as "no directory" and let the child process start in its own default.
 		std::error_code ignored;
 		return std::filesystem::current_path(ignored);
 	}
 
 	TerminalWindows::Entry* TerminalWindows::FindEntry(const std::string& id)
 	{
-		const auto found = std::find_if(m_Open.begin(), m_Open.end(),
-										[&id](const Core::Scope<Entry>& entry) { return entry->Record.Id == id; });
-		return found == m_Open.end() ? nullptr : found->get();
+		for (const Core::Scope<Entry>& entry : m_Open)
+		{
+			if (entry->Record.Id == id)
+			{
+				return entry.get();
+			}
+		}
+
+		return nullptr;
 	}
 
 	std::vector<OpenTerminal> TerminalWindows::Records() const
@@ -628,26 +591,19 @@ namespace Graphite {
 
 	void TerminalWindows::RestoreState(const std::optional<std::vector<TerminalTabState>>& saved, bool trusted)
 	{
-		// For each folder anew, like m_KeepsTerminals below.
 		m_HeldBack = HeldBackTerminals(saved, trusted);
 
-		// The folder just opened takes over the shells nobody had, and from here they are its own:
-		// saved with it, and carried over when it closes. A folder in restricted mode takes none.
 		std::vector<OpenTerminal> records = Records();
 		const bool adopted = AdoptTerminals(records, saved.has_value(), trusted);
 		StoreRecords(records);
 
 		if (OpensDefaultTerminal(saved, m_Open.size(), trusted))
 		{
-			// Kept only if the shell actually started: a folder that got none because no shell
-			// was found, or it failed, must still ask for its default at the next launch.
 			const bool opened = OpenDefaultShell(); // logs its own failure
 			m_KeepsTerminals = KeepsTerminals(saved, opened);
 			return;
 		}
 
-		// For each folder anew: what the folder before had says nothing about this one, but a
-		// shell it adopted is its own.
 		m_KeepsTerminals = KeepsTerminals(saved, adopted);
 
 		if (!saved)
@@ -658,41 +614,44 @@ namespace Graphite {
 		const std::filesystem::path root = DefaultWorkingDirectory();
 
 		const TerminalRestorePlan plan = PlanTerminalRestore(
-			*saved, m_Shells, Records(), [&root](const std::filesystem::path& directory) {
-				std::error_code error;
-				return !directory.empty() && std::filesystem::is_directory(directory, error) ? directory : root;
-			},
+			*saved, m_Shells, Records(),
+			[&root](const std::filesystem::path& directory) { return ResolveRestoredDirectory(directory, root); },
 			trusted);
 
-		for (const std::string& id : plan.AlreadyOpen)
+		for (const std::string& alreadyOpenId : plan.AlreadyOpen)
 		{
-			if (Entry* entry = FindEntry(id))
+			if (Entry* entry = FindEntry(alreadyOpenId))
 			{
 				entry->Record.CarriedOver = false;
 			}
 		}
 
-		for (const std::string& name : plan.UnknownProfiles)
+		for (const std::string& unknownProfile : plan.UnknownProfiles)
 		{
-			APP_INFO("Not reopening a {} terminal: no such shell is installed", name);
+			APP_INFO("Not reopening a {} terminal: no such shell is installed", unknownProfile);
 		}
 
-		for (const TerminalToStart& start : plan.Start)
+		for (const TerminalToStart& terminalToStart : plan.Start)
 		{
-			const Core::ShellProfile& shell = m_Shells[start.Shell];
+			const Core::ShellProfile& profile = m_Shells[terminalToStart.Shell];
 
-			// Start logs its own failure, and the rest still restore.
-			static_cast<void>(Start(shell, start.WorkingDirectory,
-									OpenTerminal{start.Id, shell.Name, start.WorkingDirectory, false, false, start.Title},
-									true));
+			OpenTerminal record{.Id = terminalToStart.Id,
+								.ProfileName = profile.Name,
+								.WorkingDirectory = terminalToStart.WorkingDirectory,
+								.Title = terminalToStart.Title};
+
+			static_cast<void>(Start(profile, terminalToStart.WorkingDirectory, std::move(record), EntryOrigin::Restored)); // logs its own failure
 		}
 	}
 
+	bool TerminalWindows::IsFinished(const Core::Scope<Entry>& entry)
+	{
+		return entry->Closing || !entry->Session->IsAlive();
+	}
+
+	// WARNING: Call only after every window's End: erasing destroys a session, whose destructor terminates the process and joins the reader thread.
 	void TerminalWindows::RemoveClosed()
 	{
-		// A shell that exited on its own and a window the reader closed leave by the same door.
-		const auto done = [](const Core::Scope<Entry>& entry) { return entry->Closing || !entry->Session->IsAlive(); };
-
-		m_Open.erase(std::remove_if(m_Open.begin(), m_Open.end(), done), m_Open.end());
+		std::erase_if(m_Open, IsFinished);
 	}
 }

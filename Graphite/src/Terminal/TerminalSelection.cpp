@@ -9,26 +9,40 @@
 namespace Graphite {
 
 	namespace {
-		std::int64_t Signed(std::uint64_t value)
+		constexpr std::size_t LineStartColumn = 0;
+		constexpr std::size_t NoBytesYet = 0;
+		constexpr char LineBreak = '\n';
+		constexpr char TypedSpace = ' ';
+
+		enum class ColumnRule
+		{
+			NearestBoundary,
+			CellUnderPointer,
+		};
+
+		std::int64_t AsSigned(std::uint64_t value)
 		{
 			return static_cast<std::int64_t>(value);
 		}
 
-		// The oldest line the scrollback still holds.
 		std::int64_t OldestLine(std::uint64_t rowsScrolledOff, std::size_t scrollbackCount)
 		{
-			return Signed(rowsScrolledOff) - static_cast<std::int64_t>(scrollbackCount);
+			return AsSigned(rowsScrolledOff) - static_cast<std::int64_t>(scrollbackCount);
 		}
 
-		std::size_t CellCount(const std::vector<Core::TerminalCell>& cells, std::size_t columns)
+		std::size_t VisibleCellCount(const std::vector<Core::TerminalCell>& cells, std::size_t columns)
 		{
 			return std::min(columns, cells.size());
 		}
 
-		// A trailer stands for the character its leader holds.
-		char32_t CodeAt(const std::vector<Core::TerminalCell>& cells, std::size_t column)
+		bool IsSecondHalfOfWideCharacter(const std::vector<Core::TerminalCell>& cells, std::size_t column)
 		{
-			if (cells[column].WideTrailer && column > 0)
+			return cells[column].WideTrailer && column > 0;
+		}
+
+		char32_t CodePointAt(const std::vector<Core::TerminalCell>& cells, std::size_t column)
+		{
+			if (IsSecondHalfOfWideCharacter(cells, column))
 			{
 				return cells[column - 1].Code;
 			}
@@ -36,7 +50,12 @@ namespace Graphite {
 			return cells[column].Code;
 		}
 
-		bool IsBlank(const Core::TerminalScreen& screen, std::uint16_t row)
+		bool IsPathWordCell(const std::vector<Core::TerminalCell>& cells, std::size_t column)
+		{
+			return Core::IsWordCodePoint(CodePointAt(cells, column), Core::WordKind::Path);
+		}
+
+		bool IsBlankScreenRow(const Core::TerminalScreen& screen, std::uint16_t row)
 		{
 			for (std::uint16_t column = 0; column < screen.GetColumns(); ++column)
 			{
@@ -48,6 +67,16 @@ namespace Graphite {
 
 			return true;
 		}
+
+		std::string WithoutTrailingSpaces(std::string text)
+		{
+			while (!text.empty() && text.back() == TypedSpace)
+			{
+				text.pop_back();
+			}
+
+			return text;
+		}
 	}
 
 	std::int64_t LineOfScrollbackRow(std::uint64_t rowsScrolledOff, std::size_t scrollbackCount,
@@ -58,7 +87,7 @@ namespace Graphite {
 
 	std::int64_t LineOfScreenRow(std::uint64_t rowsScrolledOff, int screenRow)
 	{
-		return Signed(rowsScrolledOff) + screenRow;
+		return AsSigned(rowsScrolledOff) + screenRow;
 	}
 
 	bool SelectionLeftHistory(const Core::TextSelection& selection, std::uint64_t rowsScrolledOff,
@@ -73,53 +102,58 @@ namespace Graphite {
 	{
 		const std::int64_t oldest = OldestLine(rowsScrolledOff, scrollbackCount);
 
-		if (selection.IsEmpty() || selection.First().Line >= oldest || selection.Last().Line < oldest)
+		if (selection.IsEmpty())
 		{
 			return selection;
 		}
 
-		// The start is on a line that has gone and the end is not: the start moves to the head of
-		// the oldest line held, and each end stays the end it was.
-		const Core::TextPoint clamped{oldest, 0};
+		const bool startIsHeld = selection.First().Line >= oldest;
+		const bool endIsGone = selection.Last().Line < oldest;
+
+		if (startIsHeld || endIsGone)
+		{
+			return selection;
+		}
+
+		const Core::TextPoint oldestLineStart{oldest, LineStartColumn};
 		const bool pressedIsFirst = selection.Pressed() == selection.First();
 
-		Core::TextSelection result;
-		result.Select(pressedIsFirst ? clamped : selection.Pressed(),
-					  pressedIsFirst ? selection.Last() : clamped);
-		return result;
+		Core::TextSelection clampedSelection;
+		clampedSelection.Select(pressedIsFirst ? oldestLineStart : selection.Pressed(),
+								pressedIsFirst ? selection.Last() : oldestLineStart);
+		return clampedSelection;
 	}
 
 	std::vector<std::size_t> TerminalCellBytes(const std::vector<Core::TerminalCell>& cells, std::size_t columns)
 	{
-		std::vector<std::size_t> bytes(columns + 1, 0);
-		const std::size_t count = CellCount(cells, columns);
-		std::string scratch;
-		std::size_t offset = 0;
+		std::vector<std::size_t> cellByteOffsets(columns + 1, NoBytesYet);
+		const std::size_t visibleCount = VisibleCellCount(cells, columns);
+		std::string encodedCell;
+		std::size_t byteOffset = NoBytesYet;
 
 		for (std::size_t column = 0; column < columns; ++column)
 		{
-			bytes[column] = offset;
+			cellByteOffsets[column] = byteOffset;
 
-			if (column < count && !cells[column].WideTrailer)
+			if (column < visibleCount && !cells[column].WideTrailer)
 			{
-				scratch.clear();
-				Core::AppendUtf8(scratch, cells[column].Code);
-				offset += scratch.size();
+				encodedCell.clear();
+				Core::AppendUtf8(encodedCell, cells[column].Code);
+				byteOffset += encodedCell.size();
 			}
 		}
 
-		bytes[columns] = offset;
-		return bytes;
+		cellByteOffsets[columns] = byteOffset;
+		return cellByteOffsets;
 	}
 
 	std::string TerminalRowText(const std::vector<Core::TerminalCell>& cells, std::size_t columns)
 	{
-		const std::size_t count = CellCount(cells, columns);
+		const std::size_t visibleCount = VisibleCellCount(cells, columns);
 		std::string text;
 
-		for (std::size_t column = 0; column < count; ++column)
+		for (std::size_t column = 0; column < visibleCount; ++column)
 		{
-			// The trailer carries no character of its own; its leader already wrote the whole one.
 			if (!cells[column].WideTrailer)
 			{
 				Core::AppendUtf8(text, cells[column].Code);
@@ -132,64 +166,62 @@ namespace Graphite {
 	Core::ColumnSpan TerminalWordAt(const std::vector<Core::TerminalCell>& cells, std::size_t columns,
 									std::size_t column)
 	{
-		const std::size_t count = CellCount(cells, columns);
+		const std::size_t visibleCount = VisibleCellCount(cells, columns);
 
-		if (column >= count)
+		if (column >= visibleCount)
 		{
-			return {count, count};
+			return {visibleCount, visibleCount};
 		}
 
-		if (cells[column].WideTrailer && column > 0)
+		if (IsSecondHalfOfWideCharacter(cells, column))
 		{
 			--column;
 		}
 
-		const auto isWord = [&cells](std::size_t at) {
-			return Core::IsWordCodePoint(CodeAt(cells, at), Core::WordKind::Path);
-		};
+		std::size_t spanStart = column;
+		std::size_t spanEnd = column + 1;
 
-		std::size_t from = column;
-		std::size_t to = column + 1;
-
-		if (isWord(column))
+		if (IsPathWordCell(cells, column))
 		{
-			while (from > 0 && isWord(from - 1))
+			while (spanStart > 0 && IsPathWordCell(cells, spanStart - 1))
 			{
-				--from;
+				--spanStart;
 			}
 
-			while (to < count && isWord(to))
+			while (spanEnd < visibleCount && IsPathWordCell(cells, spanEnd))
 			{
-				++to;
+				++spanEnd;
 			}
 		}
 
-		// A wide character clicked alone still takes its right half.
-		if (to < count && cells[to].WideTrailer)
+		const bool endsBeforeSecondHalf = spanEnd < visibleCount && cells[spanEnd].WideTrailer;
+
+		if (endsBeforeSecondHalf)
 		{
-			++to;
+			++spanEnd;
 		}
 
-		return {from, to};
+		return {spanStart, spanEnd};
 	}
 
 	std::size_t TerminalColumnAt(const std::vector<Core::TerminalCell>& cells, std::size_t columns,
 								 float position)
 	{
-		const std::size_t count = CellCount(cells, columns);
+		const std::size_t visibleCount = VisibleCellCount(cells, columns);
 
+		// WARNING: The negated comparison is deliberate: it also sends a NaN position to column 0.
 		if (!(position > 0.0f))
 		{
 			return 0;
 		}
 
-		const auto nearest = static_cast<std::size_t>(std::lround(position));
-		const std::size_t column = std::min(nearest, count);
+		const std::size_t nearestBoundary = static_cast<std::size_t>(std::lround(position));
+		const std::size_t column = std::min(nearestBoundary, visibleCount);
 
-		// Between the two halves of a double-width character: out to the nearer of its edges.
-		if (column < count && cells[column].WideTrailer && column > 0)
+		if (column < visibleCount && IsSecondHalfOfWideCharacter(cells, column))
 		{
-			return position < static_cast<float>(column) ? column - 1 : column + 1;
+			const bool nearerToLeftEdge = position < static_cast<float>(column);
+			return nearerToLeftEdge ? column - 1 : column + 1;
 		}
 
 		return column;
@@ -197,63 +229,64 @@ namespace Graphite {
 
 	const std::vector<Core::TerminalCell>* TerminalLineCells(const Core::TerminalScreen& screen,
 															 std::int64_t line, std::size_t columns,
-															 std::vector<Core::TerminalCell>& scratch)
+															 std::vector<Core::TerminalCell>& rowCopy)
 	{
-		const std::int64_t row = line - Signed(screen.GetRowsScrolledOff());
+		const std::int64_t screenRow = line - AsSigned(screen.GetRowsScrolledOff());
 
-		if (row < 0)
+		if (screenRow < 0)
 		{
-			const std::int64_t index = static_cast<std::int64_t>(screen.GetScrollbackCount()) + row;
+			const std::int64_t scrollbackIndex = static_cast<std::int64_t>(screen.GetScrollbackCount()) + screenRow;
 
-			if (index < 0)
+			if (scrollbackIndex < 0)
 			{
 				return nullptr;
 			}
 
-			return &screen.GetScrollbackLine(static_cast<std::size_t>(index));
+			return &screen.GetScrollbackLine(static_cast<std::size_t>(scrollbackIndex));
 		}
 
-		if (row >= static_cast<std::int64_t>(screen.GetRows()))
+		if (screenRow >= static_cast<std::int64_t>(screen.GetRows()))
 		{
 			return nullptr;
 		}
 
-		const std::size_t count = std::min(columns, static_cast<std::size_t>(screen.GetColumns()));
+		const std::size_t copiedCount = std::min(columns, static_cast<std::size_t>(screen.GetColumns()));
 
-		scratch.clear();
-		scratch.reserve(count);
+		rowCopy.clear();
+		rowCopy.reserve(copiedCount);
 
-		for (std::size_t column = 0; column < count; ++column)
+		for (std::size_t column = 0; column < copiedCount; ++column)
 		{
-			scratch.push_back(screen.At(static_cast<std::uint16_t>(row), static_cast<std::uint16_t>(column)));
+			rowCopy.push_back(
+				screen.At(static_cast<std::uint16_t>(screenRow), static_cast<std::uint16_t>(column)));
 		}
 
-		return &scratch;
+		return &rowCopy;
 	}
 
 	std::size_t TerminalLineLength(const Core::TerminalScreen& screen, std::int64_t line,
 								   std::size_t columns)
 	{
-		std::vector<Core::TerminalCell> scratch;
-		const std::vector<Core::TerminalCell>* cells = TerminalLineCells(screen, line, columns, scratch);
+		std::vector<Core::TerminalCell> rowCopy;
+		const std::vector<Core::TerminalCell>* cells = TerminalLineCells(screen, line, columns, rowCopy);
 
-		return cells == nullptr ? 0 : CellCount(*cells, columns);
+		return cells == nullptr ? 0 : VisibleCellCount(*cells, columns);
 	}
 
 	std::size_t TerminalCellAt(const std::vector<Core::TerminalCell>& cells, std::size_t columns,
 							   float position)
 	{
-		const std::size_t count = CellCount(cells, columns);
+		const std::size_t visibleCount = VisibleCellCount(cells, columns);
 
+		// WARNING: The negated comparison is deliberate: it also sends a NaN position to column 0.
 		if (!(position > 0.0f))
 		{
 			return 0;
 		}
 
-		const std::size_t column = std::min(static_cast<std::size_t>(position), count);
+		const std::size_t column = std::min(static_cast<std::size_t>(position), visibleCount);
 
-		// The right half of a double-width character is that character.
-		if (column < count && cells[column].WideTrailer && column > 0)
+		if (column < visibleCount && IsSecondHalfOfWideCharacter(cells, column))
 		{
 			return column - 1;
 		}
@@ -262,41 +295,42 @@ namespace Graphite {
 	}
 
 	namespace {
-		// Where TerminalPointAt and TerminalCharacterAt part: the row is found the same way, the
-		// column is the nearest boundary for one and the cell under the pointer for the other.
 		std::optional<Core::TextPoint> PointOnGrid(const Core::TerminalScreen& screen,
 												   const TerminalGrid& grid, float x, float y,
-												   bool character)
+												   ColumnRule columnRule)
 		{
-			// Rows counted from the top of the screen, negative into the scrollback, as the grid
-			// shows them: its top row is -ScrollOffset.
-			const int firstRow = std::max(-static_cast<int>(screen.GetScrollbackCount()), -grid.ScrollOffset);
-			const int lastRow =
+			const int oldestShownScreenRow =
+				std::max(-static_cast<int>(screen.GetScrollbackCount()), -grid.ScrollOffset);
+			const int newestShownScreenRow =
 				std::min(grid.VisibleRows - 1 - grid.ScrollOffset, static_cast<int>(screen.GetRows()) - 1);
 
-			if (lastRow < firstRow || grid.CellHeight <= 0.0f || grid.CellWidth <= 0.0f)
+			if (newestShownScreenRow < oldestShownScreenRow || grid.CellHeight <= 0.0f ||
+				grid.CellWidth <= 0.0f)
 			{
 				return std::nullopt;
 			}
 
-			const std::uint64_t scrolled = screen.GetRowsScrolledOff();
-			const int row =
+			const std::uint64_t rowsScrolledOff = screen.GetRowsScrolledOff();
+			const int screenRow =
 				static_cast<int>(std::floor((y - grid.OriginY) / grid.CellHeight)) - grid.ScrollOffset;
 
-			if (row < firstRow)
+			if (screenRow < oldestShownScreenRow)
 			{
-				return Core::TextPoint{LineOfScreenRow(scrolled, firstRow), 0};
+				return Core::TextPoint{LineOfScreenRow(rowsScrolledOff, oldestShownScreenRow),
+									   LineStartColumn};
 			}
 
-			if (row > lastRow)
+			if (screenRow > newestShownScreenRow)
 			{
-				const std::int64_t line = LineOfScreenRow(scrolled, lastRow);
-				return Core::TextPoint{line, TerminalLineLength(screen, line, grid.Columns)};
+				const std::int64_t newestShownLine = LineOfScreenRow(rowsScrolledOff, newestShownScreenRow);
+				return Core::TextPoint{newestShownLine,
+									   TerminalLineLength(screen, newestShownLine, grid.Columns)};
 			}
 
-			const std::int64_t line = LineOfScreenRow(scrolled, row);
-			std::vector<Core::TerminalCell> scratch;
-			const std::vector<Core::TerminalCell>* cells = TerminalLineCells(screen, line, grid.Columns, scratch);
+			const std::int64_t line = LineOfScreenRow(rowsScrolledOff, screenRow);
+			std::vector<Core::TerminalCell> rowCopy;
+			const std::vector<Core::TerminalCell>* cells =
+				TerminalLineCells(screen, line, grid.Columns, rowCopy);
 
 			if (cells == nullptr)
 			{
@@ -304,45 +338,49 @@ namespace Graphite {
 			}
 
 			const float position = (x - grid.OriginX) / grid.CellWidth;
+			const std::size_t column = columnRule == ColumnRule::CellUnderPointer
+										   ? TerminalCellAt(*cells, grid.Columns, position)
+										   : TerminalColumnAt(*cells, grid.Columns, position);
 
-			return Core::TextPoint{line, character ? TerminalCellAt(*cells, grid.Columns, position)
-												   : TerminalColumnAt(*cells, grid.Columns, position)};
+			return Core::TextPoint{line, column};
 		}
 	}
 
 	std::optional<Core::TextPoint> TerminalPointAt(const Core::TerminalScreen& screen,
 												   const TerminalGrid& grid, float x, float y)
 	{
-		return PointOnGrid(screen, grid, x, y, false);
+		return PointOnGrid(screen, grid, x, y, ColumnRule::NearestBoundary);
 	}
 
 	std::optional<Core::TextPoint> TerminalCharacterAt(const Core::TerminalScreen& screen,
 													   const TerminalGrid& grid, float x, float y)
 	{
-		return PointOnGrid(screen, grid, x, y, true);
+		return PointOnGrid(screen, grid, x, y, ColumnRule::CellUnderPointer);
 	}
 
 	std::pair<Core::TextPoint, Core::TextPoint> TerminalEverything(const Core::TerminalScreen& screen,
 																   std::size_t columns)
 	{
-		const std::uint64_t scrolled = screen.GetRowsScrolledOff();
-		std::uint16_t last = screen.GetCursor().Row;
+		const std::uint64_t rowsScrolledOff = screen.GetRowsScrolledOff();
+		std::uint16_t lastUsedRow = screen.GetCursor().Row;
 
-		for (auto row = static_cast<std::uint16_t>(screen.GetRows()); row > last + 1u;)
+		for (std::uint16_t row = static_cast<std::uint16_t>(screen.GetRows()); row > lastUsedRow + 1u;)
 		{
 			--row;
 
-			if (!IsBlank(screen, row))
+			if (!IsBlankScreenRow(screen, row))
 			{
-				last = row;
+				lastUsedRow = row;
 				break;
 			}
 		}
 
-		const std::int64_t lastLine = LineOfScreenRow(scrolled, last);
+		const std::int64_t lastLine = LineOfScreenRow(rowsScrolledOff, lastUsedRow);
+		const Core::TextPoint everythingStart{OldestLine(rowsScrolledOff, screen.GetScrollbackCount()),
+											  LineStartColumn};
+		const Core::TextPoint everythingEnd{lastLine, TerminalLineLength(screen, lastLine, columns)};
 
-		return {Core::TextPoint{OldestLine(scrolled, screen.GetScrollbackCount()), 0},
-				Core::TextPoint{lastLine, TerminalLineLength(screen, lastLine, columns)}};
+		return {everythingStart, everythingEnd};
 	}
 
 	std::string SelectedTerminalText(const Core::TextSelection& selection,
@@ -353,55 +391,49 @@ namespace Graphite {
 			return {};
 		}
 
-		const std::uint64_t scrolled = screen.GetRowsScrolledOff();
+		const std::uint64_t rowsScrolledOff = screen.GetRowsScrolledOff();
+		const int lastScreenRow = static_cast<int>(screen.GetRows()) - 1;
 
-		// Only the lines that are still there, which also keeps a selection whose start left the
-		// history long ago from walking every number in between.
-		const std::int64_t first =
-			std::max(selection.First().Line, OldestLine(scrolled, screen.GetScrollbackCount()));
-		const std::int64_t last = std::min(selection.Last().Line,
-										   LineOfScreenRow(scrolled, static_cast<int>(screen.GetRows()) - 1));
+		const std::int64_t firstLine = std::max(
+			selection.First().Line, OldestLine(rowsScrolledOff, screen.GetScrollbackCount()));
+		const std::int64_t lastLine =
+			std::min(selection.Last().Line, LineOfScreenRow(rowsScrolledOff, lastScreenRow));
 
 		std::string text;
-		std::vector<Core::TerminalCell> scratch;
-		bool wrote = false;
+		std::vector<Core::TerminalCell> rowCopy;
+		bool wroteALine = false;
 
-		for (std::int64_t line = first; line <= last; ++line)
+		for (std::int64_t line = firstLine; line <= lastLine; ++line)
 		{
-			const std::vector<Core::TerminalCell>* cells = TerminalLineCells(screen, line, columns, scratch);
+			const std::vector<Core::TerminalCell>* cells = TerminalLineCells(screen, line, columns, rowCopy);
 
 			if (cells == nullptr)
 			{
 				continue;
 			}
 
-			const std::size_t count = CellCount(*cells, columns);
-			const std::optional<Core::ColumnSpan> span = selection.SpanOn(line, count);
+			const std::size_t visibleCount = VisibleCellCount(*cells, columns);
+			const std::optional<Core::ColumnSpan> span = selection.SpanOn(line, visibleCount);
 
 			if (!span.has_value())
 			{
 				continue;
 			}
 
-			const std::vector<std::size_t> bytes = TerminalCellBytes(*cells, count);
-			const std::string row = TerminalRowText(*cells, count);
-			std::string part = row.substr(bytes[span->From], bytes[span->To] - bytes[span->From]);
+			const std::vector<std::size_t> cellByteOffsets = TerminalCellBytes(*cells, visibleCount);
+			const std::string rowText = TerminalRowText(*cells, visibleCount);
+			const std::size_t spanStartByte = cellByteOffsets[span->From];
+			const std::size_t spanByteCount = cellByteOffsets[span->To] - spanStartByte;
+			const std::string selectedPart =
+				WithoutTrailingSpaces(rowText.substr(spanStartByte, spanByteCount));
 
-			// The grid is space-filled out to its right edge, so without this every copied line
-			// would carry a tail of spaces nobody typed - and pasting it back would indent
-			// whatever followed.
-			while (!part.empty() && part.back() == ' ')
+			if (wroteALine)
 			{
-				part.pop_back();
+				text.push_back(LineBreak);
 			}
 
-			if (wrote)
-			{
-				text.push_back('\n');
-			}
-
-			wrote = true;
-			text.append(part);
+			wroteALine = true;
+			text.append(selectedPart);
 		}
 
 		return text;

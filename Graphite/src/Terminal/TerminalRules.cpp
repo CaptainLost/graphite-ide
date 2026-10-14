@@ -1,12 +1,65 @@
 #include "Terminal/TerminalRules.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 
 namespace Graphite {
+
+	namespace {
+		constexpr int kMinimumCellsPerSide = 2;
+		constexpr int kRoomyColumns = 20;
+		constexpr std::size_t kFirstShellIndex = 0;
+		constexpr float kNoThumbTravel = 0.0f;
+		constexpr float kTopOfTrack = 0.0f;
+		constexpr float kFractionStart = 0.0f;
+		constexpr float kFractionEnd = 1.0f;
+		constexpr int kNoScrollback = 0;
+		constexpr int kMinimumVisibleRows = 1;
+
+		bool IsTerminalOpen(const std::vector<OpenTerminal>& openTerminals, const std::string& terminalId)
+		{
+			for (const OpenTerminal& openTerminal : openTerminals)
+			{
+				if (openTerminal.Id == terminalId)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		bool IsTerminalPlanned(const TerminalRestorePlan& plan, const std::string& terminalId)
+		{
+			for (const TerminalToStart& planned : plan.Start)
+			{
+				if (planned.Id == terminalId)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		std::optional<std::size_t> FindShellIndex(const std::vector<Core::ShellProfile>& shells,
+												  const std::string& profileName)
+		{
+			for (std::size_t shellIndex = 0; shellIndex < shells.size(); ++shellIndex)
+			{
+				if (shells[shellIndex].Name == profileName)
+				{
+					return shellIndex;
+				}
+			}
+
+			return std::nullopt;
+		}
+	}
 
 	std::string TerminalTitleFor(const std::string& title, const std::string& profileName)
 	{
@@ -15,9 +68,7 @@ namespace Graphite {
 			return profileName;
 		}
 
-		// Only the last component can carry meaning; the directories never do.
-		const std::size_t separator = title.find_last_of("\\/");
-		const std::string leaf = separator == std::string::npos ? title : title.substr(separator + 1);
+		const std::string leaf{Core::AfterLastPathSeparator(title)};
 
 		if (leaf.empty())
 		{
@@ -29,66 +80,68 @@ namespace Graphite {
 
 	std::size_t DefaultShellIndex(const std::vector<Core::ShellProfile>& shells, std::string_view chosen)
 	{
-		for (std::size_t index = 0; index < shells.size(); ++index)
+		for (std::size_t shellIndex = 0; shellIndex < shells.size(); ++shellIndex)
 		{
-			if (shells[index].Name == chosen)
+			if (shells[shellIndex].Name == chosen)
 			{
-				return index;
+				return shellIndex;
 			}
 		}
 
-		return 0;
+		return kFirstShellIndex;
 	}
 
 	std::string NewTerminalCommandId(std::string_view profileName)
 	{
 		std::string slug;
-		bool pendingDash = false;
+		bool dashPending = false;
 
-		for (const char c : profileName)
+		for (const char character : profileName)
 		{
-			const auto byte = static_cast<unsigned char>(c);
+			const unsigned char characterByte = static_cast<unsigned char>(character);
 
-			if (std::isalnum(byte) != 0)
+			if (std::isalnum(characterByte) != 0)
 			{
-				if (pendingDash && !slug.empty())
+				if (dashPending && !slug.empty())
 				{
 					slug.push_back('-');
 				}
 
-				pendingDash = false;
-				slug.push_back(Core::LowerAscii(static_cast<char>(byte)));
+				dashPending = false;
+				slug.push_back(Core::LowerAscii(static_cast<char>(characterByte)));
 			}
 			else
 			{
-				pendingDash = true;
+				dashPending = true;
 			}
 		}
 
 		return "terminal.new." + (slug.empty() ? std::string{"shell"} : slug);
 	}
 
-	std::vector<TerminalTabState> CaptureTerminals(const std::vector<OpenTerminal>& open)
+	std::vector<TerminalTabState> CaptureTerminals(const std::vector<OpenTerminal>& openTerminals)
 	{
 		std::vector<TerminalTabState> kept;
 
-		for (const OpenTerminal& terminal : open)
+		for (const OpenTerminal& terminal : openTerminals)
 		{
 			if (terminal.FromCommand || terminal.CarriedOver)
 			{
 				continue;
 			}
 
-			kept.push_back(
-				TerminalTabState{terminal.Id, terminal.ProfileName, terminal.WorkingDirectory, terminal.Title});
+			kept.push_back(TerminalTabState{.Id = terminal.Id,
+											.ProfileName = terminal.ProfileName,
+											.WorkingDirectory = terminal.WorkingDirectory,
+											.Title = terminal.Title});
 		}
 
 		return kept;
 	}
 
-	void CarryOverTerminals(std::vector<OpenTerminal>& open)
+	void CarryOverTerminals(std::vector<OpenTerminal>& openTerminals)
 	{
-		for (OpenTerminal& terminal : open)
+		for (OpenTerminal& terminal : openTerminals)
 		{
 			if (!terminal.Unowned)
 			{
@@ -97,11 +150,11 @@ namespace Graphite {
 		}
 	}
 
-	bool AdoptTerminals(std::vector<OpenTerminal>& open, bool folderHasSavedList, bool trusted)
+	bool AdoptTerminals(std::vector<OpenTerminal>& openTerminals, bool folderHasSavedList, bool trusted)
 	{
-		bool adopted = false;
+		bool anyAdopted = false;
 
-		for (OpenTerminal& terminal : open)
+		for (OpenTerminal& terminal : openTerminals)
 		{
 			if (!terminal.Unowned)
 			{
@@ -110,19 +163,19 @@ namespace Graphite {
 
 			if (!trusted)
 			{
-				// Not this folder's, and still nobody's.
 				terminal.CarriedOver = true;
 				continue;
 			}
 
-			const bool adopts = !terminal.FromCommand && !(terminal.AutoOpened && folderHasSavedList);
+			const bool startupShellDeferredToSavedList = terminal.AutoOpened && folderHasSavedList;
+			const bool adopted = !terminal.FromCommand && !startupShellDeferredToSavedList;
 
-			terminal.CarriedOver = !adopts;
+			terminal.CarriedOver = !adopted;
 			terminal.Unowned = false;
-			adopted = adopted || adopts;
+			anyAdopted = anyAdopted || adopted;
 		}
 
-		return adopted;
+		return anyAdopted;
 	}
 
 	std::string TerminalLabelTitle(const std::string& live, const std::string& remembered)
@@ -132,10 +185,7 @@ namespace Graphite {
 
 	bool TerminalSizeIsPlausible(TerminalGridSize measured, TerminalGridSize previous)
 	{
-		// Wide enough that no window passing through its first frames measures it.
-		constexpr int kRoomyColumns = 20;
-
-		if (measured.Columns < 2 || measured.Rows < 2)
+		if (measured.Columns < kMinimumCellsPerSide || measured.Rows < kMinimumCellsPerSide)
 		{
 			return false;
 		}
@@ -145,7 +195,7 @@ namespace Graphite {
 
 	TerminalRestorePlan PlanTerminalRestore(
 		const std::vector<TerminalTabState>& saved, const std::vector<Core::ShellProfile>& shells,
-		const std::vector<OpenTerminal>& open,
+		const std::vector<OpenTerminal>& openTerminals,
 		const std::function<std::filesystem::path(const std::filesystem::path&)>& resolveDirectory,
 		bool trusted)
 	{
@@ -156,42 +206,32 @@ namespace Graphite {
 			return plan;
 		}
 
-		const auto isOpen = [&open](const std::string& id) {
-			return std::any_of(open.begin(), open.end(), [&id](const OpenTerminal& terminal) { return terminal.Id == id; });
-		};
-
-		const auto isPlanned = [&plan](const std::string& id) {
-			return std::any_of(plan.Start.begin(), plan.Start.end(),
-							   [&id](const TerminalToStart& start) { return start.Id == id; });
-		};
-
 		for (const TerminalTabState& terminal : saved)
 		{
-			if (isOpen(terminal.Id))
+			if (IsTerminalOpen(openTerminals, terminal.Id))
 			{
 				plan.AlreadyOpen.push_back(terminal.Id);
 				continue;
 			}
 
-			// Two windows under one identity would be one window to ImGui.
-			if (isPlanned(terminal.Id))
+			// WARNING: Two windows under one identity would be one window to ImGui.
+			if (IsTerminalPlanned(plan, terminal.Id))
 			{
 				continue;
 			}
 
-			const auto shell = std::find_if(shells.begin(), shells.end(), [&terminal](const Core::ShellProfile& profile) {
-				return profile.Name == terminal.ProfileName;
-			});
+			const std::optional<std::size_t> shellIndex = FindShellIndex(shells, terminal.ProfileName);
 
-			if (shell == shells.end())
+			if (!shellIndex.has_value())
 			{
 				plan.UnknownProfiles.push_back(terminal.ProfileName);
 				continue;
 			}
 
-			plan.Start.push_back(TerminalToStart{terminal.Id,
-												 static_cast<std::size_t>(shell - shells.begin()),
-												 resolveDirectory(terminal.WorkingDirectory), terminal.Title});
+			plan.Start.push_back(TerminalToStart{.Id = terminal.Id,
+												 .Shell = *shellIndex,
+												 .WorkingDirectory = resolveDirectory(terminal.WorkingDirectory),
+												 .Title = terminal.Title});
 		}
 
 		return plan;
@@ -215,7 +255,7 @@ namespace Graphite {
 	}
 
 	std::optional<std::vector<TerminalTabState>> CaptureFolderTerminals(
-		const std::vector<OpenTerminal>& open, bool keepsTerminals,
+		const std::vector<OpenTerminal>& openTerminals, bool keepsTerminals,
 		const std::optional<std::vector<TerminalTabState>>& heldBack)
 	{
 		if (heldBack)
@@ -228,7 +268,7 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		return CaptureTerminals(open);
+		return CaptureTerminals(openTerminals);
 	}
 
 	std::filesystem::path TerminalDirectoryFor(const std::filesystem::path& path, bool isDirectory)
@@ -255,21 +295,24 @@ namespace Graphite {
 	TerminalScrollbarThumb ComputeTerminalScrollbarThumb(int offset, int rows, int scrollback,
 														 float trackHeight, float minHeight)
 	{
-		const float track = std::max(0.0f, trackHeight);
+		const float track = std::max(kNoThumbTravel, trackHeight);
 
-		if (scrollback <= 0 || track <= 0.0f)
+		if (scrollback <= kNoScrollback || track <= kNoThumbTravel)
 		{
-			return {0.0f, track};
+			return TerminalScrollbarThumb{.Top = kTopOfTrack, .Height = track};
 		}
 
-		const int visible = std::max(1, rows);
-		const float share = static_cast<float>(visible) / static_cast<float>(visible + scrollback);
-		const float height = std::min(track, std::max(minHeight, track * share));
+		const int visibleRows = std::max(kMinimumVisibleRows, rows);
+		const float visibleShare =
+			static_cast<float>(visibleRows) / static_cast<float>(visibleRows + scrollback);
+		const float thumbHeight = std::min(track, std::max(minHeight, track * visibleShare));
 
-		const int clamped = std::clamp(offset, 0, scrollback);
-		const float fromTop = static_cast<float>(scrollback - clamped) / static_cast<float>(scrollback);
+		const int clampedOffset = std::clamp(offset, kNoScrollback, scrollback);
+		const float fractionFromTop =
+			static_cast<float>(scrollback - clampedOffset) / static_cast<float>(scrollback);
 
-		return {(track - height) * fromTop, height};
+		return TerminalScrollbarThumb{.Top = (track - thumbHeight) * fractionFromTop,
+									  .Height = thumbHeight};
 	}
 
 	int TerminalScrollOffsetForThumbTop(float thumbTop, int scrollback, float trackHeight,
@@ -277,22 +320,22 @@ namespace Graphite {
 	{
 		const float travel = trackHeight - thumbHeight;
 
-		if (scrollback <= 0 || travel <= 0.0f)
+		if (scrollback <= kNoScrollback || travel <= kNoThumbTravel)
 		{
-			return 0;
+			return kNoScrollback;
 		}
 
-		const float fromTop = std::clamp(thumbTop / travel, 0.0f, 1.0f);
+		const float fractionFromTop = std::clamp(thumbTop / travel, kFractionStart, kFractionEnd);
+		const int linesFromTop =
+			static_cast<int>(std::lround(fractionFromTop * static_cast<float>(scrollback)));
 
-		return std::clamp(
-			scrollback - static_cast<int>(std::lround(fromTop * static_cast<float>(scrollback))), 0,
-			scrollback);
+		return std::clamp(scrollback - linesFromTop, kNoScrollback, scrollback);
 	}
 
 	TerminalShortcut ClassifyTerminalShortcut(Core::KeyCode key, Core::KeyModifier held,
 											  bool hasSelection)
 	{
-		const bool shift = Core::HasModifier(held, Core::KeyModifier::Shift);
+		const bool shiftHeld = Core::HasModifier(held, Core::KeyModifier::Shift);
 
 		if (!Core::HasModifier(held, Core::KeyModifier::Control) ||
 			Core::HasModifier(held, Core::KeyModifier::Alt) ||
@@ -308,7 +351,7 @@ namespace Graphite {
 				return TerminalShortcut::Copy;
 			}
 
-			return shift ? TerminalShortcut::Swallow : TerminalShortcut::Interrupt;
+			return shiftHeld ? TerminalShortcut::Swallow : TerminalShortcut::Interrupt;
 		}
 
 		if (key == Core::KeyCode::V)
