@@ -13,8 +13,6 @@ using namespace Graphite;
 
 namespace {
 
-	// A base with every entry filled, so a resolution against it can only produce a colour that
-	// came from one side or the other.
 	Graphite::ResolvedScheme FlatBase(float value)
 	{
 		Graphite::ResolvedScheme base;
@@ -32,7 +30,7 @@ TEST_CASE("An overridden colour wins over the base")
 	scheme.Syntax[static_cast<std::size_t>(Graphite::TokenKind::Keyword)] =
 		Core::Color{1.0f, 0.0f, 0.0f, 1.0f};
 
-	const Graphite::ResolvedScheme resolved = Graphite::Resolve(scheme, FlatBase(0.5f));
+	const Graphite::ResolvedScheme resolved = Graphite::ResolveSchemeOverBase(scheme, FlatBase(0.5f));
 
 	CHECK(resolved.Syntax[static_cast<std::size_t>(Graphite::TokenKind::Keyword)].R ==
 		  doctest::Approx(1.0f));
@@ -42,7 +40,7 @@ TEST_CASE("A colour the scheme omits comes from the base")
 {
 	const Graphite::ColorScheme scheme;
 
-	const Graphite::ResolvedScheme resolved = Graphite::Resolve(scheme, FlatBase(0.5f));
+	const Graphite::ResolvedScheme resolved = Graphite::ResolveSchemeOverBase(scheme, FlatBase(0.5f));
 
 	CHECK(resolved.Syntax[static_cast<std::size_t>(Graphite::TokenKind::Comment)].R ==
 		  doctest::Approx(0.5f));
@@ -50,14 +48,11 @@ TEST_CASE("A colour the scheme omits comes from the base")
 		  doctest::Approx(0.5f));
 }
 
-// The degradation rule under test. When a later stage adds a token kind, every scheme a user
-// has already written must keep working — and this is what proves it, because a scheme built
-// today knows nothing about a kind added tomorrow.
 TEST_CASE("A token kind the scheme never mentions is filled from the base")
 {
 	const Graphite::ColorScheme scheme;
 
-	const Graphite::ResolvedScheme resolved = Graphite::Resolve(scheme, FlatBase(0.25f));
+	const Graphite::ResolvedScheme resolved = Graphite::ResolveSchemeOverBase(scheme, FlatBase(0.25f));
 
 	for (std::size_t kind = 0; kind < static_cast<std::size_t>(Graphite::TokenKind::Count);
 		 ++kind)
@@ -66,10 +61,6 @@ TEST_CASE("A token kind the scheme never mentions is filled from the base")
 	}
 }
 
-// Checked within each set, not across them. TokenKind::Text and EditorColor::Text are both
-// "text" on purpose: the file prefixes them as syntax.text and editor.text, so they never
-// collide as keys. What must not happen is two names colliding inside one set, where the
-// prefix cannot separate them and the second would silently overwrite the first.
 TEST_CASE("Every colour has a key name, and no two in a set share one")
 {
 	std::vector<std::string_view> syntax;
@@ -102,10 +93,6 @@ TEST_CASE("Every colour has a key name, and no two in a set share one")
 	}
 }
 
-// The point of one switch per enum: a key and its label cannot drift apart, because there is
-// no second place to edit. This test would still pass with two switches — what it actually
-// guards is that every enumerator has a label at all, and that no two rows in one group would
-// render under the same text.
 TEST_CASE("Every colour has a label, and no two in a group share one")
 {
 	std::vector<std::string_view> syntax;
@@ -138,9 +125,6 @@ TEST_CASE("Every colour has a label, and no two in a group share one")
 	}
 }
 
-// NameOf must keep returning the file key after the refactor, or every scheme already on disk
-// stops loading. This pins the two that are camelCase, which are the ones a label refactor
-// would be tempted to "tidy".
 TEST_CASE("Keys keep their file spelling after gaining labels")
 {
 	CHECK(Graphite::NameOf(Graphite::EditorColor::CurrentLine) == "currentLine");
@@ -158,7 +142,7 @@ TEST_CASE("Resolve takes a chrome override and leaves the rest to the base")
 	scheme.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Accent)] =
 		Core::Color{1.0f, 0.0f, 0.0f, 1.0f};
 
-	const Graphite::ResolvedScheme resolved = Graphite::Resolve(scheme, base);
+	const Graphite::ResolvedScheme resolved = Graphite::ResolveSchemeOverBase(scheme, base);
 
 	CHECK(resolved.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Accent)].R ==
 		  doctest::Approx(1.0f));
@@ -166,15 +150,13 @@ TEST_CASE("Resolve takes a chrome override and leaves the rest to the base")
 		  doctest::Approx(0.0f));
 }
 
-// The key is what the file stores and the label is what the settings row shows. A colour
-// missing either is a colour that is either unwritable or invisible.
 TEST_CASE("Every chrome colour has a key and a label")
 {
-	for (std::size_t index = 0; index < static_cast<std::size_t>(Graphite::ChromeColor::Count);
-		 ++index)
+	for (std::size_t colorIndex = 0; colorIndex < static_cast<std::size_t>(Graphite::ChromeColor::Count);
+		 ++colorIndex)
 	{
 		const Graphite::ColorNames names =
-			Graphite::NamesOf(static_cast<Graphite::ChromeColor>(index));
+			Graphite::NamesOf(static_cast<Graphite::ChromeColor>(colorIndex));
 
 		CHECK_FALSE(names.Key.empty());
 		CHECK_FALSE(names.Label.empty());
@@ -191,7 +173,7 @@ TEST_CASE("A git colour overrides its base and leaves the others alone")
 	const Core::Color untouched =
 		base.Git[static_cast<std::size_t>(Graphite::GitColor::DiffRemovedLine)];
 
-	const Graphite::ResolvedScheme resolved = Graphite::Resolve(scheme, base);
+	const Graphite::ResolvedScheme resolved = Graphite::ResolveSchemeOverBase(scheme, base);
 
 	CHECK(resolved.Git[static_cast<std::size_t>(Graphite::GitColor::DiffAddedLine)].R == doctest::Approx(0.1f));
 	CHECK(resolved.Git[static_cast<std::size_t>(Graphite::GitColor::DiffRemovedLine)].R == doctest::Approx(untouched.R));
@@ -201,13 +183,11 @@ TEST_CASE("Every git colour has a key and a label, and no two keys collide")
 {
 	std::vector<std::string_view> keys;
 
-	for (std::size_t index = 0; index < static_cast<std::size_t>(Graphite::GitColor::Count);
-		 ++index)
+	for (std::size_t colorIndex = 0; colorIndex < static_cast<std::size_t>(Graphite::GitColor::Count);
+		 ++colorIndex)
 	{
-		const Graphite::ColorNames names = Graphite::NamesOf(static_cast<Graphite::GitColor>(index));
+		const Graphite::ColorNames names = Graphite::NamesOf(static_cast<Graphite::GitColor>(colorIndex));
 
-		// A colour with no key cannot be written to a scheme file, and one with no label
-		// shows as a blank row in the settings panel. Both are silent failures.
 		CHECK_FALSE(names.Key.empty());
 		CHECK_FALSE(names.Label.empty());
 
@@ -228,7 +208,7 @@ TEST_CASE("A session colour overrides its base and leaves the others alone")
 	const Core::Color untouched =
 		base.Session[static_cast<std::size_t>(Graphite::SessionColor::Edit)];
 
-	const Graphite::ResolvedScheme resolved = Graphite::Resolve(scheme, base);
+	const Graphite::ResolvedScheme resolved = Graphite::ResolveSchemeOverBase(scheme, base);
 
 	CHECK(resolved.Session[static_cast<std::size_t>(Graphite::SessionColor::Read)].R == doctest::Approx(0.1f));
 	CHECK(resolved.Session[static_cast<std::size_t>(Graphite::SessionColor::Edit)].R == doctest::Approx(untouched.R));
@@ -238,14 +218,12 @@ TEST_CASE("Every session colour has a key and a label, and no two keys collide")
 {
 	std::vector<std::string_view> keys;
 
-	for (std::size_t index = 0; index < static_cast<std::size_t>(Graphite::SessionColor::Count);
-		 ++index)
+	for (std::size_t colorIndex = 0; colorIndex < static_cast<std::size_t>(Graphite::SessionColor::Count);
+		 ++colorIndex)
 	{
 		const Graphite::ColorNames names =
-			Graphite::NamesOf(static_cast<Graphite::SessionColor>(index));
+			Graphite::NamesOf(static_cast<Graphite::SessionColor>(colorIndex));
 
-		// A colour with no key cannot be written to a scheme file, and one with no label
-		// shows as a blank row in the settings panel. Both are silent failures.
 		CHECK_FALSE(names.Key.empty());
 		CHECK_FALSE(names.Label.empty());
 

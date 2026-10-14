@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "FileFixtures.h"
 #include "TempDirectory.h"
 #include "Theme/BuiltInSchemes.h"
 #include "Theme/SchemeDraft.h"
@@ -8,25 +9,15 @@
 
 #include <algorithm>
 #include <filesystem>
-#include <fstream>
 #include <optional>
 #include <string>
 
 namespace {
 
-	void WriteFile(const std::filesystem::path& path, std::string_view contents)
-	{
-		std::ofstream out(path, std::ios::binary);
-		out << contents;
-	}
+	constexpr std::size_t kCommentIndex = static_cast<std::size_t>(Graphite::TokenKind::Comment);
+	constexpr std::size_t kKeywordIndex = static_cast<std::size_t>(Graphite::TokenKind::Keyword);
 
-	constexpr std::size_t kComment = static_cast<std::size_t>(Graphite::TokenKind::Comment);
-	constexpr std::size_t kKeyword = static_cast<std::size_t>(Graphite::TokenKind::Keyword);
-
-	// Channels chosen as exact multiples of 1/255 so they survive the scheme file's eight-bit
-	// hex round-trip: 0.75 would come back as 191/255, and a test that cannot round-trip its own
-	// fixture fails for a reason that has nothing to do with what it is testing.
-	constexpr Core::Color kTestColor{0.2f, 0.4f, 0.8f, 1.0f};
+	constexpr Core::Color kEightBitExactColor{0.2f, 0.4f, 0.8f, 1.0f};
 }
 
 TEST_CASE("A fresh draft lists both built-ins and starts read-only")
@@ -42,9 +33,7 @@ TEST_CASE("A fresh draft lists both built-ins and starts read-only")
 	CHECK(draft.IsReadOnly());
 }
 
-// A graphite.json that has never named a scheme yields an empty string, which is the state every
-// first run is in. Without this rule the draft would look for a file literally called ".json".
-TEST_CASE("An empty name selects the dark built-in")
+TEST_CASE("An empty name, as in a first run, selects the dark built-in and not a file called .json")
 {
 	const TempDirectory temp;
 
@@ -63,17 +52,15 @@ TEST_CASE("A built-in refuses edits")
 	Graphite::SchemeDraft draft(temp.GetPath());
 
 	draft.Select("dark");
-	draft.SetColor(Graphite::TokenKind::Comment, kTestColor);
+	draft.SetColor(Graphite::TokenKind::Comment, kEightBitExactColor);
 
 	CHECK_FALSE(draft.IsOverridden(Graphite::TokenKind::Comment));
-	CHECK(draft.GetPreview().Syntax[kComment].R ==
-		  doctest::Approx(Graphite::DarkScheme().Syntax[kComment].R));
+	CHECK(draft.GetPreview().Syntax[kCommentIndex].R ==
+		  doctest::Approx(Graphite::DarkScheme().Syntax[kCommentIndex].R));
 	CHECK_FALSE(draft.Save());
 }
 
-// The property the whole sub-project exists to protect: one edit produces one override, not a
-// full copy of every colour on screen.
-TEST_CASE("Editing one colour overrides exactly one colour")
+TEST_CASE("Editing one colour overrides exactly one colour and saves it sparsely")
 {
 	const TempDirectory temp;
 
@@ -83,24 +70,21 @@ TEST_CASE("Editing one colour overrides exactly one colour")
 	REQUIRE(draft.Duplicate());
 	REQUIRE_FALSE(draft.IsReadOnly());
 
-	draft.SetColor(Graphite::TokenKind::Comment, kTestColor);
+	draft.SetColor(Graphite::TokenKind::Comment, kEightBitExactColor);
 
 	CHECK(draft.IsOverridden(Graphite::TokenKind::Comment));
 	CHECK_FALSE(draft.IsOverridden(Graphite::TokenKind::Keyword));
-	CHECK(draft.GetPreview().Syntax[kComment].B == doctest::Approx(0.8f));
+	CHECK(draft.GetPreview().Syntax[kCommentIndex].B == doctest::Approx(0.8f));
 
 	REQUIRE(draft.Save());
 
-	// Read it back through the store rather than trusting the draft's own memory.
 	const Graphite::ColorScheme saved =
 		Graphite::LoadScheme(temp.GetPath() / (draft.GetSelected() + ".json"));
 
-	CHECK(saved.Syntax[kComment].has_value());
-	CHECK_FALSE(saved.Syntax[kKeyword].has_value());
+	CHECK(saved.Syntax[kCommentIndex].has_value());
+	CHECK_FALSE(saved.Syntax[kKeywordIndex].has_value());
 }
 
-// Reverting must clear the override, not assign the base colour. Both leave the same pixels on
-// screen this version; only one of them still tracks the base in the next one.
 TEST_CASE("Reverting clears the override rather than pinning the base value")
 {
 	const TempDirectory temp;
@@ -110,21 +94,21 @@ TEST_CASE("Reverting clears the override rather than pinning the base value")
 	draft.Select("dark");
 	REQUIRE(draft.Duplicate());
 
-	draft.SetColor(Graphite::TokenKind::Comment, kTestColor);
+	draft.SetColor(Graphite::TokenKind::Comment, kEightBitExactColor);
 	REQUIRE(draft.IsOverridden(Graphite::TokenKind::Comment));
 
 	draft.Revert(Graphite::TokenKind::Comment);
 
 	CHECK_FALSE(draft.IsOverridden(Graphite::TokenKind::Comment));
-	CHECK(draft.GetPreview().Syntax[kComment].R ==
-		  doctest::Approx(Graphite::DarkScheme().Syntax[kComment].R));
+	CHECK(draft.GetPreview().Syntax[kCommentIndex].R ==
+		  doctest::Approx(Graphite::DarkScheme().Syntax[kCommentIndex].R));
 
 	REQUIRE(draft.Save());
 
 	const Graphite::ColorScheme saved =
 		Graphite::LoadScheme(temp.GetPath() / (draft.GetSelected() + ".json"));
 
-	CHECK_FALSE(saved.Syntax[kComment].has_value());
+	CHECK_FALSE(saved.Syntax[kCommentIndex].has_value());
 }
 
 TEST_CASE("A duplicate never lands on a name already taken")
@@ -136,13 +120,13 @@ TEST_CASE("A duplicate never lands on a name already taken")
 	draft.Select("dark");
 	REQUIRE(draft.Duplicate());
 
-	const std::string first = draft.GetSelected();
+	const std::string firstDuplicateName = draft.GetSelected();
 
 	draft.Select("dark");
 	REQUIRE(draft.Duplicate());
 
-	CHECK(draft.GetSelected() != first);
-	CHECK(Graphite::UniqueSchemeName(temp.GetPath(), "dark") != first);
+	CHECK(draft.GetSelected() != firstDuplicateName);
+	CHECK(Graphite::UniqueSchemeName(temp.GetPath(), "dark") != firstDuplicateName);
 	CHECK(Graphite::UniqueSchemeName(temp.GetPath(), "dark") != draft.GetSelected());
 }
 
@@ -152,7 +136,7 @@ TEST_CASE("A duplicate carries the source scheme's overrides")
 
 	Graphite::ColorScheme source;
 	source.Base = Graphite::BuiltInScheme::Light;
-	source.Syntax[kComment] = kTestColor;
+	source.Syntax[kCommentIndex] = kEightBitExactColor;
 
 	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "source", source));
 
@@ -162,9 +146,8 @@ TEST_CASE("A duplicate carries the source scheme's overrides")
 	REQUIRE(draft.Duplicate());
 
 	CHECK(draft.IsOverridden(Graphite::TokenKind::Comment));
-	CHECK(draft.GetPreview().Syntax[kComment].B == doctest::Approx(0.8f));
+	CHECK(draft.GetPreview().Syntax[kCommentIndex].B == doctest::Approx(0.8f));
 
-	// The base travelled too, or the copy would look nothing like what was copied.
 	const std::size_t background = static_cast<std::size_t>(Graphite::EditorColor::Background);
 
 	CHECK(draft.GetPreview().Editor[background].R ==
@@ -191,15 +174,13 @@ TEST_CASE("Deleting the selected scheme falls back to its base")
 		  draft.GetNames().end());
 }
 
-// The file is written by hand because SaveScheme refuses a built-in's name. Without it on disk
-// the deletion would fail for want of a file and the test would pass with the refusal removed.
-TEST_CASE("Deleting a built-in is refused")
+TEST_CASE("Deleting a built-in is refused even when a file by its name is on disk")
 {
 	const TempDirectory temp;
 
 	const std::filesystem::path shadow = temp.GetPath() / "dark.json";
 
-	WriteFile(shadow, "{\"base\":\"dark\"}");
+	WriteFileBytes(shadow, "{\"base\":\"dark\"}");
 	REQUIRE(std::filesystem::exists(shadow));
 
 	Graphite::SchemeDraft draft(temp.GetPath());
@@ -221,7 +202,7 @@ TEST_CASE("Renaming the selected scheme keeps it selected under the new name")
 	Graphite::SchemeDraft draft(temp.GetPath());
 
 	draft.Select("before");
-	draft.SetColor(Graphite::TokenKind::Comment, kTestColor);
+	draft.SetColor(Graphite::TokenKind::Comment, kEightBitExactColor);
 	REQUIRE(draft.Save());
 
 	REQUIRE(draft.RenameSelected("after"));
@@ -263,7 +244,7 @@ TEST_CASE("A chrome colour can be overridden and reverted in a draft")
 	Graphite::SchemeDraft draft(temp.GetPath());
 	REQUIRE(draft.Duplicate());
 
-	constexpr auto accent = static_cast<std::size_t>(Graphite::ChromeColor::Accent);
+	constexpr std::size_t accent = static_cast<std::size_t>(Graphite::ChromeColor::Accent);
 
 	CHECK_FALSE(draft.IsOverridden(Graphite::ChromeColor::Accent));
 
@@ -288,13 +269,13 @@ TEST_CASE("The selected scheme can be renamed to a non-ASCII name and to its own
 	Graphite::SchemeDraft draft(temp.GetPath());
 	draft.Select("plain");
 
-	const std::string polish = "Ciemny \xC5\xBC";
-	REQUIRE(draft.RenameSelected(polish));
-	CHECK(draft.GetSelected() == polish);
-	CHECK(std::filesystem::exists(Graphite::SchemeFile(temp.GetPath(), polish)));
+	const std::string polishName = "Ciemny \xC5\xBC";
+	REQUIRE(draft.RenameSelected(polishName));
+	CHECK(draft.GetSelected() == polishName);
+	CHECK(std::filesystem::exists(Graphite::SchemeFile(temp.GetPath(), polishName)));
 
 	CHECK_FALSE(draft.NameProblem("ciemny \xC5\xBC").has_value());
-	CHECK_FALSE(draft.RenameSelected(polish));
+	CHECK_FALSE(draft.RenameSelected(polishName));
 }
 
 TEST_CASE("A scheme that cannot be deleted leaves one failure toast to take")
@@ -306,7 +287,6 @@ TEST_CASE("A scheme that cannot be deleted leaves one failure toast to take")
 	Graphite::SchemeDraft draft(temp.GetPath());
 	draft.Select("doomed");
 
-	// Gone behind the draft's back, so the delete has nothing to remove.
 	std::filesystem::remove(temp.GetPath() / "doomed.json");
 
 	CHECK_FALSE(draft.DeleteSelected());
@@ -319,7 +299,6 @@ TEST_CASE("A scheme that cannot be deleted leaves one failure toast to take")
 	CHECK(failure->Message.find("doomed") != std::string::npos);
 	CHECK(failure->Scope == Graphite::ToastScope::Application);
 
-	// Handed out once.
 	CHECK_FALSE(draft.TakeFailure().has_value());
 }
 
@@ -331,9 +310,8 @@ TEST_CASE("A scheme that cannot be saved leaves one failure toast to take")
 
 	Graphite::SchemeDraft draft(temp.GetPath());
 	draft.Select("mine");
-	draft.SetColor(Graphite::TokenKind::Comment, kTestColor);
+	draft.SetColor(Graphite::TokenKind::Comment, kEightBitExactColor);
 
-	// A folder where the file was, which no write can replace.
 	std::filesystem::remove(temp.GetPath() / "mine.json");
 	std::filesystem::create_directory(temp.GetPath() / "mine.json");
 
@@ -368,21 +346,19 @@ TEST_CASE("Two failures before the section drains are handed out as two toasts, 
 	Graphite::SchemeDraft draft(temp.GetPath());
 	draft.Select("mine");
 
-	// A folder with something in it where the file was: no write replaces it and no delete
-	// removes it.
 	std::filesystem::remove(temp.GetPath() / "mine.json");
 	std::filesystem::create_directory(temp.GetPath() / "mine.json");
-	WriteFile(temp.GetPath() / "mine.json" / "keep", "x");
+	WriteFileBytes(temp.GetPath() / "mine.json" / "keep", "x");
 
 	CHECK_FALSE(draft.Save());
 	CHECK_FALSE(draft.DeleteSelected());
 
-	const std::optional<Graphite::ToastEvent> first = draft.TakeFailure();
-	const std::optional<Graphite::ToastEvent> second = draft.TakeFailure();
+	const std::optional<Graphite::ToastEvent> saveFailure = draft.TakeFailure();
+	const std::optional<Graphite::ToastEvent> deleteFailure = draft.TakeFailure();
 
-	REQUIRE(first.has_value());
-	REQUIRE(second.has_value());
-	CHECK(first->Title == "Could not save scheme");
-	CHECK(second->Title == "Could not delete scheme");
+	REQUIRE(saveFailure.has_value());
+	REQUIRE(deleteFailure.has_value());
+	CHECK(saveFailure->Title == "Could not save scheme");
+	CHECK(deleteFailure->Title == "Could not delete scheme");
 	CHECK_FALSE(draft.TakeFailure().has_value());
 }

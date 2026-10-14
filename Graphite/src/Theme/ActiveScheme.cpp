@@ -22,7 +22,7 @@ namespace Graphite {
 
 		const ColorScheme scheme = LoadScheme(SchemeFile(directory, name));
 
-		return Resolve(scheme, SchemeFor(scheme.Base));
+		return ResolveSchemeOverBase(scheme, SchemeFor(scheme.Base));
 	}
 
 	void ActiveScheme::Load(const AppSettings& settings)

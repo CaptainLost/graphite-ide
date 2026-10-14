@@ -14,11 +14,8 @@
 
 namespace Graphite {
 
-	// One colour per token kind, read once a frame.
 	struct SyntaxPalette
 	{
-		// Sized from TokenKind::Count rather than a literal, so a kind added to TokenKind grows
-		// this array instead of leaving Of reading past its end.
 		std::array<ImU32, static_cast<std::size_t>(TokenKind::Count)> Colours{};
 
 		ImU32 Of(TokenKind kind) const
@@ -30,14 +27,10 @@ namespace Graphite {
 	static_assert(std::tuple_size_v<decltype(SyntaxPalette::Colours)> ==
 				  static_cast<std::size_t>(TokenKind::Count));
 
-	// The ImGui boundary for both palettes: the one place in this sub-project a Core::Color
-	// turns into an ImU32, via IM_COL32. Theme/ stays free of imgui.h so it can build and be
-	// tested without a window.
 	SyntaxPalette ReadSyntaxPalette(const ResolvedScheme& scheme);
 
 	EditorPalette ReadEditorPalette(const ResolvedScheme& scheme);
 
-	// The scheme has no error colour for the chrome, so this one is fixed rather than read from it.
 	inline constexpr ImVec4 kErrorTextColour{0.94f, 0.42f, 0.42f, 1.0f};
 
 	ImVec4 DangerColourOf(const ResolvedScheme& scheme);

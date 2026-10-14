@@ -4,17 +4,15 @@
 #include "Theme/ToastPalette.h"
 
 namespace {
-	bool Same(const Core::Color& a, const Core::Color& b)
+	bool Same(const Core::Color& actual, const Core::Color& expected)
 	{
-		return a.R == doctest::Approx(b.R) && a.G == doctest::Approx(b.G) && a.B == doctest::Approx(b.B) &&
-			   a.A == doctest::Approx(b.A);
+		return actual.R == doctest::Approx(expected.R) && actual.G == doctest::Approx(expected.G) &&
+			   actual.B == doctest::Approx(expected.B) && actual.A == doctest::Approx(expected.A);
 	}
 }
 
-TEST_CASE("The toast palette takes the chrome's surface, text and dimmed text and the diagnostic and added colours")
+TEST_CASE("Every colour differs from the others in every channel, so swapping two fields fails: the toast palette takes the chrome's surface, text and dimmed text and the diagnostic and added colours")
 {
-	// Every colour differs from the others in every channel, so a palette that swapped any two
-	// of its fields fails here.
 	const Core::Color surface{0.11f, 0.12f, 0.13f, 0.81f};
 	const Core::Color text{0.31f, 0.32f, 0.33f, 0.83f};
 	const Core::Color textDim{0.41f, 0.42f, 0.43f, 0.84f};

@@ -21,7 +21,6 @@ namespace Graphite {
 		ImU32 CodeBlock = 0;
 		ImU32 Injected = 0;
 
-		// From the chrome group: names and the quiet text of headers, usage lines and gaps.
 		ImU32 Accent = 0;
 		ImU32 TextDisabled = 0;
 

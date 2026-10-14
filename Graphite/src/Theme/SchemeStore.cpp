@@ -1,12 +1,13 @@
 #include "Theme/SchemeStore.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/Base/Color.h"
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Text/Encoding.h"
 #include "Theme/BuiltInSchemes.h"
 
-#include <algorithm>
 #include <format>
 #include <optional>
 #include <string>
@@ -24,11 +25,11 @@ namespace Graphite {
 
 		std::optional<std::size_t> IndexOfSyntax(std::string_view name)
 		{
-			for (std::size_t kind = 0; kind < static_cast<std::size_t>(TokenKind::Count); ++kind)
+			for (std::size_t kindIndex = 0; kindIndex < static_cast<std::size_t>(TokenKind::Count); ++kindIndex)
 			{
-				if (NameOf(static_cast<TokenKind>(kind)) == name)
+				if (NameOf(static_cast<TokenKind>(kindIndex)) == name)
 				{
-					return kind;
+					return kindIndex;
 				}
 			}
 
@@ -37,12 +38,11 @@ namespace Graphite {
 
 		std::optional<std::size_t> IndexOfEditor(std::string_view name)
 		{
-			for (std::size_t color = 0; color < static_cast<std::size_t>(EditorColor::Count);
-				 ++color)
+			for (std::size_t colorIndex = 0; colorIndex < static_cast<std::size_t>(EditorColor::Count); ++colorIndex)
 			{
-				if (NameOf(static_cast<EditorColor>(color)) == name)
+				if (NameOf(static_cast<EditorColor>(colorIndex)) == name)
 				{
-					return color;
+					return colorIndex;
 				}
 			}
 
@@ -51,12 +51,11 @@ namespace Graphite {
 
 		std::optional<std::size_t> IndexOfChrome(std::string_view name)
 		{
-			for (std::size_t color = 0; color < static_cast<std::size_t>(ChromeColor::Count);
-				 ++color)
+			for (std::size_t colorIndex = 0; colorIndex < static_cast<std::size_t>(ChromeColor::Count); ++colorIndex)
 			{
-				if (NameOf(static_cast<ChromeColor>(color)) == name)
+				if (NameOf(static_cast<ChromeColor>(colorIndex)) == name)
 				{
-					return color;
+					return colorIndex;
 				}
 			}
 
@@ -65,11 +64,11 @@ namespace Graphite {
 
 		std::optional<std::size_t> IndexOfGit(std::string_view name)
 		{
-			for (std::size_t color = 0; color < static_cast<std::size_t>(GitColor::Count); ++color)
+			for (std::size_t colorIndex = 0; colorIndex < static_cast<std::size_t>(GitColor::Count); ++colorIndex)
 			{
-				if (NameOf(static_cast<GitColor>(color)) == name)
+				if (NameOf(static_cast<GitColor>(colorIndex)) == name)
 				{
-					return color;
+					return colorIndex;
 				}
 			}
 
@@ -78,16 +77,36 @@ namespace Graphite {
 
 		std::optional<std::size_t> IndexOfSession(std::string_view name)
 		{
-			for (std::size_t color = 0; color < static_cast<std::size_t>(SessionColor::Count);
-				 ++color)
+			for (std::size_t colorIndex = 0; colorIndex < static_cast<std::size_t>(SessionColor::Count); ++colorIndex)
 			{
-				if (NameOf(static_cast<SessionColor>(color)) == name)
+				if (NameOf(static_cast<SessionColor>(colorIndex)) == name)
 				{
-					return color;
+					return colorIndex;
 				}
 			}
 
 			return std::nullopt;
+		}
+
+		constexpr std::size_t kNumberedDeviceNameLength = 4;
+		constexpr std::size_t kDeviceNumberIndex = 3;
+		constexpr char kFirstDeviceNumber = '1';
+		constexpr char kLastDeviceNumber = '9';
+		constexpr unsigned char kFirstPrintableCharacter = 0x20;
+		constexpr std::string_view kCharactersWindowsRefusesInFileName = "<>:\"/\\|?*";
+
+		bool IsDeviceName(std::string_view lowered)
+		{
+			if (lowered == "con" || lowered == "prn" || lowered == "aux" || lowered == "nul")
+			{
+				return true;
+			}
+
+			const bool isNumberedPortName = lowered.size() == kNumberedDeviceNameLength &&
+											(lowered.starts_with("com") || lowered.starts_with("lpt"));
+
+			return isNumberedPortName && lowered[kDeviceNumberIndex] >= kFirstDeviceNumber &&
+				   lowered[kDeviceNumberIndex] <= kLastDeviceNumber;
 		}
 	}
 
@@ -102,11 +121,9 @@ namespace Graphite {
 	{
 		ColorScheme scheme;
 
-		std::error_code ec;
+		std::error_code errorCode;
 
-		// Absent is not an error: a scheme on a drive that is not plugged in should come back
-		// when the drive does, and the caller falls back to a built-in meanwhile.
-		if (!std::filesystem::exists(file, ec))
+		if (!std::filesystem::exists(file, errorCode))
 		{
 			APP_WARN("Colour scheme '{}' is not there", Core::ToUtf8(file));
 			return scheme;
@@ -120,10 +137,7 @@ namespace Graphite {
 		}
 		else
 		{
-			// A base nobody has heard of, or none at all. Dark is the fallback and the scheme's
-			// own overrides still apply on top of it.
-			APP_WARN("Colour scheme '{}' names an unknown base '{}'", Core::ToUtf8(file),
-					 json.Get("base"));
+			APP_WARN("Colour scheme '{}' names an unknown base '{}'", Core::ToUtf8(file), json.Get("base"));
 		}
 
 		for (const std::string& key : json.CollectKeys())
@@ -137,10 +151,7 @@ namespace Graphite {
 
 			if (!color)
 			{
-				// The key is skipped, not the file. Its colour then comes from the base, which
-				// is what an unset colour does anyway.
-				APP_WARN("Colour scheme '{}' has an unreadable colour for '{}'", Core::ToUtf8(file),
-						 key);
+				APP_WARN("Colour scheme '{}' has an unreadable colour for '{}'", Core::ToUtf8(file), key);
 				continue;
 			}
 
@@ -148,7 +159,7 @@ namespace Graphite {
 
 			if (name.starts_with(kSyntaxPrefix))
 			{
-				if (const auto index = IndexOfSyntax(name.substr(kSyntaxPrefix.size())))
+				if (const std::optional<std::size_t> index = IndexOfSyntax(name.substr(kSyntaxPrefix.size())))
 				{
 					scheme.Syntax[*index] = *color;
 					continue;
@@ -156,7 +167,7 @@ namespace Graphite {
 			}
 			else if (name.starts_with(kEditorPrefix))
 			{
-				if (const auto index = IndexOfEditor(name.substr(kEditorPrefix.size())))
+				if (const std::optional<std::size_t> index = IndexOfEditor(name.substr(kEditorPrefix.size())))
 				{
 					scheme.Editor[*index] = *color;
 					continue;
@@ -164,7 +175,7 @@ namespace Graphite {
 			}
 			else if (name.starts_with(kChromePrefix))
 			{
-				if (const auto index = IndexOfChrome(name.substr(kChromePrefix.size())))
+				if (const std::optional<std::size_t> index = IndexOfChrome(name.substr(kChromePrefix.size())))
 				{
 					scheme.Chrome[*index] = *color;
 					continue;
@@ -172,7 +183,7 @@ namespace Graphite {
 			}
 			else if (name.starts_with(kGitPrefix))
 			{
-				if (const auto index = IndexOfGit(name.substr(kGitPrefix.size())))
+				if (const std::optional<std::size_t> index = IndexOfGit(name.substr(kGitPrefix.size())))
 				{
 					scheme.Git[*index] = *color;
 					continue;
@@ -180,14 +191,13 @@ namespace Graphite {
 			}
 			else if (name.starts_with(kSessionPrefix))
 			{
-				if (const auto index = IndexOfSession(name.substr(kSessionPrefix.size())))
+				if (const std::optional<std::size_t> index = IndexOfSession(name.substr(kSessionPrefix.size())))
 				{
 					scheme.Session[*index] = *color;
 					continue;
 				}
 			}
 
-			// A scheme written against a newer version, naming a colour this one does not have.
 			APP_WARN("Colour scheme '{}' names an unknown colour '{}'", Core::ToUtf8(file), key);
 		}
 
@@ -197,74 +207,68 @@ namespace Graphite {
 	Core::Result<void> SaveScheme(const std::filesystem::path& directory, std::string_view name,
 								  const ColorScheme& scheme)
 	{
-		// The built-ins are not files, so writing over one would only ever succeed at making
-		// dark.json shadow the real thing.
 		if (ParseBuiltInName(name).has_value())
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument, std::format("'{}' is a built-in scheme", name)};
 		}
 
-		// The name is joined straight onto the themes directory below. Harmless while it only
-		// ever comes from a user editing their own JSON, but a name with a path separator or a
-		// ".." segment would resolve outside that directory the moment something else supplies
-		// it — a text field, say.
-		if (name.find('/') != std::string_view::npos || name.find('\\') != std::string_view::npos ||
-			name.find("..") != std::string_view::npos)
+		const bool escapesDirectory = name.find('/') != std::string_view::npos ||
+									  name.find('\\') != std::string_view::npos ||
+									  name.find("..") != std::string_view::npos;
+
+		if (escapesDirectory)
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument, std::format("'{}' is not a scheme name", name)};
 		}
 
-		std::error_code ec;
-		std::filesystem::create_directories(directory, ec);
+		std::error_code errorCode;
+		std::filesystem::create_directories(directory, errorCode);
 
 		Core::JsonFile json;
 		json.Set("base", std::string(NameOf(scheme.Base)));
 
-		for (std::size_t kind = 0; kind < scheme.Syntax.size(); ++kind)
+		for (std::size_t kindIndex = 0; kindIndex < scheme.Syntax.size(); ++kindIndex)
 		{
-			if (scheme.Syntax[kind].has_value())
+			if (scheme.Syntax[kindIndex].has_value())
 			{
-				json.Set(std::string(kSyntaxPrefix) + std::string(NameOf(static_cast<TokenKind>(kind))),
-						 Core::ToHexColor(*scheme.Syntax[kind]));
+				json.Set(std::string(kSyntaxPrefix) + std::string(NameOf(static_cast<TokenKind>(kindIndex))),
+						 Core::ToHexColor(*scheme.Syntax[kindIndex]));
 			}
 		}
 
-		for (std::size_t color = 0; color < scheme.Editor.size(); ++color)
+		for (std::size_t colorIndex = 0; colorIndex < scheme.Editor.size(); ++colorIndex)
 		{
-			if (scheme.Editor[color].has_value())
+			if (scheme.Editor[colorIndex].has_value())
 			{
-				json.Set(std::string(kEditorPrefix) +
-							 std::string(NameOf(static_cast<EditorColor>(color))),
-						 Core::ToHexColor(*scheme.Editor[color]));
+				json.Set(std::string(kEditorPrefix) + std::string(NameOf(static_cast<EditorColor>(colorIndex))),
+						 Core::ToHexColor(*scheme.Editor[colorIndex]));
 			}
 		}
 
-		for (std::size_t color = 0; color < scheme.Chrome.size(); ++color)
+		for (std::size_t colorIndex = 0; colorIndex < scheme.Chrome.size(); ++colorIndex)
 		{
-			if (scheme.Chrome[color].has_value())
+			if (scheme.Chrome[colorIndex].has_value())
 			{
-				json.Set(std::string(kChromePrefix) +
-							 std::string(NameOf(static_cast<ChromeColor>(color))),
-						 Core::ToHexColor(*scheme.Chrome[color]));
+				json.Set(std::string(kChromePrefix) + std::string(NameOf(static_cast<ChromeColor>(colorIndex))),
+						 Core::ToHexColor(*scheme.Chrome[colorIndex]));
 			}
 		}
 
-		for (std::size_t color = 0; color < scheme.Git.size(); ++color)
+		for (std::size_t colorIndex = 0; colorIndex < scheme.Git.size(); ++colorIndex)
 		{
-			if (scheme.Git[color].has_value())
+			if (scheme.Git[colorIndex].has_value())
 			{
-				json.Set(std::string(kGitPrefix) + std::string(NameOf(static_cast<GitColor>(color))),
-						 Core::ToHexColor(*scheme.Git[color]));
+				json.Set(std::string(kGitPrefix) + std::string(NameOf(static_cast<GitColor>(colorIndex))),
+						 Core::ToHexColor(*scheme.Git[colorIndex]));
 			}
 		}
 
-		for (std::size_t color = 0; color < scheme.Session.size(); ++color)
+		for (std::size_t colorIndex = 0; colorIndex < scheme.Session.size(); ++colorIndex)
 		{
-			if (scheme.Session[color].has_value())
+			if (scheme.Session[colorIndex].has_value())
 			{
-				json.Set(std::string(kSessionPrefix) +
-							 std::string(NameOf(static_cast<SessionColor>(color))),
-						 Core::ToHexColor(*scheme.Session[color]));
+				json.Set(std::string(kSessionPrefix) + std::string(NameOf(static_cast<SessionColor>(colorIndex))),
+						 Core::ToHexColor(*scheme.Session[colorIndex]));
 			}
 		}
 
@@ -275,12 +279,12 @@ namespace Graphite {
 	{
 		std::vector<std::string> names;
 
-		std::error_code ec;
+		std::error_code errorCode;
 
 		for (const std::filesystem::directory_entry& entry :
-			 std::filesystem::directory_iterator(directory, ec))
+			 std::filesystem::directory_iterator(directory, errorCode))
 		{
-			if (!entry.is_regular_file(ec))
+			if (!entry.is_regular_file(errorCode))
 			{
 				continue;
 			}
@@ -307,45 +311,16 @@ namespace Graphite {
 	{
 		const std::filesystem::path file = SchemeFile(directory, name);
 
-		std::error_code ec;
+		std::error_code errorCode;
 
-		if (!std::filesystem::remove(file, ec))
+		if (!std::filesystem::remove(file, errorCode))
 		{
 			return Core::Error{Core::ErrorCode::IoFailure,
 							   std::format("cannot delete '{}': {}", Core::ToUtf8(file),
-										   ec ? ec.message() : std::string{"it is not there"})};
+										   errorCode ? errorCode.message() : std::string{"it is not there"})};
 		}
 
 		return Core::Result<void>::Ok();
-	}
-
-	namespace {
-
-		std::string Lowered(std::string_view text)
-		{
-			std::string lowered(text);
-
-			for (char& character : lowered)
-			{
-				if (character >= 'A' && character <= 'Z')
-				{
-					character = static_cast<char>(character - 'A' + 'a');
-				}
-			}
-
-			return lowered;
-		}
-
-		bool IsDeviceName(std::string_view lowered)
-		{
-			if (lowered == "con" || lowered == "prn" || lowered == "aux" || lowered == "nul")
-			{
-				return true;
-			}
-
-			return lowered.size() == 4 && (lowered.starts_with("com") || lowered.starts_with("lpt")) &&
-				   lowered[3] >= '1' && lowered[3] <= '9';
-		}
 	}
 
 	std::optional<std::string> SchemeNameProblem(std::string_view name, const std::vector<std::string>& existing)
@@ -355,9 +330,7 @@ namespace Graphite {
 			return "Enter a name.";
 		}
 
-		// Characters, not bytes: a UTF-8 continuation byte is not one.
-		const auto characters = static_cast<std::size_t>(std::count_if(
-			name.begin(), name.end(), [](char byte) { return (static_cast<unsigned char>(byte) & 0xC0) != 0x80; }));
+		const std::size_t characters = Core::CharacterCount(name);
 
 		if (characters > kLongestSchemeName)
 		{
@@ -366,8 +339,9 @@ namespace Graphite {
 
 		for (const char character : name)
 		{
-			if (static_cast<unsigned char>(character) < 0x20 ||
-				std::string_view{"<>:\"/\\|?*"}.find(character) != std::string_view::npos)
+			const bool isControlCharacter = static_cast<unsigned char>(character) < kFirstPrintableCharacter;
+
+			if (isControlCharacter || kCharactersWindowsRefusesInFileName.find(character) != std::string_view::npos)
 			{
 				return "A name cannot contain control characters or any of < > : \" / \\ | ? *";
 			}
@@ -379,16 +353,14 @@ namespace Graphite {
 			return "A name cannot start or end with a space, end with a dot, or contain \"..\".";
 		}
 
-		if (IsDeviceName(Lowered(name)))
+		if (IsDeviceName(Core::Lowered(name)))
 		{
 			return "That name is reserved by Windows.";
 		}
 
-		const std::string lowered = Lowered(name);
-
 		for (const std::string& other : existing)
 		{
-			if (Lowered(other) == lowered)
+			if (Core::EqualsIgnoringCase(other, name))
 			{
 				return "A scheme with that name already exists.";
 			}
@@ -405,9 +377,9 @@ namespace Graphite {
 			return Core::Error{Core::ErrorCode::InvalidArgument, "a built-in scheme cannot be renamed or replaced"};
 		}
 
-		// Nothing is listed as existing: the file system is asked below, which is the authority on
-		// what is taken. What is left is the part of the check that is about the name itself.
-		if (const std::optional<std::string> problem = SchemeNameProblem(to, {}))
+		const std::vector<std::string> noExistingNames;
+
+		if (const std::optional<std::string> problem = SchemeNameProblem(to, noExistingNames))
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument, std::format("'{}': {}", to, *problem)};
 		}
@@ -415,29 +387,27 @@ namespace Graphite {
 		const std::filesystem::path source = SchemeFile(directory, from);
 		const std::filesystem::path target = SchemeFile(directory, to);
 
-		std::error_code ec;
+		std::error_code errorCode;
 
-		if (!std::filesystem::exists(source, ec))
+		if (!std::filesystem::exists(source, errorCode))
 		{
 			return Core::Error{Core::ErrorCode::NotFound, std::format("'{}' is not there", Core::ToUtf8(source))};
 		}
 
-		// The same file under a name that differs in case only is not a clash: the file system
-		// finds the target because it is the source, and the rename is how the case changes.
-		const bool caseOnly = from != to && Lowered(from) == Lowered(to);
+		const bool differsInCaseOnly = from != to && Core::EqualsIgnoringCase(from, to);
 
-		if (!caseOnly && std::filesystem::exists(target, ec))
+		if (!differsInCaseOnly && std::filesystem::exists(target, errorCode))
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument,
 							   std::format("'{}' already exists", Core::ToUtf8(target))};
 		}
 
-		std::filesystem::rename(source, target, ec);
+		std::filesystem::rename(source, target, errorCode);
 
-		if (ec)
+		if (errorCode)
 		{
 			return Core::Error{Core::ErrorCode::IoFailure,
-							   std::format("cannot rename '{}': {}", Core::ToUtf8(source), ec.message())};
+							   std::format("cannot rename '{}': {}", Core::ToUtf8(source), errorCode.message())};
 		}
 
 		return Core::Result<void>::Ok();

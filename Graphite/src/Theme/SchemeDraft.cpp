@@ -11,6 +11,9 @@ namespace Graphite {
 
 	namespace {
 
+		constexpr std::size_t kLastCopySuffix = 999;
+		constexpr std::size_t kUnnumberedCopySuffix = 1;
+
 		std::string DefaultName()
 		{
 			return std::string(NameOf(BuiltInScheme::Dark));
@@ -21,16 +24,15 @@ namespace Graphite {
 	{
 		const std::string stem = std::string(base) + "-copy";
 
-		std::error_code ec;
+		std::error_code errorCode;
 
-		// Guards against a built-in's name as well as an existing file: SaveScheme refuses a
-		// built-in name, so proposing one would produce a copy that cannot be saved.
-		for (std::size_t suffix = 1; suffix < 1000; ++suffix)
+		for (std::size_t suffix = kUnnumberedCopySuffix; suffix <= kLastCopySuffix; ++suffix)
 		{
-			std::string candidate = suffix == 1 ? stem : stem + "-" + std::to_string(suffix);
+			std::string candidate = suffix == kUnnumberedCopySuffix ? stem : stem + "-" + std::to_string(suffix);
 
-			if (!ParseBuiltInName(candidate) &&
-				!std::filesystem::exists(SchemeFile(directory, candidate), ec))
+			const bool isBuiltInName = ParseBuiltInName(candidate).has_value();
+
+			if (!isBuiltInName && !std::filesystem::exists(SchemeFile(directory, candidate), errorCode))
 			{
 				return candidate;
 			}
@@ -44,9 +46,6 @@ namespace Graphite {
 	{
 		Rebuild();
 
-		// Deliberately not Select(m_Selected) after initialising m_Selected in the list above:
-		// that hands Select a view of the very string it assigns to, which is self-assignment
-		// through a std::string_view.
 		Select(DefaultName());
 	}
 
@@ -69,19 +68,16 @@ namespace Graphite {
 
 	void SchemeDraft::Resolve()
 	{
-		m_Preview = Graphite::Resolve(m_Scheme, SchemeFor(m_Scheme.Base));
+		m_Preview = Graphite::ResolveSchemeOverBase(m_Scheme, SchemeFor(m_Scheme.Base));
 	}
 
 	void SchemeDraft::Select(std::string_view name)
 	{
-		// Empty means "never chosen" — the state a fresh graphite.json is in — and resolves to the
-		// dark built-in, matching what ResolveNamed already does with an empty name. Without this
-		// the first run would look for a file called ".json".
+		// WARNING: name must not view m_Selected, which is assigned before name is read again.
 		m_Selected = name.empty() ? DefaultName() : std::string(name);
 
 		if (const std::optional<BuiltInScheme> built = ParseBuiltInName(m_Selected))
 		{
-			// A built-in has no overrides by definition: it IS the base.
 			m_Scheme = ColorScheme{};
 			m_Scheme.Base = *built;
 		}
@@ -255,8 +251,6 @@ namespace Graphite {
 	{
 		const std::string name = UniqueSchemeName(m_Directory, m_Selected);
 
-		// Saved from the scheme currently held, so a built-in duplicates as an empty override
-		// set over that base, and a user scheme duplicates with its overrides intact.
 		if (const Core::Result<void> saved = SaveScheme(m_Directory, name, m_Scheme); !saved)
 		{
 			APP_WARN("Could not duplicate colour scheme '{}' as '{}': {}", m_Selected, name,
@@ -273,19 +267,17 @@ namespace Graphite {
 
 	std::optional<std::string> SchemeDraft::NameProblem(std::string_view name) const
 	{
-		// Without the selected scheme's own name, so that changing only its case is allowed. Its
-		// exact current name is not a new name, which RenameSelected refuses.
-		std::vector<std::string> others;
+		std::vector<std::string> namesExceptSelected;
 
 		for (const std::string& existing : m_Names)
 		{
 			if (existing != m_Selected)
 			{
-				others.push_back(existing);
+				namesExceptSelected.push_back(existing);
 			}
 		}
 
-		return SchemeNameProblem(name, others);
+		return SchemeNameProblem(name, namesExceptSelected);
 	}
 
 	bool SchemeDraft::RenameSelected(std::string_view name)
@@ -301,8 +293,6 @@ namespace Graphite {
 			return false;
 		}
 
-		// Reselected from the renamed file rather than renamed in place, so the draft and the disk
-		// are known to agree.
 		const std::string renamedTo(name);
 
 		Rebuild();
@@ -347,8 +337,6 @@ namespace Graphite {
 
 	void SchemeDraft::Fail(std::string title, std::string message)
 	{
-		// The themes directory is the application's, not the open folder's: the toast outlives
-		// the folder. Queued, so two failures before the Appearance page drains are two toasts.
 		m_Failures.push_back(ApplicationToast(Core::ToastKind::Error, std::move(title), std::move(message)));
 	}
 }

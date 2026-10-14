@@ -15,9 +15,6 @@
 
 namespace Graphite {
 
-	// What a scheme file holds: the base it inherits from, and only the colours it changes.
-	// Sparse on purpose — a scheme that overrides three colours keeps working when a later
-	// stage adds a fourth, because the new one comes from the base.
 	struct ColorScheme
 	{
 		BuiltInScheme Base = BuiltInScheme::Dark;
@@ -32,7 +29,6 @@ namespace Graphite {
 			Session;
 	};
 
-	// Every colour, with nothing left to decide. This is what the palettes are built from.
 	struct ResolvedScheme
 	{
 		std::array<Core::Color, static_cast<std::size_t>(TokenKind::Count)> Syntax;
@@ -42,8 +38,6 @@ namespace Graphite {
 		std::array<Core::Color, static_cast<std::size_t>(SessionColor::Count)> Session;
 	};
 
-	// A colour's two spellings, produced together so they cannot drift: Key is what the scheme
-	// file stores, Label is what the settings row shows.
 	struct ColorNames
 	{
 		std::string_view Key;
@@ -62,9 +56,6 @@ namespace Graphite {
 	std::string_view LabelOf(GitColor color);
 	std::string_view LabelOf(SessionColor color);
 
-	// The key text a colour is stored under, without its "syntax." or "editor." prefix. Shared
-	// with sub-project C, which labels its rows from the same names rather than keeping a
-	// second list that could drift.
 	std::string_view NameOf(TokenKind kind);
 	std::string_view NameOf(EditorColor color);
 	std::string_view NameOf(ChromeColor color);
@@ -77,5 +68,5 @@ namespace Graphite {
 	const Core::Color& ColourFromScheme(const ResolvedScheme& scheme, GitColor slot);
 	const Core::Color& ColourFromScheme(const ResolvedScheme& scheme, SessionColor slot);
 
-	ResolvedScheme Resolve(const ColorScheme& scheme, const ResolvedScheme& base);
+	ResolvedScheme ResolveSchemeOverBase(const ColorScheme& scheme, const ResolvedScheme& base);
 }

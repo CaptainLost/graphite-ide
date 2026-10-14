@@ -4,10 +4,6 @@
 
 namespace Graphite {
 
-	// Everything the editor draws that is not a token. Named fields rather than an array
-	// indexed by EditorColor, because nothing indexes it — the one place that maps the two
-	// together is the palette builder, and ten explicit assignments there are easier to
-	// check than a loop.
 	struct EditorPalette
 	{
 		ImU32 Background = 0;
@@ -26,15 +22,10 @@ namespace Graphite {
 		ImU32 DiagnosticError = 0;
 		ImU32 DiagnosticWarning = 0;
 
-		// The git change markers in the gutter. Read from the scheme's git colours, the same
-		// ones the Changes panel uses, so a marker and the panel's row agree.
 		ImU32 ChangeAdded = 0;
 		ImU32 ChangeModified = 0;
 		ImU32 ChangeRemoved = 0;
 
-		// The old lines in a change marker's tooltip, and the background behind the part of each
-		// that is gone. The diff view's removed-text and removed-line colours, so a line reads
-		// the same in the tooltip as it does there.
 		ImU32 ChangeOldText = 0;
 		ImU32 ChangeOldRemoved = 0;
 	};

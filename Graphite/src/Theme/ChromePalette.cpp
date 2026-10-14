@@ -2,26 +2,18 @@
 
 namespace Graphite {
 
-	namespace {
-
-		const Core::Color& ColorIn(const ResolvedScheme& scheme, ChromeColor color)
-		{
-			return scheme.Chrome[static_cast<std::size_t>(color)];
-		}
-	}
-
 	Core::ChromePalette ChromePaletteFor(const ResolvedScheme& scheme)
 	{
 		Core::ChromePalette palette;
 
-		palette.Background = ColorIn(scheme, ChromeColor::Background);
-		palette.Surface = ColorIn(scheme, ChromeColor::Surface);
-		palette.SurfaceHovered = ColorIn(scheme, ChromeColor::SurfaceHovered);
-		palette.SurfaceActive = ColorIn(scheme, ChromeColor::SurfaceActive);
-		palette.Accent = ColorIn(scheme, ChromeColor::Accent);
-		palette.Text = ColorIn(scheme, ChromeColor::Text);
-		palette.TextDisabled = ColorIn(scheme, ChromeColor::TextDisabled);
-		palette.Border = ColorIn(scheme, ChromeColor::Border);
+		palette.Background = ColourFromScheme(scheme, ChromeColor::Background);
+		palette.Surface = ColourFromScheme(scheme, ChromeColor::Surface);
+		palette.SurfaceHovered = ColourFromScheme(scheme, ChromeColor::SurfaceHovered);
+		palette.SurfaceActive = ColourFromScheme(scheme, ChromeColor::SurfaceActive);
+		palette.Accent = ColourFromScheme(scheme, ChromeColor::Accent);
+		palette.Text = ColourFromScheme(scheme, ChromeColor::Text);
+		palette.TextDisabled = ColourFromScheme(scheme, ChromeColor::TextDisabled);
+		palette.Border = ColourFromScheme(scheme, ChromeColor::Border);
 
 		return palette;
 	}

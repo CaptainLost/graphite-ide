@@ -2,6 +2,20 @@
 
 #include "Theme/BuiltInSchemes.h"
 
+namespace {
+
+	Core::Color GitColorOf(const Graphite::ResolvedScheme& scheme, Graphite::GitColor color)
+	{
+		return scheme.Git[static_cast<std::size_t>(color)];
+	}
+
+	bool ColorsDiffer(const Core::Color& first, const Core::Color& second)
+	{
+		return first.R != second.R || first.G != second.G || first.B != second.B ||
+			   first.A != second.A;
+	}
+}
+
 TEST_CASE("Both built-in schemes are reachable by their enumerator")
 {
 	CHECK(&Graphite::SchemeFor(Graphite::BuiltInScheme::Dark) == &Graphite::DarkScheme());
@@ -22,9 +36,7 @@ TEST_CASE("The built-in names are exactly the ones the store must refuse")
 	CHECK_FALSE(Graphite::ParseBuiltInName("mine").has_value());
 }
 
-// A base is what every omitted colour falls back to, so a base with a gap in it is a colour
-// nobody can see and nobody can set. Alpha is exempt: a translucent highlight is a real value.
-TEST_CASE("Neither base leaves a colour unset")
+TEST_CASE("Neither base leaves a syntax or editor colour unset, since alpha above zero is the only gap a default colour can show")
 {
 	for (const Graphite::ResolvedScheme* base :
 		 {&Graphite::DarkScheme(), &Graphite::LightScheme()})
@@ -41,9 +53,7 @@ TEST_CASE("Neither base leaves a colour unset")
 	}
 }
 
-// The two bases exist so a light editor is three changes rather than twenty-seven. If their
-// backgrounds were similar, that would not be true.
-TEST_CASE("The two bases differ where it matters")
+TEST_CASE("The dark editor background is darker than the light one, so a light editor is a real change")
 {
 	const std::size_t background = static_cast<std::size_t>(Graphite::EditorColor::Background);
 
@@ -51,8 +61,6 @@ TEST_CASE("The two bases differ where it matters")
 		  Graphite::LightScheme().Editor[background].R);
 }
 
-// The same rule the syntax and editor tables are held to: a base with a gap in it is a colour
-// nobody can see and nobody can set.
 TEST_CASE("Neither base leaves a chrome colour unset")
 {
 	for (const Graphite::ResolvedScheme* base :
@@ -65,22 +73,18 @@ TEST_CASE("Neither base leaves a chrome colour unset")
 	}
 }
 
-// Chrome and editor backgrounds are separate colours on purpose — the panels are a shade off
-// the page. What must hold is the direction: the light scheme's chrome cannot be darker than
-// the dark scheme's.
 TEST_CASE("The light scheme's chrome is lighter than the dark scheme's")
 {
-	constexpr auto background = static_cast<std::size_t>(Graphite::ChromeColor::Background);
+	constexpr std::size_t background = static_cast<std::size_t>(Graphite::ChromeColor::Background);
 
 	CHECK(Graphite::DarkScheme().Chrome[background].R <
 		  Graphite::LightScheme().Chrome[background].R);
 }
 
-// Drawn as a box behind the glyph, so a fully opaque one would hide the bracket it is marking.
-TEST_CASE("Both bracket highlights are translucent in both built-ins")
+TEST_CASE("Both bracket highlights are translucent in both built-ins so the bracket under them shows")
 {
-	constexpr auto matching = static_cast<std::size_t>(Graphite::EditorColor::MatchingBracket);
-	constexpr auto unmatched = static_cast<std::size_t>(Graphite::EditorColor::UnmatchedBracket);
+	constexpr std::size_t matching = static_cast<std::size_t>(Graphite::EditorColor::MatchingBracket);
+	constexpr std::size_t unmatched = static_cast<std::size_t>(Graphite::EditorColor::UnmatchedBracket);
 
 	for (const Graphite::ResolvedScheme* base :
 		 {&Graphite::DarkScheme(), &Graphite::LightScheme()})
@@ -96,12 +100,10 @@ TEST_CASE("Both built-in schemes define every git colour")
 {
 	for (const Graphite::ResolvedScheme& scheme : {Graphite::DarkScheme(), Graphite::LightScheme()})
 	{
-		for (std::size_t index = 0; index < static_cast<std::size_t>(Graphite::GitColor::Count);
-			 ++index)
+		for (std::size_t colorIndex = 0; colorIndex < static_cast<std::size_t>(Graphite::GitColor::Count);
+			 ++colorIndex)
 		{
-			// A colour left at its default is fully transparent black, which draws as
-			// nothing at all — the row simply disappears rather than looking wrong.
-			CHECK(scheme.Git[index].A > 0.0f);
+			CHECK(scheme.Git[colorIndex].A > 0.0f);
 		}
 	}
 }
@@ -110,12 +112,10 @@ TEST_CASE("Both built-in schemes define every session colour")
 {
 	for (const Graphite::ResolvedScheme& scheme : {Graphite::DarkScheme(), Graphite::LightScheme()})
 	{
-		for (std::size_t index = 0;
-			 index < static_cast<std::size_t>(Graphite::SessionColor::Count); ++index)
+		for (std::size_t colorIndex = 0;
+			 colorIndex < static_cast<std::size_t>(Graphite::SessionColor::Count); ++colorIndex)
 		{
-			// A colour left at its default is fully transparent black, which draws as
-			// nothing at all — the row simply disappears rather than looking wrong.
-			CHECK(scheme.Session[index].A > 0.0f);
+			CHECK(scheme.Session[colorIndex].A > 0.0f);
 		}
 	}
 }
@@ -124,17 +124,8 @@ TEST_CASE("The graph lanes are visibly different from one another")
 {
 	const Graphite::ResolvedScheme scheme = Graphite::DarkScheme();
 
-	const auto lane = [&scheme](Graphite::GitColor color) {
-		return scheme.Git[static_cast<std::size_t>(color)];
-	};
-
-	// Adjacent lanes carry adjacent branches. Two lanes that read the same defeat the
-	// entire point of drawing lanes. Core::Color has no operator==, so the channels are
-	// compared one at a time.
-	const auto differ = [](const Core::Color& a, const Core::Color& b) {
-		return a.R != b.R || a.G != b.G || a.B != b.B || a.A != b.A;
-	};
-
-	CHECK(differ(lane(Graphite::GitColor::GraphLane1), lane(Graphite::GitColor::GraphLane2)));
-	CHECK(differ(lane(Graphite::GitColor::GraphLane2), lane(Graphite::GitColor::GraphLane3)));
+	CHECK(ColorsDiffer(GitColorOf(scheme, Graphite::GitColor::GraphLane1),
+					   GitColorOf(scheme, Graphite::GitColor::GraphLane2)));
+	CHECK(ColorsDiffer(GitColorOf(scheme, Graphite::GitColor::GraphLane2),
+					   GitColorOf(scheme, Graphite::GitColor::GraphLane3)));
 }

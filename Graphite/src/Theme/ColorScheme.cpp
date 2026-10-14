@@ -180,7 +180,7 @@ namespace Graphite {
 			break;
 		}
 
-		return {"", ""};
+		return {};
 	}
 
 	std::string_view NameOf(TokenKind kind)
@@ -258,47 +258,47 @@ namespace Graphite {
 		return scheme.Session[static_cast<std::size_t>(slot)];
 	}
 
-	ResolvedScheme Resolve(const ColorScheme& scheme, const ResolvedScheme& base)
+	ResolvedScheme ResolveSchemeOverBase(const ColorScheme& scheme, const ResolvedScheme& base)
 	{
 		ResolvedScheme resolved = base;
 
-		for (std::size_t index = 0; index < scheme.Syntax.size(); ++index)
+		for (std::size_t slotIndex = 0; slotIndex < scheme.Syntax.size(); ++slotIndex)
 		{
-			if (scheme.Syntax[index])
+			if (scheme.Syntax[slotIndex])
 			{
-				resolved.Syntax[index] = *scheme.Syntax[index];
+				resolved.Syntax[slotIndex] = *scheme.Syntax[slotIndex];
 			}
 		}
 
-		for (std::size_t index = 0; index < scheme.Editor.size(); ++index)
+		for (std::size_t slotIndex = 0; slotIndex < scheme.Editor.size(); ++slotIndex)
 		{
-			if (scheme.Editor[index])
+			if (scheme.Editor[slotIndex])
 			{
-				resolved.Editor[index] = *scheme.Editor[index];
+				resolved.Editor[slotIndex] = *scheme.Editor[slotIndex];
 			}
 		}
 
-		for (std::size_t index = 0; index < scheme.Chrome.size(); ++index)
+		for (std::size_t slotIndex = 0; slotIndex < scheme.Chrome.size(); ++slotIndex)
 		{
-			if (scheme.Chrome[index])
+			if (scheme.Chrome[slotIndex])
 			{
-				resolved.Chrome[index] = *scheme.Chrome[index];
+				resolved.Chrome[slotIndex] = *scheme.Chrome[slotIndex];
 			}
 		}
 
-		for (std::size_t index = 0; index < scheme.Git.size(); ++index)
+		for (std::size_t slotIndex = 0; slotIndex < scheme.Git.size(); ++slotIndex)
 		{
-			if (scheme.Git[index])
+			if (scheme.Git[slotIndex])
 			{
-				resolved.Git[index] = *scheme.Git[index];
+				resolved.Git[slotIndex] = *scheme.Git[slotIndex];
 			}
 		}
 
-		for (std::size_t index = 0; index < scheme.Session.size(); ++index)
+		for (std::size_t slotIndex = 0; slotIndex < scheme.Session.size(); ++slotIndex)
 		{
-			if (scheme.Session[index])
+			if (scheme.Session[slotIndex])
 			{
-				resolved.Session[index] = *scheme.Session[index];
+				resolved.Session[slotIndex] = *scheme.Session[slotIndex];
 			}
 		}
 

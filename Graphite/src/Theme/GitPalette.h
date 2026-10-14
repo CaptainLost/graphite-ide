@@ -10,7 +10,6 @@
 
 namespace Graphite {
 
-	// The git colours as ImGui wants them, read once a frame.
 	struct GitPalette
 	{
 		ImU32 DiffAddedLine = 0;
@@ -24,9 +23,6 @@ namespace Graphite {
 
 		std::array<ImU32, 6> Lanes{};
 
-		// Wraps rather than clamping: a seventh branch shares the first lane's colour,
-		// which reads as a coincidence. Clamping would put every lane past the sixth on
-		// one colour, which reads as a bug.
 		ImU32 LaneOf(std::size_t lane) const { return Lanes[lane % Lanes.size()]; }
 	};
 

@@ -1,23 +1,18 @@
 #include <doctest/doctest.h>
 
+#include "FileFixtures.h"
 #include "TempDirectory.h"
 #include "Theme/BuiltInSchemes.h"
 #include "Theme/ColorScheme.h"
 #include "Theme/SchemeStore.h"
 
 #include <algorithm>
-#include <fstream>
+#include <filesystem>
+#include <string>
+#include <vector>
 
 namespace {
 
-	void WriteFile(const std::filesystem::path& path, std::string_view contents)
-	{
-		std::ofstream out(path, std::ios::binary);
-		out << contents;
-	}
-
-	// A colour nothing else in the scheme has. Whole bytes, because a scheme file stores hex
-	// pairs and anything finer would come back rounded.
 	Core::Color DistinctColor(std::size_t index)
 	{
 		const float channel = static_cast<float>(index + 1) / 255.0f;
@@ -31,20 +26,12 @@ namespace {
 	constexpr std::size_t kGitCount = static_cast<std::size_t>(Graphite::GitColor::Count);
 	constexpr std::size_t kSessionCount = static_cast<std::size_t>(Graphite::SessionColor::Count);
 
-	// The five categories are numbered end to end so that no two colours anywhere in the
-	// scheme share a value: a category wired to another one's names or prefix would then show
-	// up as the wrong colour rather than as the right one by accident.
 	constexpr std::size_t kEditorBase = kSyntaxCount;
 	constexpr std::size_t kChromeBase = kSyntaxCount + kEditorCount;
 	constexpr std::size_t kGitBase = kSyntaxCount + kEditorCount + kChromeCount;
 	constexpr std::size_t kSessionBase = kSyntaxCount + kEditorCount + kChromeCount + kGitCount;
 }
 
-// Five categories with parallel but separate machinery — a sparse array, a resolve loop, a
-// name, a store prefix with its load branch and its save loop. Missing one of those for one
-// category compiles and half-works: an override that loads but never applies, or applies but
-// never persists. Saturating all five and running the whole path is what catches that; the
-// static_asserts on the built-in tables only guard completeness, not the wiring.
 TEST_CASE("Every colour of every category survives save, load and resolve")
 {
 	const TempDirectory temp;
@@ -83,7 +70,7 @@ TEST_CASE("Every colour of every category survives save, load and resolve")
 		Graphite::LoadScheme(temp.GetPath() / "saturated.json");
 
 	const Graphite::ResolvedScheme resolved =
-		Graphite::Resolve(loaded, Graphite::SchemeFor(loaded.Base));
+		Graphite::ResolveSchemeOverBase(loaded, Graphite::SchemeFor(loaded.Base));
 
 	for (std::size_t index = 0; index < kSyntaxCount; ++index)
 	{
@@ -145,8 +132,6 @@ TEST_CASE("A saved scheme comes back with the overrides it had")
 		  doctest::Approx(1.0f));
 }
 
-// A scheme that stops being sparse stops surviving a new token kind, so this is the round trip
-// that matters: what came from the base must not be written back as an override.
 TEST_CASE("Saving does not write colours the scheme never overrode")
 {
 	const TempDirectory temp;
@@ -170,8 +155,8 @@ TEST_CASE("A colour that will not parse is skipped and the rest of the file surv
 {
 	const TempDirectory temp;
 
-	WriteFile(temp.GetPath() / "broken.json",
-			  R"({"base":"dark","syntax.character":"nonsense","syntax.comment":"6A9955"})");
+	WriteFileBytes(temp.GetPath() / "broken.json",
+				   R"({"base":"dark","syntax.character":"nonsense","syntax.comment":"6A9955"})");
 
 	const Graphite::ColorScheme loaded =
 		Graphite::LoadScheme(temp.GetPath() / "broken.json");
@@ -186,8 +171,8 @@ TEST_CASE("An unrecognised key is skipped rather than refusing the file")
 {
 	const TempDirectory temp;
 
-	WriteFile(temp.GetPath() / "future.json",
-			  R"({"base":"dark","syntax.aardvark":"C586C0","syntax.comment":"6A9955"})");
+	WriteFileBytes(temp.GetPath() / "future.json",
+				   R"({"base":"dark","syntax.aardvark":"C586C0","syntax.comment":"6A9955"})");
 
 	const Graphite::ColorScheme loaded =
 		Graphite::LoadScheme(temp.GetPath() / "future.json");
@@ -195,15 +180,12 @@ TEST_CASE("An unrecognised key is skipped rather than refusing the file")
 	CHECK(loaded.Syntax[static_cast<std::size_t>(Graphite::TokenKind::Comment)].has_value());
 }
 
-// A base nobody has heard of falls back to dark, and the scheme's own overrides still apply on
-// top of it. Before this task that decision lived at resolution time; it belongs here, where the
-// text that caused it was read.
 TEST_CASE("A scheme naming an unknown base falls back to dark and keeps its overrides")
 {
 	const TempDirectory temp;
 
-	WriteFile(temp.GetPath() / "odd.json",
-			  R"({"base":"solarized","syntax.comment":"6A9955"})");
+	WriteFileBytes(temp.GetPath() / "odd.json",
+				   R"({"base":"solarized","syntax.comment":"6A9955"})");
 
 	const Graphite::ColorScheme loaded = Graphite::LoadScheme(temp.GetPath() / "odd.json");
 
@@ -251,8 +233,8 @@ TEST_CASE("Listing a directory names the schemes in it and ignores the built-ins
 	const Graphite::ColorScheme scheme;
 	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "one", scheme));
 	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "two", scheme));
-	WriteFile(temp.GetPath() / "dark.json", R"({"base":"dark"})");
-	WriteFile(temp.GetPath() / "notes.txt", "ignored");
+	WriteFileBytes(temp.GetPath() / "dark.json", R"({"base":"dark"})");
+	WriteFileBytes(temp.GetPath() / "notes.txt", "ignored");
 
 	const std::vector<std::string> names = Graphite::ListSchemes(temp.GetPath());
 
@@ -291,8 +273,6 @@ TEST_CASE("A chrome override survives the round trip")
 	CHECK(loaded.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Accent)]->G ==
 		  doctest::Approx(0.5f).epsilon(0.01));
 
-	// Sparse, as the other two categories are: a scheme that sets one chrome colour must not
-	// come back having claimed the other seven.
 	CHECK_FALSE(loaded.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Border)].has_value());
 }
 
@@ -300,7 +280,7 @@ TEST_CASE("A chrome colour is read from the ui prefix a hand-written file uses")
 {
 	const TempDirectory temp;
 
-	WriteFile(temp.GetPath() / "hand.json", R"({"base":"dark","ui.border":"504945"})");
+	WriteFileBytes(temp.GetPath() / "hand.json", R"({"base":"dark","ui.border":"504945"})");
 
 	const Graphite::ColorScheme loaded = Graphite::LoadScheme(temp.GetPath() / "hand.json");
 
@@ -382,26 +362,25 @@ TEST_CASE("A scheme with a non-ASCII name is saved, renamed, listed and loaded u
 {
 	const TempDirectory temp;
 
-	// "Ciemny z with a dot" and "Zolty" in Polish, as UTF-8 bytes.
-	const std::string first = "Ciemny \xC5\xBC";
-	const std::string second = "\xC5\xBB\xC3\xB3\xC5\x82ty";
+	const std::string firstPolishName = "Ciemny \xC5\xBC";
+	const std::string secondPolishName = "\xC5\xBB\xC3\xB3\xC5\x82ty";
 
 	Graphite::ColorScheme scheme;
 	scheme.Syntax[0] = DistinctColor(0);
-	REQUIRE(Graphite::SaveScheme(temp.GetPath(), first, scheme));
-	REQUIRE(std::filesystem::exists(Graphite::SchemeFile(temp.GetPath(), first)));
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), firstPolishName, scheme));
+	REQUIRE(std::filesystem::exists(Graphite::SchemeFile(temp.GetPath(), firstPolishName)));
 
-	REQUIRE(Graphite::RenameScheme(temp.GetPath(), first, second));
-	CHECK_FALSE(std::filesystem::exists(Graphite::SchemeFile(temp.GetPath(), first)));
+	REQUIRE(Graphite::RenameScheme(temp.GetPath(), firstPolishName, secondPolishName));
+	CHECK_FALSE(std::filesystem::exists(Graphite::SchemeFile(temp.GetPath(), firstPolishName)));
 
 	const std::vector<std::string> names = Graphite::ListSchemes(temp.GetPath());
 	REQUIRE(names.size() == 1);
-	CHECK(names[0] == second);
+	CHECK(names[0] == secondPolishName);
 
 	const Graphite::ColorScheme loaded = Graphite::LoadScheme(Graphite::SchemeFile(temp.GetPath(), names[0]));
 	REQUIRE(loaded.Syntax[0].has_value());
 
-	REQUIRE(Graphite::DeleteScheme(temp.GetPath(), second));
+	REQUIRE(Graphite::DeleteScheme(temp.GetPath(), secondPolishName));
 	CHECK(Graphite::ListSchemes(temp.GetPath()).empty());
 }
 

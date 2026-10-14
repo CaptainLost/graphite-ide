@@ -1,60 +1,65 @@
 #include "Theme/BuiltInSchemes.h"
 
+#include "Core/Base/Color.h"
+
 #include <iterator>
+#include <span>
 
 namespace Graphite {
 
 	namespace {
 
-		Core::Color FromBytes(int r, int g, int b, int a = 255)
+		constexpr int kOpaqueAlphaByte = 255;
+
+		Core::Color ColorFromBytes(int red, int green, int blue, int alpha)
 		{
-			return Core::Color{static_cast<float>(r) / 255.0f, static_cast<float>(g) / 255.0f,
-							   static_cast<float>(b) / 255.0f, static_cast<float>(a) / 255.0f};
+			return Core::Color{Core::ChannelFromByte(red), Core::ChannelFromByte(green),
+							   Core::ChannelFromByte(blue), Core::ChannelFromByte(alpha)};
 		}
 
 		struct SyntaxEntry
 		{
 			TokenKind Kind;
-			int R;
-			int G;
-			int B;
-			int A = 255;
+			int Red;
+			int Green;
+			int Blue;
+			int Alpha = kOpaqueAlphaByte;
 		};
 
 		struct EditorEntry
 		{
 			EditorColor Color;
-			int R;
-			int G;
-			int B;
-			int A = 255;
+			int Red;
+			int Green;
+			int Blue;
+			int Alpha = kOpaqueAlphaByte;
 		};
 
 		struct ChromeEntry
 		{
 			ChromeColor Color;
-			int R;
-			int G;
-			int B;
-			int A = 255;
+			int Red;
+			int Green;
+			int Blue;
+			int Alpha = kOpaqueAlphaByte;
 		};
 
 		struct GitEntry
 		{
 			GitColor Color;
-			int R;
-			int G;
-			int B;
-			int A = 255;
+			int Red;
+			int Green;
+			int Blue;
+			int Alpha = kOpaqueAlphaByte;
 		};
 
 		struct SessionEntry
 		{
 			SessionColor Color;
-			int R;
-			int G;
-			int B;
-			int A = 255;
+			int Red;
+			int Green;
+			int Blue;
+			int Alpha = kOpaqueAlphaByte;
 		};
 
 		constexpr SyntaxEntry kDarkSyntax[] = {
@@ -65,12 +70,6 @@ namespace Graphite {
 			{TokenKind::Comment, 106, 153, 85},
 			{TokenKind::Preprocessor, 155, 155, 155},
 
-			// Chosen to separate by hue rather than by brightness, so the distinctions survive
-			// being glanced at: types and namespaces share a teal family because both name
-			// places rather than values, functions take the warm yellow a call is read by, and
-			// macros a red that says "this is not what it looks like". Members and parameters
-			// stay close to plain text on purpose - they are the most common identifiers on any
-			// line, and colouring them loudly would make ordinary code look alarming.
 			{TokenKind::SemanticType, 78, 201, 176},
 			{TokenKind::SemanticFunction, 220, 220, 170},
 			{TokenKind::SemanticMacro, 190, 128, 116},
@@ -79,12 +78,6 @@ namespace Graphite {
 			{TokenKind::SemanticNamespace, 106, 190, 180},
 		};
 
-		// Background and GutterFill are the window background, so the gutter reads as part of
-		// the same surface as the text rather than as a strip beside it. Guide and LineNumber
-		// are both the disabled-text colour; Guide takes it at 35% and LineNumber at full
-		// strength, so the guide reads clearly dimmer than the numbers next to it rather than
-		// the same weight by coincidence. CurrentLine is the frame background at 45% —
-		// structure, not content: dimmer again than either.
 		constexpr EditorEntry kDarkEditor[] = {
 			{EditorColor::Background, 27, 29, 33},
 			{EditorColor::Text, 214, 219, 226},
@@ -103,15 +96,8 @@ namespace Graphite {
 			{EditorColor::DiagnosticWarning, 229, 192, 123},
 		};
 
-		// The editor table is not sparse like the syntax one: every EditorColor is meant to be
-		// drawn as itself, so a gap here must fail to build rather than silently paint that
-		// region of the editor in the text colour.
 		static_assert(std::size(kDarkEditor) == static_cast<std::size_t>(EditorColor::Count));
 
-		// These are Core::Theme's own default palette, transcribed once. From here the
-		// application runs on this table and Core's default is only what an application built
-		// on Core alone falls back to — which is what ends the silent-drift problem the editor
-		// colours above used to have.
 		constexpr ChromeEntry kDarkChrome[] = {
 			{ChromeColor::Background, 27, 29, 33},
 			{ChromeColor::Surface, 37, 40, 45},
@@ -125,8 +111,6 @@ namespace Graphite {
 
 		static_assert(std::size(kDarkChrome) == static_cast<std::size_t>(ChromeColor::Count));
 
-		// The line bands are deliberately translucent: they sit behind text the syntax
-		// palette has already coloured, and an opaque band would hide it.
 		constexpr GitEntry kDarkGit[] = {
 			{GitColor::DiffAddedLine, 46, 80, 46, 90},
 			{GitColor::DiffRemovedLine, 90, 46, 46, 90},
@@ -169,7 +153,6 @@ namespace Graphite {
 			{TokenKind::Comment, 0, 128, 0},
 			{TokenKind::Preprocessor, 128, 128, 128},
 
-			// The same reasoning as the dark scheme's, darkened to hold contrast on white.
 			{TokenKind::SemanticType, 38, 127, 153},
 			{TokenKind::SemanticFunction, 121, 94, 38},
 			{TokenKind::SemanticMacro, 175, 0, 219},
@@ -198,8 +181,6 @@ namespace Graphite {
 
 		static_assert(std::size(kLightEditor) == static_cast<std::size_t>(EditorColor::Count));
 
-		// Neutral greys, and the dark scheme's blue accent darkened to hold contrast against
-		// them.
 		constexpr ChromeEntry kLightChrome[] = {
 			{ChromeColor::Background, 243, 243, 243},
 			{ChromeColor::Surface, 255, 255, 255},
@@ -247,49 +228,44 @@ namespace Graphite {
 
 		static_assert(std::size(kLightSession) == static_cast<std::size_t>(SessionColor::Count));
 
-		template<std::size_t SyntaxCount, std::size_t EditorCount, std::size_t ChromeCount,
-				 std::size_t GitCount, std::size_t SessionCount>
-		ResolvedScheme Build(const SyntaxEntry (&syntax)[SyntaxCount],
-							 const EditorEntry (&editor)[EditorCount],
-							 const ChromeEntry (&chrome)[ChromeCount],
-							 const GitEntry (&git)[GitCount],
-							 const SessionEntry (&session)[SessionCount])
+		ResolvedScheme Build(std::span<const SyntaxEntry> syntax, std::span<const EditorEntry> editor,
+							 std::span<const ChromeEntry> chrome, std::span<const GitEntry> git,
+							 std::span<const SessionEntry> session)
 		{
 			ResolvedScheme scheme;
 
 			for (const ChromeEntry& entry : chrome)
 			{
 				scheme.Chrome[static_cast<std::size_t>(entry.Color)] =
-					FromBytes(entry.R, entry.G, entry.B, entry.A);
+					ColorFromBytes(entry.Red, entry.Green, entry.Blue, entry.Alpha);
 			}
 
 			for (const GitEntry& entry : git)
 			{
 				scheme.Git[static_cast<std::size_t>(entry.Color)] =
-					FromBytes(entry.R, entry.G, entry.B, entry.A);
+					ColorFromBytes(entry.Red, entry.Green, entry.Blue, entry.Alpha);
 			}
 
 			for (const SessionEntry& entry : session)
 			{
 				scheme.Session[static_cast<std::size_t>(entry.Color)] =
-					FromBytes(entry.R, entry.G, entry.B, entry.A);
+					ColorFromBytes(entry.Red, entry.Green, entry.Blue, entry.Alpha);
 			}
 
 			for (const EditorEntry& entry : editor)
 			{
 				scheme.Editor[static_cast<std::size_t>(entry.Color)] =
-					FromBytes(entry.R, entry.G, entry.B, entry.A);
+					ColorFromBytes(entry.Red, entry.Green, entry.Blue, entry.Alpha);
 			}
 
-			// The syntax fallback IS the editor's text colour: a kind with no colour of its own
-			// must draw exactly as ordinary text does, and deriving it here is what keeps that
-			// true when one of them is edited.
-			scheme.Syntax.fill(scheme.Editor[static_cast<std::size_t>(EditorColor::Text)]);
+			const Core::Color& plainTextColor =
+				scheme.Editor[static_cast<std::size_t>(EditorColor::Text)];
+			scheme.Syntax.fill(plainTextColor);
 
 			for (const SyntaxEntry& entry : syntax)
 			{
 				scheme.Syntax[static_cast<std::size_t>(entry.Kind)] =
-					FromBytes(entry.R, entry.G, entry.B, entry.A);
+					ColorFromBytes(entry.Red, entry.Green, entry.Blue, entry.Alpha);
 			}
 
 			return scheme;
@@ -308,8 +284,6 @@ namespace Graphite {
 
 	const ResolvedScheme& DarkScheme()
 	{
-		// Function-local rather than namespace-scope, per ADR 0033 on complex initialization of
-		// global objects.
 		static const ResolvedScheme scheme = MakeDark();
 
 		return scheme;

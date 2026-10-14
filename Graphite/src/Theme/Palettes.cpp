@@ -1,23 +1,36 @@
 #include "Theme/Palettes.h"
 
+#include "Core/Base/Color.h"
 #include "Theme/SessionPalette.h"
-
-#include <algorithm>
-#include <cmath>
 
 namespace Graphite {
 
 	namespace {
 
-		// The one conversion from Core::Color to ImU32 in this sub-project — everything else
-		// reaches ImGui only through the palettes this builds.
 		ImU32 ToImU32(const Core::Color& color)
 		{
-			const auto byte = [](float channel) {
-				return static_cast<int>(std::lround(std::clamp(channel, 0.0f, 1.0f) * 255.0f));
-			};
+			return IM_COL32(Core::ChannelToByte(color.R), Core::ChannelToByte(color.G),
+							Core::ChannelToByte(color.B), Core::ChannelToByte(color.A));
+		}
 
-			return IM_COL32(byte(color.R), byte(color.G), byte(color.B), byte(color.A));
+		ImU32 ImU32FromScheme(const ResolvedScheme& scheme, EditorColor slot)
+		{
+			return ToImU32(ColourFromScheme(scheme, slot));
+		}
+
+		ImU32 ImU32FromScheme(const ResolvedScheme& scheme, GitColor slot)
+		{
+			return ToImU32(ColourFromScheme(scheme, slot));
+		}
+
+		ImU32 ImU32FromScheme(const ResolvedScheme& scheme, SessionColor slot)
+		{
+			return ToImU32(ColourFromScheme(scheme, slot));
+		}
+
+		ImU32 ImU32FromScheme(const ResolvedScheme& scheme, ChromeColor slot)
+		{
+			return ToImU32(ColourFromScheme(scheme, slot));
 		}
 	}
 
@@ -37,31 +50,26 @@ namespace Graphite {
 	{
 		EditorPalette palette;
 
-		palette.Background = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::Background)]);
-		palette.Text = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::Text)]);
-		palette.Number = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::LineNumber)]);
-		palette.Selection = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::Selection)]);
-		palette.CurrentLine = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::CurrentLine)]);
-		palette.Guide = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::Guide)]);
-		palette.GutterFill = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::GutterFill)]);
-		palette.Caret = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::Caret)]);
-		palette.FindMatch = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::FindMatch)]);
-		palette.FindCurrentMatch =
-			ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::FindCurrentMatch)]);
-		palette.Lens = ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::Lens)]);
-		palette.MatchingBracket =
-			ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::MatchingBracket)]);
-		palette.UnmatchedBracket =
-			ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::UnmatchedBracket)]);
-		palette.DiagnosticError =
-			ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::DiagnosticError)]);
-		palette.DiagnosticWarning =
-			ToImU32(scheme.Editor[static_cast<std::size_t>(EditorColor::DiagnosticWarning)]);
-		palette.ChangeAdded = ToImU32(scheme.Git[static_cast<std::size_t>(GitColor::GutterAdded)]);
-		palette.ChangeModified = ToImU32(scheme.Git[static_cast<std::size_t>(GitColor::GutterModified)]);
-		palette.ChangeRemoved = ToImU32(scheme.Git[static_cast<std::size_t>(GitColor::GutterRemoved)]);
-		palette.ChangeOldText = ToImU32(scheme.Git[static_cast<std::size_t>(GitColor::DiffRemovedText)]);
-		palette.ChangeOldRemoved = ToImU32(scheme.Git[static_cast<std::size_t>(GitColor::DiffRemovedLine)]);
+		palette.Background = ImU32FromScheme(scheme, EditorColor::Background);
+		palette.Text = ImU32FromScheme(scheme, EditorColor::Text);
+		palette.Number = ImU32FromScheme(scheme, EditorColor::LineNumber);
+		palette.Selection = ImU32FromScheme(scheme, EditorColor::Selection);
+		palette.CurrentLine = ImU32FromScheme(scheme, EditorColor::CurrentLine);
+		palette.Guide = ImU32FromScheme(scheme, EditorColor::Guide);
+		palette.GutterFill = ImU32FromScheme(scheme, EditorColor::GutterFill);
+		palette.Caret = ImU32FromScheme(scheme, EditorColor::Caret);
+		palette.FindMatch = ImU32FromScheme(scheme, EditorColor::FindMatch);
+		palette.FindCurrentMatch = ImU32FromScheme(scheme, EditorColor::FindCurrentMatch);
+		palette.Lens = ImU32FromScheme(scheme, EditorColor::Lens);
+		palette.MatchingBracket = ImU32FromScheme(scheme, EditorColor::MatchingBracket);
+		palette.UnmatchedBracket = ImU32FromScheme(scheme, EditorColor::UnmatchedBracket);
+		palette.DiagnosticError = ImU32FromScheme(scheme, EditorColor::DiagnosticError);
+		palette.DiagnosticWarning = ImU32FromScheme(scheme, EditorColor::DiagnosticWarning);
+		palette.ChangeAdded = ImU32FromScheme(scheme, GitColor::GutterAdded);
+		palette.ChangeModified = ImU32FromScheme(scheme, GitColor::GutterModified);
+		palette.ChangeRemoved = ImU32FromScheme(scheme, GitColor::GutterRemoved);
+		palette.ChangeOldText = ImU32FromScheme(scheme, GitColor::DiffRemovedText);
+		palette.ChangeOldRemoved = ImU32FromScheme(scheme, GitColor::DiffRemovedLine);
 
 		return palette;
 	}
@@ -73,49 +81,41 @@ namespace Graphite {
 
 	GitPalette ReadGitPalette(const ResolvedScheme& scheme)
 	{
-		const auto of = [&scheme](GitColor color) {
-			return ToImU32(scheme.Git[static_cast<std::size_t>(color)]);
-		};
-
 		GitPalette palette;
-		palette.DiffAddedLine = of(GitColor::DiffAddedLine);
-		palette.DiffRemovedLine = of(GitColor::DiffRemovedLine);
-		palette.DiffAddedText = of(GitColor::DiffAddedText);
-		palette.DiffRemovedText = of(GitColor::DiffRemovedText);
-		palette.GutterAdded = of(GitColor::GutterAdded);
-		palette.GutterModified = of(GitColor::GutterModified);
-		palette.GutterRemoved = of(GitColor::GutterRemoved);
+		palette.DiffAddedLine = ImU32FromScheme(scheme, GitColor::DiffAddedLine);
+		palette.DiffRemovedLine = ImU32FromScheme(scheme, GitColor::DiffRemovedLine);
+		palette.DiffAddedText = ImU32FromScheme(scheme, GitColor::DiffAddedText);
+		palette.DiffRemovedText = ImU32FromScheme(scheme, GitColor::DiffRemovedText);
+		palette.GutterAdded = ImU32FromScheme(scheme, GitColor::GutterAdded);
+		palette.GutterModified = ImU32FromScheme(scheme, GitColor::GutterModified);
+		palette.GutterRemoved = ImU32FromScheme(scheme, GitColor::GutterRemoved);
 
-		// Read through the enum rather than by arithmetic on GraphLane1, so adding a lane
-		// to the enum without adding it here fails to compile instead of drawing black.
-		palette.Lanes = {of(GitColor::GraphLane1), of(GitColor::GraphLane2),
-						 of(GitColor::GraphLane3), of(GitColor::GraphLane4),
-						 of(GitColor::GraphLane5), of(GitColor::GraphLane6)};
+		palette.Lanes = {ImU32FromScheme(scheme, GitColor::GraphLane1),
+						 ImU32FromScheme(scheme, GitColor::GraphLane2),
+						 ImU32FromScheme(scheme, GitColor::GraphLane3),
+						 ImU32FromScheme(scheme, GitColor::GraphLane4),
+						 ImU32FromScheme(scheme, GitColor::GraphLane5),
+						 ImU32FromScheme(scheme, GitColor::GraphLane6)};
 
 		return palette;
 	}
 
 	SessionPalette ReadSessionPalette(const ResolvedScheme& scheme)
 	{
-		const auto of = [&scheme](SessionColor color) {
-			return ToImU32(scheme.Session[static_cast<std::size_t>(color)]);
-		};
-
 		SessionPalette palette;
-		palette.Read = of(SessionColor::Read);
-		palette.Edit = of(SessionColor::Edit);
-		palette.Run = of(SessionColor::Run);
-		palette.Agent = of(SessionColor::Agent);
-		palette.Web = of(SessionColor::Web);
-		palette.Other = of(SessionColor::Other);
-		palette.Failed = of(SessionColor::Failed);
-		palette.UserBlock = of(SessionColor::UserBlock);
-		palette.ClaudeBlock = of(SessionColor::ClaudeBlock);
-		palette.CodeBlock = of(SessionColor::CodeBlock);
-		palette.Injected = of(SessionColor::Injected);
-		palette.Accent = ToImU32(scheme.Chrome[static_cast<std::size_t>(ChromeColor::Accent)]);
-		palette.TextDisabled =
-			ToImU32(scheme.Chrome[static_cast<std::size_t>(ChromeColor::TextDisabled)]);
+		palette.Read = ImU32FromScheme(scheme, SessionColor::Read);
+		palette.Edit = ImU32FromScheme(scheme, SessionColor::Edit);
+		palette.Run = ImU32FromScheme(scheme, SessionColor::Run);
+		palette.Agent = ImU32FromScheme(scheme, SessionColor::Agent);
+		palette.Web = ImU32FromScheme(scheme, SessionColor::Web);
+		palette.Other = ImU32FromScheme(scheme, SessionColor::Other);
+		palette.Failed = ImU32FromScheme(scheme, SessionColor::Failed);
+		palette.UserBlock = ImU32FromScheme(scheme, SessionColor::UserBlock);
+		palette.ClaudeBlock = ImU32FromScheme(scheme, SessionColor::ClaudeBlock);
+		palette.CodeBlock = ImU32FromScheme(scheme, SessionColor::CodeBlock);
+		palette.Injected = ImU32FromScheme(scheme, SessionColor::Injected);
+		palette.Accent = ImU32FromScheme(scheme, ChromeColor::Accent);
+		palette.TextDisabled = ImU32FromScheme(scheme, ChromeColor::TextDisabled);
 		return palette;
 	}
 }
