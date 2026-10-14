@@ -20,7 +20,7 @@ namespace {
 	}
 
 	// A fixed advance per character rather than per byte, so a cut inside a character shows.
-	float FixedAdvanceWidth(std::string_view text)
+	float AdvancePerCharacterWidth(std::string_view text)
 	{
 		float width = 0.0f;
 		for (const char byte : text)
@@ -49,7 +49,7 @@ TEST_CASE("A folder that fits its column is shown whole")
 	const std::string_view folder = "D:/Repos/IDE";
 	const float columnWidth = 200.0f;
 
-	const std::string line = Graphite::ElideFolderLine(folder, columnWidth, FixedAdvanceWidth);
+	const std::string line = Graphite::ElideFolderLine(folder, columnWidth, AdvancePerCharacterWidth);
 
 	CHECK(line == std::string(folder));
 }
@@ -60,10 +60,10 @@ TEST_CASE("A folder wider than its column becomes an ellipsis and the longest ta
 	const float columnWidth = 205.0f;
 	const std::size_t tailThatFits = 19;
 
-	const std::string line = Graphite::ElideFolderLine(folder, columnWidth, FixedAdvanceWidth);
+	const std::string line = Graphite::ElideFolderLine(folder, columnWidth, AdvancePerCharacterWidth);
 
 	CHECK(line == std::string(kEllipsis) + std::string(folder.substr(folder.size() - tailThatFits)));
-	CHECK(FixedAdvanceWidth(line) <= columnWidth);
+	CHECK(AdvancePerCharacterWidth(line) <= columnWidth);
 	CHECK(line.ends_with("Notifications"));
 }
 
@@ -74,7 +74,7 @@ TEST_CASE("A folder cut on the left keeps whole characters")
 	const float columnWidth = 60.0f;
 	const int lettersThatFitBesideTheEllipsis = 5;
 
-	const std::string line = Graphite::ElideFolderLine(folder, columnWidth, FixedAdvanceWidth);
+	const std::string line = Graphite::ElideFolderLine(folder, columnWidth, AdvancePerCharacterWidth);
 
 	CHECK(line == std::string(kEllipsis) + Repeated(kAWithOgonek, lettersThatFitBesideTheEllipsis));
 }

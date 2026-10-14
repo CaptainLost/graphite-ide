@@ -25,7 +25,7 @@ namespace Graphite {
 			return std::format("{:%H:%M}", utcMinute);
 		}
 
-		// A zone that was found still asks ICU for its offset at each moment, and that can throw too.
+		// WARNING: A zone that was found still asks ICU for its offset at each moment, and that can throw too.
 		try
 		{
 			const std::chrono::zoned_time<std::chrono::system_clock::duration> local{zone, moment};

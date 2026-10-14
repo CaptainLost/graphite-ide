@@ -11,6 +11,8 @@ namespace {
 
 	const std::chrono::system_clock::time_point kMorning{std::chrono::sys_days{std::chrono::year{2026} / 10 / 6} + 9h};
 	constexpr bool kWithConfirmations = true;
+	constexpr bool kWithoutConfirmations = false;
+	constexpr bool kHovered = true;
 
 	Graphite::NotificationEntry Entry(std::uint64_t toastId, Core::ToastKind kind, std::string title = "Title")
 	{
@@ -39,7 +41,7 @@ TEST_CASE("A recorded notification goes to the top of the history")
 	history.Record(Entry(1, Core::ToastKind::Error));
 	history.Record(Entry(2, Core::ToastKind::Warning));
 
-	CHECK(IdsOf(history.Entries(true)) == std::vector<std::uint64_t>{2, 1});
+	CHECK(IdsOf(history.Entries(kWithConfirmations)) == std::vector<std::uint64_t>{2, 1});
 }
 
 TEST_CASE("A notification for a toast already in the history counts it and moves it to the top")
@@ -52,7 +54,7 @@ TEST_CASE("A notification for a toast already in the history counts it and moves
 	again.LastShownAt = kMorning + 5min;
 	history.Record(again);
 
-	const std::vector<const Graphite::NotificationEntry*> entries = history.Entries(true);
+	const std::vector<const Graphite::NotificationEntry*> entries = history.Entries(kWithConfirmations);
 	REQUIRE(entries.size() == 2);
 	CHECK(entries[0]->ToastId == 1);
 	CHECK(entries[0]->Count == 2);
@@ -65,7 +67,7 @@ TEST_CASE("A warning that expires unhovered is missed")
 	history.Record(Entry(1, Core::ToastKind::Warning));
 	history.NoteDeparture(Departure(1, Core::ToastDepartureReason::Expired));
 
-	CHECK(history.Entries(true)[0]->Missed);
+	CHECK(history.Entries(kWithConfirmations)[0]->Missed);
 	CHECK(history.MostSevereMissed() == Core::ToastKind::Warning);
 }
 
@@ -92,7 +94,7 @@ TEST_CASE("An error toast left to run out its twelve seconds unhovered is missed
 		history.NoteDeparture(departure);
 	}
 
-	CHECK(history.Entries(true)[0]->Missed);
+	CHECK(history.Entries(kWithConfirmations)[0]->Missed);
 	CHECK(history.MostSevereMissed() == Core::ToastKind::Error);
 }
 
@@ -109,7 +111,7 @@ TEST_CASE("A toast the pointer rested on is not missed")
 {
 	Graphite::NotificationHistory history;
 	history.Record(Entry(1, Core::ToastKind::Warning));
-	history.NoteDeparture(Departure(1, Core::ToastDepartureReason::Expired, true));
+	history.NoteDeparture(Departure(1, Core::ToastDepartureReason::Expired, kHovered));
 
 	CHECK_FALSE(history.MostSevereMissed().has_value());
 }
@@ -128,7 +130,7 @@ TEST_CASE("A departure for a toast no longer in the history is ignored")
 	Graphite::NotificationHistory history;
 	history.NoteDeparture(Departure(7, Core::ToastDepartureReason::Expired));
 
-	CHECK(history.Entries(true).empty());
+	CHECK(history.Entries(kWithConfirmations).empty());
 	CHECK_FALSE(history.MostSevereMissed().has_value());
 }
 
@@ -152,7 +154,7 @@ TEST_CASE("Marking all seen leaves nothing missed")
 	history.MarkAllSeen();
 
 	CHECK_FALSE(history.MostSevereMissed().has_value());
-	CHECK_FALSE(history.Entries(true)[0]->Missed);
+	CHECK_FALSE(history.Entries(kWithConfirmations)[0]->Missed);
 }
 
 TEST_CASE("Confirmations are left out of the entries unless asked for")
@@ -161,8 +163,8 @@ TEST_CASE("Confirmations are left out of the entries unless asked for")
 	history.Record(Entry(1, Core::ToastKind::Success));
 	history.Record(Entry(2, Core::ToastKind::Error));
 
-	CHECK(IdsOf(history.Entries(false)) == std::vector<std::uint64_t>{2});
-	CHECK(IdsOf(history.Entries(true)) == std::vector<std::uint64_t>{2, 1});
+	CHECK(IdsOf(history.Entries(kWithoutConfirmations)) == std::vector<std::uint64_t>{2});
+	CHECK(IdsOf(history.Entries(kWithConfirmations)) == std::vector<std::uint64_t>{2, 1});
 }
 
 TEST_CASE("The history keeps only the newest two hundred notifications")
@@ -174,7 +176,7 @@ TEST_CASE("The history keeps only the newest two hundred notifications")
 		history.Record(Entry(toastId, Core::ToastKind::Warning));
 	}
 
-	const std::vector<const Graphite::NotificationEntry*> entries = history.Entries(true);
+	const std::vector<const Graphite::NotificationEntry*> entries = history.Entries(kWithConfirmations);
 	REQUIRE(entries.size() == Graphite::NotificationHistory::kMostEntries);
 	CHECK(entries.front()->ToastId == oneMoreThanKept);
 	CHECK(entries.back()->ToastId == 2);
@@ -186,7 +188,7 @@ TEST_CASE("Clearing the history empties it")
 	history.Record(Entry(1, Core::ToastKind::Error));
 	history.Clear();
 
-	CHECK(history.Entries(true).empty());
+	CHECK(history.Entries(kWithConfirmations).empty());
 }
 
 TEST_CASE("Removing a notification takes out only its entry and keeps the others in their order")

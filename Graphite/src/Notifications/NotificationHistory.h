@@ -41,7 +41,7 @@ namespace Graphite {
 
 		std::optional<Core::ToastKind> MostSevereMissed() const;
 
-		// Valid until the history next changes.
+		// WARNING: Valid until the history next changes.
 		std::vector<const NotificationEntry*> Entries(bool includeConfirmations) const;
 
 	private:

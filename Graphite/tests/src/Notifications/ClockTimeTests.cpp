@@ -32,6 +32,7 @@ TEST_CASE("Without time zone data a notification's time reads in UTC")
 
 TEST_CASE("A notification's time is read in the given zone")
 {
-	// Central European Summer Time is two hours ahead of UTC on 6 October.
-	CHECK(Graphite::FormatClockTime(UtcOn6October(12h), std::chrono::locate_zone("Europe/Warsaw")) == "14:00");
+	const std::chrono::time_zone* const summerTimeZoneTwoHoursAheadOfUtc = std::chrono::locate_zone("Europe/Warsaw");
+
+	CHECK(Graphite::FormatClockTime(UtcOn6October(12h), summerTimeZoneTwoHoursAheadOfUtc) == "14:00");
 }

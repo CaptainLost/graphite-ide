@@ -45,7 +45,7 @@ namespace {
 			Frames.Next([&] { Draw(); });
 		}
 
-		// A popup sizes itself on the frame it appears and shows from the next.
+		// WARNING: A popup sizes itself on the frame it appears and shows from the next.
 		void OpenFromBell()
 		{
 			Popup.OpenFromBell(Graphite::kStatusBarWindowName);
@@ -64,18 +64,19 @@ namespace {
 			Next();
 		}
 
-		// As a quick click lands: the pointer arrives and the button goes down in the same frame.
 		void ClickOnArrival(ImVec2 at, ImGuiMouseButton button = ImGuiMouseButton_Left)
 		{
 			ImGuiIO& io = ImGui::GetIO();
+			const bool pressed = true;
+			const bool released = false;
 			io.AddMousePosEvent(at.x, at.y);
-			io.AddMouseButtonEvent(button, true);
+			io.AddMouseButtonEvent(button, pressed);
 			Next();
-			io.AddMouseButtonEvent(button, false);
+			io.AddMouseButtonEvent(button, released);
 			Next();
 		}
 
-		// Read inside a frame, where the font is bound at the size the list draws its text in.
+		// WARNING: Read inside a frame, where the font is bound at the size the list draws its text in.
 		ImFontGlyph GlyphOf(ImWchar character)
 		{
 			ImFontGlyph glyph;
@@ -115,7 +116,6 @@ namespace {
 			return *list;
 		}
 
-		// Inside the first entry, a little in from the list's top-left corner.
 		static ImVec2 FirstEntry()
 		{
 			const ImGuiWindow& list = ListWindow();
@@ -152,7 +152,6 @@ namespace {
 			return *menu;
 		}
 
-		// Over the first item of the menu open above the popup.
 		static ImVec2 FirstMenuItem()
 		{
 			const ImGuiWindow& menu = EntryMenuWindow();
@@ -165,7 +164,7 @@ namespace {
 			return ImVec2(firstItem.x, firstItem.y + ImGui::GetTextLineHeightWithSpacing());
 		}
 
-		// Measured inside a frame: the button's size needs the font a frame sets up.
+		// WARNING: Measured inside a frame, because the button's size needs the font a frame sets up.
 		ImVec2 ConfirmationsToggle()
 		{
 			ImVec2 toggleCentre;
@@ -217,7 +216,7 @@ namespace {
 		return ImGui::ColorConvertFloat4ToU32(ImVec4(colour.R, colour.G, colour.B, 1.0f));
 	}
 
-	// Alpha is left out of the comparison: an anti-aliased edge is drawn in the shape's colour at
+	// WARNING: Alpha is left out of the comparison, because an anti-aliased edge is drawn in the shape's colour at
 	// no alpha.
 	bool HasColourOf(const ImDrawVert& vertex, ImU32 colour)
 	{
@@ -275,8 +274,6 @@ namespace {
 				.Error = {.R = 0.9f, .G = 0.2f, .B = 0.2f}};
 	}
 
-	// The time is wider than the remove button, which is a line high and as wide, so only the time
-	// reaches past the button's left edge.
 	bool FirstEntryDrawsDimTextLeftOfItsRemoveButton(const ImGuiWindow& list, ImU32 dimColour)
 	{
 		const float rowInset = 8.0f;
@@ -357,7 +354,7 @@ namespace {
 		ImGui::End();
 	}
 
-	// Drawn before the editor: a window focuses itself on the frame it appears, and the editor
+	// WARNING: Drawn before the editor, because a window focuses itself on the frame it appears and the editor
 	// is the one that must start with the keyboard.
 	void DrawExplorerWindow()
 	{
@@ -368,7 +365,6 @@ namespace {
 		ImGui::End();
 	}
 
-	// Over the explorer's empty space, below its one line of text.
 	ImVec2 InsideTheExplorer()
 	{
 		return ImVec2(110.0f, 220.0f);
@@ -561,7 +557,7 @@ TEST_CASE("Copy whose handler records a notification copies the entry it was cho
 	screen.Click(PopupScreen::FirstMenuItem());
 
 	CHECK(copied == "Push failed\nbehind");
-	CHECK(screen.History.Entries(true).size() == 3);
+	CHECK(screen.History.Entries(kWithConfirmations).size() == 3);
 }
 
 TEST_CASE("Esc closes the popup")
@@ -776,7 +772,7 @@ TEST_CASE("Clear in the popup's header empties the history")
 							 popup.Pos.y + popup.WindowPadding.y + ImGui::GetFrameHeight() * 0.5f);
 	screen.Click(clearButton);
 
-	CHECK(screen.History.Entries(true).empty());
+	CHECK(screen.History.Entries(kWithConfirmations).empty());
 }
 
 TEST_CASE("The popup is padded as a toast card is, with its list filling the space inside the padding")
@@ -824,8 +820,6 @@ TEST_CASE("An entry's icon, folder line, message and time keep eight pixels clea
 	const float rowRight = list.Pos.x + list.Size.x;
 	const float rowPadding = 8.0f;
 
-	// The icon's anti-aliased edge reaches half a pixel out of its circle, and the last glyph of
-	// the time may stop a pixel short of its advance.
 	const float fringe = 1.0f;
 	const float glyphBearing = 2.0f;
 
@@ -849,7 +843,6 @@ TEST_CASE("An entry's icon keeps eight pixels clear of the top and the bottom of
 	const float rowBottom = list.Pos.y + list.Size.y;
 	const float rowInset = 8.0f;
 
-	// The icon's anti-aliased edge reaches half a pixel out of its circle.
 	const float fringe = 1.0f;
 
 	const VerticalExtent icon = DrawnExtentInColour(list, OpaqueColourOf(screen.Palette.Error));
@@ -914,7 +907,6 @@ TEST_CASE("A hovered entry is highlighted across the whole row")
 }
 
 namespace {
-	// Apart from the buttons' hover and engaged fills, which share the default check mark's hue.
 	const ImVec4 kDistinctCheckMark(0.9f, 0.4f, 0.1f, 1.0f);
 
 	struct ConfirmationsScreen
@@ -936,7 +928,6 @@ namespace {
 		}
 	};
 
-	// An engaged toggle draws its glyph in the check mark's colour, one at rest in the text's.
 	bool ToggleDrawsInStyleColour(ImVec2 toggleCentre, ImGuiCol colourSlot)
 	{
 		const float halfSide = Graphite::IconButtonSize() * 0.5f;
@@ -973,7 +964,6 @@ TEST_CASE("A click on the Show confirmations toggle engages it and lists the con
 	CHECK(PopupScreen::PopupWindow().Size.y > heightWithConfirmationsHidden);
 	CHECK(confirmations.ListsTheConfirmation());
 
-	// Measured again: the popup grows upwards from the corner it is anchored to, taking its header with it.
 	const ImVec2 toggleAfterGrowing = confirmations.Screen.ConfirmationsToggle();
 	CHECK(ToggleDrawsInStyleColour(toggleAfterGrowing, ImGuiCol_CheckMark));
 }
@@ -987,7 +977,6 @@ TEST_CASE("A second click on the Show confirmations toggle disengages it and hid
 	confirmations.Screen.Next();
 	REQUIRE(confirmations.ListsTheConfirmation());
 
-	// Measured again: the popup grows upwards from the corner it is anchored to, taking its header with it.
 	const ImVec2 toggleAfterGrowing = confirmations.Screen.ConfirmationsToggle();
 	confirmations.Screen.Click(toggleAfterGrowing);
 	CHECK(ImGui::GetCurrentContext()->HoveredId == PopupScreen::ConfirmationsToggleId());
@@ -1065,11 +1054,13 @@ TEST_CASE("A press on an entry's remove button goes to the button, so the row be
 	screen.PointAt(PopupScreen::FirstEntryRemoveButton());
 
 	ImGuiIO& io = ImGui::GetIO();
-	io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+	const bool pressed = true;
+	io.AddMouseButtonEvent(ImGuiMouseButton_Left, pressed);
 	screen.Next();
 	CHECK(ImGui::GetActiveID() == PopupScreen::RemoveButtonId(1));
 
-	io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+	const bool released = false;
+	io.AddMouseButtonEvent(ImGuiMouseButton_Left, released);
 	screen.Next();
 	CHECK_FALSE(screen.Popup.IsExpanded(1));
 	CHECK(screen.History.Entries(kWithConfirmations).empty());

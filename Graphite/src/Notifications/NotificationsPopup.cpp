@@ -54,8 +54,8 @@ namespace Graphite {
 			float Height = 0.0f;
 		};
 
-		// The toggle, the copy and the removal are carried out only once the list is drawn: its rows
-		// point into the history, which a removal changes and a copy confirmation shown as a toast adds to.
+		// WARNING: The toggle, the copy and the removal wait until the list is drawn, because its rows point
+		// into the history, which a removal changes and a copy confirmation shown as a toast adds to.
 		struct ListOutcome
 		{
 			std::optional<std::uint64_t> ToggledToastId;
@@ -75,22 +75,37 @@ namespace Graphite {
 			return ImVec4(colour.R, colour.G, colour.B, colour.A);
 		}
 
-		ImFont* FontFor(bool strong)
+		enum class FontWeight
+		{
+			Regular,
+			Strong
+		};
+
+		FontWeight WeightOf(bool strong)
+		{
+			return strong ? FontWeight::Strong : FontWeight::Regular;
+		}
+
+		ImFont* FontFor(FontWeight weight)
 		{
 			ImFont* const bold = Core::ImGuiRenderer::GetBoldFont();
 			const bool boldLoaded = bold != nullptr;
-			return strong && boldLoaded ? bold : ImGui::GetFont();
+			return weight == FontWeight::Strong && boldLoaded ? bold : ImGui::GetFont();
 		}
 
-		// CalcTextSize rounds each run up, so runs placed by its widths drift from the text.
+		// WARNING: CalcTextSize rounds each run up, so runs placed by its widths drift from the text.
 		float MeasureUnrounded(std::string_view text, bool strong)
 		{
-			return FontFor(strong)->CalcTextSizeA(ImGui::GetFontSize(), FLT_MAX, 0.0f, text.data(), text.data() + text.size()).x;
+			const float noWrapWidth = 0.0f;
+			return FontFor(WeightOf(strong))
+				->CalcTextSizeA(ImGui::GetFontSize(), FLT_MAX, noWrapWidth, text.data(), text.data() + text.size())
+				.x;
 		}
 
 		float MeasureRegularUnrounded(std::string_view text)
 		{
-			return MeasureUnrounded(text, false);
+			const bool strong = false;
+			return MeasureUnrounded(text, strong);
 		}
 
 		std::string HiddenLinesText(std::size_t hiddenLines)
@@ -98,7 +113,7 @@ namespace Graphite {
 			return hiddenLines == 1 ? std::string("\u2026 1 more line") : std::format("\u2026 {} more lines", hiddenLines);
 		}
 
-		// Floored: half a pixel here puts the row's bottom edge, and its highlight, on a half pixel.
+		// WARNING: Floored, because half a pixel here puts the row's bottom edge, and its highlight, on a half pixel.
 		float IconOverhang()
 		{
 			return std::floor((Core::ToastIconDiameter() - ImGui::GetFontSize()) * 0.5f);
@@ -177,22 +192,27 @@ namespace Graphite {
 			const ImU32 dimColour = ImGui::GetColorU32(ToImVec4(palette.TextDim));
 			const ImU32 messageColour = ImGui::GetColorU32(ToImVec4(Core::ToastMessageColour(palette)));
 
+			ImFont* const regularFont = FontFor(FontWeight::Regular);
+			ImFont* const strongFont = FontFor(FontWeight::Strong);
+			const float noWrapWidth = 0.0f;
+
 			const float timeX = contentRight - MeasureRegularUnrounded(layout.Time);
 			if (!state.ShowsRemoveButton)
 			{
-				draw->AddText(FontFor(false), lineHeight, ImVec2(timeX, firstLineY), dimColour, layout.Time.c_str());
+				draw->AddText(regularFont, lineHeight, ImVec2(timeX, firstLineY), dimColour, layout.Time.c_str());
 			}
 
-			// Short of the time even while the remove button stands in its place, so the title does
-			// not lengthen under the pointer.
-			const float headingRight = std::min(timeX, RemoveButtonRect(rowRect).Min.x) - spacing;
-			const ImVec4 headingClip(textX, firstLineY, headingRight, firstLineY + lineHeight);
-			draw->AddText(FontFor(true), lineHeight, ImVec2(textX, firstLineY), textColour, entry.Title.c_str(), nullptr, 0.0f, &headingClip);
+			const float headingRightOfTimeAndRemoveButton = std::min(timeX, RemoveButtonRect(rowRect).Min.x) - spacing;
+			const ImVec4 headingClip(textX, firstLineY, headingRightOfTimeAndRemoveButton, firstLineY + lineHeight);
+			draw->AddText(strongFont, lineHeight, ImVec2(textX, firstLineY), textColour, entry.Title.c_str(), nullptr, noWrapWidth,
+						  &headingClip);
 
 			if (!layout.Count.empty())
 			{
-				const float countX = textX + MeasureUnrounded(entry.Title, true) + spacing;
-				draw->AddText(FontFor(false), lineHeight, ImVec2(countX, firstLineY), dimColour, layout.Count.c_str(), nullptr, 0.0f, &headingClip);
+				const bool titleIsStrong = true;
+				const float countX = textX + MeasureUnrounded(entry.Title, titleIsStrong) + spacing;
+				draw->AddText(regularFont, lineHeight, ImVec2(countX, firstLineY), dimColour, layout.Count.c_str(), nullptr, noWrapWidth,
+							  &headingClip);
 			}
 
 			float lineY = firstLineY + lineHeight;
@@ -200,7 +220,8 @@ namespace Graphite {
 
 			if (!layout.FolderLine.empty())
 			{
-				draw->AddText(FontFor(false), lineHeight, ImVec2(textX, lineY), dimColour, layout.FolderLine.c_str(), nullptr, 0.0f, &textClip);
+				draw->AddText(regularFont, lineHeight, ImVec2(textX, lineY), dimColour, layout.FolderLine.c_str(), nullptr, noWrapWidth,
+							  &textClip);
 				lineY += lineHeight;
 			}
 
@@ -209,7 +230,7 @@ namespace Graphite {
 				for (const Core::ToastTextRun& run : layout.Lines[lineIndex].Runs)
 				{
 					const bool strong = run.Style == Core::ToastTextStyle::Strong;
-					draw->AddText(FontFor(strong), lineHeight, ImVec2(textX + run.X, lineY), strong ? textColour : messageColour,
+					draw->AddText(FontFor(WeightOf(strong)), lineHeight, ImVec2(textX + run.X, lineY), strong ? textColour : messageColour,
 								  run.Text.data(), run.Text.data() + run.Text.size());
 				}
 
@@ -219,7 +240,7 @@ namespace Graphite {
 			if (layout.HiddenLines > 0)
 			{
 				const std::string more = HiddenLinesText(layout.HiddenLines);
-				draw->AddText(FontFor(false), lineHeight, ImVec2(textX, lineY), dimColour, more.c_str());
+				draw->AddText(regularFont, lineHeight, ImVec2(textX, lineY), dimColour, more.c_str());
 			}
 		}
 
@@ -272,7 +293,7 @@ namespace Graphite {
 			list.Rows = LayOutRows(entries, popup, list.RowWidth, openFolder, zone);
 			float rowsHeight = StackedHeight(list.Rows);
 
-			// A list cut short scrolls, and ImGui takes its scrollbar's width from the rows.
+			// WARNING: A list cut short scrolls, and ImGui takes its scrollbar's width from the rows.
 			const bool scrolls = rowsHeight > highestListHeight;
 			if (scrolls)
 			{
@@ -285,7 +306,7 @@ namespace Graphite {
 			return list;
 		}
 
-		// Without AllowWhenBlockedByActiveItem ImGui reports no window hovered while any item is held,
+		// WARNING: Without AllowWhenBlockedByActiveItem ImGui reports no window hovered while any item is held,
 		// the row's own press included, which would drop the highlight and the remove button mid-click.
 		bool IsPointerOnRow(const ImRect& rowRect, bool partOfRowHeld)
 		{
@@ -315,8 +336,8 @@ namespace Graphite {
 		{
 			const Core::Color& glyphColour = button.PointerOnIt ? palette.Text : palette.TextDim;
 
-			// Floored: CalcTextSize rounds up, and a glyph centred onto a half pixel reads blurrier than
-			// the text beside it.
+			// WARNING: Floored, because CalcTextSize rounds up and a glyph centred onto a half pixel reads blurrier
+			// than the text beside it.
 			const ImVec2 glyphSize = ImGui::CalcTextSize(ICON_MDI_CLOSE);
 			const ImVec2 glyphTopLeft(std::floor(buttonRect.Min.x + (buttonRect.GetWidth() - glyphSize.x) * 0.5f),
 									  std::floor(buttonRect.Min.y + (buttonRect.GetHeight() - glyphSize.y) * 0.5f));
@@ -351,8 +372,8 @@ namespace Graphite {
 				const bool pointerOnRow = IsPointerOnRow(rowRect, partOfRowHeld);
 				const bool showsRemoveButton = pointerOnRow || removeButtonHeld;
 
-				// Submitted before the row it lies on: ImGui gives the pointer to the first item under it,
-				// and a row submitted first would take the button's presses.
+				// WARNING: Submitted before the row it lies on, because ImGui gives the pointer to the first item
+				// under it and a row submitted first would take the button's presses.
 				RemoveButtonState removeButton;
 				if (showsRemoveButton)
 				{
@@ -374,7 +395,7 @@ namespace Graphite {
 
 				DrawEntry(entry, row, rowRect, {.Highlighted = pointerOnRow, .ShowsRemoveButton = showsRemoveButton}, palette);
 
-				// After the entry, whose highlight would otherwise cover it.
+				// WARNING: Drawn after the entry, whose highlight would otherwise cover it.
 				if (showsRemoveButton)
 				{
 					DrawRemoveGlyph(removeButtonRect, removeButton, palette);
@@ -382,12 +403,13 @@ namespace Graphite {
 
 				if (Core::BeginRightClickPopup("##entryMenu"))
 				{
-					// Raised every frame as well: the list's popup raises itself every frame, ahead of
-					// this menu, and would otherwise cover it from the menu's second frame.
+					// WARNING: Raised every frame, because the list's popup raises itself every frame, ahead of this
+					// menu, and would otherwise cover it from the menu's second frame.
 					ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
 					outcome.EntryMenuOpen = true;
 
-					if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+					const bool repeatWhileHeld = false;
+					if (ImGui::IsKeyPressed(ImGuiKey_Escape, repeatWhileHeld))
 					{
 						ImGui::CloseCurrentPopup();
 					}
@@ -417,8 +439,8 @@ namespace Graphite {
 		m_OpenRequested = true;
 		m_BellWindowName = bellWindowName;
 
-		// The bell takes no focus, so the window that holds the keyboard now is the one that held
-		// it before the click.
+		// WARNING: The bell takes no focus, so the window that holds the keyboard now is the one that held it
+		// before the click.
 		const ImGuiWindow* const keyboardHolder = ImGui::GetCurrentContext()->NavWindow;
 		m_KeyboardHolderOnOpening = keyboardHolder != nullptr ? keyboardHolder->ID : 0;
 	}
@@ -447,7 +469,7 @@ namespace Graphite {
 		const std::vector<const NotificationEntry*> entries = history.Entries(m_ShowConfirmations);
 		const ListLayout list = LayOutList(entries, *this, listWidth, highestListHeight, openFolder, zone);
 
-		// Sized from this frame's rows, not left to ImGui: it fits a popup and a child to what they
+		// WARNING: Sized from this frame's rows, not left to ImGui, which fits a popup and a child to what they
 		// held the frame before, so the popup would open at a stale height and lag every expand.
 		const float headerHeight = ImGui::GetFrameHeight();
 		const float separatorHeight = std::max(style.SeparatorSize, 1.0f);
@@ -462,8 +484,8 @@ namespace Graphite {
 		ImGui::SetNextWindowSize(ImVec2(popupWidth, popupHeight), ImGuiCond_Always);
 		ImGui::SetNextWindowViewport(viewport->ID);
 
-		// Popped as soon as the popup has begun: ImGui fixes a window's padding in its Begin, and
-		// the entry menu opened inside it keeps the default one.
+		// WARNING: Popped as soon as the popup has begun, because ImGui fixes a window's padding in its Begin
+		// and the entry menu opened inside it keeps the default one.
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, popupPadding);
 		const bool popupBegun = ImGui::BeginPopup(kPopupId, ImGuiWindowFlags_NoMove);
 		ImGui::PopStyleVar();
@@ -474,16 +496,17 @@ namespace Graphite {
 			return;
 		}
 
-		// ImGui raises a popup only on the frame it appears, and puts every window created after
-		// that in front of it: a toast shown while the list is open would cover its bottom rows.
+		// WARNING: ImGui raises a popup only on the frame it appears and puts every window created after that in
+		// front of it, so a toast shown while the list is open would cover its bottom rows.
 		ImGui::BringWindowToDisplayFront(ImGui::GetCurrentWindow());
 		m_Open = true;
 		history.MarkAllSeen();
 
-		// Under keyboard navigation ImGui closes the entry menu on Esc before this frame is drawn,
-		// so without last frame's menu the key that shut it would close the popup as well.
+		// WARNING: Under keyboard navigation ImGui closes the entry menu on Esc before this frame is drawn, so
+		// without last frame's menu the key that shut it would close the popup as well.
 		const bool escapeIsForTheMenu = m_EntryMenuOpenLastFrame || ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId);
-		const bool escapeClosesThePopup = ImGui::IsKeyPressed(ImGuiKey_Escape, false) && !escapeIsForTheMenu;
+		const bool repeatWhileHeld = false;
+		const bool escapeClosesThePopup = ImGui::IsKeyPressed(ImGuiKey_Escape, repeatWhileHeld) && !escapeIsForTheMenu;
 		if (escapeClosesThePopup)
 		{
 			ImGui::CloseCurrentPopup();
@@ -557,7 +580,8 @@ namespace Graphite {
 		DrawIconSeparator();
 		ImGui::SameLine();
 
-		return DrawIconButton("##clear", ICON_MDI_DELETE_SWEEP_OUTLINE, false, "Clear");
+		const bool engaged = false;
+		return DrawIconButton("##clear", ICON_MDI_DELETE_SWEEP_OUTLINE, engaged, "Clear");
 	}
 
 	void NotificationsPopup::NoteClosed()
@@ -572,8 +596,6 @@ namespace Graphite {
 		m_EntryMenuOpenLastFrame = false;
 	}
 
-	// Only from the bell's window: a click that closed the popup by landing in another window that
-	// takes the keyboard, such as the editor or the Explorer, leaves the keyboard there.
 	void NotificationsPopup::HandKeyboardBackFromBellWindow() const
 	{
 		const ImGuiWindow* const keyboardHolder = ImGui::GetCurrentContext()->NavWindow;
