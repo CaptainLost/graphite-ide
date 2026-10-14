@@ -17,9 +17,7 @@
 #include <vector>
 
 namespace Graphite {
-
 	namespace {
-
 		std::string SectionOf(const nlohmann::json& item)
 		{
 			if (!item.is_object())
@@ -76,7 +74,14 @@ namespace Graphite {
 		constexpr int kShowMessageError = 1;
 		constexpr int kShowMessageWarning = 2;
 
-		// Null to workDoneProgress/create means "report under that token", and null to showMessageRequest means no action was chosen; refusing a registration stops some servers.
+		constexpr int kNoPercent = -1;
+		constexpr std::size_t kReadBufferSize = 8192;
+		constexpr RequestId kNoRequest = 0;
+		constexpr int kNothingSent = 0;
+		constexpr bool kIncludeDeclaration = true;
+		constexpr bool kStopRequested = true;
+
+		// WARNING: Null to workDoneProgress/create means "report under that token" and null to showMessageRequest means no action was chosen. Refusing a registration stops some servers.
 		constexpr std::array<std::string_view, 4> kRequestsAcknowledgedWithNull{
 			"window/workDoneProgress/create", "client/registerCapability", "client/unregisterCapability", "window/showMessageRequest"};
 
@@ -93,8 +98,6 @@ namespace Graphite {
 			return false;
 		}
 
-		// A failed pull may carry data.retriggerRequest: the server cancelled it (Roslyn does when
-		// its solution moved under the request) and expects to be asked again.
 		bool AsksToBeRetriggered(const nlohmann::json& error)
 		{
 			if (!error.is_object())
@@ -138,27 +141,47 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
+		nlohmann::json TextDocumentParams(const std::string& uri)
+		{
+			nlohmann::json params;
+			params["textDocument"]["uri"] = uri;
+
+			return params;
+		}
+
+		nlohmann::json PositionParams(const FilePosition& where)
+		{
+			nlohmann::json params = TextDocumentParams(ToFileUri(where.Path));
+			params["position"]["line"] = where.Line;
+			params["position"]["character"] = where.Column.Value;
+
+			return params;
+		}
+
+		bool IsPublishedFor(const PublishedDiagnostics& published, const std::string& uri)
+		{
+			return ToFileUri(published.Path) == uri;
+		}
+
+		bool IsPositionAskedFrom(const Location& location, const FilePosition& from)
+		{
+			return location.Line == from.Line && location.Column == from.Column && location.Path == from.Path;
+		}
+
 		nlohmann::json InitializeParams(const std::filesystem::path& root, const nlohmann::json& initializationOptions)
 		{
 			nlohmann::json capabilities;
 
-			// Declaring workDoneProgress is what makes clangd report its indexing at all: without
-			// it there is no window/workDoneProgress/create and no $/progress, and the status bar
-			// has no percentage to show.
+			// WARNING: Without declaring workDoneProgress clangd sends no $/progress, and the status bar has no percentage to show.
 			capabilities["window"]["workDoneProgress"] = true;
 			capabilities["workspace"]["configuration"] = true;
 
 			capabilities["textDocument"]["synchronization"]["didSave"] = true;
 			capabilities["textDocument"]["synchronization"]["dynamicRegistration"] = false;
 
-			// linkSupport left off deliberately: with it on, a definition comes back as a
-			// LocationLink whose several ranges mean different things, and only one of them is the
-			// place a reader wants to land.
+			// WARNING: linkSupport stays off because a LocationLink holds several ranges with different meanings and only one is where a reader wants to land.
 			capabilities["textDocument"]["definition"]["linkSupport"] = false;
 
-			// Declared, because the protocol has the client name the token types it understands and
-			// the server answer with a legend drawn from them. Only the ones this editor colours
-			// are listed - a type it never asked for is one it would have to map to nothing anyway.
 			capabilities["textDocument"]["semanticTokens"]["requests"]["full"] = true;
 			capabilities["textDocument"]["semanticTokens"]["formats"] = nlohmann::json::array({"relative"});
 			capabilities["textDocument"]["semanticTokens"]["tokenTypes"] = nlohmann::json::array(
@@ -169,17 +192,12 @@ namespace Graphite {
 				 "delegate", "delegateName"});
 			capabilities["textDocument"]["semanticTokens"]["tokenModifiers"] = nlohmann::json::array();
 
-			// Pulled, not pushed, from a server that offers it: Roslyn answers only pulls, and
-			// csharp-ls stops publishing once this is declared. Dynamic registration is refused so
-			// the offer arrives in the handshake, where CompleteHandshake reads it.
+			// WARNING: Roslyn answers only pulls and csharp-ls stops publishing once pulls are declared. Dynamic registration is refused so the offer arrives in the handshake.
 			capabilities["textDocument"]["diagnostic"]["dynamicRegistration"] = false;
 			capabilities["textDocument"]["diagnostic"]["relatedDocumentSupport"] = false;
 
-			// Roslyn asks for fresh pulls through this once its projects have loaded and whenever
-			// its solution changes under it.
 			capabilities["workspace"]["diagnostics"]["refreshSupport"] = true;
-			// Markdown first: clangd's markdown reply is the one ParseClangdHover reads into
-			// fields.
+			// WARNING: Markdown comes first because clangd's markdown reply is the one ParseClangdHover reads into fields.
 			capabilities["textDocument"]["hover"]["contentFormat"] =
 				nlohmann::json::array({"markdown", "plaintext"});
 			capabilities["textDocument"]["references"]["dynamicRegistration"] = false;
@@ -200,13 +218,11 @@ namespace Graphite {
 			return params;
 		}
 
-		// The whole of what an error reply says, for a status line. A server that refuses to start
-		// says why in "message", and dropping that leaves a user with a red status and no reason.
 		std::string DescribeError(const nlohmann::json& error)
 		{
 			if (error.is_object())
 			{
-				const auto message = error.find("message");
+				const nlohmann::json::const_iterator message = error.find("message");
 
 				if (message != error.end() && message->is_string())
 				{
@@ -218,19 +234,29 @@ namespace Graphite {
 		}
 	}
 
+	LspClient::Document* LspClient::FindDocument(Shared& shared, const std::string& uri)
+	{
+		return shared.Documents.contains(uri) ? &shared.Documents.at(uri) : nullptr;
+	}
+
+	const LspClient::Document* LspClient::FindDocument(const Shared& shared, const std::string& uri)
+	{
+		return shared.Documents.contains(uri) ? &shared.Documents.at(uri) : nullptr;
+	}
+
+	bool LspClient::WriterHasWork(const Shared& shared)
+	{
+		return !shared.ToSend.empty() || shared.Stopping.load() || shared.WriterStopped;
+	}
+
 	void LspClient::SendNowLocked(Shared& shared, std::string bytes)
 	{
-		// Queued, not written: writing here would be a synchronous write under ProtocolMutex, and
-		// a pipe that is full because the server is busy writing to us would stop this thread with
-		// the mutex held — including when "this thread" is the reader, which is the one thread
-		// that must never stop. The writer thread takes it from here.
+		// WARNING: The message is queued, never written here. A synchronous write under ProtocolMutex blocks on a full pipe, and the caller may be the reader, which must never stop.
 		{
 			const std::lock_guard<std::mutex> outbound(shared.OutboundMutex);
 
 			if (shared.WriterStopped)
 			{
-				// Dropped rather than kept: a didChange for a server that will never read it has
-				// nothing worth preserving, and keeping it costs a copy of the file per keystroke.
 				return;
 			}
 
@@ -246,11 +272,6 @@ namespace Graphite {
 		{
 			if (shared.HandshakeFailed)
 			{
-				// The handshake will never finish — refused, timed out, or never sent. Dropped
-				// rather than queued, and whatever is already queued is dropped with it: the queue
-				// stopped being a queue the moment nothing was ever going to drain it, and a
-				// session that keeps typing at such a server would append a whole copy of the file
-				// to it on every keystroke.
 				shared.Queued.clear();
 				return;
 			}
@@ -260,17 +281,11 @@ namespace Graphite {
 
 				if (shared.WriterStopped)
 				{
-					// The other half of the same leak: a server that died during its own handshake
-					// leaves Initialized false forever, so without this every later notification
-					// would pile up here instead of in ToSend.
 					shared.Queued.clear();
 					return;
 				}
 			}
 
-			// Nothing but the handshake may go out before initialize is answered: a server is
-			// entitled to drop, or fail on, anything that arrives first. The queue keeps the
-			// order the caller asked in.
 			shared.Queued.push_back(std::move(bytes));
 			return;
 		}
@@ -287,7 +302,6 @@ namespace Graphite {
 			shared.ToSend.clear();
 		}
 
-		// A writer parked on the condition variable has no other way to notice.
 		shared.Outbound.notify_all();
 	}
 
@@ -295,9 +309,7 @@ namespace Graphite {
 	{
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
-		// Recorded before it is queued, and under the same mutex the reader takes to read it, so
-		// the reply can never arrive at a reader that does not yet know which id the handshake
-		// used.
+		// WARNING: The id is recorded under the mutex the reader takes, before the request is queued, so the reply never reaches a reader that does not know it.
 		auto [id, bytes] = m_Shared->Rpc.Request("initialize", InitializeParams(root, m_Shared->Adapter->InitializationOptions(m_Shared->Context)));
 
 		m_Shared->InitializeId = id;
@@ -360,18 +372,11 @@ namespace Graphite {
 			m_Shared->Status.State = ServerState::Failed;
 			m_Shared->Status.Detail = started.GetError().Message;
 
-			// No process means no reader and no writer, so nothing will ever fail a question the
-			// way the reader's exit does, and nothing will ever empty the outbound queue. Ask
-			// checks the first flag; every sender checks the second, or a session spent typing at
-			// a server that never started would queue every edit forever.
+			// WARNING: With no process there is no reader to fail questions and no writer to empty the outbound queue, so both are stopped here.
 			{
 				const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 				m_Shared->ReaderStopped = true;
 
-				// No process means no handshake was ever sent, so there is no deadline to run out
-				// and nothing will ever set Initialized. Said here so SendLocked drops rather than
-				// queues from the very first call, and so the timeout below has nothing to expire
-				// and cannot overwrite the real reason this failed.
 				m_Shared->HandshakeFailed = true;
 			}
 
@@ -382,13 +387,9 @@ namespace Graphite {
 
 		m_Shared->Process = Core::Ref<Core::ChildProcess>(std::move(started.GetValue()));
 
-		// Queued before either thread exists, so nothing that can throw comes after them: the
-		// writer sends it once it starts, and no reply can reach a reader that is not yet running.
 		BeginHandshake(root);
 
-		// Starting a thread can throw std::system_error. The destructor never runs for a
-		// constructor that throws, and a joinable std::thread destroyed unjoined ends the process,
-		// so what was started is stopped here before the exception goes on.
+		// WARNING: Starting a thread can throw and a joinable thread destroyed unjoined ends the process. The destructor does not run for a throwing constructor, so StopThreads runs here.
 		try
 		{
 			m_Reader = std::thread(&LspClient::RunReader, m_Shared);
@@ -405,9 +406,6 @@ namespace Graphite {
 	{
 		Adopt(launch, root);
 
-		// Everything the real constructor does except start a process and the two threads that
-		// serve it. The handshake still goes out, into a queue nobody drains, so a test can read
-		// what would have been sent and answer it through Deliver.
 		BeginHandshake(root);
 	}
 
@@ -418,19 +416,14 @@ namespace Graphite {
 
 	void LspClient::StopThreads()
 	{
-		m_Shared->Stopping.store(true);
+		m_Shared->Stopping.store(kStopRequested);
 
-		// Killing the child is what releases both threads at once: it closes the pipe the reader
-		// is blocked reading, and it breaks the pipe the writer may be blocked writing into.
-		// Waiting here for the server to leave on its own would hold the UI thread for as long as
-		// a wedged server felt like; ShutDown is where it gets that time, off the UI thread.
+		// WARNING: Terminating the child releases the reader blocked on the pipe and the writer blocked writing to it. Waiting for the server to leave here would hold the UI thread.
 		if (m_Shared->Process)
 		{
 			m_Shared->Process->Terminate();
 		}
 
-		// Woken as well as terminated: a writer parked on the condition variable has nothing to
-		// notice a dead pipe with.
 		m_Shared->Outbound.notify_all();
 
 		if (m_Writer.joinable())
@@ -454,10 +447,6 @@ namespace Graphite {
 		{
 			const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
-			// Continues from the last version this client ever sent for this URI rather than
-			// restarting at 1: a reopen after a close is still this same client's numbering, and a
-			// publication that was already in flight for the pre-close version must not be read as
-			// answering a version this reopen has not reached yet (see LastVersions' own comment).
 			int& lastVersion = m_Shared->LastVersions[uri];
 			++lastVersion;
 
@@ -468,9 +457,7 @@ namespace Graphite {
 			version = lastVersion;
 		}
 
-		// Built outside ProtocolMutex: it copies and escapes the whole file, and the reader takes
-		// that mutex for every message the server sends. Queued in version order all the same,
-		// because a document's one owner (ADR 0512) calls this and ChangeDocument on one thread.
+		// WARNING: Built outside ProtocolMutex because copying and escaping the whole file would stall the reader, which takes that mutex for every message.
 		nlohmann::json params;
 		params["textDocument"]["uri"] = uri;
 		params["textDocument"]["languageId"] = m_Shared->ProtocolLanguageId;
@@ -497,21 +484,17 @@ namespace Graphite {
 		{
 			const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
-			const auto found = m_Shared->Documents.find(uri);
+			Document* document = FindDocument(*m_Shared, uri);
 
-			if (found == m_Shared->Documents.end())
+			if (document == nullptr)
 			{
-				// A change to a document the server was never told about would be a change to nothing.
 				return DocumentVersion{};
 			}
 
-			version = ++found->second.Version;
+			version = ++document->Version;
 		}
 
-		// Full text, not a range. An incremental change describes an edit the server applies to
-		// its own copy, and a range computed even slightly wrong corrupts that copy silently —
-		// every answer afterwards is subtly about a file nobody has. The text of one source file
-		// costs nothing next to that.
+		// WARNING: Full text rather than a range, because a range computed slightly wrong silently corrupts the server's copy.
 		nlohmann::json change;
 		change["text"] = text;
 
@@ -520,15 +503,12 @@ namespace Graphite {
 		params["textDocument"]["version"] = version;
 		params["contentChanges"] = nlohmann::json::array({std::move(change)});
 
-		// Built outside ProtocolMutex for the reason OpenDocument gives.
 		std::string bytes = JsonRpc::Notification("textDocument/didChange", params);
 
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 		SendLocked(*m_Shared, std::move(bytes));
 		MarkSentLocked(*m_Shared, uri, version);
 
-		// Every shown document, not only this one: a C# file's diagnostics depend on the rest of
-		// its project whatever a server declares (csharp-ls says interFileDependencies is false).
 		PullShownLocked(*m_Shared);
 
 		return DocumentVersion{version};
@@ -545,10 +525,7 @@ namespace Graphite {
 			return;
 		}
 
-		nlohmann::json params;
-		params["textDocument"]["uri"] = uri;
-
-		SendLocked(*m_Shared, m_Shared->Rpc.Notification("textDocument/didSave", params));
+		SendLocked(*m_Shared, m_Shared->Rpc.Notification("textDocument/didSave", TextDocumentParams(uri)));
 	}
 
 	void LspClient::CloseDocument(const std::filesystem::path& path)
@@ -557,51 +534,39 @@ namespace Graphite {
 
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
-		const auto open = m_Shared->Documents.find(uri);
+		const Document* document = FindDocument(*m_Shared, uri);
 
-		if (open == m_Shared->Documents.end())
+		if (document == nullptr)
 		{
 			return;
 		}
 
-		// A pull in flight asks about a document that is going: cancelled, and forgotten, so an
-		// answer still on its way is dropped like any cancelled reply.
-		if (const RequestId pull = open->second.Pull; pull != 0)
+		const RequestId pullInFlight = document->Pull;
+
+		if (pullInFlight != kNoRequest)
 		{
-			m_Shared->Pending.erase(pull);
-			SendLocked(*m_Shared, m_Shared->Rpc.Cancel(pull));
+			m_Shared->Pending.erase(pullInFlight);
+			SendLocked(*m_Shared, m_Shared->Rpc.Cancel(pullInFlight));
 		}
 
-		m_Shared->Documents.erase(open);
+		m_Shared->Documents.erase(uri);
 
-		// Publications for this document that arrived while it was open but have not been drained
-		// yet go with it. Drained after the close, they would reach DiagnosticsModel in the same
-		// update as the close's own note and be applied after it, recreating the entry the close
-		// erases. Together with PublishDiagnostics holding ProtocolMutex across its open check and
-		// its push, nothing published for this path survives the close.
 		{
 			const std::lock_guard<std::mutex> state(m_Shared->StateMutex);
 
-			std::erase_if(m_Shared->Diagnostics, [&uri](const PublishedDiagnostics& published) { return ToFileUri(published.Path) == uri; });
+			std::erase_if(m_Shared->Diagnostics, [&uri](const PublishedDiagnostics& published) { return IsPublishedFor(published, uri); });
 		}
 
-		nlohmann::json params;
-		params["textDocument"]["uri"] = uri;
-
-		SendLocked(*m_Shared, m_Shared->Rpc.Notification("textDocument/didClose", params));
+		SendLocked(*m_Shared, m_Shared->Rpc.Notification("textDocument/didClose", TextDocumentParams(uri)));
 	}
 
-	RequestId LspClient::Ask(std::string_view method, const nlohmann::json& params,
-							 Question question, std::optional<FilePosition> from)
+	RequestId LspClient::AskLocked(std::string_view method, const nlohmann::json& params,
+								   Question question, std::optional<FilePosition> from)
 	{
 		auto [id, bytes] = m_Shared->Rpc.Request(method, params);
 
 		if (m_Shared->ReaderStopped)
 		{
-			// There is no reader left to bring an answer back — either the server never started or
-			// it has since died. Answering here rather than never is the whole point: a caller
-			// holding a ticket has no other way to find out, and a ticket nothing ever fails is a
-			// spinner that turns forever.
 			m_Shared->Rpc.Forget(id);
 
 			const std::lock_guard<std::mutex> state(m_Shared->StateMutex);
@@ -625,24 +590,14 @@ namespace Graphite {
 	{
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
-		nlohmann::json params;
-		params["textDocument"]["uri"] = ToFileUri(where.Path);
-		params["position"]["line"] = where.Line;
-		params["position"]["character"] = where.Column.Value;
-
-		return Ask("textDocument/definition", params, Question::Definition);
+		return AskLocked("textDocument/definition", PositionParams(where), Question::Definition);
 	}
 
 	RequestId LspClient::AskHover(const FilePosition& where)
 	{
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
-		nlohmann::json params;
-		params["textDocument"]["uri"] = ToFileUri(where.Path);
-		params["position"]["line"] = where.Line;
-		params["position"]["character"] = where.Column.Value;
-
-		return Ask("textDocument/hover", params, Question::Hover);
+		return AskLocked("textDocument/hover", PositionParams(where), Question::Hover);
 	}
 
 	RequestId LspClient::AskSwitchSourceHeader(const std::filesystem::path& path)
@@ -652,53 +607,36 @@ namespace Graphite {
 		nlohmann::json params;
 		params["uri"] = ToFileUri(path);
 
-		return Ask("textDocument/switchSourceHeader", params, Question::SwitchSourceHeader);
+		return AskLocked("textDocument/switchSourceHeader", params, Question::SwitchSourceHeader);
 	}
 
 	RequestId LspClient::AskReferences(const FilePosition& where)
 	{
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
-		nlohmann::json params;
-		params["textDocument"]["uri"] = ToFileUri(where.Path);
-		params["position"]["line"] = where.Line;
-		params["position"]["character"] = where.Column.Value;
-		// Every site, the declaration included — a symbol used nowhere still has a header worth
-		// jumping to, and an empty answer is a worse one than a short answer. The position asked
-		// from is dropped when the reply is read, so what comes back is every OTHER place: the
-		// count over a definition and the list opened from it then agree, and neither shows the
-		// line the question was asked on.
-		params["context"]["includeDeclaration"] = true;
+		nlohmann::json params = PositionParams(where);
+		params["context"]["includeDeclaration"] = kIncludeDeclaration;
 
-		return Ask("textDocument/references", params, Question::References, where);
+		return AskLocked("textDocument/references", params, Question::References, where);
 	}
 
 	RequestId LspClient::AskSemanticTokens(const std::filesystem::path& path)
 	{
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
-		// No legend, no question. A server that declared no semantic tokens would answer with
-		// nothing or with numbers this side could not read, and either way the request is one the
-		// editor would be waiting on for no reason.
 		if (m_Shared->SemanticLegend.empty())
 		{
-			return 0;
+			return kNoRequest;
 		}
 
-		nlohmann::json params;
-		params["textDocument"]["uri"] = ToFileUri(path);
-
-		return Ask("textDocument/semanticTokens/full", params, Question::SemanticTokens);
+		return AskLocked("textDocument/semanticTokens/full", TextDocumentParams(ToFileUri(path)), Question::SemanticTokens);
 	}
 
 	RequestId LspClient::AskSymbols(const std::filesystem::path& path)
 	{
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
-		nlohmann::json params;
-		params["textDocument"]["uri"] = ToFileUri(path);
-
-		return Ask("textDocument/documentSymbol", params, Question::Symbols);
+		return AskLocked("textDocument/documentSymbol", TextDocumentParams(ToFileUri(path)), Question::Symbols);
 	}
 
 	void LspClient::Cancel(RequestId id)
@@ -717,9 +655,6 @@ namespace Graphite {
 	{
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
 
-		// Numbered and queued like any request, then immediately forgotten: nothing here will
-		// ever read the reply, and leaving the id outstanding would only make JsonRpc's table
-		// grow for an object about to be destroyed anyway.
 		auto [id, bytes] = m_Shared->Rpc.Request("shutdown", nullptr);
 		m_Shared->Rpc.Forget(id);
 		SendLocked(*m_Shared, std::move(bytes));
@@ -733,8 +668,8 @@ namespace Graphite {
 	{
 		const bool serverWasAsked = RequestShutdown();
 
-		// The writer sends everything already queued before it stops, exit included.
-		m_Shared->Stopping.store(true);
+		// WARNING: The writer sends everything already queued, exit included, before it stops.
+		m_Shared->Stopping.store(kStopRequested);
 		m_Shared->Outbound.notify_all();
 
 		if (serverWasAsked && m_Shared->Process && !m_Shared->Process->WaitForExit(grace))
@@ -760,20 +695,15 @@ namespace Graphite {
 
 			m_Shared->HandshakeFailed = true;
 
-			// Everything held back for a reply that is not coming. Cleared here as well as in
-			// SendLocked, so the memory goes back now rather than on the next thing sent — a
-			// server that dies during its handshake may never be sent anything again.
 			m_Shared->Queued.clear();
 		}
 
-		// ProtocolMutex released first: the two are only ever taken in that order, and nothing
-		// here needs both at once.
 		const std::lock_guard<std::mutex> state(m_Shared->StateMutex);
 
 		m_Shared->Status.State = ServerState::Failed;
 		m_Shared->Status.Detail = "no answer to initialize within " +
 								  std::to_string(kHandshakeTimeout.count()) + " seconds";
-		m_Shared->Status.Percent = -1;
+		m_Shared->Status.Percent = kNoPercent;
 	}
 
 	std::size_t LspClient::QueuedCount() const
@@ -785,12 +715,8 @@ namespace Graphite {
 
 	void LspClient::Drain(Drained& drained)
 	{
-		// Before the status is read out, so a handshake that ran out of time between this frame
-		// and the last is reported as Failed on this one rather than the next.
 		ExpireHandshakeIfStalled(std::chrono::steady_clock::now());
 
-		// The only place anything crosses to the UI thread, and it touches nothing the server can
-		// hold up: StateMutex is never held across a read from, or a write to, the pipe.
 		const std::lock_guard<std::mutex> state(m_Shared->StateMutex);
 
 		drained.Answers.insert(drained.Answers.end(),
@@ -827,9 +753,6 @@ namespace Graphite {
 	{
 		if (m_Shared->Process)
 		{
-			// Refused rather than trusted to a comment: on a client with a writer thread this
-			// would steal messages out from under it, losing protocol traffic with no symptom at
-			// all. Only the constructor that starts no process leaves anything readable here.
 			return {};
 		}
 
@@ -852,15 +775,10 @@ namespace Graphite {
 			{
 				std::unique_lock<std::mutex> outbound(shared->OutboundMutex);
 
-				shared->Outbound.wait(outbound,
-									  [&shared] {
-										  return !shared->ToSend.empty() ||
-												 shared->Stopping.load() || shared->WriterStopped;
-									  });
+				shared->Outbound.wait(outbound, [&shared] { return WriterHasWork(*shared); });
 
 				if (shared->WriterStopped)
 				{
-					// The reader got there first: it saw the pipe close and closed the queue.
 					return;
 				}
 
@@ -875,15 +793,10 @@ namespace Graphite {
 				batch.swap(shared->ToSend);
 			}
 
-			// Outside every lock. This is the call that blocks when the server is not reading, and
-			// blocking here costs nothing: the reader keeps draining the pipe, which is what lets
-			// the server get back to reading ours.
 			for (const std::string& message : batch)
 			{
 				if (!process.Write(message))
 				{
-					// The pipe is gone. The reader will see the same thing and report it; there is
-					// nothing this thread can usefully do but stop trying.
 					StopOutbound(*shared);
 
 					return;
@@ -895,33 +808,26 @@ namespace Graphite {
 	void LspClient::RunReader(Core::Ref<Shared> shared)
 	{
 		MessageStream stream;
-		std::array<char, 8192> buffer{};
+		std::array<char, kReadBufferSize> buffer{};
 
-		// Read without any mutex held: it blocks for as long as the server stays quiet, and holding
-		// a mutex across that would stop every UI-thread call dead. The pointer itself is set
-		// before this thread starts and never reassigned.
 		Core::ChildProcess& process = *shared->Process;
 
 		for (;;)
 		{
-			// Zero means the child closed its output, which is how this loop learns the server is
-			// gone without ever polling IsRunning.
-			const std::size_t read = process.Read(buffer);
+			const std::size_t bytesRead = process.Read(buffer);
 
-			if (read == 0)
+			if (bytesRead == 0)
 			{
 				break;
 			}
 
-			stream.Append(std::string_view(buffer.data(), read));
+			stream.Append(std::string_view(buffer.data(), bytesRead));
 
 			while (std::optional<std::string> body = stream.Take())
 			{
 				HandleBody(*shared, *body);
 			}
 
-			// Once per read rather than per message: whatever the batch changed — answers,
-			// diagnostics, progress — is drained by the same frame.
 			Core::Redraw::Request();
 		}
 
@@ -930,29 +836,21 @@ namespace Graphite {
 		{
 			const std::lock_guard<std::mutex> protocol(shared->ProtocolMutex);
 
-			for (const auto& entry : shared->Pending)
+			for ([[maybe_unused]] const auto& [requestId, question] : shared->Pending)
 			{
-				abandoned.push_back(entry.first);
+				abandoned.push_back(requestId);
 			}
 
 			shared->Pending.clear();
 
-			// Set here, in the same breath as the abandonment and under the same mutex Ask holds:
-			// a question asked at this instant either got into Pending before this ran and is
-			// failed below, or arrives after and is failed by Ask. Never neither.
+			// WARNING: Abandonment and ReaderStopped happen together under the mutex Ask holds, so a question is failed either here or by Ask, never neither.
 			shared->ReaderStopped = true;
 		}
 
-		// The writer has nothing left to carry once the pipe is gone, and — the part that matters
-		// for a session that keeps running — every sender after this point has to drop rather than
-		// queue. A dead server would otherwise collect a whole file's text per keystroke, forever,
-		// because notifications have no ticket to fail the way requests do.
 		StopOutbound(*shared);
 
 		const std::lock_guard<std::mutex> state(shared->StateMutex);
 
-		// Everything still outstanding is answered as failed rather than left hanging: a caller
-		// holding a ticket has no other way to learn the server it was asked of is gone.
 		for (const RequestId id : abandoned)
 		{
 			Answer answer;
@@ -966,7 +864,7 @@ namespace Graphite {
 		{
 			shared->Status.State = ServerState::Failed;
 			shared->Status.Detail = "the language server stopped";
-			shared->Status.Percent = -1;
+			shared->Status.Percent = kNoPercent;
 		}
 
 		Core::Redraw::Request();
@@ -988,13 +886,13 @@ namespace Graphite {
 
 			if (incoming->RespondTo)
 			{
-				AnswerServerRequest(shared, *incoming);
+				AnswerServerRequestLocked(shared, *incoming);
 				return;
 			}
 
 			if (incoming->ReplyTo && *incoming->ReplyTo == shared.InitializeId)
 			{
-				CompleteHandshake(shared, *incoming);
+				CompleteHandshakeLocked(shared, *incoming);
 				return;
 			}
 		}
@@ -1039,23 +937,19 @@ namespace Graphite {
 
 				shared.ProjectsLoading.reset();
 
-				// A server whose handshake failed answers nothing, whatever it says about its projects.
 				const bool answering = shared.Initialized && shared.Status.State != ServerState::Failed;
 
 				if (answering && shared.ProgressTokens.empty())
 				{
 					Settle(shared);
-					shared.Status.Percent = -1;
+					shared.Status.Percent = kNoPercent;
 				}
 			}
 
-			// After StateMutex is released, since the two nest only the other way round: the pulls
-			// PullLocked held back while the projects loaded.
+			// WARNING: StateMutex is released first because the two nest only the other way round.
 			const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
 			PullShownLocked(shared);
 		}
-
-		// Anything else - window/logMessage, telemetry, a server's own notifications - may be dropped.
 	}
 
 	void LspClient::RecordServerMessage(Shared& shared, const nlohmann::json& params)
@@ -1087,37 +981,24 @@ namespace Graphite {
 			return;
 		}
 
-		// Dropped unless this client holds the document open. A publication can outlive its
-		// didClose - the notification is already in flight when the close goes out - and the
-		// warm-up in LanguageServices::Poll opens and closes a file deliberately.
-		// Shared::Documents is the authority on what is open and is already erased on close, so
-		// this check costs a lookup.
 		const std::string uri = ToFileUri(published.Path);
 
-		// ProtocolMutex is held across both the check and the push, so a CloseDocument for this
-		// path lands either before the check - and the publication is dropped here - or after the
-		// push, and CloseDocument takes what was pushed back out. Without that, a close landing
-		// between the two let a publication for a document that had just closed through, and
-		// DiagnosticsModel's close-then-publish order recreated an entry no later Closed would ever
-		// erase. Nesting StateMutex inside ProtocolMutex is the order Ask, CompleteHandshake and
-		// CloseDocument already take them in, and nothing takes them the other way round.
+		// WARNING: ProtocolMutex is held across the open check and the push, so a CloseDocument lands either before the check or after the push, where it takes the publication back out.
 		const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
 
-		const std::unordered_map<std::string, Document>::const_iterator open = shared.Documents.find(uri);
+		const Document* openDocument = FindDocument(shared, uri);
 
-		if (open == shared.Documents.end())
+		if (openDocument == nullptr)
 		{
 			return;
 		}
 
-		published.Path = open->second.Path;
+		published.Path = openDocument->Path;
 
-		// OmniSharp names version 0 and csharp-ls none at all, and this client never sends 0, so
-		// such a publication can only describe the text the server has: the version last sent
-		// (ADR 0584). Read as written it would compare older than everything sent and stay dimmed.
+		// WARNING: OmniSharp names version 0 and csharp-ls none, and this client never sends 0. Such a publication describes the version last sent, and read as written it would stay dimmed.
 		if (published.Version == DocumentVersion{})
 		{
-			published.Version = DocumentVersion{open->second.Sent};
+			published.Version = DocumentVersion{openDocument->Sent};
 		}
 
 		const std::lock_guard<std::mutex> state(shared.StateMutex);
@@ -1126,26 +1007,26 @@ namespace Graphite {
 
 	void LspClient::MarkSentLocked(Shared& shared, const std::string& uri, int version)
 	{
-		if (const auto open = shared.Documents.find(uri); open != shared.Documents.end())
+		Document* document = FindDocument(shared, uri);
+
+		if (document != nullptr)
 		{
-			open->second.Sent = version;
+			document->Sent = version;
 		}
 	}
 
 	void LspClient::PullLocked(Shared& shared, const std::string& uri)
 	{
-		const auto found = shared.Documents.find(uri);
+		Document* foundDocument = FindDocument(shared, uri);
 
-		// Sent is 0 until the didOpen is queued; OpenDocument pulls once it is.
-		if (!shared.PullsDiagnostics || shared.ReaderStopped || found == shared.Documents.end() ||
-			found->second.Role != DocumentRole::Shown || found->second.Sent == 0)
+		if (!shared.PullsDiagnostics || shared.ReaderStopped || foundDocument == nullptr ||
+			foundDocument->Role != DocumentRole::Shown || foundDocument->Sent == kNothingSent)
 		{
 			return;
 		}
 
 		{
-			// Roslyn would answer from a reading of the file outside any project, an error on every
-			// name the project defines. ProjectsLoaded pulls everything held back here.
+			// WARNING: Roslyn answers a pull sent before its projects load from a reading of the file outside any project, an error on every name the project defines.
 			const std::lock_guard<std::mutex> state(shared.StateMutex);
 
 			if (shared.ProjectsLoading)
@@ -1154,18 +1035,15 @@ namespace Graphite {
 			}
 		}
 
-		Document& document = found->second;
+		Document& document = *foundDocument;
 
-		if (document.Pull != 0)
+		if (document.Pull != kNoRequest)
 		{
 			document.PullAgain = true;
 			return;
 		}
 
-		nlohmann::json params;
-		params["textDocument"]["uri"] = uri;
-
-		auto [id, bytes] = shared.Rpc.Request("textDocument/diagnostic", params);
+		auto [id, bytes] = shared.Rpc.Request("textDocument/diagnostic", TextDocumentParams(uri));
 
 		shared.Pending[id] = Asked{.Kind = Question::Diagnostics, .Uri = uri, .Version = DocumentVersion{document.Sent}};
 		document.Pull = id;
@@ -1176,9 +1054,9 @@ namespace Graphite {
 
 	void LspClient::PullShownLocked(Shared& shared)
 	{
-		for (const auto& entry : shared.Documents)
+		for ([[maybe_unused]] const auto& [uri, document] : shared.Documents)
 		{
-			PullLocked(shared, entry.first);
+			PullLocked(shared, uri);
 		}
 	}
 
@@ -1186,15 +1064,15 @@ namespace Graphite {
 	{
 		const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
 
-		const auto found = shared.Documents.find(asked.Uri);
+		Document* foundDocument = FindDocument(shared, asked.Uri);
 
-		if (found == shared.Documents.end())
+		if (foundDocument == nullptr)
 		{
 			return;
 		}
 
-		Document& document = found->second;
-		document.Pull = 0;
+		Document& document = *foundDocument;
+		document.Pull = kNoRequest;
 
 		const bool retrigger = reply.IsError && !document.Retriggered && AsksToBeRetriggered(reply.Payload);
 
@@ -1214,19 +1092,19 @@ namespace Graphite {
 			PullLocked(shared, asked.Uri);
 		}
 
-		// Set after the pull it describes has gone out: PullLocked knows nothing of why it was called.
+		// WARNING: Set after the pull it describes has gone out, because PullLocked knows nothing of why it was called.
 		document.Retriggered = retrigger;
 	}
 
-	void LspClient::NameOpenDocumentsAsOpened(const Shared& shared, std::vector<Location>& locations)
+	void LspClient::NameOpenDocumentsAsOpenedLocked(const Shared& shared, std::vector<Location>& locations)
 	{
 		for (Location& location : locations)
 		{
-			const std::unordered_map<std::string, Document>::const_iterator open = shared.Documents.find(ToFileUri(location.Path));
+			const Document* openDocument = FindDocument(shared, ToFileUri(location.Path));
 
-			if (open != shared.Documents.end())
+			if (openDocument != nullptr)
 			{
-				location.Path = open->second.Path;
+				location.Path = openDocument->Path;
 			}
 		}
 	}
@@ -1238,16 +1116,14 @@ namespace Graphite {
 		{
 			const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
 
-			const auto found = shared.Pending.find(*reply.ReplyTo);
+			PendingTable::node_type pending = shared.Pending.extract(*reply.ReplyTo);
 
-			if (found == shared.Pending.end())
+			if (pending.empty())
 			{
-				// Cancelled while it was in flight; the caller has moved on.
 				return;
 			}
 
-			asked = found->second;
-			shared.Pending.erase(found);
+			asked = std::move(pending.mapped());
 		}
 
 		if (asked.Kind == Question::Diagnostics)
@@ -1256,9 +1132,7 @@ namespace Graphite {
 			return;
 		}
 
-		// Parse, correlate, hand over. The columns stay in the protocol's UTF-16 units, and the
-		// caller converts them against the buffer it is about to move the caret in — which is the
-		// only copy of the file that is certainly the one the user is looking at.
+		// WARNING: Columns stay in the protocol's UTF-16 units. The caller converts them against the buffer it moves the caret in, the only copy certainly on screen.
 		Answer answer = ReadAnswer(asked, reply, shared.SemanticLegend);
 
 		if (asked.Kind == Question::Hover)
@@ -1268,23 +1142,14 @@ namespace Graphite {
 
 		{
 			const std::lock_guard<std::mutex> protocol(shared.ProtocolMutex);
-			NameOpenDocumentsAsOpened(shared, answer.Locations);
+			NameOpenDocumentsAsOpenedLocked(shared, answer.Locations);
 		}
 
-		// Nobody is shown the line they asked from. The protocol counts a declaration as a
-		// reference to itself, so a count drawn over a definition would otherwise include that
-		// definition and read one too high, and the list opened from it would lead its results
-		// with the row already on screen. Only for references: a definition reply naming the
-		// place asked about is the answer, not noise, and ResolveDefinition is what decides there
-		// is nowhere to go.
 		if (asked.Kind == Question::References && asked.From)
 		{
 			const FilePosition& from = *asked.From;
 
-			std::erase_if(answer.Locations, [&from](const Location& location) {
-				return location.Line == from.Line && location.Column == from.Column &&
-					   location.Path == from.Path;
-			});
+			std::erase_if(answer.Locations, [&from](const Location& location) { return IsPositionAskedFrom(location, from); });
 		}
 
 		const std::lock_guard<std::mutex> state(shared.StateMutex);
@@ -1317,7 +1182,7 @@ namespace Graphite {
 
 		if (asked.Kind == Question::SwitchSourceHeader)
 		{
-			if (auto location = ParseSwitchSourceHeader(reply.Payload))
+			if (std::optional<Location> location = ParseSwitchSourceHeader(reply.Payload))
 			{
 				answer.Locations.push_back(std::move(*location));
 			}
@@ -1327,16 +1192,15 @@ namespace Graphite {
 
 		if (asked.Kind == Question::Hover)
 		{
-			// Null, a missing contents, or a non-markdown shape all read as "nothing to say", not
-			// as a failure: clangd answers null on whitespace and on most punctuation.
 			if (reply.Payload.is_object())
 			{
-				const auto contents = reply.Payload.find("contents");
+				const nlohmann::json::const_iterator contents = reply.Payload.find("contents");
 
 				if (contents != reply.Payload.end() && contents->is_object())
 				{
-					if (const auto value = contents->find("value");
-						value != contents->end() && value->is_string())
+					const nlohmann::json::const_iterator value = contents->find("value");
+
+					if (value != contents->end() && value->is_string())
 					{
 						answer.Text = value->get<std::string>();
 					}
@@ -1351,7 +1215,7 @@ namespace Graphite {
 		return answer;
 	}
 
-	void LspClient::AnswerServerRequest(Shared& shared, const IncomingMessage& request)
+	void LspClient::AnswerServerRequestLocked(Shared& shared, const IncomingMessage& request)
 	{
 		const nlohmann::json& id = *request.RespondTo;
 
@@ -1385,20 +1249,14 @@ namespace Graphite {
 			return;
 		}
 
-		// Refused rather than ignored: a server that asked and heard nothing waits forever.
+		// WARNING: Refused rather than ignored, because a server that asked and heard nothing waits forever.
 		SendNowLocked(shared, shared.Rpc.ErrorReply(id, kMethodNotFound, "method not found"));
 	}
 
-	void LspClient::CompleteHandshake(Shared& shared, const IncomingMessage& reply)
+	void LspClient::CompleteHandshakeLocked(Shared& shared, const IncomingMessage& reply)
 	{
 		if (reply.IsError)
 		{
-			// A server that refused to start is not Ready, and nothing queued behind the handshake
-			// will ever be read by anyone. Keying the dispatch on the id alone and assuming success
-			// would report a working server for a process that has already given up.
-			// Said before the status, and under the mutex this already holds: Initialized never
-			// becomes true after a refusal, so every notification sent from here on would queue
-			// behind a handshake that has already ended.
 			shared.HandshakeFailed = true;
 			shared.Queued.clear();
 
@@ -1406,7 +1264,7 @@ namespace Graphite {
 
 			shared.Status.State = ServerState::Failed;
 			shared.Status.Detail = DescribeError(reply.Payload);
-			shared.Status.Percent = -1;
+			shared.Status.Percent = kNoPercent;
 
 			return;
 		}
@@ -1415,9 +1273,6 @@ namespace Graphite {
 
 		const nlohmann::json& result = reply.Payload;
 
-		// Read once, here, because this is the only message that carries it. A reply's raw
-		// integers mean nothing without it, and it is server-specific: the same index is a macro
-		// to one server and a parameter to another.
 		shared.SemanticLegend = ParseSemanticLegend(result);
 		shared.PullsDiagnostics = OffersDiagnosticPulls(result);
 
@@ -1425,12 +1280,12 @@ namespace Graphite {
 
 		if (result.is_object())
 		{
-			const auto info = result.find("serverInfo");
+			const nlohmann::json::const_iterator info = result.find("serverInfo");
 
 			if (info != result.end() && info->is_object())
 			{
-				const auto name = info->find("name");
-				const auto version = info->find("version");
+				const nlohmann::json::const_iterator name = info->find("name");
+				const nlohmann::json::const_iterator version = info->find("version");
 
 				if (name != info->end() && name->is_string())
 				{
@@ -1455,8 +1310,6 @@ namespace Graphite {
 			SendNowLocked(shared, shared.Rpc.Notification(notification.Method, notification.Params));
 		}
 
-		// Everything the caller asked for while the handshake was in flight, in the order it was
-		// asked, now that the server will accept it.
 		for (std::string& queued : shared.Queued)
 		{
 			SendNowLocked(shared, std::move(queued));
@@ -1464,8 +1317,6 @@ namespace Graphite {
 
 		shared.Queued.clear();
 
-		// Every document a tab opened while the handshake was in flight, now that the server has
-		// said whether it answers pulls.
 		PullShownLocked(shared);
 
 		const std::lock_guard<std::mutex> state(shared.StateMutex);
@@ -1485,14 +1336,14 @@ namespace Graphite {
 			return;
 		}
 
-		const auto value = params.find("value");
+		const nlohmann::json::const_iterator value = params.find("value");
 
 		if (value == params.end() || !value->is_object())
 		{
 			return;
 		}
 
-		const auto kind = value->find("kind");
+		const nlohmann::json::const_iterator kind = value->find("kind");
 
 		if (kind == value->end() || !kind->is_string())
 		{
@@ -1501,16 +1352,15 @@ namespace Graphite {
 
 		const std::string stage = kind->get<std::string>();
 
-		int percent = -1;
-		const auto percentage = value->find("percentage");
+		int percent = kNoPercent;
+		const nlohmann::json::const_iterator percentage = value->find("percentage");
 
 		if (percentage != value->end() && percentage->is_number())
 		{
 			percent = static_cast<int>(percentage->get<double>());
 		}
 
-		// Null when the server named none, which then counts as one token like any other.
-		const auto token = params.find("token");
+		const nlohmann::json::const_iterator token = params.find("token");
 		const nlohmann::json tokenId = token != params.end() ? *token : nlohmann::json();
 
 		const std::lock_guard<std::mutex> state(shared.StateMutex);
@@ -1543,16 +1393,13 @@ namespace Graphite {
 		{
 			std::erase(running, tokenId);
 
-			// Something else is still running. An end for a token never seen to begin still
-			// settles the status when nothing else is: staying Indexing with nothing left that
-			// could ever end it is the worse of the two mistakes.
 			if (!running.empty())
 			{
 				return;
 			}
 
 			Settle(shared);
-			shared.Status.Percent = -1;
+			shared.Status.Percent = kNoPercent;
 		}
 	}
 }

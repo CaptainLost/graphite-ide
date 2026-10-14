@@ -25,7 +25,6 @@ namespace Graphite {
 		Dotnet
 	};
 
-	// What must already be on the machine for the server to run. Graphite checks it and never installs it.
 	struct ServerRuntime
 	{
 		RuntimeKind Kind = RuntimeKind::None;
@@ -56,13 +55,10 @@ namespace Graphite {
 
 	std::vector<std::string> DefaultArgumentsOf(const ServerDefinition& server);
 
-	// The nearest marker wins whatever its kind: a directory naming a build is a better root than one above it naming only a checkout.
 	std::filesystem::path RootFor(const ServerDefinition& server, const std::filesystem::path& file,
 								  const std::filesystem::path& fallbackRoot);
 
-	// A marker written "*.ext" stands for any file with that extension; every other marker is a path.
 	bool DirectoryHoldsAnyMarker(const std::filesystem::path& directory, std::span<const std::string_view> markers);
 
-	// A submodule carries its own .git, so a walk stops here rather than reading somebody else's project. Only literal markers count: a folder holding a solution file is still walked for its C++.
 	bool IsProjectRoot(const std::filesystem::path& directory);
 }

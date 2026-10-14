@@ -6,7 +6,6 @@ using Graphite::HoverInfo;
 using Graphite::ParseClangdHover;
 
 namespace {
-	// Real clangd 22 replies, captured from the spec's sample file.
 	constexpr const char* kInstanceMethod = R"(### instance-method `OnUpdate`
 
 ---
@@ -310,9 +309,7 @@ TEST_CASE("A parameter's scope is its function")
 	CHECK(info.Type == "Timestep");
 }
 
-// An include hover has no kind word and an unlabelled code block. Nothing must be lost: what
-// cannot be placed lands in Documentation.
-TEST_CASE("An include hover keeps its name and its text")
+TEST_CASE("An include hover has no kind word and loses nothing: what cannot be placed lands in Documentation")
 {
 	const HoverInfo info = ParseClangdHover(kInclude);
 
@@ -381,14 +378,14 @@ TEST_CASE("CRLF line endings give the same fields as LF")
 {
 	std::string crlf;
 
-	for (const char c : std::string(kField))
+	for (const char character : std::string(kField))
 	{
-		if (c == '\n')
+		if (character == '\n')
 		{
 			crlf += '\r';
 		}
 
-		crlf += c;
+		crlf += character;
 	}
 
 	const HoverInfo info = ParseClangdHover(crlf);

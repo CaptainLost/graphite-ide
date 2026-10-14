@@ -133,7 +133,8 @@ namespace Graphite {
 
 		if (known != m_HoldsSolution.end())
 		{
-			return known->second;
+			const auto& [knownDirectory, knownHolds] = *known;
+			return knownHolds;
 		}
 
 		const bool holds = DirectoryHoldsSolution(directory);

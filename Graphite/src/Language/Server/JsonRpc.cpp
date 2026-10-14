@@ -1,16 +1,19 @@
 #include "Language/Server/JsonRpc.h"
 
+#include <cstddef>
+
 namespace {
 
-	// Content-Length framing on the way out. MessageStream only reads frames; whatever builds a
-	// payload to send is responsible for wrapping it, and that is every method here.
-	//
-	// dump() throws on a string that is not valid UTF-8, and such strings do reach here: a
-	// document whose bytes do not decode opens read-only with those bytes kept, and its text is
-	// still sent in didOpen. `replace` sends U+FFFD in their place instead (ADR 0004).
+	constexpr int CompactIndent = -1;
+	constexpr char UnusedIndentCharacter = ' ';
+	constexpr bool KeepNonAsciiAsUtf8 = false;
+
+	// WARNING: dump() throws on a string that is not valid UTF-8, and such text does reach here: a
+	// document whose bytes do not decode is still sent in didOpen. `replace` sends U+FFFD instead.
 	std::string Frame(const nlohmann::json& message)
 	{
-		const std::string body = message.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+		const std::string body = message.dump(
+			CompactIndent, UnusedIndentCharacter, KeepNonAsciiAsUtf8, nlohmann::json::error_handler_t::replace);
 		return "Content-Length: " + std::to_string(body.size()) + "\r\n\r\n" + body;
 	}
 }
@@ -45,8 +48,6 @@ namespace Graphite {
 
 	std::string JsonRpc::Reply(const nlohmann::json& id, const nlohmann::json& result)
 	{
-		// The id belongs to the server's numbering, not ours, so nothing is recorded as
-		// outstanding here — this ends an exchange rather than starting one.
 		const nlohmann::json message{
 			{"jsonrpc", "2.0"},
 			{"id", id},
@@ -69,8 +70,6 @@ namespace Graphite {
 
 	std::string JsonRpc::Cancel(RequestId id)
 	{
-		// A cancelled request's eventual reply, if one arrives at all, must not be delivered to a
-		// caller that has moved on — erase the id now rather than waiting for Receive to see it.
 		m_Outstanding.erase(id);
 		return Notification("$/cancelRequest", {{"id", id}});
 	}
@@ -82,25 +81,21 @@ namespace Graphite {
 
 	std::optional<IncomingMessage> JsonRpc::Receive(const std::string& body)
 	{
-		// Non-throwing parse: malformed input yields a discarded value rather than an exception
-		// (ADR 0004 — nothing throws across this boundary).
-		const nlohmann::json message = nlohmann::json::parse(body, nullptr, false);
+		constexpr std::nullptr_t NoParseCallback = nullptr;
+		constexpr bool ThrowOnMalformedInput = false;
+		const nlohmann::json message = nlohmann::json::parse(body, NoParseCallback, ThrowOnMalformedInput);
+
 		if (message.is_discarded())
 		{
 			return std::nullopt;
 		}
 
-		// Decide on "method" first, not "id": a reply carries an id but no method, a notification
-		// carries a method but no id, and a server-initiated *request* (clangd sends
-		// workspace/configuration and window/workDoneProgress/create early in a session) carries
-		// both. Deciding on id first reads that third shape as a reply, finds the id was never
-		// one we issued, and drops it — leaving the server waiting forever for an answer it
-		// believes we received.
+		// WARNING: "method" is checked before "id". A server-initiated request carries both, and
+		// reading it as a reply drops it, leaving the server waiting forever for an answer.
 		if (message.contains("method"))
 		{
 			if (!message.at("method").is_string())
 			{
-				// A conformant server never sends a non-string method, but nothing here throws.
 				return std::nullopt;
 			}
 
@@ -110,9 +105,6 @@ namespace Graphite {
 
 			if (message.contains("id"))
 			{
-				// A server-initiated request. The id is kept whatever its type, exactly as it
-				// arrived, because the answer must echo it unchanged: a string id read as
-				// "not a request" left the server waiting on an answer that never came.
 				incoming.RespondTo = message.at("id");
 			}
 
@@ -123,17 +115,13 @@ namespace Graphite {
 		{
 			if (!message.at("id").is_number_integer())
 			{
-				// JSON-RPC allows a string id; we only ever issue integers, so a string can never
-				// be one of ours. Treat it the same as an id we never asked about, rather than
-				// throwing trying to coerce it.
 				return std::nullopt;
 			}
 
 			const RequestId id = message.at("id").get<RequestId>();
+
 			if (!IsOutstanding(id))
 			{
-				// Either we never asked, or we did and then cancelled — either way there is no
-				// caller left waiting for this reply, so it goes nowhere.
 				return std::nullopt;
 			}
 

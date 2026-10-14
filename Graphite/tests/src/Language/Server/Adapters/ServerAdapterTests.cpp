@@ -21,7 +21,9 @@ TEST_CASE("The plain adapter answers a section by walking the user's settings al
 	const Graphite::AdapterContext context =
 		ContextWithSettings(nlohmann::json{{"csharp|inlay_hints", {{"csharp_enable_inlay_hints_for_types", true}}}});
 
-	CHECK(plain.WorkspaceConfiguration(context, "csharp|inlay_hints.csharp_enable_inlay_hints_for_types") == nlohmann::json(true));
+	const nlohmann::json enabledFlag = true;
+
+	CHECK(plain.WorkspaceConfiguration(context, "csharp|inlay_hints.csharp_enable_inlay_hints_for_types") == enabledFlag);
 }
 
 TEST_CASE("The plain adapter answers a section it cannot find with null")

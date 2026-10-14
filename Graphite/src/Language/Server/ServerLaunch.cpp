@@ -19,7 +19,7 @@ namespace Graphite {
 		{
 			const std::string logDirectory = Core::ToUtf8(places.LogDirectory);
 
-			// Searched past what was put in, so a log directory whose name holds the placeholder cannot loop.
+			// WARNING: Searching resumes past the inserted text, so a log directory whose name holds the placeholder cannot loop.
 			for (std::size_t placeholder = argument.find(kLogsPlaceholder); placeholder != std::string::npos;
 				 placeholder = argument.find(kLogsPlaceholder, placeholder + logDirectory.size()))
 			{
@@ -75,8 +75,7 @@ namespace Graphite {
 
 		std::vector<Core::EnvironmentVariable> environment;
 
-		// An .exe server built on .NET looks for its runtime here, not on PATH. The architecture's own variable wins
-		// over DOTNET_ROOT, so one inherited from the user's environment would point the server at another runtime.
+		// WARNING: The architecture's own variable wins over DOTNET_ROOT, so one inherited from the user's environment would point the server at another runtime.
 		if (!places.DotnetRoot.empty())
 		{
 			const std::string dotnetRoot = Core::ToUtf8(places.DotnetRoot);
@@ -86,7 +85,7 @@ namespace Graphite {
 															.Value = dotnetRoot});
 		}
 
-		// Both: GetTempPathW reads TMP first, while other runtimes read TEMP alone, and setting one would split a server's files between two places.
+		// WARNING: Both are set: GetTempPathW reads TMP first, while other runtimes read TEMP alone.
 		if (!places.TemporaryDirectory.empty())
 		{
 			const std::string temporaryDirectory = Core::ToUtf8(places.TemporaryDirectory);

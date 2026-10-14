@@ -9,22 +9,26 @@ namespace {
 
 	constexpr const char* kRoslynWriteLine =
 		"```csharp\r\n"
-		"void System.Console.WriteLine(string? value) (+ 19 przeci\xC4\x85\xC5\xBC" "enia)\r\n"
+		"void System.Console.WriteLine(string? value) (+ 19 przeci\xC4\x85\xC5\xBC"
+		"enia)\r\n"
 		"```\r\n"
 		"  \r\n"
 		"Writes the specified string value, followed by the current line terminator, to the standard output stream\\.  \r\n"
 		"  \r\n"
-		"Wyj\xC4\x85" "tki:  \r\n"
+		"Wyj\xC4\x85"
+		"tki:  \r\n"
 		"&nbsp;&nbsp;System\\.IO\\.IOException  \r\n";
 
 	constexpr const char* kOmniSharpWriteLine =
 		"```csharp\n"
-		"void System.Console.WriteLine(string? value) (+ 19 przeci\xC4\x85\xC5\xBC" "enia)\n"
+		"void System.Console.WriteLine(string? value) (+ 19 przeci\xC4\x85\xC5\xBC"
+		"enia)\n"
 		"```\n"
 		"\n"
 		"Writes the specified string value, followed by the current line terminator, to the standard output stream\\.\n"
 		"\n"
-		"Wyj\xC4\x85" "tki:\n"
+		"Wyj\xC4\x85"
+		"tki:\n"
 		"\n"
 		"```csharp\n"
 		"  System.IO.IOException\n"
@@ -53,8 +57,10 @@ TEST_CASE("Roslyn's hover reads as its declaration and its overload note and its
 
 	CHECK(info.Parsed);
 	CHECK(info.Declaration == "void System.Console.WriteLine(string? value)");
-	CHECK(info.OverloadNote == std::string{"(+ 19 przeci\xC4\x85\xC5\xBC" "enia)"});
-	CHECK(info.Documentation == std::string{kWriteLineSummary} + "\n\nWyj\xC4\x85" "tki:\nSystem.IO.IOException");
+	CHECK(info.OverloadNote == std::string{"(+ 19 przeci\xC4\x85\xC5\xBC"
+										   "enia)"});
+	CHECK(info.Documentation == std::string{kWriteLineSummary} + "\n\nWyj\xC4\x85"
+																 "tki:\nSystem.IO.IOException");
 	CHECK(info.Raw == kRoslynWriteLine);
 	CHECK(info.Kind.empty());
 	CHECK(info.Name.empty());
@@ -65,8 +71,10 @@ TEST_CASE("OmniSharp's overload note is split off and its second code block read
 	const Graphite::HoverInfo info = Graphite::ParseMarkdownHover(kOmniSharpWriteLine);
 
 	CHECK(info.Declaration == "void System.Console.WriteLine(string? value)");
-	CHECK(info.OverloadNote == std::string{"(+ 19 przeci\xC4\x85\xC5\xBC" "enia)"});
-	CHECK(info.Documentation == std::string{kWriteLineSummary} + "\n\nWyj\xC4\x85" "tki:\n\nSystem.IO.IOException");
+	CHECK(info.OverloadNote == std::string{"(+ 19 przeci\xC4\x85\xC5\xBC"
+										   "enia)"});
+	CHECK(info.Documentation == std::string{kWriteLineSummary} + "\n\nWyj\xC4\x85"
+																 "tki:\n\nSystem.IO.IOException");
 }
 
 TEST_CASE("csharp-ls's lists lose their code marks and keep their items")

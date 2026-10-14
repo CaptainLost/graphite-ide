@@ -15,6 +15,7 @@
 #include <chrono>
 #include <cwctype>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <ostream>
@@ -26,6 +27,18 @@
 #include <nlohmann/json.hpp>
 
 namespace {
+	constexpr bool kDoNotRespectGitIgnore = false;
+	constexpr int kMaxAttempts = 500;
+	const std::string kNoContent;
+	const std::string_view kNoItems;
+	const Graphite::FilePosition kNowhere{};
+	const std::filesystem::path kNoFolder;
+	constexpr std::chrono::milliseconds kWorkerStartDelay{5};
+	constexpr int kHalf = 2;
+	constexpr int kSecondsSinceClockStart = 1000;
+	constexpr int kDirectoryCount = 200;
+	constexpr int kFilesPerDirectory = 100;
+	constexpr std::size_t kMinimumEntries = 20000;
 
 	std::size_t g_AsksOfFirstProvider = 0;
 	std::size_t g_AsksOfSecondProvider = 0;
@@ -54,6 +67,28 @@ namespace {
 									  .Overrides = Graphite::ServerOverrides{.Binary = binary}};
 	}
 
+	struct AskedRoots
+	{
+		std::vector<std::filesystem::path> Roots;
+		bool Permitting = false;
+
+		bool Ask(const std::filesystem::path& root)
+		{
+			Roots.push_back(root);
+			return Permitting;
+		}
+
+		Graphite::LanguageServices::RootPermission Recording()
+		{
+			return std::bind_front(&AskedRoots::Ask, this);
+		}
+	};
+
+	Graphite::ServerChoice TurnedOffFor(Graphite::LanguageId language)
+	{
+		return Graphite::ChooseServer(language, std::string{Graphite::kServerTurnedOff});
+	}
+
 	void UseClangdAt(Graphite::LanguageServices& services, const std::filesystem::path& binary)
 	{
 		services.SetChoiceProvider([binary](Graphite::LanguageId language) { return ClangdAtFor(language, binary); });
@@ -77,7 +112,7 @@ TEST_CASE("A configured server with no binary reports NotFound and names what is
 	Graphite::LanguageServices services{temp.GetPath()};
 
 	UseClangdAt(services,
-								 temp.GetPath() / "no-such-clangd.exe");
+				temp.GetPath() / "no-such-clangd.exe");
 	services.EnsureStarted(temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
 
 	const Graphite::ServerStatus status = services.StatusFor(Graphite::LanguageId::Cpp);
@@ -116,17 +151,13 @@ TEST_CASE("A language turned off reads Off for that language")
 	CHECK(status.Language == Graphite::LanguageId::CSharp);
 }
 
-// The shape the editor is in on a machine with no clangd, which is every machine until one is
-// installed: the language IS configured, so a server entry exists and reports NotFound, but it
-// never got a client. That is a different path from a language with no entry at all, and it is
-// the only path such a machine ever takes.
 TEST_CASE("A ticket asked of a configured server whose binary is missing comes back Failed")
 {
 	TempDirectory temp;
 	Graphite::LanguageServices services{temp.GetPath()};
 
 	UseClangdAt(services,
-								 temp.GetPath() / "no-such-clangd.exe");
+				temp.GetPath() / "no-such-clangd.exe");
 
 	const std::filesystem::path source = temp.GetPath() / "main.cpp";
 
@@ -153,9 +184,6 @@ TEST_CASE("A ticket asked of a configured server whose binary is missing comes b
 	CHECK(answers[0].Failed);
 }
 
-// The point of warming up: a server for a language the tree contains starts from the folder
-// alone, with no document of that language ever opened. Without it the first file opened is also
-// the first thing indexed, so the counts arrive late on exactly the file being read.
 TEST_CASE("Opening a folder starts a server for a language the tree contains")
 {
 	TempDirectory temp;
@@ -165,16 +193,10 @@ TEST_CASE("Opening a folder starts a server for a language the tree contains")
 
 	Graphite::LanguageServices services{temp.GetPath()};
 
-	// A binary that does not exist, so this proves a server was STARTED without depending on a
-	// clangd being installed: NotFound is a state only reachable by having tried.
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
 
-	services.WarmUp(temp.GetPath(), false);
+	services.WarmUp(temp.GetPath(), kDoNotRespectGitIgnore);
 
-	// The walk runs on a worker and Poll is what turns what it found into servers, so this polls
-	// rather than assuming. Bounded, so a warm-up that never reports fails the test instead of
-	// hanging the suite - the same reason JobQueueTests bounds its own loop.
-	constexpr int kMaxAttempts = 500;
 	int attempt = 0;
 
 	for (; attempt < kMaxAttempts; ++attempt)
@@ -194,9 +216,6 @@ TEST_CASE("Opening a folder starts a server for a language the tree contains")
 	CHECK(services.StatusFor(Graphite::LanguageId::Cpp).State == Graphite::ServerState::NotFound);
 }
 
-// What keeps the status bar from going silent at exactly the wrong moment: a server started by
-// opening the folder has to be reportable before any document of its language is open, because
-// on a fresh start there is no such document and its indexing is the only thing happening.
 TEST_CASE("A server started by opening a folder is reportable with no document of its language")
 {
 	TempDirectory temp;
@@ -205,9 +224,8 @@ TEST_CASE("A server started by opening a folder is reportable with no document o
 
 	Graphite::LanguageServices services{temp.GetPath()};
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
-	services.WarmUp(temp.GetPath(), false);
+	services.WarmUp(temp.GetPath(), kDoNotRespectGitIgnore);
 
-	constexpr int kMaxAttempts = 500;
 	int attempt = 0;
 
 	for (; attempt < kMaxAttempts; ++attempt)
@@ -236,7 +254,6 @@ TEST_CASE("A workspace with no server started has nothing to report")
 	TempDirectory temp;
 	Graphite::LanguageServices services{temp.GetPath()};
 
-	// Nothing started at all, so nothing to report - the resting case the bar stays quiet for.
 	CHECK_FALSE(services.OverallStatus().has_value());
 }
 
@@ -250,9 +267,8 @@ TEST_CASE("A folder holding no source of a configured language starts nothing")
 	Graphite::LanguageServices services{temp.GetPath()};
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
 
-	services.WarmUp(temp.GetPath(), false);
+	services.WarmUp(temp.GetPath(), kDoNotRespectGitIgnore);
 
-	// Long enough for the walk to have finished this two-file tree several times over.
 	for (int attempt = 0; attempt < 30; ++attempt)
 	{
 		services.Poll();
@@ -277,9 +293,6 @@ TEST_CASE("EnsureStarted is idempotent for the same root")
 
 TEST_CASE("Restart backoff grows with the number of restarts already attempted")
 {
-	// Pure policy, checked without a process: the delay before restart attempt N is N*2 seconds,
-	// so the first attempt after a death is immediate and each further one waits longer. Poll
-	// waiting it out is tested through a client factory further down.
 	CHECK(Graphite::RestartBackoff(0) == std::chrono::seconds(0));
 	CHECK(Graphite::RestartBackoff(1) == std::chrono::seconds(2));
 	CHECK(Graphite::RestartBackoff(2) == std::chrono::seconds(4));
@@ -287,8 +300,6 @@ TEST_CASE("Restart backoff grows with the number of restarts already attempted")
 
 TEST_CASE("A server may restart until it has used up kMaximumRestarts")
 {
-	// The budget rule on its own, as the pure function Poll consults. The restart path that obeys it
-	// is driven through a client factory further down.
 	CHECK(Graphite::MayRestart(0));
 	CHECK(Graphite::MayRestart(2));
 	CHECK_FALSE(Graphite::MayRestart(3));
@@ -298,16 +309,13 @@ TEST_CASE("A server may restart until it has used up kMaximumRestarts")
 TEST_CASE("The restart budget refills only after the server has stayed up for kStableAfter")
 {
 	using Point = std::chrono::steady_clock::time_point;
-	const Point since{std::chrono::seconds(1000)};
+	const Point since{std::chrono::seconds(kSecondsSinceClockStart)};
 
-	// Down (no start recorded): never refilled.
 	CHECK_FALSE(Graphite::RestartBudgetRefilled(std::nullopt, since + std::chrono::hours(1)));
 
-	// Up, but not for long enough yet.
 	CHECK_FALSE(Graphite::RestartBudgetRefilled(since, since));
 	CHECK_FALSE(Graphite::RestartBudgetRefilled(since, since + Graphite::kStableAfter - std::chrono::seconds(1)));
 
-	// Stable for the full period.
 	CHECK(Graphite::RestartBudgetRefilled(since, since + Graphite::kStableAfter));
 	CHECK(Graphite::RestartBudgetRefilled(since, since + std::chrono::hours(1)));
 }
@@ -320,13 +328,10 @@ TEST_CASE("Tickets are unique across two different servers")
 	Graphite::LanguageServices services{tempA.GetPath()};
 	UseClangdAt(services, tempA.GetPath() / "absent.exe");
 
-	// Neither root ever gets a live client (the binary does not exist), so both tickets are
-	// failed on the spot — but a ticket is issued before that is known, and issuing is what
-	// this case checks: two different (language, root) keys must never hand out the same one.
 	const Graphite::LanguageServices::Ticket first =
-		services.AskDefinition(tempA.GetPath() / "a.cpp", Graphite::LanguageId::Cpp, {});
+		services.AskDefinition(tempA.GetPath() / "a.cpp", Graphite::LanguageId::Cpp, kNowhere);
 	const Graphite::LanguageServices::Ticket second =
-		services.AskDefinition(tempB.GetPath() / "b.cpp", Graphite::LanguageId::Cpp, {});
+		services.AskDefinition(tempB.GetPath() / "b.cpp", Graphite::LanguageId::Cpp, kNowhere);
 
 	CHECK(first != second);
 }
@@ -349,10 +354,6 @@ TEST_CASE("A ticket for a language with no configured server is answered Failed 
 
 TEST_CASE("A semantic-tokens ticket the client refuses before the handshake is failed at once")
 {
-	// where.exe never completes a handshake, so the client has no semantic legend and declines to
-	// ask. Its "not asked" request id must not be parked as a pending request: nothing would ever
-	// answer it, and the editor would wait on the ticket for the lifetime of the tab. Taken without
-	// a Poll, so an answer that only arrives when the process dies does not count.
 	TempDirectory temp;
 	Graphite::LanguageServices services{temp.GetPath()};
 
@@ -388,11 +389,6 @@ TEST_CASE("TakeAnswers empties its queue")
 
 TEST_CASE("A ticket outstanding when its server dies is answered Failed, never left hanging")
 {
-	// where.exe is a real executable, not a fake path: LspClient always launches its binary with
-	// "--background-index", where.exe treats that as a pattern it cannot find anything for,
-	// prints its "could not find" message, and exits within a few hundred milliseconds — a
-	// process that starts and then genuinely dies mid-conversation, without depending on clangd
-	// being installed here.
 	TempDirectory temp;
 	Graphite::LanguageServices services{temp.GetPath()};
 
@@ -402,9 +398,6 @@ TEST_CASE("A ticket outstanding when its server dies is answered Failed, never l
 	const Graphite::LanguageServices::Ticket ticket =
 		services.AskSymbols(temp.GetPath() / "main.cpp", Graphite::LanguageId::Cpp);
 
-	// Bounded so a broken implementation fails this test rather than hanging the suite — the
-	// same reasoning JobQueueTests' cancellation test uses for its own polling loop.
-	constexpr int kMaxAttempts = 500;
 	bool delivered = false;
 	bool failed = false;
 	int attempt = 0;
@@ -431,8 +424,6 @@ TEST_CASE("A ticket outstanding when its server dies is answered Failed, never l
 		}
 	}
 
-	// attempt < kMaxAttempts proves the loop stopped because the ticket arrived, not because it
-	// ran out of patience — the same distinction JobQueueTests draws with `rounds`.
 	CHECK(attempt < kMaxAttempts);
 	CHECK(delivered);
 	CHECK(failed);
@@ -453,15 +444,11 @@ TEST_CASE("A fresh services object has nothing to say about diagnostics")
 
 TEST_CASE("A document a server never received produces no note")
 {
-	// The shape of every machine with no clangd installed: the language is configured, so an
-	// entry exists and reports NotFound, but nothing was ever sent. A version note here would
-	// claim a document was sent under a version that never went anywhere, and the model would
-	// then hold an entry for a file no server has ever heard of.
 	TempDirectory temp;
 	Graphite::LanguageServices services{temp.GetPath()};
 
 	UseClangdAt(services,
-								 temp.GetPath() / "no-such-clangd.exe");
+				temp.GetPath() / "no-such-clangd.exe");
 
 	const std::filesystem::path source = temp.GetPath() / "main.cpp";
 
@@ -475,10 +462,6 @@ TEST_CASE("A document a server never received produces no note")
 	CHECK(update.Versions.empty());
 	CHECK(update.Closed.empty());
 }
-
-// Every case below configures a binary that does not exist, as the NotFound cases above do:
-// NotFound is only reachable by having tried to start, so it tells "started" from "refused"
-// without a clangd installed.
 
 TEST_CASE("A root the permission refuses gets no server, only a restricted entry")
 {
@@ -571,10 +554,8 @@ TEST_CASE("Warming up a refused root starts nothing")
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
 	services.SetRootPermission([](const std::filesystem::path&) { return false; });
 
-	services.WarmUp(temp.GetPath(), false);
+	services.WarmUp(temp.GetPath(), kDoNotRespectGitIgnore);
 
-	// Long enough for the permitted case above to have found main.cpp many times over. A
-	// negative can only be bounded, never proven, so this gives the walk every chance.
 	for (int attempt = 0; attempt < 50; ++attempt)
 	{
 		services.Poll();
@@ -584,10 +565,6 @@ TEST_CASE("Warming up a refused root starts nothing")
 	CHECK(services.StatusFor(Graphite::LanguageId::Cpp).State == Graphite::ServerState::NotConfigured);
 }
 
-// A tab open on the very file the warm-up walk happens to find - a tab restored at startup, or
-// one kept on a restricted server that has just been trusted. The warm-up's own open and close
-// must not touch it: a close there would make the server forget the tab, and every edit after
-// would be dropped as a change to a document it was never told about.
 TEST_CASE("Warming up leaves a document the server already holds open")
 {
 	TempDirectory temp;
@@ -603,10 +580,8 @@ TEST_CASE("Warming up leaves a document the server already holds open")
 	services.OpenDocument(source, Graphite::LanguageId::Cpp, "edited in the tab\n");
 	REQUIRE(services.Holds(source, Graphite::LanguageId::Cpp));
 
-	services.WarmUp(temp.GetPath(), false);
+	services.WarmUp(temp.GetPath(), kDoNotRespectGitIgnore);
 
-	// Long enough for the walk to have found main.cpp many times over, as the permitted warm-up
-	// test above shows; what it found is only acted on inside Poll.
 	for (int attempt = 0; attempt < 50; ++attempt)
 	{
 		services.Poll();
@@ -632,17 +607,12 @@ TEST_CASE("A restricted server is reported for the workspace when nothing else i
 	CHECK(overall->State == Graphite::ServerState::Restricted);
 }
 
-// A trusted workspace with one file opened from an untrusted folder elsewhere. The untrusted
-// folder's restricted entry is about that folder alone; a tab in the trusted one has to be told
-// about its own server, whatever order the two roots sort in.
 TEST_CASE("A document's status is its own root's, not another root's of the same language")
 {
 	TempDirectory temp;
 
-	// compile_flags.txt is where RootFor stops, so each folder is a root of its own. The refused
-	// one sorts first, so a lookup by language alone would answer with it.
-	temp.MakeFile("other/compile_flags.txt", "");
-	temp.MakeFile("work/compile_flags.txt", "");
+	temp.MakeFile("other/compile_flags.txt", kNoContent);
+	temp.MakeFile("work/compile_flags.txt", kNoContent);
 
 	const std::filesystem::path refused = temp.GetPath() / "other" / "main.cpp";
 	const std::filesystem::path permitted = temp.GetPath() / "work" / "main.cpp";
@@ -671,16 +641,12 @@ TEST_CASE("A document with no server entry of its own reports NotConfigured")
 		  Graphite::ServerState::NotConfigured);
 }
 
-// A trusted server is the more useful thing for the workspace slot to show than an untrusted one
-// somewhere else, which already speaks for itself in its own tabs. Ready cannot be reached
-// without a live clangd, so this pins the ordering through NotFound, which ranks with it above
-// Restricted; the refused root sorts first, so a tie would still answer Restricted.
 TEST_CASE("A trusted root's server outranks a restricted one for the workspace")
 {
 	TempDirectory temp;
 
-	temp.MakeFile("other/compile_flags.txt", "");
-	temp.MakeFile("work/compile_flags.txt", "");
+	temp.MakeFile("other/compile_flags.txt", kNoContent);
+	temp.MakeFile("work/compile_flags.txt", kNoContent);
 
 	const std::filesystem::path refusedRoot = temp.GetPath() / "other";
 
@@ -698,29 +664,21 @@ TEST_CASE("A trusted root's server outranks a restricted one for the workspace")
 	CHECK(overall->State == Graphite::ServerState::NotFound);
 }
 
-// A file with no marker above it used to resolve to one shared empty root, whatever folder it
-// came from, so one trust answer covered files from folders the user had judged differently.
-// Each such file now gets a root of its own to be judged by: the open folder when it lies inside
-// it, its own directory otherwise. The roots are observed through the permission callback, which
-// is asked about exactly the root a server would be started for.
 TEST_CASE("A file with no marker inside the fallback root resolves to the fallback root")
 {
 	TempDirectory temp;
 	temp.MakeFile("workspace/src/main.cpp", "int main() { return 0; }\n");
 
 	Graphite::LanguageServices services{temp.GetPath() / "workspace"};
-	std::vector<std::filesystem::path> asked;
+	AskedRoots asked;
 
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
-	services.SetRootPermission([&asked](const std::filesystem::path& root) {
-		asked.push_back(root);
-		return false;
-	});
+	services.SetRootPermission(asked.Recording());
 
 	services.EnsureStarted(temp.GetPath() / "workspace" / "src" / "main.cpp", Graphite::LanguageId::Cpp);
 
-	REQUIRE(asked.size() == 1);
-	CHECK(asked.front() == temp.GetPath() / "workspace");
+	REQUIRE(asked.Roots.size() == 1);
+	CHECK(asked.Roots.front() == temp.GetPath() / "workspace");
 }
 
 TEST_CASE("A file with no marker outside the fallback root resolves to its own directory")
@@ -730,57 +688,44 @@ TEST_CASE("A file with no marker outside the fallback root resolves to its own d
 	temp.MakeFile("elsewhere/loose.cpp", "int x;\n");
 
 	Graphite::LanguageServices services{temp.GetPath() / "workspace"};
-	std::vector<std::filesystem::path> asked;
+	AskedRoots asked;
 
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
-	services.SetRootPermission([&asked](const std::filesystem::path& root) {
-		asked.push_back(root);
-		return false;
-	});
+	services.SetRootPermission(asked.Recording());
 
 	services.EnsureStarted(temp.GetPath() / "elsewhere" / "loose.cpp", Graphite::LanguageId::Cpp);
 
-	REQUIRE(asked.size() == 1);
-	CHECK(asked.front() == temp.GetPath() / "elsewhere");
+	REQUIRE(asked.Roots.size() == 1);
+	CHECK(asked.Roots.front() == temp.GetPath() / "elsewhere");
 }
 
-// No folder open is an empty fallback root, and the file still gets a root it can be judged by
-// rather than an empty one no trust entry can ever cover.
 TEST_CASE("A file with no marker and no fallback root resolves to its own directory")
 {
 	TempDirectory temp;
 	temp.MakeFile("loose/main.cpp", "int main() { return 0; }\n");
 
-	Graphite::LanguageServices services{{}};
-	std::vector<std::filesystem::path> asked;
+	Graphite::LanguageServices services{kNoFolder};
+	AskedRoots asked;
 
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
-	services.SetRootPermission([&asked](const std::filesystem::path& root) {
-		asked.push_back(root);
-		return false;
-	});
+	services.SetRootPermission(asked.Recording());
 
 	services.EnsureStarted(temp.GetPath() / "loose" / "main.cpp", Graphite::LanguageId::Cpp);
 
-	REQUIRE(asked.size() == 1);
-	CHECK(asked.front() == temp.GetPath() / "loose");
+	REQUIRE(asked.Roots.size() == 1);
+	CHECK(asked.Roots.front() == temp.GetPath() / "loose");
 }
 
-// The fallback follows the open folder, and a directory resolved against the previous one must
-// not keep that answer.
 TEST_CASE("Changing the fallback root re-resolves a directory already seen")
 {
 	TempDirectory temp;
 	temp.MakeFile("workspace/src/main.cpp", "int main() { return 0; }\n");
 
-	Graphite::LanguageServices services{{}};
-	std::vector<std::filesystem::path> asked;
+	Graphite::LanguageServices services{kNoFolder};
+	AskedRoots asked;
 
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
-	services.SetRootPermission([&asked](const std::filesystem::path& root) {
-		asked.push_back(root);
-		return false;
-	});
+	services.SetRootPermission(asked.Recording());
 
 	const std::filesystem::path source = temp.GetPath() / "workspace" / "src" / "main.cpp";
 
@@ -788,36 +733,17 @@ TEST_CASE("Changing the fallback root re-resolves a directory already seen")
 	services.SetFallbackRoot(temp.GetPath() / "workspace");
 	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
 
-	REQUIRE(asked.size() == 2);
-	CHECK(asked[0] == temp.GetPath() / "workspace" / "src");
-	CHECK(asked[1] == temp.GetPath() / "workspace");
+	REQUIRE(asked.Roots.size() == 2);
+	CHECK(asked.Roots[0] == temp.GetPath() / "workspace" / "src");
+	CHECK(asked.Roots[1] == temp.GetPath() / "workspace");
 }
 
-namespace {
-	// Every root the permission is asked about, in order: a new server entry is created exactly
-	// when its root is asked about, so this is how a test sees which server a call went to.
-	struct AskedRoots
-	{
-		std::vector<std::filesystem::path> Roots;
-
-		Graphite::LanguageServices::RootPermission Refusing()
-		{
-			return [this](const std::filesystem::path& root) {
-				Roots.push_back(root);
-				return false;
-			};
-		}
-	};
-}
-
-// The orphaning 76d329b introduced: re-resolving an open document after the fallback moved sent
-// its edits and its close to a server that never received didOpen.
 TEST_CASE("An open document keeps its server when the fallback root moves")
 {
 	TempDirectory temp;
 	temp.MakeFile("workspace/src/main.cpp", "int main() { return 0; }\n");
 
-	Graphite::LanguageServices services{{}};
+	Graphite::LanguageServices services{kNoFolder};
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
 
 	const std::filesystem::path source = temp.GetPath() / "workspace" / "src" / "main.cpp";
@@ -842,10 +768,10 @@ TEST_CASE("An open document's status is its own server's after the fallback root
 	TempDirectory temp;
 	temp.MakeFile("workspace/src/main.cpp", "int main() { return 0; }\n");
 
-	Graphite::LanguageServices services{{}};
+	Graphite::LanguageServices services{kNoFolder};
 	AskedRoots asked;
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
-	services.SetRootPermission(asked.Refusing());
+	services.SetRootPermission(asked.Recording());
 
 	const std::filesystem::path source = temp.GetPath() / "workspace" / "src" / "main.cpp";
 
@@ -853,7 +779,6 @@ TEST_CASE("An open document's status is its own server's after the fallback root
 	services.OpenDocument(source, Graphite::LanguageId::Cpp, "x\n");
 	services.SetFallbackRoot(temp.GetPath() / "workspace");
 
-	// Per-frame EnsureStarted for the active tab must not start a second server for it.
 	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
 
 	CHECK(asked.Roots.size() == 1);
@@ -868,9 +793,8 @@ TEST_CASE("A markerless file inside the open folder resolves to it whatever the 
 	Graphite::LanguageServices services{temp.GetPath() / "Workspace"};
 	AskedRoots asked;
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
-	services.SetRootPermission(asked.Refusing());
+	services.SetRootPermission(asked.Recording());
 
-	// The same file spelled in another case, as a path from a URI or the command line can be.
 	std::wstring lowered = (temp.GetPath() / "Workspace" / "Src" / "main.cpp").native();
 	for (wchar_t& character : lowered)
 	{
@@ -883,7 +807,6 @@ TEST_CASE("A markerless file inside the open folder resolves to it whatever the 
 	CHECK(asked.Roots.front() == temp.GetPath() / "Workspace");
 }
 
-// F12 into a header outside the folder, with no marker of its own - the system and SDK headers.
 TEST_CASE("A markerless file a server named resolves to that server's root")
 {
 	TempDirectory temp;
@@ -894,7 +817,7 @@ TEST_CASE("A markerless file a server named resolves to that server's root")
 	Graphite::LanguageServices services{temp.GetPath() / "project"};
 	AskedRoots asked;
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
-	services.SetRootPermission(asked.Refusing());
+	services.SetRootPermission(asked.Recording());
 
 	const std::filesystem::path source = temp.GetPath() / "project" / "main.cpp";
 	const std::filesystem::path header = temp.GetPath() / "sdk" / "include" / "vector";
@@ -907,7 +830,6 @@ TEST_CASE("A markerless file a server named resolves to that server's root")
 	CHECK(asked.Roots.front() == temp.GetPath() / "project");
 }
 
-// A header that has a project of its own is that project's, however it was reached.
 TEST_CASE("A named file with a marker of its own keeps its own root")
 {
 	TempDirectory temp;
@@ -919,7 +841,7 @@ TEST_CASE("A named file with a marker of its own keeps its own root")
 	Graphite::LanguageServices services{temp.GetPath() / "project"};
 	AskedRoots asked;
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
-	services.SetRootPermission(asked.Refusing());
+	services.SetRootPermission(asked.Recording());
 
 	const std::filesystem::path source = temp.GetPath() / "project" / "main.cpp";
 	const std::filesystem::path header = temp.GetPath() / "library" / "lib.h";
@@ -932,8 +854,6 @@ TEST_CASE("A named file with a marker of its own keeps its own root")
 	CHECK(asked.Roots[1] == temp.GetPath() / "library");
 }
 
-// The open folder comes before the server that named a file: a markerless file inside the folder
-// is the folder's, even when a server rooted elsewhere pointed at it.
 TEST_CASE("A markerless file inside the open folder stays the folder's when another server names it")
 {
 	TempDirectory temp;
@@ -944,7 +864,7 @@ TEST_CASE("A markerless file inside the open folder stays the folder's when anot
 	Graphite::LanguageServices services{temp.GetPath() / "workspace"};
 	AskedRoots asked;
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
-	services.SetRootPermission(asked.Refusing());
+	services.SetRootPermission(asked.Recording());
 
 	const std::filesystem::path source = temp.GetPath() / "library" / "lib.cpp";
 	const std::filesystem::path header = temp.GetPath() / "workspace" / "src" / "shared.h";
@@ -1016,8 +936,6 @@ TEST_CASE("The open folder's server is never shut down for being idle")
 	CHECK(services.IsRunningFor(source, Graphite::LanguageId::Cpp));
 }
 
-// A subfolder of a repository opened on its own: the server is rooted at the repository, above
-// the open folder, and it is still the workspace's server.
 TEST_CASE("A server rooted above the open folder is never shut down for being idle")
 {
 	TempDirectory temp;
@@ -1061,7 +979,6 @@ TEST_CASE("A server holding an open document is never shut down for being idle")
 
 	CHECK(services.IsRunningFor(loose, Graphite::LanguageId::Cpp));
 
-	// And once it is closed, the delay starts from the close, not from when it was opened.
 	services.CloseDocument(loose, Graphite::LanguageId::Cpp);
 	services.Poll();
 	clock.Now += std::chrono::seconds(1);
@@ -1069,8 +986,6 @@ TEST_CASE("A server holding an open document is never shut down for being idle")
 	CHECK(services.IsRunningFor(loose, Graphite::LanguageId::Cpp));
 }
 
-// A reaped server's name for a file goes with it: the header's server is gone, so the header is
-// judged by its own directory again rather than by a root nothing runs at.
 TEST_CASE("Reaping a server forgets the files it named")
 {
 	TempDirectory temp;
@@ -1084,7 +999,7 @@ TEST_CASE("Reaping a server forgets the files it named")
 	AskedRoots asked;
 	services.SetClock(clock.Get());
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
-	services.SetRootPermission(asked.Refusing());
+	services.SetRootPermission(asked.Recording());
 
 	const std::filesystem::path loose = temp.GetPath() / "elsewhere" / "loose.cpp";
 	const std::filesystem::path header = temp.GetPath() / "sdk" / "include" / "vector";
@@ -1102,17 +1017,15 @@ TEST_CASE("Reaping a server forgets the files it named")
 	CHECK(asked.Roots[1] == temp.GetPath() / "sdk" / "include");
 }
 
-// The sticky key lives exactly as long as the document is open: a file closed and opened again
-// resolves afresh, so a fallback root set in between is honoured.
 TEST_CASE("Closing a document releases its server key so a reopened file resolves afresh")
 {
 	TempDirectory temp;
 	temp.MakeFile("workspace/src/main.cpp", "int main() { return 0; }\n");
 
-	Graphite::LanguageServices services{{}};
+	Graphite::LanguageServices services{kNoFolder};
 	AskedRoots asked;
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
-	services.SetRootPermission(asked.Refusing());
+	services.SetRootPermission(asked.Recording());
 
 	const std::filesystem::path source = temp.GetPath() / "workspace" / "src" / "main.cpp";
 
@@ -1131,7 +1044,6 @@ TEST_CASE("Closing a document releases its server key so a reopened file resolve
 	CHECK(asked.Roots[1] == temp.GetPath() / "workspace");
 }
 
-// Withdrawing trust from a server takes back what it named, the same as reaping it does.
 TEST_CASE("Restricting a server forgets the files it named")
 {
 	TempDirectory temp;
@@ -1140,79 +1052,66 @@ TEST_CASE("Restricting a server forgets the files it named")
 	temp.MakeFile("sdk/include/vector", "// header\n");
 
 	Graphite::LanguageServices services{temp.GetPath() / "project"};
-	std::vector<std::filesystem::path> asked;
-	bool permitProject = true;
+	AskedRoots asked;
+	asked.Permitting = true;
 	UseClangdAt(services, temp.GetPath() / "absent.exe");
-	services.SetRootPermission([&](const std::filesystem::path& root) {
-		asked.push_back(root);
-		return permitProject;
-	});
+	services.SetRootPermission(asked.Recording());
 
 	const std::filesystem::path source = temp.GetPath() / "project" / "main.cpp";
 	const std::filesystem::path header = temp.GetPath() / "sdk" / "include" / "vector";
 
 	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
 	services.NoteNamed(header, source, Graphite::LanguageId::Cpp);
-	REQUIRE(asked.size() == 1);
+	REQUIRE(asked.Roots.size() == 1);
 
-	permitProject = false;
+	asked.Permitting = false;
 	services.Revalidate();
-	asked.clear();
+	asked.Roots.clear();
 
 	services.EnsureStarted(header, Graphite::LanguageId::Cpp);
 
-	REQUIRE(asked.size() == 1);
-	CHECK(asked[0] == temp.GetPath() / "sdk" / "include");
+	REQUIRE(asked.Roots.size() == 1);
+	CHECK(asked.Roots[0] == temp.GetPath() / "sdk" / "include");
 }
 
 TEST_CASE("Destroying the services while a warm-up walk is running does not wait for the walk to finish")
 {
 	TempDirectory temp;
 
-	// A tree with no source of any configured language, so nothing ends the walk early and
-	// it has to visit every entry.
-	for (int dir = 0; dir < 200; ++dir)
+	for (int directory = 0; directory < kDirectoryCount; ++directory)
 	{
-		for (int file = 0; file < 100; ++file)
+		for (int file = 0; file < kFilesPerDirectory; ++file)
 		{
-			temp.MakeFile("d" + std::to_string(dir) + "/f" + std::to_string(file) + ".txt", "x");
+			temp.MakeFile("d" + std::to_string(directory) + "/f" + std::to_string(file) + ".txt", "x");
 		}
 	}
 
-	// What the walk costs when nothing stops it, measured on the same tree.
-	const auto walkStart = std::chrono::steady_clock::now();
+	const std::chrono::steady_clock::time_point walkStart = std::chrono::steady_clock::now();
 	std::size_t entries = 0;
-	for (const auto& entry : std::filesystem::recursive_directory_iterator(temp.GetPath()))
+	for (const std::filesystem::directory_entry& entry : std::filesystem::recursive_directory_iterator(temp.GetPath()))
 	{
 		(void)entry;
 		++entries;
 	}
-	const auto fullWalk = std::chrono::steady_clock::now() - walkStart;
-	REQUIRE(entries >= 20000);
+	const std::chrono::steady_clock::duration fullWalk = std::chrono::steady_clock::now() - walkStart;
+	REQUIRE(entries >= kMinimumEntries);
 
 	std::chrono::steady_clock::duration closing{};
 	{
 		auto services = std::make_unique<Graphite::LanguageServices>(temp.GetPath());
-		services->WarmUp(temp.GetPath(), false);
+		services->WarmUp(temp.GetPath(), kDoNotRespectGitIgnore);
 
-		// Let the worker get going, then close the way the app does.
-		std::this_thread::sleep_for(std::chrono::milliseconds(5));
+		std::this_thread::sleep_for(kWorkerStartDelay);
 
-		const auto closeStart = std::chrono::steady_clock::now();
+		const std::chrono::steady_clock::time_point closeStart = std::chrono::steady_clock::now();
 		services.reset();
 		closing = std::chrono::steady_clock::now() - closeStart;
 	}
 
-	// The walk visits each entry and tests it against the ignore rules, so it costs more
-	// than the bare iteration above; closing in under half of that bare cost means it stopped
-	// early rather than finishing.
-	CHECK(closing < fullWalk / 2);
+	CHECK(closing < fullWalk / kHalf);
 }
 
 namespace {
-	// Hands LanguageServices clients with no process behind them, and keeps a pointer to the
-	// newest one so a test can kill it or finish its handshake. The pointer is only good until
-	// the next restart destroys that client, which is why it is re-read after every Poll.
 	struct ClientFactorySpy
 	{
 		std::size_t Made = 0;
@@ -1235,8 +1134,6 @@ namespace {
 			return client;
 		}
 
-		// Refuses the handshake, which is the shortest way a client without a process reports
-		// Failed: the same state a crashed clangd's reader leaves behind.
 		void Kill() const
 		{
 			Latest->Deliver(R"({"jsonrpc":"2.0","id":1,"error":{"code":-32603,"message":"gone"}})");
@@ -1248,18 +1145,16 @@ namespace {
 		}
 	};
 
-	// A services object whose C++ server is built by `spy`, started for `source` under `temp`.
-	// The binary must exist for StartServer to get as far as the factory; nothing ever runs it.
 	void StartWithSpy(Graphite::LanguageServices& services, TempDirectory& temp,
 					  ClientFactorySpy& spy, FakeClock& clock,
 					  const std::filesystem::path& source)
 	{
-		temp.MakeFile("stand-in-clangd.exe", "");
+		temp.MakeFile("stand-in-clangd.exe", kNoContent);
 
 		services.SetClock(clock.Get());
 		services.SetClientFactory(spy.Get());
 		UseClangdAt(services,
-									 temp.GetPath() / "stand-in-clangd.exe");
+					temp.GetPath() / "stand-in-clangd.exe");
 		services.EnsureStarted(source, Graphite::LanguageId::Cpp);
 	}
 
@@ -1310,7 +1205,6 @@ TEST_CASE("Starting a server that needs no runtime looks for no .NET")
 }
 
 namespace {
-
 	Graphite::ServerChoice ChooseNothing(Graphite::LanguageId language)
 	{
 		return Graphite::ChooseServer(language, std::string{Graphite::kServerTurnedOff});
@@ -1336,7 +1230,7 @@ TEST_CASE("A document opened while no server is chosen reaches the server chosen
 	CHECK(services.Holds(source, Graphite::LanguageId::Cpp));
 	CHECK(spy.Made == 0);
 
-	temp.MakeFile("stand-in-clangd.exe", "");
+	temp.MakeFile("stand-in-clangd.exe", kNoContent);
 	UseClangdAt(services, temp.GetPath() / "stand-in-clangd.exe");
 	services.Reconfigure(Graphite::LanguageId::Cpp);
 
@@ -1365,7 +1259,7 @@ TEST_CASE("A document closed while no server is chosen is not replayed later")
 
 	CHECK_FALSE(services.Holds(source, Graphite::LanguageId::Cpp));
 
-	temp.MakeFile("stand-in-clangd.exe", "");
+	temp.MakeFile("stand-in-clangd.exe", kNoContent);
 	UseClangdAt(services, temp.GetPath() / "stand-in-clangd.exe");
 	services.Reconfigure(Graphite::LanguageId::Cpp);
 
@@ -1405,13 +1299,11 @@ TEST_CASE("A dead client is replaced through the factory and told every open doc
 	spy.Kill();
 	services.Poll();
 
-	// The first restart waits for nothing: RestartBackoff(0) is zero.
 	CHECK(spy.Made == 2);
 	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).State ==
 		  Graphite::ServerState::Starting);
 	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).Restarts == 1);
 
-	// The replay is held behind the new client's handshake, like anything else it is sent.
 	spy.Answer();
 
 	const std::vector<std::string> sent = spy.Latest->TakeSent();
@@ -1438,7 +1330,6 @@ TEST_CASE("A server that dies again waits out its backoff on the services clock 
 	spy.Kill();
 	services.Poll();
 
-	// Noticed, but RestartBackoff(1) has not elapsed.
 	CHECK(spy.Made == 2);
 	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).State ==
 		  Graphite::ServerState::Failed);
@@ -1469,8 +1360,6 @@ TEST_CASE("A server that keeps dying is left Failed after kMaximumRestarts resta
 		spy.Kill();
 		services.Poll();
 
-		// Far past any backoff, and well short of kStableAfter: a dead server is never up, so
-		// the budget cannot refill however long this waits.
 		clock.Now += std::chrono::seconds(30);
 		services.Poll();
 	}
@@ -1518,10 +1407,6 @@ TEST_CASE("A restarted server that stays up for kStableAfter earns its restarts 
 	clock.Now += std::chrono::seconds(1);
 	services.Poll();
 	CHECK(services.StatusFor(source, Graphite::LanguageId::Cpp).Restarts == 0);
-
-	// Not killed again to watch the zero backoff come back: a client without a process can only
-	// fail its handshake, and this one has finished it. What the restart path reads is
-	// server.Restarts, and the status above is that number as Poll left it.
 }
 
 TEST_CASE("A message a server shows reaches TakeMessages once")
@@ -1557,15 +1442,13 @@ TEST_CASE("The warm-up still opens and closes a C++ file so clangd loads its com
 	FakeClock clock;
 
 	temp.MakeFile("main.cpp", "int main() { return 0; }\n");
-	temp.MakeFile("stand-in-clangd.exe", "");
+	temp.MakeFile("stand-in-clangd.exe", kNoContent);
 
 	services.SetClock(clock.Get());
 	services.SetClientFactory(spy.Get());
 	UseClangdAt(services, temp.GetPath() / "stand-in-clangd.exe");
 
-	services.WarmUp(temp.GetPath(), false);
-
-	constexpr int kMaxAttempts = 500;
+	services.WarmUp(temp.GetPath(), kDoNotRespectGitIgnore);
 
 	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
 	{
@@ -1589,9 +1472,7 @@ TEST_CASE("A language whose server is turned off reports Off and starts nothing"
 	Graphite::LanguageServices services{temp.GetPath()};
 	const std::filesystem::path source = temp.GetPath() / "main.cpp";
 
-	services.SetChoiceProvider([](Graphite::LanguageId language) {
-		return Graphite::ChooseServer(language, std::string{Graphite::kServerTurnedOff});
-	});
+	services.SetChoiceProvider(TurnedOffFor);
 
 	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
 
@@ -1611,15 +1492,15 @@ TEST_CASE("The user's extra arguments and options reach the client that is built
 	ClientFactorySpy spy;
 	FakeClock clock;
 
-	temp.MakeFile("stand-in-clangd.exe", "");
+	temp.MakeFile("stand-in-clangd.exe", kNoContent);
 
 	const nlohmann::json options{{"fallbackFlags", nlohmann::json::array({"-std=c++20"})}};
 	const Graphite::ServerChoice choice{.Kind = Graphite::ServerChoiceKind::Chosen,
-									   .Server = Graphite::FindServer("clangd"),
-									   .Overrides = Graphite::ServerOverrides{.Binary = temp.GetPath() / "stand-in-clangd.exe",
-																			 .ExtraArguments = {"--log=verbose"},
-																			 .InitializationOptions = options,
-																			 .Settings = nullptr}};
+										.Server = Graphite::FindServer("clangd"),
+										.Overrides = Graphite::ServerOverrides{.Binary = temp.GetPath() / "stand-in-clangd.exe",
+																			   .ExtraArguments = {"--log=verbose"},
+																			   .InitializationOptions = options,
+																			   .Settings = nullptr}};
 
 	services.SetClock(clock.Get());
 	services.SetClientFactory(spy.Get());
@@ -1637,6 +1518,20 @@ TEST_CASE("The choice is asked once per language until Reconfigure asks again")
 	{
 		std::size_t Cpp = 0;
 		std::size_t Other = 0;
+
+		Graphite::ServerChoice Answer(Graphite::LanguageId language)
+		{
+			if (language == Graphite::LanguageId::Cpp)
+			{
+				++Cpp;
+			}
+			else
+			{
+				++Other;
+			}
+
+			return Graphite::ChooseServer(language, std::string{Graphite::kServerTurnedOff});
+		}
 	};
 
 	TempDirectory temp;
@@ -1644,18 +1539,7 @@ TEST_CASE("The choice is asked once per language until Reconfigure asks again")
 	AskCounter counter;
 	const std::filesystem::path source = temp.GetPath() / "main.cpp";
 
-	services.SetChoiceProvider([&counter](Graphite::LanguageId language) {
-		if (language == Graphite::LanguageId::Cpp)
-		{
-			++counter.Cpp;
-		}
-		else
-		{
-			++counter.Other;
-		}
-
-		return Graphite::ChooseServer(language, std::string{Graphite::kServerTurnedOff});
-	});
+	services.SetChoiceProvider(std::bind_front(&AskCounter::Answer, &counter));
 
 	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
 	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
@@ -1682,7 +1566,7 @@ TEST_CASE("Reconfigure moves every open document of the language to the server c
 	StartWithSpy(services, temp, spy, clock, source);
 	services.OpenDocument(source, Graphite::LanguageId::Cpp, "int moved;\n");
 
-	temp.MakeFile("other-clangd.exe", "");
+	temp.MakeFile("other-clangd.exe", kNoContent);
 	UseClangdAt(services, temp.GetPath() / "other-clangd.exe");
 	services.Reconfigure(Graphite::LanguageId::Cpp);
 
@@ -1736,9 +1620,7 @@ TEST_CASE("Reconfigure to a server turned off stops the server and reports Off")
 	StartWithSpy(services, temp, spy, clock, source);
 	services.OpenDocument(source, Graphite::LanguageId::Cpp, "int dropped;\n");
 
-	services.SetChoiceProvider([](Graphite::LanguageId language) {
-		return Graphite::ChooseServer(language, std::string{Graphite::kServerTurnedOff});
-	});
+	services.SetChoiceProvider(TurnedOffFor);
 	services.Reconfigure(Graphite::LanguageId::Cpp);
 
 	CHECK(spy.Made == 1);
@@ -1760,7 +1642,7 @@ TEST_CASE("Reconfigure keeps a file reached through a definition on the root of 
 	FakeClock clock;
 	const std::filesystem::path source = temp.GetPath() / "main.cpp";
 
-	elsewhere.MakeFile("header.h", "");
+	elsewhere.MakeFile("header.h", kNoContent);
 	const std::filesystem::path header = elsewhere.GetPath() / "header.h";
 
 	StartWithSpy(services, temp, spy, clock, source);
@@ -1770,7 +1652,7 @@ TEST_CASE("Reconfigure keeps a file reached through a definition on the root of 
 
 	REQUIRE(spy.Made == 1);
 
-	temp.MakeFile("other-clangd.exe", "");
+	temp.MakeFile("other-clangd.exe", kNoContent);
 	UseClangdAt(services, temp.GetPath() / "other-clangd.exe");
 	services.Reconfigure(Graphite::LanguageId::Cpp);
 
@@ -1787,15 +1669,13 @@ TEST_CASE("Reconfigure starts the workspace's server again even when no document
 	FakeClock clock;
 
 	temp.MakeFile("main.cpp", "int main() { return 0; }\n");
-	temp.MakeFile("stand-in-clangd.exe", "");
-	temp.MakeFile("other-clangd.exe", "");
+	temp.MakeFile("stand-in-clangd.exe", kNoContent);
+	temp.MakeFile("other-clangd.exe", kNoContent);
 
 	services.SetClock(clock.Get());
 	services.SetClientFactory(spy.Get());
 	UseClangdAt(services, temp.GetPath() / "stand-in-clangd.exe");
-	services.WarmUp(temp.GetPath(), false);
-
-	constexpr int kMaxAttempts = 500;
+	services.WarmUp(temp.GetPath(), kDoNotRespectGitIgnore);
 
 	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
 	{
@@ -1827,16 +1707,14 @@ TEST_CASE("Reconfigure does not warm a folder that is no longer the open one")
 	FakeClock clock;
 
 	folderA.MakeFile("main.cpp", "int main() { return 0; }\n");
-	folderA.MakeFile("stand-in-clangd.exe", "");
-	folderA.MakeFile("other-clangd.exe", "");
+	folderA.MakeFile("stand-in-clangd.exe", kNoContent);
+	folderA.MakeFile("other-clangd.exe", kNoContent);
 	folderB.MakeFile("b.cpp", "int b;\n");
 
 	services.SetClock(clock.Get());
 	services.SetClientFactory(spy.Get());
 	UseClangdAt(services, folderA.GetPath() / "stand-in-clangd.exe");
-	services.WarmUp(folderA.GetPath(), false);
-
-	constexpr int kMaxAttempts = 500;
+	services.WarmUp(folderA.GetPath(), kDoNotRespectGitIgnore);
 
 	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
 	{
@@ -1887,7 +1765,6 @@ TEST_CASE("Replacing the choice provider asks the new one")
 }
 
 namespace {
-
 	Graphite::LanguageServices::DotnetLocator DotnetAt(const std::filesystem::path& executable, const std::string& runtimeVersion)
 	{
 		return [executable, runtimeVersion] {
@@ -1948,7 +1825,7 @@ TEST_CASE("A C# server without its runtime reads MissingRuntime and starts nothi
 TEST_CASE("A server configured as an assembly starts through dotnet though its definition names no runtime")
 {
 	TempDirectory temp;
-	const std::filesystem::path assembly = temp.MakeFile("tools/clangd.dll", "");
+	const std::filesystem::path assembly = temp.MakeFile("tools/clangd.dll", kNoContent);
 	Graphite::LanguageServices services{temp.GetPath()};
 	ClientFactorySpy spy;
 	FakeClock clock;
@@ -2002,7 +1879,7 @@ TEST_CASE("Choosing a server for the first time starts it for the open folder")
 	services.SetServersDirectory(temp.GetPath() / "servers");
 	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "10.0.10"));
 	services.SetChoiceProvider([&chosen](Graphite::LanguageId language) { return chosen ? ChooseCsharpLs(language) : Graphite::ChooseServer(language, std::nullopt); });
-	services.WarmUp(temp.GetPath(), false);
+	services.WarmUp(temp.GetPath(), kDoNotRespectGitIgnore);
 
 	constexpr int kSettleAttempts = 50;
 
@@ -2016,8 +1893,6 @@ TEST_CASE("Choosing a server for the first time starts it for the open folder")
 
 	chosen = true;
 	services.Reconfigure(Graphite::LanguageId::CSharp);
-
-	constexpr int kMaxAttempts = 500;
 
 	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
 	{
@@ -2058,8 +1933,8 @@ TEST_CASE("A running server's installed files cannot be removed until it stops")
 TEST_CASE("A server is started with the selected solution when it lies inside its root")
 {
 	TempDirectory temp;
-	temp.MakeFile("Demo.slnx", "");
-	temp.MakeFile("Demo/Program.cs", "");
+	temp.MakeFile("Demo.slnx", kNoContent);
+	temp.MakeFile("Demo/Program.cs", kNoContent);
 	InstallCsharpLsIn(temp.GetPath() / "servers");
 	Graphite::LanguageServices services{temp.GetPath()};
 	ClientFactorySpy spy;
@@ -2077,7 +1952,6 @@ TEST_CASE("A server is started with the selected solution when it lies inside it
 }
 
 namespace {
-
 	Graphite::ServerChoice ChooseRoslynAt(Graphite::LanguageId language, const std::filesystem::path& binary)
 	{
 		if (language != Graphite::LanguageId::CSharp)
@@ -2094,9 +1968,9 @@ namespace {
 TEST_CASE("Selecting another solution restarts a server that follows it on the new one")
 {
 	TempDirectory temp;
-	const std::filesystem::path roslyn = temp.MakeFile("tools/roslyn-language-server.exe", "");
-	temp.MakeFile("A.slnx", "");
-	temp.MakeFile("B.slnx", "");
+	const std::filesystem::path roslyn = temp.MakeFile("tools/roslyn-language-server.exe", kNoContent);
+	temp.MakeFile("A.slnx", kNoContent);
+	temp.MakeFile("B.slnx", kNoContent);
 	const std::filesystem::path source = temp.MakeFile("Demo/Program.cs", "class Program { }\n");
 	Graphite::LanguageServices services{temp.GetPath()};
 	ClientFactorySpy spy;
@@ -2129,8 +2003,8 @@ TEST_CASE("Selecting another solution restarts a server that follows it on the n
 TEST_CASE("Selecting the same solution again or under a server that does not follow it restarts nothing")
 {
 	TempDirectory temp;
-	temp.MakeFile("A.slnx", "");
-	temp.MakeFile("B.slnx", "");
+	temp.MakeFile("A.slnx", kNoContent);
+	temp.MakeFile("B.slnx", kNoContent);
 	InstallCsharpLsIn(temp.GetPath() / "servers");
 	const std::filesystem::path source = temp.MakeFile("Demo/Program.cs", "class Program { }\n");
 	Graphite::LanguageServices services{temp.GetPath()};
@@ -2200,10 +2074,10 @@ TEST_CASE("A server that was not found has no command to report")
 TEST_CASE("Roslyn without a solution starts with the projects found below its root")
 {
 	TempDirectory temp;
-	const std::filesystem::path roslyn = temp.MakeFile("tools/roslyn-language-server.exe", "");
-	const std::filesystem::path app = temp.MakeFile("src/App/App.csproj", "");
-	const std::filesystem::path library = temp.MakeFile("src/Library/Library.csproj", "");
-	temp.MakeFile("src/App/bin/Debug/App.csproj", "");
+	const std::filesystem::path roslyn = temp.MakeFile("tools/roslyn-language-server.exe", kNoContent);
+	const std::filesystem::path app = temp.MakeFile("src/App/App.csproj", kNoContent);
+	const std::filesystem::path library = temp.MakeFile("src/Library/Library.csproj", kNoContent);
+	temp.MakeFile("src/App/bin/Debug/App.csproj", kNoContent);
 	const std::filesystem::path source = temp.MakeFile("src/App/Program.cs", "class Program { }\n");
 	Graphite::LanguageServices services{temp.GetPath()};
 	ClientFactorySpy spy;
@@ -2219,8 +2093,6 @@ TEST_CASE("Roslyn without a solution starts with the projects found below its ro
 	CHECK(services.StatusFor(source, Graphite::LanguageId::CSharp).State == Graphite::ServerState::Starting);
 	CHECK(services.StatusFor(source, Graphite::LanguageId::CSharp).Detail == "looking for projects");
 
-	constexpr int kMaxAttempts = 500;
-
 	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
 	{
 		services.Poll();
@@ -2230,8 +2102,6 @@ TEST_CASE("Roslyn without a solution starts with the projects found below its ro
 	REQUIRE(spy.Made == 1);
 	CHECK(spy.LastLaunch.Projects == std::vector<std::filesystem::path>{app, library});
 
-	// A restart reuses the list: the project removed here is still handed to the new client.
-	// Kill refuses the handshake, so it comes before any Answer.
 	std::filesystem::remove(library);
 	spy.Kill();
 	services.Poll();
@@ -2248,8 +2118,8 @@ TEST_CASE("Roslyn without a solution starts with the projects found below its ro
 TEST_CASE("A project search overtaken by a newer one starts one client")
 {
 	TempDirectory temp;
-	const std::filesystem::path roslyn = temp.MakeFile("tools/roslyn-language-server.exe", "");
-	temp.MakeFile("src/App/App.csproj", "");
+	const std::filesystem::path roslyn = temp.MakeFile("tools/roslyn-language-server.exe", kNoContent);
+	temp.MakeFile("src/App/App.csproj", kNoContent);
 	const std::filesystem::path source = temp.MakeFile("src/App/Program.cs", "class Program { }\n");
 	Graphite::LanguageServices services{temp.GetPath()};
 	ClientFactorySpy spy;
@@ -2261,8 +2131,6 @@ TEST_CASE("A project search overtaken by a newer one starts one client")
 	services.EnsureStarted(source, Graphite::LanguageId::CSharp);
 	services.OpenDocument(source, Graphite::LanguageId::CSharp, "class Program { }\n");
 	services.Reconfigure(Graphite::LanguageId::CSharp);
-
-	constexpr int kMaxAttempts = 500;
 
 	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
 	{
@@ -2284,8 +2152,8 @@ TEST_CASE("A project search overtaken by a newer one starts one client")
 TEST_CASE("A document changed during the project search reaches the first client with its changed text")
 {
 	TempDirectory temp;
-	const std::filesystem::path roslyn = temp.MakeFile("tools/roslyn-language-server.exe", "");
-	temp.MakeFile("src/App/App.csproj", "");
+	const std::filesystem::path roslyn = temp.MakeFile("tools/roslyn-language-server.exe", kNoContent);
+	temp.MakeFile("src/App/App.csproj", kNoContent);
 	const std::filesystem::path source = temp.MakeFile("src/App/Program.cs", "class Program { }\n");
 	Graphite::LanguageServices services{temp.GetPath()};
 	ClientFactorySpy spy;
@@ -2299,8 +2167,6 @@ TEST_CASE("A document changed during the project search reaches the first client
 	services.ChangeDocument(source, Graphite::LanguageId::CSharp, "class Edited { }\n");
 
 	REQUIRE(spy.Made == 0);
-
-	constexpr int kMaxAttempts = 500;
 
 	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
 	{
@@ -2320,8 +2186,8 @@ TEST_CASE("A document changed during the project search reaches the first client
 TEST_CASE("The warm-up starts a solution-rooted server at the selected solution's folder")
 {
 	TempDirectory temp;
-	temp.MakeFile("app/App.slnx", "");
-	temp.MakeFile("app/Alpha/Alpha.slnx", "");
+	temp.MakeFile("app/App.slnx", kNoContent);
+	temp.MakeFile("app/Alpha/Alpha.slnx", kNoContent);
 	temp.MakeFile("app/Alpha/Sample.cs", "class Sample { }\n");
 	temp.MakeFile("app/src/Program.cs", "class Program { }\n");
 	InstallCsharpLsIn(temp.GetPath() / "servers");
@@ -2336,9 +2202,7 @@ TEST_CASE("The warm-up starts a solution-rooted server at the selected solution'
 	services.SetChoiceProvider(ChooseCsharpLs);
 	services.SetSelectedSolution(temp.GetPath() / "app" / "App.slnx");
 
-	services.WarmUp(temp.GetPath(), false);
-
-	constexpr int kMaxAttempts = 500;
+	services.WarmUp(temp.GetPath(), kDoNotRespectGitIgnore);
 
 	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
 	{
@@ -2361,8 +2225,8 @@ TEST_CASE("The warm-up starts a solution-rooted server at the selected solution'
 TEST_CASE("Selecting a solution after the warm-up warms the server for its folder")
 {
 	TempDirectory temp;
-	temp.MakeFile("outer/Outer.slnx", "");
-	temp.MakeFile("outer/inner/Inner.slnx", "");
+	temp.MakeFile("outer/Outer.slnx", kNoContent);
+	temp.MakeFile("outer/inner/Inner.slnx", kNoContent);
 	temp.MakeFile("outer/inner/src/Program.cs", "class Program { }\n");
 	InstallCsharpLsIn(temp.GetPath() / "servers");
 	Graphite::LanguageServices services{temp.GetPath()};
@@ -2375,7 +2239,7 @@ TEST_CASE("Selecting a solution after the warm-up warms the server for its folde
 	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "10.0.10"));
 	services.SetChoiceProvider(ChooseCsharpLs);
 
-	services.WarmUp(temp.GetPath(), false);
+	services.WarmUp(temp.GetPath(), kDoNotRespectGitIgnore);
 
 	constexpr int kSettleAttempts = 50;
 
@@ -2385,12 +2249,9 @@ TEST_CASE("Selecting a solution after the warm-up warms the server for its folde
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	}
 
-	// No solution is selected: inner/ lies below outer/, which has no C# of its own.
 	REQUIRE(spy.Made == 0);
 
 	services.SetSelectedSolution(temp.GetPath() / "outer" / "inner" / "Inner.slnx");
-
-	constexpr int kMaxAttempts = 500;
 
 	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
 	{
@@ -2405,7 +2266,7 @@ TEST_CASE("Selecting a solution after the warm-up warms the server for its folde
 TEST_CASE("With no solution selected the warm-up starts the server of a solution below the root")
 {
 	TempDirectory temp;
-	temp.MakeFile("src/App.sln", "");
+	temp.MakeFile("src/App.sln", kNoContent);
 	temp.MakeFile("src/App/Program.cs", "class Program { }\n");
 	InstallCsharpLsIn(temp.GetPath() / "servers");
 	Graphite::LanguageServices services{temp.GetPath()};
@@ -2418,9 +2279,7 @@ TEST_CASE("With no solution selected the warm-up starts the server of a solution
 	services.SetDotnetLocator(DotnetAt(temp.GetPath() / "dotnet" / "dotnet.exe", "10.0.10"));
 	services.SetChoiceProvider(ChooseCsharpLs);
 
-	services.WarmUp(temp.GetPath(), false);
-
-	constexpr int kMaxAttempts = 500;
+	services.WarmUp(temp.GetPath(), kDoNotRespectGitIgnore);
 
 	for (int attempt = 0; attempt < kMaxAttempts && spy.Made == 0; ++attempt)
 	{
@@ -2440,7 +2299,7 @@ TEST_CASE("With no server chosen for C++ the warm-up starts nothing")
 	ClientFactorySpy spy;
 
 	services.SetClientFactory(spy.Get());
-	services.WarmUp(temp.GetPath(), false);
+	services.WarmUp(temp.GetPath(), kDoNotRespectGitIgnore);
 
 	constexpr int kSettleAttempts = 50;
 
@@ -2456,9 +2315,6 @@ TEST_CASE("With no server chosen for C++ the warm-up starts nothing")
 }
 
 namespace {
-
-	// Hands LanguageServices clients that run `Server`, and keeps a pointer to the newest one, good until the
-	// services stop it.
 	struct FakeServerFactory
 	{
 		FakeLanguageServer Server;
@@ -2479,7 +2335,7 @@ namespace {
 
 	void StartFakeServer(Graphite::LanguageServices& services, TempDirectory& temp, FakeServerFactory& factory)
 	{
-		temp.MakeFile("stand-in-clangd.exe", "");
+		temp.MakeFile("stand-in-clangd.exe", kNoContent);
 
 		services.SetClientFactory(factory.Get());
 		UseClangdAt(services, temp.GetPath() / "stand-in-clangd.exe");
@@ -2603,7 +2459,7 @@ TEST_CASE("A document opened in a tab before any server was chosen is pulled by 
 	services.EnsureStarted(source, Graphite::LanguageId::Cpp);
 	services.OpenDocument(source, Graphite::LanguageId::Cpp, "int first;\n", Graphite::DocumentRole::Shown);
 
-	temp.MakeFile("stand-in-clangd.exe", "");
+	temp.MakeFile("stand-in-clangd.exe", kNoContent);
 	UseClangdAt(services, temp.GetPath() / "stand-in-clangd.exe");
 	services.Reconfigure(Graphite::LanguageId::Cpp);
 	REQUIRE(spy.Made == 1);
@@ -2629,7 +2485,7 @@ TEST_CASE("A pull's answer comes out of TakeRecolour as the path the document wa
 
 	const std::vector<nlohmann::json> pulls = MessagesFor(spy.Latest->TakeSent(), "textDocument/diagnostic");
 	REQUIRE(pulls.size() == 1);
-	spy.Latest->Deliver(FullReport(IdOf(pulls[0]), ""));
+	spy.Latest->Deliver(FullReport(IdOf(pulls[0]), kNoItems));
 
 	services.Poll();
 

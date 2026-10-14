@@ -14,13 +14,11 @@ namespace Graphite {
 	struct ServerCommandPlaces
 	{
 		std::filesystem::path ServersDirectory;
-		// Called only for a command that runs on .NET: listing the installations reads folders on the disk.
 		std::function<std::vector<DotnetInstallation>()> ListDotnet;
 	};
 
 	struct ServerCommand
 	{
-		// Starting when the command may run; any other state says why it may not, and Detail says it in words.
 		ServerState State = ServerState::Starting;
 		std::string Detail;
 		std::filesystem::path Program;
@@ -29,8 +27,6 @@ namespace Graphite {
 		std::filesystem::path DotnetRoot;
 	};
 
-	// A configured path that does not exist is NotFound even when another copy could be found: running a server
-	// other than the one configured would hide the mistake.
 	ServerCommand FindServerCommand(const ServerDefinition& server, const std::filesystem::path& configured,
 									const ServerCommandPlaces& places);
 

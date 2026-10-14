@@ -1,5 +1,7 @@
 #include "Language/Server/MarkdownHover.h"
 
+#include "Core/Base/Ascii.h"
+
 #include <array>
 #include <cstddef>
 #include <string>
@@ -34,14 +36,12 @@ namespace Graphite {
 
 		std::string_view TrimmedRight(std::string_view text)
 		{
-			const std::size_t last = text.find_last_not_of(kBlanks);
-			return last == std::string_view::npos ? std::string_view{} : text.substr(0, last + 1);
+			return Core::WithoutTrailing(text, kBlanks);
 		}
 
 		std::string_view Trimmed(std::string_view text)
 		{
-			const std::size_t first = text.find_first_not_of(kBlanks);
-			return first == std::string_view::npos ? std::string_view{} : TrimmedRight(text.substr(first));
+			return Core::WithoutSurrounding(text, kBlanks);
 		}
 
 		std::vector<std::string_view> LinesOf(std::string_view text)
@@ -99,35 +99,35 @@ namespace Graphite {
 		std::string PlainTextOf(std::string_view line)
 		{
 			std::string text;
-			std::size_t at = 0;
+			std::size_t characterIndex = 0;
 
-			while (at < line.size())
+			while (characterIndex < line.size())
 			{
-				const char character = line[at];
-				const bool escapes = character == kBackslash && at + 1 < line.size() && IsAsciiPunctuation(line[at + 1]);
+				const char character = line[characterIndex];
+				const bool escapes = character == kBackslash && characterIndex + 1 < line.size() && IsAsciiPunctuation(line[characterIndex + 1]);
 
 				if (escapes)
 				{
-					text.push_back(line[at + 1]);
-					at += 2;
+					text.push_back(line[characterIndex + 1]);
+					characterIndex += 2;
 					continue;
 				}
 
 				if (character == kBacktick)
 				{
-					++at;
+					++characterIndex;
 					continue;
 				}
 
-				if (const Entity* entity = character == kAmpersand ? EntityAt(line.substr(at)) : nullptr)
+				if (const Entity* entity = character == kAmpersand ? EntityAt(line.substr(characterIndex)) : nullptr)
 				{
 					text += entity->Text;
-					at += entity->Name.size();
+					characterIndex += entity->Name.size();
 					continue;
 				}
 
 				text.push_back(character);
-				++at;
+				++characterIndex;
 			}
 
 			return std::string{Trimmed(text)};
@@ -173,7 +173,6 @@ namespace Graphite {
 			return character >= '0' && character <= '9';
 		}
 
-		// The word after the count is in the server's own language, so nothing but "(+", the count and ")" is looked for.
 		std::size_t OverloadNoteStart(std::string_view line)
 		{
 			const std::size_t noteStart = line.rfind(kOverloadNoteOpening);

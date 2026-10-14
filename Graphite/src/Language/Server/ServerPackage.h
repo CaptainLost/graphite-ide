@@ -15,7 +15,6 @@ namespace Graphite {
 		TarGz
 	};
 
-	// One platform's build in a GitHub release. Both templates take {version}, {os}, {arch}, {rid} and {exe}.
 	struct GitHubAsset
 	{
 		Core::PlatformTarget Platform;
@@ -30,7 +29,6 @@ namespace Graphite {
 		std::span<const GitHubAsset> Assets;
 	};
 
-	// How to run a .NET tool is read from its DotnetToolSettings.xml once it is extracted, never guessed.
 	struct NuGetToolPackage
 	{
 		std::string_view PackageIdTemplate;
@@ -41,6 +39,6 @@ namespace Graphite {
 
 	const GitHubAsset* FindAssetFor(const GitHubReleasePackage& package, Core::PlatformTarget platform);
 
-	// A NuGet tool names its build by runtime identifier, so it counts as available everywhere until NuGet says otherwise.
+	// WARNING: A NuGet tool names its build by runtime identifier, so it counts as available everywhere until NuGet says otherwise.
 	bool IsAvailableOn(const ServerPackage& package, Core::PlatformTarget platform);
 }

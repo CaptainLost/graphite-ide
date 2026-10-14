@@ -12,14 +12,12 @@ namespace Graphite {
 
 	namespace {
 
-		// build/compile_commands.json is here because clangd reads it under every ancestor of a file, and the trust check has to judge the directory clangd will read.
+		// WARNING: build/compile_commands.json is a marker because clangd reads it under every ancestor of a file, and the trust check must judge the directory clangd will read.
 		constexpr std::array<std::string_view, 5> kClangdRootMarkers{
 			"compile_commands.json", "compile_flags.txt", ".clangd", "build/compile_commands.json", ".git"};
 
-		// --pch-storage=disk keeps preambles out of memory, which is what lets the background index hold several files at once.
 		constexpr std::array<std::string_view, 2> kClangdArguments{"--background-index", "--pch-storage=disk"};
 
-		// Only the build this was verified against; a port adds its platform's row once its asset name is checked.
 		constexpr std::array<GitHubAsset, 1> kClangdAssets{{
 			{.Platform = {.System = Core::OperatingSystem::Windows, .Machine = Core::Architecture::X64},
 			 .AssetTemplate = "clangd-{os}-{version}.zip",
@@ -29,9 +27,8 @@ namespace Graphite {
 
 		constexpr std::array<std::string_view, 3> kCSharpRootMarkers{"*.sln", "*.slnx", ".git"};
 
-		// {logs} is the application's log directory, filled in when the server starts.
 		constexpr std::array<std::string_view, 5> kRoslynArguments{"--stdio", "--logLevel", "Information",
-																	"--extensionLogDirectory", "{logs}/roslyn"};
+																   "--extensionLogDirectory", "{logs}/roslyn"};
 
 		constexpr std::array<std::string_view, 1> kOmniSharpArguments{"-lsp"};
 
@@ -85,13 +82,6 @@ namespace Graphite {
 			 .Runtime = kDotnet10},
 		}};
 
-		// The error_code overload: a directory that denies access reads as "not there" instead of throwing across the boundary ADR 0004 guards.
-		bool Exists(const std::filesystem::path& path)
-		{
-			std::error_code failure;
-			return std::filesystem::exists(path, failure) && !failure;
-		}
-
 		constexpr std::string_view kExtensionPatternPrefix = "*.";
 
 		bool IsExtensionPattern(std::string_view marker)
@@ -116,7 +106,7 @@ namespace Graphite {
 		{
 			for (const std::string_view marker : markers)
 			{
-				if (!IsExtensionPattern(marker) && Exists(directory / marker))
+				if (!IsExtensionPattern(marker) && Core::PathExists(directory / marker))
 				{
 					return true;
 				}
@@ -147,7 +137,6 @@ namespace Graphite {
 		{
 			for (const std::string_view marker : markers)
 			{
-				// "*.sln" names the extension ".sln": the marker without its star.
 				if (IsExtensionPattern(marker) && loweredExtension == Core::Lowered(marker.substr(1)))
 				{
 					return true;
@@ -157,7 +146,6 @@ namespace Graphite {
 			return false;
 		}
 
-		// Listed with the error_code overloads, so a directory that cannot be read holds nothing rather than throwing.
 		bool HoldsFileMatchingPattern(const std::filesystem::path& directory, std::span<const std::string_view> markers)
 		{
 			std::error_code listError;

@@ -16,7 +16,6 @@ namespace Graphite {
 
 	namespace {
 
-		// Numbers stay low because every Graphite sweeps away the directories of those that have ended.
 		constexpr int kHighestDirectoryNumber = 1000;
 
 		constexpr std::string_view kClaimLockFileName = "graphite.lock";
@@ -54,7 +53,7 @@ namespace Graphite {
 			const std::filesystem::path candidate = NumberedDirectory(parent, number);
 			std::error_code createError;
 
-			// False for a directory that already exists, which is another Graphite's or one a sweep has yet to remove.
+			// WARNING: False for a directory that already exists, which is another Graphite's or one a sweep has yet to remove.
 			const bool createdHere = std::filesystem::create_directory(candidate, createError);
 
 			if (!createdHere)

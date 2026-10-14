@@ -1,4 +1,4 @@
-#include <doctest/doctest.h>
+﻿#include <doctest/doctest.h>
 
 #include "Language/Api/HoverInfo.h"
 #include "Language/Server/LanguageServices.h"
@@ -36,10 +36,25 @@ namespace {
 </Project>
 )";
 
-	// Line 2, column 77 is the "Hello" of Greeter.Hello; its definition is line 1, column 44.
+	constexpr std::chrono::milliseconds kPollInterval{100};
+	constexpr std::chrono::seconds kRetryInterval{1};
+
+	constexpr std::size_t kHelloCallLine = 2;
+	constexpr std::size_t kHelloCallColumn = 77;
+	constexpr std::size_t kHelloDefinitionLine = 1;
+	constexpr std::size_t kHelloDefinitionColumn = 44;
+	constexpr std::size_t kWriteLineLine = 2;
+	constexpr std::size_t kWriteLineColumn = 61;
+
 	constexpr const char* kProgram = "namespace Demo;\n"
 									 "static class Greeter { public static string Hello(string name) => $\"Hello {name}\"; }\n"
 									 "static class Program { static void Main() { System.Console.WriteLine(Greeter.Hello(\"x\")); } }\n";
+
+	bool HasStoppedForGood(Graphite::ServerState state)
+	{
+		return state == Graphite::ServerState::Failed || state == Graphite::ServerState::NotInstalled ||
+			   state == Graphite::ServerState::MissingRuntime;
+	}
 
 	bool WaitUntilReady(Graphite::LanguageServices& services, const std::filesystem::path& source)
 	{
@@ -67,14 +82,13 @@ namespace {
 				return true;
 			}
 
-			if (status.State == Graphite::ServerState::Failed || status.State == Graphite::ServerState::NotInstalled ||
-				status.State == Graphite::ServerState::MissingRuntime)
+			if (HasStoppedForGood(status.State))
 			{
 				MESSAGE(std::format("stopped waiting at {}", status.Detail));
 				return false;
 			}
 
-			std::this_thread::sleep_for(std::chrono::milliseconds{100});
+			std::this_thread::sleep_for(kPollInterval);
 		}
 
 		return false;
@@ -85,7 +99,7 @@ namespace {
 	{
 		while (std::chrono::steady_clock::now() < deadline)
 		{
-			std::this_thread::sleep_for(std::chrono::milliseconds{100});
+			std::this_thread::sleep_for(kPollInterval);
 			services.Poll();
 
 			std::vector<Graphite::LanguageServices::Answer> answers;
@@ -103,11 +117,10 @@ namespace {
 		return std::nullopt;
 	}
 
-	// A server still loading may answer a definition with nothing, so it is asked again until it names something.
 	std::optional<Graphite::Location> DefinitionOfHello(Graphite::LanguageServices& services, const std::filesystem::path& source)
 	{
 		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kLiveTimeout;
-		const Graphite::FilePosition hello{.Path = source, .Line = 2, .Column = Graphite::Utf16Column{77}};
+		const Graphite::FilePosition hello{.Path = source, .Line = kHelloCallLine, .Column = Graphite::Utf16Column{kHelloCallColumn}};
 
 		while (std::chrono::steady_clock::now() < deadline)
 		{
@@ -119,17 +132,16 @@ namespace {
 				return answer->Locations.front();
 			}
 
-			std::this_thread::sleep_for(std::chrono::seconds{1});
+			std::this_thread::sleep_for(kRetryInterval);
 		}
 
 		return std::nullopt;
 	}
 
-	// A server still loading may answer a hover with nothing, so it is asked again until it says something.
 	std::optional<Graphite::HoverInfo> HoverOverWriteLine(Graphite::LanguageServices& services, const std::filesystem::path& source)
 	{
 		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kLiveTimeout;
-		const Graphite::FilePosition insideWriteLine{.Path = source, .Line = 2, .Column = Graphite::Utf16Column{61}};
+		const Graphite::FilePosition insideWriteLine{.Path = source, .Line = kWriteLineLine, .Column = Graphite::Utf16Column{kWriteLineColumn}};
 
 		while (std::chrono::steady_clock::now() < deadline)
 		{
@@ -141,7 +153,7 @@ namespace {
 				return answer->Hover;
 			}
 
-			std::this_thread::sleep_for(std::chrono::seconds{1});
+			std::this_thread::sleep_for(kRetryInterval);
 		}
 
 		return std::nullopt;
@@ -153,8 +165,8 @@ namespace {
 	{
 		const std::optional<Graphite::Location> definition = DefinitionOfHello(services, source);
 		REQUIRE(definition.has_value());
-		CHECK(definition->Line == 1);
-		CHECK(definition->Column == Graphite::Utf16Column{44});
+		CHECK(definition->Line == kHelloDefinitionLine);
+		CHECK(definition->Column == Graphite::Utf16Column{kHelloDefinitionColumn});
 	}
 
 	void CheckHoverOverWriteLine(Graphite::LanguageServices& services, const std::filesystem::path& source)

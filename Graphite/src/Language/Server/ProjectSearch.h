@@ -17,7 +17,7 @@ namespace Graphite {
 		std::size_t DroppedAboveLimit = 0;
 	};
 
-	// Walks the whole tree below the root: call it on a worker, never in a frame.
+	// WARNING: Walks the whole tree below the root; call it on a worker, never in a frame.
 	ProjectsBelow FindProjectsBelow(const std::filesystem::path& root, std::string_view extension, std::size_t most,
 									const Core::CancellationToken& token);
 }

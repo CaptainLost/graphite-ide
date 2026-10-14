@@ -60,7 +60,7 @@ TEST_CASE("A launch puts the runner's arguments first and fills in the log direc
 
 	CHECK(launch.Binary == std::filesystem::path{L"C:\\dotnet\\dotnet.exe"});
 	CHECK(launch.Arguments == std::vector<std::string>{"C:\\servers\\roslyn.dll", "--stdio", "--logLevel", "Information",
-														"--extensionLogDirectory", "D:\\Logs/roslyn"});
+													   "--extensionLogDirectory", "D:\\Logs/roslyn"});
 }
 
 TEST_CASE("A launch describes the program with the arguments that pick what it runs")

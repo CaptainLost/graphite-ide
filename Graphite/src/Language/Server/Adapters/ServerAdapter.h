@@ -37,7 +37,7 @@ namespace Graphite {
 		ProjectsLoaded
 	};
 
-	// ProjectProblemAt may read the disk: it runs on the UI thread, before the client starts. Every other hook may run on a client's reader thread with its protocol lock held, so none may block or touch the filesystem.
+	// WARNING: ProjectProblemAt may read the disk: it runs on the UI thread, before the client starts. Every other hook may run on a client's reader thread with its protocol lock held, so none may block or touch the filesystem.
 	class ServerAdapter
 	{
 	public:
@@ -50,17 +50,15 @@ namespace Graphite {
 		virtual void AfterInitialized(const AdapterContext& context, std::vector<OutgoingNotification>& notifications) const;
 
 		virtual std::optional<nlohmann::json> AnswerRequest(const AdapterContext& context, std::string_view method,
-															 const nlohmann::json& params) const;
+															const nlohmann::json& params) const;
 
 		virtual NotificationEffect HandleNotification(const AdapterContext& context, std::string_view method,
 													  const nlohmann::json& params) const;
 
 		virtual HoverInfo ParseHover(std::string_view markdown) const;
 
-		// Nothing when the server can answer as soon as its handshake ends.
 		virtual std::optional<std::string> LoadsProjectsFrom(const AdapterContext& context) const;
 
-		// Lower case, with its dot.
 		virtual std::optional<std::string_view> ProjectFileExtension() const;
 
 		virtual std::optional<ProjectProblem> ProjectProblemAt(const AdapterContext& context) const;
@@ -71,7 +69,6 @@ namespace Graphite {
 
 		virtual bool AnswersEmptyConfigurationWithOneEntry() const;
 
-		// A server that loads the solution it is handed must restart when the user selects another.
 		virtual bool FollowsSelectedSolution() const;
 	};
 

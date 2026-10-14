@@ -49,7 +49,6 @@ namespace Graphite {
 			return MajorOf(name).has_value() && NuGetVersion::Parse(name).has_value();
 		}
 
-		// Both names have passed IsRuntimeVersion, so both parse.
 		bool IsHigherVersion(const std::string& left, const std::string& right)
 		{
 			return *NuGetVersion::Parse(left) > *NuGetVersion::Parse(right);

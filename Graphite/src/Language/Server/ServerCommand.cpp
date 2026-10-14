@@ -56,8 +56,6 @@ namespace Graphite {
 
 			const std::vector<DotnetInstallation> installations = places.ListDotnet ? places.ListDotnet() : std::vector<DotnetInstallation>{};
 
-			// Checked before starting: a .NET server without its runtime exits at once, and a server that keeps
-			// dying says nothing about why.
 			const DotnetInstallation* dotnet = FirstWithRuntimeAtLeast(installations, server.Runtime.MinimumMajor);
 
 			if (dotnet == nullptr)

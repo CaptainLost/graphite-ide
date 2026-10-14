@@ -9,10 +9,9 @@ namespace Graphite {
 
 	bool LanguageRootsAtSolution(LanguageId language);
 
-	// Lists the one directory, every time.
 	bool DirectoryHoldsSolution(const std::filesystem::path& directory);
 
-	// Lists directories and keeps what it found: use it on a worker, and from one thread.
+	// WARNING: It caches directory listings without a lock, so use it from one worker thread only.
 	class SolutionScope
 	{
 	public:

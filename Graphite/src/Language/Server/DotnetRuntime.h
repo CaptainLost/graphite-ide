@@ -11,7 +11,6 @@ namespace Graphite {
 	{
 		std::filesystem::path Executable;
 
-		// Highest first.
 		std::vector<std::string> RuntimeVersions;
 	};
 

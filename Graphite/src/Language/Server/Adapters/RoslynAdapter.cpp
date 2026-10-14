@@ -25,7 +25,7 @@ namespace Graphite {
 
 	void RoslynAdapter::AfterInitialized(const AdapterContext& context, std::vector<OutgoingNotification>& notifications) const
 	{
-		// Roslyn loads no project until it is told which solution or which projects to open.
+		// WARNING: Roslyn loads no project until it is told which solution or which projects to open.
 		if (context.Solution)
 		{
 			notifications.push_back(

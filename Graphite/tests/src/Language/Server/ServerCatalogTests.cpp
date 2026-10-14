@@ -87,9 +87,6 @@ TEST_CASE("RootFor climbs to the nearest directory holding a marker")
 							temp.GetPath()) == temp.GetPath() / "project");
 }
 
-// clangd reads build/compile_commands.json under every ancestor of a file, so a directory
-// holding one is that file's project - and the trust check has to judge the directory the
-// server will read from, not fall back to a root it would otherwise never be given.
 TEST_CASE("RootFor treats a compile database in build/ as a project marker")
 {
 	TempDirectory temp;
@@ -123,14 +120,12 @@ TEST_CASE("FindServerBinary prefers a configured path that exists")
 
 	Touch(configured);
 
-	const auto found = Graphite::FindServerBinary("clangd", configured);
+	const Core::Result<std::filesystem::path> found = Graphite::FindServerBinary("clangd", configured);
 
 	REQUIRE(found);
 	CHECK(found.GetValue() == configured);
 }
 
-// PATH read through the narrow API turns every character outside the ANSI code page into '?',
-// so a server installed under such a directory was never found.
 TEST_CASE("FindServerBinary finds a server in a directory on PATH whose name is outside the ANSI code page")
 {
 	namespace fs = std::filesystem;
@@ -145,9 +140,10 @@ TEST_CASE("FindServerBinary finds a server in a directory on PATH whose name is 
 	REQUIRE(original.has_value());
 	REQUIRE(_wputenv_s(L"PATH", directory.wstring().c_str()) == 0);
 
-	const auto found = Graphite::FindServerBinary("graphite-wide-server-probe", {});
+	const std::filesystem::path noConfiguredPath;
+	const Core::Result<std::filesystem::path> found = Graphite::FindServerBinary("graphite-wide-server-probe", noConfiguredPath);
 
-	// Restore before asserting so a failure cannot leave later tests with a broken PATH.
+	// WARNING: PATH is restored before asserting so a failure cannot leave later tests with a broken PATH.
 	const errno_t restored = _wputenv_s(L"PATH", original->wstring().c_str());
 	fs::remove_all(directory, status);
 
@@ -158,7 +154,8 @@ TEST_CASE("FindServerBinary finds a server in a directory on PATH whose name is 
 
 TEST_CASE("FindServerBinary reports not found rather than an empty path")
 {
-	const auto found = Graphite::FindServerBinary("no-such-server-8a3f", {});
+	const std::filesystem::path noConfiguredPath;
+	const Core::Result<std::filesystem::path> found = Graphite::FindServerBinary("no-such-server-8a3f", noConfiguredPath);
 
 	CHECK_FALSE(found);
 	CHECK(found.GetError().Code == Core::ErrorCode::NotFound);
@@ -332,7 +329,8 @@ TEST_CASE("A server beside the application is not found")
 	const std::filesystem::path beside = directory.GetValue() / "graphite-beside-probe-5c1e.exe";
 
 	Touch(beside);
-	const Core::Result<std::filesystem::path> found = Graphite::FindServerBinary("graphite-beside-probe-5c1e", {});
+	const std::filesystem::path noConfiguredPath;
+	const Core::Result<std::filesystem::path> found = Graphite::FindServerBinary("graphite-beside-probe-5c1e", noConfiguredPath);
 	std::error_code removeError;
 	std::filesystem::remove(beside, removeError);
 

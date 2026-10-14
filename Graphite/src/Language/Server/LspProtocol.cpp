@@ -1,6 +1,8 @@
 #include "Language/Server/LspProtocol.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Base/Ascii.h"
+#include "Core/Text/Encoding.h"
 
 #include <cctype>
 #include <cstdint>
@@ -12,9 +14,30 @@ namespace Graphite {
 
 	namespace {
 
-		// Everything a URI may carry unescaped. The separator and the drive colon are kept as
-		// they are because a server reads them structurally; everything else that is not in
-		// RFC 3986's unreserved set is escaped, so the same path always produces the same bytes.
+		constexpr unsigned kDecimalDigitCount = 10;
+		constexpr unsigned kBitsPerHexDigit = 4;
+		constexpr unsigned kLowHexDigitMask = 0x0F;
+		constexpr std::size_t kFourByteSequenceLength = 4;
+		constexpr std::size_t kSurrogatePairUnits = 2;
+		constexpr std::size_t kSingleUnit = 1;
+		constexpr std::string_view kFileUriPrefix = "file:///";
+
+		constexpr std::int64_t kMethodSymbolKind = 6;
+		constexpr std::int64_t kConstructorSymbolKind = 9;
+		constexpr std::int64_t kFunctionSymbolKind = 12;
+		constexpr std::int64_t kClassSymbolKind = 5;
+		constexpr std::int64_t kInterfaceSymbolKind = 11;
+		constexpr std::int64_t kStructSymbolKind = 23;
+
+		constexpr int kErrorSeverityValue = 1;
+		constexpr int kWarningSeverityValue = 2;
+
+		constexpr std::size_t kIntegersPerSemanticToken = 5;
+		constexpr std::size_t kDeltaLineField = 0;
+		constexpr std::size_t kDeltaColumnField = 1;
+		constexpr std::size_t kLengthField = 2;
+		constexpr std::size_t kTypeIndexField = 3;
+
 		bool IsUnreservedInPath(char character)
 		{
 			const unsigned char byte = static_cast<unsigned char>(character);
@@ -39,62 +62,30 @@ namespace Graphite {
 			}
 		}
 
-		char HexDigit(unsigned value)
+		char UppercaseHexDigit(unsigned value)
 		{
-			return static_cast<char>(value < 10 ? '0' + value : 'A' + (value - 10));
+			return static_cast<char>(value < kDecimalDigitCount
+										 ? '0' + value
+										 : 'A' + (value - kDecimalDigitCount));
 		}
 
-		std::optional<unsigned> HexValue(char character)
+		bool StartsWithDriveLetter(const std::string& path)
 		{
-			if (character >= '0' && character <= '9')
-			{
-				return static_cast<unsigned>(character - '0');
-			}
-
-			if (character >= 'a' && character <= 'f')
-			{
-				return static_cast<unsigned>(character - 'a') + 10;
-			}
-
-			if (character >= 'A' && character <= 'F')
-			{
-				return static_cast<unsigned>(character - 'A') + 10;
-			}
-
-			return std::nullopt;
+			return path.size() >= 2 && path[1] == ':' &&
+				   std::isalpha(static_cast<unsigned char>(path[0])) != 0;
 		}
 
-		// How many bytes the code point starting at this lead byte occupies. A continuation byte
-		// or anything malformed answers one, so a walk over a broken string always advances.
-		std::size_t SequenceLength(unsigned char lead)
+		void UppercaseDriveLetter(std::string& path)
 		{
-			if (lead < 0x80)
+			if (StartsWithDriveLetter(path))
 			{
-				return 1;
+				path[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(path[0])));
 			}
-
-			if ((lead & 0xE0) == 0xC0)
-			{
-				return 2;
-			}
-
-			if ((lead & 0xF0) == 0xE0)
-			{
-				return 3;
-			}
-
-			if ((lead & 0xF8) == 0xF0)
-			{
-				return 4;
-			}
-
-			return 1;
 		}
 
-		// A four-byte code point is at or above U+10000, which UTF-16 spells as a surrogate pair.
 		std::size_t Utf16UnitsFor(std::size_t sequenceLength)
 		{
-			return sequenceLength == 4 ? 2 : 1;
+			return sequenceLength == kFourByteSequenceLength ? kSurrogatePairUnits : kSingleUnit;
 		}
 
 		std::size_t ReadUnsigned(const nlohmann::json& node, std::string_view key)
@@ -104,7 +95,7 @@ namespace Graphite {
 				return 0;
 			}
 
-			const auto found = node.find(std::string(key));
+			const nlohmann::json::const_iterator found = node.find(std::string(key));
 
 			if (found == node.end())
 			{
@@ -121,9 +112,6 @@ namespace Graphite {
 			return static_cast<std::size_t>(value.get<std::int64_t>());
 		}
 
-		// The first of `keys` this object carries, or null. Servers spell the same thing several
-		// ways — a definition is a Location or a LocationLink, a symbol a DocumentSymbol or a
-		// SymbolInformation — and the difference is only which key holds the value.
 		const nlohmann::json* FirstOf(const nlohmann::json& node,
 									  std::initializer_list<std::string_view> keys)
 		{
@@ -134,7 +122,7 @@ namespace Graphite {
 
 			for (const std::string_view key : keys)
 			{
-				const auto found = node.find(std::string(key));
+				const nlohmann::json::const_iterator found = node.find(std::string(key));
 
 				if (found != node.end() && !found->is_null())
 				{
@@ -145,7 +133,6 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		// Whichever range this node carries, wherever it carries it.
 		const nlohmann::json* RangeOf(const nlohmann::json& node)
 		{
 			const nlohmann::json* range =
@@ -186,10 +173,6 @@ namespace Graphite {
 					location.Column = Utf16Column{ReadUnsigned(*start, "character")};
 				}
 
-				// Read as well as the start, and left at the default when the server sends none:
-				// the end is what tells a caret sitting in the middle of a name apart from one
-				// somewhere else on the same line, and a definition's name is the one place a
-				// caret pressing F12 usually is. See ResolveDefinition, which is the only reader.
 				if (const nlohmann::json* end = FirstOf(*range, {"end"}))
 				{
 					location.EndLine = ReadUnsigned(*end, "line");
@@ -204,17 +187,15 @@ namespace Graphite {
 		{
 			switch (symbolKind)
 			{
-			case 6:	 // Method
-			case 9:	 // Constructor
-			case 12: // Function
+			case kMethodSymbolKind:
+			case kConstructorSymbolKind:
+			case kFunctionSymbolKind:
 				return DeclarationKind::Function;
-			case 5:	 // Class
-			case 11: // Interface
-			case 23: // Struct
+			case kClassSymbolKind:
+			case kInterfaceSymbolKind:
+			case kStructSymbolKind:
 				return DeclarationKind::Type;
 			default:
-				// A variable, a namespace, a field: nothing this editor puts a lens over. Skipped
-				// rather than stored as Other, so no caller has to filter the list again.
 				return std::nullopt;
 			}
 		}
@@ -256,11 +237,6 @@ namespace Graphite {
 						}
 					}
 
-					// The name's own position, which is what the server must be asked about.
-					// RangeOf deliberately does not look here: it serves definition and reference
-					// replies too, where "selectionRange" means nothing. A flat SymbolInformation
-					// carries no selectionRange at all, so the declaration's start stands in —
-					// less precise, but a position that can still be asked about.
 					declaration.NameLine = declaration.Line;
 					declaration.NameColumn = declaration.Column;
 
@@ -273,13 +249,10 @@ namespace Graphite {
 						}
 					}
 
-					// Before its children, so the flattened list reads in the order the file does.
 					declarations.push_back(std::move(declaration));
 				}
 			}
 
-			// Recursed into whether or not this node itself was kept: a namespace is skipped, and
-			// the functions inside it are not.
 			if (const nlohmann::json* children = FirstOf(node, {"children"}))
 			{
 				CollectSymbols(*children, declarations);
@@ -289,8 +262,8 @@ namespace Graphite {
 
 	std::string ToFileUri(const std::filesystem::path& path)
 	{
-		// ToUtf8 rather than string(): on MSVC the latter converts through the active code page,
-		// so a path with a non-ASCII character in it would reach the server as mojibake.
+		// WARNING: ToUtf8 rather than string(): on MSVC the latter converts through the active
+		// code page, so a path with a non-ASCII character would reach the server as mojibake.
 		std::string text = Core::ToUtf8(path);
 
 		for (char& character : text)
@@ -301,21 +274,16 @@ namespace Graphite {
 			}
 		}
 
-		// Upper-cased as FromFileUri reads it, or a document keyed by one spelling is never found by the other.
-		if (text.size() >= 2 && text[1] == ':' && std::isalpha(static_cast<unsigned char>(text[0])) != 0)
+		UppercaseDriveLetter(text);
+
+		std::string uri{kFileUriPrefix};
+
+		const bool isPosixAbsolute = !text.empty() && text.front() == '/';
+		const std::size_t firstEncodedIndex = isPosixAbsolute ? 1u : 0u;
+
+		for (std::size_t characterIndex = firstEncodedIndex; characterIndex < text.size(); ++characterIndex)
 		{
-			text[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(text[0])));
-		}
-
-		std::string uri = "file:///";
-
-		// A POSIX path already starts with the separator the prefix ends in; a Windows one starts
-		// with its drive letter and needs all three slashes kept.
-		const std::size_t start = (!text.empty() && text.front() == '/') ? 1u : 0u;
-
-		for (std::size_t index = start; index < text.size(); ++index)
-		{
-			const char character = text[index];
+			const char character = text[characterIndex];
 
 			if (IsUnreservedInPath(character))
 			{
@@ -326,8 +294,8 @@ namespace Graphite {
 			const unsigned byte = static_cast<unsigned char>(character);
 
 			uri.push_back('%');
-			uri.push_back(HexDigit(byte >> 4));
-			uri.push_back(HexDigit(byte & 0x0Fu));
+			uri.push_back(UppercaseHexDigit(byte >> kBitsPerHexDigit));
+			uri.push_back(UppercaseHexDigit(byte & kLowHexDigitMask));
 		}
 
 		return uri;
@@ -345,38 +313,34 @@ namespace Graphite {
 		std::string decoded;
 		decoded.reserve(uri.size());
 
-		for (std::size_t index = 0; index < uri.size(); ++index)
+		for (std::size_t characterIndex = 0; characterIndex < uri.size(); ++characterIndex)
 		{
-			if (uri[index] == '%' && index + 2 < uri.size())
+			if (uri[characterIndex] == '%' && characterIndex + 2 < uri.size())
 			{
-				const std::optional<unsigned> high = HexValue(uri[index + 1]);
-				const std::optional<unsigned> low = HexValue(uri[index + 2]);
+				const std::optional<std::uint8_t> highDigit = Core::HexDigitValue(uri[characterIndex + 1]);
+				const std::optional<std::uint8_t> lowDigit = Core::HexDigitValue(uri[characterIndex + 2]);
 
-				if (high && low)
+				if (highDigit && lowDigit)
 				{
-					decoded.push_back(static_cast<char>((*high << 4) | *low));
-					index += 2;
+					decoded.push_back(static_cast<char>((*highDigit << kBitsPerHexDigit) | *lowDigit));
+					characterIndex += 2;
 					continue;
 				}
 			}
 
-			decoded.push_back(uri[index]);
+			decoded.push_back(uri[characterIndex]);
 		}
 
-		// "/D:/a/b" is the same file as "D:/a/b" and only one of the two spellings is a path this
-		// filesystem accepts. A leading slash before anything that is not a drive letter belongs
-		// to the path and stays.
-		if (decoded.size() >= 3 && decoded[0] == '/' && decoded[2] == ':' &&
-			std::isalpha(static_cast<unsigned char>(decoded[1])) != 0)
+		const bool hasSlashBeforeDriveLetter =
+			decoded.size() >= 3 && decoded[0] == '/' && decoded[2] == ':' &&
+			std::isalpha(static_cast<unsigned char>(decoded[1])) != 0;
+
+		if (hasSlashBeforeDriveLetter)
 		{
 			decoded.erase(0, 1);
 		}
 
-		// Roslyn writes "c%3A"; the same file written "C:" must compare equal to it, and paths here compare by case.
-		if (decoded.size() >= 2 && decoded[1] == ':' && std::isalpha(static_cast<unsigned char>(decoded[0])) != 0)
-		{
-			decoded[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(decoded[0])));
-		}
+		UppercaseDriveLetter(decoded);
 
 		return Core::FromUtf8(decoded);
 	}
@@ -386,14 +350,14 @@ namespace Graphite {
 		const std::size_t limit = byteColumn < line.size() ? byteColumn : line.size();
 
 		std::size_t units = 0;
-		std::size_t index = 0;
+		std::size_t byteIndex = 0;
 
-		while (index < limit)
+		while (byteIndex < limit)
 		{
-			const std::size_t length = SequenceLength(static_cast<unsigned char>(line[index]));
+			const std::size_t sequenceLength = Core::Utf8SequenceLength(line[byteIndex]);
 
-			units += Utf16UnitsFor(length);
-			index += length;
+			units += Utf16UnitsFor(sequenceLength);
+			byteIndex += sequenceLength;
 		}
 
 		return Utf16Column{units};
@@ -402,17 +366,17 @@ namespace Graphite {
 	std::size_t FromUtf16Column(std::string_view line, Utf16Column column)
 	{
 		std::size_t units = 0;
-		std::size_t index = 0;
+		std::size_t byteIndex = 0;
 
-		while (index < line.size() && units < column.Value)
+		while (byteIndex < line.size() && units < column.Value)
 		{
-			const std::size_t length = SequenceLength(static_cast<unsigned char>(line[index]));
+			const std::size_t sequenceLength = Core::Utf8SequenceLength(line[byteIndex]);
 
-			units += Utf16UnitsFor(length);
-			index += length;
+			units += Utf16UnitsFor(sequenceLength);
+			byteIndex += sequenceLength;
 		}
 
-		return index < line.size() ? index : line.size();
+		return byteIndex < line.size() ? byteIndex : line.size();
 	}
 
 	std::optional<Location> ParseSwitchSourceHeader(const nlohmann::json& result)
@@ -445,8 +409,6 @@ namespace Graphite {
 			return locations;
 		}
 
-		// A server answering a single definition is allowed to send the location bare rather than
-		// in a one-element array.
 		if (std::optional<Location> location = ReadLocation(result))
 		{
 			locations.push_back(std::move(*location));
@@ -457,55 +419,69 @@ namespace Graphite {
 
 	namespace {
 
-		// The protocol's own token-type names, mapped onto the far smaller set this editor
-		// colours. Anything unlisted is Other, which leaves the lexer's colour standing — the
-		// right answer for a name whose kind makes no visible difference.
-		//
-		// The C# servers name some kinds their own way: Roslyn and csharp-ls say "constant" and
-		// "event", Roslyn "recordClass" and "extensionMethod", OmniSharp "fieldName",
-		// "delegateName" and "extensionMethodName". Each sits beside the name it means, so a field
-		// reads as a member whichever server named it.
-		SemanticKind KindForTokenType(std::string_view name)
+		bool NamesType(std::string_view tokenTypeName)
 		{
-			if (name == "namespace")
+			return tokenTypeName == "type" || tokenTypeName == "class" || tokenTypeName == "enum" ||
+				   tokenTypeName == "struct" || tokenTypeName == "interface" ||
+				   tokenTypeName == "typeParameter" || tokenTypeName == "concept" ||
+				   tokenTypeName == "recordClass" || tokenTypeName == "recordStruct" ||
+				   tokenTypeName == "delegate" || tokenTypeName == "delegateName";
+		}
+
+		bool NamesFunction(std::string_view tokenTypeName)
+		{
+			return tokenTypeName == "function" || tokenTypeName == "method" ||
+				   tokenTypeName == "extensionMethod" || tokenTypeName == "extensionMethodName";
+		}
+
+		bool NamesMember(std::string_view tokenTypeName)
+		{
+			return tokenTypeName == "property" || tokenTypeName == "field" ||
+				   tokenTypeName == "fieldName" || tokenTypeName == "constant" ||
+				   tokenTypeName == "constantName" || tokenTypeName == "enumMember" ||
+				   tokenTypeName == "event";
+		}
+
+		SemanticKind KindForTokenType(std::string_view tokenTypeName)
+		{
+			if (tokenTypeName == "namespace")
 			{
 				return SemanticKind::Namespace;
 			}
 
-			// Every way a server can say "this names a type". clangd sends class, enum, struct
-			// and concept where another server might send only "type", and a reader wants them
-			// coloured alike regardless.
-			if (name == "type" || name == "class" || name == "enum" || name == "struct" ||
-				name == "interface" || name == "typeParameter" || name == "concept" ||
-				name == "recordClass" || name == "recordStruct" || name == "delegate" ||
-				name == "delegateName")
+			if (NamesType(tokenTypeName))
 			{
 				return SemanticKind::Type;
 			}
 
-			if (name == "function" || name == "method" || name == "extensionMethod" ||
-				name == "extensionMethodName")
+			if (NamesFunction(tokenTypeName))
 			{
 				return SemanticKind::Function;
 			}
 
-			if (name == "macro")
+			if (tokenTypeName == "macro")
 			{
 				return SemanticKind::Macro;
 			}
 
-			if (name == "property" || name == "field" || name == "fieldName" || name == "constant" ||
-				name == "constantName" || name == "enumMember" || name == "event")
+			if (NamesMember(tokenTypeName))
 			{
 				return SemanticKind::Member;
 			}
 
-			if (name == "parameter")
+			if (tokenTypeName == "parameter")
 			{
 				return SemanticKind::Parameter;
 			}
 
 			return SemanticKind::Other;
+		}
+
+		std::size_t ReadTokenField(const nlohmann::json& data, std::size_t tokenStart, std::size_t fieldOffset)
+		{
+			const nlohmann::json& value = data[tokenStart + fieldOffset];
+
+			return value.is_number_unsigned() ? value.get<std::size_t>() : 0;
 		}
 	}
 
@@ -527,22 +503,27 @@ namespace Graphite {
 			return legend;
 		}
 
-		const nlohmann::json* names = FirstOf(*provider, {"legend"});
+		const nlohmann::json* legendNode = FirstOf(*provider, {"legend"});
 
-		if (names == nullptr || (names = FirstOf(*names, {"tokenTypes"})) == nullptr ||
-			!names->is_array())
+		if (legendNode == nullptr)
 		{
 			return legend;
 		}
 
-		legend.reserve(names->size());
+		const nlohmann::json* tokenTypes = FirstOf(*legendNode, {"tokenTypes"});
 
-		for (const nlohmann::json& name : *names)
+		if (tokenTypes == nullptr || !tokenTypes->is_array())
 		{
-			// Position matters: index N of this vector answers for the server's type N, so an
-			// entry whose name is not a string still has to occupy its slot.
-			legend.push_back(name.is_string() ? KindForTokenType(name.get<std::string>())
-											  : SemanticKind::Other);
+			return legend;
+		}
+
+		legend.reserve(tokenTypes->size());
+
+		for (const nlohmann::json& tokenTypeName : *tokenTypes)
+		{
+			legend.push_back(tokenTypeName.is_string()
+								 ? KindForTokenType(tokenTypeName.get<std::string>())
+								 : SemanticKind::Other);
 		}
 
 		return legend;
@@ -563,25 +544,16 @@ namespace Graphite {
 		std::size_t line = 0;
 		std::size_t column = 0;
 
-		// Five at a time, and a trailing remainder is discarded rather than guessed at: half a
-		// token is not a token.
-		for (std::size_t index = 0; index + 5 <= data->size(); index += 5)
+		for (std::size_t tokenStart = 0; tokenStart + kIntegersPerSemanticToken <= data->size();
+			 tokenStart += kIntegersPerSemanticToken)
 		{
-			const auto read = [&data, index](std::size_t offset) -> std::size_t {
-				const nlohmann::json& value = (*data)[index + offset];
+			const std::size_t deltaLine = ReadTokenField(*data, tokenStart, kDeltaLineField);
+			const std::size_t deltaColumn = ReadTokenField(*data, tokenStart, kDeltaColumnField);
 
-				return value.is_number_unsigned() ? value.get<std::size_t>() : 0;
-			};
-
-			const std::size_t deltaLine = read(0);
-
-			// The column is relative to the previous token only while the line has not moved.
-			// Missing this reset shifts every token after the first line break, which reads as
-			// the colours sliding rather than as a decoding fault.
-			column = deltaLine == 0 ? column + read(1) : read(1);
+			column = deltaLine == 0 ? column + deltaColumn : deltaColumn;
 			line += deltaLine;
 
-			const std::size_t typeIndex = read(3);
+			const std::size_t typeIndex = ReadTokenField(*data, tokenStart, kTypeIndexField);
 
 			if (typeIndex >= legend.size())
 			{
@@ -590,11 +562,15 @@ namespace Graphite {
 
 			if (legend[typeIndex] == SemanticKind::Other)
 			{
-				// Nothing to paint over the lexer with, so not worth carrying to the editor.
 				continue;
 			}
 
-			tokens.push_back(SemanticToken{line, Utf16Column{column}, read(2), legend[typeIndex]});
+			const std::size_t length = ReadTokenField(*data, tokenStart, kLengthField);
+
+			tokens.push_back(SemanticToken{.Line = line,
+										   .Column = Utf16Column{column},
+										   .Length = length,
+										   .Kind = legend[typeIndex]});
 		}
 
 		return tokens;
@@ -609,10 +585,6 @@ namespace Graphite {
 
 	namespace {
 
-		// nullopt means "drop this diagnostic": Information and Hint are real severities the
-		// protocol defines, but nothing downstream draws them. Absent is different from either —
-		// the field is optional and left to the client — and is read as the louder of the two
-		// kept severities, on the same reasoning ParseDiagnostics documents.
 		std::optional<DiagnosticSeverity> SeverityOf(const nlohmann::json& diagnostic)
 		{
 			const nlohmann::json* severity = FirstOf(diagnostic, {"severity"});
@@ -624,16 +596,15 @@ namespace Graphite {
 
 			switch (severity->get<int>())
 			{
-			case 1:
+			case kErrorSeverityValue:
 				return DiagnosticSeverity::Error;
-			case 2:
+			case kWarningSeverityValue:
 				return DiagnosticSeverity::Warning;
 			default:
-				return std::nullopt; // Information, Hint, or something invented
+				return std::nullopt;
 			}
 		}
 
-		// A publication's "diagnostics" and a pull report's "items" are the same array.
 		std::vector<Diagnostic> ParseDiagnosticItems(const nlohmann::json& items)
 		{
 			std::vector<Diagnostic> diagnostics;
@@ -668,9 +639,6 @@ namespace Graphite {
 						diagnostic.Column = Utf16Column{ReadUnsigned(*start, "character")};
 					}
 
-					// An end the server did not give collapses onto the start rather than onto
-					// (0, 0): a zero-length span at the right place is drawable, one at the top of
-					// the file is a squiggle under text nobody complained about.
 					if (const nlohmann::json* end = FirstOf(*range, {"end"}))
 					{
 						diagnostic.EndLine = ReadUnsigned(*end, "line");
@@ -752,9 +720,16 @@ namespace Graphite {
 			return false;
 		}
 
-		// An options object in practice; true is accepted too, as the protocol allows for other providers.
 		const nlohmann::json* provider = FirstOf(*capabilities, {"diagnosticProvider"});
 
-		return provider != nullptr && (provider->is_object() || (provider->is_boolean() && provider->get<bool>()));
+		if (provider == nullptr)
+		{
+			return false;
+		}
+
+		const bool isOptionsObject = provider->is_object();
+		const bool isEnabledFlag = provider->is_boolean() && provider->get<bool>();
+
+		return isOptionsObject || isEnabledFlag;
 	}
 }

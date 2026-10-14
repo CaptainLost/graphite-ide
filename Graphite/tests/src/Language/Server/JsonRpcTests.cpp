@@ -2,6 +2,10 @@
 
 #include "Language/Server/JsonRpc.h"
 
+#include <optional>
+#include <string>
+#include <utility>
+
 TEST_CASE("JsonRpc frames a request with an increasing id")
 {
 	Graphite::JsonRpc rpc;
@@ -20,8 +24,8 @@ TEST_CASE("JsonRpc pairs a reply with its request and forgets it afterwards")
 	Graphite::JsonRpc rpc;
 
 	const auto [id, bytes] = rpc.Request("textDocument/definition", {});
-	const auto message = rpc.Receive(R"({"jsonrpc":"2.0","id":)" + std::to_string(id) +
-									 R"(,"result":[{"uri":"file:///a.cpp"}]})");
+	const std::optional<Graphite::IncomingMessage> message = rpc.Receive(R"({"jsonrpc":"2.0","id":)" + std::to_string(id) +
+																		 R"(,"result":[{"uri":"file:///a.cpp"}]})");
 
 	REQUIRE(message.has_value());
 	CHECK(message->ReplyTo == id);
@@ -46,8 +50,8 @@ TEST_CASE("JsonRpc reports an error reply as one")
 	Graphite::JsonRpc rpc;
 
 	const auto [id, bytes] = rpc.Request("a", {});
-	const auto message = rpc.Receive(R"({"id":)" + std::to_string(id) +
-									 R"(,"error":{"code":-32601,"message":"no"}})");
+	const std::optional<Graphite::IncomingMessage> message = rpc.Receive(R"({"id":)" + std::to_string(id) +
+																		 R"(,"error":{"code":-32601,"message":"no"}})");
 
 	REQUIRE(message.has_value());
 	CHECK(message->IsError);
@@ -58,7 +62,7 @@ TEST_CASE("JsonRpc passes a server-initiated notification through with its metho
 {
 	Graphite::JsonRpc rpc;
 
-	const auto message = rpc.Receive(R"({"method":"$/progress","params":{"value":42}})");
+	const std::optional<Graphite::IncomingMessage> message = rpc.Receive(R"({"method":"$/progress","params":{"value":42}})");
 
 	REQUIRE(message.has_value());
 	CHECK(message->Method == "$/progress");
@@ -124,7 +128,7 @@ TEST_CASE("JsonRpc reads a server-initiated request as one, not as a reply")
 {
 	Graphite::JsonRpc rpc;
 
-	const auto message = rpc.Receive(R"({"id":7,"method":"workspace/configuration","params":{}})");
+	const std::optional<Graphite::IncomingMessage> message = rpc.Receive(R"({"id":7,"method":"workspace/configuration","params":{}})");
 
 	REQUIRE(message.has_value());
 	CHECK(message->Method == "workspace/configuration");
@@ -136,13 +140,13 @@ TEST_CASE("JsonRpc keeps a server-initiated request's id exactly as it arrived")
 {
 	Graphite::JsonRpc rpc;
 
-	const auto named = rpc.Receive(R"({"id":"abc","method":"workspace/configuration","params":{}})");
+	const std::optional<Graphite::IncomingMessage> named = rpc.Receive(R"({"id":"abc","method":"workspace/configuration","params":{}})");
 
 	REQUIRE(named.has_value());
 	REQUIRE(named->RespondTo.has_value());
 	CHECK(*named->RespondTo == nlohmann::json("abc"));
 
-	const auto numbered = rpc.Receive(R"({"id":7,"method":"workspace/configuration","params":{}})");
+	const std::optional<Graphite::IncomingMessage> numbered = rpc.Receive(R"({"id":7,"method":"workspace/configuration","params":{}})");
 
 	REQUIRE(numbered.has_value());
 	REQUIRE(numbered->RespondTo.has_value());
@@ -157,9 +161,6 @@ TEST_CASE("JsonRpc echoes a string id unchanged in a reply and an error reply")
 	CHECK(rpc.ErrorReply(nlohmann::json("abc"), -32601, "no").find(R"("id":"abc")") != std::string::npos);
 }
 
-// A document that is not valid UTF-8 opens read-only with its bytes kept as they are, and its
-// text still goes to the server in didOpen. Serialising it must not throw: the throw ended the
-// application from the frame that opened the file.
 TEST_CASE("JsonRpc frames text that is not valid UTF-8 with replacement characters instead of throwing")
 {
 	Graphite::JsonRpc rpc;
@@ -169,9 +170,10 @@ TEST_CASE("JsonRpc frames text that is not valid UTF-8 with replacement characte
 	REQUIRE_NOTHROW(notification = rpc.Notification("textDocument/didOpen", params));
 	CHECK(notification.find("caf\xef\xbf\xbd") != std::string::npos);
 
-	std::string request;
-	REQUIRE_NOTHROW(request = rpc.Request("textDocument/hover", params).second);
-	CHECK(request.find("caf\xef\xbf\xbd") != std::string::npos);
+	std::pair<Graphite::RequestId, std::string> request;
+	REQUIRE_NOTHROW(request = rpc.Request("textDocument/hover", params));
+	const auto& [requestId, requestBytes] = request;
+	CHECK(requestBytes.find("caf\xef\xbf\xbd") != std::string::npos);
 
 	CHECK_NOTHROW(rpc.Reply(nlohmann::json(1), params));
 	CHECK_NOTHROW(rpc.ErrorReply(nlohmann::json(1), -32603, "caf\xe9"));

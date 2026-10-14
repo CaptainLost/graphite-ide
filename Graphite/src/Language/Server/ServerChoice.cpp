@@ -19,7 +19,6 @@ namespace Graphite {
 			return false;
 		}
 
-		// A stored id the language does not list falls back to the recommended server.
 		ServerChoice RecommendedChoice(LanguageId language)
 		{
 			return ServerChoice{.Kind = ServerChoiceKind::Chosen, .Server = RecommendedServerFor(language)};

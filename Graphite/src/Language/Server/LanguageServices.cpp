@@ -26,6 +26,17 @@ namespace Graphite {
 
 	namespace {
 
+		constexpr long long kBackoffSecondsPerRestart = 2;
+		constexpr std::size_t kNoRestarts = 0;
+		constexpr std::uint64_t kNoProjectSearch = 0;
+		constexpr RequestId kDeclinedRequest = 0;
+
+		constexpr int kRankInProgress = 4;
+		constexpr int kRankBroken = 3;
+		constexpr int kRankReady = 2;
+		constexpr int kRankRestricted = 1;
+		constexpr int kRankSilent = 0;
+
 		bool ContainsLanguage(const std::vector<LanguageId>& languages, LanguageId language)
 		{
 			return std::find(languages.begin(), languages.end(), language) != languages.end();
@@ -36,11 +47,36 @@ namespace Graphite {
 			status.Language = language;
 			return status;
 		}
+
+		int RankOf(ServerState state)
+		{
+			switch (state)
+			{
+			case ServerState::Indexing:
+			case ServerState::Starting:
+				return kRankInProgress;
+			case ServerState::Failed:
+			case ServerState::NotFound:
+			case ServerState::NotInstalled:
+			case ServerState::MissingRuntime:
+			case ServerState::ProjectIncomplete:
+				return kRankBroken;
+			case ServerState::Ready:
+				return kRankReady;
+			case ServerState::Restricted:
+				return kRankRestricted;
+			case ServerState::Off:
+			case ServerState::NotConfigured:
+				return kRankSilent;
+			}
+
+			return kRankSilent;
+		}
 	}
 
 	std::chrono::steady_clock::duration RestartBackoff(std::size_t restarts)
 	{
-		return std::chrono::seconds(static_cast<long long>(restarts) * 2);
+		return std::chrono::seconds(static_cast<long long>(restarts) * kBackoffSecondsPerRestart);
 	}
 
 	bool MayRestart(std::size_t restarts)
@@ -63,13 +99,9 @@ namespace Graphite {
 
 	LanguageServices::~LanguageServices()
 	{
-		// m_Jobs joins the warm-up walk, which otherwise runs to the end of a tree with no source
-		// of any server.
 		m_WarmToken.Cancel();
 		m_ProjectSearchToken.Cancel();
 
-		// m_Jobs runs what it still holds before joining its workers, and it goes before every
-		// other member, so each server has had its grace before anything it might touch is gone.
 		for (auto& [key, server] : m_Servers)
 		{
 			Retire(std::move(server.Client));
@@ -90,8 +122,52 @@ namespace Graphite {
 		return choice.Kind == ServerChoiceKind::Chosen ? choice.Server : nullptr;
 	}
 
-	const ServerDefinition* LanguageServices::Resolve(const std::filesystem::path& path,
-															  LanguageId language, Key& key) const
+	LanguageServices::ManagedServer* LanguageServices::FindManagedServer(const ServerKey& key)
+	{
+		const ServerMap::iterator found = m_Servers.find(key);
+
+		if (found == m_Servers.end())
+		{
+			return nullptr;
+		}
+
+		auto& [foundKey, managed] = *found;
+
+		return &managed;
+	}
+
+	const LanguageServices::ServerKey* LanguageServices::KeyOf(const KeyByPath& keys, const std::filesystem::path& path,
+															   LanguageId language)
+	{
+		const KeyByPath::const_iterator found = keys.find(path);
+
+		if (found == keys.end())
+		{
+			return nullptr;
+		}
+
+		const auto& [foundPath, foundKey] = *found;
+
+		return foundKey.Language == language ? &foundKey : nullptr;
+	}
+
+	LanguageServices::ParkedDocument* LanguageServices::FindParkedDocument(const std::filesystem::path& path,
+																		   LanguageId language)
+	{
+		const ParkedMap::iterator found = m_Parked.find(path);
+
+		if (found == m_Parked.end())
+		{
+			return nullptr;
+		}
+
+		auto& [foundPath, parked] = *found;
+
+		return parked.Language == language ? &parked : nullptr;
+	}
+
+	const ServerDefinition* LanguageServices::Resolve(const std::filesystem::path& path, LanguageId language,
+													  ServerKey& key) const
 	{
 		const ServerDefinition* server = ServerFor(language);
 
@@ -102,34 +178,32 @@ namespace Graphite {
 
 		key.Language = language;
 
-		// An open document answers with the key it was opened under, before anything that could
-		// have changed since.
-		if (const auto open = m_DocumentKeys.find(path); open != m_DocumentKeys.end() && open->second.Language == language)
+		const ServerKey* openDocumentKey = KeyOf(m_DocumentKeys, path, language);
+
+		if (openDocumentKey != nullptr)
 		{
-			key.Root = open->second.Root;
+			key.Root = openDocumentKey->Root;
 			return server;
 		}
 
-		// Per file, so ahead of the per-directory cache: one named header does not decide for
-		// every file beside it. A marker of its own still wins - RootFor only returns the
-		// fallback when it finds none - and so does the open folder, which comes before the
-		// server that named a file (see the server-roots spec).
-		if (const auto named = m_NamedBy.find(path); named != m_NamedBy.end() && named->second.Language == language)
+		const ServerKey* namingServerKey = KeyOf(m_NamedBy, path, language);
+
+		if (namingServerKey != nullptr)
 		{
 			const bool inFolder = Core::IsSameOrWithin(path, m_FallbackRoot);
 
-			key.Root = RootFor(*server, path, inFolder ? m_FallbackRoot : named->second.Root);
+			key.Root = RootFor(*server, path, inFolder ? m_FallbackRoot : namingServerKey->Root);
 			return server;
 		}
 
-		// The directory, not the full path: every document in it resolves to the same root, and
-		// most callers here are one call per open document, not one per unique file name.
-		const auto cacheKey = std::make_pair(language, path.parent_path());
-		const auto cached = m_RootCache.find(cacheKey);
+		const std::pair<LanguageId, std::filesystem::path> cacheKey = std::make_pair(language, path.parent_path());
+		const RootCacheMap::const_iterator cached = m_RootCache.find(cacheKey);
 
 		if (cached != m_RootCache.end())
 		{
-			key.Root = cached->second;
+			const auto& [cachedKey, cachedRoot] = *cached;
+
+			key.Root = cachedRoot;
 			return server;
 		}
 
@@ -139,13 +213,8 @@ namespace Graphite {
 		return server;
 	}
 
-	// Every file gets a root it can be judged by (ADR 0532). One shared empty root for every
-	// file with no marker would make one trust answer cover files from folders the user judged
-	// differently, and would be a root no trust entry can ever name.
 	std::filesystem::path LanguageServices::FallbackFor(const std::filesystem::path& path) const
 	{
-		// Case-insensitive, as the trust store compares roots: a path from a URI or the command
-		// line can spell the open folder in another case and still lie inside it.
 		if (Core::IsSameOrWithin(path, m_FallbackRoot))
 		{
 			return m_FallbackRoot;
@@ -163,7 +232,7 @@ namespace Graphite {
 	void LanguageServices::NoteNamed(const std::filesystem::path& named, const std::filesystem::path& by,
 									 LanguageId language)
 	{
-		Key key;
+		ServerKey key;
 
 		if (Resolve(by, language, key) != nullptr)
 		{
@@ -171,9 +240,8 @@ namespace Graphite {
 		}
 	}
 
-	void LanguageServices::NoteNamedByKey(const std::filesystem::path& named, const Key& key)
+	void LanguageServices::NoteNamedByKey(const std::filesystem::path& named, const ServerKey& key)
 	{
-		// An open document already belongs somewhere, and nothing moves it.
 		if (!m_DocumentKeys.contains(named))
 		{
 			m_NamedBy[named] = key;
@@ -213,7 +281,6 @@ namespace Graphite {
 
 	void LanguageServices::WarmOpenFolderAgain()
 	{
-		// The folder the last warm-up walked may have been closed or replaced since.
 		const bool warmedFolderIsOpen = m_LastWarmUp.has_value() && Core::IsSameOrWithin(m_LastWarmUp->Root, m_FallbackRoot) &&
 										Core::IsSameOrWithin(m_FallbackRoot, m_LastWarmUp->Root);
 
@@ -235,11 +302,11 @@ namespace Graphite {
 
 	std::optional<ServerCommand> LanguageServices::FoundCommandFor(LanguageId language) const
 	{
-		for (const std::pair<const Key, ManagedServer>& entry : m_Servers)
+		for (const auto& [key, server] : m_Servers)
 		{
-			if (entry.first.Language == language && entry.second.Client != nullptr)
+			if (key.Language == language && server.Client != nullptr)
 			{
-				return entry.second.Command;
+				return server.Command;
 			}
 		}
 
@@ -257,16 +324,18 @@ namespace Graphite {
 	{
 		std::vector<HeldDocument> taken;
 
-		for (std::map<std::filesystem::path, ParkedDocument>::iterator parked = m_Parked.begin(); parked != m_Parked.end();)
+		for (ParkedMap::iterator entry = m_Parked.begin(); entry != m_Parked.end();)
 		{
-			if (parked->second.Language != language)
+			auto& [path, parked] = *entry;
+
+			if (parked.Language != language)
 			{
-				++parked;
+				++entry;
 				continue;
 			}
 
-			taken.push_back(HeldDocument{.Path = parked->first, .Text = std::move(parked->second.Text), .Role = parked->second.Role});
-			parked = m_Parked.erase(parked);
+			taken.push_back(HeldDocument{.Path = path, .Text = std::move(parked.Text), .Role = parked.Role});
+			entry = m_Parked.erase(entry);
 		}
 
 		return taken;
@@ -276,7 +345,7 @@ namespace Graphite {
 	{
 		std::vector<HeldDocument> held;
 
-		for (std::map<Key, ManagedServer>::iterator entry = m_Servers.begin(); entry != m_Servers.end();)
+		for (ServerMap::iterator entry = m_Servers.begin(); entry != m_Servers.end();)
 		{
 			auto& [key, server] = *entry;
 
@@ -304,7 +373,6 @@ namespace Graphite {
 
 			Retire(std::move(server.Client));
 
-			// m_NamedBy stays: a header reached through a definition is re-rooted through it.
 			entry = m_Servers.erase(entry);
 		}
 
@@ -318,8 +386,7 @@ namespace Graphite {
 
 	void LanguageServices::ForgetRootsOf(LanguageId language)
 	{
-		for (std::map<std::pair<LanguageId, std::filesystem::path>, std::filesystem::path>::iterator cached = m_RootCache.begin();
-			 cached != m_RootCache.end();)
+		for (RootCacheMap::iterator cached = m_RootCache.begin(); cached != m_RootCache.end();)
 		{
 			const auto& [cacheKey, root] = *cached;
 			const auto& [cachedLanguage, directory] = cacheKey;
@@ -381,7 +448,7 @@ namespace Graphite {
 			APP_WARN("Language servers keep their temporary files where the system does: {}", claimed.GetError().Message);
 		}
 
-		// Submitted after the claim, whose held lock is what keeps this Graphite's own directory out of the sweep.
+		// WARNING: Submitted after the claim, whose held lock is what keeps this Graphite's own directory out of the sweep.
 		m_Jobs.Submit([directory] { SweepUnclaimedTemporaryDirectories(directory); });
 	}
 
@@ -420,7 +487,6 @@ namespace Graphite {
 			}
 		}
 
-		// The warm-up's scope moved with the selection; a language reconfigured above was warmed again already.
 		if (warmsAgain)
 		{
 			WarmOpenFolderAgain();
@@ -467,7 +533,7 @@ namespace Graphite {
 		return ServerStatus{.State = ServerState::Off, .Name = std::string{LanguageDisplayName(language)}, .Language = language};
 	}
 
-	void LanguageServices::StartServer(ManagedServer& server, const Key& key)
+	void LanguageServices::StartServer(ManagedServer& server, const ServerKey& key)
 	{
 		server.Status.Name = std::string(server.Definition->DisplayName);
 		server.Status.Restarts = server.Restarts;
@@ -514,29 +580,22 @@ namespace Graphite {
 
 		server.Client = MakeClient(server, key);
 
-		// The client's own Drain reports the real state — Starting, then Indexing/Ready/Failed —
-		// from the next Poll onward. This is only what a caller sees before that first Poll.
 		server.Status.State = ServerState::Starting;
 		server.Status.Detail = DescribeCommand(server.Command);
 	}
 
 	void LanguageServices::EnsureStarted(const std::filesystem::path& path, LanguageId language)
 	{
-		Key key;
+		ServerKey key;
 		const ServerDefinition* definition = Resolve(path, language, key);
 
 		if (definition == nullptr)
 		{
-			// No server configured, or turned off: nothing to start, and no entry to create.
-			// StatusFor answers NotConfigured or Off for it, so there is nothing else to record.
 			return;
 		}
 
 		if (m_Servers.contains(key))
 		{
-			// Already running, or already failed to start, for this exact (language, root) pair.
-			// EnsureStarted is called every time a document in this language becomes active, so
-			// this is the check that keeps the common case a single lookup.
 			return;
 		}
 
@@ -572,8 +631,6 @@ namespace Graphite {
 			}
 		}
 
-		// No entry at all: never configured, or never started. Both read the same way to a
-		// caller — State defaults to NotConfigured.
 		return ServerStatus{.Language = language};
 	}
 
@@ -584,59 +641,33 @@ namespace Graphite {
 			return OffStatus(language);
 		}
 
-		Key key;
+		ServerKey key;
 
 		if (Resolve(path, language, key) == nullptr)
 		{
 			return ServerStatus{.Language = language};
 		}
 
-		const auto found = m_Servers.find(key);
+		const ManagedServer* found = FindManagedServer(key);
 
-		return found != m_Servers.end() ? WithLanguage(found->second.Status, language) : ServerStatus{.Language = language};
+		return found != nullptr ? WithLanguage(found->Status, language) : ServerStatus{.Language = language};
 	}
 
 	std::optional<ServerStatus> LanguageServices::OverallStatus() const
 	{
-		const auto rank = [](ServerState state) -> int {
-			switch (state)
-			{
-			case ServerState::Indexing:
-			case ServerState::Starting:
-				return 4; // something is happening and will stop happening
-			case ServerState::Failed:
-			case ServerState::NotFound:
-			case ServerState::NotInstalled:
-			case ServerState::MissingRuntime:
-			case ServerState::ProjectIncomplete:
-				return 3; // something is wrong and will not fix itself
-			case ServerState::Ready:
-				return 2; // up and answering, which is worth saying when nothing else is
-			case ServerState::Restricted:
-				// Below Ready: a trusted server that is up is more use to show than an
-				// untrusted one somewhere else - one file opened from another folder would
-				// otherwise speak for the whole workspace for the rest of the session. Its own
-				// tabs still say it, through StatusFor for their path.
-				return 1;
-			case ServerState::Off:
-			case ServerState::NotConfigured:
-				return 0; // no server here at all - the one case with nothing to report
-			}
-
-			return 0;
-		};
-
 		const ServerStatus* best = nullptr;
 		LanguageId bestLanguage = LanguageId::PlainText;
 
 		for (const auto& [key, server] : m_Servers)
 		{
-			if (rank(server.Status.State) == 0)
+			const int serverRank = RankOf(server.Status.State);
+
+			if (serverRank == kRankSilent)
 			{
 				continue;
 			}
 
-			if (best == nullptr || rank(server.Status.State) > rank(best->State))
+			if (best == nullptr || serverRank > RankOf(best->State))
 			{
 				best = &server.Status;
 				bestLanguage = key.Language;
@@ -666,39 +697,31 @@ namespace Graphite {
 	{
 		const Ticket ticket = IssueTicket();
 
-		Key key;
+		ServerKey key;
 
 		if (Resolve(path, language, key) == nullptr)
 		{
-			// Nothing configured for this language — there is no client that will ever answer,
-			// so the ticket is failed on the spot rather than left to hang forever.
 			Fail(ticket);
 			return ticket;
 		}
 
-		const auto found = m_Servers.find(key);
+		ManagedServer* server = FindManagedServer(key);
 
-		if (found == m_Servers.end() || !found->second.Client)
+		if (server == nullptr || !server->Client)
 		{
-			// Not started yet, or started and never got a process (NotFound, or Failed after
-			// exhausting its restarts) — same reasoning as above.
 			Fail(ticket);
 			return ticket;
 		}
 
-		ManagedServer& server = found->second;
-		const RequestId requestId = ask(*server.Client);
+		const RequestId requestId = ask(*server->Client);
 
-		if (requestId == 0)
+		if (requestId == kDeclinedRequest)
 		{
-			// The client declined to ask - semantic tokens before the handshake gave it a legend,
-			// or from a server that declared none. Parked under id 0 the ticket would never be
-			// answered and the next refusal would overwrite it, so it is failed on the spot.
 			Fail(ticket);
 			return ticket;
 		}
 
-		server.Pending[requestId] = ticket;
+		server->Pending[requestId] = ticket;
 
 		return ticket;
 	}
@@ -789,16 +812,18 @@ namespace Graphite {
 	{
 		for (auto& [key, server] : m_Servers)
 		{
-			for (auto pending = server.Pending.begin(); pending != server.Pending.end(); ++pending)
+			for (ManagedServer::PendingTickets::iterator pending = server.Pending.begin(); pending != server.Pending.end(); ++pending)
 			{
-				if (pending->second != ticket)
+				const auto& [requestId, pendingTicket] = *pending;
+
+				if (pendingTicket != ticket)
 				{
 					continue;
 				}
 
 				if (server.Client)
 				{
-					server.Client->Cancel(pending->first);
+					server.Client->Cancel(requestId);
 				}
 
 				server.Pending.erase(pending);
@@ -810,7 +835,7 @@ namespace Graphite {
 	void LanguageServices::OpenDocument(const std::filesystem::path& path, LanguageId language,
 										std::string text, DocumentRole role)
 	{
-		Key key;
+		ServerKey key;
 
 		if (Resolve(path, language, key) == nullptr)
 		{
@@ -824,33 +849,23 @@ namespace Graphite {
 
 		m_Parked.erase(path);
 
-		const auto found = m_Servers.find(key);
+		ManagedServer* found = FindManagedServer(key);
 
-		if (found == m_Servers.end())
+		if (found == nullptr)
 		{
 			return;
 		}
 
-		// Recorded whether or not the server has a process: a NotFound or Restricted entry keeps
-		// the document too, and a later Revalidate replays it to that same entry.
 		m_DocumentKeys[path] = key;
 
-		ManagedServer& server = found->second;
+		ManagedServer& server = *found;
 
-		// Remembered before forwarding, not instead of it: a restart needs the text on hand with
-		// nowhere else to read it from, since the client that used to hold it is the one that
-		// just died.
 		ManagedServer::SentDocument& kept = server.OpenDocuments[path];
 		kept.Text = std::move(text);
 		kept.Role = role;
 
-		// The kept copy, not a second one: `text` has been moved from, and the client only reads
-		// what it is given long enough to escape it into JSON.
 		if (server.Client)
 		{
-			// LspClient::OpenDocument always sends and always returns a non-default version, so
-			// nothing here needs to guard against a default one - `if (server.Client)` above is
-			// what suppresses the note on a machine with no live process to send it to.
 			kept.Version = server.Client->OpenDocument(path, kept.Text, kept.Role);
 			m_Diagnostics.Versions.push_back(DocumentVersionNote{path, kept.Version});
 		}
@@ -859,73 +874,70 @@ namespace Graphite {
 	void LanguageServices::ChangeDocument(const std::filesystem::path& path, LanguageId language,
 										  std::string text)
 	{
-		Key key;
+		ServerKey key;
 
 		if (Resolve(path, language, key) == nullptr)
 		{
-			const std::map<std::filesystem::path, ParkedDocument>::iterator parked = m_Parked.find(path);
+			ParkedDocument* parked = FindParkedDocument(path, language);
 
-			if (parked != m_Parked.end() && parked->second.Language == language)
+			if (parked != nullptr)
 			{
-				parked->second.Text = std::move(text);
+				parked->Text = std::move(text);
 			}
 
 			return;
 		}
 
-		const auto found = m_Servers.find(key);
+		ManagedServer* found = FindManagedServer(key);
 
-		if (found == m_Servers.end())
+		if (found == nullptr)
 		{
 			return;
 		}
 
-		ManagedServer& server = found->second;
+		ManagedServer& server = *found;
 
-		const auto document = server.OpenDocuments.find(path);
+		const std::map<std::filesystem::path, ManagedServer::SentDocument>::iterator openDocument = server.OpenDocuments.find(path);
 
-		if (document == server.OpenDocuments.end())
+		if (openDocument == server.OpenDocuments.end())
 		{
-			// Never opened through here — nothing to keep in step with, and forwarding a change
-			// for a document the server was never told about would be a change to nothing.
 			return;
 		}
 
-		document->second.Text = std::move(text);
+		auto& [documentPath, document] = *openDocument;
+
+		document.Text = std::move(text);
 
 		if (server.Client)
 		{
-			document->second.Version = server.Client->ChangeDocument(path, document->second.Text);
+			document.Version = server.Client->ChangeDocument(path, document.Text);
 
-			if (document->second.Version != DocumentVersion{})
+			if (document.Version != DocumentVersion{})
 			{
-				m_Diagnostics.Versions.push_back(
-					DocumentVersionNote{path, document->second.Version});
+				m_Diagnostics.Versions.push_back(DocumentVersionNote{path, document.Version});
 			}
 		}
 	}
 
 	void LanguageServices::SaveDocument(const std::filesystem::path& path, LanguageId language)
 	{
-		Key key;
+		ServerKey key;
 
 		if (Resolve(path, language, key) == nullptr)
 		{
 			return;
 		}
 
-		const auto found = m_Servers.find(key);
+		ManagedServer* found = FindManagedServer(key);
 
-		if (found == m_Servers.end())
+		if (found == nullptr)
 		{
 			return;
 		}
 
-		ManagedServer& server = found->second;
+		ManagedServer& server = *found;
 
-		// The same guard ChangeDocument uses: a didSave for a document the server was never told
-		// about is a notification about nothing, and clangd is entitled to complain about one.
-		if (server.OpenDocuments.find(path) == server.OpenDocuments.end())
+		if (!server.OpenDocuments.contains(path))
 		{
 			return;
 		}
@@ -940,26 +952,23 @@ namespace Graphite {
 	{
 		m_Parked.erase(path);
 
-		Key key;
+		ServerKey key;
 
 		if (Resolve(path, language, key) == nullptr)
 		{
 			return;
 		}
 
-		// Resolve has read the document's key by now, and the document is closed whatever the
-		// server makes of it: forgotten on every way out, so the path resolves afresh when it
-		// is next opened.
 		m_DocumentKeys.erase(path);
 
-		const auto found = m_Servers.find(key);
+		ManagedServer* found = FindManagedServer(key);
 
-		if (found == m_Servers.end())
+		if (found == nullptr)
 		{
 			return;
 		}
 
-		ManagedServer& server = found->second;
+		ManagedServer& server = *found;
 
 		if (server.OpenDocuments.erase(path) == 0)
 		{
@@ -968,9 +977,6 @@ namespace Graphite {
 
 		if (server.Client)
 		{
-			// A note only when a live client was actually told - a document never sent (no
-			// binary found) has no version note either, so the model has no entry for it to
-			// drop in the first place.
 			m_Diagnostics.Closed.push_back(path);
 			server.Client->CloseDocument(path);
 		}
@@ -978,34 +984,23 @@ namespace Graphite {
 
 	bool LanguageServices::Holds(const std::filesystem::path& path, LanguageId language)
 	{
-		Key key;
+		ServerKey key;
 
 		if (Resolve(path, language, key) == nullptr)
 		{
-			const std::map<std::filesystem::path, ParkedDocument>::const_iterator parked = m_Parked.find(path);
-			return parked != m_Parked.end() && parked->second.Language == language;
+			return FindParkedDocument(path, language) != nullptr;
 		}
 
-		const auto found = m_Servers.find(key);
+		const ManagedServer* found = FindManagedServer(key);
 
-		return found != m_Servers.end() && found->second.OpenDocuments.contains(path);
+		return found != nullptr && found->OpenDocuments.contains(path);
 	}
 
-	void LanguageServices::RestartServer(const Key& key, ManagedServer& server)
+	void LanguageServices::RestartServer(const ServerKey& key, ManagedServer& server)
 	{
-		// A dead LspClient's reader and writer threads have already stopped for good — that flag
-		// never resets — so the only way back is a new object, never a Reset() on this one.
-		// Destroying the old client here is safe: its threads are already joined, so this runs
-		// the same teardown a normal destruction would, just without a live process to terminate.
 		server.Client.reset();
 		server.Client = MakeClient(server, key);
 
-		// A fresh server knows nothing about what is open, and its numbering restarts at 1 - the
-		// old process's diagnostics, measured against the old numbering, are no longer about
-		// anything a new comparison can trust. Every document remembered for this server is sent
-		// again, in no particular order - didOpen does not depend on prior state - and each is
-		// reported both closed and reopened, so a reader holding a stale entry for it drops that
-		// entry before it ever compares the wrong process's version against the new one.
 		ReplayOpenDocuments(server);
 
 		server.Restarts += 1;
@@ -1031,25 +1026,33 @@ namespace Graphite {
 		server.Status.Name = std::string(server.Definition->DisplayName);
 		server.Status.State = ServerState::Restricted;
 		server.Status.Detail = Core::ToUtf8(server.Root);
-		server.Status.Percent = -1;
-		server.Status.Restarts = 0;
+		server.Status.Percent = kNoPercentReported;
+		server.Status.Restarts = kNoRestarts;
 	}
 
-	void LanguageServices::ForgetNamedBy(const Key& key)
+	void LanguageServices::ForgetNamedBy(const ServerKey& key)
 	{
-		std::erase_if(m_NamedBy, [&](const auto& named) { return !(key < named.second) && !(named.second < key); });
+		for (KeyByPath::iterator entry = m_NamedBy.begin(); entry != m_NamedBy.end();)
+		{
+			const auto& [namedPath, namingKey] = *entry;
+			const bool namedByThisServer = !(key < namingKey) && !(namingKey < key);
+
+			if (namedByThisServer)
+			{
+				entry = m_NamedBy.erase(entry);
+				continue;
+			}
+
+			++entry;
+		}
 	}
 
-	void LanguageServices::Restrict(const Key& key, ManagedServer& server)
+	void LanguageServices::Restrict(const ServerKey& key, ManagedServer& server)
 	{
-		// A restricted server is no authority on any file's root: what it named is judged by its
-		// own directory again, the same as when a server is reaped.
 		ForgetNamedBy(key);
 
 		if (server.Client)
 		{
-			// Whatever it published is about a process that is going away. A closed note is
-			// what makes a reader drop it, the same as a restart's.
 			for (const auto& [path, document] : server.OpenDocuments)
 			{
 				m_Diagnostics.Closed.push_back(path);
@@ -1058,16 +1061,16 @@ namespace Graphite {
 			Retire(std::move(server.Client));
 		}
 
-		for (auto& entry : server.Pending)
+		for (const auto& [requestId, ticket] : server.Pending)
 		{
-			Fail(entry.second);
+			Fail(ticket);
 		}
 		server.Pending.clear();
 
-		server.Restarts = 0;
+		server.Restarts = kNoRestarts;
 		server.RestartPending = false;
 
-		server.ProjectSearch = 0;
+		server.ProjectSearch = kNoProjectSearch;
 		MarkRestricted(server);
 	}
 
@@ -1091,8 +1094,6 @@ namespace Graphite {
 
 			if (permitted && restricted)
 			{
-				// A fresh start, not a restart: the documents it holds were never sent to any
-				// process, so this is their first didOpen, and no restart is counted.
 				StartServer(server, key);
 
 				if (server.Client)
@@ -1107,12 +1108,68 @@ namespace Graphite {
 		}
 	}
 
+	void LanguageServices::RunWarmUpWalk(const Core::Ref<WarmFindings>& warm, const Core::CancellationToken& token,
+										 const std::filesystem::path& root, const std::filesystem::path& selectedSolution,
+										 bool respectGitIgnore, const std::vector<LanguageId>& wanted)
+	{
+		std::vector<LanguageId> seen;
+
+		EnumerationInput enumeration;
+		enumeration.Root = root;
+
+		SolutionScope scope{root, selectedSolution};
+
+		// WARNING: libgit2 handles are not safe to use from two threads, so the walk opens its own repository.
+		std::optional<Core::Repository> repository;
+
+		if (respectGitIgnore)
+		{
+			if (Core::Result<Core::Repository> opened = Core::Repository::Open(root))
+			{
+				repository.emplace(std::move(opened.GetValue()));
+
+				enumeration.Ignored = [&repository](const std::filesystem::path& path, bool) { return repository->IsIgnored(path); };
+			}
+		}
+
+		EnumerateFiles(enumeration, token, [&](const std::filesystem::path& file) {
+			if (seen.size() == wanted.size())
+			{
+				token.Cancel();
+				return;
+			}
+
+			const LanguageId language = LanguageOfPath(file);
+
+			if (!ContainsLanguage(wanted, language) ||
+				std::find(seen.begin(), seen.end(), language) != seen.end())
+			{
+				return;
+			}
+
+			if (LanguageRootsAtSolution(language) && !scope.Includes(file))
+			{
+				return;
+			}
+
+			seen.push_back(language);
+
+			Core::Result<std::string> read = Core::ReadFileBytes(file, Core::MaximumFileSize);
+			std::string text = read ? std::move(read.GetValue()) : std::string{};
+
+			{
+				const std::lock_guard<std::mutex> guard(warm->Mutex);
+				warm->Found.push_back(WarmFinding{language, file, std::move(text)});
+			}
+
+			Core::Redraw::Request();
+		});
+	}
+
 	void LanguageServices::WarmUp(std::filesystem::path root, bool respectGitIgnore)
 	{
 		m_LastWarmUp = WarmUpRequest{.Root = root, .RespectGitIgnore = respectGitIgnore};
 
-		// A walk still running is about the folder that was open a moment ago, and nothing it
-		// finds there is wanted now.
 		m_WarmToken.Cancel();
 		m_WarmToken = Core::CancellationToken{};
 
@@ -1121,7 +1178,6 @@ namespace Graphite {
 			m_Warm->Found.clear();
 		}
 
-		// After the cancel, so a walk already running for this root stops too.
 		if (!Permits(root))
 		{
 			return;
@@ -1144,79 +1200,17 @@ namespace Graphite {
 
 		m_Jobs.Submit([warm = m_Warm, token = m_WarmToken, root = std::move(root), selectedSolution = m_SelectedSolution,
 					   respectGitIgnore, wanted = std::move(wanted)] {
-			std::vector<LanguageId> seen;
-
-			EnumerationInput enumeration;
-			enumeration.Root = root;
-
-			SolutionScope scope{root, selectedSolution};
-
-			// Opened on this thread rather than shared with the workspace's: libgit2 handles are
-			// not safe to use from two threads, which is the same reason SearchService opens its
-			// own.
-			std::optional<Core::Repository> repository;
-
-			if (respectGitIgnore)
-			{
-				if (Core::Result<Core::Repository> opened = Core::Repository::Open(root))
-				{
-					repository.emplace(std::move(opened.GetValue()));
-
-					enumeration.Ignored = [&repository](const std::filesystem::path& path, bool) { return repository->IsIgnored(path); };
-				}
-			}
-
-			EnumerateFiles(enumeration, token, [&](const std::filesystem::path& file) {
-				if (seen.size() == wanted.size())
-				{
-					// Everything worth finding has been found. EnumerateFiles checks the token
-					// between entries, so cancelling here stops the walk rather than merely
-					// skipping the rest of it — which on a large tree is the whole point.
-					token.Cancel();
-					return;
-				}
-
-				const LanguageId language = LanguageOfPath(file);
-
-				if (!ContainsLanguage(wanted, language) ||
-					std::find(seen.begin(), seen.end(), language) != seen.end())
-				{
-					return;
-				}
-
-				if (LanguageRootsAtSolution(language) && !scope.Includes(file))
-				{
-					return;
-				}
-
-				seen.push_back(language);
-
-				// Read here, on the walk's thread. Poll needs it to prime the server the moment
-				// it starts, and a file of unknown size read inside a frame is exactly what this
-				// class does not do. Bytes as they sit on disk, which is what a server wants: it
-				// re-reads the file itself, and this copy only makes it load the compilation
-				// database. The ceiling is the editor's, so a warm-up never holds a file the
-				// editor would refuse; a file that cannot be read primes the server with nothing.
-				Core::Result<std::string> read = Core::ReadFileBytes(file, Core::MaximumFileSize);
-				std::string text = read ? std::move(read.GetValue()) : std::string{};
-
-				{
-					const std::lock_guard<std::mutex> guard(warm->Mutex);
-					warm->Found.push_back(WarmFinding{language, file, std::move(text)});
-				}
-
-				Core::Redraw::Request();
-			});
+			RunWarmUpWalk(warm, token, root, selectedSolution, respectGitIgnore, wanted);
 		});
 	}
 
-	bool LanguageServices::NeedsProjectSearch(const ManagedServer& server, const Key& key) const
+	bool LanguageServices::NeedsProjectSearch(const ManagedServer& server, const ServerKey& key) const
 	{
 		return !server.Projects && AdapterOf(server.Definition->Adapter).ProjectFileExtension().has_value() &&
 			   !SolutionForRoot(key.Root, m_SelectedSolution).has_value();
 	}
 
-	void LanguageServices::BeginProjectSearch(ManagedServer& server, const Key& key)
+	void LanguageServices::BeginProjectSearch(ManagedServer& server, const ServerKey& key)
 	{
 		server.ProjectSearch = m_NextProjectSearch++;
 		server.Status.State = ServerState::Starting;
@@ -1254,15 +1248,14 @@ namespace Graphite {
 
 		for (FoundProjects& search : found)
 		{
-			const std::map<Key, ManagedServer>::iterator entry = m_Servers.find(search.Server);
+			ManagedServer* entry = FindManagedServer(search.Server);
 
-			// Stopped, restricted or started again since this search began.
-			if (entry == m_Servers.end() || entry->second.ProjectSearch != search.Search)
+			if (entry == nullptr || entry->ProjectSearch != search.Search)
 			{
 				continue;
 			}
 
-			ManagedServer& server = entry->second;
+			ManagedServer& server = *entry;
 			const std::string root = Core::ToUtf8(search.Server.Root);
 			const std::size_t keptCount = search.Projects.Kept.size();
 			const std::size_t droppedCount = search.Projects.DroppedAboveLimit;
@@ -1277,7 +1270,7 @@ namespace Graphite {
 						 server.Definition->DisplayName, root, keptCount, droppedCount);
 			}
 
-			server.ProjectSearch = 0;
+			server.ProjectSearch = kNoProjectSearch;
 			server.Projects = std::move(search.Projects.Kept);
 			server.Client = MakeClient(server, search.Server);
 			server.Status.Detail = DescribeCommand(server.Command);
@@ -1288,22 +1281,17 @@ namespace Graphite {
 
 	void LanguageServices::Poll()
 	{
-		// What the warm-up walk found, turned into servers here rather than on the worker: every
-		// other path into EnsureStarted is the UI thread, and m_Servers has no lock because that
-		// has always been true.
-		std::vector<WarmFinding> warm;
+		std::vector<WarmFinding> warmFindings;
 
 		{
 			const std::lock_guard<std::mutex> guard(m_Warm->Mutex);
-			warm.swap(m_Warm->Found);
+			warmFindings.swap(m_Warm->Found);
 		}
 
-		for (WarmFinding& finding : warm)
+		for (WarmFinding& finding : warmFindings)
 		{
 			EnsureStarted(finding.Path, finding.Language);
 
-			// Opened and closed at once for a server that loads its project only for its first document (WarmUpNeedsOpen).
-			// Skipped when the document is already held: a second didOpen would replace a tab's text with the disk's.
 			if (!finding.Text.empty() && !Holds(finding.Path, finding.Language) && WarmUpNeedsOpen(finding.Language))
 			{
 				OpenDocument(finding.Path, finding.Language, std::move(finding.Text));
@@ -1319,36 +1307,30 @@ namespace Graphite {
 		{
 			if (!server.Client)
 			{
-				// No process: none could be started, or it settled at Failed after its restarts.
 				continue;
 			}
 
 			LspClient::Drained drained;
 			server.Client->Drain(drained);
 
-			// This is the single place any LspClient::Answer is turned into a ticketed Answer —
-			// see TakeAnswers for why there must be exactly one. A RequestId with no entry in
-			// Pending was already cancelled (Cancel erases it there without waiting for the
-			// server's reply), so it is dropped rather than delivered to nobody.
 			for (LspClient::Answer& answer : drained.Answers)
 			{
-				const auto pending = server.Pending.find(answer.Id);
+				const ManagedServer::PendingTickets::iterator pending = server.Pending.find(answer.Id);
 
 				if (pending == server.Pending.end())
 				{
 					continue;
 				}
 
-				// Every file this server pointed at is remembered against it, so one with no
-				// project of its own is served here when it is opened. A map insert per location;
-				// nothing touches the filesystem until such a file is actually opened.
+				const auto& [pendingId, pendingTicket] = *pending;
+
 				for (const Location& location : answer.Locations)
 				{
 					NoteNamedByKey(location.Path, key);
 				}
 
 				Answer delivered;
-				delivered.For = pending->second;
+				delivered.For = pendingTicket;
 				delivered.Locations = std::move(answer.Locations);
 				delivered.Declarations = std::move(answer.Declarations);
 				delivered.SemanticTokens = std::move(answer.SemanticTokens);
@@ -1360,8 +1342,6 @@ namespace Graphite {
 				server.Pending.erase(pending);
 			}
 
-			// Moved rather than copied - a publication is one server's word on one document, and
-			// Poll is the only place any Drain result is seen, same as drained.Answers above.
 			m_Diagnostics.Published.insert(m_Diagnostics.Published.end(),
 										   std::make_move_iterator(drained.Diagnostics.begin()),
 										   std::make_move_iterator(drained.Diagnostics.end()));
@@ -1372,15 +1352,11 @@ namespace Graphite {
 			m_Recolour.insert(m_Recolour.end(), std::make_move_iterator(drained.Recolour.begin()),
 							  std::make_move_iterator(drained.Recolour.end()));
 
-			// A server that stays up without crashing earns the restart budget back, measured on
-			// the same clock as the backoff below. Moving between up states (indexing finishing,
-			// a compile database appearing) does not restart the clock; only a crash or a
-			// restart does.
 			const ServerState state = drained.Status.State;
-			const bool up = state == ServerState::Ready || state == ServerState::Indexing ||
-							state == ServerState::ProjectIncomplete;
+			const bool isUp = state == ServerState::Ready || state == ServerState::Indexing ||
+							  state == ServerState::ProjectIncomplete;
 
-			if (up)
+			if (isUp)
 			{
 				if (!server.UpSince)
 				{
@@ -1388,7 +1364,7 @@ namespace Graphite {
 				}
 				else if (RestartBudgetRefilled(server.UpSince, now))
 				{
-					server.Restarts = 0;
+					server.Restarts = kNoRestarts;
 				}
 			}
 			else
@@ -1398,12 +1374,6 @@ namespace Graphite {
 
 			drained.Status.Restarts = server.Restarts;
 
-			// Logged on the change, not on the state: Poll runs every frame, so anything keyed on
-			// the state itself would say the same thing sixty times a second. Indexing is the one
-			// worth announcing at both ends — while it runs the server answers from a partial
-			// index, so counts read low and definitions in files it has not reached yet are
-			// missing, and knowing when that stopped being true is the difference between a wrong
-			// answer and a wrong answer with a reason.
 			if (drained.Status.State != server.Status.State)
 			{
 				const std::string_view name = LanguageDisplayName(key.Language);
@@ -1430,30 +1400,19 @@ namespace Graphite {
 				continue;
 			}
 
-			// A dead client's reader answers everything it still held outstanding as Failed
-			// before it reports Failed at all (LspClient's own invariant), so by this point
-			// Pending should already be empty. Cleared here as well in case a ticket was issued
-			// in the same frame the client died, after the reader's own sweep but before this
-			// Drain — belt and braces so a ticket is never silently forgotten.
-			for (auto& entry : server.Pending)
+			for (const auto& [requestId, ticket] : server.Pending)
 			{
-				Fail(entry.second);
+				Fail(ticket);
 			}
 			server.Pending.clear();
 
 			if (!MayRestart(server.Restarts))
 			{
-				// Settled: kMaximumRestarts attempts have already failed, and Status.State == Failed is
-				// exactly what a caller reading StatusFor should see from here on.
 				continue;
 			}
 
 			if (!server.RestartPending)
 			{
-				// Just noticed the death this frame. Scheduling the retry rather than attempting
-				// it immediately keeps this path uniform whether the backoff is zero (the first
-				// restart) or several seconds (a later one) — either way the actual restart
-				// happens once the clock says so, never inside this branch.
 				server.RestartPending = true;
 				server.RestartAt = now + RestartBackoff(server.Restarts);
 			}
@@ -1480,13 +1439,12 @@ namespace Graphite {
 	}
 
 	Core::Scope<LspClient> LanguageServices::MakeClient(const ManagedServer& server,
-														const Key& key) const
+														const ServerKey& key) const
 	{
 		const std::filesystem::path temporaryDirectory = m_TemporaryFiles ? m_TemporaryFiles->GetPath() : std::filesystem::path{};
 
 		ServerLaunch launch = LaunchFor(*server.Definition, server.Command.Program, server.Overrides,
-											  LaunchPlaces{.LeadingArguments = server.Command.LeadingArguments, .LogDirectory = m_LogDirectory,
-													  .DotnetRoot = server.Command.DotnetRoot, .TemporaryDirectory = temporaryDirectory});
+										LaunchPlaces{.LeadingArguments = server.Command.LeadingArguments, .LogDirectory = m_LogDirectory, .DotnetRoot = server.Command.DotnetRoot, .TemporaryDirectory = temporaryDirectory});
 
 		launch.Solution = SolutionForRoot(key.Root, m_SelectedSolution);
 
@@ -1505,59 +1463,52 @@ namespace Graphite {
 
 	bool LanguageServices::IsRunningFor(const std::filesystem::path& path, LanguageId language) const
 	{
-		Key key;
+		ServerKey key;
 
 		return Resolve(path, language, key) != nullptr && m_Servers.contains(key);
 	}
 
 	void LanguageServices::ReapIdle(std::chrono::steady_clock::time_point now)
 	{
-		for (auto it = m_Servers.begin(); it != m_Servers.end();)
+		for (ServerMap::iterator entry = m_Servers.begin(); entry != m_Servers.end();)
 		{
-			ManagedServer& server = it->second;
-			const std::filesystem::path& root = it->first.Root;
+			auto& [key, server] = *entry;
+			const std::filesystem::path& root = key.Root;
 
-			// The workspace's own servers - rooted at the open folder, inside it, or above it when
-			// a subfolder of a project is open - hold the background index and are never reaped.
-			// Pending is checked even though only a live client can have any: a server is never
-			// destroyed with an answer still owed.
-			const bool workspaces = IsWorkspaceRoot(root);
-			const bool idle = !workspaces && server.OpenDocuments.empty() && server.Pending.empty();
+			const bool isWorkspace = IsWorkspaceRoot(root);
+			const bool isIdle = !isWorkspace && server.OpenDocuments.empty() && server.Pending.empty();
 
-			if (!idle)
+			if (!isIdle)
 			{
 				server.IdleSince.reset();
-				++it;
+				++entry;
 				continue;
 			}
 
 			if (!server.IdleSince)
 			{
 				server.IdleSince = now;
-				++it;
+				++entry;
 				continue;
 			}
 
 			if (now - *server.IdleSince < kIdleShutdown)
 			{
-				++it;
+				++entry;
 				continue;
 			}
 
 			if (server.Client)
 			{
 				APP_INFO("Stopping {} for {} at {}: unused for {} minutes", server.Status.Name,
-						 LanguageDisplayName(it->first.Language), Core::ToUtf8(root),
+						 LanguageDisplayName(key.Language), Core::ToUtf8(root),
 						 std::chrono::duration_cast<std::chrono::minutes>(kIdleShutdown).count());
 				Retire(std::move(server.Client));
 			}
 
-			// What this server named goes with it, so the map stays bounded by the servers alive:
-			// a file it pointed at is judged by its own directory again, not by a root nothing runs at.
-			ForgetNamedBy(it->first);
+			ForgetNamedBy(key);
 
-			// The next EnsureStarted for this root starts a fresh server, as for a first open.
-			it = m_Servers.erase(it);
+			entry = m_Servers.erase(entry);
 		}
 	}
 }

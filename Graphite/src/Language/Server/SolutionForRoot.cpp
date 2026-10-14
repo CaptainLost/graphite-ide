@@ -25,7 +25,7 @@ namespace Graphite {
 			return Core::LoweredExtension(solution) == ".slnx";
 		}
 
-		// Comparing whole file names would put Demo.sln, the older format of the same solution, before Demo.slnx.
+		// WARNING: Comparing whole file names would put Demo.sln, the older format of the same solution, before Demo.slnx.
 		bool ComesFirstByName(const std::filesystem::path& left, const std::filesystem::path& right)
 		{
 			const std::string leftStem = Core::Lowered(Core::ToUtf8(left.stem()));

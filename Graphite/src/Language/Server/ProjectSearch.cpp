@@ -87,7 +87,6 @@ namespace Graphite {
 
 		const std::size_t foundCount = projects.size();
 
-		// From the end of the order, and only as many as the limit needs.
 		for (std::size_t index = projects.size(); index > 0 && projects.size() > most; --index)
 		{
 			if (LiesInTestFolder(projects[index - 1], root))
