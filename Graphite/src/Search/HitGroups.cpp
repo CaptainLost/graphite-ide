@@ -16,19 +16,26 @@ namespace Graphite {
 	{
 		std::string id = Core::ToUtf8(hit.File);
 
-		const auto found = m_Index.find(id);
+		const bool isKnownGroup = m_Index.contains(id);
 
-		if (found == m_Index.end())
+		if (!isKnownGroup)
 		{
-			DisplayPath shown = SplitPathForDisplay(hit.File, m_Root);
+			DisplayPath displayPath = SplitPathForDisplay(hit.File, m_Root);
 
 			m_Index.emplace(id, m_Groups.size());
-			m_Groups.push_back(HitGroup{std::move(id), std::move(shown.Directory), std::move(shown.Name), hit.File, {}});
+
+			HitGroup group{.Id = std::move(id),
+						   .Directory = std::move(displayPath.Directory),
+						   .Name = std::move(displayPath.Name),
+						   .File = hit.File,
+						   .Hits = {}};
+
+			m_Groups.push_back(std::move(group));
 			m_Groups.back().Hits.push_back(std::move(hit));
 		}
 		else
 		{
-			m_Groups[found->second].Hits.push_back(std::move(hit));
+			m_Groups[m_Index.at(id)].Hits.push_back(std::move(hit));
 		}
 
 		++m_Count;

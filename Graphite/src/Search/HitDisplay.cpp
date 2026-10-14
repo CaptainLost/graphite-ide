@@ -8,9 +8,9 @@ namespace Graphite {
 
 	namespace {
 
-		bool IsIndent(char c)
+		bool IsIndentCharacter(char character)
 		{
-			return c == ' ' || c == '\t';
+			return character == ' ' || character == '\t';
 		}
 	}
 
@@ -18,54 +18,56 @@ namespace Graphite {
 	{
 		const std::string_view text = hit.Text;
 
-		// Clamped rather than trusted: the hit's range was computed against the file as it was
-		// read, and nothing stops a caller handing this a range from somewhere else.
-		const std::size_t from = std::min(hit.From, text.size());
-		const std::size_t to = std::min(std::max(hit.To, from), text.size());
+		const std::size_t clampedFrom = std::min(hit.From, text.size());
+		const std::size_t clampedTo = std::min(std::max(hit.To, clampedFrom), text.size());
 
-		std::size_t indent = 0;
+		std::size_t indentLength = 0;
 
-		// Stops at `from` as well as at the first non-indent character, so a match that lies
-		// inside the indentation keeps the whitespace it matched.
-		while (indent < from && IsIndent(text[indent]))
+		while (indentLength < clampedFrom && IsIndentCharacter(text[indentLength]))
 		{
-			++indent;
+			++indentLength;
 		}
 
-		return HitLine{text.substr(indent, from - indent), text.substr(from, to - from),
-					   text.substr(to)};
+		const std::string_view before = text.substr(indentLength, clampedFrom - indentLength);
+		const std::string_view match = text.substr(clampedFrom, clampedTo - clampedFrom);
+		const std::string_view after = text.substr(clampedTo);
+
+		return HitLine{before, match, after};
 	}
 
 	DisplayPath SplitPathForDisplay(const std::filesystem::path& file,
 									const std::filesystem::path& root)
 	{
-		DisplayPath split;
-		split.Name = Core::ToUtf8(file.filename());
+		DisplayPath displayPath;
+		displayPath.Name = Core::ToUtf8(file.filename());
 
 		std::filesystem::path directory = file.parent_path();
 
 		if (!root.empty())
 		{
-			// lexically_relative rather than relative: this runs per drawn group, and the
-			// filesystem-touching overload would stat on every frame to answer a question about
-			// two strings.
-			const std::filesystem::path nearer = directory.lexically_relative(root);
+			// WARNING: lexically_relative, not relative. This runs per drawn group, and the
+			// filesystem-touching overload would stat on every frame.
+			const std::filesystem::path relativeDirectory = directory.lexically_relative(root);
 
-			// Empty means the two share no root at all; a leading ".." means the file is outside
-			// the workspace. Either way the absolute path is the shorter and clearer of the two.
-			if (!nearer.empty() && *nearer.begin() != "..")
+			const bool sharesRoot = !relativeDirectory.empty();
+			const bool isInsideRoot = sharesRoot && *relativeDirectory.begin() != "..";
+			const bool isRootItself = relativeDirectory == ".";
+
+			if (isInsideRoot)
 			{
-				directory = nearer == "." ? std::filesystem::path{} : nearer;
+				directory = isRootItself ? std::filesystem::path{} : relativeDirectory;
 			}
 		}
 
-		split.Directory = Core::ToUtf8(directory);
+		displayPath.Directory = Core::ToUtf8(directory);
 
-		if (!split.Directory.empty())
+		if (!displayPath.Directory.empty())
 		{
-			split.Directory += static_cast<char>(std::filesystem::path::preferred_separator);
+			const char separator = static_cast<char>(std::filesystem::path::preferred_separator);
+
+			displayPath.Directory += separator;
 		}
 
-		return split;
+		return displayPath;
 	}
 }

@@ -6,26 +6,31 @@
 #include <algorithm>
 #include <chrono>
 #include <fstream>
+#include <string_view>
 #include <thread>
 
 namespace {
+
+	constexpr std::chrono::seconds kSearchDeadline{10};
+	constexpr std::chrono::milliseconds kPollInterval{1};
+	constexpr std::chrono::milliseconds kSettleInterval{200};
+	constexpr std::size_t kManyFilesCount = 200;
 
 	void WriteFile(const std::filesystem::path& path, std::string_view contents)
 	{
 		std::filesystem::create_directories(path.parent_path());
 
-		std::ofstream out(path, std::ios::binary);
-		out << contents;
+		std::ofstream outputStream(path, std::ios::binary);
+		outputStream << contents;
 	}
 
-	// Drains until the service stops running or the deadline passes. Returns everything it saw.
-	// Fails by timing out rather than hanging the suite.
 	std::vector<Graphite::SearchHit> RunToEnd(Graphite::SearchService& service,
 											  Graphite::SearchProgress& progress)
 	{
 		std::vector<Graphite::SearchHit> hits;
 
-		const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+		const std::chrono::steady_clock::time_point deadline =
+			std::chrono::steady_clock::now() + kSearchDeadline;
 
 		while (std::chrono::steady_clock::now() < deadline)
 		{
@@ -36,10 +41,9 @@ namespace {
 				break;
 			}
 
-			std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			std::this_thread::sleep_for(kPollInterval);
 		}
 
-		// One more, to collect anything produced between the last drain and the stop.
 		service.Drain(hits, progress);
 
 		return hits;
@@ -95,8 +99,7 @@ TEST_CASE("SearchService applies the file mask")
 	CHECK(hits[0].File.filename() == "a.cpp");
 }
 
-// The reason unsaved text is copied at all: what is on screen wins over what is on disk.
-TEST_CASE("SearchService searches an open document's text rather than the file's")
+TEST_CASE("SearchService searches an open document's text rather than the file's on disk")
 {
 	const TempDirectory temp;
 
@@ -155,10 +158,7 @@ TEST_CASE("SearchService skips a binary file and counts it")
 	CHECK(progress.FilesSkipped == 1);
 }
 
-// Distinguishes Unreadable from Skipped: a probe failure is neither binary nor too large, so an
-// implementation that folded every non-scan outcome into FilesSkipped would still pass every
-// other test in this file.
-TEST_CASE("SearchService counts a file it cannot probe as unreadable")
+TEST_CASE("SearchService counts a file it cannot probe as unreadable and not as skipped")
 {
 	const TempDirectory temp;
 
@@ -177,32 +177,22 @@ TEST_CASE("SearchService counts a file it cannot probe as unreadable")
 	CHECK(progress.FilesSkipped == 0);
 }
 
-// What this can actually pin is deterministic: Start clears the shared hit vector under the
-// same lock it bumps the generation in, so nothing the first search already contributed
-// before the second Start survives into the second search's results. Whether the first search
-// contributes anything at all before it is superseded is opportunistic even with the wait
-// below — its worker only polls the cancellation token once per file, so it can still stop
-// before a single contribute call. This test does not exercise the generation guard inside
-// SearchService::Start's contribute lambda: that guard covers a narrower window (a
-// contribution already inside the lock when the next Start's clear-and-bump runs) that no
-// sleep can reliably open. See the comment on the guard itself.
 TEST_CASE("SearchService shows only the newest search's results")
 {
 	const TempDirectory temp;
 
-	for (int file = 0; file < 200; ++file)
+	for (std::size_t fileIndex = 0; fileIndex < kManyFilesCount; ++fileIndex)
 	{
-		WriteFile(temp.GetPath() / ("f" + std::to_string(file) + ".cpp"), "alpha\nbeta\n");
+		WriteFile(temp.GetPath() / ("f" + std::to_string(fileIndex) + ".cpp"), "alpha\nbeta\n");
 	}
 
 	Graphite::SearchService service;
 
 	service.Start(Request(temp.GetPath(), "alpha"));
 
-	// Wait for the first search to have genuinely scanned something, so superseding it
-	// exercises a search that ran rather than one that may never have started.
 	Graphite::SearchProgress firstProgress;
-	const auto firstScanDeadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+	const std::chrono::steady_clock::time_point firstScanDeadline =
+		std::chrono::steady_clock::now() + kSearchDeadline;
 
 	while (firstProgress.FilesScanned == 0 &&
 		   std::chrono::steady_clock::now() < firstScanDeadline)
@@ -210,7 +200,7 @@ TEST_CASE("SearchService shows only the newest search's results")
 		std::vector<Graphite::SearchHit> discarded;
 		service.Drain(discarded, firstProgress);
 
-		std::this_thread::sleep_for(std::chrono::milliseconds(1));
+		std::this_thread::sleep_for(kPollInterval);
 	}
 
 	REQUIRE(firstProgress.FilesScanned > 0);
@@ -220,7 +210,6 @@ TEST_CASE("SearchService shows only the newest search's results")
 	Graphite::SearchProgress progress;
 	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, progress);
 
-	// Every hit belongs to the second search.
 	for (const Graphite::SearchHit& hit : hits)
 	{
 		CHECK(hit.Text == "beta");
@@ -229,10 +218,7 @@ TEST_CASE("SearchService shows only the newest search's results")
 	CHECK_FALSE(hits.empty());
 }
 
-// The matcher already refuses an empty needle, which is why this looked handled. It was not:
-// refusing it there still costs a walk of the whole tree, with every file probed, read and
-// decoded before the matcher gets to say no. Nothing must be dispatched at all.
-TEST_CASE("SearchService runs nothing for an empty query")
+TEST_CASE("SearchService runs nothing for an empty query instead of walking the tree")
 {
 	const TempDirectory temp;
 
@@ -252,13 +238,13 @@ TEST_CASE("SearchService runs nothing for an empty query")
 	CHECK_FALSE(progress.Running);
 }
 
-TEST_CASE("SearchService stops when cancelled")
+TEST_CASE("SearchService stops when cancelled and its worker stops scanning")
 {
 	const TempDirectory temp;
 
-	for (int file = 0; file < 200; ++file)
+	for (std::size_t fileIndex = 0; fileIndex < kManyFilesCount; ++fileIndex)
 	{
-		WriteFile(temp.GetPath() / ("f" + std::to_string(file) + ".cpp"), "alpha\n");
+		WriteFile(temp.GetPath() / ("f" + std::to_string(fileIndex) + ".cpp"), "alpha\n");
 	}
 
 	Graphite::SearchService service;
@@ -269,14 +255,11 @@ TEST_CASE("SearchService stops when cancelled")
 	RunToEnd(service, progress);
 
 	CHECK_FALSE(progress.Running);
-	CHECK(progress.FilesScanned < 200);
+	CHECK(progress.FilesScanned < kManyFilesCount);
 
-	// Pins the stop, not just the flag: a service that only flipped Running without actually
-	// halting the worker would keep climbing here. A bounded wait, not an open-ended one — this
-	// is well past the 1ms drain interval RunToEnd already used to settle.
 	const std::size_t scannedAfterStop = progress.FilesScanned;
 
-	std::this_thread::sleep_for(std::chrono::milliseconds(200));
+	std::this_thread::sleep_for(kSettleInterval);
 
 	std::vector<Graphite::SearchHit> hits;
 	service.Drain(hits, progress);

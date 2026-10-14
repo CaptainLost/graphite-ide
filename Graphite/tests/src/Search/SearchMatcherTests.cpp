@@ -44,9 +44,7 @@ TEST_CASE("FindInText finds every occurrence on one line")
 	CHECK(hits[1].From == 6);
 }
 
-// Overlapping matches are reported once each from the left, which is what every editor does:
-// "aaa" contains "aa" twice by the letter and once to a reader.
-TEST_CASE("FindInText does not report overlapping matches twice")
+TEST_CASE("FindInText reports overlapping matches once each from the left")
 {
 	const std::vector<Graphite::SearchHit> hits = Find(Plain("aa"), "aaa");
 
@@ -54,39 +52,37 @@ TEST_CASE("FindInText does not report overlapping matches twice")
 	CHECK(hits[0].From == 0);
 }
 
-// Both directions matter: a fold that only lowers one side of the comparison (say, the needle
-// but not the text) would pass a lowercase-needle-only test while still being wrong.
-TEST_CASE("FindInText ignores case unless asked not to")
+TEST_CASE("FindInText ignores case in both directions unless asked not to")
 {
 	CHECK(Find(Plain("beta"), "BETA").size() == 1);
 	CHECK(Find(Plain("BETA"), "beta").size() == 1);
 	CHECK(Find(Plain("BeTa"), "bEtA").size() == 1);
 
-	Graphite::SearchQuery exact = Plain("beta");
-	exact.MatchCase = true;
+	Graphite::SearchQuery exactLowercase = Plain("beta");
+	exactLowercase.MatchCase = true;
 
-	CHECK(Find(exact, "BETA").empty());
-	CHECK(Find(exact, "beta").size() == 1);
+	CHECK(Find(exactLowercase, "BETA").empty());
+	CHECK(Find(exactLowercase, "beta").size() == 1);
 
-	Graphite::SearchQuery exactUpper = Plain("BETA");
-	exactUpper.MatchCase = true;
+	Graphite::SearchQuery exactUppercase = Plain("BETA");
+	exactUppercase.MatchCase = true;
 
-	CHECK(Find(exactUpper, "beta").empty());
-	CHECK(Find(exactUpper, "BETA").size() == 1);
+	CHECK(Find(exactUppercase, "beta").empty());
+	CHECK(Find(exactUppercase, "BETA").size() == 1);
 }
 
 TEST_CASE("Whole word rejects a match glued to an identifier character")
 {
-	Graphite::SearchQuery whole = Plain("count");
-	whole.WholeWord = true;
+	Graphite::SearchQuery wholeWord = Plain("count");
+	wholeWord.WholeWord = true;
 
-	CHECK(Find(whole, "counter").empty());
-	CHECK(Find(whole, "_count").empty());
-	CHECK(Find(whole, "count9").empty());
+	CHECK(Find(wholeWord, "counter").empty());
+	CHECK(Find(wholeWord, "_count").empty());
+	CHECK(Find(wholeWord, "count9").empty());
 
-	CHECK(Find(whole, "count").size() == 1);
-	CHECK(Find(whole, "count(x)").size() == 1);
-	CHECK(Find(whole, "a.count = 1").size() == 1);
+	CHECK(Find(wholeWord, "count").size() == 1);
+	CHECK(Find(wholeWord, "count(x)").size() == 1);
+	CHECK(Find(wholeWord, "a.count = 1").size() == 1);
 }
 
 TEST_CASE("FindInText handles the last line without a trailing newline")
@@ -98,9 +94,7 @@ TEST_CASE("FindInText handles the last line without a trailing newline")
 	CHECK(hits[0].Text == "end");
 }
 
-// A carriage return is part of the line as far as byte offsets go, but it must not end up in
-// the text the results list draws.
-TEST_CASE("FindInText strips a carriage return from the line it reports")
+TEST_CASE("FindInText strips a carriage return from the text it reports")
 {
 	const std::vector<Graphite::SearchHit> hits = Find(Plain("a"), "a\r\nb\r\n");
 
@@ -131,14 +125,13 @@ TEST_CASE("A mask accepts the names it lists and no others")
 	CHECK_FALSE(Graphite::MaskAccepts("a?c.txt", "ac.txt"));
 }
 
-// A mask is about names, so it must not be fooled by a path that happens to contain the text.
-TEST_CASE("A mask compares the name it is given, extension and all")
+TEST_CASE("A mask compares the name it is given and not a path containing the text")
 {
 	CHECK_FALSE(Graphite::MaskAccepts("*.h", "h"));
 	CHECK(Graphite::MaskAccepts("*", "anything"));
 }
 
-TEST_CASE("A mask ignores case, because Windows paths do")
+TEST_CASE("A mask ignores case like Windows paths")
 {
 	CHECK(Graphite::MaskAccepts("*.CPP", "main.cpp"));
 	CHECK(Graphite::MaskAccepts("*.cpp", "MAIN.CPP"));

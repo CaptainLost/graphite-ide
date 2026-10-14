@@ -6,9 +6,6 @@ namespace Graphite {
 
 	class AppSettings;
 
-	// One owner of the two persisted search settings. The Find in Files page edits it and the panel reads
-	// it; without this they would each hold their own copy and drift apart the first time one
-	// of them forgot to reload.
 	class SearchSettings
 	{
 	public:

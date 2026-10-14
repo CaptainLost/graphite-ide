@@ -15,9 +15,36 @@ namespace {
 	{
 		std::filesystem::create_directories(path.parent_path());
 
-		std::ofstream out(path, std::ios::binary);
-		out << "x";
+		std::ofstream file(path, std::ios::binary);
+		file << "x";
 	}
+
+	struct IgnoreFolderNamedBin
+	{
+		int* DirectoriesAsked;
+
+		bool operator()(const std::filesystem::path& path, bool isDirectory) const
+		{
+			if (isDirectory)
+			{
+				++*DirectoriesAsked;
+			}
+
+			return path.filename() == "bin";
+		}
+	};
+
+	struct CancelOnFirstFile
+	{
+		const Core::CancellationToken* Token;
+		int* FilesSeen;
+
+		void operator()(const std::filesystem::path&) const
+		{
+			++*FilesSeen;
+			Token->Cancel();
+		}
+	};
 
 	std::vector<std::string> NamesUnder(const std::filesystem::path& root,
 										Graphite::IgnorePredicate ignored = {})
@@ -53,8 +80,6 @@ TEST_CASE("EnumerateFiles reaches every file under the root")
 	CHECK(names[2] == "c.md");
 }
 
-// The property that makes this usable on a real repository: an ignored directory is never
-// descended into, so its contents cost nothing rather than costing a filter each.
 TEST_CASE("EnumerateFiles does not descend into an ignored directory")
 {
 	const TempDirectory temp;
@@ -65,23 +90,10 @@ TEST_CASE("EnumerateFiles does not descend into an ignored directory")
 
 	int directoriesAsked = 0;
 
-	const Graphite::IgnorePredicate ignored =
-		[&directoriesAsked](const std::filesystem::path& path, bool isDirectory) {
-			if (isDirectory)
-			{
-				++directoriesAsked;
-			}
-
-			return path.filename() == "bin";
-		};
+	const Graphite::IgnorePredicate ignored = IgnoreFolderNamedBin{&directoriesAsked};
 
 	const std::vector<std::string> names = NamesUnder(temp.GetPath(), ignored);
 
-	// Checked before the file-count REQUIRE below on purpose: that REQUIRE is fatal, so if
-	// pruning silently stopped working it would abort the test before this line ever ran,
-	// hiding the more direct evidence that bin/deep was entered. bin was asked about once;
-	// this only proves bin/deep was never asked about, since the predicate can't tell it apart
-	// from an entry reached honestly by walking down from a non-pruned bin.
 	CHECK(directoriesAsked == 1);
 
 	REQUIRE(names.size() == 1);
@@ -106,9 +118,11 @@ TEST_CASE("EnumerateFiles stops when its token is cancelled")
 {
 	const TempDirectory temp;
 
-	for (int file = 0; file < 40; ++file)
+	constexpr int kFileCount = 40;
+
+	for (int fileNumber = 0; fileNumber < kFileCount; ++fileNumber)
 	{
-		Touch(temp.GetPath() / ("f" + std::to_string(file) + ".cpp"));
+		Touch(temp.GetPath() / ("f" + std::to_string(fileNumber) + ".cpp"));
 	}
 
 	const Core::CancellationToken token;
@@ -116,48 +130,43 @@ TEST_CASE("EnumerateFiles stops when its token is cancelled")
 	Graphite::EnumerationInput input;
 	input.Root = temp.GetPath();
 
-	int seen = 0;
+	int filesSeen = 0;
 
-	Graphite::EnumerateFiles(input, token,
-							 [&](const std::filesystem::path&) {
-								 ++seen;
-								 token.Cancel();
-							 });
+	Graphite::EnumerateFiles(input, token, CancelOnFirstFile{&token, &filesSeen});
 
-	// Cancelled from inside the first callback, so the walk must stop rather than run to 40.
-	CHECK(seen < 40);
+	CHECK(filesSeen < kFileCount);
 }
 
 TEST_CASE("EnumerateFiles survives a root that is not there")
 {
-	int seen = 0;
+	int filesSeen = 0;
 
 	Graphite::EnumerationInput input;
 	input.Root = "Z:/no/such/place/at/all";
 
 	Graphite::EnumerateFiles(input, Core::CancellationToken{},
-							 [&seen](const std::filesystem::path&) { ++seen; });
+							 [&filesSeen](const std::filesystem::path&) { ++filesSeen; });
 
-	CHECK(seen == 0);
+	CHECK(filesSeen == 0);
 }
 
 TEST_CASE("EnumerateProjectFiles reports what the projects declare")
 {
-	Graphite::ContentFolder nested;
-	nested.Name = "src";
-	nested.Files.push_back(Graphite::ContentFile{"b.cpp", "C:/p/src/b.cpp"});
+	Graphite::ContentFolder nestedFolder;
+	nestedFolder.Name = "src";
+	nestedFolder.Files.push_back(Graphite::ContentFile{"b.cpp", "C:/p/src/b.cpp"});
 
 	Graphite::Project project;
 	project.DisplayName = "P";
 	project.Content.Root.Files.push_back(Graphite::ContentFile{"a.cpp", "C:/p/a.cpp"});
-	project.Content.Root.Folders.push_back(nested);
+	project.Content.Root.Folders.push_back(nestedFolder);
 
-	Graphite::Folder inner;
-	inner.Name = "Group";
-	inner.Projects.push_back(project);
+	Graphite::Folder group;
+	group.Name = "Group";
+	group.Projects.push_back(project);
 
 	Graphite::Solution solution;
-	solution.Root.Folders.push_back(inner);
+	solution.Root.Folders.push_back(group);
 
 	std::vector<std::string> names;
 

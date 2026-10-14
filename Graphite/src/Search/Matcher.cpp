@@ -9,16 +9,19 @@ namespace Graphite {
 
 	namespace {
 
-		bool SameChar(char left, char right, bool matchCase)
+		constexpr char kMaskSeparator = ';';
+		constexpr char kNewline = '\n';
+		constexpr char kCarriageReturn = '\r';
+
+		bool CharactersMatch(char left, char right, bool matchCase)
 		{
-			return matchCase ? left == right : Core::LowerAscii(left) == Core::LowerAscii(right);
+			return matchCase ? left == right : Core::EqualsIgnoringCase(left, right);
 		}
 
-		bool IsIdentifierChar(char c)
+		bool IsIdentifierCharacter(char character)
 		{
-			return c == '_' || std::isalnum(static_cast<unsigned char>(c)) != 0;
+			return character == '_' || std::isalnum(static_cast<unsigned char>(character)) != 0;
 		}
-
 	}
 
 	bool MaskAccepts(std::string_view mask, std::string_view fileName)
@@ -28,26 +31,27 @@ namespace Graphite {
 			return true;
 		}
 
-		std::size_t at = 0;
+		std::size_t patternStart = 0;
 
-		while (at <= mask.size())
+		while (patternStart <= mask.size())
 		{
-			const std::size_t end = mask.find(';', at);
-			const std::size_t stop = end == std::string_view::npos ? mask.size() : end;
+			const std::size_t separatorPosition = mask.find(kMaskSeparator, patternStart);
+			const bool isLastPattern = separatorPosition == std::string_view::npos;
+			const std::size_t patternEnd = isLastPattern ? mask.size() : separatorPosition;
 
-			const std::string_view pattern = mask.substr(at, stop - at);
+			const std::string_view pattern = mask.substr(patternStart, patternEnd - patternStart);
 
 			if (!pattern.empty() && Core::GlobMatches(pattern, fileName))
 			{
 				return true;
 			}
 
-			if (end == std::string_view::npos)
+			if (isLastPattern)
 			{
 				break;
 			}
 
-			at = end + 1;
+			patternStart = separatorPosition + 1;
 		}
 
 		return false;
@@ -63,43 +67,46 @@ namespace Graphite {
 
 		const std::string_view needle = query.Needle;
 
-		for (std::size_t at = 0; at + needle.size() <= line.size();)
+		for (std::size_t matchStart = 0; matchStart + needle.size() <= line.size();)
 		{
-			bool same = true;
+			bool needleMatchesHere = true;
 
-			for (std::size_t index = 0; index < needle.size(); ++index)
+			for (std::size_t needleIndex = 0; needleIndex < needle.size(); ++needleIndex)
 			{
-				if (!SameChar(line[at + index], needle[index], query.MatchCase))
+				if (!CharactersMatch(line[matchStart + needleIndex], needle[needleIndex],
+									 query.MatchCase))
 				{
-					same = false;
+					needleMatchesHere = false;
 					break;
 				}
 			}
 
-			if (!same)
+			if (!needleMatchesHere)
 			{
-				++at;
+				++matchStart;
 				continue;
 			}
 
-			const std::size_t to = at + needle.size();
+			const std::size_t matchEnd = matchStart + needle.size();
 
-			const bool bounded =
-				!query.WholeWord ||
-				((at == 0 || !IsIdentifierChar(line[at - 1])) &&
-				 (to == line.size() || !IsIdentifierChar(line[to])));
+			const bool startsOnBoundary =
+				matchStart == 0 || !IsIdentifierCharacter(line[matchStart - 1]);
+			const bool endsOnBoundary =
+				matchEnd == line.size() || !IsIdentifierCharacter(line[matchEnd]);
+			const bool satisfiesWholeWord =
+				!query.WholeWord || (startsOnBoundary && endsOnBoundary);
 
-			if (bounded)
+			if (satisfiesWholeWord)
 			{
-				matches.push_back(LineMatch{at, to});
+				matches.push_back(LineMatch{matchStart, matchEnd});
 
-				// Past the match, not one character on: overlapping matches are one match to
-				// anyone reading the line.
-				at = to;
+				// WARNING: Continues past the match, not one character on. Overlapping
+				// matches count as one match to anyone reading the line.
+				matchStart = matchEnd;
 				continue;
 			}
 
-			++at;
+			++matchStart;
 		}
 	}
 
@@ -113,34 +120,36 @@ namespace Graphite {
 
 		std::size_t lineStart = 0;
 		std::size_t lineNumber = 0;
-		std::vector<LineMatch> inLine;
+		std::vector<LineMatch> lineMatches;
 
 		while (lineStart <= text.size())
 		{
-			const std::size_t newline = text.find('\n', lineStart);
-			const std::size_t lineEnd = newline == std::string_view::npos ? text.size() : newline;
+			const std::size_t newlinePosition = text.find(kNewline, lineStart);
+			const bool isLastLine = newlinePosition == std::string_view::npos;
+			const std::size_t lineEnd = isLastLine ? text.size() : newlinePosition;
 
 			std::string_view line = text.substr(lineStart, lineEnd - lineStart);
 
-			if (!line.empty() && line.back() == '\r')
+			if (!line.empty() && line.back() == kCarriageReturn)
 			{
 				line.remove_suffix(1);
 			}
 
-			inLine.clear();
-			FindInLine(query, line, inLine);
+			lineMatches.clear();
+			FindInLine(query, line, lineMatches);
 
-			for (const LineMatch& match : inLine)
+			for (const LineMatch& match : lineMatches)
 			{
-				hits.push_back(SearchHit{file, lineNumber, std::string(line), match.From, match.To});
+				hits.push_back(
+					SearchHit{file, lineNumber, std::string(line), match.From, match.To});
 			}
 
-			if (newline == std::string_view::npos)
+			if (isLastLine)
 			{
 				break;
 			}
 
-			lineStart = newline + 1;
+			lineStart = newlinePosition + 1;
 			++lineNumber;
 		}
 	}

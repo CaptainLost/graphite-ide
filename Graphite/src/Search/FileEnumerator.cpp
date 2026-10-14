@@ -40,56 +40,52 @@ namespace Graphite {
 	void EnumerateFiles(const EnumerationInput& input, const Core::CancellationToken& token,
 						const std::function<void(const std::filesystem::path&)>& onFile)
 	{
-		std::error_code ec;
+		std::error_code errorCode;
 
-		// The non-throwing iterator: a directory that vanishes mid-walk, or one with no
-		// permission, is an ordinary event on a tree someone else is also using.
-		std::filesystem::recursive_directory_iterator at(
-			input.Root, std::filesystem::directory_options::skip_permission_denied, ec);
+		std::filesystem::recursive_directory_iterator entryIterator(
+			input.Root, std::filesystem::directory_options::skip_permission_denied, errorCode);
 
-		if (ec)
+		if (errorCode)
 		{
 			return;
 		}
 
-		const std::filesystem::recursive_directory_iterator end;
+		const std::filesystem::recursive_directory_iterator endIterator;
 
-		while (at != end)
+		while (entryIterator != endIterator)
 		{
 			if (token.IsCancelled())
 			{
 				return;
 			}
 
-			const std::filesystem::directory_entry& entry = *at;
+			const std::filesystem::directory_entry& entry = *entryIterator;
 
-			const bool isDirectory = entry.is_directory(ec);
-			const bool excluded = !ec && input.Ignored && input.Ignored(entry.path(), isDirectory);
+			const bool isDirectory = entry.is_directory(errorCode);
+			const bool isExcluded =
+				!errorCode && input.Ignored && input.Ignored(entry.path(), isDirectory);
 
 			if (isDirectory)
 			{
-				if (excluded)
+				if (isExcluded)
 				{
-					// Not increment-then-skip: disable_recursion_pending tells the iterator not
-					// to enter this directory at all, which is the whole point of pruning.
-					at.disable_recursion_pending();
+					// WARNING: Pruning must use disable_recursion_pending. Skipping the
+					// directory's contents after entering it would defeat the pruning.
+					entryIterator.disable_recursion_pending();
 				}
 			}
-			else if (!excluded && !ec && entry.is_regular_file(ec))
+			else if (!isExcluded && !errorCode && entry.is_regular_file(errorCode))
 			{
 				onFile(entry.path());
 			}
 
-			at.increment(ec);
+			entryIterator.increment(errorCode);
 
-			// Measured on this toolchain (MSVC, Windows): when the directory the iterator is
-			// about to descend into vanishes first, increment sets ec AND leaves the iterator
-			// already equal to end() in the same call - there is no partial state to recover,
-			// and incrementing an iterator that already equals end() is undefined behaviour, not
-			// a second chance. So this return is reached only once the loop's own `at != end`
-			// condition would already be false; it exists to skip the entry() calls above on the
-			// next spin, not to cut the walk short.
-			if (ec)
+			// WARNING: On MSVC, when the directory about to be entered vanishes first,
+			// increment sets the error and leaves the iterator equal to end() in the same
+			// call. Incrementing an iterator already at end() is undefined behaviour, so
+			// this return is the only safe exit.
+			if (errorCode)
 			{
 				return;
 			}

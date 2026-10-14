@@ -22,19 +22,29 @@ namespace Graphite {
 
 	namespace {
 
-		// The gutter is line numbers and nothing else — no breakpoints, no git marks, unlike
-		// the editor's — so it is as wide as the widest number it will draw and a space after
-		// it.
+		constexpr std::size_t kDecimalBase = 10;
+		constexpr std::size_t kSpacesAfterLineNumber = 1;
+
+		struct TextRunTarget
+		{
+			ImDrawList* DrawList;
+			const std::string& Text;
+			float TextLeft;
+			float TextTop;
+			float CellWidth;
+		};
+
 		float GutterWidth(std::size_t lastLine, float cellWidth)
 		{
-			std::size_t digits = 1;
+			std::size_t digitCount = 1;
 
-			for (std::size_t value = lastLine + 1; value >= 10; value /= 10)
+			for (std::size_t remaining = lastLine + 1; remaining >= kDecimalBase;
+				 remaining /= kDecimalBase)
 			{
-				++digits;
+				++digitCount;
 			}
 
-			return static_cast<float>(digits + 1) * cellWidth;
+			return static_cast<float>(digitCount + kSpacesAfterLineNumber) * cellWidth;
 		}
 
 		void DrawMessage(const char* message)
@@ -42,16 +52,29 @@ namespace Graphite {
 			Core::EmptyState(message);
 		}
 
-		// Every hit on `line` as document byte ranges, ascending, plus which of them is the
-		// selected one. Ascending is load-bearing: MatchColumnsOnLine walks them in order, and
-		// hits within a group already arrive that way.
+		void DrawTextRun(const TextRunTarget& target, std::size_t from, std::size_t to,
+						 ImU32 colour)
+		{
+			if (from >= to || from >= target.Text.size())
+			{
+				return;
+			}
+
+			const std::size_t end = std::min(to, target.Text.size());
+
+			target.DrawList->AddText(
+				ImVec2(target.TextLeft + static_cast<float>(from) * target.CellWidth,
+					   target.TextTop),
+				colour, target.Text.data() + from, target.Text.data() + end);
+		}
+
 		LineMatchInput MatchesOnLine(const SearchPreviewInput& input, std::size_t lineStart,
 									 std::size_t line, std::string_view text,
-									 std::vector<Core::FindMatch>& scratch,
-									 std::size_t& current)
+									 std::vector<Core::FindMatch>& matchesOnLine,
+									 std::size_t& currentMatchOnLine)
 		{
-			scratch.clear();
-			current = 0;
+			matchesOnLine.clear();
+			currentMatchOnLine = 0;
 
 			for (std::size_t index = 0; index < input.Hits.size(); ++index)
 			{
@@ -64,19 +87,17 @@ namespace Graphite {
 
 				if (index == input.Current)
 				{
-					current = scratch.size();
+					currentMatchOnLine = matchesOnLine.size();
 				}
 
-				scratch.push_back(Core::FindMatch{.From = lineStart + hit.From, .To = lineStart + hit.To});
+				matchesOnLine.push_back(
+					Core::FindMatch{.From = lineStart + hit.From, .To = lineStart + hit.To});
 			}
 
-			// By name, not positionally: three of these are std::size_t and LineMatchInput's own
-			// header asks for exactly this, because a transposition in a positional list is
-			// silent.
-			return LineMatchInput{.Matches = scratch,
+			return LineMatchInput{.Matches = matchesOnLine,
 								  .LineText = text,
 								  .LineStart = lineStart,
-								  .CurrentMatch = current,
+								  .CurrentMatch = currentMatchOnLine,
 								  .TabWidth = input.TabWidth};
 		}
 	}
@@ -108,13 +129,10 @@ namespace Graphite {
 
 		content.SetTabWidth(input.TabWidth);
 
-		// The editor's font, so a preview of a file reads exactly as the file does in a tab.
 		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont(), input.FontSize);
 
-		// Rows of text butt against each other, as the editor's do. The Dummy that claims each
-		// line below is an ordinary item, so without this ImGui puts ItemSpacing.y between
-		// them — five pixels of panel background striping every line, and a window of twenty-one
-		// lines a hundred pixels taller than the text in it.
+		// WARNING: Each line's Dummy is an ordinary item, so without zero ItemSpacing ImGui
+		// stripes the panel background between the lines.
 		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
 
 		const EditorPalette palette = ReadEditorPalette(input.Scheme);
@@ -123,16 +141,12 @@ namespace Graphite {
 		const std::size_t hitLine = input.Hits[input.Current].Line;
 		const PreviewWindow window = WindowAround(hitLine, buffer->GetLineCount(), kPreviewSpan);
 
-		// From the baked font, not CalcTextSize, which rounds the advance up: every run below is
-		// placed at a multiple of this while AddText advances by the true width, so a rounded
-		// cell opened a gap at each token boundary that widened along the line.
+		// WARNING: CalcTextSize rounds the advance up, which opens a gap at each token boundary
+		// that widens along the line, so the cell width comes from the baked font.
 		const float cellWidth = Core::MonospaceCellWidth();
 		const float lineHeight = ImGui::GetTextLineHeight();
 		const float gutter = GutterWidth(window.Last, cellWidth);
 
-		// Once per hit rather than every frame, so the pane can still be scrolled by hand. Set
-		// before the rows are drawn and applied by ImGui on the next frame, clamped to the
-		// content this frame measures — which is the same twenty-one lines either way.
 		if (content.TakeCentring(hitLine))
 		{
 			ImGui::SetScrollY(ScrollCentring(
@@ -142,35 +156,33 @@ namespace Graphite {
 									.ViewHeight = ImGui::GetWindowHeight()}));
 		}
 
-		ImDrawList* draw = ImGui::GetWindowDrawList();
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-		std::vector<Core::FindMatch> scratch;
+		std::vector<Core::FindMatch> matchesOnLine;
 		std::string expanded;
 
 		for (std::size_t line = window.First; line <= window.Last; ++line)
 		{
-			const ImVec2 at = ImGui::GetCursorScreenPos();
-			const float textLeft = at.x + gutter;
+			const ImVec2 lineOrigin = ImGui::GetCursorScreenPos();
+			const float textLeft = lineOrigin.x + gutter;
 
 			const std::string raw = buffer->LineText(line);
 			expanded = Core::ExpandTabs(raw, input.TabWidth);
 
 			const float lineWidth = gutter + static_cast<float>(expanded.size()) * cellWidth;
+			const float backgroundWidth = std::max(lineWidth, ImGui::GetContentRegionAvail().x);
 
-			// The scheme's own background, not the panel's, so the pane reads as a view of the
-			// file rather than as a list that happens to hold code. Widened to the pane when
-			// the line is shorter, so short lines do not leave the panel's colour showing
-			// through beside them.
-			draw->AddRectFilled(
-				at, ImVec2(at.x + std::max(lineWidth, ImGui::GetContentRegionAvail().x), at.y + lineHeight),
+			drawList->AddRectFilled(
+				lineOrigin,
+				ImVec2(lineOrigin.x + backgroundWidth, lineOrigin.y + lineHeight),
 				palette.Background);
 
-			draw->AddRectFilled(at, ImVec2(textLeft, at.y + lineHeight), palette.GutterFill);
+			drawList->AddRectFilled(lineOrigin, ImVec2(textLeft, lineOrigin.y + lineHeight),
+									palette.GutterFill);
 
-			// Highlights next, so the text lands on top of them.
-			std::size_t current = 0;
-			const LineMatches matches = MatchColumnsOnLine(
-				MatchesOnLine(input, buffer->LineStart(line), line, raw, scratch, current));
+			std::size_t currentMatchOnLine = 0;
+			const LineMatches matches = MatchColumnsOnLine(MatchesOnLine(
+				input, buffer->LineStart(line), line, raw, matchesOnLine, currentMatchOnLine));
 
 			for (std::size_t index = 0; index < matches.Columns.size(); ++index)
 			{
@@ -179,50 +191,39 @@ namespace Graphite {
 				const float left = textLeft + static_cast<float>(columns.FromColumn) * cellWidth;
 				const float right = textLeft + static_cast<float>(columns.ToColumn) * cellWidth;
 
-				draw->AddRectFilled(ImVec2(left, at.y), ImVec2(right, at.y + lineHeight),
-									index == matches.Current ? palette.FindCurrentMatch
-															 : palette.FindMatch);
+				drawList->AddRectFilled(ImVec2(left, lineOrigin.y),
+										ImVec2(right, lineOrigin.y + lineHeight),
+										index == matches.Current ? palette.FindCurrentMatch
+																 : palette.FindMatch);
 			}
 
-			// The same two colours the editor's gutter uses, and for the same reason: the line
-			// being looked at is told apart from the ones around it.
-			const std::string number = std::to_string(line + 1);
-			const float numberLeft =
-				textLeft - cellWidth - static_cast<float>(number.size()) * cellWidth;
+			const std::string lineNumber = std::to_string(line + 1);
+			const float lineNumberLeft =
+				textLeft - cellWidth - static_cast<float>(lineNumber.size()) * cellWidth;
 
-			draw->AddText(ImVec2(numberLeft, at.y),
-						  line == hitLine ? palette.Text : palette.Number, number.c_str());
+			drawList->AddText(ImVec2(lineNumberLeft, lineOrigin.y),
+							  line == hitLine ? palette.Text : palette.Number,
+							  lineNumber.c_str());
 
-			// Tokens are byte ranges of the expanded text — SyntaxCache feeds the lexer
-			// tab-expanded lines — so they index `expanded` directly. The gaps between them are
-			// whitespace and punctuation, drawn in the plain text colour. An identifier the
-			// server named takes its colour instead; ColourOf is the same rule the editor
-			// applies, so a file reads the same here as it does in a tab.
 			const std::vector<Token>& tokens = content.TokensOf(line);
 			const std::vector<SemanticSpan>& spans = content.SpansOn(line);
 
-			std::size_t drawn = 0;
+			const TextRunTarget runTarget{.DrawList = drawList,
+										  .Text = expanded,
+										  .TextLeft = textLeft,
+										  .TextTop = lineOrigin.y,
+										  .CellWidth = cellWidth};
 
-			const auto drawRun = [&](std::size_t from, std::size_t to, ImU32 colour) {
-				if (from >= to || from >= expanded.size())
-				{
-					return;
-				}
-
-				const std::size_t end = std::min(to, expanded.size());
-
-				draw->AddText(ImVec2(textLeft + static_cast<float>(from) * cellWidth, at.y), colour,
-							  expanded.data() + from, expanded.data() + end);
-			};
+			std::size_t drawnUpTo = 0;
 
 			for (const Token& token : tokens)
 			{
-				drawRun(drawn, token.From, palette.Text);
-				drawRun(token.From, token.To, syntax.Of(ColourOf(token, spans)));
-				drawn = token.To;
+				DrawTextRun(runTarget, drawnUpTo, token.From, palette.Text);
+				DrawTextRun(runTarget, token.From, token.To, syntax.Of(ColourOf(token, spans)));
+				drawnUpTo = token.To;
 			}
 
-			drawRun(drawn, expanded.size(), palette.Text);
+			DrawTextRun(runTarget, drawnUpTo, expanded.size(), palette.Text);
 
 			ImGui::Dummy(ImVec2(lineWidth, lineHeight));
 		}

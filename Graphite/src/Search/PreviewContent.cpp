@@ -1,14 +1,12 @@
 #include "Search/PreviewContent.h"
 
-#include "Core/FileSystem/FileSystem.h"
-#include "Core/Text/Codec.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
 #include "Editor/Server/PreviewSemantics.h"
 #include "Language/Registry/LanguageRegistry.h"
 
-#include <optional>
 #include <string>
+#include <utility>
 
 namespace Graphite {
 
@@ -23,33 +21,22 @@ namespace Graphite {
 			m_State = PreviewState::Empty;
 			m_CentredOn.reset();
 
-			// One file's colours at a time. The cache's entry states belong to the file that
-			// was showing — line 40 of the next file starts in whatever state its own line 39
-			// left, not in the one carried over from a block comment in the last file.
 			m_Syntax.Reset();
 			m_Syntax.SetSyntax(SyntaxOf(LanguageOfPath(m_Path)));
 		}
 
-		// Re-resolved on every call rather than remembered: the set reallocates as tabs open
-		// and close, so a pointer kept from last frame may not point at a document any more —
-		// and a file opened since the last frame has to start winning over the copy on disk.
-		if (const std::optional<std::size_t> index = documents.Find(m_Path))
+		if (const Core::TextBuffer* openBuffer = Core::BufferOfOpenDocument(documents, m_Path))
 		{
-			const Core::OpenItem& item = documents.At(*index);
-
-			if (item.Document)
-			{
-				m_Buffer = &item.Document->GetBuffer();
-				m_Message.clear();
-				m_State = PreviewState::Ready;
-				DeclareToServer();
-				return;
-			}
+			m_Buffer = openBuffer;
+			m_Message.clear();
+			m_State = PreviewState::Ready;
+			DeclareToServer();
+			return;
 		}
 
-		// Already have our own copy of this file and nothing has opened it since. The path did
-		// not change, so the copy is still of the right file.
-		if (m_State == PreviewState::Ready && m_Buffer == &m_Loaded)
+		const bool alreadyHoldingOwnCopy = m_State == PreviewState::Ready && m_Buffer == &m_Loaded;
+
+		if (alreadyHoldingOwnCopy)
 		{
 			DeclareToServer();
 			return;
@@ -85,14 +72,11 @@ namespace Graphite {
 
 	const std::vector<Token>& PreviewContent::TokensOf(std::size_t line)
 	{
-		// Function-local rather than a member: a caller holding this reference past the next
-		// call is holding one into the cache either way, and a shared empty vector cannot be
-		// mistaken for one file's tokens.
-		static const std::vector<Token> none;
+		static const std::vector<Token> noTokens;
 
 		if (m_Buffer == nullptr)
 		{
-			return none;
+			return noTokens;
 		}
 
 		return m_Syntax.TokensOf(*m_Buffer, line);
@@ -100,24 +84,19 @@ namespace Graphite {
 
 	const std::vector<SemanticSpan>& PreviewContent::SpansOn(std::size_t line) const
 	{
-		static const std::vector<SemanticSpan> none;
+		static const std::vector<SemanticSpan> noSpans;
 
-		return m_Semantics == nullptr ? none : m_Semantics->SpansOn(m_Path, line);
+		return m_Semantics == nullptr ? noSpans : m_Semantics->SpansOn(m_Path, line);
 	}
 
 	void PreviewContent::SetTabWidth(std::size_t width)
 	{
-		// A zero would leave m_TabWidth and the lexer measuring different text, so both are
-		// guarded by the same check rather than one being at the caller's mercy.
 		if (width == 0)
 		{
 			return;
 		}
 
 		m_TabWidth = width;
-
-		// SyntaxCache::SetTabWidth already ignores a width it is holding, so this costs nothing
-		// to call every frame.
 		m_Syntax.SetTabWidth(width);
 	}
 
@@ -128,55 +107,41 @@ namespace Graphite {
 			return;
 		}
 
-		// A buffer that is not our own copy came from a document with a tab, which means the
-		// editor already told the server about it. That is the whole difference the mediator
-		// needs, and it is a pointer comparison rather than a second search of the document set.
-		m_Semantics->Declare(m_Path, *m_Buffer, m_TabWidth, m_Buffer != &m_Loaded);
+		const bool openInEditor = m_Buffer != &m_Loaded;
+
+		m_Semantics->Declare(m_Path, *m_Buffer, m_TabWidth, openInEditor);
 	}
 
 	void PreviewContent::LoadFromDisk()
 	{
 		m_Buffer = nullptr;
 
-		const Core::Result<Core::FileProbe> probed = Core::ProbeFile(m_Path);
+		Core::DiskText read = Core::ReadDiskText(m_Path);
 
-		if (!probed)
+		switch (read.Outcome)
 		{
-			m_State = PreviewState::Unreadable;
-			m_Message = "Cannot read this file.";
+		case Core::DiskTextOutcome::Read:
+			m_Loaded = Core::TextBuffer{std::move(read.Text)};
+			m_Buffer = &m_Loaded;
+			m_State = PreviewState::Ready;
+			m_Message.clear();
 			return;
-		}
-
-		const Core::FileProbe& probe = probed.GetValue();
-
-		if (probe.Kind == Core::FileKind::Binary || probe.Kind == Core::FileKind::TooLarge)
-		{
+		case Core::DiskTextOutcome::Binary:
 			m_State = PreviewState::Skipped;
-			m_Message = probe.Kind == Core::FileKind::Binary ? "Binary file." : "File too large.";
+			m_Message = "Binary file.";
 			return;
-		}
-
-		const Core::Result<std::string> bytes = Core::ReadFileBytes(m_Path);
-
-		if (!bytes)
-		{
+		case Core::DiskTextOutcome::TooLarge:
+			m_State = PreviewState::Skipped;
+			m_Message = "File too large.";
+			return;
+		case Core::DiskTextOutcome::Unreadable:
 			m_State = PreviewState::Unreadable;
 			m_Message = "Cannot read this file.";
 			return;
-		}
-
-		const Core::Result<std::string> text = Core::Decode(bytes.GetValue(), probe.FileEncoding);
-
-		if (!text)
-		{
+		case Core::DiskTextOutcome::Undecodable:
 			m_State = PreviewState::Unreadable;
 			m_Message = "Cannot decode this file.";
 			return;
 		}
-
-		m_Loaded = Core::TextBuffer{text.GetValue()};
-		m_Buffer = &m_Loaded;
-		m_State = PreviewState::Ready;
-		m_Message.clear();
 	}
 }

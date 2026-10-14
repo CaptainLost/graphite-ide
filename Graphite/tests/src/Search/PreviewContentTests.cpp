@@ -10,6 +10,7 @@
 #include "TempDirectory.h"
 
 #include <fstream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -39,14 +40,12 @@ TEST_CASE("An open document's buffer wins over the file on disk")
 
 	REQUIRE(documents.Open(file, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
 
-	const auto index = documents.Find(file);
+	const std::optional<std::size_t> index = documents.Find(file);
 	REQUIRE(index.has_value());
 
 	Core::OpenItem& item = documents.At(*index);
 	REQUIRE(item.Document.has_value());
 
-	// The unsaved edit the preview has to show. Insert rather than replace, so the test is
-	// about which source is read and not about how a buffer is rebuilt.
 	item.Document->GetBuffer().Insert(0, "edited ");
 
 	PreviewContent content;
@@ -120,7 +119,7 @@ TEST_CASE("A file closed while its preview is showing falls back to disk")
 
 	REQUIRE(documents.Open(file, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
 
-	const auto index = documents.Find(file);
+	const std::optional<std::size_t> index = documents.Find(file);
 	REQUIRE(index.has_value());
 
 	PreviewContent content;
@@ -169,8 +168,6 @@ TEST_CASE("Changing the previewed path resets the colours with it")
 {
 	TempDirectory temp;
 
-	// A file whose first line opens a block comment, so a cache carried across would colour
-	// the next file's first line as comment text.
 	const std::filesystem::path commented = temp.MakeFile("first.cpp", "/* open\nstill\n");
 	const std::filesystem::path plain = temp.MakeFile("second.cpp", "int x;\n");
 
@@ -182,8 +179,6 @@ TEST_CASE("Changing the previewed path resets the colours with it")
 	REQUIRE_FALSE(content.TokensOf(0).empty());
 	REQUIRE(content.TokensOf(0).front().Kind == TokenKind::Comment);
 
-	// Line 1 of the first file is inside the comment; asking for it is what fills the cache's
-	// entry states past line 0, which is exactly what must not survive the switch.
 	REQUIRE_FALSE(content.TokensOf(1).empty());
 
 	content.Show(plain, documents);
@@ -203,7 +198,7 @@ TEST_CASE("Colours follow an edit to the open document being previewed")
 
 	REQUIRE(documents.Open(file, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
 
-	const auto index = documents.Find(file);
+	const std::optional<std::size_t> index = documents.Find(file);
 	REQUIRE(index.has_value());
 
 	Core::OpenItem& item = documents.At(*index);
@@ -214,8 +209,6 @@ TEST_CASE("Colours follow an edit to the open document being previewed")
 
 	REQUIRE(content.TokensOf(0).front().Kind == TokenKind::Keyword);
 
-	// Turns the line into a comment. SyntaxCache notices the buffer's revision moved without
-	// an Invalidate and re-lexes, which is the behaviour this pins.
 	item.Document->GetBuffer().Insert(0, "// ");
 	content.Show(file, documents);
 
@@ -239,10 +232,6 @@ TEST_CASE("Clear forgets the file")
 }
 
 namespace {
-
-	// The same recording port PreviewSemanticsTests uses, kept separate rather than shared:
-	// a header holding one fake for two suites is a header that grows a reason to change for
-	// each of them.
 	class RecordingPort final : public PreviewServerPort
 	{
 	public:
@@ -299,7 +288,6 @@ TEST_CASE("Showing a file declares it to the mediator")
 	REQUIRE(port.Asked.size() == 1);
 	CHECK(port.Asked[0] == file);
 
-	// Not open in any tab, so this preview is the one telling the server about it.
 	REQUIRE(port.Opened.size() == 1);
 	CHECK(port.Opened[0] == file);
 }

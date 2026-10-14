@@ -27,9 +27,6 @@ TEST_CASE("HitGroups puts hits from one file in one group")
 	CHECK(groups.GetCount() == 2);
 }
 
-// The property the panel's old regrouping existed to provide, and the one an incremental
-// grouping is most likely to lose: hits arrive in whatever order the walk reached them, so a
-// file's hits are not contiguous in the stream.
 TEST_CASE("HitGroups gathers a file's hits even when they arrive apart")
 {
 	Graphite::HitGroups groups;
@@ -108,8 +105,6 @@ TEST_CASE("HitGroups forgets everything when cleared")
 	CHECK(groups.Get().empty());
 	CHECK(groups.GetCount() == 0);
 
-	// The name index has to be cleared with the groups, or the next search's first hit for a
-	// file seen before would be filed against an index into a vector that no longer has it.
 	groups.Add(HitIn("a.cpp", 1));
 
 	REQUIRE(groups.Get().size() == 1);

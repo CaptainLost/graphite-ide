@@ -5,33 +5,41 @@
 
 namespace Graphite {
 
+	namespace {
+
+		constexpr std::size_t kFirstMatchIndex = 0;
+	}
+
+	// WARNING: Walks the buffer a line at a time instead of materialising it. This runs on
+	// every keystroke in the query field, and a 16 MB file would otherwise be copied each time.
 	std::vector<DocumentMatch> FindInBuffer(const Core::TextBuffer& buffer,
 											const SearchQuery& query)
 	{
-		std::vector<DocumentMatch> found;
+		std::vector<DocumentMatch> documentMatches;
 
 		if (query.Needle.empty())
 		{
-			return found;
+			return documentMatches;
 		}
 
-		std::vector<LineMatch> inLine;
+		std::vector<LineMatch> lineMatches;
 
 		for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
 		{
-			const std::string text = buffer.LineText(line);
-			const std::size_t start = buffer.LineStart(line);
+			const std::string lineText = buffer.LineText(line);
+			const std::size_t lineStart = buffer.LineStart(line);
 
-			inLine.clear();
-			FindInLine(query, text, inLine);
+			lineMatches.clear();
+			FindInLine(query, lineText, lineMatches);
 
-			for (const LineMatch& match : inLine)
+			for (const LineMatch& match : lineMatches)
 			{
-				found.push_back(DocumentMatch{start + match.From, start + match.To});
+				documentMatches.push_back(
+					DocumentMatch{lineStart + match.From, lineStart + match.To});
 			}
 		}
 
-		return found;
+		return documentMatches;
 	}
 
 	std::optional<std::size_t> NextMatch(const std::vector<DocumentMatch>& matches,
@@ -42,7 +50,9 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		return current + 1 < matches.size() ? current + 1 : 0;
+		const std::size_t following = current + 1;
+
+		return following < matches.size() ? following : kFirstMatchIndex;
 	}
 
 	std::optional<std::size_t> PreviousMatch(const std::vector<DocumentMatch>& matches,
@@ -53,7 +63,9 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		return current == 0 ? matches.size() - 1 : current - 1;
+		const std::size_t lastMatchIndex = matches.size() - 1;
+
+		return current == kFirstMatchIndex ? lastMatchIndex : current - 1;
 	}
 
 	std::size_t MatchAtOrAfter(const std::vector<DocumentMatch>& matches, std::size_t offset)
@@ -66,6 +78,6 @@ namespace Graphite {
 			}
 		}
 
-		return 0;
+		return kFirstMatchIndex;
 	}
 }
