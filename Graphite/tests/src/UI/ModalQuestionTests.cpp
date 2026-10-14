@@ -6,8 +6,6 @@
 #include <string>
 
 namespace {
-	// Carries more than its identity, as a real payload does: two asks about one subject are
-	// one question whatever text each was given.
 	struct Keyed
 	{
 		std::string Subject;

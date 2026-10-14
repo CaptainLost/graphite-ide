@@ -6,16 +6,24 @@
 
 #include <imgui.h>
 
-#include <algorithm>
 #include <format>
 
 namespace Graphite {
 
 	namespace {
+		constexpr float kPaddingSides = 2.0f;
 
 		bool Offers(const InstallSummary& summary, InstallAction action)
 		{
-			return std::find(summary.Actions.begin(), summary.Actions.end(), action) != summary.Actions.end();
+			for (const InstallAction offered : summary.Actions)
+			{
+				if (offered == action)
+				{
+					return true;
+				}
+			}
+
+			return false;
 		}
 
 		LanguagePrompt InstallingPrompt(LanguageId language, const ServerDefinition& server, const InstallSummary& summary)
@@ -90,8 +98,9 @@ namespace Graphite {
 			return InstallingPrompt(inputs.Language, server, summary);
 		}
 
-		// An uninstall or a check is Settings' to show: the bar would offer an install of what is being removed.
-		if (inputs.Install.Running.has_value())
+		const bool settingsShowsRunningJob = inputs.Install.Running.has_value();
+
+		if (settingsShowsRunningJob)
 		{
 			return std::nullopt;
 		}
@@ -145,18 +154,18 @@ namespace Graphite {
 		LanguageBarChoice clicked = LanguageBarChoice::None;
 
 		const ImGuiStyle& style = ImGui::GetStyle();
-		const float height = ImGui::GetFrameHeight() + style.FramePadding.y * 2.0f;
+		const float barHeight = ImGui::GetFrameHeight() + style.FramePadding.y * kPaddingSides;
 
 		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_MenuBarBg));
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(style.ItemSpacing.x, style.FramePadding.y));
 
-		if (ImGui::BeginChild("##LanguageSupport", ImVec2(0.0f, height), ImGuiChildFlags_AlwaysUseWindowPadding,
+		if (ImGui::BeginChild("##LanguageSupport", ImVec2(0.0f, barHeight), ImGuiChildFlags_AlwaysUseWindowPadding,
 							  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 		{
-			const std::string text = std::string{ICON_MDI_INFORMATION_OUTLINE} + "  " + prompt.Message;
+			const std::string barText = std::string{ICON_MDI_INFORMATION_OUTLINE} + "  " + prompt.Message;
 
 			ImGui::AlignTextToFramePadding();
-			ImGui::TextUnformatted(text.c_str());
+			ImGui::TextUnformatted(barText.c_str());
 
 			for (const LanguageBarChoice button : prompt.Buttons)
 			{

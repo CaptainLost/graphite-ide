@@ -41,7 +41,6 @@ TEST_CASE("The needle is cut out of the label where it sits")
 
 TEST_CASE("The match keeps the label's own case, not the needle's")
 {
-	// The row shows what the commit says; the needle only says where to mark it.
 	const std::string label = "eb694cb  Anna  Fix The Width";
 
 	const HighlightedLabel split = SplitHighlight(label, "fix the");
@@ -50,10 +49,8 @@ TEST_CASE("The match keeps the label's own case, not the needle's")
 	CHECK(std::string(split.After) == " Width");
 }
 
-TEST_CASE("Only the first occurrence is marked")
+TEST_CASE("Only the first occurrence is marked, so a row of common words is not mostly highlighted")
 {
-	// One mark per row, at the first place the eye lands. Marking every occurrence would
-	// make a row of common words read as mostly highlighted.
 	const std::string label = "fix the fix";
 
 	const HighlightedLabel split = SplitHighlight(label, "fix");
@@ -82,10 +79,8 @@ TEST_CASE("A needle of nothing but whitespace marks nothing")
 	CHECK(split.Match.empty());
 }
 
-TEST_CASE("The three pieces always rebuild the label exactly")
+TEST_CASE("The three pieces concatenated rebuild the label exactly, so nothing drawn is dropped or invented")
 {
-	// What the row draws is these three concatenated, so anything else on screen is a
-	// character this function dropped or invented.
 	const std::string label = "eb694cb  Anna  fix the width";
 
 	for (const char* needle : {"", "width", "ANNA", "eb694", "nothing", "  "})
@@ -97,11 +92,8 @@ TEST_CASE("The three pieces always rebuild the label exactly")
 	}
 }
 
-TEST_CASE("A pattern the reader typed is marked only where it appears literally")
+TEST_CASE("A pattern the reader typed is marked only where it appears literally, never as the extension it ends with")
 {
-	// The path box takes fragments and patterns alike. "Application" is in the path and is
-	// marked; "*.cpp" selected the same row without appearing in it, and marking nothing is
-	// the honest answer rather than marking the extension it happens to end with.
 	const std::string path = "Core/src/Core/App/Application.cpp";
 
 	const HighlightedLabel fragment = SplitHighlight(path, "Application");

@@ -29,9 +29,8 @@ TEST_CASE("CopiedSummary leaves the text out when there is none to show")
 	CHECK(CopiedSummary("commit message", "\nbody only") == "commit message");
 }
 
-TEST_CASE("CopiedSummary cuts a long text on a character boundary")
+TEST_CASE("CopiedSummary cuts a long text on a character boundary, dropping a two-byte character straddling the limit")
 {
-	// 79 ASCII bytes, then a two-byte character straddling the 80-byte limit.
 	const std::string text = std::string(79, 'a') + "\xC5\x82" + "tail";
 
 	CHECK(CopiedSummary("path", text) == "path: " + std::string(79, 'a') + "\xE2\x80\xA6");
@@ -44,7 +43,7 @@ TEST_CASE("CopiedSummary keeps a text of exactly the limit whole")
 	CHECK(CopiedSummary("path", text) == "path: " + text);
 }
 
-TEST_CASE("ReportCopied confirms a copy with a Success toast titled Copied and leaves the status bar alone")
+TEST_CASE("ReportCopied confirms a copy with an Application-scoped Success toast titled Copied, which closing the folder does not take away, and leaves the status bar alone")
 {
 	Core::EventBus events;
 	std::vector<Graphite::ToastEvent> toasts;
@@ -61,7 +60,6 @@ TEST_CASE("ReportCopied confirms a copy with a Success toast titled Copied and l
 	CHECK(toasts.front().Message == CopiedSummary("selection", "int main()\n{"));
 	CHECK(toasts.front().CopyText.empty());
 
-	// A copy is not about the open folder: closing it must not take the confirmation away.
 	CHECK(toasts.front().Scope == Graphite::ToastScope::Application);
 	CHECK(statusMessages == 0);
 }

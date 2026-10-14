@@ -38,7 +38,7 @@ namespace Graphite {
 			{
 				ImGui::SameLine();
 
-				// "###" keeps the button's id fixed whatever the path holds, "##" included.
+				// WARNING: "###" keeps the button's id fixed whatever the path holds, "##" included.
 				const std::string label = "Trust All in " + Core::ToUtf8(*parent) + "###TrustParent";
 
 				if (ImGui::Button(label.c_str()))

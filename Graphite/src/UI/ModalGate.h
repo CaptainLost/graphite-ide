@@ -4,9 +4,8 @@
 
 namespace Graphite {
 
-	// Serialises the modal questions, because ImGui cannot stack them: every OpenPopup here
-	// competes for popup level 0, and opening a second one tears the first down without
-	// telling whatever was waiting on its answer.
+	// WARNING: ImGui cannot stack modal questions. Every OpenPopup here competes for popup level 0,
+	// and opening a second one tears the first down without telling whatever was waiting on it.
 	class ModalGate
 	{
 	public:
@@ -25,7 +24,7 @@ namespace Graphite {
 		{
 			if (m_Owner == title)
 			{
-				m_Owner = {};
+				m_Owner = std::string_view{};
 			}
 		}
 

@@ -1,84 +1,75 @@
 #include "UI/RelativePaths.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
 
-#include <cctype>
 #include <cstddef>
 
 namespace Graphite {
 
 	namespace {
-		bool IsSeparator(char c)
+		constexpr std::string_view kCharactersThatEndAPath = "'\"()[]<>,;:";
+		constexpr std::string_view kCharactersThatOpenAToken = "'\"([<";
+		constexpr std::size_t kSeparatorAndFirstNameCharacter = 2;
+		constexpr std::size_t kNoPrefix = 0;
+		constexpr std::size_t kDriveLetterAndColon = 2;
+
+		bool EndsPath(char character)
 		{
-			return c == '/' || c == '\\';
+			return Core::IsAsciiWhitespace(character) || kCharactersThatEndAPath.find(character) != std::string_view::npos;
 		}
 
-		bool IsWhitespace(char c)
+		bool StartsToken(std::string_view message, std::size_t position)
 		{
-			return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v';
-		}
-
-		// What can follow a path in a message but never begins a name in one.
-		bool EndsPath(char c)
-		{
-			return IsWhitespace(c) || std::string_view("'\"()[]<>,;:").find(c) != std::string_view::npos;
-		}
-
-		// Where a path may start: the start of a word, or just inside a quote or a bracket.
-		bool StartsToken(std::string_view message, std::size_t at)
-		{
-			if (at == 0)
+			if (position == 0)
 			{
 				return true;
 			}
 
-			const char before = message[at - 1];
-			return IsWhitespace(before) || before == '\'' || before == '"' || before == '(' || before == '[' ||
-				   before == '<';
+			const char before = message[position - 1];
+			return Core::IsAsciiWhitespace(before) || kCharactersThatOpenAToken.find(before) != std::string_view::npos;
 		}
 
-		bool SameChar(char a, char b, std::size_t index, std::string_view root)
+		// WARNING: only the drive letter matches in either case: Windows hands it out either way,
+		// while the rest of a path comes from the same place in the same case.
+		bool SamePathCharacter(char messageCharacter, char rootCharacter, std::size_t characterIndex,
+							   std::string_view root)
 		{
-			if (IsSeparator(a) && IsSeparator(b))
+			if (Core::IsPathSeparator(messageCharacter) && Core::IsPathSeparator(rootCharacter))
 			{
 				return true;
 			}
 
-			// The drive letter alone matches in either case: Windows hands it out either way,
-			// while the rest of the path comes from the same place in the same case.
-			const bool driveLetter = index == 0 && root.size() >= 2 && root[1] == ':';
+			const bool isDriveLetter = characterIndex == 0 && root.size() >= kDriveLetterAndColon && root[1] == ':';
 
-			if (driveLetter)
+			if (isDriveLetter)
 			{
-				return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+				return Core::EqualsIgnoringCase(messageCharacter, rootCharacter);
 			}
 
-			return a == b;
+			return messageCharacter == rootCharacter;
 		}
 
-		// How long the prefix `root` plus one separator is at `at`, or 0 when the message
-		// does not start a path inside the root there.
-		std::size_t RootPrefixAt(std::string_view message, std::size_t at, std::string_view root)
+		std::size_t RootPrefixAt(std::string_view message, std::size_t position, std::string_view root)
 		{
-			if (message.size() - at < root.size() + 2)
+			if (message.size() - position < root.size() + kSeparatorAndFirstNameCharacter)
 			{
-				return 0;
+				return kNoPrefix;
 			}
 
-			for (std::size_t i = 0; i < root.size(); ++i)
+			for (std::size_t characterIndex = 0; characterIndex < root.size(); ++characterIndex)
 			{
-				if (!SameChar(message[at + i], root[i], i, root))
+				if (!SamePathCharacter(message[position + characterIndex], root[characterIndex], characterIndex, root))
 				{
-					return 0;
+					return kNoPrefix;
 				}
 			}
 
-			const std::size_t separator = at + root.size();
+			const std::size_t separatorPosition = position + root.size();
 
-			// Strictly inside: a separator, then a name rather than the end of the path.
-			if (!IsSeparator(message[separator]) || EndsPath(message[separator + 1]))
+			if (!Core::IsPathSeparator(message[separatorPosition]) || EndsPath(message[separatorPosition + 1]))
 			{
-				return 0;
+				return kNoPrefix;
 			}
 
 			return root.size() + 1;
@@ -89,12 +80,12 @@ namespace Graphite {
 	{
 		std::string rootText = Core::ToUtf8(root);
 
-		while (!rootText.empty() && IsSeparator(rootText.back()))
+		while (!rootText.empty() && Core::IsPathSeparator(rootText.back()))
 		{
 			rootText.pop_back();
 		}
 
-		// Checked once the separators are gone: a root of "/" alone would otherwise match
+		// WARNING: checked once the separators are gone: a root of "/" alone would otherwise match
 		// every absolute path in the message, inside the repository or not.
 		if (rootText.empty())
 		{
@@ -104,21 +95,22 @@ namespace Graphite {
 		std::string result;
 		result.reserve(message.size());
 
-		std::size_t i = 0;
+		std::size_t messageIndex = 0;
 
-		while (i < message.size())
+		while (messageIndex < message.size())
 		{
-			if (StartsToken(message, i))
+			if (StartsToken(message, messageIndex))
 			{
-				if (const std::size_t prefix = RootPrefixAt(message, i, rootText); prefix > 0)
+				if (const std::size_t prefixLength = RootPrefixAt(message, messageIndex, rootText);
+					prefixLength > kNoPrefix)
 				{
-					i += prefix;
+					messageIndex += prefixLength;
 					continue;
 				}
 			}
 
-			result += message[i];
-			++i;
+			result += message[messageIndex];
+			++messageIndex;
 		}
 
 		return result;

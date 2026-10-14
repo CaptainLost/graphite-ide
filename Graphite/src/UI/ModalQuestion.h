@@ -6,7 +6,6 @@
 
 #include <imgui.h>
 
-#include <algorithm>
 #include <concepts>
 #include <cstddef>
 #include <optional>
@@ -17,17 +16,17 @@
 
 namespace Graphite {
 
-	// The ImGui window name for a modal shown as `visible` and known to ImGui as `stableId`,
-	// which starts with "###". ImGui identifies a window by its name from the first "###" on,
-	// so nothing in the visible part may start one: a branch may be called "a###b", and one
-	// called "fix#" would run into the stable part as "fix####...". Either way the popup
-	// opened under the stable id would never be found again - and the modal gate would stay
-	// held by a question nobody can see.
+	// WARNING: ImGui identifies a window by its name from the first "###" on, so nothing in the
+	// visible part may start one: a branch called "a###b", or "fix#" running into the stable part as
+	// "fix####", would lose the popup and leave the modal gate held by a question nobody can see.
 	inline std::string ModalWindowName(std::string visible, std::string_view stableId)
 	{
-		for (std::size_t at = visible.find("##"); at != std::string::npos; at = visible.find("##", at + 2))
+		constexpr std::string_view kDoubleHash = "##";
+
+		for (std::size_t hashStart = visible.find(kDoubleHash); hashStart != std::string::npos;
+			 hashStart = visible.find(kDoubleHash, hashStart + kDoubleHash.size()))
 		{
-			visible.insert(at + 1, " ");
+			visible.insert(hashStart + 1, " ");
 		}
 
 		if (!visible.empty() && visible.back() == '#')
@@ -62,8 +61,15 @@ namespace Graphite {
 				return true;
 			}
 
-			return std::any_of(m_Queue.begin(), m_Queue.end(),
-							   [&payload](const Payload& queued) { return IsSameQuestion(queued, payload); });
+			for (const Payload& queued : m_Queue)
+			{
+				if (IsSameQuestion(queued, payload))
+				{
+					return true;
+				}
+			}
+
+			return false;
 		}
 
 		const Payload* GetCurrent() const
@@ -80,13 +86,9 @@ namespace Graphite {
 
 		bool Begin()
 		{
-			return Begin([](const Payload&) { return true; });
+			return Begin(&AlwaysWorthAsking);
 		}
 
-		// For a title that names what is being asked about - "Delete branch feature/x". The
-		// question's own title has to start with "###": ImGui identifies a window by its name
-		// from "###" on and shows only what comes before it, so the popup, and the gate held
-		// under the stable title, stay the same while the visible part follows the payload.
 		template<std::predicate<const Payload&> Predicate, std::invocable<const Payload&> TitleOf>
 		bool Begin(Predicate stillWorthAsking, TitleOf titleOf)
 		{
@@ -114,11 +116,8 @@ namespace Graphite {
 			ImGui::EndPopup();
 		}
 
-		// Abandons the question and hands the gate back. Begin is the only other code that
-		// releases the gate, and it runs from the owner's render — an owner that stops being
-		// rendered while a question is open would hold the gate forever, and no modal question
-		// anywhere in the application could be asked again. No CloseCurrentPopup here: that is
-		// only valid between a popup's Begin and End, and this is called from outside one.
+		// WARNING: no CloseCurrentPopup here: it is only valid between a popup's Begin and End, and
+		// this is called from outside one.
 		void Withdraw()
 		{
 			m_Current.reset();
@@ -126,10 +125,8 @@ namespace Graphite {
 			m_Gate.Close(m_Title);
 		}
 
-		// Abandons only the questions `matches` selects, for when something answered them
-		// without the user being asked. A selected current question hands the gate back like
-		// Withdraw does; the popup it opened is still on screen until the owner's render sees
-		// GetCurrent() come back null and closes it.
+		// WARNING: the popup of a withdrawn current question stays on screen until the owner's render
+		// sees GetCurrent() come back null and closes it.
 		template<std::predicate<const Payload&> Predicate>
 		void WithdrawIf(Predicate matches)
 		{
@@ -143,18 +140,20 @@ namespace Graphite {
 		}
 
 	private:
-		// Two payloads ask one question when the payload says so through IsSameQuestion, and
-		// otherwise when they are equal. A payload carrying more than its identity - a plan, the
-		// text it shows - names that rule rather than bending operator== to compare part of it.
-		static bool IsSameQuestion(const Payload& left, const Payload& right)
+		static bool AlwaysWorthAsking(const Payload&)
 		{
-			if constexpr (requires { { left.IsSameQuestion(right) } -> std::convertible_to<bool>; })
+			return true;
+		}
+
+		static bool IsSameQuestion(const Payload& askedPayload, const Payload& otherPayload)
+		{
+			if constexpr (requires { { askedPayload.IsSameQuestion(otherPayload) } -> std::convertible_to<bool>; })
 			{
-				return left.IsSameQuestion(right);
+				return askedPayload.IsSameQuestion(otherPayload);
 			}
 			else
 			{
-				return left == right;
+				return askedPayload == otherPayload;
 			}
 		}
 
@@ -171,8 +170,8 @@ namespace Graphite {
 			return false;
 		}
 
-		// ImGui closes a popup on Escape, and destroys it when another opens over it,
-		// without either reaching the code that asked the question.
+		// WARNING: ImGui closes a popup on Escape, and destroys it when another opens over it, without
+		// either reaching the code that asked the question.
 		void WithdrawIfNoLongerOnScreen()
 		{
 			if (!m_Gate.HoldsFor(m_Title) || ImGui::IsPopupOpen(m_Title))
@@ -197,9 +196,8 @@ namespace Graphite {
 					continue;
 				}
 
-				// Asked again even though the loop condition just found the gate free:
-				// stillWorthAsking runs application code in between, which can itself ask a
-				// question and take the gate.
+				// WARNING: the gate is tried again although the loop condition found it free, because
+				// stillWorthAsking runs application code that can itself ask a question and take it.
 				if (!m_Gate.TryOpen(m_Title))
 				{
 					m_Queue.insert(m_Queue.begin(), std::move(candidate));

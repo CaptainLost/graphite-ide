@@ -42,11 +42,9 @@ namespace Graphite {
 		bool RestrictedModeShown = false;
 	};
 
-	// Nothing while the restricted-mode bar shows: no server would start there anyway, and one bar at a time is read.
 	std::optional<LanguagePrompt> LanguagePromptFor(const LanguagePromptInputs& inputs);
 
 	const char* LanguageBarChoiceLabel(LanguageBarChoice choice);
 
-	// Returns what was clicked this frame; the caller acts on it.
 	LanguageBarChoice DrawLanguageSupportBar(const LanguagePrompt& prompt);
 }

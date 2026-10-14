@@ -5,6 +5,10 @@
 
 namespace Graphite {
 
+	namespace {
+		constexpr ImGuiID kFloatingDockId = 0;
+	}
+
 	bool HasRememberedPlace(const std::string& windowName)
 	{
 		const ImGuiWindowSettings* settings = ImGui::FindWindowSettingsByID(ImHashStr(windowName.c_str()));
@@ -14,6 +18,6 @@ namespace Graphite {
 			return false;
 		}
 
-		return settings->DockId == 0 || ImGui::DockBuilderGetNode(settings->DockId) != nullptr;
+		return settings->DockId == kFloatingDockId || ImGui::DockBuilderGetNode(settings->DockId) != nullptr;
 	}
 }

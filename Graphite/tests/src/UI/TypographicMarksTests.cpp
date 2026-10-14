@@ -17,6 +17,5 @@ TEST_CASE("Every typographic mark is the UTF-8 encoding of its code point")
 	CHECK(kLeftDoubleQuotationMark == std::string_view{"\xE2\x80\x9C", 3});
 	CHECK(kRightDoubleQuotationMark == std::string_view{"\xE2\x80\x9D", 3});
 
-	// Literal-backed, so data() is NUL-terminated for the C APIs that still need it.
 	CHECK(kEllipsis.data()[kEllipsis.size()] == '\0');
 }

@@ -8,14 +8,11 @@
 
 namespace {
 
-	// What ImGui identifies the window by, the way BeginPopupModal and OpenPopup hash it:
-	// the same as the stable id alone, or the popup is never found again.
 	bool IdentifiedAsStable(const std::string& name, const char* stableId)
 	{
 		return ImHashStr(name.c_str()) == ImHashStr(stableId);
 	}
 
-	// The part ImGui draws in the title bar: up to the first "##".
 	std::string Shown(const std::string& name)
 	{
 		return name.substr(0, name.find("##"));

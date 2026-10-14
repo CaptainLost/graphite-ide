@@ -7,17 +7,18 @@ namespace Graphite {
 
 	SideBySideWidths SplitSideBySide(float room, float wanted, float minimum)
 	{
-		// Also refuses a NaN room, which fails every comparison.
-		if (!(room > 0.0f))
+		const bool roomHasWidth = room > 0.0f;
+
+		if (!roomHasWidth)
 		{
 			return {};
 		}
 
-		const float least = std::clamp(minimum, 0.0f, room * 0.5f);
+		constexpr float kHalf = 0.5f;
 
-		// Clamped between two limits that never cross: the lower is at most half the room and
-		// the upper at least half. A NaN wanted is taken as the least the left may have.
-		const float left = std::isnan(wanted) ? least : std::clamp(wanted, least, room - least);
+		const float smallestSide = std::clamp(minimum, 0.0f, room * kHalf);
+		const float wantedOrSmallest = std::isnan(wanted) ? smallestSide : wanted;
+		const float left = std::clamp(wantedOrSmallest, smallestSide, room - smallestSide);
 
 		return {left, room - left};
 	}

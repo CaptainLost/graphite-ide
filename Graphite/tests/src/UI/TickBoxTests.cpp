@@ -18,8 +18,8 @@ namespace {
 	constexpr float kFrameSeconds = 1.0f / 60.0f;
 	const ImVec2 kTickBoxPosition(20.0f, 30.0f);
 	const ImVec4 kChangedOutline(0.9f, 0.6f, 0.2f, 1.0f);
+	constexpr float kLabelClickInset = 3.0f;
 
-	// The share of the accent a ticked box's inside takes on, as TickBox.cpp tints it.
 	constexpr float kTintShare = 0.16f;
 
 	bool DrawsInColourWithin(const ImDrawList& drawing, ImU32 colour, ImVec2 lowest, ImVec2 highest)
@@ -59,7 +59,6 @@ namespace {
 		Custom
 	};
 
-	// One tick box in a window of its own, drawn a frame at a time as the application draws it.
 	class TickBoxFrames
 	{
 	public:
@@ -79,7 +78,6 @@ namespace {
 
 		~TickBoxFrames() { ImGui::DestroyContext(m_Context); }
 
-		// Paints the context the way the application paints itself with this scheme.
 		void UseScheme(const Graphite::ResolvedScheme& scheme) { Core::Theme::Apply(Graphite::ChromePaletteFor(scheme)); }
 
 		TickBoxFrames(const TickBoxFrames&) = delete;
@@ -91,16 +89,12 @@ namespace {
 
 		void NextDisabled(bool& value) { Draw(value, DrawMode::Disabled); }
 
-		// Draws text after the box on the same line, as the review's file row does.
 		void NextWithTextAfter(bool& value) { Draw(value, DrawMode::TextAfter); }
 
-		// Draws the box in a collapsed window, which skips every item put in it.
 		void NextInCollapsedWindow(bool& value) { Draw(value, DrawMode::Collapsed); }
 
-		// A point inside the box, at its centre.
 		void ClickBox(bool& value) { ClickAt(m_BoxCentre, value, DrawMode::Normal); }
 
-		// A point on the label, a few pixels short of the item's right edge.
 		void ClickLabel(bool& value) { ClickAt(m_LabelPoint, value, DrawMode::Normal); }
 
 		void ClickBoxDisabled(bool& value) { ClickAt(m_BoxCentre, value, DrawMode::Disabled); }
@@ -108,9 +102,11 @@ namespace {
 		void PressKey(ImGuiKey key, bool& value)
 		{
 			ImGuiIO& io = ImGui::GetIO();
-			io.AddKeyEvent(key, true);
+			constexpr bool kDown = true;
+			constexpr bool kUp = false;
+			io.AddKeyEvent(key, kDown);
 			Draw(value, DrawMode::Normal);
-			io.AddKeyEvent(key, false);
+			io.AddKeyEvent(key, kUp);
 			Draw(value, DrawMode::Normal);
 		}
 
@@ -120,16 +116,12 @@ namespace {
 
 		float GetReportedWidth() const { return m_ReportedWidth; }
 
-		// How far below the tick box's top the text after it starts.
 		float GetTextAfterOffset() const { return m_TextAfterOffset; }
 
-		// Whether the box drew anything in the colour a hovered row is filled with.
 		bool DrewHoveredRowColourOnBox() const { return m_HoveredRowColourOnBox; }
 
-		// The top edge of a ticked box's tint, absent when nothing was tinted.
 		std::optional<float> GetTintTop() const { return m_TintTop; }
 
-		// Whether drawing the box added anything to the window's state storage.
 		bool GrewStateStorage() const { return m_GrewStateStorage; }
 
 	private:
@@ -147,9 +139,11 @@ namespace {
 			ImGuiIO& io = ImGui::GetIO();
 			io.AddMousePosEvent(point.x, point.y);
 			Draw(value, mode);
-			io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+			constexpr bool kDown = true;
+			constexpr bool kUp = false;
+			io.AddMouseButtonEvent(ImGuiMouseButton_Left, kDown);
 			Draw(value, mode);
-			io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+			io.AddMouseButtonEvent(ImGuiMouseButton_Left, kUp);
 			Draw(value, mode);
 		}
 
@@ -191,7 +185,7 @@ namespace {
 			const ImVec2 itemMax = ImGui::GetItemRectMax();
 			const float side = Graphite::kTickBoxSize;
 			m_BoxCentre = ImVec2(itemMin.x + side * 0.5f, (itemMin.y + itemMax.y) * 0.5f);
-			m_LabelPoint = ImVec2(itemMax.x - 3.0f, (itemMin.y + itemMax.y) * 0.5f);
+			m_LabelPoint = ImVec2(itemMax.x - kLabelClickInset, (itemMin.y + itemMax.y) * 0.5f);
 			m_ItemSize = ImVec2(itemMax.x - itemMin.x, itemMax.y - itemMin.y);
 			m_ReportedWidth = Graphite::TickBoxWidth(m_Label);
 
@@ -366,7 +360,6 @@ TEST_CASE("A tick box sits on whole pixels so its outline stays sharp")
 
 	REQUIRE(frames.GetTintTop().has_value());
 
-	// An anti-aliased fill puts its solid vertices half a pixel inside the shape's edge.
 	const float fringeInset = 0.5f;
 	const float edge = *frames.GetTintTop() - fringeInset;
 	CHECK(edge == doctest::Approx(std::floor(edge)));
