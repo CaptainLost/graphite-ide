@@ -7,6 +7,7 @@
 #include <imgui_internal.h>
 
 #include <array>
+#include <cmath>
 #include <optional>
 
 namespace Graphite {
@@ -19,6 +20,10 @@ namespace Graphite {
 
 		// How much of the accent a ticked box's inside takes on.
 		constexpr float kTickedTintAlpha = 0.16f;
+
+		// An unticked outline is the disabled-text colour seen through: an opaque surface colour would
+		// match whatever is filled with that same colour beneath it, as a hovered row is, and vanish.
+		constexpr float kRestingOutlineAlpha = 0.4f;
 
 		// The tick's three points, as shares of the box's side from its top-left corner.
 		constexpr ImVec2 kTickStart(0.24f, 0.52f);
@@ -57,6 +62,13 @@ namespace Graphite {
 
 		bool DrawBox(const char* label, bool* value, const std::optional<ImVec4>& outline)
 		{
+			// The button below adds no item in a window that skips them, and the item id read after it
+			// would then be the previous item's, whose stored state the animations would write over.
+			if (ImGui::GetCurrentWindowRead()->SkipItems)
+			{
+				return false;
+			}
+
 			const ImVec2 labelSize = LabelSize(label);
 			const float side = Core::Scaled(kTickBoxSize);
 			const ImVec2 itemSize(WidthOf(labelSize), ImGui::GetFrameHeight());
@@ -77,13 +89,15 @@ namespace Graphite {
 			const float ticked = Core::Animation::SwitchAmount(itemId, *value);
 			const float hover = Core::Animation::HoverAmount(itemId, ImGui::IsItemHovered());
 
-			const ImVec4 restingOutline = outline.value_or(ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive));
+			const ImVec4 restingOutline =
+				outline.value_or(WithAlpha(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), kRestingOutlineAlpha));
 			const ImVec4 hoveredOutline =
 				Core::Animation::Blend(restingOutline, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), hover);
 			const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
 			const ImVec4 boxOutline = Core::Animation::Blend(hoveredOutline, accent, ticked);
 
-			const ImVec2 boxTopLeft(itemTopLeft.x, itemTopLeft.y + (itemSize.y - side) * 0.5f);
+			// On a whole pixel: centred on a half one, the thin outline smears across two rows and fades.
+			const ImVec2 boxTopLeft(itemTopLeft.x, itemTopLeft.y + std::floor((itemSize.y - side) * 0.5f));
 			const ImVec2 boxBottomRight(boxTopLeft.x + side, boxTopLeft.y + side);
 			const float radius = Core::Scaled(kCornerRadius);
 			const float outlineWidth = Core::Scaled(kOutlineWidth);

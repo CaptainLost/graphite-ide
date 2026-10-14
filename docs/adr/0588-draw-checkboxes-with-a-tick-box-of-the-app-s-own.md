@@ -9,13 +9,13 @@ ImGui's checkbox fills its box with the frame colour and draws its tick on top. 
 
 Style colours cannot change its shape. The only outline ImGui offers is `FrameBorderSize`, and that outlines every frame in the app at once: text fields, combos and buttons alike.
 
-The app had fourteen checkboxes, in panels, toolbars and dialogs, plus the branch review's viewed mark on every file row.
+The app had fourteen checkboxes, in panels, toolbars and dialogs; one of them is the branch review's viewed mark on every file row.
 
 ## Decision
 
 Draw every checkbox with `Graphite::DrawTickBox` (`Graphite/src/UI/TickBox.h`), never with `ImGui::Checkbox`.
 
-- Unticked: a thin outline in the surface-active colour, nothing inside. Hovering eases the outline lighter.
+- Unticked: a thin outline in the disabled-text colour, partly see-through, nothing inside. Hovering eases it to the solid disabled-text colour. See-through rather than a surface colour, so it still shows on a row filled with that surface colour, as a hovered row is. The box sits on whole pixels, so the thin outline stays sharp.
 - Ticked: the outline in the accent, the inside lightly tinted with it, and an accent tick drawn as a line. The change between the two is eased.
 - Every colour comes from the style the active scheme set, so the light scheme follows on its own.
 - A second form takes an outline colour for a box that has something to say about what it marks. The review outlines a file changed since it was viewed in the colour its "changed" word uses.
