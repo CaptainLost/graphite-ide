@@ -1,9 +1,9 @@
 #include "Git/CheckoutQuestion.h"
 
+#include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Repository.h"
 
-#include <algorithm>
 #include <map>
 #include <set>
 
@@ -11,46 +11,87 @@ namespace Graphite {
 
 	namespace {
 
-		// Editor paths and git paths name the same file in different spellings: separators,
-		// and on Windows the case. Every comparison goes through this key. UTF-8 rather than
-		// generic_string(), which narrows through the ANSI code page and throws on a name
-		// outside it; folding ASCII only leaves every byte of a multi-byte character alone.
-		std::string Key(const std::filesystem::path& path)
+		using RowsByKey = std::map<std::string, CheckoutQuestionRow>;
+
+		// WARNING: Folds ASCII only, so every byte of a multi-byte character is left alone.
+		std::string ComparablePathKey(const std::filesystem::path& path)
 		{
 			std::string key = Core::ToGenericUtf8(path.lexically_normal());
+
 			while (!key.empty() && key.back() == '/')
 			{
 				key.pop_back();
 			}
 
-			for (char& c : key)
-			{
-				if (c >= 'A' && c <= 'Z')
-				{
-					c = static_cast<char>(c - 'A' + 'a');
-				}
-			}
-
-			return key;
+			return Core::Lowered(key);
 		}
 
-		std::set<std::string> Keys(const std::vector<std::filesystem::path>& paths)
+		std::set<std::string> ComparablePathKeys(const std::vector<std::filesystem::path>& paths)
 		{
 			std::set<std::string> keys;
+
 			for (const std::filesystem::path& path : paths)
 			{
-				keys.insert(Key(path));
+				keys.insert(ComparablePathKey(path));
 			}
 
 			return keys;
 		}
 
-		// A collapsed untracked directory is one status entry; the plan names the files in it.
-		// The prefix ends in a separator so "dir2/x" is not taken for a file of "dir".
-		bool IsUnder(const std::set<std::string>& keys, const std::string& directory)
+		bool AnyKeyIsUnderDirectory(const std::set<std::string>& keys, const std::string& directoryKey)
 		{
-			const std::string prefix = directory + "/";
-			return std::any_of(keys.begin(), keys.end(), [&prefix](const std::string& key) { return key.compare(0, prefix.size(), prefix) == 0; });
+			const std::string directoryPrefix = directoryKey + "/";
+
+			for (const std::string& key : keys)
+			{
+				if (key.starts_with(directoryPrefix))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		std::optional<std::filesystem::path> GitSpellingOf(const std::vector<std::filesystem::path>& names,
+														   const std::string& key)
+		{
+			for (const std::filesystem::path& name : names)
+			{
+				if (ComparablePathKey(name) == key)
+				{
+					return name;
+				}
+			}
+
+			return std::nullopt;
+		}
+
+		bool ContainsSamePath(const std::vector<std::filesystem::path>& paths,
+							  const std::filesystem::path& normalisedPath)
+		{
+			for (const std::filesystem::path& path : paths)
+			{
+				if (Core::SamePath(Core::NormalizePath(path), normalisedPath))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		bool HasLocalBranchNamed(const std::vector<Core::Branch>& branches, const std::string& name)
+		{
+			for (const Core::Branch& branch : branches)
+			{
+				if (branch.Kind == Core::RefKind::Local && branch.Name == name)
+				{
+					return true;
+				}
+			}
+
+			return false;
 		}
 	}
 
@@ -76,9 +117,17 @@ namespace Graphite {
 			return true;
 		}
 
-		const std::set<std::string> updated = Keys(plan.Updated);
-		return std::any_of(unsaved.begin(), unsaved.end(),
-						   [&updated](const std::filesystem::path& path) { return updated.count(Key(path)) != 0; });
+		const std::set<std::string> updatedKeys = ComparablePathKeys(plan.Updated);
+
+		for (const std::filesystem::path& unsavedPath : unsaved)
+		{
+			if (updatedKeys.contains(ComparablePathKey(unsavedPath)))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	CheckoutQuestion BuildCheckoutQuestion(const std::string& targetLabel, const Core::CheckoutPlan& plan,
@@ -88,63 +137,72 @@ namespace Graphite {
 		CheckoutQuestion question;
 		question.Title = "Checking out " + targetLabel + " would overwrite your changes";
 
-		const std::set<std::string> overwritten = Keys(plan.Overwritten);
+		const std::set<std::string> overwrittenKeys = ComparablePathKeys(plan.Overwritten);
 
-		// Keyed so a file that is both changed on disk and unsaved shows once, and so the
-		// rows come out sorted.
-		std::map<std::string, CheckoutQuestionRow> changed;
-		std::map<std::string, CheckoutQuestionRow> untracked;
+		RowsByKey changedRowsByKey;
+		RowsByKey untrackedRowsByKey;
 
 		for (const Core::FileStatus& entry : status.Entries)
 		{
-			const std::string key = Key(entry.Path);
+			const std::string key = ComparablePathKey(entry.Path);
 
 			CheckoutQuestionRow row;
 			row.Path = entry.Path;
-			row.Blocks = overwritten.count(key) != 0 || (entry.IsUntracked && entry.IsDirectory && IsUnder(overwritten, key));
 
-			(entry.IsUntracked ? untracked : changed).emplace(key, std::move(row));
+			const bool isOverwritten = overwrittenKeys.contains(key);
+			const bool isCollapsedUntrackedDirectory = entry.IsUntracked && entry.IsDirectory;
+			row.Blocks = isOverwritten || (isCollapsedUntrackedDirectory && AnyKeyIsUnderDirectory(overwrittenKeys, key));
+
+			RowsByKey& rowsOfSection = entry.IsUntracked ? untrackedRowsByKey : changedRowsByKey;
+			rowsOfSection.emplace(key, std::move(row));
 		}
 
-		for (const std::filesystem::path& path : unsaved)
+		for (const std::filesystem::path& unsavedPath : unsaved)
 		{
-			const std::string key = Key(path);
+			const std::string key = ComparablePathKey(unsavedPath);
 
-			// Untracked and unsaved is one file: mark its row rather than list it twice.
-			if (auto found = untracked.find(key); found != untracked.end())
+			RowsByKey::iterator untrackedRow = untrackedRowsByKey.find(key);
+
+			if (untrackedRow != untrackedRowsByKey.end())
 			{
-				found->second.Unsaved = true;
+				auto& [untrackedKey, untrackedQuestionRow] = *untrackedRow;
+				untrackedQuestionRow.Unsaved = true;
 				continue;
 			}
 
-			auto [slot, added] = changed.try_emplace(key);
-			CheckoutQuestionRow& row = slot->second;
+			auto [changedRow, added] = changedRowsByKey.try_emplace(key);
+			auto& [changedKey, row] = *changedRow;
+
 			if (added)
 			{
-				// Show git's spelling of the path when the plan has one.
-				row.Path = path;
-				for (const auto* names : {&plan.Overwritten, &plan.Updated})
+				const std::optional<std::filesystem::path> spellingInOverwritten = GitSpellingOf(plan.Overwritten, key);
+				const std::optional<std::filesystem::path> spellingInUpdated = GitSpellingOf(plan.Updated, key);
+
+				if (spellingInOverwritten.has_value())
 				{
-					const auto named = std::find_if(names->begin(), names->end(),
-													[&key](const std::filesystem::path& name) { return Key(name) == key; });
-					if (named != names->end())
-					{
-						row.Path = *named;
-						break;
-					}
+					row.Path = *spellingInOverwritten;
 				}
-				row.Blocks = overwritten.count(key) != 0;
+				else if (spellingInUpdated.has_value())
+				{
+					row.Path = *spellingInUpdated;
+				}
+				else
+				{
+					row.Path = unsavedPath;
+				}
+
+				row.Blocks = overwrittenKeys.contains(key);
 			}
 
 			row.Unsaved = true;
 		}
 
-		for (auto& [key, row] : changed)
+		for (auto& [key, row] : changedRowsByKey)
 		{
 			question.Changed.push_back(std::move(row));
 		}
 
-		for (auto& [key, row] : untracked)
+		for (auto& [key, row] : untrackedRowsByKey)
 		{
 			question.UntrackedForced = question.UntrackedForced || row.Blocks;
 			question.Untracked.push_back(std::move(row));
@@ -156,15 +214,13 @@ namespace Graphite {
 	std::vector<std::filesystem::path> SilentReloads(const std::vector<std::filesystem::path>& changed,
 													 const std::vector<std::filesystem::path>& unsavedNow)
 	{
-		const auto unsaved = [&unsavedNow](const std::filesystem::path& path) {
-			const std::filesystem::path normal = Core::NormalizePath(path);
-			return std::any_of(unsavedNow.begin(), unsavedNow.end(), [&normal](const std::filesystem::path& other) { return Core::SamePath(Core::NormalizePath(other), normal); });
-		};
-
 		std::vector<std::filesystem::path> silent;
+
 		for (const std::filesystem::path& path : changed)
 		{
-			if (!unsaved(path))
+			const std::filesystem::path normalisedPath = Core::NormalizePath(path);
+
+			if (!ContainsSamePath(unsavedNow, normalisedPath))
 			{
 				silent.push_back(path);
 			}
@@ -185,8 +241,7 @@ namespace Graphite {
 			return "Not a valid branch name";
 		}
 
-		const bool taken = std::any_of(branches.begin(), branches.end(), [&name](const Core::Branch& branch) { return branch.Kind == Core::RefKind::Local && branch.Name == name; });
-		if (taken)
+		if (HasLocalBranchNamed(branches, name))
 		{
 			return "A branch named " + name + " already exists";
 		}
@@ -196,8 +251,6 @@ namespace Graphite {
 
 	bool AsksBeforeDetaching(const Core::CheckoutTarget& target)
 	{
-		// A remote branch is checked out as a local one that tracks it, so only a bare
-		// commit leaves HEAD pointing at no branch.
 		return target.Kind == Core::CheckoutKind::Commit;
 	}
 

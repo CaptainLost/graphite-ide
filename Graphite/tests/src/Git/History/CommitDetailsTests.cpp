@@ -9,7 +9,6 @@
 #include <chrono>
 
 namespace {
-
 	std::chrono::sys_seconds At(long long seconds)
 	{
 		return std::chrono::sys_seconds{std::chrono::seconds{seconds}};
@@ -65,8 +64,6 @@ TEST_CASE("Added and removed lines are counted across every hunk of every file")
 
 TEST_CASE("Context lines are not counted as changes")
 {
-	// A hunk is mostly context, and counting it would make every summary read as though
-	// the commit rewrote the surrounding code.
 	Core::Diff diff;
 
 	Core::FileDiff file;
@@ -83,8 +80,6 @@ TEST_CASE("Context lines are not counted as changes")
 
 TEST_CASE("A binary file counts as a changed file with no lines")
 {
-	// A binary delta carries no hunks at all, so the only honest thing to say about it is
-	// that the file changed.
 	Core::Diff diff;
 	diff.Files.push_back(Core::FileDiff{.IsBinary = true});
 
@@ -103,8 +98,6 @@ TEST_CASE("A timestamp reads in the offset it is given, to the minute")
 
 TEST_CASE("A negative offset can carry a timestamp back over the date")
 {
-	// The instant is midnight UTC; an hour west of it, the reader's calendar still says the
-	// day before, and a date that ignored the offset would name the wrong day.
 	CHECK(Graphite::FormattedTimestamp(At(0), -std::chrono::hours{1}) == "1969-12-31 23:00");
 }
 
@@ -133,8 +126,6 @@ TEST_CASE("A commit committed by someone else names them")
 
 TEST_CASE("The same person at a later date is still one person")
 {
-	// A rebase or an amend leaves the author untouched and moves the committer date. A
-	// second line repeating the same name to say so is noise, not information.
 	Core::CommitSummary commit;
 	commit.Author = Who("Alice", "alice@example.com", 1000);
 	commit.Committer = Who("Alice", "alice@example.com", 9000);
@@ -144,8 +135,6 @@ TEST_CASE("The same person at a later date is still one person")
 
 TEST_CASE("A committer with the same name on a different address is a different person")
 {
-	// Two addresses is how the same display name reaches git from two accounts, and which
-	// account committed is exactly what this line exists to say.
 	Core::CommitSummary commit;
 	commit.Author = Who("Alice", "alice@example.com", 1000);
 	commit.Committer = Who("Alice", "alice@work.example.com", 1000);

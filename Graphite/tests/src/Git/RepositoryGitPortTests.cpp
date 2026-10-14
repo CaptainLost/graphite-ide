@@ -2,6 +2,7 @@
 
 #include "Git/RepositoryGitPort.h"
 
+#include "FileFixtures.h"
 #include "TempDirectory.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -12,30 +13,26 @@
 #include <atomic>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
 #include <process.h>
 #include <string>
 #include <system_error>
+#include <vector>
 
 namespace {
 
-	// A repository on disk with nothing in it. RepositoryGitPort only needs something
-	// Core::Repository::Open can open - no commit is required to exercise its handle
-	// cache, so none is made.
 	class TempRepo
 	{
 	public:
 		TempRepo()
 		{
 			static std::atomic<int> counter{0};
-			const int id = counter.fetch_add(1);
+			const int directoryNumber = counter.fetch_add(1);
 
-			// Include the process ID to ensure uniqueness across concurrent test runs.
-			// Without it, two concurrent GraphiteTests processes use the same directory names,
-			// and each deletes the other's repository out from under it, causing transient
-			// failures that pass on a solo rerun.
+			// WARNING: The process id is part of the name. Two concurrent GraphiteTests processes
+			// would otherwise share directory names and delete each other's repository.
 			m_Path = std::filesystem::temp_directory_path() /
-					 ("graphite-tests-repogitport-" + std::to_string(id) + "-" + std::to_string(::_getpid()));
+					 ("graphite-tests-repogitport-" + std::to_string(directoryNumber) + "-" +
+					  std::to_string(::_getpid()));
 
 			std::error_code code;
 			std::filesystem::remove_all(m_Path, code);
@@ -43,9 +40,10 @@ namespace {
 
 			git_libgit2_init();
 
-			git_repository* repo = nullptr;
-			REQUIRE(git_repository_init(&repo, Core::ToUtf8(m_Path).c_str(), 0) == 0);
-			git_repository_free(repo);
+			constexpr unsigned int kNotBare = 0;
+			git_repository* repository = nullptr;
+			REQUIRE(git_repository_init(&repository, Core::ToUtf8(m_Path).c_str(), kNotBare) == 0);
+			git_repository_free(repository);
 		}
 
 		~TempRepo()
@@ -63,49 +61,38 @@ namespace {
 		std::filesystem::path m_Path;
 	};
 
-	// An empty commit on the repository TempRepo made, so there is a tip to branch from.
-	// Done through libgit2 directly: the port under test has no way to make one.
 	Core::Oid CommitEmptyTree(const std::filesystem::path& path)
 	{
-		git_repository* repo = nullptr;
-		REQUIRE(git_repository_open(&repo, Core::ToUtf8(path).c_str()) == 0);
+		git_repository* repository = nullptr;
+		REQUIRE(git_repository_open(&repository, Core::ToUtf8(path).c_str()) == 0);
 
 		git_index* index = nullptr;
-		REQUIRE(git_repository_index(&index, repo) == 0);
+		REQUIRE(git_repository_index(&index, repository) == 0);
 		git_oid treeId;
 		REQUIRE(git_index_write_tree(&treeId, index) == 0);
 		git_index_free(index);
 
 		git_tree* tree = nullptr;
-		REQUIRE(git_tree_lookup(&tree, repo, &treeId) == 0);
+		REQUIRE(git_tree_lookup(&tree, repository, &treeId) == 0);
 
 		git_signature* signature = nullptr;
 		REQUIRE(git_signature_now(&signature, "Test", "test@example.com") == 0);
 
+		constexpr int kParentCount = 0;
 		git_oid commitId;
-		REQUIRE(git_commit_create_v(&commitId, repo, "HEAD", signature, signature, nullptr, "first", tree, 0) == 0);
+		REQUIRE(git_commit_create_v(&commitId, repository, "HEAD", signature, signature, nullptr, "first", tree,
+									kParentCount) == 0);
 
 		git_signature_free(signature);
 		git_tree_free(tree);
-		git_repository_free(repo);
+		git_repository_free(repository);
 
-		Core::Oid result;
-		std::copy(commitId.id, commitId.id + 20, result.Bytes.begin());
-		return result;
+		constexpr std::size_t kObjectIdByteCount = 20;
+		Core::Oid commitOid;
+		std::copy(commitId.id, commitId.id + kObjectIdByteCount, commitOid.Bytes.begin());
+		return commitOid;
 	}
 }
-
-// The cache RepositoryGitPort keeps is thread_local, so nothing outside the thread that
-// opened a handle can observe whether it is still open - a filesystem assertion after a
-// close would pass whether or not the handle was actually released, because a loose-object
-// test repository holds no lock either way.
-//
-// GetOpenCount only ever grows, so it can tell a handle that was silently reused (count
-// unchanged) from one that was reopened fresh (count bumped) - useful as a regression guard
-// against over-caching, but it cannot tell "the old entry was evicted" from "a second entry
-// was opened alongside it": both look like one more open. GetLiveHandleCountForThisThread
-// is the one that can, because a leaked entry keeps the live count up even after the new
-// root's handle exists - that is what actually proves the fix below.
 
 TEST_CASE("Reopening the same root after a close opens a fresh handle")
 {
@@ -115,7 +102,8 @@ TEST_CASE("Reopening the same root after a close opens a fresh handle")
 	REQUIRE(port.QueryStatus().HasValue());
 	CHECK(port.GetOpenCount() == 1);
 
-	port.SetRoot({});
+	const std::filesystem::path noFolder;
+	port.SetRoot(noFolder);
 	port.SetRoot(repo.GetPath());
 
 	REQUIRE(port.QueryStatus().HasValue());
@@ -148,8 +136,6 @@ TEST_CASE("Switching to a different root does not leave the old root's handle li
 	port.SetRoot(repoB.GetPath());
 	REQUIRE(port.QueryStatus().HasValue());
 
-	// Two opens happened (repoA, then repoB), but only one handle should still be alive:
-	// repoA's must have been evicted, not merely left behind alongside repoB's.
 	CHECK(port.GetLiveHandleCountForThisThread() == 1);
 }
 
@@ -161,10 +147,9 @@ TEST_CASE("Closing the workspace does not leave the last root's handle live")
 	REQUIRE(port.QueryStatus().HasValue());
 	REQUIRE(port.GetLiveHandleCountForThisThread() == 1);
 
-	port.SetRoot({});
+	const std::filesystem::path noFolder;
+	port.SetRoot(noFolder);
 
-	// A query against an empty root cannot open anything, but it is still this thread's
-	// next chance to sweep the entry the closed root left behind.
 	CHECK_FALSE(port.QueryStatus().HasValue());
 	CHECK(port.GetLiveHandleCountForThisThread() == 0);
 }
@@ -181,13 +166,12 @@ TEST_CASE("RepositoryGitPort stages through the same handle it queries with")
 
 	REQUIRE(port.Stage({"a.txt"}).HasValue());
 
-	const auto status = port.QueryStatus();
+	const Core::Result<Core::WorkingTreeStatus> status = port.QueryStatus();
 	REQUIRE(status.HasValue());
 	REQUIRE(status.GetValue().Entries.size() == 1);
 	CHECK(status.GetValue().Entries.front().Path == std::filesystem::path{"a.txt"});
 	CHECK_FALSE(status.GetValue().Entries.front().IsUntracked);
 
-	// One handle for this thread, reused by the write — the write must not open a second.
 	CHECK(port.GetOpenCount() == 1);
 }
 
@@ -208,7 +192,7 @@ TEST_CASE("The unstaged texts are the index against the disk")
 		file << "edited since\n";
 	}
 
-	const auto texts = port.ReadWorkingTreeTexts(Core::DiffTarget::WorkTreeToIndex, "a.txt", "a.txt");
+	const Core::Result<Graphite::FileTexts> texts = port.ReadWorkingTreeTexts(Core::DiffTarget::WorkTreeToIndex, "a.txt", "a.txt");
 	REQUIRE(texts.HasValue());
 
 	CHECK(texts.GetValue().HasOld);
@@ -227,7 +211,7 @@ TEST_CASE("An untracked file has no older side to show")
 		file << "brand new\n";
 	}
 
-	const auto texts = port.ReadWorkingTreeTexts(Core::DiffTarget::WorkTreeToIndex, "new.txt", "new.txt");
+	const Core::Result<Graphite::FileTexts> texts = port.ReadWorkingTreeTexts(Core::DiffTarget::WorkTreeToIndex, "new.txt", "new.txt");
 	REQUIRE(texts.HasValue());
 
 	CHECK_FALSE(texts.GetValue().HasOld);
@@ -251,7 +235,7 @@ TEST_CASE("A file deleted from the working tree has no newer side to show")
 	std::filesystem::remove(repo.GetPath() / "a.txt", code);
 	REQUIRE_FALSE(code);
 
-	const auto texts = port.ReadWorkingTreeTexts(Core::DiffTarget::WorkTreeToIndex, "a.txt", "a.txt");
+	const Core::Result<Graphite::FileTexts> texts = port.ReadWorkingTreeTexts(Core::DiffTarget::WorkTreeToIndex, "a.txt", "a.txt");
 	REQUIRE(texts.HasValue());
 
 	CHECK(texts.GetValue().HasOld);
@@ -270,7 +254,7 @@ TEST_CASE("A staged new file has an index side and no HEAD side")
 
 	REQUIRE(port.Stage({"a.txt"}).HasValue());
 
-	const auto bases = port.ReadBases(repo.GetPath() / "a.txt");
+	const Core::Result<Graphite::ChangeBases> bases = port.ReadBases(repo.GetPath() / "a.txt");
 	REQUIRE(bases.HasValue());
 
 	CHECK(bases.GetValue().Tracked);
@@ -290,13 +274,12 @@ TEST_CASE("A HEAD that cannot be read is a failure, not an absent HEAD side")
 
 	REQUIRE(port.Stage({"a.txt"}).HasValue());
 
-	// Garbage where HEAD should name a branch or a commit: not unborn, just broken.
 	{
-		std::ofstream head{repo.GetPath() / ".git" / "HEAD", std::ios::binary};
-		head << "not a reference\n";
+		std::ofstream brokenHead{repo.GetPath() / ".git" / "HEAD", std::ios::binary};
+		brokenHead << "not a reference\n";
 	}
 
-	const auto bases = port.ReadBases(repo.GetPath() / "a.txt");
+	const Core::Result<Graphite::ChangeBases> bases = port.ReadBases(repo.GetPath() / "a.txt");
 
 	CHECK_FALSE(bases.HasValue());
 }
@@ -311,7 +294,7 @@ TEST_CASE("An untracked file is tracked with neither side")
 		file << "one\n";
 	}
 
-	const auto bases = port.ReadBases(repo.GetPath() / "a.txt");
+	const Core::Result<Graphite::ChangeBases> bases = port.ReadBases(repo.GetPath() / "a.txt");
 	REQUIRE(bases.HasValue());
 
 	CHECK(bases.GetValue().Tracked);
@@ -331,7 +314,7 @@ TEST_CASE("An ignored file is not tracked")
 		file << "noise\n";
 	}
 
-	const auto bases = port.ReadBases(repo.GetPath() / "build.log");
+	const Core::Result<Graphite::ChangeBases> bases = port.ReadBases(repo.GetPath() / "build.log");
 	REQUIRE(bases.HasValue());
 
 	CHECK_FALSE(bases.GetValue().Tracked);
@@ -343,7 +326,7 @@ TEST_CASE("A file outside the repository is not tracked")
 	TempRepo elsewhere;
 	Graphite::RepositoryGitPort port{repo.GetPath()};
 
-	const auto bases = port.ReadBases(elsewhere.GetPath() / "a.txt");
+	const Core::Result<Graphite::ChangeBases> bases = port.ReadBases(elsewhere.GetPath() / "a.txt");
 	REQUIRE(bases.HasValue());
 
 	CHECK_FALSE(bases.GetValue().Tracked);
@@ -362,7 +345,7 @@ TEST_CASE("An oversized staged file is tracked but unusable rather than a failur
 
 	REQUIRE(port.Stage({"a.txt"}).HasValue());
 
-	const auto bases = port.ReadBases(repo.GetPath() / "a.txt");
+	const Core::Result<Graphite::ChangeBases> bases = port.ReadBases(repo.GetPath() / "a.txt");
 	REQUIRE(bases.HasValue());
 
 	CHECK(bases.GetValue().Tracked);
@@ -383,14 +366,12 @@ TEST_CASE("A file inside a submodule is not tracked")
 		file << "one\n";
 	}
 
-	// The gitlink `git submodule add` leaves in the index: mode 160000, naming a commit of
-	// the submodule's own repository.
 	{
-		git_repository* raw = nullptr;
-		REQUIRE(git_repository_open(&raw, Core::ToUtf8(repo.GetPath()).c_str()) == 0);
+		git_repository* rawRepository = nullptr;
+		REQUIRE(git_repository_open(&rawRepository, Core::ToUtf8(repo.GetPath()).c_str()) == 0);
 
 		git_index* index = nullptr;
-		REQUIRE(git_repository_index(&index, raw) == 0);
+		REQUIRE(git_repository_index(&index, rawRepository) == 0);
 
 		git_index_entry entry{};
 		entry.path = "vendor/lib";
@@ -401,10 +382,10 @@ TEST_CASE("A file inside a submodule is not tracked")
 		REQUIRE(git_index_write(index) == 0);
 
 		git_index_free(index);
-		git_repository_free(raw);
+		git_repository_free(rawRepository);
 	}
 
-	const auto bases = port.ReadBases(repo.GetPath() / "vendor" / "lib" / "lib.cpp");
+	const Core::Result<Graphite::ChangeBases> bases = port.ReadBases(repo.GetPath() / "vendor" / "lib" / "lib.cpp");
 	REQUIRE(bases.HasValue());
 
 	CHECK_FALSE(bases.GetValue().Tracked);
@@ -415,13 +396,13 @@ TEST_CASE("A file read with no repository open at all is not tracked")
 	TempDirectory plain;
 	Graphite::RepositoryGitPort port{plain.GetPath()};
 
-	const auto bases = port.ReadBases(plain.GetPath() / "a.txt");
+	const Core::Result<Graphite::ChangeBases> bases = port.ReadBases(plain.GetPath() / "a.txt");
 	REQUIRE(bases.HasValue());
 
 	CHECK_FALSE(bases.GetValue().Tracked);
 }
 
-TEST_CASE("The port initialises a repository at its root and then answers from it")
+TEST_CASE("The port initialises a repository at its root and answers from it, the earlier failed open not cached")
 {
 	TempDirectory folder;
 	Graphite::RepositoryGitPort port{folder.GetPath()};
@@ -430,8 +411,7 @@ TEST_CASE("The port initialises a repository at its root and then answers from i
 
 	REQUIRE(port.Init().HasValue());
 
-	// The failed open above was not cached, so this one finds the new repository.
-	auto head = port.QueryHead();
+	Core::Result<Core::HeadState> head = port.QueryHead();
 	REQUIRE(head.HasValue());
 	CHECK(head.GetValue().Kind == Core::HeadKind::Unborn);
 	CHECK(port.QueryStatus().HasValue());
@@ -441,7 +421,7 @@ TEST_CASE("The port has nothing to initialise with no folder open")
 {
 	Graphite::RepositoryGitPort port{std::filesystem::path{}};
 
-	auto result = port.Init();
+	Core::Result<void> result = port.Init();
 	REQUIRE_FALSE(result.HasValue());
 	CHECK(result.GetError().Code == Core::ErrorCode::NotFound);
 }
@@ -453,26 +433,17 @@ TEST_CASE("A folder inside a repository reads the repository's head")
 
 	Graphite::RepositoryGitPort port{repo.GetPath() / "sub"};
 
-	auto head = port.QueryHead();
+	Core::Result<Core::HeadState> head = port.QueryHead();
 	REQUIRE(head.HasValue());
 	CHECK(head.GetValue().Kind == Core::HeadKind::Unborn);
 }
 
 namespace {
 
-	// A repository whose .git is there but which libgit2 refuses to open: a format version
-	// it does not understand fails Open the same way dubious ownership does - with an error
-	// that is not NotFound - and needs no second account or special drive to reproduce.
 	void MakeUnopenable(const std::filesystem::path& root)
 	{
-		std::ofstream config{root / ".git" / "config", std::ios::binary | std::ios::trunc};
-		config << "[core]\n\trepositoryformatversion = 99\n";
-	}
-
-	std::string ReadAll(const std::filesystem::path& path)
-	{
-		std::ifstream in{path, std::ios::binary};
-		return std::string{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+		const std::string configWithUnknownFormatVersion = "[core]\n\trepositoryformatversion = 99\n";
+		WriteFileBytes(root / ".git" / "config", configWithUnknownFormatVersion);
 	}
 }
 
@@ -483,11 +454,11 @@ TEST_CASE("A repository that cannot be opened is reported as its own failure, no
 
 	Graphite::RepositoryGitPort port{repo.GetPath()};
 
-	auto status = port.QueryStatus();
+	Core::Result<Core::WorkingTreeStatus> status = port.QueryStatus();
 	REQUIRE_FALSE(status.HasValue());
 	CHECK(status.GetError().Code != Core::ErrorCode::NotFound);
 
-	auto head = port.QueryHead();
+	Core::Result<Core::HeadState> head = port.QueryHead();
 	REQUIRE_FALSE(head.HasValue());
 	CHECK(head.GetError().Code != Core::ErrorCode::NotFound);
 }
@@ -496,14 +467,14 @@ TEST_CASE("The port refuses to initialise over a repository it cannot open")
 {
 	TempRepo repo;
 	MakeUnopenable(repo.GetPath());
-	const std::string before = ReadAll(repo.GetPath() / ".git" / "config");
+	const std::string before = ReadWholeFile(repo.GetPath() / ".git" / "config");
 
 	Graphite::RepositoryGitPort port{repo.GetPath()};
 
-	auto result = port.Init();
+	Core::Result<void> result = port.Init();
 	REQUIRE_FALSE(result.HasValue());
 	CHECK(result.GetError().Code != Core::ErrorCode::NotFound);
-	CHECK(ReadAll(repo.GetPath() / ".git" / "config") == before);
+	CHECK(ReadWholeFile(repo.GetPath() / ".git" / "config") == before);
 }
 
 TEST_CASE("The port refuses to initialise a folder that is already inside a repository")
@@ -513,7 +484,7 @@ TEST_CASE("The port refuses to initialise a folder that is already inside a repo
 
 	Graphite::RepositoryGitPort port{repo.GetPath() / "sub"};
 
-	auto result = port.Init();
+	Core::Result<void> result = port.Init();
 	REQUIRE_FALSE(result.HasValue());
 	CHECK(result.GetError().Code == Core::ErrorCode::InvalidArgument);
 	CHECK_FALSE(std::filesystem::exists(repo.GetPath() / "sub" / ".git"));
@@ -527,7 +498,7 @@ TEST_CASE("The port refuses to initialise a folder inside a repository it cannot
 
 	Graphite::RepositoryGitPort port{repo.GetPath() / "sub"};
 
-	auto result = port.Init();
+	Core::Result<void> result = port.Init();
 	REQUIRE_FALSE(result.HasValue());
 	CHECK(result.GetError().Code != Core::ErrorCode::NotFound);
 	CHECK_FALSE(std::filesystem::exists(repo.GetPath() / "sub" / ".git"));
@@ -542,7 +513,7 @@ TEST_CASE("The port creates a branch that the next query lists, and has no stash
 
 	REQUIRE(port.CreateBranch("feature/x", tip).HasValue());
 
-	auto branches = port.QueryBranches();
+	Core::Result<std::vector<Core::Branch>> branches = port.QueryBranches();
 	REQUIRE(branches.HasValue());
 
 	bool found = false;
@@ -554,7 +525,7 @@ TEST_CASE("The port creates a branch that the next query lists, and has no stash
 
 	CHECK(found);
 
-	auto stashes = port.QueryStashes();
+	Core::Result<std::vector<Core::StashEntry>> stashes = port.QueryStashes();
 	REQUIRE(stashes.HasValue());
 	CHECK(stashes.GetValue().empty());
 }

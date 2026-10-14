@@ -7,17 +7,25 @@
 
 namespace Graphite {
 
+	namespace {
+		constexpr char kLineFeed = '\n';
+		constexpr char kCarriageReturn = '\r';
+		constexpr std::size_t kStartOfLine = 0;
+
+		SyntaxRun PlainRun(std::size_t from, std::size_t to)
+		{
+			return SyntaxRun{.From = from, .To = to, .Kind = std::nullopt};
+		}
+	}
+
 	std::string_view StripLineTerminator(std::string_view line)
 	{
-		if (!line.empty() && line.back() == '\n')
+		if (!line.empty() && line.back() == kLineFeed)
 		{
 			line.remove_suffix(1);
 		}
 
-		// A CRLF file leaves the '\r' as the last byte once the '\n' is gone; strip it so it
-		// never ends up inside the last token's span or as a stray glyph at the end of a drawn
-		// row.
-		if (!line.empty() && line.back() == '\r')
+		if (!line.empty() && line.back() == kCarriageReturn)
 		{
 			line.remove_suffix(1);
 		}
@@ -34,28 +42,27 @@ namespace Graphite {
 			return lines;
 		}
 
-		std::size_t start = 0;
+		std::size_t lineStart = 0;
 
-		while (start <= text.size())
+		while (lineStart <= text.size())
 		{
-			const std::size_t newline = text.find('\n', start);
-			const std::string_view line = newline == std::string_view::npos
-											  ? text.substr(start)
-											  : text.substr(start, newline - start);
+			const std::size_t newlineOffset = text.find(kLineFeed, lineStart);
+			const bool isLastLine = newlineOffset == std::string_view::npos;
+			const std::string_view line = isLastLine ? text.substr(lineStart)
+													 : text.substr(lineStart, newlineOffset - lineStart);
 
-			// The split above already consumed the '\n'; this takes the '\r' a CRLF file leaves
-			// behind, by the same rule a diff line's own terminator is stripped with.
 			lines.push_back(StripLineTerminator(line));
 
-			if (newline == std::string_view::npos)
+			if (isLastLine)
 			{
 				break;
 			}
 
-			start = newline + 1;
+			lineStart = newlineOffset + 1;
 
-			// A trailing newline ends the text, not a further empty line after it.
-			if (start == text.size())
+			const bool textEndsWithNewline = lineStart == text.size();
+
+			if (textEndsWithNewline)
 			{
 				break;
 			}
@@ -71,13 +78,15 @@ namespace Graphite {
 		return ColourLines(LanguageOfPath(path), lines);
 	}
 
+	// WARNING: Always returns at least one run, even for an empty line: a row that draws no run
+	// sizes no item, so the cursor never advances and the next row lands on top of it.
 	std::vector<SyntaxRun> RunsFor(std::string_view line, const std::vector<Token>* tokens)
 	{
 		std::vector<SyntaxRun> runs;
 
 		if (tokens == nullptr || tokens->empty())
 		{
-			runs.push_back(SyntaxRun{0, line.size(), std::nullopt});
+			runs.push_back(PlainRun(kStartOfLine, line.size()));
 			return runs;
 		}
 
@@ -90,34 +99,30 @@ namespace Graphite {
 				break;
 			}
 
-			// Clamped rather than trusted — see the header.
-			const std::size_t from = std::min(token.From, line.size());
-			const std::size_t to = std::min(token.To, line.size());
+			const std::size_t clampedFrom = std::min(token.From, line.size());
+			const std::size_t clampedTo = std::min(token.To, line.size());
 
-			if (from > cursor)
+			if (clampedFrom > cursor)
 			{
-				runs.push_back(SyntaxRun{cursor, from, std::nullopt});
+				runs.push_back(PlainRun(cursor, clampedFrom));
 			}
 
-			if (to > from)
+			if (clampedTo > clampedFrom)
 			{
-				runs.push_back(SyntaxRun{from, to, token.Kind});
+				runs.push_back(SyntaxRun{.From = clampedFrom, .To = clampedTo, .Kind = token.Kind});
 			}
 
-			cursor = to;
+			cursor = clampedTo;
 		}
 
 		if (cursor < line.size())
 		{
-			runs.push_back(SyntaxRun{cursor, line.size(), std::nullopt});
+			runs.push_back(PlainRun(cursor, line.size()));
 		}
 
-		// An empty line, or a token vector whose every token covers nothing, leaves the loop
-		// above with nothing to show. One run over the whole line is what keeps the row sized —
-		// see the header.
 		if (runs.empty())
 		{
-			runs.push_back(SyntaxRun{0, line.size(), std::nullopt});
+			runs.push_back(PlainRun(kStartOfLine, line.size()));
 		}
 
 		return runs;

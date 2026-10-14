@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstddef>
+#include <vector>
 
 using Graphite::BuildChangeOverview;
 using Graphite::ChangeHunk;
@@ -13,15 +14,17 @@ using Graphite::OverviewMark;
 
 namespace {
 
-	// Ten lines of equal height, the way an unwrapped file with no lenses lays out.
+	constexpr bool kStaged = true;
+	constexpr bool kUnstaged = false;
+
 	float EvenTenths(std::size_t line)
 	{
 		return static_cast<float>(line) / 10.0f;
 	}
 
-	ChangeHunk Hunk(HunkKind kind, bool staged, std::size_t first, std::size_t count)
+	ChangeHunk Hunk(HunkKind kind, bool staged, std::size_t firstLine, std::size_t count)
 	{
-		return ChangeHunk{.Kind = kind, .Staged = staged, .FirstLine = first, .LineCount = count, .MarkedCount = count};
+		return ChangeHunk{.Kind = kind, .Staged = staged, .FirstLine = firstLine, .LineCount = count, .MarkedCount = count};
 	}
 }
 
@@ -33,9 +36,9 @@ TEST_CASE("No hunks put nothing on the scrollbar")
 TEST_CASE("A hunk spans the scrollbar from its first line to the line after its last")
 {
 	ChangeMarkers markers;
-	markers.Hunks.push_back(Hunk(HunkKind::Modified, false, 2, 3));
+	markers.Hunks.push_back(Hunk(HunkKind::Modified, kUnstaged, 2, 3));
 
-	const auto marks = BuildChangeOverview(markers, EvenTenths, 0.01f);
+	const std::vector<OverviewMark> marks = BuildChangeOverview(markers, EvenTenths, 0.01f);
 
 	REQUIRE(marks.size() == 1);
 	CHECK(marks[0].From == doctest::Approx(0.2f));
@@ -47,9 +50,9 @@ TEST_CASE("A hunk spans the scrollbar from its first line to the line after its 
 TEST_CASE("A mark is never shorter than the minimum")
 {
 	ChangeMarkers markers;
-	markers.Hunks.push_back(Hunk(HunkKind::Added, false, 2, 1));
+	markers.Hunks.push_back(Hunk(HunkKind::Added, kUnstaged, 2, 1));
 
-	const auto marks = BuildChangeOverview(
+	const std::vector<OverviewMark> marks = BuildChangeOverview(
 		markers, [](std::size_t line) { return static_cast<float>(line) / 1000.0f; }, 0.01f);
 
 	REQUIRE(marks.size() == 1);
@@ -60,9 +63,9 @@ TEST_CASE("A mark is never shorter than the minimum")
 TEST_CASE("A deletion is a minimum-height mark at its boundary")
 {
 	ChangeMarkers markers;
-	markers.Hunks.push_back(Hunk(HunkKind::Deleted, false, 4, 0));
+	markers.Hunks.push_back(Hunk(HunkKind::Deleted, kUnstaged, 4, 0));
 
-	const auto marks = BuildChangeOverview(markers, EvenTenths, 0.01f);
+	const std::vector<OverviewMark> marks = BuildChangeOverview(markers, EvenTenths, 0.01f);
 
 	REQUIRE(marks.size() == 1);
 	CHECK(marks[0].Kind == HunkKind::Deleted);
@@ -73,9 +76,9 @@ TEST_CASE("A deletion is a minimum-height mark at its boundary")
 TEST_CASE("A mark at the very end is kept inside the scrollbar")
 {
 	ChangeMarkers markers;
-	markers.Hunks.push_back(Hunk(HunkKind::Deleted, false, 10, 0));
+	markers.Hunks.push_back(Hunk(HunkKind::Deleted, kUnstaged, 10, 0));
 
-	const auto marks = BuildChangeOverview(markers, EvenTenths, 0.01f);
+	const std::vector<OverviewMark> marks = BuildChangeOverview(markers, EvenTenths, 0.01f);
 
 	REQUIRE(marks.size() == 1);
 	CHECK(marks[0].From == doctest::Approx(0.99f));
@@ -85,11 +88,11 @@ TEST_CASE("A mark at the very end is kept inside the scrollbar")
 TEST_CASE("Staged marks come first so unstaged ones are drawn over them")
 {
 	ChangeMarkers markers;
-	markers.Hunks.push_back(Hunk(HunkKind::Added, false, 0, 1));
-	markers.Hunks.push_back(Hunk(HunkKind::Modified, true, 5, 2));
-	markers.Hunks.push_back(Hunk(HunkKind::Modified, false, 7, 1));
+	markers.Hunks.push_back(Hunk(HunkKind::Added, kUnstaged, 0, 1));
+	markers.Hunks.push_back(Hunk(HunkKind::Modified, kStaged, 5, 2));
+	markers.Hunks.push_back(Hunk(HunkKind::Modified, kUnstaged, 7, 1));
 
-	const auto marks = BuildChangeOverview(markers, EvenTenths, 0.01f);
+	const std::vector<OverviewMark> marks = BuildChangeOverview(markers, EvenTenths, 0.01f);
 
 	REQUIRE(marks.size() == 3);
 	CHECK(marks[0].Staged);
@@ -101,13 +104,12 @@ TEST_CASE("Staged marks come first so unstaged ones are drawn over them")
 
 TEST_CASE("Positions come from the layout rather than the line number")
 {
-	// A wrapped line 1 takes four rows' worth of the document.
-	static constexpr std::array<float, 5> kTops{0.0f, 0.1f, 0.5f, 0.6f, 1.0f};
+	static constexpr std::array<float, 5> kTopsWithLineOneWrappedToFourRows{0.0f, 0.1f, 0.5f, 0.6f, 1.0f};
 
 	ChangeMarkers markers;
-	markers.Hunks.push_back(Hunk(HunkKind::Modified, false, 1, 1));
+	markers.Hunks.push_back(Hunk(HunkKind::Modified, kUnstaged, 1, 1));
 
-	const auto marks = BuildChangeOverview(markers, [](std::size_t line) { return kTops[line]; }, 0.01f);
+	const std::vector<OverviewMark> marks = BuildChangeOverview(markers, [](std::size_t line) { return kTopsWithLineOneWrappedToFourRows[line]; }, 0.01f);
 
 	REQUIRE(marks.size() == 1);
 	CHECK(marks[0].From == doctest::Approx(0.1f));
@@ -117,9 +119,9 @@ TEST_CASE("Positions come from the layout rather than the line number")
 TEST_CASE("A stale hunk reaching past the end is pulled back inside the track")
 {
 	ChangeMarkers markers;
-	markers.Hunks.push_back(Hunk(HunkKind::Added, false, 9, 5));
+	markers.Hunks.push_back(Hunk(HunkKind::Added, kUnstaged, 9, 5));
 
-	const auto marks = BuildChangeOverview(markers, EvenTenths, 0.01f);
+	const std::vector<OverviewMark> marks = BuildChangeOverview(markers, EvenTenths, 0.01f);
 
 	REQUIRE(marks.size() == 1);
 	CHECK(marks[0].To == doctest::Approx(1.0f));

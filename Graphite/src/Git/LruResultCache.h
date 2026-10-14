@@ -14,17 +14,6 @@
 
 namespace Graphite {
 
-	// Answers to questions whose answer never changes - a commit's diff, a file's text at a
-	// commit - held once fetched and dropped least recently used first.
-	//
-	// A key moves through three states: in flight (asked, not yet answered), held (answered
-	// with a value) and failed (answered with an error). Request answers "ask the worker"
-	// only for a key in none of them, because the views ask about every row they draw on
-	// every frame, and a permanent failure must not turn that into a worker job per frame.
-	// ForgetFailed is what gives a failed key a way back.
-	//
-	// UI thread only. Get is const and still counts as a use, so the recency bookkeeping is
-	// mutable: an entry the reader is looking at every frame must not be the one evicted.
 	template<typename Key, typename T, typename Hash = std::hash<Key>>
 		requires std::copyable<Key> && std::equality_comparable<Key> &&
 				 std::regular_invocable<const Hash&, const Key&> &&
@@ -32,24 +21,18 @@ namespace Graphite {
 	class LruResultCache
 	{
 	public:
+		// WARNING: UI thread only.
 		explicit LruResultCache(std::size_t capacity) : m_Capacity(capacity) {}
 
-		// The generation to send the question under, or nothing when the key is already in
-		// flight, held or failed - in which case the ask still counts as a use.
-		//
-		// Evicts only when the key is absent: that is the only case that grows the map, and
-		// evicting for a key already present would drop an unrelated entry for no reason.
 		std::optional<std::uint64_t> Request(const Key& key)
 		{
-			const auto existing = m_Entries.find(key);
+			Entry* existingEntry = Find(key);
 
-			if (existing != m_Entries.end())
+			if (existingEntry != nullptr)
 			{
-				const Entry& entry = existing->second;
-
-				if (IsInFlight(entry) || entry.Value != nullptr || entry.Failed)
+				if (IsAskedAlready(*existingEntry))
 				{
-					Touch(existing->second);
+					Touch(*existingEntry);
 					return std::nullopt;
 				}
 			}
@@ -65,9 +48,6 @@ namespace Graphite {
 			return entry.Requested;
 		}
 
-		// Lands an answer. False when it was dropped: the key was evicted or cleared while the
-		// question was out, or a newer answer for it has already landed. Nothing on screen is
-		// waiting for a dropped answer.
 		bool Succeed(const Key& key, std::uint64_t generation, Core::Ref<const T> value)
 		{
 			Entry* entry = Land(key, generation);
@@ -81,10 +61,6 @@ namespace Graphite {
 			return true;
 		}
 
-		// Lands a failure, under the same rules as Succeed. Marked rather than left to imply
-		// itself from a null value, so Request can tell "still waiting" from "already tried
-		// and lost". There is no older value to keep: an answer that never changes has
-		// nothing to fall back to.
 		bool Fail(const Key& key, std::uint64_t generation)
 		{
 			Entry* entry = Land(key, generation);
@@ -98,55 +74,45 @@ namespace Graphite {
 			return true;
 		}
 
-		// Drops the entry, but only if it failed - a held answer stays, which is what makes
-		// this a cache of recently-seen keys rather than of the ones on screen now. True when
-		// something was dropped, so the caller can clear the error line that described it.
 		bool ForgetFailed(const Key& key)
 		{
-			const auto entry = m_Entries.find(key);
+			const Entry* entry = Find(key);
 
-			if (entry == m_Entries.end() || !entry->second.Failed)
+			if (entry == nullptr || !entry->Failed)
 			{
 				return false;
 			}
 
-			m_Entries.erase(entry);
+			m_Entries.erase(key);
 			return true;
 		}
 
-		// ForgetFailed for every failed key `matches` accepts. Answers how many were dropped.
 		std::size_t ForgetFailedWhere(const std::function<bool(const Key&)>& matches)
 		{
 			return std::erase_if(m_Entries,
 								 [&matches](const typename EntryMap::value_type& entry) { return IsFailedMatch(entry, matches); });
 		}
 
-		// Null while the answer is in flight, after a failure, and for a key never asked about
-		// or since evicted.
 		Core::Ref<const T> Get(const Key& key) const
 		{
-			const auto entry = m_Entries.find(key);
+			Entry* entry = Find(key);
 
-			if (entry == m_Entries.end())
+			if (entry == nullptr)
 			{
 				return nullptr;
 			}
 
-			Touch(entry->second);
-			return entry->second.Value;
+			Touch(*entry);
+			return entry->Value;
 		}
 
-		// True until ForgetFailed drops the entry; false while the answer is in flight, once it
-		// has arrived whole, and for a key never asked about or since evicted.
 		bool IsFailed(const Key& key) const
 		{
-			const auto entry = m_Entries.find(key);
+			const Entry* entry = Find(key);
 
-			return entry != m_Entries.end() && entry->second.Failed;
+			return entry != nullptr && entry->Failed;
 		}
 
-		// Forgets every entry. The generation counter is left alone, so an answer still in
-		// flight from before is dropped when it lands.
 		void Clear() { m_Entries.clear(); }
 
 		std::size_t GetSize() const { return m_Entries.size(); }
@@ -154,27 +120,26 @@ namespace Graphite {
 	private:
 		struct Entry
 		{
-			// From the cache-wide m_Generation, never from a counter local to the entry: Clear
-			// erases the entry itself, and an entry recreated afterwards starts its Applied back
-			// at zero. If Requested also restarted at a small number local to the entry, an
-			// answer from before the clear could outrank one from after it. The shared counter
-			// makes every generation unique for the cache's lifetime, so whichever answer
-			// carries the larger one is the newer, clear or no clear.
+			// WARNING: Requested comes from the cache-wide m_Generation, never a per-entry counter.
+			// Clear erases entries, so a per-entry counter would restart and let an answer from
+			// before the clear outrank one from after it.
 			std::uint64_t Requested = 0;
 			std::uint64_t Applied = 0;
 
 			Core::Ref<const T> Value;
 			bool Failed = false;
 
-			// Counts up on every request and every read, so eviction can pick the entry nobody
-			// has looked at for longest. A counter rather than a clock: the cache must stay
-			// testable without one.
 			std::uint64_t LastTouched = 0;
 		};
 
 		using EntryMap = std::unordered_map<Key, Entry, Hash>;
 
 		static bool IsInFlight(const Entry& entry) { return entry.Requested != entry.Applied; }
+
+		static bool IsAskedAlready(const Entry& entry)
+		{
+			return IsInFlight(entry) || entry.Value != nullptr || entry.Failed;
+		}
 
 		static bool IsFailedMatch(const typename EntryMap::value_type& entry,
 								  const std::function<bool(const Key&)>& matches)
@@ -183,63 +148,69 @@ namespace Graphite {
 			return held.Failed && matches(key);
 		}
 
-		void Touch(Entry& entry) const { entry.LastTouched = ++m_Clock; }
-
-		// The entry an answer under this generation should land in, marked as answered; null
-		// when the answer is to be dropped.
-		Entry* Land(const Key& key, std::uint64_t generation)
+		Entry* Find(const Key& key) const
 		{
-			const auto entry = m_Entries.find(key);
+			const typename EntryMap::iterator found = m_Entries.find(key);
 
-			if (entry == m_Entries.end() || generation <= entry->second.Applied)
+			if (found == m_Entries.end())
 			{
 				return nullptr;
 			}
 
-			entry->second.Applied = generation;
-			return &entry->second;
+			auto& [foundKey, foundEntry] = *found;
+			return &foundEntry;
+		}
+
+		void Touch(Entry& entry) const { entry.LastTouched = ++m_Clock; }
+
+		Entry* Land(const Key& key, std::uint64_t generation)
+		{
+			Entry* entry = Find(key);
+
+			if (entry == nullptr || generation <= entry->Applied)
+			{
+				return nullptr;
+			}
+
+			entry->Applied = generation;
+			return entry;
 		}
 
 		void EvictIfFull()
 		{
-			// A loop, not one shot: a single eviction only ever drops one entry, so once the map
-			// is above the bound - which a run of requests all still in flight can leave it at,
-			// since none of them were evictable at the time - one-in-one-out on every later
-			// request would hold it there forever instead of bringing it back down.
 			while (m_Entries.size() >= m_Capacity)
 			{
-				auto oldest = m_Entries.end();
+				std::optional<Key> oldestKey;
+				std::uint64_t oldestTouched = 0;
 
-				for (auto entry = m_Entries.begin(); entry != m_Entries.end(); ++entry)
+				for (const auto& [key, entry] : m_Entries)
 				{
-					// An entry still in flight is never evicted: its answer would then arrive for
-					// a key nobody holds and be dropped, and the reader would sit looking at a row
-					// that never fills in.
-					if (IsInFlight(entry->second))
+					if (IsInFlight(entry))
 					{
 						continue;
 					}
 
-					if (oldest == m_Entries.end() || entry->second.LastTouched < oldest->second.LastTouched)
+					if (!oldestKey.has_value() || entry.LastTouched < oldestTouched)
 					{
-						oldest = entry;
+						oldestKey = key;
+						oldestTouched = entry.LastTouched;
 					}
 				}
 
-				// Nothing evictable this pass - every remaining entry is in flight. Stop rather
-				// than spin: the map stays over the bound until one of them lands.
-				if (oldest == m_Entries.end())
+				if (!oldestKey.has_value())
 				{
 					break;
 				}
 
-				m_Entries.erase(oldest);
+				m_Entries.erase(*oldestKey);
 			}
 		}
 
 		std::size_t m_Capacity;
 
-		mutable std::unordered_map<Key, Entry, Hash> m_Entries;
+		// WARNING: Get is const yet counts as a use, so the entries and the clock are mutable.
+		// An entry the reader looks at every frame must not be the one evicted.
+		mutable EntryMap m_Entries;
 		mutable std::uint64_t m_Clock = 0;
 		std::uint64_t m_Generation = 0;
 	};

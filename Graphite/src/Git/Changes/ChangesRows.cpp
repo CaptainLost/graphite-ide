@@ -9,19 +9,16 @@
 namespace Graphite {
 
 	namespace {
-		bool Has(Core::StatusFlags flags, Core::StatusFlags wanted)
+		bool HasStatusFlag(Core::StatusFlags flags, Core::StatusFlags wanted)
 		{
 			return (flags & wanted) == wanted;
 		}
 
-		// Whether `path` sits strictly inside `directory`, compared as Core compares every path.
-		// A directory does not contain itself, and an empty directory is not a directory every
-		// path happens to be under.
-		bool UnderDirectory(const std::filesystem::path& path,
-							const std::filesystem::path& directory)
+		bool IsStrictlyUnderDirectory(const std::filesystem::path& path,
+									  const std::filesystem::path& directory)
 		{
-			const auto relative = Core::RelativeTo(path, directory);
-			return relative.has_value() && *relative != ".";
+			const std::optional<std::filesystem::path> relativePath = Core::RelativeTo(path, directory);
+			return relativePath.has_value() && *relativePath != ".";
 		}
 	}
 
@@ -55,39 +52,32 @@ namespace Graphite {
 
 	char ChangeLetter(Core::StatusFlags flags, bool untracked)
 	{
-		// Untracked first: not an A, because the difference matters here - discarding one
-		// deletes it rather than restoring it. A letter rather than the ?? git status prints,
-		// since every other mark in the list is a letter and a lone question mark among them
-		// reads as something the panel could not work out.
 		if (untracked)
 		{
 			return 'U';
 		}
 
-		// Ordered by what a reader most needs told. A rename beats a modification because
-		// the path on screen has already changed and nothing else would explain it; a
-		// deletion beats both because the file is not there at all.
-		if (Has(flags, Core::StatusFlags::Deleted))
+		if (HasStatusFlag(flags, Core::StatusFlags::Deleted))
 		{
 			return 'D';
 		}
 
-		if (Has(flags, Core::StatusFlags::Renamed))
+		if (HasStatusFlag(flags, Core::StatusFlags::Renamed))
 		{
 			return 'R';
 		}
 
-		if (Has(flags, Core::StatusFlags::New))
+		if (HasStatusFlag(flags, Core::StatusFlags::New))
 		{
 			return 'A';
 		}
 
-		if (Has(flags, Core::StatusFlags::TypeChanged))
+		if (HasStatusFlag(flags, Core::StatusFlags::TypeChanged))
 		{
 			return 'T';
 		}
 
-		if (Has(flags, Core::StatusFlags::Modified))
+		if (HasStatusFlag(flags, Core::StatusFlags::Modified))
 		{
 			return 'M';
 		}
@@ -110,27 +100,25 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		const auto was = std::find(before.begin(), before.end(), selected);
+		const std::vector<std::filesystem::path>::const_iterator selectedInBefore =
+			std::find(before.begin(), before.end(), selected);
 
-		if (was == before.end())
+		if (selectedInBefore == before.end())
 		{
 			return std::nullopt;
 		}
 
-		const std::size_t position = static_cast<std::size_t>(was - before.begin());
+		const std::size_t position = static_cast<std::size_t>(selectedInBefore - before.begin());
 
 		return after[std::min(position, after.size() - 1)];
 	}
 
 	DiscardPlan PlanDiscard(const DiscardSubject& subject,
-							const std::filesystem::path& workingDirectory,
-							const std::vector<std::filesystem::path>& openDirty)
+							const std::filesystem::path& repositoryWorkingDirectory,
+							const std::vector<std::filesystem::path>& unsavedDocumentPaths)
 	{
 		DiscardPlan plan;
 
-		// An untracked path has nothing in the index to be restored from, so discarding it
-		// can only mean deleting it - a different outcome, and one the row's icon already
-		// said.
 		if (subject.IsUntracked)
 		{
 			plan.Delete.push_back(subject.Path);
@@ -147,11 +135,6 @@ namespace Graphite {
 				plan.Files = *subject.Listing;
 				plan.FileCount = plan.Files.size();
 			}
-
-			// Without a listing the files stay unknown rather than guessed. Reading the
-			// directory off the disk here would answer the question git is being asked
-			// instead of, and a guess put in front of the reader is worse than a sentence
-			// that does not count.
 		}
 		else
 		{
@@ -159,16 +142,16 @@ namespace Graphite {
 		}
 
 		const std::filesystem::path absoluteSubject =
-			Core::NormalizePath(workingDirectory / subject.Path);
+			Core::NormalizePath(repositoryWorkingDirectory / subject.Path);
 
-		for (const std::filesystem::path& document : openDirty)
+		for (const std::filesystem::path& document : unsavedDocumentPaths)
 		{
-			const std::filesystem::path normalized = Core::NormalizePath(document);
+			const std::filesystem::path normalisedDocument = Core::NormalizePath(document);
 
-			// Not the listing: a directory nobody opened has no listing, and the edits under
-			// it would be lost all the same. The subject answers for every file beneath it,
-			// listed or not.
-			if (Core::SamePath(normalized, absoluteSubject) || (subject.IsDirectory && UnderDirectory(normalized, absoluteSubject)))
+			const bool isTheSubject = Core::SamePath(normalisedDocument, absoluteSubject);
+			const bool isUnderTheSubject = subject.IsDirectory && IsStrictlyUnderDirectory(normalisedDocument, absoluteSubject);
+
+			if (isTheSubject || isUnderTheSubject)
 			{
 				plan.Dirty.push_back(document);
 			}
@@ -196,15 +179,13 @@ namespace Graphite {
 			return std::format("Delete {}?", name);
 		}
 
-		// Unstaged, not "since the last commit": a discard restores from the index - see
-		// Repository::DiscardWorkTree - so a partially staged file keeps what was staged and
-		// loses only the edits made on top of it. Naming the larger loss would be naming a
-		// loss that is not about to happen.
+		// WARNING: A discard restores from the index (Repository::DiscardWorkTree), so only the
+		// unstaged edits are lost, not everything since the last commit.
 		return std::format("Discard the unstaged changes to {}?", name);
 	}
 
-	RowText FitRowText(float available, float name, float directory, float gap,
-					   float minDirectory)
+	RowText FitRowText(float available, float nameWidth, float directoryWidth, float gapWidth,
+					   float minDirectoryWidth)
 	{
 		if (available <= 0.0f)
 		{
@@ -212,13 +193,13 @@ namespace Graphite {
 		}
 
 		RowText text;
-		text.Name = std::min(name, available);
+		text.Name = std::min(nameWidth, available);
 
-		const float left = available - text.Name - gap;
+		const float roomForDirectory = available - text.Name - gapWidth;
 
-		if (directory > 0.0f && left >= std::min(minDirectory, directory))
+		if (directoryWidth > 0.0f && roomForDirectory >= std::min(minDirectoryWidth, directoryWidth))
 		{
-			text.Directory = std::min(directory, left);
+			text.Directory = std::min(directoryWidth, roomForDirectory);
 		}
 
 		return text;

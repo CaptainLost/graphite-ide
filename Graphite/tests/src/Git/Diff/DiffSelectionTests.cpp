@@ -2,6 +2,7 @@
 
 #include "Git/Diff/DiffSelection.h"
 
+#include "Core/Text/Encoding.h"
 #include "Core/Text/TextSelection.h"
 
 #include <string>
@@ -39,7 +40,6 @@ namespace {
 		return file;
 	}
 
-	// a, b -> B, c: context, removed, added, context.
 	Core::FileDiff EditedFile()
 	{
 		return FileWith({Line(Core::DiffLineKind::Context, 1, 1, "a\n"),
@@ -48,20 +48,24 @@ namespace {
 						 Line(Core::DiffLineKind::Context, 3, 3, "c\n")});
 	}
 
-	// One byte per codepoint is 10 wide, so a multi-byte character is as wide as an ASCII one.
 	float MonoWidth(std::string_view prefix)
 	{
 		float width = 0.0f;
 
-		for (const char c : prefix)
+		for (const char byte : prefix)
 		{
-			if ((static_cast<unsigned char>(c) & 0xC0) != 0x80)
+			if (!Core::IsUtf8ContinuationByte(byte))
 			{
 				width += 10.0f;
 			}
 		}
 
 		return width;
+	}
+
+	float PerByteWidth(std::string_view prefix)
+	{
+		return 10.0f * static_cast<float>(prefix.size());
 	}
 }
 
@@ -99,7 +103,6 @@ TEST_CASE("A side-by-side selection numbers lines by the file line on its side")
 	const std::vector<DiffPair> pairs = Graphite::BuildSideBySideRows(file);
 	REQUIRE(pairs.size() == 4);
 
-	// header, a|a, b|B, c|c
 	CHECK_FALSE(Graphite::SideLineOf(pairs[0], DiffSide::Old).has_value());
 	CHECK(Graphite::SideLineOf(pairs[2], DiffSide::Old) == 2);
 	CHECK(Graphite::SideLineOf(pairs[2], DiffSide::New) == 2);
@@ -151,7 +154,7 @@ TEST_CASE("ByteAtX picks the nearest character boundary")
 
 TEST_CASE("ByteAtX never lands inside a multi-byte character")
 {
-	const std::string_view text = "\xC5\xBC\xC3\xB3"; // zo with dot above, o with acute
+	const std::string_view text = "\xC5\xBC\xC3\xB3";
 
 	CHECK(Graphite::ByteAtX(text, 11.0f, MonoWidth) == 2);
 	CHECK(Graphite::ByteAtX(text, 2.0f, MonoWidth) == 0);
@@ -181,41 +184,40 @@ TEST_CASE("ByteUnderX returns the start of a multi-byte character")
 
 TEST_CASE("A selection context differs when anything it depends on does")
 {
-	Graphite::DiffSelectionContext base;
-	base.Path = "a.txt";
-	base.Mode = Graphite::DiffViewMode::Unified;
-	base.Scope = Graphite::DiffScope::Hunks;
-	base.Side = DiffSide::New;
-	base.ContentHash = 7;
+	Graphite::DiffSelectionContext original;
+	original.Path = "a.txt";
+	original.Mode = Graphite::DiffViewMode::Unified;
+	original.Scope = Graphite::DiffScope::Hunks;
+	original.Side = DiffSide::New;
+	original.ContentHash = 7;
 
-	CHECK(base == Graphite::DiffSelectionContext{base});
+	CHECK(original == Graphite::DiffSelectionContext{original});
 
-	Graphite::DiffSelectionContext other = base;
+	Graphite::DiffSelectionContext other = original;
 	other.ContentHash = 8;
-	CHECK_FALSE(other == base);
+	CHECK_FALSE(other == original);
 
-	other = base;
+	other = original;
 	other.Mode = Graphite::DiffViewMode::SideBySide;
-	CHECK_FALSE(other == base);
+	CHECK_FALSE(other == original);
 
-	other = base;
+	other = original;
 	other.Scope = Graphite::DiffScope::WholeFile;
-	CHECK_FALSE(other == base);
+	CHECK_FALSE(other == original);
 
-	other = base;
+	other = original;
 	other.Side = DiffSide::Old;
-	CHECK_FALSE(other == base);
+	CHECK_FALSE(other == original);
 
-	other = base;
+	other = original;
 	other.Path = "b.txt";
-	CHECK_FALSE(other == base);
+	CHECK_FALSE(other == original);
 }
 
-TEST_CASE("Hit-testing survives text that opens on a stray continuation byte")
+TEST_CASE("Hit-testing survives text that opens on a stray continuation byte drawn one cell per byte")
 {
-	// A stray continuation byte still has a drawn width: one cell per byte.
-	const auto PerByteWidth = [](std::string_view prefix) { return 10.0f * static_cast<float>(prefix.size()); };
-	const std::string_view text = "\xA9" "x";
+	const std::string_view text = "\xA9"
+								  "x";
 
 	CHECK(Graphite::ByteUnderX(text, 0.0f, PerByteWidth) == 0);
 	CHECK(Graphite::ByteUnderX(text, -1.0f, PerByteWidth) == 0);
@@ -230,7 +232,8 @@ TEST_CASE("Hit-testing at exact boundaries and with a four-byte character")
 	CHECK(Graphite::ByteAtX("ab", 20.0f, MonoWidth) == 2);
 	CHECK(Graphite::ByteUnderX("ab", 10.0f, MonoWidth) == 1);
 
-	const std::string_view emoji = "a\xF0\x9F\x98\x80" "z"; // a, U+1F600, z
+	const std::string_view emoji = "a\xF0\x9F\x98\x80"
+								   "z";
 	CHECK(Graphite::ByteAtX(emoji, 14.0f, MonoWidth) == 1);
 	CHECK(Graphite::ByteAtX(emoji, 16.0f, MonoWidth) == 5);
 	CHECK(Graphite::ByteUnderX(emoji, 15.0f, MonoWidth) == 1);
@@ -267,10 +270,10 @@ TEST_CASE("Whole-file Unchanged rows join the real file lines")
 		pairs.push_back(DiffPair{row, row});
 	}
 
-	Core::TextSelection side;
-	side.Select({2, 0}, {3, 3});
+	Core::TextSelection sideSelection;
+	sideSelection.Select({2, 0}, {3, 3});
 
-	CHECK(Graphite::SelectedSideText(side, DiffSide::Old, pairs, file, oldLines, newLines, {}) == "two\nthr");
+	CHECK(Graphite::SelectedSideText(sideSelection, DiffSide::Old, pairs, file, oldLines, newLines, {}) == "two\nthr");
 }
 
 TEST_CASE("A removed row is selectable on the old side only")
@@ -308,18 +311,17 @@ TEST_CASE("The content hash follows the diff's lines")
 	changed.Hunks[0].OldStart = 5;
 	CHECK(Graphite::DiffContentHash(changed) != hash);
 
-	Graphite::DiffSelectionContext a;
-	Graphite::DiffSelectionContext b;
-	b.TextsHash = 1;
-	CHECK_FALSE(a == b);
+	Graphite::DiffSelectionContext withoutTextsHash;
+	Graphite::DiffSelectionContext withTextsHash;
+	withTextsHash.TextsHash = 1;
+	CHECK_FALSE(withoutTextsHash == withTextsHash);
 }
 
-TEST_CASE("The texts hash follows both sides' content, not the object holding it")
+TEST_CASE("The texts hash follows both sides' content, not the object holding it, and swapping the sides changes it")
 {
 	const Graphite::FileTexts texts{.Old = "a\nb\n", .New = "a\nc\n", .HasOld = true, .HasNew = true};
 	const std::size_t hash = Graphite::TextsContentHash(texts);
 
-	// A fresh object with the same content, as every working-tree landing brings.
 	const Graphite::FileTexts same = texts;
 	CHECK(Graphite::TextsContentHash(same) == hash);
 
@@ -331,7 +333,6 @@ TEST_CASE("The texts hash follows both sides' content, not the object holding it
 	changed.New = "a\nx\n";
 	CHECK(Graphite::TextsContentHash(changed) != hash);
 
-	// The same bytes moved from one side to the other are a different pair of texts.
 	const Graphite::FileTexts swapped{.Old = texts.New, .New = texts.Old, .HasOld = true, .HasNew = true};
 	CHECK(Graphite::TextsContentHash(swapped) != hash);
 

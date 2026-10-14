@@ -1,5 +1,7 @@
 #include "Git/Diff/DiffSelection.h"
 
+#include "Core/Text/Encoding.h"
+
 #include <algorithm>
 #include <functional>
 #include <vector>
@@ -8,21 +10,22 @@ namespace Graphite {
 
 	namespace {
 
-		// Every offset a caret can sit at: the start, the end and each UTF-8 character boundary
-		// between them.
+		constexpr std::uint64_t kGoldenRatioSeed = 0x9e3779b97f4a7c15ull;
+		constexpr std::size_t kSeedLeftShift = 6;
+		constexpr std::size_t kSeedRightShift = 2;
+
 		std::vector<std::size_t> Boundaries(std::string_view text)
 		{
 			std::vector<std::size_t> boundaries;
 			boundaries.reserve(text.size() + 1);
 
-			// Offset 0 is always one, even when the text opens on a stray continuation byte.
 			boundaries.push_back(0);
 
-			for (std::size_t i = 1; i < text.size(); ++i)
+			for (std::size_t byteOffset = 1; byteOffset < text.size(); ++byteOffset)
 			{
-				if ((static_cast<unsigned char>(text[i]) & 0xC0) != 0x80)
+				if (!Core::IsUtf8ContinuationByte(text[byteOffset]))
 				{
-					boundaries.push_back(i);
+					boundaries.push_back(byteOffset);
 				}
 			}
 
@@ -34,9 +37,8 @@ namespace Graphite {
 			return boundaries;
 		}
 
-		// Index of the first boundary for which `reached` holds; the count when none does.
-		template <typename Predicate>
-		std::size_t FirstBoundary(const std::vector<std::size_t>& boundaries, Predicate reached)
+		std::size_t FirstBoundary(const std::vector<std::size_t>& boundaries,
+								  const std::function<bool(std::size_t offset)>& reached)
 		{
 			std::size_t low = 0;
 			std::size_t high = boundaries.size();
@@ -71,14 +73,19 @@ namespace Graphite {
 				return std::nullopt;
 			}
 
-			const int line = side == DiffSide::Old ? row.OldLine : row.NewLine;
+			const int fileLine = side == DiffSide::Old ? row.OldLine : row.NewLine;
 
-			if (line <= 0)
+			if (fileLine <= 0)
 			{
 				return std::nullopt;
 			}
 
-			return line;
+			return fileLine;
+		}
+
+		void Combine(std::size_t& seed, std::size_t value)
+		{
+			seed ^= value + kGoldenRatioSeed + (seed << kSeedLeftShift) + (seed >> kSeedRightShift);
 		}
 	}
 
@@ -115,31 +122,31 @@ namespace Graphite {
 			return {};
 		}
 
-		const std::int64_t first = std::max<std::int64_t>(selection.First().Line, 0);
-		const std::int64_t last =
+		const std::int64_t firstLine = std::max<std::int64_t>(selection.First().Line, 0);
+		const std::int64_t lastLine =
 			std::min<std::int64_t>(selection.Last().Line, static_cast<std::int64_t>(rows.size()) - 1);
 
-		std::vector<Core::SelectableLine> lines;
+		std::vector<Core::SelectableLine> selectableLines;
 
-		for (std::int64_t index = first; index <= last; ++index)
+		for (std::int64_t lineIndex = firstLine; lineIndex <= lastLine; ++lineIndex)
 		{
-			const std::size_t row = static_cast<std::size_t>(index);
+			const std::size_t rowIndex = static_cast<std::size_t>(lineIndex);
 
-			if (!UnifiedLineOf(rows, row).has_value())
+			if (!UnifiedLineOf(rows, rowIndex).has_value())
 			{
 				continue;
 			}
 
 			const ResolvedLine resolved =
-				ResolveRow(file, rows[row], DiffSide::New, oldLines, newLines, tokens);
+				ResolveRow(file, rows[rowIndex], DiffSide::New, oldLines, newLines, tokens);
 
 			if (resolved.Text.has_value())
 			{
-				lines.push_back(Core::SelectableLine{index, *resolved.Text});
+				selectableLines.push_back(Core::SelectableLine{lineIndex, *resolved.Text});
 			}
 		}
 
-		return Core::JoinSelected(selection, lines);
+		return Core::JoinSelected(selection, selectableLines);
 	}
 
 	std::string SelectedSideText(const Core::TextSelection& selection, DiffSide side,
@@ -153,22 +160,23 @@ namespace Graphite {
 			return {};
 		}
 
-		const std::int64_t first = selection.First().Line;
-		const std::int64_t last = selection.Last().Line;
+		const std::int64_t firstLine = selection.First().Line;
+		const std::int64_t lastLine = selection.Last().Line;
 
-		std::vector<Core::SelectableLine> lines;
+		std::vector<Core::SelectableLine> selectableLines;
 
 		for (const DiffPair& pair : pairs)
 		{
-			const std::optional<std::int64_t> number = SideLineOf(pair, side);
+			const std::optional<std::int64_t> lineNumber = SideLineOf(pair, side);
 
-			if (!number.has_value() || *number < first)
+			if (!lineNumber.has_value() || *lineNumber < firstLine)
 			{
 				continue;
 			}
 
-			// Line numbers on one side only grow down the file, so nothing later is selected.
-			if (*number > last)
+			const bool pastSelection = *lineNumber > lastLine;
+
+			if (pastSelection)
 			{
 				break;
 			}
@@ -178,19 +186,11 @@ namespace Graphite {
 
 			if (resolved.Text.has_value())
 			{
-				lines.push_back(Core::SelectableLine{*number, *resolved.Text});
+				selectableLines.push_back(Core::SelectableLine{*lineNumber, *resolved.Text});
 			}
 		}
 
-		return Core::JoinSelected(selection, lines);
-	}
-
-	namespace {
-
-		void Combine(std::size_t& seed, std::size_t value)
-		{
-			seed ^= value + 0x9e3779b97f4a7c15ull + (seed << 6) + (seed >> 2);
-		}
+		return Core::JoinSelected(selection, selectableLines);
 	}
 
 	std::size_t DiffContentHash(const Core::FileDiff& file)
@@ -238,24 +238,24 @@ namespace Graphite {
 		}
 
 		const std::vector<std::size_t> boundaries = Boundaries(text);
-		const std::size_t next = FirstBoundary(boundaries, [&](std::size_t offset) {
+		const std::size_t nextBoundary = FirstBoundary(boundaries, [&](std::size_t offset) {
 			return widthOf(text.substr(0, offset)) >= x;
 		});
 
-		if (next >= boundaries.size())
+		if (nextBoundary >= boundaries.size())
 		{
 			return text.size();
 		}
 
-		if (next == 0)
+		if (nextBoundary == 0)
 		{
 			return 0;
 		}
 
-		const float before = widthOf(text.substr(0, boundaries[next - 1]));
-		const float after = widthOf(text.substr(0, boundaries[next]));
+		const float widthBefore = widthOf(text.substr(0, boundaries[nextBoundary - 1]));
+		const float widthAfter = widthOf(text.substr(0, boundaries[nextBoundary]));
 
-		return x - before < after - x ? boundaries[next - 1] : boundaries[next];
+		return x - widthBefore < widthAfter - x ? boundaries[nextBoundary - 1] : boundaries[nextBoundary];
 	}
 
 	std::size_t ByteUnderX(std::string_view text, float x,
@@ -268,16 +268,15 @@ namespace Graphite {
 
 		const std::vector<std::size_t> boundaries = Boundaries(text);
 
-		// The first boundary strictly right of x ends the character x is inside.
-		const std::size_t end = FirstBoundary(boundaries, [&](std::size_t offset) {
+		const std::size_t characterEnd = FirstBoundary(boundaries, [&](std::size_t offset) {
 			return offset > 0 && widthOf(text.substr(0, offset)) > x;
 		});
 
-		if (end >= boundaries.size())
+		if (characterEnd >= boundaries.size())
 		{
 			return text.size();
 		}
 
-		return end == 0 ? 0 : boundaries[end - 1];
+		return characterEnd == 0 ? 0 : boundaries[characterEnd - 1];
 	}
 }

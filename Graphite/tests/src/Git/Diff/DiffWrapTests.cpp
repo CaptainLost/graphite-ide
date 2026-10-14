@@ -28,7 +28,6 @@ TEST_CASE("A diff line wraps after the last space before the edge")
 
 TEST_CASE("A run of spaces crossing the edge stays on the row it ends")
 {
-	// Spaces at the start of the next row would push its text in, where they say nothing.
 	CHECK(WrapBytes("abcd      efgh", 6) == Breaks{10});
 }
 
@@ -42,18 +41,18 @@ TEST_CASE("A word wider than the row is broken hard at the edge")
 	CHECK(WrapBytes("abcdefghij", 4) == Breaks{4, 8});
 }
 
-TEST_CASE("A tab in a diff line takes four cells wherever it falls")
+TEST_CASE("A tab in a diff line takes four cells wherever it falls, so a tab after one letter makes six")
 {
-	// ImGui draws a tab four cells wide, not to the next tab stop as the editor does: "a\tb" is
-	// six cells here, where the editor would make it five.
 	CHECK(WrapBytes("a\tb", 6).empty());
 	CHECK(WrapBytes("a\tb", 5) == Breaks{2});
 }
 
 TEST_CASE("A diff line is never broken inside a multi-byte character")
 {
-	// Each "ż" is two bytes and one cell.
-	CHECK(WrapBytes("\xC5\xBC\xC5\xBC\xC5\xBC", 2) == Breaks{4});
+	constexpr std::string_view threeLettersOfTwoBytesAndOneCellEach =
+		"\xC5\xBC\xC5\xBC\xC5\xBC";
+
+	CHECK(WrapBytes(threeLettersOfTwoBytesAndOneCellEach, 2) == Breaks{4});
 }
 
 TEST_CASE("Zero columns wraps one character to a row rather than standing still")

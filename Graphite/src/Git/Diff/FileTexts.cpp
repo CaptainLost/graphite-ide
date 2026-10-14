@@ -13,13 +13,14 @@ namespace Graphite {
 	{
 		if (read.HasValue())
 		{
-			return SideText{std::move(read).GetValue(), true};
+			constexpr bool present = true;
+
+			return SideText{std::move(read).GetValue(), present};
 		}
 
-		// NotFound is the ordinary answer for a side that did not exist in that commit,
-		// not a failure - see the comment on SideText. Anything else is a real failure and
-		// is passed through as one.
-		if (read.GetError().Code == Core::ErrorCode::NotFound)
+		const bool sideDidNotExist = read.GetError().Code == Core::ErrorCode::NotFound;
+
+		if (sideDidNotExist)
 		{
 			return SideText{};
 		}
@@ -40,43 +41,37 @@ namespace Graphite {
 	void FileTextsBinding::Update(GitModel& model, const Core::Oid& commit,
 								  const Core::FileDiff& file)
 	{
-		// ShownPath's rule, and deliberately not file.NewPath: a deleted file has no new path
-		// at all, so keying by it would give every file deleted in one commit the same empty
-		// key and hand the second one the first one's text. The blob paths below stay as they
-		// are — an empty one is exactly how ReadSideText learns a side is absent.
-		const std::filesystem::path& key = ShownPath(file);
+		// WARNING: The key is ShownPath and not file.NewPath: a deleted file has no new path, so
+		// keying by it would give every file deleted in one commit the same empty key and hand
+		// the second one the first one's text.
+		const std::filesystem::path& shownPath = ShownPath(file);
 
-		if (!Commit.has_value() || *Commit != commit || Key != key)
+		if (!Commit.has_value() || *Commit != commit || Key != shownPath)
 		{
-			// Only a failed entry is dropped, so a transient read failure does not go on
-			// suppressing a retry for a file the reader may well come back to.
 			ForgetFailure(model);
 
 			Commit = commit;
-			Key = key;
+			Key = shownPath;
 			Texts.reset();
 			Tokens = FileTokens{};
 		}
 
 		if (file.IsBinary)
 		{
-			// Fetching a binary file's blobs would retain both of them behind a pane that says
-			// "Binary file — no textual diff." Nothing on this path caps their size: the blob
-			// read copies the object whole, and the model's cache is bounded by entry count
-			// rather than by bytes, so a commit adding a few large assets could be clicked
-			// through into hundreds of megabytes of text nothing can ever draw.
+			// WARNING: A binary file's blobs are never fetched: nothing caps their size, the blob
+			// read copies the object whole and the model's cache is bounded by entry count, so
+			// clicking through a commit of large assets would retain hundreds of megabytes.
 			Texts.reset();
 			Tokens = FileTokens{};
 			return;
 		}
 
-		model.RequestTextsFor(commit, key, file.OldPath, file.NewPath);
+		model.RequestTextsFor(commit, shownPath, file.OldPath, file.NewPath);
 
-		const Core::Ref<const FileTexts> texts = model.GetTextsFor(commit, key);
+		const Core::Ref<const FileTexts> texts = model.GetTextsFor(commit, shownPath);
+		const bool sameTextsObject = texts.get() == Texts.get();
 
-		// The texts are immutable once fetched, so an unchanged pointer must not copy their
-		// tokens again.
-		if (texts.get() == Texts.get())
+		if (sameTextsObject)
 		{
 			return;
 		}
@@ -122,8 +117,9 @@ namespace Graphite {
 			break;
 		}
 
-		// The targets above name commits on both sides, which ReadFileTexts already serves.
-		return {};
+		const WorkingTreeSides noWorkingTreeSides;
+
+		return noWorkingTreeSides;
 	}
 
 	bool TokensStillGood(const FileTexts* held, const FileTexts& fresh)
@@ -133,19 +129,19 @@ namespace Graphite {
 			return false;
 		}
 
-		return held->HasOld == fresh.HasOld && held->HasNew == fresh.HasNew && held->Old == fresh.Old && held->New == fresh.New;
+		const bool samePresence = held->HasOld == fresh.HasOld && held->HasNew == fresh.HasNew;
+		const bool sameBytes = held->Old == fresh.Old && held->New == fresh.New;
+
+		return samePresence && sameBytes;
 	}
 
 	void FileTextsBinding::UpdateFromWorkingTree(GitModel& model, const Core::FileDiff& file)
 	{
-		const std::filesystem::path& key = ShownPath(file);
+		const std::filesystem::path& shownPath = ShownPath(file);
 
-		// No commit keys this text, so Commit stays unset - and ForgetFailure, which needs one,
-		// has nothing to forget here: the model holds one working-tree slot rather than a cache
-		// of failed entries.
-		if (Key != key)
+		if (Key != shownPath)
 		{
-			Key = key;
+			Key = shownPath;
 			Texts.reset();
 			Tokens = FileTokens{};
 		}
@@ -161,8 +157,6 @@ namespace Graphite {
 
 		if (texts == nullptr)
 		{
-			// Not yet fetched, or refused as too large to lex. Either way the pane draws its
-			// hunks without the text behind them.
 			Texts.reset();
 			Tokens = FileTokens{};
 			return;
@@ -170,7 +164,6 @@ namespace Graphite {
 
 		if (TokensStillGood(Texts.get(), *texts))
 		{
-			// Hold the newer object anyway, so the next comparison is against what is on screen.
 			Texts = texts;
 			return;
 		}

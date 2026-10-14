@@ -1,6 +1,7 @@
 #include "Git/Changes/ChangeOverview.h"
 
 #include <algorithm>
+#include <array>
 
 namespace Graphite {
 
@@ -12,9 +13,13 @@ namespace Graphite {
 			const float from = lineTop(hunk.FirstLine);
 			const float to = hunk.Kind == HunkKind::Deleted ? from : lineTop(hunk.FirstLine + hunk.LineCount);
 
-			OverviewMark mark{.From = from, .To = std::max(to, from + minFraction), .Kind = hunk.Kind, .Staged = hunk.Staged};
+			OverviewMark mark{.From = from,
+							  .To = std::max(to, from + minFraction),
+							  .Kind = hunk.Kind,
+							  .Staged = hunk.Staged};
 
-			// Pushed back up rather than cut short, so a change on the last line keeps its height.
+			// WARNING: The mark is pushed back up rather than cut short, so a change on the last
+			// line keeps its height.
 			if (mark.To > 1.0f)
 			{
 				mark.From = std::max(0.0f, mark.From - (mark.To - 1.0f));
@@ -32,11 +37,13 @@ namespace Graphite {
 		std::vector<OverviewMark> marks;
 		marks.reserve(markers.Hunks.size());
 
-		for (const bool staged : {true, false})
+		constexpr std::array<bool, 2> kStagedFirst{true, false};
+
+		for (const bool stagedPass : kStagedFirst)
 		{
 			for (const ChangeHunk& hunk : markers.Hunks)
 			{
-				if (hunk.Staged == staged)
+				if (hunk.Staged == stagedPass)
 				{
 					marks.push_back(MarkOf(hunk, lineTop, minFraction));
 				}

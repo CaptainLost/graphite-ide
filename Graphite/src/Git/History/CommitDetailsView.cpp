@@ -13,28 +13,28 @@ namespace Graphite {
 
 	namespace {
 
-		// A read-only box rather than plain text: the full hash is the one thing on this
-		// pane a reader wants in their clipboard, and a Selectable would give them the row
-		// rather than the forty digits. Read-only, so the box cannot be typed into and the
-		// value it shows is always the commit's own.
-		void HashRow(const Core::Oid& id)
+		constexpr float kFramePaddingSides = 2.0f;
+		constexpr float kWrapAtPaneEdge = 0.0f;
+		const char* const kNoPrefix = nullptr;
+
+		// WARNING: The hash is a read-only input box so it can be selected and copied; the buffer is the string's own storage and ReadOnly guarantees it is never written.
+		void HashRow(const Core::Oid& commitId)
 		{
-			std::string hex = id.ToHex();
+			std::string hex = commitId.ToHex();
+			const std::size_t bufferSizeWithTerminator = hex.size() + 1;
 
 			ImGui::SetNextItemWidth(ImGui::CalcTextSize(hex.c_str()).x +
-									ImGui::GetStyle().FramePadding.x * 2.0f);
+									ImGui::GetStyle().FramePadding.x * kFramePaddingSides);
 
-			// The buffer is the string's own storage and is never written to, which is what
-			// ReadOnly guarantees. Size includes the terminator ImGui expects to find.
-			ImGui::InputText("##hash", hex.data(), hex.size() + 1,
+			ImGui::InputText("##hash", hex.data(), bufferSizeWithTerminator,
 							 ImGuiInputTextFlags_ReadOnly);
 		}
 
-		void SignatureRow(const char* prefix, const Core::Signature& who,
+		void SignatureRow(const char* prefix, const Core::Signature& signature,
 						  std::chrono::sys_seconds now, std::chrono::minutes offset)
 		{
-			const std::string when = std::format("{}  ·  {}", RelativeAge(who.When, now),
-												 FormattedTimestamp(who.When, offset));
+			const std::string age = std::format("{}  ·  {}", RelativeAge(signature.When, now),
+												FormattedTimestamp(signature.When, offset));
 
 			if (prefix != nullptr)
 			{
@@ -42,11 +42,9 @@ namespace Graphite {
 				ImGui::SameLine();
 			}
 
-			// The name and address together: two accounts under one display name is
-			// ordinary, and the address is what tells them apart.
-			ImGui::Text("%s <%s>", who.Name.c_str(), who.Email.c_str());
+			ImGui::Text("%s <%s>", signature.Name.c_str(), signature.Email.c_str());
 			ImGui::SameLine();
-			ImGui::TextDisabled("%s", when.c_str());
+			ImGui::TextDisabled("%s", age.c_str());
 		}
 	}
 
@@ -54,16 +52,14 @@ namespace Graphite {
 							 const std::optional<DiffStats>& stats, std::chrono::minutes offset,
 							 const GitPalette& palette)
 	{
-		const auto now =
+		const std::chrono::sys_seconds now =
 			std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
 
 		HashRow(commit.Id);
 
-		// On the hash's own line, at the pane's right corner — the same place the diff pane
-		// puts its close, so one gesture dismisses whichever of the two is open.
 		const bool closed = DrawPaneClose();
 
-		SignatureRow(nullptr, commit.Author, now, offset);
+		SignatureRow(kNoPrefix, commit.Author, now, offset);
 
 		if (ShowsCommitter(commit))
 		{
@@ -82,8 +78,6 @@ namespace Graphite {
 		}
 		else
 		{
-			// A root commit has none, and saying so is shorter than leaving the reader to
-			// wonder whether the line failed to draw.
 			ImGui::TextDisabled("no parents — this is a root commit");
 		}
 
@@ -97,15 +91,12 @@ namespace Graphite {
 		}
 		else
 		{
-			// One line tall either way, so the pane does not jump when the diff lands.
 			ImGui::TextDisabled("counting changes…");
 		}
 
 		ImGui::Separator();
 
-		// Wrapped to the pane rather than clipped: a commit message is prose, and the part
-		// worth reading is often past the width of whatever the reader dragged the split to.
-		ImGui::PushTextWrapPos(0.0f);
+		ImGui::PushTextWrapPos(kWrapAtPaneEdge);
 		ImGui::TextUnformatted(commit.Summary.c_str());
 
 		if (!commit.Body.empty())

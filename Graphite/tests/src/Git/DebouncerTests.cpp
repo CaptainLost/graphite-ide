@@ -98,7 +98,7 @@ TEST_CASE("Marking asks for the frame the debounce runs out on")
 	Debouncer debouncer;
 	debouncer.Mark();
 
-	const auto deadline = Core::Redraw::TakeDeadline();
+	const std::optional<Core::Redraw::Clock::time_point> deadline = Core::Redraw::TakeDeadline();
 	REQUIRE(deadline.has_value());
 	CHECK(*deadline <= Core::Redraw::Clock::now() + std::chrono::duration<double>(Debouncer::kQuietSeconds));
 }

@@ -2,9 +2,14 @@
 
 namespace Graphite {
 
-	std::size_t FileRowsOfExpanded(std::size_t files)
+	namespace {
+
+		constexpr std::size_t kPlaceholderFileRowCount = 1;
+	}
+
+	std::size_t FileRowsOfExpanded(std::size_t fileCount)
 	{
-		return files == 0 ? 1 : files;
+		return fileCount == 0 ? kPlaceholderFileRowCount : fileCount;
 	}
 
 	CommitRows BuildCommitRows(std::size_t commitCount,
@@ -23,9 +28,9 @@ namespace Graphite {
 			row.Commit = commit;
 			rows.Rows.push_back(row);
 
-			const std::size_t files = fileRowsUnder(commit);
+			const std::size_t fileRowCount = fileRowsUnder(commit);
 
-			for (std::size_t file = 0; file < files; ++file)
+			for (std::size_t file = 0; file < fileRowCount; ++file)
 			{
 				CommitRow fileRow;
 				fileRow.Kind = CommitRowKind::File;

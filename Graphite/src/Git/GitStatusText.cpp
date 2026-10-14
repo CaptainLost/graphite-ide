@@ -1,8 +1,12 @@
 #include "Git/GitStatusText.h"
 
+#include "UI/TypographicMarks.h"
+
 #include <IconsMaterialDesignIcons.h>
 
-#include <algorithm>
+#include <cstddef>
+#include <string>
+#include <vector>
 
 namespace Graphite {
 
@@ -31,24 +35,25 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		// The checked-out local branch, which is the only one whose distance the bar speaks
-		// for. A remote branch of the same name is a different ref.
-		const Core::Branch* CheckedOut(const std::vector<Core::Branch>* branches)
+		const Core::Branch* FindCheckedOutLocalBranch(const std::vector<Core::Branch>* branches)
 		{
 			if (branches == nullptr)
 			{
 				return nullptr;
 			}
 
-			const auto found = std::find_if(branches->begin(), branches->end(),
-											[](const Core::Branch& branch) {
-												return branch.IsHead && branch.Kind == Core::RefKind::Local;
-											});
+			for (const Core::Branch& branch : *branches)
+			{
+				if (branch.IsHead && branch.Kind == Core::RefKind::Local)
+				{
+					return &branch;
+				}
+			}
 
-			return found == branches->end() ? nullptr : &*found;
+			return nullptr;
 		}
 
-		std::string Distance(const Core::Branch& branch)
+		std::string DistanceMarks(const Core::Branch& branch)
 		{
 			if (!branch.Upstream.has_value() || !branch.DistanceKnown)
 			{
@@ -80,12 +85,12 @@ namespace Graphite {
 			return text;
 		}
 
-		std::string Commits(std::size_t count)
+		std::string CommitCountLabel(std::size_t commitCount)
 		{
-			return std::to_string(count) + (count == 1 ? " commit" : " commits");
+			return std::to_string(commitCount) + (commitCount == 1 ? " commit" : " commits");
 		}
 
-		std::string DistanceTooltip(const Core::Branch& branch)
+		std::string DistanceSentence(const Core::Branch& branch)
 		{
 			if (!branch.Upstream.has_value() || !branch.DistanceKnown)
 			{
@@ -101,16 +106,16 @@ namespace Graphite {
 
 			if (branch.Behind == 0)
 			{
-				return Commits(branch.Ahead) + " ahead of " + upstream;
+				return CommitCountLabel(branch.Ahead) + " ahead of " + upstream;
 			}
 
 			if (branch.Ahead == 0)
 			{
-				return Commits(branch.Behind) + " behind " + upstream;
+				return CommitCountLabel(branch.Behind) + " behind " + upstream;
 			}
 
-			return Commits(branch.Ahead) + " ahead of " + upstream + " and " + Commits(branch.Behind) +
-				   " behind it";
+			return CommitCountLabel(branch.Ahead) + " ahead of " + upstream + " and " +
+				   CommitCountLabel(branch.Behind) + " behind it";
 		}
 	}
 
@@ -145,13 +150,13 @@ namespace Graphite {
 		{
 			segment.Branch += head.BranchName;
 
-			const Core::Branch* branch = CheckedOut(inputs.Branches);
+			const Core::Branch* branch = FindCheckedOutLocalBranch(inputs.Branches);
 
 			if (branch != nullptr && branch->Upstream.has_value())
 			{
 				segment.BranchTooltip = head.BranchName + " tracks " + *branch->Upstream;
-				segment.Distance = Distance(*branch);
-				segment.DistanceTooltip = DistanceTooltip(*branch);
+				segment.Distance = DistanceMarks(*branch);
+				segment.DistanceTooltip = DistanceSentence(*branch);
 			}
 			else
 			{
@@ -163,10 +168,10 @@ namespace Graphite {
 
 		case Core::HeadKind::Detached:
 		{
-			const std::string hash = head.Commit ? head.Commit->ShortHex() : std::string{};
-			segment.Branch += hash + " (detached)";
-			segment.BranchTooltip =
-				"HEAD is detached at " + (head.Commit ? head.Commit->ToHex() : std::string{});
+			const std::string shortHash = head.Commit ? head.Commit->ShortHex() : std::string{};
+			const std::string fullHash = head.Commit ? head.Commit->ToHex() : std::string{};
+			segment.Branch += shortHash + " (detached)";
+			segment.BranchTooltip = "HEAD is detached at " + fullHash;
 			break;
 		}
 
@@ -176,20 +181,20 @@ namespace Graphite {
 			break;
 		}
 
-		if (const char* operation = OperationName(head.Operation); operation != nullptr)
+		if (const char* operationName = OperationName(head.Operation); operationName != nullptr)
 		{
-			segment.Branch += " \xC2\xB7 ";
-			segment.Branch += operation;
+			segment.Branch += kMiddleDotSeparator;
+			segment.Branch += operationName;
 		}
 
 		if (inputs.Status != nullptr && !inputs.Status->Entries.empty())
 		{
-			const std::size_t count = inputs.Status->Entries.size();
-			segment.Changes = ICON_MDI_CIRCLE_MEDIUM " " + std::to_string(count) +
-							  (count == 1 ? " change" : " changes");
+			const std::size_t changeCount = inputs.Status->Entries.size();
+			segment.Changes = ICON_MDI_CIRCLE_MEDIUM " " + std::to_string(changeCount) +
+							  (changeCount == 1 ? " change" : " changes");
 			segment.ChangesTooltip =
-				count == 1 ? "1 uncommitted change. Click to show it in Changes."
-						   : std::to_string(count) + " uncommitted changes. Click to show them in Changes.";
+				changeCount == 1 ? "1 uncommitted change. Click to show it in Changes."
+								 : std::to_string(changeCount) + " uncommitted changes. Click to show them in Changes.";
 		}
 
 		return segment;

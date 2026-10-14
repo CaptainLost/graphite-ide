@@ -4,15 +4,31 @@
 
 namespace Graphite {
 
+	namespace {
+
+		bool IsRemoteSymbolicHead(const Core::Branch& branch)
+		{
+			return branch.Kind == Core::RefKind::Remote && branch.Name.ends_with("/HEAD");
+		}
+
+		bool ListsBefore(const CommitRef& left, const CommitRef& right)
+		{
+			if (left.Kind != right.Kind)
+			{
+				return left.Kind < right.Kind;
+			}
+
+			return left.Name < right.Name;
+		}
+	}
+
 	CommitRefMap BuildCommitRefs(const std::vector<Core::Branch>& branches)
 	{
 		CommitRefMap refs;
 
 		for (const Core::Branch& branch : branches)
 		{
-			// A remote's HEAD is a pointer to its default branch, not a branch: the one it
-			// points at is listed too, and a label for each would say the same thing twice.
-			if (branch.Kind == Core::RefKind::Remote && branch.Name.ends_with("/HEAD"))
+			if (IsRemoteSymbolicHead(branch))
 			{
 				continue;
 			}
@@ -31,42 +47,37 @@ namespace Graphite {
 			refs[branch.Tip].push_back(CommitRef{.Name = branch.Name, .Kind = kind});
 		}
 
-		for (auto& entry : refs)
+		for (auto& [tip, commitRefs] : refs)
 		{
-			std::ranges::sort(entry.second, [](const CommitRef& left, const CommitRef& right) {
-				if (left.Kind != right.Kind)
-				{
-					return left.Kind < right.Kind;
-				}
-
-				return left.Name < right.Name;
-			});
+			std::ranges::sort(commitRefs, ListsBefore);
 		}
 
 		return refs;
 	}
 
-	std::size_t RefLabelsThatFit(const std::vector<float>& widths, float gap, float available,
-								 float summaryWidth, float minSummary)
+	std::size_t RefLabelsThatFit(const std::vector<float>& labelWidths, float gap,
+								 float availableWidth, float summaryWidth,
+								 float minimumSummaryWidth)
 	{
-		const float room = available - std::min(summaryWidth, minSummary) - gap;
+		const float room = availableWidth - std::min(summaryWidth, minimumSummaryWidth) - gap;
 
-		std::size_t count = 0;
-		float used = 0.0f;
+		std::size_t fittingCount = 0;
+		float usedWidth = 0.0f;
 
-		for (const float width : widths)
+		for (const float labelWidth : labelWidths)
 		{
-			const float next = used + (count == 0 ? 0.0f : gap) + width;
+			const float gapBefore = fittingCount == 0 ? 0.0f : gap;
+			const float widthWithThisLabel = usedWidth + gapBefore + labelWidth;
 
-			if (next > room)
+			if (widthWithThisLabel > room)
 			{
 				break;
 			}
 
-			used = next;
-			++count;
+			usedWidth = widthWithThisLabel;
+			++fittingCount;
 		}
 
-		return count;
+		return fittingCount;
 	}
 }

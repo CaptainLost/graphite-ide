@@ -4,14 +4,21 @@
 
 namespace Graphite {
 
+	namespace {
+
+		constexpr float HalfShare = 0.5f;
+		constexpr float InsetsPerRegion = 2.0f;
+		constexpr float NoWidth = 0.0f;
+	}
+
 	SideBySidePanes SplitIntoPanes(float visibleWidth)
 	{
 		SideBySidePanes panes;
 
-		// A pane of negative width would put the right half left of the left one. The caller
-		// gets this straight from ImGui, which reports a negative region while a pane is being
-		// dragged smaller than its decorations.
-		panes.PaneWidth = std::max(visibleWidth, 0.0f) * 0.5f;
+		// WARNING: ImGui reports a negative region while a pane is dragged smaller than its
+		// decorations; a negative pane width would put the right half left of the left one.
+		const float nonNegativeWidth = std::max(visibleWidth, NoWidth);
+		panes.PaneWidth = nonNegativeWidth * HalfShare;
 		panes.RightPaneX = panes.PaneWidth;
 
 		return panes;
@@ -19,14 +26,15 @@ namespace Graphite {
 
 	float SideBySideContentWidth(float innerWidth, float widestLine, float padding)
 	{
-		const float half = std::max(innerWidth, 0.0f) * 0.5f;
-		const float inset = std::max(padding, 0.0f);
+		const float halfWidth = std::max(innerWidth, NoWidth) * HalfShare;
+		const float inset = std::max(padding, NoWidth);
 
-		// The line starts an inset in from its half, so it needs that much more room than its
-		// own width; the two insets come off because the region adds them back itself when it
-		// works out how far the scrollbar reaches. See the header for what goes wrong without
-		// them. Clamped because an inset wider than the region would otherwise ask for a
-		// negative content width, which is not something to hand a scroll region.
-		return std::max(half - inset * 2.0f + std::max(half, widestLine + inset), 0.0f);
+		const float widestLineWithInset = widestLine + inset;
+		const float roomForWidestLine = std::max(halfWidth, widestLineWithInset);
+		const float scrollRangeContribution = halfWidth - inset * InsetsPerRegion;
+
+		// WARNING: Clamped because an inset wider than the region would ask for a negative
+		// content width, which a scroll region cannot take.
+		return std::max(scrollRangeContribution + roomForWidestLine, NoWidth);
 	}
 }

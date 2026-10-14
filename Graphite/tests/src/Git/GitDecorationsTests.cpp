@@ -1,12 +1,16 @@
 #include <doctest/doctest.h>
 
 #include "Git/GitDecorations.h"
+#include "GitFixtures.h"
 
 namespace {
 
+	using Core::StatusFlags;
 	using Graphite::GitColor;
 	using Graphite::GitDecoration;
-	using Core::StatusFlags;
+
+	constexpr bool kIsDirectory = true;
+	constexpr bool kIsFile = false;
 
 	Core::FileStatus Entry(const char8_t* path, StatusFlags index, StatusFlags workTree)
 	{
@@ -26,12 +30,6 @@ namespace {
 		return file;
 	}
 
-	Core::WorkingTreeStatus StatusOf(std::vector<Core::FileStatus> entries)
-	{
-		Core::WorkingTreeStatus status;
-		status.Entries = std::move(entries);
-		return status;
-	}
 }
 
 TEST_CASE("DecorationOf: one value per entry, by priority")
@@ -43,7 +41,7 @@ TEST_CASE("DecorationOf: one value per entry, by priority")
 	CHECK(Graphite::DecorationOf(Entry(u8"a", StatusFlags::New, StatusFlags::Modified)) == GitDecoration::Modified);
 	CHECK(Graphite::DecorationOf(Entry(u8"a", StatusFlags::Renamed, StatusFlags::None)) == GitDecoration::Renamed);
 	CHECK(Graphite::DecorationOf(Entry(u8"a", StatusFlags::New, StatusFlags::None)) == GitDecoration::Added);
-	CHECK(Graphite::DecorationOf(UntrackedEntry(u8"a", false)) == GitDecoration::Untracked);
+	CHECK(Graphite::DecorationOf(UntrackedEntry(u8"a", kIsFile)) == GitDecoration::Untracked);
 	CHECK(Graphite::DecorationOf(Entry(u8"a", StatusFlags::None, StatusFlags::TypeChanged)) == GitDecoration::Modified);
 	CHECK(Graphite::DecorationOf(Entry(u8"a", StatusFlags::Modified, StatusFlags::None)) == GitDecoration::Modified);
 }
@@ -61,7 +59,7 @@ TEST_CASE("DecorationOf: a deleted file has no row decoration but still weighs o
 	CHECK(Graphite::FolderWeightOf(Entry(u8"a", StatusFlags::None, StatusFlags::None)) == GitDecoration::None);
 }
 
-TEST_CASE("LetterOf and ColourOf cover every decoration")
+TEST_CASE("LetterOf and GitColorOf cover every decoration")
 {
 	CHECK(Graphite::LetterOf(GitDecoration::None) == '\0');
 	CHECK(Graphite::LetterOf(GitDecoration::Untracked) == 'U');
@@ -70,17 +68,17 @@ TEST_CASE("LetterOf and ColourOf cover every decoration")
 	CHECK(Graphite::LetterOf(GitDecoration::Modified) == 'M');
 	CHECK(Graphite::LetterOf(GitDecoration::Conflicted) == '!');
 
-	CHECK(Graphite::ColourOf(GitDecoration::Untracked) == GitColor::GutterAdded);
-	CHECK(Graphite::ColourOf(GitDecoration::Added) == GitColor::GutterAdded);
-	CHECK(Graphite::ColourOf(GitDecoration::Renamed) == GitColor::GutterModified);
-	CHECK(Graphite::ColourOf(GitDecoration::Modified) == GitColor::GutterModified);
-	CHECK(Graphite::ColourOf(GitDecoration::Conflicted) == GitColor::GutterRemoved);
-	CHECK(Graphite::ColourOf(GitDecoration::None) == GitColor::GutterModified);
+	CHECK(Graphite::GitColorOf(GitDecoration::Untracked) == GitColor::GutterAdded);
+	CHECK(Graphite::GitColorOf(GitDecoration::Added) == GitColor::GutterAdded);
+	CHECK(Graphite::GitColorOf(GitDecoration::Renamed) == GitColor::GutterModified);
+	CHECK(Graphite::GitColorOf(GitDecoration::Modified) == GitColor::GutterModified);
+	CHECK(Graphite::GitColorOf(GitDecoration::Conflicted) == GitColor::GutterRemoved);
+	CHECK(Graphite::GitColorOf(GitDecoration::None) == GitColor::GutterModified);
 }
 
 TEST_CASE("GitDecorations: files get their own status and folders the highest beneath them")
 {
-	const Graphite::GitDecorations decorations(StatusOf({
+	const Graphite::GitDecorations decorations(WorkingTreeStatusOf({
 		Entry(u8"src/a.cpp", StatusFlags::None, StatusFlags::Modified),
 		Entry(u8"src/deep/x/y.h", StatusFlags::New, StatusFlags::None),
 		Entry(u8"docs/old.md", StatusFlags::None, StatusFlags::Deleted),
@@ -102,7 +100,7 @@ TEST_CASE("GitDecorations: files get their own status and folders the highest be
 TEST_CASE("GitDecorations: a file at the top reaches the working directory under every spelling of it")
 {
 	const Graphite::GitDecorations decorations(
-		StatusOf({Entry(u8"README.md", StatusFlags::None, StatusFlags::Modified)}));
+		WorkingTreeStatusOf({Entry(u8"README.md", StatusFlags::None, StatusFlags::Modified)}));
 
 	CHECK(decorations.File("README.md") == GitDecoration::Modified);
 	CHECK(decorations.Folder("") == GitDecoration::Modified);
@@ -112,7 +110,7 @@ TEST_CASE("GitDecorations: a file at the top reaches the working directory under
 TEST_CASE("GitDecorations: a folder spelled with a trailing separator is the same folder")
 {
 	const Graphite::GitDecorations decorations(
-		StatusOf({Entry(u8"src/a.cpp", StatusFlags::None, StatusFlags::Modified)}));
+		WorkingTreeStatusOf({Entry(u8"src/a.cpp", StatusFlags::None, StatusFlags::Modified)}));
 
 	CHECK(decorations.Folder("src/") == GitDecoration::Modified);
 	CHECK(decorations.Folder("src\\") == GitDecoration::Modified);
@@ -120,7 +118,7 @@ TEST_CASE("GitDecorations: a folder spelled with a trailing separator is the sam
 
 TEST_CASE("GitDecorations: the folders above an untracked directory aggregate it but are not untracked")
 {
-	const Graphite::GitDecorations decorations(StatusOf({UntrackedEntry(u8"build/gen", true)}));
+	const Graphite::GitDecorations decorations(WorkingTreeStatusOf({UntrackedEntry(u8"build/gen", kIsDirectory)}));
 
 	CHECK(decorations.Folder("build") == GitDecoration::Untracked);
 	CHECK(decorations.Folder("") == GitDecoration::Untracked);
@@ -130,7 +128,7 @@ TEST_CASE("GitDecorations: the folders above an untracked directory aggregate it
 
 TEST_CASE("GitDecorations: an untracked directory marks everything beneath it")
 {
-	const Graphite::GitDecorations decorations(StatusOf({UntrackedEntry(u8"build/gen", true)}));
+	const Graphite::GitDecorations decorations(WorkingTreeStatusOf({UntrackedEntry(u8"build/gen", kIsDirectory)}));
 
 	CHECK(decorations.IsUntrackedFolder("build/gen"));
 	CHECK(decorations.IsUntrackedFolder("build/gen/out"));
@@ -146,7 +144,7 @@ TEST_CASE("GitDecorations: an untracked directory marks everything beneath it")
 TEST_CASE("GitDecorations: non-ASCII names are found by the same path")
 {
 	const Graphite::GitDecorations decorations(
-		StatusOf({Entry(u8"źródła/żółw.cpp", StatusFlags::None, StatusFlags::Modified)}));
+		WorkingTreeStatusOf({Entry(u8"źródła/żółw.cpp", StatusFlags::None, StatusFlags::Modified)}));
 
 	CHECK(decorations.File(u8"źródła/żółw.cpp") == GitDecoration::Modified);
 	CHECK(decorations.Folder(u8"źródła") == GitDecoration::Modified);
@@ -155,7 +153,7 @@ TEST_CASE("GitDecorations: non-ASCII names are found by the same path")
 #ifdef _WIN32
 TEST_CASE("GitDecorations: Windows paths compare without regard to case")
 {
-	const Graphite::GitDecorations decorations(StatusOf({
+	const Graphite::GitDecorations decorations(WorkingTreeStatusOf({
 		Entry(u8"src/a.cpp", StatusFlags::None, StatusFlags::Modified),
 		Entry(u8"źródła/żółw.cpp", StatusFlags::None, StatusFlags::Modified),
 	}));
@@ -169,7 +167,7 @@ TEST_CASE("GitDecorations: Windows paths compare without regard to case")
 TEST_CASE("GitDecorations: either separator finds the same entry")
 {
 	const Graphite::GitDecorations decorations(
-		StatusOf({Entry(u8"src/deep/a.cpp", StatusFlags::None, StatusFlags::Modified)}));
+		WorkingTreeStatusOf({Entry(u8"src/deep/a.cpp", StatusFlags::None, StatusFlags::Modified)}));
 
 	CHECK(decorations.File("src/deep/a.cpp") == GitDecoration::Modified);
 	CHECK(decorations.File("src\\deep\\a.cpp") == GitDecoration::Modified);
@@ -192,7 +190,7 @@ TEST_CASE("GitDecorations: the folder a file was renamed out of is decorated too
 {
 	Core::FileStatus renamed = Entry(u8"b/x.cpp", StatusFlags::Renamed, StatusFlags::None);
 	renamed.RenamedFrom = std::filesystem::path(u8"a/x.cpp");
-	const Graphite::GitDecorations decorations(StatusOf({renamed}));
+	const Graphite::GitDecorations decorations(WorkingTreeStatusOf({renamed}));
 
 	CHECK(decorations.Folder("a") == GitDecoration::Renamed);
 	CHECK(decorations.Folder("b") == GitDecoration::Renamed);
@@ -204,7 +202,7 @@ TEST_CASE("GitDecorations: the renamed-from path raises every ancestor up to the
 {
 	Core::FileStatus renamed = Entry(u8"new/x.cpp", StatusFlags::Renamed, StatusFlags::None);
 	renamed.RenamedFrom = std::filesystem::path(u8"old/deep/x.cpp");
-	const Graphite::GitDecorations decorations(StatusOf({renamed}));
+	const Graphite::GitDecorations decorations(WorkingTreeStatusOf({renamed}));
 
 	CHECK(decorations.Folder("old/deep") == GitDecoration::Renamed);
 	CHECK(decorations.Folder("old") == GitDecoration::Renamed);
@@ -213,8 +211,8 @@ TEST_CASE("GitDecorations: the renamed-from path raises every ancestor up to the
 
 TEST_CASE("GitDecorations: OwnFile ignores what a file inherits from an untracked directory")
 {
-	const Graphite::GitDecorations decorations(StatusOf({
-		UntrackedEntry(u8"gen", true),
+	const Graphite::GitDecorations decorations(WorkingTreeStatusOf({
+		UntrackedEntry(u8"gen", kIsDirectory),
 		Entry(u8"lib/kept.cpp", StatusFlags::None, StatusFlags::Modified),
 	}));
 

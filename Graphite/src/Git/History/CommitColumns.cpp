@@ -4,41 +4,49 @@
 
 namespace Graphite {
 
-	CommitColumns LayoutCommitColumns(const CommitColumnsInput& input)
-	{
-		CommitColumns columns;
-		columns.Graph = std::min(input.Graph, input.Available * 0.25f);
+	namespace {
 
-		// The graph, arrow, hash and message always have their padding; ImGui spends exactly
-		// two cell paddings on each enabled column and nothing more with the flags used.
-		const auto messageWith = [&](bool author, bool date) {
-			float used = columns.Graph + input.Chevron + input.Hash + input.CellPadding * 4.0f;
+		constexpr float kMaxGraphShareOfTable = 0.25f;
+		constexpr float kAlwaysShownColumnPaddings = 4.0f;
 
-			if (author)
+		float MessageWidthWith(const CommitColumnsInput& input, float graphWidth, bool showsAuthor, bool showsDate)
+		{
+			float used = graphWidth + input.Chevron + input.Hash + input.CellPadding * kAlwaysShownColumnPaddings;
+
+			if (showsAuthor)
 			{
 				used += input.Author + input.CellPadding;
 			}
 
-			if (date)
+			if (showsDate)
 			{
 				used += input.Date + input.CellPadding;
 			}
 
 			return input.Available - used;
-		};
+		}
+	}
 
-		columns.Message = messageWith(true, true);
+	CommitColumns LayoutCommitColumns(const CommitColumnsInput& input)
+	{
+		CommitColumns columns;
+		columns.Graph = std::min(input.Graph, input.Available * kMaxGraphShareOfTable);
+
+		constexpr bool kShown = true;
+		constexpr bool kGivenUp = false;
+
+		columns.Message = MessageWidthWith(input, columns.Graph, kShown, kShown);
 
 		if (columns.Message < input.MinMessage)
 		{
 			columns.ShowAuthor = false;
-			columns.Message = messageWith(false, true);
+			columns.Message = MessageWidthWith(input, columns.Graph, kGivenUp, kShown);
 		}
 
 		if (columns.Message < input.MinMessage)
 		{
 			columns.ShowDate = false;
-			columns.Message = messageWith(false, false);
+			columns.Message = MessageWidthWith(input, columns.Graph, kGivenUp, kGivenUp);
 		}
 
 		return columns;

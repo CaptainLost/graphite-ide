@@ -47,7 +47,6 @@ namespace {
 		return bases;
 	}
 
-	// Holds jobs until the test runs them, so the order they finish in is the test's to choose.
 	struct HeldJobs
 	{
 		std::vector<std::function<void()>> Jobs;
@@ -59,10 +58,10 @@ namespace {
 
 		void RunAll()
 		{
-			auto jobs = std::move(Jobs);
+			std::vector<std::function<void()>> jobs = std::move(Jobs);
 			Jobs.clear();
 
-			for (auto& job : jobs)
+			for (std::function<void()>& job : jobs)
 			{
 				job();
 			}
@@ -73,7 +72,6 @@ namespace {
 
 	const Core::Timestep kFrame{0.016f};
 
-	// One Update, then everything it asked for run and applied, twice over: bases, then markers.
 	void Settle(ChangeMarkersModel& model, HeldJobs& jobs, const Core::TextBuffer& buffer)
 	{
 		for (int round = 0; round < 2; ++round)
@@ -99,7 +97,7 @@ TEST_CASE("Markers are computed once the bases have arrived")
 
 	Settle(model, jobs, buffer);
 
-	const auto markers = model.Get(kPath);
+	const Core::Ref<const Graphite::ChangeMarkers> markers = model.Get(kPath);
 	REQUIRE(markers != nullptr);
 	CHECK(markers->Lines[1].Kind == ChangeKind::Modified);
 	CHECK_FALSE(markers->Lines[1].Staged);
@@ -117,7 +115,7 @@ TEST_CASE("The markers carry the lines each change replaced")
 	const Core::TextBuffer buffer{"a\nB\nX\n"};
 	Settle(model, jobs, buffer);
 
-	const auto markers = model.Get(kPath);
+	const Core::Ref<const Graphite::ChangeMarkers> markers = model.Get(kPath);
 	REQUIRE(markers != nullptr);
 
 	const Graphite::ChangeHunk* unstaged = Graphite::FindLineHunk(*markers, 2);
@@ -172,10 +170,9 @@ TEST_CASE("A result overtaken by a newer request is dropped")
 	jobs.RunAll();
 	model.OnUpdate(kFrame);
 
-	// First markers job, left waiting.
 	model.Update(kPath, buffer);
 	REQUIRE(jobs.Jobs.size() == 1);
-	auto older = std::move(jobs.Jobs.front());
+	std::function<void()> older = std::move(jobs.Jobs.front());
 	jobs.Jobs.clear();
 
 	buffer.Insert(0, "Z\n");
@@ -204,7 +201,6 @@ TEST_CASE("The bases are read again after the repository changes")
 	Settle(model, jobs, buffer);
 	REQUIRE(port.Calls == 1);
 
-	// Committed elsewhere: HEAD and the index now match the buffer.
 	port.Bases = Committed("a\nX\n");
 	events.Publish(Graphite::RepositoryChangedEvent{});
 
@@ -234,13 +230,11 @@ TEST_CASE("Invalidate reads the bases again without any event")
 	REQUIRE(port.Calls == 1);
 	REQUIRE(model.Get(kPath)->Lines[1].Kind == ChangeKind::Modified);
 
-	// Staged from this process: the index now matches the buffer.
 	ChangeBases staged = Committed("a\nb\n");
 	staged.Index = "a\nX\n";
 	port.Bases = staged;
 	model.Invalidate();
 
-	// Debounced like a repository event.
 	model.OnUpdate(kFrame);
 	jobs.RunAll();
 	CHECK(port.Calls == 1);
@@ -270,7 +264,6 @@ TEST_CASE("A buffer past the diff size limit has nothing to draw and is never di
 	buffer.Insert(0, std::string(static_cast<std::size_t>(Core::MaximumDiffTextSize), 'x'));
 	REQUIRE(buffer.GetLength() > Core::MaximumDiffTextSize);
 
-	// The edit, then long enough for it to count as quiet.
 	model.Update(kPath, buffer);
 	model.OnUpdate(Core::Timestep{0.2f});
 	model.Update(kPath, buffer);
@@ -301,7 +294,7 @@ TEST_CASE("An untracked file is added throughout")
 	const Core::TextBuffer buffer{"a\nb\n"};
 	Settle(model, jobs, buffer);
 
-	const auto markers = model.Get(kPath);
+	const Core::Ref<const Graphite::ChangeMarkers> markers = model.Get(kPath);
 	REQUIRE(markers != nullptr);
 	CHECK(markers->Lines[0].Kind == ChangeKind::Added);
 	CHECK(markers->Lines[1].Kind == ChangeKind::Added);
@@ -337,7 +330,6 @@ TEST_CASE("A document closed while its job is in flight is forgotten")
 	model.OnUpdate(kFrame);
 	CHECK(model.Get(kPath) == nullptr);
 
-	// Opening it again starts over with a fresh read.
 	Settle(model, jobs, buffer);
 	CHECK(port.Calls == 2);
 	CHECK(model.Get(kPath) != nullptr);

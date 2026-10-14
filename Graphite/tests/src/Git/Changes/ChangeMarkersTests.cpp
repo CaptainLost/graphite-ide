@@ -14,15 +14,15 @@ using Graphite::LineChange;
 namespace {
 
 	constexpr LineChange kNone{};
-	constexpr LineChange kAdded{ChangeKind::Added, false};
-	constexpr LineChange kModified{ChangeKind::Modified, false};
-	constexpr LineChange kStagedAdded{ChangeKind::Added, true};
-	constexpr LineChange kStagedModified{ChangeKind::Modified, true};
+	constexpr LineChange kAdded{.Kind = ChangeKind::Added, .Staged = false};
+	constexpr LineChange kModified{.Kind = ChangeKind::Modified, .Staged = false};
+	constexpr LineChange kStagedAdded{.Kind = ChangeKind::Added, .Staged = true};
+	constexpr LineChange kStagedModified{.Kind = ChangeKind::Modified, .Staged = true};
 }
 
 TEST_CASE("No hunks mark nothing")
 {
-	const auto markers = BuildChangeMarkers({}, {}, 3);
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers({}, {}, 3);
 
 	CHECK(markers.Lines == std::vector<LineChange>{kNone, kNone, kNone});
 	CHECK(markers.Deletions.empty());
@@ -31,7 +31,7 @@ TEST_CASE("No hunks mark nothing")
 TEST_CASE("Lines inserted since the index are unstaged additions")
 {
 	const std::vector<LineHunk> unstaged{{1, 0, 1, 2}};
-	const auto markers = BuildChangeMarkers({}, unstaged, 5);
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers({}, unstaged, 5);
 
 	CHECK(markers.Lines == std::vector<LineChange>{kNone, kAdded, kAdded, kNone, kNone});
 }
@@ -39,7 +39,7 @@ TEST_CASE("Lines inserted since the index are unstaged additions")
 TEST_CASE("A line replaced since the index is an unstaged modification")
 {
 	const std::vector<LineHunk> unstaged{{1, 1, 1, 1}};
-	const auto markers = BuildChangeMarkers({}, unstaged, 3);
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers({}, unstaged, 3);
 
 	CHECK(markers.Lines == std::vector<LineChange>{kNone, kModified, kNone});
 }
@@ -47,7 +47,7 @@ TEST_CASE("A line replaced since the index is an unstaged modification")
 TEST_CASE("A line removed since the index leaves an unstaged anchor")
 {
 	const std::vector<LineHunk> unstaged{{1, 1, 1, 0}};
-	const auto markers = BuildChangeMarkers({}, unstaged, 3);
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers({}, unstaged, 3);
 
 	CHECK(markers.Deletions == std::vector<DeletionAnchor>{{1, false}});
 }
@@ -55,7 +55,7 @@ TEST_CASE("A line removed since the index leaves an unstaged anchor")
 TEST_CASE("A staged change on an untouched line is drawn staged")
 {
 	const std::vector<LineHunk> staged{{2, 1, 2, 1}};
-	const auto markers = BuildChangeMarkers(staged, {}, 4);
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, {}, 4);
 
 	CHECK(markers.Lines == std::vector<LineChange>{kNone, kNone, kStagedModified, kNone});
 }
@@ -64,7 +64,7 @@ TEST_CASE("A staged change follows its line when unstaged lines are inserted abo
 {
 	const std::vector<LineHunk> staged{{3, 1, 3, 1}};
 	const std::vector<LineHunk> unstaged{{0, 0, 0, 2}};
-	const auto markers = BuildChangeMarkers(staged, unstaged, 7);
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, unstaged, 7);
 
 	CHECK(markers.Lines == std::vector<LineChange>{kAdded, kAdded, kNone, kNone, kNone, kStagedModified, kNone});
 }
@@ -73,7 +73,7 @@ TEST_CASE("An unstaged change wins over a staged one on the same line")
 {
 	const std::vector<LineHunk> staged{{2, 1, 2, 1}};
 	const std::vector<LineHunk> unstaged{{2, 1, 2, 1}};
-	const auto markers = BuildChangeMarkers(staged, unstaged, 4);
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, unstaged, 4);
 
 	CHECK(markers.Lines[2] == kModified);
 }
@@ -82,7 +82,7 @@ TEST_CASE("A staged line rewritten since into several lines shows only the unsta
 {
 	const std::vector<LineHunk> staged{{2, 1, 2, 1}};
 	const std::vector<LineHunk> unstaged{{2, 1, 2, 3}};
-	const auto markers = BuildChangeMarkers(staged, unstaged, 6);
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, unstaged, 6);
 
 	CHECK(markers.Lines == std::vector<LineChange>{kNone, kNone, kModified, kModified, kModified, kNone});
 }
@@ -91,7 +91,7 @@ TEST_CASE("A staged deletion follows its boundary across an unstaged insertion a
 {
 	const std::vector<LineHunk> staged{{4, 2, 4, 0}};
 	const std::vector<LineHunk> unstaged{{0, 0, 0, 1}};
-	const auto markers = BuildChangeMarkers(staged, unstaged, 8);
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, unstaged, 8);
 
 	CHECK(markers.Deletions == std::vector<DeletionAnchor>{{5, true}});
 }
@@ -100,7 +100,7 @@ TEST_CASE("A staged deletion inside an unstaged hunk is dropped")
 {
 	const std::vector<LineHunk> staged{{2, 1, 2, 0}};
 	const std::vector<LineHunk> unstaged{{1, 3, 1, 3}};
-	const auto markers = BuildChangeMarkers(staged, unstaged, 6);
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, unstaged, 6);
 
 	CHECK(markers.Deletions.empty());
 }
@@ -109,7 +109,7 @@ TEST_CASE("A staged deletion where unstaged lines were inserted is dropped")
 {
 	const std::vector<LineHunk> staged{{2, 1, 2, 0}};
 	const std::vector<LineHunk> unstaged{{2, 0, 2, 1}};
-	const auto markers = BuildChangeMarkers(staged, unstaged, 5);
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, unstaged, 5);
 
 	CHECK(markers.Deletions.empty());
 	CHECK(markers.Lines[2] == kAdded);
@@ -119,7 +119,7 @@ TEST_CASE("Two deletions on one boundary leave one unstaged anchor")
 {
 	const std::vector<LineHunk> staged{{3, 1, 3, 0}};
 	const std::vector<LineHunk> unstaged{{3, 2, 3, 0}};
-	const auto markers = BuildChangeMarkers(staged, unstaged, 4);
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, unstaged, 4);
 
 	CHECK(markers.Deletions == std::vector<DeletionAnchor>{{3, false}});
 }
@@ -127,7 +127,7 @@ TEST_CASE("Two deletions on one boundary leave one unstaged anchor")
 TEST_CASE("Deletions at the start and at the end keep their boundaries")
 {
 	const std::vector<LineHunk> unstaged{{0, 2, 0, 0}, {5, 1, 3, 0}};
-	const auto markers = BuildChangeMarkers({}, unstaged, 4);
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers({}, unstaged, 4);
 
 	CHECK(markers.Deletions == std::vector<DeletionAnchor>{{0, false}, {3, false}});
 }
@@ -135,7 +135,7 @@ TEST_CASE("Deletions at the start and at the end keep their boundaries")
 TEST_CASE("A newly staged file is staged additions throughout")
 {
 	const std::vector<LineHunk> staged{{0, 0, 0, 3}};
-	const auto markers = BuildChangeMarkers(staged, {}, 4);
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, {}, 4);
 
 	CHECK(markers.Lines == std::vector<LineChange>{kStagedAdded, kStagedAdded, kStagedAdded, kNone});
 }
@@ -144,7 +144,7 @@ TEST_CASE("Hunks reaching past the buffer are clamped to it")
 {
 	const std::vector<LineHunk> staged{{0, 0, 0, 20}};
 	const std::vector<LineHunk> unstaged{{0, 0, 0, 10}};
-	const auto markers = BuildChangeMarkers(staged, unstaged, 3);
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, unstaged, 3);
 
 	CHECK(markers.Lines == std::vector<LineChange>{kAdded, kAdded, kAdded});
 }
@@ -152,8 +152,8 @@ TEST_CASE("Hunks reaching past the buffer are clamped to it")
 TEST_CASE("An unstaged modification keeps the index lines it replaced")
 {
 	const std::vector<LineHunk> unstaged{{1, 1, 1, 1}};
-	const Graphite::OldTexts old{.Head = "a\nb\nc\n", .Index = "a\nb\nc\n"};
-	const auto markers = BuildChangeMarkers({}, unstaged, 4, old);
+	const Graphite::OldTexts oldTexts{.Head = "a\nb\nc\n", .Index = "a\nb\nc\n"};
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers({}, unstaged, 4, oldTexts);
 
 	REQUIRE(markers.Hunks.size() == 1);
 	const Graphite::ChangeHunk& hunk = markers.Hunks.front();
@@ -171,8 +171,8 @@ TEST_CASE("An unstaged modification keeps the index lines it replaced")
 TEST_CASE("An added hunk has no old lines")
 {
 	const std::vector<LineHunk> unstaged{{1, 0, 1, 2}};
-	const Graphite::OldTexts old{.Head = "a\nb\n", .Index = "a\nb\n"};
-	const auto markers = BuildChangeMarkers({}, unstaged, 5, old);
+	const Graphite::OldTexts oldTexts{.Head = "a\nb\n", .Index = "a\nb\n"};
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers({}, unstaged, 5, oldTexts);
 
 	REQUIRE(markers.Hunks.size() == 1);
 	CHECK(markers.Hunks.front().Kind == Graphite::HunkKind::Added);
@@ -184,8 +184,8 @@ TEST_CASE("An added hunk has no old lines")
 TEST_CASE("A staged deletion keeps the HEAD lines it removed")
 {
 	const std::vector<LineHunk> staged{{1, 2, 1, 0}};
-	const Graphite::OldTexts old{.Head = "a\nx\ny\nb\n", .Index = "a\nb\n"};
-	const auto markers = BuildChangeMarkers(staged, {}, 3, old);
+	const Graphite::OldTexts oldTexts{.Head = "a\nx\ny\nb\n", .Index = "a\nb\n"};
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, {}, 3, oldTexts);
 
 	REQUIRE(markers.Hunks.size() == 1);
 	const Graphite::ChangeHunk& hunk = markers.Hunks.front();
@@ -207,8 +207,8 @@ TEST_CASE("Old lines are capped but their count is kept")
 	}
 
 	const std::vector<LineHunk> unstaged{{0, 20, 0, 0}};
-	const Graphite::OldTexts old{.Head = index, .Index = index};
-	const auto markers = BuildChangeMarkers({}, unstaged, 1, old);
+	const Graphite::OldTexts oldTexts{.Head = index, .Index = index};
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers({}, unstaged, 1, oldTexts);
 
 	REQUIRE(markers.Hunks.size() == 1);
 	CHECK(markers.Hunks.front().OldCount == 20);
@@ -221,8 +221,8 @@ TEST_CASE("A staged hunk is found at the buffer lines it moved to")
 {
 	const std::vector<LineHunk> staged{{1, 1, 1, 1}};
 	const std::vector<LineHunk> unstaged{{0, 0, 0, 2}};
-	const Graphite::OldTexts old{.Head = "a\nb\nc\n", .Index = "a\nB\nc\n"};
-	const auto markers = BuildChangeMarkers(staged, unstaged, 6, old);
+	const Graphite::OldTexts oldTexts{.Head = "a\nb\nc\n", .Index = "a\nB\nc\n"};
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, unstaged, 6, oldTexts);
 
 	const Graphite::ChangeHunk* moved = Graphite::FindLineHunk(markers, 3);
 	REQUIRE(moved != nullptr);
@@ -240,8 +240,8 @@ TEST_CASE("A staged hunk hidden entirely by an unstaged one is not listed")
 {
 	const std::vector<LineHunk> staged{{2, 1, 2, 1}};
 	const std::vector<LineHunk> unstaged{{2, 1, 2, 1}};
-	const Graphite::OldTexts old{.Head = "a\nb\nc\nd\n", .Index = "a\nb\nC\nd\n"};
-	const auto markers = BuildChangeMarkers(staged, unstaged, 5, old);
+	const Graphite::OldTexts oldTexts{.Head = "a\nb\nc\nd\n", .Index = "a\nb\nC\nd\n"};
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, unstaged, 5, oldTexts);
 
 	REQUIRE(markers.Hunks.size() == 1);
 	CHECK_FALSE(markers.Hunks.front().Staged);
@@ -251,8 +251,8 @@ TEST_CASE("A staged hunk hidden entirely by an unstaged one is not listed")
 TEST_CASE("An old last line without a newline is kept")
 {
 	const std::vector<LineHunk> unstaged{{1, 1, 1, 1}};
-	const Graphite::OldTexts old{.Head = "a\nb", .Index = "a\nb"};
-	const auto markers = BuildChangeMarkers({}, unstaged, 2, old);
+	const Graphite::OldTexts oldTexts{.Head = "a\nb", .Index = "a\nb"};
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers({}, unstaged, 2, oldTexts);
 
 	REQUIRE(markers.Hunks.size() == 1);
 	CHECK(markers.Hunks.front().OldLines == std::vector<std::string>{"b"});
@@ -262,8 +262,8 @@ TEST_CASE("A staged hunk split by an unstaged insertion counts only its own line
 {
 	const std::vector<LineHunk> staged{{1, 2, 1, 2}};
 	const std::vector<LineHunk> unstaged{{2, 0, 2, 3}};
-	const Graphite::OldTexts old{.Head = "a\nb\nc\nd\n", .Index = "a\nB\nC\nd\n"};
-	const auto markers = BuildChangeMarkers(staged, unstaged, 8, old);
+	const Graphite::OldTexts oldTexts{.Head = "a\nb\nc\nd\n", .Index = "a\nB\nC\nd\n"};
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, unstaged, 8, oldTexts);
 
 	const Graphite::ChangeHunk* hunk = Graphite::FindLineHunk(markers, 1);
 	REQUIRE(hunk != nullptr);
@@ -277,8 +277,8 @@ TEST_CASE("A staged hunk whose first line was rewritten since is not intact")
 {
 	const std::vector<LineHunk> staged{{1, 2, 1, 2}};
 	const std::vector<LineHunk> unstaged{{1, 1, 1, 1}};
-	const Graphite::OldTexts old{.Head = "a\nb\nc\nd\n", .Index = "a\nB\nC\nd\n"};
-	const auto markers = BuildChangeMarkers(staged, unstaged, 5, old);
+	const Graphite::OldTexts oldTexts{.Head = "a\nb\nc\nd\n", .Index = "a\nB\nC\nd\n"};
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, unstaged, 5, oldTexts);
 
 	const Graphite::ChangeHunk* hunk = Graphite::FindLineHunk(markers, 2);
 	REQUIRE(hunk != nullptr);
@@ -290,8 +290,8 @@ TEST_CASE("A staged hunk whose first line was rewritten since is not intact")
 TEST_CASE("An unstaged hunk is intact")
 {
 	const std::vector<LineHunk> unstaged{{1, 1, 1, 2}};
-	const Graphite::OldTexts old{.Head = "a\nb\n", .Index = "a\nb\n"};
-	const auto markers = BuildChangeMarkers({}, unstaged, 4, old);
+	const Graphite::OldTexts oldTexts{.Head = "a\nb\n", .Index = "a\nb\n"};
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers({}, unstaged, 4, oldTexts);
 
 	REQUIRE(markers.Hunks.size() == 1);
 	CHECK(markers.Hunks.front().MarkedCount == 2);
@@ -302,8 +302,8 @@ TEST_CASE("Of two deletions on one boundary the unstaged one is found")
 {
 	const std::vector<LineHunk> staged{{3, 1, 3, 0}};
 	const std::vector<LineHunk> unstaged{{3, 2, 3, 0}};
-	const Graphite::OldTexts old{.Head = "a\nb\nc\nh\nd\n", .Index = "a\nb\nc\nd\ne\n"};
-	const auto markers = BuildChangeMarkers(staged, unstaged, 4, old);
+	const Graphite::OldTexts oldTexts{.Head = "a\nb\nc\nh\nd\n", .Index = "a\nb\nc\nd\ne\n"};
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers(staged, unstaged, 4, oldTexts);
 
 	const Graphite::ChangeHunk* hunk = Graphite::FindDeletionHunk(markers, 3);
 	REQUIRE(hunk != nullptr);
@@ -314,8 +314,8 @@ TEST_CASE("Of two deletions on one boundary the unstaged one is found")
 TEST_CASE("A deletion at the end of the file is found past the last line")
 {
 	const std::vector<LineHunk> unstaged{{2, 1, 2, 0}};
-	const Graphite::OldTexts old{.Head = "a\nb\nc\n", .Index = "a\nb\nc\n"};
-	const auto markers = BuildChangeMarkers({}, unstaged, 3, old);
+	const Graphite::OldTexts oldTexts{.Head = "a\nb\nc\n", .Index = "a\nb\nc\n"};
+	const Graphite::ChangeMarkers markers = BuildChangeMarkers({}, unstaged, 3, oldTexts);
 
 	const Graphite::ChangeHunk* hunk = Graphite::FindDeletionHunk(markers, 2);
 	REQUIRE(hunk != nullptr);

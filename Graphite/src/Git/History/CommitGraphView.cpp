@@ -9,6 +9,31 @@
 
 namespace Graphite {
 
+	namespace {
+
+		constexpr float kConnectorThickness = 1.5f;
+
+		ImVec2 NodeCentre(ImVec2 origin, const GraphMetrics& metrics, std::size_t row, std::size_t lane)
+		{
+			return ImVec2{origin.x + LaneCentreX(metrics, lane), origin.y + RowCentreY(metrics, row)};
+		}
+
+		std::optional<std::size_t> DisplayRowOfCommit(const std::vector<std::size_t>& rowOfCommit, std::size_t commit)
+		{
+			if (commit >= rowOfCommit.size())
+			{
+				return std::nullopt;
+			}
+
+			return rowOfCommit[commit];
+		}
+
+		bool IsRowDrawn(std::size_t row, int firstRow, int lastRow)
+		{
+			return static_cast<int>(row) >= firstRow && static_cast<int>(row) <= lastRow;
+		}
+	}
+
 	void CommitGraphView::Render(const Core::CommitGraph& graph, const GitPalette& palette,
 								 const GraphMetrics& metrics, const std::vector<std::size_t>& rowOfCommit,
 								 int firstRow, int lastRow, ImVec2 origin)
@@ -18,79 +43,59 @@ namespace Graphite {
 			return;
 		}
 
-		ImDrawList* draw = ImGui::GetWindowDrawList();
-
-		const auto centre = [&](std::size_t row, std::size_t lane) {
-			return ImVec2{origin.x + LaneCentreX(metrics, lane), origin.y + RowCentreY(metrics, row)};
-		};
-
-		// A commit's display row, or nothing when the layout and the mapping disagree
-		// about how many commits there are — which means the caller built one from a page
-		// and the other from a different one.
-		const auto displayRow = [&rowOfCommit](std::size_t commit) -> std::optional<std::size_t> {
-			if (commit >= rowOfCommit.size())
-			{
-				return std::nullopt;
-			}
-
-			return rowOfCommit[commit];
-		};
+		ImDrawList* drawList = ImGui::GetWindowDrawList();
 
 		for (const Core::GraphEdge& edge : graph.Edges)
 		{
-			const std::optional<std::size_t> fromRow = displayRow(edge.FromRow);
-			const std::optional<std::size_t> toRow = displayRow(edge.ToRow);
+			const std::optional<std::size_t> fromRow = DisplayRowOfCommit(rowOfCommit, edge.FromRow);
+			const std::optional<std::size_t> toRow = DisplayRowOfCommit(rowOfCommit, edge.ToRow);
 
 			if (!fromRow.has_value() || !toRow.has_value())
 			{
 				continue;
 			}
 
-			// An edge wholly above or below the drawn range contributes nothing.
-			if (static_cast<int>(*toRow) < firstRow || static_cast<int>(*fromRow) > lastRow)
+			const bool edgeIsAboveDrawnRows = static_cast<int>(*toRow) < firstRow;
+			const bool edgeIsBelowDrawnRows = static_cast<int>(*fromRow) > lastRow;
+
+			if (edgeIsAboveDrawnRows || edgeIsBelowDrawnRows)
 			{
 				continue;
 			}
 
-			const ImVec2 from = centre(*fromRow, edge.FromLane);
-			const ImVec2 to = centre(*toRow, edge.ToLane);
+			const ImVec2 from = NodeCentre(origin, metrics, *fromRow, edge.FromLane);
+			const ImVec2 to = NodeCentre(origin, metrics, *toRow, edge.ToLane);
 
-			// A connector belongs to the branch that occupies the outer lane: for a fork
-			// that is the side branch's tip, for a merge it is the branch reaching back to
-			// its base, and for a straight edge the two lanes agree anyway.
 			const ImU32 colour = palette.LaneOf(std::max(edge.FromLane, edge.ToLane));
 
 			if (ShapeOf(edge) == EdgeShape::Straight)
 			{
-				draw->AddLine(from, to, colour, Core::Scaled(1.5f));
+				drawList->AddLine(from, to, colour, Core::Scaled(kConnectorThickness));
 				continue;
 			}
 
-			// The sideways move happens on the source row, not on the destination row.
-			// A lane is released at the child's row, so an unrelated branch may occupy the
-			// source lane from the very next row down — a line that ran down the source
-			// lane first would be drawn straight through it. GraphLayout.h documents this.
+			// WARNING: The sideways move happens on the source row, not the destination row. A lane is released at the child's row, so an unrelated branch may take the source lane from the next row down, and a line running down it first would cross that branch.
 			const ImVec2 corner = ImVec2{to.x, from.y};
-			draw->AddLine(from, corner, colour, Core::Scaled(1.5f));
-			draw->AddLine(corner, to, colour, Core::Scaled(1.5f));
+			drawList->AddLine(from, corner, colour, Core::Scaled(kConnectorThickness));
+			drawList->AddLine(corner, to, colour, Core::Scaled(kConnectorThickness));
 		}
 
 		for (const Core::GraphNode& node : graph.Nodes)
 		{
-			const std::optional<std::size_t> row = displayRow(node.Row);
+			const std::optional<std::size_t> row = DisplayRowOfCommit(rowOfCommit, node.Row);
 
 			if (!row.has_value())
 			{
 				continue;
 			}
 
-			if (static_cast<int>(*row) < firstRow || static_cast<int>(*row) > lastRow)
+			if (!IsRowDrawn(*row, firstRow, lastRow))
 			{
 				continue;
 			}
 
-			draw->AddCircleFilled(centre(*row, node.Lane), metrics.DotRadius,
-								  palette.LaneOf(node.Lane));
+			drawList->AddCircleFilled(NodeCentre(origin, metrics, *row, node.Lane), metrics.DotRadius,
+									  palette.LaneOf(node.Lane));
 		}
 	}
 }

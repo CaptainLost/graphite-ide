@@ -1,55 +1,37 @@
 #include "Git/Changes/LineSpans.h"
 
+#include "Core/Text/Encoding.h"
+
 #include <algorithm>
 
 namespace Graphite {
 
-	namespace {
-
-		// A UTF-8 continuation byte, 10xxxxxx: never the first byte of a character.
-		bool IsContinuation(char byte)
-		{
-			return (static_cast<unsigned char>(byte) & 0xC0u) == 0x80u;
-		}
-	}
-
 	ChangedSpan RemovedSpan(std::string_view oldLine, std::string_view newLine)
 	{
-		const std::size_t shared = std::min(oldLine.size(), newLine.size());
+		const std::size_t sharedLength = std::min(oldLine.size(), newLine.size());
 
-		std::size_t prefix = 0;
+		std::size_t prefixLength = 0;
 
-		while (prefix < shared && oldLine[prefix] == newLine[prefix])
+		while (prefixLength < sharedLength && oldLine[prefixLength] == newLine[prefixLength])
 		{
-			++prefix;
+			++prefixLength;
 		}
 
-		// Back to the start of the character the first difference falls in: two characters that
-		// share a lead byte differ only in a later one, and a span starting there would cut the
-		// old character in half.
-		while (prefix > 0 && prefix < oldLine.size() && IsContinuation(oldLine[prefix]))
+		prefixLength = Core::CharacterBoundaryAtOrBefore(oldLine, prefixLength);
+
+		const std::size_t suffixRoom = sharedLength - std::min(prefixLength, sharedLength);
+		std::size_t suffixLength = 0;
+
+		while (suffixLength < suffixRoom &&
+			   oldLine[oldLine.size() - 1 - suffixLength] == newLine[newLine.size() - 1 - suffixLength])
 		{
-			--prefix;
+			++suffixLength;
 		}
 
-		// The suffix may not reach into the prefix on either side, or a repeated character would
-		// be counted as shared twice and the span would come out negative.
-		const std::size_t room = shared - std::min(prefix, shared);
-		std::size_t suffix = 0;
+		std::size_t removedEnd = oldLine.size() - suffixLength;
 
-		while (suffix < room && oldLine[oldLine.size() - 1 - suffix] == newLine[newLine.size() - 1 - suffix])
-		{
-			++suffix;
-		}
+		removedEnd = Core::CharacterBoundaryAtOrAfter(oldLine, removedEnd);
 
-		std::size_t to = oldLine.size() - suffix;
-
-		// Forward to the end of the character the last difference falls in, for the same reason.
-		while (to < oldLine.size() && IsContinuation(oldLine[to]))
-		{
-			++to;
-		}
-
-		return {prefix, std::max(prefix, to)};
+		return {prefixLength, std::max(prefixLength, removedEnd)};
 	}
 }

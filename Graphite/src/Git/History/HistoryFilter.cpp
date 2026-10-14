@@ -1,10 +1,10 @@
 #include "Git/History/HistoryFilter.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/FileSystem/FileSystem.h"
 
-#include <filesystem>
-#include <utility>
 #include <string>
+#include <utility>
 
 namespace Graphite {
 
@@ -18,9 +18,13 @@ namespace Graphite {
 		request.Stash = stash;
 		request.Filter.Text = filter.Text;
 
-		if (const std::string path = Core::Trimmed(filter.Path); !path.empty())
+		const std::string trimmedPath = Core::Trimmed(filter.Path);
+
+		// WARNING: A path of only whitespace must leave File unset. Narrowing by file diffs every
+		// commit the walk passes, which makes the plain branch log the most expensive query there is.
+		if (!trimmedPath.empty())
 		{
-			request.File = std::filesystem::path{path};
+			request.File = Core::FromUtf8(trimmedPath);
 		}
 
 		if (maxCount.has_value())
@@ -52,10 +56,10 @@ namespace Graphite {
 			return false;
 		}
 
-		// The frame the change was made in does not count: the frame loop sleeps when idle,
-		// so the step the keystroke's frame carries is the whole sleep before it, and
-		// counting it would settle the first letter typed at once.
-		if (!std::exchange(m_JustSet, false))
+		constexpr bool kChangeFlagCleared = false;
+		const bool changeWasMadeThisFrame = std::exchange(m_JustSet, kChangeFlagCleared);
+
+		if (!changeWasMadeThisFrame)
 		{
 			m_Since += seconds;
 		}
@@ -86,13 +90,13 @@ namespace Graphite {
 
 	bool MatchesRefFilter(std::string_view name, std::string_view text)
 	{
-		const std::string wanted = Core::Lowered(Core::Trimmed(text));
+		const std::string loweredWanted = Core::Lowered(Core::Trimmed(text));
 
-		if (wanted.empty())
+		if (loweredWanted.empty())
 		{
 			return true;
 		}
 
-		return Core::Lowered(name).find(wanted) != std::string::npos;
+		return Core::LoweredTextContains(name, loweredWanted);
 	}
 }

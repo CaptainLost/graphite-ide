@@ -15,7 +15,6 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
-#include <algorithm>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -23,9 +22,8 @@
 
 namespace {
 
-	// A short, stable word per target, used in both the identity and the title. Stable
-	// matters more than pretty: the identity is what imgui.ini keys a window's dock
-	// position by, so changing these strings moves every open tab back to the default.
+	// WARNING: These words are part of the window identity that imgui.ini keys a dock position
+	// by, so changing one moves every open tab of that kind back to the default.
 	const char* NameOfTarget(Core::DiffTarget target)
 	{
 		switch (target)
@@ -47,8 +45,7 @@ namespace {
 		return "diff";
 	}
 
-	// The other half of the staged/unstaged pair, for the two targets that have one.
-	std::optional<Core::DiffTarget> OtherSide(Core::DiffTarget target)
+	std::optional<Core::DiffTarget> OtherSideOfStagedPair(Core::DiffTarget target)
 	{
 		if (target == Core::DiffTarget::WorkTreeToIndex)
 		{
@@ -63,8 +60,6 @@ namespace {
 		return std::nullopt;
 	}
 
-	// Whether the side a tab shows holds any change for a file, read off the two halves git
-	// tracks separately.
 	bool SideHasChange(const Core::FileStatus& file, Core::DiffTarget target)
 	{
 		const Core::StatusFlags flags =
@@ -73,8 +68,8 @@ namespace {
 		return flags != Core::StatusFlags::None;
 	}
 
-	// How a side is named in a sentence about it being empty. Not NameOfTarget: that word
-	// is fixed by the identity it also spells, and "no working changes" is not English.
+	// WARNING: This is not NameOfTarget, whose words are fixed by the identity they also spell
+	// and read wrongly in a sentence ("no working changes").
 	const char* WordForEmptySide(Core::DiffTarget target)
 	{
 		switch (target)
@@ -87,6 +82,25 @@ namespace {
 			return "";
 		}
 	}
+
+	const Core::FileStatus* FindFileStatus(const Core::WorkingTreeStatus& status,
+										   const std::filesystem::path& path)
+	{
+		for (const Core::FileStatus& file : status.Entries)
+		{
+			if (file.Path == path)
+			{
+				return &file;
+			}
+		}
+
+		return nullptr;
+	}
+
+	bool IsWorkingTreeDiff(const Graphite::OpenDiff& diff)
+	{
+		return !diff.Commit.has_value();
+	}
 }
 
 namespace Graphite {
@@ -95,93 +109,63 @@ namespace Graphite {
 	{
 		if (diff.Commit.has_value())
 		{
-			// Unchanged from before OpenDiff grew a Target and an optional Commit: this is
-			// exactly what a commit's tab hashed to before, byte for byte. imgui.ini keys an
-			// already-docked window by this string, so keeping it verbatim is what keeps that
-			// window from jumping back to its default position the next time this runs.
-			//
-			// Commit first, path second, no separator: Core::Oid::ToHex() is always forty
-			// characters, so a fixed-length prefix cannot be split two ways, and no separator
-			// means no character a path might itself contain to collide on.
-			//
-			// One gap this does not close: ImGui restarts its window-id hash at every "###" in
-			// a name, so two paths that both contain "###" and agree on everything after the
-			// last one would still collide once this identity is embedded in DiffWindowName.
-			// "#" is legal in a Windows filename. DocumentWindows carries the identical
-			// exposure through its own window name (see WindowName in DocumentWindows.cpp), so
-			// this is a property of the scheme both share rather than something particular to
-			// diffs.
+			// WARNING: A commit tab's identity is the full hex id followed by the path, with no
+			// separator, exactly as it always was: imgui.ini keys an already-docked window by it.
+			// The id is always forty characters, so the concatenation cannot be split two ways.
+			// Two paths that both contain "###" and agree after the last one still collide, as
+			// they do in DocumentWindows, because ImGui restarts its id hash at every "###".
 			return diff.Commit->ToHex() + Core::ToUtf8(diff.Path);
 		}
 
-		// A working-tree tab is new, so nothing depends on its identity's shape yet: no window
-		// has ever been docked under one, and no imgui.ini entry exists to disturb. "worktree"
-		// can never collide with the commit case above, whose identity always begins with a
-		// forty-character hex id, and the target is included because the staged and unstaged
-		// views of one file are two things a reader compares against each other, so they must
-		// be two tabs.
-		return std::string{"worktree##"} + NameOfTarget(diff.Target) + "##" + Core::ToUtf8(diff.Path);
+		return std::string{"worktree##"} + NameOfTarget(diff.Target) + "##" +
+			   Core::ToUtf8(diff.Path);
 	}
 
 	std::string DiffWindowTitle(const OpenDiff& diff)
 	{
-		// The file's name and, for a commit's tab, the commit's short id; for a working-tree
-		// tab, the word for what it compares instead — there is no commit id to show. Neither
-		// carries the directory, which would push the identifying part off the end of a narrow
-		// tab strip, and the same file's diff in two commits is told apart by the id, not by
-		// the path.
-		const std::string name = Core::ToUtf8(diff.Path.filename());
+		const std::string fileName = Core::ToUtf8(diff.Path.filename());
 
 		if (!diff.Commit.has_value())
 		{
-			return name + " (" + NameOfTarget(diff.Target) + ")";
+			return fileName + " (" + NameOfTarget(diff.Target) + ")";
 		}
 
-		return name + " (" + diff.Commit->ShortHex() + ")";
+		return fileName + " (" + diff.Commit->ShortHex() + ")";
 	}
 
 	std::string DiffWindowName(const OpenDiff& diff)
 	{
-		// Matches WindowName in DocumentWindows.cpp: the icon and title precede ###, the
-		// identity follows it, so renaming the tab moves no window, dock position or
-		// imgui.ini entry.
-		return std::string{Core::IconForExtension(Core::ToUtf8(diff.Path.extension()))} +
-			   "  " + DiffWindowTitle(diff) + "###" + DiffWindowIdentity(diff);
+		return std::string{Core::IconForExtension(Core::ToUtf8(diff.Path.extension()))} + "  " +
+			   DiffWindowTitle(diff) + "###" + DiffWindowIdentity(diff);
 	}
 
 	std::optional<Core::DiffTarget> TargetHolding(const Core::WorkingTreeStatus& status,
 												  const std::filesystem::path& path,
 												  Core::DiffTarget current)
 	{
-		const std::optional<Core::DiffTarget> other = OtherSide(current);
+		const std::optional<Core::DiffTarget> other = OtherSideOfStagedPair(current);
 
 		if (!other.has_value())
 		{
 			return std::nullopt;
 		}
 
-		const auto entry = std::find_if(status.Entries.begin(), status.Entries.end(),
-										[&path](const Core::FileStatus& file) {
-											return file.Path == path;
-										});
+		const Core::FileStatus* entry = FindFileStatus(status, path);
+		const bool fileIsGoneFromStatus = entry == nullptr;
 
-		// Gone from the status entirely - committed, discarded, or never changed. There is
-		// no side to move to, so the tab keeps the one it has and reports it empty.
-		if (entry == status.Entries.end())
+		if (fileIsGoneFromStatus)
 		{
 			return std::nullopt;
 		}
 
-		// A conflicted entry is not two ordinary halves - see ChangesRows.h - so its flags
-		// are no basis for deciding which half a tab belongs to.
 		if (entry->IsConflicted)
 		{
 			return std::nullopt;
 		}
 
-		// Staged one way and edited again since puts a file in both halves at once. Only a
-		// side that has actually emptied sends its tab anywhere.
-		if (SideHasChange(*entry, current))
+		const bool currentSideStillHoldsChange = SideHasChange(*entry, current);
+
+		if (currentSideStillHoldsChange)
 		{
 			return std::nullopt;
 		}
@@ -201,8 +185,6 @@ namespace Graphite {
 			return "That file is not in this diff.";
 		}
 
-		// The file's name and not its path, for the same reason the tab carries only the
-		// name: the sentence is read next to a tab that already says which file this is.
 		return Core::ToUtf8(diff.Path.filename()) + " has no " + WordForEmptySide(diff.Target) +
 			   "changes.";
 	}
@@ -213,20 +195,28 @@ namespace Graphite {
 		{
 			if (entry.Diff == diff)
 			{
-				// Already open: raise it rather than adding a second copy. Fresh stays
-				// false, so Render does not re-dock a tab the user may have moved.
 				entry.Focus = true;
 				return;
 			}
 		}
 
-		m_Open.push_back(Entry{diff, DiffView{}, true, true});
+		constexpr bool fresh = true;
+		constexpr bool focus = true;
+
+		m_Open.push_back(Entry{diff, DiffView{}, fresh, focus});
 	}
 
 	bool DiffWindows::IsOpen(const OpenDiff& diff) const
 	{
-		return std::any_of(m_Open.begin(), m_Open.end(),
-						   [&diff](const Entry& entry) { return entry.Diff == diff; });
+		for (const Entry& entry : m_Open)
+		{
+			if (entry.Diff == diff)
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	void DiffWindows::CloseAll()
@@ -236,7 +226,7 @@ namespace Graphite {
 
 	void DiffWindows::CloseWorkingTree()
 	{
-		std::erase_if(m_Open, [](const Entry& entry) { return !entry.Diff.Commit.has_value(); });
+		std::erase_if(m_Open, [](const Entry& entry) { return IsWorkingTreeDiff(entry.Diff); });
 	}
 
 	std::vector<DiffTabState> DiffWindows::CaptureState() const
@@ -254,8 +244,16 @@ namespace Graphite {
 
 	void DiffWindows::RestoreState(const std::vector<DiffTabState>& diffs)
 	{
-		bool workingTreeOpen = std::any_of(m_Open.begin(), m_Open.end(),
-										   [](const Entry& entry) { return !entry.Diff.Commit.has_value(); });
+		bool workingTreeOpen = false;
+
+		for (const Entry& entry : m_Open)
+		{
+			if (IsWorkingTreeDiff(entry.Diff))
+			{
+				workingTreeOpen = true;
+				break;
+			}
+		}
 
 		for (const DiffTabState& stored : diffs)
 		{
@@ -266,9 +264,7 @@ namespace Graphite {
 				continue;
 			}
 
-			// GitModel keeps one slot for the working-tree diff, so a second such tab would take
-			// turns with the first asking into it.
-			if (!diff.Commit.has_value())
+			if (IsWorkingTreeDiff(diff))
 			{
 				if (workingTreeOpen)
 				{
@@ -293,8 +289,9 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		// Joined onto the working directory and not the workspace root: Repository::Open
-		// searches upward for a .git, so only the former is what a diff's paths are relative to.
+		// WARNING: Paths are joined onto the working directory and not the workspace root:
+		// Repository::Open searches upward for a .git, so only the former is what a diff's
+		// paths are relative to.
 		return [this, &model](const std::filesystem::path& relative) {
 			OpenFile(model.GetWorkingDirectory() / relative);
 		};
@@ -324,10 +321,8 @@ namespace Graphite {
 
 		entry.Diff.Target = *target;
 
-		// A new target is a new identity, so ImGui has never seen this window and has no
-		// dock position for it. Docking it again is what keeps a followed tab in the centre
-		// node instead of floating loose, and raising it is what keeps the reader looking at
-		// the thing they were already looking at.
+		// WARNING: A new target is a new identity ImGui has no dock position for, so the tab is
+		// docked again and raised, or it would float loose and lose the reader's place.
 		entry.Fresh = true;
 		entry.Focus = true;
 	}
@@ -336,13 +331,17 @@ namespace Graphite {
 							 ImU32 selection, bool wordWrap, unsigned int centreNode,
 							 Core::TabCloseRequests& closeRequests)
 	{
-		for (std::size_t index = 0; index < m_Open.size();)
-		{
-			Entry& entry = m_Open[index];
+		constexpr unsigned int noDockNode = 0;
+		constexpr bool noFocusRequested = false;
+		constexpr bool notRestored = false;
 
-			// Asked for whether or not the window is in front - a background tab's Begin returns
-			// false and asks for nothing - so a restored tab for a commit that is gone closes
-			// rather than waiting to be looked at.
+		for (std::size_t tabIndex = 0; tabIndex < m_Open.size();)
+		{
+			Entry& entry = m_Open[tabIndex];
+
+			// WARNING: This is asked whether or not the window is in front, since a background
+			// tab's Begin returns false and asks for nothing. Otherwise a restored tab for a
+			// commit that is gone would never close.
 			if (entry.AwaitingFirstAnswer)
 			{
 				const Core::Oid& commit = *entry.Diff.Commit;
@@ -353,10 +352,8 @@ namespace Graphite {
 					APP_INFO("Not reopening the diff of '{}' in {}: that commit could not be read",
 							 Core::ToUtf8(entry.Diff.Path), commit.ShortHex());
 
-					// Forgotten so the failure does not stay behind, suppressing a later ask for
-					// the same commit from the history list.
 					model.ForgetFailedDiffFor(commit);
-					m_Open.erase(m_Open.begin() + static_cast<std::ptrdiff_t>(index));
+					m_Open.erase(m_Open.begin() + static_cast<std::ptrdiff_t>(tabIndex));
 					continue;
 				}
 
@@ -366,93 +363,75 @@ namespace Graphite {
 				}
 			}
 
-			// Before the name is taken, because the name is the window: a tab that follows
-			// its file to the other side is, to ImGui, a different window from this frame
-			// on, and everything below has to be talking about the new one.
+			// WARNING: Following the file comes before the name is taken, because the name is the
+			// window: a tab that moves to the other side is a different window from this frame on.
 			FollowFile(entry, model);
 
-			const std::string name = DiffWindowName(entry.Diff);
+			const std::string windowName = DiffWindowName(entry.Diff);
 
-			// Dock only on the frame this identity is new, exactly as DocumentWindows does:
-			// docking every frame would fight a user who dragged the tab elsewhere.
-			//
-			// A tab reopened from the last launch goes back to where it was instead, which
-			// imgui.ini already carries - unless that place is gone, in which case it is new
-			// as far as anyone can tell and goes where a new one would.
-			bool restored = false;
+			bool restored = notRestored;
 
 			if (entry.Fresh)
 			{
 				entry.Fresh = false;
 
-				restored = std::exchange(entry.Restored, false);
+				restored = std::exchange(entry.Restored, notRestored);
 
-				if (centreNode != 0 && (!restored || !HasRememberedPlace(name)))
+				if (centreNode != noDockNode && (!restored || !HasRememberedPlace(windowName)))
 				{
-					ImGui::DockBuilderDockWindow(name.c_str(), centreNode);
+					ImGui::DockBuilderDockWindow(windowName.c_str(), centreNode);
 				}
 			}
 
-			// The same problem Core::OpenItem::PendingFocus solves for documents: activating
-			// a window moves nothing on screen by itself, so opening a diff that already had
-			// a tab would otherwise do nothing visible. Taken and cleared in one step, so a
-			// focus asked for once is given once.
-			if (std::exchange(entry.Focus, false))
+			if (std::exchange(entry.Focus, noFocusRequested))
 			{
 				ImGui::SetNextWindowFocus();
 			}
 
-			bool open = true;
+			bool stillOpen = true;
 
-			// Restored windows must not take focus on the frame they appear: ImGui focuses every
-			// window then, focusing a docked window selects its tab, and so the last one drawn
-			// would take the front of its node from whatever imgui.ini remembers there.
+			// WARNING: A restored window must not take focus on the frame it appears: ImGui
+			// focuses every window then, focusing a docked window selects its tab, and the last
+			// one drawn would take the front of its node from what imgui.ini remembers.
 			const ImGuiWindowFlags windowFlags =
 				restored ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
 
-			// Begin() returning false still needs its End() - that is the Begin/End rule,
-			// unlike BeginTable, which must not be ended when it returns false.
-			const bool visible = ImGui::Begin(name.c_str(), &open, windowFlags);
+			// WARNING: Begin() returning false still needs its End(), unlike BeginTable.
+			const bool windowVisible = ImGui::Begin(windowName.c_str(), &stillOpen, windowFlags);
 
-			// A tab's menu asked for this one last frame: the same as its close button.
-			if (closeRequests.Take(name))
+			if (closeRequests.Take(windowName))
 			{
-				open = false;
+				stillOpen = false;
 			}
 
 			Core::DrawTabContextMenu(closeRequests);
 
-			if (visible)
+			if (windowVisible)
 			{
-				Core::Ref<const Core::Diff> diff;
+				Core::Ref<const Core::Diff> loadedDiff;
 
 				if (entry.Diff.Commit.has_value())
 				{
 					model.RequestDiffFor(*entry.Diff.Commit);
-					diff = model.GetDiffFor(*entry.Diff.Commit);
+					loadedDiff = model.GetDiffFor(*entry.Diff.Commit);
 				}
 				else
 				{
-					// Not cached by key the way a commit's diff is: this one changes on every
-					// keystroke, so the model holds exactly one and replaces it.
+					// WARNING: The working-tree diff is not cached by key like a commit's: it
+					// changes on every keystroke, so the model holds exactly one and replaces it.
 					model.RequestWorkingTreeDiff({.Target = entry.Diff.Target, .File = entry.Diff.Path});
-					diff = model.GetWorkingTreeDiff();
+					loadedDiff = model.GetWorkingTreeDiff();
 				}
 
-				if (!diff && !entry.Diff.Commit.has_value() && model.IsWorkingTreeDiffLoading())
+				if (!loadedDiff && !entry.Diff.Commit.has_value() && model.IsWorkingTreeDiffLoading())
 				{
-					// First opened, or following its file to the other side: the answer is on its
-					// way, which is not the same as a diff that was lost.
 					Core::EmptyState("Loading…");
 				}
-				else if (!diff)
+				else if (!loadedDiff)
 				{
-					// A tab that vanished because a cache evicted something would be worse
-					// than one that says the diff is no longer loaded; re-requesting it is
-					// one call.
-					const char* reload = entry.Diff.Commit.has_value() ? "Reload" : nullptr;
+					const char* reloadLabel = entry.Diff.Commit.has_value() ? "Reload" : nullptr;
 
-					if (Core::EmptyState("This diff is no longer loaded.", reload))
+					if (Core::EmptyState("This diff is no longer loaded.", reloadLabel))
 					{
 						model.RequestDiffFor(*entry.Diff.Commit);
 					}
@@ -460,7 +439,7 @@ namespace Graphite {
 				else
 				{
 					const std::optional<std::size_t> fileIndex =
-						IndexOfFile(*diff, entry.Diff.Path);
+						IndexOfFile(*loadedDiff, entry.Diff.Path);
 
 					if (!fileIndex.has_value())
 					{
@@ -468,21 +447,14 @@ namespace Graphite {
 					}
 					else
 					{
-						const Core::FileDiff& file = diff->Files[*fileIndex];
+						const Core::FileDiff& file = loadedDiff->Files[*fileIndex];
 
 						if (entry.Diff.Commit.has_value())
 						{
-							// Every rule about which path keys the texts, when the tokens are
-							// still valid and when a failed entry is forgiven lives in Update,
-							// shared with the docked panel - the same steps written out twice
-							// were wrong the same way in both copies.
 							entry.Texts.Update(model, *entry.Diff.Commit, file);
 						}
 						else
 						{
-							// The working tree's own text, which the model fetched on the same job
-							// as the diff above - so the colouring and the whole-file view describe
-							// the same moment of a file the reader may still be typing in.
 							entry.Texts.UpdateFromWorkingTree(model, file);
 						}
 
@@ -498,18 +470,15 @@ namespace Graphite {
 
 			ImGui::End();
 
-			if (!open)
+			if (!stillOpen)
 			{
-				// A closed tab forgets its own failed texts entry, mirroring the model's
-				// ForgetFailedDiffFor on a collapsed commit row - ForgetFailure is a no-op for
-				// anything but a failed entry, so this costs nothing when the tab closed clean.
 				entry.Texts.ForgetFailure(model);
 
-				m_Open.erase(m_Open.begin() + static_cast<std::ptrdiff_t>(index));
+				m_Open.erase(m_Open.begin() + static_cast<std::ptrdiff_t>(tabIndex));
 				continue;
 			}
 
-			++index;
+			++tabIndex;
 		}
 	}
 }

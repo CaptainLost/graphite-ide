@@ -1,6 +1,3 @@
-// The stash section of the refs column. Split out of GitView.cpp for the same reason the
-// dialogs are: a part of the panel with its own state and its own drawing.
-
 #include "Git/GitView.h"
 
 #include "Core/Base/Base.h"
@@ -20,12 +17,11 @@ namespace Graphite {
 
 	namespace {
 
-		// FitToLine's text, dimmed when `dimmed`.
-		void FittedLine(const std::string& text, bool dimmed)
+		void FittedLine(const std::string& text, bool isDimmed)
 		{
 			const std::string shown = FitToLine(text);
 
-			if (dimmed)
+			if (isDimmed)
 			{
 				ImGui::TextDisabled("%s", shown.c_str());
 			}
@@ -35,14 +31,14 @@ namespace Graphite {
 			}
 		}
 
-		const Core::StashEntry* FindStash(const std::vector<Core::StashEntry>* stashes, const Core::Oid& id)
+		const Core::StashEntry* FindStash(const std::vector<Core::StashEntry>* stashes, const Core::Oid& stashId)
 		{
 			if (stashes == nullptr)
 			{
 				return nullptr;
 			}
 
-			const auto found = std::ranges::find(*stashes, id, &Core::StashEntry::Id);
+			const std::vector<Core::StashEntry>::const_iterator found = std::ranges::find(*stashes, stashId, &Core::StashEntry::Id);
 			return found == stashes->end() ? nullptr : &*found;
 		}
 	}
@@ -52,10 +48,11 @@ namespace Graphite {
 		const Core::Ref<const std::vector<Core::StashEntry>> stashes = m_Model.GetStashes();
 		const std::optional<Core::Error>& error = m_Model.GetStashesError();
 
-		// A stash popped or dropped - here or elsewhere - gives the history back to the
-		// branch, the way a deleted branch gives it back to HEAD. Only against a list that was
-		// read: one that failed says nothing about what is stashed.
-		if (m_SelectedStash.has_value() && stashes && FindStash(stashes.get(), *m_SelectedStash) == nullptr)
+		const bool stashListWasRead = static_cast<bool>(stashes);
+		const bool selectedStashIsGone =
+			m_SelectedStash.has_value() && stashListWasRead && FindStash(stashes.get(), *m_SelectedStash) == nullptr;
+
+		if (selectedStashIsGone)
 		{
 			DeselectStash();
 			RequestLog(std::nullopt);
@@ -66,8 +63,6 @@ namespace Graphite {
 			return;
 		}
 
-		// A list that could not be read says why rather than claiming there is nothing - and
-		// above an older list too, which may no longer be what is stashed.
 		if (error.has_value())
 		{
 			ImGui::TextDisabled("%s", error->Message.c_str());
@@ -83,20 +78,17 @@ namespace Graphite {
 			return;
 		}
 
-		// Once for the list rather than per row: it is a time zone lookup.
-		const std::chrono::minutes offset = LocalOffset();
+		const std::chrono::minutes localOffset = LocalOffset();
 
 		for (const Core::StashEntry& stash : *stashes)
 		{
-			// By id rather than by index, so a menu left open while a stash is pushed
-			// elsewhere still belongs to the stash it was opened on.
+			// WARNING: The id is the stash id, not the row index, so a menu left open while another stash is pushed stays on its own stash.
 			ImGui::PushID(stash.Id.ToHex().c_str());
 
-			const std::chrono::sys_seconds made{std::chrono::seconds{stash.SecondsSinceEpoch}};
-			const std::string when = std::format("{:%Y-%m-%d %H:%M}", made + offset);
+			const std::chrono::sys_seconds madeAt{std::chrono::seconds{stash.SecondsSinceEpoch}};
+			const std::string when = std::format("{:%Y-%m-%d %H:%M}", madeAt + localOffset);
 
-			// The label is laid over an id-only Selectable rather than passed as one: a stash
-			// message is free text, and a "##" in it would cut the label short.
+			// WARNING: The label is drawn over an id-only Selectable because a stash message is free text and a "##" in it would cut a Selectable label short.
 			const ImVec2 rowStart = ImGui::GetCursorPos();
 
 			if (ImGui::Selectable("##stash", m_SelectedStash == stash.Id, ImGuiSelectableFlags_AllowOverlap))
@@ -104,8 +96,6 @@ namespace Graphite {
 				SelectStash(stash.Id);
 			}
 
-			// The whole message as git recorded it, which the row cuts down to the reader's
-			// part of it - or leaves out, for a stash made without one.
 			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
 			{
 				ImGui::SetTooltip("%s\n%s", stash.Message.c_str(), when.c_str());
@@ -154,9 +144,6 @@ namespace Graphite {
 	{
 		m_SelectedStash = stash;
 
-		// Through RequestLog for the reason picking a branch goes through it: the filter in
-		// the boxes still applies. The commit list keeps whatever selection the new page
-		// still lists, as it does for any page.
 		RequestLog(std::nullopt);
 	}
 

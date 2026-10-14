@@ -56,9 +56,6 @@ TEST_CASE("A different file measures differently")
 
 TEST_CASE("The same path in a different commit measures differently")
 {
-	// The case a path-keyed reset misses: one DiffView serves every commit, so the path is
-	// unchanged while the lines are another commit's entirely. Keeping the width here is what
-	// leaves the reader scrolled into blank space.
 	const Core::FileDiff before = FileWith("a.cpp", {{Line(1, 1, "one"), Line(2, 2, "two")}});
 	const Core::FileDiff after = FileWith("a.cpp", {{Line(1, 1, "one")}});
 
@@ -67,8 +64,6 @@ TEST_CASE("The same path in a different commit measures differently")
 
 TEST_CASE("An edit at the bottom measures differently from one of the same shape at the top")
 {
-	// Equal in path, hunk count and line count — only where the lines sit in the file differs,
-	// which is what the last line's numbers are read for.
 	const Core::FileDiff top = FileWith("a.cpp", {{Line(1, 1, "one"), Line(2, 2, "two")}});
 	const Core::FileDiff bottom = FileWith("a.cpp", {{Line(90, 90, "one"), Line(91, 91, "two")}});
 
@@ -85,8 +80,6 @@ TEST_CASE("Splitting the same lines across two hunks measures differently")
 
 TEST_CASE("Switching to the whole file measures differently from the changes alone")
 {
-	// The rows are a different set even though the diff is the same, and the whole file is
-	// where the long lines a hunk never showed come from.
 	const Core::FileDiff file = Simple("a.cpp");
 
 	CHECK_FALSE(MeasurementOf(file, DiffScope::WholeFile) == MeasurementOf(file, DiffScope::Hunks));
@@ -102,7 +95,6 @@ TEST_CASE("A deleted file measures by the path that names it")
 	other.NewPath.clear();
 	other.Change = Core::FileChange::Deleted;
 
-	// Both have an empty new path; keying on that alone would call them the same file.
 	CHECK_FALSE(MeasurementOf(deleted, DiffScope::Hunks) == MeasurementOf(other, DiffScope::Hunks));
 	CHECK(MeasurementOf(deleted, DiffScope::Hunks).Path == "a.cpp");
 }

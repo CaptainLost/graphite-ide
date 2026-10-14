@@ -6,15 +6,21 @@
 
 namespace Graphite {
 
+	namespace {
+		constexpr std::size_t kGutterAddedSlot = 0;
+		constexpr std::size_t kGutterModifiedSlot = 1;
+		constexpr std::size_t kGutterRemovedSlot = 2;
+	}
+
 	void GitDecorationView::SetWorkingDirectory(const std::filesystem::path& workingDirectory)
 	{
 		m_WorkingDirectoryKey = Core::PathKey(workingDirectory);
 	}
 
+	// WARNING: Goes through PathKey as the index's own keys do: case-folded on Windows, either
+	// separator, and "D:\Repos2" is not inside "D:\Repos".
 	std::optional<std::filesystem::path> GitDecorationView::RelativeOf(const std::filesystem::path& absolute) const
 	{
-		// Through PathKey, as the index's own keys are: case-folded on Windows, either separator,
-		// and "D:\Repos2" is not inside "D:\Repos".
 		return Core::RelativeToKey(absolute, m_WorkingDirectoryKey);
 	}
 
@@ -25,7 +31,7 @@ namespace Graphite {
 			return GitDecoration::None;
 		}
 
-		const auto relative = RelativeOf(absolute);
+		const std::optional<std::filesystem::path> relative = RelativeOf(absolute);
 		return relative ? Index->File(*relative) : GitDecoration::None;
 	}
 
@@ -36,7 +42,7 @@ namespace Graphite {
 			return GitDecoration::None;
 		}
 
-		const auto relative = RelativeOf(absolute);
+		const std::optional<std::filesystem::path> relative = RelativeOf(absolute);
 		return relative ? Index->OwnFile(*relative) : GitDecoration::None;
 	}
 
@@ -47,7 +53,7 @@ namespace Graphite {
 			return GitDecoration::None;
 		}
 
-		const auto relative = RelativeOf(absolute);
+		const std::optional<std::filesystem::path> relative = RelativeOf(absolute);
 		return relative ? Index->Folder(*relative) : GitDecoration::None;
 	}
 
@@ -58,7 +64,7 @@ namespace Graphite {
 			return false;
 		}
 
-		const auto relative = RelativeOf(absolute);
+		const std::optional<std::filesystem::path> relative = RelativeOf(absolute);
 		return relative && Index->IsUntrackedFolder(*relative);
 	}
 
@@ -69,7 +75,7 @@ namespace Graphite {
 			return {};
 		}
 
-		const auto relative = RelativeOf(absolute);
+		const std::optional<std::filesystem::path> relative = RelativeOf(absolute);
 
 		if (!relative)
 		{
@@ -81,14 +87,17 @@ namespace Graphite {
 
 	ImU32 GitDecorationView::ColourFor(GitDecoration decoration) const
 	{
-		switch (ColourOf(decoration))
+		switch (GitColorOf(decoration))
 		{
-		case GitColor::GutterAdded: return Colours[0];
-		case GitColor::GutterRemoved: return Colours[2];
-		default: break;
+		case GitColor::GutterAdded:
+			return Colours[kGutterAddedSlot];
+		case GitColor::GutterRemoved:
+			return Colours[kGutterRemovedSlot];
+		default:
+			break;
 		}
 
-		return Colours[1];
+		return Colours[kGutterModifiedSlot];
 	}
 
 	GitDecoration MaxDecorationOf(std::span<const std::filesystem::path> files, const GitDecorationView& view)

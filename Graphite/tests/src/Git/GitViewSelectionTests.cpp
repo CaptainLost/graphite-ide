@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "GitFixtures.h"
 #include "Git/GitView.h"
 
 #include <cstdint>
@@ -28,22 +29,20 @@ TEST_CASE("A file is found by its new path")
 {
 	const Core::Diff diff = DiffWith({"a.txt", "b.txt"});
 
-	const auto index = Graphite::IndexOfFile(diff, "b.txt");
+	const std::optional<std::size_t> index = Graphite::IndexOfFile(diff, "b.txt");
 
 	REQUIRE(index.has_value());
 	CHECK(*index == 1);
 }
 
-TEST_CASE("A file that is no longer in the diff is not found")
+TEST_CASE("A file that is no longer in the diff is not found, because a refresh can reorder the list and an index would show another file")
 {
 	const Core::Diff diff = DiffWith({"a.txt"});
 
-	// The selection survives a refresh by path rather than by index, because a refresh can
-	// reorder the list — matching by index would silently show a different file's diff.
 	CHECK_FALSE(Graphite::IndexOfFile(diff, "gone.txt").has_value());
 }
 
-TEST_CASE("A deleted file is found by its old path")
+TEST_CASE("A deleted file is found by its old path, since it has no new path to match")
 {
 	Core::Diff diff;
 
@@ -52,9 +51,7 @@ TEST_CASE("A deleted file is found by its old path")
 	file.Change = Core::FileChange::Deleted;
 	diff.Files.push_back(std::move(file));
 
-	// A deleted file has no new path at all, so matching only on NewPath would make it
-	// unselectable — and a deletion is exactly the change a reader most wants to inspect.
-	const auto index = Graphite::IndexOfFile(diff, "gone.txt");
+	const std::optional<std::size_t> index = Graphite::IndexOfFile(diff, "gone.txt");
 
 	REQUIRE(index.has_value());
 	CHECK(*index == 0);
@@ -105,17 +102,16 @@ TEST_CASE("A measured distance is shown")
 	CHECK(label.find("3") != std::string::npos);
 }
 
-TEST_CASE("A measured distance of zero shows no numbers")
+TEST_CASE("A measured distance of zero shows no numbers, because in sync is the ordinary state")
 {
 	Core::Branch branch = BranchNamed("main");
 	branch.Upstream = "origin/main";
 	branch.DistanceKnown = true;
 
-	// In sync is the ordinary state; a "0/0" beside every branch is noise.
 	CHECK(Graphite::RefLabel(branch) == "main");
 }
 
-TEST_CASE("An unmeasured distance shows no numbers even when they are not zero")
+TEST_CASE("An unmeasured distance shows no numbers even when the stale counts are not zero")
 {
 	Core::Branch branch = BranchNamed("main");
 	branch.Upstream = "origin/main";
@@ -123,8 +119,6 @@ TEST_CASE("An unmeasured distance shows no numbers even when they are not zero")
 	branch.Ahead = 7;
 	branch.Behind = 9;
 
-	// This is the case Core::Branch's own comment warns about: Ahead and Behind hold
-	// whatever they were left at, and showing them would state a distance nobody measured.
 	const std::string label = Graphite::RefLabel(branch);
 
 	CHECK(label.find("7") == std::string::npos);
@@ -137,42 +131,37 @@ namespace {
 	{
 		Core::LogPage page;
 
-		for (const std::uint8_t first : commits)
+		for (const std::uint8_t firstByte : commits)
 		{
 			Core::CommitSummary commit;
-			commit.Id.Bytes[0] = first;
+			commit.Id = OidWithFirstByte(firstByte);
 			page.Commits.push_back(std::move(commit));
 		}
 
 		return page;
 	}
 
-	Graphite::FileSelection SelectionIn(std::uint8_t commit, const char* path)
+	Graphite::FileSelection SelectionIn(std::uint8_t commitFirstByte, const char* path)
 	{
-		Core::Oid id;
-		id.Bytes[0] = commit;
-		return Graphite::FileSelection{id, path};
+		return Graphite::FileSelection{OidWithFirstByte(commitFirstByte), path};
 	}
 }
 
-TEST_CASE("A selection whose commit is still listed survives a new page")
+TEST_CASE("A selection whose commit is still listed survives a new page, so a refresh does not close the diff being read")
 {
 	const Core::LogPage page = PageOf({1, 2, 3});
 
-	const auto surviving = Graphite::SelectionSurviving(SelectionIn(2, "a.cpp"), page);
+	const std::optional<Graphite::FileSelection> surviving =
+		Graphite::SelectionSurviving(SelectionIn(2, "a.cpp"), page);
 
-	// A refresh that still shows the commit has not taken the reader anywhere, and closing
-	// the diff they were reading would be the panel losing their place for them.
 	REQUIRE(surviving.has_value());
 	CHECK(surviving->Path == std::filesystem::path{"a.cpp"});
 }
 
-TEST_CASE("A selection whose commit the new page does not list does not survive")
+TEST_CASE("A selection whose commit the new page does not list does not survive, as when a narrowed filter drops it")
 {
 	const Core::LogPage page = PageOf({1, 3});
 
-	// What a narrowed filter does: the commit the preview was showing is no longer in the
-	// list above it, so the pane would be answering a question nothing on screen asked.
 	CHECK_FALSE(Graphite::SelectionSurviving(SelectionIn(2, "a.cpp"), page).has_value());
 }
 
@@ -188,22 +177,18 @@ TEST_CASE("An empty page keeps no selection at all")
 
 namespace {
 
-	Core::Oid CommitId(std::uint8_t first)
+	Core::Oid CommitId(std::uint8_t firstByte)
 	{
-		Core::Oid id;
-		id.Bytes[0] = first;
-		return id;
+		return OidWithFirstByte(firstByte);
 	}
 }
 
-TEST_CASE("A selected commit that is still listed survives a new page")
+TEST_CASE("A selected commit that is still listed survives a new page, following the same rule as the diff pane")
 {
 	const Core::LogPage page = PageOf({1, 2, 3});
 
-	const auto surviving = Graphite::CommitSelectionSurviving(CommitId(2), page);
+	const std::optional<Core::Oid> surviving = Graphite::CommitSelectionSurviving(CommitId(2), page);
 
-	// The details pane follows the same rule as the diff pane above it: a refresh that
-	// still shows the commit has not taken the reader anywhere.
 	REQUIRE(surviving.has_value());
 	CHECK(*surviving == CommitId(2));
 }

@@ -40,16 +40,12 @@ TEST_CASE("A line emptied since is removed entirely")
 	CHECK(RemovedSpan("gone", "") == ChangedSpan{0, 4});
 }
 
-// An em dash is three bytes (E2 80 94) and the replacement shares its first byte. The span
-// must not start in the middle of the character.
 TEST_CASE("The span never splits a multibyte character")
 {
 	const ChangedSpan span = RemovedSpan("a \xE2\x80\x94 b", "a \xE2\x80\x9C b");
 	CHECK(span == ChangedSpan{2, 5});
 }
 
-// Two separate edits cover everything between them. This pins the known limit of the
-// prefix and suffix approach.
 TEST_CASE("Two separate edits cover the text between them")
 {
 	CHECK(RemovedSpan("one two three", "ONE two THREE") == ChangedSpan{0, 13});

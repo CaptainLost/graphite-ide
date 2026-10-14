@@ -1,9 +1,3 @@
-// The Git panel's modal questions: checking out over changes, naming a branch, deleting a
-// branch and dropping a stash. Members of GitView, kept apart from GitView.cpp so the panel's
-// drawing of refs and history does not have to be read past four dialogs. Their shape - the
-// padding, the list, the button row and its keys - is DialogLayout's, shared with the
-// Changes panel's stash dialog.
-
 #include "Git/GitView.h"
 
 #include "Core/Base/Base.h"
@@ -26,7 +20,6 @@ namespace Graphite {
 
 	namespace {
 
-		// The rows of one group in the checkout dialog, under a header naming the group.
 		void CheckoutRows(const char* heading, const std::vector<CheckoutQuestionRow>& rows)
 		{
 			if (rows.empty())
@@ -74,23 +67,22 @@ namespace Graphite {
 			return;
 		}
 
-		// Copied out before Answer(), which drops the payload `current` points at.
+		// WARNING: Every dialog copies what it needs out of the payload before calling Answer(),
+		// which drops the payload `current` points at.
 		const Core::Oid commit = current->Commit;
 
 		DialogLayout::Text(DetachedCheckoutBody(commit.ShortHex()));
 		DialogLayout::Gap();
 
-		// Checking out is the plain answer, so it is the one Enter gives. A branch made at the
-		// commit is what keeps work done there.
 		const bool writable = !m_Model.IsWriteInFlight();
+		const DialogLayout::ButtonSpec absentButton{};
 
 		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
-			{.Label = "Checkout", .Enabled = writable}, {}, DangerColour(),
-			{.Label = "Create Branch Instead\xE2\x80\xA6", .Enabled = writable});
+			{.Label = "Checkout", .Enabled = writable}, absentButton, DangerColour(),
+			{.Label = "Create Branch Instead…", .Enabled = writable});
 
 		if (choice == DialogLayout::Choice::Safe)
 		{
-			// Planned like any checkout, so the overwrite question is asked next if it applies.
 			BeginCheckout(Core::CheckoutTarget{.Kind = Core::CheckoutKind::Commit, .Commit = commit});
 			m_DetachQuestion.Answer();
 		}
@@ -124,8 +116,8 @@ namespace Graphite {
 			return;
 		}
 
-		// Null for the one frame after a question was withdrawn while on screen: the popup is
-		// still open, with nothing left to ask.
+		// WARNING: The payload is null for the one frame after a question was withdrawn while on
+		// screen: the popup is still open with nothing left to ask.
 		const CheckoutQuestionPayload* current = m_CheckoutQuestion.GetCurrent();
 
 		if (current == nullptr)
@@ -148,19 +140,16 @@ namespace Graphite {
 		DialogLayout::Text(question.Title + ".");
 		DialogLayout::Gap();
 
-		// Every change, not only the blocking ones, since both answers act on every change -
-		// so the list can be long, and scrolls rather than pushing the buttons off screen.
-		const std::size_t rows = question.Changed.size() + question.Untracked.size();
-		const std::size_t headers = (question.Changed.empty() ? 0 : 1) + (question.Untracked.empty() ? 0 : 1);
+		const std::size_t rowCount = question.Changed.size() + question.Untracked.size();
+		const std::size_t headerCount = (question.Changed.empty() ? 0 : 1) + (question.Untracked.empty() ? 0 : 1);
 
-		if (DialogLayout::BeginFileList("checkout.files", rows, headers))
+		if (DialogLayout::BeginFileList("checkout.files", rowCount, headerCount))
 		{
 			CheckoutRows("CHANGED", question.Changed);
 			CheckoutRows("UNTRACKED", question.Untracked);
 
-			// BuildCheckoutQuestion is only asked when there is something to list. Should both
-			// lists ever be empty, the child still ends on an item, as every window here does.
-			if (rows == 0)
+			// WARNING: Should both lists ever be empty, the child must still end on an item.
+			if (rowCount == 0)
 			{
 				ImGui::Dummy(ImVec2(0.0f, 0.0f));
 			}
@@ -169,13 +158,11 @@ namespace Graphite {
 		DialogLayout::EndFileList();
 		DialogLayout::Gap();
 
-		// Locked on when an untracked file blocks: leaving it out would leave the checkout
-		// refused over the very file it was asked about.
 		if (question.UntrackedForced)
 		{
-			bool forced = true;
+			bool alwaysIncluded = true;
 			ImGui::BeginDisabled();
-			DrawTickBox("Include untracked files in Discard and Stash", &forced);
+			DrawTickBox("Include untracked files in Discard and Stash", &alwaysIncluded);
 			ImGui::EndDisabled();
 		}
 		else
@@ -187,49 +174,41 @@ namespace Graphite {
 
 		if (m_StashSaveFailed)
 		{
-			// Which file failed is already in the status bar - see EditorBuffers::Save.
 			DialogLayout::ErrorText("Could not save every file; nothing was stashed.", DangerColour());
 		}
 
 		DialogLayout::MutedText("Discard cannot be undone.");
 		DialogLayout::Gap();
 
-		// Copied out before Answer(), which drops the payload `current` points at.
 		const Core::CheckoutTarget target = current->Target;
 		const std::vector<std::filesystem::path> unsaved = current->UnsavedAbsolute;
 		const bool includeUntracked = question.UntrackedForced || m_IncludeUntracked;
 
-		const auto answer = [this] {
-			m_CheckoutQuestion.Answer();
-
-			// Let go here too, not only when Begin fails: a question queued behind this one
-			// opens on the very next Begin, with no frame between them to reset on.
-			m_CheckoutDialogOpen = false;
-		};
-
 		const bool writable = !m_Model.IsWriteInFlight();
 
-		// Stash is the safe answer, so it is the one Enter gives; Discard is the one button
-		// here that loses work for good, and only a click reaches it.
+		// WARNING: Stash is the safe answer, so it is the one Enter gives. Discard loses work for
+		// good, and only a click reaches it.
 		const DialogLayout::Choice choice =
 			DialogLayout::ButtonRow({.Label = "Stash", .Enabled = writable}, {.Label = "Discard", .Enabled = writable},
 									DangerColour());
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{
-			// The editor's copies first: the checkout is about to write over the files, and a
-			// buffer still holding the old edits would then disagree with the disk.
+			// WARNING: The editor's copies are reverted first. The checkout writes over the files, and
+			// a buffer still holding the old edits would disagree with the disk.
 			m_Buffers.Revert(unsaved);
 			m_Model.RequestCheckout(CheckoutRequest{.Target = target,
 													.Preparation = CheckoutPreparation::Discard,
 													.IncludeUntracked = includeUntracked});
-			answer();
+			AnswerCheckoutQuestion();
 		}
 		else if (choice == DialogLayout::Choice::Safe)
 		{
-			// A stash takes what is on disk, so the unsaved edits have to get there first - and
-			// if any cannot, stashing the rest would leave those edits behind on this branch.
-			if (!m_Buffers.Save(unsaved))
+			// WARNING: A stash takes what is on disk, so unsaved edits are saved first. If any cannot
+			// be, stashing the rest would leave those edits behind on this branch.
+			const bool everyFileSaved = m_Buffers.Save(unsaved);
+
+			if (!everyFileSaved)
 			{
 				m_StashSaveFailed = true;
 			}
@@ -240,15 +219,24 @@ namespace Graphite {
 														.IncludeUntracked = includeUntracked,
 														.StashMessage = "Before checking out " +
 																		CheckoutTargetLabel(target)});
-				answer();
+				AnswerCheckoutQuestion();
 			}
 		}
 		else if (choice == DialogLayout::Choice::Cancel)
 		{
-			answer();
+			AnswerCheckoutQuestion();
 		}
 
 		m_CheckoutQuestion.End();
+	}
+
+	void GitView::AnswerCheckoutQuestion()
+	{
+		m_CheckoutQuestion.Answer();
+
+		// WARNING: Reset here as well as when Begin fails: a question queued behind this one opens on
+		// the very next Begin, with no frame between them to reset on.
+		m_CheckoutDialogOpen = false;
 	}
 
 	void GitView::RenderBranchNameDialog(ModalQuestion<BranchNamePayload>& question)
@@ -284,22 +272,20 @@ namespace Graphite {
 			return;
 		}
 
-		const bool first = m_BranchNameFor != &question;
+		const bool isFirstFrameOfQuestion = m_BranchNameFor != &question;
 
-		if (first)
+		if (isFirstFrameOfQuestion)
 		{
 			m_BranchNameFor = &question;
 			m_BranchNameBuffer = current->Buffer;
 			m_CheckoutAfter = current->CheckoutAfter;
 		}
 
-		// Copied out before Answer(), which drops the payload `current` points at.
 		const BranchNameMode mode = current->Mode;
 		const std::string from = current->From;
 		const Core::Oid at = current->At;
 
-		// The field is what the dialog is for, so it takes the keyboard as it opens.
-		if (first)
+		if (isFirstFrameOfQuestion)
 		{
 			ImGui::SetKeyboardFocusHere();
 		}
@@ -315,8 +301,6 @@ namespace Graphite {
 		const std::optional<std::string> problem =
 			BranchNameProblem(name, branches ? *branches : std::vector<Core::Branch>{});
 
-		// An empty field says so through its hint and the disabled button; anything typed that
-		// will not do is said under it, and only then does the dialog grow a line.
 		if (problem.has_value() && !name.empty())
 		{
 			DialogLayout::ErrorText(*problem, DangerColour());
@@ -331,9 +315,11 @@ namespace Graphite {
 		DialogLayout::Gap();
 
 		const bool acceptable = !problem.has_value() && !m_Model.IsWriteInFlight();
+		const DialogLayout::ButtonSpec absentButton{};
 
 		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
-			{.Label = mode == BranchNameMode::New ? "Create" : "Rename", .Enabled = acceptable}, {}, DangerColour());
+			{.Label = mode == BranchNameMode::New ? "Create" : "Rename", .Enabled = acceptable}, absentButton,
+			DangerColour());
 
 		if (acceptable && (choice == DialogLayout::Choice::Safe || entered))
 		{
@@ -341,8 +327,7 @@ namespace Graphite {
 			{
 				m_Model.RequestCreateBranch(name, at);
 
-				// The same way as any other checkout - planned, and asked about when it would
-				// overwrite something. The plan queues behind the create, so it finds the branch.
+				// WARNING: The checkout plan queues behind the create, so it finds the new branch.
 				if (m_CheckoutAfter)
 				{
 					BeginCheckout(Core::CheckoutTarget{.Kind = Core::CheckoutKind::LocalBranch, .Name = name});
@@ -350,17 +335,19 @@ namespace Graphite {
 			}
 			else
 			{
+				const std::string fromFullName = "refs/heads/" + from;
+				const std::string toFullName = "refs/heads/" + name;
+
 				m_Model.RequestRenameBranch(from, name);
 
 				if (OnBranchRenamed)
 				{
-					OnBranchRenamed("refs/heads/" + from, "refs/heads/" + name);
+					OnBranchRenamed(fromFullName, toFullName);
 				}
 
-				// Followed once the branches list shows the new name - see FollowSelectedRef.
-				if (m_SelectedRef == "refs/heads/" + from)
+				if (m_SelectedRef == fromFullName)
 				{
-					m_PendingRename.emplace("refs/heads/" + from, "refs/heads/" + name);
+					m_PendingRename = BranchRenameSent{.From = fromFullName, .To = toFullName};
 				}
 			}
 
@@ -418,10 +405,10 @@ namespace Graphite {
 		DialogLayout::MutedText("Deleting a branch cannot be undone here.");
 		DialogLayout::Gap();
 
-		// Worded for what it costs: past this button, those commits have no name left. No
-		// safe action, so Enter does nothing; Escape cancels.
+		const DialogLayout::ButtonSpec absentButton{};
+
 		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
-			{}, {.Label = unmerged == 0 ? "Delete" : "Delete anyway", .Enabled = !m_Model.IsWriteInFlight()},
+			absentButton, {.Label = unmerged == 0 ? "Delete" : "Delete anyway", .Enabled = !m_Model.IsWriteInFlight()},
 			DangerColour());
 
 		if (choice == DialogLayout::Choice::Destructive)
@@ -470,8 +457,10 @@ namespace Graphite {
 		DialogLayout::MutedText("A dropped stash cannot be recovered.");
 		DialogLayout::Gap();
 
+		const DialogLayout::ButtonSpec absentButton{};
+
 		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
-			{}, {.Label = "Drop", .Enabled = !m_Model.IsWriteInFlight()}, DangerColour());
+			absentButton, {.Label = "Drop", .Enabled = !m_Model.IsWriteInFlight()}, DangerColour());
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{

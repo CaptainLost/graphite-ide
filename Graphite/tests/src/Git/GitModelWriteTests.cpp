@@ -16,8 +16,6 @@
 
 namespace {
 
-	// The same shape as the fake in GitModelTests.cpp, kept separate so a change made for
-	// a write test cannot quietly alter what the read tests assert.
 	class WritePort final : public Graphite::GitPort
 	{
 	public:
@@ -36,7 +34,7 @@ namespace {
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override { return std::vector<Core::Branch>{}; }
 		Core::Result<Core::HeadState> QueryHead() override { return Core::HeadState{}; }
 
-		Core::Result<void> Init() override { return Record("init", {}); }
+		Core::Result<void> Init() override { return Record("init", std::vector<std::filesystem::path>{}); }
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest&) override { return Core::LogPage{}; }
 		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) override
 		{
@@ -51,8 +49,6 @@ namespace {
 			return Core::Diff{};
 		}
 
-		// Which target each diff query asked about, in order, so a test can tell a
-		// resubmitted request from the one that was already in flight.
 		std::vector<Core::DiffTarget> DiffTargets;
 		bool FailDiff = false;
 
@@ -68,8 +64,6 @@ namespace {
 		{
 			++WorkingTreeTextCalls;
 
-			// Both sides joined, so a test can say which paths were asked about without
-			// caring which of them the fake stored first.
 			LastTextPaths = Core::ToUtf8(oldPath) + "|" + Core::ToUtf8(newPath);
 
 			return WorkingTreeTexts;
@@ -223,32 +217,22 @@ namespace {
 			return CheckoutResult;
 		}
 
-		// What the checkout-side calls answer. A failure set on CheckoutResult itself, rather
-		// than through Fail, lets a test fail only the checkout after a preparation succeeded.
 		Core::WorkingTreeStatus Status;
 		Core::CheckoutPlan Plan;
 		Core::CheckoutOutcome CheckoutResult;
 		std::size_t Unmerged = 0;
 		bool StashSaves = true;
 
-		// Fails only the plan and the delete check, the two read-only answers.
 		bool FailQuery = false;
 
 		std::vector<std::string> Calls;
 		bool Fail = false;
 
-		// Fails only the untracked-file deletion, so a discard can restore and then stop.
 		bool FailDelete = false;
 		int DiffCalls = 0;
 
-		// Deliberately distinct from the "C:/repo" OpenA() gives GitModel::SetRoot(), so a
-		// test can tell GitModel::GetWorkingDirectory() apart from GetRoot() - see "GetWorkingDirectory
-		// reports the repository's working directory, not the folder that was opened" below.
 		std::filesystem::path WorkingDirectory = "C:/repo";
 
-		// Pins the CRITICAL fix: JobQueue abandons a job that throws, so RunWrite must
-		// convert this into a failure outcome rather than let it escape and strand
-		// m_WriteInFlight forever.
 		bool Throw = false;
 
 		Core::Oid Committed{};
@@ -276,21 +260,16 @@ namespace {
 				throw std::runtime_error("write port exploded");
 			}
 
-			// Named after the operation, so a test holding two failures can tell them apart.
 			return Fail ? Core::Result<void>{Core::Error{Core::ErrorCode::IoFailure, kind + " failed"}}
 						: Core::Result<void>::Ok();
 		}
 	};
 
-	// Runs the job where it was submitted, so a test needs no threads. The port's call is
-	// therefore made inside Request*, while the delivery still waits for OnUpdate — which
-	// is exactly what makes "one in flight" observable here.
 	Graphite::JobSubmitter Inline()
 	{
 		return [](std::function<void()> job) { job(); };
 	}
 
-	// A model with a root set, because every write is dropped when no folder is open.
 	void OpenA(Graphite::GitModel& model)
 	{
 		model.SetRoot("C:/repo");
@@ -306,8 +285,6 @@ TEST_CASE("A second write waits for the first to be applied")
 	model.RequestStage({"a.txt"});
 	model.RequestStage({"b.txt"});
 
-	// Only the first has reached the port: the second is queued behind a write whose
-	// result has not been applied yet.
 	CHECK(port.Calls == std::vector<std::string>{"stage:a.txt"});
 	CHECK(model.IsWriteInFlight());
 
@@ -343,15 +320,12 @@ TEST_CASE("A successful write refreshes the model")
 	model.RequestStage({"a.txt"});
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	// The mark is debounced, so nothing is re-queried until the quiet window elapses.
 	CHECK(model.GetStatus() == nullptr);
 
 	model.OnUpdate(Core::Timestep{1.0f});
 
 	CHECK(model.GetStatus() != nullptr);
 
-	// A stage is not a commit: it must never leave a commit id behind for TakeCommitted
-	// to hand out.
 	CHECK_FALSE(model.TakeCommitted().has_value());
 }
 
@@ -371,12 +345,9 @@ TEST_CASE("A failed write reports itself and refreshes nothing")
 	CHECK_FALSE(model.GetLastError().has_value());
 	CHECK(model.GetStatus() == nullptr);
 
-	// A failure must leave neither a commit id nor discarded paths behind - both are the
-	// answer to a write that succeeded, and this one did not.
 	CHECK_FALSE(model.TakeCommitted().has_value());
 	CHECK(model.TakeDiscarded().empty());
 
-	// Answers once: a failure handed out is not handed out again.
 	CHECK_FALSE(model.TakeWriteError().has_value());
 }
 
@@ -515,13 +486,10 @@ TEST_CASE("A discard that restored files and then failed to delete still announc
 	REQUIRE(model.TakeWriteError().has_value());
 	CHECK(model.GetAppliedWriteCount() == 1);
 
-	// Only the restored path: the delete never happened, and the editor must not be told
-	// about a file that is still as it was.
 	const std::vector<std::filesystem::path> touched = model.TakeDiscarded();
 	REQUIRE(touched.size() == 1);
 	CHECK(touched[0] == std::filesystem::path{"a.txt"});
 
-	// The refresh is debounced, so it shows once the clock passes the mark.
 	model.OnUpdate(Core::Timestep{1.0f});
 	CHECK(model.GetStatus() != nullptr);
 }
@@ -533,16 +501,9 @@ TEST_CASE("GetWorkingDirectory reports the repository's working directory, not t
 
 	Graphite::GitModel model{port, Inline()};
 
-	// OpenA() sets the root GitModel was told to open. GitPort::GetWorkingDirectory can
-	// answer differently - Core::Repository::Open searches upward for a .git, so opening a
-	// subdirectory of a repository resolves to a working directory above it. A caller that
-	// joined a status path onto the opened root instead of this would build a path that
-	// does not exist.
 	OpenA(model);
 	CHECK(model.GetWorkingDirectory().empty());
 
-	// The working directory is fetched alongside the status query and delivered with it -
-	// nothing is known until the first status has landed.
 	model.RequestStatus();
 	model.OnUpdate(Core::Timestep{0.0f});
 
@@ -561,7 +522,6 @@ TEST_CASE("Closing the folder drops a write that had not started")
 	model.Clear();
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	// The first had already reached the port; the queued second must never follow it.
 	CHECK(port.Calls == std::vector<std::string>{"stage:a.txt"});
 	CHECK_FALSE(model.TakeWriteError().has_value());
 }
@@ -580,9 +540,6 @@ TEST_CASE("A write for a closed folder neither reports nor refreshes")
 
 	CHECK_FALSE(model.TakeWriteError().has_value());
 
-	// Pins the bug the name describes: an implementation that called MarkDirty() before
-	// checking the generation would still pass every assertion above, since the mark is
-	// debounced and nothing here advances the clock past it - until this line does.
 	model.OnUpdate(Core::Timestep{1.0f});
 	CHECK(model.GetStatus() == nullptr);
 }
@@ -609,27 +566,17 @@ TEST_CASE("A write that throws frees the queue instead of stranding it")
 	model.RequestStage({"a.txt"});
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	// JobQueue abandons a job that throws before it ever reaches Deliver. If RunWrite let
-	// the exception escape, ApplyWrite - the only place that clears m_WriteInFlight - would
-	// never run, and the queue would be wedged for the life of the application.
 	CHECK_FALSE(model.IsWriteInFlight());
 	CHECK(model.TakeWriteError().has_value());
 
 	port.Throw = false;
 	model.RequestUnstage({"b.txt"});
 
-	// The assertion that actually pins the bug: a write requested after the one that threw
-	// must still reach the port, which it cannot if m_WriteInFlight was left stuck at true.
 	CHECK(port.Calls == std::vector<std::string>{"stage:a.txt", "unstage:b.txt"});
 }
 
 TEST_CASE("Requesting the working tree diff repeatedly submits only one query")
 {
-	// The diff window calls RequestWorkingTreeDiff every frame it is open (DiffWindows.cpp),
-	// the same way the log list calls RequestDiffFor for every expanded commit every frame.
-	// Without an in-flight guard this would submit a worker job every frame forever, and the
-	// backlog would never drain while the tab stayed open - see RequestDiffFor's own guard
-	// for the sibling case this mirrors.
 	WritePort port;
 	Graphite::GitModel model{port, Inline()};
 	OpenA(model);
@@ -643,9 +590,6 @@ TEST_CASE("Requesting the working tree diff repeatedly submits only one query")
 	model.OnUpdate(Core::Timestep{0.016f});
 	CHECK(port.DiffCalls == 1);
 
-	// Once the answer has landed, asking the same question again submits nothing: nothing
-	// has been marked dirty since, so the slot already answers it. Resubmitting here is what
-	// kept the frame loop from ever idling while a working-tree tab was on screen.
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	model.OnUpdate(Core::Timestep{0.016f});
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
@@ -666,9 +610,7 @@ TEST_CASE("A refresh after the working tree diff landed submits it exactly once 
 	model.OnUpdate(Core::Timestep{0.016f});
 	REQUIRE(port.DiffCalls == 1);
 
-	// The same debounced refresh that re-asks the log: once it has run, the slot no longer
-	// counts as answering the request, and the next frame's ask goes through - once.
-	events.Publish(Graphite::WorkspaceFilesChangedEvent{{}, false});
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{.Directories = {}, .Everything = false});
 	model.OnUpdate(Core::Timestep{0.2f});
 
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
@@ -691,9 +633,7 @@ TEST_CASE("A refresh that runs while the working tree diff is in flight asks aga
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	REQUIRE(port.DiffCalls == 1);
 
-	// The query already running may have read the file before the change that marked the
-	// model dirty, so its answer cannot count as fresh.
-	events.Publish(Graphite::WorkspaceFilesChangedEvent{{}, false});
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{.Directories = {}, .Everything = false});
 	model.OnUpdate(Core::Timestep{0.2f});
 
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
@@ -713,8 +653,6 @@ TEST_CASE("Switching the working tree diff's target shows no stale answer and as
 	model.OnUpdate(Core::Timestep{0.016f});
 	REQUIRE(model.GetWorkingTreeDiff() != nullptr);
 
-	// A tab following its file to the other side: the same path, a different question. The
-	// unstaged hunks must not be drawn as the staged ones while the new answer is on its way.
 	model.RequestWorkingTreeDiff(staged);
 	CHECK(model.GetWorkingTreeDiff() == nullptr);
 	CHECK(model.GetWorkingTreeTexts() == nullptr);
@@ -742,11 +680,8 @@ TEST_CASE("A working tree diff asked for while another is in flight is sent when
 	model.RequestWorkingTreeDiff(unstaged);
 	model.RequestWorkingTreeDiff(staged);
 
-	// One in flight at a time, but the changed question is remembered rather than dropped.
 	CHECK(port.DiffCalls == 1);
 
-	// Landing the unstaged answer submits the staged one without anyone asking again, and
-	// the unstaged answer is not passed off as the staged one.
 	model.OnUpdate(Core::Timestep{0.016f});
 	CHECK(port.DiffCalls == 2);
 	CHECK(model.GetWorkingTreeDiff() == nullptr);
@@ -762,7 +697,6 @@ TEST_CASE("The working tree diff is loading until the wanted request has been an
 	Graphite::GitModel model{port, Inline()};
 	OpenA(model);
 
-	// Nothing asked yet: nothing is on its way, so there is nothing to wait for.
 	CHECK_FALSE(model.IsWorkingTreeDiffLoading());
 
 	const Core::DiffRequest unstaged{.Target = Core::DiffTarget::WorkTreeToIndex, .File = "a.txt"};
@@ -774,15 +708,12 @@ TEST_CASE("The working tree diff is loading until the wanted request has been an
 	model.OnUpdate(Core::Timestep{0.016f});
 	CHECK_FALSE(model.IsWorkingTreeDiffLoading());
 
-	// A tab following its file to the other side waits for the new answer rather than
-	// reading as a diff that was lost.
 	model.RequestWorkingTreeDiff(staged);
 	CHECK(model.IsWorkingTreeDiffLoading());
 
 	model.OnUpdate(Core::Timestep{0.016f});
 	CHECK_FALSE(model.IsWorkingTreeDiffLoading());
 
-	// A failure is an answer too: the tab shows it rather than waiting forever.
 	port.FailDiff = true;
 	model.RequestWorkingTreeDiff(unstaged);
 	model.OnUpdate(Core::Timestep{0.016f});
@@ -803,8 +734,6 @@ TEST_CASE("A failed working tree diff is not asked again every frame")
 	model.OnUpdate(Core::Timestep{0.016f});
 	REQUIRE(model.GetLastError().has_value());
 
-	// A failure answers the request as surely as a success does; only a refresh or a
-	// different request asks again.
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
 	model.OnUpdate(Core::Timestep{0.016f});
 	model.RequestWorkingTreeDiff(Core::DiffRequest{});
@@ -911,8 +840,6 @@ TEST_CASE("A second init queued behind the first is passed on, not dropped")
 	model.OnUpdate(Core::Timestep{0.0f});
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	// The real port refuses a second init over the repository the first one made, so the
-	// model need not know to suppress it - it only has to pass it on.
 	CHECK(port.Calls == std::vector<std::string>{"init:", "init:"});
 	CHECK_FALSE(model.TakeWriteError().has_value());
 }
@@ -939,8 +866,6 @@ TEST_CASE("A successful init keeps the model settling until the next status land
 	model.RequestInit();
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	// The write is done but the status that would show the new repository is not here yet:
-	// a panel still reading the folder as missing must not offer the button again.
 	CHECK_FALSE(model.IsWriteInFlight());
 	CHECK(model.IsAwaitingStatusAfterInit());
 
@@ -1014,9 +939,11 @@ TEST_CASE("A checkout that stashes first stashes, then checks out, and reports t
 
 	CHECK(port.Calls == std::vector<std::string>{"stash:before feature|0", "checkout:feature"});
 
-	auto changed = model.TakeCheckedOut();
-	CHECK(std::find(changed.begin(), changed.end(), std::filesystem::path{"a.txt"}) != changed.end());
-	CHECK(std::find(changed.begin(), changed.end(), std::filesystem::path{"b.txt"}) != changed.end());
+	const std::vector<std::filesystem::path> checkedOutPaths = model.TakeCheckedOut();
+	CHECK(std::find(checkedOutPaths.begin(), checkedOutPaths.end(), std::filesystem::path{"a.txt"}) !=
+		  checkedOutPaths.end());
+	CHECK(std::find(checkedOutPaths.begin(), checkedOutPaths.end(), std::filesystem::path{"b.txt"}) !=
+		  checkedOutPaths.end());
 }
 
 TEST_CASE("A checkout that discards first discards, then checks out")
@@ -1074,8 +1001,6 @@ TEST_CASE("A failed preparation stops before the checkout")
 	WritePort port;
 	port.Fail = true;
 
-	// A file the preparation noted, so the empty answer below proves the noted paths are
-	// dropped rather than that there were none.
 	Core::FileStatus edited;
 	edited.Path = "b.txt";
 	edited.WorkTree = Core::StatusFlags::Modified;
@@ -1092,7 +1017,6 @@ TEST_CASE("A failed preparation stops before the checkout")
 	CHECK(model.TakeWriteError().has_value());
 	CHECK(model.TakeCheckedOut().empty());
 
-	// The discard may have got partway, so the model refreshes all the same.
 	model.OnUpdate(Core::Timestep{1.0f});
 	CHECK(model.GetStatus() != nullptr);
 }
@@ -1116,8 +1040,6 @@ TEST_CASE("A checkout that fails after a successful discard still reports the di
 	CHECK(port.Calls == std::vector<std::string>{"discard-all:0", "checkout:feature"});
 	CHECK(model.TakeWriteError().has_value());
 
-	// The discard did rewrite b.txt, whatever the checkout then did: the editor still has to
-	// reload it.
 	CHECK(model.TakeCheckedOut() == std::vector<std::filesystem::path>{"b.txt"});
 }
 
@@ -1151,15 +1073,14 @@ TEST_CASE("A plan waits its turn behind writes and answers once")
 
 	CHECK(port.Calls == std::vector<std::string>{"stage:x.txt", "plan:feature"});
 
-	auto plan = model.TakeCheckoutPlan();
-	REQUIRE(plan.has_value());
-	CHECK(plan->Target.Name == "feature");
-	REQUIRE(plan->Plan.has_value());
-	CHECK(plan->Plan->Overwritten == std::vector<std::filesystem::path>{"a.txt"});
-	CHECK_FALSE(plan->Failure.has_value());
+	const std::optional<Graphite::CheckoutPlanAnswer> planAnswer = model.TakeCheckoutPlan();
+	REQUIRE(planAnswer.has_value());
+	CHECK(planAnswer->Target.Name == "feature");
+	REQUIRE(planAnswer->Plan.has_value());
+	CHECK(planAnswer->Plan->Overwritten == std::vector<std::filesystem::path>{"a.txt"});
+	CHECK_FALSE(planAnswer->Failure.has_value());
 	CHECK_FALSE(model.TakeCheckoutPlan().has_value());
 
-	// A plan is not a write: it changes nothing, so it is not counted.
 	CHECK(model.GetAppliedWriteCount() == 1);
 }
 
@@ -1189,11 +1110,11 @@ TEST_CASE("A failed plan answers through its own one-shot, not the write error")
 	model.RequestCheckoutPlan({.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"});
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	auto plan = model.TakeCheckoutPlan();
-	REQUIRE(plan.has_value());
-	CHECK(plan->Target.Name == "feature");
-	CHECK(plan->Failure.has_value());
-	CHECK_FALSE(plan->Plan.has_value());
+	const std::optional<Graphite::CheckoutPlanAnswer> planAnswer = model.TakeCheckoutPlan();
+	REQUIRE(planAnswer.has_value());
+	CHECK(planAnswer->Target.Name == "feature");
+	CHECK(planAnswer->Failure.has_value());
+	CHECK_FALSE(planAnswer->Plan.has_value());
 	CHECK_FALSE(model.TakeWriteError().has_value());
 }
 
@@ -1262,14 +1183,13 @@ TEST_CASE("A delete check answers how many commits only that branch reaches")
 	model.RequestDeleteCheck("old");
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	auto check = model.TakeDeleteCheck();
-	REQUIRE(check.has_value());
-	CHECK(check->Branch == "old");
-	CHECK(check->Unmerged == 3);
-	CHECK_FALSE(check->Failure.has_value());
+	const std::optional<Graphite::DeleteCheck> deleteCheck = model.TakeDeleteCheck();
+	REQUIRE(deleteCheck.has_value());
+	CHECK(deleteCheck->Branch == "old");
+	CHECK(deleteCheck->Unmerged == 3);
+	CHECK_FALSE(deleteCheck->Failure.has_value());
 	CHECK_FALSE(model.TakeDeleteCheck().has_value());
 
-	// Like a plan, a check changes nothing.
 	CHECK(model.GetAppliedWriteCount() == 0);
 }
 
@@ -1299,10 +1219,10 @@ TEST_CASE("A failed delete check answers through its own one-shot, not the write
 	model.RequestDeleteCheck("old");
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	auto check = model.TakeDeleteCheck();
-	REQUIRE(check.has_value());
-	CHECK(check->Branch == "old");
-	CHECK(check->Failure.has_value());
+	const std::optional<Graphite::DeleteCheck> deleteCheck = model.TakeDeleteCheck();
+	REQUIRE(deleteCheck.has_value());
+	CHECK(deleteCheck->Branch == "old");
+	CHECK(deleteCheck->Failure.has_value());
 	CHECK_FALSE(model.TakeWriteError().has_value());
 }
 
@@ -1311,16 +1231,16 @@ TEST_CASE("A failed stash apply or pop still refreshes the model")
 	Core::Oid id;
 	id.Bytes[0] = 0xab;
 
-	for (const bool pop : {false, true})
+	for (const bool popsInsteadOfApplying : {false, true})
 	{
-		CAPTURE(pop);
+		CAPTURE(popsInsteadOfApplying);
 
 		WritePort port;
 		port.Fail = true;
 		Graphite::GitModel model{port, Inline()};
 		OpenA(model);
 
-		if (pop)
+		if (popsInsteadOfApplying)
 		{
 			model.RequestStashPop(id);
 		}
@@ -1332,8 +1252,6 @@ TEST_CASE("A failed stash apply or pop still refreshes the model")
 		model.OnUpdate(Core::Timestep{0.0f});
 		CHECK(model.TakeWriteError().has_value());
 
-		// The apply may have written some files before it stopped, so it counts as applied:
-		// that is what tells the change markers to look again.
 		CHECK(model.GetAppliedWriteCount() == 1);
 
 		model.OnUpdate(Core::Timestep{1.0f});
@@ -1359,23 +1277,23 @@ TEST_CASE("A checkout's failure names the target, and where the prepared changes
 		 "Could not check out feature: no. Your changes were discarded."},
 	};
 
-	for (const Case& c : cases)
+	for (const Case& testCase : cases)
 	{
-		CAPTURE(c.Expected);
+		CAPTURE(testCase.Expected);
 
 		WritePort port;
-		port.StashSaves = c.Stashed;
+		port.StashSaves = testCase.Stashed;
 		port.CheckoutResult.Failure = Core::Error{Core::ErrorCode::InvalidArgument, "no"};
 		Graphite::GitModel model{port, Inline()};
 		OpenA(model);
 
 		model.RequestCheckout({.Target = {.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"},
-							   .Preparation = c.Preparation});
+							   .Preparation = testCase.Preparation});
 		model.OnUpdate(Core::Timestep{0.0f});
 
 		const std::optional<Graphite::GitModel::WriteFailure> failure = model.TakeWriteError();
 		REQUIRE(failure.has_value());
-		CHECK(failure->Error.Message == c.Expected);
+		CHECK(failure->Error.Message == testCase.Expected);
 	}
 }
 
@@ -1413,7 +1331,6 @@ TEST_CASE("A stash with nothing to stash says so instead of passing for done")
 		REQUIRE(failure.has_value());
 		CHECK(failure->Error.Message.starts_with("Nothing to stash"));
 
-		// Untracked files are the likely reason when they were left out.
 		CHECK((failure->Error.Message.find("untracked") != std::string::npos) == !includeUntracked);
 		CHECK(model.GetAppliedWriteCount() == 0);
 	}

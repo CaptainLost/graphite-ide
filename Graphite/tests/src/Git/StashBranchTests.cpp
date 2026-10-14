@@ -112,9 +112,9 @@ TEST_CASE("The drop question cuts a long message on a character boundary")
 {
 	CHECK(Graphite::DropStashSubject(0, "On main: abcdefghij", 4) == "\"abcd\xE2\x80\xA6\" (stash@{0})");
 
-	// Each two-byte pair is one character; four of them are kept whole.
-	const std::string wide = Graphite::DropStashSubject(0, "On main: \xC5\x82\xC5\x82\xC5\x82\xC5\x82\xC5\x82", 4);
-	CHECK(wide == "\"\xC5\x82\xC5\x82\xC5\x82\xC5\x82\xE2\x80\xA6\" (stash@{0})");
+	const std::string fourTwoByteCharactersKeptWhole =
+		Graphite::DropStashSubject(0, "On main: \xC5\x82\xC5\x82\xC5\x82\xC5\x82\xC5\x82", 4);
+	CHECK(fourTwoByteCharactersKeptWhole == "\"\xC5\x82\xC5\x82\xC5\x82\xC5\x82\xE2\x80\xA6\" (stash@{0})");
 
 	CHECK(Graphite::DropStashSubject(0, "On main: abcd", 4) == "\"abcd\" (stash@{0})");
 }

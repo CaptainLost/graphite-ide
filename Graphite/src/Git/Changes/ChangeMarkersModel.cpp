@@ -15,6 +15,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace Graphite {
 
@@ -31,7 +32,6 @@ namespace Graphite {
 		events.Subscribe<WorkspaceFilesChangedEvent>(
 			[this](const WorkspaceFilesChangedEvent&) { MarkDirty(); });
 
-		// A commit, a checkout or a stage moves HEAD or the index under every open document.
 		events.Subscribe<RepositoryChangedEvent>([this](const RepositoryChangedEvent&) { MarkDirty(); });
 	}
 
@@ -50,11 +50,11 @@ namespace Graphite {
 		m_Inbox.Post(std::move(delivery));
 	}
 
-	void ChangeMarkersModel::OnUpdate(Core::Timestep ts)
+	void ChangeMarkersModel::OnUpdate(Core::Timestep timestep)
 	{
-		const float seconds = ts.GetSeconds();
+		const float seconds = timestep.GetSeconds();
 
-		if (m_Debounce.Advance(ts))
+		if (m_Debounce.Advance(timestep))
 		{
 			for (auto& [path, entry] : m_Entries)
 			{
@@ -72,8 +72,8 @@ namespace Graphite {
 
 	void ChangeMarkersModel::Update(const std::filesystem::path& path, const Core::TextBuffer& buffer)
 	{
-		auto [it, inserted] = m_Entries.try_emplace(path);
-		Entry& entry = it->second;
+		const bool inserted = !m_Entries.contains(path);
+		Entry& entry = m_Entries[path];
 
 		if (inserted)
 		{
@@ -84,13 +84,11 @@ namespace Graphite {
 
 		if (entry.Revision != revision)
 		{
-			// A document seen for the first time has nothing to wait out: it is not being typed
-			// into, it has just been opened.
-			const bool first = !entry.Revision.has_value();
+			const bool firstSeen = !entry.Revision.has_value();
 
 			entry.Revision = revision;
 			entry.Pending = true;
-			entry.QuietFor = first ? kEditQuietSeconds : 0.0f;
+			entry.QuietFor = firstSeen ? kEditQuietSeconds : 0.0f;
 		}
 
 		if (entry.Pending && entry.Bases != nullptr && entry.QuietFor >= kEditQuietSeconds)
@@ -100,9 +98,8 @@ namespace Graphite {
 		}
 		else if (entry.Pending && entry.QuietFor < kEditQuietSeconds)
 		{
-			// Typing keeps the loop drawing, but a revision can also change on a reload from
-			// disk, which buys only a few frames; the one that ends the quiet has to be asked
-			// for.
+			// WARNING: A revision can change on a reload from disk, which keeps the loop drawing
+			// for only a few frames; the frame that ends the quiet period has to be asked for.
 			Core::Redraw::RequestIn(
 				std::chrono::duration<double>(kEditQuietSeconds - entry.QuietFor));
 		}
@@ -114,24 +111,23 @@ namespace Graphite {
 		entry.BasesRequested = generation;
 
 		m_Submit([this, path, generation]() {
-			auto read = m_Port.ReadBases(path);
+			Core::Result<ChangeBases> read = m_Port.ReadBases(path);
 
 			Core::Ref<const BaseTexts> bases;
 			std::optional<Core::Error> error;
 
 			if (read.HasValue())
 			{
-				auto fresh = Core::CreateRef<BaseTexts>();
+				Core::Ref<BaseTexts> fresh = Core::CreateRef<BaseTexts>();
 				fresh->Texts = std::move(read).GetValue();
 
-				// Diffed once here rather than on every keystroke: HEAD and the index change only
-				// when git does.
 				if (fresh->Texts.Tracked && !fresh->Texts.Unusable && fresh->Texts.Index)
 				{
 					const std::string_view head =
 						fresh->Texts.Head ? std::string_view{*fresh->Texts.Head} : std::string_view{};
 
-					auto hunks = Core::DiffTexts(head, *fresh->Texts.Index);
+					Core::Result<std::vector<Core::LineHunk>> hunks =
+						Core::DiffTexts(head, *fresh->Texts.Index);
 
 					if (hunks.HasValue())
 					{
@@ -154,14 +150,14 @@ namespace Graphite {
 			}
 
 			Deliver([this, path, generation, bases = std::move(bases), error = std::move(error)]() {
-				const auto found = m_Entries.find(path);
+				Entry* found = FindEntry(path);
 
-				if (found == m_Entries.end() || found->second.BasesRequested != generation)
+				if (found == nullptr || found->BasesRequested != generation)
 				{
 					return;
 				}
 
-				Entry& target = found->second;
+				Entry& target = *found;
 
 				if (error)
 				{
@@ -187,9 +183,6 @@ namespace Graphite {
 			return;
 		}
 
-		// The same ceiling the bases are read under. Checked before the copy, so a large
-		// untracked file, or a tracked one grown past it, is neither copied on this thread nor
-		// diffed on every quiet edit.
 		if (buffer.GetLength() > Core::MaximumDiffTextSize)
 		{
 			entry.Markers.reset();
@@ -199,15 +192,12 @@ namespace Graphite {
 		const std::uint64_t generation = ++m_Generation;
 		entry.MarkersRequested = generation;
 
-		// Copied here, on the UI thread, so the worker never touches the buffer.
 		m_Submit([this, path, generation, bases = entry.Bases, text = buffer.Materialize(),
 				  lines = buffer.GetLineCount()]() {
-			// A file the index does not hold is new in its entirety: untracked, or removed from
-			// the index while still open.
 			const std::string_view index =
 				bases->Texts.Index ? std::string_view{*bases->Texts.Index} : std::string_view{};
 
-			auto hunks = Core::DiffTexts(index, text);
+			Core::Result<std::vector<Core::LineHunk>> hunks = Core::DiffTexts(index, text);
 
 			if (!hunks.HasValue())
 			{
@@ -215,31 +205,42 @@ namespace Graphite {
 				return;
 			}
 
-			// The same two texts the diffs were taken against, so the tooltip's old lines are the
-			// lines the hunks actually replaced.
-			const OldTexts old{
+			const OldTexts oldTexts{
 				.Head = bases->Texts.Head ? std::string_view{*bases->Texts.Head} : std::string_view{},
 				.Index = index};
 
-			auto markers = Core::CreateRef<const ChangeMarkers>(
-				BuildChangeMarkers(bases->HeadToIndex, hunks.GetValue(), lines, old));
+			Core::Ref<const ChangeMarkers> markers = Core::CreateRef<const ChangeMarkers>(
+				BuildChangeMarkers(bases->HeadToIndex, hunks.GetValue(), lines, oldTexts));
 
 			Deliver([this, path, generation, markers = std::move(markers)]() {
-				const auto found = m_Entries.find(path);
+				Entry* found = FindEntry(path);
 
-				if (found == m_Entries.end() || found->second.MarkersRequested != generation)
+				if (found == nullptr || found->MarkersRequested != generation)
 				{
 					return;
 				}
 
-				found->second.Markers = markers;
+				found->Markers = markers;
 			});
 		});
 	}
 
 	void ChangeMarkersModel::Retain(const std::function<bool(const std::filesystem::path&)>& isOpen)
 	{
-		std::erase_if(m_Entries, [&isOpen](const auto& item) { return !isOpen(item.first); });
+		std::vector<std::filesystem::path> closedPaths;
+
+		for ([[maybe_unused]] const auto& [entryPath, entry] : m_Entries)
+		{
+			if (!isOpen(entryPath))
+			{
+				closedPaths.push_back(entryPath);
+			}
+		}
+
+		for (const std::filesystem::path& closedPath : closedPaths)
+		{
+			m_Entries.erase(closedPath);
+		}
 	}
 
 	void ChangeMarkersModel::Clear()
@@ -250,7 +251,18 @@ namespace Graphite {
 
 	Core::Ref<const ChangeMarkers> ChangeMarkersModel::Get(const std::filesystem::path& path) const
 	{
-		const auto found = m_Entries.find(path);
-		return found == m_Entries.end() ? nullptr : found->second.Markers;
+		const Entry* found = FindEntry(path);
+		return found == nullptr ? nullptr : found->Markers;
+	}
+
+	ChangeMarkersModel::Entry* ChangeMarkersModel::FindEntry(const std::filesystem::path& path)
+	{
+		return m_Entries.contains(path) ? &m_Entries.at(path) : nullptr;
+	}
+
+	const ChangeMarkersModel::Entry* ChangeMarkersModel::FindEntry(
+		const std::filesystem::path& path) const
+	{
+		return m_Entries.contains(path) ? &m_Entries.at(path) : nullptr;
 	}
 }

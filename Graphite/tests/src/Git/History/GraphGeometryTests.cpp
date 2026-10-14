@@ -51,10 +51,8 @@ TEST_CASE("The graph column is as wide as its lanes")
 	CHECK(Graphite::GraphWidth(metrics, 3) == doctest::Approx(42.0f));
 }
 
-TEST_CASE("A graph with no lanes takes no width")
+TEST_CASE("A graph with no lanes, an empty history, takes no width and no minimum stripe")
 {
-	// A linear history still reports one lane, so zero means an empty history — and a
-	// column drawn at some minimum width there would be an empty stripe beside nothing.
 	CHECK(Graphite::GraphWidth(Metrics(), 0) == doctest::Approx(0.0f));
 }
 
@@ -63,16 +61,12 @@ TEST_CASE("An edge that stays in its lane is straight")
 	CHECK(Graphite::ShapeOf(Edge(0, 1, 1, 1)) == EdgeShape::Straight);
 }
 
-TEST_CASE("An edge moving to a lane on the right is a fork")
+TEST_CASE("An edge moving to a lane on the right is a fork, a branch starting seen from the bottom up")
 {
-	// The child sits left of the parent, so the line leaves the child's lane and travels
-	// outwards: a branch starting.
 	CHECK(Graphite::ShapeOf(Edge(0, 0, 3, 2)) == EdgeShape::Fork);
 }
 
-TEST_CASE("An edge moving to a lane on the left is a merge")
+TEST_CASE("An edge moving to a lane on the left is a merge, two lines joining")
 {
-	// The child sits right of the parent, so the line comes back inwards: two lines
-	// joining.
 	CHECK(Graphite::ShapeOf(Edge(0, 2, 3, 0)) == EdgeShape::Merge);
 }

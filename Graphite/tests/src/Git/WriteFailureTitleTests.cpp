@@ -30,17 +30,15 @@ TEST_CASE("Every kind of git write names its own failure")
 		{GitModel::WriteKind::Checkout, "Checkout failed"},
 	};
 
-	for (const Case& c : cases)
+	for (const Case& testCase : cases)
 	{
-		CAPTURE(c.Title);
-		CHECK(WriteFailureTitle(c.Kind) == c.Title);
+		CAPTURE(testCase.Title);
+		CHECK(WriteFailureTitle(testCase.Kind) == testCase.Title);
 	}
 }
 
 TEST_CASE("A kind whose failure never reaches the queue still gets a title")
 {
-	// Init, the delete check and the checkout plan report their failures elsewhere; the
-	// title is a safe answer should one ever be queued.
 	for (const GitModel::WriteKind kind :
 		 {GitModel::WriteKind::Init, GitModel::WriteKind::DeleteCheck, GitModel::WriteKind::CheckoutPlan})
 	{

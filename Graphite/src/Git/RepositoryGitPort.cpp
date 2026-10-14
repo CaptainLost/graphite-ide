@@ -2,6 +2,7 @@
 
 #include "Core/FileSystem/FileSystem.h"
 
+#include <optional>
 #include <system_error>
 #include <unordered_map>
 #include <utility>
@@ -16,15 +17,39 @@ namespace Graphite {
 			std::uint64_t Generation;
 		};
 
-		// One map per thread, shared by every RepositoryGitPort instance that happens to
-		// run on that thread - see the hazard this creates, described where
-		// RepositoryForThisThread reads from it below. Factored out of that function so
-		// GetLiveHandleCountForThisThread can read the same storage without duplicating
-		// the thread_local declaration.
-		std::unordered_map<std::string, CachedRepository>& HandlesForThisThread()
+		using HandleMap = std::unordered_map<std::string, CachedRepository>;
+
+		// WARNING: The map is thread_local and keyed by root text alone, so every RepositoryGitPort on
+		// a thread shares it. Two instances on one thread would evict and reopen each other's
+		// handles on every query. Not reachable while the application owns exactly one instance.
+		HandleMap& HandlesForThisThread()
 		{
-			static thread_local std::unordered_map<std::string, CachedRepository> handles;
-			return handles;
+			static thread_local HandleMap handlesByRoot;
+			return handlesByRoot;
+		}
+
+		// WARNING: SetRoot runs on the UI thread and cannot reach another thread's thread_local map,
+		// so each thread drops handles of other roots on its next call, and callers must run this
+		// before returning for an empty root. On Windows an open handle keeps the packfiles of a
+		// closed folder mapped. A workspace closed and never queried again on a thread keeps that
+		// thread's handle until the thread's next call or exit.
+		void DropHandlesOfOtherRoots(HandleMap& handlesByRoot, const std::string& root)
+		{
+			HandleMap::iterator entry = handlesByRoot.begin();
+
+			while (entry != handlesByRoot.end())
+			{
+				auto& [entryRoot, entryRepository] = *entry;
+
+				if (entryRoot != root)
+				{
+					entry = handlesByRoot.erase(entry);
+				}
+				else
+				{
+					++entry;
+				}
+			}
 		}
 	}
 
@@ -38,9 +63,9 @@ namespace Graphite {
 		const std::lock_guard<std::mutex> lock{m_RootMutex};
 		m_Root = Core::ToUtf8(root);
 
-		// Bumped even when the path text is unchanged: the folder at that path may have been
-		// closed and reopened - .git deleted and recreated, or re-cloned in place - and a
-		// worker's cached handle for the old repository must not be mistaken for current.
+		// WARNING: The generation is bumped even when the path text is unchanged, because the
+		// repository at that path may have been deleted and recreated, and a cached handle to the
+		// old one must not be mistaken for current.
 		++m_Generation;
 	}
 
@@ -55,68 +80,36 @@ namespace Graphite {
 			generation = m_Generation;
 		}
 
-		// The generation the entry was opened under travels with it, so a handle whose root
-		// text still matches but whose repository has since been recreated is recognised as
-		// stale and dropped, rather than answering queries against a repository that is gone.
-		//
-		// This map is `thread_local`, shared by every RepositoryGitPort instance that
-		// happens to run on this thread, keyed by root text while the generation used to
-		// judge staleness comes from `this`. With the single instance the layer owns, that
-		// is harmless. Two instances on the same thread would not be, and the unconditional
-		// sweep below makes that worse than it used to be: two instances at the *same* root
-		// would fight over one slot, each reusing or evicting it by its own generation
-		// counter as before, but two instances at *different* roots now also collide - each
-		// call's sweep sees the other instance's root as "not the current one" and evicts
-		// it, so the two would take turns evicting and reopening each other's handle on
-		// every query instead of each keeping its own. Not reachable today: the layer owns
-		// exactly one instance.
-		auto& handles = HandlesForThisThread();
+		HandleMap& handlesByRoot = HandlesForThisThread();
 
-		// SetRoot cannot reach into this map itself: it runs on the UI thread, and this
-		// cache is thread_local to whichever worker thread opened the handle - there is no
-		// pointer from there to here to erase through. Instead, every entry whose key is
-		// not the current root is dropped here, the next time this thread is asked
-		// anything at all, whether that call is for the new root, for no root at all
-		// (root.empty(), a closed workspace), or for a third root entirely. That closes a
-		// closed-folder-then-different-folder open and a same-thread switch from one root
-		// to another without an intervening close: either way, the entry left behind by the
-		// old root does not outlive this thread's next call.
-		//
-		// What it cannot close: a workspace that is closed and then never queried again on
-		// this thread. Nothing above ever calls back into a thread's own cache from
-		// outside it, so a handle opened here before the close stays open - and, on
-		// Windows, keeps the closed folder's packfiles mmapped - until this thread happens
-		// to be asked something else, or exits. Fixing that would mean a shared,
-		// mutex-guarded map reachable from the UI thread instead of one thread_local map
-		// per worker, which is a different design than the one this cache is.
-		std::erase_if(handles, [&root](const auto& entry) { return entry.first != root; });
+		DropHandlesOfOtherRoots(handlesByRoot, root);
 
 		if (root.empty())
 		{
 			return Core::Error{Core::ErrorCode::NotFound, "no repository is open"};
 		}
 
-		if (const auto existing = handles.find(root); existing != handles.end())
+		HandleMap::iterator cachedEntry = handlesByRoot.find(root);
+
+		if (cachedEntry != handlesByRoot.end())
 		{
-			if (existing->second.Generation == generation)
+			auto& [cachedRoot, cachedRepository] = *cachedEntry;
+
+			if (cachedRepository.Generation == generation)
 			{
-				return &existing->second.Repo;
+				return &cachedRepository.Repo;
 			}
 
-			// Erased rather than left in place: on Windows libgit2 keeps packfiles mmapped,
-			// and a handle merely bypassed - not released - would keep blocking deletion of
-			// the very .git directory the user is trying to replace.
-			handles.erase(existing);
+			// WARNING: A stale handle is erased, not bypassed. On Windows libgit2 keeps packfiles
+			// mapped, and a handle left open would block deleting the .git directory.
+			handlesByRoot.erase(cachedEntry);
 		}
 
-		auto opened = Core::Repository::Open(Core::FromUtf8(root));
+		Core::Result<Core::Repository> opened = Core::Repository::Open(Core::FromUtf8(root));
 
-		// Open's own error is handed on, not flattened into "no repository": only a
-		// NotFound means there is none, and the UI offers to initialise one on exactly that
-		// answer. A repository libgit2 refuses - dubious ownership, a format it does not
-		// understand, a corrupt config - is still a repository, and reading it as missing
-		// would invite an init over the top of it. Still not cached, so a later git init
-		// in this folder is picked up by the next query.
+		// WARNING: Open's error is returned as is. Only NotFound means there is no repository, and
+		// the UI offers to initialise one on exactly that answer. A failed open is not cached, so a
+		// later git init in this folder is picked up by the next query.
 		if (!opened.HasValue())
 		{
 			return opened.GetError();
@@ -124,8 +117,10 @@ namespace Graphite {
 
 		++m_OpenCount;
 
-		const auto inserted = handles.emplace(root, CachedRepository{std::move(opened).GetValue(), generation}).first;
-		return &inserted->second.Repo;
+		std::pair<HandleMap::iterator, bool> insertion = handlesByRoot.emplace(root, CachedRepository{std::move(opened).GetValue(), generation});
+		auto& [insertedEntry, wasInserted] = insertion;
+		auto& [insertedRoot, insertedRepository] = *insertedEntry;
+		return &insertedRepository.Repo;
 	}
 
 	std::size_t RepositoryGitPort::GetLiveHandleCountForThisThread() const
@@ -135,7 +130,7 @@ namespace Graphite {
 
 	Core::Result<Core::WorkingTreeStatus> RepositoryGitPort::QueryStatus()
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -150,7 +145,7 @@ namespace Graphite {
 	Core::Result<Core::WorkingTreeStatus> RepositoryGitPort::QueryUntrackedIn(
 		const std::filesystem::path& directory)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -164,7 +159,7 @@ namespace Graphite {
 
 	Core::Result<std::filesystem::path> RepositoryGitPort::GetWorkingDirectory()
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -178,7 +173,7 @@ namespace Graphite {
 
 	Core::Result<std::vector<Core::Branch>> RepositoryGitPort::QueryBranches()
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -192,7 +187,7 @@ namespace Graphite {
 
 	Core::Result<Core::LogPage> RepositoryGitPort::QueryLog(const Core::LogRequest& request)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -206,7 +201,7 @@ namespace Graphite {
 
 	Core::Result<Core::Diff> RepositoryGitPort::QueryDiff(const Core::DiffRequest& request)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -223,7 +218,7 @@ namespace Graphite {
 		const std::filesystem::path& oldPath,
 		const std::filesystem::path& newPath)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -234,7 +229,7 @@ namespace Graphite {
 
 		FileTexts texts;
 
-		auto newSide = ReadSideText(repository->ReadBlob(newPath, commit));
+		Core::Result<SideText> newSide = ReadSideText(repository->ReadBlob(newPath, commit));
 
 		if (!newSide.HasValue())
 		{
@@ -243,13 +238,12 @@ namespace Graphite {
 
 		SideText newText = std::move(newSide).GetValue();
 
-		// A file a stash took untracked is in none of the stash's own trees but in the commit
-		// it keeps those files in. A path that names a file and is absent from the commit can
-		// only be that: in any other commit's diff, an absent new side is a delete, which has
-		// no new path.
+		// WARNING: A file a stash took untracked is in none of the stash's own trees but in the
+		// commit that holds those files. In any other commit an absent new side is a delete,
+		// which has no new path.
 		if (!newText.Present && !newPath.empty())
 		{
-			auto untracked = repository->UntrackedOfStash(commit);
+			Core::Result<std::optional<Core::Oid>> untracked = repository->UntrackedOfStash(commit);
 
 			if (!untracked.HasValue())
 			{
@@ -258,7 +252,7 @@ namespace Graphite {
 
 			if (untracked.GetValue().has_value())
 			{
-				auto stashed = ReadSideText(repository->ReadBlob(newPath, *untracked.GetValue()));
+				Core::Result<SideText> stashed = ReadSideText(repository->ReadBlob(newPath, *untracked.GetValue()));
 
 				if (!stashed.HasValue())
 				{
@@ -272,19 +266,17 @@ namespace Graphite {
 		texts.HasNew = newText.Present;
 		texts.New = std::move(newText.Text);
 
-		auto parent = repository->FirstParentOf(commit);
+		Core::Result<std::optional<Core::Oid>> parent = repository->FirstParentOf(commit);
 
 		if (!parent.HasValue())
 		{
 			return parent.GetError();
 		}
 
-		// A root commit has no parent, and FirstParentOf says so with an empty optional
-		// rather than an error - the old side is then simply absent, the same SideText{}
-		// an absent file's NotFound produces.
-		Core::Result<SideText> oldSide = parent.GetValue().has_value()
-											 ? ReadSideText(repository->ReadBlob(oldPath, *parent.GetValue()))
-											 : Core::Result<SideText>{SideText{}};
+		const bool isRootCommit = !parent.GetValue().has_value();
+		Core::Result<SideText> oldSide = isRootCommit
+											 ? Core::Result<SideText>{SideText{}}
+											 : ReadSideText(repository->ReadBlob(oldPath, *parent.GetValue()));
 
 		if (!oldSide.HasValue())
 		{
@@ -300,7 +292,7 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::Stage(const std::vector<std::filesystem::path>& paths)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -314,7 +306,7 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::Unstage(const std::vector<std::filesystem::path>& paths)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -328,7 +320,7 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::DiscardWorkTree(const std::vector<std::filesystem::path>& paths)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -342,7 +334,7 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::DeleteUntracked(const std::vector<std::filesystem::path>& paths)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -356,7 +348,7 @@ namespace Graphite {
 
 	Core::Result<Core::Oid> RepositoryGitPort::Commit(const Core::CommitRequest& request)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -370,7 +362,7 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::CreateBranch(const std::string& name, const Core::Oid& from)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -384,7 +376,7 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::RenameBranch(const std::string& from, const std::string& to)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -398,7 +390,7 @@ namespace Graphite {
 
 	Core::Result<std::size_t> RepositoryGitPort::CountUnmergedCommits(const std::string& name)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -412,7 +404,7 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::DeleteBranch(const std::string& name)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -426,7 +418,7 @@ namespace Graphite {
 
 	Core::Result<bool> RepositoryGitPort::StashSave(const std::string& message, Core::UntrackedFiles untrackedFiles)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -440,7 +432,7 @@ namespace Graphite {
 
 	Core::Result<std::vector<Core::StashEntry>> RepositoryGitPort::QueryStashes()
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -454,7 +446,7 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::StashApply(const Core::Oid& id)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -468,7 +460,7 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::StashPop(const Core::Oid& id)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -482,7 +474,7 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::StashDrop(const Core::Oid& id)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -496,7 +488,7 @@ namespace Graphite {
 
 	Core::Result<Core::CheckoutPlan> RepositoryGitPort::PlanCheckout(const Core::CheckoutTarget& target)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -510,7 +502,7 @@ namespace Graphite {
 
 	Core::CheckoutOutcome RepositoryGitPort::Checkout(const Core::CheckoutTarget& target)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -524,7 +516,7 @@ namespace Graphite {
 
 	Core::Result<void> RepositoryGitPort::DiscardAll(Core::UntrackedFiles untrackedFiles)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -538,7 +530,7 @@ namespace Graphite {
 
 	Core::Result<Core::HeadState> RepositoryGitPort::QueryHead()
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -564,12 +556,11 @@ namespace Graphite {
 			return Core::Error{Core::ErrorCode::NotFound, "no folder is open"};
 		}
 
-		// Asked again here rather than trusted from the last status the UI saw: an init is
-		// only safe where Open finds nothing at all. Over a repository it would rewrite
-		// .git/config, and in a subfolder of one it would nest a second repository - and the
-		// same holds for a repository Open finds but refuses, which still counts as there.
+		// WARNING: Open is asked again here, not trusted from the last status the UI saw. An init
+		// is safe only where Open finds nothing: over a repository it rewrites .git/config, inside
+		// one it nests a second, and a repository Open refuses still counts as there.
 		{
-			auto existing = Core::Repository::Open(Core::FromUtf8(root));
+			Core::Result<Core::Repository> existing = Core::Repository::Open(Core::FromUtf8(root));
 
 			if (existing.HasValue())
 			{
@@ -582,10 +573,9 @@ namespace Graphite {
 			}
 		}
 
-		// The handle is dropped here rather than cached: RepositoryForThisThread never
-		// caches a failed open, so every worker's next query opens the new repository on
-		// its own thread, which is the only thread allowed to use it.
-		auto created = Core::Repository::Init(Core::FromUtf8(root));
+		// WARNING: The created handle is dropped, not cached: each worker's next query opens the
+		// new repository on its own thread, the only thread allowed to use that handle.
+		Core::Result<Core::Repository> created = Core::Repository::Init(Core::FromUtf8(root));
 
 		if (!created.HasValue())
 		{
@@ -597,8 +587,6 @@ namespace Graphite {
 
 	namespace {
 
-		// One side, read from wherever the target says it lives. An Absent side is not read at
-		// all and comes back empty, which is the same shape a missing file produces.
 		Core::Result<SideText> ReadOneSide(Core::Repository& repository, TextSide side,
 										   const std::filesystem::path& path)
 		{
@@ -611,12 +599,10 @@ namespace Graphite {
 			{
 			case TextSide::Head:
 			{
-				auto head = repository.HeadCommit();
+				Core::Result<Core::Oid> head = repository.HeadCommit();
 
-				// An unborn HEAD is a repository with no commit yet, so there is no older
-				// side - the same answer as a file that did not exist then. Any other
-				// failure is not an absent side, and showing it as one would draw the
-				// whole file as added.
+				// WARNING: An unborn HEAD has no older side. Any other failure must stay a failure,
+				// because showing it as an absent side would draw the whole file as added.
 				if (!head.HasValue())
 				{
 					if (head.GetError().Code == Core::ErrorCode::NotFound)
@@ -642,6 +628,18 @@ namespace Graphite {
 
 			return SideText{};
 		}
+
+		// WARNING: InvalidArgument means the side is too large to read. The file stays Tracked with
+		// nothing drawn, rather than failing the whole call over a side that would never be diffed.
+		Core::Result<ChangeBases> BasesForUnreadableSide(const Core::Error& error)
+		{
+			if (error.Code == Core::ErrorCode::InvalidArgument)
+			{
+				return ChangeBases{.Tracked = true, .Unusable = true};
+			}
+
+			return error;
+		}
 	}
 
 	Core::Result<FileTexts> RepositoryGitPort::ReadWorkingTreeTexts(
@@ -649,7 +647,7 @@ namespace Graphite {
 		const std::filesystem::path& oldPath,
 		const std::filesystem::path& newPath)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
 		if (!opened.HasValue())
 		{
@@ -660,14 +658,14 @@ namespace Graphite {
 
 		const WorkingTreeSides sides = SidesFor(target);
 
-		auto oldSide = ReadOneSide(*repository, sides.Old, oldPath);
+		Core::Result<SideText> oldSide = ReadOneSide(*repository, sides.Old, oldPath);
 
 		if (!oldSide.HasValue())
 		{
 			return oldSide.GetError();
 		}
 
-		auto newSide = ReadOneSide(*repository, sides.New, newPath);
+		Core::Result<SideText> newSide = ReadOneSide(*repository, sides.New, newPath);
 
 		if (!newSide.HasValue())
 		{
@@ -688,11 +686,10 @@ namespace Graphite {
 
 	Core::Result<ChangeBases> RepositoryGitPort::ReadBases(const std::filesystem::path& absolutePath)
 	{
-		auto opened = RepositoryForThisThread();
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
 
-		// No repository is an answer, not a failure: the column is simply empty. One that
-		// cannot be opened draws the same empty column - the gutter has no place to say why,
-		// and the Changes panel already reports the open's own error.
+		// WARNING: No repository, or one that cannot be opened, draws an empty column rather than
+		// failing: the gutter has no place to say why, and the Changes panel reports the open error.
 		if (!opened.HasValue())
 		{
 			return ChangeBases{};
@@ -700,11 +697,11 @@ namespace Graphite {
 
 		Core::Repository* repository = opened.GetValue();
 
-		std::error_code code;
+		std::error_code relativeError;
 		const std::filesystem::path relative =
-			std::filesystem::relative(absolutePath, repository->GetWorkingDirectory(), code);
+			std::filesystem::relative(absolutePath, repository->GetWorkingDirectory(), relativeError);
 
-		if (code || relative.empty() || *relative.begin() == "..")
+		if (relativeError || relative.empty() || *relative.begin() == "..")
 		{
 			return ChangeBases{};
 		}
@@ -714,32 +711,25 @@ namespace Graphite {
 			return ChangeBases{};
 		}
 
-		// A file inside a submodule belongs to the submodule's repository, not this one. Read
-		// here it would have neither side and so be drawn as added from top to bottom.
+		// WARNING: A file inside a submodule belongs to the submodule's repository. Read here it
+		// would have neither side and be drawn as added from top to bottom.
 		if (repository->IsInsideSubmodule(relative))
 		{
 			return ChangeBases{};
 		}
 
-		auto head = ReadOneSide(*repository, TextSide::Head, relative);
+		Core::Result<SideText> head = ReadOneSide(*repository, TextSide::Head, relative);
 
-		// A side too large to read at all is the same answer as a side that decodes to
-		// nothing: the file stays Tracked, but nothing is drawn for it, rather than the
-		// whole call failing over a side ReadBases was never going to diff anyway.
 		if (!head.HasValue())
 		{
-			return head.GetError().Code == Core::ErrorCode::InvalidArgument
-					   ? ChangeBases{.Tracked = true, .Unusable = true}
-					   : Core::Result<ChangeBases>{head.GetError()};
+			return BasesForUnreadableSide(head.GetError());
 		}
 
-		auto index = ReadOneSide(*repository, TextSide::Index, relative);
+		Core::Result<SideText> index = ReadOneSide(*repository, TextSide::Index, relative);
 
 		if (!index.HasValue())
 		{
-			return index.GetError().Code == Core::ErrorCode::InvalidArgument
-					   ? ChangeBases{.Tracked = true, .Unusable = true}
-					   : Core::Result<ChangeBases>{index.GetError()};
+			return BasesForUnreadableSide(index.GetError());
 		}
 
 		SideText headSide = std::move(head).GetValue();
@@ -752,8 +742,7 @@ namespace Graphite {
 
 	namespace {
 
-		// More than any branch under review holds; a range past it says so rather than listing them all.
-		constexpr std::size_t kRangeCommitsListed = 500;
+		constexpr std::size_t kMostCommitsListedInRange = 500;
 
 		bool IsNotFound(const Core::Error& error)
 		{
@@ -803,9 +792,9 @@ namespace Graphite {
 			return worktree.GetValue().ReadWorkingTreeFile(request.Path);
 		}
 
-		// A since-viewed answer keeps NotFound for the viewed blob alone: a current version that is not
-		// found - a file deleted on disk since the diff, a worktree removed - is a read that failed.
-		Core::Error AsFailedRead(Core::Error error)
+		// WARNING: A since-viewed answer keeps NotFound for the viewed blob alone. A current version
+		// that is not found, such as a file deleted since the diff or a removed worktree, is a failed read.
+		Core::Error ReclassifyMissingCurrentVersionAsIoFailure(Core::Error error)
 		{
 			if (error.Code == Core::ErrorCode::NotFound)
 			{
@@ -841,7 +830,7 @@ namespace Graphite {
 			return range;
 		}
 
-		// A lookup that failed reads as held nowhere: the review still works, and only the
+		// WARNING: A failed lookup reads as held nowhere. The review still works; only the
 		// uncommitted toggle is not offered.
 		const Core::Result<std::optional<std::filesystem::path>> holding = repository->WorktreeHolding(key.Branch);
 
@@ -881,7 +870,7 @@ namespace Graphite {
 		Core::LogRequest commitsSinceMergeBase;
 		commitsSinceMergeBase.Ref = key.Branch;
 		commitsSinceMergeBase.Exclude = range.Ends.MergeBase;
-		commitsSinceMergeBase.MaxCount = kRangeCommitsListed;
+		commitsSinceMergeBase.MaxCount = kMostCommitsListedInRange;
 
 		Core::Result<Core::LogPage> page = repository->QueryLog(commitsSinceMergeBase);
 
@@ -911,7 +900,8 @@ namespace Graphite {
 		request.To = ends.Tip;
 		request.Whitespace = whitespace;
 
-		// A From left unset is the empty tree; a zero id would be looked up as a commit and not found.
+		// WARNING: A From left unset is the empty tree. A zero id would be looked up as a commit
+		// and not found.
 		if (!ends.MergeBase.IsZero())
 		{
 			request.From = ends.MergeBase;
@@ -951,11 +941,11 @@ namespace Graphite {
 	}
 
 	Core::Result<Core::Diff> RepositoryGitPort::QueryWorktreeDiff(const std::filesystem::path& worktree,
-																				 Core::WhitespaceInDiff whitespace)
+																  Core::WhitespaceInDiff whitespace)
 	{
-		// Not cached per thread: a cached handle would hold an index the worktree's own git has
-		// since rewritten. Opened exactly: a folder that lost its `.git` file would otherwise be read
-		// as the repository around it, and that checkout's changes listed as the worktree's.
+		// WARNING: Not cached per thread, because a cached handle would hold an index the worktree's
+		// own git has since rewritten. Opened exactly, because a folder that lost its .git file
+		// would otherwise be read as the repository around it.
 		Core::Result<Core::Repository> opened = Core::Repository::OpenExactly(worktree);
 
 		if (!opened.HasValue())
@@ -1013,8 +1003,8 @@ namespace Graphite {
 
 		Core::Repository* repository = opened.GetValue();
 
-		// A linked worktree shares this repository's object database, so the viewed blob is read here
-		// whichever side the current version comes from.
+		// WARNING: A linked worktree shares this repository's object database, so the viewed blob is
+		// read here whichever side the current version comes from.
 		Core::Result<std::string> viewed = repository->ReadBlobById(request.ViewedBlob);
 
 		if (!viewed.HasValue())
@@ -1026,7 +1016,7 @@ namespace Graphite {
 
 		if (!current.HasValue())
 		{
-			return AsFailedRead(current.GetError());
+			return ReclassifyMissingCurrentVersionAsIoFailure(current.GetError());
 		}
 
 		Core::Result<Core::FileDiff> diff =

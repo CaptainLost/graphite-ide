@@ -48,7 +48,7 @@ TEST_CASE("Content past the size limit is not diffed")
 
 TEST_CASE("A file in neither HEAD nor the index is tracked with no sides")
 {
-	const auto bases = MakeChangeBases(std::nullopt, std::nullopt);
+	const Graphite::ChangeBases bases = MakeChangeBases(std::nullopt, std::nullopt);
 
 	CHECK(bases.Tracked);
 	CHECK_FALSE(bases.Unusable);
@@ -58,7 +58,7 @@ TEST_CASE("A file in neither HEAD nor the index is tracked with no sides")
 
 TEST_CASE("A side that is not text makes the file unusable")
 {
-	const auto bases = MakeChangeBases(std::string{"one\n"}, std::string{"a\0b", 3});
+	const Graphite::ChangeBases bases = MakeChangeBases(std::string{"one\n"}, std::string{"a\0b", 3});
 
 	CHECK(bases.Tracked);
 	CHECK(bases.Unusable);

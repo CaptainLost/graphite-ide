@@ -9,7 +9,6 @@ namespace Graphite {
 			return "A write is in progress";
 		}
 
-		// An amend rewrites HEAD and may change nothing but its message, so it needs neither.
 		if (inputs.Amend)
 		{
 			return std::nullopt;

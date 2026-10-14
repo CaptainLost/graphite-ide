@@ -3,6 +3,8 @@
 #include "Git/History/CommitLabels.h"
 #include "Theme/GitPalette.h"
 
+#include "Core/Text/Encoding.h"
+
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -11,28 +13,9 @@
 using namespace std::chrono_literals;
 
 namespace {
-
 	std::chrono::sys_seconds At(long long seconds)
 	{
 		return std::chrono::sys_seconds{std::chrono::seconds{seconds}};
-	}
-
-	// A UTF-8 continuation byte has the top two bits `10`, so counting the bytes that are
-	// not one counts code points without decoding anything. The cut tests below measure text in this unit,
-	// standing in for a monospace font's columns.
-	std::size_t CodePointCount(std::string_view text)
-	{
-		std::size_t count = 0;
-
-		for (const char byte : text)
-		{
-			if ((static_cast<unsigned char>(byte) & 0xC0) != 0x80)
-			{
-				++count;
-			}
-		}
-
-		return count;
 	}
 }
 
@@ -56,15 +39,11 @@ TEST_CASE("A single unit is not pluralised")
 
 TEST_CASE("A commit dated in the future reads as just now rather than negatively")
 {
-	// Clock skew between machines is ordinary, and "in -3 minutes" is not a thing to show
-	// a user.
 	CHECK(Graphite::RelativeAge(At(5000), At(1000)) == "just now");
 }
 
 TEST_CASE("An age of a couple of months reads in months")
 {
-	// Comfortably inside the branch rather than on its boundary: two months, not the
-	// threshold itself.
 	CHECK(Graphite::RelativeAge(At(0), At(5184000)) == "2 months ago");
 }
 
@@ -75,36 +54,34 @@ TEST_CASE("An age of a couple of years reads in years")
 
 TEST_CASE("Initials come from the first and last word of a name")
 {
-	Core::Signature who;
-	who.Name = "Ada Lovelace";
+	Core::Signature signature;
+	signature.Name = "Ada Lovelace";
 
-	CHECK(Graphite::AuthorInitials(who) == "AL");
+	CHECK(Graphite::AuthorInitials(signature) == "AL");
 }
 
 TEST_CASE("A one-word name gives one initial")
 {
-	Core::Signature who;
-	who.Name = "Ada";
+	Core::Signature signature;
+	signature.Name = "Ada";
 
-	CHECK(Graphite::AuthorInitials(who) == "A");
+	CHECK(Graphite::AuthorInitials(signature) == "A");
 }
 
 TEST_CASE("A name with a middle name still gives two initials")
 {
-	Core::Signature who;
-	who.Name = "Ada King Lovelace";
+	Core::Signature signature;
+	signature.Name = "Ada King Lovelace";
 
-	CHECK(Graphite::AuthorInitials(who) == "AL");
+	CHECK(Graphite::AuthorInitials(signature) == "AL");
 }
 
 TEST_CASE("An empty name falls back to the email")
 {
-	Core::Signature who;
-	who.Email = "ada@example.com";
+	Core::Signature signature;
+	signature.Email = "ada@example.com";
 
-	// A commit with no author name is malformed but real, and a blank badge tells the
-	// reader nothing at all.
-	CHECK(Graphite::AuthorInitials(who) == "A");
+	CHECK(Graphite::AuthorInitials(signature) == "A");
 }
 
 TEST_CASE("A name with neither name nor email gives a placeholder")
@@ -114,44 +91,44 @@ TEST_CASE("A name with neither name nor email gives a placeholder")
 
 TEST_CASE("A trailing space on the name does not garble the initials")
 {
-	Core::Signature who;
-	who.Name = "Ada Lovelace ";
+	Core::Signature signature;
+	signature.Name = "Ada Lovelace ";
 
-	CHECK(Graphite::AuthorInitials(who) == "AL");
+	CHECK(Graphite::AuthorInitials(signature) == "AL");
 }
 
 TEST_CASE("A leading space on the name does not garble the initials")
 {
-	Core::Signature who;
-	who.Name = " Ada Lovelace";
+	Core::Signature signature;
+	signature.Name = " Ada Lovelace";
 
-	CHECK(Graphite::AuthorInitials(who) == "AL");
+	CHECK(Graphite::AuthorInitials(signature) == "AL");
 }
 
 TEST_CASE("A whitespace-only name falls back to the email like an empty one")
 {
-	Core::Signature who;
-	who.Name = " ";
-	who.Email = "ada@example.com";
+	Core::Signature signature;
+	signature.Name = " ";
+	signature.Email = "ada@example.com";
 
-	CHECK(Graphite::AuthorInitials(who) == "A");
+	CHECK(Graphite::AuthorInitials(signature) == "A");
 }
 
 TEST_CASE("The author column shows the name as git recorded it")
 {
-	Core::Signature who;
-	who.Name = "Ada Lovelace";
-	who.Email = "ada@example.com";
+	Core::Signature signature;
+	signature.Name = "Ada Lovelace";
+	signature.Email = "ada@example.com";
 
-	CHECK(Graphite::AuthorName(who) == "Ada Lovelace");
+	CHECK(Graphite::AuthorName(signature) == "Ada Lovelace");
 }
 
 TEST_CASE("An empty name falls back to the email's local part")
 {
-	Core::Signature who;
-	who.Email = "ada@example.com";
+	Core::Signature signature;
+	signature.Email = "ada@example.com";
 
-	CHECK(Graphite::AuthorName(who) == "ada");
+	CHECK(Graphite::AuthorName(signature) == "ada");
 }
 
 TEST_CASE("Neither name nor email gives unknown")
@@ -160,12 +137,9 @@ TEST_CASE("Neither name nor email gives unknown")
 }
 
 namespace {
-
-	// A monospace face one unit per code point, which is what the list is drawn in and
-	// what makes the expected cuts below countable by hand.
 	float Columns(std::string_view text)
 	{
-		return static_cast<float>(CodePointCount(text));
+		return static_cast<float>(Core::CharacterCount(text));
 	}
 }
 
@@ -177,7 +151,6 @@ TEST_CASE("Text that fits is not cut")
 
 TEST_CASE("Text too long keeps as much as fits beside the ellipsis")
 {
-	// Ten columns, one of them the ellipsis's: nine kept.
 	const std::optional<std::size_t> cut =
 		Graphite::CutToFit("abcdefghijklmnop", 10.0f, 1.0f, Columns);
 
@@ -187,8 +160,6 @@ TEST_CASE("Text too long keeps as much as fits beside the ellipsis")
 
 TEST_CASE("A cut drops the spaces it would otherwise end on")
 {
-	// "fix: end the" is twelve columns and would leave "fix: end the …" with the ellipsis
-	// hanging a space away from the word it cuts short.
 	const std::optional<std::size_t> cut =
 		Graphite::CutToFit("fix: end the changes", 14.0f, 1.0f, Columns);
 
@@ -198,8 +169,6 @@ TEST_CASE("A cut drops the spaces it would otherwise end on")
 
 TEST_CASE("A cut never splits a multi-byte UTF-8 character")
 {
-	// "René Déjà Vu": the fourth code point is a two-byte "é", and a byte-counted cut at
-	// the same point would keep only its lead byte, which draws as a broken glyph.
 	const std::string_view name = "Ren\xC3\xA9 D\xC3\xA9j\xC3\xA0 Vu";
 
 	const std::optional<std::size_t> cut = Graphite::CutToFit(name, 5.0f, 1.0f, Columns);
@@ -210,9 +179,6 @@ TEST_CASE("A cut never splits a multi-byte UTF-8 character")
 
 TEST_CASE("Text that starts mid-character is cut by width all the same")
 {
-	// Three Latin-1 bytes a UTF-8 reader sees as lone continuation bytes, measured the way a
-	// font draws them: one replacement glyph each. None of them starts a code point, and the
-	// cut must still not keep them unmeasured and overflow the cell.
 	const std::string_view text = "\xB0\xB0\xB0"
 								  "abc";
 
@@ -241,8 +207,6 @@ TEST_CASE("Every kind of file change has its own letter")
 	CHECK(Graphite::ChangeLetter(Core::FileChange::Copied) == 'C');
 	CHECK(Graphite::ChangeLetter(Core::FileChange::TypeChanged) == 'T');
 
-	// Never reaches a diff's file list in practice, but a blank is a safer default than a
-	// claim about a change that did not happen.
 	CHECK(Graphite::ChangeLetter(Core::FileChange::Unmodified) == ' ');
 }
 
@@ -273,15 +237,11 @@ TEST_CASE("A deleted file is shown under its old path")
 	file.OldPath = "gone.txt";
 	file.Change = Core::FileChange::Deleted;
 
-	// A deleted delta carries no new path at all, so falling back to NewPath would show
-	// nothing for exactly the change a reader most wants to find by name.
 	CHECK(Graphite::ShownPath(file) == std::filesystem::path("gone.txt"));
 }
 
 TEST_CASE("A change letter takes the colour that change has everywhere else")
 {
-	// The gutter colours, not new ones: a file added in a commit and a line added in the
-	// editor are the same event to a reader, and two greens would say they are not.
 	Graphite::GitPalette palette;
 	palette.GutterAdded = 0x11111111;
 	palette.GutterModified = 0x22222222;
@@ -294,8 +254,6 @@ TEST_CASE("A change letter takes the colour that change has everywhere else")
 
 TEST_CASE("A change that neither adds nor deletes the file reads as a modification")
 {
-	// A rename, a copy and a type change all leave a file where it was with something about
-	// it different, which is what the modified colour says.
 	Graphite::GitPalette palette;
 	palette.GutterModified = 0x22222222;
 
@@ -306,12 +264,36 @@ TEST_CASE("A change that neither adds nor deletes the file reads as a modificati
 
 TEST_CASE("A file the commit left alone is not coloured at all")
 {
-	// Its letter is a space. Colouring nothing would still tint the row's spacing, which is
-	// a colour with no meaning attached to it.
 	Graphite::GitPalette palette;
 	palette.GutterAdded = 0x11111111;
 	palette.GutterModified = 0x22222222;
 	palette.GutterRemoved = 0x33333333;
 
 	CHECK(Graphite::ChangeColor(Core::FileChange::Unmodified, palette) == 0u);
+}
+
+TEST_CASE("A file is found by its new path")
+{
+	Core::Diff diff;
+	diff.Files.push_back(Core::FileDiff{.OldPath = "a.txt", .NewPath = "a.txt"});
+	diff.Files.push_back(Core::FileDiff{.OldPath = "b.txt", .NewPath = "c.txt"});
+
+	CHECK(Graphite::IndexOfFile(diff, "c.txt") == 1);
+}
+
+TEST_CASE("A deleted file with no new path is found by its old path")
+{
+	Core::Diff diff;
+	diff.Files.push_back(Core::FileDiff{.OldPath = "a.txt", .NewPath = "a.txt"});
+	diff.Files.push_back(Core::FileDiff{.OldPath = "gone.txt"});
+
+	CHECK(Graphite::IndexOfFile(diff, "gone.txt") == 1);
+}
+
+TEST_CASE("A path no file in the diff carries is not found")
+{
+	Core::Diff diff;
+	diff.Files.push_back(Core::FileDiff{.OldPath = "a.txt", .NewPath = "a.txt"});
+
+	CHECK_FALSE(Graphite::IndexOfFile(diff, "missing.txt").has_value());
 }

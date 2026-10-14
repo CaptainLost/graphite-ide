@@ -13,8 +13,6 @@ TEST_CASE("A successful read is present with its text")
 
 TEST_CASE("An empty successful read is present and empty, not absent")
 {
-	// The distinction HasOld/HasNew exist for: a genuinely empty file is a real answer,
-	// not the same as the file never having existed on that side.
 	Core::Result<Graphite::SideText> side = Graphite::ReadSideText(std::string{});
 
 	REQUIRE(side.HasValue());

@@ -1,11 +1,15 @@
 #include <doctest/doctest.h>
 
 #include "Git/GitDecorationView.h"
+#include "GitFixtures.h"
+
+#include <optional>
+#include <vector>
 
 namespace {
 
-	using Graphite::GitDecoration;
 	using Core::StatusFlags;
+	using Graphite::GitDecoration;
 
 	Core::FileStatus Entry(const char8_t* path, StatusFlags workTree)
 	{
@@ -13,13 +17,6 @@ namespace {
 		file.Path = path;
 		file.WorkTree = workTree;
 		return file;
-	}
-
-	Core::WorkingTreeStatus StatusOf(std::vector<Core::FileStatus> entries)
-	{
-		Core::WorkingTreeStatus status;
-		status.Entries = std::move(entries);
-		return status;
 	}
 
 	const std::filesystem::path kWorkingDirectory = "C:/repo";
@@ -35,10 +32,10 @@ namespace {
 
 TEST_CASE("GitDecorationView: a path inside the working directory is looked up by its relative key")
 {
-	const Graphite::GitDecorations index(StatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified)}));
+	const Graphite::GitDecorations index(WorkingTreeStatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified)}));
 	const Graphite::GitDecorationView view = ViewOf(&index);
 
-	const auto relative = view.RelativeOf("C:/repo/src/a.cpp");
+	const std::optional<std::filesystem::path> relative = view.RelativeOf("C:/repo/src/a.cpp");
 	REQUIRE(relative.has_value());
 	CHECK(relative->generic_u8string() == u8"src/a.cpp");
 
@@ -50,7 +47,7 @@ TEST_CASE("GitDecorationView: a path inside the working directory is looked up b
 
 TEST_CASE("GitDecorationView: the working directory itself is the root aggregate")
 {
-	const Graphite::GitDecorations index(StatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified)}));
+	const Graphite::GitDecorations index(WorkingTreeStatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified)}));
 	const Graphite::GitDecorationView view = ViewOf(&index);
 
 	CHECK(view.RelativeOf("C:/repo").has_value());
@@ -60,14 +57,13 @@ TEST_CASE("GitDecorationView: the working directory itself is the root aggregate
 
 TEST_CASE("GitDecorationView: a path outside the working directory has no key and no decoration")
 {
-	const Graphite::GitDecorations index(StatusOf({Entry(u8"x", StatusFlags::Modified)}));
+	const Graphite::GitDecorations index(WorkingTreeStatusOf({Entry(u8"x", StatusFlags::Modified)}));
 	const Graphite::GitDecorationView view = ViewOf(&index);
 
 	CHECK_FALSE(view.RelativeOf("C:/other/x").has_value());
 	CHECK(view.FileOf("C:/other/x") == GitDecoration::None);
 	CHECK(view.FolderOf("C:/other") == GitDecoration::None);
 
-	// A sibling whose name starts with the working directory's is not inside it.
 	CHECK_FALSE(view.RelativeOf("C:/repo2/x").has_value());
 	CHECK(view.FileOf("C:/repo2/x") == GitDecoration::None);
 }
@@ -75,7 +71,7 @@ TEST_CASE("GitDecorationView: a path outside the working directory has no key an
 #ifdef _WIN32
 TEST_CASE("GitDecorationView: Windows paths are found whatever their case")
 {
-	const Graphite::GitDecorations index(StatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified)}));
+	const Graphite::GitDecorations index(WorkingTreeStatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified)}));
 	const Graphite::GitDecorationView view = ViewOf(&index);
 
 	CHECK(view.FileOf("c:/REPO/Src/A.cpp") == GitDecoration::Modified);
@@ -95,7 +91,7 @@ TEST_CASE("GitDecorationView: without an index nothing is decorated")
 
 TEST_CASE("GitDecorationView: without a working directory nothing is decorated")
 {
-	const Graphite::GitDecorations index(StatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified)}));
+	const Graphite::GitDecorations index(WorkingTreeStatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified)}));
 	Graphite::GitDecorationView view;
 	view.Index = &index;
 
@@ -110,7 +106,7 @@ TEST_CASE("GitDecorationView: an untracked directory is reported by its absolute
 	untracked.IsUntracked = true;
 	untracked.IsDirectory = true;
 
-	const Graphite::GitDecorations index(StatusOf({untracked}));
+	const Graphite::GitDecorations index(WorkingTreeStatusOf({untracked}));
 	const Graphite::GitDecorationView view = ViewOf(&index);
 
 	CHECK(view.IsUntrackedFolderOf("C:/repo/build/gen"));
@@ -139,7 +135,7 @@ TEST_CASE("GitDecorationView: a folder lookup gives the decoration and the untra
 	untracked.IsUntracked = true;
 	untracked.IsDirectory = true;
 
-	const Graphite::GitDecorations index(StatusOf({untracked, Entry(u8"src/a.cpp", StatusFlags::Modified)}));
+	const Graphite::GitDecorations index(WorkingTreeStatusOf({untracked, Entry(u8"src/a.cpp", StatusFlags::Modified)}));
 	const Graphite::GitDecorationView view = ViewOf(&index);
 
 	const Graphite::FolderDecoration gen = view.FolderDecorationOf("C:/repo/build/gen");
@@ -150,9 +146,9 @@ TEST_CASE("GitDecorationView: a folder lookup gives the decoration and the untra
 	CHECK(build.Decoration == GitDecoration::Untracked);
 	CHECK_FALSE(build.Untracked);
 
-	const Graphite::FolderDecoration src = view.FolderDecorationOf("C:/repo/src");
-	CHECK(src.Decoration == GitDecoration::Modified);
-	CHECK_FALSE(src.Untracked);
+	const Graphite::FolderDecoration sourceFolder = view.FolderDecorationOf("C:/repo/src");
+	CHECK(sourceFolder.Decoration == GitDecoration::Modified);
+	CHECK_FALSE(sourceFolder.Untracked);
 
 	CHECK(view.FolderDecorationOf("C:/other").Decoration == GitDecoration::None);
 	CHECK(ViewOf(nullptr).FolderDecorationOf("C:/repo/src").Decoration == GitDecoration::None);
@@ -163,8 +159,8 @@ TEST_CASE("MaxDecorationOf: the most important decoration among the files wins")
 	Core::FileStatus conflicted = Entry(u8"src/c.cpp", StatusFlags::Modified);
 	conflicted.IsConflicted = true;
 
-	const Graphite::GitDecorations index(StatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified),
-												   Entry(u8"src/b.cpp", StatusFlags::New), conflicted}));
+	const Graphite::GitDecorations index(WorkingTreeStatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified),
+															  Entry(u8"src/b.cpp", StatusFlags::New), conflicted}));
 	const Graphite::GitDecorationView view = ViewOf(&index);
 
 	const std::vector<std::filesystem::path> modifiedAndClean = {"C:/repo/src/clean.cpp", "C:/repo/src/a.cpp"};
@@ -176,7 +172,7 @@ TEST_CASE("MaxDecorationOf: the most important decoration among the files wins")
 
 TEST_CASE("MaxDecorationOf: no files, clean files, files outside the repository or no index give None")
 {
-	const Graphite::GitDecorations index(StatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified)}));
+	const Graphite::GitDecorations index(WorkingTreeStatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified)}));
 	const Graphite::GitDecorationView view = ViewOf(&index);
 
 	CHECK(Graphite::MaxDecorationOf({}, view) == GitDecoration::None);
@@ -190,7 +186,7 @@ TEST_CASE("MaxDecorationOf: no files, clean files, files outside the repository 
 
 TEST_CASE("GitDecorationView: a copy keeps the working directory")
 {
-	const Graphite::GitDecorations index(StatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified)}));
+	const Graphite::GitDecorations index(WorkingTreeStatusOf({Entry(u8"src/a.cpp", StatusFlags::Modified)}));
 	const Graphite::GitDecorationView original = ViewOf(&index);
 	const Graphite::GitDecorationView copy = original;
 
@@ -204,7 +200,7 @@ TEST_CASE("GitDecorationView: OwnFileOf gives a file's own entry and nothing inh
 	untracked.IsUntracked = true;
 	untracked.IsDirectory = true;
 
-	const Graphite::GitDecorations index(StatusOf({untracked, Entry(u8"src/a.cpp", StatusFlags::Modified)}));
+	const Graphite::GitDecorations index(WorkingTreeStatusOf({untracked, Entry(u8"src/a.cpp", StatusFlags::Modified)}));
 	const Graphite::GitDecorationView view = ViewOf(&index);
 
 	CHECK(view.OwnFileOf("C:/repo/src/a.cpp") == GitDecoration::Modified);

@@ -1,5 +1,7 @@
 #include "Git/History/CommitLabels.h"
 
+#include "Core/Text/Encoding.h"
+
 #include <cctype>
 #include <format>
 #include <string_view>
@@ -9,114 +11,138 @@ namespace Graphite {
 
 	namespace {
 
-		std::string Count(long long value, std::string_view unit)
+		constexpr long long kSecondsPerMinute = 60;
+		constexpr long long kSecondsPerHour = 3600;
+		constexpr long long kSecondsPerDay = 86400;
+		constexpr long long kSecondsPerMonth = 2592000;
+		constexpr long long kSecondsPerYear = 31536000;
+
+		std::string AgeText(long long unitCount, std::string_view unit)
 		{
-			return value == 1 ? std::format("1 {} ago", unit)
-							  : std::format("{} {}s ago", value, unit);
+			return unitCount == 1 ? std::format("1 {} ago", unit)
+								  : std::format("{} {}s ago", unitCount, unit);
 		}
 
-		char UpperFirst(std::string_view word)
+		char UppercaseFirstLetter(std::string_view word)
 		{
 			return word.empty()
 					   ? '?'
 					   : static_cast<char>(std::toupper(static_cast<unsigned char>(word.front())));
 		}
 
-		// Git normally trims signature names, but a stray leading, trailing or sole space is
-		// not impossible — and untrimmed it throws the first/last word split off, giving a
-		// blank initial instead of the letter the reader expects.
-		std::string_view Trim(std::string_view text)
+		// WARNING: Git normally trims signature names, but a stray space left on one throws off the first and last word split and gives a blank initial.
+		std::string_view WithoutSurroundingSpaces(std::string_view text)
 		{
-			const std::size_t begin = text.find_first_not_of(' ');
+			const std::size_t firstKept = text.find_first_not_of(' ');
 
-			if (begin == std::string_view::npos)
+			if (firstKept == std::string_view::npos)
 			{
 				return {};
 			}
 
-			const std::size_t end = text.find_last_not_of(' ');
+			const std::size_t lastKept = text.find_last_not_of(' ');
 
-			return text.substr(begin, end - begin + 1);
+			return text.substr(firstKept, lastKept - firstKept + 1);
 		}
 
-		// A UTF-8 continuation byte has the top two bits `10`. A code point is one lead
-		// byte followed by zero or more of these, so counting the non-continuation bytes
-		// counts code points without decoding anything.
-		bool IsUtf8Continuation(char byte)
+		std::vector<std::size_t> CutBoundaries(std::string_view text)
 		{
-			return (static_cast<unsigned char>(byte) & 0xC0) == 0x80;
+			// WARNING: The start of the text is always a boundary, even when its first byte is a continuation byte, so text that is not valid UTF-8 is still cut by width instead of dropped whole.
+			std::vector<std::size_t> boundaries{0};
+
+			for (std::size_t byteIndex = 1; byteIndex < text.size(); ++byteIndex)
+			{
+				if (!Core::IsUtf8ContinuationByte(text[byteIndex]))
+				{
+					boundaries.push_back(byteIndex);
+				}
+			}
+
+			return boundaries;
+		}
+
+		std::size_t ByteCountWithoutTrailingSpaces(std::string_view text, std::size_t byteCount)
+		{
+			while (byteCount > 0 && text[byteCount - 1] == ' ')
+			{
+				--byteCount;
+			}
+
+			return byteCount;
 		}
 	}
 
 	std::string RelativeAge(std::chrono::sys_seconds when, std::chrono::sys_seconds now)
 	{
-		const auto elapsed = now - when;
+		const std::chrono::seconds elapsed = now - when;
 
-		if (elapsed < std::chrono::seconds{60})
+		if (elapsed < std::chrono::seconds{kSecondsPerMinute})
 		{
 			return "just now";
 		}
 
 		const long long seconds = elapsed.count();
 
-		if (seconds < 3600)
+		if (seconds < kSecondsPerHour)
 		{
-			return Count(seconds / 60, "minute");
+			return AgeText(seconds / kSecondsPerMinute, "minute");
 		}
 
-		if (seconds < 86400)
+		if (seconds < kSecondsPerDay)
 		{
-			return Count(seconds / 3600, "hour");
+			return AgeText(seconds / kSecondsPerHour, "hour");
 		}
 
-		if (seconds < 2592000)
+		if (seconds < kSecondsPerMonth)
 		{
-			return Count(seconds / 86400, "day");
+			return AgeText(seconds / kSecondsPerDay, "day");
 		}
 
-		if (seconds < 31536000)
+		if (seconds < kSecondsPerYear)
 		{
-			return Count(seconds / 2592000, "month");
+			return AgeText(seconds / kSecondsPerMonth, "month");
 		}
 
-		return Count(seconds / 31536000, "year");
+		return AgeText(seconds / kSecondsPerYear, "year");
 	}
 
-	std::string AuthorInitials(const Core::Signature& who)
+	std::string AuthorInitials(const Core::Signature& signature)
 	{
-		const std::string_view name = Trim(who.Name);
+		const std::string_view name = WithoutSurroundingSpaces(signature.Name);
 
 		if (name.empty())
 		{
-			return std::string{UpperFirst(who.Email)};
+			return std::string{UppercaseFirstLetter(signature.Email)};
 		}
 
-		const std::size_t firstEnd = name.find(' ');
+		const std::size_t firstSpace = name.find(' ');
 
-		if (firstEnd == std::string_view::npos)
+		if (firstSpace == std::string_view::npos)
 		{
-			return std::string{UpperFirst(name)};
+			return std::string{UppercaseFirstLetter(name)};
 		}
 
-		const std::size_t lastStart = name.find_last_of(' ') + 1;
+		const std::size_t lastWordStart = name.find_last_of(' ') + 1;
 
-		return std::string{UpperFirst(name)} + std::string{UpperFirst(name.substr(lastStart))};
+		return std::string{UppercaseFirstLetter(name)} +
+			   std::string{UppercaseFirstLetter(name.substr(lastWordStart))};
 	}
 
-	std::string AuthorName(const Core::Signature& who)
+	std::string AuthorName(const Core::Signature& signature)
 	{
-		const std::string_view name = Trim(who.Name);
+		const std::string_view name = WithoutSurroundingSpaces(signature.Name);
 
 		if (!name.empty())
 		{
 			return std::string{name};
 		}
 
-		const std::string_view email = Trim(who.Email);
-		const std::size_t at = email.find('@');
-		const std::string_view local = at == std::string_view::npos ? email : email.substr(0, at);
+		const std::string_view email = WithoutSurroundingSpaces(signature.Email);
+		const std::size_t atSignOffset = email.find('@');
+		const std::string_view localPart =
+			atSignOffset == std::string_view::npos ? email : email.substr(0, atSignOffset);
 
-		return local.empty() ? std::string{"unknown"} : std::string{local};
+		return localPart.empty() ? std::string{"unknown"} : std::string{localPart};
 	}
 
 	std::optional<std::size_t> CutToFit(std::string_view text, float maxWidth, float ellipsisWidth,
@@ -127,53 +153,28 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		// Every place a cut may fall: the start of each code point, and the end of the text
-		// is not one of them, since the whole text was just found not to fit.
-		//
-		// The start of the text is always one, even when its first byte is a continuation
-		// byte — a message in some other encoding, read as UTF-8. The search below needs a
-		// floor it never has to measure, and a text that is not valid UTF-8 still gets cut
-		// by width rather than all of it dropped.
-		std::vector<std::size_t> boundaries{0};
+		const std::vector<std::size_t> boundaries = CutBoundaries(text);
 
-		for (std::size_t index = 1; index < text.size(); ++index)
-		{
-			if (!IsUtf8Continuation(text[index]))
-			{
-				boundaries.push_back(index);
-			}
-		}
-
-		// The last boundary whose prefix still fits beside the ellipsis. Searched by halving
-		// rather than walked: this runs for every visible cell every frame, and measuring
-		// each prefix of a long summary in turn would be quadratic in its length. The empty
-		// prefix at boundary 0 is the floor, for a cell too narrow for anything else.
+		// WARNING: The cut is found by halving, not by walking, because this runs for every visible cell every frame and measuring each prefix in turn is quadratic. Boundary 0 is the floor that is never measured.
 		const float budget = maxWidth - ellipsisWidth;
-		std::size_t low = 0;
-		std::size_t high = boundaries.size();
+		std::size_t fittingBoundary = 0;
+		std::size_t tooWideBoundary = boundaries.size();
 
-		while (high - low > 1)
+		while (tooWideBoundary - fittingBoundary > 1)
 		{
-			const std::size_t middle = low + (high - low) / 2;
+			const std::size_t middleBoundary = fittingBoundary + (tooWideBoundary - fittingBoundary) / 2;
 
-			if (widthOf(text.substr(0, boundaries[middle])) <= budget)
+			if (widthOf(text.substr(0, boundaries[middleBoundary])) <= budget)
 			{
-				low = middle;
+				fittingBoundary = middleBoundary;
 			}
 			else
 			{
-				high = middle;
+				tooWideBoundary = middleBoundary;
 			}
 		}
 
-		std::size_t kept = boundaries[low];
-
-		while (kept > 0 && text[kept - 1] == ' ')
-		{
-			--kept;
-		}
-
-		return kept;
+		return ByteCountWithoutTrailingSpaces(text, boundaries[fittingBoundary]);
 	}
 
 	char ChangeLetter(Core::FileChange change)
@@ -250,13 +251,13 @@ namespace Graphite {
 	std::optional<std::size_t> IndexOfFile(const Core::Diff& diff,
 										   const std::filesystem::path& path)
 	{
-		for (std::size_t index = 0; index < diff.Files.size(); ++index)
+		for (std::size_t fileIndex = 0; fileIndex < diff.Files.size(); ++fileIndex)
 		{
-			const Core::FileDiff& file = diff.Files[index];
+			const Core::FileDiff& file = diff.Files[fileIndex];
 
 			if (file.NewPath == path || file.OldPath == path)
 			{
-				return index;
+				return fileIndex;
 			}
 		}
 

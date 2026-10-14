@@ -3,9 +3,6 @@
 #include "Git/History/CommitColumns.h"
 
 namespace {
-
-	// Close to what the table measures at the default font: the arrow and hash are 20 and 60
-	// wide, the optional author and date 110 and 90, and the message wants 12 characters of 7.
 	Graphite::CommitColumnsInput InputAt(float available, float graph = 30.0f)
 	{
 		Graphite::CommitColumnsInput input;
@@ -40,8 +37,6 @@ TEST_CASE("The graph is capped to a quarter of the table")
 
 TEST_CASE("The author is given up first, then the date")
 {
-	// With everything shown the message would get under its minimum here; without the author
-	// it fits.
 	const Graphite::CommitColumns noAuthor = Graphite::LayoutCommitColumns(InputAt(420.0f));
 
 	CHECK_FALSE(noAuthor.ShowAuthor);
@@ -57,7 +52,6 @@ TEST_CASE("The author is given up first, then the date")
 
 TEST_CASE("A table narrow enough to leave the message nothing today gives it its minimum")
 {
-	// With every column shown and the graph uncapped, the stretched message would get nothing.
 	const Graphite::CommitColumnsInput input = InputAt(300.0f, 400.0f);
 	const float today = input.Available - (input.Graph + input.Chevron + input.Hash + input.Author +
 										   input.Date + input.CellPadding * 6.0f);

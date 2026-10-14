@@ -71,22 +71,29 @@ TEST_CASE("A clean entry lands in no section at all")
 	CHECK(sections.Unstaged.empty());
 }
 
+namespace {
+
+	constexpr bool IsUntracked = true;
+	constexpr bool IsTracked = false;
+}
+
 TEST_CASE("The change letter names the most consequential flag")
 {
-	CHECK(Graphite::ChangeLetter(Core::StatusFlags::New, true) == 'U');
-	CHECK(Graphite::ChangeLetter(Core::StatusFlags::New, false) == 'A');
-	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Deleted, false) == 'D');
-	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Renamed, false) == 'R');
-	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Modified, false) == 'M');
-	CHECK(Graphite::ChangeLetter(Core::StatusFlags::TypeChanged, false) == 'T');
+	CHECK(Graphite::ChangeLetter(Core::StatusFlags::New, IsUntracked) == 'U');
+	CHECK(Graphite::ChangeLetter(Core::StatusFlags::New, IsTracked) == 'A');
+	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Deleted, IsTracked) == 'D');
+	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Renamed, IsTracked) == 'R');
+	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Modified, IsTracked) == 'M');
+	CHECK(Graphite::ChangeLetter(Core::StatusFlags::TypeChanged, IsTracked) == 'T');
 
-	// libgit2's status.c (index_delta2status and workdir_delta2status) sets each delta
-	// status to exactly one bit, except GIT_DELTA_RENAMED which may also set MODIFIED
-	// when the old and new blob OIDs differ. diff_tform.c's rename detection rewrites
-	// typechange deltas matched to renames as purely RENAMED before status conversion.
-	// Thus Renamed+Modified is the only multi-bit combination ever produced. See:
-	// vendor/libgit2/src/libgit2/status.c (~lines 25-118) and diff_tform.c (~lines 980-1075).
-	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Renamed | Core::StatusFlags::Modified, false) == 'R');
+	// WARNING: libgit2 sets one status bit per delta, except a rename, which may also set Modified.
+	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Renamed | Core::StatusFlags::Modified, IsTracked) == 'R');
+}
+
+TEST_CASE("A deletion outranks a rename, and untracked outranks every flag")
+{
+	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Deleted | Core::StatusFlags::Renamed, IsTracked) == 'D');
+	CHECK(Graphite::ChangeLetter(Core::StatusFlags::Deleted | Core::StatusFlags::Modified, IsUntracked) == 'U');
 }
 
 TEST_CASE("A selection that is still there stays where it is")
@@ -131,10 +138,7 @@ TEST_CASE("A selection that was never in the list is dropped")
 
 namespace {
 
-	// The one repository these discard cases are asked about. Absolute, because a document's
-	// path is absolute and the whole point of the join is to bring the two onto the same
-	// footing.
-	const std::filesystem::path Repository = "C:/repo";
+	const std::filesystem::path AbsoluteRepositoryPath = "C:/repo";
 
 	Graphite::DiscardSubject File(const char* path, bool untracked)
 	{
@@ -159,7 +163,7 @@ namespace {
 TEST_CASE("Discarding a tracked file restores it and names only itself")
 {
 	const Graphite::DiscardPlan plan = Graphite::PlanDiscard(File("src/a.txt", false),
-															 Repository, {});
+															 AbsoluteRepositoryPath, {});
 
 	CHECK(plan.Restore == std::vector<std::filesystem::path>{"src/a.txt"});
 	CHECK(plan.Delete.empty());
@@ -170,7 +174,7 @@ TEST_CASE("Discarding a tracked file restores it and names only itself")
 TEST_CASE("Discarding an untracked file deletes it, since there is nothing to restore")
 {
 	const Graphite::DiscardPlan plan = Graphite::PlanDiscard(File("src/a.txt", true),
-															 Repository, {});
+															 AbsoluteRepositoryPath, {});
 
 	CHECK(plan.Delete == std::vector<std::filesystem::path>{"src/a.txt"});
 	CHECK(plan.Restore.empty());
@@ -180,7 +184,7 @@ TEST_CASE("A folder discard names the files it was listed with")
 {
 	const Graphite::DiscardPlan plan = Graphite::PlanDiscard(
 		Folder("src", std::vector<std::filesystem::path>{"src/a.txt", "src/deep/b.txt"}),
-		Repository, {});
+		AbsoluteRepositoryPath, {});
 
 	CHECK(plan.Delete == std::vector<std::filesystem::path>{"src"});
 	CHECK(plan.Files == std::vector<std::filesystem::path>{"src/a.txt", "src/deep/b.txt"});
@@ -190,7 +194,7 @@ TEST_CASE("A folder discard names the files it was listed with")
 TEST_CASE("A folder nobody opened names no files and counts none")
 {
 	const Graphite::DiscardPlan plan = Graphite::PlanDiscard(Folder("src", std::nullopt),
-															 Repository, {});
+															 AbsoluteRepositoryPath, {});
 
 	CHECK(plan.Delete == std::vector<std::filesystem::path>{"src"});
 	CHECK(plan.Files.empty());
@@ -203,7 +207,7 @@ TEST_CASE("Unsaved edits under a discarded folder are counted as lost")
 												   "C:/repo/src/deep/b.txt"};
 
 	const Graphite::DiscardPlan plan =
-		Graphite::PlanDiscard(Folder("src", std::nullopt), Repository, dirty);
+		Graphite::PlanDiscard(Folder("src", std::nullopt), AbsoluteRepositoryPath, dirty);
 
 	CHECK(plan.Dirty == dirty);
 }
@@ -213,7 +217,7 @@ TEST_CASE("A folder with an empty listing still answers for the edits under it")
 	const std::vector<std::filesystem::path> dirty{"C:/repo/src/a.txt"};
 
 	const Graphite::DiscardPlan plan = Graphite::PlanDiscard(
-		Folder("src", std::vector<std::filesystem::path>{}), Repository, dirty);
+		Folder("src", std::vector<std::filesystem::path>{}), AbsoluteRepositoryPath, dirty);
 
 	CHECK(plan.Dirty == dirty);
 }
@@ -223,7 +227,7 @@ TEST_CASE("A sibling folder sharing a prefix is not inside the one being discard
 	const std::vector<std::filesystem::path> dirty{"C:/repo/src2/a.txt", "C:/repo/srcs.txt"};
 
 	const Graphite::DiscardPlan plan =
-		Graphite::PlanDiscard(Folder("src", std::nullopt), Repository, dirty);
+		Graphite::PlanDiscard(Folder("src", std::nullopt), AbsoluteRepositoryPath, dirty);
 
 	CHECK(plan.Dirty.empty());
 }
@@ -235,7 +239,7 @@ TEST_CASE("A document under a folder is matched however its path is spelled")
 	const std::vector<std::filesystem::path> dirty{R"(C:\repo\SRC\sub\..\a.txt)"};
 
 	const Graphite::DiscardPlan plan =
-		Graphite::PlanDiscard(Folder("src", std::nullopt), Repository, dirty);
+		Graphite::PlanDiscard(Folder("src", std::nullopt), AbsoluteRepositoryPath, dirty);
 
 	CHECK(plan.Dirty == dirty);
 }
@@ -245,7 +249,7 @@ TEST_CASE("A file discard warns about that file and no other")
 	const std::vector<std::filesystem::path> dirty{"C:/repo/src/a.txt", "C:/repo/src/b.txt"};
 
 	const Graphite::DiscardPlan plan =
-		Graphite::PlanDiscard(File("src/a.txt", false), Repository, dirty);
+		Graphite::PlanDiscard(File("src/a.txt", false), AbsoluteRepositoryPath, dirty);
 
 	CHECK(plan.Dirty == std::vector<std::filesystem::path>{"C:/repo/src/a.txt"});
 }
@@ -256,12 +260,12 @@ TEST_CASE("The question counts a folder's files only when they are known")
 		Folder("src", std::vector<std::filesystem::path>{"src/a.txt", "src/b.txt"});
 
 	CHECK(Graphite::DiscardQuestionText(listed,
-										Graphite::PlanDiscard(listed, Repository, {})) == "Delete src/ and the 2 files in it?");
+										Graphite::PlanDiscard(listed, AbsoluteRepositoryPath, {})) == "Delete src/ and the 2 files in it?");
 
 	const Graphite::DiscardSubject unlisted = Folder("src", std::nullopt);
 
 	CHECK(Graphite::DiscardQuestionText(unlisted,
-										Graphite::PlanDiscard(unlisted, Repository, {})) == "Delete src/ and everything in it?");
+										Graphite::PlanDiscard(unlisted, AbsoluteRepositoryPath, {})) == "Delete src/ and everything in it?");
 }
 
 TEST_CASE("The question says whether a file is deleted or restored")
@@ -269,12 +273,12 @@ TEST_CASE("The question says whether a file is deleted or restored")
 	const Graphite::DiscardSubject untracked = File("src/a.txt", true);
 
 	CHECK(Graphite::DiscardQuestionText(untracked,
-										Graphite::PlanDiscard(untracked, Repository, {})) == "Delete src/a.txt?");
+										Graphite::PlanDiscard(untracked, AbsoluteRepositoryPath, {})) == "Delete src/a.txt?");
 
 	const Graphite::DiscardSubject tracked = File("src/a.txt", false);
 
 	CHECK(Graphite::DiscardQuestionText(tracked,
-										Graphite::PlanDiscard(tracked, Repository, {})) == "Discard the unstaged changes to src/a.txt?");
+										Graphite::PlanDiscard(tracked, AbsoluteRepositoryPath, {})) == "Discard the unstaged changes to src/a.txt?");
 }
 
 TEST_CASE("A row with room for everything shows the name and the directory whole")

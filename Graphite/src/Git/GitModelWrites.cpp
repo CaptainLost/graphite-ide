@@ -2,10 +2,12 @@
 
 #include "Git/CheckoutQuestion.h"
 
-#include <algorithm>
+#include <cstddef>
+#include <filesystem>
 #include <exception>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace Graphite {
 
@@ -14,6 +16,28 @@ namespace Graphite {
 		Core::UntrackedFiles UntrackedFilesFor(bool includeUntracked)
 		{
 			return includeUntracked ? Core::UntrackedFiles::Included : Core::UntrackedFiles::Excluded;
+		}
+
+		Core::Error NothingToStashError(bool untrackedFilesIncluded)
+		{
+			return Core::Error{
+				Core::ErrorCode::NotFound,
+				untrackedFilesIncluded
+					? "Nothing to stash"
+					: "Nothing to stash: untracked files are stashed only with Include untracked ticked"};
+		}
+
+		bool ContainsPath(const std::vector<std::filesystem::path>& paths, const std::filesystem::path& wanted)
+		{
+			for (const std::filesystem::path& path : paths)
+			{
+				if (path == wanted)
+				{
+					return true;
+				}
+			}
+
+			return false;
 		}
 	}
 
@@ -141,9 +165,9 @@ namespace Graphite {
 
 	void GitModel::Enqueue(WriteJob job)
 	{
-		// With no folder open there is no repository to write to, and the port would answer
-		// NotFound for every one of these — an error the user never asked to see.
-		if (m_Root.empty())
+		const bool hasFolderOpen = !m_Root.empty();
+
+		if (!hasFolderOpen)
 		{
 			return;
 		}
@@ -175,21 +199,18 @@ namespace Graphite {
 
 	GitModel::WriteOutcome GitModel::RunWrite(const WriteJob& job)
 	{
+		// WARNING: JobQueue abandons a job that throws, so a write that threw would never reach
+		// Deliver and m_WriteInFlight, which only ApplyWrite clears, would stay true forever.
+		// Every path through m_Port must end in an outcome, never an escaping exception.
 		WriteOutcome outcome;
 
-		// JobQueue catches a job that throws and abandons it - see JobQueue.cpp - which for
-		// a query is harmless because the next debounce re-asks, but for a write would never
-		// reach Deliver at all. Without this try/catch, m_WriteInFlight would stay true
-		// forever: ApplyWrite is the only place that clears it, and an abandoned job never
-		// gets there. Every path through m_Port must therefore end in an outcome, never an
-		// escaping exception.
 		try
 		{
 			switch (job.Kind)
 			{
 			case WriteKind::Stage:
 			{
-				if (const auto result = m_Port.Stage(job.Paths); !result.HasValue())
+				if (const Core::Result<void> result = m_Port.Stage(job.Paths); !result.HasValue())
 				{
 					outcome.Failure = result.GetError();
 				}
@@ -199,7 +220,7 @@ namespace Graphite {
 
 			case WriteKind::Unstage:
 			{
-				if (const auto result = m_Port.Unstage(job.Paths); !result.HasValue())
+				if (const Core::Result<void> result = m_Port.Unstage(job.Paths); !result.HasValue())
 				{
 					outcome.Failure = result.GetError();
 				}
@@ -209,11 +230,11 @@ namespace Graphite {
 
 			case WriteKind::Discard:
 			{
-				// Restoring first, so a failure to delete leaves the tracked files already put
-				// back rather than leaving both halves half-done in an order nobody chose.
+				// WARNING: Restoring comes first so that a failed delete leaves the tracked
+				// files already put back.
 				if (!job.Discard.Restore.empty())
 				{
-					if (const auto result = m_Port.DiscardWorkTree(job.Discard.Restore); !result.HasValue())
+					if (const Core::Result<void> result = m_Port.DiscardWorkTree(job.Discard.Restore); !result.HasValue())
 					{
 						outcome.Failure = result.GetError();
 						break;
@@ -224,7 +245,7 @@ namespace Graphite {
 
 				if (!job.Discard.Delete.empty())
 				{
-					if (const auto result = m_Port.DeleteUntracked(job.Discard.Delete); !result.HasValue())
+					if (const Core::Result<void> result = m_Port.DeleteUntracked(job.Discard.Delete); !result.HasValue())
 					{
 						outcome.Failure = result.GetError();
 						break;
@@ -239,7 +260,7 @@ namespace Graphite {
 
 			case WriteKind::Commit:
 			{
-				auto result = m_Port.Commit(job.Commit);
+				const Core::Result<Core::Oid> result = m_Port.Commit(job.Commit);
 
 				if (result.HasValue())
 				{
@@ -255,7 +276,7 @@ namespace Graphite {
 
 			case WriteKind::Init:
 			{
-				if (const auto result = m_Port.Init(); !result.HasValue())
+				if (const Core::Result<void> result = m_Port.Init(); !result.HasValue())
 				{
 					outcome.Failure = result.GetError();
 				}
@@ -265,7 +286,7 @@ namespace Graphite {
 
 			case WriteKind::CreateBranch:
 			{
-				if (const auto result = m_Port.CreateBranch(job.Name, job.Id); !result.HasValue())
+				if (const Core::Result<void> result = m_Port.CreateBranch(job.Name, job.Id); !result.HasValue())
 				{
 					outcome.Failure = result.GetError();
 				}
@@ -275,7 +296,7 @@ namespace Graphite {
 
 			case WriteKind::RenameBranch:
 			{
-				if (const auto result = m_Port.RenameBranch(job.Name, job.OtherName); !result.HasValue())
+				if (const Core::Result<void> result = m_Port.RenameBranch(job.Name, job.OtherName); !result.HasValue())
 				{
 					outcome.Failure = result.GetError();
 				}
@@ -285,15 +306,15 @@ namespace Graphite {
 
 			case WriteKind::DeleteCheck:
 			{
-				auto count = m_Port.CountUnmergedCommits(job.Name);
+				const Core::Result<std::size_t> unmergedCount = m_Port.CountUnmergedCommits(job.Name);
 
-				if (count.HasValue())
+				if (unmergedCount.HasValue())
 				{
-					outcome.Unmerged = count.GetValue();
+					outcome.Unmerged = unmergedCount.GetValue();
 				}
 				else
 				{
-					outcome.Failure = count.GetError();
+					outcome.Failure = unmergedCount.GetError();
 				}
 
 				break;
@@ -301,7 +322,7 @@ namespace Graphite {
 
 			case WriteKind::DeleteBranch:
 			{
-				if (const auto result = m_Port.DeleteBranch(job.Name); !result.HasValue())
+				if (const Core::Result<void> result = m_Port.DeleteBranch(job.Name); !result.HasValue())
 				{
 					outcome.Failure = result.GetError();
 				}
@@ -311,7 +332,7 @@ namespace Graphite {
 
 			case WriteKind::StashSave:
 			{
-				const auto result = m_Port.StashSave(job.Name, UntrackedFilesFor(job.Flag));
+				const Core::Result<bool> result = m_Port.StashSave(job.Name, UntrackedFilesFor(job.Flag));
 
 				if (!result.HasValue())
 				{
@@ -319,13 +340,7 @@ namespace Graphite {
 				}
 				else if (!result.GetValue())
 				{
-					// Said rather than passed off as done: the dialog closed on the click, and
-					// a tree left exactly as it was would otherwise be the only answer. Left
-					// out, untracked files are the likely reason.
-					outcome.Failure = Core::Error{
-						Core::ErrorCode::NotFound,
-						job.Flag ? "Nothing to stash"
-								 : "Nothing to stash: untracked files are stashed only with Include untracked ticked"};
+					outcome.Failure = NothingToStashError(job.Flag);
 				}
 
 				break;
@@ -333,7 +348,7 @@ namespace Graphite {
 
 			case WriteKind::StashApply:
 			{
-				if (const auto result = m_Port.StashApply(job.Id); !result.HasValue())
+				if (const Core::Result<void> result = m_Port.StashApply(job.Id); !result.HasValue())
 				{
 					outcome.Failure = result.GetError();
 				}
@@ -343,7 +358,7 @@ namespace Graphite {
 
 			case WriteKind::StashPop:
 			{
-				if (const auto result = m_Port.StashPop(job.Id); !result.HasValue())
+				if (const Core::Result<void> result = m_Port.StashPop(job.Id); !result.HasValue())
 				{
 					outcome.Failure = result.GetError();
 				}
@@ -353,7 +368,7 @@ namespace Graphite {
 
 			case WriteKind::StashDrop:
 			{
-				if (const auto result = m_Port.StashDrop(job.Id); !result.HasValue())
+				if (const Core::Result<void> result = m_Port.StashDrop(job.Id); !result.HasValue())
 				{
 					outcome.Failure = result.GetError();
 				}
@@ -363,7 +378,7 @@ namespace Graphite {
 
 			case WriteKind::CheckoutPlan:
 			{
-				auto plan = m_Port.PlanCheckout(*job.Target);
+				Core::Result<Core::CheckoutPlan> plan = m_Port.PlanCheckout(*job.Target);
 
 				if (plan.HasValue())
 				{
@@ -402,22 +417,21 @@ namespace Graphite {
 	{
 		WriteOutcome outcome;
 
-		// Every failure names the checkout it stopped, since the line reads long after the
-		// click; and one that stopped after the preparation says where the changes went.
-		const std::string prefix = "Could not check out " + CheckoutTargetLabel(request.Target) + ": ";
+		const std::string failurePrefix = "Could not check out " + CheckoutTargetLabel(request.Target) + ": ";
 		std::string preparedNote;
 
 		if (request.Preparation != CheckoutPreparation::None)
 		{
-			// Noted before anything moves: these are the files the preparation is about to
-			// rewrite under the editor, which has to be told about them as much as about the
-			// checkout's own. A status that cannot be read only costs the editor that notice;
-			// it is no reason to refuse a checkout the user confirmed.
-			if (auto status = m_Port.QueryStatus(); status.HasValue())
+			// WARNING: The files are noted before the preparation rewrites them so that the editor
+			// hears about them as well as about the checkout's own. An unreadable status only
+			// costs that notice and must not refuse a checkout the user confirmed.
+			if (const Core::Result<Core::WorkingTreeStatus> status = m_Port.QueryStatus(); status.HasValue())
 			{
 				for (const Core::FileStatus& entry : status.GetValue().Entries)
 				{
-					if (!entry.IsUntracked || request.IncludeUntracked)
+					const bool preparationRewritesEntry = !entry.IsUntracked || request.IncludeUntracked;
+
+					if (preparationRewritesEntry)
 					{
 						outcome.Changed.push_back(entry.Path);
 					}
@@ -426,9 +440,10 @@ namespace Graphite {
 
 			if (request.Preparation == CheckoutPreparation::Discard)
 			{
-				if (const auto result = m_Port.DiscardAll(UntrackedFilesFor(request.IncludeUntracked)); !result.HasValue())
+				if (const Core::Result<void> discardResult = m_Port.DiscardAll(UntrackedFilesFor(request.IncludeUntracked));
+					!discardResult.HasValue())
 				{
-					outcome.Failure = result.GetError();
+					outcome.Failure = discardResult.GetError();
 				}
 				else
 				{
@@ -437,37 +452,39 @@ namespace Graphite {
 			}
 			else
 			{
-				// False - nothing to stash - is not a failure: the checkout has nothing in its
-				// way either.
-				if (const auto result = m_Port.StashSave(request.StashMessage, UntrackedFilesFor(request.IncludeUntracked));
-					!result.HasValue())
+				const Core::Result<bool> stashResult =
+					m_Port.StashSave(request.StashMessage, UntrackedFilesFor(request.IncludeUntracked));
+
+				if (!stashResult.HasValue())
 				{
-					outcome.Failure = result.GetError();
+					outcome.Failure = stashResult.GetError();
 				}
-				else if (result.GetValue())
+				else
 				{
-					preparedNote = " Your changes were stashed as stash@{0}.";
+					const bool anythingStashed = stashResult.GetValue();
+
+					if (anythingStashed)
+					{
+						preparedNote = " Your changes were stashed as stash@{0}.";
+					}
 				}
 			}
 
 			if (outcome.Failure.has_value())
 			{
-				// The preparation is what failed, so the checkout never ran and the noted
-				// files are not reported as changed.
-				outcome.Failure->Message = prefix + outcome.Failure->Message;
+				outcome.Failure->Message = failurePrefix + outcome.Failure->Message;
 				outcome.Changed.clear();
 				return outcome;
 			}
 		}
 
-		// A checkout that fails after a preparation succeeded keeps the preparation's paths:
-		// those files did change. And one that fails partway names every path it may have
-		// changed itself, which the editor needs just as much.
+		// WARNING: A checkout that fails keeps the preparation's paths, because those files did
+		// change, and adds every path it may have changed itself before failing partway.
 		Core::CheckoutOutcome checkout = m_Port.Checkout(request.Target);
 
 		for (std::filesystem::path& path : checkout.Changed)
 		{
-			if (std::find(outcome.Changed.begin(), outcome.Changed.end(), path) == outcome.Changed.end())
+			if (!ContainsPath(outcome.Changed, path))
 			{
 				outcome.Changed.push_back(std::move(path));
 			}
@@ -477,7 +494,7 @@ namespace Graphite {
 
 		if (outcome.Failure.has_value())
 		{
-			std::string message = prefix + outcome.Failure->Message;
+			std::string message = failurePrefix + outcome.Failure->Message;
 
 			if (!preparedNote.empty() && !message.ends_with('.'))
 			{
@@ -494,19 +511,18 @@ namespace Graphite {
 	{
 		m_WriteInFlight = false;
 
-		// The folder this was meant for is gone. Neither its error nor its success has
-		// anything to say about the folder that is open now.
-		if (job.Generation != m_WriteGeneration)
+		const bool jobWasForClosedFolder = job.Generation != m_WriteGeneration;
+
+		if (jobWasForClosedFolder)
 		{
 			PumpWrites();
 			return;
 		}
 
-		// Answers rather than writes, handled before the write errors are looked at. They
-		// changed nothing, so they neither refresh the model nor count as applied, and they
-		// leave the write errors alone either way: a plan landing a frame after a failed
-		// stash must not erase that failure before anyone saw it, and the dialog waiting on
-		// the answer must be able to tell its own failure from an earlier write's.
+		// WARNING: CheckoutPlan and DeleteCheck are answers, not writes. They neither refresh the
+		// model nor count as applied, and they leave m_WriteErrors alone: a plan landing after a
+		// failed stash must not erase that failure, and the dialog waiting on the answer must
+		// tell its own failure from an earlier write's.
 		if (job.Kind == WriteKind::CheckoutPlan)
 		{
 			m_CheckoutPlan = CheckoutPlanAnswer{*job.Target, std::move(outcome.Plan), std::move(outcome.Failure)};
@@ -516,7 +532,9 @@ namespace Graphite {
 
 		if (job.Kind == WriteKind::DeleteCheck)
 		{
-			m_DeleteCheck = DeleteCheck{job.Name, outcome.Unmerged.value_or(0), std::move(outcome.Failure)};
+			const std::size_t noUnmergedCommits = 0;
+			m_DeleteCheck =
+				DeleteCheck{job.Name, outcome.Unmerged.value_or(noUnmergedCommits), std::move(outcome.Failure)};
 			PumpWrites();
 			return;
 		}
@@ -532,19 +550,15 @@ namespace Graphite {
 				m_WriteErrors.push_back(WriteFailure{job.Kind, std::move(*outcome.Failure)});
 			}
 
-			// An apply or a pop that stopped on a conflict or an I/O error may have written
-			// some files already, so the status refreshes as it does for a discard, and the
-			// write counts as applied so that what reads the count - the change markers -
-			// looks again.
-			if (job.Kind == WriteKind::StashApply || job.Kind == WriteKind::StashPop)
+			const bool mayHaveWrittenSomeFiles =
+				job.Kind == WriteKind::StashApply || job.Kind == WriteKind::StashPop;
+
+			if (mayHaveWrittenSomeFiles)
 			{
 				++m_AppliedWrites;
 				MarkDirty();
 			}
 
-			// A discard that stopped halfway has still changed files the user confirmed
-			// discarding: the editor must be told (ADR 0501) and the status must refresh,
-			// whatever the error says about the rest.
 			if (job.Kind == WriteKind::Discard)
 			{
 				if (!outcome.Changed.empty())
@@ -556,9 +570,6 @@ namespace Graphite {
 				MarkDirty();
 			}
 
-			// The same for a checkout: one that failed partway, or after its preparation ran,
-			// has still rewritten files under the editor. A preparation that failed may have
-			// got partway too, so the refresh runs in every case.
 			if (job.Kind == WriteKind::Checkout)
 			{
 				if (!outcome.Changed.empty())
@@ -574,7 +585,6 @@ namespace Graphite {
 			return;
 		}
 
-		// Replaced rather than appended, for the reason given on m_Discarded below.
 		if (job.Kind == WriteKind::Checkout)
 		{
 			m_CheckedOut = std::move(outcome.Changed);
@@ -587,16 +597,14 @@ namespace Graphite {
 
 		if (job.Kind == WriteKind::Discard)
 		{
-			// Replaced rather than appended: safe only because at most one write is applied
-			// per OnUpdate, so a second discard's Deliver cannot land until this one's inbox
-			// entry has already been drained and TakeDiscarded has had its chance to read it.
+			// WARNING: Replaced rather than appended, which is safe only because at most one write
+			// is applied per OnUpdate: a second discard cannot land before TakeDiscarded has read
+			// this one. The same holds for m_CheckedOut.
 			m_Discarded = std::move(outcome.Changed);
 		}
 
-		// The same mark a file change or a RepositoryChangedEvent makes, so status, branches
-		// and history all refresh through one mechanism. Marked here rather than left to the
-		// watcher because the tests run without one, and because the watcher's allowlist is
-		// a list that can be missing something.
+		// WARNING: Marked here rather than left to the watcher because the tests run without
+		// one and the watcher's allowlist can be missing something.
 		MarkDirty();
 
 		if (job.Kind == WriteKind::Init)

@@ -8,72 +8,68 @@ namespace Graphite {
 
 	namespace {
 
-		// What ImGui advances a tab by: four spaces, wherever it falls.
-		constexpr std::size_t kTabCells = 4;
+		constexpr std::size_t kImGuiTabCells = 4;
 	}
 
 	std::vector<std::size_t> WrapBytes(std::string_view text, std::size_t columns)
 	{
 		std::vector<std::size_t> breaks;
 
-		// A row narrower than one cell would never let the walk below move on.
-		const std::size_t width = std::max<std::size_t>(columns, 1);
+		constexpr std::size_t minimumColumns = 1;
+		const std::size_t width = std::max<std::size_t>(columns, minimumColumns);
 
 		std::size_t rowStart = 0;
-		std::size_t cells = 0;
+		std::size_t cellsOnRow = 0;
+		std::size_t afterLastSpace = rowStart;
 
-		// Just past the last space on the row, where a word that does not fit moves down from;
-		// rowStart while the row has none.
-		std::size_t afterSpace = rowStart;
+		std::size_t position = 0;
 
-		std::size_t at = 0;
-
-		while (at < text.size())
+		while (position < text.size())
 		{
-			const bool isTab = text[at] == '\t';
-			const std::size_t next = isTab ? at + 1 : Core::NextCharacter(text, at);
-			const std::size_t advance = isTab ? kTabCells : 1;
+			const bool isTab = text[position] == '\t';
+			const std::size_t nextPosition =
+				isTab ? position + 1 : Core::NextCharacter(text, position);
+			const std::size_t advance = isTab ? kImGuiTabCells : 1;
+			const bool fitsOnRow = cellsOnRow + advance <= width;
+			const bool isFirstCharacterOfRow = position == rowStart;
 
-			// The row's first character stays on it however wide it is: anywhere else it would
-			// leave an empty row behind and meet the same edge on the next.
-			if (cells + advance <= width || at == rowStart)
+			if (fitsOnRow || isFirstCharacterOfRow)
 			{
-				if (text[at] == ' ')
+				if (text[position] == ' ')
 				{
-					afterSpace = next;
+					afterLastSpace = nextPosition;
 				}
 
-				cells += advance;
-				at = next;
+				cellsOnRow += advance;
+				position = nextPosition;
 				continue;
 			}
 
-			std::size_t breakAt = at;
+			std::size_t breakPosition = position;
 
-			if (text[at] == ' ')
+			if (text[position] == ' ')
 			{
-				while (breakAt < text.size() && text[breakAt] == ' ')
+				while (breakPosition < text.size() && text[breakPosition] == ' ')
 				{
-					++breakAt;
+					++breakPosition;
 				}
 			}
-			else if (afterSpace > rowStart)
+			else if (afterLastSpace > rowStart)
 			{
-				breakAt = afterSpace;
+				breakPosition = afterLastSpace;
 			}
 
-			if (breakAt >= text.size())
+			if (breakPosition >= text.size())
 			{
 				break;
 			}
 
-			breaks.push_back(breakAt);
+			breaks.push_back(breakPosition);
 
-			// From the break, not from here: a word moved down is measured again on its new row.
-			rowStart = breakAt;
-			afterSpace = breakAt;
-			cells = 0;
-			at = breakAt;
+			rowStart = breakPosition;
+			afterLastSpace = breakPosition;
+			cellsOnRow = 0;
+			position = breakPosition;
 		}
 
 		return breaks;
@@ -154,10 +150,10 @@ namespace Graphite {
 			return std::min(line, m_Rows - 1);
 		}
 
-		// The last row starting at or before the line; the total at the back is never one.
-		const auto starts = std::span(m_Starts).first(m_Rows);
-		const auto after = std::upper_bound(starts.begin(), starts.end(), line);
+		const std::span<const std::size_t> rowStarts(m_Starts.data(), m_Rows);
+		const std::span<const std::size_t>::iterator firstRowStartingAfterLine =
+			std::upper_bound(rowStarts.begin(), rowStarts.end(), line);
 
-		return static_cast<std::size_t>(after - starts.begin()) - 1;
+		return static_cast<std::size_t>(firstRowStartingAfterLine - rowStarts.begin()) - 1;
 	}
 }

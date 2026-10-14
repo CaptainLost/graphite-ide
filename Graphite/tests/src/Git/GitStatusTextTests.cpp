@@ -4,10 +4,15 @@
 
 #include <IconsMaterialDesignIcons.h>
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
 using Graphite::GitStatusInputs;
+using Graphite::GitStatusSegment;
 using Graphite::GitStatusText;
 
 namespace {
@@ -17,22 +22,25 @@ namespace {
 	const std::string kDown = ICON_MDI_ARROW_DOWN;
 	const std::string kChanges = ICON_MDI_CIRCLE_MEDIUM " ";
 
-	Core::HeadState OnBranch(const std::string& name)
+	Core::HeadState HeadOnBranch(const std::string& name)
 	{
 		Core::HeadState head;
 		head.Kind = Core::HeadKind::Branch;
 		head.BranchName = name;
-		// Oid has no parser; its bytes are set directly. Hex: 7d49d3d1 then zeros.
+		constexpr std::size_t leadingByteCount = 4;
+		const std::array<std::uint8_t, leadingByteCount> leadingBytes{0x7d, 0x49, 0xd3, 0xd1};
 		Core::Oid commit;
-		commit.Bytes[0] = 0x7d;
-		commit.Bytes[1] = 0x49;
-		commit.Bytes[2] = 0xd3;
-		commit.Bytes[3] = 0xd1;
+
+		for (std::size_t byteIndex = 0; byteIndex < leadingBytes.size(); ++byteIndex)
+		{
+			commit.Bytes[byteIndex] = leadingBytes[byteIndex];
+		}
+
 		head.Commit = commit;
 		return head;
 	}
 
-	Core::Branch Local(const std::string& name, bool isHead)
+	Core::Branch LocalBranch(const std::string& name, bool isHead)
 	{
 		Core::Branch branch;
 		branch.Name = name;
@@ -41,9 +49,10 @@ namespace {
 		return branch;
 	}
 
-	Core::Branch Tracking(const std::string& name, std::size_t ahead, std::size_t behind)
+	Core::Branch TrackingBranch(const std::string& name, std::size_t ahead, std::size_t behind)
 	{
-		Core::Branch branch = Local(name, true);
+		constexpr bool isCheckedOut = true;
+		Core::Branch branch = LocalBranch(name, isCheckedOut);
 		branch.Upstream = "origin/" + name;
 		branch.Ahead = ahead;
 		branch.Behind = behind;
@@ -51,7 +60,7 @@ namespace {
 		return branch;
 	}
 
-	Core::WorkingTreeStatus Changed(std::size_t count)
+	Core::WorkingTreeStatus StatusWithChangeCount(std::size_t count)
 	{
 		Core::WorkingTreeStatus status;
 
@@ -74,7 +83,7 @@ TEST_CASE("Nothing is shown with no folder open")
 
 TEST_CASE("A folder that is not a repository says so and offers nothing to click")
 {
-	const auto segment = GitStatusText({.FolderOpen = true, .MissingRepository = true});
+	const std::optional<GitStatusSegment> segment = GitStatusText({.FolderOpen = true, .MissingRepository = true});
 
 	REQUIRE(segment.has_value());
 	CHECK(segment->Branch == "No repository");
@@ -90,10 +99,11 @@ TEST_CASE("Nothing is guessed before the head has arrived")
 
 TEST_CASE("A branch with no upstream shows its name alone")
 {
-	const Core::HeadState head = OnBranch("main");
-	const std::vector<Core::Branch> branches{Local("main", true)};
+	const Core::HeadState head = HeadOnBranch("main");
+	constexpr bool isCheckedOut = true;
+	const std::vector<Core::Branch> branches{LocalBranch("main", isCheckedOut)};
 
-	const auto segment =
+	const std::optional<GitStatusSegment> segment =
 		GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
 
 	REQUIRE(segment.has_value());
@@ -105,12 +115,12 @@ TEST_CASE("A branch with no upstream shows its name alone")
 
 TEST_CASE("A tracking branch shows only the sides it differs on")
 {
-	const Core::HeadState head = OnBranch("main");
+	const Core::HeadState head = HeadOnBranch("main");
 
 	SUBCASE("in sync")
 	{
-		const std::vector<Core::Branch> branches{Tracking("main", 0, 0)};
-		const auto segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
+		const std::vector<Core::Branch> branches{TrackingBranch("main", 0, 0)};
+		const std::optional<GitStatusSegment> segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
 		REQUIRE(segment.has_value());
 		CHECK(segment->Distance == ICON_MDI_CHECK);
 		CHECK(segment->DistanceTooltip == "Up to date with origin/main");
@@ -119,8 +129,8 @@ TEST_CASE("A tracking branch shows only the sides it differs on")
 
 	SUBCASE("ahead only")
 	{
-		const std::vector<Core::Branch> branches{Tracking("main", 2, 0)};
-		const auto segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
+		const std::vector<Core::Branch> branches{TrackingBranch("main", 2, 0)};
+		const std::optional<GitStatusSegment> segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
 		REQUIRE(segment.has_value());
 		CHECK(segment->Distance == kUp + "2");
 		CHECK(segment->DistanceTooltip == "2 commits ahead of origin/main");
@@ -128,8 +138,8 @@ TEST_CASE("A tracking branch shows only the sides it differs on")
 
 	SUBCASE("behind only")
 	{
-		const std::vector<Core::Branch> branches{Tracking("main", 0, 1)};
-		const auto segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
+		const std::vector<Core::Branch> branches{TrackingBranch("main", 0, 1)};
+		const std::optional<GitStatusSegment> segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
 		REQUIRE(segment.has_value());
 		CHECK(segment->Distance == kDown + "1");
 		CHECK(segment->DistanceTooltip == "1 commit behind origin/main");
@@ -137,8 +147,8 @@ TEST_CASE("A tracking branch shows only the sides it differs on")
 
 	SUBCASE("both")
 	{
-		const std::vector<Core::Branch> branches{Tracking("main", 2, 1)};
-		const auto segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
+		const std::vector<Core::Branch> branches{TrackingBranch("main", 2, 1)};
+		const std::optional<GitStatusSegment> segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
 		REQUIRE(segment.has_value());
 		CHECK(segment->Distance == kUp + "2 " + kDown + "1");
 		CHECK(segment->DistanceTooltip == "2 commits ahead of origin/main and 1 commit behind it");
@@ -146,10 +156,10 @@ TEST_CASE("A tracking branch shows only the sides it differs on")
 
 	SUBCASE("distance not measured")
 	{
-		Core::Branch branch = Tracking("main", 0, 0);
+		Core::Branch branch = TrackingBranch("main", 0, 0);
 		branch.DistanceKnown = false;
 		const std::vector<Core::Branch> branches{branch};
-		const auto segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
+		const std::optional<GitStatusSegment> segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
 		REQUIRE(segment.has_value());
 		CHECK(segment->Distance.empty());
 		CHECK(segment->DistanceTooltip.empty());
@@ -158,17 +168,18 @@ TEST_CASE("A tracking branch shows only the sides it differs on")
 
 TEST_CASE("Only the checked out local branch supplies the distance")
 {
-	const Core::HeadState head = OnBranch("main");
+	const Core::HeadState head = HeadOnBranch("main");
 
-	Core::Branch other = Tracking("side", 5, 5);
+	Core::Branch other = TrackingBranch("side", 5, 5);
 	other.IsHead = false;
 
-	Core::Branch remote = Tracking("main", 9, 9);
+	Core::Branch remote = TrackingBranch("main", 9, 9);
 	remote.Kind = Core::RefKind::Remote;
 
-	const std::vector<Core::Branch> branches{other, remote, Local("main", true)};
+	constexpr bool isCheckedOut = true;
+	const std::vector<Core::Branch> branches{other, remote, LocalBranch("main", isCheckedOut)};
 
-	const auto segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
+	const std::optional<GitStatusSegment> segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
 
 	REQUIRE(segment.has_value());
 	CHECK(segment->Distance.empty());
@@ -176,10 +187,10 @@ TEST_CASE("Only the checked out local branch supplies the distance")
 
 TEST_CASE("A detached head shows its short hash")
 {
-	Core::HeadState head = OnBranch("");
+	Core::HeadState head = HeadOnBranch("");
 	head.Kind = Core::HeadKind::Detached;
 
-	const auto segment = GitStatusText({.FolderOpen = true, .Head = &head});
+	const std::optional<GitStatusSegment> segment = GitStatusText({.FolderOpen = true, .Head = &head});
 
 	REQUIRE(segment.has_value());
 	CHECK(segment->Branch == kBranch + "7d49d3d (detached)");
@@ -193,16 +204,16 @@ TEST_CASE("A repository with no commits says so beside its branch")
 	head.Kind = Core::HeadKind::Unborn;
 	head.BranchName = "master";
 
-	const auto segment = GitStatusText({.FolderOpen = true, .Head = &head});
+	const std::optional<GitStatusSegment> segment = GitStatusText({.FolderOpen = true, .Head = &head});
 
 	REQUIRE(segment.has_value());
 	CHECK(segment->Branch == kBranch + "master (no commits)");
 	CHECK(segment->BranchTooltip == "No commits yet on master");
 }
 
-TEST_CASE("An operation left half done follows the branch")
+TEST_CASE("An operation left half done follows the branch, also on a detached head")
 {
-	Core::HeadState head = OnBranch("main");
+	Core::HeadState head = HeadOnBranch("main");
 
 	head.Operation = Core::RepositoryOperation::Merge;
 	CHECK(GitStatusText({.FolderOpen = true, .Head = &head})->Branch == kBranch + "main \xC2\xB7 MERGING");
@@ -222,7 +233,6 @@ TEST_CASE("An operation left half done follows the branch")
 	head.Operation = Core::RepositoryOperation::ApplyMailbox;
 	CHECK(GitStatusText({.FolderOpen = true, .Head = &head})->Branch == kBranch + "main \xC2\xB7 APPLYING");
 
-	// A rebase usually detaches HEAD; the operation is still the thing to say.
 	head.Kind = Core::HeadKind::Detached;
 	head.Operation = Core::RepositoryOperation::Rebase;
 	CHECK(GitStatusText({.FolderOpen = true, .Head = &head})->Branch ==
@@ -231,20 +241,20 @@ TEST_CASE("An operation left half done follows the branch")
 
 TEST_CASE("The change count is one per changed path, and absent when clean")
 {
-	const Core::HeadState head = OnBranch("main");
+	const Core::HeadState head = HeadOnBranch("main");
 
-	const Core::WorkingTreeStatus clean = Changed(0);
-	const auto none = GitStatusText({.FolderOpen = true, .Head = &head, .Status = &clean});
-	CHECK(none->Changes.empty());
-	CHECK(none->ChangesTooltip.empty());
+	const Core::WorkingTreeStatus clean = StatusWithChangeCount(0);
+	const std::optional<GitStatusSegment> noChanges = GitStatusText({.FolderOpen = true, .Head = &head, .Status = &clean});
+	CHECK(noChanges->Changes.empty());
+	CHECK(noChanges->ChangesTooltip.empty());
 
-	const Core::WorkingTreeStatus one = Changed(1);
-	const auto single = GitStatusText({.FolderOpen = true, .Head = &head, .Status = &one});
-	CHECK(single->Changes == kChanges + "1 change");
-	CHECK(single->ChangesTooltip == "1 uncommitted change. Click to show it in Changes.");
+	const Core::WorkingTreeStatus one = StatusWithChangeCount(1);
+	const std::optional<GitStatusSegment> singleChange = GitStatusText({.FolderOpen = true, .Head = &head, .Status = &one});
+	CHECK(singleChange->Changes == kChanges + "1 change");
+	CHECK(singleChange->ChangesTooltip == "1 uncommitted change. Click to show it in Changes.");
 
-	const Core::WorkingTreeStatus three = Changed(3);
-	const auto several = GitStatusText({.FolderOpen = true, .Head = &head, .Status = &three});
-	CHECK(several->Changes == kChanges + "3 changes");
-	CHECK(several->ChangesTooltip == "3 uncommitted changes. Click to show them in Changes.");
+	const Core::WorkingTreeStatus three = StatusWithChangeCount(3);
+	const std::optional<GitStatusSegment> severalChanges = GitStatusText({.FolderOpen = true, .Head = &head, .Status = &three});
+	CHECK(severalChanges->Changes == kChanges + "3 changes");
+	CHECK(severalChanges->ChangesTooltip == "3 uncommitted changes. Click to show them in Changes.");
 }

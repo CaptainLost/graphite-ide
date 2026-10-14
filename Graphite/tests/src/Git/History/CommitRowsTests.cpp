@@ -2,6 +2,8 @@
 
 #include "Git/History/CommitRows.h"
 
+#include <cstddef>
+#include <functional>
 #include <vector>
 
 using Graphite::CommitRowKind;
@@ -9,18 +11,17 @@ using Graphite::CommitRows;
 
 namespace {
 
-	// A commit's file-row count taken from a table, so a test reads as the shape it means.
-	auto From(std::vector<std::size_t> counts)
+	std::function<std::size_t(std::size_t)> FileRowCountsFrom(std::vector<std::size_t> counts)
 	{
 		return [counts = std::move(counts)](std::size_t commit) {
-			return commit < counts.size() ? counts[commit] : 0;
+			return commit < counts.size() ? counts[commit] : std::size_t{0};
 		};
 	}
 }
 
 TEST_CASE("No commits produce no rows")
 {
-	const CommitRows rows = Graphite::BuildCommitRows(0, From({}));
+	const CommitRows rows = Graphite::BuildCommitRows(0, FileRowCountsFrom({}));
 
 	CHECK(rows.Rows.empty());
 	CHECK(rows.RowOfCommit.empty());
@@ -28,7 +29,7 @@ TEST_CASE("No commits produce no rows")
 
 TEST_CASE("Collapsed commits are one row each")
 {
-	const CommitRows rows = Graphite::BuildCommitRows(3, From({0, 0, 0}));
+	const CommitRows rows = Graphite::BuildCommitRows(3, FileRowCountsFrom({0, 0, 0}));
 
 	REQUIRE(rows.Rows.size() == 3);
 	CHECK(rows.Rows[0].Kind == CommitRowKind::Commit);
@@ -42,7 +43,7 @@ TEST_CASE("Collapsed commits are one row each")
 
 TEST_CASE("An expanded commit is followed by one row per file")
 {
-	const CommitRows rows = Graphite::BuildCommitRows(2, From({3, 0}));
+	const CommitRows rows = Graphite::BuildCommitRows(2, FileRowCountsFrom({3, 0}));
 
 	REQUIRE(rows.Rows.size() == 5);
 
@@ -55,12 +56,10 @@ TEST_CASE("An expanded commit is followed by one row per file")
 	CHECK(rows.Rows[4].Commit == 1);
 }
 
-TEST_CASE("A commit's row moves down by the files above it")
+TEST_CASE("A commit's row moves down by the files above it, so the graph's dot for commit 1 is not on one of commit 0's files")
 {
-	const CommitRows rows = Graphite::BuildCommitRows(3, From({2, 0, 1}));
+	const CommitRows rows = Graphite::BuildCommitRows(3, FileRowCountsFrom({2, 0, 1}));
 
-	// This is the mapping the graph needs: commit 1 is the fourth row, not the second,
-	// and a graph drawn at row 1 would put its dot on one of commit 0's files.
 	REQUIRE(rows.RowOfCommit.size() == 3);
 	CHECK(rows.RowOfCommit[0] == 0);
 	CHECK(rows.RowOfCommit[1] == 3);
@@ -69,18 +68,16 @@ TEST_CASE("A commit's row moves down by the files above it")
 
 TEST_CASE("Several commits can be expanded at once")
 {
-	const CommitRows rows = Graphite::BuildCommitRows(3, From({1, 2, 1}));
+	const CommitRows rows = Graphite::BuildCommitRows(3, FileRowCountsFrom({1, 2, 1}));
 
 	REQUIRE(rows.Rows.size() == 7);
 	CHECK(rows.RowOfCommit[1] == 2);
 	CHECK(rows.RowOfCommit[2] == 5);
 }
 
-TEST_CASE("An expanded commit whose diff has not arrived adds no rows")
+TEST_CASE("An expanded commit whose diff has not arrived adds no rows because the caller reports zero for it")
 {
-	// The caller reports zero for a commit it is still waiting on, so the row layout is
-	// the same as a collapsed one — the row simply fills in when the answer lands.
-	const CommitRows rows = Graphite::BuildCommitRows(2, From({0, 0}));
+	const CommitRows rows = Graphite::BuildCommitRows(2, FileRowCountsFrom({0, 0}));
 
 	CHECK(rows.Rows.size() == 2);
 	CHECK(rows.RowOfCommit[1] == 1);
@@ -88,7 +85,7 @@ TEST_CASE("An expanded commit whose diff has not arrived adds no rows")
 
 TEST_CASE("Every row's commit index is in range and every commit has a row")
 {
-	const CommitRows rows = Graphite::BuildCommitRows(4, From({2, 0, 3, 1}));
+	const CommitRows rows = Graphite::BuildCommitRows(4, FileRowCountsFrom({2, 0, 3, 1}));
 
 	for (const Graphite::CommitRow& row : rows.Rows)
 	{
@@ -107,10 +104,8 @@ TEST_CASE("Every row's commit index is in range and every commit has a row")
 	}
 }
 
-TEST_CASE("An expanded commit always gets at least one file row")
+TEST_CASE("An expanded commit always gets at least one file row, since zero files is both a diff still being fetched and a commit that changed nothing")
 {
-	// Zero files is both a diff still being fetched and a commit that changed nothing: the
-	// row that stands in says which.
 	CHECK(Graphite::FileRowsOfExpanded(0) == 1);
 	CHECK(Graphite::FileRowsOfExpanded(1) == 1);
 	CHECK(Graphite::FileRowsOfExpanded(7) == 7);

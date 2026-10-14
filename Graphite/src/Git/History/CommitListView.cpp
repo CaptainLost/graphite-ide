@@ -6,6 +6,8 @@
 
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/ImGuiColors.h"
+#include "Core/ImGui/TextMetrics.h"
 #include "Core/FileSystem/FileSystem.h"
 
 #include "Git/History/CommitColumns.h"
@@ -31,16 +33,40 @@ namespace Graphite {
 
 	namespace {
 
+		constexpr float kLaneWidthPerLineHeight = 0.8f;
+		constexpr float kDotRadiusPerLaneWidth = 0.22f;
+		constexpr float kMinMessageDigitCount = 12.0f;
+		constexpr float kHalf = 0.5f;
+		constexpr float kNoOffset = 0.0f;
+		constexpr float kNoSpacing = 0.0f;
+		constexpr ImU32 kThemeTextColor = 0;
+		constexpr std::string_view kNoHighlight = {};
+		constexpr ImU32 kLabelFillAlphaByte = 0x38u;
+		constexpr int kLeftMouseButton = 0;
+		constexpr std::size_t kNoFileRows = 0;
+		constexpr int kFrozenColumnCount = 0;
+		constexpr int kFrozenRowCount = 1;
+
+		// WARNING: CalcTextSize rounds each run up by less than a pixel, so a cell is given that pixel back. Without it a column sized to its text by a rescale cuts a hash it has room for.
+		constexpr float kRoundedUpPixel = 1.0f;
+
+		// WARNING: AllowOverlap keeps a click reaching the one Selectable under the row instead of being swallowed by the cells drawn over it.
+		constexpr ImGuiSelectableFlags kRowSelectableFlags =
+			ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap;
+
+		constexpr const char* kHashSample = "0000000";
+		constexpr const char* kAuthorSample = "Alice Johnson   ";
+		constexpr const char* kDateSample = "59 minutes ago";
+
 		GraphMetrics MetricsForCurrentFont()
 		{
 			GraphMetrics metrics;
-			metrics.LaneWidth = ImGui::GetTextLineHeight() * 0.8f;
+			metrics.LaneWidth = ImGui::GetTextLineHeight() * kLaneWidthPerLineHeight;
 			metrics.RowHeight = ImGui::GetTextLineHeightWithSpacing();
-			metrics.DotRadius = metrics.LaneWidth * 0.22f;
+			metrics.DotRadius = metrics.LaneWidth * kDotRadiusPerLaneWidth;
 			return metrics;
 		}
 
-		// The table's columns, in the order they are set up.
 		enum class Column : int
 		{
 			Graph,
@@ -49,24 +75,21 @@ namespace Graphite {
 			Message,
 			Author,
 			Date,
-
-			// Not a column - the count of the ones above it.
 			Count
 		};
 
-		// The index ImGui's table calls take for a column.
-		constexpr int Index(Column column)
+		constexpr int TableIndexOf(Column column)
 		{
 			return static_cast<int>(column);
 		}
 
-		// Pulls the right edge of the table just begun `gap` away from its vertical scrollbar,
-		// when it has one. ImGui runs a scrolling table's rows, header and highlights right up
-		// to the bar, with no style setting to leave room, so the table is told its work area
-		// ends earlier: the stretched column takes its width from what is left, and the row
-		// backgrounds and the cells are clipped short of the bar. The clip rects are the ones
-		// ImGui itself trims for an outer border; the layout that reads them runs later, at
-		// the first row.
+		struct TextPiece
+		{
+			std::string_view Text;
+			ImU32 Color;
+		};
+
+		// WARNING: ImGui runs a scrolling table's rows right up to its scrollbar with no style setting to leave room, so the work area is shortened by hand, along with the clip rects ImGui itself trims for an outer border.
 		void KeepClearOfScrollbar(float gap)
 		{
 			ImGuiTable* table = ImGui::GetCurrentTable();
@@ -83,29 +106,23 @@ namespace Graphite {
 			table->HostClipRect.Max.x = std::min(table->HostClipRect.Max.x, right);
 		}
 
-		float WidthOf(std::string_view text)
-		{
-			// Guarded because an empty view may carry no pointer at all, and CalcTextSize
-			// reads a null end as "up to the terminator".
-			return text.empty() ? 0.0f
-								: ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
-		}
-
-		// The least the summary is kept at, in the table's layout and beside branch labels
-		// alike: twelve digits' worth.
 		float MinMessageWidth()
 		{
-			return ImGui::CalcTextSize("0").x * 12.0f;
+			return ImGui::CalcTextSize("0").x * kMinMessageDigitCount;
 		}
 
-		// `text` in `color` — zero for the theme's own — with the needle marked, cut with an
-		// ellipsis to whatever is left of the current cell.
-		//
-		// Measured with CalcTextSize, which rounds up by less than a pixel, so the cell is
-		// given that pixel back. Without it a column sized to its text by a rescale - a
-		// width ImGui saved at one interface scale and multiplied on loading at another -
-		// cuts a seven-digit hash it has room for. What overshoots now overshoots by under a
-		// pixel, into the cell's own padding.
+		float SampleWidth(const char* sample)
+		{
+			return ImGui::CalcTextSize(sample).x;
+		}
+
+		// WARNING: WidthRequest holds the reader's drag or the width saved in the settings, and a hidden column keeps it.
+		float WidthInUse(const ImGuiTable* table, Column column, float usualWidth)
+		{
+			const float requestedWidth = table->Columns[TableIndexOf(column)].WidthRequest;
+			return requestedWidth > 0.0f ? requestedWidth : usualWidth;
+		}
+
 		void FittedText(std::string_view text, ImU32 color, std::string_view needle)
 		{
 			if (text.empty())
@@ -113,43 +130,39 @@ namespace Graphite {
 				return;
 			}
 
-			const std::optional<std::size_t> cut = CutToFit(
-				text, ImGui::GetContentRegionAvail().x + 1.0f, WidthOf(Ellipsis), WidthOf);
+			const float roomInCell = ImGui::GetContentRegionAvail().x + kRoundedUpPixel;
+
+			const std::optional<std::size_t> cut =
+				CutToFit(text, roomInCell, Core::TextWidth(Ellipsis), Core::TextWidth);
 
 			const HighlightedLabel split =
 				SplitHighlight(cut.has_value() ? text.substr(0, *cut) : text, needle);
 
-			const ImU32 ink = color != 0 ? color : ImGui::GetColorU32(ImGuiCol_Text);
+			const ImU32 ink = color != kThemeTextColor ? color : ImGui::GetColorU32(ImGuiCol_Text);
 			const ImU32 mark = ImGui::GetColorU32(ImGuiCol_CheckMark);
 
-			const struct
-			{
-				std::string_view Text;
-				ImU32 Color;
-			} pieces[] = {
+			const TextPiece pieces[] = {
 				{split.Before, ink},
 				{split.Match, mark},
 				{split.After, ink},
 				{cut.has_value() ? Ellipsis : std::string_view{}, ink},
 			};
 
-			// An empty piece is skipped rather than drawn: it has nothing to show, and
-			// drawing it would only put one more item on the line.
-			bool first = true;
+			bool isFirstPiece = true;
 
-			for (const auto& piece : pieces)
+			for (const TextPiece& piece : pieces)
 			{
 				if (piece.Text.empty())
 				{
 					continue;
 				}
 
-				if (!first)
+				if (!isFirstPiece)
 				{
-					ImGui::SameLine(0.0f, 0.0f);
+					ImGui::SameLine(kNoOffset, kNoSpacing);
 				}
 
-				first = false;
+				isFirstPiece = false;
 
 				ImGui::PushStyleColor(ImGuiCol_Text, piece.Color);
 				ImGui::TextUnformatted(piece.Text.data(), piece.Text.data() + piece.Text.size());
@@ -157,9 +170,6 @@ namespace Graphite {
 			}
 		}
 
-		// The branch labels ahead of a summary, as many as leave the whole summary its room -
-		// the labels are cut before the summary is. Left with the cursor ready for the
-		// summary to continue the line, or untouched when no label fits.
 		void RefLabels(const std::vector<CommitRef>& refs, const GitPalette& palette,
 					   std::string_view summary)
 		{
@@ -169,26 +179,26 @@ namespace Graphite {
 			}
 
 			const ImGuiStyle& style = ImGui::GetStyle();
-			const float inset = style.ItemInnerSpacing.x;
-			const float gap = style.ItemInnerSpacing.x;
+			const float labelPadding = style.ItemInnerSpacing.x;
+			const float labelGap = style.ItemInnerSpacing.x;
 
-			std::vector<float> widths;
-			widths.reserve(refs.size());
+			std::vector<float> labelWidths;
+			labelWidths.reserve(refs.size());
 
 			for (const CommitRef& ref : refs)
 			{
-				widths.push_back(WidthOf(ref.Name) + inset * 2.0f);
+				labelWidths.push_back(Core::TextWidth(ref.Name) + labelPadding * 2.0f);
 			}
 
-			const std::size_t fitting =
-				RefLabelsThatFit(widths, gap, ImGui::GetContentRegionAvail().x + 1.0f, WidthOf(summary),
-								 MinMessageWidth());
+			const std::size_t fittingCount = RefLabelsThatFit(
+				labelWidths, labelGap, ImGui::GetContentRegionAvail().x + kRoundedUpPixel,
+				Core::TextWidth(summary), MinMessageWidth());
 
-			ImDrawList* draw = ImGui::GetWindowDrawList();
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-			for (std::size_t index = 0; index < fitting; ++index)
+			for (std::size_t labelIndex = 0; labelIndex < fittingCount; ++labelIndex)
 			{
-				const CommitRef& ref = refs[index];
+				const CommitRef& ref = refs[labelIndex];
 
 				ImU32 ink = ImGui::GetColorU32(ImGuiCol_TextDisabled);
 
@@ -201,36 +211,38 @@ namespace Graphite {
 					ink = palette.GutterModified;
 				}
 
-				// The same colour at a fraction of its strength behind the name, so the label
-				// reads as a tag on the row rather than as a second line of text.
-				const ImU32 fill = (ink & ~IM_COL32_A_MASK) | (0x38u << IM_COL32_A_SHIFT);
+				const ImU32 fill = Core::WithAlphaReplaced(ink, kLabelFillAlphaByte);
 
-				const ImVec2 start = ImGui::GetCursorScreenPos();
-				const ImVec2 size(widths[index], ImGui::GetTextLineHeight());
+				const ImVec2 labelOrigin = ImGui::GetCursorScreenPos();
+				const ImVec2 labelSize(labelWidths[labelIndex], ImGui::GetTextLineHeight());
 
-				draw->AddRectFilled(start, ImVec2(start.x + size.x, start.y + size.y), fill,
-									style.FrameRounding);
-				draw->AddText(ImVec2(start.x + inset, start.y), ink, ref.Name.data(),
-							  ref.Name.data() + ref.Name.size());
+				drawList->AddRectFilled(
+					labelOrigin, ImVec2(labelOrigin.x + labelSize.x, labelOrigin.y + labelSize.y),
+					fill, style.FrameRounding);
+				drawList->AddText(ImVec2(labelOrigin.x + labelPadding, labelOrigin.y), ink,
+								  ref.Name.data(), ref.Name.data() + ref.Name.size());
 
-				ImGui::Dummy(size);
-				ImGui::SameLine(0.0f, gap);
+				ImGui::Dummy(labelSize);
+				ImGui::SameLine(kNoOffset, labelGap);
 			}
 		}
 
-		// What the cell under the pointer leaves out. The summary has none: the whole
-		// message is what selecting the commit shows in the pane below.
+		std::string FormattedSignature(const Core::Signature& person)
+		{
+			return std::format("{} <{}>", person.Name, person.Email);
+		}
+
+		std::string FormattedMoment(std::chrono::sys_seconds when, std::chrono::sys_seconds now,
+									std::chrono::minutes offset)
+		{
+			return std::format("{}  ·  {}", FormattedTimestamp(when, offset),
+							   RelativeAge(when, now));
+		}
+
 		void CellTooltip(int column, const Core::CommitSummary& commit,
 						 std::chrono::sys_seconds now, std::chrono::minutes offset)
 		{
-			const auto signature = [](const Core::Signature& who) {
-				return std::format("{} <{}>", who.Name, who.Email);
-			};
-
-			const auto moment = [&](std::chrono::sys_seconds when) {
-				return std::format("{}  \xC2\xB7  {}", FormattedTimestamp(when, offset),
-								   RelativeAge(when, now));
-			};
+			const bool wasCommittedAtAnotherTime = commit.Committer.When != commit.Author.When;
 
 			std::string text;
 
@@ -241,23 +253,21 @@ namespace Graphite {
 				break;
 
 			case Column::Author:
-				text = signature(commit.Author);
+				text = FormattedSignature(commit.Author);
 
 				if (ShowsCommitter(commit))
 				{
-					text += "\ncommitted by " + signature(commit.Committer);
+					text += "\ncommitted by " + FormattedSignature(commit.Committer);
 				}
 
 				break;
 
 			case Column::Date:
-				text = moment(commit.Author.When);
+				text = FormattedMoment(commit.Author.When, now, offset);
 
-				// A rebased or amended commit keeps its author's date and gains a later one
-				// of its own, and a reader asking when a commit happened may mean either.
-				if (commit.Committer.When != commit.Author.When)
+				if (wasCommittedAtAnotherTime)
 				{
-					text += "\ncommitted " + moment(commit.Committer.When);
+					text += "\ncommitted " + FormattedMoment(commit.Committer.When, now, offset);
 				}
 
 				break;
@@ -321,15 +331,14 @@ namespace Graphite {
 
 	void CommitListView::ToggleExpanded(const Core::Oid& commit)
 	{
-		if (m_Expanded.erase(commit))
+		const std::size_t erasedCount = m_Expanded.erase(commit);
+
+		if (erasedCount > 0)
 		{
-			// The row the selection pointed at just left the list. A selection naming it
-			// would leave the diff pane showing a file that appears nowhere above it, and
-			// GitView has already dropped the cached diff for this commit — so nothing
-			// would ever answer it either. Clearing it here, in the class that owns both
-			// the expansion set and the selection, is what lets "Select a file to see its
-			// changes." stay honest about what is on screen.
-			if (m_SelectedFile.has_value() && m_SelectedFile->Commit == commit)
+			const bool collapsedCommitHoldsSelectedFile =
+				m_SelectedFile.has_value() && m_SelectedFile->Commit == commit;
+
+			if (collapsedCommitHoldsSelectedFile)
 			{
 				m_SelectedFile.reset();
 			}
@@ -345,7 +354,7 @@ namespace Graphite {
 		m_Expanded.clear();
 		m_SelectedFile.reset();
 		m_SelectedCommit.reset();
-		m_LoadMoreRequestedAtCount = -1;
+		m_LoadMoreRequestedAtCount = kNoLoadMoreRequestedYet;
 	}
 
 	bool CommitListView::TakeLoadMoreRequest()
@@ -360,6 +369,22 @@ namespace Graphite {
 		std::optional<CommitAction> action = std::move(m_CommitAction);
 		m_CommitAction.reset();
 		return action;
+	}
+
+	std::size_t CommitListView::FileRowCountUnder(
+		const Core::LogPage& page, std::size_t commitIndex,
+		const std::function<Core::Ref<const Core::Diff>(const Core::Oid&)>& diffOf) const
+	{
+		const Core::CommitSummary& summary = page.Commits[commitIndex];
+
+		if (!IsExpanded(summary.Id))
+		{
+			return kNoFileRows;
+		}
+
+		const Core::Ref<const Core::Diff> diff = diffOf(summary.Id);
+
+		return FileRowsOfExpanded(diff ? diff->Files.size() : kNoFileRows);
 	}
 
 	void CommitListView::Render(const Core::LogPage& page, const Core::CommitGraph& graph,
@@ -377,120 +402,67 @@ namespace Graphite {
 
 		const GraphMetrics metrics = MetricsForCurrentFont();
 
-		const CommitRows rows = BuildCommitRows(page.Commits.size(), [&](std::size_t commit) {
-			const Core::CommitSummary& summary = page.Commits[commit];
+		const CommitRows rows =
+			BuildCommitRows(page.Commits.size(), [&](std::size_t commitIndex) {
+				return FileRowCountUnder(page, commitIndex, diffOf);
+			});
 
-			if (!IsExpanded(summary.Id))
-			{
-				return std::size_t{0};
-			}
+		const std::chrono::sys_seconds now =
+			std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
 
-			const Core::Ref<const Core::Diff> diff = diffOf(summary.Id);
-
-			return FileRowsOfExpanded(diff ? diff->Files.size() : std::size_t{0});
-		});
-
-		const auto now = std::chrono::floor<std::chrono::seconds>(
-			std::chrono::system_clock::now());
-
-		// Every row is exactly metrics.RowHeight tall — the height the clipper seeks by and
-		// CommitGraphView places the graph by. A table row is as tall as its tallest cell
-		// plus the cell padding above and below it, so the padding is half the item spacing
-		// each side: one line of text plus both halves is the font's line height with
-		// spacing, which is RowHeight. The minimum height passed to each row says the same
-		// thing again, so a cell that ever came out shorter could not pull the rows below it
-		// up and away from the graph.
-		//
-		// Half above and half below, rather than all of it below, is also what lines the row
-		// up with its own selection highlight: a Selectable spanning the columns reaches half
-		// the spacing past its text on both sides — rounded down, so with an odd spacing the
-		// highlight sits half a pixel off the stripe, which nobody can see.
-		const float cellPaddingY = ImGui::GetStyle().ItemSpacing.y * 0.5f;
+		// WARNING: A table row is as tall as its tallest cell plus the cell padding, so the padding is half the item spacing on each side: one line of text plus both halves is RowHeight, which the clipper seeks by and the graph is placed by. The minimum height passed to each row says the same again, so a shorter cell cannot pull the rows up away from the graph.
+		const float cellPaddingY = ImGui::GetStyle().ItemSpacing.y * kHalf;
 
 		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding,
 							ImVec2(ImGui::GetStyle().CellPadding.x, cellPaddingY));
 
-		// The table scrolls itself, filling the window it is drawn in, so the header row can
-		// stay at the top while the history moves under it. The header is also the only
-		// place a column is resized from: without NoBordersInBody, ImGui puts each resize
-		// handle down the whole height of the list, and a click a few pixels either side of a
-		// border — on any row — would drag the column instead of selecting the commit.
-		//
-		// A resizable table keeps its widths in the ImGui settings, so a column dragged wider
-		// stays that way the next time the application opens.
-		//
-		// A table without outer borders gives its first and last cells no padding on their
-		// outer side, so the last column's text would run into the scrollbar; PadOuterX gives
-		// the table's edges the same padding as the gaps between its columns.
+		// WARNING: Without NoBordersInBody ImGui puts each resize handle down the whole list, so a click near a border on any row would drag the column instead of selecting the commit. Without PadOuterX the last column's text runs into the scrollbar.
 		constexpr ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
 										  ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_ScrollY |
 										  ImGuiTableFlags_PadOuterX;
 
-		const auto widthOf = [](const char* sample) { return ImGui::CalcTextSize(sample).x; };
-
 		const ImGuiStyle& style = ImGui::GetStyle();
 
-		// The scrollbar's share is taken off because the table is told to stop short of it.
-		const float available = ImGui::GetContentRegionAvail().x - style.ScrollbarSize;
+		const float widthBesideScrollbar = ImGui::GetContentRegionAvail().x - style.ScrollbarSize;
 
-		if (ImGui::BeginTable("##commits", Index(Column::Count), flags))
+		if (ImGui::BeginTable("##commits", TableIndexOf(Column::Count), flags))
 		{
 			KeepClearOfScrollbar(ImGui::GetStyle().ItemSpacing.x);
 
-			// The width a column the reader can resize is in use at: what ImGui requested for
-			// it last frame - their drag, or the width saved in the settings - and the width it
-			// usually needs until there is one. A hidden column keeps its request.
 			const ImGuiTable* table = ImGui::GetCurrentTable();
 
-			const auto inUse = [&](Column column, float usual) {
-				const float requested = table->Columns[Index(column)].WidthRequest;
-				return requested > 0.0f ? requested : usual;
-			};
+			CommitColumnsInput columnInput;
+			columnInput.Available = widthBesideScrollbar;
+			columnInput.Graph = GraphWidth(metrics, graph.LaneCount);
+			columnInput.Chevron = std::max(SampleWidth(ICON_MDI_CHEVRON_RIGHT),
+										   SampleWidth(ICON_MDI_CHEVRON_DOWN));
+			columnInput.Hash = WidthInUse(table, Column::Hash, SampleWidth(kHashSample));
+			columnInput.Author = WidthInUse(table, Column::Author, SampleWidth(kAuthorSample));
+			columnInput.Date = WidthInUse(table, Column::Date, SampleWidth(kDateSample));
+			columnInput.CellPadding = style.CellPadding.x * 2.0f;
+			columnInput.MinMessage = MinMessageWidth();
 
-			// Worked out from those widths: the message is the only column that stretches, so
-			// what the fixed ones take is what it loses.
-			CommitColumnsInput sizes;
-			sizes.Available = available;
-			sizes.Graph = GraphWidth(metrics, graph.LaneCount);
-			sizes.Chevron = std::max(widthOf(ICON_MDI_CHEVRON_RIGHT), widthOf(ICON_MDI_CHEVRON_DOWN));
-			sizes.Hash = inUse(Column::Hash, widthOf("0000000"));
-			sizes.Author = inUse(Column::Author, widthOf("Alice Johnson   "));
-			sizes.Date = inUse(Column::Date, widthOf("59 minutes ago"));
-			sizes.CellPadding = style.CellPadding.x * 2.0f;
-			sizes.MinMessage = MinMessageWidth();
+			const CommitColumns columns = LayoutCommitColumns(columnInput);
 
-			const CommitColumns columns = LayoutCommitColumns(sizes);
+			constexpr ImGuiTableColumnFlags kFixedWidth = ImGuiTableColumnFlags_WidthFixed;
+			constexpr ImGuiTableColumnFlags kFixedAndLocked =
+				ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoResize;
 
-			// The lanes and the arrow are not the reader's to resize: the graph is as wide as
-			// the history has lanes - up to the share of the table the layout allows it - and
-			// ImGui re-applies that width every frame to a fixed column that cannot be
-			// resized, so it follows the history as branches come and go.
-			ImGui::TableSetupColumn("##graph",
-									ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoResize,
-									columns.Graph);
-			ImGui::TableSetupColumn("##chevron",
-									ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoResize,
-									sizes.Chevron);
-
-			// The rest open at the width of what they usually hold. A cell too narrow for its
-			// text cuts it with an ellipsis, and the tooltip over it says the rest.
-			ImGui::TableSetupColumn("Hash", ImGuiTableColumnFlags_WidthFixed, widthOf("0000000"));
+			ImGui::TableSetupColumn("##graph", kFixedAndLocked, columns.Graph);
+			ImGui::TableSetupColumn("##chevron", kFixedAndLocked, columnInput.Chevron);
+			ImGui::TableSetupColumn("Hash", kFixedWidth, SampleWidth(kHashSample));
 			ImGui::TableSetupColumn("Message", ImGuiTableColumnFlags_WidthStretch);
 
-			// A narrow table gives up the author and then the date rather than the summary.
-			// Done with the Disabled flag, which hides a column outright and is read again
-			// every frame; the table is not Hideable, so ImGui offers the reader no menu to
-			// bring them back and does not save the state.
-			constexpr ImGuiTableColumnFlags fixed = ImGuiTableColumnFlags_WidthFixed;
+			// WARNING: A narrow table gives up the author and then the date with the Disabled flag, which is read again every frame. The table is not Hideable, so ImGui offers no menu to bring them back and does not save the state.
+			const ImGuiTableColumnFlags authorFlags =
+				columns.ShowAuthor ? kFixedWidth : kFixedWidth | ImGuiTableColumnFlags_Disabled;
+			const ImGuiTableColumnFlags dateFlags =
+				columns.ShowDate ? kFixedWidth : kFixedWidth | ImGuiTableColumnFlags_Disabled;
 
-			ImGui::TableSetupColumn("Author",
-									columns.ShowAuthor ? fixed : fixed | ImGuiTableColumnFlags_Disabled,
-									widthOf("Alice Johnson   "));
-			ImGui::TableSetupColumn("Date",
-									columns.ShowDate ? fixed : fixed | ImGuiTableColumnFlags_Disabled,
-									widthOf("59 minutes ago"));
+			ImGui::TableSetupColumn("Author", authorFlags, SampleWidth(kAuthorSample));
+			ImGui::TableSetupColumn("Date", dateFlags, SampleWidth(kDateSample));
 
-			ImGui::TableSetupScrollFreeze(0, 1);
+			ImGui::TableSetupScrollFreeze(kFrozenColumnCount, kFrozenRowCount);
 			ImGui::TableHeadersRow();
 
 			ImGuiListClipper clipper;
@@ -498,22 +470,22 @@ namespace Graphite {
 
 			while (clipper.Step())
 			{
-				// Where display row 0 is, worked back from a row drawn in this step. Row 0 is
-				// usually scrolled far above the table, and nothing is drawn at it to ask.
+				// WARNING: Display row 0 is usually scrolled far above the table and nothing is drawn at it, so its position is worked back from a row drawn in this step.
 				ImVec2 graphOrigin;
 
-				for (int index = clipper.DisplayStart; index < clipper.DisplayEnd; ++index)
+				for (int displayRow = clipper.DisplayStart; displayRow < clipper.DisplayEnd;
+					 ++displayRow)
 				{
-					const CommitRow& row = rows.Rows[static_cast<std::size_t>(index)];
+					const CommitRow& row = rows.Rows[static_cast<std::size_t>(displayRow)];
 					const Core::CommitSummary& commit = page.Commits[row.Commit];
 
 					ImGui::TableNextRow(ImGuiTableRowFlags_None, metrics.RowHeight);
-					ImGui::PushID(index);
+					ImGui::PushID(displayRow);
 
-					ImGui::TableSetColumnIndex(Index(Column::Graph));
-					const ImVec2 cell = ImGui::GetCursorScreenPos();
-					graphOrigin = ImVec2(cell.x, cell.y - cellPaddingY -
-													 static_cast<float>(index) * metrics.RowHeight);
+					ImGui::TableSetColumnIndex(TableIndexOf(Column::Graph));
+					const ImVec2 graphCell = ImGui::GetCursorScreenPos();
+					graphOrigin = ImVec2(graphCell.x, graphCell.y - cellPaddingY -
+														  static_cast<float>(displayRow) * metrics.RowHeight);
 
 					if (row.Kind == CommitRowKind::Commit)
 					{
@@ -527,14 +499,10 @@ namespace Graphite {
 					ImGui::PopID();
 				}
 
-				// Drawn once per step, from inside the graph column of the step's last row —
-				// still open, since the next row has not begun — so the lanes land in that
-				// column's clip rect, which stops below the header row. A step is a run of
-				// consecutive rows, and a line leaving it is drawn on to wherever it goes and
-				// clipped there, so a second step drawing the same line again changes nothing.
+				// WARNING: The lanes are drawn once per step from inside the graph column of the step's last row, still open because the next row has not begun, so they land in that column's clip rect, which stops below the header row.
 				if (clipper.DisplayEnd > clipper.DisplayStart)
 				{
-					ImGui::TableSetColumnIndex(Index(Column::Graph));
+					ImGui::TableSetColumnIndex(TableIndexOf(Column::Graph));
 
 					CommitGraphView{}.Render(graph, palette, metrics, rows.RowOfCommit,
 											 clipper.DisplayStart, clipper.DisplayEnd - 1,
@@ -542,16 +510,7 @@ namespace Graphite {
 				}
 			}
 
-			// Asking is what makes the difference between "this is all of it" and "there is
-			// more, we just stopped looking" — the page says which, and a reader at the bottom
-			// of an incomplete page wants the rest. Armed only once per page: the count is the
-			// thing that actually changes when a request is answered, so latching on it
-			// (rather than merely consuming the flag on read) stops the widget re-arming every
-			// frame the reader happens to stay at the bottom while the bigger page is still
-			// being fetched.
-			//
-			// Read before EndTable: until then the current window is the table's own scrolling
-			// one, which is the scroll position that means "at the bottom of the history".
+			// WARNING: The request is latched on the page's commit count, so it is not re-armed every frame the reader stays at the bottom while the bigger page is fetched. It is read before EndTable because until then the current window is the table's own scrolling one.
 			const std::ptrdiff_t commitCount = static_cast<std::ptrdiff_t>(page.Commits.size());
 
 			if (!page.Complete && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() &&
@@ -573,39 +532,27 @@ namespace Graphite {
 										 std::chrono::minutes offset)
 	{
 		const bool expanded = IsExpanded(commit.Id);
+		const bool isSelectedCommit = m_SelectedCommit == commit.Id;
 
-		// Selected rather than merely expanded is what the row draws as highlighted:
-		// expansion is already said by the chevron and by the file rows below, while the
-		// selection is the only thing that says which commit the pane underneath is
-		// describing.
-		const bool selected = m_SelectedCommit == commit.Id;
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Chevron));
 
-		ImGui::TableSetColumnIndex(Index(Column::Chevron));
+		const float chevronZoneStartX =
+			ImGui::GetCursorScreenPos().x - ImGui::GetStyle().CellPadding.x;
 
-		// The arrow's zone starts at the edge of its own column, padding included. The
-		// Selectable below spans the graph column too, and a click on the lanes is a click
-		// on the commit, not on its arrow.
-		const float chevronStartX = ImGui::GetCursorScreenPos().x - ImGui::GetStyle().CellPadding.x;
-
-		// One Selectable under the whole row, with every cell drawn over it: the row is one
-		// thing to click, whichever column the click lands in. AllowOverlap keeps the click
-		// reaching it rather than being swallowed by the text laid on top.
 		const ImVec2 rowStart = ImGui::GetCursorPos();
 
-		const bool clicked = ImGui::Selectable(
-			"##commit", selected,
-			ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
+		const bool selectableClicked =
+			ImGui::Selectable("##commit", isSelectedCommit, kRowSelectableFlags);
 
-		// Asked here, of the Selectable itself: every cell below becomes the last item in
-		// turn, and asking afterwards would ask the last piece of text instead.
-		const bool hovered = ImGui::IsItemHovered();
-		const bool hoveredForTooltip = ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip);
+		// WARNING: Hover and the context menu are asked of the Selectable here, because every cell below becomes the last item in turn. The caller pushes an id per row, so each row's menu is its own popup.
+		const bool selectableHovered = ImGui::IsItemHovered();
+		const bool selectableHoveredForTooltip = ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip);
 
-		// Also asked of the Selectable, for the same reason. The caller pushes an id per row,
-		// so each row's menu is its own popup.
 		if (Core::BeginRightClickPopup("commit-menu"))
 		{
-			ImGui::BeginDisabled(!m_ActionsEnabled);
+			const bool writesAllowed = m_ActionsEnabled;
+
+			ImGui::BeginDisabled(!writesAllowed);
 
 			if (ImGui::MenuItem("Checkout (detached)"))
 			{
@@ -621,7 +568,6 @@ namespace Graphite {
 
 			ImGui::Separator();
 
-			// Reading the commit is not a write, so these stay available while one runs.
 			if (ImGui::MenuItem("Copy Hash"))
 			{
 				m_CommitAction = CommitAction{.Action = CommitAction::Kind::Copy,
@@ -652,73 +598,51 @@ namespace Graphite {
 		ImGui::SetCursorPos(rowStart);
 		ImGui::TextUnformatted(expanded ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT);
 
-		// Everything left of the hash is the arrow's to click, the padding between the two
-		// columns included: forgiving to hit, and never reaching a click meant for the row.
-		ImGui::TableSetColumnIndex(Index(Column::Hash));
-		const float hashStartX = ImGui::GetCursorScreenPos().x;
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Hash));
+		const float chevronZoneEndX = ImGui::GetCursorScreenPos().x;
 
-		// Hash, author and date are dimmed so the summary, the part of the row that is read
-		// rather than looked up, is the one thing at full strength.
-		const ImU32 dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+		const ImU32 dimmedInk = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+		const ImU32 hashInk = page.Unpushed.contains(commit.Id) ? palette.GutterAdded : dimmedInk;
 
-		// A commit the upstream does not have yet: what a push would send. Said with the
-		// colour the editor's gutter gives an added line — an unpushed commit is one the
-		// remote has yet to gain — and said on the hash, which is the part of the row that
-		// names the commit rather than describing it.
-		const ImU32 hashColor = page.Unpushed.contains(commit.Id) ? palette.GutterAdded : dim;
+		FittedText(commit.Id.ShortHex(), hashInk, highlight);
 
-		// Whatever the history was filtered by is marked wherever it lands in the row —
-		// hash, summary or author — because the filter matches all three and the row is
-		// where the answer to "why this commit" is.
-		FittedText(commit.Id.ShortHex(), hashColor, highlight);
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
 
-		ImGui::TableSetColumnIndex(Index(Column::Message));
-
-		if (const auto found = refs.find(commit.Id); found != refs.end())
+		if (refs.contains(commit.Id))
 		{
-			RefLabels(found->second, palette, commit.Summary);
+			RefLabels(refs.at(commit.Id), palette, commit.Summary);
 		}
 
-		FittedText(commit.Summary, 0, highlight);
+		FittedText(commit.Summary, kThemeTextColor, highlight);
 
-		ImGui::TableSetColumnIndex(Index(Column::Author));
-		FittedText(AuthorName(commit.Author), dim, highlight);
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Author));
+		FittedText(AuthorName(commit.Author), dimmedInk, highlight);
 
-		ImGui::TableSetColumnIndex(Index(Column::Date));
-		FittedText(RelativeAge(commit.Author.When, now), dim, {});
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Date));
+		FittedText(RelativeAge(commit.Author.When, now), dimmedInk, kNoHighlight);
 
-		if (hoveredForTooltip)
+		if (selectableHoveredForTooltip)
 		{
 			CellTooltip(ImGui::TableGetHoveredColumn(), commit, now, offset);
 		}
 
-		if (!clicked)
+		if (!selectableClicked)
 		{
 			return;
 		}
 
-		// Where the press landed, not where the pointer is now: a Selectable fires on
-		// release, and a press that started on the arrow is what the reader meant even if
-		// the pointer drifted before they let go. Hover is checked too, so an activation
-		// that did not come from the mouse — which leaves MouseClickedPos wherever it last
-		// was — falls to selecting, the harmless of the two.
-		const float pressedX = ImGui::GetIO().MouseClickedPos[0].x;
-		const bool onChevron = hovered && pressedX >= chevronStartX && pressedX < hashStartX;
+		// WARNING: A Selectable fires on release, so where the press landed decides, not where the pointer is now. Hover is checked too, so an activation that did not come from the mouse, which leaves MouseClickedPos stale, falls to selecting.
+		const float pressedX = ImGui::GetIO().MouseClickedPos[kLeftMouseButton].x;
+		const bool onChevron =
+			selectableHovered && pressedX >= chevronZoneStartX && pressedX < chevronZoneEndX;
 
 		if (onChevron)
 		{
-			// The arrow does this and nothing else: opening a commit's file list and reading
-			// its message are separate questions, and a reader who wanted the other one can
-			// ask for it without undoing this.
 			ToggleExpanded(commit.Id);
 		}
 		else
 		{
 			m_SelectedCommit = commit.Id;
-
-			// The file the pane was showing belongs to whichever commit was clicked last
-			// time. Leaving it standing would put a diff from one commit under the row of
-			// another, and the reader asked about this one.
 			m_SelectedFile.reset();
 		}
 	}
@@ -730,19 +654,13 @@ namespace Graphite {
 	{
 		const Core::Ref<const Core::Diff> diff = diffOf(commit.Id);
 
-		// The row layout was built from this same diffOf a moment ago; a file row only fails
-		// to resolve if the cache evicted the entry in between, which a fixed-size cache can
-		// do.
-		const Core::FileDiff* file =
+		const Core::FileDiff* changedFile =
 			(diff && fileIndex < diff->Files.size()) ? &diff->Files[fileIndex] : nullptr;
 
-		if (file == nullptr)
+		if (changedFile == nullptr)
 		{
-			// Still a row, drawn disabled: the row's minimum height keeps it as tall as the
-			// others, so the graph stays on the rows it labels. It says why there is nothing
-			// to list: the diff has not arrived, the commit changed no file, or the entry
-			// left the cache between building the rows and drawing them.
-			ImGui::TableSetColumnIndex(Index(Column::Message));
+			// WARNING: A placeholder is still a row, drawn disabled, so the graph stays on the rows it labels. The diff may be loading, failed, empty, or evicted from the cache between building the rows and drawing them.
+			ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
 
 			if (!diff && diffFailed(commit.Id))
 			{
@@ -750,7 +668,7 @@ namespace Graphite {
 			}
 			else if (!diff)
 			{
-				ImGui::TextDisabled("Loading%s", std::string(Ellipsis).c_str());
+				ImGui::TextDisabled("Loading…");
 			}
 			else if (diff->Files.empty())
 			{
@@ -764,39 +682,37 @@ namespace Graphite {
 			return;
 		}
 
-		const std::filesystem::path& path = ShownPath(*file);
+		const std::filesystem::path& path = ShownPath(*changedFile);
 
-		const bool selected = m_SelectedFile.has_value() && m_SelectedFile->Commit == commit.Id &&
-							  m_SelectedFile->Path == path;
+		const bool isSelectedFile = m_SelectedFile.has_value() &&
+									m_SelectedFile->Commit == commit.Id &&
+									m_SelectedFile->Path == path;
 
-		ImGui::TableSetColumnIndex(Index(Column::Chevron));
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Chevron));
 
-		if (ImGui::Selectable("##file", selected,
-							  ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+		if (ImGui::Selectable("##file", isSelectedFile, kRowSelectableFlags))
 		{
 			m_SelectedFile = FileSelection{commit.Id, path};
 		}
 
-		// Under the summaries, so a commit's files read as the continuation of its message
-		// rather than as a column of their own.
-		ImGui::TableSetColumnIndex(Index(Column::Message));
+		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
 
-		// The letter carries the colour the editor's gutter gives that same change, so a
-		// glance down the column says what happened without reading a letter per row.
-		const std::string letter(1, ChangeLetter(file->Change));
+		const std::string letter(1, ChangeLetter(changedFile->Change));
 
-		// Asked before drawing: in a column too narrow for it the letter gives way to an
-		// ellipsis, which the name would not explain.
-		const bool letterFits = ImGui::CalcTextSize(letter.c_str()).x <= ImGui::GetContentRegionAvail().x + 1.0f;
+		// WARNING: Asked before drawing, because in a column too narrow for it the letter gives way to an ellipsis, which the change name would not explain.
+		const float letterWidth = ImGui::CalcTextSize(letter.c_str()).x;
+		const float roomForLetter = ImGui::GetContentRegionAvail().x + kRoundedUpPixel;
+		const bool letterFits = letterWidth <= roomForLetter;
 
-		FittedText(letter, ChangeColor(file->Change, palette), {});
+		FittedText(letter, ChangeColor(changedFile->Change, palette), kNoHighlight);
 
-		if (const char* name = ChangeName(file->Change); name != nullptr && letterFits)
+		if (const char* changeName = ChangeName(changedFile->Change);
+			changeName != nullptr && letterFits)
 		{
-			ImGui::SetItemTooltip("%s", name);
+			ImGui::SetItemTooltip("%s", changeName);
 		}
 
-		ImGui::SameLine(0.0f, 0.0f);
-		FittedText(std::format("  {}", Core::ToUtf8(path)), 0, pathHighlight);
+		ImGui::SameLine(kNoOffset, kNoSpacing);
+		FittedText(std::format("  {}", Core::ToUtf8(path)), kThemeTextColor, pathHighlight);
 	}
 }

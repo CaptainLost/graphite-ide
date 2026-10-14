@@ -19,7 +19,7 @@ namespace {
 		return Core::Error{Core::ErrorCode::IoFailure, message};
 	}
 
-	// Stated as a bool so a failed check prints rather than trying to stream a pointer.
+	// WARNING: Stated as a bool so a failed check prints rather than trying to stream a pointer.
 	bool IsEmpty(const GenerationSlot<std::string>& slot)
 	{
 		return slot.Get() == nullptr;
@@ -113,8 +113,6 @@ TEST_CASE("Clearing a slot forgets its answer and drops one still in flight")
 	CHECK(slot.Land(inFlight, Answer("late")) == SlotLanding::Stale);
 	CHECK(IsEmpty(slot));
 
-	// Generations keep counting past the clear, so the next request is never mistaken for
-	// the one that was dropped.
 	const std::uint64_t next = slot.Begin();
 	CHECK(next > inFlight);
 	CHECK(slot.Land(next, Answer("fresh")) == SlotLanding::Applied);
