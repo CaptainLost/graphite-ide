@@ -7,10 +7,6 @@
 
 namespace Graphite {
 
-	// Which problem a list row stands for, by what the problem says rather than by where it
-	// sits in the list. A refresh re-sorts and re-numbers the rows, so a position would point at
-	// a different problem afterwards; the file, position, severity and message do not move
-	// unless the problem itself changed.
 	struct ProblemIdentity
 	{
 		std::filesystem::path Path;

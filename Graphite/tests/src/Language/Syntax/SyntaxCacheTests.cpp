@@ -23,10 +23,6 @@ namespace {
 		return cache;
 	}
 
-	// SyntaxCache's output is a deterministic function of the buffer and the width, so a wasted
-	// Reset is invisible in the tokens it returns — Reset() followed by a recompute yields
-	// byte-identical output to a cache hit. The only way to see the difference is to count how
-	// often the cache actually asks for a line to be lexed.
 	class CountingLexer final : public Graphite::Lexer
 	{
 	public:
@@ -83,8 +79,6 @@ TEST_CASE("SyntaxCache lexes a line on demand")
 	CHECK(KindsOf(cache, buffer, 0) == "koo");
 }
 
-// The point of the cache: line 3's tokens depend on the block comment opened on line 0, so
-// asking for line 3 first must still see it.
 TEST_CASE("SyntaxCache carries state down from lines never asked about")
 {
 	const Core::TextBuffer buffer{"/* open\na\nb\nc */ int"};
@@ -111,7 +105,6 @@ TEST_CASE("SyntaxCache re-lexes the lines below an invalidated one")
 
 	CHECK(KindsOf(cache, buffer, 1) == "m");
 
-	// Close the comment on line 0, and line 1 stops being a comment.
 	buffer.Erase(0, 7);
 	buffer.Insert(0, "int x;");
 	cache.Invalidate(0);
@@ -119,8 +112,6 @@ TEST_CASE("SyntaxCache re-lexes the lines below an invalidated one")
 	CHECK(KindsOf(cache, buffer, 1) == "o");
 }
 
-// The widget is responsible for calling Invalidate, and a path that forgets to would otherwise
-// paint stale colours forever. The revision guard turns that bug into a slow frame instead.
 TEST_CASE("SyntaxCache drops everything when the revision moved without an invalidation")
 {
 	Core::TextBuffer buffer{"/* open\ntext"};
@@ -142,8 +133,6 @@ TEST_CASE("SyntaxCache clamps a line past the end")
 	CHECK(cache.TokensOf(buffer, 99).empty());
 }
 
-// Token offsets are offsets into the TAB-EXPANDED line, so a width change moves every one of
-// them. Nothing about this fails loudly if it is missed — the colours land in the wrong columns.
 TEST_CASE("SyntaxCache re-lexes when the tab width changes")
 {
 	const Core::TextBuffer buffer{"\tint x;"};
@@ -155,16 +144,11 @@ TEST_CASE("SyntaxCache re-lexes when the tab width changes")
 	cache.SetTabWidth(8);
 	const Graphite::Token firstAtEight = cache.TokensOf(buffer, 0).front();
 
-	// "int" starts after the expanded tab, so it starts four bytes later at width eight.
 	CHECK(firstAtFour.From == 4);
 	CHECK(firstAtEight.From == 8);
 	CHECK(firstAtEight.To - firstAtEight.From == firstAtFour.To - firstAtFour.From);
 }
 
-// Setting the width it already has must not throw the cache away — that would re-lex the file
-// on any frame something asked twice. The tokens returned are a deterministic function of the
-// buffer and the width, so a wasted Reset would be invisible in them; only counting the lexer
-// calls can catch it.
 TEST_CASE("SyntaxCache keeps its states when the tab width is unchanged")
 {
 	const Core::TextBuffer buffer{"/* open\nstill"};
@@ -180,8 +164,6 @@ TEST_CASE("SyntaxCache keeps its states when the tab width is unchanged")
 	cache.TokensOf(buffer, 1);
 	CHECK(lexer.GetCallCount() == callsAfterFirst);
 
-	// A width that actually differs must still cause a re-lex — otherwise this test would pass
-	// just because the guard had been deleted outright.
 	cache.SetTabWidth(8);
 	cache.TokensOf(buffer, 1);
 	CHECK(lexer.GetCallCount() > callsAfterFirst);
@@ -318,7 +300,6 @@ TEST_CASE("Undo while a parse is pending shows the finished tree's colours, and 
 	const std::vector<Graphite::Token> finished = cache.TokensOf(buffer, kEditedLine);
 	REQUIRE_FALSE(finished.empty());
 
-	// Cut short, so colours lagging behind the edit are clipped and differ from the finished ones.
 	const std::size_t lineEnd = buffer.LineStart(kEditedLine) + buffer.LineText(kEditedLine).size();
 	buffer.Erase(lineEnd - 10, lineEnd);
 
@@ -414,8 +395,6 @@ TEST_CASE("A frame that lands during the pause asks again for a frame when the p
 	CHECK(cache.TokensOf(buffer, 5).empty());
 	REQUIRE(Core::Redraw::TakeDeadline().has_value());
 
-	// The frame above used up the first deadline; without asking again, the parse would wait
-	// for the caret blink or the idle tick.
 	CHECK(cache.TokensOf(buffer, 5).empty());
 
 	CHECK(Core::Redraw::TakeDeadline().has_value());

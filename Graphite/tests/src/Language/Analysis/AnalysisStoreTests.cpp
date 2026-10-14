@@ -2,17 +2,22 @@
 
 #include "Language/Analysis/AnalysisStore.h"
 
+#include "AnalysisFixtures.h"
 #include "TempDirectory.h"
 
 #include <chrono>
 #include <fstream>
 #include <string>
-#include <thread>
 #include <vector>
 
 using namespace Graphite;
 
 namespace {
+
+	constexpr std::streamoff kIndexRecordVersionAt = 8;
+	constexpr std::size_t kIndexHeaderBytes = 16;
+	constexpr std::size_t kIndexEntryCountAt = 12;
+	constexpr int kBytesPerCount = 4;
 
 	CachedAnalysis WithDeclaration(std::string name, std::filesystem::file_time_type modifiedAt)
 	{
@@ -28,51 +33,56 @@ namespace {
 		return analysis;
 	}
 
-	// The store writes on a worker, so a test that asserts on the disk has to wait for it. Bounded
-	// rather than open-ended: a hang here should fail the case, not the suite.
-	void WaitForWrites(AnalysisStore& store)
-	{
-		for (int attempt = 0; attempt < 200 && !store.IsQuiet(); ++attempt)
-		{
-			std::this_thread::sleep_for(std::chrono::milliseconds(10));
-		}
-
-		REQUIRE(store.IsQuiet());
-	}
-
-	// Drives SetRoot's listing to completion the way the application does — by polling.
-	void WaitUntilReady(AnalysisStore& store)
-	{
-		for (int attempt = 0; attempt < 200 && !store.IsReady(); ++attempt)
-		{
-			store.Poll();
-			std::this_thread::sleep_for(std::chrono::milliseconds(10));
-		}
-
-		REQUIRE(store.IsReady());
-	}
-
 	std::filesystem::path StoreDirectory(const TempDirectory& temp)
 	{
 		return temp.GetPath() / ".graphite" / "analysis";
 	}
 
-	// What the store may never leave behind: a record nothing can reach. The index is the only
-	// thing that turns a path into a record's filename, so a record it does not name is invisible
-	// to every later read and every later prune alike.
 	std::size_t CountRecords(const std::filesystem::path& directory)
 	{
 		std::size_t records = 0;
 
-		for (const auto& entry : std::filesystem::directory_iterator{directory})
+		for (const std::filesystem::directory_entry& directoryEntry :
+			 std::filesystem::directory_iterator{directory})
 		{
-			if (entry.path().extension() == ".rec")
+			if (directoryEntry.path().extension() == ".rec")
 			{
 				++records;
 			}
 		}
 
 		return records;
+	}
+
+	void OverwriteRecordsWithRubbish(const std::filesystem::path& directory)
+	{
+		for (const std::filesystem::directory_entry& directoryEntry :
+			 std::filesystem::directory_iterator{directory})
+		{
+			if (directoryEntry.path().extension() == ".rec")
+			{
+				std::ofstream record{directoryEntry.path(), std::ios::binary | std::ios::trunc};
+				record << "rubbish";
+			}
+		}
+	}
+
+	std::size_t IndexEntryCount(const std::filesystem::path& directory)
+	{
+		std::ifstream index{directory / "index.bin", std::ios::binary};
+		REQUIRE(index.is_open());
+
+		char bytes[kIndexHeaderBytes] = {};
+		index.read(bytes, sizeof(bytes));
+
+		std::size_t count = 0;
+
+		for (int byteIndex = kBytesPerCount - 1; byteIndex >= 0; --byteIndex)
+		{
+			count = (count << 8) | static_cast<unsigned char>(bytes[kIndexEntryCountAt + byteIndex]);
+		}
+
+		return count;
 	}
 }
 
@@ -85,15 +95,15 @@ TEST_CASE("An analysis written in one session is read back in the next")
 	{
 		AnalysisStore store;
 		store.SetRoot(temp.GetPath());
-		WaitUntilReady(store);
+		WaitForStoreReady(store);
 
 		store.Write(source, WithDeclaration("Draw", stamp));
-		WaitForWrites(store);
+		WaitForStoreWrites(store);
 	}
 
 	AnalysisStore next;
 	next.SetRoot(temp.GetPath());
-	WaitUntilReady(next);
+	WaitForStoreReady(next);
 
 	CHECK(next.Has(source));
 
@@ -113,17 +123,16 @@ TEST_CASE("An analysis of a file that has changed since is neither offered nor k
 	{
 		AnalysisStore store;
 		store.SetRoot(temp.GetPath());
-		WaitUntilReady(store);
+		WaitForStoreReady(store);
 		store.Write(source, WithDeclaration("Draw", stamp));
-		WaitForWrites(store);
+		WaitForStoreWrites(store);
 	}
 
-	// The file moves on between sessions, as it would across a branch switch.
 	std::filesystem::last_write_time(source, stamp + std::chrono::seconds(60));
 
 	AnalysisStore next;
 	next.SetRoot(temp.GetPath());
-	WaitUntilReady(next);
+	WaitForStoreReady(next);
 
 	CHECK_FALSE(next.Has(source));
 	CHECK_FALSE(next.Read(source, std::filesystem::last_write_time(source)).has_value());
@@ -138,32 +147,20 @@ TEST_CASE("An analysis of a file that is gone is pruned from the disk, not left 
 	{
 		AnalysisStore store;
 		store.SetRoot(temp.GetPath());
-		WaitUntilReady(store);
+		WaitForStoreReady(store);
 		store.Write(source, WithDeclaration("Draw", stamp));
-		WaitForWrites(store);
+		WaitForStoreWrites(store);
 	}
 
 	std::filesystem::remove(source);
 
 	AnalysisStore next;
 	next.SetRoot(temp.GetPath());
-	WaitUntilReady(next);
+	WaitForStoreReady(next);
 
 	CHECK_FALSE(next.Has(source));
 
-	// Nothing may be left holding bytes for a file that no longer exists — the store has no size
-	// cap, so an orphan is an orphan for the life of the project.
-	std::size_t records = 0;
-
-	for (const auto& entry : std::filesystem::directory_iterator{temp.GetPath() / ".graphite" / "analysis"})
-	{
-		if (entry.path().extension() == ".rec")
-		{
-			++records;
-		}
-	}
-
-	CHECK(records == 0);
+	CHECK(CountRecords(StoreDirectory(temp)) == 0);
 }
 
 TEST_CASE("A corrupt index throws the whole store away rather than half-trusting it")
@@ -175,26 +172,22 @@ TEST_CASE("A corrupt index throws the whole store away rather than half-trusting
 	{
 		AnalysisStore store;
 		store.SetRoot(temp.GetPath());
-		WaitUntilReady(store);
+		WaitForStoreReady(store);
 		store.Write(source, WithDeclaration("Draw", stamp));
-		WaitForWrites(store);
+		WaitForStoreWrites(store);
 	}
 
 	{
-		std::ofstream index{temp.GetPath() / ".graphite" / "analysis" / "index.bin",
-							std::ios::binary | std::ios::trunc};
+		std::ofstream index{StoreDirectory(temp) / "index.bin", std::ios::binary | std::ios::trunc};
 		index << "not an index";
 	}
 
 	AnalysisStore next;
 	next.SetRoot(temp.GetPath());
-	WaitUntilReady(next);
+	WaitForStoreReady(next);
 
 	CHECK_FALSE(next.Has(source));
 
-	// "Throws the whole store away" has to mean the disk, not just the map: an index that cannot
-	// be decoded leaves records named by a hash nothing can turn back into a path, so anything
-	// still sitting there is unreachable for the life of the project.
 	CHECK(CountRecords(StoreDirectory(temp)) == 0);
 }
 
@@ -207,28 +200,24 @@ TEST_CASE("An index written against another record format is discarded whole, no
 	{
 		AnalysisStore store;
 		store.SetRoot(temp.GetPath());
-		WaitUntilReady(store);
+		WaitForStoreReady(store);
 		store.Write(source, WithDeclaration("Draw", stamp));
-		WaitForWrites(store);
+		WaitForStoreWrites(store);
 	}
 
-	// The index carries the record version it was written against, in the third field after the
-	// magic and its own version. Moving it stands in for a build whose record format has changed:
-	// the records beside it still stat fine and would survive pruning, and each would then be
-	// refused by Read one opened document at a time.
 	{
 		const std::filesystem::path index = StoreDirectory(temp) / "index.bin";
 
 		std::fstream bytes{index, std::ios::binary | std::ios::in | std::ios::out};
 		REQUIRE(bytes.is_open());
 
-		bytes.seekp(8);
+		bytes.seekp(kIndexRecordVersionAt);
 		bytes.put(static_cast<char>(0xEE));
 	}
 
 	AnalysisStore next;
 	next.SetRoot(temp.GetPath());
-	WaitUntilReady(next);
+	WaitForStoreReady(next);
 
 	CHECK_FALSE(next.Has(source));
 	CHECK(CountRecords(StoreDirectory(temp)) == 0);
@@ -243,13 +232,11 @@ TEST_CASE("A record the index no longer names is swept rather than left to sit t
 	{
 		AnalysisStore store;
 		store.SetRoot(temp.GetPath());
-		WaitUntilReady(store);
+		WaitForStoreReady(store);
 		store.Write(source, WithDeclaration("Draw", stamp));
-		WaitForWrites(store);
+		WaitForStoreWrites(store);
 	}
 
-	// A record from a write whose index rewrite never landed — the process was killed in between,
-	// or the index write failed. Walking the index, which is all pruning does, cannot see it.
 	{
 		std::ofstream orphan{StoreDirectory(temp) / "0123456789abcdef.rec", std::ios::binary};
 		orphan << "whatever a previous session left";
@@ -259,9 +246,8 @@ TEST_CASE("A record the index no longer names is swept rather than left to sit t
 
 	AnalysisStore next;
 	next.SetRoot(temp.GetPath());
-	WaitUntilReady(next);
+	WaitForStoreReady(next);
 
-	// The live one survives; the unreachable one does not.
 	CHECK(next.Has(source));
 	CHECK(CountRecords(StoreDirectory(temp)) == 1);
 }
@@ -274,7 +260,6 @@ TEST_CASE("A store with no root is ready at once and answers nothing")
 	CHECK_FALSE(store.Has("a.cpp"));
 	CHECK_FALSE(store.Read("a.cpp", std::filesystem::file_time_type{}).has_value());
 
-	// Writing without a root must be a no-op rather than a path built from an empty root.
 	store.Write("a.cpp", CachedAnalysis{});
 	CHECK(store.IsQuiet());
 }
@@ -287,18 +272,11 @@ TEST_CASE("A record whose bytes were corrupted is refused and the entry does not
 
 	AnalysisStore store;
 	store.SetRoot(temp.GetPath());
-	WaitUntilReady(store);
+	WaitForStoreReady(store);
 	store.Write(source, WithDeclaration("Draw", stamp));
-	WaitForWrites(store);
+	WaitForStoreWrites(store);
 
-	for (const auto& entry : std::filesystem::directory_iterator{temp.GetPath() / ".graphite" / "analysis"})
-	{
-		if (entry.path().extension() == ".rec")
-		{
-			std::ofstream record{entry.path(), std::ios::binary | std::ios::trunc};
-			record << "rubbish";
-		}
-	}
+	OverwriteRecordsWithRubbish(StoreDirectory(temp));
 
 	CHECK_FALSE(store.Read(source, stamp).has_value());
 }
@@ -311,50 +289,18 @@ TEST_CASE("A record refused by Read is deleted rather than read again on every l
 
 	AnalysisStore store;
 	store.SetRoot(temp.GetPath());
-	WaitUntilReady(store);
+	WaitForStoreReady(store);
 	store.Write(source, WithDeclaration("Draw", stamp));
-	WaitForWrites(store);
+	WaitForStoreWrites(store);
 
-	for (const auto& entry : std::filesystem::directory_iterator{StoreDirectory(temp)})
-	{
-		if (entry.path().extension() == ".rec")
-		{
-			std::ofstream record{entry.path(), std::ios::binary | std::ios::trunc};
-			record << "rubbish";
-		}
-	}
+	OverwriteRecordsWithRubbish(StoreDirectory(temp));
 
 	CHECK_FALSE(store.Read(source, stamp).has_value());
 	CHECK_FALSE(store.Has(source));
 
-	// The deletion is handed to the worker, so the disk catches up a moment later — an entry
-	// nothing will ever accept is one every later open would otherwise pay to read again.
-	WaitForWrites(store);
+	WaitForStoreWrites(store);
 
 	CHECK(CountRecords(StoreDirectory(temp)) == 0);
-}
-
-namespace {
-
-	// How many entries the index on disk claims. The count sits after the magic and the two
-	// version fields, all four bytes each and little endian — see AnalysisRecord.h.
-	std::size_t IndexEntryCount(const std::filesystem::path& directory)
-	{
-		std::ifstream index{directory / "index.bin", std::ios::binary};
-		REQUIRE(index.is_open());
-
-		char bytes[16] = {};
-		index.read(bytes, sizeof(bytes));
-
-		std::size_t count = 0;
-
-		for (int byte = 3; byte >= 0; --byte)
-		{
-			count = (count << 8) | static_cast<unsigned char>(bytes[12 + byte]);
-		}
-
-		return count;
-	}
 }
 
 TEST_CASE("The index is not rewritten once per record, and a clean exit still names them all")
@@ -376,28 +322,24 @@ TEST_CASE("The index is not rewritten once per record, and a clean exit still na
 	{
 		AnalysisStore store;
 		store.SetRoot(temp.GetPath());
-		WaitUntilReady(store);
+		WaitForStoreReady(store);
 
 		for (std::size_t file = 0; file < sources.size(); ++file)
 		{
 			store.Write(sources[file], WithDeclaration("Draw", stamps[file]));
 		}
 
-		WaitForWrites(store);
+		WaitForStoreWrites(store);
 
-		// Every record is on the disk, and the index still names none of them: rewriting it with
-		// each one is what makes the bytes written over a first pass quadratic in the size of the
-		// workspace, and a handful of records is nowhere near worth one.
 		CHECK(CountRecords(StoreDirectory(temp)) == sources.size());
 		CHECK(IndexEntryCount(StoreDirectory(temp)) == 0);
 	}
 
-	// The closing store flushes what had coalesced, so a clean exit loses nothing.
 	CHECK(IndexEntryCount(StoreDirectory(temp)) == sources.size());
 
 	AnalysisStore next;
 	next.SetRoot(temp.GetPath());
-	WaitUntilReady(next);
+	WaitForStoreReady(next);
 
 	for (std::size_t file = 0; file < sources.size(); ++file)
 	{
@@ -418,17 +360,16 @@ TEST_CASE("Pointing the store at another folder writes the index the last one ha
 
 	AnalysisStore store;
 	store.SetRoot(first.GetPath());
-	WaitUntilReady(store);
+	WaitForStoreReady(store);
 
 	store.Write(source, WithDeclaration("Draw", stamp));
-	WaitForWrites(store);
+	WaitForStoreWrites(store);
 
 	REQUIRE(IndexEntryCount(StoreDirectory(first)) == 0);
 
-	// A folder closing is as much an end for that root as the process exiting is.
 	store.SetRoot(second.GetPath());
-	WaitUntilReady(store);
-	WaitForWrites(store);
+	WaitForStoreReady(store);
+	WaitForStoreWrites(store);
 
 	CHECK(IndexEntryCount(StoreDirectory(first)) == 1);
 }

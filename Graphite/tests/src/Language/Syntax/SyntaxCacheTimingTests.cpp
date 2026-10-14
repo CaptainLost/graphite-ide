@@ -24,6 +24,7 @@ TEST_CASE("Typing in a ten-thousand-line C# file costs less than the per-keystro
 	const double firstParse = MillisecondsSince(firstParseStart);
 
 	constexpr int kKeystrokes = 20;
+	constexpr double kKeystrokeBudgetMilliseconds = 4.0;
 	double slowestKeystroke = 0.0;
 	double totalKeystrokes = 0.0;
 
@@ -43,5 +44,5 @@ TEST_CASE("Typing in a ten-thousand-line C# file costs less than the per-keystro
 	MESSAGE("first parse: ", firstParse, " ms");
 	MESSAGE("keystroke average: ", totalKeystrokes / kKeystrokes, " ms, slowest: ", slowestKeystroke, " ms");
 
-	WARN(totalKeystrokes / kKeystrokes < 4.0);
+	WARN(totalKeystrokes / kKeystrokes < kKeystrokeBudgetMilliseconds);
 }

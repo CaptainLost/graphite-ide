@@ -19,7 +19,7 @@ namespace Graphite {
 		CSharpGrammar
 	};
 
-	// A grammar given a server's declaration alone reads it as a statement: in C#, `void Console.WriteLine()` becomes a
+	// WARNING: A grammar given a server's declaration alone reads it as a statement: in C#, `void Console.WriteLine()` becomes a
 	// local function named Console. Set inside these rows, it reads as the member it declares.
 	struct MemberContext
 	{
@@ -48,12 +48,10 @@ namespace Graphite {
 
 	LanguageId LanguageOfPath(const std::filesystem::path& path);
 
-	// Empty for PlainText, which is the absence of a recognised language rather than one.
 	std::string_view LanguageDisplayName(LanguageId language);
 
 	SyntaxSource SyntaxOf(LanguageId language);
 
-	// Stateless and shared; its lifetime is the program's.
 	const Lexer* LexerFor(LanguageId language);
 
 	std::optional<std::string_view> LineCommentPrefix(LanguageId language);

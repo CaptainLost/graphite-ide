@@ -13,7 +13,8 @@ namespace Graphite {
 	namespace {
 
 		// Adapted from queries/highlights.scm of tree-sitter-c-sharp v0.23.5 (MIT; the notice is in
-		// THIRD_PARTY_NOTICES.txt). Two captures of one node resolve to the later pattern, so the
+		// THIRD_PARTY_NOTICES.txt).
+		// WARNING: Two captures of one node resolve to the later pattern, so the
 		// catch-all `(identifier) @variable` has to stay first.
 		constexpr std::string_view kHighlightQuery = R"scm(
 (identifier) @variable
@@ -145,7 +146,7 @@ namespace Graphite {
 
 	const Grammar& CSharpGrammar()
 	{
-		// Built on first use, not during static initialisation.
+		// WARNING: Built on first use, not during static initialisation.
 		static const Grammar grammar(tree_sitter_c_sharp(), kHighlightQuery);
 
 		return grammar;

@@ -14,40 +14,22 @@
 
 namespace Graphite {
 
-	// One file as the background analysis needs it: its decoded text and the stamp that text was
-	// true at. The stamp is read beside the bytes rather than when the answer comes back, so an
-	// entry can only ever vouch for the version that was actually sent to the server.
 	struct FileText
 	{
 		std::filesystem::path Path;
 		std::string Text;
 		std::filesystem::file_time_type ModifiedAt{};
 
-		// False for a file that could not be opened, could not be decoded, or is not text at all.
-		// Text is empty in every such case, and the caller drops the file rather than telling a
-		// server about a PNG.
 		bool Readable = false;
 	};
 
-	// Probes, reads, decodes and stamps one file. Pure enough to test against a real directory and
-	// nothing else — which is why the class below is a thin shell around it.
-	//
-	// Never called on the UI thread: a file of unknown size opened inside a frame is exactly what
-	// this codebase does not do.
 	FileText ReadFileText(const std::filesystem::path& path);
 
-	// How a file's version is read: nullopt when it cannot be. Injectable so a test can move the
-	// stamp between the two reads a save would otherwise have to race to land in.
 	using FileStampReader =
 		std::function<std::optional<std::filesystem::file_time_type>(const std::filesystem::path&)>;
 
 	FileText ReadFileText(const std::filesystem::path& path, const FileStampReader& readStamp);
 
-	// What WorkspaceAnalysis needs in order to have a file's text without reading one itself.
-	//
-	// A port rather than a JobQueue member, for the reason PreviewServerPort exists: the policy
-	// above it — a bounded number of files at once, yield to the open document, cache what came
-	// back — is worth asserting without a filesystem, a thread, or a wait in a test.
 	class FileTextSource
 	{
 	public:
@@ -59,22 +41,19 @@ namespace Graphite {
 
 		virtual void Request(const std::filesystem::path& path) = 0;
 
-		// Moves everything read since the last call into `out`. UI thread only.
-		virtual void Take(std::vector<FileText>& out) = 0;
+		virtual void Take(std::vector<FileText>& destination) = 0;
 	};
 
-	// The production source: one worker reading whatever has been asked for.
 	class DiskFileTexts final : public FileTextSource
 	{
 	public:
 		void Request(const std::filesystem::path& path) override;
 
-		void Take(std::vector<FileText>& out) override;
+		void Take(std::vector<FileText>& destination) override;
 
 	private:
-		// Held through a shared_ptr, as LanguageServices holds its warm-up findings and for the
-		// same reason: a read still finishing as this object goes away needs somewhere valid to
-		// write, whether or not anything is still reading.
+		// WARNING: Held through a shared_ptr so a read still finishing as this object goes away
+		// has a valid block to write to.
 		struct Ready
 		{
 			std::mutex Mutex;
@@ -83,8 +62,7 @@ namespace Graphite {
 
 		Core::Ref<Ready> m_Ready = Core::CreateRef<Ready>();
 
-		// Last, deliberately: members are destroyed in reverse order of declaration, so this one
-		// joins its worker before anything the worker might still be touching goes away.
+		// WARNING: Declared last so the worker is joined before the members it touches are destroyed.
 		Core::JobQueue m_Jobs{1};
 	};
 }

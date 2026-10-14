@@ -25,7 +25,7 @@ namespace Graphite {
 
 		constexpr std::array<std::string_view, 7> kCSharpTopLevelKeywords{"namespace", "class", "struct", "interface", "enum", "record", "delegate"};
 
-		// The closing row's ';' ends a method declared without a body, which would otherwise end in a missing token.
+		// WARNING: The closing row's ';' ends a method declared without a body, which would otherwise end in a missing token.
 		constexpr MemberContext kCSharpMemberContext{.Opening = "class Declared {", .Closing = ";}", .TopLevelKeywords = kCSharpTopLevelKeywords};
 
 		constexpr std::array<LanguageDefinition, kAllLanguages.size()> kDefinitions{{
@@ -115,7 +115,7 @@ namespace Graphite {
 
 	LanguageId LanguageOfPath(const std::filesystem::path& path)
 	{
-		// A name whose only period is its first character has no extension at all, so ".gitignore" falls through here.
+		// WARNING: std::filesystem gives ".gitignore" no extension at all, so it falls through here.
 		if (!path.has_extension())
 		{
 			return LanguageId::PlainText;
@@ -141,7 +141,7 @@ namespace Graphite {
 
 	SyntaxSource SyntaxOf(LanguageId language)
 	{
-		// Built on first use, not during static initialisation.
+		// WARNING: Built on first use, not during static initialisation.
 		static const CppLexer cpp;
 
 		switch (DefinitionOf(language).Syntax)

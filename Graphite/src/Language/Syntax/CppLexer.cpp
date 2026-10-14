@@ -2,29 +2,27 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 namespace Graphite {
 
 	namespace {
 
-		// C++'s cross-line constructs, carried in LineState::Mode. They live here rather than in
-		// the shared header because no other lexer's Mode means any of this — a C# lexer's 1 is
-		// its own business.
 		enum class Continuation : std::uint32_t
 		{
 			None,
 			BlockComment,
-			// LineComment, String and Character are reached only through a backslash at the end
-			// of the line. RawString is not — a raw string runs to its delimiter and crosses
-			// line boundaries on its own.
 			LineComment,
 			String,
 			Character,
 			RawString
 		};
 
-		// The two casts live in one place each, so the rest of the file reads in C++'s vocabulary
-		// and never in the shared type's.
 		LineState StateOf(Continuation kind, std::string delimiter = {})
 		{
 			return LineState{static_cast<std::uint32_t>(kind), std::move(delimiter)};
@@ -35,8 +33,6 @@ namespace Graphite {
 			return static_cast<Continuation>(state.Mode);
 		}
 
-		// Sorted, so the lookup is a binary search. Nothing checks the sortedness at run time —
-		// a keyword out of order goes quietly unrecognised — so keep it sorted when adding one.
 		constexpr std::array kKeywords{
 			std::string_view{"alignas"},
 			std::string_view{"alignof"},
@@ -107,20 +103,38 @@ namespace Graphite {
 			std::string_view{"while"},
 		};
 
-		bool IsIdentifierStart(char c)
+		static_assert(std::is_sorted(kKeywords.begin(), kKeywords.end()), "the keyword lookup is a binary search");
+
+		constexpr unsigned char kFirstNonAsciiByte = 0x80;
+		constexpr std::size_t kLineStart = 0;
+		constexpr std::size_t kLongestRawDelimiter = 16;
+
+		bool IsDigit(char character)
 		{
-			return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-				   static_cast<unsigned char>(c) >= 0x80;
+			return character >= '0' && character <= '9';
 		}
 
-		bool IsIdentifierPart(char c)
+		bool IsIdentifierStart(char character)
 		{
-			return IsIdentifierStart(c) || (c >= '0' && c <= '9');
+			const bool isLetter = (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z');
+			const bool isNonAscii = static_cast<unsigned char>(character) >= kFirstNonAsciiByte;
+
+			return character == '_' || isLetter || isNonAscii;
 		}
 
-		bool IsDigit(char c)
+		bool IsIdentifierPart(char character)
 		{
-			return c >= '0' && c <= '9';
+			return IsIdentifierStart(character) || IsDigit(character);
+		}
+
+		bool IsBlank(char character)
+		{
+			return character == ' ' || character == '\t' || character == '\r';
+		}
+
+		bool IsExponentMarker(char character)
+		{
+			return character == 'e' || character == 'E' || character == 'p' || character == 'P';
 		}
 
 		bool IsKeyword(std::string_view word)
@@ -136,27 +150,24 @@ namespace Graphite {
 			}
 		}
 
-		// A pp-number in the standard's sense, which is deliberately looser than a valid literal:
-		// it swallows the exponent's sign so 1e-9 is one token rather than three, and it swallows
-		// the digit separators and the suffix so 1'000ULL is one too. Colouring wants the span,
-		// not the value.
+		// WARNING: Deliberately looser than a valid literal: it takes the exponent's sign and the digit separators,
+		// so 1e-9 and 1'000ULL are one token each. Colouring wants the span, not the value.
 		std::size_t ScanNumber(std::string_view line, std::size_t at)
 		{
 			++at;
 
 			while (at < line.size())
 			{
-				const char c = line[at];
+				const char character = line[at];
+				const bool isSignOfExponent = (character == '+' || character == '-') && IsExponentMarker(line[at - 1]);
 
-				if ((c == '+' || c == '-') &&
-					(line[at - 1] == 'e' || line[at - 1] == 'E' || line[at - 1] == 'p' ||
-					 line[at - 1] == 'P'))
+				if (isSignOfExponent)
 				{
 					++at;
 					continue;
 				}
 
-				if (IsIdentifierPart(c) || c == '.' || c == '\'')
+				if (IsIdentifierPart(character) || character == '.' || character == '\'')
 				{
 					++at;
 					continue;
@@ -168,8 +179,6 @@ namespace Graphite {
 			return at;
 		}
 
-		// Consumes to the closing */, emitting one comment token from `from`. Returns true when
-		// the comment closed on this line.
 		bool ScanBlockComment(std::string_view line, std::size_t& at, std::size_t from,
 							  std::vector<Token>& out)
 		{
@@ -189,8 +198,6 @@ namespace Graphite {
 			return false;
 		}
 
-		// True when the line ends with an odd number of backslashes, which is what splices it
-		// onto the line below.
 		bool EndsWithContinuation(std::string_view line)
 		{
 			std::size_t backslashes = 0;
@@ -204,10 +211,6 @@ namespace Graphite {
 			return backslashes % 2 == 1;
 		}
 
-		// Scans a quoted literal to its closing `quote`. Returns Closed when it ended on this
-		// line, Continued when a trailing backslash splices it onto the next, and Unterminated
-		// when it simply ran out — which is what a half-typed line looks like, so it is drawn
-		// as invalid rather than swallowing everything below it.
 		enum class QuoteEnd
 		{
 			Closed,
@@ -221,8 +224,9 @@ namespace Graphite {
 			{
 				if (line[at] == '\\')
 				{
-					// A backslash at the very end escapes the newline, not a character.
-					if (at + 1 >= line.size())
+					const bool backslashIsLast = at + 1 >= line.size();
+
+					if (backslashIsLast)
 					{
 						at = line.size();
 						return QuoteEnd::Continued;
@@ -244,15 +248,12 @@ namespace Graphite {
 			return QuoteEnd::Unterminated;
 		}
 
-		// R"delim( ... )delim" — `at` sits on the character after the opening quote. Returns the
-		// delimiter through `delimiter` and leaves `at` past the opening paren.
 		bool ScanRawOpening(std::string_view line, std::size_t& at, std::string& delimiter)
 		{
 			const std::size_t from = at;
 
-			// Strictly less than 16: the bound is tested before the increment, so `<= 16` would
-			// let the loop walk to an offset of 17 and accept a delimiter one over the limit.
-			while (at < line.size() && line[at] != '(' && at - from < 16)
+			// WARNING: The bound is tested before the increment, so `<=` would accept a delimiter one over the limit.
+			while (at < line.size() && line[at] != '(' && at - from < kLongestRawDelimiter)
 			{
 				++at;
 			}
@@ -267,7 +268,6 @@ namespace Graphite {
 			return true;
 		}
 
-		// Consumes to )delim" from `at`. Returns true when it closed on this line.
 		bool ScanRawBody(std::string_view line, std::size_t& at, std::string_view delimiter)
 		{
 			const std::string closing = std::string(")") + std::string(delimiter) + "\"";
@@ -283,8 +283,6 @@ namespace Graphite {
 			return true;
 		}
 
-		// The characters that may precede a quote as a literal's prefix: u8, u, U, L, and R in
-		// any of their combinations. Only used to decide where the token starts.
 		bool IsLiteralPrefix(std::string_view word)
 		{
 			return word == "u8" || word == "u" || word == "U" || word == "L" || word == "R" ||
@@ -302,7 +300,7 @@ namespace Graphite {
 
 		if (carried == Continuation::BlockComment)
 		{
-			if (!ScanBlockComment(line, at, 0, out))
+			if (!ScanBlockComment(line, at, kLineStart, out))
 			{
 				return state;
 			}
@@ -311,14 +309,14 @@ namespace Graphite {
 		}
 		else if (carried == Continuation::LineComment)
 		{
-			Emit(out, TokenKind::Comment, 0, line.size());
+			Emit(out, TokenKind::Comment, kLineStart, line.size());
 
 			return EndsWithContinuation(line) ? state : LineState{};
 		}
 		else if (carried == Continuation::RawString)
 		{
 			const bool closed = ScanRawBody(line, at, state.Delimiter);
-			Emit(out, TokenKind::String, 0, at);
+			Emit(out, TokenKind::String, kLineStart, at);
 
 			if (!closed)
 			{
@@ -331,11 +329,11 @@ namespace Graphite {
 		{
 			const char quote = carried == Continuation::String ? '"' : '\'';
 			const TokenKind kind = quote == '"' ? TokenKind::String : TokenKind::Character;
-			const QuoteEnd end = ScanQuoted(line, at, quote);
+			const QuoteEnd quoteEnd = ScanQuoted(line, at, quote);
 
-			Emit(out, end == QuoteEnd::Unterminated ? TokenKind::Invalid : kind, 0, at);
+			Emit(out, quoteEnd == QuoteEnd::Unterminated ? TokenKind::Invalid : kind, kLineStart, at);
 
-			if (end == QuoteEnd::Continued)
+			if (quoteEnd == QuoteEnd::Continued)
 			{
 				return state;
 			}
@@ -345,15 +343,15 @@ namespace Graphite {
 
 		while (at < line.size())
 		{
-			const char c = line[at];
+			const char character = line[at];
 
-			if (c == ' ' || c == '\t' || c == '\r')
+			if (IsBlank(character))
 			{
 				++at;
 				continue;
 			}
 
-			if (c == '/' && at + 1 < line.size() && line[at + 1] == '/')
+			if (character == '/' && at + 1 < line.size() && line[at + 1] == '/')
 			{
 				Emit(out, TokenKind::Comment, at, line.size());
 
@@ -361,7 +359,7 @@ namespace Graphite {
 												  : LineState{};
 			}
 
-			if (c == '/' && at + 1 < line.size() && line[at + 1] == '*')
+			if (character == '/' && at + 1 < line.size() && line[at + 1] == '*')
 			{
 				const std::size_t from = at;
 				at += 2;
@@ -374,12 +372,9 @@ namespace Graphite {
 				continue;
 			}
 
-			// out.empty() is the real guard: it is true only when no token has yet been emitted
-			// on this line, so after the whitespace skip above it means the # is the first thing
-			// on the line rather than a stringify operator inside a macro body. The state check
-			// is belt-and-braces — this loop is only ever reached with the state reset, since
-			// every other entry state either returns before the loop or resets state first.
-			if (c == '#' && out.empty() && state == LineState{})
+			const bool isFirstTokenOnLine = out.empty();
+
+			if (character == '#' && isFirstTokenOnLine && state == LineState{})
 			{
 				const std::size_t from = at;
 				++at;
@@ -398,25 +393,26 @@ namespace Graphite {
 
 				Emit(out, TokenKind::Preprocessor, from, at);
 
-				// The header name in an angled include is the one place a < is not an operator.
-				if (line.substr(nameFrom, at - nameFrom) == "include")
-				{
-					const std::size_t angle = line.find('<', at);
-					const std::size_t close = angle == std::string_view::npos
-												  ? std::string_view::npos
-												  : line.find('>', angle);
+				const bool isInclude = line.substr(nameFrom, at - nameFrom) == "include";
 
-					if (close != std::string_view::npos)
+				if (isInclude)
+				{
+					const std::size_t openingAngle = line.find('<', at);
+					const std::size_t closingAngle = openingAngle == std::string_view::npos
+														 ? std::string_view::npos
+														 : line.find('>', openingAngle);
+
+					if (closingAngle != std::string_view::npos)
 					{
-						Emit(out, TokenKind::String, angle, close + 1);
-						at = close + 1;
+						Emit(out, TokenKind::String, openingAngle, closingAngle + 1);
+						at = closingAngle + 1;
 					}
 				}
 
 				continue;
 			}
 
-			if (IsIdentifierStart(c))
+			if (IsIdentifierStart(character))
 			{
 				const std::size_t from = at;
 
@@ -427,18 +423,14 @@ namespace Graphite {
 
 				const std::string_view word = line.substr(from, at - from);
 
-				// An R counts as a prefix only before a double quote: there is no raw character
-				// literal, so R'x' is the identifier R followed by a character literal.
 				const bool rawPrefix = !word.empty() && word.back() == 'R';
+				const bool quoteFollows = at < line.size() && (line[at] == '"' || (line[at] == '\'' && !rawPrefix));
 
-				if (at < line.size() && IsLiteralPrefix(word) &&
-					(line[at] == '"' || (line[at] == '\'' && !rawPrefix)))
+				if (quoteFollows && IsLiteralPrefix(word))
 				{
-					// Fall through to the literal scanner with the token starting at `from`.
-					const bool raw = rawPrefix;
 					++at;
 
-					if (raw)
+					if (rawPrefix)
 					{
 						std::string delimiter;
 
@@ -460,14 +452,13 @@ namespace Graphite {
 
 					const char quote = line[at - 1];
 					const TokenKind kind = quote == '"' ? TokenKind::String : TokenKind::Character;
-					const QuoteEnd end = ScanQuoted(line, at, quote);
+					const QuoteEnd quoteEnd = ScanQuoted(line, at, quote);
 
-					Emit(out, end == QuoteEnd::Unterminated ? TokenKind::Invalid : kind, from, at);
+					Emit(out, quoteEnd == QuoteEnd::Unterminated ? TokenKind::Invalid : kind, from, at);
 
-					if (end == QuoteEnd::Continued)
+					if (quoteEnd == QuoteEnd::Continued)
 					{
-						return StateOf(quote == '"' ? Continuation::String
-													: Continuation::Character);
+						return StateOf(quote == '"' ? Continuation::String : Continuation::Character);
 					}
 
 					continue;
@@ -477,9 +468,9 @@ namespace Graphite {
 				continue;
 			}
 
-			// A dot only starts a number when a digit follows it, so ".5" is a number and "a.b"
-			// is punctuation between two identifiers.
-			if (IsDigit(c) || (c == '.' && at + 1 < line.size() && IsDigit(line[at + 1])))
+			const bool dotBeforeDigit = character == '.' && at + 1 < line.size() && IsDigit(line[at + 1]);
+
+			if (IsDigit(character) || dotBeforeDigit)
 			{
 				const std::size_t from = at;
 				at = ScanNumber(line, at);
@@ -487,19 +478,19 @@ namespace Graphite {
 				continue;
 			}
 
-			if (c == '"' || c == '\'')
+			if (character == '"' || character == '\'')
 			{
 				const std::size_t from = at;
 				++at;
 
-				const TokenKind kind = c == '"' ? TokenKind::String : TokenKind::Character;
-				const QuoteEnd end = ScanQuoted(line, at, c);
+				const TokenKind kind = character == '"' ? TokenKind::String : TokenKind::Character;
+				const QuoteEnd quoteEnd = ScanQuoted(line, at, character);
 
-				Emit(out, end == QuoteEnd::Unterminated ? TokenKind::Invalid : kind, from, at);
+				Emit(out, quoteEnd == QuoteEnd::Unterminated ? TokenKind::Invalid : kind, from, at);
 
-				if (end == QuoteEnd::Continued)
+				if (quoteEnd == QuoteEnd::Continued)
 				{
-					return StateOf(c == '"' ? Continuation::String : Continuation::Character);
+					return StateOf(character == '"' ? Continuation::String : Continuation::Character);
 				}
 
 				continue;

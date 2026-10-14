@@ -46,24 +46,21 @@ TEST_CASE("A cancelled walk stops rather than finishing quietly")
 	}
 
 	Core::CancellationToken token;
-	std::size_t seen = 0;
+	std::size_t filesSeen = 0;
 
 	Graphite::CollectAnalysable(temp.GetPath(), {}, token, [&](const std::filesystem::path&) {
-		++seen;
+		++filesSeen;
 		token.Cancel();
 	});
 
-	CHECK(seen == 1);
+	CHECK(filesSeen == 1);
 }
 
-TEST_CASE("A nested project is left to whoever serves it")
+TEST_CASE("A nested project, whose files a different server than the workspace's would have to serve, is left to whoever serves it")
 {
 	TempDirectory temp;
 	temp.MakeFile("a.cpp", "int x;");
 
-	// What a submodule looks like: a .git FILE, not a directory. RootFor stops at it, so every
-	// file below it belongs to a different server than the workspace's — one with no compile
-	// database of its own, started only because this pass asked about code nobody opened.
 	temp.MakeFile("vendor/imgui/.git", "gitdir: ../../.git/modules/imgui");
 	temp.MakeFile("vendor/imgui/imgui.cpp", "int y;");
 	temp.MakeFile("vendor/imgui/imgui.h", "int z;");
@@ -97,12 +94,10 @@ TEST_CASE("A C++ file beside a solution in a subfolder is still analysed")
 	CHECK(found == std::vector<std::string>{"a.cpp", "main.cpp"});
 }
 
-TEST_CASE("The workspace's own markers do not exclude the workspace")
+TEST_CASE("The workspace's own markers do not exclude the workspace, which every repository carries at its root")
 {
 	TempDirectory temp;
 
-	// Every repository this ever runs on has one of these at its root. Excluding a marked
-	// directory without exempting the root would switch the whole feature off everywhere.
 	temp.MakeFile(".git/HEAD", "ref: refs/heads/main");
 	temp.MakeFile("compile_commands.json", "[]");
 	temp.MakeFile("a.cpp", "int x;");

@@ -4,9 +4,6 @@
 
 namespace Graphite {
 
-	// What the editor colours a span as. Deliberately smaller than any one language's grammar:
-	// this is the vocabulary the palette and every later language share, so a kind earns its
-	// place only when something is drawn differently for it.
 	enum class TokenKind : std::uint8_t
 	{
 		Text,
@@ -20,8 +17,6 @@ namespace Graphite {
 		Punctuation,
 		Invalid,
 
-		// A line lexer cannot tell `Application`, `s_Instance` and `CORE_ASSERT` apart, so a
-		// grammar may only guess these; a server's answer overrules the guess.
 		SemanticType,
 		SemanticFunction,
 		SemanticMacro,
@@ -29,13 +24,10 @@ namespace Graphite {
 		SemanticParameter,
 		SemanticNamespace,
 
-		// Not a colourable kind — the count of the ones above it. Sizes SyntaxPalette::Colours
-		// and must stay the last enumerator, so a new kind grows the palette instead of reading
-		// past the end of it.
+		// WARNING: Count must stay the last enumerator; it sizes SyntaxPalette::Colours.
 		Count
 	};
 
-	// A grammar guesses at what a name is and a server may overrule it, so a name can arrive as any of these.
 	inline bool NamesSomething(TokenKind kind)
 	{
 		switch (kind)

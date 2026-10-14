@@ -6,25 +6,52 @@
 
 namespace Graphite {
 
-	void PutU32(std::string& bytes, std::uint32_t value)
-	{
-		for (int shift = 0; shift < 32; shift += 8)
+	namespace {
+
+		bool IsKnownTokenKind(std::uint32_t kind)
 		{
-			bytes.push_back(static_cast<char>((value >> shift) & 0xFF));
+			return kind < static_cast<std::uint32_t>(TokenKind::Count);
+		}
+
+		bool IsKnownDeclarationKind(std::uint32_t kind)
+		{
+			return kind <= static_cast<std::uint32_t>(DeclarationKind::Other);
+		}
+
+		void AppendSemanticLine(std::string& bytes, std::size_t line,
+								const std::vector<SemanticSpan>& spans)
+		{
+			AppendUint64(bytes, static_cast<std::uint64_t>(line));
+			AppendUint32(bytes, static_cast<std::uint32_t>(spans.size()));
+
+			for (const SemanticSpan& span : spans)
+			{
+				AppendUint64(bytes, static_cast<std::uint64_t>(span.From));
+				AppendUint64(bytes, static_cast<std::uint64_t>(span.To));
+				AppendUint32(bytes, static_cast<std::uint32_t>(span.Kind));
+			}
 		}
 	}
 
-	void PutU64(std::string& bytes, std::uint64_t value)
+	void AppendUint32(std::string& bytes, std::uint32_t value)
 	{
-		for (int shift = 0; shift < 64; shift += 8)
+		for (int shift = 0; shift < kUint32Bits; shift += kBitsPerByte)
 		{
-			bytes.push_back(static_cast<char>((value >> shift) & 0xFF));
+			bytes.push_back(static_cast<char>((value >> shift) & kLowestByteMask));
 		}
 	}
 
-	void PutString(std::string& bytes, std::string_view text)
+	void AppendUint64(std::string& bytes, std::uint64_t value)
 	{
-		PutU32(bytes, static_cast<std::uint32_t>(text.size()));
+		for (int shift = 0; shift < kUint64Bits; shift += kBitsPerByte)
+		{
+			bytes.push_back(static_cast<char>((value >> shift) & kLowestByteMask));
+		}
+	}
+
+	void AppendString(std::string& bytes, std::string_view text)
+	{
+		AppendUint32(bytes, static_cast<std::uint32_t>(text.size()));
 		bytes.append(text);
 	}
 
@@ -35,9 +62,8 @@ namespace Graphite {
 
 	std::filesystem::file_time_type TicksToFileTime(std::uint64_t ticks)
 	{
-		return std::filesystem::file_time_type{
-			std::filesystem::file_time_type::duration{
-				static_cast<std::filesystem::file_time_type::rep>(ticks)}};
+		return std::filesystem::file_time_type{std::filesystem::file_time_type::duration{
+			static_cast<std::filesystem::file_time_type::rep>(ticks)}};
 	}
 
 	std::string EncodeAnalysis(const std::filesystem::path& path, const CachedAnalysis& analysis)
@@ -45,47 +71,38 @@ namespace Graphite {
 		std::string bytes;
 
 		bytes.append(kAnalysisMagic);
-		PutU32(bytes, kAnalysisRecordVersion);
-		PutString(bytes, Core::ToUtf8(path));
-		PutU64(bytes, FileTimeToTicks(analysis.ModifiedAt));
+		AppendUint32(bytes, kAnalysisRecordVersion);
+		AppendString(bytes, Core::ToUtf8(path));
+		AppendUint64(bytes, FileTimeToTicks(analysis.ModifiedAt));
 
-		std::uint32_t lines = 0;
-		analysis.Semantic.ForEachLine([&lines](std::size_t, const std::vector<SemanticSpan>&) { ++lines; });
+		std::uint32_t lineCount = 0;
+		analysis.Semantic.ForEachLine(
+			[&lineCount](std::size_t, const std::vector<SemanticSpan>&) { ++lineCount; });
 
-		PutU32(bytes, lines);
+		AppendUint32(bytes, lineCount);
 
 		analysis.Semantic.ForEachLine(
-			[&bytes](std::size_t line, const std::vector<SemanticSpan>& spans) {
-				PutU64(bytes, static_cast<std::uint64_t>(line));
-				PutU32(bytes, static_cast<std::uint32_t>(spans.size()));
+			[&bytes](std::size_t line, const std::vector<SemanticSpan>& spans) { AppendSemanticLine(bytes, line, spans); });
 
-				for (const SemanticSpan& span : spans)
-				{
-					PutU64(bytes, static_cast<std::uint64_t>(span.From));
-					PutU64(bytes, static_cast<std::uint64_t>(span.To));
-					PutU32(bytes, static_cast<std::uint32_t>(span.Kind));
-				}
-			});
-
-		PutU32(bytes, static_cast<std::uint32_t>(analysis.Declarations.size()));
+		AppendUint32(bytes, static_cast<std::uint32_t>(analysis.Declarations.size()));
 
 		for (const Declaration& declaration : analysis.Declarations)
 		{
-			PutString(bytes, declaration.Name);
-			PutU32(bytes, static_cast<std::uint32_t>(declaration.Kind));
-			PutU64(bytes, static_cast<std::uint64_t>(declaration.Line));
-			PutU64(bytes, static_cast<std::uint64_t>(declaration.Column.Value));
-			PutU64(bytes, static_cast<std::uint64_t>(declaration.NameLine));
-			PutU64(bytes, static_cast<std::uint64_t>(declaration.NameColumn.Value));
+			AppendString(bytes, declaration.Name);
+			AppendUint32(bytes, static_cast<std::uint32_t>(declaration.Kind));
+			AppendUint64(bytes, static_cast<std::uint64_t>(declaration.Line));
+			AppendUint64(bytes, static_cast<std::uint64_t>(declaration.Column.Value));
+			AppendUint64(bytes, static_cast<std::uint64_t>(declaration.NameLine));
+			AppendUint64(bytes, static_cast<std::uint64_t>(declaration.NameColumn.Value));
 		}
 
-		PutU32(bytes, static_cast<std::uint32_t>(analysis.Counts.size()));
+		AppendUint32(bytes, static_cast<std::uint32_t>(analysis.Counts.size()));
 
-		for (const KnownCount& count : analysis.Counts)
+		for (const KnownCount& knownCount : analysis.Counts)
 		{
-			PutString(bytes, count.Name);
-			PutU32(bytes, static_cast<std::uint32_t>(count.Kind));
-			PutU64(bytes, static_cast<std::uint64_t>(count.Count));
+			AppendString(bytes, knownCount.Name);
+			AppendUint32(bytes, static_cast<std::uint32_t>(knownCount.Kind));
+			AppendUint64(bytes, static_cast<std::uint64_t>(knownCount.Count));
 		}
 
 		return bytes;
@@ -96,7 +113,7 @@ namespace Graphite {
 	{
 		Reader reader{bytes};
 
-		if (!reader.TakeMagic(kAnalysisMagic) || reader.TakeU32() != kAnalysisRecordVersion)
+		if (!reader.TakeMagic(kAnalysisMagic) || reader.TakeUint32() != kAnalysisRecordVersion)
 		{
 			return std::nullopt;
 		}
@@ -109,43 +126,39 @@ namespace Graphite {
 		}
 
 		CachedAnalysis analysis;
-		analysis.ModifiedAt = TicksToFileTime(reader.TakeU64());
+		analysis.ModifiedAt = TicksToFileTime(reader.TakeUint64());
 
-		const std::uint32_t lines = reader.TakeU32();
+		const std::uint32_t lineCount = reader.TakeUint32();
 
-		for (std::uint32_t index = 0; index < lines && !reader.HasFailed(); ++index)
+		for (std::uint32_t lineIndex = 0; lineIndex < lineCount && !reader.HasFailed(); ++lineIndex)
 		{
-			const std::uint64_t line = reader.TakeU64();
-			const std::uint32_t spanCount = reader.TakeU32();
+			const std::uint64_t line = reader.TakeUint64();
+			const std::uint32_t spanCount = reader.TakeUint32();
 
 			std::vector<SemanticSpan> spans;
 
-			for (std::uint32_t span = 0; span < spanCount && !reader.HasFailed(); ++span)
+			for (std::uint32_t spanIndex = 0; spanIndex < spanCount && !reader.HasFailed();
+				 ++spanIndex)
 			{
-				SemanticSpan one;
-				one.From = static_cast<std::size_t>(reader.TakeU64());
-				one.To = static_cast<std::size_t>(reader.TakeU64());
+				SemanticSpan span;
+				span.From = static_cast<std::size_t>(reader.TakeUint64());
+				span.To = static_cast<std::size_t>(reader.TakeUint64());
 
-				const std::uint32_t kind = reader.TakeU32();
+				const std::uint32_t kind = reader.TakeUint32();
 
 				if (reader.HasFailed())
 				{
 					break;
 				}
 
-				if (kind >= static_cast<std::uint32_t>(TokenKind::Count))
+				if (!IsKnownTokenKind(kind))
 				{
-					// A kind is an index into SyntaxPalette::Colours, sized by TokenKind::Count.
-					// A record claiming one past the end is corrupt, and drawing from it would
-					// read past that array.
 					return std::nullopt;
 				}
 
-				one.Kind = static_cast<TokenKind>(kind);
+				span.Kind = static_cast<TokenKind>(kind);
 
-				// Appended only once the reader is known to have had the bytes for it, so a
-				// corrupt count cannot fill this vector with zeroes.
-				spans.push_back(one);
+				spans.push_back(span);
 			}
 
 			if (!reader.HasFailed())
@@ -154,33 +167,31 @@ namespace Graphite {
 			}
 		}
 
-		const std::uint32_t declarations = reader.TakeU32();
+		const std::uint32_t declarationCount = reader.TakeUint32();
 
-		for (std::uint32_t index = 0; index < declarations && !reader.HasFailed(); ++index)
+		for (std::uint32_t declarationIndex = 0;
+			 declarationIndex < declarationCount && !reader.HasFailed(); ++declarationIndex)
 		{
 			Declaration declaration;
 			declaration.Name = reader.TakeString();
 
-			const std::uint32_t kind = reader.TakeU32();
+			const std::uint32_t kind = reader.TakeUint32();
 
 			if (reader.HasFailed())
 			{
 				break;
 			}
 
-			// Not because a DeclarationKind indexes anything today, but because a decoder that
-			// validates one enumeration and waves the other through invites exactly one person to
-			// add the array later.
-			if (kind > static_cast<std::uint32_t>(DeclarationKind::Other))
+			if (!IsKnownDeclarationKind(kind))
 			{
 				return std::nullopt;
 			}
 
 			declaration.Kind = static_cast<DeclarationKind>(kind);
-			declaration.Line = static_cast<std::size_t>(reader.TakeU64());
-			declaration.Column = Utf16Column(static_cast<std::size_t>(reader.TakeU64()));
-			declaration.NameLine = static_cast<std::size_t>(reader.TakeU64());
-			declaration.NameColumn = Utf16Column(static_cast<std::size_t>(reader.TakeU64()));
+			declaration.Line = static_cast<std::size_t>(reader.TakeUint64());
+			declaration.Column = Utf16Column(static_cast<std::size_t>(reader.TakeUint64()));
+			declaration.NameLine = static_cast<std::size_t>(reader.TakeUint64());
+			declaration.NameColumn = Utf16Column(static_cast<std::size_t>(reader.TakeUint64()));
 
 			if (!reader.HasFailed())
 			{
@@ -188,31 +199,32 @@ namespace Graphite {
 			}
 		}
 
-		const std::uint32_t counts = reader.TakeU32();
+		const std::uint32_t knownCountTotal = reader.TakeUint32();
 
-		for (std::uint32_t index = 0; index < counts && !reader.HasFailed(); ++index)
+		for (std::uint32_t knownCountIndex = 0;
+			 knownCountIndex < knownCountTotal && !reader.HasFailed(); ++knownCountIndex)
 		{
-			KnownCount count;
-			count.Name = reader.TakeString();
+			KnownCount knownCount;
+			knownCount.Name = reader.TakeString();
 
-			const std::uint32_t kind = reader.TakeU32();
+			const std::uint32_t kind = reader.TakeUint32();
 
 			if (reader.HasFailed())
 			{
 				break;
 			}
 
-			if (kind > static_cast<std::uint32_t>(DeclarationKind::Other))
+			if (!IsKnownDeclarationKind(kind))
 			{
 				return std::nullopt;
 			}
 
-			count.Kind = static_cast<DeclarationKind>(kind);
-			count.Count = static_cast<std::size_t>(reader.TakeU64());
+			knownCount.Kind = static_cast<DeclarationKind>(kind);
+			knownCount.Count = static_cast<std::size_t>(reader.TakeUint64());
 
 			if (!reader.HasFailed())
 			{
-				analysis.Counts.push_back(std::move(count));
+				analysis.Counts.push_back(std::move(knownCount));
 			}
 		}
 

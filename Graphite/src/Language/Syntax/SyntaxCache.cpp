@@ -1,6 +1,7 @@
 #include "Language/Syntax/SyntaxCache.h"
 
 #include "Core/App/Redraw.h"
+#include "Core/Base/EmptyVector.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/TextBuffer.h"
 #include "Language/Syntax/SyntaxTree.h"
@@ -11,15 +12,6 @@
 namespace Graphite {
 
 	namespace {
-
-		// Function-local rather than a file scope object, per ADR 0033 on complex
-		// initialization of globals.
-		const std::vector<Token>& NoTokens()
-		{
-			static const std::vector<Token> tokens;
-
-			return tokens;
-		}
 
 		std::vector<Token> ExpandedRowTokens(SyntaxTree& tree, std::size_t row, std::size_t tabWidth)
 		{
@@ -134,18 +126,17 @@ namespace Graphite {
 
 	void SyntaxCache::ExtendTo(const Core::TextBuffer& buffer, std::size_t line)
 	{
-		std::vector<Token> scratch;
+		std::vector<Token> discardedTokens;
 
 		while (m_EntryStates.size() <= line)
 		{
-			const std::size_t at = m_EntryStates.size() - 1;
+			const std::size_t lastKnownLine = m_EntryStates.size() - 1;
 
-			scratch.clear();
-			// Lexed over the tab-expanded text because that is what the editor draws and what
-			// its column arithmetic measures. Tabs become spaces, which no token spans.
-			const std::string expanded = Core::ExpandTabs(buffer.LineText(at), m_TabWidth);
+			discardedTokens.clear();
+			const std::string tabExpandedText = Core::ExpandTabs(buffer.LineText(lastKnownLine), m_TabWidth);
 
-			m_EntryStates.push_back(m_Source.LineLexer->LexLine(expanded, m_EntryStates[at], scratch));
+			m_EntryStates.push_back(
+				m_Source.LineLexer->LexLine(tabExpandedText, m_EntryStates[lastKnownLine], discardedTokens));
 		}
 	}
 
@@ -153,7 +144,7 @@ namespace Graphite {
 	{
 		if (line >= buffer.GetLineCount())
 		{
-			return NoTokens();
+			return Core::SharedEmptyVector<Token>();
 		}
 
 		if (m_Source.LineLexer != nullptr)
@@ -166,7 +157,7 @@ namespace Graphite {
 			return ParsedTokensOf(buffer, line);
 		}
 
-		return NoTokens();
+		return Core::SharedEmptyVector<Token>();
 	}
 
 	const std::vector<Token>& SyntaxCache::LexedTokensOf(const Core::TextBuffer& buffer, std::size_t line)
@@ -175,10 +166,9 @@ namespace Graphite {
 
 		if (!m_HaveRevision || m_Revision != revision)
 		{
-			// A revision that moved with no Invalidate behind it is a mutation path that forgot
-			// to call one, and there is no edit location to work from — so drop everything. When
-			// Invalidate did run, its targeted resize is the better answer and stands.
-			if (m_HaveRevision && !m_Invalidated)
+			const bool revisionMovedWithoutInvalidate = m_HaveRevision && !m_Invalidated;
+
+			if (revisionMovedWithoutInvalidate)
 			{
 				m_EntryStates.assign(1, LineState{});
 				m_TokensValid = false;
@@ -197,8 +187,8 @@ namespace Graphite {
 		ExtendTo(buffer, line);
 
 		m_Tokens.clear();
-		const std::string expanded = Core::ExpandTabs(buffer.LineText(line), m_TabWidth);
-		m_Source.LineLexer->LexLine(expanded, m_EntryStates[line], m_Tokens);
+		const std::string tabExpandedText = Core::ExpandTabs(buffer.LineText(line), m_TabWidth);
+		m_Source.LineLexer->LexLine(tabExpandedText, m_EntryStates[line], m_Tokens);
 
 		m_TokensLine = line;
 		m_TokensValid = true;
@@ -212,7 +202,7 @@ namespace Graphite {
 
 		if (line >= m_RowTokens.size())
 		{
-			return NoTokens();
+			return Core::SharedEmptyVector<Token>();
 		}
 
 		std::optional<std::vector<Token>>& rowTokens = m_RowTokens[line];
@@ -220,7 +210,7 @@ namespace Graphite {
 		if (!rowTokens.has_value())
 		{
 			rowTokens = buffer.LineLength(line) > kLongestTreeColouredRow ? std::vector<Token>{}
-																		   : ExpandedRowTokens(*m_Tree, line, m_TabWidth);
+																		  : ExpandedRowTokens(*m_Tree, line, m_TabWidth);
 		}
 
 		const bool treeLags = m_TreeRevision != buffer.GetRevision();
@@ -263,8 +253,8 @@ namespace Graphite {
 
 		if (pausing)
 		{
-			// A deadline lasts one wait, so a frame landing in the pause has used it up and must
-			// ask for the pause's end again.
+			// WARNING: A redraw deadline lasts one wait, so a frame landing in the pause has used
+			// it up and must ask for the pause's end again.
 			Core::Redraw::RequestIn(*m_RanOutAt + m_ParseBudget.PauseAfterRunningOut - now);
 			return;
 		}

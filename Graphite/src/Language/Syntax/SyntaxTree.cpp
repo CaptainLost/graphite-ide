@@ -115,8 +115,6 @@ namespace Graphite {
 			return suffixLength;
 		}
 
-		// One edit spanning everything between the common prefix and the common suffix: however
-		// many edits made the new text, the tree only has to be told which middle changed.
 		TSInputEdit EditBetween(std::string_view before, const std::vector<std::size_t>& beforeRowStarts,
 								std::string_view after)
 		{
@@ -144,8 +142,6 @@ namespace Graphite {
 			return left.Pattern < right.Pattern;
 		}
 
-		// Painted widest first, so a narrower node overwrites the one around it and, for one node,
-		// a later pattern overwrites an earlier one. The sort is stable, so ties keep the query's order.
 		void AppendPaintedTokens(std::vector<RowCapture>& captures, std::size_t rowLength, std::vector<Token>& out)
 		{
 			std::stable_sort(captures.begin(), captures.end(), IsPaintedEarlier);
@@ -186,7 +182,7 @@ namespace Graphite {
 	SyntaxTree::SyntaxTree(const Grammar& grammar)
 		: m_Grammar(grammar), m_Parser(ts_parser_new()), m_Cursor(ts_query_cursor_new())
 	{
-		// The runtime accepts a null language, and a parse with none never finishes.
+		// WARNING: The runtime accepts a null language, and a parse with none never finishes.
 		m_LanguageAccepted = grammar.GetLanguage() != nullptr && ts_parser_set_language(m_Parser, grammar.GetLanguage());
 	}
 
@@ -212,7 +208,7 @@ namespace Graphite {
 			return;
 		}
 
-		// A parse cancelled by its budget would otherwise resume against the previous target.
+		// WARNING: A parse cancelled by its budget would otherwise resume against the previous target.
 		ts_parser_reset(m_Parser);
 		DropEditedTree();
 

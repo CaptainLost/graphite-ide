@@ -18,7 +18,12 @@ using namespace Graphite;
 
 namespace {
 
-	// Records what the servers were told rather than starting any.
+	constexpr std::size_t kCacheBudgetBytes = 64ull * 1024ull * 1024ull;
+	constexpr double kFrameSeconds = 0.016;
+	constexpr std::chrono::seconds kWaitLimit{10};
+	constexpr std::chrono::milliseconds kPollInterval{5};
+	constexpr std::size_t kTestTabWidth = 4;
+
 	class FakeServers final : public WorkspaceServersPort
 	{
 	public:
@@ -30,8 +35,6 @@ namespace {
 		std::vector<std::filesystem::path> WarmedUp;
 	};
 
-	// Ready, and silent: what it is asked is not what these cases are about, only that the pass
-	// can run against it without a process.
 	class SilentPort final : public WorkspaceAnalysisPort
 	{
 	public:
@@ -56,8 +59,6 @@ namespace {
 		std::uint64_t Tickets = 0;
 	};
 
-	// Never answers, so a file the pass starts stays outstanding and nothing is written to the
-	// store under the temporary folder.
 	class SilentTexts final : public FileTextSource
 	{
 	public:
@@ -70,7 +71,7 @@ namespace {
 		FakeServers Servers;
 		SilentPort Port;
 		SilentTexts Texts;
-		AnalysisCache Cache{64ull * 1024ull * 1024ull};
+		AnalysisCache Cache{kCacheBudgetBytes};
 		WorkspaceAnalysisCoordinator Coordinator{Servers, Port, Texts, Cache};
 
 		std::filesystem::path Root;
@@ -81,7 +82,6 @@ namespace {
 
 		double Now = 0.0;
 
-		// One frame, as GraphiteLayer::OnImGuiRender runs it: the edges, then the pass.
 		void Frame()
 		{
 			Coordinator.Update(AnalysisSwitches{.Root = Root,
@@ -90,22 +90,20 @@ namespace {
 												.SettingEnabled = SettingEnabled,
 												.TrustRevision = TrustRevision});
 
-			Now += 0.016;
+			Now += kFrameSeconds;
 
 			Coordinator.Tick(AnalysisTickInputs{
 				.Now = Now,
 				.ForegroundBusy = false,
-				.BudgetBytes = 64ull * 1024ull * 1024ull,
+				.BudgetBytes = kCacheBudgetBytes,
 				.Concurrency = 1,
-				.TabWidth = 4,
+				.TabWidth = kTestTabWidth,
 				.HeldElsewhere = [](const std::filesystem::path&) { return false; }});
 		}
 
-		// Runs frames until the walk has finished and the pass has queued `expected` files. The
-		// walk is a real thread over a real folder, so this is the one wait in these cases.
 		bool FramesUntilQueued(std::size_t expected)
 		{
-			const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+			const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kWaitLimit;
 
 			while (std::chrono::steady_clock::now() < deadline)
 			{
@@ -118,7 +116,7 @@ namespace {
 					return true;
 				}
 
-				std::this_thread::sleep_for(std::chrono::milliseconds(5));
+				std::this_thread::sleep_for(kPollInterval);
 			}
 
 			return false;
@@ -150,7 +148,6 @@ TEST_CASE("Revoking trust in the open folder stops the analysis")
 	CHECK(harness.Coordinator.GetPass().Progress().Total == 0);
 	CHECK(harness.Coordinator.GetStore().GetRoot().empty());
 
-	// Nothing comes back on later frames either: the walk was cancelled, not merely ignored.
 	harness.Frame();
 	harness.Frame();
 
@@ -160,26 +157,25 @@ TEST_CASE("Revoking trust in the open folder stops the analysis")
 
 TEST_CASE("Changing the root restarts the analysis for the new folder")
 {
-	TempDirectory first;
-	first.MakeFile("a.cpp", "int a;");
+	TempDirectory firstFolder;
+	firstFolder.MakeFile("a.cpp", "int a;");
 
-	TempDirectory second;
-	second.MakeFile("b.cpp", "int b;");
-	second.MakeFile("c.cpp", "int c;");
-	second.MakeFile("d.cpp", "int d;");
+	TempDirectory secondFolder;
+	secondFolder.MakeFile("b.cpp", "int b;");
+	secondFolder.MakeFile("c.cpp", "int c;");
+	secondFolder.MakeFile("d.cpp", "int d;");
 
 	Harness harness;
-	harness.Root = first.GetPath();
+	harness.Root = firstFolder.GetPath();
 
 	REQUIRE(harness.FramesUntilQueued(1));
 
-	harness.Root = second.GetPath();
+	harness.Root = secondFolder.GetPath();
 
-	// Three, not four: the first folder's queue was dropped rather than added to.
 	CHECK(harness.FramesUntilQueued(3));
-	CHECK(harness.Coordinator.GetStore().GetRoot() == second.GetPath());
+	CHECK(harness.Coordinator.GetStore().GetRoot() == secondFolder.GetPath());
 	CHECK(harness.Servers.WarmedUp ==
-		  std::vector<std::filesystem::path>{first.GetPath(), second.GetPath()});
+		  std::vector<std::filesystem::path>{firstFolder.GetPath(), secondFolder.GetPath()});
 }
 
 TEST_CASE("Switching the setting back on starts the analysis again")
@@ -204,7 +200,6 @@ TEST_CASE("Switching the setting back on starts the analysis again")
 	CHECK(harness.FramesUntilQueued(1));
 	CHECK(harness.Coordinator.GetStore().GetRoot() == folder.GetPath());
 
-	// The setting is about the analysis, not the servers: they were warmed once, for the folder.
 	CHECK(harness.Servers.WarmedUp == std::vector<std::filesystem::path>{folder.GetPath()});
 }
 
@@ -235,7 +230,6 @@ TEST_CASE("Trusting the open folder warms its servers and starts the analysis")
 
 TEST_CASE("With no folder open nothing is warmed, walked or stored")
 {
-	// What the layer passes with no folder open: an empty root is never trusted.
 	Harness harness;
 	harness.Trusted = false;
 
@@ -285,13 +279,13 @@ namespace {
 
 	void RunFramesAndExpectTotal(Harness& harness, std::size_t expected)
 	{
-		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kWaitLimit;
 
 		harness.Frame();
 
 		while (harness.Coordinator.GetPass().Progress().Walking && std::chrono::steady_clock::now() < deadline)
 		{
-			std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			std::this_thread::sleep_for(kPollInterval);
 			harness.Frame();
 		}
 
@@ -299,7 +293,7 @@ namespace {
 
 		for (int frame = 0; frame < kSettlingFrames; ++frame)
 		{
-			std::this_thread::sleep_for(std::chrono::milliseconds(5));
+			std::this_thread::sleep_for(kPollInterval);
 			harness.Frame();
 		}
 
@@ -355,19 +349,19 @@ TEST_CASE("A solution selected in the frame the analysis goes off queues nothing
 
 TEST_CASE("A solution selected in the frame the root changes is walked once for the new root")
 {
-	TempDirectory first;
-	first.MakeFile("a.cpp", "int a;");
+	TempDirectory firstFolder;
+	firstFolder.MakeFile("a.cpp", "int a;");
 
-	TempDirectory second;
-	MakeTwoSolutions(second);
+	TempDirectory secondFolder;
+	MakeTwoSolutions(secondFolder);
 
 	Harness harness;
-	harness.Root = first.GetPath();
+	harness.Root = firstFolder.GetPath();
 
 	REQUIRE(harness.FramesUntilQueued(1));
 
-	harness.Root = second.GetPath();
-	harness.SelectedSolution = second.GetPath() / "tool" / "Tool.slnx";
+	harness.Root = secondFolder.GetPath();
+	harness.SelectedSolution = secondFolder.GetPath() / "tool" / "Tool.slnx";
 
 	CHECK(harness.FramesUntilQueued(4));
 	RunFramesAndExpectTotal(harness, 4);

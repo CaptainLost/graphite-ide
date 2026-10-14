@@ -25,14 +25,26 @@ namespace Graphite {
 
 	namespace {
 
-		// A stale group's rows are dimmed rather than hidden — see DiagnosticsModel::IsStale's own
-		// comment: staleness is never a reason to drop anything, only to mark it. The same alpha
-		// TextEditorWidget's squiggle uses for the same state, so a document reads as equally
-		// provisional in both places.
 		constexpr float kStaleAlpha = 0.4f;
 
-		// Sorted for display: line, then column, then severity, so an error and a warning that
-		// share a position put the error first — the more urgent thing wins the tie.
+		static_assert(DiagnosticSeverity::Error < DiagnosticSeverity::Warning,
+					  "IsDisplayedBefore puts an error before a warning at the same position by comparing severities");
+
+		bool IsDisplayedBefore(const Diagnostic* left, const Diagnostic* right)
+		{
+			if (left->Line != right->Line)
+			{
+				return left->Line < right->Line;
+			}
+
+			if (left->Column.Value != right->Column.Value)
+			{
+				return left->Column.Value < right->Column.Value;
+			}
+
+			return left->Severity < right->Severity;
+		}
+
 		std::vector<const Diagnostic*> Sorted(const std::vector<Diagnostic>& items)
 		{
 			std::vector<const Diagnostic*> sorted;
@@ -43,22 +55,7 @@ namespace Graphite {
 				sorted.push_back(&item);
 			}
 
-			std::sort(sorted.begin(), sorted.end(),
-					  [](const Diagnostic* a, const Diagnostic* b) {
-						  if (a->Line != b->Line)
-						  {
-							  return a->Line < b->Line;
-						  }
-
-						  if (a->Column.Value != b->Column.Value)
-						  {
-							  return a->Column.Value < b->Column.Value;
-						  }
-
-						  // DiagnosticSeverity::Error is 0 and Warning is 1, so the natural order
-						  // already puts an error before a warning at the same position.
-						  return a->Severity < b->Severity;
-					  });
+			std::sort(sorted.begin(), sorted.end(), IsDisplayedBefore);
 
 			return sorted;
 		}
@@ -73,19 +70,12 @@ namespace Graphite {
 
 	void ProblemsPanel::OnImGuiRender()
 	{
-		// The filter that makes this a list of open documents rather than of everything the model
-		// has ever heard about: a preview pane or a warm-up probe leaves an entry here with no tab
-		// behind it, and Find is the only thing that tells the two apart. The status bar's own
-		// count is built from this exact predicate too - see DiagnosticsModel::Total's comment -
-		// so a reader can always reconcile the number there with the rows drawn here.
-		const auto isOpenDocument = [this](const std::filesystem::path& path) { return m_Documents.Find(path).has_value(); };
+		const auto isOpenDocument = [this](const std::filesystem::path& path) { return IsOpenDocument(path); };
 
 		const DiagnosticsModel::Counts counts = m_Diagnostics.Total(isOpenDocument);
 
 		if (counts.Errors == 0 && counts.Warnings == 0)
 		{
-			// Not a bare window: an empty problems list is a state worth naming, the same way an
-			// empty search result is.
 			Core::EmptyState("No problems in open documents.");
 			m_Selected.reset();
 			return;
@@ -93,8 +83,6 @@ namespace Graphite {
 
 		m_SelectionSeen = false;
 
-		// Read once a frame, like every other panel that draws from a scheme, rather than once
-		// per row: every row this frame draws from the same colours.
 		const EditorPalette palette = ReadEditorPalette(m_Scheme.Get());
 
 		for (const auto& [path, entry] : m_Diagnostics.GetDocuments())
@@ -107,8 +95,6 @@ namespace Graphite {
 			RenderFile(path, entry, palette);
 		}
 
-		// The picked problem is gone - fixed, refreshed away, or its file closed - so nothing
-		// should stay marked, and a later problem that happens to match must not light up.
 		if (!m_SelectionSeen)
 		{
 			m_Selected.reset();
@@ -121,17 +107,13 @@ namespace Graphite {
 	{
 		const bool stale = m_Diagnostics.IsStale(path);
 
-		// Dims the whole group — header and rows alike — rather than recolouring each row's text:
-		// staleness is a property of the document, and a reader should see it as one glance rather
-		// than piece it together row by row.
 		if (stale)
 		{
 			ImGui::PushStyleVar(ImGuiStyleVar_Alpha, kStaleAlpha);
 		}
 
-		// path.c_str() is const wchar_t* on Windows, which binds PushID's const void* overload
-		// and hashes the pointer rather than the text - unique and stable by accident, and a
-		// different overload entirely on a POSIX build. Push the path's actual text instead.
+		// WARNING: path.c_str() is const wchar_t* on Windows and would bind PushID's const void*
+		// overload, hashing the pointer instead of the text.
 		ImGui::PushID(Core::ToUtf8(path).c_str());
 
 		std::size_t errors = 0;
@@ -210,12 +192,8 @@ namespace Graphite {
 			m_SelectionSeen = true;
 		}
 
-		// AllowDoubleClick lets one row answer both gestures: the first click of a double click
-		// previews and the second promotes.
 		const bool clicked = ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick);
 
-		// Selection follows keyboard focus as well as clicks, so arrowing through the list moves
-		// the highlight; the open waits for the click or Enter.
 		if (!selected && ImGui::IsItemFocused())
 		{
 			m_Selected = IdentityOf(path, diagnostic);
@@ -227,25 +205,24 @@ namespace Graphite {
 			m_Selected = IdentityOf(path, diagnostic);
 			m_SelectionSeen = true;
 
-			OpenAndSelect(path, diagnostic, OpensPermanently());
+			const Core::TabKind tabKind = OpensPermanently() ? Core::TabKind::Permanent : Core::TabKind::Preview;
+			OpenAndSelect(path, diagnostic, tabKind);
 		}
 
 		ImGui::PopID();
 	}
 
 	void ProblemsPanel::OpenAndSelect(const std::filesystem::path& path,
-									  const Diagnostic& diagnostic, bool permanent)
+									  const Diagnostic& diagnostic, Core::TabKind tabKind)
 	{
-		// Only reached for a document Find already answered for, so this opens nothing and only
-		// activates its tab: there is no size question to ask and no Workspace to ask it
-		// through. `permanent` follows the click model of the file tree: a single click leaves a
-		// preview tab a preview, and a double click or Enter keeps it.
-		const Core::TabKind tabKind = permanent ? Core::TabKind::Permanent : Core::TabKind::Preview;
+		const auto openFile = [this, tabKind](const std::filesystem::path& file) { m_Documents.Open(file, tabKind); };
 
 		SelectInDocument(m_Documents, path, diagnostic.Line, diagnostic.Column, diagnostic.EndLine,
-						 diagnostic.EndColumn,
-						 [this, tabKind](const std::filesystem::path& file) {
-							 m_Documents.Open(file, tabKind);
-						 });
+						 diagnostic.EndColumn, openFile);
+	}
+
+	bool ProblemsPanel::IsOpenDocument(const std::filesystem::path& path) const
+	{
+		return m_Documents.Find(path).has_value();
 	}
 }

@@ -17,28 +17,15 @@ namespace Graphite {
 
 	namespace {
 
-		// A file is worth queueing only when its language has a server configured to say
-		// anything about it — asking about anything else would just be a wasted round trip.
-		bool BelongsToWalk(const std::filesystem::path& file, SolutionScope& scope)
+		bool BelongsToWalk(const std::filesystem::path& file, SolutionScope& solutionScope)
 		{
 			const LanguageId language = LanguageOfPath(file);
 
-			return LanguageHasServers(language) && (!LanguageRootsAtSolution(language) || scope.Includes(file));
+			return LanguageHasServers(language) && (!LanguageRootsAtSolution(language) || solutionScope.Includes(file));
 		}
 
-		// Stops the walk at the edge of somebody else's project. A directory carrying its own
-		// root marker is where RootFor stops climbing, so every file below it belongs to a
-		// different language server than this workspace's — one that would have to be started
-		// from nothing, usually with no compile database, to answer about code the reader never
-		// opened. In this repository that is the seven submodules under vendor/, which are four
-		// fifths of the tree and the overwhelming majority of what the pass used to cost.
-		//
-		// Rejected at the directory, not at each file below it: a directory answered true is not
-		// descended into at all, which is what makes this cheap rather than merely correct.
-		//
-		// The walk's own root is exempt, and has to be: every repository this runs on carries a
-		// marker at its top, so excluding a marked directory without this would switch the
-		// feature off everywhere.
+		// WARNING: The walk's own root is exempt from the nested-project test. Every repository
+		// carries a marker at its top, so without the exemption the feature would be off everywhere.
 		IgnorePredicate SkipNestedProjects(const std::filesystem::path& root)
 		{
 			return [root](const std::filesystem::path& path, bool isDirectory) { return isDirectory && path != root && IsProjectRoot(path); };
@@ -52,10 +39,10 @@ namespace Graphite {
 		enumeration.Root = root;
 		enumeration.Ignored = SkipNestedProjects(root);
 
-		SolutionScope scope{root, selectedSolution};
+		SolutionScope solutionScope{root, selectedSolution};
 
-		EnumerateFiles(enumeration, token, [&onFile, &scope](const std::filesystem::path& file) {
-			if (!BelongsToWalk(file, scope))
+		EnumerateFiles(enumeration, token, [&onFile, &solutionScope](const std::filesystem::path& file) {
+			if (!BelongsToWalk(file, solutionScope))
 			{
 				return;
 			}
@@ -74,10 +61,10 @@ namespace Graphite {
 		Cancel();
 
 		m_Token = Core::CancellationToken{};
-		m_Live = true;
+		m_HasUncancelledWalk = true;
 
 		{
-			const std::lock_guard<std::mutex> guard(m_Findings->Mutex);
+			const std::lock_guard<std::mutex> lock(m_Findings->Mutex);
 			m_Findings->Paths.clear();
 			m_Findings->Walking = true;
 		}
@@ -87,11 +74,10 @@ namespace Graphite {
 			EnumerationInput enumeration;
 			enumeration.Root = root;
 
-			const IgnorePredicate nested = SkipNestedProjects(root);
+			const IgnorePredicate isNestedProject = SkipNestedProjects(root);
 
-			// Opened on this thread rather than shared with the workspace's: libgit2 handles are
-			// not safe to use from two threads, which is the same reason SearchService and the
-			// warm-up walk each open their own.
+			// WARNING: Opened on this thread, never shared with the workspace's repository:
+			// libgit2 handles are not safe to use from two threads.
 			std::optional<Core::Repository> repository;
 
 			if (respectGitIgnore)
@@ -102,12 +88,11 @@ namespace Graphite {
 				}
 			}
 
-			// Both rules, never one: a submodule's contents are not ignored by the parent
-			// repository — git treats the submodule as a single entry and says nothing about
-			// what is inside it — so gitignore alone would walk straight into vendor/.
-			enumeration.Ignored = [&repository, &nested](const std::filesystem::path& path,
-														 bool isDirectory) {
-				if (nested(path, isDirectory))
+			// WARNING: Both rules are needed. Git treats a submodule as a single entry and says
+			// nothing about what is inside it, so gitignore alone would walk into the submodule.
+			enumeration.Ignored = [&repository, &isNestedProject](const std::filesystem::path& path,
+																  bool isDirectory) {
+				if (isNestedProject(path, isDirectory))
 				{
 					return true;
 				}
@@ -115,16 +100,16 @@ namespace Graphite {
 				return repository && repository->IsIgnored(path);
 			};
 
-			SolutionScope scope{root, selectedSolution};
+			SolutionScope solutionScope{root, selectedSolution};
 
-			EnumerateFiles(enumeration, token, [&findings, &scope](const std::filesystem::path& file) {
-				if (!BelongsToWalk(file, scope))
+			EnumerateFiles(enumeration, token, [&findings, &solutionScope](const std::filesystem::path& file) {
+				if (!BelongsToWalk(file, solutionScope))
 				{
 					return;
 				}
 
 				{
-					const std::lock_guard<std::mutex> guard(findings->Mutex);
+					const std::lock_guard<std::mutex> lock(findings->Mutex);
 					findings->Paths.push_back(file);
 				}
 
@@ -132,7 +117,7 @@ namespace Graphite {
 			});
 
 			{
-				const std::lock_guard<std::mutex> guard(findings->Mutex);
+				const std::lock_guard<std::mutex> lock(findings->Mutex);
 				findings->Walking = false;
 			}
 
@@ -142,36 +127,35 @@ namespace Graphite {
 
 	void AnalysisWalk::Cancel()
 	{
-		if (!m_Live)
+		// WARNING: Called every frame while the feature is switched off, so the early return must
+		// stay here: below it allocates a fresh findings block.
+		const bool nothingToCancel = !m_HasUncancelledWalk;
+
+		if (nothingToCancel)
 		{
-			// Nothing was started, or the last thing started has already been cancelled. Both mean
-			// the block below would be a fresh allocation replacing an empty one — see the header
-			// for why this guard is here and not at the call site.
 			return;
 		}
 
-		m_Live = false;
+		m_HasUncancelledWalk = false;
 		m_Token.Cancel();
 
-		// A fresh block for a fresh walk. The one that was running writes into the old block until
-		// it notices the token, and nothing reads that block again.
 		m_Findings = Core::CreateRef<Findings>();
 	}
 
 	bool AnalysisWalk::IsWalking() const
 	{
-		const std::lock_guard<std::mutex> guard(m_Findings->Mutex);
+		const std::lock_guard<std::mutex> lock(m_Findings->Mutex);
 
 		return m_Findings->Walking;
 	}
 
-	void AnalysisWalk::Take(std::vector<std::filesystem::path>& out)
+	void AnalysisWalk::Take(std::vector<std::filesystem::path>& destination)
 	{
-		const std::lock_guard<std::mutex> guard(m_Findings->Mutex);
+		const std::lock_guard<std::mutex> lock(m_Findings->Mutex);
 
 		for (std::filesystem::path& path : m_Findings->Paths)
 		{
-			out.push_back(std::move(path));
+			destination.push_back(std::move(path));
 		}
 
 		m_Findings->Paths.clear();

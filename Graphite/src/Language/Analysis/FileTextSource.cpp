@@ -25,6 +25,11 @@ namespace Graphite {
 
 			return modified;
 		}
+
+		bool IsNotAnalysableKind(Core::FileKind kind)
+		{
+			return kind == Core::FileKind::Binary || kind == Core::FileKind::TooLarge || kind == Core::FileKind::LargeText;
+		}
 	}
 
 	FileText ReadFileText(const std::filesystem::path& path)
@@ -46,30 +51,21 @@ namespace Graphite {
 
 		const Core::FileProbe& probe = probed.GetValue();
 
-		if (probe.Kind == Core::FileKind::Binary || probe.Kind == Core::FileKind::TooLarge ||
-			probe.Kind == Core::FileKind::LargeText)
+		if (IsNotAnalysableKind(probe.Kind))
 		{
-			// LargeText is refused here where the editor accepts it: a file this size is minutes
-			// of a server's attention for colours nobody has asked to see yet, and the tab that
-			// opens it asks for its own.
 			return read;
 		}
 
-		// Stamped before the bytes and again after them. A save landing in between would otherwise
-		// pair the old text with the new time, and a stamp that matches is all the cache asks
-		// for; two stamps that differ mean the text cannot be vouched for, so the file is
-		// reported unreadable and requested again.
-		const std::optional<std::filesystem::file_time_type> before = readStamp(path);
+		// WARNING: The stamp is read before the bytes and again after them. A save landing in
+		// between would pair the old text with the new time, so two differing stamps mean the file
+		// is reported unreadable and requested again.
+		const std::optional<std::filesystem::file_time_type> stampBefore = readStamp(path);
 
-		if (!before)
+		if (!stampBefore)
 		{
-			// Without a stamp there is nothing to vouch for the text, and an entry nothing can
-			// vouch for is one the cache would have to refuse anyway.
 			return read;
 		}
 
-		// Bounded, as the warm-up read is: the probe saw the size it had then, and a file that has
-		// grown past the limit since is refused here rather than read whole.
 		Core::Result<std::string> file = Core::ReadFileBytes(path, Core::MaximumFileSize);
 
 		if (!file)
@@ -77,44 +73,22 @@ namespace Graphite {
 			return read;
 		}
 
-		std::string bytes = std::move(file.GetValue());
-
-		// Bytes rather than probe.FileEncoding, for the reason TextDocument::FromContent
-		// computes it the same way: the probe only sniffed a sample, so the mark actually
-		// sitting on the bytes about to be decoded is what has to be stripped.
-		const std::size_t bomLength = Core::LeadingByteOrderMarkLength(bytes);
-
-		Core::Result<std::string> text =
-			Core::TransformsContent(probe.FileEncoding)
-				? Core::Decode(std::string_view{bytes}.substr(bomLength), probe.FileEncoding)
-				: Core::Decode(bytes, probe.FileEncoding);
+		Core::Result<std::string> text = Core::DecodeWithoutByteOrderMark(std::move(file.GetValue()), probe.FileEncoding);
 
 		if (!text)
 		{
 			return read;
 		}
 
-		std::string decoded = std::move(text.GetValue());
+		const std::optional<std::filesystem::file_time_type> stampAfter = readStamp(path);
 
-		// Core::Decode passes UTF-8 through unchanged, so a mark on disk is still the first
-		// three bytes here. SemanticOverlay lines its spans up against the editor's own
-		// buffer, which TextDocument::FromContent already strips the same mark from — left
-		// in here, every colour on line 0 of a BOM-prefixed file would sit one character to
-		// the right of the text it belongs to.
-		if (!Core::TransformsContent(probe.FileEncoding))
-		{
-			decoded.erase(0, bomLength);
-		}
-
-		const std::optional<std::filesystem::file_time_type> after = readStamp(path);
-
-		if (!after || *after != *before)
+		if (!stampAfter || *stampAfter != *stampBefore)
 		{
 			return read;
 		}
 
-		read.Text = std::move(decoded);
-		read.ModifiedAt = *before;
+		read.Text = std::move(text.GetValue());
+		read.ModifiedAt = *stampBefore;
 		read.Readable = true;
 
 		return read;
@@ -126,7 +100,7 @@ namespace Graphite {
 			FileText read = ReadFileText(path);
 
 			{
-				const std::lock_guard<std::mutex> guard(ready->Mutex);
+				const std::lock_guard<std::mutex> lock(ready->Mutex);
 				ready->Texts.push_back(std::move(read));
 			}
 
@@ -134,13 +108,13 @@ namespace Graphite {
 		});
 	}
 
-	void DiskFileTexts::Take(std::vector<FileText>& out)
+	void DiskFileTexts::Take(std::vector<FileText>& destination)
 	{
-		const std::lock_guard<std::mutex> guard(m_Ready->Mutex);
+		const std::lock_guard<std::mutex> lock(m_Ready->Mutex);
 
 		for (FileText& text : m_Ready->Texts)
 		{
-			out.push_back(std::move(text));
+			destination.push_back(std::move(text));
 		}
 
 		m_Ready->Texts.clear();

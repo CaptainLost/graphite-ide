@@ -26,7 +26,7 @@ namespace Graphite {
 
 		const TSLanguage* GetLanguage() const { return m_Language; }
 
-		// Null when the query does not compile against the language; nothing is coloured then.
+		// WARNING: Null when the query does not compile against the language; nothing is coloured then.
 		const TSQuery* GetHighlights() const { return m_Highlights; }
 
 		std::optional<std::size_t> GetQueryErrorOffset() const { return m_QueryErrorOffset; }

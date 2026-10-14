@@ -12,21 +12,7 @@ namespace Graphite {
 
 	namespace {
 
-		// How long a pending analysis may go unanswered before it is given up on. Generous,
-		// because a server indexing a large project can take a while to get to a question nobody
-		// is waiting for — and finite, because a question that is never answered would otherwise
-		// hold its slot, and the queue behind it, for the rest of the session.
 		constexpr double kAnalysisTimeoutSeconds = 120.0;
-
-		// How long the open document may claim to be waiting before this stops yielding to it.
-		//
-		// Not a guard against a busy editor: typing goes quiet between keystrokes and never gets
-		// near this. It guards against a foreground question that will never be answered — a
-		// language whose server is configured but whose binary is not installed leaves the active
-		// document's symbol request retrying forever, so what the editor reports is permanently
-		// busy and nothing here would ever start again for the rest of the session. Long enough
-		// that a server merely slow to index still gets the whole floor, short enough that the
-		// broken case costs one wait rather than a session.
 		constexpr double kForegroundYieldCapSeconds = 10.0;
 	}
 
@@ -83,10 +69,7 @@ namespace Graphite {
 
 	void WorkspaceAnalysis::SetConcurrency(std::size_t limit)
 	{
-		// Lowering it starts nothing new and tears nothing down: what is already outstanding was
-		// paid for when it started, and cancelling gives none of that back. StartNext simply finds
-		// no room until enough entries have finished.
-		m_Limit = std::max<std::size_t>(1, limit);
+		m_Limit = std::max<std::size_t>(kMinimumConcurrency, limit);
 	}
 
 	void WorkspaceAnalysis::SetTabWidth(std::size_t width)
@@ -147,31 +130,30 @@ namespace Graphite {
 	{
 		PendingAnalysis& pending = m_Pending[index];
 
-		if (pending.Opened && !pending.HeldElsewhere)
+		const bool nobodyElseHoldsTheDocument = !pending.HeldElsewhereAtLastTick;
+		const bool mustCloseDocument = pending.Opened && nobodyElseHoldsTheDocument;
+
+		// WARNING: CloseDocument counts no references, so closing a document that a tab or preview
+		// pane took over would take it away from them for good. This must read the live answer,
+		// not HeldElsewhereAtAnyTick: a holder that has gone away took its document with it.
+		if (mustCloseDocument)
 		{
-			// Somebody who took the file over — a tab, a preview pane — is now the one holding the
-			// document, and they opened it exactly once: CloseDocument counts no references and
-			// neither LensFor nor PreviewSemantics::Declare opens a document twice, so a didClose
-			// from here would take the file away from that reader for good — every request it sent
-			// afterwards would describe a document the server no longer holds. The didOpen is
-			// disowned instead, the same move PreviewSemantics makes on the same transition.
-			//
-			// The live field, deliberately, not EverHeldElsewhere: a holder that has gone away
-			// took its document with it, so there is nothing left to take away and the didOpen
-			// made here is the only one outstanding. Closing it is right; disowning it would leak
-			// a document entry for the rest of the session.
 			m_Port.Close(pending.Path, pending.Language);
 		}
 
-		m_Pending.erase(m_Pending.begin() + static_cast<std::ptrdiff_t>(index));
+		const std::vector<PendingAnalysis>::iterator droppedEntry =
+			m_Pending.begin() + static_cast<std::ptrdiff_t>(index);
+
+		m_Pending.erase(droppedEntry);
 	}
 
 	void WorkspaceAnalysis::DropAll()
 	{
-		// From the back, so each erase moves nothing and the index is always in range.
 		while (!m_Pending.empty())
 		{
-			Drop(m_Pending.size() - 1);
+			const std::size_t lastIndex = m_Pending.size() - 1;
+
+			Drop(lastIndex);
 		}
 	}
 
@@ -186,33 +168,18 @@ namespace Graphite {
 
 		BeginArrivedFiles(now, heldElsewhere);
 
-		// The one place the predicate is asked about a file already open with the server.
-		// Everything that tears an entry down reads the answer off the entry instead — see
-		// PendingAnalysis::HeldElsewhere.
 		for (PendingAnalysis& pending : m_Pending)
 		{
-			const bool held = heldElsewhere(pending.Path);
+			const bool isHeldElsewhere = heldElsewhere(pending.Path);
 
-			// Two fields from the one call, because two different questions are asked of it later.
-			// Drop needs the live answer — whether a didClose would take the document away from
-			// somebody still reading it is a question about now. FinishCompleted needs the sticky
-			// one — whether the answers still describe the file on disk is a question about ever.
-			// See PendingAnalysis::EverHeldElsewhere for what collapsing them back into one field
-			// costs.
-			pending.HeldElsewhere = held;
-			pending.EverHeldElsewhere |= held;
+			pending.HeldElsewhereAtLastTick = isHeldElsewhere;
+			pending.HeldElsewhereAtAnyTick |= isHeldElsewhere;
 		}
 
-		// Before the busy check, deliberately: an entry that has already been answered costs the
-		// server nothing more, and leaving it open until the editor goes quiet would hold a
-		// document — and the slot, and the queue behind it — for as long as someone keeps typing.
 		FinishCompleted(now);
 
 		if (!foregroundBusy)
 		{
-			// Reset on the first quiet frame, so an ordinary session — busy for a keystroke,
-			// quiet, busy again — never accumulates towards the cap. Only an unbroken run of
-			// busy frames counts.
 			m_BusySince.reset();
 		}
 		else if (!m_BusySince)
@@ -220,15 +187,15 @@ namespace Graphite {
 			m_BusySince = now;
 		}
 
-		if (foregroundBusy && now - *m_BusySince <= kForegroundYieldCapSeconds)
+		if (foregroundBusy)
 		{
-			// Nothing new while the file on screen is waiting — no slot, not merely the next one.
-			// What is already outstanding is left alone: cancelling gives back none of the work
-			// the server has already done, and its answer still has somewhere useful to go.
-			//
-			// Past the cap the yield is dropped — see kForegroundYieldCapSeconds for the case it
-			// exists for.
-			return;
+			const double busySeconds = now - *m_BusySince;
+			const bool yieldsToForeground = busySeconds <= kForegroundYieldCapSeconds;
+
+			if (yieldsToForeground)
+			{
+				return;
+			}
 		}
 
 		StartNext(heldElsewhere);
@@ -237,38 +204,20 @@ namespace Graphite {
 	void WorkspaceAnalysis::StartNext(
 		const std::function<bool(const std::filesystem::path&)>& heldElsewhere)
 	{
+		// WARNING: AnalysisStore::Has answers false for everything until its index is polled in,
+		// so starting before then would analyse again every file the store already holds.
 		if (m_Store != nullptr && !m_Store->IsReady())
 		{
-			// Nothing new until the store can answer. Has reports false for everything until its
-			// index has been polled in, and a false there is indistinguishable from a file the
-			// store has never seen — so every path dequeued while the index worker is still
-			// reading would be read, opened and analysed again at full price. Not a correctness
-			// question: a miss is only ever a miss. But a second launch being cheap is the whole
-			// of what the store is for, and starting early spends exactly the files it exists to
-			// skip. The queue keeps its place; the next frame asks again.
-			//
-			// The gate is here rather than around Tick because everything else in a tick must go
-			// on running while the store warms up: an analysis already outstanding still has to
-			// be finished with, and one that has gone silent still has to time out.
 			return;
 		}
 
-		// Awaited reads count against the limit alongside pending analyses: a read on its way is a
-		// slot already spoken for, and counting only what a server has been told about would let
-		// the whole queue be read at once.
 		for (auto& [language, queue] : m_Queues)
 		{
 			while (m_Pending.size() + m_AwaitingText.size() < m_Limit && !queue.empty())
 			{
-				// Normalised here, on the way in, so that everything downstream is comparing the same
-				// spelling: IsOutstanding's equality, the store's lookup — which normalises its own
-				// keys — and the path this class hands the server. Two spellings of one file reaching
-				// the queue would otherwise both pass IsOutstanding and produce two didOpens for one
-				// document entry, which is the failure ADR 0512 is about.
 				const std::filesystem::path path = Core::NormalizePath(queue.front());
 				const ServerReadiness readiness = m_Port.ReadinessOf(path, language);
 
-				// Asked before the queue is popped, so a wait keeps the file for the next frame. Only this language waits.
 				if (readiness == ServerReadiness::ComingUp)
 				{
 					break;
@@ -284,36 +233,26 @@ namespace Graphite {
 
 				if (IsOutstanding(path))
 				{
-					// The same file reached the queue twice. Counted all the same: it was counted into
-					// the total when it was queued, and a skip that did not count would leave the bar
-					// permanently short of its own figure. See IsOutstanding for why it is skipped.
 					++m_Done;
 					continue;
 				}
 
-				if (m_Store != nullptr && m_Store->Has(path))
+				const bool storeAlreadyHasPath = m_Store != nullptr && m_Store->Has(path);
+
+				if (storeAlreadyHasPath)
 				{
-					// A previous session already asked about this version of this file. The whole of
-					// what makes a second launch cheap: neither a server nor a worker is troubled, and
-					// the entry is read from the disk in the frame a document opens it.
 					++m_Done;
 					continue;
 				}
 
 				if (heldElsewhere(path))
 				{
-					// Whoever holds this file opened it with the server themselves and asks their own
-					// questions about the buffer, which may already differ from what is on disk. The
-					// skip happens here, before the read is asked for, so a file somebody already
-					// holds costs neither a server nor a worker.
 					++m_Done;
 					continue;
 				}
 
 				if (!m_Port.HasChosenServer(language))
 				{
-					// Nothing serves this language, so there is nobody to ask. Counted as done rather
-					// than left in the queue: it is as finished as it will ever be.
 					++m_Done;
 					continue;
 				}
@@ -330,53 +269,36 @@ namespace Graphite {
 		m_Arrived.clear();
 		m_Texts.Take(m_Arrived);
 
-		for (FileText& text : m_Arrived)
+		for (FileText& arrivedText : m_Arrived)
 		{
 			const std::vector<std::filesystem::path>::iterator awaited =
-				std::find(m_AwaitingText.begin(), m_AwaitingText.end(), text.Path);
+				std::find(m_AwaitingText.begin(), m_AwaitingText.end(), arrivedText.Path);
 
-			if (awaited == m_AwaitingText.end())
+			const bool readLeftOverFromClosedFolder = awaited == m_AwaitingText.end();
+
+			if (readLeftOverFromClosedFolder)
 			{
-				// A read left over from a folder that has since closed. Nothing to do with the
-				// files being waited for now.
 				continue;
 			}
 
-			// The erase is also the second half of the one-path-one-analysis check: a path only
-			// reaches m_AwaitingText by passing IsOutstanding, and it leaves the moment its text
-			// is taken up, so a second text for the same path — a read outstanding across a Clear
-			// and a re-Enqueue is the way to get one — finds nothing here and is dropped above
-			// rather than opening the document a second time. See IsOutstanding and ADR 0512.
-			//
-			// In that case it is the older read that is taken up and the fresh one that is
-			// dropped: the reads come back in the order they were asked for, so the stale text
-			// arrives first and is what matches. Safe, and only wasteful — the stamp that comes
-			// with it describes the text that was actually read, so an entry built from it is
-			// refused later by exactly the comparison that exists for a file edited behind the
-			// editor's back, rather than colouring anything wrongly.
 			m_AwaitingText.erase(awaited);
 
-			if (!text.Readable || text.Text.empty())
+			if (!arrivedText.Readable || arrivedText.Text.empty())
 			{
 				++m_Done;
 				continue;
 			}
 
-			// Asked again, having been asked in StartNext: the read between the two is a round
-			// trip through a worker, at least a frame and often many, and a tab can open on this
-			// path in the meantime. Opening it now would overwrite what LanguageServices remembers
-			// for that tab with the bytes on disk — invisible until the server dies and
-			// RestartServer replays them, at which point the tab's unsaved buffer is silently the
-			// disk version on the server's side until the next edit corrects it.
-			if (heldElsewhere(text.Path))
+			// WARNING: A tab can open on this path while the read is in flight. Opening it now
+			// would overwrite what LanguageServices remembers for that tab with the bytes on disk.
+			if (heldElsewhere(arrivedText.Path))
 			{
 				++m_Done;
 				continue;
 			}
 
-			const LanguageId language = LanguageOfPath(text.Path);
+			const LanguageId language = LanguageOfPath(arrivedText.Path);
 
-			// Asked again: the choice can be unset while the text is being read.
 			if (!m_Port.HasChosenServer(language))
 			{
 				++m_Done;
@@ -384,20 +306,17 @@ namespace Graphite {
 			}
 
 			PendingAnalysis pending;
-			pending.Path = text.Path;
+			pending.Path = arrivedText.Path;
 			pending.Language = language;
-			pending.ModifiedAt = text.ModifiedAt;
-			pending.Snapshot = Core::TextBuffer{text.Text};
-
-			// Stamped where the questions are asked, not where the read was: the timeout is about
-			// how long a server has been silent, and the read before it took however long it took.
+			pending.ModifiedAt = arrivedText.ModifiedAt;
+			pending.Snapshot = Core::TextBuffer{arrivedText.Text};
 			pending.StartedAt = now;
 
-			m_Port.Open(pending.Path, language, std::move(text.Text));
+			m_Port.Open(pending.Path, language, std::move(arrivedText.Text));
 			pending.Opened = true;
 
-			pending.Colours = m_Port.AskSemanticTokens(pending.Path, language);
-			pending.Symbols = m_Port.AskSymbols(pending.Path, language);
+			pending.SemanticTokensTicket = m_Port.AskSemanticTokens(pending.Path, language);
+			pending.SymbolsTicket = m_Port.AskSymbols(pending.Path, language);
 
 			m_Pending.push_back(std::move(pending));
 		}
@@ -409,15 +328,13 @@ namespace Graphite {
 	{
 		for (PendingAnalysis& pending : m_Pending)
 		{
-			if (pending.Colours && *pending.Colours == answer.For)
+			if (pending.SemanticTokensTicket && *pending.SemanticTokensTicket == answer.For)
 			{
-				pending.HaveColours = true;
-				pending.Colours.reset();
+				pending.HaveSemanticTokens = true;
+				pending.SemanticTokensTicket.reset();
 
 				if (!answer.Failed)
 				{
-					// Against the snapshot, not against anything else: the answer's columns were
-					// measured on the text that went out with the request.
 					pending.Result.Semantic.Set(answer.SemanticTokens, pending.Snapshot,
 												m_TabWidth);
 				}
@@ -425,10 +342,10 @@ namespace Graphite {
 				return true;
 			}
 
-			if (pending.Symbols && *pending.Symbols == answer.For)
+			if (pending.SymbolsTicket && *pending.SymbolsTicket == answer.For)
 			{
 				pending.HaveSymbols = true;
-				pending.Symbols.reset();
+				pending.SymbolsTicket.reset();
 
 				if (!answer.Failed)
 				{
@@ -444,60 +361,43 @@ namespace Graphite {
 
 	void WorkspaceAnalysis::FinishCompleted(double now)
 	{
-		// By index rather than by iterator: Drop erases from the middle, and an iterator held
-		// across that is already invalid by the time the loop would use it again. After an erase
-		// the next entry has moved into this index, so the index only advances when nothing was
-		// removed.
 		for (std::size_t index = 0; index < m_Pending.size();)
 		{
 			PendingAnalysis& pending = m_Pending[index];
 
-			if (pending.HaveColours && pending.HaveSymbols)
+			if (pending.HaveSemanticTokens && pending.HaveSymbols)
 			{
-				const std::filesystem::path path = pending.Path;
+				const std::filesystem::path analysedPath = pending.Path;
+				const bool documentModified = false;
 
-				// AnalysisWorthKeeping refuses an entry with nothing in it, which is what a failed
-				// analysis comes to. `documentModified` is false because this class never has a
-				// document: what it measured its answers against is the file on disk, and the
-				// stamp beside them describes exactly that. A file somebody else took over keeps
-				// nothing — the buffer they hold has moved on from what went to the server.
-				//
-				// The sticky field, not the live one: a holder that has since gone away still
-				// moved the server's picture of the file off the disk for as long as it existed,
-				// and an answer measured while it was there says nothing about the bytes this
-				// entry's stamp describes. See PendingAnalysis::EverHeldElsewhere.
-				std::optional<CachedAnalysis> worth;
+				std::optional<CachedAnalysis> analysisToKeep;
 
-				if (!pending.EverHeldElsewhere)
+				if (!pending.HeldElsewhereAtAnyTick)
 				{
-					worth = AnalysisWorthKeeping(std::move(pending.Result), false,
-												 pending.ModifiedAt);
+					analysisToKeep = AnalysisWorthKeeping(std::move(pending.Result),
+														  documentModified, pending.ModifiedAt);
 				}
 
 				Drop(index);
 				++m_Done;
 
-				if (worth)
+				if (analysisToKeep)
 				{
-					// Both tiers. The cache is this session's, the store is every session after
-					// it, and a pass that filled only the first would leave the second launch
-					// asking the server about a workspace nothing had changed.
 					if (m_Store != nullptr)
 					{
-						m_Store->Write(path, *worth);
+						m_Store->Write(analysedPath, *analysisToKeep);
 					}
 
-					m_Cache.Put(path, std::move(*worth));
+					m_Cache.Put(analysedPath, std::move(*analysisToKeep));
 				}
 
 				continue;
 			}
 
-			if (now - pending.StartedAt > kAnalysisTimeoutSeconds)
+			const bool timedOut = now - pending.StartedAt > kAnalysisTimeoutSeconds;
+
+			if (timedOut)
 			{
-				// Given up on rather than waited for. Whatever became of the question, the file is
-				// no worse off than it was before this class existed, and the slot is free again
-				// for one that might be answered.
 				Drop(index);
 				++m_Done;
 

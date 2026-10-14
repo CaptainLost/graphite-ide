@@ -26,15 +26,13 @@ TEST_CASE("LanguageOfPath falls back to plain text")
 	CHECK(Graphite::LanguageOfPath("Makefile") == Graphite::LanguageId::PlainText);
 }
 
-// Windows paths are case-insensitive and .CPP is a file people have.
-TEST_CASE("LanguageOfPath ignores the case of the extension")
+TEST_CASE("LanguageOfPath ignores the case of the extension because Windows paths are case-insensitive")
 {
 	CHECK(Graphite::LanguageOfPath("MAIN.CPP") == Graphite::LanguageId::Cpp);
 	CHECK(Graphite::LanguageOfPath("Widget.H") == Graphite::LanguageId::Cpp);
 }
 
-// A leading dot is the whole name, not an extension: .gitignore is not a G file.
-TEST_CASE("LanguageOfPath treats a dotfile as plain text")
+TEST_CASE("LanguageOfPath treats a dotfile as plain text because its leading dot is the whole name")
 {
 	CHECK(Graphite::LanguageOfPath(".gitignore") == Graphite::LanguageId::PlainText);
 	CHECK(Graphite::LanguageOfPath(".clang-format") == Graphite::LanguageId::PlainText);
@@ -105,4 +103,9 @@ TEST_CASE("C# is coloured by a grammar and C++ by its lexer")
 	CHECK(cpp.TreeGrammar == nullptr);
 	CHECK(Graphite::SyntaxOf(Graphite::LanguageId::TypeScript) == Graphite::SyntaxSource{});
 	CHECK(Graphite::SyntaxOf(Graphite::LanguageId::PlainText) == Graphite::SyntaxSource{});
+}
+
+TEST_CASE("LanguageDisplayName is empty for plain text because it is no recognised language")
+{
+	CHECK(Graphite::LanguageDisplayName(Graphite::LanguageId::PlainText).empty());
 }

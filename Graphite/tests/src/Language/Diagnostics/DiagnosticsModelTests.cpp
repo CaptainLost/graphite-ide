@@ -11,8 +11,6 @@ namespace {
 
 	const std::filesystem::path kMain{"C:/src/Main.cpp"};
 
-	// Admits every path - what a test reaches for when it wants Total's old unfiltered behaviour
-	// and has no Core::DocumentSet at hand to build a real predicate from.
 	bool Everything(const std::filesystem::path&)
 	{
 		return true;
@@ -37,8 +35,6 @@ namespace {
 
 TEST_CASE("A document with nothing said about it reads as empty rather than as absent")
 {
-	// A reference to an empty vector, not a pointer: every caller loops, and none of them should
-	// have to branch on whether a language server exists.
 	const Graphite::DiagnosticsModel model;
 
 	CHECK(model.For(kMain).empty());
@@ -47,16 +43,15 @@ TEST_CASE("A document with nothing said about it reads as empty rather than as a
 
 TEST_CASE("A publication replaces a document's set wholesale")
 {
-	// A server's publication is about the whole document: what it does not mention is fixed.
 	Graphite::DiagnosticsModel model;
 
-	Graphite::DiagnosticsUpdate first;
-	first.Published.push_back(Published(1, {Error(3, "one"), Error(9, "two")}));
-	model.Apply(first);
+	Graphite::DiagnosticsUpdate firstUpdate;
+	firstUpdate.Published.push_back(Published(1, {Error(3, "one"), Error(9, "two")}));
+	model.Apply(firstUpdate);
 
-	Graphite::DiagnosticsUpdate second;
-	second.Published.push_back(Published(2, {Error(3, "one")}));
-	model.Apply(second);
+	Graphite::DiagnosticsUpdate secondUpdate;
+	secondUpdate.Published.push_back(Published(2, {Error(3, "one")}));
+	model.Apply(secondUpdate);
 
 	REQUIRE(model.For(kMain).size() == 1);
 	CHECK(model.For(kMain)[0].Message == "one");
@@ -66,9 +61,9 @@ TEST_CASE("An empty publication is an answer, not a silence")
 {
 	Graphite::DiagnosticsModel model;
 
-	Graphite::DiagnosticsUpdate first;
-	first.Published.push_back(Published(1, {Error(3, "one")}));
-	model.Apply(first);
+	Graphite::DiagnosticsUpdate firstUpdate;
+	firstUpdate.Published.push_back(Published(1, {Error(3, "one")}));
+	model.Apply(firstUpdate);
 
 	Graphite::DiagnosticsUpdate cleared;
 	cleared.Published.push_back(Published(2, {}));
@@ -93,16 +88,12 @@ TEST_CASE("A set the buffer has outrun is stale")
 	model.Apply(typed);
 
 	CHECK(model.IsStale(kMain));
-	CHECK(model.For(kMain).size() == 1);		// dimmed, not dropped
-	CHECK(model.Total(Everything).Errors == 1); // Total counts a stale entry's items too - dimmed, not dropped
+	CHECK(model.For(kMain).size() == 1);
+	CHECK(model.Total(Everything).Errors == 1);
 }
 
 TEST_CASE("A publication naming no version reads as stale once anything has been sent")
 {
-	// The protocol allows a publication that names no version at all - ParseDiagnostics treats
-	// version as optional, matching the LSP spec. DocumentVersion{} is both "never sent" and
-	// what such a reply reads as, so this must not be mistaken for "never answered": the safe
-	// reading is stale as soon as anything has been sent, per DocumentVersion's own comment.
 	Graphite::DiagnosticsModel model;
 
 	Graphite::DiagnosticsUpdate versionless;
@@ -136,11 +127,6 @@ TEST_CASE("A close forgets a document entirely")
 
 TEST_CASE("A document closed and reopened within one update describes its new life")
 {
-	// This is a restart: the same update carries the close, the version that replaced it, and
-	// the first diagnostics against the new session - the real shape of a re-diagnosed reopen.
-	// Applying the close last would let it erase the very publication this same update just
-	// wrote, since versions and publications write disjoint fields and nothing else distinguishes
-	// the two orderings: this is the case that actually pins closes running first.
 	Graphite::DiagnosticsModel model;
 
 	Graphite::DiagnosticsUpdate before;
@@ -154,8 +140,6 @@ TEST_CASE("A document closed and reopened within one update describes its new li
 	restart.Published.push_back(Published(1, {Error(5, "fresh")}));
 	model.Apply(restart);
 
-	// The old set is gone, and the new one - published within the same update that reopened the
-	// document - survives the close rather than being wiped out by it.
 	REQUIRE(model.For(kMain).size() == 1);
 	CHECK(model.For(kMain)[0].Message == "fresh");
 	CHECK(!model.IsStale(kMain));
@@ -163,21 +147,17 @@ TEST_CASE("A document closed and reopened within one update describes its new li
 
 TEST_CASE("Two publications at the same version still move the generation")
 {
-	// A server that omits version publishes twice for a file nobody is typing in, and clangd
-	// itself republishes once its preamble build finishes - both land at the same version with
-	// different content. A reader keyed on Answered would call the two identical; Generation
-	// must not.
 	Graphite::DiagnosticsModel model;
 
-	Graphite::DiagnosticsUpdate first;
-	first.Published.push_back(Published(1, {Error(3, "one")}));
-	model.Apply(first);
+	Graphite::DiagnosticsUpdate firstUpdate;
+	firstUpdate.Published.push_back(Published(1, {Error(3, "one")}));
+	model.Apply(firstUpdate);
 
 	const std::uint64_t firstGeneration = model.GetDocuments().at(kMain).Generation;
 
-	Graphite::DiagnosticsUpdate second;
-	second.Published.push_back(Published(1, {Error(3, "one"), Error(9, "two")}));
-	model.Apply(second);
+	Graphite::DiagnosticsUpdate secondUpdate;
+	secondUpdate.Published.push_back(Published(1, {Error(3, "one"), Error(9, "two")}));
+	model.Apply(secondUpdate);
 
 	CHECK(model.GetDocuments().at(kMain).Generation != firstGeneration);
 	CHECK(model.For(kMain).size() == 2);
@@ -187,9 +167,9 @@ TEST_CASE("Applying nothing about a document leaves its generation alone")
 {
 	Graphite::DiagnosticsModel model;
 
-	Graphite::DiagnosticsUpdate first;
-	first.Published.push_back(Published(1, {Error(3, "one")}));
-	model.Apply(first);
+	Graphite::DiagnosticsUpdate firstUpdate;
+	firstUpdate.Published.push_back(Published(1, {Error(3, "one")}));
+	model.Apply(firstUpdate);
 
 	const std::uint64_t generation = model.GetDocuments().at(kMain).Generation;
 
@@ -223,11 +203,6 @@ TEST_CASE("Errors and warnings are counted separately across every document a pr
 
 TEST_CASE("Total counts only the documents its predicate admits")
 {
-	// The rule ProblemsPanel and the status bar are meant to share: a caller decides what "open"
-	// means by the predicate it passes, and Total counts nothing else. Here the predicate stands
-	// in for "Core::DocumentSet::Find answers for this path" without needing a real DocumentSet -
-	// a document opened only by a preview pane or the language layer's warm-up is exactly the
-	// kind of entry this is meant to exclude.
 	Graphite::DiagnosticsModel model;
 
 	const std::filesystem::path other{"C:/src/Other.cpp"};

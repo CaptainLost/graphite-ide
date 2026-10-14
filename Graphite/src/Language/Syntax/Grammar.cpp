@@ -16,8 +16,8 @@ namespace Graphite {
 			TokenKind Kind = TokenKind::Text;
 		};
 
-		// The first rule that names a capture, or a capture under it after a dot, wins — which is
-		// why "variable.parameter" has to come before "variable".
+		// WARNING: The first rule that names a capture, or a capture under it after a dot, wins,
+		// so "variable.parameter" has to come before "variable".
 		constexpr std::array<CaptureRule, 15> kCaptureRules{{
 			{.Name = "variable.parameter", .Kind = TokenKind::SemanticParameter},
 			{.Name = "variable", .Kind = TokenKind::Identifier},

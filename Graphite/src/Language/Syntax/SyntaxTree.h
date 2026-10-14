@@ -17,8 +17,6 @@ namespace Graphite {
 
 	class Grammar;
 
-	// Its tree costs several times the text in memory, and a text this large is generated rather
-	// than written, so it draws in plain text.
 	inline constexpr std::size_t kLargestParsedText = 4 * 1024 * 1024;
 
 	class SyntaxTree
@@ -30,11 +28,8 @@ namespace Graphite {
 		SyntaxTree(const SyntaxTree&) = delete;
 		SyntaxTree& operator=(const SyntaxTree&) = delete;
 
-		// The rows and tokens keep describing the last finished text until a parse of this one
-		// finishes.
 		void Retarget(std::string text);
 
-		// A parse that runs out of `budget` stops and resumes on the next call.
 		bool Advance(std::chrono::microseconds budget);
 
 		bool AdvanceToEnd();
