@@ -3,8 +3,11 @@
 #include "GitFixtures.h"
 #include "Git/GitView.h"
 
+#include <IconsMaterialDesignIcons.h>
+
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace {
@@ -100,6 +103,30 @@ TEST_CASE("A measured distance is shown")
 
 	CHECK(label.find("2") != std::string::npos);
 	CHECK(label.find("3") != std::string::npos);
+}
+
+TEST_CASE("A distance is shown as arrows, up for commits to push and down for commits to pull")
+{
+	Core::Branch branch = BranchNamed("main");
+	branch.DistanceKnown = true;
+	branch.Ahead = 2;
+	branch.Behind = 3;
+
+	CHECK(Graphite::RefLabel(branch) == std::string{"main  "} + ICON_MDI_ARROW_UP + "2 " + ICON_MDI_ARROW_DOWN + "3");
+}
+
+TEST_CASE("Only the side with commits gets an arrow")
+{
+	Core::Branch branch = BranchNamed("main");
+	branch.DistanceKnown = true;
+	branch.Ahead = 2;
+
+	CHECK(Graphite::RefLabel(branch) == std::string{"main  "} + ICON_MDI_ARROW_UP + "2");
+
+	branch.Ahead = 0;
+	branch.Behind = 3;
+
+	CHECK(Graphite::RefLabel(branch) == std::string{"main  "} + ICON_MDI_ARROW_DOWN + "3");
 }
 
 TEST_CASE("A measured distance of zero shows no numbers, because in sync is the ordinary state")

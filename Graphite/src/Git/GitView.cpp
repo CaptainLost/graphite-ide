@@ -100,11 +100,19 @@ namespace Graphite {
 	{
 		std::string label = branch.IsHead ? "* " + branch.Name : branch.Name;
 
-		const bool isAheadOrBehindUpstream = branch.DistanceKnown && (branch.Ahead > 0 || branch.Behind > 0);
-
-		if (isAheadOrBehindUpstream)
+		if (!branch.DistanceKnown)
 		{
-			label += std::format("  {}/{}", branch.Ahead, branch.Behind);
+			return label;
+		}
+
+		if (branch.Ahead > 0)
+		{
+			label += std::format("  {}{}", ICON_MDI_ARROW_UP, branch.Ahead);
+		}
+
+		if (branch.Behind > 0)
+		{
+			label += std::format("{}{}{}", branch.Ahead > 0 ? " " : "  ", ICON_MDI_ARROW_DOWN, branch.Behind);
 		}
 
 		return label;
