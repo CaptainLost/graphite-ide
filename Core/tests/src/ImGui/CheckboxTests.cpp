@@ -48,6 +48,9 @@ namespace {
 
 		void NextDisabled(bool& value) { Draw(value, DrawMode::Disabled); }
 
+		// Draws text after the box on the same line, as the review's file row does.
+		void NextWithTextAfter(bool& value) { Draw(value, DrawMode::TextAfter); }
+
 		// A point inside the box, at its centre.
 		void ClickBox(bool& value) { ClickAt(m_BoxCentre, value, DrawMode::Normal); }
 
@@ -71,12 +74,16 @@ namespace {
 
 		float GetReportedWidth() const { return m_ReportedWidth; }
 
+		// How far below the checkbox's top the text after it starts.
+		float GetTextAfterOffset() const { return m_TextAfterOffset; }
+
 	private:
 		enum class DrawMode
 		{
 			Normal,
 			Focus,
-			Disabled
+			Disabled,
+			TextAfter
 		};
 
 		void ClickAt(const ImVec2& point, bool& value, DrawMode mode)
@@ -121,6 +128,13 @@ namespace {
 			m_ItemSize = ImVec2(itemMax.x - itemMin.x, itemMax.y - itemMin.y);
 			m_ReportedWidth = Core::CheckboxWidth(m_Label);
 
+			if (mode == DrawMode::TextAfter)
+			{
+				ImGui::SameLine();
+				ImGui::TextUnformatted("M");
+				m_TextAfterOffset = ImGui::GetItemRectMin().y - itemMin.y;
+			}
+
 			ImGui::End();
 			ImGui::EndFrame();
 		}
@@ -145,6 +159,7 @@ namespace {
 		ImVec2 m_LabelPoint;
 		ImVec2 m_ItemSize;
 		float m_ReportedWidth = 0.0f;
+		float m_TextAfterOffset = 0.0f;
 		std::size_t m_Flips = 0;
 	};
 }
@@ -220,6 +235,16 @@ TEST_CASE("A checkbox whose label is only an id is as wide as its box")
 
 	CHECK(frames.GetItemSize().x == doctest::Approx(Core::kCheckboxSize));
 	CHECK(frames.GetReportedWidth() == doctest::Approx(Core::kCheckboxSize));
+}
+
+TEST_CASE("Text after a checkbox on the same line sits where it sits after a frame")
+{
+	CheckboxFrames frames{"##viewed"};
+	bool value = false;
+
+	frames.NextWithTextAfter(value);
+
+	CHECK(frames.GetTextAfterOffset() == doctest::Approx(ImGui::GetStyle().FramePadding.y));
 }
 
 TEST_CASE("A checkbox with its own outline colour flips like any other")

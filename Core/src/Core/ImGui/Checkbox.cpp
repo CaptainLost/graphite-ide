@@ -64,6 +64,9 @@ namespace Core {
 			const ImVec2 itemSize(WidthOf(labelSize), ImGui::GetFrameHeight());
 			const ImVec2 itemTopLeft = ImGui::GetCursorScreenPos();
 
+			// An invisible button leaves no text baseline behind it, so text put after the box with
+			// SameLine would sit at the top of the line instead of where it sits after a frame.
+			ImGui::AlignTextToFramePadding();
 			const bool clicked = ImGui::InvisibleButton(label, itemSize, ImGuiButtonFlags_EnableNav);
 			const ImGuiID itemId = ImGui::GetItemID();
 
