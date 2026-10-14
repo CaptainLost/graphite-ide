@@ -205,18 +205,23 @@ namespace Graphite {
 
 		void RequestLog(std::optional<std::size_t> maxCount);
 
-		std::optional<ForkSeparator> ForkSeparatorFor(const Core::LogPage& page,
-													   const std::vector<Core::Branch>& branches);
-
-		struct OwnCommitsAsked
+		struct BaseSeen
 		{
 			std::string Branch;
 			Core::Oid BaseTip;
 
-			friend bool operator==(const OwnCommitsAsked&, const OwnCommitsAsked&) = default;
+			friend bool operator==(const BaseSeen&, const BaseSeen&) = default;
 		};
 
-		std::optional<OwnCommitsAsked> m_OwnCommitsAsked;
+		static std::optional<BaseSeen> BaseOf(const std::optional<ForkBase>& fork);
+
+		std::optional<ForkSeparator> ForkSeparatorFor(const Core::LogPage& page) const;
+
+		std::optional<GitModel::OwnCommitsRequest> OwnCommitsToAsk(const std::vector<Core::Branch>& branches);
+
+		void AskAgainWhenBaseMoved(const std::vector<Core::Branch>& branches, const Core::LogPage& page);
+
+		std::optional<BaseSeen> m_BaseSeen;
 
 		GitModel& m_Model;
 		const ActiveScheme& m_Scheme;

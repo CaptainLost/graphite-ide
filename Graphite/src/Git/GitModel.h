@@ -86,12 +86,18 @@ namespace Graphite {
 		void RequestBranches();
 		void RequestStashes();
 		void RequestHead();
-		void RequestLog(Core::LogRequest request);
+		// The commits a branch has that its base lacks, asked together with the log so that the
+		// history can tell them from the rest. Label names the base for whoever draws the answer.
+		struct OwnCommitsRequest
+		{
+			Core::LogRequest Query;
+			std::string Label;
+		};
 
-		// The commits a branch has that its base lacks, kept beside the log so that the history can
-		// tell them from the rest. It is refreshed with the log, and stays until it is forgotten.
-		void RequestOwnCommits(Core::LogRequest request);
-		void ForgetOwnCommits();
+		// WARNING: The own commits land in the same update as the log they were asked with. Landing
+		// them apart shows the log for a frame without them, and a row appearing later moves the list.
+		// A log asked without them clears the old ones as it lands, not when it is asked.
+		void RequestLog(Core::LogRequest request, std::optional<OwnCommitsRequest> ownCommits = std::nullopt);
 
 		void RequestWorkingTreeDiff(Core::DiffRequest request);
 
@@ -129,6 +135,7 @@ namespace Graphite {
 		Core::Ref<const Core::HeadState> GetHead() const { return m_Head.Get(); }
 		Core::Ref<const Core::LogPage> GetLog() const { return m_Log.Get(); }
 		Core::Ref<const Core::LogPage> GetOwnCommits() const { return m_OwnLog.Get(); }
+		const std::string& GetOwnCommitsLabel() const { return m_OwnLabel; }
 
 		Core::Ref<const Core::Diff> GetWorkingTreeDiff() const
 		{
@@ -389,7 +396,8 @@ namespace Graphite {
 		std::optional<Core::LogRequest> m_LastLogRequest;
 
 		GenerationSlot<Core::LogPage> m_OwnLog;
-		std::optional<Core::LogRequest> m_LastOwnRequest;
+		std::optional<OwnCommitsRequest> m_LastOwnRequest;
+		std::string m_OwnLabel;
 
 		GenerationSlot<Core::Diff> m_WorkingTreeDiff;
 		Core::Ref<const FileTexts> m_WorkingTreeTexts;

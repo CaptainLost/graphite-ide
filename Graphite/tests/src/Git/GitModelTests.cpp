@@ -667,7 +667,7 @@ TEST_CASE("A log is not requested without an open workspace")
 	CHECK(model.GetLog() == nullptr);
 }
 
-TEST_CASE("The commits a branch owns are asked apart from the log and readable after the next update")
+TEST_CASE("The commits a branch owns land in the same update as the log they were asked with")
 {
 	FakePort port;
 	port.Log.Commits.resize(2);
@@ -675,19 +675,40 @@ TEST_CASE("The commits a branch owns are asked apart from the log and readable a
 	Graphite::GitModel model{port, RunJobsInline()};
 	model.SetRoot("C:/repo");
 
-	Core::LogRequest request;
-	request.Ref = "refs/heads/topic";
-	request.Exclude = OidWithFirstByte(7);
+	Graphite::GitModel::OwnCommitsRequest own;
+	own.Query.Ref = "refs/heads/topic";
+	own.Query.Exclude = OidWithFirstByte(7);
+	own.Label = "main";
 
-	model.RequestOwnCommits(request);
+	model.RequestLog(Core::LogRequest{}, own);
+
+	CHECK(model.GetLog() == nullptr);
+	CHECK(model.GetOwnCommits() == nullptr);
+
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
+	REQUIRE(model.GetLog() != nullptr);
 	REQUIRE(model.GetOwnCommits() != nullptr);
 	CHECK(model.GetOwnCommits()->Commits.size() == 2);
-	CHECK(model.GetLog() == nullptr);
+	CHECK(model.GetOwnCommitsLabel() == "main");
 
+	CHECK(port.LogCalls == 2);
 	REQUIRE(port.LastLogRequest.has_value());
-	CHECK(port.LastLogRequest->Exclude == request.Exclude);
+	CHECK(port.LastLogRequest->Exclude == own.Query.Exclude);
+}
+
+TEST_CASE("A log asked without own commits asks for none")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestLog(Core::LogRequest{});
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(port.LogCalls == 1);
+	CHECK(model.GetOwnCommits() == nullptr);
 }
 
 TEST_CASE("The commits a branch owns are not requested without an open workspace")
@@ -696,39 +717,37 @@ TEST_CASE("The commits a branch owns are not requested without an open workspace
 
 	Graphite::GitModel model{port, RunJobsInline()};
 
-	model.RequestOwnCommits(Core::LogRequest{});
+	model.RequestLog(Core::LogRequest{}, Graphite::GitModel::OwnCommitsRequest{});
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
 	CHECK(port.LogCalls == 0);
 	CHECK(model.GetOwnCommits() == nullptr);
 }
 
-TEST_CASE("A refresh asks the owned commits again, and a forgotten request is not asked")
+TEST_CASE("Own commits stay until the log asked without them lands, so the row they gave does not leave early")
 {
-	Core::EventBus events;
 	FakePort port;
 
 	Graphite::GitModel model{port, RunJobsInline()};
 	model.SetRoot("C:/repo");
-	model.SubscribeTo(events);
 
-	model.RequestOwnCommits(Core::LogRequest{});
-	model.OnUpdate(Core::Timestep{kNoSeconds});
-	REQUIRE(port.LogCalls == 1);
+	Graphite::GitModel::OwnCommitsRequest own;
+	own.Label = "main";
 
-	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
-	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
-	CHECK(port.LogCalls == 2);
+	model.RequestLog(Core::LogRequest{}, own);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	REQUIRE(model.GetOwnCommits() != nullptr);
 
-	model.ForgetOwnCommits();
+	model.RequestLog(Core::LogRequest{});
+	CHECK(model.GetOwnCommits() != nullptr);
+
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
 	CHECK(model.GetOwnCommits() == nullptr);
-
-	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
-	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
-	CHECK(port.LogCalls == 2);
+	CHECK(model.GetOwnCommitsLabel().empty());
 }
 
-TEST_CASE("Closing the workspace forgets the owned commits")
+TEST_CASE("A refresh asks the own commits again with the log")
 {
 	Core::EventBus events;
 	FakePort port;
@@ -737,7 +756,31 @@ TEST_CASE("Closing the workspace forgets the owned commits")
 	model.SetRoot("C:/repo");
 	model.SubscribeTo(events);
 
-	model.RequestOwnCommits(Core::LogRequest{});
+	Graphite::GitModel::OwnCommitsRequest own;
+	own.Query.Exclude = OidWithFirstByte(7);
+
+	model.RequestLog(Core::LogRequest{}, own);
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+	REQUIRE(port.LogCalls == 2);
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+
+	CHECK(port.LogCalls == 4);
+	REQUIRE(port.LastLogRequest.has_value());
+	CHECK(port.LastLogRequest->Exclude == own.Query.Exclude);
+}
+
+TEST_CASE("Closing the workspace forgets the own commits")
+{
+	Core::EventBus events;
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestLog(Core::LogRequest{}, Graphite::GitModel::OwnCommitsRequest{});
 	model.OnUpdate(Core::Timestep{kNoSeconds});
 	REQUIRE(model.GetOwnCommits() != nullptr);
 

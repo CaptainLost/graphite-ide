@@ -393,6 +393,7 @@ namespace Graphite {
 		m_SelectedStash.reset();
 		m_LastSeenBranches.reset();
 		m_PendingRename.reset();
+		m_BaseSeen.reset();
 
 		m_PageWhenAsked.reset();
 		m_LastSeenPage.reset();
@@ -738,7 +739,10 @@ namespace Graphite {
 
 	void GitView::RequestLog(std::optional<std::size_t> maxCount)
 	{
-		m_Model.RequestLog(BuildLogRequest(m_SelectedRef, m_Filter.Get(), maxCount, m_SelectedStash));
+		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
+
+		m_Model.RequestLog(BuildLogRequest(m_SelectedRef, m_Filter.Get(), maxCount, m_SelectedStash),
+						   branches ? OwnCommitsToAsk(*branches) : std::nullopt);
 
 		// WARNING: Accept tells the settling filter that this query already carries what is typed,
 		// or its wait would run out afterwards and send the same query a second time.
@@ -749,43 +753,68 @@ namespace Graphite {
 		m_Searching = true;
 	}
 
-	std::optional<ForkSeparator> GitView::ForkSeparatorFor(const Core::LogPage& page,
-															const std::vector<Core::Branch>& branches)
+	std::optional<GitView::BaseSeen> GitView::BaseOf(const std::optional<ForkBase>& fork)
 	{
+		if (!fork.has_value())
+		{
+			return std::nullopt;
+		}
+
+		return BaseSeen{.Branch = *fork->OwnCommits.Ref, .BaseTip = *fork->OwnCommits.Exclude};
+	}
+
+	std::optional<ForkSeparator> GitView::ForkSeparatorFor(const Core::LogPage& page) const
+	{
+		const Core::Ref<const Core::LogPage> own = m_Model.GetOwnCommits();
+
+		if (!own)
+		{
+			return std::nullopt;
+		}
+
+		// WARNING: The own commits land with the log they were asked with, so they belong to this page
+		// unless one of them was refreshed alone. A page that starts elsewhere is not theirs.
+		const bool startsAtOwnTip = own->Commits.empty() || (!page.Commits.empty() &&
+															  page.Commits.front().Id == own->Commits.front().Id);
+
+		if (!startsAtOwnTip)
+		{
+			return std::nullopt;
+		}
+
+		return FindForkSeparator(page, *own, m_Model.GetOwnCommitsLabel());
+	}
+
+	std::optional<GitModel::OwnCommitsRequest> GitView::OwnCommitsToAsk(const std::vector<Core::Branch>& branches)
+	{
+		const std::optional<ForkBase> fork = FindForkBase(m_SelectedRef, branches);
+
+		// WARNING: What was seen is kept even when a filter keeps the own commits from being asked, or
+		// the log would be asked again every frame that the filter and the base disagree.
+		m_BaseSeen = BaseOf(fork);
+
 		const HistoryFilter& filter = m_Filter.Get();
 		const bool showsWholeHistory = filter.Text.empty() && Core::Trimmed(filter.Path).empty() &&
 									   !m_SelectedStash.has_value();
 
-		const std::optional<ForkBase> fork =
-			showsWholeHistory ? FindForkBase(m_SelectedRef, branches) : std::nullopt;
-
-		if (!fork.has_value())
-		{
-			m_Model.ForgetOwnCommits();
-			m_OwnCommitsAsked.reset();
-			return std::nullopt;
-		}
-
-		const OwnCommitsAsked wanted{.Branch = *fork->OwnCommits.Ref, .BaseTip = *fork->OwnCommits.Exclude};
-
-		if (m_OwnCommitsAsked != wanted)
-		{
-			m_Model.ForgetOwnCommits();
-			m_Model.RequestOwnCommits(fork->OwnCommits);
-			m_OwnCommitsAsked = wanted;
-		}
-
-		// WARNING: The log is replaced when another branch is picked, a frame or more after the
-		// branches are, so a separator is only drawn on the log that starts at the branch's tip.
-		const bool isLogOfThisBranch = !page.Commits.empty() && page.Commits.front().Id == fork->BranchTip;
-		const Core::Ref<const Core::LogPage> own = m_Model.GetOwnCommits();
-
-		if (!isLogOfThisBranch || !own)
+		if (!fork.has_value() || !showsWholeHistory)
 		{
 			return std::nullopt;
 		}
 
-		return FindForkSeparator(page, *own, fork->BaseName);
+		return GitModel::OwnCommitsRequest{.Query = fork->OwnCommits, .Label = fork->BaseName};
+	}
+
+	void GitView::AskAgainWhenBaseMoved(const std::vector<Core::Branch>& branches, const Core::LogPage& page)
+	{
+		if (BaseOf(FindForkBase(m_SelectedRef, branches)) == m_BaseSeen)
+		{
+			return;
+		}
+
+		// WARNING: Asked for as many commits as are shown, so a page loaded further down is not cut
+		// back to the first one.
+		RequestLog(page.Commits.empty() ? std::nullopt : std::optional<std::size_t>{page.Commits.size()});
 	}
 
 	void GitView::UpdateForNewPage()
@@ -900,8 +929,12 @@ namespace Graphite {
 
 			const auto diffFailed = [this](const Core::Oid& commit) { return m_Model.IsDiffFailed(commit); };
 
-			const std::optional<ForkSeparator> separator =
-				ForkSeparatorFor(*page, branches ? *branches : std::vector<Core::Branch>{});
+			if (branches)
+			{
+				AskAgainWhenBaseMoved(*branches, *page);
+			}
+
+			const std::optional<ForkSeparator> separator = ForkSeparatorFor(*page);
 
 			m_Commits.Render(*page, graph, palette, LocalOffset(), diffOf, diffFailed, m_CommitRefs,
 							 m_Filter.Get().Text, m_Filter.Get().Path, separator);

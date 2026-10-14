@@ -50,7 +50,9 @@ namespace Graphite {
 		m_Log.Clear();
 
 		m_LastLogRequest.reset();
-		ForgetOwnCommits();
+		m_OwnLog.Clear();
+		m_LastOwnRequest.reset();
+		m_OwnLabel.clear();
 		m_WorkingTreeDiff.Clear();
 		m_WorkingTreeTexts.reset();
 		m_WantedWorkingTreeDiff.reset();
@@ -124,12 +126,7 @@ namespace Graphite {
 
 			if (m_LastLogRequest.has_value())
 			{
-				RequestLog(*m_LastLogRequest);
-			}
-
-			if (m_LastOwnRequest.has_value())
-			{
-				RequestOwnCommits(*m_LastOwnRequest);
+				RequestLog(*m_LastLogRequest, m_LastOwnRequest);
 			}
 
 			m_WorkingTreeDiffStale = true;
@@ -202,7 +199,7 @@ namespace Graphite {
 		});
 	}
 
-	void GitModel::RequestLog(Core::LogRequest request)
+	void GitModel::RequestLog(Core::LogRequest request, std::optional<OwnCommitsRequest> ownCommits)
 	{
 		if (!HasOpenFolder())
 		{
@@ -210,42 +207,49 @@ namespace Graphite {
 		}
 
 		const std::uint64_t generation = m_Log.Begin();
+		const std::uint64_t ownGeneration = m_OwnLog.Begin();
 
 		m_LastLogRequest = request;
+		m_LastOwnRequest = ownCommits;
 
-		m_Submit([this, generation, request = std::move(request)]() {
+		m_Submit([this, generation, ownGeneration, request = std::move(request),
+				  ownCommits = std::move(ownCommits)]() {
 			Core::Result<Core::LogPage> result = m_Port.QueryLog(request);
 
-			Deliver([this, generation, result = std::move(result)]() mutable {
-				m_Log.Land(generation, std::move(result));
+			std::optional<Core::Result<Core::LogPage>> ownResult;
+
+			if (ownCommits.has_value())
+			{
+				ownResult = m_Port.QueryLog(ownCommits->Query);
+			}
+
+			std::string label = ownCommits.has_value() ? ownCommits->Label : std::string{};
+
+			Deliver([this, generation, ownGeneration, result = std::move(result),
+					 ownResult = std::move(ownResult), label = std::move(label)]() mutable {
+				if (m_Log.Land(generation, std::move(result)) != SlotLanding::Applied)
+				{
+					return;
+				}
+
+				if (!ownResult.has_value())
+				{
+					m_OwnLog.Clear();
+					m_OwnLabel.clear();
+					return;
+				}
+
+				if (m_OwnLog.Land(ownGeneration, std::move(*ownResult)) == SlotLanding::Applied)
+				{
+					m_OwnLabel = std::move(label);
+				}
+				else
+				{
+					m_OwnLog.Clear();
+					m_OwnLabel.clear();
+				}
 			});
 		});
-	}
-
-	void GitModel::RequestOwnCommits(Core::LogRequest request)
-	{
-		if (!HasOpenFolder())
-		{
-			return;
-		}
-
-		const std::uint64_t generation = m_OwnLog.Begin();
-
-		m_LastOwnRequest = request;
-
-		m_Submit([this, generation, request = std::move(request)]() {
-			Core::Result<Core::LogPage> result = m_Port.QueryLog(request);
-
-			Deliver([this, generation, result = std::move(result)]() mutable {
-				m_OwnLog.Land(generation, std::move(result));
-			});
-		});
-	}
-
-	void GitModel::ForgetOwnCommits()
-	{
-		m_OwnLog.Clear();
-		m_LastOwnRequest.reset();
 	}
 
 	void GitModel::RequestWorkingTreeDiff(Core::DiffRequest request)
