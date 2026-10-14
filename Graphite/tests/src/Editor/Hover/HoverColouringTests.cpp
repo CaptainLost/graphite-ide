@@ -2,7 +2,7 @@
 
 #include "Editor/Hover/HoverColouring.h"
 
-#include "Language/Registry/LanguageRegistry.h"
+#include "SyntaxFixtures.h"
 
 #include <algorithm>
 #include <string>
@@ -16,14 +16,6 @@ namespace {
 
 	using Coloured = std::vector<std::pair<std::string, TokenKind>>;
 
-	std::vector<Token> Lex(std::string_view text)
-	{
-		std::vector<Token> tokens;
-		LexerFor(LanguageId::Cpp)->LexLine(text, LineState{}, tokens);
-		return tokens;
-	}
-
-	// Each span as the word it covers, in the order the words stand in `text`.
 	Coloured Words(std::string_view text, std::vector<SemanticSpan> spans)
 	{
 		std::ranges::sort(spans, {}, &SemanticSpan::From);
@@ -40,12 +32,12 @@ namespace {
 
 	Coloured DeclarationWords(std::string_view text, std::string_view name, TokenKind kind)
 	{
-		return Words(text, DeclarationSpans(text, Lex(text), name, kind));
+		return Words(text, DeclarationSpans(text, LexCppLine(text), name, kind));
 	}
 
 	Coloured ParameterWords(std::string_view text)
 	{
-		return Words(text, ParameterSpans(text, Lex(text)));
+		return Words(text, ParameterSpans(text, LexCppLine(text)));
 	}
 
 	constexpr TokenKind kType = TokenKind::SemanticType;
@@ -112,11 +104,11 @@ TEST_CASE("The aka clangd follows a type with is a type too, the word itself not
 {
 	constexpr std::string_view kReturn = "Scope<Layer> (aka std::unique_ptr<Layer>)";
 
-	CHECK(Words(kReturn, TypeSpans(kReturn, Lex(kReturn))) == Coloured{{"Scope", kType},
-																	   {"Layer", kType},
-																	   {"std", kNamespace},
-																	   {"unique_ptr", kType},
-																	   {"Layer", kType}});
+	CHECK(Words(kReturn, TypeSpans(kReturn, LexCppLine(kReturn))) == Coloured{{"Scope", kType},
+																			  {"Layer", kType},
+																			  {"std", kNamespace},
+																			  {"unique_ptr", kType},
+																			  {"Layer", kType}});
 
 	CHECK(ParameterWords("std::size_t count (aka unsigned long long)") ==
 		  Coloured{{"std", kNamespace}, {"size_t", kType}, {"count", kParameter}});

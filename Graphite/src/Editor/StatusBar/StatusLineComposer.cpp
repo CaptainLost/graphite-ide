@@ -6,7 +6,7 @@ namespace Graphite {
 
 	namespace {
 
-		std::optional<LanguageId> SettingsOf(LanguageId language)
+		std::optional<LanguageId> SettingsLanguageIfServed(LanguageId language)
 		{
 			if (!LanguageHasServers(language))
 			{
@@ -24,16 +24,16 @@ namespace Graphite {
 			{
 			case InstallJobKind::Install:
 			{
-				const std::string percent = job.Percent ? " " + std::to_string(*job.Percent) + "%" : std::string{};
+				const std::string percentSuffix = job.Percent ? " " + std::to_string(*job.Percent) + "%" : std::string{};
 
-				return ServerLine{.Text = prefix + "installing " + job.Server + percent,
+				return ServerLine{.Text = prefix + "installing " + job.Server + percentSuffix,
 								  .Detail = "Graphite is downloading and installing " + job.Server + ". It starts as soon as it is in place.",
-								  .SettingsLanguage = SettingsOf(language)};
+								  .SettingsLanguage = SettingsLanguageIfServed(language)};
 			}
 			case InstallJobKind::Uninstall:
 				return ServerLine{.Text = prefix + "uninstalling " + job.Server,
 								  .Detail = "Graphite is removing its install of " + job.Server + ".",
-								  .SettingsLanguage = SettingsOf(language)};
+								  .SettingsLanguage = SettingsLanguageIfServed(language)};
 			case InstallJobKind::CheckForUpdates:
 				break;
 			}
@@ -73,42 +73,37 @@ namespace Graphite {
 	{
 		if (inputs.ActiveJob)
 		{
-			if (std::optional<ServerLine> job = JobLine(inputs.ActiveLanguage, *inputs.ActiveJob))
+			std::optional<ServerLine> jobLine = JobLine(inputs.ActiveLanguage, *inputs.ActiveJob);
+
+			if (jobLine)
 			{
-				return job;
+				return jobLine;
 			}
 		}
 
-		if (inputs.Active.State != ServerState::NotConfigured)
+		const bool activeDocumentHasServer = inputs.Active.State != ServerState::NotConfigured;
+
+		if (activeDocumentHasServer)
 		{
-			// The active document's own language has something to say, and it outranks everything
-			// else: it is the one whose answers are about what is on screen.
-			//
-			// Named while its answers are still coming, because a ready server and a file whose
-			// colours have not arrived look identical from here otherwise - and that gap is
-			// exactly when someone wonders whether anything is happening at all.
-			return ServerLine{.Text = inputs.AnalysingFile
-										  ? AnalysingText(inputs.Active, *inputs.AnalysingFile)
-										  : ServerStatusText(inputs.Active),
+			const std::string activeText = inputs.AnalysingFile ? AnalysingText(inputs.Active, *inputs.AnalysingFile)
+																: ServerStatusText(inputs.Active);
+
+			return ServerLine{.Text = activeText,
 							  .Detail = ServerStatusDetail(inputs.Active),
-							  .SettingsLanguage = SettingsOf(inputs.Active.Language)};
+							  .SettingsLanguage = SettingsLanguageIfServed(inputs.Active.Language)};
 		}
 
 		if (std::string unserved = NoServerText(inputs.ActiveLanguage); !unserved.empty())
 		{
-			// A language recognised but unserved - a C# file with no OmniSharp. Said out loud,
-			// because the expectation of go to definition is reasonable here and silence would
-			// read as something broken rather than something absent.
 			return ServerLine{.Text = std::move(unserved),
 							  .Detail = NoServerDetail(inputs.ActiveLanguage),
-							  .SettingsLanguage = SettingsOf(inputs.ActiveLanguage)};
+							  .SettingsLanguage = SettingsLanguageIfServed(inputs.ActiveLanguage)};
 		}
 
-		if (inputs.FolderOpen && !inputs.FolderTrusted)
+		const bool folderIsRestricted = inputs.FolderOpen && !inputs.FolderTrusted;
+
+		if (folderIsRestricted)
 		{
-			// Ahead of the workspace-wide status below, not after it: that one reports the best
-			// server anywhere, which may belong to a trusted folder whose tabs are still open, and
-			// "ready" beside the restricted-mode bar reads as the bar being wrong.
 			return ServerLine{
 				.Text = "Restricted mode",
 				.Detail = "This folder is not trusted, so the language server and the background analysis "
@@ -117,14 +112,9 @@ namespace Graphite {
 
 		if (inputs.Overall && inputs.FolderOpen)
 		{
-			// Nothing to say about what is open - plain text, or no document at all - so the
-			// workspace's servers as a whole. This is what makes a server started by opening the
-			// folder visible at all: without it the bar stays blank until a file of its language
-			// is opened, which looks like the feature is not working. Only with a folder open: a
-			// server left over from the folder just closed is not the workspace's.
 			return ServerLine{.Text = ServerStatusText(*inputs.Overall),
 							  .Detail = ServerStatusDetail(*inputs.Overall),
-							  .SettingsLanguage = SettingsOf(inputs.Overall->Language)};
+							  .SettingsLanguage = SettingsLanguageIfServed(inputs.Overall->Language)};
 		}
 
 		return std::nullopt;

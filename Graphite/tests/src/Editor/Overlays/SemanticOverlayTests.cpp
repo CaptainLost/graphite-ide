@@ -18,9 +18,6 @@ namespace {
 
 TEST_CASE("A span is stored in the coordinates the lexer's own tokens use")
 {
-	// A tab expands to four, so "Renderer" at byte 1 of the raw line sits at offset 4 of the text
-	// the lexer was given. Storing the raw byte would put every colour on an indented line four
-	// characters to the left of the word it belongs to.
 	const Core::TextBuffer buffer{"\tRenderer r;\n"};
 
 	Graphite::SemanticOverlay overlay;
@@ -36,9 +33,6 @@ TEST_CASE("A span is stored in the coordinates the lexer's own tokens use")
 
 TEST_CASE("A span on a line holding a character outside ASCII keeps its byte width")
 {
-	// "ą" is two bytes and one UTF-16 unit, and expansion does not change it: the server's column
-	// 2 is byte 3, and the expanded text advances by bytes. Two conversions, each in the units its
-	// own side counts in - getting either wrong shifts the colour by one character.
 	const Core::TextBuffer buffer{"\xC4\x85 Renderer\n"};
 
 	Graphite::SemanticOverlay overlay;
@@ -111,8 +105,6 @@ TEST_CASE("An identifier takes the kind of the span that starts where it does")
 
 TEST_CASE("An identifier no span starts at keeps the colour the lexer gave it")
 {
-	// A span that merely overlaps is not a match: both sides measure the same tab-expanded
-	// text, so two identifiers that begin at different offsets are different identifiers.
 	const Graphite::Token identifier{Graphite::TokenKind::Identifier, 4, 12};
 	const std::vector<Graphite::SemanticSpan> spans{
 		{5, 12, Graphite::TokenKind::SemanticType}};
@@ -122,9 +114,6 @@ TEST_CASE("An identifier no span starts at keeps the colour the lexer gave it")
 
 TEST_CASE("A token that is not an identifier is never recoloured")
 {
-	// The lexer knows a keyword is a keyword. A server names identifiers, so a span reaching
-	// one of these is a coordinate error, and taking its colour would spread that error onto
-	// the screen instead of ignoring it.
 	const Graphite::Token keyword{Graphite::TokenKind::Keyword, 0, 6};
 	const std::vector<Graphite::SemanticSpan> spans{
 		{0, 6, Graphite::TokenKind::SemanticFunction}};

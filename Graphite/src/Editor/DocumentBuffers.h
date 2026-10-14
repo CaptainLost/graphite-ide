@@ -15,9 +15,6 @@ namespace Graphite {
 
 	class DocumentWindows;
 
-	// EditorBuffers over the open documents. Reads the set directly; everything that writes or
-	// reloads goes through DocumentWindows, which owns the bookkeeping around a reload (the
-	// language server, lenses, the status message).
 	class DocumentBuffers final : public EditorBuffers
 	{
 	public:

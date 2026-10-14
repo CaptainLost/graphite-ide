@@ -14,12 +14,14 @@ namespace Graphite {
 
 	namespace {
 
-		// Everything the lexer calls text rather than code. A bracket in one of these is a
-		// character of prose, not a delimiter, so neither end of a pair may sit in one and the
-		// partner search reads straight past them.
+		bool IsText(TokenKind kind)
+		{
+			return kind == TokenKind::String || kind == TokenKind::Character || kind == TokenKind::Comment || kind == TokenKind::Preprocessor;
+		}
+
 		bool IsCode(TokenKind kind)
 		{
-			return kind != TokenKind::String && kind != TokenKind::Character && kind != TokenKind::Comment && kind != TokenKind::Preprocessor;
+			return !IsText(kind);
 		}
 
 		bool IsOpen(char bracket)
@@ -32,10 +34,8 @@ namespace Graphite {
 			return bracket == ')' || bracket == ']' || bracket == '}';
 		}
 
-		// Only the three shapes that are always delimiters. Angle brackets are left out on
-		// purpose: `a < b` and `vector<int>` are the same two characters, and telling them apart
-		// needs a parser rather than a scan.
-		char Opposite(char bracket)
+		// WARNING: Angle brackets are left out on purpose. `a < b` and `vector<int>` are the same two characters, and telling them apart needs a parser rather than a scan.
+		char PartnerOf(char bracket)
 		{
 			switch (bracket)
 			{
@@ -56,21 +56,16 @@ namespace Graphite {
 			}
 		}
 
-		// What the lexer made of the byte at `byteInLine`. Tokens the cache holds are offsets
-		// into the TAB-EXPANDED line, so the raw byte has to be expanded before it can be
-		// compared against a range — ExpandedOffsetOfByte and not ColumnOfByte, which counts a
-		// column per character and so only agrees with the expanded string on ASCII.
-		//
-		// A byte in a gap between tokens is whitespace, which is code for this purpose.
+		// WARNING: Cached tokens are offsets into the tab-expanded line, so the raw byte is expanded with ExpandedOffsetOfByte. ColumnOfByte counts a column per character and agrees only on ASCII.
 		TokenKind KindAt(SyntaxCache& syntax, const Core::TextBuffer& buffer, std::size_t line,
 						 std::string_view lineText, std::size_t byteInLine, std::size_t tabWidth)
 		{
-			const std::size_t expanded =
+			const std::size_t expandedOffset =
 				Core::ExpandedOffsetOfByte(lineText, byteInLine, tabWidth);
 
 			for (const Token& token : syntax.TokensOf(buffer, line))
 			{
-				if (expanded >= token.From && expanded < token.To)
+				if (expandedOffset >= token.From && expandedOffset < token.To)
 				{
 					return token.Kind;
 				}
@@ -79,8 +74,6 @@ namespace Graphite {
 			return TokenKind::Text;
 		}
 
-		// The bracket at `offset`, or nothing when that byte is not one or is inside a string,
-		// character, comment or preprocessor line.
 		std::optional<char> BracketAt(const Core::TextBuffer& buffer, SyntaxCache& syntax,
 									  std::size_t offset, std::size_t tabWidth)
 		{
@@ -108,14 +101,11 @@ namespace Graphite {
 			return bracket;
 		}
 
-		// The offset of the bracket closing the `open` one, reading forwards from `from` — the
-		// byte just past that opening bracket. Depth starts at one and the answer is the bracket
-		// that brings it back to zero, so a nested pair of the same shape does not steal it.
 		std::optional<std::size_t> ScanForward(const Core::TextBuffer& buffer, SyntaxCache& syntax,
-											   std::size_t from, char open, std::size_t tabWidth)
+											   std::size_t firstOffset, char open, std::size_t tabWidth)
 		{
-			const char close = Opposite(open);
-			const std::size_t startLine = buffer.ToPosition(from).Line;
+			const char close = PartnerOf(open);
+			const std::size_t startLine = buffer.ToPosition(firstOffset).Line;
 			const std::size_t lastLine =
 				std::min(buffer.GetLineCount() - 1, startLine + kBracketScanLines);
 
@@ -125,18 +115,18 @@ namespace Graphite {
 			{
 				const std::string lineText = buffer.LineText(line);
 				const std::size_t lineStart = buffer.LineStart(line);
-				const std::size_t first = line == startLine ? from - lineStart : 0;
+				const std::size_t firstByte = line == startLine ? firstOffset - lineStart : 0;
 
-				for (std::size_t at = first; at < lineText.size(); ++at)
+				for (std::size_t byteInLine = firstByte; byteInLine < lineText.size(); ++byteInLine)
 				{
-					const char bracket = lineText[at];
+					const char bracket = lineText[byteInLine];
 
 					if (bracket != open && bracket != close)
 					{
 						continue;
 					}
 
-					if (!IsCode(KindAt(syntax, buffer, line, lineText, at, tabWidth)))
+					if (!IsCode(KindAt(syntax, buffer, line, lineText, byteInLine, tabWidth)))
 					{
 						continue;
 					}
@@ -149,7 +139,7 @@ namespace Graphite {
 
 					if (--depth == 0)
 					{
-						return lineStart + at;
+						return lineStart + byteInLine;
 					}
 				}
 			}
@@ -157,35 +147,33 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		// The mirror of ScanForward: `end` is the offset of the closing bracket itself, and the
-		// scan reads the bytes strictly before it, backwards.
 		std::optional<std::size_t> ScanBackward(const Core::TextBuffer& buffer, SyntaxCache& syntax,
-												std::size_t end, char close, std::size_t tabWidth)
+												std::size_t closeOffset, char close, std::size_t tabWidth)
 		{
-			const char open = Opposite(close);
-			const Core::Position start = buffer.ToPosition(end);
+			const char open = PartnerOf(close);
+			const Core::Position closePosition = buffer.ToPosition(closeOffset);
 			const std::size_t firstLine =
-				start.Line > kBracketScanLines ? start.Line - kBracketScanLines : 0;
+				closePosition.Line > kBracketScanLines ? closePosition.Line - kBracketScanLines : 0;
 
 			std::size_t depth = 1;
 
-			for (std::size_t line = start.Line + 1; line-- > firstLine;)
+			for (std::size_t line = closePosition.Line + 1; line-- > firstLine;)
 			{
 				const std::string lineText = buffer.LineText(line);
 				const std::size_t lineStart = buffer.LineStart(line);
-				const std::size_t past =
-					line == start.Line ? std::min(start.Column, lineText.size()) : lineText.size();
+				const std::size_t endByte =
+					line == closePosition.Line ? std::min(closePosition.Column, lineText.size()) : lineText.size();
 
-				for (std::size_t at = past; at-- > 0;)
+				for (std::size_t byteInLine = endByte; byteInLine-- > 0;)
 				{
-					const char bracket = lineText[at];
+					const char bracket = lineText[byteInLine];
 
 					if (bracket != open && bracket != close)
 					{
 						continue;
 					}
 
-					if (!IsCode(KindAt(syntax, buffer, line, lineText, at, tabWidth)))
+					if (!IsCode(KindAt(syntax, buffer, line, lineText, byteInLine, tabWidth)))
 					{
 						continue;
 					}
@@ -198,7 +186,7 @@ namespace Graphite {
 
 					if (--depth == 0)
 					{
-						return lineStart + at;
+						return lineStart + byteInLine;
 					}
 				}
 			}
@@ -210,17 +198,16 @@ namespace Graphite {
 	std::optional<BracketPair> FindBracketPair(const Core::TextBuffer& buffer, SyntaxCache& syntax,
 											   std::size_t caret)
 	{
+		// WARNING: The tab width comes from the cache, never a parameter. A width that disagreed with the one the tokens were produced with would map bytes onto the wrong token.
 		const std::size_t tabWidth = syntax.GetTabWidth();
 
-		// The bracket after the caret wins; only when there is none does the one before it
-		// count, which is what puts a highlight on the `)` a caret has just been typed past.
-		std::size_t at = caret;
+		std::size_t bracketOffset = caret;
 		std::optional<char> bracket = BracketAt(buffer, syntax, caret, tabWidth);
 
 		if (!bracket && caret > 0)
 		{
-			at = caret - 1;
-			bracket = BracketAt(buffer, syntax, at, tabWidth);
+			bracketOffset = caret - 1;
+			bracket = BracketAt(buffer, syntax, bracketOffset, tabWidth);
 		}
 
 		if (!bracket)
@@ -231,26 +218,24 @@ namespace Graphite {
 		if (IsOpen(*bracket))
 		{
 			const std::optional<std::size_t> close =
-				ScanForward(buffer, syntax, at + 1, *bracket, tabWidth);
+				ScanForward(buffer, syntax, bracketOffset + 1, *bracket, tabWidth);
 
 			if (close)
 			{
-				return BracketPair{at, *close, true};
+				return BracketPair{.Open = bracketOffset, .Close = *close, .Matched = true};
 			}
 		}
 		else
 		{
 			const std::optional<std::size_t> open =
-				ScanBackward(buffer, syntax, at, *bracket, tabWidth);
+				ScanBackward(buffer, syntax, bracketOffset, *bracket, tabWidth);
 
 			if (open)
 			{
-				return BracketPair{*open, at, true};
+				return BracketPair{.Open = *open, .Close = bracketOffset, .Matched = true};
 			}
 		}
 
-		// On a bracket, but its partner is missing or further away than the scan reads. Both
-		// offsets are the bracket's own, and the caller draws it in the unmatched colour.
-		return BracketPair{at, at, false};
+		return BracketPair{.Open = bracketOffset, .Close = bracketOffset, .Matched = false};
 	}
 }

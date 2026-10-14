@@ -8,7 +8,7 @@
 
 namespace Graphite {
 
-	std::optional<HoverToken> TokenUnderByte(std::string_view rawLine, std::size_t line,
+	std::optional<HoverToken> TokenUnderByte(std::string_view rawLine, std::size_t lineNumber,
 											 std::size_t rawByte,
 											 const std::vector<Token>& rawTokens)
 	{
@@ -24,16 +24,14 @@ namespace Graphite {
 				continue;
 			}
 
-			// Clamped rather than trusted: a token list from another revision of the line could
-			// otherwise name bytes this line does not have.
-			const std::size_t to = std::min(token.To, rawLine.size());
+			const std::size_t clampedTo = std::min(token.To, rawLine.size());
 
-			if (token.From >= to)
+			if (token.From >= clampedTo)
 			{
 				return std::nullopt;
 			}
 
-			return HoverToken{line, token.From, to};
+			return HoverToken{lineNumber, token.From, clampedTo};
 		}
 
 		return std::nullopt;
@@ -48,27 +46,27 @@ namespace Graphite {
 	std::size_t RawByteOfExpanded(std::string_view rawLine, std::string_view expandedLine,
 								  std::size_t expandedByte, std::size_t tabWidth)
 	{
-		// Through the column both lines share: the expanded line holds no tabs, so its column of
-		// a byte is a count of characters, and the raw line's byte of that column walks its tabs.
-		// Not byte arithmetic, because a multi-byte character and a tab advance the two lines at
-		// different rates.
-		return Core::ByteOfColumn(rawLine, Core::ColumnOfByte(expandedLine, expandedByte, tabWidth),
-								  tabWidth);
+		// WARNING: Goes through the column both lines share, not byte arithmetic: a multi-byte
+		// character and a tab advance the two lines at different rates.
+		const std::size_t sharedColumn = Core::ColumnOfByte(expandedLine, expandedByte, tabWidth);
+
+		return Core::ByteOfColumn(rawLine, sharedColumn, tabWidth);
 	}
 
 	std::vector<Token> RawTokensOf(std::string_view rawLine, std::string_view expandedLine,
 								   const std::vector<Token>& expandedTokens, std::size_t tabWidth)
 	{
-		std::vector<Token> raw;
-		raw.reserve(expandedTokens.size());
+		std::vector<Token> rawTokens;
+		rawTokens.reserve(expandedTokens.size());
 
 		for (const Token& token : expandedTokens)
 		{
-			raw.push_back(Token{token.Kind,
-								RawByteOfExpanded(rawLine, expandedLine, token.From, tabWidth),
-								RawByteOfExpanded(rawLine, expandedLine, token.To, tabWidth)});
+			const std::size_t rawFrom = RawByteOfExpanded(rawLine, expandedLine, token.From, tabWidth);
+			const std::size_t rawTo = RawByteOfExpanded(rawLine, expandedLine, token.To, tabWidth);
+
+			rawTokens.push_back(Token{token.Kind, rawFrom, rawTo});
 		}
 
-		return raw;
+		return rawTokens;
 	}
 }

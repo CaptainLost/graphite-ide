@@ -6,53 +6,56 @@
 
 namespace Graphite {
 
-	LineRange DefinitionExtent(std::span<const std::string_view> lines, std::span<const std::vector<Token>> tokens,
-							   std::size_t firstLine)
+	namespace {
+
+		bool IsSingleCharacterPunctuation(const Token& token)
+		{
+			return token.Kind == TokenKind::Punctuation && token.To - token.From == 1;
+		}
+	}
+
+	DefinitionLineRange DefinitionExtent(std::span<const std::string_view> linesFromFirstLine,
+										 std::span<const std::vector<Token>> tokensPerLine, std::size_t firstLine)
 	{
-		LineRange range{firstLine, firstLine};
+		DefinitionLineRange range{firstLine, firstLine};
 
-		int depth = 0;
-		bool opened = false;
-		std::size_t lastSeen = firstLine;
-		std::optional<std::size_t> closedAt;
+		int braceDepth = 0;
+		bool hasOpenedBrace = false;
+		std::size_t lastScannedLine = firstLine;
+		std::optional<std::size_t> braceClosedAtLine;
 
-		const std::size_t scannedCount = std::min({lines.size(), tokens.size(), kDefinitionScanLines});
+		const std::size_t scannedCount =
+			std::min({linesFromFirstLine.size(), tokensPerLine.size(), kDefinitionScanLines});
 
 		for (std::size_t lineIndex = 0; lineIndex < scannedCount; ++lineIndex)
 		{
 			const std::size_t line = firstLine + lineIndex;
-			const std::string_view text = lines[lineIndex];
+			const std::string_view text = linesFromFirstLine[lineIndex];
 
-			lastSeen = line;
+			lastScannedLine = line;
 
-			// The lexer is what says a brace is code: one inside a string, a character literal or
-			// a comment is a different token kind and never reaches the counting below.
-			for (const Token& token : tokens[lineIndex])
+			for (const Token& token : tokensPerLine[lineIndex])
 			{
-				if (closedAt)
+				if (braceClosedAtLine)
 				{
 					if (token.Kind == TokenKind::Comment)
 					{
 						continue;
 					}
 
-					const bool single =
-						token.Kind == TokenKind::Punctuation && token.To - token.From == 1;
-					const char next = single ? text[token.From] : '\0';
+					const char nextPunctuation = IsSingleCharacterPunctuation(token) ? text[token.From] : '\0';
+					const bool continuesDeclaration = nextPunctuation == ',' || nextPunctuation == '{';
 
-					// A brace group closing at depth 0 is the end of the definition unless a
-					// member initialiser follows: "a{1}, b{2} {" continues with another member or
-					// the body.
-					if (next != ',' && next != '{')
+					if (!continuesDeclaration)
 					{
-						range.Last = *closedAt;
+						range.Last = *braceClosedAtLine;
 						return range;
 					}
 
-					closedAt.reset();
+					braceClosedAtLine.reset();
 				}
 
-				if (token.Kind != TokenKind::Punctuation || token.To - token.From != 1)
+				if (!IsSingleCharacterPunctuation(token))
 				{
 					continue;
 				}
@@ -61,22 +64,19 @@ namespace Graphite {
 
 				if (punctuation == '{')
 				{
-					++depth;
-					opened = true;
+					++braceDepth;
+					hasOpenedBrace = true;
 				}
 				else if (punctuation == '}')
 				{
-					--depth;
+					--braceDepth;
 
-					if (opened && depth == 0)
+					if (hasOpenedBrace && braceDepth == 0)
 					{
-						// The next significant token decides, possibly on a later line; "};"
-						// ends on this line because the ";" is neither a comma nor an opening
-						// brace.
-						closedAt = line;
+						braceClosedAtLine = line;
 					}
 				}
-				else if (punctuation == ';' && depth == 0)
+				else if (punctuation == ';' && braceDepth == 0)
 				{
 					range.Last = line;
 					return range;
@@ -84,15 +84,13 @@ namespace Graphite {
 			}
 		}
 
-		// The text or the scan ended right after a closing brace: that brace is the end.
-		if (closedAt)
+		if (braceClosedAtLine)
 		{
-			range.Last = *closedAt;
+			range.Last = *braceClosedAtLine;
 			return range;
 		}
 
-		// No end found within the scan, or the text ran out: show a screenful rather than nothing.
-		range.Last = std::min(firstLine + kDefinitionFallbackLines - 1, lastSeen);
+		range.Last = std::min(firstLine + kDefinitionFallbackLines - 1, lastScannedLine);
 		return range;
 	}
 }

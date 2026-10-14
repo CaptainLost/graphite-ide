@@ -10,7 +10,6 @@ namespace {
 
 	using Graphite::Utf16Column;
 
-	// Opens the way DocumentWindows would for a file inside the size limit.
 	Graphite::OpenDocument OpenPermanently(Core::DocumentSet& documents)
 	{
 		return [&documents](const std::filesystem::path& path) { documents.Open(path, Core::TabKind::Permanent); };
@@ -20,7 +19,7 @@ namespace {
 TEST_CASE("A byte range on a line is selected and the editor is told to scroll to it")
 {
 	TempDirectory directory;
-	const auto path = directory.MakeFile("a.cpp", "first\nsecond line\n");
+	const std::filesystem::path path = directory.MakeFile("a.cpp", "first\nsecond line\n");
 
 	Core::DocumentSet documents;
 
@@ -36,7 +35,7 @@ TEST_CASE("A byte range on a line is selected and the editor is told to scroll t
 TEST_CASE("A range past the end of a shrunk file is clamped rather than read past it")
 {
 	TempDirectory directory;
-	const auto path = directory.MakeFile("a.cpp", "abc\n");
+	const std::filesystem::path path = directory.MakeFile("a.cpp", "abc\n");
 
 	Core::DocumentSet documents;
 
@@ -48,7 +47,7 @@ TEST_CASE("A range past the end of a shrunk file is clamped rather than read pas
 TEST_CASE("Nothing is selected when the opener produced no document")
 {
 	TempDirectory directory;
-	const auto path = directory.GetPath() / "missing.cpp";
+	const std::filesystem::path path = directory.GetPath() / "missing.cpp";
 
 	Core::DocumentSet documents;
 	bool opened = false;
@@ -61,8 +60,7 @@ TEST_CASE("Nothing is selected when the opener produced no document")
 TEST_CASE("UTF-16 columns are converted to bytes against the line's own text")
 {
 	TempDirectory directory;
-	// "é" is two bytes but one UTF-16 unit, so columns 3..6 name bytes 4..7.
-	const auto path = directory.MakeFile("a.txt", "x\n\xc3\xa9 abcd\n");
+	const std::filesystem::path path = directory.MakeFile("a.txt", "x\n\xc3\xa9 abcd\n");
 
 	Core::DocumentSet documents;
 
@@ -77,7 +75,7 @@ TEST_CASE("UTF-16 columns are converted to bytes against the line's own text")
 TEST_CASE("A UTF-16 range that leaves its line selects only the point it starts at")
 {
 	TempDirectory directory;
-	const auto path = directory.MakeFile("a.txt", "abcdef\nghi\n");
+	const std::filesystem::path path = directory.MakeFile("a.txt", "abcdef\nghi\n");
 
 	Core::DocumentSet documents;
 

@@ -9,10 +9,10 @@
 #include <vector>
 
 using Graphite::DefinitionExtent;
-using Graphite::LineRange;
+using Graphite::DefinitionLineRange;
 
 namespace {
-	LineRange ExtentIn(Graphite::LanguageId language, const std::vector<std::string>& lines, std::size_t start)
+	DefinitionLineRange ExtentIn(Graphite::LanguageId language, const std::vector<std::string>& lines, std::size_t start)
 	{
 		std::vector<std::string_view> scanned;
 
@@ -27,7 +27,7 @@ namespace {
 		return DefinitionExtent(scanned, tokens, start);
 	}
 
-	LineRange ExtentOf(const std::vector<std::string>& lines, std::size_t start)
+	DefinitionLineRange ExtentOf(const std::vector<std::string>& lines, std::size_t start)
 	{
 		return ExtentIn(Graphite::LanguageId::Cpp, lines, start);
 	}
@@ -37,7 +37,7 @@ TEST_CASE("A function body ends at its matching brace")
 {
 	const std::vector<std::string> lines{"int Sum(int a, int b)", "{", "    return a + b;", "}",
 										 "int Next;"};
-	const LineRange range = ExtentOf(lines, 0);
+	const DefinitionLineRange range = ExtentOf(lines, 0);
 
 	CHECK(range.First == 0);
 	CHECK(range.Last == 3);
@@ -76,12 +76,12 @@ TEST_CASE("An unbalanced brace falls back to twenty lines")
 {
 	std::vector<std::string> lines{"void F() {"};
 
-	for (int i = 0; i < 30; ++i)
+	for (int lineCount = 0; lineCount < 30; ++lineCount)
 	{
 		lines.push_back("  x();");
 	}
 
-	const LineRange range = ExtentOf(lines, 0);
+	const DefinitionLineRange range = ExtentOf(lines, 0);
 
 	CHECK(range.First == 0);
 	CHECK(range.Last == 19);
@@ -89,7 +89,7 @@ TEST_CASE("An unbalanced brace falls back to twenty lines")
 
 TEST_CASE("The fallback is cut short at the end of the text")
 {
-	const LineRange range = ExtentOf({"void F() {", "  x();"}, 0);
+	const DefinitionLineRange range = ExtentOf({"void F() {", "  x();"}, 0);
 
 	CHECK(range.Last == 1);
 }
@@ -141,7 +141,7 @@ TEST_CASE("An expression-bodied member with an interpolation ends at its semicol
 {
 	const std::vector<std::string> lines{R"(public string Describe() => $"{Name} is ")", "    + Age.ToString();", "public int Age { get; }"};
 
-	const LineRange range = ExtentIn(Graphite::LanguageId::CSharp, lines, 0);
+	const DefinitionLineRange range = ExtentIn(Graphite::LanguageId::CSharp, lines, 0);
 
 	CHECK(range.First == 0);
 	CHECK(range.Last == 1);
@@ -150,7 +150,7 @@ TEST_CASE("An expression-bodied member with an interpolation ends at its semicol
 TEST_CASE("A C# class ends at its matching brace")
 {
 	const std::vector<std::string> lines{"public class Widget", "{", "    public int Count { get; set; }", "}", "class Next { }"};
-	const LineRange range = ExtentIn(Graphite::LanguageId::CSharp, lines, 0);
+	const DefinitionLineRange range = ExtentIn(Graphite::LanguageId::CSharp, lines, 0);
 
 	CHECK(range.First == 0);
 	CHECK(range.Last == 3);

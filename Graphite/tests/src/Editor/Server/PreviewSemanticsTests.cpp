@@ -12,9 +12,11 @@ using namespace Graphite;
 
 namespace {
 
-	// Records what it was told instead of talking to a process. Every claim this feature makes
-	// about a server — one didOpen for two panes, none for a file with a tab, one didClose and
-	// not before its time — is a claim about this log.
+	constexpr std::size_t kTabWidth = 4;
+	constexpr std::size_t kWiderTabWidth = 8;
+	constexpr bool kTabHoldsDocument = true;
+	constexpr bool kPreviewOwnsDocument = false;
+
 	class FakePort final : public PreviewServerPort
 	{
 	public:
@@ -84,7 +86,7 @@ TEST_CASE("Declaring a file opens it with the server and asks for its tokens")
 	const Core::TextBuffer buffer{"Renderer r;\n"};
 
 	semantics.Tick(1, 0.0);
-	semantics.Declare("a.cpp", buffer, 4, false);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 
 	REQUIRE(port.Calls.size() == 2);
 	CHECK(port.Calls[0].What == "open");
@@ -99,8 +101,8 @@ TEST_CASE("Two panes showing one file share a single open and a single request")
 	const Core::TextBuffer buffer{"Renderer r;\n"};
 
 	semantics.Tick(1, 0.0);
-	semantics.Declare("a.cpp", buffer, 4, false);
-	semantics.Declare("a.cpp", buffer, 4, false);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 
 	CHECK(port.CountOf("open") == 1);
 	CHECK(port.CountOf("ask") == 1);
@@ -108,15 +110,12 @@ TEST_CASE("Two panes showing one file share a single open and a single request")
 
 TEST_CASE("A file a tab already holds is asked about but never opened")
 {
-	// The editor sent the didOpen and is still drawing the document. A second one here would be
-	// a duplicate, and the didClose that eventually follows it would pull the file out from
-	// under DocumentWindows.
 	FakePort port;
 	PreviewSemantics semantics{port};
 	const Core::TextBuffer buffer{"Renderer r;\n"};
 
 	semantics.Tick(1, 0.0);
-	semantics.Declare("a.cpp", buffer, 4, true);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kTabHoldsDocument);
 
 	CHECK(port.CountOf("open") == 0);
 	CHECK(port.CountOf("ask") == 1);
@@ -124,9 +123,6 @@ TEST_CASE("A file a tab already holds is asked about but never opened")
 
 TEST_CASE("Holds answers for the didOpen this class sent, and for no other")
 {
-	// What WorkspaceAnalysis asks before it opens or closes a document of its own: a file this
-	// class holds must not be closed by anybody else, and a file it is only riding a tab's didOpen
-	// for is not this class's to speak for.
 	FakePort port;
 	PreviewSemantics semantics{port};
 	const Core::TextBuffer buffer{"Renderer r;\n"};
@@ -134,27 +130,23 @@ TEST_CASE("Holds answers for the didOpen this class sent, and for no other")
 	CHECK_FALSE(semantics.Holds("a.cpp"));
 
 	semantics.Tick(1, 0.0);
-	semantics.Declare("a.cpp", buffer, 4, false);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 
 	CHECK(semantics.Holds("a.cpp"));
 	CHECK_FALSE(semantics.Holds("b.cpp"));
 
-	// A tab took over: the didOpen is disowned, so this is no longer the holder even though the
-	// entry is still here and still being asked about.
 	semantics.Tick(2, 0.0);
-	semantics.Declare("a.cpp", buffer, 4, true);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kTabHoldsDocument);
 
 	CHECK_FALSE(semantics.Holds("a.cpp"));
 
-	// And the pane that only ever rode a tab's didOpen never claims one.
 	semantics.Tick(3, 0.0);
-	semantics.Declare("c.cpp", buffer, 4, true);
+	semantics.Declare("c.cpp", buffer, kTabWidth, kTabHoldsDocument);
 
 	CHECK_FALSE(semantics.Holds("c.cpp"));
 
-	// Stops holding once the entry is dropped for want of a declaration.
 	semantics.Tick(4, 0.0);
-	semantics.Declare("d.cpp", buffer, 4, false);
+	semantics.Declare("d.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 
 	CHECK(semantics.Holds("d.cpp"));
 
@@ -171,7 +163,7 @@ TEST_CASE("An answer colours the file it was asked about")
 	const Core::TextBuffer buffer{"Renderer r;\n"};
 
 	semantics.Tick(1, 0.0);
-	semantics.Declare("a.cpp", buffer, 4, false);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 
 	CHECK(semantics.Apply(Tokens(static_cast<LanguageServices::Ticket>(1),
 								 {At(0, 0, 8, SemanticKind::Type)})));
@@ -207,9 +199,8 @@ TEST_CASE("A file nobody declares is closed, but not in the frame the declaratio
 	const Core::TextBuffer buffer{"Renderer r;\n"};
 
 	semantics.Tick(1, 0.0);
-	semantics.Declare("a.cpp", buffer, 4, false);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 
-	// The frame after the last declaration: the grace frame, and nothing closes in it.
 	semantics.Tick(2, 0.1);
 	CHECK(port.CountOf("close") == 0);
 
@@ -219,22 +210,15 @@ TEST_CASE("A file nobody declares is closed, but not in the frame the declaratio
 
 TEST_CASE("A declaration inside the grace frame closes nothing and asks nothing again")
 {
-	// A pane's selection can drop for one frame while its groups are rebuilt. Paying a full
-	// re-parse for that blink is exactly what the grace frame exists to prevent.
 	FakePort port;
 	PreviewSemantics semantics{port};
 	const Core::TextBuffer buffer{"Renderer r;\n"};
 
 	semantics.Tick(1, 0.0);
-	semantics.Declare("a.cpp", buffer, 4, false);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 
-	// The redeclare lands inside the grace frame itself (between Tick(2) and Tick(3)) — that is
-	// the blink this case is about. A redeclare arriving only once frame 3's Tick has already
-	// run the close check would be a frame too late to save anything: closing is decided
-	// synchronously inside that Tick, from the call history alone, the same way the previous
-	// case proves it.
 	semantics.Tick(2, 0.1);
-	semantics.Declare("a.cpp", buffer, 4, false);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 
 	semantics.Tick(3, 0.2);
 
@@ -250,7 +234,7 @@ TEST_CASE("A file a tab holds is never closed from here")
 	const Core::TextBuffer buffer{"Renderer r;\n"};
 
 	semantics.Tick(1, 0.0);
-	semantics.Declare("a.cpp", buffer, 4, true);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kTabHoldsDocument);
 
 	semantics.Tick(2, 0.1);
 	semantics.Tick(3, 0.2);
@@ -265,14 +249,14 @@ TEST_CASE("An edit to a document with a tab drops its colours and asks again")
 	Core::TextBuffer buffer{"Renderer r;\n"};
 
 	semantics.Tick(1, 0.0);
-	semantics.Declare("a.cpp", buffer, 4, true);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kTabHoldsDocument);
 	REQUIRE(semantics.Apply(Tokens(static_cast<LanguageServices::Ticket>(1),
 								   {At(0, 0, 8, SemanticKind::Type)})));
 
 	buffer.Insert(0, "const ");
 
 	semantics.Tick(2, 0.1);
-	semantics.Declare("a.cpp", buffer, 4, true);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kTabHoldsDocument);
 
 	CHECK(port.CountOf("ask") == 2);
 	CHECK(semantics.SpansOn("a.cpp", 0).empty());
@@ -280,19 +264,17 @@ TEST_CASE("An edit to a document with a tab drops its colours and asks again")
 
 TEST_CASE("A tab width change drops the colours and asks again")
 {
-	// The overlay's offsets are measured in tab-expanded text, so every span on a line holding a
-	// tab moves when the width does.
 	FakePort port;
 	PreviewSemantics semantics{port};
 	const Core::TextBuffer buffer{"\tRenderer r;\n"};
 
 	semantics.Tick(1, 0.0);
-	semantics.Declare("a.cpp", buffer, 4, false);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 	REQUIRE(semantics.Apply(Tokens(static_cast<LanguageServices::Ticket>(1),
 								   {At(0, 1, 8, SemanticKind::Type)})));
 
 	semantics.Tick(2, 0.1);
-	semantics.Declare("a.cpp", buffer, 8, false);
+	semantics.Declare("a.cpp", buffer, kWiderTabWidth, kPreviewOwnsDocument);
 
 	CHECK(port.CountOf("ask") == 2);
 	CHECK(port.CountOf("open") == 1);
@@ -306,15 +288,13 @@ TEST_CASE("An answer whose ticket has been superseded is dropped")
 	Core::TextBuffer buffer{"Renderer r;\n"};
 
 	semantics.Tick(1, 0.0);
-	semantics.Declare("a.cpp", buffer, 4, true);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kTabHoldsDocument);
 
 	buffer.Insert(0, "const ");
 
 	semantics.Tick(2, 0.1);
-	semantics.Declare("a.cpp", buffer, 4, true);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kTabHoldsDocument);
 
-	// The first request's answer, arriving after the edit made it obsolete. Applying it would
-	// colour words that have moved six characters to the right.
 	CHECK_FALSE(semantics.Apply(Tokens(static_cast<LanguageServices::Ticket>(1),
 									   {At(0, 0, 8, SemanticKind::Type)})));
 	CHECK(semantics.SpansOn("a.cpp", 0).empty());
@@ -327,7 +307,7 @@ TEST_CASE("A failed request is tried again, but only after its retry clock")
 	const Core::TextBuffer buffer{"Renderer r;\n"};
 
 	semantics.Tick(1, 0.0);
-	semantics.Declare("a.cpp", buffer, 4, false);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 
 	LanguageServices::Answer failed;
 	failed.For = static_cast<LanguageServices::Ticket>(1);
@@ -336,32 +316,25 @@ TEST_CASE("A failed request is tried again, but only after its retry clock")
 	REQUIRE(semantics.Apply(failed));
 
 	semantics.Tick(2, 0.5);
-	semantics.Declare("a.cpp", buffer, 4, false);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 	CHECK(port.CountOf("ask") == 1);
 
 	semantics.Tick(3, 2.5);
-	semantics.Declare("a.cpp", buffer, 4, false);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 	CHECK(port.CountOf("ask") == 2);
 }
 
 TEST_CASE("A tab taking over a previewed file does not close it, and stays quiet after")
 {
-	// The gesture double-clicking a hit produces: the pane keeps declaring the same path, but
-	// editorHolds flips true once OpenAndSelect gives it a tab. Before Declare reconciled the
-	// flag, the entry kept Opened == true from the preview's own didOpen, and the next Tick
-	// with nothing declaring it would send a didClose for a file the tab is still drawing.
 	FakePort port;
 	PreviewSemantics semantics{port};
 	const Core::TextBuffer buffer{"Renderer r;\n"};
 
 	semantics.Tick(1, 0.0);
-	semantics.Declare("a.cpp", buffer, 4, false);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 	semantics.Tick(2, 0.1);
-	semantics.Declare("a.cpp", buffer, 4, true);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kTabHoldsDocument);
 
-	// Nothing declares it any more — the same as the tab keeping it alive and the pane moving
-	// its selection elsewhere. The grace frame and the frame after it both have to stay quiet:
-	// this class must not believe it still owns a didOpen it handed off to the tab.
 	semantics.Tick(3, 0.2);
 	semantics.Tick(4, 0.3);
 
@@ -370,18 +343,14 @@ TEST_CASE("A tab taking over a previewed file does not close it, and stays quiet
 
 TEST_CASE("A tab closing over a previewed file reopens it here")
 {
-	// The reverse gesture: a file with a tab is previewed (editorHolds == true, so this class
-	// never opened it), the tab closes, PruneDocumentStates sends its own didClose, and the
-	// pane keeps declaring the same path with editorHolds now false. Before the fix the entry
-	// ignored the flip, so the server was asked about a document it no longer had.
 	FakePort port;
 	PreviewSemantics semantics{port};
 	const Core::TextBuffer buffer{"Renderer r;\n"};
 
 	semantics.Tick(1, 0.0);
-	semantics.Declare("a.cpp", buffer, 4, true);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kTabHoldsDocument);
 	semantics.Tick(2, 0.1);
-	semantics.Declare("a.cpp", buffer, 4, false);
+	semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 
 	CHECK(port.CountOf("open") == 1);
 	CHECK(port.CountOf("ask") == 2);
@@ -389,9 +358,6 @@ TEST_CASE("A tab closing over a previewed file reopens it here")
 
 TEST_CASE("Destruction after a tab takes over a previewed file closes nothing")
 {
-	// Same handoff as above, but torn down instead of ticked forward: the destructor closes
-	// every entry with Opened == true, so if Declare left that flag stuck from the preview's
-	// own didOpen, the destructor would send a didClose for a file the tab still holds.
 	FakePort port;
 
 	{
@@ -399,9 +365,9 @@ TEST_CASE("Destruction after a tab takes over a previewed file closes nothing")
 		const Core::TextBuffer buffer{"Renderer r;\n"};
 
 		semantics.Tick(1, 0.0);
-		semantics.Declare("a.cpp", buffer, 4, false);
+		semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
 		semantics.Tick(2, 0.1);
-		semantics.Declare("a.cpp", buffer, 4, true);
+		semantics.Declare("a.cpp", buffer, kTabWidth, kTabHoldsDocument);
 	}
 
 	CHECK(port.CountOf("close") == 0);
@@ -416,8 +382,8 @@ TEST_CASE("Destruction closes what was opened here and nothing else")
 		const Core::TextBuffer buffer{"Renderer r;\n"};
 
 		semantics.Tick(1, 0.0);
-		semantics.Declare("a.cpp", buffer, 4, false);
-		semantics.Declare("b.cpp", buffer, 4, true);
+		semantics.Declare("a.cpp", buffer, kTabWidth, kPreviewOwnsDocument);
+		semantics.Declare("b.cpp", buffer, kTabWidth, kTabHoldsDocument);
 	}
 
 	REQUIRE(port.CountOf("close") == 1);

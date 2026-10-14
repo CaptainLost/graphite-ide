@@ -7,21 +7,20 @@
 #include "Core/Text/TextBuffer.h"
 
 #include <algorithm>
+#include <optional>
 #include <string>
 
 namespace Graphite {
 
 	namespace {
 
-		// Opens the document and hands the caller the item and its buffer, or nothing when no
-		// buffer exists to place a caret in.
 		Core::OpenItem* OpenForSelection(Core::DocumentSet& documents,
 										 const std::filesystem::path& path,
 										 const OpenDocument& open)
 		{
 			open(path);
 
-			const auto index = documents.Find(path);
+			const std::optional<std::size_t> index = documents.Find(path);
 
 			if (!index)
 			{
@@ -40,13 +39,8 @@ namespace Graphite {
 			item.Caret = Core::PlaceAt(buffer, item.Caret, from, Core::SelectionChange::Collapse, item.TabWidth);
 			item.Caret = Core::PlaceAt(buffer, item.Caret, to, Core::SelectionChange::Extend, item.TabWidth);
 
-			// The vertical aim was measured, if at all, against wherever the caret used to sit;
-			// the next Up or Down should resolve it fresh from here.
 			item.RowAimCaretOffset = Core::NoRowAim;
 
-			// Runs during the panels' turn, before DocumentWindows renders the editor later in
-			// the same frame, so by the editor's own reckoning the caret never moved this frame
-			// and it would not otherwise scroll to it. See PendingScroll in DocumentSet.h.
 			item.PendingScroll = true;
 		}
 	}

@@ -12,7 +12,6 @@
 namespace Graphite {
 
 	namespace {
-		// Stored as words, not numbers, so a hand-edited graphite.json reads as what it means.
 		constexpr std::string_view kPreviewOff = "off";
 		constexpr std::string_view kPreviewCtrl = "ctrl";
 		constexpr std::string_view kPreviewAlways = "always";
@@ -29,7 +28,6 @@ namespace Graphite {
 				return DefinitionPreviewMode::Always;
 			}
 
-			// "ctrl", nothing stored, and anything a hand edit got wrong all mean the default.
 			return DefinitionPreviewMode::WithCtrl;
 		}
 
@@ -83,11 +81,10 @@ namespace Graphite {
 
 		m_IndentWithSpaces = m_Store.IsIndentingWithSpaces();
 
-		// Clamped, not merely accepted: a hand-edited graphite.json is as untrusted as the
-		// slider. A malformed width, "-1" included, reads as absent; a well-formed but absurd one
-		// such as "999" is what this clamp is for.
-		if (const std::size_t storedIndentWidth = m_Store.GetIndentWidth();
-			storedIndentWidth != 0)
+		const std::size_t storedIndentWidth = m_Store.GetIndentWidth();
+		const bool hasStoredIndentWidth = storedIndentWidth != 0;
+
+		if (hasStoredIndentWidth)
 		{
 			m_IndentWidth = std::clamp(storedIndentWidth, kMinimumIndentWidth, kMaximumIndentWidth);
 		}
@@ -100,8 +97,10 @@ namespace Graphite {
 		m_Hover.ShowInfo = m_Store.IsHoverInfoEnabled();
 		m_Hover.Preview = PreviewModeFrom(m_Store.GetHoverPreview());
 
-		// Zero is "absent" (see NumberOrZero), so it keeps the default rather than clamping to 200.
-		if (const int storedDelay = m_Store.GetHoverDelayMs(); storedDelay != 0)
+		const int storedDelay = m_Store.GetHoverDelayMs();
+		const bool hasStoredDelay = storedDelay != 0;
+
+		if (hasStoredDelay)
 		{
 			m_Hover.DelayMs = std::clamp(storedDelay, kMinimumHoverDelayMs, kMaximumHoverDelayMs);
 		}
@@ -126,13 +125,9 @@ namespace Graphite {
 		m_Store.SetIndentWithSpaces(m_IndentWithSpaces);
 	}
 
-	// Zero is refused rather than clamped: Load treats a stored zero as "use the default", so
-	// storing one would make that branch reachable from the UI and leave the width ambiguous.
-	//
-	// Anything above kMaximumIndentWidth is clamped, not refused: this width is what every
-	// visible line containing a tab is expanded to on every frame it is drawn, so an
-	// unbounded value here is not a cosmetic oddity but a multi-hundred-megabyte string built
-	// per line, per frame, from a single typed number.
+	// WARNING: Load reads a stored zero as "use the default", so zero is refused here. The
+	// maximum is enforced because every visible line with a tab is expanded to this width on
+	// every frame, and an unbounded value would build a huge string per line per frame.
 	void EditorSettings::SetIndentWidth(std::size_t width)
 	{
 		if (width == 0)
@@ -180,9 +175,9 @@ namespace Graphite {
 		m_Store.SetHoverPreview(PreviewModeName(m_Hover.Preview));
 	}
 
-	void EditorSettings::SetHoverDelayMs(int ms)
+	void EditorSettings::SetHoverDelayMs(int milliseconds)
 	{
-		m_Hover.DelayMs = std::clamp(ms, kMinimumHoverDelayMs, kMaximumHoverDelayMs);
+		m_Hover.DelayMs = std::clamp(milliseconds, kMinimumHoverDelayMs, kMaximumHoverDelayMs);
 		m_Store.SetHoverDelayMs(m_Hover.DelayMs);
 	}
 
@@ -200,8 +195,8 @@ namespace Graphite {
 					  .Label = "Reset Zoom",
 					  .Run = [this] { SetFontSize(kDefaultFontSize); }});
 
-		// Deliberately no default binding: AltGr on Windows reports as Ctrl+Alt, so the
-		// obvious Alt+Z would fire on every AltGr+Z, which is an ordinary Polish letter.
+		// WARNING: No default binding on purpose. AltGr on Windows reports as Ctrl+Alt, so Alt+Z
+		// would fire on every AltGr+Z, an ordinary Polish letter.
 		commands.Add({.Id = "editor.toggleWordWrap",
 					  .Label = "Word Wrap",
 					  .Run = [this] { SetWordWrap(!m_WordWrap); },

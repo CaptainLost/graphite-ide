@@ -23,13 +23,12 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		// Both row numbers widened before either is subtracted. Taking one std::size_t from
-		// another would turn the anchor moving up — which is as ordinary as it moving down, and
-		// happens whenever rows above it go away — into an enormous move in the other direction.
-		const double moved =
+		// WARNING: Both row numbers are widened before the subtraction. Subtracting one
+		// std::size_t from another turns the anchor moving up into an enormous move down.
+		const double rowsMoved =
 			static_cast<double>(screenRowNow) - static_cast<double>(anchor.ScreenRow);
 
-		return std::max(0.0f, anchor.ScrollY + static_cast<float>(moved * lineHeight));
+		return std::max(0.0f, anchor.ScrollY + static_cast<float>(rowsMoved * lineHeight));
 	}
 
 	ScrollAnchor AnchorAtLine(std::size_t line)
@@ -46,9 +45,9 @@ namespace Graphite {
 		return caretOffset == CaretOffset && !pendingScroll && !userScrolled;
 	}
 
-	bool PendingTopLine::Settle(const ScrollAnchor& drawn)
+	bool PendingTopLine::Settle(const ScrollAnchor& drawnAnchor)
 	{
-		if (drawn.Taken && drawn.Line == Line)
+		if (drawnAnchor.Taken && drawnAnchor.Line == Line)
 		{
 			return true;
 		}

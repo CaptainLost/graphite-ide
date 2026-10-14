@@ -17,8 +17,8 @@ namespace {
 	using Ticket = LanguageServices::Ticket;
 	using Answer = LanguageServices::Answer;
 
-	// Records what it was asked and answers only when a test says so. Every ticket it hands out
-	// is new, as LanguageServices's are.
+	constexpr double kStartSeconds = 100.0;
+
 	class FakeServer final : public DocumentServerPort
 	{
 	public:
@@ -95,7 +95,6 @@ namespace {
 			Recolour.clear();
 		}
 
-		// Queues an answer for the next Collect.
 		void Reply(Ticket ticket, bool failed = false)
 		{
 			LanguageServices::Answer answer;
@@ -106,18 +105,26 @@ namespace {
 
 		std::size_t CountOf(const std::string& what) const
 		{
-			return static_cast<std::size_t>(std::count_if(Asks.begin(), Asks.end(),
-														  [&what](const Asked& asked) { return asked.What == what; }));
+			std::size_t count = 0;
+
+			for (const Asked& asked : Asks)
+			{
+				if (asked.What == what)
+				{
+					++count;
+				}
+			}
+
+			return count;
 		}
 
-		// The ticket of the most recent question of this kind.
 		Ticket LastOf(const std::string& what) const
 		{
-			for (auto it = Asks.rbegin(); it != Asks.rend(); ++it)
+			for (std::vector<Asked>::const_reverse_iterator asked = Asks.rbegin(); asked != Asks.rend(); ++asked)
 			{
-				if (it->What == what)
+				if (asked->What == what)
 				{
-					return it->For;
+					return asked->For;
 				}
 			}
 
@@ -148,7 +155,6 @@ namespace {
 		std::uint64_t m_Next = 0;
 	};
 
-	// Records what was routed to it. Takes symbols unless told the document cannot.
 	class FakeTarget final : public LspAnswerTarget
 	{
 	public:
@@ -218,11 +224,16 @@ namespace {
 	{
 		FakeServer Server;
 		FakeTarget Target;
-		double Now = 100.0;
+		double Now = kStartSeconds;
 		LspAnswerRouter Router{Server, [this] { return Now; }};
 	};
 
 	const std::filesystem::path kSource = "C:/project/main.cpp";
+	const FilePosition kUnimportantPosition{};
+	constexpr bool kFailedAnswer = true;
+	constexpr double kOneHundredthSecond = 0.01;
+	constexpr double kLongIdleSeconds = 60.0;
+	constexpr Ticket kTicketNobodyAsked = static_cast<Ticket>(999);
 
 	DefinitionQuestion QuestionAt(std::size_t caretOffset)
 	{
@@ -236,364 +247,353 @@ namespace {
 
 TEST_CASE("A second definition question cancels the first and only its own answer is applied")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.AskDefinition(QuestionAt(10));
-	const Ticket first = h.Server.LastOf("definition");
+	harness.Router.AskDefinition(QuestionAt(10));
+	const Ticket first = harness.Server.LastOf("definition");
 
-	h.Router.AskDefinition(QuestionAt(20));
-	const Ticket second = h.Server.LastOf("definition");
+	harness.Router.AskDefinition(QuestionAt(20));
+	const Ticket second = harness.Server.LastOf("definition");
 
-	CHECK(h.Server.WasCancelled(first));
-	CHECK_FALSE(h.Server.WasCancelled(second));
+	CHECK(harness.Server.WasCancelled(first));
+	CHECK_FALSE(harness.Server.WasCancelled(second));
 
-	// The server may still answer the first: cancelling is a request, not a guarantee.
-	h.Server.Reply(first);
-	h.Server.Reply(second);
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(first);
+	harness.Server.Reply(second);
+	harness.Router.Collect(harness.Target);
 
-	REQUIRE(h.Target.Definitions.size() == 1);
-	CHECK(h.Target.Definitions[0].CaretOffset == 20);
+	REQUIRE(harness.Target.Definitions.size() == 1);
+	CHECK(harness.Target.Definitions[0].CaretOffset == 20);
 }
 
 TEST_CASE("A definition question starts the server serving it before asking")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.AskDefinition(QuestionAt(0));
+	harness.Router.AskDefinition(QuestionAt(0));
 
-	REQUIRE(h.Server.Started.size() == 1);
-	CHECK(h.Server.Started[0] == kSource);
+	REQUIRE(harness.Server.Started.size() == 1);
+	CHECK(harness.Server.Started[0] == kSource);
 }
 
 TEST_CASE("A failed definition answer still reaches the target, so it can say there is none")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.AskDefinition(QuestionAt(0));
-	h.Server.Reply(h.Server.LastOf("definition"), true);
-	h.Router.Collect(h.Target);
+	harness.Router.AskDefinition(QuestionAt(0));
+	harness.Server.Reply(harness.Server.LastOf("definition"), kFailedAnswer);
+	harness.Router.Collect(harness.Target);
 
-	REQUIRE(h.Target.DefinitionFailed.size() == 1);
-	CHECK(h.Target.DefinitionFailed[0]);
+	REQUIRE(harness.Target.DefinitionFailed.size() == 1);
+	CHECK(harness.Target.DefinitionFailed[0]);
 }
 
 TEST_CASE("A second references question supersedes the first")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.AskReferences(kSource, FilePosition{}, "Old");
-	const Ticket first = h.Server.LastOf("references");
+	harness.Router.AskReferences(kSource, kUnimportantPosition, "Old");
+	const Ticket first = harness.Server.LastOf("references");
 
-	h.Router.AskReferences(kSource, FilePosition{}, "New");
-	const Ticket second = h.Server.LastOf("references");
+	harness.Router.AskReferences(kSource, kUnimportantPosition, "New");
+	const Ticket second = harness.Server.LastOf("references");
 
-	CHECK(h.Server.WasCancelled(first));
+	CHECK(harness.Server.WasCancelled(first));
 
-	h.Server.Reply(first);
-	h.Server.Reply(second);
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(first);
+	harness.Server.Reply(second);
+	harness.Router.Collect(harness.Target);
 
-	REQUIRE(h.Target.References.size() == 1);
-	CHECK(h.Target.References[0] == "New");
+	REQUIRE(harness.Target.References.size() == 1);
+	CHECK(harness.Target.References[0] == "New");
 }
 
 TEST_CASE("A followed document is analysing until its declarations and colours have answered")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.Track(kSource);
-	CHECK(h.Router.IsAnalysing(kSource));
+	harness.Router.Track(kSource);
+	CHECK(harness.Router.IsAnalysing(kSource));
 
-	h.Router.AskSymbolsIfDue(kSource);
-	REQUIRE(h.Server.CountOf("symbols") == 1);
-	REQUIRE(h.Server.CountOf("semantic") == 1);
+	harness.Router.AskSymbolsIfDue(kSource);
+	REQUIRE(harness.Server.CountOf("symbols") == 1);
+	REQUIRE(harness.Server.CountOf("semantic") == 1);
 
-	h.Server.Reply(h.Server.LastOf("symbols"));
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(harness.Server.LastOf("symbols"));
+	harness.Router.Collect(harness.Target);
 
-	// The colours are still outstanding.
-	CHECK(h.Router.IsAnalysing(kSource));
+	CHECK(harness.Router.IsAnalysing(kSource));
 
-	h.Server.Reply(h.Server.LastOf("semantic"));
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(harness.Server.LastOf("semantic"));
+	harness.Router.Collect(harness.Target);
 
-	CHECK_FALSE(h.Router.IsAnalysing(kSource));
-	CHECK(h.Target.Semantic.size() == 1);
+	CHECK_FALSE(harness.Router.IsAnalysing(kSource));
+	CHECK(harness.Target.Semantic.size() == 1);
 }
 
 TEST_CASE("A followed document the server recolours is asked for its colours again and others are not")
 {
-	Harness h;
-	h.Router.Track(kSource);
+	Harness harness;
+	harness.Router.Track(kSource);
 
-	h.Server.Recolour = {kSource, kSource, "C:/project/closed.cpp"};
-	h.Router.Collect(h.Target);
+	harness.Server.Recolour = {kSource, kSource, "C:/project/closed.cpp"};
+	harness.Router.Collect(harness.Target);
 
-	REQUIRE(h.Server.CountOf("semantic") == 1);
-	CHECK(h.Server.Asks.back().Path == kSource);
+	REQUIRE(harness.Server.CountOf("semantic") == 1);
+	CHECK(harness.Server.Asks.back().Path == kSource);
 
-	h.Server.Reply(h.Server.LastOf("semantic"));
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(harness.Server.LastOf("semantic"));
+	harness.Router.Collect(harness.Target);
 
-	REQUIRE(h.Target.Semantic.size() == 1);
-	CHECK(h.Target.Semantic[0] == kSource);
+	REQUIRE(harness.Target.Semantic.size() == 1);
+	CHECK(harness.Target.Semantic[0] == kSource);
 }
 
 TEST_CASE("A failed colours answer clears analysing without applying anything")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.Track(kSource);
-	h.Router.AskSymbolsIfDue(kSource);
+	harness.Router.Track(kSource);
+	harness.Router.AskSymbolsIfDue(kSource);
 
-	h.Server.Reply(h.Server.LastOf("symbols"));
-	h.Server.Reply(h.Server.LastOf("semantic"), true);
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(harness.Server.LastOf("symbols"));
+	harness.Server.Reply(harness.Server.LastOf("semantic"), kFailedAnswer);
+	harness.Router.Collect(harness.Target);
 
-	CHECK_FALSE(h.Router.IsAnalysing(kSource));
-	CHECK(h.Target.Semantic.empty());
+	CHECK_FALSE(harness.Router.IsAnalysing(kSource));
+	CHECK(harness.Target.Semantic.empty());
 }
 
 TEST_CASE("A colours ticket the server refused at once does not hold analysing")
 {
-	// What LanguageServices does with a semantic-tokens question asked before the handshake: the
-	// ticket is answered Failed on the very next drain, with no server round trip behind it.
-	Harness h;
+	Harness harness;
 
-	h.Router.AskSemanticTokens(kSource);
-	CHECK(h.Router.IsAnalysing(kSource));
+	harness.Router.AskSemanticTokens(kSource);
+	CHECK(harness.Router.IsAnalysing(kSource));
 
-	h.Server.Reply(h.Server.LastOf("semantic"), true);
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(harness.Server.LastOf("semantic"), kFailedAnswer);
+	harness.Router.Collect(harness.Target);
 
-	CHECK_FALSE(h.Router.IsAnalysing(kSource));
+	CHECK_FALSE(harness.Router.IsAnalysing(kSource));
 }
 
 TEST_CASE("Failed declarations stay wanted and are asked for again only once the retry clock runs out")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.Track(kSource);
-	h.Router.AskSymbolsIfDue(kSource);
+	harness.Router.Track(kSource);
+	harness.Router.AskSymbolsIfDue(kSource);
 
-	h.Server.Reply(h.Server.LastOf("symbols"), true);
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(harness.Server.LastOf("symbols"), kFailedAnswer);
+	harness.Router.Collect(harness.Target);
 
-	CHECK(h.Target.Symbols.empty());
-	CHECK(h.Router.IsAnalysing(kSource));
+	CHECK(harness.Target.Symbols.empty());
+	CHECK(harness.Router.IsAnalysing(kSource));
 
-	h.Router.AskSymbolsIfDue(kSource);
-	CHECK(h.Server.CountOf("symbols") == 1);
+	harness.Router.AskSymbolsIfDue(kSource);
+	CHECK(harness.Server.CountOf("symbols") == 1);
 
-	h.Now += kFailedRequestRetrySeconds - 0.01;
-	h.Router.AskSymbolsIfDue(kSource);
-	CHECK(h.Server.CountOf("symbols") == 1);
+	harness.Now += kFailedRequestRetrySeconds - kOneHundredthSecond;
+	harness.Router.AskSymbolsIfDue(kSource);
+	CHECK(harness.Server.CountOf("symbols") == 1);
 
-	h.Now += 0.01;
-	h.Router.AskSymbolsIfDue(kSource);
-	CHECK(h.Server.CountOf("symbols") == 2);
+	harness.Now += kOneHundredthSecond;
+	harness.Router.AskSymbolsIfDue(kSource);
+	CHECK(harness.Server.CountOf("symbols") == 2);
 }
 
 TEST_CASE("One declarations question is outstanding at a time")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.Track(kSource);
-	h.Router.AskSymbolsIfDue(kSource);
+	harness.Router.Track(kSource);
+	harness.Router.AskSymbolsIfDue(kSource);
 
-	h.Now += 60.0;
-	h.Router.AskSymbolsIfDue(kSource);
+	harness.Now += kLongIdleSeconds;
+	harness.Router.AskSymbolsIfDue(kSource);
 
-	CHECK(h.Server.CountOf("symbols") == 1);
+	CHECK(harness.Server.CountOf("symbols") == 1);
 }
 
-// A restart lets a second question go out while the dead client's is still unanswered. That
-// one's failure arriving late must not free the schedule while the second is in flight, or the
-// retry clock sends a third.
 TEST_CASE("A late failure of an older declarations question leaves the newer one outstanding")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.Track(kSource);
-	CHECK_FALSE(h.Router.NoteServerState(kSource));
+	harness.Router.Track(kSource);
+	CHECK_FALSE(harness.Router.NoteServerState(kSource));
 
-	h.Router.AskSymbolsIfDue(kSource);
-	const Ticket older = h.Server.LastOf("symbols");
+	harness.Router.AskSymbolsIfDue(kSource);
+	const Ticket older = harness.Server.LastOf("symbols");
 
-	h.Server.State = ServerState::Starting;
-	REQUIRE(h.Router.NoteServerState(kSource));
+	harness.Server.State = ServerState::Starting;
+	REQUIRE(harness.Router.NoteServerState(kSource));
 
-	h.Router.AskSymbolsIfDue(kSource);
-	REQUIRE(h.Server.CountOf("symbols") == 2);
+	harness.Router.AskSymbolsIfDue(kSource);
+	REQUIRE(harness.Server.CountOf("symbols") == 2);
 
-	h.Server.Reply(older, true);
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(older, kFailedAnswer);
+	harness.Router.Collect(harness.Target);
 
-	h.Now += kFailedRequestRetrySeconds;
-	h.Router.AskSymbolsIfDue(kSource);
+	harness.Now += kFailedRequestRetrySeconds;
+	harness.Router.AskSymbolsIfDue(kSource);
 
-	CHECK(h.Server.CountOf("symbols") == 2);
+	CHECK(harness.Server.CountOf("symbols") == 2);
 }
 
 TEST_CASE("Declarations a document could not take stay wanted")
 {
-	Harness h;
-	h.Target.TakesSymbols = false;
+	Harness harness;
+	harness.Target.TakesSymbols = false;
 
-	h.Router.Track(kSource);
-	h.Router.AskSymbolsIfDue(kSource);
+	harness.Router.Track(kSource);
+	harness.Router.AskSymbolsIfDue(kSource);
 
-	h.Server.Reply(h.Server.LastOf("symbols"));
-	h.Server.Reply(h.Server.LastOf("semantic"));
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(harness.Server.LastOf("symbols"));
+	harness.Server.Reply(harness.Server.LastOf("semantic"));
+	harness.Router.Collect(harness.Target);
 
-	CHECK(h.Router.IsAnalysing(kSource));
+	CHECK(harness.Router.IsAnalysing(kSource));
 }
 
 TEST_CASE("An edit asks for declarations again at once rather than on the retry clock")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.Track(kSource);
-	h.Router.AskSymbolsIfDue(kSource);
-	h.Server.Reply(h.Server.LastOf("symbols"));
-	h.Router.Collect(h.Target);
+	harness.Router.Track(kSource);
+	harness.Router.AskSymbolsIfDue(kSource);
+	harness.Server.Reply(harness.Server.LastOf("symbols"));
+	harness.Router.Collect(harness.Target);
 
-	h.Router.WantSymbolsNow(kSource);
-	h.Router.AskSymbolsIfDue(kSource);
+	harness.Router.WantSymbolsNow(kSource);
+	harness.Router.AskSymbolsIfDue(kSource);
 
-	CHECK(h.Server.CountOf("symbols") == 2);
+	CHECK(harness.Server.CountOf("symbols") == 2);
 }
 
 TEST_CASE("A restarted server is asked for everything again and the counts in flight are dropped")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.Track(kSource);
-	CHECK_FALSE(h.Router.NoteServerState(kSource));
+	harness.Router.Track(kSource);
+	CHECK_FALSE(harness.Router.NoteServerState(kSource));
 
-	h.Router.AskSymbolsIfDue(kSource);
-	h.Server.Reply(h.Server.LastOf("symbols"));
-	h.Server.Reply(h.Server.LastOf("semantic"));
-	h.Router.Collect(h.Target);
-	REQUIRE_FALSE(h.Router.IsAnalysing(kSource));
+	harness.Router.AskSymbolsIfDue(kSource);
+	harness.Server.Reply(harness.Server.LastOf("symbols"));
+	harness.Server.Reply(harness.Server.LastOf("semantic"));
+	harness.Router.Collect(harness.Target);
+	REQUIRE_FALSE(harness.Router.IsAnalysing(kSource));
 
-	h.Router.AskCount(kSource, 7, FilePosition{});
-	const Ticket count = h.Server.LastOf("references");
+	harness.Router.AskCount(kSource, 7, kUnimportantPosition);
+	const Ticket count = harness.Server.LastOf("references");
 
-	// The process died and LanguageServices replaced it.
-	h.Server.State = ServerState::Starting;
-	CHECK(h.Router.NoteServerState(kSource));
-	CHECK(h.Server.WasCancelled(count));
+	harness.Server.State = ServerState::Starting;
+	CHECK(harness.Router.NoteServerState(kSource));
+	CHECK(harness.Server.WasCancelled(count));
 
-	// Asked again straight away - the retry clock has not moved.
-	h.Router.AskSymbolsIfDue(kSource);
-	CHECK(h.Server.CountOf("symbols") == 2);
+	harness.Router.AskSymbolsIfDue(kSource);
+	CHECK(harness.Server.CountOf("symbols") == 2);
 
-	// And once the handshake completes, the colours too: a question asked before it is refused.
-	const std::size_t coloursBefore = h.Server.CountOf("semantic");
+	const std::size_t coloursBefore = harness.Server.CountOf("semantic");
 
-	h.Server.State = ServerState::Ready;
-	CHECK_FALSE(h.Router.NoteServerState(kSource));
-	CHECK(h.Server.CountOf("semantic") == coloursBefore + 1);
+	harness.Server.State = ServerState::Ready;
+	CHECK_FALSE(harness.Router.NoteServerState(kSource));
+	CHECK(harness.Server.CountOf("semantic") == coloursBefore + 1);
 
-	// The dead client's answer to the dropped count is not applied to a row.
-	h.Server.Reply(count);
-	h.Router.Collect(h.Target);
-	CHECK(h.Target.Counts.empty());
+	harness.Server.Reply(count);
+	harness.Router.Collect(harness.Target);
+	CHECK(harness.Target.Counts.empty());
 }
 
 TEST_CASE("A server state that has not changed asks nothing")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.Track(kSource);
-	h.Router.NoteServerState(kSource);
-	h.Router.NoteServerState(kSource);
+	harness.Router.Track(kSource);
+	harness.Router.NoteServerState(kSource);
+	harness.Router.NoteServerState(kSource);
 
-	CHECK(h.Server.Asks.empty());
+	CHECK(harness.Server.Asks.empty());
 }
 
 TEST_CASE("A count answer is applied to the row it was asked for, and a failed one to none")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.AskCount(kSource, 3, FilePosition{});
-	const Ticket answered = h.Server.LastOf("references");
+	harness.Router.AskCount(kSource, 3, kUnimportantPosition);
+	const Ticket answered = harness.Server.LastOf("references");
 
-	h.Router.AskCount(kSource, 4, FilePosition{});
-	const Ticket failed = h.Server.LastOf("references");
+	harness.Router.AskCount(kSource, 4, kUnimportantPosition);
+	const Ticket failed = harness.Server.LastOf("references");
 
-	h.Server.Reply(answered);
-	h.Server.Reply(failed, true);
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(answered);
+	harness.Server.Reply(failed, kFailedAnswer);
+	harness.Router.Collect(harness.Target);
 
-	REQUIRE(h.Target.Counts.size() == 1);
-	CHECK(h.Target.Counts[0] == 3);
+	REQUIRE(harness.Target.Counts.size() == 1);
+	CHECK(harness.Target.Counts[0] == 3);
 }
 
 TEST_CASE("A forgotten document's outstanding answers are applied to nothing")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.Track(kSource);
-	h.Router.AskSymbolsIfDue(kSource);
-	h.Router.AskCount(kSource, 2, FilePosition{});
+	harness.Router.Track(kSource);
+	harness.Router.AskSymbolsIfDue(kSource);
+	harness.Router.AskCount(kSource, 2, kUnimportantPosition);
 
-	h.Router.Forget(kSource);
-	CHECK_FALSE(h.Router.IsAnalysing(kSource));
+	harness.Router.Forget(kSource);
+	CHECK_FALSE(harness.Router.IsAnalysing(kSource));
 
-	for (const FakeServer::Asked& asked : h.Server.Asks)
+	for (const FakeServer::Asked& asked : harness.Server.Asks)
 	{
-		h.Server.Reply(asked.For);
+		harness.Server.Reply(asked.For);
 	}
 
-	h.Router.Collect(h.Target);
+	harness.Router.Collect(harness.Target);
 
-	CHECK(h.Target.Symbols.empty());
-	CHECK(h.Target.Semantic.empty());
-	CHECK(h.Target.Counts.empty());
+	CHECK(harness.Target.Symbols.empty());
+	CHECK(harness.Target.Semantic.empty());
+	CHECK(harness.Target.Counts.empty());
 }
 
 TEST_CASE("An answer the router did not ask for is offered to whoever did")
 {
-	Harness h;
+	Harness harness;
 
-	h.Server.Reply(static_cast<Ticket>(999));
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(kTicketNobodyAsked);
+	harness.Router.Collect(harness.Target);
 
-	CHECK(h.Target.Offered == 1);
+	CHECK(harness.Target.Offered == 1);
 }
 
 TEST_CASE("A second switch header/source question supersedes the first")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.AskSwitchSourceHeader(kSource);
-	const Ticket first = h.Server.LastOf("switch");
+	harness.Router.AskSwitchSourceHeader(kSource);
+	const Ticket first = harness.Server.LastOf("switch");
 
-	h.Router.AskSwitchSourceHeader(kSource);
-	const Ticket second = h.Server.LastOf("switch");
+	harness.Router.AskSwitchSourceHeader(kSource);
+	const Ticket second = harness.Server.LastOf("switch");
 
-	CHECK(h.Server.WasCancelled(first));
+	CHECK(harness.Server.WasCancelled(first));
 
-	h.Server.Reply(first);
-	h.Server.Reply(second);
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(first);
+	harness.Server.Reply(second);
+	harness.Router.Collect(harness.Target);
 
-	REQUIRE(h.Target.Switched.size() == 1);
-	CHECK(h.Target.Switched[0] == kSource);
+	REQUIRE(harness.Target.Switched.size() == 1);
+	CHECK(harness.Target.Switched[0] == kSource);
 }
 
 TEST_CASE("A switch header/source question starts the server before asking")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.AskSwitchSourceHeader(kSource);
+	harness.Router.AskSwitchSourceHeader(kSource);
 
-	REQUIRE(h.Server.Started.size() == 1);
-	CHECK(h.Server.Started[0] == kSource);
+	REQUIRE(harness.Server.Started.size() == 1);
+	CHECK(harness.Server.Started[0] == kSource);
 }
 
 namespace {
@@ -610,91 +610,89 @@ namespace {
 
 TEST_CASE("A hover never cancels a pending F12, and F12 never cancels a hover")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.AskDefinition(QuestionAt(5));
-	const Ticket f12 = h.Server.LastOf("definition");
+	harness.Router.AskDefinition(QuestionAt(5));
+	const Ticket definitionTicket = harness.Server.LastOf("definition");
 
-	h.Router.AskHover(HoverAt(1));
-	const Ticket hover = h.Server.LastOf("hover");
+	harness.Router.AskHover(HoverAt(1));
+	const Ticket hover = harness.Server.LastOf("hover");
 
-	h.Router.AskPreviewDefinition(HoverAt(1));
-	const Ticket preview = h.Server.LastOf("definition");
+	harness.Router.AskPreviewDefinition(HoverAt(1));
+	const Ticket preview = harness.Server.LastOf("definition");
 
-	CHECK_FALSE(h.Server.WasCancelled(f12));
-	CHECK_FALSE(h.Server.WasCancelled(hover));
+	CHECK_FALSE(harness.Server.WasCancelled(definitionTicket));
+	CHECK_FALSE(harness.Server.WasCancelled(hover));
 
-	h.Server.Reply(f12);
-	h.Server.Reply(hover);
-	h.Server.Reply(preview);
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(definitionTicket);
+	harness.Server.Reply(hover);
+	harness.Server.Reply(preview);
+	harness.Router.Collect(harness.Target);
 
-	CHECK(h.Target.Definitions.size() == 1);
-	CHECK(h.Target.Hovers.size() == 1);
-	CHECK(h.Target.Previews.size() == 1);
+	CHECK(harness.Target.Definitions.size() == 1);
+	CHECK(harness.Target.Hovers.size() == 1);
+	CHECK(harness.Target.Previews.size() == 1);
 }
 
 TEST_CASE("A second hover supersedes the first")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.AskHover(HoverAt(1));
-	const Ticket first = h.Server.LastOf("hover");
-	h.Router.AskHover(HoverAt(9));
-	const Ticket second = h.Server.LastOf("hover");
+	harness.Router.AskHover(HoverAt(1));
+	const Ticket first = harness.Server.LastOf("hover");
+	harness.Router.AskHover(HoverAt(9));
+	const Ticket second = harness.Server.LastOf("hover");
 
-	CHECK(h.Server.WasCancelled(first));
+	CHECK(harness.Server.WasCancelled(first));
 
-	h.Server.Reply(first);
-	h.Server.Reply(second);
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(first);
+	harness.Server.Reply(second);
+	harness.Router.Collect(harness.Target);
 
-	REQUIRE(h.Target.Hovers.size() == 1);
-	CHECK(h.Target.Hovers[0].TokenFrom == 9);
+	REQUIRE(harness.Target.Hovers.size() == 1);
+	CHECK(harness.Target.Hovers[0].TokenFrom == 9);
 }
 
 TEST_CASE("CancelHover cancels both hover slots and drops their answers")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.AskHover(HoverAt(1));
-	const Ticket hover = h.Server.LastOf("hover");
-	h.Router.AskPreviewDefinition(HoverAt(1));
-	const Ticket preview = h.Server.LastOf("definition");
+	harness.Router.AskHover(HoverAt(1));
+	const Ticket hover = harness.Server.LastOf("hover");
+	harness.Router.AskPreviewDefinition(HoverAt(1));
+	const Ticket preview = harness.Server.LastOf("definition");
 
-	h.Router.CancelHover(kSource);
+	harness.Router.CancelHover(kSource);
 
-	CHECK(h.Server.WasCancelled(hover));
-	CHECK(h.Server.WasCancelled(preview));
+	CHECK(harness.Server.WasCancelled(hover));
+	CHECK(harness.Server.WasCancelled(preview));
 
-	h.Server.Reply(hover);
-	h.Server.Reply(preview);
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(hover);
+	harness.Server.Reply(preview);
+	harness.Router.Collect(harness.Target);
 
-	CHECK(h.Target.Hovers.empty());
-	CHECK(h.Target.Previews.empty());
+	CHECK(harness.Target.Hovers.empty());
+	CHECK(harness.Target.Previews.empty());
 }
 
 TEST_CASE("A hover cancelled for one document leaves another document's questions alone")
 {
-	Harness h;
+	Harness harness;
 
-	h.Router.AskHover(HoverAt(1));
-	const Ticket hover = h.Server.LastOf("hover");
-	h.Router.AskPreviewDefinition(HoverAt(1));
-	const Ticket preview = h.Server.LastOf("definition");
+	harness.Router.AskHover(HoverAt(1));
+	const Ticket hover = harness.Server.LastOf("hover");
+	harness.Router.AskPreviewDefinition(HoverAt(1));
+	const Ticket preview = harness.Server.LastOf("definition");
 
-	// Two editors side by side: the other one's leave grace runs out while this one's question
-	// is still in flight.
-	h.Router.CancelHover("C:/project/other.cpp");
+	harness.Router.CancelHover("C:/project/other.cpp");
 
-	CHECK_FALSE(h.Server.WasCancelled(hover));
-	CHECK_FALSE(h.Server.WasCancelled(preview));
+	CHECK_FALSE(harness.Server.WasCancelled(hover));
+	CHECK_FALSE(harness.Server.WasCancelled(preview));
 
-	h.Server.Reply(hover);
-	h.Server.Reply(preview);
-	h.Router.Collect(h.Target);
+	harness.Server.Reply(hover);
+	harness.Server.Reply(preview);
+	harness.Router.Collect(harness.Target);
 
-	CHECK(h.Target.Hovers.size() == 1);
-	CHECK(h.Target.Previews.size() == 1);
+	CHECK(harness.Target.Hovers.size() == 1);
+	CHECK(harness.Target.Previews.size() == 1);
 }

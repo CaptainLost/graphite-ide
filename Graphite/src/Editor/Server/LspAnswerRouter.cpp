@@ -8,8 +8,51 @@
 
 namespace Graphite {
 
-	LspAnswerRouter::LspAnswerRouter(DocumentServerPort& server, Clock clock)
-		: m_Server(server), m_Clock(std::move(clock))
+	namespace {
+
+		bool IsReadyToAnswer(ServerState state)
+		{
+			return state == ServerState::Ready || state == ServerState::Indexing ||
+				   state == ServerState::ProjectIncomplete;
+		}
+
+		bool AnyTicketIsFor(const std::map<LanguageServices::Ticket, std::filesystem::path>& tickets,
+							const std::filesystem::path& path)
+		{
+			for (const auto& [ticket, ticketPath] : tickets)
+			{
+				if (ticketPath == path)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		void EraseTicketsFor(std::map<LanguageServices::Ticket, std::filesystem::path>& tickets,
+							 const std::filesystem::path& path)
+		{
+			for (std::map<LanguageServices::Ticket, std::filesystem::path>::iterator ticketEntry =
+					 tickets.begin();
+				 ticketEntry != tickets.end();)
+			{
+				const auto& [ticket, ticketPath] = *ticketEntry;
+
+				if (ticketPath == path)
+				{
+					ticketEntry = tickets.erase(ticketEntry);
+				}
+				else
+				{
+					++ticketEntry;
+				}
+			}
+		}
+	}
+
+	LspAnswerRouter::LspAnswerRouter(DocumentServerPort& server, SecondsSource secondsSource)
+		: m_Server(server), m_SecondsSource(std::move(secondsSource))
 	{
 	}
 
@@ -22,60 +65,64 @@ namespace Graphite {
 	{
 		m_Schedules.erase(path);
 
-		// A ticket is only ever taken out of these when its answer arrives, so a document closed
-		// with requests outstanding leaves entries behind that nothing collects if the server
-		// never answers them. IsAnalysing reads two of them, and would then report that a file
-		// nobody has open is still being looked at - for the rest of the session.
-		std::erase_if(m_PendingSemantic, [&path](const auto& entry) { return entry.second == path; });
-		std::erase_if(m_PendingSymbols, [&path](const auto& entry) { return entry.second == path; });
-		std::erase_if(m_PendingCounts,
-					  [&path](const auto& entry) { return entry.second.Path == path; });
+		EraseTicketsFor(m_PendingSemantic, path);
+		EraseTicketsFor(m_PendingSymbols, path);
+
+		for (std::map<LanguageServices::Ticket, PendingCount>::iterator countEntry =
+				 m_PendingCounts.begin();
+			 countEntry != m_PendingCounts.end();)
+		{
+			const auto& [ticket, pendingCount] = *countEntry;
+
+			if (pendingCount.Path == path)
+			{
+				countEntry = m_PendingCounts.erase(countEntry);
+			}
+			else
+			{
+				++countEntry;
+			}
+		}
 	}
 
 	bool LspAnswerRouter::NoteServerState(const std::filesystem::path& path)
 	{
-		const auto found = m_Schedules.find(path);
-
-		if (found == m_Schedules.end())
+		if (!m_Schedules.contains(path))
 		{
 			return false;
 		}
 
-		Schedule& schedule = found->second;
+		Schedule& schedule = m_Schedules.at(path);
 
-		const ServerState now = m_Server.StatusFor(path, LanguageOfPath(path)).State;
+		const ServerState currentState = m_Server.StatusFor(path, LanguageOfPath(path)).State;
 
-		if (now == schedule.LastServerState)
+		if (currentState == schedule.LastServerState)
 		{
 			return false;
 		}
 
-		const ServerState before = schedule.LastServerState;
+		const ServerState previousState = schedule.LastServerState;
 
-		schedule.LastServerState = now;
+		schedule.LastServerState = currentState;
 
-		// The handshake is what gives the client its semantic legend, and a question asked before
-		// it is refused. The retry clock only re-asks while declarations are still wanted, so a
-		// server that answered symbols and then finished its handshake would otherwise leave the
-		// document uncoloured until the next edit.
-		if (before == ServerState::Starting &&
-			(now == ServerState::Ready || now == ServerState::Indexing ||
-			 now == ServerState::ProjectIncomplete))
+		const bool handshakeJustFinished =
+			previousState == ServerState::Starting && IsReadyToAnswer(currentState);
+
+		if (handshakeJustFinished)
 		{
 			AskSemanticTokens(path);
 		}
 
-		// A server that has just entered Starting is a server that has just been replaced -
-		// LanguageServices::RestartServer sets exactly that state, and the client it replaced
-		// failed every request it was holding.
-		if (now != ServerState::Starting)
+		const bool serverWasReplaced = currentState == ServerState::Starting;
+
+		if (!serverWasReplaced)
 		{
 			return false;
 		}
 
-		schedule.Want = true;
-		schedule.NextAt = 0.0;
-		schedule.Outstanding = false;
+		schedule.SymbolsWanted = true;
+		schedule.NextAskAt = kAskAtOnceSeconds;
+		schedule.SymbolsOutstanding = false;
 
 		DropCounts(path);
 
@@ -84,26 +131,29 @@ namespace Graphite {
 
 	void LspAnswerRouter::WantSymbolsNow(const std::filesystem::path& path)
 	{
-		if (const auto found = m_Schedules.find(path); found != m_Schedules.end())
+		if (m_Schedules.contains(path))
 		{
-			found->second.Want = true;
-			found->second.NextAt = 0.0;
+			Schedule& schedule = m_Schedules.at(path);
+
+			schedule.SymbolsWanted = true;
+			schedule.NextAskAt = kAskAtOnceSeconds;
 		}
 	}
 
 	void LspAnswerRouter::AskSymbolsIfDue(const std::filesystem::path& path)
 	{
-		const auto found = m_Schedules.find(path);
-
-		if (found == m_Schedules.end())
+		if (!m_Schedules.contains(path))
 		{
 			return;
 		}
 
-		Schedule& schedule = found->second;
-		const double now = m_Clock();
+		Schedule& schedule = m_Schedules.at(path);
+		const double nowSeconds = m_SecondsSource();
 
-		if (!schedule.Want || schedule.Outstanding || now < schedule.NextAt)
+		const bool notDue = !schedule.SymbolsWanted || schedule.SymbolsOutstanding ||
+							nowSeconds < schedule.NextAskAt;
+
+		if (notDue)
 		{
 			return;
 		}
@@ -112,21 +162,18 @@ namespace Graphite {
 
 		m_PendingSymbols.emplace(ticket, path);
 
-		// On the same beat, because they answer the same question at different grain - what this
-		// document contains - and go stale together on the same edit. Asking on one schedule is
-		// one thing to reason about rather than two that drift.
 		AskSemanticTokens(path);
 
-		schedule.Outstanding = true;
-		schedule.NextAt = now + kSymbolsRetrySeconds;
+		schedule.SymbolsOutstanding = true;
+		schedule.NextAskAt = nowSeconds + kFailedRequestRetrySeconds;
 	}
 
 	void LspAnswerRouter::AskSemanticTokens(const std::filesystem::path& path)
 	{
-		const LanguageServices::Ticket colours =
+		const LanguageServices::Ticket ticket =
 			m_Server.AskSemanticTokens(path, LanguageOfPath(path));
 
-		m_PendingSemantic.emplace(colours, path);
+		m_PendingSemantic.emplace(ticket, path);
 	}
 
 	void LspAnswerRouter::AskCount(const std::filesystem::path& path, std::size_t documentRow,
@@ -135,33 +182,31 @@ namespace Graphite {
 		const LanguageServices::Ticket ticket =
 			m_Server.AskReferences(path, LanguageOfPath(path), where);
 
-		m_PendingCounts.emplace(ticket, PendingCount{path, documentRow});
+		m_PendingCounts.emplace(ticket, PendingCount{.Path = path, .DocumentRow = documentRow});
 	}
 
 	void LspAnswerRouter::DropCounts(const std::filesystem::path& path)
 	{
-		// The rows in flight were asked about before the text moved, so their answers are about
-		// positions that no longer hold. Dropping the tickets means those answers are ignored when
-		// they arrive.
-		for (auto it = m_PendingCounts.begin(); it != m_PendingCounts.end();)
+		for (std::map<LanguageServices::Ticket, PendingCount>::iterator countEntry =
+				 m_PendingCounts.begin();
+			 countEntry != m_PendingCounts.end();)
 		{
-			if (it->second.Path == path)
+			const auto& [ticket, pendingCount] = *countEntry;
+
+			if (pendingCount.Path == path)
 			{
-				m_Server.Cancel(it->first);
-				it = m_PendingCounts.erase(it);
+				m_Server.Cancel(ticket);
+				countEntry = m_PendingCounts.erase(countEntry);
 			}
 			else
 			{
-				++it;
+				++countEntry;
 			}
 		}
 	}
 
 	void LspAnswerRouter::AskDefinition(DefinitionQuestion question)
 	{
-		// A second F12 before the first has answered supersedes it: the user is asking a new
-		// question, and an answer to the old one arriving late would be about a place they have
-		// since moved past.
 		if (m_PendingDefinition)
 		{
 			m_Server.Cancel(m_PendingDefinition->Ticket);
@@ -174,15 +219,12 @@ namespace Graphite {
 		const LanguageServices::Ticket ticket =
 			m_Server.AskDefinition(question.Path, language, question.From);
 
-		m_PendingDefinition = PendingDefinition{ticket, std::move(question)};
+		m_PendingDefinition = PendingDefinition{.Ticket = ticket, .Question = std::move(question)};
 	}
 
 	void LspAnswerRouter::AskReferences(const std::filesystem::path& path,
 										const FilePosition& where, std::string symbol)
 	{
-		// A second question before the first has answered supersedes it, on the same reasoning as
-		// AskDefinition: the user is asking about something else now, and a late answer to the
-		// old question would be about a symbol they have since moved past.
 		if (m_PendingReferences)
 		{
 			m_Server.Cancel(m_PendingReferences->Ticket);
@@ -194,7 +236,7 @@ namespace Graphite {
 
 		const LanguageServices::Ticket ticket = m_Server.AskReferences(path, language, where);
 
-		m_PendingReferences = PendingReferences{ticket, std::move(symbol)};
+		m_PendingReferences = PendingReferences{.Ticket = ticket, .Symbol = std::move(symbol)};
 	}
 
 	void LspAnswerRouter::AskSwitchSourceHeader(const std::filesystem::path& path)
@@ -208,7 +250,9 @@ namespace Graphite {
 
 		m_Server.EnsureStarted(path, language);
 
-		m_PendingSwitch = PendingSwitch{m_Server.AskSwitchSourceHeader(path, language), path};
+		const LanguageServices::Ticket ticket = m_Server.AskSwitchSourceHeader(path, language);
+
+		m_PendingSwitch = PendingSwitch{.Ticket = ticket, .SourcePath = path};
 	}
 
 	void LspAnswerRouter::AskHover(HoverQuestion question)
@@ -225,7 +269,7 @@ namespace Graphite {
 		const LanguageServices::Ticket ticket =
 			m_Server.AskHover(question.Path, language, question.From);
 
-		m_PendingHover = PendingHover{ticket, std::move(question)};
+		m_PendingHover = PendingHover{.Ticket = ticket, .Question = std::move(question)};
 	}
 
 	void LspAnswerRouter::AskPreviewDefinition(HoverQuestion question)
@@ -242,7 +286,7 @@ namespace Graphite {
 		const LanguageServices::Ticket ticket =
 			m_Server.AskDefinition(question.Path, language, question.From);
 
-		m_PendingPreview = PendingHover{ticket, std::move(question)};
+		m_PendingPreview = PendingHover{.Ticket = ticket, .Question = std::move(question)};
 	}
 
 	void LspAnswerRouter::CancelHover(const std::filesystem::path& path)
@@ -262,50 +306,34 @@ namespace Graphite {
 
 	bool LspAnswerRouter::IsAnalysing(const std::filesystem::path& path) const
 	{
-		if (const auto found = m_Schedules.find(path); found != m_Schedules.end())
+		if (m_Schedules.contains(path))
 		{
-			// Wanted but not yet asked counts too: the retry clock is a delay before asking, not
-			// an answer, and a bar that went quiet during it would be saying the file had settled.
-			if (found->second.Outstanding || found->second.Want)
+			const Schedule& schedule = m_Schedules.at(path);
+			const bool symbolsWantedOrAsked = schedule.SymbolsOutstanding || schedule.SymbolsWanted;
+
+			if (symbolsWantedOrAsked)
 			{
 				return true;
 			}
 		}
 
-		for (const auto& [ticket, pending] : m_PendingSemantic)
-		{
-			if (pending == path)
-			{
-				return true;
-			}
-		}
-
-		for (const auto& [ticket, pending] : m_PendingSymbols)
-		{
-			if (pending == path)
-			{
-				return true;
-			}
-		}
-
-		return false;
+		return AnyTicketIsFor(m_PendingSemantic, path) || AnyTicketIsFor(m_PendingSymbols, path);
 	}
 
 	void LspAnswerRouter::Collect(LspAnswerTarget& target)
 	{
-		std::vector<std::filesystem::path> recolour;
-		m_Server.TakeRecolour(recolour);
+		std::vector<std::filesystem::path> recolouredPaths;
+		m_Server.TakeRecolour(recolouredPaths);
 
-		// Several pulls of one document can be answered in one frame; one question covers them.
-		std::sort(recolour.begin(), recolour.end());
-		recolour.erase(std::unique(recolour.begin(), recolour.end()), recolour.end());
+		std::sort(recolouredPaths.begin(), recolouredPaths.end());
+		recolouredPaths.erase(std::unique(recolouredPaths.begin(), recolouredPaths.end()),
+							  recolouredPaths.end());
 
-		for (const std::filesystem::path& path : recolour)
+		for (const std::filesystem::path& recolouredPath : recolouredPaths)
 		{
-			// Only a tab this router follows: a path it has forgotten belongs to a tab that closed.
-			if (m_Schedules.contains(path))
+			if (m_Schedules.contains(recolouredPath))
 			{
-				AskSemanticTokens(path);
+				AskSemanticTokens(recolouredPath);
 			}
 		}
 
@@ -338,7 +366,7 @@ namespace Graphite {
 				const PendingSwitch pending = std::move(*m_PendingSwitch);
 
 				m_PendingSwitch.reset();
-				target.ApplySwitchSourceHeader(pending.From, answer);
+				target.ApplySwitchSourceHeader(pending.SourcePath, answer);
 				continue;
 			}
 
@@ -360,78 +388,58 @@ namespace Graphite {
 				continue;
 			}
 
-			if (const auto colours = m_PendingSemantic.find(answer.For);
-				colours != m_PendingSemantic.end())
+			std::map<LanguageServices::Ticket, std::filesystem::path>::node_type semanticNode =
+				m_PendingSemantic.extract(answer.For);
+
+			if (!semanticNode.empty())
 			{
-				const std::filesystem::path path = colours->second;
-
-				// Taken out whether or not the answer failed: a failed ticket left here would hold
-				// IsAnalysing true for as long as the tab stayed open.
-				m_PendingSemantic.erase(colours);
-
 				if (!answer.Failed)
 				{
-					target.ApplySemanticTokens(path, answer);
+					target.ApplySemanticTokens(semanticNode.mapped(), answer);
 				}
 
 				continue;
 			}
 
-			if (const auto symbols = m_PendingSymbols.find(answer.For);
-				symbols != m_PendingSymbols.end())
+			std::map<LanguageServices::Ticket, std::filesystem::path>::node_type symbolsNode =
+				m_PendingSymbols.extract(answer.For);
+
+			if (!symbolsNode.empty())
 			{
-				const std::filesystem::path path = symbols->second;
+				const std::filesystem::path& path = symbolsNode.mapped();
 
-				m_PendingSymbols.erase(symbols);
-
-				if (const auto schedule = m_Schedules.find(path); schedule != m_Schedules.end())
+				if (m_Schedules.contains(path))
 				{
-					// A restart lets a new question go out while the dead client's is still
-					// unanswered, so this answer may be the older of two. Freeing the schedule
-					// while the newer one is in flight would have the retry clock send a third.
-					schedule->second.Outstanding =
-						std::any_of(m_PendingSymbols.begin(), m_PendingSymbols.end(),
-									[&path](const auto& entry) { return entry.second == path; });
+					Schedule& schedule = m_Schedules.at(path);
 
-					// A failure says nothing about whether the next attempt would succeed - a
-					// server that was still indexing answers this way - so Want is left standing
-					// and the retry clock set in AskSymbolsIfDue decides when to try again.
+					schedule.SymbolsOutstanding = AnyTicketIsFor(m_PendingSymbols, path);
+
 					if (!answer.Failed && target.ApplySymbols(path, answer))
 					{
-						schedule->second.Want = false;
+						schedule.SymbolsWanted = false;
 					}
 				}
 
 				continue;
 			}
 
-			// The preview panes and the background pass ask questions of their own, on their own
-			// tickets, and are offered them here because this is the only drain. Answered by
-			// return value so an answer nobody claims still falls through to the counts below.
 			if (target.Offer(answer))
 			{
 				continue;
 			}
 
-			const auto count = m_PendingCounts.find(answer.For);
+			std::map<LanguageServices::Ticket, PendingCount>::node_type countNode =
+				m_PendingCounts.extract(answer.For);
 
-			if (count == m_PendingCounts.end())
+			if (countNode.empty())
 			{
-				// Nothing here asked this, or what asked it has since been dropped - an edit
-				// invalidated the row, or the document closed. Either way the answer is about a
-				// question that no longer stands.
 				continue;
 			}
 
-			const PendingCount pending = count->second;
-
-			m_PendingCounts.erase(count);
+			const PendingCount pending = countNode.mapped();
 
 			if (answer.Failed)
 			{
-				// Left in the caller's asked rows deliberately: a failure that is re-asked the
-				// moment it comes back is a request per frame for as long as the server keeps
-				// failing. The next edit or reply clears them and gives the row another chance.
 				continue;
 			}
 

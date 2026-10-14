@@ -110,18 +110,17 @@ TEST_CASE("With nothing open to speak for, the workspace's servers as a whole ar
 	CHECK(line->Detail == "clangd version 19");
 }
 
-TEST_CASE("No folder, no document and no server leaves the server slot empty")
+TEST_CASE("No folder, no document and no server leaves the server slot empty, even beside a leftover server or an untrusted closed folder")
 {
-	CHECK_FALSE(ChooseServerLine(ServerLineInputs{}).has_value());
+	const ServerLineInputs nothingOpen{};
+	CHECK_FALSE(ChooseServerLine(nothingOpen).has_value());
 
-	// A closed folder is never restricted: there is nothing for the bar to be about.
 	ServerLineInputs closed;
 	closed.FolderOpen = false;
 	closed.FolderTrusted = false;
 
 	CHECK_FALSE(ChooseServerLine(closed).has_value());
 
-	// A server still running from the folder just closed says nothing about no folder.
 	closed.Overall = Clangd(ServerState::Ready);
 
 	CHECK_FALSE(ChooseServerLine(closed).has_value());

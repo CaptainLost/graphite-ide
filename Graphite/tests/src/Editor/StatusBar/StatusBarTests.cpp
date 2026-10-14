@@ -15,12 +15,17 @@
 #include <optional>
 
 namespace {
+	constexpr float kInsideBellInset = 3.0f;
+
 	struct StatusBarScreen
 	{
 		ImGuiFrames Frames;
 		Core::DocumentSet Documents;
 		Graphite::StatusMessages Messages;
 		bool BellClicked = false;
+		float WordsRight = 0.0f;
+		float WordsWidth = 0.0f;
+		float BarMiddle = 0.0f;
 		Graphite::StatusBarClick LastClick = Graphite::StatusBarClick::None;
 
 		void Draw()
@@ -36,17 +41,27 @@ namespace {
 			}
 		}
 
+		void DrawMeasuringWords(const char* words)
+		{
+			Draw();
+			const ImGuiWindow* bar = ImGui::FindWindowByName(Graphite::kStatusBarWindowName);
+			REQUIRE(bar != nullptr);
+			WordsRight = bar->Pos.x + bar->Size.x - bar->WindowPadding.x - ImGui::CalcTextSize(ICON_MDI_BELL_OUTLINE).x - ImGui::GetFontSize();
+			WordsWidth = ImGui::CalcTextSize(words).x;
+			BarMiddle = bar->Pos.y + bar->Size.y * 0.5f;
+		}
+
 		ImVec2 BellCentre() const
 		{
-			const ImGuiWindow* bar = ImGui::FindWindowByName("##StatusBar");
+			const ImGuiWindow* bar = ImGui::FindWindowByName(Graphite::kStatusBarWindowName);
 			REQUIRE(bar != nullptr);
 			const float bellRight = bar->Pos.x + bar->Size.x - bar->WindowPadding.x;
-			return ImVec2(bellRight - 3.0f, bar->Pos.y + bar->Size.y * 0.5f);
+			return ImVec2(bellRight - kInsideBellInset, bar->Pos.y + bar->Size.y * 0.5f);
 		}
 
 		static const ImDrawList& BarDrawing()
 		{
-			const ImGuiWindow* bar = ImGui::FindWindowByName("##StatusBar");
+			const ImGuiWindow* bar = ImGui::FindWindowByName(Graphite::kStatusBarWindowName);
 			REQUIRE(bar != nullptr);
 			return *bar->DrawList;
 		}
@@ -100,21 +115,9 @@ TEST_CASE("A click on the server's words reports the server when they open its s
 	screen.Messages.Server = "C#: Roslyn ready";
 	screen.Messages.ServerOpensSettings = true;
 
-	float wordsRight = 0.0f;
-	float wordsWidth = 0.0f;
-	float barMiddle = 0.0f;
-
-	const auto drawAndMeasure = [&] {
-		screen.Draw();
-		const ImGuiWindow* bar = ImGui::FindWindowByName("##StatusBar");
-		REQUIRE(bar != nullptr);
-		wordsRight = bar->Pos.x + bar->Size.x - bar->WindowPadding.x - ImGui::CalcTextSize(ICON_MDI_BELL_OUTLINE).x - ImGui::GetFontSize();
-		wordsWidth = ImGui::CalcTextSize("C#: Roslyn ready").x;
-		barMiddle = bar->Pos.y + bar->Size.y * 0.5f;
-	};
-
-	screen.Frames.Next(drawAndMeasure);
-	screen.Frames.Click(ImVec2(wordsRight - wordsWidth * 0.5f, barMiddle), drawAndMeasure);
+	screen.Frames.Next([&] { screen.DrawMeasuringWords("C#: Roslyn ready"); });
+	screen.Frames.Click(ImVec2(screen.WordsRight - screen.WordsWidth * 0.5f, screen.BarMiddle),
+						[&] { screen.DrawMeasuringWords("C#: Roslyn ready"); });
 
 	CHECK(screen.LastClick == Graphite::StatusBarClick::Server);
 }
@@ -124,21 +127,9 @@ TEST_CASE("Server words that open nothing take no click")
 	StatusBarScreen screen;
 	screen.Messages.Server = "Restricted mode";
 
-	float wordsRight = 0.0f;
-	float wordsWidth = 0.0f;
-	float barMiddle = 0.0f;
-
-	const auto drawAndMeasure = [&] {
-		screen.Draw();
-		const ImGuiWindow* bar = ImGui::FindWindowByName("##StatusBar");
-		REQUIRE(bar != nullptr);
-		wordsRight = bar->Pos.x + bar->Size.x - bar->WindowPadding.x - ImGui::CalcTextSize(ICON_MDI_BELL_OUTLINE).x - ImGui::GetFontSize();
-		wordsWidth = ImGui::CalcTextSize("Restricted mode").x;
-		barMiddle = bar->Pos.y + bar->Size.y * 0.5f;
-	};
-
-	screen.Frames.Next(drawAndMeasure);
-	screen.Frames.Click(ImVec2(wordsRight - wordsWidth * 0.5f, barMiddle), drawAndMeasure);
+	screen.Frames.Next([&] { screen.DrawMeasuringWords("Restricted mode"); });
+	screen.Frames.Click(ImVec2(screen.WordsRight - screen.WordsWidth * 0.5f, screen.BarMiddle),
+						[&] { screen.DrawMeasuringWords("Restricted mode"); });
 
 	CHECK(screen.LastClick == Graphite::StatusBarClick::None);
 }

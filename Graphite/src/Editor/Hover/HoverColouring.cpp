@@ -10,33 +10,42 @@ namespace Graphite {
 
 		using Tokens = std::vector<Token>;
 
-		std::string_view TextOf(std::string_view text, const Token& token)
+		constexpr std::size_t kFirstToken = 0;
+		constexpr std::size_t kTokensBeforeAkaType = 2;
+		constexpr std::size_t kTokensInArrow = 2;
+		constexpr std::size_t kHoverKindCount = 21;
+
+		std::string_view TokenText(std::string_view text, const Token& token)
 		{
 			return text.substr(token.From, token.To - token.From);
 		}
 
-		bool IsPunctuation(std::string_view text, const Tokens& tokens, std::size_t index, char c)
+		bool IsPunctuation(std::string_view text, const Tokens& tokens, std::size_t index,
+						   char character)
 		{
 			return index < tokens.size() && tokens[index].Kind == TokenKind::Punctuation &&
-				   text[tokens[index].From] == c;
+				   text[tokens[index].From] == character;
 		}
 
-		// `std` in `std::string`. A class can qualify a name as well as a namespace can, but in what
-		// clangd prints it is a namespace far more often than not, and a class qualifier is drawn
-		// in a colour close to a type's anyway.
 		bool Qualifies(std::string_view text, const Tokens& tokens, std::size_t index)
 		{
 			return IsPunctuation(text, tokens, index + 1, ':') &&
 				   IsPunctuation(text, tokens, index + 2, ':');
 		}
 
-		void Add(std::vector<SemanticSpan>& spans, const Token& token, TokenKind kind)
+		bool IsDeclaredName(std::string_view text, const Tokens& tokens, std::size_t index,
+							std::string_view name)
+		{
+			return tokens[index].Kind == TokenKind::Identifier &&
+				   TokenText(text, tokens[index]) == name && !Qualifies(text, tokens, index);
+		}
+
+		void AddSpan(std::vector<SemanticSpan>& spans, const Token& token, TokenKind kind)
 		{
 			spans.push_back({token.From, token.To, kind});
 		}
 
-		// How far `tokens[index]` nests the brackets it opens or closes: +1, -1, or 0 for any
-		// other token. Angle brackets count too, since a parameter's type can be a template; a
+		// WARNING: Angle brackets count as nesting because a parameter's type can be a template; a
 		// comparison could only appear in a default argument, which is never walked this way.
 		int Nesting(std::string_view text, const Tokens& tokens, std::size_t index)
 		{
@@ -62,45 +71,42 @@ namespace Graphite {
 			}
 		}
 
-		// Identifiers in [first, last) as types and their qualifiers as namespaces, leaving out
-		// whatever stands inside square brackets — an array's extent is an expression.
-		void TypesIn(std::string_view text, const Tokens& tokens, std::size_t first,
-					 std::size_t last, std::size_t skip, std::vector<SemanticSpan>& spans)
+		void TypesIn(std::string_view text, const Tokens& tokens, std::size_t firstToken,
+					 std::size_t endToken, std::size_t skippedToken,
+					 std::vector<SemanticSpan>& spans)
 		{
-			int square = 0;
+			int squareBracketDepth = 0;
 
-			for (std::size_t index = first; index < last; ++index)
+			for (std::size_t index = firstToken; index < endToken; ++index)
 			{
 				if (IsPunctuation(text, tokens, index, '['))
 				{
-					++square;
+					++squareBracketDepth;
 				}
 				else if (IsPunctuation(text, tokens, index, ']'))
 				{
-					--square;
+					--squareBracketDepth;
 				}
-				else if (index != skip && square == 0 &&
+				else if (index != skippedToken && squareBracketDepth == 0 &&
 						 tokens[index].Kind == TokenKind::Identifier)
 				{
-					Add(spans, tokens[index],
-						Qualifies(text, tokens, index) ? TokenKind::SemanticNamespace
-													   : TokenKind::SemanticType);
+					AddSpan(spans, tokens[index],
+							Qualifies(text, tokens, index) ? TokenKind::SemanticNamespace
+														   : TokenKind::SemanticType);
 				}
 			}
 		}
 
-		// Where clangd's " (aka std::size_t)" starts in [first, last), or `last` when it is not
-		// there: the type spelled out, which follows whatever it is the spelling of.
-		std::size_t AkaIn(std::string_view text, const Tokens& tokens, std::size_t first,
-						  std::size_t last)
+		std::size_t AkaIn(std::string_view text, const Tokens& tokens, std::size_t firstToken,
+						  std::size_t endToken)
 		{
 			int depth = 0;
 
-			for (std::size_t index = first; index + 1 < last; ++index)
+			for (std::size_t index = firstToken; index + 1 < endToken; ++index)
 			{
 				if (depth == 0 && IsPunctuation(text, tokens, index, '(') &&
 					tokens[index + 1].Kind == TokenKind::Identifier &&
-					TextOf(text, tokens[index + 1]) == "aka")
+					TokenText(text, tokens[index + 1]) == "aka")
 				{
 					return index;
 				}
@@ -108,91 +114,84 @@ namespace Graphite {
 				depth += Nesting(text, tokens, index);
 			}
 
-			return last;
+			return endToken;
 		}
 
-		// The aka at [aka, last), if there is one: its type's identifiers coloured as types, the
-		// word itself left as it is.
-		void AkaTypes(std::string_view text, const Tokens& tokens, std::size_t aka,
-					  std::size_t last, std::vector<SemanticSpan>& spans)
+		void AkaTypes(std::string_view text, const Tokens& tokens, std::size_t akaIndex,
+					  std::size_t endToken, std::vector<SemanticSpan>& spans)
 		{
-			if (aka + 2 <= last)
+			if (akaIndex + kTokensBeforeAkaType <= endToken)
 			{
-				TypesIn(text, tokens, aka + 2, last, last, spans);
+				TypesIn(text, tokens, akaIndex + kTokensBeforeAkaType, endToken, endToken, spans);
 			}
 		}
 
-		// One parameter, tokens [first, last): "const Event & event = {}".
-		void ParameterIn(std::string_view text, const Tokens& tokens, std::size_t first,
-						 std::size_t last, std::vector<SemanticSpan>& spans)
+		void ParameterIn(std::string_view text, const Tokens& tokens, std::size_t firstToken,
+						 std::size_t endToken, std::vector<SemanticSpan>& spans)
 		{
-			const std::size_t aka = AkaIn(text, tokens, first, last);
-			AkaTypes(text, tokens, aka, last, spans);
-			last = aka;
+			const std::size_t akaIndex = AkaIn(text, tokens, firstToken, endToken);
+			AkaTypes(text, tokens, akaIndex, endToken, spans);
+			endToken = akaIndex;
 
-			// What follows a top-level "=" is a default argument, left to the lexer.
-			std::size_t end = last;
+			std::size_t declaratorEnd = endToken;
 			int depth = 0;
 
-			for (std::size_t index = first; index < last; ++index)
+			for (std::size_t index = firstToken; index < endToken; ++index)
 			{
 				depth += Nesting(text, tokens, index);
 
 				if (depth == 0 && IsPunctuation(text, tokens, index, '='))
 				{
-					end = index;
+					declaratorEnd = index;
 					break;
 				}
 			}
 
-			// The name is the declarator's last identifier, if it stands outside every bracket
-			// and after something that spells a type: an unnamed `Event&` or `std::string` ends
-			// in its type instead.
-			std::size_t name = end;
+			std::size_t nameIndex = declaratorEnd;
 			depth = 0;
 
-			for (std::size_t index = first; index < end; ++index)
+			for (std::size_t index = firstToken; index < declaratorEnd; ++index)
 			{
 				depth += Nesting(text, tokens, index);
 
 				if (depth == 0 && tokens[index].Kind == TokenKind::Identifier)
 				{
-					name = index;
+					nameIndex = index;
 				}
 			}
 
-			if (name != end && name > first)
+			if (nameIndex != declaratorEnd && nameIndex > firstToken)
 			{
-				const Token& before = tokens[name - 1];
+				const Token& before = tokens[nameIndex - 1];
 
 				const bool afterType = before.Kind == TokenKind::Identifier ||
 									   before.Kind == TokenKind::Keyword ||
-									   IsPunctuation(text, tokens, name - 1, '*') ||
-									   IsPunctuation(text, tokens, name - 1, '&') ||
-									   IsPunctuation(text, tokens, name - 1, '>');
+									   IsPunctuation(text, tokens, nameIndex - 1, '*') ||
+									   IsPunctuation(text, tokens, nameIndex - 1, '&') ||
+									   IsPunctuation(text, tokens, nameIndex - 1, '>');
 
 				if (!afterType)
 				{
-					name = end;
+					nameIndex = declaratorEnd;
 				}
 			}
 			else
 			{
-				name = end;
+				nameIndex = declaratorEnd;
 			}
 
-			if (name != end)
+			if (nameIndex != declaratorEnd)
 			{
-				Add(spans, tokens[name], TokenKind::SemanticParameter);
+				AddSpan(spans, tokens[nameIndex], TokenKind::SemanticParameter);
 			}
 
-			TypesIn(text, tokens, first, end, name, spans);
+			TypesIn(text, tokens, firstToken, declaratorEnd, nameIndex, spans);
 		}
 	}
 
 	TokenKind KindOfHoverSymbol(std::string_view hoverKind)
 	{
-		constexpr std::array<std::pair<std::string_view, TokenKind>, 21> kKinds{{
+		constexpr std::array<std::pair<std::string_view, TokenKind>, kHoverKindCount> kKinds{{
 			{"function", TokenKind::SemanticFunction},
 			{"instance method", TokenKind::SemanticFunction},
 			{"class method", TokenKind::SemanticFunction},
@@ -232,45 +231,39 @@ namespace Graphite {
 	{
 		std::vector<SemanticSpan> spans;
 
-		// A destructor is named "~Layer", which the lexer splits into a "~" and an identifier.
 		if (name.starts_with('~'))
 		{
 			name.remove_prefix(1);
 		}
 
-		std::size_t at = 0;
+		std::size_t nameIndex = 0;
 
-		while (at < tokens.size() &&
-			   !(tokens[at].Kind == TokenKind::Identifier && TextOf(text, tokens[at]) == name &&
-				 !Qualifies(text, tokens, at)))
+		while (nameIndex < tokens.size() && !IsDeclaredName(text, tokens, nameIndex, name))
 		{
-			++at;
+			++nameIndex;
 		}
 
-		// No name to anchor on — an operator, whose name is no identifier — and no telling the
-		// type from the rest.
-		if (at == tokens.size())
+		if (nameIndex == tokens.size())
 		{
 			return spans;
 		}
 
-		TypesIn(text, tokens, 0, at, at, spans);
+		TypesIn(text, tokens, kFirstToken, nameIndex, nameIndex, spans);
 
 		if (nameKind != TokenKind::Text)
 		{
-			Add(spans, tokens[at], nameKind);
+			AddSpan(spans, tokens[nameIndex], nameKind);
 		}
 
-		std::size_t open = at + 1;
+		std::size_t openIndex = nameIndex + 1;
 
-		// An explicit specialisation names its template arguments: "CreateScope<Layer>(...)".
-		if (IsPunctuation(text, tokens, open, '<'))
+		if (IsPunctuation(text, tokens, openIndex, '<'))
 		{
-			std::size_t close = open;
+			std::size_t closeIndex = openIndex;
 
-			for (int depth = 0; close < tokens.size(); ++close)
+			for (int depth = 0; closeIndex < tokens.size(); ++closeIndex)
 			{
-				depth += Nesting(text, tokens, close);
+				depth += Nesting(text, tokens, closeIndex);
 
 				if (depth == 0)
 				{
@@ -278,19 +271,17 @@ namespace Graphite {
 				}
 			}
 
-			TypesIn(text, tokens, open + 1, close, close, spans);
-			open = close + 1;
+			TypesIn(text, tokens, openIndex + 1, closeIndex, closeIndex, spans);
+			openIndex = closeIndex + 1;
 		}
 
-		if (!IsPunctuation(text, tokens, open, '('))
+		if (!IsPunctuation(text, tokens, openIndex, '('))
 		{
 			return spans;
 		}
 
-		// The parameter list, split on the commas between parameters, not those of a template's
-		// arguments inside one.
-		std::size_t start = open + 1;
-		std::size_t index = start;
+		std::size_t parameterStart = openIndex + 1;
+		std::size_t index = parameterStart;
 		int depth = 1;
 
 		for (; index < tokens.size(); ++index)
@@ -299,8 +290,8 @@ namespace Graphite {
 
 			if (depth == 0 || (depth == 1 && IsPunctuation(text, tokens, index, ',')))
 			{
-				ParameterIn(text, tokens, start, index, spans);
-				start = index + 1;
+				ParameterIn(text, tokens, parameterStart, index, spans);
+				parameterStart = index + 1;
 			}
 
 			if (depth == 0)
@@ -309,13 +300,12 @@ namespace Graphite {
 			}
 		}
 
-		// A trailing return type: "auto Size() const -> std::size_t".
 		for (++index; index + 1 < tokens.size(); ++index)
 		{
 			if (IsPunctuation(text, tokens, index, '-') &&
 				IsPunctuation(text, tokens, index + 1, '>'))
 			{
-				TypesIn(text, tokens, index + 2, tokens.size(), tokens.size(), spans);
+				TypesIn(text, tokens, index + kTokensInArrow, tokens.size(), tokens.size(), spans);
 				break;
 			}
 		}
@@ -327,9 +317,9 @@ namespace Graphite {
 	{
 		std::vector<SemanticSpan> spans;
 
-		const std::size_t aka = AkaIn(text, tokens, 0, tokens.size());
-		TypesIn(text, tokens, 0, aka, aka, spans);
-		AkaTypes(text, tokens, aka, tokens.size(), spans);
+		const std::size_t akaIndex = AkaIn(text, tokens, kFirstToken, tokens.size());
+		TypesIn(text, tokens, kFirstToken, akaIndex, akaIndex, spans);
+		AkaTypes(text, tokens, akaIndex, tokens.size(), spans);
 
 		return spans;
 	}
@@ -337,7 +327,7 @@ namespace Graphite {
 	std::vector<SemanticSpan> ParameterSpans(std::string_view text, const Tokens& tokens)
 	{
 		std::vector<SemanticSpan> spans;
-		ParameterIn(text, tokens, 0, tokens.size(), spans);
+		ParameterIn(text, tokens, kFirstToken, tokens.size(), spans);
 		return spans;
 	}
 }

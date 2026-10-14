@@ -13,8 +13,6 @@
 
 namespace Graphite {
 
-	// The production PreviewServerPort: PreviewSemantics talks to this, the tests talk to a fake,
-	// and neither knows about the other.
 	class LanguageServicesPort final : public PreviewServerPort
 	{
 	public:
@@ -23,12 +21,8 @@ namespace Graphite {
 		void Open(const std::filesystem::path& path, LanguageId language,
 				  std::string text) override
 		{
-			// EnsureStarted before OpenDocument, in that order — the same order and the same
-			// reason DocumentWindows::LensFor uses: OpenDocument is a no-op while no server runs
-			// for this root, and server startup is asynchronous, so a preview declared the
-			// instant a folder opens would otherwise race it and lose. Kept here rather than in
-			// PreviewSemantics so the policy lives in one place and the bookkeeping class stays
-			// free of server-startup concerns.
+			// WARNING: EnsureStarted must come before OpenDocument, which is a no-op while no server
+			// runs for this root, and server startup is asynchronous.
 			m_Services.EnsureStarted(path, language);
 			m_Services.OpenDocument(path, language, std::move(text));
 		}
@@ -48,9 +42,6 @@ namespace Graphite {
 		LanguageServices& m_Services;
 	};
 
-	// The production WorkspaceAnalysisPort, beside the preview one above and for the same reason:
-	// the class it serves talks to this, the tests talk to a fake, and neither knows about the
-	// other.
 	class WorkspaceAnalysisServicesPort final : public WorkspaceAnalysisPort
 	{
 	public:
@@ -59,9 +50,6 @@ namespace Graphite {
 		void Open(const std::filesystem::path& path, LanguageId language,
 				  std::string text) override
 		{
-			// EnsureStarted before OpenDocument, in that order and for the reason the port above
-			// gives: OpenDocument is a no-op while no server runs for this root, and a background
-			// file reached before the server started would otherwise be told to nobody.
 			m_Services.EnsureStarted(path, language);
 			m_Services.OpenDocument(path, language, std::move(text));
 		}
@@ -99,10 +87,6 @@ namespace Graphite {
 		LanguageServices& m_Services;
 	};
 
-	// The production DocumentServerPort: DocumentWindows talks to this, the router's tests talk to
-	// a fake, and neither knows about the other. Every call is forwarded as it stands - the
-	// policy, such as starting a server before opening a document with it, stays with the caller
-	// that has always kept it.
 	class DocumentServicesPort final : public DocumentServerPort
 	{
 	public:
@@ -116,7 +100,6 @@ namespace Graphite {
 		void OpenDocument(const std::filesystem::path& path, LanguageId language,
 						  std::string text) override
 		{
-			// A tab's document: the one kind whose diagnostics are pulled (DocumentRole).
 			m_Services.OpenDocument(path, language, std::move(text), DocumentRole::Shown);
 		}
 
@@ -150,22 +133,22 @@ namespace Graphite {
 
 		LanguageServices::Ticket AskDefinition(const std::filesystem::path& path,
 											   LanguageId language,
-											   const FilePosition& where) override
+											   const FilePosition& position) override
 		{
-			return m_Services.AskDefinition(path, language, where);
+			return m_Services.AskDefinition(path, language, position);
 		}
 
 		LanguageServices::Ticket AskReferences(const std::filesystem::path& path,
 											   LanguageId language,
-											   const FilePosition& where) override
+											   const FilePosition& position) override
 		{
-			return m_Services.AskReferences(path, language, where);
+			return m_Services.AskReferences(path, language, position);
 		}
 
 		LanguageServices::Ticket AskHover(const std::filesystem::path& path, LanguageId language,
-										  const FilePosition& where) override
+										  const FilePosition& position) override
 		{
-			return m_Services.AskHover(path, language, where);
+			return m_Services.AskHover(path, language, position);
 		}
 
 		LanguageServices::Ticket AskSwitchSourceHeader(const std::filesystem::path& path,
@@ -202,8 +185,6 @@ namespace Graphite {
 		LanguageServices& m_Services;
 	};
 
-	// The production WorkspaceServersPort, beside the three above and for the same reason: the
-	// coordinator talks to this, the tests talk to a fake, and neither knows about the other.
 	class LanguageServicesWorkspacePort final : public WorkspaceServersPort
 	{
 	public:

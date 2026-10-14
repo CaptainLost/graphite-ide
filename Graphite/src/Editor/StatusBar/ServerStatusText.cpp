@@ -4,13 +4,12 @@
 #include "UI/TypographicMarks.h"
 
 #include "Core/Base/ByteSize.h"
+#include "Core/Base/Strings.h"
 
 namespace Graphite {
 
 	namespace {
 
-		// "restarted N times" once there has been at least one, empty otherwise — a server that
-		// has restarted is still working, but the user should know it has been unhappy.
 		std::string RestartNote(const ServerStatus& status)
 		{
 			if (status.Restarts == 0)
@@ -38,7 +37,6 @@ namespace Graphite {
 		{
 			return LanguagePrefix(status.Language) + status.Name + std::string{kEmDashSeparator} + std::string{words};
 		}
-
 	}
 
 	std::string ServerStatusText(const ServerStatus& status)
@@ -67,8 +65,7 @@ namespace Graphite {
 			return Phrase(status, "starting");
 
 		case ServerState::Indexing:
-			// Percent is -1 for "not reported": a 0% while a server starts up would be a worse lie than no number.
-			if (status.Percent >= 0)
+			if (status.Percent > kNoPercentReported)
 			{
 				return Phrase(status, "indexing " + std::to_string(status.Percent) + "%");
 			}
@@ -169,9 +166,6 @@ namespace Graphite {
 			break;
 
 		case ServerState::Restricted:
-			// Detail holds the server's root. It is named because it need not be the open folder -
-			// it can lie above it, or be another folder a single file was opened from - and the
-			// remedy is phrased to stay true when the bar is not there to offer it.
 			if (status.Detail.empty())
 			{
 				detail = "This folder is not trusted, so " + status.Name +
@@ -180,8 +174,6 @@ namespace Graphite {
 			}
 			else
 			{
-				// "With it open" rather than a pointer at the bar alone: a file opened with no folder,
-				// or from outside the open one, has no bar offering its own folder.
 				detail = "The folder " + status.Detail + " is not trusted, so " + status.Name +
 						 " does not run for it. With it, or a folder above it, open as the workspace, "
 						 "trust it from the bar above the editor or the File menu.";
@@ -192,20 +184,13 @@ namespace Graphite {
 		case ServerState::Indexing:
 		case ServerState::Ready:
 		case ServerState::Failed:
-			// The command while starting, the version the handshake reported once it is up.
 			detail = status.Detail;
 			break;
 		}
 
-		if (const std::string restarts = RestartNote(status); !restarts.empty())
-		{
-			if (!detail.empty())
-			{
-				detail += "  ";
-			}
+		const std::string restarts = RestartNote(status);
 
-			detail += restarts;
-		}
+		Core::AppendSeparatedIfNotEmpty(detail, "  ", restarts);
 
 		return detail;
 	}
@@ -217,11 +202,10 @@ namespace Graphite {
 			return "analysing workspace: finding files";
 		}
 
-		// Total == 0 is the pass having nothing queued yet; Done >= Total (once Total is
-		// non-zero) is the pass having finished. Both are the resting state and both say
-		// nothing, but they are different reasons, which is why the check names them separately
-		// rather than folding them into one comparison a reader would have to unpick.
-		if (progress.Total == 0 || progress.Done >= progress.Total)
+		const bool nothingQueued = progress.Total == 0;
+		const bool finished = progress.Done >= progress.Total;
+
+		if (nothingQueued || finished)
 		{
 			return {};
 		}
@@ -242,5 +226,4 @@ namespace Graphite {
 
 		return detail;
 	}
-
 }

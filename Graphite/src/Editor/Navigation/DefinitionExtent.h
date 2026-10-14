@@ -9,16 +9,15 @@
 
 namespace Graphite {
 
-	struct LineRange
+	struct DefinitionLineRange
 	{
 		std::size_t First = 0;
-		std::size_t Last = 0; // inclusive
+		std::size_t Last = 0;
 	};
 
 	inline constexpr std::size_t kDefinitionScanLines = 400;
 	inline constexpr std::size_t kDefinitionFallbackLines = 20;
 
-	// `lines[0]` is line `firstLine` of the file, and `tokens` runs in step with `lines`.
-	LineRange DefinitionExtent(std::span<const std::string_view> lines, std::span<const std::vector<Token>> tokens,
-							   std::size_t firstLine);
+	DefinitionLineRange DefinitionExtent(std::span<const std::string_view> linesFromFirstLine,
+										 std::span<const std::vector<Token>> tokensPerLine, std::size_t firstLine);
 }

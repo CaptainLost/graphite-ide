@@ -8,17 +8,21 @@
 #include "Core/Text/Editing.h"
 #include "Core/Text/TextDocument.h"
 
-#include <algorithm>
+#include <cstddef>
 #include <string>
+#include <vector>
 
 using namespace Graphite;
 
 namespace {
+	constexpr bool kClipboardHasText = true;
+	constexpr bool kClipboardEmpty = false;
+
 	Core::OpenItem ItemWith(std::string content, std::filesystem::path path = "C:/p/main.cpp")
 	{
 		Core::OpenItem item;
 
-		auto document = Core::TextDocument::FromContent(std::move(content), path);
+		Core::Result<Core::TextDocument> document = Core::TextDocument::FromContent(std::move(content), path);
 		REQUIRE(document);
 
 		item.Document = std::move(document).GetValue();
@@ -32,6 +36,21 @@ namespace {
 	{
 		const Core::TextBuffer& buffer = item.Document->GetBuffer();
 		return buffer.Substring(0, buffer.GetLength());
+	}
+
+	std::size_t CountSeparators(const std::vector<Core::MenuItem>& items)
+	{
+		std::size_t separatorCount = 0;
+
+		for (const Core::MenuItem& item : items)
+		{
+			if (item.GetKind() == Core::MenuItem::Kind::Separator)
+			{
+				++separatorCount;
+			}
+		}
+
+		return separatorCount;
 	}
 
 	std::vector<std::string> CommandIds(const std::vector<Core::MenuItem>& items)
@@ -59,37 +78,32 @@ TEST_CASE("The context menu lists navigation, clipboard, then comment and select
 								   kSwitchHeaderSourceCommand, kCutCommand, kCopyCommand,
 								   kPasteCommand, kToggleLineCommentCommand, kSelectAllCommand});
 
-	const auto separators = std::count_if(menu.begin(), menu.end(), [](const Core::MenuItem& item) {
-		return item.GetKind() == Core::MenuItem::Kind::Separator;
-	});
-	CHECK(separators == 2);
+	CHECK(CountSeparators(menu) == 2);
 }
 
 TEST_CASE("Cut and copy need a selection, paste needs text on the clipboard")
 {
 	Core::OpenItem item = ItemWith("abc");
 
-	CHECK_FALSE(CanRun(EditorAction::Cut, item, true));
-	CHECK_FALSE(CanRun(EditorAction::Copy, item, true));
-	CHECK_FALSE(CanRun(EditorAction::Paste, item, false));
-	CHECK(CanRun(EditorAction::Paste, item, true));
-	CHECK(CanRun(EditorAction::SelectAll, item, false));
+	CHECK_FALSE(CanRun(EditorAction::Cut, item, kClipboardHasText));
+	CHECK_FALSE(CanRun(EditorAction::Copy, item, kClipboardHasText));
+	CHECK_FALSE(CanRun(EditorAction::Paste, item, kClipboardEmpty));
+	CHECK(CanRun(EditorAction::Paste, item, kClipboardHasText));
+	CHECK(CanRun(EditorAction::SelectAll, item, kClipboardEmpty));
 
 	item.Caret.Anchor = 0;
 	item.Caret.Offset = 2;
 
-	CHECK(CanRun(EditorAction::Cut, item, false));
-	CHECK(CanRun(EditorAction::Copy, item, false));
+	CHECK(CanRun(EditorAction::Cut, item, kClipboardEmpty));
+	CHECK(CanRun(EditorAction::Copy, item, kClipboardEmpty));
 }
 
 TEST_CASE("Toggle line comment needs a language with a line comment")
 {
-	CHECK(CanRun(EditorAction::ToggleLineComment, ItemWith("a", "C:/p/main.cpp"), false));
-	CHECK_FALSE(CanRun(EditorAction::ToggleLineComment, ItemWith("a", "C:/p/notes.txt"), false));
+	CHECK(CanRun(EditorAction::ToggleLineComment, ItemWith("a", "C:/p/main.cpp"), kClipboardEmpty));
+	CHECK_FALSE(CanRun(EditorAction::ToggleLineComment, ItemWith("a", "C:/p/notes.txt"), kClipboardEmpty));
 }
 
-// A document is read-only when its bytes were not valid UTF-8 and so were not decoded; there is
-// no setter, so the test builds one the way the loader does.
 TEST_CASE("Edit actions are disabled on a read-only document")
 {
 	Core::OpenItem item = ItemWith("ab\xff");
@@ -97,11 +111,11 @@ TEST_CASE("Edit actions are disabled on a read-only document")
 	item.Caret.Anchor = 0;
 	item.Caret.Offset = 2;
 
-	CHECK_FALSE(CanRun(EditorAction::Cut, item, true));
-	CHECK_FALSE(CanRun(EditorAction::Paste, item, true));
-	CHECK_FALSE(CanRun(EditorAction::ToggleLineComment, item, true));
-	CHECK(CanRun(EditorAction::Copy, item, true));
-	CHECK(CanRun(EditorAction::SelectAll, item, true));
+	CHECK_FALSE(CanRun(EditorAction::Cut, item, kClipboardHasText));
+	CHECK_FALSE(CanRun(EditorAction::Paste, item, kClipboardHasText));
+	CHECK_FALSE(CanRun(EditorAction::ToggleLineComment, item, kClipboardHasText));
+	CHECK(CanRun(EditorAction::Copy, item, kClipboardHasText));
+	CHECK(CanRun(EditorAction::SelectAll, item, kClipboardHasText));
 }
 
 TEST_CASE("Copy hands the selection to the clipboard in CRLF and leaves the text alone")
@@ -164,18 +178,18 @@ TEST_CASE("Undo and redo are available only when the history has a step to take"
 {
 	Core::OpenItem item = ItemWith("abc");
 
-	CHECK_FALSE(CanRun(EditorAction::Undo, item, false));
-	CHECK_FALSE(CanRun(EditorAction::Redo, item, false));
+	CHECK_FALSE(CanRun(EditorAction::Undo, item, kClipboardEmpty));
+	CHECK_FALSE(CanRun(EditorAction::Redo, item, kClipboardEmpty));
 
 	item.Caret.Anchor = item.Caret.Offset = 3;
 	REQUIRE(Core::InsertText(item, "d"));
 
-	CHECK(CanRun(EditorAction::Undo, item, false));
-	CHECK_FALSE(CanRun(EditorAction::Redo, item, false));
+	CHECK(CanRun(EditorAction::Undo, item, kClipboardEmpty));
+	CHECK_FALSE(CanRun(EditorAction::Redo, item, kClipboardEmpty));
 
 	CHECK(ApplyEditorAction(EditorAction::Undo, item, std::nullopt).Changed);
 	CHECK(TextOf(item) == "abc");
-	CHECK(CanRun(EditorAction::Redo, item, false));
+	CHECK(CanRun(EditorAction::Redo, item, kClipboardEmpty));
 
 	CHECK(ApplyEditorAction(EditorAction::Redo, item, std::nullopt).Changed);
 	CHECK(TextOf(item) == "abcd");
@@ -193,7 +207,6 @@ TEST_CASE("Save, undo, redo and close have default bindings that take nothing fr
 	keys.SetDefault(kSaveCommand, SaveBinding());
 	keys.SetDefault(kCloseCommand, CloseBinding());
 
-	// The one Global chord nearby: Save All differs from Save by the Shift alone.
 	keys.SetDefault("document.saveAll",
 					{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)});
 
@@ -211,8 +224,8 @@ TEST_CASE("Only undo and redo repeat while their key is held")
 {
 	for (const EditorCommandSpec& spec : EditorCommandSpecs())
 	{
-		const bool history = spec.Action == EditorAction::Undo || spec.Action == EditorAction::Redo;
+		const bool isHistoryAction = spec.Action == EditorAction::Undo || spec.Action == EditorAction::Redo;
 
-		CHECK_MESSAGE(spec.Repeats == history, spec.Id);
+		CHECK_MESSAGE(spec.Repeats == isHistoryAction, spec.Id);
 	}
 }

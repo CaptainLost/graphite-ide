@@ -15,8 +15,6 @@ namespace Graphite {
 
 		if (analysis.Declarations.empty() && analysis.Semantic.IsEmpty())
 		{
-			// Nothing came back before the tab closed, so there is nothing to restore. Refused
-			// rather than stored empty, where it would evict an entry that does hold answers.
 			return std::nullopt;
 		}
 
@@ -62,15 +60,15 @@ namespace Graphite {
 
 		if (bytes > m_Budget)
 		{
-			// Refused outright rather than stored and immediately evicted, which would empty the
-			// cache on the way to keeping nothing.
 			return;
 		}
 
-		if (const auto found = m_ByPath.find(path); found != m_ByPath.end())
+		if (const EntryIndex::iterator found = m_ByPath.find(path); found != m_ByPath.end())
 		{
-			m_Bytes -= found->second->Bytes;
-			m_Entries.erase(found->second);
+			const auto& [keptPath, keptEntry] = *found;
+
+			m_Bytes -= keptEntry->Bytes;
+			m_Entries.erase(keptEntry);
 			m_ByPath.erase(found);
 		}
 
@@ -84,23 +82,22 @@ namespace Graphite {
 	std::optional<CachedAnalysis> AnalysisCache::Take(const std::filesystem::path& path,
 													  std::filesystem::file_time_type modifiedAt)
 	{
-		const auto found = m_ByPath.find(path);
+		const EntryIndex::iterator found = m_ByPath.find(path);
 
 		if (found == m_ByPath.end())
 		{
 			return std::nullopt;
 		}
 
-		CachedAnalysis kept = std::move(found->second->Analysis);
+		const auto& [keptPath, keptEntry] = *found;
+		CachedAnalysis kept = std::move(keptEntry->Analysis);
 
-		m_Bytes -= found->second->Bytes;
-		m_Entries.erase(found->second);
+		m_Bytes -= keptEntry->Bytes;
+		m_Entries.erase(keptEntry);
 		m_ByPath.erase(found);
 
 		if (kept.ModifiedAt != modifiedAt)
 		{
-			// Not only newer: a file restored from a backup, or a branch switched back, carries an
-			// older stamp and describes text this no longer matches either.
 			return std::nullopt;
 		}
 

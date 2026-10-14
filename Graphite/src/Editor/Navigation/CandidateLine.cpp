@@ -20,18 +20,23 @@ namespace Graphite {
 			return {};
 		}
 
-		// The definition's whole extent, not its first line alone: a grammar colours a line by what surrounds it.
-		std::vector<std::string> expanded;
+		std::vector<std::string> expandedLines;
 
 		for (const std::string& line : preview.Lines)
 		{
-			expanded.push_back(Core::ExpandTabs(line, tabWidth));
+			expandedLines.push_back(Core::ExpandTabs(line, tabWidth));
 		}
 
-		const std::vector<std::string_view> lines(expanded.begin(), expanded.end());
-		std::vector<std::vector<Token>> tokens = ColourLines(LanguageOfPath(location.Path), lines);
+		const std::vector<std::string_view> expandedLineViews(expandedLines.begin(), expandedLines.end());
+		std::vector<std::vector<Token>> tokensPerLine = ColourLines(LanguageOfPath(location.Path), expandedLineViews);
 
-		return CandidateLine{.Text = std::move(expanded.front()),
-							 .Tokens = tokens.empty() ? std::vector<Token>{} : std::move(tokens.front())};
+		std::vector<Token> firstLineTokens;
+
+		if (!tokensPerLine.empty())
+		{
+			firstLineTokens = std::move(tokensPerLine.front());
+		}
+
+		return CandidateLine{.Text = std::move(expandedLines.front()), .Tokens = std::move(firstLineTokens)};
 	}
 }

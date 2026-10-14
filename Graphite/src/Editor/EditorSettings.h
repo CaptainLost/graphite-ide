@@ -14,6 +14,8 @@ namespace Graphite {
 
 	class AppSettings;
 
+	inline constexpr int kDefaultHoverDelayMs = 500;
+
 	enum class DefinitionPreviewMode : std::uint8_t
 	{
 		Off,
@@ -25,7 +27,7 @@ namespace Graphite {
 	{
 		bool ShowInfo = true;
 		DefinitionPreviewMode Preview = DefinitionPreviewMode::WithCtrl;
-		int DelayMs = 500;
+		int DelayMs = kDefaultHoverDelayMs;
 	};
 
 	class EditorSettings final
@@ -52,15 +54,9 @@ namespace Graphite {
 
 		bool IsWordWrap() const { return m_WordWrap; }
 
-		// Whether a diff wraps its long lines. A switch apart from the editor's: a diff is read
-		// side by side in half the width, where wrapping earns its keep in a way it may not in
-		// the editor, and the reader turns it on or off from the diff's own toolbar.
 		bool IsDiffWordWrap() const { return m_DiffWordWrap; }
 		void SetDiffWordWrap(bool wrap);
 
-		// The git change markers, in the gutter (with the tooltip over them) and on the
-		// scrollbar. Two switches because they are two places on screen; the tooltip has no
-		// switch of its own, since without the gutter's marks there is nothing to hover.
 		bool HasGutterChangeMarkers() const { return m_GutterChangeMarkers; }
 		bool HasScrollbarChangeMarkers() const { return m_ScrollbarChangeMarkers; }
 
@@ -71,8 +67,7 @@ namespace Graphite {
 
 		void SetHoverInfo(bool show);
 		void SetDefinitionPreview(DefinitionPreviewMode mode);
-		// Clamped to the range the settings slider offers.
-		void SetHoverDelayMs(int ms);
+		void SetHoverDelayMs(int milliseconds);
 
 	private:
 		void SetWordWrap(bool wrap);
@@ -87,11 +82,12 @@ namespace Graphite {
 
 		static constexpr std::size_t kMinimumIndentWidth = 1;
 		static constexpr std::size_t kMaximumIndentWidth = 8;
+		static constexpr std::size_t kDefaultIndentWidth = 4;
 
 		float m_FontSize = kDefaultFontSize;
 
 		bool m_IndentWithSpaces = true;
-		std::size_t m_IndentWidth = 4;
+		std::size_t m_IndentWidth = kDefaultIndentWidth;
 
 		bool m_WordWrap = false;
 		bool m_DiffWordWrap = false;

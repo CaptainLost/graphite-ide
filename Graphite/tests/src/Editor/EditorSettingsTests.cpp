@@ -4,8 +4,11 @@
 
 #include "TempAppSettings.h"
 
-// Every case gets its own AppSettings over a temporary file (TempAppSettings), so a case starts
-// from the defaults whatever an earlier one set, and the user's own settings are never touched.
+namespace {
+	constexpr bool kEnabled = true;
+	constexpr bool kDisabled = false;
+}
+
 TEST_CASE("EditorSettings starts at its documented defaults")
 {
 	TempAppSettings store;
@@ -17,8 +20,6 @@ TEST_CASE("EditorSettings starts at its documented defaults")
 	CHECK_FALSE(settings.IsWordWrap());
 }
 
-// The clamp was a formality while the only way to change the size was a menu item stepping by
-// 1.0 from a known value. A slider hands it whatever the user drags to.
 TEST_CASE("EditorSettings clamps the font size to its range")
 {
 	TempAppSettings store;
@@ -57,18 +58,16 @@ TEST_CASE("EditorSettings round-trips the indent style")
 	TempAppSettings store;
 	Graphite::EditorSettings settings{store.Get()};
 
-	settings.SetIndentWithSpaces(false);
+	settings.SetIndentWithSpaces(kDisabled);
 	CHECK_FALSE(settings.GetIndentStyle().UseSpaces);
 
-	settings.SetIndentWithSpaces(true);
+	settings.SetIndentWithSpaces(kEnabled);
 	CHECK(settings.GetIndentStyle().UseSpaces);
 
 	settings.SetIndentWidth(8);
 	CHECK(settings.GetIndentStyle().Width == 8);
 }
 
-// Load() already treats a stored zero as "use the default", so a setter that could store one
-// would make that branch reachable from the UI and an indent of zero columns possible.
 TEST_CASE("EditorSettings refuses an indent width of zero")
 {
 	TempAppSettings store;
@@ -80,9 +79,6 @@ TEST_CASE("EditorSettings refuses an indent width of zero")
 	CHECK(settings.GetIndentStyle().Width == 2);
 }
 
-// The slider offers 1 to 8, but Ctrl+Click turns it into a text input that ImGui does not clamp
-// on its own — SliderInt is given ImGuiSliderFlags_AlwaysClamp for that, but the setter has to
-// hold the line too, since the same value can arrive from a hand-edited graphite.json.
 TEST_CASE("EditorSettings clamps an indent width above its maximum")
 {
 	TempAppSettings store;
@@ -117,15 +113,15 @@ TEST_CASE("EditorSettings turns each kind of change marker off on its own")
 	TempAppSettings store;
 	Graphite::EditorSettings settings{store.Get()};
 
-	settings.SetGutterChangeMarkers(false);
+	settings.SetGutterChangeMarkers(kDisabled);
 	CHECK_FALSE(settings.HasGutterChangeMarkers());
 	CHECK(settings.HasScrollbarChangeMarkers());
 
-	settings.SetScrollbarChangeMarkers(false);
+	settings.SetScrollbarChangeMarkers(kDisabled);
 	CHECK_FALSE(settings.HasScrollbarChangeMarkers());
 
-	settings.SetGutterChangeMarkers(true);
-	settings.SetScrollbarChangeMarkers(true);
+	settings.SetGutterChangeMarkers(kEnabled);
+	settings.SetScrollbarChangeMarkers(kEnabled);
 	CHECK(settings.HasGutterChangeMarkers());
 	CHECK(settings.HasScrollbarChangeMarkers());
 }
@@ -134,8 +130,7 @@ TEST_CASE("EditorSettings wraps diffs on a switch of their own, off by default")
 {
 	TempAppSettings store;
 
-	// The editor's wrap on says nothing about the diff's.
-	store.Get().SetWordWrap(true);
+	store.Get().SetWordWrap(kEnabled);
 
 	{
 		Graphite::EditorSettings settings{store.Get()};
@@ -145,13 +140,12 @@ TEST_CASE("EditorSettings wraps diffs on a switch of their own, off by default")
 		CHECK_FALSE(settings.IsDiffWordWrap());
 	}
 
-	// Nor the other way round.
-	store.Get().SetWordWrap(false);
+	store.Get().SetWordWrap(kDisabled);
 
 	{
 		Graphite::EditorSettings settings{store.Get()};
 		settings.Load();
-		settings.SetDiffWordWrap(true);
+		settings.SetDiffWordWrap(kEnabled);
 
 		CHECK(settings.IsDiffWordWrap());
 	}
@@ -170,9 +164,9 @@ TEST_CASE("EditorSettings loads back what it set, after a restart")
 	{
 		Graphite::EditorSettings settings{store.Get()};
 		settings.SetFontSize(17.0f);
-		settings.SetIndentWithSpaces(false);
+		settings.SetIndentWithSpaces(kDisabled);
 		settings.SetIndentWidth(2);
-		settings.SetGutterChangeMarkers(false);
+		settings.SetGutterChangeMarkers(kDisabled);
 	}
 
 	Graphite::EditorSettings reloaded{store.Reload()};
@@ -203,7 +197,7 @@ TEST_CASE("EditorSettings hover values survive a reload")
 
 	{
 		Graphite::EditorSettings settings{store.Get()};
-		settings.SetHoverInfo(false);
+		settings.SetHoverInfo(kDisabled);
 		settings.SetDefinitionPreview(Graphite::DefinitionPreviewMode::Always);
 		settings.SetHoverDelayMs(800);
 	}

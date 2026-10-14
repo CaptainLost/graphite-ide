@@ -22,6 +22,8 @@
 #include "Core/App/Redraw.h"
 #include "Core/Base/ByteSize.h"
 #include "Core/Base/Log.h"
+#include "Core/Base/Result.h"
+#include "Core/Base/Strings.h"
 #include "Core/Command/Chord.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
@@ -51,42 +53,25 @@
 #include <utility>
 
 namespace Graphite {
-
 	namespace {
 		constexpr double kTransientMessageSeconds = 4.0;
+		constexpr unsigned int kNoDockNode = 0;
+		constexpr float kNoRunOffset = 0.0f;
+		constexpr float kNoRunSpacing = 0.0f;
 
-		std::string Join(const std::vector<std::string>& values)
+		// WARNING: ImGui shows what precedes ### and identifies by what follows, so the path stays
+		// out of sight and the icon moves no window id. The MDI glyphs are merged onto the regular
+		// mono face alone, so nothing drawing this title may push another font.
+		std::string WindowName(const Core::DocumentSet& documents, std::size_t index)
 		{
-			std::string joined;
-
-			for (std::size_t index = 0; index < values.size(); ++index)
-			{
-				if (index > 0)
-				{
-					joined += ", ";
-				}
-
-				joined += values[index];
-			}
-
-			return joined;
-		}
-
-		std::string WindowName(const Core::DocumentSet& documents,
-							   std::size_t index)
-		{
-			// ImGui shows what precedes ### and identifies by what follows, so the path — the
-			// only identity that cannot collide — stays out of sight, and the icon in front
-			// of the title moves no window id, dock position or imgui.ini entry.
-			//
-			// The MDI glyphs are merged onto the regular mono face alone, so nothing drawing
-			// this title may push another font.
 			const std::filesystem::path& path = documents.At(index).Path;
+			const std::string icon{Core::IconForExtension(Core::ToUtf8(path.extension()))};
+			const std::string title = documents.DisplayTitle(index);
 
-			return std::string{Core::IconForExtension(Core::ToUtf8(path.extension()))} + "  " + documents.DisplayTitle(index) + "###" + Core::ToUtf8(path);
+			return icon + "  " + title + "###" + Core::ToUtf8(path);
 		}
 
-		std::string Identity(const Core::DocumentSet& documents, std::size_t index)
+		std::string DocumentIdentityOf(const Core::DocumentSet& documents, std::size_t index)
 		{
 			return Core::ToUtf8(documents.At(index).Path);
 		}
@@ -98,7 +83,7 @@ namespace Graphite {
 
 			for (std::size_t index = 0; index < documents.GetCount(); ++index)
 			{
-				identities.push_back(Identity(documents, index));
+				identities.push_back(DocumentIdentityOf(documents, index));
 			}
 
 			return identities;
@@ -108,6 +93,43 @@ namespace Graphite {
 						 const std::filesystem::path& path)
 		{
 			return std::find(directories.begin(), directories.end(), path.parent_path()) != directories.end();
+		}
+
+		bool ContainsSamePath(const std::vector<std::filesystem::path>& paths,
+							  const std::filesystem::path& wanted)
+		{
+			const std::filesystem::path normalizedWanted = Core::NormalizePath(wanted);
+
+			for (const std::filesystem::path& path : paths)
+			{
+				if (Core::SamePath(Core::NormalizePath(path), normalizedWanted))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		void DrawColouredRun(const std::string& text, std::size_t from, std::size_t to, ImU32 colour,
+							 bool& isFirstRun)
+		{
+			if (to <= from || from >= text.size())
+			{
+				return;
+			}
+
+			if (!isFirstRun)
+			{
+				ImGui::SameLine(kNoRunOffset, kNoRunSpacing);
+			}
+
+			isFirstRun = false;
+
+			const std::size_t end = std::min(to, text.size());
+			const ImVec4 rgba = ImGui::ColorConvertU32ToFloat4(colour);
+
+			ImGui::TextColored(rgba, "%.*s", static_cast<int>(end - from), text.data() + from);
 		}
 
 		std::string FileNameOf(const std::filesystem::path* path)
@@ -125,8 +147,6 @@ namespace Graphite {
 			return "Saved " + std::to_string(saved) + (saved == 1 ? " file." : " files.");
 		}
 
-		// Named together in one message rather than one message per file overwriting the
-		// last, so what still needs attention is not buried under "saved".
 		std::string NotSavedSummary(const std::vector<std::filesystem::path>& conflicted)
 		{
 			std::vector<std::string> names;
@@ -137,22 +157,17 @@ namespace Graphite {
 				names.push_back(Core::ToUtf8(path.filename()));
 			}
 
-			return std::to_string(names.size()) + " changed on disk and " + (names.size() == 1 ? "was" : "were") + " not saved: " + Join(names);
+			return std::to_string(names.size()) + " changed on disk and " + (names.size() == 1 ? "was" : "were") + " not saved: " + Core::JoinedWith(names, ", ");
 		}
-
 	}
 
 	std::string SaveFailureMessage(const std::filesystem::path& path, std::string_view error)
 	{
-		// Matched on the name alone: the error may spell the folder differently, or name the
-		// file relative to it, and either way it already says which file.
 		if (const std::string name = Core::ToUtf8(path.filename()); !name.empty() && error.find(name) != std::string_view::npos)
 		{
 			return std::string(error);
 		}
 
-		// Named by its whole path, which the toast shows relative to the folder: the error may
-		// name only the temporary file the write went through, or nothing at all.
 		return Core::ToUtf8(path) + ": " + std::string(error);
 	}
 
@@ -160,15 +175,11 @@ namespace Graphite {
 	{
 		const Core::TabKind tabKind = permanent ? Core::TabKind::Permanent : Core::TabKind::Preview;
 
-		// Whether this opened a tab or landed on one already there, the item now carries
-		// OpenItem::PendingFocus and the render pass below is what spends it.
 		const Core::OpenOutcome outcome = m_Documents.Open(path, tabKind);
 
-		// Opened from inside the folder that is open now, so it belongs to that folder, even if
-		// its tab was carried over from the one before.
-		if (const auto state = m_States.find(path); state != m_States.end())
+		if (DocumentState* const state = FindState(path))
 		{
-			state->second.CarriedOver = false;
+			state->CarriedOver = false;
 		}
 
 		if (outcome != Core::OpenOutcome::NeedsConfirmation)
@@ -192,10 +203,7 @@ namespace Graphite {
 				continue;
 			}
 
-			// Still open from the folder this one replaced: its tabs were written to that folder,
-			// and recording them here too would mix two folders' tabs into one.
-			const auto found = m_States.find(item.Path);
-			const DocumentState* const kept = found != m_States.end() ? &found->second : nullptr;
+			const DocumentState* const kept = FindState(item.Path);
 
 			if (kept != nullptr && kept->CarriedOver)
 			{
@@ -210,8 +218,6 @@ namespace Graphite {
 			tab.Line = caret.Line;
 			tab.Column = caret.Column;
 
-			// A view still on its way to a restored line is reported as going there: the anchor
-			// says where its first frames happened to land, not where the reader was.
 			if (kept != nullptr && kept->PendingTop)
 			{
 				tab.Top = kept->PendingTop->Line;
@@ -224,10 +230,12 @@ namespace Graphite {
 			state.Tabs.push_back(std::move(tab));
 		}
 
-		if (const auto active = m_Documents.GetActiveIndex();
-			active && m_Documents.At(*active).Document && !IsCarriedOver(m_Documents.At(*active).Path))
+		const std::optional<std::size_t> activeIndex = m_Documents.GetActiveIndex();
+
+		if (activeIndex && m_Documents.At(*activeIndex).Document &&
+			!IsCarriedOver(m_Documents.At(*activeIndex).Path))
 		{
-			state.Active = m_Documents.At(*active).Path;
+			state.Active = m_Documents.At(*activeIndex).Path;
 		}
 
 		return state;
@@ -245,44 +253,37 @@ namespace Graphite {
 	{
 		for (const TabState& tab : state.Tabs)
 		{
-			// The new folder's own tabs name this file, so it belongs to this folder as well, and
-			// the tab it already has — carried over or not — is recorded here from now on.
-			if (const auto kept = m_States.find(tab.Path); kept != m_States.end())
+			if (DocumentState* const kept = FindState(tab.Path))
 			{
-				kept->second.CarriedOver = false;
+				kept->CarriedOver = false;
 			}
 
-			std::error_code error;
+			std::error_code fileCheckError;
 
-			if (!std::filesystem::is_regular_file(tab.Path, error))
+			if (!std::filesystem::is_regular_file(tab.Path, fileCheckError))
 			{
 				APP_INFO("Not reopening '{}': it is no longer there", Core::ToUtf8(tab.Path));
 				continue;
 			}
 
-			// Already open — a folder dropped over another can share files with it — and the
-			// tab someone is using keeps its own caret and view.
 			if (m_Documents.Find(tab.Path))
 			{
 				continue;
 			}
 
-			// Confirmed: a large file's size question was answered in the launch it was opened
-			// in, and asking again every launch would be a question about nothing.
 			LoadConfirmed(tab.Path, !tab.Preview);
 
-			const auto index = m_Documents.Find(tab.Path);
+			const std::optional<std::size_t> itemIndex = m_Documents.Find(tab.Path);
 
-			if (!index)
+			if (!itemIndex)
 			{
 				continue;
 			}
 
-			Core::OpenItem& item = m_Documents.At(*index);
+			Core::OpenItem& item = m_Documents.At(*itemIndex);
 
-			// Only the active tab is brought forward, below; every open marked its own.
 			item.PendingFocus = false;
-			m_RestoredIdentities.insert(Identity(m_Documents, *index));
+			m_RestoredIdentities.insert(DocumentIdentityOf(m_Documents, *itemIndex));
 
 			if (!item.Document)
 			{
@@ -302,27 +303,21 @@ namespace Graphite {
 
 		if (state.Active)
 		{
-			if (const auto index = m_Documents.Find(*state.Active))
+			const std::optional<std::size_t> activeIndex = m_Documents.Find(*state.Active);
+
+			if (activeIndex)
 			{
-				// Active, so commands act on it, but not brought forward: which tab of each node
-				// is in front is what imgui.ini remembers, and the reader may have left another
-				// kind of window - a panel, a session - in front of it.
-				m_Documents.Activate(*index);
+				m_Documents.Activate(*activeIndex);
 			}
 		}
 	}
 
 	void DocumentWindows::LoadConfirmed(const std::filesystem::path& path, bool permanent)
 	{
-		const auto existing = m_Documents.Find(path);
+		const std::optional<std::size_t> existing = m_Documents.Find(path);
 
-		// A tab can already be there with nothing in it: one opened on a file that did not
-		// exist, whose file has since appeared and appeared large. OpenConfirmed would only
-		// activate that tab, so the item is filled directly instead.
 		if (existing && !m_Documents.At(*existing).Document)
 		{
-			// Confirmed, so NeedsConfirmation cannot come back, and Loaded and Failed both
-			// leave the tab saying the right thing: the content, or the reason there is none.
 			static_cast<void>(Core::LoadFromFile(m_Documents.At(*existing), Core::LargeFileConfirmation::Confirmed));
 			return;
 		}
@@ -333,18 +328,14 @@ namespace Graphite {
 
 	void DocumentWindows::AskAboutSize(const std::filesystem::path& path, bool permanent)
 	{
-		LargeFileQuestion question{path, permanent, 0};
+		const std::uint64_t unknownSize = 0;
+		LargeFileQuestion question{.Path = path, .Permanent = permanent, .Size = unknownSize};
 
-		// Probed once, here, rather than every frame the modal is open: a stat plus an 8 KB
-		// read per frame is real work on a network share. Whoever asks has just probed the
-		// same file successfully, so a failure here means the file went away in between.
-		if (const auto probe = Core::ProbeFile(path))
+		if (const Core::Result<Core::FileProbe> probe = Core::ProbeFile(path))
 		{
 			question.Size = probe.GetValue().Size;
 		}
 
-		// Two events naming the same file — a double dispatch from the tree, a watcher batch
-		// and a focus regain — are one question, not the same one asked twice in a row.
 		if (!m_SizeQuestion.Asked(question))
 		{
 			m_SizeQuestion.Ask(std::move(question));
@@ -358,11 +349,6 @@ namespace Graphite {
 
 		m_Documents.RewritePaths(from, to);
 
-		// Moved the same way RewritePaths moved the tabs, so a carried-over tab under the moved
-		// directory is still recognised as carried over under its new path.
-		//
-		// Collected before any is moved, so a path moved onto cannot be mistaken for one still to
-		// move. The state left under the old path goes with the next prune, like the rest of it.
 		std::vector<std::filesystem::path> carriedOver;
 
 		for (auto& [path, state] : m_States)
@@ -376,15 +362,14 @@ namespace Graphite {
 
 		for (const std::filesystem::path& path : carriedOver)
 		{
-			const auto relative = Core::RelativeTo(path, from);
+			const std::optional<std::filesystem::path> relative = Core::RelativeTo(path, from);
+			const std::filesystem::path movedPath = *relative == "." ? to : to / *relative;
 
-			StateFor(*relative == "." ? to : to / *relative).CarriedOver = true;
+			StateFor(movedPath).CarriedOver = true;
 		}
 
 		const std::vector<std::string> newIdentities = CurrentIdentities(m_Documents);
 
-		// RewritePaths only ever changes paths in place, never the count or the order, so the
-		// two snapshots line up index for index.
 		for (std::size_t index = 0; index < newIdentities.size(); ++index)
 		{
 			if (newIdentities[index] != oldIdentities[index])
@@ -396,22 +381,18 @@ namespace Graphite {
 
 	unsigned int DocumentWindows::DockNodeForIdentity(const std::string& identity) const
 	{
-		// The live window, if this document was ever drawn under this identity, is
-		// authoritative for where it currently sits.
 		if (ImGuiWindow* window = ImGui::FindWindowByName(identity.c_str());
 			window != nullptr && window->DockNode != nullptr)
 		{
 			return window->DockNode->ID;
 		}
 
-		// The root moved again before a Render ever consumed the previous move's target.
-		if (const auto pending = m_PendingDockTargets.find(identity);
-			pending != m_PendingDockTargets.end())
+		if (m_PendingDockTargets.contains(identity))
 		{
-			return pending->second;
+			return m_PendingDockTargets.at(identity);
 		}
 
-		return 0;
+		return kNoDockNode;
 	}
 
 	void DocumentWindows::MovePendingDockTarget(const std::string& oldIdentity,
@@ -421,7 +402,7 @@ namespace Graphite {
 
 		m_PendingDockTargets.erase(oldIdentity);
 
-		if (target != 0)
+		if (target != kNoDockNode)
 		{
 			m_PendingDockTargets[newIdentity] = target;
 		}
@@ -434,9 +415,6 @@ namespace Graphite {
 
 		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
 		{
-			// The watcher names directories, so an item is worth a stat only when its own
-			// directory is one of them. `everything` means the batch could not be narrowed
-			// down at all — dropped notifications, or a git state change.
 			if (!everything && !LiesInAnyOf(directories, m_Documents.At(index).Path))
 			{
 				continue;
@@ -475,8 +453,6 @@ namespace Graphite {
 
 	void DocumentWindows::AnnounceExpectedReloads(const ReloadBatch& batch)
 	{
-		// A failure has already said "Reload failed" and why in a toast; a line counting the
-		// files that did reload would read as though every one of them had.
 		if (batch.AnyFailed)
 		{
 			return;
@@ -484,9 +460,6 @@ namespace Graphite {
 
 		const std::vector<std::size_t>& reloaded = batch.Expected;
 
-		// Said once for the batch: a checkout rewrites several open files in one go, and the
-		// application asked for every one of those writes, so "changed on disk" - the words
-		// for somebody else's change - would be wrong about each of them.
 		if (reloaded.size() == 1)
 		{
 			SetTransientMessage(Core::ToUtf8(m_Documents.At(reloaded.front()).Path.filename()) +
@@ -500,7 +473,7 @@ namespace Graphite {
 
 	void DocumentWindows::ReloadExpected(std::size_t index, ReloadBatch& batch)
 	{
-		if (ReloadOne(index, false))
+		if (ReloadOne(index, ReloadAnnouncement::Silent))
 		{
 			batch.Expected.push_back(index);
 		}
@@ -518,17 +491,12 @@ namespace Graphite {
 		{
 			const std::filesystem::path path = m_Documents.At(index).Path;
 
-			// A change this application made itself, which the user has already been asked
-			// about once, by whatever asked for the write.
 			if (m_ExpectedWrites.TakeFor(path))
 			{
 				ReloadExpected(index, batch);
 				break;
 			}
 
-			// Asked rather than reloaded, and queued, so several files changing in one batch
-			// (a git checkout) are asked about one at a time instead of every modal fighting
-			// to open this frame.
 			if (!m_ReloadConflict.Asked(path))
 			{
 				m_ReloadConflict.Ask(path);
@@ -538,8 +506,6 @@ namespace Graphite {
 		}
 
 		case Core::FileSyncOutcome::SafeToReload:
-			// Taken here too, though a clean tab would be reloaded either way: what differs is
-			// the message, and a checkout's writes reach most tabs through this case.
 			if (m_ExpectedWrites.TakeFor(m_Documents.At(index).Path))
 			{
 				ReloadExpected(index, batch);
@@ -555,8 +521,6 @@ namespace Graphite {
 
 		case Core::FileSyncOutcome::NeedsLoad:
 		{
-			// The file a tab was opened on before it existed is here now, and no later sync
-			// would look again.
 			Core::OpenItem& item = m_Documents.At(index);
 
 			if (Core::LoadFromFile(item, Core::LargeFileConfirmation::Unconfirmed) == Core::ItemLoad::NeedsConfirmation)
@@ -569,8 +533,6 @@ namespace Graphite {
 
 		case Core::FileSyncOutcome::Unchanged:
 		case Core::FileSyncOutcome::WentMissing:
-			// A file that went away is already said by the tab's own title, which gains and
-			// loses "(deleted)" with the mark.
 			break;
 		}
 	}
@@ -590,15 +552,15 @@ namespace Graphite {
 		return std::nullopt;
 	}
 
-	bool DocumentWindows::ReloadOne(std::size_t index, bool announce)
+	bool DocumentWindows::ReloadOne(std::size_t index, ReloadAnnouncement announcement)
 	{
 		const std::string fileName = Core::ToUtf8(m_Documents.At(index).Path.filename());
 
-		if (const auto result = Core::ReloadItem(m_Documents, index))
+		if (const Core::Result<void> result = Core::ReloadItem(m_Documents, index))
 		{
 			AnnounceReload(m_Documents.At(index));
 
-			if (announce)
+			if (announcement == ReloadAnnouncement::Announce)
 			{
 				SetTransientMessage(fileName + " reloaded (changed on disk)");
 			}
@@ -609,8 +571,6 @@ namespace Graphite {
 		{
 			APP_ERROR("Could not reload {}: {}", fileName, result.GetError().Message);
 
-			// In a toast alone, not on the status bar, which keeps the routine "reloaded" (ADR
-			// 0557). The error names the file.
 			ReportFailure(Core::ToastKind::Error, "Reload failed", result.GetError().Message);
 			return false;
 		}
@@ -620,8 +580,6 @@ namespace Graphite {
 	{
 		const Core::OpenItem& item = m_Documents.At(index);
 
-		// Checked here rather than left to SaveDocument, which succeeds having written
-		// nothing: "Widget.obj saved" would be a message about a write that never happened.
 		if (!item.Document)
 		{
 			return true;
@@ -629,12 +587,8 @@ namespace Graphite {
 
 		const std::string fileName = Core::ToUtf8(item.Path.filename());
 
-		if (const auto result = Core::SaveDocument(m_Documents, index))
+		if (const Core::Result<void> result = Core::SaveDocument(m_Documents, index))
 		{
-			// Only on a write that actually happened: a didSave for a save that failed would tell
-			// the server the file on disk matches what it has been sent, which is the one thing
-			// that is not true. Qualified against Core::SaveDocument above, which is the free
-			// function that does the writing.
 			m_Server.SaveDocument(item.Path, LanguageOfPath(item.Path));
 
 			SetTransientMessage(fileName + " saved");
@@ -642,8 +596,6 @@ namespace Graphite {
 		}
 		else
 		{
-			// A toast rather than the status bar, which keeps only the routine "saved" (ADR 0557):
-			// a failed save must not fade after a few seconds the way that line does.
 			ReportSaveFailure(item.Path, result.GetError());
 			return false;
 		}
@@ -658,7 +610,6 @@ namespace Graphite {
 
 	void DocumentWindows::ReportFailure(Core::ToastKind kind, std::string title, std::string_view message)
 	{
-		// About the open folder's documents, so it reads relative to the folder and goes when it does.
 		m_Events.Publish(FolderToast(kind, std::move(title), message, m_WorkspaceRoot));
 	}
 
@@ -673,8 +624,6 @@ namespace Graphite {
 
 		if (item.Document->CheckChangedOnDisk())
 		{
-			// A change nobody was told about — a dropped notification, with no chance to have
-			// asked earlier. This is the last safety net before the write.
 			if (!m_OverwriteConfirm.Asked(item.Path))
 			{
 				m_OverwriteConfirm.Ask(item.Path);
@@ -690,11 +639,11 @@ namespace Graphite {
 	{
 		const Core::OpenItem& item = m_Documents.At(index);
 
-		// Enabled only when there is something to write: a document with no unsaved changes, or
-		// a tab whose open failed, has nothing the file on disk does not already hold.
 		const bool unsaved = item.Document && item.Document->IsModified();
 
-		if (ImGui::MenuItem("Save", nullptr, false, unsaved))
+		const bool selected = false;
+
+		if (ImGui::MenuItem("Save", nullptr, selected, unsaved))
 		{
 			RequestSave(index);
 		}
@@ -713,8 +662,6 @@ namespace Graphite {
 				workspaceRoot.empty() ? std::filesystem::path{}
 									  : std::filesystem::relative(item.Path, workspaceRoot, code);
 
-			// With no folder open, or when the two share no prefix, the absolute path is
-			// still worth copying.
 			const bool usable = !workspaceRoot.empty() && !code && !relative.empty();
 			CopyToClipboard(m_Events, "relative path", Core::ToUtf8(usable ? relative : item.Path));
 		}
@@ -726,7 +673,7 @@ namespace Graphite {
 
 		if (ImGui::MenuItem("Show in Explorer"))
 		{
-			if (const auto revealed = Core::Shell::RevealInFileBrowser(item.Path); !revealed)
+			if (const Core::Result<void> revealed = Core::Shell::RevealInFileBrowser(item.Path); !revealed)
 			{
 				APP_ERROR("{}", revealed.GetError().Message);
 				ReportFailure(Core::ToastKind::Error, "Cannot reveal file", revealed.GetError().Message);
@@ -736,13 +683,8 @@ namespace Graphite {
 
 	bool DocumentWindows::SaveAllModified()
 	{
-		// Qualified: the member has the same name, and an unqualified call from inside it
-		// would find itself.
 		const Core::SaveAllReport report = Core::SaveAllModified(m_Documents);
 
-		// A stopped batch says why in a toast, naming the document that stopped it, and gets no
-		// summary on the status bar: a count of what was saved before the failure would only
-		// bury the one thing the user has to act on.
 		if (report.StoppedAt)
 		{
 			ReportSaveFailure(report.StoppedAt->Path, report.StoppedAt->Error);
@@ -750,15 +692,11 @@ namespace Graphite {
 			return report.IsComplete();
 		}
 
-		// The status bar confirms what was saved, the routine part (ADR 0557)...
 		if (report.Saved > 0)
 		{
 			SetTransientMessage(SavedCount(report.Saved));
 		}
 
-		// ...and what was skipped, which still needs attention, goes in a toast alone. Nothing
-		// is asked about here: a conflicted document gets its Overwrite/Cancel question from
-		// RequestSave, a deliberate per-document Ctrl+S.
 		if (!report.Conflicted.empty())
 		{
 			ReportFailure(Core::ToastKind::Warning, "Save skipped", NotSavedSummary(report.Conflicted));
@@ -771,7 +709,9 @@ namespace Graphite {
 	{
 		for (const std::filesystem::path& path : paths)
 		{
-			if (const auto index = FindOpen(path); index && !SaveOne(*index))
+			const std::optional<std::size_t> index = FindOpen(path);
+
+			if (index && !SaveOne(*index))
 			{
 				return false;
 			}
@@ -787,32 +727,25 @@ namespace Graphite {
 
 		for (const std::filesystem::path& path : paths)
 		{
-			// ReloadFromDisk replaces the buffer and marks it saved whether or not it was modified,
-			// so this is the same reload a disk change gets, with no question in front of it.
-			if (const auto index = FindOpen(path))
+			const std::optional<std::size_t> index = FindOpen(path);
+
+			if (!index)
 			{
-				if (ReloadOne(*index, false))
-				{
-					++reverted;
-				}
-				else
-				{
-					failed = true;
-				}
+				continue;
+			}
+
+			if (ReloadOne(*index, ReloadAnnouncement::Silent))
+			{
+				++reverted;
+			}
+			else
+			{
+				failed = true;
 			}
 		}
 
-		// A question about a change on disk, queued before the revert, is about a document that
-		// is now clean and matches the disk: answering it would reload nothing or, for "keep
-		// mine", accept a state that is no longer there. m_ExpectedWrites is left alone: an
-		// entry in it is for a write still to come, which the revert has not made.
-		m_ReloadConflict.WithdrawIf([this, &paths](const std::filesystem::path& queued) {
-			return std::any_of(paths.begin(), paths.end(), [&queued](const std::filesystem::path& path) {
-				return Core::SamePath(Core::NormalizePath(path), Core::NormalizePath(queued));
-			});
-		});
+		m_ReloadConflict.WithdrawIf([&paths](const std::filesystem::path& queued) { return ContainsSamePath(paths, queued); });
 
-		// A failed reload has already said so, and that is the message worth keeping.
 		if (!failed && reverted > 0)
 		{
 			SetTransientMessage("Discarded unsaved changes in " + std::to_string(reverted) +
@@ -845,24 +778,8 @@ namespace Graphite {
 		keys.SetDefault("document.saveAll",
 						{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)});
 
-		// The active text document's item, or null — every editor command acts on the document
-		// whose tab is active, the same document F12 means.
-		const auto activeItem = [this]() -> Core::OpenItem* {
-			const auto path = ActiveTextDocument(m_Documents);
-
-			if (!path)
-			{
-				return nullptr;
-			}
-
-			const auto index = m_Documents.Find(*path);
-			return index ? &m_Documents.At(*index) : nullptr;
-		};
-
-		const auto activeIndex = [this]() -> std::optional<std::size_t> {
-			const auto path = ActiveTextDocument(m_Documents);
-			return path ? m_Documents.Find(*path) : std::nullopt;
-		};
+		const bool fromChord = false;
+		const bool fromMenu = true;
 
 		for (const EditorCommandSpec& spec : EditorCommandSpecs())
 		{
@@ -870,65 +787,28 @@ namespace Graphite {
 
 			commands.Add({.Id = spec.Id,
 						  .Label = spec.Label,
-						  .Run = [this, activeIndex, action] {
-							  if (const auto index = activeIndex())
-							  {
-								  QueueEditorAction(*index, action);
-							  } },
-						  // The Edit menu and the editor's right-click menu: the same action,
-						  // marked so a Cut or Copy is confirmed where its chord is not.
-						  .RunFromMenu = [this, activeIndex, action] {
-							  if (const auto index = activeIndex())
-							  {
-								  QueueEditorAction(*index, action, true);
-							  } },
-						  .Enabled = [activeItem, action] {
-							  const Core::OpenItem* item = activeItem();
-
-							  // Asked on every frame the menu is open and on every press of
-							  // the chord, so only Paste asks, and it asks without reading:
-							  // ImGui's read opens the clipboard and copies it, and logs an
-							  // error whenever it holds something other than text.
-							  const bool hasText =
-								  action == EditorAction::Paste && Core::ClipboardHasText();
-
-							  return item != nullptr && CanRun(action, *item, hasText); },
+						  .Run = [this, action, fromChord] { QueueOnActiveDocument(action, fromChord); },
+						  .RunFromMenu = [this, action, fromMenu] { QueueOnActiveDocument(action, fromMenu); },
+						  .Enabled = [this, action] { return CanRunOnActiveDocument(action); },
 						  .KeyScope = Core::ShortcutScope::FocusedEditor,
 						  .RepeatsWhileHeld = spec.Repeats});
 
 			keys.SetDefault(spec.Id, BindingOf(spec));
 		}
 
-		// Through RequestSave, which is the Save of the tab's own menu: a document changed on disk
-		// is asked about before it is overwritten. FocusedEditor like the edit commands, so
-		// Ctrl+S still reaches a shell when a terminal holds the keyboard.
 		commands.Add({.Id = kSaveCommand,
 					  .Label = "Save",
-					  .Run = [this, activeIndex] {
-						  if (const auto index = activeIndex())
-						  {
-							  RequestSave(*index);
-						  } },
-					  .Enabled = [activeItem] {
-						  const Core::OpenItem* item = activeItem();
-						  return item != nullptr && item->Document.has_value(); },
+					  .Run = [this] { RequestSaveOfActiveDocument(); },
+					  .Enabled = [this] { return ActiveTabHoldsDocument(); },
 					  .KeyScope = Core::ShortcutScope::FocusedEditor,
 					  .RepeatsWhileHeld = false});
 
 		keys.SetDefault(kSaveCommand, SaveBinding());
 
-		// The tab's own close button: an unsaved document is asked about first. What closes is
-		// the active editor tab, so FocusedEditor is the whole of what this can reach, and Ctrl+W
-		// - a shell's delete-word - still goes to a terminal that holds the keyboard.
 		commands.Add({.Id = kCloseCommand,
 					  .Label = "Close Tab",
-					  .Run = [this, activeItem] {
-						  if (const Core::OpenItem* item = activeItem())
-						  {
-							  m_CloseRequested = item->Path;
-							  Core::Redraw::Request();
-						  } },
-					  .Enabled = [activeItem] { return activeItem() != nullptr; },
+					  .Run = [this] { RequestCloseOfActiveTab(); },
+					  .Enabled = [this] { return FindActiveTextItem() != nullptr; },
 					  .KeyScope = Core::ShortcutScope::FocusedEditor,
 					  .RepeatsWhileHeld = false});
 
@@ -936,25 +816,90 @@ namespace Graphite {
 
 		commands.Add({.Id = kSwitchHeaderSourceCommand,
 					  .Label = "Switch Header/Source",
-					  .Run = [this, activeIndex] {
-						  if (const auto index = activeIndex())
-						  {
-							  RequestSwitchSourceHeader(*index);
-						  } },
-					  .Enabled = [this, activeItem] {
-						  const Core::OpenItem* item = activeItem();
-
-						  if (item == nullptr)
-						  {
-							  return false;
-						  }
-
-						  const LanguageId language = LanguageOfPath(item->Path);
-						  return m_Server.HasChosenServer(language) && m_Server.OffersSwitchSourceHeader(language); },
+					  .Run = [this] { RequestSwitchSourceHeaderOfActiveDocument(); },
+					  .Enabled = [this] { return CanSwitchSourceHeaderOfActiveDocument(); },
 					  .RepeatsWhileHeld = false});
 
 		keys.SetDefault(kSwitchHeaderSourceCommand,
 						{.Primary = Core::Chord::Key(ImGuiMod_Alt | ImGuiKey_O)});
+	}
+
+	std::optional<std::size_t> DocumentWindows::FindActiveTextIndex()
+	{
+		const std::optional<std::filesystem::path> path = ActiveTextDocument(m_Documents);
+
+		return path ? m_Documents.Find(*path) : std::nullopt;
+	}
+
+	Core::OpenItem* DocumentWindows::FindActiveTextItem()
+	{
+		const std::optional<std::size_t> index = FindActiveTextIndex();
+
+		return index ? &m_Documents.At(*index) : nullptr;
+	}
+
+	void DocumentWindows::QueueOnActiveDocument(EditorAction action, bool fromMenu)
+	{
+		if (const std::optional<std::size_t> index = FindActiveTextIndex())
+		{
+			QueueEditorAction(*index, action, fromMenu);
+		}
+	}
+
+	// WARNING: Only Paste asks the clipboard, and it asks without reading it: ImGui's read opens
+	// the clipboard and copies it, and logs an error whenever it holds something other than text.
+	bool DocumentWindows::CanRunOnActiveDocument(EditorAction action)
+	{
+		const Core::OpenItem* item = FindActiveTextItem();
+		const bool hasText = action == EditorAction::Paste && Core::ClipboardHasText();
+
+		return item != nullptr && CanRun(action, *item, hasText);
+	}
+
+	void DocumentWindows::RequestSaveOfActiveDocument()
+	{
+		if (const std::optional<std::size_t> index = FindActiveTextIndex())
+		{
+			RequestSave(*index);
+		}
+	}
+
+	bool DocumentWindows::ActiveTabHoldsDocument()
+	{
+		const Core::OpenItem* item = FindActiveTextItem();
+
+		return item != nullptr && item->Document.has_value();
+	}
+
+	void DocumentWindows::RequestCloseOfActiveTab()
+	{
+		if (const Core::OpenItem* item = FindActiveTextItem())
+		{
+			m_CloseRequested = item->Path;
+			Core::Redraw::Request();
+		}
+	}
+
+	void DocumentWindows::RequestSwitchSourceHeaderOfActiveDocument()
+	{
+		if (const std::optional<std::size_t> index = FindActiveTextIndex())
+		{
+			RequestSwitchSourceHeader(*index);
+		}
+	}
+
+	bool DocumentWindows::CanSwitchSourceHeaderOfActiveDocument()
+	{
+		const Core::OpenItem* item = FindActiveTextItem();
+
+		if (item == nullptr)
+		{
+			return false;
+		}
+
+		const LanguageId language = LanguageOfPath(item->Path);
+
+		return m_Server.HasChosenServer(language) && m_Server.OffersSwitchSourceHeader(language);
 	}
 
 	void DocumentWindows::QueueEditorAction(std::size_t index, EditorAction action, bool fromMenu)
@@ -966,8 +911,6 @@ namespace Graphite {
 
 		StateFor(m_Documents.At(index).Path).Widget.PendingActions.push_back({action, fromMenu});
 
-		// A context-menu item runs after its editor has drawn for the frame; without a frame
-		// asked for, the action would wait for the next mouse move.
 		Core::Redraw::Request();
 	}
 
@@ -1004,20 +947,15 @@ namespace Graphite {
 
 	void DocumentWindows::CloseAndForgetLayout(std::size_t index)
 	{
-		// The layout entry goes with the window: position belongs to the group, not to the
-		// file, so a reopened document lands where the user is working rather than where it
-		// was months ago — and imgui.ini stops collecting a dead section per file.
 		ImGui::ClearWindowSettings(WindowName(m_Documents, index).c_str());
-		m_RestoredIdentities.erase(Identity(m_Documents, index));
+		m_RestoredIdentities.erase(DocumentIdentityOf(m_Documents, index));
 		m_Documents.Close(index);
-		// After the close, so the prune sees the document gone and tells the server so. Erasing
-		// here directly would be the same thing minus the CloseDocument the prune sends.
 		PruneDocumentStates();
 	}
 
 	void DocumentWindows::CloseIfOpen(const std::filesystem::path& path)
 	{
-		if (const auto index = m_Documents.Find(path))
+		if (const std::optional<std::size_t> index = m_Documents.Find(path))
 		{
 			CloseAndForgetLayout(*index);
 		}
@@ -1033,8 +971,6 @@ namespace Graphite {
 		const LargeFileQuestion* question = m_SizeQuestion.GetCurrent();
 		const std::uint64_t size = question != nullptr ? question->Size : 0;
 
-		// A size of zero means the probe in AskAboutSize failed, which after a successful one
-		// moments earlier means the file has gone.
 		if (size == 0)
 		{
 			ImGui::TextUnformatted("This file can no longer be read. Load it anyway?");
@@ -1047,7 +983,6 @@ namespace Graphite {
 
 		if (ImGui::Button("Load"))
 		{
-			// Before Answer(), which drops the payload this still points into.
 			if (question != nullptr)
 			{
 				LoadConfirmed(question->Path, question->Permanent);
@@ -1075,7 +1010,6 @@ namespace Graphite {
 
 		const std::filesystem::path* path = m_ReloadConflict.GetCurrent();
 
-		// Withdrawn while its popup was open (the document was reverted): nothing left to ask.
 		if (path == nullptr)
 		{
 			ImGui::CloseCurrentPopup();
@@ -1091,7 +1025,7 @@ namespace Graphite {
 		{
 			if (path != nullptr)
 			{
-				if (const auto index = m_Documents.Find(*path))
+				if (const std::optional<std::size_t> index = m_Documents.Find(*path))
 				{
 					ReloadOne(*index);
 				}
@@ -1102,13 +1036,11 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		// The entire acknowledgement mechanism: recording the file's current state as known
-		// is what stops Ctrl+S, or the next sweep, asking about this file again.
 		if (ImGui::Button("Keep my version"))
 		{
 			if (path != nullptr)
 			{
-				if (const auto index = m_Documents.Find(*path);
+				if (const std::optional<std::size_t> index = m_Documents.Find(*path);
 					index && m_Documents.At(*index).Document)
 				{
 					m_Documents.At(*index).Document->AcceptDiskState();
@@ -1138,7 +1070,7 @@ namespace Graphite {
 		{
 			if (path != nullptr)
 			{
-				if (const auto index = m_Documents.Find(*path))
+				if (const std::optional<std::size_t> index = m_Documents.Find(*path))
 				{
 					SaveOne(*index);
 				}
@@ -1159,7 +1091,7 @@ namespace Graphite {
 
 	bool DocumentWindows::StillNeedsCloseConfirmation(const std::filesystem::path& path)
 	{
-		const auto index = m_Documents.Find(path);
+		const std::optional<std::size_t> index = m_Documents.Find(path);
 
 		if (!index)
 		{
@@ -1173,19 +1105,22 @@ namespace Graphite {
 			return true;
 		}
 
-		// The question went stale while it waited its turn — the document was saved with
-		// Ctrl+S, say — but the close button the user pressed still stands, so the tab is
-		// closed here rather than merely dropped.
 		CloseAndForgetLayout(*index);
 
 		return false;
 	}
 
+	void DocumentWindows::CloseConfirmedDocument(const std::filesystem::path* path)
+	{
+		if (path != nullptr)
+		{
+			CloseIfOpen(*path);
+		}
+	}
+
 	void DocumentWindows::RenderCloseConfirm()
 	{
-		if (!m_CloseConfirm.Begin([this](const std::filesystem::path& candidate) {
-				return StillNeedsCloseConfirmation(candidate);
-			}))
+		if (!m_CloseConfirm.Begin([this](const std::filesystem::path& candidate) { return StillNeedsCloseConfirmation(candidate); }))
 		{
 			return;
 		}
@@ -1195,31 +1130,21 @@ namespace Graphite {
 		ImGui::Text("Save changes to %s before closing?", FileNameOf(path).c_str());
 		ImGui::Separator();
 
-		// Called before Answer(), which drops the payload `path` points into.
-		const auto finishClose = [this, path] {
-			if (path != nullptr)
-			{
-				CloseIfOpen(*path);
-			}
-		};
-
 		if (ImGui::Button("Save"))
 		{
 			bool saved = true;
 
 			if (path != nullptr)
 			{
-				if (const auto index = m_Documents.Find(*path))
+				if (const std::optional<std::size_t> index = m_Documents.Find(*path))
 				{
 					saved = SaveOne(*index);
 				}
 			}
 
-			// A failed save changes nothing: the document stays open and dirty, the reason is
-			// already in the status bar, and the question stays up.
 			if (saved)
 			{
-				finishClose();
+				CloseConfirmedDocument(path);
 				m_CloseConfirm.Answer();
 			}
 		}
@@ -1228,7 +1153,7 @@ namespace Graphite {
 
 		if (ImGui::Button("Discard"))
 		{
-			finishClose();
+			CloseConfirmedDocument(path);
 			m_CloseConfirm.Answer();
 		}
 
@@ -1242,39 +1167,32 @@ namespace Graphite {
 		m_CloseConfirm.End();
 	}
 
+	// WARNING: ImGui::ClearWindowSettings undocks a window but does not destroy it, so a document
+	// closed and reopened reuses its ImGuiWindow. Asking ImGui whether it has heard of the window
+	// would call that reopened document known; only a document absent last frame is new.
 	bool DocumentWindows::IsNewSinceLastFrame(const std::string& identity) const
 	{
-		// Whether ImGui has ever heard of this window is the wrong question:
-		// ClearWindowSettings undocks a window but does not destroy it, so a document closed
-		// and reopened reuses the same ImGuiWindow object, stripped of its dock and with
-		// nothing left to redock it. New *since last frame* is false for a document that has
-		// been open continuously, which is what stops a user's drag being fought every frame.
 		return std::find(m_PreviousIdentities.begin(), m_PreviousIdentities.end(), identity) == m_PreviousIdentities.end();
 	}
 
 	unsigned int DocumentWindows::ChooseDockTarget(const std::string& identity,
 												   unsigned int fallbackDockNode)
 	{
-		// Checked, not merely non-zero: splitting the editor area, opening a file in the new
-		// split and closing it leaves ImGui free to delete the emptied node, and
-		// DockBuilderDockWindow does not fail on a dead id — it creates a fresh node under no
-		// parent, so the window floats free instead of landing in the centre.
+		// WARNING: The node must be checked alive, not just non-zero. ImGui may delete a node
+		// emptied by closing a split, and DockBuilderDockWindow does not fail on a dead id: it
+		// creates a parentless node and the window floats free.
 		const bool lastFocusedAlive =
-			m_LastFocusedNode != 0 && ImGui::DockBuilderGetNode(m_LastFocusedNode) != nullptr;
+			m_LastFocusedNode != kNoDockNode && ImGui::DockBuilderGetNode(m_LastFocusedNode) != nullptr;
 
 		if (!lastFocusedAlive)
 		{
-			m_LastFocusedNode = 0;
+			m_LastFocusedNode = kNoDockNode;
 		}
 
-		// A window carrying over a dock position from before its path was rewritten takes
-		// priority over both: it is more specific than "wherever was last focused", and right
-		// even when nothing has been focused yet.
-		if (const auto pending = m_PendingDockTargets.find(identity);
-			pending != m_PendingDockTargets.end())
+		if (m_PendingDockTargets.contains(identity))
 		{
-			const unsigned int target = pending->second;
-			m_PendingDockTargets.erase(pending);
+			const unsigned int target = m_PendingDockTargets.at(identity);
+			m_PendingDockTargets.erase(identity);
 
 			return target;
 		}
@@ -1303,18 +1221,28 @@ namespace Graphite {
 		return m_States[path];
 	}
 
+	DocumentWindows::DocumentState* DocumentWindows::FindState(const std::filesystem::path& path)
+	{
+		return m_States.contains(path) ? &m_States.at(path) : nullptr;
+	}
+
+	const DocumentWindows::DocumentState* DocumentWindows::FindState(const std::filesystem::path& path) const
+	{
+		return m_States.contains(path) ? &m_States.at(path) : nullptr;
+	}
+
 	DocumentWindows::LensState* DocumentWindows::FindLens(const std::filesystem::path& path)
 	{
-		const auto state = m_States.find(path);
+		DocumentState* const state = FindState(path);
 
-		return state != m_States.end() && state->second.Lens ? &*state->second.Lens : nullptr;
+		return state != nullptr && state->Lens ? &*state->Lens : nullptr;
 	}
 
 	bool DocumentWindows::IsCarriedOver(const std::filesystem::path& path) const
 	{
-		const auto state = m_States.find(path);
+		const DocumentState* const state = FindState(path);
 
-		return state != m_States.end() && state->second.CarriedOver;
+		return state != nullptr && state->CarriedOver;
 	}
 
 	SyntaxCache& DocumentWindows::SyntaxFor(const Core::OpenItem& item)
@@ -1325,15 +1253,6 @@ namespace Graphite {
 		{
 			syntax.emplace();
 			syntax->SetSyntax(SyntaxOf(LanguageOfPath(item.Path)));
-			// Keeps the cache's width equal to the item's when a fresh cache is made for an item
-			// that was already at a non-default width — the case being a path rewrite while the
-			// document stays open: RewritePaths changes item.Path (a rename of the file or of a
-			// directory it lives under), the state under the new key starts with no cache, and
-			// without this seed the new cache would sit at Core::DefaultTabWidth forever.
-			// DrawEditor's compare-and-rebuild block in TextEditorWidget.cpp only fires on
-			// item.TabWidth != view.Indent.Width, which is already false the moment the item's own
-			// width was set correctly earlier — so nothing would ever re-lex the cache at the right
-			// width.
 			syntax->SetTabWidth(item.TabWidth);
 		}
 
@@ -1344,7 +1263,6 @@ namespace Graphite {
 	{
 		const LanguageId language = LanguageOfPath(item.Path);
 
-		// Listed rather than chosen: a document of a language whose server is chosen later must already have been handed to the services, or that server never hears of it.
 		if (!LanguageHasServers(language) || !item.Document)
 		{
 			return nullptr;
@@ -1356,60 +1274,44 @@ namespace Graphite {
 		{
 			state.Lens.emplace();
 
-			// EnsureStarted before OpenDocument, in that order: OpenDocument is a no-op while no
-			// server runs for this root, and every answer afterwards would be about a file the
-			// server was never told exists. Both are safe to repeat, but this is the one moment
-			// per document they are needed.
 			m_Server.EnsureStarted(item.Path, language);
 			m_Server.OpenDocument(item.Path, language, item.Document->GetBuffer().Materialize());
 
-			// Its declarations and colours are wanted from now on.
 			m_Router.Track(item.Path);
 
-			// After the server is told, not before: this only fills the gap until the server
-			// answers, and the answer has to already be on its way for the gap to be a gap.
 			RestoreAnalysis(item, state);
 		}
 
 		return &*state.Lens;
 	}
 
-	// Drops every entry whose key is not the path of a currently open document. Run once a frame
-	// rather than at the one place a path changes: m_States is a side-map keyed on an identity
-	// DocumentSet owns and can rewrite without this map hearing about it — see m_States. A
-	// closed tab goes the same way, from CloseAndForgetLayout.
-	//
-	// The server is told the document closed from here as well, so its copy does not outlive the
-	// tab: a path that has gone from DocumentSet is one nothing will ask about again.
 	void DocumentWindows::PruneDocumentStates()
 	{
-		for (auto it = m_States.begin(); it != m_States.end();)
+		std::vector<std::filesystem::path> closedPaths;
+
+		for (const auto& [path, state] : m_States)
 		{
-			if (m_Documents.Find(it->first))
+			if (!m_Documents.Find(path))
 			{
-				++it;
-				continue;
+				closedPaths.push_back(path);
 			}
-
-			if (const std::optional<LensState>& lens = it->second.Lens)
-			{
-				m_Server.CloseDocument(it->first, LanguageOfPath(it->first));
-
-				// Kept rather than dropped, so reopening this document paints in the frame it
-				// opens. The server is still told it closed: this remembers the answers, not the
-				// document, and holding the document open with the server would make it keep a
-				// full parse of every file ever glanced at.
-				//
-				// Before the entry is erased, never after: the colours it keeps are this entry's.
-				KeepAnalysis(it->first, *lens, it->second.Semantic);
-				m_Router.Forget(it->first);
-			}
-
-			it = m_States.erase(it);
 		}
 
-		// The same rule: a closed tab's markers, and anything still being computed for it, are
-		// dropped.
+		for (const std::filesystem::path& path : closedPaths)
+		{
+			const DocumentState& closedState = m_States.at(path);
+
+			if (const std::optional<LensState>& lens = closedState.Lens)
+			{
+				m_Server.CloseDocument(path, LanguageOfPath(path));
+
+				KeepAnalysis(path, *lens, closedState.Semantic);
+				m_Router.Forget(path);
+			}
+
+			m_States.erase(path);
+		}
+
 		m_ChangeMarkers.Retain(
 			[this](const std::filesystem::path& path) { return m_Documents.Find(path).has_value(); });
 	}
@@ -1432,14 +1334,6 @@ namespace Graphite {
 
 		if (worth)
 		{
-			// Both tiers, exactly as the background pass writes both: what this tab learned is
-			// worth as much to the next session as to this one, and a store filled only by the
-			// pass would forget every file a reader opened before the walk reached it.
-			//
-			// Unguarded by the workspace-analysis setting, and deliberately: a store detached
-			// because that setting is off — or because no folder is open — drops the write itself
-			// rather than creating a directory for it, so a guard here would restate what
-			// AnalysisStore::Write already promises and give a second place for the two to drift.
 			m_AnalysisStore.Write(path, *worth);
 
 			m_Analysis.Put(path, std::move(*worth));
@@ -1459,9 +1353,6 @@ namespace Graphite {
 
 		if (!restored)
 		{
-			// The memory cache holds this session's work; the store holds every session before it.
-			// Asked second because a memory hit is both fresher and free — and this read touches
-			// the disk in the frame the tab opens, which AnalysisStore::Read argues for at length.
 			restored = m_AnalysisStore.Read(item.Path, *modified);
 		}
 
@@ -1476,33 +1367,23 @@ namespace Graphite {
 		lens.HaveDeclarations = !lens.Declarations.empty();
 		lens.Model.SeedCounts(std::move(restored->Counts));
 
-		// Asked for rather than done here, and this is the whole subtlety of restoring: a lens
-		// anchors to a ROW, and this runs before the document has been drawn even once, so its
-		// row map is still empty. RowMap::FirstRowOf answers zero for every line of an empty map,
-		// which would put every declaration on row zero, collapse them to one under the
-		// de-duplication by row, and consume the restored counts against that single survivor.
-		// The rebuild a frame later would fix the anchors and have nothing left to anchor.
-		//
-		// UpdateLenses runs after the editor has drawn, in this same frame, so nothing waits.
+		// WARNING: A lens anchors to a row and this runs before the document has drawn once, so
+		// its row map is empty and every line maps to row zero. Anchoring now would collapse the
+		// restored declarations onto one row; the rebuild a frame later anchors them properly.
 		lens.NeedsRebuild = true;
 
 		state.Semantic = std::move(restored->Semantic);
-
-		// The router still wants symbols: this is what the file looked like when its tab closed,
-		// and the server is still asked. Its answer replaces all of this, and until it arrives
-		// the reader has last time's answer rather than an empty margin.
 	}
 
 	std::optional<std::filesystem::file_time_type> DocumentWindows::ModifiedTimeOf(
 		const std::filesystem::path& path)
 	{
-		std::error_code error;
-		const std::filesystem::file_time_type modified = std::filesystem::last_write_time(path, error);
+		std::error_code timeError;
+		const std::filesystem::file_time_type modified = std::filesystem::last_write_time(path, timeError);
 
-		// Empty rather than a default stamp: two default stamps compare equal, so a file that
-		// could not be read at both ends of a document's life - a share that blinked, a scanner
-		// holding it open - would restore an entry nothing had ever checked.
-		if (error)
+		// WARNING: An unreadable stamp must be empty, never a default stamp: two default stamps
+		// compare equal and would restore an entry nothing ever checked.
+		if (timeError)
 		{
 			return std::nullopt;
 		}
@@ -1520,29 +1401,22 @@ namespace Graphite {
 		DocumentState& state = StateFor(item.Path);
 		DiagnosticOverlay& overlay = state.Diagnostics;
 
-		// Without a buffer there is nothing to convert positions against, so the overlay is left
-		// exactly as it stood - empty for a document that has never had one. Diagnostics are not
-		// part of what KeepAnalysis/RestoreAnalysis carry across a close, so there is nothing
-		// stale to worry about reusing here either.
 		if (!item.Document)
 		{
 			return overlay;
 		}
 
-		const auto& documents = m_Diagnostics.GetDocuments();
-		const auto entry = documents.find(item.Path);
+		const std::map<std::filesystem::path, DiagnosticsModel::Entry>& diagnosticEntries =
+			m_Diagnostics.GetDocuments();
 
-		// 0 for a path with no entry at all, which matches a fresh DiagnosticGuard's own default
-		// and so never falsely appears unchanged: DiagnosticsModel::Entry::Generation starts at 0
-		// too, but only an entry that has never been published to can still read 0 here.
-		const std::uint64_t generation = entry != documents.end() ? entry->second.Generation : 0;
+		const std::uint64_t noGeneration = 0;
+		const std::uint64_t generation = diagnosticEntries.contains(item.Path)
+											 ? diagnosticEntries.at(item.Path).Generation
+											 : noGeneration;
 		const std::size_t revision = item.Document->GetBuffer().GetRevision();
 
 		DiagnosticGuard& guard = state.DiagnosticsBuiltFrom;
 
-		// Every one of the three inputs to the conversion is unchanged: rebuilding would walk
-		// every line a diagnostic touches for no different a result, so the last-built overlay
-		// stands.
 		if (guard.Revision == revision && guard.TabWidth == item.TabWidth &&
 			guard.Generation == generation)
 		{
@@ -1560,9 +1434,6 @@ namespace Graphite {
 
 	void DocumentWindows::DropInFlightCounts(const std::filesystem::path& path, LensState& state)
 	{
-		// The rows in flight were asked about before the text moved, so their answers are about
-		// positions that no longer hold. Dropping the tickets means those answers are ignored when
-		// they arrive, and clearing the set lets the rows be asked about again.
 		state.Asked.clear();
 
 		m_Router.DropCounts(path);
@@ -1577,11 +1448,6 @@ namespace Graphite {
 
 		const LanguageId language = LanguageOfPath(item.Path);
 
-		// The only other didChange goes out from UpdateLenses, for a frame the editor itself
-		// edited. Without this one a file replaced from disk leaves the server holding the text
-		// from before the reload for as long as the tab stays open: F12 resolves a position
-		// against text nobody has, counts anchor to declarations that have moved, and the status
-		// bar says "ready" throughout, because from the server's side nothing went wrong.
 		m_Server.ChangeDocument(item.Path, language, item.Document->GetBuffer().Materialize());
 
 		LensState* const lens = FindLens(item.Path);
@@ -1593,11 +1459,6 @@ namespace Graphite {
 
 		LensState& state = *lens;
 
-		// Replaced wholesale, not edited: the declarations in hand describe text that need not
-		// resemble what is there now, so they are dropped outright rather than shifted the way an
-		// edit's stopgap shifts them — a lens row left over from the old text would be a count
-		// drawn confidently above whatever happens to be on that line now. Asked for again at
-		// once rather than on the retry clock.
 		state.Declarations.clear();
 		state.Model.SetDeclarations(state.Declarations, item.Rows, item.Document->GetBuffer(),
 									item.TabWidth);
@@ -1610,25 +1471,19 @@ namespace Graphite {
 	void DocumentWindows::AskForVisibleCounts(const Core::OpenItem& item, LensState& state,
 											  const EditorFrameResult& frame)
 	{
-		// A screen either side of what was drawn, so scrolling steadily finds the counts already
-		// there rather than a blank row for as long as the server takes to answer. Measured from
-		// the frame's own span rather than from a constant: that is what "a screen" is here,
-		// whatever the window height and font size make it.
 		const std::size_t margin = frame.LastVisibleRow - frame.FirstVisibleRow + 1;
-		const std::size_t from =
+		const std::size_t firstRowWanted =
 			frame.FirstVisibleRow > margin ? frame.FirstVisibleRow - margin : 0;
-		const std::size_t to = frame.LastVisibleRow + margin + 1;
+		const std::size_t endRowWanted = frame.LastVisibleRow + margin + 1;
 
-		for (const std::size_t row : state.Model.RowsNeedingCounts(from, to))
+		for (const std::size_t row : state.Model.RowsNeedingCounts(firstRowWanted, endRowWanted))
 		{
-			// The whole of the re-asking guard: a row already asked about is skipped for as long
-			// as it stays in this set, which is until the anchors move. RowsNeedingCounts on its
-			// own would return the same rows every frame until the answer arrived, which at sixty
-			// frames a second is a request storm at the server for one visible declaration.
-			if (!state.Asked.insert(row).second)
+			if (state.Asked.contains(row))
 			{
 				continue;
 			}
+
+			state.Asked.insert(row);
 
 			const Lens* lens = state.Model.LensAt(row);
 
@@ -1637,11 +1492,6 @@ namespace Graphite {
 				continue;
 			}
 
-			// The name's own position, in the units the server speaks, carried on the lens since
-			// the reply arrived. The drawing column cannot stand in for it: converting cells back
-			// to code units lands on where the declaration BEGINS, which for a constructor is its
-			// own class's name — so the count would answer about the type rather than about the
-			// constructor, and read far too high.
 			FilePosition where;
 			where.Path = item.Path;
 			where.Line = lens->NameLine;
@@ -1656,11 +1506,6 @@ namespace Graphite {
 	{
 		state.WasModified = item.Document && item.Document->IsModified();
 
-		// A server that has just been replaced failed every request its old client was holding.
-		// Those failures leave their rows in Asked, where nothing else would ever take them out,
-		// so the counts visible at the moment of the crash would stay blank while every row
-		// scrolled into view afterwards got one. The router has already dropped the tickets and
-		// asked for everything else again.
 		if (m_Router.NoteServerState(item.Path))
 		{
 			state.Asked.clear();
@@ -1668,25 +1513,14 @@ namespace Graphite {
 
 		if (frame.Edited)
 		{
-			// Once per frame per document, not once per edit: the widget reports that this frame
-			// changed the buffer, however many edits went into it, and a transaction touching
-			// twenty lines would otherwise send the whole file twenty times in one frame. The
-			// server only needs the state the frame ended in.
 			m_Server.ChangeDocument(item.Path, LanguageOfPath(item.Path),
 									item.Document->GetBuffer().Materialize());
 
-			// The declarations the server last reported are now about text that has moved. The
-			// model has already shifted its anchors as a stopgap; what is asked for here is the
-			// exact set, at once rather than on the retry clock.
 			m_Router.WantSymbolsNow(item.Path);
 
 			DropInFlightCounts(item.Path, state);
 		}
 
-		// A lens anchors to a row, and every row moved when the wrap width did — so the anchors
-		// are rebuilt from the declarations already in hand rather than waiting for the server to
-		// say the same thing again. SetDeclarations carries the counts over by identity, so
-		// nothing is re-asked for.
 		if (state.HaveDeclarations && (state.NeedsRebuild || state.BuiltAt != item.ColumnsPerWrappedRow))
 		{
 			state.Model.SetDeclarations(state.Declarations, item.Rows,
@@ -1712,7 +1546,7 @@ namespace Graphite {
 
 		LensState& state = *lens;
 
-		const auto index = m_Documents.Find(path);
+		const std::optional<std::size_t> index = m_Documents.Find(path);
 
 		if (!index || !m_Documents.At(*index).Document)
 		{
@@ -1722,20 +1556,12 @@ namespace Graphite {
 		const Core::OpenItem& item = m_Documents.At(*index);
 		const Core::TextBuffer& buffer = item.Document->GetBuffer();
 
-		// Kept as the server said them, lines past the end of the buffer included: LensModel::
-		// SetDeclarations is what drops those, and it does so on every rebuild rather than only
-		// on the frame a reply arrives — which is the case that matters, since a rewrap rebuilds
-		// against whatever the buffer has become since.
 		state.Declarations = answer.Declarations;
 
 		state.HaveDeclarations = true;
 		state.Model.SetDeclarations(state.Declarations, item.Rows, buffer, item.TabWidth);
 		state.BuiltAt = item.ColumnsPerWrappedRow;
 
-		// The anchors have been replaced outright, so the rows the outstanding requests name are
-		// no longer the rows they were asked about. Cleared rather than translated: an answer that
-		// arrives for a dropped ticket is ignored, and the counts that survived the rebuild are
-		// already known, so only the genuinely unknown rows are asked about again.
 		state.Asked.clear();
 
 		return true;
@@ -1744,7 +1570,7 @@ namespace Graphite {
 	void DocumentWindows::ApplySemanticAnswer(const std::filesystem::path& path,
 											  const LanguageServices::Answer& answer)
 	{
-		const auto index = m_Documents.Find(path);
+		const std::optional<std::size_t> index = m_Documents.Find(path);
 
 		if (!index)
 		{
@@ -1778,8 +1604,6 @@ namespace Graphite {
 
 		if (!m_Server.HasChosenServer(language))
 		{
-			// Nothing configured to ask - the same answer a server that never started would give,
-			// said immediately rather than after a round trip that could not have happened.
 			SetTransientMessage("no definition found");
 			return;
 		}
@@ -1793,15 +1617,14 @@ namespace Graphite {
 		where.Line = position.Line;
 		where.Column = ToUtf16Column(lineText, position.Column);
 
-		// Whatever this document's own last draw left in its state — default-constructed, screen
-		// position (0, 0), on the vanishingly unlikely frame nothing has drawn it yet.
-		const auto state = m_States.find(item.Path);
+		const DocumentState* const state = FindState(item.Path);
 		const CaretScreenPosition screenPosition =
-			state != m_States.end() ? state->second.CaretScreen : CaretScreenPosition{};
+			state != nullptr ? state->CaretScreen : CaretScreenPosition{};
 
-		// A second F12 before the first has answered supersedes it; the router cancels the first.
-		m_Router.AskDefinition(
-			DefinitionQuestion{item.Path, item.Caret.Offset, where, screenPosition});
+		m_Router.AskDefinition(DefinitionQuestion{.Path = item.Path,
+												  .CaretOffset = item.Caret.Offset,
+												  .From = where,
+												  .Screen = screenPosition});
 	}
 
 	void DocumentWindows::RequestReferences(std::size_t index, ReferencesPanel& panel)
@@ -1827,8 +1650,6 @@ namespace Graphite {
 		where.Line = position.Line;
 		where.Column = ToUtf16Column(lineText, position.Column);
 
-		// The word touching the caret, the same word a double click would select - Shift+F12 has
-		// nothing else to name the symbol with while the reply is still outstanding.
 		const Core::Caret word = Core::SelectWordAt(buffer, item.Caret.Offset);
 		const auto [wordFrom, wordTo] = Core::SelectionRange(word);
 		const std::string symbol = buffer.Substring(wordFrom, wordTo);
@@ -1847,10 +1668,6 @@ namespace Graphite {
 				continue;
 			}
 
-			// The name's position, not the declaration's start. Matched on the declaration's
-			// start above, because that is what the lens is anchored to, but asked about by
-			// name — a constructor's declaration begins with its own class's name, so asking
-			// at the start resolves to the class and counts every mention of the type.
 			FilePosition where;
 			where.Path = item.Path;
 			where.Line = declaration.NameLine;
@@ -1867,14 +1684,10 @@ namespace Graphite {
 	{
 		if (!m_Server.HasChosenServer(language))
 		{
-			// Nothing configured to ask - the same answer a server that never started would give,
-			// said immediately rather than after a round trip that could not have happened.
 			SetTransientMessage("no references found");
 			return;
 		}
 
-		// A second question before the first has answered supersedes it; the router cancels the
-		// first.
 		m_Router.AskReferences(item.Path, where, symbol);
 
 		panel.ShowWorking(symbol);
@@ -1884,36 +1697,30 @@ namespace Graphite {
 	void DocumentWindows::ApplyHoverAnswer(const HoverQuestion& question,
 										   const LanguageServices::Answer& answer)
 	{
-		// The router keeps hover tickets past a document's closing, so an answer can arrive for
-		// a tab that has gone; it has nowhere to show.
-		const auto state = m_States.find(question.Path);
+		DocumentState* const state = FindState(question.Path);
 
-		if (state == m_States.end())
+		if (state == nullptr)
 		{
 			return;
 		}
 
-		// Traced, not shown: the tracker asks a failed question once more on its own, and a
-		// missing tooltip on screen is otherwise impossible to tell apart as a failure, an empty
-		// answer or a slow server.
 		if (answer.Failed || answer.Text.empty())
 		{
 			APP_TRACE("Hover at '{}' {}:{} {}", Core::ToUtf8(question.Path), question.Line + 1,
 					  question.TokenFrom + 1, answer.Failed ? "failed" : "answered nothing");
 		}
 
-		HoldHoverAnswer(state->second.Hover, question, answer);
+		HoldHoverAnswer(state->Hover, question, answer);
 
-		// The tracker does not wake the frame loop for an answer; a resting mouse sends no event.
 		Core::Redraw::Request();
 	}
 
 	void DocumentWindows::ApplyPreviewAnswer(const HoverQuestion& question,
 											 const LanguageServices::Answer& answer)
 	{
-		const auto state = m_States.find(question.Path);
+		DocumentState* const state = FindState(question.Path);
 
-		if (state == m_States.end())
+		if (state == nullptr)
 		{
 			return;
 		}
@@ -1924,7 +1731,7 @@ namespace Graphite {
 					  question.Line + 1, question.TokenFrom + 1);
 		}
 
-		HoldPreviewAnswer(state->second.Hover, question, answer, m_Documents);
+		HoldPreviewAnswer(state->Hover, question, answer, m_Documents);
 
 		Core::Redraw::Request();
 	}
@@ -1932,26 +1739,20 @@ namespace Graphite {
 	void DocumentWindows::ApplySwitchSourceHeaderAnswer(const std::filesystem::path& from,
 														const LanguageServices::Answer& answer)
 	{
-		// A header with no source is ordinary — a header-only class, a C file with no header —
-		// so it is logged rather than announced.
 		if (answer.Failed || answer.Locations.empty())
 		{
 			APP_INFO("No header/source counterpart for {}", Core::ToUtf8(from));
 			return;
 		}
 
-		// Opened and made active as a tab click would, not jumped to: the counterpart names a
-		// file, not a place in it, so one already open keeps its caret and scroll, and one that
-		// was not open starts at the top anyway.
-		RequestOpen(answer.Locations.front().Path, true);
+		const bool permanent = true;
+		RequestOpen(answer.Locations.front().Path, permanent);
 	}
 
 	void DocumentWindows::ApplyDefinitionAnswer(const DefinitionQuestion& question,
 												const LanguageServices::Answer& answer)
 	{
-		// The stand-in generation check: a document closed, or a caret that has moved since the
-		// request, both mean this answer is about a question that no longer stands.
-		const auto index = m_Documents.Find(question.Path);
+		const std::optional<std::size_t> index = m_Documents.Find(question.Path);
 
 		if (!index || m_Documents.At(*index).Caret.Offset != question.CaretOffset)
 		{
@@ -1981,12 +1782,9 @@ namespace Graphite {
 			break;
 
 		case DefinitionOutcome::NeedsChoice:
-			// Through the gate, like every other popup this class opens. ImGui cannot stack two
-			// popups at level 0: opening this one while "File changed on disk" is up would tear
-			// that modal down, and ModalQuestion::WithdrawIfNoLongerOnScreen would then abandon
-			// the question rather than ask it again — the reload conflict would never be put to
-			// the user at all. Dropping the answer is the cheaper loss of the two: F12 asks
-			// again with one keystroke, and the message says why nothing happened.
+			// WARNING: Opening this popup while a modal question is up would tear that question
+			// down, because ImGui cannot stack two popups at level 0. Dropping the answer is the
+			// cheaper loss: F12 asks again with one keystroke.
 			if (!m_Modals.TryOpen(kDefinitionChoicesTitle))
 			{
 				SetTransientMessage("close the open dialog, then press F12 again");
@@ -1996,37 +1794,25 @@ namespace Graphite {
 			m_DefinitionChoices = std::move(candidates);
 			m_DefinitionChoiceLines.clear();
 
-			// At the caret, not the mouse: a keyboard-triggered F12 never touches the pointer,
-			// which could be anywhere — another panel, another monitor — so a popup that opened
-			// there would read as landing nowhere near the code being looked at. Ctrl+click's own
-			// caret sits under the pointer anyway, so one rule serves both gestures. Kept for
-			// RenderDefinitionChoices to spend; see m_DefinitionChoicesAt for why it cannot be
-			// spent here.
 			m_DefinitionChoicesAt = question.Screen;
 
-			// Called here, before any window this frame has opened, rather than deferred to
-			// RenderDefinitionChoices: CollectServerAnswers runs at the very top of Render, ahead
-			// of every Begin, which is exactly where OpenPopup is safe to call.
 			ImGui::OpenPopup(kDefinitionChoicesTitle);
 			break;
 		}
 	}
 
+	// WARNING: The position is kept in m_DefinitionChoicesAt and spent here, immediately before the
+	// Begin that consumes it: every BeginPopupModal drawn earlier in the frame clears ImGui's
+	// next-window state on its early-out. ImGui also closes a popup on Escape or an outside click
+	// without telling whoever opened it, so the gate is released here when the popup is gone.
 	void DocumentWindows::RenderDefinitionChoices(const ResolvedScheme& scheme,
 												  std::size_t tabWidth)
 	{
-		// Immediately before the Begin that consumes it, and on the frame the popup appears
-		// rather than every frame, so a list the user has scrolled is not dragged back under the
-		// caret each frame.
 		ImGui::SetNextWindowPos(ImVec2(m_DefinitionChoicesAt.X, m_DefinitionChoicesAt.Y),
 								ImGuiCond_Appearing);
 
 		if (!ImGui::BeginPopup(kDefinitionChoicesTitle))
 		{
-			// ImGui closes a popup on Escape and on a click outside it without telling whatever
-			// opened it. The gate would otherwise stay held for the rest of the session and no
-			// question anywhere in the application could be asked again — the same guard
-			// ModalQuestion keeps for exactly the same reason.
 			if (m_Modals.HoldsFor(kDefinitionChoicesTitle) &&
 				!ImGui::IsPopupOpen(kDefinitionChoicesTitle))
 			{
@@ -2079,43 +1865,24 @@ namespace Graphite {
 
 				ImGui::Indent();
 
-				std::size_t drawn = 0;
-				bool first = true;
-
-				const auto drawRun = [&](std::size_t from, std::size_t to, ImU32 colour) {
-					if (to <= from || from >= expanded.size())
-					{
-						return;
-					}
-
-					if (!first)
-					{
-						ImGui::SameLine(0.0f, 0.0f);
-					}
-
-					first = false;
-
-					const std::size_t end = std::min(to, expanded.size());
-					const ImVec4 rgba = ImGui::ColorConvertU32ToFloat4(colour);
-
-					ImGui::TextColored(rgba, "%.*s", static_cast<int>(end - from),
-									   expanded.data() + from);
-				};
+				const std::size_t lineStart = 0;
+				std::size_t drawnUpTo = lineStart;
+				bool isFirstRun = true;
 
 				if (tokens.empty())
 				{
-					drawRun(0, expanded.size(), editorPalette.Text);
+					DrawColouredRun(expanded, lineStart, expanded.size(), editorPalette.Text, isFirstRun);
 				}
 				else
 				{
 					for (const Token& token : tokens)
 					{
-						drawRun(drawn, token.From, editorPalette.Text);
-						drawRun(token.From, token.To, syntaxPalette.Of(token.Kind));
-						drawn = token.To;
+						DrawColouredRun(expanded, drawnUpTo, token.From, editorPalette.Text, isFirstRun);
+						DrawColouredRun(expanded, token.From, token.To, syntaxPalette.Of(token.Kind), isFirstRun);
+						drawnUpTo = token.To;
 					}
 
-					drawRun(drawn, expanded.size(), editorPalette.Text);
+					DrawColouredRun(expanded, drawnUpTo, expanded.size(), editorPalette.Text, isFirstRun);
 				}
 
 				ImGui::Unindent();
@@ -2134,8 +1901,6 @@ namespace Graphite {
 
 	void DocumentWindows::CollectServerAnswers(ReferencesPanel& referencesPanel)
 	{
-		// What the router hands on, applied to the documents, the panel and the two other askers.
-		// Local, because it lives for one call and needs this class's private members.
 		class Target final : public LspAnswerTarget
 		{
 		public:
@@ -2171,9 +1936,6 @@ namespace Graphite {
 			void ApplyReferences(const std::string& symbol,
 								 const LanguageServices::Answer& answer) override
 			{
-				// A failed request - no server, or one that never got a process - reads the same
-				// as a reply naming nothing: ShowResults with an empty vector says "no references
-				// found" either way, rather than leaving the panel stuck showing "working".
 				m_Panel.ShowResults(symbol, answer.Failed ? std::vector<Location>{}
 														  : answer.Locations);
 			}
@@ -2201,8 +1963,6 @@ namespace Graphite {
 
 			bool Offer(const LanguageServices::Answer& answer) override
 			{
-				// The preview panes ask for their own colours and the background pass asks about
-				// files with no tab at all, each on its own tickets.
 				return m_Windows.m_PreviewSemantics.Apply(answer) ||
 					   m_Windows.m_WorkspaceAnalysis.Apply(answer);
 			}
@@ -2240,22 +2000,19 @@ namespace Graphite {
 		for (std::size_t index = 0; index < m_Documents.GetCount();)
 		{
 			Core::OpenItem& item = m_Documents.At(index);
-			const std::string identity = Identity(m_Documents, index);
+			const std::string identity = DocumentIdentityOf(m_Documents, index);
 			const std::string name = WindowName(m_Documents, index);
 
 			bool restored = false;
 
 			if (IsNewSinceLastFrame(identity))
 			{
-				// A document reopened from the last launch goes back to where it was — the node it
-				// was in, or floating — which imgui.ini already carries; docking it anywhere else
-				// here would override that.
 				restored = m_RestoredIdentities.erase(identity) > 0;
 
 				if (!restored || !HasRememberedPlace(name))
 				{
 					if (const unsigned int targetNode = ChooseDockTarget(identity, fallbackDockNode);
-						targetNode != 0)
+						targetNode != kNoDockNode)
 					{
 						ImGui::DockBuilderDockWindow(name.c_str(), targetNode);
 					}
@@ -2264,15 +2021,9 @@ namespace Graphite {
 
 			const bool preview = item.Preview;
 
-			// Colour alone marks a preview and a file's git status, and it has to be pushed
-			// before Begin: Begin -> BeginDocked calls StoreDockStyleForWindow, which
-			// snapshots the style colours in effect at that moment, and the tab bar swaps to
-			// each window's own snapshot before drawing its tab. A font cannot do the same —
-			// every tab of a node is drawn in one pass with one global font — and the icon
-			// in the title comes from the mono face only.
-			//
-			// A status colours the label and a preview dims it rather than replacing it.
-			// A document with no path (untitled) has no status.
+			// WARNING: The colour is pushed before Begin: BeginDocked snapshots the style colours in
+			// effect, and the tab bar draws each tab from its window's own snapshot. A font cannot
+			// do the same, since every tab of a node is drawn in one pass with one global font.
 			const GitDecoration decoration =
 				item.Path.empty() ? GitDecoration::None : m_GitDecorations.FileOf(item.Path);
 			const std::optional<ImU32> tabColour =
@@ -2283,27 +2034,21 @@ namespace Graphite {
 				ImGui::PushStyleColor(ImGuiCol_Text, *tabColour);
 			}
 
-			// The dot next to the tab, and — for a docked tab — what stops ImGui assuming the
-			// X means "close now": the window is torn down from the dock's bookkeeping only
-			// if Render stops resubmitting it, which the dirty-close branch below refuses to
-			// do until the question resolves.
 			const bool modified = item.Document && item.Document->IsModified();
 			ImGuiWindowFlags windowFlags =
 				modified ? ImGuiWindowFlags_UnsavedDocument : ImGuiWindowFlags_None;
 
-			// ImGui focuses every window on the frame it appears, and focusing a docked window
-			// selects its tab — so on the first frame after a launch the last restored window
-			// drawn would take the front of its node from whatever imgui.ini remembers there.
+			// WARNING: ImGui focuses every window on the frame it appears, and focusing a docked
+			// window selects its tab, so the last restored window would take the front of its node
+			// from whatever imgui.ini remembers.
 			if (restored)
 			{
 				windowFlags |= ImGuiWindowFlags_NoFocusOnAppearing;
 			}
 
-			// Begin() is what turns this into the selected tab of a docked window, which
-			// SetWindowFocus called from outside a frame could not do against a window not yet
-			// submitted. Taken and cleared in one step, so a focus asked for once is given once
-			// and the user's own clicking of another tab is not undone on the next frame.
-			if (std::exchange(item.PendingFocus, false))
+			const bool noPendingFocus = false;
+
+			if (std::exchange(item.PendingFocus, noPendingFocus))
 			{
 				ImGui::SetNextWindowFocus();
 			}
@@ -2311,23 +2056,16 @@ namespace Graphite {
 			bool open = true;
 			const bool visible = ImGui::Begin(name.c_str(), &open, windowFlags);
 
-			// Popped the moment Begin returns, so the dimming reaches this document's tab and
-			// title bar without following it into the editor's own contents.
 			if (tabColour)
 			{
 				ImGui::PopStyleColor();
 			}
 
-			// A tab's menu asked for this one last frame: the same as its close button, so an
-			// unsaved document is asked about below rather than closed.
 			if (closeRequests.Take(name))
 			{
 				open = false;
 			}
 
-			// The close command asks the same, by path: it runs outside any window. Looked for
-			// here for a request made before the loop (the menu), and again after the editor
-			// draws for one made during it (the chord).
 			if (m_CloseRequested && *m_CloseRequested == item.Path)
 			{
 				m_CloseRequested.reset();
@@ -2341,23 +2079,21 @@ namespace Graphite {
 			{
 				m_Shown.insert(item.Path);
 
-				// Children count. A click on the text focuses the editor surface, a child of this
-				// window, never the window itself; without the flag, clicking into the left half
-				// of a split left the right half active, and every command that acts on the
-				// active document — F12, Ctrl+C — acted on the half nobody was looking at. The
-				// find bar inside the surface and a popup opened from it count the same way.
+				// WARNING: Child windows count, because a click on the text focuses the editor
+				// surface, a child of this window. Without the flag the right half of a split stayed
+				// active and commands acted on the half nobody was looking at.
 				if (ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows))
 				{
 					ActivateAndRememberNode(index);
 				}
 
-				if (preview && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0))
+				const ImGuiMouseButton leftMouseButton = ImGuiMouseButton_Left;
+
+				if (preview && ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(leftMouseButton))
 				{
 					m_Documents.Promote(index);
 				}
 
-				// Null for a document no server serves, which is what spares the widget a branch
-				// on whether one exists — the same role an empty token list plays for SyntaxCache.
 				LensState* const lens = LensFor(item);
 				DocumentState& state = StateFor(item.Path);
 
@@ -2370,15 +2106,8 @@ namespace Graphite {
 				view.Scheme = &scheme;
 				view.Lens = lens != nullptr ? &lens->Model : nullptr;
 
-				// Always handed over, even before a server has said anything: an overlay with
-				// nothing in it colours nothing, so the widget needs no branch of its own and a
-				// document with no server behind it draws exactly as it always did.
 				view.Semantic = &SemanticFor(item);
 
-				// Null when nothing has been said about this document, the same idiom as Lens
-				// above: an overlay with nothing in it is indistinguishable from one nobody
-				// asked for, so there is no reason to make the widget hold an always-valid but
-				// possibly-empty overlay when a null pointer already says the same thing.
 				if (DiagnosticOverlay& diagnostics = DiagnosticFor(item); !diagnostics.IsEmpty())
 				{
 					view.Diagnostics = &diagnostics;
@@ -2386,11 +2115,6 @@ namespace Graphite {
 
 				view.DiagnosticsStale = m_Diagnostics.IsStale(item.Path);
 
-				// A tab whose open failed has no buffer to diff and draws its failure instead;
-				// Get below still answers null for it, so the view needs no branch of its own.
-				//
-				// With both kinds of marker switched off nothing is asked for, so no document is
-				// diffed at all. Switching one back on starts over as a first sight would.
 				const bool wantsChanges = changeDisplay.Gutter || changeDisplay.Scrollbar;
 
 				if (wantsChanges && item.Document)
@@ -2398,38 +2122,29 @@ namespace Graphite {
 					m_ChangeMarkers.Update(item.Path, item.Document->GetBuffer());
 				}
 
-				// Kept alive in this scope, since the widget holds only a raw pointer while it draws.
 				const Core::Ref<const ChangeMarkers> changes =
 					wantsChanges ? m_ChangeMarkers.Get(item.Path) : nullptr;
 				view.Changes = changes.get();
 
-				// Created on first sight and kept until the tab goes, like the overlays above.
-				// The widget fills it in as it draws; until then it is an anchor nobody has taken
-				// and the widget skips it.
 				view.Anchor = &state.Anchor;
 				view.Widget = &state.Widget;
 
-				// Only a served document is hovered: with no server there is nobody to ask, and a
-				// null state leaves its diagnostics in the plain tooltip they have always had.
 				view.Hover = lens != nullptr ? &state.Hover : nullptr;
 				view.HoverConfig = hoverSettings;
 				view.HoverSemantics = &m_PreviewSemantics;
 
 				if (state.Hover.Preview)
 				{
-					if (const auto shown = m_Documents.Find(state.Hover.Preview->Path))
+					const std::optional<std::size_t> shownIndex = m_Documents.Find(state.Hover.Preview->Path);
+
+					if (shownIndex)
 					{
-						view.HoverPreviewOverlay = &SemanticFor(m_Documents.At(*shown));
+						view.HoverPreviewOverlay = &SemanticFor(m_Documents.At(*shownIndex));
 					}
 				}
 
 				std::optional<PendingTopLine>& pendingTop = state.PendingTop;
 
-				// A restored line gives way the moment the reader goes somewhere else: navigation
-				// into this tab moved the caret or asked for it to be scrolled to, or the wheel
-				// turned over it. Seeding again after that would drag the view back to where the
-				// last launch left it. The wheel is read here, before the editor draws, because the
-				// seed below would otherwise overwrite the scroll it asked for.
 				if (pendingTop)
 				{
 					const bool wheeled = ImGui::GetIO().MouseWheel != 0.0f &&
@@ -2448,46 +2163,29 @@ namespace Graphite {
 
 				const EditorFrameResult editorResult = DrawEditor(context, item, view, m_FindBar);
 
-				// Only a frame that drew rows has anything to say: one that drew none left the seed
-				// above in the anchor untouched, and Settle would read its own seed as arrival.
 				if (pendingTop && editorResult.DrewRows && pendingTop->Settle(*view.Anchor))
 				{
 					pendingTop.reset();
 				}
 
-				// Recorded every frame the document draws, not only when something asks: a
-				// keyboard-triggered request reads this back later, from whichever frame drew
-				// last, so it has to already be here rather than computed on demand.
 				state.CaretScreen =
-					CaretScreenPosition{editorResult.CaretScreenX, editorResult.CaretScreenY};
+					CaretScreenPosition{.X = editorResult.CaretScreenX, .Y = editorResult.CaretScreenY};
 
-				// After the draw, not before: what to ask the server for depends on the rows the
-				// frame actually drew, and whether to tell it about an edit depends on whether one
-				// happened during it.
 				if (lens != nullptr)
 				{
 					UpdateLenses(item, *lens, editorResult);
 				}
 
-				// Once the user has typed into a preview it is no longer something they were
-				// just glancing at.
 				if (editorResult.Edited && preview)
 				{
 					m_Documents.Promote(index);
 				}
 
-				// Ctrl+click asks the same question F12 does, from wherever the click just put
-				// the caret — reported through the frame result rather than resolved from the
-				// active document, so the request is unambiguously about the document that was
-				// actually clicked even on the one frame a click both switches and asks.
 				if (editorResult.DefinitionRequested)
 				{
 					RequestDefinition(index);
 				}
 
-				// A lens row holds no text, so the click cannot become a caret position — it is
-				// reported as the document row the lens anchors to instead, and resolved back to
-				// the declaration through this document's own lens state.
 				if (lens != nullptr && editorResult.LensClicked)
 				{
 					RequestReferencesForLens(item, *lens, *editorResult.LensClicked, referencesPanel);
@@ -2498,8 +2196,6 @@ namespace Graphite {
 					ReportCopied(m_Events, "selection", *editorResult.CopiedFromMenu);
 				}
 
-				// Cancelled first: a frame that leaves one token for another cancels the old
-				// questions and may ask the new ones, and the router supersedes per slot anyway.
 				if (editorResult.CancelHover)
 				{
 					m_Router.CancelHover(item.Path);
@@ -2516,8 +2212,8 @@ namespace Graphite {
 				}
 			}
 
-			// Again, after the editor has drawn: a chord bound to the command runs from inside its
-			// editor's draw, which is after the check above had already looked for this frame.
+			// WARNING: Checked again after the editor draws: a chord bound to the close command runs
+			// from inside its editor's draw, after the check above had already looked.
 			if (m_CloseRequested && *m_CloseRequested == item.Path)
 			{
 				m_CloseRequested.reset();
@@ -2530,11 +2226,6 @@ namespace Graphite {
 			{
 				if (modified)
 				{
-					// Both versions are somebody's work: not closed here. The tab keeps being
-					// submitted every frame until its turn comes up in the queue and Save,
-					// Discard or Cancel resolves it. Queued rather than replacing whatever is
-					// already pending, so a second tab's close button still gets its own
-					// question, in order.
 					if (!m_CloseConfirm.Asked(item.Path))
 					{
 						m_CloseConfirm.Ask(item.Path);
@@ -2556,16 +2247,14 @@ namespace Graphite {
 	{
 		m_WorkspaceRoot = frame.WorkspaceRoot;
 
+		// WARNING: The order is load-bearing. Answers come first so they are on screen this frame,
+		// and popups open before any Begin. A renamed document's pending dock target must be
+		// consumed by the Begin in RenderDocumentWindows before its old identity's node is
+		// undocked, so ForgetLayoutOfWindowsClosedElsewhere runs after the loop.
 		const std::vector<std::string> startingIdentities = CurrentIdentities(m_Documents);
 
-		// Before the documents draw, so an answer that arrived since the last frame is on screen
-		// this one. GraphiteLayer has already called LanguageServices::Poll, which is what moved
-		// the servers' replies into the queue this drains.
 		CollectServerAnswers(referencesPanel);
 
-		// Every question is drawn here, before the per-document loop, because OpenPopup and
-		// BeginPopupModal must not run from inside a Begin/BeginChild pair that may not be
-		// current when the popup needs to draw. The loop below only ever asks them.
 		RenderSizeQuestion();
 		RenderReloadConflict();
 		RenderOverwriteConfirm();
@@ -2577,18 +2266,10 @@ namespace Graphite {
 							  referencesPanel,
 							  frame.CloseRequests, frame.WorkspaceRoot);
 
-		// Taken by its tab this frame or the tab is gone: either way it must not wait for a
-		// document of the same path opened later.
 		m_CloseRequested.reset();
 
-		// Once per frame, not once per document: a prune that ran inside the per-document loop
-		// above would cost a walk of m_States for every open document instead of one for the
-		// whole frame.
 		PruneDocumentStates();
 
-		// After the loop, not before: a renamed document's pending dock target has to be
-		// consumed by Begin() above before its old identity's node can be undocked and
-		// possibly deleted here, or the renamed document is stranded in a fresh orphan node.
 		ForgetLayoutOfWindowsClosedElsewhere(startingIdentities);
 
 		m_PreviousIdentities = CurrentIdentities(m_Documents);

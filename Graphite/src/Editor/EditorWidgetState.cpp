@@ -3,9 +3,7 @@
 #include <algorithm>
 
 namespace Graphite {
-
 	namespace {
-		// A repeat this long after the hold last stepped is not part of it: see kHistoryHoldLapse.
 		bool IsFreshPress(const HistoryHold& hold, bool isRepeat, double now)
 		{
 			return !isRepeat || now - hold.LastStepAt > kHistoryHoldLapse;

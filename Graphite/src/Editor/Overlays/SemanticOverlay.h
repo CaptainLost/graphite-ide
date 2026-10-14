@@ -16,9 +16,6 @@ namespace Core {
 
 namespace Graphite {
 
-	// One coloured range on one line, in the coordinates the lexer's own tokens use — offsets into
-	// the tab-expanded text, because that is what SyntaxCache lexes and what the editor draws by
-	// slicing. Converted once, when a reply arrives, so drawing a row converts nothing.
 	struct SemanticSpan
 	{
 		std::size_t From = 0;
@@ -26,72 +23,28 @@ namespace Graphite {
 		TokenKind Kind = TokenKind::Text;
 	};
 
-	// What a language server said the identifiers in one document are, kept in the form the editor
-	// draws from.
-	//
-	// A colour overlay and nothing more: it says what shade a span of an already-lexed line should
-	// take, never what that line contains. A document with no server behind it has an empty
-	// overlay and is drawn exactly as it was before any of this existed.
-	//
-	// Two coordinate systems meet here and both conversions are easy to get wrong in ways that
-	// look like the colours sliding rather than like arithmetic. A server counts columns in UTF-16
-	// code units of the raw line; the lexer was handed the line with its tabs expanded, and counts
-	// bytes of that. So a position crosses UTF-16 units to raw bytes, and raw bytes to expanded
-	// offsets — the first conversion needs the line's own text, the second needs the tab width,
-	// and neither can stand in for the other.
 	class SemanticOverlay
 	{
 	public:
-		// Replaces everything. A reply is about the whole document, so anything an edit had shifted
-		// in the meantime was a stopgap waiting for exactly this.
 		void Set(const std::vector<SemanticToken>& tokens, const Core::TextBuffer& buffer,
 				 std::size_t tabWidth);
 
 		void Clear();
 
-		// True for a document nothing has been said about yet, which is also true of one whose
-		// every line a server declined to colour - the two are the same thing to a reader.
 		bool IsEmpty() const { return m_Lines.empty(); }
 
-		// Roughly what this overlay costs to keep, for the cache that budgets in bytes. Rough
-		// deliberately: what a budget protects is an order of magnitude, and a faithful
-		// accounting of a std::map's nodes would be unportable and beside the point.
 		std::size_t Footprint() const;
 
-		// Walks the lines that carry spans, in line order. For the on-disk store and for nothing
-		// else: drawing asks SpansOn for the one line it is drawing, and a consumer that wanted
-		// every line at once would be rebuilding the map it is already holding.
 		void ForEachLine(
 			const std::function<void(std::size_t, const std::vector<SemanticSpan>&)>& visit) const;
 
-		// Puts spans on one line as they already are, converting nothing. The counterpart of
-		// ForEachLine, and the only way to rebuild an overlay that was measured in an earlier
-		// session: Set converts a server's answer against a buffer, and the buffer that answer was
-		// measured against is long gone by then.
-		//
-		// An empty vector stores nothing, so a rebuilt overlay is byte for byte what was walked.
 		void SetSpansOn(std::size_t line, std::vector<SemanticSpan> spans);
 
-		// There is deliberately no way to adjust an overlay for an edit. Colours stay where the
-		// server put them until a reply replaces them: a colour that has slid a few characters is
-		// visibly provisional and costs a reader nothing, while shifting one line-by-line only ever
-		// approximated an answer that was already on its way.
-
-		// Empty for a line nothing was said about, which is most of them: a server names
-		// identifiers, and blank lines, comments and punctuation are nobody's.
 		const std::vector<SemanticSpan>& SpansOn(std::size_t line) const;
 
 	private:
 		std::map<std::size_t, std::vector<SemanticSpan>> m_Lines;
 	};
 
-	// What colour a lexed token takes once the server has been heard from: its own kind unless
-	// it is a name a span starts at, in which case the span's.
-	//
-	// Names only. A server names them and nothing else, and a span that reached a comment
-	// or a string would be recolouring something the lexer already knows better than it does.
-	// Matched on the token's start rather than by overlap, because the two agree on where an
-	// identifier begins — both measure the expanded line — and a start is one comparison where
-	// an overlap is four.
 	TokenKind ColourOf(const Token& token, const std::vector<SemanticSpan>& semantic);
 }

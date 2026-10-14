@@ -18,44 +18,40 @@ namespace Graphite {
 
 	LensRows::Row LensRows::At(std::size_t screenRow) const
 	{
-		// Anchor k's lens is drawn at screen row anchors[k] + k: k lenses already sit above it,
-		// each having pushed the document rows below it down by one screen row. That quantity is
-		// strictly increasing in k because anchors is strictly increasing, so a binary search over
-		// the index finds the first k whose lens is at or past screenRow.
-		std::size_t lo = 0;
-		std::size_t hi = m_Anchors.size();
+		std::size_t lowIndex = 0;
+		std::size_t highIndex = m_Anchors.size();
 
-		while (lo < hi)
+		while (lowIndex < highIndex)
 		{
-			const std::size_t mid = lo + (hi - lo) / 2;
+			const std::size_t middleIndex = lowIndex + (highIndex - lowIndex) / 2;
 
-			if (m_Anchors[mid] + mid < screenRow)
+			if (m_Anchors[middleIndex] + middleIndex < screenRow)
 			{
-				lo = mid + 1;
+				lowIndex = middleIndex + 1;
 			}
 			else
 			{
-				hi = mid;
+				highIndex = middleIndex;
 			}
 		}
 
-		if (lo < m_Anchors.size() && m_Anchors[lo] + lo == screenRow)
+		if (lowIndex < m_Anchors.size() && m_Anchors[lowIndex] + lowIndex == screenRow)
 		{
-			return Row{true, m_Anchors[lo]};
+			const bool isLens = true;
+
+			return Row{isLens, m_Anchors[lowIndex]};
 		}
 
-		// screenRow is a document row: lo lenses sit above it, each having consumed one screen
-		// row that the document row itself does not occupy.
-		return Row{false, screenRow - lo};
+		const bool isLens = false;
+
+		return Row{isLens, screenRow - lowIndex};
 	}
 
 	std::size_t LensRows::ScreenRowOf(std::size_t documentRow) const
 	{
-		// Every anchor at or before documentRow has already inserted its lens above documentRow's
-		// own screen row, so the count of anchors <= documentRow is exactly how far documentRow
-		// has been pushed down.
-		const auto it = std::upper_bound(m_Anchors.begin(), m_Anchors.end(), documentRow);
-		const std::size_t pushedDown = static_cast<std::size_t>(std::distance(m_Anchors.begin(), it));
+		const std::vector<std::size_t>::const_iterator firstAfter =
+			std::upper_bound(m_Anchors.begin(), m_Anchors.end(), documentRow);
+		const std::size_t pushedDown = static_cast<std::size_t>(std::distance(m_Anchors.begin(), firstAfter));
 
 		return documentRow + pushedDown;
 	}
@@ -75,9 +71,6 @@ namespace Graphite {
 
 			const std::ptrdiff_t moved = static_cast<std::ptrdiff_t>(anchor) + delta;
 
-			// A negative shift can push an anchor at or below fromRow up past it; that anchor no
-			// longer corresponds to anything sensible until the server's next reply replaces this
-			// stopgap, so it is dropped rather than clamped.
 			if (moved < static_cast<std::ptrdiff_t>(fromRow))
 			{
 				continue;

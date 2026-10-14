@@ -28,11 +28,9 @@ TEST_CASE("A preview starting at the left edge keeps its indentation")
 
 TEST_CASE("Tabs are expanded before the shared indentation is measured")
 {
-	// One tab and four spaces are the same indentation at a tab width of four.
 	CHECK(DedentPreview({"\tvoid Run()", "    {", "\t\tStep();", "\t}"}, 4).Lines ==
 		  Lines{"void Run()", "{", "    Step();", "}"});
 
-	// A tab after text still lands on its stop, measured from the line's own start.
 	CHECK(DedentPreview({"\tint a;\t// x"}, 4).Lines == Lines{"int a;  // x"});
 }
 
@@ -74,8 +72,6 @@ TEST_CASE("A server's spans move left with the indentation the preview took off"
 
 TEST_CASE("A span inside the indentation the preview took off is dropped")
 {
-	// Only a span on a line that is not the preview's own could start there; nothing is left
-	// for it to colour.
 	const std::vector<SemanticSpan> moved = DedentSpans({{2, 6, TokenKind::SemanticType}}, 8);
 
 	CHECK(moved.empty());
@@ -100,7 +96,6 @@ TEST_CASE("A fractional cell width rounds the preview up, never down past its la
 }
 
 namespace {
-	// An editor surface from (100, 50) to (900, 650), and a token at row 300.
 	constexpr ImVec2 kBoundsMin(100.0f, 50.0f);
 	constexpr ImVec2 kBoundsMax(900.0f, 650.0f);
 	constexpr ImVec2 kAnchorMin(400.0f, 300.0f);
@@ -120,7 +115,6 @@ TEST_CASE("A tooltip that fits below the token goes below it")
 
 TEST_CASE("A tooltip too tall for the room below the token goes above it")
 {
-	// 337 below, 250 above: the tooltip of 240 fits only above.
 	const ImVec2 anchorMin(400.0f, 300.0f);
 	const ImVec2 anchorMax(440.0f, 313.0f);
 	const TooltipPlacement placed = PlaceTooltip(anchorMin, anchorMax, ImVec2(200.0f, 240.0f),
@@ -133,8 +127,6 @@ TEST_CASE("A tooltip too tall for the room below the token goes above it")
 
 TEST_CASE("The editor's own bottom edge, not the screen's, decides the flip")
 {
-	// Room enough below on the screen, but the editor ends 60 below the token: the panel under
-	// it is not the tooltip's to cover.
 	const TooltipPlacement placed = PlaceTooltip(kAnchorMin, kAnchorMax, ImVec2(200.0f, 120.0f),
 												 kBoundsMin, ImVec2(900.0f, 373.0f));
 

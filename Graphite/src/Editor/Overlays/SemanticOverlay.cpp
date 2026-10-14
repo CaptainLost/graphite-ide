@@ -1,23 +1,15 @@
 #include "Editor/Overlays/SemanticOverlay.h"
 
+#include "Core/Base/EmptyVector.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/TextBuffer.h"
 #include "Language/Server/LspProtocol.h"
-
-#include <ranges>
 
 namespace Graphite {
 
 	namespace {
 
-		const std::vector<SemanticSpan>& NoSpans()
-		{
-			// Function-local rather than a namespace-scope object, per ADR 0033 on complex
-			// initialization of globals - the same shape SyntaxCache uses for the same reason.
-			static const std::vector<SemanticSpan> empty;
-
-			return empty;
-		}
+		constexpr std::size_t kBytesPerLine = 64;
 
 		TokenKind PaletteEntryFor(SemanticKind kind)
 		{
@@ -39,13 +31,15 @@ namespace Graphite {
 				break;
 			}
 
-			// Other never reaches here - ParseSemanticTokens drops it, because a span that changes
-			// no colour is one the editor has no use for. Answered anyway rather than asserted:
-			// this is a colour, and a wrong one is not worth stopping a frame over.
+			// WARNING: Other never reaches here, because ParseSemanticTokens drops it. It is
+			// answered with a colour rather than asserted, since a wrong colour is not worth stopping a frame.
 			return TokenKind::Text;
 		}
 	}
 
+	// WARNING: A server counts columns in UTF-16 units of the raw line, while the lexer counts
+	// bytes of the tab-expanded line. Both conversions are needed: the first is wrong on any
+	// non-ASCII line, the second on any line holding a tab.
 	void SemanticOverlay::Set(const std::vector<SemanticToken>& tokens,
 							  const Core::TextBuffer& buffer, std::size_t tabWidth)
 	{
@@ -53,25 +47,22 @@ namespace Graphite {
 
 		for (const SemanticToken& token : tokens)
 		{
-			if (token.Line >= buffer.GetLineCount())
+			const bool lineWasRemoved = token.Line >= buffer.GetLineCount();
+
+			if (lineWasRemoved)
 			{
-				// The reply is about a document that has since shrunk. Dropped rather than
-				// clamped: a span moved to a line it was never about would colour the wrong word.
 				continue;
 			}
 
-			const std::string line = buffer.LineText(token.Line);
+			const std::string lineText = buffer.LineText(token.Line);
 
-			// UTF-16 units to raw bytes, then raw bytes to the expanded offsets the lexer's own
-			// tokens are measured in. Neither step is skippable: the first is wrong on any line
-			// holding a character outside ASCII, the second on any line holding a tab.
-			const std::size_t fromByte = FromUtf16Column(line, token.Column);
-			const std::size_t toByte =
-				FromUtf16Column(line, Utf16Column{token.Column.Value + token.Length});
+			const std::size_t fromByte = FromUtf16Column(lineText, token.Column);
+			const Utf16Column endColumn{token.Column.Value + token.Length};
+			const std::size_t toByte = FromUtf16Column(lineText, endColumn);
 
 			SemanticSpan span;
-			span.From = Core::ExpandedOffsetOfByte(line, fromByte, tabWidth);
-			span.To = Core::ExpandedOffsetOfByte(line, toByte, tabWidth);
+			span.From = Core::ExpandedOffsetOfByte(lineText, fromByte, tabWidth);
+			span.To = Core::ExpandedOffsetOfByte(lineText, toByte, tabWidth);
 			span.Kind = PaletteEntryFor(token.Kind);
 
 			if (span.To > span.From)
@@ -88,25 +79,24 @@ namespace Graphite {
 
 	std::size_t SemanticOverlay::Footprint() const
 	{
-		// A line costs its spans plus a constant for the node holding them — the node, its
-		// colour, its three pointers and the vector's own header.
-		constexpr std::size_t kPerLine = 64;
+		std::size_t totalBytes = 0;
 
-		std::size_t bytes = 0;
-
-		for (const auto& spans : m_Lines | std::views::values)
+		for ([[maybe_unused]] const auto& [line, spans] : m_Lines)
 		{
-			bytes += kPerLine + spans.capacity() * sizeof(SemanticSpan);
+			totalBytes += kBytesPerLine + spans.capacity() * sizeof(SemanticSpan);
 		}
 
-		return bytes;
+		return totalBytes;
 	}
 
 	const std::vector<SemanticSpan>& SemanticOverlay::SpansOn(std::size_t line) const
 	{
-		const auto found = m_Lines.find(line);
+		if (!m_Lines.contains(line))
+		{
+			return Core::SharedEmptyVector<SemanticSpan>();
+		}
 
-		return found == m_Lines.end() ? NoSpans() : found->second;
+		return m_Lines.at(line);
 	}
 
 	void SemanticOverlay::ForEachLine(
@@ -122,8 +112,6 @@ namespace Graphite {
 	{
 		if (spans.empty())
 		{
-			// Stored empty, a line would answer IsEmpty false and be walked out again as a line
-			// with nothing on it — a round trip that grew an entry out of nothing.
 			return;
 		}
 

@@ -1,6 +1,7 @@
 #include "Editor/Hover/HoverTooltip.h"
 
 #include "Core/Base/Narrow.h"
+#include "Core/Base/Strings.h"
 
 #include "Editor/Hover/HoverColouring.h"
 #include "Editor/Hover/HoverLayout.h"
@@ -8,6 +9,8 @@
 
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Syntax/ColourLines.h"
+
+#include "UI/TypographicMarks.h"
 
 #include "Core/App/Redraw.h"
 #include "Core/FileSystem/FileSystem.h"
@@ -28,12 +31,10 @@ namespace Graphite {
 
 	namespace {
 
-		// Where the tooltip's prose wraps, in cells of the editor's font. The preview is as wide
-		// as its widest line instead, up to the editor's own width: code broken across rows is
-		// harder to read than code scrolled to, while a paragraph that wide is harder still.
 		constexpr float kTextWidthCells = 60.0f;
-
-		constexpr std::string_view kDot = " \xC2\xB7 "; // " · "
+		constexpr float kBothSides = 2.0f;
+		constexpr ImGuiID kNoWindowId = 0;
+		constexpr std::string_view kNoLabel = "";
 
 		bool HasInfo(const HoverActions& actions, const HoverState& hover)
 		{
@@ -41,26 +42,9 @@ namespace Graphite {
 				   (hover.Info->Parsed || !hover.Info->Raw.empty());
 		}
 
-		// A preview with nothing to draw is no part at all, as an empty hover is: an identifier
-		// with no definition to show gets no box saying so.
 		bool HasPreview(const HoverActions& actions, const HoverState& hover)
 		{
 			return actions.ShowPreview && hover.Preview.has_value() && IsDrawable(*hover.Preview);
-		}
-
-		void Join(std::string& into, std::string_view part)
-		{
-			if (part.empty())
-			{
-				return;
-			}
-
-			if (!into.empty())
-			{
-				into += kDot;
-			}
-
-			into += part;
 		}
 
 		void TextIn(ImU32 colour, std::string_view text)
@@ -80,79 +64,84 @@ namespace Graphite {
 			ImGui::TextUnformatted(text.data(), text.data() + text.size());
 		}
 
-		// Where each row after the first starts, for `text` laid out `columns` cells wide. A row
-		// breaks after the last space or comma that fits — a declaration reads better broken
-		// between parameters than inside a name — and only mid-word when a row holds neither.
 		std::vector<std::size_t> RowStarts(std::string_view text, std::size_t columns)
 		{
-			std::vector<std::size_t> starts;
+			constexpr std::size_t kUnusedTabWidth = 1;
+			constexpr std::size_t kNoBreakInRow = 0;
+
+			std::vector<std::size_t> rowStarts;
 
 			if (columns == 0)
 			{
-				return starts;
+				return rowStarts;
 			}
 
 			std::size_t rowStart = 0;
 			std::size_t column = 0;
-			std::size_t lastGood = 0; // a byte a row may start at; 0 for "none in this row"
+			std::size_t lastBreakOffset = kNoBreakInRow;
 
-			for (std::size_t at = 0; at < text.size();)
+			for (std::size_t byteOffset = 0; byteOffset < text.size();)
 			{
-				const std::size_t next = Core::NextCharacter(text, at);
+				const std::size_t nextByteOffset = Core::NextCharacter(text, byteOffset);
 
 				if (column == columns)
 				{
-					const std::size_t cut = lastGood > rowStart ? lastGood : at;
+					const std::size_t cut = lastBreakOffset > rowStart ? lastBreakOffset : byteOffset;
 
-					starts.push_back(cut);
+					rowStarts.push_back(cut);
 					rowStart = cut;
-					lastGood = 0;
-					// tabWidth is inert: the text has had its tabs expanded away.
-					column = Core::ColumnCount(text.substr(cut, at - cut), 1);
+					lastBreakOffset = kNoBreakInRow;
+					column = Core::ColumnCount(text.substr(cut, byteOffset - cut), kUnusedTabWidth);
 				}
 
-				if (text[at] == ' ' || text[at] == ',')
+				if (text[byteOffset] == ' ' || text[byteOffset] == ',')
 				{
-					lastGood = next;
+					lastBreakOffset = nextByteOffset;
 				}
 
 				++column;
-				at = next;
+				byteOffset = nextByteOffset;
 			}
 
-			return starts;
+			return rowStarts;
 		}
 
-		// Bytes [from, to) of `text`, coloured by `tokens` (offsets into `text`) and by the
-		// server's `spans` over them, at the cursor, as one row of cells. Ends in a Dummy as every
-		// row the editor draws does: drawing alone moves no cursor, and the window has to be told
-		// what it holds.
-		void DrawColouredRow(std::string_view text, const std::vector<Token>& tokens,
-							 const std::vector<SemanticSpan>& spans, std::size_t from,
-							 std::size_t to, const HoverTooltipLook& look)
+		struct RowPainter
 		{
-			const ImVec2 origin = ImGui::GetCursorScreenPos();
-			ImDrawList* const draw = ImGui::GetWindowDrawList();
+			std::string_view Text;
+			ImVec2 Origin;
+			ImDrawList* DrawList = nullptr;
+			const HoverTooltipLook& Look;
+			std::size_t At = 0;
+			std::size_t Column = 0;
 
-			std::size_t at = from;
-			std::size_t column = 0;
-
-			const auto run = [&](std::size_t until, ImU32 colour) {
-				if (until <= at)
+			void PaintUntil(std::size_t until, ImU32 colour)
+			{
+				if (until <= At)
 				{
 					return;
 				}
 
-				const std::string_view piece = text.substr(at, until - at);
+				const std::string_view piece = Text.substr(At, until - At);
+				const float pieceLeft = Origin.x + static_cast<float>(Column) * Look.CellWidth;
 
-				const float x = origin.x + static_cast<float>(column) * look.CellWidth;
+				DrawList->AddText(ImVec2(pieceLeft, Origin.y), colour, piece.data(),
+								  piece.data() + piece.size());
 
-				draw->AddText(ImVec2(x, origin.y), colour, piece.data(),
-							  piece.data() + piece.size());
+				Column += Core::ColumnCount(piece, Look.TabWidth);
+				At = until;
+			}
+		};
 
-				column += Core::ColumnCount(piece, look.TabWidth);
-				at = until;
-			};
+		void DrawColouredRow(std::string_view text, const std::vector<Token>& tokens,
+							 const std::vector<SemanticSpan>& spans, std::size_t from,
+							 std::size_t to, const HoverTooltipLook& look)
+		{
+			RowPainter painter{.Text = text,
+							   .Origin = ImGui::GetCursorScreenPos(),
+							   .DrawList = ImGui::GetWindowDrawList(),
+							   .Look = look,
+							   .At = from};
 
 			for (const Token& token : tokens)
 			{
@@ -166,13 +155,13 @@ namespace Graphite {
 					break;
 				}
 
-				run(std::max(token.From, from), look.Palette.Text);
-				run(std::min(token.To, to), look.Syntax.Of(ColourOf(token, spans)));
+				painter.PaintUntil(std::max(token.From, from), look.Palette.Text);
+				painter.PaintUntil(std::min(token.To, to), look.Syntax.Of(ColourOf(token, spans)));
 			}
 
-			run(to, look.Palette.Text);
+			painter.PaintUntil(to, look.Palette.Text);
 
-			ImGui::Dummy(ImVec2(static_cast<float>(column) * look.CellWidth, look.LineHeight));
+			ImGui::Dummy(ImVec2(static_cast<float>(painter.Column) * look.CellWidth, look.LineHeight));
 		}
 
 		using SpansOfLine = std::function<std::vector<SemanticSpan>(std::string_view, const std::vector<Token>&)>;
@@ -184,8 +173,6 @@ namespace Graphite {
 		{
 			std::vector<SemanticSpan> spans = spansOf(std::string_view(expanded), tokens);
 
-			// The label is no code, so it is lexed with none: an arrow or a colon in it would come
-			// out as punctuation or worse. Its tokens and spans are moved past it instead.
 			const std::string text = std::string(label) + expanded;
 
 			for (Token& token : tokens)
@@ -200,31 +187,29 @@ namespace Graphite {
 				span.To += label.size();
 			}
 
-			const auto columns =
-				static_cast<std::size_t>(std::max(1.0f, maxContentWidth / look.CellWidth));
+			const float widthInCells = std::max(1.0f, maxContentWidth / look.CellWidth);
+			const std::size_t columns = static_cast<std::size_t>(widthInCells);
 
-			std::size_t from = 0;
+			std::size_t rowFrom = 0;
 
-			// A wrapped line's rows butt against each other, as the editor's do: each Dummy is an
-			// ordinary item, and ImGui would otherwise put ItemSpacing.y below it. The last row is
-			// drawn after the pop, so the line that follows keeps the usual spacing.
+			// WARNING: A wrapped line's rows butt against each other, as the editor's do. Each Dummy
+			// is an ordinary item, so ImGui would put ItemSpacing.y below it. The last row is drawn
+			// after the pop, so the line that follows keeps the usual spacing.
 			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
 								ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
 
-			for (const std::size_t start : RowStarts(text, columns))
+			for (const std::size_t rowStart : RowStarts(text, columns))
 			{
-				DrawColouredRow(text, tokens, spans, from, start, look);
-				from = start;
+				DrawColouredRow(text, tokens, spans, rowFrom, rowStart, look);
+				rowFrom = rowStart;
 			}
 
 			ImGui::PopStyleVar();
 
-			DrawColouredRow(text, tokens, spans, from, text.size(), look);
+			DrawColouredRow(text, tokens, spans, rowFrom, text.size(), look);
 		}
 
-		// A multi-line declaration is coloured as one text: a grammar given each line alone would parse fragments.
-		template<typename Spans>
-		void DrawCode(std::string_view label, std::string_view code, LinesColouring colouring, const Spans& spansOf,
+		void DrawCode(std::string_view label, std::string_view code, LinesColouring colouring, const SpansOfLine& spansOf,
 					  const HoverTooltipLook& look, float maxContentWidth)
 		{
 			std::vector<std::string> expandedLines;
@@ -235,20 +220,34 @@ namespace Graphite {
 			}
 
 			const std::vector<std::string_view> lineViews(expandedLines.begin(), expandedLines.end());
-			std::vector<std::vector<Token>> coloured = colouring(look.Language, lineViews);
+			std::vector<std::vector<Token>> colouredLines = colouring(look.Language, lineViews);
 
-			for (std::size_t index = 0; index < expandedLines.size(); ++index)
+			for (std::size_t lineIndex = 0; lineIndex < expandedLines.size(); ++lineIndex)
 			{
-				std::vector<Token> tokens = index < coloured.size() ? std::move(coloured[index]) : std::vector<Token>{};
-				DrawCodeLine(index == 0 ? label : std::string_view{}, expandedLines[index], std::move(tokens), spansOf, look,
+				const bool hasColours = lineIndex < colouredLines.size();
+				std::vector<Token> tokens = hasColours ? std::move(colouredLines[lineIndex]) : std::vector<Token>{};
+				const std::string_view lineLabel = lineIndex == 0 ? label : kNoLabel;
+
+				DrawCodeLine(lineLabel, expandedLines[lineIndex], std::move(tokens), spansOf, look,
 							 maxContentWidth);
 			}
 		}
 
-		std::vector<SemanticSpan> NoSpans(std::string_view, const std::vector<Token>&)
+		std::vector<SemanticSpan> NoSemanticSpans(std::string_view, const std::vector<Token>&)
 		{
 			return {};
 		}
+
+		struct DeclarationSpansOfName
+		{
+			std::string_view Name;
+			TokenKind NameKind = TokenKind::Text;
+
+			std::vector<SemanticSpan> operator()(std::string_view text, const std::vector<Token>& tokens) const
+			{
+				return DeclarationSpans(text, tokens, Name, NameKind);
+			}
+		};
 
 		void DrawInfo(const HoverInfo& info, const HoverTooltipLook& look, float maxContentWidth)
 		{
@@ -258,9 +257,6 @@ namespace Graphite {
 				return;
 			}
 
-			// The name in the colour the editor gives a name of its kind, the kind beside it
-			// dimmed: the bold face this would ideally use is not one the editor's font stack
-			// holds.
 			if (!info.Kind.empty())
 			{
 				DisabledText(info.Kind);
@@ -286,11 +282,11 @@ namespace Graphite {
 				where = "in " + info.Scope;
 			}
 
-			Join(where, info.Access);
+			Core::AppendSeparatedIfNotEmpty(where, kMiddleDotSeparator, info.Access);
 
 			for (const std::string& qualifier : info.Qualifiers)
 			{
-				Join(where, qualifier);
+				Core::AppendSeparatedIfNotEmpty(where, kMiddleDotSeparator, qualifier);
 			}
 
 			if (!where.empty())
@@ -312,20 +308,22 @@ namespace Graphite {
 			if (!info.Declaration.empty())
 			{
 				const TokenKind nameKind = KindOfHoverSymbol(info.Kind);
-				const bool spansNeeded = NeedsDeclarationSpans(look.Language);
 				const float declarationLeft = ImGui::GetCursorScreenPos().x;
 
-				DrawCode(
-					"", info.Declaration, ColourDeclaration,
-					[&](std::string_view text, const std::vector<Token>& tokens) {
-						return spansNeeded ? DeclarationSpans(text, tokens, info.Name, nameKind) : std::vector<SemanticSpan>{};
-					},
-					look, maxContentWidth);
+				SpansOfLine spansOfDeclarationLine = NoSemanticSpans;
+
+				if (NeedsDeclarationSpans(look.Language))
+				{
+					spansOfDeclarationLine = DeclarationSpansOfName{info.Name, nameKind};
+				}
+
+				DrawCode(kNoLabel, info.Declaration, ColourDeclaration, spansOfDeclarationLine, look,
+						 maxContentWidth);
 
 				if (!info.OverloadNote.empty())
 				{
-					// Text after SameLine wraps at the wrap position, not where it began: a note that does not fit
-					// beside the declaration would come out a word to a row.
+					// WARNING: Text after SameLine wraps at the wrap position, not where it began, so
+					// a note that does not fit beside the declaration would come out a word to a row.
 					const float noteLeft = ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x;
 					const float noteWidth = ImGui::CalcTextSize(info.OverloadNote.c_str()).x;
 
@@ -340,7 +338,7 @@ namespace Graphite {
 
 			if (!info.ReturnType.empty())
 			{
-				DrawCode("\xE2\x86\x92 ", info.ReturnType, ColourLines, TypeSpans, look, // "→ "
+				DrawCode(std::format("{} ", kRightwardsArrow), info.ReturnType, ColourLines, TypeSpans, look,
 						 maxContentWidth);
 			}
 
@@ -351,7 +349,7 @@ namespace Graphite {
 
 				for (const std::string& parameter : info.Parameters)
 				{
-					DrawCode("", parameter, ColourLines, ParameterSpans, look, maxContentWidth);
+					DrawCode(kNoLabel, parameter, ColourLines, ParameterSpans, look, maxContentWidth);
 				}
 
 				ImGui::Unindent();
@@ -371,16 +369,14 @@ namespace Graphite {
 
 			if (!info.Value.empty())
 			{
-				DrawCode("Value = ", info.Value, ColourLines, NoSpans, look, maxContentWidth);
+				DrawCode("Value = ", info.Value, ColourLines, NoSemanticSpans, look, maxContentWidth);
 			}
 
-			// A field has an offset, and a padding only then; a type has a size and an alignment
-			// alone. Either way, whatever clangd left out is left out here.
 			std::string layout;
 
 			if (!info.Offset.empty())
 			{
-				Join(layout, "Offset " + info.Offset);
+				Core::AppendSeparatedIfNotEmpty(layout, kMiddleDotSeparator, "Offset " + info.Offset);
 			}
 
 			if (!info.Size.empty())
@@ -392,12 +388,12 @@ namespace Graphite {
 					size += " (+" + info.Padding + " padding)";
 				}
 
-				Join(layout, size);
+				Core::AppendSeparatedIfNotEmpty(layout, kMiddleDotSeparator, size);
 			}
 
 			if (!info.Alignment.empty())
 			{
-				Join(layout, "Align " + info.Alignment);
+				Core::AppendSeparatedIfNotEmpty(layout, kMiddleDotSeparator, "Align " + info.Alignment);
 			}
 
 			if (!layout.empty())
@@ -416,6 +412,24 @@ namespace Graphite {
 			}
 		}
 
+		const std::vector<SemanticSpan>& ServerSpansOnPreviewLine(const DefinitionPreview& preview,
+																  const HoverTooltipLook& look,
+																  bool declared, std::size_t fileLine,
+																  const std::vector<SemanticSpan>& noSpans)
+		{
+			if (look.PreviewOverlay != nullptr)
+			{
+				return look.PreviewOverlay->SpansOn(fileLine);
+			}
+
+			if (declared)
+			{
+				return look.Semantics->SpansOn(preview.Path, fileLine);
+			}
+
+			return noSpans;
+		}
+
 		void DrawPreview(HoverState& hover, const HoverTooltipLook& look)
 		{
 			const DefinitionPreview& preview = *hover.Preview;
@@ -424,22 +438,19 @@ namespace Graphite {
 
 			if (preview.TooLarge)
 			{
-				DisabledText(file + " \xE2\x80\x94 file too large to preview"); // " — "
+				DisabledText(file + std::string{kEmDashSeparator} + "file too large to preview");
 				return;
 			}
 
 			DisabledText(file + std::format(":{}", preview.FirstLine + 1));
 
-			// A file with no tab is declared every frame the preview shows, as a search result's
-			// preview pane does: the server holds it open for exactly as long as somebody is
-			// looking at it, and its colours arrive a moment after the preview does. A file with a
-			// tab is never declared: its overlay is already current, and a second holder of the
-			// same path would only make the server answer the same question twice.
 			const bool declared = look.PreviewOverlay == nullptr && look.Semantics != nullptr;
 
 			if (declared)
 			{
-				look.Semantics->Declare(preview.Path, preview.Text, look.TabWidth, false);
+				constexpr bool kEditorHolds = false;
+
+				look.Semantics->Declare(preview.Path, preview.Text, look.TabWidth, kEditorHolds);
 			}
 
 			const ColouredPreview& coloured = ColouredPreviewOf(hover, look.TabWidth);
@@ -452,29 +463,22 @@ namespace Graphite {
 				widest = std::max(widest, Core::ColumnCount(text, look.TabWidth));
 			}
 
-			// Coloured from the definition's first line, not the file's: reading the file from the
-			// top would cost what the size limit exists to avoid.
 			const std::vector<std::vector<Token>>& previewTokens = coloured.Tokens;
 			const std::vector<Token> noTokens;
 
-			const std::vector<SemanticSpan> none;
+			const std::vector<SemanticSpan> noSpans;
+			constexpr std::size_t kLineStart = 0;
 
-			// Rows butt against each other, as the editor's do. Each Dummy is an ordinary item,
-			// so without this ImGui puts ItemSpacing.y below every row, and the clipper's pitch
-			// disagrees with the rows it steps over.
 			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
 								ImVec2(ImGui::GetStyle().ItemSpacing.x, 0.0f));
 
-			// The widest line's width, claimed before any row: the clipper submits only the rows
-			// in view, or none while the preview is scrolled out of it, and a tooltip sized by
-			// those alone would change width as it scrolls.
+			// WARNING: The widest line's width is claimed before any row. The clipper submits only
+			// the rows in view, or none while the preview is scrolled out of it, and a tooltip
+			// sized by those alone would change width as it scrolls.
 			ImGui::Dummy(ImVec2(PreviewWidth(widest, look.CellWidth,
 											 ImGui::GetCurrentWindow()->ScrollbarY),
 								0.0f));
 
-			// Drawn into the tooltip itself rather than a scrolling child of it: the tooltip
-			// already scrolls when the editor has no room for all of it, and a child would put a
-			// second scrollbar beside that one.
 			ImGuiListClipper clipper;
 			clipper.Begin(Core::Narrow<int>(expanded.size()), look.LineHeight);
 
@@ -482,17 +486,16 @@ namespace Graphite {
 			{
 				for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row)
 				{
-					const auto index = static_cast<std::size_t>(row);
+					const auto lineIndex = static_cast<std::size_t>(row);
 
-					const std::size_t fileLine = preview.FirstLine + index;
+					const std::size_t fileLine = preview.FirstLine + lineIndex;
 
-					const std::vector<SemanticSpan>& said =
-						look.PreviewOverlay != nullptr ? look.PreviewOverlay->SpansOn(fileLine)
-						: declared					   ? look.Semantics->SpansOn(preview.Path, fileLine)
-													   : none;
+					const std::vector<SemanticSpan>& serverSpans =
+						ServerSpansOnPreviewLine(preview, look, declared, fileLine, noSpans);
+					const std::vector<Token>& lineTokens = lineIndex < previewTokens.size() ? previewTokens[lineIndex] : noTokens;
 
-					DrawColouredRow(expanded[index], index < previewTokens.size() ? previewTokens[index] : noTokens, DedentSpans(said, coloured.Dedented.Removed),
-									0, expanded[index].size(), look);
+					DrawColouredRow(expanded[lineIndex], lineTokens, DedentSpans(serverSpans, coloured.Dedented.Removed),
+									kLineStart, expanded[lineIndex].size(), look);
 				}
 			}
 
@@ -530,10 +533,8 @@ namespace Graphite {
 		const bool showInfo = HasInfo(actions, hover);
 		const bool showPreview = HasPreview(actions, hover);
 
-		// An empty or failed answer leaves the tracker showing a part with nothing in it; with
-		// nothing else left, there is no tooltip at all rather than an empty box. Nor is there one
-		// while a modal is up: the tooltip is raised to the front every frame, which would put it
-		// over the very dialog that is meant to be the only thing taking input.
+		// WARNING: No tooltip while a modal is up. The tooltip is raised to the front every
+		// frame, which would put it over the dialog meant to be the only thing taking input.
 		if ((!showDiagnostic && !showInfo && !showPreview) ||
 			ImGui::GetTopMostPopupModal() != nullptr)
 		{
@@ -543,10 +544,6 @@ namespace Graphite {
 
 		const ImGuiStyle& style = ImGui::GetStyle();
 
-		// Placed from last frame's size. A tooltip that has just changed size is one frame out,
-		// and asks for that frame below rather than waiting for the mouse to move. The height
-		// is the one its content wanted, not the one it was held to: a tooltip held short below
-		// the token would otherwise always fit there, and never move above where it fits whole.
 		const ImVec2 lastSize(hover.TooltipMax.x - hover.TooltipMin.x,
 							  hover.TooltipMax.y - hover.TooltipMin.y);
 		const float lastNaturalHeight = hover.TooltipNaturalHeight;
@@ -564,84 +561,67 @@ namespace Graphite {
 							   viewport->WorkPos.y + viewport->WorkSize.y);
 		}
 
-		// As wide as the editor, at most. Prose wraps narrower than that, and never wider than
-		// the room the editor leaves it.
 		const float maxWidth = boundsMax.x - boundsMin.x;
 		const float maxContentWidth =
 			std::max(look.CellWidth,
 					 std::min(kTextWidthCells * look.CellWidth,
-							  maxWidth - style.WindowPadding.x * 2.0f - style.ScrollbarSize));
+							  maxWidth - style.WindowPadding.x * kBothSides - style.ScrollbarSize));
 
-		const TooltipPlacement placed =
+		const TooltipPlacement placement =
 			PlaceTooltip(anchor.Min, anchor.Max, ImVec2(lastSize.x, lastNaturalHeight), boundsMin,
 						 boundsMax);
 
-		// Held to the room on its side; what does not fit scrolls rather than running over the
-		// panel below the editor. Never held to less than a row, which would be no tooltip at
-		// all. A tooltip held short grows a scrollbar, and one wider than the editor a
-		// horizontal one.
-		const float maxHeight =
-			std::max(placed.MaxHeight, look.LineHeight + style.WindowPadding.y * 2.0f);
+		const float oneRowHeight = look.LineHeight + style.WindowPadding.y * kBothSides;
+		const float maxHeight = std::max(placement.MaxHeight, oneRowHeight);
 
 		ImGui::SetNextWindowViewport(viewport->ID);
-		ImGui::SetNextWindowPos(placed.Position, ImGuiCond_Always, placed.Pivot);
+		ImGui::SetNextWindowPos(placement.Position, ImGuiCond_Always, placement.Pivot);
 		ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f),
 											ImVec2(maxWidth, maxHeight));
 		ImGui::SetNextWindowBgAlpha(1.0f);
 
-		// A tooltip that comes up afresh starts at its top, not wherever the last one was left.
 		if (!hover.TooltipShown)
 		{
 			ImGui::SetNextWindowScroll(ImVec2(0.0f, 0.0f));
 		}
 
-		// A window rather than BeginTooltip, because a tooltip can be neither hovered nor
-		// scrolled; dressed in the tooltip's colours and border so it still reads as one.
+		// WARNING: A window rather than BeginTooltip, because a tooltip can be neither hovered nor
+		// scrolled. It is dressed in the tooltip's colours and border to read as one.
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, style.WindowPadding);
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, style.PopupRounding);
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, style.PopupBorderSize);
 		ImGui::PushStyleColor(ImGuiCol_WindowBg, ImGui::GetStyleColorVec4(ImGuiCol_PopupBg));
 
-		// Every decoration but the scrollbars, which a tooltip held short of its content needs.
-		constexpr ImGuiWindowFlags kFlags =
+		constexpr ImGuiWindowFlags kScrollbarsOnlyWindowFlags =
 			ImGuiWindowFlags_HorizontalScrollbar |
 			ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoCollapse |
 			ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNav |
 			ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking |
 			ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoMove;
 
-		// One window per document: two editors side by side must never append to each other's.
 		const std::string name = std::format("##HoverTooltip{}", static_cast<const void*>(&hover));
 
-		ImGui::Begin(name.c_str(), nullptr, kFlags);
+		ImGui::Begin(name.c_str(), nullptr, kScrollbarsOnlyWindowFlags);
 
-		// A window never focused still falls behind whatever is focused after it — the first click
-		// into the editor would bury it for good. Raised every frame it shows instead, which
-		// moves no focus.
 		ImGuiWindow* const window = ImGui::GetCurrentWindow();
 
-		// Last frame's content, measured from the top whatever the scroll: the height the
-		// tooltip would take if nothing held it.
-		const float naturalHeight = window->ContentSizeIdeal.y + style.WindowPadding.y * 2.0f;
+		const float naturalHeight = window->ContentSizeIdeal.y + style.WindowPadding.y * kBothSides;
 
-		// A click inside the tooltip focuses it, as a click does any window, and the editor would
-		// lose the keyboard to a box that goes away when the mouse leaves. Handed back as soon as
-		// no button is down: during a press it would end the drag of the preview's scrollbar.
-		//
-		// Handed back to whichever window held focus before the click, not to the surface the
-		// mouse is over: with two editors side by side, hovering the unfocused one must not move
-		// the keyboard to it. ImGui moves focus on a click only at the end of the frame, so every
-		// frame the tooltip is not focused, the focused window is still the one to return to.
+		// WARNING: A click inside the tooltip focuses it, and the editor would lose the keyboard
+		// to a box that goes away when the mouse leaves. Focus is handed back to the window that
+		// held it before the click, and only once no button is down: during a press it would end
+		// the drag of the preview's scrollbar. ImGui moves focus on a click at the end of the
+		// frame, so every frame the tooltip is not focused, the focused window is the one to
+		// return to.
 		const bool focused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
 		if (!focused)
 		{
 			ImGuiWindow* const holder = ImGui::GetCurrentContext()->NavWindow;
-			hover.FocusBeforeTooltip = holder != nullptr ? holder->ID : 0;
+			hover.FocusBeforeTooltip = holder != nullptr ? holder->ID : kNoWindowId;
 		}
 		else if (!ImGui::IsAnyMouseDown())
 		{
-			// A window that has since gone — a popup the click closed — falls back to the surface.
 			ImGuiWindow* const holder = ImGui::FindWindowByID(hover.FocusBeforeTooltip);
 			ImGuiWindow* const target =
 				holder != nullptr && holder->WasActive ? holder : returnFocusTo;
@@ -652,6 +632,8 @@ namespace Graphite {
 			}
 		}
 
+		// WARNING: A window never focused falls behind whatever is focused after it, so the first
+		// click into the editor would bury the tooltip for good. Raising it every frame moves no focus.
 		ImGui::BringWindowToDisplayFront(window);
 
 		ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + maxContentWidth);

@@ -4,14 +4,14 @@ namespace Graphite {
 
 	std::optional<std::filesystem::path> ActiveTextDocument(const Core::DocumentSet& documents)
 	{
-		const std::optional<std::size_t> active = documents.GetActiveIndex();
+		const std::optional<std::size_t> activeIndex = documents.GetActiveIndex();
 
-		if (!active)
+		if (!activeIndex)
 		{
 			return std::nullopt;
 		}
 
-		const Core::OpenItem& item = documents.At(*active);
+		const Core::OpenItem& item = documents.At(*activeIndex);
 
 		if (!item.Document)
 		{
@@ -25,27 +25,27 @@ namespace Graphite {
 		const Core::DocumentSet& documents,
 		const std::function<bool(const std::filesystem::path&)>& isShown)
 	{
-		const std::optional<std::size_t> shown = ShownActiveTab(documents, isShown);
+		const std::optional<std::size_t> shownIndex = ShownActiveTab(documents, isShown);
 
-		if (!shown || !documents.At(*shown).Document)
+		if (!shownIndex || !documents.At(*shownIndex).Document)
 		{
 			return std::nullopt;
 		}
 
-		return shown;
+		return shownIndex;
 	}
 
 	std::optional<std::size_t> ShownActiveTab(
 		const Core::DocumentSet& documents,
 		const std::function<bool(const std::filesystem::path&)>& isShown)
 	{
-		const std::optional<std::size_t> active = documents.GetActiveIndex();
+		const std::optional<std::size_t> activeIndex = documents.GetActiveIndex();
 
-		if (!active || !isShown(documents.At(*active).Path))
+		if (!activeIndex || !isShown(documents.At(*activeIndex).Path))
 		{
 			return std::nullopt;
 		}
 
-		return active;
+		return activeIndex;
 	}
 }

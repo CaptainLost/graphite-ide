@@ -8,6 +8,9 @@
 #include "Core/Text/TextBuffer.h"
 #include "Core/Text/TextDocument.h"
 
+#include <optional>
+#include <string_view>
+
 namespace Graphite {
 
 	namespace {
@@ -18,11 +21,11 @@ namespace Graphite {
 
 		std::string SelectionForClipboard(const Core::OpenItem& item)
 		{
-			const auto [from, to] = Core::SelectionRange(item.Caret);
+			const auto [selectionStart, selectionEnd] = Core::SelectionRange(item.Caret);
 
-			// The buffer's text is LF-only and the Windows clipboard is CRLF: pasted into a
-			// Win32 edit control, LF-only text arrives as a single line.
-			return Core::WithLineEnding(item.Document->GetBuffer().Substring(from, to),
+			// WARNING: The buffer's text is LF-only and the Windows clipboard is CRLF: pasted into
+			// a Win32 edit control, LF-only text arrives as a single line.
+			return Core::WithLineEnding(item.Document->GetBuffer().Substring(selectionStart, selectionEnd),
 										Core::LineEnding::Crlf);
 		}
 	}
@@ -30,15 +33,37 @@ namespace Graphite {
 	const std::vector<EditorCommandSpec>& EditorCommandSpecs()
 	{
 		static const std::vector<EditorCommandSpec> specs = {
-			{kCutCommand, "Cut", EditorAction::Cut, ImGuiMod_Ctrl | ImGuiKey_X},
-			{kCopyCommand, "Copy", EditorAction::Copy, ImGuiMod_Ctrl | ImGuiKey_C},
-			{kPasteCommand, "Paste", EditorAction::Paste, ImGuiMod_Ctrl | ImGuiKey_V},
-			{kSelectAllCommand, "Select All", EditorAction::SelectAll, ImGuiMod_Ctrl | ImGuiKey_A},
-			{kToggleLineCommentCommand, "Toggle Line Comment", EditorAction::ToggleLineComment,
-			 ImGuiMod_Ctrl | ImGuiKey_Slash},
-			{kUndoCommand, "Undo", EditorAction::Undo, ImGuiMod_Ctrl | ImGuiKey_Z, 0, true},
-			{kRedoCommand, "Redo", EditorAction::Redo, ImGuiMod_Ctrl | ImGuiKey_Y,
-			 ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z, true},
+			{.Id = kCutCommand,
+			 .Label = "Cut",
+			 .Action = EditorAction::Cut,
+			 .Chord = ImGuiMod_Ctrl | ImGuiKey_X},
+			{.Id = kCopyCommand,
+			 .Label = "Copy",
+			 .Action = EditorAction::Copy,
+			 .Chord = ImGuiMod_Ctrl | ImGuiKey_C},
+			{.Id = kPasteCommand,
+			 .Label = "Paste",
+			 .Action = EditorAction::Paste,
+			 .Chord = ImGuiMod_Ctrl | ImGuiKey_V},
+			{.Id = kSelectAllCommand,
+			 .Label = "Select All",
+			 .Action = EditorAction::SelectAll,
+			 .Chord = ImGuiMod_Ctrl | ImGuiKey_A},
+			{.Id = kToggleLineCommentCommand,
+			 .Label = "Toggle Line Comment",
+			 .Action = EditorAction::ToggleLineComment,
+			 .Chord = ImGuiMod_Ctrl | ImGuiKey_Slash},
+			{.Id = kUndoCommand,
+			 .Label = "Undo",
+			 .Action = EditorAction::Undo,
+			 .Chord = ImGuiMod_Ctrl | ImGuiKey_Z,
+			 .Repeats = true},
+			{.Id = kRedoCommand,
+			 .Label = "Redo",
+			 .Action = EditorAction::Redo,
+			 .Chord = ImGuiMod_Ctrl | ImGuiKey_Y,
+			 .Alternate = ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z,
+			 .Repeats = true},
 		};
 
 		return specs;
@@ -121,8 +146,8 @@ namespace Graphite {
 			break;
 
 		case EditorAction::Cut:
-			// Only with something selected: DeleteBackward on an empty selection removes the
-			// character before the caret and puts nothing on the clipboard.
+			// WARNING: DeleteBackward on an empty selection removes the character before the
+			// caret and puts nothing on the clipboard, so cut needs a selection.
 			if (IsWritable(item) && Core::HasSelection(item.Caret))
 			{
 				outcome.ToClipboard = SelectionForClipboard(item);
@@ -142,7 +167,8 @@ namespace Graphite {
 			break;
 
 		case EditorAction::ToggleLineComment:
-			if (const auto prefix = LineCommentPrefix(LanguageOfPath(item.Path)))
+			if (const std::optional<std::string_view> prefix =
+					LineCommentPrefix(LanguageOfPath(item.Path)))
 			{
 				outcome.Changed = Core::ToggleLineComment(item, *prefix);
 			}

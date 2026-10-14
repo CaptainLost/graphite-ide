@@ -14,11 +14,8 @@
 namespace Graphite {
 
 	namespace {
-		// The state keeps its own FindMatch ranges, because ADR 0002 stops Core naming DocumentMatch,
-		// and the stepping functions are written against the matcher's own type. Copying back
-		// happens once per step, never once per frame, so the boundary costs an allocation
-		// nobody is in a position to feel.
-		std::vector<DocumentMatch> MatchesOf(const Core::FindState& find)
+
+		std::vector<DocumentMatch> DocumentMatchesOf(const Core::FindState& find)
 		{
 			std::vector<DocumentMatch> matches;
 
@@ -32,28 +29,22 @@ namespace Graphite {
 			return matches;
 		}
 
-		// Selects the match rather than only placing the caret at it: the selection is what says
-		// which of several highlighted matches is the one being stepped through, and it is
-		// already what the user would have had by dragging over the text themselves.
-		void GoToMatch(Core::OpenItem& item, const Core::TextBuffer& buffer, std::size_t index)
+		void SelectMatchAt(Core::OpenItem& item, const Core::TextBuffer& buffer, std::size_t matchIndex)
 		{
-			if (index >= item.Find.Matches.size())
+			if (matchIndex >= item.Find.Matches.size())
 			{
 				return;
 			}
 
-			const Core::FindMatch range = item.Find.Matches[index];
+			const Core::FindMatch range = item.Find.Matches[matchIndex];
 
-			item.Find.CurrentMatch = index;
-			item.Caret = Core::PlaceAt(buffer, item.Caret, range.From, Core::SelectionChange::Collapse, item.TabWidth);
-			item.Caret = Core::PlaceAt(buffer, item.Caret, range.To, Core::SelectionChange::Extend, item.TabWidth);
+			item.Find.CurrentMatch = matchIndex;
+			item.Caret = Core::PlaceAt(buffer, item.Caret, range.From,
+									   Core::SelectionChange::Collapse, item.TabWidth);
+			item.Caret = Core::PlaceAt(buffer, item.Caret, range.To, Core::SelectionChange::Extend,
+									   item.TabWidth);
 
-			// The vertical aim was measured against wherever the caret used to sit; the next Up
-			// or Down should resolve it from here instead.
 			item.RowAimCaretOffset = Core::NoRowAim;
-
-			// The editor decides where to scroll before it draws the bar the step came from, so
-			// the scroll lands on the next frame. That is the case PendingScroll exists for.
 			item.PendingScroll = true;
 		}
 	}
@@ -78,10 +69,6 @@ namespace Graphite {
 
 		item.Find.MatchesRevision = buffer.GetRevision();
 
-		// Re-derived from the caret rather than merely clamped into the new list: after an edit
-		// the index that was current may name an entirely different match, and the caret is
-		// where the user is. MatchAtOrAfter answers zero for an empty list, which is the only
-		// index an empty list can be asked about.
 		item.Find.CurrentMatch = MatchAtOrAfter(matches, Core::SelectionRange(item.Caret).From);
 	}
 
@@ -96,27 +83,31 @@ namespace Graphite {
 		return true;
 	}
 
+	// WARNING: Escape makes an ImGui field revert to the value it held when it was activated and
+	// report itself edited on that frame, so the edit seen then is ImGui undoing the typing.
 	bool AcceptsQueryEdit(const FindFieldEvents& events)
 	{
 		return events.Edited && !events.EscapePressed;
 	}
 
-	void StepFindMatch(Core::OpenItem& item, const Core::TextBuffer& buffer, bool backwards)
+	void StepFindMatch(Core::OpenItem& item, const Core::TextBuffer& buffer,
+					   StepDirection direction)
 	{
-		const std::vector<DocumentMatch> matches = MatchesOf(item.Find);
+		const std::vector<DocumentMatch> matches = DocumentMatchesOf(item.Find);
 
-		const std::optional<std::size_t> target = backwards
-													  ? PreviousMatch(matches, item.Find.CurrentMatch)
-													  : NextMatch(matches, item.Find.CurrentMatch);
+		const std::optional<std::size_t> target =
+			direction == StepDirection::Backwards
+				? PreviousMatch(matches, item.Find.CurrentMatch)
+				: NextMatch(matches, item.Find.CurrentMatch);
 
 		if (target)
 		{
-			GoToMatch(item, buffer, *target);
+			SelectMatchAt(item, buffer, *target);
 		}
 	}
 
 	void RevealFindMatch(Core::OpenItem& item, const Core::TextBuffer& buffer)
 	{
-		GoToMatch(item, buffer, item.Find.CurrentMatch);
+		SelectMatchAt(item, buffer, item.Find.CurrentMatch);
 	}
 }

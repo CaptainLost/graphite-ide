@@ -21,8 +21,6 @@ namespace Graphite {
 	class PreviewSemantics;
 	class SemanticOverlay;
 
-	// What the tooltip draws with, taken from the editor it belongs to so the declaration and the
-	// preview read in the editor's own font, cells and colours.
 	struct HoverTooltipLook
 	{
 		EditorPalette Palette;
@@ -31,46 +29,25 @@ namespace Graphite {
 		float CellWidth = 0.0f;
 		std::size_t TabWidth = 4;
 
-		// The hovered document's language, for the declaration line; plain text draws it in one colour.
 		LanguageId Language = LanguageId::PlainText;
 
-		// The editor surface's viewport, which the tooltip is submitted to, so it never spills
-		// into a platform window of its own.
 		ImGuiViewport* Viewport = nullptr;
 
-		// The editor surface's visible rectangle, which the tooltip flips and is held within.
-		// Left empty, the viewport's work area stands in for it.
 		ImVec2 BoundsMin{};
 		ImVec2 BoundsMax{};
 
-		// What colours the definition preview the way the editor colours the file. A file with a
-		// tab is coloured from the tab's own overlay, which the server already keeps current; any
-		// other is declared to `Semantics` for as long as the preview shows. Both null draws the
-		// preview in the lexer's colours alone.
 		const SemanticOverlay* PreviewOverlay = nullptr;
 		PreviewSemantics* Semantics = nullptr;
 	};
 
-	// The screen rectangle of what the tooltip is about: the hovered token, or the cell under the
-	// mouse for a diagnostic alone. The tooltip sits flush below it, or flush above.
 	struct HoverAnchor
 	{
 		ImVec2 Min{};
 		ImVec2 Max{};
 	};
 
-	// Each diagnostic's message, with its source beneath when the server gave one, separated so
-	// several overlapping diagnostics read as several. Draws into the current window: the hover
-	// tooltip's, or a plain tooltip's for an editor that keeps no hover state.
 	void DrawDiagnosticMessages(const std::vector<DiagnosticSpan>& spans);
 
-	// The hover tooltip: one ImGui window, never focused, holding the diagnostic, the symbol's
-	// information and its definition preview, as `actions` says. Records its rectangle in
-	// `hover` for the next frame's "is the mouse inside it", and clears it when nothing shows.
-	//
-	// Called from inside the editor surface. A click inside the tooltip hands the keyboard back
-	// to the window that held it before; `returnFocusTo`, that surface, is the fallback when no
-	// window did or that window has since gone. Not drawn at all while a modal is open.
 	void DrawHoverTooltip(const HoverActions& actions, HoverState& hover,
 						  const std::vector<DiagnosticSpan>& diagnostics,
 						  const HoverTooltipLook& look, const HoverAnchor& anchor,

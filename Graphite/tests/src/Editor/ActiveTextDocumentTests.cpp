@@ -34,8 +34,6 @@ TEST_CASE("An active tab whose file could not be read is not a text document")
 {
 	TempDirectory temp;
 
-	// A tab that failed to load is still a tab - it stays open to say why - but it holds no
-	// text, so nothing that asks a language server about the active document can use it.
 	Core::DocumentSet documents;
 	REQUIRE(documents.Open(temp.GetPath() / "missing.cpp", Core::TabKind::Permanent) == Core::OpenOutcome::Failed);
 	REQUIRE(documents.GetActiveIndex().has_value());
@@ -53,8 +51,6 @@ TEST_CASE("The active text document is the shown one only while its tab is on sc
 	REQUIRE(documents.Open(first, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
 	REQUIRE(documents.Open(second, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
 
-	// The second tab is active, but another tab of its node - a panel, the Git view - is in
-	// front of it. It stays active, so commands still act on it, yet nothing on screen shows it.
 	const auto onlyFirstShown = [&first](const std::filesystem::path& path) { return path == first; };
 	CHECK_FALSE(Graphite::ShownActiveDocument(documents, onlyFirstShown).has_value());
 

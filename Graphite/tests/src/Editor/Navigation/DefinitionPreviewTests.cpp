@@ -14,18 +14,18 @@ using Graphite::DefinitionPreview;
 using Graphite::LoadDefinitionPreview;
 
 namespace {
-	void Write(const std::filesystem::path& path, std::string_view bytes)
+	void WriteFile(const std::filesystem::path& path, std::string_view bytes)
 	{
-		std::ofstream out(path, std::ios::binary);
-		out << bytes;
+		std::ofstream stream(path, std::ios::binary);
+		stream << bytes;
 	}
 }
 
 TEST_CASE("A preview from disk is cut to the definition")
 {
-	TempDirectory dir;
-	const auto file = dir.GetPath() / "Layer.h";
-	Write(file, "#pragma once\nint Sum(int a, int b)\n{\n    return a + b;\n}\nint After;\n");
+	TempDirectory directory;
+	const std::filesystem::path file = directory.GetPath() / "Layer.h";
+	WriteFile(file, "#pragma once\nint Sum(int a, int b)\n{\n    return a + b;\n}\nint After;\n");
 
 	Core::DocumentSet documents;
 	const DefinitionPreview preview = LoadDefinitionPreview(documents, file, 1);
@@ -37,9 +37,9 @@ TEST_CASE("A preview from disk is cut to the definition")
 
 TEST_CASE("A preview keeps the whole file it was cut from, for the server to colour")
 {
-	TempDirectory dir;
-	const auto file = dir.GetPath() / "Layer.h";
-	Write(file, "#pragma once\nint X;\n");
+	TempDirectory directory;
+	const std::filesystem::path file = directory.GetPath() / "Layer.h";
+	WriteFile(file, "#pragma once\nint X;\n");
 
 	Core::DocumentSet documents;
 	const DefinitionPreview preview = LoadDefinitionPreview(documents, file, 1);
@@ -49,14 +49,13 @@ TEST_CASE("A preview keeps the whole file it was cut from, for the server to col
 
 TEST_CASE("An open document wins over the file on disk")
 {
-	TempDirectory dir;
-	const auto file = dir.GetPath() / "Layer.h";
-	Write(file, "int Old;\n");
+	TempDirectory directory;
+	const std::filesystem::path file = directory.GetPath() / "Layer.h";
+	WriteFile(file, "int Old;\n");
 
 	Core::DocumentSet documents;
 	REQUIRE(documents.Open(file, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
 
-	// An unsaved edit: the buffer now reads "int New;" while the disk still says "int Old;".
 	Core::OpenItem& item = documents.At(*documents.Find(file));
 	item.Caret.Anchor = 4;
 	item.Caret.Offset = 7;
@@ -65,19 +64,17 @@ TEST_CASE("An open document wins over the file on disk")
 	const DefinitionPreview preview = LoadDefinitionPreview(documents, file, 0);
 	CHECK(preview.Lines.front() == "int New;");
 
-	// The tab colours an open document; the preview keeps no copy of it.
 	CHECK(preview.Text.Materialize().empty());
 }
 
 TEST_CASE("A UTF-16 file on disk is decoded")
 {
-	TempDirectory dir;
-	const auto file = dir.GetPath() / "Wide.h";
-	// "int X;\n" in UTF-16LE with a BOM.
-	const std::string bytes{"\xFF\xFE"
-							"i\0n\0t\0 \0X\0;\0\n\0",
-							16};
-	Write(file, bytes);
+	TempDirectory directory;
+	const std::filesystem::path file = directory.GetPath() / "Wide.h";
+	const std::string utf16LittleEndianBytes{"\xFF\xFE"
+											 "i\0n\0t\0 \0X\0;\0\n\0",
+											 16};
+	WriteFile(file, utf16LittleEndianBytes);
 
 	Core::DocumentSet documents;
 	const DefinitionPreview preview = LoadDefinitionPreview(documents, file, 0);
@@ -88,9 +85,9 @@ TEST_CASE("A UTF-16 file on disk is decoded")
 
 TEST_CASE("A file at the size limit is not read")
 {
-	TempDirectory dir;
-	const auto file = dir.GetPath() / "Huge.h";
-	Write(file, std::string(Graphite::kPreviewFileByteLimit, 'x'));
+	TempDirectory directory;
+	const std::filesystem::path file = directory.GetPath() / "Huge.h";
+	WriteFile(file, std::string(Graphite::kPreviewFileByteLimit, 'x'));
 
 	Core::DocumentSet documents;
 	const DefinitionPreview preview = LoadDefinitionPreview(documents, file, 0);
@@ -119,6 +116,5 @@ TEST_CASE("Only a preview with lines, or one too large to read, has anything to 
 	unreadable.Unreadable = true;
 	CHECK_FALSE(Graphite::IsDrawable(unreadable));
 
-	// An out-of-range line: no lines and no flag.
 	CHECK_FALSE(Graphite::IsDrawable(DefinitionPreview{}));
 }

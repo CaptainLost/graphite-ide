@@ -6,21 +6,29 @@
 #include "Language/Server/LspProtocol.h"
 
 #include <algorithm>
+#include <string>
 #include <unordered_map>
+#include <utility>
 
 namespace Graphite {
 
-	bool LensModel::ByDocumentRow(const Entry& a, const Entry& b)
+	bool LensModel::ByDocumentRow(const Entry& left, const Entry& right)
 	{
-		return a.LensValue.DocumentRow < b.LensValue.DocumentRow;
+		return left.LensValue.DocumentRow < right.LensValue.DocumentRow;
+	}
+
+	bool LensModel::SameDocumentRow(const Entry& left, const Entry& right)
+	{
+		return left.LensValue.DocumentRow == right.LensValue.DocumentRow;
+	}
+
+	bool LensModel::EntryBeforeRow(const Entry& entry, std::size_t documentRow)
+	{
+		return entry.LensValue.DocumentRow < documentRow;
 	}
 
 	namespace {
 
-		// Name and kind together are the identity a carried-over count is keyed on. Two
-		// declarations that share both - an overload set - share one carry-over entry; that is
-		// accepted rather than disambiguated further, because clangd counts references by symbol
-		// and this model has nothing finer-grained than name and kind to tell overloads apart with.
 		std::string CarryOverKey(const std::string& name, DeclarationKind kind)
 		{
 			return name + '\0' + std::to_string(static_cast<int>(kind));
@@ -31,14 +39,6 @@ namespace Graphite {
 									const Core::RowMap& rows, const Core::TextBuffer& buffer,
 									std::size_t tabWidth)
 	{
-		// Keyed on the declaration's identity, not its row: a row surviving the rebuild does not
-		// mean the same declaration still sits on it. A reorder, or a delete and insert landing on
-		// the vacated line, would otherwise hand the old row's count to whatever declaration ended
-		// up there - a plausible number displayed confidently over the wrong function, with no way
-		// for the reader to tell. Keying on identity instead means the common case - a function
-		// whose line moved because of an edit above it - keeps its count across the reply instead
-		// of losing it, while a genuinely different declaration that lands on the same row starts
-		// out unknown, as it should.
 		std::unordered_map<std::string, Lens> previousByKey;
 		previousByKey.reserve(m_Entries.size());
 
@@ -52,13 +52,6 @@ namespace Graphite {
 
 		for (const Declaration& declaration : declarations)
 		{
-			// A reply describes the text as the server last saw it, and the buffer may have moved
-			// on since - an edit that removed lines from the end leaves declarations naming lines
-			// that are no longer there. Both RowMap and TextBuffer clamp rather than fail, so
-			// keeping one would not crash; it would anchor a lens past the last line of the file,
-			// which is a row drawn where no row belongs. Filtered here rather than where the reply
-			// arrives because this runs again on every rewrap, against a buffer that may have
-			// shrunk since the reply did arrive.
 			if (declaration.Line >= buffer.GetLineCount())
 			{
 				continue;
@@ -71,8 +64,6 @@ namespace Graphite {
 			entry.LensValue.DocumentRow = rows.FirstRowOf(declaration.Line);
 			entry.LensValue.Column = Core::ColumnOfByte(lineText, byteOffset, tabWidth);
 
-			// Carried across untouched: the server is asked in the units it answered in, so
-			// nothing here has to convert and nothing can convert it wrong.
 			entry.LensValue.NameLine = declaration.NameLine;
 			entry.LensValue.NameColumn = declaration.NameColumn;
 
@@ -81,19 +72,9 @@ namespace Graphite {
 			next.push_back(std::move(entry));
 		}
 
-		// Stable, not sort: when two declarations land on the same anchor row - two short
-		// declarations sharing a source line - std::unique below keeps whichever of them comes
-		// first in `declarations`, and that choice needs to be deterministic rather than whatever
-		// an unstable sort happens to leave adjacent.
 		std::stable_sort(next.begin(), next.end(), ByDocumentRow);
-		next.erase(std::unique(next.begin(), next.end(),
-							   [](const Entry& a, const Entry& b) {
-								   return a.LensValue.DocumentRow == b.LensValue.DocumentRow;
-							   }),
-				   next.end());
+		next.erase(std::unique(next.begin(), next.end(), SameDocumentRow), next.end());
 
-		// After the live entries, never before: emplace leaves an existing key alone, so a count
-		// this model already holds outranks one restored from a previous life of the document.
 		for (const KnownCount& seeded : m_Seeded)
 		{
 			Lens lens;
@@ -107,12 +88,15 @@ namespace Graphite {
 
 		for (Entry& entry : next)
 		{
-			const auto it = previousByKey.find(CarryOverKey(entry.Name, entry.Kind));
+			const std::unordered_map<std::string, Lens>::const_iterator previous =
+				previousByKey.find(CarryOverKey(entry.Name, entry.Kind));
 
-			if (it != previousByKey.end())
+			if (previous != previousByKey.end())
 			{
-				entry.LensValue.Count = it->second.Count;
-				entry.LensValue.CountKnown = it->second.CountKnown;
+				const auto& [previousKey, previousLens] = *previous;
+
+				entry.LensValue.Count = previousLens.Count;
+				entry.LensValue.CountKnown = previousLens.CountKnown;
 			}
 		}
 
@@ -151,15 +135,13 @@ namespace Graphite {
 
 	void LensModel::SetCount(std::size_t documentRow, std::size_t count)
 	{
-		const auto it = std::lower_bound(m_Entries.begin(), m_Entries.end(), documentRow,
-										 [](const Entry& entry, std::size_t row) {
-											 return entry.LensValue.DocumentRow < row;
-										 });
+		const std::vector<Entry>::iterator foundEntry =
+			std::lower_bound(m_Entries.begin(), m_Entries.end(), documentRow, EntryBeforeRow);
 
-		if (it != m_Entries.end() && it->LensValue.DocumentRow == documentRow)
+		if (foundEntry != m_Entries.end() && foundEntry->LensValue.DocumentRow == documentRow)
 		{
-			it->LensValue.Count = count;
-			it->LensValue.CountKnown = true;
+			foundEntry->LensValue.Count = count;
+			foundEntry->LensValue.CountKnown = true;
 		}
 	}
 
@@ -180,9 +162,6 @@ namespace Graphite {
 
 			const std::ptrdiff_t moved = static_cast<std::ptrdiff_t>(entry.LensValue.DocumentRow) + delta;
 
-			// Mirrors LensRows::ShiftAnchors: a negative shift can push an anchor at or below
-			// fromRow up past it, and that anchor no longer corresponds to anything sensible until
-			// SetDeclarations replaces this stopgap with exact anchors, so it is dropped.
 			if (moved < static_cast<std::ptrdiff_t>(fromRow))
 			{
 				continue;
@@ -223,14 +202,12 @@ namespace Graphite {
 
 	const Lens* LensModel::LensAt(std::size_t documentRow) const
 	{
-		const auto it = std::lower_bound(m_Entries.begin(), m_Entries.end(), documentRow,
-										 [](const Entry& entry, std::size_t row) {
-											 return entry.LensValue.DocumentRow < row;
-										 });
+		const std::vector<Entry>::const_iterator foundEntry =
+			std::lower_bound(m_Entries.begin(), m_Entries.end(), documentRow, EntryBeforeRow);
 
-		if (it != m_Entries.end() && it->LensValue.DocumentRow == documentRow)
+		if (foundEntry != m_Entries.end() && foundEntry->LensValue.DocumentRow == documentRow)
 		{
-			return &it->LensValue;
+			return &foundEntry->LensValue;
 		}
 
 		return nullptr;
