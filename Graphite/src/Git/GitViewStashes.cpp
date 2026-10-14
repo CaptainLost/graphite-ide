@@ -5,6 +5,7 @@
 #include "Core/ImGui/ContextMenu.h"
 
 #include "Git/StashBranch.h"
+#include "UI/ClipboardCopy.h"
 
 #include <imgui.h>
 
@@ -137,6 +138,19 @@ namespace Graphite {
 		}
 
 		ImGui::EndDisabled();
+
+		ImGui::Separator();
+
+		if (ImGui::MenuItem("Copy Message"))
+		{
+			CopyToClipboard(m_Events, "stash message", stash.Message);
+		}
+
+		if (ImGui::MenuItem("Copy Hash"))
+		{
+			CopyToClipboard(m_Events, "stash hash", stash.Id.ToHex());
+		}
+
 		ImGui::EndPopup();
 	}
 

@@ -713,6 +713,27 @@ namespace Graphite {
 			m_SelectedFile = FileSelection{commit.Id, path};
 		}
 
+		if (Core::BeginRightClickPopup("file-menu"))
+		{
+			if (ImGui::MenuItem("Copy Path"))
+			{
+				m_CommitAction = CommitAction{.Action = CommitAction::Kind::Copy,
+											  .Commit = commit.Id,
+											  .Text = Core::ToUtf8(path),
+											  .What = "path"};
+			}
+
+			if (ImGui::MenuItem("Copy File Name"))
+			{
+				m_CommitAction = CommitAction{.Action = CommitAction::Kind::Copy,
+											  .Commit = commit.Id,
+											  .Text = Core::ToUtf8(path.filename()),
+											  .What = "file name"};
+			}
+
+			ImGui::EndPopup();
+		}
+
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
 
 		const std::string letter(1, ChangeLetter(changedFile->Change));
