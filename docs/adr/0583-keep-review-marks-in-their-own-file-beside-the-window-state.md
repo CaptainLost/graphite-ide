@@ -11,11 +11,12 @@ Viewed marks ([0582](0582-key-a-viewed-mark-by-its-group-its-path-and-the-pair-o
 
 ## Decision
 
-Review marks live in `<folder>/.graphite/reviews.json`, a versioned JSON file.
+Review sessions ([0586](0586-treat-a-branch-review-as-a-session-with-a-fixed-base.md)) live in `<folder>/.graphite/reviews.json`, a versioned JSON file, `version: 2`. Per branch it holds the base, the settings (include uncommitted, tree or flat, hide viewed, hide white space, since viewed) and the marks.
 
 - It is written atomically, two seconds after the last change, and at once when the folder closes or another folder opens, and when the application shuts down.
 - A file whose marks could not be taken in is never simply written over. One that does not parse, or is of a version this build does not know, is first copied to `reviews.json.bak`, and is not written over if the copy fails. One that cannot be read at all is not written until the folder is opened again.
-- `workspace.json` keeps only the open review tabs, under `restore.review.*`.
+- A version 1 file is another version: it is copied aside to `reviews.json.bak` and not migrated.
+- `workspace.json` keeps only which review tabs are open and their selection, under `restore.review.*`.
 - Line comments will be kept in `reviews.json` too.
 
 ## Rationale
@@ -24,7 +25,7 @@ Review marks live in `<folder>/.graphite/reviews.json`, a versioned JSON file.
 
 **Two seconds batch the clicks.** Marking ten files in a row is one write. Writing at once when the folder closes or another opens, and when the application shuts down, means the last clicks are not lost.
 
-**A version field allows change.** The file will gain comments, and the reader of an older file must be able to tell what it holds.
+**A version field allows change.** The file has already changed once, from marks to sessions, and will gain comments, and the reader of an older file must be able to tell what it holds.
 
 **What was not read is not written over.** A file that opened with no marks because it could not be taken in still holds the reader's earlier work. Writing the first new mark over it would lose all of that work.
 
@@ -56,5 +57,6 @@ Review marks live in `<folder>/.graphite/reviews.json`, a versioned JSON file.
 ## Related
 
 - [0522](0522-persist-session-state-in-two-scopes-global-window-and-panels-per-workspace-tabs.md): the two scopes this follows.
+- [0586](0586-treat-a-branch-review-as-a-session-with-a-fixed-base.md): the sessions the file holds.
 - [0582](0582-key-a-viewed-mark-by-its-group-its-path-and-the-pair-of-blob-ids.md): what a mark is.
 - [0531](0531-keep-per-user-state-in-the-user-s-profile-not-beside-the-executable.md): why this is not in the profile.
