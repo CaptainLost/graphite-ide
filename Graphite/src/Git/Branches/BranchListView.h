@@ -97,5 +97,6 @@ namespace Graphite {
 
 		std::optional<double> m_BranchesWaitingSince;
 		std::optional<double> m_AuthorsWaitingSince;
+		std::optional<double> m_AuthorsMenuWaitingSince;
 	};
 }

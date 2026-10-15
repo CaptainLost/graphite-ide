@@ -25,6 +25,7 @@ namespace Graphite {
 		constexpr const char* kMineChip = "Mine";
 		constexpr const char* kMessageChip = "Message";
 		constexpr const char* kMessageChipId = "##messageChip";
+		constexpr const char* kReadingAuthors = "Reading authors";
 		constexpr double kSecondsBeforeLoaderShows = 0.2;
 
 		// True once the wait has lasted long enough for a loader; until then asks for the frame on
@@ -75,6 +76,7 @@ namespace Graphite {
 		m_Choices.clear();
 		m_BranchesWaitingSince.reset();
 		m_AuthorsWaitingSince.reset();
+		m_AuthorsMenuWaitingSince.reset();
 	}
 
 	BranchListView::RowsBuiltFrom BranchListView::InputsOf(const BranchListFrame& frame) const
@@ -117,6 +119,16 @@ namespace Graphite {
 
 	void BranchListView::DrawHeader(const BranchListFrame& frame)
 	{
+		if (frame.Branches)
+		{
+			RebuildRowsWhenOutOfDate(frame);
+		}
+
+		if (frame.Authors)
+		{
+			m_AuthorsMenuWaitingSince.reset();
+		}
+
 		const float buttonRoom = IconButtonSize() + ImGui::GetStyle().ItemSpacing.x;
 
 		ImGui::SetNextItemWidth(-buttonRoom);
@@ -199,7 +211,15 @@ namespace Graphite {
 
 		if (!frame.Authors)
 		{
-			Core::LoadingLine("Reading authors");
+			if (LoaderIsDue(m_AuthorsMenuWaitingSince))
+			{
+				Core::LoadingLine(kReadingAuthors);
+			}
+			else
+			{
+				ImGui::TextDisabled("%s", kReadingAuthors);
+			}
+
 			ImGui::EndMenu();
 			return;
 		}
@@ -253,7 +273,7 @@ namespace Graphite {
 
 		if (!emailKnown && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 		{
-			ImGui::SetTooltip("%s", frame.Authors ? "Set user.email in git config to use this" : "Reading authors");
+			ImGui::SetTooltip("%s", frame.Authors ? "Set user.email in git config to use this" : kReadingAuthors);
 		}
 	}
 
@@ -355,17 +375,22 @@ namespace Graphite {
 
 	void BranchListView::DrawRows(const BranchListFrame& frame)
 	{
+		const bool waitingForBranches = !frame.Branches && !frame.BranchesFailed;
+
+		if (!waitingForBranches)
+		{
+			m_BranchesWaitingSince.reset();
+		}
+
 		if (!frame.Branches)
 		{
-			if (!frame.BranchesFailed && LoaderIsDue(m_BranchesWaitingSince))
+			if (waitingForBranches && LoaderIsDue(m_BranchesWaitingSince))
 			{
 				Core::LoadingState("Loading branches");
 			}
 
 			return;
 		}
-
-		m_BranchesWaitingSince.reset();
 
 		RebuildRowsWhenOutOfDate(frame);
 

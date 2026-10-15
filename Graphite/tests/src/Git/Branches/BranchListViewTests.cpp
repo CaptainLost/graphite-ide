@@ -48,19 +48,54 @@ namespace {
 		return frame;
 	}
 
-	// The list's top-left corner, so a test can click a row by its index.
-	ImVec2 DrawListWindow(Graphite::BranchListView& list, const Graphite::BranchListFrame& frame, float width)
+	void BeginListWindow(float width)
 	{
 		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 		ImGui::SetNextWindowSize(ImVec2(width, kListHeight));
 		ImGui::Begin("BranchList", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove |
 												ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
+	}
+
+	// The list's top-left corner, so a test can click a row by its index.
+	ImVec2 DrawListWindow(Graphite::BranchListView& list, const Graphite::BranchListFrame& frame, float width)
+	{
+		BeginListWindow(width);
 
 		const ImVec2 listTop = ImGui::GetCursorScreenPos();
 		list.DrawRows(frame);
 
 		ImGui::End();
 		return listTop;
+	}
+
+	struct MeasuredRows
+	{
+		ImVec2 ListTop{};
+		float LastItemTop = 0.0f;
+		float CursorTop = 0.0f;
+		float RowHeight = 0.0f;
+	};
+
+	MeasuredRows DrawAndMeasureRows(Graphite::BranchListView& list, const Graphite::BranchListFrame& frame)
+	{
+		BeginListWindow(kListWidth);
+
+		MeasuredRows measured;
+		measured.ListTop = ImGui::GetCursorScreenPos();
+
+		list.DrawRows(frame);
+
+		measured.LastItemTop = ImGui::GetItemRectMin().y;
+		measured.CursorTop = ImGui::GetCursorScreenPos().y;
+		measured.RowHeight = ImGui::GetTextLineHeightWithSpacing();
+
+		ImGui::End();
+		return measured;
+	}
+
+	float RowsAboveLastItem(const MeasuredRows& measured)
+	{
+		return (measured.LastItemTop - measured.ListTop.y) / measured.RowHeight;
 	}
 }
 
@@ -210,4 +245,86 @@ TEST_CASE("A branch whose tip cannot be read stays one row high")
 	const std::size_t branchRows = 2;
 	REQUIRE(rowTops.size() == branchRows);
 	CHECK(rowTops.back() - rowTops.front() == doctest::Approx(rowHeight));
+}
+
+TEST_CASE("Each kind of row moves the list down by exactly one text row")
+{
+	ImGuiFrames frames;
+	const Core::Ref<const std::vector<Core::Branch>> listed = Core::CreateRef<const std::vector<Core::Branch>>(
+		std::vector<Core::Branch>{LocalBranchAt("main", kNowSeconds, 1), LocalBranchAt("other", kNowSeconds - 60, 2)});
+
+	Graphite::BranchListState options;
+	options.Group = Graphite::BranchGrouping::Author;
+	Graphite::BranchListView list{options};
+	list.BadgeOf = [](const Core::Branch&) { return std::string{"3/10"}; };
+
+	constexpr int kFramesPastTheLoaderDelay = 30;
+	const float rowsAboveRemoteHeading = 2.0f;
+	const float rowsAboveRemoteHeadingWithGroupOpen = 4.0f;
+
+	MeasuredRows measured;
+
+	const Graphite::BranchListFrame waiting = FrameOf(listed);
+	frames.Next([&list, &waiting, &measured] { measured = DrawAndMeasureRows(list, waiting); });
+	CHECK(RowsAboveLastItem(measured) == doctest::Approx(rowsAboveRemoteHeading));
+
+	for (int frameIndex = 0; frameIndex < kFramesPastTheLoaderDelay; ++frameIndex)
+	{
+		frames.Next([&list, &waiting, &measured] { measured = DrawAndMeasureRows(list, waiting); });
+	}
+
+	CHECK(RowsAboveLastItem(measured) == doctest::Approx(rowsAboveRemoteHeading));
+
+	Graphite::BranchListFrame failed = FrameOf(listed);
+	failed.AuthorsFailure = "the walk stopped";
+	frames.Next([&list, &failed, &measured] { measured = DrawAndMeasureRows(list, failed); });
+	CHECK(RowsAboveLastItem(measured) == doctest::Approx(rowsAboveRemoteHeading));
+
+	Graphite::BranchListFrame grouped = FrameOf(listed);
+	grouped.Authors = Core::CreateRef<const Graphite::BranchAuthors>();
+	frames.Next([&list, &grouped, &measured] { measured = DrawAndMeasureRows(list, grouped); });
+	CHECK(RowsAboveLastItem(measured) == doctest::Approx(rowsAboveRemoteHeading));
+
+	const float intoTheSecondRow = 1.5f;
+	const float clearOfTheLeftEdge = 10.0f;
+	const ImVec2 authorGroupRow{measured.ListTop.x + clearOfTheLeftEdge,
+								measured.ListTop.y + measured.RowHeight * intoTheSecondRow};
+
+	frames.Click(authorGroupRow, [&list, &grouped] { DrawAndMeasureRows(list, grouped); });
+	frames.Next([&list, &grouped, &measured] { measured = DrawAndMeasureRows(list, grouped); });
+	CHECK(RowsAboveLastItem(measured) == doctest::Approx(rowsAboveRemoteHeadingWithGroupOpen));
+}
+
+TEST_CASE("A branch list that failed waits again before its loader shows")
+{
+	ImGuiFrames frames;
+
+	Graphite::BranchListState options;
+	Graphite::BranchListView list{options};
+
+	Graphite::BranchListFrame loading;
+	loading.Now = SystemSecondsAt(kNowSeconds);
+
+	Graphite::BranchListFrame failed = loading;
+	failed.BranchesFailed = true;
+
+	constexpr int kFramesPastTheLoaderDelay = 30;
+	MeasuredRows measured;
+
+	frames.Next([&list, &loading, &measured] { measured = DrawAndMeasureRows(list, loading); });
+
+	for (int frameIndex = 0; frameIndex < kFramesPastTheLoaderDelay; ++frameIndex)
+	{
+		frames.Next([&list, &failed, &measured] { measured = DrawAndMeasureRows(list, failed); });
+	}
+
+	frames.Next([&list, &loading, &measured] { measured = DrawAndMeasureRows(list, loading); });
+	CHECK(measured.CursorTop == doctest::Approx(measured.ListTop.y));
+
+	for (int frameIndex = 0; frameIndex < kFramesPastTheLoaderDelay; ++frameIndex)
+	{
+		frames.Next([&list, &loading, &measured] { measured = DrawAndMeasureRows(list, loading); });
+	}
+
+	CHECK(measured.CursorTop > measured.ListTop.y);
 }
