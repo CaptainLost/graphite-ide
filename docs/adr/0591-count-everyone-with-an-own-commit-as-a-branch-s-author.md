@@ -36,7 +36,7 @@ Measured in a Release build on a repository with 5000 trunk commits and 2001 bra
 
 ### Positive
 
-- "Only mine" finds a branch a colleague also touched.
+- Ticking yourself in the authors list finds a branch a colleague also touched.
 - One walk answers every branch.
 
 ### Negative
