@@ -37,10 +37,6 @@ namespace Graphite {
 		}
 	}
 
-	ImVec4 GitView::DangerColour() const
-	{
-		return ImGui::ColorConvertU32ToFloat4(ReadEditorPalette(m_Scheme.Get()).DiagnosticError);
-	}
 
 	void GitView::RenderDetachDialog()
 	{
@@ -68,7 +64,7 @@ namespace Graphite {
 		const DialogLayout::ButtonSpec absentButton{};
 
 		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
-			{.Label = "Checkout", .Enabled = writable}, absentButton, DangerColour(),
+			{.Label = "Checkout", .Enabled = writable}, absentButton, DangerColourOf(m_Scheme.Get()),
 			{.Label = "Create Branch Instead…", .Enabled = writable});
 
 		if (choice == DialogLayout::Choice::Safe)
@@ -151,7 +147,7 @@ namespace Graphite {
 
 		if (m_StashSaveFailed)
 		{
-			DialogLayout::ErrorText("Could not save every file; nothing was stashed.", DangerColour());
+			DialogLayout::ErrorText("Could not save every file; nothing was stashed.", DangerColourOf(m_Scheme.Get()));
 		}
 
 		DialogLayout::MutedText("Discard cannot be undone.");
@@ -167,7 +163,7 @@ namespace Graphite {
 		// good, and only a click reaches it.
 		const DialogLayout::Choice choice =
 			DialogLayout::ButtonRow({.Label = "Stash", .Enabled = writable}, {.Label = "Discard", .Enabled = writable},
-									DangerColour());
+									DangerColourOf(m_Scheme.Get()));
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{
@@ -270,7 +266,7 @@ namespace Graphite {
 
 		if (problem.has_value() && !name.empty())
 		{
-			DialogLayout::ErrorText(*problem, DangerColour());
+			DialogLayout::ErrorText(*problem, DangerColourOf(m_Scheme.Get()));
 		}
 
 		if (mode == BranchNameMode::New)
@@ -286,7 +282,7 @@ namespace Graphite {
 
 		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
 			{.Label = mode == BranchNameMode::New ? "Create" : "Rename", .Enabled = acceptable}, absentButton,
-			DangerColour());
+			DangerColourOf(m_Scheme.Get()));
 
 		if (acceptable && (choice == DialogLayout::Choice::Safe || entered))
 		{
@@ -366,7 +362,7 @@ namespace Graphite {
 
 		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
 			absentButton, {.Label = unmerged == 0 ? "Delete" : "Delete anyway", .Enabled = !m_Model.IsWriteInFlight()},
-			DangerColour());
+			DangerColourOf(m_Scheme.Get()));
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{
@@ -407,7 +403,7 @@ namespace Graphite {
 		const DialogLayout::ButtonSpec absentButton{};
 
 		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
-			absentButton, {.Label = "Drop", .Enabled = !m_Model.IsWriteInFlight()}, DangerColour());
+			absentButton, {.Label = "Drop", .Enabled = !m_Model.IsWriteInFlight()}, DangerColourOf(m_Scheme.Get()));
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{

@@ -107,7 +107,6 @@ namespace Graphite {
 		void DrawInterfaceScale();
 
 		void Apply();
-		ImVec4 DangerColour() const;
 		void RenderRenameDialog();
 		void RenderDeleteDialog();
 		void FlushColourEdit();

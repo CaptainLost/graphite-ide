@@ -164,7 +164,6 @@ namespace Graphite {
 		void WithdrawQuestions();
 		void ForgetRepository();
 
-		ImVec4 DangerColour() const;
 		void RenderCheckoutDialog();
 		void AnswerCheckoutQuestion();
 		void RenderDetachDialog();

@@ -142,10 +142,6 @@ namespace Graphite {
 		m_Draft.Select(m_Settings.GetColorScheme());
 	}
 
-	ImVec4 AppearancePage::DangerColour() const
-	{
-		return ImGui::ColorConvertU32ToFloat4(ReadEditorPalette(m_Active.Get()).DiagnosticError);
-	}
 
 	void AppearancePage::Apply()
 	{
@@ -589,7 +585,7 @@ namespace Graphite {
 		DialogLayout::Gap();
 
 		const DialogLayout::ButtonSpec noSafeAction{};
-		const DialogLayout::Choice choice = DialogLayout::ButtonRow(noSafeAction, {.Label = "Delete"}, DangerColour());
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow(noSafeAction, {.Label = "Delete"}, DangerColourOf(m_Active.Get()));
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{
@@ -664,12 +660,12 @@ namespace Graphite {
 
 		if (problemNeedsSaying)
 		{
-			DialogLayout::ErrorText(*problem, DangerColour());
+			DialogLayout::ErrorText(*problem, DangerColourOf(m_Active.Get()));
 		}
 
 		if (!m_RenameError.empty())
 		{
-			DialogLayout::ErrorText(m_RenameError, DangerColour());
+			DialogLayout::ErrorText(m_RenameError, DangerColourOf(m_Active.Get()));
 		}
 
 		DialogLayout::Gap();
@@ -677,7 +673,7 @@ namespace Graphite {
 		const bool acceptable = !problem.has_value() && !unchanged;
 
 		const DialogLayout::Choice choice =
-			DialogLayout::ButtonRow({.Label = "Rename", .Enabled = acceptable}, {}, DangerColour());
+			DialogLayout::ButtonRow({.Label = "Rename", .Enabled = acceptable});
 
 		if (acceptable && (choice == DialogLayout::Choice::Safe || enterPressed))
 		{
