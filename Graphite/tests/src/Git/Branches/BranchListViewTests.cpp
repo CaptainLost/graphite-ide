@@ -223,6 +223,27 @@ TEST_CASE("A branch whose name holds a double hash draws its whole name")
 	CHECK(drawnWidth == doctest::Approx(nameWidth));
 }
 
+TEST_CASE("The age ends a window padding short of the row's right edge as the label starts that far in")
+{
+	ImGuiFrames frames;
+	const Core::Ref<const std::vector<Core::Branch>> listed = ListOf(LocalBranchAt("main", kNowSeconds, kTipBefore));
+
+	Graphite::BranchListState options;
+	Graphite::BranchListView list{options};
+
+	float rowRight = 0.0f;
+	float ageRight = 0.0f;
+	list.DrawBranchMenu = [&rowRight, &ageRight](const Core::Branch&) {
+		rowRight = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+		ageRight = ImGui::GetItemRectMax().x;
+	};
+
+	frames.Next([&list, &listed] { DrawListWindow(list, FrameOf(listed), kListWidth); });
+
+	CHECK(ageRight > 0.0f);
+	CHECK(rowRight - ageRight == doctest::Approx(ImGui::GetStyle().WindowPadding.x));
+}
+
 TEST_CASE("Rows draw in a column narrower than the age without an assertion")
 {
 	ImGuiFrames frames;

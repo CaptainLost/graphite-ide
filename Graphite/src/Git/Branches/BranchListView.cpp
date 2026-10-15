@@ -585,10 +585,16 @@ namespace Graphite {
 			branch.TipCommit.has_value() ? FormatBranchAge(branch.TipCommit->Committer.When, frame.Now) : std::string{};
 		const std::string badge = BadgeOf ? BadgeOf(branch) : std::string{};
 
+		// WARNING: The child these rows scroll in has no padding of its own; the label's margin is the
+		// padding of the window around it. The age keeps the same margin from the scrollbar, or the
+		// row looks lopsided.
+		const float rightMargin = ImGui::GetStyle().WindowPadding.x;
+		const float ageRight = rowStart.x + rowWidth - rightMargin;
+
 		const float ageRoom = ImGui::CalcTextSize(kWidestAge).x;
 		const float badgeWidth = badge.empty() ? 0.0f : ImGui::CalcTextSize(badge.c_str()).x;
 		const float badgeRoom = badge.empty() ? 0.0f : badgeWidth + spacing;
-		const float labelRoom = rowWidth - indent - ageRoom - spacing - badgeRoom;
+		const float labelRoom = rowWidth - rightMargin - indent - ageRoom - spacing - badgeRoom;
 
 		const std::string label = RefLabel(branch);
 		const std::string fitted = FitToWidth(label, labelRoom);
@@ -603,14 +609,14 @@ namespace Graphite {
 
 		if (!badge.empty())
 		{
-			ImGui::SetCursorScreenPos(ImVec2(rowStart.x + rowWidth - ageRoom - spacing - badgeWidth, rowStart.y));
+			ImGui::SetCursorScreenPos(ImVec2(ageRight - ageRoom - spacing - badgeWidth, rowStart.y));
 			ImGui::TextDisabled("%s", badge.c_str());
 		}
 
 		if (!age.empty())
 		{
 			const float ageWidth = ImGui::CalcTextSize(age.c_str()).x;
-			ImGui::SetCursorScreenPos(ImVec2(rowStart.x + rowWidth - ageWidth, rowStart.y));
+			ImGui::SetCursorScreenPos(ImVec2(ageRight - ageWidth, rowStart.y));
 			ImGui::TextDisabled("%s", age.c_str());
 		}
 
