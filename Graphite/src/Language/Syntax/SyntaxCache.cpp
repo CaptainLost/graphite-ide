@@ -4,10 +4,13 @@
 #include "Core/Base/EmptyVector.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/TextBuffer.h"
+#include "Core/Text/TextChange.h"
 #include "Language/Syntax/SyntaxTree.h"
 
 #include <algorithm>
 #include <chrono>
+#include <optional>
+#include <span>
 
 namespace Graphite {
 
@@ -90,7 +93,6 @@ namespace Graphite {
 	{
 		m_EntryStates.resize(std::min(m_EntryStates.size(), fromLine + 1));
 		m_TokensValid = false;
-		m_Invalidated = true;
 	}
 
 	void SyntaxCache::Reset()
@@ -103,8 +105,7 @@ namespace Graphite {
 	{
 		m_EntryStates.assign(1, LineState{});
 		m_TokensValid = false;
-		m_HaveRevision = false;
-		m_Invalidated = false;
+		m_SeenBuffer = nullptr;
 	}
 
 	void SyntaxCache::ForgetTree()
@@ -160,24 +161,36 @@ namespace Graphite {
 		return Core::SharedEmptyVector<Token>();
 	}
 
+	void SyntaxCache::CatchUpWith(const Core::TextBuffer& buffer)
+	{
+		const std::uint64_t sequence = buffer.GetChangeSequence();
+		const bool sameBuffer = m_SeenBuffer == &buffer;
+
+		if (sameBuffer && m_SeenChange == sequence)
+		{
+			return;
+		}
+
+		const std::optional<std::span<const Core::TextChange>> changes =
+			sameBuffer ? buffer.ChangesSince(m_SeenChange) : std::nullopt;
+
+		if (changes && !changes->empty())
+		{
+			Invalidate(Core::LinesChangedBy(*changes).FirstLine);
+		}
+		else
+		{
+			m_EntryStates.assign(1, LineState{});
+			m_TokensValid = false;
+		}
+
+		m_SeenBuffer = &buffer;
+		m_SeenChange = sequence;
+	}
+
 	const std::vector<Token>& SyntaxCache::LexedTokensOf(const Core::TextBuffer& buffer, std::size_t line)
 	{
-		const std::size_t revision = buffer.GetRevision();
-
-		if (!m_HaveRevision || m_Revision != revision)
-		{
-			const bool revisionMovedWithoutInvalidate = m_HaveRevision && !m_Invalidated;
-
-			if (revisionMovedWithoutInvalidate)
-			{
-				m_EntryStates.assign(1, LineState{});
-				m_TokensValid = false;
-			}
-
-			m_Revision = revision;
-			m_HaveRevision = true;
-			m_Invalidated = false;
-		}
+		CatchUpWith(buffer);
 
 		if (m_TokensValid && m_TokensLine == line)
 		{

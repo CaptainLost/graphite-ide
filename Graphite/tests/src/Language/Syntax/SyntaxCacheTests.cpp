@@ -112,7 +112,7 @@ TEST_CASE("SyntaxCache re-lexes the lines below an invalidated one")
 	CHECK(KindsOf(cache, buffer, 1) == "o");
 }
 
-TEST_CASE("SyntaxCache drops everything when the revision moved without an invalidation")
+TEST_CASE("SyntaxCache catches up with edits nobody told it about")
 {
 	Core::TextBuffer buffer{"/* open\ntext"};
 	Graphite::SyntaxCache cache = CppCache();
@@ -123,6 +123,49 @@ TEST_CASE("SyntaxCache drops everything when the revision moved without an inval
 	buffer.Insert(0, "int x;");
 
 	CHECK(KindsOf(cache, buffer, 1) == "o");
+}
+
+TEST_CASE("SyntaxCache re-lexes only from the first line an edit touched")
+{
+	CountingLexer lexer;
+	Graphite::SyntaxCache cache;
+	cache.SetSyntax(Graphite::SyntaxSource{.LineLexer = &lexer});
+
+	Core::TextBuffer buffer{"0\n1\n2\n3\n4\n5\n6\n7\n8\n9"};
+	cache.TokensOf(buffer, 9);
+	const std::size_t callsBeforeEdit = lexer.GetCallCount();
+
+	buffer.Insert(buffer.LineStart(8), "x");
+	cache.TokensOf(buffer, 9);
+
+	CHECK(lexer.GetCallCount() - callsBeforeEdit == 2);
+}
+
+TEST_CASE("SyntaxCache re-lexes from the first line an undo touched")
+{
+	CountingLexer lexer;
+	Graphite::SyntaxCache cache;
+	cache.SetSyntax(Graphite::SyntaxSource{.LineLexer = &lexer});
+
+	Core::TextBuffer buffer{"0\n1\n2\n3\n4\n5\n6\n7\n8\n9"};
+	buffer.Insert(buffer.LineStart(8), "x");
+	cache.TokensOf(buffer, 9);
+	const std::size_t callsBeforeUndo = lexer.GetCallCount();
+
+	REQUIRE(buffer.Undo().has_value());
+	cache.TokensOf(buffer, 9);
+
+	CHECK(lexer.GetCallCount() - callsBeforeUndo == 2);
+}
+
+TEST_CASE("SyntaxCache starts over when it is shown a different buffer")
+{
+	const Core::TextBuffer first{"/* open\ntext"};
+	const Core::TextBuffer second{"int x;\ntext"};
+	Graphite::SyntaxCache cache = CppCache();
+
+	CHECK(KindsOf(cache, first, 1) == "m");
+	CHECK(KindsOf(cache, second, 1) == "o");
 }
 
 TEST_CASE("SyntaxCache clamps a line past the end")

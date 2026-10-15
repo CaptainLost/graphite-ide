@@ -706,7 +706,6 @@ namespace Graphite {
 
 		struct EditSinks
 		{
-			SyntaxCache* Syntax = nullptr;
 			LensModel* Lens = nullptr;
 		};
 
@@ -724,23 +723,12 @@ namespace Graphite {
 							.LineCount = buffer.GetLineCount()};
 		}
 
-		// WARNING: Called only for an edit that changed the buffer. An Invalidate on a no-op
-		// edit would arm SyntaxCache's revision backstop and swallow the next real edit that
-		// forgets to call it. Invalidate(n) keeps entry states for lines 0..n, so it starts at
-		// the lower of the edit's first line and the caret's line after the edit.
 		void NotifyAfterEdit(const EditSinks& sinks, const Core::TextBuffer& buffer,
 							 const Core::OpenItem& item, const EditMark& before, bool changed)
 		{
 			if (!changed)
 			{
 				return;
-			}
-
-			if (sinks.Syntax != nullptr)
-			{
-				const std::size_t lineAfter = buffer.ToPosition(item.Caret.Offset).Line;
-
-				sinks.Syntax->Invalidate(std::min(before.Line, lineAfter));
 			}
 
 			if (sinks.Lens != nullptr)
@@ -2832,7 +2820,7 @@ namespace Graphite {
 				widget.LastFocusedFrame = frame;
 			}
 
-			const EditSinks sinks{.Syntax = view.Syntax, .Lens = view.Lens};
+			const EditSinks sinks{.Lens = view.Lens};
 			Core::FrameInput remaining;
 			bool ranRepeat = false;
 
