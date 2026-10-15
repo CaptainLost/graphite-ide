@@ -85,9 +85,17 @@ namespace Graphite {
 			return true;
 		}
 
+		float ChevronWidth()
+		{
+			return std::max(ImGui::CalcTextSize(ICON_MDI_CHEVRON_RIGHT).x, ImGui::CalcTextSize(ICON_MDI_CHEVRON_DOWN).x);
+		}
+
+		// WARNING: A group's name starts past its chevron, so a branch indented only that far reads as
+		// the group's sibling; each level goes one chevron further than the name above it.
 		float IndentOf(const BranchRow& row)
 		{
-			return static_cast<float>(row.Depth) * ImGui::GetStyle().IndentSpacing;
+			const float groupNameStart = ChevronWidth() + ImGui::GetStyle().ItemSpacing.x;
+			return static_cast<float>(row.Depth) * (groupNameStart + ChevronWidth());
 		}
 
 		void EmptyRow()

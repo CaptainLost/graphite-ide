@@ -9,6 +9,8 @@
 #include "Core/ImGui/Toggle.h"
 #include "Core/ImGui/UiScale.h"
 
+#include <IconsMaterialDesignIcons.h>
+
 #include <imgui.h>
 
 #include <cstddef>
@@ -252,6 +254,25 @@ namespace {
 		branch.TipCommit->Author.Name = authorName;
 		branch.TipCommit->Author.Email = authorName + "@example.com";
 		return branch;
+	}
+
+	std::optional<float> LeftmostTextBetween(const ImGuiWindow& window, ImU32 textColour, float bandTop,
+											 float bandBottom)
+	{
+		std::optional<float> leftmost;
+
+		for (const ImDrawVert& vertex : window.DrawList->VtxBuffer)
+		{
+			const bool inBand = vertex.pos.y >= bandTop && vertex.pos.y < bandBottom;
+			const bool isText = vertex.col == textColour;
+
+			if (inBand && isText && (!leftmost.has_value() || vertex.pos.x < *leftmost))
+			{
+				leftmost = vertex.pos.x;
+			}
+		}
+
+		return leftmost;
 	}
 
 	Core::Ref<const std::vector<Core::Branch>> BranchesByNumberedAuthors(std::size_t authorCount)
@@ -742,6 +763,53 @@ TEST_CASE("A section collapsed while authors are in flight rebuilds the rows at 
 	drawnTips.clear();
 	frames.Next([&list, &held] { DrawListWindow(list, held, kListWidth); });
 	CHECK(drawnTips.empty());
+}
+
+TEST_CASE("A branch inside an author group starts a chevron's width past the group's name")
+{
+	ImGuiFrames frames;
+
+	const bool notInFlight = false;
+	const Graphite::BranchListFrame frame = FrameWithAuthors(
+		ListOf(LocalBranchAt("Ann-work", kNowSeconds, 1)), Core::CreateRef<const Graphite::BranchAuthors>(), notInFlight);
+
+	Graphite::BranchListState options;
+	options.Group = Graphite::BranchGrouping::Author;
+	Graphite::BranchListView list{options};
+
+	ImVec2 listTop{};
+	float rowHeight = 0.0f;
+	frames.Next([&list, &frame, &listTop, &rowHeight] {
+		listTop = DrawListWindow(list, frame, kListWidth);
+		rowHeight = ImGui::GetTextLineHeightWithSpacing();
+	});
+
+	const float annGroupRow = 1.0f;
+	const float annWorkRow = 2.0f;
+	frames.Click(IntoRow(listTop, rowHeight, annGroupRow), [&list, &frame] { DrawListWindow(list, frame, kListWidth); });
+
+	ImU32 textColour = 0;
+	float chevronWidth = 0.0f;
+	frames.Next([&list, &frame, &textColour, &chevronWidth] {
+		DrawListWindow(list, frame, kListWidth);
+		textColour = ImGui::GetColorU32(ImGuiCol_Text);
+		chevronWidth = ImGui::CalcTextSize(ICON_MDI_CHEVRON_DOWN).x;
+	});
+
+	const ImGuiWindow* listWindow = ImGui::FindWindowByName("BranchList");
+	REQUIRE(listWindow != nullptr);
+
+	const std::optional<float> groupNameLeft =
+		LeftmostTextBetween(*listWindow, textColour, listTop.y + rowHeight * annGroupRow,
+							listTop.y + rowHeight * (annGroupRow + 1.0f));
+	const std::optional<float> branchLabelLeft =
+		LeftmostTextBetween(*listWindow, textColour, listTop.y + rowHeight * annWorkRow,
+							listTop.y + rowHeight * (annWorkRow + 1.0f));
+
+	REQUIRE(groupNameLeft.has_value());
+	REQUIRE(branchLabelLeft.has_value());
+	CHECK(*branchLabelLeft > *groupNameLeft);
+	CHECK(*branchLabelLeft - *groupNameLeft >= chevronWidth);
 }
 
 TEST_CASE("Choosing a sort in the panel leaves the panel open")
