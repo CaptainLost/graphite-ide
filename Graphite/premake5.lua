@@ -91,12 +91,9 @@ project "Graphite"
     -- Relative to this project rather than through %{wks.location}: that token is emitted as
     -- MSBuild's $(SolutionDir), which only points at the repository root when the build goes
     -- through the solution. Building a .vcxproj directly sets it to the project's own
-    -- directory, and the copy then looks for the fonts inside Graphite/.
+    -- directory, and the copy then looks for the file inside Graphite/.
     postbuildcommands
     {
-        '{COPYFILE} "../vendor/fonts/materialdesignicons-webfont.ttf" "%{cfg.targetdir}"',
-        '{COPYFILE} "../vendor/fonts/JetBrainsMono-Regular.ttf" "%{cfg.targetdir}"',
-        '{COPYFILE} "../vendor/fonts/JetBrainsMono-Bold.ttf" "%{cfg.targetdir}"',
         '{COPYFILE} "../THIRD_PARTY_NOTICES.txt" "%{cfg.targetdir}"'
     }
 

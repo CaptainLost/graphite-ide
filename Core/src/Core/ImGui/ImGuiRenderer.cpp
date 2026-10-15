@@ -4,6 +4,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/EmbeddedFonts.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/Theme.h"
@@ -58,67 +59,47 @@ namespace Core {
 			g_boldFont = nullptr;
 		}
 
-		// WARNING: without NoLoadError a missing .ttf trips ImGui's IM_ASSERT_USER_ERROR before
+		// WARNING: without NoLoadError a missing system font trips ImGui's IM_ASSERT_USER_ERROR before
 		// the call returns nullptr, which crashes a Debug build instead of letting the warning run.
 		void AllowMissingFontFile(ImFontConfig& config)
 		{
 			config.Flags |= ImFontFlags_NoLoadError;
 		}
 
-		ImFont* LoadTextFont(ImGuiIO& inputOutput, const Result<std::filesystem::path>& directory)
+		// The data is static, so the atlas must not take ownership of it and free it.
+		void KeepFontDataOutsideAtlas(ImFontConfig& config)
+		{
+			config.FontDataOwnedByAtlas = false;
+		}
+
+		ImFont* LoadTextFont(ImGuiIO& inputOutput)
 		{
 			ImFontConfig config;
 			config.SizePixels = kBaseFontSize;
-			AllowMissingFontFile(config);
+			KeepFontDataOutsideAtlas(config);
 
-			if (directory)
-			{
-				const std::filesystem::path path = directory.GetValue() / "JetBrainsMono-Regular.ttf";
+			const EmbeddedFont font = JetBrainsMonoRegular();
 
-				if (ImFont* loaded = inputOutput.Fonts->AddFontFromFileTTF(
-						ToUtf8(path).c_str(), kBaseFontSize, &config))
-				{
-					return loaded;
-				}
-			}
-
-			// WARNING: ProggyClean has no glyphs beyond Latin-1, so Polish file names show as
-			// empty boxes.
-			CORE_WARN("Could not load JetBrains Mono, falling back to the built-in font");
-
-			ImFontConfig fallbackConfig;
-			fallbackConfig.SizePixels = kBaseFontSize;
-
-			return inputOutput.Fonts->AddFontDefault(&fallbackConfig);
+			return inputOutput.Fonts->AddFontFromMemoryCompressedTTF(font.CompressedData,
+																			 font.CompressedSize, kBaseFontSize, &config);
 		}
 
 		// WARNING: must run immediately after the text face is added, because ImGui's dynamic
 		// atlas merges onto whichever font was added last.
-		void MergeIconFont(ImGuiIO& inputOutput, const Result<std::filesystem::path>& directory)
+		void MergeIconFont(ImGuiIO& inputOutput)
 		{
-			if (!directory)
-			{
-				CORE_WARN("Cannot locate the executable directory, icons will not load: {}",
-						  directory.GetError().Message);
-				return;
-			}
-
 			ImFontConfig config;
 			config.MergeMode = true;
 			// WARNING: PixelSnapH rounds each glyph's advance to a whole pixel and visibly
 			// skews a small round icon, so the minimum advance is set instead.
 			config.GlyphMinAdvanceX = kBaseFontSize;
 			config.GlyphOffset = ImVec2(0.0f, kIconBaselineLift);
-			AllowMissingFontFile(config);
+			KeepFontDataOutsideAtlas(config);
 
-			const std::filesystem::path path = directory.GetValue() / "materialdesignicons-webfont.ttf";
+			const EmbeddedFont font = MaterialDesignIcons();
 
-			if (inputOutput.Fonts->AddFontFromFileTTF(ToUtf8(path).c_str(), kBaseFontSize, &config,
-													  UsedGlyphRanges()) == nullptr)
-			{
-				CORE_WARN("Could not load the icon font, the UI will show text only: {}",
-						  ToUtf8(path));
-			}
+			inputOutput.Fonts->AddFontFromMemoryCompressedTTF(font.CompressedData, font.CompressedSize,
+																	  kBaseFontSize, &config, UsedGlyphRanges());
 		}
 
 		// WARNING: the terminal draws a run of cells with one AddText call, so a proportional
@@ -155,30 +136,16 @@ namespace Core {
 
 		// WARNING: must run after every merge onto the text face, because ImGui's dynamic atlas
 		// merges onto whichever font was added last.
-		ImFont* LoadBoldFont(ImGuiIO& inputOutput, const Result<std::filesystem::path>& directory)
+		ImFont* LoadBoldFont(ImGuiIO& inputOutput)
 		{
-			if (!directory)
-			{
-				CORE_WARN("Cannot locate the executable directory, the bold face will not load: {}",
-						  directory.GetError().Message);
-				return nullptr;
-			}
-
 			ImFontConfig config;
 			config.SizePixels = kBaseFontSize;
-			AllowMissingFontFile(config);
+			KeepFontDataOutsideAtlas(config);
 
-			const std::filesystem::path path = directory.GetValue() / "JetBrainsMono-Bold.ttf";
-			ImFont* loaded =
-				inputOutput.Fonts->AddFontFromFileTTF(ToUtf8(path).c_str(), kBaseFontSize, &config);
+			const EmbeddedFont font = JetBrainsMonoBold();
 
-			if (loaded == nullptr)
-			{
-				CORE_WARN("Could not load JetBrains Mono Bold, titles will use the regular face: {}",
-						  ToUtf8(path));
-			}
-
-			return loaded;
+			return inputOutput.Fonts->AddFontFromMemoryCompressedTTF(font.CompressedData,
+																			 font.CompressedSize, kBaseFontSize, &config);
 		}
 
 		bool ViewportsEnabled()
@@ -294,12 +261,10 @@ namespace Core {
 		inputOutput.ConfigErrorRecoveryEnableTooltip = false;
 #endif
 
-		const Result<std::filesystem::path> executableDirectory = ExecutableDirectory();
-
-		g_monoFont = LoadTextFont(inputOutput, executableDirectory);
-		MergeIconFont(inputOutput, executableDirectory);
+		g_monoFont = LoadTextFont(inputOutput);
+		MergeIconFont(inputOutput);
 		MergeSymbolFallback(inputOutput, g_monoFont);
-		g_boldFont = LoadBoldFont(inputOutput, executableDirectory);
+		g_boldFont = LoadBoldFont(inputOutput);
 
 		ApplyTheme(Theme::DefaultPalette());
 
