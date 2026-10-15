@@ -80,6 +80,9 @@ namespace Core {
 		// gathered from what that walk found.
 		Result<std::vector<TipAuthors>> QueryOwnAuthors(const OwnAuthorsRequest& request) const;
 
+		// Empty when no configuration level sets user.email, or sets it blank.
+		Result<std::optional<std::string>> ReadUserEmail() const;
+
 		// No encoding is assumed. NotFound when the commit's tree has no such path, which is the
 		// ordinary answer for the older side of an added file.
 		Result<std::string> ReadBlob(const std::filesystem::path& path, const Oid& revision) const;

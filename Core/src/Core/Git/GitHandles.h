@@ -8,6 +8,7 @@
 struct git_blob;
 struct git_branch_iterator;
 struct git_commit;
+struct git_config;
 struct git_diff;
 struct git_index;
 struct git_object;
@@ -26,6 +27,7 @@ namespace Core {
 		void operator()(git_blob* blob) const;
 		void operator()(git_branch_iterator* iterator) const;
 		void operator()(git_commit* commit) const;
+		void operator()(git_config* config) const;
 		void operator()(git_diff* diff) const;
 		void operator()(git_index* index) const;
 		void operator()(git_object* object) const;
@@ -41,6 +43,7 @@ namespace Core {
 	using BlobHandle = std::unique_ptr<git_blob, Libgit2Free>;
 	using BranchIteratorHandle = std::unique_ptr<git_branch_iterator, Libgit2Free>;
 	using CommitHandle = std::unique_ptr<git_commit, Libgit2Free>;
+	using ConfigHandle = std::unique_ptr<git_config, Libgit2Free>;
 	using DiffHandle = std::unique_ptr<git_diff, Libgit2Free>;
 	using IndexHandle = std::unique_ptr<git_index, Libgit2Free>;
 	using ObjectHandle = std::unique_ptr<git_object, Libgit2Free>;

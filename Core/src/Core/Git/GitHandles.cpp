@@ -21,6 +21,11 @@ namespace Core {
 		git_commit_free(commit);
 	}
 
+	void Libgit2Free::operator()(git_config* config) const
+	{
+		git_config_free(config);
+	}
+
 	void Libgit2Free::operator()(git_diff* diff) const
 	{
 		git_diff_free(diff);
