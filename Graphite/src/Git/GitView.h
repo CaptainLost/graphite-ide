@@ -161,15 +161,6 @@ namespace Graphite {
 
 		void ApplyCheckoutPlan(CheckoutPlanAnswer answer);
 
-		template<typename Payload>
-		static void AskOnce(ModalQuestion<Payload>& question, Payload payload)
-		{
-			if (!question.Asked(payload))
-			{
-				question.Ask(std::move(payload));
-			}
-		}
-
 		void WithdrawQuestions();
 		void ForgetRepository();
 

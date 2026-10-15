@@ -711,10 +711,7 @@ namespace Graphite {
 
 		const DeleteQuestion question{.Target = action.Target};
 
-		if (!m_DeleteQuestion.Asked(question))
-		{
-			m_DeleteQuestion.Ask(question);
-		}
+		m_DeleteQuestion.AskOnce(question);
 	}
 
 	void FileTreeView::HandleRefresh(const PendingAction& action)
@@ -857,16 +854,16 @@ namespace Graphite {
 	void FileTreeView::RenderDeleteConfirmation()
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
-		const bool open = m_DeleteQuestion.Begin();
+		const DeleteQuestion* asked = m_DeleteQuestion.Begin();
 		DialogLayout::AfterBegin();
 
-		if (!open)
+		if (asked == nullptr)
 		{
 			return;
 		}
 
-		// WARNING: Copied out before Answer(), which drops the payload GetCurrent() points into.
-		const std::filesystem::path target = m_DeleteQuestion.GetCurrent()->Target;
+		// WARNING: Copied out before Answer(), which drops the payload `asked` points into.
+		const std::filesystem::path target = asked->Target;
 
 		DialogLayout::Text(std::format("Move \"{}\" to the Recycle Bin?", Core::ToUtf8(target.filename())));
 		DialogLayout::Gap();

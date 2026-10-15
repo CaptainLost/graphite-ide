@@ -337,10 +337,7 @@ namespace Graphite {
 
 	void ReviewWindows::AskToEnd(const std::string& branch)
 	{
-		if (!m_EndQuestion.Asked(branch))
-		{
-			m_EndQuestion.Ask(branch);
-		}
+		m_EndQuestion.AskOnce(branch);
 	}
 
 	void ReviewWindows::SetIncludeUncommitted(Tab& tab, ReviewSessions& sessions, ReviewModel& model, bool include)
@@ -569,23 +566,14 @@ namespace Graphite {
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
 
-		const bool open = m_EndQuestion.Begin(
+		const std::string* current = m_EndQuestion.Begin(
 			[&input](const std::string& branch) { return input.Sessions.Find(branch) != nullptr; },
 			[](const std::string& branch) { return "End the review of " + ShortBranchName(branch); });
 
 		DialogLayout::AfterBegin();
 
-		if (!open)
-		{
-			return;
-		}
-
-		const std::string* current = m_EndQuestion.GetCurrent();
-
 		if (current == nullptr)
 		{
-			ImGui::CloseCurrentPopup();
-			m_EndQuestion.End();
 			return;
 		}
 

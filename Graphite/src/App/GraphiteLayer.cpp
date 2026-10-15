@@ -1368,7 +1368,7 @@ namespace Graphite {
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
 
-		const bool open = m_TrustParentQuestion.Begin([this](const std::filesystem::path& parent) {
+		const std::filesystem::path* asked = m_TrustParentQuestion.Begin([this](const std::filesystem::path& parent) {
 			if (!m_Workspace.IsOpen())
 			{
 				return false;
@@ -1380,21 +1380,12 @@ namespace Graphite {
 
 		DialogLayout::AfterBegin();
 
-		if (!open)
-		{
-			return;
-		}
-
-		const std::filesystem::path* asked = m_TrustParentQuestion.GetCurrent();
-
 		if (asked == nullptr)
 		{
-			ImGui::CloseCurrentPopup();
-			m_TrustParentQuestion.End();
 			return;
 		}
 
-		// WARNING: Copy the parent out: Answer clears what GetCurrent points at, and trusting writes the list.
+		// WARNING: Copy the parent out: Answer clears what `asked` points at, and trusting writes the list.
 		const std::filesystem::path parent = *asked;
 
 		DialogLayout::Text(TrustAllMessage(parent));
@@ -1420,14 +1411,15 @@ namespace Graphite {
 
 	void GraphiteLayer::RenderDropConfirm()
 	{
-		if (!m_DropQuestion.Begin())
+		const DroppedWorkspace* asked = m_DropQuestion.Begin();
+
+		if (asked == nullptr)
 		{
 			return;
 		}
 
-		// WARNING: Copy the dropped workspace out before anything is opened: Answer clears what GetCurrent points at.
-		const DroppedWorkspace* asked = m_DropQuestion.GetCurrent();
-		const DroppedWorkspace dropped = asked != nullptr ? *asked : DroppedWorkspace{};
+		// WARNING: Copy the dropped workspace out before anything is opened: Answer clears what `asked` points at.
+		const DroppedWorkspace dropped = *asked;
 
 		ImGui::TextUnformatted("Open this in place of the workspace now open?");
 		ImGui::Separator();
@@ -1577,21 +1569,18 @@ namespace Graphite {
 		}
 	}
 
-	GraphiteLayer::ClosePurpose GraphiteLayer::AskedPurposeOrExit() const
-	{
-		const ClosePurpose* asked = m_CloseQuestion.GetCurrent();
-
-		return asked != nullptr ? *asked : ClosePurpose::ExitApplication;
-	}
-
 	void GraphiteLayer::RenderCloseConfirm()
 	{
-		if (!m_CloseQuestion.Begin([this](ClosePurpose purpose) {
-				return ConfirmationStillNeeded(purpose);
-			}))
+		const ClosePurpose* asked =
+			m_CloseQuestion.Begin([this](ClosePurpose purpose) { return ConfirmationStillNeeded(purpose); });
+
+		if (asked == nullptr)
 		{
 			return;
 		}
+
+		// WARNING: Copied out before Answer(), which drops the payload `asked` points at.
+		const ClosePurpose purpose = *asked;
 
 		ImGui::TextUnformatted("These files have unsaved changes:");
 		ImGui::Separator();
@@ -1599,8 +1588,6 @@ namespace Graphite {
 		ListModifiedDocuments();
 
 		ImGui::Separator();
-
-		const ClosePurpose purpose = AskedPurposeOrExit();
 
 		if (ImGui::Button("Save All"))
 		{

@@ -310,7 +310,6 @@ namespace Graphite {
 
 		bool StillNeedsCloseConfirmation(const std::filesystem::path& path);
 
-		void CloseConfirmedDocument(const std::filesystem::path* path);
 
 		void RenderDocumentWindows(const CommandContext& context, float fontSize,
 								   Core::IndentStyle indentStyle, unsigned int fallbackDockNode,

@@ -575,22 +575,13 @@ namespace Graphite {
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
 
-		const bool open =
+		const std::string* askedName =
 			m_DeleteQuestion.Begin([this](const std::string& name) { return name == m_Draft.GetSelected(); });
 
 		DialogLayout::AfterBegin();
 
-		if (!open)
-		{
-			return;
-		}
-
-		const std::string* askedName = m_DeleteQuestion.GetCurrent();
-
 		if (askedName == nullptr)
 		{
-			ImGui::CloseCurrentPopup();
-			m_DeleteQuestion.End();
 			return;
 		}
 
@@ -622,23 +613,13 @@ namespace Graphite {
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
 
-		const bool open =
+		const std::string* askedName =
 			m_RenameQuestion.Begin([this](const std::string& name) { return name == m_Draft.GetSelected(); });
 
 		DialogLayout::AfterBegin();
 
-		if (!open)
-		{
-			m_RenameShown = false;
-			return;
-		}
-
-		const std::string* askedName = m_RenameQuestion.GetCurrent();
-
 		if (askedName == nullptr)
 		{
-			ImGui::CloseCurrentPopup();
-			m_RenameQuestion.End();
 			m_RenameShown = false;
 			return;
 		}

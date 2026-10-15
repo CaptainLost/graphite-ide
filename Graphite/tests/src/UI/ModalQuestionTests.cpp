@@ -48,19 +48,59 @@ TEST_CASE("ModalQuestion compares a payload without IsSameQuestion by equality")
 	CHECK_FALSE(question.Asked({2}));
 }
 
-TEST_CASE("ModalQuestion closes the popup of a question withdrawn while on screen, and Begin answers false for it")
+TEST_CASE("ModalQuestion's Begin hands over the question to draw while its popup is open")
 {
 	ImGuiFrames frames;
 	Graphite::ModalGate gate;
 	Graphite::ModalQuestion<Plain> question{gate, "Plain question"};
-	bool beganWithNothingAsked = false;
+	int drawnValue = 0;
+
+	question.Ask({7});
+
+	frames.Next([&] {
+		if (const Plain* asked = question.Begin())
+		{
+			drawnValue = asked->Value;
+			question.End();
+		}
+	});
+
+	CHECK(drawnValue == 7);
+}
+
+TEST_CASE("ModalQuestion's AskOnce leaves a question already asked as it is")
+{
+	ImGuiFrames frames;
+	Graphite::ModalGate gate;
+	Graphite::ModalQuestion<Plain> question{gate, "Plain question"};
+
+	question.AskOnce({1});
+	question.AskOnce({1});
+
+	frames.Next([&] {
+		if (question.Begin())
+		{
+			question.Answer();
+			question.End();
+		}
+	});
+
+	CHECK_FALSE(question.IsAsked());
+}
+
+TEST_CASE("ModalQuestion closes the popup of a question withdrawn while on screen, and Begin hands over nothing for it")
+{
+	ImGuiFrames frames;
+	Graphite::ModalGate gate;
+	Graphite::ModalQuestion<Plain> question{gate, "Plain question"};
+	int framesBegun = 0;
 
 	const auto draw = [&] {
 		ImGui::Begin("Host");
 
 		if (question.Begin())
 		{
-			beganWithNothingAsked = beganWithNothingAsked || question.GetCurrent() == nullptr;
+			++framesBegun;
 			question.End();
 		}
 
@@ -75,7 +115,7 @@ TEST_CASE("ModalQuestion closes the popup of a question withdrawn while on scree
 	frames.Next(draw);
 	frames.Next(draw);
 
-	CHECK_FALSE(beganWithNothingAsked);
+	CHECK(framesBegun == 1);
 	CHECK_FALSE(ImGuiFrames::IsPopupNamedOpen("Plain question"));
 	CHECK_FALSE(gate.IsBusy());
 }

@@ -46,24 +46,14 @@ namespace Graphite {
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kWideWidth);
 
-		const bool open = m_DetachQuestion.Begin([](const DetachPayload&) { return true; },
-												 [](const DetachPayload& payload) {
-													 return "Checkout " + payload.Commit.ShortHex() + " (detached)";
-												 });
+		const DetachPayload* current = m_DetachQuestion.Begin(
+			[](const DetachPayload&) { return true; },
+			[](const DetachPayload& payload) { return "Checkout " + payload.Commit.ShortHex() + " (detached)"; });
 
 		DialogLayout::AfterBegin();
 
-		if (!open)
-		{
-			return;
-		}
-
-		const DetachPayload* current = m_DetachQuestion.GetCurrent();
-
 		if (current == nullptr)
 		{
-			ImGui::CloseCurrentPopup();
-			m_DetachQuestion.End();
 			return;
 		}
 
@@ -103,27 +93,14 @@ namespace Graphite {
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kWideWidth);
 
-		const bool open = m_CheckoutQuestion.Begin([](const CheckoutQuestionPayload&) { return true; },
-												   [](const CheckoutQuestionPayload& payload) {
-													   return "Checkout " + CheckoutTargetLabel(payload.Target);
-												   });
+		const CheckoutQuestionPayload* current = m_CheckoutQuestion.Begin(
+			[](const CheckoutQuestionPayload&) { return true; },
+			[](const CheckoutQuestionPayload& payload) { return "Checkout " + CheckoutTargetLabel(payload.Target); });
 
 		DialogLayout::AfterBegin();
 
-		if (!open)
-		{
-			m_CheckoutDialogOpen = false;
-			return;
-		}
-
-		// WARNING: The payload is null for the one frame after a question was withdrawn while on
-		// screen: the popup is still open with nothing left to ask.
-		const CheckoutQuestionPayload* current = m_CheckoutQuestion.GetCurrent();
-
 		if (current == nullptr)
 		{
-			ImGui::CloseCurrentPopup();
-			m_CheckoutQuestion.End();
 			m_CheckoutDialogOpen = false;
 			return;
 		}
@@ -243,32 +220,22 @@ namespace Graphite {
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
 
-		const bool open = question.Begin([](const BranchNamePayload&) { return true; },
-										 [](const BranchNamePayload& payload) {
-											 return payload.Mode == BranchNameMode::New
-														? "New branch from " + payload.From
-														: "Rename " + payload.From;
-										 });
+		const BranchNamePayload* current = question.Begin([](const BranchNamePayload&) { return true; },
+														  [](const BranchNamePayload& payload) {
+															  return payload.Mode == BranchNameMode::New
+																		 ? "New branch from " + payload.From
+																		 : "Rename " + payload.From;
+														  });
 
 		DialogLayout::AfterBegin();
 
-		if (!open)
+		if (current == nullptr)
 		{
 			if (m_BranchNameFor == &question)
 			{
 				m_BranchNameFor = nullptr;
 			}
 
-			return;
-		}
-
-		const BranchNamePayload* current = question.GetCurrent();
-
-		if (current == nullptr)
-		{
-			ImGui::CloseCurrentPopup();
-			question.End();
-			m_BranchNameFor = nullptr;
 			return;
 		}
 
@@ -367,24 +334,14 @@ namespace Graphite {
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
 
-		const bool open = m_DeleteBranchQuestion.Begin([](const DeleteBranchPayload&) { return true; },
-													   [](const DeleteBranchPayload& payload) {
-														   return "Delete branch " + payload.Branch;
-													   });
+		const DeleteBranchPayload* current =
+			m_DeleteBranchQuestion.Begin([](const DeleteBranchPayload&) { return true; },
+										 [](const DeleteBranchPayload& payload) { return "Delete branch " + payload.Branch; });
 
 		DialogLayout::AfterBegin();
 
-		if (!open)
-		{
-			return;
-		}
-
-		const DeleteBranchPayload* current = m_DeleteBranchQuestion.GetCurrent();
-
 		if (current == nullptr)
 		{
-			ImGui::CloseCurrentPopup();
-			m_DeleteBranchQuestion.End();
 			return;
 		}
 
@@ -428,24 +385,14 @@ namespace Graphite {
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
 
-		const bool open = m_DropStashQuestion.Begin([](const DropStashPayload&) { return true; },
-													[](const DropStashPayload& payload) {
-														return "Drop " + DropStashSubject(payload.Index, payload.Message);
-													});
+		const DropStashPayload* current = m_DropStashQuestion.Begin(
+			[](const DropStashPayload&) { return true; },
+			[](const DropStashPayload& payload) { return "Drop " + DropStashSubject(payload.Index, payload.Message); });
 
 		DialogLayout::AfterBegin();
 
-		if (!open)
-		{
-			return;
-		}
-
-		const DropStashPayload* current = m_DropStashQuestion.GetCurrent();
-
 		if (current == nullptr)
 		{
-			ImGui::CloseCurrentPopup();
-			m_DropStashQuestion.End();
 			return;
 		}
 

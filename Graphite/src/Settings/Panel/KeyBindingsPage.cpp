@@ -610,9 +610,9 @@ namespace Graphite {
 	// per-row and per-cell ids.
 	void KeyBindingsPage::RenderConflictQuestion()
 	{
-		if (m_ConflictQuestion.Begin())
+		if (const ContestedChord* asked = m_ConflictQuestion.Begin())
 		{
-			const ContestedChord& conflict = *m_ConflictQuestion.GetCurrent();
+			const ContestedChord& conflict = *asked;
 
 			const bool isRefusal = !conflict.Reason.empty();
 

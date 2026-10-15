@@ -49,6 +49,14 @@ namespace Graphite {
 
 		void Ask(Payload payload) { m_Queue.push_back(std::move(payload)); }
 
+		void AskOnce(Payload payload)
+		{
+			if (!Asked(payload))
+			{
+				Ask(std::move(payload));
+			}
+		}
+
 		bool IsAsked() const
 		{
 			return m_Current.has_value() || !m_Queue.empty();
@@ -72,25 +80,21 @@ namespace Graphite {
 			return false;
 		}
 
-		const Payload* GetCurrent() const
-		{
-			return m_Current ? &*m_Current : nullptr;
-		}
-
+		// WARNING: Null when the popup is not open this frame, and End must then not be called.
 		template<std::predicate<const Payload&> Predicate>
-		bool Begin(Predicate stillWorthAsking)
+		const Payload* Begin(Predicate stillWorthAsking)
 		{
 			OpenNext(stillWorthAsking);
 			return BeginNamed(m_Title);
 		}
 
-		bool Begin()
+		const Payload* Begin()
 		{
 			return Begin(&AlwaysWorthAsking);
 		}
 
 		template<std::predicate<const Payload&> Predicate, std::invocable<const Payload&> TitleOf>
-		bool Begin(Predicate stillWorthAsking, TitleOf titleOf)
+		const Payload* Begin(Predicate stillWorthAsking, TitleOf titleOf)
 		{
 			CORE_ASSERT(std::string_view(m_Title).starts_with("###"),
 						"a question with a visible title needs a title of its own that starts with ###");
@@ -157,12 +161,12 @@ namespace Graphite {
 			}
 		}
 
-		bool BeginNamed(const char* name)
+		const Payload* BeginNamed(const char* name)
 		{
 			if (!ImGui::BeginPopupModal(name, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 			{
 				WithdrawIfNoLongerOnScreen();
-				return false;
+				return nullptr;
 			}
 
 			// WARNING: Withdraw cannot close the popup from outside it, so a question withdrawn while on
@@ -171,11 +175,11 @@ namespace Graphite {
 			{
 				ImGui::CloseCurrentPopup();
 				ImGui::EndPopup();
-				return false;
+				return nullptr;
 			}
 
 			DialogLayout::PushModalFrameColours();
-			return true;
+			return &*m_Current;
 		}
 
 		// WARNING: ImGui closes a popup on Escape, and destroys it when another opens over it, without

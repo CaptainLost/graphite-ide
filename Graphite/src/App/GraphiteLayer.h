@@ -152,7 +152,6 @@ namespace Graphite {
 
 		bool IsDocumentShown(const std::filesystem::path& path) const;
 
-		ClosePurpose AskedPurposeOrExit() const;
 
 		void UpdateFocusReload(Core::Timestep timestep);
 

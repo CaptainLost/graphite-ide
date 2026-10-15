@@ -132,9 +132,9 @@ namespace Graphite {
 			ImGui::TextColored(rgba, "%.*s", static_cast<int>(end - from), text.data() + from);
 		}
 
-		std::string FileNameOf(const std::filesystem::path* path)
+		std::string FileNameOf(const std::filesystem::path& path)
 		{
-			return path != nullptr ? Core::ToUtf8(path->filename()) : std::string{};
+			return Core::ToUtf8(path.filename());
 		}
 
 		std::string SavedCount(std::size_t saved)
@@ -336,10 +336,7 @@ namespace Graphite {
 			question.Size = probe.GetValue().Size;
 		}
 
-		if (!m_SizeQuestion.Asked(question))
-		{
-			m_SizeQuestion.Ask(std::move(question));
-		}
+		m_SizeQuestion.AskOnce(std::move(question));
 	}
 
 	void DocumentWindows::HandleRootMoved(const std::filesystem::path& from,
@@ -497,10 +494,7 @@ namespace Graphite {
 				break;
 			}
 
-			if (!m_ReloadConflict.Asked(path))
-			{
-				m_ReloadConflict.Ask(path);
-			}
+			m_ReloadConflict.AskOnce(path);
 
 			break;
 		}
@@ -624,10 +618,7 @@ namespace Graphite {
 
 		if (item.Document->CheckChangedOnDisk())
 		{
-			if (!m_OverwriteConfirm.Asked(item.Path))
-			{
-				m_OverwriteConfirm.Ask(item.Path);
-			}
+			m_OverwriteConfirm.AskOnce(item.Path);
 
 			return;
 		}
@@ -963,13 +954,16 @@ namespace Graphite {
 
 	void DocumentWindows::RenderSizeQuestion()
 	{
-		if (!m_SizeQuestion.Begin())
+		const LargeFileQuestion* asked = m_SizeQuestion.Begin();
+
+		if (asked == nullptr)
 		{
 			return;
 		}
 
-		const LargeFileQuestion* question = m_SizeQuestion.GetCurrent();
-		const std::uint64_t size = question != nullptr ? question->Size : 0;
+		// WARNING: Copied out before Answer(), which drops the payload `asked` points at.
+		const LargeFileQuestion question = *asked;
+		const std::uint64_t size = question.Size;
 
 		if (size == 0)
 		{
@@ -983,11 +977,7 @@ namespace Graphite {
 
 		if (ImGui::Button("Load"))
 		{
-			if (question != nullptr)
-			{
-				LoadConfirmed(question->Path, question->Permanent);
-			}
-
+			LoadConfirmed(question.Path, question.Permanent);
 			m_SizeQuestion.Answer();
 		}
 
@@ -1003,32 +993,24 @@ namespace Graphite {
 
 	void DocumentWindows::RenderReloadConflict()
 	{
-		if (!m_ReloadConflict.Begin())
+		const std::filesystem::path* asked = m_ReloadConflict.Begin();
+
+		if (asked == nullptr)
 		{
 			return;
 		}
 
-		const std::filesystem::path* path = m_ReloadConflict.GetCurrent();
+		// WARNING: Copied out before Answer(), which drops the payload `asked` points at.
+		const std::filesystem::path path = *asked;
 
-		if (path == nullptr)
-		{
-			ImGui::CloseCurrentPopup();
-			m_ReloadConflict.End();
-			return;
-		}
-
-		ImGui::Text("%s changed on disk, and this tab has unsaved changes.",
-					FileNameOf(path).c_str());
+		ImGui::Text("%s changed on disk, and this tab has unsaved changes.", FileNameOf(path).c_str());
 		ImGui::Separator();
 
 		if (ImGui::Button("Reload from disk (lose my changes)"))
 		{
-			if (path != nullptr)
+			if (const std::optional<std::size_t> index = m_Documents.Find(path))
 			{
-				if (const std::optional<std::size_t> index = m_Documents.Find(*path))
-				{
-					ReloadOne(*index);
-				}
+				ReloadOne(*index);
 			}
 
 			m_ReloadConflict.Answer();
@@ -1038,13 +1020,9 @@ namespace Graphite {
 
 		if (ImGui::Button("Keep my version"))
 		{
-			if (path != nullptr)
+			if (const std::optional<std::size_t> index = m_Documents.Find(path); index && m_Documents.At(*index).Document)
 			{
-				if (const std::optional<std::size_t> index = m_Documents.Find(*path);
-					index && m_Documents.At(*index).Document)
-				{
-					m_Documents.At(*index).Document->AcceptDiskState();
-				}
+				m_Documents.At(*index).Document->AcceptDiskState();
 			}
 
 			m_ReloadConflict.Answer();
@@ -1055,25 +1033,24 @@ namespace Graphite {
 
 	void DocumentWindows::RenderOverwriteConfirm()
 	{
-		if (!m_OverwriteConfirm.Begin())
+		const std::filesystem::path* asked = m_OverwriteConfirm.Begin();
+
+		if (asked == nullptr)
 		{
 			return;
 		}
 
-		const std::filesystem::path* path = m_OverwriteConfirm.GetCurrent();
+		// WARNING: Copied out before Answer(), which drops the payload `asked` points at.
+		const std::filesystem::path path = *asked;
 
-		ImGui::Text("%s changed on disk since it was opened. Overwrite it?",
-					FileNameOf(path).c_str());
+		ImGui::Text("%s changed on disk since it was opened. Overwrite it?", FileNameOf(path).c_str());
 		ImGui::Separator();
 
 		if (ImGui::Button("Overwrite"))
 		{
-			if (path != nullptr)
+			if (const std::optional<std::size_t> index = m_Documents.Find(path))
 			{
-				if (const std::optional<std::size_t> index = m_Documents.Find(*path))
-				{
-					SaveOne(*index);
-				}
+				SaveOne(*index);
 			}
 
 			m_OverwriteConfirm.Answer();
@@ -1110,22 +1087,18 @@ namespace Graphite {
 		return false;
 	}
 
-	void DocumentWindows::CloseConfirmedDocument(const std::filesystem::path* path)
-	{
-		if (path != nullptr)
-		{
-			CloseIfOpen(*path);
-		}
-	}
-
 	void DocumentWindows::RenderCloseConfirm()
 	{
-		if (!m_CloseConfirm.Begin([this](const std::filesystem::path& candidate) { return StillNeedsCloseConfirmation(candidate); }))
+		const std::filesystem::path* asked = m_CloseConfirm.Begin(
+			[this](const std::filesystem::path& candidate) { return StillNeedsCloseConfirmation(candidate); });
+
+		if (asked == nullptr)
 		{
 			return;
 		}
 
-		const std::filesystem::path* path = m_CloseConfirm.GetCurrent();
+		// WARNING: Copied out before Answer(), which drops the payload `asked` points at.
+		const std::filesystem::path path = *asked;
 
 		ImGui::Text("Save changes to %s before closing?", FileNameOf(path).c_str());
 		ImGui::Separator();
@@ -1134,17 +1107,14 @@ namespace Graphite {
 		{
 			bool saved = true;
 
-			if (path != nullptr)
+			if (const std::optional<std::size_t> index = m_Documents.Find(path))
 			{
-				if (const std::optional<std::size_t> index = m_Documents.Find(*path))
-				{
-					saved = SaveOne(*index);
-				}
+				saved = SaveOne(*index);
 			}
 
 			if (saved)
 			{
-				CloseConfirmedDocument(path);
+				CloseIfOpen(path);
 				m_CloseConfirm.Answer();
 			}
 		}
@@ -1153,7 +1123,7 @@ namespace Graphite {
 
 		if (ImGui::Button("Discard"))
 		{
-			CloseConfirmedDocument(path);
+			CloseIfOpen(path);
 			m_CloseConfirm.Answer();
 		}
 
@@ -2208,10 +2178,7 @@ namespace Graphite {
 			{
 				if (modified)
 				{
-					if (!m_CloseConfirm.Asked(item.Path))
-					{
-						m_CloseConfirm.Ask(item.Path);
-					}
+					m_CloseConfirm.AskOnce(item.Path);
 				}
 				else
 				{

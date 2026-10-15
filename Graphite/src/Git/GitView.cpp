@@ -146,8 +146,7 @@ namespace Graphite {
 				}
 				else
 				{
-					AskOnce(m_DeleteBranchQuestion,
-							DeleteBranchPayload{.Branch = check->Branch, .Unmerged = check->Unmerged});
+					m_DeleteBranchQuestion.AskOnce(DeleteBranchPayload{.Branch = check->Branch, .Unmerged = check->Unmerged});
 				}
 			}
 		}
@@ -299,7 +298,7 @@ namespace Graphite {
 
 		const bool untrackedForced = question.UntrackedForced;
 
-		AskOnce(m_CheckoutQuestion, CheckoutQuestionPayload{.Target = std::move(answer.Target),
+		m_CheckoutQuestion.AskOnce(CheckoutQuestionPayload{.Target = std::move(answer.Target),
 															.Question = std::move(question),
 															.UnsavedAbsolute = std::move(unsaved),
 															.IncludeUntracked = untrackedForced});
@@ -312,7 +311,7 @@ namespace Graphite {
 		const std::size_t copiedLength = std::min(suggested.size(), payload.Buffer.size() - 1);
 		std::copy_n(suggested.begin(), copiedLength, payload.Buffer.begin());
 
-		AskOnce(m_NewBranchQuestion, std::move(payload));
+		m_NewBranchQuestion.AskOnce(std::move(payload));
 	}
 
 	void GitView::BeginRename(const std::string& branch)
@@ -322,7 +321,7 @@ namespace Graphite {
 		const std::size_t copiedLength = std::min(branch.size(), payload.Buffer.size() - 1);
 		std::copy_n(branch.begin(), copiedLength, payload.Buffer.begin());
 
-		AskOnce(m_RenameBranchQuestion, std::move(payload));
+		m_RenameBranchQuestion.AskOnce(std::move(payload));
 	}
 
 	void GitView::ApplyCommitAction()
@@ -342,7 +341,7 @@ namespace Graphite {
 
 			if (AsksBeforeDetaching(target))
 			{
-				AskOnce(m_DetachQuestion, DetachPayload{.Commit = action->Commit});
+				m_DetachQuestion.AskOnce(DetachPayload{.Commit = action->Commit});
 			}
 			else
 			{

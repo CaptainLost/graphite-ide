@@ -1117,10 +1117,7 @@ namespace Graphite {
 		// WARNING: Every discard asks, because git can hand back none of what one throws away.
 		// Asked once per subject: a row waiting behind another modal stays clickable, and a
 		// second click would queue a duplicate asking about a file already discarded.
-		if (!m_DiscardQuestion.Asked(question))
-		{
-			m_DiscardQuestion.Ask(std::move(question));
-		}
+		m_DiscardQuestion.AskOnce(std::move(question));
 	}
 
 	std::vector<std::filesystem::path> ChangesPanel::DirtyDocuments() const
@@ -1175,12 +1172,14 @@ namespace Graphite {
 
 	void ChangesPanel::RenderDiscardConfirm()
 	{
-		if (!m_DiscardQuestion.Begin())
+		const DiscardQuestion* asked = m_DiscardQuestion.Begin();
+
+		if (asked == nullptr)
 		{
 			return;
 		}
 
-		const DiscardQuestion& question = *m_DiscardQuestion.GetCurrent();
+		const DiscardQuestion& question = *asked;
 
 		ImGui::TextUnformatted(question.Text.c_str());
 
@@ -1255,7 +1254,7 @@ namespace Graphite {
 	void ChangesPanel::RenderStashDialog()
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
-		const bool open = m_StashQuestion.Begin();
+		const bool open = m_StashQuestion.Begin() != nullptr;
 		DialogLayout::AfterBegin();
 
 		if (!open)
@@ -1267,16 +1266,6 @@ namespace Graphite {
 				ResetStashDialog();
 			}
 
-			return;
-		}
-
-		// WARNING: A question withdrawn from outside leaves the popup up for one frame with no
-		// payload. It is closed rather than drawn as an answer to nothing.
-		if (m_StashQuestion.GetCurrent() == nullptr)
-		{
-			ImGui::CloseCurrentPopup();
-			m_StashQuestion.End();
-			ResetStashDialog();
 			return;
 		}
 

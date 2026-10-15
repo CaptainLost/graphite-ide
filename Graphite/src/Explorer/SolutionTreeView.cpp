@@ -787,10 +787,7 @@ namespace Graphite {
 		{
 			const RemoveQuestion question{.Project = project.Path, .Name = project.DisplayName};
 
-			if (!m_RemoveQuestion.Asked(question))
-			{
-				m_RemoveQuestion.Ask(question);
-			}
+			m_RemoveQuestion.AskOnce(question);
 		}
 
 		ExplainNotEditable(editable);
@@ -876,20 +873,18 @@ namespace Graphite {
 	void SolutionTreeView::RenderRemoveConfirmation()
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
-		const bool open = m_RemoveQuestion.Begin();
+		const RemoveQuestion* asked = m_RemoveQuestion.Begin();
 		DialogLayout::AfterBegin();
 
-		if (!open)
+		if (asked == nullptr)
 		{
 			return;
 		}
 
-		const RemoveQuestion& current = *m_RemoveQuestion.GetCurrent();
+		// WARNING: Copied out before Answer(), which drops the payload `asked` points into.
+		const PendingAction action{.Action = PendingAction::Kind::RemoveProject, .Project = asked->Project};
 
-		// WARNING: Copied out before Answer(), which drops the payload `current` refers to.
-		const PendingAction action{.Action = PendingAction::Kind::RemoveProject, .Project = current.Project};
-
-		DialogLayout::Text(std::format("Remove \"{}\" from the solution?", current.Name));
+		DialogLayout::Text(std::format("Remove \"{}\" from the solution?", asked->Name));
 		DialogLayout::Gap();
 		DialogLayout::MutedText("Its files stay on disk — only the solution's reference is removed.");
 		DialogLayout::Gap();
