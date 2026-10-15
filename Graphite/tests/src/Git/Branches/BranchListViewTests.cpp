@@ -160,6 +160,32 @@ TEST_CASE("A branch whose name holds a hash and a percent sign draws whole and r
 	CHECK(*clicked == "fix/#123-release-100%");
 }
 
+TEST_CASE("A branch whose name holds a double hash draws its whole name")
+{
+	ImGuiFrames frames;
+
+	Core::Branch doubleHash = LocalBranchAt("fix##2", kNowSeconds, 1);
+	doubleHash.TipCommit.reset();
+
+	const Core::Ref<const std::vector<Core::Branch>> listed =
+		Core::CreateRef<const std::vector<Core::Branch>>(std::vector<Core::Branch>{doubleHash});
+
+	Graphite::BranchListState options;
+	Graphite::BranchListView list{options};
+
+	float drawnWidth = 0.0f;
+	float nameWidth = 0.0f;
+	list.DrawBranchMenu = [&drawnWidth, &nameWidth](const Core::Branch& branch) {
+		drawnWidth = ImGui::GetItemRectSize().x;
+		nameWidth = ImGui::CalcTextSize(branch.Name.c_str()).x;
+	};
+
+	frames.Next([&list, &listed] { DrawListWindow(list, FrameOf(listed), kListWidth); });
+
+	CHECK(nameWidth > 0.0f);
+	CHECK(drawnWidth == doctest::Approx(nameWidth));
+}
+
 TEST_CASE("Rows draw in a column narrower than the age without an assertion")
 {
 	ImGuiFrames frames;

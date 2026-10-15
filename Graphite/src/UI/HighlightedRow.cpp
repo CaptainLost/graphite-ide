@@ -7,6 +7,7 @@
 #include <imgui.h>
 
 #include <string>
+#include <string_view>
 
 namespace Graphite {
 
@@ -14,6 +15,7 @@ namespace Graphite {
 		constexpr ImU32 kNoMarkerColour = 0;
 		constexpr float kNoSameLineOffset = 0.0f;
 		constexpr float kNoSameLineSpacing = 0.0f;
+		constexpr std::string_view kLabelIdSeparator = "##";
 
 		void SameLineWithoutGap()
 		{
@@ -61,11 +63,15 @@ namespace Graphite {
 	{
 		const HighlightedLabel split = SplitHighlight(text, needle);
 		const bool hasColouredMarker = !marker.empty() && markerColor != kNoMarkerColour;
+		const std::string wholeLabel = std::string(marker) + std::string(text);
 
-		if (!hasColouredMarker && split.Match.empty())
+		// WARNING: A Selectable hides its label from "##" on, so a label holding one is drawn over an
+		// id-only Selectable like a marked one.
+		const bool labelHidesPart = wholeLabel.find(kLabelIdSeparator) != std::string::npos;
+
+		if (!hasColouredMarker && split.Match.empty() && !labelHidesPart)
 		{
-			return ImGui::Selectable((std::string(marker) + std::string(text)).c_str(),
-									 selected);
+			return ImGui::Selectable(wholeLabel.c_str(), selected);
 		}
 
 		ImVec2 rowStart;
