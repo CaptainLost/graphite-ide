@@ -319,8 +319,8 @@ private:
 		return treeId;
 	}
 
-	// A fixed author and a clock that moves one minute per commit, rather than the real time,
-	// keep the commit order and the log a failing test prints the same on every run.
+	// The caller names the author; a clock that moves one minute per commit, rather than the real
+	// time, keeps the commit order and the log a failing test prints the same on every run.
 	git_signature* MakeSignature(const std::string& authorName, const std::string& authorEmail)
 	{
 		const git_time_t kFirstCommitTime = 1000000000;

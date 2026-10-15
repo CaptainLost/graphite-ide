@@ -371,7 +371,7 @@ namespace Graphite {
 
 			return counts;
 		}
-}
+	}
 
 	std::size_t SectionIndexOf(Core::RefKind section)
 	{

@@ -21,7 +21,6 @@ namespace Core {
 
 		constexpr int kHeadIsDetached = 1;
 
-
 		RepositoryOperation ToRepositoryOperation(int repositoryState)
 		{
 			switch (repositoryState)
@@ -113,7 +112,7 @@ namespace Core {
 			return std::string{headName};
 		}
 
-		bool IsCheckedOutBranch(const Branch& branch, const std::optional<std::string>& headReferenceName)
+		bool IsHeadBranch(const Branch& branch, const std::optional<std::string>& headReferenceName)
 		{
 			return branch.Kind == RefKind::Local && headReferenceName.has_value() && branch.FullName == *headReferenceName;
 		}
@@ -144,8 +143,9 @@ namespace Core {
 		}
 
 		// WARNING: git_branch_upstream takes a new configuration snapshot per call and fails for every
-		// branch without an upstream, so the listing's one snapshot is asked first. A lookup that fails
-		// for any reason but a missing entry still lets git_branch_upstream decide.
+		// branch without an upstream, so the listing's one snapshot is asked first. An entry whose
+		// lookup fails for any reason but its absence counts as set: git_branch_upstream then decides,
+		// unless the other entry is missing, when it would fail anyway.
 		bool MayHaveUpstream(const git_config* snapshot, const Branch& branch)
 		{
 			if (snapshot == nullptr)
@@ -195,12 +195,11 @@ namespace Core {
 
 		const std::optional<std::string> headReferenceName = ResolveHeadReferenceName(m_Handle.get());
 
+		// WARNING: A snapshot that cannot be taken leaves the handle null, and every local branch then
+		// asks git_branch_upstream itself.
 		ConfigHandle configSnapshot;
+		git_repository_config_snapshot(Out(configSnapshot), m_Handle.get());
 
-		if (git_repository_config_snapshot(Out(configSnapshot), m_Handle.get()) != 0)
-		{
-			configSnapshot.reset();
-		}
 		git_branch_t branchType = GIT_BRANCH_LOCAL;
 
 		int nextResult = 0;
@@ -245,7 +244,7 @@ namespace Core {
 			}
 
 			branch.Tip = ToOid(*tipId);
-			branch.IsHead = IsCheckedOutBranch(branch, headReferenceName);
+			branch.IsHead = IsHeadBranch(branch, headReferenceName);
 			branch.TipCommit = ReadTipCommit(m_Handle.get(), *tipId);
 
 			ReferenceHandle upstream;
