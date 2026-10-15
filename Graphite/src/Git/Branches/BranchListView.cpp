@@ -196,16 +196,27 @@ namespace Graphite {
 			}
 		}
 
-		bool DrawAuthorChoice(const AuthorChoice& choice)
+		// WARNING: The panel's padding is the rows' margin on the left and, with the list fitting,
+		// the counts' margin on the right. A scrollbar takes the list's right edge inside that
+		// padding, so the counts then keep a window padding clear of it, or it covers their digits.
+		float AuthorCountsRight()
+		{
+			const float noMargin = 0.0f;
+			const bool scrolls = ImGui::GetScrollMaxY() > 0.0f;
+			const float margin = scrolls ? ImGui::GetStyle().WindowPadding.x : noMargin;
+
+			return ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - margin;
+		}
+
+		bool DrawAuthorChoice(const AuthorChoice& choice, float countsRight)
 		{
 			const ImGuiStyle& style = ImGui::GetStyle();
 			const float rowStartX = ImGui::GetCursorPosX();
-			const float rowWidth = ImGui::GetContentRegionAvail().x;
 
 			const std::string count = std::to_string(choice.Branches);
-			const float countWidth = ImGui::CalcTextSize(count.c_str()).x;
+			const float countLeft = countsRight - ImGui::CalcTextSize(count.c_str()).x;
 			const float boxRoom = Core::Scaled(kTickBoxSize) + style.ItemInnerSpacing.x;
-			const float nameRoom = rowWidth - boxRoom - style.ItemSpacing.x - countWidth;
+			const float nameRoom = countLeft - rowStartX - boxRoom - style.ItemSpacing.x;
 
 			const std::string label = FitToWidth(AuthorChoiceText(choice), nameRoom) + kTickBoxId;
 			bool ticked = choice.Ticked;
@@ -213,7 +224,8 @@ namespace Graphite {
 			ImGui::PushID(choice.Key.c_str());
 
 			const bool clicked = DrawTickBox(label.c_str(), &ticked);
-			ImGui::SameLine(rowStartX + rowWidth - countWidth);
+			ImGui::SameLine();
+			ImGui::SetCursorPosX(countLeft);
 			ImGui::TextDisabled("%s", count.c_str());
 
 			ImGui::PopID();
@@ -480,6 +492,8 @@ namespace Graphite {
 
 		if (listVisible)
 		{
+			const float countsRight = AuthorCountsRight();
+
 			ImGuiListClipper clipper;
 			clipper.Begin(static_cast<int>(shown.size()), rowHeight);
 
@@ -489,7 +503,7 @@ namespace Graphite {
 				{
 					const AuthorChoice& choice = shown[static_cast<std::size_t>(rowIndex)];
 
-					if (DrawAuthorChoice(choice))
+					if (DrawAuthorChoice(choice, countsRight))
 					{
 						toggledKey = choice.Key;
 					}

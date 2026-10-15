@@ -220,7 +220,7 @@ namespace {
 						  ImGui::GetFrameHeight() * kHalf);
 	}
 
-	ImVec2 FirstAuthorTickBoxCentre()
+	const ImGuiWindow& AuthorListWindow()
 	{
 		const ImGuiWindow& panel = PanelWindow();
 		const ImGuiWindow* authorList = nullptr;
@@ -236,9 +236,14 @@ namespace {
 		}
 
 		REQUIRE(authorList != nullptr);
+		return *authorList;
+	}
 
+	ImVec2 FirstAuthorTickBoxCentre()
+	{
+		const ImGuiWindow& authorList = AuthorListWindow();
 		const float intoTheBox = 8.0f;
-		return ImVec2(authorList->Pos.x + intoTheBox, authorList->Pos.y + ImGui::GetFrameHeight() * kHalf);
+		return ImVec2(authorList.Pos.x + intoTheBox, authorList.Pos.y + ImGui::GetFrameHeight() * kHalf);
 	}
 
 	Core::Branch LocalBranchBy(const std::string& name, const std::string& authorName, std::size_t tipNumber)
@@ -247,6 +252,54 @@ namespace {
 		branch.TipCommit->Author.Name = authorName;
 		branch.TipCommit->Author.Email = authorName + "@example.com";
 		return branch;
+	}
+
+	Core::Ref<const std::vector<Core::Branch>> BranchesByNumberedAuthors(std::size_t authorCount)
+	{
+		std::vector<Core::Branch> branches;
+
+		for (std::size_t authorIndex = 0; authorIndex < authorCount; ++authorIndex)
+		{
+			branches.push_back(LocalBranchBy(std::format("branch-{}", authorIndex), std::format("U{}", authorIndex),
+											 authorIndex + 1));
+		}
+
+		return Core::CreateRef<const std::vector<Core::Branch>>(std::move(branches));
+	}
+
+	struct AuthorListLayout
+	{
+		bool Scrolls = false;
+		float ContentRight = 0.0f;
+		float RowsRight = 0.0f;
+		float WindowPadding = 0.0f;
+	};
+
+	AuthorListLayout SettledAuthorList(std::size_t authorCount, const char* windowName)
+	{
+		ImGuiFrames frames;
+
+		const bool notInFlight = false;
+		const Graphite::BranchListFrame frame = FrameWithAuthors(
+			BranchesByNumberedAuthors(authorCount), Core::CreateRef<const Graphite::BranchAuthors>(), notInFlight);
+
+		Graphite::BranchListState options;
+		Graphite::BranchListView list{options};
+
+		const auto draw = [&list, &frame, windowName] { DrawHeaderAndRows(list, frame, windowName); };
+
+		frames.Next(draw);
+		frames.Click(PanelButtonCentre(), draw);
+		frames.Next(draw);
+		frames.Next(draw);
+		REQUIRE(OpenPopups() == 1);
+
+		const ImGuiWindow& authorList = AuthorListWindow();
+
+		return AuthorListLayout{.Scrolls = authorList.ScrollbarY,
+								.ContentRight = authorList.ContentRegionRect.Max.x,
+								.RowsRight = authorList.DC.CursorMaxPos.x,
+								.WindowPadding = ImGui::GetStyle().WindowPadding.x};
 	}
 }
 
@@ -744,6 +797,26 @@ TEST_CASE("Ticking an author in the panel leaves the panel open and narrows the 
 
 	CHECK(OpenPopups() == 1);
 	CHECK(drawnBranches == std::vector<std::string>{"by-ann"});
+}
+
+TEST_CASE("Author counts end a window padding short of the authors list's scrollbar")
+{
+	constexpr std::size_t kAuthorsPastTheListHeight = 14;
+
+	const AuthorListLayout layout = SettledAuthorList(kAuthorsPastTheListHeight, "ScrolledCounts");
+
+	REQUIRE(layout.Scrolls);
+	CHECK(layout.RowsRight == doctest::Approx(layout.ContentRight - layout.WindowPadding));
+}
+
+TEST_CASE("Without a scrollbar author counts end at the panel's content edge")
+{
+	constexpr std::size_t kAuthorsThatFit = 3;
+
+	const AuthorListLayout layout = SettledAuthorList(kAuthorsThatFit, "FittingCounts");
+
+	REQUIRE_FALSE(layout.Scrolls);
+	CHECK(layout.RowsRight == doctest::Approx(layout.ContentRight));
 }
 
 TEST_CASE("Both toggles in the panel end at the right edge of its content")
