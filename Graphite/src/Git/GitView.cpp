@@ -670,6 +670,11 @@ namespace Graphite {
 	{
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
 
+		if (!maxCount.has_value())
+		{
+			m_Commits.ForgetLoadMoreRequest();
+		}
+
 		m_Model.RequestLog(BuildLogRequest(m_SelectedRef, m_Filter.Get(), maxCount, m_SelectedStash),
 						   branches ? OwnCommitsToAsk(*branches) : std::nullopt);
 

@@ -81,6 +81,9 @@ namespace Graphite {
 		// WARNING: expansions, selections and the load-more latch name commits of the old repository once a workspace opens or closes, so all of them are cleared.
 		void Reset();
 
+		// WARNING: a query from the first page shows another history, so a latch left at the length of the last one would keep a page of that same length from ever asking for more.
+		void ForgetLoadMoreRequest();
+
 		bool TakeLoadMoreRequest();
 
 		std::optional<CommitAction> TakeCommitAction();
