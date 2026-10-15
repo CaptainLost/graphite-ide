@@ -2528,3 +2528,151 @@ TEST_CASE("Authors asked for a folder that has since closed are dropped")
 
 	CHECK(model.GetBranchAuthors() == nullptr);
 }
+
+TEST_CASE("A log is asked together with the length of its history")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	Core::LogRequest request;
+	request.Ref = "refs/heads/main";
+
+	model.RequestLog(request);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(port.CountCalls == 1);
+	CHECK(port.LastCountRef == request.Ref);
+	CHECK(model.GetCommitCountFor(request.Ref) == std::optional<std::size_t>{1739});
+	CHECK_FALSE(model.IsCommitCountInFlight());
+}
+
+TEST_CASE("A stash's log asks for no history length")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	Core::LogRequest request;
+	request.Stash = OidWithFirstByte(9);
+
+	model.RequestLog(request);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(port.CountCalls == 0);
+}
+
+TEST_CASE("A refresh hands the port the count it holds so an unmoved tip is not walked again")
+{
+	Core::EventBus events;
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	Core::LogRequest request;
+	request.Ref = "refs/heads/main";
+
+	model.RequestLog(request);
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+
+	CHECK(port.CountCalls == 2);
+	CHECK(port.CountWalks == 1);
+	REQUIRE(port.LastKnownCount.has_value());
+	CHECK(port.LastKnownCount->Count == 1739);
+}
+
+TEST_CASE("A count is walked again once the tip has moved")
+{
+	Core::EventBus events;
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	Core::LogRequest request;
+	request.Ref = "refs/heads/main";
+
+	model.RequestLog(request);
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+
+	port.CountTip = OidWithFirstByte(2);
+	port.CountTotal = 1740;
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+
+	CHECK(port.CountWalks == 2);
+	CHECK(model.GetCommitCountFor(request.Ref) == std::optional<std::size_t>{1740});
+}
+
+TEST_CASE("The count of one ref is neither reported for another nor handed to the port for it")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	Core::LogRequest mainLog;
+	mainLog.Ref = "refs/heads/main";
+
+	model.RequestLog(mainLog);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	REQUIRE(model.GetCommitCountFor(mainLog.Ref).has_value());
+
+	Core::LogRequest topicLog;
+	topicLog.Ref = "refs/heads/topic";
+
+	model.RequestLog(topicLog);
+
+	CHECK_FALSE(port.LastKnownCount.has_value());
+	CHECK_FALSE(model.GetCommitCountFor(topicLog.Ref).has_value());
+	CHECK_FALSE(model.GetCommitCountFor(std::nullopt).has_value());
+}
+
+TEST_CASE("A failed count leaves the history's length unknown and no longer in flight")
+{
+	FakePort port;
+	port.FailCount = true;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestLog(Core::LogRequest{});
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK_FALSE(model.GetCommitCountFor(std::nullopt).has_value());
+	CHECK_FALSE(model.IsCommitCountInFlight());
+}
+
+TEST_CASE("A refresh repeats the walk ceiling the view asked for and not the default one")
+{
+	Core::EventBus events;
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	constexpr std::size_t kLiftedCeiling = 100000;
+
+	Core::LogRequest request;
+	request.MaxWalk = kLiftedCeiling;
+
+	model.RequestLog(request);
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+
+	REQUIRE(port.LogCalls == 2);
+	REQUIRE(port.LastLogRequest.has_value());
+	CHECK(port.LastLogRequest->MaxWalk == kLiftedCeiling);
+}

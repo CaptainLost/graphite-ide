@@ -148,6 +148,11 @@ namespace Graphite {
 		Core::Ref<const Core::LogPage> GetOwnCommits() const { return m_OwnLog.Get(); }
 		const std::string& GetOwnCommitsLabel() const { return m_OwnLabel; }
 
+		// The length of the history a log walks, counted for exactly `ref`: a count of the branch
+		// shown before never stands beside another branch's page.
+		std::optional<std::size_t> GetCommitCountFor(const std::optional<std::string>& ref) const;
+		bool IsCommitCountInFlight() const { return m_CommitCount.IsInFlight(); }
+
 		Core::Ref<const Core::Diff> GetWorkingTreeDiff() const
 		{
 			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeDiff.Get() : nullptr;
@@ -409,6 +414,18 @@ namespace Graphite {
 		GenerationSlot<Core::LogPage> m_Log;
 
 		std::optional<Core::LogRequest> m_LastLogRequest;
+
+		struct RefCommitCount
+		{
+			std::optional<std::string> Ref;
+			CommitCount Count;
+		};
+
+		// WARNING: Asked with every log, the model's own refreshes included, and handed the count it
+		// holds for the same ref, so the port walks only when that ref's tip has moved.
+		void RequestCommitCount(const std::optional<std::string>& ref);
+
+		GenerationSlot<RefCommitCount> m_CommitCount;
 
 		GenerationSlot<Core::LogPage> m_OwnLog;
 		std::optional<OwnCommitsRequest> m_LastOwnRequest;

@@ -88,6 +88,7 @@ namespace Graphite {
 		m_Log.Clear();
 
 		m_LastLogRequest.reset();
+		m_CommitCount.Clear();
 		m_OwnLog.Clear();
 		m_LastOwnRequest.reset();
 		m_OwnLabel.clear();
@@ -288,6 +289,11 @@ namespace Graphite {
 		m_LastLogRequest = request;
 		m_LastOwnRequest = ownCommits;
 
+		if (!request.Stash.has_value())
+		{
+			RequestCommitCount(request.Ref);
+		}
+
 		m_Submit([this, generation, ownGeneration, request = std::move(request),
 				  ownCommits = std::move(ownCommits)]() {
 			Core::Result<Core::LogPage> result = m_Port.QueryLog(request);
@@ -326,6 +332,41 @@ namespace Graphite {
 				}
 			});
 		});
+	}
+
+	void GitModel::RequestCommitCount(const std::optional<std::string>& ref)
+	{
+		const Core::Ref<const RefCommitCount> held = m_CommitCount.Get();
+		const std::optional<CommitCount> known =
+			held && held->Ref == ref ? std::optional<CommitCount>{held->Count} : std::nullopt;
+
+		const std::uint64_t generation = m_CommitCount.Begin();
+
+		m_Submit([this, generation, ref, known]() {
+			Core::Result<CommitCount> result = m_Port.CountCommits(ref, known);
+
+			Deliver([this, generation, ref, result = std::move(result)]() mutable {
+				if (!result.HasValue())
+				{
+					m_CommitCount.Land(generation, Core::Result<RefCommitCount>{result.GetError()});
+					return;
+				}
+
+				m_CommitCount.Land(generation, RefCommitCount{.Ref = ref, .Count = result.GetValue()});
+			});
+		});
+	}
+
+	std::optional<std::size_t> GitModel::GetCommitCountFor(const std::optional<std::string>& ref) const
+	{
+		const Core::Ref<const RefCommitCount> held = m_CommitCount.Get();
+
+		if (!held || held->Ref != ref)
+		{
+			return std::nullopt;
+		}
+
+		return held->Count.Count;
 	}
 
 	void GitModel::RequestWorkingTreeDiff(Core::DiffRequest request)
