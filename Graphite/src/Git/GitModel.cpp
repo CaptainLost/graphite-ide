@@ -220,7 +220,8 @@ namespace Graphite {
 		Core::OwnAuthorsRequest request = OwnAuthorsRequestFor(*branches);
 
 		// WARNING: An answer without the user's e-mail is asked again by every listing, or a
-		// user.email set afterwards would wait for some tip to move before "Only mine" works.
+		// user.email set afterwards would wait for some tip to move before the user is pinned first
+		// in the authors list.
 		const Core::Ref<const BranchAuthors> heldAuthors = m_BranchAuthors.Get();
 		const bool userEmailUnknown = heldAuthors && !heldAuthors->UserEmail.has_value();
 

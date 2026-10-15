@@ -32,7 +32,6 @@ namespace Graphite {
 		constexpr const char* kMessageChip = "Message";
 		constexpr const char* kMessageChipId = "##messageChip";
 		constexpr const char* kReadingAuthors = "Reading authors";
-		constexpr const char* kSetUserEmail = "Set user.email in git config to use this";
 		constexpr const char* kNoAuthors = "No authors";
 		constexpr const char* kNoAuthorsMatch = "No authors match";
 		constexpr const char* kAuthorListId = "##authorList";
@@ -96,21 +95,6 @@ namespace Graphite {
 			ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
 		}
 
-		std::string OnlyMineTooltipOf(const BranchListFrame& frame)
-		{
-			if (frame.Authors)
-			{
-				return kSetUserEmail;
-			}
-
-			if (frame.AuthorsFailure.has_value())
-			{
-				return AuthorsFailureText(*frame.AuthorsFailure);
-			}
-
-			return kReadingAuthors;
-		}
-
 		// WARNING: A Selectable or MenuItem closes the popup it sits in when clicked; the panel's
 		// segments are buttons so that choosing a sort leaves it open.
 		bool DrawSegment(const char* label, bool selected, float width)
@@ -166,7 +150,7 @@ namespace Graphite {
 			ImGui::PopID();
 		}
 
-		bool DrawToggleRow(const char* label, const char* toggleId, bool* isOn)
+		void DrawToggleRow(const char* label, const char* toggleId, bool* isOn)
 		{
 			const float toggleX =
 				ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - Core::Scaled(Core::kToggleWidth);
@@ -179,7 +163,7 @@ namespace Graphite {
 			ImGui::SameLine();
 			ImGui::SetCursorPosX(toggleX);
 
-			return Core::Toggle(toggleId, isOn);
+			Core::Toggle(toggleId, isOn);
 		}
 
 		void DrawAuthorsFailure(const std::string& message)
@@ -370,36 +354,12 @@ namespace Graphite {
 		DrawSegments("##group", kGroupingSegments, m_Options.Group);
 
 		ImGui::Separator();
-		DrawOnlyMineRow(frame);
 		DrawToggleRow("Also commit message", "##alsoMessage", &m_Filter.AlsoMessage);
 
 		ImGui::Separator();
 		DrawAuthorsSection(frame);
 
 		ImGui::EndPopup();
-	}
-
-	void BranchListView::DrawOnlyMineRow(const BranchListFrame& frame)
-	{
-		const bool emailKnown = frame.Authors && frame.Authors->UserEmail.has_value();
-		const std::string userKey = emailKnown ? AuthorKeyOf(*frame.Authors->UserEmail) : std::string{};
-		bool onlyMine = emailKnown && m_Filter.Authors.contains(userKey);
-
-		ImGui::BeginDisabled(!emailKnown);
-		ImGui::BeginGroup();
-		const bool toggled = DrawToggleRow("Only mine", "##onlyMine", &onlyMine);
-		ImGui::EndGroup();
-		ImGui::EndDisabled();
-
-		if (!emailKnown && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-		{
-			ImGui::SetTooltip("%s", OnlyMineTooltipOf(frame).c_str());
-		}
-
-		if (toggled)
-		{
-			ToggleAuthor(userKey);
-		}
 	}
 
 	void BranchListView::DrawAuthorsSection(const BranchListFrame& frame)

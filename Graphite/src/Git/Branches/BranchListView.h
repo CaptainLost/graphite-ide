@@ -69,7 +69,6 @@ namespace Graphite {
 		void RebuildRowsWhenOutOfDate(const BranchListFrame& frame);
 
 		void DrawPanel(const BranchListFrame& frame);
-		void DrawOnlyMineRow(const BranchListFrame& frame);
 		void DrawAuthorsSection(const BranchListFrame& frame);
 		void DrawAuthorsHeading();
 		void DrawAuthorList(const std::vector<AuthorChoice>& shown);

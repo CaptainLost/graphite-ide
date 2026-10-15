@@ -819,18 +819,15 @@ TEST_CASE("Without a scrollbar author counts end at the panel's content edge")
 	CHECK(layout.RowsRight == doctest::Approx(layout.ContentRight));
 }
 
-TEST_CASE("Both toggles in the panel end at the right edge of its content")
+TEST_CASE("The Also commit message toggle ends at the right edge of the panel's content")
 {
 	ImGuiFrames frames;
-
-	Graphite::BranchAuthors answer;
-	answer.UserEmail = "Ann@example.com";
 
 	const bool notInFlight = false;
 	const Graphite::BranchListFrame frame =
 		FrameWithAuthors(Core::CreateRef<const std::vector<Core::Branch>>(
 							 std::vector<Core::Branch>{LocalBranchBy("by-ann", "Ann", 1)}),
-						 Core::CreateRef<const Graphite::BranchAuthors>(std::move(answer)), notInFlight);
+						 Core::CreateRef<const Graphite::BranchAuthors>(), notInFlight);
 
 	Graphite::BranchListState options;
 	Graphite::BranchListView list{options};
@@ -843,7 +840,6 @@ TEST_CASE("Both toggles in the panel end at the right edge of its content")
 	REQUIRE(OpenPopups() == 1);
 
 	ImGuiWindow& panel = PanelWindow();
-	const ImGuiID onlyMine = panel.GetID("##onlyMine");
 	const ImGuiID alsoMessage = panel.GetID("##alsoMessage");
 
 	const float contentRight = panel.Pos.x + panel.Size.x - ImGui::GetStyle().WindowPadding.x;
@@ -851,13 +847,9 @@ TEST_CASE("Both toggles in the panel end at the right edge of its content")
 	const float justInside = contentRight - 2.0f;
 	const float justOutside = contentRight + 2.0f;
 
-	const std::optional<float> onlyMineHeight = HeightWhereHovered(frames, draw, toggleMiddle, onlyMine);
 	const std::optional<float> alsoMessageHeight = HeightWhereHovered(frames, draw, toggleMiddle, alsoMessage);
-	REQUIRE(onlyMineHeight.has_value());
 	REQUIRE(alsoMessageHeight.has_value());
 
-	CHECK(HoveredAt(frames, draw, ImVec2(justInside, *onlyMineHeight)) == onlyMine);
-	CHECK(HoveredAt(frames, draw, ImVec2(justOutside, *onlyMineHeight)) != onlyMine);
 	CHECK(HoveredAt(frames, draw, ImVec2(justInside, *alsoMessageHeight)) == alsoMessage);
 	CHECK(HoveredAt(frames, draw, ImVec2(justOutside, *alsoMessageHeight)) != alsoMessage);
 }
