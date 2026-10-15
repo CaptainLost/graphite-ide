@@ -1172,7 +1172,9 @@ namespace Graphite {
 
 	void ChangesPanel::RenderDiscardConfirm()
 	{
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
 		const DiscardQuestion* asked = m_DiscardQuestion.Begin();
+		DialogLayout::AfterBegin();
 
 		if (asked == nullptr)
 		{
@@ -1181,18 +1183,18 @@ namespace Graphite {
 
 		const DiscardQuestion& question = *asked;
 
-		ImGui::TextUnformatted(question.Text.c_str());
-
-		ImGui::TextDisabled("This cannot be undone.");
+		DialogLayout::Text(question.Text);
+		DialogLayout::Gap();
+		DialogLayout::MutedText("This cannot be undone.");
 
 		if (!question.Plan.Dirty.empty())
 		{
-			ImGui::Separator();
-			ImGui::Text("%zu open file(s) have unsaved edits that would be lost.",
-						question.Plan.Dirty.size());
+			DialogLayout::Gap();
+			DialogLayout::Text(
+				std::format("{} open file(s) have unsaved edits that would be lost.", question.Plan.Dirty.size()));
 		}
 
-		ImGui::Separator();
+		DialogLayout::Gap();
 
 		// WARNING: Copied out before Answer(), which drops the payload `question` refers to.
 		const DiscardRequest request{.Restore = question.Plan.Restore,
@@ -1201,9 +1203,11 @@ namespace Graphite {
 		const std::filesystem::path subject = question.Subject;
 		const std::vector<std::filesystem::path> files = question.Plan.Files;
 
-		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+		const DialogLayout::ButtonSpec absentButton{};
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
+			absentButton, {.Label = "Discard", .Enabled = !m_Model.IsWriteInFlight()}, DangerColourOf(m_Scheme.Get()));
 
-		if (ImGui::Button("Discard"))
+		if (choice == DialogLayout::Choice::Destructive)
 		{
 			if (!files.empty())
 			{
@@ -1213,12 +1217,7 @@ namespace Graphite {
 			m_Model.RequestDiscard(request);
 			m_DiscardQuestion.Answer();
 		}
-
-		ImGui::EndDisabled();
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Cancel"))
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
 			m_DiscardQuestion.Answer();
 		}

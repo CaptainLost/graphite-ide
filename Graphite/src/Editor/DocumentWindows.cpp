@@ -16,6 +16,7 @@
 #include "Persistence/CaretRestore.h"
 
 #include "UI/ClipboardCopy.h"
+#include "UI/DialogLayout.h"
 #include "UI/TabWindow.h"
 #include "UI/ToastEvent.h"
 
@@ -47,6 +48,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <format>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -954,7 +956,9 @@ namespace Graphite {
 
 	void DocumentWindows::RenderSizeQuestion()
 	{
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
 		const LargeFileQuestion* asked = m_SizeQuestion.Begin();
+		DialogLayout::AfterBegin();
 
 		if (asked == nullptr)
 		{
@@ -963,27 +967,26 @@ namespace Graphite {
 
 		// WARNING: Copied out before Answer(), which drops the payload `asked` points at.
 		const LargeFileQuestion question = *asked;
-		const std::uint64_t size = question.Size;
 
-		if (size == 0)
+		if (question.Size == 0)
 		{
-			ImGui::TextUnformatted("This file can no longer be read. Load it anyway?");
+			DialogLayout::Text("This file can no longer be read. Load it anyway?");
 		}
 		else
 		{
-			ImGui::Text("This file is %s. Load it anyway?", Core::FormatWholeMegabytes(size).c_str());
+			DialogLayout::Text(std::format("This file is {}. Load it anyway?", Core::FormatWholeMegabytes(question.Size)));
 		}
-		ImGui::Separator();
 
-		if (ImGui::Button("Load"))
+		DialogLayout::Gap();
+
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow({.Label = "Load"});
+
+		if (choice == DialogLayout::Choice::Safe)
 		{
 			LoadConfirmed(question.Path, question.Permanent);
 			m_SizeQuestion.Answer();
 		}
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Cancel"))
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
 			m_SizeQuestion.Answer();
 		}
@@ -991,9 +994,11 @@ namespace Graphite {
 		m_SizeQuestion.End();
 	}
 
-	void DocumentWindows::RenderReloadConflict()
+	void DocumentWindows::RenderReloadConflict(const ImVec4& danger)
 	{
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
 		const std::filesystem::path* asked = m_ReloadConflict.Begin();
+		DialogLayout::AfterBegin();
 
 		if (asked == nullptr)
 		{
@@ -1003,10 +1008,18 @@ namespace Graphite {
 		// WARNING: Copied out before Answer(), which drops the payload `asked` points at.
 		const std::filesystem::path path = *asked;
 
-		ImGui::Text("%s changed on disk, and this tab has unsaved changes.", FileNameOf(path).c_str());
-		ImGui::Separator();
+		DialogLayout::Text(std::format("{} changed on disk, and this tab has unsaved changes.", FileNameOf(path)));
+		DialogLayout::Gap();
+		DialogLayout::MutedText("Reloading loses the unsaved changes.");
+		DialogLayout::Gap();
 
-		if (ImGui::Button("Reload from disk (lose my changes)"))
+		// WARNING: Keeping your version is the Cancel slot, so Escape keeps it rather than leaving the
+		// conflict unanswered.
+		const DialogLayout::ButtonSpec absentButton{};
+		const DialogLayout::Choice choice =
+			DialogLayout::ButtonRow(absentButton, {.Label = "Reload from Disk"}, danger, absentButton, "Keep My Version");
+
+		if (choice == DialogLayout::Choice::Destructive)
 		{
 			if (const std::optional<std::size_t> index = m_Documents.Find(path))
 			{
@@ -1015,10 +1028,7 @@ namespace Graphite {
 
 			m_ReloadConflict.Answer();
 		}
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Keep my version"))
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
 			if (const std::optional<std::size_t> index = m_Documents.Find(path); index && m_Documents.At(*index).Document)
 			{
@@ -1031,9 +1041,11 @@ namespace Graphite {
 		m_ReloadConflict.End();
 	}
 
-	void DocumentWindows::RenderOverwriteConfirm()
+	void DocumentWindows::RenderOverwriteConfirm(const ImVec4& danger)
 	{
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
 		const std::filesystem::path* asked = m_OverwriteConfirm.Begin();
+		DialogLayout::AfterBegin();
 
 		if (asked == nullptr)
 		{
@@ -1043,10 +1055,13 @@ namespace Graphite {
 		// WARNING: Copied out before Answer(), which drops the payload `asked` points at.
 		const std::filesystem::path path = *asked;
 
-		ImGui::Text("%s changed on disk since it was opened. Overwrite it?", FileNameOf(path).c_str());
-		ImGui::Separator();
+		DialogLayout::Text(std::format("{} changed on disk since it was opened. Overwrite it?", FileNameOf(path)));
+		DialogLayout::Gap();
 
-		if (ImGui::Button("Overwrite"))
+		const DialogLayout::ButtonSpec absentButton{};
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow(absentButton, {.Label = "Overwrite"}, danger);
+
+		if (choice == DialogLayout::Choice::Destructive)
 		{
 			if (const std::optional<std::size_t> index = m_Documents.Find(path))
 			{
@@ -1055,10 +1070,7 @@ namespace Graphite {
 
 			m_OverwriteConfirm.Answer();
 		}
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Cancel"))
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
 			m_OverwriteConfirm.Answer();
 		}
@@ -1087,10 +1099,12 @@ namespace Graphite {
 		return false;
 	}
 
-	void DocumentWindows::RenderCloseConfirm()
+	void DocumentWindows::RenderCloseConfirm(const ImVec4& danger)
 	{
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
 		const std::filesystem::path* asked = m_CloseConfirm.Begin(
 			[this](const std::filesystem::path& candidate) { return StillNeedsCloseConfirmation(candidate); });
+		DialogLayout::AfterBegin();
 
 		if (asked == nullptr)
 		{
@@ -1100,36 +1114,36 @@ namespace Graphite {
 		// WARNING: Copied out before Answer(), which drops the payload `asked` points at.
 		const std::filesystem::path path = *asked;
 
-		ImGui::Text("Save changes to %s before closing?", FileNameOf(path).c_str());
-		ImGui::Separator();
+		DialogLayout::Text(std::format("Save changes to {} before closing?", FileNameOf(path)));
+		DialogLayout::Gap();
 
-		if (ImGui::Button("Save"))
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow({.Label = "Save"}, {.Label = "Discard"}, danger);
+
+		if (choice == DialogLayout::Choice::Safe)
 		{
-			bool saved = true;
+			const std::optional<std::size_t> index = m_Documents.Find(path);
+			const bool changedOnDisk =
+				index && m_Documents.At(*index).Document && m_Documents.At(*index).Document->CheckChangedOnDisk();
 
-			if (const std::optional<std::size_t> index = m_Documents.Find(path))
+			// WARNING: Enter answers Save, so a file another program has changed is asked about, as any other
+			// save asks, rather than written over by one key.
+			if (changedOnDisk)
 			{
-				saved = SaveOne(*index);
+				m_CloseConfirm.Answer();
+				m_OverwriteConfirm.AskOnce(path);
 			}
-
-			if (saved)
+			else if (!index || SaveOne(*index))
 			{
 				CloseIfOpen(path);
 				m_CloseConfirm.Answer();
 			}
 		}
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Discard"))
+		else if (choice == DialogLayout::Choice::Destructive)
 		{
 			CloseIfOpen(path);
 			m_CloseConfirm.Answer();
 		}
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Cancel"))
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
 			m_CloseConfirm.Answer();
 		}
@@ -2204,10 +2218,12 @@ namespace Graphite {
 
 		CollectServerAnswers(referencesPanel);
 
+		const ImVec4 danger = DangerColourOf(frame.Scheme);
+
 		RenderSizeQuestion();
-		RenderReloadConflict();
-		RenderOverwriteConfirm();
-		RenderCloseConfirm();
+		RenderReloadConflict(danger);
+		RenderOverwriteConfirm(danger);
+		RenderCloseConfirm(danger);
 		RenderDefinitionChoices(frame.Scheme, frame.Indent.Width);
 
 		RenderDocumentWindows(context, frame.FontSize, frame.Indent, frame.FallbackDockNode,

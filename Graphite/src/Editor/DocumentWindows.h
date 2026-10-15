@@ -302,11 +302,11 @@ namespace Graphite {
 
 		void RenderSizeQuestion();
 
-		void RenderReloadConflict();
+		void RenderReloadConflict(const ImVec4& danger);
 
-		void RenderOverwriteConfirm();
+		void RenderOverwriteConfirm(const ImVec4& danger);
 
-		void RenderCloseConfirm();
+		void RenderCloseConfirm(const ImVec4& danger);
 
 		bool StillNeedsCloseConfirmation(const std::filesystem::path& path);
 

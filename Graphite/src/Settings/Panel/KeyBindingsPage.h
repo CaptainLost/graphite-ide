@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Command/Chord.h"
+#include "Theme/ActiveScheme.h"
 #include "UI/ModalQuestion.h"
 #include "Settings/Panel/SettingsPage.h"
 
@@ -24,7 +25,8 @@ namespace Graphite {
 	class KeyBindingsPage final : public SettingsPage
 	{
 	public:
-		KeyBindingsPage(Core::CommandRegistry& commands, Core::Keymap& keys, ModalGate& modals, std::function<void()> onChanged);
+		KeyBindingsPage(Core::CommandRegistry& commands, Core::Keymap& keys, ModalGate& modals, const ActiveScheme& scheme,
+						std::function<void()> onChanged);
 
 		std::string_view GetId() const override { return "keyBindings"; }
 
@@ -92,6 +94,7 @@ namespace Graphite {
 
 		Core::CommandRegistry& m_Commands;
 		Core::Keymap& m_Keys;
+		const ActiveScheme& m_Scheme;
 		std::function<void()> m_OnChanged;
 
 		bool m_WasFocusedLastFrame = false;

@@ -22,7 +22,7 @@ namespace Graphite {
 	{
 		SettingsGroup general{.Title = "General"};
 		general.Pages.push_back(Core::CreateScope<AppearancePage>(sources.Scheme, sources.Store, sources.Modals, sources.Events, sources.ThemesDirectory));
-		general.Pages.push_back(Core::CreateScope<KeyBindingsPage>(sources.Commands, sources.Keys, sources.Modals, sources.OnKeyBindingsChanged));
+		general.Pages.push_back(Core::CreateScope<KeyBindingsPage>(sources.Commands, sources.Keys, sources.Modals, sources.Scheme, sources.OnKeyBindingsChanged));
 		general.Pages.push_back(Core::CreateScope<LanguageServersPage>(sources.Analysis, sources.Store, sources.Installs, sources.Services));
 		general.Pages.push_back(Core::CreateScope<TrustedFoldersPage>(sources.Trust));
 

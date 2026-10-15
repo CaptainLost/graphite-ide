@@ -191,15 +191,14 @@ namespace Graphite {
 
 	public:
 		static Choice ButtonRow(ButtonSpec safe, ButtonSpec destructive, const ImVec4& danger,
-								ButtonSpec alternative = {})
+								ButtonSpec alternative = {}, const char* cancelLabel = "Cancel")
 		{
-			constexpr const char* cancelLabel = "Cancel";
 			constexpr bool kHideTextAfterDoubleHash = true;
 			constexpr bool kKeyRepeats = false;
 
 			const ImGuiStyle& style = ImGui::GetStyle();
 
-			float labelWidth = ImGui::CalcTextSize(cancelLabel).x;
+			float labelWidth = ImGui::CalcTextSize(cancelLabel, nullptr, kHideTextAfterDoubleHash).x;
 			int buttonCount = 1;
 
 			for (const ButtonSpec& spec : {safe, destructive, alternative})
@@ -320,6 +319,26 @@ namespace Graphite {
 			const ImVec4 dangerNeverDrawn{};
 
 			return ButtonRow(safe, absentDestructive, dangerNeverDrawn);
+		}
+
+		static bool AcknowledgeRow(const char* label)
+		{
+			constexpr bool kKeyRepeats = false;
+
+			const ButtonSpec absentButton{};
+			const ImVec4 dangerNeverDrawn{};
+
+			if (ButtonRow(absentButton, absentButton, dangerNeverDrawn, absentButton, label) == Choice::Cancel)
+			{
+				return true;
+			}
+
+			const bool dialogHasKeyboard = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+										   !ImGui::IsWindowAppearing();
+			const bool enterPressed =
+				ImGui::IsKeyPressed(ImGuiKey_Enter, kKeyRepeats) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, kKeyRepeats);
+
+			return dialogHasKeyboard && enterPressed;
 		}
 	};
 }

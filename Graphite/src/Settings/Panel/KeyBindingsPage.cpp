@@ -14,6 +14,8 @@
 #include "Core/ImGui/TextInput.h"
 #include "Settings/Panel/SettingsLayout.h"
 #include "Settings/Panel/SettingsSearch.h"
+#include "Theme/Palettes.h"
+#include "UI/DialogLayout.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -21,6 +23,7 @@
 #include <array>
 #include <cfloat>
 #include <cstddef>
+#include <format>
 #include <span>
 #include <string>
 #include <string_view>
@@ -228,8 +231,9 @@ namespace Graphite {
 		}
 	}
 
-	KeyBindingsPage::KeyBindingsPage(Core::CommandRegistry& commands, Core::Keymap& keys, ModalGate& modals, std::function<void()> onChanged)
-		: m_Commands(commands), m_Keys(keys), m_OnChanged(std::move(onChanged)), m_ConflictQuestion(modals, kConflictPopup),
+	KeyBindingsPage::KeyBindingsPage(Core::CommandRegistry& commands, Core::Keymap& keys, ModalGate& modals,
+										const ActiveScheme& scheme, std::function<void()> onChanged)
+		: m_Commands(commands), m_Keys(keys), m_Scheme(scheme), m_OnChanged(std::move(onChanged)), m_ConflictQuestion(modals, kConflictPopup),
 		  m_RestoreQuestion(modals, kRestorePopup)
 	{
 	}
@@ -610,17 +614,23 @@ namespace Graphite {
 	// per-row and per-cell ids.
 	void KeyBindingsPage::RenderConflictQuestion()
 	{
-		if (const ContestedChord* asked = m_ConflictQuestion.Begin())
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
+		const ContestedChord* asked = m_ConflictQuestion.Begin();
+		DialogLayout::AfterBegin();
+
+		if (asked != nullptr)
 		{
-			const ContestedChord& conflict = *asked;
+			// WARNING: Answer releases the question's payload, so the conflict is copied out first.
+			const ContestedChord conflict = *asked;
 
 			const bool isRefusal = !conflict.Reason.empty();
 
 			if (isRefusal)
 			{
-				ImGui::Text("%s cannot be bound: %s.", conflict.Chord.ToString().c_str(), conflict.Reason.c_str());
+				DialogLayout::Text(std::format("{} cannot be bound: {}.", conflict.Chord.ToString(), conflict.Reason));
+				DialogLayout::Gap();
 
-				if (ImGui::Button("OK"))
+				if (DialogLayout::AcknowledgeRow("OK"))
 				{
 					m_CapturingCommandId.clear();
 					m_IsConflictAwaitingAnswer = false;
@@ -634,23 +644,20 @@ namespace Graphite {
 			const Core::Command* owner = m_Commands.Find(conflict.OwnerCommandId);
 			const std::string ownerLabel = owner != nullptr ? ListLabelOf(*owner) : conflict.OwnerCommandId;
 
-			ImGui::Text("%s is already bound to %s.", conflict.Chord.ToString().c_str(), ownerLabel.c_str());
+			DialogLayout::Text(std::format("{} is already bound to {}.", conflict.Chord.ToString(), ownerLabel));
+			DialogLayout::Gap();
 
-			if (ImGui::Button("Take it"))
+			const DialogLayout::Choice choice = DialogLayout::ButtonRow({.Label = "Take It"});
+
+			if (choice == DialogLayout::Choice::Safe)
 			{
-				// WARNING: Answer releases the question's payload, so the conflict is copied out first.
-				const ContestedChord taken = conflict;
-
-				TakeFromOwner(taken);
+				TakeFromOwner(conflict);
 				m_IsConflictAwaitingAnswer = false;
 				m_ConflictQuestion.Answer();
 
-				APP_INFO("'{}' took {} from '{}'", taken.CommandId, taken.Chord.ToString(), taken.OwnerCommandId);
+				APP_INFO("'{}' took {} from '{}'", conflict.CommandId, conflict.Chord.ToString(), conflict.OwnerCommandId);
 			}
-
-			ImGui::SameLine();
-
-			if (ImGui::Button("Cancel"))
+			else if (choice == DialogLayout::Choice::Cancel)
 			{
 				m_CapturingCommandId.clear();
 				m_IsConflictAwaitingAnswer = false;
@@ -672,14 +679,23 @@ namespace Graphite {
 
 	void KeyBindingsPage::RenderRestoreQuestion()
 	{
-		if (!m_RestoreQuestion.Begin())
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
+		const bool open = m_RestoreQuestion.Begin() != nullptr;
+		DialogLayout::AfterBegin();
+
+		if (!open)
 		{
 			return;
 		}
 
-		ImGui::TextUnformatted("Every shortcut you changed goes back to its default.");
+		DialogLayout::Text("Every shortcut you changed goes back to its default.");
+		DialogLayout::Gap();
 
-		if (ImGui::Button("Restore"))
+		const DialogLayout::ButtonSpec absentButton{};
+		const DialogLayout::Choice choice =
+			DialogLayout::ButtonRow(absentButton, {.Label = "Restore"}, DangerColourOf(m_Scheme.Get()));
+
+		if (choice == DialogLayout::Choice::Destructive)
 		{
 			m_Keys.ClearOverrides();
 			m_OnChanged();
@@ -687,10 +703,7 @@ namespace Graphite {
 
 			APP_INFO("All key bindings restored to their defaults");
 		}
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Cancel"))
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
 			m_RestoreQuestion.Answer();
 		}

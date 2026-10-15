@@ -28,7 +28,8 @@ namespace {
 		Core::Keymap Keys;
 		Graphite::ModalGate Modals;
 		std::size_t Changes = 0;
-		Graphite::KeyBindingsPage Page{Commands, Keys, Modals, [this] { ++Changes; }};
+		Graphite::ActiveScheme Scheme;
+		Graphite::KeyBindingsPage Page{Commands, Keys, Modals, Scheme, [this] { ++Changes; }};
 		SettingsPageFrames Frames{Page};
 
 		KeyBindingsScreen()

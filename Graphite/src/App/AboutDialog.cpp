@@ -83,15 +83,7 @@ namespace Graphite {
 		ImGui::EndChild();
 		DialogLayout::Gap();
 
-		const float buttonWidth = Core::Scaled(DialogLayout::kButtonMinWidth);
-		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - buttonWidth);
-
-		const bool repeatWhileHeld = false;
-		const bool escapePressed = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-								   !ImGui::IsWindowAppearing() &&
-								   ImGui::IsKeyPressed(ImGuiKey_Escape, repeatWhileHeld);
-
-		if (ImGui::Button("Close", ImVec2(buttonWidth, 0.0f)) || escapePressed)
+		if (DialogLayout::AcknowledgeRow("Close"))
 		{
 			m_Question.Answer();
 		}

@@ -37,7 +37,6 @@ namespace Graphite {
 		}
 	}
 
-
 	void GitView::RenderDetachDialog()
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kWideWidth);

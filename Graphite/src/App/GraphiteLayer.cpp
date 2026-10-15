@@ -56,6 +56,7 @@
 
 #include "Core/Base/Log.h"
 
+#include "Core/ImGui/Icons.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/ToastStyle.h"
 #include "Core/ImGui/UiScale.h"
@@ -1411,7 +1412,9 @@ namespace Graphite {
 
 	void GraphiteLayer::RenderDropConfirm()
 	{
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
 		const DroppedWorkspace* asked = m_DropQuestion.Begin();
+		DialogLayout::AfterBegin();
 
 		if (asked == nullptr)
 		{
@@ -1421,20 +1424,19 @@ namespace Graphite {
 		// WARNING: Copy the dropped workspace out before anything is opened: Answer clears what `asked` points at.
 		const DroppedWorkspace dropped = *asked;
 
-		ImGui::TextUnformatted("Open this in place of the workspace now open?");
-		ImGui::Separator();
-		ImGui::TextUnformatted(Core::ToUtf8(dropped.Root).c_str());
-		ImGui::Separator();
+		DialogLayout::Text("Open this in place of the workspace now open?");
+		DialogLayout::Gap();
+		DialogLayout::MutedText(Core::ToUtf8(dropped.Root));
+		DialogLayout::Gap();
 
-		if (ImGui::Button("Open"))
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow({.Label = "Open"});
+
+		if (choice == DialogLayout::Choice::Safe)
 		{
 			OpenDropped(dropped);
 			m_DropQuestion.Answer();
 		}
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Cancel"))
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
 			m_DropQuestion.Answer();
 		}
@@ -1556,23 +1558,46 @@ namespace Graphite {
 	}
 
 	void GraphiteLayer::ListModifiedDocuments() const
-
 	{
+		std::vector<std::filesystem::path> modified;
+
 		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
 		{
 			const Core::OpenItem& item = m_Documents.At(index);
 
 			if (item.Document && item.Document->IsModified())
 			{
-				ImGui::BulletText("%s", Core::ToUtf8(item.Path.filename()).c_str());
+				modified.push_back(item.Path);
 			}
 		}
+
+		constexpr std::size_t kNoHeaders = 0;
+		const std::string noTag;
+
+		if (DialogLayout::BeginFileList("close.modified", modified.size(), kNoHeaders))
+		{
+			for (const std::filesystem::path& path : modified)
+			{
+				DialogLayout::FileRow(Core::IconForExtension(Core::ToUtf8(path.extension())), Core::ToUtf8(path.filename()),
+									  noTag);
+			}
+
+			// WARNING: The child must end on an item even should the list be empty.
+			if (modified.empty())
+			{
+				ImGui::Dummy(ImVec2(0.0f, 0.0f));
+			}
+		}
+
+		DialogLayout::EndFileList();
 	}
 
 	void GraphiteLayer::RenderCloseConfirm()
 	{
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
 		const ClosePurpose* asked =
 			m_CloseQuestion.Begin([this](ClosePurpose purpose) { return ConfirmationStillNeeded(purpose); });
+		DialogLayout::AfterBegin();
 
 		if (asked == nullptr)
 		{
@@ -1582,14 +1607,17 @@ namespace Graphite {
 		// WARNING: Copied out before Answer(), which drops the payload `asked` points at.
 		const ClosePurpose purpose = *asked;
 
-		ImGui::TextUnformatted("These files have unsaved changes:");
-		ImGui::Separator();
+		DialogLayout::Text("These files have unsaved changes:");
+		DialogLayout::Gap();
 
 		ListModifiedDocuments();
 
-		ImGui::Separator();
+		DialogLayout::Gap();
 
-		if (ImGui::Button("Save All"))
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
+			{.Label = "Save All"}, {.Label = "Discard All"}, DangerColourOf(m_ActiveScheme.Get()));
+
+		if (choice == DialogLayout::Choice::Safe)
 		{
 			// WARNING: SaveAllModified returns false for a stopped batch and for one that skipped a conflicted document, so the modal stays up rather than closing on a promise it did not keep.
 			if (m_DocumentWindows.SaveAllModified())
@@ -1598,18 +1626,12 @@ namespace Graphite {
 				m_CloseQuestion.Answer();
 			}
 		}
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Discard All"))
+		else if (choice == DialogLayout::Choice::Destructive)
 		{
 			FinishClose(purpose);
 			m_CloseQuestion.Answer();
 		}
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Cancel"))
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
 			m_CloseQuestion.Answer();
 		}
