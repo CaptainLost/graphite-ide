@@ -103,6 +103,8 @@ namespace Graphite {
 
 	std::string AuthorChoiceText(const AuthorChoice& choice);
 
+	std::string AuthorsFailureText(std::string_view message);
+
 	std::string BranchTooltipText(const Core::Branch& branch, std::string_view label,
 								  const std::vector<BranchAuthor>& authors, std::chrono::minutes localOffset);
 }

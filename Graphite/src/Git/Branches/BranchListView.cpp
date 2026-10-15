@@ -26,6 +26,8 @@ namespace Graphite {
 		constexpr const char* kMessageChip = "Message";
 		constexpr const char* kMessageChipId = "##messageChip";
 		constexpr const char* kReadingAuthors = "Reading authors";
+		constexpr const char* kSetUserEmail = "Set user.email in git config to use this";
+		constexpr float kFailureWidthInFontSizes = 24.0f;
 		constexpr double kSecondsBeforeLoaderShows = 0.2;
 
 		// True once the wait has lasted long enough for a loader; until then asks for the frame on
@@ -58,6 +60,21 @@ namespace Graphite {
 		void EmptyRow()
 		{
 			ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
+		}
+
+		std::string OnlyMineTooltipOf(const BranchListFrame& frame)
+		{
+			if (frame.Authors)
+			{
+				return kSetUserEmail;
+			}
+
+			if (frame.AuthorsFailure.has_value())
+			{
+				return AuthorsFailureText(*frame.AuthorsFailure);
+			}
+
+			return kReadingAuthors;
 		}
 	}
 
@@ -124,7 +141,7 @@ namespace Graphite {
 			RebuildRowsWhenOutOfDate(frame);
 		}
 
-		if (frame.Authors)
+		if (frame.Authors || frame.AuthorsFailure.has_value())
 		{
 			m_AuthorsMenuWaitingSince.reset();
 		}
@@ -209,6 +226,25 @@ namespace Graphite {
 			return;
 		}
 
+		if (!frame.Authors && frame.AuthorsFailure.has_value())
+		{
+			const std::string failure = AuthorsFailureText(*frame.AuthorsFailure);
+
+			// WARNING: A menu grows to fit what it holds, so the line is cut to a fixed width; cut to
+			// the menu's own width it would never grow past its first frame.
+			bool cut = false;
+			const std::string fitted = FitToWidth(failure, ImGui::GetFontSize() * kFailureWidthInFontSizes, &cut);
+			ImGui::TextDisabled("%s", fitted.c_str());
+
+			if (cut)
+			{
+				ImGui::SetItemTooltip("%s", failure.c_str());
+			}
+
+			ImGui::EndMenu();
+			return;
+		}
+
 		if (!frame.Authors)
 		{
 			if (LoaderIsDue(m_AuthorsMenuWaitingSince))
@@ -273,7 +309,7 @@ namespace Graphite {
 
 		if (!emailKnown && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 		{
-			ImGui::SetTooltip("%s", frame.Authors ? "Set user.email in git config to use this" : kReadingAuthors);
+			ImGui::SetTooltip("%s", OnlyMineTooltipOf(frame).c_str());
 		}
 	}
 

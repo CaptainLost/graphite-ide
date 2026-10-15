@@ -346,7 +346,7 @@ namespace Graphite {
 			if (input.AuthorsFailure.has_value())
 			{
 				return BranchRow{.Kind = BranchRowKind::Failed, .Section = section,
-								 .Label = std::string{kFailurePrefix} + *input.AuthorsFailure};
+								 .Label = AuthorsFailureText(*input.AuthorsFailure)};
 			}
 
 			return BranchRow{.Kind = BranchRowKind::Loading, .Section = section, .Label = kLoadingLabel};
@@ -503,6 +503,11 @@ namespace Graphite {
 	std::string AuthorChoiceText(const AuthorChoice& choice)
 	{
 		return std::format("{}{} ({})", choice.Name, choice.IsUser ? kUserSuffix : "", choice.Branches);
+	}
+
+	std::string AuthorsFailureText(std::string_view message)
+	{
+		return std::string{kFailurePrefix} + std::string{message};
 	}
 
 	std::string BranchTooltipText(const Core::Branch& branch, std::string_view label,
