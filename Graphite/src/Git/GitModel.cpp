@@ -23,6 +23,42 @@ namespace Graphite {
 
 			return false;
 		}
+
+		Core::Result<BranchAuthors> ReadBranchAuthors(GitPort& port, const Core::OwnAuthorsRequest& request)
+		{
+			BranchAuthors authors;
+
+			Core::Result<std::optional<std::string>> email = port.ReadUserEmail();
+
+			if (!email.HasValue())
+			{
+				return email.GetError();
+			}
+
+			authors.UserEmail = std::move(email).GetValue();
+
+			// WARNING: Without a trunk every commit a tip reaches would count as its own, naming
+			// everyone in the history; each branch then counts its tip's author instead.
+			if (request.Hidden.empty())
+			{
+				return authors;
+			}
+
+			Core::Result<std::vector<Core::TipAuthors>> answers = port.QueryOwnAuthors(request);
+
+			if (!answers.HasValue())
+			{
+				return answers.GetError();
+			}
+
+			for (Core::TipAuthors& answer : std::move(answers).GetValue())
+			{
+				const Core::Oid tip = answer.Tip;
+				authors.ByTip.emplace(tip, std::move(answer));
+			}
+
+			return authors;
+		}
 	}
 
 	GitModel::GitModel(GitPort& port, JobSubmitter submit)
@@ -45,6 +81,8 @@ namespace Graphite {
 		m_Status.Clear();
 		m_WorkingDirectory.clear();
 		m_Branches.Clear();
+		m_BranchAuthors.Clear();
+		m_LastAuthorsRequest.reset();
 		m_Stashes.Clear();
 		m_Head.Clear();
 		m_Log.Clear();
@@ -168,7 +206,39 @@ namespace Graphite {
 			Core::Result<std::vector<Core::Branch>> result = m_Port.QueryBranches();
 
 			Deliver([this, generation, result = std::move(result)]() mutable {
-				m_Branches.Land(generation, std::move(result));
+				if (m_Branches.Land(generation, std::move(result)) == SlotLanding::Applied)
+				{
+					RequestBranchAuthorsWhenTipsMoved();
+				}
+			});
+		});
+	}
+
+	void GitModel::RequestBranchAuthorsWhenTipsMoved()
+	{
+		const Core::Ref<const std::vector<Core::Branch>> branches = m_Branches.Get();
+		Core::OwnAuthorsRequest request = OwnAuthorsRequestFor(*branches);
+
+		if (m_LastAuthorsRequest == request)
+		{
+			return;
+		}
+
+		m_LastAuthorsRequest = request;
+
+		const std::uint64_t generation = m_BranchAuthors.Begin();
+
+		m_Submit([this, generation, request = std::move(request)]() {
+			Core::Result<BranchAuthors> result = ReadBranchAuthors(m_Port, request);
+
+			Deliver([this, generation, result = std::move(result)]() mutable {
+				const SlotLanding landing = m_BranchAuthors.Land(generation, std::move(result));
+
+				// WARNING: A failed read is forgotten, or it would stand until some tip moves.
+				if (landing == SlotLanding::Failed)
+				{
+					m_LastAuthorsRequest.reset();
+				}
 			});
 		});
 	}

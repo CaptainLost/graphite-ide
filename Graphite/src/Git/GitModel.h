@@ -5,8 +5,10 @@
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Timestep.h"
 #include "Core/Events/EventBus.h"
+#include "Core/Git/OwnAuthors.h"
 #include "Core/Jobs/JobSubmitter.h"
 #include "Git/Debouncer.h"
+#include "Git/Branches/BranchAuthors.h"
 #include "Git/DeliveryInbox.h"
 #include "Git/Diff/FileTexts.h"
 #include "Git/GenerationSlot.h"
@@ -131,6 +133,13 @@ namespace Graphite {
 
 		Core::Ref<const Core::WorkingTreeStatus> GetStatus() const { return m_Status.Get(); }
 		Core::Ref<const std::vector<Core::Branch>> GetBranches() const { return m_Branches.Get(); }
+
+		Core::Ref<const BranchAuthors> GetBranchAuthors() const { return m_BranchAuthors.Get(); }
+
+		const std::optional<Core::Error>& GetBranchAuthorsError() const { return m_BranchAuthors.GetError(); }
+
+		const std::optional<Core::Error>& GetBranchesError() const { return m_Branches.GetError(); }
+
 		Core::Ref<const std::vector<Core::StashEntry>> GetStashes() const { return m_Stashes.Get(); }
 		Core::Ref<const Core::HeadState> GetHead() const { return m_Head.Get(); }
 		Core::Ref<const Core::LogPage> GetLog() const { return m_Log.Get(); }
@@ -273,6 +282,8 @@ namespace Graphite {
 
 		void PumpWorkingTreeDiff();
 
+		void RequestBranchAuthorsWhenTipsMoved();
+
 		bool AnswersWantedWorkingTreeDiff() const
 		{
 			return m_WorkingTreeDiffFor.has_value() && m_WorkingTreeDiffFor == m_WantedWorkingTreeDiff;
@@ -389,6 +400,8 @@ namespace Graphite {
 
 		GenerationSlot<Core::WorkingTreeStatus> m_Status;
 		GenerationSlot<std::vector<Core::Branch>> m_Branches;
+		GenerationSlot<BranchAuthors> m_BranchAuthors;
+		std::optional<Core::OwnAuthorsRequest> m_LastAuthorsRequest;
 		GenerationSlot<std::vector<Core::StashEntry>> m_Stashes;
 		GenerationSlot<Core::HeadState> m_Head;
 		GenerationSlot<Core::LogPage> m_Log;

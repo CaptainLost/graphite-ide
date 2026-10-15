@@ -99,6 +99,25 @@ namespace {
 			return Branches;
 		}
 
+		Core::Result<std::vector<Core::TipAuthors>> QueryOwnAuthors(const Core::OwnAuthorsRequest& request) override
+		{
+			++OwnAuthorsCalls;
+			LastOwnAuthorsRequest = request;
+
+			if (FailOwnAuthors)
+			{
+				return PortFailure();
+			}
+
+			return OwnAuthors;
+		}
+
+		Core::Result<std::optional<std::string>> ReadUserEmail() override
+		{
+			++EmailCalls;
+			return UserEmail;
+		}
+
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) override
 		{
 			++LogCalls;
@@ -306,6 +325,12 @@ namespace {
 		Core::WorkingTreeStatus Status;
 		std::filesystem::path WorkingDirectory = "C:/repo";
 		std::vector<Core::Branch> Branches;
+		std::vector<Core::TipAuthors> OwnAuthors;
+		std::optional<std::string> UserEmail;
+		bool FailOwnAuthors = false;
+		int OwnAuthorsCalls = 0;
+		int EmailCalls = 0;
+		std::optional<Core::OwnAuthorsRequest> LastOwnAuthorsRequest;
 		Core::HeadState Head;
 		bool FailHead = false;
 		Core::LogPage Log;
@@ -390,6 +415,42 @@ namespace {
 		Graphite::GitModel& model, const Core::Oid& commit, const char* path)
 	{
 		model.RequestTextsFor(commit, path, path, path);
+	}
+
+	constexpr std::uint8_t kMainTipByte = 1;
+	constexpr std::uint8_t kOriginMainTipByte = 2;
+	constexpr std::uint8_t kFeatureTipByte = 3;
+	constexpr std::uint8_t kMovedFeatureTipByte = 4;
+
+	std::vector<Core::Branch> TrunkAndFeature(std::uint8_t featureTipByte)
+	{
+		Core::Branch main;
+		main.Name = "main";
+		main.FullName = "refs/heads/main";
+		main.IsHead = true;
+		main.Upstream = "origin/main";
+		main.Tip = OidWithFirstByte(kMainTipByte);
+
+		Core::Branch originMain;
+		originMain.Name = "origin/main";
+		originMain.FullName = "refs/remotes/origin/main";
+		originMain.Kind = Core::RefKind::Remote;
+		originMain.IsRemoteDefault = true;
+		originMain.Tip = OidWithFirstByte(kOriginMainTipByte);
+
+		Core::Branch feature;
+		feature.Name = "feature";
+		feature.FullName = "refs/heads/feature";
+		feature.Tip = OidWithFirstByte(featureTipByte);
+
+		return {main, originMain, feature};
+	}
+
+	void ListBranchesAndLandAuthors(Graphite::GitModel& model)
+	{
+		model.RequestBranches();
+		model.OnUpdate(Core::Timestep{kFrameSeconds});
+		model.OnUpdate(Core::Timestep{kFrameSeconds});
 	}
 }
 
@@ -2248,4 +2309,146 @@ TEST_CASE("A stash's diff is asked for as a stash's, so its untracked files are 
 
 	CHECK(port.DiffTargets ==
 		  std::vector<Core::DiffTarget>{Core::DiffTarget::StashToParent, Core::DiffTarget::CommitToParent});
+}
+
+TEST_CASE("Branch authors are asked once a branch list lands and read an update later")
+{
+	FakePort port;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+	port.UserEmail = "ann@example.com";
+	port.OwnAuthors = {Core::TipAuthors{.Tip = OidWithFirstByte(kFeatureTipByte),
+										.Authors = {Core::Signature{.Name = "Ann", .Email = "ann@example.com"}},
+										.OwnCommits = 1}};
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(model.GetBranchAuthors() == nullptr);
+
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	REQUIRE(model.GetBranchAuthors() != nullptr);
+	CHECK(model.GetBranchAuthors()->ByTip.contains(OidWithFirstByte(kFeatureTipByte)));
+	CHECK(model.GetBranchAuthors()->UserEmail == std::optional<std::string>{"ann@example.com"});
+
+	REQUIRE(port.LastOwnAuthorsRequest.has_value());
+	CHECK(port.LastOwnAuthorsRequest->Hidden ==
+		  std::vector<Core::Oid>{OidWithFirstByte(kMainTipByte), OidWithFirstByte(kOriginMainTipByte)});
+}
+
+TEST_CASE("A listing whose tips did not move asks the authors nothing")
+{
+	FakePort port;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	ListBranchesAndLandAuthors(model);
+	ListBranchesAndLandAuthors(model);
+
+	CHECK(port.OwnAuthorsCalls == 1);
+}
+
+TEST_CASE("A moved tip asks the authors again")
+{
+	FakePort port;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	ListBranchesAndLandAuthors(model);
+
+	port.Branches = TrunkAndFeature(kMovedFeatureTipByte);
+	ListBranchesAndLandAuthors(model);
+
+	CHECK(port.OwnAuthorsCalls == 2);
+}
+
+TEST_CASE("Without a trunk the authors are answered without the own-commit query")
+{
+	FakePort port;
+	port.Branches = {TrunkAndFeature(kFeatureTipByte).back()};
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	ListBranchesAndLandAuthors(model);
+
+	CHECK(port.OwnAuthorsCalls == 0);
+	CHECK(port.EmailCalls == 1);
+	REQUIRE(model.GetBranchAuthors() != nullptr);
+	CHECK(model.GetBranchAuthors()->ByTip.empty());
+}
+
+TEST_CASE("An empty branch list gets authors with nothing in them")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	ListBranchesAndLandAuthors(model);
+
+	CHECK(port.OwnAuthorsCalls == 0);
+	REQUIRE(model.GetBranchAuthors() != nullptr);
+	CHECK(model.GetBranchAuthors()->ByTip.empty());
+}
+
+TEST_CASE("A failed authors read is asked again by the next listing with the same tips")
+{
+	FakePort port;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+	port.FailOwnAuthors = true;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	ListBranchesAndLandAuthors(model);
+
+	CHECK(model.GetBranchAuthors() == nullptr);
+	CHECK(model.GetBranchAuthorsError().has_value());
+
+	port.FailOwnAuthors = false;
+	ListBranchesAndLandAuthors(model);
+
+	CHECK(port.OwnAuthorsCalls == 2);
+	CHECK(model.GetBranchAuthors() != nullptr);
+	CHECK_FALSE(model.GetBranchAuthorsError().has_value());
+}
+
+TEST_CASE("Closing the workspace drops the branch authors")
+{
+	FakePort port;
+	Core::EventBus events;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	ListBranchesAndLandAuthors(model);
+	REQUIRE(model.GetBranchAuthors() != nullptr);
+
+	events.Publish(Graphite::WorkspaceClosedEvent{});
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(model.GetBranchAuthors() == nullptr);
+}
+
+TEST_CASE("Authors asked for a folder that has since closed are dropped")
+{
+	FakePort port;
+	Core::EventBus events;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	events.Publish(Graphite::WorkspaceOpenedEvent{"C:/other"});
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(model.GetBranchAuthors() == nullptr);
 }

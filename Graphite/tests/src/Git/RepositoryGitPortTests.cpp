@@ -13,6 +13,7 @@
 #include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <process.h>
 #include <string>
 #include <system_error>
@@ -528,4 +529,24 @@ TEST_CASE("The port creates a branch that the next query lists, and has no stash
 	Core::Result<std::vector<Core::StashEntry>> stashes = port.QueryStashes();
 	REQUIRE(stashes.HasValue());
 	CHECK(stashes.GetValue().empty());
+}
+
+TEST_CASE("The port reads the user's e-mail from the folder's repository")
+{
+	TempRepo repo;
+
+	git_repository* repository = nullptr;
+	REQUIRE(git_repository_open(&repository, Core::ToUtf8(repo.GetPath()).c_str()) == 0);
+	git_config* config = nullptr;
+	REQUIRE(git_repository_config(&config, repository) == 0);
+	REQUIRE(git_config_set_string(config, "user.email", "ann@example.com") == 0);
+	git_config_free(config);
+	git_repository_free(repository);
+
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	const Core::Result<std::optional<std::string>> email = port.ReadUserEmail();
+
+	REQUIRE(email.HasValue());
+	CHECK(email.GetValue() == std::optional<std::string>{"ann@example.com"});
 }

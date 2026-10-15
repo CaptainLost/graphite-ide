@@ -185,6 +185,34 @@ namespace Graphite {
 		return repository->QueryBranches();
 	}
 
+	Core::Result<std::vector<Core::TipAuthors>> RepositoryGitPort::QueryOwnAuthors(const Core::OwnAuthorsRequest& request)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		return repository->QueryOwnAuthors(request);
+	}
+
+	Core::Result<std::optional<std::string>> RepositoryGitPort::ReadUserEmail()
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		return repository->ReadUserEmail();
+	}
+
 	Core::Result<Core::LogPage> RepositoryGitPort::QueryLog(const Core::LogRequest& request)
 	{
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();

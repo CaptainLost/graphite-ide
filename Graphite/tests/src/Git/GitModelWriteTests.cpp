@@ -32,6 +32,13 @@ namespace {
 			return WorkingDirectory;
 		}
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override { return std::vector<Core::Branch>{}; }
+
+		Core::Result<std::vector<Core::TipAuthors>> QueryOwnAuthors(const Core::OwnAuthorsRequest&) override
+		{
+			return std::vector<Core::TipAuthors>{};
+		}
+
+		Core::Result<std::optional<std::string>> ReadUserEmail() override { return std::optional<std::string>{}; }
 		Core::Result<Core::HeadState> QueryHead() override { return Core::HeadState{}; }
 
 		Core::Result<void> Init() override { return Record("init", std::vector<std::filesystem::path>{}); }

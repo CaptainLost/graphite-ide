@@ -5,6 +5,7 @@
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Head.h"
+#include "Core/Git/OwnAuthors.h"
 #include "Core/Git/Oid.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Requests.h"
@@ -14,6 +15,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -35,6 +37,8 @@ namespace Graphite {
 		virtual Core::Result<std::filesystem::path> GetWorkingDirectory() = 0;
 
 		virtual Core::Result<std::vector<Core::Branch>> QueryBranches() = 0;
+		virtual Core::Result<std::vector<Core::TipAuthors>> QueryOwnAuthors(const Core::OwnAuthorsRequest& request) = 0;
+		virtual Core::Result<std::optional<std::string>> ReadUserEmail() = 0;
 		virtual Core::Result<Core::HeadState> QueryHead() = 0;
 		virtual Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) = 0;
 		virtual Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) = 0;

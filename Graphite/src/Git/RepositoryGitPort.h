@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,8 @@ namespace Graphite {
 			const std::filesystem::path& directory) override;
 		Core::Result<std::filesystem::path> GetWorkingDirectory() override;
 		Core::Result<std::vector<Core::Branch>> QueryBranches() override;
+		Core::Result<std::vector<Core::TipAuthors>> QueryOwnAuthors(const Core::OwnAuthorsRequest& request) override;
+		Core::Result<std::optional<std::string>> ReadUserEmail() override;
 		Core::Result<Core::HeadState> QueryHead() override;
 		Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) override;
 		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) override;
