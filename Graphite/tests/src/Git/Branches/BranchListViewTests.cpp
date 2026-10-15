@@ -6,12 +6,15 @@
 #include "UI/IconButton.h"
 
 #include "Core/Base/Base.h"
+#include "Core/ImGui/Toggle.h"
+#include "Core/ImGui/UiScale.h"
 
 #include <imgui.h>
 
 #include <cstddef>
 #include <cstdint>
 #include <format>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -50,12 +53,17 @@ namespace {
 		return frame;
 	}
 
-	void BeginListWindow(float width)
+	void BeginNamedListWindow(const char* windowName, float width)
 	{
 		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 		ImGui::SetNextWindowSize(ImVec2(width, kListHeight));
-		ImGui::Begin("BranchList", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove |
-												ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
+		ImGui::Begin(windowName, nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove |
+											  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
+	}
+
+	void BeginListWindow(float width)
+	{
+		BeginNamedListWindow("BranchList", width);
 	}
 
 	// The list's top-left corner, so a test can click a row by its index.
@@ -138,12 +146,22 @@ namespace {
 
 	constexpr float kHalf = 0.5f;
 
-	void DrawHeaderAndRows(Graphite::BranchListView& list, const Graphite::BranchListFrame& frame)
+	// WARNING: The header's widgets keep their hover state outside the ImGui context, by id, so
+	// each test that draws it does so in a window of its own name.
+	void DrawHeaderAndRows(Graphite::BranchListView& list, const Graphite::BranchListFrame& frame,
+						   const char* windowName)
 	{
-		BeginListWindow(kListWidth);
+		BeginNamedListWindow(windowName, kListWidth);
 		list.DrawHeader(frame);
 		list.DrawRows(frame);
 		ImGui::End();
+	}
+
+	ImGuiID HoveredAt(ImGuiFrames& frames, const std::function<void()>& draw, ImVec2 at)
+	{
+		ImGui::GetIO().AddMousePosEvent(at.x, at.y);
+		frames.Next(draw);
+		return ImGui::GetCurrentContext()->HoveredId;
 	}
 
 	ImVec2 PanelButtonCentre()
@@ -158,12 +176,30 @@ namespace {
 		return ImGui::GetCurrentContext()->OpenPopupStack.Size;
 	}
 
-	const ImGuiWindow& PanelWindow()
+	ImGuiWindow& PanelWindow()
 	{
-		const ImGuiContext& context = *ImGui::GetCurrentContext();
+		ImGuiContext& context = *ImGui::GetCurrentContext();
 		REQUIRE(context.OpenPopupStack.Size == 1);
 		REQUIRE(context.OpenPopupStack[0].Window != nullptr);
 		return *context.OpenPopupStack[0].Window;
+	}
+
+	std::optional<float> HeightWhereHovered(ImGuiFrames& frames, const std::function<void()>& draw, float probeLeft,
+											ImGuiID item)
+	{
+		const float step = 2.0f;
+		const float panelTop = PanelWindow().Pos.y;
+		const float panelBottom = panelTop + PanelWindow().Size.y;
+
+		for (float probeHeight = panelTop; probeHeight < panelBottom; probeHeight += step)
+		{
+			if (HoveredAt(frames, draw, ImVec2(probeLeft, probeHeight)) == item)
+			{
+				return probeHeight;
+			}
+		}
+
+		return std::nullopt;
 	}
 
 	ImVec2 MiddleSortSegmentCentre()
@@ -615,7 +651,7 @@ TEST_CASE("Choosing a sort in the panel leaves the panel open")
 	Graphite::BranchListState options;
 	Graphite::BranchListView list{options};
 
-	const auto draw = [&list, &frame] { DrawHeaderAndRows(list, frame); };
+	const auto draw = [&list, &frame] { DrawHeaderAndRows(list, frame, "SortPanel"); };
 
 	frames.Next(draw);
 	frames.Click(PanelButtonCentre(), draw);
@@ -644,7 +680,7 @@ TEST_CASE("Ticking an author in the panel leaves the panel open and narrows the 
 	std::vector<std::string> drawnBranches;
 	list.DrawBranchMenu = [&drawnBranches](const Core::Branch& branch) { drawnBranches.push_back(branch.Name); };
 
-	const auto draw = [&list, &frame] { DrawHeaderAndRows(list, frame); };
+	const auto draw = [&list, &frame] { DrawHeaderAndRows(list, frame, "TickPanel"); };
 
 	frames.Next(draw);
 	frames.Click(PanelButtonCentre(), draw);
@@ -658,6 +694,49 @@ TEST_CASE("Ticking an author in the panel leaves the panel open and narrows the 
 
 	CHECK(OpenPopups() == 1);
 	CHECK(drawnBranches == std::vector<std::string>{"by-ann"});
+}
+
+TEST_CASE("Both toggles in the panel end at the right edge of its content")
+{
+	ImGuiFrames frames;
+
+	Graphite::BranchAuthors answer;
+	answer.UserEmail = "Ann@example.com";
+
+	const bool notInFlight = false;
+	const Graphite::BranchListFrame frame =
+		FrameWithAuthors(Core::CreateRef<const std::vector<Core::Branch>>(
+							 std::vector<Core::Branch>{LocalBranchBy("by-ann", "Ann", 1)}),
+						 Core::CreateRef<const Graphite::BranchAuthors>(std::move(answer)), notInFlight);
+
+	Graphite::BranchListState options;
+	Graphite::BranchListView list{options};
+
+	const auto draw = [&list, &frame] { DrawHeaderAndRows(list, frame, "TogglePanel"); };
+
+	frames.Next(draw);
+	frames.Click(PanelButtonCentre(), draw);
+	frames.Next(draw);
+	REQUIRE(OpenPopups() == 1);
+
+	ImGuiWindow& panel = PanelWindow();
+	const ImGuiID onlyMine = panel.GetID("##onlyMine");
+	const ImGuiID alsoMessage = panel.GetID("##alsoMessage");
+
+	const float contentRight = panel.Pos.x + panel.Size.x - ImGui::GetStyle().WindowPadding.x;
+	const float toggleMiddle = contentRight - Core::Scaled(Core::kToggleWidth) * kHalf;
+	const float justInside = contentRight - 2.0f;
+	const float justOutside = contentRight + 2.0f;
+
+	const std::optional<float> onlyMineHeight = HeightWhereHovered(frames, draw, toggleMiddle, onlyMine);
+	const std::optional<float> alsoMessageHeight = HeightWhereHovered(frames, draw, toggleMiddle, alsoMessage);
+	REQUIRE(onlyMineHeight.has_value());
+	REQUIRE(alsoMessageHeight.has_value());
+
+	CHECK(HoveredAt(frames, draw, ImVec2(justInside, *onlyMineHeight)) == onlyMine);
+	CHECK(HoveredAt(frames, draw, ImVec2(justOutside, *onlyMineHeight)) != onlyMine);
+	CHECK(HoveredAt(frames, draw, ImVec2(justInside, *alsoMessageHeight)) == alsoMessage);
+	CHECK(HoveredAt(frames, draw, ImVec2(justOutside, *alsoMessageHeight)) != alsoMessage);
 }
 
 TEST_CASE("The panel draws while authors are read and after they fail or land without an assertion")
@@ -694,19 +773,19 @@ TEST_CASE("The panel draws while authors are read and after they fail or land wi
 	options.Group = Graphite::BranchGrouping::Author;
 	Graphite::BranchListView list{options};
 
-	frames.Next([&list, &waiting] { DrawHeaderAndRows(list, waiting); });
-	frames.Click(PanelButtonCentre(), [&list, &waiting] { DrawHeaderAndRows(list, waiting); });
+	frames.Next([&list, &waiting] { DrawHeaderAndRows(list, waiting, "StatesPanel"); });
+	frames.Click(PanelButtonCentre(), [&list, &waiting] { DrawHeaderAndRows(list, waiting, "StatesPanel"); });
 
 	for (int frameIndex = 0; frameIndex < kFramesPastTheLoaderDelay; ++frameIndex)
 	{
-		frames.Next([&list, &waiting] { DrawHeaderAndRows(list, waiting); });
+		frames.Next([&list, &waiting] { DrawHeaderAndRows(list, waiting, "StatesPanel"); });
 	}
 
-	frames.Next([&list, &failed] { DrawHeaderAndRows(list, failed); });
-	frames.Next([&list, &failed] { DrawHeaderAndRows(list, failed); });
+	frames.Next([&list, &failed] { DrawHeaderAndRows(list, failed, "StatesPanel"); });
+	frames.Next([&list, &failed] { DrawHeaderAndRows(list, failed, "StatesPanel"); });
 
-	frames.Next([&list, &landed] { DrawHeaderAndRows(list, landed); });
-	frames.Next([&list, &landed] { DrawHeaderAndRows(list, landed); });
+	frames.Next([&list, &landed] { DrawHeaderAndRows(list, landed, "StatesPanel"); });
+	frames.Next([&list, &landed] { DrawHeaderAndRows(list, landed, "StatesPanel"); });
 
 	CHECK(OpenPopups() == 1);
 }

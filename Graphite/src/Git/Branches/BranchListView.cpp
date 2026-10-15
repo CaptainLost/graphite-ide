@@ -173,7 +173,11 @@ namespace Graphite {
 
 			ImGui::AlignTextToFramePadding();
 			ImGui::TextUnformatted(label);
-			ImGui::SameLine(toggleX);
+
+			// WARNING: SameLine with an offset adds the group's offset, so inside a group the toggle
+			// would land a window padding too far right; SetCursorPosX does not.
+			ImGui::SameLine();
+			ImGui::SetCursorPosX(toggleX);
 
 			return Core::Toggle(toggleId, isOn);
 		}
