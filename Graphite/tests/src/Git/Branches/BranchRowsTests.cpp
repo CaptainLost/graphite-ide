@@ -649,6 +649,48 @@ TEST_CASE("A branch two authors share sits under both when only its name matched
 		  std::vector<std::string>{"u8@example.com", "u16@example.com"});
 }
 
+TEST_CASE("Typing the unknown author's stand-in name lists no branch whose tip cannot be read")
+{
+	const std::vector<Core::Branch> branches = MakeBranches({
+		{.Name = "ghost"},
+		{.Name = "main", .TipSeconds = kBaseSeconds},
+	});
+
+	const Graphite::BranchAuthors authors;
+
+	BranchRowsInput input = InputFor(branches);
+	input.Authors = &authors;
+	input.Filter.Text = "unknown";
+
+	const std::vector<BranchRow> rows = Graphite::BuildBranchRows(input);
+
+	CHECK(BranchNamesOf(rows, branches).empty());
+	CHECK(KindsOf(rows) ==
+		  std::vector<BranchRowKind>{BranchRowKind::Section, BranchRowKind::NoMatches, BranchRowKind::Section});
+}
+
+TEST_CASE("With authors ticked a word naming only an unticked author leaves the branch under its ticked authors")
+{
+	const std::vector<Core::Branch> branches = MakeBranches({
+		{.Name = "shared", .TipSeconds = kBaseSeconds},
+	});
+
+	Graphite::BranchAuthors authors;
+	AddOwnAuthors(authors, branches[0], {"U16@example.com", "U8@example.com"});
+
+	BranchRowsInput input = InputFor(branches);
+	input.Authors = &authors;
+	input.Filter.Text = "u16";
+	input.Filter.Authors = {"u8@example.com"};
+	input.Options.Group = Graphite::BranchGrouping::Author;
+	input.ExpandedGroups = {{.Section = Core::RefKind::Local, .Author = "u8@example.com"}};
+
+	const std::vector<BranchRow> rows = Graphite::BuildBranchRows(input);
+
+	CHECK(GroupKeysOf(rows) == std::vector<std::string>{"u8@example.com"});
+	CHECK(BranchNamesOf(rows, branches) == std::vector<std::string>{"shared"});
+}
+
 TEST_CASE("Before the authors land a word is matched against the tip's author")
 {
 	const std::vector<Core::Branch> branches = MakeBranches({

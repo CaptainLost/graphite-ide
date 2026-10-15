@@ -117,6 +117,18 @@ TEST_CASE("An author holds a word in the name or the e-mail")
 	CHECK_FALSE(Graphite::AuthorHoldsAnyWord(jan, {}));
 }
 
+TEST_CASE("No word matches the unknown author's stand-in name")
+{
+	Core::Branch ghost = BranchNamed("ghost", "", "");
+	ghost.TipCommit.reset();
+
+	const std::vector<Graphite::BranchAuthor> unknown = {{.Key = "", .Name = "Unknown author"}};
+
+	CHECK_FALSE(Graphite::MatchesWords(ghost, unknown, {"unknown"}, kNameOnly));
+	CHECK_FALSE(Graphite::MatchesWords(ghost, unknown, {"auth"}, kAlsoMessage));
+	CHECK_FALSE(Graphite::AuthorHoldsAnyWord(unknown.front(), {"unknown"}));
+}
+
 TEST_CASE("The word to mark is the first one the name holds")
 {
 	const std::vector<std::string> words = {"fix", "proj"};

@@ -19,8 +19,15 @@ namespace Graphite {
 				   Core::LoweredTextContains(branch.TipCommit->Body, loweredWord);
 		}
 
+		// WARNING: The unknown author's name is a stand-in, not anyone's name, so typing "unknown"
+		// would otherwise list every branch whose tip cannot be read.
 		bool AuthorHolds(const BranchAuthor& author, std::string_view loweredWord)
 		{
+			if (author.Key.empty())
+			{
+				return false;
+			}
+
 			return Core::LoweredTextContains(author.Name, loweredWord) || author.Key.find(loweredWord) != std::string::npos;
 		}
 
