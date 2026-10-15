@@ -3,6 +3,7 @@
 #include "Core/Base/Timestep.h"
 
 #include "Core/Git/Requests.h"
+#include "Git/History/HistoryReach.h"
 
 #include <cstddef>
 #include <optional>
@@ -38,6 +39,6 @@ namespace Graphite {
 
 	Core::LogRequest BuildLogRequest(const std::optional<std::string>& ref,
 									 const HistoryFilter& filter,
-									 std::optional<std::size_t> maxCount,
+									 const HistoryReach& reach,
 									 const std::optional<Core::Oid>& stash = std::nullopt);
 }

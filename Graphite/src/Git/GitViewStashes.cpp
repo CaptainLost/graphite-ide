@@ -57,7 +57,7 @@ namespace Graphite {
 		if (selectedStashIsGone)
 		{
 			DeselectStash();
-			RequestLog(std::nullopt);
+			RequestLog(HistoryReach{});
 		}
 
 		const std::size_t stashCount = stashes ? stashes->size() : 0;
@@ -161,7 +161,7 @@ namespace Graphite {
 	{
 		m_SelectedStash = stash;
 
-		RequestLog(std::nullopt);
+		RequestLog(HistoryReach{});
 	}
 
 	void GitView::DeselectStash()

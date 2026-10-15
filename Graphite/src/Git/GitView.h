@@ -17,6 +17,7 @@
 #include "Git/GitModel.h"
 #include "Review/ReviewMenu.h"
 #include "Git/History/HistoryFilter.h"
+#include "Git/History/HistoryReach.h"
 #include "Persistence/PersistedState.h"
 #include "Theme/ActiveScheme.h"
 
@@ -196,7 +197,7 @@ namespace Graphite {
 
 		void UpdateForNewPage();
 
-		void RequestLog(std::optional<std::size_t> maxCount);
+		void RequestLog(const HistoryReach& reach);
 
 		struct BaseSeen
 		{
@@ -212,7 +213,7 @@ namespace Graphite {
 
 		std::optional<GitModel::OwnCommitsRequest> OwnCommitsToAsk(const std::vector<Core::Branch>& branches);
 
-		void AskAgainWhenBaseMoved(const std::vector<Core::Branch>& branches, const Core::LogPage& page);
+		void AskAgainWhenBaseMoved(const std::vector<Core::Branch>& branches);
 
 		std::optional<BaseSeen> m_BaseSeen;
 
@@ -258,6 +259,10 @@ namespace Graphite {
 		float m_ListHeight = 0.0f;
 
 		bool m_LogRequested = false;
+
+		// WARNING: Sent again with every re-ask, so a page the reader loaded further is never cut back
+		// to the first one; only a new ref, stash or filter starts it over.
+		HistoryReach m_Reach;
 
 		std::unordered_set<Core::Oid> m_PreviouslyWanted;
 

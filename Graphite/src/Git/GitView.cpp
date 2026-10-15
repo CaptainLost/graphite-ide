@@ -207,7 +207,7 @@ namespace Graphite {
 		}
 
 		m_PendingRename.reset();
-		RequestLog(std::nullopt);
+		RequestLog(HistoryReach{});
 	}
 
 	void GitView::WithdrawQuestions()
@@ -372,6 +372,7 @@ namespace Graphite {
 	void GitView::ForgetRepository()
 	{
 		m_LogRequested = false;
+		m_Reach = HistoryReach{};
 		m_Commits.Reset();
 
 		m_FilterBuffer = {};
@@ -514,7 +515,7 @@ namespace Graphite {
 
 		DeselectStash();
 
-		RequestLog(std::nullopt);
+		RequestLog(HistoryReach{});
 	}
 
 	void GitView::RenderRefMenu(const Core::Branch& branch)
@@ -667,11 +668,13 @@ namespace Graphite {
 		}
 	}
 
-	void GitView::RequestLog(std::optional<std::size_t> maxCount)
+	void GitView::RequestLog(const HistoryReach& reach)
 	{
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
 
-		m_Model.RequestLog(BuildLogRequest(m_SelectedRef, m_Filter.Get(), maxCount, m_SelectedStash),
+		m_Reach = reach;
+
+		m_Model.RequestLog(BuildLogRequest(m_SelectedRef, m_Filter.Get(), m_Reach, m_SelectedStash),
 						   branches ? OwnCommitsToAsk(*branches) : std::nullopt);
 
 		// WARNING: Accept tells the settling filter that this query already carries what is typed,
@@ -735,16 +738,14 @@ namespace Graphite {
 		return GitModel::OwnCommitsRequest{.Query = fork->OwnCommits, .Label = fork->BaseName};
 	}
 
-	void GitView::AskAgainWhenBaseMoved(const std::vector<Core::Branch>& branches, const Core::LogPage& page)
+	void GitView::AskAgainWhenBaseMoved(const std::vector<Core::Branch>& branches)
 	{
 		if (BaseOf(FindForkBase(m_SelectedRef, branches)) == m_BaseSeen)
 		{
 			return;
 		}
 
-		// WARNING: Asked for as many commits as are shown, so a page loaded further down is not cut
-		// back to the first one.
-		RequestLog(page.Commits.empty() ? std::nullopt : std::optional<std::size_t>{page.Commits.size()});
+		RequestLog(m_Reach);
 	}
 
 	void GitView::UpdateForNewPage()
@@ -801,7 +802,7 @@ namespace Graphite {
 
 		if (filterSettled)
 		{
-			RequestLog(std::nullopt);
+			RequestLog(HistoryReach{});
 		}
 	}
 
@@ -832,7 +833,7 @@ namespace Graphite {
 
 		if (!page && !m_LogRequested)
 		{
-			RequestLog(std::nullopt);
+			RequestLog(HistoryReach{});
 		}
 
 		if (!page)
@@ -865,7 +866,7 @@ namespace Graphite {
 
 			if (branches)
 			{
-				AskAgainWhenBaseMoved(*branches, *page);
+				AskAgainWhenBaseMoved(*branches);
 			}
 
 			const std::optional<ForkSeparator> separator = ForkSeparatorFor(*page);
