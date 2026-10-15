@@ -3,7 +3,6 @@
 #include "Core/Base/Result.h"
 
 #include <filesystem>
-#include <string_view>
 
 namespace Core {
 
@@ -18,6 +17,4 @@ namespace Core {
 	Result<void> MoveToRecycleBin(const std::filesystem::path& path);
 
 	std::filesystem::path MakeUniquePath(const std::filesystem::path& path);
-
-	bool IsValidFileName(std::string_view name);
 }

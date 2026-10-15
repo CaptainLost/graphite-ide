@@ -2,13 +2,10 @@
 
 #include "Core/FileSystem/FileOperations.h"
 
-#include "Core/Base/Ascii.h"
-
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Platform/UniqueHandle.h"
 #include "Core/Platform/Win32Error.h"
 
-#include <array>
 #include <fstream>
 #include <string>
 
@@ -22,8 +19,6 @@ namespace Core {
 
 	namespace {
 		constexpr int kFirstNumberedCopy = 2;
-
-		constexpr std::string_view kForbiddenFileNameCharacters = "\\/:*?\"<>|";
 
 		Error AlreadyExistsError(const std::filesystem::path& path)
 		{
@@ -220,48 +215,5 @@ namespace Core {
 		}
 
 		return candidate;
-	}
-
-	bool IsValidFileName(std::string_view name)
-	{
-		if (name.empty())
-		{
-			return false;
-		}
-
-		if (ContainsOnlySpacesAndTabs(name))
-		{
-			return false;
-		}
-
-		if (name.find_first_of(kForbiddenFileNameCharacters) != std::string_view::npos)
-		{
-			return false;
-		}
-
-		// Windows strips a trailing dot or space from a name, so "notes." would silently create "notes".
-		const bool endsInDotOrSpace = name.back() == '.' || name.back() == ' ';
-
-		if (endsInDotOrSpace)
-		{
-			return false;
-		}
-
-		const std::size_t firstDot = name.find('.');
-		const std::string_view nameBeforeFirstDot = firstDot == std::string_view::npos ? name : name.substr(0, firstDot);
-
-		constexpr std::array<std::string_view, 22> kReservedDeviceNames{
-			"CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
-			"COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"};
-
-		for (const std::string_view reservedDeviceName : kReservedDeviceNames)
-		{
-			if (Core::EqualsIgnoringCase(nameBeforeFirstDot, reservedDeviceName))
-			{
-				return false;
-			}
-		}
-
-		return true;
 	}
 }

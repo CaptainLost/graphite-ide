@@ -309,6 +309,9 @@ TEST_CASE("A scheme name is checked for being usable as a file name")
 	CHECK(Graphite::SchemeNameProblem("CON", existing).has_value());
 	CHECK(Graphite::SchemeNameProblem("lpt3", existing).has_value());
 	CHECK_FALSE(Graphite::SchemeNameProblem("lpt10", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem("nul.dark", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem("COM0", existing).has_value());
+	CHECK(Graphite::SchemeNameProblem("conin$", existing).has_value());
 	CHECK(Graphite::SchemeNameProblem(std::string(65, 'x'), existing).has_value());
 	CHECK_FALSE(Graphite::SchemeNameProblem(std::string(64, 'x'), existing).has_value());
 }

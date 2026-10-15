@@ -3,6 +3,7 @@
 #include "Core/ImGui/UiScale.h"
 #include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
+#include "Core/FileSystem/FileName.h"
 #include "Core/FileSystem/FileOperations.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"

@@ -4,6 +4,7 @@
 #include "Core/Base/Color.h"
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Log.h"
+#include "Core/FileSystem/FileName.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/Encoding.h"
 #include "Theme/BuiltInSchemes.h"
@@ -88,25 +89,17 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		constexpr std::size_t kNumberedDeviceNameLength = 4;
-		constexpr std::size_t kDeviceNumberIndex = 3;
-		constexpr char kFirstDeviceNumber = '1';
-		constexpr char kLastDeviceNumber = '9';
-		constexpr unsigned char kFirstPrintableCharacter = 0x20;
-		constexpr std::string_view kCharactersWindowsRefusesInFileName = "<>:\"/\\|?*";
-
-		bool IsDeviceName(std::string_view lowered)
+		bool HoldsCharacterForbiddenInFileName(std::string_view name)
 		{
-			if (lowered == "con" || lowered == "prn" || lowered == "aux" || lowered == "nul")
+			for (const char character : name)
 			{
-				return true;
+				if (Core::IsForbiddenInFileName(character))
+				{
+					return true;
+				}
 			}
 
-			const bool isNumberedPortName = lowered.size() == kNumberedDeviceNameLength &&
-											(lowered.starts_with("com") || lowered.starts_with("lpt"));
-
-			return isNumberedPortName && lowered[kDeviceNumberIndex] >= kFirstDeviceNumber &&
-				   lowered[kDeviceNumberIndex] <= kLastDeviceNumber;
+			return false;
 		}
 	}
 
@@ -337,14 +330,9 @@ namespace Graphite {
 			return std::format("A name can have at most {} characters.", kLongestSchemeName);
 		}
 
-		for (const char character : name)
+		if (HoldsCharacterForbiddenInFileName(name))
 		{
-			const bool isControlCharacter = static_cast<unsigned char>(character) < kFirstPrintableCharacter;
-
-			if (isControlCharacter || kCharactersWindowsRefusesInFileName.find(character) != std::string_view::npos)
-			{
-				return "A name cannot contain control characters or any of < > : \" / \\ | ? *";
-			}
+			return "A name cannot contain control characters or any of < > : \" / \\ | ? *";
 		}
 
 		if (name.front() == ' ' || name.back() == ' ' || name.back() == '.' ||
@@ -353,7 +341,7 @@ namespace Graphite {
 			return "A name cannot start or end with a space, end with a dot, or contain \"..\".";
 		}
 
-		if (IsDeviceName(Core::Lowered(name)))
+		if (Core::NamesWindowsDevice(name))
 		{
 			return "That name is reserved by Windows.";
 		}
