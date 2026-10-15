@@ -25,6 +25,7 @@ namespace Graphite {
 
 		Core::Ref<const BranchAuthors> Authors;
 		std::optional<std::string> AuthorsFailure;
+		bool AuthorsInFlight = false;
 
 		std::optional<std::string> SelectedRef;
 
@@ -64,6 +65,7 @@ namespace Graphite {
 
 		RowsBuiltFrom InputsOf(const BranchListFrame& frame) const;
 		static BranchRowsInput RowsInputOf(const RowsBuiltFrom& inputs);
+		bool HoldsRowsFor(const RowsBuiltFrom& inputs, bool authorsInFlight) const;
 		void RebuildRowsWhenOutOfDate(const BranchListFrame& frame);
 
 		void DrawMenu(const BranchListFrame& frame);

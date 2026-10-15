@@ -118,11 +118,35 @@ namespace Graphite {
 							   .ExpandedGroups = inputs.ExpandedGroups};
 	}
 
+	// WARNING: A new branch list lands before the authors asked for it. Built against the older
+	// answer, a moved tip falls back to its new commit's author and leaves its groups until the
+	// answer lands, so while the view needs authors the rows from before stay until then. Only a
+	// new branch list is held back; a change the user made rebuilds at once.
+	bool BranchListView::HoldsRowsFor(const RowsBuiltFrom& inputs, bool authorsInFlight) const
+	{
+		if (!authorsInFlight || !m_RowsBuiltFrom.has_value() || !m_RowsBuiltFrom->Authors)
+		{
+			return false;
+		}
+
+		if (!ViewNeedsAuthors(RowsInputOf(inputs)))
+		{
+			return false;
+		}
+
+		RowsBuiltFrom inputsOverHeldAnswer = inputs;
+		inputsOverHeldAnswer.Branches = m_RowsBuiltFrom->Branches;
+		inputsOverHeldAnswer.Authors = m_RowsBuiltFrom->Authors;
+		inputsOverHeldAnswer.AuthorsFailure = m_RowsBuiltFrom->AuthorsFailure;
+
+		return inputsOverHeldAnswer == *m_RowsBuiltFrom;
+	}
+
 	void BranchListView::RebuildRowsWhenOutOfDate(const BranchListFrame& frame)
 	{
 		RowsBuiltFrom inputs = InputsOf(frame);
 
-		if (m_RowsBuiltFrom == inputs)
+		if (m_RowsBuiltFrom == inputs || HoldsRowsFor(inputs, frame.AuthorsInFlight))
 		{
 			return;
 		}
@@ -542,7 +566,11 @@ namespace Graphite {
 
 	void BranchListView::DrawBranchRow(const BranchRow& row, const BranchListFrame& frame)
 	{
-		const Core::Branch& branch = (*frame.Branches)[row.BranchIndex];
+		// WARNING: Held rows index the branch list they were built from, not the frame's newer one.
+		const Core::Ref<const std::vector<Core::Branch>> builtFrom = m_RowsBuiltFrom->Branches;
+		const Core::Ref<const BranchAuthors> builtWithAuthors = m_RowsBuiltFrom->Authors;
+
+		const Core::Branch& branch = (*builtFrom)[row.BranchIndex];
 		const bool selected = frame.SelectedRef == branch.FullName;
 
 		ImGui::PushID(row.AuthorKey.c_str());
@@ -597,7 +625,7 @@ namespace Graphite {
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
 		{
 			const BranchAuthors noAnswer;
-			const BranchAuthors& authors = frame.Authors ? *frame.Authors : noAnswer;
+			const BranchAuthors& authors = builtWithAuthors ? *builtWithAuthors : noAnswer;
 			const std::string whole = badge.empty() ? label : std::format("{}  {}", label, badge);
 
 			ImGui::SetTooltip("%s",

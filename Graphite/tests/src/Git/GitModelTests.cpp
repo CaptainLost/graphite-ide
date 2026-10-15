@@ -2343,6 +2343,25 @@ TEST_CASE("Branch authors are asked once a branch list lands and read an update 
 		  std::vector<Core::Oid>{OidWithFirstByte(kMainTipByte), OidWithFirstByte(kOriginMainTipByte)});
 }
 
+TEST_CASE("Branch authors are in flight from the listing that asks them until they land")
+{
+	FakePort port;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	CHECK_FALSE(model.IsBranchAuthorsInFlight());
+
+	model.RequestBranches();
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(model.IsBranchAuthorsInFlight());
+
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK_FALSE(model.IsBranchAuthorsInFlight());
+}
+
 TEST_CASE("A listing whose tips did not move asks the authors nothing")
 {
 	FakePort port;

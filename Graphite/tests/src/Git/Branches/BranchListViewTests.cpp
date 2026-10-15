@@ -13,6 +13,7 @@
 #include <format>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -96,6 +97,42 @@ namespace {
 	float RowsAboveLastItem(const MeasuredRows& measured)
 	{
 		return (measured.LastItemTop - measured.ListTop.y) / measured.RowHeight;
+	}
+
+	constexpr std::size_t kTipBefore = 1;
+	constexpr std::size_t kTipMoved = 2;
+	constexpr std::size_t kOneOwnCommit = 1;
+
+	Core::Ref<const Graphite::BranchAuthors> AuthorsWhereBobOwns(const Core::Branch& branch)
+	{
+		const Core::Signature bob{.Name = "Bob", .Email = "bob@example.com", .When = SystemSecondsAt(kNowSeconds)};
+
+		Graphite::BranchAuthors authors;
+		authors.ByTip.emplace(branch.Tip, Core::TipAuthors{.Tip = branch.Tip, .Authors = {bob}, .OwnCommits = kOneOwnCommit});
+
+		return Core::CreateRef<const Graphite::BranchAuthors>(std::move(authors));
+	}
+
+	Core::Ref<const std::vector<Core::Branch>> ListOf(const Core::Branch& branch)
+	{
+		return Core::CreateRef<const std::vector<Core::Branch>>(std::vector<Core::Branch>{branch});
+	}
+
+	Graphite::BranchListFrame FrameWithAuthors(const Core::Ref<const std::vector<Core::Branch>>& branches,
+											   const Core::Ref<const Graphite::BranchAuthors>& authors,
+											   bool authorsInFlight)
+	{
+		Graphite::BranchListFrame frame = FrameOf(branches);
+		frame.Authors = authors;
+		frame.AuthorsInFlight = authorsInFlight;
+		return frame;
+	}
+
+	ImVec2 IntoRow(const ImVec2& listTop, float rowHeight, float rowIndex)
+	{
+		const float halfARow = 0.5f;
+		const float clearOfTheLeftEdge = 10.0f;
+		return ImVec2(listTop.x + clearOfTheLeftEdge, listTop.y + rowHeight * (rowIndex + halfARow));
 	}
 }
 
@@ -353,4 +390,125 @@ TEST_CASE("A branch list that failed waits again before its loader shows")
 	}
 
 	CHECK(measured.CursorTop > measured.ListTop.y);
+}
+
+TEST_CASE("A branch list that lands while its authors are in flight keeps the rows built before it")
+{
+	ImGuiFrames frames;
+
+	const Core::Branch featureBefore = LocalBranchAt("feature", kNowSeconds, kTipBefore);
+	const Core::Branch featureMoved = LocalBranchAt("feature", kNowSeconds, kTipMoved);
+
+	const bool inFlight = true;
+	const bool notInFlight = false;
+
+	const Graphite::BranchListFrame settled =
+		FrameWithAuthors(ListOf(featureBefore), AuthorsWhereBobOwns(featureBefore), notInFlight);
+	const Graphite::BranchListFrame held = FrameWithAuthors(ListOf(featureMoved), settled.Authors, inFlight);
+	const Graphite::BranchListFrame landed =
+		FrameWithAuthors(held.Branches, AuthorsWhereBobOwns(featureMoved), notInFlight);
+
+	Graphite::BranchListState options;
+	options.Group = Graphite::BranchGrouping::Author;
+	Graphite::BranchListView list{options};
+
+	std::vector<Core::Oid> drawnTips;
+	list.DrawBranchMenu = [&drawnTips](const Core::Branch& branch) { drawnTips.push_back(branch.Tip); };
+
+	ImVec2 listTop{};
+	float rowHeight = 0.0f;
+	frames.Next([&list, &settled, &listTop, &rowHeight] {
+		listTop = DrawListWindow(list, settled, kListWidth);
+		rowHeight = ImGui::GetTextLineHeightWithSpacing();
+	});
+
+	const float bobGroupRow = 1.0f;
+	frames.Click(IntoRow(listTop, rowHeight, bobGroupRow),
+				 [&list, &settled] { DrawListWindow(list, settled, kListWidth); });
+
+	drawnTips.clear();
+	frames.Next([&list, &settled] { DrawListWindow(list, settled, kListWidth); });
+	REQUIRE(drawnTips == std::vector<Core::Oid>{featureBefore.Tip});
+
+	drawnTips.clear();
+	frames.Next([&list, &held] { DrawListWindow(list, held, kListWidth); });
+	CHECK(drawnTips == std::vector<Core::Oid>{featureBefore.Tip});
+
+	drawnTips.clear();
+	frames.Next([&list, &landed] { DrawListWindow(list, landed, kListWidth); });
+	CHECK(drawnTips == std::vector<Core::Oid>{featureMoved.Tip});
+}
+
+TEST_CASE("Without grouping a branch list that lands while authors are in flight shows at once")
+{
+	ImGuiFrames frames;
+
+	const Core::Branch featureBefore = LocalBranchAt("feature", kNowSeconds, kTipBefore);
+	const Core::Branch featureMoved = LocalBranchAt("feature", kNowSeconds, kTipMoved);
+
+	const bool inFlight = true;
+	const bool notInFlight = false;
+
+	const Graphite::BranchListFrame settled =
+		FrameWithAuthors(ListOf(featureBefore), AuthorsWhereBobOwns(featureBefore), notInFlight);
+	const Graphite::BranchListFrame arrived = FrameWithAuthors(ListOf(featureMoved), settled.Authors, inFlight);
+
+	Graphite::BranchListState options;
+	Graphite::BranchListView list{options};
+
+	std::vector<Core::Oid> drawnTips;
+	list.DrawBranchMenu = [&drawnTips](const Core::Branch& branch) { drawnTips.push_back(branch.Tip); };
+
+	frames.Next([&list, &settled] { DrawListWindow(list, settled, kListWidth); });
+
+	drawnTips.clear();
+	frames.Next([&list, &arrived] { DrawListWindow(list, arrived, kListWidth); });
+	CHECK(drawnTips == std::vector<Core::Oid>{featureMoved.Tip});
+}
+
+TEST_CASE("A section collapsed while authors are in flight rebuilds the rows at once")
+{
+	ImGuiFrames frames;
+
+	const Core::Branch featureBefore = LocalBranchAt("feature", kNowSeconds, kTipBefore);
+	const Core::Branch featureMoved = LocalBranchAt("feature", kNowSeconds, kTipMoved);
+
+	const bool inFlight = true;
+	const bool notInFlight = false;
+
+	const Graphite::BranchListFrame settled =
+		FrameWithAuthors(ListOf(featureBefore), AuthorsWhereBobOwns(featureBefore), notInFlight);
+	const Graphite::BranchListFrame held = FrameWithAuthors(ListOf(featureMoved), settled.Authors, inFlight);
+
+	Graphite::BranchListState options;
+	options.Group = Graphite::BranchGrouping::Author;
+	Graphite::BranchListView list{options};
+
+	std::vector<Core::Oid> drawnTips;
+	list.DrawBranchMenu = [&drawnTips](const Core::Branch& branch) { drawnTips.push_back(branch.Tip); };
+
+	ImVec2 listTop{};
+	float rowHeight = 0.0f;
+	frames.Next([&list, &settled, &listTop, &rowHeight] {
+		listTop = DrawListWindow(list, settled, kListWidth);
+		rowHeight = ImGui::GetTextLineHeightWithSpacing();
+	});
+
+	const float localHeadingRow = 0.0f;
+	const float bobGroupRow = 1.0f;
+	frames.Click(IntoRow(listTop, rowHeight, bobGroupRow),
+				 [&list, &settled] { DrawListWindow(list, settled, kListWidth); });
+
+	frames.Next([&list, &settled] { DrawListWindow(list, settled, kListWidth); });
+
+	drawnTips.clear();
+	frames.Next([&list, &held] { DrawListWindow(list, held, kListWidth); });
+	REQUIRE(drawnTips == std::vector<Core::Oid>{featureBefore.Tip});
+
+	frames.Click(IntoRow(listTop, rowHeight, localHeadingRow),
+				 [&list, &held] { DrawListWindow(list, held, kListWidth); });
+
+	drawnTips.clear();
+	frames.Next([&list, &held] { DrawListWindow(list, held, kListWidth); });
+	CHECK(drawnTips.empty());
 }

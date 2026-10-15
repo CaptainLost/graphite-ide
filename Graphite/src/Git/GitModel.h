@@ -138,6 +138,8 @@ namespace Graphite {
 
 		const std::optional<Core::Error>& GetBranchAuthorsError() const { return m_BranchAuthors.GetError(); }
 
+		bool IsBranchAuthorsInFlight() const { return m_BranchAuthors.IsInFlight(); }
+
 		const std::optional<Core::Error>& GetBranchesError() const { return m_Branches.GetError(); }
 
 		Core::Ref<const std::vector<Core::StashEntry>> GetStashes() const { return m_Stashes.Get(); }

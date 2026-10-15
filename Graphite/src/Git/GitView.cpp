@@ -474,6 +474,7 @@ namespace Graphite {
 			frame.AuthorsFailure = authorsError->Message;
 		}
 
+		frame.AuthorsInFlight = m_Model.IsBranchAuthorsInFlight();
 		frame.SelectedRef = m_SelectedStash.has_value() ? std::nullopt : m_SelectedRef;
 		frame.Now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
 		frame.LocalOffset = LocalOffset();
