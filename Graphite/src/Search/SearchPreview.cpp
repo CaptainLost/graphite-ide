@@ -25,13 +25,36 @@ namespace Graphite {
 		constexpr std::size_t kDecimalBase = 10;
 		constexpr std::size_t kSpacesAfterLineNumber = 1;
 
-		struct TextRunTarget
+		// WARNING: A run is placed by the columns before it, not by its byte offset: a character of more
+		// than one byte takes one cell, and the match highlights are placed by columns.
+		struct TextRunPainter
 		{
 			ImDrawList* DrawList;
 			const std::string& Text;
 			float TextLeft;
 			float TextTop;
 			float CellWidth;
+			std::size_t TabWidth;
+			std::size_t PaintedUpToByte = 0;
+			std::size_t Column = 0;
+
+			void PaintUpTo(std::size_t toByte, ImU32 colour)
+			{
+				const std::size_t end = std::min(toByte, Text.size());
+
+				if (end <= PaintedUpToByte)
+				{
+					return;
+				}
+
+				const std::string_view run(Text.data() + PaintedUpToByte, end - PaintedUpToByte);
+
+				DrawList->AddText(ImVec2(TextLeft + static_cast<float>(Column) * CellWidth, TextTop), colour,
+								  run.data(), run.data() + run.size());
+
+				Column += Core::ColumnCount(run, TabWidth);
+				PaintedUpToByte = end;
+			}
 		};
 
 		float GutterWidth(std::size_t lastLine, float cellWidth)
@@ -50,22 +73,6 @@ namespace Graphite {
 		void DrawMessage(const char* message)
 		{
 			Core::EmptyState(message);
-		}
-
-		void DrawTextRun(const TextRunTarget& target, std::size_t from, std::size_t to,
-						 ImU32 colour)
-		{
-			if (from >= to || from >= target.Text.size())
-			{
-				return;
-			}
-
-			const std::size_t end = std::min(to, target.Text.size());
-
-			target.DrawList->AddText(
-				ImVec2(target.TextLeft + static_cast<float>(from) * target.CellWidth,
-					   target.TextTop),
-				colour, target.Text.data() + from, target.Text.data() + end);
 		}
 
 		LineMatchInput MatchesOnLine(const SearchPreviewInput& input, std::size_t lineStart,
@@ -169,7 +176,7 @@ namespace Graphite {
 			const std::string raw = buffer->LineText(line);
 			expanded = Core::ExpandTabs(raw, input.TabWidth);
 
-			const float lineWidth = gutter + static_cast<float>(expanded.size()) * cellWidth;
+			const float lineWidth = gutter + static_cast<float>(Core::ColumnCount(expanded, input.TabWidth)) * cellWidth;
 			const float backgroundWidth = std::max(lineWidth, ImGui::GetContentRegionAvail().x);
 
 			drawList->AddRectFilled(
@@ -208,22 +215,20 @@ namespace Graphite {
 			const std::vector<Token>& tokens = content.TokensOf(line);
 			const std::vector<SemanticSpan>& spans = content.SpansOn(line);
 
-			const TextRunTarget runTarget{.DrawList = drawList,
-										  .Text = expanded,
-										  .TextLeft = textLeft,
-										  .TextTop = lineOrigin.y,
-										  .CellWidth = cellWidth};
-
-			std::size_t drawnUpTo = 0;
+			TextRunPainter painter{.DrawList = drawList,
+								   .Text = expanded,
+								   .TextLeft = textLeft,
+								   .TextTop = lineOrigin.y,
+								   .CellWidth = cellWidth,
+								   .TabWidth = input.TabWidth};
 
 			for (const Token& token : tokens)
 			{
-				DrawTextRun(runTarget, drawnUpTo, token.From, palette.Text);
-				DrawTextRun(runTarget, token.From, token.To, syntax.Of(ColourOf(token, spans)));
-				drawnUpTo = token.To;
+				painter.PaintUpTo(token.From, palette.Text);
+				painter.PaintUpTo(token.To, syntax.Of(ColourOf(token, spans)));
 			}
 
-			DrawTextRun(runTarget, drawnUpTo, expanded.size(), palette.Text);
+			painter.PaintUpTo(expanded.size(), palette.Text);
 
 			ImGui::Dummy(ImVec2(lineWidth, lineHeight));
 		}
