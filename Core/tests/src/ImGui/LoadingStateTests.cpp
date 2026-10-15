@@ -54,6 +54,32 @@ namespace {
 			return drawn;
 		}
 
+		struct LineDrawn
+		{
+			float Advance = 0.0f;
+			float LineHeightWithSpacing = 0.0f;
+		};
+
+		LineDrawn DrawLineLoader(const char* text, ImVec2 size = kWindowSize)
+		{
+			ImGui::NewFrame();
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(size);
+			ImGui::Begin("LineLoader", nullptr,
+						 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+							 ImGuiWindowFlags_NoSavedSettings);
+
+			const float before = ImGui::GetCursorPosY();
+			Core::LoadingLine(text);
+			const float after = ImGui::GetCursorPosY();
+			const float lineHeightWithSpacing = ImGui::GetTextLineHeightWithSpacing();
+
+			ImGui::End();
+			ImGui::EndFrame();
+
+			return LineDrawn{.Advance = after - before, .LineHeightWithSpacing = lineHeightWithSpacing};
+		}
+
 		const ImRect& GetRegion() const { return m_Region; }
 
 	private:
@@ -116,4 +142,39 @@ TEST_CASE("LoadingState draws frame after frame without an ImGui assertion")
 	}
 
 	CHECK(ImGui::GetFrameCount() == kFramesOfOneSweep);
+}
+
+TEST_CASE("LoadingLine takes exactly one row of text")
+{
+	LoaderWindow window;
+
+	const LoaderWindow::LineDrawn drawn = window.DrawLineLoader("Reading authors");
+
+	CHECK(drawn.Advance == doctest::Approx(drawn.LineHeightWithSpacing));
+}
+
+TEST_CASE("LoadingLine asks for the next frame so its spinner keeps turning")
+{
+	LoaderWindow window;
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	window.DrawLineLoader("Reading authors");
+
+	const std::optional<Core::Redraw::Clock::time_point> deadline = Core::Redraw::TakeDeadline();
+	REQUIRE(deadline.has_value());
+	CHECK(*deadline <= Core::Redraw::Clock::now());
+}
+
+TEST_CASE("LoadingLine draws frame after frame without an ImGui assertion")
+{
+	LoaderWindow window;
+	constexpr int kFramesOfSeveralTurns = 120;
+	const ImVec2 narrow{40.0f, 300.0f};
+
+	for (int frameIndex = 0; frameIndex < kFramesOfSeveralTurns; ++frameIndex)
+	{
+		window.DrawLineLoader("Reading authors", narrow);
+	}
+
+	CHECK(ImGui::GetFrameCount() == kFramesOfSeveralTurns);
 }
