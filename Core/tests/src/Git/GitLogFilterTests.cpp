@@ -244,3 +244,56 @@ TEST_CASE("A wildcard pattern is not narrowed onto one renamed file so it keeps 
 	REQUIRE(log.HasValue());
 	CHECK(log.GetValue().Commits.size() == 3);
 }
+
+TEST_CASE("A filtered page counts the commits it passed over in Walked and not only the ones it kept")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("keep the oldest");
+
+	fixture.Write("b.txt", "two\n");
+	fixture.Commit("skip me");
+
+	fixture.Write("c.txt", "three\n");
+	fixture.Commit("skip me too");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	LogRequest request;
+	request.Filter.Text = "keep";
+
+	const Result<LogPage> log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+	CHECK(log.GetValue().Commits.size() == 1);
+	CHECK(log.GetValue().Complete);
+	CHECK(log.GetValue().Walked == 3);
+}
+
+TEST_CASE("A filtered page stopped at the walk ceiling says it visited exactly that many")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("the oldest commit");
+
+	fixture.Write("b.txt", "two\n");
+	fixture.Commit("add b");
+
+	fixture.Write("c.txt", "three\n");
+	fixture.Commit("add c");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	LogRequest request;
+	request.Filter.Text = "oldest";
+	request.MaxWalk = 2;
+
+	const Result<LogPage> log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+	CHECK(log.GetValue().Commits.empty());
+	CHECK_FALSE(log.GetValue().Complete);
+	CHECK(log.GetValue().Walked == 2);
+}

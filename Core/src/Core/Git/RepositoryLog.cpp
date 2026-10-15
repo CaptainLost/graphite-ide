@@ -178,6 +178,8 @@ namespace Core {
 				page.Commits.push_back(std::move(summary));
 			}
 
+			page.Walked = 1;
+
 			return page;
 		}
 
@@ -344,6 +346,7 @@ namespace Core {
 
 		return LogPage{.Commits = std::move(commits),
 					   .Complete = complete,
+					   .Walked = walkedCount,
 					   .Unpushed = std::move(unpushed.Commits),
 					   .UpstreamKnown = unpushed.UnpushedKnown};
 	}

@@ -358,3 +358,56 @@ TEST_CASE("A merged branch's own commits count as unpushed alongside the merge a
 	CHECK(log.GetValue().UpstreamKnown);
 	CHECK(UnpushedHexes(log.GetValue()) == std::unordered_set<std::string>{merge, side});
 }
+
+TEST_CASE("A page says how many commits its walk visited, which without a filter is the commits it kept")
+{
+	GitFixture fixture;
+
+	const int commitCount = 5;
+
+	for (int commitNumber = 0; commitNumber < commitCount; ++commitNumber)
+	{
+		fixture.Write("a.txt", std::to_string(commitNumber) + "\n");
+		fixture.Commit("edit " + std::to_string(commitNumber));
+	}
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	LogRequest request;
+	request.MaxCount = 2;
+
+	const Result<LogPage> log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+	CHECK(log.GetValue().Walked == 2);
+}
+
+TEST_CASE("A complete page has visited every commit of its history")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	fixture.Write("b.txt", "two\n");
+	fixture.Commit("add b");
+
+	fixture.Write("c.txt", "three\n");
+	fixture.Commit("add c");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	const Result<LogPage> log = repository.QueryLog(LogRequest{});
+
+	REQUIRE(log.HasValue());
+	CHECK(log.GetValue().Complete);
+	CHECK(log.GetValue().Walked == 3);
+}
+
+TEST_CASE("The default page and walk ceiling are the first page the history shows")
+{
+	CHECK(LogRequest{}.MaxCount == Core::kLogPageSize);
+	CHECK(LogRequest{}.MaxWalk == Core::kLogWalkLimit);
+	CHECK(Core::kLogPageSize == 500);
+	CHECK(Core::kLogWalkLimit == 20000);
+}

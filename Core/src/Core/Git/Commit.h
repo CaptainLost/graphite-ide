@@ -3,6 +3,7 @@
 #include "Core/Git/Oid.h"
 #include "Core/Git/Signature.h"
 
+#include <cstddef>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -34,6 +35,10 @@ namespace Core {
 		// walk-length ceiling, on an unreadable diff, or where a line range cannot be carried
 		// further back.
 		bool Complete = true;
+
+		// The commits the walk visited, kept or not: the commits kept when nothing narrows the walk,
+		// and one for a stash, which is shown without a walk.
+		std::size_t Walked = 0;
 
 		// Commits on the walked ref that its upstream lacks, measured against that upstream
 		// alone so the set agrees with the branch's ahead count. Not a flag on CommitSummary,
