@@ -344,6 +344,9 @@ namespace Graphite {
 		NotificationsPopup m_NotificationsPopup;
 		const std::chrono::time_zone* m_LocalTimeZone = LocalTimeZone();
 
+		// WARNING: Declared before m_Panels, where GitView holds it by reference.
+		BranchListState m_BranchList;
+
 		Core::PanelManager m_Panels;
 		Core::DockSpaceHost m_DockSpace;
 		Core::DockLayout m_Layout;

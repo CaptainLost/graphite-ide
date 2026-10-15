@@ -49,6 +49,20 @@ namespace Graphite {
 			{SessionTab::Requests, "requests"},
 		};
 
+		constexpr std::string_view kBranchListSort = "restore.branchList.sort";
+		constexpr std::string_view kBranchListGroup = "restore.branchList.group";
+
+		constexpr std::pair<BranchSort, std::string_view> kBranchSortNames[] = {
+			{BranchSort::Newest, "newest"},
+			{BranchSort::Oldest, "oldest"},
+			{BranchSort::Name, "name"},
+		};
+
+		constexpr std::pair<BranchGrouping, std::string_view> kBranchGroupingNames[] = {
+			{BranchGrouping::None, "none"},
+			{BranchGrouping::Author, "author"},
+		};
+
 		constexpr std::pair<Core::DiffTarget, std::string_view> kDiffTargetNames[] = {
 			{Core::DiffTarget::WorkTreeToIndex, "unstaged"},
 			{Core::DiffTarget::IndexToHead, "staged"},
@@ -407,6 +421,9 @@ namespace Graphite {
 				file.Set(TerminalKey(terminalIndex, "title"), terminal.Title);
 			}
 		}
+
+		file.Set(kBranchListSort, std::string{NameFromTable(kBranchSortNames, state.BranchList.Sort)});
+		file.Set(kBranchListGroup, std::string{NameFromTable(kBranchGroupingNames, state.BranchList.Group)});
 	}
 
 	WorkspaceState ReadWorkspaceState(const Core::JsonFile& file, const std::filesystem::path& root)
@@ -510,6 +527,11 @@ namespace Graphite {
 
 			state.Terminals = std::move(terminals);
 		}
+
+		const BranchListState branchListByDefault;
+		state.BranchList.Sort = ValueNamed(kBranchSortNames, file.Get(kBranchListSort)).value_or(branchListByDefault.Sort);
+		state.BranchList.Group =
+			ValueNamed(kBranchGroupingNames, file.Get(kBranchListGroup)).value_or(branchListByDefault.Group);
 
 		return state;
 	}

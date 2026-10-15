@@ -470,6 +470,7 @@ namespace Graphite {
 			m_DocumentWindows.RestoreState(restorable);
 			m_SessionWindows.RestoreState(restorable.Sessions);
 			m_Terminals.RestoreState(restorable.Terminals, trusted);
+			m_BranchList = restorable.BranchList;
 			m_StateKeeper.AdoptWorkspace(event.Root, stored);
 
 			m_GitPort.SetRoot(event.Root);
@@ -742,6 +743,7 @@ namespace Graphite {
 		state.Diffs = m_DiffWindows.CaptureState();
 		state.Reviews = m_ReviewWindows.CaptureState();
 		state.Terminals = m_Terminals.CaptureState();
+		state.BranchList = m_BranchList;
 
 		return state;
 	}
