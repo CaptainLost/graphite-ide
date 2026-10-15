@@ -124,6 +124,11 @@ namespace {
 
 			LastLogRequest = request;
 
+			if (FailLog)
+			{
+				return PortFailure();
+			}
+
 			return Log;
 		}
 
@@ -361,6 +366,7 @@ namespace {
 		TextsByPathsMap TextsByPaths;
 
 		bool FailStatus = false;
+		bool FailLog = false;
 		bool FailDiff = false;
 		bool FailTexts = false;
 
@@ -803,6 +809,75 @@ TEST_CASE("A log asked without own commits asks for none")
 
 	CHECK(port.LogCalls == 1);
 	CHECK(model.GetOwnCommits() == nullptr);
+}
+
+TEST_CASE("The log on screen names the request it answers")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	Core::LogRequest request;
+	request.Ref = "refs/heads/topic";
+	request.Filter.Text = "encoding";
+
+	model.RequestLog(request);
+
+	CHECK_FALSE(model.GetShownLogRequest().has_value());
+
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	REQUIRE(model.GetShownLogRequest().has_value());
+	CHECK(model.GetShownLogRequest()->Ref == std::optional<std::string>{"refs/heads/topic"});
+	CHECK(model.GetShownLogRequest()->Filter.Text == "encoding");
+}
+
+TEST_CASE("A failed log keeps the request of the page still on screen")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	Core::LogRequest first;
+	first.Ref = "refs/heads/first";
+	model.RequestLog(first);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	port.FailLog = true;
+
+	Core::LogRequest second;
+	second.Ref = "refs/heads/second";
+	model.RequestLog(second);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	REQUIRE(model.GetShownLogRequest().has_value());
+	CHECK(model.GetShownLogRequest()->Ref == std::optional<std::string>{"refs/heads/first"});
+}
+
+TEST_CASE("A log ask is answered by its page or by its failure")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestLog(Core::LogRequest{});
+	const std::uint64_t answeredByPage = model.GetLogGeneration();
+
+	CHECK_FALSE(model.IsLogAnswered(answeredByPage));
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	CHECK(model.IsLogAnswered(answeredByPage));
+
+	port.FailLog = true;
+
+	model.RequestLog(Core::LogRequest{});
+	const std::uint64_t answeredByFailure = model.GetLogGeneration();
+
+	CHECK_FALSE(model.IsLogAnswered(answeredByFailure));
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	CHECK(model.IsLogAnswered(answeredByFailure));
 }
 
 TEST_CASE("The commits a branch owns are not requested without an open workspace")

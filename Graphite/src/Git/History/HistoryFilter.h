@@ -42,7 +42,7 @@ namespace Graphite {
 									 const HistoryReach& reach,
 									 const std::optional<Core::Oid>& stash = std::nullopt);
 
-	// Whether a log asked with this filter keeps only some commits: as BuildLogRequest reads it, a
-	// path of only whitespace narrows nothing.
-	bool NarrowsHistory(const HistoryFilter& filter);
+	// Whether a log asked with this request keeps only some commits. Core trims the message text, so
+	// text of only spaces narrows nothing; BuildLogRequest leaves File unset for a blank path.
+	bool NarrowsHistory(const Core::LogRequest& request);
 }

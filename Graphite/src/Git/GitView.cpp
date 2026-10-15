@@ -373,8 +373,7 @@ namespace Graphite {
 	{
 		m_LogRequested = false;
 		m_Reach = HistoryReach{};
-		m_AskedQuery = HistoryQuery{};
-		m_ShownQuery = HistoryQuery{};
+		m_AskedLogGeneration = 0;
 		m_HistoryBusySince.reset();
 		m_Commits.Reset();
 
@@ -389,11 +388,9 @@ namespace Graphite {
 		m_PendingRename.reset();
 		m_BaseSeen.reset();
 
-		m_PageWhenAsked.reset();
 		m_LastSeenPage.reset();
 		m_GraphOf.reset();
 		m_Graph = Core::CommitGraph{};
-		m_Searching = false;
 
 		// WARNING: Withdraw is only valid outside a popup, and this runs from an event handler.
 		WithdrawQuestions();
@@ -665,12 +662,11 @@ namespace Graphite {
 		}
 	}
 
-	void GitView::RequestLog(const HistoryReach& reach)
+	void GitView::RequestLog(const HistoryReach& reach, LogAsk ask)
 	{
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
 
 		m_Reach = reach;
-		m_AskedQuery = HistoryQuery{.Ref = m_SelectedRef, .Filtered = NarrowsHistory(m_Filter.Get())};
 
 		m_Model.RequestLog(BuildLogRequest(m_SelectedRef, m_Filter.Get(), m_Reach, m_SelectedStash),
 						   branches ? OwnCommitsToAsk(*branches) : std::nullopt);
@@ -680,8 +676,10 @@ namespace Graphite {
 		m_LogRequested = true;
 		m_Filter.Accept();
 
-		m_PageWhenAsked = m_Model.GetLog();
-		m_Searching = true;
+		if (ask == LogAsk::ByReader)
+		{
+			m_AskedLogGeneration = m_Model.GetLogGeneration();
+		}
 	}
 
 	std::optional<GitView::BaseSeen> GitView::BaseOf(const std::optional<ForkBase>& fork)
@@ -743,7 +741,7 @@ namespace Graphite {
 			return;
 		}
 
-		RequestLog(m_Reach);
+		RequestLog(m_Reach, LogAsk::Again);
 	}
 
 	void GitView::UpdateForNewPage()
@@ -762,25 +760,6 @@ namespace Graphite {
 			{
 				m_Commits.ClearSelection();
 			}
-		}
-
-		if (!m_Searching)
-		{
-			return;
-		}
-
-		const bool isAnswerToQuery = page != m_PageWhenAsked;
-		const bool queryFailed = m_Model.GetLastError().has_value();
-
-		if (isAnswerToQuery || queryFailed)
-		{
-			if (isAnswerToQuery)
-			{
-				m_ShownQuery = m_AskedQuery;
-			}
-
-			m_Searching = false;
-			m_PageWhenAsked.reset();
 		}
 	}
 
@@ -856,7 +835,7 @@ namespace Graphite {
 			const std::optional<HistoryStatus> status = DescribeHistory(HistoryStatusInputFor(*page));
 
 			m_Commits.SetRoomBelow(status.has_value() ? HistoryStatusLineHeight() : 0.0f);
-			m_Commits.SetEmptyText(m_ShownQuery.Filtered ? "No matching commits." : "No commits yet.");
+			m_Commits.SetEmptyText(IsShownLogNarrowed() ? "No matching commits." : "No commits yet.");
 
 			m_Commits.Render(*page, m_Graph, palette, LocalOffset(), diffOf, diffFailed, m_CommitRefs,
 							 m_Filter.Get().Text, m_Filter.Get().Path, separator);
@@ -919,14 +898,23 @@ namespace Graphite {
 
 	HistoryStatusInput GitView::HistoryStatusInputFor(const Core::LogPage& page) const
 	{
+		const std::optional<Core::LogRequest>& shown = m_Model.GetShownLogRequest();
+
 		return HistoryStatusInput{.Shown = page.Commits.size(),
 								  .Walked = page.Walked,
 								  .Complete = page.Complete,
-								  .Filtered = m_ShownQuery.Filtered,
-								  .Stash = m_SelectedStash.has_value(),
-								  .Total = m_Model.GetCommitCountFor(m_ShownQuery.Ref),
+								  .Filtered = IsShownLogNarrowed(),
+								  .Stash = shown.has_value() && shown->Stash.has_value(),
+								  .Total = m_Model.GetCommitCountFor(shown.has_value() ? shown->Ref : std::nullopt),
 								  .Counting = m_Model.IsCommitCountInFlight(),
-								  .Asking = m_Searching};
+								  .Asking = !m_Model.IsLogAnswered(m_AskedLogGeneration)};
+	}
+
+	bool GitView::IsShownLogNarrowed() const
+	{
+		const std::optional<Core::LogRequest>& shown = m_Model.GetShownLogRequest();
+
+		return shown.has_value() && NarrowsHistory(*shown);
 	}
 
 	void GitView::AnswerHistoryClick(HistoryClick click, const Core::LogPage& page)
@@ -937,7 +925,20 @@ namespace Graphite {
 			return;
 		}
 
-		RequestLog(m_ShownQuery.Filtered ? SearchFurther(page.Commits.size(), page.Walked) : LoadMore(m_Reach));
+		const std::optional<Core::LogRequest>& shown = m_Model.GetShownLogRequest();
+
+		if (!shown.has_value())
+		{
+			return;
+		}
+
+		if (NarrowsHistory(*shown))
+		{
+			RequestLog(SearchFurther(page.Commits.size(), page.Walked));
+			return;
+		}
+
+		RequestLog(LoadMore(HistoryReach{.MaxCount = shown->MaxCount, .MaxWalk = shown->MaxWalk}));
 	}
 
 	void GitView::RenderPreview(const GitPalette& palette)

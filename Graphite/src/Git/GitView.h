@@ -186,6 +186,7 @@ namespace Graphite {
 		void RenderDropStashDialog();
 		void RenderCommits(const GitPalette& palette);
 		HistoryStatusInput HistoryStatusInputFor(const Core::LogPage& page) const;
+		bool IsShownLogNarrowed() const;
 		void AnswerHistoryClick(HistoryClick click, const Core::LogPage& page);
 		void RenderPreview(const GitPalette& palette);
 
@@ -199,7 +200,13 @@ namespace Graphite {
 
 		void UpdateForNewPage();
 
-		void RequestLog(const HistoryReach& reach);
+		enum class LogAsk
+		{
+			ByReader,
+			Again
+		};
+
+		void RequestLog(const HistoryReach& reach, LogAsk ask = LogAsk::ByReader);
 
 		struct BaseSeen
 		{
@@ -248,9 +255,6 @@ namespace Graphite {
 
 		SettlingFilter m_Filter;
 
-		Core::Ref<const Core::LogPage> m_PageWhenAsked;
-		bool m_Searching = false;
-
 		Core::Ref<const Core::LogPage> m_LastSeenPage;
 
 		// WARNING: Laid out once per page, not once per frame: a page read to its root holds the whole
@@ -266,16 +270,9 @@ namespace Graphite {
 		// to the first one; only a new ref, stash or filter starts it over.
 		HistoryReach m_Reach;
 
-		// The ref and the filter a log was asked with: the page on screen answers m_ShownQuery, and
-		// m_AskedQuery takes its place when the answer to it lands.
-		struct HistoryQuery
-		{
-			std::optional<std::string> Ref;
-			bool Filtered = false;
-		};
-
-		HistoryQuery m_AskedQuery;
-		HistoryQuery m_ShownQuery;
+		// The log generation of the reader's last ask: the status line reads the reader as waiting
+		// until the log has answered it, with a page or an error.
+		std::uint64_t m_AskedLogGeneration = 0;
 
 		std::optional<double> m_HistoryBusySince;
 

@@ -88,6 +88,7 @@ namespace Graphite {
 		m_Log.Clear();
 
 		m_LastLogRequest.reset();
+		m_ShownLogRequest.reset();
 		m_CommitCount.Clear();
 		m_OwnLog.Clear();
 		m_LastOwnRequest.reset();
@@ -307,12 +308,14 @@ namespace Graphite {
 
 			std::string label = ownCommits.has_value() ? ownCommits->Label : std::string{};
 
-			Deliver([this, generation, ownGeneration, result = std::move(result),
+			Deliver([this, generation, ownGeneration, asked = request, result = std::move(result),
 					 ownResult = std::move(ownResult), label = std::move(label)]() mutable {
 				if (m_Log.Land(generation, std::move(result)) != SlotLanding::Applied)
 				{
 					return;
 				}
+
+				m_ShownLogRequest = std::move(asked);
 
 				if (!ownResult.has_value())
 				{

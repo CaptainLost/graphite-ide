@@ -74,20 +74,33 @@ TEST_CASE("A log request carries the reach the reader asked for")
 	CHECK(request.MaxWalk == 40000);
 }
 
-TEST_CASE("No text and no path narrows nothing")
+TEST_CASE("An empty request narrows nothing")
 {
-	CHECK_FALSE(Graphite::NarrowsHistory(HistoryFilter{}));
+	CHECK_FALSE(Graphite::NarrowsHistory(Core::LogRequest{}));
 }
 
-TEST_CASE("Typed text narrows the history")
+TEST_CASE("Message text narrows the history")
 {
-	CHECK(Graphite::NarrowsHistory(HistoryFilter{.Text = "encoding"}));
+	Core::LogRequest request;
+	request.Filter.Text = "encoding";
+
+	CHECK(Graphite::NarrowsHistory(request));
 }
 
-TEST_CASE("A path narrows the history but a path of only whitespace does not")
+TEST_CASE("Message text of only spaces narrows nothing")
 {
-	CHECK(Graphite::NarrowsHistory(HistoryFilter{.Path = "Main.cpp"}));
-	CHECK_FALSE(Graphite::NarrowsHistory(HistoryFilter{.Path = "   "}));
+	Core::LogRequest request;
+	request.Filter.Text = "   ";
+
+	CHECK_FALSE(Graphite::NarrowsHistory(request));
+}
+
+TEST_CASE("A file narrows the history")
+{
+	Core::LogRequest request;
+	request.File = std::filesystem::path{"Main.cpp"};
+
+	CHECK(Graphite::NarrowsHistory(request));
 }
 
 using Graphite::SettlingFilter;

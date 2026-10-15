@@ -33,9 +33,9 @@ namespace Graphite {
 		return request;
 	}
 
-	bool NarrowsHistory(const HistoryFilter& filter)
+	bool NarrowsHistory(const Core::LogRequest& request)
 	{
-		return !filter.Text.empty() || !Core::Trimmed(filter.Path).empty();
+		return !Core::Trimmed(request.Filter.Text).empty() || request.File.has_value();
 	}
 
 	void SettlingFilter::Set(HistoryFilter filter)
