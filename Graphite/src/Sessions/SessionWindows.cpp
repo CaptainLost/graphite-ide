@@ -5,7 +5,6 @@
 #include "Sessions/ClaudeSettings.h"
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
-#include "UI/RememberedPlace.h"
 #include "UI/TypographicMarks.h"
 
 #include "Core/Base/Log.h"
@@ -29,7 +28,6 @@ namespace Graphite {
 		constexpr std::size_t kTabTitleBytes = 60;
 		constexpr double kBytesPerMegabyte = 1024.0 * 1024.0;
 		constexpr float kFillAvailableWidth = -1.0f;
-		constexpr bool kConsumedFlag = false;
 		constexpr ImGuiMouseButton kMouseBackButton = 3;
 
 		double Megabytes(std::uint64_t bytes)
@@ -188,7 +186,7 @@ namespace Graphite {
 			}
 
 			existing->CarriedOver = false;
-			existing->Focus = true;
+			existing->Window.Focus = true;
 			return;
 		}
 
@@ -203,7 +201,7 @@ namespace Graphite {
 		if (Entry* existing = Find(id))
 		{
 			existing->CarriedOver = false;
-			existing->Focus = true;
+			existing->Window.Focus = true;
 			return;
 		}
 
@@ -264,9 +262,9 @@ namespace Graphite {
 			entry->Id = session.Id;
 			entry->Title = session.Title;
 			entry->RestoredTab.Restore(session.Tab);
-			entry->Restored = true;
+			entry->Window.Restored = true;
 			entry->Looking = true;
-			entry->Focus = false;
+			entry->Window.Focus = false;
 
 			m_Open.push_back(std::move(entry));
 		}
@@ -549,44 +547,11 @@ namespace Graphite {
 			const std::string name =
 				ICON_MDI_ROBOT_OUTLINE "  " + SingleLineLabel(entry.Title, kTabTitleBytes) + "###session-" + entry.Id;
 
-			bool restored = false;
-
-			if (std::exchange(entry.Fresh, kConsumedFlag))
-			{
-				restored = std::exchange(entry.Restored, kConsumedFlag);
-
-				const bool hasNodeToDockTo = centreNode != 0;
-				const bool needsNewPlace = !restored || !HasRememberedPlace(name);
-
-				if (hasNodeToDockTo && needsNewPlace)
-				{
-					ImGui::DockBuilderDockWindow(name.c_str(), centreNode);
-				}
-			}
-
-			if (std::exchange(entry.Focus, kConsumedFlag))
-			{
-				ImGui::SetNextWindowFocus();
-			}
-
-			bool open = true;
-
-			// WARNING: ImGui focuses every window on the frame it appears and focusing a docked window
-			// selects its tab, so without NoFocusOnAppearing the last restored window drawn would take
-			// the front of its node from whatever imgui.ini remembers there.
-			const ImGuiWindowFlags windowFlags =
-				restored ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
-
-			const bool visible = ImGui::Begin(name.c_str(), &open, windowFlags);
-
-			if (closeRequests.Take(name))
-			{
-				open = false;
-			}
+			const TabWindowFrame frame = BeginTabWindow(name, entry.Window, DockInto(centreNode), closeRequests);
 
 			Core::DrawTabContextMenu(closeRequests);
 
-			if (visible)
+			if (frame.Visible)
 			{
 				if (!entry.Main.Live)
 				{
@@ -630,10 +595,9 @@ namespace Graphite {
 				}
 			}
 
-			// WARNING: Begin returning false still needs its End.
 			ImGui::End();
 
-			if (open)
+			if (frame.Open)
 			{
 				++index;
 			}

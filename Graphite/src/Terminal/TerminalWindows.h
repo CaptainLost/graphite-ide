@@ -12,6 +12,7 @@
 #include "Terminal/TerminalRules.h"
 #include "Terminal/TerminalView.h"
 #include "Persistence/PersistedState.h"
+#include "UI/TabWindow.h"
 
 #include <cstddef>
 #include <filesystem>
@@ -95,9 +96,7 @@ namespace Graphite {
 			Core::Scope<Core::TerminalSession> Session;
 			Core::Scope<TerminalView> View;
 			OpenTerminal Record;
-			bool Fresh = true;
-			bool Restored = false;
-			bool Focus = true;
+			TabWindowState Window{.Focus = true};
 			// WARNING: Acted on only after End, since destroying a session joins its reader thread.
 			bool Closing = false;
 			unsigned int DockNode = 0;

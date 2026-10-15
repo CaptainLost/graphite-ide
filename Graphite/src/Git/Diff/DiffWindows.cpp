@@ -4,8 +4,6 @@
 
 #include "Git/History/CommitLabels.h"
 
-#include "UI/RememberedPlace.h"
-
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/EmptyState.h"
@@ -13,7 +11,6 @@
 #include "Core/ImGui/TabContextMenu.h"
 
 #include <imgui.h>
-#include <imgui_internal.h>
 
 #include <memory>
 #include <optional>
@@ -195,7 +192,7 @@ namespace Graphite {
 		{
 			if (entry.Diff == diff)
 			{
-				entry.Focus = true;
+				entry.Window.Focus = true;
 				return;
 			}
 		}
@@ -275,7 +272,7 @@ namespace Graphite {
 			}
 
 			Entry entry{diff, DiffView{}};
-			entry.Restored = true;
+			entry.Window.Restored = true;
 			entry.AwaitingFirstAnswer = diff.Commit.has_value();
 			m_Open.push_back(std::move(entry));
 		}
@@ -323,18 +320,14 @@ namespace Graphite {
 
 		// WARNING: A new target is a new identity ImGui has no dock position for, so the tab is
 		// docked again and raised, or it would float loose and lose the reader's place.
-		entry.Fresh = true;
-		entry.Focus = true;
+		entry.Window.Fresh = true;
+		entry.Window.Focus = true;
 	}
 
 	void DiffWindows::Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,
 							 ImU32 selection, bool wordWrap, unsigned int centreNode,
 							 Core::TabCloseRequests& closeRequests)
 	{
-		constexpr unsigned int noDockNode = 0;
-		constexpr bool noFocusRequested = false;
-		constexpr bool notRestored = false;
-
 		for (std::size_t tabIndex = 0; tabIndex < m_Open.size();)
 		{
 			Entry& entry = m_Open[tabIndex];
@@ -369,44 +362,11 @@ namespace Graphite {
 
 			const std::string windowName = DiffWindowName(entry.Diff);
 
-			bool restored = notRestored;
-
-			if (entry.Fresh)
-			{
-				entry.Fresh = false;
-
-				restored = std::exchange(entry.Restored, notRestored);
-
-				if (centreNode != noDockNode && (!restored || !HasRememberedPlace(windowName)))
-				{
-					ImGui::DockBuilderDockWindow(windowName.c_str(), centreNode);
-				}
-			}
-
-			if (std::exchange(entry.Focus, noFocusRequested))
-			{
-				ImGui::SetNextWindowFocus();
-			}
-
-			bool stillOpen = true;
-
-			// WARNING: A restored window must not take focus on the frame it appears: ImGui
-			// focuses every window then, focusing a docked window selects its tab, and the last
-			// one drawn would take the front of its node from what imgui.ini remembers.
-			const ImGuiWindowFlags windowFlags =
-				restored ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
-
-			// WARNING: Begin() returning false still needs its End(), unlike BeginTable.
-			const bool windowVisible = ImGui::Begin(windowName.c_str(), &stillOpen, windowFlags);
-
-			if (closeRequests.Take(windowName))
-			{
-				stillOpen = false;
-			}
+			const TabWindowFrame frame = BeginTabWindow(windowName, entry.Window, DockInto(centreNode), closeRequests);
 
 			Core::DrawTabContextMenu(closeRequests);
 
-			if (windowVisible)
+			if (frame.Visible)
 			{
 				Core::Ref<const Core::Diff> loadedDiff;
 
@@ -470,7 +430,7 @@ namespace Graphite {
 
 			ImGui::End();
 
-			if (!stillOpen)
+			if (!frame.Open)
 			{
 				entry.Texts.ForgetFailure(model);
 

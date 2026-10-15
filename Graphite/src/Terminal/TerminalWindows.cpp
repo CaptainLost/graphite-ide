@@ -11,7 +11,6 @@
 #include "Core/Platform/Process.h"
 
 #include "Settings/AppSettings.h"
-#include "UI/RememberedPlace.h"
 #include "UI/ToastEvent.h"
 #include "Workspace/Workspace.h"
 
@@ -144,9 +143,9 @@ namespace Graphite {
 
 			for (const Core::Scope<Entry>& entry : m_Open)
 			{
-				entry->Fresh = true;
+				entry->Window.Fresh = true;
 				entry->DockNode = kNoDockNode;
-				entry->Restored = false;
+				entry->Window.Restored = false;
 			}
 
 			m_LastFocused.clear();
@@ -171,43 +170,15 @@ namespace Graphite {
 				TerminalTitleFor(TerminalLabelTitle(announcedTitle, entry.Record.Title), entry.Session->GetProfileName());
 			const std::string windowName = ICON_MDI_CONSOLE "  " + std::to_string(tabNumber) + ": " + tabTitle + windowIdentity;
 
-			const bool appearing = entry.Fresh;
-			entry.Fresh = false;
-
-			bool restored = false;
-
-			if (appearing)
-			{
-				restored = entry.Restored;
-				entry.Restored = false;
-
-				if (!restored || !HasRememberedPlace(windowName))
-				{
-					PlaceNewWindow(windowName, entry, targets);
-				}
-			}
-
-			const bool focusRequested = entry.Focus;
-			entry.Focus = false;
-
-			if (focusRequested)
-			{
-				ImGui::SetNextWindowFocus();
-			}
-
-			const ImGuiWindowFlags windowFlags = restored ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
-
 			ImGuiWindowClass windowClass;
 			windowClass.DockingAlwaysTabBar = true;
 			ImGui::SetNextWindowClass(&windowClass);
 
-			bool stayOpen = true;
-			const bool contentVisible = ImGui::Begin(windowName.c_str(), &stayOpen, windowFlags);
-
-			if (closeRequests.Take(windowName))
-			{
-				stayOpen = false;
-			}
+			const TabWindowFrame frame = BeginTabWindow(
+				windowName, entry.Window,
+				[this, &entry, &targets](const std::string& name) { PlaceNewWindow(name, entry, targets); }, closeRequests);
+			const bool appearing = frame.Appearing;
+			bool stayOpen = frame.Open;
 
 			std::function<void()> newTerminalItems;
 
@@ -229,7 +200,7 @@ namespace Graphite {
 				m_LastFocused = entry.Record.Id;
 			}
 
-			if (contentVisible)
+			if (frame.Visible)
 			{
 				const Core::CursorPosition fitted = entry.View->Draw(palette);
 				const TerminalGridSize measured{fitted.Column, fitted.Row};
@@ -247,7 +218,6 @@ namespace Graphite {
 				}
 			}
 
-			// WARNING: Begin returning false still needs its End.
 			ImGui::End();
 
 			entry.Closing = entry.Closing || !stayOpen;
@@ -370,7 +340,7 @@ namespace Graphite {
 		// WARNING: Looked up by name, not FindLiveWindow: a terminal placed earlier this frame has been begun but was not yet active last frame.
 		for (const Core::Scope<Entry>& other : m_Open)
 		{
-			if (other.get() == &entry || other->Fresh)
+			if (other.get() == &entry || other->Window.Fresh)
 			{
 				continue;
 			}
@@ -499,8 +469,8 @@ namespace Graphite {
 		entry->Session = std::move(startResult).GetValue();
 		entry->View = Core::CreateScope<TerminalView>(*entry->Session, m_Keys, m_Commands, m_Events);
 		entry->Record = std::move(record);
-		entry->Restored = restored;
-		entry->Focus = !restored;
+		entry->Window.Restored = restored;
+		entry->Window.Focus = !restored;
 
 		m_Open.push_back(std::move(entry));
 		return true;

@@ -2,14 +2,12 @@
 
 #include "Theme/Palettes.h"
 #include "UI/DialogLayout.h"
-#include "UI/RememberedPlace.h"
 
 #include "Core/Base/Log.h"
 #include "Core/ImGui/TabContextMenu.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
-#include <imgui_internal.h>
 
 #include <utility>
 
@@ -91,7 +89,7 @@ namespace Graphite {
 		{
 			if (tab.Branch == branch)
 			{
-				tab.Focus = true;
+				tab.Window.Focus = true;
 				return;
 			}
 		}
@@ -185,8 +183,8 @@ namespace Graphite {
 											   .Path = stored.Selected};
 			}
 
-			tab.Focus = false;
-			tab.Restored = true;
+			tab.Window.Focus = false;
+			tab.Window.Restored = true;
 			tab.AwaitingBranches = true;
 			m_Tabs.push_back(std::move(tab));
 		}
@@ -243,8 +241,8 @@ namespace Graphite {
 				tab.LastLoaded.reset();
 				tab.LastWorktree.reset();
 
-				tab.Fresh = true;
-				tab.Focus = true;
+				tab.Window.Fresh = true;
+				tab.Window.Focus = true;
 				++tabIndex;
 			}
 
@@ -632,50 +630,18 @@ namespace Graphite {
 			Tab& tab = m_Tabs[tabIndex];
 			const std::string name = ReviewWindowName(tab.Branch);
 
-			bool restored = false;
-
-			if (tab.Fresh)
-			{
-				tab.Fresh = false;
-				restored = std::exchange(tab.Restored, false);
-
-				const bool placeIsRemembered = restored && HasRememberedPlace(name);
-
-				if (input.CentreNode != 0 && !placeIsRemembered)
-				{
-					ImGui::DockBuilderDockWindow(name.c_str(), input.CentreNode);
-				}
-			}
-
-			if (std::exchange(tab.Focus, false))
-			{
-				ImGui::SetNextWindowFocus();
-			}
-
-			bool open = true;
-
-			// WARNING: A restored window must not take focus on the frame it appears, or the last one
-			// drawn would take the front of its dock node from whatever imgui.ini remembers there.
-			const ImGuiWindowFlags windowFlags = restored ? ImGuiWindowFlags_NoFocusOnAppearing : ImGuiWindowFlags_None;
-
-			// WARNING: Begin returning false still needs its End.
-			const bool visible = ImGui::Begin(name.c_str(), &open, windowFlags);
-
-			if (input.CloseRequests.Take(name))
-			{
-				open = false;
-			}
+			const TabWindowFrame frame = BeginTabWindow(name, tab.Window, DockInto(input.CentreNode), input.CloseRequests);
 
 			Core::DrawTabContextMenu(input.CloseRequests);
 
-			if (visible)
+			if (frame.Visible)
 			{
 				RenderTab(tab, input);
 			}
 
 			ImGui::End();
 
-			if (!open || tab.CloseRequested)
+			if (!frame.Open || tab.CloseRequested)
 			{
 				ForgetTab(tab, input.Model);
 				m_Tabs.erase(m_Tabs.begin() + static_cast<std::ptrdiff_t>(tabIndex));

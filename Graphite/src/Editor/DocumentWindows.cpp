@@ -16,7 +16,7 @@
 #include "Persistence/CaretRestore.h"
 
 #include "UI/ClipboardCopy.h"
-#include "UI/RememberedPlace.h"
+#include "UI/TabWindow.h"
 #include "UI/ToastEvent.h"
 
 #include "Core/App/Redraw.h"
@@ -2009,21 +2009,16 @@ namespace Graphite {
 			const std::string identity = DocumentIdentityOf(m_Documents, index);
 			const std::string name = WindowName(m_Documents, index);
 
-			bool restored = false;
+			const bool appearing = IsNewSinceLastFrame(identity);
+			const bool noPendingFocus = false;
 
-			if (IsNewSinceLastFrame(identity))
-			{
-				restored = m_RestoredIdentities.erase(identity) > 0;
+			TabWindowState window{.Fresh = appearing,
+								  .Restored = appearing && m_RestoredIdentities.erase(identity) > 0,
+								  .Focus = std::exchange(item.PendingFocus, noPendingFocus)};
 
-				if (!restored || !HasRememberedPlace(name))
-				{
-					if (const unsigned int targetNode = ChooseDockTarget(identity, fallbackDockNode);
-						targetNode != kNoDockNode)
-					{
-						ImGui::DockBuilderDockWindow(name.c_str(), targetNode);
-					}
-				}
-			}
+			const PlaceNewTab place = [this, &identity, fallbackDockNode](const std::string& windowName) {
+				DockInto(ChooseDockTarget(identity, fallbackDockNode))(windowName);
+			};
 
 			const bool preview = item.Preview;
 
@@ -2041,35 +2036,16 @@ namespace Graphite {
 			}
 
 			const bool modified = item.Document && item.Document->IsModified();
-			ImGuiWindowFlags windowFlags =
+			const ImGuiWindowFlags windowFlags =
 				modified ? ImGuiWindowFlags_UnsavedDocument : ImGuiWindowFlags_None;
 
-			// WARNING: ImGui focuses every window on the frame it appears, and focusing a docked
-			// window selects its tab, so the last restored window would take the front of its node
-			// from whatever imgui.ini remembers.
-			if (restored)
-			{
-				windowFlags |= ImGuiWindowFlags_NoFocusOnAppearing;
-			}
-
-			const bool noPendingFocus = false;
-
-			if (std::exchange(item.PendingFocus, noPendingFocus))
-			{
-				ImGui::SetNextWindowFocus();
-			}
-
-			bool open = true;
-			const bool visible = ImGui::Begin(name.c_str(), &open, windowFlags);
+			const TabWindowFrame frame = BeginTabWindow(name, window, place, closeRequests, windowFlags);
+			const bool visible = frame.Visible;
+			bool open = frame.Open;
 
 			if (tabColour)
 			{
 				ImGui::PopStyleColor();
-			}
-
-			if (closeRequests.Take(name))
-			{
-				open = false;
 			}
 
 			if (m_CloseRequested && *m_CloseRequested == item.Path)

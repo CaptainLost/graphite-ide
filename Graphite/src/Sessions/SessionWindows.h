@@ -12,6 +12,7 @@
 #include "Sessions/Transcript/SubagentLinks.h"
 #include "Sessions/Transcript/ToolFacts.h"
 #include "Theme/SessionPalette.h"
+#include "UI/TabWindow.h"
 
 #include "Core/Base/Base.h"
 #include "Core/Events/EventBus.h"
@@ -97,14 +98,11 @@ namespace Graphite {
 			std::optional<std::string> PendingAgent;
 
 			bool EscBusy = false;
-			bool Fresh = true;
-			bool Focus = true;
+			TabWindowState Window{.Focus = true};
 
 			SessionTab Selected = SessionTab::Conversation;
 
 			RestoredTabSelection RestoredTab;
-
-			bool Restored = false;
 
 			bool Looking = false;
 

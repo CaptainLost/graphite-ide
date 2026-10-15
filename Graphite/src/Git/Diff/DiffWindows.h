@@ -3,6 +3,7 @@
 #include "Git/Diff/DiffView.h"
 #include "Git/GitModel.h"
 #include "Theme/GitPalette.h"
+#include "UI/TabWindow.h"
 
 #include "Persistence/PersistedState.h"
 
@@ -90,10 +91,7 @@ namespace Graphite {
 			OpenDiff Diff;
 			DiffView View;
 
-			bool Fresh = true;
-			bool Focus = false;
-
-			bool Restored = false;
+			TabWindowState Window;
 
 			// WARNING: The commit of a restored tab may be gone, rebased away or on a deleted
 			// branch, and its tab would only say its diff is no longer loaded. So the first

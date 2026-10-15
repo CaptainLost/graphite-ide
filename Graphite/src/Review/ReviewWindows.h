@@ -13,6 +13,7 @@
 #include "Theme/Palettes.h"
 #include "UI/ModalGate.h"
 #include "UI/ModalQuestion.h"
+#include "UI/TabWindow.h"
 
 #include "Core/Git/Ref.h"
 #include "Core/ImGui/TabCloseRequests.h"
@@ -176,9 +177,7 @@ namespace Graphite {
 			bool ScrollToSelected = false;
 			bool ScrollToCommit = false;
 			bool ScrollToCommitFile = false;
-			bool Fresh = true;
-			bool Focus = true;
-			bool Restored = false;
+			TabWindowState Window{.Focus = true};
 			bool CloseRequested = false;
 
 			std::optional<LoadedReview> LastLoaded;
