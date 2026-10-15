@@ -6,29 +6,6 @@
 
 using Graphite::BuildLogRequest;
 using Graphite::HistoryFilter;
-using Graphite::MatchesRefFilter;
-
-TEST_CASE("A ref filter with no text accepts every branch")
-{
-	CHECK(MatchesRefFilter("refs/heads/main", ""));
-	CHECK(MatchesRefFilter("refs/heads/main", "   "));
-}
-
-TEST_CASE("A ref is matched by any part of its name")
-{
-	CHECK(MatchesRefFilter("refs/remotes/origin/feature/encoding", "encoding"));
-	CHECK(MatchesRefFilter("refs/remotes/origin/feature/encoding", "origin"));
-}
-
-TEST_CASE("A ref filter ignores case and surrounding whitespace")
-{
-	CHECK(MatchesRefFilter("refs/heads/Encoding", " encoding "));
-}
-
-TEST_CASE("A ref the text does not name is not matched")
-{
-	CHECK_FALSE(MatchesRefFilter("refs/heads/main", "encoding"));
-}
 
 TEST_CASE("A log request carries the selected ref")
 {

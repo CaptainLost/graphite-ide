@@ -198,7 +198,7 @@ namespace Graphite {
 
 		GitView* gitView = m_Panels.Add(Core::CreateScope<GitView>(m_Git, m_ActiveScheme, m_EditorSettings,
 																   m_DiffWindows, m_Modals, m_DocumentBuffers,
-																   m_Events));
+																   m_BranchList, m_Events));
 		gitView->Subscribe();
 
 		gitView->ReviewMenuOf = [this](const Core::Branch& branch) { return ReviewMenuOfBranch(branch); };

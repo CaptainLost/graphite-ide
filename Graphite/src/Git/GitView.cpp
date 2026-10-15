@@ -13,7 +13,6 @@
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
-#include "UI/HighlightedRow.h"
 #include "UI/SplitResults.h"
 #include "UI/ToastEvent.h"
 #include "Workspace/Workspace.h"
@@ -36,7 +35,6 @@ namespace Graphite {
 
 		constexpr float kRefsColumnWidthInFontSizes = 10.0f;
 		constexpr float kPathBoxWidthInFontSizes = 14.0f;
-		constexpr float kFillAvailableWidth = -1.0f;
 		constexpr float kCalcTextSizeRoundingPixel = 1.0f;
 		constexpr int kGitTableColumnCount = 2;
 		constexpr int kRefsColumn = 0;
@@ -59,27 +57,6 @@ namespace Graphite {
 			}
 
 			return false;
-		}
-
-		bool IsListedInGroup(const Core::Branch& branch, Core::RefKind kind, const std::string& refFilter)
-		{
-			return branch.Kind == kind && MatchesRefFilter(branch.FullName, refFilter);
-		}
-
-		std::size_t CountListedBranches(const std::vector<Core::Branch>& branches, Core::RefKind kind,
-										const std::string& refFilter)
-		{
-			std::size_t count = 0;
-
-			for (const Core::Branch& branch : branches)
-			{
-				if (IsListedInGroup(branch, kind, refFilter))
-				{
-					++count;
-				}
-			}
-
-			return count;
 		}
 
 		float WidthOfPiece(std::string_view piece)
@@ -120,15 +97,21 @@ namespace Graphite {
 
 	GitView::GitView(GitModel& model, const ActiveScheme& scheme, EditorSettings& editorSettings,
 					 DiffWindows& diffWindows, ModalGate& modals, EditorBuffers& buffers,
-					 Core::EventBus& events)
+					 BranchListState& branchList, Core::EventBus& events)
 		: Core::Panel("git", "Git", "git", ICON_MDI_SOURCE_BRANCH, StartsAs::Hidden), m_Model(model),
 		  m_Scheme(scheme), m_EditorSettings(editorSettings), m_DiffWindows(diffWindows),
-		  m_Buffers(buffers), m_Events(events), m_DetachQuestion(modals, "###GitDetach"),
+		  m_Buffers(buffers), m_Events(events), m_BranchList(branchList), m_DetachQuestion(modals, "###GitDetach"),
 		  m_CheckoutQuestion(modals, "###GitCheckout"),
 		  m_NewBranchQuestion(modals, "###GitNewBranch"), m_RenameBranchQuestion(modals, "###GitRenameBranch"),
 		  m_DeleteBranchQuestion(modals, "###GitDeleteBranch"), m_DropStashQuestion(modals, "###GitDropStash")
 	{
 		m_Diff.OnSetWordWrap = [this](bool wrap) { m_EditorSettings.SetDiffWordWrap(wrap); };
+
+		m_BranchList.OnBranchClicked = [this](const Core::Branch& branch) { SelectBranch(branch); };
+		m_BranchList.DrawBranchMenu = [this](const Core::Branch& branch) { RenderRefMenu(branch); };
+		m_BranchList.BadgeOf = [this](const Core::Branch& branch) {
+			return ReviewBadgeOf ? ReviewBadgeOf(branch) : std::string{};
+		};
 	}
 
 	void GitView::OnUpdate(Core::Timestep)
@@ -394,7 +377,7 @@ namespace Graphite {
 
 		m_FilterBuffer = {};
 		m_FilterPathBuffer = {};
-		m_RefFilterBuffer = {};
+		m_BranchList.Reset();
 		m_Filter.Reset();
 
 		m_SelectedRef.reset();
@@ -428,8 +411,6 @@ namespace Graphite {
 
 		const GitPalette palette = ReadGitPalette(m_Scheme.Get());
 
-		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
-
 		if (ImGui::BeginTable("git", kGitTableColumnCount, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
 		{
 			ImGui::TableSetupColumn("refs", ImGuiTableColumnFlags_WidthFixed,
@@ -439,7 +420,7 @@ namespace Graphite {
 			ImGui::TableNextRow();
 
 			ImGui::TableSetColumnIndex(kRefsColumn);
-			RenderRefs(branches ? *branches : std::vector<Core::Branch>{});
+			RenderRefs();
 
 			ImGui::TableSetColumnIndex(kHistoryColumn);
 
@@ -481,131 +462,49 @@ namespace Graphite {
 		RenderDropStashDialog();
 	}
 
-	void GitView::RenderRefs(const std::vector<Core::Branch>& branches)
+	BranchListFrame GitView::BranchListFrameNow() const
 	{
-		ImGui::SetNextItemWidth(kFillAvailableWidth);
-		ImGui::InputTextWithHint("##refFilter", ICON_MDI_MAGNIFY "  Filter branches",
-								 m_RefFilterBuffer.data(), m_RefFilterBuffer.size());
+		BranchListFrame frame;
+		frame.Branches = m_Model.GetBranches();
+		frame.BranchesFailed = m_Model.GetBranchesError().has_value();
+		frame.Authors = m_Model.GetBranchAuthors();
 
-		const std::string refFilter(m_RefFilterBuffer.data());
+		if (const std::optional<Core::Error>& authorsError = m_Model.GetBranchAuthorsError(); authorsError.has_value())
+		{
+			frame.AuthorsFailure = authorsError->Message;
+		}
 
-		RenderRefGroup(branches, refFilter, "Local", Core::RefKind::Local, RefSection::Local);
-		RenderRefGroup(branches, refFilter, "Remote", Core::RefKind::Remote, RefSection::Remote);
+		frame.SelectedRef = m_SelectedStash.has_value() ? std::nullopt : m_SelectedRef;
+		frame.Now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
+		frame.LocalOffset = LocalOffset();
 
-		RenderStashes();
+		return frame;
 	}
 
-	void GitView::RenderRefGroup(const std::vector<Core::Branch>& branches, const std::string& refFilter,
-								 const char* heading, Core::RefKind kind, RefSection section)
+	void GitView::RenderRefs()
 	{
-		const std::size_t count = CountListedBranches(branches, kind, refFilter);
+		const BranchListFrame frame = BranchListFrameNow();
 
-		if (!RenderRefSection(heading, count, section))
+		m_BranchList.DrawHeader(frame);
+
+		const ImVec2 fillTheRest{0.0f, 0.0f};
+
+		if (ImGui::BeginChild("##refsList", fillTheRest))
 		{
-			return;
+			m_BranchList.DrawRows(frame);
+			RenderStashes();
 		}
 
-		for (const Core::Branch& branch : branches)
-		{
-			if (!IsListedInGroup(branch, kind, refFilter))
-			{
-				continue;
-			}
-
-			const bool selected = !m_SelectedStash.has_value() && m_SelectedRef.has_value() &&
-								  *m_SelectedRef == branch.FullName;
-
-			ImGui::PushID(branch.FullName.c_str());
-
-			// WARNING: The group makes the menu below ask about the whole row. With the filter
-			// marked, HighlightedSelectable ends on a piece of its label, and after EndGroup the
-			// menu would ask about the badge.
-			ImGui::BeginGroup();
-
-			const std::string label = RefLabel(branch);
-
-			std::string badge;
-
-			const bool isRowOnScreen =
-				ImGui::IsRectVisible(ImVec2(ImGui::GetContentRegionAvail().x, ImGui::GetFrameHeight()));
-
-			if (ReviewBadgeOf && isRowOnScreen)
-			{
-				badge = ReviewBadgeOf(branch);
-			}
-
-			const float rowWidth = ImGui::GetContentRegionAvail().x;
-			const float badgeWidth = badge.empty() ? 0.0f : ImGui::CalcTextSize(badge.c_str()).x;
-			const float labelRoom =
-				badge.empty() ? rowWidth : rowWidth - badgeWidth - ImGui::GetStyle().ItemSpacing.x;
-			const ImVec2 rowStart = ImGui::GetCursorScreenPos();
-
-			bool cut = false;
-			const std::string fitted = FitToWidth(label, labelRoom, &cut);
-
-			const bool clicked = HighlightedSelectable("##ref", selected, fitted, refFilter);
-
-			if (!badge.empty())
-			{
-				ImGui::SetCursorScreenPos(ImVec2(rowStart.x + rowWidth - badgeWidth, rowStart.y));
-				ImGui::TextDisabled("%s", badge.c_str());
-			}
-
-			ImGui::EndGroup();
-
-			if (cut)
-			{
-				const std::string whole = badge.empty() ? label : std::format("{}  {}", label, badge);
-				ImGui::SetItemTooltip("%s", whole.c_str());
-			}
-
-			RenderRefMenu(branch);
-
-			ImGui::PopID();
-
-			if (clicked)
-			{
-				m_SelectedRef = branch.FullName;
-
-				DeselectStash();
-
-				RequestLog(std::nullopt);
-			}
-		}
+		ImGui::EndChild();
 	}
 
-	bool GitView::RenderRefSection(const char* heading, std::size_t count, RefSection section)
+	void GitView::SelectBranch(const Core::Branch& branch)
 	{
-		bool& collapsed = m_CollapsedRefSections[static_cast<std::size_t>(section)];
+		m_SelectedRef = branch.FullName;
 
-		ImGui::PushID(heading);
+		DeselectStash();
 
-		// WARNING: SeparatorText insets its label by its own padding, so the chevron is lowered by
-		// that padding to share the baseline. The separator's horizontal padding is zeroed, or a stub
-		// of line shows between the chevron and the name.
-		const float padding = ImGui::GetStyle().SeparatorTextPadding.y;
-		const float paddingAboveAndBelow = padding * 2.0f;
-		const ImVec2 rowStart = ImGui::GetCursorPos();
-		const bool notInitiallySelected = false;
-
-		if (ImGui::Selectable("##section", notInitiallySelected, ImGuiSelectableFlags_AllowOverlap,
-							  ImVec2(0.0f, ImGui::GetTextLineHeight() + paddingAboveAndBelow)))
-		{
-			collapsed = !collapsed;
-		}
-
-		ImGui::SetCursorPos(ImVec2(rowStart.x, rowStart.y + padding));
-		ImGui::TextDisabled("%s", collapsed ? ICON_MDI_CHEVRON_RIGHT : ICON_MDI_CHEVRON_DOWN);
-
-		ImGui::SameLine();
-		ImGui::SetCursorPosY(rowStart.y);
-		ImGui::PushStyleVar(ImGuiStyleVar_SeparatorTextPadding, ImVec2(0.0f, padding));
-		ImGui::SeparatorText(std::format("{} ({})", heading, count).c_str());
-		ImGui::PopStyleVar();
-
-		ImGui::PopID();
-
-		return !collapsed;
+		RequestLog(std::nullopt);
 	}
 
 	void GitView::RenderRefMenu(const Core::Branch& branch)

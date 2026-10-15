@@ -7,7 +7,6 @@
 #include <cstddef>
 #include <optional>
 #include <string>
-#include <string_view>
 
 namespace Graphite {
 
@@ -41,6 +40,4 @@ namespace Graphite {
 									 const HistoryFilter& filter,
 									 std::optional<std::size_t> maxCount,
 									 const std::optional<Core::Oid>& stash = std::nullopt);
-
-	bool MatchesRefFilter(std::string_view name, std::string_view text);
 }

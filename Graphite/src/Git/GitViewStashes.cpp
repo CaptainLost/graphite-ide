@@ -4,6 +4,7 @@
 
 #include "Core/ImGui/ContextMenu.h"
 
+#include "Git/Branches/RefSectionHeading.h"
 #include "Git/StashBranch.h"
 #include "UI/ClipboardCopy.h"
 
@@ -59,7 +60,9 @@ namespace Graphite {
 			RequestLog(std::nullopt);
 		}
 
-		if (!RenderRefSection("Stashes", stashes ? stashes->size() : 0, RefSection::Stashes))
+		const std::size_t stashCount = stashes ? stashes->size() : 0;
+
+		if (!DrawRefSectionHeading("Stashes", std::format("Stashes ({})", stashCount), m_StashesCollapsed))
 		{
 			return;
 		}

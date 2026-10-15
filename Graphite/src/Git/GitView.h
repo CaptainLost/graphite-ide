@@ -5,6 +5,7 @@
 #include "UI/ModalGate.h"
 #include "UI/ModalQuestion.h"
 #include "Git/CheckoutQuestion.h"
+#include "Git/Branches/BranchListView.h"
 #include "Git/History/CommitLabels.h"
 #include "Git/History/CommitListView.h"
 #include "Git/History/CommitDetailsView.h"
@@ -16,6 +17,7 @@
 #include "Git/GitModel.h"
 #include "Review/ReviewMenu.h"
 #include "Git/History/HistoryFilter.h"
+#include "Persistence/PersistedState.h"
 #include "Theme/ActiveScheme.h"
 
 #include "Core/Events/EventBus.h"
@@ -52,7 +54,7 @@ namespace Graphite {
 	public:
 		GitView(GitModel& model, const ActiveScheme& scheme, EditorSettings& editorSettings,
 				DiffWindows& diffWindows, ModalGate& modals, EditorBuffers& buffers,
-				Core::EventBus& events);
+				BranchListState& branchList, Core::EventBus& events);
 
 		void OnUpdate(Core::Timestep timestep) override;
 
@@ -136,22 +138,12 @@ namespace Graphite {
 			std::string To;
 		};
 
-		enum class RefSection : std::size_t
-		{
-			Local,
-			Remote,
-			Stashes,
-			Count
-		};
-
-		void RenderRefs(const std::vector<Core::Branch>& branches);
-		void RenderRefGroup(const std::vector<Core::Branch>& branches, const std::string& refFilter,
-							const char* heading, Core::RefKind kind, RefSection section);
+		void RenderRefs();
+		BranchListFrame BranchListFrameNow() const;
+		void SelectBranch(const Core::Branch& branch);
 		void RenderRefMenu(const Core::Branch& branch);
 
 		void RenderReviewItem(const Core::Branch& branch);
-
-		bool RenderRefSection(const char* heading, std::size_t count, RefSection section);
 
 		void RenderStashes();
 		void RenderStashMenu(const Core::StashEntry& stash);
@@ -236,10 +228,11 @@ namespace Graphite {
 
 		CommitListView m_Commits;
 		DiffView m_Diff;
+		BranchListView m_BranchList;
 
 		std::optional<std::string> m_SelectedRef;
 
-		std::array<bool, static_cast<std::size_t>(RefSection::Count)> m_CollapsedRefSections{};
+		bool m_StashesCollapsed = false;
 
 		std::optional<Core::Oid> m_SelectedStash;
 
@@ -248,7 +241,6 @@ namespace Graphite {
 
 		std::array<char, 256> m_FilterBuffer{};
 		std::array<char, 260> m_FilterPathBuffer{};
-		std::array<char, 128> m_RefFilterBuffer{};
 
 		SettlingFilter m_Filter;
 

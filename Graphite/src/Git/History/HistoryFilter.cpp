@@ -87,16 +87,4 @@ namespace Graphite {
 		m_Since = 0.0f;
 		m_JustSet = false;
 	}
-
-	bool MatchesRefFilter(std::string_view name, std::string_view text)
-	{
-		const std::string loweredWanted = Core::Lowered(Core::Trimmed(text));
-
-		if (loweredWanted.empty())
-		{
-			return true;
-		}
-
-		return Core::LoweredTextContains(name, loweredWanted);
-	}
 }
