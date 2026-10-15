@@ -515,6 +515,26 @@ TEST_CASE("A server state that has not changed asks nothing")
 	CHECK(harness.Server.Asks.empty());
 }
 
+TEST_CASE("References are counted only by a server that has finished starting and indexing")
+{
+	Harness harness;
+
+	harness.Server.State = ServerState::Starting;
+	CHECK_FALSE(harness.Router.CanCountReferences(kSource));
+
+	harness.Server.State = ServerState::Indexing;
+	CHECK_FALSE(harness.Router.CanCountReferences(kSource));
+
+	harness.Server.State = ServerState::Ready;
+	CHECK(harness.Router.CanCountReferences(kSource));
+
+	harness.Server.State = ServerState::ProjectIncomplete;
+	CHECK(harness.Router.CanCountReferences(kSource));
+
+	harness.Server.State = ServerState::Failed;
+	CHECK_FALSE(harness.Router.CanCountReferences(kSource));
+}
+
 TEST_CASE("A count answer is applied to the row it was asked for, and a failed one to none")
 {
 	Harness harness;

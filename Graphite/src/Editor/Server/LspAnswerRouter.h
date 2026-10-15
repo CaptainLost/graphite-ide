@@ -97,6 +97,8 @@ namespace Graphite {
 
 		void AskSemanticTokens(const std::filesystem::path& path);
 
+		bool CanCountReferences(const std::filesystem::path& path);
+
 		void AskCount(const std::filesystem::path& path, std::size_t documentRow,
 					  const FilePosition& where);
 

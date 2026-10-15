@@ -176,6 +176,13 @@ namespace Graphite {
 		m_PendingSemantic.emplace(ticket, path);
 	}
 
+	bool LspAnswerRouter::CanCountReferences(const std::filesystem::path& path)
+	{
+		const ServerState currentState = m_Server.StatusFor(path, LanguageOfPath(path)).State;
+
+		return currentState == ServerState::Ready || currentState == ServerState::ProjectIncomplete;
+	}
+
 	void LspAnswerRouter::AskCount(const std::filesystem::path& path, std::size_t documentRow,
 								   const FilePosition& where)
 	{

@@ -1471,6 +1471,12 @@ namespace Graphite {
 	void DocumentWindows::AskForVisibleCounts(const Core::OpenItem& item, LensState& state,
 											  const EditorFrameResult& frame)
 	{
+		// WARNING: A count is asked once and kept, so it must not be asked while the server still learns the workspace. Roslyn loading its projects answers an empty list, and clangd mid-index counts only the files it has reached; neither is an error to retry.
+		if (!m_Router.CanCountReferences(item.Path))
+		{
+			return;
+		}
+
 		const std::size_t margin = frame.LastVisibleRow - frame.FirstVisibleRow + 1;
 		const std::size_t firstRowWanted =
 			frame.FirstVisibleRow > margin ? frame.FirstVisibleRow - margin : 0;
