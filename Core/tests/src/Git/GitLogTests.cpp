@@ -4,6 +4,7 @@
 
 #include "Git/GitFixture.h"
 
+#include <cstdint>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -410,4 +411,95 @@ TEST_CASE("The default page and walk ceiling are the first page the history show
 	CHECK(LogRequest{}.MaxWalk == Core::kLogWalkLimit);
 	CHECK(Core::kLogPageSize == 500);
 	CHECK(Core::kLogWalkLimit == 20000);
+}
+
+TEST_CASE("Counting commits counts every commit reachable from the tip, itself included")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	fixture.Write("b.txt", "two\n");
+	fixture.Commit("add b");
+
+	fixture.Write("c.txt", "three\n");
+	fixture.Commit("add c");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	const Result<Core::Oid> head = repository.HeadCommit();
+	REQUIRE(head.HasValue());
+
+	const Result<std::size_t> count = repository.CountCommits(head.GetValue());
+
+	REQUIRE(count.HasValue());
+	CHECK(count.GetValue() == 3);
+}
+
+TEST_CASE("Counting from an older commit counts only the history behind it")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	fixture.Write("b.txt", "two\n");
+	fixture.Commit("add b");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	const Result<LogPage> log = repository.QueryLog(LogRequest{});
+	REQUIRE(log.HasValue());
+	REQUIRE(log.GetValue().Commits.size() == 2);
+
+	const Result<std::size_t> count = repository.CountCommits(log.GetValue().Commits.back().Id);
+
+	REQUIRE(count.HasValue());
+	CHECK(count.GetValue() == 1);
+}
+
+TEST_CASE("Counting through a merge counts each side's commits once")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+	fixture.Branch("side");
+	fixture.Checkout("side");
+	fixture.Write("side.txt", "side\n");
+	fixture.Commit("add side");
+	fixture.Checkout("master");
+	fixture.Write("main.txt", "main\n");
+	fixture.Commit("add main");
+	fixture.MergeCommit("merge side", "side");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	const Result<Core::Oid> head = repository.HeadCommit();
+	REQUIRE(head.HasValue());
+
+	const Result<std::size_t> count = repository.CountCommits(head.GetValue());
+
+	REQUIRE(count.HasValue());
+	CHECK(count.GetValue() == 4);
+}
+
+TEST_CASE("Counting from a commit the repository does not hold is NotFound")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	constexpr std::uint8_t kAbsentByte = 0xAB;
+	Core::Oid absent;
+	absent.Bytes.fill(kAbsentByte);
+
+	const Result<std::size_t> count = repository.CountCommits(absent);
+
+	REQUIRE_FALSE(count.HasValue());
+	CHECK(count.GetError().Code == Core::ErrorCode::NotFound);
 }

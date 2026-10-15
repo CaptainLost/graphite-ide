@@ -350,4 +350,45 @@ namespace Core {
 					   .Unpushed = std::move(unpushed.Commits),
 					   .UpstreamKnown = unpushed.UnpushedKnown};
 	}
+
+	Result<std::size_t> Repository::CountCommits(const Oid& tip) const
+	{
+		if (m_Handle == nullptr)
+		{
+			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
+
+		RevwalkHandle walk;
+
+		if (git_revwalk_new(Out(walk), m_Handle.get()) != 0)
+		{
+			return Error{ErrorCode::IoFailure, std::format("cannot walk the history: {}", LastLibgit2Message())};
+		}
+
+		const git_oid tipId = ToGitOid(tip);
+
+		if (git_revwalk_push(walk.get(), &tipId) != 0)
+		{
+			const std::string message = LastLibgit2Message();
+			return Error{ErrorCode::NotFound, std::format("no such commit {}: {}", tip.ShortHex(), message)};
+		}
+
+		std::size_t count = 0;
+		git_oid commitId{};
+		int nextResult = 0;
+
+		while ((nextResult = git_revwalk_next(&commitId, walk.get())) == 0)
+		{
+			++count;
+		}
+
+		// WARNING: Only GIT_ITEROVER means the history ran out. Any other code is a walk that broke
+		// partway, and a count short of the truth would read as the whole history.
+		if (nextResult != GIT_ITEROVER)
+		{
+			return Error{ErrorCode::IoFailure, std::format("cannot count the history: {}", LastLibgit2Message())};
+		}
+
+		return count;
+	}
 }
