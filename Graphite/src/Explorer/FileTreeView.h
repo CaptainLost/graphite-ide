@@ -5,6 +5,8 @@
 #include "Explorer/FolderListing.h"
 #include "Explorer/RenameSelection.h"
 #include "Git/GitDecorationView.h"
+#include "Theme/ActiveScheme.h"
+#include "UI/ModalQuestion.h"
 
 #include "Core/FileSystem/FileTree.h"
 #include "Core/ImGui/ToastStack.h"
@@ -32,8 +34,8 @@ namespace Graphite {
 	class FileTreeView final
 	{
 	public:
-		FileTreeView(Workspace& workspace, const Core::DocumentSet& documents, Core::EventBus& events,
-					 Core::JobSubmitter submitJob);
+		FileTreeView(Workspace& workspace, const Core::DocumentSet& documents, Core::EventBus& events, ModalGate& modals,
+					 const ActiveScheme& scheme, Core::JobSubmitter submitJob);
 
 		void Render();
 
@@ -45,7 +47,18 @@ namespace Graphite {
 
 		void SetShownFile(const std::filesystem::path& path) { m_ShownFile = path; }
 
+		void WithdrawQuestions();
+
 	private:
+		static constexpr const char* kDeleteTitle = "Delete##fileTreeDelete";
+
+		struct DeleteQuestion
+		{
+			std::filesystem::path Target;
+
+			bool operator==(const DeleteQuestion&) const = default;
+		};
+
 		struct PendingAction
 		{
 			enum class Kind
@@ -106,10 +119,10 @@ namespace Graphite {
 		Workspace& m_Workspace;
 		const Core::DocumentSet& m_Documents;
 		Core::EventBus& m_Events;
+		ModalQuestion<DeleteQuestion> m_DeleteQuestion;
+		const ActiveScheme& m_Scheme;
 		ImGuiTextFilter m_Filter;
 		PendingAction m_Pending;
-		std::filesystem::path m_DeleteCandidate;
-		bool m_OpenDeleteConfirmation = false;
 		std::vector<std::filesystem::path> m_ForceOpen;
 		std::filesystem::path m_FollowedPath;
 		bool m_FollowsActiveFile = true;

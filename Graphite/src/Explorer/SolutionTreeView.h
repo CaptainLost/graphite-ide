@@ -7,6 +7,7 @@
 #include "Core/Base/Result.h"
 #include "Git/GitDecorationView.h"
 #include "Solution/SolutionModel.h"
+#include "UI/ModalQuestion.h"
 
 #include <imgui.h>
 
@@ -30,7 +31,7 @@ namespace Graphite {
 	class SolutionTreeView final
 	{
 	public:
-		SolutionTreeView(Workspace& workspace, const Core::DocumentSet& documents, Core::EventBus& events);
+		SolutionTreeView(Workspace& workspace, const Core::DocumentSet& documents, Core::EventBus& events, ModalGate& modals);
 
 		void Render();
 
@@ -40,8 +41,20 @@ namespace Graphite {
 
 		void SetShownFile(const std::filesystem::path& path) { m_ShownFile = path; }
 
+		void WithdrawQuestions();
+
 	private:
 		static constexpr std::size_t kRenameBufferSize = 256;
+
+		static constexpr const char* kRemoveTitle = "Remove from Solution##solutionTreeRemove";
+
+		struct RemoveQuestion
+		{
+			std::filesystem::path Project;
+			std::string Name;
+
+			bool operator==(const RemoveQuestion&) const = default;
+		};
 
 		struct PendingAction
 		{
@@ -116,6 +129,7 @@ namespace Graphite {
 		Workspace& m_Workspace;
 		const Core::DocumentSet& m_Documents;
 		Core::EventBus& m_Events;
+		ModalQuestion<RemoveQuestion> m_RemoveQuestion;
 		ImGuiTextFilter m_Filter;
 
 		std::string m_FilterMatchText;
@@ -137,9 +151,6 @@ namespace Graphite {
 		std::filesystem::path m_RevealPath;
 
 		PendingAction m_Pending;
-		std::filesystem::path m_RemoveCandidate;
-		std::string m_RemoveCandidateName;
-		bool m_OpenRemoveConfirmation = false;
 		std::array<char, kRenameBufferSize> m_RenameBuffer{};
 		std::string m_RenamingFolder;
 		bool m_FocusRenameField = false;

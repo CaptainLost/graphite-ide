@@ -157,7 +157,8 @@ namespace Graphite {
 
 		const Core::JobSubmitter submitToSharedQueue = [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); };
 		ExplorerPanel* explorer = m_Panels.Add(
-			Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents, m_AppSettings, m_Events, submitToSharedQueue));
+			Core::CreateScope<ExplorerPanel>(m_Workspace, m_Documents, m_AppSettings, m_Events, m_Modals, m_ActiveScheme,
+											 submitToSharedQueue));
 		m_Explorer = explorer;
 
 		m_Panels.Add(Core::CreateScope<ConsolePanel>(m_Sink, m_Events));

@@ -40,10 +40,11 @@ namespace Graphite {
 	}
 
 	ExplorerPanel::ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents,
-								 AppSettings& settings, Core::EventBus& events, Core::JobSubmitter submitJob)
+								 AppSettings& settings, Core::EventBus& events, ModalGate& modals,
+								 const ActiveScheme& scheme, Core::JobSubmitter submitJob)
 		: Core::Panel("files", "Explorer", "navigate", ICON_MDI_FILE_TREE), m_Workspace(workspace),
-		  m_AppSettings(settings), m_Files(workspace, documents, events, std::move(submitJob)),
-		  m_Solution(workspace, documents, events)
+		  m_AppSettings(settings), m_Files(workspace, documents, events, modals, scheme, std::move(submitJob)),
+		  m_Solution(workspace, documents, events, modals)
 	{
 		// WARNING: The stored mode is read when the panel first sees a folder and would put a
 		// just-opened solution back behind the file tree, so the folder is marked as seen here.
@@ -51,6 +52,23 @@ namespace Graphite {
 			m_ModeLoadedFor = m_Workspace.GetRoot();
 			SetMode(Mode::Solution);
 		});
+	}
+
+	// WARNING: Begin hands the modal gate back, and it only runs for the view drawn. A question left in
+	// a hidden panel, or in the view the mode switched away from, would hold the gate for good.
+	void ExplorerPanel::OnUpdate(Core::Timestep)
+	{
+		const bool drawn = HasBeenDrawnOnLatestFrame();
+
+		if (!drawn || m_Mode != Mode::Files)
+		{
+			m_Files.WithdrawQuestions();
+		}
+
+		if (!drawn || m_Mode != Mode::Solution)
+		{
+			m_Solution.WithdrawQuestions();
+		}
 	}
 
 	void ExplorerPanel::OnImGuiRender()

@@ -13,7 +13,9 @@
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
 
+#include "Theme/Palettes.h"
 #include "UI/ClipboardCopy.h"
+#include "UI/DialogLayout.h"
 #include "Terminal/TerminalRules.h"
 #include "Explorer/FileRow.h"
 #include "Explorer/FilteredTree.h"
@@ -68,11 +70,18 @@ namespace Graphite {
 	}
 
 	FileTreeView::FileTreeView(Workspace& workspace, const Core::DocumentSet& documents,
-							   Core::EventBus& events, Core::JobSubmitter submitJob)
-		: m_Workspace(workspace), m_Documents(documents), m_Events(events), m_Listing(std::move(submitJob))
+							   Core::EventBus& events, ModalGate& modals, const ActiveScheme& scheme,
+							   Core::JobSubmitter submitJob)
+		: m_Workspace(workspace), m_Documents(documents), m_Events(events), m_DeleteQuestion(modals, kDeleteTitle),
+		  m_Scheme(scheme), m_Listing(std::move(submitJob))
 	{
 		events.Subscribe<WorkspaceFilesChangedEvent>(
 			[this](const WorkspaceFilesChangedEvent& changed) { NoteFilesChanged(changed); });
+	}
+
+	void FileTreeView::WithdrawQuestions()
+	{
+		m_DeleteQuestion.Withdraw();
 	}
 
 	void FileTreeView::NoteFilesChanged(const WorkspaceFilesChangedEvent& changed)
@@ -89,9 +98,12 @@ namespace Graphite {
 
 	void FileTreeView::Render()
 	{
+		// WARNING: The questions go with the folder. Begin, the only other code that hands the modal
+		// gate back, is not reached past the early return.
 		if (!m_Workspace.IsOpen())
 		{
 			ForgetRenames();
+			WithdrawQuestions();
 			m_KnownRoot.clear();
 			m_Listing.SetRoot({});
 			RenderEmptyState();
@@ -103,6 +115,7 @@ namespace Graphite {
 		if (isDifferentFolder)
 		{
 			ForgetRenames();
+			WithdrawQuestions();
 			m_KnownRoot = m_Workspace.GetRoot();
 			m_Listing.SetRoot(m_KnownRoot);
 		}
@@ -695,8 +708,13 @@ namespace Graphite {
 	{
 		m_RenamingPath.clear();
 		m_OpenWhenNamed.clear();
-		m_DeleteCandidate = action.Target;
-		m_OpenDeleteConfirmation = true;
+
+		const DeleteQuestion question{.Target = action.Target};
+
+		if (!m_DeleteQuestion.Asked(question))
+		{
+			m_DeleteQuestion.Ask(question);
+		}
 	}
 
 	void FileTreeView::HandleRefresh(const PendingAction& action)
@@ -838,47 +856,47 @@ namespace Graphite {
 
 	void FileTreeView::RenderDeleteConfirmation()
 	{
-		if (m_OpenDeleteConfirmation)
-		{
-			ImGui::OpenPopup("Delete##fileTreeDelete");
-			m_OpenDeleteConfirmation = false;
-		}
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
+		const bool open = m_DeleteQuestion.Begin();
+		DialogLayout::AfterBegin();
 
-		if (!ImGui::BeginPopupModal("Delete##fileTreeDelete", nullptr,
-									ImGuiWindowFlags_AlwaysAutoResize))
+		if (!open)
 		{
 			return;
 		}
 
-		ImGui::Text("Move \"%s\" to the Recycle Bin?",
-					Core::ToUtf8(m_DeleteCandidate.filename()).c_str());
-		ImGui::Spacing();
+		// WARNING: Copied out before Answer(), which drops the payload GetCurrent() points into.
+		const std::filesystem::path target = m_DeleteQuestion.GetCurrent()->Target;
 
-		if (ImGui::Button("Move"))
+		DialogLayout::Text(std::format("Move \"{}\" to the Recycle Bin?", Core::ToUtf8(target.filename())));
+		DialogLayout::Gap();
+
+		// WARNING: Destructive, not safe: Enter must not delete, and a drive with no Recycle Bin deletes
+		// for good.
+		const DialogLayout::ButtonSpec absentButton{};
+		const DialogLayout::Choice choice =
+			DialogLayout::ButtonRow(absentButton, {.Label = "Move"}, DangerColourOf(m_Scheme.Get()));
+
+		if (choice == DialogLayout::Choice::Destructive)
 		{
-			if (const Core::Result<void> removed = Core::MoveToRecycleBin(m_DeleteCandidate); !removed)
+			m_DeleteQuestion.Answer();
+
+			if (const Core::Result<void> removed = Core::MoveToRecycleBin(target); !removed)
 			{
 				APP_ERROR("{}", removed.GetError().Message);
 				ReportFailure(Core::ToastKind::Error, "Delete failed", removed.GetError().Message);
 			}
 			else
 			{
-				RefreshParentOf(m_DeleteCandidate);
+				RefreshParentOf(target);
 			}
-
-			m_DeleteCandidate.clear();
-			ImGui::CloseCurrentPopup();
 		}
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Cancel"))
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
-			m_DeleteCandidate.clear();
-			ImGui::CloseCurrentPopup();
+			m_DeleteQuestion.Answer();
 		}
 
-		ImGui::EndPopup();
+		m_DeleteQuestion.End();
 	}
 
 	bool FileTreeView::RenderRenameEditor(const Core::FileNode& node)

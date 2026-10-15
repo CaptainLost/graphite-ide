@@ -41,6 +41,14 @@ namespace {
 
 	constexpr const char* kProject = R"(<Project Sdk="Microsoft.NET.Sdk"></Project>)";
 
+	constexpr const char* kOneProjectSolution = R"(<Solution>
+  <Project Path="Tools\Tools.csproj" />
+</Solution>
+)";
+
+	constexpr int kOnlyProjectRow = 1;
+	constexpr int kOnlyProjectDepth = 1;
+
 	const ImGuiWindow* FindSolutionBody()
 	{
 		constexpr std::string_view kSolutionBodyName = "##solutionBody";
@@ -119,7 +127,7 @@ namespace {
 			Next();
 		}
 
-		void ClickRowCountedFromSolutionRowZero(int rowIndex, int depth)
+		static ImVec2 RowPointCountedFromSolutionRowZero(int rowIndex, int depth)
 		{
 			const ImGuiWindow* body = FindSolutionBody();
 			REQUIRE(body != nullptr);
@@ -127,7 +135,20 @@ namespace {
 			const float x = body->DC.CursorStartPos.x + static_cast<float>(depth) * kTreeIndentForEachLevel + kIntoTheLabel;
 			const float y = body->DC.CursorStartPos.y + static_cast<float>(rowIndex) * RowPitch() + ImGui::GetFontSize() * kHalf;
 
-			Click(ImVec2(x, y));
+			return ImVec2(x, y);
+		}
+
+		void ClickRowCountedFromSolutionRowZero(int rowIndex, int depth)
+		{
+			Click(RowPointCountedFromSolutionRowZero(rowIndex, depth));
+		}
+
+		void AskToRemoveTheOnlyProject()
+		{
+			Frames.Click(RowPointCountedFromSolutionRowZero(kOnlyProjectRow, kOnlyProjectDepth), [this] { Draw(); },
+						 ImGuiMouseButton_Right);
+			REQUIRE(Frames.ClickMenuItem("Remove from Solution", [this] { Draw(); }));
+			Next();
 		}
 
 		int CountDrawnRows()
@@ -143,7 +164,8 @@ namespace {
 		Core::EventBus Events;
 		Graphite::Workspace Workspace{Events, Settings.Get()};
 		Core::DocumentSet Documents;
-		Graphite::SolutionTreeView View{Workspace, Documents, Events};
+		Graphite::ModalGate Modals;
+		Graphite::SolutionTreeView View{Workspace, Documents, Events, Modals};
 		std::vector<std::filesystem::path> OpenedFiles;
 	};
 
@@ -270,4 +292,60 @@ TEST_CASE("Clearing the solution view's filter leaves the tree as it was before"
 	screen.ClearFilterWithBackspaces(4);
 
 	CHECK(screen.CountDrawnRows() == rowsBeforeFiltering);
+}
+
+TEST_CASE("Remove from Solution chosen while another question holds the modal gate waits for it, and asks once the gate is free")
+{
+	TempDirectory folder;
+	folder.MakeFile("Tools/Tools.csproj", kProject);
+	const std::filesystem::path solution = folder.MakeFile("App.slnx", kOneProjectSolution);
+
+	SolutionScreen screen{solution};
+	constexpr std::string_view kOtherQuestion = "Another question";
+	REQUIRE(screen.Modals.TryOpen(kOtherQuestion));
+
+	screen.AskToRemoveTheOnlyProject();
+
+	CHECK_FALSE(ImGuiFrames::IsPopupNamedOpen("Remove from Solution##solutionTreeRemove"));
+	CHECK(screen.Modals.HoldsFor(kOtherQuestion));
+
+	screen.Modals.Close(kOtherQuestion);
+	screen.Next();
+
+	CHECK(ImGuiFrames::IsPopupNamedOpen("Remove from Solution##solutionTreeRemove"));
+}
+
+TEST_CASE("A remove question the solution view withdraws gives the modal gate back and leaves the screen")
+{
+	TempDirectory folder;
+	folder.MakeFile("Tools/Tools.csproj", kProject);
+	const std::filesystem::path solution = folder.MakeFile("App.slnx", kOneProjectSolution);
+
+	SolutionScreen screen{solution};
+
+	screen.AskToRemoveTheOnlyProject();
+	REQUIRE(ImGuiFrames::IsPopupNamedOpen("Remove from Solution##solutionTreeRemove"));
+
+	screen.View.WithdrawQuestions();
+	screen.Next();
+
+	CHECK_FALSE(screen.Modals.IsBusy());
+	CHECK_FALSE(ImGuiFrames::IsPopupNamedOpen("Remove from Solution##solutionTreeRemove"));
+}
+
+TEST_CASE("A remove question on screen when the workspace closes gives the modal gate back")
+{
+	TempDirectory folder;
+	folder.MakeFile("Tools/Tools.csproj", kProject);
+	const std::filesystem::path solution = folder.MakeFile("App.slnx", kOneProjectSolution);
+
+	SolutionScreen screen{solution};
+
+	screen.AskToRemoveTheOnlyProject();
+	REQUIRE(screen.Modals.IsBusy());
+
+	screen.Workspace.Close();
+	screen.Next();
+
+	CHECK_FALSE(screen.Modals.IsBusy());
 }

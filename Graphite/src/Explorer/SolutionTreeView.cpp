@@ -12,6 +12,7 @@
 #include "Explorer/FileRow.h"
 #include "Git/GitDecorationView.h"
 #include "Solution/SolutionEditor.h"
+#include "UI/DialogLayout.h"
 #include "UI/OpenGesture.h"
 #include "UI/ToastEvent.h"
 
@@ -20,6 +21,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <filesystem>
+#include <format>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -35,7 +37,6 @@ namespace Graphite {
 		constexpr bool kOpenTheRow = true;
 		constexpr float kHalf = 0.5f;
 		constexpr float kRenameFieldWidth = 200.0f;
-		constexpr float kConfirmButtonWidth = 90.0f;
 
 		std::string ChildPath(const std::string& path, const std::string& name)
 		{
@@ -91,9 +92,14 @@ namespace Graphite {
 	}
 
 	SolutionTreeView::SolutionTreeView(Workspace& workspace, const Core::DocumentSet& documents,
-									   Core::EventBus& events)
-		: m_Workspace(workspace), m_Documents(documents), m_Events(events)
+									   Core::EventBus& events, ModalGate& modals)
+		: m_Workspace(workspace), m_Documents(documents), m_Events(events), m_RemoveQuestion(modals, kRemoveTitle)
 	{
+	}
+
+	void SolutionTreeView::WithdrawQuestions()
+	{
+		m_RemoveQuestion.Withdraw();
 	}
 
 	void SolutionTreeView::Render()
@@ -101,8 +107,11 @@ namespace Graphite {
 		m_RenameWhenListed.BeginFrame(m_Workspace.IsOpen() && CanEditSolution(),
 									  m_Workspace.GetSolutionLoad());
 
+		// WARNING: The question goes with the solution. Begin, the only other code that hands the modal
+		// gate back, is not reached past the early return.
 		if (!m_Workspace.IsOpen() || !m_Workspace.GetLoadedSolution())
 		{
+			WithdrawQuestions();
 			RenderEmptyState();
 			return;
 		}
@@ -776,9 +785,12 @@ namespace Graphite {
 
 		if (ImGui::MenuItem("Remove from Solution", kNoShortcut, kNotSelected, editable))
 		{
-			m_RemoveCandidate = project.Path;
-			m_RemoveCandidateName = project.DisplayName;
-			m_OpenRemoveConfirmation = true;
+			const RemoveQuestion question{.Project = project.Path, .Name = project.DisplayName};
+
+			if (!m_RemoveQuestion.Asked(question))
+			{
+				m_RemoveQuestion.Ask(question);
+			}
 		}
 
 		ExplainNotEditable(editable);
@@ -863,46 +875,42 @@ namespace Graphite {
 
 	void SolutionTreeView::RenderRemoveConfirmation()
 	{
-		if (m_OpenRemoveConfirmation)
-		{
-			ImGui::OpenPopup("Remove from Solution##solutionTreeRemove");
-			m_OpenRemoveConfirmation = false;
-		}
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
+		const bool open = m_RemoveQuestion.Begin();
+		DialogLayout::AfterBegin();
 
-		if (!ImGui::BeginPopupModal("Remove from Solution##solutionTreeRemove", nullptr,
-									ImGuiWindowFlags_AlwaysAutoResize))
+		if (!open)
 		{
 			return;
 		}
 
-		ImGui::Text("Remove \"%s\" from the solution?", m_RemoveCandidateName.c_str());
-		ImGui::TextDisabled("Its files stay on disk — only the solution's reference is removed.");
-		ImGui::Spacing();
+		const RemoveQuestion& current = *m_RemoveQuestion.GetCurrent();
 
-		if (ImGui::Button("Remove", ImVec2(kConfirmButtonWidth, 0.0f)))
+		// WARNING: Copied out before Answer(), which drops the payload `current` refers to.
+		const PendingAction action{.Action = PendingAction::Kind::RemoveProject, .Project = current.Project};
+
+		DialogLayout::Text(std::format("Remove \"{}\" from the solution?", current.Name));
+		DialogLayout::Gap();
+		DialogLayout::MutedText("Its files stay on disk — only the solution's reference is removed.");
+		DialogLayout::Gap();
+
+		const DialogLayout::Choice choice = DialogLayout::ButtonRow({.Label = "Remove"});
+
+		if (choice == DialogLayout::Choice::Safe)
 		{
-			const PendingAction action{.Action = PendingAction::Kind::RemoveProject, .Project = m_RemoveCandidate};
+			m_RemoveQuestion.Answer();
 
 			if (const Core::Result<void> applied = Apply(action); !applied)
 			{
 				ReportEditFailure(applied.GetError());
 			}
-
-			m_RemoveCandidate.clear();
-			m_RemoveCandidateName.clear();
-			ImGui::CloseCurrentPopup();
 		}
-
-		ImGui::SameLine();
-
-		if (ImGui::Button("Cancel", ImVec2(kConfirmButtonWidth, 0.0f)))
+		else if (choice == DialogLayout::Choice::Cancel)
 		{
-			m_RemoveCandidate.clear();
-			m_RemoveCandidateName.clear();
-			ImGui::CloseCurrentPopup();
+			m_RemoveQuestion.Answer();
 		}
 
-		ImGui::EndPopup();
+		m_RemoveQuestion.End();
 	}
 
 	void SolutionTreeView::ExecutePendingAction()

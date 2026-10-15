@@ -32,7 +32,9 @@ namespace Graphite {
 	{
 	public:
 		ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents, AppSettings& settings,
-					  Core::EventBus& events, Core::JobSubmitter submitJob);
+					  Core::EventBus& events, ModalGate& modals, const ActiveScheme& scheme, Core::JobSubmitter submitJob);
+
+		void OnUpdate(Core::Timestep timestep) override;
 
 		void OnImGuiRender() override;
 

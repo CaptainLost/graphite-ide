@@ -34,6 +34,9 @@ namespace {
 	constexpr float kTreeIndentForEachLevel = 21.0f;
 	constexpr float kIntoTheLabel = 40.0f;
 
+	constexpr int kDoomedRow = 1;
+	constexpr int kDoomedDepth = 1;
+
 	Core::JobSubmitter RunJobsAtOnce()
 	{
 		return [](std::function<void()> job) { job(); };
@@ -71,7 +74,7 @@ namespace {
 	{
 	public:
 		explicit ExplorerScreen(const std::filesystem::path& folder, Core::JobSubmitter submitJob = RunJobsAtOnce())
-			: View{Workspace, Documents, Events, std::move(submitJob)}
+			: View{Workspace, Documents, Events, Modals, Scheme, std::move(submitJob)}
 		{
 			REQUIRE(Workspace.OpenFolder(folder));
 
@@ -127,7 +130,7 @@ namespace {
 			Next();
 		}
 
-		void ClickRow(int rowIndexFromRoot, int depth)
+		static ImVec2 RowPoint(int rowIndexFromRoot, int depth)
 		{
 			const ImGuiWindow* body = FindTreeBody();
 			REQUIRE(body != nullptr);
@@ -136,7 +139,29 @@ namespace {
 			const float x = body->DC.CursorStartPos.x + static_cast<float>(depth) * kTreeIndentForEachLevel + kIntoTheLabel;
 			const float y = body->DC.CursorStartPos.y + static_cast<float>(rowIndexFromRoot) * rowPitch + ImGui::GetFontSize() * 0.5f;
 
-			Click(ImVec2(x, y));
+			return ImVec2(x, y);
+		}
+
+		void ClickRow(int rowIndexFromRoot, int depth)
+		{
+			Click(RowPoint(rowIndexFromRoot, depth));
+		}
+
+		void RightClickRow(int rowIndexFromRoot, int depth)
+		{
+			Frames.Click(RowPoint(rowIndexFromRoot, depth), [this] { Draw(); }, ImGuiMouseButton_Right);
+		}
+
+		void AskToDeleteRow(int rowIndexFromRoot, int depth)
+		{
+			RightClickRow(rowIndexFromRoot, depth);
+			REQUIRE(ChooseMenuItem("Delete"));
+			Next();
+		}
+
+		bool ChooseMenuItem(const char* label)
+		{
+			return Frames.ClickMenuItem(label, [this] { Draw(); });
 		}
 
 		ImGuiFrames Frames;
@@ -144,6 +169,8 @@ namespace {
 		Core::EventBus Events;
 		Graphite::Workspace Workspace{Events, Settings.Get()};
 		Core::DocumentSet Documents;
+		Graphite::ModalGate Modals;
+		Graphite::ActiveScheme Scheme;
 		Graphite::FileTreeView View;
 		std::vector<std::filesystem::path> OpenedFiles;
 	};
@@ -285,4 +312,74 @@ TEST_CASE("A read of the folder that takes a while is shown by a moving loader u
 	screen.Next();
 
 	CHECK_FALSE(Core::Redraw::TakeDeadline().has_value());
+}
+
+TEST_CASE("Delete chosen while another question holds the modal gate waits for it, and asks once the gate is free")
+{
+	TempDirectory folder;
+	folder.MakeFile("doomed.txt");
+
+	ExplorerScreen screen{folder.GetPath()};
+	constexpr std::string_view kOtherQuestion = "Another question";
+	REQUIRE(screen.Modals.TryOpen(kOtherQuestion));
+
+	screen.AskToDeleteRow(kDoomedRow, kDoomedDepth);
+
+	CHECK_FALSE(ImGuiFrames::IsPopupNamedOpen("Delete##fileTreeDelete"));
+	CHECK(screen.Modals.HoldsFor(kOtherQuestion));
+
+	screen.Modals.Close(kOtherQuestion);
+	screen.Next();
+
+	CHECK(ImGuiFrames::IsPopupNamedOpen("Delete##fileTreeDelete"));
+}
+
+TEST_CASE("A delete question the file tree withdraws gives the modal gate back and leaves the screen")
+{
+	TempDirectory folder;
+	folder.MakeFile("doomed.txt");
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	screen.AskToDeleteRow(kDoomedRow, kDoomedDepth);
+	REQUIRE(ImGuiFrames::IsPopupNamedOpen("Delete##fileTreeDelete"));
+
+	screen.View.WithdrawQuestions();
+	screen.Next();
+
+	CHECK_FALSE(screen.Modals.IsBusy());
+	CHECK_FALSE(ImGuiFrames::IsPopupNamedOpen("Delete##fileTreeDelete"));
+	CHECK(std::filesystem::exists(folder.GetPath() / "doomed.txt"));
+}
+
+TEST_CASE("A delete question on screen when the folder closes gives the modal gate back")
+{
+	TempDirectory folder;
+	folder.MakeFile("doomed.txt");
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	screen.AskToDeleteRow(kDoomedRow, kDoomedDepth);
+	REQUIRE(screen.Modals.IsBusy());
+
+	screen.Workspace.Close();
+	screen.Next();
+
+	CHECK_FALSE(screen.Modals.IsBusy());
+}
+
+TEST_CASE("Enter does not answer the delete question, so nothing is moved to the Recycle Bin by it")
+{
+	TempDirectory folder;
+	folder.MakeFile("doomed.txt");
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	screen.AskToDeleteRow(kDoomedRow, kDoomedDepth);
+	REQUIRE(ImGuiFrames::IsPopupNamedOpen("Delete##fileTreeDelete"));
+
+	screen.Frames.PressKey(ImGuiKey_Enter, [&screen] { screen.Draw(); });
+	screen.Next();
+
+	CHECK(std::filesystem::exists(folder.GetPath() / "doomed.txt"));
 }

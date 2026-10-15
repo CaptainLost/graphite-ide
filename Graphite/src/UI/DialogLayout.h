@@ -313,5 +313,13 @@ namespace Graphite {
 
 			return Choice::Safe;
 		}
+
+		static Choice ButtonRow(ButtonSpec safe)
+		{
+			const ButtonSpec absentDestructive{};
+			const ImVec4 dangerNeverDrawn{};
+
+			return ButtonRow(safe, absentDestructive, dangerNeverDrawn);
+		}
 	};
 }
