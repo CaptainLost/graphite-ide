@@ -28,6 +28,9 @@ inline std::string HexTextOf(const git_oid& id)
 class GitFixture
 {
 public:
+	static constexpr const char* kDefaultAuthorName = "Test Author";
+	static constexpr const char* kDefaultAuthorEmail = "test@example.com";
+
 	GitFixture()
 	{
 		git_libgit2_init();
@@ -96,12 +99,17 @@ public:
 
 	std::string Commit(const std::string& message)
 	{
+		return CommitAs(message, kDefaultAuthorName, kDefaultAuthorEmail);
+	}
+
+	std::string CommitAs(const std::string& message, const std::string& authorName, const std::string& authorEmail)
+	{
 		git_oid treeId = StageEverything();
 
 		git_tree* tree = nullptr;
 		REQUIRE(git_tree_lookup(&tree, m_Repository, &treeId) == 0);
 
-		git_signature* signature = MakeSignature();
+		git_signature* signature = MakeSignature(authorName, authorEmail);
 
 		git_oid parentId{};
 		const bool hasParent = git_reference_name_to_id(&parentId, m_Repository, "HEAD") == 0;
@@ -203,7 +211,7 @@ public:
 		const git_commit* parents[2] = {headCommit, otherCommit};
 		const std::size_t parentCount = 2;
 
-		git_signature* signature = MakeSignature();
+		git_signature* signature = MakeSignature(kDefaultAuthorName, kDefaultAuthorEmail);
 
 		git_oid commitId{};
 		REQUIRE(git_commit_create(&commitId, m_Repository, "HEAD", signature, signature, "UTF-8",
@@ -313,7 +321,7 @@ private:
 
 	// A fixed author and a clock that moves one minute per commit, rather than the real time,
 	// keep the commit order and the log a failing test prints the same on every run.
-	git_signature* MakeSignature()
+	git_signature* MakeSignature(const std::string& authorName, const std::string& authorEmail)
 	{
 		const git_time_t kFirstCommitTime = 1000000000;
 		const git_time_t kSecondsBetweenCommits = 60;
@@ -323,7 +331,7 @@ private:
 		const git_time_t commitTime = kFirstCommitTime + kSecondsBetweenCommits * m_CommitCount;
 		++m_CommitCount;
 
-		REQUIRE(git_signature_new(&signature, "Test Author", "test@example.com", commitTime, kUtcOffsetMinutes) == 0);
+		REQUIRE(git_signature_new(&signature, authorName.c_str(), authorEmail.c_str(), commitTime, kUtcOffsetMinutes) == 0);
 		return signature;
 	}
 

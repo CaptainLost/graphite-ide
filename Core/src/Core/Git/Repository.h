@@ -5,6 +5,7 @@
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Head.h"
+#include "Core/Git/OwnAuthors.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Requests.h"
 #include "Core/Git/Stash.h"
@@ -74,6 +75,10 @@ namespace Core {
 
 		// Local branches first, then remote-tracking ones, each group in name order.
 		Result<std::vector<Branch>> QueryBranches() const;
+
+		// One walk over every tip with the hidden commits left out, then each tip's own commits
+		// gathered from what that walk found.
+		Result<std::vector<TipAuthors>> QueryOwnAuthors(const OwnAuthorsRequest& request) const;
 
 		// No encoding is assumed. NotFound when the commit's tree has no such path, which is the
 		// ordinary answer for the older side of an added file.
