@@ -6,6 +6,7 @@
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
+#include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/ToastStyle.h"
 #include "Core/ImGui/ToastText.h"
@@ -69,11 +70,6 @@ namespace Graphite {
 			bool Highlighted = false;
 			bool ShowsRemoveButton = false;
 		};
-
-		ImVec4 ToImVec4(const Core::Color& colour)
-		{
-			return ImVec4(colour.R, colour.G, colour.B, colour.A);
-		}
 
 		enum class FontWeight
 		{
@@ -188,9 +184,9 @@ namespace Graphite {
 			const float firstLineY = FirstLineTop(rowMin.y);
 
 			const float textX = contentLeft + iconDiameter + Core::Scaled(kIconGap);
-			const ImU32 textColour = ImGui::GetColorU32(ToImVec4(palette.Text));
-			const ImU32 dimColour = ImGui::GetColorU32(ToImVec4(palette.TextDim));
-			const ImU32 messageColour = ImGui::GetColorU32(ToImVec4(Core::ToastMessageColour(palette)));
+			const ImU32 textColour = ImGui::GetColorU32(Core::ToImVec4(palette.Text));
+			const ImU32 dimColour = ImGui::GetColorU32(Core::ToImVec4(palette.TextDim));
+			const ImU32 messageColour = ImGui::GetColorU32(Core::ToImVec4(Core::ToastMessageColour(palette)));
 
 			ImFont* const regularFont = FontFor(FontWeight::Regular);
 			ImFont* const strongFont = FontFor(FontWeight::Strong);
@@ -341,7 +337,7 @@ namespace Graphite {
 			const ImVec2 glyphSize = ImGui::CalcTextSize(ICON_MDI_CLOSE);
 			const ImVec2 glyphTopLeft(std::floor(buttonRect.Min.x + (buttonRect.GetWidth() - glyphSize.x) * 0.5f),
 									  std::floor(buttonRect.Min.y + (buttonRect.GetHeight() - glyphSize.y) * 0.5f));
-			ImGui::GetWindowDrawList()->AddText(glyphTopLeft, ImGui::GetColorU32(ToImVec4(glyphColour)), ICON_MDI_CLOSE);
+			ImGui::GetWindowDrawList()->AddText(glyphTopLeft, ImGui::GetColorU32(Core::ToImVec4(glyphColour)), ICON_MDI_CLOSE);
 		}
 
 		ListOutcome DrawList(const ListLayout& list, const Core::ToastPalette& palette)

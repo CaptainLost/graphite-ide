@@ -6,6 +6,7 @@
 #include "Core/Base/Timestep.h"
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/ContextMenu.h"
+#include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/ToastBorder.h"
 #include "Core/ImGui/ToastStyle.h"
@@ -59,11 +60,6 @@ namespace Core {
 		{
 			static const ImGuiID channel = ImHashStr("Core::Toasts::RestingY");
 			return channel;
-		}
-
-		ImVec4 ToImVec4WithAlphaScaled(const Color& color, float alpha = 1.0f)
-		{
-			return ImVec4(color.R, color.G, color.B, color.A * alpha);
 		}
 
 		std::vector<ImVec2> ToImVec2s(const std::vector<BorderPoint>& points)
@@ -306,10 +302,10 @@ namespace Core {
 				const ImVec2 cardMin = ImGui::GetWindowPos();
 				const ImVec2 cardMax(cardMin.x + width, cardMin.y + height);
 				const float rounding = Scaled(kCardRounding);
-				const ImVec4 border = ToImVec4WithAlphaScaled(ToastAccentOf(palette, toast.Kind), kBorderAlpha);
+				const ImVec4 border = WithAlphaScaled(ToImVec4(ToastAccentOf(palette, toast.Kind)), kBorderAlpha);
 				const ImVec4 drainedBorder =
-					ToImVec4WithAlphaScaled(ToastAccentOf(palette, toast.Kind), kDrainedBorderAlphaKeepingCardEdge);
-				const ImVec4 surface = ToImVec4WithAlphaScaled(palette.Surface);
+					WithAlphaScaled(ToImVec4(ToastAccentOf(palette, toast.Kind)), kDrainedBorderAlphaKeepingCardEdge);
+				const ImVec4 surface = ToImVec4(palette.Surface);
 
 				cardDrawList->AddRectFilled(cardMin, cardMax, ImGui::GetColorU32(surface), rounding);
 				DrawCountdownBorder(*cardDrawList, cardMin, cardMax, rounding,
@@ -322,7 +318,7 @@ namespace Core {
 				const float rowY = paddingY;
 
 				ImGui::SetCursorPos(ImVec2(textLeft, rowY));
-				ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4WithAlphaScaled(palette.Text));
+				ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4(palette.Text));
 
 				if (boldFont != nullptr)
 				{
@@ -343,7 +339,7 @@ namespace Core {
 				if (!repeatCountText.empty())
 				{
 					ImGui::SameLine();
-					ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4WithAlphaScaled(palette.TextDim));
+					ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4(palette.TextDim));
 					ImGui::TextUnformatted(repeatCountText.c_str());
 					ImGui::PopStyleColor();
 				}
@@ -358,7 +354,7 @@ namespace Core {
 				ImGui::SetCursorPos(ImVec2(width - paddingX - closeButtonWidth, rowY));
 				ImGui::PushStyleColor(ImGuiCol_Button, transparentColour);
 				ImGui::PushStyleColor(ImGuiCol_Text,
-									  ToImVec4WithAlphaScaled(pointerOverClose ? palette.Text : palette.TextDim));
+									  ToImVec4(pointerOverClose ? palette.Text : palette.TextDim));
 
 				if (ImGui::SmallButton(ICON_MDI_CLOSE "##close"))
 				{
@@ -381,8 +377,8 @@ namespace Core {
 				{
 					ImDrawList* const bodyDrawList = ImGui::GetWindowDrawList();
 					const ImVec2 origin = ImGui::GetCursorScreenPos();
-					const ImU32 plainColour = ImGui::GetColorU32(ToImVec4WithAlphaScaled(ToastMessageColour(palette)));
-					const ImU32 strongColour = ImGui::GetColorU32(ToImVec4WithAlphaScaled(palette.Text));
+					const ImU32 plainColour = ImGui::GetColorU32(ToImVec4(ToastMessageColour(palette)));
+					const ImU32 strongColour = ImGui::GetColorU32(ToImVec4(palette.Text));
 
 					for (std::size_t lineIndex = 0; lineIndex < lines.size(); ++lineIndex)
 					{

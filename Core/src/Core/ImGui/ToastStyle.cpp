@@ -2,6 +2,7 @@
 
 #include "Core/ImGui/ToastStyle.h"
 
+#include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/UiScale.h"
 
 namespace Core {
@@ -33,11 +34,6 @@ namespace Core {
 		constexpr ImVec2 kCrossBottomRight(5.0f, 5.0f);
 		constexpr ImVec2 kCrossBottomLeft(-5.0f, 5.0f);
 		constexpr ImVec2 kCrossTopRight(5.0f, -5.0f);
-
-		ImVec4 ToImVec4(const Color& colour)
-		{
-			return ImVec4(colour.R, colour.G, colour.B, colour.A);
-		}
 
 		ImVec2 PointFromCentre(ImVec2 centre, ImVec2 offsetAtFullScale)
 		{

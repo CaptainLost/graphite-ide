@@ -2,6 +2,7 @@
 
 #include "Core/ImGui/Theme.h"
 
+#include "Core/ImGui/ImGuiColors.h"
 #include <imgui.h>
 
 namespace Core {
@@ -16,11 +17,6 @@ namespace Core {
 		constexpr ImVec4 kTextDisabled{0.482f, 0.510f, 0.553f, 1.0f};
 
 		constexpr Color kBorder{0.204f, 0.220f, 0.247f, 1.0f};
-
-		constexpr ImVec4 ToImVec4(const Color& color)
-		{
-			return ImVec4{color.R, color.G, color.B, color.A};
-		}
 
 		constexpr Color FromImVec4(const ImVec4& color)
 		{
