@@ -22,6 +22,13 @@ namespace Core {
 
 	bool Toggle(const char* id, bool* isOn)
 	{
+		// WARNING: the button below adds no item in a window that skips them, so the item id read after
+		// it would be the previous item's, and the animations would write over its stored state.
+		if (ImGui::GetCurrentWindowRead()->SkipItems)
+		{
+			return false;
+		}
+
 		const ImVec2 trackSize = Scaled(ImVec2(kToggleWidth, kToggleHeight));
 		const ImVec2 itemSize(trackSize.x, ImGui::GetFrameHeight());
 		const ImVec2 itemTopLeft = ImGui::GetCursorScreenPos();

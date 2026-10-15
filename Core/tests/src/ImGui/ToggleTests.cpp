@@ -42,6 +42,10 @@ namespace {
 
 		void NextDisabled(bool& value) { Draw(value, DrawMode::Disabled); }
 
+		void NextInCollapsedWindow(bool& value) { Draw(value, DrawMode::Collapsed); }
+
+		bool GrewStateStorage() const { return m_GrewStateStorage; }
+
 		void Click(bool& value) { ClickDrawing(value, DrawMode::Normal); }
 
 		void ClickDisabled(bool& value) { ClickDrawing(value, DrawMode::Disabled); }
@@ -64,7 +68,8 @@ namespace {
 		{
 			Normal,
 			Focus,
-			Disabled
+			Disabled,
+			Collapsed
 		};
 
 		void ClickDrawing(bool& value, DrawMode mode)
@@ -84,6 +89,13 @@ namespace {
 			Core::Animation::BeginFrame();
 			ImGui::SetNextWindowPos(kWindowOrigin);
 			ImGui::SetNextWindowSize(kDisplaySize);
+
+			if (mode == DrawMode::Collapsed)
+			{
+				const bool collapsed = true;
+				ImGui::SetNextWindowCollapsed(collapsed);
+			}
+
 			ImGui::Begin("toggle");
 			ImGui::SetCursorScreenPos(kTogglePosition);
 
@@ -92,9 +104,13 @@ namespace {
 				ImGui::SetKeyboardFocusHere();
 			}
 
+			const int storedBefore = ImGui::GetStateStorage()->Data.Size;
+
 			ImGui::BeginDisabled(mode == DrawMode::Disabled);
 			const bool flipped = Core::Toggle("##toggle", &value);
 			ImGui::EndDisabled();
+
+			m_GrewStateStorage = ImGui::GetStateStorage()->Data.Size > storedBefore;
 
 			if (flipped)
 			{
@@ -114,7 +130,19 @@ namespace {
 		ImVec2 m_Centre;
 		ImVec2 m_ItemSize;
 		std::size_t m_Flips = 0;
+		bool m_GrewStateStorage = false;
 	};
+}
+
+TEST_CASE("A toggle in a window that skips its items keeps no state and does not flip")
+{
+	ToggleFrames frames;
+	bool value = false;
+
+	frames.NextInCollapsedWindow(value);
+
+	CHECK_FALSE(frames.GrewStateStorage());
+	CHECK(frames.GetFlipCount() == 0);
 }
 
 TEST_CASE("A click flips a toggle once")
