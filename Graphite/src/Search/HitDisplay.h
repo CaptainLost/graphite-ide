@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Search/SearchQuery.h"
+#include "UI/HighlightedRow.h"
 
 #include <filesystem>
 #include <string>
@@ -9,18 +10,11 @@
 namespace Graphite {
 
 	// WARNING: The views point into the hit's own Text, so the hit must outlive them.
-	struct HitLine
-	{
-		std::string_view Before;
-		std::string_view Match;
-		std::string_view After;
-	};
-
-	HitLine SplitForDisplay(const SearchHit& hit);
+	HighlightedLabel SplitForDisplay(const SearchHit& hit);
 
 	// WARNING: Deleted because a temporary would return views into a string destroyed before
 	// they are read. The result is garbage on screen rather than a crash.
-	HitLine SplitForDisplay(SearchHit&&) = delete;
+	HighlightedLabel SplitForDisplay(SearchHit&&) = delete;
 
 	struct DisplayPath
 	{

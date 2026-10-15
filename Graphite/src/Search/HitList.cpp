@@ -22,11 +22,6 @@ namespace Graphite {
 			ImGui::SameLine(kNoOffsetFromStart, kNoSpacing);
 		}
 
-		void TextUnformattedView(std::string_view text)
-		{
-			ImGui::TextUnformatted(text.data(), text.data() + text.size());
-		}
-
 		bool IsHitSelected(const std::optional<HitSelection>& selected, const HitGroup& group,
 						   std::size_t hitIndex)
 		{
@@ -111,25 +106,14 @@ namespace Graphite {
 
 					ImGui::SetCursorPos(rowStart);
 
-					// WARNING: The line is drawn in three pieces, letting ImGui advance between
-					// them, instead of one string with a highlight rectangle behind it.
-					// Positioning that rectangle means measuring the text, and CalcTextSize
-					// rounds up, which drifts the highlight off the text.
-					const HitLine line = SplitForDisplay(hit);
+					const HighlightedLabel line = SplitForDisplay(hit);
 
 					const int displayedLineNumber = static_cast<int>(hit.Line + 1);
 
 					ImGui::TextDisabled("%d: ", displayedLineNumber);
 					SameLineWithoutGap();
 
-					TextUnformattedView(line.Before);
-					SameLineWithoutGap();
-
-					ImGui::TextColored(matchColor, "%.*s", Core::Narrow<int>(line.Match.size()),
-									   line.Match.data());
-					SameLineWithoutGap();
-
-					TextUnformattedView(line.After);
+					DrawHighlightedLabel(line, matchColor);
 
 					ImGui::PopID();
 				}

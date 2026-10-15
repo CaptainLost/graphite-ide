@@ -19,7 +19,7 @@ namespace {
 TEST_CASE("SplitForDisplay cuts a line around its match")
 {
 	const Graphite::SearchHit hit = HitWithText("int value = 1;", 4, 9);
-	const Graphite::HitLine displayLine = Graphite::SplitForDisplay(hit);
+	const Graphite::HighlightedLabel displayLine = Graphite::SplitForDisplay(hit);
 
 	CHECK(displayLine.Before == "int ");
 	CHECK(displayLine.Match == "value");
@@ -29,7 +29,7 @@ TEST_CASE("SplitForDisplay cuts a line around its match")
 TEST_CASE("SplitForDisplay handles a match at the very start")
 {
 	const Graphite::SearchHit hit = HitWithText("value = 1;", 0, 5);
-	const Graphite::HitLine displayLine = Graphite::SplitForDisplay(hit);
+	const Graphite::HighlightedLabel displayLine = Graphite::SplitForDisplay(hit);
 
 	CHECK(displayLine.Before.empty());
 	CHECK(displayLine.Match == "value");
@@ -39,7 +39,7 @@ TEST_CASE("SplitForDisplay handles a match at the very start")
 TEST_CASE("SplitForDisplay handles a match running to the end")
 {
 	const Graphite::SearchHit hit = HitWithText("call(value)", 5, 11);
-	const Graphite::HitLine displayLine = Graphite::SplitForDisplay(hit);
+	const Graphite::HighlightedLabel displayLine = Graphite::SplitForDisplay(hit);
 
 	CHECK(displayLine.Before == "call(");
 	CHECK(displayLine.Match == "value)");
@@ -49,7 +49,7 @@ TEST_CASE("SplitForDisplay handles a match running to the end")
 TEST_CASE("SplitForDisplay drops leading whitespace and moves the match with it")
 {
 	const Graphite::SearchHit hit = HitWithText("\t\t\tint value = 1;", 7, 12);
-	const Graphite::HitLine displayLine = Graphite::SplitForDisplay(hit);
+	const Graphite::HighlightedLabel displayLine = Graphite::SplitForDisplay(hit);
 
 	CHECK(displayLine.Before == "int ");
 	CHECK(displayLine.Match == "value");
@@ -59,7 +59,7 @@ TEST_CASE("SplitForDisplay drops leading whitespace and moves the match with it"
 TEST_CASE("SplitForDisplay trims spaces as well as tabs")
 {
 	const Graphite::SearchHit hit = HitWithText("    value", 4, 9);
-	const Graphite::HitLine displayLine = Graphite::SplitForDisplay(hit);
+	const Graphite::HighlightedLabel displayLine = Graphite::SplitForDisplay(hit);
 
 	CHECK(displayLine.Before.empty());
 	CHECK(displayLine.Match == "value");
@@ -68,7 +68,7 @@ TEST_CASE("SplitForDisplay trims spaces as well as tabs")
 TEST_CASE("SplitForDisplay never trims past the match itself")
 {
 	const Graphite::SearchHit hit = HitWithText("\t\tvalue", 1, 2);
-	const Graphite::HitLine displayLine = Graphite::SplitForDisplay(hit);
+	const Graphite::HighlightedLabel displayLine = Graphite::SplitForDisplay(hit);
 
 	CHECK(displayLine.Before.empty());
 	CHECK(displayLine.Match == "\t");
@@ -78,7 +78,7 @@ TEST_CASE("SplitForDisplay never trims past the match itself")
 TEST_CASE("SplitForDisplay leaves a line that is only whitespace alone")
 {
 	const Graphite::SearchHit hit = HitWithText("\t\t", 0, 1);
-	const Graphite::HitLine displayLine = Graphite::SplitForDisplay(hit);
+	const Graphite::HighlightedLabel displayLine = Graphite::SplitForDisplay(hit);
 
 	CHECK(displayLine.Match == "\t");
 	CHECK(displayLine.After == "\t");

@@ -14,7 +14,7 @@ namespace Graphite {
 		}
 	}
 
-	HitLine SplitForDisplay(const SearchHit& hit)
+	HighlightedLabel SplitForDisplay(const SearchHit& hit)
 	{
 		const std::string_view text = hit.Text;
 
@@ -32,7 +32,7 @@ namespace Graphite {
 		const std::string_view match = text.substr(clampedFrom, clampedTo - clampedFrom);
 		const std::string_view after = text.substr(clampedTo);
 
-		return HitLine{before, match, after};
+		return HighlightedLabel{before, match, after};
 	}
 
 	DisplayPath SplitPathForDisplay(const std::filesystem::path& file,

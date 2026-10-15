@@ -58,6 +58,22 @@ namespace Graphite {
 								.After = label.substr(matchStart + loweredNeedle.size())};
 	}
 
+	void DrawHighlightedLabel(const HighlightedLabel& label, const ImVec4& matchColour)
+	{
+		ImGui::TextUnformatted(label.Before.data(), label.Before.data() + label.Before.size());
+
+		if (label.Match.empty())
+		{
+			return;
+		}
+
+		SameLineWithoutGap();
+		ImGui::TextColored(matchColour, "%.*s", Core::Narrow<int>(label.Match.size()), label.Match.data());
+
+		SameLineWithoutGap();
+		ImGui::TextUnformatted(label.After.data(), label.After.data() + label.After.size());
+	}
+
 	bool MarkedSelectable(const char* id, bool selected, std::string_view marker,
 						  ImU32 markerColor, std::string_view text, std::string_view needle)
 	{
@@ -92,18 +108,7 @@ namespace Graphite {
 			SameLineWithoutGap();
 		}
 
-		ImGui::TextUnformatted(split.Before.data(), split.Before.data() + split.Before.size());
-
-		if (!split.Match.empty())
-		{
-			SameLineWithoutGap();
-
-			ImGui::TextColored(ImGui::GetStyleColorVec4(ImGuiCol_CheckMark), "%.*s",
-							   Core::Narrow<int>(split.Match.size()), split.Match.data());
-
-			SameLineWithoutGap();
-			ImGui::TextUnformatted(split.After.data(), split.After.data() + split.After.size());
-		}
+		DrawHighlightedLabel(split, ImGui::GetStyleColorVec4(ImGuiCol_CheckMark));
 
 		return clicked;
 	}
