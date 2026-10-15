@@ -3,6 +3,8 @@
 #include "Language/Install/InstallJson.h"
 #include "Language/Install/PackageNames.h"
 
+#include "Core/Base/Ascii.h"
+
 #include <format>
 
 namespace Graphite {
@@ -15,14 +17,9 @@ namespace Graphite {
 		constexpr int kStatusOk = 200;
 		constexpr int kStatusNotFound = 404;
 
-		bool IsDigit(char character)
-		{
-			return character >= '0' && character <= '9';
-		}
-
 		std::string VersionFromTag(std::string_view tag)
 		{
-			const bool startsWithV = tag.size() > 1 && (tag.front() == 'v' || tag.front() == 'V') && IsDigit(tag[1]);
+			const bool startsWithV = tag.size() > 1 && (tag.front() == 'v' || tag.front() == 'V') && Core::IsAsciiDigit(tag[1]);
 			return std::string{startsWithV ? tag.substr(1) : tag};
 		}
 

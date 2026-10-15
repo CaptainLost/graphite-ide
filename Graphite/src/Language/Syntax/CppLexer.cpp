@@ -1,5 +1,7 @@
 #include "Language/Syntax/CppLexer.h"
 
+#include "Core/Base/Ascii.h"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -109,11 +111,6 @@ namespace Graphite {
 		constexpr std::size_t kLineStart = 0;
 		constexpr std::size_t kLongestRawDelimiter = 16;
 
-		bool IsDigit(char character)
-		{
-			return character >= '0' && character <= '9';
-		}
-
 		bool IsIdentifierStart(char character)
 		{
 			const bool isLetter = (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z');
@@ -124,7 +121,7 @@ namespace Graphite {
 
 		bool IsIdentifierPart(char character)
 		{
-			return IsIdentifierStart(character) || IsDigit(character);
+			return IsIdentifierStart(character) || Core::IsAsciiDigit(character);
 		}
 
 		bool IsBlank(char character)
@@ -468,9 +465,9 @@ namespace Graphite {
 				continue;
 			}
 
-			const bool dotBeforeDigit = character == '.' && at + 1 < line.size() && IsDigit(line[at + 1]);
+			const bool dotBeforeDigit = character == '.' && at + 1 < line.size() && Core::IsAsciiDigit(line[at + 1]);
 
-			if (IsDigit(character) || dotBeforeDigit)
+			if (Core::IsAsciiDigit(character) || dotBeforeDigit)
 			{
 				const std::size_t from = at;
 				at = ScanNumber(line, at);

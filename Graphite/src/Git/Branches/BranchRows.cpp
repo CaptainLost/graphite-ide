@@ -249,11 +249,6 @@ namespace Graphite {
 			return IsUserKey(key, authors) ? *authors.UserEmail : key;
 		}
 
-		bool IsDigit(char character)
-		{
-			return kDigits.find(character) != std::string_view::npos;
-		}
-
 		std::string_view DigitRunAt(std::string_view text, std::size_t runStart)
 		{
 			const std::size_t runEnd = std::min(text.find_first_not_of(kDigits, runStart), text.size());
@@ -280,7 +275,7 @@ namespace Graphite {
 
 			while (position < text.size() && otherPosition < otherText.size())
 			{
-				if (IsDigit(text[position]) && IsDigit(otherText[otherPosition]))
+				if (Core::IsAsciiDigit(text[position]) && Core::IsAsciiDigit(otherText[otherPosition]))
 				{
 					const std::string_view number = DigitRunAt(text, position);
 					const std::string_view otherNumber = DigitRunAt(otherText, otherPosition);

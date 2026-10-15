@@ -108,6 +108,16 @@ TEST_CASE("The trims drop bytes of the given set from one end or both and keep a
 	CHECK(Core::WithoutSurrounding("", " ").empty());
 }
 
+TEST_CASE("IsAsciiDigit is true for the ten ASCII digits alone")
+{
+	static_assert(Core::IsAsciiDigit('0'));
+	static_assert(Core::IsAsciiDigit('9'));
+	static_assert(!Core::IsAsciiDigit('a'));
+	static_assert(!Core::IsAsciiDigit('/'));
+	static_assert(!Core::IsAsciiDigit(':'));
+	CHECK_FALSE(Core::IsAsciiDigit('\xD9'));
+}
+
 TEST_CASE("ContainsOnlySpacesAndTabs is true for spaces and tabs only, and for nothing at all")
 {
 	static_assert(Core::ContainsOnlySpacesAndTabs(""));

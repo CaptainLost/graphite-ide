@@ -45,6 +45,11 @@ namespace Core {
 		return LowerAscii(left) == LowerAscii(right);
 	}
 
+	constexpr bool IsAsciiDigit(char character)
+	{
+		return character >= '0' && character <= '9';
+	}
+
 	// The six bytes the C locale calls space, without asking the locale.
 	constexpr bool IsAsciiWhitespace(char character)
 	{

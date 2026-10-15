@@ -141,11 +141,6 @@ namespace Graphite {
 			return lines;
 		}
 
-		bool IsDigit(char character)
-		{
-			return character >= '0' && character <= '9';
-		}
-
 		std::size_t OverloadNoteStart(std::string_view line)
 		{
 			const std::size_t noteStart = line.rfind(kOverloadNoteOpening);
@@ -161,7 +156,7 @@ namespace Graphite {
 			const std::size_t countStart = inside.find_first_not_of(kBlanks);
 
 			const bool followsTheDeclaration = before.ends_with(' ') && !Trimmed(before).empty();
-			const bool opensWithACount = countStart != std::string_view::npos && IsDigit(inside[countStart]);
+			const bool opensWithACount = countStart != std::string_view::npos && Core::IsAsciiDigit(inside[countStart]);
 			const bool closesOnlyAtTheEnd = inside.find_first_of("()") == std::string_view::npos;
 
 			return followsTheDeclaration && opensWithACount && closesOnlyAtTheEnd ? noteStart : std::string_view::npos;

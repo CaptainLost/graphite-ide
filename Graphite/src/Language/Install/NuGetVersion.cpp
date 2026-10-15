@@ -12,16 +12,11 @@ namespace Graphite {
 
 		constexpr std::size_t kLargestNumberCount = 4;
 
-		bool IsDigit(char character)
-		{
-			return character >= '0' && character <= '9';
-		}
-
 		bool IsAllDigits(std::string_view text)
 		{
 			for (const char character : text)
 			{
-				if (!IsDigit(character))
+				if (!Core::IsAsciiDigit(character))
 				{
 					return false;
 				}
@@ -33,7 +28,7 @@ namespace Graphite {
 		bool IsLabelCharacter(char character)
 		{
 			const bool isLetter = (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z');
-			return isLetter || IsDigit(character) || character == '-';
+			return isLetter || Core::IsAsciiDigit(character) || character == '-';
 		}
 
 		bool IsLabel(std::string_view text)
