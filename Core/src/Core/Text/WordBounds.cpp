@@ -72,6 +72,13 @@ namespace Core {
 		return false;
 	}
 
+	bool IsWordByte(char byte)
+	{
+		const auto value = static_cast<unsigned char>(byte);
+
+		return value >= kFirstCodePointOutsideAscii || IsWordCodePoint(value, WordKind::Code);
+	}
+
 	ColumnSpan WordSpanAt(std::string_view lineText, std::size_t byteOffset, WordKind kind)
 	{
 		if (byteOffset >= lineText.size())

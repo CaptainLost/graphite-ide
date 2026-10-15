@@ -13,6 +13,21 @@ TEST_CASE("A word in code is letters, digits and underscores")
 	CHECK(WordSpanAt("auto my_value2 = 3;", underscoreInsideMyValue2, WordKind::Code) == ColumnSpan{.From = 5, .To = 14});
 }
 
+TEST_CASE("A byte belongs to a word when its character does in code, every byte of a letter beyond ASCII included")
+{
+	CHECK(IsWordByte('a'));
+	CHECK(IsWordByte('Z'));
+	CHECK(IsWordByte('7'));
+	CHECK(IsWordByte('_'));
+	CHECK(IsWordByte('\xC3'));
+	CHECK(IsWordByte('\xA9'));
+
+	CHECK_FALSE(IsWordByte(' '));
+	CHECK_FALSE(IsWordByte('.'));
+	CHECK_FALSE(IsWordByte('('));
+	CHECK_FALSE(IsWordByte('-'));
+}
+
 TEST_CASE("A byte on punctuation selects that one character")
 {
 	const std::size_t equalsSign = 2;

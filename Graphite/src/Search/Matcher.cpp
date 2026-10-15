@@ -2,8 +2,7 @@
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Glob.h"
-
-#include <cctype>
+#include "Core/Text/WordBounds.h"
 
 namespace Graphite {
 
@@ -16,11 +15,6 @@ namespace Graphite {
 		bool CharactersMatch(char left, char right, bool matchCase)
 		{
 			return matchCase ? left == right : Core::EqualsIgnoringCase(left, right);
-		}
-
-		bool IsIdentifierCharacter(char character)
-		{
-			return character == '_' || std::isalnum(static_cast<unsigned char>(character)) != 0;
 		}
 	}
 
@@ -89,10 +83,8 @@ namespace Graphite {
 
 			const std::size_t matchEnd = matchStart + needle.size();
 
-			const bool startsOnBoundary =
-				matchStart == 0 || !IsIdentifierCharacter(line[matchStart - 1]);
-			const bool endsOnBoundary =
-				matchEnd == line.size() || !IsIdentifierCharacter(line[matchEnd]);
+			const bool startsOnBoundary = matchStart == 0 || !Core::IsWordByte(line[matchStart - 1]);
+			const bool endsOnBoundary = matchEnd == line.size() || !Core::IsWordByte(line[matchEnd]);
 			const bool satisfiesWholeWord =
 				!query.WholeWord || (startsOnBoundary && endsOnBoundary);
 

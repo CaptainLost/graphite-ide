@@ -5,14 +5,13 @@
 #include "Core/Text/Columns.h"
 #include "Core/Text/Encoding.h"
 #include "Core/Text/TextBuffer.h"
+#include "Core/Text/WordBounds.h"
 
 #include <algorithm>
 
 namespace Core {
 
 	namespace {
-		constexpr unsigned char kFirstNonAsciiByte = 0x80;
-
 		constexpr std::size_t kOneLine = 1;
 
 		enum class CharacterClass
@@ -30,27 +29,18 @@ namespace Core {
 
 		CharacterClass ClassOf(char character)
 		{
-			const unsigned char byte = static_cast<unsigned char>(character);
-
-			const bool isOutsideAscii = byte >= kFirstNonAsciiByte;
-			if (isOutsideAscii)
+			if (IsWordByte(character))
 			{
 				return CharacterClass::Word;
 			}
 
-			const bool isWhitespace = byte == ' ' || byte == '\t' || byte == '\n';
+			const bool isWhitespace = character == ' ' || character == '\t' || character == '\n';
 			if (isWhitespace)
 			{
 				return CharacterClass::Whitespace;
 			}
 
-			const bool isDigit = byte >= '0' && byte <= '9';
-			const bool isLowercaseLetter = byte >= 'a' && byte <= 'z';
-			const bool isUppercaseLetter = byte >= 'A' && byte <= 'Z';
-			const bool isUnderscore = byte == '_';
-			const bool isIdentifierCharacter = isDigit || isLowercaseLetter || isUppercaseLetter || isUnderscore;
-
-			return isIdentifierCharacter ? CharacterClass::Word : CharacterClass::Punctuation;
+			return CharacterClass::Punctuation;
 		}
 
 		std::size_t ColumnAt(const TextBuffer& buffer, std::size_t offset,

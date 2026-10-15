@@ -5,6 +5,7 @@
 #include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/Encoding.h"
+#include "Core/Text/WordBounds.h"
 
 #include <array>
 #include <cctype>
@@ -16,7 +17,6 @@
 namespace Core {
 
 	namespace {
-		constexpr unsigned char kFirstNonAsciiByte = 0x80;
 		constexpr char kQuote = '\'';
 		constexpr char kNewline = '\n';
 		constexpr bool kRegularFace = false;
@@ -31,17 +31,11 @@ namespace Core {
 			return character == ' ' || character == '\t' || character == '\r' || character == '\f' || character == '\v';
 		}
 
-		bool IsWordCharacter(char character)
-		{
-			const auto byte = static_cast<unsigned char>(character);
-			return byte >= kFirstNonAsciiByte || std::isalnum(byte) != 0 || character == '_';
-		}
-
 		bool ContainsWordCharacter(std::string_view text)
 		{
 			for (const char character : text)
 			{
-				if (IsWordCharacter(character))
+				if (IsWordByte(character))
 				{
 					return true;
 				}
@@ -52,7 +46,7 @@ namespace Core {
 
 		std::optional<std::size_t> ClosingQuoteOfStrongSpan(std::string_view text, std::size_t openIndex)
 		{
-			if (text[openIndex] != kQuote || (openIndex > 0 && IsWordCharacter(text[openIndex - 1])))
+			if (text[openIndex] != kQuote || (openIndex > 0 && IsWordByte(text[openIndex - 1])))
 			{
 				return std::nullopt;
 			}
@@ -68,7 +62,7 @@ namespace Core {
 
 				const bool endsText = scanIndex + 1 == text.size();
 
-				if (text[scanIndex] == kQuote && (endsText || !IsWordCharacter(text[scanIndex + 1])))
+				if (text[scanIndex] == kQuote && (endsText || !IsWordByte(text[scanIndex + 1])))
 				{
 					return scanIndex;
 				}
@@ -115,7 +109,7 @@ namespace Core {
 			}
 
 			const bool startsWithHiddenName =
-				run.size() >= kDotAndOneCharacterLength && run[0] == '.' && IsWordCharacter(run[1]);
+				run.size() >= kDotAndOneCharacterLength && run[0] == '.' && IsWordByte(run[1]);
 
 			return startsWithHiddenName;
 		}

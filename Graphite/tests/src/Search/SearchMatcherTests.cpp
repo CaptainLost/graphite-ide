@@ -85,6 +85,17 @@ TEST_CASE("Whole word rejects a match glued to an identifier character")
 	CHECK(Find(wholeWord, "a.count = 1").size() == 1);
 }
 
+TEST_CASE("Whole word takes a letter beyond ASCII for part of the word, as a double-click does")
+{
+	Graphite::SearchQuery wholeWord = Plain("count");
+	wholeWord.WholeWord = true;
+
+	CHECK(Find(wholeWord, "count\xC3\xA9").empty());
+	CHECK(Find(wholeWord, "\xC3\xA9" "count").empty());
+
+	CHECK(Find(wholeWord, "\xC3\xA9 count").size() == 1);
+}
+
 TEST_CASE("FindInText handles the last line without a trailing newline")
 {
 	const std::vector<Graphite::SearchHit> hits = Find(Plain("end"), "a\nend");
