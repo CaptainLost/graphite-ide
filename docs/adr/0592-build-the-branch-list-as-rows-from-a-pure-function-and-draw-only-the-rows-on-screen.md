@@ -2,6 +2,7 @@
 
 Status: proposed
 Date: 2026-10-15
+
 ## Context
 
 With about 2000 branches every frame measured and drew every row. Sorting by date and counting matches needs every tip anyway, so showing only part of the list does not save the reading.
@@ -33,10 +34,11 @@ Paging would sort and count only the loaded part, so the order and the counts wo
 
 - Every row kind must stay exactly one text line high, or the clipper misplaces rows. A branch row ends on a one-row `Dummy` so that a row with no age, badge or highlighted match is not 2 px taller than the clipper's row height.
 - The section headings are tighter than before.
+- Reading the branches stays fast only while the listing avoids two libgit2 calls per branch: `git_branch_is_head` re-reads HEAD from disk and `git_branch_upstream` takes a new configuration snapshot on every call, together about 210 ms for 2001 branches. The listing resolves HEAD once and compares reference names; it takes one configuration snapshot and skips `git_branch_upstream` for a branch missing its `remote` or `merge` entry there.
 
 ### Neutral
 
-- Sort and grouping persist per folder; the filter starts empty each time.
+- A list narrowed to one author opens showing everyone again the next time the folder is opened, in the order and grouping it had.
 
 ## Alternatives Considered
 
