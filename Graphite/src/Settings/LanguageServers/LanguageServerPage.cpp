@@ -701,12 +701,9 @@ namespace Graphite {
 
 	void LanguageServerPage::StartBrowsing(const ServerDefinition& server)
 	{
-		m_Browse.Start(ProgramPickerFor(server), [this](Core::Result<std::filesystem::path> picked) {
-			if (picked)
-			{
-				SetCustomPath(picked.GetValue());
-			}
-		});
+		m_Browse.Start(
+			ProgramPickerFor(server), [this](const std::filesystem::path& picked) { SetCustomPath(picked); },
+			[](const Core::Error& error) { APP_ERROR("Cannot open the program picker: {}", error.Message); });
 	}
 
 	void LanguageServerPage::DrawArguments(const ServerDefinition& server)

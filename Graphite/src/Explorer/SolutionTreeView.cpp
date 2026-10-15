@@ -918,31 +918,15 @@ namespace Graphite {
 		if (action.Action == PendingAction::Kind::AddProject)
 		{
 			m_Workspace.GetDialog().Start(
-				PickProjectFile, [this, action = std::move(action)](Core::Result<std::filesystem::path> picked) mutable {
-					OnProjectFilePicked(std::move(action), std::move(picked));
-				});
+				PickProjectFile,
+				[this, action = std::move(action)](const std::filesystem::path& picked) mutable {
+					action.Project = picked;
+					ApplyAndReport(action);
+				},
+				[this](const Core::Error& error) { m_Workspace.ReportDialogFailure(error); });
 			return;
 		}
 
-		ApplyAndReport(action);
-	}
-
-	void SolutionTreeView::OnProjectFilePicked(PendingAction action, Core::Result<std::filesystem::path> picked)
-	{
-		if (!picked)
-		{
-			APP_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
-			m_Events.Publish(
-				ApplicationToast(Core::ToastKind::Error, "Cannot open file picker", picked.GetError().Message));
-			return;
-		}
-
-		if (picked.GetValue().empty())
-		{
-			return;
-		}
-
-		action.Project = std::move(picked).GetValue();
 		ApplyAndReport(action);
 	}
 

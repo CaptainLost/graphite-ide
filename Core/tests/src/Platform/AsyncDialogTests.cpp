@@ -20,6 +20,8 @@ using Core::Result;
 namespace {
 	using Picked = Result<std::filesystem::path>;
 
+	void IgnoreFailure(const Error&) {}
+
 	constexpr std::chrono::seconds kGiveUpAfter{5};
 	constexpr std::chrono::milliseconds kPollInterval{1};
 	constexpr std::chrono::milliseconds kTimeToAskForARedrawAfterReturning{200};
@@ -77,7 +79,7 @@ namespace {
 
 	bool StartSecondDialog(AsyncDialog& dialog, int& deliveredCount)
 	{
-		return dialog.Start(PickSecond, [&deliveredCount](Picked) { ++deliveredCount; });
+		return dialog.Start(PickSecond, [&deliveredCount](const std::filesystem::path&) { ++deliveredCount; }, IgnoreFailure);
 	}
 }
 
@@ -92,7 +94,7 @@ TEST_CASE("AsyncDialog runs the picker on a thread other than the one that start
 			pickerThread = std::this_thread::get_id();
 			return std::filesystem::path("C:/work");
 		},
-		[&](Picked) { delivered = true; }));
+		[&](const std::filesystem::path&) { delivered = true; }, IgnoreFailure));
 
 	REQUIRE(PollEachFrameUntil(dialog, [&] { return delivered; }));
 	CHECK(pickerThread != std::thread::id{});
@@ -103,38 +105,59 @@ TEST_CASE("AsyncDialog hands the result over only through Poll on the thread tha
 {
 	AsyncDialog dialog;
 	HeldOpenPicker heldPicker;
-	std::optional<Picked> deliveredAnswer;
+	std::optional<std::filesystem::path> deliveredPath;
 	std::thread::id answerHandlerThread;
+	bool failureReported = false;
 
-	REQUIRE(dialog.Start(heldPicker.MakePicker(), [&](Picked picked) {
-		answerHandlerThread = std::this_thread::get_id();
-		deliveredAnswer = std::move(picked);
-	}));
+	REQUIRE(dialog.Start(
+		heldPicker.MakePicker(),
+		[&](const std::filesystem::path& picked) {
+			answerHandlerThread = std::this_thread::get_id();
+			deliveredPath = picked;
+		},
+		[&](const Error&) { failureReported = true; }));
 
 	heldPicker.Release->set_value();
 
 	WaitUntilPickerReturns(heldPicker);
 	REQUIRE(heldPicker.Returned->load());
-	CHECK_FALSE(deliveredAnswer.has_value());
+	CHECK_FALSE(deliveredPath.has_value());
 
-	REQUIRE(PollEachFrameUntil(dialog, [&] { return deliveredAnswer.has_value(); }));
+	REQUIRE(PollEachFrameUntil(dialog, [&] { return deliveredPath.has_value(); }));
 	CHECK(answerHandlerThread == std::this_thread::get_id());
-	REQUIRE(deliveredAnswer->HasValue());
-	CHECK(deliveredAnswer->GetValue() == std::filesystem::path("picked"));
+	CHECK(*deliveredPath == std::filesystem::path("picked"));
+	CHECK_FALSE(failureReported);
 }
 
-TEST_CASE("AsyncDialog passes a failed pick through unchanged")
+TEST_CASE("AsyncDialog hands a failed pick to the failure handler alone, unchanged")
 {
 	AsyncDialog dialog;
-	std::optional<Picked> deliveredAnswer;
+	std::optional<Error> deliveredError;
+	bool pathDelivered = false;
 
 	REQUIRE(dialog.Start([]() -> Picked { return Error{.Code = ErrorCode::Unsupported, .Message = "no dialog here"}; },
-						 [&](Picked picked) { deliveredAnswer = std::move(picked); }));
+						 [&](const std::filesystem::path&) { pathDelivered = true; },
+						 [&](const Error& error) { deliveredError = error; }));
 
-	REQUIRE(PollEachFrameUntil(dialog, [&] { return deliveredAnswer.has_value(); }));
-	REQUIRE_FALSE(deliveredAnswer->HasValue());
-	CHECK(deliveredAnswer->GetError().Code == ErrorCode::Unsupported);
-	CHECK(deliveredAnswer->GetError().Message == "no dialog here");
+	REQUIRE(PollEachFrameUntil(dialog, [&] { return deliveredError.has_value(); }));
+	CHECK(deliveredError->Code == ErrorCode::Unsupported);
+	CHECK(deliveredError->Message == "no dialog here");
+	CHECK_FALSE(pathDelivered);
+}
+
+TEST_CASE("AsyncDialog calls neither handler when the dialog is cancelled, which the picker answers with an empty path")
+{
+	AsyncDialog dialog;
+	bool pathDelivered = false;
+	bool failureReported = false;
+
+	REQUIRE(dialog.Start([]() -> Picked { return std::filesystem::path{}; },
+						 [&](const std::filesystem::path&) { pathDelivered = true; },
+						 [&](const Error&) { failureReported = true; }));
+
+	REQUIRE(PollEachFrameUntil(dialog, [&] { return !dialog.IsOpen(); }));
+	CHECK_FALSE(pathDelivered);
+	CHECK_FALSE(failureReported);
 }
 
 TEST_CASE("AsyncDialog counts as open from Start until its result is handed over")
@@ -145,7 +168,7 @@ TEST_CASE("AsyncDialog counts as open from Start until its result is handed over
 
 	CHECK_FALSE(dialog.IsOpen());
 
-	REQUIRE(dialog.Start(heldPicker.MakePicker(), [&](Picked) { delivered = true; }));
+	REQUIRE(dialog.Start(heldPicker.MakePicker(), [&](const std::filesystem::path&) { delivered = true; }, IgnoreFailure));
 	CHECK(dialog.IsOpen());
 
 	dialog.Poll();
@@ -163,14 +186,14 @@ TEST_CASE("AsyncDialog refuses a second dialog while one is open")
 	bool firstDelivered = false;
 	bool secondRan = false;
 
-	REQUIRE(dialog.Start(heldPicker.MakePicker(), [&](Picked) { firstDelivered = true; }));
+	REQUIRE(dialog.Start(heldPicker.MakePicker(), [&](const std::filesystem::path&) { firstDelivered = true; }, IgnoreFailure));
 
 	CHECK_FALSE(dialog.Start(
 		[&]() -> Picked {
 			secondRan = true;
-			return std::filesystem::path{};
+			return std::filesystem::path("second");
 		},
-		[&](Picked) { secondRan = true; }));
+		[&](const std::filesystem::path&) { secondRan = true; }, [&](const Error&) { secondRan = true; }));
 
 	heldPicker.Release->set_value();
 	REQUIRE(PollEachFrameUntil(dialog, [&] { return firstDelivered; }));
@@ -184,11 +207,12 @@ TEST_CASE("AsyncDialog counts as closed when the callback runs so the callback c
 	const int bothDialogs = 2;
 
 	REQUIRE(dialog.Start([]() -> Picked { return std::filesystem::path("first"); },
-						 [&](Picked) {
+						 [&](const std::filesystem::path&) {
 							 ++deliveredCount;
 							 CHECK_FALSE(dialog.IsOpen());
 							 CHECK(StartSecondDialog(dialog, deliveredCount));
-						 }));
+						 },
+						 IgnoreFailure));
 
 	REQUIRE(PollEachFrameUntil(dialog, [&] { return deliveredCount == bothDialogs; }));
 	CHECK_FALSE(dialog.IsOpen());
@@ -201,7 +225,8 @@ TEST_CASE("AsyncDialog destroyed while a dialog is open neither waits for it nor
 
 	{
 		AsyncDialog dialog;
-		REQUIRE(dialog.Start(heldPicker.MakePicker(), [&](Picked) { delivered = true; }));
+		REQUIRE(dialog.Start(heldPicker.MakePicker(), [&](const std::filesystem::path&) { delivered = true; },
+							 [&](const Error&) { delivered = true; }));
 	}
 
 	heldPicker.Release->set_value();
@@ -218,7 +243,7 @@ TEST_CASE("AsyncDialog destroyed while a dialog is open asks for no redraw when 
 
 	{
 		AsyncDialog dialog;
-		REQUIRE(dialog.Start(heldPicker.MakePicker(), [](Picked) {}));
+		REQUIRE(dialog.Start(heldPicker.MakePicker(), [](const std::filesystem::path&) {}, IgnoreFailure));
 	}
 
 	Core::Redraw::TakeRequest();

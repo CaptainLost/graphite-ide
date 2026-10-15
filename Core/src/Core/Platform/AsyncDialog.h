@@ -18,13 +18,16 @@ namespace Core {
 	{
 	public:
 		using Picker = std::function<Result<std::filesystem::path>()>;
-		using AnswerHandler = std::function<void(Result<std::filesystem::path>)>;
+		using PickedHandler = std::function<void(const std::filesystem::path&)>;
+		using FailureHandler = std::function<void(const Error&)>;
 
 		AsyncDialog() = default;
 
 		~AsyncDialog();
 
-		bool Start(Picker picker, AnswerHandler answerHandler);
+		// WARNING: a cancelled dialog calls neither handler. The picker answers a cancel with an empty
+		// path, and a handler that took it for a pick would act on nothing, such as clearing a setting.
+		bool Start(Picker picker, PickedHandler onPicked, FailureHandler onFailed);
 
 		bool IsOpen() const;
 
@@ -36,6 +39,7 @@ namespace Core {
 		static void PickAndHandOver(const Picker& picker, PendingDialog& pendingDialog);
 
 		Ref<PendingDialog> m_PendingDialog;
-		AnswerHandler m_AnswerHandler;
+		PickedHandler m_OnPicked;
+		FailureHandler m_OnFailed;
 	};
 }

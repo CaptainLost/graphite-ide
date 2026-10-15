@@ -754,6 +754,7 @@ namespace Graphite {
 
 	void Workspace::ReportDialogFailure(const Core::Error& error)
 	{
+		APP_ERROR("Cannot open dialog: {}", error.Message);
 		m_Events.Publish(ApplicationToast(Core::ToastKind::Error, "Cannot open dialog", error.Message));
 	}
 
@@ -761,25 +762,13 @@ namespace Graphite {
 	// own; the callbacks hold the workspace by reference because the workspace owns the dialog.
 	void OpenFolderInteractively(Workspace& workspace)
 	{
-		workspace.GetDialog().Start([] { return Core::FileDialog::PickFolder("Open Folder"); },
-									[&workspace](Core::Result<std::filesystem::path> picked) {
-										if (!picked)
-										{
-											APP_ERROR("Folder dialog failed: {}", picked.GetError().Message);
-											workspace.ReportDialogFailure(picked.GetError());
-											return;
-										}
-
-										const bool cancelled = picked.GetValue().empty();
-
-										if (cancelled)
-										{
-											return;
-										}
-
-										// OpenFolder reports its own failure and leaves the current folder open.
-										static_cast<void>(workspace.OpenFolder(picked.GetValue()));
-									});
+		workspace.GetDialog().Start(
+			[] { return Core::FileDialog::PickFolder("Open Folder"); },
+			[&workspace](const std::filesystem::path& picked) {
+				// OpenFolder reports its own failure and leaves the current folder open.
+				static_cast<void>(workspace.OpenFolder(picked));
+			},
+			[&workspace](const Core::Error& error) { workspace.ReportDialogFailure(error); });
 	}
 
 	void OpenSolutionInteractively(Workspace& workspace)
@@ -790,27 +779,14 @@ namespace Graphite {
 
 		workspace.GetDialog().Start(
 			[filters] { return Core::FileDialog::PickFile("Open Solution", filters); },
-			[&workspace](Core::Result<std::filesystem::path> picked) {
-				if (!picked)
-				{
-					APP_ERROR("Cannot open the file picker: {}", picked.GetError().Message);
-					workspace.ReportDialogFailure(picked.GetError());
-					return;
-				}
-
-				const bool cancelled = picked.GetValue().empty();
-
-				if (cancelled)
-				{
-					return;
-				}
-
-				const Core::Result<void> opened = workspace.OpenSolution(picked.GetValue());
+			[&workspace](const std::filesystem::path& picked) {
+				const Core::Result<void> opened = workspace.OpenSolution(picked);
 
 				if (!opened)
 				{
 					APP_ERROR("Cannot open the solution: {}", opened.GetError().Message);
 				}
-			});
+			},
+			[&workspace](const Core::Error& error) { workspace.ReportDialogFailure(error); });
 	}
 }

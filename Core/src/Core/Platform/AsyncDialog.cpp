@@ -32,7 +32,7 @@ namespace Core {
 		}
 	}
 
-	bool AsyncDialog::Start(Picker picker, AnswerHandler answerHandler)
+	bool AsyncDialog::Start(Picker picker, PickedHandler onPicked, FailureHandler onFailed)
 	{
 		if (IsOpen())
 		{
@@ -44,7 +44,8 @@ namespace Core {
 		std::thread([pendingDialog, picker = std::move(picker)] { PickAndHandOver(picker, *pendingDialog); }).detach();
 
 		m_PendingDialog = std::move(pendingDialog);
-		m_AnswerHandler = std::move(answerHandler);
+		m_OnPicked = std::move(onPicked);
+		m_OnFailed = std::move(onFailed);
 
 		return true;
 	}
@@ -73,9 +74,23 @@ namespace Core {
 		}
 
 		m_PendingDialog.reset();
-		AnswerHandler answerHandler = std::exchange(m_AnswerHandler, nullptr);
+		const PickedHandler onPicked = std::exchange(m_OnPicked, nullptr);
+		const FailureHandler onFailed = std::exchange(m_OnFailed, nullptr);
 
-		answerHandler(std::move(*answer));
+		if (!answer->HasValue())
+		{
+			onFailed(answer->GetError());
+			return;
+		}
+
+		const bool cancelled = answer->GetValue().empty();
+
+		if (cancelled)
+		{
+			return;
+		}
+
+		onPicked(answer->GetValue());
 	}
 
 	void AsyncDialog::PickAndHandOver(const Picker& picker, PendingDialog& pendingDialog)

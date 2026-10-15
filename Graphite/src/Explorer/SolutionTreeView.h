@@ -110,7 +110,6 @@ namespace Graphite {
 		void RenderRemoveConfirmation();
 		void ExecutePendingAction();
 		Core::Result<void> Apply(const PendingAction& action);
-		void OnProjectFilePicked(PendingAction action, Core::Result<std::filesystem::path> picked);
 		void ReportEditFailure(const Core::Error& error);
 		void ApplyAndReport(const PendingAction& action);
 
