@@ -422,26 +422,31 @@ namespace {
 	constexpr std::uint8_t kFeatureTipByte = 3;
 	constexpr std::uint8_t kMovedFeatureTipByte = 4;
 
+	Core::Branch BranchWithReadableTip(const std::string& name, const std::string& fullName, std::uint8_t tipByte)
+	{
+		Core::Branch branch;
+		branch.Name = name;
+		branch.FullName = fullName;
+		branch.Tip = OidWithFirstByte(tipByte);
+
+		Core::CommitSummary tip;
+		tip.Id = branch.Tip;
+		branch.TipCommit = tip;
+
+		return branch;
+	}
+
 	std::vector<Core::Branch> TrunkAndFeature(std::uint8_t featureTipByte)
 	{
-		Core::Branch main;
-		main.Name = "main";
-		main.FullName = "refs/heads/main";
+		Core::Branch main = BranchWithReadableTip("main", "refs/heads/main", kMainTipByte);
 		main.IsHead = true;
 		main.Upstream = "origin/main";
-		main.Tip = OidWithFirstByte(kMainTipByte);
 
-		Core::Branch originMain;
-		originMain.Name = "origin/main";
-		originMain.FullName = "refs/remotes/origin/main";
+		Core::Branch originMain = BranchWithReadableTip("origin/main", "refs/remotes/origin/main", kOriginMainTipByte);
 		originMain.Kind = Core::RefKind::Remote;
 		originMain.IsRemoteDefault = true;
-		originMain.Tip = OidWithFirstByte(kOriginMainTipByte);
 
-		Core::Branch feature;
-		feature.Name = "feature";
-		feature.FullName = "refs/heads/feature";
-		feature.Tip = OidWithFirstByte(featureTipByte);
+		const Core::Branch feature = BranchWithReadableTip("feature", "refs/heads/feature", featureTipByte);
 
 		return {main, originMain, feature};
 	}

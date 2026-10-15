@@ -12,6 +12,7 @@ namespace {
 	constexpr std::uint8_t kMainTipByte = 1;
 	constexpr std::uint8_t kOriginMainTipByte = 2;
 	constexpr std::uint8_t kFeatureTipByte = 3;
+	constexpr std::uint8_t kUnreadableTipByte = 4;
 	constexpr long long kTipSeconds = 1700000000;
 
 	Core::Signature Person(const std::string& name, const std::string& email, long long seconds)
@@ -72,6 +73,46 @@ TEST_CASE("The authors request lists every tip once in a fixed order and hides t
 	CHECK(request.Tips == std::vector<Core::Oid>{OidWithFirstByte(kMainTipByte), OidWithFirstByte(kOriginMainTipByte),
 												 OidWithFirstByte(kFeatureTipByte)});
 	CHECK(request.Hidden == std::vector<Core::Oid>{OidWithFirstByte(kMainTipByte), OidWithFirstByte(kOriginMainTipByte)});
+}
+
+TEST_CASE("A branch whose tip cannot be read is left out of the authors request")
+{
+	Core::Branch main = BranchWithTip("main", Core::RefKind::Local, kMainTipByte);
+	main.IsHead = true;
+
+	Core::Branch unreadable = BranchWithTip("unreadable", Core::RefKind::Local, kUnreadableTipByte);
+	unreadable.TipCommit.reset();
+
+	const std::vector<Core::Branch> branches = {
+		BranchWithTip("feature", Core::RefKind::Local, kFeatureTipByte),
+		main,
+		unreadable,
+	};
+
+	const Core::OwnAuthorsRequest request = Graphite::OwnAuthorsRequestFor(branches);
+
+	CHECK(request.Tips == std::vector<Core::Oid>{OidWithFirstByte(kMainTipByte), OidWithFirstByte(kFeatureTipByte)});
+	CHECK(request.Hidden == std::vector<Core::Oid>{OidWithFirstByte(kMainTipByte)});
+}
+
+TEST_CASE("A trunk branch whose tip cannot be read is not hidden from the authors request")
+{
+	Core::Branch main = BranchWithTip("main", Core::RefKind::Local, kMainTipByte);
+	main.IsHead = true;
+	main.Upstream = "origin/main";
+	main.TipCommit.reset();
+
+	const std::vector<Core::Branch> branches = {
+		BranchWithTip("feature", Core::RefKind::Local, kFeatureTipByte),
+		main,
+		BranchWithTip("origin/main", Core::RefKind::Remote, kOriginMainTipByte),
+	};
+
+	const Core::OwnAuthorsRequest request = Graphite::OwnAuthorsRequestFor(branches);
+
+	CHECK(request.Tips ==
+		  std::vector<Core::Oid>{OidWithFirstByte(kOriginMainTipByte), OidWithFirstByte(kFeatureTipByte)});
+	CHECK(request.Hidden == std::vector<Core::Oid>{OidWithFirstByte(kOriginMainTipByte)});
 }
 
 TEST_CASE("A branch with own commits is written by their authors")

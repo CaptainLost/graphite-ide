@@ -32,7 +32,8 @@ namespace Graphite {
 
 	std::string AuthorKeyOf(std::string_view email);
 
-	// Sorted and without repeats, so two listings with the same tips ask the same question.
+	// Only tips whose commit was read. Sorted and without repeats, so two listings with the same
+	// tips ask the same question.
 	Core::OwnAuthorsRequest OwnAuthorsRequestFor(const std::vector<Core::Branch>& branches);
 
 	std::vector<BranchAuthor> AuthorsOfBranch(const Core::Branch& branch, const BranchAuthors& authors);

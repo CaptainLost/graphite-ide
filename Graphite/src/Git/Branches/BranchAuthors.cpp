@@ -21,6 +21,19 @@ namespace Graphite {
 			oids.erase(std::unique(oids.begin(), oids.end()), oids.end());
 		}
 
+		bool IsReadableTip(const Core::Oid& tip, const std::vector<Core::Branch>& branches)
+		{
+			for (const Core::Branch& branch : branches)
+			{
+				if (branch.Tip == tip && branch.TipCommit.has_value())
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
 		const Core::TipAuthors* AnswerFor(const Core::Oid& tip, const BranchAuthors& authors)
 		{
 			const std::unordered_map<Core::Oid, Core::TipAuthors>::const_iterator found = authors.ByTip.find(tip);
@@ -52,15 +65,23 @@ namespace Graphite {
 	{
 		Core::OwnAuthorsRequest request;
 
+		// WARNING: The walk fails as a whole on a tip whose commit cannot be read, such as a missing
+		// object or a shallow boundary, so such a tip is neither walked nor hidden.
 		for (const Core::Branch& branch : branches)
 		{
-			if (!branch.Tip.IsZero())
+			if (branch.TipCommit.has_value())
 			{
 				request.Tips.push_back(branch.Tip);
 			}
 		}
 
-		request.Hidden = TrunkTips(branches);
+		for (const Core::Oid& trunkTip : TrunkTips(branches))
+		{
+			if (IsReadableTip(trunkTip, branches))
+			{
+				request.Hidden.push_back(trunkTip);
+			}
+		}
 
 		SortWithoutRepeats(request.Tips);
 		SortWithoutRepeats(request.Hidden);
