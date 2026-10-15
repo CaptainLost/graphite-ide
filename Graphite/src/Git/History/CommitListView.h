@@ -83,6 +83,12 @@ namespace Graphite {
 
 		void SetActionsEnabled(bool enabled) { m_ActionsEnabled = enabled; }
 
+		// WARNING: The list stops this far above the bottom of its space, so a line drawn after it
+		// stays in view rather than below the scrolled table.
+		void SetRoomBelow(float height) { m_RoomBelow = height; }
+
+		void SetEmptyText(std::string_view text) { m_EmptyText = text; }
+
 	private:
 		std::size_t FileRowCountUnder(
 			const Core::LogPage& page, std::size_t commitIndex,
@@ -107,5 +113,7 @@ namespace Graphite {
 
 		std::optional<CommitAction> m_CommitAction;
 		bool m_ActionsEnabled = true;
+		float m_RoomBelow = 0.0f;
+		std::string m_EmptyText = "No commits yet.";
 	};
 }

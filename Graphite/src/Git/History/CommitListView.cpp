@@ -389,7 +389,10 @@ namespace Graphite {
 	{
 		if (page.Commits.empty())
 		{
-			Core::EmptyState("No commits yet.");
+			constexpr float kSmallestRegion = 1.0f;
+			const float height = std::max(ImGui::GetContentRegionAvail().y - m_RoomBelow, kSmallestRegion);
+
+			Core::EmptyState(m_EmptyText, nullptr, ImVec2(0.0f, height));
 			return;
 		}
 
@@ -423,7 +426,7 @@ namespace Graphite {
 
 		const float widthBesideScrollbar = ImGui::GetContentRegionAvail().x - style.ScrollbarSize;
 
-		if (ImGui::BeginTable("##commits", TableIndexOf(Column::Count), flags))
+		if (ImGui::BeginTable("##commits", TableIndexOf(Column::Count), flags, ImVec2(0.0f, -m_RoomBelow)))
 		{
 			KeepClearOfScrollbar(ImGui::GetStyle().ItemSpacing.x);
 
