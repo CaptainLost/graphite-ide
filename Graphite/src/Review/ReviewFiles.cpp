@@ -1,5 +1,6 @@
 #include "Review/ReviewFiles.h"
 
+#include "Git/DefaultBranch.h"
 #include "Git/History/CommitLabels.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -14,7 +15,6 @@ namespace Graphite {
 
 		constexpr std::string_view kLocalPrefix = "refs/heads/";
 		constexpr std::string_view kRemotePrefix = "refs/remotes/";
-		constexpr std::string_view kOriginPrefix = "origin/";
 
 		constexpr std::string_view kReviewAgainst = "Review against ";
 
@@ -36,82 +36,6 @@ namespace Graphite {
 			}
 
 			return kCommittedFilesHeading;
-		}
-
-		const Core::Branch* CheckedOutBranch(const std::vector<Core::Branch>& branches)
-		{
-			for (const Core::Branch& branch : branches)
-			{
-				if (branch.Kind == Core::RefKind::Local && branch.IsHead)
-				{
-					return &branch;
-				}
-			}
-
-			return nullptr;
-		}
-
-		const Core::Branch* RemoteBranchNamed(const std::vector<Core::Branch>& branches, const std::string& name)
-		{
-			for (const Core::Branch& branch : branches)
-			{
-				if (branch.Kind == Core::RefKind::Remote && branch.Name == name)
-				{
-					return &branch;
-				}
-			}
-
-			return nullptr;
-		}
-
-		const Core::Branch* OriginDefault(const std::vector<Core::Branch>& branches)
-		{
-			for (const Core::Branch& branch : branches)
-			{
-				if (branch.Kind == Core::RefKind::Remote && branch.IsRemoteDefault &&
-					branch.Name.starts_with(kOriginPrefix))
-				{
-					return &branch;
-				}
-			}
-
-			return nullptr;
-		}
-
-		const Core::Branch* DefaultBranch(const std::vector<Core::Branch>& branches)
-		{
-			const Core::Branch* originDefault = OriginDefault(branches);
-
-			if (originDefault == nullptr)
-			{
-				return nullptr;
-			}
-
-			const std::string_view sameName = std::string_view{originDefault->Name}.substr(kOriginPrefix.size());
-			const Core::Branch* firstTracking = nullptr;
-
-			for (const Core::Branch& branch : branches)
-			{
-				const bool tracksOriginDefault =
-					branch.Kind == Core::RefKind::Local && branch.Upstream == originDefault->Name;
-
-				if (!tracksOriginDefault)
-				{
-					continue;
-				}
-
-				if (branch.Name == sameName)
-				{
-					return &branch;
-				}
-
-				if (firstTracking == nullptr)
-				{
-					firstTracking = &branch;
-				}
-			}
-
-			return firstTracking != nullptr ? firstTracking : originDefault;
 		}
 
 		ReviewOffer OfferAgainst(const Core::Branch& branch, const Core::Branch& base)
