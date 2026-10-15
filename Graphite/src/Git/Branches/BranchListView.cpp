@@ -264,9 +264,10 @@ namespace Graphite {
 	}
 
 	// WARNING: A new branch list lands before the authors asked for it. Built against the older
-	// answer, a moved tip falls back to its new commit's author and leaves its groups until the
-	// answer lands, so while the view needs authors the rows from before stay until then. Only a
-	// new branch list is held back; a change the user made rebuilds at once.
+	// answer, a moved tip falls back to its new commit's author, leaving its groups and no longer
+	// matching a typed author's name until the answer lands, so while the view needs authors or
+	// the filter has words the rows from before stay until then. Only a new branch list is held
+	// back; a change the user made rebuilds at once.
 	bool BranchListView::HoldsRowsFor(const RowsBuiltFrom& inputs, bool authorsInFlight) const
 	{
 		if (!authorsInFlight || !m_RowsBuiltFrom.has_value() || !m_RowsBuiltFrom->Authors)
@@ -274,7 +275,9 @@ namespace Graphite {
 			return false;
 		}
 
-		if (!ViewNeedsAuthors(RowsInputOf(inputs)))
+		const bool wordsMayMatchAuthors = !LoweredWordsOf(inputs.Filter.Text).empty();
+
+		if (!ViewNeedsAuthors(RowsInputOf(inputs)) && !wordsMayMatchAuthors)
 		{
 			return false;
 		}

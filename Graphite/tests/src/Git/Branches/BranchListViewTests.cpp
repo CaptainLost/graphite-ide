@@ -157,6 +157,13 @@ namespace {
 		ImGui::End();
 	}
 
+	ImVec2 FilterBoxPoint()
+	{
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float intoTheBox = 20.0f;
+		return ImVec2(style.WindowPadding.x + intoTheBox, style.WindowPadding.y + ImGui::GetFrameHeight() * kHalf);
+	}
+
 	ImGuiID HoveredAt(ImGuiFrames& frames, const std::function<void()>& draw, ImVec2 at)
 	{
 		ImGui::GetIO().AddMousePosEvent(at.x, at.y);
@@ -564,6 +571,49 @@ TEST_CASE("A branch list that lands while its authors are in flight keeps the ro
 
 	drawnTips.clear();
 	frames.Next([&list, &landed] { DrawListWindow(list, landed, kListWidth); });
+	CHECK(drawnTips == std::vector<Core::Oid>{featureMoved.Tip});
+}
+
+TEST_CASE("With an author's name typed a branch list that lands while authors are in flight keeps the rows built before it")
+{
+	ImGuiFrames frames;
+
+	const Core::Branch featureBefore = LocalBranchAt("feature", kNowSeconds, kTipBefore);
+	const Core::Branch featureMoved = LocalBranchAt("feature", kNowSeconds, kTipMoved);
+
+	const bool inFlight = true;
+	const bool notInFlight = false;
+
+	const Graphite::BranchListFrame settled =
+		FrameWithAuthors(ListOf(featureBefore), AuthorsWhereBobOwns(featureBefore), notInFlight);
+	const Graphite::BranchListFrame held = FrameWithAuthors(ListOf(featureMoved), settled.Authors, inFlight);
+	const Graphite::BranchListFrame landed =
+		FrameWithAuthors(held.Branches, AuthorsWhereBobOwns(featureMoved), notInFlight);
+
+	Graphite::BranchListState options;
+	Graphite::BranchListView list{options};
+
+	std::vector<Core::Oid> drawnTips;
+	list.DrawBranchMenu = [&drawnTips](const Core::Branch& branch) { drawnTips.push_back(branch.Tip); };
+
+	const char* const windowName = "TypedAuthorWord";
+
+	frames.Next([&list, &settled, windowName] { DrawHeaderAndRows(list, settled, windowName); });
+	frames.Click(FilterBoxPoint(), [&list, &settled, windowName] { DrawHeaderAndRows(list, settled, windowName); });
+
+	ImGui::GetIO().AddInputCharactersUTF8("bob");
+	frames.Next([&list, &settled, windowName] { DrawHeaderAndRows(list, settled, windowName); });
+
+	drawnTips.clear();
+	frames.Next([&list, &settled, windowName] { DrawHeaderAndRows(list, settled, windowName); });
+	REQUIRE(drawnTips == std::vector<Core::Oid>{featureBefore.Tip});
+
+	drawnTips.clear();
+	frames.Next([&list, &held, windowName] { DrawHeaderAndRows(list, held, windowName); });
+	CHECK(drawnTips == std::vector<Core::Oid>{featureBefore.Tip});
+
+	drawnTips.clear();
+	frames.Next([&list, &landed, windowName] { DrawHeaderAndRows(list, landed, windowName); });
 	CHECK(drawnTips == std::vector<Core::Oid>{featureMoved.Tip});
 }
 
