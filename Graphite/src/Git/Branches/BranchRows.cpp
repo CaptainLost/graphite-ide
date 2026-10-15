@@ -5,6 +5,7 @@
 #include "Core/Base/Ascii.h"
 
 #include <algorithm>
+#include <compare>
 #include <format>
 #include <map>
 
@@ -18,6 +19,9 @@ namespace Graphite {
 		constexpr const char* kFailurePrefix = "Cannot read authors: ";
 		constexpr const char* kNoMatchesLabel = "No matching branches";
 		constexpr const char* kUserSuffix = " (you)";
+
+		constexpr std::string_view kDigits = "0123456789";
+		constexpr std::string_view kLeadingZero = "0";
 
 		constexpr std::size_t kTopLevelDepth = 0;
 		constexpr std::size_t kInsideGroupDepth = 1;
@@ -33,6 +37,15 @@ namespace Graphite {
 
 		using PeopleByKey = std::map<std::string, Person>;
 		using CountsByKey = std::map<std::string, std::size_t>;
+		using AuthorsByBranch = std::vector<std::vector<BranchAuthor>>;
+
+		enum class AuthorPlace
+		{
+			User,
+			Ticked,
+			Everyone,
+			Unknown
+		};
 
 		struct ListedBranches
 		{
@@ -44,7 +57,7 @@ namespace Graphite {
 		{
 			std::string Key;
 			std::string Label;
-			bool IsUser = false;
+			AuthorPlace Place = AuthorPlace::Everyone;
 			std::vector<std::size_t> Indices;
 		};
 
@@ -115,11 +128,34 @@ namespace Graphite {
 			return keys;
 		}
 
-		bool AnyKeyTicked(const std::vector<std::string>& keys, const std::set<std::string>& ticked)
+		// WARNING: Without an answer AuthorsOfBranch still yields the tip's author, so a word typed
+		// before the walk ends is matched against that author instead of waiting.
+		AuthorsByBranch AuthorsOfEveryBranch(const BranchRowsInput& input)
 		{
-			for (const std::string& key : keys)
+			const BranchAuthors noAnswer;
+			const BranchAuthors& answer = input.Authors != nullptr ? *input.Authors : noAnswer;
+
+			AuthorsByBranch authorsByBranch;
+			authorsByBranch.reserve(input.Branches->size());
+
+			for (const Core::Branch& branch : *input.Branches)
 			{
-				if (ticked.contains(key))
+				authorsByBranch.push_back(AuthorsOfBranch(branch, answer));
+			}
+
+			return authorsByBranch;
+		}
+
+		bool PassesAuthors(const std::vector<BranchAuthor>& authors, const BranchRowsInput& input)
+		{
+			if (input.Filter.Authors.empty() || input.Authors == nullptr)
+			{
+				return true;
+			}
+
+			for (const BranchAuthor& author : authors)
+			{
+				if (input.Filter.Authors.contains(author.Key))
 				{
 					return true;
 				}
@@ -128,18 +164,8 @@ namespace Graphite {
 			return false;
 		}
 
-		bool PassesAuthors(const Core::Branch& branch, const BranchRowsInput& input)
-		{
-			if (input.Filter.Authors.empty() || input.Authors == nullptr)
-			{
-				return true;
-			}
-
-			return AnyKeyTicked(DistinctKeysOf(AuthorsOfBranch(branch, *input.Authors)), input.Filter.Authors);
-		}
-
 		ListedBranches ListSection(const BranchRowsInput& input, Core::RefKind section,
-								   const std::vector<std::string>& words)
+								   const std::vector<std::string>& words, const AuthorsByBranch& authorsByBranch)
 		{
 			ListedBranches listed;
 			const std::vector<Core::Branch>& branches = *input.Branches;
@@ -155,7 +181,9 @@ namespace Graphite {
 
 				++listed.Total;
 
-				if (MatchesWords(branch, words, input.Filter.AlsoMessage) && PassesAuthors(branch, input))
+				const std::vector<BranchAuthor>& authors = authorsByBranch[branchIndex];
+
+				if (MatchesWords(branch, authors, words, input.Filter.AlsoMessage) && PassesAuthors(authors, input))
 				{
 					listed.Indices.push_back(branchIndex);
 				}
@@ -188,13 +216,13 @@ namespace Graphite {
 			}
 		}
 
-		PeopleByKey PeopleOf(const std::vector<Core::Branch>& branches, const BranchAuthors& authors)
+		PeopleByKey PeopleOf(const AuthorsByBranch& authorsByBranch)
 		{
 			PeopleByKey people;
 
-			for (const Core::Branch& branch : branches)
+			for (const std::vector<BranchAuthor>& authors : authorsByBranch)
 			{
-				for (const BranchAuthor& author : AuthorsOfBranch(branch, authors))
+				for (const BranchAuthor& author : authors)
 				{
 					RememberNewerPerson(people, author);
 				}
@@ -221,29 +249,96 @@ namespace Graphite {
 			return IsUserKey(key, authors) ? *authors.UserEmail : key;
 		}
 
-		// The user first, the unknown author last, everyone else by name, then by e-mail.
-		bool IsAuthorOrderedBefore(bool isUser, const std::string& key, const std::string& name, bool otherIsUser,
-								   const std::string& otherKey, const std::string& otherName)
+		bool IsDigit(char character)
 		{
-			if (isUser != otherIsUser)
+			return kDigits.find(character) != std::string_view::npos;
+		}
+
+		std::string_view DigitRunAt(std::string_view text, std::size_t runStart)
+		{
+			const std::size_t runEnd = std::min(text.find_first_not_of(kDigits, runStart), text.size());
+			return text.substr(runStart, runEnd - runStart);
+		}
+
+		std::strong_ordering CompareNumbers(std::string_view digits, std::string_view otherDigits)
+		{
+			const std::string_view significant = Core::WithoutLeading(digits, kLeadingZero);
+			const std::string_view otherSignificant = Core::WithoutLeading(otherDigits, kLeadingZero);
+
+			if (significant.size() != otherSignificant.size())
 			{
-				return isUser;
+				return significant.size() <=> otherSignificant.size();
 			}
 
-			const bool isUnknown = key.empty();
-			const bool otherIsUnknown = otherKey.empty();
+			return significant <=> otherSignificant;
+		}
 
-			if (isUnknown != otherIsUnknown)
+		std::weak_ordering CompareNaturally(std::string_view text, std::string_view otherText)
+		{
+			std::size_t position = 0;
+			std::size_t otherPosition = 0;
+
+			while (position < text.size() && otherPosition < otherText.size())
 			{
-				return otherIsUnknown;
+				if (IsDigit(text[position]) && IsDigit(otherText[otherPosition]))
+				{
+					const std::string_view number = DigitRunAt(text, position);
+					const std::string_view otherNumber = DigitRunAt(otherText, otherPosition);
+					const std::strong_ordering numberOrder = CompareNumbers(number, otherNumber);
+
+					if (std::is_neq(numberOrder))
+					{
+						return numberOrder;
+					}
+
+					position += number.size();
+					otherPosition += otherNumber.size();
+					continue;
+				}
+
+				const unsigned char character = static_cast<unsigned char>(Core::LowerAscii(text[position]));
+				const unsigned char otherCharacter = static_cast<unsigned char>(Core::LowerAscii(otherText[otherPosition]));
+
+				if (character != otherCharacter)
+				{
+					return character <=> otherCharacter;
+				}
+
+				++position;
+				++otherPosition;
 			}
 
-			const std::string loweredName = Core::Lowered(name);
-			const std::string otherLoweredName = Core::Lowered(otherName);
+			return (text.size() - position) <=> (otherText.size() - otherPosition);
+		}
 
-			if (loweredName != otherLoweredName)
+		AuthorPlace PlaceOf(const std::string& key, bool isUser, bool ticked)
+		{
+			if (isUser)
 			{
-				return loweredName < otherLoweredName;
+				return AuthorPlace::User;
+			}
+
+			if (key.empty())
+			{
+				return AuthorPlace::Unknown;
+			}
+
+			return ticked ? AuthorPlace::Ticked : AuthorPlace::Everyone;
+		}
+
+		bool IsAuthorOrderedBefore(AuthorPlace place, const std::string& name, const std::string& key,
+								   AuthorPlace otherPlace, const std::string& otherName, const std::string& otherKey)
+		{
+			if (place != otherPlace)
+			{
+				return place < otherPlace;
+			}
+
+			const std::weak_ordering nameOrder = CompareNaturally(name, otherName);
+
+			if (std::is_neq(nameOrder))
+			{
+				return std::is_lt(nameOrder);
 			}
 
 			return key < otherKey;
@@ -251,14 +346,15 @@ namespace Graphite {
 
 		bool IsGroupBefore(const AuthorGroup& group, const AuthorGroup& otherGroup)
 		{
-			return IsAuthorOrderedBefore(group.IsUser, group.Key, group.Label, otherGroup.IsUser, otherGroup.Key,
-										 otherGroup.Label);
+			return IsAuthorOrderedBefore(group.Place, group.Label, group.Key, otherGroup.Place, otherGroup.Label,
+										 otherGroup.Key);
 		}
 
 		bool IsChoiceBefore(const AuthorChoice& choice, const AuthorChoice& otherChoice)
 		{
-			return IsAuthorOrderedBefore(choice.IsUser, choice.Key, choice.Name, otherChoice.IsUser, otherChoice.Key,
-										 otherChoice.Name);
+			return IsAuthorOrderedBefore(PlaceOf(choice.Key, choice.IsUser, choice.Ticked), choice.Name, choice.Key,
+										 PlaceOf(otherChoice.Key, otherChoice.IsUser, otherChoice.Ticked),
+										 otherChoice.Name, otherChoice.Key);
 		}
 
 		AuthorGroup* GroupWithKey(std::vector<AuthorGroup>& groups, const std::string& key)
@@ -274,24 +370,47 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		std::vector<AuthorGroup> GroupByAuthor(const BranchRowsInput& input, const std::vector<std::size_t>& sortedIndices,
-											   const PeopleByKey& people)
+		std::vector<std::string> GroupKeysOf(const std::vector<BranchAuthor>& authors, const std::set<std::string>& ticked,
+											 const std::vector<std::string>& words)
 		{
+			std::vector<std::string> shownKeys;
+			std::vector<std::string> matchedKeys;
+
+			for (const BranchAuthor& author : authors)
+			{
+				const bool hiddenByAuthorFilter = !ticked.empty() && !ticked.contains(author.Key);
+
+				if (hiddenByAuthorFilter)
+				{
+					continue;
+				}
+
+				if (!ContainsKey(shownKeys, author.Key))
+				{
+					shownKeys.push_back(author.Key);
+				}
+
+				if (AuthorHoldsAnyWord(author, words) && !ContainsKey(matchedKeys, author.Key))
+				{
+					matchedKeys.push_back(author.Key);
+				}
+			}
+
+			return matchedKeys.empty() ? shownKeys : matchedKeys;
+		}
+
+		std::vector<AuthorGroup> GroupByAuthor(const BranchRowsInput& input, const std::vector<std::size_t>& sortedIndices,
+											   const AuthorsByBranch& authorsByBranch,
+											   const std::vector<std::string>& words, const PeopleByKey& people)
+		{
+			const bool notTicked = false;
+
 			std::vector<AuthorGroup> groups;
 
 			for (const std::size_t branchIndex : sortedIndices)
 			{
-				const Core::Branch& branch = (*input.Branches)[branchIndex];
-
-				for (const std::string& key : DistinctKeysOf(AuthorsOfBranch(branch, *input.Authors)))
+				for (const std::string& key : GroupKeysOf(authorsByBranch[branchIndex], input.Filter.Authors, words))
 				{
-					const bool hiddenByAuthorFilter = !input.Filter.Authors.empty() && !input.Filter.Authors.contains(key);
-
-					if (hiddenByAuthorFilter)
-					{
-						continue;
-					}
-
 					AuthorGroup* group = GroupWithKey(groups, key);
 
 					if (group == nullptr)
@@ -299,7 +418,8 @@ namespace Graphite {
 						const bool isUser = IsUserKey(key, *input.Authors);
 						const std::string name = NameOfKey(key, people, *input.Authors);
 
-						groups.push_back(AuthorGroup{.Key = key, .Label = isUser ? name + kUserSuffix : name, .IsUser = isUser});
+						groups.push_back(AuthorGroup{.Key = key, .Label = isUser ? name + kUserSuffix : name,
+													 .Place = PlaceOf(key, isUser, notTicked)});
 						group = &groups.back();
 					}
 
@@ -323,9 +443,10 @@ namespace Graphite {
 		}
 
 		void AddGroupedRows(std::vector<BranchRow>& rows, const BranchRowsInput& input, Core::RefKind section,
-							const std::vector<std::size_t>& indices, const PeopleByKey& people)
+							const std::vector<std::size_t>& indices, const AuthorsByBranch& authorsByBranch,
+							const std::vector<std::string>& words, const PeopleByKey& people)
 		{
-			for (const AuthorGroup& group : GroupByAuthor(input, indices, people))
+			for (const AuthorGroup& group : GroupByAuthor(input, indices, authorsByBranch, words, people))
 			{
 				const AuthorGroupKey groupKey{.Section = section, .Author = group.Key};
 				const bool collapsed = !input.ExpandedGroups.contains(groupKey);
@@ -352,18 +473,22 @@ namespace Graphite {
 			return BranchRow{.Kind = BranchRowKind::Loading, .Section = section, .Label = kLoadingLabel};
 		}
 
-		CountsByKey CountPassingBranchesPerKey(const BranchRowsInput& input, const std::vector<std::string>& words)
+		CountsByKey CountPassingBranchesPerKey(const BranchRowsInput& input, const std::vector<std::string>& words,
+											   const AuthorsByBranch& authorsByBranch)
 		{
 			CountsByKey counts;
+			const std::vector<Core::Branch>& branches = *input.Branches;
 
-			for (const Core::Branch& branch : *input.Branches)
+			for (std::size_t branchIndex = 0; branchIndex < branches.size(); ++branchIndex)
 			{
-				if (!MatchesWords(branch, words, input.Filter.AlsoMessage))
+				const std::vector<BranchAuthor>& authors = authorsByBranch[branchIndex];
+
+				if (!MatchesWords(branches[branchIndex], authors, words, input.Filter.AlsoMessage))
 				{
 					continue;
 				}
 
-				for (const std::string& key : DistinctKeysOf(AuthorsOfBranch(branch, *input.Authors)))
+				for (const std::string& key : DistinctKeysOf(authors))
 				{
 					++counts[key];
 				}
@@ -393,13 +518,14 @@ namespace Graphite {
 		}
 
 		const std::vector<std::string> words = LoweredWordsOf(input.Filter.Text);
+		const AuthorsByBranch authorsByBranch = AuthorsOfEveryBranch(input);
 		const bool waitingForAuthors = ViewNeedsAuthors(input) && input.Authors == nullptr;
 		const bool needsPeople = input.Authors != nullptr && input.Options.Group == BranchGrouping::Author;
-		const PeopleByKey people = needsPeople ? PeopleOf(*input.Branches, *input.Authors) : PeopleByKey{};
+		const PeopleByKey people = needsPeople ? PeopleOf(authorsByBranch) : PeopleByKey{};
 
 		for (const Core::RefKind section : kSectionsInOrder)
 		{
-			const ListedBranches listed = ListSection(input, section, words);
+			const ListedBranches listed = ListSection(input, section, words, authorsByBranch);
 			const bool collapsed = input.CollapsedSections[SectionIndexOf(section)];
 			const std::size_t shownCount = waitingForAuthors ? listed.Total : listed.Indices.size();
 
@@ -425,7 +551,7 @@ namespace Graphite {
 
 			if (input.Options.Group == BranchGrouping::Author)
 			{
-				AddGroupedRows(rows, input, section, listed.Indices, people);
+				AddGroupedRows(rows, input, section, listed.Indices, authorsByBranch, words, people);
 			}
 			else
 			{
@@ -447,11 +573,12 @@ namespace Graphite {
 		}
 
 		const std::vector<std::string> words = LoweredWordsOf(input.Filter.Text);
-		const PeopleByKey people = PeopleOf(*input.Branches, *input.Authors);
+		const AuthorsByBranch authorsByBranch = AuthorsOfEveryBranch(input);
+		const PeopleByKey people = PeopleOf(authorsByBranch);
 
 		std::set<std::string> keys = input.Filter.Authors;
 
-		const CountsByKey counts = CountPassingBranchesPerKey(input, words);
+		const CountsByKey counts = CountPassingBranchesPerKey(input, words, authorsByBranch);
 
 		for (const auto& [key, count] : counts)
 		{
@@ -485,6 +612,28 @@ namespace Graphite {
 		return choices;
 	}
 
+	std::vector<AuthorChoice> FilterAuthorChoices(const std::vector<AuthorChoice>& choices, std::string_view query)
+	{
+		const std::string loweredQuery = Core::Lowered(Core::Trimmed(query));
+
+		if (loweredQuery.empty())
+		{
+			return choices;
+		}
+
+		std::vector<AuthorChoice> kept;
+
+		for (const AuthorChoice& choice : choices)
+		{
+			if (Core::LoweredTextContains(choice.Name, loweredQuery) || Core::LoweredTextContains(choice.Key, loweredQuery))
+			{
+				kept.push_back(choice);
+			}
+		}
+
+		return kept;
+	}
+
 	std::string SectionHeadingText(const BranchRow& row)
 	{
 		if (row.Listed == row.Total)
@@ -502,7 +651,7 @@ namespace Graphite {
 
 	std::string AuthorChoiceText(const AuthorChoice& choice)
 	{
-		return std::format("{}{} ({})", choice.Name, choice.IsUser ? kUserSuffix : "", choice.Branches);
+		return choice.IsUser ? choice.Name + kUserSuffix : choice.Name;
 	}
 
 	std::string AuthorsFailureText(std::string_view message)

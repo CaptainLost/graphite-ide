@@ -97,6 +97,8 @@ namespace Graphite {
 
 	std::vector<AuthorChoice> ListAuthorChoices(const BranchRowsInput& input);
 
+	std::vector<AuthorChoice> FilterAuthorChoices(const std::vector<AuthorChoice>& choices, std::string_view query);
+
 	std::string SectionHeadingText(const BranchRow& row);
 
 	std::string AuthorGroupText(const BranchRow& row);

@@ -114,6 +114,75 @@ namespace {
 
 		authors.ByTip.emplace(branch.Tip, answer);
 	}
+
+	std::vector<std::string> GroupKeysOf(const std::vector<BranchRow>& rows)
+	{
+		std::vector<std::string> keys;
+
+		for (const BranchRow& row : rows)
+		{
+			if (row.Kind == BranchRowKind::AuthorGroup)
+			{
+				keys.push_back(row.AuthorKey);
+			}
+		}
+
+		return keys;
+	}
+
+	std::vector<std::string> GroupLabelsOf(const std::vector<BranchRow>& rows)
+	{
+		std::vector<std::string> labels;
+
+		for (const BranchRow& row : rows)
+		{
+			if (row.Kind == BranchRowKind::AuthorGroup)
+			{
+				labels.push_back(row.Label);
+			}
+		}
+
+		return labels;
+	}
+
+	std::vector<std::string> ChoiceKeysOf(const std::vector<Graphite::AuthorChoice>& choices)
+	{
+		std::vector<std::string> keys;
+
+		for (const Graphite::AuthorChoice& choice : choices)
+		{
+			keys.push_back(choice.Key);
+		}
+
+		return keys;
+	}
+
+	std::vector<Core::Branch> BranchesOfU16AndU8()
+	{
+		return MakeBranches({
+			{.Name = "feature-a", .TipSeconds = kBaseSeconds, .AuthorEmail = "U16@example.com"},
+			{.Name = "feature-b", .TipSeconds = kBaseSeconds - 1, .AuthorEmail = "U8@example.com"},
+			{.Name = "fix-c", .TipSeconds = kBaseSeconds - 2, .AuthorEmail = "U8@example.com"},
+		});
+	}
+
+	Graphite::BranchAuthors AuthorsOfU16AndU8(const std::vector<Core::Branch>& branches)
+	{
+		Graphite::BranchAuthors authors;
+		AddOwnAuthors(authors, branches[0], {"U16@example.com"});
+		AddOwnAuthors(authors, branches[1], {"U8@example.com"});
+		AddOwnAuthors(authors, branches[2], {"U8@example.com", "U16@example.com"});
+		return authors;
+	}
+
+	std::vector<Graphite::AuthorChoice> SomeAuthorChoices()
+	{
+		return {
+			{.Key = "u16@example.com", .Name = "U16", .Branches = 34},
+			{.Key = "jk@work.example", .Name = "Jan Kowalski", .Branches = 3},
+			{.Key = "", .Name = "Unknown author", .Branches = 1},
+		};
+	}
 }
 
 TEST_CASE("Newest lists the latest tip first and breaks a tie by name")
@@ -481,11 +550,214 @@ TEST_CASE("Author choices count the branches the text leaves with the user first
 	REQUIRE(choices.size() == 3);
 	CHECK(choices[0].Key == "me@example.com");
 	CHECK(choices[0].IsUser);
-	CHECK(Graphite::AuthorChoiceText(choices[0]) == "me (you) (1)");
-	CHECK(choices[1].Key == "amy@example.com");
-	CHECK(choices[2].Key == "bob@example.com");
-	CHECK(choices[2].Branches == 0);
-	CHECK(choices[2].Ticked);
+	CHECK(choices[0].Branches == 1);
+	CHECK(Graphite::AuthorChoiceText(choices[0]) == "me (you)");
+	CHECK(choices[1].Key == "bob@example.com");
+	CHECK(choices[1].Branches == 0);
+	CHECK(choices[1].Ticked);
+	CHECK(choices[2].Key == "amy@example.com");
+}
+
+TEST_CASE("A word that names an author lists that author's branches and the heading counts what is left")
+{
+	const std::vector<Core::Branch> branches = BranchesOfU16AndU8();
+	const Graphite::BranchAuthors authors = AuthorsOfU16AndU8(branches);
+
+	BranchRowsInput input = InputFor(branches);
+	input.Authors = &authors;
+	input.Filter.Text = "u16";
+
+	const std::vector<BranchRow> rows = Graphite::BuildBranchRows(input);
+
+	CHECK(BranchNamesOf(rows, branches) == std::vector<std::string>{"feature-a", "fix-c"});
+	CHECK(Graphite::SectionHeadingText(rows.front()) == "Local (2 of 3)");
+}
+
+TEST_CASE("Grouped by author a word that names an author shows only that author's group")
+{
+	const std::vector<Core::Branch> branches = BranchesOfU16AndU8();
+	const Graphite::BranchAuthors authors = AuthorsOfU16AndU8(branches);
+
+	BranchRowsInput input = InputFor(branches);
+	input.Authors = &authors;
+	input.Filter.Text = "u16";
+	input.Options.Group = Graphite::BranchGrouping::Author;
+	input.ExpandedGroups = {{.Section = Core::RefKind::Local, .Author = "u16@example.com"},
+							{.Section = Core::RefKind::Local, .Author = "u8@example.com"}};
+
+	const std::vector<BranchRow> rows = Graphite::BuildBranchRows(input);
+
+	CHECK(GroupKeysOf(rows) == std::vector<std::string>{"u16@example.com"});
+	CHECK(GroupLabelsOf(rows) == std::vector<std::string>{"U16"});
+	CHECK(BranchNamesOf(rows, branches) == std::vector<std::string>{"feature-a", "fix-c"});
+}
+
+TEST_CASE("A name word and an author word must both match")
+{
+	const std::vector<Core::Branch> branches = MakeBranches({
+		{.Name = "PROJ-1", .TipSeconds = kBaseSeconds, .AuthorEmail = "U16@example.com"},
+		{.Name = "PROJ-2", .TipSeconds = kBaseSeconds, .AuthorEmail = "U8@example.com"},
+		{.Name = "other", .TipSeconds = kBaseSeconds, .AuthorEmail = "U16@example.com"},
+	});
+
+	const Graphite::BranchAuthors authors;
+
+	BranchRowsInput input = InputFor(branches);
+	input.Authors = &authors;
+	input.Filter.Text = "proj u16";
+
+	CHECK(BranchNamesOf(Graphite::BuildBranchRows(input), branches) == std::vector<std::string>{"PROJ-1"});
+}
+
+TEST_CASE("A branch two authors share sits only under the one a word named")
+{
+	const std::vector<Core::Branch> branches = MakeBranches({
+		{.Name = "shared", .TipSeconds = kBaseSeconds},
+	});
+
+	Graphite::BranchAuthors authors;
+	AddOwnAuthors(authors, branches[0], {"U16@example.com", "U8@example.com"});
+
+	BranchRowsInput input = InputFor(branches);
+	input.Authors = &authors;
+	input.Filter.Text = "u16";
+	input.Options.Group = Graphite::BranchGrouping::Author;
+	input.ExpandedGroups = {{.Section = Core::RefKind::Local, .Author = "u16@example.com"},
+							{.Section = Core::RefKind::Local, .Author = "u8@example.com"}};
+
+	const std::vector<BranchRow> rows = Graphite::BuildBranchRows(input);
+
+	CHECK(GroupKeysOf(rows) == std::vector<std::string>{"u16@example.com"});
+	CHECK(BranchNamesOf(rows, branches) == std::vector<std::string>{"shared"});
+}
+
+TEST_CASE("A branch two authors share sits under both when only its name matched")
+{
+	const std::vector<Core::Branch> branches = MakeBranches({
+		{.Name = "shared-login", .TipSeconds = kBaseSeconds},
+	});
+
+	Graphite::BranchAuthors authors;
+	AddOwnAuthors(authors, branches[0], {"U16@example.com", "U8@example.com"});
+
+	BranchRowsInput input = InputFor(branches);
+	input.Authors = &authors;
+	input.Filter.Text = "login";
+	input.Options.Group = Graphite::BranchGrouping::Author;
+
+	CHECK(GroupKeysOf(Graphite::BuildBranchRows(input)) ==
+		  std::vector<std::string>{"u8@example.com", "u16@example.com"});
+}
+
+TEST_CASE("Before the authors land a word is matched against the tip's author")
+{
+	const std::vector<Core::Branch> branches = MakeBranches({
+		{.Name = "feature-a", .TipSeconds = kBaseSeconds, .AuthorEmail = "U16@example.com"},
+		{.Name = "feature-b", .TipSeconds = kBaseSeconds, .AuthorEmail = "U8@example.com"},
+	});
+
+	BranchRowsInput input = InputFor(branches);
+	input.Filter.Text = "u16";
+
+	CHECK(BranchNamesOf(Graphite::BuildBranchRows(input), branches) == std::vector<std::string>{"feature-a"});
+}
+
+TEST_CASE("Author groups are in natural order with the user first and the unknown author last")
+{
+	const std::vector<Core::Branch> branches = MakeBranches({
+		{.Name = "by-u10", .TipSeconds = kBaseSeconds, .AuthorEmail = "U10@example.com"},
+		{.Name = "by-u2", .TipSeconds = kBaseSeconds, .AuthorEmail = "U2@example.com"},
+		{.Name = "by-bob", .TipSeconds = kBaseSeconds, .AuthorEmail = "Bob@example.com"},
+		{.Name = "by-big-ann", .TipSeconds = kBaseSeconds, .AuthorEmail = "Ann@b.example"},
+		{.Name = "by-ann", .TipSeconds = kBaseSeconds, .AuthorEmail = "ann@a.example"},
+		{.Name = "by-me", .TipSeconds = kBaseSeconds, .AuthorEmail = "zz@example.com"},
+		{.Name = "ghost"},
+	});
+
+	Graphite::BranchAuthors authors;
+	authors.UserEmail = "zz@example.com";
+
+	BranchRowsInput input = InputFor(branches);
+	input.Authors = &authors;
+	input.Options.Group = Graphite::BranchGrouping::Author;
+
+	CHECK(GroupLabelsOf(Graphite::BuildBranchRows(input)) ==
+		  std::vector<std::string>{"zz (you)", "ann", "Ann", "Bob", "U2", "U10", "Unknown author"});
+}
+
+TEST_CASE("Author choices list the user then ticked authors then the rest each in natural order")
+{
+	const std::vector<Core::Branch> branches = MakeBranches({
+		{.Name = "by-u10", .TipSeconds = kBaseSeconds, .AuthorEmail = "U10@example.com"},
+		{.Name = "by-u2", .TipSeconds = kBaseSeconds, .AuthorEmail = "U2@example.com"},
+		{.Name = "by-u30", .TipSeconds = kBaseSeconds, .AuthorEmail = "U30@example.com"},
+		{.Name = "by-u3", .TipSeconds = kBaseSeconds, .AuthorEmail = "U3@example.com"},
+		{.Name = "by-me", .TipSeconds = kBaseSeconds, .AuthorEmail = "zz@example.com"},
+		{.Name = "ghost"},
+	});
+
+	Graphite::BranchAuthors authors;
+	authors.UserEmail = "zz@example.com";
+
+	BranchRowsInput input = InputFor(branches);
+	input.Authors = &authors;
+	input.Filter.Authors = {"u30@example.com", "u3@example.com"};
+
+	CHECK(ChoiceKeysOf(Graphite::ListAuthorChoices(input)) ==
+		  std::vector<std::string>{"zz@example.com", "u3@example.com", "u30@example.com", "u2@example.com",
+								   "u10@example.com", ""});
+}
+
+TEST_CASE("Author choices count the branches an author word leaves")
+{
+	const std::vector<Core::Branch> branches = BranchesOfU16AndU8();
+	const Graphite::BranchAuthors authors = AuthorsOfU16AndU8(branches);
+
+	BranchRowsInput input = InputFor(branches);
+	input.Authors = &authors;
+	input.Filter.Text = "u16";
+
+	const std::vector<Graphite::AuthorChoice> choices = Graphite::ListAuthorChoices(input);
+
+	REQUIRE(choices.size() == 2);
+	CHECK(choices[0].Key == "u8@example.com");
+	CHECK(choices[0].Branches == 1);
+	CHECK(choices[1].Key == "u16@example.com");
+	CHECK(choices[1].Branches == 2);
+}
+
+TEST_CASE("Filtering author choices keeps those whose name holds the query")
+{
+	CHECK(ChoiceKeysOf(Graphite::FilterAuthorChoices(SomeAuthorChoices(), "kowal")) ==
+		  std::vector<std::string>{"jk@work.example"});
+	CHECK(ChoiceKeysOf(Graphite::FilterAuthorChoices(SomeAuthorChoices(), "unknown")) == std::vector<std::string>{""});
+}
+
+TEST_CASE("Filtering author choices keeps those whose e-mail holds the query in their order")
+{
+	CHECK(ChoiceKeysOf(Graphite::FilterAuthorChoices(SomeAuthorChoices(), "work.ex")) ==
+		  std::vector<std::string>{"jk@work.example"});
+	CHECK(ChoiceKeysOf(Graphite::FilterAuthorChoices(SomeAuthorChoices(), "example")) ==
+		  std::vector<std::string>{"u16@example.com", "jk@work.example"});
+}
+
+TEST_CASE("Filtering author choices ignores case and surrounding spaces")
+{
+	CHECK(ChoiceKeysOf(Graphite::FilterAuthorChoices(SomeAuthorChoices(), "  KOWAL ")) ==
+		  std::vector<std::string>{"jk@work.example"});
+	CHECK(ChoiceKeysOf(Graphite::FilterAuthorChoices(SomeAuthorChoices(), "u16")) ==
+		  std::vector<std::string>{"u16@example.com"});
+}
+
+TEST_CASE("An empty author query keeps every choice")
+{
+	CHECK(Graphite::FilterAuthorChoices(SomeAuthorChoices(), "") == SomeAuthorChoices());
+	CHECK(Graphite::FilterAuthorChoices(SomeAuthorChoices(), "   ") == SomeAuthorChoices());
+}
+
+TEST_CASE("An author query no author holds leaves no choices")
+{
+	CHECK(Graphite::FilterAuthorChoices(SomeAuthorChoices(), "zzz").empty());
 }
 
 TEST_CASE("No author choices exist before the authors land")

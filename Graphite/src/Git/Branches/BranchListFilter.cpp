@@ -18,6 +18,24 @@ namespace Graphite {
 			return Core::LoweredTextContains(branch.TipCommit->Summary, loweredWord) ||
 				   Core::LoweredTextContains(branch.TipCommit->Body, loweredWord);
 		}
+
+		bool AuthorHolds(const BranchAuthor& author, std::string_view loweredWord)
+		{
+			return Core::LoweredTextContains(author.Name, loweredWord) || author.Key.find(loweredWord) != std::string::npos;
+		}
+
+		bool AnyAuthorHolds(const std::vector<BranchAuthor>& authors, std::string_view loweredWord)
+		{
+			for (const BranchAuthor& author : authors)
+			{
+				if (AuthorHolds(author, loweredWord))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
 	}
 
 	std::vector<std::string> LoweredWordsOf(std::string_view text)
@@ -49,14 +67,28 @@ namespace Graphite {
 		return words;
 	}
 
-	bool MatchesWords(const Core::Branch& branch, const std::vector<std::string>& loweredWords, bool alsoMessage)
+	bool AuthorHoldsAnyWord(const BranchAuthor& author, const std::vector<std::string>& loweredWords)
+	{
+		for (const std::string& word : loweredWords)
+		{
+			if (AuthorHolds(author, word))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	bool MatchesWords(const Core::Branch& branch, const std::vector<BranchAuthor>& authors,
+					  const std::vector<std::string>& loweredWords, bool alsoMessage)
 	{
 		for (const std::string& word : loweredWords)
 		{
 			const bool nameHoldsWord = Core::LoweredTextContains(branch.Name, word);
 			const bool messageHoldsWord = alsoMessage && MessageHolds(branch, word);
 
-			if (!nameHoldsWord && !messageHoldsWord)
+			if (!nameHoldsWord && !messageHoldsWord && !AnyAuthorHolds(authors, word))
 			{
 				return false;
 			}
