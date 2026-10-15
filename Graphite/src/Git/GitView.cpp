@@ -493,7 +493,15 @@ namespace Graphite {
 		if (ImGui::BeginChild("##refsList", fillTheRest))
 		{
 			m_BranchList.DrawRows(frame);
-			RenderStashes();
+
+			// WARNING: Drawn before the branch list is read, the stashes sit at the top, then under
+			// the loader, then jump to the end once the branches land.
+			const bool branchListSettled = frame.Branches || frame.BranchesFailed;
+
+			if (branchListSettled)
+			{
+				RenderStashes();
+			}
 		}
 
 		ImGui::EndChild();
