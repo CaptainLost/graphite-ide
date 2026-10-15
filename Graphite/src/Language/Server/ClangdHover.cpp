@@ -1,6 +1,7 @@
 #include "Language/Server/ClangdHover.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Base/Strings.h"
 
 #include <array>
 #include <cctype>
@@ -34,35 +35,6 @@ namespace Graphite {
 		constexpr std::size_t kQualifierSeparatorLength = 1;
 		constexpr std::size_t kAliasClosingLength = 1;
 		constexpr std::size_t kOneBeforeBacktick = 1;
-
-		std::vector<std::string_view> SplitAtLineEndings(std::string_view text)
-		{
-			std::vector<std::string_view> lines;
-			std::size_t lineStart = 0;
-
-			while (lineStart <= text.size())
-			{
-				const std::size_t lineEnd = text.find('\n', lineStart);
-				const std::size_t length = lineEnd == std::string_view::npos ? text.size() - lineStart : lineEnd - lineStart;
-				std::string_view line = text.substr(lineStart, length);
-
-				if (!line.empty() && line.back() == '\r')
-				{
-					line.remove_suffix(1);
-				}
-
-				lines.push_back(line);
-
-				if (lineEnd == std::string_view::npos)
-				{
-					break;
-				}
-
-				lineStart = lineEnd + 1;
-			}
-
-			return lines;
-		}
 
 		std::string_view Unquote(std::string_view text)
 		{
@@ -210,7 +182,7 @@ namespace Graphite {
 		HoverInfo info;
 		info.Raw = std::string(markdown);
 
-		const std::vector<std::string_view> lines = SplitAtLineEndings(markdown);
+		const std::vector<std::string_view> lines = Core::SplitLines(markdown);
 
 		if (lines.empty() || !lines[0].starts_with(kHeadingPrefix))
 		{

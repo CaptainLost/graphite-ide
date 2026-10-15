@@ -3,8 +3,10 @@
 #include "Core/Base/Strings.h"
 
 #include <cstddef>
+#include <ostream>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 TEST_CASE("JoinedWith puts the separator between parts and nowhere else, empty parts included")
@@ -44,6 +46,20 @@ TEST_CASE("AppendSeparatedIfNotEmpty skips an empty part entirely")
 	std::string empty;
 	Core::AppendSeparatedIfNotEmpty(empty, ", ", "x");
 	CHECK(empty == "x");
+}
+
+TEST_CASE("SplitLines keeps every line, the empty ones and the one after a final newline included")
+{
+	CHECK(Core::SplitLines("a\n\nb\n") == std::vector<std::string_view>{"a", "", "b", ""});
+	CHECK(Core::SplitLines("") == std::vector<std::string_view>{""});
+	CHECK(Core::SplitLines("one line") == std::vector<std::string_view>{"one line"});
+}
+
+TEST_CASE("SplitLines drops a carriage return that ends a line and keeps one anywhere else")
+{
+	CHECK(Core::SplitLines("a\r\nb\r\n") == std::vector<std::string_view>{"a", "b", ""});
+	CHECK(Core::SplitLines("a\rb") == std::vector<std::string_view>{"a\rb"});
+	CHECK(Core::SplitLines("last\r") == std::vector<std::string_view>{"last"});
 }
 
 TEST_CASE("SplitSkippingEmpty never yields an empty segment")

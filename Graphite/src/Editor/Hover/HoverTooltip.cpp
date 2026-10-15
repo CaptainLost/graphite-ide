@@ -214,7 +214,7 @@ namespace Graphite {
 		{
 			std::vector<std::string> expandedLines;
 
-			for (const std::string_view line : CodeLinesOf(code))
+			for (const std::string_view line : Core::SplitLines(code))
 			{
 				expandedLines.push_back(Core::ExpandTabs(line, look.TabWidth));
 			}

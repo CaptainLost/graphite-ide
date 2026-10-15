@@ -67,4 +67,31 @@ namespace Core {
 
 		return parts;
 	}
+
+	std::vector<std::string_view> SplitLines(std::string_view text)
+	{
+		std::vector<std::string_view> lines;
+		std::size_t lineStart = 0;
+
+		while (true)
+		{
+			const std::size_t lineEnd = text.find('\n', lineStart);
+			const bool isLastLine = lineEnd == std::string_view::npos;
+			std::string_view line = text.substr(lineStart, isLastLine ? std::string_view::npos : lineEnd - lineStart);
+
+			if (line.ends_with('\r'))
+			{
+				line.remove_suffix(1);
+			}
+
+			lines.push_back(line);
+
+			if (isLastLine)
+			{
+				return lines;
+			}
+
+			lineStart = lineEnd + 1;
+		}
+	}
 }

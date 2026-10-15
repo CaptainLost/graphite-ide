@@ -103,32 +103,6 @@ namespace Graphite {
 		return placement;
 	}
 
-	std::vector<std::string_view> CodeLinesOf(std::string_view code)
-	{
-		std::vector<std::string_view> lines;
-		std::size_t lineStart = 0;
-
-		while (true)
-		{
-			const std::size_t lineEnd = code.find('\n', lineStart);
-			std::string_view line = code.substr(lineStart, lineEnd == std::string_view::npos ? std::string_view::npos : lineEnd - lineStart);
-
-			if (line.ends_with('\r'))
-			{
-				line.remove_suffix(1);
-			}
-
-			lines.push_back(line);
-
-			if (lineEnd == std::string_view::npos)
-			{
-				return lines;
-			}
-
-			lineStart = lineEnd + 1;
-		}
-	}
-
 	bool NeedsDeclarationSpans(LanguageId language)
 	{
 		return DefinitionOf(language).Syntax == SyntaxKind::CppLexer;

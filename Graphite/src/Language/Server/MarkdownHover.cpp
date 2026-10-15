@@ -1,6 +1,7 @@
 #include "Language/Server/MarkdownHover.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Base/Strings.h"
 
 #include <array>
 #include <cstddef>
@@ -42,34 +43,6 @@ namespace Graphite {
 		std::string_view Trimmed(std::string_view text)
 		{
 			return Core::WithoutSurrounding(text, kBlanks);
-		}
-
-		std::vector<std::string_view> LinesOf(std::string_view text)
-		{
-			std::vector<std::string_view> lines;
-			std::size_t start = 0;
-
-			while (start <= text.size())
-			{
-				const std::size_t end = text.find('\n', start);
-				std::string_view line = text.substr(start, end == std::string_view::npos ? std::string_view::npos : end - start);
-
-				if (line.ends_with('\r'))
-				{
-					line.remove_suffix(1);
-				}
-
-				lines.push_back(line);
-
-				if (end == std::string_view::npos)
-				{
-					break;
-				}
-
-				start = end + 1;
-			}
-
-			return lines;
 		}
 
 		bool IsFence(std::string_view line)
@@ -267,7 +240,7 @@ namespace Graphite {
 		bool declarationTaken = false;
 		bool readingDeclaration = false;
 
-		for (const std::string_view line : LinesOf(markdown))
+		for (const std::string_view line : Core::SplitLines(markdown))
 		{
 			if (IsFence(line))
 			{

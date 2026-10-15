@@ -23,8 +23,6 @@ namespace Graphite {
 	std::vector<SemanticSpan> DedentSpans(const std::vector<SemanticSpan>& spans,
 										  std::size_t removedColumns);
 
-	std::vector<std::string_view> CodeLinesOf(std::string_view code);
-
 	bool NeedsDeclarationSpans(LanguageId language);
 
 	float PreviewWidth(std::size_t widestColumns, float cellWidth, bool besideScrollbar);
