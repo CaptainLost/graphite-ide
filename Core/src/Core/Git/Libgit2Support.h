@@ -5,8 +5,10 @@
 // do with an incomplete type, so their callers include <git2.h> themselves.
 
 #include "Core/Base/Result.h"
+#include "Core/Git/Commit.h"
 #include "Core/Git/GitHandles.h"
 #include "Core/Git/Oid.h"
+#include "Core/Git/Signature.h"
 
 #include <filesystem>
 #include <string>
@@ -34,6 +36,12 @@ namespace Core {
 	git_oid ToGitOid(const Oid& id);
 
 	std::string TextOrEmpty(const char* text);
+
+	Signature ToSignature(const git_signature* signature);
+
+	// Summary is the first line of the message and Body what follows the one blank line after it,
+	// with the message's own line ends kept.
+	CommitSummary ToCommitSummary(git_commit* commit);
 
 	std::string LocalBranchReference(const std::string& branchName);
 

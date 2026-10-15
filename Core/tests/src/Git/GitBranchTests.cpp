@@ -4,6 +4,7 @@
 
 #include "Git/GitFixture.h"
 
+#include <chrono>
 #include <string>
 
 using Core::Branch;
@@ -170,4 +171,54 @@ TEST_CASE("Listing branches in a repository with no commits is empty rather than
 
 	REQUIRE(branches.HasValue());
 	CHECK(branches.GetValue().empty());
+}
+
+TEST_CASE("A branch is listed with its tip commit's author and time and message")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("Add a\n\nWith a body line\n");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	Core::Result<std::vector<Branch>> branches = repository.QueryBranches();
+
+	REQUIRE(branches.HasValue());
+
+	const Branch* master = FindBranchNamed(branches.GetValue(), "master");
+
+	REQUIRE(master != nullptr);
+	REQUIRE(master->TipCommit.has_value());
+
+	const std::chrono::sys_seconds firstCommitTime{std::chrono::seconds{1000000000}};
+
+	CHECK(master->TipCommit->Id == master->Tip);
+	CHECK(master->TipCommit->Author.Name == "Test Author");
+	CHECK(master->TipCommit->Author.Email == "test@example.com");
+	CHECK(master->TipCommit->Committer.When == firstCommitTime);
+	CHECK(master->TipCommit->Summary == "Add a");
+	CHECK(master->TipCommit->Body == "With a body line\n");
+}
+
+TEST_CASE("A branch whose tip commit is missing is listed without one")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	const std::string missingCommit(40, '1');
+	fixture.Write(".git/refs/heads/ghost", missingCommit + "\n");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	Core::Result<std::vector<Branch>> branches = repository.QueryBranches();
+
+	REQUIRE(branches.HasValue());
+
+	const Branch* ghost = FindBranchNamed(branches.GetValue(), "ghost");
+
+	REQUIRE(ghost != nullptr);
+	CHECK_FALSE(ghost->TipCommit.has_value());
 }

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Git/Commit.h"
 #include "Core/Git/Oid.h"
 
 #include <cstddef>
@@ -40,5 +41,9 @@ namespace Core {
 		// False with no upstream, or when the distance could not be measured: a symbolic
 		// upstream, or a graph walk that failed.
 		bool DistanceKnown = false;
+
+		// Empty when the tip commit cannot be read: past a shallow clone's boundary, or a missing
+		// object.
+		std::optional<CommitSummary> TipCommit;
 	};
 }

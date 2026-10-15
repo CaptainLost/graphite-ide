@@ -78,6 +78,18 @@ namespace Core {
 			return std::string{name};
 		}
 
+		std::optional<CommitSummary> ReadTipCommit(git_repository* handle, const git_oid& tipId)
+		{
+			CommitHandle commit;
+
+			if (git_commit_lookup(Out(commit), handle, &tipId) != 0)
+			{
+				return std::nullopt;
+			}
+
+			return ToCommitSummary(commit.get());
+		}
+
 		bool ComesBeforeInBranchList(const Branch& branch, const Branch& otherBranch)
 		{
 			if (branch.Kind != otherBranch.Kind)
@@ -151,6 +163,7 @@ namespace Core {
 
 			branch.Tip = ToOid(*tipId);
 			branch.IsHead = git_branch_is_head(reference.get()) == kReferenceIsHead;
+			branch.TipCommit = ReadTipCommit(m_Handle.get(), *tipId);
 
 			ReferenceHandle upstream;
 

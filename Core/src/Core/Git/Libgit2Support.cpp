@@ -7,13 +7,44 @@
 
 #include <git2.h>
 
+#include <chrono>
+#include <cstddef>
 #include <format>
+#include <string_view>
 
 namespace Core {
 
 	namespace {
 
 		constexpr const char* kLocalBranchPrefix = "refs/heads/";
+
+		constexpr std::string_view kCarriageReturnLineFeed = "\r\n";
+		constexpr std::string_view kLineFeed = "\n";
+		constexpr std::size_t kNotALineTerminator = std::string_view::npos;
+
+		// Git does not normalise line endings inside a commit message, so a message written with
+		// CRLF keeps it.
+		std::size_t OffsetAfterLineTerminator(std::string_view text, std::size_t terminatorStart)
+		{
+			if (terminatorStart >= text.size())
+			{
+				return kNotALineTerminator;
+			}
+
+			const std::string_view rest = text.substr(terminatorStart);
+
+			if (rest.starts_with(kCarriageReturnLineFeed))
+			{
+				return terminatorStart + kCarriageReturnLineFeed.size();
+			}
+
+			if (rest.starts_with(kLineFeed))
+			{
+				return terminatorStart + kLineFeed.size();
+			}
+
+			return kNotALineTerminator;
+		}
 
 		Error IndexReadFailure()
 		{
@@ -64,6 +95,71 @@ namespace Core {
 	std::string TextOrEmpty(const char* text)
 	{
 		return text != nullptr ? text : "";
+	}
+
+	Signature ToSignature(const git_signature* signature)
+	{
+		if (signature == nullptr)
+		{
+			return Signature{};
+		}
+
+		return Signature{.Name = TextOrEmpty(signature->name),
+						 .Email = TextOrEmpty(signature->email),
+						 .When = std::chrono::sys_seconds{std::chrono::seconds{signature->when.time}}};
+	}
+
+	CommitSummary ToCommitSummary(git_commit* commit)
+	{
+		CommitSummary summary;
+		summary.Id = ToOid(*git_commit_id(commit));
+
+		const unsigned int parentCount = git_commit_parentcount(commit);
+		summary.Parents.reserve(parentCount);
+
+		for (unsigned int parentIndex = 0; parentIndex < parentCount; ++parentIndex)
+		{
+			summary.Parents.push_back(ToOid(*git_commit_parent_id(commit, parentIndex)));
+		}
+
+		summary.Author = ToSignature(git_commit_author(commit));
+		summary.Committer = ToSignature(git_commit_committer(commit));
+
+		if (const char* summaryLine = git_commit_summary(commit); summaryLine != nullptr)
+		{
+			summary.Summary = summaryLine;
+		}
+
+		// git_commit_body() trims the surrounding whitespace and loses the trailing newline the
+		// message was written with, so the body is cut out of the raw message instead.
+		if (const char* rawMessage = git_commit_message(commit); rawMessage != nullptr)
+		{
+			const std::string_view message(rawMessage);
+			const std::size_t titleEnd = message.find_first_of("\r\n");
+
+			if (titleEnd != std::string_view::npos)
+			{
+				std::size_t bodyStart = OffsetAfterLineTerminator(message, titleEnd);
+
+				if (bodyStart != kNotALineTerminator)
+				{
+					// Only the one blank line that separates title from body is skipped. A second
+					// blank line is the body's own, as `git log --format=%b` shows it.
+					if (const std::size_t afterSeparatorLine = OffsetAfterLineTerminator(message, bodyStart);
+						afterSeparatorLine != kNotALineTerminator)
+					{
+						bodyStart = afterSeparatorLine;
+					}
+
+					if (bodyStart < message.size())
+					{
+						summary.Body = message.substr(bodyStart);
+					}
+				}
+			}
+		}
+
+		return summary;
 	}
 
 	std::string LocalBranchReference(const std::string& branchName)
