@@ -336,14 +336,7 @@ namespace Core {
 		TextDocument freshDocument = std::move(fresh).GetValue();
 		const std::string freshText = freshDocument.m_Buffer.Materialize();
 
-		// The undo group is broken on both sides, so one Ctrl+Z reverses exactly the reload and none
-		// of the typing around it.
-		m_Buffer.BreakUndoGroup();
-		m_Buffer.BeginTransaction();
-		m_Buffer.Erase(0, m_Buffer.GetLength());
-		m_Buffer.Insert(0, freshText);
-		m_Buffer.EndTransaction();
-		m_Buffer.BreakUndoGroup();
+		m_Buffer.ReplaceContent(freshText);
 
 		m_Encoding = freshDocument.m_Encoding;
 		m_LineEnding = freshDocument.m_LineEnding;
