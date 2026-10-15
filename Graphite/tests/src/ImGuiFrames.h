@@ -4,6 +4,7 @@
 #include <imgui_internal.h>
 
 #include <functional>
+#include <string_view>
 
 // An ImGui context of its own for the life of the test, so drawing code can be run frame by
 // frame without a window or a renderer.
@@ -58,6 +59,52 @@ public:
 		Next(draw);
 		io.AddKeyEvent(key, false);
 		Next(draw);
+	}
+
+	// ImGui keeps no item's position past its frame, so the pointer moves down the topmost popup until
+	// ImGui reports the item with this label under it. False when no such item is there.
+	bool ClickMenuItem(const char* label, const std::function<void()>& draw)
+	{
+		constexpr float kStepDown = 4.0f;
+		constexpr float kIntoTheLabel = 8.0f;
+
+		const ImGuiContext& context = *ImGui::GetCurrentContext();
+
+		if (context.OpenPopupStack.Size == 0 || context.OpenPopupStack.back().Window == nullptr)
+		{
+			return false;
+		}
+
+		ImGuiWindow& menu = *context.OpenPopupStack.back().Window;
+		const ImGuiID itemId = menu.GetID(label);
+		const float x = menu.Pos.x + menu.WindowPadding.x + kIntoTheLabel;
+
+		for (float y = menu.Pos.y; y < menu.Pos.y + menu.Size.y; y += kStepDown)
+		{
+			ImGui::GetIO().AddMousePosEvent(x, y);
+			Next(draw);
+
+			if (context.HoveredId == itemId)
+			{
+				Click(ImVec2(x, y), draw);
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	static bool IsPopupNamedOpen(std::string_view name)
+	{
+		for (const ImGuiPopupData& popup : ImGui::GetCurrentContext()->OpenPopupStack)
+		{
+			if (popup.Window != nullptr && std::string_view{popup.Window->Name} == name)
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 private:

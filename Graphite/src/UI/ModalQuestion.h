@@ -125,8 +125,8 @@ namespace Graphite {
 			m_Gate.Close(m_Title);
 		}
 
-		// WARNING: the popup of a withdrawn current question stays on screen until the owner's render
-		// sees GetCurrent() come back null and closes it.
+		// WARNING: the popup of a withdrawn current question stays on screen until the owner's next Begin
+		// closes it.
 		template<std::predicate<const Payload&> Predicate>
 		void WithdrawIf(Predicate matches)
 		{
@@ -159,15 +159,23 @@ namespace Graphite {
 
 		bool BeginNamed(const char* name)
 		{
-			if (ImGui::BeginPopupModal(name, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+			if (!ImGui::BeginPopupModal(name, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
 			{
-				DialogLayout::PushModalFrameColours();
-				return true;
+				WithdrawIfNoLongerOnScreen();
+				return false;
 			}
 
-			WithdrawIfNoLongerOnScreen();
+			// WARNING: Withdraw cannot close the popup from outside it, so a question withdrawn while on
+			// screen leaves its popup open with nothing to ask, and it is closed here.
+			if (!m_Current)
+			{
+				ImGui::CloseCurrentPopup();
+				ImGui::EndPopup();
+				return false;
+			}
 
-			return false;
+			DialogLayout::PushModalFrameColours();
+			return true;
 		}
 
 		// WARNING: ImGui closes a popup on Escape, and destroys it when another opens over it, without
