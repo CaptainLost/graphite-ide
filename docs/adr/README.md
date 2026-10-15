@@ -622,4 +622,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0590](0590-compile-the-bundled-fonts-into-the-executable.md) | Compile the bundled fonts into the executable | proposed | 2026-10-15 |
 | [0591](0591-count-everyone-with-an-own-commit-as-a-branch-s-author.md) | Count everyone with an own commit as a branch's author | proposed | 2026-10-15 |
 | [0592](0592-build-the-branch-list-as-rows-from-a-pure-function-and-draw-only-the-rows-on-screen.md) | Build the branch list as rows from a pure function and draw only the rows on screen | proposed | 2026-10-15 |
+| [0593](0593-load-more-history-only-on-request-from-a-status-line-under-the-list.md) | Load more history only on request, from a status line under the list | proposed | 2026-10-15 |
 <!-- /adr-index -->
