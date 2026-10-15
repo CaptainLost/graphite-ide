@@ -1,6 +1,7 @@
 #include "Sessions/Transcript/ToolFacts.h"
 
 #include "Core/Base/ByteSize.h"
+#include "Core/Base/Count.h"
 #include "Core/Base/Strings.h"
 #include "Core/FileSystem/FileSystem.h"
 
@@ -25,7 +26,6 @@ namespace Graphite {
 		constexpr std::uint64_t kPercentScale = 100;
 		constexpr std::uint64_t kTokensPerThousand = 1000;
 		constexpr std::uint64_t kTokensPerMillion = 1'000'000;
-		constexpr std::size_t kDigitsPerGroup = 3;
 
 		std::string ShortModel(std::string_view model)
 		{
@@ -205,22 +205,7 @@ namespace Graphite {
 
 	std::string FormatTokensExact(std::uint64_t tokens)
 	{
-		const std::string digits = std::to_string(tokens);
-		std::string grouped;
-
-		for (std::size_t digitIndex = 0; digitIndex < digits.size(); ++digitIndex)
-		{
-			const std::size_t digitsFromRight = digits.size() - digitIndex;
-			const bool startsGroup = digitIndex > 0 && digitsFromRight % kDigitsPerGroup == 0;
-			if (startsGroup)
-			{
-				grouped += ',';
-			}
-
-			grouped += digits[digitIndex];
-		}
-
-		return grouped;
+		return Core::FormatCount(tokens);
 	}
 
 	ToolFacts FactsOf(const ToolCall& tool, const SubagentUsage& subagents, const Pricing& pricing)
