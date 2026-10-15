@@ -219,7 +219,12 @@ namespace Graphite {
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Branches.Get();
 		Core::OwnAuthorsRequest request = OwnAuthorsRequestFor(*branches);
 
-		if (m_LastAuthorsRequest == request)
+		// WARNING: An answer without the user's e-mail is asked again by every listing, or a
+		// user.email set afterwards would wait for some tip to move before "Only mine" works.
+		const Core::Ref<const BranchAuthors> heldAuthors = m_BranchAuthors.Get();
+		const bool userEmailUnknown = heldAuthors && !heldAuthors->UserEmail.has_value();
+
+		if (m_LastAuthorsRequest == request && !userEmailUnknown)
 		{
 			return;
 		}

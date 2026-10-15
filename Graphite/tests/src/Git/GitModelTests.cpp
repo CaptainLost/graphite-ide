@@ -2347,6 +2347,7 @@ TEST_CASE("A listing whose tips did not move asks the authors nothing")
 {
 	FakePort port;
 	port.Branches = TrunkAndFeature(kFeatureTipByte);
+	port.UserEmail = "ann@example.com";
 
 	Graphite::GitModel model{port, RunJobsInline()};
 
@@ -2354,6 +2355,29 @@ TEST_CASE("A listing whose tips did not move asks the authors nothing")
 	ListBranchesAndLandAuthors(model);
 
 	CHECK(port.OwnAuthorsCalls == 1);
+}
+
+TEST_CASE("A listing asks again while no user e-mail is known")
+{
+	FakePort port;
+	port.Branches = TrunkAndFeature(kFeatureTipByte);
+
+	Graphite::GitModel model{port, RunJobsInline()};
+
+	ListBranchesAndLandAuthors(model);
+
+	REQUIRE(model.GetBranchAuthors() != nullptr);
+	CHECK_FALSE(model.GetBranchAuthors()->UserEmail.has_value());
+
+	port.UserEmail = "ann@example.com";
+	ListBranchesAndLandAuthors(model);
+
+	REQUIRE(model.GetBranchAuthors() != nullptr);
+	CHECK(model.GetBranchAuthors()->UserEmail == std::optional<std::string>{"ann@example.com"});
+
+	ListBranchesAndLandAuthors(model);
+
+	CHECK(port.EmailCalls == 2);
 }
 
 TEST_CASE("A moved tip asks the authors again")
