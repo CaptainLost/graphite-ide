@@ -39,7 +39,6 @@ namespace Graphite {
 		constexpr int kGitTableColumnCount = 2;
 		constexpr int kRefsColumn = 0;
 		constexpr int kHistoryColumn = 1;
-		constexpr std::size_t kLoadMoreGrowthFactor = 2;
 
 		std::filesystem::path RelativeOrClimbing(const std::filesystem::path& path, const std::filesystem::path& root)
 		{
@@ -388,6 +387,8 @@ namespace Graphite {
 
 		m_PageWhenAsked.reset();
 		m_LastSeenPage.reset();
+		m_GraphOf.reset();
+		m_Graph = Core::CommitGraph{};
 		m_Searching = false;
 
 		// WARNING: Withdraw is only valid outside a popup, and this runs from an event handler.
@@ -670,11 +671,6 @@ namespace Graphite {
 	{
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
 
-		if (!maxCount.has_value())
-		{
-			m_Commits.ForgetLoadMoreRequest();
-		}
-
 		m_Model.RequestLog(BuildLogRequest(m_SelectedRef, m_Filter.Get(), maxCount, m_SelectedStash),
 						   branches ? OwnCommitsToAsk(*branches) : std::nullopt);
 
@@ -846,7 +842,11 @@ namespace Graphite {
 		}
 		else
 		{
-			const Core::CommitGraph graph = Core::LayoutCommits(page->Commits);
+			if (page != m_GraphOf)
+			{
+				m_GraphOf = page;
+				m_Graph = Core::LayoutCommits(page->Commits);
+			}
 
 			const auto diffOf = [this](const Core::Oid& commit) {
 				return m_Model.GetDiffFor(commit);
@@ -870,7 +870,7 @@ namespace Graphite {
 
 			const std::optional<ForkSeparator> separator = ForkSeparatorFor(*page);
 
-			m_Commits.Render(*page, graph, palette, LocalOffset(), diffOf, diffFailed, m_CommitRefs,
+			m_Commits.Render(*page, m_Graph, palette, LocalOffset(), diffOf, diffFailed, m_CommitRefs,
 							 m_Filter.Get().Text, m_Filter.Get().Path, separator);
 
 			ApplyCommitAction();
@@ -908,11 +908,6 @@ namespace Graphite {
 			}
 
 			m_PreviouslyWanted = std::move(wanted);
-
-			if (m_Commits.TakeLoadMoreRequest())
-			{
-				RequestLog(page->Commits.size() * kLoadMoreGrowthFactor);
-			}
 		}
 	}
 

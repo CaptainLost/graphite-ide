@@ -354,20 +354,6 @@ namespace Graphite {
 		m_Expanded.clear();
 		m_SelectedFile.reset();
 		m_SelectedCommit.reset();
-		ForgetLoadMoreRequest();
-	}
-
-	void CommitListView::ForgetLoadMoreRequest()
-	{
-		m_LoadMoreRequested = false;
-		m_LoadMoreRequestedAtCount = kNoLoadMoreRequestedYet;
-	}
-
-	bool CommitListView::TakeLoadMoreRequest()
-	{
-		const bool requested = m_LoadMoreRequested;
-		m_LoadMoreRequested = false;
-		return requested;
 	}
 
 	std::optional<CommitAction> CommitListView::TakeCommitAction()
@@ -477,16 +463,11 @@ namespace Graphite {
 			ImGui::TableSetupScrollFreeze(kFrozenColumnCount, kFrozenRowCount);
 			ImGui::TableHeadersRow();
 
-			const int rowCount = Core::Narrow<int>(rows.Rows.size());
-			bool lastRowDrawn = false;
-
 			ImGuiListClipper clipper;
-			clipper.Begin(rowCount, metrics.RowHeight);
+			clipper.Begin(Core::Narrow<int>(rows.Rows.size()), metrics.RowHeight);
 
 			while (clipper.Step())
 			{
-				lastRowDrawn = lastRowDrawn || clipper.DisplayEnd == rowCount;
-
 				// WARNING: Display row 0 is usually scrolled far above the table and nothing is drawn at it, so its position is worked back from a row drawn in this step.
 				ImVec2 graphOrigin;
 
@@ -531,15 +512,6 @@ namespace Graphite {
 											 clipper.DisplayStart, clipper.DisplayEnd - 1,
 											 graphOrigin);
 				}
-			}
-
-			// WARNING: The end is reached when the clipper draws the last row, not when the scroll reaches its maximum: until the table has measured its rows that maximum is 0, so a page just shown would ask for more before anyone scrolled. The request is latched on the page's commit count, so it is not re-armed every frame the reader stays at the end while the bigger page is fetched.
-			const std::ptrdiff_t commitCount = static_cast<std::ptrdiff_t>(page.Commits.size());
-
-			if (!page.Complete && lastRowDrawn && commitCount != m_LoadMoreRequestedAtCount)
-			{
-				m_LoadMoreRequested = true;
-				m_LoadMoreRequestedAtCount = commitCount;
 			}
 
 			ImGui::EndTable();

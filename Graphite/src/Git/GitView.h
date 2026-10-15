@@ -23,6 +23,7 @@
 #include "Core/Events/EventBus.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Checkout.h"
+#include "Core/Git/GraphLayout.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Stash.h"
 #include "Core/UI/Panel.h"
@@ -248,6 +249,11 @@ namespace Graphite {
 		bool m_Searching = false;
 
 		Core::Ref<const Core::LogPage> m_LastSeenPage;
+
+		// WARNING: Laid out once per page, not once per frame: a page read to its root holds the whole
+		// history, and the layout walks every commit of it.
+		Core::Ref<const Core::LogPage> m_GraphOf;
+		Core::CommitGraph m_Graph;
 
 		float m_ListHeight = 0.0f;
 

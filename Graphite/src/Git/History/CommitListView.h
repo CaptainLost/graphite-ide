@@ -30,8 +30,6 @@ namespace Graphite {
 		std::filesystem::path Path;
 	};
 
-	inline constexpr std::ptrdiff_t kNoLoadMoreRequestedYet = -1;
-
 	// WARNING: a selection survives or not by its commit, never by its file, because the diff naming the file may not have arrived yet.
 	std::optional<FileSelection> SelectionSurviving(const std::optional<FileSelection>& selection,
 													const Core::LogPage& page);
@@ -78,13 +76,8 @@ namespace Graphite {
 
 		std::optional<Core::Oid> GetSelectedCommit() const { return m_SelectedCommit; }
 
-		// WARNING: expansions, selections and the load-more latch name commits of the old repository once a workspace opens or closes, so all of them are cleared.
+		// WARNING: expansions and selections name commits of the old repository once a workspace opens or closes, so all of them are cleared.
 		void Reset();
-
-		// WARNING: a query from the first page shows another history, so a latch left at the length of the last one would keep a page of that same length from ever asking for more.
-		void ForgetLoadMoreRequest();
-
-		bool TakeLoadMoreRequest();
 
 		std::optional<CommitAction> TakeCommitAction();
 
@@ -111,10 +104,6 @@ namespace Graphite {
 		std::unordered_set<Core::Oid> m_Expanded;
 		std::optional<FileSelection> m_SelectedFile;
 		std::optional<Core::Oid> m_SelectedCommit;
-
-		bool m_LoadMoreRequested = false;
-
-		std::ptrdiff_t m_LoadMoreRequestedAtCount = kNoLoadMoreRequestedYet;
 
 		std::optional<CommitAction> m_CommitAction;
 		bool m_ActionsEnabled = true;
