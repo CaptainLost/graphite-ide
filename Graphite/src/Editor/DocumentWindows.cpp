@@ -1783,7 +1783,7 @@ namespace Graphite {
 		case DefinitionOutcome::Jumped:
 			if (!candidates.empty())
 			{
-				Jump(m_Documents, candidates.front());
+				Jump(m_Documents, candidates.front(), [this](const std::filesystem::path& path) { RequestOpen(path, true); });
 			}
 			break;
 
@@ -1858,7 +1858,7 @@ namespace Graphite {
 
 			if (ImGui::Selectable(header.c_str()))
 			{
-				Jump(m_Documents, location);
+				Jump(m_Documents, location, [this](const std::filesystem::path& path) { RequestOpen(path, true); });
 				ImGui::CloseCurrentPopup();
 			}
 

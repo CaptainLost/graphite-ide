@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Editor/Navigation/SelectInDocument.h"
 #include "Language/Api/LanguageService.h"
 
 #include <cstdint>
@@ -25,5 +26,5 @@ namespace Graphite {
 										const FilePosition& from,
 										std::vector<Location>& candidates);
 
-	void Jump(Core::DocumentSet& documents, const Location& location);
+	void Jump(Core::DocumentSet& documents, const Location& location, const OpenDocument& open);
 }

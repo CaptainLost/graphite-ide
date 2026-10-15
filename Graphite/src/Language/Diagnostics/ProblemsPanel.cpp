@@ -61,10 +61,10 @@ namespace Graphite {
 		}
 	}
 
-	ProblemsPanel::ProblemsPanel(const DiagnosticsModel& diagnostics, Core::DocumentSet& documents,
+	ProblemsPanel::ProblemsPanel(const DiagnosticsModel& diagnostics, Core::DocumentSet& documents, Workspace& workspace,
 								 const ActiveScheme& scheme)
 		: Core::Panel("problems", "Problems", "tools", ICON_MDI_ALERT_CIRCLE_OUTLINE), m_Diagnostics(diagnostics), m_Documents(documents),
-		  m_Scheme(scheme)
+		  m_Workspace(workspace), m_Scheme(scheme)
 	{
 	}
 
@@ -205,17 +205,18 @@ namespace Graphite {
 			m_Selected = IdentityOf(path, diagnostic);
 			m_SelectionSeen = true;
 
-			const Core::TabKind tabKind = OpensPermanently() ? Core::TabKind::Permanent : Core::TabKind::Preview;
-			OpenAndSelect(path, diagnostic, tabKind);
+			OpenAndSelect(path, diagnostic, OpensPermanently());
 		}
 
 		ImGui::PopID();
 	}
 
 	void ProblemsPanel::OpenAndSelect(const std::filesystem::path& path,
-									  const Diagnostic& diagnostic, Core::TabKind tabKind)
+									  const Diagnostic& diagnostic, bool permanent)
 	{
-		const auto openFile = [this, tabKind](const std::filesystem::path& file) { m_Documents.Open(file, tabKind); };
+		const auto openFile = [this, permanent](const std::filesystem::path& file) {
+			m_Workspace.RequestOpenFile(file, permanent);
+		};
 
 		SelectInDocument(m_Documents, path, diagnostic.Line, diagnostic.Column, diagnostic.EndLine,
 						 diagnostic.EndColumn, openFile);

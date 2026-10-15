@@ -1,14 +1,5 @@
 #include "Editor/Navigation/DefinitionNavigation.h"
 
-#include "Language/Server/LspProtocol.h"
-
-#include "Core/Text/Caret.h"
-#include "Core/Text/DocumentSet.h"
-#include "Core/Text/TextBuffer.h"
-
-#include <algorithm>
-#include <optional>
-
 namespace Graphite {
 
 	namespace {
@@ -89,35 +80,9 @@ namespace Graphite {
 		return DefinitionOutcome::NeedsChoice;
 	}
 
-	void Jump(Core::DocumentSet& documents, const Location& location)
+	void Jump(Core::DocumentSet& documents, const Location& location, const OpenDocument& open)
 	{
-		documents.Open(location.Path, Core::TabKind::Permanent);
-
-		const std::optional<std::size_t> openIndex = documents.Find(location.Path);
-
-		if (!openIndex)
-		{
-			return;
-		}
-
-		Core::OpenItem& item = documents.At(*openIndex);
-
-		if (!item.Document)
-		{
-			return;
-		}
-
-		const Core::TextBuffer& buffer = item.Document->GetBuffer();
-
-		const std::size_t line = std::min(location.Line, buffer.GetLineCount() - 1);
-		const std::string lineText = buffer.LineText(line);
-		const std::size_t byteColumn = FromUtf16Column(lineText, location.Column);
-		const std::size_t offset = buffer.LineStart(line) + byteColumn;
-
-		item.Caret = Core::PlaceAt(buffer, item.Caret, offset, Core::SelectionChange::Collapse, item.TabWidth);
-
-		// WARNING: The editor did not see the caret move during its own processing this frame,
-		// so it must be told to scroll to it.
-		item.PendingScroll = true;
+		static_cast<void>(SelectInDocument(documents, location.Path, location.Line, location.Column, location.Line,
+										   location.Column, open));
 	}
 }

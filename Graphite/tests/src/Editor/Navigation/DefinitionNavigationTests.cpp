@@ -6,7 +6,9 @@
 
 #include "TempDirectory.h"
 
+#include <filesystem>
 #include <optional>
+#include <vector>
 
 namespace {
 	Graphite::Location LocationAt(const char* path, std::size_t line)
@@ -121,10 +123,47 @@ TEST_CASE("Jumping into a file already open asks for that file's window")
 	documents.At(0).PendingFocus = false;
 	documents.At(1).PendingFocus = false;
 
-	Graphite::Jump(documents, Graphite::Location{header, 0, Graphite::Utf16Column(0)});
+	Graphite::Jump(documents, Graphite::Location{header, 0, Graphite::Utf16Column(0)},
+				   [&documents](const std::filesystem::path& path) { documents.Open(path, Core::TabKind::Permanent); });
 
 	const std::optional<std::size_t> index = documents.Find(header);
 	REQUIRE(index.has_value());
 	CHECK(documents.At(*index).PendingFocus);
 	CHECK(documents.At(*index).PendingScroll);
+}
+
+TEST_CASE("Jumping opens the file through the opener it is given, so a large file is asked about first")
+{
+	TempDirectory directory;
+	const std::filesystem::path header = directory.MakeFile("header.h", "void Draw();\n");
+
+	Core::DocumentSet documents;
+	std::vector<std::filesystem::path> opened;
+
+	Graphite::Jump(documents, Graphite::Location{header, 0, Graphite::Utf16Column(5)},
+				   [&documents, &opened](const std::filesystem::path& path) {
+					   opened.push_back(path);
+					   documents.Open(path, Core::TabKind::Permanent);
+				   });
+
+	REQUIRE(opened.size() == 1);
+	CHECK(opened.front() == header);
+
+	const std::optional<std::size_t> index = documents.Find(header);
+	REQUIRE(index.has_value());
+	CHECK(documents.At(*index).Caret.Offset == 5);
+	CHECK(documents.At(*index).Caret.Anchor == 5);
+}
+
+TEST_CASE("Jumping to a file the opener did not open moves nothing")
+{
+	TempDirectory directory;
+	const std::filesystem::path header = directory.MakeFile("header.h", "void Draw();\n");
+
+	Core::DocumentSet documents;
+
+	Graphite::Jump(documents, Graphite::Location{header, 0, Graphite::Utf16Column(5)},
+				   [](const std::filesystem::path&) {});
+
+	CHECK_FALSE(documents.Find(header).has_value());
 }

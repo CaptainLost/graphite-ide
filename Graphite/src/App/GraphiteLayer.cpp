@@ -171,7 +171,7 @@ namespace Graphite {
 			Core::CreateScope<ReferencesPanel>(m_Workspace, m_Documents, m_ActiveScheme,
 											   m_EditorSettings, m_PreviewSemantics));
 
-		m_Panels.Add(Core::CreateScope<ProblemsPanel>(m_Diagnostics, m_Documents, m_ActiveScheme));
+		m_Panels.Add(Core::CreateScope<ProblemsPanel>(m_Diagnostics, m_Documents, m_Workspace, m_ActiveScheme));
 
 		m_DiffWindows.OpenFile = [this](const std::filesystem::path& path) {
 			const bool permanentTab = true;

@@ -7,6 +7,7 @@
 #include "Theme/ActiveScheme.h"
 
 #include "Language/Diagnostics/ProblemIdentity.h"
+#include "Workspace/Workspace.h"
 
 #include <filesystem>
 #include <optional>
@@ -16,7 +17,7 @@ namespace Graphite {
 	class ProblemsPanel final : public Core::Panel
 	{
 	public:
-		ProblemsPanel(const DiagnosticsModel& diagnostics, Core::DocumentSet& documents,
+		ProblemsPanel(const DiagnosticsModel& diagnostics, Core::DocumentSet& documents, Workspace& workspace,
 					  const ActiveScheme& scheme);
 
 		void OnImGuiRender() override;
@@ -28,12 +29,13 @@ namespace Graphite {
 		void RenderRow(const std::filesystem::path& path, const Diagnostic& diagnostic, int rowId,
 					   const EditorPalette& palette);
 
-		void OpenAndSelect(const std::filesystem::path& path, const Diagnostic& diagnostic, Core::TabKind tabKind);
+		void OpenAndSelect(const std::filesystem::path& path, const Diagnostic& diagnostic, bool permanent);
 
 		bool IsOpenDocument(const std::filesystem::path& path) const;
 
 		const DiagnosticsModel& m_Diagnostics;
 		Core::DocumentSet& m_Documents;
+		Workspace& m_Workspace;
 		const ActiveScheme& m_Scheme;
 
 		std::optional<ProblemIdentity> m_Selected;
