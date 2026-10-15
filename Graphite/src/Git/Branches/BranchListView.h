@@ -68,11 +68,11 @@ namespace Graphite {
 		bool HoldsRowsFor(const RowsBuiltFrom& inputs, bool authorsInFlight) const;
 		void RebuildRowsWhenOutOfDate(const BranchListFrame& frame);
 
-		void DrawMenu(const BranchListFrame& frame);
-		void DrawSortItem(const char* label, BranchSort sort);
-		void DrawGroupingItem(const char* label, BranchGrouping grouping);
-		void DrawAuthorsMenu(const BranchListFrame& frame);
-		void DrawOnlyMineItem(const BranchListFrame& frame);
+		void DrawPanel(const BranchListFrame& frame);
+		void DrawOnlyMineRow(const BranchListFrame& frame);
+		void DrawAuthorsSection(const BranchListFrame& frame);
+		void DrawAuthorsHeading();
+		void DrawAuthorList(const std::vector<AuthorChoice>& shown);
 		void DrawChips(const BranchListFrame& frame);
 		void PlaceChip(const std::string& label, bool& isFirstChip, float rowRight) const;
 		std::string ChipTextOf(const std::string& key, const BranchListFrame& frame) const;
@@ -87,6 +87,7 @@ namespace Graphite {
 		BranchListState& m_Options;
 
 		std::array<char, 128> m_TextBuffer{};
+		std::array<char, 128> m_AuthorQueryBuffer{};
 		BranchListFilter m_Filter;
 		std::vector<std::string> m_Words;
 
@@ -99,6 +100,6 @@ namespace Graphite {
 
 		std::optional<double> m_BranchesWaitingSince;
 		std::optional<double> m_AuthorsWaitingSince;
-		std::optional<double> m_AuthorsMenuWaitingSince;
+		std::optional<double> m_AuthorsPanelWaitingSince;
 	};
 }

@@ -3,6 +3,7 @@
 #include "GitFixtures.h"
 #include "ImGuiFrames.h"
 #include "Git/Branches/BranchListView.h"
+#include "UI/IconButton.h"
 
 #include "Core/Base/Base.h"
 
@@ -133,6 +134,76 @@ namespace {
 		const float halfARow = 0.5f;
 		const float clearOfTheLeftEdge = 10.0f;
 		return ImVec2(listTop.x + clearOfTheLeftEdge, listTop.y + rowHeight * (rowIndex + halfARow));
+	}
+
+	constexpr float kHalf = 0.5f;
+
+	void DrawHeaderAndRows(Graphite::BranchListView& list, const Graphite::BranchListFrame& frame)
+	{
+		BeginListWindow(kListWidth);
+		list.DrawHeader(frame);
+		list.DrawRows(frame);
+		ImGui::End();
+	}
+
+	ImVec2 PanelButtonCentre()
+	{
+		const ImGuiStyle& style = ImGui::GetStyle();
+		return ImVec2(kListWidth - style.WindowPadding.x - Graphite::IconButtonSize() * kHalf,
+					  style.WindowPadding.y + ImGui::GetFrameHeight() * kHalf);
+	}
+
+	int OpenPopups()
+	{
+		return ImGui::GetCurrentContext()->OpenPopupStack.Size;
+	}
+
+	const ImGuiWindow& PanelWindow()
+	{
+		const ImGuiContext& context = *ImGui::GetCurrentContext();
+		REQUIRE(context.OpenPopupStack.Size == 1);
+		REQUIRE(context.OpenPopupStack[0].Window != nullptr);
+		return *context.OpenPopupStack[0].Window;
+	}
+
+	ImVec2 MiddleSortSegmentCentre()
+	{
+		const ImGuiWindow& panel = PanelWindow();
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const float contentWidth = panel.Size.x - style.WindowPadding.x * 2.0f;
+
+		return ImVec2(panel.Pos.x + style.WindowPadding.x + contentWidth * kHalf,
+					  panel.Pos.y + style.WindowPadding.y + ImGui::GetTextLineHeightWithSpacing() +
+						  ImGui::GetFrameHeight() * kHalf);
+	}
+
+	ImVec2 FirstAuthorTickBoxCentre()
+	{
+		const ImGuiWindow& panel = PanelWindow();
+		const ImGuiWindow* authorList = nullptr;
+
+		for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+		{
+			const bool isTheList = window->ParentWindow == &panel && (window->Flags & ImGuiWindowFlags_ChildWindow) != 0;
+
+			if (isTheList)
+			{
+				authorList = window;
+			}
+		}
+
+		REQUIRE(authorList != nullptr);
+
+		const float intoTheBox = 8.0f;
+		return ImVec2(authorList->Pos.x + intoTheBox, authorList->Pos.y + ImGui::GetFrameHeight() * kHalf);
+	}
+
+	Core::Branch LocalBranchBy(const std::string& name, const std::string& authorName, std::size_t tipNumber)
+	{
+		Core::Branch branch = LocalBranchAt(name, kNowSeconds, tipNumber);
+		branch.TipCommit->Author.Name = authorName;
+		branch.TipCommit->Author.Email = authorName + "@example.com";
+		return branch;
 	}
 }
 
@@ -532,4 +603,110 @@ TEST_CASE("A section collapsed while authors are in flight rebuilds the rows at 
 	drawnTips.clear();
 	frames.Next([&list, &held] { DrawListWindow(list, held, kListWidth); });
 	CHECK(drawnTips.empty());
+}
+
+TEST_CASE("Choosing a sort in the panel leaves the panel open")
+{
+	ImGuiFrames frames;
+
+	const Graphite::BranchListFrame frame = FrameOf(Core::CreateRef<const std::vector<Core::Branch>>(
+		std::vector<Core::Branch>{LocalBranchAt("main", kNowSeconds, 1), LocalBranchAt("other", kNowSeconds - 60, 2)}));
+
+	Graphite::BranchListState options;
+	Graphite::BranchListView list{options};
+
+	const auto draw = [&list, &frame] { DrawHeaderAndRows(list, frame); };
+
+	frames.Next(draw);
+	frames.Click(PanelButtonCentre(), draw);
+	frames.Next(draw);
+	REQUIRE(OpenPopups() == 1);
+
+	frames.Click(MiddleSortSegmentCentre(), draw);
+
+	CHECK(options.Sort == Graphite::BranchSort::Oldest);
+	CHECK(OpenPopups() == 1);
+}
+
+TEST_CASE("Ticking an author in the panel leaves the panel open and narrows the list")
+{
+	ImGuiFrames frames;
+
+	const bool notInFlight = false;
+	const Graphite::BranchListFrame frame = FrameWithAuthors(
+		Core::CreateRef<const std::vector<Core::Branch>>(
+			std::vector<Core::Branch>{LocalBranchBy("by-ann", "Ann", 1), LocalBranchBy("by-bob", "Bob", 2)}),
+		Core::CreateRef<const Graphite::BranchAuthors>(), notInFlight);
+
+	Graphite::BranchListState options;
+	Graphite::BranchListView list{options};
+
+	std::vector<std::string> drawnBranches;
+	list.DrawBranchMenu = [&drawnBranches](const Core::Branch& branch) { drawnBranches.push_back(branch.Name); };
+
+	const auto draw = [&list, &frame] { DrawHeaderAndRows(list, frame); };
+
+	frames.Next(draw);
+	frames.Click(PanelButtonCentre(), draw);
+	frames.Next(draw);
+	REQUIRE(OpenPopups() == 1);
+
+	frames.Click(FirstAuthorTickBoxCentre(), draw);
+
+	drawnBranches.clear();
+	frames.Next(draw);
+
+	CHECK(OpenPopups() == 1);
+	CHECK(drawnBranches == std::vector<std::string>{"by-ann"});
+}
+
+TEST_CASE("The panel draws while authors are read and after they fail or land without an assertion")
+{
+	ImGuiFrames frames;
+
+	constexpr std::size_t kAuthorsPastTheListHeight = 14;
+	constexpr int kFramesPastTheLoaderDelay = 30;
+
+	std::vector<Core::Branch> branches;
+
+	for (std::size_t authorIndex = 0; authorIndex < kAuthorsPastTheListHeight; ++authorIndex)
+	{
+		branches.push_back(LocalBranchBy(std::format("branch-{}", authorIndex), std::format("U{}", authorIndex),
+										 authorIndex + 1));
+	}
+
+	const Core::Ref<const std::vector<Core::Branch>> listed =
+		Core::CreateRef<const std::vector<Core::Branch>>(std::move(branches));
+
+	Graphite::BranchAuthors answer;
+	answer.UserEmail = "U3@example.com";
+
+	const Graphite::BranchListFrame waiting = FrameOf(listed);
+
+	Graphite::BranchListFrame failed = FrameOf(listed);
+	failed.AuthorsFailure = "the walk stopped on an object that could not be read from the pack";
+
+	const bool notInFlight = false;
+	const Graphite::BranchListFrame landed =
+		FrameWithAuthors(listed, Core::CreateRef<const Graphite::BranchAuthors>(std::move(answer)), notInFlight);
+
+	Graphite::BranchListState options;
+	options.Group = Graphite::BranchGrouping::Author;
+	Graphite::BranchListView list{options};
+
+	frames.Next([&list, &waiting] { DrawHeaderAndRows(list, waiting); });
+	frames.Click(PanelButtonCentre(), [&list, &waiting] { DrawHeaderAndRows(list, waiting); });
+
+	for (int frameIndex = 0; frameIndex < kFramesPastTheLoaderDelay; ++frameIndex)
+	{
+		frames.Next([&list, &waiting] { DrawHeaderAndRows(list, waiting); });
+	}
+
+	frames.Next([&list, &failed] { DrawHeaderAndRows(list, failed); });
+	frames.Next([&list, &failed] { DrawHeaderAndRows(list, failed); });
+
+	frames.Next([&list, &landed] { DrawHeaderAndRows(list, landed); });
+	frames.Next([&list, &landed] { DrawHeaderAndRows(list, landed); });
+
+	CHECK(OpenPopups() == 1);
 }

@@ -5,30 +5,64 @@
 #include "Git/GitView.h"
 #include "UI/HighlightedRow.h"
 #include "UI/IconButton.h"
+#include "UI/TickBox.h"
 
 #include "Core/App/Redraw.h"
 #include "Core/ImGui/LoadingState.h"
+#include "Core/ImGui/Toggle.h"
+#include "Core/ImGui/UiScale.h"
 
 #include <IconsMaterialDesignIcons.h>
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <format>
+#include <string>
 
 namespace Graphite {
 
 	namespace {
 
-		constexpr const char* kMenuId = "##branchListMenu";
+		constexpr const char* kPanelId = "##branchListMenu";
 		constexpr const char* kWidestAge = "12mo";
 		constexpr const char* kMineChip = "Mine";
 		constexpr const char* kMessageChip = "Message";
 		constexpr const char* kMessageChipId = "##messageChip";
 		constexpr const char* kReadingAuthors = "Reading authors";
 		constexpr const char* kSetUserEmail = "Set user.email in git config to use this";
-		constexpr float kFailureWidthInFontSizes = 24.0f;
+		constexpr const char* kNoAuthors = "No authors";
+		constexpr const char* kNoAuthorsMatch = "No authors match";
+		constexpr const char* kAuthorListId = "##authorList";
+		constexpr const char* kTickBoxId = "###tick";
 		constexpr double kSecondsBeforeLoaderShows = 0.2;
+
+		constexpr float kPanelWidthInFontSizes = 22.0f;
+		constexpr std::size_t kMostAuthorRowsShown = 10;
+		constexpr bool kHideTextAfterDoubleHash = true;
+
+		constexpr int kSelectedSegmentColourCount = 4;
+		constexpr ImVec4 kSelectedSegmentText(1.0f, 1.0f, 1.0f, 1.0f);
+
+		template <typename Choice>
+		struct Segment
+		{
+			const char* Label;
+			Choice Value;
+		};
+
+		constexpr std::array<Segment<BranchSort>, 3> kSortSegments = {{
+			{.Label = "Newest", .Value = BranchSort::Newest},
+			{.Label = "Oldest", .Value = BranchSort::Oldest},
+			{.Label = "Name", .Value = BranchSort::Name},
+		}};
+
+		constexpr std::array<Segment<BranchGrouping>, 2> kGroupingSegments = {{
+			{.Label = "None", .Value = BranchGrouping::None},
+			{.Label = "Author", .Value = BranchGrouping::Author},
+		}};
 
 		// True once the wait has lasted long enough for a loader; until then asks for the frame on
 		// which it will have.
@@ -76,6 +110,112 @@ namespace Graphite {
 
 			return kReadingAuthors;
 		}
+
+		// WARNING: A Selectable or MenuItem closes the popup it sits in when clicked; the panel's
+		// segments are buttons so that choosing a sort leaves it open.
+		bool DrawSegment(const char* label, bool selected, float width)
+		{
+			const float defaultHeight = 0.0f;
+			const ImVec2 size(width, defaultHeight);
+
+			if (!selected)
+			{
+				return ImGui::Button(label, size);
+			}
+
+			const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
+
+			ImGui::PushStyleColor(ImGuiCol_Button, accent);
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, accent);
+			ImGui::PushStyleColor(ImGuiCol_ButtonActive, accent);
+			ImGui::PushStyleColor(ImGuiCol_Text, kSelectedSegmentText);
+			const bool clicked = ImGui::Button(label, size);
+			ImGui::PopStyleColor(kSelectedSegmentColourCount);
+
+			return clicked;
+		}
+
+		template <typename Choice, std::size_t SegmentCount>
+		void DrawSegments(const char* id, const std::array<Segment<Choice>, SegmentCount>& segments, Choice& chosen)
+		{
+			const float noOffset = 0.0f;
+			const float noSpacing = 0.0f;
+			const float rowWidth = ImGui::GetContentRegionAvail().x;
+			const float segmentWidth = std::floor(rowWidth / static_cast<float>(SegmentCount));
+
+			ImGui::PushID(id);
+
+			for (std::size_t segmentIndex = 0; segmentIndex < SegmentCount; ++segmentIndex)
+			{
+				if (segmentIndex > 0)
+				{
+					ImGui::SameLine(noOffset, noSpacing);
+				}
+
+				const bool isLast = segmentIndex + 1 == SegmentCount;
+				const float width =
+					isLast ? rowWidth - segmentWidth * static_cast<float>(SegmentCount - 1) : segmentWidth;
+				const Segment<Choice>& segment = segments[segmentIndex];
+
+				if (DrawSegment(segment.Label, segment.Value == chosen, width))
+				{
+					chosen = segment.Value;
+				}
+			}
+
+			ImGui::PopID();
+		}
+
+		bool DrawToggleRow(const char* label, const char* toggleId, bool* isOn)
+		{
+			const float toggleX =
+				ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - Core::Scaled(Core::kToggleWidth);
+
+			ImGui::AlignTextToFramePadding();
+			ImGui::TextUnformatted(label);
+			ImGui::SameLine(toggleX);
+
+			return Core::Toggle(toggleId, isOn);
+		}
+
+		void DrawAuthorsFailure(const std::string& message)
+		{
+			const std::string failure = AuthorsFailureText(message);
+
+			bool cut = false;
+			const std::string fitted = FitToWidth(failure, ImGui::GetContentRegionAvail().x, &cut);
+			ImGui::TextDisabled("%s", fitted.c_str());
+
+			if (cut)
+			{
+				ImGui::SetItemTooltip("%s", failure.c_str());
+			}
+		}
+
+		bool DrawAuthorChoice(const AuthorChoice& choice)
+		{
+			const ImGuiStyle& style = ImGui::GetStyle();
+			const float rowStartX = ImGui::GetCursorPosX();
+			const float rowWidth = ImGui::GetContentRegionAvail().x;
+
+			const std::string count = std::to_string(choice.Branches);
+			const float countWidth = ImGui::CalcTextSize(count.c_str()).x;
+			const float boxRoom = Core::Scaled(kTickBoxSize) + style.ItemInnerSpacing.x;
+			const float nameRoom = rowWidth - boxRoom - style.ItemSpacing.x - countWidth;
+
+			const std::string label = FitToWidth(AuthorChoiceText(choice), nameRoom) + kTickBoxId;
+			bool ticked = choice.Ticked;
+
+			ImGui::PushID(choice.Key.c_str());
+
+			const bool clicked = DrawTickBox(label.c_str(), &ticked);
+			ImGui::SameLine(rowStartX + rowWidth - countWidth);
+			ImGui::TextDisabled("%s", count.c_str());
+
+			ImGui::PopID();
+
+			return clicked;
+		}
 	}
 
 	BranchListView::BranchListView(BranchListState& options) : m_Options(options)
@@ -85,6 +225,7 @@ namespace Graphite {
 	void BranchListView::Reset()
 	{
 		m_TextBuffer = {};
+		m_AuthorQueryBuffer = {};
 		m_Filter = BranchListFilter{};
 		m_Words.clear();
 		m_ExpandedGroups.clear();
@@ -93,7 +234,7 @@ namespace Graphite {
 		m_Choices.clear();
 		m_BranchesWaitingSince.reset();
 		m_AuthorsWaitingSince.reset();
-		m_AuthorsMenuWaitingSince.reset();
+		m_AuthorsPanelWaitingSince.reset();
 	}
 
 	BranchListView::RowsBuiltFrom BranchListView::InputsOf(const BranchListFrame& frame) const
@@ -167,7 +308,7 @@ namespace Graphite {
 
 		if (frame.Authors || frame.AuthorsFailure.has_value())
 		{
-			m_AuthorsMenuWaitingSince.reset();
+			m_AuthorsPanelWaitingSince.reset();
 		}
 
 		const float buttonRoom = IconButtonSize() + ImGui::GetStyle().ItemSpacing.x;
@@ -186,92 +327,79 @@ namespace Graphite {
 
 		if (DrawIconButton("##branchListMenuButton", ICON_MDI_TUNE_VARIANT, narrowed, "Sort and filter"))
 		{
-			ImGui::OpenPopup(kMenuId);
+			ImGui::OpenPopup(kPanelId);
 		}
 
-		DrawMenu(frame);
+		DrawPanel(frame);
 		DrawChips(frame);
 	}
 
-	void BranchListView::DrawMenu(const BranchListFrame& frame)
+	void BranchListView::DrawPanel(const BranchListFrame& frame)
 	{
-		if (!ImGui::BeginPopup(kMenuId))
+		const float fitHeight = 0.0f;
+		ImGui::SetNextWindowSize(ImVec2(ImGui::GetFontSize() * kPanelWidthInFontSizes, fitHeight));
+
+		if (!ImGui::BeginPopup(kPanelId))
 		{
 			return;
 		}
 
-		ImGui::SeparatorText("Sort");
-		DrawSortItem("Newest", BranchSort::Newest);
-		DrawSortItem("Oldest", BranchSort::Oldest);
-		DrawSortItem("Name", BranchSort::Name);
+		ImGui::TextDisabled("Sort");
+		DrawSegments("##sort", kSortSegments, m_Options.Sort);
 
-		ImGui::SeparatorText("Group by");
-		DrawGroupingItem("None", BranchGrouping::None);
-		DrawGroupingItem("Author", BranchGrouping::Author);
+		ImGui::TextDisabled("Group by");
+		DrawSegments("##group", kGroupingSegments, m_Options.Group);
 
 		ImGui::Separator();
-		DrawAuthorsMenu(frame);
-		DrawOnlyMineItem(frame);
+		DrawOnlyMineRow(frame);
+		DrawToggleRow("Also commit message", "##alsoMessage", &m_Filter.AlsoMessage);
 
-		const char* const noShortcut = nullptr;
-
-		if (ImGui::MenuItem("Also commit message", noShortcut, m_Filter.AlsoMessage))
-		{
-			m_Filter.AlsoMessage = !m_Filter.AlsoMessage;
-		}
+		ImGui::Separator();
+		DrawAuthorsSection(frame);
 
 		ImGui::EndPopup();
 	}
 
-	void BranchListView::DrawSortItem(const char* label, BranchSort sort)
+	void BranchListView::DrawOnlyMineRow(const BranchListFrame& frame)
 	{
-		const char* const noShortcut = nullptr;
+		const bool emailKnown = frame.Authors && frame.Authors->UserEmail.has_value();
+		const std::string userKey = emailKnown ? AuthorKeyOf(*frame.Authors->UserEmail) : std::string{};
+		bool onlyMine = emailKnown && m_Filter.Authors.contains(userKey);
 
-		if (ImGui::MenuItem(label, noShortcut, m_Options.Sort == sort))
+		ImGui::BeginDisabled(!emailKnown);
+		ImGui::BeginGroup();
+		const bool toggled = DrawToggleRow("Only mine", "##onlyMine", &onlyMine);
+		ImGui::EndGroup();
+		ImGui::EndDisabled();
+
+		if (!emailKnown && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 		{
-			m_Options.Sort = sort;
+			ImGui::SetTooltip("%s", OnlyMineTooltipOf(frame).c_str());
+		}
+
+		if (toggled)
+		{
+			ToggleAuthor(userKey);
 		}
 	}
 
-	void BranchListView::DrawGroupingItem(const char* label, BranchGrouping grouping)
+	void BranchListView::DrawAuthorsSection(const BranchListFrame& frame)
 	{
-		const char* const noShortcut = nullptr;
+		DrawAuthorsHeading();
 
-		if (ImGui::MenuItem(label, noShortcut, m_Options.Group == grouping))
-		{
-			m_Options.Group = grouping;
-		}
-	}
-
-	void BranchListView::DrawAuthorsMenu(const BranchListFrame& frame)
-	{
-		if (!ImGui::BeginMenu("Authors"))
-		{
-			return;
-		}
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		ImGui::InputTextWithHint("##authorFilter", ICON_MDI_MAGNIFY "  Filter authors", m_AuthorQueryBuffer.data(),
+								 m_AuthorQueryBuffer.size());
 
 		if (!frame.Authors && frame.AuthorsFailure.has_value())
 		{
-			const std::string failure = AuthorsFailureText(*frame.AuthorsFailure);
-
-			// WARNING: A menu grows to fit what it holds, so the line is cut to a fixed width; cut to
-			// the menu's own width it would never grow past its first frame.
-			bool cut = false;
-			const std::string fitted = FitToWidth(failure, ImGui::GetFontSize() * kFailureWidthInFontSizes, &cut);
-			ImGui::TextDisabled("%s", fitted.c_str());
-
-			if (cut)
-			{
-				ImGui::SetItemTooltip("%s", failure.c_str());
-			}
-
-			ImGui::EndMenu();
+			DrawAuthorsFailure(*frame.AuthorsFailure);
 			return;
 		}
 
 		if (!frame.Authors)
 		{
-			if (LoaderIsDue(m_AuthorsMenuWaitingSince))
+			if (LoaderIsDue(m_AuthorsPanelWaitingSince))
 			{
 				Core::LoadingLine(kReadingAuthors);
 			}
@@ -280,60 +408,95 @@ namespace Graphite {
 				ImGui::TextDisabled("%s", kReadingAuthors);
 			}
 
-			ImGui::EndMenu();
 			return;
 		}
 
 		if (m_Choices.empty())
 		{
-			ImGui::TextDisabled("No authors");
+			ImGui::TextDisabled("%s", kNoAuthors);
+			return;
 		}
 
-		// WARNING: A menu item closes its popup when clicked; ticking several authors in a row
-		// needs the popup to stay.
-		const bool closesPopup = false;
-		ImGui::PushItemFlag(ImGuiItemFlags_AutoClosePopups, closesPopup);
+		const std::vector<AuthorChoice> shown = FilterAuthorChoices(m_Choices, m_AuthorQueryBuffer.data());
 
-		const char* const noShortcut = nullptr;
+		if (shown.empty())
+		{
+			ImGui::TextDisabled("%s", kNoAuthorsMatch);
+			return;
+		}
+
+		DrawAuthorList(shown);
+	}
+
+	void BranchListView::DrawAuthorsHeading()
+	{
+		const float rowStartX = ImGui::GetCursorPosX();
+		const float rowWidth = ImGui::GetContentRegionAvail().x;
+
+		ImGui::TextDisabled("Authors");
+
+		if (m_Filter.Authors.empty())
+		{
+			return;
+		}
+
+		const std::string clearLabel = std::format("Clear ({})###clearAuthors", m_Filter.Authors.size());
+		const char* const wholeLabel = nullptr;
+		const float clearWidth = ImGui::CalcTextSize(clearLabel.c_str(), wholeLabel, kHideTextAfterDoubleHash).x;
+
+		ImGui::SameLine(rowStartX + rowWidth - clearWidth);
+
+		ImGui::PushStyleColor(ImGuiCol_TextLink, ImGui::GetStyleColorVec4(ImGuiCol_CheckMark));
+		const bool cleared = ImGui::TextLink(clearLabel.c_str());
+		ImGui::PopStyleColor();
+
+		if (cleared)
+		{
+			m_Filter.Authors.clear();
+		}
+	}
+
+	void BranchListView::DrawAuthorList(const std::vector<AuthorChoice>& shown)
+	{
+		const float rowHeight = ImGui::GetFrameHeightWithSpacing();
+		const std::size_t visibleRows = std::min(shown.size(), kMostAuthorRowsShown);
+		const float listHeight = static_cast<float>(visibleRows) * rowHeight - ImGui::GetStyle().ItemSpacing.y;
+		const float fullWidth = 0.0f;
+
 		std::optional<std::string> toggledKey;
 
-		for (const AuthorChoice& choice : m_Choices)
-		{
-			ImGui::PushID(choice.Key.c_str());
+		// WARNING: A child is filled with the window colour, darker than the panel around it, so the
+		// list draws no background of its own and reads as part of the panel.
+		const float noBackground = 0.0f;
+		ImGui::SetNextWindowBgAlpha(noBackground);
+		const bool listVisible = ImGui::BeginChild(kAuthorListId, ImVec2(fullWidth, listHeight));
 
-			if (ImGui::MenuItem(AuthorChoiceText(choice).c_str(), noShortcut, choice.Ticked))
+		if (listVisible)
+		{
+			ImGuiListClipper clipper;
+			clipper.Begin(static_cast<int>(shown.size()), rowHeight);
+
+			while (clipper.Step())
 			{
-				toggledKey = choice.Key;
+				for (int rowIndex = clipper.DisplayStart; rowIndex < clipper.DisplayEnd; ++rowIndex)
+				{
+					const AuthorChoice& choice = shown[static_cast<std::size_t>(rowIndex)];
+
+					if (DrawAuthorChoice(choice))
+					{
+						toggledKey = choice.Key;
+					}
+				}
 			}
 
-			ImGui::PopID();
+			clipper.End();
 		}
 
-		ImGui::PopItemFlag();
-		ImGui::EndMenu();
+		ImGui::EndChild();
 
 		if (toggledKey.has_value())
 		{
 			ToggleAuthor(*toggledKey);
-		}
-	}
-
-	void BranchListView::DrawOnlyMineItem(const BranchListFrame& frame)
-	{
-		const bool emailKnown = frame.Authors && frame.Authors->UserEmail.has_value();
-		const std::string userKey = emailKnown ? AuthorKeyOf(*frame.Authors->UserEmail) : std::string{};
-		const bool ticked = emailKnown && m_Filter.Authors.contains(userKey);
-
-		const char* const noShortcut = nullptr;
-
-		if (ImGui::MenuItem("Only mine", noShortcut, ticked, emailKnown))
-		{
-			ToggleAuthor(userKey);
-		}
-
-		if (!emailKnown && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
-		{
-			ImGui::SetTooltip("%s", OnlyMineTooltipOf(frame).c_str());
 		}
 	}
 
