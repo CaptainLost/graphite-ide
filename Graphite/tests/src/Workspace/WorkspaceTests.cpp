@@ -159,3 +159,47 @@ TEST_CASE("Opening an unreadable solution from outside the open folder reports i
 
 	CHECK(log.Toasts.size() == 1);
 }
+
+TEST_CASE("A solution whose extension is written in capitals is found in the folder")
+{
+	TempDirectory temp;
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace(events, settings.Get());
+
+	const std::filesystem::path solution = temp.MakeFile("Demo.SLN", "");
+
+	REQUIRE(workspace.OpenFolder(temp.GetPath()));
+
+	CHECK(workspace.GetSolutionCandidates() == std::vector<std::filesystem::path>{solution});
+}
+
+TEST_CASE("A folder's solutions are listed by name whatever its case, so the first is the one the language server picks")
+{
+	TempDirectory temp;
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace(events, settings.Get());
+
+	const std::filesystem::path later = temp.MakeFile("Beta.slnx", "");
+	const std::filesystem::path first = temp.MakeFile("alpha.sln", "");
+
+	REQUIRE(workspace.OpenFolder(temp.GetPath()));
+
+	CHECK(workspace.GetSolutionCandidates() == std::vector<std::filesystem::path>{first, later});
+}
+
+TEST_CASE("An .slnx hides the .sln of the same name in the folder whatever the case of the name")
+{
+	TempDirectory temp;
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace(events, settings.Get());
+
+	const std::filesystem::path newer = temp.MakeFile("Demo.slnx", "");
+	temp.MakeFile("demo.sln", "");
+
+	REQUIRE(workspace.OpenFolder(temp.GetPath()));
+
+	CHECK(workspace.GetSolutionCandidates() == std::vector<std::filesystem::path>{newer});
+}

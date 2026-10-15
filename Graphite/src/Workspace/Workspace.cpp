@@ -1,6 +1,7 @@
 #include "Workspace/Workspace.h"
 
 #include "Settings/AppSettings.h"
+#include "Solution/SolutionFiles.h"
 #include "UI/ToastEvent.h"
 #include "Workspace/OwnStateChanges.h"
 
@@ -22,8 +23,6 @@ namespace Graphite {
 		const std::filesystem::path kNoFolder;
 		constexpr std::string_view kNoFailureContext;
 		constexpr std::string_view kSelectedSolutionKey = "selectedSolution";
-		constexpr std::string_view kSolutionExtension = ".slnx";
-		constexpr std::string_view kLegacySolutionExtension = ".sln";
 		constexpr std::string_view kFiltersSuffix = ".filters";
 		constexpr std::string_view kGitDirectoryName = ".git";
 
@@ -31,20 +30,6 @@ namespace Graphite {
 						  const std::filesystem::path& wanted)
 		{
 			return std::find(paths.begin(), paths.end(), wanted) != paths.end();
-		}
-
-		bool HasStem(const std::vector<std::filesystem::path>& paths,
-					 const std::filesystem::path& wanted)
-		{
-			for (const std::filesystem::path& path : paths)
-			{
-				if (path.stem() == wanted.stem())
-				{
-					return true;
-				}
-			}
-
-			return false;
 		}
 
 		bool HasProjectInDirectory(const Folder& folder, const std::filesystem::path& directory)
@@ -195,7 +180,7 @@ namespace Graphite {
 		}
 
 		m_SolutionCandidates.push_back(path);
-		std::sort(m_SolutionCandidates.begin(), m_SolutionCandidates.end());
+		std::sort(m_SolutionCandidates.begin(), m_SolutionCandidates.end(), ListsSolutionBefore);
 	}
 
 	Core::Result<void> Workspace::RefuseToOpenSolution(Core::Error error)
@@ -570,47 +555,11 @@ namespace Graphite {
 
 	void Workspace::FindSolutions()
 	{
-		m_SolutionCandidates.clear();
-
-		const Core::Result<std::vector<Core::DirectoryEntry>> entries = Core::ReadDirectory(m_Root);
-
-		if (!entries)
-		{
-			return;
-		}
-
-		std::vector<std::filesystem::path> legacySolutions;
-
-		for (const Core::DirectoryEntry& entry : entries.GetValue())
-		{
-			if (entry.IsDirectory)
-			{
-				continue;
-			}
-
-			if (entry.Path.extension() == kSolutionExtension)
-			{
-				m_SolutionCandidates.push_back(entry.Path);
-			}
-			else if (entry.Path.extension() == kLegacySolutionExtension)
-			{
-				legacySolutions.push_back(entry.Path);
-			}
-		}
-
-		for (const std::filesystem::path& legacySolution : legacySolutions)
-		{
-			const bool supersededByXml = HasStem(m_SolutionCandidates, legacySolution);
-
-			if (!supersededByXml)
-			{
-				m_SolutionCandidates.push_back(legacySolution);
-			}
-		}
+		m_SolutionCandidates = Graphite::FindSolutions(m_Root);
 
 		KeepSelectedSolutionListed();
 
-		std::sort(m_SolutionCandidates.begin(), m_SolutionCandidates.end());
+		std::sort(m_SolutionCandidates.begin(), m_SolutionCandidates.end(), ListsSolutionBefore);
 	}
 
 	void Workspace::KeepSelectedSolutionListed()

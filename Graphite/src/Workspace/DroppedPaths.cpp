@@ -1,21 +1,12 @@
 #include "Workspace/DroppedPaths.h"
 
-#include "Core/Base/Ascii.h"
-#include "Core/FileSystem/FileSystem.h"
+#include "Solution/SolutionReader.h"
 
-#include <string>
 #include <string_view>
 
 namespace Graphite {
 
 	namespace {
-
-		bool IsSolution(const std::filesystem::path& path)
-		{
-			const std::string extension = Core::LoweredExtension(path);
-
-			return extension == ".sln" || extension == ".slnx";
-		}
 
 		constexpr std::string_view kParentDirectoryName = "..";
 
@@ -36,7 +27,7 @@ namespace Graphite {
 		{
 			const bool pathIsDirectory = isDirectory(path);
 
-			if (pathIsDirectory || IsSolution(path))
+			if (pathIsDirectory || IsSolutionFile(path))
 			{
 				if (routing.Target == DropTarget::None)
 				{

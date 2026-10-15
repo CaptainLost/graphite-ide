@@ -2,6 +2,7 @@
 
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/ServerCatalog.h"
+#include "Solution/SolutionReader.h"
 
 #include "Core/FileSystem/FileSystem.h"
 
@@ -30,14 +31,6 @@ namespace Graphite {
 			}
 
 			return false;
-		}
-
-		bool IsSolutionFile(const std::filesystem::directory_entry& entry)
-		{
-			std::error_code kindError;
-			const std::string extension = Core::LoweredExtension(entry.path());
-
-			return entry.is_regular_file(kindError) && (extension == ".sln" || extension == ".slnx");
 		}
 
 		bool LiesBelow(const std::filesystem::path& directory, const std::filesystem::path& folder)
@@ -88,7 +81,9 @@ namespace Graphite {
 
 		for (; !listError && entries != std::filesystem::directory_iterator{}; entries.increment(listError))
 		{
-			if (IsSolutionFile(*entries))
+			std::error_code kindError;
+
+			if (entries->is_regular_file(kindError) && IsSolutionFile(entries->path()))
 			{
 				return true;
 			}
