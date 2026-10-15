@@ -1,0 +1,50 @@
+# 0592. Build the branch list as rows from a pure function and draw only the rows on screen
+
+Status: proposed
+Date: 2026-10-15
+## Context
+
+With about 2000 branches every frame measured and drew every row. Sorting by date and counting matches needs every tip anyway, so showing only part of the list does not save the reading.
+
+## Decision
+
+`BuildBranchRows` turns the branches, their authors and the filter into one flat list of rows of one text-line height. It is rebuilt only when an input changes.
+
+`BranchListView` draws the rows through `ImGuiListClipper` in a child that scrolls under a fixed filter box. There is no pagination.
+
+Sort and grouping are saved with the folder's state; the filter text and the chosen authors are not. A loader appears only after the wait has lasted 0.2 s ([0576](0576-draw-a-loading-indicator-through-a-core-facade-over-imspinner.md)).
+
+Reading the branches costs milliseconds once the listing reads HEAD and the branch configuration once per listing instead of once per branch.
+
+## Rationale
+
+Measured in a Release build on a repository with 2001 branches: `QueryBranches` took 3 ms warm (11 ms first) and `QueryOwnAuthors` 24 ms warm (41 ms first). Reading the tips is cheap; drawing them was the cost. Before the listing read HEAD and the configuration once, it took about 215 ms, nearly all of it in two libgit2 calls repeated per branch.
+
+Paging would sort and count only the loaded part, so the order and the counts would change as pages arrived.
+
+## Consequences
+
+### Positive
+
+- The frame cost no longer depends on the branch count.
+- Rows are tested without ImGui.
+
+### Negative
+
+- Every row kind must stay exactly one text line high, or the clipper misplaces rows. A branch row ends on a one-row `Dummy` so that a row with no age, badge or highlighted match is not 2 px taller than the clipper's row height.
+- The section headings are tighter than before.
+
+### Neutral
+
+- Sort and grouping persist per folder; the filter starts empty each time.
+
+## Alternatives Considered
+
+- **Pagination with "Load more".** Sorting and counting matches would cover only what was loaded.
+- **A tree by `/`.** Groups branches by name, not by who works on them, and still draws every row.
+
+## Related
+
+- [0576](0576-draw-a-loading-indicator-through-a-core-facade-over-imspinner.md): the loader's delay.
+- [0530](0530-draw-a-frame-only-when-there-is-reason-to.md): frames are drawn only on a reason.
+- [0541](0541-put-branch-and-stash-actions-in-the-git-panel-s-right-click-menus.md): the menus the rows carry.

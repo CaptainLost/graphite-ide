@@ -620,4 +620,6 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0588](0588-draw-checkboxes-with-a-tick-box-of-the-app-s-own.md) | Draw checkboxes with a tick box of the app's own | proposed | 2026-10-14 |
 | [0589](0589-default-a-review-s-base-to-the-branch-tracking-origin-s-head.md) | Default a review's base to the branch tracking origin's HEAD | proposed | 2026-10-14 |
 | [0590](0590-compile-the-bundled-fonts-into-the-executable.md) | Compile the bundled fonts into the executable | proposed | 2026-10-15 |
+| [0591](0591-count-everyone-with-an-own-commit-as-a-branch-s-author.md) | Count everyone with an own commit as a branch's author | proposed | 2026-10-15 |
+| [0592](0592-build-the-branch-list-as-rows-from-a-pure-function-and-draw-only-the-rows-on-screen.md) | Build the branch list as rows from a pure function and draw only the rows on screen | proposed | 2026-10-15 |
 <!-- /adr-index -->
