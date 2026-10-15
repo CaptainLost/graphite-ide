@@ -513,3 +513,48 @@ TEST_CASE("A branch's tooltip names its message and authors and local time")
 
 	CHECK(text == "feature\nFix the login page\nAuthors: Ann, Bob, Cid +2\n2023-11-14 22:13");
 }
+
+TEST_CASE("While authors are awaited a heading counts every branch even when the text hides some")
+{
+	const std::vector<Core::Branch> branches = MakeBranches({
+		{.Name = "login", .TipSeconds = kBaseSeconds},
+		{.Name = "main", .TipSeconds = kBaseSeconds},
+	});
+
+	BranchRowsInput input = InputFor(branches);
+	input.Filter.Text = "login";
+	input.Options.Group = Graphite::BranchGrouping::Author;
+
+	const std::vector<BranchRow> rows = Graphite::BuildBranchRows(input);
+
+	CHECK(Graphite::SectionHeadingText(rows.front()) == "Local (2)");
+}
+
+TEST_CASE("A group is named by the newest name its key was written under")
+{
+	std::vector<Core::Branch> branches = MakeBranches({
+		{.Name = "older", .TipSeconds = kBaseSeconds - 100, .AuthorEmail = "jan@example.com"},
+		{.Name = "newer", .TipSeconds = kBaseSeconds, .AuthorEmail = "jan@example.com"},
+	});
+
+	branches[0].TipCommit->Author.Name = "Jan Old";
+	branches[1].TipCommit->Author.Name = "Jan New";
+
+	Graphite::BranchAuthors authors;
+
+	BranchRowsInput input = InputFor(branches);
+	input.Authors = &authors;
+	input.Options.Group = Graphite::BranchGrouping::Author;
+
+	std::vector<std::string> groupLabels;
+
+	for (const BranchRow& row : Graphite::BuildBranchRows(input))
+	{
+		if (row.Kind == BranchRowKind::AuthorGroup)
+		{
+			groupLabels.push_back(row.Label);
+		}
+	}
+
+	CHECK(groupLabels == std::vector<std::string>{"Jan New"});
+}

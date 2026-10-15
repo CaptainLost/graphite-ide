@@ -32,6 +32,7 @@ namespace Graphite {
 		};
 
 		using PeopleByKey = std::map<std::string, Person>;
+		using CountsByKey = std::map<std::string, std::size_t>;
 
 		struct ListedBranches
 		{
@@ -351,10 +352,9 @@ namespace Graphite {
 			return BranchRow{.Kind = BranchRowKind::Loading, .Section = section, .Label = kLoadingLabel};
 		}
 
-		std::size_t CountPassingBranches(const BranchRowsInput& input, const std::vector<std::string>& words,
-										 const std::string& key)
+		CountsByKey CountPassingBranchesPerKey(const BranchRowsInput& input, const std::vector<std::string>& words)
 		{
-			std::size_t count = 0;
+			CountsByKey counts;
 
 			for (const Core::Branch& branch : *input.Branches)
 			{
@@ -363,15 +363,15 @@ namespace Graphite {
 					continue;
 				}
 
-				if (ContainsKey(DistinctKeysOf(AuthorsOfBranch(branch, *input.Authors)), key))
+				for (const std::string& key : DistinctKeysOf(AuthorsOfBranch(branch, *input.Authors)))
 				{
-					++count;
+					++counts[key];
 				}
 			}
 
-			return count;
+			return counts;
 		}
-	}
+}
 
 	std::size_t SectionIndexOf(Core::RefKind section)
 	{
@@ -394,8 +394,8 @@ namespace Graphite {
 
 		const std::vector<std::string> words = LoweredWordsOf(input.Filter.Text);
 		const bool waitingForAuthors = ViewNeedsAuthors(input) && input.Authors == nullptr;
-		const PeopleByKey people =
-			input.Authors != nullptr ? PeopleOf(*input.Branches, *input.Authors) : PeopleByKey{};
+		const bool needsPeople = input.Authors != nullptr && input.Options.Group == BranchGrouping::Author;
+		const PeopleByKey people = needsPeople ? PeopleOf(*input.Branches, *input.Authors) : PeopleByKey{};
 
 		for (const Core::RefKind section : kSectionsInOrder)
 		{
@@ -451,14 +451,23 @@ namespace Graphite {
 
 		std::set<std::string> keys = input.Filter.Authors;
 
-		for (const auto& [key, person] : people)
+		const CountsByKey counts = CountPassingBranchesPerKey(input, words);
+
+		for (const auto& [key, count] : counts)
 		{
 			keys.insert(key);
 		}
 
 		for (const std::string& key : keys)
 		{
-			const std::size_t branchCount = CountPassingBranches(input, words, key);
+			std::size_t branchCount = 0;
+			const CountsByKey::const_iterator found = counts.find(key);
+
+			if (found != counts.end())
+			{
+				const auto& [foundKey, foundCount] = *found;
+				branchCount = foundCount;
+			}
 			const bool ticked = input.Filter.Authors.contains(key);
 
 			if (branchCount == 0 && !ticked)
