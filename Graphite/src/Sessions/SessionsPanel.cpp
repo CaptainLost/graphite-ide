@@ -14,6 +14,7 @@
 #include "Core/Base/Log.h"
 #include "Core/Base/Uuid.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/TextInput.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/Platform/Process.h"
@@ -446,7 +447,7 @@ namespace Graphite {
 			m_Windows.Open(summary);
 		}
 
-		if (ImGui::BeginPopupContextItem())
+		if (Core::BeginRightClickPopup("##sessionMenu"))
 		{
 			if (ImGui::MenuItem("Continue in terminal"))
 			{

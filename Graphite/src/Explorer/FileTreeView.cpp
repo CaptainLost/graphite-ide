@@ -481,13 +481,7 @@ namespace Graphite {
 											ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup) &&
 											!ImGui::IsAnyItemHovered();
 
-		// WARNING: Opened by hand because BeginPopupContextWindow cannot make the menu undraggable.
-		if (releasedOverEmptySpace)
-		{
-			ImGui::OpenPopup(kPopupId);
-		}
-
-		if (!ImGui::BeginPopup(kPopupId, ImGuiWindowFlags_NoMove))
+		if (!Core::BeginRightClickMenu(kPopupId, releasedOverEmptySpace))
 		{
 			return;
 		}

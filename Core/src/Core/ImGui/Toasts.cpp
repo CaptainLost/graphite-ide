@@ -5,6 +5,7 @@
 #include "Core/App/Redraw.h"
 #include "Core/Base/Timestep.h"
 #include "Core/ImGui/Animation.h"
+#include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/ToastBorder.h"
 #include "Core/ImGui/ToastStyle.h"
@@ -403,15 +404,11 @@ namespace Core {
 
 				ImGui::EndChild();
 
-				// Core::BeginRightClickPopup answers only to the last item, so it cannot open a menu from
-				// anywhere on the toast.
-				if (ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
-					ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByPopup))
-				{
-					ImGui::OpenPopup("##toastMenu");
-				}
+				const bool clickedOnToast =
+					ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
+					ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows | ImGuiHoveredFlags_AllowWhenBlockedByPopup);
 
-				if (ImGui::BeginPopup("##toastMenu", ImGuiWindowFlags_NoMove))
+				if (BeginRightClickMenu("##toastMenu", clickedOnToast))
 				{
 					// A toast under an open popup is not raised, but one raised on the frame the menu opened
 					// would cover it.

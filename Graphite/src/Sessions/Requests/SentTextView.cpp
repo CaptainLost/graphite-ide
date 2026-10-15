@@ -4,6 +4,7 @@
 
 #include "Core/Base/Narrow.h"
 
+#include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "UI/ClipboardCopy.h"
@@ -237,13 +238,14 @@ namespace Graphite {
 
 		ImGui::PopStyleVar();
 
-		if (ImGui::IsWindowHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
+		const bool clickedHere = ImGui::IsWindowHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Right);
+
+		if (clickedHere)
 		{
 			m_MenuSegment = segmentUnderMouse;
-			ImGui::OpenPopup("##sentTextMenu");
 		}
 
-		if (ImGui::BeginPopup("##sentTextMenu"))
+		if (Core::BeginRightClickMenu("##sentTextMenu", clickedHere))
 		{
 			const bool haveItem = m_MenuSegment.has_value() && *m_MenuSegment < SegmentCount(request);
 			const bool itemIsNotChecked = false;

@@ -7,6 +7,7 @@
 #include "Terminal/TerminalSelection.h"
 
 #include "Core/Command/Chord.h"
+#include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiKeys.h"
 #include "Core/ImGui/ImGuiRenderer.h"
@@ -504,8 +505,11 @@ namespace Graphite {
 		bool closeRequested = false;
 		constexpr bool kNotChecked = false;
 
-		if (!ImGui::BeginPopupContextWindow("##terminalContext",
-											ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverExistingPopup))
+		const bool clickedHere = ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
+								 ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup) &&
+								 !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId);
+
+		if (!Core::BeginRightClickMenu("##terminalContext", clickedHere))
 		{
 			return false;
 		}

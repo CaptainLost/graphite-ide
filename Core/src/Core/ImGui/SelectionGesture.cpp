@@ -2,6 +2,8 @@
 
 #include "Core/ImGui/SelectionGesture.h"
 
+#include "Core/ImGui/ContextMenu.h"
+
 namespace Core {
 
 	SelectionAction DecidePress(const GestureInput& input)
@@ -208,7 +210,10 @@ namespace Core {
 			}
 		}
 
-		if (options.MenuId != nullptr && ImGui::BeginPopupContextWindow(options.MenuId))
+		const bool clickedHere = ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
+								 ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup);
+
+		if (options.MenuId != nullptr && BeginRightClickMenu(options.MenuId, clickedHere))
 		{
 			if (ImGui::MenuItem("Copy", "Ctrl+C", kMenuItemIsSelected, !selection.IsEmpty()))
 			{
