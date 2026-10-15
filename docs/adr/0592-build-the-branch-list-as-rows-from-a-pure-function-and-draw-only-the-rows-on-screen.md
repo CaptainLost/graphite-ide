@@ -13,6 +13,8 @@ With about 2000 branches every frame measured and drew every row. Sorting by dat
 
 `BranchListView` draws the rows through `ImGuiListClipper` in a child that scrolls under a fixed filter box. There is no pagination.
 
+The filter box matches a branch's short name or any of its authors' names or e-mails, and with "Also commit message" its tip's message; every word must match one of them. Until the authors are read, the tip's author stands in, so typing never waits for them. Grouped by author, a branch sits under those of its authors that a word matched, or under all of them when no word matched an author.
+
 Sort and grouping are saved with the folder's state; the filter text and the chosen authors are not. A loader appears only after the wait has lasted 0.2 s ([0576](0576-draw-a-loading-indicator-through-a-core-facade-over-imspinner.md)).
 
 Reading the branches costs milliseconds once the listing reads HEAD and the branch configuration once per listing instead of once per branch.
