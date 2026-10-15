@@ -3,7 +3,7 @@
 #include "Settings/Panel/SettingsPage.h"
 #include "Theme/SchemeDraft.h"
 #include "Theme/SchemeStore.h"
-#include "UI/ModalQuestion.h"
+#include "UI/Dialogs/ModalQuestion.h"
 
 #include <imgui.h>
 

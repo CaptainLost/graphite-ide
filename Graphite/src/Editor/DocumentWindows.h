@@ -1,6 +1,6 @@
 #pragma once
 
-#include "UI/ModalGate.h"
+#include "UI/Dialogs/ModalGate.h"
 #include "Editor/Overlays/DiagnosticOverlay.h"
 #include "Editor/Server/DocumentServerPort.h"
 #include "Editor/EditorWidgetState.h"
@@ -14,7 +14,7 @@
 #include "Editor/Server/PreviewSemantics.h"
 #include "Editor/ScrollAnchor.h"
 #include "Editor/Overlays/SemanticOverlay.h"
-#include "UI/ModalQuestion.h"
+#include "UI/Dialogs/ModalQuestion.h"
 #include "Editor/TextEditorWidget.h"
 
 #include "Git/Changes/ChangeMarkersModel.h"

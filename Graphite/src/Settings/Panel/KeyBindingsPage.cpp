@@ -15,7 +15,7 @@
 #include "Settings/Panel/SettingsLayout.h"
 #include "Settings/Panel/SettingsSearch.h"
 #include "Theme/Palettes.h"
-#include "UI/DialogLayout.h"
+#include "UI/Dialogs/DialogLayout.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>

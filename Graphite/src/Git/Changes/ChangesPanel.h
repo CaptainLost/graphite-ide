@@ -1,6 +1,6 @@
 #pragma once
 
-#include "UI/ModalQuestion.h"
+#include "UI/Dialogs/ModalQuestion.h"
 #include "Git/Changes/ChangesRows.h"
 #include "Git/Diff/DiffWindows.h"
 #include "Git/GitModel.h"

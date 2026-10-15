@@ -7,7 +7,7 @@
 #include "Core/Base/Result.h"
 #include "Git/GitDecorationView.h"
 #include "Solution/SolutionModel.h"
-#include "UI/ModalQuestion.h"
+#include "UI/Dialogs/ModalQuestion.h"
 
 #include <imgui.h>
 

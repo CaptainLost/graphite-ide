@@ -6,7 +6,7 @@
 #include "Explorer/RenameSelection.h"
 #include "Git/GitDecorationView.h"
 #include "Theme/ActiveScheme.h"
-#include "UI/ModalQuestion.h"
+#include "UI/Dialogs/ModalQuestion.h"
 
 #include "Core/FileSystem/FileTree.h"
 #include "Core/ImGui/ToastStack.h"

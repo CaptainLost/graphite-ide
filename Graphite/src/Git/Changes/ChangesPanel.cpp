@@ -10,7 +10,7 @@
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
 #include "Theme/ChromePalette.h"
-#include "UI/DialogLayout.h"
+#include "UI/Dialogs/DialogLayout.h"
 #include "UI/FittedText.h"
 #include "UI/TickBox.h"
 #include "UI/ToastEvent.h"

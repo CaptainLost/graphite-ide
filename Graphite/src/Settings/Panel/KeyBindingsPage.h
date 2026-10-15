@@ -2,7 +2,7 @@
 
 #include "Core/Command/Chord.h"
 #include "Theme/ActiveScheme.h"
-#include "UI/ModalQuestion.h"
+#include "UI/Dialogs/ModalQuestion.h"
 #include "Settings/Panel/SettingsPage.h"
 
 #include <cstddef>

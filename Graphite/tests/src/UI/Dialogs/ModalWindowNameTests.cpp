@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "UI/ModalQuestion.h"
+#include "UI/Dialogs/ModalQuestion.h"
 
 #include <imgui_internal.h>
 

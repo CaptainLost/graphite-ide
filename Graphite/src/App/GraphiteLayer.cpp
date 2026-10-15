@@ -70,7 +70,7 @@
 
 #include "Core/Events/ApplicationEvent.h"
 
-#include "UI/DialogLayout.h"
+#include "UI/Dialogs/DialogLayout.h"
 #include "UI/LanguageSupportBar.h"
 #include "UI/RestrictedModeBar.h"
 #include "UI/ToastEvent.h"

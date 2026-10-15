@@ -1,8 +1,8 @@
 #pragma once
 
 #include "Core/Base/Assert.h"
-#include "UI/ModalGate.h"
-#include "UI/DialogLayout.h"
+#include "UI/Dialogs/ModalGate.h"
+#include "UI/Dialogs/DialogLayout.h"
 
 #include <imgui.h>
 

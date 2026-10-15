@@ -16,7 +16,7 @@
 #include "Persistence/CaretRestore.h"
 
 #include "UI/ClipboardCopy.h"
-#include "UI/DialogLayout.h"
+#include "UI/Dialogs/DialogLayout.h"
 #include "UI/TabWindow.h"
 #include "UI/ToastEvent.h"
 

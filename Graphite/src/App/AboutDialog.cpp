@@ -4,7 +4,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/Platform/Process.h"
-#include "UI/DialogLayout.h"
+#include "UI/Dialogs/DialogLayout.h"
 
 #include <imgui.h>
 

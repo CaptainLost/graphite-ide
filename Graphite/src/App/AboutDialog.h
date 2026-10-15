@@ -1,7 +1,7 @@
 #pragma once
 
-#include "UI/ModalGate.h"
-#include "UI/ModalQuestion.h"
+#include "UI/Dialogs/ModalGate.h"
+#include "UI/Dialogs/ModalQuestion.h"
 
 #include <string>
 

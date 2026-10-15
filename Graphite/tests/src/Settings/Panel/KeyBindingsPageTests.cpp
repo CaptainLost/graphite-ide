@@ -4,7 +4,7 @@
 
 #include "Settings/Panel/KeyBindingsPage.h"
 #include "Settings/Panel/SettingsSearch.h"
-#include "UI/ModalGate.h"
+#include "UI/Dialogs/ModalGate.h"
 
 #include "Core/Command/Binding.h"
 #include "Core/Command/Command.h"

@@ -11,8 +11,8 @@
 #include "Review/ReviewTree.h"
 #include "Theme/GitPalette.h"
 #include "Theme/Palettes.h"
-#include "UI/ModalGate.h"
-#include "UI/ModalQuestion.h"
+#include "UI/Dialogs/ModalGate.h"
+#include "UI/Dialogs/ModalQuestion.h"
 #include "UI/TabWindow.h"
 
 #include "Core/Git/Ref.h"

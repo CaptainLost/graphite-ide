@@ -9,7 +9,7 @@
 #include "Settings/Panel/SettingsSearch.h"
 #include "Theme/ActiveScheme.h"
 #include "Theme/ColorScheme.h"
-#include "UI/ModalGate.h"
+#include "UI/Dialogs/ModalGate.h"
 
 #include "Core/App/Redraw.h"
 #include "Core/Events/EventBus.h"

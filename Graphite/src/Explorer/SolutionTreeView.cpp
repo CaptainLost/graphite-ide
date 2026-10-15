@@ -12,7 +12,7 @@
 #include "Explorer/FileRow.h"
 #include "Git/GitDecorationView.h"
 #include "Solution/SolutionEditor.h"
-#include "UI/DialogLayout.h"
+#include "UI/Dialogs/DialogLayout.h"
 #include "UI/OpenGesture.h"
 #include "UI/ToastEvent.h"
 

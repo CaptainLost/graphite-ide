@@ -1,7 +1,7 @@
 #include "Review/ReviewWindows.h"
 
 #include "Theme/Palettes.h"
-#include "UI/DialogLayout.h"
+#include "UI/Dialogs/DialogLayout.h"
 
 #include "Core/Base/Log.h"
 #include "Core/ImGui/TabContextMenu.h"

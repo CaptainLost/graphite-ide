@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "UI/DialogLayout.h"
+#include "UI/Dialogs/DialogLayout.h"
 
 #include "ImGuiFrames.h"
 

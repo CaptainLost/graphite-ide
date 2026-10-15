@@ -2,8 +2,8 @@
 
 #include "Core/Base/Base.h"
 
-#include "UI/ModalGate.h"
-#include "UI/ModalQuestion.h"
+#include "UI/Dialogs/ModalGate.h"
+#include "UI/Dialogs/ModalQuestion.h"
 #include "Git/CheckoutQuestion.h"
 #include "Git/Branches/BranchListView.h"
 #include "Git/History/CommitLabels.h"

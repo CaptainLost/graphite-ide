@@ -4,7 +4,7 @@
 
 #include "DeferredJobs.h"
 #include "Review/FakeReviewPort.h"
-#include "UI/ModalGate.h"
+#include "UI/Dialogs/ModalGate.h"
 
 #include <string>
 #include <vector>

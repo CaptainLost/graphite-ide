@@ -15,7 +15,7 @@
 
 #include "Theme/Palettes.h"
 #include "UI/ClipboardCopy.h"
-#include "UI/DialogLayout.h"
+#include "UI/Dialogs/DialogLayout.h"
 #include "Terminal/TerminalRules.h"
 #include "Explorer/FileRow.h"
 #include "Explorer/FilteredTree.h"

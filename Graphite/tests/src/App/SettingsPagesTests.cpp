@@ -17,7 +17,7 @@
 #include "Settings/Panel/SettingsSearch.h"
 #include "Terminal/TerminalWindows.h"
 #include "Theme/ActiveScheme.h"
-#include "UI/ModalGate.h"
+#include "UI/Dialogs/ModalGate.h"
 #include "Workspace/Workspace.h"
 #include "Workspace/WorkspaceTrust.h"
 

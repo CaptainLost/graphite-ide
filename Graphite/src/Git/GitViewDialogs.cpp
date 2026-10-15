@@ -6,7 +6,7 @@
 #include "Core/ImGui/Icons.h"
 #include "Git/StashBranch.h"
 #include "Theme/Palettes.h"
-#include "UI/DialogLayout.h"
+#include "UI/Dialogs/DialogLayout.h"
 #include "UI/TickBox.h"
 
 #include <imgui.h>

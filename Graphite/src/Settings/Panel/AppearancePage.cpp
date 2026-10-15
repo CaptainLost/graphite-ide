@@ -7,7 +7,7 @@
 #include "Theme/ActiveScheme.h"
 #include "Theme/ColorScheme.h"
 #include "Theme/Palettes.h"
-#include "UI/DialogLayout.h"
+#include "UI/Dialogs/DialogLayout.h"
 #include "UI/IconButton.h"
 #include "UI/ToastEvent.h"
 
