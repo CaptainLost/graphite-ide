@@ -222,3 +222,32 @@ TEST_CASE("A branch whose tip commit is missing is listed without one")
 	REQUIRE(ghost != nullptr);
 	CHECK_FALSE(ghost->TipCommit.has_value());
 }
+
+TEST_CASE("A local branch configured with a remote but no merge target is listed with no upstream")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	git_repository* configuredRepository = nullptr;
+	REQUIRE(git_repository_open(&configuredRepository, Core::ToUtf8(fixture.GetPath()).c_str()) == 0);
+	git_config* config = nullptr;
+	REQUIRE(git_repository_config(&config, configuredRepository) == 0);
+	REQUIRE(git_config_set_string(config, "branch.master.remote", "origin") == 0);
+	git_config_free(config);
+	git_repository_free(configuredRepository);
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	Core::Result<std::vector<Branch>> branches = repository.QueryBranches();
+
+	REQUIRE(branches.HasValue());
+	REQUIRE_FALSE(branches.GetValue().empty());
+
+	const Branch* masterBranch = FindBranchNamed(branches.GetValue(), "master");
+
+	REQUIRE(masterBranch != nullptr);
+	CHECK_FALSE(masterBranch->Upstream.has_value());
+	CHECK_FALSE(masterBranch->DistanceKnown);
+}

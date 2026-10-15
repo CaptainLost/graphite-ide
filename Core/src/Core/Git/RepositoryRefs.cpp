@@ -20,7 +20,7 @@ namespace Core {
 		constexpr std::string_view kLocalBranchPrefix = "refs/heads/";
 
 		constexpr int kHeadIsDetached = 1;
-		constexpr int kReferenceIsHead = 1;
+
 
 		RepositoryOperation ToRepositoryOperation(int repositoryState)
 		{
@@ -90,6 +90,81 @@ namespace Core {
 			return ToCommitSummary(commit.get());
 		}
 
+		// WARNING: git_branch_is_head re-reads HEAD from disk on every call, which dominates a listing
+		// of thousands of branches, so HEAD is resolved once and compared by reference name.
+		std::optional<std::string> ResolveHeadReferenceName(git_repository* handle)
+		{
+			ReferenceHandle headReference;
+
+			const int headResult = git_repository_head(Out(headReference), handle);
+
+			if (headResult != 0 || headReference == nullptr)
+			{
+				return std::nullopt;
+			}
+
+			const char* headName = git_reference_name(headReference.get());
+
+			if (headName == nullptr)
+			{
+				return std::nullopt;
+			}
+
+			return std::string{headName};
+		}
+
+		bool IsCheckedOutBranch(const Branch& branch, const std::optional<std::string>& headReferenceName)
+		{
+			return branch.Kind == RefKind::Local && headReferenceName.has_value() && branch.FullName == *headReferenceName;
+		}
+
+		enum class ConfigEntryState
+		{
+			Set,
+			Missing,
+			Unknown
+		};
+
+		ConfigEntryState ReadConfigEntryState(const git_config* snapshot, const std::string& key)
+		{
+			const char* value = nullptr;
+			const int lookupResult = git_config_get_string(&value, snapshot, key.c_str());
+
+			if (lookupResult == GIT_ENOTFOUND)
+			{
+				return ConfigEntryState::Missing;
+			}
+
+			if (lookupResult != 0)
+			{
+				return ConfigEntryState::Unknown;
+			}
+
+			return (value != nullptr && value[0] != '\0') ? ConfigEntryState::Set : ConfigEntryState::Missing;
+		}
+
+		// WARNING: git_branch_upstream takes a new configuration snapshot per call and fails for every
+		// branch without an upstream, so the listing's one snapshot is asked first. A lookup that fails
+		// for any reason but a missing entry still lets git_branch_upstream decide.
+		bool MayHaveUpstream(const git_config* snapshot, const Branch& branch)
+		{
+			if (snapshot == nullptr)
+			{
+				return true;
+			}
+
+			const std::string shortName = ShortBranchName(branch.FullName);
+			const ConfigEntryState remoteState = ReadConfigEntryState(snapshot, "branch." + shortName + ".remote");
+			const ConfigEntryState mergeState = ReadConfigEntryState(snapshot, "branch." + shortName + ".merge");
+
+			if (remoteState == ConfigEntryState::Missing || mergeState == ConfigEntryState::Missing)
+			{
+				return false;
+			}
+
+			return true;
+		}
+
 		bool ComesBeforeInBranchList(const Branch& branch, const Branch& otherBranch)
 		{
 			if (branch.Kind != otherBranch.Kind)
@@ -118,6 +193,14 @@ namespace Core {
 		std::vector<Branch> branches;
 		std::vector<std::string> remoteHeadTargets;
 
+		const std::optional<std::string> headReferenceName = ResolveHeadReferenceName(m_Handle.get());
+
+		ConfigHandle configSnapshot;
+
+		if (git_repository_config_snapshot(Out(configSnapshot), m_Handle.get()) != 0)
+		{
+			configSnapshot.reset();
+		}
 		git_branch_t branchType = GIT_BRANCH_LOCAL;
 
 		int nextResult = 0;
@@ -162,12 +245,13 @@ namespace Core {
 			}
 
 			branch.Tip = ToOid(*tipId);
-			branch.IsHead = git_branch_is_head(reference.get()) == kReferenceIsHead;
+			branch.IsHead = IsCheckedOutBranch(branch, headReferenceName);
 			branch.TipCommit = ReadTipCommit(m_Handle.get(), *tipId);
 
 			ReferenceHandle upstream;
 
-			const int upstreamResult = git_branch_upstream(Out(upstream), reference.get());
+			const bool askUpstream = branch.Kind == RefKind::Remote || MayHaveUpstream(configSnapshot.get(), branch);
+			const int upstreamResult = askUpstream ? git_branch_upstream(Out(upstream), reference.get()) : GIT_ENOTFOUND;
 
 			if (upstreamResult == 0 && upstream != nullptr)
 			{
