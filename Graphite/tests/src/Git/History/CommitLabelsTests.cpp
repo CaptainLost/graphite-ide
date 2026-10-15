@@ -3,7 +3,6 @@
 #include "Git/History/CommitLabels.h"
 #include "Theme/GitPalette.h"
 
-#include "Core/Text/Encoding.h"
 
 #include <cstddef>
 #include <optional>
@@ -134,68 +133,6 @@ TEST_CASE("An empty name falls back to the email's local part")
 TEST_CASE("Neither name nor email gives unknown")
 {
 	CHECK(Graphite::AuthorName(Core::Signature{}) == "unknown");
-}
-
-namespace {
-	float Columns(std::string_view text)
-	{
-		return static_cast<float>(Core::CharacterCount(text));
-	}
-}
-
-TEST_CASE("Text that fits is not cut")
-{
-	CHECK_FALSE(Graphite::CutToFit("fix: a bug", 10.0f, 1.0f, Columns).has_value());
-	CHECK_FALSE(Graphite::CutToFit("", 0.0f, 1.0f, Columns).has_value());
-}
-
-TEST_CASE("Text too long keeps as much as fits beside the ellipsis")
-{
-	const std::optional<std::size_t> cut =
-		Graphite::CutToFit("abcdefghijklmnop", 10.0f, 1.0f, Columns);
-
-	REQUIRE(cut.has_value());
-	CHECK(*cut == 9);
-}
-
-TEST_CASE("A cut drops the spaces it would otherwise end on")
-{
-	const std::optional<std::size_t> cut =
-		Graphite::CutToFit("fix: end the changes", 14.0f, 1.0f, Columns);
-
-	REQUIRE(cut.has_value());
-	CHECK(std::string_view("fix: end the changes").substr(0, *cut) == "fix: end the");
-}
-
-TEST_CASE("A cut never splits a multi-byte UTF-8 character")
-{
-	const std::string_view name = "Ren\xC3\xA9 D\xC3\xA9j\xC3\xA0 Vu";
-
-	const std::optional<std::size_t> cut = Graphite::CutToFit(name, 5.0f, 1.0f, Columns);
-
-	REQUIRE(cut.has_value());
-	CHECK(name.substr(0, *cut) == "Ren\xC3\xA9");
-}
-
-TEST_CASE("Text that starts mid-character is cut by width all the same")
-{
-	const std::string_view text = "\xB0\xB0\xB0"
-								  "abc";
-
-	const auto bytes = [](std::string_view piece) { return static_cast<float>(piece.size()); };
-
-	const std::optional<std::size_t> cut = Graphite::CutToFit(text, 3.0f, 1.0f, bytes);
-
-	REQUIRE(cut.has_value());
-	CHECK(*cut == 0);
-}
-
-TEST_CASE("A cell narrower than the ellipsis keeps nothing rather than underflowing")
-{
-	const std::optional<std::size_t> cut = Graphite::CutToFit("Ada Lovelace", 0.5f, 1.0f, Columns);
-
-	REQUIRE(cut.has_value());
-	CHECK(*cut == 0);
 }
 
 TEST_CASE("Every kind of file change has its own letter")

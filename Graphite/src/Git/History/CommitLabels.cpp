@@ -1,11 +1,8 @@
 #include "Git/History/CommitLabels.h"
 
-#include "Core/Text/Encoding.h"
-
 #include <cctype>
 #include <format>
 #include <string_view>
-#include <vector>
 
 namespace Graphite {
 
@@ -43,32 +40,6 @@ namespace Graphite {
 			const std::size_t lastKept = text.find_last_not_of(' ');
 
 			return text.substr(firstKept, lastKept - firstKept + 1);
-		}
-
-		std::vector<std::size_t> CutBoundaries(std::string_view text)
-		{
-			// WARNING: The start of the text is always a boundary, even when its first byte is a continuation byte, so text that is not valid UTF-8 is still cut by width instead of dropped whole.
-			std::vector<std::size_t> boundaries{0};
-
-			for (std::size_t byteIndex = 1; byteIndex < text.size(); ++byteIndex)
-			{
-				if (!Core::IsUtf8ContinuationByte(text[byteIndex]))
-				{
-					boundaries.push_back(byteIndex);
-				}
-			}
-
-			return boundaries;
-		}
-
-		std::size_t ByteCountWithoutTrailingSpaces(std::string_view text, std::size_t byteCount)
-		{
-			while (byteCount > 0 && text[byteCount - 1] == ' ')
-			{
-				--byteCount;
-			}
-
-			return byteCount;
 		}
 	}
 
@@ -143,38 +114,6 @@ namespace Graphite {
 			atSignOffset == std::string_view::npos ? email : email.substr(0, atSignOffset);
 
 		return localPart.empty() ? std::string{"unknown"} : std::string{localPart};
-	}
-
-	std::optional<std::size_t> CutToFit(std::string_view text, float maxWidth, float ellipsisWidth,
-										const std::function<float(std::string_view)>& widthOf)
-	{
-		if (widthOf(text) <= maxWidth)
-		{
-			return std::nullopt;
-		}
-
-		const std::vector<std::size_t> boundaries = CutBoundaries(text);
-
-		// WARNING: The cut is found by halving, not by walking, because this runs for every visible cell every frame and measuring each prefix in turn is quadratic. Boundary 0 is the floor that is never measured.
-		const float budget = maxWidth - ellipsisWidth;
-		std::size_t fittingBoundary = 0;
-		std::size_t tooWideBoundary = boundaries.size();
-
-		while (tooWideBoundary - fittingBoundary > 1)
-		{
-			const std::size_t middleBoundary = fittingBoundary + (tooWideBoundary - fittingBoundary) / 2;
-
-			if (widthOf(text.substr(0, boundaries[middleBoundary])) <= budget)
-			{
-				fittingBoundary = middleBoundary;
-			}
-			else
-			{
-				tooWideBoundary = middleBoundary;
-			}
-		}
-
-		return ByteCountWithoutTrailingSpaces(text, boundaries[fittingBoundary]);
 	}
 
 	char ChangeLetter(Core::FileChange change)

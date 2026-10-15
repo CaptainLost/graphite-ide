@@ -11,6 +11,7 @@
 #include "Sessions/SessionText.h"
 #include "Sessions/Transcript/ToolFacts.h"
 #include "UI/TypographicMarks.h"
+#include "UI/FittedText.h"
 #include "Workspace/Workspace.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -453,9 +454,9 @@ namespace Graphite {
 		const bool isOpen = m_OpenUsage.contains(key);
 		ImVec2 cursor = start;
 		DrawPiece(cursor, context.Palette.TextDisabled,
-				  Fitted(std::string{isOpen ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " ", right - cursor.x));
+				  FitToWidth(std::string{isOpen ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " ", right - cursor.x));
 		DrawPiece(cursor, context.Palette.TextDisabled,
-				  Fitted(UsageLine(part.Usage, part.Requests, context.Prices), right - cursor.x));
+				  FitToWidth(UsageLine(part.Usage, part.Requests, context.Prices), right - cursor.x));
 
 		if (!isOpen || context.Timeline == nullptr)
 		{
@@ -617,7 +618,7 @@ namespace Graphite {
 		const float trailingWidth = ImGui::CalcTextSize((durationText + statusSeparator + statusText).c_str()).x;
 		ImVec2 cursor(start.x + Core::Scaled(kBarGap), start.y);
 
-		DrawPiece(cursor, ink, Fitted(headerText, right - cursor.x - trailingWidth));
+		DrawPiece(cursor, ink, FitToWidth(headerText, right - cursor.x - trailingWidth));
 		DrawPiece(cursor, context.Palette.TextDisabled, durationText + statusSeparator);
 		DrawPiece(cursor, part.Failures > 0 ? context.Palette.Failed : ink, statusText);
 
@@ -737,8 +738,8 @@ namespace Graphite {
 		const float columnX = std::max(right - rightWidth, cursor.x);
 
 		DrawPiece(cursor, ink,
-				  Fitted(tool.Name + "  " + SingleLineLabel(ToolSummary(tool), kToolSummaryMaxBytes),
-						 columnX - itemSpacingX - cursor.x));
+				  FitToWidth(tool.Name + "  " + SingleLineLabel(ToolSummary(tool), kToolSummaryMaxBytes),
+							 columnX - itemSpacingX - cursor.x));
 
 		cursor.x = columnX;
 		DrawPiece(cursor, palette.TextDisabled, column);
@@ -837,8 +838,8 @@ namespace Graphite {
 		const float timeX = std::max(right - timeWidth, cursor.x);
 
 		DrawPiece(cursor, colour,
-				  Fitted(SingleLineLabel(item.Label.empty() ? item.Text : item.Label, kInjectedLabelMaxBytes),
-						 timeX - itemSpacingX - cursor.x));
+				  FitToWidth(SingleLineLabel(item.Label.empty() ? item.Text : item.Label, kInjectedLabelMaxBytes),
+							 timeX - itemSpacingX - cursor.x));
 
 		cursor.x = timeX;
 		DrawPiece(cursor, colour, formattedTime);
@@ -891,8 +892,8 @@ namespace Graphite {
 
 		const std::string compactionTime = m_Clock.Format(item.At, ClockStyle::MonthDayHoursMinutes);
 		const std::string label =
-			Fitted(std::string{ICON_MDI_ARROW_COLLAPSE_VERTICAL} + " " + CompactionLabel(item.Compaction, compactionTime),
-				   width);
+			FitToWidth(std::string{ICON_MDI_ARROW_COLLAPSE_VERTICAL} + " " + CompactionLabel(item.Compaction, compactionTime),
+					   width);
 		const float labelWidth = ImGui::CalcTextSize(label.c_str()).x;
 		const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
 		const float labelX = start.x + std::max(0.0f, (width - labelWidth) * 0.5f);

@@ -1,18 +1,13 @@
 #include "Sessions/SessionDrawing.h"
 
 #include "Core/Base/Base.h"
-#include "Core/Text/Encoding.h"
 
 #include <IconsMaterialDesignIcons.h>
-
-#include <cfloat>
 
 namespace Graphite {
 
 	namespace {
 		constexpr float kCategoryBarWidth = 3.0f;
-		constexpr float kUnlimitedWidth = FLT_MAX;
-		constexpr float kNoWrapWidth = 0.0f;
 		constexpr float kNoSpacing = 0.0f;
 		constexpr int kSegmentButtonColourCount = 2;
 	}
@@ -29,35 +24,6 @@ namespace Graphite {
 		const ImVec2 origin = ImGui::GetCursorScreenPos();
 		ImGui::GetWindowDrawList()->AddRectFilled(origin, ImVec2(origin.x + kCategoryBarWidth, origin.y + height),
 												  colour);
-	}
-
-	std::string Fitted(const std::string& text, float width)
-	{
-		ImFont* font = ImGui::GetFont();
-		const float fontSize = ImGui::GetFontSize();
-		const char* begin = text.c_str();
-		const char* end = begin + text.size();
-
-		if (font->CalcTextSizeA(fontSize, kUnlimitedWidth, kNoWrapWidth, begin, end).x <= width)
-		{
-			return text;
-		}
-
-		const float ellipsisWidth =
-			font->CalcTextSizeA(fontSize, kUnlimitedWidth, kNoWrapWidth, kEllipsis.data(),
-								kEllipsis.data() + kEllipsis.size())
-				.x;
-		if (width < ellipsisWidth)
-		{
-			return {};
-		}
-
-		const char* fittedEnd = begin;
-		font->CalcTextSizeA(fontSize, width - ellipsisWidth, kNoWrapWidth, begin, end, &fittedEnd);
-
-		fittedEnd = begin + Core::CharacterBoundaryAtOrBefore(text, static_cast<std::size_t>(fittedEnd - begin));
-
-		return std::string{begin, fittedEnd}.append(kEllipsis);
 	}
 
 	const char* IconOf(ToolCategory category)

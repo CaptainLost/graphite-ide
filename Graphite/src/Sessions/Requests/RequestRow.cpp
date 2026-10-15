@@ -6,6 +6,7 @@
 #include "Sessions/SessionText.h"
 #include "Sessions/Transcript/ToolFacts.h"
 #include "UI/TypographicMarks.h"
+#include "UI/FittedText.h"
 
 #include "Core/Base/ByteSize.h"
 
@@ -64,12 +65,12 @@ namespace Graphite {
 			const float columnX = std::max(right - ImGui::CalcTextSize(column.c_str()).x, drawPosition.x);
 
 			DrawPiece(drawPosition, textColour,
-					  Fitted(SingleLineLabel(label, kLongestLabelBytes), columnX - itemSpacing - drawPosition.x));
+					  FitToWidth(SingleLineLabel(label, kLongestLabelBytes), columnX - itemSpacing - drawPosition.x));
 
 			// WARNING: The column is fitted too: on a row narrower than the column itself it would run
 			// past the edge.
 			drawPosition.x = columnX;
-			DrawPiece(drawPosition, palette.TextDisabled, Fitted(column, right - drawPosition.x));
+			DrawPiece(drawPosition, palette.TextDisabled, FitToWidth(column, right - drawPosition.x));
 
 			return outcome;
 		}
@@ -102,10 +103,10 @@ namespace Graphite {
 			ImVec2 drawPosition = start;
 			const float columnX = std::max(right - ImGui::CalcTextSize(summary.c_str()).x, drawPosition.x);
 
-			DrawPiece(drawPosition, palette.TextDisabled, Fitted(heading, columnX - itemSpacing - drawPosition.x));
+			DrawPiece(drawPosition, palette.TextDisabled, FitToWidth(heading, columnX - itemSpacing - drawPosition.x));
 
 			drawPosition.x = columnX;
-			DrawPiece(drawPosition, palette.TextDisabled, Fitted(summary, right - drawPosition.x));
+			DrawPiece(drawPosition, palette.TextDisabled, FitToWidth(summary, right - drawPosition.x));
 
 			ImGui::Dummy(ImVec2(0.0f, height));
 		}
@@ -267,11 +268,11 @@ namespace Graphite {
 	{
 		const ImU32 textColour = ImGui::GetColorU32(ImGuiCol_Text);
 
-		DrawPiece(drawPosition, textColour, Fitted(RequestLine(request, pricing, clock), right - drawPosition.x));
+		DrawPiece(drawPosition, textColour, FitToWidth(RequestLine(request, pricing, clock), right - drawPosition.x));
 
 		if (request.CacheRebuilt)
 		{
-			DrawPiece(drawPosition, palette.Edit, Fitted(std::string{" "} + ICON_MDI_CACHED, right - drawPosition.x));
+			DrawPiece(drawPosition, palette.Edit, FitToWidth(std::string{" "} + ICON_MDI_CACHED, right - drawPosition.x));
 		}
 
 		std::string stop{kMiddleDotSeparator};
@@ -280,7 +281,7 @@ namespace Graphite {
 		{
 			stop += " " + SingleLineLabel(request.StopReason, kLongestStopReasonBytes);
 		}
-		DrawPiece(drawPosition, palette.TextDisabled, Fitted(stop, right - drawPosition.x));
+		DrawPiece(drawPosition, palette.TextDisabled, FitToWidth(stop, right - drawPosition.x));
 
 		std::string tools;
 		for (const std::string& toolName : ToolNamesUsed(request))
@@ -296,7 +297,7 @@ namespace Graphite {
 			tools += SingleLineLabel(toolName, kLongestToolNameBytes);
 		}
 
-		DrawPiece(drawPosition, palette.TextDisabled, Fitted(tools, right - drawPosition.x));
+		DrawPiece(drawPosition, palette.TextDisabled, FitToWidth(tools, right - drawPosition.x));
 	}
 
 	DetailsPick DrawRequestDetails(const ApiRequest& request, const SessionPalette& palette,

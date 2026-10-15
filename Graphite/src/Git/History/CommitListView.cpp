@@ -15,6 +15,8 @@
 #include "Git/History/CommitLabels.h"
 #include "Git/History/CommitRows.h"
 #include "UI/HighlightedRow.h"
+#include "UI/FittedText.h"
+#include "UI/TypographicMarks.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -123,7 +125,7 @@ namespace Graphite {
 			return requestedWidth > 0.0f ? requestedWidth : usualWidth;
 		}
 
-		void FittedText(std::string_view text, ImU32 color, std::string_view needle)
+		void DrawFittedCell(std::string_view text, ImU32 color, std::string_view needle)
 		{
 			if (text.empty())
 			{
@@ -131,9 +133,15 @@ namespace Graphite {
 			}
 
 			const float roomInCell = ImGui::GetContentRegionAvail().x + kRoundedUpPixel;
+			const float ellipsisWidth = Core::TextWidth(kEllipsis);
 
-			const std::optional<std::size_t> cut =
-				CutToFit(text, roomInCell, Core::TextWidth(Ellipsis), Core::TextWidth);
+			const std::optional<std::size_t> cut = CutToFit(text, roomInCell, ellipsisWidth, Core::TextWidth);
+
+			// WARNING: Nothing rather than an ellipsis the cell would clip, as FitToWidth does.
+			if (cut.has_value() && ellipsisWidth > roomInCell)
+			{
+				return;
+			}
 
 			const HighlightedLabel split =
 				SplitHighlight(cut.has_value() ? text.substr(0, *cut) : text, needle);
@@ -145,7 +153,7 @@ namespace Graphite {
 				{split.Before, ink},
 				{split.Match, mark},
 				{split.After, ink},
-				{cut.has_value() ? Ellipsis : std::string_view{}, ink},
+				{cut.has_value() ? kEllipsis : std::string_view{}, ink},
 			};
 
 			bool isFirstPiece = true;
@@ -616,7 +624,7 @@ namespace Graphite {
 		const ImU32 dimmedInk = ImGui::GetColorU32(ImGuiCol_TextDisabled);
 		const ImU32 hashInk = page.Unpushed.contains(commit.Id) ? palette.GutterAdded : dimmedInk;
 
-		FittedText(commit.Id.ShortHex(), hashInk, highlight);
+		DrawFittedCell(commit.Id.ShortHex(), hashInk, highlight);
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
 
@@ -625,13 +633,13 @@ namespace Graphite {
 			RefLabels(refs.at(commit.Id), palette, commit.Summary);
 		}
 
-		FittedText(commit.Summary, isEarlierHistory ? dimmedInk : kThemeTextColor, highlight);
+		DrawFittedCell(commit.Summary, isEarlierHistory ? dimmedInk : kThemeTextColor, highlight);
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Author));
-		FittedText(AuthorName(commit.Author), dimmedInk, highlight);
+		DrawFittedCell(AuthorName(commit.Author), dimmedInk, highlight);
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Date));
-		FittedText(RelativeAge(commit.Author.When, now), dimmedInk, kNoHighlight);
+		DrawFittedCell(RelativeAge(commit.Author.When, now), dimmedInk, kNoHighlight);
 
 		if (selectableHoveredForTooltip)
 		{
@@ -662,7 +670,7 @@ namespace Graphite {
 	void CommitListView::RenderSeparatorRow(const std::string& text)
 	{
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
-		FittedText(text, ImGui::GetColorU32(ImGuiCol_TextDisabled), kNoHighlight);
+		DrawFittedCell(text, ImGui::GetColorU32(ImGuiCol_TextDisabled), kNoHighlight);
 	}
 
 	void CommitListView::RenderFileRow(
@@ -694,7 +702,7 @@ namespace Graphite {
 			}
 			else
 			{
-				ImGui::TextDisabled("%s", std::string(Ellipsis).c_str());
+				ImGui::TextDisabled("%s", std::string(kEllipsis).c_str());
 			}
 
 			return;
@@ -743,7 +751,7 @@ namespace Graphite {
 		const float roomForLetter = ImGui::GetContentRegionAvail().x + kRoundedUpPixel;
 		const bool letterFits = letterWidth <= roomForLetter;
 
-		FittedText(letter, ChangeColor(changedFile->Change, palette), kNoHighlight);
+		DrawFittedCell(letter, ChangeColor(changedFile->Change, palette), kNoHighlight);
 
 		if (const char* changeName = ChangeName(changedFile->Change);
 			changeName != nullptr && letterFits)
@@ -752,6 +760,6 @@ namespace Graphite {
 		}
 
 		ImGui::SameLine(kNoOffset, kNoSpacing);
-		FittedText(std::format("  {}", Core::ToUtf8(path)), kThemeTextColor, pathHighlight);
+		DrawFittedCell(std::format("  {}", Core::ToUtf8(path)), kThemeTextColor, pathHighlight);
 	}
 }

@@ -45,10 +45,6 @@
 namespace Graphite {
 	std::string RefLabel(const Core::Branch& branch);
 
-	std::string FitToLine(std::string_view text, bool* cut = nullptr);
-
-	std::string FitToWidth(std::string_view text, float room, bool* cut = nullptr);
-
 	class GitView final : public Core::Panel
 	{
 	public:

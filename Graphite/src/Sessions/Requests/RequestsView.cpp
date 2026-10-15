@@ -15,6 +15,7 @@
 #include "UI/SplitResults.h"
 #include "UI/TickBox.h"
 #include "UI/TypographicMarks.h"
+#include "UI/FittedText.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -90,7 +91,7 @@ namespace Graphite {
 		void DrawTableCell(const std::string& text, ImU32 colour, CellAlignment alignment)
 		{
 			const float room = ImGui::GetContentRegionAvail().x;
-			const std::string fitted = Fitted(text, room);
+			const std::string fitted = FitToWidth(text, room);
 
 			if (alignment == CellAlignment::Right)
 			{
@@ -707,8 +708,8 @@ namespace Graphite {
 
 		const float closeWidth = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
 		ColouredText(ImGui::GetColorU32(ImGuiCol_Text),
-					 Fitted(RequestLine(request, context.Prices, m_Clock, ClockStyle::DateTime),
-							std::max(width - closeWidth - style.ItemSpacing.x, 0.0f)));
+					 FitToWidth(RequestLine(request, context.Prices, m_Clock, ClockStyle::DateTime),
+								std::max(width - closeWidth - style.ItemSpacing.x, 0.0f)));
 
 		if (DrawPaneClose())
 		{

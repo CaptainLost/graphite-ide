@@ -7,6 +7,7 @@
 #include "Git/Branches/RefSectionHeading.h"
 #include "Git/StashBranch.h"
 #include "UI/ClipboardCopy.h"
+#include "UI/FittedText.h"
 
 #include <imgui.h>
 

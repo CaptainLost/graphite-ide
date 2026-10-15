@@ -4,6 +4,8 @@
 #include "UI/IconButton.h"
 #include "UI/SplitResults.h"
 #include "UI/TickBox.h"
+#include "UI/FittedText.h"
+#include "UI/TypographicMarks.h"
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
@@ -67,22 +69,6 @@ namespace Graphite {
 			return session != nullptr ? session->Settings : SessionSettings{};
 		}
 
-		// WARNING: CalcTextSize rounds each run up, so a cut measured against the room left gives that pixel back.
-		std::string FittedText(const std::string& text, float room)
-		{
-			const float roundedUpPixel = 1.0f;
-			const std::function<float(std::string_view)> widthOf = Core::TextWidth;
-			const std::optional<std::size_t> cut =
-				CutToFit(text, room + roundedUpPixel, Core::TextWidth(Ellipsis), widthOf);
-
-			if (!cut.has_value())
-			{
-				return text;
-			}
-
-			return text.substr(0, *cut) + std::string{Ellipsis};
-		}
-
 		std::string UncommittedProblem(const Core::Error& error, const std::filesystem::path& worktree)
 		{
 			if (error.Code == Core::ErrorCode::NotFound)
@@ -144,11 +130,11 @@ namespace Graphite {
 				Core::TextWidth(viewedText) + (showsLineCounts ? Core::TextWidth(countsText) + spacing : 0.0f);
 			const float textRoom = rowRight - trailingWidth - spacing - ImGui::GetCursorPosX();
 
-			const std::string heading = FittedText(GroupHeadingText(row.Group, row.Shown, row.Total), textRoom);
+			const std::string heading = FitToWidth(GroupHeadingText(row.Group, row.Shown, row.Total), textRoom);
 			ImGui::TextUnformatted(heading.c_str());
 
 			const float noteRoom = textRoom - Core::TextWidth(heading) - spacing;
-			const bool noteFitsWhole = !note.empty() && FittedText(note, noteRoom) == note;
+			const bool noteFitsWhole = !note.empty() && FitToWidth(note, noteRoom) == note;
 
 			if (noteFitsWhole)
 			{
@@ -202,7 +188,7 @@ namespace Graphite {
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;
 			const float countWidth = countText.empty() ? 0.0f : Core::TextWidth(countText) + spacing;
 			const float labelRoom = rowRight - countWidth - ImGui::GetCursorPosX();
-			ImGui::TextUnformatted(FittedText(row.Label, labelRoom).c_str());
+			ImGui::TextUnformatted(FitToWidth(row.Label, labelRoom).c_str());
 
 			if (!countText.empty())
 			{
@@ -235,13 +221,13 @@ namespace Graphite {
 		{
 			const std::string prefix = label.Origin + label.Directory;
 			const float prefixRoom = room - Core::TextWidth(label.Name);
-			const bool prefixHasRoom = !prefix.empty() && prefixRoom > Core::TextWidth(Ellipsis);
+			const bool prefixHasRoom = !prefix.empty() && prefixRoom > Core::TextWidth(kEllipsis);
 
 			float nameRoom = room;
 
 			if (prefixHasRoom)
 			{
-				const std::string shownPrefix = FittedText(prefix, prefixRoom);
+				const std::string shownPrefix = FitToWidth(prefix, prefixRoom);
 				const float noOffset = 0.0f;
 				const float noSpacing = 0.0f;
 
@@ -250,7 +236,7 @@ namespace Graphite {
 				nameRoom -= Core::TextWidth(shownPrefix);
 			}
 
-			const std::string shownName = FittedText(label.Name, nameRoom);
+			const std::string shownName = FitToWidth(label.Name, nameRoom);
 
 			switch (tone)
 			{
@@ -548,7 +534,7 @@ namespace Graphite {
 			const std::string age = RelativeAge(commit.Author.When, now);
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;
 			const float summaryRoom = rowRight - Core::TextWidth(age) - spacing - ImGui::GetCursorPosX();
-			ImGui::TextUnformatted(FittedText(commit.Summary, summaryRoom).c_str());
+			ImGui::TextUnformatted(FitToWidth(commit.Summary, summaryRoom).c_str());
 
 			DrawAtRight(age, rowRight);
 
@@ -1261,7 +1247,7 @@ namespace Graphite {
 		const float closeWidth = Core::TextWidth(ICON_MDI_CLOSE) + style.FramePadding.x * bothSides;
 
 		ImGui::TextUnformatted(
-			FittedText(line, ImGui::GetContentRegionAvail().x - closeWidth - style.ItemSpacing.x).c_str());
+			FitToWidth(line, ImGui::GetContentRegionAvail().x - closeWidth - style.ItemSpacing.x).c_str());
 
 		if (DrawPaneClose())
 		{

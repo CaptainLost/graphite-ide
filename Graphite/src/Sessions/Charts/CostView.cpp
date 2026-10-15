@@ -13,6 +13,7 @@
 #include "Sessions/Transcript/ToolFacts.h"
 #include "UI/SplitResults.h"
 #include "UI/TypographicMarks.h"
+#include "UI/FittedText.h"
 
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/ImGuiColors.h"
@@ -645,8 +646,8 @@ namespace Graphite {
 					}
 					else
 					{
-						ColouredText(textColour, Fitted(SingleLineLabel(turn.Prompt, kRowPromptBytes),
-														ImGui::GetContentRegionAvail().x));
+						ColouredText(textColour, FitToWidth(SingleLineLabel(turn.Prompt, kRowPromptBytes),
+															ImGui::GetContentRegionAvail().x));
 					}
 
 					ImGui::TableNextColumn();
@@ -806,7 +807,7 @@ namespace Graphite {
 				ImGui::TableNextColumn();
 				ColouredText(categoryColour, IconOf(category));
 				ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-				ColouredText(textColour, Fitted(displayNames[toolIndex], ImGui::GetContentRegionAvail().x));
+				ColouredText(textColour, FitToWidth(displayNames[toolIndex], ImGui::GetContentRegionAvail().x));
 
 				ImGui::TableNextColumn();
 				RightAligned(textColour, std::format("{}{}", kMultiplicationSign, tool.Count));
@@ -1034,7 +1035,7 @@ namespace Graphite {
 		const float closeWidth = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
 		const float headingWidth =
 			std::max(ImGui::GetContentRegionAvail().x - closeWidth - style.ItemSpacing.x, 0.0f);
-		ColouredText(textColour, Fitted(heading, headingWidth));
+		ColouredText(textColour, FitToWidth(heading, headingWidth));
 
 		if (DrawPaneClose())
 		{
@@ -1184,7 +1185,7 @@ namespace Graphite {
 						}
 
 						ImGui::TableNextColumn();
-						ColouredText(textColour, Fitted(ShortActivity(activity), ImGui::GetContentRegionAvail().x));
+						ColouredText(textColour, FitToWidth(ShortActivity(activity), ImGui::GetContentRegionAvail().x));
 					}
 				}
 

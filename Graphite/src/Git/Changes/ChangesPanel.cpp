@@ -11,9 +11,9 @@
 #include "Git/InitRepositoryPrompt.h"
 #include "Theme/ChromePalette.h"
 #include "UI/DialogLayout.h"
+#include "UI/FittedText.h"
 #include "UI/TickBox.h"
 #include "UI/ToastEvent.h"
-#include "UI/TypographicMarks.h"
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Log.h"
@@ -27,7 +27,6 @@
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
-#include "Core/Text/Encoding.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -142,45 +141,6 @@ namespace Graphite {
 			}
 
 			return false;
-		}
-
-		// WARNING: Empty when not even the ellipsis fits, because half an ellipsis says less than
-		// nothing. Measured in pixels, cut on character boundaries.
-		std::string Elided(std::string text, float width)
-		{
-			if (ImGui::CalcTextSize(text.c_str()).x <= width)
-			{
-				return text;
-			}
-
-			const char* ellipsisBegin = kEllipsis.data();
-			const char* ellipsisEnd = ellipsisBegin + kEllipsis.size();
-			const float ellipsisWidth = ImGui::CalcTextSize(ellipsisBegin, ellipsisEnd).x;
-
-			if (ellipsisWidth > width)
-			{
-				return std::string();
-			}
-
-			std::size_t length = text.size();
-
-			while (length > 0)
-			{
-				--length;
-				length = Core::CharacterBoundaryAtOrBefore(text, length);
-
-				const char* textBegin = text.c_str();
-
-				if (ImGui::CalcTextSize(textBegin, textBegin + length).x + ellipsisWidth <= width)
-				{
-					break;
-				}
-			}
-
-			text.resize(length);
-			text += kEllipsis;
-
-			return text;
 		}
 	}
 
@@ -614,12 +574,12 @@ namespace Graphite {
 		ImGui::TextUnformatted(Core::IconForExtension(Core::ToUtf8(file.Path.extension())));
 
 		ImGui::SetCursorPos(ImVec2(textStart, rowStart.y));
-		ImGui::TextColored(TintedName(letterColor), "%s", Elided(name, rowTextFit.Name).c_str());
+		ImGui::TextColored(TintedName(letterColor), "%s", FitToWidth(name, rowTextFit.Name).c_str());
 
 		if (rowTextFit.Directory > 0.0f)
 		{
 			ImGui::SameLine(0.0f, textGap);
-			ImGui::TextDisabled("%s", Elided(directoryText, rowTextFit.Directory).c_str());
+			ImGui::TextDisabled("%s", FitToWidth(directoryText, rowTextFit.Directory).c_str());
 		}
 
 		if (rowHovered)
@@ -785,7 +745,7 @@ namespace Graphite {
 
 		ImGui::SetCursorPos(ImVec2(textStart, rowStart.y));
 
-		const std::string elidedName = Elided(Core::ToUtf8(file.Path.filename()), nameLimit);
+		const std::string elidedName = FitToWidth(Core::ToUtf8(file.Path.filename()), nameLimit);
 
 		const bool drawsName = !elidedName.empty();
 

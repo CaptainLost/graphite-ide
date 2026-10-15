@@ -10,6 +10,7 @@
 #include "Sessions/Requests/RequestRow.h"
 #include "Sessions/SessionDrawing.h"
 #include "Sessions/SessionText.h"
+#include "UI/FittedText.h"
 
 #include <imgui.h>
 
@@ -204,10 +205,10 @@ namespace Graphite {
 
 					const float columnX = std::max(right - ImGui::CalcTextSize(column.c_str()).x, textOrigin.x);
 					DrawPiece(textOrigin, look.Colour,
-							  Fitted(SingleLineLabel(label, kLongestLabelBytes), columnX - itemSpacing - textOrigin.x));
+							  FitToWidth(SingleLineLabel(label, kLongestLabelBytes), columnX - itemSpacing - textOrigin.x));
 
 					textOrigin.x = columnX;
-					DrawPiece(textOrigin, palette.TextDisabled, Fitted(column, right - textOrigin.x));
+					DrawPiece(textOrigin, palette.TextDisabled, FitToWidth(column, right - textOrigin.x));
 				}
 				else
 				{

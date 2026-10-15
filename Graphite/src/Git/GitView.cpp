@@ -35,7 +35,6 @@ namespace Graphite {
 
 		constexpr float kRefsColumnWidthInFontSizes = 10.0f;
 		constexpr float kPathBoxWidthInFontSizes = 14.0f;
-		constexpr float kCalcTextSizeRoundingPixel = 1.0f;
 		constexpr int kGitTableColumnCount = 2;
 		constexpr int kRefsColumn = 0;
 		constexpr int kHistoryColumn = 1;
@@ -57,13 +56,6 @@ namespace Graphite {
 			}
 
 			return false;
-		}
-
-		float WidthOfPiece(std::string_view piece)
-		{
-			// WARNING: An empty view may carry no pointer at all, and CalcTextSize reads a null end as
-			// "up to the terminator".
-			return piece.empty() ? 0.0f : ImGui::CalcTextSize(piece.data(), piece.data() + piece.size()).x;
 		}
 
 		void ShowFailure(Core::EventBus& events, std::string title, const std::string& message,
@@ -625,27 +617,6 @@ namespace Graphite {
 		{
 			ImGui::EndMenu();
 		}
-	}
-
-	std::string FitToLine(std::string_view text, bool* cut)
-	{
-		return FitToWidth(text, ImGui::GetContentRegionAvail().x, cut);
-	}
-
-	std::string FitToWidth(std::string_view text, float room, bool* cut)
-	{
-		// WARNING: CalcTextSize rounds widths up, so the room is given back the pixel it rounded
-		// away or a prefix that exactly fits is dropped.
-		const std::optional<std::size_t> cutPosition =
-			CutToFit(text, room + kCalcTextSizeRoundingPixel, WidthOfPiece(Ellipsis), WidthOfPiece);
-
-		if (cut != nullptr)
-		{
-			*cut = cutPosition.has_value();
-		}
-
-		return cutPosition.has_value() ? std::string(text.substr(0, *cutPosition)) + std::string(Ellipsis)
-									   : std::string(text);
 	}
 
 	std::chrono::minutes GitView::LocalOffset()

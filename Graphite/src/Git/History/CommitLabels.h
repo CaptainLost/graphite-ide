@@ -8,10 +8,8 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
-#include <functional>
 #include <optional>
 #include <string>
-#include <string_view>
 
 namespace Graphite {
 
@@ -20,11 +18,6 @@ namespace Graphite {
 	std::string AuthorInitials(const Core::Signature& signature);
 
 	std::string AuthorName(const Core::Signature& signature);
-
-	inline constexpr std::string_view Ellipsis = "\xE2\x80\xA6";
-
-	std::optional<std::size_t> CutToFit(std::string_view text, float maxWidth, float ellipsisWidth,
-										const std::function<float(std::string_view)>& widthOf);
 
 	char ChangeLetter(Core::FileChange change);
 

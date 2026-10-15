@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Sessions/Transcript/ToolFacts.h"
-#include "UI/TypographicMarks.h"
 
 #include <imgui.h>
 
@@ -15,8 +14,6 @@ namespace Graphite {
 	void ColouredText(ImU32 colour, const std::string& text);
 
 	void CategoryBar(ImU32 colour, float height);
-
-	std::string Fitted(const std::string& text, float width);
 
 	const char* IconOf(ToolCategory category);
 

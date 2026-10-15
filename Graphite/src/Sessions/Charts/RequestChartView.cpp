@@ -11,6 +11,7 @@
 #include "Sessions/SessionText.h"
 #include "Sessions/Transcript/ToolFacts.h"
 #include "UI/TypographicMarks.h"
+#include "UI/FittedText.h"
 
 #include "Core/Base/ByteSize.h"
 #include "Core/ImGui/ImGuiColors.h"
@@ -612,7 +613,7 @@ namespace Graphite {
 			header += SingleLineLabel(ModelLabel(request.Model, request.Fast), kModelLabelBytes);
 		}
 
-		ColouredText(ink, Fitted(header, maxWidth));
+		ColouredText(ink, FitToWidth(header, maxWidth));
 
 		if (hasUsage)
 		{
@@ -668,7 +669,7 @@ namespace Graphite {
 
 		if (!outcome.empty())
 		{
-			ColouredText(ink, Fitted(outcome, maxWidth));
+			ColouredText(ink, FitToWidth(outcome, maxWidth));
 		}
 
 		if (position < m_Gaps.size() && m_Gaps[position])
@@ -688,7 +689,7 @@ namespace Graphite {
 
 		if (position < input.ToolLabels.size() && !input.ToolLabels[position].empty())
 		{
-			ColouredText(palette.TextDisabled, Fitted("Tools: " + input.ToolLabels[position], maxWidth));
+			ColouredText(palette.TextDisabled, FitToWidth("Tools: " + input.ToolLabels[position], maxWidth));
 		}
 
 		if (request.Sent.empty())
@@ -710,7 +711,7 @@ namespace Graphite {
 						 ImGui::GetFontSize() * kMinimumSentLabelEms);
 
 			ColouredText(palette.TextDisabled,
-						 prefix + Fitted(SingleLineLabel(largest.Label, kSentLabelBytes), labelRoom) + suffix);
+						 prefix + FitToWidth(SingleLineLabel(largest.Label, kSentLabelBytes), labelRoom) + suffix);
 		}
 
 		ImGui::EndTooltip();

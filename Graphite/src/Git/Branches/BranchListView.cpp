@@ -4,6 +4,7 @@
 #include "Git/Branches/RefSectionHeading.h"
 #include "Git/GitView.h"
 #include "UI/HighlightedRow.h"
+#include "UI/FittedText.h"
 #include "UI/IconButton.h"
 #include "UI/TickBox.h"
 
