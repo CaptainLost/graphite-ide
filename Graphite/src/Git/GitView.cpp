@@ -373,6 +373,9 @@ namespace Graphite {
 	{
 		m_LogRequested = false;
 		m_Reach = HistoryReach{};
+		m_AskedQuery = HistoryQuery{};
+		m_ShownQuery = HistoryQuery{};
+		m_HistoryBusySince.reset();
 		m_Commits.Reset();
 
 		m_FilterBuffer = {};
@@ -427,12 +430,6 @@ namespace Graphite {
 			ImGui::TableSetColumnIndex(kHistoryColumn);
 
 			RenderFilterBar();
-
-			if (const Core::Ref<const Core::LogPage> page = m_Model.GetLog();
-				page && m_Filter.Get() != HistoryFilter{})
-			{
-				RenderFilterSummary(*page);
-			}
 
 			const std::function<void()> drawList = [this, &palette] { RenderCommits(palette); };
 			const std::function<void()> drawDiff = [this, &palette] { RenderPreview(palette); };
@@ -673,6 +670,7 @@ namespace Graphite {
 		const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
 
 		m_Reach = reach;
+		m_AskedQuery = HistoryQuery{.Ref = m_SelectedRef, .Filtered = NarrowsHistory(m_Filter.Get())};
 
 		m_Model.RequestLog(BuildLogRequest(m_SelectedRef, m_Filter.Get(), m_Reach, m_SelectedStash),
 						   branches ? OwnCommitsToAsk(*branches) : std::nullopt);
@@ -776,6 +774,11 @@ namespace Graphite {
 
 		if (isAnswerToQuery || queryFailed)
 		{
+			if (isAnswerToQuery)
+			{
+				m_ShownQuery = m_AskedQuery;
+			}
+
 			m_Searching = false;
 			m_PageWhenAsked.reset();
 		}
@@ -804,27 +807,6 @@ namespace Graphite {
 		{
 			RequestLog(HistoryReach{});
 		}
-	}
-
-	void GitView::RenderFilterSummary(const Core::LogPage& page)
-	{
-		if (m_Searching)
-		{
-			ImGui::TextDisabled("Searching…");
-			return;
-		}
-
-		const std::size_t count = page.Commits.size();
-
-		if (page.Complete)
-		{
-			ImGui::TextDisabled("%zu matching %s", count, count == 1 ? "commit" : "commits");
-			return;
-		}
-
-		ImGui::TextDisabled("%zu matching %s so far — the search stopped before the end of "
-							"the history",
-							count, count == 1 ? "commit" : "commits");
 	}
 
 	void GitView::RenderCommits(const GitPalette& palette)
@@ -871,8 +853,26 @@ namespace Graphite {
 
 			const std::optional<ForkSeparator> separator = ForkSeparatorFor(*page);
 
+			const std::optional<HistoryStatus> status = DescribeHistory(HistoryStatusInputFor(*page));
+
+			m_Commits.SetRoomBelow(status.has_value() ? HistoryStatusLineHeight() : 0.0f);
+			m_Commits.SetEmptyText(m_ShownQuery.Filtered ? "No matching commits." : "No commits yet.");
+
 			m_Commits.Render(*page, m_Graph, palette, LocalOffset(), diffOf, diffFailed, m_CommitRefs,
 							 m_Filter.Get().Text, m_Filter.Get().Path, separator);
+
+			// WARNING: Drawn straight after the list, before anything else moves the cursor, so it sits
+			// in the room the list left for it.
+			std::optional<HistoryClick> click;
+
+			if (status.has_value())
+			{
+				click = DrawHistoryStatusLine(*status, m_HistoryBusySince);
+			}
+			else
+			{
+				m_HistoryBusySince.reset();
+			}
 
 			ApplyCommitAction();
 
@@ -909,7 +909,35 @@ namespace Graphite {
 			}
 
 			m_PreviouslyWanted = std::move(wanted);
+
+			if (click.has_value())
+			{
+				AnswerHistoryClick(*click, *page);
+			}
 		}
+	}
+
+	HistoryStatusInput GitView::HistoryStatusInputFor(const Core::LogPage& page) const
+	{
+		return HistoryStatusInput{.Shown = page.Commits.size(),
+								  .Walked = page.Walked,
+								  .Complete = page.Complete,
+								  .Filtered = m_ShownQuery.Filtered,
+								  .Stash = m_SelectedStash.has_value(),
+								  .Total = m_Model.GetCommitCountFor(m_ShownQuery.Ref),
+								  .Counting = m_Model.IsCommitCountInFlight(),
+								  .Asking = m_Searching};
+	}
+
+	void GitView::AnswerHistoryClick(HistoryClick click, const Core::LogPage& page)
+	{
+		if (click == HistoryClick::All)
+		{
+			RequestLog(Everything());
+			return;
+		}
+
+		RequestLog(m_ShownQuery.Filtered ? SearchFurther(page.Commits.size(), page.Walked) : LoadMore(m_Reach));
 	}
 
 	void GitView::RenderPreview(const GitPalette& palette)

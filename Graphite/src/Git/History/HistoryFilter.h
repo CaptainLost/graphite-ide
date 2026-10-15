@@ -41,4 +41,8 @@ namespace Graphite {
 									 const HistoryFilter& filter,
 									 const HistoryReach& reach,
 									 const std::optional<Core::Oid>& stash = std::nullopt);
+
+	// Whether a log asked with this filter keeps only some commits: as BuildLogRequest reads it, a
+	// path of only whitespace narrows nothing.
+	bool NarrowsHistory(const HistoryFilter& filter);
 }

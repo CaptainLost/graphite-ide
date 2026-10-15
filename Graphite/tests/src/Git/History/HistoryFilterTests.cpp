@@ -74,6 +74,22 @@ TEST_CASE("A log request carries the reach the reader asked for")
 	CHECK(request.MaxWalk == 40000);
 }
 
+TEST_CASE("No text and no path narrows nothing")
+{
+	CHECK_FALSE(Graphite::NarrowsHistory(HistoryFilter{}));
+}
+
+TEST_CASE("Typed text narrows the history")
+{
+	CHECK(Graphite::NarrowsHistory(HistoryFilter{.Text = "encoding"}));
+}
+
+TEST_CASE("A path narrows the history but a path of only whitespace does not")
+{
+	CHECK(Graphite::NarrowsHistory(HistoryFilter{.Path = "Main.cpp"}));
+	CHECK_FALSE(Graphite::NarrowsHistory(HistoryFilter{.Path = "   "}));
+}
+
 using Graphite::SettlingFilter;
 
 namespace {

@@ -18,6 +18,8 @@
 #include "Review/ReviewMenu.h"
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryReach.h"
+#include "Git/History/HistoryStatus.h"
+#include "Git/History/HistoryStatusLine.h"
 #include "Persistence/PersistedState.h"
 #include "Theme/ActiveScheme.h"
 
@@ -183,6 +185,8 @@ namespace Graphite {
 		void RenderDeleteBranchDialog();
 		void RenderDropStashDialog();
 		void RenderCommits(const GitPalette& palette);
+		HistoryStatusInput HistoryStatusInputFor(const Core::LogPage& page) const;
+		void AnswerHistoryClick(HistoryClick click, const Core::LogPage& page);
 		void RenderPreview(const GitPalette& palette);
 
 		void RenderDiff(const GitPalette& palette);
@@ -192,8 +196,6 @@ namespace Graphite {
 		void RenderDetails(const Core::CommitSummary& commit, const GitPalette& palette);
 
 		void RenderFilterBar();
-
-		void RenderFilterSummary(const Core::LogPage& page);
 
 		void UpdateForNewPage();
 
@@ -263,6 +265,19 @@ namespace Graphite {
 		// WARNING: Sent again with every re-ask, so a page the reader loaded further is never cut back
 		// to the first one; only a new ref, stash or filter starts it over.
 		HistoryReach m_Reach;
+
+		// The ref and the filter a log was asked with: the page on screen answers m_ShownQuery, and
+		// m_AskedQuery takes its place when the answer to it lands.
+		struct HistoryQuery
+		{
+			std::optional<std::string> Ref;
+			bool Filtered = false;
+		};
+
+		HistoryQuery m_AskedQuery;
+		HistoryQuery m_ShownQuery;
+
+		std::optional<double> m_HistoryBusySince;
 
 		std::unordered_set<Core::Oid> m_PreviouslyWanted;
 

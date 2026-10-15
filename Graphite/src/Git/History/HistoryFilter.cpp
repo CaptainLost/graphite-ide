@@ -33,6 +33,11 @@ namespace Graphite {
 		return request;
 	}
 
+	bool NarrowsHistory(const HistoryFilter& filter)
+	{
+		return !filter.Text.empty() || !Core::Trimmed(filter.Path).empty();
+	}
+
 	void SettlingFilter::Set(HistoryFilter filter)
 	{
 		if (filter == m_Pending)
