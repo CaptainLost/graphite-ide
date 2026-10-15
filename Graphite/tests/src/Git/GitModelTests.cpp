@@ -127,6 +127,27 @@ namespace {
 			return Log;
 		}
 
+		Core::Result<Graphite::CommitCount> CountCommits(const std::optional<std::string>& ref,
+														 const std::optional<Graphite::CommitCount>& known) override
+		{
+			++CountCalls;
+			LastCountRef = ref;
+			LastKnownCount = known;
+
+			if (FailCount)
+			{
+				return PortFailure();
+			}
+
+			if (known.has_value() && known->Tip == CountTip)
+			{
+				return *known;
+			}
+
+			++CountWalks;
+			return Graphite::CommitCount{.Tip = CountTip, .Count = CountTotal};
+		}
+
 		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) override
 		{
 			++DiffCalls;
@@ -348,6 +369,13 @@ namespace {
 		int HeadCalls = 0;
 		int LogCalls = 0;
 		std::optional<Core::LogRequest> LastLogRequest;
+		int CountCalls = 0;
+		int CountWalks = 0;
+		bool FailCount = false;
+		Core::Oid CountTip = OidWithFirstByte(1);
+		std::size_t CountTotal = 1739;
+		std::optional<std::string> LastCountRef;
+		std::optional<Graphite::CommitCount> LastKnownCount;
 		int DiffCalls = 0;
 		int TextCalls = 0;
 

@@ -227,6 +227,40 @@ namespace Graphite {
 		return repository->QueryLog(request);
 	}
 
+	Core::Result<CommitCount> RepositoryGitPort::CountCommits(const std::optional<std::string>& ref,
+															  const std::optional<CommitCount>& known)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		Core::Result<Core::Oid> tip = ref.has_value() ? repository->ResolveReference(*ref) : repository->HeadCommit();
+
+		if (!tip.HasValue())
+		{
+			return tip.GetError();
+		}
+
+		if (known.has_value() && known->Tip == tip.GetValue())
+		{
+			return *known;
+		}
+
+		Core::Result<std::size_t> count = repository->CountCommits(tip.GetValue());
+
+		if (!count.HasValue())
+		{
+			return count.GetError();
+		}
+
+		return CommitCount{.Tip = tip.GetValue(), .Count = count.GetValue()};
+	}
+
 	Core::Result<Core::Diff> RepositoryGitPort::QueryDiff(const Core::DiffRequest& request)
 	{
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();

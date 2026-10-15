@@ -93,6 +93,78 @@ namespace {
 		std::copy(commitId.id, commitId.id + kObjectIdByteCount, commitOid.Bytes.begin());
 		return commitOid;
 	}
+
+	Core::Oid OidOf(const git_oid& id)
+	{
+		constexpr std::size_t kObjectIdByteCount = 20;
+		Core::Oid oid;
+		std::copy(id.id, id.id + kObjectIdByteCount, oid.Bytes.begin());
+		return oid;
+	}
+
+	// A commit of the index's tree on top of HEAD, or a root commit on an unborn HEAD.
+	Core::Oid CommitOnHead(const std::filesystem::path& path, const char* message)
+	{
+		git_repository* repository = nullptr;
+		REQUIRE(git_repository_open(&repository, Core::ToUtf8(path).c_str()) == 0);
+
+		git_index* index = nullptr;
+		REQUIRE(git_repository_index(&index, repository) == 0);
+		git_oid treeId;
+		REQUIRE(git_index_write_tree(&treeId, index) == 0);
+		git_index_free(index);
+
+		git_tree* tree = nullptr;
+		REQUIRE(git_tree_lookup(&tree, repository, &treeId) == 0);
+
+		git_signature* signature = nullptr;
+		REQUIRE(git_signature_now(&signature, "Test", "test@example.com") == 0);
+
+		git_oid headId;
+		const bool hasHead = git_reference_name_to_id(&headId, repository, "HEAD") == 0;
+
+		git_commit* parent = nullptr;
+
+		if (hasHead)
+		{
+			REQUIRE(git_commit_lookup(&parent, repository, &headId) == 0);
+		}
+
+		git_oid commitId;
+
+		if (hasHead)
+		{
+			REQUIRE(git_commit_create_v(&commitId, repository, "HEAD", signature, signature, nullptr, message, tree, 1,
+										parent) == 0);
+		}
+		else
+		{
+			REQUIRE(git_commit_create_v(&commitId, repository, "HEAD", signature, signature, nullptr, message, tree, 0) == 0);
+		}
+
+		git_commit_free(parent);
+		git_signature_free(signature);
+		git_tree_free(tree);
+		git_repository_free(repository);
+
+		return OidOf(commitId);
+	}
+
+	void PointBranchAt(const std::filesystem::path& path, const char* fullName, const Core::Oid& commit)
+	{
+		git_repository* repository = nullptr;
+		REQUIRE(git_repository_open(&repository, Core::ToUtf8(path).c_str()) == 0);
+
+		git_oid target;
+		std::copy(commit.Bytes.begin(), commit.Bytes.end(), target.id);
+
+		constexpr int kNoForce = 0;
+		git_reference* reference = nullptr;
+		REQUIRE(git_reference_create(&reference, repository, fullName, &target, kNoForce, nullptr) == 0);
+
+		git_reference_free(reference);
+		git_repository_free(repository);
+	}
 }
 
 TEST_CASE("Reopening the same root after a close opens a fresh handle")
@@ -549,4 +621,86 @@ TEST_CASE("The port reads the user's e-mail from the folder's repository")
 
 	REQUIRE(email.HasValue());
 	CHECK(email.GetValue() == std::optional<std::string>{"ann@example.com"});
+}
+
+TEST_CASE("The port counts the commits of HEAD when no ref is named")
+{
+	TempRepo repo;
+	CommitOnHead(repo.GetPath(), "first");
+	CommitOnHead(repo.GetPath(), "second");
+	const Core::Oid third = CommitOnHead(repo.GetPath(), "third");
+
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	const Core::Result<Graphite::CommitCount> count = port.CountCommits(std::nullopt, std::nullopt);
+
+	REQUIRE(count.HasValue());
+	CHECK(count.GetValue().Count == 3);
+	CHECK(count.GetValue().Tip == third);
+}
+
+TEST_CASE("The port counts the commits of the ref it is given")
+{
+	TempRepo repo;
+	const Core::Oid first = CommitOnHead(repo.GetPath(), "first");
+	CommitOnHead(repo.GetPath(), "second");
+	PointBranchAt(repo.GetPath(), "refs/heads/topic", first);
+
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	const Core::Result<Graphite::CommitCount> count = port.CountCommits(std::string{"refs/heads/topic"}, std::nullopt);
+
+	REQUIRE(count.HasValue());
+	CHECK(count.GetValue().Count == 1);
+	CHECK(count.GetValue().Tip == first);
+}
+
+TEST_CASE("The port answers the count it was given without walking while the ref still points at the same tip")
+{
+	TempRepo repo;
+	CommitOnHead(repo.GetPath(), "first");
+	const Core::Oid second = CommitOnHead(repo.GetPath(), "second");
+
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	// A count no walk of this history could give, so getting it back proves nothing was walked.
+	constexpr std::size_t kImpossibleCount = 999;
+	const Graphite::CommitCount known{.Tip = second, .Count = kImpossibleCount};
+
+	const Core::Result<Graphite::CommitCount> count = port.CountCommits(std::nullopt, known);
+
+	REQUIRE(count.HasValue());
+	CHECK(count.GetValue() == known);
+}
+
+TEST_CASE("The port counts again once the ref has moved past the tip it was given")
+{
+	TempRepo repo;
+	const Core::Oid first = CommitOnHead(repo.GetPath(), "first");
+
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	const Core::Result<Graphite::CommitCount> before = port.CountCommits(std::nullopt, std::nullopt);
+	REQUIRE(before.HasValue());
+	REQUIRE(before.GetValue().Tip == first);
+
+	const Core::Oid second = CommitOnHead(repo.GetPath(), "second");
+
+	const Core::Result<Graphite::CommitCount> after = port.CountCommits(std::nullopt, before.GetValue());
+
+	REQUIRE(after.HasValue());
+	CHECK(after.GetValue().Count == 2);
+	CHECK(after.GetValue().Tip == second);
+}
+
+TEST_CASE("Counting a ref that does not exist fails")
+{
+	TempRepo repo;
+	CommitOnHead(repo.GetPath(), "first");
+
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	const Core::Result<Graphite::CommitCount> count = port.CountCommits(std::string{"refs/heads/missing"}, std::nullopt);
+
+	CHECK_FALSE(count.HasValue());
 }
