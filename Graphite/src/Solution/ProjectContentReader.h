@@ -4,6 +4,9 @@
 #include "Solution/SolutionModel.h"
 
 #include <filesystem>
+#include <optional>
+#include <string>
+#include <string_view>
 
 namespace Graphite {
 
@@ -24,4 +27,6 @@ namespace Graphite {
 	};
 
 	void SortContentByName(ContentFolder& folder);
+
+	std::optional<std::string> ReferencedProjectName(std::string_view include);
 }

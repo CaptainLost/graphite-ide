@@ -120,10 +120,11 @@ namespace Graphite {
 
 				if (name == "ProjectReference")
 				{
-					const std::filesystem::path referenced =
-						Core::FromUtf8(item.attribute("Include").value());
+					if (std::optional<std::string> referenced = ReferencedProjectName(item.attribute("Include").value()))
+					{
+						content.References.push_back(std::move(*referenced));
+					}
 
-					content.References.push_back(Core::ToUtf8(referenced.stem()));
 					continue;
 				}
 

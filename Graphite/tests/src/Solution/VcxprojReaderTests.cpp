@@ -172,6 +172,24 @@ TEST_CASE("Project references are read separately from files and never turn up i
 	CHECK_FALSE(HasFileNamed(readResult.GetValue().Root, "Core.vcxproj"));
 }
 
+TEST_CASE("A project reference that names no project is left out rather than read as a reference with no name")
+{
+	TempDirectory temp;
+	const std::filesystem::path projectFile = temp.MakeFile("App/App.vcxproj", R"(<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ProjectReference Include="" />
+    <ProjectReference Include="..\Core\Core.vcxproj" />
+  </ItemGroup>
+</Project>
+)");
+
+	const Core::Result<ProjectContent> readResult = VcxprojReader{}.Read(projectFile);
+	REQUIRE(readResult.HasValue());
+
+	CHECK(readResult.GetValue().References == std::vector<std::string>{"Core"});
+}
+
 TEST_CASE("A missing project file fails rather than reading as empty")
 {
 	TempDirectory temp;

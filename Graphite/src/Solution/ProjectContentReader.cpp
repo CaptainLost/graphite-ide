@@ -28,4 +28,17 @@ namespace Graphite {
 			SortContentByName(child);
 		}
 	}
+
+	std::optional<std::string> ReferencedProjectName(std::string_view include)
+	{
+		const std::filesystem::path referenced = Core::FromUtf8(include);
+		const std::string name = Core::ToUtf8(referenced.stem());
+
+		if (name.empty())
+		{
+			return std::nullopt;
+		}
+
+		return name;
+	}
 }
