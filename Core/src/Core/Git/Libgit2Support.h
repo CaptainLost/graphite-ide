@@ -67,6 +67,12 @@ namespace Core {
 		std::vector<const char*> m_GitPathPointers;
 	};
 
+	// Untracked files go one by one, never a whole directory: removing a directory whole would take
+	// the ignored files under it too. A directory in the list, a nested repository, is left alone, as
+	// `git clean -d` leaves one, and a directory a removal leaves empty goes with it.
+	Result<void> RemoveUntrackedFiles(const std::filesystem::path& workingDirectory,
+									  const std::vector<std::filesystem::path>& relativeFiles);
+
 	// libgit2 caches one index per repository handle and does not always reload it, so every
 	// operation that reads or writes the index, or makes a libgit2 call that does, opens it
 	// through this first. Never between an operation's own edits and its write: the reload

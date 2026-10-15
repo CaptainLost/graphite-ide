@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <format>
 #include <string_view>
+#include <system_error>
 
 namespace Core {
 
@@ -227,6 +228,51 @@ namespace Core {
 		// The one cast libgit2's signature forces: git_strarray holds char**, though every call
 		// that takes a pathspec only reads it.
 		return git_strarray{.strings = const_cast<char**>(m_GitPathPointers.data()), .count = m_GitPathPointers.size()};
+	}
+
+	Result<void> RemoveUntrackedFiles(const std::filesystem::path& workingDirectory,
+									  const std::vector<std::filesystem::path>& relativeFiles)
+	{
+		for (const std::filesystem::path& relativePath : relativeFiles)
+		{
+			const std::filesystem::path absolutePath = workingDirectory / relativePath;
+			std::error_code fileSystemError;
+
+			if (std::filesystem::is_directory(absolutePath, fileSystemError))
+			{
+				continue;
+			}
+
+			std::filesystem::remove(absolutePath, fileSystemError);
+
+			if (fileSystemError)
+			{
+				return Error{ErrorCode::IoFailure,
+							 std::format("cannot delete '{}': {}", ToGitPath(relativePath), fileSystemError.message())};
+			}
+
+			for (std::filesystem::path parentDirectory = relativePath.parent_path(); !parentDirectory.empty();
+				 parentDirectory = parentDirectory.parent_path())
+			{
+				const std::filesystem::path absoluteDirectory = workingDirectory / parentDirectory;
+				const bool directoryIsNowEmpty = std::filesystem::is_empty(absoluteDirectory, fileSystemError);
+
+				if (!directoryIsNowEmpty || fileSystemError)
+				{
+					break;
+				}
+
+				std::filesystem::remove(absoluteDirectory, fileSystemError);
+
+				if (fileSystemError)
+				{
+					return Error{ErrorCode::IoFailure, std::format("cannot delete '{}': {}", ToGitPath(parentDirectory),
+																   fileSystemError.message())};
+				}
+			}
+		}
+
+		return Result<void>::Ok();
 	}
 
 	void EnsureLibgit2Initialised()

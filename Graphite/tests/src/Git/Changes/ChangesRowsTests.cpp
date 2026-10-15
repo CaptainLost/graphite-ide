@@ -260,12 +260,17 @@ TEST_CASE("The question counts a folder's files only when they are known")
 		Folder("src", std::vector<std::filesystem::path>{"src/a.txt", "src/b.txt"});
 
 	CHECK(Graphite::DiscardQuestionText(listed,
-										Graphite::PlanDiscard(listed, AbsoluteRepositoryPath, {})) == "Delete src/ and the 2 files in it?");
+										Graphite::PlanDiscard(listed, AbsoluteRepositoryPath, {})) == "Delete the 2 untracked files in src/?");
+
+	const Graphite::DiscardSubject listedOne = Folder("src", std::vector<std::filesystem::path>{"src/a.txt"});
+
+	CHECK(Graphite::DiscardQuestionText(listedOne,
+										Graphite::PlanDiscard(listedOne, AbsoluteRepositoryPath, {})) == "Delete the 1 untracked file in src/?");
 
 	const Graphite::DiscardSubject unlisted = Folder("src", std::nullopt);
 
 	CHECK(Graphite::DiscardQuestionText(unlisted,
-										Graphite::PlanDiscard(unlisted, AbsoluteRepositoryPath, {})) == "Delete src/ and everything in it?");
+										Graphite::PlanDiscard(unlisted, AbsoluteRepositoryPath, {})) == "Delete the untracked files in src/?");
 }
 
 TEST_CASE("The question says whether a file is deleted or restored")

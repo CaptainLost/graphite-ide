@@ -164,14 +164,16 @@ namespace Graphite {
 	{
 		const std::string name = Core::ToUtf8(subject.Path);
 
+		// WARNING: Not "the folder and everything in it": the files git ignores stay, and with them the folder.
 		if (subject.IsDirectory)
 		{
 			if (plan.FileCount.has_value())
 			{
-				return std::format("Delete {}/ and the {} files in it?", name, *plan.FileCount);
+				const char* noun = *plan.FileCount == 1 ? "file" : "files";
+				return std::format("Delete the {} untracked {} in {}/?", *plan.FileCount, noun, name);
 			}
 
-			return std::format("Delete {}/ and everything in it?", name);
+			return std::format("Delete the untracked files in {}/?", name);
 		}
 
 		if (!plan.Delete.empty())

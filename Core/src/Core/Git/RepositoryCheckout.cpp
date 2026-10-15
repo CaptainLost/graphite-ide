@@ -368,10 +368,9 @@ namespace Core {
 			return options;
 		}
 
-		// Untracked files go one by one, never a whole directory: libgit2's REMOVE_UNTRACKED deletes an
-		// untracked directory with everything in it, ignored files included. A directory the list names
-		// whole, a nested repository, is left alone, as `git clean -d` leaves one. The status list is built
-		// without INCLUDE_IGNORED, so ignored files never reach it.
+		// Not libgit2's REMOVE_UNTRACKED, which deletes an untracked directory with everything in it,
+		// ignored files included. The status list is built without INCLUDE_IGNORED, so ignored files
+		// never reach it.
 		Result<void> RemoveUntracked(git_repository* handle, const std::filesystem::path& workingDirectory)
 		{
 			git_status_options options = GIT_STATUS_OPTIONS_INIT;
@@ -399,46 +398,7 @@ namespace Core {
 				}
 			}
 
-			for (const std::filesystem::path& relativePath : untrackedFiles)
-			{
-				const std::filesystem::path absolutePath = workingDirectory / relativePath;
-				std::error_code fileSystemError;
-
-				if (std::filesystem::is_directory(absolutePath, fileSystemError))
-				{
-					continue;
-				}
-
-				std::filesystem::remove(absolutePath, fileSystemError);
-
-				if (fileSystemError)
-				{
-					return Error{ErrorCode::IoFailure,
-								 std::format("cannot delete '{}': {}", ToGitPath(relativePath), fileSystemError.message())};
-				}
-
-				for (std::filesystem::path parentDirectory = relativePath.parent_path(); !parentDirectory.empty();
-					 parentDirectory = parentDirectory.parent_path())
-				{
-					const std::filesystem::path absoluteDirectory = workingDirectory / parentDirectory;
-					const bool directoryIsNowEmpty = std::filesystem::is_empty(absoluteDirectory, fileSystemError);
-
-					if (!directoryIsNowEmpty || fileSystemError)
-					{
-						break;
-					}
-
-					std::filesystem::remove(absoluteDirectory, fileSystemError);
-
-					if (fileSystemError)
-					{
-						return Error{ErrorCode::IoFailure, std::format("cannot delete '{}': {}", ToGitPath(parentDirectory),
-																	   fileSystemError.message())};
-					}
-				}
-			}
-
-			return Result<void>::Ok();
+			return RemoveUntrackedFiles(workingDirectory, untrackedFiles);
 		}
 
 		Result<void> EndPendingCommit(git_repository* handle)

@@ -223,36 +223,35 @@ namespace Core {
 			return Error{ErrorCode::NotFound, "the repository is not open"};
 		}
 
-		if (paths.empty())
-		{
-			return Result<void>::Ok();
-		}
+		std::vector<std::filesystem::path> untrackedFiles;
 
 		for (const std::filesystem::path& path : paths)
 		{
-			const std::filesystem::path absolutePath = m_WorkingDirectory / path;
+			std::error_code kindError;
+			const bool isDirectory = std::filesystem::is_directory(m_WorkingDirectory / path, kindError);
 
-			std::error_code removeError;
-
-			// remove() refuses a directory with anything in it, and an untracked directory's status
-			// entry names exactly that. remove_all takes the ignored files under it too.
-			if (std::filesystem::is_directory(absolutePath, removeError))
+			if (!isDirectory)
 			{
-				std::filesystem::remove_all(absolutePath, removeError);
-			}
-			else
-			{
-				std::filesystem::remove(absolutePath, removeError);
+				untrackedFiles.push_back(path);
+				continue;
 			}
 
-			if (removeError)
+			// An untracked directory's status entry names the directory alone; what goes is what its
+			// listing shows, which leaves out the files git ignores.
+			Result<WorkingTreeStatus> listing = QueryUntrackedIn(path);
+
+			if (!listing)
 			{
-				return Error{ErrorCode::IoFailure,
-							 std::format("cannot delete '{}': {}", ToGitPath(path), removeError.message())};
+				return listing.GetError();
+			}
+
+			for (FileStatus& file : listing.GetValue().Entries)
+			{
+				untrackedFiles.push_back(std::move(file.Path));
 			}
 		}
 
-		return Result<void>::Ok();
+		return RemoveUntrackedFiles(m_WorkingDirectory, untrackedFiles);
 	}
 
 	Result<Oid> Repository::Commit(const CommitRequest& request)

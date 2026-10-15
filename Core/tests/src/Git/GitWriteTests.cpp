@@ -286,6 +286,26 @@ TEST_CASE("Deleting an untracked directory removes it with everything under it")
 	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "notes"));
 }
 
+TEST_CASE("Deleting an untracked directory leaves the files git ignores in it, and the directory that holds them")
+{
+	GitFixture fixture;
+	fixture.Write(".gitignore", "*.env\n");
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	fixture.Write("config/app.json", "untracked\n");
+	fixture.Write("config/secrets.env", "ignored\n");
+	fixture.Write("config/drafts/only.md", "untracked\n");
+
+	Core::Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	REQUIRE(repository.DeleteUntracked({std::filesystem::path("config")}).HasValue());
+
+	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "config" / "app.json"));
+	CHECK_FALSE(std::filesystem::exists(fixture.GetPath() / "config" / "drafts"));
+	CHECK(std::filesystem::exists(fixture.GetPath() / "config" / "secrets.env"));
+}
+
 TEST_CASE("Deleting an untracked file still removes just the file")
 {
 	GitFixture fixture;
