@@ -1,6 +1,5 @@
 #include "Explorer/FileTreeView.h"
 
-#include "Core/ImGui/UiScale.h"
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileName.h"
 #include "Core/FileSystem/FileOperations.h"
@@ -38,18 +37,6 @@
 #include <vector>
 
 namespace Graphite {
-
-	namespace {
-		float FitWidthToText(const char* text, float paddingX)
-		{
-			constexpr float kMinFieldWidth = 90.0f;
-
-			const float caretSlack = ImGui::GetFontSize();
-			const float fittedWidth = ImGui::CalcTextSize(text).x + paddingX * 2.0f + caretSlack;
-
-			return std::clamp(fittedWidth, Core::Scaled(kMinFieldWidth), ImGui::GetContentRegionAvail().x);
-		}
-	}
 
 	void FileTreeView::ReportInvalidName(std::string title, const std::string& name)
 	{
@@ -491,7 +478,7 @@ namespace Graphite {
 	{
 		const std::string current = Core::ToUtf8(node.Path.filename());
 
-		if (current.size() >= m_RenameBuffer.size())
+		if (!m_RenameField.Start(current, node.IsDirectory))
 		{
 			APP_ERROR("Cannot rename '{}': the name is too long to edit", current);
 			ReportFailure(Core::ToastKind::Warning, "Cannot rename", std::format("'{}': the name is too long to edit", current));
@@ -504,11 +491,6 @@ namespace Graphite {
 		}
 
 		m_RenamingPath = node.Path;
-		m_FocusRenameField = true;
-		m_RenameSpan = RenameSelection(current, node.IsDirectory);
-
-		std::fill(m_RenameBuffer.begin(), m_RenameBuffer.end(), '\0');
-		std::copy_n(current.begin(), current.size(), m_RenameBuffer.begin());
 	}
 
 	void FileTreeView::StartRenamingPath(const std::filesystem::path& path)
@@ -858,71 +840,20 @@ namespace Graphite {
 			return false;
 		}
 
-		if (m_FocusRenameField)
+		switch (m_RenameField.Draw("##renameField"))
 		{
-			ImGui::SetKeyboardFocusHere();
-			m_FocusRenameField = false;
-		}
+		case RenameEnd::StillEditing:
+			break;
 
-		constexpr float kFieldPaddingX = 2.0f;
-		const float indentToLabel = ImGui::GetTreeNodeToLabelSpacing() - Core::Scaled(kFieldPaddingX);
-		const bool isIndented = indentToLabel > 0.0f;
-
-		if (isIndented)
-		{
-			ImGui::Indent(indentToLabel);
-		}
-
-		constexpr float kNoFramePaddingY = 0.0f;
-
-		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(Core::Scaled(kFieldPaddingX), kNoFramePaddingY));
-		ImGui::SetNextItemWidth(FitWidthToText(m_RenameBuffer.data(), Core::Scaled(kFieldPaddingX)));
-
-		// WARNING: ImGui runs this on every frame the field is active. Only the frame it activates
-		// on selects the stem, because AutoSelectAll would take the extension too.
-		const auto selectStem = [](ImGuiInputTextCallbackData* data) {
-			FileTreeView& self = *static_cast<FileTreeView*>(data->UserData);
-
-			if (data->EventActivated)
-			{
-				const int end = std::min(static_cast<int>(self.m_RenameSpan.End), data->BufTextLen);
-				const int start = std::min(static_cast<int>(self.m_RenameSpan.Start), end);
-				data->SetSelection(start, end);
-			}
-
-			return 0;
-		};
-
-		const bool committed =
-			ImGui::InputText("##renameField", m_RenameBuffer.data(), m_RenameBuffer.size(),
-							 ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_CallbackAlways,
-							 selectStem, this);
-
-		// WARNING: Escape is read only while this field is focused. An unscoped key poll would
-		// also catch an Escape aimed at a modal elsewhere.
-		const bool cancelled = ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-
-		// WARNING: IsItemDeactivated fires whether or not the text changed, which is what ends a
-		// rename that was clicked away from instead of leaving the row stuck in the editor.
-		const bool deactivated = !cancelled && ImGui::IsItemDeactivated();
-
-		ImGui::PopStyleVar();
-
-		if (isIndented)
-		{
-			ImGui::Unindent(indentToLabel);
-		}
-
-		if (cancelled)
-		{
+		case RenameEnd::Cancelled:
 			m_RenamingPath.clear();
 			OpenIfJustCreated(node.Path, node.Path);
-		}
-		else if (committed || deactivated)
-		{
-			RecordAction(PendingAction{
-				.Action = PendingAction::Kind::Rename, .Target = node.Path, .Name = m_RenameBuffer.data()});
+			break;
+
+		case RenameEnd::Committed:
+			RecordAction(PendingAction{.Action = PendingAction::Kind::Rename, .Target = node.Path, .Name = m_RenameField.Text()});
 			m_RenamingPath.clear();
+			break;
 		}
 
 		return true;
@@ -1053,7 +984,7 @@ namespace Graphite {
 			node.Ignored ? RowStatus{} : FolderRowStatusOf(m_GitDecorations, node.Path);
 
 		const std::string label =
-			std::string{node.Expanded ? ICON_MDI_FOLDER_OPEN : ICON_MDI_FOLDER} + "  " + node.Name;
+			std::string{open ? ICON_MDI_FOLDER_OPEN : ICON_MDI_FOLDER} + "  " + node.Name;
 		DrawTreeRowLabel(layout, label, folderStatus.HasMarker());
 
 		if (dimmed)

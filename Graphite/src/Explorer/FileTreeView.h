@@ -3,7 +3,7 @@
 #include "Workspace/GitIgnoredDisplay.h"
 #include "Workspace/Workspace.h"
 #include "Explorer/FolderListing.h"
-#include "Explorer/RenameSelection.h"
+#include "Explorer/RowRenameField.h"
 #include "Git/GitDecorationView.h"
 #include "Theme/ActiveScheme.h"
 #include "UI/Dialogs/ModalQuestion.h"
@@ -14,7 +14,6 @@
 
 #include <imgui.h>
 
-#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -130,9 +129,7 @@ namespace Graphite {
 
 		std::filesystem::path m_RenamingPath;
 
-		std::array<char, 1024> m_RenameBuffer{};
-		bool m_FocusRenameField = false;
-		RenameSpan m_RenameSpan;
+		RowRenameField m_RenameField;
 		std::filesystem::path m_KnownRoot;
 		std::filesystem::path m_PendingRenamePath;
 		std::filesystem::path m_OpenWhenNamed;

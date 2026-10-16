@@ -236,6 +236,86 @@ TEST_CASE("An indented folder row's label starts past its chevron at the indent,
 	CHECK(labelLeft <= expectedLeft + ImGui::GetFontSize());
 }
 
+TEST_CASE("A tree row's note follows its label dim, and the label is cut short first to leave it room")
+{
+	ImGuiFrames frames;
+
+	float labelRight = -FLT_MAX;
+	float noteLeft = FLT_MAX;
+	float noteRight = -FLT_MAX;
+	float rowEnd = 0.0f;
+
+	frames.Next([&] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(220.0f, 200.0f));
+		ImGui::Begin("##noteWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+		const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
+		Graphite::ListRowSelectable("##root", false);
+		const int from = ImGui::GetWindowDrawList()->VtxBuffer.Size;
+		Graphite::DrawTreeRowLabel(layout, std::string(80, 'D'), false, "(1 project)");
+
+		const ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
+		const ImU32 dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+		const ImDrawList& drawing = *ImGui::GetWindowDrawList();
+
+		for (int vertex = from; vertex < drawing.VtxBuffer.Size; ++vertex)
+		{
+			const ImDrawVert& drawn = drawing.VtxBuffer[vertex];
+
+			if (drawn.col == text)
+			{
+				labelRight = std::max(labelRight, drawn.pos.x);
+			}
+			else if (drawn.col == dim)
+			{
+				noteLeft = std::min(noteLeft, drawn.pos.x);
+				noteRight = std::max(noteRight, drawn.pos.x);
+			}
+		}
+
+		const ImGuiWindow* window = ImGui::GetCurrentWindowRead();
+		rowEnd = window->InnerRect.Max.x - window->WindowPadding.x - ImGui::GetStyle().ItemSpacing.x;
+		ImGui::End();
+	});
+
+	REQUIRE(labelRight > -FLT_MAX);
+	REQUIRE(noteLeft < FLT_MAX);
+	CHECK(noteLeft > labelRight);
+	CHECK(noteRight <= rowEnd);
+}
+
+TEST_CASE("A tree row too narrow for its note beside its label shows the label alone")
+{
+	ImGuiFrames frames;
+
+	bool labelDrawn = false;
+	bool noteDrawn = false;
+
+	frames.Next([&] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(110.0f, 200.0f));
+		ImGui::Begin("##narrowNoteWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+		const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
+		Graphite::ListRowSelectable("##root", false);
+		const int from = ImGui::GetWindowDrawList()->VtxBuffer.Size;
+		Graphite::DrawTreeRowLabel(layout, "Demo solution", false, "(12 projects)");
+
+		const ImDrawList& drawing = *ImGui::GetWindowDrawList();
+		for (int vertex = from; vertex < drawing.VtxBuffer.Size; ++vertex)
+		{
+			labelDrawn = labelDrawn || drawing.VtxBuffer[vertex].col == ImGui::GetColorU32(ImGuiCol_Text);
+			noteDrawn = noteDrawn || drawing.VtxBuffer[vertex].col == ImGui::GetColorU32(ImGuiCol_TextDisabled);
+		}
+
+		ImGui::End();
+	});
+
+	CHECK(labelDrawn);
+	CHECK_FALSE(noteDrawn);
+}
+
 TEST_CASE("A row's marker is drawn only when a letter of the label fits beside it")
 {
 	ImGuiFrames frames;

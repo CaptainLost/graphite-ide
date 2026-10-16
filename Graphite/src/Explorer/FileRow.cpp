@@ -15,6 +15,9 @@ namespace Graphite {
 		constexpr float kThinnestRing = 1.0f;
 		constexpr float kHalf = 0.5f;
 		constexpr float kGapsAroundMarker = 2.0f;
+
+		// A glyph, its gap and an ellipsis: what of a label must show before a note is drawn beside it.
+		constexpr float kLeastLabelInFontSizes = 3.0f;
 		constexpr int kSegmentsChosenByImGui = 0;
 		constexpr bool kIntersectWithCurrentClipRect = true;
 
@@ -270,28 +273,47 @@ namespace Graphite {
 		return std::min(left, right - columnWidth);
 	}
 
-	void DrawTreeRowLabel(const FileRowLayout& layout, const std::string& label, bool hasMarker)
+	void DrawTreeRowLabel(const FileRowLayout& layout, const std::string& label, bool hasMarker, const std::string& note)
 	{
 		if (!ImGui::IsItemVisible())
 		{
 			return;
 		}
 
+		const float spacing = ImGui::GetStyle().ItemSpacing.x;
 		const float labelLeftEdge = layout.LabelAt.x;
-		float labelRightEdge = MarkerRight();
+		float rowRightEdge = MarkerRight();
 
 		if (hasMarker && MarkerHasRoomForOneLetterOfLabel(labelLeftEdge))
 		{
-			labelRightEdge -= RowMarkerColumnWidth() + ImGui::GetStyle().ItemSpacing.x;
+			rowRightEdge -= RowMarkerColumnWidth() + spacing;
 		}
 
-		labelRightEdge = std::max(labelRightEdge, labelLeftEdge);
+		rowRightEdge = std::max(rowRightEdge, labelLeftEdge);
 
 		const ImVec2 fullLabelSize = ImGui::CalcTextSize(label.c_str());
+		const float noteRoom = note.empty() ? 0.0f : ImGui::CalcTextSize(note.c_str()).x + spacing;
+		const float leastLabel = std::min(fullLabelSize.x, ImGui::GetFontSize() * kLeastLabelInFontSizes);
+		const bool noteFits = noteRoom > 0.0f && rowRightEdge - labelLeftEdge - noteRoom >= leastLabel;
+		const float labelRightEdge = noteFits ? rowRightEdge - noteRoom : rowRightEdge;
+
 		const ImVec2 labelBottomRight(labelRightEdge, layout.LabelAt.y + fullLabelSize.y);
 
 		ImGui::RenderTextEllipsis(ImGui::GetWindowDrawList(), layout.LabelAt, labelBottomRight, labelRightEdge,
 								  label.c_str(), nullptr, &fullLabelSize);
+
+		if (!noteFits)
+		{
+			return;
+		}
+
+		const float drawnLabelRight = std::min(labelLeftEdge + fullLabelSize.x, labelRightEdge);
+		const ImVec2 noteTopLeft(drawnLabelRight + spacing, layout.LabelAt.y);
+		const ImVec2 noteBottomRight(rowRightEdge, layout.LabelAt.y + fullLabelSize.y);
+
+		ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+		ImGui::RenderTextClipped(noteTopLeft, noteBottomRight, note.c_str(), nullptr, nullptr);
+		ImGui::PopStyleColor();
 	}
 
 	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& label)

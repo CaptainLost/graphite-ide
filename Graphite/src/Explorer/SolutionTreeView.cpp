@@ -7,7 +7,7 @@
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
-#include "Core/ImGui/UiScale.h"
+
 #include "Core/Platform/FileDialog.h"
 #include "Core/Text/DocumentSet.h"
 #include "Explorer/FileRow.h"
@@ -40,7 +40,12 @@ namespace Graphite {
 		constexpr bool kNotSelected = false;
 		constexpr bool kOpenTheRow = true;
 		constexpr float kHalf = 0.5f;
-		constexpr float kRenameFieldWidth = 200.0f;
+
+		// The folder glyph tells an open folder from a closed one, as in the file tree.
+		std::string FolderLabel(const std::string& name, bool open)
+		{
+			return std::string{open ? ICON_MDI_FOLDER_OPEN : ICON_MDI_FOLDER} + "  " + name;
+		}
 
 		std::string ChildPath(const std::string& path, const std::string& name)
 		{
@@ -145,19 +150,23 @@ namespace Graphite {
 				ImGui::PushID(kFilteredTreeScope);
 			}
 
-			const std::string label =
-				solution.Name + " (" + Core::Counted(solution.ProjectCount, "project") + ")";
+			const std::string label = std::string{ICON_MDI_MICROSOFT_VISUAL_STUDIO} + "  " + solution.Name;
+			const std::string projectCount = "(" + Core::Counted(solution.ProjectCount, "project") + ")";
 
 			if (OpensToward(solution.Root) || m_RenameWhenListed.IsLooking() || m_ReopenFilteredRows)
 			{
 				ImGui::SetNextItemOpen(kOpenTheRow);
 			}
 
+			// WARNING: The root's id is the solution's path: the same while projects come and go, another for another
+			// solution, so one solution's open rows do not open in the next.
+			const std::string rootId = "##" + Core::ToUtf8(solution.Path);
 			const FileRowLayout layout = LayoutFileRow();
 			const bool rootOpen =
-				ChevronTreeNode(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+				ChevronTreeNode(rootId.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
 			DrawTreeRowLabel(layout, label,
-							 ImGui::IsItemVisible() && GroupDecorationOf(solution.Root) != GitDecoration::None);
+							 ImGui::IsItemVisible() && GroupDecorationOf(solution.Root) != GitDecoration::None,
+							 projectCount);
 
 			DrawGroupMarker(solution.Root, layout);
 			RenderContextMenu(solution.Root, kSolutionRootPath);
@@ -253,8 +262,6 @@ namespace Graphite {
 			return;
 		}
 
-		const std::string label = std::string{ICON_MDI_FOLDER} + "  " + folder.Name;
-
 		if (m_ReopenFilteredRows)
 		{
 			ImGui::SetNextItemOpen(HoldsMatch(folder));
@@ -267,8 +274,9 @@ namespace Graphite {
 
 		const FileRowLayout layout = LayoutFileRow();
 		const bool isOpen =
-			ChevronTreeNode(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
-		DrawTreeRowLabel(layout, label, ImGui::IsItemVisible() && GroupDecorationOf(folder) != GitDecoration::None);
+			ChevronTreeNode(folder.Name.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+		DrawTreeRowLabel(layout, FolderLabel(folder.Name, isOpen),
+						 ImGui::IsItemVisible() && GroupDecorationOf(folder) != GitDecoration::None);
 
 		DrawGroupMarker(folder, layout);
 		RenderContextMenu(folder, path);
@@ -342,7 +350,8 @@ namespace Graphite {
 
 	void SolutionTreeView::RenderReferences(const std::vector<std::string>& references)
 	{
-		if (references.empty() || !ChevronTreeNode("References", ImGuiTreeNodeFlags_SpanAvailWidth, "References"))
+		// WARNING: An id of its own, not the label: a content folder named References sits beside it.
+		if (references.empty() || !ChevronTreeNode("##references", ImGuiTreeNodeFlags_SpanAvailWidth, "References"))
 		{
 			return;
 		}
@@ -361,8 +370,6 @@ namespace Graphite {
 		{
 			if (IsShown(child))
 			{
-				const std::string label = std::string{ICON_MDI_FOLDER} + "  " + child.Name;
-
 				if (m_ReopenFilteredRows)
 				{
 					ImGui::SetNextItemOpen(HoldsMatch(child));
@@ -373,7 +380,12 @@ namespace Graphite {
 					ImGui::SetNextItemOpen(kOpenTheRow);
 				}
 
-				if (ChevronTreeNode(label.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth, label.c_str()))
+				const FileRowLayout layout = LayoutFileRow();
+				const bool isOpen = ChevronTreeNode(child.Name.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth);
+				constexpr bool kNoMarker = false;
+				DrawTreeRowLabel(layout, FolderLabel(child.Name, isOpen), kNoMarker);
+
+				if (isOpen)
 				{
 					RenderContentFolder(child);
 					ImGui::TreePop();
@@ -764,15 +776,17 @@ namespace Graphite {
 
 	void SolutionTreeView::StartRenamingFolder(const Folder& folder, const std::string& path)
 	{
-		m_RenamingFolder = path;
-		m_FocusRenameField = true;
+		constexpr bool kIsFolder = true;
 
-		std::fill(m_RenameBuffer.begin(), m_RenameBuffer.end(), '\0');
-
-		if (folder.Name.size() < m_RenameBuffer.size())
+		if (!m_RenameField.Start(folder.Name, kIsFolder))
 		{
-			std::copy_n(folder.Name.begin(), folder.Name.size(), m_RenameBuffer.begin());
+			APP_ERROR("Cannot rename '{}': the name is too long to edit", folder.Name);
+			m_Events.Publish(FolderToast(Core::ToastKind::Warning, "Cannot rename",
+										 std::format("'{}': the name is too long to edit", folder.Name), m_Workspace.GetRoot()));
+			return;
 		}
+
+		m_RenamingFolder = path;
 	}
 
 	void SolutionTreeView::RenderContextMenu(const Project& project,
@@ -837,31 +851,18 @@ namespace Graphite {
 			return false;
 		}
 
-		if (m_FocusRenameField)
+		switch (m_RenameField.Draw("##renameSlnFolder"))
 		{
-			ImGui::SetKeyboardFocusHere();
-			m_FocusRenameField = false;
-		}
+		case RenameEnd::StillEditing:
+			break;
 
-		ImGui::SetNextItemWidth(Core::Scaled(kRenameFieldWidth));
-
-		const bool committed =
-			ImGui::InputText("##renameSlnFolder", m_RenameBuffer.data(), m_RenameBuffer.size(),
-							 ImGuiInputTextFlags_EnterReturnsTrue |
-								 ImGuiInputTextFlags_AutoSelectAll);
-
-		// WARNING: The Escape poll is scoped to this field. An unscoped one would also catch an Escape aimed at
-		// a modal elsewhere.
-		const bool cancelled = ImGui::IsItemFocused() && ImGui::IsKeyPressed(ImGuiKey_Escape);
-		const bool deactivated = !cancelled && ImGui::IsItemDeactivated();
-
-		if (cancelled)
-		{
+		case RenameEnd::Cancelled:
 			m_RenamingFolder.clear();
-		}
-		else if (committed || deactivated)
+			break;
+
+		case RenameEnd::Committed:
 		{
-			const std::string typed = m_RenameBuffer.data();
+			const std::string typed = m_RenameField.Text();
 
 			if (!typed.empty() && typed != folder.Name)
 			{
@@ -869,6 +870,8 @@ namespace Graphite {
 			}
 
 			m_RenamingFolder.clear();
+			break;
+		}
 		}
 
 		return true;

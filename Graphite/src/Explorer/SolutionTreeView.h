@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Explorer/PendingFolderRename.h"
+#include "Explorer/RowRenameField.h"
 #include "Explorer/TreeReveal.h"
 #include "Workspace/Workspace.h"
 
@@ -11,8 +12,6 @@
 
 #include <imgui.h>
 
-#include <array>
-#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <string>
@@ -46,8 +45,6 @@ namespace Graphite {
 		void WithdrawQuestions();
 
 	private:
-		static constexpr std::size_t kRenameBufferSize = 256;
-
 		static constexpr const char* kRemoveTitle = "Remove from Solution##solutionTreeRemove";
 
 		struct RemoveQuestion
@@ -153,9 +150,8 @@ namespace Graphite {
 		std::filesystem::path m_RevealPath;
 
 		PendingAction m_Pending;
-		std::array<char, kRenameBufferSize> m_RenameBuffer{};
+		RowRenameField m_RenameField;
 		std::string m_RenamingFolder;
-		bool m_FocusRenameField = false;
 
 		PendingFolderRename m_RenameWhenListed;
 	};

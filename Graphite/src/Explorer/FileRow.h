@@ -69,7 +69,10 @@ namespace Graphite {
 	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& label);
 
 	// WARNING: Call this while the row's own item is the last one, before the row's marker is drawn.
-	void DrawTreeRowLabel(const FileRowLayout& layout, const std::string& label, bool hasMarker);
+	// A note, a count, follows the label dim, and the label is cut short first to leave it room. A row too narrow for
+	// the note beside the start of the label shows the label alone.
+	void DrawTreeRowLabel(const FileRowLayout& layout, const std::string& label, bool hasMarker,
+						  const std::string& note = {});
 
 	// WARNING: Call this while the row's own item is the last one: the marker's tooltip is shown
 	// only while that item is hovered.
