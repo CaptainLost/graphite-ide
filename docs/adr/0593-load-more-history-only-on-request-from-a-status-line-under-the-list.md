@@ -24,7 +24,7 @@ Each click asks again from the newest commit with a longer reach:
 - Load all and Search all: no limit on either.
 - Another ref or another filter starts again at 500 commits and 20,000 walked. A refresh keeps the reach the reader asked for.
 
-`LogPage::Walked` says how many commits the walk visited. The total is `Repository::CountCommits`, counted in the background beside the log and again only when the ref's tip has moved.
+`LogPage::Walked` says how many commits the walk visited. The total is `Repository::CountCommits`, counted in the background beside the log. The count is kept for one ref at a time, and walked again when that ref's tip moves or another ref was counted in between.
 
 ## Rationale
 
@@ -42,7 +42,9 @@ The reader decides when the list grows, so the list never changes under them una
 
 - Reading a long history takes a click per 500 commits, or one Load all.
 - Load all has no limit: on a history of a million commits it is about a minute of background work and several hundred megabytes, and every refresh walks the whole history again.
-- Counting walks the whole history once per tip move, in the background.
+- Counting walks the whole history once per tip move, and again after another ref was counted, in the background.
+- A page read to its root makes each frame of the history linear in it: building the rows, choosing the diffs to read and drawing the graph each visit every commit, so on a history of hundreds of thousands of commits the list stutters after Load all. A row index built once per page would make a frame proportional to what is on screen; it is left for later.
+- A refresh while a log is being read waits for it and asks once when it lands, so a long walk is never queued behind itself; the walk itself still repeats after every refresh.
 
 ### Neutral
 
