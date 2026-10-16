@@ -16,7 +16,9 @@ namespace Graphite {
 	// none tracking it, that remote branch. Null without origin/HEAD.
 	const Core::Branch* DefaultBranch(const std::vector<Core::Branch>& branches);
 
-	// The default branch's tip and its upstream's; without a default branch, the checked-out
-	// branch's and its upstream's. Empty with neither.
+	// The default branch, or without one the checked-out branch. Null with neither.
+	const Core::Branch* TrunkBranch(const std::vector<Core::Branch>& branches);
+
+	// The trunk branch's tip and its upstream's. Empty without a trunk branch.
 	std::vector<Core::Oid> TrunkTips(const std::vector<Core::Branch>& branches);
 }

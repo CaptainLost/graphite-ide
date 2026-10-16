@@ -98,10 +98,16 @@ namespace Graphite {
 		return firstTracking != nullptr ? firstTracking : originDefault;
 	}
 
-	std::vector<Core::Oid> TrunkTips(const std::vector<Core::Branch>& branches)
+	const Core::Branch* TrunkBranch(const std::vector<Core::Branch>& branches)
 	{
 		const Core::Branch* defaultBranch = DefaultBranch(branches);
-		const Core::Branch* trunk = defaultBranch != nullptr ? defaultBranch : CheckedOutBranch(branches);
+
+		return defaultBranch != nullptr ? defaultBranch : CheckedOutBranch(branches);
+	}
+
+	std::vector<Core::Oid> TrunkTips(const std::vector<Core::Branch>& branches)
+	{
+		const Core::Branch* trunk = TrunkBranch(branches);
 
 		std::vector<Core::Oid> tips;
 

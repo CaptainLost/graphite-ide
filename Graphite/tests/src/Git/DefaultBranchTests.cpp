@@ -50,6 +50,38 @@ namespace {
 	}
 }
 
+TEST_CASE("The trunk branch is the default branch even while another is checked out")
+{
+	const std::vector<Core::Branch> branches = {
+		Tracking(LocalBranch("main", kNotCheckedOut, kMainTipByte), "origin/main"),
+		LocalBranch("feature", kCheckedOut, kFeatureTipByte),
+		AsRemoteDefault(RemoteBranch("origin/main", kOriginMainTipByte)),
+	};
+
+	const Core::Branch* trunk = Graphite::TrunkBranch(branches);
+
+	REQUIRE(trunk != nullptr);
+	CHECK(trunk->Name == "main");
+}
+
+TEST_CASE("Without origin HEAD the trunk branch is the checked-out one, and with neither there is none")
+{
+	const std::vector<Core::Branch> checkedOut = {
+		LocalBranch("main", kCheckedOut, kMainTipByte),
+		RemoteBranch("origin/main", kOriginMainTipByte),
+	};
+	const std::vector<Core::Branch> detached = {
+		LocalBranch("main", kNotCheckedOut, kMainTipByte),
+		RemoteBranch("origin/main", kOriginMainTipByte),
+	};
+
+	const Core::Branch* trunk = Graphite::TrunkBranch(checkedOut);
+
+	REQUIRE(trunk != nullptr);
+	CHECK(trunk->Name == "main");
+	CHECK(Graphite::TrunkBranch(detached) == nullptr);
+}
+
 TEST_CASE("The trunk is the default branch and its upstream")
 {
 	const std::vector<Core::Branch> branches = {

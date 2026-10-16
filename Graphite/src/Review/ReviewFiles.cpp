@@ -82,8 +82,7 @@ namespace Graphite {
 
 	std::optional<ReviewOffer> OfferReview(const Core::Branch& branch, const std::vector<Core::Branch>& branches)
 	{
-		const Core::Branch* defaultBranch = DefaultBranch(branches);
-		const Core::Branch* base = defaultBranch != nullptr ? defaultBranch : CheckedOutBranch(branches);
+		const Core::Branch* base = TrunkBranch(branches);
 
 		if (base == nullptr)
 		{
