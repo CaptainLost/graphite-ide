@@ -7,6 +7,7 @@
 #include "Core/Platform/UniqueHandle.h"
 #include "Core/Platform/Win32Owners.h"
 #include "Core/Platform/Win32Error.h"
+#include "Core/Platform/Win32Io.h"
 
 #include <algorithm>
 #include <cwchar>
@@ -360,24 +361,7 @@ namespace Core {
 	bool ChildProcess::Write([[maybe_unused]] std::string_view bytes)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		std::size_t bytesWritten = 0;
-
-		while (bytesWritten < bytes.size())
-		{
-			DWORD bytesWrittenThisCall = 0;
-			const BOOL writeSucceeded =
-				::WriteFile(m_ToChild.Get(), bytes.data() + bytesWritten,
-							static_cast<DWORD>(bytes.size() - bytesWritten), &bytesWrittenThisCall, nullptr);
-
-			if (!writeSucceeded)
-			{
-				return false;
-			}
-
-			bytesWritten += bytesWrittenThisCall;
-		}
-
-		return true;
+		return WriteAll(m_ToChild.Get(), bytes);
 #else
 		return false;
 #endif

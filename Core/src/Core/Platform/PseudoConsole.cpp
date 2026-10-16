@@ -6,6 +6,7 @@
 #include "Core/Platform/UniqueHandle.h"
 #include "Core/Platform/Win32Owners.h"
 #include "Core/Platform/Win32Error.h"
+#include "Core/Platform/Win32Io.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
@@ -56,16 +57,6 @@ namespace Core {
 		COORD ToConsoleSize(std::uint16_t columns, std::uint16_t rows)
 		{
 			return COORD{.X = static_cast<SHORT>(columns), .Y = static_cast<SHORT>(rows)};
-		}
-
-		// The OVERLAPPED lives on the caller's stack and the kernel writes into it until the cancelled
-		// read is collected, so this waits for the cancellation before the caller may return.
-		void CancelAndCollectRead(HANDLE pipe, OVERLAPPED& overlapped)
-		{
-			DWORD discardedByteCount = 0;
-			const BOOL waitForCancellation = TRUE;
-			::CancelIoEx(pipe, &overlapped);
-			::GetOverlappedResult(pipe, &overlapped, &discardedByteCount, waitForCancellation);
 		}
 
 		// CreatePipe cannot make an overlapped end, and the reading end must be one: the host owns
@@ -131,7 +122,7 @@ namespace Core {
 
 			if (waitResult != kReadFinished)
 			{
-				CancelAndCollectRead(pipe, overlapped);
+				CancelAndCollect(pipe, overlapped);
 				return 0;
 			}
 
@@ -212,7 +203,7 @@ namespace Core {
 
 				if (waitResult != kReadFinished)
 				{
-					CancelAndCollectRead(pipe, overlapped);
+					CancelAndCollect(pipe, overlapped);
 					break;
 				}
 
@@ -496,24 +487,7 @@ namespace Core {
 			return false;
 		}
 
-		std::size_t bytesWritten = 0;
-
-		while (bytesWritten < bytes.size())
-		{
-			DWORD chunkBytesWritten = 0;
-			const BOOL wrote = ::WriteFile(m_ToChild.Get(), bytes.data() + bytesWritten,
-										   static_cast<DWORD>(bytes.size() - bytesWritten), &chunkBytesWritten, nullptr);
-			const bool writeStalled = !wrote || chunkBytesWritten == 0;
-
-			if (writeStalled)
-			{
-				return false;
-			}
-
-			bytesWritten += chunkBytesWritten;
-		}
-
-		return true;
+		return WriteAll(m_ToChild.Get(), bytes);
 #else
 		return false;
 #endif

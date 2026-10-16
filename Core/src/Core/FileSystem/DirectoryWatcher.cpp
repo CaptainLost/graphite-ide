@@ -8,6 +8,7 @@
 #include "Core/Base/Log.h"
 #include "Core/Base/ScopeExit.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Platform/Win32Io.h"
 
 #include <functional>
 
@@ -288,12 +289,7 @@ namespace Core {
 
 				// The kernel keeps writing into the buffer until the outstanding read is
 				// cancelled and collected; leaving it out is a use-after-free under load.
-				::CancelIoEx(m_Directory.Get(), &overlapped);
-
-				DWORD discardedBytes = 0;
-				const BOOL waitForCancellation = TRUE;
-				::GetOverlappedResult(m_Directory.Get(), &overlapped, &discardedBytes,
-									  waitForCancellation);
+				CancelAndCollect(m_Directory.Get(), overlapped);
 				break;
 			}
 
