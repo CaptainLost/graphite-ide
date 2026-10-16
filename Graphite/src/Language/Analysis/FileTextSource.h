@@ -3,11 +3,11 @@
 #include "Core/Base/Base.h"
 
 #include "Core/Jobs/JobQueue.h"
+#include "Core/Jobs/Mailbox.h"
 
 #include <filesystem>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -53,14 +53,8 @@ namespace Graphite {
 
 	private:
 		// WARNING: Held through a shared_ptr so a read still finishing as this object goes away
-		// has a valid block to write to.
-		struct Ready
-		{
-			std::mutex Mutex;
-			std::vector<FileText> Texts;
-		};
-
-		Core::Ref<Ready> m_Ready = Core::CreateRef<Ready>();
+		// has a valid mailbox to post to.
+		Core::Ref<Core::Mailbox<FileText>> m_Ready = Core::CreateRef<Core::Mailbox<FileText>>();
 
 		// WARNING: Declared last so the worker is joined before the members it touches are destroyed.
 		Core::JobQueue m_Jobs{1};

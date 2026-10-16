@@ -2,7 +2,6 @@
 
 #include "Core/Base/Base.h"
 
-#include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Repository.h"
@@ -1152,12 +1151,7 @@ namespace Graphite {
 			Core::Result<std::string> read = Core::ReadFileBytes(file, Core::MaximumFileSize);
 			std::string text = read ? std::move(read.GetValue()) : std::string{};
 
-			{
-				const std::lock_guard<std::mutex> guard(warm->Mutex);
-				warm->Found.push_back(WarmFinding{language, file, std::move(text)});
-			}
-
-			Core::Redraw::Request();
+			warm->Post(WarmFinding{language, file, std::move(text)});
 		});
 	}
 
@@ -1168,10 +1162,7 @@ namespace Graphite {
 		m_WarmToken.Cancel();
 		m_WarmToken = Core::CancellationToken{};
 
-		{
-			const std::lock_guard<std::mutex> guard(m_Warm->Mutex);
-			m_Warm->Found.clear();
-		}
+		m_Warm->Clear();
 
 		if (!Permits(root))
 		{
@@ -1223,23 +1214,13 @@ namespace Graphite {
 				return;
 			}
 
-			{
-				const std::lock_guard<std::mutex> guard(searches->Mutex);
-				searches->Found.push_back(FoundProjects{.Server = key, .Search = search, .Projects = std::move(projects)});
-			}
-
-			Core::Redraw::Request();
+			searches->Post(FoundProjects{.Server = key, .Search = search, .Projects = std::move(projects)});
 		});
 	}
 
 	void LanguageServices::StartSearchedServers()
 	{
-		std::vector<FoundProjects> found;
-
-		{
-			const std::lock_guard<std::mutex> guard(m_ProjectSearches->Mutex);
-			found.swap(m_ProjectSearches->Found);
-		}
+		std::vector<FoundProjects> found = m_ProjectSearches->TakeAll();
 
 		for (FoundProjects& search : found)
 		{
@@ -1276,12 +1257,7 @@ namespace Graphite {
 
 	void LanguageServices::Poll()
 	{
-		std::vector<WarmFinding> warmFindings;
-
-		{
-			const std::lock_guard<std::mutex> guard(m_Warm->Mutex);
-			warmFindings.swap(m_Warm->Found);
-		}
+		std::vector<WarmFinding> warmFindings = m_Warm->TakeAll();
 
 		for (WarmFinding& finding : warmFindings)
 		{

@@ -1,6 +1,5 @@
 #include "Language/Analysis/FileTextSource.h"
 
-#include "Core/App/Redraw.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/Codec.h"
 #include "Core/Text/FileProbe.h"
@@ -96,27 +95,14 @@ namespace Graphite {
 
 	void DiskFileTexts::Request(const std::filesystem::path& path)
 	{
-		m_Jobs.Submit([ready = m_Ready, path] {
-			FileText read = ReadFileText(path);
-
-			{
-				const std::lock_guard<std::mutex> lock(ready->Mutex);
-				ready->Texts.push_back(std::move(read));
-			}
-
-			Core::Redraw::Request();
-		});
+		m_Jobs.Submit([ready = m_Ready, path] { ready->Post(ReadFileText(path)); });
 	}
 
 	void DiskFileTexts::Take(std::vector<FileText>& destination)
 	{
-		const std::lock_guard<std::mutex> lock(m_Ready->Mutex);
-
-		for (FileText& text : m_Ready->Texts)
+		for (FileText& text : m_Ready->TakeAll())
 		{
 			destination.push_back(std::move(text));
 		}
-
-		m_Ready->Texts.clear();
 	}
 }

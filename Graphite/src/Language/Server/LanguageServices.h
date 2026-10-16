@@ -17,8 +17,8 @@
 #include "Core/FileSystem/FileHold.h"
 #include "Core/Jobs/CancellationToken.h"
 #include "Core/Jobs/JobQueue.h"
+#include "Core/Jobs/Mailbox.h"
 
-#include <mutex>
 #include <optional>
 
 #include <chrono>
@@ -320,11 +320,7 @@ namespace Graphite {
 			std::string Text;
 		};
 
-		struct WarmFindings
-		{
-			std::mutex Mutex;
-			std::vector<WarmFinding> Found;
-		};
+		using WarmFindings = Core::Mailbox<WarmFinding>;
 
 		static void RunWarmUpWalk(const Core::Ref<WarmFindings>& warm, const Core::CancellationToken& token,
 								  const std::filesystem::path& root, const std::filesystem::path& selectedSolution,
@@ -340,13 +336,7 @@ namespace Graphite {
 			ProjectsBelow Projects;
 		};
 
-		struct ProjectSearches
-		{
-			std::mutex Mutex;
-			std::vector<FoundProjects> Found;
-		};
-
-		Core::Ref<ProjectSearches> m_ProjectSearches = Core::CreateRef<ProjectSearches>();
+		Core::Ref<Core::Mailbox<FoundProjects>> m_ProjectSearches = Core::CreateRef<Core::Mailbox<FoundProjects>>();
 		std::uint64_t m_NextProjectSearch = 1;
 		Core::CancellationToken m_ProjectSearchToken;
 
