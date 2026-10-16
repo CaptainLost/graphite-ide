@@ -10,6 +10,7 @@
 #include "Core/Platform/Win32Io.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cwchar>
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -414,9 +415,31 @@ namespace Core {
 			return true;
 		}
 
-		const long long waitMilliseconds = std::clamp<long long>(timeout.count(), 0, kLongestFiniteWait);
+		const std::chrono::milliseconds wait =
+			std::clamp(timeout, std::chrono::milliseconds{0}, std::chrono::milliseconds{kLongestFiniteWait});
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + wait;
+		std::chrono::milliseconds remaining = wait;
 
-		return ::WaitForSingleObject(m_Process.Get(), static_cast<DWORD>(waitMilliseconds)) == WAIT_OBJECT_0;
+		// WARNING: A wait can end up to a clock tick before its timeout, so what is left is waited again until the
+		// deadline has passed: a caller that gave the child long enough would otherwise act early.
+		while (true)
+		{
+			const DWORD waitResult = ::WaitForSingleObject(m_Process.Get(), static_cast<DWORD>(remaining.count()));
+
+			if (waitResult != WAIT_TIMEOUT)
+			{
+				return waitResult == WAIT_OBJECT_0;
+			}
+
+			const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+			if (now >= deadline)
+			{
+				return false;
+			}
+
+			remaining = std::chrono::ceil<std::chrono::milliseconds>(deadline - now);
+		}
 #else
 		return true;
 #endif
