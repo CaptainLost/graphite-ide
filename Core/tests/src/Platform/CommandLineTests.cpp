@@ -1,10 +1,37 @@
 #include <doctest/doctest.h>
 
 #include "Core/Base/PlatformDetection.h"
+#include "Core/Platform/CommandLine.h"
+
+#include <string>
+
+TEST_CASE("QuoteWindowsArgument leaves an argument with nothing to split it as it is")
+{
+	CHECK(Core::QuoteWindowsArgument("--log=verbose") == "--log=verbose");
+	CHECK(Core::QuoteWindowsArgument(R"(C:\plain\path\)") == R"(C:\plain\path\)");
+}
+
+TEST_CASE("QuoteWindowsArgument quotes an empty argument so it is not lost")
+{
+	CHECK(Core::QuoteWindowsArgument("") == R"("")");
+}
+
+TEST_CASE("QuoteWindowsArgument escapes a quote and doubles the backslashes before it")
+{
+	CHECK(Core::QuoteWindowsArgument(R"(a\"b)") == R"("a\\\"b")");
+}
+
+TEST_CASE("QuoteWindowsArgument doubles a trailing backslash so the closing quote stays a quote")
+{
+	CHECK(Core::QuoteWindowsArgument(R"(C:\my dir\)") == R"("C:\my dir\\")");
+}
+
+TEST_CASE("QuoteWindowsArgument passes UTF-8 through byte for byte")
+{
+	CHECK(Core::QuoteWindowsArgument("zażółć jaźń") == "\"zażółć jaźń\"");
+}
 
 #ifdef CORE_PLATFORM_WINDOWS
-
-#include "Core/Platform/CommandLine.h"
 
 #include <Windows.h>
 #include <shellapi.h>

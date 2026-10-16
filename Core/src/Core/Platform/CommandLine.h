@@ -2,10 +2,19 @@
 
 #include "Core/Base/PlatformDetection.h"
 
+#include <string>
+#include <string_view>
+
+namespace Core {
+
+	// Quotes one argument, when it needs quoting, so the CommandLineToArgvW rules split it back out unchanged. It works on
+	// UTF-8 as it stands: every character those rules look at is ASCII, and no byte of a longer character is one of them.
+	std::string QuoteWindowsArgument(std::string_view argument);
+}
+
 #ifdef CORE_PLATFORM_WINDOWS
 
 #include <filesystem>
-#include <string>
 #include <vector>
 
 namespace Core {
