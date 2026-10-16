@@ -2871,3 +2871,28 @@ TEST_CASE("Closing the workspace drops a refresh held behind a log in flight")
 
 	CHECK(port.LogCalls == 1);
 }
+
+TEST_CASE("A log is submitted before the length of its history, so its first page does not wait for the count")
+{
+	FakePort port;
+	std::vector<std::function<void()>> submitted;
+
+	Graphite::GitModel model{port, [&submitted](std::function<void()> job) { submitted.push_back(std::move(job)); }};
+	model.SetRoot("C:/repo");
+
+	Core::LogRequest request;
+	request.Ref = "refs/heads/main";
+
+	model.RequestLog(request);
+	REQUIRE(submitted.size() == 2);
+
+	submitted.front()();
+
+	CHECK(port.LogCalls == 1);
+	CHECK(port.CountCalls == 0);
+
+	submitted.back()();
+
+	CHECK(port.CountCalls == 1);
+	CHECK(port.LastCountRef == request.Ref);
+}

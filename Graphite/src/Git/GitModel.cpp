@@ -306,10 +306,10 @@ namespace Graphite {
 		m_LastLogRequest = request;
 		m_LastOwnRequest = ownCommits;
 
-		if (!request.Stash.has_value())
-		{
-			RequestCommitCount(request.Ref);
-		}
+		// Copied before the request moves into the log's job, which goes first: on a single worker the
+		// first page of a new ref would otherwise wait for a walk of its whole history.
+		const std::optional<std::string> countedRef = request.Ref;
+		const bool isStash = request.Stash.has_value();
 
 		m_Submit([this, generation, ownGeneration, request = std::move(request),
 				  ownCommits = std::move(ownCommits)]() {
@@ -336,6 +336,11 @@ namespace Graphite {
 				AskHeldLogRefresh();
 			});
 		});
+
+		if (!isStash)
+		{
+			RequestCommitCount(countedRef);
+		}
 	}
 
 	void GitModel::LandOwnCommits(std::uint64_t generation, std::optional<Core::Result<Core::LogPage>> result,
