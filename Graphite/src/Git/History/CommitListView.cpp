@@ -647,6 +647,14 @@ namespace Graphite {
 	void CommitListView::RenderSeparatorRow(const std::string& text)
 	{
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
+
+		const float spareRoom = ImGui::GetContentRegionAvail().x - Core::TextWidth(text);
+
+		if (spareRoom > 0.0f)
+		{
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + spareRoom * kHalf);
+		}
+
 		FittedText(text, ImGui::GetColorU32(ImGuiCol_TextDisabled), kNoHighlight);
 	}
 
