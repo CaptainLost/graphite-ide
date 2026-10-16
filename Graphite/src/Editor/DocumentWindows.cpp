@@ -776,42 +776,6 @@ namespace Graphite {
 		keys.SetDefault("document.saveAll",
 						{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)});
 
-		const bool fromChord = false;
-		const bool fromMenu = true;
-
-		for (const EditorCommandSpec& spec : EditorCommandSpecs())
-		{
-			const EditorAction action = spec.Action;
-
-			commands.Add({.Id = spec.Id,
-						  .Label = spec.Label,
-						  .Run = [this, action, fromChord] { QueueOnActiveDocument(action, fromChord); },
-						  .RunFromMenu = [this, action, fromMenu] { QueueOnActiveDocument(action, fromMenu); },
-						  .Enabled = [this, action] { return CanRunOnActiveDocument(action); },
-						  .KeyScope = Core::ShortcutScope::FocusedEditor,
-						  .RepeatsWhileHeld = spec.Repeats});
-
-			keys.SetDefault(spec.Id, BindingOf(spec));
-		}
-
-		commands.Add({.Id = kSaveCommand,
-					  .Label = "Save",
-					  .Run = [this] { RequestSaveOfActiveDocument(); },
-					  .Enabled = [this] { return ActiveTabHoldsDocument(); },
-					  .KeyScope = Core::ShortcutScope::FocusedEditor,
-					  .RepeatsWhileHeld = false});
-
-		keys.SetDefault(kSaveCommand, SaveBinding());
-
-		commands.Add({.Id = kCloseCommand,
-					  .Label = "Close Tab",
-					  .Run = [this] { RequestCloseOfActiveTab(); },
-					  .Enabled = [this] { return FindActiveTextItem() != nullptr; },
-					  .KeyScope = Core::ShortcutScope::FocusedEditor,
-					  .RepeatsWhileHeld = false});
-
-		keys.SetDefault(kCloseCommand, CloseBinding());
-
 		commands.Add({.Id = kSwitchHeaderSourceCommand,
 					  .Label = "Switch Header/Source",
 					  .Run = [this] { RequestSwitchSourceHeaderOfActiveDocument(); },
@@ -820,6 +784,30 @@ namespace Graphite {
 
 		keys.SetDefault(kSwitchHeaderSourceCommand,
 						{.Primary = Core::Chord::Key(ImGuiMod_Alt | ImGuiKey_O)});
+	}
+
+	void DocumentWindows::OpenFind()
+	{
+		if (Core::OpenItem* item = FindActiveTextItem())
+		{
+			m_FindBar.Open(*item);
+		}
+	}
+
+	void DocumentWindows::GoToDefinition()
+	{
+		if (const std::optional<std::size_t> index = FindActiveTextIndex())
+		{
+			RequestDefinition(*index);
+		}
+	}
+
+	void DocumentWindows::FindReferences(ReferencesPanel& panel)
+	{
+		if (const std::optional<std::size_t> index = FindActiveTextIndex())
+		{
+			RequestReferences(*index, panel);
+		}
 	}
 
 	std::optional<std::size_t> DocumentWindows::FindActiveTextIndex()
@@ -851,7 +839,7 @@ namespace Graphite {
 		const Core::OpenItem* item = FindActiveTextItem();
 		const bool hasText = action == EditorAction::Paste && Core::ClipboardHasText();
 
-		return item != nullptr && CanRun(action, *item, hasText);
+		return item != nullptr && Graphite::CanRun(action, *item, hasText);
 	}
 
 	void DocumentWindows::RequestSaveOfActiveDocument()
@@ -1206,6 +1194,7 @@ namespace Graphite {
 	void DocumentWindows::ActivateAndRememberNode(std::size_t index)
 	{
 		m_Documents.Activate(index);
+		m_ActiveEditor.Set(*this);
 
 		if (ImGuiWindow* window = ImGui::GetCurrentWindow();
 			window != nullptr && window->DockNode != nullptr)

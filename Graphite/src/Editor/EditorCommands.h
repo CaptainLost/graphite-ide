@@ -5,12 +5,15 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace Core {
 	struct OpenItem;
+	class CommandRegistry;
+	class Keymap;
 }
 
 namespace Graphite {
@@ -71,4 +74,16 @@ namespace Graphite {
 										  const std::optional<std::string>& clipboard);
 
 	std::vector<Core::MenuItem> BuildEditorContextMenu();
+
+	class ActiveEditorTarget;
+	class ReferencesPanel;
+
+	struct EditorCommandServices
+	{
+		std::function<bool(const std::filesystem::path&)> HasLanguageServer;
+		ReferencesPanel* References = nullptr;
+	};
+
+	void RegisterEditorCommands(Core::CommandRegistry& commands, Core::Keymap& keys,
+								ActiveEditorTarget& active, EditorCommandServices services);
 }

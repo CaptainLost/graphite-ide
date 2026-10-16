@@ -1,6 +1,10 @@
 #include "Editor/EditorCommands.h"
 
+#include "Editor/EditorCommandTarget.h"
 #include "Language/Registry/LanguageRegistry.h"
+
+#include "Core/Command/CommandRegistry.h"
+#include "Core/Command/Keymap.h"
 
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
@@ -198,5 +202,87 @@ namespace Graphite {
 				Core::MenuItem::Separator(),
 				Core::MenuItem::Command(kToggleLineCommentCommand),
 				Core::MenuItem::Command(kSelectAllCommand)};
+	}
+
+	void RegisterEditorCommands(Core::CommandRegistry& commands, Core::Keymap& keys,
+								ActiveEditorTarget& active, EditorCommandServices services)
+	{
+		const bool fromChord = false;
+		const bool fromMenu = true;
+
+		for (const EditorCommandSpec& spec : EditorCommandSpecs())
+		{
+			const EditorAction action = spec.Action;
+
+			commands.Add({.Id = spec.Id,
+						  .Label = spec.Label,
+						  .Run = [&active, action, fromChord] { active.Get()->Queue(action, fromChord); },
+						  .RunFromMenu = [&active, action, fromMenu] { active.Get()->Queue(action, fromMenu); },
+						  .Enabled = [&active, action] { return active.Get() != nullptr && active.Get()->CanRun(action); },
+						  .KeyScope = Core::ShortcutScope::FocusedEditor,
+						  .RepeatsWhileHeld = spec.Repeats});
+
+			keys.SetDefault(spec.Id, BindingOf(spec));
+		}
+
+		commands.Add({.Id = kSaveCommand,
+					  .Label = "Save",
+					  .Run = [&active] { active.Get()->Save(); },
+					  .Enabled = [&active] { return active.Get() != nullptr && active.Get()->CanSave(); },
+					  .KeyScope = Core::ShortcutScope::FocusedEditor,
+					  .RepeatsWhileHeld = false});
+
+		keys.SetDefault(kSaveCommand, SaveBinding());
+
+		commands.Add({.Id = kCloseCommand,
+					  .Label = "Close Tab",
+					  .Run = [&active] { active.Get()->Close(); },
+					  .Enabled = [&active] { return active.Get() != nullptr && active.Get()->CanClose(); },
+					  .KeyScope = Core::ShortcutScope::FocusedEditor,
+					  .RepeatsWhileHeld = false});
+
+		keys.SetDefault(kCloseCommand, CloseBinding());
+
+		// The commands below are global, as before: they also run from a panel, on the view the
+		// user last worked in.
+		commands.Add({.Id = "find.open",
+					  .Label = "Find",
+					  .Run = [&active] { active.Get()->OpenFind(); },
+					  .Enabled = [&active] { return active.Get() != nullptr && active.Get()->CanFind(); }});
+
+		keys.SetDefault("find.open", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_F)});
+
+		const auto hasServerAtCaret = [&active, hasLanguageServer = services.HasLanguageServer] {
+			if (active.Get() == nullptr)
+			{
+				return false;
+			}
+
+			const std::optional<std::filesystem::path> file = active.Get()->CaretFile();
+
+			return file.has_value() && hasLanguageServer(*file);
+		};
+
+		commands.Add({.Id = kGoToDefinitionCommand,
+					  .Label = "Go to Definition",
+					  .Run = [&active] { active.Get()->GoToDefinition(); },
+					  .Enabled = hasServerAtCaret});
+
+		keys.SetDefault(kGoToDefinitionCommand, {.Primary = Core::Chord::Key(ImGuiKey_F12)});
+
+		ReferencesPanel* const references = services.References;
+
+		commands.Add({.Id = kFindReferencesCommand,
+					  .Label = "Find All References",
+					  .Run = [&active, references] {
+						  if (references != nullptr)
+						  {
+							  active.Get()->FindReferences(*references);
+						  }
+					  },
+					  .Enabled = hasServerAtCaret});
+
+		keys.SetDefault(kFindReferencesCommand,
+						{.Primary = Core::Chord::Key(ImGuiMod_Shift | ImGuiKey_F12)});
 	}
 }

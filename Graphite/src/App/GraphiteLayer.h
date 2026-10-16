@@ -6,6 +6,7 @@
 #include "Editor/DocumentBuffers.h"
 #include "Editor/DocumentWindows.h"
 #include "Editor/EditorCommands.h"
+#include "Editor/EditorCommandTarget.h"
 #include "Editor/EditorSettings.h"
 #include "Editor/Server/LanguageServicesPort.h"
 #include "App/AboutDialog.h"
@@ -256,13 +257,16 @@ namespace Graphite {
 
 		Core::TabCloseRequests m_TabCloseRequests;
 
+		// WARNING: Declared before m_DocumentWindows, which holds it by reference and sets itself on it.
+		ActiveEditorTarget m_ActiveEditor;
+
 		// WARNING: Declared after m_DocumentPort, m_Analysis and m_AnalysisCoordinator, which it holds by reference.
 		// m_ChangeMarkers is declared further down and is not yet constructed here; only a reference to it
 		// is bound, and nothing reaches through that reference until the first frame.
 		DocumentWindows m_DocumentWindows{m_Documents, m_Modals, m_DocumentPort,
 										  m_Diagnostics, m_ChangeMarkers, m_PreviewSemantics,
 										  m_Analysis, m_AnalysisCoordinator.GetStore(),
-										  m_AnalysisCoordinator.GetPass(), m_Events};
+										  m_AnalysisCoordinator.GetPass(), m_Events, m_ActiveEditor};
 
 		// WARNING: Declared after m_Documents and m_DocumentWindows and before m_Panels, where GitView holds it by reference.
 		DocumentBuffers m_DocumentBuffers{m_Documents, m_DocumentWindows};

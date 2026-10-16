@@ -2,6 +2,8 @@
 
 #include "UI/ModalGate.h"
 #include "Editor/Documents/DocumentStates.h"
+#include "Editor/ActiveTextDocument.h"
+#include "Editor/EditorCommandTarget.h"
 #include "Editor/Overlays/DiagnosticOverlay.h"
 #include "Editor/Server/DocumentServerPort.h"
 #include "Editor/EditorWidgetState.h"
@@ -69,14 +71,16 @@ namespace Graphite {
 		const std::filesystem::path& WorkspaceRoot;
 	};
 
-	class DocumentWindows
+	class DocumentWindows final : public EditorCommandTarget
 	{
 	public:
 		DocumentWindows(Core::DocumentSet& documents, ModalGate& modals,
 						DocumentServerPort& server, const DiagnosticsModel& diagnostics,
 						ChangeMarkersModel& changeMarkers, PreviewSemantics& previewSemantics, AnalysisCache& analysis,
-						AnalysisStore& analysisStore, WorkspaceAnalysis& workspaceAnalysis, Core::EventBus& events)
+						AnalysisStore& analysisStore, WorkspaceAnalysis& workspaceAnalysis, Core::EventBus& events,
+						ActiveEditorTarget& activeEditor)
 			: m_Documents(documents),
+			  m_ActiveEditor(activeEditor),
 			  m_Events(events),
 			  m_Server(server),
 			  m_Diagnostics(diagnostics),
@@ -124,6 +128,18 @@ namespace Graphite {
 
 		void RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys);
 
+		bool CanRun(EditorAction action) override { return CanRunOnActiveDocument(action); }
+		void Queue(EditorAction action, bool fromMenu) override { QueueOnActiveDocument(action, fromMenu); }
+		bool CanSave() override { return ActiveTabHoldsDocument(); }
+		void Save() override { RequestSaveOfActiveDocument(); }
+		bool CanClose() override { return FindActiveTextItem() != nullptr; }
+		void Close() override { RequestCloseOfActiveTab(); }
+		bool CanFind() override { return FindActiveTextItem() != nullptr; }
+		void OpenFind() override;
+		std::optional<std::filesystem::path> CaretFile() override { return ActiveTextDocument(m_Documents); }
+		void GoToDefinition() override;
+		void FindReferences(ReferencesPanel& panel) override;
+
 		std::optional<std::string> GetStatusMessage() const;
 
 		void SetTransientMessage(std::string text);
@@ -135,8 +151,6 @@ namespace Graphite {
 		void RequestSwitchSourceHeader(std::size_t index);
 
 		void RequestReferences(std::size_t index, ReferencesPanel& panel);
-
-		void OpenFind(Core::OpenItem& item) { m_FindBar.Open(item); }
 
 		void ExpectExternalWrite(const std::vector<std::filesystem::path>& paths)
 		{
@@ -347,6 +361,7 @@ namespace Graphite {
 		};
 
 		Core::DocumentSet& m_Documents;
+		ActiveEditorTarget& m_ActiveEditor;
 
 		Core::EventBus& m_Events;
 
