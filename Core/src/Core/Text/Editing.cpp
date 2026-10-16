@@ -17,9 +17,6 @@
 namespace Core {
 
 	namespace {
-		constexpr char kSpaceAfterCommentPrefix = ' ';
-		constexpr std::size_t kTabByteCount = 1;
-		constexpr std::size_t kSpaceAfterCommentPrefixByteCount = 1;
 		constexpr std::size_t kPlaceholderIndentDepth = 0;
 
 		struct LineBlock
@@ -27,65 +24,6 @@ namespace Core {
 			std::size_t FirstLine = 0;
 			std::size_t LastLine = 0;
 		};
-
-		struct PlannedRemoval
-		{
-			std::size_t Offset = 0;
-			std::size_t ByteCount = 0;
-		};
-
-		bool IsEditable(const OpenItem& item)
-		{
-			return item.Document && !item.Document->IsReadOnly();
-		}
-
-		// Not IsEditable: every state in the history is one the buffer already held, so a reload
-		// that turned the document read-only stays reversible.
-		bool CanStepThroughHistory(const OpenItem& item)
-		{
-			return item.Document.has_value();
-		}
-
-		std::string WithEveryLineEndingAsNewline(std::string_view text)
-		{
-			std::string withNewlines;
-			withNewlines.reserve(text.size());
-
-			for (std::size_t byteIndex = 0; byteIndex < text.size(); ++byteIndex)
-			{
-				if (text[byteIndex] == '\r')
-				{
-					const bool isCrLfPair = byteIndex + 1 < text.size() && text[byteIndex + 1] == '\n';
-
-					if (isCrLfPair)
-					{
-						++byteIndex;
-					}
-
-					withNewlines.push_back('\n');
-					continue;
-				}
-
-				withNewlines.push_back(text[byteIndex]);
-			}
-
-			return withNewlines;
-		}
-
-		void CollapseCaretTo(Caret& caret, std::size_t offset)
-		{
-			caret.Offset = offset;
-			caret.Anchor = offset;
-			caret.DesiredColumn = NoDesiredColumn;
-		}
-
-		void SelectWholeLines(Caret& caret, const TextBuffer& buffer, std::size_t firstLine,
-							  std::size_t lastLine)
-		{
-			caret.Anchor = buffer.LineStart(firstLine);
-			caret.Offset = buffer.LineStart(lastLine) + buffer.LineLength(lastLine);
-			caret.DesiredColumn = NoDesiredColumn;
-		}
 
 		bool IsBlankLine(const TextBuffer& buffer, std::size_t line)
 		{
@@ -221,254 +159,6 @@ namespace Core {
 			}
 		}
 
-		LineBlock LinesTouchedBySelection(const TextBuffer& buffer, const Caret& caret)
-		{
-			const auto [selectionStart, selectionEnd] = SelectionRange(caret);
-
-			const std::size_t firstLine = buffer.ToPosition(selectionStart).Line;
-			std::size_t lastLine = buffer.ToPosition(selectionEnd).Line;
-
-			const bool selectionSpansLines = lastLine > firstLine;
-			const bool selectionEndsAtStartOfLastLine = selectionEnd == buffer.LineStart(lastLine);
-
-			if (selectionSpansLines && selectionEndsAtStartOfLastLine)
-			{
-				--lastLine;
-			}
-
-			return LineBlock{.FirstLine = firstLine, .LastLine = lastLine};
-		}
-
-		Caret SelectionToDelete(const TextBuffer& buffer, const OpenItem& item, Motion motion)
-		{
-			if (HasSelection(item.Caret))
-			{
-				return item.Caret;
-			}
-
-			const std::size_t noPageLines = 0;
-
-			return Move(buffer, item.Caret, motion, SelectionChange::Extend, item.TabWidth, noPageLines);
-		}
-
-		bool DeleteSelectionOrMotion(OpenItem& item, Motion motion)
-		{
-			if (!IsEditable(item))
-			{
-				return false;
-			}
-
-			TextBuffer& buffer = item.Document->GetBuffer();
-
-			const Caret selectionToDelete = SelectionToDelete(buffer, item, motion);
-
-			const auto [deleteFrom, deleteTo] = SelectionRange(selectionToDelete);
-
-			if (deleteFrom == deleteTo)
-			{
-				return false;
-			}
-
-			buffer.BeginTransaction();
-			buffer.Erase(deleteFrom, deleteTo);
-			buffer.EndTransaction();
-
-			CollapseCaretTo(item.Caret, deleteFrom);
-
-			CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
-
-			return true;
-		}
-
-		void SettleAfterHistoryStep(OpenItem& item, std::size_t caretOffset)
-		{
-			TextBuffer& buffer = item.Document->GetBuffer();
-
-			buffer.BreakUndoGroup();
-
-			CollapseCaretTo(item.Caret, std::min(caretOffset, buffer.GetLength()));
-
-			CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
-		}
-
-		std::string LeadingWhitespace(std::string_view lineText)
-		{
-			const std::size_t indentEnd = lineText.find_first_not_of(" \t");
-
-			return std::string{lineText.substr(0, indentEnd == std::string_view::npos ? lineText.size() : indentEnd)};
-		}
-
-		bool InsertAsOwnUndoGroup(OpenItem& item, TextBuffer& buffer, std::string_view text)
-		{
-			buffer.BreakUndoGroup();
-			const bool changed = InsertText(item, text);
-			buffer.BreakUndoGroup();
-
-			return changed;
-		}
-
-		bool IsSpaceAt(std::string_view text, std::size_t byteIndex)
-		{
-			return byteIndex < text.size() && text[byteIndex] == ' ';
-		}
-
-		std::size_t OutdentBytesOf(std::string_view lineText, std::size_t spaceWidth)
-		{
-			if (lineText.starts_with('\t'))
-			{
-				return kTabByteCount;
-			}
-
-			std::size_t spaces = 0;
-
-			while (spaces < spaceWidth && IsSpaceAt(lineText, spaces))
-			{
-				++spaces;
-			}
-
-			return spaces;
-		}
-
-		std::vector<PlannedRemoval> PlanOutdent(const TextBuffer& buffer, std::size_t firstLine,
-												std::size_t lastLine, std::size_t spaceWidth)
-		{
-			std::vector<PlannedRemoval> removals;
-
-			for (std::size_t line = firstLine; line <= lastLine; ++line)
-			{
-				const std::size_t outdentBytes = OutdentBytesOf(buffer.LineText(line), spaceWidth);
-
-				if (outdentBytes > 0)
-				{
-					removals.push_back(PlannedRemoval{.Offset = buffer.LineStart(line), .ByteCount = outdentBytes});
-				}
-			}
-
-			return removals;
-		}
-
-		// Every offset was planned on the text before any erase, so erasing from the front would
-		// shift the text under every later removal.
-		void EraseBackToFront(TextBuffer& buffer, const std::vector<PlannedRemoval>& removals)
-		{
-			for (std::size_t removalsLeft = removals.size(); removalsLeft > 0; --removalsLeft)
-			{
-				const PlannedRemoval& removal = removals[removalsLeft - 1];
-
-				buffer.Erase(removal.Offset, removal.Offset + removal.ByteCount);
-			}
-		}
-
-		std::size_t ColumnOfLastRemovalOnLine(const std::vector<PlannedRemoval>& removals,
-											  std::size_t lineStart, std::size_t lineLength)
-		{
-			std::size_t column = 0;
-
-			for (const PlannedRemoval& removal : removals)
-			{
-				const bool removalIsOnLine = removal.Offset >= lineStart && removal.Offset <= lineStart + lineLength;
-
-				if (removalIsOnLine)
-				{
-					column = removal.Offset - lineStart;
-				}
-			}
-
-			return column;
-		}
-
-		std::size_t CommonPrefixLength(std::string_view left, std::string_view right)
-		{
-			const std::size_t shorterLength = std::min(left.size(), right.size());
-			std::size_t length = 0;
-
-			while (length < shorterLength && left[length] == right[length])
-			{
-				++length;
-			}
-
-			return length;
-		}
-
-		// Byte for byte rather than by width: a tab and four spaces are equally wide but are not
-		// the same text, and a prefix inserted at a shared width would split one of them.
-		std::size_t IndentBytesSharedByNonBlankLines(const TextBuffer& buffer, std::size_t firstLine,
-													 std::size_t lastLine)
-		{
-			std::optional<std::string> sharedIndent;
-
-			for (std::size_t line = firstLine; line <= lastLine; ++line)
-			{
-				if (IsBlankLine(buffer, line))
-				{
-					continue;
-				}
-
-				const std::string lineIndent = LeadingWhitespace(buffer.LineText(line));
-
-				if (!sharedIndent)
-				{
-					sharedIndent = lineIndent;
-					continue;
-				}
-
-				sharedIndent->resize(CommonPrefixLength(*sharedIndent, lineIndent));
-			}
-
-			return sharedIndent ? sharedIndent->size() : 0;
-		}
-
-		bool EveryNonBlankLineIsCommented(const TextBuffer& buffer, std::size_t firstLine,
-										  std::size_t lastLine, std::string_view commentPrefix)
-		{
-			bool foundNonBlankLine = false;
-
-			for (std::size_t line = firstLine; line <= lastLine; ++line)
-			{
-				if (IsBlankLine(buffer, line))
-				{
-					continue;
-				}
-
-				const std::string lineText = buffer.LineText(line);
-				const std::size_t indentBytes = LeadingWhitespace(lineText).size();
-				const bool isCommented = std::string_view{lineText}.substr(indentBytes).starts_with(commentPrefix);
-
-				if (!isCommented)
-				{
-					return false;
-				}
-
-				foundNonBlankLine = true;
-			}
-
-			return foundNonBlankLine;
-		}
-
-		std::vector<PlannedRemoval> PlanUncomment(const TextBuffer& buffer, std::size_t firstLine,
-												  std::size_t lastLine, std::string_view commentPrefix)
-		{
-			std::vector<PlannedRemoval> removals;
-
-			for (std::size_t line = firstLine; line <= lastLine; ++line)
-			{
-				if (IsBlankLine(buffer, line))
-				{
-					continue;
-				}
-
-				const std::string lineText = buffer.LineText(line);
-				const std::size_t indentBytes = LeadingWhitespace(lineText).size();
-				const std::size_t afterPrefix = indentBytes + commentPrefix.size();
-				const bool spaceFollowsPrefix = afterPrefix < lineText.size() && lineText[afterPrefix] == kSpaceAfterCommentPrefix;
-				const std::size_t spaceBytes = spaceFollowsPrefix ? kSpaceAfterCommentPrefixByteCount : 0;
-
-				removals.push_back(PlannedRemoval{.Offset = buffer.LineStart(line) + indentBytes,
-												  .ByteCount = commentPrefix.size() + spaceBytes});
-			}
-
-			return removals;
-		}
 	}
 
 	void RecomputeLineCaches(OpenItem& item)
@@ -540,297 +230,143 @@ namespace Core {
 
 	bool InsertText(OpenItem& item, std::string_view utf8)
 	{
-		if (!IsEditable(item) || utf8.empty())
+		if (!item.Document)
 		{
 			return false;
 		}
 
-		const std::string withNewlines = WithEveryLineEndingAsNewline(utf8);
-		TextBuffer& buffer = item.Document->GetBuffer();
-		const auto [selectionStart, selectionEnd] = SelectionRange(item.Caret);
-
-		buffer.BeginTransaction();
-
-		if (selectionStart != selectionEnd)
-		{
-			buffer.Erase(selectionStart, selectionEnd);
-		}
-
-		buffer.Insert(selectionStart, withNewlines);
-		buffer.EndTransaction();
-
-		CollapseCaretTo(item.Caret, selectionStart + withNewlines.size());
-
+		const bool changed = InsertText(*item.Document, item.Caret, utf8);
 		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
 
-		return true;
+		return changed;
 	}
-
 	bool DeleteBackward(OpenItem& item)
 	{
-		return DeleteSelectionOrMotion(item, Motion::Left);
+		if (!item.Document)
+		{
+			return false;
+		}
+
+		const bool changed = DeleteBackward(*item.Document, item.Caret, item.TabWidth);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
+
+		return changed;
 	}
 
 	bool DeleteForward(OpenItem& item)
 	{
-		return DeleteSelectionOrMotion(item, Motion::Right);
+		if (!item.Document)
+		{
+			return false;
+		}
+
+		const bool changed = DeleteForward(*item.Document, item.Caret, item.TabWidth);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
+
+		return changed;
 	}
 
 	bool DeleteWordBackward(OpenItem& item)
 	{
-		return DeleteSelectionOrMotion(item, Motion::WordLeft);
+		if (!item.Document)
+		{
+			return false;
+		}
+
+		const bool changed = DeleteWordBackward(*item.Document, item.Caret, item.TabWidth);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
+
+		return changed;
 	}
 
 	bool DeleteWordForward(OpenItem& item)
 	{
-		return DeleteSelectionOrMotion(item, Motion::WordRight);
+		if (!item.Document)
+		{
+			return false;
+		}
+
+		const bool changed = DeleteWordForward(*item.Document, item.Caret, item.TabWidth);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
+
+		return changed;
 	}
 
 	bool Undo(OpenItem& item)
 	{
-		if (!CanStepThroughHistory(item))
+		if (!item.Document)
 		{
 			return false;
 		}
 
-		const std::optional<std::size_t> caretOffset = item.Document->GetBuffer().Undo();
+		const bool changed = Undo(*item.Document, item.Caret);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
 
-		if (!caretOffset)
-		{
-			return false;
-		}
-
-		SettleAfterHistoryStep(item, *caretOffset);
-
-		return true;
+		return changed;
 	}
 
 	bool Redo(OpenItem& item)
 	{
-		if (!CanStepThroughHistory(item))
+		if (!item.Document)
 		{
 			return false;
 		}
 
-		const std::optional<std::size_t> caretOffset = item.Document->GetBuffer().Redo();
-
-		if (!caretOffset)
-		{
-			return false;
-		}
-
-		SettleAfterHistoryStep(item, *caretOffset);
-
-		return true;
-	}
-
-	// The new line copies the current line's indentation instead of building one from the indent setting,
-	// so a tab-indented file stays tab-indented under a spaces setting.
-	bool InsertNewline(OpenItem& item)
-	{
-		if (!IsEditable(item))
-		{
-			return false;
-		}
-
-		TextBuffer& buffer = item.Document->GetBuffer();
-		const auto [selectionStart, selectionEnd] = SelectionRange(item.Caret);
-		const std::size_t selectionStartLine = buffer.ToPosition(selectionStart).Line;
-
-		const std::string newlineWithIndent = "\n" + LeadingWhitespace(buffer.LineText(selectionStartLine));
-
-		buffer.BeginTransaction();
-
-		if (selectionStart != selectionEnd)
-		{
-			buffer.Erase(selectionStart, selectionEnd);
-		}
-
-		buffer.Insert(selectionStart, newlineWithIndent);
-		buffer.EndTransaction();
-
-		CollapseCaretTo(item.Caret, selectionStart + newlineWithIndent.size());
-
+		const bool changed = Redo(*item.Document, item.Caret);
 		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
 
-		return true;
+		return changed;
+	}
+
+	bool InsertNewline(OpenItem& item)
+	{
+		if (!item.Document)
+		{
+			return false;
+		}
+
+		const bool changed = InsertNewline(*item.Document, item.Caret);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
+
+		return changed;
 	}
 
 	bool Indent(OpenItem& item, IndentStyle style)
 	{
-		if (!IsEditable(item))
+		if (!item.Document)
 		{
 			return false;
 		}
 
-		const std::string indentUnit =
-			style.UseSpaces ? std::string(style.Width, ' ') : std::string{"\t"};
-
-		TextBuffer& buffer = item.Document->GetBuffer();
-
-		if (!HasSelection(item.Caret))
-		{
-			// Refused before the undo group is broken: InsertText also turns empty text down, but
-			// only after the break has already split the surrounding typing in two.
-			if (indentUnit.empty())
-			{
-				return false;
-			}
-
-			return InsertAsOwnUndoGroup(item, buffer, indentUnit);
-		}
-
-		const auto [firstLine, lastLine] = LinesTouchedBySelection(buffer, item.Caret);
-
-		buffer.BreakUndoGroup();
-		buffer.BeginTransaction();
-
-		for (std::size_t linesLeft = lastLine - firstLine + 1; linesLeft > 0; --linesLeft)
-		{
-			const std::size_t line = firstLine + linesLeft - 1;
-
-			buffer.Insert(buffer.LineStart(line), indentUnit);
-		}
-
-		buffer.EndTransaction();
-		buffer.BreakUndoGroup();
-
-		SelectWholeLines(item.Caret, buffer, firstLine, lastLine);
-
+		const bool changed = Indent(*item.Document, item.Caret, style);
 		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
 
-		return true;
+		return changed;
 	}
 
 	bool Outdent(OpenItem& item, IndentStyle style)
 	{
-		if (!IsEditable(item))
+		if (!item.Document)
 		{
 			return false;
 		}
 
-		TextBuffer& buffer = item.Document->GetBuffer();
-		const auto [firstLine, lastLine] = LinesTouchedBySelection(buffer, item.Caret);
-
-		const std::vector<PlannedRemoval> removals =
-			PlanOutdent(buffer, firstLine, lastLine, style.Width);
-
-		if (removals.empty())
-		{
-			return false;
-		}
-
-		buffer.BreakUndoGroup();
-		buffer.BeginTransaction();
-
-		EraseBackToFront(buffer, removals);
-
-		buffer.EndTransaction();
-		buffer.BreakUndoGroup();
-
-		SelectWholeLines(item.Caret, buffer, firstLine, lastLine);
-
+		const bool changed = Outdent(*item.Document, item.Caret, style);
 		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
 
-		return true;
+		return changed;
 	}
 
 	bool ToggleLineComment(OpenItem& item, std::string_view commentPrefix)
 	{
-		if (!IsEditable(item) || commentPrefix.empty())
+		if (!item.Document)
 		{
 			return false;
 		}
 
-		TextBuffer& buffer = item.Document->GetBuffer();
-		const bool hadSelection = HasSelection(item.Caret);
-		const auto [firstLine, lastLine] = LinesTouchedBySelection(buffer, item.Caret);
-
-		const bool uncommentLines = EveryNonBlankLineIsCommented(buffer, firstLine, lastLine, commentPrefix);
-
-		const std::size_t caretLine = buffer.ToPosition(item.Caret.Offset).Line;
-		const std::size_t caretLineLengthBeforeEdit = buffer.LineLength(caretLine);
-		const std::size_t caretLineStartBeforeEdit = buffer.LineStart(caretLine);
-		const std::size_t caretColumnBeforeEdit = item.Caret.Offset - caretLineStartBeforeEdit;
-
-		buffer.BreakUndoGroup();
-		buffer.BeginTransaction();
-
-		bool changed = false;
-		std::size_t editColumnOnCaretLine = 0;
-
-		if (uncommentLines)
-		{
-			const std::vector<PlannedRemoval> removals =
-				PlanUncomment(buffer, firstLine, lastLine, commentPrefix);
-
-			editColumnOnCaretLine =
-				ColumnOfLastRemovalOnLine(removals, caretLineStartBeforeEdit, caretLineLengthBeforeEdit);
-
-			EraseBackToFront(buffer, removals);
-			changed = !removals.empty();
-		}
-		else
-		{
-			const std::size_t sharedIndentBytes = IndentBytesSharedByNonBlankLines(buffer, firstLine, lastLine);
-			editColumnOnCaretLine = sharedIndentBytes;
-			const std::string insertedPrefix = std::string{commentPrefix} + kSpaceAfterCommentPrefix;
-
-			for (std::size_t linesLeft = lastLine - firstLine + 1; linesLeft > 0; --linesLeft)
-			{
-				const std::size_t line = firstLine + linesLeft - 1;
-
-				if (IsBlankLine(buffer, line))
-				{
-					continue;
-				}
-
-				buffer.Insert(buffer.LineStart(line) + sharedIndentBytes, insertedPrefix);
-				changed = true;
-			}
-		}
-
-		buffer.EndTransaction();
-		buffer.BreakUndoGroup();
-
-		if (!changed)
-		{
-			return false;
-		}
-
-		if (hadSelection)
-		{
-			SelectWholeLines(item.Caret, buffer, firstLine, lastLine);
-		}
-		else
-		{
-			const std::size_t caretLineLengthAfterEdit = buffer.LineLength(caretLine);
-			const bool caretIsAtOrAfterEdit = caretColumnBeforeEdit >= editColumnOnCaretLine;
-			std::size_t caretColumnAfterEdit = caretColumnBeforeEdit;
-
-			if (caretIsAtOrAfterEdit)
-			{
-				const bool lineDidNotShrink = caretLineLengthAfterEdit >= caretLineLengthBeforeEdit;
-
-				if (lineDidNotShrink)
-				{
-					caretColumnAfterEdit = caretColumnBeforeEdit + (caretLineLengthAfterEdit - caretLineLengthBeforeEdit);
-				}
-				else
-				{
-					const std::size_t bytesRemoved = caretLineLengthBeforeEdit - caretLineLengthAfterEdit;
-					const bool caretWasInsideRemovedText = caretColumnBeforeEdit < editColumnOnCaretLine + bytesRemoved;
-
-					caretColumnAfterEdit = caretWasInsideRemovedText ? editColumnOnCaretLine : caretColumnBeforeEdit - bytesRemoved;
-				}
-			}
-
-			CollapseCaretTo(item.Caret,
-							buffer.LineStart(caretLine) + std::min(caretColumnAfterEdit, caretLineLengthAfterEdit));
-		}
-
+		const bool changed = ToggleLineComment(*item.Document, item.Caret, commentPrefix);
 		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
 
-		return true;
+		return changed;
 	}
 }
