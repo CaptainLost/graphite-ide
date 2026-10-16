@@ -2498,3 +2498,37 @@ TEST_CASE("A pull's answer comes out of TakeRecolour as the path the document wa
 	services.TakeRecolour(recolour);
 	CHECK(recolour.empty());
 }
+
+TEST_CASE("An answer reaches its asker under the asker's ticket with what the server said")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	StartWithSpy(services, temp, spy, clock, source);
+	services.OpenDocument(source, Graphite::LanguageId::Cpp, "void run();\n");
+	spy.Answer();
+
+	const Graphite::LanguageServices::Ticket ticket = services.AskSymbols(source, Graphite::LanguageId::Cpp);
+	const std::vector<nlohmann::json> asked = MessagesFor(spy.Latest->TakeSent(), "textDocument/documentSymbol");
+	REQUIRE(asked.size() == 1);
+
+	const nlohmann::json range = {{"start", {{"line", 0}, {"character", 0}}}, {"end", {{"line", 0}, {"character", 10}}}};
+	const nlohmann::json reply = {{"jsonrpc", "2.0"},
+								  {"id", IdOf(asked[0])},
+								  {"result", nlohmann::json::array({{{"name", "run"}, {"kind", 12}, {"range", range}, {"selectionRange", range}}})}};
+	spy.Latest->Deliver(reply.dump());
+
+	services.Poll();
+
+	std::vector<Graphite::LanguageServices::Answer> answers;
+	services.TakeAnswers(answers);
+
+	REQUIRE(answers.size() == 1);
+	CHECK(answers[0].For == ticket);
+	CHECK_FALSE(answers[0].Failed);
+	REQUIRE(answers[0].Declarations.size() == 1);
+	CHECK(answers[0].Declarations[0].Name == "run");
+}

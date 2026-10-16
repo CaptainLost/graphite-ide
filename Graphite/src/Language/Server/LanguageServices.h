@@ -136,15 +136,9 @@ namespace Graphite {
 		Ticket AskSymbols(const std::filesystem::path& path, LanguageId language);
 		Ticket AskSemanticTokens(const std::filesystem::path& path, LanguageId language);
 
-		struct Answer
+		struct Answer : ServerReply
 		{
 			Ticket For{};
-			std::vector<Location> Locations;
-			std::vector<Declaration> Declarations;
-			std::vector<SemanticToken> SemanticTokens;
-			std::string Text;
-			HoverInfo Hover;
-			bool Failed = false;
 		};
 
 		// WARNING: LspClient::Drain consumes what it returns, so only Poll may drain a client and only

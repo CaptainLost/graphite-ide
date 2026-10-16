@@ -28,6 +28,18 @@
 #include <nlohmann/json.hpp>
 
 namespace Graphite {
+
+	// What a server answered to one request, whichever kind of request it was.
+	struct ServerReply
+	{
+		std::vector<Location> Locations;
+		std::vector<Declaration> Declarations;
+		std::vector<SemanticToken> SemanticTokens;
+		std::string Text;
+		HoverInfo Hover;
+		bool Failed = false;
+	};
+
 	class LspClient
 	{
 	public:
@@ -62,15 +74,9 @@ namespace Graphite {
 		// WARNING: Returns 0, which no request ever uses, when the server declared no semantic tokens: there is no legend to read a reply through.
 		RequestId AskSemanticTokens(const std::filesystem::path& path);
 
-		struct Answer
+		struct Answer : ServerReply
 		{
 			RequestId Id = 0;
-			std::vector<Location> Locations;
-			std::vector<Declaration> Declarations;
-			std::vector<SemanticToken> SemanticTokens;
-			std::string Text;
-			HoverInfo Hover;
-			bool Failed = false;
 		};
 
 		static constexpr std::chrono::seconds kHandshakeTimeout{30};
