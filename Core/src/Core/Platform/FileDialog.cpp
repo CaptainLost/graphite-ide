@@ -2,7 +2,7 @@
 
 #include "Core/Platform/FileDialog.h"
 
-#include "Core/Base/Narrow.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
@@ -55,21 +55,6 @@ namespace Core {
 			bool m_MustUninitialise = false;
 			bool m_Usable = false;
 		};
-
-		std::wstring Widen(const std::string& text)
-		{
-			if (text.empty())
-			{
-				return {};
-			}
-
-			const int length = ::MultiByteToWideChar(CP_UTF8, 0, text.c_str(),
-													 Narrow<int>(text.size()), nullptr, 0);
-			std::wstring wide(static_cast<std::size_t>(length), L'\0');
-			::MultiByteToWideChar(CP_UTF8, 0, text.c_str(), Narrow<int>(text.size()),
-								  wide.data(), length);
-			return wide;
-		}
 
 		struct ComRelease
 		{
@@ -135,8 +120,8 @@ namespace Core {
 
 			for (const FileDialog::Filter& filter : filters)
 			{
-				filterStrings.push_back(Widen(filter.Label));
-				filterStrings.push_back(Widen(filter.Pattern));
+				filterStrings.push_back(ToUtf16(filter.Label));
+				filterStrings.push_back(ToUtf16(filter.Pattern));
 
 				const std::wstring& label = filterStrings[filterStrings.size() - kStringsPerFilter];
 				const std::wstring& pattern = filterStrings.back();
@@ -149,7 +134,7 @@ namespace Core {
 				dialog->SetFileTypeIndex(kFirstFilterCountingFromOne);
 			}
 
-			const std::wstring wideTitle = Widen(title);
+			const std::wstring wideTitle = ToUtf16(title);
 			if (!wideTitle.empty())
 			{
 				dialog->SetTitle(wideTitle.c_str());

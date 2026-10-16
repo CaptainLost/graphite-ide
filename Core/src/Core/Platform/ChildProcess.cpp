@@ -57,12 +57,6 @@ namespace Core {
 			return ::CompareStringOrdinal(left.data(), NameLength(left), right.data(), NameLength(right), kIgnoreCase) == CSTR_LESS_THAN;
 		}
 
-		// FromUtf8 is Core's one UTF-8 to UTF-16 conversion. A variable is no path, but its bytes convert the same way.
-		std::wstring Widened(const std::string& text)
-		{
-			return FromUtf8(text).wstring();
-		}
-
 		// A name ending early or a value cut short would set some other variable than the caller asked for, or none.
 		bool IsWellFormed(const EnvironmentVariable& variable)
 		{
@@ -102,10 +96,10 @@ namespace Core {
 
 			for (const EnvironmentVariable& variable : overrides)
 			{
-				const std::wstring name = Widened(variable.Name);
+				const std::wstring name = ToUtf16(variable.Name);
 
 				std::erase_if(entries, [&name](const std::wstring& entry) { return NamesVariable(entry, name); });
-				entries.push_back(name + kNameEnd + Widened(variable.Value));
+				entries.push_back(name + kNameEnd + ToUtf16(variable.Value));
 			}
 
 			std::sort(entries.begin(), entries.end(), ComesFirstIgnoringCase);
