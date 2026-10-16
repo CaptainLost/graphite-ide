@@ -7,7 +7,9 @@
 
 #include "TempDirectory.h"
 
+#include <filesystem>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
 
@@ -100,4 +102,40 @@ TEST_CASE("A subagent's transcript reads as a session of its own")
 	REQUIRE_FALSE(turn.Items.empty());
 	CHECK(turn.Items.back().Kind == ItemKind::Text);
 	CHECK(turn.Items.back().Text == "## Verdict\n\nSpec compliance: yes.");
+}
+
+TEST_CASE("A subagent's id is what follows agent- in its transcript's name, and any other name has none")
+{
+	CHECK(SubagentIdOf("C:/p/s/subagents/agent-a1b2.jsonl") == std::optional<std::string>{"a1b2"});
+	CHECK_FALSE(SubagentIdOf("C:/p/s/subagents/notes.jsonl").has_value());
+}
+
+TEST_CASE("Every agent- transcript of a session is visited with its id, and no other file")
+{
+	TempDirectory temp;
+	const std::filesystem::path session = temp.MakeFile("p/s.jsonl");
+	temp.MakeFile("p/s/subagents/agent-a1.jsonl");
+	temp.MakeFile("p/s/subagents/agent-b2.jsonl");
+	temp.MakeFile("p/s/subagents/agent-a1.meta.json", "{}");
+	temp.MakeFile("p/s/subagents/notes.jsonl");
+
+	std::set<std::string> ids;
+	const bool sawWholeFolder =
+		ForEachSubagentTranscript(session, [&ids](const std::filesystem::path&, const std::string& agentId) { ids.insert(agentId); });
+
+	CHECK(sawWholeFolder);
+	CHECK(ids == std::set<std::string>{"a1", "b2"});
+}
+
+TEST_CASE("A session without a subagents folder has no subagent transcripts, and the walk saw it whole")
+{
+	TempDirectory temp;
+	const std::filesystem::path session = temp.MakeFile("p/s.jsonl");
+	bool visited = false;
+
+	const bool sawWholeFolder =
+		ForEachSubagentTranscript(session, [&visited](const std::filesystem::path&, const std::string&) { visited = true; });
+
+	CHECK(sawWholeFolder);
+	CHECK_FALSE(visited);
 }

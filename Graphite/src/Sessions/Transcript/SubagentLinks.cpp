@@ -38,8 +38,8 @@ namespace Graphite {
 
 	std::optional<std::pair<std::string, SubagentInfo>> ReadSubagentMeta(const std::filesystem::path& transcript)
 	{
-		const std::string stem = Core::ToUtf8(transcript.stem());
-		if (!stem.starts_with(kAgentPrefix))
+		std::optional<std::string> agentId = SubagentIdOf(transcript);
+		if (!agentId)
 		{
 			return std::nullopt;
 		}
@@ -53,7 +53,37 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		return ParseSubagentMeta(text.GetValue(), stem.substr(kAgentPrefix.size()));
+		return ParseSubagentMeta(text.GetValue(), std::move(*agentId));
+	}
+
+	std::optional<std::string> SubagentIdOf(const std::filesystem::path& transcript)
+	{
+		const std::string stem = Core::ToUtf8(transcript.stem());
+
+		if (transcript.extension() != ".jsonl" || !stem.starts_with(kAgentPrefix))
+		{
+			return std::nullopt;
+		}
+
+		return stem.substr(kAgentPrefix.size());
+	}
+
+	bool ForEachSubagentTranscript(
+		const std::filesystem::path& sessionFile,
+		const std::function<void(const std::filesystem::path& transcript, const std::string& agentId)>& visit)
+	{
+		std::error_code directoryStatus;
+
+		for (std::filesystem::directory_iterator entryIterator{SubagentDirectory(sessionFile), directoryStatus}, endOfDirectory;
+			 !directoryStatus && entryIterator != endOfDirectory; entryIterator.increment(directoryStatus))
+		{
+			if (const std::optional<std::string> agentId = SubagentIdOf(entryIterator->path()))
+			{
+				visit(entryIterator->path(), *agentId);
+			}
+		}
+
+		return !directoryStatus || directoryStatus == std::errc::no_such_file_or_directory;
 	}
 
 	std::filesystem::path SubagentTranscriptPath(const std::filesystem::path& sessionFile, std::string_view agentId)

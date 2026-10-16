@@ -5,6 +5,7 @@
 #include "Core/Text/Encoding.h"
 
 #include "Sessions/Transcript/InjectedText.h"
+#include "Sessions/Transcript/SubagentLinks.h"
 #include "Sessions/Transcript/TranscriptReader.h"
 
 #include <algorithm>
@@ -77,21 +78,6 @@ namespace Graphite {
 			++fingerprint.Files;
 		}
 
-		void ForEachSubagent(const std::filesystem::path& sessionFile,
-							 const std::function<void(const std::filesystem::path&)>& visit)
-		{
-			std::error_code directoryStatus;
-			const std::filesystem::path directory = SubagentDirectory(sessionFile);
-
-			for (std::filesystem::directory_iterator entryIterator{directory, directoryStatus}, endOfDirectory;
-				 !directoryStatus && entryIterator != endOfDirectory; entryIterator.increment(directoryStatus))
-			{
-				if (entryIterator->path().extension() == ".jsonl")
-				{
-					visit(entryIterator->path());
-				}
-			}
-		}
 
 		bool ParseField(std::string_view text, std::size_t fieldStart, std::size_t fieldWidth, int& value)
 		{
@@ -180,8 +166,8 @@ namespace Graphite {
 	{
 		Fingerprint fingerprint;
 		AddFile(fingerprint, sessionFile);
-		ForEachSubagent(sessionFile,
-						[&fingerprint](const std::filesystem::path& file) { AddFile(fingerprint, file); });
+		ForEachSubagentTranscript(
+			sessionFile, [&fingerprint](const std::filesystem::path& file, const std::string&) { AddFile(fingerprint, file); });
 		return fingerprint;
 	}
 
@@ -274,7 +260,7 @@ namespace Graphite {
 
 		summary.Main = mainTally.Get();
 
-		ForEachSubagent(sessionFile, [&summary](const std::filesystem::path& subagentFile) { AddSubagentUsage(summary, subagentFile); });
+		ForEachSubagentTranscript(sessionFile, [&summary](const std::filesystem::path& subagentFile, const std::string&) { AddSubagentUsage(summary, subagentFile); });
 
 		return summary;
 	}

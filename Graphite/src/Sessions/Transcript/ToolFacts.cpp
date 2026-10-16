@@ -7,6 +7,7 @@
 #include "Sessions/Transcript/JsonAccess.h"
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
+#include "Sessions/Transcript/SubagentLinks.h"
 #include "Sessions/Transcript/TranscriptReader.h"
 #include "UI/TypographicMarks.h"
 
@@ -19,7 +20,6 @@ namespace Graphite {
 
 	namespace {
 		constexpr std::string_view kClaudeModelPrefix = "claude-";
-		constexpr std::string_view kAgentFilePrefix = "agent-";
 		constexpr std::string_view kModelNamesSeparator = "+";
 		constexpr std::uint64_t kTranscriptStart = 0;
 		constexpr std::uint64_t kPercentScale = 100;
@@ -138,21 +138,10 @@ namespace Graphite {
 	SubagentUsage LoadSubagentUsage(const std::filesystem::path& sessionFile)
 	{
 		SubagentUsage usage;
-		std::error_code directoryStatus;
-
-		for (std::filesystem::directory_iterator entryIterator{SubagentDirectory(sessionFile), directoryStatus}, endOfDirectory;
-			 !directoryStatus && entryIterator != endOfDirectory; entryIterator.increment(directoryStatus))
-		{
-			const std::string stem = Core::ToUtf8(entryIterator->path().stem());
-
-			if (entryIterator->path().extension() != ".jsonl" || !stem.starts_with(kAgentFilePrefix))
-			{
-				continue;
-			}
-
+		ForEachSubagentTranscript(sessionFile, [&usage](const std::filesystem::path& transcript, const std::string& agentId) {
 			UsageTally tally;
 
-			if (Core::Result<TranscriptRead> read = ReadTranscript(entryIterator->path(), kTranscriptStart))
+			if (Core::Result<TranscriptRead> read = ReadTranscript(transcript, kTranscriptStart))
 			{
 				for (const TranscriptRecord& record : read.GetValue().Chunk.Records)
 				{
@@ -160,8 +149,8 @@ namespace Graphite {
 				}
 			}
 
-			usage[stem.substr(kAgentFilePrefix.size())] = tally.Get();
-		}
+			usage[agentId] = tally.Get();
+		});
 
 		return usage;
 	}

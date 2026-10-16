@@ -20,7 +20,6 @@ namespace Graphite {
 
 	namespace {
 		constexpr std::uint64_t kChunkBytes = 1024 * 1024;
-		constexpr std::string_view kAgentPrefix = "agent-";
 	}
 
 	bool LiveTranscript::ReadMain(const std::filesystem::path& file, Inbox& inbox)
@@ -89,18 +88,10 @@ namespace Graphite {
 		SubagentFileMap& files = subagents.Files;
 		bool anythingMoved = false;
 		std::vector<std::filesystem::path> presentFiles;
-		std::error_code directoryStatus;
-
-		for (std::filesystem::directory_iterator entryIterator{SubagentDirectory(sessionFile), directoryStatus}, endOfDirectory;
-			 !directoryStatus && entryIterator != endOfDirectory; entryIterator.increment(directoryStatus))
-		{
-			const std::filesystem::path& entryPath = entryIterator->path();
-
-			if (entryPath.extension() == ".jsonl" && Core::ToUtf8(entryPath.stem()).starts_with(kAgentPrefix))
-			{
-				presentFiles.push_back(entryPath);
-			}
-		}
+		const bool sawWholeFolder =
+			ForEachSubagentTranscript(sessionFile, [&presentFiles](const std::filesystem::path& transcript, const std::string&) {
+				presentFiles.push_back(transcript);
+			});
 
 		// WARNING: Progress is counted only on the first walk. A later walk reads just what moved,
 		// in a moment, and counting it would flash the view's "reading subagents" line on every poll.
@@ -197,8 +188,6 @@ namespace Graphite {
 
 		// WARNING: Unseen files are forgotten only when the walk saw the whole folder. A walk cut
 		// short by an error has not seen them, and forgetting them would read them again from zero.
-		const bool sawWholeFolder = !directoryStatus || directoryStatus == std::errc::no_such_file_or_directory;
-
 		std::vector<std::filesystem::path> goneFiles;
 
 		if (sawWholeFolder)
@@ -226,7 +215,10 @@ namespace Graphite {
 		SubagentState state;
 		for (const auto& [subagentPath, subagentFile] : files)
 		{
-			state.Usage[Core::ToUtf8(subagentPath.stem()).substr(kAgentPrefix.size())] = subagentFile.Tally.Get();
+			if (const std::optional<std::string> agentId = SubagentIdOf(subagentPath))
+			{
+				state.Usage[*agentId] = subagentFile.Tally.Get();
+			}
 
 			if (subagentFile.Link)
 			{
