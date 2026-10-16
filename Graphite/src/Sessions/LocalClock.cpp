@@ -1,6 +1,7 @@
 #include "Sessions/LocalClock.h"
 
 #include "Core/Base/Base.h"
+#include "Core/Time/TimeZone.h"
 
 #include "Sessions/SessionSummary.h"
 
@@ -11,23 +12,13 @@ namespace Graphite {
 
 	std::chrono::minutes LocalClock::OffsetAt(std::chrono::sys_time<std::chrono::milliseconds> instant)
 	{
-		// WARNING: current_zone throws when the time zone database is not available, as on a Windows
-		// install without the data chrono reads. The times then fall back to UTC rather than the view
-		// failing to draw.
 		if (!m_ZoneResolved)
 		{
 			m_ZoneResolved = true;
-
-			try
-			{
-				m_Zone = std::chrono::current_zone();
-			}
-			catch (const std::exception&)
-			{
-				m_Zone = nullptr;
-			}
+			m_Zone = Core::LocalTimeZone();
 		}
 
+		// Without time zone data the times read as UTC rather than the view failing to draw.
 		if (m_Zone == nullptr)
 		{
 			return std::chrono::minutes{0};

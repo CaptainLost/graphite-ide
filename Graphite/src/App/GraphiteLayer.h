@@ -18,7 +18,6 @@
 #include "Git/GitDecorations.h"
 #include "Git/GitModel.h"
 #include "Git/RepositoryGitPort.h"
-#include "Notifications/ClockTime.h"
 #include "Notifications/NotificationHistory.h"
 #include "Notifications/NotificationsPopup.h"
 #include "UI/ToastEvent.h"
@@ -60,6 +59,7 @@
 #include "Core/ImGui/Toasts.h"
 #include "Core/Jobs/JobQueue.h"
 #include "Core/Text/DocumentSet.h"
+#include "Core/Time/TimeZone.h"
 #include "Core/UI/PanelManager.h"
 
 #include <chrono>
@@ -341,7 +341,7 @@ namespace Graphite {
 		Core::Toasts m_Toasts;
 		NotificationHistory m_Notifications;
 		NotificationsPopup m_NotificationsPopup;
-		const std::chrono::time_zone* m_LocalTimeZone = LocalTimeZone();
+		const std::chrono::time_zone* m_LocalTimeZone = Core::LocalTimeZone();
 
 		// WARNING: Declared before m_Panels, where GitView holds it by reference.
 		BranchListState m_BranchList;

@@ -7,6 +7,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/Time/TimeZone.h"
 
 #include "Theme/Palettes.h"
 #include "Theme/GitPalette.h"
@@ -623,18 +624,10 @@ namespace Graphite {
 	std::chrono::minutes GitView::LocalOffset()
 	{
 		// WARNING: The offset is resolved on every call and never cached, since it changes at a
-		// daylight-saving boundary. It is zero when the time zone database is unavailable, as on a
-		// Windows install without the ICU data chrono reads, so timestamps fall back to UTC.
-		try
-		{
-			const std::chrono::system_clock::time_point now = std::chrono::system_clock::now();
+		// daylight-saving boundary.
+		const std::chrono::sys_seconds now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
 
-			return std::chrono::floor<std::chrono::minutes>(std::chrono::current_zone()->get_info(now).offset);
-		}
-		catch (const std::exception&)
-		{
-			return std::chrono::minutes{0};
-		}
+		return Core::OffsetAt(Core::LocalTimeZone(), now);
 	}
 
 	void GitView::RequestLog(std::optional<std::size_t> maxCount)

@@ -27,7 +27,7 @@ records, never hand-edited.
 
 | Path | What it holds |
 |---|---|
-| `Core/src/Core` | The engine: `App`, `Base`, `Command`, `Events`, `FileSystem`, `Git`, `ImGui`, `Jobs`, `Network`, `Platform`, `Terminal`, `Text`, `UI` |
+| `Core/src/Core` | The engine: `App`, `Base`, `Command`, `Events`, `FileSystem`, `Git`, `ImGui`, `Jobs`, `Network`, `Platform`, `Terminal`, `Text`, `Time`, `UI` |
 | `Core/tests` | doctest suite for the engine, built as `CoreTests` |
 | `Graphite/src` | The application, one folder per feature: `App`, `Console`, `Editor`, `Explorer`, `Git`, `Language`, `Persistence`, `Search`, `Sessions`, `Settings`, `Solution`, `Terminal`, `Theme`, `UI`, `Workspace`. Everything but `Main.cpp` builds as the static library `GraphiteLib`; the `Graphite` executable is `Main.cpp` linked against it |
 | `Graphite/tests` | doctest suite for the application, built as `GraphiteTests`, which links `GraphiteLib` |
