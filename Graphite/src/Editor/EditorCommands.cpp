@@ -204,8 +204,7 @@ namespace Graphite {
 				Core::MenuItem::Command(kSelectAllCommand)};
 	}
 
-	void RegisterEditorCommands(Core::CommandRegistry& commands, Core::Keymap& keys,
-								ActiveEditorTarget& active, EditorCommandServices services)
+	void RegisterEditingCommands(Core::CommandRegistry& commands, Core::Keymap& keys, ActiveEditorTarget& active)
 	{
 		const bool fromChord = false;
 		const bool fromMenu = true;
@@ -242,7 +241,11 @@ namespace Graphite {
 					  .RepeatsWhileHeld = false});
 
 		keys.SetDefault(kCloseCommand, CloseBinding());
+	}
 
+	void RegisterEditorNavigationCommands(Core::CommandRegistry& commands, Core::Keymap& keys,
+										  ActiveEditorTarget& active, EditorCommandServices services)
+	{
 		// The commands below are global, as before: they also run from a panel, on the view the
 		// user last worked in.
 		commands.Add({.Id = "find.open",

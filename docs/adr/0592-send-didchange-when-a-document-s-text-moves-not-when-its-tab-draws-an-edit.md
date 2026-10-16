@@ -34,6 +34,12 @@ didChange was sent from `UpdateLenses` when the tab drawn that frame reported `E
 
 - The tab width used for document-level overlays is the tab's. All tabs share the editor setting today.
 
+## Alternatives Considered
+
+- Keep didChange driven by the drawn tab's `Edited` flag and have each view push its own edits. Rejected: every new view would have to remember to push, and an edit made by code that draws nothing would still never reach the server.
+- Reference-count opens inside `LanguageServices` instead of naming a document-level owner. Rejected: the count would still need an owner to say when the last view is gone, and 0512 already names one owner per document.
+- Send didChange per edit instead of per frame. Rejected: a burst of edits within one frame would send several full-text messages for one state the server can never observe.
+
 ## Related
 
 - [0591](0591-keep-open-documents-in-a-store-shared-by-the-views-that-show-them.md)

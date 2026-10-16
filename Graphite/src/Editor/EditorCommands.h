@@ -84,6 +84,10 @@ namespace Graphite {
 		ReferencesPanel* References = nullptr;
 	};
 
-	void RegisterEditorCommands(Core::CommandRegistry& commands, Core::Keymap& keys,
-								ActiveEditorTarget& active, EditorCommandServices services);
+	// Cut to Redo, then Save and Close Tab.
+	void RegisterEditingCommands(Core::CommandRegistry& commands, Core::Keymap& keys, ActiveEditorTarget& active);
+
+	// Find, Go to Definition and Find All References: global, so they also run from a panel.
+	void RegisterEditorNavigationCommands(Core::CommandRegistry& commands, Core::Keymap& keys,
+										  ActiveEditorTarget& active, EditorCommandServices services);
 }

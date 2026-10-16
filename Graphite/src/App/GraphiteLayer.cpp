@@ -227,10 +227,6 @@ namespace Graphite {
 
 		m_Workspace.RegisterCommands(m_Commands);
 		m_DocumentWindows.RegisterCommands(m_Commands, m_Keys);
-		// WARNING: These commands act on the active editor view, the one last focused, not the one being drawn: which editor holds the keyboard is only knowable while drawing, and a command runs before any editor has drawn.
-		RegisterEditorCommands(m_Commands, m_Keys, m_ActiveEditor,
-							   EditorCommandServices{.HasLanguageServer = [this](const std::filesystem::path& path) { return m_LanguageServices.HasChosenServer(LanguageOfPath(path)); },
-													 .References = m_ReferencesPanel});
 		m_EditorSettings.RegisterCommands(m_Commands, m_Keys);
 		explorer->RegisterCommands(m_Commands);
 		m_Panels.RegisterCommands(m_Commands);
@@ -354,6 +350,11 @@ namespace Graphite {
 		m_Commands.Add({.Id = "search.focus",
 						.Label = "Find in Files",
 						.Run = [this] { m_SearchPanel->Focus(); }});
+
+		// WARNING: These commands act on the active editor view, the one last focused, not the one being drawn: which editor holds the keyboard is only knowable while drawing, and a command runs before any editor has drawn.
+		RegisterEditorNavigationCommands(m_Commands, m_Keys, m_ActiveEditor,
+										 EditorCommandServices{.HasLanguageServer = [this](const std::filesystem::path& path) { return m_LanguageServices.HasChosenServer(LanguageOfPath(path)); },
+															   .References = m_ReferencesPanel});
 
 		m_Commands.Add({.Id = "languageServers.install",
 						.Label = "Install Language Server",

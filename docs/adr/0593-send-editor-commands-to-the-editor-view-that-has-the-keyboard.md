@@ -34,6 +34,12 @@ Editor commands acted on `DocumentSet`'s active index ([0546](0546-route-editor-
 
 - Amends 0546 and 0547. The active view follows keyboard focus; the active document still does too.
 
+## Alternatives Considered
+
+- Keep `DocumentSet`'s active index and give other views fake `DocumentSet` entries. Rejected: a view that is not a document would have to pretend to be one, and every consumer of the set would see the fakes.
+- Dispatch with a per-view switch in `GraphiteLayer`. Rejected: the layer would learn every kind of view, and each new view would edit it.
+- Register a separate command set per view. Rejected: the same ids cannot be registered twice, and the keys and menus would need to know which set is live.
+
 ## Related
 
 - [0546](0546-route-editor-scoped-key-commands-from-the-focused-editor.md)

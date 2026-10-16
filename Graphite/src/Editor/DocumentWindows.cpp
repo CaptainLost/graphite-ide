@@ -776,6 +776,8 @@ namespace Graphite {
 		keys.SetDefault("document.saveAll",
 						{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)});
 
+		RegisterEditingCommands(commands, keys, m_ActiveEditor);
+
 		commands.Add({.Id = kSwitchHeaderSourceCommand,
 					  .Label = "Switch Header/Source",
 					  .Run = [this] { RequestSwitchSourceHeaderOfActiveDocument(); },

@@ -44,8 +44,9 @@ namespace {
 
 		Harness()
 		{
-			RegisterEditorCommands(Commands, Keys, Active,
-								   EditorCommandServices{.HasLanguageServer = [](const std::filesystem::path&) { return true; }});
+			RegisterEditingCommands(Commands, Keys, Active);
+			RegisterEditorNavigationCommands(Commands, Keys, Active,
+											 EditorCommandServices{.HasLanguageServer = [](const std::filesystem::path&) { return true; }});
 		}
 	};
 }
@@ -109,4 +110,32 @@ TEST_CASE("Editor commands keep their keys and scopes")
 	CHECK(harness.Commands.KeyScopeOf(kSaveCommand) == Core::ShortcutScope::FocusedEditor);
 	CHECK(harness.Commands.KeyScopeOf("find.open") == Core::ShortcutScope::Global);
 	CHECK(harness.Keys.FindConflicts().empty());
+}
+
+TEST_CASE("The editing commands register before the navigation commands in their old order")
+{
+	Core::CommandRegistry commands;
+	Core::Keymap keys;
+	ActiveEditorTarget active;
+	std::vector<std::string> ids;
+
+	RegisterEditingCommands(commands, keys, active);
+	const std::size_t editingCount = [&] {
+		commands.ForEach([&](const Core::Command& command) { ids.push_back(command.Id); });
+		return ids.size();
+	}();
+	RegisterEditorNavigationCommands(commands, keys, active, EditorCommandServices{});
+	ids.clear();
+	commands.ForEach([&](const Core::Command& command) { ids.push_back(command.Id); });
+
+	std::vector<std::string> expected;
+	for (const EditorCommandSpec& spec : EditorCommandSpecs())
+	{
+		expected.push_back(spec.Id);
+	}
+	expected.insert(expected.end(), {kSaveCommand, kCloseCommand});
+	CHECK(editingCount == expected.size());
+	expected.insert(expected.end(), {"find.open", kGoToDefinitionCommand, kFindReferencesCommand});
+
+	CHECK(ids == expected);
 }
