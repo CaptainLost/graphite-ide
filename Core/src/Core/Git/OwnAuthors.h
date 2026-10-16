@@ -4,11 +4,16 @@
 #include "Core/Git/Signature.h"
 
 #include <cstddef>
+#include <string>
+#include <string_view>
 #include <vector>
 
 namespace Core {
 
 	inline constexpr std::size_t kMostOwnCommitsPerTip = 5000;
+
+	// One author whatever the case of the e-mail or the spaces around it: the key TipAuthors keeps one author per.
+	std::string AuthorKeyOf(std::string_view email);
 
 	struct OwnAuthorsRequest
 	{

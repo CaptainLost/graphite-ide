@@ -52,13 +52,8 @@ namespace Graphite {
 			const std::string trimmedName = Core::Trimmed(signature.Name);
 			const std::string shownName = trimmedName.empty() ? Core::Trimmed(signature.Email) : trimmedName;
 
-			return BranchAuthor{.Key = AuthorKeyOf(signature.Email), .Name = shownName, .When = signature.When};
+			return BranchAuthor{.Key = Core::AuthorKeyOf(signature.Email), .Name = shownName, .When = signature.When};
 		}
-	}
-
-	std::string AuthorKeyOf(std::string_view email)
-	{
-		return Core::Lowered(Core::Trimmed(email));
 	}
 
 	Core::OwnAuthorsRequest OwnAuthorsRequestFor(const std::vector<Core::Branch>& branches)
@@ -118,6 +113,6 @@ namespace Graphite {
 
 	bool IsUserKey(std::string_view key, const BranchAuthors& authors)
 	{
-		return !key.empty() && authors.UserEmail.has_value() && AuthorKeyOf(*authors.UserEmail) == key;
+		return !key.empty() && authors.UserEmail.has_value() && Core::AuthorKeyOf(*authors.UserEmail) == key;
 	}
 }

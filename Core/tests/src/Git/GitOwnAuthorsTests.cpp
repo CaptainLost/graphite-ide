@@ -231,3 +231,8 @@ TEST_CASE("A request with no tips is answered with nothing")
 
 	CHECK(AnswersTo(repository, OwnAuthorsRequest{}).empty());
 }
+
+TEST_CASE("An author's key is the e-mail lower-cased without surrounding spaces")
+{
+	CHECK(Core::AuthorKeyOf("  Ann@Example.COM ") == "ann@example.com");
+}

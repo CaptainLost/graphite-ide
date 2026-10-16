@@ -29,11 +29,6 @@ namespace Core {
 		using OwnCommitMap = std::unordered_map<Oid, OwnCommit>;
 		using NewestAuthorMap = std::map<std::string, Signature>;
 
-		std::string AuthorKeyOf(const Signature& author)
-		{
-			return Lowered(Trimmed(author.Email));
-		}
-
 		bool IsNewerAuthor(const Signature& author, const Signature& otherAuthor)
 		{
 			if (author.When != otherAuthor.When)
@@ -41,7 +36,7 @@ namespace Core {
 				return author.When > otherAuthor.When;
 			}
 
-			return AuthorKeyOf(author) < AuthorKeyOf(otherAuthor);
+			return AuthorKeyOf(author.Email) < AuthorKeyOf(otherAuthor.Email);
 		}
 
 		Error WalkFailure(const std::string& what)
@@ -128,7 +123,7 @@ namespace Core {
 
 		void RememberNewer(NewestAuthorMap& newestByKey, const Signature& author)
 		{
-			const std::string key = AuthorKeyOf(author);
+			const std::string key = AuthorKeyOf(author.Email);
 			const NewestAuthorMap::iterator held = newestByKey.find(key);
 
 			if (held == newestByKey.end())
@@ -246,5 +241,10 @@ namespace Core {
 		}
 
 		return answers;
+	}
+
+	std::string AuthorKeyOf(std::string_view email)
+	{
+		return Lowered(Trimmed(email));
 	}
 }

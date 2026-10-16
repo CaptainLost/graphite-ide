@@ -50,11 +50,6 @@ namespace {
 	}
 }
 
-TEST_CASE("An author's key is the e-mail lower-cased without surrounding spaces")
-{
-	CHECK(Graphite::AuthorKeyOf("  Ann@Example.COM ") == "ann@example.com");
-}
-
 TEST_CASE("The authors request lists every tip once in a fixed order and hides the trunk")
 {
 	Core::Branch main = BranchWithTip("main", Core::RefKind::Local, kMainTipByte);
