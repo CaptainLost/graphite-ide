@@ -1,4 +1,4 @@
-#include "UI/HighlightedRow.h"
+#include "UI/Lists/HighlightedRow.h"
 
 #include "Core/Base/Narrow.h"
 

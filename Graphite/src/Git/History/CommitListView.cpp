@@ -15,8 +15,8 @@
 #include "Git/History/CommitDetails.h"
 #include "Git/History/CommitLabels.h"
 #include "Git/History/CommitRows.h"
-#include "UI/Chevron.h"
-#include "UI/HighlightedRow.h"
+#include "UI/Lists/Chevron.h"
+#include "UI/Lists/HighlightedRow.h"
 #include "UI/FittedText.h"
 #include "UI/TypographicMarks.h"
 

@@ -13,9 +13,9 @@
 #include "Explorer/FileRow.h"
 #include "Git/GitDecorationView.h"
 #include "Solution/SolutionEditor.h"
-#include "UI/Chevron.h"
+#include "UI/Lists/Chevron.h"
 #include "UI/Dialogs/DialogLayout.h"
-#include "UI/FilterField.h"
+#include "UI/Lists/FilterField.h"
 #include "UI/OpenGesture.h"
 #include "UI/ToastEvent.h"
 

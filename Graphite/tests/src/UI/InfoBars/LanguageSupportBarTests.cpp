@@ -3,7 +3,7 @@
 #include "ImGuiFrames.h"
 
 #include "Language/Server/ServerChoice.h"
-#include "UI/LanguageSupportBar.h"
+#include "UI/InfoBars/LanguageSupportBar.h"
 
 #include <imgui.h>
 

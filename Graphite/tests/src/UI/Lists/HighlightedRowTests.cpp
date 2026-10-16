@@ -1,7 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "ImGuiFrames.h"
-#include "UI/HighlightedRow.h"
+#include "UI/Lists/HighlightedRow.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>

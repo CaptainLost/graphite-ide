@@ -13,7 +13,7 @@
 #include "Theme/Palettes.h"
 #include "Theme/GitPalette.h"
 #include "UI/ClipboardCopy.h"
-#include "UI/FilterField.h"
+#include "UI/Lists/FilterField.h"
 #include "Git/DefaultBranch.h"
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"

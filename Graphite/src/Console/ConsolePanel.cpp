@@ -9,7 +9,7 @@
 #include "Core/Text/Columns.h"
 
 #include "UI/ClipboardCopy.h"
-#include "UI/FilterField.h"
+#include "UI/Lists/FilterField.h"
 #include "UI/TickBox.h"
 
 #include <IconsMaterialDesignIcons.h>

@@ -1,6 +1,6 @@
 #include "Settings/Panel/SettingsLayout.h"
 
-#include "UI/FilterField.h"
+#include "UI/Lists/FilterField.h"
 
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/ImGuiRenderer.h"

@@ -1,6 +1,6 @@
 #include <doctest/doctest.h>
 
-#include "UI/RestrictedModeBar.h"
+#include "UI/InfoBars/RestrictedModeBar.h"
 
 #include <string>
 

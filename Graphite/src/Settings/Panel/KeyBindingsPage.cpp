@@ -16,7 +16,7 @@
 #include "Settings/Panel/SettingsSearch.h"
 #include "Theme/Palettes.h"
 #include "UI/Dialogs/DialogLayout.h"
-#include "UI/FilterField.h"
+#include "UI/Lists/FilterField.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>

@@ -71,8 +71,8 @@
 #include "Core/Events/ApplicationEvent.h"
 
 #include "UI/Dialogs/DialogLayout.h"
-#include "UI/LanguageSupportBar.h"
-#include "UI/RestrictedModeBar.h"
+#include "UI/InfoBars/LanguageSupportBar.h"
+#include "UI/InfoBars/RestrictedModeBar.h"
 #include "UI/ToastEvent.h"
 #include "Workspace/WorkspaceTrust.h"
 

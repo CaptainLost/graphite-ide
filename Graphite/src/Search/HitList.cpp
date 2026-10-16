@@ -3,7 +3,7 @@
 #include "Core/Base/Narrow.h"
 
 #include "Search/HitDisplay.h"
-#include "UI/Chevron.h"
+#include "UI/Lists/Chevron.h"
 #include "UI/OpenGesture.h"
 
 #include <imgui.h>

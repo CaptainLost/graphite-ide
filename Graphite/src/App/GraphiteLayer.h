@@ -9,7 +9,7 @@
 #include "Editor/EditorSettings.h"
 #include "Editor/Server/LanguageServicesPort.h"
 #include "App/AboutDialog.h"
-#include "UI/LanguageSupportBar.h"
+#include "UI/InfoBars/LanguageSupportBar.h"
 #include "UI/Dialogs/ModalQuestion.h"
 #include "Editor/Server/PreviewSemantics.h"
 #include "App/TitleBar.h"

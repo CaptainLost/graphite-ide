@@ -1,4 +1,4 @@
-#include "UI/RestrictedModeBar.h"
+#include "UI/InfoBars/RestrictedModeBar.h"
 
 #include "Core/FileSystem/FileSystem.h"
 

@@ -8,8 +8,8 @@
 #include "Sessions/SummaryCache.h"
 #include "Settings/UserDirectories.h"
 #include "Workspace/Workspace.h"
-#include "UI/Chevron.h"
-#include "UI/FilterField.h"
+#include "UI/Lists/Chevron.h"
+#include "UI/Lists/FilterField.h"
 #include "UI/TickBox.h"
 
 #include "Core/Base/Ascii.h"

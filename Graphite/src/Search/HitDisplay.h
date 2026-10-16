@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Search/SearchQuery.h"
-#include "UI/HighlightedRow.h"
+#include "UI/Lists/HighlightedRow.h"
 
 #include <filesystem>
 #include <string>

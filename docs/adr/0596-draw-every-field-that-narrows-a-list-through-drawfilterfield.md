@@ -16,7 +16,7 @@ ImGui's text field cannot hold a button inside its frame or keep a glyph at its 
 
 ## Decision
 
-Draw every field that narrows a list with `Graphite::DrawFilterField` (`Graphite/src/UI/FilterField.h`).
+Draw every field that narrows a list with `Graphite::DrawFilterField` (`Graphite/src/UI/Lists/FilterField.h`).
 
 - The field draws one frame across its whole width and gives the text field inside it a clear frame, so whatever sits inside reads as part of one field.
 - A glyph in the disabled-text colour stays at the field's start, typed text or not: the magnifier for words, another glyph where the field takes something else, as the history's path field takes a path. The hint and the text start after it, and what InputText draws there once a long query scrolls is clipped.

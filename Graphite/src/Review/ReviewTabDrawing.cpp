@@ -2,8 +2,8 @@
 
 #include "Git/History/CommitLabels.h"
 #include "Core/ImGui/IconButton.h"
-#include "UI/Chevron.h"
-#include "UI/FilterField.h"
+#include "UI/Lists/Chevron.h"
+#include "UI/Lists/FilterField.h"
 #include "UI/SplitResults.h"
 #include "UI/TickBox.h"
 #include "UI/FittedText.h"

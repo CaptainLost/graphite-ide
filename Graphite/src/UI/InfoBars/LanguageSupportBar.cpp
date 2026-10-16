@@ -1,4 +1,4 @@
-#include "UI/LanguageSupportBar.h"
+#include "UI/InfoBars/LanguageSupportBar.h"
 
 #include "Language/Registry/LanguageRegistry.h"
 

@@ -13,10 +13,10 @@
 #include "Core/Text/DocumentSet.h"
 
 #include "Theme/Palettes.h"
-#include "UI/Chevron.h"
+#include "UI/Lists/Chevron.h"
 #include "UI/ClipboardCopy.h"
 #include "UI/Dialogs/DialogLayout.h"
-#include "UI/FilterField.h"
+#include "UI/Lists/FilterField.h"
 #include "Terminal/TerminalRules.h"
 #include "Explorer/FileRow.h"
 #include "Explorer/FilteredTree.h"

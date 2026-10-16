@@ -4,7 +4,7 @@
 
 #include "Editor/DocumentWindows.h"
 #include "Theme/Palettes.h"
-#include "UI/Chevron.h"
+#include "UI/Lists/Chevron.h"
 #include "UI/ClipboardCopy.h"
 #include "Editor/StatusBar/StatusMessageEvent.h"
 #include "Git/Changes/CommitBlocker.h"
