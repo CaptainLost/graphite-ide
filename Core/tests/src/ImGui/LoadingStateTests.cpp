@@ -78,22 +78,30 @@ namespace {
 			float Advance = 0.0f;
 			float LineHeightWithSpacing = 0.0f;
 			bool SpinnerDrawn = false;
+			int Vertices = 0;
+			float LastItemLeft = 0.0f;
 		};
 
-		LineDrawn DrawLineLoader(const char* text, ImVec2 size = kWindowSize)
+		LineDrawn DrawLineLoader(const char* text, ImVec2 size = kWindowSize,
+								 Core::WhileLoaderWaits whileWaiting = Core::WhileLoaderWaits::ShowNothing)
 		{
 			BeginFrame("LineLoader", size);
 
 			const float before = ImGui::GetCursorPosY();
 			const int verticesBefore = ImGui::GetWindowDrawList()->VtxBuffer.Size;
-			Core::LoadingLine(text);
+			Core::LoadingLine(text, whileWaiting);
 			const float after = ImGui::GetCursorPosY();
 			const float lineHeightWithSpacing = ImGui::GetTextLineHeightWithSpacing();
-			const bool spinnerDrawn = ImGui::GetWindowDrawList()->VtxBuffer.Size > verticesBefore;
+			const int vertices = ImGui::GetWindowDrawList()->VtxBuffer.Size - verticesBefore;
+			const float lastItemLeft = ImGui::GetItemRectMin().x;
 
 			EndFrame();
 
-			return LineDrawn{.Advance = after - before, .LineHeightWithSpacing = lineHeightWithSpacing, .SpinnerDrawn = spinnerDrawn};
+			return LineDrawn{.Advance = after - before,
+							 .LineHeightWithSpacing = lineHeightWithSpacing,
+							 .SpinnerDrawn = vertices > 0,
+							 .Vertices = vertices,
+							 .LastItemLeft = lastItemLeft};
 		}
 
 		const ImRect& GetRegion() const { return m_Region; }
@@ -235,6 +243,26 @@ TEST_CASE("LoadingLine takes exactly one row of text while it waits and once it 
 	CHECK_FALSE(waiting.SpinnerDrawn);
 	CHECK(waiting.Advance == doctest::Approx(waiting.LineHeightWithSpacing));
 	CHECK(shown.SpinnerDrawn);
+	CHECK(shown.Advance == doctest::Approx(shown.LineHeightWithSpacing));
+}
+
+TEST_CASE("LoadingLine that shows its text while it waits draws the text at once, where it stays once the spinner shows")
+{
+	LoaderWindow window;
+	const Core::WhileLoaderWaits showText = Core::WhileLoaderWaits::ShowText;
+
+	const LoaderWindow::LineDrawn waiting = window.DrawLineLoader("Loading 500 more", kWindowSize, showText);
+
+	LoaderWindow::LineDrawn shown;
+	for (int frameIndex = 0; frameIndex < kFramesPastTheWait; ++frameIndex)
+	{
+		shown = window.DrawLineLoader("Loading 500 more", kWindowSize, showText);
+	}
+
+	CHECK(waiting.Vertices > 0);
+	CHECK(waiting.Advance == doctest::Approx(waiting.LineHeightWithSpacing));
+	CHECK(shown.Vertices > waiting.Vertices);
+	CHECK(shown.LastItemLeft == doctest::Approx(waiting.LastItemLeft));
 	CHECK(shown.Advance == doctest::Approx(shown.LineHeightWithSpacing));
 }
 

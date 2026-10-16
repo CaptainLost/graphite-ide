@@ -260,8 +260,6 @@ namespace Graphite {
 		// until the log has answered it, with a page or an error.
 		std::uint64_t m_AskedLogGeneration = 0;
 
-		std::optional<double> m_HistoryBusySince;
-
 		std::unordered_set<Core::Oid> m_PreviouslyWanted;
 
 		FileTextsBinding m_Texts;

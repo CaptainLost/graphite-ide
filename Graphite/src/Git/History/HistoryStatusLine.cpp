@@ -1,7 +1,5 @@
 #include "Git/History/HistoryStatusLine.h"
 
-#include "UI/LoaderDelay.h"
-
 #include "Core/ImGui/LoadingState.h"
 
 #include <imgui.h>
@@ -30,7 +28,7 @@ namespace Graphite {
 		return ImGui::GetTextLineHeightWithSpacing();
 	}
 
-	std::optional<HistoryClick> DrawHistoryStatusLine(const HistoryStatus& status, std::optional<double>& busySince)
+	std::optional<HistoryClick> DrawHistoryStatusLine(const HistoryStatus& status)
 	{
 		ImGui::TextDisabled("%s", status.Text.c_str());
 
@@ -38,19 +36,10 @@ namespace Graphite {
 		{
 			ImGui::SameLine();
 
-			if (LoaderIsDue(busySince))
-			{
-				Core::LoadingLine(status.Busy.c_str());
-			}
-			else
-			{
-				ImGui::TextDisabled("%s", status.Busy.c_str());
-			}
+			Core::LoadingLine(status.Busy.c_str(), Core::WhileLoaderWaits::ShowText);
 
 			return std::nullopt;
 		}
-
-		busySince.reset();
 
 		if (status.Actions == HistoryActions::None)
 		{

@@ -8,7 +8,6 @@
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/HighlightedRow.h"
 #include "UI/FittedText.h"
-#include "UI/LoaderDelay.h"
 #include "Core/ImGui/IconButton.h"
 #include "UI/TickBox.h"
 
@@ -72,7 +71,6 @@ namespace Graphite {
 			const float groupNameStart = ChevronWidth() + ImGui::GetStyle().ItemSpacing.x;
 			return static_cast<float>(row.Depth) * (groupNameStart + ChevronWidth());
 		}
-
 
 		// WARNING: A Selectable or MenuItem closes the popup it sits in when clicked; the panel's
 		// segments are buttons so that choosing a sort leaves it open.

@@ -89,6 +89,15 @@ namespace Core {
 			return true;
 		}
 
+		// WARNING: An imspinner spinner pads its circle by the frame padding above and below, so the radius leaves that
+		// padding out or the row grows taller than a line of text.
+		float LineSpinnerRadius()
+		{
+			constexpr float kRadiusPerDiameter = 0.5f;
+			const float framePadding = ImGui::GetStyle().FramePadding.y;
+			return std::max(kSmallestSpinnerRadius, ImGui::GetTextLineHeight() * kRadiusPerDiameter - framePadding);
+		}
+
 		float CentredStart(float space, float extent)
 		{
 			constexpr float kHalf = 0.5f;
@@ -125,34 +134,38 @@ namespace Core {
 		Redraw::RequestIn(Redraw::Clock::duration::zero());
 	}
 
-	void LoadingLine(const char* text)
+	void LoadingLine(const char* text, WhileLoaderWaits whileWaiting)
 	{
-		if (!HasWaitedLongEnough(kLineWaitSinceId, kLineLastFrameId))
+		const bool shows = HasWaitedLongEnough(kLineWaitSinceId, kLineLastFrameId);
+
+		if (!shows && whileWaiting == WhileLoaderWaits::ShowNothing)
 		{
 			ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
 			return;
 		}
 
-		constexpr float kRadiusPerDiameter = 0.5f;
-
-		// WARNING: An imspinner spinner pads its circle by the frame padding above and below, so the
-		// radius leaves that padding out or the row grows taller than a line of text.
-		const float framePadding = ImGui::GetStyle().FramePadding.y;
-		const float radius =
-			std::max(kSmallestSpinnerRadius, ImGui::GetTextLineHeight() * kRadiusPerDiameter - framePadding);
-
+		constexpr float kDiametersPerRadius = 2.0f;
+		const float radius = LineSpinnerRadius();
 		const ImVec2 rowStart = ImGui::GetCursorScreenPos();
+		float spinnerRight = rowStart.x + radius * kDiametersPerRadius;
 
-		const ImColor ink{ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled)};
-		const ImColor track{ImGui::GetStyleColorVec4(ImGuiCol_FrameBg)};
-		ImSpinner::SpinnerAng(kLineLoaderId, radius, kLineSpinnerThickness, ink, track, kLineSpinnerSpeed, kLineSpinnerArc);
+		if (shows)
+		{
+			const ImColor ink{ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled)};
+			const ImColor track{ImGui::GetStyleColorVec4(ImGuiCol_FrameBg)};
+			ImSpinner::SpinnerAng(kLineLoaderId, radius, kLineSpinnerThickness, ink, track, kLineSpinnerSpeed,
+								  kLineSpinnerArc);
+			spinnerRight = ImGui::GetItemRectMax().x;
+		}
 
 		// WARNING: The text is placed by position rather than SameLine: SameLine would carry the
 		// spinner's frame-padding baseline over and draw the text that much lower than the spinner.
-		const float spinnerRight = ImGui::GetItemRectMax().x;
 		ImGui::SetCursorScreenPos(ImVec2(spinnerRight + ImGui::GetStyle().ItemSpacing.x, rowStart.y));
 		ImGui::TextDisabled("%s", text);
 
-		Redraw::RequestIn(Redraw::Clock::duration::zero());
+		if (shows)
+		{
+			Redraw::RequestIn(Redraw::Clock::duration::zero());
+		}
 	}
 }

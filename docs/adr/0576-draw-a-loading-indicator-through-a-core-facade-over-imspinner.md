@@ -33,9 +33,13 @@ follows ImGui's font API across the 1.92 change, which the ImGui in `vendor/`
   smaller to fit.
 - Ask the frame loop for the next frame on every frame the loader is drawn,
   since the loop otherwise sleeps ([0530](0530-draw-a-frame-only-when-there-is-reason-to.md)).
-- Show it only once the wait has lasted 200 ms. The file tree draws nothing
-  before then and sets a wake-up for the moment the loader is due, so a folder
-  read in a few milliseconds never flashes a loader for one frame.
+- Show it only once the wait has lasted 200 ms. The facade keeps each loader's
+  wait itself, draws nothing before then and sets a wake-up for the moment the
+  loader is due, so a folder read in a few milliseconds never flashes a loader
+  for one frame. A one-line loader that takes the place of what the user just
+  clicked, such as the history's status line after Load 500 more, passes
+  `WhileLoaderWaits::ShowText`: its text shows at once, dim, and the spinner
+  joins it in front once the wait is over, the text staying where it is.
 
 ## Rationale
 

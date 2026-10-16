@@ -1,6 +1,14 @@
 #pragma once
 
+#include <cstdint>
+
 namespace Core {
+
+	enum class WhileLoaderWaits : std::uint8_t
+	{
+		ShowNothing,
+		ShowText
+	};
 
 	// WARNING: Each loader waits a fifth of a second before it shows, so a short wait shows nothing at all rather than a
 	// loader that flashes. The wait is kept per loader in the window, so the caller keeps no state for it: a frame that
@@ -9,5 +17,5 @@ namespace Core {
 
 	// One row high, for a list that waits on part of its content. The row is taken while the loader waits too, so the
 	// list does not move when it shows.
-	void LoadingLine(const char* text);
+	void LoadingLine(const char* text, WhileLoaderWaits whileWaiting = WhileLoaderWaits::ShowNothing);
 }

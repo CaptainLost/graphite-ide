@@ -362,7 +362,6 @@ namespace Graphite {
 		m_LogRequested = false;
 		m_Reach = HistoryReach{};
 		m_AskedLogGeneration = 0;
-		m_HistoryBusySince.reset();
 		m_Commits.Reset();
 
 		m_FilterBuffer = {};
@@ -824,11 +823,7 @@ namespace Graphite {
 
 			if (status.has_value())
 			{
-				click = DrawHistoryStatusLine(*status, m_HistoryBusySince);
-			}
-			else
-			{
-				m_HistoryBusySince.reset();
+				click = DrawHistoryStatusLine(*status);
 			}
 
 			ApplyCommitAction();
