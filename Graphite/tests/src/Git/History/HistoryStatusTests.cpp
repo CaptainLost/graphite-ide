@@ -110,8 +110,8 @@ TEST_CASE("One match reads in the singular")
 
 TEST_CASE("While a query the reader asked for runs the line says Loading in place of the buttons")
 {
-	const std::optional<HistoryStatus> status = DescribeHistory(
-		HistoryStatusInput{.Shown = 500, .Walked = 500, .Complete = false, .Total = 1739, .Asking = true});
+	const std::optional<HistoryStatus> status = DescribeHistory(HistoryStatusInput{
+		.Shown = 500, .Walked = 500, .Complete = false, .Total = 1739, .Asking = true, .AskedFiltered = false});
 
 	REQUIRE(status.has_value());
 	CHECK(status->Text == "500 of 1,739 commits");
@@ -121,11 +121,43 @@ TEST_CASE("While a query the reader asked for runs the line says Loading in plac
 
 TEST_CASE("While a filtered query the reader asked for runs the line says Searching in place of the buttons")
 {
-	const std::optional<HistoryStatus> status = DescribeHistory(HistoryStatusInput{
-		.Shown = 37, .Walked = 20000, .Complete = false, .Filtered = true, .Total = 50000, .Asking = true});
+	const std::optional<HistoryStatus> status = DescribeHistory(HistoryStatusInput{.Shown = 37,
+																				   .Walked = 20000,
+																				   .Complete = false,
+																				   .Filtered = true,
+																				   .Total = 50000,
+																				   .Asking = true,
+																				   .AskedFiltered = true});
 
 	REQUIRE(status.has_value());
 	CHECK(status->Busy == "Searching…");
+	CHECK(status->Actions == HistoryActions::None);
+}
+
+TEST_CASE("Typing a filter over an unfiltered page says Searching while the search runs")
+{
+	const std::optional<HistoryStatus> status = DescribeHistory(HistoryStatusInput{
+		.Shown = 500, .Walked = 500, .Complete = false, .Total = 1739, .Asking = true, .AskedFiltered = true});
+
+	REQUIRE(status.has_value());
+	CHECK(status->Text == "500 of 1,739 commits");
+	CHECK(status->Busy == "Searching…");
+	CHECK(status->Actions == HistoryActions::None);
+}
+
+TEST_CASE("Clearing a filter over a filtered page says Loading while the history is read again")
+{
+	const std::optional<HistoryStatus> status = DescribeHistory(HistoryStatusInput{.Shown = 37,
+																				   .Walked = 20000,
+																				   .Complete = false,
+																				   .Filtered = true,
+																				   .Total = 50000,
+																				   .Asking = true,
+																				   .AskedFiltered = false});
+
+	REQUIRE(status.has_value());
+	CHECK(status->Text == "37 matching commits in the newest 20,000 of 50,000");
+	CHECK(status->Busy == "Loading…");
 	CHECK(status->Actions == HistoryActions::None);
 }
 

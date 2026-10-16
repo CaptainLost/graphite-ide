@@ -68,7 +68,7 @@ namespace Graphite {
 
 		if (input.Asking)
 		{
-			status.Busy = input.Filtered ? kSearching : kLoading;
+			status.Busy = input.AskedFiltered ? kSearching : kLoading;
 			return status;
 		}
 

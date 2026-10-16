@@ -28,6 +28,11 @@ namespace Graphite {
 
 		// A query the reader started, with a click, a new ref or a new filter, has not answered yet.
 		bool Asking = false;
+
+		// Whether the query running narrows the history, which Filtered cannot say while the page on
+		// screen still answers the query before it. WARNING: Last, since the callers' designated
+		// initializers follow the order of the fields.
+		bool AskedFiltered = false;
 	};
 
 	struct HistoryStatus

@@ -899,6 +899,7 @@ namespace Graphite {
 	HistoryStatusInput GitView::HistoryStatusInputFor(const Core::LogPage& page) const
 	{
 		const std::optional<Core::LogRequest>& shown = m_Model.GetShownLogRequest();
+		const std::optional<Core::LogRequest>& asked = m_Model.GetAskedLogRequest();
 
 		return HistoryStatusInput{.Shown = page.Commits.size(),
 								  .Walked = page.Walked,
@@ -907,7 +908,8 @@ namespace Graphite {
 								  .Stash = shown.has_value() && shown->Stash.has_value(),
 								  .Total = m_Model.GetCommitCountFor(shown.has_value() ? shown->Ref : std::nullopt),
 								  .Counting = m_Model.IsCommitCountInFlight(),
-								  .Asking = !m_Model.IsLogAnswered(m_AskedLogGeneration)};
+								  .Asking = !m_Model.IsLogAnswered(m_AskedLogGeneration),
+								  .AskedFiltered = asked.has_value() && NarrowsHistory(*asked)};
 	}
 
 	bool GitView::IsShownLogNarrowed() const

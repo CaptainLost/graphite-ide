@@ -150,6 +150,10 @@ namespace Graphite {
 		// answer, so it always describes the page GetLog returns.
 		const std::optional<Core::LogRequest>& GetShownLogRequest() const { return m_ShownLogRequest; }
 
+		// The request last asked for, by the reader or by a refresh, whether or not it has answered: what
+		// the query running reads while the page on screen still answers an earlier one.
+		const std::optional<Core::LogRequest>& GetAskedLogRequest() const { return m_LastLogRequest; }
+
 		// The generation of the last log asked for, and whether the log has answered it, with a page
 		// or an error. An answer to a later ask also answers an earlier one.
 		std::uint64_t GetLogGeneration() const { return m_Log.GetRequested(); }
