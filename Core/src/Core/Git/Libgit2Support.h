@@ -45,6 +45,9 @@ namespace Core {
 	// What a Repository call returns when Open never succeeded.
 	Error RepositoryNotOpen();
 
+	// NotFound, naming the id, when the repository holds no such commit.
+	Result<CommitHandle> LookupCommit(git_repository* handle, const Oid& id);
+
 	Signature ToSignature(const git_signature* signature);
 
 	// Summary is the first line of the message and Body what follows the one blank line after it,

@@ -175,16 +175,14 @@ namespace Core {
 				return TreeHandle{};
 			}
 
-			git_oid gitCommitId = ToGitOid(*commitId);
+			const Result<CommitHandle> commit = LookupCommit(handle, *commitId);
 
-			CommitHandle commit;
-			if (git_commit_lookup(Out(commit), handle, &gitCommitId) != 0)
+			if (!commit.HasValue())
 			{
-				return Error{ErrorCode::NotFound,
-							 std::format("cannot find commit {}: {}", commitId->ToHex(), LastLibgit2Message())};
+				return commit.GetError();
 			}
 
-			return TreeOfCommit(commit.get());
+			return TreeOfCommit(commit.GetValue().get());
 		}
 
 		Result<TreeHandle> HeadTreeOrEmptyWhenUnborn(git_repository* handle)
@@ -328,14 +326,14 @@ namespace Core {
 				return Error{ErrorCode::InvalidArgument, "a commit-to-parent diff needs a commit"};
 			}
 
-			git_oid commitId = ToGitOid(*request.From);
+			Result<CommitHandle> lookedUp = LookupCommit(m_Handle.get(), *request.From);
 
-			CommitHandle commit;
-			if (git_commit_lookup(Out(commit), m_Handle.get(), &commitId) != 0)
+			if (!lookedUp.HasValue())
 			{
-				return Error{ErrorCode::NotFound,
-							 std::format("cannot find commit {}: {}", request.From->ToHex(), LastLibgit2Message())};
+				return lookedUp.GetError();
 			}
+
+			const CommitHandle commit = std::move(lookedUp).GetValue();
 
 			Result<TreeHandle> commitTree = TreeOfCommit(commit.get());
 

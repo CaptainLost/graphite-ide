@@ -108,6 +108,19 @@ namespace Core {
 		return Error{ErrorCode::NotFound, "the repository is not open"};
 	}
 
+	Result<CommitHandle> LookupCommit(git_repository* handle, const Oid& id)
+	{
+		const git_oid commitId = ToGitOid(id);
+		CommitHandle commit;
+
+		if (git_commit_lookup(Out(commit), handle, &commitId) != 0)
+		{
+			return Error{ErrorCode::NotFound, std::format("cannot find commit {}: {}", id.ToHex(), LastLibgit2Message())};
+		}
+
+		return commit;
+	}
+
 	Signature ToSignature(const git_signature* signature)
 	{
 		if (signature == nullptr)

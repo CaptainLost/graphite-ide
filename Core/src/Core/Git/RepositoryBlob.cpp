@@ -73,14 +73,14 @@ namespace Core {
 			return RepositoryNotOpen();
 		}
 
-		git_oid commitId = ToGitOid(revision);
+		Result<CommitHandle> lookedUp = LookupCommit(m_Handle.get(), revision);
 
-		CommitHandle commit;
-		if (git_commit_lookup(Out(commit), m_Handle.get(), &commitId) != 0)
+		if (!lookedUp.HasValue())
 		{
-			return Error{ErrorCode::NotFound,
-						 std::format("cannot look up the commit: {}", LastLibgit2Message())};
+			return lookedUp.GetError();
 		}
+
+		const CommitHandle commit = std::move(lookedUp).GetValue();
 
 		TreeHandle tree;
 		if (git_commit_tree(Out(tree), commit.get()) != 0)
@@ -132,14 +132,14 @@ namespace Core {
 			return RepositoryNotOpen();
 		}
 
-		git_oid commitId = ToGitOid(commit);
+		Result<CommitHandle> lookedUp = LookupCommit(m_Handle.get(), commit);
 
-		CommitHandle commitHandle;
-		if (git_commit_lookup(Out(commitHandle), m_Handle.get(), &commitId) != 0)
+		if (!lookedUp.HasValue())
 		{
-			return Error{ErrorCode::NotFound,
-						 std::format("cannot look up the commit: {}", LastLibgit2Message())};
+			return lookedUp.GetError();
 		}
+
+		const CommitHandle commitHandle = std::move(lookedUp).GetValue();
 
 		const bool isRootCommit = git_commit_parentcount(commitHandle.get()) == 0;
 
@@ -169,14 +169,14 @@ namespace Core {
 			return RepositoryNotOpen();
 		}
 
-		git_oid stashId = ToGitOid(stash);
+		Result<CommitHandle> lookedUp = LookupCommit(m_Handle.get(), stash);
 
-		CommitHandle stashCommit;
-		if (git_commit_lookup(Out(stashCommit), m_Handle.get(), &stashId) != 0)
+		if (!lookedUp.HasValue())
 		{
-			return Error{ErrorCode::NotFound,
-						 std::format("cannot look up the commit: {}", LastLibgit2Message())};
+			return lookedUp.GetError();
 		}
+
+		const CommitHandle stashCommit = std::move(lookedUp).GetValue();
 
 		if (git_commit_parentcount(stashCommit.get()) <= kUntrackedFilesParentOfStash)
 		{

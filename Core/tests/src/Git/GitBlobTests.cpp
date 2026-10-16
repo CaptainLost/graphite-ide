@@ -1,9 +1,11 @@
 #include <doctest/doctest.h>
 
+#include "Core/Git/Oid.h"
 #include "Core/Git/Repository.h"
 
 #include "Git/GitFixture.h"
 
+#include <optional>
 #include <string>
 
 using Core::LogRequest;
@@ -366,4 +368,22 @@ TEST_CASE("The index side is read from the index on disk, not from one this hand
 	const Core::Result<std::string> staged = readingHandleCachedBeforeStage.ReadIndexBlob("a.txt");
 	REQUIRE(staged.HasValue());
 	CHECK(staged.GetValue() == "staged\n");
+}
+
+TEST_CASE("A commit the repository does not hold is NotFound, and the error names it")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const std::optional<Core::Oid> neverMade = Core::Oid::FromHex("0123456789abcdef0123456789abcdef01234567");
+	REQUIRE(neverMade.has_value());
+
+	const Core::Result<std::string> text = repository.ReadBlob("a.txt", *neverMade);
+
+	REQUIRE_FALSE(text.HasValue());
+	CHECK(text.GetError().Code == Core::ErrorCode::NotFound);
+	CHECK(text.GetError().Message.starts_with("cannot find commit 0123456789abcdef0123456789abcdef01234567"));
 }

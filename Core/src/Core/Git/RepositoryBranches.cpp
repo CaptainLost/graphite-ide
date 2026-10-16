@@ -196,14 +196,14 @@ namespace Core {
 			return RepositoryNotOpen();
 		}
 
-		const git_oid commitId = ToGitOid(from);
-		CommitHandle commit;
+		Result<CommitHandle> lookedUp = LookupCommit(m_Handle.get(), from);
 
-		if (git_commit_lookup(Out(commit), m_Handle.get(), &commitId) != 0)
+		if (!lookedUp.HasValue())
 		{
-			return Error{ErrorCode::NotFound,
-						 std::format("no commit {}: {}", from.ShortHex(), LastLibgit2Message())};
+			return lookedUp.GetError();
 		}
+
+		const CommitHandle commit = std::move(lookedUp).GetValue();
 
 		ReferenceHandle createdBranch;
 		const int failIfTheBranchExists = 0;
