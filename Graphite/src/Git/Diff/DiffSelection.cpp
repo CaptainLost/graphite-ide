@@ -14,29 +14,6 @@ namespace Graphite {
 		constexpr std::size_t kSeedLeftShift = 6;
 		constexpr std::size_t kSeedRightShift = 2;
 
-		std::vector<std::size_t> Boundaries(std::string_view text)
-		{
-			std::vector<std::size_t> boundaries;
-			boundaries.reserve(text.size() + 1);
-
-			boundaries.push_back(0);
-
-			for (std::size_t byteOffset = 1; byteOffset < text.size(); ++byteOffset)
-			{
-				if (!Core::IsUtf8ContinuationByte(text[byteOffset]))
-				{
-					boundaries.push_back(byteOffset);
-				}
-			}
-
-			if (!text.empty())
-			{
-				boundaries.push_back(text.size());
-			}
-
-			return boundaries;
-		}
-
 		std::size_t FirstBoundary(const std::vector<std::size_t>& boundaries,
 								  const std::function<bool(std::size_t offset)>& reached)
 		{
@@ -237,7 +214,7 @@ namespace Graphite {
 			return 0;
 		}
 
-		const std::vector<std::size_t> boundaries = Boundaries(text);
+		const std::vector<std::size_t> boundaries = Core::CharacterBoundaries(text);
 		const std::size_t nextBoundary = FirstBoundary(boundaries, [&](std::size_t offset) {
 			return widthOf(text.substr(0, offset)) >= x;
 		});
@@ -266,7 +243,7 @@ namespace Graphite {
 			return 0;
 		}
 
-		const std::vector<std::size_t> boundaries = Boundaries(text);
+		const std::vector<std::size_t> boundaries = Core::CharacterBoundaries(text);
 
 		const std::size_t characterEnd = FirstBoundary(boundaries, [&](std::size_t offset) {
 			return offset > 0 && widthOf(text.substr(0, offset)) > x;

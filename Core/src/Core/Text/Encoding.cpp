@@ -166,6 +166,26 @@ namespace Core {
 		return count;
 	}
 
+	std::vector<std::size_t> CharacterBoundaries(std::string_view bytes)
+	{
+		std::vector<std::size_t> boundaries{0};
+
+		for (std::size_t offset = 1; offset < bytes.size(); ++offset)
+		{
+			if (!IsUtf8ContinuationByte(bytes[offset]))
+			{
+				boundaries.push_back(offset);
+			}
+		}
+
+		if (!bytes.empty())
+		{
+			boundaries.push_back(bytes.size());
+		}
+
+		return boundaries;
+	}
+
 	std::string_view EncodingName(Encoding encoding)
 	{
 		switch (encoding)

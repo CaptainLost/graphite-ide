@@ -15,15 +15,6 @@ namespace Core {
 		constexpr char32_t kCodePointOfUndecodedCharacter = 0;
 		constexpr std::string_view kFilePathAndLineSuffixPunctuation = "/\\.-:~";
 
-		std::size_t StartOfCharacterContaining(std::string_view lineText, std::size_t byteOffset)
-		{
-			while (byteOffset > 0 && IsUtf8ContinuationByte(lineText[byteOffset]))
-			{
-				--byteOffset;
-			}
-			return byteOffset;
-		}
-
 		struct Character
 		{
 			char32_t CodePoint = 0;
@@ -86,7 +77,7 @@ namespace Core {
 			return ColumnSpan{.From = lineText.size(), .To = lineText.size()};
 		}
 
-		const std::size_t characterStart = StartOfCharacterContaining(lineText, byteOffset);
+		const std::size_t characterStart = CharacterBoundaryAtOrBefore(lineText, byteOffset);
 		const Character characterAtOffset = ReadCharacter(lineText, characterStart);
 
 		if (!IsWordCharacter(characterAtOffset, kind))
@@ -97,7 +88,7 @@ namespace Core {
 		std::size_t wordStart = characterStart;
 		while (wordStart > 0)
 		{
-			const std::size_t previousCharacterStart = StartOfCharacterContaining(lineText, wordStart - 1);
+			const std::size_t previousCharacterStart = CharacterBoundaryAtOrBefore(lineText, wordStart - 1);
 			const Character previousCharacter = ReadCharacter(lineText, previousCharacterStart);
 
 			if (!IsWordCharacter(previousCharacter, kind))

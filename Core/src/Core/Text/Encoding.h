@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <string_view>
+#include <vector>
 
 namespace Core {
 
@@ -81,6 +82,10 @@ namespace Core {
 	std::size_t CharacterBoundaryAtOrAfter(std::string_view bytes, std::size_t offset);
 
 	std::size_t CharacterCount(std::string_view bytes);
+
+	// From 0 to the end, both included, so a prefix of any whole number of characters is bytes.substr(0, boundaries[n]).
+	// 0 is a boundary even before a stray continuation byte, so text that is not valid UTF-8 still has a start.
+	std::vector<std::size_t> CharacterBoundaries(std::string_view bytes);
 
 	std::string_view EncodingName(Encoding encoding);
 }

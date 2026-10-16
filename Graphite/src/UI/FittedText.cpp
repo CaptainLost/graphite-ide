@@ -17,22 +17,6 @@ namespace Graphite {
 		// prefix that exactly fits is dropped.
 		constexpr float kCalcTextSizeRoundingPixel = 1.0f;
 
-		std::vector<std::size_t> CutBoundaries(std::string_view text)
-		{
-			// WARNING: The start of the text is always a boundary, even when its first byte is a continuation byte, so text that is not valid UTF-8 is still cut by width instead of dropped whole.
-			std::vector<std::size_t> boundaries{0};
-
-			for (std::size_t byteIndex = 1; byteIndex < text.size(); ++byteIndex)
-			{
-				if (!Core::IsUtf8ContinuationByte(text[byteIndex]))
-				{
-					boundaries.push_back(byteIndex);
-				}
-			}
-
-			return boundaries;
-		}
-
 		std::size_t ByteCountWithoutTrailingSpaces(std::string_view text, std::size_t byteCount)
 		{
 			while (byteCount > 0 && text[byteCount - 1] == ' ')
@@ -52,12 +36,12 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		const std::vector<std::size_t> boundaries = CutBoundaries(text);
+		const std::vector<std::size_t> boundaries = Core::CharacterBoundaries(text);
 
-		// WARNING: The cut is found by halving, not by walking, because this runs for every visible cell every frame and measuring each prefix in turn is quadratic. Boundary 0 is the floor that is never measured.
+		// WARNING: The cut is found by halving, not by walking, because this runs for every visible cell every frame and measuring each prefix in turn is quadratic. Boundary 0 is the floor that is never measured, and the last, the whole text, is already known to be too wide.
 		const float budget = maxWidth - ellipsisWidth;
 		std::size_t fittingBoundary = 0;
-		std::size_t tooWideBoundary = boundaries.size();
+		std::size_t tooWideBoundary = boundaries.size() - 1;
 
 		while (tooWideBoundary - fittingBoundary > 1)
 		{

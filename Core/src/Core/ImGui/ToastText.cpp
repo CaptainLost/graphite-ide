@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <numeric>
 #include <optional>
+#include <span>
 #include <utility>
 
 namespace Core {
@@ -316,15 +317,9 @@ namespace Core {
 			// WARNING: binary-searches the boundaries because each probe measures a whole prefix with the real font, and a linear scan would measure one per character.
 			std::size_t FittingCharacterPrefixLength(std::string_view text, bool bold, float room) const
 			{
-				std::vector<std::size_t> boundaries;
-
-				for (std::size_t offset = 1; offset <= text.size(); ++offset)
-				{
-					if (offset == text.size() || !IsUtf8ContinuationByte(text[offset]))
-					{
-						boundaries.push_back(offset);
-					}
-				}
+				// The start is left out: an empty prefix always fits and is never worth measuring.
+				const std::vector<std::size_t> allBoundaries = CharacterBoundaries(text);
+				const std::span<const std::size_t> boundaries = std::span{allBoundaries}.subspan(1);
 
 				std::size_t fittingCount = 0;
 				std::size_t searchEnd = boundaries.size();

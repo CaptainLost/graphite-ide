@@ -2,8 +2,10 @@
 
 #include "Core/Text/Encoding.h"
 
+#include <cstddef>
 #include <ostream>
 #include <string>
+#include <vector>
 
 using namespace Core;
 
@@ -238,6 +240,22 @@ TEST_CASE("CharacterBoundaryAtOrAfter skips continuation bytes and leaves an off
 	CHECK(CharacterBoundaryAtOrAfter("", 0) == 0);
 	CHECK(CharacterBoundaryAtOrAfter("", 1) == 1);
 	CHECK(CharacterBoundaryAtOrAfter("\x80\x80", 0) == 2);
+}
+
+TEST_CASE("CharacterBoundaries lists every offset a character starts at, and the end")
+{
+	using Boundaries = std::vector<std::size_t>;
+
+	CHECK(CharacterBoundaries("") == Boundaries{0});
+	CHECK(CharacterBoundaries("ab") == Boundaries{0, 1, 2});
+	CHECK(CharacterBoundaries("a\xC4\x99"
+							  "b") == Boundaries{0, 1, 3, 4});
+}
+
+TEST_CASE("CharacterBoundaries starts at 0 even when the text starts partway through a character")
+{
+	CHECK(CharacterBoundaries("\x99"
+							  "b") == std::vector<std::size_t>{0, 1, 2});
 }
 
 TEST_CASE("CharacterCount counts the bytes that start a character")
