@@ -110,7 +110,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		SignatureHandle stasher;
@@ -179,7 +179,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		return ListStashes(m_Handle.get());
@@ -189,7 +189,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		const Result<std::size_t> stashPosition = FindStashPosition(m_Handle.get(), id);
@@ -236,7 +236,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		const Result<std::size_t> stashPosition = FindStashPosition(m_Handle.get(), id);
@@ -290,7 +290,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		const Result<std::size_t> stashPosition = FindStashPosition(m_Handle.get(), id);

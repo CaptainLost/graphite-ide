@@ -45,7 +45,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		const git_oid blobId = ToGitOid(blob);
@@ -70,7 +70,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		git_oid commitId = ToGitOid(revision);
@@ -129,7 +129,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		git_oid commitId = ToGitOid(commit);
@@ -166,7 +166,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		git_oid stashId = ToGitOid(stash);
@@ -192,7 +192,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		Result<IndexHandle> openedIndex = OpenFreshIndex(m_Handle.get());
@@ -239,7 +239,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		const std::filesystem::path absolutePath = m_WorkingDirectory / pathRelativeToWorkingDirectory;
@@ -289,7 +289,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		git_oid headId{};

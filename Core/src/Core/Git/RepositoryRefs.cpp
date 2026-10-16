@@ -180,7 +180,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		BranchIteratorHandle branchIterator;
@@ -296,7 +296,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		HeadState head;

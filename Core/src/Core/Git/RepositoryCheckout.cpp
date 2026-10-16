@@ -457,7 +457,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		Result<ResolvedTarget> resolved = ResolveCheckoutTarget(m_Handle.get(), target);
@@ -522,7 +522,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return FailedWithNothingChanged(Error{ErrorCode::NotFound, "the repository is not open"});
+			return FailedWithNothingChanged(RepositoryNotOpen());
 		}
 
 		Result<ResolvedTarget> resolved = ResolveCheckoutTarget(m_Handle.get(), target);
@@ -663,7 +663,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		ObjectHandle headCommit;

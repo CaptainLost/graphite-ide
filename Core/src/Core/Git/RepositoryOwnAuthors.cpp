@@ -215,7 +215,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		std::vector<TipAuthors> answers;

@@ -98,6 +98,16 @@ namespace Core {
 		return text != nullptr ? text : "";
 	}
 
+	const char* DataOrEmptyString(std::string_view text)
+	{
+		return text.empty() ? "" : text.data();
+	}
+
+	Error RepositoryNotOpen()
+	{
+		return Error{ErrorCode::NotFound, "the repository is not open"};
+	}
+
 	Signature ToSignature(const git_signature* signature)
 	{
 		if (signature == nullptr)

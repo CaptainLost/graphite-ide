@@ -12,6 +12,7 @@
 
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct git_oid;
@@ -36,6 +37,13 @@ namespace Core {
 	git_oid ToGitOid(const Oid& id);
 
 	std::string TextOrEmpty(const char* text);
+
+	// An empty view may carry a null pointer, and libgit2 reads a null buffer as no file at
+	// all, which is not what an empty text means.
+	const char* DataOrEmptyString(std::string_view text);
+
+	// What a Repository call returns when Open never succeeded.
+	Error RepositoryNotOpen();
 
 	Signature ToSignature(const git_signature* signature);
 

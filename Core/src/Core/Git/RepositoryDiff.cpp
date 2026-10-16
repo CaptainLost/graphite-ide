@@ -250,7 +250,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		git_diff_options options = GIT_DIFF_OPTIONS_INIT;
@@ -468,16 +468,6 @@ namespace Core {
 		}
 
 		return collected;
-	}
-
-	namespace {
-
-		// An empty view may carry a null pointer, and libgit2 reads a null buffer as no file at
-		// all, which is not what an empty text means.
-		const char* DataOrEmptyString(std::string_view text)
-		{
-			return text.empty() ? "" : text.data();
-		}
 	}
 
 	Result<FileDiff> Repository::DiffTexts(std::string_view oldText, std::string_view newText,

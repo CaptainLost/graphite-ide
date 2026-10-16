@@ -33,13 +33,6 @@ namespace Core {
 
 			return 0;
 		}
-
-		// An empty view may carry a null pointer, and libgit2 reads a null buffer as no file at
-		// all, which is not what an empty text means.
-		const char* DataOrEmptyString(std::string_view text)
-		{
-			return text.empty() ? "" : text.data();
-		}
 	}
 
 	Result<std::vector<LineHunk>> DiffTexts(std::string_view oldText, std::string_view newText)

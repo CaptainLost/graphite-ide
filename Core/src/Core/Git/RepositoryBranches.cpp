@@ -165,7 +165,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		if (HeadIsBranch(m_Handle.get(), branchFullName))
@@ -193,7 +193,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		const git_oid commitId = ToGitOid(from);
@@ -223,7 +223,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		Result<ReferenceHandle> branchToRename = LookupLocalBranch(m_Handle.get(), from);
@@ -251,7 +251,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		RevwalkHandle revisionWalk;
@@ -315,7 +315,7 @@ namespace Core {
 	{
 		if (m_Handle == nullptr)
 		{
-			return Error{ErrorCode::NotFound, "the repository is not open"};
+			return RepositoryNotOpen();
 		}
 
 		Result<ReferenceHandle> branchToDelete = LookupLocalBranch(m_Handle.get(), name);
