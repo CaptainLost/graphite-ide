@@ -250,11 +250,18 @@ namespace Core {
 			const bool pageIsFull = commits.size() >= request.MaxCount;
 			const bool walkCeilingReached = walkedCount >= request.MaxWalk;
 
-			// Stopping here says nothing about whether history goes on past this point, so the page
-			// is not known to be the whole answer.
+			// A limit reached exactly where the history ends leaves nothing past the page, so the walk
+			// is asked for one more commit before the page is called unfinished. The commit it peeks
+			// at is neither kept nor counted as walked.
 			if (pageIsFull || walkCeilingReached)
 			{
-				complete = false;
+				const bool historyGoesOn = git_revwalk_next(&commitId, walk.get()) == 0;
+
+				if (historyGoesOn)
+				{
+					complete = false;
+				}
+
 				break;
 			}
 

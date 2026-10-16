@@ -405,6 +405,32 @@ TEST_CASE("A complete page has visited every commit of its history")
 	CHECK(log.GetValue().Walked == 3);
 }
 
+TEST_CASE("A history of exactly MaxCount commits is complete, since nothing is left past the page")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	fixture.Write("b.txt", "two\n");
+	fixture.Commit("add b");
+
+	fixture.Write("c.txt", "three\n");
+	fixture.Commit("add c");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	LogRequest request;
+	request.MaxCount = 3;
+
+	const Result<LogPage> log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+	CHECK(log.GetValue().Commits.size() == 3);
+	CHECK(log.GetValue().Complete);
+	CHECK(log.GetValue().Walked == 3);
+}
+
 TEST_CASE("The default page and walk ceiling are the first page the history shows")
 {
 	CHECK(LogRequest{}.MaxCount == Core::kLogPageSize);

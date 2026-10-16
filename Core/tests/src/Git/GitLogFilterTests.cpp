@@ -297,3 +297,86 @@ TEST_CASE("A filtered page stopped at the walk ceiling says it visited exactly t
 	CHECK_FALSE(log.GetValue().Complete);
 	CHECK(log.GetValue().Walked == 2);
 }
+
+TEST_CASE("A filtered walk whose ceiling equals the history's length is complete")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("the oldest commit");
+
+	fixture.Write("b.txt", "two\n");
+	fixture.Commit("add b");
+
+	fixture.Write("c.txt", "three\n");
+	fixture.Commit("add c");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	LogRequest request;
+	request.Filter.Text = "oldest";
+	request.MaxWalk = 3;
+
+	const Result<LogPage> log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+	CHECK(log.GetValue().Commits.size() == 1);
+	CHECK(log.GetValue().Complete);
+	CHECK(log.GetValue().Walked == 3);
+}
+
+TEST_CASE("A filtered page stopped at MaxCount on its newest commit says it walked only that one")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("keep 2");
+
+	fixture.Write("b.txt", "two\n");
+	fixture.Commit("skip");
+
+	fixture.Write("c.txt", "three\n");
+	const std::string newest = fixture.Commit("keep 1");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	LogRequest request;
+	request.Filter.Text = "keep";
+	request.MaxCount = 1;
+
+	const Result<LogPage> log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+	REQUIRE(log.GetValue().Commits.size() == 1);
+	CHECK(log.GetValue().Commits.front().Id.ToHex() == newest);
+	CHECK_FALSE(log.GetValue().Complete);
+	CHECK(log.GetValue().Walked == 1);
+}
+
+TEST_CASE("A filtered page stopped at MaxCount counts the commit it passed over before its match in Walked")
+{
+	GitFixture fixture;
+
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("keep 2");
+
+	fixture.Write("b.txt", "two\n");
+	const std::string kept = fixture.Commit("keep 1");
+
+	fixture.Write("c.txt", "three\n");
+	fixture.Commit("skip");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	LogRequest request;
+	request.Filter.Text = "keep";
+	request.MaxCount = 1;
+
+	const Result<LogPage> log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+	REQUIRE(log.GetValue().Commits.size() == 1);
+	CHECK(log.GetValue().Commits.front().Id.ToHex() == kept);
+	CHECK_FALSE(log.GetValue().Complete);
+	CHECK(log.GetValue().Walked == 2);
+}
