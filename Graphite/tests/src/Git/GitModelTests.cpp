@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "DeferredJobs.h"
 #include "GitFixtures.h"
 #include "Git/GitModel.h"
 
@@ -124,7 +125,33 @@ namespace {
 
 			LastLogRequest = request;
 
+			if (FailLog)
+			{
+				return PortFailure();
+			}
+
 			return Log;
+		}
+
+		Core::Result<Graphite::CommitCount> CountCommits(const std::optional<std::string>& ref,
+														 const std::optional<Graphite::CommitCount>& known) override
+		{
+			++CountCalls;
+			LastCountRef = ref;
+			LastKnownCount = known;
+
+			if (FailCount)
+			{
+				return PortFailure();
+			}
+
+			if (known.has_value() && known->Tip == CountTip)
+			{
+				return *known;
+			}
+
+			++CountWalks;
+			return Graphite::CommitCount{.Tip = CountTip, .Count = CountTotal};
 		}
 
 		Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) override
@@ -340,6 +367,7 @@ namespace {
 		TextsByPathsMap TextsByPaths;
 
 		bool FailStatus = false;
+		bool FailLog = false;
 		bool FailDiff = false;
 		bool FailTexts = false;
 
@@ -348,6 +376,13 @@ namespace {
 		int HeadCalls = 0;
 		int LogCalls = 0;
 		std::optional<Core::LogRequest> LastLogRequest;
+		int CountCalls = 0;
+		int CountWalks = 0;
+		bool FailCount = false;
+		Core::Oid CountTip = OidWithFirstByte(1);
+		std::size_t CountTotal = 1739;
+		std::optional<std::string> LastCountRef;
+		std::optional<Graphite::CommitCount> LastKnownCount;
 		int DiffCalls = 0;
 		int TextCalls = 0;
 
@@ -775,6 +810,75 @@ TEST_CASE("A log asked without own commits asks for none")
 
 	CHECK(port.LogCalls == 1);
 	CHECK(model.GetOwnCommits() == nullptr);
+}
+
+TEST_CASE("The log on screen names the request it answers")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	Core::LogRequest request;
+	request.Ref = "refs/heads/topic";
+	request.Filter.Text = "encoding";
+
+	model.RequestLog(request);
+
+	CHECK_FALSE(model.GetShownLogRequest().has_value());
+
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	REQUIRE(model.GetShownLogRequest().has_value());
+	CHECK(model.GetShownLogRequest()->Ref == std::optional<std::string>{"refs/heads/topic"});
+	CHECK(model.GetShownLogRequest()->Filter.Text == "encoding");
+}
+
+TEST_CASE("A failed log keeps the request of the page still on screen")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	Core::LogRequest first;
+	first.Ref = "refs/heads/first";
+	model.RequestLog(first);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	port.FailLog = true;
+
+	Core::LogRequest second;
+	second.Ref = "refs/heads/second";
+	model.RequestLog(second);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	REQUIRE(model.GetShownLogRequest().has_value());
+	CHECK(model.GetShownLogRequest()->Ref == std::optional<std::string>{"refs/heads/first"});
+}
+
+TEST_CASE("A log ask is answered by its page or by its failure")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestLog(Core::LogRequest{});
+	const std::uint64_t answeredByPage = model.GetLogGeneration();
+
+	CHECK_FALSE(model.IsLogAnswered(answeredByPage));
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	CHECK(model.IsLogAnswered(answeredByPage));
+
+	port.FailLog = true;
+
+	model.RequestLog(Core::LogRequest{});
+	const std::uint64_t answeredByFailure = model.GetLogGeneration();
+
+	CHECK_FALSE(model.IsLogAnswered(answeredByFailure));
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	CHECK(model.IsLogAnswered(answeredByFailure));
 }
 
 TEST_CASE("The commits a branch owns are not requested without an open workspace")
@@ -2499,4 +2603,296 @@ TEST_CASE("Authors asked for a folder that has since closed are dropped")
 	model.OnUpdate(Core::Timestep{kFrameSeconds});
 
 	CHECK(model.GetBranchAuthors() == nullptr);
+}
+
+TEST_CASE("A log is asked together with the length of its history")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	Core::LogRequest request;
+	request.Ref = "refs/heads/main";
+
+	model.RequestLog(request);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(port.CountCalls == 1);
+	CHECK(port.LastCountRef == request.Ref);
+	CHECK(model.GetCommitCountFor(request.Ref) == std::optional<std::size_t>{1739});
+	CHECK_FALSE(model.IsCommitCountInFlight());
+}
+
+TEST_CASE("A stash's log asks for no history length")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	Core::LogRequest request;
+	request.Stash = OidWithFirstByte(9);
+
+	model.RequestLog(request);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK(port.CountCalls == 0);
+}
+
+TEST_CASE("A refresh hands the port the count it holds so an unmoved tip is not walked again")
+{
+	Core::EventBus events;
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	Core::LogRequest request;
+	request.Ref = "refs/heads/main";
+
+	model.RequestLog(request);
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+
+	CHECK(port.CountCalls == 2);
+	CHECK(port.CountWalks == 1);
+	REQUIRE(port.LastKnownCount.has_value());
+	CHECK(port.LastKnownCount->Count == 1739);
+}
+
+TEST_CASE("A count is walked again once the tip has moved")
+{
+	Core::EventBus events;
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	Core::LogRequest request;
+	request.Ref = "refs/heads/main";
+
+	model.RequestLog(request);
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+
+	port.CountTip = OidWithFirstByte(2);
+	port.CountTotal = 1740;
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+
+	CHECK(port.CountWalks == 2);
+	CHECK(model.GetCommitCountFor(request.Ref) == std::optional<std::size_t>{1740});
+}
+
+TEST_CASE("The count of one ref is neither reported for another nor handed to the port for it")
+{
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	Core::LogRequest mainLog;
+	mainLog.Ref = "refs/heads/main";
+
+	model.RequestLog(mainLog);
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+	REQUIRE(model.GetCommitCountFor(mainLog.Ref).has_value());
+
+	Core::LogRequest topicLog;
+	topicLog.Ref = "refs/heads/topic";
+
+	model.RequestLog(topicLog);
+
+	CHECK_FALSE(port.LastKnownCount.has_value());
+	CHECK_FALSE(model.GetCommitCountFor(topicLog.Ref).has_value());
+	CHECK_FALSE(model.GetCommitCountFor(std::nullopt).has_value());
+}
+
+TEST_CASE("A failed count leaves the history's length unknown and no longer in flight")
+{
+	FakePort port;
+	port.FailCount = true;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+
+	model.RequestLog(Core::LogRequest{});
+	model.OnUpdate(Core::Timestep{kFrameSeconds});
+
+	CHECK_FALSE(model.GetCommitCountFor(std::nullopt).has_value());
+	CHECK_FALSE(model.IsCommitCountInFlight());
+}
+
+TEST_CASE("A refresh repeats the walk ceiling the view asked for and not the default one")
+{
+	Core::EventBus events;
+	FakePort port;
+
+	Graphite::GitModel model{port, RunJobsInline()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	constexpr std::size_t kLiftedCeiling = 100000;
+
+	Core::LogRequest request;
+	request.MaxWalk = kLiftedCeiling;
+
+	model.RequestLog(request);
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+
+	REQUIRE(port.LogCalls == 2);
+	REQUIRE(port.LastLogRequest.has_value());
+	CHECK(port.LastLogRequest->MaxWalk == kLiftedCeiling);
+}
+
+TEST_CASE("A refresh while a log is still being read asks for no second log")
+{
+	Core::EventBus events;
+	FakePort port;
+	DeferredJobs jobs;
+
+	Graphite::GitModel model{port, jobs.Submitter()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestLog(Core::LogRequest{});
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+
+	jobs.RunAll();
+
+	CHECK(port.LogCalls == 1);
+}
+
+TEST_CASE("A refresh held behind a log in flight is asked once that log lands")
+{
+	Core::EventBus events;
+	FakePort port;
+	DeferredJobs jobs;
+
+	Graphite::GitModel model{port, jobs.Submitter()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	constexpr std::size_t kLiftedCeiling = 100000;
+
+	Core::LogRequest request;
+	request.Ref = "refs/heads/topic";
+	request.MaxWalk = kLiftedCeiling;
+
+	model.RequestLog(request);
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+
+	jobs.RunAll();
+	REQUIRE(port.LogCalls == 1);
+
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+	jobs.RunAll();
+
+	CHECK(port.LogCalls == 2);
+	REQUIRE(port.LastLogRequest.has_value());
+	CHECK(port.LastLogRequest->Ref == request.Ref);
+	CHECK(port.LastLogRequest->MaxWalk == kLiftedCeiling);
+
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+	jobs.RunAll();
+
+	CHECK(port.LogCalls == 2);
+	CHECK(model.IsLogAnswered(model.GetLogGeneration()));
+}
+
+TEST_CASE("A reader's ask is never held back by a log in flight")
+{
+	Core::EventBus events;
+	FakePort port;
+	DeferredJobs jobs;
+
+	Graphite::GitModel model{port, jobs.Submitter()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	Core::LogRequest first;
+	first.Ref = "refs/heads/first";
+	model.RequestLog(first);
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+
+	Core::LogRequest other;
+	other.Ref = "refs/heads/other";
+	model.RequestLog(other);
+
+	// No update runs in between, so a log held back until one lands could not have been read yet.
+	jobs.RunAll();
+
+	CHECK(port.LogCalls == 2);
+	REQUIRE(port.LastLogRequest.has_value());
+	CHECK(port.LastLogRequest->Ref == other.Ref);
+
+	// The reader's ask reads the repository as it is now, so the refresh held before it is not asked too.
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+	jobs.RunAll();
+
+	CHECK(port.LogCalls == 2);
+}
+
+TEST_CASE("Closing the workspace drops a refresh held behind a log in flight")
+{
+	Core::EventBus events;
+	FakePort port;
+	DeferredJobs jobs;
+
+	Graphite::GitModel model{port, jobs.Submitter()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestLog(Core::LogRequest{});
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+
+	events.Publish(Graphite::WorkspaceClosedEvent{});
+	events.Publish(Graphite::WorkspaceOpenedEvent{"C:/other"});
+
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+	jobs.RunAll();
+
+	CHECK(port.LogCalls == 1);
+}
+
+TEST_CASE("A log is submitted before the length of its history, so its first page does not wait for the count")
+{
+	FakePort port;
+	std::vector<std::function<void()>> submitted;
+
+	Graphite::GitModel model{port, [&submitted](std::function<void()> job) { submitted.push_back(std::move(job)); }};
+	model.SetRoot("C:/repo");
+
+	Core::LogRequest request;
+	request.Ref = "refs/heads/main";
+
+	model.RequestLog(request);
+	REQUIRE(submitted.size() == 2);
+
+	submitted.front()();
+
+	CHECK(port.LogCalls == 1);
+	CHECK(port.CountCalls == 0);
+
+	submitted.back()();
+
+	CHECK(port.CountCalls == 1);
+	CHECK(port.LastCountRef == request.Ref);
 }

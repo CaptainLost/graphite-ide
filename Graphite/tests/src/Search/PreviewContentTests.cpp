@@ -44,7 +44,7 @@ TEST_CASE("An open document's buffer wins over the file on disk")
 	REQUIRE(index.has_value());
 
 	Core::OpenItem& item = documents.At(*index);
-	REQUIRE(item.Document.has_value());
+	REQUIRE(item.Document != nullptr);
 
 	item.Document->GetBuffer().Insert(0, "edited ");
 
@@ -202,7 +202,7 @@ TEST_CASE("Colours follow an edit to the open document being previewed")
 	REQUIRE(index.has_value());
 
 	Core::OpenItem& item = documents.At(*index);
-	REQUIRE(item.Document.has_value());
+	REQUIRE(item.Document != nullptr);
 
 	PreviewContent content;
 	content.Show(file, documents);

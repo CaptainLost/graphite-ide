@@ -62,6 +62,11 @@ namespace Core {
 		// complete page rather than an error.
 		Result<LogPage> QueryLog(const LogRequest& request) const;
 
+		// The commits reachable from `tip`, itself included, as `git rev-list --count` gives them.
+		// Reads only the commit graph, not the commits' messages. NotFound for a commit the object
+		// database does not hold.
+		Result<std::size_t> CountCommits(const Oid& tip) const;
+
 		// Renames are detected rather than reported as a delete and an add. A binary file comes back
 		// flagged and with no hunks.
 		Result<Diff> QueryDiff(const DiffRequest& request) const;

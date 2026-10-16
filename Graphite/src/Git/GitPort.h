@@ -21,6 +21,15 @@
 
 namespace Graphite {
 
+	// A history's length with the tip it was counted from: the same tip always counts the same.
+	struct CommitCount
+	{
+		Core::Oid Tip;
+		std::size_t Count = 0;
+
+		friend bool operator==(const CommitCount&, const CommitCount&) = default;
+	};
+
 	// WARNING: Every method is called on a worker thread.
 	class GitPort
 	{
@@ -41,6 +50,12 @@ namespace Graphite {
 		virtual Core::Result<std::optional<std::string>> ReadUserEmail() = 0;
 		virtual Core::Result<Core::HeadState> QueryHead() = 0;
 		virtual Core::Result<Core::LogPage> QueryLog(const Core::LogRequest& request) = 0;
+
+		// WARNING: Answers `known` unchanged, without walking, while the ref still points at the tip
+		// it was counted from. The model asks on every refresh, and most refreshes are a file saved,
+		// not a commit made. Without a ref, HEAD's history.
+		virtual Core::Result<CommitCount> CountCommits(const std::optional<std::string>& ref,
+													   const std::optional<CommitCount>& known) = 0;
 		virtual Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest& request) = 0;
 
 		virtual Core::Result<FileTexts> ReadFileTexts(

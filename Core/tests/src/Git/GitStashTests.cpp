@@ -324,6 +324,7 @@ TEST_CASE("A log asked for a stash lists that stash alone and names the commit i
 	CHECK(commits[0].Parents[0] == head);
 
 	CHECK(page.GetValue().Complete);
+	CHECK(page.GetValue().Walked == 1);
 	CHECK_FALSE(page.GetValue().UpstreamKnown);
 }
 

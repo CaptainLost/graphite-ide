@@ -10,7 +10,7 @@ namespace Graphite {
 
 	Core::LogRequest BuildLogRequest(const std::optional<std::string>& ref,
 									 const HistoryFilter& filter,
-									 std::optional<std::size_t> maxCount,
+									 const HistoryReach& reach,
 									 const std::optional<Core::Oid>& stash)
 	{
 		Core::LogRequest request;
@@ -27,12 +27,15 @@ namespace Graphite {
 			request.File = Core::FromUtf8(trimmedPath);
 		}
 
-		if (maxCount.has_value())
-		{
-			request.MaxCount = *maxCount;
-		}
+		request.MaxCount = reach.MaxCount;
+		request.MaxWalk = reach.MaxWalk;
 
 		return request;
+	}
+
+	bool NarrowsHistory(const Core::LogRequest& request)
+	{
+		return !Core::Trimmed(request.Filter.Text).empty() || request.File.has_value();
 	}
 
 	void SettlingFilter::Set(HistoryFilter filter)

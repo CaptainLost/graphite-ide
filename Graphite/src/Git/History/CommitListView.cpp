@@ -363,14 +363,6 @@ namespace Graphite {
 		m_Expanded.clear();
 		m_SelectedFile.reset();
 		m_SelectedCommit.reset();
-		m_LoadMoreRequestedAtCount = kNoLoadMoreRequestedYet;
-	}
-
-	bool CommitListView::TakeLoadMoreRequest()
-	{
-		const bool requested = m_LoadMoreRequested;
-		m_LoadMoreRequested = false;
-		return requested;
 	}
 
 	std::optional<CommitAction> CommitListView::TakeCommitAction()
@@ -406,7 +398,10 @@ namespace Graphite {
 	{
 		if (page.Commits.empty())
 		{
-			Core::EmptyState("No commits yet.");
+			constexpr float kSmallestRegion = 1.0f;
+			const float height = std::max(ImGui::GetContentRegionAvail().y - m_RoomBelow, kSmallestRegion);
+
+			Core::EmptyState(m_EmptyText, nullptr, ImVec2(0.0f, height));
 			return;
 		}
 
@@ -439,7 +434,7 @@ namespace Graphite {
 
 		const float widthBesideScrollbar = ImGui::GetContentRegionAvail().x - style.ScrollbarSize;
 
-		if (ImGui::BeginTable("##commits", TableIndexOf(Column::Count), flags))
+		if (ImGui::BeginTable("##commits", TableIndexOf(Column::Count), flags, ImVec2(0.0f, -m_RoomBelow)))
 		{
 			KeepClearOfScrollbar(ImGui::GetStyle().ItemSpacing.x);
 
@@ -527,16 +522,6 @@ namespace Graphite {
 											 clipper.DisplayStart, clipper.DisplayEnd - 1,
 											 graphOrigin);
 				}
-			}
-
-			// WARNING: The request is latched on the page's commit count, so it is not re-armed every frame the reader stays at the bottom while the bigger page is fetched. It is read before EndTable because until then the current window is the table's own scrolling one.
-			const std::ptrdiff_t commitCount = static_cast<std::ptrdiff_t>(page.Commits.size());
-
-			if (!page.Complete && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() &&
-				commitCount != m_LoadMoreRequestedAtCount)
-			{
-				m_LoadMoreRequested = true;
-				m_LoadMoreRequestedAtCount = commitCount;
 			}
 
 			ImGui::EndTable();

@@ -147,8 +147,27 @@ namespace Graphite {
 		Core::Ref<const std::vector<Core::StashEntry>> GetStashes() const { return m_Stashes.Get(); }
 		Core::Ref<const Core::HeadState> GetHead() const { return m_Head.Get(); }
 		Core::Ref<const Core::LogPage> GetLog() const { return m_Log.Get(); }
+
+		// The request the log on screen answers: set when a page lands, never by a failed or stale
+		// answer, so it always describes the page GetLog returns.
+		const std::optional<Core::LogRequest>& GetShownLogRequest() const { return m_ShownLogRequest; }
+
+		// The request last asked for, by the reader or by a refresh, whether or not it has answered: what
+		// the query running reads while the page on screen still answers an earlier one.
+		const std::optional<Core::LogRequest>& GetAskedLogRequest() const { return m_LastLogRequest; }
+
+		// The generation of the last log asked for, and whether the log has answered it, with a page
+		// or an error. An answer to a later ask also answers an earlier one.
+		std::uint64_t GetLogGeneration() const { return m_Log.GetRequested(); }
+		bool IsLogAnswered(std::uint64_t generation) const { return m_Log.GetApplied() >= generation; }
+
 		Core::Ref<const Core::LogPage> GetOwnCommits() const { return m_OwnLog.Get(); }
 		const std::string& GetOwnCommitsLabel() const { return m_OwnLabel; }
+
+		// The length of the history a log walks, counted for exactly `ref`: a count of the branch
+		// shown before never stands beside another branch's page.
+		std::optional<std::size_t> GetCommitCountFor(const std::optional<std::string>& ref) const;
+		bool IsCommitCountInFlight() const { return m_CommitCount.IsInFlight(); }
 
 		Core::Ref<const Core::Diff> GetWorkingTreeDiff() const
 		{
@@ -410,6 +429,28 @@ namespace Graphite {
 		GenerationSlot<Core::LogPage> m_Log;
 
 		std::optional<Core::LogRequest> m_LastLogRequest;
+		std::optional<Core::LogRequest> m_ShownLogRequest;
+
+		// A refresh came while a log was being read; it is asked once no log is in flight any more.
+		// Only ever set while m_LastLogRequest holds the request to ask again.
+		bool m_LogRefreshPending = false;
+
+		void LandOwnCommits(std::uint64_t generation, std::optional<Core::Result<Core::LogPage>> result,
+							std::string label);
+
+		void AskHeldLogRefresh();
+
+		struct RefCommitCount
+		{
+			std::optional<std::string> Ref;
+			CommitCount Count;
+		};
+
+		// WARNING: Asked with every log, the model's own refreshes included, and handed the count it
+		// holds for the same ref, so the port walks only when that ref's tip has moved.
+		void RequestCommitCount(const std::optional<std::string>& ref);
+
+		GenerationSlot<RefCommitCount> m_CommitCount;
 
 		GenerationSlot<Core::LogPage> m_OwnLog;
 		std::optional<OwnCommitsRequest> m_LastOwnRequest;

@@ -6,6 +6,7 @@
 
 #include <doctest/doctest.h>
 
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -20,7 +21,7 @@ namespace {
 		Core::Result<Core::TextDocument> document = Core::TextDocument::FromContent(std::move(content), "test.cpp");
 		REQUIRE(document);
 
-		item.Document = std::move(document).GetValue();
+		item.Document = std::make_shared<Core::TextDocument>(std::move(document).GetValue());
 		Core::RecomputeLineCaches(item);
 
 		return item;

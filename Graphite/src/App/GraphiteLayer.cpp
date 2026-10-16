@@ -224,6 +224,9 @@ namespace Graphite {
 				return m_Terminals.OpenCommand(label, command.Program, command.Arguments, workingDirectory);
 			}));
 
+		// Until a tab takes the keyboard, editor commands act on the active tab, as they always did.
+		m_ActiveEditor.Set(m_DocumentWindows);
+
 		m_Workspace.RegisterCommands(m_Commands);
 		m_DocumentWindows.RegisterCommands(m_Commands, m_Keys);
 		m_EditorSettings.RegisterCommands(m_Commands, m_Keys);
@@ -350,53 +353,10 @@ namespace Graphite {
 						.Label = "Find in Files",
 						.Run = [this] { m_SearchPanel->Focus(); }});
 
-		// WARNING: These commands act on the active document, not the focused one: which editor holds the keyboard is only knowable while drawing, and a command runs before any editor has drawn.
-		m_Commands.Add({.Id = "find.open",
-						.Label = "Find",
-						.Run = [this] {
-							if (const std::optional<std::filesystem::path> path = ActiveTextDocument(m_Documents))
-							{
-								if (const std::optional<std::size_t> index = m_Documents.Find(*path))
-								{
-									m_DocumentWindows.OpenFind(m_Documents.At(*index));
-								}
-							} },
-						.Enabled = [this] { return ActiveTextDocument(m_Documents).has_value(); }});
-
-		m_Keys.SetDefault("find.open", {.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiKey_F)});
-
-		m_Commands.Add({.Id = kGoToDefinitionCommand,
-						.Label = "Go to Definition",
-						.Run = [this] {
-							if (const std::optional<std::filesystem::path> path = ActiveTextDocument(m_Documents))
-							{
-								if (const std::optional<std::size_t> index = m_Documents.Find(*path))
-								{
-									m_DocumentWindows.RequestDefinition(*index);
-								}
-							} },
-						.Enabled = [this] {
-							const std::optional<std::filesystem::path> path = ActiveTextDocument(m_Documents);
-							return path.has_value() && m_LanguageServices.HasChosenServer(LanguageOfPath(*path)); }});
-
-		m_Keys.SetDefault(kGoToDefinitionCommand, {.Primary = Core::Chord::Key(ImGuiKey_F12)});
-
-		m_Commands.Add({.Id = kFindReferencesCommand,
-						.Label = "Find All References",
-						.Run = [this] {
-							if (const std::optional<std::filesystem::path> path = ActiveTextDocument(m_Documents))
-							{
-								if (const std::optional<std::size_t> index = m_Documents.Find(*path))
-								{
-									m_DocumentWindows.RequestReferences(*index, *m_ReferencesPanel);
-								}
-							} },
-						.Enabled = [this] {
-							const std::optional<std::filesystem::path> path = ActiveTextDocument(m_Documents);
-							return path.has_value() && m_LanguageServices.HasChosenServer(LanguageOfPath(*path)); }});
-
-		m_Keys.SetDefault(kFindReferencesCommand,
-						  {.Primary = Core::Chord::Key(ImGuiMod_Shift | ImGuiKey_F12)});
+		// WARNING: These commands act on the active editor view, the one last focused, not the one being drawn: which editor holds the keyboard is only knowable while drawing, and a command runs before any editor has drawn.
+		RegisterEditorNavigationCommands(m_Commands, m_Keys, m_ActiveEditor,
+										 EditorCommandServices{.HasLanguageServer = [this](const std::filesystem::path& path) { return m_LanguageServices.HasChosenServer(LanguageOfPath(path)); },
+															   .References = m_ReferencesPanel});
 
 		m_Commands.Add({.Id = "languageServers.install",
 						.Label = "Install Language Server",
@@ -1560,7 +1520,7 @@ namespace Graphite {
 
 	bool GraphiteLayer::IsDocumentOpen(const std::filesystem::path& path) const
 	{
-		return m_Documents.Find(path).has_value();
+		return m_Documents.GetStore().Find(path) != nullptr;
 	}
 
 	bool GraphiteLayer::IsDocumentShown(const std::filesystem::path& path) const
@@ -1572,13 +1532,11 @@ namespace Graphite {
 	{
 		std::vector<std::filesystem::path> modified;
 
-		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
+		for (const std::shared_ptr<Core::TextDocument>& document : m_Documents.GetStore().GetDocuments())
 		{
-			const Core::OpenItem& item = m_Documents.At(index);
-
-			if (item.Document && item.Document->IsModified())
+			if (document->IsModified())
 			{
-				modified.push_back(item.Path);
+				modified.push_back(document->GetPath());
 			}
 		}
 

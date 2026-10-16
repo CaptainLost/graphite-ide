@@ -178,6 +178,8 @@ namespace Core {
 				page.Commits.push_back(std::move(summary));
 			}
 
+			page.Walked = 1;
+
 			return page;
 		}
 
@@ -248,11 +250,18 @@ namespace Core {
 			const bool pageIsFull = commits.size() >= request.MaxCount;
 			const bool walkCeilingReached = walkedCount >= request.MaxWalk;
 
-			// Stopping here says nothing about whether history goes on past this point, so the page
-			// is not known to be the whole answer.
+			// A limit reached exactly where the history ends leaves nothing past the page, so the walk
+			// is asked for one more commit before the page is called unfinished. The commit it peeks
+			// at is neither kept nor counted as walked.
 			if (pageIsFull || walkCeilingReached)
 			{
-				complete = false;
+				const bool historyGoesOn = git_revwalk_next(&commitId, walk.get()) == 0;
+
+				if (historyGoesOn)
+				{
+					complete = false;
+				}
+
 				break;
 			}
 
@@ -344,7 +353,49 @@ namespace Core {
 
 		return LogPage{.Commits = std::move(commits),
 					   .Complete = complete,
+					   .Walked = walkedCount,
 					   .Unpushed = std::move(unpushed.Commits),
 					   .UpstreamKnown = unpushed.UnpushedKnown};
+	}
+
+	Result<std::size_t> Repository::CountCommits(const Oid& tip) const
+	{
+		if (m_Handle == nullptr)
+		{
+			return Error{ErrorCode::NotFound, "the repository is not open"};
+		}
+
+		RevwalkHandle walk;
+
+		if (git_revwalk_new(Out(walk), m_Handle.get()) != 0)
+		{
+			return Error{ErrorCode::IoFailure, std::format("cannot walk the history: {}", LastLibgit2Message())};
+		}
+
+		const git_oid tipId = ToGitOid(tip);
+
+		if (git_revwalk_push(walk.get(), &tipId) != 0)
+		{
+			const std::string message = LastLibgit2Message();
+			return Error{ErrorCode::NotFound, std::format("no such commit {}: {}", tip.ShortHex(), message)};
+		}
+
+		std::size_t count = 0;
+		git_oid commitId{};
+		int nextResult = 0;
+
+		while ((nextResult = git_revwalk_next(&commitId, walk.get())) == 0)
+		{
+			++count;
+		}
+
+		// WARNING: Only GIT_ITEROVER means the history ran out. Any other code is a walk that broke
+		// partway, and a count short of the truth would read as the whole history.
+		if (nextResult != GIT_ITEROVER)
+		{
+			return Error{ErrorCode::IoFailure, std::format("cannot count the history: {}", LastLibgit2Message())};
+		}
+
+		return count;
 	}
 }

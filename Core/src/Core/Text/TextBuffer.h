@@ -1,7 +1,11 @@
 #pragma once
 
+#include "Core/Text/TextChange.h"
+
 #include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -40,6 +44,23 @@ namespace Core {
 		bool CanRedo() const { return !m_Redo.empty(); }
 
 		std::size_t GetRevision() const;
+
+		// Rises by one with every change to the text, undo and redo included, and never goes back.
+		std::uint64_t GetChangeSequence() const { return m_ChangeSequence; }
+
+		// The changes after `sequence`, oldest first; nullopt when the log no longer reaches back
+		// that far. WARNING: The span is invalidated by the next change to the buffer.
+		std::optional<std::span<const TextChange>> ChangesSince(std::uint64_t sequence) const;
+
+		// One undo step and one change marked WholeContent, so readers recompute instead of
+		// mapping old offsets into text that has nothing to do with them.
+		void ReplaceContent(std::string_view text);
+
+		std::optional<std::size_t> GetTopUndoGroup() const;
+		std::optional<std::size_t> GetTopRedoGroup() const;
+
+		bool HoldsUndoGroup(std::size_t groupId) const;
+		bool HoldsRedoGroup(std::size_t groupId) const;
 
 		std::size_t GetLength() const { return m_Length; }
 		bool IsEmpty() const { return m_Length == 0; }
@@ -151,5 +172,11 @@ namespace Core {
 		std::size_t m_LastEditEnd = 0;
 		std::size_t m_LastEditStart = 0;
 		bool m_NextEditStartsGroup = true;
+
+		void RecordChange(TextChange change);
+
+		std::vector<TextChange> m_Changes;
+		std::uint64_t m_ChangeSequence = 0;
+		bool m_RecordsChanges = true;
 	};
 }

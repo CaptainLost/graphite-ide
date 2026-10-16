@@ -17,12 +17,16 @@
 #include "Git/GitModel.h"
 #include "Review/ReviewMenu.h"
 #include "Git/History/HistoryFilter.h"
+#include "Git/History/HistoryReach.h"
+#include "Git/History/HistoryStatus.h"
+#include "Git/History/HistoryStatusLine.h"
 #include "Persistence/PersistedState.h"
 #include "Theme/ActiveScheme.h"
 
 #include "Core/Events/EventBus.h"
 #include "Core/Git/Diff.h"
 #include "Core/Git/Checkout.h"
+#include "Core/Git/GraphLayout.h"
 #include "Core/Git/Ref.h"
 #include "Core/Git/Stash.h"
 #include "Core/UI/Panel.h"
@@ -167,6 +171,9 @@ namespace Graphite {
 		void RenderDeleteBranchDialog();
 		void RenderDropStashDialog();
 		void RenderCommits(const GitPalette& palette);
+		HistoryStatusInput HistoryStatusInputFor(const Core::LogPage& page) const;
+		bool IsShownLogNarrowed() const;
+		void AnswerHistoryClick(HistoryClick click, const Core::LogPage& page);
 		void RenderPreview(const GitPalette& palette);
 
 		void RenderDiff(const GitPalette& palette);
@@ -177,11 +184,15 @@ namespace Graphite {
 
 		void RenderFilterBar();
 
-		void RenderFilterSummary(const Core::LogPage& page);
-
 		void UpdateForNewPage();
 
-		void RequestLog(std::optional<std::size_t> maxCount);
+		enum class LogAsk
+		{
+			ByReader,
+			Again
+		};
+
+		void RequestLog(const HistoryReach& reach, LogAsk ask = LogAsk::ByReader);
 
 		struct BaseSeen
 		{
@@ -197,7 +208,7 @@ namespace Graphite {
 
 		std::optional<GitModel::OwnCommitsRequest> OwnCommitsToAsk(const std::vector<Core::Branch>& branches);
 
-		void AskAgainWhenBaseMoved(const std::vector<Core::Branch>& branches, const Core::LogPage& page);
+		void AskAgainWhenBaseMoved(const std::vector<Core::Branch>& branches);
 
 		std::optional<BaseSeen> m_BaseSeen;
 
@@ -230,14 +241,26 @@ namespace Graphite {
 
 		SettlingFilter m_Filter;
 
-		Core::Ref<const Core::LogPage> m_PageWhenAsked;
-		bool m_Searching = false;
-
 		Core::Ref<const Core::LogPage> m_LastSeenPage;
+
+		// WARNING: Laid out once per page, not once per frame: a page read to its root holds the whole
+		// history, and the layout walks every commit of it.
+		Core::Ref<const Core::LogPage> m_GraphOf;
+		Core::CommitGraph m_Graph;
 
 		float m_ListHeight = 0.0f;
 
 		bool m_LogRequested = false;
+
+		// WARNING: Sent again with every re-ask, so a page the reader loaded further is never cut back
+		// to the first one; only a new ref, stash or filter starts it over.
+		HistoryReach m_Reach;
+
+		// The log generation of the reader's last ask: the status line reads the reader as waiting
+		// until the log has answered it, with a page or an error.
+		std::uint64_t m_AskedLogGeneration = 0;
+
+		std::optional<double> m_HistoryBusySince;
 
 		std::unordered_set<Core::Oid> m_PreviouslyWanted;
 

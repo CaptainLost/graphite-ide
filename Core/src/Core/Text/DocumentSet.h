@@ -2,12 +2,14 @@
 
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
+#include "Core/Text/DocumentStore.h"
 #include "Core/Text/RowMap.h"
 #include "Core/Text/TextDocument.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -54,7 +56,8 @@ namespace Core {
 	struct OpenItem
 	{
 		std::filesystem::path Path;
-		std::optional<TextDocument> Document;
+		// Shared with every other view of the same file, through the set's store.
+		std::shared_ptr<TextDocument> Document;
 		OpenFailure Failure = OpenFailure::None;
 		std::uint64_t FileSize = 0;
 		Caret Caret;
@@ -65,6 +68,9 @@ namespace Core {
 		std::size_t WidestLine = 0;
 
 		RowMap Rows;
+
+		// The last change of its document that Rows, IndentDepths and the widest line reflect.
+		std::uint64_t SeenChange = 0;
 
 		std::size_t ColumnsPerWrappedRow = 0;
 
@@ -105,7 +111,7 @@ namespace Core {
 		Confirmed
 	};
 
-	ItemLoad LoadFromFile(OpenItem& item, LargeFileConfirmation largeFileConfirmation);
+	ItemLoad LoadFromFile(OpenItem& item, DocumentStore& store, LargeFileConfirmation largeFileConfirmation);
 
 	enum class OpenOutcome
 	{
@@ -126,6 +132,9 @@ namespace Core {
 	class DocumentSet
 	{
 	public:
+		DocumentStore& GetStore() { return m_Store; }
+		const DocumentStore& GetStore() const { return m_Store; }
+
 		OpenOutcome Open(const std::filesystem::path& path, TabKind tabKind);
 
 		OpenOutcome OpenConfirmed(const std::filesystem::path& path, TabKind tabKind);
@@ -164,11 +173,13 @@ namespace Core {
 
 		bool HasOtherItemNamed(std::size_t index, const std::string& fileName) const;
 
+		// Declared before the items so it outlives them.
+		DocumentStore m_Store;
 		std::vector<OpenItem> m_Items;
 		std::optional<std::size_t> m_ActiveIndex;
 	};
 
 	// The path is matched exactly, as Find matches it, not through PathKey. The pointer is valid
-	// until the set next changes.
+	// while some view holds the document.
 	const TextBuffer* BufferOfOpenDocument(const DocumentSet& documents, const std::filesystem::path& path);
 }

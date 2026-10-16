@@ -49,7 +49,7 @@ TEST_CASE("A file deleted while it is open is marked missing and keeps its conte
 	CHECK(SyncWithFile(documents, 0) == FileSyncOutcome::WentMissing);
 	CHECK(documents.At(0).Failure == OpenFailure::Missing);
 
-	REQUIRE(documents.At(0).Document.has_value());
+	REQUIRE(documents.At(0).Document != nullptr);
 	CHECK(documents.At(0).Document->GetBuffer().Materialize() == "still here\n");
 }
 
@@ -70,7 +70,7 @@ TEST_CASE("A file that comes back changed is noticed in the same pass that finds
 
 	CHECK(SyncWithFile(documents, 0) == FileSyncOutcome::SafeToReload);
 	CHECK(documents.At(0).Failure == OpenFailure::None);
-	REQUIRE(documents.At(0).Document.has_value());
+	REQUIRE(documents.At(0).Document != nullptr);
 
 	CHECK(documents.At(0).Document->GetBuffer().Materialize() == "original\n");
 
@@ -91,7 +91,7 @@ TEST_CASE("A tab opened on a file that was not there asks its caller to load the
 
 	CHECK(SyncWithFile(documents, 0) == FileSyncOutcome::NeedsLoad);
 	CHECK(documents.At(0).Failure == OpenFailure::None);
-	CHECK_FALSE(documents.At(0).Document.has_value());
+	CHECK_FALSE(documents.At(0).Document != nullptr);
 }
 
 TEST_CASE("A tab refused as binary has no document either but is not asked to load")
@@ -103,7 +103,7 @@ TEST_CASE("A tab refused as binary has no document either but is not asked to lo
 	DocumentSet documents;
 	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Failed);
 	REQUIRE(documents.At(0).Failure == OpenFailure::Binary);
-	REQUIRE_FALSE(documents.At(0).Document.has_value());
+	REQUIRE_FALSE(documents.At(0).Document != nullptr);
 
 	CHECK(SyncWithFile(documents, 0) == FileSyncOutcome::Unchanged);
 	CHECK(documents.At(0).Failure == OpenFailure::Binary);
@@ -130,7 +130,7 @@ TEST_CASE("A file changed under a document with unsaved edits is left for the ca
 
 	DocumentSet documents;
 	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Opened);
-	REQUIRE(documents.At(0).Document.has_value());
+	REQUIRE(documents.At(0).Document != nullptr);
 
 	const std::size_t startOfDocument = 0;
 	documents.At(0).Document->GetBuffer().Insert(startOfDocument, "mine ");
@@ -247,7 +247,7 @@ TEST_CASE("Reloading a file that got shorter pulls the caret back into it and re
 
 	DocumentSet documents;
 	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Opened);
-	REQUIRE(documents.At(0).Document.has_value());
+	REQUIRE(documents.At(0).Document != nullptr);
 	REQUIRE(documents.At(0).WidestColumn == 20);
 	REQUIRE(documents.At(0).WidestLine == 1);
 

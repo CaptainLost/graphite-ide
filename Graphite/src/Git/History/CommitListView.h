@@ -30,8 +30,6 @@ namespace Graphite {
 		std::filesystem::path Path;
 	};
 
-	inline constexpr std::ptrdiff_t kNoLoadMoreRequestedYet = -1;
-
 	// WARNING: a selection survives or not by its commit, never by its file, because the diff naming the file may not have arrived yet.
 	std::optional<FileSelection> SelectionSurviving(const std::optional<FileSelection>& selection,
 													const Core::LogPage& page);
@@ -78,14 +76,18 @@ namespace Graphite {
 
 		std::optional<Core::Oid> GetSelectedCommit() const { return m_SelectedCommit; }
 
-		// WARNING: expansions, selections and the load-more latch name commits of the old repository once a workspace opens or closes, so all of them are cleared.
+		// WARNING: expansions and selections name commits of the old repository once a workspace opens or closes, so all of them are cleared.
 		void Reset();
-
-		bool TakeLoadMoreRequest();
 
 		std::optional<CommitAction> TakeCommitAction();
 
 		void SetActionsEnabled(bool enabled) { m_ActionsEnabled = enabled; }
+
+		// WARNING: The list stops this far above the bottom of its space, so a line drawn after it
+		// stays in view rather than below the scrolled table.
+		void SetRoomBelow(float height) { m_RoomBelow = height; }
+
+		void SetEmptyText(std::string_view text) { m_EmptyText = text; }
 
 	private:
 		std::size_t FileRowCountUnder(
@@ -109,11 +111,9 @@ namespace Graphite {
 		std::optional<FileSelection> m_SelectedFile;
 		std::optional<Core::Oid> m_SelectedCommit;
 
-		bool m_LoadMoreRequested = false;
-
-		std::ptrdiff_t m_LoadMoreRequestedAtCount = kNoLoadMoreRequestedYet;
-
 		std::optional<CommitAction> m_CommitAction;
 		bool m_ActionsEnabled = true;
+		float m_RoomBelow = 0.0f;
+		std::string m_EmptyText = "No commits yet.";
 	};
 }

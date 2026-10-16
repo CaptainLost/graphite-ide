@@ -1,16 +1,18 @@
 #include <doctest/doctest.h>
 
 #include "Git/History/HistoryFilter.h"
+#include "Git/History/HistoryReach.h"
 
 #include <string>
 
 using Graphite::BuildLogRequest;
 using Graphite::HistoryFilter;
+using Graphite::HistoryReach;
 
 TEST_CASE("A log request carries the selected ref")
 {
 	const Core::LogRequest request =
-		BuildLogRequest(std::string{"refs/heads/main"}, HistoryFilter{}, std::nullopt);
+		BuildLogRequest(std::string{"refs/heads/main"}, HistoryFilter{}, HistoryReach{});
 
 	REQUIRE(request.Ref.has_value());
 	CHECK(*request.Ref == "refs/heads/main");
@@ -18,7 +20,7 @@ TEST_CASE("A log request carries the selected ref")
 
 TEST_CASE("A log request with no ref selected asks about HEAD")
 {
-	const Core::LogRequest request = BuildLogRequest(std::nullopt, HistoryFilter{}, std::nullopt);
+	const Core::LogRequest request = BuildLogRequest(std::nullopt, HistoryFilter{}, HistoryReach{});
 
 	CHECK_FALSE(request.Ref.has_value());
 }
@@ -28,7 +30,7 @@ TEST_CASE("A log request carries the typed filter text")
 	HistoryFilter filter;
 	filter.Text = "encoding";
 
-	const Core::LogRequest request = BuildLogRequest(std::nullopt, filter, std::nullopt);
+	const Core::LogRequest request = BuildLogRequest(std::nullopt, filter, HistoryReach{});
 
 	CHECK(request.Filter.Text == "encoding");
 }
@@ -38,7 +40,7 @@ TEST_CASE("A log request carries the typed path")
 	HistoryFilter filter;
 	filter.Path = "Core/src/Core/Git/Repository.cpp";
 
-	const Core::LogRequest request = BuildLogRequest(std::nullopt, filter, std::nullopt);
+	const Core::LogRequest request = BuildLogRequest(std::nullopt, filter, HistoryReach{});
 
 	REQUIRE(request.File.has_value());
 	CHECK(*request.File == std::filesystem::path{"Core/src/Core/Git/Repository.cpp"});
@@ -49,23 +51,56 @@ TEST_CASE("A path box holding nothing but whitespace leaves the log unnarrowed b
 	HistoryFilter filter;
 	filter.Path = "   ";
 
-	const Core::LogRequest request = BuildLogRequest(std::nullopt, filter, std::nullopt);
+	const Core::LogRequest request = BuildLogRequest(std::nullopt, filter, HistoryReach{});
 
 	CHECK_FALSE(request.File.has_value());
 }
 
-TEST_CASE("A log request without a page size keeps the default one")
+TEST_CASE("A log request with the default reach keeps the default page size and walk ceiling")
 {
-	const Core::LogRequest request = BuildLogRequest(std::nullopt, HistoryFilter{}, std::nullopt);
+	const Core::LogRequest request = BuildLogRequest(std::nullopt, HistoryFilter{}, HistoryReach{});
 
 	CHECK(request.MaxCount == Core::LogRequest{}.MaxCount);
+	CHECK(request.MaxWalk == Core::LogRequest{}.MaxWalk);
 }
 
-TEST_CASE("A log request asked for a bigger page, as load-more does, carries that size")
+TEST_CASE("A log request carries the reach the reader asked for")
 {
-	const Core::LogRequest request = BuildLogRequest(std::nullopt, HistoryFilter{}, 40);
+	const HistoryReach reach{.MaxCount = 1000, .MaxWalk = 40000};
 
-	CHECK(request.MaxCount == 40);
+	const Core::LogRequest request = BuildLogRequest(std::nullopt, HistoryFilter{}, reach);
+
+	CHECK(request.MaxCount == 1000);
+	CHECK(request.MaxWalk == 40000);
+}
+
+TEST_CASE("An empty request narrows nothing")
+{
+	CHECK_FALSE(Graphite::NarrowsHistory(Core::LogRequest{}));
+}
+
+TEST_CASE("Message text narrows the history")
+{
+	Core::LogRequest request;
+	request.Filter.Text = "encoding";
+
+	CHECK(Graphite::NarrowsHistory(request));
+}
+
+TEST_CASE("Message text of only spaces narrows nothing")
+{
+	Core::LogRequest request;
+	request.Filter.Text = "   ";
+
+	CHECK_FALSE(Graphite::NarrowsHistory(request));
+}
+
+TEST_CASE("A file narrows the history")
+{
+	Core::LogRequest request;
+	request.File = std::filesystem::path{"Main.cpp"};
+
+	CHECK(Graphite::NarrowsHistory(request));
 }
 
 using Graphite::SettlingFilter;

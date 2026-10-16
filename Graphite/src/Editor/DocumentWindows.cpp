@@ -320,7 +320,7 @@ namespace Graphite {
 
 		if (existing && !m_Documents.At(*existing).Document)
 		{
-			static_cast<void>(Core::LoadFromFile(m_Documents.At(*existing), Core::LargeFileConfirmation::Confirmed));
+			static_cast<void>(Core::LoadFromFile(m_Documents.At(*existing), m_Documents.GetStore(), Core::LargeFileConfirmation::Confirmed));
 			return;
 		}
 
@@ -519,7 +519,7 @@ namespace Graphite {
 		{
 			Core::OpenItem& item = m_Documents.At(index);
 
-			if (Core::LoadFromFile(item, Core::LargeFileConfirmation::Unconfirmed) == Core::ItemLoad::NeedsConfirmation)
+			if (Core::LoadFromFile(item, m_Documents.GetStore(), Core::LargeFileConfirmation::Unconfirmed) == Core::ItemLoad::NeedsConfirmation)
 			{
 				AskAboutSize(item.Path, !item.Preview);
 			}
@@ -747,11 +747,9 @@ namespace Graphite {
 
 	bool DocumentWindows::HasModifiedDocuments() const
 	{
-		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
+		for (const std::shared_ptr<Core::TextDocument>& document : m_Documents.GetStore().GetDocuments())
 		{
-			const Core::OpenItem& item = m_Documents.At(index);
-
-			if (item.Document && item.Document->IsModified())
+			if (document->IsModified())
 			{
 				return true;
 			}
@@ -770,41 +768,7 @@ namespace Graphite {
 		keys.SetDefault("document.saveAll",
 						{.Primary = Core::Chord::Key(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_S)});
 
-		const bool fromChord = false;
-		const bool fromMenu = true;
-
-		for (const EditorCommandSpec& spec : EditorCommandSpecs())
-		{
-			const EditorAction action = spec.Action;
-
-			commands.Add({.Id = spec.Id,
-						  .Label = spec.Label,
-						  .Run = [this, action, fromChord] { QueueOnActiveDocument(action, fromChord); },
-						  .RunFromMenu = [this, action, fromMenu] { QueueOnActiveDocument(action, fromMenu); },
-						  .Enabled = [this, action] { return CanRunOnActiveDocument(action); },
-						  .KeyScope = Core::ShortcutScope::FocusedEditor,
-						  .RepeatsWhileHeld = spec.Repeats});
-
-			keys.SetDefault(spec.Id, BindingOf(spec));
-		}
-
-		commands.Add({.Id = kSaveCommand,
-					  .Label = "Save",
-					  .Run = [this] { RequestSaveOfActiveDocument(); },
-					  .Enabled = [this] { return ActiveTabHoldsDocument(); },
-					  .KeyScope = Core::ShortcutScope::FocusedEditor,
-					  .RepeatsWhileHeld = false});
-
-		keys.SetDefault(kSaveCommand, SaveBinding());
-
-		commands.Add({.Id = kCloseCommand,
-					  .Label = "Close Tab",
-					  .Run = [this] { RequestCloseOfActiveTab(); },
-					  .Enabled = [this] { return FindActiveTextItem() != nullptr; },
-					  .KeyScope = Core::ShortcutScope::FocusedEditor,
-					  .RepeatsWhileHeld = false});
-
-		keys.SetDefault(kCloseCommand, CloseBinding());
+		RegisterEditingCommands(commands, keys, m_ActiveEditor);
 
 		commands.Add({.Id = kSwitchHeaderSourceCommand,
 					  .Label = "Switch Header/Source",
@@ -814,6 +778,30 @@ namespace Graphite {
 
 		keys.SetDefault(kSwitchHeaderSourceCommand,
 						{.Primary = Core::Chord::Key(ImGuiMod_Alt | ImGuiKey_O)});
+	}
+
+	void DocumentWindows::OpenFind()
+	{
+		if (Core::OpenItem* item = FindActiveTextItem())
+		{
+			m_FindBar.Open(*item);
+		}
+	}
+
+	void DocumentWindows::GoToDefinition()
+	{
+		if (const std::optional<std::size_t> index = FindActiveTextIndex())
+		{
+			RequestDefinition(*index);
+		}
+	}
+
+	void DocumentWindows::FindReferences(ReferencesPanel& panel)
+	{
+		if (const std::optional<std::size_t> index = FindActiveTextIndex())
+		{
+			RequestReferences(*index, panel);
+		}
 	}
 
 	std::optional<std::size_t> DocumentWindows::FindActiveTextIndex()
@@ -845,7 +833,7 @@ namespace Graphite {
 		const Core::OpenItem* item = FindActiveTextItem();
 		const bool hasText = action == EditorAction::Paste && Core::ClipboardHasText();
 
-		return item != nullptr && CanRun(action, *item, hasText);
+		return item != nullptr && Graphite::CanRun(action, *item, hasText);
 	}
 
 	void DocumentWindows::RequestSaveOfActiveDocument()
@@ -860,7 +848,7 @@ namespace Graphite {
 	{
 		const Core::OpenItem* item = FindActiveTextItem();
 
-		return item != nullptr && item->Document.has_value();
+		return item != nullptr && item->Document != nullptr;
 	}
 
 	void DocumentWindows::RequestCloseOfActiveTab()
@@ -1091,7 +1079,7 @@ namespace Graphite {
 
 		const Core::OpenItem& item = m_Documents.At(*index);
 
-		if (item.Document && item.Document->IsModified())
+		if (item.Document && item.Document->IsModified() && Core::IsLastHolder(item.Document))
 		{
 			return true;
 		}
@@ -1194,6 +1182,7 @@ namespace Graphite {
 	void DocumentWindows::ActivateAndRememberNode(std::size_t index)
 	{
 		m_Documents.Activate(index);
+		m_ActiveEditor.Set(*this);
 
 		if (ImGuiWindow* window = ImGui::GetCurrentWindow();
 			window != nullptr && window->DockNode != nullptr)
@@ -1231,20 +1220,6 @@ namespace Graphite {
 		return state != nullptr && state->CarriedOver;
 	}
 
-	SyntaxCache& DocumentWindows::SyntaxFor(const Core::OpenItem& item)
-	{
-		std::optional<SyntaxCache>& syntax = StateFor(item.Path).Syntax;
-
-		if (!syntax)
-		{
-			syntax.emplace();
-			syntax->SetSyntax(SyntaxOf(LanguageOfPath(item.Path)));
-			syntax->SetTabWidth(item.TabWidth);
-		}
-
-		return *syntax;
-	}
-
 	DocumentWindows::LensState* DocumentWindows::LensFor(const Core::OpenItem& item)
 	{
 		const LanguageId language = LanguageOfPath(item.Path);
@@ -1260,10 +1235,7 @@ namespace Graphite {
 		{
 			state.Lens.emplace();
 
-			m_Server.EnsureStarted(item.Path, language);
-			m_Server.OpenDocument(item.Path, language, item.Document->GetBuffer().Materialize());
-
-			m_Router.Track(item.Path);
+			m_DocumentStates.OpenWithServer(item.Path, *item.Document);
 
 			RestoreAnalysis(item, state);
 		}
@@ -1289,17 +1261,16 @@ namespace Graphite {
 
 			if (const std::optional<LensState>& lens = closedState.Lens)
 			{
-				m_Server.CloseDocument(path, LanguageOfPath(path));
-
-				KeepAnalysis(path, *lens, closedState.Semantic);
-				m_Router.Forget(path);
+				KeepAnalysis(path, *lens, m_DocumentStates.SemanticFor(path));
 			}
 
 			m_States.erase(path);
 		}
 
+		m_DocumentStates.Prune(m_Documents.GetStore());
+
 		m_ChangeMarkers.Retain(
-			[this](const std::filesystem::path& path) { return m_Documents.Find(path).has_value(); });
+			[this](const std::filesystem::path& path) { return m_Documents.GetStore().Find(path) != nullptr; });
 	}
 
 	bool DocumentWindows::IsAnalysing(const std::filesystem::path& path) const
@@ -1358,7 +1329,7 @@ namespace Graphite {
 		// restored declarations onto one row; the rebuild a frame later anchors them properly.
 		lens.NeedsRebuild = true;
 
-		state.Semantic = std::move(restored->Semantic);
+		m_DocumentStates.SemanticFor(item.Path) = std::move(restored->Semantic);
 	}
 
 	std::optional<std::filesystem::file_time_type> DocumentWindows::ModifiedTimeOf(
@@ -1377,47 +1348,6 @@ namespace Graphite {
 		return modified;
 	}
 
-	SemanticOverlay& DocumentWindows::SemanticFor(const Core::OpenItem& item)
-	{
-		return StateFor(item.Path).Semantic;
-	}
-
-	DiagnosticOverlay& DocumentWindows::DiagnosticFor(const Core::OpenItem& item)
-	{
-		DocumentState& state = StateFor(item.Path);
-		DiagnosticOverlay& overlay = state.Diagnostics;
-
-		if (!item.Document)
-		{
-			return overlay;
-		}
-
-		const std::map<std::filesystem::path, DiagnosticsModel::Entry>& diagnosticEntries =
-			m_Diagnostics.GetDocuments();
-
-		const std::uint64_t noGeneration = 0;
-		const std::uint64_t generation = diagnosticEntries.contains(item.Path)
-											 ? diagnosticEntries.at(item.Path).Generation
-											 : noGeneration;
-		const std::size_t revision = item.Document->GetBuffer().GetRevision();
-
-		DiagnosticGuard& guard = state.DiagnosticsBuiltFrom;
-
-		if (guard.Revision == revision && guard.TabWidth == item.TabWidth &&
-			guard.Generation == generation)
-		{
-			return overlay;
-		}
-
-		guard.Revision = revision;
-		guard.TabWidth = item.TabWidth;
-		guard.Generation = generation;
-
-		overlay.Set(m_Diagnostics.For(item.Path), item.Document->GetBuffer(), item.TabWidth);
-
-		return overlay;
-	}
-
 	void DocumentWindows::DropInFlightCounts(const std::filesystem::path& path, LensState& state)
 	{
 		state.Asked.clear();
@@ -1432,9 +1362,18 @@ namespace Graphite {
 			return;
 		}
 
-		const LanguageId language = LanguageOfPath(item.Path);
-
-		m_Server.ChangeDocument(item.Path, language, item.Document->GetBuffer().Materialize());
+		// The reload reaches the server now, before this frame asks it anything. A document this
+		// class opened goes through DocumentStates, which records what it sent so nothing resends
+		// it later; any other copy the server holds, opened by a preview or the background
+		// analysis, is updated directly.
+		if (m_DocumentStates.IsOpenWithServer(item.Path))
+		{
+			m_DocumentStates.SendChangeIfMoved(item.Path, *item.Document);
+		}
+		else
+		{
+			m_Server.ChangeDocument(item.Path, LanguageOfPath(item.Path), item.Document->GetBuffer().Materialize());
+		}
 
 		LensState* const lens = FindLens(item.Path);
 
@@ -1503,13 +1442,8 @@ namespace Graphite {
 			state.Asked.clear();
 		}
 
-		if (frame.Edited)
+		if (m_DocumentStates.SendChangeIfMoved(item.Path, *item.Document))
 		{
-			m_Server.ChangeDocument(item.Path, LanguageOfPath(item.Path),
-									item.Document->GetBuffer().Materialize());
-
-			m_Router.WantSymbolsNow(item.Path);
-
 			DropInFlightCounts(item.Path, state);
 		}
 
@@ -1562,20 +1496,17 @@ namespace Graphite {
 	void DocumentWindows::ApplySemanticAnswer(const std::filesystem::path& path,
 											  const LanguageServices::Answer& answer)
 	{
-		const std::optional<std::size_t> index = m_Documents.Find(path);
+		const std::shared_ptr<Core::TextDocument> document = m_Documents.GetStore().Find(path);
 
-		if (!index)
+		if (!document)
 		{
 			return;
 		}
 
-		const Core::OpenItem& item = m_Documents.At(*index);
+		const std::optional<std::size_t> index = m_Documents.Find(path);
+		const std::size_t tabWidth = index ? m_Documents.At(*index).TabWidth : Core::DefaultTabWidth;
 
-		if (item.Document)
-		{
-			StateFor(path).Semantic.Set(answer.SemanticTokens, item.Document->GetBuffer(),
-										item.TabWidth);
-		}
+		m_DocumentStates.SemanticFor(path).Set(answer.SemanticTokens, document->GetBuffer(), tabWidth);
 	}
 
 	void DocumentWindows::RequestDefinition(std::size_t index)
@@ -2047,6 +1978,9 @@ namespace Graphite {
 			{
 				m_Shown.insert(item.Path);
 
+				// Another view may have edited this document since the tab last drew.
+				Core::CatchUpWithDocument(item, Core::CaretFollow::Shift);
+
 				// WARNING: Child windows count, because a click on the text focuses the editor
 				// surface, a child of this window. Without the flag the right half of a split stayed
 				// active and commands acted on the half nobody was looking at.
@@ -2070,15 +2004,23 @@ namespace Graphite {
 				view.Indent = indentStyle;
 				view.WordWrap = wordWrap;
 				view.ChangeDisplay = changeDisplay;
-				view.Syntax = &SyntaxFor(item);
 				view.Scheme = &scheme;
 				view.Lens = lens != nullptr ? &lens->Model : nullptr;
 
-				view.Semantic = &SemanticFor(item);
-
-				if (DiagnosticOverlay& diagnostics = DiagnosticFor(item); !diagnostics.IsEmpty())
+				if (item.Document)
 				{
-					view.Diagnostics = &diagnostics;
+					// Only a tab with a document gets an entry: Prune would drop one made for a tab
+					// without, and the next frame would build it again.
+					view.Syntax = &m_DocumentStates.SyntaxFor(item.Path, item.TabWidth);
+					view.Semantic = &m_DocumentStates.SemanticFor(item.Path);
+
+					DiagnosticOverlay& diagnostics = m_DocumentStates.DiagnosticFor(
+						item.Path, item.Document->GetBuffer(), item.TabWidth);
+
+					if (!diagnostics.IsEmpty())
+					{
+						view.Diagnostics = &diagnostics;
+					}
 				}
 
 				view.DiagnosticsStale = m_Diagnostics.IsStale(item.Path);
@@ -2107,7 +2049,7 @@ namespace Graphite {
 
 					if (shownIndex)
 					{
-						view.HoverPreviewOverlay = &SemanticFor(m_Documents.At(*shownIndex));
+						view.HoverPreviewOverlay = &m_DocumentStates.SemanticFor(state.Hover.Preview->Path);
 					}
 				}
 
@@ -2192,7 +2134,9 @@ namespace Graphite {
 
 			if (!open)
 			{
-				if (modified)
+				const bool asksBeforeClosing = modified && Core::IsLastHolder(item.Document);
+
+				if (asksBeforeClosing)
 				{
 					m_CloseConfirm.AskOnce(item.Path);
 				}
@@ -2204,6 +2148,16 @@ namespace Graphite {
 			}
 
 			++index;
+		}
+
+		// Edits a drawn tab made were sent as it drew. This sends the rest: a reload, or an edit
+		// made through another view.
+		for (const std::filesystem::path& path : m_DocumentStates.SendChanges(m_Documents.GetStore()))
+		{
+			if (LensState* const lens = FindLens(path))
+			{
+				DropInFlightCounts(path, *lens);
+			}
 		}
 	}
 

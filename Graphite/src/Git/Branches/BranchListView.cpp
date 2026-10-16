@@ -8,6 +8,7 @@
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/HighlightedRow.h"
 #include "UI/FittedText.h"
+#include "UI/LoaderDelay.h"
 #include "Core/ImGui/IconButton.h"
 #include "UI/TickBox.h"
 

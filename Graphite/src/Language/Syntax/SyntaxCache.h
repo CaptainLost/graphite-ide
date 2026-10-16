@@ -6,6 +6,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -57,6 +58,7 @@ namespace Graphite {
 		const std::vector<Token>& LexedTokensOf(const Core::TextBuffer& buffer, std::size_t line);
 		const std::vector<Token>& ParsedTokensOf(const Core::TextBuffer& buffer, std::size_t line);
 		void BringTreeTowards(const Core::TextBuffer& buffer);
+		void CatchUpWith(const Core::TextBuffer& buffer);
 		void ForgetEntryStates();
 		void ForgetTree();
 
@@ -69,10 +71,10 @@ namespace Graphite {
 		std::size_t m_TokensLine = 0;
 		bool m_TokensValid = false;
 
-		std::size_t m_Revision = 0;
-		bool m_HaveRevision = false;
-
-		bool m_Invalidated = false;
+		// The lexer path's place in the buffer's change log. The pointer tells a cache moved to
+		// another buffer, whose sequence numbers mean nothing here.
+		const Core::TextBuffer* m_SeenBuffer = nullptr;
+		std::uint64_t m_SeenChange = 0;
 
 		std::unique_ptr<SyntaxTree> m_Tree;
 		std::optional<std::size_t> m_TreeTargetRevision;

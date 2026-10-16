@@ -18,6 +18,11 @@ namespace Core {
 		std::size_t Last = 1;
 	};
 
+	// The newest commits a history shows before the reader asks for more, and how many commits a
+	// walk may visit before it stops looking.
+	inline constexpr std::size_t kLogPageSize = 500;
+	inline constexpr std::size_t kLogWalkLimit = 20000;
+
 	// A branch log, a file's history and a line range's history differ only in which fields are
 	// filled in, so they share this request instead of being three functions.
 	struct LogRequest
@@ -50,9 +55,9 @@ namespace Core {
 		// Bounds the commits visited, not the commits kept, which MaxCount bounds. A file or line
 		// history diffs every commit it passes, so without it a file touched once in a long
 		// history would diff all of that history.
-		std::size_t MaxWalk = 20000;
+		std::size_t MaxWalk = kLogWalkLimit;
 
-		std::size_t MaxCount = 500;
+		std::size_t MaxCount = kLogPageSize;
 	};
 
 	enum class DiffTarget

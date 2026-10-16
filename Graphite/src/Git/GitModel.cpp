@@ -88,6 +88,9 @@ namespace Graphite {
 		m_Log.Clear();
 
 		m_LastLogRequest.reset();
+		m_ShownLogRequest.reset();
+		m_LogRefreshPending = false;
+		m_CommitCount.Clear();
 		m_OwnLog.Clear();
 		m_LastOwnRequest.reset();
 		m_OwnLabel.clear();
@@ -162,9 +165,20 @@ namespace Graphite {
 			RequestHead();
 			RequestStashes();
 
+			// WARNING: A refresh while a log is being read waits for it and asks once it lands. After
+			// Load all or Search all the walk has no limit, and a build writing into the workspace
+			// refreshes about once a second: asking at once would queue a whole-history walk behind
+			// itself, again and again, on the job queue every other feature shares.
 			if (m_LastLogRequest.has_value())
 			{
-				RequestLog(*m_LastLogRequest, m_LastOwnRequest);
+				if (m_Log.IsInFlight())
+				{
+					m_LogRefreshPending = true;
+				}
+				else
+				{
+					RequestLog(*m_LastLogRequest, m_LastOwnRequest);
+				}
 			}
 
 			m_WorkingTreeDiffStale = true;
@@ -277,6 +291,10 @@ namespace Graphite {
 
 	void GitModel::RequestLog(Core::LogRequest request, std::optional<OwnCommitsRequest> ownCommits)
 	{
+		// A new ask reads the repository as it is now, so a refresh held for the log in flight is
+		// answered by it.
+		m_LogRefreshPending = false;
+
 		if (!HasOpenFolder())
 		{
 			return;
@@ -287,6 +305,11 @@ namespace Graphite {
 
 		m_LastLogRequest = request;
 		m_LastOwnRequest = ownCommits;
+
+		// Copied before the request moves into the log's job, which goes first: on a single worker the
+		// first page of a new ref would otherwise wait for a walk of its whole history.
+		const std::optional<std::string> countedRef = request.Ref;
+		const bool isStash = request.Stash.has_value();
 
 		m_Submit([this, generation, ownGeneration, request = std::move(request),
 				  ownCommits = std::move(ownCommits)]() {
@@ -301,31 +324,90 @@ namespace Graphite {
 
 			std::string label = ownCommits.has_value() ? ownCommits->Label : std::string{};
 
-			Deliver([this, generation, ownGeneration, result = std::move(result),
+			Deliver([this, generation, ownGeneration, asked = request, result = std::move(result),
 					 ownResult = std::move(ownResult), label = std::move(label)]() mutable {
-				if (m_Log.Land(generation, std::move(result)) != SlotLanding::Applied)
+				if (m_Log.Land(generation, std::move(result)) == SlotLanding::Applied)
 				{
-					return;
+					m_ShownLogRequest = std::move(asked);
+					LandOwnCommits(ownGeneration, std::move(ownResult), std::move(label));
 				}
 
-				if (!ownResult.has_value())
-				{
-					m_OwnLog.Clear();
-					m_OwnLabel.clear();
-					return;
-				}
-
-				if (m_OwnLog.Land(ownGeneration, std::move(*ownResult)) == SlotLanding::Applied)
-				{
-					m_OwnLabel = std::move(label);
-				}
-				else
-				{
-					m_OwnLog.Clear();
-					m_OwnLabel.clear();
-				}
+				// Whatever the landing, applied, failed or stale: each of them can be the last log in flight.
+				AskHeldLogRefresh();
 			});
 		});
+
+		if (!isStash)
+		{
+			RequestCommitCount(countedRef);
+		}
+	}
+
+	void GitModel::LandOwnCommits(std::uint64_t generation, std::optional<Core::Result<Core::LogPage>> result,
+								  std::string label)
+	{
+		if (!result.has_value())
+		{
+			m_OwnLog.Clear();
+			m_OwnLabel.clear();
+			return;
+		}
+
+		if (m_OwnLog.Land(generation, std::move(*result)) == SlotLanding::Applied)
+		{
+			m_OwnLabel = std::move(label);
+		}
+		else
+		{
+			m_OwnLog.Clear();
+			m_OwnLabel.clear();
+		}
+	}
+
+	void GitModel::AskHeldLogRefresh()
+	{
+		if (!m_LogRefreshPending || m_Log.IsInFlight())
+		{
+			return;
+		}
+
+		m_LogRefreshPending = false;
+		RequestLog(*m_LastLogRequest, m_LastOwnRequest);
+	}
+
+	void GitModel::RequestCommitCount(const std::optional<std::string>& ref)
+	{
+		const Core::Ref<const RefCommitCount> held = m_CommitCount.Get();
+		const std::optional<CommitCount> known =
+			held && held->Ref == ref ? std::optional<CommitCount>{held->Count} : std::nullopt;
+
+		const std::uint64_t generation = m_CommitCount.Begin();
+
+		m_Submit([this, generation, ref, known]() {
+			Core::Result<CommitCount> result = m_Port.CountCommits(ref, known);
+
+			Deliver([this, generation, ref, result = std::move(result)]() mutable {
+				if (!result.HasValue())
+				{
+					m_CommitCount.Land(generation, Core::Result<RefCommitCount>{result.GetError()});
+					return;
+				}
+
+				m_CommitCount.Land(generation, RefCommitCount{.Ref = ref, .Count = result.GetValue()});
+			});
+		});
+	}
+
+	std::optional<std::size_t> GitModel::GetCommitCountFor(const std::optional<std::string>& ref) const
+	{
+		const Core::Ref<const RefCommitCount> held = m_CommitCount.Get();
+
+		if (!held || held->Ref != ref)
+		{
+			return std::nullopt;
+		}
+
+		return held->Count.Count;
 	}
 
 	void GitModel::RequestWorkingTreeDiff(Core::DiffRequest request)

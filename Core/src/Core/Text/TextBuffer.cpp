@@ -106,6 +106,7 @@ namespace Core {
 	void TextBuffer::InsertAppendedPiece(std::size_t documentOffset, std::size_t appendOffset, std::string_view text)
 	{
 		const std::size_t clampedOffset = std::min(documentOffset, m_Length);
+		const std::size_t firstLine = ToPosition(clampedOffset).Line;
 		const std::size_t insertedPieceIndex = SplitPieceAt(clampedOffset);
 
 		m_Pieces.insert(m_Pieces.begin() + static_cast<std::ptrdiff_t>(insertedPieceIndex),
@@ -116,6 +117,12 @@ namespace Core {
 		PatchLineIndexForInsert(clampedOffset, text);
 
 		CORE_ASSERT(LineIndexMatchesRebuild(), "The patched line index no longer matches a rebuilt one");
+
+		RecordChange(TextChange{.Offset = clampedOffset,
+								.InsertedLength = text.size(),
+								.FirstLine = firstLine,
+								.InsertedLines = static_cast<std::size_t>(std::count(text.begin(), text.end(), '\n')),
+								.LineCountAfter = GetLineCount()});
 	}
 
 	std::size_t TextBuffer::IndexOfFirstPieceStartingAtOrAfter(std::size_t offset) const
@@ -135,6 +142,9 @@ namespace Core {
 			return;
 		}
 
+		const std::size_t firstLine = ToPosition(from).Line;
+		const std::size_t lastLine = ToPosition(clampedEnd).Line;
+
 		// Look both indices up after both splits rather than keeping what the splits return: splitting
 		// at `from` inserts a piece ahead of the boundary at `clampedEnd` and moves it one index on.
 		SplitPieceAt(clampedEnd);
@@ -153,6 +163,12 @@ namespace Core {
 		PatchLineIndexForErase(from, clampedEnd);
 
 		CORE_ASSERT(LineIndexMatchesRebuild(), "The patched line index no longer matches a rebuilt one");
+
+		RecordChange(TextChange{.Offset = from,
+								.RemovedLength = clampedEnd - from,
+								.FirstLine = firstLine,
+								.RemovedLines = lastLine - firstLine,
+								.LineCountAfter = GetLineCount()});
 	}
 
 	std::string TextBuffer::Substring(std::size_t from, std::size_t to) const
@@ -544,5 +560,88 @@ namespace Core {
 	std::size_t TextBuffer::GetRevision() const
 	{
 		return m_Undo.empty() ? 0 : m_Undo.back().Id;
+	}
+
+	void TextBuffer::RecordChange(TextChange change)
+	{
+		if (!m_RecordsChanges)
+		{
+			return;
+		}
+
+		change.Sequence = ++m_ChangeSequence;
+		m_Changes.push_back(change);
+
+		// Trimmed by half a log at a time, so a long session pays for the erase once per
+		// kChangeLogCapacity changes instead of once per change.
+		if (m_Changes.size() >= 2 * kChangeLogCapacity)
+		{
+			m_Changes.erase(m_Changes.begin(), m_Changes.begin() + static_cast<std::ptrdiff_t>(kChangeLogCapacity));
+		}
+	}
+
+	std::optional<std::span<const TextChange>> TextBuffer::ChangesSince(std::uint64_t sequence) const
+	{
+		if (sequence >= m_ChangeSequence)
+		{
+			return std::span<const TextChange>{};
+		}
+
+		if (m_Changes.empty() || sequence + 1 < m_Changes.front().Sequence)
+		{
+			return std::nullopt;
+		}
+
+		const std::size_t firstIndex = static_cast<std::size_t>(sequence + 1 - m_Changes.front().Sequence);
+
+		return std::span<const TextChange>{m_Changes}.subspan(firstIndex);
+	}
+
+	void TextBuffer::ReplaceContent(std::string_view text)
+	{
+		const std::size_t lengthBefore = m_Length;
+		const std::size_t lineCountBefore = GetLineCount();
+
+		m_RecordsChanges = false;
+
+		// The undo group is broken on both sides, so one Ctrl+Z reverses exactly the replacement
+		// and none of the typing around it.
+		BreakUndoGroup();
+		BeginTransaction();
+		Erase(0, m_Length);
+		Insert(0, text);
+		EndTransaction();
+		BreakUndoGroup();
+
+		m_RecordsChanges = true;
+
+		RecordChange(TextChange{.Offset = 0,
+								.RemovedLength = lengthBefore,
+								.InsertedLength = text.size(),
+								.FirstLine = 0,
+								.RemovedLines = lineCountBefore - 1,
+								.InsertedLines = GetLineCount() - 1,
+								.LineCountAfter = GetLineCount(),
+								.WholeContent = true});
+	}
+
+	std::optional<std::size_t> TextBuffer::GetTopUndoGroup() const
+	{
+		return m_Undo.empty() ? std::nullopt : std::optional<std::size_t>{m_Undo.back().GroupId};
+	}
+
+	std::optional<std::size_t> TextBuffer::GetTopRedoGroup() const
+	{
+		return m_Redo.empty() ? std::nullopt : std::optional<std::size_t>{m_Redo.back().GroupId};
+	}
+
+	bool TextBuffer::HoldsUndoGroup(std::size_t groupId) const
+	{
+		return std::ranges::any_of(m_Undo, [groupId](const Edit& edit) { return edit.GroupId == groupId; });
+	}
+
+	bool TextBuffer::HoldsRedoGroup(std::size_t groupId) const
+	{
+		return std::ranges::any_of(m_Redo, [groupId](const Edit& edit) { return edit.GroupId == groupId; });
 	}
 }

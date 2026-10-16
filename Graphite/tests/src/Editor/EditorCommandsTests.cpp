@@ -9,6 +9,7 @@
 #include "Core/Text/TextDocument.h"
 
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -25,7 +26,7 @@ namespace {
 		Core::Result<Core::TextDocument> document = Core::TextDocument::FromContent(std::move(content), path);
 		REQUIRE(document);
 
-		item.Document = std::move(document).GetValue();
+		item.Document = std::make_shared<Core::TextDocument>(std::move(document).GetValue());
 		item.Path = std::move(path);
 		Core::RecomputeLineCaches(item);
 

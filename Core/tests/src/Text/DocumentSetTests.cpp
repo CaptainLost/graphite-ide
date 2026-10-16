@@ -47,7 +47,7 @@ TEST_CASE("Opening a text file adds an item holding the document")
 
 	CHECK(documents.Open(path, TabKind::Permanent) == OpenOutcome::Opened);
 	REQUIRE(documents.GetCount() == 1);
-	REQUIRE(documents.At(0).Document.has_value());
+	REQUIRE(documents.At(0).Document != nullptr);
 	CHECK(documents.At(0).Document->GetBuffer().Materialize() == "int main() {}\n");
 	CHECK(documents.At(0).Failure == OpenFailure::None);
 	CHECK(documents.GetActiveIndex() == std::optional<std::size_t>{0});
@@ -111,7 +111,7 @@ TEST_CASE("A binary file opens as an item with a reason rather than nothing at a
 
 	CHECK(documents.Open(path, TabKind::Permanent) == OpenOutcome::Failed);
 	REQUIRE(documents.GetCount() == 1);
-	CHECK_FALSE(documents.At(0).Document.has_value());
+	CHECK_FALSE(documents.At(0).Document != nullptr);
 	CHECK(documents.At(0).Failure == OpenFailure::Binary);
 	CHECK(FailureMessage(documents.At(0)).find("Binary") != std::string::npos);
 }
@@ -127,7 +127,7 @@ TEST_CASE("A UTF-16 file opens as a document with its text decoded")
 
 	CHECK(documents.Open(path, TabKind::Permanent) == OpenOutcome::Opened);
 	REQUIRE(documents.GetCount() == 1);
-	REQUIRE(documents.At(0).Document.has_value());
+	REQUIRE(documents.At(0).Document != nullptr);
 	CHECK(documents.At(0).Document->GetBuffer().Materialize() == "Hello");
 }
 
@@ -218,7 +218,7 @@ TEST_CASE("A large file asks before it loads, and adds nothing until confirmed")
 
 	CHECK(documents.OpenConfirmed(path, TabKind::Permanent) == OpenOutcome::Opened);
 	CHECK(documents.GetCount() == 1);
-	CHECK(documents.At(0).Document.has_value());
+	CHECK(documents.At(0).Document != nullptr);
 }
 
 TEST_CASE("The failure message names the size, so the number is not a mystery")
@@ -523,7 +523,7 @@ TEST_CASE("A deleted file keeps its window and its content")
 
 	REQUIRE(documents.GetCount() == 1);
 	CHECK(documents.At(0).Failure == OpenFailure::Missing);
-	REQUIRE(documents.At(0).Document.has_value());
+	REQUIRE(documents.At(0).Document != nullptr);
 	CHECK(documents.At(0).Document->GetBuffer().Materialize() == "still here");
 }
 
@@ -590,7 +590,7 @@ TEST_CASE("The document's own path that a save writes to follows the workspace r
 
 	DocumentSet documents;
 	documents.Open(path, TabKind::Permanent);
-	REQUIRE(documents.At(0).Document.has_value());
+	REQUIRE(documents.At(0).Document != nullptr);
 
 	documents.RewritePaths(directory.GetPath(), "D:/moved");
 
@@ -676,12 +676,12 @@ TEST_CASE("Loading fills an item that opened before its file existed")
 
 	DocumentSet documents;
 	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Failed);
-	REQUIRE_FALSE(documents.At(0).Document.has_value());
+	REQUIRE_FALSE(documents.At(0).Document != nullptr);
 
 	WriteFileBytes(path, "here now\n");
 
-	CHECK(LoadFromFile(documents.At(0), LargeFileConfirmation::Unconfirmed) == ItemLoad::Loaded);
-	REQUIRE(documents.At(0).Document.has_value());
+	CHECK(LoadFromFile(documents.At(0), documents.GetStore(), LargeFileConfirmation::Unconfirmed) == ItemLoad::Loaded);
+	REQUIRE(documents.At(0).Document != nullptr);
 	CHECK(documents.At(0).Document->GetBuffer().Materialize() == "here now\n");
 	CHECK(documents.At(0).Failure == OpenFailure::None);
 	CHECK(documents.At(0).FailureDetail.empty());
@@ -697,8 +697,8 @@ TEST_CASE("Loading a file that turned out to be binary leaves the reason, not a 
 
 	WriteFileBytes(path, kBinaryFileBytes);
 
-	CHECK(LoadFromFile(documents.At(0), LargeFileConfirmation::Unconfirmed) == ItemLoad::Failed);
-	CHECK_FALSE(documents.At(0).Document.has_value());
+	CHECK(LoadFromFile(documents.At(0), documents.GetStore(), LargeFileConfirmation::Unconfirmed) == ItemLoad::Failed);
+	CHECK_FALSE(documents.At(0).Document != nullptr);
 	CHECK(documents.At(0).Failure == OpenFailure::Binary);
 }
 
@@ -718,13 +718,13 @@ TEST_CASE("Loading a large file asks and leaves the failure in place until confi
 	const std::string failureDetailBeforeQuestion = documents.At(0).FailureDetail;
 	REQUIRE_FALSE(failureDetailBeforeQuestion.empty());
 
-	CHECK(LoadFromFile(documents.At(0), LargeFileConfirmation::Unconfirmed) == ItemLoad::NeedsConfirmation);
-	CHECK_FALSE(documents.At(0).Document.has_value());
+	CHECK(LoadFromFile(documents.At(0), documents.GetStore(), LargeFileConfirmation::Unconfirmed) == ItemLoad::NeedsConfirmation);
+	CHECK_FALSE(documents.At(0).Document != nullptr);
 	CHECK(documents.At(0).Failure == OpenFailure::Missing);
 	CHECK(documents.At(0).FailureDetail == failureDetailBeforeQuestion);
 
-	CHECK(LoadFromFile(documents.At(0), LargeFileConfirmation::Confirmed) == ItemLoad::Loaded);
-	CHECK(documents.At(0).Document.has_value());
+	CHECK(LoadFromFile(documents.At(0), documents.GetStore(), LargeFileConfirmation::Confirmed) == ItemLoad::Loaded);
+	CHECK(documents.At(0).Document != nullptr);
 	CHECK(documents.At(0).Failure == OpenFailure::None);
 }
 
