@@ -5,6 +5,7 @@
 #include "Editor/Overlays/SemanticOverlay.h"
 #include "Search/PreviewContent.h"
 #include "Search/PreviewWindow.h"
+#include "UI/LineNumberColumn.h"
 
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/ImGuiRenderer.h"
@@ -21,9 +22,6 @@
 namespace Graphite {
 
 	namespace {
-
-		constexpr std::size_t kDecimalBase = 10;
-		constexpr std::size_t kSpacesAfterLineNumber = 1;
 
 		// WARNING: A run is placed by the columns before it, not by its byte offset: a character of more
 		// than one byte takes one cell, and the match highlights are placed by columns.
@@ -56,19 +54,6 @@ namespace Graphite {
 				PaintedUpToByte = end;
 			}
 		};
-
-		float GutterWidth(std::size_t lastLine, float cellWidth)
-		{
-			std::size_t digitCount = 1;
-
-			for (std::size_t remaining = lastLine + 1; remaining >= kDecimalBase;
-				 remaining /= kDecimalBase)
-			{
-				++digitCount;
-			}
-
-			return static_cast<float>(digitCount + kSpacesAfterLineNumber) * cellWidth;
-		}
 
 		void DrawMessage(const char* message)
 		{
@@ -152,7 +137,8 @@ namespace Graphite {
 		// that widens along the line, so the cell width comes from the baked font.
 		const float cellWidth = Core::MonospaceCellWidth();
 		const float lineHeight = ImGui::GetTextLineHeight();
-		const float gutter = GutterWidth(window.Last, cellWidth);
+		const LineNumberColumn numbers = MeasureLineNumberColumn(buffer->GetLineCount(), cellWidth);
+		const float gutter = numbers.Width();
 
 		if (content.TakeCentring(hitLine))
 		{
@@ -205,8 +191,7 @@ namespace Graphite {
 			}
 
 			const std::string lineNumber = std::to_string(line + 1);
-			const float lineNumberLeft =
-				textLeft - cellWidth - static_cast<float>(lineNumber.size()) * cellWidth;
+			const float lineNumberLeft = numbers.NumberLeft(lineOrigin.x, line + 1);
 
 			drawList->AddText(ImVec2(lineNumberLeft, lineOrigin.y),
 							  line == hitLine ? palette.Text : palette.Number,

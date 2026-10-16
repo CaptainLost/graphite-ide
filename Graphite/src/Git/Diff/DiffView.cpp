@@ -7,6 +7,7 @@
 #include "Git/History/CommitLabels.h"
 #include "Git/Diff/DiffPanes.h"
 #include "Core/ImGui/IconButton.h"
+#include "UI/LineNumberColumn.h"
 #include "UI/SplitResults.h"
 #include "UI/TypographicMarks.h"
 
@@ -37,9 +38,6 @@ namespace Graphite {
 
 	namespace {
 
-		constexpr float kLineNumberColumns = 5.0f;
-		constexpr float kNumberPaddingX = 6.0f;
-		constexpr float kNumberPaddingSides = 2.0f;
 		constexpr float kUnifiedNumberColumns = 2.0f;
 		constexpr float kModeButtonGap = 2.0f;
 		constexpr float kSplitLineWidth = 1.0f;
@@ -81,10 +79,23 @@ namespace Graphite {
 			return static_cast<std::size_t>(width / cell);
 		}
 
-		float NumberColumnWidth()
+		std::size_t LastLineNumberOf(const Core::FileDiff& file, std::size_t oldLineCount, std::size_t newLineCount)
 		{
-			return ImGui::CalcTextSize("0").x * kLineNumberColumns +
-				   Core::Scaled(kNumberPaddingX) * kNumberPaddingSides;
+			std::size_t last = std::max(oldLineCount, newLineCount);
+
+			for (const Core::Hunk& hunk : file.Hunks)
+			{
+				last = std::max(last, static_cast<std::size_t>(std::max(0, hunk.OldStart + hunk.OldCount)));
+				last = std::max(last, static_cast<std::size_t>(std::max(0, hunk.NewStart + hunk.NewCount)));
+			}
+
+			return last;
+		}
+
+		// WARNING: Measured with the mono font pushed, whose cells the numbers are drawn in.
+		LineNumberColumn NumberColumnOf(const Core::FileDiff& file, std::size_t oldLineCount, std::size_t newLineCount)
+		{
+			return MeasureLineNumberColumn(LastLineNumberOf(file, oldLineCount, newLineCount), Core::MonospaceCellWidth());
 		}
 
 		float UnifiedTextOffset(float numberWidth)
@@ -180,7 +191,7 @@ namespace Graphite {
 			return ImGui::GetColorU32(ImGuiCol_Text);
 		}
 
-		void DrawNumber(float x, float y, float width, int number)
+		void DrawNumber(float x, float y, const LineNumberColumn& numbers, int number, ImU32 colour)
 		{
 			if (number <= 0)
 			{
@@ -188,10 +199,11 @@ namespace Graphite {
 			}
 
 			const std::string text = std::to_string(number);
-			const float textWidth = ImGui::CalcTextSize(text.c_str()).x;
 
-			ImGui::SetCursorPos(ImVec2(x + width - textWidth - Core::Scaled(kNumberPaddingX), y));
+			ImGui::SetCursorPos(ImVec2(numbers.NumberLeft(x, static_cast<std::size_t>(number)), y));
+			ImGui::PushStyleColor(ImGuiCol_Text, colour);
 			ImGui::TextUnformatted(text.c_str());
+			ImGui::PopStyleColor();
 		}
 
 		std::string HeaderTextFor(const Core::FileDiff& file, std::size_t hunkIndex, DiffRowKind kind,
@@ -720,7 +732,7 @@ namespace Graphite {
 		SideBySidePanes Panes;
 		ImVec2 InnerMin;
 		ImVec2 InnerMax;
-		float NumberWidth = 0.0f;
+		LineNumberColumn Numbers;
 		float RowHeight = 0.0f;
 		std::size_t Columns = 0;
 	};
@@ -972,9 +984,9 @@ namespace Graphite {
 		const float widthLastFrame = m_UnifiedInnerWidthLastFrame > 0.0f
 										 ? m_UnifiedInnerWidthLastFrame
 										 : ImGui::GetContentRegionAvail().x;
+		const float numberWidthLastFrame = NumberColumnOf(file, m_OldLines.size(), m_NewLines.size()).Width();
 		const std::size_t columnsLastFrame =
-			wordWrap ? WrapColumnsAcross(widthLastFrame - UnifiedTextOffset(NumberColumnWidth()))
-					 : Core::RowMap::kNoWrap;
+			wordWrap ? WrapColumnsAcross(widthLastFrame - UnifiedTextOffset(numberWidthLastFrame)) : Core::RowMap::kNoWrap;
 		ImGui::PopFont();
 
 		const DiffRowLines& linesLastFrame = RowLinesFor(std::span(rows), file, tokens, columnsLastFrame);
@@ -1004,7 +1016,8 @@ namespace Graphite {
 
 		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont());
 
-		const float numberWidth = NumberColumnWidth();
+		const LineNumberColumn numbers = NumberColumnOf(file, m_OldLines.size(), m_NewLines.size());
+		const float numberWidth = numbers.Width();
 		const float textOffset = UnifiedTextOffset(numberWidth);
 		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
 		const float startX = ImGui::GetCursorPosX();
@@ -1077,8 +1090,8 @@ namespace Graphite {
 					continue;
 				}
 
-				DrawNumber(rowPos.x, rowPos.y, numberWidth, drawn.OldLine);
-				DrawNumber(rowPos.x + numberWidth, rowPos.y, numberWidth, drawn.NewLine);
+				DrawNumber(rowPos.x, rowPos.y, numbers, drawn.OldLine, palette.LineNumber);
+				DrawNumber(rowPos.x + numberWidth, rowPos.y, numbers, drawn.NewLine, palette.LineNumber);
 
 				const ResolvedLine resolved =
 					ResolveRow(file, drawn, DiffSide::New, m_OldLines, m_NewLines, tokens);
@@ -1164,7 +1177,8 @@ namespace Graphite {
 		const SideBySidePanes panesLastFrame = SplitIntoPanes(
 			m_SideInnerWidthLastFrame > 0.0f ? m_SideInnerWidthLastFrame : innerWidth);
 		const std::size_t columnsLastFrame =
-			PaneColumns(wordWrap, panesLastFrame.PaneWidth, padding, NumberColumnWidth());
+			PaneColumns(wordWrap, panesLastFrame.PaneWidth, padding,
+						NumberColumnOf(file, m_OldLines.size(), m_NewLines.size()).Width());
 		ImGui::PopFont();
 
 		const DiffRowLines& linesLastFrame = RowLinesFor(std::span(pairs), file, tokens, columnsLastFrame);
@@ -1194,7 +1208,8 @@ namespace Graphite {
 
 		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont());
 
-		const float numberWidth = NumberColumnWidth();
+		const LineNumberColumn numbers = NumberColumnOf(file, m_OldLines.size(), m_NewLines.size());
+		const float numberWidth = numbers.Width();
 		const float rowHeight = ImGui::GetTextLineHeightWithSpacing();
 		const float startX = ImGui::GetCursorPosX();
 		const float startY = ImGui::GetCursorPosY();
@@ -1227,7 +1242,7 @@ namespace Graphite {
 										.Panes = panes,
 										.InnerMin = innerMin,
 										.InnerMax = innerMax,
-										.NumberWidth = numberWidth,
+										.Numbers = numbers,
 										.RowHeight = rowHeight,
 										.Columns = columns};
 
@@ -1297,7 +1312,7 @@ namespace Graphite {
 		const bool isOldPane = side == DiffSide::Old;
 		const float paneX = isOldPane ? 0.0f : context.Panes.RightPaneX;
 		const float paneScreenX = context.InnerMin.x + paneX;
-		const float numberWidth = context.NumberWidth;
+		const float numberWidth = context.Numbers.Width();
 		const float rowHeight = context.RowHeight;
 		float widest = 0.0f;
 
@@ -1346,7 +1361,8 @@ namespace Graphite {
 				continue;
 			}
 
-			DrawNumber(rowPos.x, rowPos.y, numberWidth, isOldPane ? drawn.OldLine : drawn.NewLine);
+			DrawNumber(rowPos.x, rowPos.y, context.Numbers, isOldPane ? drawn.OldLine : drawn.NewLine,
+					   context.Palette.LineNumber);
 
 			const ResolvedLine resolved =
 				ResolveRow(context.File, drawn, side, m_OldLines, m_NewLines, context.Tokens);

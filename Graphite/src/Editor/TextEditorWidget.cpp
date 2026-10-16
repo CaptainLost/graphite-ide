@@ -25,6 +25,7 @@
 #include "Language/Syntax/SyntaxCache.h"
 
 #include "Theme/BuiltInSchemes.h"
+#include "UI/LineNumberColumn.h"
 #include "UI/TypographicMarks.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -65,12 +66,7 @@
 namespace Graphite {
 
 	namespace {
-		constexpr float kGutterPaddingX = 8.0f;
-		constexpr float kGutterPaddedSides = 2.0f;
-
 		constexpr float kStaleDiagnosticAlpha = 0.4f;
-
-		constexpr int kMinimumGutterDigits = 3;
 
 		constexpr float kBreakpointColumnCells = 1.0f;
 
@@ -87,7 +83,6 @@ namespace Graphite {
 		constexpr float kHalf = 0.5f;
 		constexpr float kHairlineWidth = 1.0f;
 		constexpr float kLeastWrapColumns = 1.0f;
-		constexpr std::size_t kDecimalBase = 10;
 
 		constexpr int kTripleClick = 3;
 		constexpr int kDoubleClick = 2;
@@ -130,19 +125,6 @@ namespace Graphite {
 			return model != nullptr ? model->GetRows() : NoLenses();
 		}
 
-		int DigitCount(std::size_t value)
-		{
-			int digits = 1;
-
-			while (value >= kDecimalBase)
-			{
-				value /= kDecimalBase;
-				++digits;
-			}
-
-			return digits;
-		}
-
 		std::size_t AdvanceColumns(std::string_view expanded, std::size_t byte,
 								   std::size_t columns)
 		{
@@ -171,7 +153,7 @@ namespace Graphite {
 		{
 			float BreakpointWidth = 0.0f;
 			float ChangeWidth = 0.0f;
-			float NumberWidth = 0.0f;
+			LineNumberColumn Numbers;
 			float FoldWidth = 0.0f;
 			float TotalWidth = 0.0f;
 		};
@@ -190,15 +172,12 @@ namespace Graphite {
 			metrics.LineHeight = ImGui::GetTextLineHeight();
 			metrics.CellWidth = Core::MonospaceCellWidth();
 
-			const int digits = std::max(kMinimumGutterDigits, DigitCount(buffer.GetLineCount()));
-
 			metrics.Gutter.BreakpointWidth = kBreakpointColumnCells * metrics.CellWidth;
 			metrics.Gutter.ChangeWidth = changeColumn ? Core::Scaled(kChangeColumnWidth) : 0.0f;
 			metrics.Gutter.FoldWidth = kFoldColumnCells * metrics.CellWidth;
-			metrics.Gutter.NumberWidth = static_cast<float>(digits) * metrics.CellWidth +
-										 Core::Scaled(kGutterPaddingX) * kGutterPaddedSides;
+			metrics.Gutter.Numbers = MeasureLineNumberColumn(buffer.GetLineCount(), metrics.CellWidth);
 			metrics.Gutter.TotalWidth = metrics.Gutter.BreakpointWidth + metrics.Gutter.ChangeWidth +
-										metrics.Gutter.NumberWidth + metrics.Gutter.FoldWidth;
+										metrics.Gutter.Numbers.Width() + metrics.Gutter.FoldWidth;
 
 			return metrics;
 		}
@@ -1496,9 +1475,6 @@ namespace Graphite {
 			}
 		}
 
-		// WARNING: The number is right-aligned with the cell width, not ImGui::CalcTextSize,
-		// which rounds up to a whole pixel. The column was sized as digits * cellWidth, and two
-		// measurements of one width are how the caret drifted off the text before.
 		void DrawGutter(const RowCanvas& canvas, const RowSlice& slice, bool onCaretLine,
 						const ChangeMarkers* changes, std::size_t lineCount)
 		{
@@ -1513,11 +1489,9 @@ namespace Graphite {
 			}
 
 			const std::string number = std::to_string(slice.Line + 1);
-			const float numberColumnRight = gutterX + canvas.Metrics.Gutter.BreakpointWidth +
-											canvas.Metrics.Gutter.ChangeWidth +
-											canvas.Metrics.Gutter.NumberWidth;
-			const float numberX = numberColumnRight - Core::Scaled(kGutterPaddingX) -
-								  static_cast<float>(number.size()) * canvas.Metrics.CellWidth;
+			const float numberColumnLeft =
+				gutterX + canvas.Metrics.Gutter.BreakpointWidth + canvas.Metrics.Gutter.ChangeWidth;
+			const float numberX = canvas.Metrics.Gutter.Numbers.NumberLeft(numberColumnLeft, slice.Line + 1);
 
 			canvas.Draw->AddText(ImVec2(numberX, slice.Y),
 								 onCaretLine ? canvas.Palette.Text : canvas.Palette.Number,

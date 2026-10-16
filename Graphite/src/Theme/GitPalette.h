@@ -21,6 +21,8 @@ namespace Graphite {
 		ImU32 GutterModified = 0;
 		ImU32 GutterRemoved = 0;
 
+		ImU32 LineNumber = 0;
+
 		std::array<ImU32, 6> Lanes{};
 
 		ImU32 LaneOf(std::size_t lane) const { return Lanes[lane % Lanes.size()]; }
