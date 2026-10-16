@@ -2,6 +2,7 @@
 
 #include "Git/DefaultBranch.h"
 #include "Git/History/CommitLabels.h"
+#include "Persistence/StoredVersion.h"
 
 #include "Core/FileSystem/FileSystem.h"
 
@@ -453,16 +454,18 @@ namespace Graphite {
 			return DecodedSessions{.Text = ReviewsText::Malformed};
 		}
 
-		const nlohmann::json::const_iterator version = document.find(kVersionKey);
-
-		if (version == document.end() || !version->is_number_integer())
+		switch (StoredVersionOf(document, kVersionKey, kFormatVersion))
 		{
+		case StoredVersion::Missing:
+		case StoredVersion::NotANumber:
 			return DecodedSessions{.Text = ReviewsText::Malformed};
-		}
 
-		if (version->get<std::int64_t>() != kFormatVersion)
-		{
+		case StoredVersion::Older:
+		case StoredVersion::Newer:
 			return DecodedSessions{.Text = ReviewsText::OtherVersion};
+
+		case StoredVersion::Current:
+			break;
 		}
 
 		const nlohmann::json::const_iterator sessions = document.find(kSessionsKey);

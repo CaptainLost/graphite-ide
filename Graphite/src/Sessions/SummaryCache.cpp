@@ -3,6 +3,8 @@
 #include "Core/FileSystem/AtomicWrite.h"
 #include "Core/FileSystem/FileSystem.h"
 
+#include "Persistence/StoredVersion.h"
+
 #include <nlohmann/json.hpp>
 
 #include <cstddef>
@@ -74,9 +76,7 @@ namespace Graphite {
 			return {};
 		}
 
-		const nlohmann::json::const_iterator version = root.find("version");
-
-		if (version == root.end() || !version->is_number_integer() || *version != kSummaryCacheVersion)
+		if (StoredVersionOf(root, "version", kSummaryCacheVersion) != StoredVersion::Current)
 		{
 			return {};
 		}

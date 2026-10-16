@@ -2,6 +2,7 @@
 
 #include "Language/Install/InstallJson.h"
 #include "Language/Install/PackageNames.h"
+#include "Persistence/StoredVersion.h"
 
 #include "Core/Base/Ascii.h"
 #include "Core/FileSystem/AtomicWrite.h"
@@ -67,21 +68,18 @@ namespace Graphite {
 
 		RecordFormat FormatOf(const nlohmann::json& root)
 		{
-			const nlohmann::json::const_iterator field = root.find("format");
-
-			if (field == root.end())
+			switch (StoredVersionOf(root, "format", kRecordFormat))
 			{
+			case StoredVersion::Missing:
+			case StoredVersion::Current:
 				return RecordFormat::Current;
-			}
 
-			if (field->is_number_integer() && field->get<std::int64_t>() == kRecordFormat)
-			{
-				return RecordFormat::Current;
-			}
-
-			if (field->is_number() && field->get<double>() > static_cast<double>(kRecordFormat))
-			{
+			case StoredVersion::Newer:
 				return RecordFormat::Newer;
+
+			case StoredVersion::Older:
+			case StoredVersion::NotANumber:
+				break;
 			}
 
 			return RecordFormat::Unknown;

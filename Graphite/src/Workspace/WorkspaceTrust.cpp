@@ -4,6 +4,7 @@
 #include "Core/FileSystem/AtomicWrite.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Persistence/FileBackup.h"
+#include "Persistence/StoredVersion.h"
 
 #include <nlohmann/json.hpp>
 
@@ -87,9 +88,7 @@ namespace Graphite {
 			return;
 		}
 
-		const nlohmann::json::const_iterator versionEntry = json.find(kTrustFileVersionKey);
-		const bool writtenByNewerVersion = versionEntry != json.end() && versionEntry->is_number_integer() &&
-										   versionEntry->get<std::int64_t>() > kFileVersion;
+		const bool writtenByNewerVersion = StoredVersionOf(json, kTrustFileVersionKey, kFileVersion) == StoredVersion::Newer;
 
 		if (writtenByNewerVersion)
 		{
