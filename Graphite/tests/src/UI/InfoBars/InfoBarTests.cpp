@@ -5,11 +5,15 @@
 
 #include "UI/InfoBars/InfoBar.h"
 
+#include "Core/ImGui/IconButton.h"
+#include "Core/ImGui/TextMetrics.h"
+
 #include <imgui.h>
 #include <imgui_internal.h>
 
 #include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <optional>
 #include <string>
 
@@ -66,7 +70,7 @@ namespace {
 			return *editor->DC.ChildWindows.back();
 		}
 
-		// The bar's last item ends at its close button; the buttons stand before it.
+		// How far right anything in `colour` is drawn in the bar.
 		static float RightmostInk(ImU32 colour)
 		{
 			float right = -FLT_MAX;
@@ -119,15 +123,54 @@ TEST_CASE("The primary button is filled with the accent and the others have no f
 	CHECK_FALSE(DrawsInColour(*bar.DrawList, ImGui::GetColorU32(ImGuiCol_Button)));
 }
 
-TEST_CASE("A long message and a long path on a button are cut short, and nothing runs past the bar's end")
+TEST_CASE("In a bar too narrow for its buttons they stand clear of the close button, which still closes the bar")
+{
+	for (const float width : {520.0f, 400.0f, 260.0f})
+	{
+		CAPTURE(width);
+
+		BarScreen screen;
+		screen.Width = width;
+		screen.DrawFrame();
+
+		const ImGuiWindow& bar = BarScreen::Bar();
+		const float closeLeft =
+			bar.InnerRect.Max.x - bar.WindowPadding.x - Core::IconButtonSize() - ImGui::GetStyle().ItemSpacing.x;
+		CHECK(BarScreen::RightmostInk(ImGui::GetColorU32(ImGuiCol_CheckMark)) <= closeLeft + kFringe);
+
+		const ImVec2 close(bar.InnerRect.Max.x - bar.WindowPadding.x - Core::IconButtonSize() * 0.5f,
+						   bar.InnerRect.GetCenter().y);
+		screen.Frames.Click(close, [&] { screen.Draw(); });
+
+		CHECK(screen.Closed);
+		CHECK_FALSE(screen.Pressed.has_value());
+	}
+}
+
+TEST_CASE("A button's label is drawn whole though it holds a double hash, as a folder named C# does")
 {
 	BarScreen screen;
-	screen.Width = 520.0f;
+	screen.Content.Message.clear();
+	screen.Content.CloseTooltip = nullptr;
+	screen.Content.Buttons = {{.Label = "C##D"}};
 	screen.DrawFrame();
 
+	const float labelWidth = Core::TextWidth("C##D");
 	const ImGuiWindow& bar = BarScreen::Bar();
-	CHECK(BarScreen::RightmostInk(ImGui::GetColorU32(ImGuiCol_Text)) <= bar.InnerRect.Max.x + kFringe);
-	CHECK(BarScreen::RightmostInk(ImGui::GetColorU32(ImGuiCol_CheckMark)) <= bar.InnerRect.Max.x + kFringe);
+
+	float left = FLT_MAX;
+	float right = -FLT_MAX;
+	for (const ImDrawVert& vertex : bar.DrawList->VtxBuffer)
+	{
+		if (vertex.col == ImGui::GetColorU32(ImGuiCol_Text))
+		{
+			left = std::min(left, vertex.pos.x);
+			right = std::max(right, vertex.pos.x);
+		}
+	}
+
+	REQUIRE(left < FLT_MAX);
+	CHECK(right - left > labelWidth * 0.75f);
 }
 
 TEST_CASE("A click on the close button reports the bar closed")

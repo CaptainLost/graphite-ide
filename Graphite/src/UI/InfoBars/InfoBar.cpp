@@ -4,8 +4,11 @@
 
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/IconButton.h"
+#include "Core/ImGui/ImGuiColors.h"
+#include "Core/ImGui/TextMetrics.h"
 
 #include <IconsMaterialDesignIcons.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 
@@ -13,43 +16,73 @@ namespace Graphite {
 
 	namespace {
 		constexpr float kWarningTint = 0.14f;
-		constexpr float kPrimaryHoverLightening = 0.12f;
-		constexpr float kPrimaryPressDarkening = 0.12f;
+		constexpr float kWarningHoverTint = 0.30f;
 		constexpr float kLongestSecondaryLabelInFontSizes = 18.0f;
 		constexpr float kPaddingSides = 2.0f;
 		constexpr bool kNotEngaged = false;
+
+		// As DialogLayout's filled buttons, so a main action looks the same in a bar and in a dialog.
+		constexpr float kPrimaryHoveredBrightness = 1.15f;
+		constexpr float kPrimaryActiveBrightness = 0.85f;
 		constexpr int kPrimaryColourCount = 4;
 		constexpr int kSecondaryColourCount = 1;
 		const ImVec4 kWhite(1.0f, 1.0f, 1.0f, 1.0f);
-		const ImVec4 kBlack(0.0f, 0.0f, 0.0f, 1.0f);
 		const ImVec4 kNoFill(0.0f, 0.0f, 0.0f, 0.0f);
 
 		struct ShownButton
 		{
+			std::size_t Index = 0;
 			std::string Label;
 			bool Cut = false;
 			float Width = 0.0f;
 		};
 
-		// WARNING: The id after "###" keeps a button's id fixed whatever its label holds, a path included.
-		std::string ButtonId(const std::string& label)
+		float ButtonWidthOf(const std::string& label)
 		{
-			return label + "###button";
+			return Core::TextWidth(label) + ImGui::GetStyle().FramePadding.x * kPaddingSides;
 		}
 
-		std::vector<ShownButton> ShownButtons(const std::vector<InfoBarButton>& buttons)
+		// The main actions whole; the others cut to what is left of `room`, a long one to at most a set width, and left
+		// out when nothing of them fits.
+		std::vector<ShownButton> FitButtons(const std::vector<InfoBarButton>& buttons, float room)
 		{
-			const float longest = ImGui::GetFontSize() * kLongestSecondaryLabelInFontSizes;
+			const float spacing = ImGui::GetStyle().ItemSpacing.x;
 			const float sides = ImGui::GetStyle().FramePadding.x * kPaddingSides;
+			const float longest = ImGui::GetFontSize() * kLongestSecondaryLabelInFontSizes;
 
-			std::vector<ShownButton> shown;
-			shown.reserve(buttons.size());
+			float left = room;
 
 			for (const InfoBarButton& button : buttons)
 			{
-				ShownButton entry;
-				entry.Label = button.Primary ? button.Label : FitToWidth(button.Label, longest, &entry.Cut);
-				entry.Width = ImGui::CalcTextSize(ButtonId(entry.Label).c_str(), nullptr, true).x + sides;
+				if (button.Primary)
+				{
+					left -= ButtonWidthOf(button.Label) + spacing;
+				}
+			}
+
+			std::vector<ShownButton> shown;
+
+			for (std::size_t index = 0; index < buttons.size(); ++index)
+			{
+				const InfoBarButton& button = buttons[index];
+
+				if (button.Primary)
+				{
+					shown.push_back({.Index = index, .Label = button.Label, .Width = ButtonWidthOf(button.Label)});
+					continue;
+				}
+
+				const float labelRoom = std::min(longest, left - sides - spacing);
+				ShownButton entry{.Index = index};
+				entry.Label = labelRoom > 0.0f ? FitToWidth(button.Label, labelRoom, &entry.Cut) : std::string{};
+
+				if (entry.Label.empty())
+				{
+					continue;
+				}
+
+				entry.Width = ButtonWidthOf(entry.Label);
+				left -= entry.Width + spacing;
 				shown.push_back(std::move(entry));
 			}
 
@@ -69,7 +102,9 @@ namespace Graphite {
 			return width + gaps * ImGui::GetStyle().ItemSpacing.x;
 		}
 
-		bool DrawButton(const ShownButton& button, const InfoBarButton& asked, std::size_t index)
+		// WARNING: The label is drawn here over a button of an id alone. As the button's own label, a path holding
+		// "##", a folder named C# among them, would show only up to it.
+		bool DrawButton(const ShownButton& button, const InfoBarButton& asked)
 		{
 			int pushed = kSecondaryColourCount;
 
@@ -77,8 +112,8 @@ namespace Graphite {
 			{
 				const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
 				ImGui::PushStyleColor(ImGuiCol_Button, accent);
-				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Core::Animation::Blend(accent, kWhite, kPrimaryHoverLightening));
-				ImGui::PushStyleColor(ImGuiCol_ButtonActive, Core::Animation::Blend(accent, kBlack, kPrimaryPressDarkening));
+				ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Core::WithBrightnessScaled(accent, kPrimaryHoveredBrightness));
+				ImGui::PushStyleColor(ImGuiCol_ButtonActive, Core::WithBrightnessScaled(accent, kPrimaryActiveBrightness));
 				ImGui::PushStyleColor(ImGuiCol_Text, kWhite);
 				pushed = kPrimaryColourCount;
 			}
@@ -87,9 +122,17 @@ namespace Graphite {
 				ImGui::PushStyleColor(ImGuiCol_Button, kNoFill);
 			}
 
-			ImGui::PushID(static_cast<int>(index));
-			const bool pressed = ImGui::Button(ButtonId(button.Label).c_str());
+			ImGui::PushID(static_cast<int>(button.Index));
+			const bool pressed = ImGui::Button("###button", ImVec2(button.Width, 0.0f));
 			ImGui::PopID();
+
+			const ImGuiStyle& style = ImGui::GetStyle();
+			const ImRect frame(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+			const ImVec2 textMin(frame.Min.x + style.FramePadding.x, frame.Min.y + style.FramePadding.y);
+			const ImVec2 textMax(frame.Max.x - style.FramePadding.x, frame.Max.y - style.FramePadding.y);
+			ImGui::RenderTextClippedEx(ImGui::GetWindowDrawList(), textMin, textMax, button.Label.data(),
+									   button.Label.data() + button.Label.size(), nullptr, style.ButtonTextAlign, &frame);
+
 			ImGui::PopStyleColor(pushed);
 
 			if (button.Cut)
@@ -121,8 +164,9 @@ namespace Graphite {
 		const ImGuiStyle& style = ImGui::GetStyle();
 		const float spacing = style.ItemSpacing.x;
 		const float barHeight = ImGui::GetFrameHeight() + style.FramePadding.y * kPaddingSides;
+		const ImVec4 background = InfoBarBackground(content.Weight, content.WeightColour);
 
-		ImGui::PushStyleColor(ImGuiCol_ChildBg, InfoBarBackground(content.Weight, content.WeightColour));
+		ImGui::PushStyleColor(ImGuiCol_ChildBg, background);
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(spacing, style.FramePadding.y));
 
 		const bool shown = ImGui::BeginChild(content.Id, ImVec2(0.0f, barHeight), ImGuiChildFlags_AlwaysUseWindowPadding,
@@ -131,46 +175,67 @@ namespace Graphite {
 		ImGui::PopStyleVar();
 		ImGui::PopStyleColor();
 
+		// WARNING: The hover colour is the surface's own colour lifted, which on a tinted warning bar is no lift at all;
+		// the bar's buttons are hovered in its weight's colour instead.
+		const bool tinted = content.Weight == InfoBarWeight::Warning;
+
+		if (tinted)
+		{
+			const ImVec4 opaqueWeight(content.WeightColour.x, content.WeightColour.y, content.WeightColour.z, background.w);
+			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Core::Animation::Blend(background, opaqueWeight, kWarningHoverTint));
+		}
+
 		if (shown)
 		{
-			const std::vector<ShownButton> buttons = ShownButtons(content.Buttons);
-			const float buttonsWidth = WidthOfAll(buttons);
 			const bool closable = content.CloseTooltip != nullptr;
 			const float closeSize = Core::IconButtonSize();
-
 			const float rowRight = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x;
 			const float closePart = closable ? closeSize + spacing : 0.0f;
-			const float buttonsPart = buttons.empty() ? 0.0f : buttonsWidth + spacing;
 
 			ImGui::AlignTextToFramePadding();
 			ImGui::TextColored(content.WeightColour, "%s", content.Glyph);
 			ImGui::SameLine();
 
-			bool cut = false;
-			const float messageRoom = std::max(0.0f, rowRight - closePart - buttonsPart - ImGui::GetCursorPosX());
-			const std::string message = FitToWidth(content.Message, messageRoom, &cut);
-			ImGui::TextUnformatted(message.c_str());
+			// The buttons are fitted first, and the message takes what they leave.
+			const float afterGlyph = ImGui::GetCursorPosX();
+			const std::vector<ShownButton> buttons = FitButtons(content.Buttons, rowRight - closePart - afterGlyph);
+			const float buttonsWidth = WidthOfAll(buttons);
+			const float buttonsPart = buttons.empty() ? 0.0f : buttonsWidth + spacing;
 
-			if (cut)
+			bool cut = false;
+			const float messageRoom = std::max(0.0f, rowRight - closePart - buttonsPart - afterGlyph);
+			const std::string message = FitToWidth(content.Message, messageRoom, &cut);
+
+			// With no room left for the message, the glyph, still the last item, says it in its tooltip.
+			if (message.empty())
 			{
 				ImGui::SetItemTooltip("%s", content.Message.c_str());
+			}
+			else
+			{
+				ImGui::TextUnformatted(message.c_str());
+
+				if (cut)
+				{
+					ImGui::SetItemTooltip("%s", content.Message.c_str());
+				}
 			}
 
 			// The buttons stand at the bar's end, before its close button, however short the message.
 			float buttonX = std::max(ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + spacing,
 									 rowRight - closePart - buttonsWidth);
 
-			for (std::size_t index = 0; index < buttons.size(); ++index)
+			for (const ShownButton& button : buttons)
 			{
 				ImGui::SameLine();
 				ImGui::SetCursorPosX(buttonX);
 
-				if (DrawButton(buttons[index], content.Buttons[index], index))
+				if (DrawButton(button, content.Buttons[button.Index]))
 				{
-					answer.Pressed = index;
+					answer.Pressed = button.Index;
 				}
 
-				buttonX += buttons[index].Width + spacing;
+				buttonX += button.Width + spacing;
 			}
 
 			if (closable)
@@ -178,11 +243,17 @@ namespace Graphite {
 				ImGui::SameLine();
 				ImGui::SetCursorPosX(rowRight - closeSize);
 
-				if (Core::DrawIconButton("##close", ICON_MDI_CLOSE, kNotEngaged, content.CloseTooltip))
+				if (Core::DrawIconButton("##close", ICON_MDI_CLOSE, kNotEngaged, content.CloseTooltip,
+										 {.Flags = ImGuiButtonFlags_EnableNav}))
 				{
 					answer.Closed = true;
 				}
 			}
+		}
+
+		if (tinted)
+		{
+			ImGui::PopStyleColor();
 		}
 
 		ImGui::EndChild();

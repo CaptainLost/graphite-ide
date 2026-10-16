@@ -13,10 +13,11 @@ Draw every bar over the editor with `Graphite::DrawInfoBar` (`Graphite/src/UI/In
 
 - **Weight:** a bar is either information or a warning. Its glyph is drawn in the weight's colour: the accent for information, the scheme's warning colour for a warning. A warning also tints the bar's background toward that colour.
 - **Message:** cut short with an ellipsis where it does not fit, with the whole message in a tooltip.
-- **Buttons:** placed at the bar's end, before its close button.
-  - One button is the main action and is filled with the accent.
-  - The others have no fill at rest.
-  - A long label on a secondary button, such as a path, is cut short, with the whole label in a tooltip.
+- **Buttons:** placed at the bar's end, before its close button, and fitted there before the message takes what is left.
+  - One button is the main action and is filled with the accent, as a dialog's main button is.
+  - The others have no fill at rest; on a warning they are hovered in the weight's colour, as the surface's own hover does not show on the tint.
+  - A secondary label is cut short to the room left, and to a set width at most, with the whole label in a tooltip; a secondary with no room left is left out.
+  - The labels are drawn by the bar, so a path holding "##", as a folder named C# does, shows whole.
 - **Close button:** any bar that can be put aside has one.
   - The language bar's "Not now" is its close button.
   - The restricted mode bar's close button hides the bar for that folder until Graphite restarts.
@@ -26,7 +27,7 @@ Draw every bar over the editor with `Graphite::DrawInfoBar` (`Graphite/src/UI/In
 
 **Weight shows.** A warning looks like a warning, and the one thing the bar asks for stands out from the rest.
 
-**Nothing spills.** Cutting the message and long labels keeps the bar to its one line, however narrow the window.
+**Nothing spills.** Fitting the buttons first and cutting the message and long labels keeps the bar to its one line, and the close button clear, however narrow the window.
 
 ## Consequences
 
