@@ -1,4 +1,4 @@
-# 0591. Keep open documents in a store shared by the views that show them
+# 0595. Keep open documents in a store shared by the views that show them
 
 Status: proposed
 Date: 2026-10-16
@@ -43,4 +43,4 @@ A tab held its document by value (`OpenItem::Document`), so a file could be show
 ## Related
 
 - [0512](0512-name-one-owner-for-every-document-opened-with-a-language-server.md)
-- [0590](0590-keep-a-bounded-change-log-in-the-text-buffer-for-readers-to-catch-up-from.md)
+- [0594](0594-keep-a-bounded-change-log-in-the-text-buffer-for-readers-to-catch-up-from.md)

@@ -1,4 +1,4 @@
-# 0593. Send editor commands to the editor view that has the keyboard
+# 0597. Send editor commands to the editor view that has the keyboard
 
 Status: proposed
 Date: 2026-10-16

@@ -1,4 +1,4 @@
-# 0590. Keep a bounded change log in the text buffer for readers to catch up from
+# 0594. Keep a bounded change log in the text buffer for readers to catch up from
 
 Status: proposed
 Date: 2026-10-16

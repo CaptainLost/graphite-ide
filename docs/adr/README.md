@@ -623,8 +623,8 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0591](0591-count-everyone-with-an-own-commit-as-a-branch-s-author.md) | Count everyone with an own commit as a branch's author | proposed | 2026-10-15 |
 | [0592](0592-build-the-branch-list-as-rows-from-a-pure-function-and-draw-only-the-rows-on-screen.md) | Build the branch list as rows from a pure function and draw only the rows on screen | proposed | 2026-10-15 |
 | [0593](0593-load-more-history-only-on-request-from-a-status-line-under-the-list.md) | Load more history only on request, from a status line under the list | proposed | 2026-10-15 |
-| [0590](0590-keep-a-bounded-change-log-in-the-text-buffer-for-readers-to-catch-up-from.md) | Keep a bounded change log in the text buffer for readers to catch up from | proposed | 2026-10-16 |
-| [0591](0591-keep-open-documents-in-a-store-shared-by-the-views-that-show-them.md) | Keep open documents in a store shared by the views that show them | proposed | 2026-10-16 |
-| [0592](0592-send-didchange-when-a-document-s-text-moves-not-when-its-tab-draws-an-edit.md) | Send didChange when a document's text moves, not when its tab draws an edit | proposed | 2026-10-16 |
-| [0593](0593-send-editor-commands-to-the-editor-view-that-has-the-keyboard.md) | Send editor commands to the editor view that has the keyboard | proposed | 2026-10-16 |
+| [0594](0594-keep-a-bounded-change-log-in-the-text-buffer-for-readers-to-catch-up-from.md) | Keep a bounded change log in the text buffer for readers to catch up from | proposed | 2026-10-16 |
+| [0595](0595-keep-open-documents-in-a-store-shared-by-the-views-that-show-them.md) | Keep open documents in a store shared by the views that show them | proposed | 2026-10-16 |
+| [0596](0596-send-didchange-when-a-document-s-text-moves-not-when-its-tab-draws-an-edit.md) | Send didChange when a document's text moves, not when its tab draws an edit | proposed | 2026-10-16 |
+| [0597](0597-send-editor-commands-to-the-editor-view-that-has-the-keyboard.md) | Send editor commands to the editor view that has the keyboard | proposed | 2026-10-16 |
 <!-- /adr-index -->

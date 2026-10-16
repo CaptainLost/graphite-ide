@@ -1,4 +1,4 @@
-# 0592. Send didChange when a document's text moves, not when its tab draws an edit
+# 0596. Send didChange when a document's text moves, not when its tab draws an edit
 
 Status: proposed
 Date: 2026-10-16
@@ -42,6 +42,6 @@ didChange was sent from `UpdateLenses` when the tab drawn that frame reported `E
 
 ## Related
 
-- [0591](0591-keep-open-documents-in-a-store-shared-by-the-views-that-show-them.md)
-- [0590](0590-keep-a-bounded-change-log-in-the-text-buffer-for-readers-to-catch-up-from.md)
+- [0595](0595-keep-open-documents-in-a-store-shared-by-the-views-that-show-them.md)
+- [0594](0594-keep-a-bounded-change-log-in-the-text-buffer-for-readers-to-catch-up-from.md)
 - [0512](0512-name-one-owner-for-every-document-opened-with-a-language-server.md)
