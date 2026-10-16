@@ -1,6 +1,6 @@
 #include "Settings/Panel/SettingsLayout.h"
 
-#include "UI/IconButton.h"
+#include "Core/ImGui/IconButton.h"
 
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/ImGuiRenderer.h"
@@ -404,7 +404,7 @@ namespace Graphite {
 		const ImVec2 framePadding = style.FramePadding;
 		const float iconWidth = ImGui::CalcTextSize(ICON_MDI_MAGNIFY).x;
 		const bool showsClear = !query.empty();
-		const float clearWidth = showsClear ? IconButtonSize() + style.ItemSpacing.x : 0.0f;
+		const float clearWidth = showsClear ? Core::IconButtonSize() + style.ItemSpacing.x : 0.0f;
 
 		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, Core::Scaled(kSearchFieldRounding));
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(framePadding.x * 2.0f + iconWidth, framePadding.y));
@@ -421,7 +421,7 @@ namespace Graphite {
 			ImGui::SameLine();
 			const bool engaged = false;
 
-			if (DrawIconButton("##clearSearch", ICON_MDI_CLOSE, engaged, "Clear the search"))
+			if (Core::DrawIconButton("##clearSearch", ICON_MDI_CLOSE, engaged, "Clear the search"))
 			{
 				query.clear();
 				edited = true;

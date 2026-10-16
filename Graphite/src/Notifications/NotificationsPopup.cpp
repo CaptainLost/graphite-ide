@@ -2,7 +2,7 @@
 
 #include "Notifications/ClockTime.h"
 #include "Notifications/FolderLine.h"
-#include "UI/IconButton.h"
+#include "Core/ImGui/IconButton.h"
 
 #include "Core/Base/Strings.h"
 #include "Core/FileSystem/FileSystem.h"
@@ -329,16 +329,9 @@ namespace Graphite {
 			return {.Clicked = clicked, .PointerOnIt = pointerOnIt};
 		}
 
-		void DrawRemoveGlyph(const ImRect& buttonRect, const RemoveButtonState& button, const Core::ToastPalette& palette)
+		void DrawRemoveGlyph(const ImRect& buttonRect, const RemoveButtonState& button, bool held)
 		{
-			const Core::Color& glyphColour = button.PointerOnIt ? palette.Text : palette.TextDim;
-
-			// WARNING: Floored, because CalcTextSize rounds up and a glyph centred onto a half pixel reads blurrier
-			// than the text beside it.
-			const ImVec2 glyphSize = ImGui::CalcTextSize(ICON_MDI_CLOSE);
-			const ImVec2 glyphTopLeft(std::floor(buttonRect.Min.x + (buttonRect.GetWidth() - glyphSize.x) * 0.5f),
-									  std::floor(buttonRect.Min.y + (buttonRect.GetHeight() - glyphSize.y) * 0.5f));
-			ImGui::GetWindowDrawList()->AddText(glyphTopLeft, ImGui::GetColorU32(Core::ToImVec4(glyphColour)), ICON_MDI_CLOSE);
+			Core::DrawIconButtonFace(buttonRect, ICON_MDI_CLOSE, button.PointerOnIt, held);
 		}
 
 		ListOutcome DrawList(const ListLayout& list, const Core::ToastPalette& palette)
@@ -390,12 +383,16 @@ namespace Graphite {
 					outcome.ToggledToastId = entry.ToastId;
 				}
 
-				DrawEntry(entry, row, rowRect, {.Highlighted = pointerOnRow, .ShowsRemoveButton = showsRemoveButton}, palette);
+				// WARNING: The row lets go of its highlight while the pointer is on the button: the theme gives the
+				// row's highlight and the button's hover one colour, and the button's would not show on it.
+				const bool rowHighlighted = pointerOnRow && !removeButton.PointerOnIt;
+				DrawEntry(entry, row, rowRect, {.Highlighted = rowHighlighted, .ShowsRemoveButton = showsRemoveButton},
+						  palette);
 
 				// WARNING: Drawn after the entry, whose highlight would otherwise cover it.
 				if (showsRemoveButton)
 				{
-					DrawRemoveGlyph(removeButtonRect, removeButton, palette);
+					DrawRemoveGlyph(removeButtonRect, removeButton, removeButtonHeld);
 				}
 
 				if (Core::BeginRightClickPopup("##entryMenu"))
@@ -564,21 +561,21 @@ namespace Graphite {
 		}
 
 		const float spacing = ImGui::GetStyle().ItemSpacing.x;
-		const float controlsWidth = IconButtonSize() + spacing + Core::Scaled(kIconSeparatorWidth) + spacing + IconButtonSize();
+		const float controlsWidth = Core::IconButtonSize() + spacing + Core::Scaled(Core::kIconSeparatorWidth) + spacing + Core::IconButtonSize();
 
 		ImGui::SameLine(lineStartX + lineWidth - controlsWidth);
 
-		if (DrawIconButton("##confirmations", ICON_MDI_CHECK_ALL, m_ShowConfirmations, "Show confirmations"))
+		if (Core::DrawIconButton("##confirmations", ICON_MDI_CHECK_ALL, m_ShowConfirmations, "Show confirmations"))
 		{
 			m_ShowConfirmations = !m_ShowConfirmations;
 		}
 
 		ImGui::SameLine();
-		DrawIconSeparator();
+		Core::DrawIconSeparator();
 		ImGui::SameLine();
 
 		const bool engaged = false;
-		return DrawIconButton("##clear", ICON_MDI_DELETE_SWEEP_OUTLINE, engaged, "Clear");
+		return Core::DrawIconButton("##clear", ICON_MDI_DELETE_SWEEP_OUTLINE, engaged, "Clear");
 	}
 
 	void NotificationsPopup::NoteClosed()

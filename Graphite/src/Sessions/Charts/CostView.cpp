@@ -1024,19 +1024,18 @@ namespace Graphite {
 		const std::size_t turnIndex = *m_SelectedTurn;
 		const TurnCost& turnCost = turns[turnIndex];
 		const Turn& turn = session.GetTurns()[turnIndex];
-		const ImGuiStyle& style = ImGui::GetStyle();
 		const ImU32 textColour = ImGui::GetColorU32(ImGuiCol_Text);
 
 		const std::string heading =
 			std::format("Turn {}{}{}{}{}", turnIndex + 1, kMiddleDotSeparator,
 						KnownDollarsText(turnCost.Known, turnCost.Buckets.Total()), kMiddleDotSeparator,
 						Core::Counted(turn.Requests.size(), "request"));
-		const float closeWidth = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
-		const float headingWidth =
-			std::max(ImGui::GetContentRegionAvail().x - closeWidth - style.ItemSpacing.x, 0.0f);
+		constexpr Core::IconButtonFit kOnTheTextLine = Core::IconButtonFit::Line;
+
+		const float headingWidth = std::max(ImGui::GetContentRegionAvail().x - PaneCloseRoom(kOnTheTextLine), 0.0f);
 		ColouredText(textColour, FitToWidth(heading, headingWidth));
 
-		if (DrawPaneClose())
+		if (DrawPaneClose(kOnTheTextLine))
 		{
 			m_SelectedTurn.reset();
 			return std::nullopt;

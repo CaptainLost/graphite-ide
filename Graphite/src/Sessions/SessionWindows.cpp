@@ -8,6 +8,7 @@
 #include "UI/TypographicMarks.h"
 
 #include "Core/Base/Log.h"
+#include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/TabContextMenu.h"
 
@@ -365,8 +366,10 @@ namespace Graphite {
 	{
 		const SubagentInfo& agentInfo = entry.Agent->Info;
 
-		bool backRequested = ImGui::SmallButton(ICON_MDI_ARROW_LEFT "##agentBack");
-		ImGui::SetItemTooltip("Back to the session");
+		constexpr bool kNotEngaged = false;
+
+		bool backRequested = Core::DrawIconButton("##agentBack", ICON_MDI_ARROW_LEFT, kNotEngaged, "Back to the session",
+												  {.Fit = Core::IconButtonFit::Line});
 		ImGui::SameLine();
 
 		backRequested =

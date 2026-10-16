@@ -1,7 +1,7 @@
 #include "Review/ReviewWindows.h"
 
 #include "Git/History/CommitLabels.h"
-#include "UI/IconButton.h"
+#include "Core/ImGui/IconButton.h"
 #include "UI/SplitResults.h"
 #include "UI/TickBox.h"
 #include "UI/FittedText.h"
@@ -443,7 +443,7 @@ namespace Graphite {
 		{
 			const SessionSettings settings = ReadSettings(sessions, branch);
 			const float buttonCount = marks == RowMarks::Shown ? kButtonsWithMarks : kButtonsWithoutMarks;
-			const float buttonsWidth = buttonCount * (ImGui::GetStyle().ItemSpacing.x + IconButtonSize());
+			const float buttonsWidth = buttonCount * (ImGui::GetStyle().ItemSpacing.x + Core::IconButtonSize());
 
 			ImGui::SetNextItemWidth(-buttonsWidth);
 			ImGui::InputTextWithHint("##reviewFilter", ICON_MDI_MAGNIFY "  Filter files", filter.data(), filter.size());
@@ -453,7 +453,7 @@ namespace Graphite {
 
 			ImGui::SameLine();
 
-			if (DrawIconButton("##reviewShape", isTree ? ICON_MDI_FILE_TREE : ICON_MDI_FORMAT_LIST_BULLETED, notEngaged,
+			if (Core::DrawIconButton("##reviewShape", isTree ? ICON_MDI_FILE_TREE : ICON_MDI_FORMAT_LIST_BULLETED, notEngaged,
 							   isTree ? "Show as a list" : "Show as a tree"))
 			{
 				SessionSettings changed = settings;
@@ -469,7 +469,7 @@ namespace Graphite {
 			ImGui::SameLine();
 
 			const bool hideViewedClicked =
-				DrawIconButton("##reviewHideViewed", ICON_MDI_EYE_OFF, settings.HideViewed, "Hide viewed files");
+				Core::DrawIconButton("##reviewHideViewed", ICON_MDI_EYE_OFF, settings.HideViewed, "Hide viewed files");
 
 			if (hideViewedClicked)
 			{
@@ -1254,14 +1254,11 @@ namespace Graphite {
 		// WARNING: The line with its counts is made with the rows, once per diff; counting every line of a large commit on
 		// every frame would cost the frame.
 		const std::string line = commitDiff != nullptr ? tab.CommitRows.Summary : CommitLine(*commit, nullptr);
-		const ImGuiStyle& style = ImGui::GetStyle();
-		const float bothSides = 2.0f;
-		const float closeWidth = Core::TextWidth(ICON_MDI_CLOSE) + style.FramePadding.x * bothSides;
+		constexpr Core::IconButtonFit kOnTheTextLine = Core::IconButtonFit::Line;
 
-		ImGui::TextUnformatted(
-			FitToWidth(line, ImGui::GetContentRegionAvail().x - closeWidth - style.ItemSpacing.x).c_str());
+		ImGui::TextUnformatted(FitToWidth(line, ImGui::GetContentRegionAvail().x - PaneCloseRoom(kOnTheTextLine)).c_str());
 
-		if (DrawPaneClose())
+		if (DrawPaneClose(kOnTheTextLine))
 		{
 			PickCommit(tab, std::nullopt);
 			return;

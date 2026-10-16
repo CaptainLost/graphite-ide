@@ -5,7 +5,7 @@
 #include "Editor/StatusBar/StatusBar.h"
 #include "Notifications/NotificationHistory.h"
 #include "Notifications/NotificationsPopup.h"
-#include "UI/IconButton.h"
+#include "Core/ImGui/IconButton.h"
 
 #include "Core/ImGui/ToastStyle.h"
 #include "Core/ImGui/Toasts.h"
@@ -172,9 +172,9 @@ namespace {
 				Draw();
 				const ImGuiWindow& popup = PopupWindow();
 				const ImGuiStyle& style = ImGui::GetStyle();
-				const float buttonSide = Graphite::IconButtonSize();
+				const float buttonSide = Core::IconButtonSize();
 				const float contentRight = popup.Pos.x + popup.Size.x - popup.WindowPadding.x;
-				const float toggleLeft = contentRight - buttonSide - style.ItemSpacing.x - Graphite::kIconSeparatorWidth -
+				const float toggleLeft = contentRight - buttonSide - style.ItemSpacing.x - Core::kIconSeparatorWidth -
 										 style.ItemSpacing.x - buttonSide;
 				toggleCentre = ImVec2(toggleLeft + buttonSide * 0.5f,
 									  popup.Pos.y + popup.WindowPadding.y + ImGui::GetFrameHeight() * 0.5f);
@@ -930,7 +930,7 @@ namespace {
 
 	bool ToggleDrawsInStyleColour(ImVec2 toggleCentre, ImGuiCol colourSlot)
 	{
-		const float halfSide = Graphite::IconButtonSize() * 0.5f;
+		const float halfSide = Core::IconButtonSize() * 0.5f;
 		const ImVec2 areaMin(toggleCentre.x - halfSide, toggleCentre.y - halfSide);
 		const ImVec2 areaMax(toggleCentre.x + halfSide, toggleCentre.y + halfSide);
 		const ImU32 colour = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyle().Colors[colourSlot]);
@@ -1006,14 +1006,14 @@ TEST_CASE("An entry shows its time while the pointer is on another entry and giv
 	CHECK_FALSE(FirstEntryDrawsDimTextLeftOfItsRemoveButton(PopupScreen::ListWindow(), dimColour));
 }
 
-TEST_CASE("The remove button is drawn in the dim text colour, and in the text colour while the pointer is on it")
+TEST_CASE("The remove button is a glyph button like any other: the text colour, on the hover fill while the pointer is on it")
 {
 	PopupScreen screen;
 	screen.Palette = PaletteOfDistinctColours();
 	screen.History.Record(Entry(1, Core::ToastKind::Error));
 	screen.OpenFromBell();
-	const ImU32 dimColour = OpaqueColourOf(screen.Palette.TextDim);
-	const ImU32 textColour = OpaqueColourOf(screen.Palette.Text);
+	const ImU32 textColour = ImGui::GetColorU32(ImGuiCol_Text);
+	const ImU32 hoverFill = ImGui::GetColorU32(ImGuiCol_ButtonHovered);
 
 	const ImVec2 removeButton = PopupScreen::FirstEntryRemoveButton();
 	const float halfSide = ImGui::GetFontSize() * 0.5f;
@@ -1022,12 +1022,32 @@ TEST_CASE("The remove button is drawn in the dim text colour, and in the text co
 	const ImVec2 aroundTheButtonMax(removeButton.x + halfSide + fringe, removeButton.y + halfSide + fringe);
 
 	screen.PointAt(PopupScreen::FirstEntry());
-	CHECK(DrawsInColourWithin(PopupScreen::ListWindow(), dimColour, aroundTheButtonMin, aroundTheButtonMax));
-	CHECK_FALSE(DrawsInColourWithin(PopupScreen::ListWindow(), textColour, aroundTheButtonMin, aroundTheButtonMax));
+	CHECK(DrawsInColourWithin(PopupScreen::ListWindow(), textColour, aroundTheButtonMin, aroundTheButtonMax));
+	CHECK_FALSE(DrawsInColourWithin(PopupScreen::ListWindow(), hoverFill, aroundTheButtonMin, aroundTheButtonMax));
 
 	screen.PointAt(removeButton);
 	CHECK(DrawsInColourWithin(PopupScreen::ListWindow(), textColour, aroundTheButtonMin, aroundTheButtonMax));
-	CHECK_FALSE(DrawsInColourWithin(PopupScreen::ListWindow(), dimColour, aroundTheButtonMin, aroundTheButtonMax));
+	CHECK(DrawsInColourWithin(PopupScreen::ListWindow(), hoverFill, aroundTheButtonMin, aroundTheButtonMax));
+}
+
+TEST_CASE("While the pointer is on the remove button its row lets go of the highlight, which the theme colours as the button's hover")
+{
+	PopupScreen screen;
+	screen.History.Record(Entry(1, Core::ToastKind::Error));
+	screen.OpenFromBell();
+	const ImU32 rowHighlight = ImGui::GetColorU32(ImGuiCol_HeaderHovered);
+
+	const auto highlightsARow = [&] {
+		const ImDrawList& drawing = *PopupScreen::ListWindow().DrawList;
+		return std::any_of(drawing.VtxBuffer.begin(), drawing.VtxBuffer.end(),
+						   [&](const ImDrawVert& vertex) { return vertex.col == rowHighlight; });
+	};
+
+	screen.PointAt(PopupScreen::FirstEntry());
+	CHECK(highlightsARow());
+
+	screen.PointAt(PopupScreen::FirstEntryRemoveButton());
+	CHECK_FALSE(highlightsARow());
 }
 
 TEST_CASE("A click on the remove button of the entry under the pointer removes that entry and leaves the others")

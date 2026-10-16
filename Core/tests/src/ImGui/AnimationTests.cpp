@@ -38,6 +38,16 @@ namespace {
 			return amount;
 		}
 
+		void Skip(int frameCount)
+		{
+			for (int frameIndex = 0; frameIndex < frameCount; ++frameIndex)
+			{
+				ImGui::NewFrame();
+				Core::Animation::BeginFrame();
+				ImGui::EndFrame();
+			}
+		}
+
 		float After(float seconds, ImGuiID id, bool hovered)
 		{
 			float amount = 0.0f;
@@ -73,6 +83,7 @@ namespace {
 
 	constexpr ImGuiID kItem = 0x1234;
 	constexpr ImGuiID kOtherItem = 0x5678;
+	constexpr ImGuiID kComingBackItem = 0x9abc;
 
 	constexpr bool kHovered = true;
 	constexpr bool kNotHovered = false;
@@ -146,6 +157,18 @@ TEST_CASE("One item's hover does not move another's")
 		frames.Next(kItem, kHovered);
 		CHECK(frames.Next(kOtherItem, kNotHovered) == doctest::Approx(0.0f));
 	}
+}
+
+TEST_CASE("A hover not asked for on the frame before starts at its target, so an item that comes back does not fade from where it was")
+{
+	Frames frames;
+	REQUIRE(frames.After(Core::Animation::kHoverInSeconds + kSettleMarginSeconds, kComingBackItem, kHovered) ==
+			doctest::Approx(1.0f));
+
+	const int framesTheItemWasGone = 3;
+	frames.Skip(framesTheItemWasGone);
+
+	CHECK(frames.Next(kComingBackItem, kNotHovered) == doctest::Approx(0.0f));
 }
 
 TEST_CASE("Blend goes from one colour to the other, alpha included")

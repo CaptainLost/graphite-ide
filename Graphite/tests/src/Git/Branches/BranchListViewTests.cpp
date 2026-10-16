@@ -3,7 +3,7 @@
 #include "GitFixtures.h"
 #include "ImGuiFrames.h"
 #include "Git/Branches/BranchListView.h"
-#include "UI/IconButton.h"
+#include "Core/ImGui/IconButton.h"
 
 #include "Core/Base/Base.h"
 #include "Core/ImGui/Toggle.h"
@@ -176,7 +176,7 @@ namespace {
 	ImVec2 PanelButtonCentre()
 	{
 		const ImGuiStyle& style = ImGui::GetStyle();
-		return ImVec2(kListWidth - style.WindowPadding.x - Graphite::IconButtonSize() * kHalf,
+		return ImVec2(kListWidth - style.WindowPadding.x - Core::IconButtonSize() * kHalf,
 					  style.WindowPadding.y + ImGui::GetFrameHeight() * kHalf);
 	}
 

@@ -8,7 +8,7 @@
 #include "Theme/ColorScheme.h"
 #include "Theme/Palettes.h"
 #include "UI/Dialogs/DialogLayout.h"
-#include "UI/IconButton.h"
+#include "Core/ImGui/IconButton.h"
 #include "UI/ToastEvent.h"
 
 #include "Core/App/Redraw.h"
@@ -272,7 +272,7 @@ namespace Graphite {
 	{
 		const bool engaged = false;
 
-		if (DrawIconButton("##reset", ICON_MDI_RESTORE, engaged, "Put back the inherited colour"))
+		if (Core::DrawIconButton("##reset", ICON_MDI_RESTORE, engaged, "Put back the inherited colour"))
 		{
 			m_Draft.Revert(which);
 			Apply();
@@ -324,11 +324,7 @@ namespace Graphite {
 	{
 		if (ShowsReset(which))
 		{
-			// WARNING: In a group of its own: the icon moves down to centre itself in the line, and everything
-			// after it on the line, the swatch and the search's Open, would follow it down.
-			ImGui::BeginGroup();
 			DrawColourReset(which);
-			ImGui::EndGroup();
 			ImGui::SameLine();
 		}
 
@@ -341,7 +337,7 @@ namespace Graphite {
 	{
 		const bool ownScheme = !m_Draft.IsReadOnly();
 		const float swatchWidth = ImGui::GetFrameHeight();
-		const float swatchAndResetWidth = swatchWidth + ImGui::GetStyle().ItemSpacing.x + IconButtonSize();
+		const float swatchAndResetWidth = swatchWidth + ImGui::GetStyle().ItemSpacing.x + Core::IconButtonSize();
 
 		std::vector<SettingsRow> rows;
 

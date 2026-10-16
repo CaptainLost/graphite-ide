@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #include <im_anim.h>
 #include <imgui_internal.h>
@@ -14,11 +15,31 @@ namespace Core {
 
 	namespace {
 		constexpr float kFadeSettledEpsilon = 0.001f;
+		constexpr float kInstantSeconds = 0.0f;
+		constexpr int kNeverAsked = std::numeric_limits<int>::min();
 
 		ImGuiID HoverChannel()
 		{
 			static const ImGuiID channel = ImHashStr("Core::Animation::Hover");
 			return channel;
+		}
+
+		ImGuiID LastAskedKey(ImGuiID id)
+		{
+			return ImHashData(&id, sizeof(id), HoverChannel());
+		}
+
+		// Whether the hover was asked for on the frame before, and from now on that it was asked for on this one.
+		bool WasAskedForLastFrame(ImGuiID id)
+		{
+			ImGuiStorage* const storage = ImGui::GetStateStorage();
+			const ImGuiID key = LastAskedKey(id);
+			const int frame = ImGui::GetFrameCount();
+			const int lastAsked = storage->GetInt(key, kNeverAsked);
+
+			storage->SetInt(key, frame);
+
+			return lastAsked >= frame - 1;
 		}
 
 		float SmoothStep(float progress)
@@ -52,13 +73,21 @@ namespace Core {
 	float Animation::HoverAmount(ImGuiID id, bool hovered)
 	{
 		const float targetAmount = hovered ? 1.0f : 0.0f;
-		const float fadeSeconds = hovered ? kHoverInSeconds : kHoverOutSeconds;
+		float fadeSeconds = hovered ? kHoverInSeconds : kHoverOutSeconds;
+		iam_policy policy = iam_policy_crossfade;
+
+		// WARNING: An item not drawn on the frame before was gone, as a row's buttons are while the pointer is on
+		// another row. ImAnim keeps the value it had when it went, and it would come back fading out from there.
+		if (!WasAskedForLastFrame(id))
+		{
+			fadeSeconds = kInstantSeconds;
+			policy = iam_policy_cut;
+		}
 
 		const float frameStepSeconds = CappedFrameStepSeconds();
 
 		const float amount = iam_tween_float(id, HoverChannel(), targetAmount, fadeSeconds,
-											 iam_ease_preset(iam_ease_out_quad),
-											 iam_policy_crossfade, frameStepSeconds);
+											 iam_ease_preset(iam_ease_out_quad), policy, frameStepSeconds);
 
 		const bool fadeUnderway = std::fabs(amount - targetAmount) > kFadeSettledEpsilon;
 		if (fadeUnderway)

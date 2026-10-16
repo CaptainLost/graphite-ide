@@ -5,6 +5,7 @@
 
 #include "Editor/StatusBar/StatusBar.h"
 
+#include "Core/ImGui/Animation.h"
 #include "Core/Text/DocumentSet.h"
 
 #include <imgui_internal.h>
@@ -30,6 +31,7 @@ namespace {
 
 		void Draw()
 		{
+			Core::Animation::BeginFrame();
 			const Graphite::StatusBarClick clicked = Graphite::DrawStatusBar(Documents, std::nullopt, std::filesystem::path(), Messages);
 			if (clicked != Graphite::StatusBarClick::None)
 			{
@@ -90,23 +92,28 @@ TEST_CASE("The bell with a missed notification's dot completes a frame without a
 	CHECK_FALSE(screen.BellClicked);
 }
 
-TEST_CASE("The bell is drawn in the dim text colour at rest and in the text colour under the pointer")
+TEST_CASE("The bell is a glyph button like any other: the text colour at rest, on the hover fill under the pointer")
 {
 	StatusBarScreen screen;
 	screen.Frames.Next([&] { screen.Draw(); });
 	screen.Frames.Next([&] { screen.Draw(); });
 	const ImU32 dimColour = ImGui::GetColorU32(ImGuiCol_TextDisabled);
 	const ImU32 textColour = ImGui::GetColorU32(ImGuiCol_Text);
-
-	CHECK(DrawsInColour(StatusBarScreen::BarDrawing(), dimColour));
-	CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), textColour));
-
-	const ImVec2 bell = screen.BellCentre();
-	ImGui::GetIO().AddMousePosEvent(bell.x, bell.y);
-	screen.Frames.Next([&] { screen.Draw(); });
+	const ImU32 hoverFill = ImGui::GetColorU32(ImGuiCol_ButtonHovered);
 
 	CHECK(DrawsInColour(StatusBarScreen::BarDrawing(), textColour));
 	CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), dimColour));
+
+	const ImVec2 bell = screen.BellCentre();
+	ImGui::GetIO().AddMousePosEvent(bell.x, bell.y);
+
+	const int framesPastTheHoverFade = 30;
+	for (int frame = 0; frame < framesPastTheHoverFade; ++frame)
+	{
+		screen.Frames.Next([&] { screen.Draw(); });
+	}
+
+	CHECK(DrawsInColour(StatusBarScreen::BarDrawing(), hoverFill));
 }
 
 TEST_CASE("A click on the server's words reports the server when they open its settings")

@@ -5,7 +5,7 @@
 #include "Git/GitView.h"
 #include "UI/HighlightedRow.h"
 #include "UI/FittedText.h"
-#include "UI/IconButton.h"
+#include "Core/ImGui/IconButton.h"
 #include "UI/TickBox.h"
 
 #include "Core/ImGui/LoadingState.h"
@@ -291,7 +291,7 @@ namespace Graphite {
 		}
 
 
-		const float buttonRoom = IconButtonSize() + ImGui::GetStyle().ItemSpacing.x;
+		const float buttonRoom = Core::IconButtonSize() + ImGui::GetStyle().ItemSpacing.x;
 
 		ImGui::SetNextItemWidth(-buttonRoom);
 
@@ -305,7 +305,7 @@ namespace Graphite {
 
 		const bool narrowed = !m_Filter.Authors.empty() || m_Filter.AlsoMessage || m_Options != BranchListState{};
 
-		if (DrawIconButton("##branchListMenuButton", ICON_MDI_TUNE_VARIANT, narrowed, "Sort and filter"))
+		if (Core::DrawIconButton("##branchListMenuButton", ICON_MDI_TUNE_VARIANT, narrowed, "Sort and filter"))
 		{
 			ImGui::OpenPopup(kPanelId);
 		}

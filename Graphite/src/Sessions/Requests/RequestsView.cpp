@@ -704,12 +704,13 @@ namespace Graphite {
 			m_SelectedItem.reset();
 		}
 
-		const float closeWidth = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
+		constexpr Core::IconButtonFit kOnTheTextLine = Core::IconButtonFit::Line;
+
 		ColouredText(ImGui::GetColorU32(ImGuiCol_Text),
 					 FitToWidth(RequestLine(request, context.Prices, m_Clock, ClockStyle::DateTime),
-								std::max(width - closeWidth - style.ItemSpacing.x, 0.0f)));
+								std::max(width - PaneCloseRoom(kOnTheTextLine), 0.0f)));
 
-		if (DrawPaneClose())
+		if (DrawPaneClose(kOnTheTextLine))
 		{
 			m_Selected.reset();
 			m_SelectedItem.reset();

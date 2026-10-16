@@ -1,6 +1,7 @@
 #include "Editor/StatusBar/StatusBar.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/IconButton.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
@@ -43,7 +44,7 @@ namespace Graphite {
 
 		float BellWidth()
 		{
-			return ImGui::CalcTextSize(ICON_MDI_BELL_OUTLINE).x;
+			return Core::IconButtonSize(Core::IconButtonFit::Line);
 		}
 
 		ImU32 ToPackedColour(const Core::Color& colour)
@@ -53,30 +54,23 @@ namespace Graphite {
 
 		bool DrawNotificationBell(const std::optional<Core::Color>& missedColour, float barHeight)
 		{
-			const ImVec2 glyphSize = ImGui::CalcTextSize(ICON_MDI_BELL_OUTLINE);
-			ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - glyphSize.x - ImGui::GetStyle().WindowPadding.x,
-									   CentredTextY(barHeight)));
+			ImGui::SetCursorPos(
+				ImVec2(ImGui::GetWindowWidth() - BellWidth() - ImGui::GetStyle().WindowPadding.x, CentredTextY(barHeight)));
 
 			// WARNING: Without NoFocus the press focuses the bar, and the popup the click opens hands the
 			// keyboard back to the bar when it closes rather than to the editor.
-			const ImGuiButtonFlags keepFocusWhereItIs = ImGuiButtonFlags_NoFocus | ImGuiButtonFlags_NoNavFocus;
-			const bool clicked = ImGui::InvisibleButton("##NotificationBell", glyphSize, keepFocusWhereItIs);
-			const bool hovered = ImGui::IsItemHovered();
-			const ImGuiCol glyphColour = hovered ? ImGuiCol_Text : ImGuiCol_TextDisabled;
+			constexpr bool kNotEngaged = false;
+			const Core::IconButtonOptions bellButton{.Fit = Core::IconButtonFit::Line,
+													 .Flags = ImGuiButtonFlags_NoFocus | ImGuiButtonFlags_NoNavFocus};
+			const bool clicked =
+				Core::DrawIconButton("##NotificationBell", ICON_MDI_BELL_OUTLINE, kNotEngaged, "Notifications", bellButton);
 			ImDrawList* const drawList = ImGui::GetWindowDrawList();
-			drawList->AddText(ImGui::GetItemRectMin(), ImGui::GetColorU32(glyphColour), ICON_MDI_BELL_OUTLINE);
 
 			if (missedColour.has_value())
 			{
 				const float dotRadius = ImGui::GetFontSize() * kDotShareOfFont;
 				const ImVec2 dotCentre(ImGui::GetItemRectMax().x - dotRadius, ImGui::GetItemRectMin().y + dotRadius);
 				drawList->AddCircleFilled(dotCentre, dotRadius, ToPackedColour(*missedColour));
-			}
-
-			if (hovered)
-			{
-				ImGui::SetTooltip("Notifications");
-				ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
 			}
 
 			return clicked;

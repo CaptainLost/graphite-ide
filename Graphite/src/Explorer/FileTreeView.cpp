@@ -19,7 +19,7 @@
 #include "Explorer/FileRow.h"
 #include "Explorer/FilteredTree.h"
 #include "Explorer/TreeReveal.h"
-#include "UI/IconButton.h"
+#include "Core/ImGui/IconButton.h"
 #include "UI/OpenGesture.h"
 #include "UI/ToastEvent.h"
 
@@ -192,7 +192,9 @@ namespace Graphite {
 
 	void FileTreeView::RenderToolbar()
 	{
-		if (ImGui::Button(ICON_MDI_REFRESH))
+		constexpr bool kNotEngaged = false;
+
+		if (Core::DrawIconButton("##refreshTree", ICON_MDI_REFRESH, kNotEngaged, "Refresh"))
 		{
 			m_Workspace.Reload();
 			m_Listing.NoteEverythingChanged();
@@ -208,17 +210,12 @@ namespace Graphite {
 			}
 		}
 
-		if (ImGui::IsItemHovered())
-		{
-			ImGui::SetTooltip("Refresh");
-		}
-
 		ImGui::SameLine();
 
 		constexpr float kFillRemainingWidth = -1.0f;
 
 		const bool hasText = m_Filter.InputBuf[0] != '\0';
-		const float clearWidth = IconButtonSize() + ImGui::GetStyle().ItemSpacing.x;
+		const float clearWidth = Core::IconButtonSize() + ImGui::GetStyle().ItemSpacing.x;
 		ImGui::SetNextItemWidth(hasText ? -clearWidth : kFillRemainingWidth);
 
 		if (ImGui::InputTextWithHint("##fileFilter", ICON_MDI_MAGNIFY "  Filter files",
@@ -232,9 +229,7 @@ namespace Graphite {
 		{
 			ImGui::SameLine();
 
-			constexpr bool kNotEngaged = false;
-
-			if (DrawIconButton("##fileFilterClear", ICON_MDI_CLOSE, kNotEngaged, "Clear filter"))
+			if (Core::DrawIconButton("##fileFilterClear", ICON_MDI_CLOSE, kNotEngaged, "Clear filter"))
 			{
 				m_Filter.Clear();
 			}

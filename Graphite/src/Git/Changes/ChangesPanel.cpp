@@ -21,6 +21,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/ImGuiColors.h"
@@ -49,9 +50,12 @@ namespace Graphite {
 			return ImGui::GetStyle().FramePadding.x * 2.0f;
 		}
 
-		float ButtonWidth(const char* label)
+		constexpr bool kNotEngaged = false;
+		constexpr Core::IconButtonOptions kRowButton{.Fit = Core::IconButtonFit::Line};
+
+		float RowButtonWidth()
 		{
-			return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+			return Core::IconButtonSize(Core::IconButtonFit::Line);
 		}
 
 		float MessageBoxHeight()
@@ -396,11 +400,12 @@ namespace Graphite {
 			const char* allIcon = m_Section == Section::Staged ? ICON_MDI_MINUS : ICON_MDI_PLUS;
 
 			ImGui::SetCursorPos(
-				ImVec2(rowStart.x + rowWidth - rowPadding - ButtonWidth(allIcon), rowStart.y));
+				ImVec2(rowStart.x + rowWidth - rowPadding - RowButtonWidth(), rowStart.y));
 
 			ImGui::BeginDisabled(m_Model.IsWriteInFlight());
 
-			if (ImGui::SmallButton(allIcon))
+			if (Core::DrawIconButton("##stageAll", allIcon, kNotEngaged,
+									 m_Section == Section::Staged ? "Unstage all" : "Stage all", kRowButton))
 			{
 				std::vector<std::filesystem::path> paths;
 				paths.reserve(rows.size());
@@ -419,8 +424,6 @@ namespace Graphite {
 					m_Model.RequestStage(std::move(paths));
 				}
 			}
-
-			ImGui::SetItemTooltip("%s", m_Section == Section::Staged ? "Unstage all" : "Stage all");
 
 			ImGui::EndDisabled();
 		}
@@ -552,9 +555,9 @@ namespace Graphite {
 		const char* discardIcon = file.IsUntracked ? ICON_MDI_DELETE : ICON_MDI_UNDO;
 
 		const float discardWidth =
-			offersDiscard ? ButtonWidth(discardIcon) + ImGui::GetStyle().ItemSpacing.x : 0.0f;
+			offersDiscard ? RowButtonWidth() + ImGui::GetStyle().ItemSpacing.x : 0.0f;
 
-		const float buttonsWidth = discardWidth + ButtonWidth(stageIcon);
+		const float buttonsWidth = discardWidth + RowButtonWidth();
 
 		const char letterText[] = {letter, '\0'};
 		const float letterWidth = ImGui::CalcTextSize(letterText).x;
@@ -595,16 +598,17 @@ namespace Graphite {
 
 			if (offersDiscard)
 			{
-				if (ImGui::SmallButton(discardIcon))
+				if (Core::DrawIconButton("##discard", discardIcon, kNotEngaged,
+										 file.IsUntracked ? "Delete file" : "Discard changes", kRowButton))
 				{
 					BeginDiscard(file);
 				}
 
-				ImGui::SetItemTooltip("%s", file.IsUntracked ? "Delete file" : "Discard changes");
 				ImGui::SameLine();
 			}
 
-			if (ImGui::SmallButton(stageIcon))
+			if (Core::DrawIconButton("##stage", stageIcon, kNotEngaged,
+									 m_Section == Section::Staged ? "Unstage" : "Stage", kRowButton))
 			{
 				if (m_Section == Section::Staged)
 				{
@@ -615,8 +619,6 @@ namespace Graphite {
 					m_Model.RequestStage({file.Path});
 				}
 			}
-
-			ImGui::SetItemTooltip("%s", m_Section == Section::Staged ? "Unstage" : "Stage");
 
 			ImGui::EndDisabled();
 		}
@@ -697,9 +699,9 @@ namespace Graphite {
 		const char* discardIcon = file.IsUntracked ? ICON_MDI_DELETE : ICON_MDI_UNDO;
 
 		const float discardWidth =
-			offersDiscard ? ButtonWidth(discardIcon) + ImGui::GetStyle().ItemSpacing.x : 0.0f;
+			offersDiscard ? RowButtonWidth() + ImGui::GetStyle().ItemSpacing.x : 0.0f;
 
-		const float buttonsWidth = discardWidth + ButtonWidth(stageIcon);
+		const float buttonsWidth = discardWidth + RowButtonWidth();
 
 		const float textGap = TextGap();
 
@@ -779,17 +781,17 @@ namespace Graphite {
 
 			if (offersDiscard)
 			{
-				if (ImGui::SmallButton(discardIcon))
+				if (Core::DrawIconButton("##discard", discardIcon, kNotEngaged,
+										 file.IsUntracked ? "Delete folder" : "Discard changes", kRowButton))
 				{
 					BeginDiscard(file);
 				}
 
-				ImGui::SetItemTooltip("%s",
-									  file.IsUntracked ? "Delete folder" : "Discard changes");
 				ImGui::SameLine();
 			}
 
-			if (ImGui::SmallButton(stageIcon))
+			if (Core::DrawIconButton("##stage", stageIcon, kNotEngaged,
+									 m_Section == Section::Staged ? "Unstage" : "Stage", kRowButton))
 			{
 				if (m_Section == Section::Staged)
 				{
@@ -800,8 +802,6 @@ namespace Graphite {
 					m_Model.RequestStage({file.Path});
 				}
 			}
-
-			ImGui::SetItemTooltip("%s", m_Section == Section::Staged ? "Unstage" : "Stage");
 
 			ImGui::EndDisabled();
 		}

@@ -1,5 +1,7 @@
 #include "UI/SplitResults.h"
 
+#include "Core/ImGui/IconButton.h"
+
 #include <IconsMaterialDesignIcons.h>
 
 #include <imgui.h>
@@ -9,17 +11,21 @@
 
 namespace Graphite {
 
-	bool DrawPaneClose()
+	bool DrawPaneClose(Core::IconButtonFit fit)
 	{
-		const ImGuiStyle& style = ImGui::GetStyle();
-		const float width = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
+		constexpr bool kNotEngaged = false;
 
-		const float cornerX = ImGui::GetWindowWidth() - width - style.WindowPadding.x;
+		const float cornerX = ImGui::GetWindowWidth() - Core::IconButtonSize(fit) - ImGui::GetStyle().WindowPadding.x;
 		const float x = std::max(cornerX, ImGui::GetCursorPosX());
 
 		ImGui::SameLine(x);
 
-		return ImGui::SmallButton(ICON_MDI_CLOSE);
+		return Core::DrawIconButton("##paneClose", ICON_MDI_CLOSE, kNotEngaged, "Close", {.Fit = fit});
+	}
+
+	float PaneCloseRoom(Core::IconButtonFit fit)
+	{
+		return Core::IconButtonSize(fit) + ImGui::GetStyle().ItemSpacing.x;
 	}
 
 	float DefaultResultsHeight(float available, float divider)

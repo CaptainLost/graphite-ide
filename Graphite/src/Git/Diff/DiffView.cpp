@@ -6,7 +6,7 @@
 
 #include "Git/History/CommitLabels.h"
 #include "Git/Diff/DiffPanes.h"
-#include "UI/IconButton.h"
+#include "Core/ImGui/IconButton.h"
 #include "UI/SplitResults.h"
 #include "UI/TypographicMarks.h"
 
@@ -852,7 +852,7 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		if (DrawIconButton("##sideBySide", ICON_MDI_VIEW_SPLIT_VERTICAL,
+		if (Core::DrawIconButton("##sideBySide", ICON_MDI_VIEW_SPLIT_VERTICAL,
 						   m_Mode == DiffViewMode::SideBySide, "Side by side"))
 		{
 			m_Mode = DiffViewMode::SideBySide;
@@ -860,17 +860,17 @@ namespace Graphite {
 
 		ImGui::SameLine(kNoOffsetFromStart, Core::Scaled(kModeButtonGap));
 
-		if (DrawIconButton("##unified", ICON_MDI_VIEW_AGENDA_OUTLINE,
+		if (Core::DrawIconButton("##unified", ICON_MDI_VIEW_AGENDA_OUTLINE,
 						   m_Mode == DiffViewMode::Unified, "Unified"))
 		{
 			m_Mode = DiffViewMode::Unified;
 		}
 
 		ImGui::SameLine();
-		DrawIconSeparator();
+		Core::DrawIconSeparator();
 		ImGui::SameLine();
 
-		if (DrawIconButton("##hunks", ICON_MDI_ARROW_COLLAPSE_VERTICAL,
+		if (Core::DrawIconButton("##hunks", ICON_MDI_ARROW_COLLAPSE_VERTICAL,
 						   m_Scope == DiffScope::Hunks, "Hunks only"))
 		{
 			m_Scope = DiffScope::Hunks;
@@ -878,18 +878,18 @@ namespace Graphite {
 
 		ImGui::SameLine(kNoOffsetFromStart, Core::Scaled(kModeButtonGap));
 
-		if (DrawIconButton("##wholeFile", ICON_MDI_ARROW_EXPAND_VERTICAL,
+		if (Core::DrawIconButton("##wholeFile", ICON_MDI_ARROW_EXPAND_VERTICAL,
 						   m_Scope == DiffScope::WholeFile, "Whole file"))
 		{
 			m_Scope = DiffScope::WholeFile;
 		}
 
 		ImGui::SameLine();
-		DrawIconSeparator();
+		Core::DrawIconSeparator();
 
 		ImGui::SameLine();
 
-		if (DrawIconButton("##colourSyntax", ICON_MDI_PALETTE_OUTLINE, m_ColourSyntax,
+		if (Core::DrawIconButton("##colourSyntax", ICON_MDI_PALETTE_OUTLINE, m_ColourSyntax,
 						   "Colour syntax"))
 		{
 			m_ColourSyntax = !m_ColourSyntax;
@@ -899,7 +899,7 @@ namespace Graphite {
 		{
 			ImGui::SameLine(kNoOffsetFromStart, Core::Scaled(kModeButtonGap));
 
-			if (DrawIconButton("##wordWrap", ICON_MDI_WRAP, wordWrap, "Word wrap"))
+			if (Core::DrawIconButton("##wordWrap", ICON_MDI_WRAP, wordWrap, "Word wrap"))
 			{
 				OnSetWordWrap(!wordWrap);
 			}
@@ -912,14 +912,14 @@ namespace Graphite {
 		if (canOpenFile || OnOpenAsTab)
 		{
 			ImGui::SameLine();
-			DrawIconSeparator();
+			Core::DrawIconSeparator();
 		}
 
 		if (canOpenFile)
 		{
 			ImGui::SameLine();
 
-			if (DrawIconButton("##openFile", ICON_MDI_FILE_EDIT_OUTLINE, kNotEngaged, "Open file"))
+			if (Core::DrawIconButton("##openFile", ICON_MDI_FILE_EDIT_OUTLINE, kNotEngaged, "Open file"))
 			{
 				OnOpenFile(file.NewPath);
 			}
@@ -929,7 +929,7 @@ namespace Graphite {
 		{
 			ImGui::SameLine();
 
-			if (DrawIconButton("##openAsTab", ICON_MDI_TAB_PLUS, kNotEngaged, "Open as tab"))
+			if (Core::DrawIconButton("##openAsTab", ICON_MDI_TAB_PLUS, kNotEngaged, "Open as tab"))
 			{
 				OnOpenAsTab();
 			}

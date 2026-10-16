@@ -15,6 +15,7 @@
 #include "Workspace/Workspace.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -465,7 +466,7 @@ namespace Graphite {
 
 		const std::vector<ApiRequest>& requests = context.Timeline->GetRequests();
 		const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
-		const float buttonWidth = ImGui::CalcTextSize(ICON_MDI_ARROW_RIGHT).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+		const float buttonWidth = Core::IconButtonSize(Core::IconButtonFit::Line);
 		const bool canOpenRequest = static_cast<bool>(context.OpenRequest);
 
 		ImGui::Indent();
@@ -491,12 +492,13 @@ namespace Graphite {
 			{
 				ImGui::SetCursorScreenPos(ImVec2(buttonX, linePosition.y));
 
-				if (ImGui::SmallButton(ICON_MDI_ARROW_RIGHT))
+				constexpr bool kNotEngaged = false;
+
+				if (Core::DrawIconButton("##openRequest", ICON_MDI_ARROW_RIGHT, kNotEngaged, "Show in the Requests tab",
+										 {.Fit = Core::IconButtonFit::Line}))
 				{
 					context.OpenRequest(*requestPosition);
 				}
-
-				ImGui::SetItemTooltip("Show in the Requests tab");
 			}
 			else
 			{

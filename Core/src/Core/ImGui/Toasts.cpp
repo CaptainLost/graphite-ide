@@ -6,6 +6,7 @@
 #include "Core/Base/Timestep.h"
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/ContextMenu.h"
+#include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/ToastBorder.h"
@@ -52,7 +53,6 @@ namespace Core {
 		constexpr float kInstantSeconds = 0.0f;
 		constexpr float kInitialValueOffTarget = 1.0f;
 		constexpr int kWindowOnlyStyleVarCount = 2;
-		constexpr int kCloseButtonColourCount = 2;
 		constexpr int kBodyColourCount = 2;
 		constexpr std::string_view kWindowPrefix = "##toast";
 
@@ -176,7 +176,7 @@ namespace Core {
 		const float paddingX = ToastPaddingX();
 		const float paddingY = ToastPaddingY();
 		const float iconDiameter = ToastIconDiameter();
-		const float closeButtonWidth = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
+		const float closeButtonWidth = IconButtonSize(IconButtonFit::Line);
 		const float closeButtonSlotWidth = style.ItemSpacing.x + closeButtonWidth;
 
 		const float textLeft = paddingX + iconDiameter + Scaled(kGapBetweenIconAndText);
@@ -344,24 +344,15 @@ namespace Core {
 					ImGui::PopStyleColor();
 				}
 
-				const ImVec2 closeMin(cardMin.x + width - paddingX - closeButtonWidth, cardMin.y + rowY);
-				const ImVec2 closeMax(closeMin.x + closeButtonWidth, closeMin.y + fontSize);
-				const bool pointerOverClose =
-					ImGui::IsWindowHovered(ImGuiHoveredFlags_None) && ImGui::IsMouseHoveringRect(closeMin, closeMax);
-
 				const ImVec4 transparentColour(0.0f, 0.0f, 0.0f, 0.0f);
+				constexpr bool kNotEngaged = false;
 
 				ImGui::SetCursorPos(ImVec2(width - paddingX - closeButtonWidth, rowY));
-				ImGui::PushStyleColor(ImGuiCol_Button, transparentColour);
-				ImGui::PushStyleColor(ImGuiCol_Text,
-									  ToImVec4(pointerOverClose ? palette.Text : palette.TextDim));
 
-				if (ImGui::SmallButton(ICON_MDI_CLOSE "##close"))
+				if (DrawIconButton("##close", ICON_MDI_CLOSE, kNotEngaged, "Close", {.Fit = IconButtonFit::Line}))
 				{
 					m_Stack.Close(toast.Id, now);
 				}
-
-				ImGui::PopStyleColor(kCloseButtonColourCount);
 
 				ImGui::SetCursorPos(ImVec2(textLeft, rowY + titleHeight + Scaled(kGapBetweenTitleAndMessage)));
 				ImGui::PushStyleColor(ImGuiCol_ChildBg, transparentColour);

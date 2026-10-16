@@ -2,7 +2,7 @@
 
 #include "Editor/Find/FindNavigation.h"
 #include "Theme/Palettes.h"
-#include "UI/IconButton.h"
+#include "Core/ImGui/IconButton.h"
 
 #include "Core/ImGui/UiScale.h"
 #include "Core/Text/Caret.h"
@@ -49,7 +49,7 @@ namespace Graphite {
 
 		bool DrawFindToggle(const char* id, const char* icon, const char* tooltip, bool& value)
 		{
-			const bool clicked = DrawIconButton(id, icon, value, tooltip);
+			const bool clicked = Core::DrawIconButton(id, icon, value, tooltip);
 
 			if (clicked)
 			{
@@ -114,9 +114,9 @@ namespace Graphite {
 			widths.Field = FindFieldWidth();
 			widths.Counter = MatchCounterWidth();
 
-			widths.RightOfField = style.ItemSpacing.x + Core::Scaled(kIconSeparatorWidth) +
+			widths.RightOfField = style.ItemSpacing.x + Core::Scaled(Core::kIconSeparatorWidth) +
 								  style.ItemSpacing.x + widths.Counter +
-								  (style.ItemSpacing.x + IconButtonSize()) * kButtonsRightOfCounter;
+								  (style.ItemSpacing.x + Core::IconButtonSize()) * kButtonsRightOfCounter;
 
 			widths.Total = Core::Scaled(kFindBarPaddingX) * kFindBarPaddingSides + widths.Field +
 						   widths.RightOfField;
@@ -281,7 +281,7 @@ namespace Graphite {
 		}
 
 		ImGui::SameLine();
-		DrawIconSeparator();
+		Core::DrawIconSeparator();
 		ImGui::SameLine();
 
 		DrawMatchCounter(item.Find, widths.Counter);
@@ -304,18 +304,18 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		const bool previousClicked = DrawIconButton("##findPrev", ICON_MDI_CHEVRON_UP, kNotToggled,
+		const bool previousClicked = Core::DrawIconButton("##findPrev", ICON_MDI_CHEVRON_UP, kNotToggled,
 													"Previous (Shift+Enter)");
 
 		ImGui::SameLine();
 
 		const bool nextClicked =
-			DrawIconButton("##findNext", ICON_MDI_CHEVRON_DOWN, kNotToggled, "Next (Enter)");
+			Core::DrawIconButton("##findNext", ICON_MDI_CHEVRON_DOWN, kNotToggled, "Next (Enter)");
 
 		ImGui::SameLine();
 
 		const bool closeClicked =
-			DrawIconButton("##findClose", ICON_MDI_CLOSE, kNotToggled, "Close (Escape)");
+			Core::DrawIconButton("##findClose", ICON_MDI_CLOSE, kNotToggled, "Close (Escape)");
 
 		ImGui::EndChild();
 		ImGui::GetCurrentWindow()->DC.CursorMaxPos = extentBeforeBar;
