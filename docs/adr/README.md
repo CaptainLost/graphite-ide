@@ -625,4 +625,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0593](0593-delete-only-the-untracked-files-a-deleted-folder-lists-in-the-changes-panel.md) | Delete only the untracked files a deleted folder lists in the changes panel | proposed | 2026-10-15 |
 | [0594](0594-lay-out-the-buttons-of-every-modal-question-through-dialoglayout.md) | Lay out the buttons of every modal question through DialogLayout | proposed | 2026-10-16 |
 | [0595](0595-keep-an-unreadable-state-file-as-bak-before-writing-over-it.md) | Keep an unreadable state file as .bak before writing over it | proposed | 2026-10-16 |
+| [0596](0596-draw-every-field-that-narrows-a-list-through-drawfilterfield.md) | Draw every field that narrows a list through DrawFilterField | proposed | 2026-10-16 |
 <!-- /adr-index -->

@@ -4,6 +4,7 @@
 #include "Git/Branches/RefSectionHeading.h"
 #include "Git/GitView.h"
 #include "UI/Chevron.h"
+#include "UI/FilterField.h"
 #include "UI/HighlightedRow.h"
 #include "UI/FittedText.h"
 #include "Core/ImGui/IconButton.h"
@@ -286,13 +287,10 @@ namespace Graphite {
 			RebuildRowsWhenOutOfDate(frame);
 		}
 
+		constexpr int kHeaderButtons = 1;
 
-		const float buttonRoom = Core::IconButtonSize() + ImGui::GetStyle().ItemSpacing.x;
-
-		ImGui::SetNextItemWidth(-buttonRoom);
-
-		if (ImGui::InputTextWithHint("##branchFilter", ICON_MDI_MAGNIFY "  Filter branches", m_TextBuffer.data(),
-									 m_TextBuffer.size()))
+		if (DrawFilterField("##branchFilter", m_TextBuffer.data(), m_TextBuffer.size(),
+							{.Hint = "Filter branches", .Width = FilterFieldWidthBefore(kHeaderButtons)}))
 		{
 			m_Filter.Text = m_TextBuffer.data();
 		}
@@ -339,9 +337,7 @@ namespace Graphite {
 	{
 		DrawAuthorsHeading();
 
-		ImGui::SetNextItemWidth(-FLT_MIN);
-		ImGui::InputTextWithHint("##authorFilter", ICON_MDI_MAGNIFY "  Filter authors", m_AuthorQueryBuffer.data(),
-								 m_AuthorQueryBuffer.size());
+		DrawFilterField("##authorFilter", m_AuthorQueryBuffer.data(), m_AuthorQueryBuffer.size(), {.Hint = "Filter authors"});
 
 		if (!frame.Authors && frame.AuthorsFailure.has_value())
 		{

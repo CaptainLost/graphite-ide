@@ -3,6 +3,7 @@
 #include "Git/History/CommitLabels.h"
 #include "Core/ImGui/IconButton.h"
 #include "UI/Chevron.h"
+#include "UI/FilterField.h"
 #include "UI/SplitResults.h"
 #include "UI/TickBox.h"
 #include "UI/FittedText.h"
@@ -36,8 +37,8 @@ namespace Graphite {
 		constexpr std::size_t kCommitsInTooltip = 20;
 		constexpr float kCommitTooltipWrapEms = 35.0f;
 
-		constexpr float kButtonsWithMarks = 2.0f;
-		constexpr float kButtonsWithoutMarks = 1.0f;
+		constexpr int kButtonsWithMarks = 2;
+		constexpr int kButtonsWithoutMarks = 1;
 
 		constexpr const char* kOnlyWhitespace = "Only whitespace changed.";
 		constexpr const char* kDiffUnreadable = "The diff could not be read.";
@@ -443,11 +444,10 @@ namespace Graphite {
 							 RowMarks marks)
 		{
 			const SessionSettings settings = ReadSettings(sessions, branch);
-			const float buttonCount = marks == RowMarks::Shown ? kButtonsWithMarks : kButtonsWithoutMarks;
-			const float buttonsWidth = buttonCount * (ImGui::GetStyle().ItemSpacing.x + Core::IconButtonSize());
+			const int buttonCount = marks == RowMarks::Shown ? kButtonsWithMarks : kButtonsWithoutMarks;
 
-			ImGui::SetNextItemWidth(-buttonsWidth);
-			ImGui::InputTextWithHint("##reviewFilter", ICON_MDI_MAGNIFY "  Filter files", filter.data(), filter.size());
+			DrawFilterField("##reviewFilter", filter.data(), filter.size(),
+							{.Hint = "Filter files", .Width = FilterFieldWidthBefore(buttonCount)});
 
 			const bool isTree = settings.Shape == ListShape::Tree;
 			const bool notEngaged = false;

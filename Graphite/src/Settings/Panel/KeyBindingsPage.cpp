@@ -11,17 +11,17 @@
 #include "Core/Command/Trigger.h"
 #include "Core/Events/KeyEvent.h"
 #include "Core/ImGui/ImGuiKeys.h"
-#include "Core/ImGui/TextInput.h"
+
 #include "Settings/Panel/SettingsLayout.h"
 #include "Settings/Panel/SettingsSearch.h"
 #include "Theme/Palettes.h"
 #include "UI/Dialogs/DialogLayout.h"
+#include "UI/FilterField.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 
 #include <array>
-#include <cfloat>
 #include <cstddef>
 #include <format>
 #include <span>
@@ -47,8 +47,6 @@ namespace Graphite {
 		constexpr float kShortcutColumnWeight = 2.0f;
 		constexpr float kAlternatesColumnWeight = 3.0f;
 		constexpr float kDefaultColumnWeight = 1.0f;
-
-		constexpr float kFillAvailableWidth = -FLT_MIN;
 
 		constexpr const char* kWindowSwitcherReason = "the window switcher uses it";
 
@@ -291,8 +289,7 @@ namespace Graphite {
 	{
 		m_WasFocusedLastFrame = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
-		ImGui::SetNextItemWidth(kFillAvailableWidth);
-		Core::InputTextWithHint("##keybindingsFilter", "Filter by command or shortcut", m_Filter);
+		DrawFilterField("##keybindingsFilter", m_Filter, {.Hint = "Filter by command or shortcut"});
 
 		constexpr ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp;
 

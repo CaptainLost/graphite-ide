@@ -13,6 +13,7 @@
 #include "Theme/Palettes.h"
 #include "Theme/GitPalette.h"
 #include "UI/ClipboardCopy.h"
+#include "UI/FilterField.h"
 #include "Git/DefaultBranch.h"
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
@@ -744,16 +745,14 @@ namespace Graphite {
 	void GitView::RenderFilterBar()
 	{
 		const float pathWidth = ImGui::GetFontSize() * kPathBoxWidthInFontSizes;
+		const float wordsWidth = ImGui::GetContentRegionAvail().x - pathWidth - ImGui::GetStyle().ItemSpacing.x;
 
-		ImGui::SetNextItemWidth(-(pathWidth + ImGui::GetStyle().ItemSpacing.x));
-		ImGui::InputTextWithHint("##commitFilter",
-								 ICON_MDI_MAGNIFY "  Message, author or hash",
-								 m_FilterBuffer.data(), m_FilterBuffer.size());
+		DrawFilterField("##commitFilter", m_FilterBuffer.data(), m_FilterBuffer.size(),
+						{.Hint = "Message, author or hash", .Width = wordsWidth});
 
 		ImGui::SameLine();
-		ImGui::SetNextItemWidth(pathWidth);
-		ImGui::InputTextWithHint("##commitPath", ICON_MDI_FILE_OUTLINE "  Main.cpp or *.cpp",
-								 m_FilterPathBuffer.data(), m_FilterPathBuffer.size());
+		DrawFilterField("##commitPath", m_FilterPathBuffer.data(), m_FilterPathBuffer.size(),
+						{.Hint = "Main.cpp or *.cpp", .Glyph = ICON_MDI_FILE_OUTLINE, .Width = pathWidth});
 
 		m_Filter.Set(HistoryFilter{std::string(m_FilterBuffer.data()),
 								   std::string(m_FilterPathBuffer.data())});

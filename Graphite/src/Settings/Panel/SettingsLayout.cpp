@@ -1,14 +1,11 @@
 #include "Settings/Panel/SettingsLayout.h"
 
-#include "Core/ImGui/IconButton.h"
+#include "UI/FilterField.h"
 
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/ImGuiRenderer.h"
-#include "Core/ImGui/TextInput.h"
 #include "Core/ImGui/Toggle.h"
 #include "Core/ImGui/UiScale.h"
-
-#include <IconsMaterialDesignIcons.h>
 
 #include <imgui.h>
 
@@ -400,33 +397,9 @@ namespace Graphite {
 
 	bool SettingsLayout::DrawSearchField(std::string& query)
 	{
-		const ImGuiStyle& style = ImGui::GetStyle();
-		const ImVec2 framePadding = style.FramePadding;
-		const float iconWidth = ImGui::CalcTextSize(ICON_MDI_MAGNIFY).x;
-		const bool showsClear = !query.empty();
-		const float clearWidth = showsClear ? Core::IconButtonSize() + style.ItemSpacing.x : 0.0f;
-
 		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, Core::Scaled(kSearchFieldRounding));
-		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(framePadding.x * 2.0f + iconWidth, framePadding.y));
-		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - clearWidth);
-		bool edited = Core::InputTextWithHint("##searchSettings", kSearchHint, query, ImGuiInputTextFlags_EscapeClearsAll);
-		ImGui::PopStyleVar(2);
-
-		const ImVec2 fieldTopLeft = ImGui::GetItemRectMin();
-		ImGui::GetWindowDrawList()->AddText(ImVec2(fieldTopLeft.x + framePadding.x, fieldTopLeft.y + framePadding.y),
-											ImGui::GetColorU32(ImGuiCol_TextDisabled), ICON_MDI_MAGNIFY);
-
-		if (showsClear)
-		{
-			ImGui::SameLine();
-			const bool engaged = false;
-
-			if (Core::DrawIconButton("##clearSearch", ICON_MDI_CLOSE, engaged, "Clear the search"))
-			{
-				query.clear();
-				edited = true;
-			}
-		}
+		const bool edited = DrawFilterField("##searchSettings", query, {.Hint = kSearchHint});
+		ImGui::PopStyleVar();
 
 		return edited;
 	}

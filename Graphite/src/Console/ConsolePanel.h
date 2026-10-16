@@ -49,7 +49,6 @@ namespace Graphite {
 		Core::TextSelection m_Selection;
 		Core::SelectionGesture m_Gesture;
 		ImGuiTextFilter m_Filter;
-		std::string m_FilterText;
 		Core::LogLevel m_MinimumLevel = kDefaultConsoleLevel;
 		bool m_AutoScroll = true;
 		std::size_t m_LastCount = 0;

@@ -15,6 +15,7 @@
 #include "Solution/SolutionEditor.h"
 #include "UI/Chevron.h"
 #include "UI/Dialogs/DialogLayout.h"
+#include "UI/FilterField.h"
 #include "UI/OpenGesture.h"
 #include "UI/ToastEvent.h"
 
@@ -211,10 +212,8 @@ namespace Graphite {
 
 	void SolutionTreeView::RenderFilter()
 	{
-		ImGui::SetNextItemWidth(-1.0f);
-
-		if (ImGui::InputTextWithHint("##solutionFilter", ICON_MDI_MAGNIFY "  Filter files",
-									 m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf)))
+		if (DrawFilterField("##solutionFilter", m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf),
+							{.Hint = "Filter files"}))
 		{
 			m_Filter.Build();
 		}

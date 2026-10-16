@@ -16,6 +16,7 @@
 #include "UI/Chevron.h"
 #include "UI/ClipboardCopy.h"
 #include "UI/Dialogs/DialogLayout.h"
+#include "UI/FilterField.h"
 #include "Terminal/TerminalRules.h"
 #include "Explorer/FileRow.h"
 #include "Explorer/FilteredTree.h"
@@ -193,7 +194,16 @@ namespace Graphite {
 
 	void FileTreeView::RenderToolbar()
 	{
+		constexpr int kToolbarButtons = 1;
 		constexpr bool kNotEngaged = false;
+
+		if (DrawFilterField("##fileFilter", m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf),
+							{.Hint = "Filter files", .Width = FilterFieldWidthBefore(kToolbarButtons)}))
+		{
+			m_Filter.Build();
+		}
+
+		ImGui::SameLine();
 
 		if (Core::DrawIconButton("##refreshTree", ICON_MDI_REFRESH, kNotEngaged, "Refresh"))
 		{
@@ -208,31 +218,6 @@ namespace Graphite {
 			else
 			{
 				APP_WARN("File tree refresh failed: the workspace folder is unreadable");
-			}
-		}
-
-		ImGui::SameLine();
-
-		constexpr float kFillRemainingWidth = -1.0f;
-
-		const bool hasText = m_Filter.InputBuf[0] != '\0';
-		const float clearWidth = Core::IconButtonSize() + ImGui::GetStyle().ItemSpacing.x;
-		ImGui::SetNextItemWidth(hasText ? -clearWidth : kFillRemainingWidth);
-
-		if (ImGui::InputTextWithHint("##fileFilter", ICON_MDI_MAGNIFY "  Filter files",
-									 m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf),
-									 ImGuiInputTextFlags_EscapeClearsAll))
-		{
-			m_Filter.Build();
-		}
-
-		if (hasText)
-		{
-			ImGui::SameLine();
-
-			if (Core::DrawIconButton("##fileFilterClear", ICON_MDI_CLOSE, kNotEngaged, "Clear filter"))
-			{
-				m_Filter.Clear();
 			}
 		}
 	}

@@ -9,6 +9,7 @@
 #include "Settings/UserDirectories.h"
 #include "Workspace/Workspace.h"
 #include "UI/Chevron.h"
+#include "UI/FilterField.h"
 #include "UI/TickBox.h"
 
 #include "Core/Base/Ascii.h"
@@ -16,7 +17,6 @@
 #include "Core/Base/Uuid.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
-#include "Core/ImGui/TextInput.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/Platform/Process.h"
 
@@ -409,8 +409,8 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		ImGui::SetNextItemWidth(ImGui::GetFontSize() * kFilterWidthInFontSizes);
-		Core::InputTextWithHint("##sessionFilter", "Filter by title", m_Filter);
+		DrawFilterField("##sessionFilter", m_Filter,
+						{.Hint = "Filter by title", .Width = ImGui::GetFontSize() * kFilterWidthInFontSizes});
 
 		ImGui::SameLine();
 

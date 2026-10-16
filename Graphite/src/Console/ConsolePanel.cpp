@@ -5,11 +5,11 @@
 #include "Core/Base/Base.h"
 
 #include "Core/ImGui/SelectionGesture.h"
-#include "Core/ImGui/TextInput.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Text/Columns.h"
 
 #include "UI/ClipboardCopy.h"
+#include "UI/FilterField.h"
 #include "UI/TickBox.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -38,7 +38,6 @@ namespace Graphite {
 		constexpr float kLevelComboWidth = 80.0f;
 		constexpr float kScrollToBottom = 1.0f;
 		constexpr ImVec2 kFillAvailableSpace{0.0f, 0.0f};
-		constexpr char kTextTerminator = '\0';
 
 		ImVec4 ColourOfLogLevel(Core::LogLevel level)
 		{
@@ -152,15 +151,9 @@ namespace Graphite {
 		DrawTickBox("Auto-scroll", &m_AutoScroll);
 
 		ImGui::SameLine();
-		ImGui::SetNextItemWidth(Core::Scaled(kFilterBoxWidth));
-		if (Core::InputTextWithHint("##consoleFilter", "Filter (inc,-exc)", m_FilterText))
+		if (DrawFilterField("##consoleFilter", m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf),
+							{.Hint = "Filter (inc,-exc)", .Width = Core::Scaled(kFilterBoxWidth)}))
 		{
-			// WARNING: ImGuiTextFilter has no hint of its own, so the box is drawn here and its
-			// text is copied into the filter's fixed buffer, cutting a longer pattern.
-			const std::size_t capacityWithoutTerminator = sizeof(m_Filter.InputBuf) - 1;
-			const std::size_t length = std::min(m_FilterText.size(), capacityWithoutTerminator);
-			std::copy_n(m_FilterText.data(), length, m_Filter.InputBuf);
-			m_Filter.InputBuf[length] = kTextTerminator;
 			m_Filter.Build();
 		}
 
