@@ -41,7 +41,6 @@ namespace Graphite {
 		constexpr bool kOpenTheRow = true;
 		constexpr float kHalf = 0.5f;
 
-		// The folder glyph tells an open folder from a closed one, as in the file tree.
 		std::string FolderLabel(const std::string& name, bool open)
 		{
 			return std::string{open ? ICON_MDI_FOLDER_OPEN : ICON_MDI_FOLDER} + "  " + name;

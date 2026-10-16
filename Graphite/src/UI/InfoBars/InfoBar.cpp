@@ -21,7 +21,8 @@ namespace Graphite {
 		constexpr float kPaddingSides = 2.0f;
 		constexpr bool kNotEngaged = false;
 
-		// As DialogLayout's filled buttons, so a main action looks the same in a bar and in a dialog.
+		// WARNING: DialogLayout's filled buttons use the same brightnesses, so a main action looks the same in a bar and
+		// in a dialog; change both together.
 		constexpr float kPrimaryHoveredBrightness = 1.15f;
 		constexpr float kPrimaryActiveBrightness = 0.85f;
 		constexpr int kPrimaryColourCount = 4;
@@ -42,8 +43,6 @@ namespace Graphite {
 			return Core::TextWidth(label) + ImGui::GetStyle().FramePadding.x * kPaddingSides;
 		}
 
-		// The main actions whole; the others cut to what is left of `room`, a long one to at most a set width, and left
-		// out when nothing of them fits.
 		std::vector<ShownButton> FitButtons(const std::vector<InfoBarButton>& buttons, float room)
 		{
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;
@@ -196,7 +195,6 @@ namespace Graphite {
 			ImGui::TextColored(content.WeightColour, "%s", content.Glyph);
 			ImGui::SameLine();
 
-			// The buttons are fitted first, and the message takes what they leave.
 			const float afterGlyph = ImGui::GetCursorPosX();
 			const std::vector<ShownButton> buttons = FitButtons(content.Buttons, rowRight - closePart - afterGlyph);
 			const float buttonsWidth = WidthOfAll(buttons);
@@ -206,7 +204,6 @@ namespace Graphite {
 			const float messageRoom = std::max(0.0f, rowRight - closePart - buttonsPart - afterGlyph);
 			const std::string message = FitToWidth(content.Message, messageRoom, &cut);
 
-			// With no room left for the message, the glyph, still the last item, says it in its tooltip.
 			if (message.empty())
 			{
 				ImGui::SetItemTooltip("%s", content.Message.c_str());
@@ -221,7 +218,6 @@ namespace Graphite {
 				}
 			}
 
-			// The buttons stand at the bar's end, before its close button, however short the message.
 			float buttonX = std::max(ImGui::GetItemRectMax().x - ImGui::GetWindowPos().x + spacing,
 									 rowRight - closePart - buttonsWidth);
 

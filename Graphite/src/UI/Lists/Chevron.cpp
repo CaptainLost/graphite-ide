@@ -31,7 +31,6 @@ namespace Graphite {
 												glyph);
 		}
 
-		// Dim after the label, a list's numbers being dim, and cut off where the row's item ends.
 		void DrawNoteAfter(ImVec2 labelTopLeft, const char* label, const char* note)
 		{
 			if (*note == '\0')
@@ -49,9 +48,8 @@ namespace Graphite {
 			ImGui::PopStyleColor();
 		}
 
-		// A row of a list, so the Selectable every list row is: across the whole list, its highlight touching the
-		// rows above and below. The open state is kept where ImGui keeps a tree node's, under the same id, so
-		// SetNextItemOpen before it and TreePop after it work as they do with TreeNodeEx.
+		// WARNING: The open state is kept where ImGui keeps a tree node's, under the same id, so SetNextItemOpen before
+		// the row and TreePop after it work as they do with TreeNodeEx.
 		bool DrawListTreeNode(const char* id, ImGuiTreeNodeFlags flags, const char* label, const char* note)
 		{
 			ImGuiWindow* const window = ImGui::GetCurrentWindow();
@@ -71,7 +69,6 @@ namespace Graphite {
 			const bool clicked = ListRowSelectable("##row", selected, selectableFlags);
 			ImGui::PopID();
 
-			// Left closes and Right opens the row the keyboard is on, as with TreeNodeEx.
 			const ImGuiContext& context = *ImGui::GetCurrentContext();
 			const bool keyboardIsHere = opens && context.NavId == ImGui::GetItemID();
 			const bool closedByKey = keyboardIsHere && context.NavMoveDir == ImGuiDir_Left && open;
@@ -133,7 +130,7 @@ namespace Graphite {
 			ImVec2 textTopLeft(rowStart.x + ImGui::GetFontSize() + style.FramePadding.x * kFramedPaddingsBeforeLabel,
 							   rowStart.y + std::max(style.FramePadding.y, lineTextOffset));
 
-			// A framed leaf has no arrow and ImGui moves its label to the start.
+			// WARNING: ImGui moves a framed leaf's label to the frame's start, as it has no arrow to make room for.
 			if (!opens)
 			{
 				textTopLeft.x = rowStart.x + style.FramePadding.x;

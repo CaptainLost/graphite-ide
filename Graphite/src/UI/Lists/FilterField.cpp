@@ -84,7 +84,6 @@ namespace Graphite {
 			ImGui::SameLine(kRightAfter, kNoSpacing);
 			ImGui::PushID(id);
 
-			// The button's fill sits inside the field's rounded end, so it rounds less by the gap between them.
 			ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, std::max(0.0f, fieldRounding - ClearButtonInset()));
 
 			if (Core::DrawIconButton("##clear", ICON_MDI_CLOSE, kNotEngaged, "Clear"))
@@ -96,8 +95,8 @@ namespace Graphite {
 			ImGui::PopStyleVar();
 			ImGui::PopID();
 
-			// The line ends at the field's edge, not at the button inside it, so what follows starts past the field.
-			// Only laid out, not an item, so the button stays the last item.
+			// WARNING: Only laid out, not a Dummy: an item here would take the button's place as the last item, which a
+			// caller asking IsItemHovered after the field expects to be the button.
 			ImGui::SameLine(kRightAfter, kNoSpacing);
 			ImGui::ItemSize(ImVec2(ClearButtonInset(), ImGui::GetFrameHeight()));
 

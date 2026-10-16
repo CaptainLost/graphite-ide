@@ -16,7 +16,6 @@ namespace Graphite {
 		constexpr float kHalf = 0.5f;
 		constexpr float kGapsAroundMarker = 2.0f;
 
-		// A glyph, its gap and an ellipsis: what of a label must show before a note is drawn beside it.
 		constexpr float kLeastLabelInFontSizes = 3.0f;
 		constexpr int kSegmentsChosenByImGui = 0;
 		constexpr bool kIntersectWithCurrentClipRect = true;

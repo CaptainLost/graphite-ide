@@ -430,8 +430,6 @@ namespace Graphite {
 		const float hover = Core::Animation::HoverAmount(ImGui::GetItemID(), ImGui::IsItemHovered());
 		ImGui::PopID();
 
-		// The colours of a list row: the selected colour at rest on the selected entry, the hover colour under the
-		// pointer on any.
 		const ImVec4 hovered = ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered);
 		const ImVec4 unselected(hovered.x, hovered.y, hovered.z, 0.0f);
 		const ImVec4 resting = selected ? ImGui::GetStyleColorVec4(ImGuiCol_Header) : unselected;

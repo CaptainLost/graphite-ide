@@ -168,7 +168,6 @@ namespace Graphite {
 		return "Not now";
 	}
 
-	// Not now is the bar's close button; the step that gets the support going is its main action.
 	LanguageBarChoice DrawLanguageSupportBar(const LanguagePrompt& prompt)
 	{
 		InfoBarContent content{.Id = "##LanguageSupport",

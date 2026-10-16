@@ -29,8 +29,7 @@ namespace Core {
 			return ImHashData(&id, sizeof(id), HoverChannel());
 		}
 
-		// Whether the hover was asked for on the frame before, and from now on that it was asked for on this one.
-		bool WasAskedForLastFrame(ImGuiID id)
+		bool NoteAskedAndWhetherAskedLastFrame(ImGuiID id)
 		{
 			ImGuiStorage* const storage = ImGui::GetStateStorage();
 			const ImGuiID key = LastAskedKey(id);
@@ -78,7 +77,7 @@ namespace Core {
 
 		// WARNING: An item not drawn on the frame before was gone, as a row's buttons are while the pointer is on
 		// another row. ImAnim keeps the value it had when it went, and it would come back fading out from there.
-		if (!WasAskedForLastFrame(id))
+		if (!NoteAskedAndWhetherAskedLastFrame(id))
 		{
 			fadeSeconds = kInstantSeconds;
 			policy = iam_policy_cut;

@@ -104,8 +104,8 @@ namespace Graphite {
 			return std::format("{}/{}", row.Viewed, row.Total);
 		}
 
-		// A list's rows reach its edges, so the list has no padding at its sides; its rows keep a list row's inset
-		// from them instead, the same at both ends.
+		// WARNING: No padding at the list's sides, or its rows' highlights would stop half of it short of the edges;
+		// the rows keep a list row's inset from the edges themselves.
 		void PushListPadding()
 		{
 			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
