@@ -112,6 +112,21 @@ TEST_CASE("Every colour of every category survives save, load and resolve")
 	}
 }
 
+TEST_CASE("Saving over a scheme file that does not parse keeps it as .bak first")
+{
+	TempDirectory temp;
+	const std::string broken = R"({ "base": "dark", oops)";
+	temp.MakeFile("mine.json", broken);
+
+	Graphite::ColorScheme scheme;
+	scheme.Base = Graphite::BuiltInScheme::Light;
+
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "mine", scheme));
+
+	CHECK(ReadWholeFile(temp.GetPath() / "mine.json.bak") == broken);
+	CHECK(Graphite::LoadScheme(temp.GetPath() / "mine.json").Base == Graphite::BuiltInScheme::Light);
+}
+
 TEST_CASE("A saved scheme comes back with the overrides it had")
 {
 	const TempDirectory temp;

@@ -7,6 +7,7 @@
 #include "Core/FileSystem/FileName.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/Encoding.h"
+#include "Persistence/FileBackup.h"
 #include "Theme/BuiltInSchemes.h"
 
 #include <format>
@@ -123,6 +124,11 @@ namespace Graphite {
 		}
 
 		const Core::JsonFile json = Core::JsonFile::Load(file);
+
+		if (json.IsMalformed())
+		{
+			APP_WARN("Colour scheme '{}' does not parse; showing its base until it is fixed or saved again", Core::ToUtf8(file));
+		}
 
 		if (const std::optional<BuiltInScheme> base = ParseBuiltInName(json.Get("base")))
 		{
@@ -265,7 +271,16 @@ namespace Graphite {
 			}
 		}
 
-		return json.Save(SchemeFile(directory, name));
+		const std::filesystem::path file = SchemeFile(directory, name);
+
+		if (Core::JsonFile::Load(file).IsMalformed() && !BackUpBeforeWritingOver(file, "does not parse"))
+		{
+			return Core::Error{Core::ErrorCode::IoFailure,
+							   std::format("'{}' does not parse and could not be kept as .bak before writing over it",
+										   Core::ToUtf8(file))};
+		}
+
+		return json.Save(file);
 	}
 
 	std::vector<std::string> ListSchemes(const std::filesystem::path& directory)

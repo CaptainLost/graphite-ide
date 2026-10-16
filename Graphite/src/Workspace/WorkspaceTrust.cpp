@@ -3,6 +3,7 @@
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/AtomicWrite.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Persistence/FileBackup.h"
 
 #include <nlohmann/json.hpp>
 
@@ -82,6 +83,7 @@ namespace Graphite {
 		{
 			APP_WARN("Ignoring unreadable '{}': no folder is trusted until one is trusted again",
 					 Core::ToUtf8(m_File));
+			m_KeepBeforeWriting = true;
 			return;
 		}
 
@@ -194,7 +196,7 @@ namespace Graphite {
 		Save();
 	}
 
-	void WorkspaceTrust::Save() const
+	void WorkspaceTrust::Save()
 	{
 		if (m_File.empty())
 		{
@@ -208,6 +210,14 @@ namespace Graphite {
 					 Core::ToUtf8(m_File));
 			return;
 		}
+
+		if (m_KeepBeforeWriting && !BackUpBeforeWritingOver(m_File, "does not parse"))
+		{
+			APP_WARN("Not writing '{}': it does not parse and could not be kept as .bak first", Core::ToUtf8(m_File));
+			return;
+		}
+
+		m_KeepBeforeWriting = false;
 
 		nlohmann::json folders = nlohmann::json::array();
 

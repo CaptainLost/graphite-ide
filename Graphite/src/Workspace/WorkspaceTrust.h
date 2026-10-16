@@ -29,12 +29,15 @@ namespace Graphite {
 		std::uint64_t GetRevision() const { return m_Revision; }
 
 	private:
-		void Save() const;
+		void Save();
 
 		std::filesystem::path m_File;
 		std::vector<std::filesystem::path> m_Entries;
 		std::uint64_t m_Revision = 0;
 		bool m_Writable = true;
+
+		// The file on disk did not parse: it is kept as .bak before the first write goes over it.
+		bool m_KeepBeforeWriting = false;
 	};
 
 	std::optional<std::filesystem::path> ParentWorthTrusting(const std::filesystem::path& folder);

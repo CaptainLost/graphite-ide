@@ -148,6 +148,22 @@ TEST_CASE("An unreadable trust file trusts nothing")
 	CHECK(trust.GetEntries().empty());
 }
 
+TEST_CASE("An unreadable trust file is kept as .bak before the first change writes over it")
+{
+	TempDirectory temp;
+	const std::string broken = "{ this is not json";
+	temp.MakeFile("trusted-folders.json", broken);
+	const std::filesystem::path file = temp.GetPath() / "trusted-folders.json";
+
+	Graphite::WorkspaceTrust trust{file};
+	trust.Trust("E:\\Else");
+
+	CHECK(ReadText(temp.GetPath() / "trusted-folders.json.bak") == broken);
+
+	const Graphite::WorkspaceTrust reread{file};
+	CHECK(reread.IsTrusted("E:\\Else"));
+}
+
 TEST_CASE("A trust file from a newer version is read but never written")
 {
 	TempDirectory temp;
