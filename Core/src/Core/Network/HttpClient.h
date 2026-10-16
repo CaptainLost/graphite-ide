@@ -43,7 +43,16 @@ namespace Core {
 
 	inline constexpr std::size_t kLargestFetchedBody = 32 * 1024 * 1024;
 
+	inline constexpr int kHttpStatusOk = 200;
+	inline constexpr int kHttpStatusNotFound = 404;
 	inline constexpr int kHttpStatusProxyAuthenticationRequired = 407;
+
+	// What a request refused with this status reads as: NotFound for a 404, which a caller may tell apart, and an IO
+	// failure for any other.
+	constexpr ErrorCode ErrorCodeOfHttpStatus(int status)
+	{
+		return status == kHttpStatusNotFound ? ErrorCode::NotFound : ErrorCode::IoFailure;
+	}
 
 	// HTTPS only: any other scheme is refused before anything is sent. One client may serve several threads at once.
 	class HttpClient

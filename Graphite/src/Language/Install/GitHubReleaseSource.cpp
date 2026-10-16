@@ -14,8 +14,6 @@ namespace Graphite {
 		constexpr std::string_view kGitHubApi = "https://api.github.com/repos/";
 		constexpr int kCompactDump = -1;
 		constexpr bool kKeepNonAscii = false;
-		constexpr int kStatusOk = 200;
-		constexpr int kStatusNotFound = 404;
 
 		std::string VersionFromTag(std::string_view tag)
 		{
@@ -31,7 +29,7 @@ namespace Graphite {
 			}
 
 			const std::optional<std::string> message = TextAt(ParseJsonText(response.Body), "message");
-			const Core::ErrorCode code = response.Status == kStatusNotFound ? Core::ErrorCode::NotFound : Core::ErrorCode::IoFailure;
+			const Core::ErrorCode code = Core::ErrorCodeOfHttpStatus(response.Status);
 
 			if (!message)
 			{
@@ -105,7 +103,7 @@ namespace Graphite {
 			return response.GetError();
 		}
 
-		if (response.GetValue().Status != kStatusOk)
+		if (response.GetValue().Status != Core::kHttpStatusOk)
 		{
 			return RefusalFrom(response.GetValue(), latestUrl, package.Repository);
 		}

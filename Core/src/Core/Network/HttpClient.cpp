@@ -20,8 +20,6 @@ namespace Core {
 
 		constexpr DWORD kReadPieceBytes = 64 * 1024;
 		constexpr DWORD kStageTimeoutMilliseconds = 30 * 1000;
-		constexpr int kStatusOk = 200;
-		constexpr int kStatusNotFound = 404;
 
 		class InternetHandle
 		{
@@ -408,9 +406,9 @@ namespace Core {
 					return ProxyCredentialsError(request.Url);
 				}
 
-				if (status.GetValue() != kStatusOk)
+				if (status.GetValue() != kHttpStatusOk)
 				{
-					const ErrorCode code = status.GetValue() == kStatusNotFound ? ErrorCode::NotFound : ErrorCode::IoFailure;
+					const ErrorCode code = ErrorCodeOfHttpStatus(status.GetValue());
 					return Error{.Code = code, .Message = std::format("'{}' answered {}", request.Url, status.GetValue())};
 				}
 

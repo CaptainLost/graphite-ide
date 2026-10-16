@@ -17,8 +17,6 @@ namespace Graphite {
 
 		constexpr std::string_view kRegistrationBase = "https://api.nuget.org/v3/registration5-gz-semver2/";
 		constexpr std::string_view kPackageBase = "https://api.nuget.org/v3-flatcontainer/";
-		constexpr int kStatusOk = 200;
-		constexpr int kStatusNotFound = 404;
 		constexpr std::size_t kSha512Bytes = 64;
 
 		struct ListedVersion
@@ -42,10 +40,9 @@ namespace Graphite {
 				return Core::ProxyCredentialsError(url);
 			}
 
-			if (response.GetValue().Status != kStatusOk)
+			if (response.GetValue().Status != Core::kHttpStatusOk)
 			{
-				const Core::ErrorCode code =
-					response.GetValue().Status == kStatusNotFound ? Core::ErrorCode::NotFound : Core::ErrorCode::IoFailure;
+				const Core::ErrorCode code = Core::ErrorCodeOfHttpStatus(response.GetValue().Status);
 				return Core::Error{.Code = code,
 								   .Message = std::format("NuGet answered {} for {} at '{}'", response.GetValue().Status,
 														  packageId, url)};

@@ -125,3 +125,10 @@ TEST_CASE("A download cancelled midway stops and leaves no file" * doctest::skip
 	CHECK(downloaded.GetError().Code == Core::ErrorCode::Cancelled);
 	CHECK_FALSE(std::filesystem::exists(target));
 }
+
+TEST_CASE("A refused request reads as NotFound for a 404 and as an IO failure for any other status")
+{
+	CHECK(Core::ErrorCodeOfHttpStatus(Core::kHttpStatusNotFound) == Core::ErrorCode::NotFound);
+	CHECK(Core::ErrorCodeOfHttpStatus(500) == Core::ErrorCode::IoFailure);
+	CHECK(Core::ErrorCodeOfHttpStatus(Core::kHttpStatusProxyAuthenticationRequired) == Core::ErrorCode::IoFailure);
+}
