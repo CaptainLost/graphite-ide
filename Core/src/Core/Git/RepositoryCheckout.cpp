@@ -19,7 +19,6 @@ namespace Core {
 
 	namespace {
 
-		constexpr const char* kRemoteBranchPrefix = "refs/remotes/";
 		constexpr const char* kPeelToCommit = "^{commit}";
 		constexpr char kRemoteNameSeparator = '/';
 
@@ -122,7 +121,7 @@ namespace Core {
 				}
 				else
 				{
-					revisionSpec = kRemoteBranchPrefix + target.Name;
+					revisionSpec = std::string{kRemoteBranchPrefix} + target.Name;
 					resolved.MustCreateTrackingBranch = true;
 				}
 

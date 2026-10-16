@@ -17,7 +17,6 @@ namespace Core {
 
 	namespace {
 
-		constexpr std::string_view kLocalBranchPrefix = "refs/heads/";
 
 		constexpr int kHeadIsDetached = 1;
 
@@ -51,18 +50,6 @@ namespace Core {
 			default:
 				return RepositoryOperation::None;
 			}
-		}
-
-		// An unborn HEAD is only a symbolic name, so there is no branch object to ask
-		// git_branch_name about.
-		std::string ShortBranchName(std::string_view referenceName)
-		{
-			if (referenceName.starts_with(kLocalBranchPrefix))
-			{
-				referenceName.remove_prefix(kLocalBranchPrefix.size());
-			}
-
-			return std::string{referenceName};
 		}
 
 		std::optional<std::string> BranchNameOf(const git_reference* reference)

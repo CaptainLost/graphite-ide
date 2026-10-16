@@ -17,8 +17,6 @@ namespace Core {
 
 	namespace {
 
-		constexpr const char* kLocalBranchPrefix = "refs/heads/";
-
 		constexpr std::string_view kCarriageReturnLineFeed = "\r\n";
 		constexpr std::string_view kLineFeed = "\n";
 		constexpr std::size_t kNotALineTerminator = std::string_view::npos;
@@ -184,11 +182,6 @@ namespace Core {
 		}
 
 		return summary;
-	}
-
-	std::string LocalBranchReference(const std::string& branchName)
-	{
-		return kLocalBranchPrefix + branchName;
 	}
 
 	Oid ToOid(const git_oid& id)

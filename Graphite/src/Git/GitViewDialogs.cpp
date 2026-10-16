@@ -297,8 +297,8 @@ namespace Graphite {
 			}
 			else
 			{
-				const std::string fromFullName = "refs/heads/" + from;
-				const std::string toFullName = "refs/heads/" + name;
+				const std::string fromFullName = Core::LocalBranchReference(from);
+				const std::string toFullName = Core::LocalBranchReference(name);
 
 				m_Model.RequestRenameBranch(from, name);
 

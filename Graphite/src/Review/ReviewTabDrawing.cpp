@@ -774,7 +774,7 @@ namespace Graphite {
 		const SessionSettings settings = session != nullptr ? session->Settings : SessionSettings{};
 
 		ImGui::AlignTextToFramePadding();
-		ImGui::TextUnformatted(ShortBranchName(tab.Branch).c_str());
+		ImGui::TextUnformatted(Core::ShortBranchName(tab.Branch).c_str());
 
 		if (session != nullptr)
 		{
@@ -782,7 +782,7 @@ namespace Graphite {
 			const float noSpacing = 0.0f;
 
 			ImGui::SameLine(noOffset, noSpacing);
-			ImGui::TextDisabled(" against %s", ShortBranchName(session->Base).c_str());
+			ImGui::TextDisabled(" against %s", Core::ShortBranchName(session->Base).c_str());
 		}
 
 		const bool changeSummaryIsKnown = rows != nullptr && range != nullptr && range->Problem == RangeProblem::None;

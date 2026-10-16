@@ -6,8 +6,32 @@
 #include <cstddef>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace Core {
+
+	inline constexpr std::string_view kLocalBranchPrefix = "refs/heads/";
+	inline constexpr std::string_view kRemoteBranchPrefix = "refs/remotes/";
+
+	// "refs/heads/main" for "main".
+	inline std::string LocalBranchReference(std::string_view branchName)
+	{
+		return std::string{kLocalBranchPrefix} + std::string{branchName};
+	}
+
+	// "main" for "refs/heads/main" and "origin/main" for "refs/remotes/origin/main"; any other name comes back whole.
+	inline std::string ShortBranchName(std::string_view fullName)
+	{
+		for (const std::string_view prefix : {kLocalBranchPrefix, kRemoteBranchPrefix})
+		{
+			if (fullName.starts_with(prefix))
+			{
+				return std::string{fullName.substr(prefix.size())};
+			}
+		}
+
+		return std::string{fullName};
+	}
 
 	enum class RefKind
 	{

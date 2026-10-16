@@ -83,7 +83,7 @@ namespace Graphite {
 		fork.OwnCommits.Ref = branch->FullName;
 		fork.OwnCommits.Exclude = base->Tip;
 		fork.OwnCommits.MaxCount = kMostOwnCommitsLooked;
-		fork.BaseName = ShortBranchName(base->FullName);
+		fork.BaseName = Core::ShortBranchName(base->FullName);
 
 		return fork;
 	}

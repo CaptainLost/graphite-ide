@@ -54,8 +54,6 @@ namespace Core {
 	// with the message's own line ends kept.
 	CommitSummary ToCommitSummary(git_commit* commit);
 
-	std::string LocalBranchReference(const std::string& branchName);
-
 	// git expects forward slashes on every platform.
 	std::string ToGitPath(const std::filesystem::path& relative);
 

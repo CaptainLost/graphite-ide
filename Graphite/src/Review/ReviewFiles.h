@@ -25,7 +25,6 @@ namespace Graphite {
 
 	std::optional<ReviewOffer> OfferReview(const Core::Branch& branch, const std::vector<Core::Branch>& branches);
 
-	std::string ShortBranchName(const std::string& fullName);
 
 	RangeEnds EndsOfCommit(const Core::CommitSummary& commit);
 

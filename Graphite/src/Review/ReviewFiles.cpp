@@ -14,8 +14,6 @@ namespace Graphite {
 
 	namespace {
 
-		constexpr std::string_view kLocalPrefix = "refs/heads/";
-		constexpr std::string_view kRemotePrefix = "refs/remotes/";
 
 		constexpr std::string_view kReviewAgainst = "Review against ";
 
@@ -98,21 +96,6 @@ namespace Graphite {
 		}
 
 		return OfferAgainst(branch, *base);
-	}
-
-	std::string ShortBranchName(const std::string& fullName)
-	{
-		if (fullName.starts_with(kLocalPrefix))
-		{
-			return fullName.substr(kLocalPrefix.size());
-		}
-
-		if (fullName.starts_with(kRemotePrefix))
-		{
-			return fullName.substr(kRemotePrefix.size());
-		}
-
-		return fullName;
 	}
 
 	RangeEnds EndsOfCommit(const Core::CommitSummary& commit)
@@ -315,8 +298,8 @@ namespace Graphite {
 	std::string RangeProblemMessage(RangeProblem problem, const std::string& branchFullName,
 									const std::string& baseFullName)
 	{
-		const std::string branch = ShortBranchName(branchFullName);
-		const std::string base = ShortBranchName(baseFullName);
+		const std::string branch = Core::ShortBranchName(branchFullName);
+		const std::string base = Core::ShortBranchName(baseFullName);
 
 		switch (problem)
 		{
@@ -335,8 +318,8 @@ namespace Graphite {
 
 	std::string AlreadyMergedMessage(const std::string& branchFullName, const std::string& baseFullName)
 	{
-		return std::format("Every commit of {} is already in {}.", ShortBranchName(branchFullName),
-						   ShortBranchName(baseFullName));
+		return std::format("Every commit of {} is already in {}.", Core::ShortBranchName(branchFullName),
+						   Core::ShortBranchName(baseFullName));
 	}
 
 	PathLabel LabelOf(const Core::FileDiff& file)

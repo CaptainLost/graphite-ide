@@ -71,7 +71,7 @@ namespace Graphite {
 
 	std::string ReviewWindowName(const std::string& branchFullName)
 	{
-		return std::string{ICON_MDI_SOURCE_PULL} + "  Review: " + ShortBranchName(branchFullName) + "###" +
+		return std::string{ICON_MDI_SOURCE_PULL} + "  Review: " + Core::ShortBranchName(branchFullName) + "###" +
 			   ReviewWindowIdentity(branchFullName);
 	}
 
@@ -568,7 +568,7 @@ namespace Graphite {
 
 		const std::string* current = m_EndQuestion.Begin(
 			[&input](const std::string& branch) { return input.Sessions.Find(branch) != nullptr; },
-			[](const std::string& branch) { return "End the review of " + ShortBranchName(branch); });
+			[](const std::string& branch) { return "End the review of " + Core::ShortBranchName(branch); });
 
 		DialogLayout::AfterBegin();
 
@@ -579,7 +579,7 @@ namespace Graphite {
 
 		const std::string branch = *current;
 
-		DialogLayout::Text("End the review of " + ShortBranchName(branch) + "? Its viewed marks are deleted with it.");
+		DialogLayout::Text("End the review of " + Core::ShortBranchName(branch) + "? Its viewed marks are deleted with it.");
 		DialogLayout::Gap();
 		DialogLayout::MutedText("Ending a review cannot be undone.");
 		DialogLayout::Gap();

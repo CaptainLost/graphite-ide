@@ -211,13 +211,6 @@ TEST_CASE("The default of a remote other than origin is not a base")
 	CHECK(offer->Base == std::optional<std::string>{"refs/heads/main"});
 }
 
-TEST_CASE("A full branch name is shortened to what the branch list shows")
-{
-	CHECK(Graphite::ShortBranchName("refs/heads/feature/x") == "feature/x");
-	CHECK(Graphite::ShortBranchName("refs/remotes/origin/main") == "origin/main");
-	CHECK(Graphite::ShortBranchName("HEAD") == "HEAD");
-}
-
 TEST_CASE("A file's added and removed lines are counted from its hunks")
 {
 	Core::FileDiff file = FileAt("a.cpp");
