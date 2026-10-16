@@ -5,6 +5,7 @@
 #include "Git/GitFixture.h"
 
 #include <string>
+#include <utility>
 
 using Core::HeadKind;
 using Core::Repository;
@@ -145,4 +146,21 @@ TEST_CASE("Each operation git can leave half done is named")
 		fixture.Write(".git/rebase-apply/applying", emptyMarker);
 		CHECK(HeadOf(fixture).Operation == RepositoryOperation::ApplyMailbox);
 	}
+}
+
+TEST_CASE("A repository moved from refuses a call as not open rather than reaching libgit2")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("add a");
+
+	Repository repository = OpenRepositoryAt(fixture.GetPath());
+	const Repository movedTo = std::move(repository);
+
+	// NOLINTNEXTLINE(bugprone-use-after-move): the moved-from state is what is being tested.
+	const Core::Result<Core::HeadState> head = repository.QueryHead();
+
+	REQUIRE_FALSE(head.HasValue());
+	CHECK(head.GetError().Code == Core::ErrorCode::NotFound);
+	CHECK(head.GetError().Message == "the repository is not open");
 }
