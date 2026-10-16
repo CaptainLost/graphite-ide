@@ -477,19 +477,14 @@ namespace Graphite {
 
 			m_GitPort.SetRoot(event.Root);
 
-			m_DiffWindows.CloseAll();
+			LetGoOfFolderWindows();
 
-			// WARNING: Restore the diffs after CloseAll, never before: only the diffs this folder had open last time belong to it.
+			// WARNING: Restore the diffs and reviews after letting go of the last folder's, never before: only the ones this
+			// folder had open last time belong to it.
 			m_DiffWindows.RestoreState(restorable.Diffs);
 
-			m_ReviewWindows.CloseAll(m_Reviews);
-			m_ReviewBadges.Clear();
-			m_ReviewStore.Close();
 			m_ReviewStore.Open(event.Root);
 			m_ReviewWindows.RestoreState(restorable.Reviews, m_ReviewStore.GetSessions());
-			m_ReviewedBranches.reset();
-
-			m_DocumentWindows.ClearExpectedWrites();
 		});
 
 		// WARNING: Cleared on WorkspaceOpeningEvent, not WorkspaceOpenedEvent: by then the new folder has reported its own failures, and clearing would take those with it.
@@ -529,14 +524,7 @@ namespace Graphite {
 			// WARNING: Clearing the root releases the port's cached repository handles, which otherwise block the user from deleting .git on Windows.
 			m_GitPort.SetRoot(noRoot);
 
-			m_DiffWindows.CloseAll();
-
-			m_ReviewWindows.CloseAll(m_Reviews);
-			m_ReviewBadges.Clear();
-			m_ReviewStore.Close();
-			m_ReviewedBranches.reset();
-
-			m_DocumentWindows.ClearExpectedWrites();
+			LetGoOfFolderWindows();
 
 			m_Toasts.Clear(ToastGroupOf(ToastScope::Folder));
 		});
@@ -551,6 +539,18 @@ namespace Graphite {
 			[this](const WorkspaceFilesChangedEvent& event) {
 				m_DocumentWindows.HandleFilesChanged(event.Directories, event.Everything);
 			});
+	}
+
+	void GraphiteLayer::LetGoOfFolderWindows()
+	{
+		m_DiffWindows.CloseAll();
+
+		m_ReviewWindows.CloseAll(m_Reviews);
+		m_ReviewBadges.Clear();
+		m_ReviewStore.Close();
+		m_ReviewedBranches.reset();
+
+		m_DocumentWindows.ClearExpectedWrites();
 	}
 
 	void GraphiteLayer::OpenStartupFolder()

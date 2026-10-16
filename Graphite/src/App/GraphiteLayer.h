@@ -116,6 +116,9 @@ namespace Graphite {
 
 		void SubscribeToWorkspaceEvents();
 
+		// The windows and caches of the folder being left, whether another opens after it or none does.
+		void LetGoOfFolderWindows();
+
 		void OpenStartupFolder();
 
 		void RouteShortcuts(Core::Event& event);
