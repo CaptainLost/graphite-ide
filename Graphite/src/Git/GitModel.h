@@ -430,6 +430,15 @@ namespace Graphite {
 		std::optional<Core::LogRequest> m_LastLogRequest;
 		std::optional<Core::LogRequest> m_ShownLogRequest;
 
+		// A refresh came while a log was being read; it is asked once no log is in flight any more.
+		// Only ever set while m_LastLogRequest holds the request to ask again.
+		bool m_LogRefreshPending = false;
+
+		void LandOwnCommits(std::uint64_t generation, std::optional<Core::Result<Core::LogPage>> result,
+							std::string label);
+
+		void AskHeldLogRefresh();
+
 		struct RefCommitCount
 		{
 			std::optional<std::string> Ref;

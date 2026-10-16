@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "DeferredJobs.h"
 #include "GitFixtures.h"
 #include "Git/GitModel.h"
 
@@ -2750,4 +2751,123 @@ TEST_CASE("A refresh repeats the walk ceiling the view asked for and not the def
 	REQUIRE(port.LogCalls == 2);
 	REQUIRE(port.LastLogRequest.has_value());
 	CHECK(port.LastLogRequest->MaxWalk == kLiftedCeiling);
+}
+
+TEST_CASE("A refresh while a log is still being read asks for no second log")
+{
+	Core::EventBus events;
+	FakePort port;
+	DeferredJobs jobs;
+
+	Graphite::GitModel model{port, jobs.Submitter()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestLog(Core::LogRequest{});
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+
+	jobs.RunAll();
+
+	CHECK(port.LogCalls == 1);
+}
+
+TEST_CASE("A refresh held behind a log in flight is asked once that log lands")
+{
+	Core::EventBus events;
+	FakePort port;
+	DeferredJobs jobs;
+
+	Graphite::GitModel model{port, jobs.Submitter()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	constexpr std::size_t kLiftedCeiling = 100000;
+
+	Core::LogRequest request;
+	request.Ref = "refs/heads/topic";
+	request.MaxWalk = kLiftedCeiling;
+
+	model.RequestLog(request);
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+
+	jobs.RunAll();
+	REQUIRE(port.LogCalls == 1);
+
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+	jobs.RunAll();
+
+	CHECK(port.LogCalls == 2);
+	REQUIRE(port.LastLogRequest.has_value());
+	CHECK(port.LastLogRequest->Ref == request.Ref);
+	CHECK(port.LastLogRequest->MaxWalk == kLiftedCeiling);
+
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+	jobs.RunAll();
+
+	CHECK(port.LogCalls == 2);
+	CHECK(model.IsLogAnswered(model.GetLogGeneration()));
+}
+
+TEST_CASE("A reader's ask is never held back by a log in flight")
+{
+	Core::EventBus events;
+	FakePort port;
+	DeferredJobs jobs;
+
+	Graphite::GitModel model{port, jobs.Submitter()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	Core::LogRequest first;
+	first.Ref = "refs/heads/first";
+	model.RequestLog(first);
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+
+	Core::LogRequest other;
+	other.Ref = "refs/heads/other";
+	model.RequestLog(other);
+
+	// No update runs in between, so a log held back until one lands could not have been read yet.
+	jobs.RunAll();
+
+	CHECK(port.LogCalls == 2);
+	REQUIRE(port.LastLogRequest.has_value());
+	CHECK(port.LastLogRequest->Ref == other.Ref);
+
+	// The reader's ask reads the repository as it is now, so the refresh held before it is not asked too.
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+	jobs.RunAll();
+
+	CHECK(port.LogCalls == 2);
+}
+
+TEST_CASE("Closing the workspace drops a refresh held behind a log in flight")
+{
+	Core::EventBus events;
+	FakePort port;
+	DeferredJobs jobs;
+
+	Graphite::GitModel model{port, jobs.Submitter()};
+	model.SetRoot("C:/repo");
+	model.SubscribeTo(events);
+
+	model.RequestLog(Core::LogRequest{});
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+	model.OnUpdate(Core::Timestep{kPastDebounceSeconds});
+
+	events.Publish(Graphite::WorkspaceClosedEvent{});
+	events.Publish(Graphite::WorkspaceOpenedEvent{"C:/other"});
+
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{kNoSeconds});
+	jobs.RunAll();
+
+	CHECK(port.LogCalls == 1);
 }

@@ -89,6 +89,7 @@ namespace Graphite {
 
 		m_LastLogRequest.reset();
 		m_ShownLogRequest.reset();
+		m_LogRefreshPending = false;
 		m_CommitCount.Clear();
 		m_OwnLog.Clear();
 		m_LastOwnRequest.reset();
@@ -164,9 +165,20 @@ namespace Graphite {
 			RequestHead();
 			RequestStashes();
 
+			// WARNING: A refresh while a log is being read waits for it and asks once it lands. After
+			// Load all or Search all the walk has no limit, and a build writing into the workspace
+			// refreshes about once a second: asking at once would queue a whole-history walk behind
+			// itself, again and again, on the job queue every other feature shares.
 			if (m_LastLogRequest.has_value())
 			{
-				RequestLog(*m_LastLogRequest, m_LastOwnRequest);
+				if (m_Log.IsInFlight())
+				{
+					m_LogRefreshPending = true;
+				}
+				else
+				{
+					RequestLog(*m_LastLogRequest, m_LastOwnRequest);
+				}
 			}
 
 			m_WorkingTreeDiffStale = true;
@@ -279,6 +291,10 @@ namespace Graphite {
 
 	void GitModel::RequestLog(Core::LogRequest request, std::optional<OwnCommitsRequest> ownCommits)
 	{
+		// A new ask reads the repository as it is now, so a refresh held for the log in flight is
+		// answered by it.
+		m_LogRefreshPending = false;
+
 		if (!HasOpenFolder())
 		{
 			return;
@@ -310,31 +326,48 @@ namespace Graphite {
 
 			Deliver([this, generation, ownGeneration, asked = request, result = std::move(result),
 					 ownResult = std::move(ownResult), label = std::move(label)]() mutable {
-				if (m_Log.Land(generation, std::move(result)) != SlotLanding::Applied)
+				if (m_Log.Land(generation, std::move(result)) == SlotLanding::Applied)
 				{
-					return;
+					m_ShownLogRequest = std::move(asked);
+					LandOwnCommits(ownGeneration, std::move(ownResult), std::move(label));
 				}
 
-				m_ShownLogRequest = std::move(asked);
-
-				if (!ownResult.has_value())
-				{
-					m_OwnLog.Clear();
-					m_OwnLabel.clear();
-					return;
-				}
-
-				if (m_OwnLog.Land(ownGeneration, std::move(*ownResult)) == SlotLanding::Applied)
-				{
-					m_OwnLabel = std::move(label);
-				}
-				else
-				{
-					m_OwnLog.Clear();
-					m_OwnLabel.clear();
-				}
+				// Whatever the landing, applied, failed or stale: each of them can be the last log in flight.
+				AskHeldLogRefresh();
 			});
 		});
+	}
+
+	void GitModel::LandOwnCommits(std::uint64_t generation, std::optional<Core::Result<Core::LogPage>> result,
+								  std::string label)
+	{
+		if (!result.has_value())
+		{
+			m_OwnLog.Clear();
+			m_OwnLabel.clear();
+			return;
+		}
+
+		if (m_OwnLog.Land(generation, std::move(*result)) == SlotLanding::Applied)
+		{
+			m_OwnLabel = std::move(label);
+		}
+		else
+		{
+			m_OwnLog.Clear();
+			m_OwnLabel.clear();
+		}
+	}
+
+	void GitModel::AskHeldLogRefresh()
+	{
+		if (!m_LogRefreshPending || m_Log.IsInFlight())
+		{
+			return;
+		}
+
+		m_LogRefreshPending = false;
+		RequestLog(*m_LastLogRequest, m_LastOwnRequest);
 	}
 
 	void GitModel::RequestCommitCount(const std::optional<std::string>& ref)
