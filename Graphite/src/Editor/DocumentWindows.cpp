@@ -318,7 +318,7 @@ namespace Graphite {
 
 		if (existing && !m_Documents.At(*existing).Document)
 		{
-			static_cast<void>(Core::LoadFromFile(m_Documents.At(*existing), Core::LargeFileConfirmation::Confirmed));
+			static_cast<void>(Core::LoadFromFile(m_Documents.At(*existing), m_Documents.GetStore(), Core::LargeFileConfirmation::Confirmed));
 			return;
 		}
 
@@ -523,7 +523,7 @@ namespace Graphite {
 		{
 			Core::OpenItem& item = m_Documents.At(index);
 
-			if (Core::LoadFromFile(item, Core::LargeFileConfirmation::Unconfirmed) == Core::ItemLoad::NeedsConfirmation)
+			if (Core::LoadFromFile(item, m_Documents.GetStore(), Core::LargeFileConfirmation::Unconfirmed) == Core::ItemLoad::NeedsConfirmation)
 			{
 				AskAboutSize(item.Path, !item.Preview);
 			}
@@ -755,11 +755,9 @@ namespace Graphite {
 
 	bool DocumentWindows::HasModifiedDocuments() const
 	{
-		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
+		for (const std::shared_ptr<Core::TextDocument>& document : m_Documents.GetStore().GetDocuments())
 		{
-			const Core::OpenItem& item = m_Documents.At(index);
-
-			if (item.Document && item.Document->IsModified())
+			if (document->IsModified())
 			{
 				return true;
 			}
@@ -868,7 +866,7 @@ namespace Graphite {
 	{
 		const Core::OpenItem* item = FindActiveTextItem();
 
-		return item != nullptr && item->Document.has_value();
+		return item != nullptr && item->Document != nullptr;
 	}
 
 	void DocumentWindows::RequestCloseOfActiveTab()
@@ -1100,7 +1098,7 @@ namespace Graphite {
 
 		const Core::OpenItem& item = m_Documents.At(*index);
 
-		if (item.Document && item.Document->IsModified())
+		if (item.Document && item.Document->IsModified() && Core::IsLastHolder(item.Document))
 		{
 			return true;
 		}
@@ -1313,7 +1311,7 @@ namespace Graphite {
 		}
 
 		m_ChangeMarkers.Retain(
-			[this](const std::filesystem::path& path) { return m_Documents.Find(path).has_value(); });
+			[this](const std::filesystem::path& path) { return m_Documents.GetStore().Find(path) != nullptr; });
 	}
 
 	bool DocumentWindows::IsAnalysing(const std::filesystem::path& path) const
@@ -2233,7 +2231,9 @@ namespace Graphite {
 
 			if (!open)
 			{
-				if (modified)
+				const bool asksBeforeClosing = modified && Core::IsLastHolder(item.Document);
+
+				if (asksBeforeClosing)
 				{
 					if (!m_CloseConfirm.Asked(item.Path))
 					{

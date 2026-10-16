@@ -99,30 +99,26 @@ namespace Core {
 	{
 		SaveAllReport report;
 
-		for (std::size_t itemIndex = 0; itemIndex < documents.GetCount(); ++itemIndex)
+		for (const std::shared_ptr<TextDocument>& document : documents.GetStore().GetDocuments())
 		{
-			const OpenItem& item = documents.At(itemIndex);
-			const bool hasUnsavedEdits = item.Document && item.Document->IsModified();
-
-			if (!hasUnsavedEdits)
+			if (!document->IsModified())
 			{
 				continue;
 			}
 
-			const bool changedOnDiskSinceLoad = item.Document->CheckChangedOnDisk();
-
-			if (changedOnDiskSinceLoad)
+			if (document->CheckChangedOnDisk())
 			{
-				report.Conflicted.push_back(item.Path);
+				report.Conflicted.push_back(document->GetPath());
 				continue;
 			}
 
-			if (const Result<void> saved = SaveDocument(documents, itemIndex); !saved)
+			if (const Result<void> saved = document->Save(); !saved)
 			{
-				report.StoppedAt = SaveAllReport::Failure{.Path = item.Path, .Error = saved.GetError()};
+				report.StoppedAt = SaveAllReport::Failure{.Path = document->GetPath(), .Error = saved.GetError()};
 				return report;
 			}
 
+			documents.MarkPresent(document->GetPath());
 			++report.Saved;
 		}
 

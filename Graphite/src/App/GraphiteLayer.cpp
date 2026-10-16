@@ -1554,7 +1554,7 @@ namespace Graphite {
 
 	bool GraphiteLayer::IsDocumentOpen(const std::filesystem::path& path) const
 	{
-		return m_Documents.Find(path).has_value();
+		return m_Documents.GetStore().Find(path) != nullptr;
 	}
 
 	bool GraphiteLayer::IsDocumentShown(const std::filesystem::path& path) const
@@ -1565,13 +1565,11 @@ namespace Graphite {
 	void GraphiteLayer::ListModifiedDocuments() const
 
 	{
-		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
+		for (const std::shared_ptr<Core::TextDocument>& document : m_Documents.GetStore().GetDocuments())
 		{
-			const Core::OpenItem& item = m_Documents.At(index);
-
-			if (item.Document && item.Document->IsModified())
+			if (document->IsModified())
 			{
-				ImGui::BulletText("%s", Core::ToUtf8(item.Path.filename()).c_str());
+				ImGui::BulletText("%s", Core::ToUtf8(document->GetPath().filename()).c_str());
 			}
 		}
 	}

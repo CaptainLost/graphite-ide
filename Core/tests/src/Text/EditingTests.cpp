@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <memory>
 #include <random>
 #include <string>
 
@@ -30,7 +31,7 @@ namespace {
 		Core::Result<Core::TextDocument> document = Core::TextDocument::FromContent(std::move(content), "test.txt");
 		REQUIRE(document);
 
-		item.Document = std::move(document).GetValue();
+		item.Document = std::make_shared<Core::TextDocument>(std::move(document).GetValue());
 		Core::RecomputeLineCaches(item);
 
 		return item;
@@ -232,7 +233,7 @@ TEST_CASE("A reload made without asking that turns the document read-only can st
 	REQUIRE(loaded);
 
 	Core::OpenItem item;
-	item.Document = std::move(loaded).GetValue();
+	item.Document = std::make_shared<Core::TextDocument>(std::move(loaded).GetValue());
 	Core::RecomputeLineCaches(item);
 	REQUIRE_FALSE(item.Document->IsReadOnly());
 

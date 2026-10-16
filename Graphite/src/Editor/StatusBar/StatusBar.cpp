@@ -238,7 +238,7 @@ namespace Graphite {
 			return StatusBarClick::None;
 		}
 
-		const bool hasDocument = shown && documents.At(*shown).Document.has_value();
+		const bool hasDocument = shown && documents.At(*shown).Document != nullptr;
 
 		StatusBarClick clicked = StatusBarClick::None;
 

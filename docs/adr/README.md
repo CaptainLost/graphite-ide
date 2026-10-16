@@ -624,4 +624,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0592](0592-build-the-branch-list-as-rows-from-a-pure-function-and-draw-only-the-rows-on-screen.md) | Build the branch list as rows from a pure function and draw only the rows on screen | proposed | 2026-10-15 |
 | [0593](0593-load-more-history-only-on-request-from-a-status-line-under-the-list.md) | Load more history only on request, from a status line under the list | proposed | 2026-10-15 |
 | [0590](0590-keep-a-bounded-change-log-in-the-text-buffer-for-readers-to-catch-up-from.md) | Keep a bounded change log in the text buffer for readers to catch up from | proposed | 2026-10-16 |
+| [0591](0591-keep-open-documents-in-a-store-shared-by-the-views-that-show-them.md) | Keep open documents in a store shared by the views that show them | proposed | 2026-10-16 |
 <!-- /adr-index -->

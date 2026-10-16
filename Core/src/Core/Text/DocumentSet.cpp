@@ -39,21 +39,9 @@ namespace Core {
 
 	const TextBuffer* BufferOfOpenDocument(const DocumentSet& documents, const std::filesystem::path& path)
 	{
-		const std::optional<std::size_t> index = documents.Find(path);
+		const std::shared_ptr<TextDocument> document = documents.GetStore().Find(path);
 
-		if (!index)
-		{
-			return nullptr;
-		}
-
-		const OpenItem& item = documents.At(*index);
-
-		if (!item.Document)
-		{
-			return nullptr;
-		}
-
-		return &item.Document->GetBuffer();
+		return document ? &document->GetBuffer() : nullptr;
 	}
 
 	std::optional<std::size_t> DocumentSet::Find(const std::filesystem::path& path) const
@@ -97,7 +85,7 @@ namespace Core {
 		return Add(path, tabKind, LargeFileConfirmation::Confirmed);
 	}
 
-	ItemLoad LoadFromFile(OpenItem& item, LargeFileConfirmation largeFileConfirmation)
+	ItemLoad LoadFromFile(OpenItem& item, DocumentStore& store, LargeFileConfirmation largeFileConfirmation)
 	{
 		const Result<FileProbe> probeResult = ProbeFile(item.Path);
 
@@ -138,7 +126,7 @@ namespace Core {
 		case FileKind::Text:
 		case FileKind::LargeText:
 		{
-			Result<TextDocument> document = TextDocument::Load(item.Path);
+			Result<std::shared_ptr<TextDocument>> document = store.Acquire(item.Path);
 
 			if (document)
 			{
@@ -154,7 +142,7 @@ namespace Core {
 		break;
 		}
 
-		return item.Document.has_value() ? ItemLoad::Loaded : ItemLoad::Failed;
+		return item.Document ? ItemLoad::Loaded : ItemLoad::Failed;
 	}
 
 	OpenOutcome DocumentSet::Add(const std::filesystem::path& path, TabKind tabKind, LargeFileConfirmation largeFileConfirmation)
@@ -184,7 +172,7 @@ namespace Core {
 
 		// Asked before anything is added or the preview closed, so a question answered with no
 		// leaves no trace, not even the loss of the existing preview.
-		const ItemLoad loadOutcome = LoadFromFile(item, largeFileConfirmation);
+		const ItemLoad loadOutcome = LoadFromFile(item, m_Store, largeFileConfirmation);
 
 		if (loadOutcome == ItemLoad::NeedsConfirmation)
 		{
@@ -308,6 +296,8 @@ namespace Core {
 
 	void DocumentSet::RewritePaths(const std::filesystem::path& movedFrom, const std::filesystem::path& movedTo)
 	{
+		m_Store.RewritePaths(movedFrom, movedTo);
+
 		for (OpenItem& item : m_Items)
 		{
 			const std::optional<std::filesystem::path> relativePath = RelativeTo(item.Path, movedFrom);
@@ -321,11 +311,6 @@ namespace Core {
 			// then miss the item.
 			const bool itemIsTheMovedPath = *relativePath == ".";
 			item.Path = itemIsTheMovedPath ? movedTo : movedTo / *relativePath;
-
-			if (item.Document)
-			{
-				item.Document->SetPath(item.Path);
-			}
 		}
 	}
 
