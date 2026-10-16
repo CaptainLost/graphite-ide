@@ -287,3 +287,21 @@ TEST_CASE("SearchService searches only the listed files under the projects-only 
 	REQUIRE(hits.size() == 1);
 	CHECK(hits[0].File.filename() == "listed.cpp");
 }
+
+TEST_CASE("SearchService places a hit in a file with a byte order mark where the opened document has it")
+{
+	const TempDirectory temp;
+
+	WriteFile(temp.GetPath() / "marked.cpp", "\xEF\xBB\xBFint beta = 2;\r\nint gamma = 3;\r\n");
+
+	Graphite::SearchService service;
+	service.Start(Request(temp.GetPath(), "beta"));
+
+	Graphite::SearchProgress progress;
+	const std::vector<Graphite::SearchHit> hits = RunToEnd(service, progress);
+
+	REQUIRE(hits.size() == 1);
+	CHECK(hits[0].Line == 0);
+	CHECK(hits[0].From == 4);
+	CHECK(hits[0].Text == "int beta = 2;");
+}

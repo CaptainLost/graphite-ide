@@ -4,6 +4,7 @@
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/Codec.h"
+#include "Core/Text/TextDocument.h"
 
 #include <fstream>
 #include <string>
@@ -103,20 +104,22 @@ namespace Core {
 			break;
 		}
 
-		const Result<std::string> bytes = ReadFileBytes(path);
+		Result<std::string> bytes = ReadFileBytes(path);
 
 		if (!bytes)
 		{
 			return DiskText{.Outcome = DiskTextOutcome::Unreadable};
 		}
 
-		Result<std::string> text = Decode(bytes.GetValue(), probe.FileEncoding);
+		// Read as opening the file reads it, without the mark and with LF line ends, so a line and a column found
+		// here are the same ones in the document the file opens as.
+		Result<std::string> text = DecodeWithoutByteOrderMark(std::move(bytes).GetValue(), probe.FileEncoding);
 
 		if (!text)
 		{
 			return DiskText{.Outcome = DiskTextOutcome::Undecodable};
 		}
 
-		return DiskText{.Outcome = DiskTextOutcome::Read, .Text = std::move(text).GetValue()};
+		return DiskText{.Outcome = DiskTextOutcome::Read, .Text = NormaliseLineEndings(text.GetValue()).Content};
 	}
 }

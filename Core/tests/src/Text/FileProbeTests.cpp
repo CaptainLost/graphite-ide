@@ -162,17 +162,17 @@ TEST_CASE("A large UTF-16 file is judged by its size like any other text")
 	CHECK(ClassifySample(bytes, LargeFileThreshold + 1).Kind == FileKind::LargeText);
 }
 
-TEST_CASE("ReadDiskText keeps a UTF-8 byte order mark as it is and decodes a UTF-16 one to a leading U+FEFF but refuses what is not text")
+TEST_CASE("ReadDiskText drops a byte order mark, UTF-8 or UTF-16, as opening the file does, but refuses what is not text")
 {
 	TempDirectory directory;
 
 	const DiskText marked = ReadDiskText(directory.MakeFile("marked.txt", "\xEF\xBB\xBFint x;"));
 	CHECK(marked.Outcome == DiskTextOutcome::Read);
-	CHECK(marked.Text == "\xEF\xBB\xBFint x;");
+	CHECK(marked.Text == "int x;");
 
 	const DiskText wide = ReadDiskText(directory.MakeFile("wide.txt", std::string{"\xFF\xFEh\0i\0", 6}));
 	CHECK(wide.Outcome == DiskTextOutcome::Read);
-	CHECK(wide.Text == "\xEF\xBB\xBFhi");
+	CHECK(wide.Text == "hi");
 
 	const DiskText empty = ReadDiskText(directory.MakeFile("empty.txt"));
 	CHECK(empty.Outcome == DiskTextOutcome::Read);
@@ -192,10 +192,10 @@ TEST_CASE("ReadDiskText keeps a UTF-8 byte order mark as it is and decodes a UTF
 		  DiskTextOutcome::Undecodable);
 }
 
-TEST_CASE("ReadDiskText leaves line endings as they are on disk")
+TEST_CASE("ReadDiskText ends its lines with LF, as opening the file does, so a column found in it is the column in the document")
 {
 	TempDirectory directory;
-	CHECK(ReadDiskText(directory.MakeFile("crlf.txt", "a\r\nb")).Text == "a\r\nb");
+	CHECK(ReadDiskText(directory.MakeFile("crlf.txt", "a\r\nb")).Text == "a\nb");
 }
 
 TEST_CASE("ReadDiskText reads a file large enough to need confirmation rather than refusing it")
