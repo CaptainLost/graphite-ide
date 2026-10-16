@@ -1,6 +1,7 @@
 #pragma once
 
 #include "UI/ModalGate.h"
+#include "Editor/Documents/DocumentStates.h"
 #include "Editor/Overlays/DiagnosticOverlay.h"
 #include "Editor/Server/DocumentServerPort.h"
 #include "Editor/EditorWidgetState.h"
@@ -176,8 +177,6 @@ namespace Graphite {
 
 		bool IsCarriedOver(const std::filesystem::path& path) const;
 
-		SyntaxCache& SyntaxFor(const Core::OpenItem& item);
-
 	public:
 		bool IsAnalysing(const std::filesystem::path& path) const;
 
@@ -185,10 +184,6 @@ namespace Graphite {
 
 	private:
 		LensState* LensFor(const Core::OpenItem& item);
-		SemanticOverlay& SemanticFor(const Core::OpenItem& item);
-
-		DiagnosticOverlay& DiagnosticFor(const Core::OpenItem& item);
-
 		void KeepAnalysis(const std::filesystem::path& path, const LensState& lens,
 						  const SemanticOverlay& semantic);
 
@@ -410,23 +405,9 @@ namespace Graphite {
 		std::vector<CandidateLine> m_DefinitionChoiceLines;
 		std::size_t m_DefinitionChoiceLinesTabWidth = 0;
 
-		struct DiagnosticGuard
-		{
-			std::size_t Revision = 0;
-			std::size_t TabWidth = 0;
-			std::uint64_t Generation = 0;
-		};
-
 		struct DocumentState
 		{
-			std::optional<SyntaxCache> Syntax;
-
 			std::optional<LensState> Lens;
-
-			SemanticOverlay Semantic;
-
-			DiagnosticOverlay Diagnostics;
-			DiagnosticGuard DiagnosticsBuiltFrom;
 
 			ScrollAnchor Anchor;
 
@@ -449,6 +430,9 @@ namespace Graphite {
 
 		// WARNING: Constructed after m_Server, which it holds.
 		LspAnswerRouter m_Router;
+
+		// WARNING: Constructed after m_Router and m_Server, which it holds.
+		DocumentStates m_DocumentStates{m_Server, m_Router, m_Diagnostics};
 
 		FindBar m_FindBar;
 

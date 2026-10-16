@@ -1243,20 +1243,6 @@ namespace Graphite {
 		return state != nullptr && state->CarriedOver;
 	}
 
-	SyntaxCache& DocumentWindows::SyntaxFor(const Core::OpenItem& item)
-	{
-		std::optional<SyntaxCache>& syntax = StateFor(item.Path).Syntax;
-
-		if (!syntax)
-		{
-			syntax.emplace();
-			syntax->SetSyntax(SyntaxOf(LanguageOfPath(item.Path)));
-			syntax->SetTabWidth(item.TabWidth);
-		}
-
-		return *syntax;
-	}
-
 	DocumentWindows::LensState* DocumentWindows::LensFor(const Core::OpenItem& item)
 	{
 		const LanguageId language = LanguageOfPath(item.Path);
@@ -1272,10 +1258,7 @@ namespace Graphite {
 		{
 			state.Lens.emplace();
 
-			m_Server.EnsureStarted(item.Path, language);
-			m_Server.OpenDocument(item.Path, language, item.Document->GetBuffer().Materialize());
-
-			m_Router.Track(item.Path);
+			m_DocumentStates.OpenWithServer(item.Path, *item.Document);
 
 			RestoreAnalysis(item, state);
 		}
@@ -1301,14 +1284,13 @@ namespace Graphite {
 
 			if (const std::optional<LensState>& lens = closedState.Lens)
 			{
-				m_Server.CloseDocument(path, LanguageOfPath(path));
-
-				KeepAnalysis(path, *lens, closedState.Semantic);
-				m_Router.Forget(path);
+				KeepAnalysis(path, *lens, m_DocumentStates.SemanticFor(path));
 			}
 
 			m_States.erase(path);
 		}
+
+		m_DocumentStates.Prune(m_Documents.GetStore());
 
 		m_ChangeMarkers.Retain(
 			[this](const std::filesystem::path& path) { return m_Documents.GetStore().Find(path) != nullptr; });
@@ -1370,7 +1352,7 @@ namespace Graphite {
 		// restored declarations onto one row; the rebuild a frame later anchors them properly.
 		lens.NeedsRebuild = true;
 
-		state.Semantic = std::move(restored->Semantic);
+		m_DocumentStates.SemanticFor(item.Path) = std::move(restored->Semantic);
 	}
 
 	std::optional<std::filesystem::file_time_type> DocumentWindows::ModifiedTimeOf(
@@ -1389,47 +1371,6 @@ namespace Graphite {
 		return modified;
 	}
 
-	SemanticOverlay& DocumentWindows::SemanticFor(const Core::OpenItem& item)
-	{
-		return StateFor(item.Path).Semantic;
-	}
-
-	DiagnosticOverlay& DocumentWindows::DiagnosticFor(const Core::OpenItem& item)
-	{
-		DocumentState& state = StateFor(item.Path);
-		DiagnosticOverlay& overlay = state.Diagnostics;
-
-		if (!item.Document)
-		{
-			return overlay;
-		}
-
-		const std::map<std::filesystem::path, DiagnosticsModel::Entry>& diagnosticEntries =
-			m_Diagnostics.GetDocuments();
-
-		const std::uint64_t noGeneration = 0;
-		const std::uint64_t generation = diagnosticEntries.contains(item.Path)
-											 ? diagnosticEntries.at(item.Path).Generation
-											 : noGeneration;
-		const std::size_t revision = item.Document->GetBuffer().GetRevision();
-
-		DiagnosticGuard& guard = state.DiagnosticsBuiltFrom;
-
-		if (guard.Revision == revision && guard.TabWidth == item.TabWidth &&
-			guard.Generation == generation)
-		{
-			return overlay;
-		}
-
-		guard.Revision = revision;
-		guard.TabWidth = item.TabWidth;
-		guard.Generation = generation;
-
-		overlay.Set(m_Diagnostics.For(item.Path), item.Document->GetBuffer(), item.TabWidth);
-
-		return overlay;
-	}
-
 	void DocumentWindows::DropInFlightCounts(const std::filesystem::path& path, LensState& state)
 	{
 		state.Asked.clear();
@@ -1444,9 +1385,13 @@ namespace Graphite {
 			return;
 		}
 
-		const LanguageId language = LanguageOfPath(item.Path);
-
-		m_Server.ChangeDocument(item.Path, language, item.Document->GetBuffer().Materialize());
+		// A document this class opened is sent by SendChanges at the end of the frame. Any other
+		// copy the server holds, opened by a preview or the background analysis, is updated here
+		// as before.
+		if (!m_DocumentStates.IsOpenWithServer(item.Path))
+		{
+			m_Server.ChangeDocument(item.Path, LanguageOfPath(item.Path), item.Document->GetBuffer().Materialize());
+		}
 
 		LensState* const lens = FindLens(item.Path);
 
@@ -1515,13 +1460,8 @@ namespace Graphite {
 			state.Asked.clear();
 		}
 
-		if (frame.Edited)
+		if (m_DocumentStates.SendChangeIfMoved(item.Path, *item.Document))
 		{
-			m_Server.ChangeDocument(item.Path, LanguageOfPath(item.Path),
-									item.Document->GetBuffer().Materialize());
-
-			m_Router.WantSymbolsNow(item.Path);
-
 			DropInFlightCounts(item.Path, state);
 		}
 
@@ -1574,20 +1514,17 @@ namespace Graphite {
 	void DocumentWindows::ApplySemanticAnswer(const std::filesystem::path& path,
 											  const LanguageServices::Answer& answer)
 	{
-		const std::optional<std::size_t> index = m_Documents.Find(path);
+		const std::shared_ptr<Core::TextDocument> document = m_Documents.GetStore().Find(path);
 
-		if (!index)
+		if (!document)
 		{
 			return;
 		}
 
-		const Core::OpenItem& item = m_Documents.At(*index);
+		const std::optional<std::size_t> index = m_Documents.Find(path);
+		const std::size_t tabWidth = index ? m_Documents.At(*index).TabWidth : Core::DefaultTabWidth;
 
-		if (item.Document)
-		{
-			StateFor(path).Semantic.Set(answer.SemanticTokens, item.Document->GetBuffer(),
-										item.TabWidth);
-		}
+		m_DocumentStates.SemanticFor(path).Set(answer.SemanticTokens, document->GetBuffer(), tabWidth);
 	}
 
 	void DocumentWindows::RequestDefinition(std::size_t index)
@@ -2109,15 +2046,21 @@ namespace Graphite {
 				view.Indent = indentStyle;
 				view.WordWrap = wordWrap;
 				view.ChangeDisplay = changeDisplay;
-				view.Syntax = &SyntaxFor(item);
+				view.Syntax = &m_DocumentStates.SyntaxFor(item.Path, item.TabWidth);
 				view.Scheme = &scheme;
 				view.Lens = lens != nullptr ? &lens->Model : nullptr;
 
-				view.Semantic = &SemanticFor(item);
+				view.Semantic = &m_DocumentStates.SemanticFor(item.Path);
 
-				if (DiagnosticOverlay& diagnostics = DiagnosticFor(item); !diagnostics.IsEmpty())
+				if (item.Document)
 				{
-					view.Diagnostics = &diagnostics;
+					DiagnosticOverlay& diagnostics = m_DocumentStates.DiagnosticFor(
+						item.Path, item.Document->GetBuffer(), item.TabWidth);
+
+					if (!diagnostics.IsEmpty())
+					{
+						view.Diagnostics = &diagnostics;
+					}
 				}
 
 				view.DiagnosticsStale = m_Diagnostics.IsStale(item.Path);
@@ -2146,7 +2089,7 @@ namespace Graphite {
 
 					if (shownIndex)
 					{
-						view.HoverPreviewOverlay = &SemanticFor(m_Documents.At(*shownIndex));
+						view.HoverPreviewOverlay = &m_DocumentStates.SemanticFor(state.Hover.Preview->Path);
 					}
 				}
 
@@ -2248,6 +2191,16 @@ namespace Graphite {
 			}
 
 			++index;
+		}
+
+		// Edits a drawn tab made were sent as it drew. This sends the rest: a reload, or an edit
+		// made through another view.
+		for (const std::filesystem::path& path : m_DocumentStates.SendChanges(m_Documents.GetStore()))
+		{
+			if (LensState* const lens = FindLens(path))
+			{
+				DropInFlightCounts(path, *lens);
+			}
 		}
 	}
 
