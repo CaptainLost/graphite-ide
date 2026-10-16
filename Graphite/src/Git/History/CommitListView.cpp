@@ -40,6 +40,7 @@ namespace Graphite {
 		constexpr float kLaneWidthPerLineHeight = 0.8f;
 		constexpr float kDotRadiusPerLaneWidth = 0.22f;
 		constexpr float kMinMessageDigitCount = 12.0f;
+		constexpr float kHalf = 0.5f;
 		constexpr float kNoOffset = 0.0f;
 		constexpr float kNoSpacing = 0.0f;
 		constexpr ImU32 kThemeTextColor = 0;
@@ -654,6 +655,14 @@ namespace Graphite {
 	void CommitListView::RenderSeparatorRow(const std::string& text)
 	{
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
+
+		const float spareRoom = ImGui::GetContentRegionAvail().x - Core::TextWidth(text);
+
+		if (spareRoom > 0.0f)
+		{
+			ImGui::SetCursorPosX(ImGui::GetCursorPosX() + spareRoom * kHalf);
+		}
+
 		DrawFittedCell(text, ImGui::GetColorU32(ImGuiCol_TextDisabled), kNoHighlight);
 	}
 
