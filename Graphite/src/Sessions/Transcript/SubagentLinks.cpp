@@ -7,9 +7,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include <fstream>
-#include <iterator>
-
 namespace Graphite {
 
 	namespace {
@@ -50,14 +47,13 @@ namespace Graphite {
 		std::filesystem::path metaFile = transcript;
 		metaFile.replace_extension(".meta.json");
 
-		std::ifstream stream{metaFile, std::ios::binary};
-		if (!stream)
+		const Core::Result<std::string> text = Core::ReadFileBytes(metaFile);
+		if (!text)
 		{
 			return std::nullopt;
 		}
 
-		const std::string text{std::istreambuf_iterator<char>{stream}, std::istreambuf_iterator<char>{}};
-		return ParseSubagentMeta(text, stem.substr(kAgentPrefix.size()));
+		return ParseSubagentMeta(text.GetValue(), stem.substr(kAgentPrefix.size()));
 	}
 
 	std::filesystem::path SubagentTranscriptPath(const std::filesystem::path& sessionFile, std::string_view agentId)

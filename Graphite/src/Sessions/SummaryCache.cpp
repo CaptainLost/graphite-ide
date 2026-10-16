@@ -7,8 +7,6 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -61,17 +59,14 @@ namespace Graphite {
 
 	std::vector<SessionSummary> LoadSummaryCache(const std::filesystem::path& file)
 	{
-		std::ifstream stream{file, std::ios::binary};
+		const Core::Result<std::string> bytes = Core::ReadFileBytes(file);
 
-		if (!stream)
+		if (!bytes)
 		{
 			return {};
 		}
 
-		std::stringstream buffer;
-		buffer << stream.rdbuf();
-
-		const nlohmann::json root = nlohmann::json::parse(buffer.str(), kNoCallback, kAllowExceptions);
+		const nlohmann::json root = nlohmann::json::parse(bytes.GetValue(), kNoCallback, kAllowExceptions);
 
 		// WARNING: Reading the version with value("version", 0) would throw when the field has another type.
 		if (root.is_discarded() || !root.is_object())

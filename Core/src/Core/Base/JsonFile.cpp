@@ -5,14 +5,11 @@
 #include "Core/Base/Base.h"
 
 #include "Core/FileSystem/AtomicWrite.h"
+#include "Core/FileSystem/FileSystem.h"
 
 #include <nlohmann/json.hpp>
 
-#include <fstream>
-
 #include <span>
-
-#include <sstream>
 
 #include <string_view>
 
@@ -167,18 +164,15 @@ namespace Core {
 	{
 		JsonFile file;
 
-		std::ifstream stream{path};
-		if (!stream.is_open())
+		const Result<std::string> bytes = ReadFileBytes(path);
+		if (!bytes)
 		{
 			return file;
 		}
 
-		std::ostringstream buffer;
-		buffer << stream.rdbuf();
-
 		// nlohmann/json throws on a parse error by default; with exceptions off it returns a
 		// discarded value instead, so a hand-edited settings file loads as empty like a missing one.
-		const std::string text = buffer.str();
+		const std::string& text = bytes.GetValue();
 		const nlohmann::json::parser_callback_t noParseCallback = nullptr;
 		const bool allowExceptions = false;
 		nlohmann::json parsed = nlohmann::json::parse(text, noParseCallback, allowExceptions);

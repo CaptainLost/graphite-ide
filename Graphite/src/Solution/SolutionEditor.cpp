@@ -6,9 +6,8 @@
 #include "Solution/SlnxEditor.h"
 
 #include <format>
-#include <fstream>
-#include <sstream>
 #include <system_error>
+#include <utility>
 
 namespace Graphite {
 
@@ -67,18 +66,14 @@ namespace Graphite {
 										   Core::ToUtf8(solution))};
 		}
 
-		std::ifstream stream{solution, std::ios::binary};
+		Core::Result<std::string> text = Core::ReadFileBytes(solution);
 
-		if (!stream.is_open())
+		if (!text)
 		{
-			return Core::Error{Core::ErrorCode::IoFailure,
-							   std::format("cannot open '{}'", Core::ToUtf8(solution))};
+			return text.GetError();
 		}
 
-		std::ostringstream buffer;
-		buffer << stream.rdbuf();
-
-		Core::Scope<SolutionEditor> editor = Core::CreateScope<SlnxEditor>(solution, buffer.str());
+		Core::Scope<SolutionEditor> editor = Core::CreateScope<SlnxEditor>(solution, std::move(text).GetValue());
 
 		return editor;
 	}

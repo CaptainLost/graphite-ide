@@ -12,8 +12,6 @@
 
 #include <algorithm>
 #include <format>
-#include <fstream>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -157,18 +155,14 @@ namespace Graphite {
 
 		Core::Result<Solution> ReadSlnText(const std::filesystem::path& path)
 		{
-			std::ifstream stream{path, std::ios::binary};
+			const Core::Result<std::string> text = Core::ReadFileBytes(path);
 
-			if (!stream.is_open())
+			if (!text)
 			{
-				return Core::Error{Core::ErrorCode::IoFailure,
-								   std::format("cannot open '{}'", Core::ToUtf8(path))};
+				return text.GetError();
 			}
 
-			std::ostringstream buffer;
-			buffer << stream.rdbuf();
-
-			return ParseSln(path, buffer.str());
+			return ParseSln(path, text.GetValue());
 		}
 	}
 
