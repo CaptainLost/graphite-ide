@@ -951,38 +951,14 @@ namespace Graphite {
 			std::max(boxWidth - amendWidth - stashWidth - ImGui::GetStyle().ItemSpacing.x * 2.0f,
 					 kMinimumCommitWidth);
 
-		ImGui::BeginDisabled(!canCommit);
 		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + rowPadding);
 
-		constexpr int kCommitButtonColourCount = 4;
+		const ImVec4 accent = Core::ToImVec4(ChromePaletteFor(m_Scheme.Get()).Accent);
 
-		if (canCommit)
-		{
-			constexpr float kHoveredBrightness = 1.15f;
-			constexpr float kActiveBrightness = 0.85f;
-			constexpr ImVec4 kWhite(1.0f, 1.0f, 1.0f, 1.0f);
-
-			const ImVec4 accent = Core::ToImVec4(ChromePaletteFor(m_Scheme.Get()).Accent);
-
-			ImGui::PushStyleColor(ImGuiCol_Button, accent);
-			ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-								  Core::WithBrightnessScaled(accent, kHoveredBrightness));
-			ImGui::PushStyleColor(ImGuiCol_ButtonActive,
-								  Core::WithBrightnessScaled(accent, kActiveBrightness));
-			ImGui::PushStyleColor(ImGuiCol_Text, kWhite);
-		}
-
-		if (ImGui::Button(ICON_MDI_CHECK "  Commit", ImVec2(commitWidth, 0.0f)))
+		if (DialogLayout::FilledButton(ICON_MDI_CHECK "  Commit", accent, commitWidth, canCommit))
 		{
 			m_Model.RequestCommit({.Message = m_Message, .Amend = m_Amend});
 		}
-
-		if (canCommit)
-		{
-			ImGui::PopStyleColor(kCommitButtonColourCount);
-		}
-
-		ImGui::EndDisabled();
 
 		if (whyNot.has_value() &&
 			ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled))

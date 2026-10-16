@@ -160,7 +160,6 @@ namespace Graphite {
 			Alternative
 		};
 
-	private:
 		static bool FilledButton(const char* label, const ImVec4& fill, float width, bool enabled)
 		{
 			constexpr int kFilledButtonColourCount = 4;
@@ -189,7 +188,6 @@ namespace Graphite {
 			return pressed;
 		}
 
-	public:
 		static Choice ButtonRow(ButtonSpec safe, ButtonSpec destructive, const ImVec4& danger,
 								ButtonSpec alternative = {}, const char* cancelLabel = "Cancel")
 		{
