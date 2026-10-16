@@ -197,6 +197,10 @@ namespace Graphite {
 		const bool isFollowingRename = m_PendingRename.has_value() && m_PendingRename->From == *m_SelectedRef &&
 									   ContainsBranch(*branches, m_PendingRename->To);
 
+		// A rename keeps the history it names, so the reach the reader asked for stays with it; a
+		// branch that is gone falls back to HEAD and starts over.
+		const HistoryReach reach = isFollowingRename ? m_Reach : HistoryReach{};
+
 		if (isFollowingRename)
 		{
 			m_SelectedRef = m_PendingRename->To;
@@ -207,7 +211,7 @@ namespace Graphite {
 		}
 
 		m_PendingRename.reset();
-		RequestLog(HistoryReach{});
+		RequestLog(reach);
 	}
 
 	void GitView::WithdrawQuestions()
