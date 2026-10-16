@@ -203,23 +203,12 @@ namespace Graphite {
 				EnumerationInput enumeration;
 				enumeration.Root = input.Root;
 
-				// WARNING: Opened on this thread, not shared with the Workspace's, because
-				// libgit2 handles are not safe to use from two threads.
-				std::optional<Core::Repository> repository;
+				std::optional<GitIgnoreRules> gitIgnore;
 
 				if (input.Options.RespectGitIgnore)
 				{
-					Core::Result<Core::Repository> opened = Core::Repository::Open(input.Root);
-
-					if (opened)
-					{
-						repository.emplace(std::move(opened.GetValue()));
-
-						enumeration.Ignored = [&repository](const std::filesystem::path& path,
-															bool) {
-							return repository->IsIgnored(path);
-						};
-					}
+					gitIgnore.emplace(input.Root);
+					enumeration.Ignored = [&gitIgnore](const std::filesystem::path& path, bool) { return gitIgnore->IsIgnored(path); };
 				}
 
 				EnumerateFiles(enumeration, token,

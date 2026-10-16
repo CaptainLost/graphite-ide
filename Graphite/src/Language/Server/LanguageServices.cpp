@@ -1119,17 +1119,12 @@ namespace Graphite {
 
 		SolutionScope scope{root, selectedSolution};
 
-		// WARNING: libgit2 handles are not safe to use from two threads, so the walk opens its own repository.
-		std::optional<Core::Repository> repository;
+		std::optional<GitIgnoreRules> gitIgnore;
 
 		if (respectGitIgnore)
 		{
-			if (Core::Result<Core::Repository> opened = Core::Repository::Open(root))
-			{
-				repository.emplace(std::move(opened.GetValue()));
-
-				enumeration.Ignored = [&repository](const std::filesystem::path& path, bool) { return repository->IsIgnored(path); };
-			}
+			gitIgnore.emplace(root);
+			enumeration.Ignored = [&gitIgnore](const std::filesystem::path& path, bool) { return gitIgnore->IsIgnored(path); };
 		}
 
 		EnumerateFiles(enumeration, token, [&](const std::filesystem::path& file) {

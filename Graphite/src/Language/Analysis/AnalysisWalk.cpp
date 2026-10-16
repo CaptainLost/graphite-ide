@@ -76,28 +76,22 @@ namespace Graphite {
 
 			const IgnorePredicate isNestedProject = SkipNestedProjects(root);
 
-			// WARNING: Opened on this thread, never shared with the workspace's repository:
-			// libgit2 handles are not safe to use from two threads.
-			std::optional<Core::Repository> repository;
+			std::optional<GitIgnoreRules> gitIgnore;
 
 			if (respectGitIgnore)
 			{
-				if (Core::Result<Core::Repository> opened = Core::Repository::Open(root))
-				{
-					repository.emplace(std::move(opened.GetValue()));
-				}
+				gitIgnore.emplace(root);
 			}
 
 			// WARNING: Both rules are needed. Git treats a submodule as a single entry and says
 			// nothing about what is inside it, so gitignore alone would walk into the submodule.
-			enumeration.Ignored = [&repository, &isNestedProject](const std::filesystem::path& path,
-																  bool isDirectory) {
+			enumeration.Ignored = [&gitIgnore, &isNestedProject](const std::filesystem::path& path, bool isDirectory) {
 				if (isNestedProject(path, isDirectory))
 				{
 					return true;
 				}
 
-				return repository && repository->IsIgnored(path);
+				return gitIgnore && gitIgnore->IsIgnored(path);
 			};
 
 			SolutionScope solutionScope{root, selectedSolution};
