@@ -50,6 +50,23 @@ namespace {
 	}
 }
 
+TEST_CASE("A branch is found by its full name, local or remote, and a name nobody has finds nothing")
+{
+	const std::vector<Core::Branch> branches = {
+		LocalBranch("main", kCheckedOut, kMainTipByte),
+		RemoteBranch("origin/main", kOriginMainTipByte),
+	};
+
+	const Core::Branch* local = Graphite::BranchWithFullName(branches, "refs/heads/main");
+	const Core::Branch* remote = Graphite::BranchWithFullName(branches, "refs/remotes/origin/main");
+
+	REQUIRE(local != nullptr);
+	REQUIRE(remote != nullptr);
+	CHECK(local->Kind == Core::RefKind::Local);
+	CHECK(remote->Kind == Core::RefKind::Remote);
+	CHECK(Graphite::BranchWithFullName(branches, "main") == nullptr);
+}
+
 TEST_CASE("The trunk branch is the default branch even while another is checked out")
 {
 	const std::vector<Core::Branch> branches = {

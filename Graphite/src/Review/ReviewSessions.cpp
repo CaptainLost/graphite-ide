@@ -1,5 +1,6 @@
 #include "Review/ReviewSessions.h"
 
+#include "Git/DefaultBranch.h"
 #include "Git/History/CommitLabels.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -46,19 +47,6 @@ namespace Graphite {
 
 			auto& [name, session] = *found;
 			return &session;
-		}
-
-		bool ListsBranch(const std::vector<Core::Branch>& branches, const std::string& fullName)
-		{
-			for (const Core::Branch& branch : branches)
-			{
-				if (branch.FullName == fullName)
-				{
-					return true;
-				}
-			}
-
-			return false;
 		}
 
 		std::string NameOfGroup(ReviewGroup group)
@@ -337,7 +325,7 @@ namespace Graphite {
 
 		for (const auto& [branch, session] : m_Sessions)
 		{
-			if (ListsBranch(branches, branch))
+			if (BranchWithFullName(branches, branch) != nullptr)
 			{
 				continue;
 			}

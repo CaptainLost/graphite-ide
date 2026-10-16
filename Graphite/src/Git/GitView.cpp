@@ -12,6 +12,7 @@
 #include "Theme/Palettes.h"
 #include "Theme/GitPalette.h"
 #include "UI/ClipboardCopy.h"
+#include "Git/DefaultBranch.h"
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
@@ -45,19 +46,6 @@ namespace Graphite {
 		std::filesystem::path RelativeOrClimbing(const std::filesystem::path& path, const std::filesystem::path& root)
 		{
 			return Core::RelativeTo(path, root).value_or(path.lexically_relative(root));
-		}
-
-		bool ContainsBranch(const std::vector<Core::Branch>& branches, const std::string& fullName)
-		{
-			for (const Core::Branch& branch : branches)
-			{
-				if (branch.FullName == fullName)
-				{
-					return true;
-				}
-			}
-
-			return false;
 		}
 
 		void ShowFailure(Core::EventBus& events, std::string title, const std::string& message,
@@ -183,13 +171,13 @@ namespace Graphite {
 			return;
 		}
 
-		if (ContainsBranch(*branches, *m_SelectedRef))
+		if (BranchWithFullName(*branches, *m_SelectedRef) != nullptr)
 		{
 			return;
 		}
 
 		const bool isFollowingRename = m_PendingRename.has_value() && m_PendingRename->From == *m_SelectedRef &&
-									   ContainsBranch(*branches, m_PendingRename->To);
+									   BranchWithFullName(*branches, m_PendingRename->To) != nullptr;
 
 		if (isFollowingRename)
 		{

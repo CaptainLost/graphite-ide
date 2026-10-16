@@ -2,6 +2,7 @@
 
 #include "Core/Base/Strings.h"
 
+#include "Git/DefaultBranch.h"
 #include "UI/TypographicMarks.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -37,23 +38,7 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		const Core::Branch* FindCheckedOutLocalBranch(const std::vector<Core::Branch>* branches)
-		{
-			if (branches == nullptr)
-			{
-				return nullptr;
-			}
 
-			for (const Core::Branch& branch : *branches)
-			{
-				if (branch.IsHead && branch.Kind == Core::RefKind::Local)
-				{
-					return &branch;
-				}
-			}
-
-			return nullptr;
-		}
 
 		std::string DistanceMarks(const Core::Branch& branch)
 		{
@@ -152,7 +137,7 @@ namespace Graphite {
 		{
 			segment.Branch += head.BranchName;
 
-			const Core::Branch* branch = FindCheckedOutLocalBranch(inputs.Branches);
+			const Core::Branch* branch = inputs.Branches != nullptr ? CheckedOutBranch(*inputs.Branches) : nullptr;
 
 			if (branch != nullptr && branch->Upstream.has_value())
 			{

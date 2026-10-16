@@ -1,5 +1,6 @@
 #include "Review/ReviewWindows.h"
 
+#include "Git/DefaultBranch.h"
 #include "Theme/Palettes.h"
 #include "UI/Dialogs/DialogLayout.h"
 
@@ -16,19 +17,6 @@ namespace Graphite {
 	namespace {
 
 		constexpr std::string_view kIdentityPrefix = "review:";
-
-		bool ListsBranchNamed(const std::vector<Core::Branch>& branches, const std::string& fullName)
-		{
-			for (const Core::Branch& branch : branches)
-			{
-				if (branch.FullName == fullName)
-				{
-					return true;
-				}
-			}
-
-			return false;
-		}
 
 		ReviewGroup GroupOfStoredSelection(bool selectedIsUncommitted)
 		{
@@ -203,13 +191,13 @@ namespace Graphite {
 
 		for (BranchRename& rename : m_PendingRenames)
 		{
-			if (ListsBranchNamed(branches, rename.From))
+			if (BranchWithFullName(branches, rename.From) != nullptr)
 			{
 				stillPending.push_back(std::move(rename));
 				continue;
 			}
 
-			const bool renameTookEffect = ListsBranchNamed(branches, rename.To);
+			const bool renameTookEffect = BranchWithFullName(branches, rename.To) != nullptr;
 
 			if (!renameTookEffect)
 			{
@@ -263,7 +251,7 @@ namespace Graphite {
 
 			tab.AwaitingBranches = false;
 
-			if (ListsBranchNamed(branches, tab.Branch))
+			if (BranchWithFullName(branches, tab.Branch) != nullptr)
 			{
 				++tabIndex;
 				continue;

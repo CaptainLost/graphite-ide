@@ -1,5 +1,6 @@
 #include "Git/History/ForkSeparator.h"
 
+#include "Git/DefaultBranch.h"
 #include "Review/ReviewFiles.h"
 
 #include "Core/Git/Oid.h"
@@ -32,18 +33,6 @@ namespace Graphite {
 			return nullptr;
 		}
 
-		const Core::Branch* BranchNamed(const std::vector<Core::Branch>& branches, const std::string& fullName)
-		{
-			for (const Core::Branch& branch : branches)
-			{
-				if (branch.FullName == fullName)
-				{
-					return &branch;
-				}
-			}
-
-			return nullptr;
-		}
 	}
 
 	std::optional<ForkBase> FindForkBase(const std::optional<std::string>& selectedRef,
@@ -63,7 +52,7 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		const Core::Branch* base = BranchNamed(branches, *offer->Base);
+		const Core::Branch* base = BranchWithFullName(branches, *offer->Base);
 
 		if (base == nullptr)
 		{
