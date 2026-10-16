@@ -1,6 +1,7 @@
 #include "Git/Branches/BranchListFilter.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Base/Strings.h"
 
 namespace Graphite {
 
@@ -47,31 +48,7 @@ namespace Graphite {
 
 	std::vector<std::string> LoweredWordsOf(std::string_view text)
 	{
-		const std::string loweredText = Core::Lowered(text);
-
-		std::vector<std::string> words;
-		std::size_t wordStart = 0;
-
-		while (wordStart < loweredText.size())
-		{
-			const std::size_t wordEnd = loweredText.find(kWordSeparator, wordStart);
-			const std::size_t wordLength =
-				wordEnd == std::string::npos ? loweredText.size() - wordStart : wordEnd - wordStart;
-
-			if (wordLength > 0)
-			{
-				words.push_back(loweredText.substr(wordStart, wordLength));
-			}
-
-			if (wordEnd == std::string::npos)
-			{
-				break;
-			}
-
-			wordStart = wordEnd + 1;
-		}
-
-		return words;
+		return Core::SplitSkippingEmpty(Core::Lowered(text), kWordSeparator);
 	}
 
 	bool AuthorHoldsAnyWord(const BranchAuthor& author, const std::vector<std::string>& loweredWords)

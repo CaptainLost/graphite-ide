@@ -3,6 +3,7 @@
 #include "UI/TypographicMarks.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Base/Strings.h"
 
 #include <array>
 #include <cstddef>
@@ -145,27 +146,9 @@ namespace Graphite {
 
 	std::vector<std::string> SplitQueryWords(std::string_view query)
 	{
-		std::vector<std::string> words;
-		std::size_t wordStart = 0;
+		constexpr char kWordSeparator = ' ';
 
-		while (wordStart < query.size())
-		{
-			std::size_t wordEnd = query.find(' ', wordStart);
-
-			if (wordEnd == std::string_view::npos)
-			{
-				wordEnd = query.size();
-			}
-
-			if (wordEnd > wordStart)
-			{
-				words.push_back(Core::Lowered(query.substr(wordStart, wordEnd - wordStart)));
-			}
-
-			wordStart = wordEnd + 1;
-		}
-
-		return words;
+		return Core::SplitSkippingEmpty(Core::Lowered(query), kWordSeparator);
 	}
 
 	bool IsSearchQuery(std::string_view query)
