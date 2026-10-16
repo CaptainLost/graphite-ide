@@ -5,7 +5,6 @@
 #include "Core/Git/Requests.h"
 #include "Git/History/HistoryReach.h"
 
-#include <cstddef>
 #include <optional>
 #include <string>
 

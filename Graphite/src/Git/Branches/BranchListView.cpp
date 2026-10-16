@@ -8,7 +8,6 @@
 #include "UI/LoaderDelay.h"
 #include "UI/TickBox.h"
 
-#include "Core/App/Redraw.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/Toggle.h"
 #include "Core/ImGui/UiScale.h"
@@ -18,7 +17,6 @@
 #include <imgui.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <format>
 #include <string>
