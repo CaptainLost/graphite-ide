@@ -44,7 +44,7 @@ namespace {
 				const auto [stoppedAt, parseError] = std::from_chars(value.data(), valueEnd, length);
 
 				const std::string_view afterNumber{stoppedAt, static_cast<std::size_t>(valueEnd - stoppedAt)};
-				const bool onlySpacesAfterNumber = afterNumber.find_first_not_of(" \t") == std::string_view::npos;
+				const bool onlySpacesAfterNumber = Core::ContainsOnlySpacesAndTabs(afterNumber);
 
 				if (parseError == std::errc{} && onlySpacesAfterNumber && length <= kMaximumBodyBytes)
 				{

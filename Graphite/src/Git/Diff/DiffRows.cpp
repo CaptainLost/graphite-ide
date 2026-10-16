@@ -1,5 +1,7 @@
 #include "Git/Diff/DiffRows.h"
 
+#include "Core/Base/Ascii.h"
+
 #include "Git/History/CommitLabels.h"
 
 #include <algorithm>
@@ -577,18 +579,9 @@ namespace Graphite {
 			return {};
 		}
 
-		std::string_view scope = header.substr(closingMarkerIndex + kHunkMarker.size());
+		const std::string_view scope = header.substr(closingMarkerIndex + kHunkMarker.size());
 
-		const std::size_t firstScopeIndex = scope.find_first_not_of(kIndentation);
-		const std::size_t lastScopeIndex = scope.find_last_not_of(kTrailingWhitespace);
-
-		if (firstScopeIndex == std::string_view::npos || lastScopeIndex == std::string_view::npos ||
-			lastScopeIndex < firstScopeIndex)
-		{
-			return {};
-		}
-
-		return scope.substr(firstScopeIndex, lastScopeIndex - firstScopeIndex + 1);
+		return Core::WithoutTrailing(Core::WithoutLeading(scope, kIndentation), kTrailingWhitespace);
 	}
 
 	std::string LineRangeLabel(int firstLine, int lineCount)

@@ -1,5 +1,7 @@
 #include "Git/History/CommitLabels.h"
 
+#include "Core/Base/Ascii.h"
+
 #include <cctype>
 #include <format>
 #include <string_view>
@@ -30,16 +32,7 @@ namespace Graphite {
 		// WARNING: Git normally trims signature names, but a stray space left on one throws off the first and last word split and gives a blank initial.
 		std::string_view WithoutSurroundingSpaces(std::string_view text)
 		{
-			const std::size_t firstKept = text.find_first_not_of(' ');
-
-			if (firstKept == std::string_view::npos)
-			{
-				return {};
-			}
-
-			const std::size_t lastKept = text.find_last_not_of(' ');
-
-			return text.substr(firstKept, lastKept - firstKept + 1);
+			return Core::WithoutSurrounding(text, " ");
 		}
 	}
 
