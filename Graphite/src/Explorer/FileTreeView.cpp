@@ -13,6 +13,7 @@
 #include "Core/Text/DocumentSet.h"
 
 #include "Theme/Palettes.h"
+#include "UI/Chevron.h"
 #include "UI/ClipboardCopy.h"
 #include "UI/Dialogs/DialogLayout.h"
 #include "Terminal/TerminalRules.h"
@@ -1062,7 +1063,7 @@ namespace Graphite {
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 		}
 
-		const bool open = ImGui::TreeNodeEx(Core::ToUtf8(node.Path).c_str(), flags, "%s", "");
+		const bool open = ChevronTreeNode(Core::ToUtf8(node.Path).c_str(), flags);
 
 		const RowStatus folderStatus =
 			node.Ignored ? RowStatus{} : FolderRowStatusOf(m_GitDecorations, node.Path);

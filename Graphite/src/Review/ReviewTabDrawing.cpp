@@ -2,6 +2,7 @@
 
 #include "Git/History/CommitLabels.h"
 #include "Core/ImGui/IconButton.h"
+#include "UI/Chevron.h"
 #include "UI/SplitResults.h"
 #include "UI/TickBox.h"
 #include "UI/FittedText.h"
@@ -131,7 +132,7 @@ namespace Graphite {
 
 			ImGui::SetCursorPos(rowStart);
 			ImGui::AlignTextToFramePadding();
-			ImGui::TextDisabled("%s", row.Folded ? ICON_MDI_CHEVRON_RIGHT : ICON_MDI_CHEVRON_DOWN);
+			DrawChevron(!row.Folded);
 			ImGui::SameLine();
 
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;
@@ -191,7 +192,7 @@ namespace Graphite {
 
 			ImGui::SetCursorPos(ImVec2(rowStart.x + indent, rowStart.y));
 			ImGui::AlignTextToFramePadding();
-			ImGui::TextDisabled("%s", row.Folded ? ICON_MDI_CHEVRON_RIGHT : ICON_MDI_CHEVRON_DOWN);
+			DrawChevron(!row.Folded);
 			ImGui::SameLine();
 			ImGui::TextUnformatted(row.Folded ? ICON_MDI_FOLDER : ICON_MDI_FOLDER_OPEN);
 			ImGui::SameLine();

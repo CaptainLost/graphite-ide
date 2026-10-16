@@ -15,11 +15,11 @@
 #include "Git/History/CommitDetails.h"
 #include "Git/History/CommitLabels.h"
 #include "Git/History/CommitRows.h"
+#include "UI/Chevron.h"
 #include "UI/HighlightedRow.h"
 #include "UI/FittedText.h"
 #include "UI/TypographicMarks.h"
 
-#include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -449,8 +449,7 @@ namespace Graphite {
 			CommitColumnsInput columnInput;
 			columnInput.Available = widthBesideScrollbar;
 			columnInput.Graph = GraphWidth(metrics, graph.LaneCount);
-			columnInput.Chevron = std::max(SampleWidth(ICON_MDI_CHEVRON_RIGHT),
-										   SampleWidth(ICON_MDI_CHEVRON_DOWN));
+			columnInput.Chevron = std::max(SampleWidth(ChevronGlyph(false)), SampleWidth(ChevronGlyph(true)));
 			columnInput.Hash = WidthInUse(table, Column::Hash, SampleWidth(kHashSample));
 			columnInput.Author = WidthInUse(table, Column::Author, SampleWidth(kAuthorSample));
 			columnInput.Date = WidthInUse(table, Column::Date, SampleWidth(kDateSample));
@@ -617,7 +616,7 @@ namespace Graphite {
 		}
 
 		ImGui::SetCursorPos(rowStart);
-		ImGui::TextUnformatted(expanded ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT);
+		DrawChevron(expanded);
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Hash));
 		const float chevronZoneEndX = ImGui::GetCursorScreenPos().x;

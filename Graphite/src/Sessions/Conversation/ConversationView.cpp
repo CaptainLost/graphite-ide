@@ -10,6 +10,7 @@
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/Transcript/ToolFacts.h"
+#include "UI/Chevron.h"
 #include "UI/TypographicMarks.h"
 #include "UI/FittedText.h"
 #include "Workspace/Workspace.h"
@@ -455,7 +456,7 @@ namespace Graphite {
 		const bool isOpen = m_OpenUsage.contains(key);
 		ImVec2 cursor = start;
 		DrawPiece(cursor, context.Palette.TextDisabled,
-				  FitToWidth(std::string{isOpen ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " ", right - cursor.x));
+				  FitToWidth(std::string{ChevronGlyph(isOpen)} + " ", right - cursor.x));
 		DrawPiece(cursor, context.Palette.TextDisabled,
 				  FitToWidth(UsageLine(part.Usage, part.Requests, context.Prices), right - cursor.x));
 
@@ -582,7 +583,7 @@ namespace Graphite {
 		}
 
 		const std::size_t stepCount = part.Items.size();
-		std::string headerText = std::string{isOpen ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " " +
+		std::string headerText = std::string{ChevronGlyph(isOpen)} + " " +
 								 Core::Counted(stepCount, "step");
 
 		const std::size_t namedToolTotal = std::min(part.ToolCounts.size(), kNamedToolCount);
@@ -660,7 +661,7 @@ namespace Graphite {
 			}
 
 			const std::string label =
-				std::string{isOpen ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " thinking##thinking";
+				std::string{ChevronGlyph(isOpen)} + " thinking##thinking";
 
 			ImGui::PushStyleColor(ImGuiCol_Text, palette.TextDisabled);
 

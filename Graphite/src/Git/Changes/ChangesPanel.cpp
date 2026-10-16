@@ -4,6 +4,7 @@
 
 #include "Editor/DocumentWindows.h"
 #include "Theme/Palettes.h"
+#include "UI/Chevron.h"
 #include "UI/ClipboardCopy.h"
 #include "Editor/StatusBar/StatusMessageEvent.h"
 #include "Git/Changes/CommitBlocker.h"
@@ -369,7 +370,7 @@ namespace Graphite {
 		const float textStart = rowStart.x + rowPadding + IconColumnWidth() + TextGap();
 
 		ImGui::SetCursorPos(ImVec2(rowStart.x + rowPadding, rowStart.y));
-		ImGui::TextDisabled("%s", open ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT);
+		DrawChevron(open);
 
 		ImGui::SetCursorPos(ImVec2(textStart, rowStart.y));
 		ImGui::TextDisabled("%s", heading);
@@ -689,7 +690,7 @@ namespace Graphite {
 
 		const bool expanded = m_Expanded.contains(file.Path);
 
-		const char* chevron = expanded ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT;
+		const char* chevron = ChevronGlyph(expanded);
 		const char* folderIcon = expanded ? ICON_MDI_FOLDER_OPEN : ICON_MDI_FOLDER;
 
 		const char* stageIcon = m_Section == Section::Staged ? ICON_MDI_MINUS : ICON_MDI_PLUS;
@@ -727,7 +728,7 @@ namespace Graphite {
 		const float directorySeparatorWidth = ImGui::CalcTextSize(kDirectorySeparator.data()).x;
 
 		const FolderRowGlyphs closedGlyphs{.Folder = Core::MeasureGlyphInk(ICON_MDI_FOLDER),
-										   .Chevron = Core::MeasureGlyphInk(ICON_MDI_CHEVRON_RIGHT)};
+										   .Chevron = Core::MeasureGlyphInk(ChevronGlyph(false))};
 		const FolderRowGlyphs drawnGlyphs{.Folder = Core::MeasureGlyphInk(folderIcon),
 										  .Chevron = Core::MeasureGlyphInk(chevron)};
 
@@ -749,7 +750,7 @@ namespace Graphite {
 		ImGui::TextUnformatted(folderIcon);
 
 		ImGui::SetCursorPos(ImVec2(chevronStart, rowStart.y));
-		ImGui::TextDisabled("%s", chevron);
+		DrawChevron(expanded);
 
 		ImGui::SetCursorPos(ImVec2(textStart, rowStart.y));
 

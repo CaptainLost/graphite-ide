@@ -1,6 +1,6 @@
 #include "Git/Branches/RefSectionHeading.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include "UI/Chevron.h"
 
 #include <imgui.h>
 
@@ -19,7 +19,7 @@ namespace Graphite {
 		}
 
 		ImGui::SetCursorPos(rowStart);
-		ImGui::TextDisabled("%s", collapsed ? ICON_MDI_CHEVRON_RIGHT : ICON_MDI_CHEVRON_DOWN);
+		DrawChevron(!collapsed);
 		ImGui::SameLine();
 
 		// WARNING: SeparatorText pads its label above and below by default; zeroed, it stays one

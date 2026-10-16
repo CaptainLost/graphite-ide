@@ -3,6 +3,7 @@
 #include "Core/Base/Narrow.h"
 
 #include "Search/HitDisplay.h"
+#include "UI/Chevron.h"
 #include "UI/OpenGesture.h"
 
 #include <imgui.h>
@@ -15,7 +16,6 @@ namespace Graphite {
 
 		constexpr float kNoOffsetFromStart = 0.0f;
 		constexpr float kNoSpacing = 0.0f;
-		constexpr const char* kNoLabel = "";
 
 		void SameLineWithoutGap()
 		{
@@ -39,10 +39,8 @@ namespace Graphite {
 			// label is drawn separately because its count changes on every new hit. Passing the
 			// two combined as the id makes ImGui see a new node each time and close whatever the
 			// user had just opened.
-			const bool isGroupExpanded = ImGui::TreeNodeEx(
-				group.Id.c_str(),
-				ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap,
-				kNoLabel);
+			const bool isGroupExpanded =
+				ChevronTreeNode(group.Id.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_AllowOverlap);
 
 			SameLineWithoutGap();
 

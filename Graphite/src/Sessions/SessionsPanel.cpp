@@ -8,6 +8,7 @@
 #include "Sessions/SummaryCache.h"
 #include "Settings/UserDirectories.h"
 #include "Workspace/Workspace.h"
+#include "UI/Chevron.h"
 #include "UI/TickBox.h"
 
 #include "Core/Base/Ascii.h"
@@ -530,14 +531,15 @@ namespace Graphite {
 					}
 				}
 
-				// WARNING: The id suffix must never be empty. A transcript with no cwd leaves Cwd empty, and ImGui
-				// would hash the header to the child window's own id and assert. The id is the group's key, not the
-				// spelling shown, which changes as the group's sessions do.
+				// WARNING: The id must never be empty. A transcript with no cwd leaves Cwd empty, and an empty id
+				// hashes to the child window's own id and asserts. The id is the group's key, not the text shown,
+				// which changes as the group's sessions do.
 				const std::string cwdText = Core::ToUtf8(summary.Cwd);
 				const std::string label = cwdText.empty() ? "(unknown folder)" : cwdText;
-				const std::string header =
-					label + "  " + FormatCost(total) + "###group-" + Core::ToUtf8(std::filesystem::path{folder});
-				groupOpen = ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+				const std::string header = label + "  " + FormatCost(total);
+				const std::string groupId = "group-" + Core::ToUtf8(std::filesystem::path{folder});
+				groupOpen = ChevronTreeNode(groupId.c_str(), ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen,
+											header.c_str());
 
 				if (const std::string hint = UnknownCostHint(total); !hint.empty() && ImGui::IsItemHovered())
 				{

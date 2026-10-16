@@ -3,6 +3,7 @@
 #include "Git/Branches/BranchAge.h"
 #include "Git/Branches/RefSectionHeading.h"
 #include "Git/GitView.h"
+#include "UI/Chevron.h"
 #include "UI/HighlightedRow.h"
 #include "UI/FittedText.h"
 #include "Core/ImGui/IconButton.h"
@@ -60,11 +61,6 @@ namespace Graphite {
 			{.Label = "None", .Value = BranchGrouping::None},
 			{.Label = "Author", .Value = BranchGrouping::Author},
 		}};
-
-		float ChevronWidth()
-		{
-			return std::max(ImGui::CalcTextSize(ICON_MDI_CHEVRON_RIGHT).x, ImGui::CalcTextSize(ICON_MDI_CHEVRON_DOWN).x);
-		}
 
 		// WARNING: A group's name starts past its chevron, so a branch indented only that far reads as
 		// the group's sibling; each level goes one chevron further than the name above it.
@@ -624,7 +620,7 @@ namespace Graphite {
 		}
 
 		ImGui::SetCursorPos(ImVec2(rowStart.x + IndentOf(row), rowStart.y));
-		ImGui::TextDisabled("%s", row.Collapsed ? ICON_MDI_CHEVRON_RIGHT : ICON_MDI_CHEVRON_DOWN);
+		DrawChevron(!row.Collapsed);
 		ImGui::SameLine();
 
 		const std::string fitted = FitToWidth(AuthorGroupText(row), ImGui::GetContentRegionAvail().x);

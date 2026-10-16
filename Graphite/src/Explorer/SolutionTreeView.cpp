@@ -13,6 +13,7 @@
 #include "Explorer/FileRow.h"
 #include "Git/GitDecorationView.h"
 #include "Solution/SolutionEditor.h"
+#include "UI/Chevron.h"
 #include "UI/Dialogs/DialogLayout.h"
 #include "UI/OpenGesture.h"
 #include "UI/ToastEvent.h"
@@ -150,8 +151,8 @@ namespace Graphite {
 				ImGui::SetNextItemOpen(kOpenTheRow);
 			}
 
-			const bool rootOpen = ImGui::TreeNodeEx(
-				label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth, "%s", "");
+			const bool rootOpen =
+				ChevronTreeNode(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
 			DrawTreeRowLabel(label, ImGui::IsItemVisible() && GroupDecorationOf(solution.Root) != GitDecoration::None);
 
 			DrawGroupMarker(solution.Root);
@@ -262,8 +263,8 @@ namespace Graphite {
 			ImGui::SetNextItemOpen(kOpenTheRow);
 		}
 
-		const bool isOpen = ImGui::TreeNodeEx(
-			label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth, "%s", "");
+		const bool isOpen =
+			ChevronTreeNode(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
 		DrawTreeRowLabel(label, ImGui::IsItemVisible() && GroupDecorationOf(folder) != GitDecoration::None);
 
 		DrawGroupMarker(folder);
@@ -306,7 +307,7 @@ namespace Graphite {
 			ImGui::SetNextItemOpen(kOpenTheRow);
 		}
 
-		const bool isOpen = ImGui::TreeNodeEx(label.c_str(), flags, "%s", "");
+		const bool isOpen = ChevronTreeNode(label.c_str(), flags);
 		DrawTreeRowLabel(label, ImGui::IsItemVisible() && GroupDecorationOf(project) != GitDecoration::None);
 
 		if (!project.Exists)
@@ -337,7 +338,7 @@ namespace Graphite {
 
 	void SolutionTreeView::RenderReferences(const std::vector<std::string>& references)
 	{
-		if (references.empty() || !ImGui::TreeNodeEx("References", ImGuiTreeNodeFlags_SpanAvailWidth))
+		if (references.empty() || !ChevronTreeNode("References", ImGuiTreeNodeFlags_SpanAvailWidth, "References"))
 		{
 			return;
 		}
@@ -368,7 +369,7 @@ namespace Graphite {
 					ImGui::SetNextItemOpen(kOpenTheRow);
 				}
 
-				if (ImGui::TreeNodeEx(label.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth))
+				if (ChevronTreeNode(label.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth, label.c_str()))
 				{
 					RenderContentFolder(child);
 					ImGui::TreePop();
