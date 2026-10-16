@@ -119,6 +119,27 @@ namespace Core {
 		return commit;
 	}
 
+	std::optional<std::string> HeadReferenceName(git_repository* handle)
+	{
+		ReferenceHandle headReference;
+
+		const int headResult = git_repository_head(Out(headReference), handle);
+
+		if (headResult != 0 || headReference == nullptr)
+		{
+			return std::nullopt;
+		}
+
+		const char* headName = git_reference_name(headReference.get());
+
+		if (headName == nullptr)
+		{
+			return std::nullopt;
+		}
+
+		return std::string{headName};
+	}
+
 	Signature ToSignature(const git_signature* signature)
 	{
 		if (signature == nullptr)

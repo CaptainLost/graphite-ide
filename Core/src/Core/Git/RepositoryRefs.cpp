@@ -76,29 +76,6 @@ namespace Core {
 			return ToCommitSummary(commit.get());
 		}
 
-		// WARNING: git_branch_is_head re-reads HEAD from disk on every call, which dominates a listing
-		// of thousands of branches, so HEAD is resolved once and compared by reference name.
-		std::optional<std::string> ResolveHeadReferenceName(git_repository* handle)
-		{
-			ReferenceHandle headReference;
-
-			const int headResult = git_repository_head(Out(headReference), handle);
-
-			if (headResult != 0 || headReference == nullptr)
-			{
-				return std::nullopt;
-			}
-
-			const char* headName = git_reference_name(headReference.get());
-
-			if (headName == nullptr)
-			{
-				return std::nullopt;
-			}
-
-			return std::string{headName};
-		}
-
 		bool IsHeadBranch(const Branch& branch, const std::optional<std::string>& headReferenceName)
 		{
 			return branch.Kind == RefKind::Local && headReferenceName.has_value() && branch.FullName == *headReferenceName;
@@ -180,7 +157,9 @@ namespace Core {
 		std::vector<Branch> branches;
 		std::vector<std::string> remoteHeadTargets;
 
-		const std::optional<std::string> headReferenceName = ResolveHeadReferenceName(m_Handle.get());
+		// WARNING: git_branch_is_head re-reads HEAD from disk on every call, which dominates a listing
+		// of thousands of branches, so HEAD is resolved once and compared by reference name.
+		const std::optional<std::string> headReferenceName = HeadReferenceName(m_Handle.get());
 
 		// WARNING: A snapshot that cannot be taken leaves the handle null, and every local branch then
 		// asks git_branch_upstream itself.

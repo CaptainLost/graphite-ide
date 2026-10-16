@@ -111,13 +111,7 @@ namespace Core {
 		// A detached or unborn HEAD has no branch's name, so it reads as holding none.
 		bool HeadIsBranch(git_repository* handle, const std::string& branchFullName)
 		{
-			ReferenceHandle head;
-
-			// The handle takes the reference only when the call's full expression ends, so it is
-			// read in a second statement, never in the same condition.
-			const int headLookupResult = git_repository_head(Out(head), handle);
-
-			return headLookupResult == 0 && branchFullName == git_reference_name(head.get());
+			return HeadReferenceName(handle) == branchFullName;
 		}
 
 		std::optional<std::filesystem::path> MainCheckoutHolding(git_repository* linkedWorktree,

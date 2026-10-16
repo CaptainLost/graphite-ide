@@ -11,6 +11,7 @@
 #include "Core/Git/Signature.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -47,6 +48,10 @@ namespace Core {
 
 	// NotFound, naming the id, when the repository holds no such commit.
 	Result<CommitHandle> LookupCommit(git_repository* handle, const Oid& id);
+
+	// The full name of the branch HEAD is on, "HEAD" itself when it is detached, and nothing when it is unborn or
+	// cannot be read.
+	std::optional<std::string> HeadReferenceName(git_repository* handle);
 
 	Signature ToSignature(const git_signature* signature);
 
