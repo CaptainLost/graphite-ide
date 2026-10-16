@@ -258,11 +258,12 @@ namespace Graphite {
 
 			if (StringAt(result, "mode") == "content" && lineCount && fileCount)
 			{
-				facts.Detail = std::to_string(*lineCount) + " matches in " + std::to_string(*fileCount) + " files";
+				facts.Detail = Core::Counted(*lineCount, "match", "matches") + " in " +
+							   Core::Counted(*fileCount, "file");
 			}
 			else if (fileCount)
 			{
-				facts.Detail = std::to_string(*fileCount) + " files";
+				facts.Detail = Core::Counted(*fileCount, "file");
 			}
 		}
 		else if (IsAgentCall(tool))

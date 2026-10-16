@@ -2,6 +2,7 @@
 
 #include "Language/Server/LspProtocol.h"
 
+#include "Core/Base/Strings.h"
 #include "Core/FileSystem/FileSystem.h"
 
 #include <format>
@@ -76,7 +77,7 @@ namespace Graphite {
 
 		if (!context.Projects.empty())
 		{
-			return std::format("{} projects", context.Projects.size());
+			return Core::Counted(context.Projects.size(), "project");
 		}
 
 		return std::nullopt;

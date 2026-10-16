@@ -1,5 +1,7 @@
 #include "Search/SearchPanel.h"
 
+#include "Core/Base/Strings.h"
+
 #include "Editor/Navigation/SelectInDocument.h"
 
 #include "Search/SearchPreview.h"
@@ -112,7 +114,7 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		return "Searching... " + std::to_string(m_Progress.FilesScanned) + " files";
+		return "Searching... " + Core::Counted(m_Progress.FilesScanned, "file");
 	}
 
 	void SearchPanel::Focus()
@@ -172,8 +174,8 @@ namespace Graphite {
 
 	void SearchPanel::RenderSummary()
 	{
-		std::string summary = std::to_string(m_Groups.GetCount()) + " hits, " +
-							  std::to_string(m_Progress.FilesScanned) + " files scanned";
+		std::string summary = Core::Counted(m_Groups.GetCount(), "hit") + ", " +
+							  Core::Counted(m_Progress.FilesScanned, "file") + " scanned";
 
 		if (m_Progress.FilesSkipped != 0)
 		{

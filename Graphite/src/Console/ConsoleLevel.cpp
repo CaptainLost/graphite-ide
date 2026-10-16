@@ -1,5 +1,7 @@
 #include "Console/ConsoleLevel.h"
 
+#include "Core/Base/Strings.h"
+
 namespace Graphite {
 
 	bool IsShownAtLevel(Core::LogLevel level, Core::LogLevel minimum)
@@ -30,9 +32,9 @@ namespace Graphite {
 	{
 		if (shownCount == totalCount)
 		{
-			return std::to_string(totalCount) + " entries";
+			return Core::Counted(totalCount, "entry", "entries");
 		}
 
-		return std::to_string(shownCount) + " / " + std::to_string(totalCount) + " entries";
+		return std::to_string(shownCount) + " / " + Core::Counted(totalCount, "entry", "entries");
 	}
 }

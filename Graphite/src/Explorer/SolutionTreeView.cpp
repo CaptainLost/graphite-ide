@@ -1,6 +1,7 @@
 #include "Explorer/SolutionTreeView.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Base/Strings.h"
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
@@ -142,7 +143,7 @@ namespace Graphite {
 			}
 
 			const std::string label =
-				solution.Name + " (" + std::to_string(solution.ProjectCount) + " projects)";
+				solution.Name + " (" + Core::Counted(solution.ProjectCount, "project") + ")";
 
 			if (OpensToward(solution.Root) || m_RenameWhenListed.IsLooking() || m_ReopenFilteredRows)
 			{

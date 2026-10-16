@@ -23,6 +23,12 @@ TEST_CASE("The console count says how many entries are shown out of how many whe
 	CHECK(Graphite::ConsoleEntryCount(0, 3) == "0 / 3 entries");
 }
 
+TEST_CASE("The console count says entry for a single one")
+{
+	CHECK(Graphite::ConsoleEntryCount(1, 1) == "1 entry");
+	CHECK(Graphite::ConsoleEntryCount(0, 1) == "0 / 1 entry");
+}
+
 TEST_CASE("Trace as the minimum shows every message")
 {
 	for (const LogLevel level : {LogLevel::Trace, LogLevel::Info, LogLevel::Warn, LogLevel::Error, LogLevel::Critical})
