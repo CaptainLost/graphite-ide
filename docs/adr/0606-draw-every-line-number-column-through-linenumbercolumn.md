@@ -1,4 +1,4 @@
-# 0601. Draw every line number column through LineNumberColumn
+# 0606. Draw every line number column through LineNumberColumn
 
 Status: proposed
 Date: 2026-10-16
@@ -42,4 +42,4 @@ Draw every line number column with `Graphite::LineNumberColumn` (`Graphite/src/U
 
 ## Related
 
-- [0599](0599-draw-every-list-row-through-listrowselectable.md): the same push towards one look per kind of thing.
+- [0604](0604-draw-every-list-row-through-listrowselectable.md): the same push towards one look per kind of thing.

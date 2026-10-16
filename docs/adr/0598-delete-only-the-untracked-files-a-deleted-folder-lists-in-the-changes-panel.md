@@ -1,4 +1,4 @@
-# 0593. Delete only the untracked files a deleted folder lists in the changes panel
+# 0598. Delete only the untracked files a deleted folder lists in the changes panel
 
 Status: proposed
 Date: 2026-10-15

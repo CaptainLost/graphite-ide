@@ -1,4 +1,4 @@
-# 0595. Keep an unreadable state file as .bak before writing over it
+# 0600. Keep an unreadable state file as .bak before writing over it
 
 Status: proposed
 Date: 2026-10-16

@@ -1,4 +1,4 @@
-# 0597. Draw every button that is only a glyph through Core::DrawIconButton
+# 0602. Draw every button that is only a glyph through Core::DrawIconButton
 
 Status: proposed
 Date: 2026-10-16

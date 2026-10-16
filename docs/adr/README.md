@@ -622,14 +622,14 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0590](0590-compile-the-bundled-fonts-into-the-executable.md) | Compile the bundled fonts into the executable | proposed | 2026-10-15 |
 | [0591](0591-count-everyone-with-an-own-commit-as-a-branch-s-author.md) | Count everyone with an own commit as a branch's author | proposed | 2026-10-15 |
 | [0592](0592-build-the-branch-list-as-rows-from-a-pure-function-and-draw-only-the-rows-on-screen.md) | Build the branch list as rows from a pure function and draw only the rows on screen | proposed | 2026-10-15 |
-| [0593](0593-delete-only-the-untracked-files-a-deleted-folder-lists-in-the-changes-panel.md) | Delete only the untracked files a deleted folder lists in the changes panel | proposed | 2026-10-15 |
-| [0594](0594-lay-out-the-buttons-of-every-modal-question-through-dialoglayout.md) | Lay out the buttons of every modal question through DialogLayout | proposed | 2026-10-16 |
-| [0595](0595-keep-an-unreadable-state-file-as-bak-before-writing-over-it.md) | Keep an unreadable state file as .bak before writing over it | proposed | 2026-10-16 |
-| [0596](0596-draw-every-field-that-narrows-a-list-through-drawfilterfield.md) | Draw every field that narrows a list through DrawFilterField | proposed | 2026-10-16 |
-| [0597](0597-draw-every-button-that-is-only-a-glyph-through-core-drawiconbutton.md) | Draw every button that is only a glyph through Core::DrawIconButton | proposed | 2026-10-16 |
-| [0598](0598-mark-whatever-opens-and-closes-in-a-list-with-the-one-dim-chevron.md) | Mark whatever opens and closes in a list with the one dim chevron | proposed | 2026-10-16 |
-| [0599](0599-draw-every-list-row-through-listrowselectable.md) | Draw every list row through ListRowSelectable | proposed | 2026-10-16 |
-| [0600](0600-draw-every-bar-over-the-editor-through-drawinfobar.md) | Draw every bar over the editor through DrawInfoBar | proposed | 2026-10-16 |
-| [0601](0601-draw-every-line-number-column-through-linenumbercolumn.md) | Draw every line number column through LineNumberColumn | proposed | 2026-10-16 |
-| [0602](0602-draw-the-middle-of-every-notification-through-one-piece-of-core-code.md) | Draw the middle of every notification through one piece of Core code | proposed | 2026-10-16 |
+| [0598](0598-delete-only-the-untracked-files-a-deleted-folder-lists-in-the-changes-panel.md) | Delete only the untracked files a deleted folder lists in the changes panel | proposed | 2026-10-15 |
+| [0599](0599-lay-out-the-buttons-of-every-modal-question-through-dialoglayout.md) | Lay out the buttons of every modal question through DialogLayout | proposed | 2026-10-16 |
+| [0600](0600-keep-an-unreadable-state-file-as-bak-before-writing-over-it.md) | Keep an unreadable state file as .bak before writing over it | proposed | 2026-10-16 |
+| [0601](0601-draw-every-field-that-narrows-a-list-through-drawfilterfield.md) | Draw every field that narrows a list through DrawFilterField | proposed | 2026-10-16 |
+| [0602](0602-draw-every-button-that-is-only-a-glyph-through-core-drawiconbutton.md) | Draw every button that is only a glyph through Core::DrawIconButton | proposed | 2026-10-16 |
+| [0603](0603-mark-whatever-opens-and-closes-in-a-list-with-the-one-dim-chevron.md) | Mark whatever opens and closes in a list with the one dim chevron | proposed | 2026-10-16 |
+| [0604](0604-draw-every-list-row-through-listrowselectable.md) | Draw every list row through ListRowSelectable | proposed | 2026-10-16 |
+| [0605](0605-draw-every-bar-over-the-editor-through-drawinfobar.md) | Draw every bar over the editor through DrawInfoBar | proposed | 2026-10-16 |
+| [0606](0606-draw-every-line-number-column-through-linenumbercolumn.md) | Draw every line number column through LineNumberColumn | proposed | 2026-10-16 |
+| [0607](0607-draw-the-middle-of-every-notification-through-one-piece-of-core-code.md) | Draw the middle of every notification through one piece of Core code | proposed | 2026-10-16 |
 <!-- /adr-index -->

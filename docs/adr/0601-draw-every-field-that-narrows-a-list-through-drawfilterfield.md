@@ -1,4 +1,4 @@
-# 0596. Draw every field that narrows a list through DrawFilterField
+# 0601. Draw every field that narrows a list through DrawFilterField
 
 Status: proposed
 Date: 2026-10-16

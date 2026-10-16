@@ -1,4 +1,4 @@
-# 0600. Draw every bar over the editor through DrawInfoBar
+# 0605. Draw every bar over the editor through DrawInfoBar
 
 Status: proposed
 Date: 2026-10-16

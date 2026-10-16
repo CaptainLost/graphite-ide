@@ -1,4 +1,4 @@
-# 0602. Draw the middle of every notification through one piece of Core code
+# 0607. Draw the middle of every notification through one piece of Core code
 
 Status: proposed
 Date: 2026-10-16
@@ -46,4 +46,4 @@ Draw the middle of every notification through `Core/src/Core/ImGui/ToastStyle.h`
 
 ## Related
 
-- [0601](0601-draw-every-line-number-column-through-linenumbercolumn.md): the same push towards one look per kind of thing.
+- [0606](0606-draw-every-line-number-column-through-linenumbercolumn.md): the same push towards one look per kind of thing.

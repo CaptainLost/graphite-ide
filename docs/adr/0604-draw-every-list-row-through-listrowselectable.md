@@ -1,4 +1,4 @@
-# 0599. Draw every list row through ListRowSelectable
+# 0604. Draw every list row through ListRowSelectable
 
 Status: proposed
 Date: 2026-10-16
@@ -55,4 +55,4 @@ Draw every list row through `Graphite/src/UI/Lists/ListRow.h`.
 
 ## Related
 
-- [0598](0598-mark-whatever-opens-and-closes-in-a-list-with-the-one-dim-chevron.md): the tree row built on the list row.
+- [0603](0603-mark-whatever-opens-and-closes-in-a-list-with-the-one-dim-chevron.md): the tree row built on the list row.
