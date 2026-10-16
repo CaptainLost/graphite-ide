@@ -10,6 +10,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/TextMetrics.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -40,6 +41,17 @@ namespace Graphite {
 		constexpr const char* kOnlyWhitespace = "Only whitespace changed.";
 		constexpr const char* kDiffUnreadable = "The diff could not be read.";
 		constexpr const char* kSinceViewedUnreadable = "The diff since you viewed could not be read.";
+
+		void DrawDiffNotLoaded(bool failed)
+		{
+			if (failed)
+			{
+				Core::EmptyState(kDiffUnreadable);
+				return;
+			}
+
+			Core::LoadingState("Loading the diff");
+		}
 
 		constexpr int kPageTabColourCount = 5;
 
@@ -674,7 +686,7 @@ namespace Graphite {
 
 			if (error == nullptr)
 			{
-				Core::EmptyState("Loading…");
+				Core::LoadingState("Loading the review");
 				return;
 			}
 
@@ -754,7 +766,7 @@ namespace Graphite {
 
 		if (!failed)
 		{
-			Core::EmptyState("Loading…");
+			Core::LoadingState("Loading the changes");
 			return;
 		}
 
@@ -1259,7 +1271,7 @@ namespace Graphite {
 
 		if (commitDiff == nullptr)
 		{
-			Core::EmptyState(input.Model.IsCommittedDiffFailed(diffKey) ? kDiffUnreadable : "Loading…");
+			DrawDiffNotLoaded(input.Model.IsCommittedDiffFailed(diffKey));
 			return;
 		}
 
@@ -1342,7 +1354,7 @@ namespace Graphite {
 
 		if (answer == nullptr)
 		{
-			Core::EmptyState("Loading…");
+			Core::LoadingState("Loading the changes since you last looked");
 			return;
 		}
 
@@ -1391,7 +1403,7 @@ namespace Graphite {
 
 		if (commitDiff == nullptr)
 		{
-			Core::EmptyState(input.Model.IsCommittedDiffFailed(diffKey) ? kDiffUnreadable : "Loading…");
+			DrawDiffNotLoaded(input.Model.IsCommittedDiffFailed(diffKey));
 			return;
 		}
 

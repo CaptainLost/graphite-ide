@@ -7,8 +7,8 @@ namespace Graphite {
 		return !hasStatus && statusError.has_value() && statusError->Code == Core::ErrorCode::NotFound;
 	}
 
-	std::string HistoryPlaceholder(bool hasStatus, const std::optional<Core::Error>& statusError,
-								   const std::optional<Core::Error>& logError)
+	std::optional<std::string> HistoryPlaceholder(bool hasStatus, const std::optional<Core::Error>& statusError,
+												  const std::optional<Core::Error>& logError)
 	{
 		if (IsMissingRepository(hasStatus, statusError))
 		{
@@ -20,6 +20,6 @@ namespace Graphite {
 			return "Could not load the history: " + logError->Message;
 		}
 
-		return "Loading history…";
+		return std::nullopt;
 	}
 }

@@ -7,6 +7,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/Time/TimeZone.h"
 
 #include "Theme/Palettes.h"
@@ -380,6 +381,15 @@ namespace Graphite {
 	void GitView::OnImGuiRender()
 	{
 		UpdateForNewPage();
+
+		// WARNING: With no folder nothing is on its way, so a loader here would turn forever and keep
+		// every frame drawing.
+		if (!m_Model.HasOpenFolder())
+		{
+			WithdrawQuestions();
+			Core::EmptyState("No folder is open.");
+			return;
+		}
 
 		if (IsMissingRepository(m_Model.GetStatus() != nullptr, m_Model.GetStatusError()))
 		{
@@ -760,7 +770,7 @@ namespace Graphite {
 	{
 		if (m_Searching)
 		{
-			ImGui::TextDisabled("Searching…");
+			Core::LoadingLine("Searching");
 			return;
 		}
 
@@ -788,8 +798,17 @@ namespace Graphite {
 
 		if (!page)
 		{
-			Core::EmptyState(HistoryPlaceholder(m_Model.GetStatus() != nullptr, m_Model.GetStatusError(),
-												m_Model.GetLogError()));
+			const std::optional<std::string> placeholder =
+				HistoryPlaceholder(m_Model.GetStatus() != nullptr, m_Model.GetStatusError(), m_Model.GetLogError());
+
+			if (placeholder.has_value())
+			{
+				Core::EmptyState(*placeholder);
+			}
+			else
+			{
+				Core::LoadingState("Loading history");
+			}
 		}
 		else
 		{
@@ -936,9 +955,15 @@ namespace Graphite {
 
 		const Core::Ref<const Core::Diff> diff = m_Model.GetDiffFor(selected->Commit);
 
+		if (!diff && m_Model.IsDiffFailed(selected->Commit))
+		{
+			Core::EmptyState("The diff could not be read.");
+			return;
+		}
+
 		if (!diff)
 		{
-			Core::EmptyState("Loading…");
+			Core::LoadingState("Loading the diff");
 			return;
 		}
 

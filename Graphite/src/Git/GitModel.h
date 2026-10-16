@@ -106,6 +106,8 @@ namespace Graphite {
 		void RequestDiffFor(const Core::Oid& commit);
 		void ForgetFailedDiffFor(const Core::Oid& commit);
 		bool IsDiffFailed(const Core::Oid& commit) const;
+
+		bool HasOpenFolder() const { return !m_Root.empty(); }
 		Core::Ref<const Core::Diff> GetDiffFor(const Core::Oid& commit) const;
 
 		static constexpr std::size_t kCachedDiffs = 32;
@@ -280,7 +282,6 @@ namespace Graphite {
 
 		void MarkDirty();
 
-		bool HasOpenFolder() const { return !m_Root.empty(); }
 
 		void PumpWorkingTreeDiff();
 

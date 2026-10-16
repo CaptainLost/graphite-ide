@@ -8,6 +8,7 @@
 #include "UI/TypographicMarks.h"
 
 #include "Core/Base/Log.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/TabContextMenu.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -59,7 +60,7 @@ namespace Graphite {
 			}
 			else if (!progress.SubagentsWalked)
 			{
-				ImGui::TextDisabled("Reading subagents… %zu / %zu", progress.SubagentsDone, progress.SubagentsTotal);
+				Core::LoadingLine(std::format("Reading subagents {} / {}", progress.SubagentsDone, progress.SubagentsTotal).c_str());
 			}
 		}
 
@@ -555,8 +556,14 @@ namespace Graphite {
 			{
 				if (!entry.Main.Live)
 				{
-					ImGui::TextDisabled("%s", entry.Looking ? "Looking for this session…"
-															: "Waiting for Claude to write the session's first lines...");
+					if (entry.Looking)
+					{
+						Core::LoadingLine("Looking for this session");
+					}
+					else
+					{
+						ImGui::TextDisabled("Waiting for Claude to write the session's first lines...");
+					}
 				}
 				else
 				{

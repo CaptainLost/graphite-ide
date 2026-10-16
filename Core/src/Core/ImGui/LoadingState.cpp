@@ -5,11 +5,14 @@
 #include "Core/App/Redraw.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <imspinner.h>
 #include <imspinner_text.h>
 
 #include <algorithm>
+#include <bit>
 #include <chrono>
+#include <cstdint>
 
 namespace Core {
 
@@ -28,6 +31,64 @@ namespace Core {
 
 		constexpr double kSecondsBeforeLoaderShows = 0.2;
 
+		constexpr int kNeverDrawn = -2;
+		constexpr int kBitsPerHalf = 32;
+
+		constexpr const char* kLoaderWaitSinceId = "##loadingStateWaitSince";
+		constexpr const char* kLoaderLastFrameId = "##loadingStateLastFrame";
+		constexpr const char* kLineWaitSinceId = "##loadingLineWaitSince";
+		constexpr const char* kLineLastFrameId = "##loadingLineLastFrame";
+
+		// WARNING: The storage keeps ints and floats, and a float of ImGui's clock loses a fifth of a second within weeks
+		// of uptime, so the time goes in as the two halves of the double's bits.
+		ImGuiID HighHalfKey(ImGuiID key)
+		{
+			return ImHashData(&key, sizeof(key), key);
+		}
+
+		void StoreTime(ImGuiStorage& storage, ImGuiID key, double time)
+		{
+			const std::uint64_t bits = std::bit_cast<std::uint64_t>(time);
+			storage.SetInt(key, static_cast<int>(static_cast<std::uint32_t>(bits)));
+			storage.SetInt(HighHalfKey(key), static_cast<int>(static_cast<std::uint32_t>(bits >> kBitsPerHalf)));
+		}
+
+		double LoadTime(const ImGuiStorage& storage, ImGuiID key)
+		{
+			const std::uint64_t low = static_cast<std::uint32_t>(storage.GetInt(key));
+			const std::uint64_t high = static_cast<std::uint32_t>(storage.GetInt(HighHalfKey(key)));
+			return std::bit_cast<double>((high << kBitsPerHalf) | low);
+		}
+
+		bool HasWaitedLongEnough(const char* waitSinceId, const char* lastFrameId)
+		{
+			ImGuiStorage* storage = ImGui::GetStateStorage();
+			const ImGuiID waitSinceKey = ImGui::GetID(waitSinceId);
+			const ImGuiID lastFrameKey = ImGui::GetID(lastFrameId);
+
+			const int frame = ImGui::GetFrameCount();
+			const double now = ImGui::GetTime();
+			const int lastFrame = storage->GetInt(lastFrameKey, kNeverDrawn);
+			const bool waitGoesOn = lastFrame == frame || lastFrame == frame - 1;
+
+			if (!waitGoesOn)
+			{
+				StoreTime(*storage, waitSinceKey, now);
+			}
+
+			storage->SetInt(lastFrameKey, frame);
+
+			const double secondsWaited = now - LoadTime(*storage, waitSinceKey);
+
+			if (secondsWaited < kSecondsBeforeLoaderShows)
+			{
+				Redraw::RequestIn(std::chrono::duration<double>(kSecondsBeforeLoaderShows - secondsWaited));
+				return false;
+			}
+
+			return true;
+		}
+
 		float CentredStart(float space, float extent)
 		{
 			constexpr float kHalf = 0.5f;
@@ -37,6 +98,11 @@ namespace Core {
 
 	void LoadingState(const char* text)
 	{
+		if (!HasWaitedLongEnough(kLoaderWaitSinceId, kLoaderLastFrameId))
+		{
+			return;
+		}
+
 		const ImVec2 region = ImGui::GetContentRegionAvail();
 		const float textWidth = ImGui::CalcTextSize(text).x;
 
@@ -61,6 +127,12 @@ namespace Core {
 
 	void LoadingLine(const char* text)
 	{
+		if (!HasWaitedLongEnough(kLineWaitSinceId, kLineLastFrameId))
+		{
+			ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
+			return;
+		}
+
 		constexpr float kRadiusPerDiameter = 0.5f;
 
 		// WARNING: An imspinner spinner pads its circle by the frame padding above and below, so the
@@ -82,25 +154,5 @@ namespace Core {
 		ImGui::TextDisabled("%s", text);
 
 		Redraw::RequestIn(Redraw::Clock::duration::zero());
-	}
-
-	bool LoaderIsDue(std::optional<double>& waitingSince)
-	{
-		const double now = ImGui::GetTime();
-
-		if (!waitingSince.has_value())
-		{
-			waitingSince = now;
-		}
-
-		const double secondsWaited = now - *waitingSince;
-
-		if (secondsWaited < kSecondsBeforeLoaderShows)
-		{
-			Redraw::RequestIn(std::chrono::duration<double>(kSecondsBeforeLoaderShows - secondsWaited));
-			return false;
-		}
-
-		return true;
 	}
 }

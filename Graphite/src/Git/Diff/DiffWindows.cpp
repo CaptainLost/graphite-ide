@@ -7,6 +7,7 @@
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/TabContextMenu.h"
 
@@ -385,7 +386,7 @@ namespace Graphite {
 
 				if (!loadedDiff && !entry.Diff.Commit.has_value() && model.IsWorkingTreeDiffLoading())
 				{
-					Core::EmptyState("Loading…");
+					Core::LoadingState("Loading the diff");
 				}
 				else if (!loadedDiff)
 				{

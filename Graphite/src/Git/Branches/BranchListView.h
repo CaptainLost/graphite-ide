@@ -96,9 +96,5 @@ namespace Graphite {
 		std::optional<RowsBuiltFrom> m_RowsBuiltFrom;
 		std::vector<BranchRow> m_Rows;
 		std::vector<AuthorChoice> m_Choices;
-
-		std::optional<double> m_BranchesWaitingSince;
-		std::optional<double> m_AuthorsWaitingSince;
-		std::optional<double> m_AuthorsPanelWaitingSince;
 	};
 }

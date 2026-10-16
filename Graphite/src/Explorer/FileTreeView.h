@@ -144,6 +144,5 @@ namespace Graphite {
 		std::string m_FilteredTreeText;
 		std::uint64_t m_FilteredTreeListingVersion = 0;
 		bool m_ReopenFilteredFolders = false;
-		std::optional<double> m_SearchingSince;
 	};
 }

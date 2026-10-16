@@ -21,6 +21,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/TextInput.h"
@@ -266,9 +267,14 @@ namespace Graphite {
 			{
 				Core::EmptyState("Could not read the repository: " + statusError->Message);
 			}
+			else if (!m_Model.HasOpenFolder())
+			{
+				// WARNING: With no folder no status is on its way, so a loader here would turn forever.
+				Core::EmptyState("No folder is open.");
+			}
 			else
 			{
-				Core::EmptyState("Loading changes…");
+				Core::LoadingState("Loading changes");
 			}
 
 			return;

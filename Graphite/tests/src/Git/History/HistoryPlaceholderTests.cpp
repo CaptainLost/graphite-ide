@@ -13,7 +13,7 @@ namespace {
 
 TEST_CASE("The history says it is loading while no answer has come back")
 {
-	CHECK(Graphite::HistoryPlaceholder(kNoStatusDelivered, std::nullopt, std::nullopt) == "Loading history…");
+	CHECK_FALSE(Graphite::HistoryPlaceholder(kNoStatusDelivered, std::nullopt, std::nullopt).has_value());
 }
 
 TEST_CASE("A folder that is not a repository says so rather than loading forever")
@@ -32,7 +32,7 @@ TEST_CASE("A status that failed for another reason is not read as a missing repo
 {
 	const Core::Error statusFailed{Core::ErrorCode::IoFailure, "the index is locked"};
 
-	CHECK(Graphite::HistoryPlaceholder(kNoStatusDelivered, statusFailed, std::nullopt) == "Loading history…");
+	CHECK_FALSE(Graphite::HistoryPlaceholder(kNoStatusDelivered, statusFailed, std::nullopt).has_value());
 	CHECK(Graphite::HistoryPlaceholder(kNoStatusDelivered, statusFailed, kLogFailed) ==
 		  "Could not load the history: object not found - no match for id");
 }

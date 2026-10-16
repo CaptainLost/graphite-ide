@@ -216,9 +216,6 @@ namespace Graphite {
 		m_RowsBuiltFrom.reset();
 		m_Rows.clear();
 		m_Choices.clear();
-		m_BranchesWaitingSince.reset();
-		m_AuthorsWaitingSince.reset();
-		m_AuthorsPanelWaitingSince.reset();
 	}
 
 	BranchListView::RowsBuiltFrom BranchListView::InputsOf(const BranchListFrame& frame) const
@@ -293,10 +290,6 @@ namespace Graphite {
 			RebuildRowsWhenOutOfDate(frame);
 		}
 
-		if (frame.Authors || frame.AuthorsFailure.has_value())
-		{
-			m_AuthorsPanelWaitingSince.reset();
-		}
 
 		const float buttonRoom = IconButtonSize() + ImGui::GetStyle().ItemSpacing.x;
 
@@ -362,14 +355,7 @@ namespace Graphite {
 
 		if (!frame.Authors)
 		{
-			if (Core::LoaderIsDue(m_AuthorsPanelWaitingSince))
-			{
-				Core::LoadingLine(kReadingAuthors);
-			}
-			else
-			{
-				ImGui::TextDisabled("%s", kReadingAuthors);
-			}
+			Core::LoadingLine(kReadingAuthors);
 
 			return;
 		}
@@ -565,14 +551,9 @@ namespace Graphite {
 	{
 		const bool waitingForBranches = !frame.Branches && !frame.BranchesFailed;
 
-		if (!waitingForBranches)
-		{
-			m_BranchesWaitingSince.reset();
-		}
-
 		if (!frame.Branches)
 		{
-			if (waitingForBranches && Core::LoaderIsDue(m_BranchesWaitingSince))
+			if (waitingForBranches)
 			{
 				Core::LoadingState("Loading branches");
 			}
@@ -581,15 +562,6 @@ namespace Graphite {
 		}
 
 		RebuildRowsWhenOutOfDate(frame);
-
-		const bool waitingForAuthors =
-			m_RowsBuiltFrom.has_value() && ViewNeedsAuthors(RowsInputOf(*m_RowsBuiltFrom)) && !frame.Authors &&
-			!frame.AuthorsFailure.has_value();
-
-		if (!waitingForAuthors)
-		{
-			m_AuthorsWaitingSince.reset();
-		}
 
 		ImGuiListClipper clipper;
 		clipper.Begin(static_cast<int>(m_Rows.size()), ImGui::GetTextLineHeightWithSpacing());
@@ -668,14 +640,7 @@ namespace Graphite {
 
 		if (row.Kind == BranchRowKind::Loading)
 		{
-			if (Core::LoaderIsDue(m_AuthorsWaitingSince))
-			{
-				Core::LoadingLine(row.Label.c_str());
-			}
-			else
-			{
-				EmptyRow();
-			}
+			Core::LoadingLine(row.Label.c_str());
 		}
 		else
 		{

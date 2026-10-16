@@ -6,6 +6,7 @@
 
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/FileSystem/FileSystem.h"
@@ -694,7 +695,12 @@ namespace Graphite {
 			}
 			else if (!diff)
 			{
-				ImGui::TextDisabled("Loading…");
+				// WARNING: Scoped by the commit, not the row: expanding a commit above moves this row to
+				// another index, and the wait would start over or pass to another row's loader.
+				const char* const idBytes = reinterpret_cast<const char*>(commit.Id.Bytes.data());
+				ImGui::PushID(idBytes, idBytes + commit.Id.Bytes.size());
+				Core::LoadingLine("Loading files");
+				ImGui::PopID();
 			}
 			else if (diff->Files.empty())
 			{

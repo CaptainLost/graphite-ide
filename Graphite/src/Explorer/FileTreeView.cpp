@@ -138,7 +138,6 @@ namespace Graphite {
 			else
 			{
 				m_FilteredTreeText.clear();
-				m_SearchingSince.reset();
 				RenderNode(m_Workspace.GetTree().GetRoot());
 			}
 
@@ -266,7 +265,6 @@ namespace Graphite {
 			return;
 		}
 
-		m_SearchingSince.reset();
 		RebuildFilteredTreeWhenOutOfDate();
 
 		// WARNING: The scope keeps the filtered rows' ids apart from the real tree's. ImGui stores a
@@ -289,10 +287,7 @@ namespace Graphite {
 
 	void FileTreeView::RenderSearching()
 	{
-		if (Core::LoaderIsDue(m_SearchingSince))
-		{
-			Core::LoadingState("Searching");
-		}
+		Core::LoadingState("Searching");
 	}
 
 	void FileTreeView::RebuildFilteredTreeWhenOutOfDate()
