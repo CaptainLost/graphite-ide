@@ -79,7 +79,7 @@ namespace Graphite {
 			return std::format("Uncommitted changes could not be read: {}", error.Message);
 		}
 
-		std::string CountsText(const LineCounts& counts)
+		std::string CountsText(const Core::LineCounts& counts)
 		{
 			return std::format("+{} -{}", counts.Added, counts.Removed);
 		}
@@ -108,7 +108,7 @@ namespace Graphite {
 			return filter.empty() ? std::string{"All viewed."} : std::string{"No files match."};
 		}
 
-		bool DrawHeadingRow(const ReviewTreeRow& row, const std::string& note, const LineCounts& groupCounts,
+		bool DrawHeadingRow(const ReviewTreeRow& row, const std::string& note, const Core::LineCounts& groupCounts,
 							float rowHeight)
 		{
 			const ImVec2 rowStart = ImGui::GetCursorPos();
@@ -271,7 +271,7 @@ namespace Graphite {
 			bool CanOpen = false;
 			float RowHeight = 0.0f;
 			float Indent = 0.0f;
-			LineCounts Counts;
+			Core::LineCounts Counts;
 		};
 
 		struct FileRowActions
@@ -373,7 +373,7 @@ namespace Graphite {
 				}
 			}
 
-			const LineCounts& counts = look.Counts;
+			const Core::LineCounts& counts = look.Counts;
 			const std::string countsText = file.IsBinary ? std::string{"binary"} : CountsText(counts);
 			const bool changedSinceViewed = look.Viewed == ViewedState::ChangedSinceViewed;
 			const std::string changedText = changedSinceViewed ? std::string{"changed"} : std::string{};

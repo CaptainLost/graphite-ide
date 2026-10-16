@@ -2,6 +2,7 @@
 
 #include "Core/Git/Oid.h"
 
+#include <cstddef>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -78,4 +79,33 @@ namespace Core {
 	{
 		std::vector<FileDiff> Files;
 	};
+
+	struct LineCounts
+	{
+		std::size_t Added = 0;
+		std::size_t Removed = 0;
+	};
+
+	inline LineCounts CountLines(const FileDiff& file)
+	{
+		LineCounts counts;
+
+		for (const Hunk& hunk : file.Hunks)
+		{
+			for (const DiffLine& line : hunk.Lines)
+			{
+				if (line.Kind == DiffLineKind::Added)
+				{
+					++counts.Added;
+				}
+
+				if (line.Kind == DiffLineKind::Removed)
+				{
+					++counts.Removed;
+				}
+			}
+		}
+
+		return counts;
+	}
 }

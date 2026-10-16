@@ -37,9 +37,9 @@ namespace Graphite {
 
 		constexpr const char* kEndQuestionTitle = "###ReviewEnd";
 
-		std::vector<LineCounts> LineCountsOfEachIn(const Core::Diff* groupDiff)
+		std::vector<Core::LineCounts> LineCountsOfEachIn(const Core::Diff* groupDiff)
 		{
-			return groupDiff != nullptr ? LineCountsOfEach(*groupDiff) : std::vector<LineCounts>{};
+			return groupDiff != nullptr ? LineCountsOfEach(*groupDiff) : std::vector<Core::LineCounts>{};
 		}
 
 		ViewedCount ViewedOfHeadings(const std::vector<ReviewTreeRow>& rows)

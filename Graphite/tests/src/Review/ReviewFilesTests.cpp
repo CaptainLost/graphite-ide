@@ -211,22 +211,6 @@ TEST_CASE("The default of a remote other than origin is not a base")
 	CHECK(offer->Base == std::optional<std::string>{"refs/heads/main"});
 }
 
-TEST_CASE("A file's added and removed lines are counted from its hunks")
-{
-	Core::FileDiff file = FileAt("a.cpp");
-	Core::Hunk hunk;
-	hunk.Lines = {Core::DiffLine{.Kind = Core::DiffLineKind::Context},
-				  Core::DiffLine{.Kind = Core::DiffLineKind::Added},
-				  Core::DiffLine{.Kind = Core::DiffLineKind::Added},
-				  Core::DiffLine{.Kind = Core::DiffLineKind::Removed}};
-	file.Hunks.push_back(hunk);
-
-	const Graphite::LineCounts counts = Graphite::CountLines(file);
-
-	CHECK(counts.Added == 2);
-	CHECK(counts.Removed == 1);
-}
-
 TEST_CASE("The viewed count covers every file of every present group")
 {
 	const Core::Diff committed = DiffOfFiles({"a.cpp", "b.cpp"});
@@ -423,7 +407,7 @@ TEST_CASE("Each file's line counts come in the diff's own order and add up to th
 	diff.Files[0].Hunks.push_back(addedOnly);
 	diff.Files[1].Hunks.push_back(removedTwice);
 
-	const std::vector<Graphite::LineCounts> counts = Graphite::LineCountsOfEach(diff);
+	const std::vector<Core::LineCounts> counts = Graphite::LineCountsOfEach(diff);
 
 	REQUIRE(counts.size() == 2);
 	CHECK(counts[0].Added == 1);

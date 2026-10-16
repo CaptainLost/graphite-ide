@@ -28,17 +28,9 @@ namespace Graphite {
 
 	RangeEnds EndsOfCommit(const Core::CommitSummary& commit);
 
-	struct LineCounts
-	{
-		std::size_t Added = 0;
-		std::size_t Removed = 0;
-	};
+	std::vector<Core::LineCounts> LineCountsOfEach(const Core::Diff& diff);
 
-	LineCounts CountLines(const Core::FileDiff& file);
-
-	std::vector<LineCounts> LineCountsOfEach(const Core::Diff& diff);
-
-	LineCounts SumOf(const std::vector<LineCounts>& counts);
+	Core::LineCounts SumOf(const std::vector<Core::LineCounts>& counts);
 
 	struct ReviewGroups
 	{
@@ -53,7 +45,7 @@ namespace Graphite {
 
 	std::string ChangeSummary(const Core::Diff& diff);
 
-	std::string ChangeSummary(std::size_t fileCount, const LineCounts& lines);
+	std::string ChangeSummary(std::size_t fileCount, const Core::LineCounts& lines);
 
 	std::string GroupHeadingText(ReviewGroup group, std::size_t shown, std::size_t total);
 

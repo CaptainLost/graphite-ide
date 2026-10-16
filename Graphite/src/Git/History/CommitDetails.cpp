@@ -11,25 +11,10 @@ namespace Graphite {
 
 		for (const Core::FileDiff& fileDiff : diff.Files)
 		{
-			for (const Core::Hunk& hunk : fileDiff.Hunks)
-			{
-				for (const Core::DiffLine& diffLine : hunk.Lines)
-				{
-					switch (diffLine.Kind)
-					{
-					case Core::DiffLineKind::Added:
-						++changeCounts.Added;
-						break;
+			const Core::LineCounts lines = Core::CountLines(fileDiff);
 
-					case Core::DiffLineKind::Removed:
-						++changeCounts.Removed;
-						break;
-
-					case Core::DiffLineKind::Context:
-						break;
-					}
-				}
-			}
+			changeCounts.Added += lines.Added;
+			changeCounts.Removed += lines.Removed;
 		}
 
 		return changeCounts;

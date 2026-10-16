@@ -128,8 +128,8 @@ namespace Graphite {
 
 			std::vector<ReviewTreeRow> Rows;
 
-			std::array<std::vector<LineCounts>, kReviewGroupCount> FileCounts;
-			std::array<LineCounts, kReviewGroupCount> GroupCounts{};
+			std::array<std::vector<Core::LineCounts>, kReviewGroupCount> FileCounts;
+			std::array<Core::LineCounts, kReviewGroupCount> GroupCounts{};
 
 			std::string Summary;
 

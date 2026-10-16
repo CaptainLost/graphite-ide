@@ -380,3 +380,19 @@ TEST_CASE("A revision diff with no older side reports every file of the newer on
 	REQUIRE(diff.GetValue().Files.size() == 1);
 	CHECK(diff.GetValue().Files.front().Change == FileChange::Added);
 }
+
+TEST_CASE("A file's added and removed lines are counted from its hunks, context left out")
+{
+	Core::FileDiff file;
+	Core::Hunk first;
+	first.Lines = {Core::DiffLine{.Kind = Core::DiffLineKind::Context}, Core::DiffLine{.Kind = Core::DiffLineKind::Added},
+				   Core::DiffLine{.Kind = Core::DiffLineKind::Removed}};
+	Core::Hunk second;
+	second.Lines = {Core::DiffLine{.Kind = Core::DiffLineKind::Added}};
+	file.Hunks = {first, second};
+
+	const Core::LineCounts counts = Core::CountLines(file);
+
+	CHECK(counts.Added == 2);
+	CHECK(counts.Removed == 1);
+}

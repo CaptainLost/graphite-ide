@@ -104,47 +104,24 @@ namespace Graphite {
 		return RangeEnds{.MergeBase = firstParent, .Tip = commit.Id};
 	}
 
-	LineCounts CountLines(const Core::FileDiff& file)
+	std::vector<Core::LineCounts> LineCountsOfEach(const Core::Diff& diff)
 	{
-		LineCounts counts;
-
-		for (const Core::Hunk& hunk : file.Hunks)
-		{
-			for (const Core::DiffLine& line : hunk.Lines)
-			{
-				if (line.Kind == Core::DiffLineKind::Added)
-				{
-					++counts.Added;
-				}
-
-				if (line.Kind == Core::DiffLineKind::Removed)
-				{
-					++counts.Removed;
-				}
-			}
-		}
-
-		return counts;
-	}
-
-	std::vector<LineCounts> LineCountsOfEach(const Core::Diff& diff)
-	{
-		std::vector<LineCounts> counts;
+		std::vector<Core::LineCounts> counts;
 		counts.reserve(diff.Files.size());
 
 		for (const Core::FileDiff& file : diff.Files)
 		{
-			counts.push_back(CountLines(file));
+			counts.push_back(Core::CountLines(file));
 		}
 
 		return counts;
 	}
 
-	LineCounts SumOf(const std::vector<LineCounts>& counts)
+	Core::LineCounts SumOf(const std::vector<Core::LineCounts>& counts)
 	{
-		LineCounts total;
+		Core::LineCounts total;
 
-		for (const LineCounts& fileCounts : counts)
+		for (const Core::LineCounts& fileCounts : counts)
 		{
 			total.Added += fileCounts.Added;
 			total.Removed += fileCounts.Removed;
@@ -171,7 +148,7 @@ namespace Graphite {
 		return ChangeSummary(diff.Files.size(), SumOf(LineCountsOfEach(diff)));
 	}
 
-	std::string ChangeSummary(std::size_t fileCount, const LineCounts& lines)
+	std::string ChangeSummary(std::size_t fileCount, const Core::LineCounts& lines)
 	{
 		return std::format("{} +{} -{}", Core::Counted(fileCount, "file"), lines.Added, lines.Removed);
 	}
