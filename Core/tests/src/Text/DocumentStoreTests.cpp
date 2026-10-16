@@ -117,3 +117,21 @@ TEST_CASE("Replacing a preview tab releases the replaced document")
 	CHECK(documents.GetStore().Find(first) == nullptr);
 	CHECK(documents.GetStore().Find(second) != nullptr);
 }
+
+TEST_CASE("Moving a file onto the path of a closed document still finds the moved one")
+{
+	TempDirectory directory;
+	const std::filesystem::path closedPath = directory.GetPath() / "b.cpp";
+	const std::filesystem::path movedPath = directory.GetPath() / "a.cpp";
+	WriteFileBytes(closedPath, "int b;\n");
+	WriteFileBytes(movedPath, "int a;\n");
+	DocumentStore store;
+
+	std::shared_ptr<TextDocument> closed = store.Acquire(closedPath).GetValue();
+	std::shared_ptr<TextDocument> moved = store.Acquire(movedPath).GetValue();
+	closed.reset();
+
+	store.RewritePaths(movedPath, closedPath);
+
+	CHECK(store.Find(closedPath) == moved);
+}

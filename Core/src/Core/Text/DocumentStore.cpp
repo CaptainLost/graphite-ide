@@ -12,9 +12,15 @@ namespace Core {
 	{
 		for (const Entry& entry : m_Entries)
 		{
-			if (entry.Path == path)
+			if (entry.Path != path)
 			{
-				return entry.Document.lock();
+				continue;
+			}
+
+			// An expired entry may share its path with a live one after a rename, so it must not end the search.
+			if (std::shared_ptr<TextDocument> document = entry.Document.lock())
+			{
+				return document;
 			}
 		}
 
@@ -60,6 +66,9 @@ namespace Core {
 
 	void DocumentStore::RewritePaths(const std::filesystem::path& movedFrom, const std::filesystem::path& movedTo)
 	{
+		// Rewriting an expired entry could give two entries the same path.
+		ForgetReleased();
+
 		for (Entry& entry : m_Entries)
 		{
 			const std::optional<std::filesystem::path> relativePath = RelativeTo(entry.Path, movedFrom);
