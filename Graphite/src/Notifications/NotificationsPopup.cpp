@@ -4,6 +4,7 @@
 #include "Notifications/FolderLine.h"
 #include "UI/IconButton.h"
 
+#include "Core/Base/Strings.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/ImGuiColors.h"
@@ -106,7 +107,7 @@ namespace Graphite {
 
 		std::string HiddenLinesText(std::size_t hiddenLines)
 		{
-			return hiddenLines == 1 ? std::string("\u2026 1 more line") : std::format("\u2026 {} more lines", hiddenLines);
+			return "\u2026 " + Core::Counted(hiddenLines, "more line");
 		}
 
 		// WARNING: Floored, because half a pixel here puts the row's bottom edge, and its highlight, on a half pixel.

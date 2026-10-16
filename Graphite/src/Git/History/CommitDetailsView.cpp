@@ -1,5 +1,7 @@
 #include "Git/History/CommitDetailsView.h"
 
+#include "Core/Base/Strings.h"
+
 #include "Git/History/CommitLabels.h"
 #include "UI/SplitResults.h"
 
@@ -83,7 +85,7 @@ namespace Graphite {
 
 		if (stats.has_value())
 		{
-			ImGui::Text("%zu %s", stats->Files, stats->Files == 1 ? "file" : "files");
+			ImGui::TextUnformatted(Core::Counted(stats->Files, "file").c_str());
 			ImGui::SameLine();
 			ImGui::TextColored(ImColor(palette.GutterAdded), "+%zu", stats->Added);
 			ImGui::SameLine();

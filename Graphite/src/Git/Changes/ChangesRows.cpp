@@ -1,5 +1,6 @@
 #include "Git/Changes/ChangesRows.h"
 
+#include "Core/Base/Strings.h"
 #include "Core/FileSystem/FileSystem.h"
 
 #include <algorithm>
@@ -169,8 +170,7 @@ namespace Graphite {
 		{
 			if (plan.FileCount.has_value())
 			{
-				const char* noun = *plan.FileCount == 1 ? "file" : "files";
-				return std::format("Delete the {} untracked {} in {}/?", *plan.FileCount, noun, name);
+				return std::format("Delete the {} in {}/?", Core::Counted(*plan.FileCount, "untracked file"), name);
 			}
 
 			return std::format("Delete the untracked files in {}/?", name);

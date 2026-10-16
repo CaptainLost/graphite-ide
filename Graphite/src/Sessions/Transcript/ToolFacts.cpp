@@ -34,7 +34,7 @@ namespace Graphite {
 
 		std::string LinesText(std::uint64_t lines)
 		{
-			return std::to_string(lines) + (lines == 1 ? " line" : " lines");
+			return Core::Counted(lines, "line");
 		}
 
 		std::uint64_t LineCountOf(const std::string& content)
@@ -334,7 +334,7 @@ namespace Graphite {
 		const std::uint64_t inputTokens = total.Input + total.CacheWrite5m + total.CacheWrite1h + total.CacheRead;
 		const int cachedPercent = CachedPercent(total.CacheRead, inputTokens);
 
-		std::string line = std::to_string(requests) + (requests == 1 ? " request" : " requests");
+		std::string line = Core::Counted(requests, "request");
 		line += kMiddleDotSeparator;
 		line += models;
 		line += kMiddleDotSeparator;

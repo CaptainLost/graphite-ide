@@ -1,5 +1,7 @@
 #include "Git/GitStatusText.h"
 
+#include "Core/Base/Strings.h"
+
 #include "UI/TypographicMarks.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -87,7 +89,7 @@ namespace Graphite {
 
 		std::string CommitCountLabel(std::size_t commitCount)
 		{
-			return std::to_string(commitCount) + (commitCount == 1 ? " commit" : " commits");
+			return Core::Counted(commitCount, "commit");
 		}
 
 		std::string DistanceSentence(const Core::Branch& branch)
@@ -190,8 +192,7 @@ namespace Graphite {
 		if (inputs.Status != nullptr && !inputs.Status->Entries.empty())
 		{
 			const std::size_t changeCount = inputs.Status->Entries.size();
-			segment.Changes = ICON_MDI_CIRCLE_MEDIUM " " + std::to_string(changeCount) +
-							  (changeCount == 1 ? " change" : " changes");
+			segment.Changes = ICON_MDI_CIRCLE_MEDIUM " " + Core::Counted(changeCount, "change");
 			segment.ChangesTooltip =
 				changeCount == 1 ? "1 uncommitted change. Click to show it in Changes."
 								 : std::to_string(changeCount) + " uncommitted changes. Click to show them in Changes.";

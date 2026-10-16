@@ -701,7 +701,7 @@ namespace Graphite {
 			const SentItem& largest = LargestSentItem(request.Sent);
 
 			const std::size_t itemCount = request.Sent.size();
-			std::string prefix = "Sent: " + std::to_string(itemCount) + (itemCount == 1 ? " item" : " items");
+			std::string prefix = "Sent: " + Core::Counted(itemCount, "item");
 			prefix += kEmDashSeparator;
 			prefix += "largest: ";
 			const std::string suffix = "  " + Core::FormatByteSize(largest.Bytes);

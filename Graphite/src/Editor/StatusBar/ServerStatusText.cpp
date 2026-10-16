@@ -17,8 +17,7 @@ namespace Graphite {
 				return {};
 			}
 
-			return "restarted " + std::to_string(status.Restarts) +
-				   (status.Restarts == 1 ? " time" : " times");
+			return "restarted " + Core::Counted(status.Restarts, "time");
 		}
 
 		std::string LanguagePrefix(LanguageId language)

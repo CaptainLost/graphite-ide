@@ -382,17 +382,15 @@ namespace Graphite {
 		}
 
 		const std::size_t total = timeline.GetRequests().size();
-		const char* noun = total == 1 ? "request" : "requests";
 
 		ImGui::SameLine();
 
-		std::string count = m_Shown.size() == total
-								? std::to_string(total) + " " + noun
-								: std::to_string(m_Shown.size()) + " of " + std::to_string(total) + " " + noun;
+		std::string count = m_Shown.size() == total ? Core::Counted(total, "request")
+													: std::to_string(m_Shown.size()) + " of " + Core::Counted(total, "request");
 
 		if (m_GroupByTurn)
 		{
-			count += " in " + std::to_string(m_Groups.size()) + (m_Groups.size() == 1 ? " turn" : " turns");
+			count += " in " + Core::Counted(m_Groups.size(), "turn");
 		}
 
 		ImGui::TextDisabled("%s", count.c_str());
@@ -533,7 +531,7 @@ namespace Graphite {
 
 		const std::string shown = PromptTooltipText(prompt);
 
-		std::string totals = std::to_string(summary.Count) + (summary.Count == 1 ? " request" : " requests");
+		std::string totals = Core::Counted(summary.Count, "request");
 
 		if (summary.HasUsage)
 		{

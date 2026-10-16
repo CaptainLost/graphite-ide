@@ -581,7 +581,7 @@ namespace Graphite {
 
 		const std::size_t stepCount = part.Items.size();
 		std::string headerText = std::string{isOpen ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT} + " " +
-								 std::to_string(stepCount) + (stepCount == 1 ? " step" : " steps");
+								 Core::Counted(stepCount, "step");
 
 		const std::size_t namedToolTotal = std::min(part.ToolCounts.size(), kNamedToolCount);
 		std::vector<std::string> namedTools;

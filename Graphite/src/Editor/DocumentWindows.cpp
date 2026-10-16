@@ -146,7 +146,7 @@ namespace Graphite {
 				return {};
 			}
 
-			return "Saved " + std::to_string(saved) + (saved == 1 ? " file." : " files.");
+			return "Saved " + Core::Counted(saved, "file") + ".";
 		}
 
 		std::string NotSavedSummary(const std::vector<std::filesystem::path>& conflicted)
@@ -741,8 +741,7 @@ namespace Graphite {
 
 		if (!failed && reverted > 0)
 		{
-			SetTransientMessage("Discarded unsaved changes in " + std::to_string(reverted) +
-								(reverted == 1 ? " file" : " files"));
+			SetTransientMessage("Discarded unsaved changes in " + Core::Counted(reverted, "file"));
 		}
 	}
 

@@ -2,6 +2,7 @@
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Base.h"
+#include "Core/Base/Strings.h"
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
@@ -786,13 +787,13 @@ namespace Graphite {
 
 		if (page.Complete)
 		{
-			ImGui::TextDisabled("%zu matching %s", count, count == 1 ? "commit" : "commits");
+			ImGui::TextDisabled("%s", Core::Counted(count, "matching commit").c_str());
 			return;
 		}
 
-		ImGui::TextDisabled("%zu matching %s so far — the search stopped before the end of "
+		ImGui::TextDisabled("%s so far — the search stopped before the end of "
 							"the history",
-							count, count == 1 ? "commit" : "commits");
+							Core::Counted(count, "matching commit").c_str());
 	}
 
 	void GitView::RenderCommits(const GitPalette& palette)

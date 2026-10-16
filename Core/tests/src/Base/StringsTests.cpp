@@ -96,3 +96,16 @@ TEST_CASE("FirstLine stops at the first newline and keeps a carriage return befo
 	static_assert(Core::FirstLine("a\r\nb") == "a\r");
 	static_assert(Core::FirstLine("\nb").empty());
 }
+
+TEST_CASE("Counted puts the count before the noun and adds an s for any count but one")
+{
+	CHECK(Core::Counted(1, "file") == "1 file");
+	CHECK(Core::Counted(0, "file") == "0 files");
+	CHECK(Core::Counted(std::size_t{3}, "untracked file") == "3 untracked files");
+}
+
+TEST_CASE("Counted takes the plural it is given where an s would be wrong")
+{
+	CHECK(Core::Counted(1, "more match", "more matches") == "1 more match");
+	CHECK(Core::Counted(2LL, "more match", "more matches") == "2 more matches");
+}

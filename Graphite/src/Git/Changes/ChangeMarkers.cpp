@@ -1,5 +1,7 @@
 #include "Git/Changes/ChangeMarkers.h"
 
+#include "Core/Base/Strings.h"
+
 #include <algorithm>
 #include <cstddef>
 #include <optional>
@@ -136,7 +138,7 @@ namespace Graphite {
 
 		std::string LineCountText(std::size_t count)
 		{
-			return std::to_string(count) + (count == 1 ? " line" : " lines");
+			return Core::Counted(count, "line");
 		}
 	}
 

@@ -3,6 +3,7 @@
 #include "Git/DefaultBranch.h"
 #include "Git/History/CommitLabels.h"
 
+#include "Core/Base/Strings.h"
 #include "Core/FileSystem/FileSystem.h"
 
 #include <algorithm>
@@ -190,8 +191,7 @@ namespace Graphite {
 
 	std::string ChangeSummary(std::size_t fileCount, const LineCounts& lines)
 	{
-		const char* noun = fileCount == 1 ? "file" : "files";
-		return std::format("{} {} +{} -{}", fileCount, noun, lines.Added, lines.Removed);
+		return std::format("{} +{} -{}", Core::Counted(fileCount, "file"), lines.Added, lines.Removed);
 	}
 
 	std::string GroupHeadingText(ReviewGroup group, std::size_t shown, std::size_t total)

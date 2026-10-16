@@ -2,6 +2,8 @@
 
 #include "Language/Registry/LanguageRegistry.h"
 
+#include "Core/Base/Strings.h"
+
 namespace Graphite {
 
 	namespace {
@@ -53,7 +55,7 @@ namespace Graphite {
 
 		if (errors > 0)
 		{
-			problems = std::to_string(errors) + (errors == 1 ? " error" : " errors");
+			problems = Core::Counted(errors, "error");
 		}
 
 		if (warnings > 0)
@@ -63,7 +65,7 @@ namespace Graphite {
 				problems += ", ";
 			}
 
-			problems += std::to_string(warnings) + (warnings == 1 ? " warning" : " warnings");
+			problems += Core::Counted(warnings, "warning");
 		}
 
 		return problems;

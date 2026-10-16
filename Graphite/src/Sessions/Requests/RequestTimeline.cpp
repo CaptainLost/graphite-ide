@@ -51,12 +51,12 @@ namespace Graphite {
 
 		std::string ToolCountLabel(std::size_t count)
 		{
-			return std::to_string(count) + (count == 1 ? " tool" : " tools");
+			return Core::Counted(count, "tool");
 		}
 
 		std::string DeferredNamesLabel(std::size_t count)
 		{
-			return std::to_string(count) + (count == 1 ? " deferred tool name" : " deferred tool names");
+			return Core::Counted(count, "deferred tool name");
 		}
 
 		std::string ToolsLoadedLabel(const std::vector<std::string>& added, const std::vector<std::string>& removed)
@@ -477,7 +477,7 @@ namespace Graphite {
 		{
 			const std::size_t schemaCount = record.ToolSchemaCount;
 			m_Snapshot.push_back({.Kind = SentKind::ToolSchemas,
-								  .Label = "Tools (" + std::to_string(schemaCount) + (schemaCount == 1 ? " schema)" : " schemas)"),
+								  .Label = "Tools (" + Core::Counted(schemaCount, "schema") + ")",
 								  .Bytes = record.ToolSchemasText.size(),
 								  .Text = record.ToolSchemasText});
 		}
@@ -600,7 +600,7 @@ namespace Graphite {
 
 		if (request.ToolSchemas > 0)
 		{
-			parts.push_back(std::to_string(request.ToolSchemas) + (request.ToolSchemas == 1 ? " with schema" : " with schemas"));
+			parts.push_back(Core::Counted(request.ToolSchemas, "with schema"));
 		}
 
 		if (request.ToolsAvailable > 0)
@@ -644,11 +644,10 @@ namespace Graphite {
 			totalBytes += item.Bytes;
 		}
 
-		return std::format("{}{}{}{}{}{}",
+		return std::format("{}{}{}{}{}",
 						   reference,
 						   kMiddleDotSeparator,
-						   request.Sent.size(),
-						   request.Sent.size() == 1 ? " item" : " items",
+						   Core::Counted(request.Sent.size(), "item"),
 						   kMiddleDotSeparator,
 						   Core::FormatByteSize(totalBytes));
 	}
@@ -701,7 +700,7 @@ namespace Graphite {
 		}
 		if (toolCallCount > 0)
 		{
-			parts.push_back(std::to_string(toolCallCount) + (toolCallCount == 1 ? " tool call" : " tool calls"));
+			parts.push_back(Core::Counted(toolCallCount, "tool call"));
 		}
 		if (otherCount > 0)
 		{

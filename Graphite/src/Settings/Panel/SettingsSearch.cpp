@@ -54,7 +54,7 @@ namespace Graphite {
 		SettingsRow RowForTheRest(std::size_t count, const std::string& query)
 		{
 			return SettingsRow{.Key = "more",
-							   .Title = count == 1 ? "1 more match" : std::to_string(count) + " more matches",
+							   .Title = Core::Counted(count, "more match", "more matches"),
 							   .Description = "Open the page to see them all.",
 							   .OpenWith = query};
 		}

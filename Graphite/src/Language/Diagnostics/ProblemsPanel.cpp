@@ -7,6 +7,7 @@
 #include "Language/Server/LspProtocol.h"
 #include "UI/OpenGesture.h"
 
+#include "Core/Base/Strings.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/Icons.h"
@@ -143,8 +144,7 @@ namespace Graphite {
 		}
 
 		ImGui::SameLine();
-		ImGui::TextDisabled("(%zu error%s, %zu warning%s)", errors, errors == 1 ? "" : "s",
-							warnings, warnings == 1 ? "" : "s");
+		ImGui::TextDisabled("(%s, %s)", Core::Counted(errors, "error").c_str(), Core::Counted(warnings, "warning").c_str());
 
 		ImGui::Indent();
 

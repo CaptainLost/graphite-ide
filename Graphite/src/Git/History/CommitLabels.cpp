@@ -1,6 +1,7 @@
 #include "Git/History/CommitLabels.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Base/Strings.h"
 
 #include <cctype>
 #include <format>
@@ -18,8 +19,7 @@ namespace Graphite {
 
 		std::string AgeText(long long unitCount, std::string_view unit)
 		{
-			return unitCount == 1 ? std::format("1 {} ago", unit)
-								  : std::format("{} {}s ago", unitCount, unit);
+			return Core::Counted(unitCount, unit) + " ago";
 		}
 
 		char UppercaseFirstLetter(std::string_view word)

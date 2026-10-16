@@ -1027,11 +1027,10 @@ namespace Graphite {
 		const ImGuiStyle& style = ImGui::GetStyle();
 		const ImU32 textColour = ImGui::GetColorU32(ImGuiCol_Text);
 
-		const char* requestWord = turn.Requests.size() == 1 ? " request" : " requests";
 		const std::string heading =
-			std::format("Turn {}{}{}{}{}{}", turnIndex + 1, kMiddleDotSeparator,
+			std::format("Turn {}{}{}{}{}", turnIndex + 1, kMiddleDotSeparator,
 						KnownDollarsText(turnCost.Known, turnCost.Buckets.Total()), kMiddleDotSeparator,
-						turn.Requests.size(), requestWord);
+						Core::Counted(turn.Requests.size(), "request"));
 		const float closeWidth = ImGui::CalcTextSize(ICON_MDI_CLOSE).x + style.FramePadding.x * 2.0f;
 		const float headingWidth =
 			std::max(ImGui::GetContentRegionAvail().x - closeWidth - style.ItemSpacing.x, 0.0f);
