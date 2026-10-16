@@ -27,6 +27,18 @@ namespace Core {
 
 	void RecomputeLineCaches(OpenItem& item);
 
+	enum class CaretFollow
+	{
+		// The edit that moved the text also placed the caret.
+		AlreadyPlaced,
+
+		// Someone else edited the text; the caret moves with it.
+		Shift
+	};
+
+	// Brings the item's line caches, and with Shift its caret, up to its document's text.
+	void CatchUpWithDocument(OpenItem& item, CaretFollow follow);
+
 	bool InsertNewline(OpenItem& item);
 
 	bool Indent(OpenItem& item, IndentStyle style);

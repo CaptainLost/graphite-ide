@@ -4,6 +4,7 @@
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/Indent.h"
 #include "Core/Text/RowMap.h"
+#include "Core/Text/TextBuffer.h"
 #include "Core/Text/TextDocument.h"
 
 #include "TempDirectory.h"
@@ -13,6 +14,8 @@
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+#include <random>
 #include <string>
 
 namespace {
@@ -618,4 +621,113 @@ TEST_CASE("Redo puts the caret after the change it reapplied")
 
 	CHECK(item.Document->GetBuffer().Materialize() == "XYZabc");
 	CHECK(item.Caret.Offset == 3);
+}
+
+namespace {
+	void CheckCachesMatchRecompute(const Core::OpenItem& item)
+	{
+		Core::OpenItem fresh = item;
+		Core::RecomputeLineCaches(fresh);
+
+		CHECK(item.IndentDepths == fresh.IndentDepths);
+		CHECK(item.WidestColumn == fresh.WidestColumn);
+		REQUIRE(item.Rows.GetLineCount() == fresh.Rows.GetLineCount());
+		CHECK(item.Rows.GetTotalRows() == fresh.Rows.GetTotalRows());
+
+		for (std::size_t line = 0; line < fresh.Rows.GetLineCount(); ++line)
+		{
+			CHECK(item.Rows.RowsOf(line) == fresh.Rows.RowsOf(line));
+		}
+	}
+}
+
+TEST_CASE("A tab catches up with an edit made to its document from elsewhere")
+{
+	Core::OpenItem item = ItemWith("first\n    second\nthird");
+	PlaceCaretAt(item, 12);
+
+	item.Document->GetBuffer().Insert(0, "new line\n");
+	Core::CatchUpWithDocument(item, Core::CaretFollow::Shift);
+
+	CHECK(item.Caret.Offset == 21);
+	CHECK(item.Caret.Anchor == 21);
+	CHECK(item.SeenChange == item.Document->GetBuffer().GetChangeSequence());
+	CheckCachesMatchRecompute(item);
+}
+
+TEST_CASE("A caret inside text deleted elsewhere lands where the deletion started")
+{
+	Core::OpenItem item = ItemWith("abcdefgh");
+	PlaceCaretAt(item, 5);
+
+	item.Document->GetBuffer().Erase(2, 7);
+	Core::CatchUpWithDocument(item, Core::CaretFollow::Shift);
+
+	CHECK(item.Caret.Offset == 2);
+}
+
+TEST_CASE("Catching up after any run of edits leaves the caches as a recompute would")
+{
+	std::mt19937 random{1234};
+	const std::string pieces[] = {"x", "\n", "    ", "\t\n", "word\n  deeper\n", ""};
+	Core::OpenItem item = ItemWith("start\n  indented\n\nend");
+
+	for (int step = 0; step < 300; ++step)
+	{
+		Core::TextBuffer& buffer = item.Document->GetBuffer();
+		const std::size_t length = buffer.GetLength();
+		const int choice = static_cast<int>(random() % 5);
+
+		if (choice == 0 && length > 0)
+		{
+			const std::size_t from = random() % length;
+			buffer.Erase(from, from + 1 + random() % 4);
+		}
+		else if (choice == 1)
+		{
+			buffer.Undo();
+		}
+		else if (choice == 2)
+		{
+			buffer.Redo();
+		}
+		else
+		{
+			buffer.Insert(random() % (length + 1), pieces[random() % std::size(pieces)]);
+		}
+
+		Core::CatchUpWithDocument(item, Core::CaretFollow::Shift);
+		CheckCachesMatchRecompute(item);
+	}
+}
+
+TEST_CASE("Undo right after a reload leaves the caches as a recompute would")
+{
+	Core::OpenItem item = ItemWith("a\n  b\nc");
+	PlaceCaretAt(item, 4);
+
+	item.Document->GetBuffer().ReplaceContent("x\n\n    y\nz\nw");
+	Core::CatchUpWithDocument(item, Core::CaretFollow::Shift);
+	CheckCachesMatchRecompute(item);
+
+	REQUIRE(Core::Undo(item));
+	CheckCachesMatchRecompute(item);
+	CHECK(item.Document->GetBuffer().Materialize() == "a\n  b\nc");
+}
+
+TEST_CASE("Indenting more lines than the change log keeps leaves the caches whole")
+{
+	std::string text;
+
+	for (int line = 0; line < 3000; ++line)
+	{
+		text += "line\n";
+	}
+
+	Core::OpenItem item = ItemWith(text);
+	SelectFromTo(item, 0, item.Document->GetBuffer().GetLength());
+
+	REQUIRE(Core::Indent(item, kFourSpaces));
+
+	CheckCachesMatchRecompute(item);
 }

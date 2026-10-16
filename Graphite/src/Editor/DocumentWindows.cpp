@@ -2085,6 +2085,9 @@ namespace Graphite {
 			{
 				m_Shown.insert(item.Path);
 
+				// Another view may have edited this document since the tab last drew.
+				Core::CatchUpWithDocument(item, Core::CaretFollow::Shift);
+
 				// WARNING: Child windows count, because a click on the text focuses the editor
 				// surface, a child of this window. Without the flag the right half of a split stayed
 				// active and commands acted on the half nobody was looking at.

@@ -66,6 +66,9 @@ namespace Core {
 
 		RowMap Rows;
 
+		// The last change of its document that Rows, IndentDepths and the widest line reflect.
+		std::uint64_t SeenChange = 0;
+
 		std::size_t ColumnsPerWrappedRow = 0;
 
 		std::size_t RowAimColumn = 0;

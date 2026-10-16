@@ -8,7 +8,11 @@
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/Indent.h"
 #include "Core/Text/RowMap.h"
+#include "Core/Text/TextChange.h"
 #include "Core/Text/TextDocument.h"
+
+#include <optional>
+#include <span>
 
 namespace Core {
 
@@ -94,14 +98,16 @@ namespace Core {
 			const std::size_t lastLineOfBuffer = buffer.GetLineCount() - 1;
 			std::size_t widenedFirst = std::min(firstLine, lastLineOfBuffer);
 
-			while (widenedFirst > 0 && IsBlankLine(buffer, widenedFirst))
+			// A blank line takes its depth from the nearest text above and below it, so the blank
+			// run beside the edit changes with it even when the edited line itself is not blank.
+			while (widenedFirst > 0 && IsBlankLine(buffer, widenedFirst - 1))
 			{
 				--widenedFirst;
 			}
 
 			std::size_t widenedLast = std::min(lastLine, lastLineOfBuffer);
 
-			while (widenedLast < lastLineOfBuffer && IsBlankLine(buffer, widenedLast))
+			while (widenedLast < lastLineOfBuffer && IsBlankLine(buffer, widenedLast + 1))
 			{
 				++widenedLast;
 			}
@@ -263,15 +269,13 @@ namespace Core {
 				return false;
 			}
 
-			const std::size_t firstLine = buffer.ToPosition(deleteFrom).Line;
-
 			buffer.BeginTransaction();
 			buffer.Erase(deleteFrom, deleteTo);
 			buffer.EndTransaction();
 
 			CollapseCaretTo(item.Caret, deleteFrom);
 
-			UpdateLineCachesAfterEdit(item, firstLine, firstLine);
+			CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
 
 			return true;
 		}
@@ -284,7 +288,7 @@ namespace Core {
 
 			CollapseCaretTo(item.Caret, std::min(caretOffset, buffer.GetLength()));
 
-			RecomputeLineCaches(item);
+			CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
 		}
 
 		std::string LeadingWhitespace(std::string_view lineText)
@@ -484,6 +488,54 @@ namespace Core {
 		// width changes, so a document on screen would stay unwrapped until the next resize.
 		const std::size_t columnsPerRowInForce = item.Rows.GetColumnsPerRow();
 		item.Rows.Rebuild(buffer, columnsPerRowInForce, item.TabWidth);
+
+		item.SeenChange = buffer.GetChangeSequence();
+	}
+
+	void CatchUpWithDocument(OpenItem& item, CaretFollow follow)
+	{
+		if (!item.Document)
+		{
+			return;
+		}
+
+		const TextBuffer& buffer = item.Document->GetBuffer();
+
+		if (item.SeenChange == buffer.GetChangeSequence())
+		{
+			return;
+		}
+
+		const std::optional<std::span<const TextChange>> changes = buffer.ChangesSince(item.SeenChange);
+		const bool recomputeAll = !changes || LinesChangedBy(*changes).Whole;
+
+		if (follow == CaretFollow::Shift)
+		{
+			if (recomputeAll)
+			{
+				item.Caret = PlaceAt(buffer, item.Caret, item.Caret.Offset, SelectionChange::Collapse, item.TabWidth);
+			}
+			else
+			{
+				item.Caret.Offset = ShiftOffset(item.Caret.Offset, *changes);
+				item.Caret.Anchor = ShiftOffset(item.Caret.Anchor, *changes);
+				item.Caret.DesiredColumn = NoDesiredColumn;
+			}
+
+			// The vertical aim was measured against text that has moved. It is cleared rather
+			// than converted, so the next Up or Down starts from where the caret is now.
+			item.RowAimCaretOffset = NoRowAim;
+		}
+
+		if (recomputeAll)
+		{
+			RecomputeLineCaches(item);
+			return;
+		}
+
+		const ChangedLines lines = LinesChangedBy(*changes);
+		UpdateLineCachesAfterEdit(item, lines.FirstLine, lines.LastLine);
+		item.SeenChange = buffer.GetChangeSequence();
 	}
 
 	bool InsertText(OpenItem& item, std::string_view utf8)
@@ -497,8 +549,6 @@ namespace Core {
 		TextBuffer& buffer = item.Document->GetBuffer();
 		const auto [selectionStart, selectionEnd] = SelectionRange(item.Caret);
 
-		const std::size_t firstLine = buffer.ToPosition(selectionStart).Line;
-
 		buffer.BeginTransaction();
 
 		if (selectionStart != selectionEnd)
@@ -511,8 +561,7 @@ namespace Core {
 
 		CollapseCaretTo(item.Caret, selectionStart + withNewlines.size());
 
-		const std::size_t caretLine = buffer.ToPosition(item.Caret.Offset).Line;
-		UpdateLineCachesAfterEdit(item, firstLine, caretLine);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
 
 		return true;
 	}
@@ -602,8 +651,7 @@ namespace Core {
 
 		CollapseCaretTo(item.Caret, selectionStart + newlineWithIndent.size());
 
-		const std::size_t caretLine = buffer.ToPosition(item.Caret.Offset).Line;
-		UpdateLineCachesAfterEdit(item, selectionStartLine, caretLine);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
 
 		return true;
 	}
@@ -649,7 +697,7 @@ namespace Core {
 
 		SelectWholeLines(item.Caret, buffer, firstLine, lastLine);
 
-		UpdateLineCachesAfterEdit(item, firstLine, lastLine);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
 
 		return true;
 	}
@@ -682,7 +730,7 @@ namespace Core {
 
 		SelectWholeLines(item.Caret, buffer, firstLine, lastLine);
 
-		UpdateLineCachesAfterEdit(item, firstLine, lastLine);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
 
 		return true;
 	}
@@ -781,7 +829,7 @@ namespace Core {
 							buffer.LineStart(caretLine) + std::min(caretColumnAfterEdit, caretLineLengthAfterEdit));
 		}
 
-		UpdateLineCachesAfterEdit(item, firstLine, lastLine);
+		CatchUpWithDocument(item, CaretFollow::AlreadyPlaced);
 
 		return true;
 	}

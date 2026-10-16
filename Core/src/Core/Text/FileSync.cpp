@@ -71,14 +71,7 @@ namespace Core {
 			return reloaded.GetError();
 		}
 
-		item.Caret = PlaceAt(item.Document->GetBuffer(), item.Caret, item.Caret.Offset, SelectionChange::Collapse,
-							 item.TabWidth);
-
-		// The vertical aim was measured against text that has gone. It is cleared rather than
-		// converted, so the next Up or Down starts from where the caret is now.
-		item.RowAimCaretOffset = NoRowAim;
-
-		RecomputeLineCaches(item);
+		CatchUpWithDocument(item, CaretFollow::Shift);
 
 		return {};
 	}
