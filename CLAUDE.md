@@ -102,3 +102,5 @@ hook or a check.
 `scripts/Test-NoPathString.ps1` fails on any `.string()` in `Core/src` or `Graphite/src` not marked `// not a path`; paths go through `Core::ToUtf8`.
 
 `scripts/Test-NoImGuiCheckbox.ps1` fails on any `ImGui::Checkbox` in `Core/src` or `Graphite/src`; checkboxes go through `Graphite::DrawTickBox`.
+
+`scripts/Test-IconsLoaded.ps1` fails on any `ICON_MDI_` constant in `Core/src` or `Graphite/src` missing from `kUsedIcons` in `Core/src/Core/ImGui/Icons.cpp`; only the icons listed there are baked into the font atlas, and any other draws ImGui's fallback glyph.
