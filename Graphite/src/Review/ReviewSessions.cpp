@@ -2,7 +2,6 @@
 
 #include "Git/History/CommitLabels.h"
 
-#include "Core/Base/ByteText.h"
 #include "Core/FileSystem/FileSystem.h"
 
 #include <nlohmann/json.hpp>
@@ -90,20 +89,6 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		std::optional<Core::Oid> OidFromHex(const std::string& hex)
-		{
-			const std::optional<std::vector<std::uint8_t>> bytes = Core::BytesFromHex(hex);
-			Core::Oid id;
-
-			if (!bytes.has_value() || bytes->size() != id.Bytes.size())
-			{
-				return std::nullopt;
-			}
-
-			std::copy(bytes->begin(), bytes->end(), id.Bytes.begin());
-			return id;
-		}
-
 		std::optional<std::string> StringAt(const nlohmann::json& object, const char* key)
 		{
 			const nlohmann::json::const_iterator value = object.find(key);
@@ -152,8 +137,8 @@ namespace Graphite {
 			}
 
 			const std::optional<ReviewGroup> group = GroupNamed(*groupName);
-			const std::optional<Core::Oid> oldId = OidFromHex(*oldHex);
-			const std::optional<Core::Oid> newId = OidFromHex(*newHex);
+			const std::optional<Core::Oid> oldId = Core::Oid::FromHex(*oldHex);
+			const std::optional<Core::Oid> newId = Core::Oid::FromHex(*newHex);
 
 			if (!group || !oldId || !newId)
 			{

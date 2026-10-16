@@ -4,7 +4,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <string>
+#include <string_view>
 
 namespace Core {
 
@@ -16,6 +18,9 @@ namespace Core {
 		static constexpr std::size_t kGitDefaultShortHexDigits = 7;
 
 		std::array<std::uint8_t, kByteCount> Bytes{};
+
+		// Nothing unless the text is exactly forty hex digits; either case is read.
+		static std::optional<Oid> FromHex(std::string_view hex);
 
 		bool IsZero() const;
 

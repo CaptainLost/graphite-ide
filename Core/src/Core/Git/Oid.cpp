@@ -3,6 +3,7 @@
 #include "Core/Git/Oid.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/Base/ByteText.h"
 
 #include <algorithm>
 
@@ -13,6 +14,20 @@ namespace Core {
 		constexpr int kBitsPerHexDigit = 4;
 		constexpr std::uint8_t kLowHexDigitMask = 0x0F;
 		constexpr int kBitsPerByte = 8;
+	}
+
+	std::optional<Oid> Oid::FromHex(std::string_view hex)
+	{
+		const std::optional<std::vector<std::uint8_t>> bytes = BytesFromHex(hex);
+		Oid id;
+
+		if (!bytes.has_value() || bytes->size() != id.Bytes.size())
+		{
+			return std::nullopt;
+		}
+
+		std::copy(bytes->begin(), bytes->end(), id.Bytes.begin());
+		return id;
 	}
 
 	bool Oid::IsZero() const

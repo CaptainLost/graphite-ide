@@ -1,6 +1,5 @@
 #include "Persistence/StateCodec.h"
 
-#include "Core/Base/Ascii.h"
 #include "Core/Base/JsonFile.h"
 #include "Core/Base/Strings.h"
 #include "Core/FileSystem/FileSystem.h"
@@ -37,9 +36,6 @@ namespace Graphite {
 
 		constexpr std::size_t kMaximumListEntries = 256;
 		constexpr std::size_t kNumberWhenUnreadable = 0;
-
-		constexpr std::size_t kHexDigitsPerByte = 2;
-		constexpr int kBitsPerHexDigit = 4;
 
 		// WARNING: The words are written out rather than numbered, so reordering an enum in a
 		// later version cannot quietly turn one saved value into another.
@@ -162,32 +158,6 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		std::optional<Core::Oid> ParseOid(const std::string& text)
-		{
-			Core::Oid id;
-
-			if (text.size() != id.Bytes.size() * kHexDigitsPerByte)
-			{
-				return std::nullopt;
-			}
-
-			for (std::size_t byteIndex = 0; byteIndex < id.Bytes.size(); ++byteIndex)
-			{
-				const std::size_t highDigitIndex = byteIndex * kHexDigitsPerByte;
-				const std::optional<std::uint8_t> high = Core::HexDigitValue(text[highDigitIndex]);
-				const std::optional<std::uint8_t> low = Core::HexDigitValue(text[highDigitIndex + 1]);
-
-				if (!high || !low)
-				{
-					return std::nullopt;
-				}
-
-				id.Bytes[byteIndex] = static_cast<std::uint8_t>((*high << kBitsPerHexDigit) | *low);
-			}
-
-			return id;
-		}
-
 		bool IsWorkingTreeTarget(Core::DiffTarget target)
 		{
 			return target == Core::DiffTarget::WorkTreeToIndex || target == Core::DiffTarget::IndexToHead ||
@@ -214,7 +184,7 @@ namespace Graphite {
 
 			if (const std::string commit = file.Get(DiffKey(entryIndex, "commit")); !commit.empty())
 			{
-				diff.Commit = ParseOid(commit);
+				diff.Commit = Core::Oid::FromHex(commit);
 
 				if (!diff.Commit)
 				{
