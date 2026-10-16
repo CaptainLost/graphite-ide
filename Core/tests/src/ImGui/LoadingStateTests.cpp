@@ -80,6 +80,15 @@ namespace {
 			return LineDrawn{.Advance = after - before, .LineHeightWithSpacing = lineHeightWithSpacing};
 		}
 
+		bool CheckLoaderDue(std::optional<double>& waitingSince)
+		{
+			ImGui::NewFrame();
+			const bool due = Core::LoaderIsDue(waitingSince);
+			ImGui::EndFrame();
+
+			return due;
+		}
+
 		const ImRect& GetRegion() const { return m_Region; }
 
 	private:
@@ -163,6 +172,38 @@ TEST_CASE("LoadingLine asks for the next frame so its spinner keeps turning")
 	const std::optional<Core::Redraw::Clock::time_point> deadline = Core::Redraw::TakeDeadline();
 	REQUIRE(deadline.has_value());
 	CHECK(*deadline <= Core::Redraw::Clock::now());
+}
+
+TEST_CASE("A loader is not due as a wait starts, and the wait asks for the frame on which it will be")
+{
+	LoaderWindow window;
+	std::optional<double> waitingSince;
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	CHECK_FALSE(window.CheckLoaderDue(waitingSince));
+	CHECK(waitingSince.has_value());
+
+	const std::optional<Core::Redraw::Clock::time_point> deadline = Core::Redraw::TakeDeadline();
+	REQUIRE(deadline.has_value());
+	CHECK(*deadline > Core::Redraw::Clock::now());
+}
+
+TEST_CASE("A loader is due once its wait has lasted a fifth of a second")
+{
+	LoaderWindow window;
+	std::optional<double> waitingSince;
+	constexpr int kFramesInAFifthOfASecond = 12;
+	constexpr int kFramesInAQuarterOfASecond = 15;
+
+	int framesWaited = 0;
+
+	while (!window.CheckLoaderDue(waitingSince) && framesWaited < kFramesInAQuarterOfASecond)
+	{
+		++framesWaited;
+	}
+
+	CHECK(framesWaited >= kFramesInAFifthOfASecond);
+	CHECK(framesWaited < kFramesInAQuarterOfASecond);
 }
 
 TEST_CASE("LoadingLine draws frame after frame without an ImGui assertion")

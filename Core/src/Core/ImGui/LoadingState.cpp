@@ -9,6 +9,7 @@
 #include <imspinner_text.h>
 
 #include <algorithm>
+#include <chrono>
 
 namespace Core {
 
@@ -24,6 +25,8 @@ namespace Core {
 		constexpr float kLineSpinnerThickness = 2.0f;
 		constexpr float kLineSpinnerSpeed = 2.8f;
 		constexpr float kLineSpinnerArc = 3.14159265f;
+
+		constexpr double kSecondsBeforeLoaderShows = 0.2;
 
 		float CentredStart(float space, float extent)
 		{
@@ -79,5 +82,25 @@ namespace Core {
 		ImGui::TextDisabled("%s", text);
 
 		Redraw::RequestIn(Redraw::Clock::duration::zero());
+	}
+
+	bool LoaderIsDue(std::optional<double>& waitingSince)
+	{
+		const double now = ImGui::GetTime();
+
+		if (!waitingSince.has_value())
+		{
+			waitingSince = now;
+		}
+
+		const double secondsWaited = now - *waitingSince;
+
+		if (secondsWaited < kSecondsBeforeLoaderShows)
+		{
+			Redraw::RequestIn(std::chrono::duration<double>(kSecondsBeforeLoaderShows - secondsWaited));
+			return false;
+		}
+
+		return true;
 	}
 }

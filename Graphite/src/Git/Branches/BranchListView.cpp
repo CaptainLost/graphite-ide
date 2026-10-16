@@ -8,7 +8,6 @@
 #include "UI/IconButton.h"
 #include "UI/TickBox.h"
 
-#include "Core/App/Redraw.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/Toggle.h"
 #include "Core/ImGui/UiScale.h"
@@ -18,7 +17,6 @@
 #include <imgui.h>
 
 #include <algorithm>
-#include <chrono>
 #include <cmath>
 #include <format>
 #include <string>
@@ -37,7 +35,6 @@ namespace Graphite {
 		constexpr const char* kNoAuthorsMatch = "No authors match";
 		constexpr const char* kAuthorListId = "##authorList";
 		constexpr const char* kTickBoxId = "###tick";
-		constexpr double kSecondsBeforeLoaderShows = 0.2;
 
 		constexpr float kPanelWidthInFontSizes = 22.0f;
 		constexpr std::size_t kMostAuthorRowsShown = 10;
@@ -63,28 +60,6 @@ namespace Graphite {
 			{.Label = "None", .Value = BranchGrouping::None},
 			{.Label = "Author", .Value = BranchGrouping::Author},
 		}};
-
-		// True once the wait has lasted long enough for a loader; until then asks for the frame on
-		// which it will have.
-		bool LoaderIsDue(std::optional<double>& waitingSince)
-		{
-			const double now = ImGui::GetTime();
-
-			if (!waitingSince.has_value())
-			{
-				waitingSince = now;
-			}
-
-			const double secondsWaited = now - *waitingSince;
-
-			if (secondsWaited < kSecondsBeforeLoaderShows)
-			{
-				Core::Redraw::RequestIn(std::chrono::duration<double>(kSecondsBeforeLoaderShows - secondsWaited));
-				return false;
-			}
-
-			return true;
-		}
 
 		float ChevronWidth()
 		{
@@ -387,7 +362,7 @@ namespace Graphite {
 
 		if (!frame.Authors)
 		{
-			if (LoaderIsDue(m_AuthorsPanelWaitingSince))
+			if (Core::LoaderIsDue(m_AuthorsPanelWaitingSince))
 			{
 				Core::LoadingLine(kReadingAuthors);
 			}
@@ -597,7 +572,7 @@ namespace Graphite {
 
 		if (!frame.Branches)
 		{
-			if (waitingForBranches && LoaderIsDue(m_BranchesWaitingSince))
+			if (waitingForBranches && Core::LoaderIsDue(m_BranchesWaitingSince))
 			{
 				Core::LoadingState("Loading branches");
 			}
@@ -693,7 +668,7 @@ namespace Graphite {
 
 		if (row.Kind == BranchRowKind::Loading)
 		{
-			if (LoaderIsDue(m_AuthorsWaitingSince))
+			if (Core::LoaderIsDue(m_AuthorsWaitingSince))
 			{
 				Core::LoadingLine(row.Label.c_str());
 			}

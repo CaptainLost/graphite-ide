@@ -1,7 +1,6 @@
 #include "Explorer/FileTreeView.h"
 
 #include "Core/ImGui/UiScale.h"
-#include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileName.h"
 #include "Core/FileSystem/FileOperations.h"
@@ -29,7 +28,6 @@
 #include <IconsMaterialDesignIcons.h>
 
 #include <algorithm>
-#include <chrono>
 #include <format>
 #include <string>
 #include <string_view>
@@ -291,24 +289,10 @@ namespace Graphite {
 
 	void FileTreeView::RenderSearching()
 	{
-		constexpr double kSecondsBeforeLoaderShows = 0.2;
-
-		const double now = ImGui::GetTime();
-
-		if (!m_SearchingSince.has_value())
+		if (Core::LoaderIsDue(m_SearchingSince))
 		{
-			m_SearchingSince = now;
+			Core::LoadingState("Searching");
 		}
-
-		const double secondsSearching = now - *m_SearchingSince;
-
-		if (secondsSearching < kSecondsBeforeLoaderShows)
-		{
-			Core::Redraw::RequestIn(std::chrono::duration<double>(kSecondsBeforeLoaderShows - secondsSearching));
-			return;
-		}
-
-		Core::LoadingState("Searching");
 	}
 
 	void FileTreeView::RebuildFilteredTreeWhenOutOfDate()
