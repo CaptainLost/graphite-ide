@@ -630,4 +630,6 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0598](0598-mark-whatever-opens-and-closes-in-a-list-with-the-one-dim-chevron.md) | Mark whatever opens and closes in a list with the one dim chevron | proposed | 2026-10-16 |
 | [0599](0599-draw-every-list-row-through-listrowselectable.md) | Draw every list row through ListRowSelectable | proposed | 2026-10-16 |
 | [0600](0600-draw-every-bar-over-the-editor-through-drawinfobar.md) | Draw every bar over the editor through DrawInfoBar | proposed | 2026-10-16 |
+| [0601](0601-draw-every-line-number-column-through-linenumbercolumn.md) | Draw every line number column through LineNumberColumn | proposed | 2026-10-16 |
+| [0602](0602-draw-the-middle-of-every-notification-through-one-piece-of-core-code.md) | Draw the middle of every notification through one piece of Core code | proposed | 2026-10-16 |
 <!-- /adr-index -->
