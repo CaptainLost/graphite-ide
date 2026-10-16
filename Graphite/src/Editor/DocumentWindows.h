@@ -388,7 +388,17 @@ namespace Graphite {
 
 		ModalQuestion<std::filesystem::path> m_ReloadConflict;
 
-		ModalQuestion<std::filesystem::path> m_OverwriteConfirm;
+		struct OverwriteQuestion
+		{
+			std::filesystem::path Path;
+
+			// Asked by Save in the close question, which promised to close the tab once the file is written.
+			bool ThenClose = false;
+
+			bool IsSameQuestion(const OverwriteQuestion& other) const { return Path == other.Path; }
+		};
+
+		ModalQuestion<OverwriteQuestion> m_OverwriteConfirm;
 
 		ModalQuestion<std::filesystem::path> m_CloseConfirm;
 

@@ -620,7 +620,7 @@ namespace Graphite {
 
 		if (item.Document->CheckChangedOnDisk())
 		{
-			m_OverwriteConfirm.AskOnce(item.Path);
+			m_OverwriteConfirm.AskOnce(OverwriteQuestion{.Path = item.Path});
 
 			return;
 		}
@@ -1043,7 +1043,7 @@ namespace Graphite {
 	void DocumentWindows::RenderOverwriteConfirm(const ImVec4& danger)
 	{
 		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
-		const std::filesystem::path* asked = m_OverwriteConfirm.Begin();
+		const OverwriteQuestion* asked = m_OverwriteConfirm.Begin();
 		DialogLayout::AfterBegin();
 
 		if (asked == nullptr)
@@ -1052,9 +1052,9 @@ namespace Graphite {
 		}
 
 		// WARNING: Copied out before Answer(), which drops the payload `asked` points at.
-		const std::filesystem::path path = *asked;
+		const OverwriteQuestion question = *asked;
 
-		DialogLayout::Text(std::format("{} changed on disk since it was opened. Overwrite it?", FileNameOf(path)));
+		DialogLayout::Text(std::format("{} changed on disk since it was opened. Overwrite it?", FileNameOf(question.Path)));
 		DialogLayout::Gap();
 
 		const DialogLayout::ButtonSpec absentButton{};
@@ -1062,9 +1062,12 @@ namespace Graphite {
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{
-			if (const std::optional<std::size_t> index = m_Documents.Find(path))
+			const std::optional<std::size_t> index = m_Documents.Find(question.Path);
+			const bool saved = index && SaveOne(*index);
+
+			if (saved && question.ThenClose)
 			{
-				SaveOne(*index);
+				CloseIfOpen(question.Path);
 			}
 
 			m_OverwriteConfirm.Answer();
@@ -1129,7 +1132,7 @@ namespace Graphite {
 			if (changedOnDisk)
 			{
 				m_CloseConfirm.Answer();
-				m_OverwriteConfirm.AskOnce(path);
+				m_OverwriteConfirm.AskOnce(OverwriteQuestion{.Path = path, .ThenClose = true});
 			}
 			else if (!index || SaveOne(*index))
 			{
