@@ -11,35 +11,7 @@
 
 namespace Core {
 
-	FileHold::FileHold(void* handle) : m_Handle(handle) {}
-
-	FileHold::FileHold(FileHold&& other) noexcept : m_Handle(std::exchange(other.m_Handle, nullptr)) {}
-
-	FileHold& FileHold::operator=(FileHold&& other) noexcept
-	{
-		if (this != &other)
-		{
-			Release();
-			m_Handle = std::exchange(other.m_Handle, nullptr);
-		}
-
-		return *this;
-	}
-
-	FileHold::~FileHold()
-	{
-		Release();
-	}
-
-	void FileHold::Release()
-	{
-#ifdef CORE_PLATFORM_WINDOWS
-		if (m_Handle != nullptr)
-		{
-			::CloseHandle(std::exchange(m_Handle, nullptr));
-		}
-#endif
-	}
+	FileHold::FileHold(UniqueHandle handle) : m_Handle(std::move(handle)) {}
 
 	Result<FileHold> FileHold::HoldOpen([[maybe_unused]] const std::filesystem::path& file)
 	{
@@ -56,7 +28,7 @@ namespace Core {
 						 .Message = std::format("cannot hold '{}' open (error {})", ToUtf8(file), openErrorCode)};
 		}
 
-		return FileHold{handle};
+		return FileHold{UniqueHandle{handle}};
 #else
 		return Error{.Code = ErrorCode::Unsupported, .Message = "file holds are not built for this platform yet"};
 #endif

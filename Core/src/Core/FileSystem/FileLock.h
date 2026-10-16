@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Base/Result.h"
+#include "Core/Platform/UniqueHandle.h"
 
 #include <filesystem>
 
@@ -11,19 +12,11 @@ namespace Core {
 	class FileLock
 	{
 	public:
-		FileLock(const FileLock&) = delete;
-		FileLock& operator=(const FileLock&) = delete;
-		FileLock(FileLock&& other) noexcept;
-		FileLock& operator=(FileLock&& other) noexcept;
-		~FileLock();
-
 		static Result<FileLock> TryAcquire(const std::filesystem::path& lockFile);
 
 	private:
-		explicit FileLock(void* handle);
+		explicit FileLock(UniqueHandle handle);
 
-		void Release();
-
-		void* m_Handle = nullptr;
+		UniqueHandle m_Handle;
 	};
 }

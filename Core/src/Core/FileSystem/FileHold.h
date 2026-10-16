@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Base/Result.h"
+#include "Core/Platform/UniqueHandle.h"
 
 #include <filesystem>
 
@@ -10,19 +11,11 @@ namespace Core {
 	class FileHold
 	{
 	public:
-		FileHold(const FileHold&) = delete;
-		FileHold& operator=(const FileHold&) = delete;
-		FileHold(FileHold&& other) noexcept;
-		FileHold& operator=(FileHold&& other) noexcept;
-		~FileHold();
-
 		static Result<FileHold> HoldOpen(const std::filesystem::path& file);
 
 	private:
-		explicit FileHold(void* handle);
+		explicit FileHold(UniqueHandle handle);
 
-		void Release();
-
-		void* m_Handle = nullptr;
+		UniqueHandle m_Handle;
 	};
 }

@@ -11,35 +11,7 @@
 
 namespace Core {
 
-	FileLock::FileLock(void* handle) : m_Handle(handle) {}
-
-	FileLock::FileLock(FileLock&& other) noexcept : m_Handle(std::exchange(other.m_Handle, nullptr)) {}
-
-	FileLock& FileLock::operator=(FileLock&& other) noexcept
-	{
-		if (this != &other)
-		{
-			Release();
-			m_Handle = std::exchange(other.m_Handle, nullptr);
-		}
-
-		return *this;
-	}
-
-	FileLock::~FileLock()
-	{
-		Release();
-	}
-
-	void FileLock::Release()
-	{
-#ifdef CORE_PLATFORM_WINDOWS
-		if (m_Handle != nullptr)
-		{
-			::CloseHandle(std::exchange(m_Handle, nullptr));
-		}
-#endif
-	}
+	FileLock::FileLock(UniqueHandle handle) : m_Handle(std::move(handle)) {}
 
 	Result<FileLock> FileLock::TryAcquire([[maybe_unused]] const std::filesystem::path& lockFile)
 	{
@@ -64,7 +36,7 @@ namespace Core {
 						 .Message = std::format("cannot create the lock '{}' (error {})", ToUtf8(lockFile), openErrorCode)};
 		}
 
-		return FileLock{handle};
+		return FileLock{UniqueHandle{handle}};
 #else
 		return Error{.Code = ErrorCode::Unsupported, .Message = "file locks are not built for this platform yet"};
 #endif
