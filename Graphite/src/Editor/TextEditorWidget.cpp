@@ -46,6 +46,7 @@
 #include "Core/Text/Editing.h"
 #include "Core/Text/Encoding.h"
 #include "Core/Text/RowMap.h"
+#include "Core/Text/TextChange.h"
 #include "Core/Text/TextDocument.h"
 #include "Core/Text/WrapLayout.h"
 
@@ -56,8 +57,10 @@
 #include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -711,34 +714,35 @@ namespace Graphite {
 
 		struct EditMark
 		{
-			std::size_t Line = 0;
+			std::uint64_t ChangeSequence = 0;
 			std::size_t LineCount = 0;
 		};
 
-		// WARNING: The edit begins at the selection's start, not the caret's line: the caret is
-		// only one end of a selection and the anchor can sit above it.
-		EditMark MarkBeforeEdit(const Core::TextBuffer& buffer, const Core::Caret& caret)
+		EditMark MarkBeforeEdit(const Core::TextBuffer& buffer)
 		{
-			return EditMark{.Line = buffer.ToPosition(Core::SelectionRange(caret).From).Line,
-							.LineCount = buffer.GetLineCount()};
+			return EditMark{.ChangeSequence = buffer.GetChangeSequence(), .LineCount = buffer.GetLineCount()};
 		}
 
+		// The lines to shift come from the buffer's own record of the edit, not from the caret: a
+		// newline typed at the end of a declaration leaves the declaration, and its lens, in place,
+		// and an undo or redo can touch lines the caret never visited.
 		void NotifyAfterEdit(const EditSinks& sinks, const Core::TextBuffer& buffer,
 							 const Core::OpenItem& item, const EditMark& before, bool changed)
 		{
-			if (!changed)
+			if (!changed || sinks.Lens == nullptr)
 			{
 				return;
 			}
 
-			if (sinks.Lens != nullptr)
-			{
-				const std::ptrdiff_t lineCountChange =
-					static_cast<std::ptrdiff_t>(buffer.GetLineCount()) -
-					static_cast<std::ptrdiff_t>(before.LineCount);
+			const std::optional<std::span<const Core::TextChange>> changes = buffer.ChangesSince(before.ChangeSequence);
+			const bool knowsTheEdit = changes.has_value() && !changes->empty();
+			const std::size_t firstMovedLine = knowsTheEdit ? Core::FirstMovedLine(buffer, *changes) : kFirstLine;
 
-				sinks.Lens->OnLinesChanged(before.Line, lineCountChange, item.Rows);
-			}
+			const std::ptrdiff_t lineCountChange =
+				static_cast<std::ptrdiff_t>(buffer.GetLineCount()) -
+				static_cast<std::ptrdiff_t>(before.LineCount);
+
+			sinks.Lens->OnLinesChanged(firstMovedLine, lineCountChange, item.Rows);
 		}
 
 		bool IsInsertableCodepoint(unsigned int codepoint)
@@ -768,7 +772,7 @@ namespace Graphite {
 
 				if (length > 0)
 				{
-					const EditMark before = MarkBeforeEdit(buffer, item.Caret);
+					const EditMark before = MarkBeforeEdit(buffer);
 					const bool changed = Core::InsertText(
 						item, std::string_view(utf8, static_cast<std::size_t>(length)));
 
@@ -791,7 +795,7 @@ namespace Graphite {
 
 				if (stroke.Key == Core::KeyCode::Enter || stroke.Key == Core::KeyCode::KeypadEnter)
 				{
-					const EditMark before = MarkBeforeEdit(buffer, item.Caret);
+					const EditMark before = MarkBeforeEdit(buffer);
 					const bool changed = Core::InsertNewline(item);
 					result.Edited |= changed;
 					NotifyAfterEdit(sinks, buffer, item, before, changed);
@@ -799,7 +803,7 @@ namespace Graphite {
 
 				if (stroke.Key == Core::KeyCode::Backspace)
 				{
-					const EditMark before = MarkBeforeEdit(buffer, item.Caret);
+					const EditMark before = MarkBeforeEdit(buffer);
 					const bool changed =
 						control ? Core::DeleteWordBackward(item) : Core::DeleteBackward(item);
 					result.Edited |= changed;
@@ -808,7 +812,7 @@ namespace Graphite {
 
 				if (stroke.Key == Core::KeyCode::Delete)
 				{
-					const EditMark before = MarkBeforeEdit(buffer, item.Caret);
+					const EditMark before = MarkBeforeEdit(buffer);
 					const bool changed =
 						control ? Core::DeleteWordForward(item) : Core::DeleteForward(item);
 					result.Edited |= changed;
@@ -820,7 +824,7 @@ namespace Graphite {
 				// switcher and edit the document behind it.
 				if (!control && stroke.Key == Core::KeyCode::Tab)
 				{
-					const EditMark before = MarkBeforeEdit(buffer, item.Caret);
+					const EditMark before = MarkBeforeEdit(buffer);
 					const bool changed =
 						shift ? Core::Outdent(item, indentStyle) : Core::Indent(item, indentStyle);
 					result.Edited |= changed;
@@ -904,7 +908,7 @@ namespace Graphite {
 			for (const PendingEditorAction& queued : actionsThisFrame)
 			{
 				const EditorAction action = queued.Action;
-				EditMark before = MarkBeforeEdit(buffer, item.Caret);
+				const EditMark before = MarkBeforeEdit(buffer);
 
 				if (IsHistoryAction(action))
 				{
@@ -916,11 +920,6 @@ namespace Graphite {
 					}
 
 					history = TakeHistoryStep(history, repeatHeld, now);
-
-					// WARNING: The caret cannot say what an undone or redone group touched, so
-					// everything is invalidated from line 0. A redo of a multi-edit group can
-					// leave the caret at the group's last edit while its first sat higher up.
-					before = EditMark{.Line = kFirstLine, .LineCount = buffer.GetLineCount()};
 				}
 
 				std::optional<std::string> clipboard;

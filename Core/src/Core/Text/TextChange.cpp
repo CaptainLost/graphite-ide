@@ -2,8 +2,12 @@
 
 #include "Core/Text/TextChange.h"
 
+#include "Core/Base/Ascii.h"
+#include "Core/Text/TextBuffer.h"
+
 #include <algorithm>
 #include <limits>
+#include <string>
 
 namespace Core {
 
@@ -57,5 +61,23 @@ namespace Core {
 		}
 
 		return offset;
+	}
+
+	std::size_t FirstMovedLine(const TextBuffer& buffer, std::span<const TextChange> changes)
+	{
+		std::size_t firstMovedLine = std::numeric_limits<std::size_t>::max();
+
+		for (const TextChange& change : changes)
+		{
+			// The text before the change on its first line is the same before and after it, so
+			// the buffer as it is now can say whether that line kept anything of its own.
+			const std::size_t lineStart = buffer.LineStart(change.FirstLine);
+			const std::string textBeforeChange = buffer.Substring(lineStart, change.Offset);
+			const bool lineKeepsItsText = !ContainsOnlySpacesAndTabs(textBeforeChange);
+
+			firstMovedLine = std::min(firstMovedLine, change.FirstLine + (lineKeepsItsText ? 1 : 0));
+		}
+
+		return firstMovedLine;
 	}
 }

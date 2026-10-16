@@ -46,4 +46,12 @@ namespace Core {
 	// Text inserted at the offset pushes it on; an offset inside removed text lands where the
 	// removal started.
 	std::size_t ShiftOffset(std::size_t offset, std::span<const TextChange> changes);
+
+	class TextBuffer;
+
+	// The first line whose text the changes moved to another line. A change with text of its
+	// line before it leaves that line where it was: a newline typed at the end of a declaration
+	// moves the lines below, not the declaration. Asks the buffer after the changes; the span
+	// must not be empty.
+	std::size_t FirstMovedLine(const TextBuffer& buffer, std::span<const TextChange> changes);
 }

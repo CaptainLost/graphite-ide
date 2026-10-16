@@ -3,6 +3,7 @@
 #include "Core/Text/TextBuffer.h"
 #include "Core/Text/TextChange.h"
 
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
@@ -201,4 +202,55 @@ TEST_CASE("An offset moves past text inserted before it and onto the start of te
 	CHECK(ShiftOffset(5, changes) == 6);
 	CHECK(ShiftOffset(8, changes) == 7);
 	CHECK(ShiftOffset(9, changes) == 8);
+}
+
+TEST_CASE("A newline typed at the end of a line moves only the lines below it")
+{
+	TextBuffer buffer{"namespace Core {\n    struct Args\n    {\n"};
+	const std::uint64_t before = buffer.GetChangeSequence();
+
+	buffer.Insert(buffer.LineStart(1) + buffer.LineLength(1), "\n");
+
+	CHECK(FirstMovedLine(buffer, *buffer.ChangesSince(before)) == 2);
+}
+
+TEST_CASE("A newline typed inside a line's indentation moves that line")
+{
+	TextBuffer buffer{"namespace Core {\n    struct Args\n    {\n"};
+	const std::uint64_t before = buffer.GetChangeSequence();
+
+	buffer.Insert(buffer.LineStart(1) + 2, "\n");
+
+	CHECK(FirstMovedLine(buffer, *buffer.ChangesSince(before)) == 1);
+}
+
+TEST_CASE("Joining a line onto a blank line above it moves it from the blank line")
+{
+	TextBuffer buffer{"namespace Core {\n\nstruct Args\n"};
+	const std::uint64_t before = buffer.GetChangeSequence();
+
+	buffer.Erase(buffer.LineStart(1), buffer.LineStart(2));
+
+	CHECK(FirstMovedLine(buffer, *buffer.ChangesSince(before)) == 1);
+}
+
+TEST_CASE("Joining a line onto the end of the text above it moves it from the next line")
+{
+	TextBuffer buffer{"{\nstruct Args\n"};
+	const std::uint64_t before = buffer.GetChangeSequence();
+
+	buffer.Erase(1, 2);
+
+	CHECK(FirstMovedLine(buffer, *buffer.ChangesSince(before)) == 1);
+}
+
+TEST_CASE("Undoing a newline typed at the end of a line moves only the lines below it")
+{
+	TextBuffer buffer{"namespace Core {\n    struct Args\n    {\n"};
+	buffer.Insert(buffer.LineStart(1) + buffer.LineLength(1), "\n");
+	const std::uint64_t before = buffer.GetChangeSequence();
+
+	REQUIRE(buffer.Undo().has_value());
+
+	CHECK(FirstMovedLine(buffer, *buffer.ChangesSince(before)) == 2);
 }
