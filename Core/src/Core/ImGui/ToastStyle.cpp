@@ -3,7 +3,14 @@
 #include "Core/ImGui/ToastStyle.h"
 
 #include "Core/ImGui/ImGuiColors.h"
+#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/UiScale.h"
+
+#include <imgui_internal.h>
+
+#include <algorithm>
+#include <cfloat>
+#include <cmath>
 
 namespace Core {
 
@@ -17,6 +24,29 @@ namespace Core {
 		constexpr float kHalf = 0.5f;
 
 		constexpr float kMessageShareTowardsText = 0.85f;
+		constexpr float kIconGap = 12.0f;
+		constexpr float kTitleGap = 4.0f;
+		constexpr float kNoWrap = 0.0f;
+		constexpr float kKeepFontSize = 0.0f;
+		constexpr float kShortestTitleWidth = 1.0f;
+
+		ImFont* TitleFont()
+		{
+			ImFont* const bold = ImGuiRenderer::GetBoldFont();
+			return bold != nullptr ? bold : ImGui::GetFont();
+		}
+
+		// WARNING: Unrounded, as AddText advances; CalcTextSize rounds each width up.
+		float WidthIn(ImFont* font, std::string_view text)
+		{
+			return font->CalcTextSizeA(ImGui::GetFontSize(), FLT_MAX, kNoWrap, text.data(), text.data() + text.size()).x;
+		}
+
+		float TitleRoom(float width, std::string_view count)
+		{
+			const float countRoom = count.empty() ? 0.0f : WidthIn(ImGui::GetFont(), count) + ImGui::GetStyle().ItemSpacing.x;
+			return std::max(width - countRoom, kShortestTitleWidth);
+		}
 
 		constexpr int kPointsInStroke = 2;
 		constexpr int kPointsInTick = 3;
@@ -131,5 +161,101 @@ namespace Core {
 
 		drawList.AddCircleFilled(centre, iconRadius, accentColour);
 		DrawMark(drawList, kind, centre, markColour);
+	}
+
+	float NotificationIconGap()
+	{
+		return Scaled(kIconGap);
+	}
+
+	float NotificationTitleGap()
+	{
+		return Scaled(kTitleGap);
+	}
+
+	// WARNING: The line's middle is rounded up to a whole pixel. The icon's ring is crisper there, and a row that floors
+	// its first line's top would otherwise put the icon half a pixel above the row's inset.
+	ImVec2 NotificationIconCentre(float textLeft, float firstLineTop)
+	{
+		return ImVec2(textLeft - NotificationIconGap() - ToastIconDiameter() * kHalf,
+					  firstLineTop + std::ceil(ImGui::GetFontSize() * kHalf));
+	}
+
+	float NotificationTitleHeight(std::string_view title, std::string_view count, float widthWithCount,
+								  NotificationTitleFit fit)
+	{
+		const float fontSize = ImGui::GetFontSize();
+
+		if (fit == NotificationTitleFit::Ellipsis)
+		{
+			return fontSize;
+		}
+
+		const float wrapped =
+			TitleFont()->CalcTextSizeA(fontSize, FLT_MAX, TitleRoom(widthWithCount, count), title.data(), title.data() + title.size()).y;
+		return std::max(wrapped, fontSize);
+	}
+
+	void DrawNotificationTitle(ImDrawList& drawList, ImVec2 topLeft, float widthWithCount, std::string_view title,
+							   std::string_view count, NotificationTitleFit fit, const ToastPalette& palette)
+	{
+		ImFont* const font = TitleFont();
+		const float fontSize = ImGui::GetFontSize();
+		const float room = TitleRoom(widthWithCount, count);
+		const ImU32 textColour = ImGui::GetColorU32(ToImVec4(palette.Text));
+
+		if (fit == NotificationTitleFit::Wrap)
+		{
+			drawList.AddText(font, fontSize, topLeft, textColour, title.data(), title.data() + title.size(), room);
+		}
+		else
+		{
+			// WARNING: RenderTextEllipsis draws in the current font and text colour, so the bold face and the palette's
+			// text colour are pushed for it.
+			ImGui::PushFont(font, kKeepFontSize);
+			ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4(palette.Text));
+			const float right = topLeft.x + room;
+			ImGui::RenderTextEllipsis(&drawList, topLeft, ImVec2(right, topLeft.y + fontSize), right, title.data(),
+									  title.data() + title.size(), nullptr);
+			ImGui::PopStyleColor();
+			ImGui::PopFont();
+		}
+
+		if (count.empty())
+		{
+			return;
+		}
+
+		const float wrappedWidth =
+			font->CalcTextSizeA(fontSize, FLT_MAX, room, title.data(), title.data() + title.size()).x;
+		const float titleWidth =
+			fit == NotificationTitleFit::Wrap ? wrappedWidth : std::min(WidthIn(font, title), room);
+		const ImVec2 countTopLeft(topLeft.x + titleWidth + ImGui::GetStyle().ItemSpacing.x, topLeft.y);
+		drawList.AddText(ImGui::GetFont(), fontSize, countTopLeft, ImGui::GetColorU32(ToImVec4(palette.TextDim)), count.data(),
+						 count.data() + count.size());
+	}
+
+	void DrawNotificationMessage(ImDrawList& drawList, ImVec2 topLeft, std::span<const ToastTextLine> lines,
+								 const ToastPalette& palette)
+	{
+		ImFont* const regular = ImGui::GetFont();
+		ImFont* const strong = TitleFont();
+		const float fontSize = ImGui::GetFontSize();
+		const ImU32 plainColour = ImGui::GetColorU32(ToImVec4(ToastMessageColour(palette)));
+		const ImU32 strongColour = ImGui::GetColorU32(ToImVec4(palette.Text));
+
+		float lineTop = topLeft.y;
+
+		for (const ToastTextLine& line : lines)
+		{
+			for (const ToastTextRun& run : line.Runs)
+			{
+				const bool isStrong = run.Style == ToastTextStyle::Strong;
+				drawList.AddText(isStrong ? strong : regular, fontSize, ImVec2(topLeft.x + run.X, lineTop),
+								 isStrong ? strongColour : plainColour, run.Text.data(), run.Text.data() + run.Text.size());
+			}
+
+			lineTop += fontSize;
+		}
 	}
 }

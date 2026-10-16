@@ -22,6 +22,7 @@
 #include <cmath>
 #include <format>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -33,7 +34,6 @@ namespace Graphite {
 		constexpr const char* kRemoveButtonId = "##remove";
 		constexpr std::size_t kCollapsedLines = 4;
 		constexpr float kHighestShareOfWindow = 0.6f;
-		constexpr float kIconGap = 12.0f;
 		constexpr float kRowInset = 8.0f;
 		constexpr float kRowRounding = 4.0f;
 
@@ -153,7 +153,7 @@ namespace Graphite {
 			const std::size_t moreLines = layout.HiddenLines > 0 ? 1 : 0;
 			const std::size_t textLines = titleLines + folderLines + layout.VisibleLines + moreLines;
 
-			const float textHeight = static_cast<float>(textLines) * ImGui::GetFontSize();
+			const float textHeight = static_cast<float>(textLines) * ImGui::GetFontSize() + Core::NotificationTitleGap();
 			const float contentHeight = std::max(Core::ToastIconDiameter(), IconOverhang() + textHeight);
 			const float inset = Core::Scaled(kRowInset);
 			layout.Height = inset + contentHeight + inset;
@@ -178,19 +178,12 @@ namespace Graphite {
 				draw->AddRectFilled(rowMin, rowMax, ImGui::GetColorU32(ImGuiCol_HeaderHovered), Core::Scaled(kRowRounding));
 			}
 
-			const float iconTop = rowMin.y + inset;
-			const ImVec2 iconCentre(contentLeft + iconDiameter * 0.5f, iconTop + iconDiameter * 0.5f);
-			Core::DrawToastIcon(*draw, entry.Kind, iconCentre, palette);
-
 			const float firstLineY = FirstLineTop(rowMin.y);
+			const float textX = contentLeft + iconDiameter + Core::NotificationIconGap();
+			Core::DrawToastIcon(*draw, entry.Kind, Core::NotificationIconCentre(textX, firstLineY), palette);
 
-			const float textX = contentLeft + iconDiameter + Core::Scaled(kIconGap);
-			const ImU32 textColour = ImGui::GetColorU32(Core::ToImVec4(palette.Text));
 			const ImU32 dimColour = ImGui::GetColorU32(Core::ToImVec4(palette.TextDim));
-			const ImU32 messageColour = ImGui::GetColorU32(Core::ToImVec4(Core::ToastMessageColour(palette)));
-
 			ImFont* const regularFont = FontFor(FontWeight::Regular);
-			ImFont* const strongFont = FontFor(FontWeight::Strong);
 			const float noWrapWidth = 0.0f;
 
 			const float timeX = contentRight - MeasureRegularUnrounded(layout.Time);
@@ -200,17 +193,8 @@ namespace Graphite {
 			}
 
 			const float headingRightOfTimeAndRemoveButton = std::min(timeX, RemoveButtonRect(rowRect).Min.x) - spacing;
-			const ImVec4 headingClip(textX, firstLineY, headingRightOfTimeAndRemoveButton, firstLineY + lineHeight);
-			draw->AddText(strongFont, lineHeight, ImVec2(textX, firstLineY), textColour, entry.Title.c_str(), nullptr, noWrapWidth,
-						  &headingClip);
-
-			if (!layout.Count.empty())
-			{
-				const bool titleIsStrong = true;
-				const float countX = textX + MeasureUnrounded(entry.Title, titleIsStrong) + spacing;
-				draw->AddText(regularFont, lineHeight, ImVec2(countX, firstLineY), dimColour, layout.Count.c_str(), nullptr, noWrapWidth,
-							  &headingClip);
-			}
+			Core::DrawNotificationTitle(*draw, ImVec2(textX, firstLineY), std::max(headingRightOfTimeAndRemoveButton - textX, 0.0f),
+										entry.Title, layout.Count, Core::NotificationTitleFit::Ellipsis, palette);
 
 			float lineY = firstLineY + lineHeight;
 			const ImVec4 textClip(textX, rowMin.y, contentRight, rowMax.y);
@@ -222,17 +206,10 @@ namespace Graphite {
 				lineY += lineHeight;
 			}
 
-			for (std::size_t lineIndex = 0; lineIndex < layout.VisibleLines; ++lineIndex)
-			{
-				for (const Core::ToastTextRun& run : layout.Lines[lineIndex].Runs)
-				{
-					const bool strong = run.Style == Core::ToastTextStyle::Strong;
-					draw->AddText(FontFor(WeightOf(strong)), lineHeight, ImVec2(textX + run.X, lineY), strong ? textColour : messageColour,
-								  run.Text.data(), run.Text.data() + run.Text.size());
-				}
-
-				lineY += lineHeight;
-			}
+			lineY += Core::NotificationTitleGap();
+			Core::DrawNotificationMessage(*draw, ImVec2(textX, lineY),
+										  std::span(layout.Lines).first(layout.VisibleLines), palette);
+			lineY += static_cast<float>(layout.VisibleLines) * lineHeight;
 
 			if (layout.HiddenLines > 0)
 			{
@@ -245,7 +222,7 @@ namespace Graphite {
 											float rowWidth, const std::filesystem::path& openFolder, const std::chrono::time_zone* zone)
 		{
 			const float textWidth =
-				std::max(rowWidth - 2.0f * Core::Scaled(kRowInset) - Core::ToastIconDiameter() - Core::Scaled(kIconGap), 1.0f);
+				std::max(rowWidth - 2.0f * Core::Scaled(kRowInset) - Core::ToastIconDiameter() - Core::NotificationIconGap(), 1.0f);
 
 			std::vector<EntryLayout> rows;
 			rows.reserve(entries.size());

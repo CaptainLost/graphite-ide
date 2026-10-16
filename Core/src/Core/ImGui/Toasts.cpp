@@ -33,8 +33,6 @@ namespace Core {
 	namespace {
 		constexpr float kMaxBodyLines = 8.0f;
 		constexpr float kSpacingBetweenCards = 8.0f;
-		constexpr float kGapBetweenIconAndText = 12.0f;
-		constexpr float kGapBetweenTitleAndMessage = 4.0f;
 		constexpr float kCardRounding = 8.0f;
 		constexpr float kBorderWidth = 1.5f;
 		constexpr float kBorderAlpha = 0.55f;
@@ -46,7 +44,6 @@ namespace Core {
 		constexpr float kSettledDistancePixels = 0.01f;
 		constexpr float kHalf = 0.5f;
 		constexpr float kShortestWidth = 1.0f;
-		constexpr float kKeepFontSize = 0.0f;
 		constexpr float kNoWrap = 0.0f;
 		constexpr float kNoBorderSize = 0.0f;
 		constexpr float kTransparentBackgroundAlpha = 0.0f;
@@ -137,26 +134,6 @@ namespace Core {
 		{
 			return font->CalcTextSizeA(fontSize, FLT_MAX, kNoWrap, text.data(), text.data() + text.size()).x;
 		}
-
-		float WrappedHeight(ImFont* font, const std::string& text, float wrapWidth)
-		{
-			const char* const textEnd = nullptr;
-			const bool hideTextAfterDoubleHash = false;
-
-			if (font != nullptr)
-			{
-				ImGui::PushFont(font, kKeepFontSize);
-			}
-
-			const float height = ImGui::CalcTextSize(text.c_str(), textEnd, hideTextAfterDoubleHash, wrapWidth).y;
-
-			if (font != nullptr)
-			{
-				ImGui::PopFont();
-			}
-
-			return height;
-		}
 	}
 
 	std::uint64_t Toasts::Show(ToastKind kind, std::string title, std::string message, std::string copyText,
@@ -179,7 +156,7 @@ namespace Core {
 		const float closeButtonWidth = IconButtonSize(IconButtonFit::Line);
 		const float closeButtonSlotWidth = style.ItemSpacing.x + closeButtonWidth;
 
-		const float textLeft = paddingX + iconDiameter + Scaled(kGapBetweenIconAndText);
+		const float textLeft = paddingX + iconDiameter + NotificationIconGap();
 		const float messageWidth = width - textLeft - paddingX;
 		const float titleWrapWidth = messageWidth - closeButtonSlotWidth;
 
@@ -222,11 +199,8 @@ namespace Core {
 			}
 
 			const std::string repeatCountText = toast.Count > 1 ? std::format("(x{})", toast.Count) : std::string();
-			const float repeatCountWidth =
-				repeatCountText.empty() ? 0.0f : style.ItemSpacing.x + ImGui::CalcTextSize(repeatCountText.c_str()).x;
-			const float titleWidth = std::max(titleWrapWidth - repeatCountWidth, kShortestWidth);
-
-			const float titleHeight = std::max(WrappedHeight(boldFont, toast.Title, titleWidth), fontSize);
+			const float titleHeight =
+				NotificationTitleHeight(toast.Title, repeatCountText, titleWrapWidth, NotificationTitleFit::Wrap);
 
 			float layoutWidth = messageWidth;
 			std::vector<ToastTextLine> lines = LayoutToastText(toast.Message, layoutWidth, measureText);
@@ -239,9 +213,9 @@ namespace Core {
 
 			const float messageHeight = static_cast<float>(std::max<std::size_t>(lines.size(), 1)) * fontSize;
 			const float bodyHeight = std::min(messageHeight, fontSize * kMaxBodyLines);
-			const float textHeight = titleHeight + Scaled(kGapBetweenTitleAndMessage) + bodyHeight;
+			const float textHeight = titleHeight + NotificationTitleGap() + bodyHeight;
 
-			const float iconCentreY = paddingY + fontSize * kHalf;
+			const float iconCentreY = NotificationIconCentre(textLeft, paddingY).y;
 			const float height =
 				std::max(paddingY + textHeight + paddingY, iconCentreY + iconDiameter * kHalf + paddingY);
 
@@ -312,37 +286,12 @@ namespace Core {
 									ToastStack::ShareOfLifetimeLeft(toast, now),
 									{.Remaining = ImGui::GetColorU32(border), .Drained = ImGui::GetColorU32(drainedBorder)});
 
-				const ImVec2 iconCentre(cardMin.x + paddingX + iconDiameter * kHalf, cardMin.y + iconCentreY);
-				DrawToastIcon(*cardDrawList, toast.Kind, iconCentre, palette);
-
 				const float rowY = paddingY;
+				const ImVec2 textTopLeft(cardMin.x + textLeft, cardMin.y + rowY);
 
-				ImGui::SetCursorPos(ImVec2(textLeft, rowY));
-				ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4(palette.Text));
-
-				if (boldFont != nullptr)
-				{
-					ImGui::PushFont(boldFont, kKeepFontSize);
-				}
-
-				ImGui::PushTextWrapPos(textLeft + titleWidth);
-				ImGui::TextUnformatted(toast.Title.c_str());
-				ImGui::PopTextWrapPos();
-
-				if (boldFont != nullptr)
-				{
-					ImGui::PopFont();
-				}
-
-				ImGui::PopStyleColor();
-
-				if (!repeatCountText.empty())
-				{
-					ImGui::SameLine();
-					ImGui::PushStyleColor(ImGuiCol_Text, ToImVec4(palette.TextDim));
-					ImGui::TextUnformatted(repeatCountText.c_str());
-					ImGui::PopStyleColor();
-				}
+				DrawToastIcon(*cardDrawList, toast.Kind, NotificationIconCentre(textTopLeft.x, textTopLeft.y), palette);
+				DrawNotificationTitle(*cardDrawList, textTopLeft, titleWrapWidth, toast.Title, repeatCountText,
+									  NotificationTitleFit::Wrap, palette);
 
 				const ImVec4 transparentColour(0.0f, 0.0f, 0.0f, 0.0f);
 				constexpr bool kNotEngaged = false;
@@ -354,7 +303,7 @@ namespace Core {
 					m_Stack.Close(toast.Id, now);
 				}
 
-				ImGui::SetCursorPos(ImVec2(textLeft, rowY + titleHeight + Scaled(kGapBetweenTitleAndMessage)));
+				ImGui::SetCursorPos(ImVec2(textLeft, rowY + titleHeight + NotificationTitleGap()));
 				ImGui::PushStyleColor(ImGuiCol_ChildBg, transparentColour);
 				ImGui::PushStyleColor(ImGuiCol_ScrollbarBg, transparentColour);
 				ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, noWindowPadding);
@@ -366,26 +315,7 @@ namespace Core {
 
 				if (bodyOpen)
 				{
-					ImDrawList* const bodyDrawList = ImGui::GetWindowDrawList();
-					const ImVec2 origin = ImGui::GetCursorScreenPos();
-					const ImU32 plainColour = ImGui::GetColorU32(ToImVec4(ToastMessageColour(palette)));
-					const ImU32 strongColour = ImGui::GetColorU32(ToImVec4(palette.Text));
-
-					for (std::size_t lineIndex = 0; lineIndex < lines.size(); ++lineIndex)
-					{
-						const float lineY = origin.y + static_cast<float>(lineIndex) * fontSize;
-
-						for (const ToastTextRun& run : lines[lineIndex].Runs)
-						{
-							const bool strong = run.Style == ToastTextStyle::Strong;
-							ImFont* const font = FontForRun(strong, boldFont, regularFont);
-
-							bodyDrawList->AddText(font, fontSize, ImVec2(origin.x + run.X, lineY),
-												  strong ? strongColour : plainColour, run.Text.data(),
-												  run.Text.data() + run.Text.size());
-						}
-					}
-
+					DrawNotificationMessage(*ImGui::GetWindowDrawList(), ImGui::GetCursorScreenPos(), lines, palette);
 					ImGui::Dummy(ImVec2(layoutWidth, messageHeight));
 				}
 
