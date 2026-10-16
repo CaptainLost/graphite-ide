@@ -94,4 +94,17 @@ namespace Core {
 			lineStart = lineEnd + 1;
 		}
 	}
+
+	std::string Counted(long long count, std::string_view singular, std::string_view plural)
+	{
+		std::string text = std::to_string(count);
+		text.push_back(' ');
+		text += count == 1 ? singular : plural;
+		return text;
+	}
+
+	std::string Counted(long long count, std::string_view singular)
+	{
+		return Counted(count, singular, std::string{singular} + 's');
+	}
 }

@@ -24,22 +24,9 @@ namespace Core {
 	std::vector<std::string_view> SplitLines(std::string_view text);
 
 	// "1 file", "3 files". The plural is given where adding an s would be wrong: "3 matches".
-	template<typename Count>
-		requires std::integral<Count>
-	std::string Counted(Count count, std::string_view singular, std::string_view plural)
-	{
-		std::string text = std::to_string(count);
-		text.push_back(' ');
-		text += count == Count{1} ? singular : plural;
-		return text;
-	}
+	std::string Counted(long long count, std::string_view singular, std::string_view plural);
 
-	template<typename Count>
-		requires std::integral<Count>
-	std::string Counted(Count count, std::string_view singular)
-	{
-		return Counted(count, singular, std::string{singular} + 's');
-	}
+	std::string Counted(long long count, std::string_view singular);
 
 	constexpr std::string_view FirstLine(std::string_view text)
 	{
