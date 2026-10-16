@@ -6,6 +6,7 @@ using Graphite::Everything;
 using Graphite::HistoryReach;
 using Graphite::kNoHistoryLimit;
 using Graphite::LoadMore;
+using Graphite::ReachAfterClick;
 using Graphite::SearchFurther;
 
 TEST_CASE("The first page is the newest 500 commits within a walk of 20000")
@@ -40,4 +41,24 @@ TEST_CASE("Asking for more after everything stays at no limit instead of wrappin
 {
 	CHECK(LoadMore(Everything()) == Everything());
 	CHECK(SearchFurther(kNoHistoryLimit, kNoHistoryLimit) == Everything());
+}
+
+TEST_CASE("Load all and Search all ask for everything whatever the page on screen reached")
+{
+	CHECK(ReachAfterClick(true, false, HistoryReach{}, 500, 500) == Everything());
+	CHECK(ReachAfterClick(true, true, HistoryReach{}, 37, 20000) == Everything());
+}
+
+TEST_CASE("Search further steps on from the matches and the walk of the page on screen, not from its reach")
+{
+	const HistoryReach shown{.MaxCount = 500, .MaxWalk = 20000};
+
+	CHECK(ReachAfterClick(false, true, shown, 37, 20000) == SearchFurther(37, 20000));
+}
+
+TEST_CASE("Load 500 more steps on from the reach of the page on screen")
+{
+	const HistoryReach shown{.MaxCount = 1000, .MaxWalk = 20000};
+
+	CHECK(ReachAfterClick(false, false, shown, 1000, 1000) == LoadMore(shown));
 }

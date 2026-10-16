@@ -919,12 +919,6 @@ namespace Graphite {
 
 	void GitView::AnswerHistoryClick(HistoryClick click, const Core::LogPage& page)
 	{
-		if (click == HistoryClick::All)
-		{
-			RequestLog(Everything());
-			return;
-		}
-
 		const std::optional<Core::LogRequest>& shown = m_Model.GetShownLogRequest();
 
 		if (!shown.has_value())
@@ -932,13 +926,9 @@ namespace Graphite {
 			return;
 		}
 
-		if (NarrowsHistory(*shown))
-		{
-			RequestLog(SearchFurther(page.Commits.size(), page.Walked));
-			return;
-		}
-
-		RequestLog(LoadMore(HistoryReach{.MaxCount = shown->MaxCount, .MaxWalk = shown->MaxWalk}));
+		RequestLog(ReachAfterClick(click == HistoryClick::All, NarrowsHistory(*shown),
+								   HistoryReach{.MaxCount = shown->MaxCount, .MaxWalk = shown->MaxWalk},
+								   page.Commits.size(), page.Walked));
 	}
 
 	void GitView::RenderPreview(const GitPalette& palette)

@@ -31,4 +31,10 @@ namespace Graphite {
 
 	// No limit on either, so the walk goes to the root.
 	HistoryReach Everything();
+
+	// The reach a click on the status line asks for: everything for the All buttons; otherwise 500
+	// matches or 20,000 commits further than the page on screen with a filter, or 500 commits
+	// further than the page's own reach without one.
+	HistoryReach ReachAfterClick(bool all, bool filtered, const HistoryReach& shown, std::size_t matchesShown,
+								 std::size_t walked);
 }

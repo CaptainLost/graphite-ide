@@ -31,4 +31,20 @@ namespace Graphite {
 	{
 		return HistoryReach{.MaxCount = kNoHistoryLimit, .MaxWalk = kNoHistoryLimit};
 	}
+
+	HistoryReach ReachAfterClick(bool all, bool filtered, const HistoryReach& shown, std::size_t matchesShown,
+								 std::size_t walked)
+	{
+		if (all)
+		{
+			return Everything();
+		}
+
+		if (filtered)
+		{
+			return SearchFurther(matchesShown, walked);
+		}
+
+		return LoadMore(shown);
+	}
 }
