@@ -1,5 +1,7 @@
 #include "UI/InfoBars/RestrictedModeBar.h"
 
+#include "UI/InfoBars/InfoBar.h"
+
 #include "Core/FileSystem/FileSystem.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -10,49 +12,36 @@
 
 namespace Graphite {
 
-	RestrictedBarChoice DrawRestrictedModeBar(const std::optional<std::filesystem::path>& parent)
+	RestrictedBarChoice DrawRestrictedModeBar(const std::optional<std::filesystem::path>& parent, const ImVec4& warningColour)
 	{
-		RestrictedBarChoice choice = RestrictedBarChoice::None;
+		constexpr std::size_t kTrustFolder = 0;
 
-		const ImGuiStyle& style = ImGui::GetStyle();
-		const float height = ImGui::GetFrameHeight() + style.FramePadding.y * 2.0f;
+		InfoBarContent content{.Id = "##RestrictedMode",
+							   .Weight = InfoBarWeight::Warning,
+							   .Glyph = ICON_MDI_SHIELD_ALERT_OUTLINE,
+							   .WeightColour = warningColour,
+							   .Message = "Restricted mode: the language server and background analysis are off for this folder.",
+							   .Buttons = {{.Label = "Trust Folder", .Primary = true}},
+							   .CloseTooltip = "Hide until Graphite restarts"};
 
-		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_MenuBarBg));
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(style.ItemSpacing.x, style.FramePadding.y));
-
-		if (ImGui::BeginChild("##RestrictedMode", ImVec2(0.0f, height), ImGuiChildFlags_AlwaysUseWindowPadding,
-							  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+		if (parent)
 		{
-			ImGui::AlignTextToFramePadding();
-			ImGui::TextUnformatted(ICON_MDI_SHIELD_ALERT_OUTLINE
-								   "  Restricted mode: the language server and background analysis are off for this folder.");
-
-			ImGui::SameLine();
-
-			if (ImGui::Button("Trust Folder"))
-			{
-				choice = RestrictedBarChoice::TrustFolder;
-			}
-
-			if (parent)
-			{
-				ImGui::SameLine();
-
-				// WARNING: "###" keeps the button's id fixed whatever the path holds, "##" included.
-				const std::string label = "Trust All in " + Core::ToUtf8(*parent) + "###TrustParent";
-
-				if (ImGui::Button(label.c_str()))
-				{
-					choice = RestrictedBarChoice::TrustParent;
-				}
-			}
+			content.Buttons.push_back({.Label = "Trust All in " + Core::ToUtf8(*parent)});
 		}
 
-		ImGui::EndChild();
-		ImGui::PopStyleVar();
-		ImGui::PopStyleColor();
+		const InfoBarAnswer answer = DrawInfoBar(content);
 
-		return choice;
+		if (answer.Closed)
+		{
+			return RestrictedBarChoice::Close;
+		}
+
+		if (!answer.Pressed.has_value())
+		{
+			return RestrictedBarChoice::None;
+		}
+
+		return *answer.Pressed == kTrustFolder ? RestrictedBarChoice::TrustFolder : RestrictedBarChoice::TrustParent;
 	}
 
 	std::string TrustAllMessage(const std::filesystem::path& parent)

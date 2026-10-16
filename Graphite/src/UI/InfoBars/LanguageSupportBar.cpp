@@ -1,5 +1,7 @@
 #include "UI/InfoBars/LanguageSupportBar.h"
 
+#include "UI/InfoBars/InfoBar.h"
+
 #include "Language/Registry/LanguageRegistry.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -11,7 +13,24 @@
 namespace Graphite {
 
 	namespace {
-		constexpr float kPaddingSides = 2.0f;
+
+		bool IsMainAction(LanguageBarChoice choice)
+		{
+			switch (choice)
+			{
+			case LanguageBarChoice::Configure:
+			case LanguageBarChoice::Install:
+			case LanguageBarChoice::GetRuntime:
+				return true;
+			case LanguageBarChoice::None:
+			case LanguageBarChoice::Cancel:
+			case LanguageBarChoice::OpenSettings:
+			case LanguageBarChoice::NotNow:
+				break;
+			}
+
+			return false;
+		}
 
 		bool Offers(const InstallSummary& summary, InstallAction action)
 		{
@@ -149,39 +168,36 @@ namespace Graphite {
 		return "Not now";
 	}
 
+	// Not now is the bar's close button; the step that gets the support going is its main action.
 	LanguageBarChoice DrawLanguageSupportBar(const LanguagePrompt& prompt)
 	{
-		LanguageBarChoice clicked = LanguageBarChoice::None;
+		InfoBarContent content{.Id = "##LanguageSupport",
+							   .Weight = InfoBarWeight::Information,
+							   .Glyph = ICON_MDI_INFORMATION_OUTLINE,
+							   .WeightColour = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark),
+							   .Message = prompt.Message};
 
-		const ImGuiStyle& style = ImGui::GetStyle();
-		const float barHeight = ImGui::GetFrameHeight() + style.FramePadding.y * kPaddingSides;
+		std::vector<LanguageBarChoice> shown;
 
-		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_MenuBarBg));
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(style.ItemSpacing.x, style.FramePadding.y));
-
-		if (ImGui::BeginChild("##LanguageSupport", ImVec2(0.0f, barHeight), ImGuiChildFlags_AlwaysUseWindowPadding,
-							  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
+		for (const LanguageBarChoice choice : prompt.Buttons)
 		{
-			const std::string barText = std::string{ICON_MDI_INFORMATION_OUTLINE} + "  " + prompt.Message;
-
-			ImGui::AlignTextToFramePadding();
-			ImGui::TextUnformatted(barText.c_str());
-
-			for (const LanguageBarChoice button : prompt.Buttons)
+			if (choice == LanguageBarChoice::NotNow)
 			{
-				ImGui::SameLine();
-
-				if (ImGui::Button(LanguageBarChoiceLabel(button)))
-				{
-					clicked = button;
-				}
+				content.CloseTooltip = LanguageBarChoiceLabel(choice);
+				continue;
 			}
+
+			content.Buttons.push_back({.Label = LanguageBarChoiceLabel(choice), .Primary = IsMainAction(choice)});
+			shown.push_back(choice);
 		}
 
-		ImGui::EndChild();
-		ImGui::PopStyleVar();
-		ImGui::PopStyleColor();
+		const InfoBarAnswer answer = DrawInfoBar(content);
 
-		return clicked;
+		if (answer.Closed)
+		{
+			return LanguageBarChoice::NotNow;
+		}
+
+		return answer.Pressed.has_value() ? shown[*answer.Pressed] : LanguageBarChoice::None;
 	}
 }

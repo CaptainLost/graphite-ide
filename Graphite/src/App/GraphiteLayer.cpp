@@ -1348,11 +1348,22 @@ namespace Graphite {
 
 		// WARNING: Copy the root: trusting writes the list, and nothing here should hold a reference into state that the click is about to change.
 		const std::filesystem::path root = m_Workspace.GetRoot();
-		const std::optional<std::filesystem::path> parent = ParentWorthTrusting(root);
 
-		switch (DrawRestrictedModeBar(parent))
+		if (m_RestrictedBarsHiddenUntilRestart.contains(root))
+		{
+			return;
+		}
+
+		const std::optional<std::filesystem::path> parent = ParentWorthTrusting(root);
+		const ImVec4 warningColour = ImGui::ColorConvertU32ToFloat4(ReadEditorPalette(m_ActiveScheme.Get()).DiagnosticWarning);
+
+		switch (DrawRestrictedModeBar(parent, warningColour))
 		{
 		case RestrictedBarChoice::None:
+			break;
+
+		case RestrictedBarChoice::Close:
+			m_RestrictedBarsHiddenUntilRestart.insert(root);
 			break;
 
 		case RestrictedBarChoice::TrustFolder:

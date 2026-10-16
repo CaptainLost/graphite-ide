@@ -6,6 +6,7 @@
 #include "UI/InfoBars/LanguageSupportBar.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <cstdint>
 #include <optional>
@@ -155,6 +156,41 @@ TEST_CASE("Every kind of bar draws without an ImGui assertion")
 	frames.Next([&install] { DrawInWindow(*install); });
 	frames.Next([&runtime] { DrawInWindow(*runtime); });
 	frames.Next([&runtime] { DrawInWindow(*runtime); });
+}
+
+TEST_CASE("The language bar's Not now is its close button")
+{
+	ImGuiFrames frames;
+	const std::optional<Graphite::LanguagePrompt> prompt = Graphite::LanguagePromptFor(
+		{.Language = Graphite::LanguageId::CSharp, .Choice = Graphite::ChooseServer(Graphite::LanguageId::CSharp, std::nullopt)});
+	REQUIRE(prompt.has_value());
+
+	Graphite::LanguageBarChoice answered = Graphite::LanguageBarChoice::None;
+	const auto draw = [&prompt, &answered] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(1200.0f, 200.0f));
+		ImGui::Begin("Editor area", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+
+		const Graphite::LanguageBarChoice choice = Graphite::DrawLanguageSupportBar(*prompt);
+
+		if (choice != Graphite::LanguageBarChoice::None)
+		{
+			answered = choice;
+		}
+
+		ImGui::End();
+	};
+
+	frames.Next(draw);
+
+	const ImGuiWindow* editor = ImGui::FindWindowByName("Editor area");
+	REQUIRE(editor != nullptr);
+	REQUIRE(!editor->DC.ChildWindows.empty());
+	const ImGuiWindow& bar = *editor->DC.ChildWindows.back();
+	frames.Click(ImVec2(bar.InnerRect.Max.x - bar.WindowPadding.x - ImGui::GetFrameHeight() * 0.5f, bar.InnerRect.GetCenter().y),
+				 draw);
+
+	CHECK(answered == Graphite::LanguageBarChoice::NotNow);
 }
 
 TEST_CASE("C++ with no server chosen offers to choose one")

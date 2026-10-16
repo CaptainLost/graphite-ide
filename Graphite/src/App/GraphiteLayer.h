@@ -219,6 +219,7 @@ namespace Graphite {
 										[this](std::function<void()> job) { m_InstallJobs.Submit(std::move(job)); }};
 
 		std::set<LanguageId> m_LanguagePromptsDismissedUntilRestart;
+		std::set<std::filesystem::path> m_RestrictedBarsHiddenUntilRestart;
 
 		// WARNING: Declared after m_LanguageServices, which fills it each frame, and before
 		// m_DocumentWindows and m_Panels, which hold it by reference and read it through teardown.
