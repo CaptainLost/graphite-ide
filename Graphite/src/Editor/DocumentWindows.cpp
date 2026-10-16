@@ -2042,14 +2042,16 @@ namespace Graphite {
 				view.Indent = indentStyle;
 				view.WordWrap = wordWrap;
 				view.ChangeDisplay = changeDisplay;
-				view.Syntax = &m_DocumentStates.SyntaxFor(item.Path, item.TabWidth);
 				view.Scheme = &scheme;
 				view.Lens = lens != nullptr ? &lens->Model : nullptr;
 
-				view.Semantic = &m_DocumentStates.SemanticFor(item.Path);
-
 				if (item.Document)
 				{
+					// Only a tab with a document gets an entry: Prune would drop one made for a tab
+					// without, and the next frame would build it again.
+					view.Syntax = &m_DocumentStates.SyntaxFor(item.Path, item.TabWidth);
+					view.Semantic = &m_DocumentStates.SemanticFor(item.Path);
+
 					DiagnosticOverlay& diagnostics = m_DocumentStates.DiagnosticFor(
 						item.Path, item.Document->GetBuffer(), item.TabWidth);
 

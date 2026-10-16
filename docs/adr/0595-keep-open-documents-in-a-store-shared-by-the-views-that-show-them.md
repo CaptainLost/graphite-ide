@@ -33,7 +33,8 @@ A tab held its document by value (`OpenItem::Document`), so a file could be show
 
 ### Neutral
 
-- The store keeps registration order, which is tab order today.
+- The store keeps registration order, which is not always tab order: a tab whose document loads late (`RespondToSync` `NeedsLoad`, `LoadConfirmed`) registers after tabs opened later. That can reorder the exit prompt's list and the Save All "skipped" list, and changes where Save All stops on a failure.
+- "Is this file open" (`GraphiteLayer::IsDocumentOpen`, which feeds `HeldElsewhere` and the problem count) asks the store, so a tab without a document (binary, too large, failed load) no longer counts as open.
 
 ## Alternatives Considered
 

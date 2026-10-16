@@ -36,8 +36,8 @@ namespace Graphite {
 	};
 
 	// What every view of a document shares: its colouring, semantic tokens and diagnostics
-	// overlay, and its life with the language server. One entry per document in the store,
-	// keyed by path; Prune drops the entries whose document has gone.
+	// overlay, and its life with the language server. Entries are made on demand,
+	// keyed by path, for documents in the store; Prune drops the ones whose document has gone.
 	class DocumentStates
 	{
 	public:

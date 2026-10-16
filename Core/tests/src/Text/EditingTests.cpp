@@ -49,8 +49,8 @@ namespace {
 		item.Caret.Offset = offset;
 	}
 
-	// Only an edit strictly below the widest line updates the caches incrementally; after any other edit, and after Undo or Redo,
-	// they were just recomputed in full, so this compares two full recomputations and cannot fail.
+	// Edits, Undo and Redo all catch the caches up incrementally (CatchUpWithDocument), recomputing in full only when an
+	// edit touches the widest line, so this compares the incremental result with a fresh recomputation.
 	void CheckLineCachesAreCorrect(const Core::OpenItem& item)
 	{
 		const Core::TextBuffer& buffer = item.Document->GetBuffer();
@@ -496,6 +496,22 @@ TEST_CASE("Indent on a block below the widest line takes the incremental path")
 	CHECK(Core::Indent(item, kFourSpaces));
 	CHECK(item.Document->GetBuffer().Materialize() == "xxxxxxxxxxxxxxxx\n    one\n    two");
 	CHECK(item.WidestLine == 0);
+	CheckLineCachesAreCorrect(item);
+}
+
+TEST_CASE("Outdenting a line below a blank line updates the blank line's indent depth")
+{
+	Core::OpenItem item = ItemWith("    a\n\n    b");
+	REQUIRE(item.IndentDepths.size() == 3);
+
+	const std::size_t startOfB = 7;
+	const std::size_t endOfText = 12;
+	SelectFromTo(item, startOfB, endOfText);
+	REQUIRE(item.Document->GetBuffer().ToPosition(item.Caret.Anchor).Line == 2);
+
+	CHECK(Core::Outdent(item, kFourSpaces));
+	CHECK(item.Document->GetBuffer().Materialize() == "    a\n\nb");
+	CHECK(item.IndentDepths[1] == 0);
 	CheckLineCachesAreCorrect(item);
 }
 

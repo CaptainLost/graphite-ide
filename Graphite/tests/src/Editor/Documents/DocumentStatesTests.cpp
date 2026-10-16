@@ -160,3 +160,34 @@ TEST_CASE("A renamed document is closed under its old path and opened under its 
 	CHECK(harness.Server.Calls.back().Path == to / "a.cpp");
 	CHECK(harness.Server.Calls.back().Text == "// unsaved\nint a;\n");
 }
+
+TEST_CASE("A document opened with its server is not sent again by the sweep")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "a.cpp";
+	WriteFileBytes(path, "int a;\n");
+	Harness harness;
+	REQUIRE(harness.Documents.Open(path, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+	harness.States.OpenWithServer(path, *harness.Documents.At(0).Document);
+
+	CHECK(harness.States.SendChanges(harness.Documents.GetStore()).empty());
+	CHECK(harness.Server.CountOf("change") == 0);
+}
+
+TEST_CASE("A change sent as it happened is not sent again by the sweep")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "a.cpp";
+	WriteFileBytes(path, "int a;\n");
+	Harness harness;
+	REQUIRE(harness.Documents.Open(path, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+	Core::TextDocument& document = *harness.Documents.At(0).Document;
+	harness.States.OpenWithServer(path, document);
+
+	document.GetBuffer().Insert(0, "// x\n");
+	CHECK(harness.States.SendChangeIfMoved(path, document));
+	REQUIRE(harness.Server.CountOf("change") == 1);
+
+	harness.States.SendChanges(harness.Documents.GetStore());
+	CHECK(harness.Server.CountOf("change") == 1);
+}
