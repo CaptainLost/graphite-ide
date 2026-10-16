@@ -13,7 +13,10 @@ namespace Graphite {
 	// The wider of the open and the closed chevron, for a column both must fit in.
 	float ChevronWidth();
 
-	// ImGui::TreeNodeEx with the chevron where ImGui draws its arrow. The label is drawn where and in the colour
-	// TreeNodeEx would draw it, and the tree node stays the last item, for IsItemHovered or a context menu after it.
-	bool ChevronTreeNode(const char* id, ImGuiTreeNodeFlags flags, const char* label = "");
+	// A tree node with the chevron where ImGui draws its arrow, used as ImGui::TreeNodeEx is: SetNextItemOpen before
+	// it, TreePop after it when it is open. A plain node is a list row, ListRowSelectable across the whole list; a
+	// framed one, a collapsing header, is ImGui's own. The label is drawn where and in the colour TreeNodeEx would draw
+	// it, and the row's item stays the last one, for IsItemHovered or a context menu after it. A note, a count or a
+	// cost, follows the label dim, as every number in a list does.
+	bool ChevronTreeNode(const char* id, ImGuiTreeNodeFlags flags, const char* label = "", const char* note = "");
 }

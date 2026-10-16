@@ -4,6 +4,7 @@
 #include "Core/ImGui/IconButton.h"
 #include "UI/Lists/Chevron.h"
 #include "UI/Lists/FilterField.h"
+#include "UI/Lists/ListRow.h"
 #include "UI/SplitResults.h"
 #include "UI/TickBox.h"
 #include "UI/FittedText.h"
@@ -103,6 +104,13 @@ namespace Graphite {
 			return std::format("{}/{}", row.Viewed, row.Total);
 		}
 
+		// A list's rows reach its edges, so the list has no padding at its sides; its rows keep a list row's inset
+		// from them instead, the same at both ends.
+		void PushListPadding()
+		{
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+		}
+
 		void DrawAtRight(const std::string& text, float rowRight)
 		{
 			ImGui::SameLine();
@@ -122,17 +130,14 @@ namespace Graphite {
 			return filter.empty() ? std::string{"All viewed."} : std::string{"No files match."};
 		}
 
-		bool DrawHeadingRow(const ReviewTreeRow& row, const std::string& note, const Core::LineCounts& groupCounts,
-							float rowHeight)
+		bool DrawHeadingRow(const ReviewTreeRow& row, const std::string& note, const Core::LineCounts& groupCounts)
 		{
 			const ImVec2 rowStart = ImGui::GetCursorPos();
-			const float rowRight = rowStart.x + ImGui::GetContentRegionAvail().x;
+			const float rowRight = ListRowEndPosX();
 			const bool notSelected = false;
-			const bool clicked =
-				ImGui::Selectable("##heading", notSelected, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, rowHeight));
+			const bool clicked = ListRowSelectable("##heading", notSelected, ImGuiSelectableFlags_AllowOverlap);
 
 			ImGui::SetCursorPos(rowStart);
-			ImGui::AlignTextToFramePadding();
 			DrawChevron(!row.Folded);
 			ImGui::SameLine();
 
@@ -183,16 +188,14 @@ namespace Graphite {
 			return std::string{};
 		}
 
-		bool DrawFolderRow(const ReviewTreeRow& row, float indent, float rowHeight, RowMarks marks)
+		bool DrawFolderRow(const ReviewTreeRow& row, float indent, RowMarks marks)
 		{
 			const ImVec2 rowStart = ImGui::GetCursorPos();
-			const float rowRight = rowStart.x + ImGui::GetContentRegionAvail().x;
+			const float rowRight = ListRowEndPosX();
 			const bool notSelected = false;
-			const bool clicked =
-				ImGui::Selectable("##folder", notSelected, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, rowHeight));
+			const bool clicked = ListRowSelectable("##folder", notSelected, ImGuiSelectableFlags_AllowOverlap);
 
 			ImGui::SetCursorPos(ImVec2(rowStart.x + indent, rowStart.y));
-			ImGui::AlignTextToFramePadding();
 			DrawChevron(!row.Folded);
 			ImGui::SameLine();
 			ImGui::TextUnformatted(row.Folded ? ICON_MDI_FOLDER : ICON_MDI_FOLDER_OPEN);
@@ -283,7 +286,6 @@ namespace Graphite {
 			RowMarks Marks = RowMarks::Shown;
 			ViewedState Viewed = ViewedState::NotViewed;
 			bool CanOpen = false;
-			float RowHeight = 0.0f;
 			float Indent = 0.0f;
 			Core::LineCounts Counts;
 		};
@@ -335,10 +337,9 @@ namespace Graphite {
 			FileRowActions actions;
 
 			const ImVec2 rowStart = ImGui::GetCursorPos();
-			const float rowRight = rowStart.x + ImGui::GetContentRegionAvail().x;
+			const float rowRight = ListRowEndPosX();
 
-			actions.Selected = ImGui::Selectable("##row", look.IsSelected, ImGuiSelectableFlags_AllowOverlap,
-												 ImVec2(0.0f, look.RowHeight));
+			actions.Selected = ListRowSelectable("##row", look.IsSelected, ImGuiSelectableFlags_AllowOverlap);
 
 			if (Core::BeginRightClickPopup("file-menu"))
 			{
@@ -356,14 +357,16 @@ namespace Graphite {
 			{
 			case RowMarks::Shown:
 			{
+				// WARNING: A tick box is a frame high, and the row a line of text; with no frame padding the two agree,
+				// and the letter after it stays on the row's text line.
+				ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, 0.0f));
 				bool viewedChecked = look.Viewed == ViewedState::Viewed;
 				actions.ToggledViewed = DrawViewedBox(&viewedChecked, look.Viewed, palette);
+				ImGui::PopStyleVar();
 				ImGui::SameLine();
 				break;
 			}
 			case RowMarks::Hidden:
-				// WARNING: Without the checkbox's frame first on the line, the letter would sit at the row's top.
-				ImGui::AlignTextToFramePadding();
 				break;
 			}
 
@@ -529,18 +532,15 @@ namespace Graphite {
 			ImGui::EndTooltip();
 		}
 
-		bool DrawCommitRow(const Core::CommitSummary& commit, bool isPicked, std::chrono::sys_seconds now,
-						   float rowHeight)
+		bool DrawCommitRow(const Core::CommitSummary& commit, bool isPicked, std::chrono::sys_seconds now)
 		{
 			const ImVec2 rowStart = ImGui::GetCursorPos();
-			const float rowRight = rowStart.x + ImGui::GetContentRegionAvail().x;
-			const bool clicked =
-				ImGui::Selectable("##commit", isPicked, ImGuiSelectableFlags_AllowOverlap, ImVec2(0.0f, rowHeight));
+			const float rowRight = ListRowEndPosX();
+			const bool clicked = ListRowSelectable("##commit", isPicked, ImGuiSelectableFlags_AllowOverlap);
 
 			DrawCommitTooltip(commit);
 
 			ImGui::SetCursorPos(rowStart);
-			ImGui::AlignTextToFramePadding();
 			ImGui::TextDisabled("%s", commit.Id.ShortHex().c_str());
 			ImGui::SameLine();
 
@@ -938,13 +938,19 @@ namespace Graphite {
 
 		// WARNING: NoNavInputs keeps ImGui's keyboard navigation from toggling a checkbox on Space. AlwaysUseWindowPadding is
 		// needed because ImGui gives a child without a border no padding.
-		if (ImGui::BeginChild(list.ChildId, fillTheRest, ImGuiChildFlags_AlwaysUseWindowPadding,
-							  ImGuiWindowFlags_NoNavInputs))
+		PushListPadding();
+		const bool listShown =
+			ImGui::BeginChild(list.ChildId, fillTheRest, ImGuiChildFlags_AlwaysUseWindowPadding, ImGuiWindowFlags_NoNavInputs);
+		ImGui::PopStyleVar();
+
+		if (listShown)
 		{
+			ImGui::Indent(ListRowEndInset());
+
 			const std::vector<ReviewTreeRow>& rows = list.Rows.Rows;
 
 			ImGuiListClipper clipper;
-			clipper.Begin(static_cast<int>(rows.size()), ImGui::GetFrameHeightWithSpacing());
+			clipper.Begin(static_cast<int>(rows.size()), ListRowPitch());
 
 			if (list.ScrollToSelected)
 			{
@@ -978,6 +984,7 @@ namespace Graphite {
 			}
 
 			HandleListKeys(tab, input.Sessions, list);
+			ImGui::Unindent(ListRowEndInset());
 		}
 
 		ImGui::EndChild();
@@ -986,13 +993,10 @@ namespace Graphite {
 	void ReviewWindows::RenderTreeRow(Tab& tab, const ReviewRenderInput& input, const FileList& list,
 									  const ReviewTreeRow& row, const OpenRelativeFile& openFile)
 	{
-		const float rowHeight = ImGui::GetFrameHeight();
-
 		switch (row.Kind)
 		{
 		case TreeRowKind::Heading:
-			if (DrawHeadingRow(row, HeadingNote(row, list.Rows.Filter), list.Rows.GroupCounts[IndexOf(row.Group)],
-							   rowHeight))
+			if (DrawHeadingRow(row, HeadingNote(row, list.Rows.Filter), list.Rows.GroupCounts[IndexOf(row.Group)]))
 			{
 				bool& collapsed = tab.Collapsed[IndexOf(row.Group)];
 				collapsed = !collapsed;
@@ -1004,7 +1008,7 @@ namespace Graphite {
 			const float indent = static_cast<float>(row.Depth) * ImGui::GetStyle().IndentSpacing;
 
 			ImGui::PushID(Core::ToUtf8(row.FolderPath).c_str());
-			const bool clicked = DrawFolderRow(row, indent, rowHeight, list.Marks);
+			const bool clicked = DrawFolderRow(row, indent, list.Marks);
 			ImGui::PopID();
 
 			const bool listIsNarrowed = !list.Rows.Filter.empty() || list.Rows.HideViewed;
@@ -1040,7 +1044,6 @@ namespace Graphite {
 							   .Marks = list.Marks,
 							   .Viewed = viewed,
 							   .CanOpen = openFile != nullptr && fileIsOnDisk,
-							   .RowHeight = ImGui::GetFrameHeight(),
 							   .Indent = static_cast<float>(row.Depth) * ImGui::GetStyle().IndentSpacing,
 							   .Counts = list.Rows.FileCounts[IndexOf(row.Group)][row.FileIndex]};
 
@@ -1135,8 +1138,12 @@ namespace Graphite {
 	{
 		const ImVec2 fillThePane{0.0f, 0.0f};
 
-		if (ImGui::BeginChild("##reviewCommitRows", fillThePane, ImGuiChildFlags_AlwaysUseWindowPadding,
-							  ImGuiWindowFlags_NoNavInputs))
+		PushListPadding();
+		const bool listShown = ImGui::BeginChild("##reviewCommitRows", fillThePane, ImGuiChildFlags_AlwaysUseWindowPadding,
+												 ImGuiWindowFlags_NoNavInputs);
+		ImGui::PopStyleVar();
+
+		if (listShown)
 		{
 			if (range.Commits.empty())
 			{
@@ -1144,7 +1151,9 @@ namespace Graphite {
 			}
 			else
 			{
+				ImGui::Indent(ListRowEndInset());
 				RenderCommitRows(tab, range);
+				ImGui::Unindent(ListRowEndInset());
 			}
 
 			HandleCommitKeys(tab, range);
@@ -1157,10 +1166,8 @@ namespace Graphite {
 	{
 		const std::vector<Core::CommitSummary>& commits = range.Commits;
 		const std::chrono::sys_seconds now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
-		const float rowHeight = ImGui::GetFrameHeight();
-
 		ImGuiListClipper clipper;
-		clipper.Begin(static_cast<int>(commits.size()), ImGui::GetFrameHeightWithSpacing());
+		clipper.Begin(static_cast<int>(commits.size()), ListRowPitch());
 
 		if (tab.ScrollToCommit)
 		{
@@ -1185,7 +1192,7 @@ namespace Graphite {
 				const bool isPicked = tab.SelectedCommit == commit.Id;
 
 				ImGui::PushID(rowIndex);
-				const bool clicked = DrawCommitRow(commit, isPicked, now, rowHeight);
+				const bool clicked = DrawCommitRow(commit, isPicked, now);
 				ImGui::PopID();
 
 				if (isPicked && tab.ScrollToCommit)

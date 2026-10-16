@@ -40,10 +40,9 @@ namespace Graphite {
 			return window->InnerRect.Max.x - window->WindowPadding.x - ImGui::GetStyle().ItemSpacing.x;
 		}
 
-		bool MarkerHasRoomForOneLetterOfLabel()
+		bool MarkerHasRoomForOneLetterOfLabel(float labelLeftEdge)
 		{
 			const float markerColumn = RowMarkerColumnWidth();
-			const float labelLeftEdge = ImGui::GetItemRectMin().x + ImGui::GetTreeNodeToLabelSpacing();
 			const float markerLeftEdge = MarkerRight() - markerColumn;
 			const float roomForOneLetter = markerColumn;
 
@@ -234,22 +233,19 @@ namespace Graphite {
 		const float labelOffset = ImGui::GetTreeNodeToLabelSpacing();
 		const ImVec2 cursor = ImGui::GetCursorScreenPos();
 
-		FileRowLayout layout;
-		layout.RowAt = cursor;
-		layout.LabelAt = ImVec2(cursor.x + labelOffset, cursor.y);
-		layout.Width = ImGui::GetContentRegionAvail().x;
-
-		return layout;
+		return FileRowLayout{.RowAt = cursor, .LabelAt = ImVec2(cursor.x + labelOffset, cursor.y)};
 	}
 
-	float DrawRowMarker(const RowStatus& status, float textTop)
+	float DrawRowMarker(const RowStatus& status, const FileRowLayout& layout)
 	{
 		const float right = MarkerRight();
 
-		if (!status.HasMarker() || !MarkerHasRoomForOneLetterOfLabel())
+		if (!status.HasMarker() || !MarkerHasRoomForOneLetterOfLabel(layout.LabelAt.x))
 		{
 			return right;
 		}
+
+		const float textTop = layout.LabelAt.y;
 
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 
@@ -274,19 +270,17 @@ namespace Graphite {
 		return std::min(left, right - columnWidth);
 	}
 
-	void DrawTreeRowLabel(const std::string& label, bool hasMarker)
+	void DrawTreeRowLabel(const FileRowLayout& layout, const std::string& label, bool hasMarker)
 	{
 		if (!ImGui::IsItemVisible())
 		{
 			return;
 		}
 
-		const ImVec2 rowTopLeft = ImGui::GetItemRectMin();
-		const float labelLeftEdge = rowTopLeft.x + ImGui::GetTreeNodeToLabelSpacing();
-
+		const float labelLeftEdge = layout.LabelAt.x;
 		float labelRightEdge = MarkerRight();
 
-		if (hasMarker && MarkerHasRoomForOneLetterOfLabel())
+		if (hasMarker && MarkerHasRoomForOneLetterOfLabel(labelLeftEdge))
 		{
 			labelRightEdge -= RowMarkerColumnWidth() + ImGui::GetStyle().ItemSpacing.x;
 		}
@@ -294,10 +288,9 @@ namespace Graphite {
 		labelRightEdge = std::max(labelRightEdge, labelLeftEdge);
 
 		const ImVec2 fullLabelSize = ImGui::CalcTextSize(label.c_str());
-		const ImVec2 labelTopLeft(labelLeftEdge, rowTopLeft.y);
-		const ImVec2 labelBottomRight(labelRightEdge, rowTopLeft.y + fullLabelSize.y);
+		const ImVec2 labelBottomRight(labelRightEdge, layout.LabelAt.y + fullLabelSize.y);
 
-		ImGui::RenderTextEllipsis(ImGui::GetWindowDrawList(), labelTopLeft, labelBottomRight, labelRightEdge,
+		ImGui::RenderTextEllipsis(ImGui::GetWindowDrawList(), layout.LabelAt, labelBottomRight, labelRightEdge,
 								  label.c_str(), nullptr, &fullLabelSize);
 	}
 
@@ -316,7 +309,7 @@ namespace Graphite {
 
 		if (look.Status.HasMarker())
 		{
-			labelRightEdge = DrawRowMarker(look.Status, layout.LabelAt.y) - ImGui::GetStyle().ItemSpacing.x;
+			labelRightEdge = DrawRowMarker(look.Status, layout) - ImGui::GetStyle().ItemSpacing.x;
 		}
 
 		labelRightEdge = std::max(labelRightEdge, layout.LabelAt.x);

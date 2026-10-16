@@ -20,6 +20,7 @@ namespace {
 	{
 		ImGuiTreeNodeFlags Flags = ImGuiTreeNodeFlags_SpanAvailWidth;
 		const char* Label = "";
+		const char* Note = "";
 		std::optional<ImVec4> TextColour;
 	};
 
@@ -43,7 +44,7 @@ namespace {
 			}
 
 			RowStartX = ImGui::GetCursorScreenPos().x;
-			Open = Graphite::ChevronTreeNode("node", Drawing.Flags, Drawing.Label);
+			Open = Graphite::ChevronTreeNode("node", Drawing.Flags, Drawing.Label, Drawing.Note);
 			Row = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 
 			if (Drawing.TextColour.has_value())
@@ -78,13 +79,13 @@ namespace {
 		float Right = -FLT_MAX;
 	};
 
-	std::optional<HorizontalSpan> SpanInColour(const ImDrawList& drawing, ImU32 colour)
+	std::optional<HorizontalSpan> SpanInColour(const ImDrawList& drawing, ImU32 colour, float fromX = -FLT_MAX)
 	{
 		std::optional<HorizontalSpan> span;
 
 		for (const ImDrawVert& vertex : drawing.VtxBuffer)
 		{
-			if (vertex.col != colour)
+			if (vertex.col != colour || vertex.pos.x < fromX)
 			{
 				continue;
 			}
@@ -171,6 +172,30 @@ TEST_CASE("A tree node's label keeps a text colour pushed for its row, as a dimm
 	screen.DrawFrame();
 
 	CHECK(DrawsInColour(TreeScreen::DrawList(), ImGui::GetColorU32(kDimmedRowText)));
+}
+
+TEST_CASE("A tree node's note is drawn dim after its label, plain or framed")
+{
+	for (const ImGuiTreeNodeFlags flags : {ImGuiTreeNodeFlags_None, ImGuiTreeNodeFlags_CollapsingHeader})
+	{
+		CAPTURE(flags);
+
+		TreeScreen screen;
+		screen.Drawing.Flags = flags;
+		screen.Drawing.Label = "D:/Repos/proj";
+		screen.Drawing.Note = "$1.20";
+		screen.DrawFrame();
+
+		const std::optional<HorizontalSpan> label =
+			SpanInColour(TreeScreen::DrawList(), ImGui::GetColorU32(ImGuiCol_Text));
+		REQUIRE(label.has_value());
+
+		const std::optional<HorizontalSpan> note =
+			SpanInColour(TreeScreen::DrawList(), ImGui::GetColorU32(ImGuiCol_TextDisabled), label->Right);
+		REQUIRE(note.has_value());
+
+		CHECK(note->Left > label->Right);
+	}
 }
 
 TEST_CASE("A leaf has nothing to open, so it draws no chevron")

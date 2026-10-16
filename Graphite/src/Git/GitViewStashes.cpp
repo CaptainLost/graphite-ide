@@ -63,7 +63,7 @@ namespace Graphite {
 
 		const std::size_t stashCount = stashes ? stashes->size() : 0;
 
-		if (!DrawRefSectionHeading("Stashes", std::format("Stashes ({})", stashCount), m_StashesCollapsed))
+		if (!DrawRefSectionHeading("Stashes", "Stashes", std::format("({})", stashCount), m_StashesCollapsed))
 		{
 			return;
 		}

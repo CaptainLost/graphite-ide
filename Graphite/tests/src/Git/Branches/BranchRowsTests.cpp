@@ -257,8 +257,10 @@ TEST_CASE("Local comes before Remote and each heading counts its branches")
 
 	CHECK(KindsOf(rows) == std::vector<BranchRowKind>{BranchRowKind::Section, BranchRowKind::Branch,
 													   BranchRowKind::Section, BranchRowKind::Branch});
-	CHECK(Graphite::SectionHeadingText(rows[0]) == "Local (1)");
-	CHECK(Graphite::SectionHeadingText(rows[2]) == "Remote (1)");
+	CHECK(Graphite::SectionHeadingCount(rows[0]) == "(1)");
+	CHECK(rows[0].Label == "Local");
+	CHECK(Graphite::SectionHeadingCount(rows[2]) == "(1)");
+	CHECK(rows[2].Label == "Remote");
 }
 
 TEST_CASE("Every word must match and the heading says how many of how many are left")
@@ -275,7 +277,8 @@ TEST_CASE("Every word must match and the heading says how many of how many are l
 	const std::vector<BranchRow> rows = Graphite::BuildBranchRows(input);
 
 	CHECK(BranchNamesOf(rows, branches) == std::vector<std::string>{"PROJ-12-login"});
-	CHECK(Graphite::SectionHeadingText(rows.front()) == "Local (1 of 3)");
+	CHECK(Graphite::SectionHeadingCount(rows.front()) == "(1 of 3)");
+	CHECK(rows.front().Label == "Local");
 }
 
 TEST_CASE("Also commit message lets a word match the tip's message")
@@ -332,9 +335,11 @@ TEST_CASE("Grouped by author a branch shared by two authors is under both and co
 	CHECK(KindsOf(rows) == std::vector<BranchRowKind>{BranchRowKind::Section, BranchRowKind::AuthorGroup,
 													   BranchRowKind::Branch, BranchRowKind::AuthorGroup,
 													   BranchRowKind::Branch, BranchRowKind::Section});
-	CHECK(Graphite::SectionHeadingText(rows[0]) == "Local (1)");
+	CHECK(Graphite::SectionHeadingCount(rows[0]) == "(1)");
+	CHECK(rows[0].Label == "Local");
 	CHECK(rows[2].Depth == 1);
-	CHECK(Graphite::AuthorGroupText(rows[1]) == "ann (1)");
+	CHECK(Graphite::AuthorGroupCount(rows[1]) == "(1)");
+	CHECK(rows[1].Label == "ann");
 }
 
 TEST_CASE("Groups are collapsed until expanded with the user first and the unknown author last")
@@ -456,7 +461,8 @@ TEST_CASE("A view that needs authors shows a loading row until they land")
 	CHECK(KindsOf(rows) == std::vector<BranchRowKind>{BranchRowKind::Section, BranchRowKind::Loading,
 													   BranchRowKind::Section, BranchRowKind::Loading});
 	CHECK(rows[1].Label == "Reading authors");
-	CHECK(Graphite::SectionHeadingText(rows[0]) == "Local (1)");
+	CHECK(Graphite::SectionHeadingCount(rows[0]) == "(1)");
+	CHECK(rows[0].Label == "Local");
 }
 
 TEST_CASE("A failed author read shows the failure in place of the branches")
@@ -525,8 +531,10 @@ TEST_CASE("An empty section shows only its heading")
 	const std::vector<BranchRow> rows = Graphite::BuildBranchRows(InputFor(branches));
 
 	CHECK(KindsOf(rows) == std::vector<BranchRowKind>{BranchRowKind::Section, BranchRowKind::Section});
-	CHECK(Graphite::SectionHeadingText(rows[0]) == "Local (0)");
-	CHECK(Graphite::SectionHeadingText(rows[1]) == "Remote (0)");
+	CHECK(Graphite::SectionHeadingCount(rows[0]) == "(0)");
+	CHECK(rows[0].Label == "Local");
+	CHECK(Graphite::SectionHeadingCount(rows[1]) == "(0)");
+	CHECK(rows[1].Label == "Remote");
 }
 
 TEST_CASE("Author choices count the branches the text leaves with the user first and zeros hidden unless ticked")
@@ -570,7 +578,8 @@ TEST_CASE("A word that names an author lists that author's branches and the head
 	const std::vector<BranchRow> rows = Graphite::BuildBranchRows(input);
 
 	CHECK(BranchNamesOf(rows, branches) == std::vector<std::string>{"feature-a", "fix-c"});
-	CHECK(Graphite::SectionHeadingText(rows.front()) == "Local (2 of 3)");
+	CHECK(Graphite::SectionHeadingCount(rows.front()) == "(2 of 3)");
+	CHECK(rows.front().Label == "Local");
 }
 
 TEST_CASE("Grouped by author a word that names an author shows only that author's group")
@@ -841,7 +850,8 @@ TEST_CASE("While authors are awaited a heading counts every branch even when the
 
 	const std::vector<BranchRow> rows = Graphite::BuildBranchRows(input);
 
-	CHECK(Graphite::SectionHeadingText(rows.front()) == "Local (2)");
+	CHECK(Graphite::SectionHeadingCount(rows.front()) == "(2)");
+	CHECK(rows.front().Label == "Local");
 }
 
 TEST_CASE("A group is named by the newest name its key was written under")

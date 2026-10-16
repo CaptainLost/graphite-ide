@@ -629,19 +629,19 @@ namespace Graphite {
 		return kept;
 	}
 
-	std::string SectionHeadingText(const BranchRow& row)
+	std::string SectionHeadingCount(const BranchRow& row)
 	{
 		if (row.Listed == row.Total)
 		{
-			return std::format("{} ({})", row.Label, row.Total);
+			return std::format("({})", row.Total);
 		}
 
-		return std::format("{} ({} of {})", row.Label, row.Listed, row.Total);
+		return std::format("({} of {})", row.Listed, row.Total);
 	}
 
-	std::string AuthorGroupText(const BranchRow& row)
+	std::string AuthorGroupCount(const BranchRow& row)
 	{
-		return std::format("{} ({})", row.Label, row.Listed);
+		return std::format("({})", row.Listed);
 	}
 
 	std::string AuthorChoiceText(const AuthorChoice& choice)

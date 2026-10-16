@@ -16,6 +16,7 @@
 #include "Git/History/CommitLabels.h"
 #include "Git/History/CommitRows.h"
 #include "UI/Lists/Chevron.h"
+#include "UI/Lists/ListRow.h"
 #include "UI/Lists/HighlightedRow.h"
 #include "UI/FittedText.h"
 #include "UI/TypographicMarks.h"
@@ -39,7 +40,6 @@ namespace Graphite {
 		constexpr float kLaneWidthPerLineHeight = 0.8f;
 		constexpr float kDotRadiusPerLaneWidth = 0.22f;
 		constexpr float kMinMessageDigitCount = 12.0f;
-		constexpr float kHalf = 0.5f;
 		constexpr float kNoOffset = 0.0f;
 		constexpr float kNoSpacing = 0.0f;
 		constexpr ImU32 kThemeTextColor = 0;
@@ -426,10 +426,9 @@ namespace Graphite {
 			std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
 
 		// WARNING: A table row is as tall as its tallest cell plus the cell padding, so the padding is half the item spacing on each side: one line of text plus both halves is RowHeight, which the clipper seeks by and the graph is placed by. The minimum height passed to each row says the same again, so a shorter cell cannot pull the rows up away from the graph.
-		const float cellPaddingY = ImGui::GetStyle().ItemSpacing.y * kHalf;
+		const float cellPaddingY = ListTableCellPadding().y;
 
-		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding,
-							ImVec2(ImGui::GetStyle().CellPadding.x, cellPaddingY));
+		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ListTableCellPadding());
 
 		// WARNING: Without NoBordersInBody ImGui puts each resize handle down the whole list, so a click near a border on any row would drag the column instead of selecting the commit. Without PadOuterX the last column's text runs into the scrollbar.
 		constexpr ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |

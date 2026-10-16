@@ -99,9 +99,9 @@ namespace Graphite {
 
 	std::vector<AuthorChoice> FilterAuthorChoices(const std::vector<AuthorChoice>& choices, std::string_view query);
 
-	std::string SectionHeadingText(const BranchRow& row);
+	std::string SectionHeadingCount(const BranchRow& row);
 
-	std::string AuthorGroupText(const BranchRow& row);
+	std::string AuthorGroupCount(const BranchRow& row);
 
 	std::string AuthorChoiceText(const AuthorChoice& choice);
 

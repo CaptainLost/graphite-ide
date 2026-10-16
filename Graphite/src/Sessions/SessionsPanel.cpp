@@ -536,10 +536,10 @@ namespace Graphite {
 				// which changes as the group's sessions do.
 				const std::string cwdText = Core::ToUtf8(summary.Cwd);
 				const std::string label = cwdText.empty() ? "(unknown folder)" : cwdText;
-				const std::string header = label + "  " + FormatCost(total);
+				const std::string cost = FormatCost(total);
 				const std::string groupId = "group-" + Core::ToUtf8(std::filesystem::path{folder});
 				groupOpen = ChevronTreeNode(groupId.c_str(), ImGuiTreeNodeFlags_CollapsingHeader | ImGuiTreeNodeFlags_DefaultOpen,
-											header.c_str());
+											label.c_str(), cost.c_str());
 
 				if (const std::string hint = UnknownCostHint(total); !hint.empty() && ImGui::IsItemHovered())
 				{

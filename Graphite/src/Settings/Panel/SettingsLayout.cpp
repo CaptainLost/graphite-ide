@@ -430,9 +430,12 @@ namespace Graphite {
 		const float hover = Core::Animation::HoverAmount(ImGui::GetItemID(), ImGui::IsItemHovered());
 		ImGui::PopID();
 
-		const ImVec4 hovered = ImGui::GetStyleColorVec4(ImGuiCol_Header);
-		const ImVec4 resting(hovered.x, hovered.y, hovered.z, 0.0f);
-		const ImVec4 background = selected ? ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered) : Core::Animation::Blend(resting, hovered, hover);
+		// The colours of a list row: the selected colour at rest on the selected entry, the hover colour under the
+		// pointer on any.
+		const ImVec4 hovered = ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered);
+		const ImVec4 unselected(hovered.x, hovered.y, hovered.z, 0.0f);
+		const ImVec4 resting = selected ? ImGui::GetStyleColorVec4(ImGuiCol_Header) : unselected;
+		const ImVec4 background = Core::Animation::Blend(resting, hovered, hover);
 
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		drawList->AddRectFilled(topLeft, ImVec2(topLeft.x + size.x, topLeft.y + size.y), ImGui::GetColorU32(background),

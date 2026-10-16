@@ -1,74 +1,12 @@
 #include <doctest/doctest.h>
 
-#include "ImGuiFrames.h"
 #include "UI/Lists/HighlightedRow.h"
-
-#include <imgui.h>
-#include <imgui_internal.h>
 
 #include <string>
 #include <string_view>
 
 using Graphite::HighlightedLabel;
 using Graphite::SplitHighlight;
-
-namespace {
-
-	constexpr float kWindowWidth = 320.0f;
-	constexpr float kWindowHeight = 200.0f;
-
-	struct DrawnRow
-	{
-		float DrawnWidth = 0.0f;
-		float LabelWidth = 0.0f;
-		float Advance = 0.0f;
-		float RowHeight = 0.0f;
-	};
-
-	DrawnRow DrawHighlightedRow(std::string_view label)
-	{
-		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-		ImGui::SetNextWindowSize(ImVec2(kWindowWidth, kWindowHeight));
-		ImGui::Begin("Rows", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
-
-		const ImVec2 rowStart = ImGui::GetCursorScreenPos();
-		const bool notSelected = false;
-		const std::string_view noNeedle;
-
-		Graphite::HighlightedSelectable("##row", notSelected, label, noNeedle);
-
-		DrawnRow drawn;
-		drawn.DrawnWidth = ImGui::GetCurrentWindow()->DC.CursorMaxPos.x - rowStart.x;
-		drawn.LabelWidth = ImGui::CalcTextSize(label.data(), label.data() + label.size()).x;
-		drawn.Advance = ImGui::GetCursorScreenPos().y - rowStart.y;
-		drawn.RowHeight = ImGui::GetTextLineHeightWithSpacing();
-
-		ImGui::End();
-		return drawn;
-	}
-}
-
-TEST_CASE("A label holding a double hash draws whole and one row high")
-{
-	ImGuiFrames frames;
-
-	DrawnRow drawn;
-	frames.Next([&drawn] { drawn = DrawHighlightedRow("fix##2"); });
-
-	CHECK(drawn.DrawnWidth == doctest::Approx(drawn.LabelWidth));
-	CHECK(drawn.Advance == doctest::Approx(drawn.RowHeight));
-}
-
-TEST_CASE("A plain label draws whole and one row high")
-{
-	ImGuiFrames frames;
-
-	DrawnRow drawn;
-	frames.Next([&drawn] { drawn = DrawHighlightedRow("fix/#123-release-100%"); });
-
-	CHECK(drawn.DrawnWidth == doctest::Approx(drawn.LabelWidth));
-	CHECK(drawn.Advance == doctest::Approx(drawn.RowHeight));
-}
 
 TEST_CASE("A label with no needle is drawn whole and unmarked")
 {

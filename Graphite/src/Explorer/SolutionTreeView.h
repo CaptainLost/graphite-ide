@@ -28,6 +28,8 @@ namespace Core {
 
 namespace Graphite {
 
+	struct FileRowLayout;
+
 	class SolutionTreeView final
 	{
 	public:
@@ -109,9 +111,9 @@ namespace Graphite {
 		GitDecoration GroupDecorationOf(const Folder& folder);
 		void ForgetStaleGroupDecorations();
 
-		void DrawGroupMarker(const Project& project);
-		void DrawGroupMarker(const Folder& folder);
-		void DrawGroupMarker(GitDecoration decoration);
+		void DrawGroupMarker(const Project& project, const FileRowLayout& layout);
+		void DrawGroupMarker(const Folder& folder, const FileRowLayout& layout);
+		void DrawGroupMarker(GitDecoration decoration, const FileRowLayout& layout);
 
 		void StartRenamingFolder(const Folder& folder, const std::string& path);
 		void RenderContextMenu(const Folder& folder, const std::string& path);

@@ -17,6 +17,7 @@
 #include "Theme/Palettes.h"
 #include "UI/Dialogs/DialogLayout.h"
 #include "UI/Lists/FilterField.h"
+#include "UI/Lists/ListRow.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -293,8 +294,11 @@ namespace Graphite {
 
 		constexpr ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp;
 
+		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ListTableCellPadding());
+
 		if (!ImGui::BeginTable("bindings", kTableColumnCount, tableFlags))
 		{
+			ImGui::PopStyleVar();
 			return;
 		}
 
@@ -314,6 +318,7 @@ namespace Graphite {
 		});
 
 		ImGui::EndTable();
+		ImGui::PopStyleVar();
 	}
 
 	void KeyBindingsPage::RenderDialogs()

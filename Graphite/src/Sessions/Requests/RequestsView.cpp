@@ -16,6 +16,7 @@
 #include "UI/TickBox.h"
 #include "UI/TypographicMarks.h"
 #include "UI/FittedText.h"
+#include "UI/Lists/ListRow.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -570,8 +571,11 @@ namespace Graphite {
 		// reader's layout.
 		static const ImGuiID kTableId = ImHashStr("RequestsView.RequestTable");
 
+		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ListTableCellPadding());
+
 		if (!ImGui::BeginTableEx("##requestTable", kTableId, kColumnCount, kFlags))
 		{
+			ImGui::PopStyleVar();
 			return;
 		}
 
@@ -672,6 +676,7 @@ namespace Graphite {
 		}
 
 		ImGui::EndTable();
+		ImGui::PopStyleVar();
 	}
 
 	void RequestsView::DrawDetails(const RequestTimeline& timeline, const ConversationContext& context,

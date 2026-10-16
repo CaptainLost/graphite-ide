@@ -5,6 +5,7 @@
 #include "Editor/DocumentWindows.h"
 #include "Theme/Palettes.h"
 #include "UI/Lists/Chevron.h"
+#include "UI/Lists/ListRow.h"
 #include "UI/ClipboardCopy.h"
 #include "Editor/StatusBar/StatusMessageEvent.h"
 #include "Git/Changes/CommitBlocker.h"
@@ -353,8 +354,7 @@ namespace Graphite {
 
 		constexpr bool kNeverSelected = false;
 
-		if (ImGui::Selectable("##header", kNeverSelected, ImGuiSelectableFlags_AllowOverlap,
-							  ImVec2(0.0f, rowHeight)))
+		if (ListRowSelectable("##header", kNeverSelected, ImGuiSelectableFlags_AllowOverlap))
 		{
 			m_Collapsed[sectionSlot] = !m_Collapsed[sectionSlot];
 		}
@@ -362,7 +362,8 @@ namespace Graphite {
 		const ImVec2 rowScreenEnd(rowScreenStart.x + rowWidth,
 								  rowScreenStart.y + ImGui::GetItemRectSize().y);
 
-		const bool rowHovered = ImGui::IsMouseHoveringRect(rowScreenStart, rowScreenEnd);
+		const bool rowHovered =
+			ImGui::IsMouseHoveringRect(ImVec2(ListLeft(), ImGui::GetItemRectMin().y), ImVec2(rowScreenEnd.x, ImGui::GetItemRectMax().y));
 
 		const bool open = !m_Collapsed[sectionSlot];
 
@@ -374,34 +375,14 @@ namespace Graphite {
 
 		ImGui::SetCursorPos(ImVec2(textStart, rowStart.y));
 		ImGui::TextDisabled("%s", heading);
-
-		{
-			ImGui::SameLine(0.0f, TextGap());
-
-			constexpr float kPillCornerRadiusInRowHeights = 0.5f;
-
-			const std::string count = std::format("{}", rows.size());
-			const ImVec2 countSize = ImGui::CalcTextSize(count.c_str());
-			const float pillPadding = ImGui::GetStyle().FramePadding.x;
-
-			const ImVec2 pillMin = ImGui::GetCursorScreenPos();
-			const ImVec2 pillMax(pillMin.x + countSize.x + pillPadding * 2.0f,
-								 pillMin.y + rowHeight);
-
-			ImDrawList* drawList = ImGui::GetWindowDrawList();
-
-			drawList->AddRectFilled(pillMin, pillMax, ImGui::GetColorU32(ImGuiCol_Button),
-									rowHeight * kPillCornerRadiusInRowHeights);
-			drawList->AddText(ImVec2(pillMin.x + pillPadding, pillMin.y),
-							  ImGui::GetColorU32(ImGuiCol_Text), count.c_str());
-		}
+		ImGui::SameLine();
+		ImGui::TextDisabled("(%zu)", rows.size());
 
 		if (rowHovered)
 		{
 			const char* allIcon = m_Section == Section::Staged ? ICON_MDI_MINUS : ICON_MDI_PLUS;
 
-			ImGui::SetCursorPos(
-				ImVec2(rowStart.x + rowWidth - rowPadding - RowButtonWidth(), rowStart.y));
+			ImGui::SetCursorScreenPos(ImVec2(ListRowEnd() - RowButtonWidth(), rowScreenStart.y));
 
 			ImGui::BeginDisabled(m_Model.IsWriteInFlight());
 
@@ -518,8 +499,7 @@ namespace Graphite {
 		// counting as hovered, so hover is asked of the row's rectangle instead, read while the
 		// Selectable is still the last item. The context menu must come directly after it for
 		// the same reason.
-		if (ImGui::Selectable("##row", selected, ImGuiSelectableFlags_AllowOverlap,
-							  ImVec2(0.0f, rowHeight)))
+		if (ListRowSelectable("##row", selected, ImGuiSelectableFlags_AllowOverlap))
 		{
 			m_Selected = identity;
 
@@ -540,7 +520,8 @@ namespace Graphite {
 		const ImVec2 rowScreenEnd(rowScreenStart.x + rowWidth,
 								  rowScreenStart.y + ImGui::GetItemRectSize().y);
 
-		const bool rowHovered = ImGui::IsMouseHoveringRect(rowScreenStart, rowScreenEnd);
+		const bool rowHovered =
+			ImGui::IsMouseHoveringRect(ImVec2(ListLeft(), ImGui::GetItemRectMin().y), ImVec2(rowScreenEnd.x, ImGui::GetItemRectMax().y));
 
 		if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup) && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
 		{
@@ -566,7 +547,7 @@ namespace Graphite {
 		const float rowPadding = RowPadding();
 		const float textGap = TextGap();
 		const float textStart = rowStart.x + rowPadding + IconColumnWidth() + textGap;
-		const float rightEdge = rowStart.x + rowWidth - rowPadding;
+		const float rightEdge = rowStart.x + (ListRowEnd() - rowScreenStart.x);
 
 		const float trailingWidth = rowHovered ? buttonsWidth : letterWidth;
 		const float availableTextWidth =
@@ -658,8 +639,7 @@ namespace Graphite {
 		const Core::Ref<const Core::WorkingTreeStatus> listing =
 			m_Model.GetUntrackedIn(file.Path);
 
-		if (ImGui::Selectable("##folder", selected, ImGuiSelectableFlags_AllowOverlap,
-							  ImVec2(0.0f, rowHeight)))
+		if (ListRowSelectable("##folder", selected, ImGuiSelectableFlags_AllowOverlap))
 		{
 			m_Selected = identity;
 
@@ -676,7 +656,8 @@ namespace Graphite {
 		const ImVec2 rowScreenEnd(rowScreenStart.x + rowWidth,
 								  rowScreenStart.y + ImGui::GetItemRectSize().y);
 
-		const bool rowHovered = ImGui::IsMouseHoveringRect(rowScreenStart, rowScreenEnd);
+		const bool rowHovered =
+			ImGui::IsMouseHoveringRect(ImVec2(ListLeft(), ImGui::GetItemRectMin().y), ImVec2(rowScreenEnd.x, ImGui::GetItemRectMax().y));
 
 		const char letter = ChangeLetter(file.WorkTree, file.IsUntracked);
 		const ImU32 letterColor = ColourOfLetter(letter, palette);
@@ -739,7 +720,7 @@ namespace Graphite {
 		const float iconStart = rowStart.x + rowPadding;
 		const float chevronStart = iconStart + placement.ChevronOffsetFromIcon;
 		const float textStart = iconStart + placement.NameOffsetFromIcon;
-		const float rightEdge = rowStart.x + rowWidth - rowPadding;
+		const float rightEdge = rowStart.x + (ListRowEnd() - rowScreenStart.x);
 
 		const float trailingWidth = rowHovered ? buttonsWidth : letterWidth;
 

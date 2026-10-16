@@ -23,11 +23,4 @@ namespace Graphite {
 	// with a rectangle behind the match: placing a rectangle means measuring the text, and CalcTextSize rounds up, which
 	// drifts the highlight off the text.
 	void DrawHighlightedLabel(const HighlightedLabel& label, const ImVec4& matchColour);
-
-	bool MarkedSelectable(const char* id, bool selected, std::string_view marker,
-						  ImU32 markerColor, std::string_view text,
-						  std::string_view needle = {});
-
-	bool HighlightedSelectable(const char* id, bool selected, std::string_view label,
-							   std::string_view needle);
 }

@@ -1,5 +1,7 @@
 #include "UI/Lists/Chevron.h"
 
+#include "UI/Lists/ListRow.h"
+
 #include "Core/ImGui/ImGuiColors.h"
 
 #include <IconsMaterialDesignIcons.h>
@@ -13,8 +15,153 @@ namespace Graphite {
 	namespace {
 		constexpr float kHalf = 0.5f;
 		constexpr float kClearAlpha = 0.0f;
-		constexpr float kPlainPaddingsBeforeLabel = 2.0f;
 		constexpr float kFramedPaddingsBeforeLabel = 3.0f;
+		constexpr const char* kUpToTheTerminator = nullptr;
+		constexpr bool kHideTextAfterHashes = false;
+
+		// WARNING: Floored, because CalcTextSize rounds up and a glyph centred onto a half pixel reads blurrier than
+		// the text beside it.
+		void DrawChevronAt(ImVec2 rowStart, float textTop, bool open)
+		{
+			const char* const glyph = ChevronGlyph(open);
+			const float arrowLeft = rowStart.x + ImGui::GetStyle().FramePadding.x;
+			const float glyphLeft = std::floor(arrowLeft + (ImGui::GetFontSize() - ImGui::CalcTextSize(glyph).x) * kHalf);
+
+			ImGui::GetWindowDrawList()->AddText(ImVec2(glyphLeft, textTop), ImGui::GetColorU32(ImGuiCol_TextDisabled),
+												glyph);
+		}
+
+		// Dim after the label, a list's numbers being dim, and cut off where the row's item ends.
+		void DrawNoteAfter(ImVec2 labelTopLeft, const char* label, const char* note)
+		{
+			if (*note == '\0')
+			{
+				return;
+			}
+
+			const float labelWidth = ImGui::CalcTextSize(label, kUpToTheTerminator, kHideTextAfterHashes).x;
+			const float gap = *label == '\0' ? 0.0f : ImGui::GetStyle().ItemSpacing.x;
+			const ImVec2 noteTopLeft(labelTopLeft.x + labelWidth + gap, labelTopLeft.y);
+			const ImVec2 clipMax(ImGui::GetItemRectMax().x, labelTopLeft.y + ImGui::GetFontSize());
+
+			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+			ImGui::RenderTextClipped(noteTopLeft, clipMax, note, kUpToTheTerminator, nullptr);
+			ImGui::PopStyleColor();
+		}
+
+		// A row of a list, so the Selectable every list row is: across the whole list, its highlight touching the
+		// rows above and below. The open state is kept where ImGui keeps a tree node's, under the same id, so
+		// SetNextItemOpen before it and TreePop after it work as they do with TreeNodeEx.
+		bool DrawListTreeNode(const char* id, ImGuiTreeNodeFlags flags, const char* label, const char* note)
+		{
+			ImGuiWindow* const window = ImGui::GetCurrentWindow();
+			const ImVec2 rowStart = ImGui::GetCursorScreenPos();
+			const float labelSpacing = ImGui::GetTreeNodeToLabelSpacing();
+			const ImVec2 textTopLeft(rowStart.x + labelSpacing, rowStart.y + window->DC.CurrLineTextBaseOffset);
+
+			const ImGuiID nodeId = window->GetID(id);
+			const bool opens = (flags & ImGuiTreeNodeFlags_Leaf) == 0;
+			bool open = ImGui::TreeNodeUpdateNextOpen(nodeId, flags);
+
+			const bool selected = (flags & ImGuiTreeNodeFlags_Selected) != 0;
+			const ImGuiSelectableFlags selectableFlags =
+				(flags & ImGuiTreeNodeFlags_AllowOverlap) != 0 ? ImGuiSelectableFlags_AllowOverlap : ImGuiSelectableFlags_None;
+
+			ImGui::PushID(id);
+			const bool clicked = ListRowSelectable("##row", selected, selectableFlags);
+			ImGui::PopID();
+
+			// Left closes and Right opens the row the keyboard is on, as with TreeNodeEx.
+			const ImGuiContext& context = *ImGui::GetCurrentContext();
+			const bool keyboardIsHere = opens && context.NavId == ImGui::GetItemID();
+			const bool closedByKey = keyboardIsHere && context.NavMoveDir == ImGuiDir_Left && open;
+			const bool openedByKey = keyboardIsHere && context.NavMoveDir == ImGuiDir_Right && !open;
+
+			if (closedByKey || openedByKey)
+			{
+				ImGui::NavClearPreferredPosForAxis(ImGuiAxis_X);
+				ImGui::NavMoveRequestCancel();
+			}
+
+			if ((clicked && opens) || closedByKey || openedByKey)
+			{
+				open = !open;
+				ImGui::TreeNodeSetOpen(nodeId, open);
+			}
+
+			// WARNING: Laid out again from the row's start, without an item, as wide as TreeNodeEx lays out the
+			// arrow and the label, so what follows with SameLine starts past the label as it did; the Selectable
+			// stays the last item for the caller to ask.
+			constexpr bool kShowTextAfterHashes = false;
+			const float labelWidth = ImGui::CalcTextSize(label, kUpToTheTerminator, kShowTextAfterHashes).x;
+			ImGui::SetCursorScreenPos(rowStart);
+			ImGui::ItemSize(ImVec2(labelSpacing + labelWidth, ImGui::GetFontSize()));
+
+			if (ImGui::IsItemVisible())
+			{
+				if (opens)
+				{
+					DrawChevronAt(rowStart, textTopLeft.y, open);
+				}
+
+				if (*label != '\0')
+				{
+					ImGui::RenderText(textTopLeft, label, kUpToTheTerminator, kHideTextAfterHashes);
+				}
+
+				DrawNoteAfter(textTopLeft, label, note);
+			}
+
+			if (open && (flags & ImGuiTreeNodeFlags_NoTreePushOnOpen) == 0)
+			{
+				ImGui::TreePushOverrideID(nodeId);
+			}
+
+			return open;
+		}
+
+		// WARNING: ImGui draws its arrow in the text colour and has no flag to leave it out, so the text colour is
+		// cleared for the call. The label shares that colour, so it is drawn again here, in the row's own colour and
+		// where TreeNodeBehavior puts a framed node's: the offsets below are its own.
+		bool DrawFramedTreeNode(const char* id, ImGuiTreeNodeFlags flags, const char* label, const char* note)
+		{
+			const ImGuiStyle& style = ImGui::GetStyle();
+			const float lineTextOffset = ImGui::GetCurrentWindow()->DC.CurrLineTextBaseOffset;
+			const bool opens = (flags & ImGuiTreeNodeFlags_Leaf) == 0;
+
+			const ImVec2 rowStart = ImGui::GetCursorScreenPos();
+			ImVec2 textTopLeft(rowStart.x + ImGui::GetFontSize() + style.FramePadding.x * kFramedPaddingsBeforeLabel,
+							   rowStart.y + std::max(style.FramePadding.y, lineTextOffset));
+
+			// A framed leaf has no arrow and ImGui moves its label to the start.
+			if (!opens)
+			{
+				textTopLeft.x = rowStart.x + style.FramePadding.x;
+			}
+
+			ImGui::PushStyleColor(ImGuiCol_Text, Core::WithAlphaReplaced(ImGui::GetStyleColorVec4(ImGuiCol_Text), kClearAlpha));
+			const bool open = ImGui::TreeNodeEx(id, flags, "%s", label);
+			ImGui::PopStyleColor();
+
+			if (!ImGui::IsItemVisible())
+			{
+				return open;
+			}
+
+			if (opens)
+			{
+				DrawChevronAt(rowStart, textTopLeft.y, open);
+			}
+
+			if (*label != '\0')
+			{
+				ImGui::RenderTextClipped(textTopLeft, ImGui::GetItemRectMax(), label, kUpToTheTerminator, nullptr);
+			}
+
+			DrawNoteAfter(textTopLeft, label, note);
+
+			return open;
+		}
 	}
 
 	const char* ChevronGlyph(bool open)
@@ -32,74 +179,20 @@ namespace Graphite {
 		return std::max(ImGui::CalcTextSize(ICON_MDI_CHEVRON_RIGHT).x, ImGui::CalcTextSize(ICON_MDI_CHEVRON_DOWN).x);
 	}
 
-	// WARNING: ImGui draws its arrow in the text colour and has no flag to leave it out, so the text colour is
-	// cleared for the call. The label shares that colour, so it is drawn again here, in the row's own colour and
-	// where TreeNodeBehavior puts it: the offsets below are its own, for a framed node and a plain one.
-	bool ChevronTreeNode(const char* id, ImGuiTreeNodeFlags flags, const char* label)
+	bool ChevronTreeNode(const char* id, ImGuiTreeNodeFlags flags, const char* label, const char* note)
 	{
-		// WARNING: TreeNodeEx returns before submitting anything in a window that skips its items, and what this
-		// would ask of the last item would be asked of another one.
+		// WARNING: Nothing is submitted in a window that skips its items, and what this would ask of the last item
+		// would be asked of another one.
 		if (ImGui::GetCurrentWindowRead()->SkipItems)
 		{
 			return false;
 		}
 
-		const ImGuiStyle& style = ImGui::GetStyle();
-		const float fontSize = ImGui::GetFontSize();
-		const bool framed = (flags & ImGuiTreeNodeFlags_Framed) != 0;
-		const bool framePadded = framed || (flags & ImGuiTreeNodeFlags_FramePadding) != 0;
-
-		const float lineTextOffset = ImGui::GetCurrentWindow()->DC.CurrLineTextBaseOffset;
-		const float paddingsBeforeLabel = framed ? kFramedPaddingsBeforeLabel : kPlainPaddingsBeforeLabel;
-		const float textOffsetY = framePadded ? std::max(style.FramePadding.y, lineTextOffset) : lineTextOffset;
-
-		const bool opens = (flags & ImGuiTreeNodeFlags_Leaf) == 0;
-		const ImVec2 rowStart = ImGui::GetCursorScreenPos();
-		ImVec2 textTopLeft(rowStart.x + fontSize + style.FramePadding.x * paddingsBeforeLabel, rowStart.y + textOffsetY);
-
-		// A framed leaf has no arrow and ImGui moves its label to the start; a plain leaf keeps the arrow's room.
-		if (framed && !opens)
+		if ((flags & ImGuiTreeNodeFlags_Framed) != 0)
 		{
-			textTopLeft.x = rowStart.x + style.FramePadding.x;
+			return DrawFramedTreeNode(id, flags, label, note);
 		}
 
-		ImGui::PushStyleColor(ImGuiCol_Text, Core::WithAlphaReplaced(ImGui::GetStyleColorVec4(ImGuiCol_Text), kClearAlpha));
-		const bool open = ImGui::TreeNodeEx(id, flags, "%s", label);
-		ImGui::PopStyleColor();
-
-		if (!ImGui::IsItemVisible())
-		{
-			return open;
-		}
-
-		if (opens)
-		{
-			// WARNING: Floored, because CalcTextSize rounds up and a glyph centred onto a half pixel reads blurrier
-			// than the text beside it.
-			const char* const glyph = ChevronGlyph(open);
-			const float arrowLeft = rowStart.x + style.FramePadding.x;
-			const float glyphLeft = std::floor(arrowLeft + (fontSize - ImGui::CalcTextSize(glyph).x) * kHalf);
-			ImGui::GetWindowDrawList()->AddText(ImVec2(glyphLeft, textTopLeft.y),
-												ImGui::GetColorU32(ImGuiCol_TextDisabled), glyph);
-		}
-
-		if (*label == '\0')
-		{
-			return open;
-		}
-
-		constexpr const char* kUpToTheTerminator = nullptr;
-		constexpr bool kHideTextAfterHashes = false;
-
-		if (framed)
-		{
-			ImGui::RenderTextClipped(textTopLeft, ImGui::GetItemRectMax(), label, kUpToTheTerminator, nullptr);
-		}
-		else
-		{
-			ImGui::RenderText(textTopLeft, label, kUpToTheTerminator, kHideTextAfterHashes);
-		}
-
-		return open;
+		return DrawListTreeNode(id, flags, label, note);
 	}
 }

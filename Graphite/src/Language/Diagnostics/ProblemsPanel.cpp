@@ -5,6 +5,8 @@
 
 #include "Language/Diagnostics/ProblemIdentity.h"
 #include "Language/Server/LspProtocol.h"
+#include "UI/FittedText.h"
+#include "UI/Lists/ListRow.h"
 #include "UI/OpenGesture.h"
 
 #include "Core/Base/Strings.h"
@@ -86,15 +88,21 @@ namespace Graphite {
 
 		const EditorPalette palette = ReadEditorPalette(m_Scheme.Get());
 
-		for (const auto& [path, entry] : m_Diagnostics.GetDocuments())
+		// WARNING: In a child of its own, which has no padding, so the rows' highlights reach the list's edges.
+		if (ImGui::BeginChild("##problemList", ImVec2(0.0f, 0.0f), ImGuiChildFlags_NavFlattened))
 		{
-			if (entry.Items.empty() || !isOpenDocument(path))
+			for (const auto& [path, entry] : m_Diagnostics.GetDocuments())
 			{
-				continue;
-			}
+				if (entry.Items.empty() || !isOpenDocument(path))
+				{
+					continue;
+				}
 
-			RenderFile(path, entry, palette);
+				RenderFile(path, entry, palette);
+			}
 		}
+
+		ImGui::EndChild();
 
 		if (!m_SelectionSeen)
 		{
@@ -175,12 +183,6 @@ namespace Graphite {
 
 		ImGui::PushID(rowId);
 
-		ImGui::PushStyleColor(ImGuiCol_Text, colour);
-		ImGui::TextUnformatted(icon);
-		ImGui::PopStyleColor();
-
-		ImGui::SameLine();
-
 		const std::string label = std::to_string(diagnostic.Line + 1) + ":" +
 								  std::to_string(diagnostic.Column.Value + 1) + "  " +
 								  diagnostic.Message;
@@ -192,7 +194,9 @@ namespace Graphite {
 			m_SelectionSeen = true;
 		}
 
-		const bool clicked = ImGui::Selectable(label.c_str(), selected, ImGuiSelectableFlags_AllowDoubleClick);
+		const ImVec2 rowStart = ImGui::GetCursorPos();
+		const bool clicked = ListRowSelectable("##problem", selected,
+											   ImGuiSelectableFlags_AllowDoubleClick | ImGuiSelectableFlags_AllowOverlap);
 
 		if (!selected && ImGui::IsItemFocused())
 		{
@@ -207,6 +211,15 @@ namespace Graphite {
 
 			OpenAndSelect(path, diagnostic, OpensPermanently());
 		}
+
+		// WARNING: Drawn over the row rather than as the Selectable's label, which would hide a message from a "##"
+		// in it on, and leave the icon outside the row's highlight.
+		ImGui::SetCursorPos(rowStart);
+		ImGui::PushStyleColor(ImGuiCol_Text, colour);
+		ImGui::TextUnformatted(icon);
+		ImGui::PopStyleColor();
+		ImGui::SameLine();
+		ImGui::TextUnformatted(FitToWidth(label, ListRowEndPosX() - ImGui::GetCursorPosX()).c_str());
 
 		ImGui::PopID();
 	}

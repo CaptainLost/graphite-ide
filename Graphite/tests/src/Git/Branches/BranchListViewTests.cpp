@@ -3,6 +3,7 @@
 #include "GitFixtures.h"
 #include "ImGuiFrames.h"
 #include "Git/Branches/BranchListView.h"
+#include "UI/Lists/ListRow.h"
 #include "Core/ImGui/IconButton.h"
 
 #include "Core/Base/Base.h"
@@ -411,7 +412,7 @@ TEST_CASE("A branch whose name holds a double hash draws its whole name")
 	CHECK(drawnWidth == doctest::Approx(nameWidth));
 }
 
-TEST_CASE("The age ends a window padding short of the row's right edge as the label starts that far in")
+TEST_CASE("The age ends where a list row's end stands, eight pixels in from the list's right edge")
 {
 	ImGuiFrames frames;
 	const Core::Ref<const std::vector<Core::Branch>> listed = ListOf(LocalBranchAt("main", kNowSeconds, kTipBefore));
@@ -419,17 +420,17 @@ TEST_CASE("The age ends a window padding short of the row's right edge as the la
 	Graphite::BranchListState options;
 	Graphite::BranchListView list{options};
 
-	float rowRight = 0.0f;
+	float rowEnd = 0.0f;
 	float ageRight = 0.0f;
-	list.DrawBranchMenu = [&rowRight, &ageRight](const Core::Branch&) {
-		rowRight = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+	list.DrawBranchMenu = [&rowEnd, &ageRight](const Core::Branch&) {
+		rowEnd = Graphite::ListRowEnd();
 		ageRight = ImGui::GetItemRectMax().x;
 	};
 
 	frames.Next([&list, &listed] { DrawListWindow(list, FrameOf(listed), kListWidth); });
 
 	CHECK(ageRight > 0.0f);
-	CHECK(rowRight - ageRight == doctest::Approx(ImGui::GetStyle().WindowPadding.x));
+	CHECK(ageRight == doctest::Approx(rowEnd));
 }
 
 TEST_CASE("Rows draw in a column narrower than the age without an assertion")
@@ -763,6 +764,55 @@ TEST_CASE("A section collapsed while authors are in flight rebuilds the rows at 
 	drawnTips.clear();
 	frames.Next([&list, &held] { DrawListWindow(list, held, kListWidth); });
 	CHECK(drawnTips.empty());
+}
+
+TEST_CASE("A branch inside an author group is highlighted from the list's left edge, not from its indent")
+{
+	ImGuiFrames frames;
+
+	const bool notInFlight = false;
+	const Graphite::BranchListFrame frame = FrameWithAuthors(
+		ListOf(LocalBranchAt("Ann-work", kNowSeconds, 1)), Core::CreateRef<const Graphite::BranchAuthors>(), notInFlight);
+
+	Graphite::BranchListState options;
+	options.Group = Graphite::BranchGrouping::Author;
+	Graphite::BranchListView list{options};
+
+	ImVec2 listTop{};
+	float rowHeight = 0.0f;
+	frames.Next([&list, &frame, &listTop, &rowHeight] {
+		listTop = DrawListWindow(list, frame, kListWidth);
+		rowHeight = ImGui::GetTextLineHeightWithSpacing();
+	});
+
+	const float annGroupRow = 1.0f;
+	const float annWorkRow = 2.0f;
+	frames.Click(IntoRow(listTop, rowHeight, annGroupRow), [&list, &frame] { DrawListWindow(list, frame, kListWidth); });
+
+	const ImVec2 onTheBranch = IntoRow(listTop, rowHeight, annWorkRow);
+	ImGui::GetIO().AddMousePosEvent(onTheBranch.x, onTheBranch.y);
+
+	// An item that allows overlap takes the hover on the frame after the pointer reached it.
+	ImU32 hoverColour = 0;
+	frames.Next([&list, &frame] { DrawListWindow(list, frame, kListWidth); });
+	frames.Next([&list, &frame, &hoverColour] {
+		DrawListWindow(list, frame, kListWidth);
+		hoverColour = ImGui::GetColorU32(ImGuiCol_HeaderHovered);
+	});
+
+	const ImGuiWindow* listWindow = ImGui::FindWindowByName("BranchList");
+	REQUIRE(listWindow != nullptr);
+
+	float highlightLeft = FLT_MAX;
+	for (const ImDrawVert& vertex : listWindow->DrawList->VtxBuffer)
+	{
+		if (vertex.col == hoverColour)
+		{
+			highlightLeft = std::min(highlightLeft, vertex.pos.x);
+		}
+	}
+
+	CHECK(highlightLeft <= listWindow->InnerRect.Min.x + 1.0f);
 }
 
 TEST_CASE("A branch inside an author group starts a chevron's width past the group's name")

@@ -17,6 +17,7 @@
 #include "UI/ClipboardCopy.h"
 #include "UI/Dialogs/DialogLayout.h"
 #include "UI/Lists/FilterField.h"
+#include "UI/Lists/ListRow.h"
 #include "Terminal/TerminalRules.h"
 #include "Explorer/FileRow.h"
 #include "Explorer/FilteredTree.h"
@@ -968,10 +969,7 @@ namespace Graphite {
 
 		const std::string id = "##" + Core::ToUtf8(node.Path);
 
-		constexpr float kRowHeightFromContent = 0.0f;
-
-		const bool clicked = ImGui::Selectable(id.c_str(), isShownInEditor, ImGuiSelectableFlags_AllowDoubleClick,
-											   ImVec2(layout.Width, kRowHeightFromContent));
+		const bool clicked = ListRowSelectable(id.c_str(), isShownInEditor, ImGuiSelectableFlags_AllowDoubleClick);
 
 		// WARNING: The lookup builds a path key and an expanded tree can hold thousands of rows,
 		// so only a row on screen is looked up.
@@ -1048,6 +1046,7 @@ namespace Graphite {
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 		}
 
+		const FileRowLayout layout = LayoutFileRow();
 		const bool open = ChevronTreeNode(Core::ToUtf8(node.Path).c_str(), flags);
 
 		const RowStatus folderStatus =
@@ -1055,7 +1054,7 @@ namespace Graphite {
 
 		const std::string label =
 			std::string{node.Expanded ? ICON_MDI_FOLDER_OPEN : ICON_MDI_FOLDER} + "  " + node.Name;
-		DrawTreeRowLabel(label, folderStatus.HasMarker());
+		DrawTreeRowLabel(layout, label, folderStatus.HasMarker());
 
 		if (dimmed)
 		{
@@ -1069,11 +1068,7 @@ namespace Graphite {
 
 		if (!node.Ignored && ImGui::IsItemVisible())
 		{
-			constexpr float kHalf = 0.5f;
-
-			const ImVec2 rowMin = ImGui::GetItemRectMin();
-			const float textTop = rowMin.y + (ImGui::GetItemRectSize().y - ImGui::GetFontSize()) * kHalf;
-			DrawRowMarker(folderStatus, textTop);
+			DrawRowMarker(folderStatus, layout);
 		}
 
 		RenderContextMenu(node);

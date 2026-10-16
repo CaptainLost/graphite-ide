@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "DrawnColours.h"
 #include "ImGuiFrames.h"
 
 #include "Settings/Panel/SettingsLayout.h"
@@ -418,6 +419,45 @@ TEST_CASE("A navigation entry reports a click")
 	screen.Frames.Click(screen.LastItemCentre, [&screen] { screen.DrawEntry(); });
 
 	CHECK(screen.EntryClicked);
+}
+
+TEST_CASE("A navigation entry rests in the selected colour and takes the hover colour under the pointer, as a list row does")
+{
+	ImGuiFrames frames;
+
+	const auto entry = [](bool selected) {
+		return [selected] {
+			Core::Animation::BeginFrame();
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(220.0f, 200.0f));
+			ImGui::Begin("Sidebar");
+			Graphite::SettingsLayout::DrawNavigationEntry("", "Colours of a list row", selected, false);
+			ImGui::End();
+		};
+	};
+	const auto drawsIn = [](ImGuiCol colour) {
+		const ImGuiWindow* sidebar = ImGui::FindWindowByName("Sidebar");
+		REQUIRE(sidebar != nullptr);
+		return DrawsInColour(*sidebar->DrawList, ImGui::GetColorU32(colour));
+	};
+
+	frames.Next(entry(true));
+	CHECK(drawsIn(ImGuiCol_Header));
+	CHECK_FALSE(drawsIn(ImGuiCol_HeaderHovered));
+
+	const ImGuiWindow* sidebar = ImGui::FindWindowByName("Sidebar");
+	REQUIRE(sidebar != nullptr);
+	const ImVec2 onTheEntry(sidebar->InnerRect.Min.x + 40.0f, sidebar->InnerRect.Min.y + ImGui::GetStyle().WindowPadding.y + 10.0f);
+	ImGui::GetIO().AddMousePosEvent(onTheEntry.x, onTheEntry.y);
+
+	const int framesPastTheHoverFade = 30;
+	for (int frame = 0; frame < framesPastTheHoverFade; ++frame)
+	{
+		frames.Next(entry(false));
+	}
+
+	CHECK(drawsIn(ImGuiCol_HeaderHovered));
+	CHECK_FALSE(drawsIn(ImGuiCol_Header));
 }
 
 TEST_CASE("A search result's page label is followed by a gap before its first card")

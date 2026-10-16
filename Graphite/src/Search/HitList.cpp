@@ -4,6 +4,7 @@
 
 #include "Search/HitDisplay.h"
 #include "UI/Lists/Chevron.h"
+#include "UI/Lists/ListRow.h"
 #include "UI/OpenGesture.h"
 
 #include <imgui.h>
@@ -83,9 +84,8 @@ namespace Graphite {
 					// WARNING: The empty selectable is drawn first so the whole row is the click
 					// target, with the text laid over it in pieces. AllowOverlap keeps the click
 					// reaching it instead of being swallowed by the text items on top.
-					if (ImGui::Selectable("##hit", isSelected,
-										  ImGuiSelectableFlags_AllowOverlap |
-											  ImGuiSelectableFlags_AllowDoubleClick))
+					if (ListRowSelectable("##hit", isSelected,
+										  ImGuiSelectableFlags_AllowOverlap | ImGuiSelectableFlags_AllowDoubleClick))
 					{
 						input.Selected = HitSelection{group.Id, hitIndex};
 

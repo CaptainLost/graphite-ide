@@ -5,8 +5,13 @@
 
 #include "TempDirectory.h"
 
+#include "UI/Lists/Chevron.h"
+#include "UI/Lists/ListRow.h"
+
 #include "Core/Text/DocumentSet.h"
 
+#include <algorithm>
+#include <cfloat>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -165,8 +170,6 @@ TEST_CASE("A file row with a name far longer than the window does not widen the 
 	const float windowWidth = 200.0f;
 	const std::string longLabel(300, 'x');
 
-	float rowWidth = 0.0f;
-	float availableWidth = 0.0f;
 	float scrollableWidth = -1.0f;
 
 	const auto drawFileRow = [&]
@@ -175,12 +178,9 @@ TEST_CASE("A file row with a name far longer than the window does not widen the 
 		ImGui::SetNextWindowSize(ImVec2(windowWidth, 300.0f));
 		ImGui::Begin("##fileRowWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
-		availableWidth = ImGui::GetContentRegionAvail().x;
-
 		const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
-		rowWidth = layout.Width;
 
-		ImGui::Selectable("##row", false, ImGuiSelectableFlags_None, ImVec2(layout.Width, 0.0f));
+		Graphite::ListRowSelectable("##row", false);
 		Graphite::DrawFileRowLabel(layout, Graphite::FileRowLook{.Ink = 0xFFFFFFFFu}, longLabel);
 
 		scrollableWidth = ImGui::GetCurrentWindow()->ScrollMax.x;
@@ -190,8 +190,50 @@ TEST_CASE("A file row with a name far longer than the window does not widen the 
 	frames.Next(drawFileRow);
 	frames.Next(drawFileRow);
 
-	CHECK(rowWidth == doctest::Approx(availableWidth));
 	CHECK(scrollableWidth == doctest::Approx(0.0f));
+}
+
+TEST_CASE("An indented folder row's label starts past its chevron at the indent, though its row spans the whole list")
+{
+	ImGuiFrames frames;
+
+	const float indent = 40.0f;
+	float labelLeft = 0.0f;
+	float expectedLeft = 0.0f;
+
+	frames.Next([&] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(300.0f, 200.0f));
+		ImGui::Begin("##folderRowWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+		ImGui::Indent(indent);
+		expectedLeft = ImGui::GetCursorScreenPos().x + ImGui::GetTreeNodeToLabelSpacing();
+
+		const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
+		const int verticesBefore = ImGui::GetWindowDrawList()->VtxBuffer.Size;
+
+		if (Graphite::ChevronTreeNode("folder", ImGuiTreeNodeFlags_SpanAvailWidth))
+		{
+			ImGui::TreePop();
+		}
+
+		const int labelFrom = ImGui::GetWindowDrawList()->VtxBuffer.Size;
+		Graphite::DrawTreeRowLabel(layout, "folder", false);
+
+		labelLeft = FLT_MAX;
+		const ImDrawList& drawing = *ImGui::GetWindowDrawList();
+		for (int vertex = labelFrom; vertex < drawing.VtxBuffer.Size; ++vertex)
+		{
+			labelLeft = std::min(labelLeft, drawing.VtxBuffer[vertex].pos.x);
+		}
+
+		CHECK(labelFrom > verticesBefore);
+		ImGui::Unindent(indent);
+		ImGui::End();
+	});
+
+	CHECK(labelLeft >= expectedLeft - 1.0f);
+	CHECK(labelLeft <= expectedLeft + ImGui::GetFontSize());
 }
 
 TEST_CASE("A row's marker is drawn only when a letter of the label fits beside it")
@@ -213,9 +255,10 @@ TEST_CASE("A row's marker is drawn only when a letter of the label fits beside i
 			ImGui::SetNextWindowSize(ImVec2(windowWidth, 300.0f));
 			ImGui::Begin("##markerWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
-			ImGui::Selectable("##row", false, ImGuiSelectableFlags_None, ImVec2(0.0f, 0.0f));
-			rightEdge = Graphite::DrawRowMarker(Graphite::RowStatus{}, ImGui::GetItemRectMin().y);
-			markerLeftEdge = Graphite::DrawRowMarker(dot, ImGui::GetItemRectMin().y);
+			const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
+			Graphite::ListRowSelectable("##row", false);
+			rightEdge = Graphite::DrawRowMarker(Graphite::RowStatus{}, layout);
+			markerLeftEdge = Graphite::DrawRowMarker(dot, layout);
 
 			ImGui::End();
 		};

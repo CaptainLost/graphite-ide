@@ -4,6 +4,7 @@
 #include "Git/Branches/RefSectionHeading.h"
 #include "Git/GitView.h"
 #include "UI/Lists/Chevron.h"
+#include "UI/Lists/ListRow.h"
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/HighlightedRow.h"
 #include "UI/FittedText.h"
@@ -71,10 +72,6 @@ namespace Graphite {
 			return static_cast<float>(row.Depth) * (groupNameStart + ChevronWidth());
 		}
 
-		void EmptyRow()
-		{
-			ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
-		}
 
 		// WARNING: A Selectable or MenuItem closes the popup it sits in when clicked; the panel's
 		// segments are buttons so that choosing a sort leaves it open.
@@ -576,7 +573,7 @@ namespace Graphite {
 		case BranchRowKind::Section:
 		{
 			bool& collapsed = m_CollapsedSections[SectionIndexOf(row.Section)];
-			DrawRefSectionHeading(row.Label.c_str(), SectionHeadingText(row), collapsed);
+			DrawRefSectionHeading(row.Label.c_str(), row.Label, SectionHeadingCount(row), collapsed);
 			break;
 		}
 		case BranchRowKind::AuthorGroup:
@@ -601,7 +598,7 @@ namespace Graphite {
 		const ImVec2 rowStart = ImGui::GetCursorPos();
 		const bool notSelected = false;
 
-		if (ImGui::Selectable("##group", notSelected, ImGuiSelectableFlags_AllowOverlap))
+		if (ListRowSelectable("##group", notSelected, ImGuiSelectableFlags_AllowOverlap))
 		{
 			const AuthorGroupKey key{.Section = row.Section, .Author = row.AuthorKey};
 
@@ -619,8 +616,12 @@ namespace Graphite {
 		DrawChevron(!row.Collapsed);
 		ImGui::SameLine();
 
-		const std::string fitted = FitToWidth(AuthorGroupText(row), ImGui::GetContentRegionAvail().x);
+		const std::string count = AuthorGroupCount(row);
+		const float countRoom = ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize(count.c_str()).x;
+		const std::string fitted = FitToWidth(row.Label, ListRowEnd() - ImGui::GetCursorScreenPos().x - countRoom);
 		ImGui::TextUnformatted(fitted.c_str());
+		ImGui::SameLine();
+		ImGui::TextDisabled("%s", count.c_str());
 
 		ImGui::PopID();
 		ImGui::PopID();
@@ -663,34 +664,32 @@ namespace Graphite {
 
 		const float spacing = ImGui::GetStyle().ItemSpacing.x;
 		const ImVec2 rowStart = ImGui::GetCursorScreenPos();
-		const float rowWidth = ImGui::GetContentRegionAvail().x;
 		const float indent = IndentOf(row);
 
 		const std::string age =
 			branch.TipCommit.has_value() ? FormatBranchAge(branch.TipCommit->Committer.When, frame.Now) : std::string{};
 		const std::string badge = BadgeOf ? BadgeOf(branch) : std::string{};
 
-		// WARNING: The child these rows scroll in has no padding of its own; the label's margin is the
-		// padding of the window around it. The age keeps the same margin from the scrollbar, or the
-		// row looks lopsided.
-		const float rightMargin = ImGui::GetStyle().WindowPadding.x;
-		const float ageRight = rowStart.x + rowWidth - rightMargin;
+		const float ageRight = ListRowEnd();
 
 		const float ageRoom = ImGui::CalcTextSize(kWidestAge).x;
 		const float badgeWidth = badge.empty() ? 0.0f : ImGui::CalcTextSize(badge.c_str()).x;
 		const float badgeRoom = badge.empty() ? 0.0f : badgeWidth + spacing;
-		const float labelRoom = rowWidth - rightMargin - indent - ageRoom - spacing - badgeRoom;
+		const float labelRoom = ageRight - (rowStart.x + indent) - ageRoom - spacing - badgeRoom;
 
 		const std::string label = RefLabel(branch);
 		const std::string fitted = FitToWidth(label, labelRoom);
 
-		// WARNING: The group makes the menu below ask about the whole row. With the filter marked,
-		// HighlightedSelectable ends on a piece of its label, and after the group the menu would
-		// ask about the age instead.
+		const bool clicked = ListRowSelectable("##branch", selected, ImGuiSelectableFlags_AllowOverlap);
+
+		// WARNING: The group makes the menu below ask about the row, from its start to its age. Its label is drawn in
+		// pieces when the filter is marked, and without the group the menu would ask about the last of them, or the age.
+		ImGui::SetCursorScreenPos(rowStart);
 		ImGui::BeginGroup();
 
+		const std::string_view needle = FirstWordInName(branch.Name, m_Words);
 		ImGui::SetCursorScreenPos(ImVec2(rowStart.x + indent, rowStart.y));
-		const bool clicked = HighlightedSelectable("##branch", selected, fitted, FirstWordInName(branch.Name, m_Words));
+		DrawHighlightedLabel(SplitHighlight(fitted, needle), ImGui::GetStyleColorVec4(ImGuiCol_CheckMark));
 
 		if (!badge.empty())
 		{
@@ -704,12 +703,6 @@ namespace Graphite {
 			ImGui::SetCursorScreenPos(ImVec2(ageRight - ageWidth, rowStart.y));
 			ImGui::TextDisabled("%s", age.c_str());
 		}
-
-		// WARNING: A Selectable reports a box half the item spacing taller than its row, and a group
-		// that ends on it grows by that much, which the clipper over these rows does not count. The
-		// group ends on an empty item exactly one text row high instead.
-		ImGui::SetCursorScreenPos(rowStart);
-		EmptyRow();
 
 		ImGui::EndGroup();
 

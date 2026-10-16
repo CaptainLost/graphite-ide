@@ -20,7 +20,6 @@ namespace Graphite {
 	{
 		ImVec2 RowAt;
 		ImVec2 LabelAt;
-		float Width = 0.0f;
 	};
 
 	struct RowStatus
@@ -59,20 +58,20 @@ namespace Graphite {
 		RowStatus Status;
 	};
 
-	// WARNING: Call this at the cursor before the row's Selectable. That item pads its rect out
-	// by half the item spacing, so its corner is not where a folder's label would start.
+	// WARNING: Call this at the cursor before the row's item, a file's or a folder's. That item is the whole list's
+	// width from its left edge, whatever the row's indent, so its corner is not where the row's label starts.
 	FileRowLayout LayoutFileRow();
 
 	float RowMarkerColumnWidth();
 
 	// WARNING: Selectable cannot offset its text from the highlight, so the label is drawn by
-	// hand, after the row's Selectable that `layout.Width` sized.
+	// hand, after the row's ListRowSelectable.
 	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& label);
 
 	// WARNING: Call this while the row's own item is the last one, before the row's marker is drawn.
-	void DrawTreeRowLabel(const std::string& label, bool hasMarker);
+	void DrawTreeRowLabel(const FileRowLayout& layout, const std::string& label, bool hasMarker);
 
 	// WARNING: Call this while the row's own item is the last one: the marker's tooltip is shown
 	// only while that item is hovered.
-	float DrawRowMarker(const RowStatus& status, float textTop);
+	float DrawRowMarker(const RowStatus& status, const FileRowLayout& layout);
 }

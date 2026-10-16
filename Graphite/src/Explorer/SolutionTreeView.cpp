@@ -16,6 +16,7 @@
 #include "UI/Lists/Chevron.h"
 #include "UI/Dialogs/DialogLayout.h"
 #include "UI/Lists/FilterField.h"
+#include "UI/Lists/ListRow.h"
 #include "UI/OpenGesture.h"
 #include "UI/ToastEvent.h"
 
@@ -152,11 +153,13 @@ namespace Graphite {
 				ImGui::SetNextItemOpen(kOpenTheRow);
 			}
 
+			const FileRowLayout layout = LayoutFileRow();
 			const bool rootOpen =
 				ChevronTreeNode(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
-			DrawTreeRowLabel(label, ImGui::IsItemVisible() && GroupDecorationOf(solution.Root) != GitDecoration::None);
+			DrawTreeRowLabel(layout, label,
+							 ImGui::IsItemVisible() && GroupDecorationOf(solution.Root) != GitDecoration::None);
 
-			DrawGroupMarker(solution.Root);
+			DrawGroupMarker(solution.Root, layout);
 			RenderContextMenu(solution.Root, kSolutionRootPath);
 
 			if (rootOpen)
@@ -262,11 +265,12 @@ namespace Graphite {
 			ImGui::SetNextItemOpen(kOpenTheRow);
 		}
 
+		const FileRowLayout layout = LayoutFileRow();
 		const bool isOpen =
 			ChevronTreeNode(label.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
-		DrawTreeRowLabel(label, ImGui::IsItemVisible() && GroupDecorationOf(folder) != GitDecoration::None);
+		DrawTreeRowLabel(layout, label, ImGui::IsItemVisible() && GroupDecorationOf(folder) != GitDecoration::None);
 
-		DrawGroupMarker(folder);
+		DrawGroupMarker(folder, layout);
 		RenderContextMenu(folder, path);
 
 		if (isOpen)
@@ -306,15 +310,16 @@ namespace Graphite {
 			ImGui::SetNextItemOpen(kOpenTheRow);
 		}
 
+		const FileRowLayout layout = LayoutFileRow();
 		const bool isOpen = ChevronTreeNode(label.c_str(), flags);
-		DrawTreeRowLabel(label, ImGui::IsItemVisible() && GroupDecorationOf(project) != GitDecoration::None);
+		DrawTreeRowLabel(layout, label, ImGui::IsItemVisible() && GroupDecorationOf(project) != GitDecoration::None);
 
 		if (!project.Exists)
 		{
 			ImGui::PopStyleColor();
 		}
 
-		DrawGroupMarker(project);
+		DrawGroupMarker(project, layout);
 		RenderContextMenu(project, folder);
 
 		if (!isOpen)
@@ -407,7 +412,7 @@ namespace Graphite {
 		const ImGuiSelectableFlags flags =
 			ImGuiSelectableFlags_AllowDoubleClick | (file.Exists ? 0 : ImGuiSelectableFlags_Disabled);
 
-		const bool clicked = ImGui::Selectable(id.c_str(), isShownInEditor, flags, ImVec2(layout.Width, 0.0f));
+		const bool clicked = ListRowSelectable(id.c_str(), isShownInEditor, flags);
 
 		if (ImGui::IsItemVisible())
 		{
@@ -630,23 +635,23 @@ namespace Graphite {
 		return decoration;
 	}
 
-	void SolutionTreeView::DrawGroupMarker(const Project& project)
+	void SolutionTreeView::DrawGroupMarker(const Project& project, const FileRowLayout& layout)
 	{
 		if (ImGui::IsItemVisible())
 		{
-			DrawGroupMarker(GroupDecorationOf(project));
+			DrawGroupMarker(GroupDecorationOf(project), layout);
 		}
 	}
 
-	void SolutionTreeView::DrawGroupMarker(const Folder& folder)
+	void SolutionTreeView::DrawGroupMarker(const Folder& folder, const FileRowLayout& layout)
 	{
 		if (ImGui::IsItemVisible())
 		{
-			DrawGroupMarker(GroupDecorationOf(folder));
+			DrawGroupMarker(GroupDecorationOf(folder), layout);
 		}
 	}
 
-	void SolutionTreeView::DrawGroupMarker(GitDecoration decoration)
+	void SolutionTreeView::DrawGroupMarker(GitDecoration decoration, const FileRowLayout& layout)
 	{
 		if (decoration == GitDecoration::None)
 		{
@@ -658,9 +663,7 @@ namespace Graphite {
 		status.Dot = true;
 		status.Ink = m_GitDecorations.ColourFor(decoration);
 
-		const float textTop =
-			ImGui::GetItemRectMin().y + (ImGui::GetItemRectSize().y - ImGui::GetFontSize()) * kHalf;
-		DrawRowMarker(status, textTop);
+		DrawRowMarker(status, layout);
 	}
 
 	void SolutionTreeView::RenderEmptyState()
