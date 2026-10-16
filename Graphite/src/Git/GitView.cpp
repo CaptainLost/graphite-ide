@@ -14,6 +14,7 @@
 #include "Theme/GitPalette.h"
 #include "UI/ClipboardCopy.h"
 #include "UI/Lists/FilterField.h"
+#include "UI/Lists/ListRow.h"
 #include "Git/DefaultBranch.h"
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
@@ -484,6 +485,7 @@ namespace Graphite {
 
 		if (ImGui::BeginChild("##refsList", fillTheRest))
 		{
+			ImGui::Indent(ListRowEndInset());
 			m_BranchList.DrawRows(frame);
 
 			// WARNING: Drawn before the branch list is read, the stashes sit at the top, then under
@@ -494,6 +496,8 @@ namespace Graphite {
 			{
 				RenderStashes();
 			}
+
+			ImGui::Unindent(ListRowEndInset());
 		}
 
 		ImGui::EndChild();

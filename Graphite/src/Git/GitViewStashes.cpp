@@ -8,6 +8,7 @@
 #include "Git/StashBranch.h"
 #include "UI/ClipboardCopy.h"
 #include "UI/FittedText.h"
+#include "UI/Lists/ListRow.h"
 
 #include <imgui.h>
 
@@ -96,7 +97,7 @@ namespace Graphite {
 			// WARNING: The label is drawn over an id-only Selectable because a stash message is free text and a "##" in it would cut a Selectable label short.
 			const ImVec2 rowStart = ImGui::GetCursorPos();
 
-			if (ImGui::Selectable("##stash", m_SelectedStash == stash.Id, ImGuiSelectableFlags_AllowOverlap))
+			if (ListRowSelectable("##stash", m_SelectedStash == stash.Id, ImGuiSelectableFlags_AllowOverlap))
 			{
 				SelectStash(stash.Id);
 			}
