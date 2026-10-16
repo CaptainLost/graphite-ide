@@ -1385,10 +1385,15 @@ namespace Graphite {
 			return;
 		}
 
-		// A document this class opened is sent by SendChanges at the end of the frame. Any other
-		// copy the server holds, opened by a preview or the background analysis, is updated here
-		// as before.
-		if (!m_DocumentStates.IsOpenWithServer(item.Path))
+		// The reload reaches the server now, before this frame asks it anything. A document this
+		// class opened goes through DocumentStates, which records what it sent so nothing resends
+		// it later; any other copy the server holds, opened by a preview or the background
+		// analysis, is updated directly.
+		if (m_DocumentStates.IsOpenWithServer(item.Path))
+		{
+			m_DocumentStates.SendChangeIfMoved(item.Path, *item.Document);
+		}
+		else
 		{
 			m_Server.ChangeDocument(item.Path, LanguageOfPath(item.Path), item.Document->GetBuffer().Materialize());
 		}

@@ -13,7 +13,7 @@ didChange was sent from `UpdateLenses` when the tab drawn that frame reported `E
 - A document opens with its server once, when a view first shows it (today, a tab's first visible draw), with role `Shown`.
 - Each frame, every open document whose change sequence moved since the last send gets one full-text didChange. The tab being drawn sends its own at once, so didChange still precedes that frame's symbol request.
 - A document that leaves the store is closed with its server and forgotten.
-- Reload no longer sends didChange itself for documents opened this way.
+- A reload sends its didChange at once, through `DocumentStates`, so the frame asks the server nothing against stale text. Nothing resends it, because `DocumentStates` records the change sequence it sent.
 
 ## Rationale
 
