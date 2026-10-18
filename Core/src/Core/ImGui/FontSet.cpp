@@ -124,8 +124,8 @@ namespace Core {
 		ImGui::PushFont(ImGuiRenderer::GetInterfaceFont(), kInterfaceFontSize);
 	}
 
-	void PushCodeFont()
+	void PushCodeFont(float size)
 	{
-		ImGui::PushFont(ImGuiRenderer::GetMonoFont(), kCodeFontSize);
+		ImGui::PushFont(ImGuiRenderer::GetMonoFont(), size);
 	}
 }

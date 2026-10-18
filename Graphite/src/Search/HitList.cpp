@@ -78,7 +78,6 @@ namespace Graphite {
 
 					ImGui::PushID(row);
 
-					// The whole row is code, so the selectable is as tall as the line drawn on it.
 					Core::PushCodeFont();
 
 					const ImVec2 rowStart = ImGui::GetCursorPos();

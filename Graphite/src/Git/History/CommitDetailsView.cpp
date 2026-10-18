@@ -25,7 +25,7 @@ namespace Graphite {
 		{
 			std::string hex = commitId.ToHex();
 
-			Core::PushCodeFont();
+			Core::PushCodeFont(Core::kInterfaceFontSize);
 			const std::size_t bufferSizeWithTerminator = hex.size() + 1;
 
 			ImGui::SetNextItemWidth(ImGui::CalcTextSize(hex.c_str()).x +
@@ -80,7 +80,7 @@ namespace Graphite {
 			for (const Core::Oid& parent : commit.Parents)
 			{
 				ImGui::SameLine();
-				Core::PushCodeFont();
+				Core::PushCodeFont(Core::kInterfaceFontSize);
 				ImGui::TextUnformatted(parent.ShortHex().c_str());
 				ImGui::PopFont();
 			}

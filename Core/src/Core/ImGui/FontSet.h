@@ -19,5 +19,5 @@ namespace Core {
 
 	void PushInterfaceFont();
 
-	void PushCodeFont();
+	void PushCodeFont(float size = kCodeFontSize);
 }

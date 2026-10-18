@@ -22,7 +22,6 @@ namespace Graphite {
 		float CellWidth = 0.0f;
 	};
 
-	// Measured in the code face, as the lines are drawn; the origin is the cursor of the current window.
 	ConsoleLayout MeasureConsoleLayout(float rowSpacing);
 
 	std::optional<Core::TextPoint> PointAt(const std::vector<Core::LogEntry>& shown,

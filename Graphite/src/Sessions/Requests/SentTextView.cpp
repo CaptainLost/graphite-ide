@@ -204,6 +204,8 @@ namespace Graphite {
 						label = request.Response[row.Segment - request.Sent.size()].Label;
 					}
 
+					Core::PushInterfaceFont();
+
 					const float itemSpacing = ImGui::GetStyle().ItemSpacing.x;
 					DrawPiece(textOrigin, look.Colour, std::string{look.Icon} + " ");
 
@@ -213,6 +215,8 @@ namespace Graphite {
 
 					textOrigin.x = columnX;
 					DrawPiece(textOrigin, palette.TextDisabled, FitToWidth(column, right - textOrigin.x));
+
+					ImGui::PopFont();
 				}
 				else
 				{

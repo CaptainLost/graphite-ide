@@ -483,7 +483,7 @@ namespace Graphite {
 			for (std::size_t commitIndex = 0; commitIndex < shown; ++commitIndex)
 			{
 				const Core::CommitSummary& commit = range.Commits[commitIndex];
-				Core::PushCodeFont();
+				Core::PushCodeFont(Core::kInterfaceFontSize);
 				ImGui::TextDisabled("%s", commit.Id.ShortHex().c_str());
 				ImGui::PopFont();
 				ImGui::SameLine();
@@ -529,7 +529,7 @@ namespace Graphite {
 			DrawCommitTooltip(commit);
 
 			ImGui::SetCursorPos(rowStart);
-			Core::PushCodeFont();
+			Core::PushCodeFont(Core::kInterfaceFontSize);
 			ImGui::TextDisabled("%s", commit.Id.ShortHex().c_str());
 			ImGui::PopFont();
 			ImGui::SameLine();

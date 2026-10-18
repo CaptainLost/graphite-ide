@@ -18,6 +18,7 @@ using namespace Graphite;
 namespace {
 
 	constexpr float kInterfaceSizeBelowCode = 14.0f;
+	constexpr float kHarnessSizeBelowCode = 13.0f;
 	constexpr const char* kCodeChildMarker = "##code";
 
 	float HeightOfCodeBlockDrawnAtBase(float fontSizeBase)
@@ -68,7 +69,7 @@ namespace {
 TEST_CASE("A conversation code block keeps the code size whatever the interface size is")
 {
 	const float atInterfaceSize = HeightOfCodeBlockDrawnAtBase(kInterfaceSizeBelowCode);
-	const float atHarnessSize = HeightOfCodeBlockDrawnAtBase(13.0f);
+	const float atHarnessSize = HeightOfCodeBlockDrawnAtBase(kHarnessSizeBelowCode);
 
 	CHECK(atInterfaceSize > 0.0f);
 	CHECK(atInterfaceSize == doctest::Approx(atHarnessSize));

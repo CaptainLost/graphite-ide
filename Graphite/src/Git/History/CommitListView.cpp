@@ -121,10 +121,10 @@ namespace Graphite {
 			return ImGui::CalcTextSize(sample).x;
 		}
 
-		// WARNING: The hash cells are drawn in the code face, so the column is sized in it too or the hash is cut.
+		// WARNING: The hash is drawn in the code face at the interface size, so a row keeps the pitch the graph is laid out on; the column is sized in the same face or the hash is cut.
 		float HashSampleWidth()
 		{
-			Core::PushCodeFont();
+			Core::PushCodeFont(Core::kInterfaceFontSize);
 			const float width = SampleWidth(kHashSample);
 			ImGui::PopFont();
 
@@ -620,7 +620,7 @@ namespace Graphite {
 		const ImU32 dimmedInk = ImGui::GetColorU32(ImGuiCol_TextDisabled);
 		const ImU32 hashInk = page.Unpushed.contains(commit.Id) ? palette.GutterAdded : dimmedInk;
 
-		Core::PushCodeFont();
+		Core::PushCodeFont(Core::kInterfaceFontSize);
 		DrawFittedCell(commit.Id.ShortHex(), hashInk, highlight);
 		ImGui::PopFont();
 

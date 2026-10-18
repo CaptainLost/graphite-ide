@@ -182,8 +182,6 @@ namespace Graphite {
 			return;
 		}
 
-		Core::PushCodeFont();
-
 		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
 							ImVec2(Core::Scaled(kRowItemSpacingX), Core::Scaled(kRowSpacing)));
 
@@ -192,6 +190,8 @@ namespace Graphite {
 		// WARNING: Nothing in this child can become active and its scrollbar takes the ActiveId
 		// inside BeginChild, so a drag on the bar is already seen as claimed when this runs.
 		UpdateSelection(layout);
+
+		Core::PushCodeFont();
 
 		ImDrawList* const drawList = ImGui::GetWindowDrawList();
 		const float lineHeight = ImGui::GetTextLineHeight();
