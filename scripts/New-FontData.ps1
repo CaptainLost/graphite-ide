@@ -17,7 +17,9 @@ $outputDirectory = Join-Path $root 'Core\src\Core\ImGui\Fonts'
 $fonts = @(
     @{ File = 'JetBrainsMono-Regular.ttf';       Name = 'JetBrainsMonoRegular' },
     @{ File = 'JetBrainsMono-Bold.ttf';          Name = 'JetBrainsMonoBold' },
-    @{ File = 'materialdesignicons-webfont.ttf'; Name = 'MaterialDesignIcons' }
+    @{ File = 'materialdesignicons-webfont.ttf'; Name = 'MaterialDesignIcons' },
+    @{ File = 'Inter-Regular.ttf';               Name = 'InterRegular' },
+    @{ File = 'Inter-SemiBold.ttf';              Name = 'InterSemiBold' }
 )
 
 $work = Join-Path ([IO.Path]::GetTempPath()) ('graphite-fontdata-' + [Guid]::NewGuid().ToString('N'))

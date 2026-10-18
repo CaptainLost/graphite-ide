@@ -32,18 +32,24 @@ TEST_CASE("Each embedded font is a face ImGui can load from memory")
 	CHECK(AddEmbedded(Core::JetBrainsMonoRegular()) != nullptr);
 	CHECK(AddEmbedded(Core::JetBrainsMonoBold()) != nullptr);
 	CHECK(AddEmbedded(Core::MaterialDesignIcons()) != nullptr);
+	CHECK(AddEmbedded(Core::InterRegular()) != nullptr);
+	CHECK(AddEmbedded(Core::InterSemiBold()) != nullptr);
 }
 
-TEST_CASE("The embedded text face has the Polish letters the file names need")
+TEST_CASE("The embedded text faces have the Polish letters the file names need")
 {
 	HeadlessContext context;
-	ImFont* font = AddEmbedded(Core::JetBrainsMonoRegular());
-	REQUIRE(font != nullptr);
+	ImFont* const fonts[] = {AddEmbedded(Core::JetBrainsMonoRegular()), AddEmbedded(Core::InterRegular())};
 
 	constexpr std::array<ImWchar, 9> kPolishLetters = {0x0105, 0x0107, 0x0119, 0x0142, 0x0144, 0x00F3, 0x015B, 0x017A, 0x017C};
 
-	for (const ImWchar letter : kPolishLetters)
+	for (ImFont* const font : fonts)
 	{
-		CHECK(font->IsGlyphInFont(letter));
+		REQUIRE(font != nullptr);
+
+		for (const ImWchar letter : kPolishLetters)
+		{
+			CHECK(font->IsGlyphInFont(letter));
+		}
 	}
 }

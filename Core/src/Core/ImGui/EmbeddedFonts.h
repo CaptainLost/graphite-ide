@@ -13,4 +13,6 @@ namespace Core {
 	EmbeddedFont JetBrainsMonoRegular();
 	EmbeddedFont JetBrainsMonoBold();
 	EmbeddedFont MaterialDesignIcons();
+	EmbeddedFont InterRegular();
+	EmbeddedFont InterSemiBold();
 }
