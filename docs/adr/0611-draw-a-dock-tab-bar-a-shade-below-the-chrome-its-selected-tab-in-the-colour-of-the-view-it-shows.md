@@ -26,6 +26,8 @@ and was faint. Tab labels already carry two meanings: a git status colour
   Closing all stays in the tab context menu.
 - Keep tab labels in their own colours. An inactive tab is not dimmed, because a
   dim label already means a preview tab (0556).
+- Draw a tab bar inside a window, such as the review's pages, the same way: the
+  selected page is the window's own colour and the others are the shade.
 
 ## Rationale
 

@@ -56,27 +56,12 @@ namespace Graphite {
 			Core::LoadingState("Loading the diff");
 		}
 
-		constexpr int kPageTabColourCount = 5;
-
 		enum class SinceViewedDiff
 		{
 			Available,
 			ViewedVersionGone,
 			Unreadable
 		};
-
-		void PushBoxedOpenPageColours()
-		{
-			const ImVec4 boxed = ImGui::GetStyleColorVec4(ImGuiCol_Tab);
-			const ImVec4 flat = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
-			const ImVec4 overline = ImGui::GetStyleColorVec4(ImGuiCol_TabSelectedOverline);
-
-			ImGui::PushStyleColor(ImGuiCol_TabSelected, boxed);
-			ImGui::PushStyleColor(ImGuiCol_TabDimmedSelected, boxed);
-			ImGui::PushStyleColor(ImGuiCol_Tab, flat);
-			ImGui::PushStyleColor(ImGuiCol_TabDimmed, flat);
-			ImGui::PushStyleColor(ImGuiCol_TabDimmedSelectedOverline, overline);
-		}
 
 		SessionSettings ReadSettings(const ReviewSessions& sessions, const std::string& branch)
 		{
@@ -903,9 +888,7 @@ namespace Graphite {
 	void ReviewWindows::RenderPages(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review,
 									const ReviewGroups& groups, const OpenRelativeFile& openFile)
 	{
-		PushBoxedOpenPageColours();
-
-		if (ImGui::BeginTabBar("##reviewPages", ImGuiTabBarFlags_DrawSelectedOverline))
+		if (ImGui::BeginTabBar("##reviewPages"))
 		{
 			if (ImGui::BeginTabItem("Files"))
 			{
@@ -927,8 +910,6 @@ namespace Graphite {
 
 			ImGui::EndTabBar();
 		}
-
-		ImGui::PopStyleColor(kPageTabColourCount);
 	}
 
 	void ReviewWindows::RenderFileList(Tab& tab, const ReviewRenderInput& input, const FileList& list,

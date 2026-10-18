@@ -17,7 +17,7 @@ namespace Core {
 		constexpr ImVec4 kTextDisabled{0.482f, 0.510f, 0.553f, 1.0f};
 
 		constexpr Color kBorder{0.149f, 0.161f, 0.180f, 1.0f};
-			constexpr Color kContent{0.106f, 0.114f, 0.129f, 1.0f};
+		constexpr Color kContent{0.106f, 0.114f, 0.129f, 1.0f};
 
 		constexpr Color FromImVec4(const ImVec4& color)
 		{
