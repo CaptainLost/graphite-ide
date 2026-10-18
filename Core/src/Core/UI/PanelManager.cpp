@@ -10,6 +10,8 @@
 
 #include "Core/ImGui/TabContextMenu.h"
 
+#include "Core/UI/PanelToggle.h"
+
 #include <imgui.h>
 
 #include <utility>
@@ -100,6 +102,30 @@ namespace Core {
 		return true;
 	}
 
+	bool PanelManager::Toggle(std::string_view id)
+	{
+		Panel* panel = Find(id);
+		if (panel == nullptr)
+		{
+			return false;
+		}
+
+		switch (ChoosePanelToggle(panel->IsVisible(), panel->HasBeenDrawnOnLatestFrame()))
+		{
+		case PanelToggle::ShowAndBringForward:
+			ShowAndBringForward(*panel);
+			break;
+		case PanelToggle::BringForward:
+			panel->RequestFocus();
+			break;
+		case PanelToggle::Hide:
+			panel->SetVisible(false);
+			break;
+		}
+
+		return true;
+	}
+
 	void PanelManager::ForEach(const std::function<void(Panel&)>& visit)
 	{
 		for (const Scope<Panel>& panel : m_Panels)
@@ -140,6 +166,7 @@ namespace Core {
 			if (focusRequested)
 			{
 				ImGui::SetNextWindowFocus();
+				ImGui::SetNextWindowCollapsed(false);
 			}
 
 			// Begin returns false for a docked window whose tab is not selected as well as for a

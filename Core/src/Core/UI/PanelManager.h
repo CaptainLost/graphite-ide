@@ -35,6 +35,8 @@ namespace Core {
 
 		bool SetVisible(std::string_view id, bool visible);
 
+		bool Toggle(std::string_view id);
+
 		void ForEach(const std::function<void(Panel&)>& visit);
 
 		void OnUpdate(Timestep timeSinceLastFrame);

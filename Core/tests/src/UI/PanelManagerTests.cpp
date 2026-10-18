@@ -1,7 +1,10 @@
 #include <doctest/doctest.h>
 
 #include "Core/Command/CommandRegistry.h"
+#include "Core/ImGui/TabCloseRequests.h"
 #include "Core/UI/PanelManager.h"
+
+#include <imgui.h>
 
 #include <memory>
 #include <string>
@@ -340,4 +343,83 @@ TEST_CASE("ForEach visits every panel in the order they were added")
 	panels.ForEach([&visitedIds](Core::Panel& panel) { visitedIds.push_back(panel.GetId()); });
 
 	CHECK(visitedIds == std::vector<std::string>{"first", "second"});
+}
+
+TEST_CASE("Toggle shows a hidden panel and asks for focus")
+{
+	Core::PanelManager panels;
+	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer", "tools", StartsAs::Hidden));
+
+	CHECK(panels.Toggle("files"));
+	CHECK(files->IsVisible());
+	CHECK(files->ConsumeFocusRequest());
+}
+
+TEST_CASE("Toggle brings forward a visible panel that was not drawn and leaves it visible")
+{
+	Core::PanelManager panels;
+	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
+	files->SetVisible(true);
+	files->SetDrawnOnLatestFrame(false);
+
+	CHECK(panels.Toggle("files"));
+	CHECK(files->IsVisible());
+	CHECK(files->ConsumeFocusRequest());
+}
+
+TEST_CASE("Toggle hides a visible panel that was drawn")
+{
+	Core::PanelManager panels;
+	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
+	files->SetVisible(true);
+	files->SetDrawnOnLatestFrame(true);
+
+	CHECK(panels.Toggle("files"));
+	CHECK_FALSE(files->IsVisible());
+	CHECK_FALSE(files->ConsumeFocusRequest());
+}
+
+TEST_CASE("Toggle reports an unknown identifier")
+{
+	Core::PanelManager panels;
+
+	CHECK_FALSE(panels.Toggle("missing"));
+}
+
+TEST_CASE("A panel brought forward from a collapsed floating window is expanded")
+{
+	ImGuiContext* context = ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO();
+	io.DisplaySize = ImVec2(800.0f, 600.0f);
+	io.DeltaTime = 1.0f / 60.0f;
+	io.IniFilename = nullptr;
+	io.Fonts->Build();
+
+	Core::PanelManager panels;
+	Core::TabCloseRequests closeRequests;
+	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
+
+	const auto renderFrame = [&] {
+		ImGui::NewFrame();
+		panels.OnImGuiRender(closeRequests);
+		ImGui::EndFrame();
+	};
+
+	for (int frame = 0; frame < 3; ++frame)
+	{
+		renderFrame();
+	}
+	REQUIRE(files->HasBeenDrawnOnLatestFrame());
+
+	ImGui::SetWindowCollapsed(files->GetWindowName().c_str(), true);
+	renderFrame();
+	REQUIRE_FALSE(files->HasBeenDrawnOnLatestFrame());
+
+	CHECK(panels.Toggle("files"));
+	renderFrame();
+	renderFrame();
+
+	CHECK(files->HasBeenDrawnOnLatestFrame());
+
+	ImGui::DestroyContext(context);
 }
