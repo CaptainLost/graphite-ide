@@ -84,6 +84,19 @@ namespace Graphite {
 
 		void RequestRedock();
 
+		bool IsHidden() const { return m_Hidden; }
+
+		void SetHidden(bool hidden);
+
+		// WARNING: Called by each start a person asks for, never from StartShell: the startup shell and a folder's restore reach StartShell too, and must leave hidden terminals hidden.
+		void Reveal();
+
+		std::size_t GetOpenCount() const { return m_Open.size(); }
+
+		TerminalStripLook GetStripLook() const;
+
+		void ToggleFromStrip();
+
 	private:
 		enum class EntryOrigin
 		{
@@ -113,6 +126,10 @@ namespace Graphite {
 				   OpenTerminal record, EntryOrigin origin);
 		bool StartShell(std::size_t shellIndex, const std::filesystem::path& directory, unsigned int dockNode);
 		void StartPendingOpens();
+		void RecordAnnouncedTitles();
+		bool RenderWindows(const TerminalDockTargets& targets, const EditorPalette& palette,
+						   Core::TabCloseRequests& closeRequests);
+		void BringForwardLastFocused();
 		void RenderTabBarButtons(const TerminalDockTargets& targets);
 		void DrawShellMenuItems(unsigned int dockNode);
 		std::filesystem::path DefaultWorkingDirectory() const;
@@ -142,5 +159,9 @@ namespace Graphite {
 		std::optional<std::vector<TerminalTabState>> m_HeldBack;
 
 		bool m_RedockPending = false;
+
+		bool m_Hidden = false;
+
+		bool m_AnyDrawn = false;
 	};
 }

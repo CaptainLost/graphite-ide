@@ -102,7 +102,10 @@ namespace Graphite {
 		commands.Add({.Id = "terminal.new",
 					  .Label = "New Terminal",
 					  .Icon = ICON_MDI_CONSOLE,
-					  .Run = [this] { static_cast<void>(OpenDefaultShell()); },
+					  .Run = [this] {
+						  Reveal();
+						  static_cast<void>(OpenDefaultShell());
+					  },
 					  .Enabled = [this] { return !m_Shells.empty(); }});
 
 		keys.SetDefault("terminal.new",
@@ -120,7 +123,10 @@ namespace Graphite {
 			commands.Add({.Id = commandId,
 						  .Label = "New " + m_Shells[shellIndex].Name,
 						  .Group = "terminal.shells",
-						  .Run = [this, shellIndex] { static_cast<void>(OpenShellIn(shellIndex, std::filesystem::path{})); }}); // logs its own failure
+						  .Run = [this, shellIndex] {
+							  Reveal();
+							  static_cast<void>(OpenShellIn(shellIndex, std::filesystem::path{})); // logs its own failure
+						  }});
 		}
 	}
 
@@ -151,6 +157,42 @@ namespace Graphite {
 			m_LastFocused.clear();
 		}
 
+		RecordAnnouncedTitles();
+
+		if (m_Hidden)
+		{
+			m_AnyDrawn = false;
+		}
+		else
+		{
+			m_AnyDrawn = RenderWindows(targets, palette, closeRequests);
+		}
+
+		RemoveClosed();
+
+		RenderTabBarButtons(targets);
+
+		// WARNING: Must stay last: a start appends to m_Open, which RenderWindows iterates, and the tab bars must be closed again.
+		StartPendingOpens();
+	}
+
+	void TerminalWindows::RecordAnnouncedTitles()
+	{
+		for (const Core::Scope<Entry>& entry : m_Open)
+		{
+			const std::string& announcedTitle = entry->Session->GetScreen().GetTitle();
+
+			if (!announcedTitle.empty())
+			{
+				entry->Record.Title = announcedTitle;
+			}
+		}
+	}
+
+	bool TerminalWindows::RenderWindows(const TerminalDockTargets& targets, const EditorPalette& palette,
+										Core::TabCloseRequests& closeRequests)
+	{
+		bool anyDrawn = false;
 		std::size_t tabNumber = 0;
 
 		for (const Core::Scope<Entry>& ownedEntry : m_Open)
@@ -159,12 +201,6 @@ namespace Graphite {
 			++tabNumber;
 
 			const std::string& announcedTitle = entry.Session->GetScreen().GetTitle();
-
-			if (!announcedTitle.empty())
-			{
-				entry.Record.Title = announcedTitle;
-			}
-
 			const std::string windowIdentity = WindowIdentity(entry.Record.Id);
 			const std::string tabTitle =
 				TerminalTitleFor(TerminalLabelTitle(announcedTitle, entry.Record.Title), entry.Session->GetProfileName());
@@ -202,6 +238,8 @@ namespace Graphite {
 
 			if (frame.Visible)
 			{
+				anyDrawn = true;
+
 				const Core::CursorPosition fitted = entry.View->Draw(palette);
 				const TerminalGridSize measured{fitted.Column, fitted.Row};
 
@@ -223,12 +261,7 @@ namespace Graphite {
 			entry.Closing = entry.Closing || !stayOpen;
 		}
 
-		RemoveClosed();
-
-		RenderTabBarButtons(targets);
-
-		// WARNING: Must stay last: a start appends to m_Open, which the loop above iterates, and the tab bars must be closed again.
-		StartPendingOpens();
+		return anyDrawn;
 	}
 
 	void TerminalWindows::DrawShellMenuItems(unsigned int dockNode)
@@ -303,6 +336,13 @@ namespace Graphite {
 
 	void TerminalWindows::StartPendingOpens()
 	{
+		if (m_PendingOpens.empty())
+		{
+			return;
+		}
+
+		Reveal();
+
 		const std::vector<PendingOpen> pendingOpens = std::move(m_PendingOpens);
 		m_PendingOpens.clear();
 
@@ -439,6 +479,8 @@ namespace Graphite {
 									  std::vector<std::string> arguments,
 									  const std::filesystem::path& workingDirectory)
 	{
+		Reveal();
+
 		const Core::ShellProfile profile{label, program, std::move(arguments)};
 
 		OpenTerminal record{.Id = Core::Uuid::Generate().ToString(),
@@ -530,7 +572,60 @@ namespace Graphite {
 
 	void TerminalWindows::RequestRedock()
 	{
+		Reveal();
 		m_RedockPending = true;
+	}
+
+	void TerminalWindows::SetHidden(bool hidden)
+	{
+		m_Hidden = hidden;
+	}
+
+	void TerminalWindows::Reveal()
+	{
+		SetHidden(false);
+	}
+
+	TerminalStripLook TerminalWindows::GetStripLook() const
+	{
+		return TerminalStripLookOf(m_Open.size(), m_Hidden);
+	}
+
+	void TerminalWindows::ToggleFromStrip()
+	{
+		switch (ChooseTerminalStripAction(m_Open.size(), m_Hidden, m_AnyDrawn))
+		{
+		case TerminalStripAction::StartDefault:
+			Reveal();
+			static_cast<void>(OpenDefaultShell());
+			break;
+		case TerminalStripAction::Hide:
+			SetHidden(true);
+			break;
+		case TerminalStripAction::Show:
+			Reveal();
+			BringForwardLastFocused();
+			break;
+		case TerminalStripAction::BringForward:
+			BringForwardLastFocused();
+			break;
+		}
+	}
+
+	void TerminalWindows::BringForwardLastFocused()
+	{
+		std::vector<std::string> ids;
+		ids.reserve(m_Open.size());
+
+		for (const Core::Scope<Entry>& entry : m_Open)
+		{
+			ids.push_back(entry->Record.Id);
+		}
+
+		if (const std::optional<std::size_t> index = TerminalToBringForward(ids, m_LastFocused))
+		{
+			m_Open[*index]->Window.Focus = true;
+		}
 	}
 
 	void TerminalWindows::CarryOverOpenTerminals()
