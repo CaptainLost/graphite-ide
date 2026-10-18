@@ -20,3 +20,14 @@ TEST_CASE("The chrome palette carries every colour of the scheme it was built fr
 		  doctest::Approx(
 			  scheme.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Border)].B));
 }
+
+TEST_CASE("The chrome palette takes its content colour from the editor background")
+{
+	Graphite::ResolvedScheme scheme = Graphite::DarkScheme();
+	scheme.Editor[static_cast<std::size_t>(Graphite::EditorColor::Background)] = Core::Color{0.3f, 0.6f, 0.9f, 1.0f};
+
+	const Core::ChromePalette palette = Graphite::ChromePaletteFor(scheme);
+
+	CHECK(palette.Content.R == doctest::Approx(0.3f));
+	CHECK(palette.Content.B == doctest::Approx(0.9f));
+}

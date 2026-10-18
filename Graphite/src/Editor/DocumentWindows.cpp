@@ -30,6 +30,7 @@
 #include "Core/Command/Keymap.h"
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/ContentWindowColours.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/TabContextMenu.h"
 #include "Core/Platform/Clipboard.h"
@@ -1939,6 +1940,8 @@ namespace Graphite {
 
 			const bool preview = item.Preview;
 
+			Core::PushContentWindowColours();
+
 			// WARNING: The colour is pushed before Begin: BeginDocked snapshots the style colours in
 			// effect, and the tab bar draws each tab from its window's own snapshot. A font cannot
 			// do the same, since every tab of a node is drawn in one pass with one global font.
@@ -2131,6 +2134,9 @@ namespace Graphite {
 			}
 
 			ImGui::End();
+			// WARNING: The pop waits for End: the editor surface and every child begun inside the
+			// window read ChildBg while it is open.
+			Core::PopContentWindowColours();
 
 			if (!open)
 			{

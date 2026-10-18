@@ -154,3 +154,13 @@ TEST_CASE("Problems and the background pass beside clickable server words comple
 
 	CHECK(screen.LastClick == Graphite::StatusBarClick::None);
 }
+
+TEST_CASE("The status bar draws no border of its own, so it sits flush with the chrome above it")
+{
+	StatusBarScreen screen;
+	screen.Frames.Next([&] { screen.Draw(); });
+
+	const ImGuiWindow* bar = ImGui::FindWindowByName(Graphite::kStatusBarWindowName);
+	REQUIRE(bar != nullptr);
+	CHECK(bar->WindowBorderSize == doctest::Approx(0.0f));
+}

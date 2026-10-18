@@ -6,6 +6,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/ContentWindowColours.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/Icons.h"
@@ -363,6 +364,8 @@ namespace Graphite {
 
 			const std::string windowName = DiffWindowName(entry.Diff);
 
+			Core::PushContentWindowColours();
+
 			const TabWindowFrame frame = BeginTabWindow(windowName, entry.Window, DockInto(centreNode), closeRequests);
 
 			Core::DrawTabContextMenu(closeRequests);
@@ -430,6 +433,9 @@ namespace Graphite {
 			}
 
 			ImGui::End();
+			// WARNING: The pop waits for End: the diff view and every child begun inside the window
+			// read ChildBg while it is open.
+			Core::PopContentWindowColours();
 
 			if (!frame.Open)
 			{

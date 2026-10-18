@@ -2,6 +2,8 @@
 
 #include "Theme/BuiltInSchemes.h"
 
+#include "Core/Base/Color.h"
+
 namespace {
 
 	Core::Color GitColorOf(const Graphite::ResolvedScheme& scheme, Graphite::GitColor color)
@@ -128,4 +130,30 @@ TEST_CASE("The graph lanes are visibly different from one another")
 					   GitColorOf(scheme, Graphite::GitColor::GraphLane2)));
 	CHECK(ColorsDiffer(GitColorOf(scheme, Graphite::GitColor::GraphLane2),
 					   GitColorOf(scheme, Graphite::GitColor::GraphLane3)));
+}
+
+TEST_CASE("In both built-ins the chrome background is darker than the editor background, so the editor stands out")
+{
+	for (const Graphite::ResolvedScheme* base :
+		 {&Graphite::DarkScheme(), &Graphite::LightScheme()})
+	{
+		const Core::Color chrome = base->Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Background)];
+		const Core::Color editor = base->Editor[static_cast<std::size_t>(Graphite::EditorColor::Background)];
+
+		CHECK(chrome.R + chrome.G + chrome.B < editor.R + editor.G + editor.B);
+	}
+}
+
+TEST_CASE("The dark chrome is #141518 with a #26292E border")
+{
+	const Graphite::ResolvedScheme& dark = Graphite::DarkScheme();
+	const Core::Color background = dark.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Background)];
+	const Core::Color border = dark.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Border)];
+
+	CHECK(Core::ChannelToByte(background.R) == 20);
+	CHECK(Core::ChannelToByte(background.G) == 21);
+	CHECK(Core::ChannelToByte(background.B) == 24);
+	CHECK(Core::ChannelToByte(border.R) == 38);
+	CHECK(Core::ChannelToByte(border.G) == 41);
+	CHECK(Core::ChannelToByte(border.B) == 46);
 }

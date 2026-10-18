@@ -99,14 +99,14 @@ namespace Graphite {
 		static_assert(std::size(kDarkEditor) == static_cast<std::size_t>(EditorColor::Count));
 
 		constexpr ChromeEntry kDarkChrome[] = {
-			{ChromeColor::Background, 27, 29, 33},
+			{ChromeColor::Background, 20, 21, 24},
 			{ChromeColor::Surface, 37, 40, 45},
 			{ChromeColor::SurfaceHovered, 50, 54, 61},
 			{ChromeColor::SurfaceActive, 62, 67, 76},
 			{ChromeColor::Accent, 66, 133, 244},
 			{ChromeColor::Text, 214, 219, 226},
 			{ChromeColor::TextDisabled, 123, 130, 141},
-			{ChromeColor::Border, 52, 56, 63},
+			{ChromeColor::Border, 38, 41, 46},
 		};
 
 		static_assert(std::size(kDarkChrome) == static_cast<std::size_t>(ChromeColor::Count));

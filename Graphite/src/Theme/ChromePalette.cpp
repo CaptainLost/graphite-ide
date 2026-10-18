@@ -14,6 +14,7 @@ namespace Graphite {
 		palette.Text = ColourFromScheme(scheme, ChromeColor::Text);
 		palette.TextDisabled = ColourFromScheme(scheme, ChromeColor::TextDisabled);
 		palette.Border = ColourFromScheme(scheme, ChromeColor::Border);
+		palette.Content = ColourFromScheme(scheme, EditorColor::Background);
 
 		return palette;
 	}
