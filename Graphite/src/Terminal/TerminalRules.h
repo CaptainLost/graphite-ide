@@ -117,4 +117,25 @@ namespace Graphite {
 
 	TerminalShortcut ClassifyTerminalShortcut(Core::KeyCode key, Core::KeyModifier held,
 											  bool hasSelection);
+
+	enum class TerminalStripAction
+	{
+		StartDefault,
+		Hide,
+		BringForward,
+		Show
+	};
+
+	TerminalStripAction ChooseTerminalStripAction(std::size_t openCount, bool hidden, bool anyDrawn);
+
+	struct TerminalStripLook
+	{
+		bool Open = false;
+		bool RunningHidden = false;
+	};
+
+	TerminalStripLook TerminalStripLookOf(std::size_t openCount, bool hidden);
+
+	std::optional<std::size_t> TerminalToBringForward(const std::vector<std::string>& ids,
+													  const std::string& lastFocused);
 }

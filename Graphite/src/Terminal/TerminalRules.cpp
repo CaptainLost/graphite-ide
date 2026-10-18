@@ -361,4 +361,44 @@ namespace Graphite {
 
 		return TerminalShortcut::None;
 	}
+
+	TerminalStripAction ChooseTerminalStripAction(std::size_t openCount, bool hidden, bool anyDrawn)
+	{
+		if (openCount == 0)
+		{
+			return TerminalStripAction::StartDefault;
+		}
+
+		if (hidden)
+		{
+			return TerminalStripAction::Show;
+		}
+
+		return anyDrawn ? TerminalStripAction::Hide : TerminalStripAction::BringForward;
+	}
+
+	TerminalStripLook TerminalStripLookOf(std::size_t openCount, bool hidden)
+	{
+		const bool anyOpen = openCount > 0;
+
+		return TerminalStripLook{.Open = anyOpen && !hidden, .RunningHidden = anyOpen && hidden};
+	}
+
+	std::optional<std::size_t> TerminalToBringForward(const std::vector<std::string>& ids,
+													  const std::string& lastFocused)
+	{
+		if (ids.empty())
+		{
+			return std::nullopt;
+		}
+
+		const auto found = std::find(ids.begin(), ids.end(), lastFocused);
+
+		if (found != ids.end())
+		{
+			return static_cast<std::size_t>(found - ids.begin());
+		}
+
+		return ids.size() - 1;
+	}
 }

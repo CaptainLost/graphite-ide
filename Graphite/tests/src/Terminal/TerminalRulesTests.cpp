@@ -516,3 +516,59 @@ TEST_CASE("The default shell is the one chosen by name, else the first")
 	CHECK(DefaultShellIndex(Shells(), "") == 0);
 	CHECK(DefaultShellIndex(Shells(), "Git Bash") == 0);
 }
+
+TEST_CASE("With no terminal the strip starts the default shell whatever the flag says")
+{
+	CHECK(ChooseTerminalStripAction(0, false, false) == TerminalStripAction::StartDefault);
+	CHECK(ChooseTerminalStripAction(0, true, false) == TerminalStripAction::StartDefault);
+}
+
+TEST_CASE("Hidden terminals are shown")
+{
+	CHECK(ChooseTerminalStripAction(2, true, false) == TerminalStripAction::Show);
+}
+
+TEST_CASE("Shown terminals with one drawn are hidden")
+{
+	CHECK(ChooseTerminalStripAction(2, false, true) == TerminalStripAction::Hide);
+}
+
+TEST_CASE("Shown terminals all behind other tabs are brought forward")
+{
+	CHECK(ChooseTerminalStripAction(2, false, false) == TerminalStripAction::BringForward);
+}
+
+TEST_CASE("The strip reads open only for shown terminals that exist")
+{
+	const TerminalStripLook none = TerminalStripLookOf(0, false);
+	CHECK_FALSE(none.Open);
+	CHECK_FALSE(none.RunningHidden);
+
+	const TerminalStripLook noneHidden = TerminalStripLookOf(0, true);
+	CHECK_FALSE(noneHidden.Open);
+	CHECK_FALSE(noneHidden.RunningHidden);
+
+	const TerminalStripLook shown = TerminalStripLookOf(2, false);
+	CHECK(shown.Open);
+	CHECK_FALSE(shown.RunningHidden);
+
+	const TerminalStripLook hidden = TerminalStripLookOf(2, true);
+	CHECK_FALSE(hidden.Open);
+	CHECK(hidden.RunningHidden);
+}
+
+TEST_CASE("The terminal focused last is the one brought forward")
+{
+	CHECK(TerminalToBringForward({"a", "b", "c"}, "b") == std::optional<std::size_t>{1});
+}
+
+TEST_CASE("A terminal focused last and since closed falls back to the last one open")
+{
+	CHECK(TerminalToBringForward({"a", "c"}, "b") == std::optional<std::size_t>{1});
+	CHECK(TerminalToBringForward({"a", "c"}, "") == std::optional<std::size_t>{1});
+}
+
+TEST_CASE("No terminal means nothing to bring forward")
+{
+	CHECK(TerminalToBringForward({}, "a") == std::nullopt);
+}
