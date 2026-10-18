@@ -29,6 +29,28 @@ namespace Core {
 		constexpr float kGreenLuminanceWeight = 0.7152f;
 		constexpr float kBlueLuminanceWeight = 0.0722f;
 		constexpr float kDockingPreviewAlpha = 0.45f;
+		constexpr float kTabBarShade = 0.03f;
+		constexpr float kScrollbarGrabAlpha = 0.12f;
+		constexpr float kScrollbarGrabHoveredAlpha = 0.20f;
+		constexpr float kScrollbarGrabActiveAlpha = 0.28f;
+		constexpr float kScrollbarSize = 12.0f;
+		constexpr float kNoOverline = 0.0f;
+		constexpr float kTransparent = 0.0f;
+
+		constexpr float ClampAtZero(float value)
+		{
+			return value > 0.0f ? value : 0.0f;
+		}
+
+		constexpr ImVec4 ShadeBelow(const ImVec4& colour, float amount)
+		{
+			return ImVec4(ClampAtZero(colour.x - amount), ClampAtZero(colour.y - amount), ClampAtZero(colour.z - amount), colour.w);
+		}
+
+		constexpr ImVec4 WithAlpha(const ImVec4& colour, float alpha)
+		{
+			return ImVec4(colour.x, colour.y, colour.z, alpha);
+		}
 
 		constexpr bool IsLight(const Color& background)
 		{
@@ -76,6 +98,9 @@ namespace Core {
 		style.FramePadding = ImVec2(8.0f, 4.0f);
 		style.ItemSpacing = ImVec2(8.0f, 5.0f);
 		style.WindowMenuButtonPosition = ImGuiDir_None;
+		style.ScrollbarSize = kScrollbarSize;
+		style.TabBarOverlineSize = kNoOverline;
+		style.DockingNodeHasCloseButton = false;
 	}
 
 	void Theme::Apply(const ChromePalette& palette)
@@ -98,22 +123,24 @@ namespace Core {
 		const ImVec4 surfaceActive = ToImVec4(palette.SurfaceActive);
 		const ImVec4 accent = ToImVec4(palette.Accent);
 		const ImVec4 border = ToImVec4(palette.Border);
+		const ImVec4 text = ToImVec4(palette.Text);
+		const ImVec4 tabBar = ShadeBelow(background, kTabBarShade);
 
 		ImVec4* colors = style.Colors;
 		colors[ImGuiCol_WindowBg] = background;
 		colors[ImGuiCol_ChildBg] = background;
 		colors[ImGuiCol_PopupBg] = surface;
 		colors[ImGuiCol_Border] = border;
-		colors[ImGuiCol_Text] = ToImVec4(palette.Text);
+		colors[ImGuiCol_Text] = text;
 		colors[ImGuiCol_TextDisabled] = ToImVec4(palette.TextDisabled);
 
 		colors[ImGuiCol_FrameBg] = surface;
 		colors[ImGuiCol_FrameBgHovered] = surfaceHovered;
 		colors[ImGuiCol_FrameBgActive] = surfaceActive;
 
-		colors[ImGuiCol_TitleBg] = surface;
-		colors[ImGuiCol_TitleBgActive] = surface;
-		colors[ImGuiCol_TitleBgCollapsed] = surface;
+		colors[ImGuiCol_TitleBg] = tabBar;
+		colors[ImGuiCol_TitleBgActive] = tabBar;
+		colors[ImGuiCol_TitleBgCollapsed] = tabBar;
 		colors[ImGuiCol_MenuBarBg] = background;
 
 		colors[ImGuiCol_Header] = surfaceHovered;
@@ -124,11 +151,16 @@ namespace Core {
 		colors[ImGuiCol_ButtonHovered] = surfaceActive;
 		colors[ImGuiCol_ButtonActive] = accent;
 
-		colors[ImGuiCol_Tab] = surface;
-		colors[ImGuiCol_TabHovered] = surfaceActive;
+		colors[ImGuiCol_Tab] = tabBar;
+		colors[ImGuiCol_TabHovered] = surfaceHovered;
 		colors[ImGuiCol_TabSelected] = background;
-		colors[ImGuiCol_TabDimmed] = surface;
+		colors[ImGuiCol_TabDimmed] = tabBar;
 		colors[ImGuiCol_TabDimmedSelected] = background;
+
+		colors[ImGuiCol_ScrollbarBg] = WithAlpha(background, kTransparent);
+		colors[ImGuiCol_ScrollbarGrab] = WithAlpha(text, kScrollbarGrabAlpha);
+		colors[ImGuiCol_ScrollbarGrabHovered] = WithAlpha(text, kScrollbarGrabHoveredAlpha);
+		colors[ImGuiCol_ScrollbarGrabActive] = WithAlpha(text, kScrollbarGrabActiveAlpha);
 
 		colors[ImGuiCol_Separator] = border;
 		colors[ImGuiCol_DockingPreview] = ImVec4(accent.x, accent.y, accent.z, kDockingPreviewAlpha);

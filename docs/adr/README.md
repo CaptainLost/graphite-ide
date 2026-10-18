@@ -640,4 +640,6 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0608](0608-make-a-new-file-only-once-its-name-is-entered-and-offer-a-dialog-with-templates-beside-it.md) | Make a new file only once its name is entered, and offer a dialog with templates beside it | accepted | 2026-10-18 |
 | [0609](0609-hide-all-terminals-together-with-their-shells-kept-running.md) | Hide all terminals together with their shells kept running | proposed | 2026-10-18 |
 | [0610](0610-toggle-tool-panels-from-a-strip-that-ignores-where-they-are-docked.md) | Toggle tool panels from a strip that ignores where they are docked | proposed | 2026-10-18 |
+| [0611](0611-draw-a-dock-tab-bar-a-shade-below-the-chrome-its-selected-tab-in-the-colour-of-the-view-it-shows.md) | Draw a dock tab bar a shade below the chrome, its selected tab in the colour of the view it shows | proposed | 2026-10-18 |
+| [0612](0612-draw-scrollbars-as-a-grab-in-the-text-colour-over-no-track.md) | Draw scrollbars as a grab in the text colour over no track | proposed | 2026-10-18 |
 <!-- /adr-index -->

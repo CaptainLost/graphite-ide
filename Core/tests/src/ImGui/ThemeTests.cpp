@@ -93,3 +93,45 @@ TEST_CASE("Apply paints the title bar in the chrome and the empty dock space in 
 	CHECK(colours[ImGuiCol_MenuBarBg].x == doctest::Approx(palette.Background.R));
 	CHECK(colours[ImGuiCol_WindowBg].x == doctest::Approx(palette.Background.R));
 }
+
+TEST_CASE("Apply draws tab bars a shade below the chrome and the selected tab in the chrome")
+{
+	IsolatedImGuiContext context;
+	const Core::ChromePalette palette = Core::Theme::DefaultPalette();
+	Core::Theme::Apply(palette);
+	const ImVec4* colours = ImGui::GetStyle().Colors;
+
+	for (const ImGuiCol slot : {ImGuiCol_TitleBg, ImGuiCol_TitleBgActive, ImGuiCol_TitleBgCollapsed, ImGuiCol_Tab, ImGuiCol_TabDimmed})
+	{
+		CAPTURE(slot);
+		CHECK(colours[slot].x == doctest::Approx(palette.Background.R - 0.03f));
+		CHECK(colours[slot].z == doctest::Approx(palette.Background.B - 0.03f));
+	}
+	CHECK(colours[ImGuiCol_TabSelected].x == doctest::Approx(palette.Background.R));
+	CHECK(colours[ImGuiCol_TabDimmedSelected].x == doctest::Approx(palette.Background.R));
+	CHECK(colours[ImGuiCol_TabHovered].x == doctest::Approx(palette.SurfaceHovered.R));
+}
+
+TEST_CASE("The tab bar shade never goes below black")
+{
+	IsolatedImGuiContext context;
+	Core::ChromePalette palette = Core::Theme::DefaultPalette();
+	palette.Background = Core::Color{0.01f, 0.01f, 0.01f, 1.0f};
+	Core::Theme::Apply(palette);
+
+	CHECK(ImGui::GetStyle().Colors[ImGuiCol_TitleBg].x == doctest::Approx(0.0f));
+}
+
+TEST_CASE("Apply clears the scrollbar track and draws its grab in the text colour")
+{
+	IsolatedImGuiContext context;
+	const Core::ChromePalette palette = Core::Theme::DefaultPalette();
+	Core::Theme::Apply(palette);
+	const ImVec4* colours = ImGui::GetStyle().Colors;
+
+	CHECK(colours[ImGuiCol_ScrollbarBg].w == doctest::Approx(0.0f));
+	CHECK(colours[ImGuiCol_ScrollbarGrab].x == doctest::Approx(palette.Text.R));
+	CHECK(colours[ImGuiCol_ScrollbarGrab].w == doctest::Approx(0.12f));
+	CHECK(colours[ImGuiCol_ScrollbarGrabHovered].w == doctest::Approx(0.20f));
+	CHECK(colours[ImGuiCol_ScrollbarGrabActive].w == doctest::Approx(0.28f));
+}

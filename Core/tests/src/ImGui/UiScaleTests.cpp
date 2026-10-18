@@ -46,7 +46,19 @@ TEST_CASE("ScaledStyle multiplies the theme's sizes and ImGui's own by the scale
 
 	CHECK(style.FramePadding.x == doctest::Approx(16.0f));
 	CHECK(style.ItemSpacing.y == doctest::Approx(10.0f));
-	CHECK(style.ScrollbarSize == doctest::Approx(ImGuiStyle{}.ScrollbarSize * 2.0f));
+	CHECK(style.ScrollbarSize == doctest::Approx(24.0f));
+	CHECK(style.GrabMinSize == doctest::Approx(ImGuiStyle{}.GrabMinSize * 2.0f));
+}
+
+TEST_CASE("The theme draws no tab overline, no close-all button on a dock node, and 12 px scrollbars")
+{
+	const ImGuiStyle style = ScaledStyle(ImGuiStyle{}, 1.0f, false);
+	const ImGuiStyle small = ScaledStyle(ImGuiStyle{}, 0.75f, false);
+
+	CHECK(style.TabBarOverlineSize == doctest::Approx(0.0f));
+	CHECK(small.TabBarOverlineSize == doctest::Approx(0.0f));
+	CHECK_FALSE(style.DockingNodeHasCloseButton);
+	CHECK(style.ScrollbarSize == doctest::Approx(12.0f));
 }
 
 TEST_CASE("ScaledStyle starts from unscaled sizes, so scaling a scaled style does not compound")
