@@ -8,8 +8,9 @@ Date: 2026-10-18
 The dark scheme drew its chrome (`#1B1D21`) in the same colour as the editor
 background, so a document had no edge against the panels, title bar and status
 bar around it. 0490 kept the chrome palette to one set of colours and foresaw
-widening it; 0494 let a window push colours of its own before `Begin`. The
-status bar also drew a border of its own above the chrome beside it.
+widening it; 0611 has a content window push the content colour before `Begin`,
+as the tab text colour already does. The status bar also drew a border of its
+own above the chrome beside it.
 
 ## Decision
 
@@ -58,4 +59,4 @@ working.
 
 ## Related
 
-- 0002, 0490, 0494
+- 0002, 0490, 0494, 0611

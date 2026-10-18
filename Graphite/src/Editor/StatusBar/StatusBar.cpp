@@ -41,6 +41,7 @@ namespace Graphite {
 
 		constexpr float kDotShareOfFont = 0.18f;
 		constexpr float kGapAfterGitInFontSizes = 2.0f;
+		constexpr float kNoBorder = 0.0f;
 
 		float BellWidth()
 		{
@@ -226,7 +227,7 @@ namespace Graphite {
 		constexpr ImGuiWindowFlags windowFlags =
 			ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings;
 
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, kNoBorder);
 		const bool barBegun = ImGui::BeginViewportSideBar(kStatusBarWindowName, viewport, ImGuiDir_Down, height, windowFlags);
 		ImGui::PopStyleVar();
 
