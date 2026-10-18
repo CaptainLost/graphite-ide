@@ -37,6 +37,17 @@ namespace {
 	constexpr int kDoomedRow = 1;
 	constexpr int kDoomedDepth = 1;
 
+	constexpr int kRootRow = 0;
+	constexpr int kRootDepth = 0;
+
+	constexpr const char* kNewFileTemplateMenuItem = "New File from Template\xE2\x80\xA6";
+	constexpr const char* kNewFileTemplatePopup = "New File from Template##fileTreeNewFile";
+
+	std::size_t EntriesIn(const std::filesystem::path& folder)
+	{
+		return static_cast<std::size_t>(std::distance(std::filesystem::directory_iterator{folder}, std::filesystem::directory_iterator{}));
+	}
+
 	Core::JobSubmitter RunJobsAtOnce()
 	{
 		return [](std::function<void()> job) { job(); };
@@ -162,6 +173,26 @@ namespace {
 		bool ChooseMenuItem(const char* label)
 		{
 			return Frames.ClickMenuItem(label, [this] { Draw(); });
+		}
+
+		void ChooseFromRootMenu(const char* label)
+		{
+			RightClickRow(kRootRow, kRootDepth);
+			REQUIRE(ChooseMenuItem(label));
+			Next();
+			Next();
+		}
+
+		void Type(const char* text)
+		{
+			ImGui::GetIO().AddInputCharactersUTF8(text);
+			Next();
+		}
+
+		void Press(ImGuiKey key)
+		{
+			Frames.PressKey(key, [this] { Draw(); });
+			Next();
 		}
 
 		ImGuiFrames Frames;
@@ -382,4 +413,139 @@ TEST_CASE("Enter does not answer the delete question, so nothing is moved to the
 	screen.Next();
 
 	CHECK(std::filesystem::exists(folder.GetPath() / "doomed.txt"));
+}
+
+TEST_CASE("New File makes nothing on disk until the name is entered")
+{
+	TempDirectory folder;
+	folder.MakeFile("existing.txt");
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	screen.ChooseFromRootMenu("New File");
+
+	CHECK(EntriesIn(folder.GetPath()) == 1);
+}
+
+TEST_CASE("Escape in the New File name field leaves the folder as it was")
+{
+	TempDirectory folder;
+	folder.MakeFile("existing.txt");
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	screen.ChooseFromRootMenu("New File");
+	screen.Type("draft");
+	screen.Press(ImGuiKey_Escape);
+
+	CHECK(EntriesIn(folder.GetPath()) == 1);
+	CHECK(screen.OpenedFiles.empty());
+}
+
+TEST_CASE("Enter in the New File name field makes the file and opens it")
+{
+	TempDirectory folder;
+	folder.MakeFile("existing.txt");
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	screen.ChooseFromRootMenu("New File");
+	screen.Type("Foo.cpp");
+	screen.Press(ImGuiKey_Enter);
+
+	CHECK(std::filesystem::is_regular_file(folder.GetPath() / "Foo.cpp"));
+	REQUIRE(screen.OpenedFiles.size() == 1);
+	CHECK(screen.OpenedFiles.front() == folder.GetPath() / "Foo.cpp");
+}
+
+TEST_CASE("A name with slashes in the New File field makes the folders on the way")
+{
+	TempDirectory folder;
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	screen.ChooseFromRootMenu("New File");
+	screen.Type("util/text/Strings.cpp");
+	screen.Press(ImGuiKey_Enter);
+
+	CHECK(std::filesystem::is_regular_file(folder.GetPath() / "util" / "text" / "Strings.cpp"));
+}
+
+TEST_CASE("A New File name that is taken keeps the field open and leaves the old file alone")
+{
+	TempDirectory folder;
+	folder.MakeFile("taken.txt");
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	screen.ChooseFromRootMenu("New File");
+	screen.Type("taken.txt");
+	screen.Press(ImGuiKey_Enter);
+	screen.Next();
+
+	CHECK(EntriesIn(folder.GetPath()) == 1);
+	CHECK(screen.OpenedFiles.empty());
+
+	screen.Press(ImGuiKey_Escape);
+
+	CHECK(EntriesIn(folder.GetPath()) == 1);
+}
+
+TEST_CASE("New File from Template opens a dialog that makes nothing until Create")
+{
+	TempDirectory folder;
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	screen.ChooseFromRootMenu(kNewFileTemplateMenuItem);
+
+	CHECK(ImGuiFrames::IsPopupNamedOpen(kNewFileTemplatePopup));
+	CHECK(EntriesIn(folder.GetPath()) == 0);
+}
+
+TEST_CASE("Enter in the template dialog makes the file and closes the dialog")
+{
+	TempDirectory folder;
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	screen.ChooseFromRootMenu(kNewFileTemplateMenuItem);
+	screen.Type("notes.md");
+	screen.Press(ImGuiKey_Enter);
+	screen.Next();
+
+	CHECK(std::filesystem::is_regular_file(folder.GetPath() / "notes.md"));
+	CHECK_FALSE(ImGuiFrames::IsPopupNamedOpen(kNewFileTemplatePopup));
+	CHECK_FALSE(screen.Modals.IsBusy());
+}
+
+TEST_CASE("Escape closes the template dialog and makes nothing")
+{
+	TempDirectory folder;
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	screen.ChooseFromRootMenu(kNewFileTemplateMenuItem);
+	screen.Type("notes.md");
+	screen.Press(ImGuiKey_Escape);
+	screen.Next();
+
+	CHECK(EntriesIn(folder.GetPath()) == 0);
+	CHECK_FALSE(ImGuiFrames::IsPopupNamedOpen(kNewFileTemplatePopup));
+	CHECK_FALSE(screen.Modals.IsBusy());
+}
+
+TEST_CASE("The template dialog refuses a name that is already taken")
+{
+	TempDirectory folder;
+	folder.MakeFile("taken.txt");
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	screen.ChooseFromRootMenu(kNewFileTemplateMenuItem);
+	screen.Type("taken.txt");
+	screen.Press(ImGuiKey_Enter);
+
+	CHECK(ImGuiFrames::IsPopupNamedOpen(kNewFileTemplatePopup));
+	CHECK(EntriesIn(folder.GetPath()) == 1);
 }

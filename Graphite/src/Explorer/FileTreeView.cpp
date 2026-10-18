@@ -2,6 +2,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileName.h"
+#include "Core/FileSystem/AtomicWrite.h"
 #include "Core/FileSystem/FileOperations.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
@@ -19,10 +20,13 @@
 #include "UI/Lists/ListRow.h"
 #include "Terminal/TerminalRules.h"
 #include "Explorer/FileRow.h"
+#include "Explorer/FileTemplates.h"
+#include "Explorer/NewFilePath.h"
 #include "Explorer/FilteredTree.h"
 #include "Explorer/TreeReveal.h"
 #include "Core/ImGui/IconButton.h"
 #include "UI/OpenGesture.h"
+#include "UI/TypographicMarks.h"
 #include "UI/ToastEvent.h"
 
 #include "Core/Events/EventBus.h"
@@ -37,6 +41,13 @@
 #include <vector>
 
 namespace Graphite {
+
+	namespace {
+		std::string NewFromTemplateLabel()
+		{
+			return std::string{"New File from Template"} + std::string{kEllipsis};
+		}
+	}
 
 	void FileTreeView::ReportInvalidName(std::string title, const std::string& name)
 	{
@@ -61,7 +72,7 @@ namespace Graphite {
 							   Core::EventBus& events, ModalGate& modals, const ActiveScheme& scheme,
 							   Core::JobSubmitter submitJob)
 		: m_Workspace(workspace), m_Documents(documents), m_Events(events), m_DeleteQuestion(modals, kDeleteTitle),
-		  m_Scheme(scheme), m_Listing(std::move(submitJob))
+		  m_NewFileQuestion(modals, kNewFileTitle), m_Scheme(scheme), m_Listing(std::move(submitJob))
 	{
 		events.Subscribe<WorkspaceFilesChangedEvent>(
 			[this](const WorkspaceFilesChangedEvent& changed) { NoteFilesChanged(changed); });
@@ -70,6 +81,7 @@ namespace Graphite {
 	void FileTreeView::WithdrawQuestions()
 	{
 		m_DeleteQuestion.Withdraw();
+		m_NewFileQuestion.Withdraw();
 	}
 
 	void FileTreeView::NoteFilesChanged(const WorkspaceFilesChangedEvent& changed)
@@ -143,6 +155,7 @@ namespace Graphite {
 		// must not change it before the walk ends, and the modal must not sit inside the child window.
 		ExecutePendingAction();
 		RenderDeleteConfirmation();
+		RenderNewFileQuestion();
 	}
 
 	void FileTreeView::FollowActiveDocument()
@@ -383,8 +396,12 @@ namespace Graphite {
 
 		if (ImGui::MenuItem("New File"))
 		{
-			RecordAction(PendingAction{
-				.Action = PendingAction::Kind::CreateFile, .Target = creationTarget, .Name = "new file.txt"});
+			RecordAction(PendingAction{.Action = PendingAction::Kind::BeginNewFile, .Target = creationTarget});
+		}
+
+		if (ImGui::MenuItem(NewFromTemplateLabel().c_str()))
+		{
+			RecordAction(PendingAction{.Action = PendingAction::Kind::AskNewFileFromTemplate, .Target = creationTarget});
 		}
 
 		if (ImGui::MenuItem("New Folder"))
@@ -438,7 +455,12 @@ namespace Graphite {
 
 		if (ImGui::MenuItem("New File"))
 		{
-			RecordAction(PendingAction{.Action = PendingAction::Kind::CreateFile, .Target = root, .Name = "new file.txt"});
+			RecordAction(PendingAction{.Action = PendingAction::Kind::BeginNewFile, .Target = root});
+		}
+
+		if (ImGui::MenuItem(NewFromTemplateLabel().c_str()))
+		{
+			RecordAction(PendingAction{.Action = PendingAction::Kind::AskNewFileFromTemplate, .Target = root});
 		}
 
 		if (ImGui::MenuItem("New Folder"))
@@ -483,11 +505,6 @@ namespace Graphite {
 			APP_ERROR("Cannot rename '{}': the name is too long to edit", current);
 			ReportFailure(Core::ToastKind::Warning, "Cannot rename", std::format("'{}': the name is too long to edit", current));
 			return;
-		}
-
-		if (m_OpenWhenNamed != node.Path)
-		{
-			m_OpenWhenNamed.clear();
 		}
 
 		m_RenamingPath = node.Path;
@@ -535,7 +552,7 @@ namespace Graphite {
 	{
 		m_RenamingPath.clear();
 		m_PendingRenamePath.clear();
-		m_OpenWhenNamed.clear();
+		m_NewFileIn.clear();
 	}
 
 	void FileTreeView::ResolvePendingRename()
@@ -551,16 +568,7 @@ namespace Graphite {
 		if (const Core::FileNode* node = FindNode(path); node != nullptr && IsReachable(path))
 		{
 			StartRenaming(*node);
-
-			const bool renameStarted = m_RenamingPath == path;
-
-			if (renameStarted)
-			{
-				return;
-			}
 		}
-
-		OpenIfJustCreated(path, path);
 	}
 
 	Core::FileNode* FileTreeView::FindNode(const std::filesystem::path& path)
@@ -632,7 +640,15 @@ namespace Graphite {
 		case PendingAction::Kind::Duplicate:
 			HandleDuplicate(action);
 			return;
-		case PendingAction::Kind::CreateFile:
+		case PendingAction::Kind::BeginNewFile:
+			HandleBeginNewFile(action);
+			return;
+		case PendingAction::Kind::AskNewFileFromTemplate:
+			m_NewFileQuestion.AskOnce(NewFileQuestion{.Folder = action.Target});
+			return;
+		case PendingAction::Kind::CreateNamedFile:
+			HandleCreateNamedFile(action);
+			return;
 		case PendingAction::Kind::MakeDirectory:
 			HandleCreate(action);
 			return;
@@ -644,7 +660,6 @@ namespace Graphite {
 	void FileTreeView::HandleDelete(const PendingAction& action)
 	{
 		m_RenamingPath.clear();
-		m_OpenWhenNamed.clear();
 
 		const DeleteQuestion question{.Target = action.Target};
 
@@ -663,7 +678,7 @@ namespace Graphite {
 
 	void FileTreeView::HandleRename(const PendingAction& action)
 	{
-		OpenIfJustCreated(action.Target, ApplyRename(action));
+		static_cast<void>(ApplyRename(action));
 	}
 
 	std::filesystem::path FileTreeView::ApplyRename(const PendingAction& action)
@@ -694,21 +709,6 @@ namespace Graphite {
 		return target;
 	}
 
-	void FileTreeView::OpenIfJustCreated(const std::filesystem::path& created,
-										 const std::filesystem::path& named)
-	{
-		if (m_OpenWhenNamed.empty() || m_OpenWhenNamed != created)
-		{
-			return;
-		}
-
-		m_OpenWhenNamed.clear();
-
-		constexpr bool kPermanentTab = true;
-
-		m_Workspace.RequestOpenFile(named, kPermanentTab);
-	}
-
 	void FileTreeView::HandleDuplicate(const PendingAction& action)
 	{
 		const Core::Result<std::filesystem::path> copied = Core::Duplicate(action.Target);
@@ -736,9 +736,7 @@ namespace Graphite {
 		const std::filesystem::path target =
 			Core::MakeUniquePath(action.Target / Core::FromUtf8(action.Name));
 
-		const Core::Result<void> created = action.Action == PendingAction::Kind::CreateFile
-											   ? Core::CreateEmptyFile(target)
-											   : Core::MakeDirectory(target);
+		const Core::Result<void> created = Core::MakeDirectory(target);
 
 		if (!created)
 		{
@@ -757,22 +755,196 @@ namespace Graphite {
 		APP_INFO("Created '{}'", Core::ToUtf8(target));
 
 		StartRenamingPath(target);
+	}
 
-		if (action.Action != PendingAction::Kind::CreateFile)
+	void FileTreeView::HandleBeginNewFile(const PendingAction& action)
+	{
+		Core::FileNode* folder = FindNode(action.Target);
+
+		if (folder == nullptr || !folder->IsDirectory)
 		{
 			return;
 		}
 
-		// WARNING: The file opens only once it has its name. Opening focuses the new tab, which
-		// would take the keyboard from the name field and end the rename before the first key.
-		m_OpenWhenNamed = target;
+		ReadFolderFromDisk(*folder);
+		folder->Expanded = true;
+		m_ForceOpen.push_back(action.Target);
 
-		const bool noRenameToWaitFor = m_RenamingPath != target && m_PendingRenamePath != target;
+		ContinueNamingNewFile(action.Target, {});
+	}
 
-		if (noRenameToWaitFor)
+	void FileTreeView::ContinueNamingNewFile(const std::filesystem::path& folder, std::string_view typed)
+	{
+		constexpr bool kNotAFolder = false;
+
+		if (m_NewFileField.Start(typed, kNotAFolder))
 		{
-			OpenIfJustCreated(target, target);
+			m_RenamingPath.clear();
+			m_NewFileIn = folder;
 		}
+	}
+
+	void FileTreeView::HandleCreateNamedFile(const PendingAction& action)
+	{
+		const std::optional<NewFilePath> path = ParseNewFilePath(action.Name);
+
+		if (!path.has_value())
+		{
+			APP_ERROR("'{}' is not a valid file name", action.Name);
+			ReportInvalidName("Create failed", action.Name);
+			ContinueNamingNewFile(action.Target, action.Name);
+			return;
+		}
+
+		const std::vector<FileToCreate> files{FileToCreate{.Path = *path, .Content = {}}};
+
+		if (const std::optional<std::string> problem = NewFileProblem(action.Target, files); problem.has_value())
+		{
+			ReportFailure(Core::ToastKind::Error, "Create failed", *problem);
+			ContinueNamingNewFile(action.Target, action.Name);
+			return;
+		}
+
+		if (const Core::Result<std::filesystem::path> created = CreateFiles(action.Target, files); !created)
+		{
+			APP_ERROR("{}", created.GetError().Message);
+			ReportFailure(Core::ToastKind::Error, "Create failed", created.GetError().Message);
+			ContinueNamingNewFile(action.Target, action.Name);
+		}
+	}
+
+	std::optional<std::string> FileTreeView::NewFileProblem(const std::filesystem::path& folder,
+															const std::vector<FileToCreate>& files) const
+	{
+		for (const FileToCreate& file : files)
+		{
+			std::filesystem::path target = folder;
+
+			for (const std::string& piece : file.Path.Folders)
+			{
+				target /= Core::FromUtf8(piece);
+			}
+
+			target /= Core::FromUtf8(file.Path.File);
+
+			std::error_code code;
+
+			if (std::filesystem::exists(target, code))
+			{
+				return std::format("'{}' already exists", file.Path.File);
+			}
+		}
+
+		return std::nullopt;
+	}
+
+	std::vector<FileTreeView::FileToCreate> FileTreeView::FilesFromTemplate(const std::filesystem::path& folder,
+																		   FileTemplate fileTemplate,
+																		   std::string_view name) const
+	{
+		std::vector<FileToCreate> files;
+
+		if (fileTemplate == FileTemplate::Empty)
+		{
+			if (const std::optional<NewFilePath> path = ParseNewFilePath(name); path.has_value())
+			{
+				files.push_back(FileToCreate{.Path = *path, .Content = {}});
+			}
+
+			return files;
+		}
+
+		std::vector<std::string> foldersBelowRoot;
+
+		std::error_code code;
+		const std::filesystem::path relative = std::filesystem::relative(folder, m_Workspace.GetRoot(), code);
+
+		if (!code && relative != ".")
+		{
+			for (const std::filesystem::path& piece : relative)
+			{
+				foldersBelowRoot.push_back(Core::ToUtf8(piece));
+			}
+		}
+
+		const std::string csharpNamespace =
+			CSharpNamespaceFor(foldersBelowRoot, Core::ToUtf8(m_Workspace.GetRoot().filename()));
+
+		for (TemplateFile& file : ExpandTemplate(fileTemplate, name, csharpNamespace))
+		{
+			files.push_back(FileToCreate{.Path = NewFilePath{.Folders = {}, .File = std::move(file.Name)},
+										 .Content = std::move(file.Content)});
+		}
+
+		return files;
+	}
+
+	Core::Result<std::filesystem::path> FileTreeView::CreateFiles(const std::filesystem::path& folder,
+																  const std::vector<FileToCreate>& files)
+	{
+		std::filesystem::path first;
+
+		for (const FileToCreate& file : files)
+		{
+			std::filesystem::path directory = folder;
+
+			for (const std::string& piece : file.Path.Folders)
+			{
+				directory /= Core::FromUtf8(piece);
+
+				std::error_code code;
+
+				if (!std::filesystem::exists(directory, code))
+				{
+					if (const Core::Result<void> made = Core::MakeDirectory(directory); !made)
+					{
+						return made.GetError();
+					}
+				}
+			}
+
+			const std::filesystem::path target = directory / Core::FromUtf8(file.Path.File);
+
+			// WARNING: The empty file claims the name first, and fails if the name is taken. Writing the content
+			// atomically replaces whatever is there, so it must never be the first thing to touch the path.
+			if (const Core::Result<void> claimed = Core::CreateEmptyFile(target); !claimed)
+			{
+				return claimed.GetError();
+			}
+
+			if (!file.Content.empty())
+			{
+				if (const Core::Result<void> written = Core::WriteFileAtomically(target, file.Content); !written)
+				{
+					return written.GetError();
+				}
+			}
+
+			APP_INFO("Created '{}'", Core::ToUtf8(target));
+
+			if (first.empty())
+			{
+				first = target;
+			}
+		}
+
+		if (Core::FileNode* parent = FindNode(folder); parent != nullptr)
+		{
+			ReadFolderFromDisk(*parent);
+			parent->Expanded = true;
+		}
+
+		const std::vector<std::filesystem::path> foldersOpenedOnTheWay = ExpandToward(m_Workspace.GetTree(), first);
+
+		m_ForceOpen.insert(m_ForceOpen.end(), foldersOpenedOnTheWay.begin(), foldersOpenedOnTheWay.end());
+		m_ScrollToPath = first;
+		m_Listing.NoteChangedDirectories({folder});
+
+		constexpr bool kPermanentTab = true;
+
+		m_Workspace.RequestOpenFile(first, kPermanentTab);
+
+		return first;
 	}
 
 	void FileTreeView::ReadFolderFromDisk(Core::FileNode& folder)
@@ -847,7 +1019,6 @@ namespace Graphite {
 
 		case RenameEnd::Cancelled:
 			m_RenamingPath.clear();
-			OpenIfJustCreated(node.Path, node.Path);
 			break;
 
 		case RenameEnd::Committed:
@@ -857,6 +1028,149 @@ namespace Graphite {
 		}
 
 		return true;
+	}
+
+	void FileTreeView::RenderNewFileEditor(const Core::FileNode& folder)
+	{
+		if (m_NewFileIn != folder.Path)
+		{
+			return;
+		}
+
+		switch (m_NewFileField.Draw("##newFileField"))
+		{
+		case RenameEnd::StillEditing:
+			break;
+
+		case RenameEnd::Cancelled:
+			m_NewFileIn.clear();
+			break;
+
+		case RenameEnd::Committed:
+		{
+			const std::string typed = m_NewFileField.Text();
+
+			m_NewFileIn.clear();
+
+			// WARNING: A name emptied to nothing cancels, like Escape. No file has been made yet.
+			if (!typed.empty())
+			{
+				RecordAction(PendingAction{.Action = PendingAction::Kind::CreateNamedFile, .Target = folder.Path, .Name = typed});
+			}
+
+			break;
+		}
+		}
+	}
+
+	void FileTreeView::RenderNewFileQuestion()
+	{
+		DialogLayout::BeforeBegin(DialogLayout::kNarrowWidth);
+		const NewFileQuestion* asked = m_NewFileQuestion.Begin();
+		DialogLayout::AfterBegin();
+
+		if (asked == nullptr)
+		{
+			return;
+		}
+
+		// WARNING: Copied out before Answer(), which drops the payload `asked` points into.
+		const std::filesystem::path folder = asked->Folder;
+
+		const bool isFirstFrameOfQuestion = ImGui::IsWindowAppearing();
+
+		if (isFirstFrameOfQuestion)
+		{
+			m_NewFileName.fill('\0');
+			m_NewFileTemplate = 0;
+		}
+
+		std::error_code code;
+		const std::filesystem::path relative = std::filesystem::relative(folder, m_Workspace.GetRoot(), code);
+		const bool folderIsRoot = code || relative == ".";
+		const std::string folderName =
+			Core::ToUtf8(folderIsRoot ? m_Workspace.GetRoot().filename() : relative);
+
+		DialogLayout::Text(std::format("New file in {}", folderName));
+		DialogLayout::Gap();
+
+		const FileTemplate fileTemplate = kFileTemplates[static_cast<std::size_t>(m_NewFileTemplate)];
+
+		// WARNING: The labels are string literals, so their data() ends in a null as ImGui needs.
+		ImGui::SetNextItemWidth(-FLT_MIN);
+
+		if (ImGui::BeginCombo("##newFileTemplate", TemplateLabel(fileTemplate).data()))
+		{
+			for (std::size_t index = 0; index < kFileTemplates.size(); ++index)
+			{
+				const bool isCurrent = static_cast<int>(index) == m_NewFileTemplate;
+
+				if (ImGui::Selectable(TemplateLabel(kFileTemplates[index]).data(), isCurrent))
+				{
+					m_NewFileTemplate = static_cast<int>(index);
+				}
+			}
+
+			ImGui::EndCombo();
+		}
+
+		if (isFirstFrameOfQuestion)
+		{
+			ImGui::SetKeyboardFocusHere();
+		}
+
+		ImGui::SetNextItemWidth(-FLT_MIN);
+		const bool entered = ImGui::InputTextWithHint("##newFileName", TemplateNameHint(fileTemplate).data(),
+													  m_NewFileName.data(), m_NewFileName.size(),
+													  ImGuiInputTextFlags_EnterReturnsTrue);
+
+		const std::string name = m_NewFileName.data();
+		std::optional<std::string> problem = TemplateNameProblem(fileTemplate, name);
+		std::vector<FileToCreate> files;
+
+		if (!problem.has_value() && !name.empty())
+		{
+			files = FilesFromTemplate(folder, fileTemplate, name);
+
+			if (files.empty())
+			{
+				problem = std::format("'{}' is not a valid file name", name);
+			}
+			else
+			{
+				problem = NewFileProblem(folder, files);
+			}
+		}
+
+		if (problem.has_value())
+		{
+			DialogLayout::ErrorText(*problem, DangerColourOf(m_Scheme.Get()));
+		}
+
+		DialogLayout::Gap();
+
+		const bool acceptable = !name.empty() && !problem.has_value();
+		const DialogLayout::ButtonSpec absentButton{};
+
+		const DialogLayout::Choice choice =
+			DialogLayout::ButtonRow({.Label = "Create", .Enabled = acceptable}, absentButton, DangerColourOf(m_Scheme.Get()));
+
+		if (acceptable && (choice == DialogLayout::Choice::Safe || entered))
+		{
+			m_NewFileQuestion.Answer();
+
+			if (const Core::Result<std::filesystem::path> created = CreateFiles(folder, files); !created)
+			{
+				APP_ERROR("{}", created.GetError().Message);
+				ReportFailure(Core::ToastKind::Error, "Create failed", created.GetError().Message);
+			}
+		}
+		else if (choice == DialogLayout::Choice::Cancel)
+		{
+			m_NewFileQuestion.Answer();
+		}
+
+		m_NewFileQuestion.End();
 	}
 
 	void FileTreeView::RenderNode(Core::FileNode& node)
@@ -1016,6 +1330,8 @@ namespace Graphite {
 			{
 				RenderNode(child);
 			}
+
+			RenderNewFileEditor(node);
 
 			ImGui::TreePop();
 		}
