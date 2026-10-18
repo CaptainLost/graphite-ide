@@ -104,8 +104,7 @@ namespace Graphite {
 					  .Icon = ICON_MDI_CONSOLE,
 					  .Run = [this] {
 						  Reveal();
-						  static_cast<void>(OpenDefaultShell());
-					  },
+						  static_cast<void>(OpenDefaultShell()); },
 					  .Enabled = [this] { return !m_Shells.empty(); }});
 
 		keys.SetDefault("terminal.new",

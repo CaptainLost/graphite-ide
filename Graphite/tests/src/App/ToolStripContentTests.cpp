@@ -25,11 +25,17 @@ namespace {
 	{
 		ToolStripInputs inputs;
 		inputs.Panels = {
-			PanelOf("files", "navigate"),      PanelOf("console", "tools"),    PanelOf("search", "navigate"),
-			PanelOf("references", "navigate"), PanelOf("problems", "tools"),   PanelOf("git", "git"),
-			PanelOf("changes", "git"),         PanelOf("sessions", "ai"),      PanelOf("settings", "window"),
+			PanelOf("files", "navigate"),
+			PanelOf("console", "tools"),
+			PanelOf("search", "navigate"),
+			PanelOf("references", "navigate"),
+			PanelOf("problems", "tools"),
+			PanelOf("git", "git"),
+			PanelOf("changes", "git"),
+			PanelOf("sessions", "ai"),
+			PanelOf("settings", "window"),
 		};
-		inputs.Colours = { 1, 2, 3, 4 };
+		inputs.Colours = {1, 2, 3, 4};
 		return inputs;
 	}
 
@@ -49,7 +55,7 @@ namespace {
 
 	Core::ToolStripItem Find(const Core::ToolStripContent& content, const std::string& id)
 	{
-		for (const auto* groups : { &content.Top, &content.Bottom })
+		for (const auto* groups : {&content.Top, &content.Bottom})
 		{
 			for (const auto& group : *groups)
 			{
@@ -75,13 +81,13 @@ namespace {
 TEST_CASE("Top groups run navigate, git, ai and keep registration order inside each")
 {
 	const Core::ToolStripContent content = Graphite::BuildToolStripContent(StandardInputs());
-	CHECK(IdsOf(content.Top) == Groups{ { "files", "search", "references" }, { "git", "changes" }, { "sessions" } });
+	CHECK(IdsOf(content.Top) == Groups{{"files", "search", "references"}, {"git", "changes"}, {"sessions"}});
 }
 
 TEST_CASE("Bottom groups are tools with the terminals first, then window")
 {
 	const Core::ToolStripContent content = Graphite::BuildToolStripContent(StandardInputs());
-	CHECK(IdsOf(content.Bottom) == Groups{ { "terminals", "console", "problems" }, { "settings" } });
+	CHECK(IdsOf(content.Bottom) == Groups{{"terminals", "console", "problems"}, {"settings"}});
 }
 
 TEST_CASE("A panel in a group the strip does not know lands at the end of the top block")
@@ -90,7 +96,7 @@ TEST_CASE("A panel in a group the strip does not know lands at the end of the to
 	inputs.Panels.push_back(PanelOf("build", "build/run"));
 	const Core::ToolStripContent content = Graphite::BuildToolStripContent(inputs);
 	REQUIRE(content.Top.size() == 4);
-	CHECK(IdsOf(content.Top).back() == std::vector<std::string>{ "build" });
+	CHECK(IdsOf(content.Top).back() == std::vector<std::string>{"build"});
 }
 
 TEST_CASE("A group with no panels draws no empty group")
@@ -112,12 +118,12 @@ TEST_CASE("An item is open when its panel is visible")
 TEST_CASE("The terminals' item reads their look")
 {
 	ToolStripInputs inputs = StandardInputs();
-	inputs.Terminals = { true, false };
+	inputs.Terminals = {true, false};
 	const Core::ToolStripItem open = ItemOf(inputs, "terminals");
 	CHECK(open.Open);
 	CHECK_FALSE(open.Badge.has_value());
 
-	inputs.Terminals = { false, true };
+	inputs.Terminals = {false, true};
 	const Core::ToolStripItem running = ItemOf(inputs, "terminals");
 	CHECK_FALSE(running.Open);
 	REQUIRE(running.Badge.has_value());

@@ -9,14 +9,13 @@
 namespace Graphite {
 
 	namespace {
-		constexpr std::array<std::string_view, 3> kTopGroups = { "navigate", "git", "ai" };
+		constexpr std::array<std::string_view, 3> kTopGroups = {"navigate", "git", "ai"};
 		constexpr std::string_view kToolsGroup = "tools";
 		constexpr std::string_view kWindowGroup = "window";
 
 		bool IsKnownGroup(std::string_view group)
 		{
-			return group == kToolsGroup || group == kWindowGroup
-				|| std::find(kTopGroups.begin(), kTopGroups.end(), group) != kTopGroups.end();
+			return group == kToolsGroup || group == kWindowGroup || std::find(kTopGroups.begin(), kTopGroups.end(), group) != kTopGroups.end();
 		}
 
 		Core::ToolStripItem ItemFor(const ToolStripPanel& panel, const ToolStripInputs& inputs)
@@ -91,8 +90,7 @@ namespace Graphite {
 		std::vector<std::string_view> unknownGroups;
 		for (const ToolStripPanel& panel : inputs.Panels)
 		{
-			if (!IsKnownGroup(panel.MenuGroup)
-				&& std::find(unknownGroups.begin(), unknownGroups.end(), panel.MenuGroup) == unknownGroups.end())
+			if (!IsKnownGroup(panel.MenuGroup) && std::find(unknownGroups.begin(), unknownGroups.end(), panel.MenuGroup) == unknownGroups.end())
 			{
 				unknownGroups.push_back(panel.MenuGroup);
 			}
