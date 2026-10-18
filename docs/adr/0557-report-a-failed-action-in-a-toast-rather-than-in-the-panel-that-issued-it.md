@@ -38,6 +38,10 @@ below.
   failure of `git init` in its own prompt (`GetInitError()`,
   `DismissInitError()`).
 
+Amended by [0615](0615-draw-the-interface-in-inter-and-code-in-jetbrains-mono.md):
+toast titles and the strong runs of a toast's message are now drawn in Inter
+SemiBold.
+
 Any feature raises a toast by publishing `ToastEvent` on the application's
 `Core::EventBus`, the way `StatusMessageEvent` reaches the status bar; the
 application layer subscribes and shows it. Each event carries a scope. A `Folder`

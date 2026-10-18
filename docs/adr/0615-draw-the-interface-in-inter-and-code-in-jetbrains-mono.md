@@ -32,13 +32,25 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
   `'0'`. The terminal draws a run of cells with one `AddText`, so a symbol wider
   than a cell would push the rest of its row off its cells. The interface face
   takes symbols at their own advance.
-- `Core::PushInterfaceFont()` pushes the interface face at `kInterfaceFontSize`
-  wherever it is called, including inside a code push; `Core::PushCodeFont()`
-  pushes the code face at `kCodeFontSize`. Both sizes are unscaled base sizes,
-  which ImGui scales by the interface scale and the monitor's DPI. Both are
-  popped with `ImGui::PopFont()`.
+- `Core::PushInterfaceFont(float size = kInterfaceFontSize)` pushes the
+  interface face and `Core::PushCodeFont(float size = kCodeFontSize)` pushes the
+  code face, each at the size it is given, wherever it is called, including
+  inside a push of the other face. The default sizes are the two named sizes,
+  14 px and 15 px. Every size passed is an unscaled base size, which ImGui scales
+  by the interface scale and the monitor's DPI. Both are popped with
+  `ImGui::PopFont()`.
 - Code, cells and digits that must line up digit for digit draw in the code face.
-  Everything else draws in the interface face.
+  Everything else draws in the interface face. Within that rule:
+  - A hash shown inside a chrome row, in the history list, the commit details
+    and the review, draws in the code face at the interface size, so every row
+    keeps its pitch.
+  - Search and reference hit rows draw wholly in the code face, so each is one
+    code line (15 px) plus spacing, a pixel taller than a chrome list row at
+    100 %.
+  - In the conversation view, an opened tool step's edit lines, input JSON and
+    result are code.
+  - Lens labels draw in the interface face at the editor's font size. Their size
+    changes in a later stage.
 - The strong face, which `ImGuiRenderer::GetBoldFont()` returns, is Inter
   SemiBold. `GetMonoFont()` returns the code face and `GetInterfaceFont()` the
   interface face.
@@ -71,8 +83,6 @@ on its own.
 
 ### Neutral
 
-- The code face keeps `LegacySize` 15, so a one-argument `PushFont` of
-  `GetMonoFont()` still pushes 15 px.
 - The interface size is a starting value; the screen check may move it to 15 px.
 
 ## Alternatives Considered
