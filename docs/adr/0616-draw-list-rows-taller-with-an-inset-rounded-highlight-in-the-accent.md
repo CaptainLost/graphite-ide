@@ -61,13 +61,35 @@ Draw list rows through `Graphite/src/UI/Lists/ListRow.h` as follows.
 - **Colours stay per row:** `ListRowSelectable` clears `Header`,
   `HeaderHovered`, `HeaderActive` and `NavCursor` around its Selectable, pops
   them before it returns and draws the fill and the mark itself. The global
-  header colours, which menus and combo boxes draw in, do not change.
-- **Tables:** `ListTableCellPadding` is half the row spacing above and below, so
-  a table's rows take the pitch; the history graph is placed by the same pitch.
-  A table's row is to take one highlight across all its columns, inset and
-  rounded only at the row's two ends, so the rounding never cuts across a
-  column. Until that lands, a table keeps its own square highlight, which no
-  longer fills its taller rows.
+  header colours, which menus and combo boxes draw in, do not change. The order
+  lives in `ListRowHighlight(selected, hovered, held)`, which the list rows, the
+  table rows and the settings navigation share.
+- **Settings navigation:** an entry keeps its 28 px height and 5 px rounding and
+  takes the list colours in their order. Its hover still fades in and out.
+- **Tables:** a table whose rows are list rows takes the following.
+  - *Pitch:* its cell padding is `ListTableCellPadding`, half the row spacing
+    above and below, and each row is given the pitch as its least height, so a
+    row of one text line is a pitch tall. The history graph is placed by the
+    same pitch.
+  - *Ends:* `PadListTableEnds`, called straight after `BeginTable`, pads the
+    table's two ends by `ListRowEndInset`, so the first and last cells stand
+    inside the highlight.
+  - *Row:* a row is picked by `TableRowSelectable`, a Selectable laid out from
+    the row's top, a pitch high and across every column, so its box is the
+    row's whole slot. Its own fill and keyboard mark are cleared, and it puts
+    the cell back as one holding a text line, so what follows with `SameLine`
+    stands at the cell's text.
+  - *Highlight:* one shape per row, drawn in the table's background channel
+    under every column. It is inset 6 px from the table's two ends and rounded
+    5 px there only, so the rounding never cuts across a column. It is drawn in
+    the list colours and their order, with the keyboard's mark round it.
+  - *Rows without a Selectable:* such a row, as a key binding's is, calls
+    `DrawTableRowHighlight(selected, hovered)` once its cells are drawn. It is
+    highlighted from its top to its bottom however many lines it holds. A key
+    binding's row is hovered when ImGui reports the pointer over it; its slots
+    keep their keyboard mark but not their own fill.
+  - *Stripes:* such a table draws no alternating row background, which the
+    hover colour would all but match.
 
 ## Rationale
 
@@ -89,6 +111,8 @@ it was.
 - Every list and tree, plain or laid out by hand, steps by the same pitch, with
   its text in the middle of the highlight.
 - The first and the last row of a list show their whole highlight.
+- A table's row is one highlight across its columns, with no gap above or below
+  it, and the pointer moving down a table never falls between two rows.
 
 ### Negative
 
@@ -101,15 +125,22 @@ it was.
 - The row's line is held in ImGui's per-window line state. After a row nothing
   is laid over, the next item that is not a row takes a line at least a text
   line tall.
-- Until tables take their own highlight, a table's highlight leaves a gap above
-  and below it in its taller rows.
+- `TableRowSelectable` and `PadListTableEnds` set ImGui's table and cursor state
+  directly: the table's outer padding and the cell's line. A change in how ImGui
+  lays out a table's cells does not reach them on its own.
+- The tables that take the row look lose their alternating row background.
+- A key binding row's hover follows the pointer a frame late, as ImGui reports
+  the row under the pointer only from the frame before.
 - The hover lift follows the text colour current at the row, so a row drawn in
   a dimmed text colour, such as an ignored file, lifts a little less.
 
 ### Neutral
 
-- The settings navigation keeps its own height and rounding, and the
-  notification history keeps its cards.
+- The notification history keeps its cards.
+- The cost view's open turn takes the accent at a fifth, as any selected row
+  does, in place of its own stronger wash.
+- The first and last cells of a list table stand 8 px from the table's ends,
+  where they stood at the cell padding or flush before.
 - A search hit row, drawn in the code face, is a 15 px line plus the row
   spacing: 24 px.
 - At large scales the text top is held a pixel above the middle, so that a text
@@ -131,6 +162,11 @@ it was.
 - **Push the row spacing as `ItemSpacing` around each list.** Every caller would
   change, and the items in a list that are not rows would take the row spacing
   too.
+- **ImGui's own row background, through `TableSetBgColor`.** ImGui fills it
+  square from one end of the table to the other, with no inset or rounding.
+- **A highlight per cell.** The rounding would cut across every column.
+- **A square highlight across the row.** It would fill the row and span every
+  column, but a table's rows would not read as a list's.
 
 ## Related
 

@@ -158,6 +158,138 @@ namespace {
 		CHECK(WithinFringe(highlight.Left, screen.List.Min.x + kHighlightInset));
 		CHECK(WithinFringe(highlight.Right, screen.List.Max.x - kHighlightInset));
 	}
+
+	constexpr int kTableColumns = 3;
+	constexpr int kTableRows = 3;
+	constexpr int kFirstRow = 0;
+	constexpr int kSecondRow = 1;
+	constexpr std::optional<int> kNoRowSelected;
+
+	int VerticesOnTheLine(const ImDrawList& drawing, ImU32 colour, float y)
+	{
+		int count = 0;
+
+		for (const ImDrawVert& vertex : drawing.VtxBuffer)
+		{
+			if (vertex.col == colour && std::abs(vertex.pos.y - y) <= kOnTheEdge)
+			{
+				++count;
+			}
+		}
+
+		return count;
+	}
+
+	// A table whose rows are list rows, in the scheme the list tests use: three columns, each row picked by a
+	// Selectable over the whole row, the second cell of the first row two lines tall when asked.
+	struct TableScreen
+	{
+		ImGuiFrames Frames;
+		ImRect Ends;
+		float RowTops[kTableRows + 1] = {};
+		float FirstCellLeft = 0.0f;
+		float LastCellRight = 0.0f;
+		float Pitch = 0.0f;
+		bool FirstRowTwoLinesTall = false;
+		bool FirstRowWithoutSelectable = false;
+
+		TableScreen()
+		{
+			ImGuiStyle& style = ImGui::GetStyle();
+			style.FontSizeBase = kInterfaceFontSize;
+			style.Colors[ImGuiCol_CheckMark] = kAccent;
+			style.Colors[ImGuiCol_WindowBg] = kBackground;
+			style.Colors[ImGuiCol_Text] = kText;
+		}
+
+		void DrawRow(int row, std::optional<int> selected)
+		{
+			ImGui::TableNextRow();
+			ImGui::TableNextColumn();
+			RowTops[row] = ImGui::GetCurrentTable()->RowPosY1;
+
+			const bool isSelected = selected == row;
+			const bool withoutSelectable = FirstRowWithoutSelectable && row == kFirstRow;
+
+			if (!withoutSelectable)
+			{
+				ImGui::PushID(row);
+				Graphite::TableRowSelectable("##row", isSelected);
+				ImGui::PopID();
+				ImGui::SameLine(0.0f, 0.0f);
+			}
+
+			ImGui::TextUnformatted("First");
+
+			if (row == kFirstRow)
+			{
+				FirstCellLeft = ImGui::GetItemRectMin().x;
+			}
+
+			ImGui::TableNextColumn();
+			ImGui::TextUnformatted("Second");
+
+			if (FirstRowTwoLinesTall && row == kFirstRow)
+			{
+				ImGui::TextUnformatted("and more");
+			}
+
+			ImGui::TableNextColumn();
+			ImGui::TextUnformatted("Third");
+			LastCellRight = ImGui::GetCursorScreenPos().x + ImGui::GetContentRegionAvail().x;
+
+			if (withoutSelectable)
+			{
+				constexpr bool kNotHovered = false;
+				Graphite::DrawTableRowHighlight(isSelected, kNotHovered);
+			}
+		}
+
+		void Draw(std::optional<int> selected)
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(320.0f, 240.0f));
+			ImGui::Begin("Panel", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+			Pitch = Graphite::ListRowPitch();
+
+			ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, Graphite::ListTableCellPadding());
+
+			if (ImGui::BeginTable("##table", kTableColumns))
+			{
+				Graphite::PadListTableEnds();
+
+				for (int row = 0; row < kTableRows; ++row)
+				{
+					DrawRow(row, selected);
+				}
+
+				const ImGuiTable* table = ImGui::GetCurrentTable();
+				Ends = table->WorkRect;
+				ImGui::EndTable();
+				RowTops[kTableRows] = ImGui::GetItemRectMax().y;
+			}
+
+			ImGui::PopStyleVar();
+			ImGui::End();
+		}
+
+		void DrawFrame(std::optional<int> selected)
+		{
+			Frames.Next([this, selected] { Draw(selected); });
+		}
+
+		ImVec2 MiddleOfRow(int row) const
+		{
+			return ImVec2((Ends.Min.x + Ends.Max.x) * 0.5f, RowTops[row] + Pitch * 0.5f);
+		}
+
+		static const ImDrawList& DrawList()
+		{
+			const ImGuiWindow* panel = ImGui::FindWindowByName("Panel");
+			REQUIRE(panel != nullptr);
+			return *panel->DrawList;
+		}
+	};
 }
 
 TEST_CASE("A row's pitch is the text line plus the list row spacing")
@@ -598,4 +730,211 @@ TEST_CASE("A tree node is hovered from the list's left edge, its indent included
 	screen.DrawFrame(rows);
 
 	CHECK(DrawsInColour(ListScreen::DrawList(), HoveredRowColour()));
+}
+
+TEST_CASE("A table row takes the list pitch")
+{
+	TableScreen screen;
+	screen.DrawFrame(kFirstRow);
+
+	CHECK(screen.RowTops[kSecondRow] - screen.RowTops[kFirstRow] == doctest::Approx(screen.Pitch));
+	CHECK(screen.RowTops[kSecondRow + 1] - screen.RowTops[kSecondRow] == doctest::Approx(screen.Pitch));
+
+	const std::optional<Extent> selected = ExtentInColour(TableScreen::DrawList(), SelectedRowColour());
+	REQUIRE(selected.has_value());
+	CHECK(WithinFringe(selected->Top, screen.RowTops[kFirstRow]));
+	CHECK(WithinFringe(selected->Bottom, screen.RowTops[kSecondRow]));
+}
+
+TEST_CASE("A table row is hovered from the very top of its pitch")
+{
+	TableScreen screen;
+	screen.DrawFrame(kNoRowSelected);
+
+	constexpr float kJustBelowTheTop = 1.0f;
+	ImGui::GetIO().AddMousePosEvent(screen.MiddleOfRow(kSecondRow).x, screen.RowTops[kSecondRow] + kJustBelowTheTop);
+	screen.DrawFrame(kNoRowSelected);
+
+	const std::optional<Extent> hovered = ExtentInColour(TableScreen::DrawList(), HoveredRowColour());
+	REQUIRE(hovered.has_value());
+	CHECK(WithinFringe(hovered->Top, screen.RowTops[kSecondRow]));
+	CHECK(WithinFringe(hovered->Bottom, screen.RowTops[kSecondRow + 1]));
+}
+
+TEST_CASE("A table row's highlight spans every column once")
+{
+	TableScreen screen;
+	screen.DrawFrame(kFirstRow);
+
+	const std::optional<Extent> selected = ExtentInColour(TableScreen::DrawList(), SelectedRowColour());
+	REQUIRE(selected.has_value());
+
+	CHECK(WithinFringe(selected->Left, screen.Ends.Min.x + kHighlightInset));
+	CHECK(WithinFringe(selected->Right, screen.Ends.Max.x - kHighlightInset));
+
+	constexpr int kTheTwoEndsOfOneRoundedRect = 2;
+	CHECK(VerticesOnTheLine(TableScreen::DrawList(), SelectedRowColour(), selected->Top) == kTheTwoEndsOfOneRoundedRect);
+
+	const std::optional<Extent> topEdge = ExtentInColour(TableScreen::DrawList(), SelectedRowColour(),
+														 selected->Top - kOnTheEdge, selected->Top + kOnTheEdge);
+	REQUIRE(topEdge.has_value());
+	CHECK(topEdge->Left >= selected->Left + kHighlightRounding - kFringe);
+	CHECK(topEdge->Right <= selected->Right - kHighlightRounding + kFringe);
+}
+
+TEST_CASE("A list table's first and last cells stand inside its rows' highlight")
+{
+	TableScreen screen;
+	screen.DrawFrame(kFirstRow);
+
+	const std::optional<Extent> selected = ExtentInColour(TableScreen::DrawList(), SelectedRowColour());
+	REQUIRE(selected.has_value());
+
+	CHECK(screen.FirstCellLeft > selected->Left);
+	CHECK(screen.LastCellRight < selected->Right);
+	CHECK(screen.FirstCellLeft - screen.Ends.Min.x == doctest::Approx(Graphite::ListRowEndInset()));
+}
+
+TEST_CASE("A hovered table row is the background lifted toward the text, with ImGui's header left undrawn")
+{
+	TableScreen screen;
+	screen.DrawFrame(kNoRowSelected);
+
+	const ImVec2 middle = screen.MiddleOfRow(kSecondRow);
+	ImGui::GetIO().AddMousePosEvent(middle.x, middle.y);
+	screen.DrawFrame(kNoRowSelected);
+
+	const std::optional<Extent> hovered = ExtentInColour(TableScreen::DrawList(), HoveredRowColour());
+	REQUIRE(hovered.has_value());
+	CHECK(WithinFringe(hovered->Left, screen.Ends.Min.x + kHighlightInset));
+	CHECK(WithinFringe(hovered->Right, screen.Ends.Max.x - kHighlightInset));
+	CHECK_FALSE(DrawsInColour(TableScreen::DrawList(), ImGui::GetColorU32(ImGuiCol_HeaderHovered)));
+}
+
+TEST_CASE("A selected table row under the pointer keeps the accent")
+{
+	TableScreen screen;
+	screen.DrawFrame(kSecondRow);
+
+	const ImVec2 middle = screen.MiddleOfRow(kSecondRow);
+	ImGui::GetIO().AddMousePosEvent(middle.x, middle.y);
+	screen.DrawFrame(kSecondRow);
+
+	CHECK(DrawsInColour(TableScreen::DrawList(), SelectedRowColour()));
+	CHECK_FALSE(DrawsInColour(TableScreen::DrawList(), HoveredRowColour()));
+	CHECK_FALSE(DrawsInColour(TableScreen::DrawList(), ImGui::GetColorU32(ImGuiCol_Header)));
+}
+
+TEST_CASE("A table row held down under the pointer is the accent at three tenths")
+{
+	TableScreen screen;
+	screen.DrawFrame(kNoRowSelected);
+
+	ImGuiIO& io = ImGui::GetIO();
+	const ImVec2 middle = screen.MiddleOfRow(kSecondRow);
+	io.AddMousePosEvent(middle.x, middle.y);
+	screen.DrawFrame(kNoRowSelected);
+	io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+	screen.DrawFrame(kNoRowSelected);
+
+	CHECK(DrawsInColour(TableScreen::DrawList(), PressedRowColour()));
+	CHECK_FALSE(DrawsInColour(TableScreen::DrawList(), ImGui::GetColorU32(ImGuiCol_HeaderActive)));
+}
+
+TEST_CASE("A table row drawn without a Selectable is highlighted from its top to its bottom, however many lines it holds")
+{
+	TableScreen screen;
+	screen.FirstRowTwoLinesTall = true;
+	screen.FirstRowWithoutSelectable = true;
+	screen.DrawFrame(kFirstRow);
+
+	const std::optional<Extent> selected = ExtentInColour(TableScreen::DrawList(), SelectedRowColour());
+	REQUIRE(selected.has_value());
+
+	CHECK(screen.RowTops[kSecondRow] - screen.RowTops[kFirstRow] > screen.Pitch);
+	CHECK(WithinFringe(selected->Top, screen.RowTops[kFirstRow]));
+	CHECK(WithinFringe(selected->Bottom, screen.RowTops[kSecondRow]));
+	CHECK(WithinFringe(selected->Left, screen.Ends.Min.x + kHighlightInset));
+	CHECK(WithinFringe(selected->Right, screen.Ends.Max.x - kHighlightInset));
+}
+
+TEST_CASE("The keyboard's mark on a table row is drawn round its inset highlight")
+{
+	ImGuiFrames frames;
+	bool focusTheRow = true;
+	ImRect ends;
+
+	const auto rows = [&focusTheRow, &ends] {
+		ImGui::SetNextWindowFocus();
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(320.0f, 240.0f));
+		ImGui::Begin("Rows", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, Graphite::ListTableCellPadding());
+
+		if (ImGui::BeginTable("##table", kTableColumns))
+		{
+			Graphite::PadListTableEnds();
+
+			for (int row = 0; row < kTableRows; ++row)
+			{
+				ImGui::TableNextRow();
+				ImGui::TableNextColumn();
+
+				if (focusTheRow && row == kFirstRow)
+				{
+					ImGui::SetKeyboardFocusHere();
+					focusTheRow = false;
+				}
+
+				ImGui::PushID(row);
+				Graphite::TableRowSelectable("##row", false);
+				ImGui::PopID();
+				ImGui::SameLine(0.0f, 0.0f);
+				ImGui::TextUnformatted("Row");
+			}
+
+			ends = ImGui::GetCurrentTable()->WorkRect;
+			ImGui::EndTable();
+		}
+
+		ImGui::PopStyleVar();
+		ImGui::End();
+	};
+
+	frames.Next(rows);
+	frames.Next(rows);
+	frames.PressKey(ImGuiKey_DownArrow, rows);
+	frames.Next(rows);
+
+	const ImGuiWindow* window = ImGui::FindWindowByName("Rows");
+	REQUIRE(window != nullptr);
+
+	const std::optional<Extent> mark = ExtentInColour(*window->DrawList, ImGui::GetColorU32(ImGuiCol_NavCursor));
+	REQUIRE(mark.has_value());
+
+	constexpr float kOutlineFringe = 2.0f * kFringe;
+	CHECK(std::abs(mark->Left - (ends.Min.x + kHighlightInset)) <= kOutlineFringe);
+	CHECK(std::abs(mark->Right - (ends.Max.x - kHighlightInset)) <= kOutlineFringe);
+}
+
+TEST_CASE("Drawing a table row leaves the global header colours as they were")
+{
+	TableScreen screen;
+	constexpr ImGuiCol kHeaderColours[] = {ImGuiCol_Header, ImGuiCol_HeaderHovered, ImGuiCol_HeaderActive,
+										   ImGuiCol_NavCursor};
+
+	ImU32 before[std::size(kHeaderColours)] = {};
+
+	for (std::size_t slot = 0; slot < std::size(kHeaderColours); ++slot)
+	{
+		before[slot] = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyleColorVec4(kHeaderColours[slot]));
+	}
+
+	screen.DrawFrame(kFirstRow);
+
+	for (std::size_t slot = 0; slot < std::size(kHeaderColours); ++slot)
+	{
+		CAPTURE(slot);
+		CHECK(ImGui::ColorConvertFloat4ToU32(ImGui::GetStyleColorVec4(kHeaderColours[slot])) == before[slot]);
+	}
 }

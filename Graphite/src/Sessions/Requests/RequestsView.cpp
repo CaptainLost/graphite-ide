@@ -404,7 +404,7 @@ namespace Graphite {
 		const ImU32 ink = ImGui::GetColorU32(ImGuiCol_Text);
 		const bool hasUsage = request.Usage.Total() > 0;
 
-		ImGui::TableNextRow();
+		ImGui::TableNextRow(ImGuiTableRowFlags_None, ListRowPitch());
 		ImGui::PushID(static_cast<int>(position));
 
 		for (int columnIndex = 0; columnIndex < kColumnCount; ++columnIndex)
@@ -423,8 +423,7 @@ namespace Graphite {
 			{
 				const bool isSelected = m_Selected == position;
 
-				if (ImGui::Selectable("##row", isSelected,
-									  ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+				if (TableRowSelectable("##row", isSelected, ImGuiSelectableFlags_AllowOverlap))
 				{
 					m_Selected = position;
 				}
@@ -562,9 +561,8 @@ namespace Graphite {
 	void RequestsView::DrawTable(const RequestTimeline& timeline, const ConversationContext& context)
 	{
 		constexpr ImGuiTableFlags kFlags = ImGuiTableFlags_Sortable | ImGuiTableFlags_Resizable | ImGuiTableFlags_Hideable |
-										   ImGuiTableFlags_Reorderable | ImGuiTableFlags_RowBg |
-										   ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY |
-										   ImGuiTableFlags_SizingStretchProp;
+										   ImGuiTableFlags_Reorderable | ImGuiTableFlags_BordersInnerV |
+										   ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp;
 
 		// WARNING: The table id is a constant, not BeginTable's hash of the label under the window, because ImGui
 		// saves the columns' widths, order, visibility and sort under it. Changing the string resets every
@@ -578,6 +576,8 @@ namespace Graphite {
 			ImGui::PopStyleVar();
 			return;
 		}
+
+		PadListTableEnds();
 
 		const float markColumnWidth = ImGui::CalcTextSize(ICON_MDI_CACHED).x + ImGui::GetFontSize();
 

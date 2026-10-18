@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "DrawnColours.h"
 #include "SettingsPageFrames.h"
 
 #include "Settings/Panel/KeyBindingsPage.h"
@@ -14,6 +15,9 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <algorithm>
+#include <cfloat>
+#include <cmath>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -217,4 +221,144 @@ TEST_CASE("The key bindings scroll with their page rather than in a window of th
 			CHECK_FALSE(window->ScrollbarY);
 		}
 	}
+}
+
+namespace {
+
+	constexpr float kFringe = 1.5f;
+	constexpr float kHighlightInset = 6.0f;
+	constexpr float kIntoTheFirstLine = 8.0f;
+	constexpr float kIntoTheSlot = 10.0f;
+	constexpr int kShortcutColumn = 1;
+	constexpr int kSettleFrames = 3;
+
+	struct BindingsTableShape
+	{
+		ImRect Ends;
+		float LastRowTop = 0.0f;
+		float LastRowBottom = 0.0f;
+		ImVec2 OnLastRowsShortcut;
+		const ImDrawList* Drawing = nullptr;
+	};
+
+	std::optional<BindingsTableShape> ShapeOfBindingsTable()
+	{
+		ImGuiContext& context = *ImGui::GetCurrentContext();
+
+		for (int tableIndex = 0; tableIndex < context.Tables.GetMapSize(); ++tableIndex)
+		{
+			const ImGuiTable* table = context.Tables.TryGetMapData(tableIndex);
+
+			if (table == nullptr || table->LastFrameActive != context.FrameCount)
+			{
+				continue;
+			}
+
+			return BindingsTableShape{
+				.Ends = table->WorkRect,
+				.LastRowTop = table->RowPosY1,
+				.LastRowBottom = table->RowPosY2,
+				.OnLastRowsShortcut = ImVec2(table->Columns[kShortcutColumn].WorkMinX + kIntoTheSlot, table->RowPosY1 + kIntoTheFirstLine),
+				.Drawing = table->InnerWindow->DrawList};
+		}
+
+		return std::nullopt;
+	}
+
+	struct Extent
+	{
+		float Left = FLT_MAX;
+		float Right = -FLT_MAX;
+		float Top = FLT_MAX;
+		float Bottom = -FLT_MAX;
+	};
+
+	std::optional<Extent> ExtentInColour(const ImDrawList& drawing, ImU32 colour)
+	{
+		std::optional<Extent> extent;
+
+		for (const ImDrawVert& vertex : drawing.VtxBuffer)
+		{
+			if (vertex.col != colour)
+			{
+				continue;
+			}
+
+			if (!extent.has_value())
+			{
+				extent = Extent{};
+			}
+
+			extent->Left = std::min(extent->Left, vertex.pos.x);
+			extent->Right = std::max(extent->Right, vertex.pos.x);
+			extent->Top = std::min(extent->Top, vertex.pos.y);
+			extent->Bottom = std::max(extent->Bottom, vertex.pos.y);
+		}
+
+		return extent;
+	}
+
+	bool WithinFringe(float drawn, float expected)
+	{
+		return std::abs(drawn - expected) <= kFringe;
+	}
+
+	void CheckSpansTheRow(const Extent& highlight, const BindingsTableShape& shape)
+	{
+		CHECK(WithinFringe(highlight.Left, shape.Ends.Min.x + kHighlightInset));
+		CHECK(WithinFringe(highlight.Right, shape.Ends.Max.x - kHighlightInset));
+		CHECK(WithinFringe(highlight.Top, shape.LastRowTop));
+		CHECK(WithinFringe(highlight.Bottom, shape.LastRowBottom));
+	}
+}
+
+TEST_CASE("A key binding row under the pointer is lit across the table in the list colours, the slot under the pointer with it")
+{
+	KeyBindingsScreen screen;
+	screen.Frames.DrawPageTwice();
+
+	const std::optional<BindingsTableShape> before = ShapeOfBindingsTable();
+	REQUIRE(before.has_value());
+	CHECK(before->LastRowBottom - before->LastRowTop > Graphite::ListRowPitch());
+
+	ImGui::GetIO().AddMousePosEvent(before->OnLastRowsShortcut.x, before->OnLastRowsShortcut.y);
+
+	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
+		screen.Frames.DrawPage();
+	}
+
+	const std::optional<BindingsTableShape> shape = ShapeOfBindingsTable();
+	REQUIRE(shape.has_value());
+
+	const std::optional<Extent> hovered = ExtentInColour(*shape->Drawing, ImGui::GetColorU32(Graphite::CurrentListRowColours().Hovered));
+	REQUIRE(hovered.has_value());
+	CheckSpansTheRow(*hovered, *shape);
+	CHECK_FALSE(DrawsInColour(*shape->Drawing, ImGui::GetColorU32(ImGuiCol_HeaderHovered)));
+}
+
+TEST_CASE("A key binding row whose shortcut is being recorded rests in the accent")
+{
+	KeyBindingsScreen screen;
+	screen.Frames.DrawPageTwice();
+
+	const std::optional<BindingsTableShape> before = ShapeOfBindingsTable();
+	REQUIRE(before.has_value());
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.AddMousePosEvent(before->OnLastRowsShortcut.x, before->OnLastRowsShortcut.y);
+	screen.Frames.DrawPage();
+	io.AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+	screen.Frames.DrawPage();
+	io.AddMouseButtonEvent(ImGuiMouseButton_Left, false);
+	screen.Frames.DrawPage();
+	screen.Frames.DrawPage();
+
+	const std::optional<BindingsTableShape> shape = ShapeOfBindingsTable();
+	REQUIRE(shape.has_value());
+
+	const std::optional<Extent> selected = ExtentInColour(*shape->Drawing, ImGui::GetColorU32(Graphite::CurrentListRowColours().Selected));
+	REQUIRE(selected.has_value());
+	CheckSpansTheRow(*selected, *shape);
+	CHECK_FALSE(DrawsInColour(*shape->Drawing, ImGui::GetColorU32(ImGuiCol_Header)));
 }

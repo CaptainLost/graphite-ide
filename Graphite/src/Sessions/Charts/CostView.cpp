@@ -11,12 +11,12 @@
 #include "Sessions/SessionSummary.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/Transcript/ToolFacts.h"
+#include "UI/Lists/ListRow.h"
 #include "UI/SplitResults.h"
 #include "UI/TypographicMarks.h"
 #include "UI/FittedText.h"
 
 #include "Core/ImGui/EmptyState.h"
-#include "Core/ImGui/ImGuiColors.h"
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
@@ -60,11 +60,9 @@ namespace Graphite {
 
 		constexpr float kSwatchHeightOfLine = 0.55f;
 		constexpr float kRoomyPaddingEms = 0.25f;
-		constexpr float kRoomyPaddingExtraY = 2.0f;
 		constexpr float kTableBorderPixels = 2.0f;
 		constexpr float kBarColumnEms = 8.0f;
 		constexpr float kToolColumnMaxEms = 12.0f;
-		constexpr float kOpenTurnWashAlpha = 0.35f;
 		constexpr float kMinVisibleBarWidth = 1.0f;
 		constexpr float kMinSectionLines = 3.0f;
 		constexpr float kPromptBoxLines = 3.0f;
@@ -420,8 +418,7 @@ namespace Graphite {
 		ImVec2 RoomyCellPadding()
 		{
 			const ImGuiStyle& style = ImGui::GetStyle();
-			return ImVec2(style.CellPadding.x + ImGui::GetFontSize() * kRoomyPaddingEms,
-						  style.CellPadding.y + kRoomyPaddingExtraY);
+			return ImVec2(style.CellPadding.x + ImGui::GetFontSize() * kRoomyPaddingEms, ListTableCellPadding().y);
 		}
 
 		void MoneyCell(double dollars, bool known, const SessionPalette& palette)
@@ -444,14 +441,16 @@ namespace Graphite {
 		bool BeginRoomyTable(const char* id, int columns, ImGuiTableFlags flags, ImVec2 size = ImVec2(0.0f, 0.0f))
 		{
 			ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, RoomyCellPadding());
-			const bool isOpen = ImGui::BeginTable(id, columns, ImGuiTableFlags_RowBg | flags, size);
+			const bool isOpen = ImGui::BeginTable(id, columns, flags, size);
 
 			if (!isOpen)
 			{
 				ImGui::PopStyleVar();
+				return false;
 			}
 
-			return isOpen;
+			PadListTableEnds();
+			return true;
 		}
 
 		void EndRoomyTable()
@@ -565,8 +564,7 @@ namespace Graphite {
 				tableHeight = std::max(std::min(headerAndRowsHeight, heightLeftForTable), RoomyRowHeight() * 2.0f);
 			}
 
-			if (!BeginRoomyTable("##turns", kTurnTableColumns,
-								 ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_ScrollY | ImGuiTableFlags_PadOuterX,
+			if (!BeginRoomyTable("##turns", kTurnTableColumns, ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_ScrollY,
 								 ImVec2(0.0f, tableHeight)))
 			{
 				return std::nullopt;
@@ -616,19 +614,14 @@ namespace Graphite {
 					const TurnCost& turnCost = turns[turnIndex];
 					const Turn& turn = session.GetTurns()[turnIndex];
 
-					ImGui::TableNextRow();
+					ImGui::TableNextRow(ImGuiTableRowFlags_None, ListRowPitch());
 					ImGui::TableNextColumn();
 
 					ImGui::PushID(row);
-					const ImVec4 openTurnWash =
-						Core::WithAlphaReplaced(ImGui::ColorConvertU32ToFloat4(palette.Accent), kOpenTurnWashAlpha);
-					ImGui::PushStyleColor(ImGuiCol_Header, openTurnWash);
-					if (ImGui::Selectable("##row", openTurn == turnIndex,
-										  ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+					if (TableRowSelectable("##row", openTurn == turnIndex, ImGuiSelectableFlags_AllowOverlap))
 					{
 						clickedTurn = turnIndex;
 					}
-					ImGui::PopStyleColor();
 					ImGui::PopID();
 
 					if (!turn.Prompt.empty() && ImGui::BeginItemTooltip())
@@ -1136,15 +1129,14 @@ namespace Graphite {
 						const std::vector<std::string> activity =
 							timelineRequest != nullptr ? RequestActivity(*timelineRequest) : std::vector<std::string>{};
 
-						ImGui::TableNextRow();
+						ImGui::TableNextRow(ImGuiTableRowFlags_None, ListRowPitch());
 						ImGui::TableNextColumn();
 
 						constexpr bool notSelected = false;
 
 						ImGui::PushID(row);
 						ImGui::BeginDisabled(timelineRequest == nullptr);
-						if (ImGui::Selectable("##request", notSelected,
-											  ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap))
+						if (TableRowSelectable("##request", notSelected, ImGuiSelectableFlags_AllowOverlap))
 						{
 							clickedRequest = request->Position;
 						}

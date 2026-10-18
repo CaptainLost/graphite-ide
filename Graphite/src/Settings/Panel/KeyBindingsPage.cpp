@@ -21,6 +21,7 @@
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <array>
 #include <cstddef>
@@ -50,6 +51,32 @@ namespace Graphite {
 		constexpr float kDefaultColumnWeight = 1.0f;
 
 		constexpr const char* kWindowSwitcherReason = "the window switcher uses it";
+
+		constexpr std::array kSlotFillColours{ImGuiCol_Header, ImGuiCol_HeaderHovered, ImGuiCol_HeaderActive};
+		constexpr ImVec4 kNoFill(0.0f, 0.0f, 0.0f, 0.0f);
+
+		// WARNING: A slot is a Selectable so that it is clicked and reached by the keyboard as one, but the row shows
+		// its hover and the recording as one highlight across the table, so the slot's own square fill is cleared;
+		// its keyboard mark is kept, as it tells which slot the keyboard is on.
+		void PushClearedSlotFill()
+		{
+			for (const ImGuiCol colour : kSlotFillColours)
+			{
+				ImGui::PushStyleColor(colour, kNoFill);
+			}
+		}
+
+		void PopClearedSlotFill()
+		{
+			ImGui::PopStyleColor(static_cast<int>(kSlotFillColours.size()));
+		}
+
+		// WARNING: ImGui knows which of a table's rows the pointer is over only from the frame before, so the row's
+		// hover follows the pointer a frame late; the row has no Selectable of its own to ask.
+		bool IsRowUnderThePointer()
+		{
+			return ImGui::TableGetHoveredRow() == ImGui::TableGetRowIndex();
+		}
 
 		std::string ListLabelOf(const Core::Command& command)
 		{
@@ -292,7 +319,7 @@ namespace Graphite {
 
 		DrawFilterField("##keybindingsFilter", m_Filter, {.Hint = "Filter by command or shortcut"});
 
-		constexpr ImGuiTableFlags tableFlags = ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp;
+		constexpr ImGuiTableFlags tableFlags = ImGuiTableFlags_SizingStretchProp;
 
 		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ListTableCellPadding());
 
@@ -301,6 +328,8 @@ namespace Graphite {
 			ImGui::PopStyleVar();
 			return;
 		}
+
+		PadListTableEnds();
 
 		ImGui::TableSetupColumn("Command", ImGuiTableColumnFlags_WidthStretch, kCommandColumnWeight);
 		ImGui::TableSetupColumn("Shortcut", ImGuiTableColumnFlags_WidthStretch, kShortcutColumnWeight);
@@ -446,7 +475,7 @@ namespace Graphite {
 		const Core::Binding* binding = m_Keys.For(command.Id);
 
 		ImGui::PushID(command.Id.c_str());
-		ImGui::TableNextRow();
+		ImGui::TableNextRow(ImGuiTableRowFlags_None, ListRowPitch());
 
 		ImGui::TableNextColumn();
 		ImGui::TextUnformatted(ListLabelOf(command).c_str());
@@ -482,6 +511,10 @@ namespace Graphite {
 		}
 
 		ImGui::EndDisabled();
+
+		const bool recordingInThisRow = m_CapturingCommandId == command.Id;
+		DrawTableRowHighlight(recordingInThisRow, IsRowUnderThePointer());
+
 		ImGui::PopID();
 	}
 
@@ -506,7 +539,9 @@ namespace Graphite {
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 		}
 
+		PushClearedSlotFill();
 		const bool clicked = ImGui::Selectable(label.c_str(), capturing);
+		PopClearedSlotFill();
 
 		if (placeholder)
 		{

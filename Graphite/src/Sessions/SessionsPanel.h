@@ -22,6 +22,22 @@ namespace Graphite {
 	class SessionWindows;
 	class Workspace;
 
+	struct SessionRowText
+	{
+		std::string Title;
+		std::string Detail;
+		std::string DetailHint;
+	};
+
+	enum class SessionRowAction
+	{
+		None,
+		Open,
+		Continue
+	};
+
+	SessionRowAction DrawSessionRow(const SessionRowText& text);
+
 	class SessionsPanel final : public Core::Panel
 	{
 	public:

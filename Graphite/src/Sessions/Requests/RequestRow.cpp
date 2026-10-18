@@ -5,6 +5,7 @@
 #include "Sessions/SessionDrawing.h"
 #include "Sessions/SessionText.h"
 #include "Sessions/Transcript/ToolFacts.h"
+#include "UI/Lists/ListRow.h"
 #include "UI/TypographicMarks.h"
 #include "UI/FittedText.h"
 
@@ -40,12 +41,11 @@ namespace Graphite {
 							 const SessionPalette& palette, std::size_t id, bool selected, bool reveal)
 		{
 			const ImVec2 start = ImGui::GetCursorScreenPos();
-			const float right = start.x + ImGui::GetContentRegionAvail().x;
+			const float right = ListRowEnd();
 			const float itemSpacing = ImGui::GetStyle().ItemSpacing.x;
-			const float height = ImGui::GetTextLineHeight();
 			const ImU32 textColour = ImGui::GetColorU32(ImGuiCol_Text);
 
-			if (reveal && !ImGui::IsRectVisible(ImVec2(std::max(right - start.x, kMinimumVisibleWidth), height)))
+			if (reveal && !ImGui::IsRectVisible(ImVec2(std::max(right - start.x, kMinimumVisibleWidth), ListRowPitch())))
 			{
 				ImGui::SetScrollHereY(kRevealScrollRatio);
 			}
@@ -54,12 +54,12 @@ namespace Graphite {
 
 			// WARNING: The text is drawn after the Selectable so its highlight lies under the text.
 			LineOutcome outcome;
-			outcome.Clicked = ImGui::Selectable("##item", selected, ImGuiSelectableFlags_None, ImVec2(0.0f, height));
+			outcome.Clicked = ListRowSelectable("##item", selected);
 			outcome.Hovered = ImGui::IsItemHovered();
 
 			ImGui::PopID();
 
-			ImVec2 drawPosition = start;
+			ImVec2 drawPosition(start.x, ListRowTextTop(start.y));
 			DrawPiece(drawPosition, look.Colour, std::string{look.Icon} + " ");
 
 			const float columnX = std::max(right - ImGui::CalcTextSize(column.c_str()).x, drawPosition.x);

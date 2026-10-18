@@ -4,6 +4,7 @@
 #include "ImGuiFrames.h"
 
 #include "Settings/Panel/SettingsLayout.h"
+#include "UI/Lists/ListRow.h"
 
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/TextInput.h"
@@ -12,6 +13,7 @@
 #include <imgui.h>
 
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -421,43 +423,106 @@ TEST_CASE("A navigation entry reports a click")
 	CHECK(screen.EntryClicked);
 }
 
-TEST_CASE("A navigation entry rests in the selected colour and takes the hover colour under the pointer, as a list row does")
-{
-	ImGuiFrames frames;
+namespace {
 
-	const auto entry = [](bool selected) {
-		return [selected] {
+	constexpr float kNavigationEntryHeight = 28.0f;
+	constexpr int kFramesPastTheHoverFade = 30;
+
+	// An entry alone in a sidebar without a resize grip, which ImGui draws in the accent at a fifth, as a selected
+	// row is. Every test names its entry apart: the hover's fade is kept under the entry's id from one test to the
+	// next.
+	struct NavigationEntryScreen
+	{
+		ImGuiFrames Frames;
+		std::string Title;
+		bool Selected = false;
+		float Top = 0.0f;
+		float Bottom = 0.0f;
+
+		explicit NavigationEntryScreen(std::string title) : Title(std::move(title)) {}
+
+		void Draw()
+		{
 			Core::Animation::BeginFrame();
 			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 			ImGui::SetNextWindowSize(ImVec2(220.0f, 200.0f));
-			ImGui::Begin("Sidebar");
-			Graphite::SettingsLayout::DrawNavigationEntry("", "Colours of a list row", selected, false);
+			ImGui::Begin("Sidebar", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+			Graphite::SettingsLayout::DrawNavigationEntry("", Title, Selected, kNotDimmed);
+			Top = ImGui::GetItemRectMin().y;
+			Bottom = ImGui::GetItemRectMax().y;
 			ImGui::End();
-		};
+		}
+
+		void DrawFrames(int count)
+		{
+			for (int frame = 0; frame < count; ++frame)
+			{
+				Frames.Next([this] { Draw(); });
+			}
+		}
+
+		void PointAtTheEntry()
+		{
+			const ImGuiWindow* sidebar = ImGui::FindWindowByName("Sidebar");
+			REQUIRE(sidebar != nullptr);
+			ImGui::GetIO().AddMousePosEvent(sidebar->InnerRect.Min.x + 40.0f, (Top + Bottom) * 0.5f);
+		}
+
+		static bool DrawsIn(const ImVec4& colour)
+		{
+			const ImGuiWindow* sidebar = ImGui::FindWindowByName("Sidebar");
+			REQUIRE(sidebar != nullptr);
+			return DrawsInColour(*sidebar->DrawList, ImGui::GetColorU32(colour));
+		}
+
+		static bool DrawsIn(ImGuiCol colour) { return DrawsIn(ImGui::GetStyleColorVec4(colour)); }
 	};
-	const auto drawsIn = [](ImGuiCol colour) {
-		const ImGuiWindow* sidebar = ImGui::FindWindowByName("Sidebar");
-		REQUIRE(sidebar != nullptr);
-		return DrawsInColour(*sidebar->DrawList, ImGui::GetColorU32(colour));
-	};
+}
 
-	frames.Next(entry(true));
-	CHECK(drawsIn(ImGuiCol_Header));
-	CHECK_FALSE(drawsIn(ImGuiCol_HeaderHovered));
+TEST_CASE("The settings navigation keeps its height but uses the list colours")
+{
+	NavigationEntryScreen screen("Colours of a list row");
+	screen.Selected = true;
+	screen.DrawFrames(1);
 
-	const ImGuiWindow* sidebar = ImGui::FindWindowByName("Sidebar");
-	REQUIRE(sidebar != nullptr);
-	const ImVec2 onTheEntry(sidebar->InnerRect.Min.x + 40.0f, sidebar->InnerRect.Min.y + ImGui::GetStyle().WindowPadding.y + 10.0f);
-	ImGui::GetIO().AddMousePosEvent(onTheEntry.x, onTheEntry.y);
+	CHECK(screen.Bottom - screen.Top == doctest::Approx(kNavigationEntryHeight));
+	CHECK(NavigationEntryScreen::DrawsIn(Graphite::CurrentListRowColours().Selected));
+	CHECK_FALSE(NavigationEntryScreen::DrawsIn(ImGuiCol_Header));
 
-	const int framesPastTheHoverFade = 30;
-	for (int frame = 0; frame < framesPastTheHoverFade; ++frame)
-	{
-		frames.Next(entry(false));
-	}
+	screen.Selected = false;
+	screen.PointAtTheEntry();
+	screen.DrawFrames(kFramesPastTheHoverFade);
 
-	CHECK(drawsIn(ImGuiCol_HeaderHovered));
-	CHECK_FALSE(drawsIn(ImGuiCol_Header));
+	CHECK(NavigationEntryScreen::DrawsIn(Graphite::CurrentListRowColours().Hovered));
+	CHECK_FALSE(NavigationEntryScreen::DrawsIn(ImGuiCol_HeaderHovered));
+	CHECK_FALSE(NavigationEntryScreen::DrawsIn(Graphite::CurrentListRowColours().Selected));
+}
+
+TEST_CASE("A selected navigation entry under the pointer keeps the accent")
+{
+	NavigationEntryScreen screen("Selected under the pointer");
+	screen.Selected = true;
+	screen.DrawFrames(1);
+
+	screen.PointAtTheEntry();
+	screen.DrawFrames(kFramesPastTheHoverFade);
+
+	CHECK(NavigationEntryScreen::DrawsIn(Graphite::CurrentListRowColours().Selected));
+	CHECK_FALSE(NavigationEntryScreen::DrawsIn(Graphite::CurrentListRowColours().Hovered));
+}
+
+TEST_CASE("A navigation entry held down under the pointer is the accent at three tenths")
+{
+	NavigationEntryScreen screen("Held down");
+	screen.DrawFrames(1);
+
+	screen.PointAtTheEntry();
+	screen.DrawFrames(kFramesPastTheHoverFade);
+	ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true);
+	screen.DrawFrames(1);
+
+	CHECK(NavigationEntryScreen::DrawsIn(Graphite::CurrentListRowColours().Pressed));
+	CHECK_FALSE(NavigationEntryScreen::DrawsIn(ImGuiCol_HeaderActive));
 }
 
 TEST_CASE("A search result's page label is followed by a gap before its first card")

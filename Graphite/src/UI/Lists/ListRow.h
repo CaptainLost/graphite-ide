@@ -3,6 +3,8 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <optional>
+
 namespace Graphite {
 
 	struct ListRowColours
@@ -13,6 +15,8 @@ namespace Graphite {
 	};
 
 	ListRowColours CurrentListRowColours();
+
+	std::optional<ImVec4> ListRowHighlight(bool selected, bool hovered, bool held);
 
 	float ListRowSpacing();
 
@@ -34,4 +38,10 @@ namespace Graphite {
 	bool ListRowSelectable(const char* id, bool selected, ImGuiSelectableFlags flags = ImGuiSelectableFlags_None);
 
 	ImVec2 ListTableCellPadding();
+
+	void PadListTableEnds();
+
+	bool TableRowSelectable(const char* id, bool selected, ImGuiSelectableFlags flags = ImGuiSelectableFlags_None);
+
+	void DrawTableRowHighlight(bool selected, bool hovered);
 }

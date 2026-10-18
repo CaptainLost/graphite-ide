@@ -1,8 +1,10 @@
 #include "Settings/Panel/SettingsLayout.h"
 
 #include "UI/Lists/FilterField.h"
+#include "UI/Lists/ListRow.h"
 
 #include "Core/ImGui/Animation.h"
+#include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/Toggle.h"
 #include "Core/ImGui/UiScale.h"
@@ -41,6 +43,23 @@ namespace Graphite {
 		constexpr int kBackgroundLayer = 0;
 		constexpr int kForegroundLayer = 1;
 		constexpr int kCardColourCount = 3;
+
+		// WARNING: The colours and their order are a list row's, so a selected entry keeps the accent under the
+		// pointer. The hover fades in and out, from the colour the entry rests in to the one it takes under the
+		// pointer; a press comes only after the pointer has rested there, so it shows at once.
+		ImVec4 NavigationEntryFill(bool selected, bool held, float hover)
+		{
+			constexpr bool kUnderThePointer = true;
+			constexpr bool kAway = false;
+			constexpr bool kNotHeld = false;
+			constexpr float kClearAlpha = 0.0f;
+
+			const ImVec4 underThePointer = ListRowHighlight(selected, kUnderThePointer, held).value();
+			const ImVec4 resting = ListRowHighlight(selected, kAway, kNotHeld)
+									   .value_or(Core::WithAlphaReplaced(underThePointer, kClearAlpha));
+
+			return Core::Animation::Blend(resting, underThePointer, hover);
+		}
 
 		CardMeasures MeasuresFor(float cardWidth)
 		{
@@ -428,12 +447,10 @@ namespace Graphite {
 		ImGui::PushID(title.data(), title.data() + title.size());
 		const bool clicked = ImGui::InvisibleButton("##entry", size, ImGuiButtonFlags_EnableNav);
 		const float hover = Core::Animation::HoverAmount(ImGui::GetItemID(), ImGui::IsItemHovered());
+		const bool held = ImGui::IsItemActive();
 		ImGui::PopID();
 
-		const ImVec4 hovered = ImGui::GetStyleColorVec4(ImGuiCol_HeaderHovered);
-		const ImVec4 unselected(hovered.x, hovered.y, hovered.z, 0.0f);
-		const ImVec4 resting = selected ? ImGui::GetStyleColorVec4(ImGuiCol_Header) : unselected;
-		const ImVec4 background = Core::Animation::Blend(resting, hovered, hover);
+		const ImVec4 background = NavigationEntryFill(selected, held, hover);
 
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		drawList->AddRectFilled(topLeft, ImVec2(topLeft.x + size.x, topLeft.y + size.y), ImGui::GetColorU32(background),

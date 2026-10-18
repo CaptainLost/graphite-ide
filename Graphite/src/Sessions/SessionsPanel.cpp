@@ -10,6 +10,8 @@
 #include "Workspace/Workspace.h"
 #include "UI/Lists/Chevron.h"
 #include "UI/Lists/FilterField.h"
+#include "UI/Lists/ListRow.h"
+#include "UI/FittedText.h"
 #include "UI/TickBox.h"
 
 #include "Core/Base/Ascii.h"
@@ -430,6 +432,49 @@ namespace Graphite {
 		}
 	}
 
+	// WARNING: The title is drawn over an id-only row, not as a Selectable's label, which a "##" in a session's title
+	// would cut short. It stands the row end's inset in from the list's edge, inside the row's inset highlight, and
+	// the dim line under it keeps to the title's indent.
+	SessionRowAction DrawSessionRow(const SessionRowText& text)
+	{
+		constexpr bool kNeverSelected = false;
+		SessionRowAction action = SessionRowAction::None;
+
+		const ImVec2 rowStart = ImGui::GetCursorPos();
+
+		if (ListRowSelectable("##session", kNeverSelected))
+		{
+			action = SessionRowAction::Open;
+		}
+
+		if (Core::BeginRightClickPopup("##sessionMenu"))
+		{
+			if (ImGui::MenuItem("Continue in terminal"))
+			{
+				action = SessionRowAction::Continue;
+			}
+
+			ImGui::EndPopup();
+		}
+
+		ImGui::Indent(ListRowEndInset());
+		ImGui::SetCursorPos(ImVec2(rowStart.x + ListRowEndInset(), ListRowTextTop(rowStart.y)));
+		ImGui::TextUnformatted(FitToWidth(text.Title, ListRowEndPosX() - ImGui::GetCursorPosX()).c_str());
+
+		ImGui::Indent();
+		ImGui::TextDisabled("%s", text.Detail.c_str());
+
+		if (!text.DetailHint.empty() && ImGui::IsItemHovered())
+		{
+			ImGui::SetTooltip("%s", text.DetailHint.c_str());
+		}
+
+		ImGui::Unindent();
+		ImGui::Unindent(ListRowEndInset());
+
+		return action;
+	}
+
 	void SessionsPanel::RenderRow(const SessionSummary& summary)
 	{
 		ImGui::PushID(Core::ToUtf8(summary.File).c_str());
@@ -440,48 +485,35 @@ namespace Graphite {
 		const CostResult subagentCost = pricing.CostOf(summary.Subagents);
 		totalCost += subagentCost;
 
-		const std::string title = (IsLive(summary) ? std::format("{} ", kLiveSessionMark) : std::string{}) +
-								  SingleLineLabel(summary.DisplayTitle(), kTitleBytes);
-
-		if (ImGui::Selectable(title.c_str()))
-		{
-			m_Windows.Open(summary);
-		}
-
-		if (Core::BeginRightClickPopup("##sessionMenu"))
-		{
-			if (ImGui::MenuItem("Continue in terminal"))
-			{
-				ContinueSession(summary);
-			}
-
-			ImGui::EndPopup();
-		}
-
-		std::string detail = FormatCost(totalCost);
+		SessionRowText text{.Title = (IsLive(summary) ? std::format("{} ", kLiveSessionMark) : std::string{}) +
+									 SingleLineLabel(summary.DisplayTitle(), kTitleBytes),
+							.Detail = FormatCost(totalCost),
+							.DetailHint = UnknownCostHint(totalCost)};
 
 		if (summary.SubagentCount > 0)
 		{
-			detail += " (subagents " + FormatCost(subagentCost) + ")";
+			text.Detail += " (subagents " + FormatCost(subagentCost) + ")";
 		}
 		if (const std::string duration = DurationOf(summary); !duration.empty())
 		{
-			detail += "  " + duration;
+			text.Detail += "  " + duration;
 		}
 		if (const std::string ended = m_Clock.Format(summary.EndedAt, ClockStyle::Date); !ended.empty())
 		{
-			detail += "  " + ended;
+			text.Detail += "  " + ended;
 		}
 
-		ImGui::Indent();
-		ImGui::TextDisabled("%s", detail.c_str());
-
-		if (const std::string hint = UnknownCostHint(totalCost); !hint.empty() && ImGui::IsItemHovered())
+		switch (DrawSessionRow(text))
 		{
-			ImGui::SetTooltip("%s", hint.c_str());
+		case SessionRowAction::Open:
+			m_Windows.Open(summary);
+			break;
+		case SessionRowAction::Continue:
+			ContinueSession(summary);
+			break;
+		case SessionRowAction::None:
+			break;
 		}
-
-		ImGui::Unindent();
 
 		ImGui::PopID();
 	}

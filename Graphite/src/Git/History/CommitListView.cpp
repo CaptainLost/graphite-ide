@@ -56,8 +56,7 @@ namespace Graphite {
 		constexpr float kRoundedUpPixel = 1.0f;
 
 		// WARNING: AllowOverlap keeps a click reaching the one Selectable under the row instead of being swallowed by the cells drawn over it.
-		constexpr ImGuiSelectableFlags kRowSelectableFlags =
-			ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap;
+		constexpr ImGuiSelectableFlags kRowSelectableFlags = ImGuiSelectableFlags_AllowOverlap;
 
 		constexpr const char* kHashSample = "0000000";
 		constexpr const char* kAuthorSample = "Alice Johnson   ";
@@ -437,10 +436,9 @@ namespace Graphite {
 
 		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ListTableCellPadding());
 
-		// WARNING: Without NoBordersInBody ImGui puts each resize handle down the whole list, so a click near a border on any row would drag the column instead of selecting the commit. Without PadOuterX the last column's text runs into the scrollbar.
-		constexpr ImGuiTableFlags flags = ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable |
-										  ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_ScrollY |
-										  ImGuiTableFlags_PadOuterX;
+		// WARNING: Without NoBordersInBody ImGui puts each resize handle down the whole list, so a click near a border on any row would drag the column instead of selecting the commit.
+		constexpr ImGuiTableFlags flags =
+			ImGuiTableFlags_Resizable | ImGuiTableFlags_NoBordersInBody | ImGuiTableFlags_ScrollY;
 
 		const ImGuiStyle& style = ImGui::GetStyle();
 
@@ -448,6 +446,7 @@ namespace Graphite {
 
 		if (ImGui::BeginTable("##commits", TableIndexOf(Column::Count), flags, ImVec2(0.0f, -m_RoomBelow)))
 		{
+			PadListTableEnds();
 			KeepClearOfScrollbar(ImGui::GetStyle().ItemSpacing.x);
 
 			const ImGuiTable* table = ImGui::GetCurrentTable();
@@ -557,8 +556,7 @@ namespace Graphite {
 
 		const ImVec2 rowStart = ImGui::GetCursorPos();
 
-		const bool selectableClicked =
-			ImGui::Selectable("##commit", isSelectedCommit, kRowSelectableFlags);
+		const bool selectableClicked = TableRowSelectable("##commit", isSelectedCommit, kRowSelectableFlags);
 
 		// WARNING: Hover and the context menu are asked of the Selectable here, because every cell below becomes the last item in turn. The caller pushes an id per row, so each row's menu is its own popup.
 		const bool selectableHovered = ImGui::IsItemHovered();
@@ -727,7 +725,7 @@ namespace Graphite {
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Chevron));
 
-		if (ImGui::Selectable("##file", isSelectedFile, kRowSelectableFlags))
+		if (TableRowSelectable("##file", isSelectedFile, kRowSelectableFlags))
 		{
 			m_SelectedFile = FileSelection{commit.Id, path};
 		}
