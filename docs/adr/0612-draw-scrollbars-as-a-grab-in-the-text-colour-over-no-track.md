@@ -39,7 +39,8 @@ a hint beside the content rather than a band.
 
 ### Neutral
 
-- Scrollbar width goes through `Core::Scaled` like every other size (0534).
+- The scrollbar width is set in `Theme::SetMetrics` and scaled with the rest of
+  the style by `ScaledStyle` (0534).
 
 ## Alternatives Considered
 

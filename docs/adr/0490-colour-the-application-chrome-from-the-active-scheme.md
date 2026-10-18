@@ -49,6 +49,11 @@ Core gains no knowledge of what a scheme is. It receives eight colours and
 knows how to paint an ImGui style with them; ADR 0002 is unchanged by this
 decision; it is what makes this decision possible in the first place.
 
+Amended by [0613](0613-draw-the-chrome-darker-than-the-documents-and-diffs-it-frames.md):
+`ChromePalette` has a ninth colour, `Content`; `DefaultPalette()` has a darker
+`Background` and `Border`; and `MenuBarBg` paints from `Background` instead of
+`Surface`.
+
 ## Rationale
 
 A palette of eight named colours is the smallest interface that lets an

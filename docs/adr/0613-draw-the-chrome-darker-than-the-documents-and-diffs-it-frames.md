@@ -24,6 +24,16 @@ own above the chrome beside it.
   the Git view, review, sessions, settings, terminals and tool panels. A user
   scheme that sets `ui.background` keeps its value.
 - Draw the title bar in the chrome. Draw the status bar with no border.
+- Draw the edges of windows, popups, tooltips and child windows
+  (`ImGuiCol_Border`) in `SurfaceActive`, and separators and dock splitters
+  (`ImGuiCol_Separator`) in the palette's Border. The Border above is one step
+  from `Surface`, the popup colour, so a combo over a dialog or a submenu over
+  its menu would have no visible edge.
+- Fill information bars and the find bar from `PopupBg`, which is `Surface`.
+  They filled from `MenuBarBg`, which was `Surface` and is now the chrome.
+- This amends 0490: `ChromePalette` grows a ninth colour, `Content`; Core's
+  default palette changes its Background and Border to the dark values above;
+  and `MenuBarBg` paints from Background instead of Surface.
 
 ## Rationale
 

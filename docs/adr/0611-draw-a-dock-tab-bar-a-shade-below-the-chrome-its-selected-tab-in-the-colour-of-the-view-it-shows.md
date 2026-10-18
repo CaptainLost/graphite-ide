@@ -19,9 +19,19 @@ and was faint. Tab labels already carry two meanings: a git status colour
   zero. An inactive tab is the bar.
 - Draw the selected tab in the chrome colour. A content window pushes the content
   colour before `Begin`, so the selected tab of a document merges with its
-  editor (the mechanism of 0494, as `TabTextColour` does).
-- Draw a hovered tab in `SurfaceHovered`.
+  editor. Pushing before `Begin` follows `TabTextColour`, which sets a tab's
+  label colour the same way.
+- Draw a hovered tab in the selected tab's colour: `TabHovered` is the chrome
+  colour, and a content window pushes the content colour for it too. ImGui fills
+  a hovered tab with `TabHovered` whether it is selected or not, so any other
+  colour lifts a selected tab off its view under the pointer.
 - Draw no overline: `TabBarOverlineSize` is zero.
+- Draw no line under the bar or between tabs: `TabBarBorderSize` is zero and
+  `TabBorderSize` stays zero. This replaces the planned hairline stopping beneath
+  the selected tab, which ImGui cannot draw per tab: it draws one line under the
+  whole bar in the global `TabSelected` colour, before a window's own colours
+  apply, and stops every tab's fill above that line, so a document's selected
+  tab would be cut from its editor by a line in the chrome colour.
 - Draw no close-all button on a dock node: `DockingNodeHasCloseButton` is false.
   Closing all stays in the tab context menu.
 - Keep tab labels in their own colours. An inactive tab is not dimmed, because a
@@ -49,10 +59,13 @@ its own.
 - Closing every tab of a node takes the context menu instead of one button.
 - The difference between bar and selected tab is small, 0.03 per channel, and
   may be hard to see on some displays.
+- An inactive tab under the pointer takes the selected tab's colour, so while
+  hovered it looks like the selected tab.
 
 ### Neutral
 
-- The title bar of a floating window uses the same shade.
+- The title bar of a floating window uses the same shade, and so does a modal
+  dialog's, which makes a dialog's title bar darker than its body.
 
 ## Alternatives Considered
 

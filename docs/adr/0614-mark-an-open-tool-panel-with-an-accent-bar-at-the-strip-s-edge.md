@@ -14,7 +14,10 @@ reads as one surface.
 
 ## Decision
 
-This amends the look bullet of 0610.
+This amends 0610's last Decision bullet, the exception to 0602 for the strip's
+buttons, which lists "an open fill in `SurfaceActive`" among what a strip button
+needs. The bar below takes the place of that fill, and the exception to 0602 now
+rests on the bar rather than the fill.
 
 - An open item has no fill. A 2 px accent bar runs at the strip's left edge,
   5 px short of the button at each end, with rounded ends.
