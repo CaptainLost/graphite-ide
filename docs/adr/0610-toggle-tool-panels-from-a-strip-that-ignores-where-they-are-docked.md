@@ -1,4 +1,4 @@
-# 0609. Toggle tool panels from a strip that ignores where they are docked
+# 0610. Toggle tool panels from a strip that ignores where they are docked
 
 Status: proposed
 Date: 2026-10-18
@@ -44,7 +44,7 @@ tab.
   - visible and drawn: hide it.
 
   Send a click on the terminals' icon to `TerminalWindows::ToggleFromStrip`
-  (0608). A click is applied on the frame it is made, before the panels draw.
+  (0609). A click is applied on the frame it is made, before the panels draw.
 - Draw an icon as open while its panel is visible, wherever the panel is docked
   or floating. A panel behind another tab reads open too: two states, not three.
 - Show the panel's title in the tooltip, and the shortcut bound to its
@@ -109,7 +109,7 @@ not hide a panel the reader could not see.
 - A panel docked in a floating node that is collapsed is not expanded by a
   click. The collapse belongs to the node's host window, which
   `SetNextWindowCollapsed` on the panel does not reach, so the click focuses
-  the panel and changes nothing on screen, as with terminals (0608).
+  the panel and changes nothing on screen, as with terminals (0609).
 
 ### Neutral
 
@@ -138,6 +138,6 @@ not hide a panel the reader could not see.
 
 ## Related
 
-- 0002, 0493, 0510, 0544, 0549, 0602, 0608
+- 0002, 0493, 0510, 0544, 0549, 0602, 0609
 - `Core/src/Core/ImGui/ToolStrip.h`, `Graphite/src/App/ToolStripContent.h`,
   `Core/src/Core/UI/PanelManager.h`

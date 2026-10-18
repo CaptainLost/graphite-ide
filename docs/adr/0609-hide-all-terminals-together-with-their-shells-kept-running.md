@@ -1,4 +1,4 @@
-# 0608. Hide all terminals together with their shells kept running
+# 0609. Hide all terminals together with their shells kept running
 
 Status: proposed
 Date: 2026-10-18

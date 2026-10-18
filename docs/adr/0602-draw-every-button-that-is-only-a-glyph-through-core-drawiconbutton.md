@@ -16,7 +16,7 @@ ImGui's own button pads its label with the frame padding. On a square as wide as
 
 ## Decision
 
-Draw every button that is only a glyph with `Core::DrawIconButton` (`Core/src/Core/ImGui/IconButton.h`). There are two exceptions: the window's own buttons (minimise, maximise, close), and the tool strip's buttons, which `Core::DrawToolStrip` draws itself (0609).
+Draw every button that is only a glyph with `Core::DrawIconButton` (`Core/src/Core/ImGui/IconButton.h`). There are two exceptions: the window's own buttons (minimise, maximise, close), and the tool strip's buttons, which `Core::DrawToolStrip` draws itself (0610).
 
 - **At rest:** no fill and the glyph in the text colour.
 - **Under the pointer:** a rounded fill in the hovered button colour, eased in.
@@ -61,4 +61,4 @@ A hover that was not asked for on the frame before starts settled at its target 
 ## Related
 
 - [0588](0588-draw-checkboxes-with-a-tick-box-of-the-app-s-own.md): another widget the app draws itself so that it looks the same everywhere.
-- [0609](0609-toggle-tool-panels-from-a-strip-that-ignores-where-they-are-docked.md) — amends this record: the tool strip's buttons are a second exception, drawn by `Core::DrawToolStrip` with an open fill, a glyph dimmed while closed and a badge.
+- [0610](0610-toggle-tool-panels-from-a-strip-that-ignores-where-they-are-docked.md) — amends this record: the tool strip's buttons are a second exception, drawn by `Core::DrawToolStrip` with an open fill, a glyph dimmed while closed and a badge.
