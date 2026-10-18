@@ -41,6 +41,36 @@ TEST_CASE("A panel back at its default leaves no key behind")
 	CHECK(ReadGlobalState(file).PanelVisibility.empty());
 }
 
+TEST_CASE("Hidden terminals survive a write and a read")
+{
+	const GlobalState state{.TerminalsHidden = true};
+
+	Core::JsonFile file;
+	WriteGlobalState(state, file);
+
+	CHECK(ReadGlobalState(file) == state);
+	CHECK(file.Get("terminals.hidden") == "1");
+}
+
+TEST_CASE("Shown terminals leave no key behind")
+{
+	Core::JsonFile file;
+	WriteGlobalState(GlobalState{.TerminalsHidden = true}, file);
+
+	WriteGlobalState(GlobalState{}, file);
+
+	CHECK(file.Get("terminals.hidden").empty());
+	CHECK_FALSE(ReadGlobalState(file).TerminalsHidden);
+}
+
+TEST_CASE("A hidden flag that is not 0 or 1 reads as shown")
+{
+	Core::JsonFile file;
+	file.Set("terminals.hidden", "yes");
+
+	CHECK_FALSE(ReadGlobalState(file).TerminalsHidden);
+}
+
 TEST_CASE("Settings unrelated to state are left alone")
 {
 	Core::JsonFile file;

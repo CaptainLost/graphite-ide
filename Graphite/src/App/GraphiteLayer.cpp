@@ -279,6 +279,8 @@ namespace Graphite {
 			m_Panels.SetVisible(id, visible);
 		}
 
+		m_Terminals.SetHidden(stored.TerminalsHidden);
+
 		m_StateKeeper.AdoptGlobal(stored);
 
 		APP_INFO("Registered panels: {}", m_Panels.GetCount());
@@ -694,6 +696,8 @@ namespace Graphite {
 				state.PanelVisibility[panel.GetId()] = panel.IsVisible();
 			}
 		});
+
+		state.TerminalsHidden = m_Terminals.IsHidden();
 
 		return state;
 	}

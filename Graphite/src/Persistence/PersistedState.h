@@ -19,6 +19,8 @@ namespace Graphite {
 
 		std::map<std::string, bool> PanelVisibility;
 
+		bool TerminalsHidden = false;
+
 		friend bool operator==(const GlobalState&, const GlobalState&) = default;
 	};
 

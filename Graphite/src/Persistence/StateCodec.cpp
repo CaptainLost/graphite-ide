@@ -22,6 +22,8 @@ namespace Graphite {
 		constexpr std::string_view kWindowHeight = "window.height";
 		constexpr std::string_view kWindowMaximized = "window.maximized";
 
+		constexpr std::string_view kTerminalsHidden = "terminals.hidden";
+
 		constexpr std::string_view kPanelPrefix = "panel.";
 		constexpr std::string_view kPanelSuffix = ".visible";
 
@@ -278,6 +280,15 @@ namespace Graphite {
 
 			file.Set(panelKey, Flag(visible));
 		}
+
+		if (state.TerminalsHidden)
+		{
+			file.Set(kTerminalsHidden, Flag(true));
+		}
+		else
+		{
+			file.Remove(kTerminalsHidden);
+		}
 	}
 
 	GlobalState ReadGlobalState(const Core::JsonFile& file)
@@ -316,6 +327,9 @@ namespace Graphite {
 			const std::string panelId = key.substr(kPanelPrefix.size(), panelIdLength);
 			state.PanelVisibility[panelId] = value == kStoredTrue;
 		}
+
+		const bool shownByDefault = false;
+		state.TerminalsHidden = ReadFlag(file.Get(kTerminalsHidden), shownByDefault);
 
 		return state;
 	}
