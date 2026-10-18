@@ -33,11 +33,12 @@ namespace {
 		DockingContext(const DockingContext&) = delete;
 		DockingContext& operator=(const DockingContext&) = delete;
 
-		void Frame(DockSpaceHost& host, const DockLayout& layout, const std::function<void()>& insideHost = {})
+		void Frame(DockSpaceHost& host, const DockLayout& layout, const std::function<void()>& insideHost = {},
+				   const std::function<void()>& besideDockSpace = {})
 		{
 			ImGui::NewFrame();
 
-			host.Begin(layout);
+			host.Begin(layout, {}, besideDockSpace);
 			if (insideHost)
 			{
 				insideHost();
@@ -248,4 +249,64 @@ TEST_CASE("A right click on a tab that is not selected leaves the selection wher
 
 	CHECK(pressSeenPastDockSpace);
 	CHECK(releaseSeenPastDockSpace);
+}
+
+TEST_CASE("A strip width and a callback put the dock space to the right of the strip")
+{
+	DockingContext context;
+	DockSpaceHost host;
+	DockLayout layout;
+	layout.StripWidth = 42.0f;
+	int calls = 0;
+
+	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
+		context.Frame(host, layout, {}, [&] { ++calls; });
+	}
+
+	const ImGuiDockNode* node = ImGui::DockBuilderGetNode(host.GetDockSpaceId());
+
+	REQUIRE(node != nullptr);
+	CHECK(node->Pos.x == doctest::Approx(42.0f));
+	CHECK(node->Size.x == doctest::Approx(800.0f - 42.0f));
+	CHECK(calls == kSettleFrames);
+}
+
+TEST_CASE("The callback draws in a region the strip's width wide and as tall as the dock space")
+{
+	DockingContext context;
+	DockSpaceHost host;
+	DockLayout layout;
+	layout.StripWidth = 42.0f;
+	ImVec2 available;
+
+	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
+		context.Frame(host, layout, {}, [&] { available = ImGui::GetContentRegionAvail(); });
+	}
+
+	const ImGuiDockNode* node = ImGui::DockBuilderGetNode(host.GetDockSpaceId());
+
+	REQUIRE(node != nullptr);
+	CHECK(available.x == doctest::Approx(42.0f));
+	CHECK(available.y == doctest::Approx(node->Size.y));
+}
+
+TEST_CASE("Without a callback the dock space keeps the full width")
+{
+	DockingContext context;
+	DockSpaceHost host;
+	DockLayout layout;
+	layout.StripWidth = 42.0f;
+
+	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
+		context.Frame(host, layout);
+	}
+
+	const ImGuiDockNode* node = ImGui::DockBuilderGetNode(host.GetDockSpaceId());
+
+	REQUIRE(node != nullptr);
+	CHECK(node->Pos.x == doctest::Approx(0.0f));
+	CHECK(node->Size.x == doctest::Approx(800.0f));
 }

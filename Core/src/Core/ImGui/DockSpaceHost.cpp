@@ -68,7 +68,8 @@ namespace Core {
 		}
 	}
 
-	void DockSpaceHost::Begin(const DockLayout& layout, const std::function<void()>& aboveDockSpace)
+	void DockSpaceHost::Begin(const DockLayout& layout, const std::function<void()>& aboveDockSpace,
+							 const std::function<void()>& besideDockSpace)
 	{
 		m_BuiltLayoutThisFrame = false;
 
@@ -115,6 +116,17 @@ namespace Core {
 		if (aboveDockSpace)
 		{
 			aboveDockSpace();
+		}
+
+		if (layout.StripWidth > 0.0f && besideDockSpace)
+		{
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, noPadding);
+			ImGui::BeginChild("##CoreDockSpaceStrip", ImVec2(layout.StripWidth, 0.0f), ImGuiChildFlags_None,
+							  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+			ImGui::PopStyleVar();
+			besideDockSpace();
+			ImGui::EndChild();
+			ImGui::SameLine(0.0f, 0.0f);
 		}
 
 		const ImGuiID dockSpaceId = ImGui::GetID(kDockSpaceName);

@@ -19,12 +19,15 @@ namespace Core {
 		float BottomRatio = 0.25f;
 
 		float MenuBarHeight = 0.0f;
+
+		float StripWidth = 0.0f;
 	};
 
 	class DockSpaceHost final : NonCopyable
 	{
 	public:
-		void Begin(const DockLayout& layout, const std::function<void()>& aboveDockSpace = {});
+		void Begin(const DockLayout& layout, const std::function<void()>& aboveDockSpace = {},
+				   const std::function<void()>& besideDockSpace = {});
 		void End();
 
 		void RequestLayoutReset()
