@@ -31,6 +31,7 @@
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContentWindowColours.h"
+#include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/Icons.h"
 #include "Core/ImGui/TabContextMenu.h"
 #include "Core/Platform/Clipboard.h"
@@ -1788,6 +1789,7 @@ namespace Graphite {
 				const std::vector<Token>& tokens = choiceLine.Tokens;
 
 				ImGui::Indent();
+				Core::PushCodeFont();
 
 				const std::size_t lineStart = 0;
 				std::size_t drawnUpTo = lineStart;
@@ -1809,6 +1811,7 @@ namespace Graphite {
 					DrawColouredRun(expanded, drawnUpTo, expanded.size(), editorPalette.Text, isFirstRun);
 				}
 
+				ImGui::PopFont();
 				ImGui::Unindent();
 			}
 

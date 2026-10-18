@@ -6,7 +6,7 @@
 
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/ImGuiColors.h"
-#include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/FontSet.h"
 #include "UI/ClipboardCopy.h"
 #include "Sessions/Requests/RequestRow.h"
 #include "Sessions/SessionDrawing.h"
@@ -105,7 +105,10 @@ namespace Graphite {
 												  std::optional<std::size_t> selected, std::optional<std::size_t> hovered,
 												  const SessionPalette& palette, Core::EventBus& events)
 	{
-		ImFont* monospaceFont = Core::ImGuiRenderer::GetMonoFont();
+		Core::PushCodeFont();
+
+		// WARNING: Asked of ImGui rather than of the renderer, so a context without a code face draws in the face it has instead of dereferencing a null.
+		ImFont* const monospaceFont = ImGui::GetFont();
 		const float fontSize = ImGui::GetFontSize();
 		const float cellWidth = monospaceFont->CalcTextSizeA(fontSize, kUnlimitedWidth, kNoWrapWidth, "M").x;
 		const float lineHeight = ImGui::GetTextLineHeight();
@@ -237,6 +240,8 @@ namespace Graphite {
 		}
 
 		ImGui::PopStyleVar();
+
+		ImGui::PopFont();
 
 		const bool clickedHere = ImGui::IsWindowHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Right);
 

@@ -6,6 +6,7 @@
 
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/TextMetrics.h"
@@ -118,6 +119,16 @@ namespace Graphite {
 		float SampleWidth(const char* sample)
 		{
 			return ImGui::CalcTextSize(sample).x;
+		}
+
+		// WARNING: The hash cells are drawn in the code face, so the column is sized in it too or the hash is cut.
+		float HashSampleWidth()
+		{
+			Core::PushCodeFont();
+			const float width = SampleWidth(kHashSample);
+			ImGui::PopFont();
+
+			return width;
 		}
 
 		// WARNING: WidthRequest holds the reader's drag or the width saved in the settings, and a hidden column keeps it.
@@ -445,7 +456,7 @@ namespace Graphite {
 			columnInput.Available = widthBesideScrollbar;
 			columnInput.Graph = GraphWidth(metrics, graph.LaneCount);
 			columnInput.Chevron = std::max(SampleWidth(ChevronGlyph(false)), SampleWidth(ChevronGlyph(true)));
-			columnInput.Hash = WidthInUse(table, Column::Hash, SampleWidth(kHashSample));
+			columnInput.Hash = WidthInUse(table, Column::Hash, HashSampleWidth());
 			columnInput.Author = WidthInUse(table, Column::Author, SampleWidth(kAuthorSample));
 			columnInput.Date = WidthInUse(table, Column::Date, SampleWidth(kDateSample));
 			columnInput.CellPadding = style.CellPadding.x * 2.0f;
@@ -459,7 +470,7 @@ namespace Graphite {
 
 			ImGui::TableSetupColumn("##graph", kFixedAndLocked, columns.Graph);
 			ImGui::TableSetupColumn("##chevron", kFixedAndLocked, columnInput.Chevron);
-			ImGui::TableSetupColumn("Hash", kFixedWidth, SampleWidth(kHashSample));
+			ImGui::TableSetupColumn("Hash", kFixedWidth, HashSampleWidth());
 			ImGui::TableSetupColumn("Message", ImGuiTableColumnFlags_WidthStretch);
 
 			// WARNING: A narrow table gives up the author and then the date with the Disabled flag, which is read again every frame. The table is not Hideable, so ImGui offers no menu to bring them back and does not save the state.
@@ -609,7 +620,9 @@ namespace Graphite {
 		const ImU32 dimmedInk = ImGui::GetColorU32(ImGuiCol_TextDisabled);
 		const ImU32 hashInk = page.Unpushed.contains(commit.Id) ? palette.GutterAdded : dimmedInk;
 
+		Core::PushCodeFont();
 		DrawFittedCell(commit.Id.ShortHex(), hashInk, highlight);
+		ImGui::PopFont();
 
 		ImGui::TableSetColumnIndex(TableIndexOf(Column::Message));
 

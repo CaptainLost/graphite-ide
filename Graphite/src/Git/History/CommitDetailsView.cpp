@@ -1,6 +1,7 @@
 #include "Git/History/CommitDetailsView.h"
 
 #include "Core/Base/Strings.h"
+#include "Core/ImGui/FontSet.h"
 
 #include "Git/History/CommitLabels.h"
 #include "UI/SplitResults.h"
@@ -23,6 +24,8 @@ namespace Graphite {
 		void HashRow(const Core::Oid& commitId)
 		{
 			std::string hex = commitId.ToHex();
+
+			Core::PushCodeFont();
 			const std::size_t bufferSizeWithTerminator = hex.size() + 1;
 
 			ImGui::SetNextItemWidth(ImGui::CalcTextSize(hex.c_str()).x +
@@ -30,6 +33,8 @@ namespace Graphite {
 
 			ImGui::InputText("##hash", hex.data(), bufferSizeWithTerminator,
 							 ImGuiInputTextFlags_ReadOnly);
+
+			ImGui::PopFont();
 		}
 
 		void SignatureRow(const char* prefix, const Core::Signature& signature,
@@ -75,7 +80,9 @@ namespace Graphite {
 			for (const Core::Oid& parent : commit.Parents)
 			{
 				ImGui::SameLine();
+				Core::PushCodeFont();
 				ImGui::TextUnformatted(parent.ShortHex().c_str());
+				ImGui::PopFont();
 			}
 		}
 		else

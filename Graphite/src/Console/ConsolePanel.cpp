@@ -1,5 +1,6 @@
 #include "Console/ConsolePanel.h"
 
+#include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/UiScale.h"
 
 #include "Core/Base/Base.h"
@@ -71,22 +72,6 @@ namespace Graphite {
 			}
 
 			return joined;
-		}
-
-		// WARNING: Rows are measured here, not read back from ImGui, because the selection must
-		// know where a row is before it is drawn or the highlight lags a frame behind the pointer.
-		// This arithmetic has to match the one ImGui walks as it emits the rows.
-		ConsoleLayout MeasureRows(float rowSpacing)
-		{
-			const ImVec2 origin = ImGui::GetCursorScreenPos();
-
-			ConsoleLayout layout;
-			layout.OriginX = origin.x;
-			layout.OriginY = origin.y;
-			layout.RowHeight = ImGui::GetTextLineHeight() + rowSpacing;
-			layout.CellWidth = Core::MonospaceCellWidth();
-
-			return layout;
 		}
 	}
 
@@ -197,10 +182,12 @@ namespace Graphite {
 			return;
 		}
 
+		Core::PushCodeFont();
+
 		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
 							ImVec2(Core::Scaled(kRowItemSpacingX), Core::Scaled(kRowSpacing)));
 
-		const ConsoleLayout layout = MeasureRows(Core::Scaled(kRowSpacing));
+		const ConsoleLayout layout = MeasureConsoleLayout(Core::Scaled(kRowSpacing));
 
 		// WARNING: Nothing in this child can become active and its scrollbar takes the ActiveId
 		// inside BeginChild, so a drag on the bar is already seen as claimed when this runs.
@@ -231,6 +218,8 @@ namespace Graphite {
 		}
 
 		ImGui::PopStyleVar();
+
+		ImGui::PopFont();
 
 		FollowTailOnlyWhenEntriesArrived();
 

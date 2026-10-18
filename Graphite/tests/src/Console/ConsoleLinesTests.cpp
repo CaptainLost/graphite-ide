@@ -2,9 +2,12 @@
 
 #include "Console/ConsoleLines.h"
 
+#include "ImGuiFrames.h"
 #include "SelectionFixtures.h"
 
 #include "Core/Base/Log.h"
+#include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/TextMetrics.h"
 #include "Core/Text/TextSelection.h"
 
 #include <cstdint>
@@ -242,4 +245,39 @@ TEST_CASE("Everything shown runs from the start of the first message to the end 
 	CHECK(start == Core::TextPoint{7, 0});
 	CHECK(end == Core::TextPoint{9, 4});
 	CHECK(Graphite::EverythingShown({}) == std::pair<Core::TextPoint, Core::TextPoint>{});
+}
+
+TEST_CASE("The console measures its cells and draws its lines at the code size")
+{
+	ImGuiFrames frames;
+
+	float codeCell = 0.0f;
+	float defaultCell = 0.0f;
+	float measuredCell = 0.0f;
+	float codeLineHeight = 0.0f;
+	float measuredRowHeight = 0.0f;
+
+	for (int frame = 0; frame < 2; ++frame)
+	{
+		frames.Next([&] {
+			ImGui::Begin("console");
+
+			defaultCell = Core::MonospaceCellWidth();
+
+			Core::PushCodeFont();
+			codeCell = Core::MonospaceCellWidth();
+			codeLineHeight = ImGui::GetTextLineHeight();
+			ImGui::PopFont();
+
+			const Graphite::ConsoleLayout layout = Graphite::MeasureConsoleLayout(0.0f);
+			measuredCell = layout.CellWidth;
+			measuredRowHeight = layout.RowHeight;
+
+			ImGui::End();
+		});
+	}
+
+	CHECK(codeCell != defaultCell);
+	CHECK(measuredCell == doctest::Approx(codeCell));
+	CHECK(measuredRowHeight == doctest::Approx(codeLineHeight));
 }

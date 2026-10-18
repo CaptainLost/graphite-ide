@@ -1,6 +1,7 @@
 #include "Search/HitList.h"
 
 #include "Core/Base/Narrow.h"
+#include "Core/ImGui/FontSet.h"
 
 #include "Search/HitDisplay.h"
 #include "UI/Lists/Chevron.h"
@@ -77,6 +78,9 @@ namespace Graphite {
 
 					ImGui::PushID(row);
 
+					// The whole row is code, so the selectable is as tall as the line drawn on it.
+					Core::PushCodeFont();
+
 					const ImVec2 rowStart = ImGui::GetCursorPos();
 
 					const bool isSelected = IsHitSelected(input.Selected, group, hitIndex);
@@ -112,6 +116,8 @@ namespace Graphite {
 					SameLineWithoutGap();
 
 					DrawHighlightedLabel(line, matchColor);
+
+					ImGui::PopFont();
 
 					ImGui::PopID();
 				}

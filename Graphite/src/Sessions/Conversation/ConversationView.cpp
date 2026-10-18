@@ -17,7 +17,7 @@
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/IconButton.h"
-#include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/FontSet.h"
 
 #include <IconsMaterialDesignIcons.h>
 
@@ -978,12 +978,10 @@ namespace Graphite {
 			if (block.Kind == MarkdownKind::Code)
 			{
 				const ImGuiStyle& style = ImGui::GetStyle();
-				ImFont* monospaceFont = Core::ImGuiRenderer::GetMonoFont();
 				const float lineCount =
 					static_cast<float>(std::count(block.Code.begin(), block.Code.end(), '\n') + 1);
-				const float keepFontSize = 0.0f;
 
-				ImGui::PushFont(monospaceFont, keepFontSize);
+				Core::PushCodeFont();
 				const float codeWidth = ImGui::CalcTextSize(block.Code.c_str(), block.Code.c_str() + block.Code.size()).x;
 				float height = lineCount * ImGui::GetTextLineHeightWithSpacing() + style.WindowPadding.y * 2.0f;
 				ImGui::PopFont();
@@ -999,7 +997,7 @@ namespace Graphite {
 				if (ImGui::BeginChild("##code", ImVec2(width, height), ImGuiChildFlags_AlwaysUseWindowPadding,
 									  ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
 				{
-					ImGui::PushFont(monospaceFont, keepFontSize);
+					Core::PushCodeFont();
 					ImGui::TextUnformatted(block.Code.c_str(), block.Code.c_str() + block.Code.size());
 					ImGui::PopFont();
 				}

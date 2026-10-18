@@ -1,6 +1,7 @@
 #include "Review/ReviewWindows.h"
 
 #include "Git/History/CommitLabels.h"
+#include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/IconButton.h"
 #include "UI/Lists/Chevron.h"
 #include "UI/Lists/FilterField.h"
@@ -482,7 +483,9 @@ namespace Graphite {
 			for (std::size_t commitIndex = 0; commitIndex < shown; ++commitIndex)
 			{
 				const Core::CommitSummary& commit = range.Commits[commitIndex];
+				Core::PushCodeFont();
 				ImGui::TextDisabled("%s", commit.Id.ShortHex().c_str());
+				ImGui::PopFont();
 				ImGui::SameLine();
 				ImGui::TextUnformatted(commit.Summary.c_str());
 			}
@@ -526,7 +529,9 @@ namespace Graphite {
 			DrawCommitTooltip(commit);
 
 			ImGui::SetCursorPos(rowStart);
+			Core::PushCodeFont();
 			ImGui::TextDisabled("%s", commit.Id.ShortHex().c_str());
+			ImGui::PopFont();
 			ImGui::SameLine();
 
 			const std::string age = RelativeAge(commit.Author.When, now);

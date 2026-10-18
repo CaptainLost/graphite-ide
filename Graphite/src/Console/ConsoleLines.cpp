@@ -2,14 +2,38 @@
 
 #include "Core/Base/Base.h"
 
+#include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/TextMetrics.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/WordBounds.h"
+
+#include <imgui.h>
 
 #include <algorithm>
 #include <cstdint>
 #include <string_view>
 
 namespace Graphite {
+
+	// WARNING: Rows are measured here, not read back from ImGui, because the selection must
+	// know where a row is before it is drawn or the highlight lags a frame behind the pointer.
+	// This arithmetic has to match the one ImGui walks as it emits the rows.
+	ConsoleLayout MeasureConsoleLayout(float rowSpacing)
+	{
+		const ImVec2 origin = ImGui::GetCursorScreenPos();
+
+		Core::PushCodeFont();
+
+		ConsoleLayout layout;
+		layout.OriginX = origin.x;
+		layout.OriginY = origin.y;
+		layout.RowHeight = ImGui::GetTextLineHeight() + rowSpacing;
+		layout.CellWidth = Core::MonospaceCellWidth();
+
+		ImGui::PopFont();
+
+		return layout;
+	}
 
 	namespace {
 		constexpr float kRoundToNearestBoundary = 0.5f;
