@@ -88,7 +88,7 @@ namespace Graphite {
 
 		void SetHidden(bool hidden);
 
-		// WARNING: Called by each start a person asks for, never from StartShell: the startup shell and a folder's restore reach StartShell too, and must leave hidden terminals hidden.
+		// WARNING: Called by each start a person asks for, never from OpenDefaultShell, OpenDefaultShellIn, OpenShellIn or StartShell: the startup shell and a folder's restore reach them too, and must leave hidden terminals hidden.
 		void Reveal();
 
 		std::size_t GetOpenCount() const { return m_Open.size(); }

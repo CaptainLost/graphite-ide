@@ -638,4 +638,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0606](0606-draw-every-line-number-column-through-linenumbercolumn.md) | Draw every line number column through LineNumberColumn | proposed | 2026-10-16 |
 | [0607](0607-draw-the-middle-of-every-notification-through-one-piece-of-core-code.md) | Draw the middle of every notification through one piece of Core code | proposed | 2026-10-16 |
 | [0608](0608-hide-all-terminals-together-with-their-shells-kept-running.md) | Hide all terminals together with their shells kept running | proposed | 2026-10-18 |
+| [0609](0609-toggle-tool-panels-from-a-strip-that-ignores-where-they-are-docked.md) | Toggle tool panels from a strip that ignores where they are docked | proposed | 2026-10-18 |
 <!-- /adr-index -->

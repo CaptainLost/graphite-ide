@@ -48,6 +48,7 @@
 #include "App/LanguageServerChoice.h"
 #include "App/SampleToasts.h"
 #include "App/SettingsPages.h"
+#include "App/ToolStripContent.h"
 
 #include "App/Version.h"
 #include "Core/App/Application.h"
@@ -57,6 +58,7 @@
 #include "Core/Base/Log.h"
 
 #include "Core/ImGui/Icons.h"
+#include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/ToastStyle.h"
 #include "Core/ImGui/UiScale.h"
@@ -460,6 +462,7 @@ namespace Graphite {
 
 		// WARNING: OpenShellIn must not be called from inside the loop over the open terminals; this event arrives from the Explorer's menu, which draws before m_Terminals.Render.
 		m_Events.Subscribe<OpenTerminalRequested>([this](const OpenTerminalRequested& event) {
+			m_Terminals.Reveal();
 			static_cast<void>(m_Terminals.OpenDefaultShellIn(event.Directory)); // reports its own failure
 		});
 
@@ -817,6 +820,45 @@ namespace Graphite {
 		RevealPanel("settings");
 	}
 
+	Core::ToolStripContent GraphiteLayer::BuildToolStrip(bool workingTreeHasChanges, const DiagnosticsModel::Counts& problems,
+														 const Core::ChromePalette& chrome)
+	{
+		const EditorPalette editorPalette = ReadEditorPalette(m_ActiveScheme.Get());
+
+		ToolStripInputs inputs{.Terminals = m_Terminals.GetStripLook(),
+							   .HasChanges = workingTreeHasChanges,
+							   .Errors = problems.Errors,
+							   .Warnings = problems.Warnings,
+							   .Colours = {.Changes = ImGui::ColorConvertFloat4ToU32(Core::ToImVec4(chrome.Accent)),
+										   .Error = editorPalette.DiagnosticError,
+										   .Warning = editorPalette.DiagnosticWarning,
+										   .Running = ImGui::ColorConvertFloat4ToU32(Core::ToImVec4(chrome.TextDisabled))}};
+
+		m_Panels.ForEach([this, &inputs](Core::Panel& panel) {
+			const Core::Binding* binding = m_Keys.For("panel." + panel.GetId());
+
+			inputs.Panels.push_back(ToolStripPanel{.Id = panel.GetId(),
+												   .Title = panel.GetTitle(),
+												   .Icon = panel.GetIcon(),
+												   .MenuGroup = panel.GetMenuGroup(),
+												   .Visible = panel.IsVisible(),
+												   .Shortcut = binding != nullptr ? binding->Primary.ToString() : std::string()});
+		});
+
+		return BuildToolStripContent(inputs);
+	}
+
+	void GraphiteLayer::ApplyToolStripClick(std::string_view id)
+	{
+		if (id == kTerminalsStripId)
+		{
+			m_Terminals.ToggleFromStrip();
+			return;
+		}
+
+		static_cast<void>(m_Panels.Toggle(id));
+	}
+
 	void GraphiteLayer::ApplyChromeIfSchemeChanged()
 	{
 		if (m_AppliedSchemeVersion == m_ActiveScheme.GetVersion())
@@ -986,6 +1028,8 @@ namespace Graphite {
 				m_AnalysisCoordinator.GetPass().Progress(), m_Analysis.GetBytes(), m_Analysis.GetBudget());
 		}
 
+		bool workingTreeHasChanges = false;
+
 		{
 			const Core::Ref<const Core::HeadState> head = m_Git.GetHead();
 			const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches();
@@ -998,6 +1042,8 @@ namespace Graphite {
 				.Branches = branches.get(),
 				.Status = gitStatus.get(),
 			});
+
+			workingTreeHasChanges = gitStatus != nullptr && !gitStatus->Entries.empty();
 		}
 
 		// WARNING: Drain the departures before the toasts draw, so a toast cleared with its folder since the last frame already counts for the bell this frame.
@@ -1039,15 +1085,27 @@ namespace Graphite {
 			break;
 		}
 
-		m_Layout.MenuBarHeight = m_CustomTitleBar ? Core::Scaled(kCaptionHeight) : 0.0f;
-		m_DockSpace.Begin(m_Layout, [this, workspaceTrusted, &languagePrompt] {
-			RenderRestrictedModeBar(workspaceTrusted);
+		const Core::ChromePalette chromePalette = ChromePaletteFor(m_ActiveScheme.Get());
+		const Core::ToolStripContent toolStrip = BuildToolStrip(workingTreeHasChanges, counts, chromePalette);
 
-			if (languagePrompt)
-			{
-				RenderLanguageSupportBar(*languagePrompt);
-			}
-		});
+		m_Layout.MenuBarHeight = m_CustomTitleBar ? Core::Scaled(kCaptionHeight) : 0.0f;
+		m_Layout.StripWidth = Core::ToolStripWidth();
+		m_DockSpace.Begin(
+			m_Layout,
+			[this, workspaceTrusted, &languagePrompt] {
+				RenderRestrictedModeBar(workspaceTrusted);
+
+				if (languagePrompt)
+				{
+					RenderLanguageSupportBar(*languagePrompt);
+				}
+			},
+			[this, &toolStrip, &chromePalette] {
+				if (const std::optional<std::string> clicked = Core::DrawToolStrip(toolStrip, chromePalette))
+				{
+					ApplyToolStripClick(*clicked);
+				}
+			});
 		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.MenuBarHeight, [this] { m_TitleBar.RenderLogo(Core::Application::Get().GetWindow()); }, [this] { m_TitleBar.Render(Core::Application::Get().GetWindow()); });
 		RenderEmptyEditorArea();
 		m_DockSpace.End();

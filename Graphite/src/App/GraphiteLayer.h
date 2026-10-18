@@ -58,6 +58,7 @@
 #include "Core/ImGui/DockSpaceHost.h"
 #include "Core/ImGui/TabCloseRequests.h"
 #include "Core/ImGui/Toasts.h"
+#include "Core/ImGui/ToolStrip.h"
 #include "Core/Jobs/JobQueue.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Time/TimeZone.h"
@@ -167,6 +168,11 @@ namespace Graphite {
 		void RevealPanel(std::string_view id);
 
 		void OpenLanguageSettings(LanguageId language);
+
+		Core::ToolStripContent BuildToolStrip(bool workingTreeHasChanges, const DiagnosticsModel::Counts& problems,
+											  const Core::ChromePalette& chrome);
+
+		void ApplyToolStripClick(std::string_view id);
 
 		void PublishServerMessages();
 
