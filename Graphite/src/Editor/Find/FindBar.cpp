@@ -215,7 +215,7 @@ namespace Graphite {
 		ImGui::SetCursorScreenPos(ImVec2(frame.Corner.x - barWidth, frame.Corner.y));
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
 							ImVec2(Core::Scaled(kFindBarPaddingX), kFindBarPaddingY));
-		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_MenuBarBg));
+		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_PopupBg));
 
 		const bool barVisible =
 			ImGui::BeginChild("##FindBar", ImVec2(barWidth, ImGui::GetFrameHeight()),

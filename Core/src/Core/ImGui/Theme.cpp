@@ -35,6 +35,7 @@ namespace Core {
 		constexpr float kScrollbarGrabActiveAlpha = 0.28f;
 		constexpr float kScrollbarSize = 12.0f;
 		constexpr float kNoOverline = 0.0f;
+		constexpr float kNoTabBarLine = 0.0f;
 		constexpr float kTransparent = 0.0f;
 
 		constexpr float ClampAtZero(float value)
@@ -100,6 +101,7 @@ namespace Core {
 		style.WindowMenuButtonPosition = ImGuiDir_None;
 		style.ScrollbarSize = kScrollbarSize;
 		style.TabBarOverlineSize = kNoOverline;
+		style.TabBarBorderSize = kNoTabBarLine;
 		style.DockingNodeHasCloseButton = false;
 	}
 
@@ -130,7 +132,7 @@ namespace Core {
 		colors[ImGuiCol_WindowBg] = background;
 		colors[ImGuiCol_ChildBg] = background;
 		colors[ImGuiCol_PopupBg] = surface;
-		colors[ImGuiCol_Border] = border;
+		colors[ImGuiCol_Border] = surfaceActive;
 		colors[ImGuiCol_Text] = text;
 		colors[ImGuiCol_TextDisabled] = ToImVec4(palette.TextDisabled);
 
@@ -152,7 +154,7 @@ namespace Core {
 		colors[ImGuiCol_ButtonActive] = accent;
 
 		colors[ImGuiCol_Tab] = tabBar;
-		colors[ImGuiCol_TabHovered] = surfaceHovered;
+		colors[ImGuiCol_TabHovered] = background;
 		colors[ImGuiCol_TabSelected] = background;
 		colors[ImGuiCol_TabDimmed] = tabBar;
 		colors[ImGuiCol_TabDimmedSelected] = background;

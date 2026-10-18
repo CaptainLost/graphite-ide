@@ -164,7 +164,6 @@ namespace {
 			return glyph;
 		}
 
-
 		ImGuiContext* m_Context = nullptr;
 	};
 

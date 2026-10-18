@@ -1,0 +1,37 @@
+#include <doctest/doctest.h>
+
+#include "DrawnColours.h"
+#include "ImGuiFrames.h"
+
+#include "Editor/Find/FindBar.h"
+
+#include "Core/Text/DocumentSet.h"
+#include "Core/Text/TextBuffer.h"
+
+#include <imgui.h>
+#include <imgui_internal.h>
+
+TEST_CASE("The find bar is filled with the popup surface rather than the menu bar's chrome")
+{
+	ImGuiFrames frames;
+	Graphite::FindBar bar;
+	const Core::TextBuffer buffer("alpha beta alpha");
+	Core::OpenItem item;
+	item.Find.Open = true;
+
+	frames.Next([&] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(900.0f, 300.0f));
+		ImGui::Begin("Document", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+		bar.Draw(item, buffer, true);
+		ImGui::End();
+	});
+
+	// WARNING: ImGui draws a child window's background into its parent's draw list, not the child's own.
+	const ImGuiWindow* document = ImGui::FindWindowByName("Document");
+	REQUIRE(document != nullptr);
+	REQUIRE(!document->DC.ChildWindows.empty());
+
+	CHECK(DrawsInColour(*document->DrawList, ImGui::GetColorU32(ImGuiCol_PopupBg)));
+	CHECK_FALSE(DrawsInColour(*document->DrawList, ImGui::GetColorU32(ImGuiCol_MenuBarBg)));
+}

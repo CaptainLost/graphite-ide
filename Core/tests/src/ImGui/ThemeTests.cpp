@@ -94,7 +94,7 @@ TEST_CASE("Apply paints the title bar in the chrome and the empty dock space in 
 	CHECK(colours[ImGuiCol_WindowBg].x == doctest::Approx(palette.Background.R));
 }
 
-TEST_CASE("Apply draws tab bars a shade below the chrome and the selected tab in the chrome")
+TEST_CASE("Apply draws tab bars a shade below the chrome and the selected and hovered tab in the chrome")
 {
 	IsolatedImGuiContext context;
 	const Core::ChromePalette palette = Core::Theme::DefaultPalette();
@@ -109,7 +109,23 @@ TEST_CASE("Apply draws tab bars a shade below the chrome and the selected tab in
 	}
 	CHECK(colours[ImGuiCol_TabSelected].x == doctest::Approx(palette.Background.R));
 	CHECK(colours[ImGuiCol_TabDimmedSelected].x == doctest::Approx(palette.Background.R));
-	CHECK(colours[ImGuiCol_TabHovered].x == doctest::Approx(palette.SurfaceHovered.R));
+	CHECK(colours[ImGuiCol_TabHovered].x == doctest::Approx(palette.Background.R));
+	CHECK(colours[ImGuiCol_TabHovered].z == doctest::Approx(palette.Background.B));
+}
+
+TEST_CASE("Apply draws the edges of windows and popups in the active surface and separators in the border colour")
+{
+	IsolatedImGuiContext context;
+	const Core::ChromePalette palette = Core::Theme::DefaultPalette();
+	Core::Theme::Apply(palette);
+	const ImVec4* colours = ImGui::GetStyle().Colors;
+
+	CHECK(colours[ImGuiCol_Border].x == doctest::Approx(palette.SurfaceActive.R));
+	CHECK(colours[ImGuiCol_Border].y == doctest::Approx(palette.SurfaceActive.G));
+	CHECK(colours[ImGuiCol_Border].z == doctest::Approx(palette.SurfaceActive.B));
+	CHECK(colours[ImGuiCol_Separator].x == doctest::Approx(palette.Border.R));
+	CHECK(colours[ImGuiCol_Separator].y == doctest::Approx(palette.Border.G));
+	CHECK(colours[ImGuiCol_Separator].z == doctest::Approx(palette.Border.B));
 }
 
 TEST_CASE("The tab bar shade never goes below black")

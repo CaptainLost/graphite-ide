@@ -29,7 +29,7 @@ namespace {
 	};
 }
 
-TEST_CASE("Content window colours paint a window, its children and its selected tab in the content colour until popped")
+TEST_CASE("Content window colours paint a window, its children and its selected and hovered tab in the content colour until popped")
 {
 	IsolatedImGuiContext context;
 	Core::ChromePalette palette = Core::Theme::DefaultPalette();
@@ -37,7 +37,7 @@ TEST_CASE("Content window colours paint a window, its children and its selected 
 	Core::Theme::Apply(palette);
 
 	Core::PushContentWindowColours();
-	for (const ImGuiCol slot : {ImGuiCol_WindowBg, ImGuiCol_ChildBg, ImGuiCol_TabSelected, ImGuiCol_TabDimmedSelected})
+	for (const ImGuiCol slot : {ImGuiCol_WindowBg, ImGuiCol_ChildBg, ImGuiCol_TabSelected, ImGuiCol_TabDimmedSelected, ImGuiCol_TabHovered})
 	{
 		CAPTURE(slot);
 		CHECK(ImGui::GetStyleColorVec4(slot).x == doctest::Approx(0.9f));

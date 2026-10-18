@@ -86,22 +86,22 @@ namespace {
 	};
 }
 
-TEST_CASE("A warning bar is tinted toward its colour and an information bar keeps the menu bar's")
+TEST_CASE("A warning bar is tinted toward its colour and an information bar keeps the popup surface's")
 {
 	ImGuiFrames frames;
 	frames.Next([] {
-		const ImVec4 menuBar = ImGui::GetStyleColorVec4(ImGuiCol_MenuBarBg);
+		const ImVec4 surface = ImGui::GetStyleColorVec4(ImGuiCol_PopupBg);
 		const ImVec4 warning = Graphite::InfoBarBackground(Graphite::InfoBarWeight::Warning, kWarningColour);
 		const ImVec4 information = Graphite::InfoBarBackground(Graphite::InfoBarWeight::Information, kWarningColour);
 
-		CHECK(information.x == doctest::Approx(menuBar.x));
-		CHECK(information.y == doctest::Approx(menuBar.y));
-		CHECK(information.z == doctest::Approx(menuBar.z));
+		CHECK(information.x == doctest::Approx(surface.x));
+		CHECK(information.y == doctest::Approx(surface.y));
+		CHECK(information.z == doctest::Approx(surface.z));
 
 		const auto distance = [](const ImVec4& from, const ImVec4& to) {
 			return std::abs(from.x - to.x) + std::abs(from.y - to.y) + std::abs(from.z - to.z);
 		};
-		CHECK(distance(warning, kWarningColour) < distance(menuBar, kWarningColour));
+		CHECK(distance(warning, kWarningColour) < distance(surface, kWarningColour));
 	});
 }
 

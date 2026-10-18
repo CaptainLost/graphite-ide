@@ -145,15 +145,15 @@ namespace Graphite {
 
 	ImVec4 InfoBarBackground(InfoBarWeight weight, const ImVec4& weightColour)
 	{
-		const ImVec4 menuBar = ImGui::GetStyleColorVec4(ImGuiCol_MenuBarBg);
+		const ImVec4 surface = ImGui::GetStyleColorVec4(ImGuiCol_PopupBg);
 
 		if (weight == InfoBarWeight::Warning)
 		{
-			const ImVec4 opaqueWeight(weightColour.x, weightColour.y, weightColour.z, menuBar.w);
-			return Core::Animation::Blend(menuBar, opaqueWeight, kWarningTint);
+			const ImVec4 opaqueWeight(weightColour.x, weightColour.y, weightColour.z, surface.w);
+			return Core::Animation::Blend(surface, opaqueWeight, kWarningTint);
 		}
 
-		return menuBar;
+		return surface;
 	}
 
 	InfoBarAnswer DrawInfoBar(const InfoBarContent& content)
