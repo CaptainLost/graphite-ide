@@ -2,18 +2,22 @@
 
 #include "Workspace/GitIgnoredDisplay.h"
 #include "Workspace/Workspace.h"
+#include "Explorer/FileTemplates.h"
 #include "Explorer/FolderListing.h"
+#include "Explorer/NewFilePath.h"
 #include "Explorer/RowRenameField.h"
 #include "Git/GitDecorationView.h"
 #include "Theme/ActiveScheme.h"
 #include "UI/Dialogs/ModalQuestion.h"
 
+#include "Core/Base/Result.h"
 #include "Core/FileSystem/FileTree.h"
 #include "Core/ImGui/ToastStack.h"
 #include "Core/Jobs/JobSubmitter.h"
 
 #include <imgui.h>
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
@@ -50,12 +54,26 @@ namespace Graphite {
 
 	private:
 		static constexpr const char* kDeleteTitle = "Delete##fileTreeDelete";
+		static constexpr const char* kNewFileTitle = "New File from Template##fileTreeNewFile";
 
 		struct DeleteQuestion
 		{
 			std::filesystem::path Target;
 
 			bool operator==(const DeleteQuestion&) const = default;
+		};
+
+		struct NewFileQuestion
+		{
+			std::filesystem::path Folder;
+
+			bool operator==(const NewFileQuestion&) const = default;
+		};
+
+		struct FileToCreate
+		{
+			NewFilePath Path;
+			std::string Content;
 		};
 
 		struct PendingAction
@@ -65,7 +83,9 @@ namespace Graphite {
 				None,
 				Delete,
 				Rename,
-				CreateFile,
+				BeginNewFile,
+				AskNewFileFromTemplate,
+				CreateNamedFile,
 				MakeDirectory,
 				Duplicate,
 				Refresh
@@ -90,6 +110,8 @@ namespace Graphite {
 		void RenderBackgroundMenu();
 		void RenderDeleteConfirmation();
 		bool RenderRenameEditor(const Core::FileNode& node);
+		void RenderNewFileEditor(const Core::FileNode& folder);
+		void RenderNewFileQuestion();
 		void StartRenaming(const Core::FileNode& node);
 		void StartRenamingPath(const std::filesystem::path& path);
 		void ResolvePendingRename();
@@ -102,9 +124,17 @@ namespace Graphite {
 		void HandleRefresh(const PendingAction& action);
 		void HandleRename(const PendingAction& action);
 		std::filesystem::path ApplyRename(const PendingAction& action);
-		void OpenIfJustCreated(const std::filesystem::path& created, const std::filesystem::path& named);
 		void HandleDuplicate(const PendingAction& action);
 		void HandleCreate(const PendingAction& action);
+		void HandleBeginNewFile(const PendingAction& action);
+		void ContinueNamingNewFile(const std::filesystem::path& folder, std::string_view typed);
+		void HandleCreateNamedFile(const PendingAction& action);
+		Core::Result<std::filesystem::path> CreateFiles(const std::filesystem::path& folder,
+														const std::vector<FileToCreate>& files);
+		std::optional<std::string> NewFileProblem(const std::filesystem::path& folder,
+												  const std::vector<FileToCreate>& files) const;
+		std::vector<FileToCreate> FilesFromTemplate(const std::filesystem::path& folder, FileTemplate fileTemplate,
+													std::string_view name) const;
 		void ReadFolderFromDisk(Core::FileNode& folder);
 		Core::FileNode* FindNode(const std::filesystem::path& path);
 		void RefreshParentOf(const std::filesystem::path& path);
@@ -119,6 +149,7 @@ namespace Graphite {
 		const Core::DocumentSet& m_Documents;
 		Core::EventBus& m_Events;
 		ModalQuestion<DeleteQuestion> m_DeleteQuestion;
+		ModalQuestion<NewFileQuestion> m_NewFileQuestion;
 		const ActiveScheme& m_Scheme;
 		ImGuiTextFilter m_Filter;
 		PendingAction m_Pending;
@@ -132,7 +163,12 @@ namespace Graphite {
 		RowRenameField m_RenameField;
 		std::filesystem::path m_KnownRoot;
 		std::filesystem::path m_PendingRenamePath;
-		std::filesystem::path m_OpenWhenNamed;
+
+		// The folder whose last row is a field naming a file that does not exist yet; empty when there is none.
+		std::filesystem::path m_NewFileIn;
+		RowRenameField m_NewFileField;
+		std::array<char, 1024> m_NewFileName{};
+		int m_NewFileTemplate = 0;
 		GitIgnoredDisplay m_GitIgnoredDisplay = GitIgnoredDisplay::Dim;
 		GitDecorationView m_GitDecorations;
 		std::filesystem::path m_ShownFile;
