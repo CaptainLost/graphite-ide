@@ -32,9 +32,11 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
   `'0'`. The terminal draws a run of cells with one `AddText`, so a symbol wider
   than a cell would push the rest of its row off its cells. The interface face
   takes symbols at their own advance.
-- `Core::PushInterfaceFont()` pushes the interface face at the style's
-  `FontSizeBase`; `Core::PushCodeFont()` pushes the code face at
-  `kCodeFontSize`. Both are popped with `ImGui::PopFont()`.
+- `Core::PushInterfaceFont()` pushes the interface face at `kInterfaceFontSize`
+  wherever it is called, including inside a code push; `Core::PushCodeFont()`
+  pushes the code face at `kCodeFontSize`. Both sizes are unscaled base sizes,
+  which ImGui scales by the interface scale and the monitor's DPI. Both are
+  popped with `ImGui::PopFont()`.
 - Code, cells and digits that must line up digit for digit draw in the code face.
   Everything else draws in the interface face.
 - The strong face, which `ImGuiRenderer::GetBoldFont()` returns, is Inter
@@ -66,8 +68,6 @@ on its own.
   once per face, which costs memory and startup time.
 - A number drawn in the interface face changes width as its digits change.
   Anything that must line up has to push the code face.
-- ImGui sets the style's `FontSizeBase` on every push, so `PushInterfaceFont`
-  called inside `PushCodeFont` pushes the interface face at the code size.
 
 ### Neutral
 

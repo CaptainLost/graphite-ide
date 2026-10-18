@@ -121,7 +121,7 @@ namespace Core {
 
 	void PushInterfaceFont()
 	{
-		ImGui::PushFont(ImGuiRenderer::GetInterfaceFont(), ImGui::GetStyle().FontSizeBase);
+		ImGui::PushFont(ImGuiRenderer::GetInterfaceFont(), kInterfaceFontSize);
 	}
 
 	void PushCodeFont()

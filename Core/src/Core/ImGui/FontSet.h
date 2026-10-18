@@ -17,8 +17,6 @@ namespace Core {
 
 	FontSet LoadFontSet(ImFontAtlas& atlas);
 
-	// WARNING: ImGui sets the style's FontSizeBase to the size of every push, so called inside
-	// PushCodeFont this pushes the interface face at the code size.
 	void PushInterfaceFont();
 
 	void PushCodeFont();

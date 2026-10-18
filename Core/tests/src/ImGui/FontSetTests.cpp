@@ -6,6 +6,7 @@
 
 #include <IconsMaterialDesignIcons.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <array>
 #include <cstddef>
@@ -44,6 +45,30 @@ namespace {
 	{
 		return font.GetFontBaked(size)->GetCharAdvance(codepoint);
 	}
+
+	struct HeadlessFrame
+	{
+		HeadlessFrame()
+			: Context(ImGui::CreateContext())
+		{
+			ImGuiIO& io = ImGui::GetIO();
+			io.DisplaySize = ImVec2(800.0f, 600.0f);
+			io.IniFilename = nullptr;
+			io.Fonts->Build();
+			ImGui::NewFrame();
+		}
+
+		~HeadlessFrame()
+		{
+			ImGui::EndFrame();
+			ImGui::DestroyContext(Context);
+		}
+
+		HeadlessFrame(const HeadlessFrame&) = delete;
+		HeadlessFrame& operator=(const HeadlessFrame&) = delete;
+
+		ImGuiContext* Context;
+	};
 
 	bool SymbolFontPresent()
 	{
@@ -124,15 +149,9 @@ TEST_CASE("Chrome symbols resolve in the interface face")
 
 TEST_CASE("With no fonts loaded, the push helpers keep the current face and set only the size")
 {
-	ImGuiContext* const context = ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO();
-	io.DisplaySize = ImVec2(800.0f, 600.0f);
-	io.IniFilename = nullptr;
-	io.Fonts->Build();
-	ImGui::NewFrame();
+	HeadlessFrame frame;
 
 	ImFont* const face = ImGui::GetFont();
-	const float baseSize = ImGui::GetStyle().FontSizeBase;
 
 	Core::PushCodeFont();
 	CHECK(ImGui::GetFont() == face);
@@ -141,9 +160,25 @@ TEST_CASE("With no fonts loaded, the push helpers keep the current face and set 
 
 	Core::PushInterfaceFont();
 	CHECK(ImGui::GetFont() == face);
-	CHECK(ImGui::GetStyle().FontSizeBase == baseSize);
+	CHECK(ImGui::GetStyle().FontSizeBase == Core::kInterfaceFontSize);
+	ImGui::PopFont();
+}
+
+TEST_CASE("The interface font inside a code push is still the interface size")
+{
+	HeadlessFrame frame;
+
+	const ImGuiStyle& style = ImGui::GetStyle();
+	const float scale = style.FontScaleMain * style.FontScaleDpi;
+	const int stackDepth = ImGui::GetCurrentContext()->FontStack.Size;
+	const float sizeBefore = ImGui::GetFontSize();
+
+	Core::PushCodeFont();
+	Core::PushInterfaceFont();
+	CHECK(ImGui::GetFontSize() == Core::kInterfaceFontSize * scale);
+	ImGui::PopFont();
 	ImGui::PopFont();
 
-	ImGui::EndFrame();
-	ImGui::DestroyContext(context);
+	CHECK(ImGui::GetCurrentContext()->FontStack.Size == stackDepth);
+	CHECK(ImGui::GetFontSize() == sizeBefore);
 }
