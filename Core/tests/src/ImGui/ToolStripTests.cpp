@@ -23,6 +23,8 @@ namespace {
 	constexpr float kStripHeight = 600.0f;
 	const ImVec2 kOrigin(0.0f, 0.0f);
 	const ImVec2 kStripWindowSize(42.0f, 600.0f);
+	const ImVec2 kEditorPosition(100.0f, 0.0f);
+	const ImVec2 kEditorSize(300.0f, 300.0f);
 
 	class StripWindow
 	{
@@ -52,13 +54,7 @@ namespace {
 		Drawn Draw(const ToolStripContent& content, ImVec2 windowSize = kStripWindowSize)
 		{
 			ImGui::NewFrame();
-			ImGui::SetNextWindowPos(kOrigin);
-			ImGui::SetNextWindowSize(windowSize);
-			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-			ImGui::Begin("Strip", nullptr,
-						 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-							 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar);
-			ImGui::PopStyleVar();
+			BeginStripWindow(windowSize);
 
 			const ImDrawList* drawList = ImGui::GetWindowDrawList();
 			const int verticesBefore = drawList->VtxBuffer.Size;
@@ -74,6 +70,43 @@ namespace {
 			return drawn;
 		}
 
+		enum class EditorFocus
+		{
+			Leave,
+			Take
+		};
+
+		struct DrawnBesideEditor
+		{
+			std::optional<std::string> Clicked;
+			bool EditorFocused = false;
+		};
+
+		DrawnBesideEditor DrawBesideEditor(const ToolStripContent& content, EditorFocus focus = EditorFocus::Leave)
+		{
+			ImGui::NewFrame();
+
+			if (focus == EditorFocus::Take)
+			{
+				ImGui::SetNextWindowFocus();
+			}
+
+			ImGui::SetNextWindowPos(kEditorPosition);
+			ImGui::SetNextWindowSize(kEditorSize);
+			ImGui::Begin("Editor", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+			DrawnBesideEditor drawn;
+			drawn.EditorFocused = ImGui::IsWindowFocused();
+			ImGui::End();
+
+			BeginStripWindow(kStripWindowSize);
+			drawn.Clicked = Core::DrawToolStrip(content, Core::Theme::DefaultPalette());
+			ImGui::End();
+			ImGui::EndFrame();
+
+			return drawn;
+		}
+
 		void MoveMouse(ImVec2 position) { ImGui::GetIO().AddMousePosEvent(position.x, position.y); }
 
 		void PressMouse() { ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true); }
@@ -81,6 +114,17 @@ namespace {
 		void ReleaseMouse() { ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, false); }
 
 	private:
+		static void BeginStripWindow(ImVec2 windowSize)
+		{
+			ImGui::SetNextWindowPos(kOrigin);
+			ImGui::SetNextWindowSize(windowSize);
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+			ImGui::Begin("Strip", nullptr,
+						 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+							 ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar);
+			ImGui::PopStyleVar();
+		}
+
 		static float GlyphHeight(const ImDrawList& drawList, int firstVertex)
 		{
 			const ImVec2 whitePixel = drawList._Data->TexUvWhitePixel;
@@ -242,6 +286,27 @@ TEST_CASE("Clicking between items returns nothing")
 
 	window.ReleaseMouse();
 	CHECK_FALSE(window.Draw(content).Clicked.has_value());
+}
+
+TEST_CASE("A click on an item leaves the keyboard focus with the window that had it")
+{
+	StripWindow window;
+	ToolStripContent content;
+	content.Top = {Group({"a", "b"})};
+
+	window.DrawBesideEditor(content);
+	window.DrawBesideEditor(content, StripWindow::EditorFocus::Take);
+	REQUIRE(window.DrawBesideEditor(content).EditorFocused);
+
+	window.MoveMouse(ImVec2(21.0f, 21.0f));
+	window.DrawBesideEditor(content);
+
+	window.PressMouse();
+	window.DrawBesideEditor(content);
+
+	window.ReleaseMouse();
+	CHECK(window.DrawBesideEditor(content).Clicked == std::optional<std::string>("a"));
+	CHECK(window.DrawBesideEditor(content).EditorFocused);
 }
 
 TEST_CASE("An open item draws a fill and a badge draws a dot that a closed item without one does not")

@@ -150,7 +150,11 @@ namespace Core {
 		bool DrawItem(const ToolStripItem& item, const ImRect& rect, const ChromePalette& palette)
 		{
 			ImGui::SetCursorScreenPos(rect.Min);
-			const bool pressed = ImGui::InvisibleButton(item.Id.c_str(), rect.GetSize());
+
+			// WARNING: Without NoFocus the press focuses the strip, and a click that hides a panel or the
+			// terminals leaves the keyboard there, so the editor reads no keys until it is clicked again.
+			const bool pressed = ImGui::InvisibleButton(item.Id.c_str(), rect.GetSize(),
+														ImGuiButtonFlags_NoFocus | ImGuiButtonFlags_NoNavFocus);
 			const bool hovered = ImGui::IsItemHovered();
 
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
