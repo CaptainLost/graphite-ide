@@ -10,10 +10,12 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <cmath>
 #include <optional>
 
 namespace {
 	constexpr float kFringe = 1.0f;
+	constexpr float kListRowSpacing = 9.0f;
 	const ImVec4 kDimmedRowText(0.9f, 0.6f, 0.2f, 1.0f);
 
 	struct TreeDrawing
@@ -29,6 +31,9 @@ namespace {
 		ImGuiFrames Frames;
 		TreeDrawing Drawing;
 		float RowStartX = 0.0f;
+		float RowStartY = 0.0f;
+		float NextRowStartY = 0.0f;
+		float TextLine = 0.0f;
 		ImRect Row;
 		bool Open = false;
 
@@ -44,6 +49,8 @@ namespace {
 			}
 
 			RowStartX = ImGui::GetCursorScreenPos().x;
+			RowStartY = ImGui::GetCursorScreenPos().y;
+			TextLine = ImGui::GetTextLineHeight();
 			Open = Graphite::ChevronTreeNode("node", Drawing.Flags, Drawing.Label, Drawing.Note);
 			Row = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 
@@ -56,6 +63,8 @@ namespace {
 			{
 				ImGui::TreePop();
 			}
+
+			NextRowStartY = ImGui::GetCursorScreenPos().y;
 
 			ImGui::End();
 		}
@@ -100,6 +109,69 @@ namespace {
 		}
 
 		return span;
+	}
+
+	struct VerticalSpan
+	{
+		float Top = FLT_MAX;
+		float Bottom = -FLT_MAX;
+	};
+
+	std::optional<VerticalSpan> VerticalSpanInColour(const ImDrawList& drawing, ImU32 colour)
+	{
+		std::optional<VerticalSpan> span;
+
+		for (const ImDrawVert& vertex : drawing.VtxBuffer)
+		{
+			if (vertex.col != colour)
+			{
+				continue;
+			}
+
+			if (!span.has_value())
+			{
+				span = VerticalSpan{};
+			}
+
+			span->Top = std::min(span->Top, vertex.pos.y);
+			span->Bottom = std::max(span->Bottom, vertex.pos.y);
+		}
+
+		return span;
+	}
+}
+
+TEST_CASE("A tree node is a list row's pitch tall and the next row starts that far below it")
+{
+	TreeScreen screen;
+	screen.DrawFrame();
+
+	const float pitch = screen.TextLine + kListRowSpacing;
+	CHECK(screen.Row.GetHeight() == doctest::Approx(pitch));
+	CHECK(screen.NextRowStartY - screen.RowStartY == doctest::Approx(pitch));
+}
+
+TEST_CASE("A tree node's chevron and label sit on the text line in the middle of its row")
+{
+	TreeScreen screen;
+	screen.Drawing.Label = "References";
+	screen.DrawFrame();
+
+	const float textLineTop = screen.RowStartY;
+	const float textLineBottom = screen.RowStartY + screen.TextLine;
+
+	const float aboveTheText = textLineTop - screen.Row.Min.y;
+	const float belowTheText = screen.Row.Max.y - textLineBottom;
+	CHECK(std::abs(aboveTheText - belowTheText) <= kFringe);
+
+	for (const ImGuiCol drawnIn : {ImGuiCol_Text, ImGuiCol_TextDisabled})
+	{
+		CAPTURE(drawnIn);
+
+		const std::optional<VerticalSpan> glyphs = VerticalSpanInColour(TreeScreen::DrawList(), ImGui::GetColorU32(drawnIn));
+		REQUIRE(glyphs.has_value());
+		CHECK(glyphs->Top >= textLineTop - kFringe);
+		CHECK(glyphs->Bottom <= textLineBottom + kFringe);
 	}
 }
 

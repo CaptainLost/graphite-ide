@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Git/History/CommitListView.h"
+#include "UI/Lists/ListRow.h"
 
 #include "ImGuiFrames.h"
 
@@ -56,7 +57,7 @@ namespace {
 				view.Render(page, graph, palette, std::chrono::minutes{0},
 							[](const Core::Oid&) { return Core::Ref<const Core::Diff>{}; },
 							[](const Core::Oid&) { return false; }, refs);
-				expectedPitch = ImGui::GetTextLineHeightWithSpacing();
+				expectedPitch = Graphite::ListRowPitch();
 				ImGui::End();
 
 				ImGuiContext& context = *ImGui::GetCurrentContext();
@@ -75,7 +76,7 @@ namespace {
 	}
 }
 
-TEST_CASE("A commit row is exactly one interface line and its spacing tall, so the graph stays on its rows")
+TEST_CASE("A commit row is exactly a list row's pitch tall so the graph stays on its rows")
 {
 	float pitch = 0.0f;
 	const float fourthRowTop = LastRowTopOf(4, pitch);

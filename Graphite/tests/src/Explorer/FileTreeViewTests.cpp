@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Explorer/FileTreeView.h"
+#include "UI/Lists/ListRow.h"
 #include "Workspace/Workspace.h"
 
 #include "DeferredJobs.h"
@@ -146,7 +147,7 @@ namespace {
 			const ImGuiWindow* body = FindTreeBody();
 			REQUIRE(body != nullptr);
 
-			const float rowPitch = ImGui::GetFontSize() + ImGui::GetStyle().ItemSpacing.y;
+			const float rowPitch = Graphite::ListRowPitch();
 			const float x = body->DC.CursorStartPos.x + static_cast<float>(depth) * kTreeIndentForEachLevel + kIntoTheLabel;
 			const float y = body->DC.CursorStartPos.y + static_cast<float>(rowIndexFromRoot) * rowPitch + ImGui::GetFontSize() * 0.5f;
 

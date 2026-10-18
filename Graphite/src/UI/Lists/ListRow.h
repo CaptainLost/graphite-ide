@@ -5,7 +5,20 @@
 
 namespace Graphite {
 
+	struct ListRowColours
+	{
+		ImVec4 Selected;
+		ImVec4 Hovered;
+		ImVec4 Pressed;
+	};
+
+	ListRowColours CurrentListRowColours();
+
+	float ListRowSpacing();
+
 	float ListRowPitch();
+
+	float ListRowLineHeight();
 
 	float ListRowEndInset();
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "UI/Lists/ListRow.h"
+
 #include <imgui.h>
 
 #include <algorithm>
@@ -18,10 +20,10 @@ inline bool DrawsInColour(const ImDrawList& drawing, ImU32 colour)
 	return false;
 }
 
-// A selected row is drawn in the header colour only while the mouse is off it.
+// A selected row is drawn in the list row's selected colour only while the mouse is off it.
 inline bool MarksARow(const ImDrawList& drawing)
 {
-	return DrawsInColour(drawing, ImGui::GetColorU32(ImGuiCol_Header));
+	return DrawsInColour(drawing, ImGui::GetColorU32(Graphite::CurrentListRowColours().Selected));
 }
 
 inline float SideOfEdge(ImVec2 edgeFrom, ImVec2 edgeTo, ImVec2 point)

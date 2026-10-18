@@ -67,7 +67,7 @@ namespace Graphite {
 		{
 			GraphMetrics metrics;
 			metrics.LaneWidth = ImGui::GetTextLineHeight() * kLaneWidthPerLineHeight;
-			metrics.RowHeight = ImGui::GetTextLineHeightWithSpacing();
+			metrics.RowHeight = ListRowPitch();
 			metrics.DotRadius = metrics.LaneWidth * kDotRadiusPerLaneWidth;
 			return metrics;
 		}
@@ -432,7 +432,7 @@ namespace Graphite {
 		const std::chrono::sys_seconds now =
 			std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
 
-		// WARNING: A table row is as tall as its tallest cell plus the cell padding, so the padding is half the item spacing on each side: one line of text plus both halves is RowHeight, which the clipper seeks by and the graph is placed by. The minimum height passed to each row says the same again, so a shorter cell cannot pull the rows up away from the graph.
+		// WARNING: A table row is as tall as its tallest cell plus the cell padding, so the padding is half the list row spacing on each side: one line of text plus both halves is RowHeight, the list row pitch, which the clipper seeks by and the graph is placed by. The minimum height passed to each row says the same again, so a shorter cell cannot pull the rows up away from the graph.
 		const float cellPaddingY = ListTableCellPadding().y;
 
 		ImGui::PushStyleVar(ImGuiStyleVar_CellPadding, ListTableCellPadding());

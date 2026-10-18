@@ -293,12 +293,12 @@ namespace Graphite {
 		if (ImGui::BeginChild("changes.lists", ImVec2(0.0f, -reservedBoxHeight)))
 		{
 			// WARNING: A child without a border has no padding, and a row's highlight reaches half
-			// an item spacing above it, so the first heading needs this offset or its highlight is
-			// cut off. A clean tree draws no section and the child would end on this
+			// the list row spacing above it, so the first heading needs this offset or its highlight
+			// is cut off. A clean tree draws no section and the child would end on this
 			// SetCursorPosY with no item after it, which asserts in EndChild; the empty state
 			// below ends on a Dummy.
-			constexpr float kHalfItemSpacing = 0.5f;
-			ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ImGui::GetStyle().ItemSpacing.y * kHalfItemSpacing);
+			constexpr float kHalfRowSpacing = 0.5f;
+			ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ListRowSpacing() * kHalfRowSpacing);
 
 			bool drawnAbove = false;
 
@@ -346,7 +346,7 @@ namespace Graphite {
 
 		const std::size_t sectionSlot = static_cast<std::size_t>(m_Section);
 
-		const float rowHeight = ImGui::GetTextLineHeight();
+		const float rowHeight = ListRowLineHeight();
 
 		const ImVec2 rowStart = ImGui::GetCursorPos();
 		const ImVec2 rowScreenStart = ImGui::GetCursorScreenPos();
@@ -471,7 +471,7 @@ namespace Graphite {
 
 		const std::filesystem::path directory = file.Path.parent_path();
 
-		const float rowHeight = ImGui::GetTextLineHeight();
+		const float rowHeight = ListRowLineHeight();
 
 		const ImVec2 rowStart = ImGui::GetCursorPos();
 		const ImVec2 rowScreenStart = ImGui::GetCursorScreenPos();
@@ -627,7 +627,7 @@ namespace Graphite {
 
 		ImGui::PushID(static_cast<int>(entryIndex));
 
-		const float rowHeight = ImGui::GetTextLineHeight();
+		const float rowHeight = ListRowLineHeight();
 
 		const ImVec2 rowStart = ImGui::GetCursorPos();
 		const ImVec2 rowScreenStart = ImGui::GetCursorScreenPos();

@@ -27,6 +27,8 @@ Draw every list row through `Graphite/src/UI/Lists/ListRow.h`.
 - **Colours:** dates and counts are drawn in the disabled-text colour; status letters are drawn in their status colour.
 - **Selected and hovered:** a selected row rests in the header colour, and a row under the pointer takes the hovered header colour. The settings navigation keeps its own height and rounding, but uses these colours.
 
+Amended by [0616](0616-draw-list-rows-taller-with-an-inset-rounded-highlight-in-the-accent.md): a row is one text line plus the list row spacing, 9 px, and a table's cell padding is half that spacing. The highlight is inset 6 px from the list's edges and rounded 5 px, in colours derived from the accent, the window background and the text each time a row is drawn; `ListRowSelectable` draws it itself and leaves the global header colours alone. A table's row takes one highlight across all its columns, rounded only at its two ends.
+
 ## Rationale
 
 **One rhythm.** Lists one beside the other read alike, and a highlight that fills the row edge to edge shows plainly which row the pointer is on.

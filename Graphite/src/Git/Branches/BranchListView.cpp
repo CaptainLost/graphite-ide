@@ -552,7 +552,7 @@ namespace Graphite {
 		RebuildRowsWhenOutOfDate(frame);
 
 		ImGuiListClipper clipper;
-		clipper.Begin(static_cast<int>(m_Rows.size()), ImGui::GetTextLineHeightWithSpacing());
+		clipper.Begin(static_cast<int>(m_Rows.size()), ListRowPitch());
 
 		while (clipper.Step())
 		{
@@ -630,6 +630,8 @@ namespace Graphite {
 	{
 		ImGui::PushID(static_cast<int>(SectionIndexOf(row.Section)));
 
+		const ImVec2 rowStart = ImGui::GetCursorScreenPos();
+
 		if (row.Kind == BranchRowKind::Loading)
 		{
 			Core::LoadingLine(row.Label.c_str());
@@ -645,6 +647,11 @@ namespace Graphite {
 				ImGui::SetItemTooltip("%s", row.Label.c_str());
 			}
 		}
+
+		// WARNING: The clipper counts every row as one list row pitch, so a row of plain text is laid out that tall
+		// too, or the rows below it would stand short of where the clipper seeks them.
+		ImGui::SetCursorScreenPos(rowStart);
+		ImGui::ItemSize(ImVec2(0.0f, ListRowLineHeight()));
 
 		ImGui::PopID();
 	}

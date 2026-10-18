@@ -100,7 +100,7 @@ namespace {
 
 		measured.LastItemTop = ImGui::GetItemRectMin().y;
 		measured.CursorTop = ImGui::GetCursorScreenPos().y;
-		measured.RowHeight = ImGui::GetTextLineHeightWithSpacing();
+		measured.RowHeight = Graphite::ListRowPitch();
 
 		ImGui::End();
 		return measured;
@@ -373,7 +373,7 @@ TEST_CASE("A branch whose name holds a hash and a percent sign draws whole and r
 	float rowHeight = 0.0f;
 	frames.Next([&list, &listed, &listTop, &rowHeight] {
 		listTop = DrawListWindow(list, FrameOf(listed), kListWidth);
-		rowHeight = ImGui::GetTextLineHeightWithSpacing();
+		rowHeight = Graphite::ListRowPitch();
 	});
 
 	const float intoTheSecondRow = 1.5f;
@@ -512,7 +512,7 @@ TEST_CASE("A branch whose tip cannot be read stays one row high")
 	float rowHeight = 0.0f;
 	frames.Next([&list, &listed, &rowHeight] {
 		DrawListWindow(list, FrameOf(listed), kListWidth);
-		rowHeight = ImGui::GetTextLineHeightWithSpacing();
+		rowHeight = Graphite::ListRowPitch();
 	});
 
 	const std::size_t branchRows = 2;
@@ -629,7 +629,7 @@ TEST_CASE("A branch list that lands while its authors are in flight keeps the ro
 	float rowHeight = 0.0f;
 	frames.Next([&list, &settled, &listTop, &rowHeight] {
 		listTop = DrawListWindow(list, settled, kListWidth);
-		rowHeight = ImGui::GetTextLineHeightWithSpacing();
+		rowHeight = Graphite::ListRowPitch();
 	});
 
 	const float bobGroupRow = 1.0f;
@@ -744,7 +744,7 @@ TEST_CASE("A section collapsed while authors are in flight rebuilds the rows at 
 	float rowHeight = 0.0f;
 	frames.Next([&list, &settled, &listTop, &rowHeight] {
 		listTop = DrawListWindow(list, settled, kListWidth);
-		rowHeight = ImGui::GetTextLineHeightWithSpacing();
+		rowHeight = Graphite::ListRowPitch();
 	});
 
 	const float localHeadingRow = 0.0f;
@@ -766,7 +766,7 @@ TEST_CASE("A section collapsed while authors are in flight rebuilds the rows at 
 	CHECK(drawnTips.empty());
 }
 
-TEST_CASE("A branch inside an author group is highlighted from the list's left edge, not from its indent")
+TEST_CASE("A branch inside an author group is highlighted from the list's inset left edge, not from its indent")
 {
 	ImGuiFrames frames;
 
@@ -782,7 +782,7 @@ TEST_CASE("A branch inside an author group is highlighted from the list's left e
 	float rowHeight = 0.0f;
 	frames.Next([&list, &frame, &listTop, &rowHeight] {
 		listTop = DrawListWindow(list, frame, kListWidth);
-		rowHeight = ImGui::GetTextLineHeightWithSpacing();
+		rowHeight = Graphite::ListRowPitch();
 	});
 
 	const float annGroupRow = 1.0f;
@@ -797,7 +797,7 @@ TEST_CASE("A branch inside an author group is highlighted from the list's left e
 	frames.Next([&list, &frame] { DrawListWindow(list, frame, kListWidth); });
 	frames.Next([&list, &frame, &hoverColour] {
 		DrawListWindow(list, frame, kListWidth);
-		hoverColour = ImGui::GetColorU32(ImGuiCol_HeaderHovered);
+		hoverColour = ImGui::GetColorU32(Graphite::CurrentListRowColours().Hovered);
 	});
 
 	const ImGuiWindow* listWindow = ImGui::FindWindowByName("BranchList");
@@ -812,7 +812,10 @@ TEST_CASE("A branch inside an author group is highlighted from the list's left e
 		}
 	}
 
-	CHECK(highlightLeft <= listWindow->InnerRect.Min.x + 1.0f);
+	const float listRowHighlightInset = 6.0f;
+	const float antiAliasedFringe = 1.0f;
+	CHECK(highlightLeft >= listWindow->InnerRect.Min.x + listRowHighlightInset - antiAliasedFringe);
+	CHECK(highlightLeft <= listWindow->InnerRect.Min.x + listRowHighlightInset + antiAliasedFringe);
 }
 
 TEST_CASE("A branch inside an author group starts a chevron's width past the group's name")
@@ -831,7 +834,7 @@ TEST_CASE("A branch inside an author group starts a chevron's width past the gro
 	float rowHeight = 0.0f;
 	frames.Next([&list, &frame, &listTop, &rowHeight] {
 		listTop = DrawListWindow(list, frame, kListWidth);
-		rowHeight = ImGui::GetTextLineHeightWithSpacing();
+		rowHeight = Graphite::ListRowPitch();
 	});
 
 	const float annGroupRow = 1.0f;

@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Explorer/SolutionTreeView.h"
+#include "UI/Lists/ListRow.h"
 #include "Workspace/Workspace.h"
 
 #include "DrawnColours.h"
@@ -66,7 +67,7 @@ namespace {
 
 	float RowPitch()
 	{
-		return ImGui::GetFontSize() + ImGui::GetStyle().ItemSpacing.y;
+		return Graphite::ListRowPitch();
 	}
 	class SolutionScreen
 	{
@@ -156,7 +157,7 @@ namespace {
 			const ImGuiWindow* body = FindSolutionBody();
 			REQUIRE(body != nullptr);
 
-			return static_cast<int>(std::lround((body->ContentSize.y + ImGui::GetStyle().ItemSpacing.y) / RowPitch()));
+			return static_cast<int>(std::lround((body->ContentSize.y + Graphite::ListRowSpacing()) / RowPitch()));
 		}
 
 		ImGuiFrames Frames;
