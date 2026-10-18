@@ -1,6 +1,6 @@
 # 0608. Make a new file only once its name is entered, and offer a dialog with templates beside it
 
-Status: proposed
+Status: accepted
 Date: 2026-10-18
 
 ## Context

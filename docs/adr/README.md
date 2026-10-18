@@ -637,5 +637,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0605](0605-draw-every-bar-over-the-editor-through-drawinfobar.md) | Draw every bar over the editor through DrawInfoBar | proposed | 2026-10-16 |
 | [0606](0606-draw-every-line-number-column-through-linenumbercolumn.md) | Draw every line number column through LineNumberColumn | proposed | 2026-10-16 |
 | [0607](0607-draw-the-middle-of-every-notification-through-one-piece-of-core-code.md) | Draw the middle of every notification through one piece of Core code | proposed | 2026-10-16 |
-| [0608](0608-make-a-new-file-only-once-its-name-is-entered-and-offer-a-dialog-with-templates-beside-it.md) | Make a new file only once its name is entered, and offer a dialog with templates beside it | proposed | 2026-10-18 |
+| [0608](0608-make-a-new-file-only-once-its-name-is-entered-and-offer-a-dialog-with-templates-beside-it.md) | Make a new file only once its name is entered, and offer a dialog with templates beside it | accepted | 2026-10-18 |
 <!-- /adr-index -->
