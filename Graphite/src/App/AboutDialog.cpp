@@ -2,6 +2,7 @@
 
 #include "App/Version.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/Platform/Process.h"
 #include "UI/Dialogs/DialogLayout.h"
@@ -75,9 +76,11 @@ namespace Graphite {
 
 		if (ImGui::BeginChild("##Licences", ImVec2(0.0f, Core::Scaled(kLicencesHeight)), ImGuiChildFlags_Borders))
 		{
+			Core::PushCodeFont(Core::kInterfaceFontSize);
 			ImGui::PushTextWrapPos(kWrapAtWindowEdge);
 			ImGui::TextUnformatted(m_Notices.c_str(), m_Notices.c_str() + m_Notices.size());
 			ImGui::PopTextWrapPos();
+			ImGui::PopFont();
 		}
 
 		ImGui::EndChild();
