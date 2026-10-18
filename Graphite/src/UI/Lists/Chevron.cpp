@@ -55,7 +55,7 @@ namespace Graphite {
 			ImGuiWindow* const window = ImGui::GetCurrentWindow();
 			const ImVec2 rowStart = ImGui::GetCursorScreenPos();
 			const float labelSpacing = ImGui::GetTreeNodeToLabelSpacing();
-			const ImVec2 textTopLeft(rowStart.x + labelSpacing, rowStart.y + window->DC.CurrLineTextBaseOffset);
+			const ImVec2 textTopLeft(rowStart.x + labelSpacing, ListRowTextTop(rowStart.y));
 
 			const ImGuiID nodeId = window->GetID(id);
 			const bool opens = (flags & ImGuiTreeNodeFlags_Leaf) == 0;
@@ -86,12 +86,12 @@ namespace Graphite {
 				ImGui::TreeNodeSetOpen(nodeId, open);
 			}
 
-			// WARNING: Laid out again from the row's start, without an item, as wide as TreeNodeEx lays out the
-			// arrow and the label, so what follows with SameLine starts past the label as it did; the Selectable
-			// stays the last item for the caller to ask.
+			// WARNING: Laid out again from the row's text top, without an item, as wide as TreeNodeEx lays out the
+			// arrow and the label, so what follows with SameLine starts past the label, on the label's line; the
+			// Selectable stays the last item for the caller to ask.
 			constexpr bool kShowTextAfterHashes = false;
 			const float labelWidth = ImGui::CalcTextSize(label, kUpToTheTerminator, kShowTextAfterHashes).x;
-			ImGui::SetCursorScreenPos(rowStart);
+			ImGui::SetCursorScreenPos(ImVec2(rowStart.x, textTopLeft.y));
 			ImGui::ItemSize(ImVec2(labelSpacing + labelWidth, ImGui::GetFontSize()));
 
 			if (ImGui::IsItemVisible())

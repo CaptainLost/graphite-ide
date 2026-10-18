@@ -3,6 +3,8 @@
 #include "ImGuiFrames.h"
 
 #include "Explorer/RowRenameField.h"
+#include "UI/Lists/Chevron.h"
+#include "UI/Lists/ListRow.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -137,6 +139,49 @@ TEST_CASE("A rename field in a row narrower than the field's least width opens w
 	});
 
 	CHECK(fieldWidth > 0.0f);
+}
+
+TEST_CASE("A rename field in a list is one list row's pitch tall after a file row and after a folder row")
+{
+	for (const bool afterAFolderRow : {false, true})
+	{
+		CAPTURE(afterAFolderRow);
+
+		ImGuiFrames frames;
+		Graphite::RowRenameField field;
+		REQUIRE(field.Start("notes.txt", false));
+
+		float fieldTop = 0.0f;
+		float nextRowTop = 0.0f;
+		float pitch = 0.0f;
+
+		frames.Next([&] {
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f));
+			ImGui::Begin("Tree", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+
+			if (afterAFolderRow)
+			{
+				if (Graphite::ChevronTreeNode("folder", ImGuiTreeNodeFlags_SpanAvailWidth))
+				{
+					ImGui::TreePop();
+				}
+			}
+			else
+			{
+				Graphite::ListRowSelectable("##file", false);
+			}
+
+			fieldTop = ImGui::GetCursorScreenPos().y;
+			field.Draw("##rename");
+			nextRowTop = ImGui::GetCursorScreenPos().y;
+			pitch = Graphite::ListRowPitch();
+
+			ImGui::End();
+		});
+
+		CHECK(nextRowTop - fieldTop == doctest::Approx(pitch));
+	}
 }
 
 TEST_CASE("A name too long for the field does not start a rename")

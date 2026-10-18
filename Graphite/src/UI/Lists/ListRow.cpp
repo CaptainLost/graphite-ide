@@ -3,7 +3,9 @@
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/UiScale.h"
 
+#include <algorithm>
 #include <array>
+#include <cmath>
 #include <optional>
 
 namespace Graphite {
@@ -38,8 +40,9 @@ namespace Graphite {
 			ImGui::PopStyleColor(static_cast<int>(kColoursSelectableDraws.size()));
 		}
 
-		// WARNING: The order is Selectable's own: a row under the pointer shows the hover whether it is selected or
-		// not, and one held down under the pointer shows the press.
+		// WARNING: Not Selectable's own order, which lets the hover cover a selected row: the hover is a quieter lift
+		// than the accent, and a selected row under the pointer would read as deselected. A row held down under the
+		// pointer shows the press, then a selected row the accent, then a row under the pointer the hover.
 		std::optional<ImVec4> HighlightOf(bool selected, ImGuiSelectableFlags flags)
 		{
 			const ListRowColours colours = CurrentListRowColours();
@@ -50,14 +53,14 @@ namespace Graphite {
 				return colours.Pressed;
 			}
 
-			if (highlighted)
-			{
-				return colours.Hovered;
-			}
-
 			if (selected)
 			{
 				return colours.Selected;
+			}
+
+			if (highlighted)
+			{
+				return colours.Hovered;
 			}
 
 			return std::nullopt;
@@ -85,17 +88,17 @@ namespace Graphite {
 			ImGui::RenderNavCursor(highlight, ImGui::GetItemID(), ImGuiNavRenderCursorFlags_Compact, rounding);
 		}
 
-		// WARNING: Callers lay a row's pieces over it after the Selectable, from the row's start or with SameLine, and
-		// ImGui ends each line its pieces stand on at the tallest of them plus the item spacing. A line of text alone
-		// would put the next row a text line and the item spacing below, short of the pitch, so the row's line is
-		// held as tall as the pitch less the item spacing for whatever is laid on it. A row nothing is laid over
-		// leaves that height standing for the next item: the next row clears it before its own Selectable, and any
-		// other item takes a line at least that tall.
-		void HoldTheRowLine(ImGuiWindow& window)
+		// WARNING: Callers lay a row's pieces after the Selectable, with SameLine, which goes back to the row's top,
+		// or at ListRowTextTop. ImGui ends each line at its tallest piece plus the item spacing, so a line of text
+		// alone would end the row short of the pitch. The row's line is therefore held for both ways in: from the
+		// row's top, with the text offset as its baseline, for SameLine, and from the text top for a piece placed
+		// there. A row nothing is laid over leaves the second standing for the next item: the next row clears it
+		// before its own Selectable, and any other item takes a line at least that tall.
+		void HoldTheRowLine(ImGuiWindow& window, float rowTop)
 		{
-			const float rowLine = ListRowLineHeight();
-			window.DC.PrevLineSize.y = rowLine;
-			window.DC.CurrLineSize.y = rowLine;
+			window.DC.PrevLineSize.y = ListRowLineHeight();
+			window.DC.PrevLineTextBaseOffset = ListRowTextTop(rowTop) - rowTop;
+			window.DC.CurrLineSize.y = rowTop + ListRowLineHeight() - ListRowTextTop(rowTop);
 		}
 	}
 
@@ -123,6 +126,18 @@ namespace Graphite {
 	float ListRowLineHeight()
 	{
 		return ListRowPitch() - ImGui::GetStyle().ItemSpacing.y;
+	}
+
+	// WARNING: Centred, but never lower than leaves a text line laid there ending inside the row's line: ImGui ends
+	// a line at its tallest piece plus the item spacing, and a text line reaching past the row's line would end the
+	// row below the pitch. The two agree at the sizes the app is drawn at; they part only at large scales.
+	float ListRowTextTop(float rowTop)
+	{
+		const float textLine = ImGui::GetTextLineHeight();
+		const float centred = (ListRowPitch() - textLine) * kHalf;
+		const float lowestInsideTheRowLine = std::max(0.0f, ListRowLineHeight() - textLine);
+
+		return rowTop + std::floor(std::min(centred, lowestInsideTheRowLine));
 	}
 
 	float ListRowEndInset()
@@ -154,9 +169,10 @@ namespace Graphite {
 
 	// WARNING: No width is given. ImGui then fills the row from the cursor to the work rect's edge, but lays out
 	// only the id's empty label; a width laid out would widen the list's content, and a list that scrolls sideways,
-	// whose work rect is as wide as its content, would only ever grow wider. The Selectable is a text line high
-	// under the row spacing, which pads its box by half the spacing above the text and the rest below, so the text
-	// laid at the row's start sits in the middle of the highlight.
+	// whose work rect is as wide as its content, would only ever grow wider. The Selectable is a pitch high with no
+	// item spacing, so its box is the row's whole slot: the first row's highlight starts at the list's top, and the
+	// list's content reaches the last row's bottom. AllowOverlap is given to the item as well as to the Selectable,
+	// so the hover asked of the row lets go while an item laid over it is under the pointer, as Selectable's own does.
 	bool ListRowSelectable(const char* id, bool selected, ImGuiSelectableFlags flags)
 	{
 		ImGuiWindow* const window = ImGui::GetCurrentWindow();
@@ -167,20 +183,26 @@ namespace Graphite {
 		}
 
 		constexpr float kToTheWorkRectEdge = 0.0f;
+		constexpr float kNoItemSpacing = 0.0f;
 		const ImVec2 rowStart = ImGui::GetCursorScreenPos();
 		const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
 
 		ImGui::SetCursorScreenPos(ImVec2(ListLeft(), rowStart.y));
 		window->DC.CurrLineSize.y = 0.0f;
+		window->DC.CurrLineTextBaseOffset = 0.0f;
 
-		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(itemSpacingX, ListRowSpacing()));
+		if ((flags & ImGuiSelectableFlags_AllowOverlap) != 0)
+		{
+			ImGui::SetNextItemAllowOverlap();
+		}
+
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(itemSpacingX, kNoItemSpacing));
 		PushClearedSelectableColours();
-		const bool pressed =
-			ImGui::Selectable(id, selected, flags, ImVec2(kToTheWorkRectEdge, ImGui::GetTextLineHeight()));
+		const bool pressed = ImGui::Selectable(id, selected, flags, ImVec2(kToTheWorkRectEdge, ListRowPitch()));
 		PopClearedSelectableColours();
 		ImGui::PopStyleVar();
 
-		HoldTheRowLine(*window);
+		HoldTheRowLine(*window, rowStart.y);
 
 		if (ImGui::IsItemVisible())
 		{

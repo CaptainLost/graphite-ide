@@ -109,7 +109,7 @@ namespace Graphite {
 
 			RenderStashMenu(stash);
 
-			ImGui::SetCursorPos(rowStart);
+			ImGui::SetCursorPos(ImVec2(rowStart.x, ListRowTextTop(rowStart.y)));
 
 			const StashLabel label = StashRowLabel(stash.Message, when);
 			FittedLine(label.Text, !label.Named);

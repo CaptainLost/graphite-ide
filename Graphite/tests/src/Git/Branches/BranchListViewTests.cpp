@@ -84,6 +84,7 @@ namespace {
 	struct MeasuredRows
 	{
 		ImVec2 ListTop{};
+		float FirstTextTop = 0.0f;
 		float LastItemTop = 0.0f;
 		float CursorTop = 0.0f;
 		float RowHeight = 0.0f;
@@ -95,6 +96,7 @@ namespace {
 
 		MeasuredRows measured;
 		measured.ListTop = ImGui::GetCursorScreenPos();
+		measured.FirstTextTop = Graphite::ListRowTextTop(measured.ListTop.y);
 
 		list.DrawRows(frame);
 
@@ -108,7 +110,7 @@ namespace {
 
 	float RowsAboveLastItem(const MeasuredRows& measured)
 	{
-		return (measured.LastItemTop - measured.ListTop.y) / measured.RowHeight;
+		return (measured.LastItemTop - measured.FirstTextTop) / measured.RowHeight;
 	}
 
 	constexpr std::size_t kTipBefore = 1;
@@ -520,7 +522,7 @@ TEST_CASE("A branch whose tip cannot be read stays one row high")
 	CHECK(rowTops.back() - rowTops.front() == doctest::Approx(rowHeight));
 }
 
-TEST_CASE("Each kind of row moves the list down by exactly one text row")
+TEST_CASE("Each kind of row moves the list down by exactly one list row")
 {
 	ImGuiFrames frames;
 	const Core::Ref<const std::vector<Core::Branch>> listed = Core::CreateRef<const std::vector<Core::Branch>>(

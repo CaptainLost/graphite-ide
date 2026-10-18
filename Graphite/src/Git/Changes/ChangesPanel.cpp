@@ -292,14 +292,6 @@ namespace Graphite {
 
 		if (ImGui::BeginChild("changes.lists", ImVec2(0.0f, -reservedBoxHeight)))
 		{
-			// WARNING: A child without a border has no padding, and a row's highlight reaches half
-			// the list row spacing above it, so the first heading needs this offset or its highlight
-			// is cut off. A clean tree draws no section and the child would end on this
-			// SetCursorPosY with no item after it, which asserts in EndChild; the empty state
-			// below ends on a Dummy.
-			constexpr float kHalfRowSpacing = 0.5f;
-			ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ListRowSpacing() * kHalfRowSpacing);
-
 			bool drawnAbove = false;
 
 			m_Section = Section::Conflicted;
@@ -370,10 +362,10 @@ namespace Graphite {
 		const float rowPadding = RowPadding();
 		const float textStart = rowStart.x + rowPadding + IconColumnWidth() + TextGap();
 
-		ImGui::SetCursorPos(ImVec2(rowStart.x + rowPadding, rowStart.y));
+		ImGui::SetCursorPos(ImVec2(rowStart.x + rowPadding, ListRowTextTop(rowStart.y)));
 		DrawChevron(open);
 
-		ImGui::SetCursorPos(ImVec2(textStart, rowStart.y));
+		ImGui::SetCursorPos(ImVec2(textStart, ListRowTextTop(rowStart.y)));
 		ImGui::TextDisabled("%s", heading);
 		ImGui::SameLine();
 		ImGui::TextDisabled("(%zu)", rows.size());
@@ -382,7 +374,7 @@ namespace Graphite {
 		{
 			const char* allIcon = m_Section == Section::Staged ? ICON_MDI_MINUS : ICON_MDI_PLUS;
 
-			ImGui::SetCursorScreenPos(ImVec2(ListRowEnd() - RowButtonWidth(), rowScreenStart.y));
+			ImGui::SetCursorScreenPos(ImVec2(ListRowEnd() - RowButtonWidth(), ListRowTextTop(rowScreenStart.y)));
 
 			ImGui::BeginDisabled(m_Model.IsWriteInFlight());
 
@@ -561,10 +553,10 @@ namespace Graphite {
 			directory.empty() ? 0.0f : ImGui::CalcTextSize(directoryText.c_str()).x, textGap,
 			MinDirectoryWidth());
 
-		ImGui::SetCursorPos(ImVec2(rowStart.x + rowPadding, rowStart.y));
+		ImGui::SetCursorPos(ImVec2(rowStart.x + rowPadding, ListRowTextTop(rowStart.y)));
 		ImGui::TextUnformatted(Core::IconForExtension(Core::ToUtf8(file.Path.extension())));
 
-		ImGui::SetCursorPos(ImVec2(textStart, rowStart.y));
+		ImGui::SetCursorPos(ImVec2(textStart, ListRowTextTop(rowStart.y)));
 		ImGui::TextColored(TintedName(letterColor), "%s", FitToWidth(name, rowTextFit.Name).c_str());
 
 		if (rowTextFit.Directory > 0.0f)
@@ -575,7 +567,7 @@ namespace Graphite {
 
 		if (rowHovered)
 		{
-			ImGui::SetCursorPos(ImVec2(rightEdge - buttonsWidth, rowStart.y));
+			ImGui::SetCursorPos(ImVec2(rightEdge - buttonsWidth, ListRowTextTop(rowStart.y)));
 			ImGui::BeginDisabled(m_Model.IsWriteInFlight());
 
 			if (offersDiscard)
@@ -606,7 +598,7 @@ namespace Graphite {
 		}
 		else
 		{
-			ImGui::SetCursorPos(ImVec2(rightEdge - letterWidth, rowStart.y));
+			ImGui::SetCursorPos(ImVec2(rightEdge - letterWidth, ListRowTextTop(rowStart.y)));
 			ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(letterColor), "%s", letterText);
 		}
 
@@ -727,13 +719,13 @@ namespace Graphite {
 		const float nameLimit = rightEdge - trailingWidth - ImGui::GetStyle().ItemSpacing.x -
 								fileCountWidth - directorySeparatorWidth - textStart;
 
-		ImGui::SetCursorPos(ImVec2(iconStart, rowStart.y));
+		ImGui::SetCursorPos(ImVec2(iconStart, ListRowTextTop(rowStart.y)));
 		ImGui::TextUnformatted(folderIcon);
 
-		ImGui::SetCursorPos(ImVec2(chevronStart, rowStart.y));
+		ImGui::SetCursorPos(ImVec2(chevronStart, ListRowTextTop(rowStart.y)));
 		DrawChevron(expanded);
 
-		ImGui::SetCursorPos(ImVec2(textStart, rowStart.y));
+		ImGui::SetCursorPos(ImVec2(textStart, ListRowTextTop(rowStart.y)));
 
 		const std::string elidedName = FitToWidth(Core::ToUtf8(file.Path.filename()), nameLimit);
 
@@ -753,12 +745,12 @@ namespace Graphite {
 
 		if (!rowHovered)
 		{
-			ImGui::SetCursorPos(ImVec2(rightEdge - letterWidth, rowStart.y));
+			ImGui::SetCursorPos(ImVec2(rightEdge - letterWidth, ListRowTextTop(rowStart.y)));
 			ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(letterColor), "%s", letterText);
 		}
 		else
 		{
-			ImGui::SetCursorPos(ImVec2(rightEdge - buttonsWidth, rowStart.y));
+			ImGui::SetCursorPos(ImVec2(rightEdge - buttonsWidth, ListRowTextTop(rowStart.y)));
 			ImGui::BeginDisabled(m_Model.IsWriteInFlight());
 
 			if (offersDiscard)

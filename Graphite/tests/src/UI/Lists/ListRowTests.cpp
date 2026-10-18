@@ -97,6 +97,7 @@ namespace {
 		float EndX = 0.0f;
 		float TextLine = 0.0f;
 		float Pitch = 0.0f;
+		float ContentBottom = 0.0f;
 
 		ListScreen()
 		{
@@ -122,6 +123,7 @@ namespace {
 			Pitch = Graphite::ListRowPitch();
 
 			rows();
+			ContentBottom = ImGui::GetCurrentWindowRead()->DC.CursorMaxPos.y;
 
 			ImGui::EndChild();
 			ImGui::End();
@@ -132,7 +134,7 @@ namespace {
 			Frames.Next([&] { Draw(rows); });
 		}
 
-		float RowMiddle() const { return FirstRowTop + TextLine * 0.5f; }
+		float RowMiddle() const { return FirstRowTop + Pitch * 0.5f; }
 
 		static const ImDrawList& DrawList()
 		{
@@ -173,7 +175,7 @@ TEST_CASE("A row's pitch is the text line plus the list row spacing")
 	CHECK(secondRowTop - screen.FirstRowTop == doctest::Approx(screen.Pitch));
 }
 
-TEST_CASE("A row laid over by hand from its start or after it on the same line still leaves the next row a pitch below")
+TEST_CASE("A row laid over at its text top or after it on the same line still leaves the next row a pitch below")
 {
 	ListScreen screen;
 	float secondRowTop = 0.0f;
@@ -182,8 +184,8 @@ TEST_CASE("A row laid over by hand from its start or after it on the same line s
 	screen.DrawFrame([&secondRowTop, &thirdRowTop] {
 		const ImVec2 firstRowStart = ImGui::GetCursorScreenPos();
 		Graphite::ListRowSelectable("##first", false);
-		ImGui::SetCursorScreenPos(firstRowStart);
-		ImGui::TextUnformatted("Laid over from the start");
+		ImGui::SetCursorScreenPos(ImVec2(firstRowStart.x, Graphite::ListRowTextTop(firstRowStart.y)));
+		ImGui::TextUnformatted("Laid over at the text top");
 
 		secondRowTop = ImGui::GetCursorScreenPos().y;
 		Graphite::ListRowSelectable("##second", false);
@@ -233,14 +235,72 @@ TEST_CASE("The highlights of rows one under the other fill the pitch and touch")
 TEST_CASE("A row's text line sits in the middle of its highlight")
 {
 	ListScreen screen;
-	screen.DrawFrame([] { Graphite::ListRowSelectable("##row", true); });
+	float textTop = 0.0f;
+
+	screen.DrawFrame([&textTop] {
+		textTop = Graphite::ListRowTextTop(ImGui::GetCursorScreenPos().y);
+		Graphite::ListRowSelectable("##row", true);
+	});
 
 	const std::optional<Extent> selected = ExtentInColour(ListScreen::DrawList(), SelectedRowColour());
 	REQUIRE(selected.has_value());
 
-	const float aboveTheText = screen.FirstRowTop - selected->Top;
-	const float belowTheText = selected->Bottom - (screen.FirstRowTop + screen.TextLine);
+	CHECK(textTop - screen.FirstRowTop == doctest::Approx(std::floor(kListRowSpacing * 0.5f)));
+
+	const float aboveTheText = textTop - selected->Top;
+	const float belowTheText = selected->Bottom - (textTop + screen.TextLine);
 	CHECK(std::abs(aboveTheText - belowTheText) <= kFringe);
+}
+
+TEST_CASE("Text laid after a row on the same line stands where text laid at the row's text top does")
+{
+	ListScreen screen;
+	float secondRowTop = 0.0f;
+
+	screen.DrawFrame([&screen, &secondRowTop] {
+		Graphite::ListRowSelectable("##first", false);
+		ImGui::SameLine();
+		ImGui::TextUnformatted("Name");
+
+		secondRowTop = ImGui::GetCursorScreenPos().y;
+		Graphite::ListRowSelectable("##second", false);
+		ImGui::SetCursorScreenPos(ImVec2(screen.List.Min.x, Graphite::ListRowTextTop(secondRowTop)));
+		ImGui::TextUnformatted("Name");
+	});
+
+	const ImU32 text = ImGui::GetColorU32(kText);
+	const std::optional<Extent> first = ExtentInColour(ListScreen::DrawList(), text, screen.FirstRowTop, secondRowTop);
+	const std::optional<Extent> second = ExtentInColour(ListScreen::DrawList(), text, secondRowTop);
+	REQUIRE(first.has_value());
+	REQUIRE(second.has_value());
+
+	CHECK(first->Top - screen.FirstRowTop == doctest::Approx(second->Top - secondRowTop));
+}
+
+TEST_CASE("The first row of a list without padding shows its whole highlight")
+{
+	ListScreen screen;
+	screen.DrawFrame([] { IndentedRows(true, false); });
+
+	const std::optional<Extent> selected = ExtentInColour(ListScreen::DrawList(), SelectedRowColour());
+	REQUIRE(selected.has_value());
+
+	CHECK(screen.FirstRowTop == doctest::Approx(screen.List.Min.y));
+	CHECK(selected->Top >= screen.List.Min.y);
+	CHECK(WithinFringe(selected->Top, screen.List.Min.y));
+}
+
+TEST_CASE("A list's content reaches the bottom of its last row's highlight")
+{
+	ListScreen screen;
+	screen.DrawFrame([] { IndentedRows(false, true); });
+
+	const std::optional<Extent> lastRow = ExtentInColour(ListScreen::DrawList(), SelectedRowColour());
+	REQUIRE(lastRow.has_value());
+
+	constexpr float kTwoRows = 2.0f;
+	CHECK(screen.ContentBottom - screen.FirstRowTop == doctest::Approx(screen.Pitch * kTwoRows));
+	CHECK(WithinFringe(lastRow->Bottom, screen.ContentBottom));
 }
 
 TEST_CASE("A selected row is the accent at a fifth drawn by the row instead of ImGui's square header")
@@ -264,6 +324,52 @@ TEST_CASE("A hovered row is the background lifted toward the text and inset as a
 	REQUIRE(hovered.has_value());
 	CheckInsetFromTheListEdges(*hovered, screen);
 	CHECK_FALSE(DrawsInColour(ListScreen::DrawList(), ImGui::GetColorU32(ImGuiCol_HeaderHovered)));
+}
+
+TEST_CASE("A selected row under the pointer keeps the accent")
+{
+	ListScreen screen;
+	screen.DrawFrame([] { IndentedRows(true, false); });
+
+	ImGui::GetIO().AddMousePosEvent(screen.List.Max.x - 20.0f, screen.RowMiddle());
+	screen.DrawFrame([] { IndentedRows(true, false); });
+
+	CHECK(DrawsInColour(ListScreen::DrawList(), SelectedRowColour()));
+	CHECK_FALSE(DrawsInColour(ListScreen::DrawList(), HoveredRowColour()));
+}
+
+TEST_CASE("A row lets go of its hover while a button laid over it is under the pointer")
+{
+	ListScreen screen;
+	ImVec2 buttonCentre;
+
+	const auto rows = [&buttonCentre] {
+		const float rowTop = ImGui::GetCursorScreenPos().y;
+		Graphite::ListRowSelectable("##row", false, ImGuiSelectableFlags_AllowOverlap);
+
+		const float buttonWidth = ImGui::CalcTextSize("Go").x + ImGui::GetStyle().FramePadding.x * 2.0f;
+		ImGui::SetCursorScreenPos(ImVec2(Graphite::ListRowEnd() - buttonWidth, Graphite::ListRowTextTop(rowTop)));
+		ImGui::SmallButton("Go");
+		buttonCentre = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax()).GetCenter();
+	};
+
+	constexpr int kFramesForTheHoverToMove = 3;
+	ImGuiIO& io = ImGui::GetIO();
+	screen.DrawFrame(rows);
+
+	io.AddMousePosEvent(screen.List.Min.x + kIndent, screen.RowMiddle());
+	for (int frame = 0; frame < kFramesForTheHoverToMove; ++frame)
+	{
+		screen.DrawFrame(rows);
+	}
+	REQUIRE(DrawsInColour(ListScreen::DrawList(), HoveredRowColour()));
+
+	io.AddMousePosEvent(buttonCentre.x, buttonCentre.y);
+	for (int frame = 0; frame < kFramesForTheHoverToMove; ++frame)
+	{
+		screen.DrawFrame(rows);
+	}
+	CHECK_FALSE(DrawsInColour(ListScreen::DrawList(), HoveredRowColour()));
 }
 
 TEST_CASE("A row held down under the pointer is the accent at three tenths")

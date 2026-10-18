@@ -157,7 +157,7 @@ namespace {
 			const ImGuiWindow* body = FindSolutionBody();
 			REQUIRE(body != nullptr);
 
-			return static_cast<int>(std::lround((body->ContentSize.y + Graphite::ListRowSpacing()) / RowPitch()));
+			return static_cast<int>(std::lround(body->ContentSize.y / RowPitch()));
 		}
 
 		ImGuiFrames Frames;

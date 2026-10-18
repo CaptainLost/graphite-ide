@@ -214,7 +214,7 @@ namespace Graphite {
 
 		// WARNING: Drawn over the row rather than as the Selectable's label, which would hide a message from a "##"
 		// in it on, and leave the icon outside the row's highlight.
-		ImGui::SetCursorPos(rowStart);
+		ImGui::SetCursorPos(ImVec2(rowStart.x, ListRowTextTop(rowStart.y)));
 		ImGui::PushStyleColor(ImGuiCol_Text, colour);
 		ImGui::TextUnformatted(icon);
 		ImGui::PopStyleColor();

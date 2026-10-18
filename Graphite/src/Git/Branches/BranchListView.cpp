@@ -611,7 +611,7 @@ namespace Graphite {
 			}
 		}
 
-		ImGui::SetCursorPos(ImVec2(rowStart.x + IndentOf(row), rowStart.y));
+		ImGui::SetCursorPos(ImVec2(rowStart.x + IndentOf(row), ListRowTextTop(rowStart.y)));
 		DrawChevron(!row.Collapsed);
 		ImGui::SameLine();
 
@@ -631,6 +631,7 @@ namespace Graphite {
 		ImGui::PushID(static_cast<int>(SectionIndexOf(row.Section)));
 
 		const ImVec2 rowStart = ImGui::GetCursorScreenPos();
+		ImGui::SetCursorScreenPos(ImVec2(rowStart.x, ListRowTextTop(rowStart.y)));
 
 		if (row.Kind == BranchRowKind::Loading)
 		{
@@ -648,8 +649,9 @@ namespace Graphite {
 			}
 		}
 
-		// WARNING: The clipper counts every row as one list row pitch, so a row of plain text is laid out that tall
-		// too, or the rows below it would stand short of where the clipper seeks them.
+		// WARNING: The clipper counts every row as one list row pitch, so a row of plain text stands on a list row's
+		// text line and is laid out that tall too, or the rows below it would stand short of where the clipper seeks
+		// them.
 		ImGui::SetCursorScreenPos(rowStart);
 		ImGui::ItemSize(ImVec2(0.0f, ListRowLineHeight()));
 
@@ -690,23 +692,24 @@ namespace Graphite {
 
 		// WARNING: The group makes the menu below ask about the row, from its start to its age. Its label is drawn in
 		// pieces when the filter is marked, and without the group the menu would ask about the last of them, or the age.
-		ImGui::SetCursorScreenPos(rowStart);
+		const float textTop = ListRowTextTop(rowStart.y);
+		ImGui::SetCursorScreenPos(ImVec2(rowStart.x, textTop));
 		ImGui::BeginGroup();
 
 		const std::string_view needle = FirstWordInName(branch.Name, m_Words);
-		ImGui::SetCursorScreenPos(ImVec2(rowStart.x + indent, rowStart.y));
+		ImGui::SetCursorScreenPos(ImVec2(rowStart.x + indent, textTop));
 		DrawHighlightedLabel(SplitHighlight(fitted, needle), ImGui::GetStyleColorVec4(ImGuiCol_CheckMark));
 
 		if (!badge.empty())
 		{
-			ImGui::SetCursorScreenPos(ImVec2(ageRight - ageRoom - spacing - badgeWidth, rowStart.y));
+			ImGui::SetCursorScreenPos(ImVec2(ageRight - ageRoom - spacing - badgeWidth, textTop));
 			ImGui::TextDisabled("%s", badge.c_str());
 		}
 
 		if (!age.empty())
 		{
 			const float ageWidth = ImGui::CalcTextSize(age.c_str()).x;
-			ImGui::SetCursorScreenPos(ImVec2(ageRight - ageWidth, rowStart.y));
+			ImGui::SetCursorScreenPos(ImVec2(ageRight - ageWidth, textTop));
 			ImGui::TextDisabled("%s", age.c_str());
 		}
 

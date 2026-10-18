@@ -123,7 +123,7 @@ namespace Graphite {
 			const bool notSelected = false;
 			const bool clicked = ListRowSelectable("##heading", notSelected, ImGuiSelectableFlags_AllowOverlap);
 
-			ImGui::SetCursorPos(rowStart);
+			ImGui::SetCursorPos(ImVec2(rowStart.x, ListRowTextTop(rowStart.y)));
 			DrawChevron(!row.Folded);
 			ImGui::SameLine();
 
@@ -181,7 +181,7 @@ namespace Graphite {
 			const bool notSelected = false;
 			const bool clicked = ListRowSelectable("##folder", notSelected, ImGuiSelectableFlags_AllowOverlap);
 
-			ImGui::SetCursorPos(ImVec2(rowStart.x + indent, rowStart.y));
+			ImGui::SetCursorPos(ImVec2(rowStart.x + indent, ListRowTextTop(rowStart.y)));
 			DrawChevron(!row.Folded);
 			ImGui::SameLine();
 			ImGui::TextUnformatted(row.Folded ? ICON_MDI_FOLDER : ICON_MDI_FOLDER_OPEN);
@@ -337,7 +337,7 @@ namespace Graphite {
 				ImGui::EndPopup();
 			}
 
-			ImGui::SetCursorPos(ImVec2(rowStart.x + look.Indent, rowStart.y));
+			ImGui::SetCursorPos(ImVec2(rowStart.x + look.Indent, ListRowTextTop(rowStart.y)));
 
 			switch (look.Marks)
 			{
@@ -528,7 +528,7 @@ namespace Graphite {
 
 			DrawCommitTooltip(commit);
 
-			ImGui::SetCursorPos(rowStart);
+			ImGui::SetCursorPos(ImVec2(rowStart.x, ListRowTextTop(rowStart.y)));
 			Core::PushCodeFont(Core::kInterfaceFontSize);
 			ImGui::TextDisabled("%s", commit.Id.ShortHex().c_str());
 			ImGui::PopFont();

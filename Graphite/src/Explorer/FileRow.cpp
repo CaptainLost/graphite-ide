@@ -1,5 +1,7 @@
 #include "Explorer/FileRow.h"
 
+#include "UI/Lists/ListRow.h"
+
 #include "Core/Text/DocumentSet.h"
 
 #include <imgui_internal.h>
@@ -235,7 +237,7 @@ namespace Graphite {
 		const float labelOffset = ImGui::GetTreeNodeToLabelSpacing();
 		const ImVec2 cursor = ImGui::GetCursorScreenPos();
 
-		return FileRowLayout{.RowAt = cursor, .LabelAt = ImVec2(cursor.x + labelOffset, cursor.y)};
+		return FileRowLayout{.RowAt = cursor, .LabelAt = ImVec2(cursor.x + labelOffset, ListRowTextTop(cursor.y))};
 	}
 
 	float DrawRowMarker(const RowStatus& status, const FileRowLayout& layout)

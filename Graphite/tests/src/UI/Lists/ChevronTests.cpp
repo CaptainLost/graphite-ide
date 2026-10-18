@@ -4,6 +4,7 @@
 #include "ImGuiFrames.h"
 
 #include "UI/Lists/Chevron.h"
+#include "UI/Lists/ListRow.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -34,6 +35,7 @@ namespace {
 		float RowStartY = 0.0f;
 		float NextRowStartY = 0.0f;
 		float TextLine = 0.0f;
+		float TextTop = 0.0f;
 		ImRect Row;
 		bool Open = false;
 
@@ -51,6 +53,7 @@ namespace {
 			RowStartX = ImGui::GetCursorScreenPos().x;
 			RowStartY = ImGui::GetCursorScreenPos().y;
 			TextLine = ImGui::GetTextLineHeight();
+			TextTop = Graphite::ListRowTextTop(RowStartY);
 			Open = Graphite::ChevronTreeNode("node", Drawing.Flags, Drawing.Label, Drawing.Note);
 			Row = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 
@@ -157,8 +160,10 @@ TEST_CASE("A tree node's chevron and label sit on the text line in the middle of
 	screen.Drawing.Label = "References";
 	screen.DrawFrame();
 
-	const float textLineTop = screen.RowStartY;
-	const float textLineBottom = screen.RowStartY + screen.TextLine;
+	const float textLineTop = screen.TextTop;
+	const float textLineBottom = screen.TextTop + screen.TextLine;
+
+	CHECK(screen.Row.Min.y == doctest::Approx(screen.RowStartY));
 
 	const float aboveTheText = textLineTop - screen.Row.Min.y;
 	const float belowTheText = screen.Row.Max.y - textLineBottom;

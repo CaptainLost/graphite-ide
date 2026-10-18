@@ -1,5 +1,7 @@
 #include "Explorer/RowRenameField.h"
 
+#include "UI/Lists/ListRow.h"
+
 #include "Core/ImGui/UiScale.h"
 
 #include <imgui.h>
@@ -11,7 +13,6 @@ namespace Graphite {
 	namespace {
 		constexpr float kFieldPaddingX = 2.0f;
 		constexpr float kMinFieldWidth = 90.0f;
-		constexpr float kNoFramePaddingY = 0.0f;
 
 		float FitWidthToText(const char* text, float paddingX)
 		{
@@ -48,6 +49,8 @@ namespace Graphite {
 			m_Focus = false;
 		}
 
+		const ImVec2 rowStart = ImGui::GetCursorScreenPos();
+		const float textOffset = ListRowTextTop(rowStart.y) - rowStart.y;
 		const float paddingX = Core::Scaled(kFieldPaddingX);
 		const float indentToLabel = ImGui::GetTreeNodeToLabelSpacing() - paddingX;
 		const bool isIndented = indentToLabel > 0.0f;
@@ -57,7 +60,7 @@ namespace Graphite {
 			ImGui::Indent(indentToLabel);
 		}
 
-		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(paddingX, kNoFramePaddingY));
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(paddingX, textOffset));
 		ImGui::SetNextItemWidth(FitWidthToText(m_Buffer.data(), paddingX));
 
 		// WARNING: ImGui runs this on every frame the field is active. Only the frame it activates on selects the stem,
@@ -93,6 +96,12 @@ namespace Graphite {
 		{
 			ImGui::Unindent(indentToLabel);
 		}
+
+		// WARNING: The field stands in a list row's place, its text on the rows' text line, and is laid out one row
+		// tall from the row's top: a frame and the item spacing after it would end the row below the pitch, and the
+		// line a row before it left standing would end it elsewhere again.
+		ImGui::SetCursorScreenPos(rowStart);
+		ImGui::ItemSize(ImVec2(0.0f, ListRowLineHeight()));
 
 		if (cancelled)
 		{

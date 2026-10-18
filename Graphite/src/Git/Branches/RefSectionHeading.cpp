@@ -20,7 +20,7 @@ namespace Graphite {
 			collapsed = !collapsed;
 		}
 
-		ImGui::SetCursorPos(rowStart);
+		ImGui::SetCursorPos(ImVec2(rowStart.x, ListRowTextTop(rowStart.y)));
 		DrawChevron(!collapsed);
 		ImGui::SameLine();
 

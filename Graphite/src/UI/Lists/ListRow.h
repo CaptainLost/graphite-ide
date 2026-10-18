@@ -20,6 +20,8 @@ namespace Graphite {
 
 	float ListRowLineHeight();
 
+	float ListRowTextTop(float rowTop);
+
 	float ListRowEndInset();
 
 	float ListRowEnd();

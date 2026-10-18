@@ -105,7 +105,7 @@ namespace Graphite {
 						input.Selected = HitSelection{group.Id, hitIndex};
 					}
 
-					ImGui::SetCursorPos(rowStart);
+					ImGui::SetCursorPos(ImVec2(rowStart.x, ListRowTextTop(rowStart.y)));
 
 					const HighlightedLabel line = SplitForDisplay(hit);
 
