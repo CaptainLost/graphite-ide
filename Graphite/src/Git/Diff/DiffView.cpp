@@ -13,6 +13,7 @@
 
 #include "Core/ImGui/UiScale.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/FileSystem/FileSystem.h"
@@ -279,7 +280,7 @@ namespace Graphite {
 			return row;
 		}
 
-		float DrawHeader(const ImVec2& origin, const std::string& text)
+		float DrawHeaderText(const ImVec2& origin, const std::string& text)
 		{
 			ImGui::SetCursorPos(origin);
 			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetColorU32(ImGuiCol_TextDisabled));
@@ -287,6 +288,20 @@ namespace Graphite {
 			ImGui::PopStyleColor();
 
 			return ImGui::CalcTextSize(text.c_str()).x;
+		}
+
+		float DrawHeader(const ImVec2& origin, const std::string& text, DiffRowKind kind)
+		{
+			if (kind == DiffRowKind::HunkSignature)
+			{
+				return DrawHeaderText(origin, text);
+			}
+
+			Core::PushInterfaceFont();
+			const float width = DrawHeaderText(origin, text);
+			ImGui::PopFont();
+
+			return width;
 		}
 
 		struct RunEndsBefore
@@ -1081,7 +1096,7 @@ namespace Graphite {
 				if (drawn.Kind == DiffRowKind::HunkHeader || drawn.Kind == DiffRowKind::HunkSignature)
 				{
 					DrawHeader(ImVec2(rowPos.x + textOffset, rowPos.y),
-							   HeaderTextFor(file, row.Hunk, row.Kind, std::nullopt));
+							   HeaderTextFor(file, row.Hunk, row.Kind, std::nullopt), row.Kind);
 					continue;
 				}
 
@@ -1351,7 +1366,7 @@ namespace Graphite {
 			if (drawn.Kind == DiffRowKind::HunkHeader || drawn.Kind == DiffRowKind::HunkSignature)
 			{
 				const float width = DrawHeader(ImVec2(rowPos.x + numberWidth, rowPos.y),
-											   HeaderTextFor(context.File, row->Hunk, row->Kind, side));
+											   HeaderTextFor(context.File, row->Hunk, row->Kind, side), row->Kind);
 				widest = std::max(widest, numberWidth + width);
 				continue;
 			}

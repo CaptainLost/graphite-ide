@@ -164,6 +164,22 @@ TEST_CASE("With no fonts loaded, the push helpers keep the current face and set 
 	ImGui::PopFont();
 }
 
+TEST_CASE("With no fonts loaded, a sized interface push keeps the current face and sets that size")
+{
+	HeadlessFrame frame;
+
+	constexpr float kRequestedSize = 13.0f;
+
+	const ImGuiStyle& style = ImGui::GetStyle();
+	const float scale = style.FontScaleMain * style.FontScaleDpi;
+	ImFont* const face = ImGui::GetFont();
+
+	Core::PushInterfaceFont(kRequestedSize);
+	CHECK(ImGui::GetFont() == face);
+	CHECK(ImGui::GetFontSize() == kRequestedSize * scale);
+	ImGui::PopFont();
+}
+
 TEST_CASE("A code push at the interface size gives the interface size")
 {
 	HeadlessFrame frame;

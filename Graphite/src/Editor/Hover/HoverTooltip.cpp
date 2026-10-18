@@ -14,6 +14,7 @@
 
 #include "Core/App/Redraw.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/FontSet.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/Encoding.h"
 
@@ -62,6 +63,20 @@ namespace Graphite {
 		void PlainText(std::string_view text)
 		{
 			ImGui::TextUnformatted(text.data(), text.data() + text.size());
+		}
+
+		void DisabledProse(std::string_view text)
+		{
+			Core::PushInterfaceFont();
+			DisabledText(text);
+			ImGui::PopFont();
+		}
+
+		void PlainProse(std::string_view text)
+		{
+			Core::PushInterfaceFont();
+			PlainText(text);
+			ImGui::PopFont();
 		}
 
 		std::vector<std::size_t> RowStarts(std::string_view text, std::size_t columns)
@@ -259,7 +274,7 @@ namespace Graphite {
 
 			if (!info.Kind.empty())
 			{
-				DisabledText(info.Kind);
+				DisabledProse(info.Kind);
 
 				if (!info.Name.empty())
 				{
@@ -291,7 +306,7 @@ namespace Graphite {
 
 			if (!where.empty())
 			{
-				DisabledText(where);
+				DisabledProse(where);
 			}
 
 			const bool heading = !info.Kind.empty() || !info.Name.empty() || !where.empty();
@@ -325,6 +340,9 @@ namespace Graphite {
 					// WARNING: Text after SameLine wraps at the wrap position, not where it began, so
 					// a note that does not fit beside the declaration would come out a word to a row.
 					const float noteLeft = ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x;
+
+					Core::PushInterfaceFont();
+
 					const float noteWidth = ImGui::CalcTextSize(info.OverloadNote.c_str()).x;
 
 					if (noteLeft + noteWidth <= declarationLeft + maxContentWidth)
@@ -333,6 +351,8 @@ namespace Graphite {
 					}
 
 					DisabledText(info.OverloadNote);
+
+					ImGui::PopFont();
 				}
 			}
 
@@ -344,7 +364,7 @@ namespace Graphite {
 
 			if (!info.Parameters.empty())
 			{
-				PlainText("Parameters");
+				PlainProse("Parameters");
 				ImGui::Indent();
 
 				for (const std::string& parameter : info.Parameters)
@@ -362,7 +382,7 @@ namespace Graphite {
 				if (!info.TypeAka.empty())
 				{
 					ImGui::Indent();
-					DisabledText("aka " + info.TypeAka);
+					DisabledProse("aka " + info.TypeAka);
 					ImGui::Unindent();
 				}
 			}
@@ -396,6 +416,8 @@ namespace Graphite {
 				Core::AppendSeparatedIfNotEmpty(layout, kMiddleDotSeparator, "Align " + info.Alignment);
 			}
 
+			Core::PushInterfaceFont();
+
 			if (!layout.empty())
 			{
 				PlainText(layout);
@@ -410,6 +432,8 @@ namespace Graphite {
 
 				PlainText(info.Documentation);
 			}
+
+			ImGui::PopFont();
 		}
 
 		const std::vector<SemanticSpan>& ServerSpansOnPreviewLine(const DefinitionPreview& preview,
@@ -438,11 +462,11 @@ namespace Graphite {
 
 			if (preview.TooLarge)
 			{
-				DisabledText(file + std::string{kEmDashSeparator} + "file too large to preview");
+				DisabledProse(file + std::string{kEmDashSeparator} + "file too large to preview");
 				return;
 			}
 
-			DisabledText(file + std::format(":{}", preview.FirstLine + 1));
+			DisabledProse(file + std::format(":{}", preview.FirstLine + 1));
 
 			const bool declared = look.PreviewOverlay == nullptr && look.Semantics != nullptr;
 
@@ -640,7 +664,9 @@ namespace Graphite {
 
 		if (showDiagnostic)
 		{
+			Core::PushInterfaceFont();
 			DrawDiagnosticMessages(diagnostics);
+			ImGui::PopFont();
 
 			if (showInfo || showPreview)
 			{

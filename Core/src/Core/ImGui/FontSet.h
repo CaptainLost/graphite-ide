@@ -17,7 +17,7 @@ namespace Core {
 
 	FontSet LoadFontSet(ImFontAtlas& atlas);
 
-	void PushInterfaceFont();
+	void PushInterfaceFont(float size = kInterfaceFontSize);
 
 	void PushCodeFont(float size = kCodeFontSize);
 }

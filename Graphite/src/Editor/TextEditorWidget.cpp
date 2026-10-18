@@ -37,6 +37,7 @@
 #include "Core/Command/ShortcutRouter.h"
 #include "Core/Events/FrameInput.h"
 #include "Core/Events/KeyEvent.h"
+#include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/TextMetrics.h"
@@ -163,6 +164,7 @@ namespace Graphite {
 
 		struct EditorMetrics
 		{
+			float FontSizeBase = 0.0f;
 			float LineHeight = 0.0f;
 			float CellWidth = 0.0f;
 			GutterMetrics Gutter;
@@ -172,6 +174,7 @@ namespace Graphite {
 		{
 			EditorMetrics metrics;
 
+			metrics.FontSizeBase = ImGui::GetStyle().FontSizeBase;
 			metrics.LineHeight = ImGui::GetTextLineHeight();
 			metrics.CellWidth = Core::MonospaceCellWidth();
 
@@ -313,6 +316,13 @@ namespace Graphite {
 			return textOriginX + static_cast<float>(lens.Column) * metrics.CellWidth;
 		}
 
+		// WARNING: The hit-test and the drawing both push this, so a label is hit across the width it is
+		// drawn at. A label measured in the code face it sits inside would be hit short of its end or past it.
+		void PushLensFont(const EditorMetrics& metrics)
+		{
+			Core::PushInterfaceFont(metrics.FontSizeBase);
+		}
+
 		bool IsOverLensLabel(const Lens* lens, float x, float textOriginX,
 							 const EditorMetrics& metrics)
 		{
@@ -323,7 +333,12 @@ namespace Graphite {
 
 			const float left = LensLabelLeft(*lens, textOriginX, metrics);
 			const std::string text = LensLabelOf(*lens);
-			return x >= left && x < left + ImGui::CalcTextSize(text.c_str()).x;
+
+			PushLensFont(metrics);
+			const float width = ImGui::CalcTextSize(text.c_str()).x;
+			ImGui::PopFont();
+
+			return x >= left && x < left + width;
 		}
 
 		std::optional<LensRows::Row> RowUnderMouse(const LensRows& lenses,
@@ -1524,6 +1539,8 @@ namespace Graphite {
 				const float x = LensLabelLeft(*lens, canvas.TextOriginX, canvas.Metrics);
 				const ImU32 colour = hovered ? canvas.Palette.Text : canvas.Palette.Lens;
 
+				PushLensFont(canvas.Metrics);
+
 				canvas.Draw->AddText(ImVec2(x, y), colour, text.c_str());
 
 				if (hovered)
@@ -1535,6 +1552,8 @@ namespace Graphite {
 						ImVec2(x + ImGui::CalcTextSize(text.c_str()).x, underlineY), colour,
 						Core::Scaled(kHairlineWidth));
 				}
+
+				ImGui::PopFont();
 			}
 
 			DrawGutterFill(canvas, y);
@@ -1736,9 +1755,11 @@ namespace Graphite {
 				return;
 			}
 
+			Core::PushInterfaceFont();
 			ImGui::BeginTooltip();
 			DrawDiagnosticMessages(hover.Spans);
 			ImGui::EndTooltip();
+			ImGui::PopFont();
 		}
 
 		struct HoverFrame
@@ -2188,7 +2209,9 @@ namespace Graphite {
 				return;
 			}
 
+			Core::PushInterfaceFont();
 			ImGui::TextUnformatted(DescribeHunk(*hunk).c_str());
+			ImGui::PopFont();
 
 			for (std::size_t index = 0; index < hunk->OldLines.size(); ++index)
 			{
@@ -2215,7 +2238,9 @@ namespace Graphite {
 
 			if (hunk->OldCount > hunk->OldLines.size())
 			{
+				Core::PushInterfaceFont();
 				ImGui::TextDisabled("… and %zu more", hunk->OldCount - hunk->OldLines.size());
+				ImGui::PopFont();
 			}
 
 			ImGui::EndTooltip();
@@ -2769,10 +2794,17 @@ namespace Graphite {
 				ImGui::OpenPopup("##EditorContextMenu");
 			}
 
-			if (hasMenu && ImGui::BeginPopup("##EditorContextMenu", ImGuiWindowFlags_NoMove))
+			if (hasMenu)
 			{
-				Core::RenderMenuItems(*context.Commands, *context.Keys, *context.ContextMenu);
-				ImGui::EndPopup();
+				Core::PushInterfaceFont();
+
+				if (ImGui::BeginPopup("##EditorContextMenu", ImGuiWindowFlags_NoMove))
+				{
+					Core::RenderMenuItems(*context.Commands, *context.Keys, *context.ContextMenu);
+					ImGui::EndPopup();
+				}
+
+				ImGui::PopFont();
 			}
 
 			// WARNING: IsWindowFocused() without flags checks the current window, the child

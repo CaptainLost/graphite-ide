@@ -4,6 +4,7 @@
 #include "Theme/Palettes.h"
 #include "Core/ImGui/IconButton.h"
 
+#include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
@@ -208,6 +209,10 @@ namespace Graphite {
 		// narrower than the window. The extent is restored after EndChild.
 		const ImVec2 extentBeforeBar = ImGui::GetCurrentWindow()->DC.CursorMaxPos;
 
+		// WARNING: The bar is drawn inside the editor's code push, so it measures itself only after taking
+		// the interface face back; widths measured before the push would not fit what it then draws.
+		Core::PushInterfaceFont();
+
 		const FindBarWidths widths = MeasureFindBar();
 
 		const float barWidth = std::min(widths.Total, frame.Width);
@@ -227,6 +232,7 @@ namespace Graphite {
 		if (!barVisible)
 		{
 			ImGui::EndChild();
+			ImGui::PopFont();
 			ImGui::GetCurrentWindow()->DC.CursorMaxPos = extentBeforeBar;
 			return;
 		}
@@ -318,6 +324,7 @@ namespace Graphite {
 			Core::DrawIconButton("##findClose", ICON_MDI_CLOSE, kNotToggled, "Close (Escape)");
 
 		ImGui::EndChild();
+		ImGui::PopFont();
 		ImGui::GetCurrentWindow()->DC.CursorMaxPos = extentBeforeBar;
 
 		const bool shiftHeld = ImGui::GetIO().KeyShift;

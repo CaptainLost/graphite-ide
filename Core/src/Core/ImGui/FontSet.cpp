@@ -119,9 +119,9 @@ namespace Core {
 		return set;
 	}
 
-	void PushInterfaceFont()
+	void PushInterfaceFont(float size)
 	{
-		ImGui::PushFont(ImGuiRenderer::GetInterfaceFont(), kInterfaceFontSize);
+		ImGui::PushFont(ImGuiRenderer::GetInterfaceFont(), size);
 	}
 
 	void PushCodeFont(float size)
