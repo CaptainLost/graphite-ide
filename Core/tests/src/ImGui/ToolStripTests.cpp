@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <initializer_list>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <vector>
@@ -49,6 +50,8 @@ namespace {
 			std::optional<std::string> Clicked;
 			int Vertices = 0;
 			float GlyphHeight = 0.0f;
+			std::vector<ImDrawVert> Mesh;
+			std::vector<ImDrawVert> GlyphMesh;
 		};
 
 		Drawn Draw(const ToolStripContent& content, ImVec2 windowSize = kStripWindowSize)
@@ -63,6 +66,8 @@ namespace {
 			drawn.Clicked = Core::DrawToolStrip(content, Core::Theme::DefaultPalette());
 			drawn.Vertices = drawList->VtxBuffer.Size - verticesBefore;
 			drawn.GlyphHeight = GlyphHeight(*drawList, verticesBefore);
+			drawn.Mesh.assign(drawList->VtxBuffer.Data + verticesBefore, drawList->VtxBuffer.Data + drawList->VtxBuffer.Size);
+			drawn.GlyphMesh = GlyphVertices(*drawList, drawn.Mesh);
 
 			ImGui::End();
 			ImGui::EndFrame();
@@ -150,6 +155,16 @@ namespace {
 			return bottom - top;
 		}
 
+		static std::vector<ImDrawVert> GlyphVertices(const ImDrawList& drawList, const std::vector<ImDrawVert>& mesh)
+		{
+			const ImVec2 whitePixel = drawList._Data->TexUvWhitePixel;
+			std::vector<ImDrawVert> glyph;
+			std::copy_if(mesh.begin(), mesh.end(), std::back_inserter(glyph), [whitePixel](const ImDrawVert& vertex)
+						 { return vertex.uv.x != whitePixel.x || vertex.uv.y != whitePixel.y; });
+			return glyph;
+		}
+
+
 		ImGuiContext* m_Context = nullptr;
 	};
 
@@ -168,6 +183,15 @@ namespace {
 		}
 
 		return group;
+	}
+
+	std::vector<ImDrawVert> InColour(const std::vector<ImDrawVert>& mesh, const Core::Color& colour)
+	{
+		const ImU32 packed = ImGui::ColorConvertFloat4ToU32(ImVec4(colour.R, colour.G, colour.B, colour.A));
+		std::vector<ImDrawVert> found;
+		std::copy_if(mesh.begin(), mesh.end(), std::back_inserter(found),
+					 [packed](const ImDrawVert& vertex) { return vertex.col == packed; });
+		return found;
 	}
 
 	void CheckRect(const ImRect& actual, float minX, float minY, float maxX, float maxY)
@@ -309,22 +333,88 @@ TEST_CASE("A click on an item leaves the keyboard focus with the window that had
 	CHECK(window.DrawBesideEditor(content).EditorFocused);
 }
 
-TEST_CASE("An open item draws a fill and a badge draws a dot that a closed item without one does not")
+TEST_CASE("An open item is marked by an accent bar at the strip's left edge, not by a fill")
+{
+	StripWindow window;
+	ToolStripContent open;
+	open.Top = {Group({"a"})};
+	open.Top[0][0].Open = true;
+	const Core::ChromePalette palette = Core::Theme::DefaultPalette();
+
+	const std::vector<ImDrawVert> mesh = window.Draw(open).Mesh;
+	const std::vector<ImDrawVert> bar = InColour(mesh, palette.Accent);
+
+	REQUIRE_FALSE(bar.empty());
+	for (const ImDrawVert& vertex : bar)
+	{
+		CHECK(vertex.pos.x >= 0.0f);
+		CHECK(vertex.pos.x <= 2.0f);
+		CHECK(vertex.pos.y >= 6.0f + 5.0f);
+		CHECK(vertex.pos.y <= 6.0f + 30.0f - 5.0f);
+	}
+	CHECK(InColour(mesh, palette.SurfaceActive).empty());
+}
+
+TEST_CASE("At 150 % the open bar is 3 whole pixels wide and stays at the strip's left edge")
+{
+	StripWindow window;
+	ImGui::GetStyle().FontScaleMain = 1.5f;
+	ToolStripContent open;
+	open.Top = {Group({"a"})};
+	open.Top[0][0].Open = true;
+
+	const std::vector<ImDrawVert> bar =
+		InColour(window.Draw(open, ImVec2(63.0f, kStripHeight)).Mesh, Core::Theme::DefaultPalette().Accent);
+
+	REQUIRE_FALSE(bar.empty());
+	for (const ImDrawVert& vertex : bar)
+	{
+		CHECK(vertex.pos.x >= 0.0f);
+		CHECK(vertex.pos.x <= 3.0f);
+	}
+}
+
+TEST_CASE("A badge draws a dot that an item without one does not")
 {
 	StripWindow window;
 	ToolStripContent closed;
 	closed.Top = {Group({"a"})};
-	ToolStripContent open = closed;
-	open.Top[0][0].Open = true;
 	ToolStripContent badged = closed;
 	badged.Top[0][0].Badge = IM_COL32(255, 0, 0, 255);
 
 	const int closedVertices = window.Draw(closed).Vertices;
-	const int openVertices = window.Draw(open).Vertices;
 	const int badgedVertices = window.Draw(badged).Vertices;
 
-	CHECK(openVertices > closedVertices);
 	CHECK(badgedVertices > closedVertices);
+}
+
+TEST_CASE("A hovered closed item takes the hover fill and brightens its glyph to the text colour")
+{
+	StripWindow window;
+	ToolStripContent closed;
+	closed.Top = {Group({"a"})};
+	const Core::ChromePalette palette = Core::Theme::DefaultPalette();
+	const ImU32 text = ImGui::ColorConvertFloat4ToU32(ImVec4(palette.Text.R, palette.Text.G, palette.Text.B, palette.Text.A));
+
+	window.MoveMouse(ImVec2(21.0f, 21.0f));
+	window.Draw(closed);
+	const StripWindow::Drawn drawn = window.Draw(closed);
+
+	CHECK_FALSE(InColour(drawn.Mesh, palette.SurfaceHovered).empty());
+	REQUIRE_FALSE(drawn.GlyphMesh.empty());
+	for (const ImDrawVert& vertex : drawn.GlyphMesh)
+	{
+		CHECK(vertex.col == text);
+	}
+}
+
+TEST_CASE("The strip draws no border at its right edge")
+{
+	StripWindow window;
+	ToolStripContent closed;
+	closed.Top = {Group({"a"})};
+
+	CHECK(InColour(window.Draw(closed).Mesh, Core::Theme::DefaultPalette().Border).empty());
 }
 
 TEST_CASE("The icon is scaled once by the interface scale and not twice")

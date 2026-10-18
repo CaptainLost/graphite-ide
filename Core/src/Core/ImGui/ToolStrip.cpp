@@ -23,6 +23,8 @@ namespace Core {
 		constexpr float kSeparatorLength = 18.0f;
 		constexpr float kSeparatorMargin = 4.0f;
 		constexpr float kLineThickness = 1.0f;
+		constexpr float kOpenBarWidth = 2.0f;
+		constexpr float kOpenBarInset = 5.0f;
 		constexpr float kBadgeDiameter = 7.0f;
 		constexpr float kBadgeRingWidth = 2.0f;
 		constexpr float kBadgeCentreInset = 6.5f;
@@ -147,7 +149,7 @@ namespace Core {
 			return layout;
 		}
 
-		bool DrawItem(const ToolStripItem& item, const ImRect& rect, const ChromePalette& palette)
+		bool DrawItem(const ToolStripItem& item, const ImRect& rect, float stripLeft, const ChromePalette& palette)
 		{
 			ImGui::SetCursorScreenPos(rect.Min);
 
@@ -159,16 +161,26 @@ namespace Core {
 
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-			if (item.Open || hovered)
+			if (hovered)
 			{
-				const Color& fill = item.Open ? palette.SurfaceActive : palette.SurfaceHovered;
-				drawList->AddRectFilled(rect.Min, rect.Max, ImGui::GetColorU32(ToImVec4(fill)), Scaled(kButtonRounding));
+				drawList->AddRectFilled(rect.Min, rect.Max, ImGui::GetColorU32(ToImVec4(palette.SurfaceHovered)),
+										Scaled(kButtonRounding));
+			}
+
+			if (item.Open)
+			{
+				const float barWidth = WholePixels(kOpenBarWidth);
+				const float barInset = WholePixels(kOpenBarInset);
+
+				drawList->AddRectFilled(ImVec2(stripLeft, rect.Min.y + barInset),
+										ImVec2(stripLeft + barWidth, rect.Max.y - barInset),
+										ImGui::GetColorU32(ToImVec4(palette.Accent)), barWidth * kHalf);
 			}
 
 			// WARNING: the size is the unscaled one: ImGui multiplies it by the interface scale itself, so
 			// Scaled(kIconSize) here would scale the icon twice.
 			ImGui::PushFont(nullptr, kIconSize);
-			const Color& glyphColour = item.Open ? palette.Text : palette.TextDisabled;
+			const Color& glyphColour = item.Open || hovered ? palette.Text : palette.TextDisabled;
 			DrawCentredGlyph(drawList, rect, item.Icon.c_str(), ImGui::GetColorU32(ToImVec4(glyphColour)));
 			ImGui::PopFont();
 
@@ -215,7 +227,6 @@ namespace Core {
 		const ImU32 border = ImGui::GetColorU32(ToImVec4(palette.Border));
 
 		drawList->AddRectFilled(origin, end, ImGui::GetColorU32(ToImVec4(palette.Background)));
-		drawList->AddRectFilled(ImVec2(end.x - metrics.Line, origin.y), end, border);
 
 		std::optional<std::string> clicked;
 		std::size_t itemIndex = 0;
@@ -226,7 +237,7 @@ namespace Core {
 			{
 				for (const ToolStripItem& item : group)
 				{
-					if (DrawItem(item, layout.Items[itemIndex], palette))
+					if (DrawItem(item, layout.Items[itemIndex], origin.x, palette))
 					{
 						clicked = item.Id;
 					}
