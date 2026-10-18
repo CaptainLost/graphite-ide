@@ -460,9 +460,11 @@ namespace Graphite {
 			ImGui::PopStyleVar();
 		}
 
+		// WARNING: the interface face's digits are proportional and '4' is its widest, so the sample is
+		// filled with '4'; a sample of '0' is narrower than many of the numbers it must hold.
 		float CostWidth()
 		{
-			return std::max(ImGui::CalcTextSize("< $0.01").x, ImGui::CalcTextSize("$000.00").x);
+			return std::max(ImGui::CalcTextSize("< $0.01").x, ImGui::CalcTextSize("$444.44").x);
 		}
 
 		void LineBar(float left, float right, ImU32 colour)
@@ -1100,14 +1102,16 @@ namespace Graphite {
 			{
 				const float sortArrowWidth = ImGui::GetFontSize();
 
+				// WARNING: the interface face's digits are proportional and '4' is its widest, so the
+				// column samples are filled with '4'; samples of '0' are narrower than many of the numbers.
 				ImGui::TableSetupScrollFreeze(kFrozenColumns, kFrozenRows);
 				ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultSort,
-										ImGui::CalcTextSize("#0000").x + sortArrowWidth);
+										ImGui::CalcTextSize("#4444").x + sortArrowWidth);
 				ImGui::TableSetupColumn("Time", ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoSort,
-										ImGui::CalcTextSize("00:00:00").x);
+										ImGui::CalcTextSize("44:44:44").x);
 				ImGui::TableSetupColumn("Context",
 										ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_PreferSortDescending,
-										std::max(ImGui::CalcTextSize("000.0k").x, ImGui::CalcTextSize("Context").x) +
+										std::max(ImGui::CalcTextSize("444.4k").x, ImGui::CalcTextSize("Context").x) +
 											sortArrowWidth);
 				ImGui::TableSetupColumn("Response", ImGuiTableColumnFlags_WidthStretch | ImGuiTableColumnFlags_NoSort);
 				ImGui::TableHeadersRow();

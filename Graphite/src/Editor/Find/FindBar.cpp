@@ -70,9 +70,11 @@ namespace Graphite {
 			return std::to_string(find.CurrentMatch + 1) + "/" + std::to_string(find.Matches.size());
 		}
 
+		// WARNING: the interface face's digits are proportional and '4' is its widest, so the sample is
+		// filled with '4'; a sample of '9' is narrower than many of the counts it must hold.
 		float MatchCounterWidth()
 		{
-			return ImGui::CalcTextSize("999/999").x;
+			return ImGui::CalcTextSize("444/444").x;
 		}
 
 		void DrawMatchCounter(const Core::FindState& find, float width)

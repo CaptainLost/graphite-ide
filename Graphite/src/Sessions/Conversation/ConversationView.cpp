@@ -779,6 +779,8 @@ namespace Graphite {
 			}
 		}
 
+		Core::PushCodeFont();
+
 		if (const std::vector<std::string> editLines = EditLines(tool); !editLines.empty())
 		{
 			for (const std::string& editLine : editLines)
@@ -809,6 +811,8 @@ namespace Graphite {
 				ImGui::PopStyleColor();
 			}
 		}
+
+		ImGui::PopFont();
 
 		ImGui::Unindent();
 	}

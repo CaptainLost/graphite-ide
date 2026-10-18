@@ -14,7 +14,6 @@
 #include "Core/ImGui/UiScale.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/FontSet.h"
-#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/RowMap.h"
@@ -364,7 +363,7 @@ namespace Graphite {
 		// restored so that the context menu it opens draws like every other menu.
 		float MonoWidthOf(std::string_view prefix)
 		{
-			ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont());
+			Core::PushCodeFont();
 			const float width = Core::TextWidth(prefix);
 			ImGui::PopFont();
 
@@ -995,7 +994,7 @@ namespace Graphite {
 								 const GitPalette& palette, const SyntaxPalette& syntax,
 								 ImU32 selection, const FileTokens& tokens, bool wordWrap)
 	{
-		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont());
+		Core::PushCodeFont();
 		const float widthLastFrame = m_UnifiedInnerWidthLastFrame > 0.0f
 										 ? m_UnifiedInnerWidthLastFrame
 										 : ImGui::GetContentRegionAvail().x;
@@ -1029,7 +1028,7 @@ namespace Graphite {
 			return;
 		}
 
-		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont());
+		Core::PushCodeFont();
 
 		const LineNumberColumn numbers = NumberColumnOf(file, m_OldLines.size(), m_NewLines.size());
 		const float numberWidth = numbers.Width();
@@ -1188,7 +1187,7 @@ namespace Graphite {
 									 : ImGui::GetContentRegionAvail().x;
 		const float padding = ImGui::GetStyle().WindowPadding.x;
 
-		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont());
+		Core::PushCodeFont();
 		const SideBySidePanes panesLastFrame = SplitIntoPanes(
 			m_SideInnerWidthLastFrame > 0.0f ? m_SideInnerWidthLastFrame : innerWidth);
 		const std::size_t columnsLastFrame =
@@ -1221,7 +1220,7 @@ namespace Graphite {
 			return;
 		}
 
-		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont());
+		Core::PushCodeFont();
 
 		const LineNumberColumn numbers = NumberColumnOf(file, m_OldLines.size(), m_NewLines.size());
 		const float numberWidth = numbers.Width();

@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include "DrawnColours.h"
 #include "ImGuiFrames.h"
 
 #include "Git/Diff/DiffView.h"
@@ -9,12 +10,30 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <string_view>
 #include <vector>
 
 namespace {
 
 	constexpr bool kNoWordWrap = false;
 	constexpr ImU32 kNoSelectionColour = 0;
+	constexpr const char* kDiffWindowName = "Diff";
+
+	bool DrawsHeaderText()
+	{
+		const ImU32 headerTextColour = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+
+		for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+		{
+			if (std::string_view{window->Name}.starts_with(kDiffWindowName) &&
+				DrawsInColour(*window->DrawList, headerTextColour))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
 
 	Core::DiffLine LineOf(Core::DiffLineKind kind, int oldLine, int newLine, const char* text)
 	{
@@ -65,15 +84,17 @@ TEST_CASE("Hunk headers and signatures draw two frames with their fonts balanced
 
 		int stackBefore = 0;
 		int stackAfter = 0;
+		bool headerTextDrawn = false;
 
 		const auto draw = [&] {
 			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 			ImGui::SetNextWindowSize(ImVec2(900.0f, 400.0f));
-			ImGui::Begin("Diff", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+			ImGui::Begin(kDiffWindowName, nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 
 			stackBefore = ImGui::GetCurrentContext()->FontStack.Size;
 			view.Render(file, palette, syntax, kNoSelectionColour, nullptr, tokens, kNoWordWrap);
 			stackAfter = ImGui::GetCurrentContext()->FontStack.Size;
+			headerTextDrawn = DrawsHeaderText();
 
 			ImGui::End();
 		};
@@ -82,5 +103,6 @@ TEST_CASE("Hunk headers and signatures draw two frames with their fonts balanced
 		frames.Next(draw);
 
 		CHECK(stackAfter == stackBefore);
+		CHECK(headerTextDrawn);
 	}
 }

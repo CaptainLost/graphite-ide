@@ -28,17 +28,10 @@ namespace Core {
 			config.Flags |= ImFontFlags_NoLoadError;
 		}
 
-		// The data is static, so the atlas must not take ownership of it and free it.
-		void KeepFontDataOutsideAtlas(ImFontConfig& config)
-		{
-			config.FontDataOwnedByAtlas = false;
-		}
-
 		ImFont* LoadFace(ImFontAtlas& atlas, const EmbeddedFont& font, float size)
 		{
 			ImFontConfig config;
 			config.SizePixels = size;
-			KeepFontDataOutsideAtlas(config);
 
 			return atlas.AddFontFromMemoryCompressedTTF(font.CompressedData, font.CompressedSize, size, &config);
 		}
@@ -53,7 +46,6 @@ namespace Core {
 			// skews a small round icon, so the minimum advance is set instead.
 			config.GlyphMinAdvanceX = size;
 			config.GlyphOffset = ImVec2(0.0f, kIconBaselineLift);
-			KeepFontDataOutsideAtlas(config);
 
 			const EmbeddedFont font = MaterialDesignIcons();
 

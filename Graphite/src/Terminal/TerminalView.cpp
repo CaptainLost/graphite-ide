@@ -8,9 +8,9 @@
 
 #include "Core/Command/Chord.h"
 #include "Core/ImGui/ContextMenu.h"
+#include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiKeys.h"
-#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Terminal/KeyEncoding.h"
 #include "Core/Text/Utf8.h"
@@ -261,7 +261,7 @@ namespace Graphite {
 
 	Core::CursorPosition TerminalView::Draw(const EditorPalette& palette)
 	{
-		ImGui::PushFont(Core::ImGuiRenderer::GetMonoFont());
+		Core::PushCodeFont();
 
 		// WARNING: The cell width comes from the baked font, never from CalcTextSize. That rounds an
 		// advance up to a whole pixel, and a grid laid out on it drifts a character off its glyphs
