@@ -97,7 +97,9 @@ reader's choice each time a folder opens.
 
 - Closing a terminal's tab still ends its shell; hiding is a separate action,
   reached from the strip.
-- There is still no terminal entry in the View menu (0544).
+- View still has no entry that shows or hides the terminals. Its New Terminal
+  and New Terminal With (0549) start a shell, which shows the terminals again
+  as any start the person asks for does.
 
 ## Alternatives Considered
 
@@ -117,5 +119,5 @@ reader's choice each time a folder opens.
 
 ## Related
 
-- 0519, 0522, 0544
+- 0519, 0522, 0544, 0549
 - `Graphite/src/Terminal/TerminalWindows.h`, `Graphite/src/Terminal/TerminalRules.h`
