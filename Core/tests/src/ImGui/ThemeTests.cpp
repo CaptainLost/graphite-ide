@@ -3,8 +3,30 @@
 #include "Core/ImGui/Theme.h"
 
 #include <cstddef>
+#include <imgui.h>
 
 namespace {
+
+	class IsolatedImGuiContext
+	{
+	public:
+		IsolatedImGuiContext()
+			: m_Context(ImGui::CreateContext())
+		{
+			ImGui::GetIO().IniFilename = nullptr;
+		}
+
+		~IsolatedImGuiContext()
+		{
+			ImGui::DestroyContext(m_Context);
+		}
+
+		IsolatedImGuiContext(const IsolatedImGuiContext&) = delete;
+		IsolatedImGuiContext& operator=(const IsolatedImGuiContext&) = delete;
+
+	private:
+		ImGuiContext* m_Context = nullptr;
+	};
 
 	struct PaletteEntry
 	{
@@ -17,14 +39,15 @@ namespace {
 	};
 
 	constexpr PaletteEntry kExpected[] = {
-		{"Background", &Core::ChromePalette::Background, 0.106f, 0.114f, 0.129f, 1.0f},
+		{"Background", &Core::ChromePalette::Background, 0.078f, 0.082f, 0.094f, 1.0f},
 		{"Surface", &Core::ChromePalette::Surface, 0.145f, 0.157f, 0.176f, 1.0f},
 		{"SurfaceHovered", &Core::ChromePalette::SurfaceHovered, 0.196f, 0.212f, 0.239f, 1.0f},
 		{"SurfaceActive", &Core::ChromePalette::SurfaceActive, 0.243f, 0.263f, 0.298f, 1.0f},
 		{"Accent", &Core::ChromePalette::Accent, 0.259f, 0.522f, 0.957f, 1.0f},
 		{"Text", &Core::ChromePalette::Text, 0.839f, 0.859f, 0.886f, 1.0f},
 		{"TextDisabled", &Core::ChromePalette::TextDisabled, 0.482f, 0.510f, 0.553f, 1.0f},
-		{"Border", &Core::ChromePalette::Border, 0.204f, 0.220f, 0.247f, 1.0f},
+		{"Border", &Core::ChromePalette::Border, 0.149f, 0.161f, 0.180f, 1.0f},
+		{"Content", &Core::ChromePalette::Content, 0.106f, 0.114f, 0.129f, 1.0f},
 	};
 }
 
@@ -54,4 +77,19 @@ TEST_CASE("The border accessor answers from the default palette")
 	CHECK(border.G == doctest::Approx(expected.G));
 	CHECK(border.B == doctest::Approx(expected.B));
 	CHECK(border.A == doctest::Approx(expected.A));
+}
+
+TEST_CASE("Apply paints the title bar in the chrome and the empty dock space in the content colour")
+{
+	IsolatedImGuiContext context;
+	Core::ChromePalette palette = Core::Theme::DefaultPalette();
+	palette.Content = Core::Color{0.9f, 0.2f, 0.1f, 1.0f};
+
+	Core::Theme::Apply(palette);
+
+	const ImVec4* colours = ImGui::GetStyle().Colors;
+	CHECK(colours[ImGuiCol_DockingEmptyBg].x == doctest::Approx(0.9f));
+	CHECK(colours[ImGuiCol_DockingEmptyBg].z == doctest::Approx(0.1f));
+	CHECK(colours[ImGuiCol_MenuBarBg].x == doctest::Approx(palette.Background.R));
+	CHECK(colours[ImGuiCol_WindowBg].x == doctest::Approx(palette.Background.R));
 }

@@ -40,11 +40,11 @@ TEST_CASE("Channels outside the unit range clamp to the end they passed")
 	CHECK(PackBgr(Color{.R = -1.0f, .G = 2.0f, .B = 0.0f, .A = 1.0f}) == 0x00FF00u);
 }
 
-TEST_CASE("The theme's border colour packs to RGB(52, 56, 63), the only check on the colour the window border is given")
+TEST_CASE("The theme's border colour packs to RGB(38, 41, 46), the only check on the colour the window border is given")
 {
-	const std::uint32_t red52Green56Blue63 = 0x3F3834u;
+	const std::uint32_t red38Green41Blue46 = 0x2E2926u;
 
-	CHECK(PackBgr(Theme::GetBorderColor()) == red52Green56Blue63);
+	CHECK(PackBgr(Theme::GetBorderColor()) == red38Green41Blue46);
 }
 
 TEST_CASE("A six-character hex colour parses to full opacity")

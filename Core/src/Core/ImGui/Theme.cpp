@@ -8,7 +8,7 @@
 namespace Core {
 
 	namespace {
-		constexpr ImVec4 kBackground{0.106f, 0.114f, 0.129f, 1.0f};
+		constexpr ImVec4 kBackground{0.078f, 0.082f, 0.094f, 1.0f};
 		constexpr ImVec4 kSurface{0.145f, 0.157f, 0.176f, 1.0f};
 		constexpr ImVec4 kSurfaceHovered{0.196f, 0.212f, 0.239f, 1.0f};
 		constexpr ImVec4 kSurfaceActive{0.243f, 0.263f, 0.298f, 1.0f};
@@ -16,7 +16,8 @@ namespace Core {
 		constexpr ImVec4 kText{0.839f, 0.859f, 0.886f, 1.0f};
 		constexpr ImVec4 kTextDisabled{0.482f, 0.510f, 0.553f, 1.0f};
 
-		constexpr Color kBorder{0.204f, 0.220f, 0.247f, 1.0f};
+		constexpr Color kBorder{0.149f, 0.161f, 0.180f, 1.0f};
+			constexpr Color kContent{0.106f, 0.114f, 0.129f, 1.0f};
 
 		constexpr Color FromImVec4(const ImVec4& color)
 		{
@@ -50,6 +51,7 @@ namespace Core {
 		palette.Text = FromImVec4(kText);
 		palette.TextDisabled = FromImVec4(kTextDisabled);
 		palette.Border = kBorder;
+		palette.Content = kContent;
 
 		return palette;
 	}
@@ -112,7 +114,7 @@ namespace Core {
 		colors[ImGuiCol_TitleBg] = surface;
 		colors[ImGuiCol_TitleBgActive] = surface;
 		colors[ImGuiCol_TitleBgCollapsed] = surface;
-		colors[ImGuiCol_MenuBarBg] = surface;
+		colors[ImGuiCol_MenuBarBg] = background;
 
 		colors[ImGuiCol_Header] = surfaceHovered;
 		colors[ImGuiCol_HeaderHovered] = surfaceActive;
@@ -130,7 +132,7 @@ namespace Core {
 
 		colors[ImGuiCol_Separator] = border;
 		colors[ImGuiCol_DockingPreview] = ImVec4(accent.x, accent.y, accent.z, kDockingPreviewAlpha);
-		colors[ImGuiCol_DockingEmptyBg] = background;
+		colors[ImGuiCol_DockingEmptyBg] = ToImVec4(palette.Content);
 		colors[ImGuiCol_CheckMark] = accent;
 		colors[ImGuiCol_SliderGrab] = accent;
 		colors[ImGuiCol_ResizeGrip] = surfaceActive;

@@ -16,6 +16,7 @@ namespace Core {
 		Color Text;
 		Color TextDisabled;
 		Color Border;
+		Color Content;
 	};
 
 	class Theme
