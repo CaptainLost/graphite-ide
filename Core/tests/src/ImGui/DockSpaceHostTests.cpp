@@ -292,6 +292,26 @@ TEST_CASE("The callback draws in a region the strip's width wide and as tall as 
 	CHECK(available.y == doctest::Approx(node->Size.y));
 }
 
+TEST_CASE("The dock space keeps one id with and without the strip so a layout saved in imgui.ini still applies")
+{
+	DockingContext context;
+	DockSpaceHost host;
+	const DockLayout withoutStrip;
+	DockLayout withStrip;
+	withStrip.StripWidth = 42.0f;
+
+	context.Frame(host, withoutStrip);
+	const unsigned int idWithoutStrip = host.GetDockSpaceId();
+
+	bool stripDrawn = false;
+	context.Frame(host, withStrip, {}, [&stripDrawn] { stripDrawn = true; });
+	const unsigned int idWithStrip = host.GetDockSpaceId();
+
+	REQUIRE(stripDrawn);
+	REQUIRE(idWithoutStrip != 0);
+	CHECK(idWithStrip == idWithoutStrip);
+}
+
 TEST_CASE("Without a callback the dock space keeps the full width")
 {
 	DockingContext context;

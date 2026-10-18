@@ -73,6 +73,28 @@ namespace {
 		const char* GetName() const override { return "TestEvent"; }
 		Core::EventCategory GetCategoryFlags() const override { return Core::EventCategory::Application; }
 	};
+
+	class WindowContext
+	{
+	public:
+		WindowContext()
+			: m_Context(ImGui::CreateContext())
+		{
+			ImGuiIO& imGuiIo = ImGui::GetIO();
+			imGuiIo.DisplaySize = ImVec2(800.0f, 600.0f);
+			imGuiIo.DeltaTime = 1.0f / 60.0f;
+			imGuiIo.IniFilename = nullptr;
+			imGuiIo.Fonts->Build();
+		}
+
+		~WindowContext() { ImGui::DestroyContext(m_Context); }
+
+		WindowContext(const WindowContext&) = delete;
+		WindowContext& operator=(const WindowContext&) = delete;
+
+	private:
+		ImGuiContext* m_Context = nullptr;
+	};
 }
 
 TEST_CASE("Add registers a panel and allows finding it by identifier")
@@ -388,13 +410,7 @@ TEST_CASE("Toggle reports an unknown identifier")
 
 TEST_CASE("A panel brought forward from a collapsed floating window is expanded")
 {
-	ImGuiContext* context = ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO();
-	io.DisplaySize = ImVec2(800.0f, 600.0f);
-	io.DeltaTime = 1.0f / 60.0f;
-	io.IniFilename = nullptr;
-	io.Fonts->Build();
-
+	const WindowContext context;
 	Core::PanelManager panels;
 	Core::TabCloseRequests closeRequests;
 	Core::Panel* files = panels.Add(std::make_unique<CountingPanel>("files", "Explorer"));
@@ -420,6 +436,4 @@ TEST_CASE("A panel brought forward from a collapsed floating window is expanded"
 	renderFrame();
 
 	CHECK(files->HasBeenDrawnOnLatestFrame());
-
-	ImGui::DestroyContext(context);
 }
