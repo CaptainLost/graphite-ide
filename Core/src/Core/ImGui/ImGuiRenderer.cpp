@@ -4,12 +4,10 @@
 
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
-#include "Core/ImGui/EmbeddedFonts.h"
-#include "Core/ImGui/Icons.h"
+#include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/Theme.h"
 #include "Core/ImGui/UiScale.h"
-#include "Core/Platform/Process.h"
 #include "Core/Platform/Window.h"
 
 #include <imgui.h>
@@ -34,9 +32,6 @@
 namespace Core {
 
 	namespace {
-		constexpr float kBaseFontSize = 15.0f;
-		constexpr float kIconBaselineLift = 1.5f;
-		constexpr char kAdvanceSampleCharacter = '0';
 		constexpr float kOpaqueAlpha = 1.0f;
 		constexpr float kStyleScaleNotBuilt = 0.0f;
 		constexpr float kViewportDpiNotReported = 0.0f;
@@ -48,104 +43,13 @@ namespace Core {
 		constexpr float kClearBlue = 0.129f;
 		constexpr float kClearAlpha = 1.0f;
 
-		ImFont* g_monoFont = nullptr;
-		ImFont* g_boldFont = nullptr;
+		FontSet g_fonts;
 
 		void DestroyContexts()
 		{
 			ImPlot::DestroyContext();
 			ImGui::DestroyContext();
-			g_monoFont = nullptr;
-			g_boldFont = nullptr;
-		}
-
-		// WARNING: without NoLoadError a missing system font trips ImGui's IM_ASSERT_USER_ERROR before
-		// the call returns nullptr, which crashes a Debug build instead of letting the warning run.
-		void AllowMissingFontFile(ImFontConfig& config)
-		{
-			config.Flags |= ImFontFlags_NoLoadError;
-		}
-
-		// The data is static, so the atlas must not take ownership of it and free it.
-		void KeepFontDataOutsideAtlas(ImFontConfig& config)
-		{
-			config.FontDataOwnedByAtlas = false;
-		}
-
-		ImFont* LoadTextFont(ImGuiIO& inputOutput)
-		{
-			ImFontConfig config;
-			config.SizePixels = kBaseFontSize;
-			KeepFontDataOutsideAtlas(config);
-
-			const EmbeddedFont font = JetBrainsMonoRegular();
-
-			return inputOutput.Fonts->AddFontFromMemoryCompressedTTF(font.CompressedData,
-																			 font.CompressedSize, kBaseFontSize, &config);
-		}
-
-		// WARNING: must run immediately after the text face is added, because ImGui's dynamic
-		// atlas merges onto whichever font was added last.
-		void MergeIconFont(ImGuiIO& inputOutput)
-		{
-			ImFontConfig config;
-			config.MergeMode = true;
-			// WARNING: PixelSnapH rounds each glyph's advance to a whole pixel and visibly
-			// skews a small round icon, so the minimum advance is set instead.
-			config.GlyphMinAdvanceX = kBaseFontSize;
-			config.GlyphOffset = ImVec2(0.0f, kIconBaselineLift);
-			KeepFontDataOutsideAtlas(config);
-
-			const EmbeddedFont font = MaterialDesignIcons();
-
-			inputOutput.Fonts->AddFontFromMemoryCompressedTTF(font.CompressedData, font.CompressedSize,
-																	  kBaseFontSize, &config, UsedGlyphRanges());
-		}
-
-		// WARNING: the terminal draws a run of cells with one AddText call, so a proportional
-		// symbol wider than a cell would push the rest of its row off its cells. The advance is
-		// pinned to the text face's own to keep every fallback glyph one cell wide.
-		void MergeSymbolFallback(ImGuiIO& inputOutput, ImFont* textFont)
-		{
-			const Result<std::filesystem::path> fonts = SystemFontsDirectory();
-
-			if (!fonts)
-			{
-				CORE_WARN("Cannot locate the system fonts, symbols will show as boxes: {}",
-						  fonts.GetError().Message);
-				return;
-			}
-
-			const float cellAdvance = textFont->GetFontBaked(kBaseFontSize)->GetCharAdvance(kAdvanceSampleCharacter);
-
-			ImFontConfig config;
-			config.MergeMode = true;
-			config.GlyphMinAdvanceX = cellAdvance;
-			config.GlyphMaxAdvanceX = cellAdvance;
-			AllowMissingFontFile(config);
-
-			const std::filesystem::path path = fonts.GetValue() / "seguisym.ttf";
-
-			if (inputOutput.Fonts->AddFontFromFileTTF(ToUtf8(path).c_str(), kBaseFontSize,
-													  &config) == nullptr)
-			{
-				CORE_WARN("Could not load the symbol font, symbols will show as boxes: {}",
-						  ToUtf8(path));
-			}
-		}
-
-		// WARNING: must run after every merge onto the text face, because ImGui's dynamic atlas
-		// merges onto whichever font was added last.
-		ImFont* LoadBoldFont(ImGuiIO& inputOutput)
-		{
-			ImFontConfig config;
-			config.SizePixels = kBaseFontSize;
-			KeepFontDataOutsideAtlas(config);
-
-			const EmbeddedFont font = JetBrainsMonoBold();
-
-			return inputOutput.Fonts->AddFontFromMemoryCompressedTTF(font.CompressedData,
-																			 font.CompressedSize, kBaseFontSize, &config);
+			g_fonts = {};
 		}
 
 		bool ViewportsEnabled()
@@ -154,14 +58,19 @@ namespace Core {
 		}
 	}
 
+	ImFont* ImGuiRenderer::GetInterfaceFont()
+	{
+		return g_fonts.Interface;
+	}
+
 	ImFont* ImGuiRenderer::GetMonoFont()
 	{
-		return g_monoFont;
+		return g_fonts.Code;
 	}
 
 	ImFont* ImGuiRenderer::GetBoldFont()
 	{
-		return g_boldFont;
+		return g_fonts.Strong;
 	}
 
 	void ImGuiRenderer::ApplyTheme(const ChromePalette& palette)
@@ -261,10 +170,8 @@ namespace Core {
 		inputOutput.ConfigErrorRecoveryEnableTooltip = false;
 #endif
 
-		g_monoFont = LoadTextFont(inputOutput);
-		MergeIconFont(inputOutput);
-		MergeSymbolFallback(inputOutput, g_monoFont);
-		g_boldFont = LoadBoldFont(inputOutput);
+		g_fonts = LoadFontSet(*inputOutput.Fonts);
+		inputOutput.FontDefault = g_fonts.Interface;
 
 		ApplyTheme(Theme::DefaultPalette());
 

@@ -30,7 +30,6 @@ TEST_CASE("Each embedded font is a face ImGui can load from memory")
 	HeadlessContext context;
 
 	CHECK(AddEmbedded(Core::JetBrainsMonoRegular()) != nullptr);
-	CHECK(AddEmbedded(Core::JetBrainsMonoBold()) != nullptr);
 	CHECK(AddEmbedded(Core::MaterialDesignIcons()) != nullptr);
 	CHECK(AddEmbedded(Core::InterRegular()) != nullptr);
 	CHECK(AddEmbedded(Core::InterSemiBold()) != nullptr);

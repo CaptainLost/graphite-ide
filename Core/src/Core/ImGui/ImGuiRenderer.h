@@ -36,6 +36,8 @@ namespace Core {
 
 		bool IsPointerHeld() const;
 
+		static ImFont* GetInterfaceFont();
+
 		static ImFont* GetMonoFont();
 
 		static ImFont* GetBoldFont();

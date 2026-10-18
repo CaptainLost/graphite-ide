@@ -644,4 +644,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0612](0612-draw-scrollbars-as-a-grab-in-the-text-colour-over-no-track.md) | Draw scrollbars as a grab in the text colour over no track | proposed | 2026-10-18 |
 | [0613](0613-draw-the-chrome-darker-than-the-documents-and-diffs-it-frames.md) | Draw the chrome darker than the documents and diffs it frames | proposed | 2026-10-18 |
 | [0614](0614-mark-an-open-tool-panel-with-an-accent-bar-at-the-strip-s-edge.md) | Mark an open tool panel with an accent bar at the strip's edge | proposed | 2026-10-18 |
+| [0615](0615-draw-the-interface-in-inter-and-code-in-jetbrains-mono.md) | Draw the interface in Inter and code in JetBrains Mono | proposed | 2026-10-18 |
 <!-- /adr-index -->
