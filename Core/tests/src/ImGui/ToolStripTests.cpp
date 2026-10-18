@@ -262,7 +262,7 @@ TEST_CASE("An open item draws a fill and a badge draws a dot that a closed item 
 	CHECK(badgedVertices > closedVertices);
 }
 
-TEST_CASE("The icon is scaled once by the interface scale, not twice")
+TEST_CASE("The icon is scaled once by the interface scale and not twice")
 {
 	StripWindow window;
 	ToolStripContent content;

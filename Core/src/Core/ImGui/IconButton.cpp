@@ -28,14 +28,19 @@ namespace Core {
 				drawList->AddRectFilled(rect.Min, rect.Max, ImGui::GetColorU32(fill), ImGui::GetStyle().FrameRounding);
 			}
 
-			// WARNING: floored, not rounded: CalcTextSize rounds up, and a glyph centred onto a half pixel
-			// is resampled and reads blurrier than the text beside it.
-			const ImVec2 glyphSize = ImGui::CalcTextSize(glyph);
-			const ImVec2 glyphPosition(std::floor(rect.Min.x + (rect.GetWidth() - glyphSize.x) * kHalf),
-									   std::floor(rect.Min.y + (rect.GetHeight() - glyphSize.y) * kHalf));
-
-			drawList->AddText(glyphPosition, ImGui::GetColorU32(glyphColour), glyph);
+			DrawCentredGlyph(drawList, rect, glyph, ImGui::GetColorU32(glyphColour));
 		}
+	}
+
+	void DrawCentredGlyph(ImDrawList* drawList, const ImRect& rect, const char* glyph, ImU32 colour)
+	{
+		// WARNING: floored, not rounded: CalcTextSize rounds up, and a glyph centred onto a half pixel
+		// is resampled and reads blurrier than the text beside it.
+		const ImVec2 glyphSize = ImGui::CalcTextSize(glyph);
+		const ImVec2 glyphPosition(std::floor(rect.Min.x + (rect.GetWidth() - glyphSize.x) * kHalf),
+								   std::floor(rect.Min.y + (rect.GetHeight() - glyphSize.y) * kHalf));
+
+		drawList->AddText(glyphPosition, colour, glyph);
 	}
 
 	float IconButtonSize(IconButtonFit fit)

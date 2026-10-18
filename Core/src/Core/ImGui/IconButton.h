@@ -25,6 +25,8 @@ namespace Core {
 
 	void DrawIconButtonFace(const ImRect& rect, const char* glyph, bool hovered, bool held);
 
+	void DrawCentredGlyph(ImDrawList* drawList, const ImRect& rect, const char* glyph, ImU32 colour);
+
 	constexpr float kIconSeparatorWidth = 1.0f;
 
 	void DrawIconSeparator();

@@ -2,6 +2,7 @@
 
 #include "Core/ImGui/ToolStrip.h"
 
+#include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/UiScale.h"
 
@@ -163,15 +164,8 @@ namespace Core {
 			// WARNING: the size is the unscaled one: ImGui multiplies it by the interface scale itself, so
 			// Scaled(kIconSize) here would scale the icon twice.
 			ImGui::PushFont(nullptr, kIconSize);
-
-			// WARNING: floored, not rounded: CalcTextSize rounds up, and a glyph centred onto a half pixel
-			// is resampled and reads blurrier than the text beside it.
-			const ImVec2 glyphSize = ImGui::CalcTextSize(item.Icon.c_str());
-			const ImVec2 glyphPosition(std::floor(rect.Min.x + (rect.GetWidth() - glyphSize.x) * kHalf),
-									   std::floor(rect.Min.y + (rect.GetHeight() - glyphSize.y) * kHalf));
 			const Color& glyphColour = item.Open ? palette.Text : palette.TextDisabled;
-			drawList->AddText(glyphPosition, ImGui::GetColorU32(ToImVec4(glyphColour)), item.Icon.c_str());
-
+			DrawCentredGlyph(drawList, rect, item.Icon.c_str(), ImGui::GetColorU32(ToImVec4(glyphColour)));
 			ImGui::PopFont();
 
 			if (item.Badge)
