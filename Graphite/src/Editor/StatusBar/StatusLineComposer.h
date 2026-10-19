@@ -1,7 +1,7 @@
 #pragma once
 
+#include "Editor/StatusBar/ServerHealth.h"
 #include "Editor/StatusBar/ServerStatusText.h"
-#include "Editor/StatusBar/StatusBar.h"
 #include "Language/Api/LanguageId.h"
 #include "Language/Api/LanguageService.h"
 #include "Language/Install/ServerInstaller.h"

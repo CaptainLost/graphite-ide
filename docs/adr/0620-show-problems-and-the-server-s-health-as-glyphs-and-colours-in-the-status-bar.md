@@ -30,20 +30,24 @@ It knows nothing of the diagnostics model, the language services or the scheme.
     in the diagnostic warning colour. These are the Problems panel's glyphs.
   - A zero count is left out. With none at all, a check (`ICON_MDI_CHECK`)
     draws in the disabled-text colour.
-  - The item's tooltip is the old wording, "2 errors, 5 warnings", from
-    `ProblemCountText`.
-- **Server health.** `ServerHealth` is `None`, `Starting`, `Ready` or `Failed`.
+  - The item's tooltip is the old wording, "2 errors, 5 warnings".
+    `GraphiteLayer` builds it with `ProblemCountText` and passes it as
+    `StatusMessages::ProblemsDetail`, so the bar includes nothing of the
+    language services.
+- **Server health.** `ServerHealth` (`Editor/StatusBar/ServerHealth.h`) is
+  `None`, `Starting`, `Ready`, `Limited` or `Failed`.
   - `ServerHealthOf` maps a server state. Starting and indexing are `Starting`.
-    Ready is `Ready`. Failed, not found, not installed, a missing runtime and an
-    incomplete project are `Failed`: the states `LanguageServices` already ranks
-    as broken. Off, restricted and not configured are `None`.
+    Ready is `Ready`. An incomplete project is `Limited`: its server answers,
+    and `LspAnswerRouter` and the workspace analysis count it as ready, but it
+    sees only part of the project. Failed, not found, not installed and a
+    missing runtime are `Failed`. Off, restricted and not configured are `None`.
   - `ChooseServerLine` gives each line the health of the server it speaks for.
     An install under way is `Starting`. An uninstall, and a line that speaks for
     no running server (no language support, restricted mode), are `None`.
 - **The dot.** A filled circle 7 px across, centred on the text line, sits before
   the server's words. It is the git "added" colour (`GitPalette::GutterAdded`)
-  when ready, the warning colour while starting and the error colour when
-  failed. `None` draws no dot. The words keep their form, "C++: clangd ready",
+  when ready, the warning colour while starting or limited, and the error
+  colour when failed. `None` draws no dot. The words keep their form, "C++: clangd ready",
   and their click ([0571](0571-choose-and-install-language-servers-from-settings-and-the-editor.md)).
 - **Caret position.** "Ln 12, Col 5" draws in the code face at the interface
   size, `Core::PushCodeFont(Core::kInterfaceFontSize)`. Its width changes only
@@ -102,7 +106,8 @@ borrowing `DrawIconButton`'s fill keeps one hover look across the application.
 ### Negative
 
 - The problem counts are no longer spelled out without hovering.
-- An incomplete project shows the failed colour although its server answers.
+- The warning colour means two things, a server still starting and one with an
+  incomplete project; only the words tell them apart.
 - The caret position is in another face than the items beside it.
 - An uninstall under way shows no dot.
 
@@ -117,9 +122,9 @@ borrowing `DrawIconButton`'s fill keeps one hover look across the application.
 - **Draw the bell as a status-bar item.** It would give the bell the bar's fill
   without touching Core, but it would be the one glyph-only button outside
   `DrawIconButton`, against 0602.
-- **Hand the bar the server's state and colour it there.** An incomplete project
-  could then show the warning colour, but the bar would learn the language
-  services' states, which `ChooseServerLine` keeps from it.
+- **Hand the bar the server's state and colour it there.** It would need no
+  health value of its own, but the bar would learn the language services'
+  states, which `ChooseServerLine` keeps from it.
 - **Keep the counts spelled out, in colour.** "2 errors" reads without a glyph
   but takes several times the width of a glyph and a count.
 

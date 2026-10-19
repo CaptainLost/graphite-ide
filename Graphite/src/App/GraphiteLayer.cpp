@@ -937,6 +937,7 @@ namespace Graphite {
 
 		const DiagnosticsModel::Counts counts = m_Diagnostics.Total(isOpenDocument);
 		messages.Problems = ProblemCounts{.Errors = static_cast<int>(counts.Errors), .Warnings = static_cast<int>(counts.Warnings)};
+		messages.ProblemsDetail = ProblemCountText(counts.Errors, counts.Warnings);
 
 		// WARNING: Tick before the panels draw, so what they declare is stamped with this frame's number and an entry nothing declared last frame is closed before anything asks about it.
 		m_PreviewSemantics.Tick(static_cast<std::size_t>(ImGui::GetFrameCount()),

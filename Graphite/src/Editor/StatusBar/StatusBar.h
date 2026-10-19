@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Editor/StatusBar/ServerHealth.h"
 #include "Git/GitStatusText.h"
 
 #include "Core/Base/Color.h"
@@ -27,14 +28,6 @@ namespace Graphite {
 		int Warnings = 0;
 	};
 
-	enum class ServerHealth
-	{
-		None,
-		Starting,
-		Ready,
-		Failed
-	};
-
 	struct StatusBarColours
 	{
 		ImU32 Error = 0;
@@ -56,6 +49,8 @@ namespace Graphite {
 		ServerHealth Health = ServerHealth::None;
 
 		std::optional<ProblemCounts> Problems;
+
+		std::optional<std::string> ProblemsDetail;
 
 		std::optional<std::string> Background;
 

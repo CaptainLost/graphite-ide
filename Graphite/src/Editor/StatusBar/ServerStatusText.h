@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Editor/StatusBar/StatusBar.h"
+#include "Editor/StatusBar/ServerHealth.h"
 #include "Language/Analysis/WorkspaceAnalysis.h"
 #include "Language/Api/LanguageId.h"
 #include "Language/Api/LanguageService.h"

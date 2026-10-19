@@ -380,6 +380,12 @@ TEST_CASE("The server dot takes the health's colour")
 	CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), kReadyColour));
 	CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), kErrorColour));
 
+	drawnWith(Graphite::ServerHealth::Limited);
+
+	CHECK(FillsMiddleInColour(StatusBarScreen::BarDrawing(), kWarningColour));
+	CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), kReadyColour));
+	CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), kErrorColour));
+
 	drawnWith(Graphite::ServerHealth::Failed);
 
 	CHECK(FillsMiddleInColour(StatusBarScreen::BarDrawing(), kErrorColour));
@@ -508,18 +514,23 @@ TEST_CASE("The read-only warning is an item of its own in the warning colour, on
 {
 	TempDirectory temp;
 
-	StatusBarScreen readOnly;
-	readOnly.Open(temp.MakeFile("broken.txt", "ab\xff"));
-	REQUIRE(readOnly.Documents.At(*readOnly.Shown).Document->IsReadOnly());
-	readOnly.Frames.Next([&] { readOnly.Draw(); });
+	{
+		StatusBarScreen readOnly;
+		readOnly.Open(temp.MakeFile("broken.txt", "ab\xff"));
+		REQUIRE(readOnly.Documents.At(*readOnly.Shown).Document->IsReadOnly());
+		readOnly.Frames.Next([&] { readOnly.Draw(); });
 
-	CHECK(DrawsInColour(StatusBarScreen::BarDrawing(), kWarningColour));
+		CHECK(DrawsInColour(StatusBarScreen::BarDrawing(), kWarningColour));
+	}
 
-	StatusBarScreen writable;
-	writable.Open(temp.MakeFile("fine.txt", "abc"));
-	writable.Frames.Next([&] { writable.Draw(); });
+	{
+		StatusBarScreen writable;
+		writable.Open(temp.MakeFile("fine.txt", "abc"));
+		REQUIRE_FALSE(writable.Documents.At(*writable.Shown).Document->IsReadOnly());
+		writable.Frames.Next([&] { writable.Draw(); });
 
-	CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), kWarningColour));
+		CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), kWarningColour));
+	}
 }
 
 TEST_CASE("A wheel over the status bar leaves its items where they are")

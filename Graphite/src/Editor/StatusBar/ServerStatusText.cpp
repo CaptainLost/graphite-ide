@@ -104,8 +104,10 @@ namespace Graphite {
 		case ServerState::NotFound:
 		case ServerState::NotInstalled:
 		case ServerState::MissingRuntime:
-		case ServerState::ProjectIncomplete:
 			return ServerHealth::Failed;
+
+		case ServerState::ProjectIncomplete:
+			return ServerHealth::Limited;
 
 		case ServerState::NotConfigured:
 		case ServerState::Off:

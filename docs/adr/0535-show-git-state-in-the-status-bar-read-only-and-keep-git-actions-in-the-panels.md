@@ -42,8 +42,9 @@ confirmation, an error or a list of choices.
 
 Amended by [0620](0620-show-problems-and-the-server-s-health-as-glyphs-and-colours-in-the-status-bar.md):
 the branch and the change count fill the full height of the bar under the
-pointer, and they stand 16 px apart, and 16 px from the path, instead of a
-font's size. Their wording and their clicks are unchanged.
+pointer. The change count stands 16 px from the branch instead of one font
+size, and the path 16 px from the segment instead of two. Their wording and
+their clicks are unchanged.
 
 ## Rationale
 

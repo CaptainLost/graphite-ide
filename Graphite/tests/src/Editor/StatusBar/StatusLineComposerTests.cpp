@@ -218,6 +218,13 @@ TEST_CASE("The chosen line carries the health of the server it speaks for, and n
 	REQUIRE(failedLine.has_value());
 	CHECK(failedLine->Health == ServerHealth::Failed);
 
+	ServerLineInputs incomplete;
+	incomplete.Active = Clangd(ServerState::ProjectIncomplete);
+	incomplete.ActiveLanguage = LanguageId::Cpp;
+	const std::optional<ServerLine> incompleteLine = ChooseServerLine(incomplete);
+	REQUIRE(incompleteLine.has_value());
+	CHECK(incompleteLine->Health == ServerHealth::Limited);
+
 	ServerLineInputs installing;
 	installing.ActiveLanguage = LanguageId::CSharp;
 	installing.ActiveJob = ServerJob{.Kind = InstallJobKind::Install, .Server = "Roslyn"};

@@ -1,7 +1,5 @@
 #include "Editor/StatusBar/StatusBar.h"
 
-#include "Editor/StatusBar/StatusLineComposer.h"
-
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/IconButton.h"
@@ -28,6 +26,7 @@ namespace Graphite {
 		constexpr float kHalf = 0.5f;
 		constexpr float kInvisibleAlpha = 0.0f;
 		constexpr float kNoGap = 0.0f;
+		constexpr float kBarTop = 0.0f;
 
 		constexpr float kItemFillPadding = 6.0f;
 		constexpr float kBothSides = 2.0f;
@@ -120,7 +119,6 @@ namespace Graphite {
 
 		bool DrawNotificationBell(const std::optional<Core::Color>& missedColour)
 		{
-			constexpr float kBarTop = 0.0f;
 			ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - BellWidth() - ImGui::GetStyle().WindowPadding.x, kBarTop));
 
 			// WARNING: Without NoFocus the press focuses the bar, and the popup the click opens hands the
@@ -242,7 +240,6 @@ namespace Graphite {
 
 			if (clickable)
 			{
-				constexpr float kBarTop = 0.0f;
 				const float fillPadding = Core::Scaled(kItemFillPadding);
 
 				ImGui::SetCursorPos(ImVec2(x - fillPadding, kBarTop));
@@ -358,11 +355,10 @@ namespace Graphite {
 			return description;
 		}
 
-		StatusItem ProblemsItem(const ProblemCounts& problems, const StatusBarColours& colours)
+		StatusItem ProblemsItem(const ProblemCounts& problems, const StatusBarColours& colours, std::string tooltip)
 		{
 			StatusItem item;
-			item.Tooltip = ProblemCountText(static_cast<std::size_t>(problems.Errors), static_cast<std::size_t>(problems.Warnings))
-							   .value_or(std::string{});
+			item.Tooltip = std::move(tooltip);
 
 			const float markGap = Core::Scaled(kMarkToTextGap);
 
@@ -392,6 +388,7 @@ namespace Graphite {
 			switch (health)
 			{
 			case ServerHealth::Starting:
+			case ServerHealth::Limited:
 				return colours.Warning;
 
 			case ServerHealth::Ready:
@@ -431,7 +428,7 @@ namespace Graphite {
 
 			if (messages.Problems)
 			{
-				items.push_back(ProblemsItem(*messages.Problems, messages.Colours));
+				items.push_back(ProblemsItem(*messages.Problems, messages.Colours, messages.ProblemsDetail.value_or(std::string{})));
 			}
 
 			if (messages.Server && !messages.Server->empty())
