@@ -1071,7 +1071,7 @@ namespace Graphite {
 											.Warning = statusPalette.DiagnosticWarning,
 											.Ready = ReadGitPalette(m_ActiveScheme.Get()).GutterAdded};
 
-		switch (DrawStatusBar(m_Documents, shownIndex, m_Workspace.GetRoot(), messages))
+		switch (DrawStatusBar(m_Documents, shownIndex, messages))
 		{
 		case StatusBarClick::GitBranch:
 			RevealPanel("git");

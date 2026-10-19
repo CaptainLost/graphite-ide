@@ -3,6 +3,7 @@
 #include "Core/Base/Base.h"
 
 #include "Editor/ActiveTextDocument.h"
+#include "Editor/Breadcrumb.h"
 #include "Editor/Navigation/DefinitionNavigation.h"
 #include "Editor/EditorCommands.h"
 #include "Editor/TabColour.h"
@@ -51,6 +52,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <format>
+#include <span>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -2072,6 +2074,12 @@ namespace Graphite {
 				{
 					*view.Anchor = AnchorAtLine(pendingTop->Line);
 				}
+
+				const std::size_t caretLine =
+					item.Document ? item.Document->GetBuffer().ToPosition(item.Caret.Offset).Line : 0;
+				const std::span<const Declaration> declarations =
+					lens != nullptr ? std::span<const Declaration>{lens->Declarations} : std::span<const Declaration>{};
+				DrawBreadcrumb(BuildBreadcrumb(workspaceRoot, item.Path, declarations, caretLine));
 
 				const EditorFrameResult editorResult = DrawEditor(context, item, view, m_FindBar);
 

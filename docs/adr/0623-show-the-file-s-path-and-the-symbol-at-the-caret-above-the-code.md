@@ -1,0 +1,155 @@
+# 0623. Show the file's path and the symbol at the caret above the code
+
+Status: proposed
+Date: 2026-10-19
+
+## Context
+
+- The document's path stood in the status bar, relative to the open folder,
+  with a `*` before it while the document had unsaved changes. The status bar
+  describes the document on screen, so with two documents side by side the path
+  named only one of them, and it sat at the bottom of the window, far from the
+  code it named. [0620](0620-show-problems-and-the-server-s-health-as-glyphs-and-colours-in-the-status-bar.md)
+  kept it until it could be shown above the code.
+- Nothing on screen said which function or type the caret was in. Since
+  [0622](0622-keep-document-symbols-ranges-and-nesting-and-ask-for-them-again-after-each-save.md)
+  each declaration holds its last line and its parent, and
+  `InnermostDeclarationAt` gives the chain that contains a line, outermost
+  first. The declarations move with edits between answers.
+- A document window is drawn in the content colour
+  ([0613](0613-draw-the-chrome-darker-than-the-documents-and-diffs-it-frames.md)),
+  and the editor surface is a child window that fills what is left of it. The
+  find bar is a child of that surface, drawn over its top. The information bars
+  belong to the whole window, not to a document.
+- File kinds have a glyph and a colour
+  ([0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md)).
+
+## Decision
+
+- **The row.** Every tab `DocumentWindows` draws gets one row directly under its
+  tab bar, before the editor surface: `DrawBreadcrumb(BuildBreadcrumb(...))`
+  (`Graphite/src/Editor/Breadcrumb.h`). The row is `kBreadcrumbHeight` (26 px)
+  tall and the width of the window's content. It is laid out once, with no item
+  spacing after it, so the editor surface starts at its bottom edge and is
+  shorter by exactly its height. It is drawn on every frame, whether or not the
+  document has symbols, so the code never moves when they arrive. The find bar,
+  inside the surface, opens under it. Diffs, review tabs, the results tab and
+  the Settings document are drawn elsewhere and have no row.
+- **The model.** `BuildBreadcrumb(root, path, declarations, caretLine)` is pure
+  and copies what it needs into a `BreadcrumbModel` by value:
+  - `Folders`: the folders between the open folder and the file. A file outside
+    the open folder, or any file with no folder open, shows its absolute
+    folders, its drive first (`D: › Temp › file.cpp`). A file with no folder
+    shows its name alone.
+  - `FileName` and its `FileKind`.
+  - `Symbols`: the chain of functions and types that contain the caret's line,
+    outermost first, each with its name and kind (`Renderer › Draw`). No server,
+    no answer yet or no symbol at the caret gives the path alone.
+  - `DocumentWindows` passes the open folder, the tab's path, the tab's
+    edit-adjusted declarations and the caret's line at the start of the frame.
+- **The look.** The interface face at `kBreadcrumbFontSize` (13 px), unscaled
+  as `PushInterfaceFont` takes it, with the line centred in the row.
+  - The first piece starts `kBreadcrumbLeftPadding` (12 px) from the row's left
+    edge.
+  - Folders are in the disabled-text colour.
+  - The file name is in the text colour, after its kind's glyph in its kind's
+    colour.
+  - Pieces are separated by `ICON_MDI_CHEVRON_RIGHT` in the disabled-text
+    colour, 2 px from the pieces on each side.
+  - Each symbol is its glyph in the disabled-text colour and its name in the
+    text colour. A function, method or constructor takes `ICON_MDI_FUNCTION`; a
+    class, struct or interface takes `ICON_MDI_CODE_BRACES`.
+  - A glyph is one font size wide and stands 4 px before its name.
+  - The row draws no background and no border. It sits on the document window's
+    content colour, so it reads as part of the document.
+- **Narrow rows.** The pieces fit in the row's width less 12 px on each side.
+  When they do not, the leading folders go one at a time, and one `…` in the
+  disabled-text colour stands where they were. The file name and the symbols
+  always stay. When even they do not fit, the row is clipped at its right edge.
+  `BreadcrumbWidth` and `FirstShownFolder` measure this.
+- **Display only.** The row is an invisible button that never acts, pressed
+  with `ImGuiButtonFlags_NoFocus | ImGuiButtonFlags_NoNavFocus`. A click on it
+  moves no caret and focuses nothing: the editor keeps the keyboard if it had
+  it, and does not take it if it had not.
+- **The status bar.** The path item goes, and with it the `*` for unsaved
+  changes, which the tab already shows. `DrawStatusBar` no longer takes the open
+  folder. The read-only warning stays, in the warning colour, where the path
+  stood.
+
+This amends [0620](0620-show-problems-and-the-server-s-health-as-glyphs-and-colours-in-the-status-bar.md)
+and [0535](0535-show-git-state-in-the-status-bar-read-only-and-keep-git-actions-in-the-panels.md).
+
+## Rationale
+
+A path above the code names the document it belongs to, in every pane at once,
+and the symbol chain beside it answers "where am I" without a question to the
+server per caret move, since the declarations are already held. A row that is
+always there, and always the same height, keeps the code from jumping when a
+document's symbols arrive or when the find bar opens. Dropping folders before
+the file and the symbols keeps the part that changes with the caret on screen.
+
+## Consequences
+
+### Positive
+
+- Each pane names its own file and the function or type at its caret.
+- The status bar's left side no longer grows with a long path, so it has room
+  for its other items.
+- A function typed since the last save appears once the save's answer arrives
+  (0622).
+
+### Negative
+
+- Every document gives up 26 px of code.
+- On a narrow pane a deep path shows only its last folders, where the status bar
+  had the whole window's width for it.
+- The row reads the caret at the start of the frame, before the editor handles
+  input, so for one frame after the caret moves into another function the row
+  still names the old one.
+- The unsaved-changes `*` is gone from the status bar; only the tab marks it.
+- The row's pieces look like they could be clicked and cannot.
+
+### Neutral
+
+- A tab whose file could not be read shows its path above its message.
+- An enum has no breadcrumb segment, because the server's enums are not kept as
+  declarations (0622).
+
+## Alternatives Considered
+
+### Show the row only when the document has symbols
+
+The path would show only in the status bar until a server answers. Rejected:
+the code would move down by a row when the first answer arrived, and a plain
+text file would never name itself.
+
+### Draw the row inside the editor surface, over the first line
+
+It would cost no height. Rejected: it would hide a line of code, scroll with
+it or need its own layer, and the find bar already overlays the surface's top.
+
+### Lay the row out as a plain `Dummy`
+
+The smallest change. Rejected: a press on a window's empty space focuses that
+window, so a click on the row took the keyboard from the editor below it.
+
+### Keep the path in the status bar as well
+
+Rejected: the same words twice, and the status bar's copy still named only the
+document on screen.
+
+## Related
+
+- [0620](0620-show-problems-and-the-server-s-health-as-glyphs-and-colours-in-the-status-bar.md) —
+  the status bar this takes the path from; amended here.
+- [0535](0535-show-git-state-in-the-status-bar-read-only-and-keep-git-actions-in-the-panels.md) —
+  the git segment the path stood beside; amended here.
+- [0622](0622-keep-document-symbols-ranges-and-nesting-and-ask-for-them-again-after-each-save.md) —
+  the ranges and nesting the symbol chain is read from.
+- [0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md) —
+  the file kind's glyph and colour.
+- [0615](0615-draw-the-interface-in-inter-and-code-in-jetbrains-mono.md) — the
+  interface face.
+- [0534](0534-scale-the-interface-by-the-monitor-and-by-a-user-setting-and-keep-code-text-size-separate.md) —
+  every length here is scaled.
+- `Graphite/src/Editor/Breadcrumb.h` — `BuildBreadcrumb` and `DrawBreadcrumb`.

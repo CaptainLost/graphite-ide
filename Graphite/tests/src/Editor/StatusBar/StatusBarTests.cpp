@@ -53,7 +53,7 @@ namespace {
 		void Draw()
 		{
 			Core::Animation::BeginFrame();
-			const Graphite::StatusBarClick clicked = Graphite::DrawStatusBar(Documents, Shown, std::filesystem::path(), Messages);
+			const Graphite::StatusBarClick clicked = Graphite::DrawStatusBar(Documents, Shown, Messages);
 			if (clicked != Graphite::StatusBarClick::None)
 			{
 				LastClick = clicked;
@@ -551,4 +551,46 @@ TEST_CASE("A wheel over the status bar leaves its items where they are")
 	screen.Frames.Next([&] { screen.Draw(); });
 
 	CHECK(StatusBarScreen::Bar().Scroll.y == doctest::Approx(0.0f));
+}
+
+TEST_CASE("The status bar no longer shows the document path")
+{
+	constexpr const char* kFileName = "notes.txt";
+
+	TempDirectory temp;
+	StatusBarScreen screen;
+	screen.Open(temp.MakeFile(kFileName, "abc\n"));
+
+	std::vector<ImRect> fileName;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		fileName = GlyphRunOf(kFileName, RunFace::TheBarFace);
+	});
+
+	REQUIRE_FALSE(fileName.empty());
+	CHECK_FALSE(DrawsGlyphRun(StatusBarScreen::BarDrawing(), fileName));
+}
+
+TEST_CASE("The read-only warning still shows in the status bar, where the path stood")
+{
+	constexpr const char* kReadOnlyWarning = "read-only: not valid text for its encoding";
+
+	TempDirectory temp;
+	StatusBarScreen screen;
+	screen.Open(temp.MakeFile("broken.txt", "ab\xff"));
+	REQUIRE(screen.Documents.At(*screen.Shown).Document->IsReadOnly());
+
+	std::vector<ImRect> warning;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		warning = GlyphRunOf(kReadOnlyWarning, RunFace::TheBarFace);
+	});
+
+	CHECK(DrawsGlyphRun(StatusBarScreen::BarDrawing(), warning));
+
+	const std::optional<HorizontalExtent> drawn = HorizontalExtentInColour(StatusBarScreen::BarDrawing(), kWarningColour);
+	REQUIRE(drawn.has_value());
+
+	const ImGuiWindow& bar = StatusBarScreen::Bar();
+	CHECK(drawn->Left < bar.Pos.x + bar.WindowPadding.x + Core::Scaled(Graphite::kStatusItemGap));
 }

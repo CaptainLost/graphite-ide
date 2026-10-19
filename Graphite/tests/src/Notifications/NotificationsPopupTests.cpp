@@ -332,7 +332,7 @@ namespace {
 
 	void DrawBarOpeningPopup(const Core::DocumentSet& documents, const Graphite::StatusMessages& messages, Graphite::NotificationsPopup& popup)
 	{
-		const Graphite::StatusBarClick clicked = Graphite::DrawStatusBar(documents, std::nullopt, std::filesystem::path(), messages);
+		const Graphite::StatusBarClick clicked = Graphite::DrawStatusBar(documents, std::nullopt, messages);
 		if (clicked == Graphite::StatusBarClick::Notifications)
 		{
 			popup.OpenFromBell(Graphite::kStatusBarWindowName);
@@ -593,7 +593,7 @@ TEST_CASE("The bell opens the popup and a second click on it closes the popup wi
 
 	const std::function<void()> drawBarAndPopup = [&] {
 		const Graphite::StatusBarClick clicked =
-			Graphite::DrawStatusBar(documents, std::nullopt, std::filesystem::path(), messages);
+			Graphite::DrawStatusBar(documents, std::nullopt, messages);
 		if (clicked == Graphite::StatusBarClick::Notifications)
 		{
 			bellClicked = true;

@@ -84,6 +84,10 @@ It knows nothing of the diagnostics model, the language services or the scheme.
 This amends the look of 0535 and 0571 and keeps their wording and their clicks.
 It adds a fit to [0602](0602-draw-every-button-that-is-only-a-glyph-through-core-drawiconbutton.md).
 
+Amended by [0623](0623-show-the-file-s-path-and-the-symbol-at-the-caret-above-the-code.md):
+the path has left the status bar for the breadcrumb row above the code. The
+read-only warning stays, where the path stood.
+
 ## Rationale
 
 A glyph in a colour is read at a glance where words have to be read; the words

@@ -46,6 +46,10 @@ pointer. The change count stands 16 px from the branch instead of one font
 size, and the path 16 px from the segment instead of two. Their wording and
 their clicks are unchanged.
 
+Amended by [0623](0623-show-the-file-s-path-and-the-symbol-at-the-caret-above-the-code.md):
+the path no longer follows the git segment; it moved to the breadcrumb row above
+the code.
+
 ## Rationale
 
 A glance should answer "where am I and is anything changed", and a panel should

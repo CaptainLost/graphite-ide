@@ -1,6 +1,5 @@
 #include "Editor/StatusBar/StatusBar.h"
 
-#include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/UiScale.h"
@@ -82,14 +81,6 @@ namespace Graphite {
 			}
 
 			return mixed ? "LF (mixed)" : "LF";
-		}
-
-		std::string RelativePath(const std::filesystem::path& path,
-								 const std::filesystem::path& root)
-		{
-			const std::optional<std::filesystem::path> relative = Core::RelativeTo(path, root);
-
-			return Core::ToUtf8(relative ? *relative : path);
 		}
 
 		float CentredTextY(float barHeight)
@@ -323,18 +314,6 @@ namespace Graphite {
 			return item;
 		}
 
-		std::string DescribeDocument(const Core::OpenItem& item, const std::filesystem::path& root)
-		{
-			std::string description = RelativePath(item.Path, root);
-
-			if (item.Document->IsModified())
-			{
-				description = "* " + description;
-			}
-
-			return description;
-		}
-
 		std::string DescribeCaret(const Core::OpenItem& item)
 		{
 			const Core::TextBuffer& buffer = item.Document->GetBuffer();
@@ -456,8 +435,7 @@ namespace Graphite {
 			return items;
 		}
 
-		StatusBarClick DrawLeftHandItems(const StatusMessages& messages, const Core::OpenItem* document,
-										 const std::filesystem::path& root, float barHeight)
+		StatusBarClick DrawLeftHandItems(const StatusMessages& messages, const Core::OpenItem* document, float barHeight)
 		{
 			const float gap = Core::Scaled(kStatusItemGap);
 			ItemRow row(ImGui::GetStyle().WindowPadding.x, barHeight);
@@ -486,14 +464,9 @@ namespace Graphite {
 				}
 			}
 
-			if (document != nullptr)
+			if (document != nullptr && document->Document->IsReadOnly())
 			{
-				row.Place(TextItem(DescribeDocument(*document, root), TextColour()), gap);
-
-				if (document->Document->IsReadOnly())
-				{
-					row.Place(TextItem(kReadOnlyWarning, messages.Colours.Warning), gap);
-				}
+				row.Place(TextItem(kReadOnlyWarning, messages.Colours.Warning), gap);
 			}
 
 			return row.GetClicked();
@@ -528,7 +501,6 @@ namespace Graphite {
 
 	StatusBarClick DrawStatusBar(const Core::DocumentSet& documents,
 								 std::optional<std::size_t> shown,
-								 const std::filesystem::path& root,
 								 const StatusMessages& messages)
 	{
 		ImGuiViewport* viewport = ImGui::GetMainViewport();
@@ -552,7 +524,7 @@ namespace Graphite {
 		const bool hasDocument = shown && documents.At(*shown).Document != nullptr;
 		const Core::OpenItem* document = hasDocument ? &documents.At(*shown) : nullptr;
 
-		StatusBarClick clicked = DrawLeftHandItems(messages, document, root, height);
+		StatusBarClick clicked = DrawLeftHandItems(messages, document, height);
 
 		if (const StatusBarClick rightClick = DrawRightHandItems(RightHandItems(messages, document), height);
 			rightClick != StatusBarClick::None)

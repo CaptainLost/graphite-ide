@@ -8,7 +8,6 @@
 #include <imgui.h>
 
 #include <cstddef>
-#include <filesystem>
 #include <optional>
 #include <string>
 
@@ -76,7 +75,6 @@ namespace Graphite {
 
 	StatusBarClick DrawStatusBar(const Core::DocumentSet& documents,
 								 std::optional<std::size_t> shown,
-								 const std::filesystem::path& root,
 								 const StatusMessages& messages);
 
 }
