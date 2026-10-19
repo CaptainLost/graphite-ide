@@ -63,6 +63,48 @@ TEST_CASE("The theme draws no tab overline, no line under a tab bar, no close-al
 	CHECK(style.ScrollbarSize == doctest::Approx(12.0f));
 }
 
+TEST_CASE("Dock splitters are one pixel and windows and popups still draw an edge")
+{
+	const ImGuiStyle style = ScaledStyle(ImGuiStyle{}, 1.0f, false);
+
+	CHECK(style.DockingSeparatorSize == doctest::Approx(1.0f));
+	CHECK(style.WindowBorderSize == doctest::Approx(1.0f));
+	CHECK(style.PopupBorderSize == doctest::Approx(1.0f));
+}
+
+TEST_CASE("Tabs are square")
+{
+	CHECK(ScaledStyle(ImGuiStyle{}, 1.0f, false).TabRounding == doctest::Approx(0.0f));
+	CHECK(ScaledStyle(ImGuiStyle{}, 2.0f, false).TabRounding == doctest::Approx(0.0f));
+}
+
+TEST_CASE("Indent is fifteen pixels")
+{
+	CHECK(ScaledStyle(ImGuiStyle{}, 1.0f, false).IndentSpacing == doctest::Approx(15.0f));
+	CHECK(ScaledStyle(ImGuiStyle{}, 2.0f, false).IndentSpacing == doctest::Approx(30.0f));
+}
+
+TEST_CASE("Scrollbar grabs are four pixels")
+{
+	constexpr float kBothSides = 2.0f;
+	const ImGuiStyle style = ScaledStyle(ImGuiStyle{}, 1.0f, false);
+
+	CHECK(style.ScrollbarSize == doctest::Approx(12.0f));
+	CHECK(style.ScrollbarPadding == doctest::Approx(4.0f));
+	CHECK(style.ScrollbarSize - kBothSides * style.ScrollbarPadding == doctest::Approx(4.0f));
+}
+
+TEST_CASE("Selectables are rounded, menu items among them")
+{
+	const ImGuiStyle style = ScaledStyle(ImGuiStyle{}, 1.0f, false);
+	const ImGuiStyle doubled = ScaledStyle(ImGuiStyle{}, 2.0f, false);
+
+	CHECK(style.SelectableRounding == doctest::Approx(4.0f));
+	CHECK(doubled.SelectableRounding == doctest::Approx(8.0f));
+	CHECK(style.MenuItemRounding == doctest::Approx(4.0f));
+	CHECK(doubled.MenuItemRounding == doctest::Approx(8.0f));
+}
+
 TEST_CASE("ScaledStyle starts from unscaled sizes, so scaling a scaled style does not compound")
 {
 	const ImGuiStyle once = ScaledStyle(ImGuiStyle{}, 1.5f, false);

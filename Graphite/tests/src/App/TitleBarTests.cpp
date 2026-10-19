@@ -3,11 +3,18 @@
 #include "App/TitleBar.h"
 #include "App/Version.h"
 #include "Core/ImGui/CaptionLayout.h"
+#include "Core/ImGui/ImGuiColors.h"
+#include "Core/ImGui/Theme.h"
+#include "Theme/BuiltInSchemes.h"
+#include "Theme/ChromePalette.h"
 
+#include "DrawnColours.h"
 #include "ImGuiFrames.h"
 
 #include <imgui.h>
 
+#include <cmath>
+#include <optional>
 #include <string>
 
 using Graphite::TitleContext;
@@ -98,6 +105,40 @@ TEST_CASE("The labels are dropped before they would overlap the window buttons")
 	if (narrow.Layout.FolderVisible)
 	{
 		CHECK(narrow.Layout.Folder.X + narrow.Layout.Folder.Width <= narrow.Layout.Minimize.X);
+	}
+}
+
+TEST_CASE("The title-bar divider is drawn in the line colour, in dark and in light")
+{
+	for (const Graphite::ResolvedScheme* scheme : {&Graphite::DarkScheme(), &Graphite::LightScheme()})
+	{
+		const Core::ChromePalette palette = Graphite::ChromePaletteFor(*scheme);
+		CAPTURE(palette.Background.R);
+
+		ImGuiFrames frames;
+		Core::Theme::Apply(palette);
+
+		Core::CaptionLayout layout;
+		std::optional<HorizontalExtent> inLineColour;
+		frames.Next([&] {
+			// As the dock space host draws the title bar: with no border of its own, which is in the line colour too.
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(kWindowSize);
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+			ImGui::Begin("##titleBarDividerTest", nullptr, kBareWindow);
+			ImGui::PopStyleVar();
+
+			layout = Graphite::DrawTitle({.Folder = "ab"}, kMenusEnd, kBarWidth);
+			inLineColour = HorizontalExtentInColour(*ImGui::GetWindowDrawList(), ImGui::GetColorU32(Core::ToImVec4(palette.Border)));
+
+			ImGui::End();
+		});
+
+		REQUIRE(layout.DividerVisible);
+		REQUIRE(inLineColour.has_value());
+		const float dividerLeft = std::floor(layout.Divider.X);
+		CHECK(inLineColour->Left == doctest::Approx(dividerLeft));
+		CHECK(inLineColour->Right == doctest::Approx(dividerLeft + layout.Divider.Width));
 	}
 }
 

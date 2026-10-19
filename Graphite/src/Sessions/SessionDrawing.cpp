@@ -9,7 +9,7 @@ namespace Graphite {
 	namespace {
 		constexpr float kCategoryBarWidth = 3.0f;
 		constexpr float kNoSpacing = 0.0f;
-		constexpr int kSegmentButtonColourCount = 2;
+		constexpr int kSegmentButtonColourCount = 3;
 	}
 
 	void ColouredText(ImU32 colour, const std::string& text)
@@ -55,10 +55,11 @@ namespace Graphite {
 	bool SegmentButton(const char* label, bool selected)
 	{
 		const ImVec4* colours = ImGui::GetStyle().Colors;
+		const ImVec4& accent = colours[ImGuiCol_CheckMark];
 
-		ImGui::PushStyleColor(ImGuiCol_Button, selected ? colours[ImGuiCol_ButtonActive] : colours[ImGuiCol_FrameBg]);
-		ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
-							  selected ? colours[ImGuiCol_ButtonActive] : colours[ImGuiCol_ButtonHovered]);
+		ImGui::PushStyleColor(ImGuiCol_Button, selected ? accent : colours[ImGuiCol_FrameBg]);
+		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, selected ? accent : colours[ImGuiCol_ButtonHovered]);
+		ImGui::PushStyleColor(ImGuiCol_ButtonActive, selected ? accent : colours[ImGuiCol_ButtonActive]);
 		const bool clicked = ImGui::SmallButton(label);
 		ImGui::PopStyleColor(kSegmentButtonColourCount);
 

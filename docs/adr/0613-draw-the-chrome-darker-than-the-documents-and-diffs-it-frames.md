@@ -14,8 +14,9 @@ own above the chrome beside it.
 
 ## Decision
 
-- Draw the dark chrome with Background `#141518` and Border `#26292E`. Light
-  keeps `#F3F3F3` under a white editor.
+- Draw the dark chrome with Background `#141518` and Border `#24272C`, the
+  mockup's line colour. Light keeps `#F3F3F3` under a white editor and its
+  `#C8C8C8` Border.
 - The content colour is the scheme's editor background, carried to Core as
   `ChromePalette::Content`. That widens the palette, as 0490 foresaw, with no new
   scheme key.
@@ -24,11 +25,16 @@ own above the chrome beside it.
   the Git view, review, sessions, settings, terminals and tool panels. A user
   scheme that sets `ui.background` keeps its value.
 - Draw the title bar in the chrome. Draw the status bar with no border.
-- Draw the edges of windows, popups, tooltips and child windows
-  (`ImGuiCol_Border`) in `SurfaceActive`, and separators and dock splitters
-  (`ImGuiCol_Separator`) in the palette's Border. The Border above is one step
-  from `Surface`, the popup colour, so a combo over a dialog or a submenu over
-  its menu would have no visible edge.
+- Draw every hairline in the palette's Border, the line colour: the edges of
+  windows, popups, tooltips and child windows (`ImGuiCol_Border`), separators
+  (`ImGuiCol_Separator`), dock splitters and the title bar's divider. ImGui draws
+  a dock splitter from `ImGuiCol_Border`, not `ImGuiCol_Separator`: it pushes
+  `Separator = Border` around the splitters, so `Border` is the only slot that
+  reaches them. A dock splitter is 1 px (`DockingSeparatorSize`).
+- Tell a popup apart by its fill, not its edge. `PopupBg` stays `Surface`, which
+  is lighter than both the chrome and the content in dark, and the light Border
+  is darker than the light `Surface`, so popups, tooltips and the find bar still
+  read as their own surface.
 - Draw table headers (`ImGuiCol_TableHeaderBg`) in `Surface`, and table borders
   (`ImGuiCol_TableBorderStrong`, `ImGuiCol_TableBorderLight`) in the palette's
   Border, as separators are. Left unset, they keep the base style's colours, and
@@ -46,18 +52,28 @@ part of the window, so the eye lands on them. The content colour already exists
 as the editor background, so no scheme needs a new key and a user scheme keeps
 working.
 
+The mockup draws every hairline, the splitter beside the side panel included, in
+one line colour, one pixel wide. Setting that colour on `ImGuiCol_Border` is the
+one change that reaches the dock splitters, the divider and every edge at once,
+and the popups lose nothing they need, because their fill already sets them off.
+
 ## Consequences
 
 ### Positive
 
 - Documents and diffs stand out from the chrome that frames them.
 - A scheme needs no new key; the content colour follows its editor background.
+- Splitters, separators, table borders, the title bar's divider and window edges
+  share one hairline colour, so no straight line is brighter than another.
 
 ### Negative
 
 - A scheme whose editor background is darker than its chrome gets content darker
   than the frame, with no way to say otherwise.
 - Core's palette has one more field every caller must fill.
+- In dark, a popup over another `Surface` shows no edge: a submenu beside its
+  menu or a combo opened in a dialog runs into the surface under it, because the
+  line colour is one step from `Surface`.
 
 ### Neutral
 
@@ -70,6 +86,13 @@ working.
 - **The content colour for the Git view, review, sessions and settings too.**
   This lost because their lists, cards and fields would need a second set of
   hover and selection colours, and light's white `Surface` would vanish on white.
+- **Edges in `SurfaceActive` and separators in the Border.** This was this
+  record's first decision and lost because ImGui draws the dock splitters from
+  `ImGuiCol_Border`, so every splitter and the title bar's divider came out a
+  bright `#3E434C` line instead of the hairline the mockup draws.
+- **Pushing the Border as `ImGuiCol_Border` around the dock space only.** This
+  lost because it mends the splitters and leaves the divider and every other
+  edge in `SurfaceActive`.
 
 ## Related
 

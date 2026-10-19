@@ -15,8 +15,11 @@ and was faint. Tab labels already carry two meanings: a git status colour
 
 ## Decision
 
-- Draw the tab bar in the chrome colour minus 0.03 per RGB channel, clamped at
-  zero. An inactive tab is the bar.
+- Draw the tab bar in the chrome colour itself, as the mockup does: `Tab`,
+  `TabDimmed` and the title bar colours are `WindowBg`. An inactive tab is the
+  bar. An earlier version of this record shaded the bar 0.03 per RGB channel
+  below the chrome; there is no shade.
+- Draw tabs square: `TabRounding` is zero.
 - Draw the selected tab in the chrome colour. A content window pushes the content
   colour before `Begin`, so the selected tab of a document merges with its
   editor. Pushing before `Begin` follows `TabTextColour`, which sets a tab's
@@ -37,34 +40,37 @@ and was faint. Tab labels already carry two meanings: a git status colour
 - Keep tab labels in their own colours. An inactive tab is not dimmed, because a
   dim label already means a preview tab (0556).
 - Draw a tab bar inside a window, such as the review's pages, the same way: the
-  selected page is the window's own colour and the others are the shade.
+  selected page is the window's own colour and the others are the bar.
 
 ## Rationale
 
-A bar a shade darker than the chrome makes the selected tab, which is the chrome
-or the content colour, the lightest part of the strip, so the selection reads
-without a mark. Tying the shade to the palette keeps a light scheme working on
-its own.
+The mockup draws the tab bar in the chrome itself, so the bar is one with the
+title bar, the strip and the side panel around it, and no band in the window is
+darker than the chrome. A document's selected tab is the content colour, lighter
+than the bar, so it still reads without a mark. A panel's selected tab is the
+chrome as well and so has the bar's own colour. That is accepted: in a panel
+node the label tells the selected tab once inactive labels are dimmed, and the
+side column, where most panel tabs sit, is to lose its tab row.
 
 ## Consequences
 
 ### Positive
 
 - The selected tab joins the view it shows, in panels and in documents.
-- The selection needs no extra mark.
-- The shade follows the scheme's chrome colour.
+- A document's selection needs no extra mark.
+- The bar follows the scheme's chrome colour and has no constant of its own.
 
 ### Negative
 
 - Closing every tab of a node takes the context menu instead of one button.
-- The difference between bar and selected tab is small, 0.03 per channel, and
-  may be hard to see on some displays.
+- A panel's selected tab has the bar's colour, so in a panel node nothing but
+  the label tells it from the others.
 - An inactive tab under the pointer takes the selected tab's colour, so while
   hovered it looks like the selected tab.
 
 ### Neutral
 
-- The title bar of a floating window uses the same shade, and so does a modal
+- The title bar of a floating window is the chrome colour too, and so is a modal
   dialog's, which makes a dialog's title bar darker than its body.
 
 ## Alternatives Considered
@@ -73,8 +79,10 @@ its own.
   dock tab bars and offers no such mark.
 - **Keeping the 1 px overline.** This lost because it is the only mark of the
   selected tab and is too faint.
-- **A bar in the chrome colour.** This lost because the selected tab of a panel
-  would be the bar's own colour.
+- **A bar a shade below the chrome, 0.03 per channel.** This was this record's
+  first decision and lost because the mockup draws the bar in the chrome, and
+  the shade made the bar the darkest band in the window, a near-black strip over
+  the editor and every panel.
 
 ## Related
 

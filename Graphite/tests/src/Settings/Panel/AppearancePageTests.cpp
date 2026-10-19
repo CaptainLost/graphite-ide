@@ -8,13 +8,17 @@
 #include "Settings/Panel/AppearancePage.h"
 #include "Settings/Panel/SettingsSearch.h"
 #include "Theme/ActiveScheme.h"
+#include "Theme/BuiltInSchemes.h"
+#include "Theme/ChromePalette.h"
 #include "Theme/ColorScheme.h"
 #include "UI/Dialogs/ModalGate.h"
 
 #include "Core/App/Redraw.h"
 #include "Core/Events/EventBus.h"
+#include "Core/ImGui/Theme.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -319,6 +323,44 @@ TEST_CASE("Opening the page with words that name no colour does not scroll it")
 	const ImGuiWindow* window = ImGui::FindWindowByName("Settings");
 	REQUIRE(window != nullptr);
 	CHECK(window->Scroll.y == 0.0f);
+}
+
+namespace {
+
+	// The light is the accent at part opacity; the accent's own swatch is opaque, so it does not count.
+	bool AnyWindowDrawsTheAccentTranslucent()
+	{
+		const ImU32 accentWithoutAlpha = ImGui::GetColorU32(ImGuiCol_CheckMark) & ~IM_COL32_A_MASK;
+
+		for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+		{
+			for (const ImDrawVert& vertex : window->DrawList->VtxBuffer)
+			{
+				const ImU32 alpha = (vertex.col & IM_COL32_A_MASK) >> IM_COL32_A_SHIFT;
+				const bool translucent = alpha > 0u && alpha < 255u;
+
+				if (translucent && (vertex.col & ~IM_COL32_A_MASK) == accentWithoutAlpha)
+				{
+					return true;
+				}
+			}
+		}
+
+		return false;
+	}
+}
+
+TEST_CASE("A found colour is lit in the accent, though the theme gives a press no colour of its own")
+{
+	AppearanceScreen screen;
+	Core::Theme::Apply(Graphite::ChromePaletteFor(Graphite::DarkScheme()));
+	const std::string openWith = OpenWithForAccentHalfwayDownThePage(screen);
+
+	screen.Page.OnOpenedFromSearch(openWith);
+	screen.Frames.DrawPageTwice(kNarrowWidth);
+	screen.Frames.DrawPageTwice(kNarrowWidth);
+
+	CHECK(AnyWindowDrawsTheAccentTranslucent());
 }
 
 TEST_CASE("A found colour asks for the next frame while its light fades, and for none once it has")

@@ -145,7 +145,7 @@ TEST_CASE("In both built-ins the chrome background is darker than the editor bac
 	}
 }
 
-TEST_CASE("The dark chrome is #141518 with a #26292E border")
+TEST_CASE("The dark chrome is #141518 with the mockup's #24272C line as its border")
 {
 	const Graphite::ResolvedScheme& dark = Graphite::DarkScheme();
 	const Core::Color background = dark.Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Background)];
@@ -154,9 +154,19 @@ TEST_CASE("The dark chrome is #141518 with a #26292E border")
 	CHECK(Core::ChannelToByte(background.R) == 20);
 	CHECK(Core::ChannelToByte(background.G) == 21);
 	CHECK(Core::ChannelToByte(background.B) == 24);
-	CHECK(Core::ChannelToByte(border.R) == 38);
-	CHECK(Core::ChannelToByte(border.G) == 41);
-	CHECK(Core::ChannelToByte(border.B) == 46);
+	CHECK(Core::ChannelToByte(border.R) == 36);
+	CHECK(Core::ChannelToByte(border.G) == 39);
+	CHECK(Core::ChannelToByte(border.B) == 44);
+}
+
+TEST_CASE("The light chrome keeps its #C8C8C8 border")
+{
+	const Core::Color border =
+		Graphite::LightScheme().Chrome[static_cast<std::size_t>(Graphite::ChromeColor::Border)];
+
+	CHECK(Core::ChannelToByte(border.R) == 200);
+	CHECK(Core::ChannelToByte(border.G) == 200);
+	CHECK(Core::ChannelToByte(border.B) == 200);
 }
 
 namespace {

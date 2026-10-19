@@ -14,7 +14,8 @@ the side of every list and panel. The default width is 14 px.
 - Draw the scrollbar track transparent.
 - Draw the grab in the text colour at 12 % alpha, 20 % when hovered and 28 % when
   held. A light scheme follows on its own, since its text colour is dark.
-- Make the scrollbar 12 px wide.
+- Make the scrollbar 12 px wide, with a grab 4 px wide as the mockup's is:
+  `ScrollbarPadding` is 4 px on each side.
 - Leave the editor's change markers on its scrollbar (0527) unchanged.
 
 ## Rationale

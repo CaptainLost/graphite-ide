@@ -2,7 +2,7 @@
 
 #include "Core/Base/Color.h"
 
-struct ImGuiStyle;
+#include <imgui.h>
 
 namespace Core {
 
@@ -20,6 +20,10 @@ namespace Core {
 	};
 
 	bool IsLightBackground(const Color& background);
+
+	// The bright text for what is active or selected: the current text colour pushed six tenths
+	// of the way away from the window background, toward white on a dark one and black on a light one.
+	ImU32 EmphasisText();
 
 	class Theme
 	{

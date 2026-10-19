@@ -101,7 +101,7 @@ namespace Graphite {
 			const float left = std::floor(origin.x + slot.X);
 
 			ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(left, top), ImVec2(left + slot.Width, top + height),
-													  ImGui::GetColorU32(ImGuiCol_Border));
+													  ImGui::GetColorU32(ImGuiCol_Separator));
 		}
 
 		Core::CaptionMetrics MeasureDragRegion(float dragBegin, float dragEnd)

@@ -106,7 +106,7 @@ namespace Graphite {
 			{ChromeColor::Accent, 66, 133, 244},
 			{ChromeColor::Text, 214, 219, 226},
 			{ChromeColor::TextDisabled, 123, 130, 141},
-			{ChromeColor::Border, 38, 41, 46},
+			{ChromeColor::Border, 36, 39, 44},
 		};
 
 		static_assert(std::size(kDarkChrome) == static_cast<std::size_t>(ChromeColor::Count));

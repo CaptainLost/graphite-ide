@@ -182,7 +182,7 @@ namespace Graphite {
 	ImU32 AppearancePage::RevealHighlight() const
 	{
 		const float progress = std::min(m_Revealed->SecondsShown / kRevealSeconds, 1.0f);
-		ImVec4 colour = ImGui::GetStyleColorVec4(ImGuiCol_HeaderActive);
+		ImVec4 colour = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
 		colour.w = kRevealStartOpacity * (1.0f - progress * progress);
 
 		return ImGui::GetColorU32(colour);
