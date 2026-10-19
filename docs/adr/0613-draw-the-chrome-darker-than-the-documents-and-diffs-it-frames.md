@@ -29,6 +29,10 @@ own above the chrome beside it.
   (`ImGuiCol_Separator`) in the palette's Border. The Border above is one step
   from `Surface`, the popup colour, so a combo over a dialog or a submenu over
   its menu would have no visible edge.
+- Draw table headers (`ImGuiCol_TableHeaderBg`) in `Surface`, and table borders
+  (`ImGuiCol_TableBorderStrong`, `ImGuiCol_TableBorderLight`) in the palette's
+  Border, as separators are. Left unset, they keep the base style's colours, and
+  the light base fills a header in a pale blue that reads as a selection.
 - Fill information bars and the find bar from `PopupBg`, which is `Surface`.
   They filled from `MenuBarBg`, which was `Surface` and is now the chrome.
 - This amends 0490: `ChromePalette` grows a ninth colour, `Content`; Core's

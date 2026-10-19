@@ -49,6 +49,30 @@ namespace {
 		{"Border", &Core::ChromePalette::Border, 0.149f, 0.161f, 0.180f, 1.0f},
 		{"Content", &Core::ChromePalette::Content, 0.106f, 0.114f, 0.129f, 1.0f},
 	};
+
+	Core::ChromePalette LightPalette()
+	{
+		Core::ChromePalette palette = Core::Theme::DefaultPalette();
+		palette.Background = Core::Color{0.953f, 0.953f, 0.953f, 1.0f};
+		palette.Surface = Core::Color{1.0f, 1.0f, 1.0f, 1.0f};
+		palette.SurfaceHovered = Core::Color{0.898f, 0.898f, 0.898f, 1.0f};
+		palette.SurfaceActive = Core::Color{0.839f, 0.839f, 0.839f, 1.0f};
+		palette.Accent = Core::Color{0.039f, 0.384f, 0.816f, 1.0f};
+		palette.Text = Core::Color{0.141f, 0.141f, 0.141f, 1.0f};
+		palette.TextDisabled = Core::Color{0.431f, 0.431f, 0.431f, 1.0f};
+		palette.Border = Core::Color{0.784f, 0.784f, 0.784f, 1.0f};
+		palette.Content = Core::Color{1.0f, 1.0f, 1.0f, 1.0f};
+
+		return palette;
+	}
+
+	void CheckSameColour(const ImVec4& actual, const Core::Color& expected)
+	{
+		CHECK(actual.x == doctest::Approx(expected.R));
+		CHECK(actual.y == doctest::Approx(expected.G));
+		CHECK(actual.z == doctest::Approx(expected.B));
+		CHECK(actual.w == doctest::Approx(expected.A));
+	}
 }
 
 TEST_CASE("The default chrome palette is the one the application shipped with")
@@ -126,6 +150,22 @@ TEST_CASE("Apply draws the edges of windows and popups in the active surface and
 	CHECK(colours[ImGuiCol_Separator].x == doctest::Approx(palette.Border.R));
 	CHECK(colours[ImGuiCol_Separator].y == doctest::Approx(palette.Border.G));
 	CHECK(colours[ImGuiCol_Separator].z == doctest::Approx(palette.Border.B));
+}
+
+TEST_CASE("Apply draws table headers in the surface colour and table borders in the border colour, in dark and in light")
+{
+	IsolatedImGuiContext context;
+
+	for (const Core::ChromePalette& palette : {Core::Theme::DefaultPalette(), LightPalette()})
+	{
+		CAPTURE(palette.Background.R);
+		Core::Theme::Apply(palette);
+		const ImVec4* colours = ImGui::GetStyle().Colors;
+
+		CheckSameColour(colours[ImGuiCol_TableHeaderBg], palette.Surface);
+		CheckSameColour(colours[ImGuiCol_TableBorderStrong], palette.Border);
+		CheckSameColour(colours[ImGuiCol_TableBorderLight], palette.Border);
+	}
 }
 
 TEST_CASE("The tab bar shade never goes below black")

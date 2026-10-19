@@ -107,7 +107,7 @@ namespace Core {
 
 	void Theme::Apply(const ChromePalette& palette)
 	{
-		// WARNING: about forty ImGuiCol_ entries are not set below and keep the base style's colours, so the base must match the palette's luminance.
+		// WARNING: about twenty-five ImGuiCol_ entries are not set below and keep the base style's colours, so the base must match the palette's luminance.
 		if (IsLightBackground(palette.Background))
 		{
 			ImGui::StyleColorsLight();
@@ -165,6 +165,9 @@ namespace Core {
 		colors[ImGuiCol_ScrollbarGrabActive] = WithAlpha(text, kScrollbarGrabActiveAlpha);
 
 		colors[ImGuiCol_Separator] = border;
+		colors[ImGuiCol_TableHeaderBg] = surface;
+		colors[ImGuiCol_TableBorderStrong] = border;
+		colors[ImGuiCol_TableBorderLight] = border;
 		colors[ImGuiCol_DockingPreview] = ImVec4(accent.x, accent.y, accent.z, kDockingPreviewAlpha);
 		colors[ImGuiCol_DockingEmptyBg] = ToImVec4(palette.Content);
 		colors[ImGuiCol_CheckMark] = accent;
