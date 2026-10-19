@@ -184,6 +184,11 @@ namespace Graphite {
 			return rowTop + metrics.TextOffsetY;
 		}
 
+		float TextBottomOf(const EditorMetrics& metrics, float rowTop)
+		{
+			return TextTopOf(metrics, rowTop) + metrics.FontSize;
+		}
+
 		// WARNING: The line height is taken from the font size in effect now, not from kCodeFontSize, so it
 		// follows the zoom and the interface scale on the frame they change.
 		EditorMetrics MeasureEditor(const Core::TextBuffer& buffer, bool changeColumn)
@@ -1564,7 +1569,7 @@ namespace Graphite {
 				if (hovered)
 				{
 					const float underlineY =
-						y + canvas.Metrics.LineHeight - Core::Scaled(kHairlineWidth);
+						TextBottomOf(canvas.Metrics, y) - Core::Scaled(kHairlineWidth);
 					canvas.Draw->AddLine(
 						ImVec2(x, underlineY),
 						ImVec2(x + ImGui::CalcTextSize(text.c_str()).x, underlineY), colour,
@@ -1716,7 +1721,7 @@ namespace Graphite {
 
 			const float fromX = ColumnX(canvas, slice, clipped.FromColumn);
 			const float toX = ColumnX(canvas, slice, clipped.ToColumn);
-			const float y = slice.Y + canvas.Metrics.LineHeight - Core::Scaled(kHairlineWidth);
+			const float y = TextBottomOf(canvas.Metrics, slice.Y) - Core::Scaled(kHairlineWidth);
 
 			canvas.Draw->AddLine(ImVec2(fromX, y), ImVec2(toX, y), canvas.Palette.Text,
 								 Core::Scaled(kHairlineWidth));
@@ -2490,7 +2495,8 @@ namespace Graphite {
 				const float fromX = ColumnX(canvas, slice, clipped.FromColumn);
 				const float toX = ColumnX(canvas, slice, clipped.ToColumn);
 
-				const float baselineY = slice.Y + canvas.Metrics.LineHeight - kSquiggleBottomInset;
+				const float baselineY =
+					TextBottomOf(canvas.Metrics, slice.Y) - Core::Scaled(kSquiggleBottomInset);
 
 				const ImU32 base = span.Severity == DiagnosticSeverity::Error
 									   ? canvas.Palette.DiagnosticError

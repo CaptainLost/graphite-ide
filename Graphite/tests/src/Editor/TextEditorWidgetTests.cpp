@@ -12,14 +12,17 @@
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Syntax/SyntaxCache.h"
 #include "Theme/BuiltInSchemes.h"
+#include "Theme/ColorScheme.h"
 #include "Theme/EditorPalette.h"
 #include "Theme/Palettes.h"
 
+#include "Core/Base/Color.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Command/MenuItem.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/TextMetrics.h"
+#include "Core/ImGui/UiScale.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/Editing.h"
@@ -29,6 +32,7 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
@@ -43,6 +47,8 @@ namespace {
 	constexpr float kEditorFontSize = 20.0f;
 	constexpr float kEditorLineHeight = 28.0f;
 	constexpr float kTextOffset = 4.0f;
+	constexpr float kSquiggleAmplitude = 1.5f;
+	constexpr float kHairlineWidth = 1.0f;
 	constexpr float kDocumentWidth = 800.0f;
 	constexpr float kDocumentHeight = 400.0f;
 	constexpr float kIntoTheRow = 2.0f;
@@ -259,15 +265,28 @@ namespace {
 		return ink;
 	}
 
-	std::optional<VerticalExtent> VerticalExtentInColourBetween(const ImDrawList& drawing, ImU32 colour, float left,
-																 float right)
+	struct Region
+	{
+		float Left = -FLT_MAX;
+		float Right = FLT_MAX;
+		float Top = -FLT_MAX;
+		float Bottom = FLT_MAX;
+
+		bool Holds(ImVec2 point) const
+		{
+			return point.x >= Left && point.x <= Right && point.y >= Top && point.y <= Bottom;
+		}
+	};
+
+	std::optional<VerticalExtent> VerticalExtentInColourWithin(const ImDrawList& drawing, ImU32 colour,
+																const Region& region)
 	{
 		VerticalExtent extent;
 		bool foundVertex = false;
 
 		for (const ImDrawVert& vertex : drawing.VtxBuffer)
 		{
-			if (vertex.col != colour || vertex.pos.x < left || vertex.pos.x > right)
+			if (vertex.col != colour || !region.Holds(vertex.pos))
 			{
 				continue;
 			}
@@ -301,6 +320,32 @@ namespace {
 		ImGui::PopFont();
 
 		return measure;
+	}
+
+	// WARNING: An anti-aliased stroke's quad reaches a pixel past its ink on either side, and further at a joint,
+	// so the vertices read off the draw list would stand above and below the line that is seen. Without
+	// anti-aliasing the quad is the stroke.
+	void DrawLinesWithoutAntiAliasing()
+	{
+		ImGui::GetStyle().AntiAliasedLines = false;
+	}
+
+	Graphite::ResolvedScheme DarkSchemeWithTextIn(Core::Color text)
+	{
+		Graphite::ResolvedScheme scheme = Graphite::DarkScheme();
+		scheme.Editor[static_cast<std::size_t>(Graphite::EditorColor::Text)] = text;
+
+		return scheme;
+	}
+
+	float TextTopOfRow(float rowTop)
+	{
+		return rowTop + kTextOffset;
+	}
+
+	float TextBottomOfRow(float rowTop)
+	{
+		return TextTopOfRow(rowTop) + kEditorFontSize;
 	}
 }
 
@@ -511,10 +556,12 @@ TEST_CASE("The caret spans the line and its text is centred")
 	REQUIRE(surface != nullptr);
 
 	const float halfCell = face.CellWidth * kHalf;
-	const std::optional<VerticalExtent> caret = VerticalExtentInColourBetween(
-		*surface->DrawList, DarkEditorPalette().Caret, caretX - halfCell, caretX + halfCell);
-	const std::optional<VerticalExtent> glyph = VerticalExtentInColourBetween(
-		*surface->DrawList, DarkEditorPalette().Text, lineStart.x - halfCell, lineStart.x + face.CellWidth + halfCell);
+	const std::optional<VerticalExtent> caret =
+		VerticalExtentInColourWithin(*surface->DrawList, DarkEditorPalette().Caret,
+									 Region{.Left = caretX - halfCell, .Right = caretX + halfCell});
+	const std::optional<VerticalExtent> glyph = VerticalExtentInColourWithin(
+		*surface->DrawList, DarkEditorPalette().Text,
+		Region{.Left = lineStart.x - halfCell, .Right = lineStart.x + face.CellWidth + halfCell});
 	REQUIRE(caret.has_value());
 	REQUIRE(glyph.has_value());
 
@@ -684,5 +731,107 @@ TEST_CASE("The hover tooltip anchors one line below the hovered token")
 
 	CHECK(tooltip->Pos.y == lineStart.y + kEditorLineHeight);
 	CHECK(std::abs(tooltip->Pos.x - tokenLeft) < kJustInside);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("A diagnostic squiggle stays within its text's box by no more than its amplitude")
+{
+	constexpr std::size_t kSpanColumn = 4;
+	constexpr std::size_t kSpanEndColumn = 9;
+
+	EditorFrames editor("int value = 0;\n");
+	DrawLinesWithoutAntiAliasing();
+
+	Graphite::DiagnosticOverlay diagnostics;
+	diagnostics.Set({ErrorAt(kFirstLine, kSpanColumn, kSpanEndColumn, "unused variable")}, BufferOf(editor.Item),
+					editor.Item.TabWidth);
+	editor.View.Diagnostics = &diagnostics;
+
+	editor.Next();
+
+	const float lineTop = editor.CaretScreenPos().y;
+
+	const ImGuiWindow* surface = EditorSurface();
+	REQUIRE(surface != nullptr);
+
+	const std::optional<VerticalExtent> squiggle =
+		VerticalExtentInColour(*surface->DrawList, DarkEditorPalette().DiagnosticError);
+	REQUIRE(squiggle.has_value());
+
+	const float amplitude = Core::Scaled(kSquiggleAmplitude);
+
+	CHECK(squiggle->Bottom <= TextBottomOfRow(lineTop) + amplitude);
+	CHECK(squiggle->Top >= TextTopOfRow(lineTop) + kEditorFontSize * kHalf);
+}
+
+TEST_CASE("The Ctrl-hover underline sits at the text's foot rather than the line's")
+{
+	constexpr std::size_t kTokenColumn = 4;
+	constexpr std::size_t kTokenEndColumn = 9;
+	constexpr Core::Color kTextSeenOnlyInTheUnderline{.R = 0.0f, .G = 1.0f, .B = 0.0f};
+
+	EditorFrames editor("int value = 0;\n");
+	DrawLinesWithoutAntiAliasing();
+
+	const Graphite::ResolvedScheme scheme = DarkSchemeWithTextIn(kTextSeenOnlyInTheUnderline);
+
+	Graphite::SyntaxCache syntax;
+	syntax.SetSyntax(Graphite::SyntaxOf(Graphite::LanguageId::Cpp));
+
+	editor.View.Scheme = &scheme;
+	editor.View.Syntax = &syntax;
+
+	CodeFaceMeasure face;
+	editor.Frames.Next([&] {
+		editor.Draw();
+		face = MeasureCodeFace("v");
+	});
+
+	const ImVec2 lineStart = editor.CaretScreenPos();
+	const float tokenLeft = lineStart.x + face.CellWidth * static_cast<float>(kTokenColumn);
+	const float tokenRight = lineStart.x + face.CellWidth * static_cast<float>(kTokenEndColumn);
+
+	ImGui::GetIO().AddKeyEvent(ImGuiMod_Ctrl, true);
+	editor.HoverAt(ImVec2(tokenLeft + face.CellWidth * kHalf, lineStart.y + kEditorLineHeight * kHalf));
+	editor.Next();
+
+	const ImGuiWindow* surface = EditorSurface();
+	REQUIRE(surface != nullptr);
+
+	const std::optional<VerticalExtent> underline =
+		VerticalExtentInColourWithin(*surface->DrawList, Graphite::ReadEditorPalette(scheme).Text,
+									 Region{.Left = tokenLeft, .Right = tokenRight + face.CellWidth * kHalf});
+	REQUIRE(underline.has_value());
+
+	CHECK(underline->Bottom == doctest::Approx(TextBottomOfRow(lineStart.y)));
+	CHECK(underline->Top == doctest::Approx(TextBottomOfRow(lineStart.y) - Core::Scaled(kHairlineWidth)));
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("A hovered lens label is underlined at its text's foot")
+{
+	EditorFrames editor("void Draw();\n");
+	DrawLinesWithoutAntiAliasing();
+	editor.Next();
+
+	const ImVec2 lensRowStart = editor.CaretScreenPos();
+
+	Graphite::LensModel lenses;
+	DeclareReferencedFirstLine(lenses, editor.Item);
+	editor.View.Lens = &lenses;
+	editor.Next();
+
+	editor.HoverAt(ImVec2(lensRowStart.x + kIntoTheRow, lensRowStart.y + kEditorLineHeight * kHalf));
+	editor.Next();
+
+	const ImGuiWindow* surface = EditorSurface();
+	REQUIRE(surface != nullptr);
+
+	const std::optional<VerticalExtent> label = VerticalExtentInColourWithin(
+		*surface->DrawList, DarkEditorPalette().Text,
+		Region{.Left = lensRowStart.x, .Top = lensRowStart.y, .Bottom = lensRowStart.y + kEditorLineHeight});
+	REQUIRE(label.has_value());
+
+	CHECK(label->Bottom == doctest::Approx(TextBottomOfRow(lensRowStart.y)));
 	CHECK(editor.StackAfter == editor.StackBefore);
 }

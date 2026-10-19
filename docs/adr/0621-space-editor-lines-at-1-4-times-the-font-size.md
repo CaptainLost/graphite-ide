@@ -26,15 +26,22 @@ DPI scale it again
   100 % a 15 px line is 21 px tall, and a 13 px line 18 px.
 - **Metrics:** `EditorMetrics` holds the font size, the line height and
   `TextOffsetY`, which is `(LineHeight − FontSize) / 2`, floored.
-  `TextTopOf(metrics, rowTop)` is where text in a row is drawn, and
-  `CentredTextOffset(lineHeight, textHeight)` centres text of any other size.
+  `TextTopOf(metrics, rowTop)` is where text in a row is drawn,
+  `TextBottomOf(metrics, rowTop)` is that top plus the font size, the foot of
+  the text's box, and `CentredTextOffset(lineHeight, textHeight)` centres text
+  of any other size.
 - **Text:** every run drawn at a row's top is drawn at `TextTopOf`: code, plain
   text, line numbers and lens labels.
 - **Marks:** whatever marks a line spans the whole line: the current-line fill,
   the selection, find matches and the current match's outline, bracket boxes,
   indent guides, the gutter fill, change bars, the caret and a lens row's
-  selection cell. Squiggles and underlines keep their place against the line's
-  bottom, 2 px and 1 px above it.
+  selection cell.
+- **Squiggles and underlines:** these belong to the text, not the line, so they
+  are measured from `TextBottomOf`. A diagnostic squiggle's middle stands 2 px
+  above it, and the Ctrl-hover link underline and a hovered lens label's
+  underline 1 px above it, both through `Core::Scaled`. They keep the place
+  against the glyphs that they had when a line was as tall as its text, at every
+  zoom.
 - **Hit tests:** a pointer's row is `(y − top) / LineHeight`, floored, so a pixel
   above a line's top still belongs to the line above.
 - **Hover:** the hover tooltip is anchored to the hovered token's whole line, so
@@ -66,9 +73,11 @@ cannot disagree about where a line is.
 ### Negative
 
 - A view shows about 29 % fewer lines, and Page Up and Page Down step by fewer.
-- The editor and the diff view and search preview now step at different pitches,
-  so a line of code is taller in the editor than in a diff of the same file.
-- The tooltip's code rows and the editor's rows differ in pitch too.
+- The search preview and the hover tooltip's code rows step at the bare text
+  line, so a line of code there is shorter than in the editor: 15 px against
+  21 px at 15 px. The diff view, the console and the change tooltip step at a
+  text line plus their spacing. The diff view's 20 px at 15 px went from 5 px
+  taller than an editor line to 1 px shorter.
 - When the room left is odd, the text stands half a pixel above the middle.
 
 ### Neutral
@@ -84,6 +93,10 @@ cannot disagree about where a line is.
   large size lines look cramped again, and at a small one far apart.
 - **Text at the row's top with the room below it.** The fill, the selection and
   the caret would hang below the glyphs.
+- **Squiggles and underlines measured from the line's bottom.** At 15 px they
+  stood 3 px further below the glyphs than before, and further still at a
+  larger zoom, so they read as marks in the gap between lines, not under the
+  text.
 - **A user setting for the factor.** Nobody asked for one, and it can be added
   over the factor later without changing anything this record decides.
 - **The diff view, the search preview and the console at the same pitch.** They
