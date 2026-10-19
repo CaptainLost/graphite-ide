@@ -255,28 +255,33 @@ namespace Graphite {
 
 	// WARNING: Every piece is drawn by position and the row is then laid out once, by the button at its start, with no
 	// item spacing after it, so the editor surface below starts at the row's bottom edge and is shorter by its height.
+	// The pieces span the window's inner rectangle rather than its content region, so the padding is measured from the
+	// window's edge and not from inside the window padding.
 	void DrawBreadcrumb(const BreadcrumbModel& model)
 	{
-		if (ImGui::GetCurrentWindow()->SkipItems)
+		const ImGuiWindow* window = ImGui::GetCurrentWindow();
+
+		if (window->SkipItems)
 		{
 			return;
 		}
 
 		const ImVec2 rowStart = ImGui::GetCursorScreenPos();
-		const ImVec2 rowSize(std::max(0.0f, ImGui::GetContentRegionAvail().x), BreadcrumbHeight());
+		const float rowHeight = BreadcrumbHeight();
+		const ImRect row(ImVec2(window->InnerRect.Min.x, rowStart.y), ImVec2(window->InnerRect.Max.x, rowStart.y + rowHeight));
 
 		Core::PushInterfaceFont(kBreadcrumbFontSize);
 
-		const std::vector<Segment> segments = SegmentsOf(model, FirstFolderFitting(model, RoomIn(rowSize.x)));
-		const float lineTop = rowStart.y + std::floor((rowSize.y - ImGui::GetTextLineHeight()) * kHalf);
+		const std::vector<Segment> segments = SegmentsOf(model, FirstFolderFitting(model, RoomIn(row.GetWidth())));
+		const float lineTop = rowStart.y + std::floor((rowHeight - ImGui::GetTextLineHeight()) * kHalf);
 
-		ImGui::PushClipRect(rowStart, ImVec2(rowStart.x + rowSize.x, rowStart.y + rowSize.y), kClipWithinTheWindow);
-		DrawSegments(segments, ImVec2(rowStart.x + Core::Scaled(kBreadcrumbLeftPadding), lineTop));
+		ImGui::PushClipRect(row.Min, row.Max, kClipWithinTheWindow);
+		DrawSegments(segments, ImVec2(row.Min.x + Core::Scaled(kBreadcrumbLeftPadding), lineTop));
 		ImGui::PopClipRect();
 
 		ImGui::PopFont();
 
 		ImGui::SetCursorScreenPos(rowStart);
-		ReserveRow(rowSize);
+		ReserveRow(ImVec2(std::max(0.0f, ImGui::GetContentRegionAvail().x), rowHeight));
 	}
 }

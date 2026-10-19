@@ -7,6 +7,7 @@
 #include "Editor/Find/FindBar.h"
 #include "Editor/TextEditorWidget.h"
 #include "UI/FileIcons.h"
+#include "UI/TypographicMarks.h"
 
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/UiScale.h"
@@ -132,6 +133,7 @@ namespace {
 		float Width = kDocumentWidth;
 		bool WithEditor = true;
 		ImVec2 RowStart;
+		float WindowLeft = 0.0f;
 		float ContentHeight = 0.0f;
 
 		explicit DocumentFrames(BreadcrumbModel model) : Item(ItemWith("first line\nsecond line\nthird line\n")), Model(std::move(model))
@@ -146,6 +148,7 @@ namespace {
 			ImGui::Begin(kDocumentWindow, nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 
 			RowStart = ImGui::GetCursorScreenPos();
+			WindowLeft = ImGui::GetWindowPos().x;
 			ContentHeight = ImGui::GetContentRegionAvail().y;
 
 			Graphite::DrawBreadcrumb(Model);
@@ -215,6 +218,98 @@ namespace {
 		return ink;
 	}
 
+	struct GlyphQuad
+	{
+		ImRect Box;
+		ImVec2 Uv;
+	};
+
+	bool IsGlyphVertex(const ImDrawVert& vertex)
+	{
+		const ImVec2 white = ImGui::GetDrawListSharedData()->TexUvWhitePixel;
+		return vertex.uv.x != white.x || vertex.uv.y != white.y;
+	}
+
+	std::vector<GlyphQuad> GlyphQuadsInColour(const ImDrawList& drawing, ImU32 colour)
+	{
+		constexpr int kVerticesInAGlyph = 4;
+
+		std::vector<GlyphQuad> quads;
+		int first = 0;
+
+		while (first + kVerticesInAGlyph <= drawing.VtxBuffer.Size)
+		{
+			const ImDrawVert* quad = &drawing.VtxBuffer[first];
+			bool glyphInColour = true;
+
+			for (int corner = 0; corner < kVerticesInAGlyph; ++corner)
+			{
+				glyphInColour = glyphInColour && quad[corner].col == colour && IsGlyphVertex(quad[corner]);
+			}
+
+			if (glyphInColour)
+			{
+				quads.push_back(GlyphQuad{.Box = ImRect(quad[0].pos, quad[2].pos), .Uv = quad[0].uv});
+				first += kVerticesInAGlyph;
+				continue;
+			}
+
+			++first;
+		}
+
+		return quads;
+	}
+
+	bool Near(float value, float expected)
+	{
+		constexpr float kSameSpot = 0.01f;
+
+		return std::fabs(value - expected) < kSameSpot;
+	}
+
+	bool SameGlyph(const GlyphQuad& drawn, const GlyphQuad& reference)
+	{
+		return Near(drawn.Uv.x, reference.Uv.x) && Near(drawn.Uv.y, reference.Uv.y) &&
+			   Near(drawn.Box.GetWidth(), reference.Box.GetWidth()) && Near(drawn.Box.GetHeight(), reference.Box.GetHeight());
+	}
+
+	bool SameRun(const std::vector<GlyphQuad>& drawn, const std::vector<GlyphQuad>& reference)
+	{
+		if (drawn.size() != reference.size() || reference.empty())
+		{
+			return false;
+		}
+
+		for (std::size_t glyph = 0; glyph < reference.size(); ++glyph)
+		{
+			const bool sameSpot = Near(drawn[glyph].Box.Min.x - drawn.front().Box.Min.x,
+									   reference[glyph].Box.Min.x - reference.front().Box.Min.x);
+
+			if (!SameGlyph(drawn[glyph], reference[glyph]) || !sameSpot)
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	std::vector<GlyphQuad> ReferenceGlyphs(const char* window, std::string_view text)
+	{
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(kDocumentWidth, kDocumentHeight));
+		ImGui::Begin(window, nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+
+		Core::PushInterfaceFont(kRowFontSize);
+		ImGui::TextUnformatted(text.data(), text.data() + text.size());
+		ImGui::PopFont();
+
+		std::vector<GlyphQuad> glyphs = GlyphQuadsInColour(*ImGui::GetWindowDrawList(), ImGui::GetColorU32(ImGuiCol_Text));
+		ImGui::End();
+
+		return glyphs;
+	}
+
 	BreadcrumbModel FileOnly(std::string fileName, FileKind kind)
 	{
 		BreadcrumbModel model;
@@ -261,6 +356,26 @@ TEST_CASE("With no folder open a file shows its absolute folders")
 	CHECK(model.Kind == FileKind::Json);
 }
 
+TEST_CASE("A file under a drive's root shows the folders below the drive")
+{
+	const std::filesystem::path driveRoot = "D:\\";
+
+	const BreadcrumbModel nested = Graphite::BuildBreadcrumb(driveRoot, "D:\\Temp\\notes\\file.cpp", {}, kNoSymbolLine);
+	CHECK(nested.Folders == std::vector<std::string>{"Temp", "notes"});
+	CHECK(nested.FileName == "file.cpp");
+
+	CHECK(Graphite::BuildBreadcrumb(driveRoot, "D:\\file.cpp", {}, kNoSymbolLine).Folders.empty());
+}
+
+TEST_CASE("A root spelt in another case still holds the file, and the folders keep the file's own spelling")
+{
+	const BreadcrumbModel model =
+		Graphite::BuildBreadcrumb("d:/repos/ide", "D:/Repos/IDE/Graphite/src/App/CommandLine.cpp", {}, kNoSymbolLine);
+
+	CHECK(model.Folders == std::vector<std::string>{"Graphite", "src", "App"});
+	CHECK(model.FileName == "CommandLine.cpp");
+}
+
 TEST_CASE("A document without symbols at the caret shows the path alone")
 {
 	const std::vector<Declaration> declarations = RendererWithTwoMethods();
@@ -289,9 +404,11 @@ TEST_CASE("The breadcrumb is one row of 26 px above the code")
 	DocumentFrames document(FileOnly("CommandLine.cpp", FileKind::CppSource));
 
 	ReferenceInk reference;
+	ImU32 kind = 0;
 	document.Frames.Next([&] {
 		document.Draw();
 		reference = ReferenceInkOf("CommandLine.cpp");
+		kind = Graphite::ColourOf(FileKind::CppSource, Graphite::IsLightScheme());
 	});
 	document.Next();
 
@@ -312,6 +429,15 @@ TEST_CASE("The breadcrumb is one row of 26 px above the code")
 	const float lineTop = name->Top - reference.InkTopBelowLineTop;
 	const float centredLineTop = document.RowStart.y + (rowHeight - reference.LineHeight) * kHalf;
 	CHECK(std::fabs(lineTop - centredLineTop) <= kHalfPixel);
+
+	REQUIRE(document.RowStart.x > document.WindowLeft + kOnePixel);
+
+	const std::optional<HorizontalExtent> icon = HorizontalExtentInColour(DocumentDrawing(), kind);
+	REQUIRE(icon.has_value());
+
+	const float firstPieceLeft = document.WindowLeft + Core::Scaled(kRowLeftPadding);
+	CHECK(icon->Left >= firstPieceLeft - kOnePixel);
+	CHECK(icon->Left <= firstPieceLeft + kGlyphBearing);
 }
 
 TEST_CASE("The breadcrumb draws in the interface face at 13 px")
@@ -367,7 +493,7 @@ TEST_CASE("Folders, chevrons and symbol glyphs are dim, and the file name follow
 	REQUIRE(icon.has_value());
 	REQUIRE(names.has_value());
 
-	const float firstPieceLeft = document.RowStart.x + Core::Scaled(kRowLeftPadding);
+	const float firstPieceLeft = document.WindowLeft + Core::Scaled(kRowLeftPadding);
 	CHECK(dimmed->Left >= firstPieceLeft - kOnePixel);
 	CHECK(dimmed->Left <= firstPieceLeft + kGlyphBearing);
 	CHECK(dimmed->Left < icon->Left);
@@ -407,6 +533,55 @@ TEST_CASE("A narrow row drops its leading folders behind one ellipsis and keeps 
 		CHECK(Graphite::FirstShownFolder(model, fileAndSymbols) == model.Folders.size());
 		CHECK(Graphite::FirstShownFolder(model, 0.0f) == model.Folders.size());
 	});
+}
+
+TEST_CASE("A narrow row draws one ellipsis for the folders it drops and still draws the file name")
+{
+	constexpr const char* kName = "CommandLine.cpp";
+	constexpr std::size_t kLastFolder = 2;
+	constexpr std::size_t kEllipsisGlyphs = 1;
+	constexpr std::size_t kChevronsBetweenThreePieces = 2;
+	constexpr std::size_t kGlyphsInTheLastFolder = 3;
+	constexpr float kBothSides = 2.0f;
+
+	BreadcrumbModel model = FileOnly(kName, FileKind::CppSource);
+	model.Folders = {"Graphite", "src", "App"};
+
+	DocumentFrames document(model);
+	document.WithEditor = false;
+
+	float lastFolderAndFile = 0.0f;
+	document.Frames.Next([&] {
+		document.Draw();
+		lastFolderAndFile = Graphite::BreadcrumbWidth(model, kLastFolder);
+	});
+
+	document.Width = std::ceil(lastFolderAndFile) + Core::Scaled(kRowLeftPadding) * kBothSides + kOnePixel;
+
+	std::vector<GlyphQuad> ellipsis;
+	std::vector<GlyphQuad> name;
+	ImU32 dim = 0;
+	ImU32 text = 0;
+	document.Frames.Next([&] {
+		document.Draw();
+		ellipsis = ReferenceGlyphs("##EllipsisReference", Graphite::kEllipsis);
+		name = ReferenceGlyphs("##NameReference", kName);
+		dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+		text = ImGui::GetColorU32(ImGuiCol_Text);
+	});
+
+	REQUIRE(ellipsis.size() == kEllipsisGlyphs);
+
+	const std::vector<GlyphQuad> dimmed = GlyphQuadsInColour(DocumentDrawing(), dim);
+	REQUIRE_FALSE(dimmed.empty());
+	CHECK(dimmed.size() == kEllipsisGlyphs + kChevronsBetweenThreePieces + kGlyphsInTheLastFolder);
+	CHECK(SameGlyph(dimmed.front(), ellipsis.front()));
+
+	const float firstPieceLeft = document.WindowLeft + Core::Scaled(kRowLeftPadding);
+	CHECK(dimmed.front().Box.Min.x >= firstPieceLeft - kOnePixel);
+	CHECK(dimmed.front().Box.Min.x <= firstPieceLeft + kGlyphBearing);
+
+	CHECK(SameRun(GlyphQuadsInColour(DocumentDrawing(), text), name));
 }
 
 TEST_CASE("A row too narrow for its file name completes its frames without an ImGui assertion")

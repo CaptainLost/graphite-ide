@@ -26,15 +26,19 @@ Date: 2026-10-19
 
 ## Decision
 
-- **The row.** Every tab `DocumentWindows` draws gets one row directly under its
-  tab bar, before the editor surface: `DrawBreadcrumb(BuildBreadcrumb(...))`
-  (`Graphite/src/Editor/Breadcrumb.h`). The row is `kBreadcrumbHeight` (26 px)
-  tall and the width of the window's content. It is laid out once, with no item
-  spacing after it, so the editor surface starts at its bottom edge and is
-  shorter by exactly its height. It is drawn on every frame, whether or not the
-  document has symbols, so the code never moves when they arrive. The find bar,
-  inside the surface, opens under it. Diffs, review tabs, the results tab and
-  the Settings document are drawn elsewhere and have no row.
+- **The row.** Every tab with a text document gets one row above its editor
+  surface: `DrawBreadcrumb(BuildBreadcrumb(...))`
+  (`Graphite/src/Editor/Breadcrumb.h`). The row is laid out at the cursor, at
+  the top of the window's content, so it stands below the tab bar by the
+  window's top padding (8 px). It is `kBreadcrumbHeight` (26 px) tall and is laid
+  out once, with no item spacing after it, so the editor surface starts at its
+  bottom edge and is shorter by exactly its height. It is drawn on every frame,
+  whether or not the document has symbols, so the code never moves when they
+  arrive. The find bar, inside the surface, opens under it.
+  - A tab with no text document, whose file could not be read, has no row. Every
+    image opens as such a tab.
+  - Diffs, review tabs, the results tab and the Settings document are drawn
+    elsewhere and have no row.
 - **The model.** `BuildBreadcrumb(root, path, declarations, caretLine)` is pure
   and copies what it needs into a `BreadcrumbModel` by value:
   - `Folders`: the folders between the open folder and the file. A file outside
@@ -49,8 +53,10 @@ Date: 2026-10-19
     edit-adjusted declarations and the caret's line at the start of the frame.
 - **The look.** The interface face at `kBreadcrumbFontSize` (13 px), unscaled
   as `PushInterfaceFont` takes it, with the line centred in the row.
-  - The first piece starts `kBreadcrumbLeftPadding` (12 px) from the row's left
-    edge.
+  - The pieces are placed across the window's inner rectangle
+    (`ImGuiWindow::InnerRect`), not its content region, so the first piece
+    starts `kBreadcrumbLeftPadding` (12 px) from the window's left edge rather
+    than 12 px inside its padding.
   - Folders are in the disabled-text colour.
   - The file name is in the text colour, after its kind's glyph in its kind's
     colour.
@@ -62,15 +68,15 @@ Date: 2026-10-19
   - A glyph is one font size wide and stands 4 px before its name.
   - The row draws no background and no border. It sits on the document window's
     content colour, so it reads as part of the document.
-- **Narrow rows.** The pieces fit in the row's width less 12 px on each side.
-  When they do not, the leading folders go one at a time, and one `…` in the
-  disabled-text colour stands where they were. The file name and the symbols
-  always stay. When even they do not fit, the row is clipped at its right edge.
-  `BreadcrumbWidth` and `FirstShownFolder` measure this.
+- **Narrow rows.** The pieces fit in the window's inner width less 12 px on each
+  side. When they do not, the leading folders go one at a time, and one `…` in
+  the disabled-text colour stands where they were. The file name and the symbols
+  always stay. When even they do not fit, the row is clipped at the window's
+  inner right edge. `BreadcrumbWidth` and `FirstShownFolder` measure this.
 - **Display only.** The row is an invisible button that never acts, pressed
-  with `ImGuiButtonFlags_NoFocus | ImGuiButtonFlags_NoNavFocus`. A click on it
-  moves no caret and focuses nothing: the editor keeps the keyboard if it had
-  it, and does not take it if it had not.
+  with `ImGuiButtonFlags_NoFocus | ImGuiButtonFlags_NoNavFocus`, and as wide as
+  the window's content. A click on it moves no caret and focuses nothing: the
+  editor keeps the keyboard if it had it, and does not take it if it had not.
 - **The status bar.** The path item goes, and with it the `*` for unsaved
   changes, which the tab already shows. `DrawStatusBar` no longer takes the open
   folder. The read-only warning stays, in the warning colour, where the path
@@ -111,7 +117,8 @@ the file and the symbols keeps the part that changes with the caret on screen.
 
 ### Neutral
 
-- A tab whose file could not be read shows its path above its message.
+- A tab whose file could not be read, an image among them, shows its message
+  with no row above it. The status bar never showed such a tab's path either.
 - An enum has no breadcrumb segment, because the server's enums are not kept as
   declarations (0622).
 

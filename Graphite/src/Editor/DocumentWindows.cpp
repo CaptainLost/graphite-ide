@@ -2075,11 +2075,13 @@ namespace Graphite {
 					*view.Anchor = AnchorAtLine(pendingTop->Line);
 				}
 
-				const std::size_t caretLine =
-					item.Document ? item.Document->GetBuffer().ToPosition(item.Caret.Offset).Line : 0;
-				const std::span<const Declaration> declarations =
-					lens != nullptr ? std::span<const Declaration>{lens->Declarations} : std::span<const Declaration>{};
-				DrawBreadcrumb(BuildBreadcrumb(workspaceRoot, item.Path, declarations, caretLine));
+				if (item.Document)
+				{
+					const std::size_t caretLine = item.Document->GetBuffer().ToPosition(item.Caret.Offset).Line;
+					const std::span<const Declaration> declarations =
+						lens != nullptr ? std::span<const Declaration>{lens->Declarations} : std::span<const Declaration>{};
+					DrawBreadcrumb(BuildBreadcrumb(workspaceRoot, item.Path, declarations, caretLine));
+				}
 
 				const EditorFrameResult editorResult = DrawEditor(context, item, view, m_FindBar);
 
