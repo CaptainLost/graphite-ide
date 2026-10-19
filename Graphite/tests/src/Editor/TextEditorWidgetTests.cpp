@@ -47,6 +47,9 @@ namespace {
 	constexpr float kEditorFontSize = 20.0f;
 	constexpr float kEditorLineHeight = 28.0f;
 	constexpr float kTextOffset = 4.0f;
+	constexpr float kLensFontFactor = 0.85f;
+	constexpr float kLensFontSize = 17.0f;
+	constexpr float kLensTextOffset = 5.0f;
 	constexpr float kSquiggleAmplitude = 1.5f;
 	constexpr float kHairlineWidth = 1.0f;
 	constexpr float kDocumentWidth = 800.0f;
@@ -304,6 +307,43 @@ namespace {
 		return extent;
 	}
 
+	struct DrawnRegion
+	{
+		float Left = FLT_MAX;
+		float Top = FLT_MAX;
+		float Bottom = -FLT_MAX;
+		std::size_t LastIndex = 0;
+	};
+
+	std::optional<DrawnRegion> DrawnIn(const ImDrawList& drawing, ImU32 colour, const Region& region)
+	{
+		DrawnRegion drawn;
+		bool found = false;
+
+		for (int index = 0; index < drawing.VtxBuffer.Size; ++index)
+		{
+			const ImDrawVert& vertex = drawing.VtxBuffer[index];
+
+			if (vertex.col != colour || !region.Holds(vertex.pos))
+			{
+				continue;
+			}
+
+			found = true;
+			drawn.Left = std::min(drawn.Left, vertex.pos.x);
+			drawn.Top = std::min(drawn.Top, vertex.pos.y);
+			drawn.Bottom = std::max(drawn.Bottom, vertex.pos.y);
+			drawn.LastIndex = static_cast<std::size_t>(index);
+		}
+
+		if (!found)
+		{
+			return std::nullopt;
+		}
+
+		return drawn;
+	}
+
 	struct CodeFaceMeasure
 	{
 		float CellWidth = 0.0f;
@@ -349,7 +389,7 @@ namespace {
 	}
 }
 
-TEST_CASE("A lens label is hit across the width it is drawn at")
+TEST_CASE("A lens label is drawn at 0.85 of the editor size and hit across that width")
 {
 	EditorFrames editor("void Draw();\n");
 
@@ -358,15 +398,15 @@ TEST_CASE("A lens label is hit across the width it is drawn at")
 	editor.View.Lens = &lenses;
 
 	float labelWidth = 0.0f;
-	float interfaceSizeWidth = 0.0f;
+	float editorSizeWidth = 0.0f;
 
 	editor.Frames.Next([&] {
 		editor.Draw();
-		labelWidth = InterfaceWidthAt(kEditorFontSize, kLensLabel);
-		interfaceSizeWidth = InterfaceWidthAt(Core::kInterfaceFontSize, kLensLabel);
+		labelWidth = InterfaceWidthAt(kEditorFontSize * kLensFontFactor, kLensLabel);
+		editorSizeWidth = InterfaceWidthAt(kEditorFontSize, kLensLabel);
 	});
 
-	REQUIRE(interfaceSizeWidth < labelWidth - kJustInside);
+	REQUIRE(labelWidth < editorSizeWidth - kJustInside);
 
 	// WARNING: The label's left edge is read off the caret, which only works while the declaration starts in
 	// column 0 and the caret sits at the start of the row below its lens.
@@ -649,7 +689,7 @@ TEST_CASE("A lens label is centred in its row")
 	VerticalExtent ink;
 	editor.Frames.Next([&] {
 		editor.Draw();
-		Core::PushInterfaceFont(kEditorFontSize);
+		Core::PushInterfaceFont(kLensFontSize);
 		ink = InkOf(kLensLabel);
 		ImGui::PopFont();
 	});
@@ -660,8 +700,8 @@ TEST_CASE("A lens label is centred in its row")
 	const std::optional<VerticalExtent> label = VerticalExtentInColour(*surface->DrawList, DarkEditorPalette().Lens);
 	REQUIRE(label.has_value());
 
-	CHECK(label->Top - ink.Top == doctest::Approx(lensRowTop + kTextOffset));
-	CHECK(label->Bottom - ink.Bottom == doctest::Approx(lensRowTop + kTextOffset));
+	CHECK(label->Top - ink.Top == doctest::Approx(lensRowTop + kLensTextOffset));
+	CHECK(label->Bottom - ink.Bottom == doctest::Approx(lensRowTop + kLensTextOffset));
 	CHECK(editor.StackAfter == editor.StackBefore);
 }
 
@@ -832,6 +872,31 @@ TEST_CASE("A hovered lens label is underlined at its text's foot")
 		Region{.Left = lensRowStart.x, .Top = lensRowStart.y, .Bottom = lensRowStart.y + kEditorLineHeight});
 	REQUIRE(label.has_value());
 
-	CHECK(label->Bottom == doctest::Approx(TextBottomOfRow(lensRowStart.y)));
+	CHECK(label->Bottom == doctest::Approx(lensRowStart.y + kLensTextOffset + kLensFontSize));
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("The current-line highlight starts at the gutter's left edge")
+{
+	EditorFrames editor("first line\nsecond line\n");
+	editor.Next();
+	editor.Next();
+
+	const float lineTop = editor.CaretScreenPos().y;
+	const Graphite::EditorPalette palette = DarkEditorPalette();
+
+	const ImGuiWindow* surface = EditorSurface();
+	REQUIRE(surface != nullptr);
+
+	const Region firstRow{.Top = lineTop, .Bottom = lineTop + kEditorLineHeight - kJustInside};
+	const std::optional<DrawnRegion> fill = DrawnIn(*surface->DrawList, palette.GutterFill, firstRow);
+	const std::optional<DrawnRegion> highlight = DrawnIn(*surface->DrawList, palette.CurrentLine, Region{});
+	REQUIRE(fill.has_value());
+	REQUIRE(highlight.has_value());
+
+	CHECK(highlight->Left == fill->Left);
+	CHECK(highlight->Top == lineTop);
+	CHECK(highlight->Bottom == lineTop + kEditorLineHeight);
+	CHECK(highlight->LastIndex > fill->LastIndex);
 	CHECK(editor.StackAfter == editor.StackBefore);
 }

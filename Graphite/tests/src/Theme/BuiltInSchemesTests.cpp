@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Theme/BuiltInSchemes.h"
+#include "Theme/ColorScheme.h"
 
 #include "Core/Base/Color.h"
 
@@ -156,4 +157,87 @@ TEST_CASE("The dark chrome is #141518 with a #26292E border")
 	CHECK(Core::ChannelToByte(border.R) == 38);
 	CHECK(Core::ChannelToByte(border.G) == 41);
 	CHECK(Core::ChannelToByte(border.B) == 46);
+}
+
+namespace {
+
+	struct EditorBytes
+	{
+		int R = 0;
+		int G = 0;
+		int B = 0;
+		int A = 0;
+	};
+
+	EditorBytes EditorBytesOf(const Graphite::ResolvedScheme& scheme, Graphite::EditorColor color)
+	{
+		const Core::Color value = scheme.Editor[static_cast<std::size_t>(color)];
+
+		return EditorBytes{.R = Core::ChannelToByte(value.R),
+						   .G = Core::ChannelToByte(value.G),
+						   .B = Core::ChannelToByte(value.B),
+						   .A = Core::ChannelToByte(value.A)};
+	}
+
+	void CheckEditorColour(const Graphite::ResolvedScheme& scheme, Graphite::EditorColor color,
+						   EditorBytes expected)
+	{
+		const EditorBytes actual = EditorBytesOf(scheme, color);
+
+		CHECK(actual.R == expected.R);
+		CHECK(actual.G == expected.G);
+		CHECK(actual.B == expected.B);
+		CHECK(actual.A == expected.A);
+	}
+
+	constexpr int kOpaque = 255;
+	constexpr int kCurrentLineAlpha = 10;
+	constexpr int kDarkGuideAlpha = 45;
+	constexpr int kLightGuideAlpha = 20;
+}
+
+TEST_CASE("The dark editor dims its line numbers, guides and lens labels")
+{
+	const Graphite::ResolvedScheme& dark = Graphite::DarkScheme();
+
+	CheckEditorColour(dark, Graphite::EditorColor::LineNumber, {77, 82, 91, kOpaque});
+	CheckEditorColour(dark, Graphite::EditorColor::CurrentLine, {255, 255, 255, kCurrentLineAlpha});
+	CheckEditorColour(dark, Graphite::EditorColor::Guide, {123, 130, 141, kDarkGuideAlpha});
+	CheckEditorColour(dark, Graphite::EditorColor::Lens, {107, 113, 128, kOpaque});
+}
+
+TEST_CASE("The light editor dims its line numbers, guides and lens labels")
+{
+	const Graphite::ResolvedScheme& light = Graphite::LightScheme();
+
+	CheckEditorColour(light, Graphite::EditorColor::LineNumber, {180, 180, 180, kOpaque});
+	CheckEditorColour(light, Graphite::EditorColor::CurrentLine, {0, 0, 0, kCurrentLineAlpha});
+	CheckEditorColour(light, Graphite::EditorColor::Guide, {0, 0, 0, kLightGuideAlpha});
+	CheckEditorColour(light, Graphite::EditorColor::Lens, {160, 160, 160, kOpaque});
+}
+
+TEST_CASE("A user scheme's editor colours win over the built-in ones")
+{
+	constexpr Core::Color kMine{0.1f, 0.2f, 0.3f, 1.0f};
+
+	Graphite::ColorScheme scheme;
+
+	for (const Graphite::EditorColor color :
+		 {Graphite::EditorColor::LineNumber, Graphite::EditorColor::CurrentLine,
+		  Graphite::EditorColor::Guide, Graphite::EditorColor::Lens})
+	{
+		scheme.Editor[static_cast<std::size_t>(color)] = kMine;
+	}
+
+	for (const Graphite::ResolvedScheme* base : {&Graphite::DarkScheme(), &Graphite::LightScheme()})
+	{
+		const Graphite::ResolvedScheme resolved = Graphite::ResolveSchemeOverBase(scheme, *base);
+
+		for (const Graphite::EditorColor color :
+			 {Graphite::EditorColor::LineNumber, Graphite::EditorColor::CurrentLine,
+			  Graphite::EditorColor::Guide, Graphite::EditorColor::Lens})
+		{
+			CHECK(resolved.Editor[static_cast<std::size_t>(color)].R == doctest::Approx(kMine.R));
+		}
+	}
 }

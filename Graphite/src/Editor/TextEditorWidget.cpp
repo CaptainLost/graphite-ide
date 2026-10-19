@@ -85,6 +85,7 @@ namespace Graphite {
 		constexpr double kHalfBlinkPeriod = kCaretBlinkPeriod * 0.5;
 
 		constexpr float kLineHeightFactor = 1.4f;
+		constexpr float kLensFontFactor = 0.85f;
 
 		constexpr float kHalf = 0.5f;
 		constexpr float kHairlineWidth = 1.0f;
@@ -343,7 +344,7 @@ namespace Graphite {
 		// drawn at. A label measured in the code face it sits inside would be hit short of its end or past it.
 		void PushLensFont(const EditorMetrics& metrics)
 		{
-			Core::PushInterfaceFont(metrics.FontSizeBase);
+			Core::PushInterfaceFont(metrics.FontSizeBase * kLensFontFactor);
 		}
 
 		bool IsOverLensLabel(const Lens* lens, float x, float textOriginX,
@@ -1229,7 +1230,7 @@ namespace Graphite {
 		void DrawCurrentLineHighlight(const RowCanvas& canvas, const RowSlice& slice)
 		{
 			canvas.Draw->AddRectFilled(
-				ImVec2(canvas.TextOriginX, slice.Y),
+				ImVec2(canvas.Origin.x + canvas.ScrollX, slice.Y),
 				ImVec2(canvas.Origin.x + std::max(canvas.ContentWidth, canvas.WindowWidth),
 					   slice.Y + canvas.Metrics.LineHeight),
 				canvas.Palette.CurrentLine);
@@ -1430,6 +1431,18 @@ namespace Graphite {
 				canvas.Palette.GutterFill);
 		}
 
+		// WARNING: The gutter fill is opaque and drawn after the row's text, so the highlight is drawn
+		// again over the gutter once the fill is down, and before the columns the gutter carries.
+		void DrawGutterCurrentLine(const RowCanvas& canvas, float y)
+		{
+			const float gutterX = canvas.Origin.x + canvas.ScrollX;
+
+			canvas.Draw->AddRectFilled(
+				ImVec2(gutterX, y),
+				ImVec2(gutterX + canvas.Metrics.Gutter.TotalWidth, y + canvas.Metrics.LineHeight),
+				canvas.Palette.CurrentLine);
+		}
+
 		void DrawDeletionAnchor(const RowCanvas& canvas, float columnX, const DeletionAnchor& anchor,
 								float y)
 		{
@@ -1506,6 +1519,12 @@ namespace Graphite {
 			const float gutterX = canvas.Origin.x + canvas.ScrollX;
 
 			DrawGutterFill(canvas, slice.Y);
+
+			if (onCaretLine)
+			{
+				DrawGutterCurrentLine(canvas, slice.Y);
+			}
+
 			DrawChangeMarker(canvas, slice, changes, lineCount);
 
 			if (slice.SubRow != 0)
@@ -1564,12 +1583,14 @@ namespace Graphite {
 
 				PushLensFont(canvas.Metrics);
 
-				canvas.Draw->AddText(ImVec2(x, TextTopOf(canvas.Metrics, y)), colour, text.c_str());
+				const float labelHeight = ImGui::GetFontSize();
+				const float labelTop = y + CentredTextOffset(canvas.Metrics.LineHeight, labelHeight);
+
+				canvas.Draw->AddText(ImVec2(x, labelTop), colour, text.c_str());
 
 				if (hovered)
 				{
-					const float underlineY =
-						TextBottomOf(canvas.Metrics, y) - Core::Scaled(kHairlineWidth);
+					const float underlineY = labelTop + labelHeight - Core::Scaled(kHairlineWidth);
 					canvas.Draw->AddLine(
 						ImVec2(x, underlineY),
 						ImVec2(x + ImGui::CalcTextSize(text.c_str()).x, underlineY), colour,

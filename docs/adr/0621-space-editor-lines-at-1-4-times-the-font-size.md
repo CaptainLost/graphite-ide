@@ -52,6 +52,28 @@ DPI scale it again
 - **Elsewhere:** the diff view, the search preview, the console and the change
   tooltip keep their spacing.
 
+### Decision, part two: colours and lens labels
+
+The room between lines lets the gutter and the current line read as bands, so
+the marks around the code are dimmed to keep the code in front.
+
+- **Line numbers:** dark `#4D525B`, light `#B4B4B4`. The caret's line number
+  stays in the text colour.
+- **Current line:** dark white and light black, both at alpha 10 of 255 (0.04).
+  The fill spans the gutter as well: it starts at the gutter's left edge and
+  covers the full row. The gutter fill is drawn after the row's text and is
+  opaque, so the highlight is drawn again over it, before the breakpoint,
+  change, number and fold columns, which stay on top.
+- **Indent guides:** half the alpha they had. Dark goes from 89 to 45, light from
+  40 to 20.
+- **Lens labels:** the interface face at 0.85 times the editor's font size, in
+  `EditorColor::Lens`, dark `#6B7180`, light `#A0A0A0`. The size follows the
+  zoom. A label is centred in its row at its own size, is hit across the width
+  it is measured at in that face and size, and its hover underline stands 1 px
+  above the label's own bottom, not the code text's.
+- **User schemes:** a scheme that overrides any of these keys keeps its value;
+  only the built-in defaults change.
+
 ## Rationale
 
 Room between lines makes code easier to read, and a fill or a selection with room
