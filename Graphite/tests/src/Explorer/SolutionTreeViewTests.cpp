@@ -257,6 +257,25 @@ TEST_CASE("The solution view's filter finds a file in a project nobody opened, a
 	CHECK(std::filesystem::equivalent(screen.OpenedFiles[0], folder.GetPath() / "Engine" / "Render" / "Deep.cs"));
 }
 
+TEST_CASE("The solution view's filter field spans the panel's width with nothing after it")
+{
+	constexpr float kFringe = 1.0f;
+
+	TempDirectory folder;
+	const std::filesystem::path solution = MakeSampleSolution(folder);
+
+	SolutionScreen screen{solution};
+
+	const ImGuiWindow* explorer = ImGui::FindWindowByName("Explorer");
+	REQUIRE(explorer != nullptr);
+
+	const std::optional<HorizontalExtent> field =
+		HorizontalExtentInColour(*explorer->DrawList, ImGui::GetColorU32(ImGuiCol_FrameBg));
+	REQUIRE(field.has_value());
+	CHECK(std::abs(field->Left - (explorer->Pos.x + explorer->WindowPadding.x)) <= kFringe);
+	CHECK(std::abs(field->Right - (explorer->Pos.x + explorer->Size.x - explorer->WindowPadding.x)) <= kFringe);
+}
+
 TEST_CASE("The solution view marks the row last clicked only while its file's tab is the one in front in the editor")
 {
 	TempDirectory folder;

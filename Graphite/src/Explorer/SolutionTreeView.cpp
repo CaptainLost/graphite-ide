@@ -711,8 +711,7 @@ namespace Graphite {
 
 		if (ImGui::MenuItem("New Folder", kNoShortcut, kNotSelected, editable))
 		{
-			m_Pending = PendingAction{.Action = PendingAction::Kind::AddFolder,
-									  .Folder = ChildPath(path, UniqueFolderName(folder, "New Folder"))};
+			AddFolderIn(folder, path);
 		}
 
 		ExplainNotEditable(editable);
@@ -737,6 +736,22 @@ namespace Graphite {
 		}
 
 		ImGui::EndPopup();
+	}
+
+	void SolutionTreeView::NewFolderInRoot()
+	{
+		if (!CanEditSolution())
+		{
+			return;
+		}
+
+		AddFolderIn(m_Workspace.GetLoadedSolution()->Root, kSolutionRootPath);
+	}
+
+	void SolutionTreeView::AddFolderIn(const Folder& folder, const std::string& path)
+	{
+		m_Pending = PendingAction{.Action = PendingAction::Kind::AddFolder,
+								  .Folder = ChildPath(path, UniqueFolderName(folder, "New Folder"))};
 	}
 
 	bool SolutionTreeView::OpensToward(const Folder& folder) const

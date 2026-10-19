@@ -117,6 +117,8 @@ namespace Core {
 			ICON_MDI_FILE_IMAGE_OUTLINE,
 			ICON_MDI_FOLDER_OUTLINE,
 			ICON_MDI_FOLDER_OPEN_OUTLINE,
+			ICON_MDI_FILE_PLUS_OUTLINE,
+			ICON_MDI_FOLDER_PLUS_OUTLINE,
 		};
 
 		constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);

@@ -1,6 +1,7 @@
 #include "Explorer/ExplorerPanel.h"
 
 #include "Settings/AppSettings.h"
+#include "UI/PanelHeader.h"
 
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Events/EventBus.h"
@@ -10,17 +11,27 @@
 
 #include <imgui.h>
 
+#include <algorithm>
+#include <cstddef>
 #include <filesystem>
+#include <iterator>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace Graphite {
 
 	namespace {
 		constexpr const char* kModeKey = "explorerMode";
+		constexpr const char* kSolutionChoiceId = "solutionChoice";
 		constexpr const char* kFileSystemLabel = "File System";
 		constexpr const char* kSolutionLabel = "Visual Studio Solution";
-		constexpr float kFillAvailableWidth = -1.0f;
+		constexpr std::size_t kModeChoice = 0;
+		constexpr std::size_t kSolutionChoice = 1;
+		constexpr int kFileSystemOption = 0;
+		constexpr int kSolutionOption = 1;
+		constexpr int kNoOption = -1;
 		constexpr bool kPersist = true;
 		constexpr bool kDoNotPersist = false;
 
@@ -37,6 +48,24 @@ namespace Graphite {
 			{"git.ignored.dim", "Dim", "Ignored Files: Dim", GitIgnoredDisplay::Dim},
 			{"git.ignored.hide", "Hide", "Ignored Files: Hide", GitIgnoredDisplay::Hide},
 		};
+
+		PanelHeaderChoice SolutionChoice(const std::vector<std::filesystem::path>& candidates,
+										 const std::optional<Solution>& loaded)
+		{
+			PanelHeaderChoice choice{.Id = kSolutionChoiceId, .Options = {}, .Selected = kNoOption};
+
+			for (std::size_t index = 0; index < candidates.size(); ++index)
+			{
+				choice.Options.push_back(Core::ToUtf8(candidates[index].filename()));
+
+				if (loaded && candidates[index] == loaded->Path)
+				{
+					choice.Selected = static_cast<int>(index);
+				}
+			}
+
+			return choice;
+		}
 	}
 
 	ExplorerPanel::ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents,
@@ -128,60 +157,95 @@ namespace Graphite {
 
 	void ExplorerPanel::RenderHeader()
 	{
-		RenderModeCombo();
+		const std::vector<std::filesystem::path>& candidates = m_Workspace.GetSolutionCandidates();
+		const bool choosesSolution = m_Mode == Mode::Solution && candidates.size() > 1;
 
-		if (m_Mode == Mode::Solution && m_Workspace.GetSolutionCandidates().size() > 1)
+		std::vector<PanelHeaderChoice> choices{
+			PanelHeaderChoice{.Id = kModeKey,
+							  .Options = {kFileSystemLabel, kSolutionLabel},
+							  .Selected = m_Mode == Mode::Files ? kFileSystemOption : kSolutionOption}};
+
+		if (choosesSolution)
 		{
-			RenderSolutionChooser();
+			choices.push_back(SolutionChoice(candidates, m_Workspace.GetLoadedSolution()));
+		}
+
+		const std::vector<HeaderCommand> commands = HeaderCommands();
+		std::vector<PanelHeaderAction> actions;
+		std::ranges::transform(commands, std::back_inserter(actions), &ExplorerPanel::ActionFor);
+
+		const PanelHeaderResult result = DrawPanelHeader(choices, actions);
+
+		if (result.ClickedAction.has_value())
+		{
+			Run(commands[*result.ClickedAction]);
+		}
+
+		if (const std::optional<int> chosen = result.Chosen[kSolutionChoice]; choosesSolution && chosen.has_value())
+		{
+			m_Workspace.SelectSolution(candidates[static_cast<std::size_t>(*chosen)]);
+		}
+
+		if (const std::optional<int> chosen = result.Chosen[kModeChoice]; chosen.has_value())
+		{
+			SetMode(*chosen == kSolutionOption ? Mode::Solution : Mode::Files);
 		}
 	}
 
-	void ExplorerPanel::RenderModeCombo()
+	PanelHeaderAction ExplorerPanel::ActionFor(HeaderCommand command)
 	{
-		const char* currentLabel = m_Mode == Mode::Files ? kFileSystemLabel : kSolutionLabel;
-
-		ImGui::SetNextItemWidth(kFillAvailableWidth);
-
-		if (ImGui::BeginCombo("##explorerMode", currentLabel))
+		switch (command)
 		{
-			if (ImGui::Selectable(kFileSystemLabel, m_Mode == Mode::Files))
-			{
-				SetMode(Mode::Files);
-			}
-
-			if (ImGui::Selectable(kSolutionLabel, m_Mode == Mode::Solution))
-			{
-				SetMode(Mode::Solution);
-			}
-
-			ImGui::EndCombo();
+		case HeaderCommand::NewFile:
+			return {.Id = "##newFile", .Glyph = ICON_MDI_FILE_PLUS_OUTLINE, .Tooltip = "New File"};
+		case HeaderCommand::NewFolder:
+			return {.Id = "##newFolder", .Glyph = ICON_MDI_FOLDER_PLUS_OUTLINE, .Tooltip = "New Folder"};
+		case HeaderCommand::NewSolutionFolder:
+			return {.Id = "##newSolutionFolder", .Glyph = ICON_MDI_FOLDER_PLUS_OUTLINE, .Tooltip = "New Folder"};
+		case HeaderCommand::Refresh:
+			return {.Id = "##refresh", .Glyph = ICON_MDI_REFRESH, .Tooltip = "Refresh"};
 		}
+
+		return {.Id = "##refresh", .Glyph = ICON_MDI_REFRESH, .Tooltip = "Refresh"};
 	}
 
-	void ExplorerPanel::RenderSolutionChooser()
+	std::vector<ExplorerPanel::HeaderCommand> ExplorerPanel::HeaderCommands() const
 	{
-		// WARNING: This must be a value, not a reference: the empty branch is a temporary.
-		const std::filesystem::path loaded =
-			m_Workspace.GetLoadedSolution() ? m_Workspace.GetLoadedSolution()->Path : std::filesystem::path{};
-
-		ImGui::SetNextItemWidth(kFillAvailableWidth);
-
-		if (!ImGui::BeginCombo("##solutionChoice", Core::ToUtf8(loaded.filename()).c_str()))
+		if (!m_Workspace.IsOpen())
 		{
+			return {};
+		}
+
+		if (m_Mode == Mode::Files)
+		{
+			return {HeaderCommand::NewFile, HeaderCommand::NewFolder, HeaderCommand::Refresh};
+		}
+
+		if (m_Solution.CanEditSolution())
+		{
+			return {HeaderCommand::NewSolutionFolder, HeaderCommand::Refresh};
+		}
+
+		return {HeaderCommand::Refresh};
+	}
+
+	void ExplorerPanel::Run(HeaderCommand command)
+	{
+		switch (command)
+		{
+		case HeaderCommand::NewFile:
+			m_Files.NewFileInRoot();
+			return;
+		case HeaderCommand::NewFolder:
+			m_Files.NewFolderInRoot();
+			return;
+		case HeaderCommand::NewSolutionFolder:
+			m_Solution.NewFolderInRoot();
+			return;
+		case HeaderCommand::Refresh:
+			m_Files.Refresh();
 			return;
 		}
-
-		for (const std::filesystem::path& candidate : m_Workspace.GetSolutionCandidates())
-		{
-			const std::string name = Core::ToUtf8(candidate.filename());
-
-			if (ImGui::Selectable(name.c_str(), candidate == loaded))
-			{
-				m_Workspace.SelectSolution(candidate);
-			}
-		}
-
-		ImGui::EndCombo();
 	}
 
 	void ExplorerPanel::LoadSettings()

@@ -44,6 +44,10 @@ namespace Graphite {
 
 		void WithdrawQuestions();
 
+		bool CanEditSolution() const;
+
+		void NewFolderInRoot();
+
 	private:
 		static constexpr const char* kRemoveTitle = "Remove from Solution##solutionTreeRemove";
 
@@ -76,7 +80,6 @@ namespace Graphite {
 
 		void FollowActiveDocument();
 
-		bool CanEditSolution() const;
 		static void ExplainNotEditable(bool editable);
 
 		bool OpensToward(const Folder& folder) const;
@@ -113,6 +116,7 @@ namespace Graphite {
 		void DrawGroupMarker(GitDecoration decoration, const FileRowLayout& layout);
 
 		void StartRenamingFolder(const Folder& folder, const std::string& path);
+		void AddFolderIn(const Folder& folder, const std::string& path);
 		void RenderContextMenu(const Folder& folder, const std::string& path);
 		void RenderContextMenu(const Project& project, const std::string& folder);
 		bool RenderFolderRenameEditor(const Folder& folder,

@@ -24,14 +24,11 @@
 #include "Explorer/NewFilePath.h"
 #include "Explorer/FilteredTree.h"
 #include "Explorer/TreeReveal.h"
-#include "Core/ImGui/IconButton.h"
 #include "UI/OpenGesture.h"
 #include "UI/TypographicMarks.h"
 #include "UI/ToastEvent.h"
 
 #include "Core/Events/EventBus.h"
-
-#include <IconsMaterialDesignIcons.h>
 
 #include <algorithm>
 #include <format>
@@ -128,7 +125,7 @@ namespace Graphite {
 		}
 
 		ResolvePendingRename();
-		RenderToolbar();
+		RenderFilter();
 		ImGui::Separator();
 
 		if (ImGui::BeginChild("##fileTreeBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None))
@@ -193,33 +190,41 @@ namespace Graphite {
 		m_ScrollToPath = path;
 	}
 
-	void FileTreeView::RenderToolbar()
+	void FileTreeView::RenderFilter()
 	{
-		constexpr int kToolbarButtons = 1;
-		constexpr bool kNotEngaged = false;
-
-		if (DrawFilterField("##fileFilter", m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf),
-							{.Hint = "Filter files", .Width = FilterFieldWidthBefore(kToolbarButtons)}))
+		if (DrawFilterField("##fileFilter", m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf), {.Hint = "Filter files"}))
 		{
 			m_Filter.Build();
 		}
+	}
 
-		ImGui::SameLine();
+	void FileTreeView::NewFileInRoot()
+	{
+		BeginNewFileIn(m_Workspace.GetRoot());
+	}
 
-		if (Core::DrawIconButton("##refreshTree", ICON_MDI_REFRESH, kNotEngaged, "Refresh"))
+	void FileTreeView::NewFolderInRoot()
+	{
+		MakeFolderIn(m_Workspace.GetRoot());
+	}
+
+	void FileTreeView::Refresh()
+	{
+		m_Workspace.Reload();
+		m_Listing.NoteEverythingChanged();
+
+		if (!m_Workspace.IsOpen())
 		{
-			m_Workspace.Reload();
-			m_Listing.NoteEverythingChanged();
-			Core::FileNode& root = m_Workspace.GetTree().GetRoot();
+			return;
+		}
 
-			if (root.Readable)
-			{
-				APP_INFO("File tree refreshed");
-			}
-			else
-			{
-				APP_WARN("File tree refresh failed: the workspace folder is unreadable");
-			}
+		if (m_Workspace.GetTree().GetRoot().Readable)
+		{
+			APP_INFO("File tree refreshed");
+		}
+		else
+		{
+			APP_WARN("File tree refresh failed: the workspace folder is unreadable");
 		}
 	}
 
@@ -396,7 +401,7 @@ namespace Graphite {
 
 		if (ImGui::MenuItem("New File"))
 		{
-			RecordAction(PendingAction{.Action = PendingAction::Kind::BeginNewFile, .Target = creationTarget});
+			BeginNewFileIn(creationTarget);
 		}
 
 		if (ImGui::MenuItem(NewFromTemplateLabel().c_str()))
@@ -406,8 +411,7 @@ namespace Graphite {
 
 		if (ImGui::MenuItem("New Folder"))
 		{
-			RecordAction(PendingAction{
-				.Action = PendingAction::Kind::MakeDirectory, .Target = creationTarget, .Name = "new folder"});
+			MakeFolderIn(creationTarget);
 		}
 
 		if (!isRoot)
@@ -455,7 +459,7 @@ namespace Graphite {
 
 		if (ImGui::MenuItem("New File"))
 		{
-			RecordAction(PendingAction{.Action = PendingAction::Kind::BeginNewFile, .Target = root});
+			BeginNewFileIn(root);
 		}
 
 		if (ImGui::MenuItem(NewFromTemplateLabel().c_str()))
@@ -465,7 +469,7 @@ namespace Graphite {
 
 		if (ImGui::MenuItem("New Folder"))
 		{
-			RecordAction(PendingAction{.Action = PendingAction::Kind::MakeDirectory, .Target = root, .Name = "new folder"});
+			MakeFolderIn(root);
 		}
 
 		ImGui::Separator();
@@ -617,6 +621,16 @@ namespace Graphite {
 		}
 
 		m_Pending = std::move(action);
+	}
+
+	void FileTreeView::BeginNewFileIn(const std::filesystem::path& folder)
+	{
+		RecordAction(PendingAction{.Action = PendingAction::Kind::BeginNewFile, .Target = folder});
+	}
+
+	void FileTreeView::MakeFolderIn(const std::filesystem::path& folder)
+	{
+		RecordAction(PendingAction{.Action = PendingAction::Kind::MakeDirectory, .Target = folder, .Name = "new folder"});
 	}
 
 	void FileTreeView::ExecutePendingAction()

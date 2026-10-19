@@ -647,4 +647,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0615](0615-draw-the-interface-in-inter-and-code-in-jetbrains-mono.md) | Draw the interface in Inter and code in JetBrains Mono | proposed | 2026-10-18 |
 | [0616](0616-draw-list-rows-taller-with-an-inset-rounded-highlight-in-the-accent.md) | Draw list rows taller, with an inset rounded highlight in the accent | proposed | 2026-10-18 |
 | [0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md) | Draw file icons in a colour by file kind and folders in outline | proposed | 2026-10-19 |
+| [0618](0618-head-a-panel-with-one-row-of-quiet-choices-and-icon-actions.md) | Head a panel with one row of quiet choices and icon actions | proposed | 2026-10-19 |
 <!-- /adr-index -->

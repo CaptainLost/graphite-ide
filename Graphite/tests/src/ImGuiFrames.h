@@ -94,6 +94,27 @@ public:
 		return false;
 	}
 
+	bool ClickPopupRow(int rowIndex, const std::function<void()>& draw)
+	{
+		constexpr float kIntoTheRow = 8.0f;
+		constexpr float kHalf = 0.5f;
+
+		const ImGuiContext& context = *ImGui::GetCurrentContext();
+
+		if (context.OpenPopupStack.Size == 0 || context.OpenPopupStack.back().Window == nullptr)
+		{
+			return false;
+		}
+
+		const ImGuiWindow& popup = *context.OpenPopupStack.back().Window;
+		const float rowPitch = ImGui::GetTextLineHeightWithSpacing();
+		const float y =
+			popup.DC.CursorStartPos.y + static_cast<float>(rowIndex) * rowPitch + ImGui::GetTextLineHeight() * kHalf;
+
+		Click(ImVec2(popup.DC.CursorStartPos.x + kIntoTheRow, y), draw);
+		return true;
+	}
+
 	static bool IsPopupNamedOpen(std::string_view name)
 	{
 		for (const ImGuiPopupData& popup : ImGui::GetCurrentContext()->OpenPopupStack)

@@ -10,6 +10,7 @@
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 namespace Core {
 
@@ -27,6 +28,7 @@ namespace Core {
 namespace Graphite {
 
 	class AppSettings;
+	struct PanelHeaderAction;
 
 	class ExplorerPanel final : public Core::Panel
 	{
@@ -53,12 +55,22 @@ namespace Graphite {
 			Solution
 		};
 
+		enum class HeaderCommand
+		{
+			NewFile,
+			NewFolder,
+			NewSolutionFolder,
+			Refresh
+		};
+
 		static Mode ModeFromSetting(const std::string& value);
 		static const char* SettingForMode(Mode mode);
 
+		static PanelHeaderAction ActionFor(HeaderCommand command);
+
 		void RenderHeader();
-		void RenderModeCombo();
-		void RenderSolutionChooser();
+		std::vector<HeaderCommand> HeaderCommands() const;
+		void Run(HeaderCommand command);
 		void SetMode(Mode mode);
 
 		void SyncModeWithWorkspace();

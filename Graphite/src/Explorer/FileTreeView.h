@@ -52,6 +52,12 @@ namespace Graphite {
 
 		void WithdrawQuestions();
 
+		void NewFileInRoot();
+
+		void NewFolderInRoot();
+
+		void Refresh();
+
 	private:
 		static constexpr const char* kDeleteTitle = "Delete##fileTreeDelete";
 		static constexpr const char* kNewFileTitle = "New File from Template##fileTreeNewFile";
@@ -97,7 +103,7 @@ namespace Graphite {
 		};
 
 		void FollowActiveDocument();
-		void RenderToolbar();
+		void RenderFilter();
 		void RenderEmptyState();
 		void RenderFilteredTree();
 		void RenderSearching();
@@ -119,6 +125,8 @@ namespace Graphite {
 		bool IsReachable(const std::filesystem::path& path);
 		bool IsRowShown(const Core::FileNode& node) const;
 		void RecordAction(PendingAction action);
+		void BeginNewFileIn(const std::filesystem::path& folder);
+		void MakeFolderIn(const std::filesystem::path& folder);
 		void ExecutePendingAction();
 		void HandleDelete(const PendingAction& action);
 		void HandleRefresh(const PendingAction& action);

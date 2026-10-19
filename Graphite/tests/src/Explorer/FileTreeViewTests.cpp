@@ -22,6 +22,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <cmath>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -255,6 +256,25 @@ TEST_CASE("Clearing the filter leaves closed the folders it opened")
 	const Core::FileNode* source = ChildNamed(screen.Workspace.GetTree().GetRoot(), "src");
 	REQUIRE(source != nullptr);
 	CHECK_FALSE(source->Expanded);
+}
+
+TEST_CASE("The file tree's filter field spans the panel's width with nothing after it")
+{
+	constexpr float kFringe = 1.0f;
+
+	TempDirectory folder;
+	folder.MakeFile("README.md");
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	const ImGuiWindow* explorer = ImGui::FindWindowByName("Explorer");
+	REQUIRE(explorer != nullptr);
+
+	const std::optional<HorizontalExtent> field =
+		HorizontalExtentInColour(*explorer->DrawList, ImGui::GetColorU32(ImGuiCol_FrameBg));
+	REQUIRE(field.has_value());
+	CHECK(std::abs(field->Left - (explorer->Pos.x + explorer->WindowPadding.x)) <= kFringe);
+	CHECK(std::abs(field->Right - (explorer->Pos.x + explorer->Size.x - explorer->WindowPadding.x)) <= kFringe);
 }
 
 TEST_CASE("The file tree marks the active file only while its tab is the one in front in the editor")
