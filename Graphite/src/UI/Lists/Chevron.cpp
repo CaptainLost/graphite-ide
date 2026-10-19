@@ -199,6 +199,21 @@ namespace Graphite {
 		return std::floor(TreeRowChevronBoxLeft() + TreeRowChevronBoxWidth() + Core::Scaled(kChevronBoxToLabel));
 	}
 
+	// WARNING: A tree fills its panel to the edges, so a message laid where its rows go is inset as their content is:
+	// from where a row's chevron starts to where a row's end stands.
+	void DrawTreeMessage(std::string_view message)
+	{
+		const float inset = TreeRowChevronBoxLeft();
+
+		ImGui::Indent(inset);
+		ImGui::PushTextWrapPos(ListRowEndPosX());
+		ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+		ImGui::TextUnformatted(message.data(), message.data() + message.size());
+		ImGui::PopStyleColor();
+		ImGui::PopTextWrapPos();
+		ImGui::Unindent(inset);
+	}
+
 	bool ChevronTreeNode(const char* id, ImGuiTreeNodeFlags flags, const char* label, const char* note)
 	{
 		// WARNING: Nothing is submitted in a window that skips its items, and what this would ask of the last item

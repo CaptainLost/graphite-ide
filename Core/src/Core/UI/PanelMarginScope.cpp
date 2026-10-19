@@ -11,10 +11,11 @@ namespace Core {
 
 	namespace {
 		// WARNING: A child window has no padding of its own unless it asks for one, and whatever it holds is laid out
-		// to its edges on purpose, so only a top-level or docked window is given the margin it lacks.
+		// to its edges on purpose, so only a top-level or docked window is given the margin it lacks. ImGui flags a
+		// docked window as a child of the dock node's host too, so the flag alone does not tell a child.
 		float MarginIn(const ImGuiWindow& window)
 		{
-			const bool isChildWindow = (window.Flags & ImGuiWindowFlags_ChildWindow) != 0;
+			const bool isChildWindow = (window.Flags & ImGuiWindowFlags_ChildWindow) != 0 && !window.DockIsActive;
 
 			return isChildWindow ? 0.0f : std::max(0.0f, ImGui::GetStyle().WindowPadding.x - window.WindowPadding.x);
 		}

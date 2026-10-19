@@ -176,9 +176,7 @@ namespace Graphite {
 
 			if (filtering && !HoldsMatch(solution.Root))
 			{
-				ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-				ImGui::TextWrapped("No files match \"%s\"", m_Filter.InputBuf);
-				ImGui::PopStyleColor();
+				DrawTreeMessage(std::format("No files match \"{}\"", m_Filter.InputBuf));
 			}
 		}
 

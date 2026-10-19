@@ -348,3 +348,24 @@ TEST_CASE("An engaged icon button draws its glyph in the accent though it is ask
 	CHECK(InkInColour(BoxWindow::Drawing(), ImGui::GetColorU32(ImGuiCol_CheckMark)).has_value());
 	CHECK_FALSE(InkInColour(BoxWindow::Drawing(), ImGui::GetColorU32(ImGuiCol_TextDisabled)).has_value());
 }
+
+TEST_CASE("A dim icon button's glyph brightens as its fill eases in under the pointer")
+{
+	constexpr int kFramesIntoTheFade = 2;
+
+	BoxWindow window;
+	const Core::IconButtonOptions quiet{.Fit = Core::IconButtonFit::Box, .Rest = Core::IconButtonRest::Dim};
+
+	const ImRect button = window.Draw(quiet);
+	window.Draw(quiet);
+	ImGui::GetIO().AddMousePosEvent(button.GetCenter().x, button.GetCenter().y);
+
+	for (int frame = 0; frame < kFramesIntoTheFade; ++frame)
+	{
+		window.Draw(quiet);
+	}
+
+	CHECK_FALSE(InkInColour(BoxWindow::Drawing(), ImGui::GetColorU32(ImGuiCol_ButtonHovered)).has_value());
+	CHECK_FALSE(InkInColour(BoxWindow::Drawing(), ImGui::GetColorU32(ImGuiCol_TextDisabled)).has_value());
+	CHECK_FALSE(InkInColour(BoxWindow::Drawing(), ImGui::GetColorU32(ImGuiCol_Text)).has_value());
+}

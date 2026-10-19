@@ -35,7 +35,7 @@ Amended by [0620](0620-show-problems-and-the-server-s-health-as-glyphs-and-colou
 a third fit, `Bar`, is a square one frame high from the row's top, filled out to its corners, for the status bar's bell. `IconButtonFill` gives the same eased fill to a pressable piece that is not a glyph button, such as the status bar's clickable text.
 
 Amended by [0618](0618-head-a-panel-with-one-row-of-quiet-choices-and-icon-actions.md):
-a fourth fit, `Box`, is a 24 px square laid out as its own cell, with a 15 px glyph and a fill rounded 5 px, for a panel header's actions. A button asked to rest dim (`IconButtonRest::Dim`) draws its glyph in the disabled-text colour until the pointer is over it; an engaged one stays in the accent.
+a fourth fit, `Box`, is a 24 px square laid out as its own cell, with a 15 px glyph and a fill rounded 5 px, for a panel header's actions. A button asked to rest dim (`IconButtonRest::Dim`) draws its glyph in the disabled-text colour at rest and brightens it to the text colour as its fill eases in under the pointer; an engaged one stays in the accent.
 
 ## Rationale
 

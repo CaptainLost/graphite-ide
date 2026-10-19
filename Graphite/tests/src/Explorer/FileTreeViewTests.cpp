@@ -4,6 +4,7 @@
 #include "Git/GitDecorationView.h"
 #include "Git/GitDecorations.h"
 #include "UI/FileIcons.h"
+#include "UI/Lists/Chevron.h"
 #include "UI/Lists/ListRow.h"
 #include "Workspace/Workspace.h"
 
@@ -242,6 +243,25 @@ TEST_CASE("The filter finds a file in a folder nobody opened, and a click on it 
 
 	REQUIRE(screen.OpenedFiles.size() == 1);
 	CHECK(std::filesystem::equivalent(screen.OpenedFiles[0], deep));
+}
+
+TEST_CASE("A filter that matches nothing says so, starting where a tree row's chevron does and ending at a row's end")
+{
+	TempDirectory folder;
+	folder.MakeFile("README.md");
+
+	ExplorerScreen screen{folder.GetPath()};
+	screen.TypeInFilter("nothing by this name, nothing at all, not anywhere in this folder");
+
+	const ImGuiWindow* body = FindTreeBody();
+	REQUIRE(body != nullptr);
+
+	const std::optional<HorizontalExtent> message =
+		HorizontalExtentInColour(*body->DrawList, ImGui::GetColorU32(ImGuiCol_TextDisabled));
+
+	REQUIRE(message.has_value());
+	CHECK(message->Left >= body->Pos.x + Graphite::TreeRowChevronBoxLeft());
+	CHECK(message->Right <= body->Pos.x + body->Size.x - Graphite::ListRowEndInset());
 }
 
 TEST_CASE("Clearing the filter leaves closed the folders it opened")

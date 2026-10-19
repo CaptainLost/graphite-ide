@@ -381,7 +381,11 @@ TEST_CASE("Header icon buttons are dim at rest and text-coloured on hover")
 
 	const std::vector<HoveredStretch> buttons = screen.ItemsAcrossTheRow();
 	REQUIRE(buttons.size() == 1);
-	screen.MoveTo(ImVec2(buttons.front().Middle(), screen.RowMiddle()));
+
+	for (int frame = 0; frame < kFramesPastTheHoverFade; ++frame)
+	{
+		screen.MoveTo(ImVec2(buttons.front().Middle(), screen.RowMiddle()));
+	}
 
 	CHECK(DrawsInColour(HeaderScreen::Drawing(), ImGui::GetColorU32(ImGuiCol_Text)));
 	CHECK_FALSE(DrawsInColour(HeaderScreen::Drawing(), ImGui::GetColorU32(ImGuiCol_TextDisabled)));

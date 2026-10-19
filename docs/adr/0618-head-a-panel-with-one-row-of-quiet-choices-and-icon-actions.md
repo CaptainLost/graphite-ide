@@ -50,8 +50,8 @@ Draw a panel's header row with `Graphite::DrawPanelHeader(choices, actions)`
   `ClickedAction`.
   - Each is a 24 px square in the middle of the row, 1 px from the next, the
     last ending at the row's right edge.
-  - Its glyph is 15 px, in the disabled-text colour at rest and in the text
-    colour under the pointer.
+  - Its glyph is 15 px, in the disabled-text colour at rest. Under the pointer
+    it brightens to the text colour as the fill eases in, by the same amount.
   - Under the pointer it takes the hovered button colour, rounded 5 px.
   - Only the header's actions rest dim. The mockup draws its header actions and
     the ends of its tab bars that way; its status bar's bell is a status item, in

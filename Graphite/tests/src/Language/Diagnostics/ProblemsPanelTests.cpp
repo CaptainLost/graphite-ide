@@ -214,3 +214,48 @@ TEST_CASE("A problem's highlight is inset six pixels from the Problems panel's e
 	CHECK(std::abs(highlight->Left - kHighlightInset) <= kFringe);
 	CHECK(std::abs(highlight->Right - (kPanelSize.x - kHighlightInset)) <= kFringe);
 }
+
+TEST_CASE("A file heading in Problems stands a list row's end inset in from the panel's edge")
+{
+	constexpr bool kDarkScheme = false;
+
+	TempDirectory folder;
+	const std::filesystem::path settingsFile = folder.MakeFile("graphite.json", "{}");
+
+	ImGuiFrames frames;
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace{events, settings.Get()};
+	Core::DocumentSet documents;
+	REQUIRE(documents.Open(settingsFile, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+
+	Graphite::DiagnosticsModel diagnostics;
+	diagnostics.Apply(OneErrorIn(settingsFile));
+
+	const Graphite::ActiveScheme scheme;
+	Graphite::ProblemsPanel panel{diagnostics, documents, workspace, scheme};
+
+	float rowEndInset = 0.0f;
+
+	// As the panel manager begins a flush panel's window: with no padding at its sides.
+	frames.Next([&] {
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(kPanelSize);
+		ImGui::Begin("Problems", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
+		ImGui::PopStyleVar();
+		panel.OnImGuiRender();
+		rowEndInset = Graphite::ListRowEndInset();
+		ImGui::End();
+	});
+
+	const ImGuiWindow* list = FindProblemList();
+	REQUIRE(list != nullptr);
+
+	const std::optional<HorizontalExtent> badge =
+		HorizontalExtentInColour(*list->DrawList, Graphite::ColourOf(Graphite::FileKind::Json, kDarkScheme));
+
+	REQUIRE(badge.has_value());
+	CHECK(badge->Left >= list->Pos.x + rowEndInset);
+	CHECK(badge->Left < list->Pos.x + rowEndInset + Graphite::FileIconWidth());
+}

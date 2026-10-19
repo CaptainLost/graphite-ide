@@ -39,18 +39,39 @@ namespace Core {
 			return ImGui::GetStyle().FrameRounding;
 		}
 
-		ImGuiCol GlyphColourOf(IconButtonRest rest, bool engaged, bool underThePointer)
+		ImVec4 FillAt(float hoverAmount, bool held, bool engaged)
+		{
+			if (held)
+			{
+				return ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive);
+			}
+
+			// WARNING: An engaged button rests on the hover surface, not on ImGuiCol_Button: a text button's resting
+			// fill is clear, and an engaged icon button is told from one at rest by its fill.
+			const ImVec4 hoveredFill = ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered);
+			const ImVec4 restingFill = engaged ? hoveredFill : WithAlphaReplaced(hoveredFill, kInvisibleAlpha);
+
+			return Animation::Blend(restingFill, hoveredFill, hoverAmount);
+		}
+
+		ImVec4 GlyphColourAt(IconButtonRest rest, bool engaged, float hoverAmount, bool held)
 		{
 			if (engaged)
 			{
-				return ImGuiCol_CheckMark;
+				return ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
 			}
 
-			return rest == IconButtonRest::Dim && !underThePointer ? ImGuiCol_TextDisabled : ImGuiCol_Text;
+			const ImVec4 text = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+
+			if (rest == IconButtonRest::Text || held)
+			{
+				return text;
+			}
+
+			return Animation::Blend(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled), text, hoverAmount);
 		}
 
-		void DrawFace(const ImRect& rect, const char* glyph, const ImVec4& fill, ImGuiCol glyphColour,
-					  float rounding)
+		void DrawFace(const ImRect& rect, const char* glyph, const ImVec4& fill, ImU32 glyphColour, float rounding)
 		{
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
 
@@ -59,7 +80,7 @@ namespace Core {
 				drawList->AddRectFilled(rect.Min, rect.Max, ImGui::GetColorU32(fill), rounding);
 			}
 
-			DrawCentredGlyph(drawList, rect, glyph, ImGui::GetColorU32(glyphColour));
+			DrawCentredGlyph(drawList, rect, glyph, glyphColour);
 		}
 	}
 
@@ -96,19 +117,7 @@ namespace Core {
 
 	ImVec4 IconButtonFill(ImGuiID id, bool hovered, bool held, bool engaged)
 	{
-		const float hoverAmount = Animation::HoverAmount(id, hovered);
-
-		if (held)
-		{
-			return ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive);
-		}
-
-		// WARNING: An engaged button rests on the hover surface, not on ImGuiCol_Button: a text button's resting fill
-		// is clear, and an engaged icon button is told from one at rest by its fill.
-		const ImVec4 hoveredFill = ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered);
-		const ImVec4 restingFill = engaged ? hoveredFill : WithAlphaReplaced(hoveredFill, kInvisibleAlpha);
-
-		return Animation::Blend(restingFill, hoveredFill, hoverAmount);
+		return FillAt(Animation::HoverAmount(id, hovered), held, engaged);
 	}
 
 	// WARNING: drawn rather than submitted as an ImGui::Button, which put the glyphs off centre: on
@@ -150,8 +159,9 @@ namespace Core {
 		const bool pressed = ImGui::ButtonBehavior(rect, itemId, &hovered, &pressedDown, options.Flags);
 		const bool held = pressedDown && hovered;
 
-		const ImVec4 fill = IconButtonFill(itemId, hovered, held, engaged);
-		const ImGuiCol glyphColour = GlyphColourOf(options.Rest, engaged, hovered);
+		const float hoverAmount = Animation::HoverAmount(itemId, hovered);
+		const ImVec4 fill = FillAt(hoverAmount, held, engaged);
+		const ImU32 glyphColour = ImGui::GetColorU32(GlyphColourAt(options.Rest, engaged, hoverAmount, held));
 
 		if (options.Fit == IconButtonFit::Box)
 		{
@@ -183,7 +193,7 @@ namespace Core {
 			fill = hoveredFill;
 		}
 
-		DrawFace(rect, glyph, fill, ImGuiCol_Text, ImGui::GetStyle().FrameRounding);
+		DrawFace(rect, glyph, fill, ImGui::GetColorU32(ImGuiCol_Text), ImGui::GetStyle().FrameRounding);
 	}
 
 	void DrawIconSeparator()

@@ -1,11 +1,18 @@
 #include <doctest/doctest.h>
 
+#include "Core/ImGui/DockSpaceHost.h"
+#include "Core/ImGui/TabCloseRequests.h"
+#include "Core/UI/Panel.h"
+#include "Core/UI/PanelManager.h"
 #include "Core/UI/PanelMarginScope.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
 
 #include <cfloat>
+#include <memory>
+#include <string>
+#include <utility>
 
 namespace {
 
@@ -152,4 +159,93 @@ TEST_CASE("A panel margin changes nothing in a child window, whose content reach
 
 	CHECK(laid.CursorLeft == doctest::Approx(laid.WindowLeft));
 	CHECK(laid.ItemRight == doctest::Approx(laid.WindowRight));
+}
+
+namespace {
+
+	constexpr int kDockSettleFrames = 4;
+
+	// A panel that measures, inside a margin, where its first item would stand and how much of the line is left.
+	class MeasuringPanel final : public Core::Panel
+	{
+	public:
+		MeasuringPanel(std::string id, Sides sides)
+			: Core::Panel(std::move(id), "Measured", "tools", "", StartsAs::Visible, sides)
+		{
+		}
+
+		void OnImGuiRender() override
+		{
+			WindowLeft = ImGui::GetWindowPos().x;
+			WindowWidth = ImGui::GetWindowWidth();
+			Docked = ImGui::IsWindowDocked();
+
+			const Core::PanelMarginScope margin;
+			CursorLeft = ImGui::GetCursorScreenPos().x;
+			RoomLeft = ImGui::GetContentRegionAvail().x;
+		}
+
+		float WindowLeft = 0.0f;
+		float WindowWidth = 0.0f;
+		float CursorLeft = 0.0f;
+		float RoomLeft = 0.0f;
+		bool Docked = false;
+	};
+
+	class DockingContext
+	{
+	public:
+		DockingContext()
+			: m_Context(ImGui::CreateContext())
+		{
+			ImGuiIO& imGuiIo = ImGui::GetIO();
+			imGuiIo.DisplaySize = ImVec2(800.0f, 600.0f);
+			imGuiIo.DeltaTime = 1.0f / 60.0f;
+			imGuiIo.IniFilename = nullptr;
+			imGuiIo.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+			imGuiIo.Fonts->Build();
+			ImGui::GetStyle().WindowPadding = ImVec2(kInterfacePadding, kInterfacePadding);
+		}
+
+		~DockingContext() { ImGui::DestroyContext(m_Context); }
+
+		DockingContext(const DockingContext&) = delete;
+		DockingContext& operator=(const DockingContext&) = delete;
+
+	private:
+		ImGuiContext* m_Context = nullptr;
+	};
+}
+
+TEST_CASE("A panel margin stands what is laid out inside it the interface's padding in from a docked flush panel's sides")
+{
+	using Sides = Core::Panel::Sides;
+
+	const DockingContext context;
+	Core::DockSpaceHost host;
+	Core::PanelManager panels;
+	Core::TabCloseRequests closeRequests;
+	const MeasuringPanel* flush = panels.Add(std::make_unique<MeasuringPanel>("flush", Sides::Flush));
+	const MeasuringPanel* padded = panels.Add(std::make_unique<MeasuringPanel>("padded", Sides::Padded));
+
+	Core::DockLayout layout;
+	layout.Left = {flush->GetWindowName()};
+	layout.Bottom = {padded->GetWindowName()};
+
+	for (int frame = 0; frame < kDockSettleFrames; ++frame)
+	{
+		ImGui::NewFrame();
+		host.Begin(layout);
+		host.End();
+		panels.OnImGuiRender(closeRequests);
+		ImGui::EndFrame();
+	}
+
+	REQUIRE(flush->Docked);
+	REQUIRE(padded->Docked);
+
+	CHECK(flush->CursorLeft == doctest::Approx(flush->WindowLeft + kInterfacePadding));
+	CHECK(flush->RoomLeft == doctest::Approx(flush->WindowWidth - kInterfacePadding * 2.0f));
+	CHECK(padded->CursorLeft == doctest::Approx(padded->WindowLeft + kInterfacePadding));
+	CHECK(padded->RoomLeft == doctest::Approx(padded->WindowWidth - kInterfacePadding * 2.0f));
 }

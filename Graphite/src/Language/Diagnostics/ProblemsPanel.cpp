@@ -95,6 +95,7 @@ namespace Graphite {
 		if (ImGui::BeginChild("##problemList", ImVec2(0.0f, 0.0f), ImGuiChildFlags_NavFlattened))
 		{
 			const ListBodyScope listBody;
+			ImGui::Indent(ListRowEndInset());
 
 			for (const auto& [path, entry] : m_Diagnostics.GetDocuments())
 			{
@@ -105,6 +106,8 @@ namespace Graphite {
 
 				RenderFile(path, entry, palette);
 			}
+
+			ImGui::Unindent(ListRowEndInset());
 		}
 
 		ImGui::EndChild();

@@ -88,12 +88,25 @@ Draw list rows through `Graphite/src/UI/Lists/ListRow.h` as follows.
     References and Claude Sessions. The Git view, whose lists stand in a table's
     columns, the console and Settings stay padded.
   - Whatever a flush panel draws that is not a list body is drawn inside a
-    `Core::PanelMarginScope`. The scope stands it the interface's window
-    padding, 8 px, in from the window's sides, and changes nothing in a padded
-    window or in a child window. These are the panel header and the filter
-    field, the toolbars and summary lines of Find in Files, References and
-    Claude Sessions, the commit box of Changes, the empty and loading states,
-    and the divider and preview under a split list.
+    `Core::PanelMarginScope`. These are the panel header and the filter field,
+    the toolbars and summary lines of Find in Files, References and Claude
+    Sessions, the commit box of Changes, the empty and loading states, and the
+    divider and preview under a split list.
+  - The scope stands what it holds the interface's window padding, 8 px, in
+    from the sides of a flush panel's window, docked or floating. It changes
+    nothing in a padded window, or inside a child window such as a list's,
+    whose content reaches its edges on purpose. ImGui flags a docked window as a
+    child of its dock node's host too, so a window counts as a child only while
+    it is not docked.
+  - A scope narrows the window's work rect and content region and indents it,
+    so it must not straddle a group or a table, which put back at their end what
+    they began with. Scopes do not nest: one inside another adds the margin
+    again.
+  - Text a list lays where its rows go is inset as the rows' content is.
+    Problems indents its whole list by a row end's inset, 8 px, as the Git
+    view's list of branches does, so its file headings stand off the panel's
+    edge. A tree's "No files match" message starts where a row's chevron does
+    and wraps at a row's end (`DrawTreeMessage`).
   - The padding is pushed for the window's own `Begin` only. Its dock tab is
     drawn by the dock node and stays where it stood, as do the tabs beside it.
     A popup or a child begun inside the window takes the interface's padding
@@ -114,8 +127,8 @@ Draw list rows through `Graphite/src/UI/Lists/ListRow.h` as follows.
 - **Colours:** derived from the current style each time a row is drawn, through
   `CurrentListRowColours()`:
   - selected: the accent (`ImGuiCol_CheckMark`) at alpha 0.20;
-  - hovered: the window background mixed 5 % toward the text colour, `#1d1f23`
-    on the chrome;
+  - hovered: the window background mixed 5 % toward the text colour, `#1e1f22`
+    on the chrome, a step from the mockup's `#1d1f23` in red and blue;
   - pressed: the accent at alpha 0.30.
   - The name of a selected row in the Explorer's trees is drawn in the emphasis
     colour, `ListRowNameColour(selected)` (`Core::EmphasisText`), unless the
@@ -243,8 +256,9 @@ each panel.
   so that a text line laid there still ends inside the row's line.
 - Inside a list body, items that are not rows, such as a section's heading or
   an empty list's message, are spaced 3 px, not 5 px.
-- The rows of Changes, Problems and the hits of Find in Files and References
-  moved 8 px left with their lists; Changes keeps its own offsets inside a row.
+- The rows of Changes and the hits of Find in Files and References moved 8 px
+  left with their lists; Changes keeps its own offsets inside a row. Problems'
+  headings and problems stand where they stood, by the list's own indent.
 
 ## Alternatives Considered
 
