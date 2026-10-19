@@ -13,6 +13,7 @@
 #include "Git/InitRepositoryPrompt.h"
 #include "Theme/ChromePalette.h"
 #include "UI/Dialogs/DialogLayout.h"
+#include "UI/FileIcons.h"
 #include "UI/FittedText.h"
 #include "UI/TickBox.h"
 #include "UI/ToastEvent.h"
@@ -25,7 +26,6 @@
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/LoadingState.h"
-#include "Core/ImGui/Icons.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/TextInput.h"
 #include "Core/ImGui/TextMetrics.h"
@@ -99,10 +99,7 @@ namespace Graphite {
 
 		float FileRowIconInkToNameGap()
 		{
-			constexpr std::string_view kPlainFileExtension = "";
-
-			const Core::GlyphInk plainFileIcon =
-				Core::MeasureGlyphInk(Core::IconForExtension(kPlainFileExtension));
+			const Core::GlyphInk plainFileIcon = Core::MeasureGlyphInk(GlyphOf(FileKind::Other));
 			return IconColumnWidth() - plainFileIcon.EndFromDrawX + TextGap();
 		}
 
@@ -554,7 +551,7 @@ namespace Graphite {
 			MinDirectoryWidth());
 
 		ImGui::SetCursorPos(ImVec2(rowStart.x + rowPadding, ListRowTextTop(rowStart.y)));
-		ImGui::TextUnformatted(Core::IconForExtension(Core::ToUtf8(file.Path.extension())));
+		DrawFileIcon(KindOfFile(file.Path), ImGui::GetCursorScreenPos());
 
 		ImGui::SetCursorPos(ImVec2(textStart, ListRowTextTop(rowStart.y)));
 		ImGui::TextColored(TintedName(letterColor), "%s", FitToWidth(name, rowTextFit.Name).c_str());
@@ -664,7 +661,7 @@ namespace Graphite {
 		const bool expanded = m_Expanded.contains(file.Path);
 
 		const char* chevron = ChevronGlyph(expanded);
-		const char* folderIcon = expanded ? ICON_MDI_FOLDER_OPEN : ICON_MDI_FOLDER;
+		const char* folderIcon = FolderGlyphOf(expanded);
 
 		const char* stageIcon = m_Section == Section::Staged ? ICON_MDI_MINUS : ICON_MDI_PLUS;
 
@@ -700,8 +697,10 @@ namespace Graphite {
 
 		const float directorySeparatorWidth = ImGui::CalcTextSize(kDirectorySeparator.data()).x;
 
-		const FolderRowGlyphs closedGlyphs{.Folder = Core::MeasureGlyphInk(ICON_MDI_FOLDER),
-										   .Chevron = Core::MeasureGlyphInk(ChevronGlyph(false))};
+		constexpr bool kClosed = false;
+
+		const FolderRowGlyphs closedGlyphs{.Folder = Core::MeasureGlyphInk(FolderGlyphOf(kClosed)),
+										   .Chevron = Core::MeasureGlyphInk(ChevronGlyph(kClosed))};
 		const FolderRowGlyphs drawnGlyphs{.Folder = Core::MeasureGlyphInk(folderIcon),
 										  .Chevron = Core::MeasureGlyphInk(chevron)};
 
@@ -720,7 +719,7 @@ namespace Graphite {
 								fileCountWidth - directorySeparatorWidth - textStart;
 
 		ImGui::SetCursorPos(ImVec2(iconStart, ListRowTextTop(rowStart.y)));
-		ImGui::TextUnformatted(folderIcon);
+		DrawFolderIcon(expanded, ImGui::GetCursorScreenPos());
 
 		ImGui::SetCursorPos(ImVec2(chevronStart, ListRowTextTop(rowStart.y)));
 		DrawChevron(expanded);

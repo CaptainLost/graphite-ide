@@ -57,7 +57,6 @@
 
 #include "Core/Base/Log.h"
 
-#include "Core/ImGui/Icons.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/ToastStyle.h"
@@ -73,6 +72,7 @@
 #include "Core/Events/ApplicationEvent.h"
 
 #include "UI/Dialogs/DialogLayout.h"
+#include "UI/FileIcons.h"
 #include "UI/InfoBars/LanguageSupportBar.h"
 #include "UI/InfoBars/RestrictedModeBar.h"
 #include "UI/ToastEvent.h"
@@ -1609,8 +1609,7 @@ namespace Graphite {
 		{
 			for (const std::filesystem::path& path : modified)
 			{
-				DialogLayout::FileRow(Core::IconForExtension(Core::ToUtf8(path.extension())), Core::ToUtf8(path.filename()),
-									  noTag);
+				DialogLayout::FileRow(KindOfFile(path), Core::ToUtf8(path.filename()), noTag);
 			}
 
 			// WARNING: The child must end on an item even should the list be empty.

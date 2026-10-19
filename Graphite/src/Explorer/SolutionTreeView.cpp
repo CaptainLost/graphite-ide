@@ -15,12 +15,11 @@
 #include "Solution/SolutionEditor.h"
 #include "UI/Lists/Chevron.h"
 #include "UI/Dialogs/DialogLayout.h"
+#include "UI/FileIcons.h"
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/ListRow.h"
 #include "UI/OpenGesture.h"
 #include "UI/ToastEvent.h"
-
-#include <IconsMaterialDesignIcons.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -40,11 +39,6 @@ namespace Graphite {
 		constexpr bool kNotSelected = false;
 		constexpr bool kOpenTheRow = true;
 		constexpr float kHalf = 0.5f;
-
-		std::string FolderLabel(const std::string& name, bool open)
-		{
-			return std::string{open ? ICON_MDI_FOLDER_OPEN : ICON_MDI_FOLDER} + "  " + name;
-		}
 
 		std::string ChildPath(const std::string& path, const std::string& name)
 		{
@@ -149,7 +143,6 @@ namespace Graphite {
 				ImGui::PushID(kFilteredTreeScope);
 			}
 
-			const std::string label = std::string{ICON_MDI_MICROSOFT_VISUAL_STUDIO} + "  " + solution.Name;
 			const std::string projectCount = "(" + Core::Counted(solution.ProjectCount, "project") + ")";
 
 			if (OpensToward(solution.Root) || m_RenameWhenListed.IsLooking() || m_ReopenFilteredRows)
@@ -163,7 +156,7 @@ namespace Graphite {
 			const FileRowLayout layout = LayoutFileRow();
 			const bool rootOpen =
 				ChevronTreeNode(rootId.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
-			DrawTreeRowLabel(layout, label,
+			DrawTreeRowLabel(layout, FileIconOf(KindOfFile(solution.Path)), solution.Name,
 							 ImGui::IsItemVisible() && GroupDecorationOf(solution.Root) != GitDecoration::None,
 							 projectCount);
 
@@ -274,7 +267,7 @@ namespace Graphite {
 		const FileRowLayout layout = LayoutFileRow();
 		const bool isOpen =
 			ChevronTreeNode(folder.Name.c_str(), ImGuiTreeNodeFlags_DefaultOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
-		DrawTreeRowLabel(layout, FolderLabel(folder.Name, isOpen),
+		DrawTreeRowLabel(layout, FolderIconOf(isOpen), folder.Name,
 						 ImGui::IsItemVisible() && GroupDecorationOf(folder) != GitDecoration::None);
 
 		DrawGroupMarker(folder, layout);
@@ -297,10 +290,12 @@ namespace Graphite {
 			flags |= ImGuiTreeNodeFlags_Leaf;
 		}
 
-		const std::string icon =
-			Core::IconForExtension(Core::ToUtf8(project.Path.extension()));
 		const std::string shownName = project.Exists ? project.DisplayName : project.DisplayName + "  (missing)";
-		const std::string label = icon + "  " + shownName;
+		const IconTone tone = project.Exists ? IconTone::Normal : IconTone::Dimmed;
+
+		// WARNING: The row's id is still the label it had while its icon was part of the text: a string ImGui hashes
+		// into an id is not changed, so the project's open state stays under the id it was kept by.
+		const std::string rowId = std::string{Core::IconForExtension(Core::ToUtf8(project.Path.extension()))} + "  " + shownName;
 
 		if (!project.Exists)
 		{
@@ -318,8 +313,9 @@ namespace Graphite {
 		}
 
 		const FileRowLayout layout = LayoutFileRow();
-		const bool isOpen = ChevronTreeNode(label.c_str(), flags);
-		DrawTreeRowLabel(layout, label, ImGui::IsItemVisible() && GroupDecorationOf(project) != GitDecoration::None);
+		const bool isOpen = ChevronTreeNode(rowId.c_str(), flags);
+		DrawTreeRowLabel(layout, FileIconOf(KindOfProject(project.Path), tone), shownName,
+						 ImGui::IsItemVisible() && GroupDecorationOf(project) != GitDecoration::None);
 
 		if (!project.Exists)
 		{
@@ -382,7 +378,7 @@ namespace Graphite {
 				const FileRowLayout layout = LayoutFileRow();
 				const bool isOpen = ChevronTreeNode(child.Name.c_str(), ImGuiTreeNodeFlags_SpanAvailWidth);
 				constexpr bool kNoMarker = false;
-				DrawTreeRowLabel(layout, FolderLabel(child.Name, isOpen), kNoMarker);
+				DrawTreeRowLabel(layout, FolderIconOf(isOpen), child.Name, kNoMarker);
 
 				if (isOpen)
 				{
@@ -405,13 +401,11 @@ namespace Graphite {
 	{
 		const bool isShownInEditor = !m_ShownFile.empty() && m_ShownFile == file.Path;
 
-		std::string label =
-			std::string{Core::IconForExtension(Core::ToUtf8(file.Path.extension()))} + "  " +
-			file.Name;
+		std::string shownName = file.Name;
 
 		if (!file.Exists)
 		{
-			label += " (missing)";
+			shownName += " (missing)";
 		}
 
 		const FileRowLayout layout = LayoutFileRow();
@@ -427,7 +421,10 @@ namespace Graphite {
 
 		if (ImGui::IsItemVisible())
 		{
-			FileRowLook rowLook{.Ink = ImGui::GetColorU32(file.Exists ? ImGuiCol_Text : ImGuiCol_TextDisabled)};
+			const IconTone tone = file.Exists ? IconTone::Normal : IconTone::Dimmed;
+
+			FileRowLook rowLook{.Ink = ImGui::GetColorU32(file.Exists ? ImGuiCol_Text : ImGuiCol_TextDisabled),
+								.Icon = FileIconOf(KindOfFile(file.Path), tone)};
 
 			if (file.Exists)
 			{
@@ -440,7 +437,7 @@ namespace Graphite {
 				}
 			}
 
-			DrawFileRowLabel(layout, rowLook, label);
+			DrawFileRowLabel(layout, rowLook, shownName);
 		}
 
 		if (!file.Exists && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))

@@ -19,6 +19,8 @@ namespace Core {
 		Color Content;
 	};
 
+	bool IsLightBackground(const Color& background);
+
 	class Theme
 	{
 	public:

@@ -1,13 +1,16 @@
 #include <doctest/doctest.h>
 
 #include "Explorer/FileRow.h"
+#include "DrawnColours.h"
 #include "ImGuiFrames.h"
 
 #include "TempDirectory.h"
 
+#include "UI/FileIcons.h"
 #include "UI/Lists/Chevron.h"
 #include "UI/Lists/ListRow.h"
 
+#include "Core/ImGui/UiScale.h"
 #include "Core/Text/DocumentSet.h"
 
 #include <algorithm>
@@ -26,7 +29,11 @@ namespace {
 	constexpr ImU32 kAdded = 0x11111111u;
 	constexpr ImU32 kModified = 0x22222222u;
 	constexpr ImU32 kRemoved = 0x33333333u;
+	constexpr ImU32 kNameInk = 0xFF2299EEu;
 	constexpr bool kOwnEntryOnly = true;
+	constexpr bool kDarkScheme = false;
+	constexpr bool kNoMarker = false;
+	constexpr float kOnePixel = 1.0f;
 
 	struct TooltipCase
 	{
@@ -218,7 +225,8 @@ TEST_CASE("An indented folder row's label starts past its chevron at the indent,
 		}
 
 		const int labelFrom = ImGui::GetWindowDrawList()->VtxBuffer.Size;
-		Graphite::DrawTreeRowLabel(layout, "folder", false);
+		constexpr bool kClosed = false;
+		Graphite::DrawTreeRowLabel(layout, Graphite::FolderIconOf(kClosed), "folder", kNoMarker);
 
 		labelLeft = FLT_MAX;
 		const ImDrawList& drawing = *ImGui::GetWindowDrawList();
@@ -253,7 +261,8 @@ TEST_CASE("A tree row's note follows its label dim, and the label is cut short f
 		const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
 		Graphite::ListRowSelectable("##root", false);
 		const int from = ImGui::GetWindowDrawList()->VtxBuffer.Size;
-		Graphite::DrawTreeRowLabel(layout, std::string(80, 'D'), false, "(1 project)");
+		Graphite::DrawTreeRowLabel(layout, Graphite::FileIconOf(Graphite::FileKind::Project), std::string(80, 'D'),
+								   kNoMarker, "(1 project)");
 
 		const ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
 		const ImU32 dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
@@ -300,7 +309,8 @@ TEST_CASE("A tree row too narrow for its note beside its label shows the label a
 		const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
 		Graphite::ListRowSelectable("##root", false);
 		const int from = ImGui::GetWindowDrawList()->VtxBuffer.Size;
-		Graphite::DrawTreeRowLabel(layout, "Demo solution", false, "(12 projects)");
+		Graphite::DrawTreeRowLabel(layout, Graphite::FileIconOf(Graphite::FileKind::Project), "Demo solution", kNoMarker,
+								   "(12 projects)");
 
 		const ImDrawList& drawing = *ImGui::GetWindowDrawList();
 		for (int vertex = from; vertex < drawing.VtxBuffer.Size; ++vertex)
@@ -314,6 +324,100 @@ TEST_CASE("A tree row too narrow for its note beside its label shows the label a
 
 	CHECK(labelDrawn);
 	CHECK_FALSE(noteDrawn);
+}
+
+TEST_CASE("A file row draws its glyph in its kind's colour at the label's start and its name in its ink past the icon")
+{
+	ImGuiFrames frames;
+
+	Graphite::FileRowLayout layout;
+	std::optional<HorizontalExtent> glyph;
+	std::optional<HorizontalExtent> name;
+	float iconWidth = 0.0f;
+	float nameOffset = 0.0f;
+
+	frames.Next([&] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(300.0f, 200.0f));
+		ImGui::Begin("##kindRowWindow", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
+
+		layout = Graphite::LayoutFileRow();
+		Graphite::ListRowSelectable("##row", false);
+		const Graphite::FileRowLook look{.Ink = kNameInk, .Icon = Graphite::FileIconOf(Graphite::FileKind::CppSource)};
+		Graphite::DrawFileRowLabel(layout, look, "Main.cpp");
+
+		const ImDrawList& drawing = *ImGui::GetWindowDrawList();
+		glyph = HorizontalExtentInColour(drawing, Graphite::ColourOf(Graphite::FileKind::CppSource, kDarkScheme));
+		name = HorizontalExtentInColour(drawing, kNameInk);
+		iconWidth = Graphite::FileIconWidth();
+		nameOffset = Graphite::IconToNameOffset();
+
+		ImGui::End();
+	});
+
+	REQUIRE(glyph.has_value());
+	REQUIRE(name.has_value());
+	CHECK(glyph->Left >= layout.LabelAt.x - kOnePixel);
+	CHECK(glyph->Right <= layout.LabelAt.x + iconWidth + kOnePixel);
+	CHECK(name->Left >= layout.LabelAt.x + nameOffset - kOnePixel);
+	CHECK(name->Left > glyph->Right);
+}
+
+TEST_CASE("A folder row draws the outline glyph in the dim folder colour and its name in the text colour past it")
+{
+	ImGuiFrames frames;
+
+	Graphite::FileRowLayout layout;
+	std::optional<HorizontalExtent> glyph;
+	std::optional<HorizontalExtent> name;
+	float nameOffset = 0.0f;
+
+	frames.Next([&] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(300.0f, 200.0f));
+		ImGui::Begin("##folderKindWindow", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
+
+		layout = Graphite::LayoutFileRow();
+		const bool open = Graphite::ChevronTreeNode("folder", ImGuiTreeNodeFlags_SpanAvailWidth);
+		Graphite::DrawTreeRowLabel(layout, Graphite::FolderIconOf(open), "folder", kNoMarker);
+
+		if (open)
+		{
+			ImGui::TreePop();
+		}
+
+		const ImDrawList& drawing = *ImGui::GetWindowDrawList();
+		glyph = HorizontalExtentInColour(drawing, Graphite::DimFolderColour());
+		name = HorizontalExtentInColour(drawing, ImGui::GetColorU32(ImGuiCol_Text));
+		nameOffset = Graphite::IconToNameOffset();
+
+		ImGui::End();
+	});
+
+	REQUIRE(glyph.has_value());
+	REQUIRE(name.has_value());
+	CHECK(glyph->Left >= layout.LabelAt.x - kOnePixel);
+	CHECK(name->Left >= layout.LabelAt.x + nameOffset - kOnePixel);
+	CHECK(name->Left > glyph->Right);
+}
+
+TEST_CASE("A row's marker column is 12 px wide, whatever the font size")
+{
+	constexpr float kMarkerColumnInPixels = 12.0f;
+	constexpr float kLargeFontSize = 40.0f;
+
+	ImGuiFrames frames;
+
+	frames.Next([] {
+		const float atDefaultSize = Graphite::RowMarkerColumnWidth();
+
+		ImGui::PushFont(nullptr, kLargeFontSize);
+		const float atLargeSize = Graphite::RowMarkerColumnWidth();
+		ImGui::PopFont();
+
+		CHECK(atDefaultSize == doctest::Approx(Core::Scaled(kMarkerColumnInPixels)));
+		CHECK(atLargeSize == doctest::Approx(atDefaultSize));
+	});
 }
 
 TEST_CASE("A row's marker is drawn only when a letter of the label fits beside it")

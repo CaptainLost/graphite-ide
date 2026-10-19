@@ -5,6 +5,7 @@
 
 #include "Language/Diagnostics/ProblemIdentity.h"
 #include "Language/Server/LspProtocol.h"
+#include "UI/FileIcons.h"
 #include "UI/FittedText.h"
 #include "UI/Lists/ListRow.h"
 #include "UI/OpenGesture.h"
@@ -12,7 +13,6 @@
 #include "Core/Base/Strings.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/EmptyState.h"
-#include "Core/ImGui/Icons.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/TextBuffer.h"
@@ -140,11 +140,15 @@ namespace Graphite {
 			}
 		}
 
-		std::string header =
-			std::string(Core::IconForExtension(Core::ToUtf8(path.extension()))) + "  " +
-			Core::ToUtf8(path.filename());
+		const std::string name = Core::ToUtf8(path.filename());
+		constexpr float kNoSpacing = 0.0f;
 
-		ImGui::TextUnformatted(header.c_str());
+		ImGui::BeginGroup();
+		DrawFileIcon(KindOfFile(path), ImGui::GetCursorScreenPos());
+		ImGui::Dummy(ImVec2(IconToNameOffset(), ImGui::GetTextLineHeight()));
+		ImGui::SameLine(kNoSpacing, kNoSpacing);
+		ImGui::TextUnformatted(name.c_str());
+		ImGui::EndGroup();
 
 		if (ImGui::IsItemHovered())
 		{

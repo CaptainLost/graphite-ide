@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Git/GitDecorationView.h"
+#include "UI/FileIcons.h"
 
 #include <imgui.h>
 
@@ -54,6 +55,7 @@ namespace Graphite {
 	{
 		ImU32 Ink = 0;
 		OpenTab Tab = OpenTab::None;
+		RowIcon Icon;
 
 		RowStatus Status;
 	};
@@ -66,10 +68,10 @@ namespace Graphite {
 
 	// WARNING: Selectable cannot offset its text from the highlight, so the label is drawn by
 	// hand, after the row's ListRowSelectable.
-	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& label);
+	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& name);
 
 	// WARNING: Call this while the row's own item is the last one, before the row's marker is drawn.
-	void DrawTreeRowLabel(const FileRowLayout& layout, const std::string& label, bool hasMarker,
+	void DrawTreeRowLabel(const FileRowLayout& layout, const RowIcon& icon, const std::string& name, bool hasMarker,
 						  const std::string& note = {});
 
 	// WARNING: Call this while the row's own item is the last one: the marker's tooltip is shown

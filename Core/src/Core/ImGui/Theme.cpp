@@ -52,14 +52,14 @@ namespace Core {
 		{
 			return ImVec4(colour.x, colour.y, colour.z, alpha);
 		}
+	}
 
-		constexpr bool IsLight(const Color& background)
-		{
-			const float luminance = kRedLuminanceWeight * background.R + kGreenLuminanceWeight * background.G +
-									kBlueLuminanceWeight * background.B;
+	bool IsLightBackground(const Color& background)
+	{
+		const float luminance = kRedLuminanceWeight * background.R + kGreenLuminanceWeight * background.G +
+								kBlueLuminanceWeight * background.B;
 
-			return luminance > kLightBackgroundLuminance;
-		}
+		return luminance > kLightBackgroundLuminance;
 	}
 
 	ChromePalette Theme::DefaultPalette()
@@ -108,7 +108,7 @@ namespace Core {
 	void Theme::Apply(const ChromePalette& palette)
 	{
 		// WARNING: about forty ImGuiCol_ entries are not set below and keep the base style's colours, so the base must match the palette's luminance.
-		if (IsLight(palette.Background))
+		if (IsLightBackground(palette.Background))
 		{
 			ImGui::StyleColorsLight();
 		}

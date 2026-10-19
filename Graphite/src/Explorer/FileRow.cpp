@@ -1,7 +1,9 @@
 #include "Explorer/FileRow.h"
 
+#include "UI/FileIcons.h"
 #include "UI/Lists/ListRow.h"
 
+#include "Core/ImGui/UiScale.h"
 #include "Core/Text/DocumentSet.h"
 
 #include <imgui_internal.h>
@@ -17,6 +19,7 @@ namespace Graphite {
 		constexpr float kThinnestRing = 1.0f;
 		constexpr float kHalf = 0.5f;
 		constexpr float kGapsAroundMarker = 2.0f;
+		constexpr float kRowMarkerColumnWidth = 12.0f;
 
 		constexpr float kLeastLabelInFontSizes = 3.0f;
 		constexpr int kSegmentsChosenByImGui = 0;
@@ -141,6 +144,28 @@ namespace Graphite {
 			TooltipOver(ImVec2(layout.RowAt.x, layout.LabelAt.y),
 						ImVec2(layout.LabelAt.x, layout.LabelAt.y + ImGui::GetFontSize()), OpenTabTooltipOf(tab));
 		}
+
+		// WARNING: The icon is drawn only whole: a row too narrow for it shows neither the icon nor the name. The
+		// name starts past the icon's slot either way, so names line up whatever their icon.
+		float DrawLabelIcon(const FileRowLayout& layout, const RowIcon& icon, float labelRightEdge)
+		{
+			const bool iconFits = layout.LabelAt.x + FileIconWidth() <= labelRightEdge;
+
+			if (iconFits)
+			{
+				DrawRowIcon(icon, layout.LabelAt);
+			}
+
+			return layout.LabelAt.x + IconToNameOffset();
+		}
+
+		void DrawNameUpTo(ImVec2 nameAt, float nameRightEdge, const std::string& name, const ImVec2& fullNameSize)
+		{
+			const ImVec2 nameBottomRight(nameRightEdge, nameAt.y + fullNameSize.y);
+
+			ImGui::RenderTextEllipsis(ImGui::GetWindowDrawList(), nameAt, nameBottomRight, nameRightEdge, name.c_str(),
+									  nullptr, &fullNameSize);
+		}
 	}
 
 	const char* MarkerTooltipOf(const RowStatus& status)
@@ -229,7 +254,7 @@ namespace Graphite {
 
 	float RowMarkerColumnWidth()
 	{
-		return ImGui::CalcTextSize("M").x;
+		return Core::Scaled(kRowMarkerColumnWidth);
 	}
 
 	FileRowLayout LayoutFileRow()
@@ -274,7 +299,8 @@ namespace Graphite {
 		return std::min(left, right - columnWidth);
 	}
 
-	void DrawTreeRowLabel(const FileRowLayout& layout, const std::string& label, bool hasMarker, const std::string& note)
+	void DrawTreeRowLabel(const FileRowLayout& layout, const RowIcon& icon, const std::string& name, bool hasMarker,
+						  const std::string& note)
 	{
 		if (!ImGui::IsItemVisible())
 		{
@@ -292,39 +318,42 @@ namespace Graphite {
 
 		rowRightEdge = std::max(rowRightEdge, labelLeftEdge);
 
-		const ImVec2 fullLabelSize = ImGui::CalcTextSize(label.c_str());
+		const float nameLeftEdge = DrawLabelIcon(layout, icon, rowRightEdge);
+
+		if (nameLeftEdge >= rowRightEdge)
+		{
+			return;
+		}
+
+		const ImVec2 fullNameSize = ImGui::CalcTextSize(name.c_str());
 		const float noteRoom = note.empty() ? 0.0f : ImGui::CalcTextSize(note.c_str()).x + spacing;
-		const float leastLabel = std::min(fullLabelSize.x, ImGui::GetFontSize() * kLeastLabelInFontSizes);
-		const bool noteFits = noteRoom > 0.0f && rowRightEdge - labelLeftEdge - noteRoom >= leastLabel;
-		const float labelRightEdge = noteFits ? rowRightEdge - noteRoom : rowRightEdge;
+		const float leastName = std::min(fullNameSize.x, ImGui::GetFontSize() * kLeastLabelInFontSizes);
+		const bool noteFits = noteRoom > 0.0f && rowRightEdge - nameLeftEdge - noteRoom >= leastName;
+		const float nameRightEdge = noteFits ? rowRightEdge - noteRoom : rowRightEdge;
 
-		const ImVec2 labelBottomRight(labelRightEdge, layout.LabelAt.y + fullLabelSize.y);
-
-		ImGui::RenderTextEllipsis(ImGui::GetWindowDrawList(), layout.LabelAt, labelBottomRight, labelRightEdge,
-								  label.c_str(), nullptr, &fullLabelSize);
+		const ImVec2 nameAt(nameLeftEdge, layout.LabelAt.y);
+		DrawNameUpTo(nameAt, nameRightEdge, name, fullNameSize);
 
 		if (!noteFits)
 		{
 			return;
 		}
 
-		const float drawnLabelRight = std::min(labelLeftEdge + fullLabelSize.x, labelRightEdge);
-		const ImVec2 noteTopLeft(drawnLabelRight + spacing, layout.LabelAt.y);
-		const ImVec2 noteBottomRight(rowRightEdge, layout.LabelAt.y + fullLabelSize.y);
+		const float drawnNameRight = std::min(nameLeftEdge + fullNameSize.x, nameRightEdge);
+		const ImVec2 noteTopLeft(drawnNameRight + spacing, layout.LabelAt.y);
+		const ImVec2 noteBottomRight(rowRightEdge, layout.LabelAt.y + fullNameSize.y);
 
 		ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 		ImGui::RenderTextClipped(noteTopLeft, noteBottomRight, note.c_str(), nullptr, nullptr);
 		ImGui::PopStyleColor();
 	}
 
-	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& label)
+	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& name)
 	{
 		if (!ImGui::IsItemVisible())
 		{
 			return;
 		}
-
-		ImDrawList* drawList = ImGui::GetWindowDrawList();
 
 		DrawOpenTabMark(layout, look.Tab);
 
@@ -337,12 +366,17 @@ namespace Graphite {
 
 		labelRightEdge = std::max(labelRightEdge, layout.LabelAt.x);
 
-		const ImVec2 fullLabelSize = ImGui::CalcTextSize(label.c_str());
-		const ImVec2 labelBottomRight(labelRightEdge, layout.LabelAt.y + fullLabelSize.y);
+		const float nameLeftEdge = DrawLabelIcon(layout, look.Icon, labelRightEdge);
+
+		if (nameLeftEdge >= labelRightEdge)
+		{
+			return;
+		}
+
+		const ImVec2 nameAt(nameLeftEdge, layout.LabelAt.y);
 
 		ImGui::PushStyleColor(ImGuiCol_Text, look.Ink);
-		ImGui::RenderTextEllipsis(drawList, layout.LabelAt, labelBottomRight, labelRightEdge, label.c_str(),
-								  nullptr, &fullLabelSize);
+		DrawNameUpTo(nameAt, labelRightEdge, name, ImGui::CalcTextSize(name.c_str()));
 		ImGui::PopStyleColor();
 	}
 }

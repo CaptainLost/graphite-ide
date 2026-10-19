@@ -1,6 +1,9 @@
 #include <doctest/doctest.h>
 
 #include "Explorer/FileTreeView.h"
+#include "Git/GitDecorationView.h"
+#include "Git/GitDecorations.h"
+#include "UI/FileIcons.h"
 #include "UI/Lists/ListRow.h"
 #include "Workspace/Workspace.h"
 
@@ -299,6 +302,58 @@ TEST_CASE("The file tree marks a file in the preview tab with a ring and one in 
 	body = FindTreeBody();
 	REQUIRE(body != nullptr);
 	CHECK(FillsMiddleInColour(*body->DrawList, openTabMark));
+}
+
+TEST_CASE("An Explorer file row draws its glyph in its kind's colour and its name in the status colour")
+{
+	constexpr ImU32 kModifiedColour = 0xFF3377EEu;
+	constexpr std::size_t kModifiedSlot = 1;
+	constexpr bool kDarkScheme = false;
+
+	TempDirectory folder;
+	folder.MakeFile("Main.cpp", "int x;");
+
+	ExplorerScreen screen{folder.GetPath()};
+
+	Core::FileStatus modified;
+	modified.Path = u8"Main.cpp";
+	modified.WorkTree = Core::StatusFlags::Modified;
+
+	Core::WorkingTreeStatus status;
+	status.Entries.push_back(modified);
+	const Graphite::GitDecorations index{status};
+
+	Graphite::GitDecorationView decorations;
+	decorations.Index = &index;
+	decorations.SetWorkingDirectory(folder.GetPath());
+	decorations.Colours[kModifiedSlot] = kModifiedColour;
+
+	screen.View.SetGitDecorations(decorations);
+	screen.Next();
+
+	const ImGuiWindow* body = FindTreeBody();
+	REQUIRE(body != nullptr);
+
+	const std::optional<HorizontalExtent> glyph =
+		HorizontalExtentInColour(*body->DrawList, Graphite::ColourOf(Graphite::FileKind::CppSource, kDarkScheme));
+	const std::optional<HorizontalExtent> name = HorizontalExtentInColour(*body->DrawList, kModifiedColour);
+
+	REQUIRE(glyph.has_value());
+	REQUIRE(name.has_value());
+	CHECK(glyph->Right < name->Left);
+}
+
+TEST_CASE("An Explorer folder row draws the outline glyph in the dim folder colour")
+{
+	TempDirectory folder;
+	folder.MakeFile("src/Main.cpp", "int x;");
+
+	ExplorerScreen screen{folder.GetPath()};
+	screen.Next();
+
+	const ImGuiWindow* body = FindTreeBody();
+	REQUIRE(body != nullptr);
+	CHECK(DrawsInColour(*body->DrawList, Graphite::DimFolderColour()));
 }
 
 TEST_CASE("While the first read of the folder is new, the file tree draws nothing and wakes itself when the wait is over")

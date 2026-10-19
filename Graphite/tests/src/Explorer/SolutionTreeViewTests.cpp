@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Explorer/SolutionTreeView.h"
+#include "UI/FileIcons.h"
 #include "UI/Lists/ListRow.h"
 #include "Workspace/Workspace.h"
 
@@ -179,6 +180,38 @@ namespace {
 		folder.MakeFile("Tools/Tool.cs");
 		return folder.MakeFile("App.slnx", kSolution);
 	}
+}
+
+TEST_CASE("The solution view draws the solution in its kind's colour, a C# project in the C# colour and a folder dim")
+{
+	constexpr bool kDarkScheme = false;
+
+	TempDirectory folder;
+	const std::filesystem::path solution = MakeSampleSolution(folder);
+
+	SolutionScreen screen{solution};
+
+	const ImGuiWindow* body = FindSolutionBody();
+	REQUIRE(body != nullptr);
+	CHECK(DrawsInColour(*body->DrawList, Graphite::ColourOf(Graphite::FileKind::Project, kDarkScheme)));
+	CHECK(DrawsInColour(*body->DrawList, Graphite::ColourOf(Graphite::FileKind::CSharp, kDarkScheme)));
+	CHECK(DrawsInColour(*body->DrawList, Graphite::DimFolderColour()));
+}
+
+TEST_CASE("The solution view draws a file's glyph in its kind's colour")
+{
+	constexpr bool kDarkScheme = false;
+
+	TempDirectory folder;
+	const std::filesystem::path solution = MakeSampleSolution(folder);
+	folder.MakeFile("Tools/settings.json", "{}");
+
+	SolutionScreen screen{solution};
+	screen.TypeInFilter("settings");
+
+	const ImGuiWindow* body = FindSolutionBody();
+	REQUIRE(body != nullptr);
+	CHECK(DrawsInColour(*body->DrawList, Graphite::ColourOf(Graphite::FileKind::Json, kDarkScheme)));
 }
 
 TEST_CASE("The solution view's filter finds a file in a project nobody opened, and a click on it opens the file")

@@ -151,3 +151,13 @@ TEST_CASE("Apply clears the scrollbar track and draws its grab in the text colou
 	CHECK(colours[ImGuiCol_ScrollbarGrabHovered].w == doctest::Approx(0.20f));
 	CHECK(colours[ImGuiCol_ScrollbarGrabActive].w == doctest::Approx(0.28f));
 }
+
+TEST_CASE("A background past half luminance is light and the default chrome's background is dark")
+{
+	constexpr Core::Color kLightSchemeBackground{0.953f, 0.953f, 0.953f, 1.0f};
+	constexpr Core::Color kJustBelowHalf{0.49f, 0.49f, 0.49f, 1.0f};
+
+	CHECK(Core::IsLightBackground(kLightSchemeBackground));
+	CHECK_FALSE(Core::IsLightBackground(kJustBelowHalf));
+	CHECK_FALSE(Core::IsLightBackground(Core::Theme::DefaultPalette().Background));
+}

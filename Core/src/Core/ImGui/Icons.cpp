@@ -111,6 +111,12 @@ namespace Core {
 			ICON_MDI_TEXT_BOX_OUTLINE,
 			ICON_MDI_TUNE_VARIANT,
 			ICON_MDI_WRAP,
+			ICON_MDI_ALPHA_H_BOX_OUTLINE,
+			ICON_MDI_LANGUAGE_MARKDOWN_OUTLINE,
+			ICON_MDI_POWERSHELL,
+			ICON_MDI_FILE_IMAGE_OUTLINE,
+			ICON_MDI_FOLDER_OUTLINE,
+			ICON_MDI_FOLDER_OPEN_OUTLINE,
 		};
 
 		constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);
@@ -136,11 +142,14 @@ namespace Core {
 			return ranges;
 		}
 
-		bool IsCppExtension(const std::string& dottedExtension)
+		bool IsCppSourceExtension(const std::string& dottedExtension)
 		{
-			return dottedExtension == ".cpp" || dottedExtension == ".cc" ||
-				   dottedExtension == ".cxx" || dottedExtension == ".h" ||
-				   dottedExtension == ".hpp" || dottedExtension == ".hxx";
+			return dottedExtension == ".cpp" || dottedExtension == ".cc" || dottedExtension == ".cxx";
+		}
+
+		bool IsCppHeaderExtension(const std::string& dottedExtension)
+		{
+			return dottedExtension == ".h" || dottedExtension == ".hpp" || dottedExtension == ".hxx";
 		}
 
 		std::string ToLowerWithDot(std::string_view extension)
@@ -173,9 +182,13 @@ namespace Core {
 		{
 			return ICON_MDI_LANGUAGE_C;
 		}
-		if (IsCppExtension(dottedExtension))
+		if (IsCppSourceExtension(dottedExtension))
 		{
 			return ICON_MDI_LANGUAGE_CPP;
+		}
+		if (IsCppHeaderExtension(dottedExtension))
+		{
+			return ICON_MDI_ALPHA_H_BOX_OUTLINE;
 		}
 		if (dottedExtension == ".cs")
 		{

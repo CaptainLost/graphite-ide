@@ -3,10 +3,10 @@
 #include "Core/Base/Base.h"
 
 #include "Core/FileSystem/FileSystem.h"
-#include "Core/ImGui/Icons.h"
 #include "Git/StashBranch.h"
 #include "Theme/Palettes.h"
 #include "UI/Dialogs/DialogLayout.h"
+#include "UI/FileIcons.h"
 #include "UI/TickBox.h"
 
 #include <imgui.h>
@@ -31,8 +31,7 @@ namespace Graphite {
 
 			for (const CheckoutQuestionRow& row : rows)
 			{
-				DialogLayout::FileRow(Core::IconForExtension(Core::ToUtf8(row.Path.extension())),
-									  Core::ToGenericUtf8(row.Path), CheckoutRowTag(row));
+				DialogLayout::FileRow(KindOfFile(row.Path), Core::ToGenericUtf8(row.Path), CheckoutRowTag(row));
 			}
 		}
 	}

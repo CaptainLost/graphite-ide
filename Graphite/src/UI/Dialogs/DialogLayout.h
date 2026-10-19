@@ -2,6 +2,7 @@
 
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/UiScale.h"
+#include "UI/FileIcons.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -109,7 +110,7 @@ namespace Graphite {
 			ImGui::PopFont();
 		}
 
-		static void FileRow(const char* icon, const std::string& path, const std::string& tag)
+		static void FileRow(FileKind kind, const std::string& path, const std::string& tag)
 		{
 			const ImGuiStyle& style = ImGui::GetStyle();
 			const float width = ImGui::GetContentRegionAvail().x;
@@ -119,9 +120,9 @@ namespace Graphite {
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
 			const ImU32 mutedColour = ImGui::GetColorU32(ImGuiCol_TextDisabled);
 
-			drawList->AddText(start, mutedColour, icon);
+			DrawFileIcon(kind, start);
 
-			const float pathX = start.x + ImGui::CalcTextSize(icon).x + style.ItemInnerSpacing.x * 2.0f;
+			const float pathX = start.x + IconToNameOffset();
 			const float tagWidth = tag.empty() ? 0.0f : ImGui::CalcTextSize(tag.c_str()).x;
 			const float tagX = start.x + width - tagWidth;
 			const float pathEnd = tag.empty() ? start.x + width : tagX - style.ItemSpacing.x * 2.0f;

@@ -39,14 +39,21 @@ TEST_CASE("IconForExtension recognizes known source extensions")
 	CHECK(std::strcmp(IconForExtension(".CPP"), ICON_MDI_LANGUAGE_CPP) == 0);
 	CHECK(std::strcmp(IconForExtension(".cc"), ICON_MDI_LANGUAGE_CPP) == 0);
 	CHECK(std::strcmp(IconForExtension(".cxx"), ICON_MDI_LANGUAGE_CPP) == 0);
-	CHECK(std::strcmp(IconForExtension(".h"), ICON_MDI_LANGUAGE_CPP) == 0);
-	CHECK(std::strcmp(IconForExtension(".hpp"), ICON_MDI_LANGUAGE_CPP) == 0);
-	CHECK(std::strcmp(IconForExtension(".hxx"), ICON_MDI_LANGUAGE_CPP) == 0);
+	CHECK(std::strcmp(IconForExtension(".h"), ICON_MDI_ALPHA_H_BOX_OUTLINE) == 0);
+	CHECK(std::strcmp(IconForExtension(".H"), ICON_MDI_ALPHA_H_BOX_OUTLINE) == 0);
+	CHECK(std::strcmp(IconForExtension(".hpp"), ICON_MDI_ALPHA_H_BOX_OUTLINE) == 0);
+	CHECK(std::strcmp(IconForExtension(".hxx"), ICON_MDI_ALPHA_H_BOX_OUTLINE) == 0);
 	CHECK(std::strcmp(IconForExtension(".cs"), ICON_MDI_LANGUAGE_CSHARP) == 0);
 	CHECK(std::strcmp(IconForExtension(".lua"), ICON_MDI_LANGUAGE_LUA) == 0);
 	CHECK(std::strcmp(IconForExtension(".json"), ICON_MDI_CODE_JSON) == 0);
 	CHECK(std::strcmp(IconForExtension(".md"), ICON_MDI_LANGUAGE_MARKDOWN) == 0);
 	CHECK(std::strcmp(IconForExtension(".py"), ICON_MDI_LANGUAGE_PYTHON) == 0);
+}
+
+TEST_CASE("IconForExtension tells a C++ header from a C++ source")
+{
+	CHECK(std::strcmp(IconForExtension(".h"), IconForExtension(".cpp")) != 0);
+	CHECK(std::strcmp(IconForExtension("h"), IconForExtension(".h")) == 0);
 }
 
 TEST_CASE("IconForExtension tells a C# project from a C++ one")
@@ -116,6 +123,14 @@ TEST_CASE("UsedGlyphRanges covers every icon this app can display, zero-terminat
 		ICON_MDI_ARROW_DOWN,
 		ICON_MDI_CIRCLE_MEDIUM,
 		ICON_MDI_ARCHIVE_ARROW_DOWN_OUTLINE,
+		ICON_MDI_ALPHA_H_BOX_OUTLINE,
+		ICON_MDI_LANGUAGE_MARKDOWN_OUTLINE,
+		ICON_MDI_POWERSHELL,
+		ICON_MDI_MICROSOFT_VISUAL_STUDIO,
+		ICON_MDI_FILE_IMAGE_OUTLINE,
+		ICON_MDI_FILE_OUTLINE,
+		ICON_MDI_FOLDER_OUTLINE,
+		ICON_MDI_FOLDER_OPEN_OUTLINE,
 	};
 
 	for (const char* icon : icons)

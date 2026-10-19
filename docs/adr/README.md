@@ -646,4 +646,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0614](0614-mark-an-open-tool-panel-with-an-accent-bar-at-the-strip-s-edge.md) | Mark an open tool panel with an accent bar at the strip's edge | proposed | 2026-10-18 |
 | [0615](0615-draw-the-interface-in-inter-and-code-in-jetbrains-mono.md) | Draw the interface in Inter and code in JetBrains Mono | proposed | 2026-10-18 |
 | [0616](0616-draw-list-rows-taller-with-an-inset-rounded-highlight-in-the-accent.md) | Draw list rows taller, with an inset rounded highlight in the accent | proposed | 2026-10-18 |
+| [0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md) | Draw file icons in a colour by file kind and folders in outline | proposed | 2026-10-19 |
 <!-- /adr-index -->

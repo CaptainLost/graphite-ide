@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <optional>
 
 inline bool DrawsInColour(const ImDrawList& drawing, ImU32 colour)
 {
@@ -18,6 +19,35 @@ inline bool DrawsInColour(const ImDrawList& drawing, ImU32 colour)
 	}
 
 	return false;
+}
+
+struct HorizontalExtent
+{
+	float Left = FLT_MAX;
+	float Right = -FLT_MAX;
+};
+
+inline std::optional<HorizontalExtent> HorizontalExtentInColour(const ImDrawList& drawing, ImU32 colour)
+{
+	HorizontalExtent extent;
+	bool foundVertexInColour = false;
+
+	for (const ImDrawVert& vertex : drawing.VtxBuffer)
+	{
+		if (vertex.col == colour)
+		{
+			foundVertexInColour = true;
+			extent.Left = std::min(extent.Left, vertex.pos.x);
+			extent.Right = std::max(extent.Right, vertex.pos.x);
+		}
+	}
+
+	if (!foundVertexInColour)
+	{
+		return std::nullopt;
+	}
+
+	return extent;
 }
 
 // A selected row is drawn in the list row's selected colour unless it is held down.

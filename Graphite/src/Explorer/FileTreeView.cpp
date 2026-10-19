@@ -7,7 +7,6 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
-#include "Core/ImGui/Icons.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
@@ -16,6 +15,7 @@
 #include "UI/Lists/Chevron.h"
 #include "UI/ClipboardCopy.h"
 #include "UI/Dialogs/DialogLayout.h"
+#include "UI/FileIcons.h"
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/ListRow.h"
 #include "Terminal/TerminalRules.h"
@@ -1206,10 +1206,6 @@ namespace Graphite {
 
 		const bool isShownInEditor = !m_ShownFile.empty() && m_ShownFile == node.Path;
 
-		const std::string label =
-			std::string{Core::IconForExtension(Core::ToUtf8(node.Path.extension()))} + "  " +
-			node.Name;
-
 		const FileRowLayout layout = LayoutFileRow();
 
 		const std::string id = "##" + Core::ToUtf8(node.Path);
@@ -1220,7 +1216,11 @@ namespace Graphite {
 		// so only a row on screen is looked up.
 		if (ImGui::IsItemVisible())
 		{
-			FileRowLook look{.Ink = ImGui::GetColorU32(ImGuiCol_Text), .Tab = OpenTabOf(m_Documents, node.Path)};
+			const IconTone tone = dimmed ? IconTone::Dimmed : IconTone::Normal;
+
+			FileRowLook look{.Ink = ImGui::GetColorU32(ImGuiCol_Text),
+							 .Tab = OpenTabOf(m_Documents, node.Path),
+							 .Icon = FileIconOf(KindOfFile(node.Path), tone)};
 
 			look.Status = FileRowStatusOf(m_GitDecorations, node.Path, node.Ignored);
 
@@ -1229,7 +1229,7 @@ namespace Graphite {
 				look.Ink = look.Status.Ink;
 			}
 
-			DrawFileRowLabel(layout, look, label);
+			DrawFileRowLabel(layout, look, node.Name);
 		}
 
 		if (!m_ScrollToPath.empty() && m_ScrollToPath == node.Path)
@@ -1297,9 +1297,8 @@ namespace Graphite {
 		const RowStatus folderStatus =
 			node.Ignored ? RowStatus{} : FolderRowStatusOf(m_GitDecorations, node.Path);
 
-		const std::string label =
-			std::string{open ? ICON_MDI_FOLDER_OPEN : ICON_MDI_FOLDER} + "  " + node.Name;
-		DrawTreeRowLabel(layout, label, folderStatus.HasMarker());
+		const IconTone tone = dimmed ? IconTone::Dimmed : IconTone::Normal;
+		DrawTreeRowLabel(layout, FolderIconOf(open, tone), node.Name, folderStatus.HasMarker());
 
 		if (dimmed)
 		{

@@ -3,6 +3,7 @@
 #include "Git/History/CommitLabels.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/IconButton.h"
+#include "UI/FileIcons.h"
 #include "UI/Lists/Chevron.h"
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/ListRow.h"
@@ -184,7 +185,8 @@ namespace Graphite {
 			ImGui::SetCursorPos(ImVec2(rowStart.x + indent, ListRowTextTop(rowStart.y)));
 			DrawChevron(!row.Folded);
 			ImGui::SameLine();
-			ImGui::TextUnformatted(row.Folded ? ICON_MDI_FOLDER : ICON_MDI_FOLDER_OPEN);
+			DrawFolderIcon(!row.Folded, ImGui::GetCursorScreenPos());
+			ImGui::Dummy(ImVec2(FileIconWidth(), ImGui::GetTextLineHeight()));
 			ImGui::SameLine();
 
 			const std::string countText = FolderCountText(row, marks);
