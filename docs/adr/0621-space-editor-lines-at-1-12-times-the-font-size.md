@@ -126,9 +126,9 @@ cannot disagree about where a line is.
   large size lines look cramped again, and at a small one far apart.
 - **Text at the row's top with the room below it.** The fill, the selection and
   the caret would hang below the glyphs.
-- **Squiggles and underlines measured from the line's bottom.** At 15 px they
-  stood 3 px further below the glyphs than before, and further still at a
-  larger zoom, so they read as marks in the gap between lines, not under the
+- **Squiggles and underlines measured from the line's bottom.** They stood
+  below the glyphs by the room a taller row adds under the text, and further
+  still at a larger zoom, so they read as marks in the gap between lines, not under the
   text.
 - **A user setting for the factor.** Nobody asked for one, and it can be added
   over the factor later without changing anything this record decides.

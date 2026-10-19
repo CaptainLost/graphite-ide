@@ -49,8 +49,8 @@ Date: 2026-10-19
   | List row | 22 px, a 16 px text line and 6 px | [0616](0616-draw-list-rows-taller-with-an-inset-rounded-highlight-in-the-accent.md) |
   | Panel header | 36 px | [0618](0618-head-a-panel-with-one-row-of-quiet-choices-and-icon-actions.md) |
   | Breadcrumb row | 24 px | [0623](0623-show-the-file-s-path-and-the-symbol-at-the-caret-above-the-code.md) |
-  | Title bar | 28 px | [0619](0619-show-the-open-folder-and-branch-in-the-title-bar.md) |
-  | Window buttons | 42 px wide | [0619](0619-show-the-open-folder-and-branch-in-the-title-bar.md) |
+  | Title bar | 28 px | this record |
+  | Window buttons | 42 px wide | this record |
   | Status bar | 23 px | [0620](0620-show-problems-and-the-server-s-health-as-glyphs-and-colours-in-the-status-bar.md) |
   | Tree indent, `IndentSpacing` | 14 px | — |
   | Badge box | 16 × 14 px | [0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md) |
@@ -134,6 +134,7 @@ to make up, so each length is the mockup's own number.
   [0620](0620-show-problems-and-the-server-s-health-as-glyphs-and-colours-in-the-status-bar.md),
   [0621](0621-space-editor-lines-at-1-12-times-the-font-size.md),
   [0623](0623-show-the-file-s-path-and-the-symbol-at-the-caret-above-the-code.md),
+  [0625](0625-draw-the-interface-s-icons-from-lucide.md),
   [0610](0610-toggle-tool-panels-from-a-strip-that-ignores-where-they-are-docked.md)
   and [0614](0614-mark-an-open-tool-panel-with-an-accent-bar-at-the-strip-s-edge.md):
   edited in place to these sizes.
