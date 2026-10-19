@@ -6,6 +6,7 @@
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/UI/PanelMarginScope.h"
 
 #include <IconsLucide.h>
 
@@ -71,7 +72,8 @@ namespace Graphite {
 	ExplorerPanel::ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents,
 								 AppSettings& settings, Core::EventBus& events, ModalGate& modals,
 								 const ActiveScheme& scheme, Core::JobSubmitter submitJob)
-		: Core::Panel("files", "Explorer", "navigate", ICON_LC_FOLDER_TREE), m_Workspace(workspace),
+		: Core::Panel("files", "Explorer", "navigate", ICON_LC_FOLDER_TREE, StartsAs::Visible, Sides::Flush),
+		  m_Workspace(workspace),
 		  m_AppSettings(settings), m_Files(workspace, documents, events, modals, scheme, std::move(submitJob)),
 		  m_Solution(workspace, documents, events, modals)
 	{
@@ -103,8 +105,11 @@ namespace Graphite {
 	void ExplorerPanel::OnImGuiRender()
 	{
 		SyncModeWithWorkspace();
-		RenderHeader();
-		ImGui::Separator();
+
+		{
+			const Core::PanelMarginScope margin;
+			RenderHeader();
+		}
 
 		if (m_Mode == Mode::Files)
 		{

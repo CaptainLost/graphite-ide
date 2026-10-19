@@ -9,12 +9,21 @@ namespace Core {
 	{
 		Frame,
 		Line,
-		Bar
+		Bar,
+		Box
+	};
+
+	enum class IconButtonRest
+	{
+		Text,
+		Dim
 	};
 
 	struct IconButtonOptions
 	{
 		IconButtonFit Fit = IconButtonFit::Frame;
+
+		IconButtonRest Rest = IconButtonRest::Text;
 
 		ImGuiButtonFlags Flags = ImGuiButtonFlags_None;
 	};

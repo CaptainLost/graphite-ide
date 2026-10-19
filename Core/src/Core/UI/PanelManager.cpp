@@ -169,9 +169,24 @@ namespace Core {
 				ImGui::SetNextWindowCollapsed(false);
 			}
 
+			// WARNING: A window keeps the padding in force at its Begin, and only its own: its dock tab is drawn by
+			// the dock node, and a popup or child begun inside it takes the interface's padding again.
+			const bool flush = panel->GetSides() == Panel::Sides::Flush;
+
+			if (flush)
+			{
+				ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+			}
+
 			// Begin returns false for a docked window whose tab is not selected as well as for a
 			// collapsed one.
 			const bool bodyRuns = ImGui::Begin(windowName.c_str(), &windowOpen, windowFlags);
+
+			if (flush)
+			{
+				ImGui::PopStyleVar();
+			}
+
 			panel->SetDrawnOnLatestFrame(bodyRuns);
 
 			const bool tabMenuAskedToClose = closeRequests.Take(windowName);

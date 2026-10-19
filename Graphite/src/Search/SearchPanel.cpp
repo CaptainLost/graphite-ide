@@ -12,6 +12,7 @@
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/Caret.h"
+#include "Core/UI/PanelMarginScope.h"
 
 #include <IconsLucide.h>
 
@@ -34,7 +35,8 @@ namespace Graphite {
 							 const ActiveScheme& scheme, const EditorSettings& editor,
 							 PreviewSemantics& semantics)
 		// WARNING: The id stays "search" while the title changes: imgui.ini keys the dock layout on it.
-		: Core::Panel("search", "Find in Files", "navigate", ICON_LC_TEXT_SEARCH, StartsAs::Hidden), m_Service(service), m_Settings(settings),
+		: Core::Panel("search", "Find in Files", "navigate", ICON_LC_TEXT_SEARCH, StartsAs::Hidden, Sides::Flush),
+		  m_Service(service), m_Settings(settings),
 		  m_Workspace(workspace), m_Documents(documents), m_Scheme(scheme), m_Editor(editor),
 		  m_Preview(&semantics)
 	{
@@ -53,10 +55,11 @@ namespace Graphite {
 
 	void SearchPanel::OnImGuiRender()
 	{
-		RenderQuery();
-		ImGui::Separator();
-		RenderSummary();
-		ImGui::Separator();
+		{
+			const Core::PanelMarginScope margin;
+			RenderQuery();
+			RenderSummary();
+		}
 
 		const std::function<void()> drawResults = [this] { RenderResults(); };
 		const std::function<void()> drawPreview = [this] { RenderPreview(); };

@@ -18,6 +18,9 @@ Mark whatever opens and closes in a list or a tree with one chevron in the disab
 - A framed node, a collapsing header, is ImGui's own, with its arrow cleared and the chevron drawn in its place.
 - Both draw the label where, and in the colour, ImGui would draw it. An optional note, such as a count or a cost, follows the label in the disabled-text colour.
 
+Amended by [0616](0616-draw-list-rows-taller-with-an-inset-rounded-highlight-in-the-accent.md):
+a plain node's chevron stands centred in a 14 px box 12 px into the row, and its label starts 5 px after the box (`TreeRowLabelOffset()`), not where ImGui would put them. A framed node keeps ImGui's places.
+
 ## Rationale
 
 **Quiet marks.** A chevron in the disabled-text colour does not compete with the names beside it. Most of the newer panels already looked this way.

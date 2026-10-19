@@ -18,6 +18,8 @@ namespace Graphite {
 
 	std::optional<ImVec4> ListRowHighlight(bool selected, bool hovered, bool held);
 
+	ImU32 ListRowNameColour(bool selected);
+
 	float ListRowSpacing();
 
 	float ListRowPitch();

@@ -1,5 +1,6 @@
 #include "Explorer/RowRenameField.h"
 
+#include "UI/Lists/Chevron.h"
 #include "UI/Lists/ListRow.h"
 
 #include "Core/ImGui/UiScale.h"
@@ -52,7 +53,7 @@ namespace Graphite {
 		const ImVec2 rowStart = ImGui::GetCursorScreenPos();
 		const float textOffset = ListRowTextTop(rowStart.y) - rowStart.y;
 		const float paddingX = Core::Scaled(kFieldPaddingX);
-		const float indentToLabel = ImGui::GetTreeNodeToLabelSpacing() - paddingX;
+		const float indentToLabel = TreeRowLabelOffset() - paddingX;
 		const bool isIndented = indentToLabel > 0.0f;
 
 		if (isIndented)

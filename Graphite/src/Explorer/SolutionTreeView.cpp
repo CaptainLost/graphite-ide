@@ -9,6 +9,7 @@
 
 #include "Core/Platform/FileDialog.h"
 #include "Core/Text/DocumentSet.h"
+#include "Core/UI/PanelMarginScope.h"
 #include "Explorer/FileRow.h"
 #include "Git/GitDecorationView.h"
 #include "Solution/SolutionEditor.h"
@@ -123,7 +124,6 @@ namespace Graphite {
 		}
 
 		RenderFilter();
-		ImGui::Separator();
 
 		const Solution& solution = *m_Workspace.GetLoadedSolution();
 
@@ -216,6 +216,8 @@ namespace Graphite {
 
 	void SolutionTreeView::RenderFilter()
 	{
+		const Core::PanelMarginScope margin;
+
 		if (DrawFilterField("##solutionFilter", m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf),
 							{.Hint = "Filter files"}))
 		{
@@ -421,7 +423,8 @@ namespace Graphite {
 		{
 			const IconTone tone = file.Exists ? IconTone::Normal : IconTone::Dimmed;
 
-			FileRowLook rowLook{.Ink = ImGui::GetColorU32(file.Exists ? ImGuiCol_Text : ImGuiCol_TextDisabled),
+			FileRowLook rowLook{.Ink = file.Exists ? ListRowNameColour(isShownInEditor)
+												   : ImGui::GetColorU32(ImGuiCol_TextDisabled),
 								.Icon = FileIconOf(KindOfFile(file.Path), tone)};
 
 			if (file.Exists)
@@ -674,6 +677,8 @@ namespace Graphite {
 
 	void SolutionTreeView::RenderEmptyState()
 	{
+		const Core::PanelMarginScope margin;
+
 		if (!m_Workspace.IsOpen())
 		{
 			Core::EmptyState("Open a folder to see its Visual Studio solution.");

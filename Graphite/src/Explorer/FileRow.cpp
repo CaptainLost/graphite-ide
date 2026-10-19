@@ -1,6 +1,7 @@
 #include "Explorer/FileRow.h"
 
 #include "UI/FileIcons.h"
+#include "UI/Lists/Chevron.h"
 #include "UI/Lists/ListRow.h"
 
 #include "Core/ImGui/UiScale.h"
@@ -122,8 +123,8 @@ namespace Graphite {
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
 			const ImU32 accent = ImGui::GetColorU32(ImGuiCol_CheckMark);
 
-			const float gap = layout.LabelAt.x - layout.RowAt.x;
-			const ImVec2 centre(layout.RowAt.x + gap * kHalf, layout.LabelAt.y + ImGui::GetFontSize() * kHalf);
+			const float chevronBoxMiddle = layout.RowAt.x + TreeRowChevronBoxLeft() + TreeRowChevronBoxWidth() * kHalf;
+			const ImVec2 centre(chevronBoxMiddle, layout.LabelAt.y + ImGui::GetFontSize() * kHalf);
 
 			switch (tab)
 			{
@@ -259,7 +260,7 @@ namespace Graphite {
 
 	FileRowLayout LayoutFileRow()
 	{
-		const float labelOffset = ImGui::GetTreeNodeToLabelSpacing();
+		const float labelOffset = TreeRowLabelOffset();
 		const ImVec2 cursor = ImGui::GetCursorScreenPos();
 
 		return FileRowLayout{.RowAt = cursor, .LabelAt = ImVec2(cursor.x + labelOffset, ListRowTextTop(cursor.y))};

@@ -96,9 +96,12 @@ namespace {
 			ImGui::BeginChild("##detailItems", ImVec2(0.0f, 0.0f), ImGuiChildFlags_AlwaysUseWindowPadding);
 			ImGui::PopStyleVar();
 
-			Items = ImGui::GetCurrentWindowRead()->InnerRect;
-			Pitch = ListRowPitch();
-			DrawRequestDetails(Request, Palette, selected, kNothingToReveal);
+			{
+				const ListBodyScope listBody;
+				Items = ImGui::GetCurrentWindowRead()->InnerRect;
+				Pitch = ListRowPitch();
+				DrawRequestDetails(Request, Palette, selected, kNothingToReveal);
+			}
 
 			ImGui::EndChild();
 			ImGui::End();

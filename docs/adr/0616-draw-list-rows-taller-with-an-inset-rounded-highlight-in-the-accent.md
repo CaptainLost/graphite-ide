@@ -19,6 +19,13 @@ item spacing, so a row is only as tall as its callers' line unless the row
 itself holds that line taller. A list drawn in a child without padding starts at
 the child's top edge, so anything drawn above a row's start is cut off.
 
+A panel's list is a child of the panel's window, inside the window's 8 px
+padding, so an inset measured from the list stands 14 px from the panel's edges.
+ImGui keeps a window's content clear of its scrollbar's lane and draws the bar
+before the content, so no row can be drawn under the bar. ImGui puts a tree
+node's arrow a frame padding into the row and its label a font size and two
+frame paddings in, 32 px with the 16 px interface face.
+
 ## Decision
 
 Draw list rows through `Graphite/src/UI/Lists/ListRow.h` as follows.
@@ -60,17 +67,60 @@ Draw list rows through `Graphite/src/UI/Lists/ListRow.h` as follows.
     tooltip of several lines, is begun inside a `ListPopupScope`. It pushes the
     spacing that the earliest push of the item spacing replaced, which is the
     interface's, until the popup has ended.
-  - Outside a list body, `ListRowTextTop` holds the text higher, so a row laid
-    there still ends at its pitch.
+  - A row laid out outside a list body, where the item spacing is more than half
+    the row spacing, is reported by `ListRowSelectable` as an ImGui error: a
+    debug build asserts, and a release build logs it once. A test lays its rows
+    inside a list body, as the panels do.
+  - `ListRowTextTop` still holds the text higher outside a list body, so a row
+    laid there in a release build keeps its pitch.
 - **Highlight:** inset 6 px from the list's two edges, rounded 5 px, and as tall
   as the slot, so the highlights of adjacent rows still touch. The keyboard's
   mark is drawn round the inset highlight. The row's click target stays the
   list's full width.
+  - A list is as wide as its panel (below), so the highlight stands 6 px in from
+    the panel's edges.
+  - While the list shows a scrollbar, the right inset is measured from the
+    scrollbar's lane: 6 px plus the 12 px lane.
+- **Panels:** a tool panel whose body is a list is flush
+  (`Core::Panel::Sides::Flush`). The panel manager begins its window with no
+  padding at its sides and the interface's padding above and below.
+  - The flush panels are the Explorer, Changes, Problems, Find in Files,
+    References and Claude Sessions. The Git view, whose lists stand in a table's
+    columns, the console and Settings stay padded.
+  - Whatever a flush panel draws that is not a list body is drawn inside a
+    `Core::PanelMarginScope`. The scope stands it the interface's window
+    padding, 8 px, in from the window's sides, and changes nothing in a padded
+    window or in a child window. These are the panel header and the filter
+    field, the toolbars and summary lines of Find in Files, References and
+    Claude Sessions, the commit box of Changes, the empty and loading states,
+    and the divider and preview under a split list.
+  - The padding is pushed for the window's own `Begin` only. Its dock tab is
+    drawn by the dock node and stays where it stood, as do the tabs beside it.
+    A popup or a child begun inside the window takes the interface's padding
+    again.
+  - No separator line stands between a panel's header, filter or toolbar and
+    its list, or above the commit box of Changes; the interface's item spacing
+    does.
+- **Tree row:** a tree node's chevron stands centred in a 14 px box 12 px into
+  the row (`TreeRowChevronBoxLeft`, `TreeRowChevronBoxWidth`), 6 px past the
+  highlight's inset, and a file's open-tab mark stands in the same box.
+  - The label, the icon and the name after it, starts 5 px after the box:
+    `TreeRowLabelOffset()`, 31 px.
+  - With the icon's 16 px slot and its 5 px gap
+    ([0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md)),
+    a name starts 52 px into its row, and each level of depth adds the 14 px
+    indent.
+  - A framed node, a collapsing header, keeps ImGui's own places.
 - **Colours:** derived from the current style each time a row is drawn, through
   `CurrentListRowColours()`:
   - selected: the accent (`ImGuiCol_CheckMark`) at alpha 0.20;
-  - hovered: the window background mixed 6 % toward the text colour;
+  - hovered: the window background mixed 5 % toward the text colour, `#1d1f23`
+    on the chrome;
   - pressed: the accent at alpha 0.30.
+  - The name of a selected row in the Explorer's trees is drawn in the emphasis
+    colour, `ListRowNameColour(selected)` (`Core::EmphasisText`), unless the
+    name has a colour of its own: a git status, a dimmed ignored file or a
+    missing one.
 - **Order:** a row held down under the pointer shows the press. Otherwise a
   selected row shows the accent, under the pointer or not. Otherwise a row under
   the pointer shows the hover. This is not `Selectable`'s own order, which lets
@@ -121,6 +171,15 @@ whole slot cannot be cut at a list's edges, and drawing the fill in the row keep
 the click target the list's full width and leaves every other `Header` user as
 it was.
 
+A list that fills its panel puts the highlight where the mockup puts it, 6 px
+from the panel's edges, and the margin scope gives everything else in the panel
+the padding it had, so only the lists move. Pushing the padding around `Begin`
+alone leaves the dock tabs, popups and children as they were. The tree's own
+offsets replace ImGui's, which grow with the frame padding and the font, with
+the mockup's lengths. A list that forgets its list body is caught where it is
+drawn, in every test and debug build that draws it, rather than by a test of
+each panel.
+
 ## Consequences
 
 ### Positive
@@ -133,6 +192,10 @@ it was.
 - The first and the last row of a list show their whole highlight.
 - A table's row is one highlight across its columns, with no gap above or below
   it, and the pointer moving down a table never falls between two rows.
+- The rows of the flush panels are highlighted 6 px from the panel's edges, and
+  a tree's chevron, icon and name stand where the mockup puts them.
+- A list that forgets its list body fails in the tests and debug builds that
+  draw it, instead of drawing its text 2 px high.
 
 ### Negative
 
@@ -158,6 +221,14 @@ it was.
   the row under the pointer only from the frame before.
 - The hover lift follows the text colour current at the row, so a row drawn in
   a dimmed text colour, such as an ignored file, lifts a little less.
+- A flush panel has to draw whatever is not a list inside a margin scope, or it
+  touches the panel's edges. The scope narrows ImGui's work rect and content
+  region for its life, internal state a change in ImGui does not reach.
+- While a list shows its scrollbar, its rows' highlights end 18 px short of the
+  panel's right edge, not 6 px.
+- A list row laid out outside a list body stops a debug build at an assertion.
+- The framed group headers of Claude Sessions run from one edge of the panel to
+  the other.
 
 ### Neutral
 
@@ -172,6 +243,8 @@ it was.
   so that a text line laid there still ends inside the row's line.
 - Inside a list body, items that are not rows, such as a section's heading or
   an empty list's message, are spaced 3 px, not 5 px.
+- The rows of Changes, Problems and the hits of Find in Files and References
+  moved 8 px left with their lists; Changes keeps its own offsets inside a row.
 
 ## Alternatives Considered
 
@@ -199,12 +272,29 @@ it was.
 - **A highlight per cell.** The rounding would cut across every column.
 - **A square highlight across the row.** It would fill the row and span every
   column, but a table's rows would not read as a list's.
+- **Draw the scrollbar over the rows.** ImGui keeps a window's content clear of
+  its scrollbar's lane and draws the bar first, so the lists would need a
+  scrollbar of the app's own.
+- **Keep the panels padded and widen each list into the padding.** The list's
+  width would carry the panel's content past its work rect and give the panel
+  8 px to scroll sideways.
+- **Every tool panel flush.** The console's lines, Settings and the Git view's
+  table would each need margins of their own.
+- **A test of each panel's list body, drawn through the panel.** Changes needs
+  the document windows and their server, analysis and git ports, and Claude
+  Sessions reads transcripts on a thread from a folder the environment names.
+- **A warning in the log for a row outside a list body.** Nothing would fail.
 
 ## Related
 
 - [0604](0604-draw-every-list-row-through-listrowselectable.md): amended by this
   record.
 - [0603](0603-mark-whatever-opens-and-closes-in-a-list-with-the-one-dim-chevron.md):
-  the tree row built on the list row.
+  the tree row built on the list row; amended by this record, which places its
+  chevron and label.
 - [0613](0613-draw-the-chrome-darker-than-the-documents-and-diffs-it-frames.md):
   the chrome the hover lifts from.
+- [0618](0618-head-a-panel-with-one-row-of-quiet-choices-and-icon-actions.md):
+  the panel header a flush panel draws inside its margin.
+- [0610](0610-toggle-tool-panels-from-a-strip-that-ignores-where-they-are-docked.md):
+  the tool panels.

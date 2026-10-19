@@ -7,6 +7,7 @@
 #include "UI/Lists/ListRow.h"
 
 #include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/Theme.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -18,6 +19,8 @@
 #include <functional>
 #include <iterator>
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace {
 	constexpr float kFringe = 1.5f;
@@ -30,7 +33,7 @@ namespace {
 	constexpr float kHighlightRounding = 5.0f;
 	constexpr float kSelectedAlpha = 0.20f;
 	constexpr float kPressedAlpha = 0.30f;
-	constexpr float kHoverLiftTowardTheText = 0.06f;
+	constexpr float kHoverLiftTowardTheText = 0.05f;
 
 	const ImVec4 kAccent(0.30f, 0.55f, 0.95f, 1.0f);
 	const ImVec4 kBackground(0.08f, 0.08f, 0.09f, 1.0f);
@@ -353,6 +356,40 @@ TEST_CASE("A list body caps the item spacing at half the row spacing and gives t
 	CHECK(afterTheBody == doctest::Approx(kInterfaceItemSpacing));
 }
 
+namespace {
+
+	void KeepImGuiError(ImGuiContext*, void* errors, const char* message)
+	{
+		static_cast<std::vector<std::string>*>(errors)->emplace_back(message);
+	}
+}
+
+TEST_CASE("A list row laid out outside a list body is reported as an ImGui error, and one inside a list body is not")
+{
+	ListScreen screen;
+	std::vector<std::string> errors;
+
+	// WARNING: Reported, not asserted, for the test to read: the app asserts on an ImGui error in a debug build and
+	// logs it in a release one.
+	ImGui::GetIO().ConfigErrorRecoveryEnableAssert = false;
+	ImGui::GetIO().ConfigErrorRecoveryEnableTooltip = false;
+	ImGui::GetCurrentContext()->ErrorCallback = &KeepImGuiError;
+	ImGui::GetCurrentContext()->ErrorCallbackUserData = &errors;
+
+	screen.DrawFrame([] { Graphite::ListRowSelectable("##insideABody", false); });
+
+	CHECK(errors.empty());
+
+	screen.Frames.Next([] {
+		ImGui::Begin("##rowsOutsideABody", nullptr, ImGuiWindowFlags_NoSavedSettings);
+		Graphite::ListRowSelectable("##outsideABody", false);
+		ImGui::End();
+	});
+
+	REQUIRE(errors.size() == 1);
+	CHECK(errors.front().find("ListBodyScope") != std::string::npos);
+}
+
 TEST_CASE("A form laid out after a list keeps the interface's item spacing of five pixels")
 {
 	ListScreen screen;
@@ -579,6 +616,25 @@ TEST_CASE("A hovered row is the background lifted toward the text and inset as a
 	CHECK_FALSE(DrawsInColour(ListScreen::DrawList(), ImGui::GetColorU32(ImGuiCol_HeaderHovered)));
 }
 
+TEST_CASE("A row's name is in the text colour, and in the emphasis colour while the row is selected")
+{
+	constexpr bool kSelected = true;
+	constexpr bool kNotSelected = false;
+
+	ListScreen screen;
+	ImU32 selectedName = 0;
+	ImU32 restingName = 0;
+
+	screen.DrawFrame([&] {
+		selectedName = Graphite::ListRowNameColour(kSelected);
+		restingName = Graphite::ListRowNameColour(kNotSelected);
+	});
+
+	CHECK(selectedName == Core::EmphasisText());
+	CHECK(selectedName != ImGui::GetColorU32(ImGuiCol_Text));
+	CHECK(restingName == ImGui::GetColorU32(ImGuiCol_Text));
+}
+
 TEST_CASE("A selected row under the pointer keeps the accent")
 {
 	ListScreen screen;
@@ -704,12 +760,16 @@ TEST_CASE("List rows leave a list that scrolls sideways without anything to scro
 		ImGui::Begin("Panel", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 		ImGui::BeginChild("##results", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
 
-		const int rowCount = 30;
-		for (int row = 0; row < rowCount; ++row)
 		{
-			ImGui::PushID(row);
-			Graphite::ListRowSelectable("##row", false);
-			ImGui::PopID();
+			const Graphite::ListBodyScope listBody;
+			const int rowCount = 30;
+
+			for (int row = 0; row < rowCount; ++row)
+			{
+				ImGui::PushID(row);
+				Graphite::ListRowSelectable("##row", false);
+				ImGui::PopID();
+			}
 		}
 
 		scrolling = ImGui::GetCurrentWindowRead();
@@ -748,8 +808,12 @@ TEST_CASE("The keyboard's mark on a row is drawn round its inset highlight")
 			focusTheRow = false;
 		}
 
-		Graphite::ListRowSelectable("##first", false);
-		Graphite::ListRowSelectable("##second", false);
+		{
+			const Graphite::ListBodyScope listBody;
+			Graphite::ListRowSelectable("##first", false);
+			Graphite::ListRowSelectable("##second", false);
+		}
+
 		ImGui::End();
 	};
 
@@ -787,11 +851,14 @@ TEST_CASE("Right opens the tree node the keyboard is on and Left closes it")
 			focusTheRow = false;
 		}
 
-		open = Graphite::ChevronTreeNode("folder", ImGuiTreeNodeFlags_SpanAvailWidth);
-
-		if (open)
 		{
-			ImGui::TreePop();
+			const Graphite::ListBodyScope listBody;
+			open = Graphite::ChevronTreeNode("folder", ImGuiTreeNodeFlags_SpanAvailWidth);
+
+			if (open)
+			{
+				ImGui::TreePop();
+			}
 		}
 
 		ImGui::End();

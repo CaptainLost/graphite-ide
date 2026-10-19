@@ -3,6 +3,7 @@
 #include "UI/Lists/ListRow.h"
 
 #include "Core/ImGui/ImGuiColors.h"
+#include "Core/ImGui/UiScale.h"
 
 #include <IconsLucide.h>
 #include <imgui_internal.h>
@@ -16,16 +17,18 @@ namespace Graphite {
 		constexpr float kHalf = 0.5f;
 		constexpr float kClearAlpha = 0.0f;
 		constexpr float kFramedPaddingsBeforeLabel = 3.0f;
+		constexpr float kChevronBoxLeft = 12.0f;
+		constexpr float kChevronBoxWidth = 14.0f;
+		constexpr float kChevronBoxToLabel = 5.0f;
 		constexpr const char* kUpToTheTerminator = nullptr;
 		constexpr bool kHideTextAfterHashes = false;
 
 		// WARNING: Floored, because CalcTextSize rounds up and a glyph centred onto a half pixel reads blurrier than
 		// the text beside it.
-		void DrawChevronAt(ImVec2 rowStart, float textTop, bool open)
+		void DrawChevronIn(float boxLeft, float boxWidth, float textTop, bool open)
 		{
 			const char* const glyph = ChevronGlyph(open);
-			const float arrowLeft = rowStart.x + ImGui::GetStyle().FramePadding.x;
-			const float glyphLeft = std::floor(arrowLeft + (ImGui::GetFontSize() - ImGui::CalcTextSize(glyph).x) * kHalf);
+			const float glyphLeft = std::floor(boxLeft + (boxWidth - ImGui::CalcTextSize(glyph).x) * kHalf);
 
 			ImGui::GetWindowDrawList()->AddText(ImVec2(glyphLeft, textTop), ImGui::GetColorU32(ImGuiCol_TextDisabled),
 												glyph);
@@ -54,7 +57,7 @@ namespace Graphite {
 		{
 			ImGuiWindow* const window = ImGui::GetCurrentWindow();
 			const ImVec2 rowStart = ImGui::GetCursorScreenPos();
-			const float labelSpacing = ImGui::GetTreeNodeToLabelSpacing();
+			const float labelSpacing = TreeRowLabelOffset();
 			const ImVec2 textTopLeft(rowStart.x + labelSpacing, ListRowTextTop(rowStart.y));
 
 			const ImGuiID nodeId = window->GetID(id);
@@ -86,9 +89,9 @@ namespace Graphite {
 				ImGui::TreeNodeSetOpen(nodeId, open);
 			}
 
-			// WARNING: Laid out again from the row's text top, without an item, as wide as TreeNodeEx lays out the
-			// arrow and the label, so what follows with SameLine starts past the label, on the label's line; the
-			// Selectable stays the last item for the caller to ask.
+			// WARNING: Laid out again from the row's text top, without an item, as wide as the chevron's box and the
+			// label, so what follows with SameLine starts past the label, on the label's line; the Selectable stays
+			// the last item for the caller to ask.
 			constexpr bool kShowTextAfterHashes = false;
 			const float labelWidth = ImGui::CalcTextSize(label, kUpToTheTerminator, kShowTextAfterHashes).x;
 			ImGui::SetCursorScreenPos(ImVec2(rowStart.x, textTopLeft.y));
@@ -98,7 +101,7 @@ namespace Graphite {
 			{
 				if (opens)
 				{
-					DrawChevronAt(rowStart, textTopLeft.y, open);
+					DrawChevronIn(rowStart.x + TreeRowChevronBoxLeft(), TreeRowChevronBoxWidth(), textTopLeft.y, open);
 				}
 
 				if (*label != '\0')
@@ -147,7 +150,7 @@ namespace Graphite {
 
 			if (opens)
 			{
-				DrawChevronAt(rowStart, textTopLeft.y, open);
+				DrawChevronIn(rowStart.x + style.FramePadding.x, ImGui::GetFontSize(), textTopLeft.y, open);
 			}
 
 			if (*label != '\0')
@@ -174,6 +177,21 @@ namespace Graphite {
 	float ChevronWidth()
 	{
 		return std::max(ImGui::CalcTextSize(ICON_LC_CHEVRON_RIGHT).x, ImGui::CalcTextSize(ICON_LC_CHEVRON_DOWN).x);
+	}
+
+	float TreeRowChevronBoxLeft()
+	{
+		return Core::Scaled(kChevronBoxLeft);
+	}
+
+	float TreeRowChevronBoxWidth()
+	{
+		return Core::Scaled(kChevronBoxWidth);
+	}
+
+	float TreeRowLabelOffset()
+	{
+		return std::floor(TreeRowChevronBoxLeft() + TreeRowChevronBoxWidth() + Core::Scaled(kChevronBoxToLabel));
 	}
 
 	bool ChevronTreeNode(const char* id, ImGuiTreeNodeFlags flags, const char* label, const char* note)

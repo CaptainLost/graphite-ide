@@ -1,6 +1,7 @@
 #include "UI/Lists/ListRow.h"
 
 #include "Core/ImGui/ImGuiColors.h"
+#include "Core/ImGui/Theme.h"
 #include "Core/ImGui/UiScale.h"
 
 #include <algorithm>
@@ -18,7 +19,7 @@ namespace Graphite {
 		constexpr float kHalf = 0.5f;
 		constexpr float kSelectedAlpha = 0.20f;
 		constexpr float kPressedAlpha = 0.30f;
-		constexpr float kHoverLiftTowardTheText = 0.06f;
+		constexpr float kHoverLiftTowardTheText = 0.05f;
 		constexpr ImVec4 kClear(0.0f, 0.0f, 0.0f, 0.0f);
 
 		constexpr std::array kColoursSelectableDraws{ImGuiCol_Header, ImGuiCol_HeaderHovered, ImGuiCol_HeaderActive,
@@ -130,6 +131,11 @@ namespace Graphite {
 							  .Pressed = Core::WithAlphaReplaced(accent, kPressedAlpha)};
 	}
 
+	ImU32 ListRowNameColour(bool selected)
+	{
+		return selected ? Core::EmphasisText() : ImGui::GetColorU32(ImGuiCol_Text);
+	}
+
 	float ListRowSpacing()
 	{
 		return Core::Scaled(kListRowSpacing);
@@ -203,6 +209,10 @@ namespace Graphite {
 		constexpr float kNoItemSpacing = 0.0f;
 		const ImVec2 rowStart = ImGui::GetCursorScreenPos();
 		const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
+		const bool laidOutInAListBody = ImGui::GetStyle().ItemSpacing.y <= ListRowSpacing() * kHalf;
+
+		IM_ASSERT_USER_ERROR(laidOutInAListBody, "A list row is laid out outside a ListBodyScope, so its text stands "
+												 "above the middle of the row.");
 
 		ImGui::SetCursorScreenPos(ImVec2(ListLeft(), rowStart.y));
 		window->DC.CurrLineSize.y = 0.0f;

@@ -64,7 +64,7 @@ TEST_CASE("A rename field opens at the row's label with the name's stem selected
 	CHECK(state->GetSelectionStart() == 0);
 	CHECK(state->GetSelectionEnd() == 5);
 	CHECK(screen.FieldRect.Min.x > screen.RowStartX);
-	CHECK(screen.FieldRect.Min.x <= screen.RowStartX + ImGui::GetTreeNodeToLabelSpacing());
+	CHECK(screen.FieldRect.Min.x <= screen.RowStartX + Graphite::TreeRowLabelOffset());
 }
 
 TEST_CASE("A rename field is as narrow as the name, not the row")
@@ -160,22 +160,26 @@ TEST_CASE("A rename field in a list is one list row's pitch tall after a file ro
 			ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f));
 			ImGui::Begin("Tree", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 
-			if (afterAFolderRow)
 			{
-				if (Graphite::ChevronTreeNode("folder", ImGuiTreeNodeFlags_SpanAvailWidth))
-				{
-					ImGui::TreePop();
-				}
-			}
-			else
-			{
-				Graphite::ListRowSelectable("##file", false);
-			}
+				const Graphite::ListBodyScope listBody;
 
-			fieldTop = ImGui::GetCursorScreenPos().y;
-			field.Draw("##rename");
-			nextRowTop = ImGui::GetCursorScreenPos().y;
-			pitch = Graphite::ListRowPitch();
+				if (afterAFolderRow)
+				{
+					if (Graphite::ChevronTreeNode("folder", ImGuiTreeNodeFlags_SpanAvailWidth))
+					{
+						ImGui::TreePop();
+					}
+				}
+				else
+				{
+					Graphite::ListRowSelectable("##file", false);
+				}
+
+				fieldTop = ImGui::GetCursorScreenPos().y;
+				field.Draw("##rename");
+				nextRowTop = ImGui::GetCursorScreenPos().y;
+				pitch = Graphite::ListRowPitch();
+			}
 
 			ImGui::End();
 		});

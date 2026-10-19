@@ -20,6 +20,8 @@ namespace {
 	constexpr float kFringe = 1.0f;
 	constexpr float kListRowSpacing = 6.0f;
 	constexpr float kInterfaceItemSpacing = 5.0f;
+	constexpr float kChevronBoxLeft = 12.0f;
+	constexpr float kChevronBoxToLabel = 5.0f;
 	const ImVec4 kDimmedRowText(0.9f, 0.6f, 0.2f, 1.0f);
 
 	struct TreeDrawing
@@ -202,7 +204,7 @@ TEST_CASE("A tree node is marked with the dim chevron, and draws nothing in the 
 	CHECK_FALSE(DrawsInColour(TreeScreen::DrawList(), ImGui::GetColorU32(ImGuiCol_Text)));
 }
 
-TEST_CASE("A tree node's chevron sits where ImGui puts its arrow, clear of the label")
+TEST_CASE("A tree node's chevron sits in its box twelve pixels into the row, clear of the label")
 {
 	TreeScreen screen;
 	screen.DrawFrame();
@@ -211,12 +213,14 @@ TEST_CASE("A tree node's chevron sits where ImGui puts its arrow, clear of the l
 		SpanInColour(TreeScreen::DrawList(), ImGui::GetColorU32(ImGuiCol_TextDisabled));
 	REQUIRE(chevron.has_value());
 
-	const float framePaddingX = ImGui::GetStyle().FramePadding.x;
-	CHECK(chevron->Left >= screen.RowStartX + framePaddingX - kFringe);
-	CHECK(chevron->Right <= screen.RowStartX + ImGui::GetTreeNodeToLabelSpacing() - framePaddingX + kFringe);
+	const float boxLeft = screen.RowStartX + Graphite::TreeRowChevronBoxLeft();
+	CHECK(Graphite::TreeRowChevronBoxLeft() == doctest::Approx(kChevronBoxLeft));
+	CHECK(chevron->Left >= boxLeft - kFringe);
+	CHECK(chevron->Right <= boxLeft + Graphite::TreeRowChevronBoxWidth() + kFringe);
+	CHECK(chevron->Right < screen.RowStartX + Graphite::TreeRowLabelOffset());
 }
 
-TEST_CASE("A tree node's label is drawn in the text colour, starting where ImGui starts it")
+TEST_CASE("A tree node's label is drawn in the text colour, five pixels past its chevron's box")
 {
 	TreeScreen screen;
 	screen.Drawing.Label = "References";
@@ -226,8 +230,10 @@ TEST_CASE("A tree node's label is drawn in the text colour, starting where ImGui
 		SpanInColour(TreeScreen::DrawList(), ImGui::GetColorU32(ImGuiCol_Text));
 	REQUIRE(label.has_value());
 
-	CHECK(label->Left >= screen.RowStartX + ImGui::GetTreeNodeToLabelSpacing() - kFringe);
-	CHECK(label->Left <= screen.RowStartX + ImGui::GetTreeNodeToLabelSpacing() + ImGui::GetFontSize());
+	CHECK(Graphite::TreeRowLabelOffset() ==
+		  doctest::Approx(Graphite::TreeRowChevronBoxLeft() + Graphite::TreeRowChevronBoxWidth() + kChevronBoxToLabel));
+	CHECK(label->Left >= screen.RowStartX + Graphite::TreeRowLabelOffset() - kFringe);
+	CHECK(label->Left <= screen.RowStartX + Graphite::TreeRowLabelOffset() + ImGui::GetFontSize());
 }
 
 TEST_CASE("A framed header keeps its frame, with the chevron and the label where ImGui puts its arrow and label")

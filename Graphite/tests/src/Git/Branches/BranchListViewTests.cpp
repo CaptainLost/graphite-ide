@@ -69,13 +69,18 @@ namespace {
 		BeginNamedListWindow("BranchList", width);
 	}
 
-	// The list's top-left corner, so a test can click a row by its index.
+	// The list's top-left corner, so a test can click a row by its index. As the Git view holds the rows: in a list
+	// body.
 	ImVec2 DrawListWindow(Graphite::BranchListView& list, const Graphite::BranchListFrame& frame, float width)
 	{
 		BeginListWindow(width);
 
 		const ImVec2 listTop = ImGui::GetCursorScreenPos();
-		list.DrawRows(frame);
+
+		{
+			const Graphite::ListBodyScope listBody;
+			list.DrawRows(frame);
+		}
 
 		ImGui::End();
 		return listTop;
@@ -166,7 +171,12 @@ namespace {
 	{
 		BeginNamedListWindow(windowName, kListWidth);
 		list.DrawHeader(frame);
-		list.DrawRows(frame);
+
+		{
+			const Graphite::ListBodyScope listBody;
+			list.DrawRows(frame);
+		}
+
 		ImGui::End();
 	}
 

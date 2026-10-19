@@ -10,6 +10,7 @@
 #include "Core/ImGui/LoadingState.h"
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
+#include "Core/UI/PanelMarginScope.h"
 
 #include "Theme/Palettes.h"
 #include "UI/Lists/Chevron.h"
@@ -126,7 +127,6 @@ namespace Graphite {
 
 		ResolvePendingRename();
 		RenderFilter();
-		ImGui::Separator();
 
 		if (ImGui::BeginChild("##fileTreeBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None))
 		{
@@ -194,6 +194,8 @@ namespace Graphite {
 
 	void FileTreeView::RenderFilter()
 	{
+		const Core::PanelMarginScope margin;
+
 		if (DrawFilterField("##fileFilter", m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf), {.Hint = "Filter files"}))
 		{
 			m_Filter.Build();
@@ -232,6 +234,8 @@ namespace Graphite {
 
 	void FileTreeView::RenderEmptyState()
 	{
+		const Core::PanelMarginScope margin;
+
 		ImGui::BeginDisabled(m_Workspace.IsDialogOpen());
 		const bool clicked = Core::EmptyState("No folder open.", "Open Folder");
 		ImGui::EndDisabled();
@@ -1236,7 +1240,7 @@ namespace Graphite {
 		{
 			const IconTone tone = dimmed ? IconTone::Dimmed : IconTone::Normal;
 
-			FileRowLook look{.Ink = ImGui::GetColorU32(ImGuiCol_Text),
+			FileRowLook look{.Ink = ListRowNameColour(isShownInEditor && !dimmed),
 							 .Tab = OpenTabOf(m_Documents, node.Path),
 							 .Icon = FileIconOf(KindOfFile(node.Path), tone)};
 

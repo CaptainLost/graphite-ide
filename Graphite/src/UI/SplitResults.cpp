@@ -1,6 +1,7 @@
 #include "UI/SplitResults.h"
 
 #include "Core/ImGui/IconButton.h"
+#include "Core/UI/PanelMarginScope.h"
 
 #include <IconsLucide.h>
 
@@ -86,6 +87,8 @@ namespace Graphite {
 		}
 
 		ImGui::EndChild();
+
+		const Core::PanelMarginScope margin;
 
 		// WARNING: copies the 0.04s ImGui waits before highlighting a window's resize border
 		// (WINDOWS_RESIZE_FROM_EDGES_FEEDBACK_TIMER in imgui.cpp), which is file-static.

@@ -148,3 +148,69 @@ TEST_CASE("A file heading in Problems takes one list row pitch, as the problem r
 	constexpr float kHeadingAndOneProblem = 2.0f;
 	CHECK(std::abs(sourceBadge->Top - notesBadge->Top) == doctest::Approx(kHeadingAndOneProblem * pitch));
 }
+
+TEST_CASE("A problem's highlight is inset six pixels from the Problems panel's edge")
+{
+	constexpr float kHighlightInset = 6.0f;
+	constexpr float kFringe = 1.0f;
+	constexpr float kIntoTheProblemRow = 1.5f;
+
+	TempDirectory folder;
+	const std::filesystem::path settingsFile = folder.MakeFile("graphite.json", "{}");
+
+	ImGuiFrames frames;
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace{events, settings.Get()};
+	Core::DocumentSet documents;
+	REQUIRE(documents.Open(settingsFile, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+
+	Graphite::DiagnosticsModel diagnostics;
+	diagnostics.Apply(OneErrorIn(settingsFile));
+
+	const Graphite::ActiveScheme scheme;
+	Graphite::ProblemsPanel panel{diagnostics, documents, workspace, scheme};
+
+	REQUIRE(panel.GetSides() == Core::Panel::Sides::Flush);
+
+	float pitch = 0.0f;
+
+	// As the panel manager begins a flush panel's window: with no padding at its sides.
+	const auto draw = [&] {
+		ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, ImGui::GetStyle().WindowPadding.y));
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(kPanelSize);
+		ImGui::Begin("Problems", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
+		ImGui::PopStyleVar();
+		panel.OnImGuiRender();
+		pitch = Graphite::ListRowPitch();
+		ImGui::End();
+	};
+
+	frames.Next(draw);
+
+	const ImGuiWindow* list = FindProblemList();
+	REQUIRE(list != nullptr);
+
+	// WARNING: A row that allows overlap is hovered only from the frame after the pointer reaches it. By then the
+	// keyboard's focus, which lands on the only problem when the list appears, has selected it, and a selected row
+	// keeps the accent under the pointer, so it is highlighted in one colour or the other.
+	ImGui::GetIO().AddMousePosEvent(list->Pos.x + kPanelSize.x * 0.5f, list->Pos.y + pitch * kIntoTheProblemRow);
+	frames.Next(draw);
+	frames.Next(draw);
+
+	list = FindProblemList();
+	REQUIRE(list != nullptr);
+
+	const Graphite::ListRowColours colours = Graphite::CurrentListRowColours();
+	std::optional<HorizontalExtent> highlight = HorizontalExtentInColour(*list->DrawList, ImGui::GetColorU32(colours.Hovered));
+
+	if (!highlight.has_value())
+	{
+		highlight = HorizontalExtentInColour(*list->DrawList, ImGui::GetColorU32(colours.Selected));
+	}
+
+	REQUIRE(highlight.has_value());
+	CHECK(std::abs(highlight->Left - kHighlightInset) <= kFringe);
+	CHECK(std::abs(highlight->Right - (kPanelSize.x - kHighlightInset)) <= kFringe);
+}

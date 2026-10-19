@@ -16,6 +16,7 @@
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/TextBuffer.h"
+#include "Core/UI/PanelMarginScope.h"
 
 #include <IconsLucide.h>
 
@@ -66,7 +67,8 @@ namespace Graphite {
 
 	ProblemsPanel::ProblemsPanel(const DiagnosticsModel& diagnostics, Core::DocumentSet& documents, Workspace& workspace,
 								 const ActiveScheme& scheme)
-		: Core::Panel("problems", "Problems", "tools", ICON_LC_CIRCLE_ALERT), m_Diagnostics(diagnostics), m_Documents(documents),
+		: Core::Panel("problems", "Problems", "tools", ICON_LC_CIRCLE_ALERT, StartsAs::Visible, Sides::Flush),
+		  m_Diagnostics(diagnostics), m_Documents(documents),
 		  m_Workspace(workspace), m_Scheme(scheme)
 	{
 	}
@@ -79,6 +81,7 @@ namespace Graphite {
 
 		if (counts.Errors == 0 && counts.Warnings == 0)
 		{
+			const Core::PanelMarginScope margin;
 			Core::EmptyState("No problems in open documents.");
 			m_Selected.reset();
 			return;

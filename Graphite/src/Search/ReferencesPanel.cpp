@@ -10,6 +10,7 @@
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/FileProbe.h"
+#include "Core/UI/PanelMarginScope.h"
 
 #include "Workspace/Workspace.h"
 
@@ -139,7 +140,7 @@ namespace Graphite {
 	ReferencesPanel::ReferencesPanel(Workspace& workspace, Core::DocumentSet& documents,
 									 const ActiveScheme& scheme, const EditorSettings& editor,
 									 PreviewSemantics& semantics)
-		: Core::Panel("references", "References", "navigate", ICON_LC_LINK, StartsAs::Hidden),
+		: Core::Panel("references", "References", "navigate", ICON_LC_LINK, StartsAs::Hidden, Sides::Flush),
 		  m_Workspace(workspace), m_Documents(documents), m_Scheme(scheme), m_Editor(editor),
 		  m_Preview(&semantics)
 	{
@@ -149,12 +150,15 @@ namespace Graphite {
 	{
 		if (!m_Asked)
 		{
+			const Core::PanelMarginScope margin;
 			Core::EmptyState("Shift+F12, or click a reference count, to list a symbol's references.");
 			return;
 		}
 
-		RenderSummary();
-		ImGui::Separator();
+		{
+			const Core::PanelMarginScope margin;
+			RenderSummary();
+		}
 
 		const std::function<void()> drawResults = [this] { RenderResults(); };
 		const std::function<void()> drawPreview = [this] { RenderPreview(); };

@@ -21,6 +21,7 @@
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/Platform/Process.h"
+#include "Core/UI/PanelMarginScope.h"
 
 #include <IconsLucide.h>
 
@@ -81,7 +82,7 @@ namespace Graphite {
 
 	SessionsPanel::SessionsPanel(const Workspace& workspace, const ClaudeSettings& settings,
 								 SessionWindows& windows, LaunchClaude launch)
-		: Core::Panel("sessions", "Claude Sessions", "ai", ICON_LC_BOT, StartsAs::Hidden),
+		: Core::Panel("sessions", "Claude Sessions", "ai", ICON_LC_BOT, StartsAs::Hidden, Sides::Flush),
 		  m_Workspace(workspace), m_Settings(settings), m_Windows(windows), m_Launch(std::move(launch))
 	{
 	}
@@ -529,6 +530,7 @@ namespace Graphite {
 
 		if (visible.empty())
 		{
+			const Core::PanelMarginScope margin;
 			Core::EmptyState(EmptyListMessage(m_InitialScan, m_ScanProgress.Scanned, m_ScanProgress.Total,
 											  limitedToWorkspace, m_Filter)
 								 .c_str());
@@ -599,13 +601,15 @@ namespace Graphite {
 	{
 		// WARNING: The toolbar is drawn even when there is a problem; "New Claude session" is how a machine
 		// with no transcripts gets its first one.
-		RenderToolbar();
-		ImGui::Separator();
-
-		if (m_Problem.has_value())
 		{
-			ImGui::TextWrapped("%s", m_Problem->c_str());
-			return;
+			const Core::PanelMarginScope margin;
+			RenderToolbar();
+
+			if (m_Problem.has_value())
+			{
+				ImGui::TextWrapped("%s", m_Problem->c_str());
+				return;
+			}
 		}
 
 		RenderList();

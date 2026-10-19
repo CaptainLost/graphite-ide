@@ -14,11 +14,40 @@ namespace Core {
 
 	namespace {
 		constexpr float kButtonInset = 4.0f;
+		constexpr float kBoxSide = 24.0f;
+		constexpr float kBoxGlyphSize = 15.0f;
+		constexpr float kBoxRounding = 5.0f;
 		constexpr float kHalf = 0.5f;
 		constexpr float kSeparatorHeightPerFontSize = 0.9f;
 		constexpr float kInvisibleAlpha = 0.0f;
 		constexpr float kNoTextBaseline = -1.0f;
 		constexpr float kSquareCorners = 0.0f;
+
+		float RoundingOf(IconButtonFit fit)
+		{
+			switch (fit)
+			{
+			case IconButtonFit::Bar:
+				return kSquareCorners;
+			case IconButtonFit::Box:
+				return Scaled(kBoxRounding);
+			case IconButtonFit::Frame:
+			case IconButtonFit::Line:
+				break;
+			}
+
+			return ImGui::GetStyle().FrameRounding;
+		}
+
+		ImGuiCol GlyphColourOf(IconButtonRest rest, bool engaged, bool underThePointer)
+		{
+			if (engaged)
+			{
+				return ImGuiCol_CheckMark;
+			}
+
+			return rest == IconButtonRest::Dim && !underThePointer ? ImGuiCol_TextDisabled : ImGuiCol_Text;
+		}
 
 		void DrawFace(const ImRect& rect, const char* glyph, const ImVec4& fill, ImGuiCol glyphColour,
 					  float rounding)
@@ -57,6 +86,11 @@ namespace Core {
 			return ImGui::GetFrameHeight();
 		}
 
+		if (fit == IconButtonFit::Box)
+		{
+			return std::floor(Scaled(kBoxSide));
+		}
+
 		return std::floor(ImGui::GetFontSize() + Scaled(kButtonInset));
 	}
 
@@ -90,9 +124,9 @@ namespace Core {
 		}
 
 		const float size = IconButtonSize(options.Fit);
-		const bool framed = options.Fit != IconButtonFit::Line;
+		const bool framed = options.Fit == IconButtonFit::Frame || options.Fit == IconButtonFit::Bar;
 		const float cellHeight = framed ? ImGui::GetFrameHeight() : size;
-		const float rounding = options.Fit == IconButtonFit::Bar ? kSquareCorners : ImGui::GetStyle().FrameRounding;
+		const float rounding = RoundingOf(options.Fit);
 
 		const ImVec2 cellMin = window->DC.CursorPos;
 		const float squareTop = cellMin.y + std::floor((cellHeight - size) * kHalf);
@@ -116,8 +150,18 @@ namespace Core {
 		const bool held = pressedDown && hovered;
 
 		const ImVec4 fill = IconButtonFill(itemId, hovered, held, engaged);
+		const ImGuiCol glyphColour = GlyphColourOf(options.Rest, engaged, hovered);
 
-		DrawFace(rect, glyph, fill, engaged ? ImGuiCol_CheckMark : ImGuiCol_Text, rounding);
+		if (options.Fit == IconButtonFit::Box)
+		{
+			ImGui::PushFont(nullptr, kBoxGlyphSize);
+			DrawFace(rect, glyph, fill, glyphColour, rounding);
+			ImGui::PopFont();
+		}
+		else
+		{
+			DrawFace(rect, glyph, fill, glyphColour, rounding);
+		}
 
 		ImGui::SetItemTooltip("%s", tooltip);
 

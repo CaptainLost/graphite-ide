@@ -185,10 +185,13 @@ TEST_CASE("A file row with a name far longer than the window does not widen the 
 		ImGui::SetNextWindowSize(ImVec2(windowWidth, 300.0f));
 		ImGui::Begin("##fileRowWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
-		const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
+		{
+			const Graphite::ListBodyScope listBody;
+			const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
 
-		Graphite::ListRowSelectable("##row", false);
-		Graphite::DrawFileRowLabel(layout, Graphite::FileRowLook{.Ink = 0xFFFFFFFFu}, longLabel);
+			Graphite::ListRowSelectable("##row", false);
+			Graphite::DrawFileRowLabel(layout, Graphite::FileRowLook{.Ink = 0xFFFFFFFFu}, longLabel);
+		}
 
 		scrollableWidth = ImGui::GetCurrentWindow()->ScrollMax.x;
 		ImGui::End();
@@ -213,30 +216,35 @@ TEST_CASE("An indented folder row's label starts past its chevron at the indent,
 		ImGui::SetNextWindowSize(ImVec2(300.0f, 200.0f));
 		ImGui::Begin("##folderRowWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
-		ImGui::Indent(indent);
-		expectedLeft = ImGui::GetCursorScreenPos().x + ImGui::GetTreeNodeToLabelSpacing();
-
-		const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
-		const int verticesBefore = ImGui::GetWindowDrawList()->VtxBuffer.Size;
-
-		if (Graphite::ChevronTreeNode("folder", ImGuiTreeNodeFlags_SpanAvailWidth))
 		{
-			ImGui::TreePop();
+			const Graphite::ListBodyScope listBody;
+
+			ImGui::Indent(indent);
+			expectedLeft = ImGui::GetCursorScreenPos().x + Graphite::TreeRowLabelOffset();
+
+			const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
+			const int verticesBefore = ImGui::GetWindowDrawList()->VtxBuffer.Size;
+
+			if (Graphite::ChevronTreeNode("folder", ImGuiTreeNodeFlags_SpanAvailWidth))
+			{
+				ImGui::TreePop();
+			}
+
+			const int labelFrom = ImGui::GetWindowDrawList()->VtxBuffer.Size;
+			constexpr bool kClosed = false;
+			Graphite::DrawTreeRowLabel(layout, Graphite::FolderIconOf(kClosed), "folder", kNoMarker);
+
+			labelLeft = FLT_MAX;
+			const ImDrawList& drawing = *ImGui::GetWindowDrawList();
+			for (int vertex = labelFrom; vertex < drawing.VtxBuffer.Size; ++vertex)
+			{
+				labelLeft = std::min(labelLeft, drawing.VtxBuffer[vertex].pos.x);
+			}
+
+			CHECK(labelFrom > verticesBefore);
+			ImGui::Unindent(indent);
 		}
 
-		const int labelFrom = ImGui::GetWindowDrawList()->VtxBuffer.Size;
-		constexpr bool kClosed = false;
-		Graphite::DrawTreeRowLabel(layout, Graphite::FolderIconOf(kClosed), "folder", kNoMarker);
-
-		labelLeft = FLT_MAX;
-		const ImDrawList& drawing = *ImGui::GetWindowDrawList();
-		for (int vertex = labelFrom; vertex < drawing.VtxBuffer.Size; ++vertex)
-		{
-			labelLeft = std::min(labelLeft, drawing.VtxBuffer[vertex].pos.x);
-		}
-
-		CHECK(labelFrom > verticesBefore);
-		ImGui::Unindent(indent);
 		ImGui::End();
 	});
 
@@ -258,11 +266,16 @@ TEST_CASE("A tree row's note follows its label dim, and the label is cut short f
 		ImGui::SetNextWindowSize(ImVec2(220.0f, 200.0f));
 		ImGui::Begin("##noteWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
-		const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
-		Graphite::ListRowSelectable("##root", false);
-		const int from = ImGui::GetWindowDrawList()->VtxBuffer.Size;
-		Graphite::DrawTreeRowLabel(layout, Graphite::FileIconOf(Graphite::FileKind::Solution), std::string(80, 'D'),
-								   kNoMarker, "(1 project)");
+		int from = 0;
+
+		{
+			const Graphite::ListBodyScope listBody;
+			const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
+			Graphite::ListRowSelectable("##root", false);
+			from = ImGui::GetWindowDrawList()->VtxBuffer.Size;
+			Graphite::DrawTreeRowLabel(layout, Graphite::FileIconOf(Graphite::FileKind::Solution), std::string(80, 'D'),
+									   kNoMarker, "(1 project)");
+		}
 
 		const ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
 		const ImU32 dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
@@ -306,11 +319,16 @@ TEST_CASE("A tree row too narrow for its note beside its label shows the label a
 		ImGui::SetNextWindowSize(ImVec2(110.0f, 200.0f));
 		ImGui::Begin("##narrowNoteWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
-		const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
-		Graphite::ListRowSelectable("##root", false);
-		const int from = ImGui::GetWindowDrawList()->VtxBuffer.Size;
-		Graphite::DrawTreeRowLabel(layout, Graphite::FileIconOf(Graphite::FileKind::Solution), "Demo solution", kNoMarker,
-								   "(12 projects)");
+		int from = 0;
+
+		{
+			const Graphite::ListBodyScope listBody;
+			const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
+			Graphite::ListRowSelectable("##root", false);
+			from = ImGui::GetWindowDrawList()->VtxBuffer.Size;
+			Graphite::DrawTreeRowLabel(layout, Graphite::FileIconOf(Graphite::FileKind::Solution), "Demo solution",
+									   kNoMarker, "(12 projects)");
+		}
 
 		const ImDrawList& drawing = *ImGui::GetWindowDrawList();
 		for (int vertex = from; vertex < drawing.VtxBuffer.Size; ++vertex)
@@ -341,10 +359,13 @@ TEST_CASE("A file row draws its badge in its kind's colour at the label's start 
 		ImGui::SetNextWindowSize(ImVec2(300.0f, 200.0f));
 		ImGui::Begin("##kindRowWindow", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
 
-		layout = Graphite::LayoutFileRow();
-		Graphite::ListRowSelectable("##row", false);
-		const Graphite::FileRowLook look{.Ink = kNameInk, .Icon = Graphite::FileIconOf(Graphite::FileKind::CppSource)};
-		Graphite::DrawFileRowLabel(layout, look, "Main.cpp");
+		{
+			const Graphite::ListBodyScope listBody;
+			layout = Graphite::LayoutFileRow();
+			Graphite::ListRowSelectable("##row", false);
+			const Graphite::FileRowLook look{.Ink = kNameInk, .Icon = Graphite::FileIconOf(Graphite::FileKind::CppSource)};
+			Graphite::DrawFileRowLabel(layout, look, "Main.cpp");
+		}
 
 		const ImDrawList& drawing = *ImGui::GetWindowDrawList();
 		glyph = HorizontalExtentInColour(drawing, Graphite::ColourOf(Graphite::FileKind::CppSource, kDarkScheme));
@@ -377,13 +398,16 @@ TEST_CASE("A folder row draws the outline glyph in the folder grey and its name 
 		ImGui::SetNextWindowSize(ImVec2(300.0f, 200.0f));
 		ImGui::Begin("##folderKindWindow", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
 
-		layout = Graphite::LayoutFileRow();
-		const bool open = Graphite::ChevronTreeNode("folder", ImGuiTreeNodeFlags_SpanAvailWidth);
-		Graphite::DrawTreeRowLabel(layout, Graphite::FolderIconOf(open), "folder", kNoMarker);
-
-		if (open)
 		{
-			ImGui::TreePop();
+			const Graphite::ListBodyScope listBody;
+			layout = Graphite::LayoutFileRow();
+			const bool open = Graphite::ChevronTreeNode("folder", ImGuiTreeNodeFlags_SpanAvailWidth);
+			Graphite::DrawTreeRowLabel(layout, Graphite::FolderIconOf(open), "folder", kNoMarker);
+
+			if (open)
+			{
+				ImGui::TreePop();
+			}
 		}
 
 		const ImDrawList& drawing = *ImGui::GetWindowDrawList();
@@ -439,10 +463,13 @@ TEST_CASE("A row's marker is drawn only when a letter of the label fits beside i
 			ImGui::SetNextWindowSize(ImVec2(windowWidth, 300.0f));
 			ImGui::Begin("##markerWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
-			const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
-			Graphite::ListRowSelectable("##row", false);
-			rightEdge = Graphite::DrawRowMarker(Graphite::RowStatus{}, layout);
-			markerLeftEdge = Graphite::DrawRowMarker(dot, layout);
+			{
+				const Graphite::ListBodyScope listBody;
+				const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
+				Graphite::ListRowSelectable("##row", false);
+				rightEdge = Graphite::DrawRowMarker(Graphite::RowStatus{}, layout);
+				markerLeftEdge = Graphite::DrawRowMarker(dot, layout);
+			}
 
 			ImGui::End();
 		};

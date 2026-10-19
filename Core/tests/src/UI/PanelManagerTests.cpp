@@ -1,10 +1,12 @@
 #include <doctest/doctest.h>
 
 #include "Core/Command/CommandRegistry.h"
+#include "Core/ImGui/DockSpaceHost.h"
 #include "Core/ImGui/TabCloseRequests.h"
 #include "Core/UI/PanelManager.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <memory>
 #include <string>
@@ -16,6 +18,7 @@ namespace {
 	constexpr Core::Timestep kOneFrame{0.016f};
 
 	using StartsAs = Core::Panel::StartsAs;
+	using Sides = Core::Panel::Sides;
 
 	enum class EventResponse
 	{
@@ -27,8 +30,8 @@ namespace {
 	{
 	public:
 		CountingPanel(std::string id, std::string title, std::string menuGroup = "tools",
-					  StartsAs initialVisibility = StartsAs::Visible)
-			: Core::Panel(std::move(id), std::move(title), std::move(menuGroup), kNoIcon, initialVisibility)
+					  StartsAs initialVisibility = StartsAs::Visible, Sides sides = Sides::Padded)
+			: Core::Panel(std::move(id), std::move(title), std::move(menuGroup), kNoIcon, initialVisibility, sides)
 		{
 		}
 
@@ -436,4 +439,118 @@ TEST_CASE("A panel brought forward from a collapsed floating window is expanded"
 	renderFrame();
 
 	CHECK(files->HasBeenDrawnOnLatestFrame());
+}
+
+TEST_CASE("A panel is padded at its sides unless it asks to be flush")
+{
+	const CountingPanel padded{"padded", "Padded"};
+	const CountingPanel flush{"flush", "Flush", "tools", StartsAs::Visible, Sides::Flush};
+
+	CHECK(padded.GetSides() == Sides::Padded);
+	CHECK(flush.GetSides() == Sides::Flush);
+}
+
+namespace {
+
+	constexpr ImVec2 kInterfacePadding{8.0f, 8.0f};
+	constexpr int kDockSettleFrames = 4;
+
+	struct DockedPanels
+	{
+		ImRect ExplorerTab;
+		ImRect ChangesTab;
+		ImVec2 ExplorerPadding;
+		ImVec2 ChangesPadding;
+		float ExplorerContentLeft = 0.0f;
+		float ExplorerLeft = 0.0f;
+	};
+
+	class DockingContext
+	{
+	public:
+		DockingContext()
+			: m_Context(ImGui::CreateContext())
+		{
+			ImGuiIO& imGuiIo = ImGui::GetIO();
+			imGuiIo.DisplaySize = ImVec2(800.0f, 600.0f);
+			imGuiIo.DeltaTime = 1.0f / 60.0f;
+			imGuiIo.IniFilename = nullptr;
+			imGuiIo.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+			imGuiIo.Fonts->Build();
+			ImGui::GetStyle().WindowPadding = kInterfacePadding;
+		}
+
+		~DockingContext() { ImGui::DestroyContext(m_Context); }
+
+		DockingContext(const DockingContext&) = delete;
+		DockingContext& operator=(const DockingContext&) = delete;
+
+	private:
+		ImGuiContext* m_Context = nullptr;
+	};
+
+	// Explorer and Changes docked as tabs of the side column, Explorer flush or padded, drawn by the panel manager.
+	DockedPanels DockedBesideEachOther(Sides explorerSides)
+	{
+		const DockingContext context;
+		Core::DockSpaceHost host;
+		Core::PanelManager panels;
+		Core::TabCloseRequests closeRequests;
+		const Core::Panel* explorer =
+			panels.Add(std::make_unique<CountingPanel>("files", "Explorer", "tools", StartsAs::Visible, explorerSides));
+		const Core::Panel* changes = panels.Add(std::make_unique<CountingPanel>("changes", "Changes"));
+
+		Core::DockLayout layout;
+		layout.Left = {explorer->GetWindowName(), changes->GetWindowName()};
+
+		for (int frame = 0; frame < kDockSettleFrames; ++frame)
+		{
+			ImGui::NewFrame();
+			host.Begin(layout);
+			host.End();
+			panels.OnImGuiRender(closeRequests);
+			ImGui::EndFrame();
+		}
+
+		const ImGuiWindow* explorerWindow = ImGui::FindWindowByName(explorer->GetWindowName().c_str());
+		const ImGuiWindow* changesWindow = ImGui::FindWindowByName(changes->GetWindowName().c_str());
+		REQUIRE(explorerWindow != nullptr);
+		REQUIRE(changesWindow != nullptr);
+		REQUIRE(explorerWindow->DockIsActive);
+		REQUIRE(explorerWindow->DockNode == changesWindow->DockNode);
+
+		return DockedPanels{.ExplorerTab = explorerWindow->DC.DockTabItemRect,
+							.ChangesTab = changesWindow->DC.DockTabItemRect,
+							.ExplorerPadding = explorerWindow->WindowPadding,
+							.ChangesPadding = changesWindow->WindowPadding,
+							.ExplorerContentLeft = explorerWindow->DC.CursorStartPos.x,
+							.ExplorerLeft = explorerWindow->Pos.x};
+	}
+}
+
+TEST_CASE("A flush panel's window has no padding at its sides and keeps the interface's above and below")
+{
+	const DockedPanels docked = DockedBesideEachOther(Sides::Flush);
+
+	CHECK(docked.ExplorerPadding.x == doctest::Approx(0.0f));
+	CHECK(docked.ExplorerPadding.y == doctest::Approx(kInterfacePadding.y));
+	CHECK(docked.ExplorerContentLeft == doctest::Approx(docked.ExplorerLeft));
+	CHECK(docked.ChangesPadding.x == doctest::Approx(kInterfacePadding.x));
+}
+
+TEST_CASE("A flush panel's dock tab stands where it would were the panel padded, and so does the tab beside it")
+{
+	const DockedPanels flush = DockedBesideEachOther(Sides::Flush);
+	const DockedPanels padded = DockedBesideEachOther(Sides::Padded);
+
+	REQUIRE(padded.ExplorerTab.GetWidth() > 0.0f);
+	REQUIRE(padded.ChangesTab.GetWidth() > 0.0f);
+
+	CHECK(flush.ExplorerTab.Min.x == doctest::Approx(padded.ExplorerTab.Min.x));
+	CHECK(flush.ExplorerTab.Min.y == doctest::Approx(padded.ExplorerTab.Min.y));
+	CHECK(flush.ExplorerTab.Max.x == doctest::Approx(padded.ExplorerTab.Max.x));
+	CHECK(flush.ExplorerTab.Max.y == doctest::Approx(padded.ExplorerTab.Max.y));
+	CHECK(flush.ChangesTab.Min.x == doctest::Approx(padded.ChangesTab.Min.x));
+	CHECK(flush.ChangesTab.Max.x == doctest::Approx(padded.ChangesTab.Max.x));
+	CHECK(flush.ChangesTab.Max.y == doctest::Approx(padded.ChangesTab.Max.y));
 }

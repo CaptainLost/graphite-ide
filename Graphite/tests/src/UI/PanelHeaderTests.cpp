@@ -8,12 +8,15 @@
 
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/IconButton.h"
+#include "Core/ImGui/Theme.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
 
 #include <IconsLucide.h>
 
+#include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cstddef>
 #include <optional>
@@ -333,4 +336,118 @@ TEST_CASE("The header leaves ImGui's colour, style, font and id stacks as it fou
 	screen.Next();
 
 	CHECK(screen.StacksKept);
+}
+
+namespace {
+	constexpr float kHeaderButtonSide = 24.0f;
+	constexpr float kBetweenHeaderButtons = 1.0f;
+	constexpr float kHeaderRounding = 5.0f;
+	constexpr float kOnTheTopEdge = 0.01f;
+
+	// The leftmost point of a fill drawn in `colour` along its top edge: a corner rounded r pixels starts r pixels in.
+	std::optional<float> TopEdgeLeftInColour(const ImDrawList& drawing, ImU32 colour)
+	{
+		const std::optional<VerticalExtent> fill = VerticalExtentInColour(drawing, colour);
+
+		if (!fill.has_value())
+		{
+			return std::nullopt;
+		}
+
+		float left = FLT_MAX;
+
+		for (const ImDrawVert& vertex : drawing.VtxBuffer)
+		{
+			if (vertex.col == colour && vertex.pos.y <= fill->Top + kOnTheTopEdge)
+			{
+				left = std::min(left, vertex.pos.x);
+			}
+		}
+
+		return left;
+	}
+}
+
+TEST_CASE("Header icon buttons are dim at rest and text-coloured on hover")
+{
+	HeaderScreen screen;
+	screen.Actions = {{.Id = "##quietRefresh", .Glyph = ICON_LC_REFRESH_CW, .Tooltip = "Refresh"}};
+	const ImVec2 awayFromTheHeader(kIntoTheDropdown, kWideWindow.y - kIntoTheDropdown);
+
+	screen.MoveTo(awayFromTheHeader);
+
+	CHECK(DrawsInColour(HeaderScreen::Drawing(), ImGui::GetColorU32(ImGuiCol_TextDisabled)));
+	CHECK_FALSE(DrawsInColour(HeaderScreen::Drawing(), ImGui::GetColorU32(ImGuiCol_Text)));
+
+	const std::vector<HoveredStretch> buttons = screen.ItemsAcrossTheRow();
+	REQUIRE(buttons.size() == 1);
+	screen.MoveTo(ImVec2(buttons.front().Middle(), screen.RowMiddle()));
+
+	CHECK(DrawsInColour(HeaderScreen::Drawing(), ImGui::GetColorU32(ImGuiCol_Text)));
+	CHECK_FALSE(DrawsInColour(HeaderScreen::Drawing(), ImGui::GetColorU32(ImGuiCol_TextDisabled)));
+}
+
+TEST_CASE("A header's icon buttons are twenty-four pixel boxes a pixel apart, the last ending at the row's end")
+{
+	HeaderScreen screen;
+	screen.Actions = {{.Id = "##boxNewFile", .Glyph = ICON_LC_FILE_PLUS, .Tooltip = "New File"},
+					  {.Id = "##boxRefresh", .Glyph = ICON_LC_REFRESH_CW, .Tooltip = "Refresh"}};
+	screen.Next();
+
+	const std::vector<HoveredStretch> buttons = screen.ItemsAcrossTheRow();
+	REQUIRE(buttons.size() == 2);
+
+	CHECK(buttons[0].To + kOnePixel - buttons[0].From == doctest::Approx(kHeaderButtonSide));
+	CHECK(buttons[1].To + kOnePixel - buttons[1].From == doctest::Approx(kHeaderButtonSide));
+	CHECK(buttons[1].From - (buttons[0].To + kOnePixel) == doctest::Approx(kBetweenHeaderButtons));
+	CHECK(buttons[1].To + kOnePixel == doctest::Approx(screen.ContentRight));
+
+	const HoveredStretch down = screen.ItemDownTheRowAt(buttons[1].Middle());
+	CHECK(down.To + kOnePixel - down.From == doctest::Approx(kHeaderButtonSide));
+	CHECK(StandsInTheMiddleOf(down, screen.RowStart.y, Graphite::kPanelHeaderHeight));
+}
+
+TEST_CASE("A header icon button under the pointer is filled in the hover colour, rounded five pixels")
+{
+	HeaderScreen screen;
+	ImGui::GetStyle().FrameRounding = 0.0f;
+	screen.Actions = {{.Id = "##roundRefresh", .Glyph = ICON_LC_REFRESH_CW, .Tooltip = "Refresh"}};
+	screen.Next();
+
+	const std::vector<HoveredStretch> buttons = screen.ItemsAcrossTheRow();
+	REQUIRE(buttons.size() == 1);
+
+	for (int frame = 0; frame < kFramesPastTheHoverFade; ++frame)
+	{
+		screen.MoveTo(ImVec2(buttons.front().Middle(), screen.RowMiddle()));
+	}
+
+	const std::optional<float> topEdgeLeft =
+		TopEdgeLeftInColour(HeaderScreen::Drawing(), ImGui::GetColorU32(ImGuiCol_ButtonHovered));
+	REQUIRE(topEdgeLeft.has_value());
+	CHECK(std::abs(*topEdgeLeft - (buttons.front().From + kHeaderRounding)) <= kOnePixel);
+}
+
+TEST_CASE("The header's dropdown names its option in the emphasis colour and rounds its hover fill five pixels")
+{
+	constexpr ImVec4 kGreyText{0.84f, 0.86f, 0.89f, 1.0f};
+
+	HeaderScreen screen;
+	ImGui::GetStyle().FrameRounding = 0.0f;
+	ImGui::GetStyle().Colors[ImGuiCol_Text] = kGreyText;
+	screen.Choices = {ModeChoice("##brightMode")};
+	screen.Next();
+
+	CHECK(DrawsInColour(HeaderScreen::Drawing(), Core::EmphasisText()));
+	CHECK_FALSE(DrawsInColour(HeaderScreen::Drawing(), ImGui::GetColorU32(ImGuiCol_Text)));
+
+	for (int frame = 0; frame < kFramesPastTheHoverFade; ++frame)
+	{
+		screen.MoveTo(ImVec2(screen.RowStart.x + kIntoTheDropdown, screen.RowMiddle()));
+	}
+
+	const std::optional<float> topEdgeLeft =
+		TopEdgeLeftInColour(HeaderScreen::Drawing(), ImGui::GetColorU32(ImGuiCol_ButtonHovered));
+	REQUIRE(topEdgeLeft.has_value());
+	CHECK(std::abs(*topEdgeLeft - (screen.RowStart.x + kHeaderRounding)) <= kOnePixel);
 }

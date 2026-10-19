@@ -6,6 +6,7 @@
 #include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/Theme.h"
 #include "Core/ImGui/UiScale.h"
 
 #include <IconsLucide.h>
@@ -29,7 +30,8 @@ namespace Graphite {
 		constexpr float kNameToChevronGap = 5.0f;
 		constexpr float kBetweenDropdowns = 2.0f;
 		constexpr float kBeforeActions = 8.0f;
-		constexpr float kBetweenActions = 2.0f;
+		constexpr float kBetweenActions = 1.0f;
+		constexpr float kDropdownRounding = 5.0f;
 		constexpr float kBelowDropdown = 2.0f;
 		constexpr float kHalf = 0.5f;
 		constexpr float kInvisibleAlpha = 0.0f;
@@ -40,6 +42,7 @@ namespace Graphite {
 		constexpr const char* kDropdownId = "##dropdown";
 		constexpr const char* kOptionsId = "##options";
 		constexpr const char* kChevron = ICON_LC_CHEVRON_DOWN;
+		constexpr Core::IconButtonOptions kAction{.Fit = Core::IconButtonFit::Box, .Rest = Core::IconButtonRest::Dim};
 
 		using ChoiceWidths = std::array<float, kPanelHeaderMostChoices>;
 
@@ -114,7 +117,7 @@ namespace Graphite {
 
 			if (fill.w > 0.0f)
 			{
-				drawList->AddRectFilled(rect.Min, rect.Max, ImGui::GetColorU32(fill), ImGui::GetStyle().FrameRounding);
+				drawList->AddRectFilled(rect.Min, rect.Max, ImGui::GetColorU32(fill), Core::Scaled(kDropdownRounding));
 			}
 
 			const float padding = Core::Scaled(kDropdownPadding);
@@ -124,7 +127,7 @@ namespace Graphite {
 
 			ImGui::PushFont(Core::ImGuiRenderer::GetBoldFont(), kKeepFontSize);
 			const std::string shownName = FitToWidth(name, nameRoom);
-			drawList->AddText(ImVec2(rect.Min.x + padding, textTop), ImGui::GetColorU32(ImGuiCol_Text), shownName.c_str());
+			drawList->AddText(ImVec2(rect.Min.x + padding, textTop), Core::EmphasisText(), shownName.c_str());
 			ImGui::PopFont();
 
 			const float chevronLeft = rect.Max.x - padding - chevronWidth;
@@ -201,14 +204,14 @@ namespace Graphite {
 				return 0.0f;
 			}
 
-			const float buttons = Core::IconButtonSize() * static_cast<float>(count);
+			const float buttons = Core::IconButtonSize(kAction.Fit) * static_cast<float>(count);
 			return buttons + Core::Scaled(kBetweenActions) * static_cast<float>(count - 1);
 		}
 
 		std::optional<std::size_t> DrawActions(std::span<const PanelHeaderAction> actions, float left, float rowTop,
 											   float rowHeight)
 		{
-			const float cellTop = rowTop + std::floor((rowHeight - ImGui::GetFrameHeight()) * kHalf);
+			const float buttonTop = rowTop + std::floor((rowHeight - Core::IconButtonSize(kAction.Fit)) * kHalf);
 			std::optional<std::size_t> clicked;
 			float x = left;
 
@@ -216,14 +219,14 @@ namespace Graphite {
 			{
 				const PanelHeaderAction& action = actions[index];
 
-				ImGui::SetCursorScreenPos(ImVec2(x, cellTop));
+				ImGui::SetCursorScreenPos(ImVec2(x, buttonTop));
 
-				if (Core::DrawIconButton(action.Id, action.Glyph, kNotEngaged, action.Tooltip))
+				if (Core::DrawIconButton(action.Id, action.Glyph, kNotEngaged, action.Tooltip, kAction))
 				{
 					clicked = index;
 				}
 
-				x += Core::IconButtonSize() + Core::Scaled(kBetweenActions);
+				x += Core::IconButtonSize(kAction.Fit) + Core::Scaled(kBetweenActions);
 			}
 
 			return clicked;

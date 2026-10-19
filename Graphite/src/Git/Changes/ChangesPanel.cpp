@@ -31,6 +31,7 @@
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
+#include "Core/UI/PanelMarginScope.h"
 
 #include <IconsLucide.h>
 #include <imgui.h>
@@ -69,13 +70,7 @@ namespace Graphite {
 
 		float CommitBoxHeight()
 		{
-			const ImGuiStyle& style = ImGui::GetStyle();
-
-			// WARNING: Separator draws at least one pixel thick, whatever SeparatorSize says.
-			const float separatorThickness = std::max(style.SeparatorSize, 1.0f);
-
-			return separatorThickness + style.ItemSpacing.y + MessageBoxHeight() +
-				   style.ItemSpacing.y + ImGui::GetFrameHeight();
+			return MessageBoxHeight() + ImGui::GetStyle().ItemSpacing.y + ImGui::GetFrameHeight();
 		}
 
 		// WARNING: Icons are not all equally wide, so this is the badge's box and not a measured glyph: the column
@@ -161,7 +156,8 @@ namespace Graphite {
 							   const Core::DocumentSet& documents,
 							   DocumentWindows& documentWindows, const ActiveScheme& scheme,
 							   DiffWindows& diffWindows, Core::EventBus& events)
-		: Core::Panel("changes", "Changes", "git", ICON_LC_FILE_DIFF), m_Model(model), m_Documents(documents),
+		: Core::Panel("changes", "Changes", "git", ICON_LC_FILE_DIFF, StartsAs::Visible, Sides::Flush),
+		  m_Model(model), m_Documents(documents),
 		  m_DocumentWindows(documentWindows), m_Scheme(scheme), m_DiffWindows(diffWindows), m_Events(events),
 		  m_DiscardQuestion(modals, "Discard changes?"), m_StashQuestion(modals, "Stash changes")
 	{
@@ -270,6 +266,7 @@ namespace Graphite {
 
 			constexpr bool kHasStatus = false;
 			const std::optional<Core::Error>& statusError = m_Model.GetStatusError();
+			const Core::PanelMarginScope margin;
 
 			if (IsMissingRepository(kHasStatus, statusError))
 			{
@@ -884,12 +881,11 @@ namespace Graphite {
 
 	void ChangesPanel::RenderCommitBox()
 	{
+		const Core::PanelMarginScope margin;
 		const bool writeInFlight = m_Model.IsWriteInFlight();
 
 		const float rowPadding = RowPadding();
 		const float boxWidth = ImGui::GetContentRegionAvail().x - rowPadding * 2.0f;
-
-		ImGui::Separator();
 
 		ImGui::BeginDisabled(writeInFlight);
 

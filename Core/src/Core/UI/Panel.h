@@ -18,13 +18,21 @@ namespace Core {
 			Hidden
 		};
 
+		// WARNING: A flush panel's window has no padding at its sides, so that its lists reach its edges. Whatever
+		// else it draws loses the padding too, unless it is drawn inside a Core::PanelMarginScope.
+		enum class Sides
+		{
+			Padded,
+			Flush
+		};
+
 		// The menu group has no default: a panel that named none would land in a group no menu
 		// draws and vanish from the view menu.
 		Panel(std::string id, std::string title, std::string menuGroup, std::string icon,
-			  StartsAs initialVisibility = StartsAs::Visible)
+			  StartsAs initialVisibility = StartsAs::Visible, Sides sides = Sides::Padded)
 			: m_Id(std::move(id)), m_Title(std::move(title)), m_MenuGroup(std::move(menuGroup)),
 			  m_Icon(std::move(icon)), m_Visible(initialVisibility == StartsAs::Visible),
-			  m_DefaultVisible(initialVisibility == StartsAs::Visible)
+			  m_DefaultVisible(initialVisibility == StartsAs::Visible), m_Sides(sides)
 		{
 		}
 
@@ -56,6 +64,8 @@ namespace Core {
 
 		bool IsDefaultVisible() const { return m_DefaultVisible; }
 
+		Sides GetSides() const { return m_Sides; }
+
 		// A request rather than an immediate focus: a panel that was hidden has no window yet
 		// for ImGui to focus.
 		void RequestFocus() { m_FocusRequested = true; }
@@ -80,6 +90,7 @@ namespace Core {
 		std::string m_Icon;
 		bool m_Visible = true;
 		bool m_DefaultVisible = true;
+		Sides m_Sides = Sides::Padded;
 		bool m_BodyRanOnLatestFrame = false;
 		bool m_FocusRequested = false;
 	};
