@@ -1029,19 +1029,23 @@ namespace Graphite {
 		}
 
 		bool workingTreeHasChanges = false;
+		std::optional<std::string> titleBranch;
 
 		{
 			const Core::Ref<const Core::HeadState> head = m_Git.GetHead();
 			const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches();
 			const Core::Ref<const Core::WorkingTreeStatus> gitStatus = m_Git.GetStatus();
 
-			messages.Git = GitStatusText({
+			const GitStatusInputs gitStatusInputs{
 				.FolderOpen = m_Workspace.IsOpen(),
 				.MissingRepository = IsMissingRepository(gitStatus != nullptr, m_Git.GetStatusError()),
 				.Head = head.get(),
 				.Branches = branches.get(),
 				.Status = gitStatus.get(),
-			});
+			};
+
+			messages.Git = GitStatusText(gitStatusInputs);
+			titleBranch = GitBranchLabel(gitStatusInputs);
 
 			workingTreeHasChanges = gitStatus != nullptr && !gitStatus->Entries.empty();
 		}
@@ -1106,7 +1110,15 @@ namespace Graphite {
 					ApplyToolStripClick(*clicked);
 				}
 			});
-		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.MenuBarHeight, [this] { m_TitleBar.RenderLogo(Core::Application::Get().GetWindow()); }, [this] { m_TitleBar.Render(Core::Application::Get().GetWindow()); });
+		TitleContext titleContext;
+
+		if (m_Workspace.IsOpen())
+		{
+			titleContext.Folder = FolderLabel(m_Workspace.GetRoot());
+			titleContext.Branch = titleBranch;
+		}
+
+		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.MenuBarHeight, [this] { m_TitleBar.RenderLogo(Core::Application::Get().GetWindow()); }, [this, &titleContext] { m_TitleBar.Render(Core::Application::Get().GetWindow(), titleContext); });
 		RenderEmptyEditorArea();
 		m_DockSpace.End();
 

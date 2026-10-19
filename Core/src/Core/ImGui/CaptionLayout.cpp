@@ -13,8 +13,8 @@ namespace Core {
 		}
 	}
 
-	CaptionLayout LayOutCaption(float barWidth, float barHeight, float buttonWidth,
-								float versionWidth, float versionGap, float contentLeft)
+	CaptionLayout LayOutCaption(float barWidth, float barHeight, float buttonWidth, float contentLeft,
+								const CaptionTitleWidths& widths, const CaptionTitleSpacing& spacing)
 	{
 		CaptionLayout layout;
 
@@ -23,9 +23,28 @@ namespace Core {
 		layout.Maximize = RectAcrossBar(layout.Close.X - buttonWidth, buttonWidth, barHeight);
 		layout.Minimize = RectAcrossBar(layout.Maximize.X - buttonWidth, buttonWidth, barHeight);
 
-		const float versionLeft = layout.Minimize.X - versionGap - versionWidth;
-		layout.Version = RectAcrossBar(versionLeft, versionWidth, barHeight);
-		layout.VersionVisible = versionLeft >= contentLeft;
+		if (widths.Folder <= 0.0f)
+		{
+			return layout;
+		}
+
+		const float limit = layout.Minimize.X - spacing.ButtonsGap;
+
+		const float dividerLeft = contentLeft + spacing.Margin;
+		const float folderLeft = dividerLeft + spacing.DividerWidth + spacing.Margin;
+
+		layout.Divider = RectAcrossBar(dividerLeft, spacing.DividerWidth, barHeight);
+		layout.Folder = RectAcrossBar(folderLeft, widths.Folder, barHeight);
+		layout.FolderVisible = folderLeft + widths.Folder <= limit;
+		layout.DividerVisible = layout.FolderVisible;
+
+		if (widths.Branch > 0.0f)
+		{
+			const float branchLeft = folderLeft + widths.Folder + spacing.GroupGap;
+
+			layout.Branch = RectAcrossBar(branchLeft, widths.Branch, barHeight);
+			layout.BranchVisible = layout.FolderVisible && branchLeft + widths.Branch <= limit;
+		}
 
 		return layout;
 	}

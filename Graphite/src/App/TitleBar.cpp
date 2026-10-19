@@ -1,8 +1,7 @@
 #include "App/TitleBar.h"
 
 #include "App/Logo.h"
-#include "App/Version.h"
-
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/ImGui/CaptionLayout.h"
 #include "Core/ImGui/Animation.h"
@@ -13,13 +12,18 @@
 #include <imgui.h>
 
 #include <cmath>
-#include <format>
+#include <string>
 
 namespace Graphite {
 
 	namespace {
 		constexpr float kButtonWidth = 46.0f;
-		constexpr float kVersionGap = 12.0f;
+		constexpr float kButtonsGap = 12.0f;
+		constexpr float kTitleMargin = 12.0f;
+		constexpr float kDividerWidth = 1.0f;
+		constexpr float kDividerHeightRatio = 0.5f;
+		constexpr float kGroupGap = 16.0f;
+		constexpr float kGlyphGap = 6.0f;
 
 		constexpr float kLogoHeightRatio = 0.6f;
 
@@ -66,11 +70,38 @@ namespace Graphite {
 			return pressed;
 		}
 
-		void DrawVersionLabel(const Core::CaptionRect& slot, const std::string& version)
+		float GroupWidth(const char* glyph, const std::optional<std::string>& label)
 		{
-			// WARNING: Do not centre the label on y. BeginMenuBar() already called AlignTextToFramePadding() and that baseline offset survives SetCursorPos, so a second one pushes the label low.
-			ImGui::SetCursorPos(ImVec2(slot.X, 0.0f));
-			ImGui::TextDisabled("%s", version.c_str());
+			if (!label.has_value())
+			{
+				return 0.0f;
+			}
+
+			return ImGui::CalcTextSize(glyph).x + Core::Scaled(kGlyphGap) + ImGui::CalcTextSize(label->c_str()).x;
+		}
+
+		void DrawGroup(const Core::CaptionRect& slot, const char* glyph, const std::string& label)
+		{
+			// WARNING: Place the text from the window origin and the line height, not through the cursor: BeginMenuBar() already called AlignTextToFramePadding() and that baseline offset survives SetCursorPos, so centring on top of it pushes the label low.
+			const ImVec2 origin = ImGui::GetWindowPos();
+			const float top = std::floor(origin.y + slot.Y + (slot.Height - ImGui::GetTextLineHeight()) * kHalf);
+			const float left = std::floor(origin.x + slot.X);
+
+			ImDrawList* drawList = ImGui::GetWindowDrawList();
+			drawList->AddText(ImVec2(left, top), ImGui::GetColorU32(ImGuiCol_TextDisabled), glyph);
+			drawList->AddText(ImVec2(left + ImGui::CalcTextSize(glyph).x + Core::Scaled(kGlyphGap), top),
+							  ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
+		}
+
+		void DrawDivider(const Core::CaptionRect& slot)
+		{
+			const ImVec2 origin = ImGui::GetWindowPos();
+			const float height = std::round(slot.Height * kDividerHeightRatio);
+			const float top = std::floor(origin.y + slot.Y + (slot.Height - height) * kHalf);
+			const float left = std::floor(origin.x + slot.X);
+
+			ImGui::GetWindowDrawList()->AddRectFilled(ImVec2(left, top), ImVec2(left + slot.Width, top + height),
+													  ImGui::GetColorU32(ImGuiCol_Border));
 		}
 
 		Core::CaptionMetrics MeasureDragRegion(float dragBegin, float dragEnd)
@@ -154,27 +185,60 @@ namespace Graphite {
 		ImGui::Dummy(ImVec2(width + halfItemSpacing, 0.0f));
 	}
 
-	void TitleBar::Render(Core::Window& window)
+	std::string FolderLabel(const std::filesystem::path& root)
+	{
+		const std::filesystem::path name = root.has_filename() ? root.filename() : root.parent_path().filename();
+
+		return Core::ToUtf8(name.empty() ? root : name);
+	}
+
+	Core::CaptionLayout DrawTitle(const TitleContext& context, float menuEnd, float barWidth)
+	{
+		const Core::CaptionTitleWidths widths{
+			.Folder = GroupWidth(ICON_MDI_FOLDER_OUTLINE, context.Folder),
+			.Branch = context.Folder.has_value() ? GroupWidth(ICON_MDI_SOURCE_BRANCH, context.Branch) : 0.0f,
+		};
+
+		const Core::CaptionTitleSpacing spacing{
+			.Margin = Core::Scaled(kTitleMargin),
+			.DividerWidth = Core::Scaled(kDividerWidth),
+			.GroupGap = Core::Scaled(kGroupGap),
+			.ButtonsGap = Core::Scaled(kButtonsGap),
+		};
+
+		const Core::CaptionLayout layout = Core::LayOutCaption(
+			barWidth, Core::Scaled(kCaptionHeight), Core::Scaled(kButtonWidth), menuEnd, widths, spacing);
+
+		if (layout.DividerVisible)
+		{
+			DrawDivider(layout.Divider);
+		}
+
+		if (layout.FolderVisible)
+		{
+			DrawGroup(layout.Folder, ICON_MDI_FOLDER_OUTLINE, *context.Folder);
+		}
+
+		if (layout.BranchVisible)
+		{
+			DrawGroup(layout.Branch, ICON_MDI_SOURCE_BRANCH, *context.Branch);
+		}
+
+		return layout;
+	}
+
+	void TitleBar::Render(Core::Window& window, const TitleContext& context)
 	{
 		if (!window.HasCustomTitleBar())
 		{
 			return;
 		}
 
-		const std::string version = std::format("Graphite {}", Version::String());
-		const float versionWidth = ImGui::CalcTextSize(version.c_str()).x;
-
 		const float menuEnd = ImGui::GetCursorPosX();
 
 		const float dockspaceHostWidth = ImGui::GetWindowWidth();
 
-		const Core::CaptionLayout layout = Core::LayOutCaption(
-			dockspaceHostWidth, Core::Scaled(kCaptionHeight), Core::Scaled(kButtonWidth), versionWidth, Core::Scaled(kVersionGap), menuEnd);
-
-		if (layout.VersionVisible)
-		{
-			DrawVersionLabel(layout.Version, version);
-		}
+		const Core::CaptionLayout layout = DrawTitle(context, menuEnd, dockspaceHostWidth);
 
 		const Core::CaptionMetrics metrics = MeasureDragRegion(menuEnd, layout.Minimize.X);
 

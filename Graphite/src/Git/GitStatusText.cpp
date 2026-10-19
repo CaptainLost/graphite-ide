@@ -9,11 +9,14 @@
 
 #include <cstddef>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace Graphite {
 
 	namespace {
+
+		constexpr const char* kBranchGlyphPrefix = ICON_MDI_SOURCE_BRANCH " ";
 
 		const char* OperationName(Core::RepositoryOperation operation)
 		{
@@ -129,7 +132,7 @@ namespace Graphite {
 
 		GitStatusSegment segment;
 		segment.HasRepository = true;
-		segment.Branch = ICON_MDI_SOURCE_BRANCH " ";
+		segment.Branch = kBranchGlyphPrefix;
 
 		switch (head.Kind)
 		{
@@ -184,5 +187,17 @@ namespace Graphite {
 		}
 
 		return segment;
+	}
+
+	std::optional<std::string> GitBranchLabel(const GitStatusInputs& inputs)
+	{
+		const std::optional<GitStatusSegment> segment = GitStatusText(inputs);
+
+		if (!segment.has_value() || !segment->HasRepository)
+		{
+			return std::nullopt;
+		}
+
+		return segment->Branch.substr(std::string_view{kBranchGlyphPrefix}.size());
 	}
 }

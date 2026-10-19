@@ -258,3 +258,28 @@ TEST_CASE("The change count is one per changed path, and absent when clean")
 	CHECK(severalChanges->Changes == kChanges + "3 changes");
 	CHECK(severalChanges->ChangesTooltip == "3 uncommitted changes. Click to show them in Changes.");
 }
+
+TEST_CASE("The branch label is the status text's branch without its glyph")
+{
+	const Core::HeadState head = HeadOnBranch("main");
+
+	CHECK(Graphite::GitBranchLabel({.FolderOpen = true, .Head = &head}) == "main");
+
+	Core::HeadState detached;
+	detached.Kind = Core::HeadKind::Detached;
+	detached.Commit = HeadOnBranch("x").Commit;
+	const std::optional<std::string> label = Graphite::GitBranchLabel({.FolderOpen = true, .Head = &detached});
+
+	REQUIRE(label.has_value());
+	CHECK(label->ends_with(" (detached)"));
+	CHECK(*label == GitStatusText({.FolderOpen = true, .Head = &detached})->Branch.substr(kBranch.size()));
+}
+
+TEST_CASE("The branch label is absent with no folder or no repository")
+{
+	const Core::HeadState head = HeadOnBranch("main");
+
+	CHECK_FALSE(Graphite::GitBranchLabel({.Head = &head}).has_value());
+	CHECK_FALSE(Graphite::GitBranchLabel({.FolderOpen = true, .MissingRepository = true}).has_value());
+	CHECK_FALSE(Graphite::GitBranchLabel({.FolderOpen = true}).has_value());
+}
