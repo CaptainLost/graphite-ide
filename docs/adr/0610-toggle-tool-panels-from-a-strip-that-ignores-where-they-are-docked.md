@@ -71,6 +71,11 @@ tab.
   glyph is centred by the same `Core::DrawCentredGlyph` both use, so the two
   cannot drift apart there.
 
+Amended by [0614](0614-mark-an-open-tool-panel-with-an-accent-bar-at-the-strip-s-edge.md):
+an open item is marked by a 2 px accent bar at the strip's left edge instead of
+the `SurfaceActive` fill, the fill now means hover alone, and the strip draws no
+border at its right edge.
+
 ## Rationale
 
 The reader asked for switches with state, and docking is what puts a panel where
