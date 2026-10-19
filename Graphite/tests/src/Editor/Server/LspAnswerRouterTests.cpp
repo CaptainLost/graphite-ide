@@ -470,6 +470,30 @@ TEST_CASE("An edit asks for declarations again at once rather than on the retry 
 	CHECK(harness.Server.CountOf("symbols") == 2);
 }
 
+TEST_CASE("Declarations wanted while a question is outstanding are asked for again once it answers")
+{
+	Harness harness;
+
+	harness.Router.Track(kSource);
+	harness.Router.AskSymbolsIfDue(kSource);
+
+	harness.Router.WantSymbolsNow(kSource);
+	harness.Router.AskSymbolsIfDue(kSource);
+	REQUIRE(harness.Server.CountOf("symbols") == 1);
+
+	harness.Server.Reply(harness.Server.LastOf("symbols"));
+	harness.Router.Collect(harness.Target);
+	harness.Router.AskSymbolsIfDue(kSource);
+
+	CHECK(harness.Server.CountOf("symbols") == 2);
+
+	harness.Server.Reply(harness.Server.LastOf("symbols"));
+	harness.Router.Collect(harness.Target);
+	harness.Router.AskSymbolsIfDue(kSource);
+
+	CHECK(harness.Server.CountOf("symbols") == 2);
+}
+
 TEST_CASE("A restarted server is asked for everything again and the counts in flight are dropped")
 {
 	Harness harness;

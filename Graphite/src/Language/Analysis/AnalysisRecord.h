@@ -11,7 +11,7 @@
 
 namespace Graphite {
 
-	inline constexpr std::uint32_t kAnalysisRecordVersion = 1;
+	inline constexpr std::uint32_t kAnalysisRecordVersion = 2;
 
 	inline constexpr std::string_view kAnalysisMagic = "GRAF";
 

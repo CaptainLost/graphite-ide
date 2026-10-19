@@ -586,7 +586,7 @@ namespace Graphite {
 
 		if (const Core::Result<void> result = Core::SaveDocument(m_Documents, index))
 		{
-			m_Server.SaveDocument(item.Path, LanguageOfPath(item.Path));
+			m_DocumentStates.NoteSaved(item.Path);
 
 			SetTransientMessage(fileName + " saved");
 			return true;
@@ -679,6 +679,11 @@ namespace Graphite {
 	{
 		const Core::SaveAllReport report = Core::SaveAllModified(m_Documents);
 
+		for (const std::filesystem::path& saved : report.Saved)
+		{
+			m_DocumentStates.NoteSaved(saved);
+		}
+
 		if (report.StoppedAt)
 		{
 			ReportSaveFailure(report.StoppedAt->Path, report.StoppedAt->Error);
@@ -686,9 +691,9 @@ namespace Graphite {
 			return report.IsComplete();
 		}
 
-		if (report.Saved > 0)
+		if (!report.Saved.empty())
 		{
-			SetTransientMessage(SavedCount(report.Saved));
+			SetTransientMessage(SavedCount(report.Saved.size()));
 		}
 
 		if (!report.Conflicted.empty())
@@ -1351,7 +1356,7 @@ namespace Graphite {
 
 	void DocumentWindows::DropInFlightCounts(const std::filesystem::path& path, LensState& state)
 	{
-		state.Asked.clear();
+		state.Model.ForgetAsked();
 
 		m_Router.DropCounts(path);
 	}
@@ -1408,15 +1413,8 @@ namespace Graphite {
 			frame.FirstVisibleRow > margin ? frame.FirstVisibleRow - margin : 0;
 		const std::size_t endRowWanted = frame.LastVisibleRow + margin + 1;
 
-		for (const std::size_t row : state.Model.RowsNeedingCounts(firstRowWanted, endRowWanted))
+		for (const std::size_t row : state.Model.TakeRowsToAsk(firstRowWanted, endRowWanted))
 		{
-			if (state.Asked.contains(row))
-			{
-				continue;
-			}
-
-			state.Asked.insert(row);
-
 			const Lens* lens = state.Model.LensAt(row);
 
 			if (lens == nullptr)
@@ -1440,7 +1438,7 @@ namespace Graphite {
 
 		if (m_Router.NoteServerState(item.Path))
 		{
-			state.Asked.clear();
+			state.Model.ForgetAsked();
 		}
 
 		if (m_DocumentStates.SendChangeIfMoved(item.Path, *item.Document))
@@ -1454,7 +1452,7 @@ namespace Graphite {
 										item.Document->GetBuffer(), item.TabWidth);
 			state.BuiltAt = item.ColumnsPerWrappedRow;
 			state.NeedsRebuild = false;
-			state.Asked.clear();
+			state.Model.ForgetAsked();
 		}
 
 		m_Router.AskSymbolsIfDue(item.Path);
@@ -1488,8 +1486,6 @@ namespace Graphite {
 		state.HaveDeclarations = true;
 		state.Model.SetDeclarations(state.Declarations, item.Rows, buffer, item.TabWidth);
 		state.BuiltAt = item.ColumnsPerWrappedRow;
-
-		state.Asked.clear();
 
 		return true;
 	}
@@ -2011,6 +2007,7 @@ namespace Graphite {
 				view.ChangeDisplay = changeDisplay;
 				view.Scheme = &scheme;
 				view.Lens = lens != nullptr ? &lens->Model : nullptr;
+				view.Declarations = lens != nullptr ? &lens->Declarations : nullptr;
 
 				if (item.Document)
 				{

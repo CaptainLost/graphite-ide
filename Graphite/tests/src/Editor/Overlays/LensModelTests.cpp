@@ -193,3 +193,90 @@ TEST_CASE("A remembered count whose declaration is gone is left behind")
 	CHECK_FALSE(model.LensAt(1)->CountKnown);
 	CHECK(model.KnownCounts().empty());
 }
+
+TEST_CASE("A lens asked about is not offered again until the asking is forgotten")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({Function("Draw", 1)}, rows, buffer, 4);
+
+	CHECK(model.TakeRowsToAsk(0, 4) == std::vector<std::size_t>{1});
+	CHECK(model.TakeRowsToAsk(0, 4).empty());
+	CHECK(model.RowsNeedingCounts(0, 4) == std::vector<std::size_t>{1});
+
+	model.ForgetAsked();
+
+	CHECK(model.TakeRowsToAsk(0, 4) == std::vector<std::size_t>{1});
+}
+
+TEST_CASE("A symbols answer after a save keeps the lens reference counts")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\ne\nf\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({Function("Draw", 1), Function("Update", 3)}, rows, buffer, 4);
+	REQUIRE(model.TakeRowsToAsk(0, 6) == std::vector<std::size_t>{1, 3});
+	model.SetCount(1, 12);
+
+	model.SetDeclarations({Function("Draw", 1), Function("Update", 3), Function("Added", 5)}, rows, buffer, 4);
+
+	REQUIRE(model.LensAt(1) != nullptr);
+	CHECK(model.LensAt(1)->CountKnown);
+	CHECK(model.LensAt(1)->Count == 12);
+	CHECK(model.TakeRowsToAsk(0, 6) == std::vector<std::size_t>{5});
+}
+
+TEST_CASE("Overloads keep their own counts across a symbols answer")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\ne\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({Function("Draw", 1), Function("Draw", 3)}, rows, buffer, 4);
+	model.SetCount(1, 5);
+	model.SetCount(3, 7);
+
+	model.SetDeclarations({Function("Draw", 0), Function("Draw", 1), Function("Draw", 3)}, rows, buffer, 4);
+
+	CHECK(model.LensAt(1)->Count == 5);
+	CHECK(model.LensAt(3)->Count == 7);
+	CHECK_FALSE(model.LensAt(0)->CountKnown);
+}
+
+TEST_CASE("Overloads that all moved to other rows keep their counts in order")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\ne\nf\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({Function("Draw", 1), Function("Draw", 3)}, rows, buffer, 4);
+	model.SetCount(1, 5);
+	model.SetCount(3, 7);
+
+	model.SetDeclarations({Function("Draw", 2), Function("Draw", 5)}, rows, buffer, 4);
+
+	CHECK(model.LensAt(2)->Count == 5);
+	CHECK(model.LensAt(5)->Count == 7);
+}
+
+TEST_CASE("A lens whose declaration moved to another row is asked about again, as its question named the old row")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({Function("Draw", 1)}, rows, buffer, 4);
+	REQUIRE(model.TakeRowsToAsk(0, 4) == std::vector<std::size_t>{1});
+
+	model.SetDeclarations({Function("Draw", 2)}, rows, buffer, 4);
+
+	CHECK(model.TakeRowsToAsk(0, 4) == std::vector<std::size_t>{2});
+}

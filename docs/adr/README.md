@@ -651,4 +651,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0619](0619-show-the-open-folder-and-branch-in-the-title-bar.md) | Show the open folder and branch in the title bar | proposed | 2026-10-19 |
 | [0620](0620-show-problems-and-the-server-s-health-as-glyphs-and-colours-in-the-status-bar.md) | Show problems and the server's health as glyphs and colours in the status bar | proposed | 2026-10-19 |
 | [0621](0621-space-editor-lines-at-1-4-times-the-font-size.md) | Space editor lines at 1.4 times the font size | proposed | 2026-10-19 |
+| [0622](0622-keep-document-symbols-ranges-and-nesting-and-ask-for-them-again-after-each-save.md) | Keep document symbols' ranges and nesting and ask for them again after each save | proposed | 2026-10-19 |
 <!-- /adr-index -->

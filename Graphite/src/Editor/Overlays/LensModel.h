@@ -49,6 +49,10 @@ namespace Graphite {
 
 		std::vector<std::size_t> RowsNeedingCounts(std::size_t fromRow, std::size_t toRow) const;
 
+		std::vector<std::size_t> TakeRowsToAsk(std::size_t fromRow, std::size_t toRow);
+
+		void ForgetAsked();
+
 		const LensRows& GetRows() const { return m_Rows; }
 
 		const Lens* LensAt(std::size_t documentRow) const;
@@ -63,7 +67,10 @@ namespace Graphite {
 			Lens LensValue;
 			std::string Name;
 			DeclarationKind Kind = DeclarationKind::Other;
+			bool Asked = false;
 		};
+
+		void CarryOverInto(std::vector<Entry>& next);
 
 		static bool ByDocumentRow(const Entry& left, const Entry& right);
 		static bool SameDocumentRow(const Entry& left, const Entry& right);

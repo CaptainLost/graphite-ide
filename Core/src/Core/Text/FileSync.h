@@ -32,7 +32,7 @@ namespace Core {
 
 	struct SaveAllReport
 	{
-		std::size_t Saved = 0;
+		std::vector<std::filesystem::path> Saved;
 
 		std::vector<std::filesystem::path> Conflicted;
 

@@ -15,6 +15,9 @@ didChange was sent from `UpdateLenses` when the tab drawn that frame reported `E
 - A document that leaves the store is closed with its server and forgotten.
 - A reload sends its didChange at once, through `DocumentStates`, so the frame asks the server nothing against stale text. Nothing resends it, because `DocumentStates` records the change sequence it sent.
 
+Amended by [0622](0622-keep-document-symbols-ranges-and-nesting-and-ask-for-them-again-after-each-save.md):
+a successful save goes through `DocumentStates` too, which sends didSave and asks for the document's symbols again.
+
 ## Rationale
 
 - The document, not the tab, is what the server holds.

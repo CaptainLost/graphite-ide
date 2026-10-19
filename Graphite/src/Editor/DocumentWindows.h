@@ -172,8 +172,6 @@ namespace Graphite {
 
 			bool HaveDeclarations = false;
 
-			std::set<std::size_t> Asked;
-
 			bool WasModified = false;
 
 			bool NeedsRebuild = false;

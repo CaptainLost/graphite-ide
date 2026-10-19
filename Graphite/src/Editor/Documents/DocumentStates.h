@@ -60,6 +60,8 @@ namespace Graphite {
 
 		std::vector<std::filesystem::path> SendChanges(const Core::DocumentStore& store);
 
+		void NoteSaved(const std::filesystem::path& path);
+
 		void Prune(const Core::DocumentStore& store);
 
 	private:

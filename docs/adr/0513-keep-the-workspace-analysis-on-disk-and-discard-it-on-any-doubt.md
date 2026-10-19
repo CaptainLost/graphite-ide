@@ -59,6 +59,10 @@ by a worker and read on the UI thread.
   and the store together. A store filled only by the pass would forget every
   file a reader opened before the walk reached it.
 
+Amended by [0622](0622-keep-document-symbols-ranges-and-nesting-and-ask-for-them-again-after-each-save.md):
+each declaration in a record also holds its end line and its parent, and the
+record version is 2, so every version 1 record and index is discarded.
+
 ## Rationale
 
 Persistence is worth a new subsystem rather than a flag on `AnalysisCache`

@@ -126,8 +126,11 @@ namespace Graphite {
 		Other
 	};
 
+	inline constexpr int kNoParentDeclaration = -1;
+
 	// WARNING: Line/Column is where the declaration begins and NameLine/NameColumn where its name
 	// begins; the server must be asked at the name, or a constructor resolves to its class.
+	// Parent indexes the same vector and always names an earlier entry, so walking it ends.
 	struct Declaration
 	{
 		std::string Name;
@@ -136,6 +139,8 @@ namespace Graphite {
 		Utf16Column Column;
 		std::size_t NameLine = 0;
 		Utf16Column NameColumn;
+		std::size_t EndLine = 0;
+		int Parent = kNoParentDeclaration;
 	};
 
 	enum class ServerState : std::uint8_t

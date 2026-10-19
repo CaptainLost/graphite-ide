@@ -89,6 +89,8 @@ namespace Graphite {
 
 		LensModel* Lens = nullptr;
 
+		std::vector<Declaration>* Declarations = nullptr;
+
 		const DiagnosticOverlay* Diagnostics = nullptr;
 
 		bool DiagnosticsStale = false;

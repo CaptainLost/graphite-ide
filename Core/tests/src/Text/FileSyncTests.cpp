@@ -13,6 +13,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <vector>
 
 using namespace Core;
 
@@ -187,7 +188,7 @@ TEST_CASE("Save all skips a document that changed on disk rather than overwrite 
 
 	const SaveAllReport report = SaveAllModified(documents);
 
-	CHECK(report.Saved == 1);
+	CHECK(report.Saved == std::vector<std::filesystem::path>{clean});
 	CHECK_FALSE(report.StoppedAt.has_value());
 	REQUIRE(report.Conflicted.size() == 1);
 	CHECK(report.Conflicted[0] == stale);
@@ -228,7 +229,7 @@ TEST_CASE("Save all stops at a write that fails rather than carrying on past it"
 
 	const SaveAllReport report = SaveAllModified(documents);
 
-	CHECK(report.Saved == 0);
+	CHECK(report.Saved.empty());
 	CHECK(report.Conflicted.empty());
 	REQUIRE(report.StoppedAt.has_value());
 	CHECK(report.StoppedAt->Path == doomed);

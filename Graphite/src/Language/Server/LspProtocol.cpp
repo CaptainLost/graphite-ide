@@ -4,6 +4,7 @@
 #include "Core/Base/Ascii.h"
 #include "Core/Text/Encoding.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <initializer_list>
@@ -200,13 +201,16 @@ namespace Graphite {
 			}
 		}
 
-		void CollectSymbols(const nlohmann::json& node, std::vector<Declaration>& declarations)
+		// WARNING: A declaration is pushed before its children, so a child's parent is always an
+		// earlier index. A symbol this editor does not show, such as a namespace, passes its own
+		// parent on to its children.
+		void CollectSymbols(const nlohmann::json& node, int parent, std::vector<Declaration>& declarations)
 		{
 			if (node.is_array())
 			{
 				for (const nlohmann::json& child : node)
 				{
-					CollectSymbols(child, declarations);
+					CollectSymbols(child, parent, declarations);
 				}
 
 				return;
@@ -216,6 +220,8 @@ namespace Graphite {
 			{
 				return;
 			}
+
+			int childrenParent = parent;
 
 			const nlohmann::json* name = FirstOf(node, {"name"});
 			const nlohmann::json* kind = FirstOf(node, {"kind"});
@@ -227,6 +233,7 @@ namespace Graphite {
 					Declaration declaration;
 					declaration.Name = name->get<std::string>();
 					declaration.Kind = *mapped;
+					declaration.Parent = parent;
 
 					if (const nlohmann::json* range = RangeOf(node))
 					{
@@ -234,6 +241,13 @@ namespace Graphite {
 						{
 							declaration.Line = ReadUnsigned(*start, "line");
 							declaration.Column = Utf16Column{ReadUnsigned(*start, "character")};
+						}
+
+						declaration.EndLine = declaration.Line;
+
+						if (const nlohmann::json* end = FirstOf(*range, {"end"}))
+						{
+							declaration.EndLine = std::max(declaration.Line, ReadUnsigned(*end, "line"));
 						}
 					}
 
@@ -249,13 +263,14 @@ namespace Graphite {
 						}
 					}
 
+					childrenParent = static_cast<int>(declarations.size());
 					declarations.push_back(std::move(declaration));
 				}
 			}
 
 			if (const nlohmann::json* children = FirstOf(node, {"children"}))
 			{
-				CollectSymbols(*children, declarations);
+				CollectSymbols(*children, childrenParent, declarations);
 			}
 		}
 	}
@@ -579,7 +594,7 @@ namespace Graphite {
 	std::vector<Declaration> ParseSymbols(const nlohmann::json& result)
 	{
 		std::vector<Declaration> declarations;
-		CollectSymbols(result, declarations);
+		CollectSymbols(result, kNoParentDeclaration, declarations);
 		return declarations;
 	}
 

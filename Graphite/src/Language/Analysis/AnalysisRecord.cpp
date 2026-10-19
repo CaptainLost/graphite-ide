@@ -18,6 +18,11 @@ namespace Graphite {
 			return kind <= static_cast<std::uint32_t>(DeclarationKind::Other);
 		}
 
+		bool IsEarlierOrNoParent(int parent, std::size_t index)
+		{
+			return parent == kNoParentDeclaration || (parent >= 0 && static_cast<std::size_t>(parent) < index);
+		}
+
 		void AppendSemanticLine(std::string& bytes, std::size_t line,
 								const std::vector<SemanticSpan>& spans)
 		{
@@ -94,6 +99,8 @@ namespace Graphite {
 			AppendUint64(bytes, static_cast<std::uint64_t>(declaration.Column.Value));
 			AppendUint64(bytes, static_cast<std::uint64_t>(declaration.NameLine));
 			AppendUint64(bytes, static_cast<std::uint64_t>(declaration.NameColumn.Value));
+			AppendUint64(bytes, static_cast<std::uint64_t>(declaration.EndLine));
+			AppendUint32(bytes, static_cast<std::uint32_t>(declaration.Parent));
 		}
 
 		AppendUint32(bytes, static_cast<std::uint32_t>(analysis.Counts.size()));
@@ -192,11 +199,20 @@ namespace Graphite {
 			declaration.Column = Utf16Column(static_cast<std::size_t>(reader.TakeUint64()));
 			declaration.NameLine = static_cast<std::size_t>(reader.TakeUint64());
 			declaration.NameColumn = Utf16Column(static_cast<std::size_t>(reader.TakeUint64()));
+			declaration.EndLine = static_cast<std::size_t>(reader.TakeUint64());
+			declaration.Parent = static_cast<int>(reader.TakeUint32());
 
-			if (!reader.HasFailed())
+			if (reader.HasFailed())
 			{
-				analysis.Declarations.push_back(std::move(declaration));
+				break;
 			}
+
+			if (!IsEarlierOrNoParent(declaration.Parent, analysis.Declarations.size()))
+			{
+				return std::nullopt;
+			}
+
+			analysis.Declarations.push_back(std::move(declaration));
 		}
 
 		const std::uint32_t knownCountTotal = reader.TakeUint32();

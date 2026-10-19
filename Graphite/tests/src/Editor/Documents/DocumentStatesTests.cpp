@@ -10,8 +10,11 @@
 #include "FileFixtures.h"
 #include "TempDirectory.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace Graphite;
@@ -53,11 +56,49 @@ namespace {
 		LanguageServices::Ticket AskReferences(const std::filesystem::path&, LanguageId, const FilePosition&) override { return {}; }
 		LanguageServices::Ticket AskHover(const std::filesystem::path&, LanguageId, const FilePosition&) override { return {}; }
 		LanguageServices::Ticket AskSwitchSourceHeader(const std::filesystem::path&, LanguageId) override { return {}; }
-		LanguageServices::Ticket AskSymbols(const std::filesystem::path&, LanguageId) override { return {}; }
-		LanguageServices::Ticket AskSemanticTokens(const std::filesystem::path&, LanguageId) override { return {}; }
+		LanguageServices::Ticket AskSymbols(const std::filesystem::path& path, LanguageId) override
+		{
+			Calls.push_back({"symbols", path, {}});
+			LastSymbols = NextTicket();
+			return LastSymbols;
+		}
+		LanguageServices::Ticket AskSemanticTokens(const std::filesystem::path&, LanguageId) override { return NextTicket(); }
 		void Cancel(LanguageServices::Ticket) override {}
-		void TakeAnswers(std::vector<LanguageServices::Answer>&) override {}
+		void TakeAnswers(std::vector<LanguageServices::Answer>& answers) override
+		{
+			answers.insert(answers.end(), Queued.begin(), Queued.end());
+			Queued.clear();
+		}
 		void TakeRecolour(std::vector<std::filesystem::path>&) override {}
+
+		void Reply(LanguageServices::Ticket ticket)
+		{
+			LanguageServices::Answer answer;
+			answer.For = ticket;
+			Queued.push_back(std::move(answer));
+		}
+
+		LanguageServices::Ticket LastSymbols{};
+		std::vector<LanguageServices::Answer> Queued;
+
+	private:
+		LanguageServices::Ticket NextTicket() { return static_cast<LanguageServices::Ticket>(++m_Next); }
+
+		std::uint64_t m_Next = 0;
+	};
+
+	class SymbolsTarget final : public LspAnswerTarget
+	{
+	public:
+		void ApplyDefinition(const DefinitionQuestion&, const LanguageServices::Answer&) override {}
+		void ApplyReferences(const std::string&, const LanguageServices::Answer&) override {}
+		void ApplySwitchSourceHeader(const std::filesystem::path&, const LanguageServices::Answer&) override {}
+		void ApplyHover(const HoverQuestion&, const LanguageServices::Answer&) override {}
+		void ApplyPreviewDefinition(const HoverQuestion&, const LanguageServices::Answer&) override {}
+		void ApplySemanticTokens(const std::filesystem::path&, const LanguageServices::Answer&) override {}
+		bool ApplySymbols(const std::filesystem::path&, const LanguageServices::Answer&) override { return true; }
+		void ApplyCount(const std::filesystem::path&, std::size_t, std::size_t) override {}
+		bool Offer(const LanguageServices::Answer&) override { return false; }
 	};
 
 	struct Harness
@@ -190,4 +231,27 @@ TEST_CASE("A change sent as it happened is not sent again by the sweep")
 
 	harness.States.SendChanges(harness.Documents.GetStore());
 	CHECK(harness.Server.CountOf("change") == 1);
+}
+
+TEST_CASE("Saving a document asks for its symbols again")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "a.cpp";
+	WriteFileBytes(path, "int a;\n");
+	Harness harness;
+	REQUIRE(harness.Documents.Open(path, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+	harness.States.OpenWithServer(path, *harness.Documents.At(0).Document);
+	SymbolsTarget target;
+
+	harness.Router.AskSymbolsIfDue(path);
+	harness.Server.Reply(harness.Server.LastSymbols);
+	harness.Router.Collect(target);
+	harness.Router.AskSymbolsIfDue(path);
+	REQUIRE(harness.Server.CountOf("symbols") == 1);
+
+	harness.States.NoteSaved(path);
+	harness.Router.AskSymbolsIfDue(path);
+
+	CHECK(harness.Server.CountOf("save") == 1);
+	CHECK(harness.Server.CountOf("symbols") == 2);
 }

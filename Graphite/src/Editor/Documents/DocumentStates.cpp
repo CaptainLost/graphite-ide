@@ -134,6 +134,12 @@ namespace Graphite {
 		return sent;
 	}
 
+	void DocumentStates::NoteSaved(const std::filesystem::path& path)
+	{
+		m_Server.SaveDocument(path, LanguageOfPath(path));
+		m_Router.WantSymbolsNow(path);
+	}
+
 	void DocumentStates::Prune(const Core::DocumentStore& store)
 	{
 		for (auto entry = m_States.begin(); entry != m_States.end();)

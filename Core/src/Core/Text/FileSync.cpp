@@ -119,7 +119,7 @@ namespace Core {
 			}
 
 			documents.MarkPresent(document->GetPath());
-			++report.Saved;
+			report.Saved.push_back(document->GetPath());
 		}
 
 		return report;

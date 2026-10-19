@@ -160,7 +160,7 @@ TEST_CASE("A semantic token reply that is malformed yields nothing rather than f
 	CHECK(Graphite::ParseSemanticTokens(nlohmann::json::parse(R"({"data":"nope"})"), legend).empty());
 }
 
-TEST_CASE("A documentSymbol reply keeps functions and types and flattens children")
+TEST_CASE("A documentSymbol reply keeps functions and types, each child after its parent")
 {
 	const std::vector<Graphite::Declaration> declarations = Graphite::ParseSymbols(nlohmann::json::parse(
 		R"([{"name":"Renderer","kind":5,"range":{"start":{"line":2,"character":0}},
@@ -173,6 +173,82 @@ TEST_CASE("A documentSymbol reply keeps functions and types and flattens childre
 	CHECK(declarations[1].Name == "Draw");
 	CHECK(declarations[1].Kind == Graphite::DeclarationKind::Function);
 	CHECK(declarations[1].Line == 4);
+}
+
+TEST_CASE("A hierarchical documentSymbol reply keeps each declaration's end line and its parent")
+{
+	const std::vector<Graphite::Declaration> declarations = Graphite::ParseSymbols(nlohmann::json::parse(
+		R"([{"name":"Renderer","kind":5,
+			 "range":{"start":{"line":2,"character":0},"end":{"line":20,"character":1}},
+			 "selectionRange":{"start":{"line":2,"character":6},"end":{"line":2,"character":14}},
+			 "children":[{"name":"Draw","kind":6,
+						  "range":{"start":{"line":4,"character":1},"end":{"line":9,"character":2}},
+						  "selectionRange":{"start":{"line":4,"character":6},"end":{"line":4,"character":10}}},
+						 {"name":"Clear","kind":6,
+						  "range":{"start":{"line":12,"character":1},"end":{"line":15,"character":2}}}]},
+			{"name":"Main","kind":12,
+			 "range":{"start":{"line":22,"character":0},"end":{"line":30,"character":1}}}])"));
+
+	REQUIRE(declarations.size() == 4);
+
+	CHECK(declarations[0].Name == "Renderer");
+	CHECK(declarations[0].EndLine == 20);
+	CHECK(declarations[0].Parent == Graphite::kNoParentDeclaration);
+
+	CHECK(declarations[1].Name == "Draw");
+	CHECK(declarations[1].EndLine == 9);
+	CHECK(declarations[1].Parent == 0);
+
+	CHECK(declarations[2].Name == "Clear");
+	CHECK(declarations[2].EndLine == 15);
+	CHECK(declarations[2].Parent == 0);
+
+	CHECK(declarations[3].Name == "Main");
+	CHECK(declarations[3].EndLine == 30);
+	CHECK(declarations[3].Parent == Graphite::kNoParentDeclaration);
+}
+
+TEST_CASE("A declaration inside a namespace names no parent, and its members name it")
+{
+	const std::vector<Graphite::Declaration> declarations = Graphite::ParseSymbols(nlohmann::json::parse(
+		R"([{"name":"Graphite","kind":3,
+			 "range":{"start":{"line":0,"character":0},"end":{"line":40,"character":1}},
+			 "children":[{"name":"Renderer","kind":5,
+						  "range":{"start":{"line":2,"character":1},"end":{"line":20,"character":2}},
+						  "children":[{"name":"Draw","kind":6,
+									   "range":{"start":{"line":4,"character":2},"end":{"line":9,"character":3}}}]}]}])"));
+
+	REQUIRE(declarations.size() == 2);
+	CHECK(declarations[0].Name == "Renderer");
+	CHECK(declarations[0].Parent == Graphite::kNoParentDeclaration);
+	CHECK(declarations[1].Name == "Draw");
+	CHECK(declarations[1].Parent == 0);
+}
+
+TEST_CASE("A flat symbol reply takes each end line from its location and names no parent")
+{
+	const std::vector<Graphite::Declaration> declarations = Graphite::ParseSymbols(nlohmann::json::parse(
+		R"([{"name":"Renderer","kind":5,
+			 "location":{"uri":"file:///D:/a.cpp",
+						 "range":{"start":{"line":2,"character":0},"end":{"line":20,"character":1}}}},
+			{"name":"Draw","kind":6,"containerName":"Renderer",
+			 "location":{"uri":"file:///D:/a.cpp",
+						 "range":{"start":{"line":4,"character":1},"end":{"line":9,"character":2}}}}])"));
+
+	REQUIRE(declarations.size() == 2);
+	CHECK(declarations[0].EndLine == 20);
+	CHECK(declarations[0].Parent == Graphite::kNoParentDeclaration);
+	CHECK(declarations[1].EndLine == 9);
+	CHECK(declarations[1].Parent == Graphite::kNoParentDeclaration);
+}
+
+TEST_CASE("A symbol range with no end ends on the line it starts on")
+{
+	const std::vector<Graphite::Declaration> declarations = Graphite::ParseSymbols(nlohmann::json::parse(
+		R"([{"name":"Draw","kind":12,"range":{"start":{"line":7,"character":3}}}])"));
+
+	REQUIRE(declarations.size() == 1);
+	CHECK(declarations[0].EndLine == 7);
 }
 
 TEST_CASE("A symbol's name position is read from selectionRange, not from the declaration's start")

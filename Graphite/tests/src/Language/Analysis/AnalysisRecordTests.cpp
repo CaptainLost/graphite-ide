@@ -21,6 +21,13 @@ namespace {
 		analysis.Semantic.SetSpansOn(7, {SemanticSpan{2, 5, TokenKind::SemanticType},
 										 SemanticSpan{9, 12, TokenKind::SemanticType}});
 
+		Declaration type;
+		type.Name = "Renderer";
+		type.Kind = DeclarationKind::Type;
+		type.Line = 10;
+		type.NameLine = 10;
+		type.EndLine = 30;
+
 		Declaration declaration;
 		declaration.Name = "Draw";
 		declaration.Kind = DeclarationKind::Function;
@@ -28,12 +35,42 @@ namespace {
 		declaration.Column = Utf16Column(4);
 		declaration.NameLine = 15;
 		declaration.NameColumn = Utf16Column(9);
+		declaration.EndLine = 20;
+		declaration.Parent = 0;
 
+		analysis.Declarations.push_back(std::move(type));
 		analysis.Declarations.push_back(std::move(declaration));
 		analysis.Counts.push_back({"Draw", DeclarationKind::Type, 7});
 		analysis.ModifiedAt = FileTimeAt(100);
 
 		return analysis;
+	}
+
+	std::string RecordInThePreviousLayout(std::uint32_t version)
+	{
+		std::string bytes;
+
+		bytes.append(kAnalysisMagic);
+		AppendUint32(bytes, version);
+		AppendString(bytes, "a.cpp");
+		AppendUint64(bytes, FileTimeToTicks(FileTimeAt(100)));
+
+		constexpr std::uint32_t kNoSemanticLines = 0;
+		AppendUint32(bytes, kNoSemanticLines);
+
+		constexpr std::uint32_t kOneDeclaration = 1;
+		AppendUint32(bytes, kOneDeclaration);
+		AppendString(bytes, "Draw");
+		AppendUint32(bytes, static_cast<std::uint32_t>(DeclarationKind::Function));
+		AppendUint64(bytes, 12);
+		AppendUint64(bytes, 4);
+		AppendUint64(bytes, 15);
+		AppendUint64(bytes, 9);
+
+		constexpr std::uint32_t kNoCounts = 0;
+		AppendUint32(bytes, kNoCounts);
+
+		return bytes;
 	}
 
 	std::size_t FirstDifference(const std::string& left, const std::string& right)
@@ -94,13 +131,19 @@ TEST_CASE("An analysis survives a round trip through bytes")
 	REQUIRE(back.has_value());
 	CHECK(back->ModifiedAt == FileTimeAt(100));
 
-	REQUIRE(back->Declarations.size() == 1);
-	CHECK(back->Declarations[0].Name == "Draw");
-	CHECK(back->Declarations[0].Kind == DeclarationKind::Function);
-	CHECK(back->Declarations[0].Line == 12);
-	CHECK(back->Declarations[0].Column == Utf16Column(4));
-	CHECK(back->Declarations[0].NameLine == 15);
-	CHECK(back->Declarations[0].NameColumn == Utf16Column(9));
+	REQUIRE(back->Declarations.size() == 2);
+	CHECK(back->Declarations[0].Name == "Renderer");
+	CHECK(back->Declarations[0].EndLine == 30);
+	CHECK(back->Declarations[0].Parent == kNoParentDeclaration);
+
+	CHECK(back->Declarations[1].Name == "Draw");
+	CHECK(back->Declarations[1].Kind == DeclarationKind::Function);
+	CHECK(back->Declarations[1].Line == 12);
+	CHECK(back->Declarations[1].Column == Utf16Column(4));
+	CHECK(back->Declarations[1].NameLine == 15);
+	CHECK(back->Declarations[1].NameColumn == Utf16Column(9));
+	CHECK(back->Declarations[1].EndLine == 20);
+	CHECK(back->Declarations[1].Parent == 0);
 
 	REQUIRE(back->Counts.size() == 1);
 	CHECK(back->Counts[0].Name == "Draw");
@@ -162,6 +205,29 @@ TEST_CASE("A record from another version is refused")
 	bytes[kVersionAt] = static_cast<char>(kAnalysisRecordVersion + 1);
 
 	CHECK_FALSE(DecodeAnalysis(bytes, "a.cpp").has_value());
+}
+
+TEST_CASE("A record of the previous version is discarded")
+{
+	constexpr std::uint32_t kVersionWithoutRangesOrNesting = 1;
+
+	CHECK_FALSE(DecodeAnalysis(RecordInThePreviousLayout(kVersionWithoutRangesOrNesting), "a.cpp").has_value());
+}
+
+TEST_CASE("A declaration whose parent is not an earlier declaration is refused")
+{
+	CachedAnalysis ownParent = Sample();
+	ownParent.Declarations[1].Parent = 1;
+
+	CachedAnalysis laterParent = Sample();
+	laterParent.Declarations[0].Parent = 1;
+
+	CachedAnalysis negativeParent = Sample();
+	negativeParent.Declarations[1].Parent = kNoParentDeclaration - 1;
+
+	CHECK_FALSE(DecodeAnalysis(EncodeAnalysis("a.cpp", ownParent), "a.cpp").has_value());
+	CHECK_FALSE(DecodeAnalysis(EncodeAnalysis("a.cpp", laterParent), "a.cpp").has_value());
+	CHECK_FALSE(DecodeAnalysis(EncodeAnalysis("a.cpp", negativeParent), "a.cpp").has_value());
 }
 
 TEST_CASE("A semantic span whose kind is at or past TokenKind::Count is refused")

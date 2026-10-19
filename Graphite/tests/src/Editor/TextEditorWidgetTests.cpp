@@ -4,6 +4,7 @@
 #include "ImGuiFrames.h"
 
 #include "Editor/TextEditorWidget.h"
+#include "Editor/EditorWidgetState.h"
 #include "Editor/Find/FindBar.h"
 #include "Editor/Hover/HoverState.h"
 #include "Editor/Overlays/DiagnosticOverlay.h"
@@ -899,4 +900,33 @@ TEST_CASE("The current-line highlight starts at the gutter's left edge")
 	CHECK(highlight->Bottom == lineTop + kEditorLineHeight);
 	CHECK(highlight->LastIndex > fill->LastIndex);
 	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("An edit through the editor moves the declarations it is given with their lines")
+{
+	EditorFrames editor("a\nb\nc\n");
+	editor.Next();
+
+	PlaceCaret(editor.Item, 0);
+	REQUIRE(Core::InsertText(editor.Item, "x\n"));
+
+	Graphite::Declaration declaration;
+	declaration.Name = "Draw";
+	declaration.Kind = Graphite::DeclarationKind::Function;
+	declaration.Line = 3;
+	declaration.NameLine = 3;
+	declaration.EndLine = 3;
+
+	std::vector<Graphite::Declaration> declarations{declaration};
+	Graphite::EditorWidgetState widget;
+	widget.PendingActions.push_back(Graphite::PendingEditorAction{.Action = Graphite::EditorAction::Undo});
+
+	editor.View.Declarations = &declarations;
+	editor.View.Widget = &widget;
+	editor.Next();
+
+	REQUIRE(BufferOf(editor.Item).Materialize() == "a\nb\nc\n");
+	REQUIRE(declarations.size() == 1);
+	CHECK(declarations[0].Line == 2);
+	CHECK(declarations[0].EndLine == 2);
 }

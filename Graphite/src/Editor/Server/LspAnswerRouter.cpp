@@ -137,6 +137,11 @@ namespace Graphite {
 
 			schedule.SymbolsWanted = true;
 			schedule.NextAskAt = kAskAtOnceSeconds;
+
+			if (schedule.SymbolsOutstanding)
+			{
+				schedule.WantedWhileOutstanding = true;
+			}
 		}
 	}
 
@@ -165,6 +170,7 @@ namespace Graphite {
 		AskSemanticTokens(path);
 
 		schedule.SymbolsOutstanding = true;
+		schedule.WantedWhileOutstanding = false;
 		schedule.NextAskAt = nowSeconds + kFailedRequestRetrySeconds;
 	}
 
@@ -421,9 +427,12 @@ namespace Graphite {
 
 					schedule.SymbolsOutstanding = AnyTicketIsFor(m_PendingSymbols, path);
 
+					// WARNING: The answer describes the text as it was when it was asked, so a want
+					// that arrived since, from an edit or a save, keeps symbols wanted.
 					if (!answer.Failed && target.ApplySymbols(path, answer))
 					{
-						schedule.SymbolsWanted = false;
+						schedule.SymbolsWanted = schedule.WantedWhileOutstanding;
+						schedule.WantedWhileOutstanding = false;
 					}
 				}
 

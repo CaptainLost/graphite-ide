@@ -21,6 +21,7 @@
 #include "Git/Changes/ChangeOverview.h"
 #include "Git/Changes/LineSpans.h"
 
+#include "Language/Api/Declarations.h"
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Syntax/SyntaxCache.h"
 
@@ -728,6 +729,7 @@ namespace Graphite {
 		struct EditSinks
 		{
 			LensModel* Lens = nullptr;
+			std::vector<Declaration>* Declarations = nullptr;
 		};
 
 		struct EditMark
@@ -747,7 +749,7 @@ namespace Graphite {
 		void NotifyAfterEdit(const EditSinks& sinks, const Core::TextBuffer& buffer,
 							 const Core::OpenItem& item, const EditMark& before, bool changed)
 		{
-			if (!changed || sinks.Lens == nullptr)
+			if (!changed || (sinks.Lens == nullptr && sinks.Declarations == nullptr))
 			{
 				return;
 			}
@@ -760,7 +762,15 @@ namespace Graphite {
 				static_cast<std::ptrdiff_t>(buffer.GetLineCount()) -
 				static_cast<std::ptrdiff_t>(before.LineCount);
 
-			sinks.Lens->OnLinesChanged(firstMovedLine, lineCountChange, item.Rows);
+			if (sinks.Lens != nullptr)
+			{
+				sinks.Lens->OnLinesChanged(firstMovedLine, lineCountChange, item.Rows);
+			}
+
+			if (sinks.Declarations != nullptr)
+			{
+				MoveDeclarations(*sinks.Declarations, firstMovedLine, lineCountChange);
+			}
 		}
 
 		bool IsInsertableCodepoint(unsigned int codepoint)
@@ -2874,7 +2884,7 @@ namespace Graphite {
 				widget.LastFocusedFrame = frame;
 			}
 
-			const EditSinks sinks{.Lens = view.Lens};
+			const EditSinks sinks{.Lens = view.Lens, .Declarations = view.Declarations};
 			Core::FrameInput remaining;
 			bool ranRepeat = false;
 

@@ -6,6 +6,7 @@
 #include "Language/Server/LspProtocol.h"
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -29,24 +30,120 @@ namespace Graphite {
 
 	namespace {
 
+		using IndicesByKey = std::unordered_map<std::string, std::vector<std::size_t>>;
+
 		std::string CarryOverKey(const std::string& name, DeclarationKind kind)
 		{
 			return name + '\0' + std::to_string(static_cast<int>(kind));
 		}
+
+		template<typename Named>
+		std::string KeyOf(const Named& named)
+		{
+			return CarryOverKey(named.Name, named.Kind);
+		}
+
+		template<typename Named>
+		IndicesByKey IndexByKey(const std::vector<Named>& items)
+		{
+			IndicesByKey byKey;
+
+			for (std::size_t index = 0; index < items.size(); ++index)
+			{
+				byKey[KeyOf(items[index])].push_back(index);
+			}
+
+			return byKey;
+		}
+
+		template<typename Accepts>
+		std::optional<std::size_t> TakeFirst(const IndicesByKey& byKey, const std::string& key,
+											 std::vector<bool>& taken, Accepts accepts)
+		{
+			const IndicesByKey::const_iterator found = byKey.find(key);
+
+			if (found == byKey.end())
+			{
+				return std::nullopt;
+			}
+
+			for (const std::size_t index : found->second)
+			{
+				if (!taken[index] && accepts(index))
+				{
+					taken[index] = true;
+					return index;
+				}
+			}
+
+			return std::nullopt;
+		}
+
+		bool AnyRow(std::size_t)
+		{
+			return true;
+		}
+
+		void CopyCount(const Lens& from, Lens& to)
+		{
+			to.Count = from.Count;
+			to.CountKnown = from.CountKnown;
+		}
+	}
+
+	// WARNING: Overloads share a name and a kind, so a lens on the same row is matched first and the
+	// rest in order. Only a same-row match keeps Asked: a count in flight answers to the row it was
+	// asked for, and a lens that moved would never hear it.
+	void LensModel::CarryOverInto(std::vector<Entry>& next)
+	{
+		const IndicesByKey previousByKey = IndexByKey(m_Entries);
+		const IndicesByKey seededByKey = IndexByKey(m_Seeded);
+
+		std::vector<bool> previousTaken(m_Entries.size(), false);
+		std::vector<bool> seededTaken(m_Seeded.size(), false);
+		std::vector<bool> carried(next.size(), false);
+
+		for (std::size_t nextIndex = 0; nextIndex < next.size(); ++nextIndex)
+		{
+			Entry& entry = next[nextIndex];
+			const auto onTheSameRow = [this, &entry](std::size_t previousIndex)
+			{ return m_Entries[previousIndex].LensValue.DocumentRow == entry.LensValue.DocumentRow; };
+
+			if (const std::optional<std::size_t> same = TakeFirst(previousByKey, KeyOf(entry), previousTaken, onTheSameRow))
+			{
+				CopyCount(m_Entries[*same].LensValue, entry.LensValue);
+				entry.Asked = m_Entries[*same].Asked;
+				carried[nextIndex] = true;
+			}
+		}
+
+		for (std::size_t nextIndex = 0; nextIndex < next.size(); ++nextIndex)
+		{
+			Entry& entry = next[nextIndex];
+
+			if (carried[nextIndex])
+			{
+				continue;
+			}
+
+			if (const std::optional<std::size_t> moved = TakeFirst(previousByKey, KeyOf(entry), previousTaken, AnyRow))
+			{
+				CopyCount(m_Entries[*moved].LensValue, entry.LensValue);
+			}
+			else if (const std::optional<std::size_t> seeded = TakeFirst(seededByKey, KeyOf(entry), seededTaken, AnyRow))
+			{
+				entry.LensValue.Count = m_Seeded[*seeded].Count;
+				entry.LensValue.CountKnown = true;
+			}
+		}
+
+		m_Seeded.clear();
 	}
 
 	void LensModel::SetDeclarations(const std::vector<Declaration>& declarations,
 									const Core::RowMap& rows, const Core::TextBuffer& buffer,
 									std::size_t tabWidth)
 	{
-		std::unordered_map<std::string, Lens> previousByKey;
-		previousByKey.reserve(m_Entries.size());
-
-		for (const Entry& entry : m_Entries)
-		{
-			previousByKey.emplace(CarryOverKey(entry.Name, entry.Kind), entry.LensValue);
-		}
-
 		std::vector<Entry> next;
 		next.reserve(declarations.size());
 
@@ -75,30 +172,7 @@ namespace Graphite {
 		std::stable_sort(next.begin(), next.end(), ByDocumentRow);
 		next.erase(std::unique(next.begin(), next.end(), SameDocumentRow), next.end());
 
-		for (const KnownCount& seeded : m_Seeded)
-		{
-			Lens lens;
-			lens.Count = seeded.Count;
-			lens.CountKnown = true;
-
-			previousByKey.emplace(CarryOverKey(seeded.Name, seeded.Kind), lens);
-		}
-
-		m_Seeded.clear();
-
-		for (Entry& entry : next)
-		{
-			const std::unordered_map<std::string, Lens>::const_iterator previous =
-				previousByKey.find(CarryOverKey(entry.Name, entry.Kind));
-
-			if (previous != previousByKey.end())
-			{
-				const auto& [previousKey, previousLens] = *previous;
-
-				entry.LensValue.Count = previousLens.Count;
-				entry.LensValue.CountKnown = previousLens.CountKnown;
-			}
-		}
+		CarryOverInto(next);
 
 		m_Entries = std::move(next);
 
@@ -198,6 +272,34 @@ namespace Graphite {
 		}
 
 		return result;
+	}
+
+	std::vector<std::size_t> LensModel::TakeRowsToAsk(std::size_t fromRow, std::size_t toRow)
+	{
+		std::vector<std::size_t> rows;
+
+		for (Entry& entry : m_Entries)
+		{
+			const bool inRange = entry.LensValue.DocumentRow >= fromRow && entry.LensValue.DocumentRow < toRow;
+
+			if (!inRange || entry.LensValue.CountKnown || entry.Asked)
+			{
+				continue;
+			}
+
+			entry.Asked = true;
+			rows.push_back(entry.LensValue.DocumentRow);
+		}
+
+		return rows;
+	}
+
+	void LensModel::ForgetAsked()
+	{
+		for (Entry& entry : m_Entries)
+		{
+			entry.Asked = false;
+		}
 	}
 
 	const Lens* LensModel::LensAt(std::size_t documentRow) const

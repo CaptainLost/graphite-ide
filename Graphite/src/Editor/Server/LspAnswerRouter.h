@@ -124,6 +124,7 @@ namespace Graphite {
 		{
 			bool SymbolsWanted = true;
 			bool SymbolsOutstanding = false;
+			bool WantedWhileOutstanding = false;
 			double NextAskAt = kAskAtOnceSeconds;
 			ServerState LastServerState = ServerState::NotConfigured;
 		};
