@@ -130,6 +130,8 @@ namespace Graphite {
 
 		if (ImGui::BeginChild("##fileTreeBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None))
 		{
+			const ListBodyScope listBody;
+
 			if (m_Filter.IsActive())
 			{
 				RenderFilteredTree();
@@ -340,6 +342,7 @@ namespace Graphite {
 	void FileTreeView::RenderContextMenu(const Core::FileNode& node)
 	{
 		const std::string popupId = "##ctx" + Core::ToUtf8(node.Path);
+		const ListPopupScope popup;
 
 		if (!Core::BeginRightClickPopup(popupId.c_str()))
 		{
@@ -449,6 +452,7 @@ namespace Graphite {
 		const bool releasedOverEmptySpace = ImGui::IsMouseReleased(ImGuiMouseButton_Right) &&
 											ImGui::IsWindowHovered(ImGuiHoveredFlags_AllowWhenBlockedByPopup) &&
 											!ImGui::IsAnyItemHovered();
+		const ListPopupScope popup;
 
 		if (!Core::BeginRightClickMenu(kPopupId, releasedOverEmptySpace))
 		{

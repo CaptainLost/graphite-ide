@@ -6,6 +6,8 @@
 #include "UI/Lists/Chevron.h"
 #include "UI/Lists/ListRow.h"
 
+#include "Core/ImGui/FontSet.h"
+
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -16,7 +18,8 @@
 
 namespace {
 	constexpr float kFringe = 1.0f;
-	constexpr float kListRowSpacing = 9.0f;
+	constexpr float kListRowSpacing = 6.0f;
+	constexpr float kInterfaceItemSpacing = 5.0f;
 	const ImVec4 kDimmedRowText(0.9f, 0.6f, 0.2f, 1.0f);
 
 	struct TreeDrawing
@@ -39,35 +42,42 @@ namespace {
 		ImRect Row;
 		bool Open = false;
 
+		TreeScreen() { ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize; }
+
 		void Draw()
 		{
 			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 			ImGui::SetNextWindowSize(ImVec2(300.0f, 200.0f));
+			ImGui::GetStyle().ItemSpacing.y = kInterfaceItemSpacing;
 			ImGui::Begin("Tree", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 
-			if (Drawing.TextColour.has_value())
 			{
-				ImGui::PushStyleColor(ImGuiCol_Text, *Drawing.TextColour);
+				const Graphite::ListBodyScope listBody;
+
+				if (Drawing.TextColour.has_value())
+				{
+					ImGui::PushStyleColor(ImGuiCol_Text, *Drawing.TextColour);
+				}
+
+				RowStartX = ImGui::GetCursorScreenPos().x;
+				RowStartY = ImGui::GetCursorScreenPos().y;
+				TextLine = ImGui::GetTextLineHeight();
+				TextTop = Graphite::ListRowTextTop(RowStartY);
+				Open = Graphite::ChevronTreeNode("node", Drawing.Flags, Drawing.Label, Drawing.Note);
+				Row = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+
+				if (Drawing.TextColour.has_value())
+				{
+					ImGui::PopStyleColor();
+				}
+
+				if (Open)
+				{
+					ImGui::TreePop();
+				}
+
+				NextRowStartY = ImGui::GetCursorScreenPos().y;
 			}
-
-			RowStartX = ImGui::GetCursorScreenPos().x;
-			RowStartY = ImGui::GetCursorScreenPos().y;
-			TextLine = ImGui::GetTextLineHeight();
-			TextTop = Graphite::ListRowTextTop(RowStartY);
-			Open = Graphite::ChevronTreeNode("node", Drawing.Flags, Drawing.Label, Drawing.Note);
-			Row = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-
-			if (Drawing.TextColour.has_value())
-			{
-				ImGui::PopStyleColor();
-			}
-
-			if (Open)
-			{
-				ImGui::TreePop();
-			}
-
-			NextRowStartY = ImGui::GetCursorScreenPos().y;
 
 			ImGui::End();
 		}
@@ -156,6 +166,8 @@ TEST_CASE("A tree node is a list row's pitch tall and the next row starts that f
 
 TEST_CASE("A tree node's chevron and label sit on the text line in the middle of its row")
 {
+	constexpr float kTwentyTwo = 22.0f;
+
 	TreeScreen screen;
 	screen.Drawing.Label = "References";
 	screen.DrawFrame();
@@ -164,6 +176,7 @@ TEST_CASE("A tree node's chevron and label sit on the text line in the middle of
 	const float textLineBottom = screen.TextTop + screen.TextLine;
 
 	CHECK(screen.Row.Min.y == doctest::Approx(screen.RowStartY));
+	CHECK(screen.Row.GetHeight() == doctest::Approx(kTwentyTwo));
 
 	const float aboveTheText = textLineTop - screen.Row.Min.y;
 	const float belowTheText = screen.Row.Max.y - textLineBottom;

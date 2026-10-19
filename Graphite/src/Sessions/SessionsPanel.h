@@ -73,6 +73,7 @@ namespace Graphite {
 
 		void RenderToolbar();
 		void RenderList();
+		void RenderRows(const std::vector<VisibleRow>& visible, bool grouped);
 		void RenderRow(const SessionSummary& summary);
 
 		static bool VisibleRowPrecedes(const VisibleRow& earlier, const VisibleRow& later);

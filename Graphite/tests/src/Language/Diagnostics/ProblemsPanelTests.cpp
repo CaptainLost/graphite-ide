@@ -24,6 +24,7 @@
 namespace {
 
 	constexpr ImVec2 kPanelSize{400.0f, 300.0f};
+	constexpr float kInterfaceItemSpacing = 5.0f;
 
 	const ImGuiWindow* FindProblemList()
 	{
@@ -121,6 +122,7 @@ TEST_CASE("A file heading in Problems takes one list row pitch, as the problem r
 	Graphite::ProblemsPanel panel{diagnostics, documents, workspace, scheme};
 
 	float pitch = 0.0f;
+	ImGui::GetStyle().ItemSpacing.y = kInterfaceItemSpacing;
 
 	frames.Next([&] {
 		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));

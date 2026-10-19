@@ -298,6 +298,7 @@ namespace Graphite {
 
 		if (ImGui::BeginChild("changes.lists", ImVec2(0.0f, -reservedBoxHeight)))
 		{
+			const ListBodyScope listBody;
 			bool drawnAbove = false;
 
 			m_Section = Section::Conflicted;
@@ -824,6 +825,7 @@ namespace Graphite {
 	void ChangesPanel::RenderRowContextMenu(const Core::FileStatus& file, char letter)
 	{
 		const std::string popupId = "##ctx" + Core::ToUtf8(file.Path);
+		const ListPopupScope popup;
 
 		if (!Core::BeginRightClickPopup(popupId.c_str()))
 		{

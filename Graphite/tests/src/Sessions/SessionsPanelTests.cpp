@@ -26,6 +26,8 @@ namespace {
 	constexpr int kRowCount = 2;
 	constexpr int kFirstRow = 0;
 	constexpr int kSecondRow = 1;
+	constexpr float kInterfaceItemSpacing = 5.0f;
+	constexpr float kListBodyItemSpacing = 3.0f;
 
 	struct Extent
 	{
@@ -66,15 +68,23 @@ namespace {
 		return std::abs(drawn - expected) <= kFringe;
 	}
 
-	// The sessions list as the panel holds it: a child window with no padding of its own, one row per session.
+	// The sessions list as the panel holds it: a list body in a child window with no padding of its own, under the
+	// interface's item spacing, one row per session.
 	struct SessionListScreen
 	{
 		ImGuiFrames Frames;
 		ImRect List;
 		float RowTops[kRowCount] = {};
+		float DetailTops[kRowCount] = {};
 		float Pitch = 0.0f;
+		float TextLine = 0.0f;
 
-		SessionListScreen() { ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize; }
+		SessionListScreen()
+		{
+			ImGuiStyle& style = ImGui::GetStyle();
+			style.FontSizeBase = Core::kInterfaceFontSize;
+			style.ItemSpacing.y = kInterfaceItemSpacing;
+		}
 
 		void Draw()
 		{
@@ -83,15 +93,20 @@ namespace {
 			ImGui::Begin("Panel", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 			ImGui::BeginChild("##sessionList");
 
-			List = ImGui::GetCurrentWindowRead()->InnerRect;
-			Pitch = ListRowPitch();
-
-			for (int row = 0; row < kRowCount; ++row)
 			{
-				ImGui::PushID(row);
-				RowTops[row] = ImGui::GetCursorScreenPos().y;
-				DrawSessionRow(SessionRowText{.Title = "A session", .Detail = "$0.10  5 min"});
-				ImGui::PopID();
+				const ListBodyScope listBody;
+				List = ImGui::GetCurrentWindowRead()->InnerRect;
+				Pitch = ListRowPitch();
+				TextLine = ImGui::GetTextLineHeight();
+
+				for (int row = 0; row < kRowCount; ++row)
+				{
+					ImGui::PushID(row);
+					RowTops[row] = ImGui::GetCursorScreenPos().y;
+					DrawSessionRow(SessionRowText{.Title = "A session", .Detail = "$0.10  5 min"});
+					DetailTops[row] = ImGui::GetItemRectMin().y;
+					ImGui::PopID();
+				}
 			}
 
 			ImGui::EndChild();
@@ -140,4 +155,14 @@ TEST_CASE("The sessions list draws through ListRowSelectable: its row pitch equa
 														 screen.RowTops[kFirstRow], screen.RowTops[kSecondRow]);
 	REQUIRE(details.has_value());
 	CHECK(details->Top >= screen.RowTops[kFirstRow] + screen.Pitch);
+}
+
+TEST_CASE("A session's detail line starts at its row's foot and the next session one line and the list's spacing below")
+{
+	SessionListScreen screen;
+	screen.DrawFrame();
+
+	CHECK(screen.DetailTops[kFirstRow] - screen.RowTops[kFirstRow] == doctest::Approx(screen.Pitch));
+	CHECK(screen.RowTops[kSecondRow] - screen.DetailTops[kFirstRow] ==
+		  doctest::Approx(screen.TextLine + kListBodyItemSpacing));
 }

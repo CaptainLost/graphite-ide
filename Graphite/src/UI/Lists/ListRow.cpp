@@ -11,7 +11,7 @@
 namespace Graphite {
 
 	namespace {
-		constexpr float kListRowSpacing = 9.0f;
+		constexpr float kListRowSpacing = 6.0f;
 		constexpr float kHighlightInset = 6.0f;
 		constexpr float kHighlightRounding = 5.0f;
 		constexpr float kEndInset = 8.0f;
@@ -228,6 +228,41 @@ namespace Graphite {
 		}
 
 		return pressed;
+	}
+
+	ListBodyScope::ListBodyScope()
+	{
+		const ImVec2 spacing = ImGui::GetStyle().ItemSpacing;
+
+		ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(spacing.x, std::min(spacing.y, ListRowSpacing() * kHalf)));
+	}
+
+	ListBodyScope::~ListBodyScope()
+	{
+		ImGui::PopStyleVar();
+	}
+
+	// WARNING: Read off ImGui's stack of pushed style values, where each push keeps the value it replaced. The earliest
+	// push of the item spacing kept the interface's own, which a list body, and any list body inside it, replaced.
+	ListPopupScope::ListPopupScope()
+	{
+		for (const ImGuiStyleMod& pushed : ImGui::GetCurrentContext()->StyleVarStack)
+		{
+			if (pushed.VarIdx == ImGuiStyleVar_ItemSpacing)
+			{
+				ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(pushed.BackupFloat[0], pushed.BackupFloat[1]));
+				m_Pushed = true;
+				return;
+			}
+		}
+	}
+
+	ListPopupScope::~ListPopupScope()
+	{
+		if (m_Pushed)
+		{
+			ImGui::PopStyleVar();
+		}
 	}
 
 	ImVec2 ListTableCellPadding()

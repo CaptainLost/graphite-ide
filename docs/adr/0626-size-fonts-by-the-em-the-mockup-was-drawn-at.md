@@ -46,6 +46,7 @@ Date: 2026-10-19
 
   | What | Length | Record |
   |---|---|---|
+  | List row | 22 px, a 16 px text line and 6 px | [0616](0616-draw-list-rows-taller-with-an-inset-rounded-highlight-in-the-accent.md) |
   | Panel header | 36 px | [0618](0618-head-a-panel-with-one-row-of-quiet-choices-and-icon-actions.md) |
   | Breadcrumb row | 24 px | [0623](0623-show-the-file-s-path-and-the-symbol-at-the-caret-above-the-code.md) |
   | Title bar | 28 px | [0619](0619-show-the-open-folder-and-branch-in-the-title-bar.md) |
@@ -59,6 +60,12 @@ Date: 2026-10-19
   The badge keeps its 5 px gap to the name, so a name starts 21 px after the
   label's start. The strip keeps its groups, its separators and its open bar,
   2 px wide and 5 px short of the button at each end.
+- **List bodies.** A 22 px row holds its 16 px text centred only while the item
+  spacing is at most half the row spacing, 3 px, and the interface's is 5 px.
+  Each list lays its rows out inside a `ListBodyScope`, which caps the spacing
+  for the list alone, and a popup begun from a row takes the interface's
+  spacing back through a `ListPopupScope` (0616). Menus, forms and dialogs keep
+  5 px.
 - **Status bar.** The bar is pinned at its own height, rounded to a whole pixel,
   not the height of a frame. It draws in the interface face at its own size, and
   sets the frame padding so that a frame is as tall as the bar, which keeps the
@@ -93,6 +100,8 @@ to make up, so each length is the mockup's own number.
 - Rounding to a whole pixel leaves each size within half a pixel of the mockup's
   em: Inter's 13 px is 15.7 px converted, drawn at 16.
 - A tooltip asked for inside the status bar draws at the bar's 15 px.
+- Items inside a list that are not rows are spaced 3 px, where the rest of the
+  interface spaces them 5 px.
 
 ### Neutral
 

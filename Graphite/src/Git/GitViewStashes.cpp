@@ -120,6 +120,8 @@ namespace Graphite {
 
 	void GitView::RenderStashMenu(const Core::StashEntry& stash)
 	{
+		const ListPopupScope popup;
+
 		if (!Core::BeginRightClickPopup("stash-menu"))
 		{
 			return;

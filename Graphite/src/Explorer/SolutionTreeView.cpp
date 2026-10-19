@@ -132,6 +132,7 @@ namespace Graphite {
 
 		if (ImGui::BeginChild("##solutionBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None))
 		{
+			const ListBodyScope listBody;
 			constexpr const char* kFilteredTreeScope = "##filteredTree";
 			const bool filtering = m_Filter.IsActive();
 
@@ -692,6 +693,7 @@ namespace Graphite {
 											 const std::string& path)
 	{
 		const std::string popupId = "##ctxSlnFolder" + path;
+		const ListPopupScope popup;
 
 		if (!Core::BeginRightClickPopup(popupId.c_str()))
 		{
@@ -801,6 +803,7 @@ namespace Graphite {
 											 const std::string& folder)
 	{
 		const std::string popupId = "##ctxSlnProject" + Core::ToUtf8(project.Path);
+		const ListPopupScope popup;
 
 		if (!Core::BeginRightClickPopup(popupId.c_str()))
 		{

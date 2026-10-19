@@ -23,7 +23,9 @@ namespace {
 	constexpr float kFringe = 1.5f;
 	constexpr float kOnTheEdge = 0.01f;
 	constexpr float kIndent = 30.0f;
-	constexpr float kListRowSpacing = 9.0f;
+	constexpr float kListRowSpacing = 6.0f;
+	constexpr float kInterfaceItemSpacing = 5.0f;
+	constexpr float kListBodyItemSpacing = 3.0f;
 	constexpr float kHighlightInset = 6.0f;
 	constexpr float kHighlightRounding = 5.0f;
 	constexpr float kSelectedAlpha = 0.20f;
@@ -88,8 +90,8 @@ namespace {
 		return extent;
 	}
 
-	// A list as the panels hold them: a child window with no padding of its own, in a scheme whose accent,
-	// background and text are told apart.
+	// A list as the panels hold them: a list body in a child window with no padding of its own, under the interface's
+	// item spacing, in a scheme whose accent, background and text are told apart.
 	struct ListScreen
 	{
 		ImGuiFrames Frames;
@@ -104,6 +106,7 @@ namespace {
 		{
 			ImGuiStyle& style = ImGui::GetStyle();
 			style.FontSizeBase = Core::kInterfaceFontSize;
+			style.ItemSpacing.y = kInterfaceItemSpacing;
 			style.Colors[ImGuiCol_CheckMark] = kAccent;
 			style.Colors[ImGuiCol_WindowBg] = kBackground;
 			style.Colors[ImGuiCol_Text] = kText;
@@ -116,15 +119,19 @@ namespace {
 			ImGui::Begin("Panel", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 
 			ImGui::BeginChild("##list", ImVec2(0.0f, 0.0f));
-			const ImGuiWindow* list = ImGui::GetCurrentWindowRead();
-			List = ImRect(list->InnerRect.Min, list->InnerRect.Max);
-			FirstRowTop = ImGui::GetCursorScreenPos().y;
-			EndX = Graphite::ListRowEnd();
-			TextLine = ImGui::GetTextLineHeight();
-			Pitch = Graphite::ListRowPitch();
 
-			rows();
-			ContentBottom = ImGui::GetCurrentWindowRead()->DC.CursorMaxPos.y;
+			{
+				const Graphite::ListBodyScope listBody;
+				const ImGuiWindow* list = ImGui::GetCurrentWindowRead();
+				List = ImRect(list->InnerRect.Min, list->InnerRect.Max);
+				FirstRowTop = ImGui::GetCursorScreenPos().y;
+				EndX = Graphite::ListRowEnd();
+				TextLine = ImGui::GetTextLineHeight();
+				Pitch = Graphite::ListRowPitch();
+
+				rows();
+				ContentBottom = ImGui::GetCurrentWindowRead()->DC.CursorMaxPos.y;
+			}
 
 			ImGui::EndChild();
 			ImGui::End();
@@ -308,6 +315,118 @@ TEST_CASE("A row's pitch is the text line plus the list row spacing")
 	CHECK(secondRowTop - screen.FirstRowTop == doctest::Approx(screen.Pitch));
 }
 
+TEST_CASE("A list row is twenty-two pixels")
+{
+	constexpr float kTwentyTwo = 22.0f;
+
+	ListScreen screen;
+	float secondRowTop = 0.0f;
+
+	screen.DrawFrame([&secondRowTop] {
+		Graphite::ListRowSelectable("##twentyTwo", false);
+		secondRowTop = ImGui::GetCursorScreenPos().y;
+	});
+
+	CHECK(screen.Pitch == doctest::Approx(kTwentyTwo));
+	CHECK(secondRowTop - screen.FirstRowTop == doctest::Approx(kTwentyTwo));
+}
+
+TEST_CASE("A list body caps the item spacing at half the row spacing and gives the interface's back when it ends")
+{
+	ListScreen screen;
+	float insideTheBody = 0.0f;
+	float afterTheBody = 0.0f;
+
+	screen.Frames.Next([&] {
+		ImGui::Begin("##capWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+		{
+			const Graphite::ListBodyScope listBody;
+			insideTheBody = ImGui::GetStyle().ItemSpacing.y;
+		}
+
+		afterTheBody = ImGui::GetStyle().ItemSpacing.y;
+		ImGui::End();
+	});
+
+	CHECK(insideTheBody == doctest::Approx(kListBodyItemSpacing));
+	CHECK(afterTheBody == doctest::Approx(kInterfaceItemSpacing));
+}
+
+TEST_CASE("A form laid out after a list keeps the interface's item spacing of five pixels")
+{
+	ListScreen screen;
+	float firstFieldTop = 0.0f;
+	float secondFieldTop = 0.0f;
+	float textLine = 0.0f;
+
+	screen.Frames.Next([&] {
+		ImGui::Begin("##formAfterList", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+		{
+			const Graphite::ListBodyScope listBody;
+			Graphite::ListRowSelectable("##rowAboveTheForm", false);
+			ImGui::SameLine();
+			ImGui::TextUnformatted("Row");
+		}
+
+		textLine = ImGui::GetTextLineHeight();
+		firstFieldTop = ImGui::GetCursorScreenPos().y;
+		ImGui::TextUnformatted("Name");
+		secondFieldTop = ImGui::GetCursorScreenPos().y;
+		ImGui::TextUnformatted("Folder");
+		ImGui::End();
+	});
+
+	CHECK(secondFieldTop - firstFieldTop == doctest::Approx(textLine + kInterfaceItemSpacing));
+}
+
+TEST_CASE("A menu opened from a row in a list body keeps the interface's item spacing of five pixels")
+{
+	constexpr const char* kMenuId = "##rowMenuInAList";
+
+	ListScreen screen;
+	std::optional<float> menuItemSpacing;
+	float firstItemTop = 0.0f;
+	float secondItemTop = 0.0f;
+	float textLine = 0.0f;
+	float spacingAfterTheMenu = 0.0f;
+
+	screen.Frames.Next([&] {
+		ImGui::Begin("##listWithMenu", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+		{
+			const Graphite::ListBodyScope listBody;
+			Graphite::ListRowSelectable("##rowWithMenu", false);
+			ImGui::OpenPopup(kMenuId);
+
+			{
+				const Graphite::ListPopupScope popup;
+
+				if (ImGui::BeginPopup(kMenuId))
+				{
+					menuItemSpacing = ImGui::GetStyle().ItemSpacing.y;
+					textLine = ImGui::GetTextLineHeight();
+					firstItemTop = ImGui::GetCursorScreenPos().y;
+					ImGui::MenuItem("Open");
+					secondItemTop = ImGui::GetCursorScreenPos().y;
+					ImGui::MenuItem("Rename");
+					ImGui::EndPopup();
+				}
+			}
+
+			spacingAfterTheMenu = ImGui::GetStyle().ItemSpacing.y;
+		}
+
+		ImGui::End();
+	});
+
+	REQUIRE(menuItemSpacing.has_value());
+	CHECK(*menuItemSpacing == doctest::Approx(kInterfaceItemSpacing));
+	CHECK(secondItemTop - firstItemTop == doctest::Approx(textLine + kInterfaceItemSpacing));
+	CHECK(spacingAfterTheMenu == doctest::Approx(kListBodyItemSpacing));
+}
+
 TEST_CASE("A row laid over at its text top or after it on the same line still leaves the next row a pitch below")
 {
 	ListScreen screen;
@@ -378,6 +497,7 @@ TEST_CASE("A row's text line sits in the middle of its highlight")
 	const std::optional<Extent> selected = ExtentInColour(ListScreen::DrawList(), SelectedRowColour());
 	REQUIRE(selected.has_value());
 
+	CHECK(screen.Pitch == doctest::Approx(Core::kInterfaceFontSize + kListRowSpacing));
 	CHECK(textTop - screen.FirstRowTop == doctest::Approx(std::floor(kListRowSpacing * 0.5f)));
 
 	const float aboveTheText = textTop - selected->Top;

@@ -23,9 +23,10 @@ the child's top edge, so anything drawn above a row's start is cut off.
 
 Draw list rows through `Graphite/src/UI/Lists/ListRow.h` as follows.
 
-- **Pitch:** a row is one text line plus `ListRowSpacing()`, 9 px scaled:
-  `ListRowPitch()`, 25 px with the 16 px interface line. The global
-  `ItemSpacing` stays as it is.
+- **Pitch:** a row is one text line plus `ListRowSpacing()`, 6 px scaled:
+  `ListRowPitch()`, 22 px with the 16 px interface line, the mockup's row
+  ([0626](0626-size-fonts-by-the-em-the-mockup-was-drawn-at.md)). The global
+  `ItemSpacing` stays as it is; a list body caps it for its rows (below).
 - **Slot:** a row owns the space from the cursor to a pitch below it.
   `ListRowSelectable` lays out a Selectable a pitch high with no item spacing,
   so its box is the slot: the first row's highlight starts at the list's top,
@@ -42,6 +43,25 @@ Draw list rows through `Graphite/src/UI/Lists/ListRow.h` as follows.
   in a row's place, such as the Explorer's rename and new-file field, does the
   same, with its frame padding equal to the text offset so that its text is on
   the rows' text line.
+- **List body:** ImGui ends a line at its tallest piece plus the item spacing,
+  so a row's text, centred and laid on the row's line, ends the row below its
+  pitch while the item spacing is more than half the row spacing: the
+  interface's 5 px against 3 px.
+  - Every list lays its rows out inside a `ListBodyScope`, made inside the
+    list's window and ended before that window. It caps `ItemSpacing.y` at
+    half the row spacing for whatever is laid out inside it, and gives the
+    interface's spacing back when it ends. Forms, menus and dialogs outside
+    lists keep 5 px.
+  - The list bodies are the Explorer's tree, the solution view, Changes,
+    Problems, the hits of Find in Files and References, the sessions, a
+    request's items, the branches and stashes, and the review's file tree and
+    commits.
+  - A popup begun inside a list body, such as a row's context menu or a row's
+    tooltip of several lines, is begun inside a `ListPopupScope`. It pushes the
+    spacing that the earliest push of the item spacing replaced, which is the
+    interface's, until the popup has ended.
+  - Outside a list body, `ListRowTextTop` holds the text higher, so a row laid
+    there still ends at its pitch.
 - **Highlight:** inset 6 px from the list's two edges, rounded 5 px, and as tall
   as the slot, so the highlights of adjacent rows still touch. The keyboard's
   mark is drawn round the inset highlight. The row's click target stays the
@@ -116,7 +136,12 @@ it was.
 
 ### Negative
 
-- Lists are about a fifth taller, so fewer rows fit on screen.
+- A row is a pixel taller than a text line with the interface's item spacing,
+  22 px against 21 px, so slightly fewer rows fit on screen.
+- Every list has to lay its rows out inside a list body, and every popup begun
+  inside one has to be begun inside a popup scope. A list that forgets draws its
+  text up to 2 px above the middle of its rows, and a popup that forgets is
+  spaced 3 px, not 5 px.
 - Every piece a caller places on a row by position has to be placed at
   `ListRowTextTop`; one placed at the row's top stands above the text line.
 - The row mirrors `Selectable`'s state through `IsItemHovered` and
@@ -142,9 +167,11 @@ it was.
 - The first and last cells of a list table stand 8 px from the table's ends,
   where they stood at the cell padding or flush before.
 - A search hit row, drawn in the code face, is a 17 px line plus the row
-  spacing: 26 px.
-- At large scales the text top is held a pixel above the middle, so that a text
-  line laid there still ends inside the row's line.
+  spacing: 23 px.
+- Outside a list body the text top is held above the middle, by 2 px at 100 %,
+  so that a text line laid there still ends inside the row's line.
+- Inside a list body, items that are not rows, such as a section's heading or
+  an empty list's message, are spaced 3 px, not 5 px.
 
 ## Alternatives Considered
 
@@ -161,7 +188,12 @@ it was.
   accent tint and the quiet hover.
 - **Push the row spacing as `ItemSpacing` around each list.** Every caller would
   change, and the items in a list that are not rows would take the row spacing
-  too.
+  too. The list body is narrower: rows keep their own pitch, and the capped
+  spacing only keeps a row's line from running past it.
+- **An item spacing of 3 px for the whole interface.** One constant, but every
+  menu, form and dialog would tighten by 2 px a line.
+- **Rows of 22 px with the text held up to fit the interface's spacing.** The
+  text would stand 2 px above the middle of every row.
 - **ImGui's own row background, through `TableSetBgColor`.** ImGui fills it
   square from one end of the table to the other, with no inset or rounding.
 - **A highlight per cell.** The rounding would cut across every column.

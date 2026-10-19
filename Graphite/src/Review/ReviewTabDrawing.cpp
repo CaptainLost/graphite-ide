@@ -330,14 +330,18 @@ namespace Graphite {
 
 			actions.Selected = ListRowSelectable("##row", look.IsSelected, ImGuiSelectableFlags_AllowOverlap);
 
-			if (Core::BeginRightClickPopup("file-menu"))
 			{
-				const char* noShortcut = nullptr;
-				const bool notChecked = false;
+				const ListPopupScope popup;
 
-				actions.OpenInEditor = ImGui::MenuItem("Open in Editor", noShortcut, notChecked, look.CanOpen);
-				actions.CopyPath = ImGui::MenuItem("Copy Path");
-				ImGui::EndPopup();
+				if (Core::BeginRightClickPopup("file-menu"))
+				{
+					const char* noShortcut = nullptr;
+					const bool notChecked = false;
+
+					actions.OpenInEditor = ImGui::MenuItem("Open in Editor", noShortcut, notChecked, look.CanOpen);
+					actions.CopyPath = ImGui::MenuItem("Copy Path");
+					ImGui::EndPopup();
+				}
 			}
 
 			ImGui::SetCursorPos(ImVec2(rowStart.x + look.Indent, ListRowTextTop(rowStart.y)));
@@ -503,6 +507,8 @@ namespace Graphite {
 
 		void DrawCommitTooltip(const Core::CommitSummary& commit)
 		{
+			const ListPopupScope tooltip;
+
 			if (!ImGui::BeginItemTooltip())
 			{
 				return;
@@ -934,6 +940,7 @@ namespace Graphite {
 
 		if (listShown)
 		{
+			const ListBodyScope listBody;
 			ImGui::Indent(ListRowEndInset());
 
 			const std::vector<ReviewTreeRow>& rows = list.Rows.Rows;
@@ -1134,6 +1141,8 @@ namespace Graphite {
 
 		if (listShown)
 		{
+			const ListBodyScope listBody;
+
 			if (range.Commits.empty())
 			{
 				Core::EmptyState("No commits.");

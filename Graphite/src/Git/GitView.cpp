@@ -484,6 +484,7 @@ namespace Graphite {
 
 		if (ImGui::BeginChild("##refsList", fillTheRest))
 		{
+			const ListBodyScope listBody;
 			ImGui::Indent(ListRowEndInset());
 			m_BranchList.DrawRows(frame);
 
@@ -513,6 +514,8 @@ namespace Graphite {
 
 	void GitView::RenderRefMenu(const Core::Branch& branch)
 	{
+		const ListPopupScope popup;
+
 		if (!Core::BeginRightClickPopup("ref-menu"))
 		{
 			return;

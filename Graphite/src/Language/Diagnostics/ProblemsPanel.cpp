@@ -91,6 +91,8 @@ namespace Graphite {
 		// WARNING: In a child of its own, which has no padding, so the rows' highlights reach the list's edges.
 		if (ImGui::BeginChild("##problemList", ImVec2(0.0f, 0.0f), ImGuiChildFlags_NavFlattened))
 		{
+			const ListBodyScope listBody;
+
 			for (const auto& [path, entry] : m_Diagnostics.GetDocuments())
 			{
 				if (entry.Items.empty() || !isOpenDocument(path))

@@ -33,6 +33,7 @@ namespace Graphite {
 
 	void DrawHitList(const HitListInput& input)
 	{
+		const ListBodyScope listBody;
 		const ImVec4 matchColor = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
 
 		for (HitGroup& group : input.Groups)

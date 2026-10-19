@@ -90,19 +90,27 @@ namespace {
 		float RowHeight = 0.0f;
 	};
 
+	// As the Git view holds the rows: in a list body, under the interface's item spacing.
 	MeasuredRows DrawAndMeasureRows(Graphite::BranchListView& list, const Graphite::BranchListFrame& frame)
 	{
+		constexpr float kInterfaceItemSpacing = 5.0f;
+
+		ImGui::GetStyle().ItemSpacing.y = kInterfaceItemSpacing;
 		BeginListWindow(kListWidth);
 
 		MeasuredRows measured;
-		measured.ListTop = ImGui::GetCursorScreenPos();
-		measured.FirstTextTop = Graphite::ListRowTextTop(measured.ListTop.y);
 
-		list.DrawRows(frame);
+		{
+			const Graphite::ListBodyScope listBody;
+			measured.ListTop = ImGui::GetCursorScreenPos();
+			measured.FirstTextTop = Graphite::ListRowTextTop(measured.ListTop.y);
 
-		measured.LastItemTop = ImGui::GetItemRectMin().y;
-		measured.CursorTop = ImGui::GetCursorScreenPos().y;
-		measured.RowHeight = Graphite::ListRowPitch();
+			list.DrawRows(frame);
+
+			measured.LastItemTop = ImGui::GetItemRectMin().y;
+			measured.CursorTop = ImGui::GetCursorScreenPos().y;
+			measured.RowHeight = Graphite::ListRowPitch();
+		}
 
 		ImGui::End();
 		return measured;

@@ -447,14 +447,18 @@ namespace Graphite {
 			action = SessionRowAction::Open;
 		}
 
-		if (Core::BeginRightClickPopup("##sessionMenu"))
 		{
-			if (ImGui::MenuItem("Continue in terminal"))
-			{
-				action = SessionRowAction::Continue;
-			}
+			const ListPopupScope popup;
 
-			ImGui::EndPopup();
+			if (Core::BeginRightClickPopup("##sessionMenu"))
+			{
+				if (ImGui::MenuItem("Continue in terminal"))
+				{
+					action = SessionRowAction::Continue;
+				}
+
+				ImGui::EndPopup();
+			}
 		}
 
 		ImGui::Indent(ListRowEndInset());
@@ -533,12 +537,17 @@ namespace Graphite {
 
 		const bool grouped = !limitedToWorkspace;
 
-		if (!ImGui::BeginChild("##sessionList"))
+		if (ImGui::BeginChild("##sessionList"))
 		{
-			ImGui::EndChild();
-			return;
+			const ListBodyScope listBody;
+			RenderRows(visible, grouped);
 		}
 
+		ImGui::EndChild();
+	}
+
+	void SessionsPanel::RenderRows(const std::vector<VisibleRow>& visible, bool grouped)
+	{
 		const Pricing& pricing = m_Settings.GetPricing();
 		const std::filesystem::path::string_type* group = nullptr;
 		bool groupOpen = true;
@@ -584,8 +593,6 @@ namespace Graphite {
 				RenderRow(summary);
 			}
 		}
-
-		ImGui::EndChild();
 	}
 
 	void SessionsPanel::OnImGuiRender()

@@ -756,6 +756,7 @@ namespace Graphite {
 
 		if (itemsOpen)
 		{
+			const ListBodyScope listBody;
 			const DetailsPick pick =
 				DrawRequestDetails(request, context.Palette, m_SelectedItem, std::exchange(m_RevealItem, std::nullopt));
 
