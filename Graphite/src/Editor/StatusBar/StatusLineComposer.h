@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Editor/StatusBar/ServerStatusText.h"
+#include "Editor/StatusBar/StatusBar.h"
 #include "Language/Api/LanguageId.h"
 #include "Language/Api/LanguageService.h"
 #include "Language/Install/ServerInstaller.h"
@@ -41,6 +42,7 @@ namespace Graphite {
 		std::string Text;
 		std::string Detail;
 		std::optional<LanguageId> SettingsLanguage;
+		ServerHealth Health = ServerHealth::None;
 	};
 
 	std::optional<ServerLine> ChooseServerLine(const ServerLineInputs& inputs);

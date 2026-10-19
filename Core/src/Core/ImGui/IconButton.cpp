@@ -18,14 +18,16 @@ namespace Core {
 		constexpr float kSeparatorHeightPerFontSize = 0.9f;
 		constexpr float kInvisibleAlpha = 0.0f;
 		constexpr float kNoTextBaseline = -1.0f;
+		constexpr float kSquareCorners = 0.0f;
 
-		void DrawFace(const ImRect& rect, const char* glyph, const ImVec4& fill, ImGuiCol glyphColour)
+		void DrawFace(const ImRect& rect, const char* glyph, const ImVec4& fill, ImGuiCol glyphColour,
+					  float rounding)
 		{
 			ImDrawList* drawList = ImGui::GetWindowDrawList();
 
-			if (fill.w > 0.0f)
+			if (fill.w > kInvisibleAlpha)
 			{
-				drawList->AddRectFilled(rect.Min, rect.Max, ImGui::GetColorU32(fill), ImGui::GetStyle().FrameRounding);
+				drawList->AddRectFilled(rect.Min, rect.Max, ImGui::GetColorU32(fill), rounding);
 			}
 
 			DrawCentredGlyph(drawList, rect, glyph, ImGui::GetColorU32(glyphColour));
@@ -50,7 +52,28 @@ namespace Core {
 			return ImGui::GetTextLineHeight();
 		}
 
+		if (fit == IconButtonFit::Bar)
+		{
+			return ImGui::GetFrameHeight();
+		}
+
 		return std::floor(ImGui::GetFontSize() + Scaled(kButtonInset));
+	}
+
+	ImVec4 IconButtonFill(ImGuiID id, bool hovered, bool held, bool engaged)
+	{
+		const float hoverAmount = Animation::HoverAmount(id, hovered);
+
+		if (held)
+		{
+			return ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive);
+		}
+
+		const ImVec4 hoveredFill = ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered);
+		const ImVec4 restingFill =
+			engaged ? ImGui::GetStyleColorVec4(ImGuiCol_Button) : WithAlphaReplaced(hoveredFill, kInvisibleAlpha);
+
+		return Animation::Blend(restingFill, hoveredFill, hoverAmount);
 	}
 
 	// WARNING: drawn rather than submitted as an ImGui::Button, which put the glyphs off centre: on
@@ -67,8 +90,9 @@ namespace Core {
 		}
 
 		const float size = IconButtonSize(options.Fit);
-		const bool framed = options.Fit == IconButtonFit::Frame;
+		const bool framed = options.Fit != IconButtonFit::Line;
 		const float cellHeight = framed ? ImGui::GetFrameHeight() : size;
+		const float rounding = options.Fit == IconButtonFit::Bar ? kSquareCorners : ImGui::GetStyle().FrameRounding;
 
 		const ImVec2 cellMin = window->DC.CursorPos;
 		const float squareTop = cellMin.y + std::floor((cellHeight - size) * kHalf);
@@ -91,15 +115,9 @@ namespace Core {
 		const bool pressed = ImGui::ButtonBehavior(rect, itemId, &hovered, &pressedDown, options.Flags);
 		const bool held = pressedDown && hovered;
 
-		const float hoverAmount = Animation::HoverAmount(itemId, hovered);
+		const ImVec4 fill = IconButtonFill(itemId, hovered, held, engaged);
 
-		const ImVec4 hoveredFill = ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered);
-		const ImVec4 restingFill =
-			engaged ? ImGui::GetStyleColorVec4(ImGuiCol_Button) : WithAlphaReplaced(hoveredFill, kInvisibleAlpha);
-		const ImVec4 fill = held ? ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive)
-								 : Animation::Blend(restingFill, hoveredFill, hoverAmount);
-
-		DrawFace(rect, glyph, fill, engaged ? ImGuiCol_CheckMark : ImGuiCol_Text);
+		DrawFace(rect, glyph, fill, engaged ? ImGuiCol_CheckMark : ImGuiCol_Text, rounding);
 
 		ImGui::SetItemTooltip("%s", tooltip);
 
@@ -120,7 +138,7 @@ namespace Core {
 			fill = hoveredFill;
 		}
 
-		DrawFace(rect, glyph, fill, ImGuiCol_Text);
+		DrawFace(rect, glyph, fill, ImGuiCol_Text, ImGui::GetStyle().FrameRounding);
 	}
 
 	void DrawIconSeparator()

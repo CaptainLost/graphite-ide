@@ -936,7 +936,7 @@ namespace Graphite {
 		const std::function<bool(const std::filesystem::path&)> isOpenDocument = [this](const std::filesystem::path& path) { return IsDocumentOpen(path); };
 
 		const DiagnosticsModel::Counts counts = m_Diagnostics.Total(isOpenDocument);
-		messages.Problems = ProblemCountText(counts.Errors, counts.Warnings);
+		messages.Problems = ProblemCounts{.Errors = static_cast<int>(counts.Errors), .Warnings = static_cast<int>(counts.Warnings)};
 
 		// WARNING: Tick before the panels draw, so what they declare is stamped with this frame's number and an entry nothing declared last frame is closed before anything asks about it.
 		m_PreviewSemantics.Tick(static_cast<std::size_t>(ImGui::GetFrameCount()),
@@ -1017,6 +1017,7 @@ namespace Graphite {
 			messages.Server = std::move(serverLine->Text);
 			messages.ServerDetail = std::move(serverLine->Detail);
 			messages.ServerOpensSettings = serverLine->SettingsLanguage.has_value();
+			messages.Health = serverLine->Health;
 			serverSettingsLanguage = serverLine->SettingsLanguage;
 		}
 
@@ -1063,6 +1064,11 @@ namespace Graphite {
 		{
 			messages.MissedNotificationColour = Core::ToastAccentOf(ToastPaletteFor(m_ActiveScheme.Get()), *missedKind);
 		}
+
+		const EditorPalette statusPalette = ReadEditorPalette(m_ActiveScheme.Get());
+		messages.Colours = StatusBarColours{.Error = statusPalette.DiagnosticError,
+											.Warning = statusPalette.DiagnosticWarning,
+											.Ready = ReadGitPalette(m_ActiveScheme.Get()).GutterAdded};
 
 		switch (DrawStatusBar(m_Documents, shownIndex, m_Workspace.GetRoot(), messages))
 		{

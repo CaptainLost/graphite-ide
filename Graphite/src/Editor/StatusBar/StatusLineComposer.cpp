@@ -30,7 +30,8 @@ namespace Graphite {
 
 				return ServerLine{.Text = prefix + "installing " + job.Server + percentSuffix,
 								  .Detail = "Graphite is downloading and installing " + job.Server + ". It starts as soon as it is in place.",
-								  .SettingsLanguage = SettingsLanguageIfServed(language)};
+								  .SettingsLanguage = SettingsLanguageIfServed(language),
+								  .Health = ServerHealth::Starting};
 			}
 			case InstallJobKind::Uninstall:
 				return ServerLine{.Text = prefix + "uninstalling " + job.Server,
@@ -92,7 +93,8 @@ namespace Graphite {
 
 			return ServerLine{.Text = activeText,
 							  .Detail = ServerStatusDetail(inputs.Active),
-							  .SettingsLanguage = SettingsLanguageIfServed(inputs.Active.Language)};
+							  .SettingsLanguage = SettingsLanguageIfServed(inputs.Active.Language),
+							  .Health = ServerHealthOf(inputs.Active.State)};
 		}
 
 		if (std::string unserved = NoServerText(inputs.ActiveLanguage); !unserved.empty())
@@ -116,7 +118,8 @@ namespace Graphite {
 		{
 			return ServerLine{.Text = ServerStatusText(*inputs.Overall),
 							  .Detail = ServerStatusDetail(*inputs.Overall),
-							  .SettingsLanguage = SettingsLanguageIfServed(inputs.Overall->Language)};
+							  .SettingsLanguage = SettingsLanguageIfServed(inputs.Overall->Language),
+							  .Health = ServerHealthOf(inputs.Overall->State)};
 		}
 
 		return std::nullopt;

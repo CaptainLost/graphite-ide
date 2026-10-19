@@ -40,6 +40,11 @@ confirmation, an error or a list of choices.
 - Keep every git action - stage, commit, branch, checkout, fetch - in the
   panels, on their own buttons and context menus.
 
+Amended by [0620](0620-show-problems-and-the-server-s-health-as-glyphs-and-colours-in-the-status-bar.md):
+the branch and the change count fill the full height of the bar under the
+pointer, and they stand 16 px apart, and 16 px from the path, instead of a
+font's size. Their wording and their clicks are unchanged.
+
 ## Rationale
 
 A glance should answer "where am I and is anything changed", and a panel should

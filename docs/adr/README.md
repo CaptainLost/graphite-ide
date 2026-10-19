@@ -649,4 +649,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md) | Draw file icons in a colour by file kind and folders in outline | proposed | 2026-10-19 |
 | [0618](0618-head-a-panel-with-one-row-of-quiet-choices-and-icon-actions.md) | Head a panel with one row of quiet choices and icon actions | proposed | 2026-10-19 |
 | [0619](0619-show-the-open-folder-and-branch-in-the-title-bar.md) | Show the open folder and branch in the title bar | proposed | 2026-10-19 |
+| [0620](0620-show-problems-and-the-server-s-health-as-glyphs-and-colours-in-the-status-bar.md) | Show problems and the server's health as glyphs and colours in the status bar | proposed | 2026-10-19 |
 <!-- /adr-index -->

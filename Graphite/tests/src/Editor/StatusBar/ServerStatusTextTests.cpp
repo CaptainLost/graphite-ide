@@ -253,3 +253,25 @@ TEST_CASE("A language that could have a server lacks support and one that could 
 	CHECK(Graphite::NoServerText(Graphite::LanguageId::TypeScript) == "TypeScript: no language server");
 	CHECK(Graphite::NoServerText(Graphite::LanguageId::PlainText).empty());
 }
+
+TEST_CASE("A server reads as starting until it is ready, as failed where its words read as broken, and as nothing while it is off or held back")
+{
+	using Graphite::ServerHealth;
+	using Graphite::ServerHealthOf;
+	using Graphite::ServerState;
+
+	CHECK(ServerHealthOf(ServerState::Starting) == ServerHealth::Starting);
+	CHECK(ServerHealthOf(ServerState::Indexing) == ServerHealth::Starting);
+
+	CHECK(ServerHealthOf(ServerState::Ready) == ServerHealth::Ready);
+
+	CHECK(ServerHealthOf(ServerState::Failed) == ServerHealth::Failed);
+	CHECK(ServerHealthOf(ServerState::NotFound) == ServerHealth::Failed);
+	CHECK(ServerHealthOf(ServerState::NotInstalled) == ServerHealth::Failed);
+	CHECK(ServerHealthOf(ServerState::MissingRuntime) == ServerHealth::Failed);
+	CHECK(ServerHealthOf(ServerState::ProjectIncomplete) == ServerHealth::Failed);
+
+	CHECK(ServerHealthOf(ServerState::NotConfigured) == ServerHealth::None);
+	CHECK(ServerHealthOf(ServerState::Off) == ServerHealth::None);
+	CHECK(ServerHealthOf(ServerState::Restricted) == ServerHealth::None);
+}

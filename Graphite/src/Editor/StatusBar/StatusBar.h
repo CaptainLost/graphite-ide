@@ -4,6 +4,8 @@
 
 #include "Core/Base/Color.h"
 
+#include <imgui.h>
+
 #include <cstddef>
 #include <filesystem>
 #include <optional>
@@ -15,6 +17,31 @@ namespace Core {
 }
 
 namespace Graphite {
+	inline constexpr float kStatusItemGap = 16.0f;
+
+	inline constexpr float kServerDotDiameter = 7.0f;
+
+	struct ProblemCounts
+	{
+		int Errors = 0;
+		int Warnings = 0;
+	};
+
+	enum class ServerHealth
+	{
+		None,
+		Starting,
+		Ready,
+		Failed
+	};
+
+	struct StatusBarColours
+	{
+		ImU32 Error = 0;
+		ImU32 Warning = 0;
+		ImU32 Ready = 0;
+	};
+
 	struct StatusMessages
 	{
 		std::optional<std::string> Transient;
@@ -26,7 +53,9 @@ namespace Graphite {
 
 		bool ServerOpensSettings = false;
 
-		std::optional<std::string> Problems;
+		ServerHealth Health = ServerHealth::None;
+
+		std::optional<ProblemCounts> Problems;
 
 		std::optional<std::string> Background;
 
@@ -35,6 +64,8 @@ namespace Graphite {
 		std::optional<GitStatusSegment> Git;
 
 		std::optional<Core::Color> MissedNotificationColour;
+
+		StatusBarColours Colours;
 	};
 
 	constexpr const char* kStatusBarWindowName = "##StatusBar";

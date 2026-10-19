@@ -192,3 +192,55 @@ TEST_CASE("The server's words open the settings of the language they speak for")
 	REQUIRE(workspaceLine.has_value());
 	CHECK(workspaceLine->SettingsLanguage == LanguageId::Cpp);
 }
+
+TEST_CASE("The chosen line carries the health of the server it speaks for, and none where it speaks for no running server")
+{
+	ServerLineInputs active;
+	active.Active = Clangd(ServerState::Ready);
+	active.ActiveLanguage = LanguageId::Cpp;
+	active.AnalysingFile = "main.cpp";
+	const std::optional<ServerLine> activeLine = ChooseServerLine(active);
+	REQUIRE(activeLine.has_value());
+	CHECK(activeLine->Health == ServerHealth::Ready);
+
+	ServerLineInputs workspace;
+	workspace.FolderOpen = true;
+	workspace.FolderTrusted = true;
+	workspace.Overall = Clangd(ServerState::Indexing);
+	const std::optional<ServerLine> workspaceLine = ChooseServerLine(workspace);
+	REQUIRE(workspaceLine.has_value());
+	CHECK(workspaceLine->Health == ServerHealth::Starting);
+
+	ServerLineInputs failed;
+	failed.Active = Clangd(ServerState::Failed);
+	failed.ActiveLanguage = LanguageId::Cpp;
+	const std::optional<ServerLine> failedLine = ChooseServerLine(failed);
+	REQUIRE(failedLine.has_value());
+	CHECK(failedLine->Health == ServerHealth::Failed);
+
+	ServerLineInputs installing;
+	installing.ActiveLanguage = LanguageId::CSharp;
+	installing.ActiveJob = ServerJob{.Kind = InstallJobKind::Install, .Server = "Roslyn"};
+	const std::optional<ServerLine> installingLine = ChooseServerLine(installing);
+	REQUIRE(installingLine.has_value());
+	CHECK(installingLine->Health == ServerHealth::Starting);
+
+	ServerLineInputs uninstalling;
+	uninstalling.ActiveLanguage = LanguageId::CSharp;
+	uninstalling.ActiveJob = ServerJob{.Kind = InstallJobKind::Uninstall, .Server = "Roslyn"};
+	const std::optional<ServerLine> uninstallingLine = ChooseServerLine(uninstalling);
+	REQUIRE(uninstallingLine.has_value());
+	CHECK(uninstallingLine->Health == ServerHealth::None);
+
+	ServerLineInputs unserved;
+	unserved.ActiveLanguage = LanguageId::CSharp;
+	const std::optional<ServerLine> unservedLine = ChooseServerLine(unserved);
+	REQUIRE(unservedLine.has_value());
+	CHECK(unservedLine->Health == ServerHealth::None);
+
+	ServerLineInputs restricted;
+	restricted.FolderOpen = true;
+	const std::optional<ServerLine> restrictedLine = ChooseServerLine(restricted);
+	REQUIRE(restrictedLine.has_value());
+	CHECK(restrictedLine->Health == ServerHealth::None);
+}

@@ -89,6 +89,33 @@ namespace Graphite {
 		return {};
 	}
 
+	ServerHealth ServerHealthOf(ServerState state)
+	{
+		switch (state)
+		{
+		case ServerState::Starting:
+		case ServerState::Indexing:
+			return ServerHealth::Starting;
+
+		case ServerState::Ready:
+			return ServerHealth::Ready;
+
+		case ServerState::Failed:
+		case ServerState::NotFound:
+		case ServerState::NotInstalled:
+		case ServerState::MissingRuntime:
+		case ServerState::ProjectIncomplete:
+			return ServerHealth::Failed;
+
+		case ServerState::NotConfigured:
+		case ServerState::Off:
+		case ServerState::Restricted:
+			break;
+		}
+
+		return ServerHealth::None;
+	}
+
 	std::string AnalysingText(const ServerStatus& status, const std::string& fileName)
 	{
 		if (status.State != ServerState::Ready)

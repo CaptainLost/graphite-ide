@@ -26,6 +26,9 @@ A bar above the editor offers what the shown document's language is missing: a c
 
 The status bar names the language and the server, as in `C#: Roslyn ready`. It says when the active language's server is being installed or removed. Clicking it opens that language's tab.
 
+Amended by [0620](0620-show-problems-and-the-server-s-health-as-glyphs-and-colours-in-the-status-bar.md):
+a 7 px dot before the words shows the server's health: the git "added" colour when ready, the warning colour while it starts or installs and the error colour when it is broken, and the words fill the full height of the bar under the pointer when they open the tab. The words and the click are unchanged.
+
 NotFound means only a configured path that is wrong. A server found nowhere is NotInstalled.
 
 What is installed is read once, on the install queue after the start-up sweep. From then on it follows this window's own outcomes. The install command, the bar and the tab offer an install from that record, never from the server's state.

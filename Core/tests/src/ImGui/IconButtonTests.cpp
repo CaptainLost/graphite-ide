@@ -108,6 +108,25 @@ TEST_CASE("A frame icon button leaves the line's top where it was, so what follo
 	CHECK(drawn.Advance == doctest::Approx(ImGui::GetFrameHeightWithSpacing()));
 }
 
+TEST_CASE("A bar icon button is a square one frame high from the row's top, filled out to its corners")
+{
+	constexpr int kVerticesInAGlyph = 4;
+	constexpr int kVerticesInASquareCorneredFill = 4;
+	constexpr float kRoundedFrames = 3.0f;
+
+	ButtonWindow window;
+	ImGui::GetStyle().FrameRounding = kRoundedFrames;
+
+	const bool engaged = true;
+	const ButtonWindow::Drawn drawn = window.Draw(Core::IconButtonFit::Bar, engaged);
+
+	CHECK(drawn.Button.GetHeight() == doctest::Approx(ImGui::GetFrameHeight()));
+	CHECK(drawn.Button.GetWidth() == doctest::Approx(drawn.Button.GetHeight()));
+	CHECK(drawn.Button.Min.y == doctest::Approx(drawn.RowTop));
+	CHECK(drawn.Advance == doctest::Approx(ImGui::GetFrameHeightWithSpacing()));
+	CHECK(drawn.Vertices == kVerticesInAGlyph + kVerticesInASquareCorneredFill);
+}
+
 TEST_CASE("An icon button at rest draws only its glyph, and an engaged one draws a fill behind it")
 {
 	ButtonWindow window;

@@ -31,6 +31,9 @@ Draw every button that is only a glyph with `Core::DrawIconButton` (`Core/src/Co
 
 A hover that was not asked for on the frame before starts settled at its target (`Animation::HoverAmount`). This keeps a button that disappears and comes back, such as a row's button, from fading out from where it was.
 
+Amended by [0620](0620-show-problems-and-the-server-s-health-as-glyphs-and-colours-in-the-status-bar.md):
+a third fit, `Bar`, is a square one frame high from the row's top, filled out to its corners, for the status bar's bell. `IconButtonFill` gives the same eased fill to a pressable piece that is not a glyph button, such as the status bar's clickable text.
+
 ## Rationale
 
 **One look.** A glyph that can be clicked looks the same wherever it sits. The fill under the pointer shows what will be pressed, without crowding a toolbar or a list row at rest.

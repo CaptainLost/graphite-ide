@@ -50,6 +50,50 @@ inline std::optional<HorizontalExtent> HorizontalExtentInColour(const ImDrawList
 	return extent;
 }
 
+struct VerticalExtent
+{
+	float Top = FLT_MAX;
+	float Bottom = -FLT_MAX;
+};
+
+inline std::optional<VerticalExtent> VerticalExtentInColour(const ImDrawList& drawing, ImU32 colour)
+{
+	VerticalExtent extent;
+	bool foundVertexInColour = false;
+
+	for (const ImDrawVert& vertex : drawing.VtxBuffer)
+	{
+		if (vertex.col == colour)
+		{
+			foundVertexInColour = true;
+			extent.Top = std::min(extent.Top, vertex.pos.y);
+			extent.Bottom = std::max(extent.Bottom, vertex.pos.y);
+		}
+	}
+
+	if (!foundVertexInColour)
+	{
+		return std::nullopt;
+	}
+
+	return extent;
+}
+
+inline int VerticesInColour(const ImDrawList& drawing, ImU32 colour)
+{
+	int count = 0;
+
+	for (const ImDrawVert& vertex : drawing.VtxBuffer)
+	{
+		if (vertex.col == colour)
+		{
+			++count;
+		}
+	}
+
+	return count;
+}
+
 // A selected row is drawn in the list row's selected colour unless it is held down.
 inline bool MarksARow(const ImDrawList& drawing)
 {

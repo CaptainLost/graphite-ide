@@ -1,7 +1,11 @@
 #include "Editor/StatusBar/StatusBar.h"
 
+#include "Editor/StatusBar/StatusLineComposer.h"
+
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/IconButton.h"
+#include "Core/ImGui/UiScale.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentSet.h"
@@ -11,11 +15,66 @@
 
 #include <IconsMaterialDesignIcons.h>
 
+#include <cstddef>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace Graphite {
 
 	namespace {
+		constexpr float kDotShareOfFont = 0.18f;
+		constexpr float kNoBorder = 0.0f;
+		constexpr float kHalf = 0.5f;
+		constexpr float kInvisibleAlpha = 0.0f;
+		constexpr float kNoGap = 0.0f;
+
+		constexpr float kItemFillPadding = 6.0f;
+		constexpr float kBothSides = 2.0f;
+		constexpr float kMarkToTextGap = 4.0f;
+		constexpr float kBetweenCountsGap = 8.0f;
+
+		constexpr const char* kErrorGlyph = ICON_MDI_CLOSE_CIRCLE;
+		constexpr const char* kWarningGlyph = ICON_MDI_ALERT;
+		constexpr const char* kNoProblemsGlyph = ICON_MDI_CHECK;
+
+		constexpr const char* kReadOnlyWarning = "read-only: not valid text for its encoding";
+
+		enum class PieceKind
+		{
+			Text,
+			Dot
+		};
+
+		struct Piece
+		{
+			PieceKind Kind = PieceKind::Text;
+			std::string Text;
+			ImU32 Colour = 0;
+			float GapBefore = kNoGap;
+		};
+
+		enum class ItemFace
+		{
+			Interface,
+			Code
+		};
+
+		struct StatusItem
+		{
+			const char* Id = nullptr;
+			StatusBarClick Reports = StatusBarClick::None;
+			std::vector<Piece> Pieces;
+			std::string Tooltip;
+			ItemFace Face = ItemFace::Interface;
+		};
+
+		struct DrawnItem
+		{
+			bool Clicked = false;
+			float Width = 0.0f;
+		};
+
 		const char* LineEndingName(Core::LineEnding ending, bool mixed)
 		{
 			if (ending == Core::LineEnding::Crlf)
@@ -36,16 +95,12 @@ namespace Graphite {
 
 		float CentredTextY(float barHeight)
 		{
-			return (barHeight - ImGui::GetTextLineHeight()) * 0.5f;
+			return (barHeight - ImGui::GetTextLineHeight()) * kHalf;
 		}
-
-		constexpr float kDotShareOfFont = 0.18f;
-		constexpr float kGapAfterGitInFontSizes = 2.0f;
-		constexpr float kNoBorder = 0.0f;
 
 		float BellWidth()
 		{
-			return Core::IconButtonSize(Core::IconButtonFit::Line);
+			return Core::IconButtonSize(Core::IconButtonFit::Bar);
 		}
 
 		ImU32 ToPackedColour(const Core::Color& colour)
@@ -53,25 +108,36 @@ namespace Graphite {
 			return ImGui::GetColorU32(ImVec4(colour.R, colour.G, colour.B, colour.A));
 		}
 
-		bool DrawNotificationBell(const std::optional<Core::Color>& missedColour, float barHeight)
+		ImU32 TextColour()
 		{
-			ImGui::SetCursorPos(
-				ImVec2(ImGui::GetWindowWidth() - BellWidth() - ImGui::GetStyle().WindowPadding.x, CentredTextY(barHeight)));
+			return ImGui::GetColorU32(ImGuiCol_Text);
+		}
+
+		ImU32 DimColour()
+		{
+			return ImGui::GetColorU32(ImGuiCol_TextDisabled);
+		}
+
+		bool DrawNotificationBell(const std::optional<Core::Color>& missedColour)
+		{
+			constexpr float kBarTop = 0.0f;
+			ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - BellWidth() - ImGui::GetStyle().WindowPadding.x, kBarTop));
 
 			// WARNING: Without NoFocus the press focuses the bar, and the popup the click opens hands the
 			// keyboard back to the bar when it closes rather than to the editor.
 			constexpr bool kNotEngaged = false;
-			const Core::IconButtonOptions bellButton{.Fit = Core::IconButtonFit::Line,
+			const Core::IconButtonOptions bellButton{.Fit = Core::IconButtonFit::Bar,
 													 .Flags = ImGuiButtonFlags_NoFocus | ImGuiButtonFlags_NoNavFocus};
 			const bool clicked =
 				Core::DrawIconButton("##NotificationBell", ICON_MDI_BELL_OUTLINE, kNotEngaged, "Notifications", bellButton);
-			ImDrawList* const drawList = ImGui::GetWindowDrawList();
 
 			if (missedColour.has_value())
 			{
 				const float dotRadius = ImGui::GetFontSize() * kDotShareOfFont;
-				const ImVec2 dotCentre(ImGui::GetItemRectMax().x - dotRadius, ImGui::GetItemRectMin().y + dotRadius);
-				drawList->AddCircleFilled(dotCentre, dotRadius, ToPackedColour(*missedColour));
+				const float glyphHalf = ImGui::GetTextLineHeight() * kHalf;
+				const ImVec2 bellCentre = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax()).GetCenter();
+				const ImVec2 dotCentre(bellCentre.x + glyphHalf - dotRadius, bellCentre.y - glyphHalf + dotRadius);
+				ImGui::GetWindowDrawList()->AddCircleFilled(dotCentre, dotRadius, ToPackedColour(*missedColour));
 			}
 
 			return clicked;
@@ -82,92 +148,182 @@ namespace Graphite {
 			const float width = ImGui::CalcTextSize(text.c_str()).x;
 
 			ImGui::SetCursorPos(
-				ImVec2((ImGui::GetWindowWidth() - width) * 0.5f, CentredTextY(barHeight)));
+				ImVec2((ImGui::GetWindowWidth() - width) * kHalf, CentredTextY(barHeight)));
 			ImGui::TextUnformatted(text.c_str());
 		}
 
-		// WARNING: A clickable piece is an invisible button with the text drawn over it, never a text item
-		// asked IsItemClicked. A text item has no id, so its press focuses the bar itself and the dock
-		// node then selects the bar's tab instead of the panel the click revealed.
-		bool DrawClickablePiece(const char* id, const std::string& text, bool clickable, const std::string& tooltip,
-								bool dimmedWhenInert = true)
+		float PieceWidth(const Piece& piece)
 		{
-			const ImVec2 size = ImGui::CalcTextSize(text.c_str());
-
-			// WARNING: InvisibleButton refuses a zero size, so an empty piece is drawn as inert text.
-			if (!clickable || size.x <= 0.0f)
+			if (piece.Kind == PieceKind::Dot)
 			{
-				if (dimmedWhenInert)
+				return Core::Scaled(kServerDotDiameter);
+			}
+
+			return ImGui::CalcTextSize(piece.Text.c_str()).x;
+		}
+
+		float PiecesWidth(const std::vector<Piece>& pieces)
+		{
+			float width = 0.0f;
+
+			for (const Piece& piece : pieces)
+			{
+				width += piece.GapBefore + PieceWidth(piece);
+			}
+
+			return width;
+		}
+
+		void DrawPieces(const std::vector<Piece>& pieces, ImVec2 lineStart)
+		{
+			ImDrawList* const drawList = ImGui::GetWindowDrawList();
+			const float lineMiddle = lineStart.y + ImGui::GetTextLineHeight() * kHalf;
+			float x = lineStart.x;
+
+			for (const Piece& piece : pieces)
+			{
+				x += piece.GapBefore;
+				const float width = PieceWidth(piece);
+
+				if (piece.Kind == PieceKind::Dot)
 				{
-					ImGui::TextDisabled("%s", text.c_str());
+					const float radius = width * kHalf;
+					drawList->AddCircleFilled(ImVec2(x + radius, lineMiddle), radius, piece.Colour);
 				}
 				else
 				{
-					ImGui::TextUnformatted(text.c_str());
+					drawList->AddText(ImVec2(x, lineStart.y), piece.Colour, piece.Text.c_str());
 				}
 
-				if (ImGui::IsItemHovered() && !tooltip.empty())
-				{
-					ImGui::SetTooltip("%s", tooltip.c_str());
-				}
-
-				return false;
+				x += width;
 			}
-
-			const bool clicked = ImGui::InvisibleButton(id, size);
-
-			ImGui::GetWindowDrawList()->AddText(ImGui::GetItemRectMin(),
-												ImGui::GetColorU32(ImGuiCol_Text), text.c_str());
-
-			if (!ImGui::IsItemHovered())
-			{
-				return clicked;
-			}
-
-			if (!tooltip.empty())
-			{
-				ImGui::SetTooltip("%s", tooltip.c_str());
-			}
-
-			ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-			return clicked;
 		}
 
-		StatusBarClick DrawGitSegment(const GitStatusSegment& segment, float barHeight)
+		void PushItemFace(ItemFace face)
 		{
-			StatusBarClick clicked = StatusBarClick::None;
-
-			ImGui::SetCursorPos(ImVec2(ImGui::GetStyle().WindowPadding.x, CentredTextY(barHeight)));
-
-			if (DrawClickablePiece("##GitBranch", segment.Branch, segment.HasRepository, segment.BranchTooltip))
+			if (face == ItemFace::Code)
 			{
-				clicked = StatusBarClick::GitBranch;
+				Core::PushCodeFont(Core::kInterfaceFontSize);
 			}
+		}
 
-			if (!segment.Distance.empty())
+		void PopItemFace(ItemFace face)
+		{
+			if (face == ItemFace::Code)
 			{
-				ImGui::SameLine();
-				ImGui::TextUnformatted(segment.Distance.c_str());
+				ImGui::PopFont();
+			}
+		}
 
-				if (ImGui::IsItemHovered() && !segment.DistanceTooltip.empty())
+		float ItemWidth(const StatusItem& item)
+		{
+			PushItemFace(item.Face);
+			const float width = PiecesWidth(item.Pieces);
+			PopItemFace(item.Face);
+
+			return width;
+		}
+
+		// WARNING: A clickable item is an invisible button with its pieces drawn over it, never a text item
+		// asked IsItemClicked. A text item has no id, so its press focuses the bar itself and the dock
+		// node then selects the bar's tab instead of the panel the click revealed.
+		DrawnItem DrawItem(const StatusItem& item, float x, float barHeight)
+		{
+			PushItemFace(item.Face);
+
+			DrawnItem drawn{.Width = PiecesWidth(item.Pieces)};
+			const float lineTop = CentredTextY(barHeight);
+
+			ImGui::SetCursorPos(ImVec2(x, lineTop));
+			const ImVec2 lineStart = ImGui::GetCursorScreenPos();
+
+			// WARNING: InvisibleButton refuses a zero size, so an empty item is laid out as an inert one.
+			const bool clickable = item.Reports != StatusBarClick::None && drawn.Width > 0.0f;
+
+			if (clickable)
+			{
+				constexpr float kBarTop = 0.0f;
+				const float fillPadding = Core::Scaled(kItemFillPadding);
+
+				ImGui::SetCursorPos(ImVec2(x - fillPadding, kBarTop));
+				drawn.Clicked = ImGui::InvisibleButton(item.Id, ImVec2(drawn.Width + fillPadding * kBothSides, barHeight));
+
+				const bool hovered = ImGui::IsItemHovered();
+				const bool held = hovered && ImGui::IsItemActive();
+				const ImVec4 fill = Core::IconButtonFill(ImGui::GetItemID(), hovered, held);
+
+				if (fill.w > kInvisibleAlpha)
 				{
-					ImGui::SetTooltip("%s", segment.DistanceTooltip.c_str());
+					ImGui::GetWindowDrawList()->AddRectFilled(ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+															  ImGui::GetColorU32(fill));
+				}
+
+				if (hovered)
+				{
+					ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
 				}
 			}
-
-			if (!segment.Changes.empty())
+			else
 			{
-				ImGui::SameLine(0.0f, ImGui::GetFontSize());
-
-				const bool changesClickable = true;
-
-				if (DrawClickablePiece("##GitChanges", segment.Changes, changesClickable, segment.ChangesTooltip))
-				{
-					clicked = StatusBarClick::GitChanges;
-				}
+				ImGui::Dummy(ImVec2(drawn.Width, ImGui::GetTextLineHeight()));
 			}
 
-			return clicked;
+			DrawPieces(item.Pieces, lineStart);
+
+			PopItemFace(item.Face);
+
+			if (ImGui::IsItemHovered() && !item.Tooltip.empty())
+			{
+				ImGui::SetTooltip("%s", item.Tooltip.c_str());
+			}
+
+			return drawn;
+		}
+
+		class ItemRow
+		{
+		public:
+			ItemRow(float start, float barHeight) : m_Next(start), m_BarHeight(barHeight) {}
+
+			void Place(const StatusItem& item, float spacing)
+			{
+				const float x = m_Started ? m_Next + spacing : m_Next;
+				const DrawnItem drawn = DrawItem(item, x, m_BarHeight);
+
+				if (drawn.Clicked)
+				{
+					m_Clicked = item.Reports;
+				}
+
+				m_Next = x + drawn.Width;
+				m_Started = true;
+			}
+
+			StatusBarClick GetClicked() const { return m_Clicked; }
+
+		private:
+			float m_Next = 0.0f;
+			float m_BarHeight = 0.0f;
+			bool m_Started = false;
+			StatusBarClick m_Clicked = StatusBarClick::None;
+		};
+
+		StatusItem TextItem(std::string text, ImU32 colour, std::string tooltip = {})
+		{
+			StatusItem item;
+			item.Pieces.push_back(Piece{.Text = std::move(text), .Colour = colour});
+			item.Tooltip = std::move(tooltip);
+
+			return item;
+		}
+
+		StatusItem ClickableTextItem(const char* id, StatusBarClick reports, std::string text, std::string tooltip)
+		{
+			StatusItem item = TextItem(std::move(text), TextColour(), std::move(tooltip));
+			item.Id = id;
+			item.Reports = reports;
+
+			return item;
 		}
 
 		std::string DescribeDocument(const Core::OpenItem& item, const std::filesystem::path& root)
@@ -177,11 +333,6 @@ namespace Graphite {
 			if (item.Document->IsModified())
 			{
 				description = "* " + description;
-			}
-
-			if (item.Document->IsReadOnly())
-			{
-				description += "  (read-only: not valid text for its encoding)";
 			}
 
 			return description;
@@ -207,12 +358,174 @@ namespace Graphite {
 			return description;
 		}
 
-		std::string DescribeTextFormat(const Core::OpenItem& item)
+		StatusItem ProblemsItem(const ProblemCounts& problems, const StatusBarColours& colours)
 		{
-			const std::string encoding{Core::EncodingName(item.Document->GetFileEncoding())};
+			StatusItem item;
+			item.Tooltip = ProblemCountText(static_cast<std::size_t>(problems.Errors), static_cast<std::size_t>(problems.Warnings))
+							   .value_or(std::string{});
 
-			return encoding + "    " +
-				   LineEndingName(item.Document->GetDocumentLineEnding(), item.Document->HasMixedLineEndings());
+			const float markGap = Core::Scaled(kMarkToTextGap);
+
+			if (problems.Errors > 0)
+			{
+				item.Pieces.push_back(Piece{.Text = kErrorGlyph, .Colour = colours.Error});
+				item.Pieces.push_back(Piece{.Text = std::to_string(problems.Errors), .Colour = colours.Error, .GapBefore = markGap});
+			}
+
+			if (problems.Warnings > 0)
+			{
+				const float gapBefore = item.Pieces.empty() ? kNoGap : Core::Scaled(kBetweenCountsGap);
+				item.Pieces.push_back(Piece{.Text = kWarningGlyph, .Colour = colours.Warning, .GapBefore = gapBefore});
+				item.Pieces.push_back(Piece{.Text = std::to_string(problems.Warnings), .Colour = colours.Warning, .GapBefore = markGap});
+			}
+
+			if (item.Pieces.empty())
+			{
+				item.Pieces.push_back(Piece{.Text = kNoProblemsGlyph, .Colour = DimColour()});
+			}
+
+			return item;
+		}
+
+		std::optional<ImU32> DotColourOf(ServerHealth health, const StatusBarColours& colours)
+		{
+			switch (health)
+			{
+			case ServerHealth::Starting:
+				return colours.Warning;
+
+			case ServerHealth::Ready:
+				return colours.Ready;
+
+			case ServerHealth::Failed:
+				return colours.Error;
+
+			case ServerHealth::None:
+				break;
+			}
+
+			return std::nullopt;
+		}
+
+		StatusItem ServerItem(const StatusMessages& messages)
+		{
+			StatusItem item;
+			item.Id = "##ServerStatus";
+			item.Reports = messages.ServerOpensSettings ? StatusBarClick::Server : StatusBarClick::None;
+			item.Tooltip = messages.ServerDetail.value_or(std::string{});
+
+			if (const std::optional<ImU32> dotColour = DotColourOf(messages.Health, messages.Colours))
+			{
+				item.Pieces.push_back(Piece{.Kind = PieceKind::Dot, .Colour = *dotColour});
+			}
+
+			const float gapBefore = item.Pieces.empty() ? kNoGap : Core::Scaled(kMarkToTextGap);
+			item.Pieces.push_back(Piece{.Text = *messages.Server, .Colour = TextColour(), .GapBefore = gapBefore});
+
+			return item;
+		}
+
+		std::vector<StatusItem> RightHandItems(const StatusMessages& messages, const Core::OpenItem* document)
+		{
+			std::vector<StatusItem> items;
+
+			if (messages.Problems)
+			{
+				items.push_back(ProblemsItem(*messages.Problems, messages.Colours));
+			}
+
+			if (messages.Server && !messages.Server->empty())
+			{
+				items.push_back(ServerItem(messages));
+			}
+
+			if (messages.Background && !messages.Background->empty())
+			{
+				items.push_back(TextItem(*messages.Background, TextColour(), messages.BackgroundDetail.value_or(std::string{})));
+			}
+
+			if (document != nullptr)
+			{
+				StatusItem caret = TextItem(DescribeCaret(*document), TextColour());
+				caret.Face = ItemFace::Code;
+				items.push_back(std::move(caret));
+
+				items.push_back(TextItem(std::string{Core::EncodingName(document->Document->GetFileEncoding())}, TextColour()));
+				items.push_back(TextItem(LineEndingName(document->Document->GetDocumentLineEnding(),
+														document->Document->HasMixedLineEndings()),
+										 TextColour()));
+			}
+
+			return items;
+		}
+
+		StatusBarClick DrawLeftHandItems(const StatusMessages& messages, const Core::OpenItem* document,
+										 const std::filesystem::path& root, float barHeight)
+		{
+			const float gap = Core::Scaled(kStatusItemGap);
+			ItemRow row(ImGui::GetStyle().WindowPadding.x, barHeight);
+
+			if (messages.Git)
+			{
+				const GitStatusSegment& segment = *messages.Git;
+
+				if (segment.HasRepository)
+				{
+					row.Place(ClickableTextItem("##GitBranch", StatusBarClick::GitBranch, segment.Branch, segment.BranchTooltip), gap);
+				}
+				else
+				{
+					row.Place(TextItem(segment.Branch, DimColour(), segment.BranchTooltip), gap);
+				}
+
+				if (!segment.Distance.empty())
+				{
+					row.Place(TextItem(segment.Distance, TextColour(), segment.DistanceTooltip), ImGui::GetStyle().ItemSpacing.x);
+				}
+
+				if (!segment.Changes.empty())
+				{
+					row.Place(ClickableTextItem("##GitChanges", StatusBarClick::GitChanges, segment.Changes, segment.ChangesTooltip), gap);
+				}
+			}
+
+			if (document != nullptr)
+			{
+				row.Place(TextItem(DescribeDocument(*document, root), TextColour()), gap);
+
+				if (document->Document->IsReadOnly())
+				{
+					row.Place(TextItem(kReadOnlyWarning, messages.Colours.Warning), gap);
+				}
+			}
+
+			return row.GetClicked();
+		}
+
+		StatusBarClick DrawRightHandItems(const std::vector<StatusItem>& items, float barHeight)
+		{
+			if (items.empty())
+			{
+				return StatusBarClick::None;
+			}
+
+			const float gap = Core::Scaled(kStatusItemGap);
+			float width = gap * static_cast<float>(items.size() - 1);
+
+			for (const StatusItem& item : items)
+			{
+				width += ItemWidth(item);
+			}
+
+			const float start = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - BellWidth() - gap - width;
+			ItemRow row(start, barHeight);
+
+			for (const StatusItem& item : items)
+			{
+				row.Place(item, gap);
+			}
+
+			return row.GetClicked();
 		}
 	}
 
@@ -224,8 +537,10 @@ namespace Graphite {
 		ImGuiViewport* viewport = ImGui::GetMainViewport();
 		const float height = ImGui::GetFrameHeight();
 
+		// WARNING: Without NoScrollWithMouse a wheel over the bar scrolls it: every item spans the bar's full height,
+		// and with the window padding that reaches past the window's inner height.
 		constexpr ImGuiWindowFlags windowFlags =
-			ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoSavedSettings;
+			ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoSavedSettings;
 
 		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, kNoBorder);
 		const bool barBegun = ImGui::BeginViewportSideBar(kStatusBarWindowName, viewport, ImGuiDir_Down, height, windowFlags);
@@ -238,127 +553,17 @@ namespace Graphite {
 		}
 
 		const bool hasDocument = shown && documents.At(*shown).Document != nullptr;
+		const Core::OpenItem* document = hasDocument ? &documents.At(*shown) : nullptr;
 
-		StatusBarClick clicked = StatusBarClick::None;
+		StatusBarClick clicked = DrawLeftHandItems(messages, document, root, height);
 
-		if (messages.Git)
+		if (const StatusBarClick rightClick = DrawRightHandItems(RightHandItems(messages, document), height);
+			rightClick != StatusBarClick::None)
 		{
-			clicked = DrawGitSegment(*messages.Git, height);
+			clicked = rightClick;
 		}
 
-		if (hasDocument)
-		{
-			if (messages.Git)
-			{
-				ImGui::SameLine(0.0f, ImGui::GetFontSize() * kGapAfterGitInFontSizes);
-			}
-
-			ImGui::SetCursorPosY(CentredTextY(height));
-			ImGui::TextUnformatted(DescribeDocument(documents.At(*shown), root).c_str());
-		}
-
-		const std::string separator = "    ";
-		std::string beforeServer;
-		std::string server;
-		std::string afterServer;
-
-		if (messages.Problems && !messages.Problems->empty())
-		{
-			beforeServer = *messages.Problems;
-		}
-
-		if (messages.Server && !messages.Server->empty())
-		{
-			server = *messages.Server;
-		}
-
-		if (messages.Background && !messages.Background->empty())
-		{
-			afterServer = *messages.Background;
-		}
-
-		if (hasDocument)
-		{
-			const Core::OpenItem& item = documents.At(*shown);
-
-			if (!afterServer.empty())
-			{
-				afterServer += separator;
-			}
-
-			afterServer += DescribeCaret(item) + separator + DescribeTextFormat(item);
-		}
-
-		if (!server.empty())
-		{
-			if (!beforeServer.empty())
-			{
-				beforeServer += separator;
-			}
-
-			if (!afterServer.empty())
-			{
-				afterServer = separator + afterServer;
-			}
-		}
-		else if (!beforeServer.empty() && !afterServer.empty())
-		{
-			beforeServer += separator;
-		}
-
-		const float width = ImGui::CalcTextSize(beforeServer.c_str()).x + ImGui::CalcTextSize(server.c_str()).x +
-							ImGui::CalcTextSize(afterServer.c_str()).x;
-
-		if (width > 0.0f)
-		{
-			ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - width - ImGui::GetStyle().WindowPadding.x - BellWidth() - ImGui::GetFontSize(),
-									   CentredTextY(height)));
-
-			// WARNING: SameLine places relative to the item before it, so it needs one.
-			bool placed = false;
-
-			if (!beforeServer.empty())
-			{
-				ImGui::TextUnformatted(beforeServer.c_str());
-				placed = true;
-			}
-
-			if (!server.empty())
-			{
-				if (placed)
-				{
-					ImGui::SameLine(0.0f, 0.0f);
-				}
-
-				const std::string serverTooltip = messages.ServerDetail.value_or(std::string{});
-
-				const bool dimmedWhenInert = false;
-
-				if (DrawClickablePiece("##ServerStatus", server, messages.ServerOpensSettings, serverTooltip, dimmedWhenInert))
-				{
-					clicked = StatusBarClick::Server;
-				}
-
-				placed = true;
-			}
-
-			if (!afterServer.empty())
-			{
-				if (placed)
-				{
-					ImGui::SameLine(0.0f, 0.0f);
-				}
-
-				ImGui::TextUnformatted(afterServer.c_str());
-
-				if (ImGui::IsItemHovered() && messages.BackgroundDetail && !messages.BackgroundDetail->empty())
-				{
-					ImGui::SetTooltip("%s", messages.BackgroundDetail->c_str());
-				}
-			}
-		}
-
-		if (DrawNotificationBell(messages.MissedNotificationColour, height))
+		if (DrawNotificationBell(messages.MissedNotificationColour))
 		{
 			clicked = StatusBarClick::Notifications;
 		}

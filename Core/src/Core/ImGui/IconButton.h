@@ -8,7 +8,8 @@ namespace Core {
 	enum class IconButtonFit
 	{
 		Frame,
-		Line
+		Line,
+		Bar
 	};
 
 	struct IconButtonOptions
@@ -19,6 +20,8 @@ namespace Core {
 	};
 
 	float IconButtonSize(IconButtonFit fit = IconButtonFit::Frame);
+
+	ImVec4 IconButtonFill(ImGuiID id, bool hovered, bool held, bool engaged = false);
 
 	bool DrawIconButton(const char* id, const char* glyph, bool engaged, const char* tooltip,
 						const IconButtonOptions& options = {});

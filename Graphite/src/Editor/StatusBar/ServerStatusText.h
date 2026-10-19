@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Editor/StatusBar/StatusBar.h"
 #include "Language/Analysis/WorkspaceAnalysis.h"
 #include "Language/Api/LanguageId.h"
 #include "Language/Api/LanguageService.h"
@@ -12,6 +13,8 @@ namespace Graphite {
 	std::string ServerStatusText(const ServerStatus& status);
 
 	std::string ServerStatusDetail(const ServerStatus& status);
+
+	ServerHealth ServerHealthOf(ServerState state);
 
 	std::string AnalysingText(const ServerStatus& status, const std::string& fileName);
 
