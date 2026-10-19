@@ -9,7 +9,7 @@
 
 namespace Graphite {
 
-	inline constexpr float kPanelHeaderHeight = 34.0f;
+	inline constexpr float kPanelHeaderHeight = 36.0f;
 	inline constexpr std::size_t kPanelHeaderMostChoices = 2;
 
 	struct PanelHeaderAction

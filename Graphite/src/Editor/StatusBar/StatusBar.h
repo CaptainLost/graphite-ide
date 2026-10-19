@@ -17,6 +17,8 @@ namespace Core {
 }
 
 namespace Graphite {
+	inline constexpr float kStatusBarHeight = 23.0f;
+	inline constexpr float kStatusBarFontSize = 15.0f;
 	inline constexpr float kStatusItemGap = 16.0f;
 
 	inline constexpr float kServerDotDiameter = 7.0f;

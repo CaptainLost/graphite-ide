@@ -67,7 +67,7 @@ tab.
   amends it. `DrawIconButton` marks a toggle that is on with a fill and a glyph
   in the accent; a strip button needs what it lacks: an open fill in
   `SurfaceActive`, a glyph dim while closed and bright while open, a square of
-  30 px at 100 % scale rather than one sized from the line, and a badge. The
+  26 px at 100 % scale rather than one sized from the line, and a badge. The
   glyph is centred by the same `Core::DrawCentredGlyph` both use, so the two
   cannot drift apart there.
 
@@ -102,7 +102,7 @@ not hide a panel the reader could not see.
 
 ### Negative
 
-- The dock space is 42 px narrower at 100 % scale for good, with no setting to
+- The dock space is 36 px narrower at 100 % scale for good, with no setting to
   take the strip away.
 - An icon's place says nothing about where its panel is: a panel dragged to the
   right edge is still switched from the left.

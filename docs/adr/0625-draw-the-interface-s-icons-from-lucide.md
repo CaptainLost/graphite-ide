@@ -18,7 +18,7 @@ distinct `ICON_MDI_` constants in 52 files.
   ascent of 1000 and a descent of 0. Each icon's 24-unit square stands on the
   baseline and is one font size tall. ImGui puts a merged font's baseline on the
   face's own, so an unmoved icon sits high beside text by the face's descent,
-  about 3 px for Inter at 14 px.
+  about 3 px for Inter at 16 px.
 - ImGui scales a merged font's glyph offset with the size it bakes and rounds it
   to a whole pixel. MDI's fixed 1.5 px offset, carried over, left Lucide's icons
   up to 3.5 px above the capitals beside them at 200 %.
@@ -217,7 +217,7 @@ offset is right at one size only.
 - Language and brand glyphs are gone. In a tab's title C, C++ and Lua share
   `file-code`, and Markdown shares `file-text` with a read tool, so tabs tell
   them apart only by their names. The lists draw badges, which tell them apart.
-- The font's strokes are 2 units of 24, about 1.2 px at 14 px. The mockup draws
+- The font's strokes are 2 units of 24, about 1.3 px at 16 px. The mockup draws
   1.75, so the icons are slightly heavier than the mockup's, and a font cannot
   change that.
 - Every Lucide glyph in the atlas is as tall as the distance from its top to the

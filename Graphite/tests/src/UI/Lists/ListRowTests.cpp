@@ -6,6 +6,8 @@
 #include "UI/Lists/Chevron.h"
 #include "UI/Lists/ListRow.h"
 
+#include "Core/ImGui/FontSet.h"
+
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -21,7 +23,6 @@ namespace {
 	constexpr float kFringe = 1.5f;
 	constexpr float kOnTheEdge = 0.01f;
 	constexpr float kIndent = 30.0f;
-	constexpr float kInterfaceFontSize = 14.0f;
 	constexpr float kListRowSpacing = 9.0f;
 	constexpr float kHighlightInset = 6.0f;
 	constexpr float kHighlightRounding = 5.0f;
@@ -102,7 +103,7 @@ namespace {
 		ListScreen()
 		{
 			ImGuiStyle& style = ImGui::GetStyle();
-			style.FontSizeBase = kInterfaceFontSize;
+			style.FontSizeBase = Core::kInterfaceFontSize;
 			style.Colors[ImGuiCol_CheckMark] = kAccent;
 			style.Colors[ImGuiCol_WindowBg] = kBackground;
 			style.Colors[ImGuiCol_Text] = kText;
@@ -196,7 +197,7 @@ namespace {
 		TableScreen()
 		{
 			ImGuiStyle& style = ImGui::GetStyle();
-			style.FontSizeBase = kInterfaceFontSize;
+			style.FontSizeBase = Core::kInterfaceFontSize;
 			style.Colors[ImGuiCol_CheckMark] = kAccent;
 			style.Colors[ImGuiCol_WindowBg] = kBackground;
 			style.Colors[ImGuiCol_Text] = kText;
@@ -302,8 +303,8 @@ TEST_CASE("A row's pitch is the text line plus the list row spacing")
 		secondRowTop = ImGui::GetCursorScreenPos().y;
 	});
 
-	CHECK(screen.TextLine == doctest::Approx(kInterfaceFontSize));
-	CHECK(screen.Pitch == doctest::Approx(kInterfaceFontSize + kListRowSpacing));
+	CHECK(screen.TextLine == doctest::Approx(Core::kInterfaceFontSize));
+	CHECK(screen.Pitch == doctest::Approx(Core::kInterfaceFontSize + kListRowSpacing));
 	CHECK(secondRowTop - screen.FirstRowTop == doctest::Approx(screen.Pitch));
 }
 

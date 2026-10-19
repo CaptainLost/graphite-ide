@@ -11,7 +11,7 @@ namespace {
 	constexpr float kWidth = 800.0f;
 	constexpr float kHeight = 600.0f;
 
-	constexpr float kCaptionHeight = 32.0f;
+	constexpr float kCaptionHeight = 28.0f;
 	constexpr float kResizeBorder = 8.0f;
 
 	constexpr float kDragBegin = 200.0f;
@@ -31,7 +31,7 @@ namespace {
 	constexpr float kFramePixelBelowClient = kHeight;
 
 	constexpr float kInsideCaption = 20.0f;
-	constexpr float kJustBelowCaption = 33.0f;
+	constexpr float kJustBelowCaption = 29.0f;
 
 	constexpr float kOverMenus = 100.0f;
 	constexpr float kOverWindowButtons = 750.0f;

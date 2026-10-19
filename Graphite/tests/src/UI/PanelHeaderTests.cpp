@@ -148,17 +148,18 @@ namespace {
 	}
 }
 
-TEST_CASE("The header is one row of 34 px")
+TEST_CASE("The header is one row of 36 px")
 {
+	constexpr float kThirtySix = 36.0f;
+
 	HeaderScreen screen;
 	screen.Choices = {ModeChoice("##rowHeightMode")};
 	screen.Actions = {{.Id = "##rowHeightRefresh", .Glyph = ICON_LC_REFRESH_CW, .Tooltip = "Refresh"}};
 	screen.Next();
 
-	CHECK(Graphite::PanelHeaderHeight() == doctest::Approx(Graphite::kPanelHeaderHeight));
+	CHECK(Graphite::PanelHeaderHeight() == doctest::Approx(kThirtySix));
 	CHECK(screen.CursorAfter.x == doctest::Approx(screen.RowStart.x));
-	CHECK(screen.CursorAfter.y ==
-		  doctest::Approx(screen.RowStart.y + Graphite::kPanelHeaderHeight + ImGui::GetStyle().ItemSpacing.y));
+	CHECK(screen.CursorAfter.y == doctest::Approx(screen.RowStart.y + kThirtySix + ImGui::GetStyle().ItemSpacing.y));
 }
 
 TEST_CASE("The header's dropdown and its buttons stand in the middle of its row")

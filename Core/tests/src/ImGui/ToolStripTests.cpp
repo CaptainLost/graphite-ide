@@ -23,7 +23,7 @@ namespace {
 	constexpr float kFrameSeconds = 1.0f / 60.0f;
 	constexpr float kStripHeight = 600.0f;
 	const ImVec2 kOrigin(0.0f, 0.0f);
-	const ImVec2 kStripWindowSize(42.0f, 600.0f);
+	const ImVec2 kStripWindowSize(36.0f, 600.0f);
 	const ImVec2 kEditorPosition(100.0f, 0.0f);
 	const ImVec2 kEditorSize(300.0f, 300.0f);
 
@@ -202,7 +202,7 @@ namespace {
 	}
 }
 
-TEST_CASE("Items stack from 6 px down, 30 px tall, 4 px apart and centred in the strip")
+TEST_CASE("Items stack from 6 px down, 26 px tall, 6 px apart and centred in the strip")
 {
 	StripWindow window;
 	ToolStripContent content;
@@ -211,8 +211,8 @@ TEST_CASE("Items stack from 6 px down, 30 px tall, 4 px apart and centred in the
 	const std::vector<ImRect> rects = LayOutToolStrip(content, kOrigin, kStripHeight);
 
 	REQUIRE(rects.size() == 2);
-	CheckRect(rects[0], 6.0f, 6.0f, 36.0f, 36.0f);
-	CheckRect(rects[1], 6.0f, 40.0f, 36.0f, 70.0f);
+	CheckRect(rects[0], 5.0f, 6.0f, 31.0f, 32.0f);
+	CheckRect(rects[1], 5.0f, 38.0f, 31.0f, 64.0f);
 }
 
 TEST_CASE("A new group starts below a separator with 4 px on either side")
@@ -224,7 +224,7 @@ TEST_CASE("A new group starts below a separator with 4 px on either side")
 	const std::vector<ImRect> rects = LayOutToolStrip(content, kOrigin, kStripHeight);
 
 	REQUIRE(rects.size() == 2);
-	CheckRect(rects[1], 6.0f, 45.0f, 36.0f, 75.0f);
+	CheckRect(rects[1], 5.0f, 41.0f, 31.0f, 67.0f);
 }
 
 TEST_CASE("The bottom block ends 6 px above the strip's bottom")
@@ -236,8 +236,8 @@ TEST_CASE("The bottom block ends 6 px above the strip's bottom")
 	const std::vector<ImRect> rects = LayOutToolStrip(content, kOrigin, kStripHeight);
 
 	REQUIRE(rects.size() == 2);
-	CheckRect(rects[0], 6.0f, 530.0f, 36.0f, 560.0f);
-	CheckRect(rects[1], 6.0f, 564.0f, 36.0f, 594.0f);
+	CheckRect(rects[0], 5.0f, 536.0f, 31.0f, 562.0f);
+	CheckRect(rects[1], 5.0f, 568.0f, 31.0f, 594.0f);
 }
 
 TEST_CASE("On a strip too short for both blocks the bottom block follows the top one")
@@ -261,7 +261,7 @@ TEST_CASE("On a strip too short for both blocks the bottom block follows the top
 	}
 }
 
-TEST_CASE("The strip is 42 px wide scaled by the interface scale")
+TEST_CASE("The strip is 36 px wide scaled by the interface scale")
 {
 	StripWindow window;
 	ImGui::GetStyle().FontScaleMain = 1.5f;
@@ -270,9 +270,9 @@ TEST_CASE("The strip is 42 px wide scaled by the interface scale")
 
 	const std::vector<ImRect> rects = LayOutToolStrip(content, kOrigin, kStripHeight);
 
-	CHECK(Core::ToolStripWidth() == 63.0f);
+	CHECK(Core::ToolStripWidth() == 54.0f);
 	REQUIRE(rects.size() == 1);
-	CheckRect(rects[0], 9.0f, 9.0f, 54.0f, 54.0f);
+	CheckRect(rects[0], 7.0f, 9.0f, 46.0f, 48.0f);
 }
 
 TEST_CASE("Clicking an item returns its id")
@@ -301,7 +301,7 @@ TEST_CASE("Clicking between items returns nothing")
 
 	CHECK_FALSE(window.Draw(content).Clicked.has_value());
 
-	window.MoveMouse(ImVec2(21.0f, 38.0f));
+	window.MoveMouse(ImVec2(18.0f, 35.0f));
 	CHECK_FALSE(window.Draw(content).Clicked.has_value());
 
 	window.PressMouse();
@@ -349,7 +349,7 @@ TEST_CASE("An open item is marked by an accent bar at the strip's left edge, not
 		CHECK(vertex.pos.x >= 0.0f);
 		CHECK(vertex.pos.x <= 2.0f);
 		CHECK(vertex.pos.y >= 6.0f + 5.0f);
-		CHECK(vertex.pos.y <= 6.0f + 30.0f - 5.0f);
+		CHECK(vertex.pos.y <= 6.0f + 26.0f - 5.0f);
 	}
 	CHECK(InColour(mesh, palette.SurfaceActive).empty());
 }
@@ -363,7 +363,7 @@ TEST_CASE("At 150 % the open bar is 3 whole pixels wide and stays at the strip's
 	open.Top[0][0].Open = true;
 
 	const std::vector<ImDrawVert> bar =
-		InColour(window.Draw(open, ImVec2(63.0f, kStripHeight)).Mesh, Core::Theme::DefaultPalette().Accent);
+		InColour(window.Draw(open, ImVec2(54.0f, kStripHeight)).Mesh, Core::Theme::DefaultPalette().Accent);
 
 	REQUIRE_FALSE(bar.empty());
 	for (const ImDrawVert& vertex : bar)
@@ -424,7 +424,7 @@ TEST_CASE("The icon is scaled once by the interface scale and not twice")
 
 	const float glyphAtOne = window.Draw(content).GlyphHeight;
 	ImGui::GetStyle().FontScaleMain = 1.5f;
-	const float glyphAtOneAndAHalf = window.Draw(content, ImVec2(63.0f, kStripHeight)).GlyphHeight;
+	const float glyphAtOneAndAHalf = window.Draw(content, ImVec2(54.0f, kStripHeight)).GlyphHeight;
 
 	REQUIRE(glyphAtOne > 0.0f);
 	CHECK(glyphAtOneAndAHalf / glyphAtOne == doctest::Approx(1.5f).epsilon(0.15));

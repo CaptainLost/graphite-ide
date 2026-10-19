@@ -67,12 +67,14 @@ A file's icon is its kind's badge; a folder's is a Lucide glyph.
     as `Other`.
   - The dim kinds take the current disabled-text colour, which is the mockup's
     dim colour, read each time they are drawn.
-- **Badge.** A badge is its text, centred in a box 17 × 15 px scaled, with no
-  fill and no border. The box is the mockup's 16 × 14 scaled by 14/13. It
-  stands at the label's start, centred on the line.
+- **Badge.** A badge is its text, centred in a box 16 × 14 px scaled, the
+  mockup's box, with no fill and no border. It stands at the label's start,
+  centred on the line.
   - The text is in the badge face, JetBrains Mono Bold at `Core::kBadgeFontSize`
-    (9 px, the mockup's 8 px by 14/13) through `ImGuiRenderer::GetBadgeFont()`,
-    in the kind's colour.
+    (11 px, the mockup's 8 px converted by JetBrains Mono's factor,
+    [0626](0626-size-fonts-by-the-em-the-mockup-was-drawn-at.md)) through
+    `ImGuiRenderer::GetBadgeFont()`, in the kind's colour. `C++` is 14.4 px wide
+    in its 16 px box.
   - Letters are 0.3 px scaled closer than their advance, as the mockup's
     letter spacing is. ImGui has none, so each character is drawn on its own,
     and `AddText` snaps each one's start to a whole pixel.
@@ -81,8 +83,8 @@ A file's icon is its kind's badge; a folder's is a Lucide glyph.
 - **Scheme.** The table is fixed in code, not in scheme keys. The scheme is light
   when the luminance of `ImGuiCol_WindowBg` is above 0.5. This is the test
   `Theme::Apply` makes, shared as `Core::IsLightBackground`.
-- **Folders.** Folders use `folder` and `folder-open` at 16 px scaled, the
-  mockup's 15 px, centred on the line, in the folder grey: the current text
+- **Folders.** Folders use `folder` and `folder-open` at 15 px scaled, the
+  mockup's size, centred on the line, in the folder grey: the current text
   colour mixed 77 % toward the disabled-text colour, derived each time it is
   drawn.
   - Under the dark scheme that is `#9096A1`, a step from the mockup's
@@ -92,9 +94,9 @@ A file's icon is its kind's badge; a folder's is a Lucide glyph.
 - **Two draws.** A row draws its icon and its name separately:
   - The icon stands at the label's start, in its kind's colour.
   - The name starts `IconToNameOffset()` after it: the icon's slot plus
-    `kIconToNameGap`, 5 px scaled. The slot, `FileIconWidth()`, is the badge's
-    box, 17 px scaled, the widest icon. That puts the name 22 px after the
-    label's start at 100 %.
+    `kIconToNameGap`, 5 px scaled, the mockup's gap. The slot,
+    `FileIconWidth()`, is the badge's box, 16 px scaled, the widest icon. That
+    puts the name 21 px after the label's start at 100 %.
   - The name keeps its own colour: the git status colour (0556) or the text
     colour.
   - In the Explorer and the solution view, the name's right edge, its ellipsis,
@@ -173,9 +175,6 @@ its darker colours without a scheme migration.
 
 - The kind colours are not part of a scheme, so a user scheme with an unusual
   window background can leave some of them hard to read.
-- ImGui sizes a face by its ascender-to-descender height, so JetBrains Mono at
-  9 px has an em of about 6.8 px, where the mockup's 8 px em is 8.6 px scaled.
-  The badges are a fifth smaller in their box than the mockup's.
 - The letter spacing is snapped to whole pixels a character at a time, so it is
   not exactly the mockup's.
 - A tab shows a generic glyph in the tab's text colour, not the badge or the
@@ -187,13 +186,16 @@ its darker colours without a scheme migration.
 
 ### Neutral
 
-- The name's offset is 22 px at 100 %, as it was, but now it does not grow with
-  a pushed font size: the slot and the gap are fixed lengths, scaled.
+- The name's offset is 21 px at 100 %, a pixel short of where it was, and it does
+  not grow with a pushed font size: the slot and the gap are fixed lengths,
+  scaled.
 - The atlas holds JetBrains Mono Bold for ASCII and `≡` only.
-- In the tests every badge draws in ProggyClean, the face a test context has, so
-  only its colour, its place and its character count are observed. Which text is
-  drawn is checked through `BadgeOf`, and that the badge face has every badge's
-  characters is checked by loading the font set.
+- In the tests a badge draws in ProggyClean, the face a test context has, so
+  only its colour, its place and its character count are observed. ProggyClean is
+  wider for its size than JetBrains Mono Bold, so the test that `C++` fits its box
+  loads the font set and makes the badge face current. Which text is drawn is
+  checked through `BadgeOf`, and that the badge face has every badge's characters
+  is checked by loading the font set.
 
 ## Alternatives Considered
 
@@ -202,7 +204,7 @@ its darker colours without a scheme migration.
 - **A filled or outlined badge.** The mockup draws neither, and a box beside every
   name would outweigh the names.
 - **The code face drawn twice, a pixel apart, for bold.** A doubled stroke is a
-  whole pixel wider, more than a stem is at 9 px, where the vendored Bold costs
+  whole pixel wider, more than a stem is at 11 px, where the vendored Bold costs
   0.2 MB in the executable.
 - **Scheme keys for the kind colours.** Every scheme would grow a key per kind and
   its light pair, for colours nobody has asked to edit. Making them editable stays a

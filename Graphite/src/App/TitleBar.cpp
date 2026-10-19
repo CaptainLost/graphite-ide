@@ -17,7 +17,7 @@
 namespace Graphite {
 
 	namespace {
-		constexpr float kButtonWidth = 46.0f;
+		constexpr float kButtonWidth = 42.0f;
 		constexpr float kButtonsGap = 12.0f;
 		constexpr float kTitleMargin = 12.0f;
 		constexpr float kDividerWidth = 1.0f;

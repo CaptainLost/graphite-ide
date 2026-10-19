@@ -30,7 +30,7 @@ Date: 2026-10-19
   surface: `DrawBreadcrumb(BuildBreadcrumb(...))`
   (`Graphite/src/Editor/Breadcrumb.h`). The row is laid out at the cursor, at
   the top of the window's content, so it stands below the tab bar by the
-  window's top padding (8 px). It is `kBreadcrumbHeight` (26 px) tall and is laid
+  window's top padding (8 px). It is `kBreadcrumbHeight` (24 px) tall and is laid
   out once, with no item spacing after it, so the editor surface starts at its
   bottom edge and is shorter by exactly its height. It is drawn on every frame,
   whether or not the document has symbols, so the code never moves when they
@@ -51,8 +51,10 @@ Date: 2026-10-19
     no answer yet or no symbol at the caret gives the path alone.
   - `DocumentWindows` passes the open folder, the tab's path, the tab's
     edit-adjusted declarations and the caret's line at the start of the frame.
-- **The look.** The interface face at `kBreadcrumbFontSize` (13 px), unscaled
-  as `PushInterfaceFont` takes it, with the line centred in the row.
+- **The look.** The interface face at `kBreadcrumbFontSize` (15 px), unscaled
+  as `PushInterfaceFont` takes it, with the line centred in the row. Both are the
+  mockup's, its 12 px text converted by Inter's factor
+  ([0626](0626-size-fonts-by-the-em-the-mockup-was-drawn-at.md)).
   - The pieces are placed across the window's inner rectangle
     (`ImGuiWindow::InnerRect`), not its content region, so the first piece
     starts `kBreadcrumbLeftPadding` (12 px) from the window's left edge rather
@@ -67,7 +69,7 @@ Date: 2026-10-19
     text colour. A function, method or constructor takes `ICON_LC_SQUARE_FUNCTION`; a
     class, struct or interface takes `ICON_LC_BRACES`.
   - A glyph is one font size wide and stands 4 px before its name. The file's
-    badge is its box wide, 17 px scaled, and stands 4 px before the file name.
+    badge is its box wide, 16 px scaled, and stands 4 px before the file name.
   - The row draws no background and no border. It sits on the document window's
     content colour, so it reads as part of the document.
 - **Narrow rows.** The pieces fit in the window's inner width less 12 px on each
@@ -108,7 +110,7 @@ the file and the symbols keeps the part that changes with the caret on screen.
 
 ### Negative
 
-- Every document gives up 26 px of code.
+- Every document gives up 24 px of code.
 - On a narrow pane a deep path shows only its last folders, where the status bar
   had the whole window's width for it.
 - The row reads the caret at the start of the frame, before the editor handles

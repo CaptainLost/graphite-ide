@@ -5,9 +5,9 @@ struct ImFontAtlas;
 
 namespace Core {
 
-	inline constexpr float kInterfaceFontSize = 14.0f;
-	inline constexpr float kCodeFontSize = 15.0f;
-	inline constexpr float kBadgeFontSize = 9.0f;
+	inline constexpr float kInterfaceFontSize = 16.0f;
+	inline constexpr float kCodeFontSize = 17.0f;
+	inline constexpr float kBadgeFontSize = 11.0f;
 
 	struct FontSet
 	{

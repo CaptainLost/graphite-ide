@@ -9,6 +9,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -114,6 +115,38 @@ namespace {
 		return ink;
 	}
 
+	// WARNING: summed down the glyph's fullest column, not read off its box: the box is whole pixels, and
+	// the coverage of the anti-aliased row at the capitals' top is what sets their height between two.
+	float CapHeightOf(const ImFontGlyph& glyph)
+	{
+		ImFontAtlas* const atlas = ImGui::GetIO().Fonts;
+		ImTextureData* const texture = atlas->TexData;
+		const ImTextureRect* const rect = ImFontAtlasPackGetRect(atlas, glyph.PackId);
+		REQUIRE(texture != nullptr);
+		REQUIRE(rect != nullptr);
+
+		constexpr float kOpaque = 255.0f;
+		const int alphaByte = texture->BytesPerPixel - 1;
+		float fullestColumn = 0.0f;
+
+		for (int column = 0; column < rect->w; ++column)
+		{
+			float coverage = 0.0f;
+
+			for (int row = 0; row < rect->h; ++row)
+			{
+				const auto* const pixels = static_cast<const unsigned char*>(texture->GetPixelsAt(rect->x, rect->y + row));
+				coverage += static_cast<float>(pixels[column * texture->BytesPerPixel + alphaByte]) / kOpaque;
+			}
+
+			fullestColumn = std::max(fullestColumn, coverage);
+		}
+
+		const float rowHeight = (glyph.Y1 - glyph.Y0) / static_cast<float>(rect->h);
+
+		return fullestColumn * rowHeight;
+	}
+
 	struct FaceAtSize
 	{
 		std::string Name;
@@ -192,7 +225,7 @@ namespace {
 	}
 }
 
-TEST_CASE("The interface face is loaded first, at 14 px, and the code face at 15 px")
+TEST_CASE("The interface face is loaded first, at 16 px, and the code face at 17 px")
 {
 	HeadlessContext context;
 	const Core::FontSet set = LoadIntoContext();
@@ -202,27 +235,70 @@ TEST_CASE("The interface face is loaded first, at 14 px, and the code face at 15
 	REQUIRE(set.Strong != nullptr);
 
 	CHECK(ImGui::GetIO().Fonts->Fonts[0] == set.Interface);
-	CHECK(set.Interface->LegacySize == 14.0f);
-	CHECK(set.Code->LegacySize == 15.0f);
-	CHECK(set.Strong->LegacySize == 14.0f);
+	CHECK(set.Interface->LegacySize == 16.0f);
+	CHECK(set.Code->LegacySize == 17.0f);
+	CHECK(set.Strong->LegacySize == 16.0f);
 
 	CHECK(set.Interface != set.Code);
 	CHECK(set.Interface != set.Strong);
 	CHECK(set.Code != set.Strong);
 }
 
-TEST_CASE("The badge face is loaded at 9 px with only ASCII and the identical-to sign")
+TEST_CASE("The interface face is sixteen pixels and draws Inter's capitals as tall as the mockup's thirteen-pixel CSS")
+{
+	HeadlessContext context;
+	const Core::FontSet set = LoadIntoContext();
+	REQUIRE(set.Interface != nullptr);
+
+	constexpr float kSixteen = 16.0f;
+	constexpr float kMockupCapitals = 9.4f;
+	constexpr float kTolerance = 0.5f;
+	constexpr ImWchar kCapital = 'H';
+
+	CHECK(Core::kInterfaceFontSize == kSixteen);
+
+	const ImFontGlyph* const capital = set.Interface->GetFontBaked(Core::kInterfaceFontSize)->FindGlyphNoFallback(kCapital);
+	REQUIRE(capital != nullptr);
+
+	const float height = CapHeightOf(*capital);
+	CAPTURE(height);
+	CHECK(std::abs(height - kMockupCapitals) <= kTolerance);
+}
+
+TEST_CASE("The code face at seventeen draws capitals as tall as the mockup's thirteen-pixel CSS")
+{
+	HeadlessContext context;
+	const Core::FontSet set = LoadIntoContext();
+	REQUIRE(set.Code != nullptr);
+
+	constexpr float kSeventeen = 17.0f;
+	constexpr float kMockupCapitals = 9.5f;
+	constexpr float kTolerance = 0.5f;
+	constexpr ImWchar kCapital = 'H';
+
+	CHECK(Core::kCodeFontSize == kSeventeen);
+
+	const ImFontGlyph* const capital = set.Code->GetFontBaked(kSeventeen)->FindGlyphNoFallback(kCapital);
+	REQUIRE(capital != nullptr);
+
+	const float height = CapHeightOf(*capital);
+	CAPTURE(height);
+	CHECK(std::abs(height - kMockupCapitals) <= kTolerance);
+}
+
+TEST_CASE("The badge face is loaded at 11 px with only ASCII and the identical-to sign")
 {
 	HeadlessContext context;
 	const Core::FontSet set = LoadIntoContext();
 	REQUIRE(set.Badge != nullptr);
 
+	constexpr float kEleven = 11.0f;
 	constexpr ImWchar kFirstAscii = 0x20;
 	constexpr ImWchar kLastAscii = 0x7E;
 	constexpr ImWchar kIdenticalTo = 0x2261;
 	constexpr ImWchar kSmallEWithAcute = 0x00E9;
 
-	CHECK(set.Badge->LegacySize == Core::kBadgeFontSize);
+	CHECK(set.Badge->LegacySize == kEleven);
 	CHECK(set.Badge != set.Interface);
 	CHECK(set.Badge != set.Code);
 	CHECK(set.Badge != set.Strong);

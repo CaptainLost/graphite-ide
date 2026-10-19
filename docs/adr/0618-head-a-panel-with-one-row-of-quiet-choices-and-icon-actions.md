@@ -25,8 +25,9 @@ panels head themselves in their own ways, and none is asked to change now.
 Draw a panel's header row with `Graphite::DrawPanelHeader(choices, actions)`
 (`Graphite/src/UI/PanelHeader.h`).
 
-- **Row:** one row `PanelHeaderHeight()` tall, `kPanelHeaderHeight` (34 px)
-  scaled. Every piece is centred vertically in it. Each piece is placed by
+- **Row:** one row `PanelHeaderHeight()` tall, `kPanelHeaderHeight` (36 px)
+  scaled, the mockup's header
+  ([0626](0626-size-fonts-by-the-em-the-mockup-was-drawn-at.md)). Every piece is centred vertically in it. Each piece is placed by
   position and the row is laid out once from its start, so what follows starts
   under the whole row.
 - **Choices:** on the left, one or two quiet dropdowns (`PanelHeaderChoice`: an

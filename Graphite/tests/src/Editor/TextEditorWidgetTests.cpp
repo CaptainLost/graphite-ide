@@ -46,11 +46,11 @@
 namespace {
 
 	constexpr float kEditorFontSize = 20.0f;
-	constexpr float kEditorLineHeight = 28.0f;
-	constexpr float kTextOffset = 4.0f;
-	constexpr float kLensFontFactor = 0.85f;
-	constexpr float kLensFontSize = 17.0f;
-	constexpr float kLensTextOffset = 5.0f;
+	constexpr float kEditorLineHeight = 22.0f;
+	constexpr float kTextOffset = 1.0f;
+	constexpr float kLensFontFactor = 0.78f;
+	constexpr float kLensFontSize = 16.0f;
+	constexpr float kLensTextOffset = 3.0f;
 	constexpr float kSquiggleAmplitude = 1.5f;
 	constexpr float kHairlineWidth = 1.0f;
 	constexpr float kDocumentWidth = 800.0f;
@@ -390,7 +390,7 @@ namespace {
 	}
 }
 
-TEST_CASE("A lens label is drawn at 0.85 of the editor size and hit across that width")
+TEST_CASE("A lens label is drawn at 0.78 of the editor size and hit across that width")
 {
 	EditorFrames editor("void Draw();\n");
 
@@ -531,13 +531,13 @@ TEST_CASE("The change tooltip names its hunk in the interface face and keeps the
 	CHECK(editor.StackAfter == editor.StackBefore);
 }
 
-TEST_CASE("The editor's line height is 1.4 times its font size")
+TEST_CASE("An editor line is nineteen pixels at seventeen")
 {
-	constexpr float kSmallFontSize = 13.0f;
-	constexpr float kSmallLineHeight = 18.0f;
+	constexpr float kSeventeen = 17.0f;
+	constexpr float kNineteen = 19.0f;
 
 	EditorFrames editor("first\nsecond\n");
-	editor.View.FontSize = kSmallFontSize;
+	editor.View.FontSize = kSeventeen;
 
 	editor.Next();
 	const float firstLineTop = editor.CaretScreenPos().y;
@@ -545,7 +545,7 @@ TEST_CASE("The editor's line height is 1.4 times its font size")
 	PlaceCaret(editor.Item, BufferOf(editor.Item).LineStart(kSecondLine));
 	editor.Next();
 
-	CHECK(editor.CaretScreenPos().y - firstLineTop == kSmallLineHeight);
+	CHECK(editor.CaretScreenPos().y - firstLineTop == kNineteen);
 	CHECK(editor.StackAfter == editor.StackBefore);
 }
 

@@ -78,10 +78,10 @@ TEST_CASE("Tabs are square")
 	CHECK(ScaledStyle(ImGuiStyle{}, 2.0f, false).TabRounding == doctest::Approx(0.0f));
 }
 
-TEST_CASE("Indent is fifteen pixels")
+TEST_CASE("Indent is fourteen pixels")
 {
-	CHECK(ScaledStyle(ImGuiStyle{}, 1.0f, false).IndentSpacing == doctest::Approx(15.0f));
-	CHECK(ScaledStyle(ImGuiStyle{}, 2.0f, false).IndentSpacing == doctest::Approx(30.0f));
+	CHECK(ScaledStyle(ImGuiStyle{}, 1.0f, false).IndentSpacing == doctest::Approx(14.0f));
+	CHECK(ScaledStyle(ImGuiStyle{}, 2.0f, false).IndentSpacing == doctest::Approx(28.0f));
 }
 
 TEST_CASE("Scrollbar grabs are four pixels")

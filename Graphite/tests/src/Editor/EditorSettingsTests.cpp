@@ -14,7 +14,7 @@ TEST_CASE("EditorSettings starts at its documented defaults")
 	TempAppSettings store;
 	const Graphite::EditorSettings settings{store.Get()};
 
-	CHECK(settings.GetFontSize() == doctest::Approx(13.0f));
+	CHECK(settings.GetFontSize() == doctest::Approx(17.0f));
 	CHECK(settings.GetIndentStyle().UseSpaces);
 	CHECK(settings.GetIndentStyle().Width == 4);
 	CHECK_FALSE(settings.IsWordWrap());

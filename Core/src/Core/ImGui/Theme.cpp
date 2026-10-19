@@ -36,7 +36,7 @@ namespace Core {
 		constexpr float kScrollbarSize = 12.0f;
 		constexpr float kScrollbarGrabInset = 4.0f;
 		constexpr float kSquareTabs = 0.0f;
-		constexpr float kIndentSpacing = 15.0f;
+		constexpr float kIndentSpacing = 14.0f;
 		constexpr float kSelectableRounding = 4.0f;
 		constexpr float kDockSplitterWidth = 1.0f;
 		constexpr float kNoOverline = 0.0f;

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/ImGui/FontSet.h"
 #include "Core/Text/Editing.h"
 
 #include <cstddef>
@@ -76,7 +77,7 @@ namespace Graphite {
 
 		static constexpr float kMinimumFontSize = 8.0f;
 		static constexpr float kMaximumFontSize = 32.0f;
-		static constexpr float kDefaultFontSize = 13.0f;
+		static constexpr float kDefaultFontSize = Core::kCodeFontSize;
 
 		static constexpr float kFontSizeStep = 1.0f;
 

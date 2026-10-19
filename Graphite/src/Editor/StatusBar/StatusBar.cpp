@@ -12,6 +12,7 @@
 
 #include <IconsLucide.h>
 
+#include <cmath>
 #include <cstddef>
 #include <string>
 #include <utility>
@@ -86,6 +87,13 @@ namespace Graphite {
 		float CentredTextY(float barHeight)
 		{
 			return (barHeight - ImGui::GetTextLineHeight()) * kHalf;
+		}
+
+		// WARNING: rounded to a whole pixel because ImGui truncates a window's position and size: at 125 % a bar
+		// 28.75 px tall would stop a pixel short of the bottom of the application's window.
+		float BarHeight()
+		{
+			return std::round(Core::Scaled(kStatusBarHeight));
 		}
 
 		float BellWidth()
@@ -192,7 +200,7 @@ namespace Graphite {
 		{
 			if (face == ItemFace::Code)
 			{
-				Core::PushCodeFont(Core::kInterfaceFontSize);
+				Core::PushCodeFont(kStatusBarFontSize);
 			}
 		}
 
@@ -504,7 +512,7 @@ namespace Graphite {
 								 const StatusMessages& messages)
 	{
 		ImGuiViewport* viewport = ImGui::GetMainViewport();
-		const float height = ImGui::GetFrameHeight();
+		const float height = BarHeight();
 
 		// WARNING: Without NoScrollWithMouse a wheel over the bar scrolls it: every item spans the bar's full height,
 		// and with the window padding that reaches past the window's inner height.
@@ -520,6 +528,13 @@ namespace Graphite {
 			ImGui::End();
 			return StatusBarClick::None;
 		}
+
+		Core::PushInterfaceFont(kStatusBarFontSize);
+
+		// WARNING: The bell is an icon button as tall as a frame, so the frame padding is set to make a frame as tall as
+		// the bar, whatever padding the theme gives frames elsewhere.
+		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+							ImVec2(ImGui::GetStyle().FramePadding.x, (height - ImGui::GetFontSize()) * kHalf));
 
 		const bool hasDocument = shown && documents.At(*shown).Document != nullptr;
 		const Core::OpenItem* document = hasDocument ? &documents.At(*shown) : nullptr;
@@ -544,6 +559,8 @@ namespace Graphite {
 			DrawCentred(*centred, height);
 		}
 
+		ImGui::PopStyleVar();
+		ImGui::PopFont();
 		ImGui::End();
 
 		return clicked;

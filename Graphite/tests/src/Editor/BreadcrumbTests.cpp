@@ -36,8 +36,8 @@ using Graphite::FileKind;
 
 namespace {
 
-	constexpr float kRowHeight = 26.0f;
-	constexpr float kRowFontSize = 13.0f;
+	constexpr float kRowHeight = 24.0f;
+	constexpr float kRowFontSize = 15.0f;
 	constexpr float kRowLeftPadding = 12.0f;
 	constexpr float kDocumentWidth = 800.0f;
 	constexpr float kDocumentHeight = 400.0f;
@@ -399,7 +399,7 @@ TEST_CASE("The caret inside a method shows its class and then the method, each w
 		  std::vector<BreadcrumbSymbol>{{.Name = "Renderer", .Kind = DeclarationKind::Type}});
 }
 
-TEST_CASE("The breadcrumb is one row of 26 px above the code")
+TEST_CASE("The breadcrumb is one row of 24 px above the code")
 {
 	DocumentFrames document(FileOnly("CommandLine.cpp", FileKind::CppSource));
 
@@ -440,7 +440,7 @@ TEST_CASE("The breadcrumb is one row of 26 px above the code")
 	CHECK(icon->Left <= firstPieceLeft + kGlyphBearing);
 }
 
-TEST_CASE("The breadcrumb draws in the interface face at 13 px")
+TEST_CASE("The breadcrumb draws in the interface face at 15 px")
 {
 	constexpr const char* kName = "CommandLine.cpp";
 

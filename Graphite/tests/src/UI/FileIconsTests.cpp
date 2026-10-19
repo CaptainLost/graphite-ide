@@ -29,9 +29,9 @@ namespace {
 	constexpr float kOnePixel = 1.0f;
 	constexpr ImVec2 kWindowSize{300.0f, 200.0f};
 	constexpr ImVec2 kIconPoint{40.0f, 50.0f};
-	constexpr float kBadgeWidth = 17.0f;
-	constexpr float kBadgeHeight = 15.0f;
-	constexpr float kFolderSize = 16.0f;
+	constexpr float kBadgeWidth = 16.0f;
+	constexpr float kBadgeHeight = 14.0f;
+	constexpr float kFolderSize = 15.0f;
 	constexpr int kVerticesPerCharacter = 4;
 	constexpr std::string_view kIdenticalTo = "\xE2\x89\xA1";
 
@@ -185,18 +185,53 @@ namespace {
 		int Vertices = 0;
 	};
 
+	enum class BadgeFace
+	{
+		TheTestFace,
+		TheRealOne
+	};
+
+	// WARNING: Fonts added to a built atlas leave it unbuilt, and with no renderer backend a frame asserts on an
+	// unbuilt atlas, so the atlas is built again once the font set is in it.
+	ImFont* LoadTheRealBadgeFace()
+	{
+		ImFont* const face = Core::LoadFontSet(*ImGui::GetIO().Fonts).Badge;
+		ImGui::GetIO().Fonts->Build();
+
+		return face;
+	}
+
 	// WARNING: The expected colour is asked for inside the frame, after the drawing, because it is derived from the
 	// style that the drawing may have changed.
-	DrawnIcon DrawOneIcon(const std::function<void()>& drawIcon, const std::function<ImU32()>& expectedColour)
+	DrawnIcon DrawOneIcon(const std::function<void()>& drawIcon, const std::function<ImU32()>& expectedColour,
+						  BadgeFace badgeFace = BadgeFace::TheTestFace)
 	{
+		constexpr float kKeepTheSize = 0.0f;
+
 		ImGuiFrames frames;
 		DrawnIcon drawn;
+
+		// WARNING: Without a font set a badge draws in the current face, and the tests' own, ProggyClean, is wider
+		// for its size than JetBrains Mono Bold, so a badge only fits its box when the real face is made current.
+		ImFont* const face = badgeFace == BadgeFace::TheRealOne ? LoadTheRealBadgeFace() : nullptr;
 
 		frames.Next([&] {
 			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 			ImGui::SetNextWindowSize(kWindowSize);
 			ImGui::Begin("##iconWindow", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+			if (face != nullptr)
+			{
+				ImGui::PushFont(face, kKeepTheSize);
+			}
+
 			drawIcon();
+
+			if (face != nullptr)
+			{
+				ImGui::PopFont();
+			}
+
 			drawn.Expected = expectedColour();
 			drawn.FontSize = ImGui::GetFontSize();
 			drawn.Scale = Core::UiScale();
@@ -390,13 +425,14 @@ TEST_CASE("A file's icon is its badge and a folder's its glyph, and a dimmed one
 	CHECK(dimmedFolder.Colour == Core::WithAlphaScaled(folder.Colour, kHalf));
 }
 
-TEST_CASE("A C++ file draws the text C++ in the C++ colour inside a 17 by 15 box")
+TEST_CASE("A C++ file draws the text C++ in the C++ colour inside a 16 by 14 box")
 {
 	constexpr bool kDarkScheme = false;
 	constexpr int kCharactersOfCpp = 3;
 
 	const DrawnIcon drawn = DrawOneIcon([] { Graphite::DrawFileIcon(FileKind::CppSource, kIconPoint); },
-										[] { return Graphite::ColourOf(FileKind::CppSource, kDarkScheme); });
+										[] { return Graphite::ColourOf(FileKind::CppSource, kDarkScheme); },
+										BadgeFace::TheRealOne);
 
 	REQUIRE(drawn.Extent.has_value());
 	REQUIRE(drawn.Height.has_value());
@@ -438,7 +474,7 @@ TEST_CASE("Under the light scheme a file badge takes its kind's light colour")
 	CHECK(drawn.Extent.has_value());
 }
 
-TEST_CASE("A folder is drawn in the folder grey, as its glyph at 16 px centred on its line")
+TEST_CASE("A folder is drawn in the folder grey, as its glyph at 15 px centred on its line")
 {
 	constexpr bool kClosed = false;
 	constexpr float kReferenceShift = 100.0f;

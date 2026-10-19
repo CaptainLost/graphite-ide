@@ -14,10 +14,10 @@ namespace Core {
 	namespace {
 		using Groups = std::vector<std::vector<ToolStripItem>>;
 
-		constexpr float kStripWidth = 42.0f;
-		constexpr float kButtonSize = 30.0f;
-		constexpr float kButtonRounding = 7.0f;
-		constexpr float kButtonSpacing = 4.0f;
+		constexpr float kStripWidth = 36.0f;
+		constexpr float kButtonSize = 26.0f;
+		constexpr float kButtonRounding = 6.0f;
+		constexpr float kButtonSpacing = 6.0f;
 		constexpr float kEndPadding = 6.0f;
 		constexpr float kIconSize = 18.0f;
 		constexpr float kSeparatorLength = 18.0f;

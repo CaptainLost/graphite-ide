@@ -26,6 +26,10 @@ rests on the bar rather than the fill.
 - Hover adds the `SurfaceHovered` fill behind the icon.
 - The strip draws no border at its right edge. Separators between groups keep
   the border colour.
+- The strip is 36 px wide, and its buttons are 26 px squares rounded 6 px and
+  6 px apart, the mockup's lengths
+  ([0626](0626-size-fonts-by-the-em-the-mockup-was-drawn-at.md)). The bar keeps
+  its 2 px width and its 5 px inset.
 - Everything else in 0610 stands, including two panels of one node both reading
   open.
 
@@ -51,8 +55,8 @@ strip and a side panel share one surface.
 
 ### Neutral
 
-- Geometry is unchanged. The bar's width and inset go through the strip's
-  whole-pixel helper (0534).
+- The bar's width and inset go through the strip's whole-pixel helper (0534),
+  as the strip's other lengths do.
 
 ## Alternatives Considered
 

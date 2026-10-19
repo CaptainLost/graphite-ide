@@ -24,8 +24,8 @@ the child's top edge, so anything drawn above a row's start is cut off.
 Draw list rows through `Graphite/src/UI/Lists/ListRow.h` as follows.
 
 - **Pitch:** a row is one text line plus `ListRowSpacing()`, 9 px scaled:
-  `ListRowPitch()`, 23 px with a 14 px line. The global `ItemSpacing` stays as
-  it is.
+  `ListRowPitch()`, 25 px with the 16 px interface line. The global
+  `ItemSpacing` stays as it is.
 - **Slot:** a row owns the space from the cursor to a pitch below it.
   `ListRowSelectable` lays out a Selectable a pitch high with no item spacing,
   so its box is the slot: the first row's highlight starts at the list's top,
@@ -141,8 +141,8 @@ it was.
   does, in place of its own stronger wash.
 - The first and last cells of a list table stand 8 px from the table's ends,
   where they stood at the cell padding or flush before.
-- A search hit row, drawn in the code face, is a 15 px line plus the row
-  spacing: 24 px.
+- A search hit row, drawn in the code face, is a 17 px line plus the row
+  spacing: 26 px.
 - At large scales the text top is held a pixel above the middle, so that a text
   line laid there still ends inside the row's line.
 

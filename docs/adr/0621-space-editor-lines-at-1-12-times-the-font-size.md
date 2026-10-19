@@ -1,4 +1,4 @@
-# 0621. Space editor lines at 1.4 times the font size
+# 0621. Space editor lines at 1.12 times the font size
 
 Status: proposed
 Date: 2026-10-19
@@ -20,10 +20,13 @@ DPI scale it again
 
 ## Decision
 
-- **Height:** an editor line is `round(1.4 × font size)` tall. The font size is
+- **Height:** an editor line is `round(1.12 × font size)` tall. The font size is
   ImGui's current font size, read once a frame after the code face is pushed at
   the editor's size, so it carries the zoom, the interface scale and the DPI. At
-  100 % a 15 px line is 21 px tall, and a 13 px line 18 px.
+  100 % a 17 px line, the default size, is 19 px tall, which is the mockup's
+  line at its 13 px code, the em JetBrains Mono draws at 17 px
+  ([0626](0626-size-fonts-by-the-em-the-mockup-was-drawn-at.md)). A 20 px line
+  is 22 px tall.
 - **Metrics:** `EditorMetrics` holds the font size, the line height and
   `TextOffsetY`, which is `(LineHeight − FontSize) / 2`, floored.
   `TextTopOf(metrics, rowTop)` is where text in a row is drawn,
@@ -66,9 +69,10 @@ the marks around the code are dimmed to keep the code in front.
   change, number and fold columns, which stay on top.
 - **Indent guides:** half the alpha they had. Dark goes from 89 to 45, light from
   40 to 20.
-- **Lens labels:** the interface face at 0.85 times the editor's font size, in
-  `EditorColor::Lens`, dark `#6B7180`, light `#A0A0A0`. The size follows the
-  zoom. A label is centred in its row at its own size, is hit across the width
+- **Lens labels:** the interface face at 0.78 times the editor's font size, in
+  `EditorColor::Lens`, dark `#6B7180`, light `#A0A0A0`: 13 px at the default
+  17 px, the mockup's 11 px converted by Inter's factor (0626). The size follows
+  the zoom. A label is centred in its row at its own size, is hit across the width
   it is measured at in that face and size, and its hover underline stands 1 px
   above the label's own bottom, not the code text's.
 - **User schemes:** a scheme that overrides any of these keys keeps its value;
@@ -94,12 +98,13 @@ cannot disagree about where a line is.
 
 ### Negative
 
-- A view shows about 29 % fewer lines, and Page Up and Page Down step by fewer.
+- A view shows about 11 % fewer lines than with lines as tall as their text, and
+  Page Up and Page Down step by fewer.
 - The search preview and the hover tooltip's code rows step at the bare text
-  line, so a line of code there is shorter than in the editor: 15 px against
-  21 px at 15 px. The diff view, the console and the change tooltip step at a
-  text line plus their spacing. The diff view's 20 px at 15 px went from 5 px
-  taller than an editor line to 1 px shorter.
+  line, so a line of code there is shorter than in the editor: 17 px against
+  19 px at 17 px. The diff view, the console and the change tooltip step at a
+  text line plus their spacing. The diff view's 22 px at 17 px is 3 px taller
+  than an editor line.
 - When the room left is odd, the text stands half a pixel above the middle.
 
 ### Neutral

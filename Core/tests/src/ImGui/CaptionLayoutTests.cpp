@@ -11,8 +11,8 @@ using Core::LayOutCaption;
 
 namespace {
 	constexpr float kBarWidth = 800.0f;
-	constexpr float kBarHeight = 32.0f;
-	constexpr float kButtonWidth = 46.0f;
+	constexpr float kBarHeight = 28.0f;
+	constexpr float kButtonWidth = 42.0f;
 	constexpr float kContentLeftOfMenus = 200.0f;
 	constexpr float kContentLeftAtEdge = 0.0f;
 

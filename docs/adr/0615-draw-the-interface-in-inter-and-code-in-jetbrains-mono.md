@@ -16,19 +16,25 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
 ## Decision
 
 - Load four faces through `Core::LoadFontSet`, in this order:
-  1. the interface face, Inter Regular at `kInterfaceFontSize` (14 px);
+  1. the interface face, Inter Regular at `kInterfaceFontSize` (16 px);
   2. the Lucide icons merged onto it;
   3. the system symbol font (`seguisym.ttf`) merged onto it;
-  4. the code face, JetBrains Mono Regular at `kCodeFontSize` (15 px);
+  4. the code face, JetBrains Mono Regular at `kCodeFontSize` (17 px);
   5. the Lucide icons merged onto it;
   6. the system symbol font merged onto it;
-  7. the strong face, Inter SemiBold at 14 px, with the Lucide icons merged onto
+  7. the strong face, Inter SemiBold at 16 px, with the Lucide icons merged onto
      it;
-  8. the badge face, JetBrains Mono Bold at `kBadgeFontSize` (9 px), which draws
+  8. the badge face, JetBrains Mono Bold at `kBadgeFontSize` (11 px), which draws
      the file kinds' badges of
      [0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md).
 
   The interface face is the atlas's first font and `io.FontDefault`.
+- **Sizes.** A size is ImGui's, which measures a face from its ascender to its
+  descender, where CSS measures it by its em. Inter's ascender-to-descender is
+  1.21 em and JetBrains Mono's 1.32 em, so the sizes above are the mockup's CSS
+  sizes times those factors, rounded: the interface's 13 px is 16 px, the
+  code's 13 px is 17 px and the badges' 8 px is 11 px
+  ([0626](0626-size-fonts-by-the-em-the-mockup-was-drawn-at.md)).
 - The badge face holds only ASCII and the identical-to sign, U+2261. ImGui's
   dynamic atlas reads a face's glyph ranges only to preload, so every other
   character is shut out through `GlyphExcludeRanges`. It carries no icons and no
@@ -47,7 +53,7 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
   interface face and `Core::PushCodeFont(float size = kCodeFontSize)` pushes the
   code face, each at the size it is given, wherever it is called, including
   inside a push of the other face. The default sizes are the two named sizes,
-  14 px and 15 px. Every size passed is an unscaled base size, which ImGui scales
+  16 px and 17 px. Every size passed is an unscaled base size, which ImGui scales
   by the interface scale and the monitor's DPI. Both are popped with
   `ImGui::PopFont()`.
 - Code, cells and digits that must line up digit for digit draw in the code face.
@@ -56,12 +62,12 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
     and the review, draws in the code face at the interface size, so every row
     keeps its pitch.
   - Search and reference hit rows draw wholly in the code face, so each is one
-    code line (15 px) plus spacing, a pixel taller than a chrome list row at
+    code line (17 px) plus spacing, a pixel taller than a chrome list row at
     100 %.
   - In the conversation view, an opened tool step's edit lines, input JSON and
     result are code.
-  - Lens labels draw in the interface face at the editor's font size. Their size
-    changes in a later stage.
+  - Lens labels draw in the interface face at 0.78 of the editor's font size
+    ([0621](0621-space-editor-lines-at-1-12-times-the-font-size.md)).
 - The strong face, which `ImGuiRenderer::GetBoldFont()` returns, is Inter
   SemiBold. `GetMonoFont()` returns the code face, `GetInterfaceFont()` the
   interface face and `GetBadgeFont()` the badge face.
@@ -75,7 +81,7 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
 A proportional face fits a label in less width and reads as an interface, while a
 monospaced face keeps code and cells in columns. Adding each face's merges right
 after it, and the strong face after every merge, is what ImGui's merge-onto-last
-rule requires. Two named sizes keep code at 15 px while the interface size moves
+rule requires. Two named sizes keep code at 17 px while the interface size moves
 on its own.
 
 ## Consequences
@@ -96,7 +102,8 @@ on its own.
 
 ### Neutral
 
-- The interface size is a starting value; the screen check may move it to 15 px.
+- The two sizes are the mockup's 13 px, each converted by its own face's factor
+  (0626), so they differ although the mockup draws both at one size.
 
 ## Alternatives Considered
 

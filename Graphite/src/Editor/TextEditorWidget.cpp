@@ -83,8 +83,8 @@ namespace Graphite {
 		constexpr double kCaretBlinkPeriod = 1.0;
 		constexpr double kHalfBlinkPeriod = kCaretBlinkPeriod * 0.5;
 
-		constexpr float kLineHeightFactor = 1.4f;
-		constexpr float kLensFontFactor = 0.85f;
+		constexpr float kLineHeightFactor = 1.12f;
+		constexpr float kLensFontFactor = 0.78f;
 
 		constexpr float kHalf = 0.5f;
 		constexpr float kHairlineWidth = 1.0f;

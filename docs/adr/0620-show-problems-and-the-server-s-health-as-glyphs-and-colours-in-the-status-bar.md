@@ -23,6 +23,11 @@ It knows nothing of the diagnostics model, the language services or the scheme.
 
 ## Decision
 
+- **Size.** The bar is `kStatusBarHeight`, 23 px scaled and rounded to a whole
+  pixel, not the height of a frame, and draws in the interface face at
+  `kStatusBarFontSize`, 15 px, the mockup's 12 px converted by Inter's factor
+  ([0626](0626-size-fonts-by-the-em-the-mockup-was-drawn-at.md)). Every item's
+  line is centred in the bar.
 - **Problems.** `StatusMessages::Problems` is an optional `ProblemCounts` of
   errors and warnings, in place of the joined string.
   - The error glyph (`ICON_LC_CIRCLE_X`) and the error count draw in the
@@ -49,9 +54,9 @@ It knows nothing of the diagnostics model, the language services or the scheme.
   when ready, the warning colour while starting or limited, and the error
   colour when failed. `None` draws no dot. The words keep their form, "C++: clangd ready",
   and their click ([0571](0571-choose-and-install-language-servers-from-settings-and-the-editor.md)).
-- **Caret position.** "Ln 12, Col 5" draws in the code face at the interface
-  size, `Core::PushCodeFont(Core::kInterfaceFontSize)`. Its width changes only
-  when its number of digits does.
+- **Caret position.** "Ln 12, Col 5" draws in the code face at the bar's size,
+  `Core::PushCodeFont(kStatusBarFontSize)`. Its width changes only when its
+  number of digits does.
 - **Gaps.** Items are `kStatusItemGap`, 16 px, apart, in place of spaces or a
   font size. The gap separates:
   - the branch from the change count;
@@ -69,7 +74,9 @@ It knows nothing of the diagnostics model, the language services or the scheme.
   - The fill is `Core::IconButtonFill`, the eased colours `DrawIconButton` uses.
   - Inert items take no fill.
   - The bell stays a `DrawIconButton`, with a third fit, `IconButtonFit::Bar`: a
-    square one frame high, filled out to its corners.
+    square one frame high, filled out to its corners. The bar sets the frame
+    padding so that a frame is as tall as the bar, whatever padding frames have
+    elsewhere.
 - **Read-only warning.** "read-only: not valid text for its encoding" is an item
   of its own after the path, in the warning colour, only for such a document.
 - **Colours.** `StatusMessages::Colours` carries the error and warning colours

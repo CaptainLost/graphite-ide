@@ -14,6 +14,7 @@
 #include <imgui.h>
 
 #include <cmath>
+#include <initializer_list>
 #include <optional>
 #include <string>
 
@@ -25,7 +26,7 @@ namespace {
 	constexpr float kNarrowBarWidth = 520.0f;
 	constexpr ImGuiWindowFlags kBareWindow = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
 											 ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings;
-	constexpr ImVec2 kWindowSize(kBarWidth, 32.0f);
+	constexpr ImVec2 kWindowSize(kBarWidth, Graphite::kCaptionHeight);
 
 	struct Drawn
 	{
@@ -79,6 +80,22 @@ TEST_CASE("The title bar draws the folder and branch after the menus and no vers
 	const std::string version = Graphite::Version::String();
 	const int versionGlyphs = static_cast<int>(version.size()) + static_cast<int>(std::string("Graphite ").size());
 	CHECK(folder.Vertices < none.Vertices + (versionGlyphs + 2) * kVerticesInAGlyph);
+}
+
+TEST_CASE("The title bar is twenty-eight pixels and its window buttons forty-two wide")
+{
+	constexpr float kTwentyEight = 28.0f;
+	constexpr float kFortyTwo = 42.0f;
+
+	const Drawn drawn = DrawTitleOnce({.Folder = "ab"});
+
+	CHECK(Graphite::kCaptionHeight == kTwentyEight);
+
+	for (const Core::CaptionRect& button : {drawn.Layout.Minimize, drawn.Layout.Maximize, drawn.Layout.Close})
+	{
+		CHECK(button.Height == doctest::Approx(kTwentyEight));
+		CHECK(button.Width == doctest::Approx(kFortyTwo));
+	}
 }
 
 TEST_CASE("With no folder, nothing follows the menus")

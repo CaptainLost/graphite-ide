@@ -14,7 +14,7 @@ namespace Core {
 
 namespace Graphite {
 
-	inline constexpr float kCaptionHeight = 32.0f;
+	inline constexpr float kCaptionHeight = 28.0f;
 
 	struct TitleContext
 	{

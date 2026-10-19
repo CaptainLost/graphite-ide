@@ -50,9 +50,9 @@ namespace Graphite {
 	};
 
 	inline constexpr float kIconToNameGap = 5.0f;
-	inline constexpr float kBadgeWidth = 17.0f;
-	inline constexpr float kBadgeHeight = 15.0f;
-	inline constexpr float kFolderIconSize = 16.0f;
+	inline constexpr float kBadgeWidth = 16.0f;
+	inline constexpr float kBadgeHeight = 14.0f;
+	inline constexpr float kFolderIconSize = 15.0f;
 
 	FileKind KindOfFile(const std::filesystem::path& path);
 

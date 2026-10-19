@@ -8,7 +8,6 @@
 
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/FontSet.h"
-#include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/Text/DocumentSet.h"
 
@@ -32,6 +31,15 @@ namespace {
 	constexpr ImU32 kErrorColour = IM_COL32(231, 17, 23, 255);
 	constexpr ImU32 kWarningColour = IM_COL32(233, 181, 19, 255);
 	constexpr ImU32 kReadyColour = IM_COL32(21, 199, 61, 255);
+
+	float BarTextWidth(const char* text)
+	{
+		Core::PushInterfaceFont(Graphite::kStatusBarFontSize);
+		const float width = ImGui::CalcTextSize(text).x;
+		ImGui::PopFont();
+
+		return width;
+	}
 
 	struct StatusBarScreen
 	{
@@ -68,9 +76,9 @@ namespace {
 		{
 			Draw();
 			const ImGuiWindow& bar = Bar();
-			WordsRight = bar.Pos.x + bar.Size.x - bar.WindowPadding.x - Core::IconButtonSize(Core::IconButtonFit::Bar) -
-						 Core::Scaled(Graphite::kStatusItemGap);
-			WordsWidth = ImGui::CalcTextSize(words).x;
+			const float bellWidth = bar.Size.y;
+			WordsRight = bar.Pos.x + bar.Size.x - bar.WindowPadding.x - bellWidth - Core::Scaled(Graphite::kStatusItemGap);
+			WordsWidth = BarTextWidth(words);
 			BarMiddle = bar.Pos.y + bar.Size.y * 0.5f;
 		}
 
@@ -183,28 +191,47 @@ namespace {
 	enum class RunFace
 	{
 		TheBarFace,
-		TheCodeFaceAtTheInterfaceSize
+		TheCodeFaceAtTheBarSize,
+		TheWindowFace
 	};
+
+	const char* ReferenceWindowFor(RunFace face)
+	{
+		switch (face)
+		{
+		case RunFace::TheBarFace:
+			return "##BarFaceReference";
+		case RunFace::TheCodeFaceAtTheBarSize:
+			return "##CodeFaceReference";
+		case RunFace::TheWindowFace:
+			return "##WindowFaceReference";
+		}
+
+		return "##BarFaceReference";
+	}
 
 	std::vector<ImRect> GlyphRunOf(const char* text, RunFace face)
 	{
-		const bool inTheCodeFace = face == RunFace::TheCodeFaceAtTheInterfaceSize;
 		constexpr ImGuiWindowFlags kBareWindow = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
 												 ImGuiWindowFlags_NoSavedSettings;
 
 		constexpr ImVec2 kRoomForTheWholeRun(400.0f, 100.0f);
 
 		ImGui::SetNextWindowSize(kRoomForTheWholeRun);
-		ImGui::Begin(inTheCodeFace ? "##CodeFaceReference" : "##BarFaceReference", nullptr, kBareWindow);
+		ImGui::Begin(ReferenceWindowFor(face), nullptr, kBareWindow);
 
-		if (inTheCodeFace)
+		if (face == RunFace::TheBarFace)
 		{
-			Core::PushCodeFont(Core::kInterfaceFontSize);
+			Core::PushInterfaceFont(Graphite::kStatusBarFontSize);
+		}
+		else if (face == RunFace::TheCodeFaceAtTheBarSize)
+		{
+			Core::PushCodeFont(Graphite::kStatusBarFontSize);
 		}
 
 		ImGui::TextUnformatted(text);
 
-		if (inTheCodeFace)
+		if (face != RunFace::TheWindowFace)
 		{
 			ImGui::PopFont();
 		}
@@ -292,6 +319,33 @@ TEST_CASE("Problems and the background pass beside clickable server words comple
 	screen.Frames.Next([&] { screen.Draw(); });
 
 	CHECK(screen.LastClick == Graphite::StatusBarClick::None);
+}
+
+TEST_CASE("The status bar is twenty-three pixels and draws its words at fifteen")
+{
+	constexpr float kTwentyThree = 23.0f;
+	constexpr float kFifteen = 15.0f;
+	constexpr const char* kWords = "C++: clangd ready";
+
+	StatusBarScreen screen;
+	screen.Messages.Server = kWords;
+
+	std::vector<ImRect> atFifteen;
+	std::vector<ImRect> atTheWindowSize;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		atFifteen = GlyphRunOf(kWords, RunFace::TheBarFace);
+		atTheWindowSize = GlyphRunOf(kWords, RunFace::TheWindowFace);
+	});
+
+	CHECK(Graphite::kStatusBarFontSize == kFifteen);
+	CHECK(StatusBarScreen::Bar().Size.y == doctest::Approx(kTwentyThree));
+
+	REQUIRE_FALSE(atFifteen.empty());
+	REQUIRE_FALSE(atTheWindowSize.empty());
+	REQUIRE(atFifteen.front().GetHeight() > atTheWindowSize.front().GetHeight());
+	CHECK(DrawsGlyphRun(StatusBarScreen::BarDrawing(), atFifteen));
+	CHECK_FALSE(DrawsGlyphRun(StatusBarScreen::BarDrawing(), atTheWindowSize));
 }
 
 TEST_CASE("The status bar draws no border of its own, so it sits flush with the chrome above it")
@@ -449,13 +503,17 @@ TEST_CASE("Items are separated by the named gap")
 	screen.Messages.Server = kWords;
 	screen.Messages.ServerOpensSettings = true;
 
-	screen.Frames.Next([&] { screen.DrawMeasuringWords(kWords); });
+	float branchWidth = 0.0f;
+	float changesWidth = 0.0f;
+	screen.Frames.Next([&] {
+		screen.DrawMeasuringWords(kWords);
+		branchWidth = BarTextWidth(kBranch);
+		changesWidth = BarTextWidth(kChanges);
+	});
 
 	const ImGuiWindow& bar = StatusBarScreen::Bar();
 	const float gap = Core::Scaled(Graphite::kStatusItemGap);
 	const float branchLeft = bar.Pos.x + bar.WindowPadding.x;
-	const float branchWidth = ImGui::CalcTextSize(kBranch).x;
-	const float changesWidth = ImGui::CalcTextSize(kChanges).x;
 
 	screen.HoverAt(ImVec2(branchLeft + branchWidth * 0.5f, screen.BarMiddle));
 	const std::optional<HorizontalExtent> branchFill = HorizontalExtentInColour(StatusBarScreen::BarDrawing(), HoverFill());
@@ -483,31 +541,31 @@ TEST_CASE("Items are separated by the named gap")
 	CHECK(bellFill->Left - (wordsFill->Right - fillPadding) == doctest::Approx(gap));
 }
 
-TEST_CASE("The caret position is drawn at the interface size in the code face")
+TEST_CASE("The caret position is drawn in the code face at the bar's size, whatever the interface size")
 {
-	constexpr float kBarFontSize = 20.0f;
+	constexpr float kInterfaceFontSize = 20.0f;
 	constexpr const char* kCaretAtTheStart = "Ln 1, Col 1";
 
 	TempDirectory temp;
 	StatusBarScreen screen;
 	screen.Open(temp.MakeFile("notes.txt", "abc\n"));
-	ImGui::GetStyle().FontSizeBase = kBarFontSize;
+	ImGui::GetStyle().FontSizeBase = kInterfaceFontSize;
 
-	std::vector<ImRect> atTheInterfaceSize;
 	std::vector<ImRect> atTheBarSize;
+	std::vector<ImRect> atTheInterfaceSize;
 
 	screen.Frames.Next([&] {
 		screen.Draw();
-		atTheInterfaceSize = GlyphRunOf(kCaretAtTheStart, RunFace::TheCodeFaceAtTheInterfaceSize);
-		atTheBarSize = GlyphRunOf(kCaretAtTheStart, RunFace::TheBarFace);
+		atTheBarSize = GlyphRunOf(kCaretAtTheStart, RunFace::TheCodeFaceAtTheBarSize);
+		atTheInterfaceSize = GlyphRunOf(kCaretAtTheStart, RunFace::TheWindowFace);
 	});
 
 	constexpr std::size_t kGlyphsInTheRun = 8;
-	REQUIRE(atTheInterfaceSize.size() == kGlyphsInTheRun);
 	REQUIRE(atTheBarSize.size() == kGlyphsInTheRun);
-	REQUIRE(atTheInterfaceSize.front().GetHeight() < atTheBarSize.front().GetHeight());
-	CHECK(DrawsGlyphRun(StatusBarScreen::BarDrawing(), atTheInterfaceSize));
-	CHECK_FALSE(DrawsGlyphRun(StatusBarScreen::BarDrawing(), atTheBarSize));
+	REQUIRE(atTheInterfaceSize.size() == kGlyphsInTheRun);
+	REQUIRE(atTheBarSize.front().GetHeight() < atTheInterfaceSize.front().GetHeight());
+	CHECK(DrawsGlyphRun(StatusBarScreen::BarDrawing(), atTheBarSize));
+	CHECK_FALSE(DrawsGlyphRun(StatusBarScreen::BarDrawing(), atTheInterfaceSize));
 }
 
 TEST_CASE("The read-only warning is an item of its own in the warning colour, only for such a document")
