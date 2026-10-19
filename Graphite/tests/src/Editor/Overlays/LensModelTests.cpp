@@ -11,6 +11,14 @@ namespace {
 		return Graphite::Declaration{std::move(name), Graphite::DeclarationKind::Function, line,
 									 Graphite::Utf16Column{0}};
 	}
+
+	Graphite::Declaration FunctionNamedOn(std::string name, std::size_t line, std::size_t nameLine)
+	{
+		Graphite::Declaration declaration = Function(std::move(name), line);
+		declaration.NameLine = nameLine;
+
+		return declaration;
+	}
 }
 
 TEST_CASE("A declaration becomes a lens anchored on its line's first row")
@@ -85,6 +93,66 @@ TEST_CASE("Inserting lines above a lens moves it and keeps its count")
 
 	REQUIRE(model.LensAt(5) != nullptr);
 	CHECK(model.LensAt(5)->Count == 7);
+}
+
+TEST_CASE("Inserting lines above a lens moves its name line with it")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\ne\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({FunctionNamedOn("Draw", 3, 3)}, rows, buffer, 4);
+
+	model.OnLinesChanged(1, 2, rows);
+
+	REQUIRE(model.LensAt(5) != nullptr);
+	CHECK(model.LensAt(5)->NameLine == 5);
+}
+
+TEST_CASE("Deleting lines above a lens moves its name line up with it")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\ne\nf\ng\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({FunctionNamedOn("Draw", 5, 5)}, rows, buffer, 4);
+
+	model.OnLinesChanged(1, -2, rows);
+
+	REQUIRE(model.LensAt(3) != nullptr);
+	CHECK(model.LensAt(3)->NameLine == 3);
+}
+
+TEST_CASE("A lens starting above an edit moves its name line when the name sits below the edit")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\ne\nf\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({FunctionNamedOn("Draw", 1, 3)}, rows, buffer, 4);
+
+	model.OnLinesChanged(2, 2, rows);
+
+	REQUIRE(model.LensAt(1) != nullptr);
+	CHECK(model.LensAt(1)->NameLine == 5);
+}
+
+TEST_CASE("A lens whose name line was deleted names the line before the deletion")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\ne\nf\ng\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({FunctionNamedOn("Draw", 1, 3)}, rows, buffer, 4);
+
+	model.OnLinesChanged(2, -3, rows);
+
+	REQUIRE(model.LensAt(1) != nullptr);
+	CHECK(model.LensAt(1)->NameLine == 1);
 }
 
 TEST_CASE("An edit below a lens leaves it where it was")

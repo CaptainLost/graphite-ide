@@ -3,6 +3,7 @@
 #include "Core/Text/Columns.h"
 #include "Core/Text/RowMap.h"
 #include "Core/Text/TextBuffer.h"
+#include "Language/Api/Declarations.h"
 #include "Language/Server/LspProtocol.h"
 
 #include <algorithm>
@@ -219,6 +220,8 @@ namespace Graphite {
 		}
 	}
 
+	// WARNING: Every name line moves, not only those of lenses whose row moved: a declaration can begin
+	// above the edit and name itself below it, and a count is asked at the name line.
 	void LensModel::OnLinesChanged(std::size_t fromLine, std::ptrdiff_t delta, const Core::RowMap& rows)
 	{
 		const std::size_t fromRow = rows.FirstRowOf(fromLine);
@@ -228,9 +231,12 @@ namespace Graphite {
 
 		for (const Entry& entry : m_Entries)
 		{
+			Entry next = entry;
+			next.LensValue.NameLine = LineAfterEdit(entry.LensValue.NameLine, fromLine, delta);
+
 			if (entry.LensValue.DocumentRow < fromRow)
 			{
-				shifted.push_back(entry);
+				shifted.push_back(std::move(next));
 				continue;
 			}
 
@@ -241,7 +247,6 @@ namespace Graphite {
 				continue;
 			}
 
-			Entry next = entry;
 			next.LensValue.DocumentRow = static_cast<std::size_t>(moved);
 			shifted.push_back(std::move(next));
 		}

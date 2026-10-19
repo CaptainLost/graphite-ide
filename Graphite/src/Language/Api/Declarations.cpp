@@ -50,9 +50,7 @@ namespace Graphite {
 		std::size_t MovedLineWithin(std::size_t line, std::size_t fromLine, std::ptrdiff_t delta,
 									std::size_t movedStart)
 		{
-			const std::size_t lineBeforeTheDeletion = fromLine > 0 ? fromLine - 1 : 0;
-
-			return std::max(movedStart, MovedLine(line, fromLine, delta).value_or(lineBeforeTheDeletion));
+			return std::max(movedStart, LineAfterEdit(line, fromLine, delta));
 		}
 
 		int SurvivingParent(std::span<const Declaration> declarations, const std::vector<int>& movedIndices,
@@ -94,6 +92,13 @@ namespace Graphite {
 		std::reverse(chain.begin(), chain.end());
 
 		return chain;
+	}
+
+	std::size_t LineAfterEdit(std::size_t line, std::size_t fromLine, std::ptrdiff_t delta)
+	{
+		const std::size_t lineBeforeTheDeletion = fromLine > 0 ? fromLine - 1 : 0;
+
+		return MovedLine(line, fromLine, delta).value_or(lineBeforeTheDeletion);
 	}
 
 	void MoveDeclarations(std::vector<Declaration>& declarations, std::size_t fromLine, std::ptrdiff_t delta)
