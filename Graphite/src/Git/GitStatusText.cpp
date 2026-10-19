@@ -180,7 +180,7 @@ namespace Graphite {
 		if (inputs.Status != nullptr && !inputs.Status->Entries.empty())
 		{
 			const std::size_t changeCount = inputs.Status->Entries.size();
-			segment.Changes = ICON_LC_DOT " " + Core::Counted(changeCount, "change");
+			segment.Changes = std::string{kBullet} + " " + Core::Counted(changeCount, "change");
 			segment.ChangesTooltip =
 				changeCount == 1 ? "1 uncommitted change. Click to show it in Changes."
 								 : std::to_string(changeCount) + " uncommitted changes. Click to show them in Changes.";

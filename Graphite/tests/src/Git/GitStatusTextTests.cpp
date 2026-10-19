@@ -20,7 +20,7 @@ namespace {
 	const std::string kBranch = ICON_LC_GIT_BRANCH " ";
 	const std::string kUp = ICON_LC_ARROW_UP;
 	const std::string kDown = ICON_LC_ARROW_DOWN;
-	const std::string kChanges = ICON_LC_DOT " ";
+	const std::string kChanges = "\xE2\x80\xA2 ";
 
 	Core::HeadState HeadOnBranch(const std::string& name)
 	{

@@ -113,7 +113,6 @@ TEST_CASE("UsedGlyphRanges covers every icon this app can display, zero-terminat
 		ICON_LC_IMAGE,
 		ICON_LC_ARROW_UP,
 		ICON_LC_ARROW_DOWN,
-		ICON_LC_DOT,
 		ICON_LC_ARCHIVE,
 		ICON_LC_TERMINAL,
 		ICON_LC_FILE_IMAGE,

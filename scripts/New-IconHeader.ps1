@@ -10,8 +10,9 @@
     version; then run scripts/New-FontData.ps1 for the font itself.
 
 .PARAMETER Version
-    The lucide-static version whose info.json is read. Defaults to the version of
-    vendor/fonts/lucide.ttf.
+    The lucide-static version whose info.json is read. Defaults to 0.460.0, written
+    here by hand: the version vendor/fonts/lucide.ttf was taken from. Change the
+    default whenever the font is replaced.
 
 .PARAMETER InfoJson
     A local copy of that version's font/info.json. When omitted, it is downloaded from

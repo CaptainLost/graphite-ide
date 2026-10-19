@@ -92,9 +92,9 @@ try {
     $list = Join-Path $fixture 'Icons.cpp'
     $text = [System.IO.File]::ReadAllText($list).Replace('ICON_LC_FILE,', "ICON_LC_FILE,`n`t`tICON_MDI_CLOSE,")
     Write-Utf8NoBom -Path $list -Text $text
-    Add-Content -LiteralPath (Join-Path $fixture 'Panel.cpp') -Value 'const char* kOld = ICON_MDI_CLOSE;'
     $result = Invoke-Lint -Root $fixture
     Assert-That -Because 'fails on a Material Design icon even when kUsedIcons lists it' -Condition ($result.ExitCode -eq 1)
+    Assert-That -Because 'reports it in the icon list' -Condition ($result.Output -match 'Icons\.cpp\(\d+\): ICON_MDI_CLOSE')
 }
 finally { Remove-Item $fixture -Recurse -Force }
 

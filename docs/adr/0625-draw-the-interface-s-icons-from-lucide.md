@@ -9,8 +9,8 @@ The interface drew its icons from Material Design Icons (MDI): a webfont of some
 7,400 icons, filled and outlined shapes mixed, compiled in by
 [0590](0590-compile-the-bundled-fonts-into-the-executable.md). The approved
 mockup draws Lucide, an outline set drawn with round 2-unit strokes on a 24-unit
-grid, and stage 8 of the visual refresh closes what still differs from it. The
-sources drew 96 distinct `ICON_MDI_` constants in 52 files.
+grid, and the interface is being brought to match it. The sources drew 96
+distinct `ICON_MDI_` constants in 52 files.
 
 - Lucide has no brand or language icons: nothing for C, C++, C#, Lua, Python,
   Markdown, PowerShell or Visual Studio.
@@ -73,11 +73,12 @@ Draw every icon from Lucide, pinned to `lucide-static` 0.460.0.
     scaled offset to a whole pixel, so the icon's middle is within a pixel of
     the capitals' middle at every scale. Measured from the drawn pixels, it is
     within half a pixel in all three faces from 100 % to 200 %.
-- **Baked set.** `kUsedIcons` lists the 85 Lucide icons the interface draws and
+- **Baked set.** `kUsedIcons` lists the 84 Lucide icons the interface draws and
   only these are baked. `Core::UsedIcons()` returns the list for the tests.
   `scripts/Test-IconsLoaded.ps1` fails on any `ICON_LC_` constant missing from
   it and on any `ICON_MDI_` constant at all.
-- **Mapping.** Every MDI constant became the Lucide icon below.
+- **Mapping.** Every MDI constant became the Lucide icon below, but for the
+  change count's bullet, which is the text bullet U+2022, as the mockup draws it.
   - Where the mockup draws the same thing, its own icon is taken, marked
     "(mockup)". The mockup's search tool draws `text-search`, its terminal tool
     the boxed `square-terminal` and its console tool `message-square-text`, so
@@ -86,16 +87,18 @@ Draw every icon from Lucide, pinned to `lucide-static` 0.460.0.
   - Elsewhere the nearest outline icon is taken.
   - Brand and language icons become the nearest generic icon. A header keeps
     `file-code-2` and C# keeps `hash`, so a header still differs from a source
-    and a C# project from a C++ one. File kinds are replaced by text badges in
-    Task 3 of stage 8, marked so below.
+    and a C# project from a C++ one.
+  - A row marked "until badges" is a file kind. Its glyph is a generic stand-in,
+    replaced when file kinds are drawn as text badges
+    ([0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md)).
 
 | MDI | Lucide | Where |
 |---|---|---|
 | `ACCOUNT_OUTLINE` | `user` | A prompt in the requests view |
 | `ALERT` | `triangle-alert` | Status bar and Problems warnings (mockup) |
 | `ALERT_CIRCLE_OUTLINE` | `circle-alert` | Problems panel (mockup) |
-| `ALPHA_H_BOX_OUTLINE` | `file-code-2` | Header file kind; kept apart from `file-code` so a header still differs from a source. replaced by a badge in Task 3 |
-| `APPLICATION_BRACES` | `app-window` | Nothing draws it any more; the old generic project glyph, now the project glyph |
+| `ALPHA_H_BOX_OUTLINE` | `file-code-2` | Header file kind, kept apart from `file-code` so a header still differs from a source (until badges) |
+| `APPLICATION_BRACES` | `app-window` | Nothing drew it; it was the old generic project glyph, and the project glyph stands in |
 | `ARCHIVE_ARROW_DOWN_OUTLINE` | `archive` | Stash |
 | `ARROW_COLLAPSE_VERTICAL` | `chevrons-down-up` | Diff hunks only, a compaction marker (mockup's collapse all) |
 | `ARROW_DOWN` | `arrow-down` | Commits behind |
@@ -111,11 +114,11 @@ Draw every icon from Lucide, pinned to `lucide-static` 0.460.0.
 | `CHEVRON_DOWN` | `chevron-down` | Open list rows, panel header choice, find next (mockup) |
 | `CHEVRON_RIGHT` | `chevron-right` | Closed list rows, breadcrumb separator (mockup) |
 | `CHEVRON_UP` | `chevron-up` | Find previous |
-| `CIRCLE_MEDIUM` | `dot` | The bullet before the change count |
+| `CIRCLE_MEDIUM` | none | The bullet before the change count, now the text bullet U+2022 in the interface face, as the mockup draws it |
 | `CLOSE` | `x` | Every close button and the caption close (mockup) |
 | `CLOSE_CIRCLE` | `circle-x` | Errors (mockup) |
 | `CODE_BRACES` | `braces` | A type in the breadcrumb, tool schemas, a language server with no language glyph |
-| `CODE_JSON` | `file-json` | JSON file kind. replaced by a badge in Task 3 |
+| `CODE_JSON` | `file-json` | JSON file kind (until badges) |
 | `COG_OUTLINE` | `settings` | Settings (mockup) |
 | `CONSOLE` | `square-terminal` | Terminal panel, terminal tabs, a run tool; the mockup's terminal tool draws this boxed prompt |
 | `DELETE` | `trash-2` | Delete an untracked file |
@@ -125,12 +128,12 @@ Draw every icon from Lucide, pinned to `lucide-static` 0.460.0.
 | `FILE_DOCUMENT_EDIT_OUTLINE` | `file-diff` | Changes (mockup) |
 | `FILE_DOCUMENT_OUTLINE` | `file-text` | A read tool |
 | `FILE_EDIT_OUTLINE` | `file-pen` | Open the file from a diff |
-| `FILE_IMAGE_OUTLINE` | `file-image` | Image file kind. replaced by a badge in Task 3 |
+| `FILE_IMAGE_OUTLINE` | `file-image` | Image file kind (until badges) |
 | `FILE_OUTLINE` | `file` | Any other file kind (mockup's plain file), path filter |
 | `FILE_PLUS_OUTLINE` | `file-plus` | New file (mockup) |
 | `FILE_TREE` | `folder-tree` | Explorer, the review's tree shape (mockup) |
-| `FOLDER` | `folder` | A closed folder (IconForExtension list) |
-| `FOLDER_OPEN` | `folder-open` | An open folder (IconForExtension list) |
+| `FOLDER` | `folder` | Nothing drew it; it was only baked |
+| `FOLDER_OPEN` | `folder-open` | Nothing drew it; it was only baked |
 | `FOLDER_OPEN_OUTLINE` | `folder-open` | An open folder in a list (mockup) |
 | `FOLDER_OUTLINE` | `folder` | A closed folder in a list, the title bar's folder (mockup) |
 | `FOLDER_PLUS_OUTLINE` | `folder-plus` | New folder (mockup) |
@@ -143,22 +146,22 @@ Draw every icon from Lucide, pinned to `lucide-static` 0.460.0.
 | `INFORMATION_OUTLINE` | `info` | The language support bar |
 | `KEYBOARD_OUTLINE` | `keyboard` | Key bindings page |
 | `LANGUAGE_C` | `file-code` | C source (IconForExtension) |
-| `LANGUAGE_CPP` | `file-code` | C++ file kind, the C++ language server. replaced by a badge in Task 3 |
-| `LANGUAGE_CSHARP` | `hash` | C# file kind, the C# language server; a `#` keeps C# apart from C++. replaced by a badge in Task 3 |
-| `LANGUAGE_LUA` | `file-code` | Lua file kind. replaced by a badge in Task 3 |
+| `LANGUAGE_CPP` | `file-code` | C++ file kind (until badges), the C++ language server |
+| `LANGUAGE_CSHARP` | `hash` | C# file kind (until badges), the C# language server; a `#` keeps C# apart from C++ |
+| `LANGUAGE_LUA` | `file-code` | Lua file kind (until badges) |
 | `LANGUAGE_MARKDOWN` | `file-text` | Markdown (IconForExtension) |
-| `LANGUAGE_MARKDOWN_OUTLINE` | `file-text` | Markdown file kind. replaced by a badge in Task 3 |
+| `LANGUAGE_MARKDOWN_OUTLINE` | `file-text` | Markdown file kind (until badges) |
 | `LANGUAGE_PYTHON` | `file-code` | Python (IconForExtension) |
 | `LINK_VARIANT` | `link` | References (mockup) |
 | `MAGNIFY` | `search` | Every filter field (mockup) |
 | `MESSAGE_TEXT_OUTLINE` | `message-square-text` | Console, a text response; the mockup's console tool draws this bubble with two lines |
-| `MICROSOFT_VISUAL_STUDIO` | `app-window` | Project and solution file kind. replaced by a badge in Task 3 |
+| `MICROSOFT_VISUAL_STUDIO` | `app-window` | Project and solution file kind (until badges) |
 | `MINUS` | `minus` | Unstage |
 | `PALETTE_OUTLINE` | `palette` | Colour syntax, Appearance page |
 | `PENCIL` | `pencil` | An edit tool, an edited file |
 | `PENCIL_OUTLINE` | `pencil` | Editor page |
 | `PLUS` | `plus` | Stage, new terminal, new session |
-| `POWERSHELL` | `terminal` | Script file kind. replaced by a badge in Task 3 |
+| `POWERSHELL` | `terminal` | Script file kind (until badges) |
 | `PROGRESS_CLOCK` | `clock` | Background analysis page |
 | `PUZZLE_OUTLINE` | `puzzle` | Skills |
 | `RADIOBOX_MARKED` | `circle-dot` | The review menu's current mark |
@@ -210,8 +213,8 @@ offset is right at one size only.
 ### Negative
 
 - Language and brand glyphs are gone. C, C++, Lua and Python share `file-code`;
-  Markdown and a read tool share `file-text`. Until the badges come, file kinds
-  are told apart mostly by their colour.
+  Markdown and a read tool share `file-text`. Until file kinds are drawn as
+  badges, they are told apart mostly by their colour.
 - The font's strokes are 2 units of 24, about 1.2 px at 14 px. The mockup draws
   1.75, so the icons are slightly heavier than the mockup's, and a font cannot
   change that.
