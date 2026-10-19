@@ -16,6 +16,7 @@ namespace Graphite {
 	namespace {
 		constexpr float kHalf = 0.5f;
 		constexpr float kClearAlpha = 0.0f;
+		constexpr float kNoFrameBorder = 0.0f;
 		constexpr float kFramedPaddingsBeforeLabel = 3.0f;
 		constexpr float kChevronBoxLeft = 12.0f;
 		constexpr float kChevronBoxWidth = 14.0f;
@@ -139,8 +140,12 @@ namespace Graphite {
 				textTopLeft.x = rowStart.x + style.FramePadding.x;
 			}
 
+			// WARNING: ImGui frames the header as it frames a field, with the theme's border; a header is no field, so its
+			// frame is the fill alone.
 			ImGui::PushStyleColor(ImGuiCol_Text, Core::WithAlphaReplaced(ImGui::GetStyleColorVec4(ImGuiCol_Text), kClearAlpha));
+			ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, kNoFrameBorder);
 			const bool open = ImGui::TreeNodeEx(id, flags, "%s", label);
+			ImGui::PopStyleVar();
 			ImGui::PopStyleColor();
 
 			if (!ImGui::IsItemVisible())

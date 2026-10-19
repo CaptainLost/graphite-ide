@@ -236,6 +236,31 @@ TEST_CASE("A tree node's label is drawn in the text colour, five pixels past its
 	CHECK(label->Left <= screen.RowStartX + Graphite::TreeRowLabelOffset() + ImGui::GetFontSize());
 }
 
+TEST_CASE("A framed header draws no border, though fields have one")
+{
+	constexpr float kFieldBorder = 1.0f;
+	constexpr float kAroundTheRow = 1.5f;
+
+	TreeScreen screen;
+	ImGui::GetStyle().FrameBorderSize = kFieldBorder;
+	screen.Drawing.Flags = ImGuiTreeNodeFlags_CollapsingHeader;
+	screen.Drawing.Label = "References";
+	screen.DrawFrame();
+
+	const ImU32 line = ImGui::GetColorU32(ImGuiCol_Border);
+	const ImRect aroundTheRow(screen.Row.Min.x - kAroundTheRow, screen.Row.Min.y - kAroundTheRow,
+							  screen.Row.Max.x + kAroundTheRow, screen.Row.Max.y + kAroundTheRow);
+	int lineVertices = 0;
+
+	for (const ImDrawVert& vertex : TreeScreen::DrawList().VtxBuffer)
+	{
+		lineVertices += vertex.col == line && aroundTheRow.Contains(vertex.pos) ? 1 : 0;
+	}
+
+	CHECK(DrawsInColour(TreeScreen::DrawList(), ImGui::GetColorU32(ImGuiCol_Header)));
+	CHECK(lineVertices == 0);
+}
+
 TEST_CASE("A framed header keeps its frame, with the chevron and the label where ImGui puts its arrow and label")
 {
 	TreeScreen screen;

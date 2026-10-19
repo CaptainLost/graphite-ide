@@ -7,6 +7,8 @@
 #include "Sessions/Charts/ChartAxes.h"
 #include "Sessions/SessionDrawing.h"
 
+#include "Core/ImGui/Theme.h"
+
 #include <imgui.h>
 #include <implot.h>
 #include <implot_internal.h>
@@ -33,10 +35,30 @@ namespace Graphite {
 		return item == nullptr || item->Show;
 	}
 
+	namespace {
+		// WARNING: ImPlot reads the fit padding in EndPlot and draws the chart's frame in SetupFinish, which comes as
+		// late, so the style stays pushed until EndBarChart. The frame is ImGui's: it would take a field's see-through
+		// fill and border, and a chart is no field, so it keeps the surface it had and no border.
+		void PushBarChartStyle()
+		{
+			constexpr float kNoBorder = 0.0f;
+
+			ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0.0f, kFitPadding));
+			ImPlot::PushStyleColor(ImPlotCol_FrameBg, Core::SurfaceColour());
+			ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, kNoBorder);
+		}
+
+		void PopBarChartStyle()
+		{
+			ImGui::PopStyleVar();
+			ImPlot::PopStyleColor();
+			ImPlot::PopStyleVar();
+		}
+	}
+
 	bool BeginBarChart(const char* title, const char* id)
 	{
-		// WARNING: ImPlot reads the fit padding in EndPlot, so it stays pushed until EndBarChart.
-		ImPlot::PushStyleVar(ImPlotStyleVar_FitPadding, ImVec2(0.0f, kFitPadding));
+		PushBarChartStyle();
 
 		const std::string plotId = std::string(title) + "###" + id;
 
@@ -45,14 +67,14 @@ namespace Graphite {
 			return true;
 		}
 
-		ImPlot::PopStyleVar();
+		PopBarChartStyle();
 		return false;
 	}
 
 	void EndBarChart()
 	{
 		ImPlot::EndPlot();
-		ImPlot::PopStyleVar();
+		PopBarChartStyle();
 	}
 
 	void FinishBarChartSetup(const BarChartValues& values)

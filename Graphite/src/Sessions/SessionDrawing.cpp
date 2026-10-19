@@ -1,8 +1,8 @@
 #include "Sessions/SessionDrawing.h"
 
+#include "UI/Segment.h"
+
 #include "Core/Base/Base.h"
-#include "Core/ImGui/TextButton.h"
-#include "Core/ImGui/Theme.h"
 
 #include <IconsLucide.h>
 
@@ -11,7 +11,6 @@ namespace Graphite {
 	namespace {
 		constexpr float kCategoryBarWidth = 3.0f;
 		constexpr float kNoSpacing = 0.0f;
-		constexpr int kSegmentButtonColourCount = 3;
 	}
 
 	void ColouredText(ImU32 colour, const std::string& text)
@@ -56,16 +55,7 @@ namespace Graphite {
 
 	bool SegmentButton(const char* label, bool selected)
 	{
-		const ImVec4* colours = ImGui::GetStyle().Colors;
-		const ImVec4& accent = colours[ImGuiCol_CheckMark];
-
-		ImGui::PushStyleColor(ImGuiCol_Button, selected ? accent : Core::SurfaceColour());
-		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, selected ? accent : colours[ImGuiCol_ButtonHovered]);
-		ImGui::PushStyleColor(ImGuiCol_ButtonActive, selected ? accent : colours[ImGuiCol_ButtonActive]);
-		const bool clicked = Core::SmallTextButton(label);
-		ImGui::PopStyleColor(kSegmentButtonColourCount);
-
-		return clicked && !selected;
+		return DrawSmallSegment(label, selected) && !selected;
 	}
 
 	bool SegmentedChoice(std::span<const char* const> labels, int& selected)

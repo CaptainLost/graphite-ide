@@ -15,7 +15,7 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
 
 ## Decision
 
-- Load four faces through `Core::LoadFontSet`, in this order:
+- Load five faces through `Core::LoadFontSet`, in this order:
   1. the interface face, Inter Regular at `kInterfaceFontSize` (16 px);
   2. the Lucide icons merged onto it;
   3. the system symbol font (`seguisym.ttf`) merged onto it;
@@ -26,9 +26,17 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
      it;
   8. the badge face, JetBrains Mono Bold at `kBadgeFontSize` (11 px), which draws
      the file kinds' badges of
-     [0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md).
+     [0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md);
+  9. the italic face, Inter Italic at 16 px, which draws a preview tab's name
+     ([0611](0611-draw-a-dock-tab-bar-a-shade-below-the-chrome-its-selected-tab-in-the-colour-of-the-view-it-shows.md)).
+     Its file is the static `Inter-Italic.ttf` of the Inter 4.1 release, the
+     release `Inter-Regular.ttf` and `Inter-SemiBold.ttf` come from. Like the
+     interface face, it gives up the span of the used icons, and it carries no
+     icons and no symbols.
 
-  The interface face is the atlas's first font and `io.FontDefault`.
+  The interface face is the atlas's first font and `io.FontDefault`. All five are
+  compiled into the executable
+  ([0590](0590-compile-the-bundled-fonts-into-the-executable.md)).
 - **Sizes.** A size is ImGui's, which measures a face from its ascender to its
   descender, where CSS measures it by its em. Inter's ascender-to-descender is
   1.21 em and JetBrains Mono's 1.32 em, so the sizes above are the mockup's CSS
@@ -38,7 +46,7 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
 - The badge face holds only ASCII and the identical-to sign, U+2261. ImGui's
   dynamic atlas reads a face's glyph ranges only to preload, so every other
   character is shut out through `GlyphExcludeRanges`. It carries no icons and no
-  symbols, and comes last, after every merge.
+  symbols, and comes after every merge, as the italic face after it does.
 - The interface, the code and the strong face carry the icons, each with a
   minimum advance of its own size and lowered by its own descent
   ([0625](0625-draw-the-interface-s-icons-from-lucide.md)), so an icon draws in

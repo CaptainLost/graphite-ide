@@ -9,6 +9,7 @@
 #include "UI/Lists/HighlightedRow.h"
 #include "UI/FittedText.h"
 #include "Core/ImGui/IconButton.h"
+#include "UI/Segment.h"
 #include "UI/TickBox.h"
 
 #include "Core/ImGui/LoadingState.h"
@@ -44,9 +45,6 @@ namespace Graphite {
 		constexpr std::size_t kMostAuthorRowsShown = 10;
 		constexpr bool kHideTextAfterDoubleHash = true;
 
-		constexpr int kSelectedSegmentColourCount = 4;
-		constexpr ImVec4 kSelectedSegmentText(1.0f, 1.0f, 1.0f, 1.0f);
-
 		template <typename Choice>
 		struct Segment
 		{
@@ -75,28 +73,6 @@ namespace Graphite {
 
 		// WARNING: A Selectable or MenuItem closes the popup it sits in when clicked; the panel's
 		// segments are buttons so that choosing a sort leaves it open.
-		bool DrawSegment(const char* label, bool selected, float width)
-		{
-			const float defaultHeight = 0.0f;
-			const ImVec2 size(width, defaultHeight);
-
-			if (!selected)
-			{
-				return Core::TextButton(label, size);
-			}
-
-			const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
-
-			ImGui::PushStyleColor(ImGuiCol_Button, accent);
-			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, accent);
-			ImGui::PushStyleColor(ImGuiCol_ButtonActive, accent);
-			ImGui::PushStyleColor(ImGuiCol_Text, kSelectedSegmentText);
-			const bool clicked = Core::TextButton(label, size);
-			ImGui::PopStyleColor(kSelectedSegmentColourCount);
-
-			return clicked;
-		}
-
 		template <typename Choice, std::size_t SegmentCount>
 		void DrawSegments(const char* id, const std::array<Segment<Choice>, SegmentCount>& segments, Choice& chosen)
 		{
@@ -118,8 +94,9 @@ namespace Graphite {
 				const float width =
 					isLast ? rowWidth - segmentWidth * static_cast<float>(SegmentCount - 1) : segmentWidth;
 				const Segment<Choice>& segment = segments[segmentIndex];
+				const float defaultHeight = 0.0f;
 
-				if (DrawSegment(segment.Label, segment.Value == chosen, width))
+				if (DrawSegment(segment.Label, segment.Value == chosen, ImVec2(width, defaultHeight)))
 				{
 					chosen = segment.Value;
 				}

@@ -8,15 +8,16 @@
     and a button that shows a word does not. Such buttons go through Core::TextButton and
     Core::SmallTextButton, which take the border off and round the corners a pixel less than
     a field. This scans Core/src and Graphite/src and reports every line that calls
-    ImGui::Button or ImGui::SmallButton outside Core/ImGui/TextButton.cpp. Exits 1 on any
-    finding.
+    ImGui::Button or ImGui::SmallButton anywhere but in the helper itself,
+    Core/src/Core/ImGui/TextButton.cpp. Exits 1 on any finding.
 
 .EXAMPLE
     .\scripts\Test-NoImGuiButton.ps1
 #>
 [CmdletBinding()]
 param(
-    [string[]] $SourceDirectory
+    [string[]] $SourceDirectory,
+    [string] $Helper
 )
 
 $ErrorActionPreference = 'Stop'
@@ -25,7 +26,11 @@ $here = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $MyInvoca
 if (-not $SourceDirectory) {
     $SourceDirectory = @((Join-Path $here '..\Core\src'), (Join-Path $here '..\Graphite\src'))
 }
+if (-not $Helper) {
+    $Helper = Join-Path $here '..\Core\src\Core\ImGui\TextButton.cpp'
+}
 
+$helperPath = [System.IO.Path]::GetFullPath($Helper)
 $problems = 0
 
 foreach ($directory in $SourceDirectory) {
@@ -35,7 +40,7 @@ foreach ($directory in $SourceDirectory) {
     }
 
     $files = Get-ChildItem -LiteralPath $directory -Recurse -File |
-        Where-Object { $_.Extension -in '.h', '.cpp', '.hpp', '.inl' -and $_.Name -ne 'TextButton.cpp' }
+        Where-Object { $_.Extension -in '.h', '.cpp', '.hpp', '.inl' -and $_.FullName -ne $helperPath }
 
     foreach ($file in $files) {
         $lineNumber = 0
