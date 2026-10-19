@@ -12,7 +12,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <cmath>
 #include <cstddef>
@@ -152,7 +152,7 @@ TEST_CASE("The header is one row of 34 px")
 {
 	HeaderScreen screen;
 	screen.Choices = {ModeChoice("##rowHeightMode")};
-	screen.Actions = {{.Id = "##rowHeightRefresh", .Glyph = ICON_MDI_REFRESH, .Tooltip = "Refresh"}};
+	screen.Actions = {{.Id = "##rowHeightRefresh", .Glyph = ICON_LC_REFRESH_CW, .Tooltip = "Refresh"}};
 	screen.Next();
 
 	CHECK(Graphite::PanelHeaderHeight() == doctest::Approx(Graphite::kPanelHeaderHeight));
@@ -165,7 +165,7 @@ TEST_CASE("The header's dropdown and its buttons stand in the middle of its row"
 {
 	HeaderScreen screen;
 	screen.Choices = {ModeChoice("##middleMode")};
-	screen.Actions = {{.Id = "##middleRefresh", .Glyph = ICON_MDI_REFRESH, .Tooltip = "Refresh"}};
+	screen.Actions = {{.Id = "##middleRefresh", .Glyph = ICON_LC_REFRESH_CW, .Tooltip = "Refresh"}};
 	screen.Next();
 
 	const HoveredStretch dropdown = screen.ItemDownTheRowAt(screen.RowStart.x + kIntoTheDropdown);
@@ -179,8 +179,8 @@ TEST_CASE("The header's dropdowns stand at its left and its buttons at its right
 {
 	HeaderScreen screen;
 	screen.Choices = {ModeChoice("##endsMode")};
-	screen.Actions = {{.Id = "##endsNewFile", .Glyph = ICON_MDI_FILE_PLUS_OUTLINE, .Tooltip = "New File"},
-					  {.Id = "##endsRefresh", .Glyph = ICON_MDI_REFRESH, .Tooltip = "Refresh"}};
+	screen.Actions = {{.Id = "##endsNewFile", .Glyph = ICON_LC_FILE_PLUS, .Tooltip = "New File"},
+					  {.Id = "##endsRefresh", .Glyph = ICON_LC_REFRESH_CW, .Tooltip = "Refresh"}};
 	screen.Next();
 
 	const std::vector<HoveredStretch> items = screen.ItemsAcrossTheRow();
@@ -234,9 +234,9 @@ TEST_CASE("Choosing a dropdown option reports it")
 TEST_CASE("An action button reports its index")
 {
 	HeaderScreen screen;
-	screen.Actions = {{.Id = "##indexNewFile", .Glyph = ICON_MDI_FILE_PLUS_OUTLINE, .Tooltip = "New File"},
-					  {.Id = "##indexNewFolder", .Glyph = ICON_MDI_FOLDER_PLUS_OUTLINE, .Tooltip = "New Folder"},
-					  {.Id = "##indexRefresh", .Glyph = ICON_MDI_REFRESH, .Tooltip = "Refresh"}};
+	screen.Actions = {{.Id = "##indexNewFile", .Glyph = ICON_LC_FILE_PLUS, .Tooltip = "New File"},
+					  {.Id = "##indexNewFolder", .Glyph = ICON_LC_FOLDER_PLUS, .Tooltip = "New Folder"},
+					  {.Id = "##indexRefresh", .Glyph = ICON_LC_REFRESH_CW, .Tooltip = "Refresh"}};
 	screen.Next();
 
 	const std::vector<HoveredStretch> buttons = screen.ItemsAcrossTheRow();
@@ -280,9 +280,9 @@ TEST_CASE("In a narrow header the dropdowns stop short of the buttons")
 	screen.Choices = {ModeChoice("##narrowMode", 1),
 					  Graphite::PanelHeaderChoice{
 						  .Id = "##narrowSolution", .Options = {"AVeryLongSolutionName.slnx"}, .Selected = 0}};
-	screen.Actions = {{.Id = "##narrowNewFile", .Glyph = ICON_MDI_FILE_PLUS_OUTLINE, .Tooltip = "New File"},
-					  {.Id = "##narrowNewFolder", .Glyph = ICON_MDI_FOLDER_PLUS_OUTLINE, .Tooltip = "New Folder"},
-					  {.Id = "##narrowRefresh", .Glyph = ICON_MDI_REFRESH, .Tooltip = "Refresh"}};
+	screen.Actions = {{.Id = "##narrowNewFile", .Glyph = ICON_LC_FILE_PLUS, .Tooltip = "New File"},
+					  {.Id = "##narrowNewFolder", .Glyph = ICON_LC_FOLDER_PLUS, .Tooltip = "New Folder"},
+					  {.Id = "##narrowRefresh", .Glyph = ICON_LC_REFRESH_CW, .Tooltip = "Refresh"}};
 	screen.Next();
 
 	const std::vector<HoveredStretch> items = screen.ItemsAcrossTheRow();
@@ -324,7 +324,7 @@ TEST_CASE("The header leaves ImGui's colour, style, font and id stacks as it fou
 	HeaderScreen screen;
 	screen.Choices = {ModeChoice("##balanceMode", 1),
 					  Graphite::PanelHeaderChoice{.Id = "##balanceSolution", .Options = {"One.slnx", "Two.slnx"}, .Selected = 1}};
-	screen.Actions = {{.Id = "##balanceRefresh", .Glyph = ICON_MDI_REFRESH, .Tooltip = "Refresh"}};
+	screen.Actions = {{.Id = "##balanceRefresh", .Glyph = ICON_LC_REFRESH_CW, .Tooltip = "Refresh"}};
 	screen.Next();
 
 	screen.Click(ImVec2(screen.RowStart.x + kIntoTheDropdown, screen.RowMiddle()));

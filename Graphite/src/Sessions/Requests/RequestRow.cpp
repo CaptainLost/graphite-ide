@@ -11,7 +11,7 @@
 
 #include "Core/Base/ByteSize.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -123,27 +123,27 @@ namespace Graphite {
 		}
 		case SentKind::Prompt:
 		case SentKind::QueuedPrompt:
-			return {ICON_MDI_ACCOUNT_OUTLINE, palette.Accent};
+			return {ICON_LC_USER, palette.Accent};
 		case SentKind::Injected:
 		case SentKind::Reminder:
-			return {ICON_MDI_BELL_OUTLINE, palette.Injected};
+			return {ICON_LC_BELL, palette.Injected};
 		case SentKind::ToolsLoaded:
-			return {ICON_MDI_TOOLS, palette.Agent};
+			return {ICON_LC_HAMMER, palette.Agent};
 		case SentKind::Skills:
-			return {ICON_MDI_PUZZLE_OUTLINE, palette.Agent};
+			return {ICON_LC_PUZZLE, palette.Agent};
 		case SentKind::McpInstructions:
-			return {ICON_MDI_SERVER_NETWORK, palette.Agent};
+			return {ICON_LC_NETWORK, palette.Agent};
 		case SentKind::EditedFile:
-			return {ICON_MDI_PENCIL, palette.Edit};
+			return {ICON_LC_PENCIL, palette.Edit};
 		case SentKind::Image:
-			return {ICON_MDI_IMAGE_OUTLINE, palette.Accent};
+			return {ICON_LC_IMAGE, palette.Accent};
 		case SentKind::SystemPrompt:
-			return {ICON_MDI_TEXT_BOX_OUTLINE, palette.Injected};
+			return {ICON_LC_SCROLL_TEXT, palette.Injected};
 		case SentKind::ToolSchemas:
-			return {ICON_MDI_CODE_BRACES, palette.Agent};
+			return {ICON_LC_BRACES, palette.Agent};
 		}
 
-		return {ICON_MDI_HELP_CIRCLE_OUTLINE, palette.Other};
+		return {ICON_LC_CIRCLE_HELP, palette.Other};
 	}
 
 	ItemLook LookOf(const ResponseItem& item, const SessionPalette& palette)
@@ -151,9 +151,9 @@ namespace Graphite {
 		switch (item.Kind)
 		{
 		case ResponseKind::Thinking:
-			return {ICON_MDI_BRAIN, palette.TextDisabled};
+			return {ICON_LC_BRAIN, palette.TextDisabled};
 		case ResponseKind::Text:
-			return {ICON_MDI_MESSAGE_TEXT_OUTLINE, palette.Accent};
+			return {ICON_LC_MESSAGE_SQUARE_TEXT, palette.Accent};
 		case ResponseKind::ToolCall:
 		{
 			const ToolCategory category = CategoryOf(item.ToolName);
@@ -163,7 +163,7 @@ namespace Graphite {
 			break;
 		}
 
-		return {ICON_MDI_HELP_CIRCLE_OUTLINE, palette.TextDisabled};
+		return {ICON_LC_CIRCLE_HELP, palette.TextDisabled};
 	}
 
 	// WARNING: No token figure is shown: the transcript records tokens per request, not per item, so
@@ -204,13 +204,13 @@ namespace Graphite {
 	{
 		if (reason == "end_turn")
 		{
-			return ICON_MDI_STOP_CIRCLE_OUTLINE;
+			return ICON_LC_CIRCLE_STOP;
 		}
 		if (reason == "tool_use")
 		{
-			return ICON_MDI_WRENCH_OUTLINE;
+			return ICON_LC_WRENCH;
 		}
-		return ICON_MDI_HELP_CIRCLE_OUTLINE;
+		return ICON_LC_CIRCLE_HELP;
 	}
 
 	std::string RequestLine(const ApiRequest& request, const Pricing& pricing, LocalClock& clock,
@@ -272,7 +272,7 @@ namespace Graphite {
 
 		if (request.CacheRebuilt)
 		{
-			DrawPiece(drawPosition, palette.Edit, FitToWidth(std::string{" "} + ICON_MDI_CACHED, right - drawPosition.x));
+			DrawPiece(drawPosition, palette.Edit, FitToWidth(std::string{" "} + ICON_LC_REFRESH_CCW, right - drawPosition.x));
 		}
 
 		std::string stop{kMiddleDotSeparator};

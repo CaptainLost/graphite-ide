@@ -1,6 +1,6 @@
 #include "Review/ReviewMenu.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <format>
 #include <optional>
@@ -101,7 +101,7 @@ namespace Graphite {
 			return std::string{};
 		}
 
-		const std::string mark = ICON_MDI_RADIOBOX_MARKED;
+		const std::string mark = ICON_LC_CIRCLE_DOT;
 
 		if (range == nullptr)
 		{
@@ -115,7 +115,7 @@ namespace Graphite {
 
 		if (range->Ends.MergeBase == range->Ends.Tip)
 		{
-			return std::string{ICON_MDI_CHECK} + kMerged;
+			return std::string{ICON_LC_CHECK} + kMerged;
 		}
 
 		if (committed == nullptr)

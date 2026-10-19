@@ -5,7 +5,7 @@
 
 #include "Core/FileSystem/FileSystem.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -21,7 +21,7 @@ namespace Graphite {
 
 	const char* TrustedFoldersPage::GetIcon() const
 	{
-		return ICON_MDI_SHIELD_CHECK_OUTLINE;
+		return ICON_LC_SHIELD_CHECK;
 	}
 
 	std::vector<SettingsCard> TrustedFoldersPage::Describe()

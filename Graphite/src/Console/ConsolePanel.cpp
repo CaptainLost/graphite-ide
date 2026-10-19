@@ -13,7 +13,7 @@
 #include "UI/Lists/FilterField.h"
 #include "UI/TickBox.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -76,7 +76,7 @@ namespace Graphite {
 	}
 
 	ConsolePanel::ConsolePanel(Core::Ref<Core::RingBufferSink> sink, Core::EventBus& events)
-		: Core::Panel("console", "Console", "tools", ICON_MDI_MESSAGE_TEXT_OUTLINE), m_Sink(std::move(sink)),
+		: Core::Panel("console", "Console", "tools", ICON_LC_MESSAGE_SQUARE_TEXT), m_Sink(std::move(sink)),
 		  m_Events(events)
 	{
 	}

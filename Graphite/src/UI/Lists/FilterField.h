@@ -1,6 +1,6 @@
 #pragma once
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <cstddef>
 #include <optional>
@@ -12,7 +12,7 @@ namespace Graphite {
 	{
 		const char* Hint = "";
 
-		const char* Glyph = ICON_MDI_MAGNIFY;
+		const char* Glyph = ICON_LC_SEARCH;
 
 		std::optional<float> Width;
 	};

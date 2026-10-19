@@ -1,17 +1,20 @@
 #include <doctest/doctest.h>
 
 #include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/Icons.h"
 #include "Core/Platform/Process.h"
 #include "Core/Text/Utf8.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <filesystem>
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace {
@@ -44,6 +47,93 @@ namespace {
 	float AdvanceOf(ImFont& font, float size, ImWchar codepoint)
 	{
 		return font.GetFontBaked(size)->GetCharAdvance(codepoint);
+	}
+
+	// WARNING: read from the atlas's pixels, not from the glyph's box: Lucide's glyphs carry a box
+	// that reaches down to the baseline whatever they draw, so the box's middle is not the icon's.
+	std::optional<float> InkMiddleOf(const ImFontGlyph& glyph)
+	{
+		ImFontAtlas* const atlas = ImGui::GetIO().Fonts;
+		ImTextureData* const texture = atlas->TexData;
+		const ImTextureRect* const rect = ImFontAtlasPackGetRect(atlas, glyph.PackId);
+		REQUIRE(texture != nullptr);
+		REQUIRE(rect != nullptr);
+
+		const int alphaByte = texture->BytesPerPixel - 1;
+		std::optional<int> firstInkRow;
+		std::optional<int> lastInkRow;
+
+		for (int row = 0; row < rect->h; ++row)
+		{
+			const auto* const pixels = static_cast<const unsigned char*>(texture->GetPixelsAt(rect->x, rect->y + row));
+
+			for (int column = 0; column < rect->w; ++column)
+			{
+				if (pixels[column * texture->BytesPerPixel + alphaByte] != 0)
+				{
+					firstInkRow = firstInkRow.value_or(row);
+					lastInkRow = row;
+					break;
+				}
+			}
+		}
+
+		if (!firstInkRow.has_value() || !lastInkRow.has_value())
+		{
+			return std::nullopt;
+		}
+
+		const float rowHeight = (glyph.Y1 - glyph.Y0) / static_cast<float>(rect->h);
+		const float inkTop = glyph.Y0 + static_cast<float>(*firstInkRow) * rowHeight;
+		const float inkBottom = glyph.Y0 + static_cast<float>(*lastInkRow + 1) * rowHeight;
+
+		return (inkTop + inkBottom) * 0.5f;
+	}
+
+	struct FaceAtSize
+	{
+		std::string Name;
+		ImFont* Face;
+		float Size;
+	};
+
+	std::array<FaceAtSize, 3> FacesOf(const Core::FontSet& set)
+	{
+		return {{{"interface", set.Interface, Core::kInterfaceFontSize},
+				 {"code", set.Code, Core::kCodeFontSize},
+				 {"strong", set.Strong, Core::kInterfaceFontSize}}};
+	}
+
+	// WARNING: a face's own glyph wins over a merged font's at the same codepoint, so finding a glyph
+	// does not say it is Lucide's; the source that baked it does.
+	const ImFontConfig* SourceOf(ImFont& face, float size, ImWchar codepoint)
+	{
+		const ImFontGlyph* const glyph = face.GetFontBaked(size)->FindGlyphNoFallback(codepoint);
+
+		return glyph != nullptr ? face.Sources[glyph->SourceIdx] : nullptr;
+	}
+
+	bool IsIconFont(const ImFontConfig* source)
+	{
+		return source != nullptr && source->GlyphRanges == Core::UsedGlyphRanges();
+	}
+
+	bool IsFacesOwnFont(ImFont& face, const ImFontConfig* source)
+	{
+		return source != nullptr && source == face.Sources[0];
+	}
+
+	constexpr ImWchar kFirstPowerlineSymbol = 0xE0A0;
+	constexpr ImWchar kLastPowerlineSymbol = 0xE0A2;
+	constexpr ImWchar kFirstPowerlineArrow = 0xE0B0;
+	constexpr ImWchar kLastPowerlineArrow = 0xE0B3;
+
+	bool IsPowerlineGlyph(ImWchar codepoint)
+	{
+		const bool isSymbol = codepoint >= kFirstPowerlineSymbol && codepoint <= kLastPowerlineSymbol;
+		const bool isArrow = codepoint >= kFirstPowerlineArrow && codepoint <= kLastPowerlineArrow;
+
+		return isSymbol || isArrow;
 	}
 
 	struct HeadlessFrame
@@ -97,17 +187,124 @@ TEST_CASE("The interface face is loaded first, at 14 px, and the code face at 15
 	CHECK(set.Code != set.Strong);
 }
 
-TEST_CASE("Both the interface and the code face draw the icons")
+TEST_CASE("The interface, the code and the strong face all draw the icons")
 {
 	HeadlessContext context;
 	const Core::FontSet set = LoadIntoContext();
 	REQUIRE(set.Interface != nullptr);
 	REQUIRE(set.Code != nullptr);
+	REQUIRE(set.Strong != nullptr);
 
-	const ImWchar close = CodepointOf(ICON_MDI_CLOSE);
+	const ImWchar close = CodepointOf(ICON_LC_X);
 
 	CHECK(Draws(*set.Interface, Core::kInterfaceFontSize, close));
 	CHECK(Draws(*set.Code, Core::kCodeFontSize, close));
+	CHECK(Draws(*set.Strong, Core::kInterfaceFontSize, close));
+}
+
+TEST_CASE("Every used icon decodes to a glyph in the Lucide font, never the fallback, in the interface and the strong face")
+{
+	HeadlessContext context;
+	const Core::FontSet set = LoadIntoContext();
+
+	const FaceAtSize faces[] = {{"interface", set.Interface, Core::kInterfaceFontSize},
+								{"strong", set.Strong, Core::kInterfaceFontSize}};
+
+	for (const FaceAtSize& face : faces)
+	{
+		REQUIRE(face.Face != nullptr);
+		CAPTURE(face.Name);
+
+		for (const char* icon : Core::UsedIcons())
+		{
+			const ImWchar codepoint = CodepointOf(icon);
+			CAPTURE(static_cast<unsigned int>(codepoint));
+
+			CHECK(IsIconFont(SourceOf(*face.Face, face.Size, codepoint)));
+		}
+	}
+}
+
+TEST_CASE("In the code face every used icon decodes to a glyph in the Lucide font, but where JetBrains Mono has a Powerline glyph")
+{
+	HeadlessContext context;
+	const Core::FontSet set = LoadIntoContext();
+	REQUIRE(set.Code != nullptr);
+
+	for (const char* icon : Core::UsedIcons())
+	{
+		const ImWchar codepoint = CodepointOf(icon);
+		CAPTURE(static_cast<unsigned int>(codepoint));
+
+		const ImFontConfig* const source = SourceOf(*set.Code, Core::kCodeFontSize, codepoint);
+
+		if (IsPowerlineGlyph(codepoint))
+		{
+			CHECK(IsFacesOwnFont(*set.Code, source));
+		}
+		else
+		{
+			CHECK(IsIconFont(source));
+		}
+	}
+}
+
+TEST_CASE("The code face keeps JetBrains Mono's Powerline glyphs, which terminal prompts draw")
+{
+	HeadlessContext context;
+	const Core::FontSet set = LoadIntoContext();
+	REQUIRE(set.Code != nullptr);
+
+	constexpr ImWchar kBranch = 0xE0A0;
+	constexpr ImWchar kPadlock = 0xE0A2;
+	constexpr ImWchar kRightArrow = 0xE0B0;
+
+	for (const ImWchar codepoint : {kBranch, kPadlock, kRightArrow})
+	{
+		CAPTURE(static_cast<unsigned int>(codepoint));
+
+		CHECK(IsFacesOwnFont(*set.Code, SourceOf(*set.Code, Core::kCodeFontSize, codepoint)));
+	}
+}
+
+TEST_CASE("An icon is centred on the capitals beside it, within a pixel, in every face at every interface scale")
+{
+	HeadlessContext context;
+	const Core::FontSet set = LoadIntoContext();
+
+	constexpr std::array<float, 5> kWindowsMonitorScales = {1.0f, 1.25f, 1.5f, 1.75f, 2.0f};
+	constexpr float kTolerance = 1.0f;
+	constexpr ImWchar kCapital = 'H';
+
+	// WARNING: measured on x because it is drawn symmetrically about the middle of Lucide's grid;
+	// most icons are not, so their ink's middle is not the middle of the icon.
+	const ImWchar close = CodepointOf(ICON_LC_X);
+
+	for (const FaceAtSize& face : FacesOf(set))
+	{
+		REQUIRE(face.Face != nullptr);
+		CAPTURE(face.Name);
+
+		for (const float scale : kWindowsMonitorScales)
+		{
+			CAPTURE(scale);
+
+			ImFontBaked* const baked = face.Face->GetFontBaked(face.Size * scale);
+			const ImFontGlyph* const icon = baked->FindGlyphNoFallback(close);
+			const ImFontGlyph* const capital = baked->FindGlyphNoFallback(kCapital);
+			REQUIRE(icon != nullptr);
+			REQUIRE(capital != nullptr);
+
+			const std::optional<float> iconMiddle = InkMiddleOf(*icon);
+			const std::optional<float> capitalMiddle = InkMiddleOf(*capital);
+			REQUIRE(iconMiddle.has_value());
+			REQUIRE(capitalMiddle.has_value());
+			CAPTURE(*iconMiddle);
+			CAPTURE(*capitalMiddle);
+
+			CHECK(std::abs(*iconMiddle - *capitalMiddle) <= kTolerance);
+		}
+	}
 }
 
 TEST_CASE("The code face is monospaced and the interface face is not")

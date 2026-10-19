@@ -10,7 +10,7 @@
 #include "Core/ImGui/Toggle.h"
 #include "Core/ImGui/UiScale.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -848,7 +848,7 @@ TEST_CASE("A branch inside an author group starts a chevron's width past the gro
 	frames.Next([&list, &frame, &textColour, &chevronWidth] {
 		DrawListWindow(list, frame, kListWidth);
 		textColour = ImGui::GetColorU32(ImGuiCol_Text);
-		chevronWidth = ImGui::CalcTextSize(ICON_MDI_CHEVRON_DOWN).x;
+		chevronWidth = ImGui::CalcTextSize(ICON_LC_CHEVRON_DOWN).x;
 	});
 
 	const ImGuiWindow* listWindow = ImGui::FindWindowByName("BranchList");

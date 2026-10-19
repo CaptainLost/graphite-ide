@@ -5,7 +5,7 @@
 #include "Git/DefaultBranch.h"
 #include "UI/TypographicMarks.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <cstddef>
 #include <string>
@@ -16,7 +16,7 @@ namespace Graphite {
 
 	namespace {
 
-		constexpr const char* kBranchGlyphPrefix = ICON_MDI_SOURCE_BRANCH " ";
+		constexpr const char* kBranchGlyphPrefix = ICON_LC_GIT_BRANCH " ";
 
 		const char* OperationName(Core::RepositoryOperation operation)
 		{
@@ -52,14 +52,14 @@ namespace Graphite {
 
 			if (branch.Ahead == 0 && branch.Behind == 0)
 			{
-				return ICON_MDI_CHECK;
+				return ICON_LC_CHECK;
 			}
 
 			std::string text;
 
 			if (branch.Ahead > 0)
 			{
-				text = ICON_MDI_ARROW_UP + std::to_string(branch.Ahead);
+				text = ICON_LC_ARROW_UP + std::to_string(branch.Ahead);
 			}
 
 			if (branch.Behind > 0)
@@ -69,7 +69,7 @@ namespace Graphite {
 					text += " ";
 				}
 
-				text += ICON_MDI_ARROW_DOWN + std::to_string(branch.Behind);
+				text += ICON_LC_ARROW_DOWN + std::to_string(branch.Behind);
 			}
 
 			return text;
@@ -180,7 +180,7 @@ namespace Graphite {
 		if (inputs.Status != nullptr && !inputs.Status->Entries.empty())
 		{
 			const std::size_t changeCount = inputs.Status->Entries.size();
-			segment.Changes = ICON_MDI_CIRCLE_MEDIUM " " + Core::Counted(changeCount, "change");
+			segment.Changes = ICON_LC_DOT " " + Core::Counted(changeCount, "change");
 			segment.ChangesTooltip =
 				changeCount == 1 ? "1 uncommitted change. Click to show it in Changes."
 								 : std::to_string(changeCount) + " uncommitted changes. Click to show them in Changes.";

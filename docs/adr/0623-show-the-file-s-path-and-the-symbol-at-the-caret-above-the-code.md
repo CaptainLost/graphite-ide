@@ -60,11 +60,11 @@ Date: 2026-10-19
   - Folders are in the disabled-text colour.
   - The file name is in the text colour, after its kind's glyph in its kind's
     colour.
-  - Pieces are separated by `ICON_MDI_CHEVRON_RIGHT` in the disabled-text
+  - Pieces are separated by `ICON_LC_CHEVRON_RIGHT` in the disabled-text
     colour, 2 px from the pieces on each side.
   - Each symbol is its glyph in the disabled-text colour and its name in the
-    text colour. A function, method or constructor takes `ICON_MDI_FUNCTION`; a
-    class, struct or interface takes `ICON_MDI_CODE_BRACES`.
+    text colour. A function, method or constructor takes `ICON_LC_SQUARE_FUNCTION`; a
+    class, struct or interface takes `ICON_LC_BRACES`.
   - A glyph is one font size wide and stands 4 px before its name.
   - The row draws no background and no border. It sits on the document window's
     content colour, so it reads as part of the document.

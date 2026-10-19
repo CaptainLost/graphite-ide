@@ -33,7 +33,7 @@ Draw a panel's header row with `Graphite::DrawPanelHeader(choices, actions)`
   id, the options, the selected index), 2 px apart.
   - A dropdown is 24 px tall, with 6 px of padding at each end. It shows the
     current option's name in the strong face (`ImGuiRenderer::GetBoldFont()`) in
-    the text colour, and 5 px after it `ICON_MDI_CHEVRON_DOWN` in the interface
+    the text colour, and 5 px after it `ICON_LC_CHEVRON_DOWN` in the interface
     face, in the disabled-text colour.
   - It has no frame. Under the pointer it takes a rounded fill in the hovered
     button colour, eased in as an icon button's is

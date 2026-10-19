@@ -12,7 +12,7 @@
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/TabContextMenu.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -368,7 +368,7 @@ namespace Graphite {
 
 		constexpr bool kNotEngaged = false;
 
-		bool backRequested = Core::DrawIconButton("##agentBack", ICON_MDI_ARROW_LEFT, kNotEngaged, "Back to the session",
+		bool backRequested = Core::DrawIconButton("##agentBack", ICON_LC_ARROW_LEFT, kNotEngaged, "Back to the session",
 												  {.Fit = Core::IconButtonFit::Line});
 		ImGui::SameLine();
 
@@ -376,7 +376,7 @@ namespace Graphite {
 			ImGui::SmallButton((SingleLineLabel(entry.Title, kTabTitleBytes) + "##agentSession").c_str()) ||
 			backRequested;
 		ImGui::SameLine();
-		ImGui::TextDisabled(ICON_MDI_CHEVRON_RIGHT);
+		ImGui::TextDisabled(ICON_LC_CHEVRON_RIGHT);
 		ImGui::SameLine();
 
 		std::string name = agentInfo.Description.empty() ? "agent " + agentInfo.AgentId : agentInfo.Description;
@@ -549,7 +549,7 @@ namespace Graphite {
 		{
 			Entry& entry = *m_Open[index];
 			const std::string name =
-				ICON_MDI_ROBOT_OUTLINE "  " + SingleLineLabel(entry.Title, kTabTitleBytes) + "###session-" + entry.Id;
+				ICON_LC_BOT "  " + SingleLineLabel(entry.Title, kTabTitleBytes) + "###session-" + entry.Id;
 
 			const TabWindowFrame frame = BeginTabWindow(name, entry.Window, DockInto(centreNode), closeRequests);
 

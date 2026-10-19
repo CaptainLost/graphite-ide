@@ -43,7 +43,7 @@ project "CoreTests"
         "%{IncludeDir.MinizExport}",
         "%{IncludeDir.ImGui}",
         "%{IncludeDir.ImPlot}",
-        "%{IncludeDir.MdiIcons}",
+        "%{IncludeDir.Icons}",
         "%{IncludeDir.spdlog}"
     }
 

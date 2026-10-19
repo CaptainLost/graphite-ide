@@ -7,7 +7,7 @@
 #include "Core/Base/Ascii.h"
 #include "Core/ImGui/UiScale.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -55,7 +55,7 @@ namespace Graphite {
 	}
 
 	SettingsPanel::SettingsPanel(SettingsDirectory directory, const ActiveScheme& scheme)
-		: Core::Panel("settings", "Settings", "window", ICON_MDI_COG_OUTLINE, StartsAs::Hidden), m_Directory(std::move(directory)), m_Scheme(scheme)
+		: Core::Panel("settings", "Settings", "window", ICON_LC_SETTINGS, StartsAs::Hidden), m_Directory(std::move(directory)), m_Scheme(scheme)
 	{
 		if (const SettingsPage* first = m_Directory.First(); first != nullptr)
 		{

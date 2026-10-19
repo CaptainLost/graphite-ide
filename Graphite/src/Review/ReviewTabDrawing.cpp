@@ -18,7 +18,7 @@
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/TextMetrics.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 #include <imgui.h>
 
 #include <algorithm>
@@ -445,7 +445,7 @@ namespace Graphite {
 
 			ImGui::SameLine();
 
-			if (Core::DrawIconButton("##reviewShape", isTree ? ICON_MDI_FILE_TREE : ICON_MDI_FORMAT_LIST_BULLETED, notEngaged,
+			if (Core::DrawIconButton("##reviewShape", isTree ? ICON_LC_FOLDER_TREE : ICON_LC_LIST, notEngaged,
 							   isTree ? "Show as a list" : "Show as a tree"))
 			{
 				SessionSettings changed = settings;
@@ -461,7 +461,7 @@ namespace Graphite {
 			ImGui::SameLine();
 
 			const bool hideViewedClicked =
-				Core::DrawIconButton("##reviewHideViewed", ICON_MDI_EYE_OFF, settings.HideViewed, "Hide viewed files");
+				Core::DrawIconButton("##reviewHideViewed", ICON_LC_EYE_OFF, settings.HideViewed, "Hide viewed files");
 
 			if (hideViewedClicked)
 			{

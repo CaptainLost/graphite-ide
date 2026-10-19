@@ -7,7 +7,7 @@
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -71,7 +71,7 @@ namespace Graphite {
 	ExplorerPanel::ExplorerPanel(Workspace& workspace, const Core::DocumentSet& documents,
 								 AppSettings& settings, Core::EventBus& events, ModalGate& modals,
 								 const ActiveScheme& scheme, Core::JobSubmitter submitJob)
-		: Core::Panel("files", "Explorer", "navigate", ICON_MDI_FILE_TREE), m_Workspace(workspace),
+		: Core::Panel("files", "Explorer", "navigate", ICON_LC_FOLDER_TREE), m_Workspace(workspace),
 		  m_AppSettings(settings), m_Files(workspace, documents, events, modals, scheme, std::move(submitJob)),
 		  m_Solution(workspace, documents, events, modals)
 	{
@@ -197,16 +197,16 @@ namespace Graphite {
 		switch (command)
 		{
 		case HeaderCommand::NewFile:
-			return {.Id = "##newFile", .Glyph = ICON_MDI_FILE_PLUS_OUTLINE, .Tooltip = "New File"};
+			return {.Id = "##newFile", .Glyph = ICON_LC_FILE_PLUS, .Tooltip = "New File"};
 		case HeaderCommand::NewFolder:
-			return {.Id = "##newFolder", .Glyph = ICON_MDI_FOLDER_PLUS_OUTLINE, .Tooltip = "New Folder"};
+			return {.Id = "##newFolder", .Glyph = ICON_LC_FOLDER_PLUS, .Tooltip = "New Folder"};
 		case HeaderCommand::NewSolutionFolder:
-			return {.Id = "##newSolutionFolder", .Glyph = ICON_MDI_FOLDER_PLUS_OUTLINE, .Tooltip = "New Folder"};
+			return {.Id = "##newSolutionFolder", .Glyph = ICON_LC_FOLDER_PLUS, .Tooltip = "New Folder"};
 		case HeaderCommand::Refresh:
-			return {.Id = "##refresh", .Glyph = ICON_MDI_REFRESH, .Tooltip = "Refresh"};
+			return {.Id = "##refresh", .Glyph = ICON_LC_REFRESH_CW, .Tooltip = "Refresh"};
 		}
 
-		return {.Id = "##refresh", .Glyph = ICON_MDI_REFRESH, .Tooltip = "Refresh"};
+		return {.Id = "##refresh", .Glyph = ICON_LC_REFRESH_CW, .Tooltip = "Refresh"};
 	}
 
 	std::vector<ExplorerPanel::HeaderCommand> ExplorerPanel::HeaderCommands() const

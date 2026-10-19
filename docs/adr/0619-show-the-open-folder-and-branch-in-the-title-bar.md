@@ -19,8 +19,8 @@ that is not an item leaves the hit test as it was.
 Draw, after the menus, the open folder and its branch instead of the version.
 
 - **Pieces, in order:** a 1 px divider in the border colour; the folder glyph
-  `ICON_MDI_FOLDER_OUTLINE` in the disabled-text colour and the folder's name in
-  the text colour; a gap; `ICON_MDI_SOURCE_BRANCH` in the disabled-text colour
+  `ICON_LC_FOLDER` in the disabled-text colour and the folder's name in
+  the text colour; a gap; `ICON_LC_GIT_BRANCH` in the disabled-text colour
   and the branch in the text colour. A glyph and its text are 6 px apart. The
   divider is half the bar tall; every piece is centred vertically in the bar.
 - **Spacing:** 12 px between the menus and the divider and between the divider

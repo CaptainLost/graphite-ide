@@ -9,7 +9,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <algorithm>
 #include <array>
@@ -127,7 +127,7 @@ namespace {
 		float TextStart() const
 		{
 			const ImGuiStyle& style = ImGui::GetStyle();
-			return FieldMin.x + style.FramePadding.x * 2.0f + ImGui::CalcTextSize(ICON_MDI_MAGNIFY).x;
+			return FieldMin.x + style.FramePadding.x * 2.0f + ImGui::CalcTextSize(ICON_LC_SEARCH).x;
 		}
 
 		static const ImDrawList& DrawList()
@@ -153,7 +153,7 @@ TEST_CASE("An empty filter field shows the dim magnifier at its start and the di
 	REQUIRE(hint.has_value());
 
 	CHECK(magnifier->Left >= magnifierStart - kFringe);
-	CHECK(magnifier->Right <= magnifierStart + ImGui::CalcTextSize(ICON_MDI_MAGNIFY).x + kFringe);
+	CHECK(magnifier->Right <= magnifierStart + ImGui::CalcTextSize(ICON_LC_SEARCH).x + kFringe);
 	CHECK(hint->Left <= screen.TextStart() + ImGui::GetFontSize());
 }
 

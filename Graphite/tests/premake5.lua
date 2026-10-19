@@ -46,7 +46,7 @@ project "GraphiteTests"
         "%{IncludeDir.pugixml}",
         "%{IncludeDir.ImGui}",
         "%{IncludeDir.ImPlot}",
-        "%{IncludeDir.MdiIcons}",
+        "%{IncludeDir.Icons}",
         "%{IncludeDir.spdlog}",
         "%{IncludeDir.json}",
         "%{IncludeDir.TreeSitter}"

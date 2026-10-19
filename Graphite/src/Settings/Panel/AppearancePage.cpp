@@ -17,7 +17,7 @@
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/UiScale.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -237,7 +237,7 @@ namespace Graphite {
 
 	const char* AppearancePage::GetIcon() const
 	{
-		return ICON_MDI_PALETTE_OUTLINE;
+		return ICON_LC_PALETTE;
 	}
 
 	template<typename Which>
@@ -272,7 +272,7 @@ namespace Graphite {
 	{
 		const bool engaged = false;
 
-		if (Core::DrawIconButton("##reset", ICON_MDI_RESTORE, engaged, "Put back the inherited colour"))
+		if (Core::DrawIconButton("##reset", ICON_LC_ROTATE_CCW, engaged, "Put back the inherited colour"))
 		{
 			m_Draft.Revert(which);
 			Apply();

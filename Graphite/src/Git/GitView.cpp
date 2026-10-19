@@ -23,7 +23,7 @@
 #include "UI/ToastEvent.h"
 #include "Workspace/Workspace.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -68,12 +68,12 @@ namespace Graphite {
 
 		if (branch.Ahead > 0)
 		{
-			label += std::format(" {}{}", ICON_MDI_ARROW_UP, branch.Ahead);
+			label += std::format(" {}{}", ICON_LC_ARROW_UP, branch.Ahead);
 		}
 
 		if (branch.Behind > 0)
 		{
-			label += std::format(" {}{}", ICON_MDI_ARROW_DOWN, branch.Behind);
+			label += std::format(" {}{}", ICON_LC_ARROW_DOWN, branch.Behind);
 		}
 
 		return label;
@@ -82,7 +82,7 @@ namespace Graphite {
 	GitView::GitView(GitModel& model, const ActiveScheme& scheme, EditorSettings& editorSettings,
 					 DiffWindows& diffWindows, ModalGate& modals, EditorBuffers& buffers,
 					 BranchListState& branchList, Core::EventBus& events)
-		: Core::Panel("git", "Git", "git", ICON_MDI_SOURCE_BRANCH, StartsAs::Hidden), m_Model(model),
+		: Core::Panel("git", "Git", "git", ICON_LC_GIT_BRANCH, StartsAs::Hidden), m_Model(model),
 		  m_Scheme(scheme), m_EditorSettings(editorSettings), m_DiffWindows(diffWindows),
 		  m_Buffers(buffers), m_Events(events), m_BranchList(branchList), m_DetachQuestion(modals, "###GitDetach"),
 		  m_CheckoutQuestion(modals, "###GitCheckout"),
@@ -743,7 +743,7 @@ namespace Graphite {
 
 		ImGui::SameLine();
 		DrawFilterField("##commitPath", m_FilterPathBuffer.data(), m_FilterPathBuffer.size(),
-						{.Hint = "Main.cpp or *.cpp", .Glyph = ICON_MDI_FILE_OUTLINE, .Width = pathWidth});
+						{.Hint = "Main.cpp or *.cpp", .Glyph = ICON_LC_FILE, .Width = pathWidth});
 
 		m_Filter.Set(HistoryFilter{std::string(m_FilterBuffer.data()),
 								   std::string(m_FilterPathBuffer.data())});

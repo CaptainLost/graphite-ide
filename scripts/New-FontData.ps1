@@ -5,7 +5,9 @@
 .DESCRIPTION
     Builds ImGui's own binary_to_compressed_c tool into a temporary directory, runs it over each
     font, and writes one .cpp per font. Run it after replacing a .ttf in vendor/fonts, then
-    regenerate the project files with premake.
+    regenerate the project files with premake. After replacing lucide.ttf, also run
+    scripts/New-IconHeader.ps1 with the same lucide-static version, so the constants name
+    the font's codepoints.
 #>
 $ErrorActionPreference = 'Stop'
 
@@ -16,7 +18,7 @@ $outputDirectory = Join-Path $root 'Core\src\Core\ImGui\Fonts'
 
 $fonts = @(
     @{ File = 'JetBrainsMono-Regular.ttf';       Name = 'JetBrainsMonoRegular' },
-    @{ File = 'materialdesignicons-webfont.ttf'; Name = 'MaterialDesignIcons' },
+    @{ File = 'lucide.ttf';                      Name = 'Lucide' },
     @{ File = 'Inter-Regular.ttf';               Name = 'InterRegular' },
     @{ File = 'Inter-SemiBold.ttf';              Name = 'InterSemiBold' }
 )

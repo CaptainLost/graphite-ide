@@ -4,7 +4,7 @@
 
 #include "Core/ImGui/ImGuiColors.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 #include <imgui_internal.h>
 
 #include <algorithm>
@@ -163,7 +163,7 @@ namespace Graphite {
 
 	const char* ChevronGlyph(bool open)
 	{
-		return open ? ICON_MDI_CHEVRON_DOWN : ICON_MDI_CHEVRON_RIGHT;
+		return open ? ICON_LC_CHEVRON_DOWN : ICON_LC_CHEVRON_RIGHT;
 	}
 
 	void DrawChevron(bool open)
@@ -173,7 +173,7 @@ namespace Graphite {
 
 	float ChevronWidth()
 	{
-		return std::max(ImGui::CalcTextSize(ICON_MDI_CHEVRON_RIGHT).x, ImGui::CalcTextSize(ICON_MDI_CHEVRON_DOWN).x);
+		return std::max(ImGui::CalcTextSize(ICON_LC_CHEVRON_RIGHT).x, ImGui::CalcTextSize(ICON_LC_CHEVRON_DOWN).x);
 	}
 
 	bool ChevronTreeNode(const char* id, ImGuiTreeNodeFlags flags, const char* label, const char* note)

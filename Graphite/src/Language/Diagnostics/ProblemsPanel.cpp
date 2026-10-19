@@ -17,7 +17,7 @@
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/TextBuffer.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -66,7 +66,7 @@ namespace Graphite {
 
 	ProblemsPanel::ProblemsPanel(const DiagnosticsModel& diagnostics, Core::DocumentSet& documents, Workspace& workspace,
 								 const ActiveScheme& scheme)
-		: Core::Panel("problems", "Problems", "tools", ICON_MDI_ALERT_CIRCLE_OUTLINE), m_Diagnostics(diagnostics), m_Documents(documents),
+		: Core::Panel("problems", "Problems", "tools", ICON_LC_CIRCLE_ALERT), m_Diagnostics(diagnostics), m_Documents(documents),
 		  m_Workspace(workspace), m_Scheme(scheme)
 	{
 	}
@@ -191,7 +191,7 @@ namespace Graphite {
 	{
 		const bool isError = diagnostic.Severity == DiagnosticSeverity::Error;
 
-		const char* icon = isError ? ICON_MDI_CLOSE_CIRCLE : ICON_MDI_ALERT;
+		const char* icon = isError ? ICON_LC_CIRCLE_X : ICON_LC_TRIANGLE_ALERT;
 		const ImU32 colour = isError ? palette.DiagnosticError : palette.DiagnosticWarning;
 
 		ImGui::PushID(rowId);

@@ -7,7 +7,7 @@
 #include "Core/Command/CommandRegistry.h"
 #include "Core/ImGui/Toggle.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -57,7 +57,7 @@ namespace Graphite {
 
 	const char* EditorPage::GetIcon() const
 	{
-		return ICON_MDI_PENCIL_OUTLINE;
+		return ICON_LC_PENCIL;
 	}
 
 	void EditorPage::OnDeactivated()

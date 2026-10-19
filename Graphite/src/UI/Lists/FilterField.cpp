@@ -86,7 +86,7 @@ namespace Graphite {
 
 			ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, std::max(0.0f, fieldRounding - ClearButtonInset()));
 
-			if (Core::DrawIconButton("##clear", ICON_MDI_CLOSE, kNotEngaged, "Clear"))
+			if (Core::DrawIconButton("##clear", ICON_LC_X, kNotEngaged, "Clear"))
 			{
 				clear();
 				edited = true;

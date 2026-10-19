@@ -28,25 +28,27 @@ moved the interface to Inter.
 Draw every file and folder icon in a list through `Graphite/src/UI/FileIcons.h`.
 
 - **Kinds.** `KindOfFile` reads a file's kind from its extension, in any case.
-  Each kind has a glyph and a colour for each scheme:
+  Each kind has a glyph, a Lucide icon named as in
+  [0625](0625-draw-the-interface-s-icons-from-lucide.md), and a colour for each
+  scheme:
 
   | Kind | Extensions | Glyph | Dark | Light |
   |---|---|---|---|---|
-  | `CppSource` | `.c` `.cc` `.cpp` `.cxx` | `LANGUAGE_CPP` | `#6AA7E6` | `#1E64B4` |
-  | `Header` | `.h` `.hpp` `.hxx` | `ALPHA_H_BOX_OUTLINE` | `#B392E8` | `#7A46C8` |
-  | `CSharp` | `.cs` | `LANGUAGE_CSHARP` | `#7FBF6A` | `#2E7D32` |
-  | `Json` | `.json` | `CODE_JSON` | `#D8B25A` | `#9A7400` |
-  | `Markdown` | `.md` | `LANGUAGE_MARKDOWN_OUTLINE` | `#8FA3B8` | `#55697E` |
-  | `Lua` | `.lua` | `LANGUAGE_LUA` | `#6C8CE0` | `#2F4FB0` |
-  | `Shell` | `.ps1` `.psm1` `.psd1` `.bat` `.cmd` | `POWERSHELL` | `#5FA9D6` | `#1F6F9E` |
-  | `Project` | `.sln` `.slnx` `.vcxproj` `.csproj` | `MICROSOFT_VISUAL_STUDIO` | `#A77FE0` | `#6B3FB0` |
-  | `Image` | `.png` `.jpg` `.jpeg` `.gif` `.bmp` `.ico` `.svg` `.webp` | `FILE_IMAGE_OUTLINE` | `#D0A060` | `#9A6A20` |
-  | `Other` | anything else | `FILE_OUTLINE` | the dim folder colour | the dim folder colour |
+  | `CppSource` | `.c` `.cc` `.cpp` `.cxx` | `file-code` | `#6AA7E6` | `#1E64B4` |
+  | `Header` | `.h` `.hpp` `.hxx` | `file-code-2` | `#B392E8` | `#7A46C8` |
+  | `CSharp` | `.cs` | `hash` | `#7FBF6A` | `#2E7D32` |
+  | `Json` | `.json` | `file-json` | `#D8B25A` | `#9A7400` |
+  | `Markdown` | `.md` | `file-text` | `#8FA3B8` | `#55697E` |
+  | `Lua` | `.lua` | `file-code` | `#6C8CE0` | `#2F4FB0` |
+  | `Shell` | `.ps1` `.psm1` `.psd1` `.bat` `.cmd` | `terminal` | `#5FA9D6` | `#1F6F9E` |
+  | `Project` | `.sln` `.slnx` `.vcxproj` `.csproj` | `app-window` | `#A77FE0` | `#6B3FB0` |
+  | `Image` | `.png` `.jpg` `.jpeg` `.gif` `.bmp` `.ico` `.svg` `.webp` | `file-image` | `#D0A060` | `#9A6A20` |
+  | `Other` | anything else | `file` | the dim folder colour | the dim folder colour |
 
 - **Scheme.** The table is fixed in code, not in scheme keys. The scheme is light
   when the luminance of `ImGuiCol_WindowBg` is above 0.5. This is the test
   `Theme::Apply` makes, shared as `Core::IsLightBackground`.
-- **Folders.** Folders use `FOLDER_OUTLINE` and `FOLDER_OPEN_OUTLINE` in the dim
+- **Folders.** Folders use `folder` and `folder-open` in the dim
   folder colour: the current text colour mixed 45 % toward the disabled-text
   colour, derived each time it is drawn.
 - **Two draws.** A row draws its icon and its name separately:
@@ -88,7 +90,7 @@ Draw every file and folder icon in a list through `Graphite/src/UI/FileIcons.h`.
   so it is drawn in the tab's text colour.
   - The glyph stands before the `###`. ImGui identifies a window by what follows
     `###`, so window ids and `imgui.ini` keys do not change.
-  - `Core::IconForExtension` gives `.h`, `.hpp` and `.hxx` `ALPHA_H_BOX_OUTLINE`.
+  - `Core::IconForExtension` gives `.h`, `.hpp` and `.hxx` `file-code-2`.
     No Graphite code calls it any more.
 - **Marker column.** `RowMarkerColumnWidth` is 12 px scaled, not the width of an
   "M".

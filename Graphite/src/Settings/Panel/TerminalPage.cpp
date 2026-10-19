@@ -4,7 +4,7 @@
 #include "Settings/Panel/SettingsLayout.h"
 #include "Terminal/TerminalWindows.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <cstddef>
 #include <string>
@@ -30,7 +30,7 @@ namespace Graphite {
 
 	const char* TerminalPage::GetIcon() const
 	{
-		return ICON_MDI_CONSOLE;
+		return ICON_LC_SQUARE_TERMINAL;
 	}
 
 	std::vector<SettingsCard> TerminalPage::Describe()

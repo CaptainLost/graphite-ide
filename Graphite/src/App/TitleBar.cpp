@@ -8,7 +8,7 @@
 #include "Core/Platform/Caption.h"
 #include "Core/Platform/Window.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 #include <imgui.h>
 
 #include <cmath>
@@ -142,14 +142,14 @@ namespace Graphite {
 			const ImU32 hoveredColour = ImGui::GetColorU32(ImGuiCol_ButtonHovered);
 			const ImU32 heldColour = ImGui::GetColorU32(ImGuiCol_ButtonActive);
 
-			if (CaptionButton("CaptionMinimize", ICON_MDI_WINDOW_MINIMIZE, layout.Minimize,
+			if (CaptionButton("CaptionMinimize", ICON_LC_MINUS, layout.Minimize,
 							  hoveredColour, heldColour, systemOwnsPointer))
 			{
 				window.Minimize();
 			}
 
 			const char* maximizeGlyph =
-				window.IsMaximized() ? ICON_MDI_WINDOW_RESTORE : ICON_MDI_WINDOW_MAXIMIZE;
+				window.IsMaximized() ? ICON_LC_COPY : ICON_LC_SQUARE;
 
 			if (CaptionButton("CaptionMaximize", maximizeGlyph, layout.Maximize, hoveredColour, heldColour,
 							  systemOwnsPointer))
@@ -159,7 +159,7 @@ namespace Graphite {
 
 			const ImU32 closeColour = ImGui::GetColorU32(kCloseHovered);
 
-			if (CaptionButton("CaptionClose", ICON_MDI_CLOSE, layout.Close, closeColour,
+			if (CaptionButton("CaptionClose", ICON_LC_X, layout.Close, closeColour,
 							  closeColour, systemOwnsPointer))
 			{
 				window.RequestClose();
@@ -195,8 +195,8 @@ namespace Graphite {
 	Core::CaptionLayout DrawTitle(const TitleContext& context, float menuEnd, float barWidth)
 	{
 		const Core::CaptionTitleWidths widths{
-			.Folder = GroupWidth(ICON_MDI_FOLDER_OUTLINE, context.Folder),
-			.Branch = context.Folder.has_value() ? GroupWidth(ICON_MDI_SOURCE_BRANCH, context.Branch) : 0.0f,
+			.Folder = GroupWidth(ICON_LC_FOLDER, context.Folder),
+			.Branch = context.Folder.has_value() ? GroupWidth(ICON_LC_GIT_BRANCH, context.Branch) : 0.0f,
 		};
 
 		const Core::CaptionTitleSpacing spacing{
@@ -216,12 +216,12 @@ namespace Graphite {
 
 		if (layout.FolderVisible)
 		{
-			DrawGroup(layout.Folder, ICON_MDI_FOLDER_OUTLINE, *context.Folder);
+			DrawGroup(layout.Folder, ICON_LC_FOLDER, *context.Folder);
 		}
 
 		if (layout.BranchVisible)
 		{
-			DrawGroup(layout.Branch, ICON_MDI_SOURCE_BRANCH, *context.Branch);
+			DrawGroup(layout.Branch, ICON_LC_GIT_BRANCH, *context.Branch);
 		}
 
 		return layout;

@@ -2,13 +2,13 @@
 
 #include "Settings/Panel/SettingsLayout.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 namespace Graphite {
 
 	const char* ExplorerPage::GetIcon() const
 	{
-		return ICON_MDI_FILE_TREE;
+		return ICON_LC_FOLDER_TREE;
 	}
 
 	std::vector<SettingsCard> ExplorerPage::Describe()

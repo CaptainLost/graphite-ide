@@ -7,7 +7,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/TextInput.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -26,7 +26,7 @@ namespace Graphite {
 
 	const char* ClaudeSessionsPage::GetIcon() const
 	{
-		return ICON_MDI_ROBOT_OUTLINE;
+		return ICON_LC_BOT;
 	}
 
 	std::vector<SettingsCard> ClaudeSessionsPage::Describe()

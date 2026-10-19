@@ -1,6 +1,6 @@
 #include "App/ToolStripContent.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <algorithm>
 #include <array>
@@ -47,7 +47,7 @@ namespace Graphite {
 		{
 			Core::ToolStripItem item;
 			item.Id = std::string(kTerminalsStripId);
-			item.Icon = ICON_MDI_CONSOLE;
+			item.Icon = ICON_LC_SQUARE_TERMINAL;
 			item.Tooltip = "Terminal";
 			item.Open = inputs.Terminals.Open;
 			if (inputs.Terminals.RunningHidden)

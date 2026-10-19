@@ -654,4 +654,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0622](0622-keep-document-symbols-ranges-and-nesting-and-ask-for-them-again-after-each-save.md) | Keep document symbols' ranges and nesting and ask for them again after each save | proposed | 2026-10-19 |
 | [0623](0623-show-the-file-s-path-and-the-symbol-at-the-caret-above-the-code.md) | Show the file's path and the symbol at the caret above the code | proposed | 2026-10-19 |
 | [0624](0624-show-a-press-in-the-hover-surface-and-read-the-accent-only-from-its-own-slot.md) | Show a press in the hover surface and read the accent only from its own slot | proposed | 2026-10-19 |
+| [0625](0625-draw-the-interface-s-icons-from-lucide.md) | Draw the interface's icons from Lucide | proposed | 2026-10-19 |
 <!-- /adr-index -->

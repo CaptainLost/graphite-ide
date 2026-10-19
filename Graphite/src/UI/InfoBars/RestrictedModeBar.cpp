@@ -4,7 +4,7 @@
 
 #include "Core/FileSystem/FileSystem.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -18,7 +18,7 @@ namespace Graphite {
 
 		InfoBarContent content{.Id = "##RestrictedMode",
 							   .Weight = InfoBarWeight::Warning,
-							   .Glyph = ICON_MDI_SHIELD_ALERT_OUTLINE,
+							   .Glyph = ICON_LC_SHIELD_ALERT,
 							   .WeightColour = warningColour,
 							   .Message = "Restricted mode: the language server and background analysis are off for this folder.",
 							   .Buttons = {{.Label = "Trust Folder", .Primary = true}},

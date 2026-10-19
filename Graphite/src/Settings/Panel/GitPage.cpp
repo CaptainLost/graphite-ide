@@ -5,13 +5,13 @@
 
 #include "Core/ImGui/Toggle.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 namespace Graphite {
 
 	const char* GitPage::GetIcon() const
 	{
-		return ICON_MDI_SOURCE_BRANCH;
+		return ICON_LC_GIT_BRANCH;
 	}
 
 	std::vector<SettingsCard> GitPage::Describe()

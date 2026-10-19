@@ -7,7 +7,7 @@
 #include "Core/Base/Log.h"
 #include "Core/ImGui/TabContextMenu.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 #include <imgui.h>
 
 #include <utility>
@@ -59,7 +59,7 @@ namespace Graphite {
 
 	std::string ReviewWindowName(const std::string& branchFullName)
 	{
-		return std::string{ICON_MDI_SOURCE_PULL} + "  Review: " + Core::ShortBranchName(branchFullName) + "###" +
+		return std::string{ICON_LC_GIT_PULL_REQUEST} + "  Review: " + Core::ShortBranchName(branchFullName) + "###" +
 			   ReviewWindowIdentity(branchFullName);
 	}
 

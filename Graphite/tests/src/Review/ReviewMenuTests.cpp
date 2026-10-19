@@ -2,7 +2,7 @@
 
 #include "Review/ReviewMenu.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <cstdint>
 #include <filesystem>
@@ -72,7 +72,7 @@ namespace {
 
 	std::string Badge(std::string_view text)
 	{
-		return std::string{ICON_MDI_RADIOBOX_MARKED} + std::string{text};
+		return std::string{ICON_LC_CIRCLE_DOT} + std::string{text};
 	}
 }
 
@@ -177,7 +177,7 @@ TEST_CASE("The badge says merged once the merge base is the tip")
 	sessions.Start(kSide, kMain);
 	const ReviewRange range = RangeFrom(7, 7);
 
-	CHECK(Graphite::ReviewBadgeText(sessions, kSide, &range, kNoRangeError, nullptr) == std::string{ICON_MDI_CHECK} + " merged");
+	CHECK(Graphite::ReviewBadgeText(sessions, kSide, &range, kNoRangeError, nullptr) == std::string{ICON_LC_CHECK} + " merged");
 }
 
 TEST_CASE("The badge says nothing while loading and asks when its base is gone")
@@ -233,7 +233,7 @@ TEST_CASE("A held badge answers without its diff for the same range and sessions
 	sessions.Mark(kSide, Graphite::ReviewGroup::Commits, committed->Files[0]);
 	CHECK_FALSE(badges.HeldFor(sessions, kSide, range).has_value());
 
-	const std::string mergedText = std::string{ICON_MDI_CHECK} + " merged";
+	const std::string mergedText = std::string{ICON_LC_CHECK} + " merged";
 	CHECK(badges.TextFor(sessions, kSide, merged, kNoRangeError, diffOnItsWay) == mergedText);
 	CHECK(badges.HeldFor(sessions, kSide, merged) == std::optional<std::string>{mergedText});
 }
@@ -284,7 +284,7 @@ TEST_CASE("A held badge is worked out again for a new range")
 	Graphite::ReviewBadges badges;
 
 	CHECK(badges.TextFor(sessions, kSide, range, kNoRangeError, committed) == Badge(" 0/1"));
-	CHECK(badges.TextFor(sessions, kSide, merged, kNoRangeError, committed) == std::string{ICON_MDI_CHECK} + " merged");
+	CHECK(badges.TextFor(sessions, kSide, merged, kNoRangeError, committed) == std::string{ICON_LC_CHECK} + " merged");
 }
 
 TEST_CASE("A held badge is worked out again for a new diff")

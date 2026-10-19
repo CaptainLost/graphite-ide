@@ -7,7 +7,7 @@
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/TextMetrics.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 #include <imgui_internal.h>
 
 #include <algorithm>
@@ -239,7 +239,7 @@ namespace Graphite {
 				ImGui::SameLine();
 				ImGui::SetCursorPosX(rowRight - closeSize);
 
-				if (Core::DrawIconButton("##close", ICON_MDI_CLOSE, kNotEngaged, content.CloseTooltip,
+				if (Core::DrawIconButton("##close", ICON_LC_X, kNotEngaged, content.CloseTooltip,
 										 {.Flags = ImGuiButtonFlags_EnableNav}))
 				{
 					answer.Closed = true;

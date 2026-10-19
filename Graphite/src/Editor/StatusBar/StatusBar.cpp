@@ -10,7 +10,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <cstddef>
 #include <string>
@@ -32,9 +32,9 @@ namespace Graphite {
 		constexpr float kMarkToTextGap = 4.0f;
 		constexpr float kBetweenCountsGap = 8.0f;
 
-		constexpr const char* kErrorGlyph = ICON_MDI_CLOSE_CIRCLE;
-		constexpr const char* kWarningGlyph = ICON_MDI_ALERT;
-		constexpr const char* kNoProblemsGlyph = ICON_MDI_CHECK;
+		constexpr const char* kErrorGlyph = ICON_LC_CIRCLE_X;
+		constexpr const char* kWarningGlyph = ICON_LC_TRIANGLE_ALERT;
+		constexpr const char* kNoProblemsGlyph = ICON_LC_CHECK;
 
 		constexpr const char* kReadOnlyWarning = "read-only: not valid text for its encoding";
 
@@ -118,7 +118,7 @@ namespace Graphite {
 			const Core::IconButtonOptions bellButton{.Fit = Core::IconButtonFit::Bar,
 													 .Flags = ImGuiButtonFlags_NoFocus | ImGuiButtonFlags_NoNavFocus};
 			const bool clicked =
-				Core::DrawIconButton("##NotificationBell", ICON_MDI_BELL_OUTLINE, kNotEngaged, "Notifications", bellButton);
+				Core::DrawIconButton("##NotificationBell", ICON_LC_BELL, kNotEngaged, "Notifications", bellButton);
 
 			if (missedColour.has_value())
 			{

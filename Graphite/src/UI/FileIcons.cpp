@@ -6,7 +6,7 @@
 #include "Core/ImGui/Theme.h"
 #include "Core/ImGui/UiScale.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 #include <imgui_internal.h>
 
 #include <string>
@@ -117,33 +117,33 @@ namespace Graphite {
 		switch (kind)
 		{
 		case FileKind::CppSource:
-			return ICON_MDI_LANGUAGE_CPP;
+			return ICON_LC_FILE_CODE;
 		case FileKind::Header:
-			return ICON_MDI_ALPHA_H_BOX_OUTLINE;
+			return ICON_LC_FILE_CODE_2;
 		case FileKind::CSharp:
-			return ICON_MDI_LANGUAGE_CSHARP;
+			return ICON_LC_HASH;
 		case FileKind::Json:
-			return ICON_MDI_CODE_JSON;
+			return ICON_LC_FILE_JSON;
 		case FileKind::Markdown:
-			return ICON_MDI_LANGUAGE_MARKDOWN_OUTLINE;
+			return ICON_LC_FILE_TEXT;
 		case FileKind::Lua:
-			return ICON_MDI_LANGUAGE_LUA;
+			return ICON_LC_FILE_CODE;
 		case FileKind::Shell:
-			return ICON_MDI_POWERSHELL;
+			return ICON_LC_TERMINAL;
 		case FileKind::Project:
-			return ICON_MDI_MICROSOFT_VISUAL_STUDIO;
+			return ICON_LC_APP_WINDOW;
 		case FileKind::Image:
-			return ICON_MDI_FILE_IMAGE_OUTLINE;
+			return ICON_LC_FILE_IMAGE;
 		case FileKind::Other:
-			return ICON_MDI_FILE_OUTLINE;
+			return ICON_LC_FILE;
 		}
 
-		return ICON_MDI_FILE_OUTLINE;
+		return ICON_LC_FILE;
 	}
 
 	const char* FolderGlyphOf(bool open)
 	{
-		return open ? ICON_MDI_FOLDER_OPEN_OUTLINE : ICON_MDI_FOLDER_OUTLINE;
+		return open ? ICON_LC_FOLDER_OPEN : ICON_LC_FOLDER;
 	}
 
 	ImU32 ColourOf(FileKind kind, bool lightScheme)

@@ -15,7 +15,7 @@
 #include "Core/ImGui/Toggle.h"
 #include "Core/ImGui/UiScale.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -295,7 +295,7 @@ namespace Graphite {
 
 		const bool narrowed = !m_Filter.Authors.empty() || m_Filter.AlsoMessage || m_Options != BranchListState{};
 
-		if (Core::DrawIconButton("##branchListMenuButton", ICON_MDI_TUNE_VARIANT, narrowed, "Sort and filter"))
+		if (Core::DrawIconButton("##branchListMenuButton", ICON_LC_SLIDERS_HORIZONTAL, narrowed, "Sort and filter"))
 		{
 			ImGui::OpenPopup(kPanelId);
 		}
@@ -472,7 +472,7 @@ namespace Graphite {
 
 		for (const std::string& key : m_Filter.Authors)
 		{
-			const std::string label = ChipTextOf(key, frame) + "  " ICON_MDI_CLOSE;
+			const std::string label = ChipTextOf(key, frame) + "  " ICON_LC_X;
 			PlaceChip(label, isFirstChip, rowRight);
 
 			ImGui::PushID(key.c_str());
@@ -487,7 +487,7 @@ namespace Graphite {
 
 		if (m_Filter.AlsoMessage)
 		{
-			const std::string label = std::string{kMessageChip} + "  " ICON_MDI_CLOSE;
+			const std::string label = std::string{kMessageChip} + "  " ICON_LC_X;
 			PlaceChip(label, isFirstChip, rowRight);
 
 			ImGui::PushID(kMessageChipId);

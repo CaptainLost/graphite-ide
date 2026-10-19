@@ -13,7 +13,7 @@
 #include "Core/ImGui/ToastText.h"
 #include "Core/ImGui/UiScale.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -308,7 +308,7 @@ namespace Graphite {
 
 		void DrawRemoveGlyph(const ImRect& buttonRect, const RemoveButtonState& button, bool held)
 		{
-			Core::DrawIconButtonFace(buttonRect, ICON_MDI_CLOSE, button.PointerOnIt, held);
+			Core::DrawIconButtonFace(buttonRect, ICON_LC_X, button.PointerOnIt, held);
 		}
 
 		ListOutcome DrawList(const ListLayout& list, const Core::ToastPalette& palette)
@@ -542,7 +542,7 @@ namespace Graphite {
 
 		ImGui::SameLine(lineStartX + lineWidth - controlsWidth);
 
-		if (Core::DrawIconButton("##confirmations", ICON_MDI_CHECK_ALL, m_ShowConfirmations, "Show confirmations"))
+		if (Core::DrawIconButton("##confirmations", ICON_LC_CHECK_CHECK, m_ShowConfirmations, "Show confirmations"))
 		{
 			m_ShowConfirmations = !m_ShowConfirmations;
 		}
@@ -552,7 +552,7 @@ namespace Graphite {
 		ImGui::SameLine();
 
 		const bool engaged = false;
-		return Core::DrawIconButton("##clear", ICON_MDI_DELETE_SWEEP_OUTLINE, engaged, "Clear");
+		return Core::DrawIconButton("##clear", ICON_LC_LIST_X, engaged, "Clear");
 	}
 
 	void NotificationsPopup::NoteClosed()

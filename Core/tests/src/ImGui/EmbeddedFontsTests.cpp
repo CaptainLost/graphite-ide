@@ -1,10 +1,14 @@
 #include <doctest/doctest.h>
 
 #include "Core/ImGui/EmbeddedFonts.h"
+#include "Core/ImGui/Icons.h"
+#include "Core/Text/Utf8.h"
 
 #include <imgui.h>
 
 #include <array>
+#include <cstddef>
+#include <optional>
 
 namespace {
 
@@ -30,7 +34,7 @@ TEST_CASE("Each embedded font is a face ImGui can load from memory")
 	HeadlessContext context;
 
 	CHECK(AddEmbedded(Core::JetBrainsMonoRegular()) != nullptr);
-	CHECK(AddEmbedded(Core::MaterialDesignIcons()) != nullptr);
+	CHECK(AddEmbedded(Core::Lucide()) != nullptr);
 	CHECK(AddEmbedded(Core::InterRegular()) != nullptr);
 	CHECK(AddEmbedded(Core::InterSemiBold()) != nullptr);
 }
@@ -50,5 +54,22 @@ TEST_CASE("The embedded text faces have the Polish letters the file names need")
 		{
 			CHECK(font->IsGlyphInFont(letter));
 		}
+	}
+}
+
+TEST_CASE("The embedded Lucide font holds every icon the interface draws")
+{
+	HeadlessContext context;
+	ImFont* const lucide = AddEmbedded(Core::Lucide());
+	REQUIRE(lucide != nullptr);
+
+	for (const char* icon : Core::UsedIcons())
+	{
+		std::size_t offset = 0;
+		const std::optional<char32_t> codepoint = Core::DecodeUtf8(icon, offset);
+		REQUIRE(codepoint.has_value());
+		CAPTURE(static_cast<unsigned int>(*codepoint));
+
+		CHECK(lucide->IsGlyphInFont(static_cast<ImWchar>(*codepoint)));
 	}
 }

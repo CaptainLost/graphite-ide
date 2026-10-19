@@ -6,7 +6,7 @@
 
 #include "Core/Base/Base.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <utility>
 
@@ -41,6 +41,6 @@ namespace Graphite {
 
 	const char* LanguageServersPage::GetIcon() const
 	{
-		return ICON_MDI_SERVER_OUTLINE;
+		return ICON_LC_SERVER;
 	}
 }

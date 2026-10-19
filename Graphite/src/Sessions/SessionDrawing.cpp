@@ -2,7 +2,7 @@
 
 #include "Core/Base/Base.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 namespace Graphite {
 
@@ -31,19 +31,19 @@ namespace Graphite {
 		switch (category)
 		{
 		case ToolCategory::Read:
-			return ICON_MDI_FILE_DOCUMENT_OUTLINE;
+			return ICON_LC_FILE_TEXT;
 		case ToolCategory::Edit:
-			return ICON_MDI_PENCIL;
+			return ICON_LC_PENCIL;
 		case ToolCategory::Run:
-			return ICON_MDI_CONSOLE;
+			return ICON_LC_SQUARE_TERMINAL;
 		case ToolCategory::Agent:
-			return ICON_MDI_ROBOT_OUTLINE;
+			return ICON_LC_BOT;
 		case ToolCategory::Web:
-			return ICON_MDI_WEB;
+			return ICON_LC_GLOBE;
 		case ToolCategory::Other:
-			return ICON_MDI_TOOLS;
+			return ICON_LC_HAMMER;
 		}
-		return ICON_MDI_TOOLS;
+		return ICON_LC_HAMMER;
 	}
 
 	void DrawPiece(ImVec2& origin, ImU32 colour, const std::string& text)

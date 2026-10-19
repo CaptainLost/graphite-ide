@@ -4,7 +4,7 @@
 
 #include "Language/Registry/LanguageRegistry.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -172,7 +172,7 @@ namespace Graphite {
 	{
 		InfoBarContent content{.Id = "##LanguageSupport",
 							   .Weight = InfoBarWeight::Information,
-							   .Glyph = ICON_MDI_INFORMATION_OUTLINE,
+							   .Glyph = ICON_LC_INFO,
 							   .WeightColour = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark),
 							   .Message = prompt.Message};
 

@@ -14,7 +14,7 @@
 #include "UI/ToastEvent.h"
 #include "Workspace/Workspace.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -101,7 +101,7 @@ namespace Graphite {
 	{
 		commands.Add({.Id = "terminal.new",
 					  .Label = "New Terminal",
-					  .Icon = ICON_MDI_CONSOLE,
+					  .Icon = ICON_LC_SQUARE_TERMINAL,
 					  .Run = [this] {
 						  Reveal();
 						  static_cast<void>(OpenDefaultShell()); },
@@ -203,7 +203,7 @@ namespace Graphite {
 			const std::string windowIdentity = WindowIdentity(entry.Record.Id);
 			const std::string tabTitle =
 				TerminalTitleFor(TerminalLabelTitle(announcedTitle, entry.Record.Title), entry.Session->GetProfileName());
-			const std::string windowName = ICON_MDI_CONSOLE "  " + std::to_string(tabNumber) + ": " + tabTitle + windowIdentity;
+			const std::string windowName = ICON_LC_SQUARE_TERMINAL "  " + std::to_string(tabNumber) + ": " + tabTitle + windowIdentity;
 
 			ImGuiWindowClass windowClass;
 			windowClass.DockingAlwaysTabBar = true;
@@ -304,8 +304,8 @@ namespace Graphite {
 			{
 				// WARNING: The node's id goes in each label rather than being pushed: the amend has already pushed it as the seed, and pushing it again hashes a value under itself into the same constant for every node, so only the first bar's + could be clicked.
 				const std::string nodeSuffix = std::to_string(node->ID);
-				const std::string newLabel = ICON_MDI_PLUS "##terminalNew" + nodeSuffix;
-				const std::string shellsLabel = ICON_MDI_CHEVRON_DOWN "##terminalShellsButton" + nodeSuffix;
+				const std::string newLabel = ICON_LC_PLUS "##terminalNew" + nodeSuffix;
+				const std::string shellsLabel = ICON_LC_CHEVRON_DOWN "##terminalShellsButton" + nodeSuffix;
 				const std::string shellsPopup = "##terminalShells" + nodeSuffix;
 
 				if (ImGui::TabItemButton(newLabel.c_str(), ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))

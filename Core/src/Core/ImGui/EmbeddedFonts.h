@@ -11,7 +11,7 @@ namespace Core {
 	};
 
 	EmbeddedFont JetBrainsMonoRegular();
-	EmbeddedFont MaterialDesignIcons();
+	EmbeddedFont Lucide();
 	EmbeddedFont InterRegular();
 	EmbeddedFont InterSemiBold();
 }

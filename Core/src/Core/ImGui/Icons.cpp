@@ -6,10 +6,12 @@
 #include "Core/Base/Assert.h"
 #include "Core/Text/Utf8.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
+#include <algorithm>
 #include <array>
 #include <optional>
+#include <span>
 
 namespace Core {
 
@@ -23,103 +25,93 @@ namespace Core {
 			return static_cast<ImWchar>(codePoint.value_or(kReplacementCharacter));
 		}
 
+		// WARNING: only these icons are baked from the icon font; any other draws ImGui's fallback glyph.
 		constexpr const char* kUsedIcons[] = {
-			ICON_MDI_FILE,
-			ICON_MDI_FOLDER,
-			ICON_MDI_FOLDER_OPEN,
-			ICON_MDI_LANGUAGE_C,
-			ICON_MDI_LANGUAGE_CPP,
-			ICON_MDI_LANGUAGE_CSHARP,
-			ICON_MDI_LANGUAGE_LUA,
-			ICON_MDI_CODE_JSON,
-			ICON_MDI_LANGUAGE_MARKDOWN,
-			ICON_MDI_LANGUAGE_PYTHON,
-			ICON_MDI_APPLICATION_BRACES,
-			ICON_MDI_REFRESH,
-			ICON_MDI_MAGNIFY,
-			ICON_MDI_WINDOW_MINIMIZE,
-			ICON_MDI_WINDOW_MAXIMIZE,
-			ICON_MDI_WINDOW_RESTORE,
-			ICON_MDI_CLOSE,
-			ICON_MDI_CHEVRON_UP,
-			ICON_MDI_CHEVRON_DOWN,
-			ICON_MDI_CHEVRON_RIGHT,
-			ICON_MDI_FORMAT_LETTER_CASE,
-			ICON_MDI_FORMAT_LETTER_MATCHES,
-			ICON_MDI_PLUS,
-			ICON_MDI_MINUS,
-			ICON_MDI_UNDO,
-			ICON_MDI_DELETE,
-			ICON_MDI_CHECK,
-			ICON_MDI_FILE_TREE,
-			ICON_MDI_FILE_DOCUMENT_EDIT_OUTLINE,
-			ICON_MDI_SOURCE_BRANCH,
-			ICON_MDI_MESSAGE_TEXT_OUTLINE,
-			ICON_MDI_CONSOLE,
-			ICON_MDI_ALERT_CIRCLE_OUTLINE,
-			ICON_MDI_LINK_VARIANT,
-			ICON_MDI_TEXT_SEARCH,
-			ICON_MDI_COG_OUTLINE,
-			ICON_MDI_ROBOT_OUTLINE,
-			ICON_MDI_FILE_DOCUMENT_OUTLINE,
-			ICON_MDI_PENCIL,
-			ICON_MDI_WEB,
-			ICON_MDI_TOOLS,
-			ICON_MDI_BELL_OUTLINE,
-			ICON_MDI_TIMER_SAND,
-			ICON_MDI_STOP_CIRCLE_OUTLINE,
-			ICON_MDI_WRENCH_OUTLINE,
-			ICON_MDI_HELP_CIRCLE_OUTLINE,
-			ICON_MDI_CACHED,
-			ICON_MDI_ACCOUNT_OUTLINE,
-			ICON_MDI_PUZZLE_OUTLINE,
-			ICON_MDI_SERVER_NETWORK,
-			ICON_MDI_BRAIN,
-			ICON_MDI_ARROW_RIGHT,
-			ICON_MDI_IMAGE_OUTLINE,
-			ICON_MDI_VIEW_SPLIT_VERTICAL,
-			ICON_MDI_VIEW_AGENDA_OUTLINE,
-			ICON_MDI_ARROW_COLLAPSE_VERTICAL,
-			ICON_MDI_ARROW_EXPAND_VERTICAL,
-			ICON_MDI_PALETTE_OUTLINE,
-			ICON_MDI_FILE_EDIT_OUTLINE,
-			ICON_MDI_TAB_PLUS,
-			ICON_MDI_ARROW_UP,
-			ICON_MDI_ARROW_DOWN,
-			ICON_MDI_CIRCLE_MEDIUM,
-			ICON_MDI_ARCHIVE_ARROW_DOWN_OUTLINE,
-			ICON_MDI_ALERT,
-			ICON_MDI_ARROW_LEFT,
-			ICON_MDI_CHECK_ALL,
-			ICON_MDI_CLOSE_CIRCLE,
-			ICON_MDI_CODE_BRACES,
-			ICON_MDI_DELETE_SWEEP_OUTLINE,
-			ICON_MDI_EYE_OFF,
-			ICON_MDI_FILE_OUTLINE,
-			ICON_MDI_FORMAT_LIST_BULLETED,
-			ICON_MDI_INFORMATION_OUTLINE,
-			ICON_MDI_KEYBOARD_OUTLINE,
-			ICON_MDI_MICROSOFT_VISUAL_STUDIO,
-			ICON_MDI_PENCIL_OUTLINE,
-			ICON_MDI_PROGRESS_CLOCK,
-			ICON_MDI_RADIOBOX_MARKED,
-			ICON_MDI_RESTORE,
-			ICON_MDI_SERVER_OUTLINE,
-			ICON_MDI_SHIELD_ALERT_OUTLINE,
-			ICON_MDI_SHIELD_CHECK_OUTLINE,
-			ICON_MDI_SOURCE_PULL,
-			ICON_MDI_TEXT_BOX_OUTLINE,
-			ICON_MDI_TUNE_VARIANT,
-			ICON_MDI_WRAP,
-			ICON_MDI_ALPHA_H_BOX_OUTLINE,
-			ICON_MDI_LANGUAGE_MARKDOWN_OUTLINE,
-			ICON_MDI_POWERSHELL,
-			ICON_MDI_FILE_IMAGE_OUTLINE,
-			ICON_MDI_FOLDER_OUTLINE,
-			ICON_MDI_FOLDER_OPEN_OUTLINE,
-			ICON_MDI_FILE_PLUS_OUTLINE,
-			ICON_MDI_FOLDER_PLUS_OUTLINE,
-			ICON_MDI_FUNCTION,
+			ICON_LC_FILE,
+			ICON_LC_FOLDER,
+			ICON_LC_FOLDER_OPEN,
+			ICON_LC_FILE_CODE,
+			ICON_LC_HASH,
+			ICON_LC_FILE_JSON,
+			ICON_LC_FILE_TEXT,
+			ICON_LC_APP_WINDOW,
+			ICON_LC_REFRESH_CW,
+			ICON_LC_SEARCH,
+			ICON_LC_MINUS,
+			ICON_LC_SQUARE,
+			ICON_LC_COPY,
+			ICON_LC_X,
+			ICON_LC_CHEVRON_UP,
+			ICON_LC_CHEVRON_DOWN,
+			ICON_LC_CHEVRON_RIGHT,
+			ICON_LC_CASE_SENSITIVE,
+			ICON_LC_WHOLE_WORD,
+			ICON_LC_PLUS,
+			ICON_LC_UNDO_2,
+			ICON_LC_TRASH_2,
+			ICON_LC_CHECK,
+			ICON_LC_FOLDER_TREE,
+			ICON_LC_FILE_DIFF,
+			ICON_LC_GIT_BRANCH,
+			ICON_LC_MESSAGE_SQUARE_TEXT,
+			ICON_LC_SQUARE_TERMINAL,
+			ICON_LC_CIRCLE_ALERT,
+			ICON_LC_LINK,
+			ICON_LC_TEXT_SEARCH,
+			ICON_LC_SETTINGS,
+			ICON_LC_BOT,
+			ICON_LC_PENCIL,
+			ICON_LC_GLOBE,
+			ICON_LC_HAMMER,
+			ICON_LC_BELL,
+			ICON_LC_HOURGLASS,
+			ICON_LC_CIRCLE_STOP,
+			ICON_LC_WRENCH,
+			ICON_LC_CIRCLE_HELP,
+			ICON_LC_REFRESH_CCW,
+			ICON_LC_USER,
+			ICON_LC_PUZZLE,
+			ICON_LC_NETWORK,
+			ICON_LC_BRAIN,
+			ICON_LC_ARROW_RIGHT,
+			ICON_LC_IMAGE,
+			ICON_LC_COLUMNS_2,
+			ICON_LC_ROWS_2,
+			ICON_LC_CHEVRONS_DOWN_UP,
+			ICON_LC_CHEVRONS_UP_DOWN,
+			ICON_LC_PALETTE,
+			ICON_LC_FILE_PEN,
+			ICON_LC_SQUARE_PLUS,
+			ICON_LC_ARROW_UP,
+			ICON_LC_ARROW_DOWN,
+			ICON_LC_DOT,
+			ICON_LC_ARCHIVE,
+			ICON_LC_TRIANGLE_ALERT,
+			ICON_LC_ARROW_LEFT,
+			ICON_LC_CHECK_CHECK,
+			ICON_LC_CIRCLE_X,
+			ICON_LC_BRACES,
+			ICON_LC_LIST_X,
+			ICON_LC_EYE_OFF,
+			ICON_LC_LIST,
+			ICON_LC_INFO,
+			ICON_LC_KEYBOARD,
+			ICON_LC_CLOCK,
+			ICON_LC_CIRCLE_DOT,
+			ICON_LC_ROTATE_CCW,
+			ICON_LC_SERVER,
+			ICON_LC_SHIELD_ALERT,
+			ICON_LC_SHIELD_CHECK,
+			ICON_LC_GIT_PULL_REQUEST,
+			ICON_LC_SCROLL_TEXT,
+			ICON_LC_SLIDERS_HORIZONTAL,
+			ICON_LC_WRAP_TEXT,
+			ICON_LC_FILE_CODE_2,
+			ICON_LC_TERMINAL,
+			ICON_LC_FILE_IMAGE,
+			ICON_LC_FILE_PLUS,
+			ICON_LC_FOLDER_PLUS,
+			ICON_LC_SQUARE_FUNCTION,
 		};
 
 		constexpr std::size_t kUsedIconCount = sizeof(kUsedIcons) / sizeof(kUsedIcons[0]);
@@ -143,6 +135,25 @@ namespace Core {
 			}
 
 			return ranges;
+		}
+
+		constexpr std::size_t kSpanTerminatorEntryCount = 1;
+
+		using IconSpan = std::array<ImWchar, kEntriesPerRange + kSpanTerminatorEntryCount>;
+
+		IconSpan BuildUsedIconSpan()
+		{
+			ImWchar lowest = DecodeIcon(kUsedIcons[0]);
+			ImWchar highest = lowest;
+
+			for (const char* icon : kUsedIcons)
+			{
+				const ImWchar codepoint = DecodeIcon(icon);
+				lowest = std::min(lowest, codepoint);
+				highest = std::max(highest, codepoint);
+			}
+
+			return {lowest, highest, 0};
 		}
 
 		bool IsCppSourceExtension(const std::string& dottedExtension)
@@ -174,47 +185,47 @@ namespace Core {
 
 		if (dottedExtension == ".vcxproj")
 		{
-			return ICON_MDI_LANGUAGE_CPP;
+			return ICON_LC_FILE_CODE;
 		}
 		if (dottedExtension == ".csproj")
 		{
-			return ICON_MDI_LANGUAGE_CSHARP;
+			return ICON_LC_HASH;
 		}
 
 		if (dottedExtension == ".c")
 		{
-			return ICON_MDI_LANGUAGE_C;
+			return ICON_LC_FILE_CODE;
 		}
 		if (IsCppSourceExtension(dottedExtension))
 		{
-			return ICON_MDI_LANGUAGE_CPP;
+			return ICON_LC_FILE_CODE;
 		}
 		if (IsCppHeaderExtension(dottedExtension))
 		{
-			return ICON_MDI_ALPHA_H_BOX_OUTLINE;
+			return ICON_LC_FILE_CODE_2;
 		}
 		if (dottedExtension == ".cs")
 		{
-			return ICON_MDI_LANGUAGE_CSHARP;
+			return ICON_LC_HASH;
 		}
 		if (dottedExtension == ".lua")
 		{
-			return ICON_MDI_LANGUAGE_LUA;
+			return ICON_LC_FILE_CODE;
 		}
 		if (dottedExtension == ".json")
 		{
-			return ICON_MDI_CODE_JSON;
+			return ICON_LC_FILE_JSON;
 		}
 		if (dottedExtension == ".md")
 		{
-			return ICON_MDI_LANGUAGE_MARKDOWN;
+			return ICON_LC_FILE_TEXT;
 		}
 		if (dottedExtension == ".py")
 		{
-			return ICON_MDI_LANGUAGE_PYTHON;
+			return ICON_LC_FILE_CODE;
 		}
 
-		return ICON_MDI_FILE;
+		return ICON_LC_FILE;
 	}
 
 	// WARNING: ImGui keeps the pointer for the atlas's lifetime, so the ranges live in static storage.
@@ -223,5 +234,17 @@ namespace Core {
 		static const GlyphRanges ranges = BuildGlyphRanges();
 
 		return ranges.data();
+	}
+
+	const ImWchar* UsedIconSpan()
+	{
+		static const IconSpan span = BuildUsedIconSpan();
+
+		return span.data();
+	}
+
+	std::span<const char* const> UsedIcons()
+	{
+		return kUsedIcons;
 	}
 }

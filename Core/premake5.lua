@@ -45,7 +45,7 @@ project "Core"
         "%{IncludeDir.ImPlot}",
         "%{IncludeDir.ImSpinner}",
         "%{IncludeDir.json}",
-        "%{IncludeDir.MdiIcons}",
+        "%{IncludeDir.Icons}",
         "%{IncludeDir.spdlog}"
     }
     externalwarnings "Off"

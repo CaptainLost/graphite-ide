@@ -22,7 +22,7 @@
 #include "Core/ImGui/EmptyState.h"
 #include "Core/Platform/Process.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -81,7 +81,7 @@ namespace Graphite {
 
 	SessionsPanel::SessionsPanel(const Workspace& workspace, const ClaudeSettings& settings,
 								 SessionWindows& windows, LaunchClaude launch)
-		: Core::Panel("sessions", "Claude Sessions", "ai", ICON_MDI_ROBOT_OUTLINE, StartsAs::Hidden),
+		: Core::Panel("sessions", "Claude Sessions", "ai", ICON_LC_BOT, StartsAs::Hidden),
 		  m_Workspace(workspace), m_Settings(settings), m_Windows(windows), m_Launch(std::move(launch))
 	{
 	}
@@ -416,7 +416,7 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		if (ImGui::Button(ICON_MDI_PLUS "  New Claude session"))
+		if (ImGui::Button(ICON_LC_PLUS "  New Claude session"))
 		{
 			StartNewSession();
 		}

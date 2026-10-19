@@ -5,7 +5,7 @@
 
 #include "Core/ImGui/Toggle.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -15,7 +15,7 @@ namespace Graphite {
 
 	const char* FindInFilesPage::GetIcon() const
 	{
-		return ICON_MDI_TEXT_SEARCH;
+		return ICON_LC_TEXT_SEARCH;
 	}
 
 	std::vector<SettingsCard> FindInFilesPage::Describe()

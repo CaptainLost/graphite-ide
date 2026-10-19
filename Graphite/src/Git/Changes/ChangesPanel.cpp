@@ -32,7 +32,7 @@
 #include "Core/Platform/Shell.h"
 #include "Core/Text/DocumentSet.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 #include <imgui.h>
 
 #include <algorithm>
@@ -152,7 +152,7 @@ namespace Graphite {
 							   const Core::DocumentSet& documents,
 							   DocumentWindows& documentWindows, const ActiveScheme& scheme,
 							   DiffWindows& diffWindows, Core::EventBus& events)
-		: Core::Panel("changes", "Changes", "git", ICON_MDI_FILE_DOCUMENT_EDIT_OUTLINE), m_Model(model), m_Documents(documents),
+		: Core::Panel("changes", "Changes", "git", ICON_LC_FILE_DIFF), m_Model(model), m_Documents(documents),
 		  m_DocumentWindows(documentWindows), m_Scheme(scheme), m_DiffWindows(diffWindows), m_Events(events),
 		  m_DiscardQuestion(modals, "Discard changes?"), m_StashQuestion(modals, "Stash changes")
 	{
@@ -369,7 +369,7 @@ namespace Graphite {
 
 		if (rowHovered)
 		{
-			const char* allIcon = m_Section == Section::Staged ? ICON_MDI_MINUS : ICON_MDI_PLUS;
+			const char* allIcon = m_Section == Section::Staged ? ICON_LC_MINUS : ICON_LC_PLUS;
 
 			ImGui::SetCursorScreenPos(ImVec2(ListRowEnd() - RowButtonWidth(), ListRowTextTop(rowScreenStart.y)));
 
@@ -519,11 +519,11 @@ namespace Graphite {
 
 		RenderRowContextMenu(file, letter);
 
-		const char* stageIcon = m_Section == Section::Staged ? ICON_MDI_MINUS : ICON_MDI_PLUS;
+		const char* stageIcon = m_Section == Section::Staged ? ICON_LC_MINUS : ICON_LC_PLUS;
 
 		const bool offersDiscard = m_Section == Section::Unstaged;
 
-		const char* discardIcon = file.IsUntracked ? ICON_MDI_DELETE : ICON_MDI_UNDO;
+		const char* discardIcon = file.IsUntracked ? ICON_LC_TRASH_2 : ICON_LC_UNDO_2;
 
 		const float discardWidth =
 			offersDiscard ? RowButtonWidth() + ImGui::GetStyle().ItemSpacing.x : 0.0f;
@@ -663,11 +663,11 @@ namespace Graphite {
 		const char* chevron = ChevronGlyph(expanded);
 		const char* folderIcon = FolderGlyphOf(expanded);
 
-		const char* stageIcon = m_Section == Section::Staged ? ICON_MDI_MINUS : ICON_MDI_PLUS;
+		const char* stageIcon = m_Section == Section::Staged ? ICON_LC_MINUS : ICON_LC_PLUS;
 
 		const bool offersDiscard = m_Section == Section::Unstaged;
 
-		const char* discardIcon = file.IsUntracked ? ICON_MDI_DELETE : ICON_MDI_UNDO;
+		const char* discardIcon = file.IsUntracked ? ICON_LC_TRASH_2 : ICON_LC_UNDO_2;
 
 		const float discardWidth =
 			offersDiscard ? RowButtonWidth() + ImGui::GetStyle().ItemSpacing.x : 0.0f;
@@ -934,7 +934,7 @@ namespace Graphite {
 
 		const ImVec4 accent = Core::ToImVec4(ChromePaletteFor(m_Scheme.Get()).Accent);
 
-		if (DialogLayout::FilledButton(ICON_MDI_CHECK "  Commit", accent, commitWidth, canCommit))
+		if (DialogLayout::FilledButton(ICON_LC_CHECK "  Commit", accent, commitWidth, canCommit))
 		{
 			m_Model.RequestCommit({.Message = m_Message, .Amend = m_Amend});
 		}
@@ -954,7 +954,7 @@ namespace Graphite {
 		const float framePaddingY = ImGui::GetStyle().FramePadding.y;
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(framePaddingY, framePaddingY));
 
-		const bool stashPressed = ImGui::Button(ICON_MDI_ARCHIVE_ARROW_DOWN_OUTLINE "##stash", ImVec2(stashWidth, 0.0f));
+		const bool stashPressed = ImGui::Button(ICON_LC_ARCHIVE "##stash", ImVec2(stashWidth, 0.0f));
 
 		ImGui::PopStyleVar();
 

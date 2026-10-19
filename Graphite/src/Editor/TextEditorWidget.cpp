@@ -29,8 +29,6 @@
 #include "UI/LineNumberColumn.h"
 #include "UI/TypographicMarks.h"
 
-#include <IconsMaterialDesignIcons.h>
-
 #include "Core/ImGui/UiScale.h"
 #include "Core/App/Redraw.h"
 #include "Core/Command/KeyName.h"

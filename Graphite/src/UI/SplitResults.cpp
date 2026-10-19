@@ -2,7 +2,7 @@
 
 #include "Core/ImGui/IconButton.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -20,7 +20,7 @@ namespace Graphite {
 
 		ImGui::SameLine(x);
 
-		return Core::DrawIconButton("##paneClose", ICON_MDI_CLOSE, kNotEngaged, "Close", {.Fit = fit});
+		return Core::DrawIconButton("##paneClose", ICON_LC_X, kNotEngaged, "Close", {.Fit = fit});
 	}
 
 	float PaneCloseRoom(Core::IconButtonFit fit)

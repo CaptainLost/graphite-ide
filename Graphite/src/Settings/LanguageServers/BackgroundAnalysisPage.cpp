@@ -5,7 +5,7 @@
 
 #include "Core/ImGui/Toggle.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -18,7 +18,7 @@ namespace Graphite {
 
 	const char* BackgroundAnalysisPage::GetIcon() const
 	{
-		return ICON_MDI_PROGRESS_CLOCK;
+		return ICON_LC_CLOCK;
 	}
 
 	void BackgroundAnalysisPage::OnDeactivated()

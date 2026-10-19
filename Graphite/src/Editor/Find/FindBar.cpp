@@ -10,7 +10,7 @@
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/TextBuffer.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -296,13 +296,13 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		const bool matchCaseToggled = DrawFindToggle("##findCase", ICON_MDI_FORMAT_LETTER_CASE,
+		const bool matchCaseToggled = DrawFindToggle("##findCase", ICON_LC_CASE_SENSITIVE,
 													 "Match case", item.Find.MatchCase);
 
 		ImGui::SameLine();
 
 		const bool wholeWordToggled = DrawFindToggle(
-			"##findWord", ICON_MDI_FORMAT_LETTER_MATCHES, "Whole word", item.Find.WholeWord);
+			"##findWord", ICON_LC_WHOLE_WORD, "Whole word", item.Find.WholeWord);
 
 		if (matchCaseToggled || wholeWordToggled)
 		{
@@ -312,18 +312,18 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		const bool previousClicked = Core::DrawIconButton("##findPrev", ICON_MDI_CHEVRON_UP, kNotToggled,
+		const bool previousClicked = Core::DrawIconButton("##findPrev", ICON_LC_CHEVRON_UP, kNotToggled,
 													"Previous (Shift+Enter)");
 
 		ImGui::SameLine();
 
 		const bool nextClicked =
-			Core::DrawIconButton("##findNext", ICON_MDI_CHEVRON_DOWN, kNotToggled, "Next (Enter)");
+			Core::DrawIconButton("##findNext", ICON_LC_CHEVRON_DOWN, kNotToggled, "Next (Enter)");
 
 		ImGui::SameLine();
 
 		const bool closeClicked =
-			Core::DrawIconButton("##findClose", ICON_MDI_CLOSE, kNotToggled, "Close (Escape)");
+			Core::DrawIconButton("##findClose", ICON_LC_X, kNotToggled, "Close (Escape)");
 
 		ImGui::EndChild();
 		ImGui::PopFont();

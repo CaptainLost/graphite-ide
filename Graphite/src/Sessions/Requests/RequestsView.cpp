@@ -18,7 +18,7 @@
 #include "UI/FittedText.h"
 #include "UI/Lists/ListRow.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -78,7 +78,7 @@ namespace Graphite {
 			{"Wait", RequestColumn::Wait, ImGuiTableColumnFlags_None, 0.8f, true},
 			{"Stop", RequestColumn::Stop, ImGuiTableColumnFlags_None, 1.2f, false},
 			{"Tools", RequestColumn::Tools, ImGuiTableColumnFlags_None, 2.0f, false},
-			{ICON_MDI_CACHED "##rebuilt", RequestColumn::Rebuilt, ImGuiTableColumnFlags_WidthFixed, 0.0f, false},
+			{ICON_LC_REFRESH_CCW "##rebuilt", RequestColumn::Rebuilt, ImGuiTableColumnFlags_WidthFixed, 0.0f, false},
 		};
 
 		constexpr int kColumnCount = static_cast<int>(std::size(kColumns));
@@ -483,7 +483,7 @@ namespace Graphite {
 				DrawTableCell(m_ToolLabels[position], palette.TextDisabled, alignment);
 				break;
 			case RequestColumn::Rebuilt:
-				DrawTableCell(request.CacheRebuilt ? std::string{ICON_MDI_CACHED} : std::string{}, palette.Edit,
+				DrawTableCell(request.CacheRebuilt ? std::string{ICON_LC_REFRESH_CCW} : std::string{}, palette.Edit,
 							  alignment);
 				break;
 			}
@@ -579,7 +579,7 @@ namespace Graphite {
 
 		PadListTableEnds();
 
-		const float markColumnWidth = ImGui::CalcTextSize(ICON_MDI_CACHED).x + ImGui::GetFontSize();
+		const float markColumnWidth = ImGui::CalcTextSize(ICON_LC_REFRESH_CCW).x + ImGui::GetFontSize();
 
 		for (const ColumnSpec& columnSpec : kColumns)
 		{

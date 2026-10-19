@@ -13,7 +13,7 @@
 
 #include "Workspace/Workspace.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -139,7 +139,7 @@ namespace Graphite {
 	ReferencesPanel::ReferencesPanel(Workspace& workspace, Core::DocumentSet& documents,
 									 const ActiveScheme& scheme, const EditorSettings& editor,
 									 PreviewSemantics& semantics)
-		: Core::Panel("references", "References", "navigate", ICON_MDI_LINK_VARIANT, StartsAs::Hidden),
+		: Core::Panel("references", "References", "navigate", ICON_LC_LINK, StartsAs::Hidden),
 		  m_Workspace(workspace), m_Documents(documents), m_Scheme(scheme), m_Editor(editor),
 		  m_Preview(&semantics)
 	{

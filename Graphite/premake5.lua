@@ -39,7 +39,7 @@ local function GraphiteCompileOptions()
         "%{wks.location}/Core/src",
         "%{IncludeDir.ImGui}",
         "%{IncludeDir.ImPlot}",
-        "%{IncludeDir.MdiIcons}"
+        "%{IncludeDir.Icons}"
     }
 
     externalincludedirs

@@ -8,7 +8,7 @@
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/UiScale.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 #include <imgui.h>
 
 #include <cstring>
@@ -69,16 +69,16 @@ namespace {
 	};
 
 	constexpr GlyphCase kGlyphCases[] = {
-		{FileKind::CppSource, ICON_MDI_LANGUAGE_CPP},
-		{FileKind::Header, ICON_MDI_ALPHA_H_BOX_OUTLINE},
-		{FileKind::CSharp, ICON_MDI_LANGUAGE_CSHARP},
-		{FileKind::Json, ICON_MDI_CODE_JSON},
-		{FileKind::Markdown, ICON_MDI_LANGUAGE_MARKDOWN_OUTLINE},
-		{FileKind::Lua, ICON_MDI_LANGUAGE_LUA},
-		{FileKind::Shell, ICON_MDI_POWERSHELL},
-		{FileKind::Project, ICON_MDI_MICROSOFT_VISUAL_STUDIO},
-		{FileKind::Image, ICON_MDI_FILE_IMAGE_OUTLINE},
-		{FileKind::Other, ICON_MDI_FILE_OUTLINE},
+		{FileKind::CppSource, ICON_LC_FILE_CODE},
+		{FileKind::Header, ICON_LC_FILE_CODE_2},
+		{FileKind::CSharp, ICON_LC_HASH},
+		{FileKind::Json, ICON_LC_FILE_JSON},
+		{FileKind::Markdown, ICON_LC_FILE_TEXT},
+		{FileKind::Lua, ICON_LC_FILE_CODE},
+		{FileKind::Shell, ICON_LC_TERMINAL},
+		{FileKind::Project, ICON_LC_APP_WINDOW},
+		{FileKind::Image, ICON_LC_FILE_IMAGE},
+		{FileKind::Other, ICON_LC_FILE},
 	};
 
 	struct ColourCase
@@ -170,8 +170,8 @@ TEST_CASE("Folders are drawn in outline, open and closed")
 	constexpr bool kOpen = true;
 	constexpr bool kClosed = false;
 
-	CHECK(SameGlyph(Graphite::FolderGlyphOf(kOpen), ICON_MDI_FOLDER_OPEN_OUTLINE));
-	CHECK(SameGlyph(Graphite::FolderGlyphOf(kClosed), ICON_MDI_FOLDER_OUTLINE));
+	CHECK(SameGlyph(Graphite::FolderGlyphOf(kOpen), ICON_LC_FOLDER_OPEN));
+	CHECK(SameGlyph(Graphite::FolderGlyphOf(kClosed), ICON_LC_FOLDER));
 }
 
 TEST_CASE("ColourOf returns the table's colour for each kind, dark and light")
@@ -235,15 +235,15 @@ TEST_CASE("A dimmed icon keeps its colour at half its alpha")
 	const Graphite::RowIcon normal = Graphite::FileIconOf(FileKind::Json);
 	const Graphite::RowIcon dimmed = Graphite::FileIconOf(FileKind::Json, Graphite::IconTone::Dimmed);
 
-	CHECK(SameGlyph(normal.Glyph, ICON_MDI_CODE_JSON));
+	CHECK(SameGlyph(normal.Glyph, ICON_LC_FILE_JSON));
 	CHECK(normal.Colour == Graphite::ColourOf(FileKind::Json, kDarkScheme));
-	CHECK(SameGlyph(dimmed.Glyph, ICON_MDI_CODE_JSON));
+	CHECK(SameGlyph(dimmed.Glyph, ICON_LC_FILE_JSON));
 	CHECK(dimmed.Colour == Core::WithAlphaScaled(normal.Colour, kHalf));
 
 	const Graphite::RowIcon folder = Graphite::FolderIconOf(kOpen);
 	const Graphite::RowIcon dimmedFolder = Graphite::FolderIconOf(kOpen, Graphite::IconTone::Dimmed);
 
-	CHECK(SameGlyph(folder.Glyph, ICON_MDI_FOLDER_OPEN_OUTLINE));
+	CHECK(SameGlyph(folder.Glyph, ICON_LC_FOLDER_OPEN));
 	CHECK(folder.Colour == Graphite::DimFolderColour());
 	CHECK(dimmedFolder.Colour == Core::WithAlphaScaled(folder.Colour, kHalf));
 }

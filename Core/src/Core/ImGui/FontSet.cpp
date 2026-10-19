@@ -10,6 +10,7 @@
 #include "Core/Platform/Process.h"
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <filesystem>
 #include <optional>
@@ -17,8 +18,11 @@
 namespace Core {
 
 	namespace {
-		constexpr float kIconBaselineLift = 1.5f;
 		constexpr char kAdvanceSampleCharacter = '0';
+		// WARNING: ImGui rounds a face's ascent up and its descent down to whole pixels at the size it
+		// bakes; read at 15 px, the ratio would set JetBrains Mono's icons a pixel low. At ImGui's
+		// largest size the rounding is negligible.
+		constexpr float kMetricsSampleSize = IMGUI_FONT_SIZE_MAX;
 		constexpr const char* kSymbolFontFile = "seguisym.ttf";
 
 		// WARNING: without NoLoadError a missing system font trips ImGui's IM_ASSERT_USER_ERROR before
@@ -28,26 +32,37 @@ namespace Core {
 			config.Flags |= ImFontFlags_NoLoadError;
 		}
 
-		ImFont* LoadFace(ImFontAtlas& atlas, const EmbeddedFont& font, float size)
+		ImFont* LoadFace(ImFontAtlas& atlas, const EmbeddedFont& font, float size,
+						 const ImWchar* excludedRanges = nullptr)
 		{
 			ImFontConfig config;
 			config.SizePixels = size;
+			config.GlyphExcludeRanges = excludedRanges;
 
 			return atlas.AddFontFromMemoryCompressedTTF(font.CompressedData, font.CompressedSize, size, &config);
 		}
 
-		// WARNING: must run immediately after its face is added, because ImGui's dynamic
-		// atlas merges onto whichever font was added last.
-		void MergeIconFont(ImFontAtlas& atlas, float size)
+		float DescentShareOf(ImFont& face)
+		{
+			const ImFontBaked* const baked = face.GetFontBaked(kMetricsSampleSize);
+
+			return -baked->Descent / (baked->Ascent - baked->Descent);
+		}
+
+		// WARNING: Lucide's icons stand on the baseline in a square one font size tall, so beside text
+		// they sit high by the face's descent. Lowered by it, the square spans the face's line from
+		// ascender to descender and each icon centres on the capitals.
+		void MergeIconFont(ImFontAtlas& atlas, ImFont& face, float size)
 		{
 			ImFontConfig config;
 			config.MergeMode = true;
+			config.DstFont = &face;
 			// WARNING: PixelSnapH rounds each glyph's advance to a whole pixel and visibly
 			// skews a small round icon, so the minimum advance is set instead.
 			config.GlyphMinAdvanceX = size;
-			config.GlyphOffset = ImVec2(0.0f, kIconBaselineLift);
+			config.GlyphOffset = ImVec2(0.0f, size * DescentShareOf(face));
 
-			const EmbeddedFont font = MaterialDesignIcons();
+			const EmbeddedFont font = Lucide();
 
 			atlas.AddFontFromMemoryCompressedTTF(font.CompressedData, font.CompressedSize, size, &config,
 												 UsedGlyphRanges());
@@ -96,17 +111,23 @@ namespace Core {
 	{
 		FontSet set;
 
-		set.Interface = LoadFace(atlas, InterRegular(), kInterfaceFontSize);
-		MergeIconFont(atlas, kInterfaceFontSize);
+		// WARNING: Inter has private-use glyphs of its own at most of Lucide's codepoints, and a face's
+		// own glyph wins over a merged one, so Inter gives up the span of the used icons.
+		set.Interface = LoadFace(atlas, InterRegular(), kInterfaceFontSize, UsedIconSpan());
+		MergeIconFont(atlas, *set.Interface, kInterfaceFontSize);
 		MergeSymbolFallback(atlas, kInterfaceFontSize, std::nullopt);
 
+		// WARNING: JetBrains Mono keeps its Powerline glyphs, which terminal prompts draw, over Lucide's
+		// at the same codepoints. Of the used icons only copy is among them, and the interface face
+		// draws it.
 		set.Code = LoadFace(atlas, JetBrainsMonoRegular(), kCodeFontSize);
-		MergeIconFont(atlas, kCodeFontSize);
+		MergeIconFont(atlas, *set.Code, kCodeFontSize);
 		MergeSymbolFallback(atlas, kCodeFontSize, CellAdvanceOf(*set.Code, kCodeFontSize));
 
 		// WARNING: must come after every merge onto the code face, because ImGui's dynamic atlas
-		// merges onto whichever font was added last.
-		set.Strong = LoadFace(atlas, InterSemiBold(), kInterfaceFontSize);
+		// merges the symbol fallback onto whichever font was added last.
+		set.Strong = LoadFace(atlas, InterSemiBold(), kInterfaceFontSize, UsedIconSpan());
+		MergeIconFont(atlas, *set.Strong, kInterfaceFontSize);
 
 		return set;
 	}

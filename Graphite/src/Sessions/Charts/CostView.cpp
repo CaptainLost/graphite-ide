@@ -18,7 +18,7 @@
 
 #include "Core/ImGui/EmptyState.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 #include <imgui.h>
 #include <implot.h>
 
@@ -782,7 +782,7 @@ namespace Graphite {
 				nameWidth = std::max(nameWidth, ImGui::CalcTextSize(displayNames.back().c_str()).x);
 			}
 
-			const float iconWidth = ImGui::CalcTextSize(ICON_MDI_CONSOLE).x + ImGui::GetStyle().ItemInnerSpacing.x;
+			const float iconWidth = ImGui::CalcTextSize(ICON_LC_SQUARE_TERMINAL).x + ImGui::GetStyle().ItemInnerSpacing.x;
 			const std::string widestCountText = std::format("{}000", kMultiplicationSign);
 			ImGui::TableSetupColumn("Tool", ImGuiTableColumnFlags_WidthFixed,
 									std::min(iconWidth + nameWidth, ImGui::GetFontSize() * kToolColumnMaxEms));

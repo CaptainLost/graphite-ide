@@ -13,7 +13,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/Caret.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -34,7 +34,7 @@ namespace Graphite {
 							 const ActiveScheme& scheme, const EditorSettings& editor,
 							 PreviewSemantics& semantics)
 		// WARNING: The id stays "search" while the title changes: imgui.ini keys the dock layout on it.
-		: Core::Panel("search", "Find in Files", "navigate", ICON_MDI_TEXT_SEARCH, StartsAs::Hidden), m_Service(service), m_Settings(settings),
+		: Core::Panel("search", "Find in Files", "navigate", ICON_LC_TEXT_SEARCH, StartsAs::Hidden), m_Service(service), m_Settings(settings),
 		  m_Workspace(workspace), m_Documents(documents), m_Scheme(scheme), m_Editor(editor),
 		  m_Preview(&semantics)
 	{

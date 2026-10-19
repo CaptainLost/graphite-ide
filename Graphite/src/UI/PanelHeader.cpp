@@ -8,7 +8,7 @@
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/UiScale.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -39,7 +39,7 @@ namespace Graphite {
 		constexpr bool kNotEngaged = false;
 		constexpr const char* kDropdownId = "##dropdown";
 		constexpr const char* kOptionsId = "##options";
-		constexpr const char* kChevron = ICON_MDI_CHEVRON_DOWN;
+		constexpr const char* kChevron = ICON_LC_CHEVRON_DOWN;
 
 		using ChoiceWidths = std::array<float, kPanelHeaderMostChoices>;
 

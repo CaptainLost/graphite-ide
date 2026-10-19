@@ -19,7 +19,7 @@
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/ListRow.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -274,7 +274,7 @@ namespace Graphite {
 
 	const char* KeyBindingsPage::GetIcon() const
 	{
-		return ICON_MDI_KEYBOARD_OUTLINE;
+		return ICON_LC_KEYBOARD;
 	}
 
 	std::vector<SettingsCard> KeyBindingsPage::Describe()

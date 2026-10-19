@@ -19,7 +19,7 @@
 #include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/FontSet.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <nlohmann/json.hpp>
 
@@ -495,7 +495,7 @@ namespace Graphite {
 
 				constexpr bool kNotEngaged = false;
 
-				if (Core::DrawIconButton("##openRequest", ICON_MDI_ARROW_RIGHT, kNotEngaged, "Show in the Requests tab",
+				if (Core::DrawIconButton("##openRequest", ICON_LC_ARROW_RIGHT, kNotEngaged, "Show in the Requests tab",
 										 {.Fit = Core::IconButtonFit::Line}))
 				{
 					context.OpenRequest(*requestPosition);
@@ -612,8 +612,8 @@ namespace Graphite {
 		std::string statusText;
 		if (showStatus)
 		{
-			statusText = part.Failures > 0 ? std::string{ICON_MDI_CLOSE} + " " + std::to_string(part.Failures)
-										   : std::string{ICON_MDI_CHECK};
+			statusText = part.Failures > 0 ? std::string{ICON_LC_X} + " " + std::to_string(part.Failures)
+										   : std::string{ICON_LC_CHECK};
 		}
 
 		const std::string statusSeparator = showStatus ? std::string{kMiddleDotSeparator} : std::string{};
@@ -727,7 +727,7 @@ namespace Graphite {
 		std::string statusText;
 		if (tool.HasResult)
 		{
-			statusText = tool.IsError ? ICON_MDI_CLOSE : ICON_MDI_CHECK;
+			statusText = tool.IsError ? ICON_LC_X : ICON_LC_CHECK;
 		}
 
 		const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
@@ -773,7 +773,7 @@ namespace Graphite {
 
 		if (context.OpenAgent && context.Links != nullptr && IsAgentCall(tool) && context.Links->contains(tool.Id))
 		{
-			if (ImGui::SmallButton("Open conversation " ICON_MDI_ARROW_RIGHT))
+			if (ImGui::SmallButton("Open conversation " ICON_LC_ARROW_RIGHT))
 			{
 				context.OpenAgent(tool.Id);
 			}
@@ -840,7 +840,7 @@ namespace Graphite {
 
 		ImVec2 cursor(start.x + Core::Scaled(kBarGap), start.y);
 
-		DrawPiece(cursor, colour, std::string{ICON_MDI_BELL_OUTLINE} + " ");
+		DrawPiece(cursor, colour, std::string{ICON_LC_BELL} + " ");
 
 		const float timeX = std::max(right - timeWidth, cursor.x);
 
@@ -899,7 +899,7 @@ namespace Graphite {
 
 		const std::string compactionTime = m_Clock.Format(item.At, ClockStyle::MonthDayHoursMinutes);
 		const std::string label =
-			FitToWidth(std::string{ICON_MDI_ARROW_COLLAPSE_VERTICAL} + " " + CompactionLabel(item.Compaction, compactionTime),
+			FitToWidth(std::string{ICON_LC_CHEVRONS_DOWN_UP} + " " + CompactionLabel(item.Compaction, compactionTime),
 					   width);
 		const float labelWidth = ImGui::CalcTextSize(label.c_str()).x;
 		const float itemSpacingX = ImGui::GetStyle().ItemSpacing.x;
@@ -936,7 +936,7 @@ namespace Graphite {
 	{
 		ImGui::Spacing();
 
-		const std::string text = std::string{ICON_MDI_TIMER_SAND} + " " + FormatDuration(gap);
+		const std::string text = std::string{ICON_LC_HOURGLASS} + " " + FormatDuration(gap);
 		const float width = ImGui::CalcTextSize(text.c_str()).x;
 
 		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, (ImGui::GetContentRegionAvail().x - width) * 0.5f));

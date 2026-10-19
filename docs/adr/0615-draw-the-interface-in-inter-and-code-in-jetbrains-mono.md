@@ -17,17 +17,21 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
 
 - Load three faces through `Core::LoadFontSet`, in this order:
   1. the interface face, Inter Regular at `kInterfaceFontSize` (14 px);
-  2. Material Design Icons merged onto it;
+  2. the Lucide icons merged onto it;
   3. the system symbol font (`seguisym.ttf`) merged onto it;
   4. the code face, JetBrains Mono Regular at `kCodeFontSize` (15 px);
-  5. Material Design Icons merged onto it;
+  5. the Lucide icons merged onto it;
   6. the system symbol font merged onto it;
-  7. the strong face, Inter SemiBold at 14 px, with nothing merged.
+  7. the strong face, Inter SemiBold at 14 px, with the Lucide icons merged onto
+     it.
 
   The interface face is the atlas's first font and `io.FontDefault`.
-- Both the interface and the code face carry the icons, each with a minimum
-  advance of its own size and the same baseline lift, so an icon draws in either
-  face. Both carry the system symbols.
+- All three faces carry the icons, each with a minimum advance of its own size
+  and lowered by its own descent
+  ([0625](0625-draw-the-interface-s-icons-from-lucide.md)), so an icon draws in
+  any face; the code face keeps JetBrains Mono's Powerline glyphs over the
+  icons at their codepoints. The interface and the code face carry the system
+  symbols.
 - Pin the code face's symbol advance, minimum and maximum, to the advance of its
   `'0'`. The terminal draws a run of cells with one `AddText`, so a symbol wider
   than a cell would push the rest of its row off its cells. The interface face
@@ -55,7 +59,7 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
   SemiBold. `GetMonoFont()` returns the code face and `GetInterfaceFont()` the
   interface face.
 - This amends 0590's face list: Inter Regular, Inter SemiBold and JetBrains Mono
-  Regular are embedded, with Material Design Icons. JetBrains Mono Bold no longer
+  Regular are embedded, with the Lucide icons. JetBrains Mono Bold no longer
   is; its `.ttf` stays in `vendor/fonts`, as Italic does.
 
 ## Rationale
@@ -72,11 +76,12 @@ on its own.
 
 - Labels, menus, tabs and dialogs are narrower and read as an interface.
 - Code views keep their face and their size.
-- Icons and symbols draw in the interface and the code face alike.
+- Icons draw in every face, and symbols in the interface and the code face
+  alike.
 
 ### Negative
 
-- The atlas holds Material Design Icons twice and reads `seguisym.ttf` twice,
+- The atlas holds the Lucide icons three times and reads `seguisym.ttf` twice,
   once per face, which costs memory and startup time.
 - A number drawn in the interface face changes width as its digits change.
   Anything that must line up has to push the code face.

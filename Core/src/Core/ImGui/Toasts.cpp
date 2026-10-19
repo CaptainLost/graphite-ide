@@ -14,7 +14,7 @@
 #include "Core/ImGui/ToastText.h"
 #include "Core/ImGui/UiScale.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 #include <im_anim.h>
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -298,7 +298,7 @@ namespace Core {
 
 				ImGui::SetCursorPos(ImVec2(width - paddingX - closeButtonWidth, rowY));
 
-				if (DrawIconButton("##close", ICON_MDI_CLOSE, kNotEngaged, "Close", {.Fit = IconButtonFit::Line}))
+				if (DrawIconButton("##close", ICON_LC_X, kNotEngaged, "Close", {.Fit = IconButtonFit::Line}))
 				{
 					m_Stack.Close(toast.Id, now);
 				}

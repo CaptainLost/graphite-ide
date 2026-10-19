@@ -5,9 +5,11 @@
 
 .DESCRIPTION
     Only the icons listed in kUsedIcons (Core/src/Core/ImGui/Icons.cpp) are baked into
-    the font atlas; any other ICON_MDI_ constant draws ImGui's fallback glyph instead.
-    This scans Core/src and Graphite/src for ICON_MDI_ constants and reports every one
-    missing from that list. Exits 1 on any finding.
+    the font atlas; any other ICON_LC_ constant draws ImGui's fallback glyph instead.
+    This scans Core/src and Graphite/src for ICON_LC_ constants and reports every one
+    missing from that list. It also reports every ICON_MDI_ constant, listed or not:
+    Material Design Icons are no longer loaded, so each would draw the fallback glyph.
+    Exits 1 on any finding.
 
 .EXAMPLE
     .\scripts\Test-IconsLoaded.ps1
@@ -41,7 +43,7 @@ if (-not $listMatch.Success) {
 }
 
 $loaded = @{}
-foreach ($icon in [regex]::Matches($listMatch.Groups['icons'].Value, 'ICON_MDI_[A-Z0-9_]+')) {
+foreach ($icon in [regex]::Matches($listMatch.Groups['icons'].Value, 'ICON_LC_[A-Z0-9_]+')) {
     $loaded[$icon.Value] = $true
 }
 
@@ -60,11 +62,15 @@ foreach ($directory in $SourceDirectory) {
         $lineNumber = 0
         foreach ($line in [System.IO.File]::ReadLines($file.FullName)) {
             $lineNumber++
-            foreach ($icon in [regex]::Matches($line, 'ICON_MDI_[A-Z0-9_]+')) {
+            foreach ($icon in [regex]::Matches($line, 'ICON_LC_[A-Z0-9_]+')) {
                 if (-not $loaded.ContainsKey($icon.Value)) {
                     Write-Output ('{0}({1}): {2} is not in kUsedIcons, so the atlas never loads it' -f $file.FullName, $lineNumber, $icon.Value)
                     $problems++
                 }
+            }
+            foreach ($icon in [regex]::Matches($line, 'ICON_MDI_[A-Z0-9_]+')) {
+                Write-Output ('{0}({1}): {2} is a Material Design icon, which the atlas no longer loads; draw an ICON_LC_ one' -f $file.FullName, $lineNumber, $icon.Value)
+                $problems++
             }
         }
     }

@@ -2,7 +2,7 @@
 
 #include "App/ToolStripContent.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <string>
 #include <vector>
@@ -165,5 +165,5 @@ TEST_CASE("Problems carries the error colour while there are errors, else the wa
 
 TEST_CASE("The terminals' item uses the console icon")
 {
-	CHECK(ItemOf(StandardInputs(), "terminals").Icon == ICON_MDI_CONSOLE);
+	CHECK(ItemOf(StandardInputs(), "terminals").Icon == ICON_LC_SQUARE_TERMINAL);
 }

@@ -19,7 +19,7 @@
 #include "Core/Platform/FileDialog.h"
 #include "Core/Platform/Shell.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <imgui.h>
 
@@ -120,15 +120,15 @@ namespace Graphite {
 		{
 			if (language == LanguageId::Cpp)
 			{
-				return ICON_MDI_LANGUAGE_CPP;
+				return ICON_LC_FILE_CODE;
 			}
 
 			if (language == LanguageId::CSharp)
 			{
-				return ICON_MDI_LANGUAGE_CSHARP;
+				return ICON_LC_HASH;
 			}
 
-			return ICON_MDI_CODE_BRACES;
+			return ICON_LC_BRACES;
 		}
 	}
 

@@ -25,10 +25,10 @@ It knows nothing of the diagnostics model, the language services or the scheme.
 
 - **Problems.** `StatusMessages::Problems` is an optional `ProblemCounts` of
   errors and warnings, in place of the joined string.
-  - The error glyph (`ICON_MDI_CLOSE_CIRCLE`) and the error count draw in the
-    diagnostic error colour; the warning glyph (`ICON_MDI_ALERT`) and its count
+  - The error glyph (`ICON_LC_CIRCLE_X`) and the error count draw in the
+    diagnostic error colour; the warning glyph (`ICON_LC_TRIANGLE_ALERT`) and its count
     in the diagnostic warning colour. These are the Problems panel's glyphs.
-  - A zero count is left out. With none at all, a check (`ICON_MDI_CHECK`)
+  - A zero count is left out. With none at all, a check (`ICON_LC_CHECK`)
     draws in the disabled-text colour.
   - The item's tooltip is the old wording, "2 errors, 5 warnings".
     `GraphiteLayer` builds it with `ProblemCountText` and passes it as

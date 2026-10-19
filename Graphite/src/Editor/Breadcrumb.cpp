@@ -8,7 +8,7 @@
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/ImGui/UiScale.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -28,9 +28,9 @@ namespace Graphite {
 		constexpr float kNoItemSpacing = 0.0f;
 		constexpr bool kClipWithinTheWindow = true;
 
-		constexpr const char* kChevronGlyph = ICON_MDI_CHEVRON_RIGHT;
-		constexpr const char* kFunctionGlyph = ICON_MDI_FUNCTION;
-		constexpr const char* kTypeGlyph = ICON_MDI_CODE_BRACES;
+		constexpr const char* kChevronGlyph = ICON_LC_CHEVRON_RIGHT;
+		constexpr const char* kFunctionGlyph = ICON_LC_SQUARE_FUNCTION;
+		constexpr const char* kTypeGlyph = ICON_LC_BRACES;
 		constexpr const char* kRowId = "##Breadcrumb";
 
 		struct Segment

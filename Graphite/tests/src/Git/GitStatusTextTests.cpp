@@ -2,7 +2,7 @@
 
 #include "Git/GitStatusText.h"
 
-#include <IconsMaterialDesignIcons.h>
+#include <IconsLucide.h>
 
 #include <array>
 #include <cstddef>
@@ -17,10 +17,10 @@ using Graphite::GitStatusText;
 
 namespace {
 
-	const std::string kBranch = ICON_MDI_SOURCE_BRANCH " ";
-	const std::string kUp = ICON_MDI_ARROW_UP;
-	const std::string kDown = ICON_MDI_ARROW_DOWN;
-	const std::string kChanges = ICON_MDI_CIRCLE_MEDIUM " ";
+	const std::string kBranch = ICON_LC_GIT_BRANCH " ";
+	const std::string kUp = ICON_LC_ARROW_UP;
+	const std::string kDown = ICON_LC_ARROW_DOWN;
+	const std::string kChanges = ICON_LC_DOT " ";
 
 	Core::HeadState HeadOnBranch(const std::string& name)
 	{
@@ -122,7 +122,7 @@ TEST_CASE("A tracking branch shows only the sides it differs on")
 		const std::vector<Core::Branch> branches{TrackingBranch("main", 0, 0)};
 		const std::optional<GitStatusSegment> segment = GitStatusText({.FolderOpen = true, .Head = &head, .Branches = &branches});
 		REQUIRE(segment.has_value());
-		CHECK(segment->Distance == ICON_MDI_CHECK);
+		CHECK(segment->Distance == ICON_LC_CHECK);
 		CHECK(segment->DistanceTooltip == "Up to date with origin/main");
 		CHECK(segment->BranchTooltip == "main tracks origin/main");
 	}
