@@ -28,11 +28,14 @@ Date: 2026-10-19
 
 - **The row.** Every tab with a text document gets one row above its editor
   surface: `DrawBreadcrumb(BuildBreadcrumb(...))`
-  (`Graphite/src/Editor/Breadcrumb.h`). The row is laid out at the cursor, at
-  the top of the window's content, so it stands below the tab bar by the
-  window's top padding (8 px). It is `kBreadcrumbHeight` (24 px) tall and is laid
-  out once, with no item spacing after it, so the editor surface starts at its
-  bottom edge and is shorter by exactly its height. It is drawn on every frame,
+  (`Graphite/src/Editor/Breadcrumb.h`). The row stands at the top of the
+  window's inner rectangle (`ImGuiWindow::InnerRect.Min.y`), directly under the
+  tab bar whatever height the tab bar has. It is not laid out at the cursor, so
+  the window's top padding (8 px) is not kept above it; the padding still stands
+  at the window's sides and bottom, and a tab with no row keeps all of it. It is
+  `kBreadcrumbHeight` (24 px) tall and is laid out once, with no item spacing
+  after it, so the editor surface starts at its bottom edge and runs to the
+  bottom of the window's content. It is drawn on every frame,
   whether or not the document has symbols, so the code never moves when they
   arrive. The find bar, inside the surface, opens under it.
   - A tab with no text document, whose file could not be read, has no row. Every
@@ -63,13 +66,19 @@ Date: 2026-10-19
   - The file name is in the text colour, after its kind's badge in its kind's
     colour
     ([0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md)).
-  - Pieces are separated by `ICON_LC_CHEVRON_RIGHT` in the disabled-text
-    colour, 2 px from the pieces on each side.
-  - Each symbol is its glyph in the disabled-text colour and its name in the
-    text colour. A function, method or constructor takes `ICON_LC_SQUARE_FUNCTION`; a
-    class, struct or interface takes `ICON_LC_BRACES`.
-  - A glyph is one font size wide and stands 4 px before its name. The file's
-    badge is its box wide, 16 px scaled, and stands 4 px before the file name.
+  - Pieces are separated by `ICON_LC_CHEVRON_RIGHT`, 2 px from the pieces on
+    each side, in the disabled-text colour at 0.7 alpha, so the separators read
+    quieter than the folders.
+  - Each symbol is its mark and then its name in the text colour. The mark is
+    text in the code face at `kBreadcrumbMarkFontSize` (15 px, the mockup's
+    11 px by JetBrains Mono's factor), centred in the row: `ƒ` (U+0192, which
+    JetBrains Mono carries) for a function, method or constructor, and `{}` for
+    a class, struct or interface. Both are purple: dark `#B392E8`, the
+    mockup's, and light `#7A4FC4`, deeper for a light background, which the
+    mockup does not draw.
+  - A chevron is one font size wide. A mark is as wide as its text in the code
+    face and stands 4 px before its name. The file's badge is its box wide,
+    16 px scaled, and stands 4 px before the file name.
   - The row draws no background and no border. It sits on the document window's
     content colour, so it reads as part of the document.
 - **Narrow rows.** The pieces fit in the window's inner width less 12 px on each
@@ -97,6 +106,9 @@ server per caret move, since the declarations are already held. A row that is
 always there, and always the same height, keeps the code from jumping when a
 document's symbols arrive or when the find bar opens. Dropping folders before
 the file and the symbols keeps the part that changes with the caret on screen.
+Seated at the top of the window's inner rectangle rather than at an offset of
+its own, the row stays against the tab bar whatever height the tab bar is given,
+and reads as the tab's second line rather than as a bar of its own.
 
 ## Consequences
 
@@ -110,7 +122,8 @@ the file and the symbols keeps the part that changes with the caret on screen.
 
 ### Negative
 
-- Every document gives up 24 px of code.
+- Every document gives up 16 px of code: the row's 24 px less the 8 px of top
+  padding it stands in.
 - On a narrow pane a deep path shows only its last folders, where the status bar
   had the whole window's width for it.
 - The row reads the caret at the start of the frame, before the editor handles
@@ -143,6 +156,13 @@ it or need its own layer, and the find bar already overlays the surface's top.
 
 The smallest change. Rejected: a press on a window's empty space focuses that
 window, so a click on the row took the keyboard from the editor below it.
+
+### Give document windows no top padding
+
+The row would start at the cursor as before. Rejected: ImGui's window padding is
+one figure for the top and the bottom, so the editor surface would lose its
+bottom padding too, and a tab with no row would set its message against the tab
+bar.
 
 ### Keep the path in the status bar as well
 

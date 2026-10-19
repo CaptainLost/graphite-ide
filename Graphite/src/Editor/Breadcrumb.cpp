@@ -5,6 +5,7 @@
 
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/ImGui/UiScale.h"
 
@@ -24,20 +25,24 @@ namespace Graphite {
 		constexpr float kChevronSideGap = 2.0f;
 		constexpr float kGlyphToNameGap = 4.0f;
 		constexpr float kChevronSides = 2.0f;
+		constexpr float kChevronAlpha = 0.7f;
 		constexpr float kHalf = 0.5f;
 		constexpr float kNoItemSpacing = 0.0f;
 		constexpr bool kClipWithinTheWindow = true;
 
 		constexpr const char* kChevronGlyph = ICON_LC_CHEVRON_RIGHT;
-		constexpr const char* kFunctionGlyph = ICON_LC_SQUARE_FUNCTION;
-		constexpr const char* kTypeGlyph = ICON_LC_BRACES;
+		// U+0192, LATIN SMALL LETTER F WITH HOOK, which JetBrains Mono carries.
+		constexpr std::string_view kFunctionMark = "\xC6\x92";
+		constexpr std::string_view kTypeMark = "{}";
+		constexpr ImU32 kDarkMarkColour = IM_COL32(0xB3, 0x92, 0xE8, 0xFF);
+		constexpr ImU32 kLightMarkColour = IM_COL32(0x7A, 0x4F, 0xC4, 0xFF);
 		constexpr const char* kRowId = "##Breadcrumb";
 
 		struct Segment
 		{
 			std::optional<FileKind> Badge;
-			const char* Glyph = nullptr;
-			ImU32 GlyphColour = 0;
+			std::string_view Mark;
+			ImU32 MarkColour = 0;
 			std::string_view Text;
 			ImU32 TextColour = 0;
 		};
@@ -72,14 +77,24 @@ namespace Graphite {
 			return Core::NormalizePath(path).parent_path();
 		}
 
-		const char* SymbolGlyphOf(DeclarationKind kind)
+		std::string_view SymbolMarkOf(DeclarationKind kind)
 		{
-			return kind == DeclarationKind::Function ? kFunctionGlyph : kTypeGlyph;
+			return kind == DeclarationKind::Function ? kFunctionMark : kTypeMark;
+		}
+
+		ImU32 MarkColour()
+		{
+			return IsLightScheme() ? kLightMarkColour : kDarkMarkColour;
 		}
 
 		ImU32 DimColour()
 		{
 			return ImGui::GetColorU32(ImGuiCol_TextDisabled);
+		}
+
+		ImU32 ChevronColour()
+		{
+			return Core::WithAlphaScaled(DimColour(), kChevronAlpha);
 		}
 
 		ImU32 TextColour()
@@ -105,8 +120,8 @@ namespace Graphite {
 
 			for (const BreadcrumbSymbol& symbol : model.Symbols)
 			{
-				segments.push_back(Segment{.Glyph = SymbolGlyphOf(symbol.Kind),
-										   .GlyphColour = DimColour(),
+				segments.push_back(Segment{.Mark = SymbolMarkOf(symbol.Kind),
+										   .MarkColour = MarkColour(),
 										   .Text = symbol.Name,
 										   .TextColour = TextColour()});
 			}
@@ -114,9 +129,18 @@ namespace Graphite {
 			return segments;
 		}
 
-		float GlyphWidth()
+		float ChevronWidth()
 		{
 			return ImGui::GetFontSize();
+		}
+
+		float MarkWidth(std::string_view mark)
+		{
+			Core::PushCodeFont(kBreadcrumbMarkFontSize);
+			const float width = Core::TextWidth(mark);
+			ImGui::PopFont();
+
+			return width;
 		}
 
 		std::optional<float> IconWidthOf(const Segment& segment)
@@ -126,9 +150,9 @@ namespace Graphite {
 				return FileIconWidth();
 			}
 
-			if (segment.Glyph != nullptr)
+			if (!segment.Mark.empty())
 			{
-				return GlyphWidth();
+				return MarkWidth(segment.Mark);
 			}
 
 			return std::nullopt;
@@ -136,7 +160,7 @@ namespace Graphite {
 
 		float SeparatorWidth()
 		{
-			return GlyphWidth() + Core::Scaled(kChevronSideGap) * kChevronSides;
+			return ChevronWidth() + Core::Scaled(kChevronSideGap) * kChevronSides;
 		}
 
 		float SegmentWidth(const Segment& segment)
@@ -172,10 +196,26 @@ namespace Graphite {
 			return model.Folders.size();
 		}
 
-		void DrawSegments(const std::vector<Segment>& segments, ImVec2 lineStart)
+		// The top of a line of the current face centred in the row.
+		float LineTopIn(const ImRect& row)
+		{
+			return row.Min.y + std::floor((row.GetHeight() - ImGui::GetTextLineHeight()) * kHalf);
+		}
+
+		// WARNING: A mark is text in the code face, which has its own line, so it is centred in the row at its own
+		// size rather than set on the interface face's line.
+		void DrawMark(std::string_view mark, ImU32 colour, float x, const ImRect& row)
+		{
+			Core::PushCodeFont(kBreadcrumbMarkFontSize);
+			ImGui::GetWindowDrawList()->AddText(ImVec2(x, LineTopIn(row)), colour, mark.data(), mark.data() + mark.size());
+			ImGui::PopFont();
+		}
+
+		void DrawSegments(const std::vector<Segment>& segments, float left, const ImRect& row)
 		{
 			ImDrawList* const drawList = ImGui::GetWindowDrawList();
-			float x = lineStart.x;
+			const float lineTop = LineTopIn(row);
+			float x = left;
 
 			for (std::size_t index = 0; index < segments.size(); ++index)
 			{
@@ -184,17 +224,17 @@ namespace Graphite {
 				if (index > 0)
 				{
 					x += Core::Scaled(kChevronSideGap);
-					drawList->AddText(ImVec2(x, lineStart.y), DimColour(), kChevronGlyph);
-					x += GlyphWidth() + Core::Scaled(kChevronSideGap);
+					drawList->AddText(ImVec2(x, lineTop), ChevronColour(), kChevronGlyph);
+					x += ChevronWidth() + Core::Scaled(kChevronSideGap);
 				}
 
 				if (segment.Badge.has_value())
 				{
-					DrawFileIcon(*segment.Badge, ImVec2(x, lineStart.y));
+					DrawFileIcon(*segment.Badge, ImVec2(x, lineTop));
 				}
-				else if (segment.Glyph != nullptr)
+				else if (!segment.Mark.empty())
 				{
-					drawList->AddText(ImVec2(x, lineStart.y), segment.GlyphColour, segment.Glyph);
+					DrawMark(segment.Mark, segment.MarkColour, x, row);
 				}
 
 				if (const std::optional<float> icon = IconWidthOf(segment))
@@ -202,7 +242,7 @@ namespace Graphite {
 					x += *icon + Core::Scaled(kGlyphToNameGap);
 				}
 
-				drawList->AddText(ImVec2(x, lineStart.y), segment.TextColour, segment.Text.data(),
+				drawList->AddText(ImVec2(x, lineTop), segment.TextColour, segment.Text.data(),
 								  segment.Text.data() + segment.Text.size());
 				x += Core::TextWidth(segment.Text);
 			}
@@ -276,8 +316,10 @@ namespace Graphite {
 
 	// WARNING: Every piece is drawn by position and the row is then laid out once, by the button at its start, with no
 	// item spacing after it, so the editor surface below starts at the row's bottom edge and is shorter by its height.
-	// The pieces span the window's inner rectangle rather than its content region, so the padding is measured from the
-	// window's edge and not from inside the window padding.
+	// The row spans the window's inner rectangle rather than its content region, on both axes. Across, the padding is
+	// measured from the window's edge and not from inside the window padding. Down, the row stands at the inner
+	// rectangle's top, directly under the tab bar whatever its height, so the window's top padding is not kept above
+	// it while its side and bottom padding stay.
 	void DrawBreadcrumb(const BreadcrumbModel& model)
 	{
 		const ImGuiWindow* window = ImGui::GetCurrentWindow();
@@ -287,17 +329,16 @@ namespace Graphite {
 			return;
 		}
 
-		const ImVec2 rowStart = ImGui::GetCursorScreenPos();
+		const ImVec2 rowStart(ImGui::GetCursorScreenPos().x, window->InnerRect.Min.y);
 		const float rowHeight = BreadcrumbHeight();
 		const ImRect row(ImVec2(window->InnerRect.Min.x, rowStart.y), ImVec2(window->InnerRect.Max.x, rowStart.y + rowHeight));
 
 		Core::PushInterfaceFont(kBreadcrumbFontSize);
 
 		const std::vector<Segment> segments = SegmentsOf(model, FirstFolderFitting(model, RoomIn(row.GetWidth())));
-		const float lineTop = rowStart.y + std::floor((rowHeight - ImGui::GetTextLineHeight()) * kHalf);
 
 		ImGui::PushClipRect(row.Min, row.Max, kClipWithinTheWindow);
-		DrawSegments(segments, ImVec2(row.Min.x + Core::Scaled(kBreadcrumbLeftPadding), lineTop));
+		DrawSegments(segments, row.Min.x + Core::Scaled(kBreadcrumbLeftPadding), row);
 		ImGui::PopClipRect();
 
 		ImGui::PopFont();

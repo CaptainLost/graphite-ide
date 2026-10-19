@@ -63,10 +63,16 @@ the marks around the code are dimmed to keep the code in front.
 - **Line numbers:** dark `#4D525B`, light `#B4B4B4`. The caret's line number
   stays in the text colour.
 - **Current line:** dark white and light black, both at alpha 10 of 255 (0.04).
-  The fill spans the gutter as well: it starts at the gutter's left edge and
-  covers the full row. The gutter fill is drawn after the row's text and is
-  opaque, so the highlight is drawn again over it, before the breakpoint,
-  change, number and fold columns, which stay on top.
+  The fill spans the gutter as well, and the padding of the window that holds
+  the editor surface: it starts at that window's left edge
+  (`ImGuiWindow::Pos.x`), the editor's edge, not at the surface's, and covers
+  the full row. The surface clips its drawing at its own left edge, so the fill
+  is drawn under the surface's clip rectangle widened to the window's edge; the
+  clip keeps the surface's top and bottom, so the fill never reaches over the
+  breadcrumb or the horizontal scrollbar. The gutter fill is drawn after the
+  row's text and is opaque, so the highlight is drawn again over the gutter
+  alone, before the breakpoint, change, number and fold columns, which stay on
+  top.
 - **Indent guides:** half the alpha they had. Dark goes from 89 to 45, light from
   40 to 20.
 - **Lens labels:** the interface face at 0.78 times the editor's font size, in

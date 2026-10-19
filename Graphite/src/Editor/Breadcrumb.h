@@ -13,6 +13,7 @@ namespace Graphite {
 
 	inline constexpr float kBreadcrumbHeight = 24.0f;
 	inline constexpr float kBreadcrumbFontSize = 15.0f;
+	inline constexpr float kBreadcrumbMarkFontSize = 15.0f;
 	inline constexpr float kBreadcrumbLeftPadding = 12.0f;
 
 	struct BreadcrumbSymbol

@@ -10,11 +10,13 @@
 #include "UI/TypographicMarks.h"
 
 #include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/TextDocument.h"
 
+#include <IconsLucide.h>
 #include <imgui.h>
 #include <imgui_internal.h>
 
@@ -38,7 +40,16 @@ namespace {
 
 	constexpr float kRowHeight = 24.0f;
 	constexpr float kRowFontSize = 15.0f;
+	constexpr float kMarkFontSize = 15.0f;
 	constexpr float kRowLeftPadding = 12.0f;
+	constexpr float kChevronAlpha = 0.7f;
+	constexpr float kTallTabBarPadding = 10.0f;
+	constexpr int kSettleFrames = 3;
+	constexpr ImWchar kFunctionMarkCodepoint = 0x0192;
+	constexpr std::string_view kFunctionMark = "\xC6\x92";
+	constexpr std::string_view kTypeMark = "{}";
+	constexpr ImU32 kDarkMarkPurple = IM_COL32(0xB3, 0x92, 0xE8, 0xFF);
+	constexpr ImU32 kLightMarkPurple = IM_COL32(0x7A, 0x4F, 0xC4, 0xFF);
 	constexpr float kDocumentWidth = 800.0f;
 	constexpr float kDocumentHeight = 400.0f;
 	constexpr float kNarrowDocumentWidth = 60.0f;
@@ -51,8 +62,11 @@ namespace {
 	constexpr float kIntoTheRow = 40.0f;
 	constexpr std::size_t kNoCaretMove = 0;
 	constexpr const char* kDocumentWindow = "Document";
+	constexpr const char* kDockHostWindow = "##DockHost";
+	constexpr const char* kDockSpace = "##DockSpace";
 	constexpr const char* kReferenceWindow = "##BreadcrumbReference";
 	constexpr std::string_view kEditorSurface = "##EditorSurface";
+	constexpr std::string_view kFindBar = "##FindBar";
 
 	constexpr std::size_t kNoSymbolLine = 0;
 	constexpr std::size_t kLineInsideTheClass = 3;
@@ -134,22 +148,29 @@ namespace {
 		bool WithEditor = true;
 		ImVec2 RowStart;
 		float WindowLeft = 0.0f;
-		float ContentHeight = 0.0f;
+		float ContentBottom = 0.0f;
 
 		explicit DocumentFrames(BreadcrumbModel model) : Item(ItemWith("first line\nsecond line\nthird line\n")), Model(std::move(model))
 		{
 			View.FontSize = kEditorFontSize;
 		}
 
+		// The row starts inside the window's side padding but at the top of its inner rectangle, with no top padding
+		// above it. The window draws no border of its own, as a docked document window does not, so any border drawn
+		// in the row is the row's.
 		void Draw()
 		{
+			constexpr float kNoBorder = 0.0f;
+
 			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 			ImGui::SetNextWindowSize(ImVec2(Width, kDocumentHeight));
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, kNoBorder);
 			ImGui::Begin(kDocumentWindow, nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+			ImGui::PopStyleVar();
 
-			RowStart = ImGui::GetCursorScreenPos();
+			RowStart = ImVec2(ImGui::GetCursorScreenPos().x, ImGui::GetCurrentWindow()->InnerRect.Min.y);
 			WindowLeft = ImGui::GetWindowPos().x;
-			ContentHeight = ImGui::GetContentRegionAvail().y;
+			ContentBottom = ImGui::GetCursorScreenPos().y + ImGui::GetContentRegionAvail().y;
 
 			Graphite::DrawBreadcrumb(Model);
 
@@ -172,6 +193,85 @@ namespace {
 		}
 
 		ImVec2 RowMiddle() const { return ImVec2(RowStart.x + kIntoTheRow, RowStart.y + Core::Scaled(kRowHeight) * kHalf); }
+	};
+
+	// A document window docked alone into a dock space, as a document tab is, so it has a tab bar above its content.
+	struct DockedDocumentFrames
+	{
+		ImGuiFrames Frames;
+		Core::OpenItem Item;
+		Graphite::EditorView View;
+		Graphite::CommandContext Context;
+		Graphite::FindBar Bar;
+		BreadcrumbModel Model;
+
+		explicit DockedDocumentFrames(BreadcrumbModel model) : Item(ItemWith("first line\nsecond line\n")), Model(std::move(model))
+		{
+			ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+			View.FontSize = kEditorFontSize;
+		}
+
+		void Draw()
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(ImVec2(kDocumentWidth, kDocumentHeight));
+			ImGui::Begin(kDockHostWindow, nullptr,
+						 ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking);
+
+			const ImGuiID dockSpace = ImGui::GetID(kDockSpace);
+
+			if (ImGui::DockBuilderGetNode(dockSpace) == nullptr)
+			{
+				ImGui::DockBuilderAddNode(dockSpace, ImGuiDockNodeFlags_DockSpace);
+				ImGui::DockBuilderSetNodeSize(dockSpace, ImGui::GetContentRegionAvail());
+				ImGui::DockBuilderDockWindow(kDocumentWindow, dockSpace);
+				ImGui::DockBuilderFinish(dockSpace);
+			}
+
+			ImGui::DockSpace(dockSpace);
+			ImGui::End();
+
+			ImGui::Begin(kDocumentWindow);
+			Graphite::DrawBreadcrumb(Model);
+			Graphite::DrawEditor(Context, Item, View, Bar);
+			ImGui::End();
+		}
+
+		void Settle()
+		{
+			for (int frame = 0; frame < kSettleFrames; ++frame)
+			{
+				Frames.Next([this] { Draw(); });
+			}
+		}
+
+		static float TabBarBottom()
+		{
+			const ImGuiWindow* document = ImGui::FindWindowByName(kDocumentWindow);
+			REQUIRE(document != nullptr);
+			REQUIRE(document->DockIsActive);
+			REQUIRE(document->DockNode != nullptr);
+			REQUIRE(document->DockNode->TabBar != nullptr);
+
+			return document->DockNode->TabBar->BarRect.Max.y;
+		}
+	};
+
+	// An ImGui context with no frame, for reading the faces the application loads.
+	struct FontContext
+	{
+		FontContext() { ImGui::SetCurrentContext(Context); }
+		~FontContext()
+		{
+			ImGui::DestroyContext(Context);
+			ImGui::SetCurrentContext(Previous);
+		}
+
+		FontContext(const FontContext&) = delete;
+		FontContext& operator=(const FontContext&) = delete;
+
+		ImGuiContext* Previous = ImGui::GetCurrentContext();
+		ImGuiContext* Context = ImGui::CreateContext();
 	};
 
 	std::optional<HorizontalExtent> ReferenceTextExtent(const char* window, const char* text, float size)
@@ -294,13 +394,27 @@ namespace {
 		return true;
 	}
 
-	std::vector<GlyphQuad> ReferenceGlyphs(const char* window, std::string_view text)
+	enum class Face
+	{
+		Interface,
+		Code
+	};
+
+	std::vector<GlyphQuad> ReferenceGlyphs(const char* window, std::string_view text, Face face = Face::Interface)
 	{
 		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 		ImGui::SetNextWindowSize(ImVec2(kDocumentWidth, kDocumentHeight));
 		ImGui::Begin(window, nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 
-		Core::PushInterfaceFont(kRowFontSize);
+		if (face == Face::Code)
+		{
+			Core::PushCodeFont(kMarkFontSize);
+		}
+		else
+		{
+			Core::PushInterfaceFont(kRowFontSize);
+		}
+
 		ImGui::TextUnformatted(text.data(), text.data() + text.size());
 		ImGui::PopFont();
 
@@ -399,7 +513,7 @@ TEST_CASE("The caret inside a method shows its class and then the method, each w
 		  std::vector<BreadcrumbSymbol>{{.Name = "Renderer", .Kind = DeclarationKind::Type}});
 }
 
-TEST_CASE("The breadcrumb is one row of 24 px above the code")
+TEST_CASE("The breadcrumb is one row of 24 px above the code, at the top of the window's content")
 {
 	DocumentFrames document(FileOnly("CommandLine.cpp", FileKind::CppSource));
 
@@ -418,7 +532,7 @@ TEST_CASE("The breadcrumb is one row of 24 px above the code")
 	const ImGuiWindow* surface = EditorSurface();
 	REQUIRE(surface != nullptr);
 	CHECK(surface->Pos.y == doctest::Approx(document.RowStart.y + rowHeight));
-	CHECK(surface->Size.y == doctest::Approx(document.ContentHeight - rowHeight));
+	CHECK(surface->Pos.y + surface->Size.y == doctest::Approx(document.ContentBottom));
 
 	const std::optional<VerticalExtent> name =
 		VerticalExtentInColour(DocumentDrawing(), ImGui::GetColorU32(ImGuiCol_Text));
@@ -438,6 +552,64 @@ TEST_CASE("The breadcrumb is one row of 24 px above the code")
 	const float firstPieceLeft = document.WindowLeft + Core::Scaled(kRowLeftPadding);
 	CHECK(icon->Left >= firstPieceLeft - kOnePixel);
 	CHECK(icon->Left <= firstPieceLeft + kGlyphBearing);
+}
+
+TEST_CASE("The breadcrumb's top is the tab bar's bottom")
+{
+	DockedDocumentFrames document(FileOnly("CommandLine.cpp", FileKind::CppSource));
+
+	SUBCASE("under the tab bar the style gives")
+	{
+	}
+
+	SUBCASE("under a taller tab bar")
+	{
+		ImGui::GetStyle().FramePadding.y = kTallTabBarPadding;
+	}
+
+	document.Settle();
+
+	ReferenceInk reference;
+	document.Frames.Next([&] {
+		document.Draw();
+		reference = ReferenceInkOf("CommandLine.cpp");
+	});
+
+	const float tabBarBottom = DockedDocumentFrames::TabBarBottom();
+	const float rowHeight = Core::Scaled(kRowHeight);
+
+	const ImGuiWindow* surface = EditorSurface();
+	REQUIRE(surface != nullptr);
+	CHECK(surface->Pos.y == doctest::Approx(tabBarBottom + rowHeight));
+
+	const std::optional<VerticalExtent> name =
+		VerticalExtentInColour(DocumentDrawing(), ImGui::GetColorU32(ImGuiCol_Text));
+	REQUIRE(name.has_value());
+
+	const float lineTop = name->Top - reference.InkTopBelowLineTop;
+	const float centredLineTop = tabBarBottom + (rowHeight - reference.LineHeight) * kHalf;
+	CHECK(std::fabs(lineTop - centredLineTop) <= kHalfPixel);
+}
+
+TEST_CASE("Under the tab bar an open find bar still stands inside the editor surface, below the breadcrumb")
+{
+	DockedDocumentFrames document(FileOnly("CommandLine.cpp", FileKind::CppSource));
+	document.Item.Find.Open = true;
+	document.Settle();
+
+	const ImGuiWindow* surface = EditorSurface();
+	REQUIRE(surface != nullptr);
+
+	const ImGuiWindow* findBar = nullptr;
+	for (const ImGuiWindow* child : surface->DC.ChildWindows)
+	{
+		findBar = std::string_view{child->Name}.find(kFindBar) != std::string_view::npos ? child : findBar;
+	}
+	REQUIRE(findBar != nullptr);
+
+	CHECK(surface->Pos.y == doctest::Approx(DockedDocumentFrames::TabBarBottom() + Core::Scaled(kRowHeight)));
+	CHECK(findBar->Pos.y > surface->Pos.y);
+	CHECK(findBar->Pos.y + findBar->Size.y < surface->Pos.y + surface->Size.y);
 }
 
 TEST_CASE("The breadcrumb draws in the interface face at 15 px")
@@ -465,7 +637,7 @@ TEST_CASE("The breadcrumb draws in the interface face at 15 px")
 	CHECK(drawn->Right - drawn->Left == doctest::Approx(atTheRowSize->Right - atTheRowSize->Left));
 }
 
-TEST_CASE("Folders, chevrons and symbol glyphs are dim, and the file name follows its kind's badge in the kind's colour")
+TEST_CASE("Folders are dim, and the file name follows its kind's badge in the kind's colour")
 {
 	BreadcrumbModel model = FileOnly("data.json", FileKind::Json);
 	model.Folders = {"src"};
@@ -486,19 +658,18 @@ TEST_CASE("Folders, chevrons and symbol glyphs are dim, and the file name follow
 		border = ImGui::GetColorU32(ImGuiCol_Border);
 	});
 
-	const std::optional<HorizontalExtent> dimmed = HorizontalExtentInColour(DocumentDrawing(), dim);
+	const std::optional<HorizontalExtent> folder = HorizontalExtentInColour(DocumentDrawing(), dim);
 	const std::optional<HorizontalExtent> icon = HorizontalExtentInColour(DocumentDrawing(), kind);
 	const std::optional<HorizontalExtent> names = HorizontalExtentInColour(DocumentDrawing(), text);
-	REQUIRE(dimmed.has_value());
+	REQUIRE(folder.has_value());
 	REQUIRE(icon.has_value());
 	REQUIRE(names.has_value());
 
 	const float firstPieceLeft = document.WindowLeft + Core::Scaled(kRowLeftPadding);
-	CHECK(dimmed->Left >= firstPieceLeft - kOnePixel);
-	CHECK(dimmed->Left <= firstPieceLeft + kGlyphBearing);
-	CHECK(dimmed->Left < icon->Left);
+	CHECK(folder->Left >= firstPieceLeft - kOnePixel);
+	CHECK(folder->Left <= firstPieceLeft + kGlyphBearing);
+	CHECK(folder->Right < icon->Left);
 	CHECK(icon->Right <= names->Left + kOnePixel);
-	CHECK(dimmed->Right > names->Left);
 
 	int borderInsideTheRow = 0;
 	for (const ImDrawVert& vertex : DocumentDrawing().VtxBuffer)
@@ -508,6 +679,98 @@ TEST_CASE("Folders, chevrons and symbol glyphs are dim, and the file name follow
 		borderInsideTheRow += vertex.col == border && insideTheRow ? 1 : 0;
 	}
 	CHECK(borderInsideTheRow == 0);
+}
+
+TEST_CASE("Breadcrumb chevrons are drawn at seventy percent alpha")
+{
+	constexpr std::size_t kChevronsBetweenThreePieces = 2;
+	constexpr std::size_t kGlyphsInTheFolders = 6;
+
+	BreadcrumbModel model = FileOnly("CommandLine.cpp", FileKind::CppSource);
+	model.Folders = {"src", "App"};
+
+	DocumentFrames document(std::move(model));
+	document.WithEditor = false;
+
+	std::vector<GlyphQuad> chevron;
+	ImU32 dim = 0;
+	document.Frames.Next([&] {
+		document.Draw();
+		chevron = ReferenceGlyphs("##ChevronReference", ICON_LC_CHEVRON_RIGHT);
+		dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+	});
+
+	REQUIRE(chevron.size() == 1);
+
+	const std::vector<GlyphQuad> faded = GlyphQuadsInColour(DocumentDrawing(), Core::WithAlphaScaled(dim, kChevronAlpha));
+	REQUIRE(faded.size() == kChevronsBetweenThreePieces);
+
+	for (const GlyphQuad& drawn : faded)
+	{
+		CHECK(SameGlyph(drawn, chevron.front()));
+	}
+
+	CHECK(GlyphQuadsInColour(DocumentDrawing(), dim).size() == kGlyphsInTheFolders);
+}
+
+TEST_CASE("A function's mark is a purple ƒ")
+{
+	BreadcrumbModel model = FileOnly("Renderer.cpp", FileKind::CppSource);
+	model.Symbols = {{.Name = "Renderer", .Kind = DeclarationKind::Type}, {.Name = "Draw", .Kind = DeclarationKind::Function}};
+
+	DocumentFrames document(std::move(model));
+	document.WithEditor = false;
+
+	std::vector<GlyphQuad> typeMark;
+	std::vector<GlyphQuad> functionMark;
+	ImU32 dim = 0;
+	document.Frames.Next([&] {
+		document.Draw();
+		typeMark = ReferenceGlyphs("##TypeMarkReference", kTypeMark, Face::Code);
+		functionMark = ReferenceGlyphs("##FunctionMarkReference", kFunctionMark, Face::Code);
+		dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+	});
+
+	REQUIRE(typeMark.size() == 2);
+	REQUIRE(functionMark.size() == 1);
+
+	const std::vector<GlyphQuad> purple = GlyphQuadsInColour(DocumentDrawing(), kDarkMarkPurple);
+	REQUIRE(purple.size() == typeMark.size() + functionMark.size());
+
+	CHECK(SameRun({purple[0], purple[1]}, typeMark));
+	CHECK(SameGlyph(purple[2], functionMark.front()));
+	CHECK(purple[1].Box.Max.x < purple[2].Box.Min.x);
+
+	CHECK(GlyphQuadsInColour(DocumentDrawing(), dim).empty());
+}
+
+TEST_CASE("In a light scheme the symbol marks are a deeper purple")
+{
+	constexpr std::size_t kGlyphsInBothMarks = 3;
+
+	BreadcrumbModel model = FileOnly("Renderer.cpp", FileKind::CppSource);
+	model.Symbols = {{.Name = "Renderer", .Kind = DeclarationKind::Type}, {.Name = "Draw", .Kind = DeclarationKind::Function}};
+
+	DocumentFrames document(std::move(model));
+	document.WithEditor = false;
+
+	document.Frames.Next([&] {
+		ImGui::StyleColorsLight();
+		document.Draw();
+	});
+
+	CHECK(GlyphQuadsInColour(DocumentDrawing(), kLightMarkPurple).size() == kGlyphsInBothMarks);
+	CHECK(GlyphQuadsInColour(DocumentDrawing(), kDarkMarkPurple).empty());
+}
+
+TEST_CASE("The code face holds ƒ, so a function's mark never draws as the missing glyph")
+{
+	FontContext context;
+	const Core::FontSet set = Core::LoadFontSet(*ImGui::GetIO().Fonts);
+	REQUIRE(set.Code != nullptr);
+
+	ImFontBaked* const baked = set.Code->GetFontBaked(kMarkFontSize);
+	CHECK(baked->FindGlyphNoFallback(kFunctionMarkCodepoint) != nullptr);
 }
 
 TEST_CASE("A narrow row drops its leading folders behind one ellipsis and keeps the file and its symbols")
@@ -574,7 +837,9 @@ TEST_CASE("A narrow row draws one ellipsis for the folders it drops and still dr
 
 	const std::vector<GlyphQuad> dimmed = GlyphQuadsInColour(DocumentDrawing(), dim);
 	REQUIRE_FALSE(dimmed.empty());
-	CHECK(dimmed.size() == kEllipsisGlyphs + kChevronsBetweenThreePieces + kGlyphsInTheLastFolder);
+	CHECK(dimmed.size() == kEllipsisGlyphs + kGlyphsInTheLastFolder);
+	CHECK(GlyphQuadsInColour(DocumentDrawing(), Core::WithAlphaScaled(dim, kChevronAlpha)).size() ==
+		  kChevronsBetweenThreePieces);
 	CHECK(SameGlyph(dimmed.front(), ellipsis.front()));
 
 	const float firstPieceLeft = document.WindowLeft + Core::Scaled(kRowLeftPadding);

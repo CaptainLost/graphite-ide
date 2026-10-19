@@ -1028,6 +1028,7 @@ namespace Graphite {
 		{
 			ImDrawList* Draw = nullptr;
 			ImVec2 Origin;
+			float EditorLeft = 0.0f;
 			float ScrollX = 0.0f;
 			float TextOriginX = 0.0f;
 			float ContentWidth = 0.0f;
@@ -1235,13 +1236,24 @@ namespace Graphite {
 				   static_cast<float>(column - slice.FromColumn) * canvas.Metrics.CellWidth;
 		}
 
+		// WARNING: The fill starts at the editor's left edge, across the padding of the window that holds the
+		// surface, and the surface's clip rectangle stops at the surface. It is drawn under that clip widened to the
+		// edge, keeping the clip's top and bottom, so it never reaches over the breadcrumb or the scrollbar below.
 		void DrawCurrentLineHighlight(const RowCanvas& canvas, const RowSlice& slice)
 		{
+			constexpr bool kIntersectWithTheSurfaceClip = false;
+
+			const ImVec2 clipMin = canvas.Draw->GetClipRectMin();
+			const ImVec2 clipMax = canvas.Draw->GetClipRectMax();
+
+			canvas.Draw->PushClipRect(ImVec2(std::min(canvas.EditorLeft, clipMin.x), clipMin.y), clipMax,
+									  kIntersectWithTheSurfaceClip);
 			canvas.Draw->AddRectFilled(
-				ImVec2(canvas.Origin.x + canvas.ScrollX, slice.Y),
+				ImVec2(canvas.EditorLeft, slice.Y),
 				ImVec2(canvas.Origin.x + std::max(canvas.ContentWidth, canvas.WindowWidth),
 					   slice.Y + canvas.Metrics.LineHeight),
 				canvas.Palette.CurrentLine);
+			canvas.Draw->PopClipRect();
 		}
 
 		void DrawIndentGuides(const RowCanvas& canvas, const RowSlice& slice, std::size_t depth,
@@ -2597,6 +2609,15 @@ namespace Graphite {
 			ImGui::SetCursorScreenPos(origin);
 		}
 
+		// The editor's left edge is the edge of the window that holds the surface, whose padding stands between that
+		// edge and the surface. Read from inside the surface.
+		float EditorLeftEdge()
+		{
+			const ImGuiWindow* surface = ImGui::GetCurrentWindow();
+
+			return surface->ParentWindow != nullptr ? surface->ParentWindow->Pos.x : surface->Pos.x;
+		}
+
 		std::optional<BracketPair> BracketPairFor(const Core::TextBuffer& buffer,
 												  const Core::OpenItem& item, SyntaxCache* syntax,
 												  BracketMemo& memo)
@@ -2633,6 +2654,7 @@ namespace Graphite {
 
 			canvas.Draw = ImGui::GetWindowDrawList();
 			canvas.Origin = origin;
+			canvas.EditorLeft = EditorLeftEdge();
 			canvas.ScrollX = scrollX;
 			canvas.TextOriginX = origin.x + metrics.Gutter.TotalWidth;
 			canvas.ContentWidth = ContentWidthOf(item, metrics, available, wordWrap);

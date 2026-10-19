@@ -345,6 +345,47 @@ namespace {
 		return drawn;
 	}
 
+	struct VisibleLeft
+	{
+		float Left = FLT_MAX;
+		ImVec4 Clip;
+	};
+
+	// The leftmost point of the triangles drawn in `colour` that their command's clip rectangle lets through, with
+	// that rectangle: a vertex past the clip is in the draw list but never on screen.
+	std::optional<VisibleLeft> VisibleLeftInColour(const ImDrawList& drawing, ImU32 colour)
+	{
+		constexpr unsigned int kCornersInATriangle = 3;
+
+		std::optional<VisibleLeft> found;
+
+		for (const ImDrawCmd& command : drawing.CmdBuffer)
+		{
+			for (unsigned int corner = 0; corner + kCornersInATriangle <= command.ElemCount; corner += kCornersInATriangle)
+			{
+				float left = FLT_MAX;
+				bool inColour = true;
+
+				for (unsigned int each = 0; each < kCornersInATriangle; ++each)
+				{
+					const ImDrawVert& vertex =
+						drawing.VtxBuffer[command.VtxOffset + drawing.IdxBuffer[command.IdxOffset + corner + each]];
+					inColour = inColour && vertex.col == colour;
+					left = std::min(left, vertex.pos.x);
+				}
+
+				const float shown = std::max(left, command.ClipRect.x);
+
+				if (inColour && (!found.has_value() || shown < found->Left))
+				{
+					found = VisibleLeft{.Left = shown, .Clip = command.ClipRect};
+				}
+			}
+		}
+
+		return found;
+	}
+
 	struct CodeFaceMeasure
 	{
 		float CellWidth = 0.0f;
@@ -877,7 +918,7 @@ TEST_CASE("A hovered lens label is underlined at its text's foot")
 	CHECK(editor.StackAfter == editor.StackBefore);
 }
 
-TEST_CASE("The current-line highlight starts at the gutter's left edge")
+TEST_CASE("The current-line fill starts at the editor's left edge")
 {
 	EditorFrames editor("first line\nsecond line\n");
 	editor.Next();
@@ -887,15 +928,24 @@ TEST_CASE("The current-line highlight starts at the gutter's left edge")
 	const Graphite::EditorPalette palette = DarkEditorPalette();
 
 	const ImGuiWindow* surface = EditorSurface();
+	const ImGuiWindow* document = ImGui::FindWindowByName("Document");
 	REQUIRE(surface != nullptr);
+	REQUIRE(document != nullptr);
+	REQUIRE(surface->Pos.x > document->Pos.x);
 
 	const Region firstRow{.Top = lineTop, .Bottom = lineTop + kEditorLineHeight - kJustInside};
 	const std::optional<DrawnRegion> fill = DrawnIn(*surface->DrawList, palette.GutterFill, firstRow);
 	const std::optional<DrawnRegion> highlight = DrawnIn(*surface->DrawList, palette.CurrentLine, Region{});
+	const std::optional<VisibleLeft> shown = VisibleLeftInColour(*surface->DrawList, palette.CurrentLine);
 	REQUIRE(fill.has_value());
 	REQUIRE(highlight.has_value());
+	REQUIRE(shown.has_value());
 
-	CHECK(highlight->Left == fill->Left);
+	CHECK(fill->Left == surface->Pos.x);
+	CHECK(highlight->Left == document->Pos.x);
+	CHECK(shown->Left == document->Pos.x);
+	CHECK(shown->Clip.y == surface->InnerClipRect.Min.y);
+	CHECK(shown->Clip.w == surface->InnerClipRect.Max.y);
 	CHECK(highlight->Top == lineTop);
 	CHECK(highlight->Bottom == lineTop + kEditorLineHeight);
 	CHECK(highlight->LastIndex > fill->LastIndex);
