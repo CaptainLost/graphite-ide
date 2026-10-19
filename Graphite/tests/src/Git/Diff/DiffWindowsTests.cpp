@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "Git/Diff/DiffWindows.h"
+#include "UI/FileIcons.h"
 
 #include "GitFixtures.h"
 
@@ -65,6 +66,15 @@ TEST_CASE("A window name shows the title and identifies by the identity")
 	REQUIRE(marker != std::string::npos);
 	CHECK(name.substr(marker + 3) == Graphite::DiffWindowIdentity(diff));
 	CHECK(name.find(Graphite::DiffWindowTitle(diff)) < marker);
+}
+
+TEST_CASE("A diff's window name starts with its file kind's glyph and keeps its identity after the marker")
+{
+	const Graphite::OpenDiff diff = Diff(1, "docs/README.md");
+	const std::string name = Graphite::DiffWindowName(diff);
+
+	CHECK(name.starts_with(Graphite::GlyphOf(Graphite::FileKind::Markdown)));
+	CHECK(name.ends_with("###" + Graphite::DiffWindowIdentity(diff)));
 }
 
 TEST_CASE("A working-tree diff and a commit's diff of the same file are different tabs")

@@ -37,8 +37,6 @@ namespace Graphite {
 
 	FileKind KindOfFile(const std::filesystem::path& path);
 
-	FileKind KindOfProject(const std::filesystem::path& project);
-
 	const char* GlyphOf(FileKind kind);
 
 	const char* FolderGlyphOf(bool open);

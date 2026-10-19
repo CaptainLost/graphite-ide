@@ -3,13 +3,13 @@
 #include "Core/Base/Base.h"
 
 #include "Git/History/CommitLabels.h"
+#include "UI/FileIcons.h"
 
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContentWindowColours.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/LoadingState.h"
-#include "Core/ImGui/Icons.h"
 #include "Core/ImGui/TabContextMenu.h"
 
 #include <imgui.h>
@@ -134,7 +134,7 @@ namespace Graphite {
 
 	std::string DiffWindowName(const OpenDiff& diff)
 	{
-		return std::string{Core::IconForExtension(Core::ToUtf8(diff.Path.extension()))} + "  " +
+		return std::string{GlyphOf(KindOfFile(diff.Path))} + "  " +
 			   DiffWindowTitle(diff) + "###" + DiffWindowIdentity(diff);
 	}
 

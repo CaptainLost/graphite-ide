@@ -59,6 +59,10 @@ Draw every file and folder icon in a list through `Graphite/src/UI/FileIcons.h`.
   - In the Explorer and the solution view, the name's right edge, its ellipsis,
     the marker column and the open-tab mark stay where they were. A row there too
     narrow for the whole icon draws neither the icon nor the name.
+  - A tree row's note, such as the solution's project count, is shown only when
+    three font sizes of the name fit beside it past the icon's slot. Before, the
+    three font sizes counted from the icon. The note therefore goes about 22 px
+    sooner as the row narrows.
 - **Dimmed rows.** These are an ignored or unreadable row in the Explorer, and a
   missing project or file in the solution view.
   - The name is drawn in the disabled-text colour, as before.
@@ -66,10 +70,9 @@ Draw every file and folder icon in a list through `Graphite/src/UI/FileIcons.h`.
   - The Explorer and a missing project draw such a row with the text colour set
     to the disabled one. There a folder's icon, or an `Other` file's, is the
     disabled-text colour at half its alpha.
-- **Solution view.** The solution's own row takes the `Project` kind. A project's
-  row takes the kind of the language it builds, through `KindOfProject`: `.vcxproj`
-  is `CppSource` and `.csproj` is `CSharp`. Everywhere else a project file is a
-  file like any other and takes `KindOfFile`.
+- **Solution view.** The solution's row and every project's row take their
+  file's kind through `KindOfFile`, which is `Project`. A project there is violet,
+  as its file is in the Explorer.
 - **Places.**
   - The Explorer: files and folders.
   - The solution view: the solution, solution folders, projects, project folders
@@ -80,13 +83,18 @@ Draw every file and folder icon in a list through `Graphite/src/UI/FileIcons.h`.
   - The dialogs' file rows, `DialogLayout::FileRow`: the unsaved files on
     closing, and the checkout questions. There the icon was in the disabled-text
     colour.
-- **Tabs.** A tab keeps its icon in its window name, in the tab's text colour.
-  `Core::IconForExtension`, which the tabs use, gives `.h`, `.hpp` and `.hxx`
-  `ALPHA_H_BOX_OUTLINE`. Its other glyphs are unchanged.
+- **Tabs.** A document's or a diff's tab takes its kind's glyph,
+  `GlyphOf(KindOfFile(path))`, as the lists do. The glyph is in the window name,
+  so it is drawn in the tab's text colour.
+  - The glyph stands before the `###`. ImGui identifies a window by what follows
+    `###`, so window ids and `imgui.ini` keys do not change.
+  - `Core::IconForExtension` gives `.h`, `.hpp` and `.hxx` `ALPHA_H_BOX_OUTLINE`.
+    No Graphite code calls it any more.
 - **Marker column.** `RowMarkerColumnWidth` is 12 px scaled, not the width of an
   "M".
-- **Project row id.** A project row keeps the ImGui id it had, its old label with
-  the icon in it, so its open state stays where it was kept.
+- **Project row id.** A project row's ImGui id is `##` and its path, as a file
+  row's is. A tree row's open state lives in ImGui's storage for the session, not
+  in `imgui.ini`.
 
 ## Rationale
 
@@ -111,19 +119,15 @@ light scheme its darker colours without a scheme migration.
 
 - The kind colours are not part of a scheme, so a user scheme with an unusual
   window background can leave some of them hard to read.
-- A tab's icon can differ from the list's. Tabs use `IconForExtension`, which
-  keeps its own glyphs for these files:
-  - `.c`: `LANGUAGE_C`;
-  - `.md`: `LANGUAGE_MARKDOWN`;
-  - `.py`: `LANGUAGE_PYTHON`;
-  - project files: the C++ and C# glyphs;
-  - the rest: `FILE`.
-- In the lists, Python files lose their own glyph (they are `Other`), and C files
-  draw the C++ glyph.
+- Python files lose their own glyph (they are `Other`), and C files draw the C++
+  glyph, in the lists and in the tabs alike.
+- The solution view no longer tells a C# project from a C++ one by its icon:
+  every project is the same violet glyph.
+- The tab icon stays in the tab's text colour, so a tab shows the glyph but not
+  the kind's colour that the list shows.
+- A tree row's note goes about 22 px sooner as the row narrows.
 - An ignored folder's outline is fainter than its name, because the dim folder
   colour follows the dimmed text colour and is then halved.
-- The same project file is violet in the Explorer, and in its language's colour
-  as a project in the solution view.
 
 ### Neutral
 
@@ -140,9 +144,12 @@ light scheme its darker colours without a scheme migration.
   follow-up.
 - **The icon in the status colour, as before.** The status already colours the
   name. One meaning on two pieces of the row leaves no room for the kind.
-- **Projects in the `Project` kind in the solution view too.** A solution of C++
-  and C# projects would show a column of identical violet rows. Telling C# and
-  C++ projects apart was asked for before.
+- **Project rows in the colour of the language they build.** C# and C++ projects
+  would read apart, but the approved table and the mockup make project files
+  violet, and no record carries the earlier split.
+- **Tabs keep `IconForExtension`'s glyphs.** A tab and the row of the same file
+  would show different glyphs, for C, Markdown, Python, image, script and project
+  files.
 - **The dimmed icon in the disabled-text colour.** It would lose the kind. At half
   its alpha the kind still shows, faintly.
 

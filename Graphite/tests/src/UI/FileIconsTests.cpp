@@ -154,13 +154,6 @@ TEST_CASE("KindOfFile reads an extension in any case and calls anything it does 
 	CHECK(Graphite::KindOfFile("") == FileKind::Other);
 }
 
-TEST_CASE("KindOfProject gives a project the kind of the language it builds, and a solution its own")
-{
-	CHECK(Graphite::KindOfProject("Engine/Engine.vcxproj") == FileKind::CppSource);
-	CHECK(Graphite::KindOfProject("Tools/Tools.csproj") == FileKind::CSharp);
-	CHECK(Graphite::KindOfProject("App.slnx") == FileKind::Project);
-}
-
 TEST_CASE("GlyphOf gives each kind its glyph, and a header another glyph than a source")
 {
 	for (const GlyphCase& expected : kGlyphCases)

@@ -6,7 +6,6 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
-#include "Core/ImGui/Icons.h"
 
 #include "Core/Platform/FileDialog.h"
 #include "Core/Text/DocumentSet.h"
@@ -293,9 +292,7 @@ namespace Graphite {
 		const std::string shownName = project.Exists ? project.DisplayName : project.DisplayName + "  (missing)";
 		const IconTone tone = project.Exists ? IconTone::Normal : IconTone::Dimmed;
 
-		// WARNING: The row's id is still the label it had while its icon was part of the text: a string ImGui hashes
-		// into an id is not changed, so the project's open state stays under the id it was kept by.
-		const std::string rowId = std::string{Core::IconForExtension(Core::ToUtf8(project.Path.extension()))} + "  " + shownName;
+		const std::string rowId = "##" + Core::ToUtf8(project.Path);
 
 		if (!project.Exists)
 		{
@@ -314,7 +311,7 @@ namespace Graphite {
 
 		const FileRowLayout layout = LayoutFileRow();
 		const bool isOpen = ChevronTreeNode(rowId.c_str(), flags);
-		DrawTreeRowLabel(layout, FileIconOf(KindOfProject(project.Path), tone), shownName,
+		DrawTreeRowLabel(layout, FileIconOf(KindOfFile(project.Path), tone), shownName,
 						 ImGui::IsItemVisible() && GroupDecorationOf(project) != GitDecoration::None);
 
 		if (!project.Exists)

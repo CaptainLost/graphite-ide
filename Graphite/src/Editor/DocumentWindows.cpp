@@ -17,6 +17,7 @@
 
 #include "UI/ClipboardCopy.h"
 #include "UI/Dialogs/DialogLayout.h"
+#include "UI/FileIcons.h"
 #include "UI/TabWindow.h"
 #include "UI/ToastEvent.h"
 
@@ -32,7 +33,6 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContentWindowColours.h"
 #include "Core/ImGui/FontSet.h"
-#include "Core/ImGui/Icons.h"
 #include "Core/ImGui/TabContextMenu.h"
 #include "Core/Platform/Clipboard.h"
 #include "Core/Platform/Shell.h"
@@ -62,18 +62,6 @@ namespace Graphite {
 		constexpr unsigned int kNoDockNode = 0;
 		constexpr float kNoRunOffset = 0.0f;
 		constexpr float kNoRunSpacing = 0.0f;
-
-		// WARNING: ImGui shows what precedes ### and identifies by what follows, so the path stays
-		// out of sight and the icon moves no window id. The MDI glyphs are merged onto the regular
-		// mono face alone, so nothing drawing this title may push another font.
-		std::string WindowName(const Core::DocumentSet& documents, std::size_t index)
-		{
-			const std::filesystem::path& path = documents.At(index).Path;
-			const std::string icon{Core::IconForExtension(Core::ToUtf8(path.extension()))};
-			const std::string title = documents.DisplayTitle(index);
-
-			return icon + "  " + title + "###" + Core::ToUtf8(path);
-		}
 
 		std::string DocumentIdentityOf(const Core::DocumentSet& documents, std::size_t index)
 		{
@@ -173,6 +161,17 @@ namespace Graphite {
 		}
 
 		return Core::ToUtf8(path) + ": " + std::string(error);
+	}
+
+	// WARNING: ImGui shows what precedes ### and identifies by what follows, so the path stays
+	// out of sight and the icon moves no window id.
+	std::string DocumentWindowName(const Core::DocumentSet& documents, std::size_t index)
+	{
+		const std::filesystem::path& path = documents.At(index).Path;
+		const std::string icon{GlyphOf(KindOfFile(path))};
+		const std::string title = documents.DisplayTitle(index);
+
+		return icon + "  " + title + "###" + Core::ToUtf8(path);
 	}
 
 	void DocumentWindows::RequestOpen(const std::filesystem::path& path, bool permanent)
@@ -929,7 +928,7 @@ namespace Graphite {
 
 	void DocumentWindows::CloseAndForgetLayout(std::size_t index)
 	{
-		ImGui::ClearWindowSettings(WindowName(m_Documents, index).c_str());
+		ImGui::ClearWindowSettings(DocumentWindowName(m_Documents, index).c_str());
 		m_RestoredIdentities.erase(DocumentIdentityOf(m_Documents, index));
 		m_Documents.Close(index);
 		PruneDocumentStates();
@@ -1928,7 +1927,7 @@ namespace Graphite {
 		{
 			Core::OpenItem& item = m_Documents.At(index);
 			const std::string identity = DocumentIdentityOf(m_Documents, index);
-			const std::string name = WindowName(m_Documents, index);
+			const std::string name = DocumentWindowName(m_Documents, index);
 
 			const bool appearing = IsNewSinceLastFrame(identity);
 			const bool noPendingFocus = false;

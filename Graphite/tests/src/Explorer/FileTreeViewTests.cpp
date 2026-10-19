@@ -16,6 +16,7 @@
 #include "Core/App/Redraw.h"
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileTree.h"
+#include "Core/ImGui/ImGuiColors.h"
 #include "Core/Text/DocumentSet.h"
 
 #include <imgui.h>
@@ -66,6 +67,19 @@ namespace {
 			if (std::string_view{window->Name}.find(kTreeBodyName) != std::string_view::npos)
 			{
 				return window;
+			}
+		}
+
+		return nullptr;
+	}
+
+	Core::FileNode* ChildNamedToChange(Core::FileNode& folder, const std::string& name)
+	{
+		for (Core::FileNode& child : folder.Children)
+		{
+			if (child.Name == name)
+			{
+				return &child;
 			}
 		}
 
@@ -341,6 +355,33 @@ TEST_CASE("An Explorer file row draws its glyph in its kind's colour and its nam
 	REQUIRE(glyph.has_value());
 	REQUIRE(name.has_value());
 	CHECK(glyph->Right < name->Left);
+}
+
+TEST_CASE("An ignored Explorer file row draws its glyph at half its kind's alpha")
+{
+	constexpr bool kDarkScheme = false;
+	constexpr float kHalfAlpha = 0.5f;
+
+	TempDirectory folder;
+	folder.MakeFile("build.json", "{}");
+
+	ExplorerScreen screen{folder.GetPath()};
+	Core::FileNode* file = ChildNamedToChange(screen.Workspace.GetTree().GetRoot(), "build.json");
+	REQUIRE(file != nullptr);
+
+	const ImU32 kindColour = Graphite::ColourOf(Graphite::FileKind::Json, kDarkScheme);
+
+	screen.Next();
+	const ImGuiWindow* body = FindTreeBody();
+	REQUIRE(body != nullptr);
+	REQUIRE(DrawsInColour(*body->DrawList, kindColour));
+
+	file->Ignored = true;
+	screen.Next();
+	body = FindTreeBody();
+	REQUIRE(body != nullptr);
+	CHECK(DrawsInColour(*body->DrawList, Core::WithAlphaScaled(kindColour, kHalfAlpha)));
+	CHECK_FALSE(DrawsInColour(*body->DrawList, kindColour));
 }
 
 TEST_CASE("An Explorer folder row draws the outline glyph in the dim folder colour")

@@ -464,4 +464,6 @@ namespace Graphite {
 	};
 
 	std::string SaveFailureMessage(const std::filesystem::path& path, std::string_view error);
+
+	std::string DocumentWindowName(const Core::DocumentSet& documents, std::size_t index);
 }

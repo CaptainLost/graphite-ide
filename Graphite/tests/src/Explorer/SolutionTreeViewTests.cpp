@@ -16,6 +16,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <algorithm>
 #include <cfloat>
 #include <cmath>
 #include <filesystem>
@@ -69,6 +70,28 @@ namespace {
 	float RowPitch()
 	{
 		return Graphite::ListRowPitch();
+	}
+
+	struct VerticalSpan
+	{
+		float Top = FLT_MAX;
+		float Bottom = -FLT_MAX;
+	};
+
+	VerticalSpan VerticalSpanInColour(const ImDrawList& drawing, ImU32 colour)
+	{
+		VerticalSpan span;
+
+		for (const ImDrawVert& vertex : drawing.VtxBuffer)
+		{
+			if (vertex.col == colour)
+			{
+				span.Top = std::min(span.Top, vertex.pos.y);
+				span.Bottom = std::max(span.Bottom, vertex.pos.y);
+			}
+		}
+
+		return span;
 	}
 	class SolutionScreen
 	{
@@ -182,7 +205,7 @@ namespace {
 	}
 }
 
-TEST_CASE("The solution view draws the solution in its kind's colour, a C# project in the C# colour and a folder dim")
+TEST_CASE("The solution view draws the solution and its projects in the project colour and a folder dim")
 {
 	constexpr bool kDarkScheme = false;
 
@@ -193,8 +216,12 @@ TEST_CASE("The solution view draws the solution in its kind's colour, a C# proje
 
 	const ImGuiWindow* body = FindSolutionBody();
 	REQUIRE(body != nullptr);
-	CHECK(DrawsInColour(*body->DrawList, Graphite::ColourOf(Graphite::FileKind::Project, kDarkScheme)));
-	CHECK(DrawsInColour(*body->DrawList, Graphite::ColourOf(Graphite::FileKind::CSharp, kDarkScheme)));
+
+	const ImU32 projectColour = Graphite::ColourOf(Graphite::FileKind::Project, kDarkScheme);
+	const VerticalSpan projectRows = VerticalSpanInColour(*body->DrawList, projectColour);
+
+	CHECK(projectRows.Bottom - projectRows.Top > RowPitch());
+	CHECK_FALSE(DrawsInColour(*body->DrawList, Graphite::ColourOf(Graphite::FileKind::CSharp, kDarkScheme)));
 	CHECK(DrawsInColour(*body->DrawList, Graphite::DimFolderColour()));
 }
 

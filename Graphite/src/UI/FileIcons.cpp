@@ -112,23 +112,6 @@ namespace Graphite {
 		return FileKind::Other;
 	}
 
-	FileKind KindOfProject(const std::filesystem::path& project)
-	{
-		const std::string extension = Core::LoweredExtension(project);
-
-		if (extension == ".vcxproj")
-		{
-			return FileKind::CppSource;
-		}
-
-		if (extension == ".csproj")
-		{
-			return FileKind::CSharp;
-		}
-
-		return KindOfFile(project);
-	}
-
 	const char* GlyphOf(FileKind kind)
 	{
 		switch (kind)
