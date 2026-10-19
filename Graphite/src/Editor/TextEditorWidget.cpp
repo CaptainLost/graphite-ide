@@ -84,6 +84,8 @@ namespace Graphite {
 		constexpr double kCaretBlinkPeriod = 1.0;
 		constexpr double kHalfBlinkPeriod = kCaretBlinkPeriod * 0.5;
 
+		constexpr float kLineHeightFactor = 1.4f;
+
 		constexpr float kHalf = 0.5f;
 		constexpr float kHairlineWidth = 1.0f;
 		constexpr float kLeastWrapColumns = 1.0f;
@@ -165,17 +167,33 @@ namespace Graphite {
 		struct EditorMetrics
 		{
 			float FontSizeBase = 0.0f;
+			float FontSize = 0.0f;
 			float LineHeight = 0.0f;
+			float TextOffsetY = 0.0f;
 			float CellWidth = 0.0f;
 			GutterMetrics Gutter;
 		};
 
+		float CentredTextOffset(float lineHeight, float textHeight)
+		{
+			return std::floor((lineHeight - textHeight) * kHalf);
+		}
+
+		float TextTopOf(const EditorMetrics& metrics, float rowTop)
+		{
+			return rowTop + metrics.TextOffsetY;
+		}
+
+		// WARNING: The line height is taken from the font size in effect now, not from kCodeFontSize, so it
+		// follows the zoom and the interface scale on the frame they change.
 		EditorMetrics MeasureEditor(const Core::TextBuffer& buffer, bool changeColumn)
 		{
 			EditorMetrics metrics;
 
 			metrics.FontSizeBase = ImGui::GetStyle().FontSizeBase;
-			metrics.LineHeight = ImGui::GetTextLineHeight();
+			metrics.FontSize = ImGui::GetFontSize();
+			metrics.LineHeight = std::round(kLineHeightFactor * metrics.FontSize);
+			metrics.TextOffsetY = CentredTextOffset(metrics.LineHeight, metrics.FontSize);
 			metrics.CellWidth = Core::MonospaceCellWidth();
 
 			metrics.Gutter.BreakpointWidth = kBreakpointColumnCells * metrics.CellWidth;
@@ -1342,7 +1360,7 @@ namespace Graphite {
 				const std::string_view run(Base + PaintedUpToByte, toByte - PaintedUpToByte);
 				const float runX = ColumnX(Canvas, Slice, Column);
 
-				Canvas.Draw->AddText(ImVec2(runX, Slice.Y), colour, run.data(),
+				Canvas.Draw->AddText(ImVec2(runX, TextTopOf(Canvas.Metrics, Slice.Y)), colour, run.data(),
 									 run.data() + run.size());
 
 				// WARNING: TabWidth is inert here. The run slices the already tab-expanded text,
@@ -1365,8 +1383,8 @@ namespace Graphite {
 
 			if (tokens.empty())
 			{
-				canvas.Draw->AddText(ImVec2(canvas.TextOriginX, slice.Y), canvas.Palette.Text,
-									 base + slice.FromByte, base + slice.ToByte);
+				canvas.Draw->AddText(ImVec2(canvas.TextOriginX, TextTopOf(canvas.Metrics, slice.Y)),
+									 canvas.Palette.Text, base + slice.FromByte, base + slice.ToByte);
 				return;
 			}
 
@@ -1495,7 +1513,7 @@ namespace Graphite {
 				gutterX + canvas.Metrics.Gutter.BreakpointWidth + canvas.Metrics.Gutter.ChangeWidth;
 			const float numberX = canvas.Metrics.Gutter.Numbers.NumberLeft(numberColumnLeft, slice.Line + 1);
 
-			canvas.Draw->AddText(ImVec2(numberX, slice.Y),
+			canvas.Draw->AddText(ImVec2(numberX, TextTopOf(canvas.Metrics, slice.Y)),
 								 onCaretLine ? canvas.Palette.Text : canvas.Palette.Number,
 								 number.c_str());
 		}
@@ -1541,7 +1559,7 @@ namespace Graphite {
 
 				PushLensFont(canvas.Metrics);
 
-				canvas.Draw->AddText(ImVec2(x, y), colour, text.c_str());
+				canvas.Draw->AddText(ImVec2(x, TextTopOf(canvas.Metrics, y)), colour, text.c_str());
 
 				if (hovered)
 				{
@@ -2035,7 +2053,11 @@ namespace Graphite {
 			HoverTooltipLook look;
 			look.Palette = canvas.Palette;
 			look.Syntax = canvas.SyntaxColours;
-			look.LineHeight = metrics.LineHeight;
+
+			// WARNING: The tooltip's code rows are one text line tall, not an editor line. The overload
+			// note is laid beside a declaration's row with SameLine, at the row's top, so code centred in a
+			// taller row would sit below its note. Only the anchor takes the editor line.
+			look.LineHeight = metrics.FontSize;
 			look.CellWidth = metrics.CellWidth;
 			look.TabWidth = item.TabWidth;
 			look.Language = LanguageOfPath(item.Path);
