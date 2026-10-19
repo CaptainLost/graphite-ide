@@ -92,6 +92,12 @@ every frame.
   folder, no repository or no status yet, the view is empty and nothing
   anywhere changes.
 
+Amended by [0611](0611-draw-a-dock-tab-bar-a-shade-below-the-chrome-its-selected-tab-in-the-colour-of-the-view-it-shows.md):
+a tab's label no longer takes the state colour. The tab shows a 6 px dot in
+that colour after its name instead. A preview tab's name is drawn in italic,
+in the same colours as a permanent tab's, so its dot is not dimmed. The trees
+and the solution view are unchanged.
+
 ## Rationale
 
 Status belongs where files are found, and the one-state model is what a tree

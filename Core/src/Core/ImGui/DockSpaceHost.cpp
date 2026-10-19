@@ -3,6 +3,7 @@
 #include "Core/ImGui/DockSpaceHost.h"
 
 #include "Core/Base/Log.h"
+#include "Core/ImGui/DockTab.h"
 #include "Core/ImGui/EmptyState.h"
 
 #include <imgui.h>
@@ -94,7 +95,7 @@ namespace Core {
 			ImGuiWindowFlags_NoNavFocus | ImGuiWindowFlags_NoDocking |
 			ImGuiWindowFlags_MenuBar;
 
-		// WARNING: a window's menu-bar height is fixed when Begin runs, from FramePadding, so the override must span exactly that call. Pushed as far as DockSpace it would make every docked node's tab bar taller too, but each docked window computes its TitleBarHeight in its own Begin, so the bar would grow under the window and the content would not move down.
+		// WARNING: a window's menu-bar height is fixed when Begin runs, from FramePadding, so the override must span exactly that call. Pushed as far as DockSpace it would make every docked node's tab bar taller too, but each docked window computes its TitleBarHeight in its own Begin, so the bar would grow under the window and the content would not move down. The tab bars take their own padding, in DockSpace and in every docked window's Begin alike, through DockTabBarStyle and BeginDockedWindow.
 		const bool overrideMenuBarHeight = layout.MenuBarHeight > 0.0f;
 		if (overrideMenuBarHeight)
 		{
@@ -131,7 +132,13 @@ namespace Core {
 
 		const ImGuiID dockSpaceId = ImGui::GetID(kDockSpaceName);
 		m_DockSpaceId = dockSpaceId;
-		DockSpaceIgnoringRightClick(dockSpaceId);
+
+		{
+			const DockTabBarStyle flatTabs;
+			DockSpaceIgnoringRightClick(dockSpaceId);
+		}
+
+		DrawDockTabBarLines(dockSpaceId);
 
 		if (m_LayoutBuilt)
 		{

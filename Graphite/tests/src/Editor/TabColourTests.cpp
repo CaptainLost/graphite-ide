@@ -7,36 +7,29 @@
 namespace {
 
 	using Graphite::GitDecoration;
-	using Graphite::TabTextColour;
+	using Graphite::TabDotColour;
 
 	constexpr ImU32 kStatus = IM_COL32(10, 20, 30, 200);
-	constexpr ImU32 kDisabled = IM_COL32(1, 2, 3, 255);
-	constexpr bool kPreviewTab = true;
-	constexpr bool kPermanentTab = false;
 }
 
-TEST_CASE("A permanent undecorated tab keeps the theme's text colour")
+TEST_CASE("A file with no git status has no dot on its tab")
 {
-	CHECK_FALSE(TabTextColour(GitDecoration::None, kPermanentTab, kStatus, kDisabled).has_value());
+	CHECK_FALSE(TabDotColour(GitDecoration::None, kStatus).has_value());
 }
 
-TEST_CASE("A preview undecorated tab is the disabled colour")
+TEST_CASE("A modified file's tab shows a dot in the modified colour")
 {
-	const std::optional<ImU32> colour = TabTextColour(GitDecoration::None, kPreviewTab, kStatus, kDisabled);
-	REQUIRE(colour.has_value());
-	CHECK(*colour == kDisabled);
+	const std::optional<ImU32> dot = TabDotColour(GitDecoration::Modified, kStatus);
+	REQUIRE(dot.has_value());
+	CHECK(*dot == kStatus);
 }
 
-TEST_CASE("A permanent decorated tab takes the status colour unchanged")
+TEST_CASE("Every git status puts its own colour, unchanged, on the dot")
 {
-	const std::optional<ImU32> colour = TabTextColour(GitDecoration::Modified, kPermanentTab, kStatus, kDisabled);
-	REQUIRE(colour.has_value());
-	CHECK(*colour == kStatus);
-}
-
-TEST_CASE("A preview decorated tab dims the status colour's alpha only")
-{
-	const std::optional<ImU32> colour = TabTextColour(GitDecoration::Modified, kPreviewTab, kStatus, kDisabled);
-	REQUIRE(colour.has_value());
-	CHECK(*colour == IM_COL32(10, 20, 30, 120));
+	for (const GitDecoration decoration : {GitDecoration::Untracked, GitDecoration::Added, GitDecoration::Renamed,
+										   GitDecoration::Modified, GitDecoration::Conflicted})
+	{
+		CAPTURE(static_cast<int>(decoration));
+		CHECK(TabDotColour(decoration, kStatus) == std::optional<ImU32>{kStatus});
+	}
 }

@@ -44,6 +44,8 @@ namespace Core {
 
 		static ImFont* GetBadgeFont();
 
+		static ImFont* GetItalicFont();
+
 		static void ApplyTheme(const ChromePalette& palette);
 
 		static void SetInterfaceScale(float scale);

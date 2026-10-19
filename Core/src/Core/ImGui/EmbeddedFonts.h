@@ -15,4 +15,5 @@ namespace Core {
 	EmbeddedFont Lucide();
 	EmbeddedFont InterRegular();
 	EmbeddedFont InterSemiBold();
+	EmbeddedFont InterItalic();
 }

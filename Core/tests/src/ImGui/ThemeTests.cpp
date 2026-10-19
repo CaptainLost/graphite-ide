@@ -324,18 +324,27 @@ TEST_CASE("Apply paints the title bar in the chrome and the empty dock space in 
 	CHECK(colours[ImGuiCol_WindowBg].x == doctest::Approx(palette.Background.R));
 }
 
-TEST_CASE("The tab bar takes the chrome colour, in dark and in light")
+TEST_CASE("The tab bar is a shade below the chrome and a selected tab the chrome itself, in dark and in light")
 {
 	IsolatedImGuiContext context;
+	constexpr float kTabBarShade = 0.03f;
 
 	for (const Core::ChromePalette& palette : {Core::Theme::DefaultPalette(), LightPalette()})
 	{
 		CAPTURE(palette.Background.R);
 		Core::Theme::Apply(palette);
 		const ImVec4* colours = ImGui::GetStyle().Colors;
+		const Core::Color shaded{palette.Background.R - kTabBarShade, palette.Background.G - kTabBarShade,
+								 palette.Background.B - kTabBarShade, palette.Background.A};
 
-		for (const ImGuiCol slot : {ImGuiCol_TitleBg, ImGuiCol_TitleBgActive, ImGuiCol_TitleBgCollapsed, ImGuiCol_Tab,
-									ImGuiCol_TabDimmed, ImGuiCol_TabSelected, ImGuiCol_TabDimmedSelected, ImGuiCol_TabHovered})
+		for (const ImGuiCol slot :
+			 {ImGuiCol_TitleBg, ImGuiCol_TitleBgActive, ImGuiCol_TitleBgCollapsed, ImGuiCol_Tab, ImGuiCol_TabDimmed})
+		{
+			CAPTURE(slot);
+			CheckSameColour(colours[slot], shaded);
+		}
+
+		for (const ImGuiCol slot : {ImGuiCol_TabSelected, ImGuiCol_TabDimmedSelected, ImGuiCol_TabHovered})
 		{
 			CAPTURE(slot);
 			CheckSameColour(colours[slot], palette.Background);
@@ -343,6 +352,20 @@ TEST_CASE("The tab bar takes the chrome colour, in dark and in light")
 
 		CheckSameColour(colours[ImGuiCol_WindowBg], palette.Background);
 	}
+}
+
+TEST_CASE("On the dark chrome the tab bar is the near-black #0c0d10")
+{
+	IsolatedImGuiContext context;
+	Core::Theme::Apply(Core::Theme::DefaultPalette());
+
+	const ColourBytes bar = BytesOf(ImGui::GetColorU32(ImGuiCol_Tab));
+	constexpr int kBarRed = 0x0C;
+	constexpr int kBarGreen = 0x0D;
+	constexpr int kBarBlue = 0x10;
+	CHECK(std::abs(bar.R - kBarRed) <= kBytesOfRounding);
+	CHECK(std::abs(bar.G - kBarGreen) <= kBytesOfRounding);
+	CHECK(std::abs(bar.B - kBarBlue) <= kBytesOfRounding);
 }
 
 TEST_CASE("Hovered frames, headers and buttons take the hover surface, in dark and in light")

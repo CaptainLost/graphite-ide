@@ -58,8 +58,9 @@ namespace Graphite {
 
 	const char* BadgeOf(FileKind kind);
 
-	// WARNING: A tab's title is plain text before its "###", which cannot hold a badge's box, so this is a generic
-	// Lucide glyph for the kind and not its badge. A tab that draws the badge itself must not prefix this as well.
+	// WARNING: A window's name is plain text before its "###", which cannot hold a badge's box, so this is a generic
+	// Lucide glyph for the kind and not its badge. A file's tab draws the badge in its place (FileTabLook); the glyph
+	// shows only where ImGui prints the name itself, as on a floating window's title bar.
 	const char* GlyphOf(FileKind kind);
 
 	const char* FolderGlyphOf(bool open);

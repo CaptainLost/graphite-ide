@@ -8,6 +8,7 @@
 
 #include "Core/Command/CommandRegistry.h"
 
+#include "Core/ImGui/DockTab.h"
 #include "Core/ImGui/TabContextMenu.h"
 
 #include "Core/UI/PanelToggle.h"
@@ -180,7 +181,7 @@ namespace Core {
 
 			// Begin returns false for a docked window whose tab is not selected as well as for a
 			// collapsed one.
-			const bool bodyRuns = ImGui::Begin(windowName.c_str(), &windowOpen, windowFlags);
+			const bool bodyRuns = BeginDockedWindow(windowName.c_str(), &windowOpen, windowFlags);
 
 			if (flush)
 			{
@@ -188,6 +189,7 @@ namespace Core {
 			}
 
 			panel->SetDrawnOnLatestFrame(bodyRuns);
+			DrawDockTab(DockTabLookOf(windowName), closeRequests);
 
 			const bool tabMenuAskedToClose = closeRequests.Take(windowName);
 			if (tabMenuAskedToClose)

@@ -144,6 +144,9 @@ namespace Core {
 
 		set.Badge = LoadFace(atlas, JetBrainsMonoBold(), kBadgeFontSize, kBadgeExcludedRanges);
 
+		// A preview tab's name is all this face draws, so it takes no icons.
+		set.Italic = LoadFace(atlas, InterItalic(), kInterfaceFontSize, UsedIconSpan());
+
 		return set;
 	}
 

@@ -4,6 +4,7 @@
 
 #include "ImGuiFrames.h"
 
+#include "Core/ImGui/DockTab.h"
 #include "Core/ImGui/TabCloseRequests.h"
 
 #include <imgui.h>
@@ -46,6 +47,24 @@ namespace {
 		const ImGuiWindow* focused = ImGui::GetCurrentContext()->NavWindow;
 		return focused != nullptr && std::string{focused->Name} == name;
 	}
+}
+
+TEST_CASE("A tab window's title bar is the dock tab bar's height, so its content starts below its node's bar")
+{
+	TabScreen screen;
+	screen.Draw();
+
+	float barHeight = 0.0f;
+	screen.Frames.Next([&] {
+		barHeight = ImGui::GetFontSize() + Core::DockTabBarFramePaddingY() * 2.0f;
+		Graphite::BeginTabWindow(kTabName, screen.State, screen.Place, screen.CloseRequests);
+		ImGui::End();
+	});
+
+	const ImGuiWindow* window = ImGui::FindWindowByName(kTabName.c_str());
+	REQUIRE(window != nullptr);
+	CHECK(window->TitleBarHeight == doctest::Approx(barHeight));
+	CHECK(ImGui::GetStyle().FramePadding.y != doctest::Approx(Core::DockTabBarFramePaddingY()));
 }
 
 TEST_CASE("A new tab is placed on the frame it appears and never again")

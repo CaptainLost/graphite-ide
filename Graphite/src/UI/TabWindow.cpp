@@ -15,7 +15,8 @@ namespace Graphite {
 	}
 
 	TabWindowFrame BeginTabWindow(const std::string& name, TabWindowState& state, const PlaceNewTab& place,
-								  Core::TabCloseRequests& closeRequests, ImGuiWindowFlags flags)
+								  Core::TabCloseRequests& closeRequests, ImGuiWindowFlags flags,
+								  const std::optional<Core::DockTabLook>& look)
 	{
 		TabWindowFrame frame;
 		frame.Appearing = std::exchange(state.Fresh, false);
@@ -40,7 +41,8 @@ namespace Graphite {
 			flags |= ImGuiWindowFlags_NoFocusOnAppearing;
 		}
 
-		frame.Visible = ImGui::Begin(name.c_str(), &frame.Open, flags);
+		frame.Visible = Core::BeginDockedWindow(name.c_str(), &frame.Open, flags);
+		Core::DrawDockTab(look.value_or(Core::DockTabLookOf(name)), closeRequests);
 
 		if (closeRequests.Take(name))
 		{

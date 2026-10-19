@@ -314,6 +314,38 @@ TEST_CASE("The badge face is loaded at 11 px with only ASCII and the identical-t
 	CHECK_FALSE(Draws(*set.Badge, Core::kBadgeFontSize, CodepointOf(ICON_LC_X)));
 }
 
+TEST_CASE("The italic face is a face of its own at the interface's sixteen pixels, with the Polish letters and no icons")
+{
+	HeadlessContext context;
+	const Core::FontSet set = LoadIntoContext();
+	REQUIRE(set.Italic != nullptr);
+
+	constexpr ImWchar kSmallLWithStroke = 0x0142;
+
+	CHECK(set.Italic->LegacySize == Core::kInterfaceFontSize);
+	CHECK(set.Italic != set.Interface);
+	CHECK(set.Italic != set.Strong);
+	CHECK(Draws(*set.Italic, Core::kInterfaceFontSize, 'a'));
+	CHECK(Draws(*set.Italic, Core::kInterfaceFontSize, kSmallLWithStroke));
+	CHECK_FALSE(Draws(*set.Italic, Core::kInterfaceFontSize, CodepointOf(ICON_LC_X)));
+}
+
+TEST_CASE("The italic face slants: its capital I leans across a box much wider than the upright stem")
+{
+	HeadlessContext context;
+	const Core::FontSet set = LoadIntoContext();
+	REQUIRE(set.Italic != nullptr);
+
+	constexpr float kSampleSize = 60.0f;
+	const ImFontGlyph* const upright = set.Interface->GetFontBaked(kSampleSize)->FindGlyphNoFallback('I');
+	const ImFontGlyph* const slanted = set.Italic->GetFontBaked(kSampleSize)->FindGlyphNoFallback('I');
+	REQUIRE(upright != nullptr);
+	REQUIRE(slanted != nullptr);
+
+	constexpr float kWiderBy = 1.5f;
+	CHECK(slanted->X1 - slanted->X0 > (upright->X1 - upright->X0) * kWiderBy);
+}
+
 TEST_CASE("The badge face is JetBrains Mono Bold: its letters are as wide as the code face's and carry more ink")
 {
 	HeadlessContext context;

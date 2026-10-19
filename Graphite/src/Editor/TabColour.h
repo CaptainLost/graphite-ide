@@ -8,6 +8,7 @@
 
 namespace Graphite {
 
-	std::optional<ImU32> TabTextColour(GitDecoration decoration, bool preview, ImU32 statusColour,
-									   ImU32 disabledColour);
+	// The colour of the dot a tab shows after its name for its file's git status; none for a file without one. The
+	// name itself keeps the tab's own colour, preview or not.
+	std::optional<ImU32> TabDotColour(GitDecoration decoration, ImU32 statusColour);
 }

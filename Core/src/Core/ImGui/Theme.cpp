@@ -47,6 +47,18 @@ namespace Core {
 		constexpr ImVec2 kFieldPadding{8.0f, 5.0f};
 		constexpr float kFieldFillShare = 0.035f;
 		constexpr ImVec4 kWhite{1.0f, 1.0f, 1.0f, 1.0f};
+		constexpr float kTabBarShade = 0.03f;
+
+		constexpr float ClampAtZero(float value)
+		{
+			return value > 0.0f ? value : 0.0f;
+		}
+
+		constexpr ImVec4 ShadeBelow(const ImVec4& colour, float amount)
+		{
+			return ImVec4(ClampAtZero(colour.x - amount), ClampAtZero(colour.y - amount), ClampAtZero(colour.z - amount),
+						  colour.w);
+		}
 
 		constexpr ImVec4 WithAlpha(const ImVec4& colour, float alpha)
 		{
@@ -175,9 +187,13 @@ namespace Core {
 		colors[ImGuiCol_FrameBgHovered] = surfaceHovered;
 		colors[ImGuiCol_FrameBgActive] = surfaceHovered;
 
-		colors[ImGuiCol_TitleBg] = background;
-		colors[ImGuiCol_TitleBgActive] = background;
-		colors[ImGuiCol_TitleBgCollapsed] = background;
+		// WARNING: The tab bar is a shade below the chrome, so a selected tab in the chrome colour, a panel's, stands out
+		// from it as a document's does. A dock node draws its bar in the title bar colours.
+		const ImVec4 tabBar = ShadeBelow(background, kTabBarShade);
+
+		colors[ImGuiCol_TitleBg] = tabBar;
+		colors[ImGuiCol_TitleBgActive] = tabBar;
+		colors[ImGuiCol_TitleBgCollapsed] = tabBar;
 		colors[ImGuiCol_MenuBarBg] = background;
 
 		// WARNING: a menu fills its open item, and a combo its current item, in Header, so Header keeps a fill.
@@ -189,10 +205,10 @@ namespace Core {
 		colors[ImGuiCol_ButtonHovered] = surfaceHovered;
 		colors[ImGuiCol_ButtonActive] = surfaceHovered;
 
-		colors[ImGuiCol_Tab] = background;
+		colors[ImGuiCol_Tab] = tabBar;
 		colors[ImGuiCol_TabHovered] = background;
 		colors[ImGuiCol_TabSelected] = background;
-		colors[ImGuiCol_TabDimmed] = background;
+		colors[ImGuiCol_TabDimmed] = tabBar;
 		colors[ImGuiCol_TabDimmedSelected] = background;
 
 		colors[ImGuiCol_ScrollbarBg] = WithAlpha(background, kTransparent);

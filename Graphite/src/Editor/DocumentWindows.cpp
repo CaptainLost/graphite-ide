@@ -19,6 +19,7 @@
 #include "UI/ClipboardCopy.h"
 #include "UI/Dialogs/DialogLayout.h"
 #include "UI/FileIcons.h"
+#include "UI/FileTabLook.h"
 #include "UI/TabWindow.h"
 #include "UI/ToastEvent.h"
 
@@ -34,6 +35,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContentWindowColours.h"
 #include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/TabContextMenu.h"
 #include "Core/Platform/Clipboard.h"
 #include "Core/Platform/Shell.h"
@@ -1942,31 +1944,21 @@ namespace Graphite {
 
 			Core::PushContentWindowColours();
 
-			// WARNING: The colour is pushed before Begin: BeginDocked snapshots the style colours in
-			// effect, and the tab bar draws each tab from its window's own snapshot. A font cannot
-			// do the same, since every tab of a node is drawn in one pass with one global font.
 			const GitDecoration decoration =
 				item.Path.empty() ? GitDecoration::None : m_GitDecorations.FileOf(item.Path);
-			const std::optional<ImU32> tabColour =
-				TabTextColour(decoration, preview, m_GitDecorations.ColourFor(decoration),
-							  ImGui::GetColorU32(ImGuiCol_TextDisabled));
-			if (tabColour)
-			{
-				ImGui::PushStyleColor(ImGuiCol_Text, *tabColour);
-			}
+			const FileTab tab{.Path = item.Path,
+							  .Title = m_Documents.DisplayTitle(index),
+							  .Preview = preview,
+							  .Dot = TabDotColour(decoration, m_GitDecorations.ColourFor(decoration))};
 
 			const bool modified = item.Document && item.Document->IsModified();
 			const ImGuiWindowFlags windowFlags =
 				modified ? ImGuiWindowFlags_UnsavedDocument : ImGuiWindowFlags_None;
 
-			const TabWindowFrame frame = BeginTabWindow(name, window, place, closeRequests, windowFlags);
+			const TabWindowFrame frame = BeginTabWindow(name, window, place, closeRequests, windowFlags,
+														FileTabLook(tab, Core::ImGuiRenderer::GetItalicFont()));
 			const bool visible = frame.Visible;
 			bool open = frame.Open;
-
-			if (tabColour)
-			{
-				ImGui::PopStyleColor();
-			}
 
 			if (m_CloseRequested && *m_CloseRequested == item.Path)
 			{

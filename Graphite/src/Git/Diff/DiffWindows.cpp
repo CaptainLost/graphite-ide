@@ -4,6 +4,7 @@
 
 #include "Git/History/CommitLabels.h"
 #include "UI/FileIcons.h"
+#include "UI/FileTabLook.h"
 
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
@@ -366,7 +367,9 @@ namespace Graphite {
 
 			Core::PushContentWindowColours();
 
-			const TabWindowFrame frame = BeginTabWindow(windowName, entry.Window, DockInto(centreNode), closeRequests);
+			const FileTab tab{.Path = entry.Diff.Path, .Title = DiffWindowTitle(entry.Diff)};
+			const TabWindowFrame frame = BeginTabWindow(windowName, entry.Window, DockInto(centreNode), closeRequests,
+														ImGuiWindowFlags_None, FileTabLook(tab, nullptr));
 
 			Core::DrawTabContextMenu(closeRequests);
 

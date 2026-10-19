@@ -1,8 +1,11 @@
 #pragma once
 
+#include "Core/ImGui/DockTab.h"
+
 #include <imgui.h>
 
 #include <functional>
+#include <optional>
 #include <string>
 
 namespace Core {
@@ -29,8 +32,10 @@ namespace Graphite {
 	};
 
 	// WARNING: The caller ends the window whatever Visible says: Begin returning false still needs End.
+	// Without a look, the tab shows what the window's name holds: its glyph and its title.
 	TabWindowFrame BeginTabWindow(const std::string& name, TabWindowState& state, const PlaceNewTab& place,
-								  Core::TabCloseRequests& closeRequests, ImGuiWindowFlags flags = ImGuiWindowFlags_None);
+								  Core::TabCloseRequests& closeRequests, ImGuiWindowFlags flags = ImGuiWindowFlags_None,
+								  const std::optional<Core::DockTabLook>& look = std::nullopt);
 
 	PlaceNewTab DockInto(ImGuiID node);
 }

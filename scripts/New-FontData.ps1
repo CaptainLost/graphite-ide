@@ -21,7 +21,8 @@ $fonts = @(
     @{ File = 'JetBrainsMono-Bold.ttf';          Name = 'JetBrainsMonoBold' },
     @{ File = 'lucide.ttf';                      Name = 'Lucide' },
     @{ File = 'Inter-Regular.ttf';               Name = 'InterRegular' },
-    @{ File = 'Inter-SemiBold.ttf';              Name = 'InterSemiBold' }
+    @{ File = 'Inter-SemiBold.ttf';              Name = 'InterSemiBold' },
+    @{ File = 'Inter-Italic.ttf';                Name = 'InterItalic' }
 )
 
 $work = Join-Path ([IO.Path]::GetTempPath()) ('graphite-fontdata-' + [Guid]::NewGuid().ToString('N'))

@@ -15,6 +15,7 @@ namespace Core {
 		ImFont* Code = nullptr;
 		ImFont* Strong = nullptr;
 		ImFont* Badge = nullptr;
+		ImFont* Italic = nullptr;
 	};
 
 	FontSet LoadFontSet(ImFontAtlas& atlas);

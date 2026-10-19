@@ -6,6 +6,8 @@
 #include "Core/Base/Uuid.h"
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Events/EventBus.h"
+#include "Core/ImGui/DockTab.h"
+#include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/TabCloseRequests.h"
 #include "Core/ImGui/TabContextMenu.h"
 #include "Core/Platform/Process.h"
@@ -36,6 +38,39 @@ namespace Graphite {
 		std::string WindowIdentity(const std::string& id)
 		{
 			return "###terminal-" + id;
+		}
+
+		constexpr int kTabBarButtonColourCount = 3;
+		constexpr ImGuiTabItemFlags kTabBarButtonFlags = ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip;
+
+		// WARNING: A button in a tab bar is a tab. It is as tall as the bar only with the frame padding the bar is laid
+		// out with, and ImGui lays it out in DockSpace with no padding across, so its width is asked for and its glyph
+		// drawn centred here. It would fill in the bar's tab colour and cover the line along the bar's bottom, so it is
+		// clear at rest and takes the hover surface under the pointer.
+		bool TabBarButton(const std::string& id, const char* glyph)
+		{
+			const ImVec4 clear(0.0f, 0.0f, 0.0f, 0.0f);
+			const float width = ImGui::CalcTextSize(glyph).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+
+			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding,
+								ImVec2(ImGui::GetStyle().FramePadding.x, Core::DockTabBarFramePaddingY()));
+			ImGui::PushStyleColor(ImGuiCol_Tab, clear);
+			ImGui::PushStyleColor(ImGuiCol_TabDimmed, clear);
+			ImGui::PushStyleColor(ImGuiCol_TabHovered, ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered));
+			ImGui::SetNextItemWidth(width);
+			const bool pressed = ImGui::TabItemButton(id.c_str(), kTabBarButtonFlags);
+			ImGui::PopStyleColor(kTabBarButtonColourCount);
+			ImGui::PopStyleVar();
+
+			// A button that appears this frame is laid out but not placed, and has no rect yet.
+			const ImRect button(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+
+			if (button.GetWidth() > 0.0f)
+			{
+				Core::DrawCentredGlyph(ImGui::GetWindowDrawList(), button, glyph, ImGui::GetColorU32(ImGuiCol_Text));
+			}
+
+			return pressed;
 		}
 
 		ImGuiWindow* FindLiveWindow(const std::string& name)
@@ -304,18 +339,18 @@ namespace Graphite {
 			{
 				// WARNING: The node's id goes in each label rather than being pushed: the amend has already pushed it as the seed, and pushing it again hashes a value under itself into the same constant for every node, so only the first bar's + could be clicked.
 				const std::string nodeSuffix = std::to_string(node->ID);
-				const std::string newLabel = ICON_LC_PLUS "##terminalNew" + nodeSuffix;
-				const std::string shellsLabel = ICON_LC_CHEVRON_DOWN "##terminalShellsButton" + nodeSuffix;
+				const std::string newLabel = "##terminalNew" + nodeSuffix;
+				const std::string shellsLabel = "##terminalShellsButton" + nodeSuffix;
 				const std::string shellsPopup = "##terminalShells" + nodeSuffix;
 
-				if (ImGui::TabItemButton(newLabel.c_str(), ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
+				if (TabBarButton(newLabel, ICON_LC_PLUS))
 				{
 					m_PendingOpens.push_back(PendingOpen{.Shell = GetDefaultShellIndex(), .DockNode = node->ID});
 				}
 
 				ImGui::SetItemTooltip("New terminal");
 
-				if (ImGui::TabItemButton(shellsLabel.c_str(), ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
+				if (TabBarButton(shellsLabel, ICON_LC_CHEVRON_DOWN))
 				{
 					ImGui::OpenPopup(shellsPopup.c_str());
 				}
