@@ -73,7 +73,7 @@ Draw every icon from Lucide, pinned to `lucide-static` 0.460.0.
     scaled offset to a whole pixel, so the icon's middle is within a pixel of
     the capitals' middle at every scale. Measured from the drawn pixels, it is
     within half a pixel in all three faces from 100 % to 200 %.
-- **Baked set.** `kUsedIcons` lists the 84 Lucide icons the interface draws and
+- **Baked set.** `kUsedIcons` lists the 83 Lucide icons the interface draws and
   only these are baked. `Core::UsedIcons()` returns the list for the tests.
   `scripts/Test-IconsLoaded.ps1` fails on any `ICON_LC_` constant missing from
   it and on any `ICON_MDI_` constant at all.
@@ -142,7 +142,7 @@ Draw every icon from Lucide, pinned to `lucide-static` 0.460.0.
 | `FORMAT_LETTER_CASE` | `case-sensitive` | Find: match case |
 | `FORMAT_LETTER_MATCHES` | `whole-word` | Find: whole word |
 | `FORMAT_LIST_BULLETED` | `list` | The review's list shape |
-| `FUNCTION` | `square-function` | A function in the breadcrumb |
+| `FUNCTION` | none | The breadcrumb draws a function as the text `ƒ` (0623) |
 | `HELP_CIRCLE_OUTLINE` | `circle-help` | An unknown request item or stop reason |
 | `IMAGE_OUTLINE` | `image` | An image sent in a request |
 | `INFORMATION_OUTLINE` | `info` | The language support bar |
