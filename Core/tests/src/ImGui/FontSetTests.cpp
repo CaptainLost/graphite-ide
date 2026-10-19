@@ -90,6 +90,30 @@ namespace {
 		return (inkTop + inkBottom) * 0.5f;
 	}
 
+	float InkOf(const ImFontGlyph& glyph)
+	{
+		ImFontAtlas* const atlas = ImGui::GetIO().Fonts;
+		ImTextureData* const texture = atlas->TexData;
+		const ImTextureRect* const rect = ImFontAtlasPackGetRect(atlas, glyph.PackId);
+		REQUIRE(texture != nullptr);
+		REQUIRE(rect != nullptr);
+
+		const int alphaByte = texture->BytesPerPixel - 1;
+		float ink = 0.0f;
+
+		for (int row = 0; row < rect->h; ++row)
+		{
+			const auto* const pixels = static_cast<const unsigned char*>(texture->GetPixelsAt(rect->x, rect->y + row));
+
+			for (int column = 0; column < rect->w; ++column)
+			{
+				ink += static_cast<float>(pixels[column * texture->BytesPerPixel + alphaByte]);
+			}
+		}
+
+		return ink;
+	}
+
 	struct FaceAtSize
 	{
 		std::string Name;
@@ -185,6 +209,59 @@ TEST_CASE("The interface face is loaded first, at 14 px, and the code face at 15
 	CHECK(set.Interface != set.Code);
 	CHECK(set.Interface != set.Strong);
 	CHECK(set.Code != set.Strong);
+}
+
+TEST_CASE("The badge face is loaded at 9 px with only ASCII and the identical-to sign")
+{
+	HeadlessContext context;
+	const Core::FontSet set = LoadIntoContext();
+	REQUIRE(set.Badge != nullptr);
+
+	constexpr ImWchar kFirstAscii = 0x20;
+	constexpr ImWchar kLastAscii = 0x7E;
+	constexpr ImWchar kIdenticalTo = 0x2261;
+	constexpr ImWchar kSmallEWithAcute = 0x00E9;
+
+	CHECK(set.Badge->LegacySize == Core::kBadgeFontSize);
+	CHECK(set.Badge != set.Interface);
+	CHECK(set.Badge != set.Code);
+	CHECK(set.Badge != set.Strong);
+
+	for (ImWchar character = kFirstAscii; character <= kLastAscii; ++character)
+	{
+		CAPTURE(static_cast<unsigned int>(character));
+		CHECK(Draws(*set.Badge, Core::kBadgeFontSize, character));
+	}
+
+	CHECK(Draws(*set.Badge, Core::kBadgeFontSize, kIdenticalTo));
+	CHECK_FALSE(Draws(*set.Badge, Core::kBadgeFontSize, kSmallEWithAcute));
+	CHECK_FALSE(Draws(*set.Badge, Core::kBadgeFontSize, CodepointOf(ICON_LC_X)));
+}
+
+TEST_CASE("The badge face is JetBrains Mono Bold: its letters are as wide as the code face's and carry more ink")
+{
+	HeadlessContext context;
+	const Core::FontSet set = LoadIntoContext();
+	REQUIRE(set.Badge != nullptr);
+	REQUIRE(set.Code != nullptr);
+
+	constexpr float kSampleSize = 40.0f;
+	constexpr float kBolderBy = 1.2f;
+	constexpr ImWchar kCapital = 'H';
+
+	CHECK(AdvanceOf(*set.Badge, kSampleSize, kCapital) == doctest::Approx(AdvanceOf(*set.Code, kSampleSize, kCapital)));
+
+	const ImFontGlyph* const regular = set.Code->GetFontBaked(kSampleSize)->FindGlyphNoFallback(kCapital);
+	REQUIRE(regular != nullptr);
+	const float regularInk = InkOf(*regular);
+
+	const ImFontGlyph* const bold = set.Badge->GetFontBaked(kSampleSize)->FindGlyphNoFallback(kCapital);
+	REQUIRE(bold != nullptr);
+	const float boldInk = InkOf(*bold);
+
+	CAPTURE(regularInk);
+	CAPTURE(boldInk);
+	CHECK(boldInk > regularInk * kBolderBy);
 }
 
 TEST_CASE("The interface, the code and the strong face all draw the icons")

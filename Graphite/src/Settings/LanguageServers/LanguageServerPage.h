@@ -7,6 +7,7 @@
 #include "Core/Platform/AsyncDialog.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -29,6 +30,8 @@ namespace Graphite {
 		std::string_view GetTitle() const override;
 
 		const char* GetIcon() const override;
+
+		std::optional<FileKind> GetBadge() const override;
 
 		std::vector<SettingsCard> Describe() override;
 

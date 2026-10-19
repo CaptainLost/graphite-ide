@@ -25,6 +25,19 @@ namespace Core {
 		constexpr float kMetricsSampleSize = IMGUI_FONT_SIZE_MAX;
 		constexpr const char* kSymbolFontFile = "seguisym.ttf";
 
+		constexpr ImWchar kFirstControlCharacter = 0x0001;
+		constexpr ImWchar kLastControlCharacter = 0x001F;
+		constexpr ImWchar kDeleteCharacter = 0x007F;
+		constexpr ImWchar kIdenticalTo = 0x2261;
+		constexpr ImWchar kEndOfRanges = 0;
+
+		// WARNING: ImGui's dynamic atlas reads GlyphRanges only to preload, and loads any other glyph of the face on
+		// demand. Only excluded glyphs stay out, so the badge face excludes all but ASCII and the identical-to sign.
+		constexpr ImWchar kBadgeExcludedRanges[] = {kFirstControlCharacter, kLastControlCharacter,
+													kDeleteCharacter, kIdenticalTo - 1,
+													kIdenticalTo + 1, IM_UNICODE_CODEPOINT_MAX,
+													kEndOfRanges};
+
 		// WARNING: without NoLoadError a missing system font trips ImGui's IM_ASSERT_USER_ERROR before
 		// the call returns nullptr, which crashes a Debug build instead of letting the warning run.
 		void AllowMissingFontFile(ImFontConfig& config)
@@ -128,6 +141,8 @@ namespace Core {
 		// merges the symbol fallback onto whichever font was added last.
 		set.Strong = LoadFace(atlas, InterSemiBold(), kInterfaceFontSize, UsedIconSpan());
 		MergeIconFont(atlas, *set.Strong, kInterfaceFontSize);
+
+		set.Badge = LoadFace(atlas, JetBrainsMonoBold(), kBadgeFontSize, kBadgeExcludedRanges);
 
 		return set;
 	}

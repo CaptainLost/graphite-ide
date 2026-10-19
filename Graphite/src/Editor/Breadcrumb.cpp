@@ -35,6 +35,7 @@ namespace Graphite {
 
 		struct Segment
 		{
+			std::optional<FileKind> Badge;
 			const char* Glyph = nullptr;
 			ImU32 GlyphColour = 0;
 			std::string_view Text;
@@ -100,11 +101,7 @@ namespace Graphite {
 				segments.push_back(Segment{.Text = model.Folders[folder], .TextColour = DimColour()});
 			}
 
-			const RowIcon fileIcon = FileIconOf(model.Kind);
-			segments.push_back(Segment{.Glyph = fileIcon.Glyph,
-									   .GlyphColour = fileIcon.Colour,
-									   .Text = model.FileName,
-									   .TextColour = TextColour()});
+			segments.push_back(Segment{.Badge = model.Kind, .Text = model.FileName, .TextColour = TextColour()});
 
 			for (const BreadcrumbSymbol& symbol : model.Symbols)
 			{
@@ -119,7 +116,22 @@ namespace Graphite {
 
 		float GlyphWidth()
 		{
-			return FileIconWidth();
+			return ImGui::GetFontSize();
+		}
+
+		std::optional<float> IconWidthOf(const Segment& segment)
+		{
+			if (segment.Badge.has_value())
+			{
+				return FileIconWidth();
+			}
+
+			if (segment.Glyph != nullptr)
+			{
+				return GlyphWidth();
+			}
+
+			return std::nullopt;
 		}
 
 		float SeparatorWidth()
@@ -129,9 +141,10 @@ namespace Graphite {
 
 		float SegmentWidth(const Segment& segment)
 		{
-			const float glyph = segment.Glyph != nullptr ? GlyphWidth() + Core::Scaled(kGlyphToNameGap) : 0.0f;
+			const std::optional<float> icon = IconWidthOf(segment);
+			const float iconSlot = icon.has_value() ? *icon + Core::Scaled(kGlyphToNameGap) : 0.0f;
 
-			return glyph + Core::TextWidth(segment.Text);
+			return iconSlot + Core::TextWidth(segment.Text);
 		}
 
 		float WidthOf(const std::vector<Segment>& segments)
@@ -175,10 +188,18 @@ namespace Graphite {
 					x += GlyphWidth() + Core::Scaled(kChevronSideGap);
 				}
 
-				if (segment.Glyph != nullptr)
+				if (segment.Badge.has_value())
 				{
-					DrawRowIcon(RowIcon{.Glyph = segment.Glyph, .Colour = segment.GlyphColour}, ImVec2(x, lineStart.y));
-					x += GlyphWidth() + Core::Scaled(kGlyphToNameGap);
+					DrawFileIcon(*segment.Badge, ImVec2(x, lineStart.y));
+				}
+				else if (segment.Glyph != nullptr)
+				{
+					drawList->AddText(ImVec2(x, lineStart.y), segment.GlyphColour, segment.Glyph);
+				}
+
+				if (const std::optional<float> icon = IconWidthOf(segment))
+				{
+					x += *icon + Core::Scaled(kGlyphToNameGap);
 				}
 
 				drawList->AddText(ImVec2(x, lineStart.y), segment.TextColour, segment.Text.data(),

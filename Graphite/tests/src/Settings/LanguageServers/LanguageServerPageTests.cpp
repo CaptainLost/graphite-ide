@@ -16,6 +16,7 @@
 #include "Settings/AppSettings.h"
 #include "Settings/LanguageServers/LanguageServerPage.h"
 #include "Settings/Panel/SettingsLayout.h"
+#include "UI/FileIcons.h"
 
 #include "Core/ImGui/Animation.h"
 
@@ -187,6 +188,15 @@ TEST_CASE("A language's page is named after the language and shows the install o
 	screen.Page.SelectServer("roslyn");
 
 	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Server", "Install", "Advanced"});
+}
+
+TEST_CASE("A language's page shows the language's file badge in place of a glyph")
+{
+	LanguageServerScreen cpp{Graphite::LanguageId::Cpp};
+	LanguageServerScreen csharp{Graphite::LanguageId::CSharp};
+
+	CHECK(cpp.Page.GetBadge() == std::optional<Graphite::FileKind>{Graphite::FileKind::CppSource});
+	CHECK(csharp.Page.GetBadge() == std::optional<Graphite::FileKind>{Graphite::FileKind::CSharp});
 }
 
 TEST_CASE("A language's page draws every install state without an ImGui assertion")

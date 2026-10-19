@@ -439,7 +439,8 @@ namespace Graphite {
 		ImGui::Dummy(ImVec2(0.0f, Core::Scaled(kGroupGap) * 0.5f));
 	}
 
-	bool SettingsLayout::DrawNavigationEntry(const char* icon, std::string_view title, bool selected, bool dimmed)
+	bool SettingsLayout::DrawNavigationEntry(const char* icon, std::string_view title, bool selected, bool dimmed,
+											 std::optional<FileKind> badge)
 	{
 		const ImVec2 topLeft = ImGui::GetCursorScreenPos();
 		const ImVec2 size(ImGui::GetContentRegionAvail().x, Core::Scaled(kNavigationEntryHeight));
@@ -461,7 +462,15 @@ namespace Graphite {
 		const float iconLeft = topLeft.x + Core::Scaled(kNavigationEntryInset);
 		const float titleLeft = iconLeft + ImGui::GetFontSize() * kIconSlotFontSizes;
 
-		drawList->AddText(ImVec2(iconLeft, textTop), textColour, icon);
+		if (badge.has_value())
+		{
+			DrawFileIcon(*badge, ImVec2(iconLeft, textTop), dimmed ? IconTone::Dimmed : IconTone::Normal);
+		}
+		else
+		{
+			drawList->AddText(ImVec2(iconLeft, textTop), textColour, icon);
+		}
+
 		drawList->AddText(ImVec2(titleLeft, textTop), textColour, title.data(), title.data() + title.size());
 
 		return clicked;

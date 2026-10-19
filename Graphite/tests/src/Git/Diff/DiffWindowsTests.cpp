@@ -68,12 +68,13 @@ TEST_CASE("A window name shows the title and identifies by the identity")
 	CHECK(name.find(Graphite::DiffWindowTitle(diff)) < marker);
 }
 
-TEST_CASE("A diff's window name starts with its file kind's glyph and keeps its identity after the marker")
+TEST_CASE("A diff's window name starts with its file kind's tab glyph, not its badge, and keeps its identity after the marker")
 {
 	const Graphite::OpenDiff diff = Diff(1, "docs/README.md");
 	const std::string name = Graphite::DiffWindowName(diff);
 
 	CHECK(name.starts_with(Graphite::GlyphOf(Graphite::FileKind::Markdown)));
+	CHECK_FALSE(name.starts_with(Graphite::BadgeOf(Graphite::FileKind::Markdown)));
 	CHECK(name.ends_with("###" + Graphite::DiffWindowIdentity(diff)));
 }
 

@@ -78,7 +78,7 @@ TEST_CASE("An acknowledge row answers Escape once its dialog has the keyboard")
 	CHECK(screen.Acknowledged);
 }
 
-TEST_CASE("A dialog's file row draws its glyph in its kind's colour and its path in the text colour past the icon")
+TEST_CASE("A dialog's file row draws its badge in its kind's colour and its path in the text colour past the badge")
 {
 	constexpr bool kDarkScheme = false;
 	constexpr float kOnePixel = 1.0f;

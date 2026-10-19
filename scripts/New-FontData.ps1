@@ -18,6 +18,7 @@ $outputDirectory = Join-Path $root 'Core\src\Core\ImGui\Fonts'
 
 $fonts = @(
     @{ File = 'JetBrainsMono-Regular.ttf';       Name = 'JetBrainsMonoRegular' },
+    @{ File = 'JetBrainsMono-Bold.ttf';          Name = 'JetBrainsMonoBold' },
     @{ File = 'lucide.ttf';                      Name = 'Lucide' },
     @{ File = 'Inter-Regular.ttf';               Name = 'InterRegular' },
     @{ File = 'Inter-SemiBold.ttf';              Name = 'InterSemiBold' }

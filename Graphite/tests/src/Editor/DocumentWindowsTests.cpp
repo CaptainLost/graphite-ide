@@ -29,7 +29,7 @@ TEST_CASE("A save failure whose error does not name the file is prefixed with it
 	CHECK(Graphite::SaveFailureMessage(path, "access denied") == "D:/Repos/IDE/src/a.cpp: access denied");
 }
 
-TEST_CASE("A document's window name starts with its file kind's glyph and is identified by its path")
+TEST_CASE("A document's window name starts with its file kind's tab glyph, not its badge, and is identified by its path")
 {
 	TempDirectory folder;
 	const std::filesystem::path notes = folder.MakeFile("README.md", "# Notes");
@@ -41,5 +41,6 @@ TEST_CASE("A document's window name starts with its file kind's glyph and is ide
 	const std::string name = Graphite::DocumentWindowName(documents, kOnlyDocument);
 
 	CHECK(name.starts_with(Graphite::GlyphOf(Graphite::FileKind::Markdown)));
+	CHECK_FALSE(name.starts_with(Graphite::BadgeOf(Graphite::FileKind::Markdown)));
 	CHECK(name.ends_with("###" + Core::ToUtf8(documents.At(kOnlyDocument).Path)));
 }

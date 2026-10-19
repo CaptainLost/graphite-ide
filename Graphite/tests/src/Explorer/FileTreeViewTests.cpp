@@ -338,7 +338,7 @@ TEST_CASE("The file tree marks a file in the preview tab with a ring and one in 
 	CHECK(FillsMiddleInColour(*body->DrawList, openTabMark));
 }
 
-TEST_CASE("An Explorer file row draws its glyph in its kind's colour and its name in the status colour")
+TEST_CASE("An Explorer file row draws its badge in its kind's colour and its name in the status colour")
 {
 	constexpr ImU32 kModifiedColour = 0xFF3377EEu;
 	constexpr std::size_t kModifiedSlot = 1;
@@ -377,7 +377,7 @@ TEST_CASE("An Explorer file row draws its glyph in its kind's colour and its nam
 	CHECK(glyph->Right < name->Left);
 }
 
-TEST_CASE("An ignored Explorer file row draws its glyph at half its kind's alpha")
+TEST_CASE("An ignored Explorer file row draws its badge at half its kind's alpha")
 {
 	constexpr bool kDarkScheme = false;
 	constexpr float kHalfAlpha = 0.5f;
@@ -404,7 +404,7 @@ TEST_CASE("An ignored Explorer file row draws its glyph at half its kind's alpha
 	CHECK_FALSE(DrawsInColour(*body->DrawList, kindColour));
 }
 
-TEST_CASE("An Explorer folder row draws the outline glyph in the dim folder colour")
+TEST_CASE("An Explorer folder row draws the outline glyph in the folder grey")
 {
 	TempDirectory folder;
 	folder.MakeFile("src/Main.cpp", "int x;");

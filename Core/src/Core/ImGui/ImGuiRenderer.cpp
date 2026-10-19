@@ -73,6 +73,11 @@ namespace Core {
 		return g_fonts.Strong;
 	}
 
+	ImFont* ImGuiRenderer::GetBadgeFont()
+	{
+		return g_fonts.Badge;
+	}
+
 	void ImGuiRenderer::ApplyTheme(const ChromePalette& palette)
 	{
 		Theme::Apply(palette);

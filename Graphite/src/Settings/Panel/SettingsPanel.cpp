@@ -311,7 +311,7 @@ namespace Graphite {
 				const bool selected = !IsSearching() && page->GetId() == selectedId;
 				const bool dimmed = IsSearching() && !HasHitsUnder(hits, page->GetId());
 
-				if (SettingsLayout::DrawNavigationEntry(page->GetIcon(), page->GetTitle(), selected, dimmed))
+				if (SettingsLayout::DrawNavigationEntry(page->GetIcon(), page->GetTitle(), selected, dimmed, page->GetBadge()))
 				{
 					clicked = std::string{page->GetId()};
 				}

@@ -261,7 +261,7 @@ TEST_CASE("A tree row's note follows its label dim, and the label is cut short f
 		const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
 		Graphite::ListRowSelectable("##root", false);
 		const int from = ImGui::GetWindowDrawList()->VtxBuffer.Size;
-		Graphite::DrawTreeRowLabel(layout, Graphite::FileIconOf(Graphite::FileKind::Project), std::string(80, 'D'),
+		Graphite::DrawTreeRowLabel(layout, Graphite::FileIconOf(Graphite::FileKind::Solution), std::string(80, 'D'),
 								   kNoMarker, "(1 project)");
 
 		const ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
@@ -309,7 +309,7 @@ TEST_CASE("A tree row too narrow for its note beside its label shows the label a
 		const Graphite::FileRowLayout layout = Graphite::LayoutFileRow();
 		Graphite::ListRowSelectable("##root", false);
 		const int from = ImGui::GetWindowDrawList()->VtxBuffer.Size;
-		Graphite::DrawTreeRowLabel(layout, Graphite::FileIconOf(Graphite::FileKind::Project), "Demo solution", kNoMarker,
+		Graphite::DrawTreeRowLabel(layout, Graphite::FileIconOf(Graphite::FileKind::Solution), "Demo solution", kNoMarker,
 								   "(12 projects)");
 
 		const ImDrawList& drawing = *ImGui::GetWindowDrawList();
@@ -326,7 +326,7 @@ TEST_CASE("A tree row too narrow for its note beside its label shows the label a
 	CHECK_FALSE(noteDrawn);
 }
 
-TEST_CASE("A file row draws its glyph in its kind's colour at the label's start and its name in its ink past the icon")
+TEST_CASE("A file row draws its badge in its kind's colour at the label's start and its name in its ink past the badge")
 {
 	ImGuiFrames frames;
 
@@ -363,7 +363,7 @@ TEST_CASE("A file row draws its glyph in its kind's colour at the label's start 
 	CHECK(name->Left > glyph->Right);
 }
 
-TEST_CASE("A folder row draws the outline glyph in the dim folder colour and its name in the text colour past it")
+TEST_CASE("A folder row draws the outline glyph in the folder grey and its name in the text colour past it")
 {
 	ImGuiFrames frames;
 

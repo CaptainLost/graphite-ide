@@ -5,6 +5,7 @@
 #include <imgui.h>
 
 #include <cstddef>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -69,7 +70,8 @@ namespace Graphite {
 		static bool DrawSearchField(std::string& query);
 		static void DrawGroupTitle(std::string_view title);
 		static void DrawGroupDivider();
-		static bool DrawNavigationEntry(const char* icon, std::string_view title, bool selected, bool dimmed);
+		static bool DrawNavigationEntry(const char* icon, std::string_view title, bool selected, bool dimmed,
+										std::optional<FileKind> badge = std::nullopt);
 
 		static bool Choice(const char* id, std::span<const std::string> options, std::size_t& selected, const std::string& unlistedPreview = {});
 	};

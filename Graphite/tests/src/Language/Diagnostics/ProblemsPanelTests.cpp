@@ -56,7 +56,7 @@ namespace {
 	}
 }
 
-TEST_CASE("A file in Problems draws its glyph in its kind's colour and its name in the text colour past it")
+TEST_CASE("A file in Problems draws its badge in its kind's colour and its name in the text colour past it")
 {
 	constexpr bool kDarkScheme = false;
 
@@ -102,7 +102,7 @@ TEST_CASE("A file heading in Problems takes one list row pitch, as the problem r
 	constexpr bool kDarkScheme = false;
 
 	TempDirectory folder;
-	const std::filesystem::path settingsFile = folder.MakeFile("graphite.json", "{}");
+	const std::filesystem::path notesFile = folder.MakeFile("README.md", "# Notes");
 	const std::filesystem::path sourceFile = folder.MakeFile("main.cpp", "int main() {}");
 
 	ImGuiFrames frames;
@@ -110,11 +110,11 @@ TEST_CASE("A file heading in Problems takes one list row pitch, as the problem r
 	Core::EventBus events;
 	Graphite::Workspace workspace{events, settings.Get()};
 	Core::DocumentSet documents;
-	REQUIRE(documents.Open(settingsFile, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+	REQUIRE(documents.Open(notesFile, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
 	REQUIRE(documents.Open(sourceFile, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
 
 	Graphite::DiagnosticsModel diagnostics;
-	diagnostics.Apply(OneErrorIn(settingsFile));
+	diagnostics.Apply(OneErrorIn(notesFile));
 	diagnostics.Apply(OneErrorIn(sourceFile));
 
 	const Graphite::ActiveScheme scheme;
@@ -134,14 +134,15 @@ TEST_CASE("A file heading in Problems takes one list row pitch, as the problem r
 	const ImGuiWindow* list = FindProblemList();
 	REQUIRE(list != nullptr);
 
-	const std::optional<VerticalExtent> settingsGlyph =
-		VerticalExtentInColour(*list->DrawList, Graphite::ColourOf(Graphite::FileKind::Json, kDarkScheme));
-	const std::optional<VerticalExtent> sourceGlyph =
+	// WARNING: Both badges are capitals. A badge of other characters, such as braces, starts at another height.
+	const std::optional<VerticalExtent> notesBadge =
+		VerticalExtentInColour(*list->DrawList, Graphite::ColourOf(Graphite::FileKind::Markdown, kDarkScheme));
+	const std::optional<VerticalExtent> sourceBadge =
 		VerticalExtentInColour(*list->DrawList, Graphite::ColourOf(Graphite::FileKind::CppSource, kDarkScheme));
 
-	REQUIRE(settingsGlyph.has_value());
-	REQUIRE(sourceGlyph.has_value());
+	REQUIRE(notesBadge.has_value());
+	REQUIRE(sourceBadge.has_value());
 
 	constexpr float kHeadingAndOneProblem = 2.0f;
-	CHECK(std::abs(sourceGlyph->Top - settingsGlyph->Top) == doctest::Approx(kHeadingAndOneProblem * pitch));
+	CHECK(std::abs(sourceBadge->Top - notesBadge->Top) == doctest::Approx(kHeadingAndOneProblem * pitch));
 }

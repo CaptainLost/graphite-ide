@@ -36,6 +36,7 @@ namespace Graphite {
 	namespace {
 
 		constexpr float kFileColumnEms = 24.0f;
+		constexpr float kNoSpacing = 0.0f;
 		constexpr int kReviewColumnCount = 2;
 		constexpr std::size_t kCommitsInTooltip = 20;
 		constexpr float kCommitTooltipWrapEms = 35.0f;
@@ -186,8 +187,8 @@ namespace Graphite {
 			DrawChevron(!row.Folded);
 			ImGui::SameLine();
 			DrawFolderIcon(!row.Folded, ImGui::GetCursorScreenPos());
-			ImGui::Dummy(ImVec2(FileIconWidth(), ImGui::GetTextLineHeight()));
-			ImGui::SameLine();
+			ImGui::Dummy(ImVec2(IconToNameOffset(), ImGui::GetTextLineHeight()));
+			ImGui::SameLine(kNoSpacing, kNoSpacing);
 
 			const std::string countText = FolderCountText(row, marks);
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;

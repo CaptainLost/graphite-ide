@@ -465,7 +465,7 @@ TEST_CASE("The breadcrumb draws in the interface face at 13 px")
 	CHECK(drawn->Right - drawn->Left == doctest::Approx(atTheRowSize->Right - atTheRowSize->Left));
 }
 
-TEST_CASE("Folders, chevrons and symbol glyphs are dim, and the file name follows its kind's icon in the kind's colour")
+TEST_CASE("Folders, chevrons and symbol glyphs are dim, and the file name follows its kind's badge in the kind's colour")
 {
 	BreadcrumbModel model = FileOnly("data.json", FileKind::Json);
 	model.Folders = {"src"};

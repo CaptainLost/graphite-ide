@@ -15,7 +15,7 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
 
 ## Decision
 
-- Load three faces through `Core::LoadFontSet`, in this order:
+- Load four faces through `Core::LoadFontSet`, in this order:
   1. the interface face, Inter Regular at `kInterfaceFontSize` (14 px);
   2. the Lucide icons merged onto it;
   3. the system symbol font (`seguisym.ttf`) merged onto it;
@@ -23,13 +23,20 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
   5. the Lucide icons merged onto it;
   6. the system symbol font merged onto it;
   7. the strong face, Inter SemiBold at 14 px, with the Lucide icons merged onto
-     it.
+     it;
+  8. the badge face, JetBrains Mono Bold at `kBadgeFontSize` (9 px), which draws
+     the file kinds' badges of
+     [0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md).
 
   The interface face is the atlas's first font and `io.FontDefault`.
-- All three faces carry the icons, each with a minimum advance of its own size
-  and lowered by its own descent
+- The badge face holds only ASCII and the identical-to sign, U+2261. ImGui's
+  dynamic atlas reads a face's glyph ranges only to preload, so every other
+  character is shut out through `GlyphExcludeRanges`. It carries no icons and no
+  symbols, and comes last, after every merge.
+- The interface, the code and the strong face carry the icons, each with a
+  minimum advance of its own size and lowered by its own descent
   ([0625](0625-draw-the-interface-s-icons-from-lucide.md)), so an icon draws in
-  any face; the code face keeps JetBrains Mono's Powerline glyphs over the
+  any of them; the code face keeps JetBrains Mono's Powerline glyphs over the
   icons at their codepoints. The interface and the code face carry the system
   symbols.
 - Pin the code face's symbol advance, minimum and maximum, to the advance of its
@@ -56,11 +63,12 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
   - Lens labels draw in the interface face at the editor's font size. Their size
     changes in a later stage.
 - The strong face, which `ImGuiRenderer::GetBoldFont()` returns, is Inter
-  SemiBold. `GetMonoFont()` returns the code face and `GetInterfaceFont()` the
-  interface face.
-- This amends 0590's face list: Inter Regular, Inter SemiBold and JetBrains Mono
-  Regular are embedded, with the Lucide icons. JetBrains Mono Bold no longer
-  is; its `.ttf` stays in `vendor/fonts`, as Italic does.
+  SemiBold. `GetMonoFont()` returns the code face, `GetInterfaceFont()` the
+  interface face and `GetBadgeFont()` the badge face.
+- This amends 0590's face list: Inter Regular, Inter SemiBold, JetBrains Mono
+  Regular and JetBrains Mono Bold are embedded, with the Lucide icons. Bold
+  draws only the badges. JetBrains Mono Italic stays in `vendor/fonts`,
+  not embedded.
 
 ## Rationale
 

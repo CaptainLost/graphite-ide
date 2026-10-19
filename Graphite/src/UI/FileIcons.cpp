@@ -2,21 +2,30 @@
 
 #include "Core/Base/Color.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiColors.h"
+#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/Theme.h"
 #include "Core/ImGui/UiScale.h"
 
 #include <IconsLucide.h>
 #include <imgui_internal.h>
 
+#include <cstddef>
+#include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 
 namespace Graphite {
 
 	namespace {
-		constexpr float kDimFolderShareOfDisabled = 0.45f;
+		constexpr float kDimFolderShareOfDisabled = 0.77f;
 		constexpr float kDimmedIconAlpha = 0.5f;
+		constexpr float kHalf = 0.5f;
+		constexpr float kBadgeLetterSpacing = -0.3f;
+
+		constexpr const char* kIdenticalTo = "\xE2\x89\xA1";
 
 		struct ExtensionKind
 		{
@@ -25,34 +34,40 @@ namespace Graphite {
 		};
 
 		constexpr ExtensionKind kExtensionKinds[] = {
-			{".c", FileKind::CppSource},
-			{".cc", FileKind::CppSource},
 			{".cpp", FileKind::CppSource},
+			{".cc", FileKind::CppSource},
 			{".cxx", FileKind::CppSource},
+			{".c", FileKind::CSource},
 			{".h", FileKind::Header},
 			{".hpp", FileKind::Header},
 			{".hxx", FileKind::Header},
+			{".inl", FileKind::Header},
+			{".ipp", FileKind::Header},
 			{".cs", FileKind::CSharp},
 			{".json", FileKind::Json},
 			{".md", FileKind::Markdown},
 			{".lua", FileKind::Lua},
-			{".ps1", FileKind::Shell},
-			{".psm1", FileKind::Shell},
-			{".psd1", FileKind::Shell},
-			{".bat", FileKind::Shell},
-			{".cmd", FileKind::Shell},
-			{".sln", FileKind::Project},
-			{".slnx", FileKind::Project},
-			{".vcxproj", FileKind::Project},
-			{".csproj", FileKind::Project},
+			{".ps1", FileKind::PowerShell},
+			{".psm1", FileKind::PowerShell},
+			{".psd1", FileKind::PowerShell},
+			{".bat", FileKind::Batch},
+			{".cmd", FileKind::Batch},
+			{".sln", FileKind::Solution},
+			{".slnx", FileKind::Solution},
+			{".vcxproj", FileKind::CppProject},
+			{".csproj", FileKind::CSharpProject},
 			{".png", FileKind::Image},
 			{".jpg", FileKind::Image},
 			{".jpeg", FileKind::Image},
 			{".gif", FileKind::Image},
 			{".bmp", FileKind::Image},
 			{".ico", FileKind::Image},
-			{".svg", FileKind::Image},
 			{".webp", FileKind::Image},
+			{".svg", FileKind::VectorImage},
+			{".py", FileKind::Python},
+			{".txt", FileKind::PlainText},
+			{".ini", FileKind::Ini},
+			{".rc", FileKind::ResourceScript},
 		};
 
 		struct KindColours
@@ -77,10 +92,56 @@ namespace Graphite {
 		constexpr KindColours kShellColours{.Dark = Opaque(0x5F, 0xA9, 0xD6), .Light = Opaque(0x1F, 0x6F, 0x9E)};
 		constexpr KindColours kProjectColours{.Dark = Opaque(0xA7, 0x7F, 0xE0), .Light = Opaque(0x6B, 0x3F, 0xB0)};
 		constexpr KindColours kImageColours{.Dark = Opaque(0xD0, 0xA0, 0x60), .Light = Opaque(0x9A, 0x6A, 0x20)};
+		constexpr std::optional<KindColours> kInTheDisabledTextColour = std::nullopt;
 
-		ImU32 SchemeColourOf(const KindColours& colours, bool lightScheme)
+		struct KindLook
 		{
-			return lightScheme ? colours.Light : colours.Dark;
+			FileKind Kind;
+			const char* Badge;
+			const char* TabGlyph;
+			std::optional<KindColours> Colours;
+		};
+
+		constexpr KindLook kKindLooks[] = {
+			{FileKind::CppSource, "C++", ICON_LC_FILE_CODE, kCppSourceColours},
+			{FileKind::CSource, "C", ICON_LC_FILE_CODE, kCppSourceColours},
+			{FileKind::Header, "H", ICON_LC_FILE_CODE_2, kHeaderColours},
+			{FileKind::CSharp, "C#", ICON_LC_HASH, kCSharpColours},
+			{FileKind::Json, "{}", ICON_LC_FILE_JSON, kJsonColours},
+			{FileKind::Markdown, "MD", ICON_LC_FILE_TEXT, kMarkdownColours},
+			{FileKind::Lua, "LUA", ICON_LC_FILE_CODE, kLuaColours},
+			{FileKind::PowerShell, "PS", ICON_LC_TERMINAL, kShellColours},
+			{FileKind::Batch, "BAT", ICON_LC_TERMINAL, kShellColours},
+			{FileKind::Solution, "SLN", ICON_LC_APP_WINDOW, kProjectColours},
+			{FileKind::CppProject, "VCX", ICON_LC_APP_WINDOW, kProjectColours},
+			{FileKind::CSharpProject, "CSP", ICON_LC_APP_WINDOW, kProjectColours},
+			{FileKind::Image, "IMG", ICON_LC_FILE_IMAGE, kImageColours},
+			{FileKind::VectorImage, "SVG", ICON_LC_FILE_IMAGE, kImageColours},
+			{FileKind::Python, "PY", ICON_LC_FILE, kInTheDisabledTextColour},
+			{FileKind::PlainText, "TXT", ICON_LC_FILE, kInTheDisabledTextColour},
+			{FileKind::Ini, "INI", ICON_LC_FILE, kInTheDisabledTextColour},
+			{FileKind::ResourceScript, "RC", ICON_LC_FILE, kInTheDisabledTextColour},
+			{FileKind::Other, kIdenticalTo, ICON_LC_FILE, kInTheDisabledTextColour},
+		};
+
+		consteval bool EveryLookSitsAtItsOwnKind()
+		{
+			for (std::size_t lookIndex = 0; lookIndex < std::size(kKindLooks); ++lookIndex)
+			{
+				if (static_cast<std::size_t>(kKindLooks[lookIndex].Kind) != lookIndex)
+				{
+					return false;
+				}
+			}
+
+			return std::size(kKindLooks) == static_cast<std::size_t>(FileKind::Other) + 1;
+		}
+
+		static_assert(EveryLookSitsAtItsOwnKind(), "kKindLooks must list every FileKind once, in FileKind order");
+
+		const KindLook& LookOf(FileKind kind)
+		{
+			return kKindLooks[static_cast<std::size_t>(kind)];
 		}
 
 		ImU32 InTone(ImU32 colour, IconTone tone)
@@ -94,6 +155,80 @@ namespace Graphite {
 			}
 
 			return colour;
+		}
+
+		float LineMiddle(ImVec2 lineTop)
+		{
+			return lineTop.y + ImGui::GetFontSize() * kHalf;
+		}
+
+		ImFont* BadgeFace()
+		{
+			ImFont* const badgeFace = Core::ImGuiRenderer::GetBadgeFont();
+
+			return badgeFace != nullptr ? badgeFace : ImGui::GetFont();
+		}
+
+		// WARNING: A face may hand back a bake of another size than the one asked for, which AddText scales to the
+		// size it is given, so an advance read from the bake is scaled the same way.
+		float AdvanceOf(ImFontBaked& baked, float size, unsigned int codepoint)
+		{
+			return baked.GetCharAdvance(static_cast<ImWchar>(codepoint)) * (size / baked.Size);
+		}
+
+		float BadgeTextWidth(ImFontBaked& baked, float size, std::string_view text, float letterSpacing)
+		{
+			float width = 0.0f;
+			int characters = 0;
+			const char* character = text.data();
+			const char* const end = text.data() + text.size();
+
+			while (character < end)
+			{
+				unsigned int codepoint = 0;
+				character += ImTextCharFromUtf8(&codepoint, character, end);
+				width += AdvanceOf(baked, size, codepoint);
+				++characters;
+			}
+
+			return characters > 0 ? width + letterSpacing * static_cast<float>(characters - 1) : 0.0f;
+		}
+
+		// WARNING: ImGui has no letter spacing, so each character is drawn on its own and placed by hand. AddText
+		// snaps the start of every run to a whole pixel, which keeps each tightened character sharp.
+		void DrawBadge(const char* text, ImU32 colour, ImVec2 lineTop)
+		{
+			ImFont* const face = BadgeFace();
+			const float size = Core::Scaled(Core::kBadgeFontSize);
+			const float letterSpacing = Core::Scaled(kBadgeLetterSpacing);
+			ImFontBaked* const baked = face->GetFontBaked(size);
+
+			const std::string_view badge{text};
+			const ImVec2 box = Core::Scaled(ImVec2(kBadgeWidth, kBadgeHeight));
+			const float boxTop = LineMiddle(lineTop) - box.y * kHalf;
+			const float textTop = boxTop + (box.y - size) * kHalf;
+			float x = lineTop.x + (box.x - BadgeTextWidth(*baked, size, badge, letterSpacing)) * kHalf;
+
+			ImDrawList* const drawList = ImGui::GetWindowDrawList();
+			const char* character = badge.data();
+			const char* const end = badge.data() + badge.size();
+
+			while (character < end)
+			{
+				unsigned int codepoint = 0;
+				const char* const next = character + ImTextCharFromUtf8(&codepoint, character, end);
+				drawList->AddText(face, size, ImVec2(x, textTop), colour, character, next);
+				x += AdvanceOf(*baked, size, codepoint) + letterSpacing;
+				character = next;
+			}
+		}
+
+		void DrawGlyph(const char* glyph, ImU32 colour, ImVec2 lineTop)
+		{
+			const float size = Core::Scaled(kFolderIconSize);
+			const ImVec2 glyphTop(lineTop.x, LineMiddle(lineTop) - size * kHalf);
+
+			ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), size, glyphTop, colour, glyph);
 		}
 	}
 
@@ -112,33 +247,14 @@ namespace Graphite {
 		return FileKind::Other;
 	}
 
+	const char* BadgeOf(FileKind kind)
+	{
+		return LookOf(kind).Badge;
+	}
+
 	const char* GlyphOf(FileKind kind)
 	{
-		switch (kind)
-		{
-		case FileKind::CppSource:
-			return ICON_LC_FILE_CODE;
-		case FileKind::Header:
-			return ICON_LC_FILE_CODE_2;
-		case FileKind::CSharp:
-			return ICON_LC_HASH;
-		case FileKind::Json:
-			return ICON_LC_FILE_JSON;
-		case FileKind::Markdown:
-			return ICON_LC_FILE_TEXT;
-		case FileKind::Lua:
-			return ICON_LC_FILE_CODE;
-		case FileKind::Shell:
-			return ICON_LC_TERMINAL;
-		case FileKind::Project:
-			return ICON_LC_APP_WINDOW;
-		case FileKind::Image:
-			return ICON_LC_FILE_IMAGE;
-		case FileKind::Other:
-			return ICON_LC_FILE;
-		}
-
-		return ICON_LC_FILE;
+		return LookOf(kind).TabGlyph;
 	}
 
 	const char* FolderGlyphOf(bool open)
@@ -148,31 +264,14 @@ namespace Graphite {
 
 	ImU32 ColourOf(FileKind kind, bool lightScheme)
 	{
-		switch (kind)
+		const std::optional<KindColours>& colours = LookOf(kind).Colours;
+
+		if (!colours.has_value())
 		{
-		case FileKind::CppSource:
-			return SchemeColourOf(kCppSourceColours, lightScheme);
-		case FileKind::Header:
-			return SchemeColourOf(kHeaderColours, lightScheme);
-		case FileKind::CSharp:
-			return SchemeColourOf(kCSharpColours, lightScheme);
-		case FileKind::Json:
-			return SchemeColourOf(kJsonColours, lightScheme);
-		case FileKind::Markdown:
-			return SchemeColourOf(kMarkdownColours, lightScheme);
-		case FileKind::Lua:
-			return SchemeColourOf(kLuaColours, lightScheme);
-		case FileKind::Shell:
-			return SchemeColourOf(kShellColours, lightScheme);
-		case FileKind::Project:
-			return SchemeColourOf(kProjectColours, lightScheme);
-		case FileKind::Image:
-			return SchemeColourOf(kImageColours, lightScheme);
-		case FileKind::Other:
-			return DimFolderColour();
+			return ImGui::ColorConvertFloat4ToU32(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
 		}
 
-		return DimFolderColour();
+		return lightScheme ? colours->Light : colours->Dark;
 	}
 
 	ImU32 DimFolderColour()
@@ -195,17 +294,19 @@ namespace Graphite {
 
 	RowIcon FileIconOf(FileKind kind, IconTone tone)
 	{
-		return RowIcon{.Glyph = GlyphOf(kind), .Colour = InTone(ColourOf(kind, IsLightScheme()), tone)};
+		return RowIcon{.Form = IconForm::Badge,
+					   .Text = BadgeOf(kind),
+					   .Colour = InTone(ColourOf(kind, IsLightScheme()), tone)};
 	}
 
 	RowIcon FolderIconOf(bool open, IconTone tone)
 	{
-		return RowIcon{.Glyph = FolderGlyphOf(open), .Colour = InTone(DimFolderColour(), tone)};
+		return RowIcon{.Form = IconForm::Glyph, .Text = FolderGlyphOf(open), .Colour = InTone(DimFolderColour(), tone)};
 	}
 
 	float FileIconWidth()
 	{
-		return ImGui::GetFontSize();
+		return Core::Scaled(kBadgeWidth);
 	}
 
 	float IconToNameOffset()
@@ -215,12 +316,22 @@ namespace Graphite {
 
 	void DrawRowIcon(const RowIcon& icon, ImVec2 at)
 	{
-		if (icon.Glyph == nullptr)
+		if (icon.Text == nullptr)
 		{
 			return;
 		}
 
-		ImGui::GetWindowDrawList()->AddText(at, ImGui::GetColorU32(icon.Colour), icon.Glyph);
+		const ImU32 colour = ImGui::GetColorU32(icon.Colour);
+
+		switch (icon.Form)
+		{
+		case IconForm::Glyph:
+			DrawGlyph(icon.Text, colour, at);
+			return;
+		case IconForm::Badge:
+			DrawBadge(icon.Text, colour, at);
+			return;
+		}
 	}
 
 	void DrawFileIcon(FileKind kind, ImVec2 at, IconTone tone)

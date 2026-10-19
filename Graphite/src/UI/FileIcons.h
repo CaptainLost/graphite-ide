@@ -10,14 +10,23 @@ namespace Graphite {
 	enum class FileKind : std::uint8_t
 	{
 		CppSource,
+		CSource,
 		Header,
 		CSharp,
 		Json,
 		Markdown,
 		Lua,
-		Shell,
-		Project,
+		PowerShell,
+		Batch,
+		Solution,
+		CppProject,
+		CSharpProject,
 		Image,
+		VectorImage,
+		Python,
+		PlainText,
+		Ini,
+		ResourceScript,
 		Other
 	};
 
@@ -27,16 +36,30 @@ namespace Graphite {
 		Dimmed
 	};
 
+	enum class IconForm : std::uint8_t
+	{
+		Glyph,
+		Badge
+	};
+
 	struct RowIcon
 	{
-		const char* Glyph = nullptr;
+		IconForm Form = IconForm::Glyph;
+		const char* Text = nullptr;
 		ImU32 Colour = 0;
 	};
 
-	inline constexpr float kIconToNameGap = 8.0f;
+	inline constexpr float kIconToNameGap = 5.0f;
+	inline constexpr float kBadgeWidth = 17.0f;
+	inline constexpr float kBadgeHeight = 15.0f;
+	inline constexpr float kFolderIconSize = 16.0f;
 
 	FileKind KindOfFile(const std::filesystem::path& path);
 
+	const char* BadgeOf(FileKind kind);
+
+	// WARNING: A tab's title is plain text before its "###", which cannot hold a badge's box, so this is a generic
+	// Lucide glyph for the kind and not its badge. A tab that draws the badge itself must not prefix this as well.
 	const char* GlyphOf(FileKind kind);
 
 	const char* FolderGlyphOf(bool open);

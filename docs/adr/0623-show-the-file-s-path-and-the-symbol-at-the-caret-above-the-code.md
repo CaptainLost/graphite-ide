@@ -58,14 +58,16 @@ Date: 2026-10-19
     starts `kBreadcrumbLeftPadding` (12 px) from the window's left edge rather
     than 12 px inside its padding.
   - Folders are in the disabled-text colour.
-  - The file name is in the text colour, after its kind's glyph in its kind's
-    colour.
+  - The file name is in the text colour, after its kind's badge in its kind's
+    colour
+    ([0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md)).
   - Pieces are separated by `ICON_LC_CHEVRON_RIGHT` in the disabled-text
     colour, 2 px from the pieces on each side.
   - Each symbol is its glyph in the disabled-text colour and its name in the
     text colour. A function, method or constructor takes `ICON_LC_SQUARE_FUNCTION`; a
     class, struct or interface takes `ICON_LC_BRACES`.
-  - A glyph is one font size wide and stands 4 px before its name.
+  - A glyph is one font size wide and stands 4 px before its name. The file's
+    badge is its box wide, 17 px scaled, and stands 4 px before the file name.
   - The row draws no background and no border. It sits on the document window's
     content colour, so it reads as part of the document.
 - **Narrow rows.** The pieces fit in the window's inner width less 12 px on each
@@ -154,7 +156,7 @@ document on screen.
 - [0622](0622-keep-document-symbols-ranges-and-nesting-and-ask-for-them-again-after-each-save.md) —
   the ranges and nesting the symbol chain is read from.
 - [0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md) —
-  the file kind's glyph and colour.
+  the file kind's badge and colour.
 - [0615](0615-draw-the-interface-in-inter-and-code-in-jetbrains-mono.md) — the
   interface face.
 - [0534](0534-scale-the-interface-by-the-monitor-and-by-a-user-setting-and-keep-code-text-size-separate.md) —

@@ -4,14 +4,17 @@
 #include "ImGuiFrames.h"
 
 #include "Settings/Panel/SettingsLayout.h"
+#include "UI/FileIcons.h"
 #include "UI/Lists/ListRow.h"
 
 #include "Core/ImGui/Animation.h"
+#include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/TextInput.h"
 #include "Core/ImGui/Toggle.h"
 
 #include <imgui.h>
 
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -436,6 +439,8 @@ namespace {
 		ImGuiFrames Frames;
 		std::string Title;
 		bool Selected = false;
+		bool Dimmed = false;
+		std::optional<Graphite::FileKind> Badge;
 		float Top = 0.0f;
 		float Bottom = 0.0f;
 
@@ -447,7 +452,7 @@ namespace {
 			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 			ImGui::SetNextWindowSize(ImVec2(220.0f, 200.0f));
 			ImGui::Begin("Sidebar", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
-			Graphite::SettingsLayout::DrawNavigationEntry("", Title, Selected, kNotDimmed);
+			Graphite::SettingsLayout::DrawNavigationEntry("", Title, Selected, Dimmed, Badge);
 			Top = ImGui::GetItemRectMin().y;
 			Bottom = ImGui::GetItemRectMax().y;
 			ImGui::End();
@@ -476,6 +481,13 @@ namespace {
 		}
 
 		static bool DrawsIn(ImGuiCol colour) { return DrawsIn(ImGui::GetStyleColorVec4(colour)); }
+
+		static bool DrawsExactly(ImU32 colour)
+		{
+			const ImGuiWindow* sidebar = ImGui::FindWindowByName("Sidebar");
+			REQUIRE(sidebar != nullptr);
+			return DrawsInColour(*sidebar->DrawList, colour);
+		}
 	};
 }
 
@@ -523,6 +535,29 @@ TEST_CASE("A navigation entry held down under the pointer is the accent at three
 
 	CHECK(NavigationEntryScreen::DrawsIn(Graphite::CurrentListRowColours().Pressed));
 	CHECK_FALSE(NavigationEntryScreen::DrawsIn(ImGuiCol_HeaderActive));
+}
+
+TEST_CASE("A navigation entry with a file badge draws the badge in its kind's colour")
+{
+	NavigationEntryScreen screen("Entry with a badge");
+	screen.Badge = Graphite::FileKind::CppSource;
+	screen.DrawFrames(1);
+
+	CHECK(NavigationEntryScreen::DrawsExactly(Graphite::ColourOf(Graphite::FileKind::CppSource, Graphite::IsLightScheme())));
+}
+
+TEST_CASE("A dimmed navigation entry draws its badge at half its kind's alpha")
+{
+	constexpr float kHalfAlpha = 0.5f;
+
+	NavigationEntryScreen screen("Dimmed entry with a badge");
+	screen.Badge = Graphite::FileKind::CSharp;
+	screen.Dimmed = true;
+	screen.DrawFrames(1);
+
+	const ImU32 kindColour = Graphite::ColourOf(Graphite::FileKind::CSharp, Graphite::IsLightScheme());
+	CHECK(NavigationEntryScreen::DrawsExactly(Core::WithAlphaScaled(kindColour, kHalfAlpha)));
+	CHECK_FALSE(NavigationEntryScreen::DrawsExactly(kindColour));
 }
 
 TEST_CASE("A search result's page label is followed by a gap before its first card")

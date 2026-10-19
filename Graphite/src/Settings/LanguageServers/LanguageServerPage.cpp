@@ -116,19 +116,20 @@ namespace Graphite {
 			return servers.size();
 		}
 
-		const char* LanguageIcon(LanguageId language)
+		std::optional<FileKind> LanguageBadge(LanguageId language)
 		{
-			if (language == LanguageId::Cpp)
+			switch (language)
 			{
-				return ICON_LC_FILE_CODE;
+			case LanguageId::Cpp:
+				return FileKind::CppSource;
+			case LanguageId::CSharp:
+				return FileKind::CSharp;
+			case LanguageId::PlainText:
+			case LanguageId::TypeScript:
+				return std::nullopt;
 			}
 
-			if (language == LanguageId::CSharp)
-			{
-				return ICON_LC_HASH;
-			}
-
-			return ICON_LC_BRACES;
+			return std::nullopt;
 		}
 	}
 
@@ -149,7 +150,12 @@ namespace Graphite {
 
 	const char* LanguageServerPage::GetIcon() const
 	{
-		return LanguageIcon(m_Language);
+		return ICON_LC_BRACES;
+	}
+
+	std::optional<FileKind> LanguageServerPage::GetBadge() const
+	{
+		return LanguageBadge(m_Language);
 	}
 
 	void LanguageServerPage::Update()

@@ -78,11 +78,11 @@ namespace Graphite {
 				   style.ItemSpacing.y + ImGui::GetFrameHeight();
 		}
 
-		// WARNING: Icon glyphs are not all equally wide, so this is the font size and not a
-		// measured glyph: the column must have one width for files, folders and chevrons.
+		// WARNING: Icons are not all equally wide, so this is the badge's box and not a measured glyph: the column
+		// must have one width for files, folders and chevrons, and the badge is the widest of them.
 		float IconColumnWidth()
 		{
-			return ImGui::GetFontSize();
+			return FileIconWidth();
 		}
 
 		float TextGap()
@@ -94,13 +94,22 @@ namespace Graphite {
 
 		float TreeIndent()
 		{
-			return IconColumnWidth() + TextGap();
+			return IconToNameOffset();
 		}
 
-		float FileRowIconInkToNameGap()
+		float FileRowBadgeToNameGap()
 		{
-			const Core::GlyphInk plainFileIcon = Core::MeasureGlyphInk(GlyphOf(FileKind::Other));
-			return IconColumnWidth() - plainFileIcon.EndFromDrawX + TextGap();
+			return IconToNameOffset() - FileIconWidth();
+		}
+
+		// WARNING: A folder's glyph is drawn at the folder icon's size, not the row's, so its ink is measured there.
+		Core::GlyphInk FolderGlyphInk(bool open)
+		{
+			ImGui::PushFont(nullptr, kFolderIconSize);
+			const Core::GlyphInk ink = Core::MeasureGlyphInk(FolderGlyphOf(open));
+			ImGui::PopFont();
+
+			return ink;
 		}
 
 		float TypicalNameSideBearing()
@@ -357,7 +366,7 @@ namespace Graphite {
 		const bool open = !m_Collapsed[sectionSlot];
 
 		const float rowPadding = RowPadding();
-		const float textStart = rowStart.x + rowPadding + IconColumnWidth() + TextGap();
+		const float textStart = rowStart.x + rowPadding + IconToNameOffset();
 
 		ImGui::SetCursorPos(ImVec2(rowStart.x + rowPadding, ListRowTextTop(rowStart.y)));
 		DrawChevron(open);
@@ -535,7 +544,7 @@ namespace Graphite {
 
 		const float rowPadding = RowPadding();
 		const float textGap = TextGap();
-		const float textStart = rowStart.x + rowPadding + IconColumnWidth() + textGap;
+		const float textStart = rowStart.x + rowPadding + IconToNameOffset();
 		const float rightEdge = rowStart.x + (ListRowEnd() - rowScreenStart.x);
 
 		const float trailingWidth = rowHovered ? buttonsWidth : letterWidth;
@@ -661,8 +670,6 @@ namespace Graphite {
 		const bool expanded = m_Expanded.contains(file.Path);
 
 		const char* chevron = ChevronGlyph(expanded);
-		const char* folderIcon = FolderGlyphOf(expanded);
-
 		const char* stageIcon = m_Section == Section::Staged ? ICON_LC_MINUS : ICON_LC_PLUS;
 
 		const bool offersDiscard = m_Section == Section::Unstaged;
@@ -699,13 +706,13 @@ namespace Graphite {
 
 		constexpr bool kClosed = false;
 
-		const FolderRowGlyphs closedGlyphs{.Folder = Core::MeasureGlyphInk(FolderGlyphOf(kClosed)),
+		const FolderRowGlyphs closedGlyphs{.Folder = FolderGlyphInk(kClosed),
 										   .Chevron = Core::MeasureGlyphInk(ChevronGlyph(kClosed))};
-		const FolderRowGlyphs drawnGlyphs{.Folder = Core::MeasureGlyphInk(folderIcon),
+		const FolderRowGlyphs drawnGlyphs{.Folder = FolderGlyphInk(expanded),
 										  .Chevron = Core::MeasureGlyphInk(chevron)};
 
 		const FolderRowPlacement placement = PlaceFolderRow(
-			closedGlyphs, drawnGlyphs, FileRowIconInkToNameGap(), TypicalNameSideBearing());
+			closedGlyphs, drawnGlyphs, FileRowBadgeToNameGap(), TypicalNameSideBearing());
 
 		const float rowPadding = RowPadding();
 		const float iconStart = rowStart.x + rowPadding;

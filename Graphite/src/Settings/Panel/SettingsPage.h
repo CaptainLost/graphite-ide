@@ -1,8 +1,11 @@
 #pragma once
 
+#include "UI/FileIcons.h"
+
 #include "Core/Base/NonCopyable.h"
 
 #include <functional>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -66,6 +69,8 @@ namespace Graphite {
 		virtual std::string_view GetTitle() const = 0;
 
 		virtual const char* GetIcon() const = 0;
+
+		virtual std::optional<FileKind> GetBadge() const { return std::nullopt; }
 
 		virtual std::vector<SettingsCard> Describe() = 0;
 

@@ -17,8 +17,9 @@ The three bundled faces (JetBrains Mono Regular and Bold, Material Design Icons)
 - The system symbol font (`seguisym.ttf`) is still read from the system fonts directory: it is not ours to bundle.
 
 Amended by [0615](0615-draw-the-interface-in-inter-and-code-in-jetbrains-mono.md):
-the bundled faces are now Inter Regular, Inter SemiBold and JetBrains Mono Regular,
-with Material Design Icons. JetBrains Mono Bold is no longer embedded.
+the bundled faces are now Inter Regular, Inter SemiBold, JetBrains Mono Regular
+and JetBrains Mono Bold, with the icon font. Bold draws only the file badges of
+[0617](0617-draw-file-icons-in-a-colour-by-file-kind-and-folders-in-outline.md).
 
 Amended by [0625](0625-draw-the-interface-s-icons-from-lucide.md):
 the icon font is Lucide (`vendor/fonts/lucide.ttf`, lucide-static 0.460.0),

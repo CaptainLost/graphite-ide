@@ -217,7 +217,7 @@ TEST_CASE("The solution view draws the solution and its projects in the project 
 	const ImGuiWindow* body = FindSolutionBody();
 	REQUIRE(body != nullptr);
 
-	const ImU32 projectColour = Graphite::ColourOf(Graphite::FileKind::Project, kDarkScheme);
+	const ImU32 projectColour = Graphite::ColourOf(Graphite::FileKind::Solution, kDarkScheme);
 	const VerticalSpan projectRows = VerticalSpanInColour(*body->DrawList, projectColour);
 
 	CHECK(projectRows.Bottom - projectRows.Top > RowPitch());
@@ -225,7 +225,7 @@ TEST_CASE("The solution view draws the solution and its projects in the project 
 	CHECK(DrawsInColour(*body->DrawList, Graphite::DimFolderColour()));
 }
 
-TEST_CASE("The solution view draws a file's glyph in its kind's colour")
+TEST_CASE("The solution view draws a file's badge in its kind's colour")
 {
 	constexpr bool kDarkScheme = false;
 
