@@ -5,6 +5,8 @@
 #include "Theme/Palettes.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/ImGui/TextButton.h"
+#include "Core/ImGui/Theme.h"
 #include "Core/ImGui/UiScale.h"
 
 #include <IconsLucide.h>
@@ -257,7 +259,7 @@ namespace Graphite {
 	{
 		const ImVec2 size(Core::Scaled(SettingsLayout::kSidebarWidth), 0.0f);
 
-		ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBg));
+		ImGui::PushStyleColor(ImGuiCol_ChildBg, Core::SurfaceColour());
 		const bool visible = BeginPaddedChild("##sidebar", size, kSidebarPadding);
 		ImGui::PopStyleColor();
 
@@ -265,9 +267,7 @@ namespace Graphite {
 		{
 			std::string query = m_Query;
 
-			ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered));
 			const bool edited = SettingsLayout::DrawSearchField(query);
-			ImGui::PopStyleColor();
 
 			if (edited)
 			{
@@ -466,7 +466,7 @@ namespace Graphite {
 
 	void SettingsPanel::DrawOpenButton(const std::vector<std::string>& path, const std::string& openWith)
 	{
-		if (ImGui::Button(kOpenLabels.front().c_str()))
+		if (Core::TextButton(kOpenLabels.front().c_str()))
 		{
 			m_PendingOpen = PendingOpen{.Path = path, .OpenWith = openWith, .FromResults = true};
 		}

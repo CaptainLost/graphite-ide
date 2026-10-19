@@ -326,6 +326,22 @@ TEST_CASE("The status bar is twenty-three pixels and draws its words at fifteen"
 	CHECK_FALSE(DrawsGlyphRun(StatusBarScreen::BarDrawing(), atTheWindowSize));
 }
 
+TEST_CASE("The status bar keeps its pinned twenty-three pixels whatever the frame padding")
+{
+	constexpr float kTwentyThree = 23.0f;
+
+	for (const float framePaddingY : {4.0f, 5.0f, 9.0f})
+	{
+		CAPTURE(framePaddingY);
+
+		StatusBarScreen screen;
+		ImGui::GetStyle().FramePadding.y = framePaddingY;
+		screen.Frames.Next([&] { screen.Draw(); });
+
+		CHECK(StatusBarScreen::Bar().Size.y == doctest::Approx(kTwentyThree));
+	}
+}
+
 TEST_CASE("The status bar draws no border of its own, so it sits flush with the chrome above it")
 {
 	StatusBarScreen screen;

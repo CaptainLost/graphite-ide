@@ -103,9 +103,10 @@ namespace Core {
 			return ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive);
 		}
 
+		// WARNING: An engaged button rests on the hover surface, not on ImGuiCol_Button: a text button's resting fill
+		// is clear, and an engaged icon button is told from one at rest by its fill.
 		const ImVec4 hoveredFill = ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered);
-		const ImVec4 restingFill =
-			engaged ? ImGui::GetStyleColorVec4(ImGuiCol_Button) : WithAlphaReplaced(hoveredFill, kInvisibleAlpha);
+		const ImVec4 restingFill = engaged ? hoveredFill : WithAlphaReplaced(hoveredFill, kInvisibleAlpha);
 
 		return Animation::Blend(restingFill, hoveredFill, hoverAmount);
 	}

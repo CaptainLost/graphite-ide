@@ -25,6 +25,9 @@ namespace Core {
 	// of the way away from the window background, toward white on a dark one and black on a light one.
 	ImU32 EmphasisText();
 
+	// The palette's surface, which popups, settings cards and the settings sidebar are filled with.
+	ImVec4 SurfaceColour();
+
 	class Theme
 	{
 	public:

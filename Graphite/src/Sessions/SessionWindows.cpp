@@ -11,6 +11,7 @@
 #include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/TabContextMenu.h"
+#include "Core/ImGui/TextButton.h"
 
 #include <IconsLucide.h>
 
@@ -373,7 +374,7 @@ namespace Graphite {
 		ImGui::SameLine();
 
 		backRequested =
-			ImGui::SmallButton((SingleLineLabel(entry.Title, kTabTitleBytes) + "##agentSession").c_str()) ||
+			Core::SmallTextButton((SingleLineLabel(entry.Title, kTabTitleBytes) + "##agentSession").c_str()) ||
 			backRequested;
 		ImGui::SameLine();
 		ImGui::TextDisabled(ICON_LC_CHEVRON_RIGHT);

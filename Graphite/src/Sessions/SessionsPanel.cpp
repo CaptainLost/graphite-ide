@@ -20,6 +20,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/TextButton.h"
 #include "Core/Platform/Process.h"
 #include "Core/UI/PanelMarginScope.h"
 
@@ -417,7 +418,7 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		if (ImGui::Button(ICON_LC_PLUS "  New Claude session"))
+		if (Core::TextButton(ICON_LC_PLUS "  New Claude session"))
 		{
 			StartNewSession();
 		}

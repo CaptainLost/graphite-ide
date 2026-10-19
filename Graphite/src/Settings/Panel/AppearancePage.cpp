@@ -15,6 +15,7 @@
 #include "Core/Events/EventBus.h"
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/UiScale.h"
 
 #include <IconsLucide.h>
@@ -498,7 +499,7 @@ namespace Graphite {
 
 	void AppearancePage::DrawSchemeActions()
 	{
-		if (ImGui::Button("Duplicate"))
+		if (Core::TextButton("Duplicate"))
 		{
 			FlushColourEdit();
 
@@ -516,7 +517,7 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		if (ImGui::Button("Rename"))
+		if (Core::TextButton("Rename"))
 		{
 			FlushColourEdit();
 			m_RenameQuestion.Ask(m_Draft.GetSelected());
@@ -524,7 +525,7 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		if (ImGui::Button("Delete"))
+		if (Core::TextButton("Delete"))
 		{
 			m_DeleteQuestion.Ask(m_Draft.GetSelected());
 		}

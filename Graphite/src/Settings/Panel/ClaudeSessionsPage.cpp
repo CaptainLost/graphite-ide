@@ -5,6 +5,7 @@
 
 #include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/TextInput.h"
 
 #include <IconsLucide.h>
@@ -131,7 +132,7 @@ namespace Graphite {
 
 			ImGui::TableNextColumn();
 
-			if (ImGui::SmallButton("Reset"))
+			if (Core::SmallTextButton("Reset"))
 			{
 				m_Settings.ResetPrice(model);
 			}
@@ -169,7 +170,7 @@ namespace Graphite {
 		const bool modelIdIsEmpty = model.empty();
 		ImGui::BeginDisabled(modelIdIsEmpty);
 
-		if (ImGui::SmallButton("Add"))
+		if (Core::SmallTextButton("Add"))
 		{
 			m_Settings.SetPrice(model, m_NewPrice);
 			m_NewModel.clear();

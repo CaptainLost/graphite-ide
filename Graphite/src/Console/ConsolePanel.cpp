@@ -1,6 +1,7 @@
 #include "Console/ConsolePanel.h"
 
 #include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/UiScale.h"
 
 #include "Core/Base/Base.h"
@@ -116,7 +117,7 @@ namespace Graphite {
 
 	void ConsolePanel::RenderToolbar()
 	{
-		if (ImGui::Button("Clear"))
+		if (Core::TextButton("Clear"))
 		{
 			m_Sink->Clear();
 			m_Entries.clear();
@@ -127,7 +128,7 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		if (ImGui::Button("Copy all"))
+		if (Core::TextButton("Copy all"))
 		{
 			CopyToClipboard(m_Events, "console output", JoinEntries(m_Shown));
 		}

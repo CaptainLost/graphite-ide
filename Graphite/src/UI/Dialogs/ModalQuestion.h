@@ -116,7 +116,6 @@ namespace Graphite {
 
 		void End()
 		{
-			DialogLayout::PopModalFrameColours();
 			ImGui::EndPopup();
 		}
 
@@ -178,7 +177,6 @@ namespace Graphite {
 				return nullptr;
 			}
 
-			DialogLayout::PushModalFrameColours();
 			return &*m_Current;
 		}
 

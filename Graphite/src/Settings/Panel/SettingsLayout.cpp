@@ -6,6 +6,7 @@
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/Theme.h"
 #include "Core/ImGui/Toggle.h"
 #include "Core/ImGui/UiScale.h"
 
@@ -36,13 +37,12 @@ namespace Graphite {
 		constexpr float kNavigationEntryRounding = 5.0f;
 		constexpr float kIconSlotFontSizes = 1.6f;
 		constexpr float kGroupGap = 10.0f;
-		constexpr float kSearchFieldRounding = 6.0f;
 		constexpr const char* kSearchHint = "Search settings\xE2\x80\xA6";
 
 		constexpr int kCardLayerCount = 2;
 		constexpr int kBackgroundLayer = 0;
 		constexpr int kForegroundLayer = 1;
-		constexpr int kCardColourCount = 3;
+		constexpr int kCardColourCount = 1;
 
 		// WARNING: The colours and their order are a list row's, so a selected entry keeps the accent under the
 		// pointer. The hover fades in and out, from the colour the entry rests in to the one it takes under the
@@ -74,14 +74,15 @@ namespace Graphite {
 			return ImGui::GetContentRegionAvail().x;
 		}
 
-		void PushFramesOneStepUpFromCardColour()
+		// WARNING: A field's fill is see-through, so on a card it lifts the card's colour by the step it lifts the chrome,
+		// and its border and the hover surface stand out from the card as they do from the chrome. Only a child window
+		// inside a row is cleared, so it shows the card rather than painting the window colour over it.
+		void PushCardColours()
 		{
-			ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgHovered));
-			ImGui::PushStyleColor(ImGuiCol_FrameBgHovered, ImGui::GetStyleColorVec4(ImGuiCol_FrameBgActive));
 			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
 		}
 
-		void PopFramesOneStepUpFromCardColour()
+		void PopCardColours()
 		{
 			ImGui::PopStyleColor(kCardColourCount);
 		}
@@ -367,7 +368,7 @@ namespace Graphite {
 
 		const float spacing = ImGui::GetStyle().ItemSpacing.y;
 		const float padding = Core::Scaled(kCardPadding);
-		const ImU32 surface = ImGui::GetColorU32(ImGuiCol_FrameBg);
+		const ImU32 surface = ImGui::GetColorU32(Core::SurfaceColour());
 		const ImU32 divider = ImGui::GetColorU32(ImGuiCol_Separator);
 		const ImVec2 cardTopLeft = ImGui::GetCursorScreenPos();
 
@@ -377,7 +378,7 @@ namespace Graphite {
 		ImDrawListSplitter layers;
 		layers.Split(drawList, kCardLayerCount);
 		layers.SetCurrentChannel(drawList, kForegroundLayer);
-		PushFramesOneStepUpFromCardColour();
+		PushCardColours();
 
 		for (std::size_t rowIndex = 0; rowIndex < card.Rows.size(); ++rowIndex)
 		{
@@ -390,7 +391,7 @@ namespace Graphite {
 			DrawRow(card.Rows[rowIndex], cardWidth, problemColour);
 		}
 
-		PopFramesOneStepUpFromCardColour();
+		PopCardColours();
 
 		const float cardBottom = ImGui::GetCursorScreenPos().y - spacing;
 		layers.SetCurrentChannel(drawList, kBackgroundLayer);
@@ -416,11 +417,7 @@ namespace Graphite {
 
 	bool SettingsLayout::DrawSearchField(std::string& query)
 	{
-		ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, Core::Scaled(kSearchFieldRounding));
-		const bool edited = DrawFilterField("##searchSettings", query, {.Hint = kSearchHint});
-		ImGui::PopStyleVar();
-
-		return edited;
+		return DrawFilterField("##searchSettings", query, {.Hint = kSearchHint});
 	}
 
 	void SettingsLayout::DrawGroupTitle(std::string_view title)

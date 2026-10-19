@@ -2,6 +2,7 @@
 
 #include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/TextInput.h"
+#include "Core/ImGui/UiScale.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -20,6 +21,8 @@ namespace Graphite {
 		constexpr float kNoBorder = 0.0f;
 		constexpr int kInputStyleVarCount = 2;
 		constexpr float kNarrowest = 1.0f;
+		constexpr float kGlyphSize = 12.0f;
+		constexpr float kGlyphToText = 6.0f;
 		const ImVec4 kClearColour(0.0f, 0.0f, 0.0f, 0.0f);
 
 		using InputCall = std::function<bool(ImGuiInputTextFlags)>;
@@ -47,8 +50,9 @@ namespace Graphite {
 			const ImVec2 fieldMin = ImGui::GetCursorScreenPos();
 			const ImVec2 fieldMax(fieldMin.x + width, fieldMin.y + ImGui::GetFrameHeight());
 
-			const float glyphWidth = ImGui::CalcTextSize(look.Glyph).x;
-			const float textLeft = fieldMin.x + framePadding.x * 2.0f + glyphWidth;
+			const float glyphSize = Core::Scaled(kGlyphSize);
+			const float glyphLeft = fieldMin.x + framePadding.x;
+			const float textLeft = glyphLeft + glyphSize + Core::Scaled(kGlyphToText);
 			const float clearSlotWidth = Core::IconButtonSize() + ClearButtonInset();
 			const bool showsClear = hasText && width > clearSlotWidth;
 
@@ -57,14 +61,15 @@ namespace Graphite {
 			ImGui::RenderFrame(fieldMin, fieldMax, ImGui::GetColorU32(ImGuiCol_FrameBg), kWithBorder, fieldRounding);
 
 			constexpr bool kWithinWhatIsShown = true;
+			const float glyphTop = std::floor(fieldMin.y + (fieldMax.y - fieldMin.y - glyphSize) * kHalf);
 			drawList->PushClipRect(fieldMin, fieldMax, kWithinWhatIsShown);
-			drawList->AddText(ImVec2(fieldMin.x + framePadding.x, fieldMin.y + framePadding.y),
-							  ImGui::GetColorU32(ImGuiCol_TextDisabled), look.Glyph);
+			drawList->AddText(ImGui::GetFont(), glyphSize, ImVec2(glyphLeft, glyphTop), ImGui::GetColorU32(ImGuiCol_TextDisabled),
+							  look.Glyph);
 			drawList->PopClipRect();
 
 			ImGui::PushStyleColor(ImGuiCol_FrameBg, kClearColour);
 			ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, kNoBorder);
-			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(framePadding.x * 2.0f + glyphWidth, framePadding.y));
+			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(textLeft - fieldMin.x, framePadding.y));
 			ImGui::SetNextItemWidth(showsClear ? width - clearSlotWidth : width);
 
 			// WARNING: Clipped from where the text starts. Once a long query scrolls, InputText draws it, and its

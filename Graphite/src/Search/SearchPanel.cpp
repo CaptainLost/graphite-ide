@@ -11,6 +11,7 @@
 #include "UI/TickBox.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/TextButton.h"
 #include "Core/Text/Caret.h"
 #include "Core/UI/PanelMarginScope.h"
 
@@ -155,7 +156,7 @@ namespace Graphite {
 		DrawTickBox("Whole word", &m_WholeWord);
 		ImGui::SameLine();
 
-		if (ImGui::Button("Search") || enterPressed)
+		if (Core::TextButton("Search") || enterPressed)
 		{
 			RunSearch();
 		}

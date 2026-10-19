@@ -47,7 +47,7 @@ A search that runs on Enter (Find in Files, the find bar) is not a filter and ke
 
 ### Neutral
 
-- The settings search keeps its rounder corners by pushing its own frame rounding around the call.
+- The settings search has the six-pixel corners every field has since [0627](0627-draw-fields-as-the-mockup-s-bordered-faint-filled-boxes.md), so it pushes no rounding of its own. The magnifier is drawn at twelve pixels, eight in from the field's start, and the text starts six after it.
 
 ## Alternatives Considered
 

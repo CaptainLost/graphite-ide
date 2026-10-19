@@ -15,6 +15,7 @@
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/TextMetrics.h"
+#include "Core/ImGui/Theme.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Text/RowMap.h"
 #include "Core/Text/WordBounds.h"
@@ -162,7 +163,7 @@ namespace Graphite {
 				return palette.DiffRemovedLine;
 			case DiffRowKind::HunkHeader:
 			case DiffRowKind::HunkSignature:
-				return ImGui::GetColorU32(ImGuiCol_FrameBg);
+				return ImGui::GetColorU32(Core::SurfaceColour());
 			case DiffRowKind::HunkGap:
 			case DiffRowKind::Context:
 			case DiffRowKind::Unchanged:

@@ -16,6 +16,7 @@
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/LoadingState.h"
+#include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/TextMetrics.h"
 
 #include <IconsLucide.h>
@@ -854,7 +855,7 @@ namespace Graphite {
 			ImGui::TextDisabled("%s", AlreadyMergedMessage(tab.Branch, review.Key.Base).c_str());
 			ImGui::SameLine();
 
-			if (ImGui::SmallButton("End review"))
+			if (Core::SmallTextButton("End review"))
 			{
 				AskToEnd(tab.Branch);
 			}
@@ -870,7 +871,7 @@ namespace Graphite {
 			ImGui::TextDisabled("%s", UncommittedProblem(*uncommittedError, *review.Range->Worktree).c_str());
 			ImGui::SameLine();
 
-			if (ImGui::SmallButton("Retry"))
+			if (Core::SmallTextButton("Retry"))
 			{
 				input.Model.Retry(review.Key);
 			}

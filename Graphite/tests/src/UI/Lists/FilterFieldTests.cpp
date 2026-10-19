@@ -4,7 +4,9 @@
 
 #include "UI/Lists/FilterField.h"
 
+#include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/IconButton.h"
+#include "Core/ImGui/Theme.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -22,6 +24,9 @@
 namespace {
 	constexpr float kFringe = 1.0f;
 	constexpr float kFieldWidth = 220.0f;
+	constexpr float kMagnifierSize = 12.0f;
+	constexpr float kMagnifierToText = 6.0f;
+	constexpr float kLineFringe = 1.5f;
 
 	struct HorizontalSpan
 	{
@@ -124,11 +129,9 @@ namespace {
 						  FieldMin.y + ImGui::GetFrameHeight() * 0.5f);
 		}
 
-		float TextStart() const
-		{
-			const ImGuiStyle& style = ImGui::GetStyle();
-			return FieldMin.x + style.FramePadding.x * 2.0f + ImGui::CalcTextSize(ICON_LC_SEARCH).x;
-		}
+		float MagnifierStart() const { return FieldMin.x + ImGui::GetStyle().FramePadding.x; }
+
+		float TextStart() const { return MagnifierStart() + kMagnifierSize + kMagnifierToText; }
 
 		static const ImDrawList& DrawList()
 		{
@@ -145,16 +148,63 @@ TEST_CASE("An empty filter field shows the dim magnifier at its start and the di
 	screen.DrawFrame();
 
 	const ImU32 dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
-	const float magnifierStart = screen.FieldMin.x + ImGui::GetStyle().FramePadding.x;
 	const std::optional<HorizontalSpan> magnifier =
 		SpanInColour(FilterScreen::DrawList(), dim, -FLT_MAX, screen.TextStart() - kFringe);
 	const std::optional<HorizontalSpan> hint = SpanInColour(FilterScreen::DrawList(), dim, screen.TextStart() - kFringe);
 	REQUIRE(magnifier.has_value());
 	REQUIRE(hint.has_value());
 
-	CHECK(magnifier->Left >= magnifierStart - kFringe);
-	CHECK(magnifier->Right <= magnifierStart + ImGui::CalcTextSize(ICON_LC_SEARCH).x + kFringe);
+	CHECK(magnifier->Left >= screen.MagnifierStart() - kFringe);
+	CHECK(magnifier->Right <= screen.MagnifierStart() + kMagnifierSize + kFringe);
 	CHECK(hint->Left <= screen.TextStart() + ImGui::GetFontSize());
+}
+
+TEST_CASE("A filter field is the mockup's: a field high, a line-colour border, the magnifier twelve pixels eight in and the text six after it")
+{
+	FilterScreen screen;
+	Core::Theme::Apply(Core::Theme::DefaultPalette());
+	Core::Theme::SetMetrics(ImGui::GetStyle());
+
+	std::optional<HorizontalSpan> line;
+	std::optional<HorizontalSpan> magnifier;
+	float fieldHeight = 0.0f;
+	float glyphHeight = 0.0f;
+
+	screen.Frames.Next([&] {
+		ImGui::PushFont(nullptr, Core::kInterfaceFontSize);
+		screen.Draw();
+		fieldHeight = ImGui::GetFrameHeight();
+		ImGui::PopFont();
+
+		// Between the window's own left and right edges, which are drawn in the line colour as well.
+		const ImDrawList& drawing = FilterScreen::DrawList();
+		line = SpanInColour(drawing, ImGui::GetColorU32(ImGuiCol_Border), screen.FieldMin.x - kLineFringe,
+							screen.FieldMin.x + kFieldWidth + kLineFringe);
+		magnifier = SpanInColour(drawing, ImGui::GetColorU32(ImGuiCol_TextDisabled), -FLT_MAX, screen.TextStart() - kFringe);
+
+		float top = FLT_MAX;
+		float bottom = -FLT_MAX;
+		for (const ImDrawVert& vertex : drawing.VtxBuffer)
+		{
+			if (vertex.col == ImGui::GetColorU32(ImGuiCol_TextDisabled) && vertex.pos.x < screen.TextStart() - kFringe)
+			{
+				top = std::min(top, vertex.pos.y);
+				bottom = std::max(bottom, vertex.pos.y);
+			}
+		}
+		glyphHeight = bottom - top;
+	});
+
+	CHECK(fieldHeight == doctest::Approx(26.0f));
+
+	REQUIRE(line.has_value());
+	CHECK(std::fabs(line->Left - screen.FieldMin.x) <= kLineFringe);
+	CHECK(std::fabs(line->Right - (screen.FieldMin.x + kFieldWidth)) <= kLineFringe);
+
+	REQUIRE(magnifier.has_value());
+	CHECK(magnifier->Left >= screen.MagnifierStart() - kFringe);
+	CHECK(magnifier->Right <= screen.MagnifierStart() + kMagnifierSize + kFringe);
+	CHECK(glyphHeight <= kMagnifierSize + kFringe);
 }
 
 TEST_CASE("Text in a filter field starts after the magnifier, which stays")

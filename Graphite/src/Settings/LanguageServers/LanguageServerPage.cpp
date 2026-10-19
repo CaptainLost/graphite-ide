@@ -15,6 +15,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/TextInput.h"
 #include "Core/Platform/FileDialog.h"
 #include "Core/Platform/Shell.h"
@@ -630,14 +631,14 @@ namespace Graphite {
 
 	void LanguageServerPage::DrawRuntimeButtons(const ServerDefinition& server)
 	{
-		if (ImGui::Button(kRuntimeButtons[kGetDotnetButton].c_str()))
+		if (Core::TextButton(kRuntimeButtons[kGetDotnetButton].c_str()))
 		{
 			OpenDotnetDownload(server.Runtime.MinimumMajor);
 		}
 
 		ImGui::SameLine();
 
-		if (ImGui::Button(kRuntimeButtons[kCheckAgainButton].c_str()))
+		if (Core::TextButton(kRuntimeButtons[kCheckAgainButton].c_str()))
 		{
 			LookForRuntimeAgain();
 		}
@@ -653,7 +654,7 @@ namespace Graphite {
 				ImGui::SameLine();
 			}
 
-			if (ImGui::Button(labels[actionIndex].c_str()))
+			if (Core::TextButton(labels[actionIndex].c_str()))
 			{
 				Run(actions[actionIndex], serverId);
 			}
@@ -697,7 +698,7 @@ namespace Graphite {
 		ImGui::SameLine();
 		ImGui::BeginDisabled(m_Browse.IsOpen());
 
-		if (ImGui::Button(kBrowseLabel))
+		if (Core::TextButton(kBrowseLabel))
 		{
 			StartBrowsing(server);
 		}

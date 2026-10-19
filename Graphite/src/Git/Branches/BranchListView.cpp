@@ -12,6 +12,7 @@
 #include "UI/TickBox.h"
 
 #include "Core/ImGui/LoadingState.h"
+#include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/Toggle.h"
 #include "Core/ImGui/UiScale.h"
 
@@ -81,7 +82,7 @@ namespace Graphite {
 
 			if (!selected)
 			{
-				return ImGui::Button(label, size);
+				return Core::TextButton(label, size);
 			}
 
 			const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_CheckMark);
@@ -90,7 +91,7 @@ namespace Graphite {
 			ImGui::PushStyleColor(ImGuiCol_ButtonHovered, accent);
 			ImGui::PushStyleColor(ImGuiCol_ButtonActive, accent);
 			ImGui::PushStyleColor(ImGuiCol_Text, kSelectedSegmentText);
-			const bool clicked = ImGui::Button(label, size);
+			const bool clicked = Core::TextButton(label, size);
 			ImGui::PopStyleColor(kSelectedSegmentColourCount);
 
 			return clicked;
@@ -477,7 +478,7 @@ namespace Graphite {
 
 			ImGui::PushID(key.c_str());
 
-			if (ImGui::SmallButton(label.c_str()))
+			if (Core::SmallTextButton(label.c_str()))
 			{
 				removedKey = key;
 			}
@@ -491,7 +492,7 @@ namespace Graphite {
 			PlaceChip(label, isFirstChip, rowRight);
 
 			ImGui::PushID(kMessageChipId);
-			messageRemoved = ImGui::SmallButton(label.c_str());
+			messageRemoved = Core::SmallTextButton(label.c_str());
 			ImGui::PopID();
 		}
 

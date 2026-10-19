@@ -36,7 +36,7 @@ TEST_CASE("ScaledStyle at one gives the theme's own sizes")
 	const ImGuiStyle style = ScaledStyle(ImGuiStyle{}, 1.0f, false);
 
 	CHECK(style.FramePadding.x == doctest::Approx(8.0f));
-	CHECK(style.FramePadding.y == doctest::Approx(4.0f));
+	CHECK(style.FramePadding.y == doctest::Approx(5.0f));
 	CHECK(style.WindowRounding == doctest::Approx(4.0f));
 }
 
@@ -162,7 +162,8 @@ TEST_CASE("ScaledStyle below one keeps every hairline at least a pixel thick and
 	CHECK(style.SeparatorSize >= 1.0f);
 	CHECK(style.InputTextCursorSize >= 1.0f);
 	CHECK(style.MouseCursorScale >= 1.0f);
-	CHECK(style.FrameBorderSize == doctest::Approx(0.0f));
+	CHECK(style.FrameBorderSize == doctest::Approx(1.0f));
+	CHECK(style.TabBarBorderSize == doctest::Approx(0.0f));
 }
 
 TEST_CASE("A change of scale multiplies by the ratio of the two")

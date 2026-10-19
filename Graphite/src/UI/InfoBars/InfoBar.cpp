@@ -5,6 +5,7 @@
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/ImGuiColors.h"
+#include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/TextMetrics.h"
 
 #include <IconsLucide.h>
@@ -122,7 +123,7 @@ namespace Graphite {
 			}
 
 			ImGui::PushID(static_cast<int>(button.Index));
-			const bool pressed = ImGui::Button("###button", ImVec2(button.Width, 0.0f));
+			const bool pressed = Core::TextButton("###button", ImVec2(button.Width, 0.0f));
 			ImGui::PopID();
 
 			const ImGuiStyle& style = ImGui::GetStyle();

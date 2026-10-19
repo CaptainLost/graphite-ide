@@ -3,6 +3,7 @@
 #include "Core/ImGui/EmptyState.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/TextMetrics.h"
 
 #include <imgui_internal.h>
@@ -132,7 +133,7 @@ namespace Core {
 
 			ImGui::SetCursorScreenPos(
 				ImVec2(origin.x + CentredStart(region.x, buttonSize.x), origin.y + buttonTop));
-			clicked = ImGui::Button(action, buttonSize);
+			clicked = Core::TextButton(action, buttonSize);
 		}
 
 		const float lineHeight = ImGui::GetTextLineHeight();

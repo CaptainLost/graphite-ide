@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/ImGui/ImGuiColors.h"
+#include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/UiScale.h"
 #include "UI/FileIcons.h"
 
@@ -25,16 +26,6 @@ namespace Graphite {
 		static constexpr float kSectionGap = 6.0f;
 		static constexpr float kButtonMinWidth = 90.0f;
 		static constexpr std::size_t kListRows = 12;
-
-		static void PushModalFrameColours()
-		{
-			ImGui::PushStyleColor(ImGuiCol_FrameBg, ImGui::GetStyleColorVec4(ImGuiCol_WindowBg));
-		}
-
-		static void PopModalFrameColours()
-		{
-			ImGui::PopStyleColor();
-		}
 
 		static void BeforeBegin(float width)
 		{
@@ -178,7 +169,7 @@ namespace Graphite {
 				ImGui::PushStyleColor(ImGuiCol_Text, kWhite);
 			}
 
-			const bool pressed = ImGui::Button(label, ImVec2(width, 0.0f));
+			const bool pressed = Core::TextButton(label, ImVec2(width, 0.0f));
 
 			if (enabled)
 			{
@@ -219,7 +210,7 @@ namespace Graphite {
 
 			const bool safeOffered = safe.Label != nullptr && safe.Enabled;
 
-			if (ImGui::Button(cancelLabel, ImVec2(buttonWidth, 0.0f)))
+			if (Core::TextButton(cancelLabel, ImVec2(buttonWidth, 0.0f)))
 			{
 				clicked = Choice::Cancel;
 			}
@@ -235,7 +226,7 @@ namespace Graphite {
 
 				ImGui::BeginDisabled(!alternative.Enabled);
 
-				if (ImGui::Button(alternative.Label, ImVec2(buttonWidth, 0.0f)))
+				if (Core::TextButton(alternative.Label, ImVec2(buttonWidth, 0.0f)))
 				{
 					clicked = Choice::Alternative;
 				}

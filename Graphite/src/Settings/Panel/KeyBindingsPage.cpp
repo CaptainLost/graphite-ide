@@ -11,6 +11,7 @@
 #include "Core/Command/Trigger.h"
 #include "Core/Events/KeyEvent.h"
 #include "Core/ImGui/ImGuiKeys.h"
+#include "Core/ImGui/TextButton.h"
 
 #include "Settings/Panel/SettingsLayout.h"
 #include "Settings/Panel/SettingsSearch.h"
@@ -302,7 +303,7 @@ namespace Graphite {
 
 		ImGui::BeginDisabled(!anyOverridden);
 
-		if (ImGui::Button(kRestoreLabels.front().c_str()) && !m_RestoreQuestion.IsAsked())
+		if (Core::TextButton(kRestoreLabels.front().c_str()) && !m_RestoreQuestion.IsAsked())
 		{
 			CancelCapture();
 
@@ -504,7 +505,7 @@ namespace Graphite {
 		const bool overridden = m_Keys.IsOverridden(command.Id);
 		ImGui::BeginDisabled(!overridden);
 
-		if (ImGui::SmallButton("Default"))
+		if (Core::SmallTextButton("Default"))
 		{
 			m_Keys.RestoreDefault(command.Id);
 			m_OnChanged();

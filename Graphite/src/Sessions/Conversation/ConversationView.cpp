@@ -1,5 +1,6 @@
 #include "Sessions/Conversation/ConversationView.h"
 
+#include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/Base/Base.h"
 #include "Core/Base/Strings.h"
@@ -764,7 +765,7 @@ namespace Graphite {
 		{
 			const std::string pathText = Core::ToUtf8(*filePath);
 
-			if (ImGui::SmallButton(pathText.c_str()))
+			if (Core::SmallTextButton(pathText.c_str()))
 			{
 				const bool openPermanently = false;
 				events.Publish(OpenFileRequested{*filePath, openPermanently});
@@ -773,7 +774,7 @@ namespace Graphite {
 
 		if (context.OpenAgent && context.Links != nullptr && IsAgentCall(tool) && context.Links->contains(tool.Id))
 		{
-			if (ImGui::SmallButton("Open conversation " ICON_LC_ARROW_RIGHT))
+			if (Core::SmallTextButton("Open conversation " ICON_LC_ARROW_RIGHT))
 			{
 				context.OpenAgent(tool.Id);
 			}

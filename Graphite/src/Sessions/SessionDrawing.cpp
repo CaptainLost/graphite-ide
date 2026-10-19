@@ -1,6 +1,8 @@
 #include "Sessions/SessionDrawing.h"
 
 #include "Core/Base/Base.h"
+#include "Core/ImGui/TextButton.h"
+#include "Core/ImGui/Theme.h"
 
 #include <IconsLucide.h>
 
@@ -57,10 +59,10 @@ namespace Graphite {
 		const ImVec4* colours = ImGui::GetStyle().Colors;
 		const ImVec4& accent = colours[ImGuiCol_CheckMark];
 
-		ImGui::PushStyleColor(ImGuiCol_Button, selected ? accent : colours[ImGuiCol_FrameBg]);
+		ImGui::PushStyleColor(ImGuiCol_Button, selected ? accent : Core::SurfaceColour());
 		ImGui::PushStyleColor(ImGuiCol_ButtonHovered, selected ? accent : colours[ImGuiCol_ButtonHovered]);
 		ImGui::PushStyleColor(ImGuiCol_ButtonActive, selected ? accent : colours[ImGuiCol_ButtonActive]);
-		const bool clicked = ImGui::SmallButton(label);
+		const bool clicked = Core::SmallTextButton(label);
 		ImGui::PopStyleColor(kSegmentButtonColourCount);
 
 		return clicked && !selected;

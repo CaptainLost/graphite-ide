@@ -4,6 +4,8 @@
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/Theme.h"
 
+#include <cfloat>
+#include <cmath>
 #include <cstddef>
 #include <cstdlib>
 #include <imgui.h>
@@ -195,6 +197,87 @@ namespace {
 		}
 
 		return drawing;
+	}
+
+	constexpr float kInterfaceSize = 16.0f;
+	constexpr float kFieldHeight = 26.0f;
+	constexpr float kFaintFillShare = 0.035f;
+	constexpr int kBytesOfRounding = 1;
+	constexpr float kAntiAliasFringe = 1.5f;
+
+	struct DrawnField
+	{
+		ImRect Frame;
+		ImU32 Fill = 0;
+		ImU32 Line = 0;
+		ImU32 Background = 0;
+		int FillVertices = 0;
+		ImRect LineExtent{FLT_MAX, FLT_MAX, -FLT_MAX, -FLT_MAX};
+	};
+
+	// One text field in a window of the chrome, drawn at the interface size under the theme.
+	DrawnField DrawTextField(const Core::ChromePalette& palette)
+	{
+		DockingFrames frames;
+		Core::Theme::Apply(palette);
+		Core::Theme::SetMetrics(ImGui::GetStyle());
+
+		DrawnField drawn;
+		char text[32] = "";
+
+		ImGui::NewFrame();
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(300.0f, 120.0f));
+		ImGui::Begin("Field", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+		ImGui::PushFont(nullptr, kInterfaceSize);
+
+		const int verticesBefore = ImGui::GetWindowDrawList()->VtxBuffer.Size;
+		ImGui::InputText("##field", text, sizeof(text));
+		drawn.Frame = ImRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+		drawn.Fill = ImGui::GetColorU32(ImGuiCol_FrameBg);
+		drawn.Line = ImGui::GetColorU32(ImGuiCol_Border);
+		drawn.Background = ImGui::GetColorU32(ImGuiCol_WindowBg);
+
+		const ImDrawList& drawing = *ImGui::GetWindowDrawList();
+		for (int vertexIndex = verticesBefore; vertexIndex < drawing.VtxBuffer.Size; ++vertexIndex)
+		{
+			const ImDrawVert& vertex = drawing.VtxBuffer[vertexIndex];
+			drawn.FillVertices += vertex.col == drawn.Fill ? 1 : 0;
+
+			if (vertex.col == drawn.Line)
+			{
+				drawn.LineExtent.Add(vertex.pos);
+			}
+		}
+
+		ImGui::PopFont();
+		ImGui::End();
+		ImGui::EndFrame();
+
+		return drawn;
+	}
+
+	// The fill as it shows over the window behind it.
+	ColourBytes Composed(ImU32 fill, ImU32 background)
+	{
+		constexpr float kByteMax = 255.0f;
+		const ImVec4 front = ImGui::ColorConvertU32ToFloat4(fill);
+		const ImVec4 back = ImGui::ColorConvertU32ToFloat4(background);
+		const float alpha = front.w;
+
+		return ColourBytes{.R = static_cast<int>(std::lround((front.x * alpha + back.x * (1.0f - alpha)) * kByteMax)),
+						   .G = static_cast<int>(std::lround((front.y * alpha + back.y * (1.0f - alpha)) * kByteMax)),
+						   .B = static_cast<int>(std::lround((front.z * alpha + back.z * (1.0f - alpha)) * kByteMax))};
+	}
+
+	ColourBytes Lifted(const Core::Color& background, const Core::Color& toward)
+	{
+		constexpr float kByteMax = 255.0f;
+		const auto lift = [](float from, float to) {
+			return static_cast<int>(std::lround((from + (to - from) * kFaintFillShare) * kByteMax));
+		};
+
+		return ColourBytes{.R = lift(background.R, toward.R), .G = lift(background.G, toward.G), .B = lift(background.B, toward.B)};
 	}
 }
 
@@ -406,6 +489,81 @@ TEST_CASE("Apply clears the scrollbar track and draws its grab in the text colou
 	CHECK(colours[ImGuiCol_ScrollbarGrab].w == doctest::Approx(0.12f));
 	CHECK(colours[ImGuiCol_ScrollbarGrabHovered].w == doctest::Approx(0.20f));
 	CHECK(colours[ImGuiCol_ScrollbarGrabActive].w == doctest::Approx(0.28f));
+}
+
+TEST_CASE("A text field is 26 pixels tall with a line-colour border and the faint fill, in dark and in light")
+{
+	constexpr Core::Color kWhite{1.0f, 1.0f, 1.0f, 1.0f};
+
+	for (const Core::ChromePalette& palette : {Core::Theme::DefaultPalette(), LightPalette()})
+	{
+		CAPTURE(palette.Background.R);
+		const DrawnField field = DrawTextField(palette);
+
+		CHECK(field.Frame.GetHeight() == doctest::Approx(kFieldHeight));
+		CHECK(field.Line == ImGui::ColorConvertFloat4ToU32(Core::ToImVec4(palette.Border)));
+		CHECK(field.FillVertices > 0);
+
+		REQUIRE(field.LineExtent.Min.x <= field.LineExtent.Max.x);
+		CHECK(std::fabs(field.LineExtent.Min.x - field.Frame.Min.x) <= kAntiAliasFringe);
+		CHECK(std::fabs(field.LineExtent.Max.x - field.Frame.Max.x) <= kAntiAliasFringe);
+		CHECK(std::fabs(field.LineExtent.Min.y - field.Frame.Min.y) <= kAntiAliasFringe);
+		CHECK(std::fabs(field.LineExtent.Max.y - field.Frame.Max.y) <= kAntiAliasFringe);
+
+		const bool light = Core::IsLightBackground(palette.Background);
+		const ColourBytes shown = Composed(field.Fill, field.Background);
+		const ColourBytes expected = Lifted(palette.Background, light ? palette.Text : kWhite);
+		CHECK(std::abs(shown.R - expected.R) <= kBytesOfRounding);
+		CHECK(std::abs(shown.G - expected.G) <= kBytesOfRounding);
+		CHECK(std::abs(shown.B - expected.B) <= kBytesOfRounding);
+	}
+}
+
+TEST_CASE("On the chrome a field's fill shows as the mockup's #1c1d20")
+{
+	constexpr int kMockupFieldRed = 0x1C;
+	constexpr int kMockupFieldGreen = 0x1D;
+	constexpr int kMockupFieldBlue = 0x20;
+
+	const DrawnField field = DrawTextField(Core::Theme::DefaultPalette());
+	const ColourBytes shown = Composed(field.Fill, field.Background);
+
+	CHECK(std::abs(shown.R - kMockupFieldRed) <= kBytesOfRounding);
+	CHECK(std::abs(shown.G - kMockupFieldGreen) <= kBytesOfRounding);
+	CHECK(std::abs(shown.B - kMockupFieldBlue) <= kBytesOfRounding);
+}
+
+TEST_CASE("A field's corners take six pixels and text buttons sit transparent on whatever is behind them, in dark and in light")
+{
+	IsolatedImGuiContext context;
+
+	ImGuiStyle style;
+	Core::Theme::SetMetrics(style);
+	CHECK(style.FrameRounding == doctest::Approx(6.0f));
+	CHECK(style.FrameBorderSize == doctest::Approx(1.0f));
+	CHECK(style.FramePadding.x == doctest::Approx(8.0f));
+	CHECK(style.FramePadding.y == doctest::Approx(5.0f));
+
+	for (const Core::ChromePalette& palette : {Core::Theme::DefaultPalette(), LightPalette()})
+	{
+		CAPTURE(palette.Background.R);
+		Core::Theme::Apply(palette);
+
+		CHECK(ImGui::GetStyle().Colors[ImGuiCol_Button].w == doctest::Approx(0.0f));
+	}
+}
+
+TEST_CASE("The surface colour is the palette's surface, which cards and popups are filled with")
+{
+	IsolatedImGuiContext context;
+
+	for (const Core::ChromePalette& palette : {Core::Theme::DefaultPalette(), LightPalette()})
+	{
+		CAPTURE(palette.Background.R);
+		Core::Theme::Apply(palette);
+
+		CheckSameColour(Core::SurfaceColour(), palette.Surface);
+	}
 }
 
 TEST_CASE("A background past half luminance is light and the default chrome's background is dark")

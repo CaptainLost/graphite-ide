@@ -42,6 +42,11 @@ namespace Core {
 		constexpr float kNoOverline = 0.0f;
 		constexpr float kNoTabBarLine = 0.0f;
 		constexpr float kTransparent = 0.0f;
+		constexpr float kFieldRounding = 6.0f;
+		constexpr float kFieldBorder = 1.0f;
+		constexpr ImVec2 kFieldPadding{8.0f, 5.0f};
+		constexpr float kFieldFillShare = 0.035f;
+		constexpr ImVec4 kWhite{1.0f, 1.0f, 1.0f, 1.0f};
 
 		constexpr ImVec4 WithAlpha(const ImVec4& colour, float alpha)
 		{
@@ -73,6 +78,12 @@ namespace Core {
 		return ImGui::GetColorU32(Lerp(text, extreme, kEmphasisShareTowardTheExtreme));
 	}
 
+	ImVec4 SurfaceColour()
+	{
+		// WARNING: Theme::Apply keeps the surface in PopupBg, the only slot that holds it unchanged.
+		return ImGui::GetStyleColorVec4(ImGuiCol_PopupBg);
+	}
+
 	ChromePalette Theme::DefaultPalette()
 	{
 		ChromePalette palette;
@@ -99,7 +110,7 @@ namespace Core {
 	{
 		style.WindowRounding = 4.0f;
 		style.ChildRounding = 4.0f;
-		style.FrameRounding = 3.0f;
+		style.FrameRounding = kFieldRounding;
 		style.PopupRounding = 4.0f;
 		style.ScrollbarRounding = 6.0f;
 		style.TabRounding = kSquareTabs;
@@ -108,9 +119,11 @@ namespace Core {
 		style.SelectableRounding = kSelectableRounding;
 		style.MenuItemRounding = kSelectableRounding;
 		style.WindowBorderSize = 1.0f;
-		style.FrameBorderSize = 0.0f;
+		// WARNING: Every frame ImGui draws with a border takes this hairline: fields, combos, sliders, the steps of a
+		// number field. A text button is the one frame drawn without it, so it goes through Core::TextButton.
+		style.FrameBorderSize = kFieldBorder;
 		style.WindowPadding = ImVec2(8.0f, 8.0f);
-		style.FramePadding = ImVec2(8.0f, 4.0f);
+		style.FramePadding = kFieldPadding;
 		style.ItemSpacing = ImVec2(8.0f, 5.0f);
 		style.IndentSpacing = kIndentSpacing;
 		style.WindowMenuButtonPosition = ImGuiDir_None;
@@ -153,8 +166,12 @@ namespace Core {
 		colors[ImGuiCol_Text] = text;
 		colors[ImGuiCol_TextDisabled] = ToImVec4(palette.TextDisabled);
 
+		// WARNING: A field's fill is see-through, white on a dark scheme and the text on a light one, so it lifts
+		// whatever it sits on by the same step: the chrome, a settings card or a popup.
+		const ImVec4 fieldLift = IsLightBackground(palette.Background) ? text : kWhite;
+
 		// There is no pressed colour: a press keeps the hover fill, and the accent is never a fill.
-		colors[ImGuiCol_FrameBg] = surface;
+		colors[ImGuiCol_FrameBg] = WithAlpha(fieldLift, kFieldFillShare);
 		colors[ImGuiCol_FrameBgHovered] = surfaceHovered;
 		colors[ImGuiCol_FrameBgActive] = surfaceHovered;
 
@@ -168,7 +185,7 @@ namespace Core {
 		colors[ImGuiCol_HeaderHovered] = surfaceHovered;
 		colors[ImGuiCol_HeaderActive] = surfaceHovered;
 
-		colors[ImGuiCol_Button] = surfaceHovered;
+		colors[ImGuiCol_Button] = WithAlpha(background, kTransparent);
 		colors[ImGuiCol_ButtonHovered] = surfaceHovered;
 		colors[ImGuiCol_ButtonActive] = surfaceHovered;
 

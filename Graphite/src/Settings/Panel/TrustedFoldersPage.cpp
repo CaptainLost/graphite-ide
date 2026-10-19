@@ -4,6 +4,7 @@
 #include "Workspace/WorkspaceTrust.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/TextButton.h"
 
 #include <IconsLucide.h>
 
@@ -50,7 +51,7 @@ namespace Graphite {
 	// WARNING: Revoking while the rows are drawn is safe because they are a copy, not the trust list itself.
 	void TrustedFoldersPage::DrawRemove(const std::filesystem::path& folder)
 	{
-		if (ImGui::Button(kRemoveLabels.front().c_str()))
+		if (Core::TextButton(kRemoveLabels.front().c_str()))
 		{
 			m_Trust.Revoke(folder);
 		}

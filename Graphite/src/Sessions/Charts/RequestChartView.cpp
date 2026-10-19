@@ -15,6 +15,7 @@
 
 #include "Core/Base/ByteSize.h"
 #include "Core/ImGui/ImGuiColors.h"
+#include "Core/ImGui/TextButton.h"
 
 #include <imgui.h>
 #include <implot.h>
@@ -407,7 +408,7 @@ namespace Graphite {
 		ImGui::SameLine();
 		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(ImGui::GetContentRegionAvail().x - axisButtonWidth, 0.0f));
 
-		if (ImGui::SmallButton(axisLabel))
+		if (Core::SmallTextButton(axisLabel))
 		{
 			m_Axis = m_Axis == ChartAxis::Index ? ChartAxis::Clock : ChartAxis::Index;
 			m_XAxis.Reset();

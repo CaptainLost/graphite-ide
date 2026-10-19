@@ -3,6 +3,7 @@
 #include "Core/ImGui/LoadingState.h"
 
 #include "Core/App/Redraw.h"
+#include "Core/ImGui/Theme.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -152,7 +153,7 @@ namespace Core {
 		if (shows)
 		{
 			const ImColor ink{ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled)};
-			const ImColor track{ImGui::GetStyleColorVec4(ImGuiCol_FrameBg)};
+			const ImColor track{SurfaceColour()};
 			ImSpinner::SpinnerAng(kLineLoaderId, radius, kLineSpinnerThickness, ink, track, kLineSpinnerSpeed,
 								  kLineSpinnerArc);
 			spinnerRight = ImGui::GetItemRectMax().x;

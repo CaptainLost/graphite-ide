@@ -1,6 +1,7 @@
 #include "Git/History/HistoryStatusLine.h"
 
 #include "Core/ImGui/LoadingState.h"
+#include "Core/ImGui/TextButton.h"
 
 #include <imgui.h>
 
@@ -60,14 +61,14 @@ namespace Graphite {
 
 		std::optional<HistoryClick> clicked;
 
-		if (ImGui::SmallButton(more))
+		if (Core::SmallTextButton(more))
 		{
 			clicked = HistoryClick::More;
 		}
 
 		ImGui::SameLine();
 
-		if (ImGui::SmallButton(all))
+		if (Core::SmallTextButton(all))
 		{
 			clicked = HistoryClick::All;
 		}

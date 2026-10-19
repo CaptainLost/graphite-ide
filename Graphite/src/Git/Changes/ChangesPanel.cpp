@@ -27,6 +27,7 @@
 #include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/ImGuiColors.h"
+#include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/TextInput.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Platform/Shell.h"
@@ -959,7 +960,7 @@ namespace Graphite {
 		const float framePaddingY = ImGui::GetStyle().FramePadding.y;
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(framePaddingY, framePaddingY));
 
-		const bool stashPressed = ImGui::Button(ICON_LC_ARCHIVE "##stash", ImVec2(stashWidth, 0.0f));
+		const bool stashPressed = Core::TextButton(ICON_LC_ARCHIVE "##stash", ImVec2(stashWidth, 0.0f));
 
 		ImGui::PopStyleVar();
 
