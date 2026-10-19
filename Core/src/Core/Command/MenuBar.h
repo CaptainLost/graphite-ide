@@ -16,11 +16,20 @@ namespace Core {
 	void RenderMenuItems(CommandRegistry& commands, const Keymap& keymap,
 						 const std::vector<MenuItem>& items);
 
+	struct MenuBarHeights
+	{
+		// The bar's row. Zero leaves the row as tall as a frame.
+		float Row = 0.0f;
+
+		// The fill under a top-level menu, centred on its label. Zero leaves ImGui's: a line and the item spacing.
+		float Item = 0.0f;
+	};
+
 	class MenuBar final : NonCopyable
 	{
 	public:
 		void Render(CommandRegistry& commands, const Keymap& keymap,
-					const std::vector<MenuItem>& menuTree, float rowHeight,
+					const std::vector<MenuItem>& menuTree, const MenuBarHeights& heights,
 					const std::function<void()>& drawLeading, const std::function<void()>& drawTrailing);
 	};
 }

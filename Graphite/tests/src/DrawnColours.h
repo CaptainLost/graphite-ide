@@ -6,7 +6,46 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <cstdlib>
+#include <initializer_list>
 #include <optional>
+
+inline int ChannelOf(ImU32 colour, int shift)
+{
+	return static_cast<int>((colour >> shift) & 0xFFu);
+}
+
+// Each colour channel within one level of the other's, the rounding a share of a lerp can land on.
+inline bool WithinOneLevel(ImU32 colour, ImU32 expected)
+{
+	for (const int shift : {IM_COL32_R_SHIFT, IM_COL32_G_SHIFT, IM_COL32_B_SHIFT})
+	{
+		if (std::abs(ChannelOf(colour, shift) - ChannelOf(expected, shift)) > 1)
+		{
+			return false;
+		}
+	}
+
+	return true;
+}
+
+// How far `colour` lies from `from` toward `to`, read on the channel where the two differ most.
+inline float ShareFromTo(ImU32 colour, ImU32 from, ImU32 to)
+{
+	int widestShift = IM_COL32_R_SHIFT;
+
+	for (const int shift : {IM_COL32_G_SHIFT, IM_COL32_B_SHIFT})
+	{
+		if (std::abs(ChannelOf(to, shift) - ChannelOf(from, shift)) >
+			std::abs(ChannelOf(to, widestShift) - ChannelOf(from, widestShift)))
+		{
+			widestShift = shift;
+		}
+	}
+
+	const float span = static_cast<float>(ChannelOf(to, widestShift) - ChannelOf(from, widestShift));
+	return static_cast<float>(ChannelOf(colour, widestShift) - ChannelOf(from, widestShift)) / span;
+}
 
 inline bool DrawsInColour(const ImDrawList& drawing, ImU32 colour)
 {

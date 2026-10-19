@@ -1,23 +1,27 @@
 #include "App/TitleBar.h"
 
 #include "App/Logo.h"
+#include "Core/Base/Color.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/ImGui/CaptionLayout.h"
 #include "Core/ImGui/Animation.h"
+#include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/Theme.h"
 #include "Core/Platform/Caption.h"
 #include "Core/Platform/Window.h"
 
 #include <IconsLucide.h>
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <cmath>
+#include <optional>
 #include <string>
 
 namespace Graphite {
 
 	namespace {
-		constexpr float kButtonWidth = 42.0f;
 		constexpr float kButtonsGap = 12.0f;
 		constexpr float kTitleMargin = 12.0f;
 		constexpr float kDividerWidth = 1.0f;
@@ -28,11 +32,28 @@ namespace Graphite {
 		constexpr float kLogoHeightRatio = 0.6f;
 
 		constexpr float kHalf = 0.5f;
+		constexpr float kFullyHovered = 1.0f;
 
-		constexpr ImVec4 kCloseHovered{0.75f, 0.16f, 0.16f, 1.0f};
+		constexpr float kIconGreyShareOfDisabled = 0.21f;
+
+		constexpr ImU32 kCloseHoveredGlyph = IM_COL32(255, 255, 255, 255);
+
+		struct CaptionButtonLook
+		{
+			ImU32 HoveredFill = 0;
+			ImU32 HeldFill = 0;
+			ImU32 Glyph = 0;
+			ImU32 HoveredGlyph = 0;
+		};
+
+		ImU32 BlendColours(ImU32 from, ImU32 to, float amount)
+		{
+			return ImGui::ColorConvertFloat4ToU32(Core::Animation::Blend(ImGui::ColorConvertU32ToFloat4(from),
+																		 ImGui::ColorConvertU32ToFloat4(to), amount));
+		}
 
 		bool CaptionButton(const char* id, const char* glyph, const Core::CaptionRect& rect,
-						   ImU32 hoveredColour, ImU32 heldColour, bool systemOwnsPointer)
+						   const CaptionButtonLook& look, bool systemOwnsPointer)
 		{
 			ImGui::SetCursorPos(ImVec2(rect.X, rect.Y));
 
@@ -51,23 +72,44 @@ namespace Graphite {
 
 			if (held)
 			{
-				drawList->AddRectFilled(buttonMin, buttonMax, heldColour);
+				drawList->AddRectFilled(buttonMin, buttonMax, look.HeldFill);
 			}
 			else if (hoverAmount > 0.0f)
 			{
-				ImVec4 fadedFill = ImGui::ColorConvertU32ToFloat4(hoveredColour);
+				ImVec4 fadedFill = ImGui::ColorConvertU32ToFloat4(look.HoveredFill);
 				fadedFill.w *= hoverAmount;
 				drawList->AddRectFilled(buttonMin, buttonMax, ImGui::ColorConvertFloat4ToU32(fadedFill));
 			}
+
+			const float glyphHover = held ? kFullyHovered : hoverAmount;
+			const ImU32 glyphColour = glyphHover > 0.0f ? BlendColours(look.Glyph, look.HoveredGlyph, glyphHover) : look.Glyph;
+
+			// WARNING: The glyph is drawn at its own size, not the menus': Lucide's icons fill a square one font size
+			// tall, so the size given is the icon's.
+			Core::PushInterfaceFont(kWindowButtonGlyphSize);
 
 			// WARNING: Floor the position, do not round it. CalcTextSize rounds up, so a glyph centred on a half pixel is resampled and reads blurrier than the menu text beside it.
 			const ImVec2 glyphSize = ImGui::CalcTextSize(glyph);
 			const ImVec2 glyphPosition(std::floor(buttonMin.x + (rect.Width - glyphSize.x) * kHalf),
 									   std::floor(buttonMin.y + (rect.Height - glyphSize.y) * kHalf));
 
-			drawList->AddText(glyphPosition, ImGui::GetColorU32(ImGuiCol_Text), glyph);
+			drawList->AddText(glyphPosition, glyphColour, glyph);
+
+			ImGui::PopFont();
 
 			return pressed;
+		}
+
+		std::optional<LogoTones> LogoTonesForTheChrome()
+		{
+			const ImVec4& background = ImGui::GetStyleColorVec4(ImGuiCol_MenuBarBg);
+
+			if (!Core::IsLightBackground(Core::Color{.R = background.x, .G = background.y, .B = background.z, .A = background.w}))
+			{
+				return std::nullopt;
+			}
+
+			return LogoTones{.ForDarkest = ImGui::GetColorU32(ImGuiCol_Text), .ForLightest = ImGui::GetColorU32(ImGuiCol_TextDisabled)};
 		}
 
 		float GroupWidth(const char* glyph, const std::optional<std::string>& label)
@@ -136,35 +178,6 @@ namespace Graphite {
 								  windowState) != Core::CaptionHit::Client;
 		}
 
-		void DrawWindowButtons(Core::Window& window, const Core::CaptionLayout& layout,
-							   bool systemOwnsPointer)
-		{
-			const ImU32 hoveredColour = ImGui::GetColorU32(ImGuiCol_ButtonHovered);
-			const ImU32 heldColour = ImGui::GetColorU32(ImGuiCol_ButtonActive);
-
-			if (CaptionButton("CaptionMinimize", ICON_LC_MINUS, layout.Minimize,
-							  hoveredColour, heldColour, systemOwnsPointer))
-			{
-				window.Minimize();
-			}
-
-			const char* maximizeGlyph =
-				window.IsMaximized() ? ICON_LC_COPY : ICON_LC_SQUARE;
-
-			if (CaptionButton("CaptionMaximize", maximizeGlyph, layout.Maximize, hoveredColour, heldColour,
-							  systemOwnsPointer))
-			{
-				window.ToggleMaximize();
-			}
-
-			const ImU32 closeColour = ImGui::GetColorU32(kCloseHovered);
-
-			if (CaptionButton("CaptionClose", ICON_LC_X, layout.Close, closeColour,
-							  closeColour, systemOwnsPointer))
-			{
-				window.RequestClose();
-			}
-		}
 	}
 
 	void TitleBar::RenderLogo(Core::Window& window)
@@ -174,15 +187,7 @@ namespace Graphite {
 			return;
 		}
 
-		const float rowHeight = Core::Scaled(kCaptionHeight);
-		const float height = std::round(rowHeight * kLogoHeightRatio);
-		const float width = LogoWidth(height);
-
-		const ImVec2 origin(ImGui::GetWindowPos().x + ImGui::GetCursorPosX(), ImGui::GetWindowPos().y);
-		DrawLogo(ImGui::GetWindowDrawList(), ImVec2(origin.x + width * kHalf, origin.y + rowHeight * kHalf), height);
-
-		const float halfItemSpacing = ImGui::GetStyle().ItemSpacing.x * kHalf;
-		ImGui::Dummy(ImVec2(width + halfItemSpacing, 0.0f));
+		DrawTitleLogo();
 	}
 
 	std::string FolderLabel(const std::filesystem::path& root)
@@ -190,6 +195,71 @@ namespace Graphite {
 		const std::filesystem::path name = root.has_filename() ? root.filename() : root.parent_path().filename();
 
 		return Core::ToUtf8(name.empty() ? root : name);
+	}
+
+	Core::MenuBarHeights TitleMenuHeights()
+	{
+		return Core::MenuBarHeights{.Row = Core::Scaled(kCaptionHeight), .Item = Core::Scaled(kMenuItemHeight)};
+	}
+
+	void DrawTitleLogo()
+	{
+		const float rowHeight = Core::Scaled(kCaptionHeight);
+		const float height = std::round(rowHeight * kLogoHeightRatio);
+		const float width = LogoWidth(height);
+
+		const ImVec2 origin(ImGui::GetWindowPos().x + ImGui::GetCursorPosX(), ImGui::GetWindowPos().y);
+		DrawLogo(ImGui::GetWindowDrawList(), ImVec2(origin.x + width * kHalf, origin.y + rowHeight * kHalf), height,
+				 LogoTonesForTheChrome());
+
+		const float halfItemSpacing = ImGui::GetStyle().ItemSpacing.x * kHalf;
+		ImGui::Dummy(ImVec2(width + halfItemSpacing, 0.0f));
+	}
+
+	ImU32 WindowButtonGlyphColour()
+	{
+		const ImVec4* colours = ImGui::GetStyle().Colors;
+
+		return ImGui::GetColorU32(ImLerp(colours[ImGuiCol_Text], colours[ImGuiCol_TextDisabled], kIconGreyShareOfDisabled));
+	}
+
+	WindowButton DrawWindowButtons(const Core::CaptionLayout& layout, Core::WindowState state, bool systemOwnsPointer)
+	{
+		const ImU32 glyph = WindowButtonGlyphColour();
+		const ImU32 hoveredFill = ImGui::GetColorU32(ImGuiCol_ButtonHovered);
+
+		// WARNING: The held fill is ButtonActive, which the theme makes the hover fill: there is no pressed colour.
+		const CaptionButtonLook plain{.HoveredFill = hoveredFill,
+									  .HeldFill = ImGui::GetColorU32(ImGuiCol_ButtonActive),
+									  .Glyph = glyph,
+									  .HoveredGlyph = glyph};
+
+		const CaptionButtonLook close{.HoveredFill = kCloseHoveredFill,
+									  .HeldFill = kCloseHoveredFill,
+									  .Glyph = glyph,
+									  .HoveredGlyph = kCloseHoveredGlyph};
+
+		WindowButton pressed = WindowButton::None;
+
+		if (CaptionButton("CaptionMinimize", ICON_LC_MINUS, layout.Minimize, plain, systemOwnsPointer))
+		{
+			pressed = WindowButton::Minimize;
+		}
+
+		const char* maximizeGlyph =
+			state == Core::WindowState::Maximized ? ICON_LC_COPY : ICON_LC_SQUARE;
+
+		if (CaptionButton("CaptionMaximize", maximizeGlyph, layout.Maximize, plain, systemOwnsPointer))
+		{
+			pressed = WindowButton::Maximize;
+		}
+
+		if (CaptionButton("CaptionClose", ICON_LC_X, layout.Close, close, systemOwnsPointer))
+		{
+			pressed = WindowButton::Close;
+		}
+
+		return pressed;
 	}
 
 	Core::CaptionLayout DrawTitle(const TitleContext& context, float menuEnd, float barWidth)
@@ -207,7 +277,7 @@ namespace Graphite {
 		};
 
 		const Core::CaptionLayout layout = Core::LayOutCaption(
-			barWidth, Core::Scaled(kCaptionHeight), Core::Scaled(kButtonWidth), menuEnd, widths, spacing);
+			barWidth, Core::Scaled(kCaptionHeight), Core::Scaled(kWindowButtonWidth), menuEnd, widths, spacing);
 
 		if (layout.DividerVisible)
 		{
@@ -242,7 +312,25 @@ namespace Graphite {
 
 		const Core::CaptionMetrics metrics = MeasureDragRegion(menuEnd, layout.Minimize.X);
 
-		DrawWindowButtons(window, layout, PointerBelongsToSystem(window, metrics));
+		const Core::WindowState state = window.IsMaximized() ? Core::WindowState::Maximized : Core::WindowState::Restored;
+
+		switch (DrawWindowButtons(layout, state, PointerBelongsToSystem(window, metrics)))
+		{
+		case WindowButton::Minimize:
+			window.Minimize();
+			break;
+
+		case WindowButton::Maximize:
+			window.ToggleMaximize();
+			break;
+
+		case WindowButton::Close:
+			window.RequestClose();
+			break;
+
+		case WindowButton::None:
+			break;
+		}
 
 		window.SetCaptionMetrics(metrics);
 	}

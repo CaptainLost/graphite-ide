@@ -21,6 +21,11 @@ The bar draws from `StatusMessages`, data that `GraphiteLayer` builds each frame
 ([0535](0535-show-git-state-in-the-status-bar-read-only-and-keep-git-actions-in-the-panels.md)).
 It knows nothing of the diagnostics model, the language services or the scheme.
 
+The mockup the interface is drawn to sets the bar's words in `#aab1bb`, quieter
+than the text colour, brings a pressable item up to the text colour under the
+pointer, pads each item's fill by 7 px and draws a ready server's dot in
+`#7fbf6a`.
+
 ## Decision
 
 - **Size.** The bar is `kStatusBarHeight`, 23 px scaled and rounded to a whole
@@ -49,11 +54,24 @@ It knows nothing of the diagnostics model, the language services or the scheme.
   - `ChooseServerLine` gives each line the health of the server it speaks for.
     An install under way is `Starting`. An uninstall, and a line that speaks for
     no running server (no language support, restricted mode), are `None`.
+- **Text colour.** The bar's own words are the status grey, `StatusBarTextColour`:
+  the text colour 47 % of the way to the disabled text, `#aab1bb` in the dark
+  scheme.
+  - They are the branch, the distance, the change count, the server's words,
+    the background pass, the caret position, the encoding, the line ending and a
+    centred message. The bell's glyph is the status grey too.
+  - The dim branch of a folder without a repository, the dim check, the problem
+    counts, the dot and the read-only warning keep their own colours.
 - **The dot.** A filled circle 7 px across, centred on the text line, sits before
-  the server's words. It is the git "added" colour (`GitPalette::GutterAdded`)
-  when ready, the warning colour while starting or limited, and the error
-  colour when failed. `None` draws no dot. The words keep their form, "C++: clangd ready",
-  and their click ([0571](0571-choose-and-install-language-servers-from-settings-and-the-editor.md)).
+  the server's words.
+  - When ready it is `ServerReadyColour`: the mockup's `#7fbf6a` on a dark
+    chrome. On a light one it is `#206020`, the light git added colour
+    (40, 120, 40) made as much darker as the dark green is brighter than the
+    dark git added colour, a quarter.
+  - It is the warning colour while starting or limited, and the error colour
+    when failed. `None` draws no dot.
+  - The words keep their form, "C++: clangd ready", and their click
+    ([0571](0571-choose-and-install-language-servers-from-settings-and-the-editor.md)).
 - **Caret position.** "Ln 12, Col 5" draws in the code face at the bar's size,
   `Core::PushCodeFont(kStatusBarFontSize)`. Its width changes only when its
   number of digits does.
@@ -69,9 +87,13 @@ It knows nothing of the diagnostics model, the language services or the scheme.
 - **Hover.** Every item that takes a click fills the full height of the bar under
   the pointer: the branch, the change count, the server's words when they open
   settings, and the bell.
-  - A text item's fill reaches 6 px past its text on each side, with square
+  - A text item's fill reaches 7 px past its text on each side, with square
     corners.
   - The fill is `Core::IconButtonFill`, the eased colours `DrawIconButton` uses.
+  - As the fill fades in, the item's words go from the status grey to the text
+    colour. The bell's glyph takes the text colour when the bell was the item
+    under the pointer on the frame before, since `DrawIconButton` reports its
+    hover only once it has drawn.
   - Inert items take no fill.
   - The bell stays a `DrawIconButton`, with a third fit, `IconButtonFit::Bar`: a
     square one frame high, filled out to its corners. The bar sets the frame
@@ -80,9 +102,10 @@ It knows nothing of the diagnostics model, the language services or the scheme.
 - **Read-only warning.** "read-only: not valid text for its encoding" is an item
   of its own after the path, in the warning colour, only for such a document.
 - **Colours.** `StatusMessages::Colours` carries the error and warning colours
-  from `EditorPalette` and the ready colour from `GitPalette`. `GraphiteLayer`
-  reads them from the active scheme each frame, so the built-in schemes and a
-  custom one all colour the bar.
+  from `EditorPalette` and the ready colour from `ServerReadyColour` for the
+  scheme's chrome. `GraphiteLayer` reads them from the active scheme each frame,
+  so the built-in schemes and a custom one all colour the bar; a custom scheme
+  sets the ready dot only through whether its chrome is light.
 - **No wheel scroll.** The bar is begun with `ImGuiWindowFlags_NoScrollWithMouse`.
   An item one bar tall, with the window padding, reaches past the window's inner
   height, and a wheel would otherwise scroll the bar.
@@ -103,6 +126,8 @@ proportional digits were what made the right-hand cluster jump, and drawing
 digits that must not shift in the code face is already the rule. A fill the
 height of the bar shows which pieces of a strip of text can be pressed, and
 borrowing `DrawIconButton`'s fill keeps one hover look across the application.
+The status grey keeps the bar quieter than the code, and taking it from the text
+colours gives the light scheme the same relation without a value of its own.
 
 ## Consequences
 
@@ -112,7 +137,8 @@ borrowing `DrawIconButton`'s fill keeps one hover look across the application.
   colour.
 - The right-hand cluster stays put while the caret moves, until a number gains a
   digit.
-- The pieces of the bar that take a click show it under the pointer.
+- The pieces of the bar that take a click show it under the pointer, in their
+  fill and in their words.
 
 ### Negative
 
@@ -121,6 +147,9 @@ borrowing `DrawIconButton`'s fill keeps one hover look across the application.
   incomplete project; only the words tell them apart.
 - The caret position is in another face than the items beside it.
 - An uninstall under way shows no dot.
+- A custom scheme no longer chooses the ready dot's colour.
+- The bell's glyph brightens a frame after the pointer reaches it, and does not
+  fade with its fill.
 
 ### Neutral
 
@@ -138,6 +167,10 @@ borrowing `DrawIconButton`'s fill keeps one hover look across the application.
   states, which `ChooseServerLine` keeps from it.
 - **Keep the counts spelled out, in colour.** "2 errors" reads without a glyph
   but takes several times the width of a glyph and a count.
+- **Keep the git added colour for the ready dot.** It follows a custom scheme,
+  but at `#6a9955` it is darker than the mockup's dot.
+- **Add a scheme colour for the ready dot.** A custom scheme could set it, but
+  every scheme and the Appearance page would gain a colour for one 7 px dot.
 
 ## Related
 

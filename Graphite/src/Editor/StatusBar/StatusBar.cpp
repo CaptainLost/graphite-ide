@@ -1,7 +1,9 @@
 #include "Editor/StatusBar/StatusBar.h"
 
+#include "Core/ImGui/Animation.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/IconButton.h"
+#include "Core/ImGui/Theme.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
@@ -12,6 +14,7 @@
 
 #include <IconsLucide.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <string>
@@ -27,11 +30,22 @@ namespace Graphite {
 		constexpr float kInvisibleAlpha = 0.0f;
 		constexpr float kNoGap = 0.0f;
 		constexpr float kBarTop = 0.0f;
+		constexpr float kAtRest = 0.0f;
+		constexpr float kFullyHovered = 1.0f;
 
-		constexpr float kItemFillPadding = 6.0f;
+		constexpr float kItemFillPadding = 7.0f;
 		constexpr float kBothSides = 2.0f;
 		constexpr float kMarkToTextGap = 4.0f;
 		constexpr float kBetweenCountsGap = 8.0f;
+
+		constexpr float kStatusTextShareOfDisabled = 0.47f;
+
+		// The mockup's ready green on a dark chrome. On a light one, the light git added colour, (40, 120, 40), as
+		// much darker as the dark green is brighter than the dark git added colour: a quarter.
+		constexpr ImU32 kReadyOnDark = IM_COL32(127, 191, 106, 255);
+		constexpr ImU32 kReadyOnLight = IM_COL32(32, 96, 32, 255);
+
+		constexpr const char* kBellId = "##NotificationBell";
 
 		constexpr const char* kErrorGlyph = ICON_LC_CIRCLE_X;
 		constexpr const char* kWarningGlyph = ICON_LC_TRIANGLE_ALERT;
@@ -49,7 +63,10 @@ namespace Graphite {
 		{
 			PieceKind Kind = PieceKind::Text;
 			std::string Text;
-			ImU32 Colour = 0;
+
+			// None is the bar's own text: the status grey at rest, brightening to the text colour as its item is hovered.
+			std::optional<ImU32> Colour;
+
 			float GapBefore = kNoGap;
 		};
 
@@ -106,19 +123,39 @@ namespace Graphite {
 			return ImGui::GetColorU32(ImVec4(colour.R, colour.G, colour.B, colour.A));
 		}
 
-		ImU32 TextColour()
-		{
-			return ImGui::GetColorU32(ImGuiCol_Text);
-		}
-
 		ImU32 DimColour()
 		{
 			return ImGui::GetColorU32(ImGuiCol_TextDisabled);
 		}
 
+		// The bar's own text, from the status grey at rest to the text colour under the pointer.
+		ImU32 BarTextColour(float hoverAmount)
+		{
+			if (hoverAmount <= kAtRest)
+			{
+				return StatusBarTextColour();
+			}
+
+			return ImGui::GetColorU32(Core::Animation::Blend(ImGui::ColorConvertU32ToFloat4(StatusBarTextColour()),
+															 ImGui::GetStyleColorVec4(ImGuiCol_Text), hoverAmount));
+		}
+
+		// How far the item's fill has faded in, which its words follow toward the text colour.
+		float HoverAmountOf(const ImVec4& fill)
+		{
+			const float hoveredAlpha = ImGui::GetStyleColorVec4(ImGuiCol_ButtonHovered).w;
+
+			return hoveredAlpha > kInvisibleAlpha ? std::clamp(fill.w / hoveredAlpha, kAtRest, kFullyHovered) : kAtRest;
+		}
+
 		bool DrawNotificationBell(const std::optional<Core::Color>& missedColour)
 		{
 			ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - BellWidth() - ImGui::GetStyle().WindowPadding.x, kBarTop));
+
+			// WARNING: The bell draws its glyph in the text colour, and the hover is only known once it is drawn, so its
+			// glyph takes the status grey unless the bell was the item under the pointer on the frame before.
+			const bool bellUnderThePointer = ImGui::GetHoveredID() == ImGui::GetID(kBellId);
+			ImGui::PushStyleColor(ImGuiCol_Text, BarTextColour(bellUnderThePointer ? kFullyHovered : kAtRest));
 
 			// WARNING: Without NoFocus the press focuses the bar, and the popup the click opens hands the
 			// keyboard back to the bar when it closes rather than to the editor.
@@ -126,7 +163,9 @@ namespace Graphite {
 			const Core::IconButtonOptions bellButton{.Fit = Core::IconButtonFit::Bar,
 													 .Flags = ImGuiButtonFlags_NoFocus | ImGuiButtonFlags_NoNavFocus};
 			const bool clicked =
-				Core::DrawIconButton("##NotificationBell", ICON_LC_BELL, kNotEngaged, "Notifications", bellButton);
+				Core::DrawIconButton(kBellId, ICON_LC_BELL, kNotEngaged, "Notifications", bellButton);
+
+			ImGui::PopStyleColor();
 
 			if (missedColour.has_value())
 			{
@@ -146,7 +185,9 @@ namespace Graphite {
 
 			ImGui::SetCursorPos(
 				ImVec2((ImGui::GetWindowWidth() - width) * kHalf, CentredTextY(barHeight)));
+			ImGui::PushStyleColor(ImGuiCol_Text, StatusBarTextColour());
 			ImGui::TextUnformatted(text.c_str());
+			ImGui::PopStyleColor();
 		}
 
 		float PieceWidth(const Piece& piece)
@@ -171,25 +212,27 @@ namespace Graphite {
 			return width;
 		}
 
-		void DrawPieces(const std::vector<Piece>& pieces, ImVec2 lineStart)
+		void DrawPieces(const std::vector<Piece>& pieces, ImVec2 lineStart, float hoverAmount)
 		{
 			ImDrawList* const drawList = ImGui::GetWindowDrawList();
 			const float lineMiddle = lineStart.y + ImGui::GetTextLineHeight() * kHalf;
+			const ImU32 barText = BarTextColour(hoverAmount);
 			float x = lineStart.x;
 
 			for (const Piece& piece : pieces)
 			{
 				x += piece.GapBefore;
 				const float width = PieceWidth(piece);
+				const ImU32 colour = piece.Colour.value_or(barText);
 
 				if (piece.Kind == PieceKind::Dot)
 				{
 					const float radius = width * kHalf;
-					drawList->AddCircleFilled(ImVec2(x + radius, lineMiddle), radius, piece.Colour);
+					drawList->AddCircleFilled(ImVec2(x + radius, lineMiddle), radius, colour);
 				}
 				else
 				{
-					drawList->AddText(ImVec2(x, lineStart.y), piece.Colour, piece.Text.c_str());
+					drawList->AddText(ImVec2(x, lineStart.y), colour, piece.Text.c_str());
 				}
 
 				x += width;
@@ -236,6 +279,7 @@ namespace Graphite {
 
 			// WARNING: InvisibleButton refuses a zero size, so an empty item is laid out as an inert one.
 			const bool clickable = item.Reports != StatusBarClick::None && drawn.Width > 0.0f;
+			float hoverAmount = kAtRest;
 
 			if (clickable)
 			{
@@ -247,6 +291,7 @@ namespace Graphite {
 				const bool hovered = ImGui::IsItemHovered();
 				const bool held = hovered && ImGui::IsItemActive();
 				const ImVec4 fill = Core::IconButtonFill(ImGui::GetItemID(), hovered, held);
+				hoverAmount = HoverAmountOf(fill);
 
 				if (fill.w > kInvisibleAlpha)
 				{
@@ -264,7 +309,7 @@ namespace Graphite {
 				ImGui::Dummy(ImVec2(drawn.Width, ImGui::GetTextLineHeight()));
 			}
 
-			DrawPieces(item.Pieces, lineStart);
+			DrawPieces(item.Pieces, lineStart, hoverAmount);
 
 			PopItemFace(item.Face);
 
@@ -304,7 +349,7 @@ namespace Graphite {
 			StatusBarClick m_Clicked = StatusBarClick::None;
 		};
 
-		StatusItem TextItem(std::string text, ImU32 colour, std::string tooltip = {})
+		StatusItem TextItem(std::string text, std::optional<ImU32> colour, std::string tooltip = {})
 		{
 			StatusItem item;
 			item.Pieces.push_back(Piece{.Text = std::move(text), .Colour = colour});
@@ -313,9 +358,14 @@ namespace Graphite {
 			return item;
 		}
 
+		StatusItem BarTextItem(std::string text, std::string tooltip = {})
+		{
+			return TextItem(std::move(text), std::nullopt, std::move(tooltip));
+		}
+
 		StatusItem ClickableTextItem(const char* id, StatusBarClick reports, std::string text, std::string tooltip)
 		{
-			StatusItem item = TextItem(std::move(text), TextColour(), std::move(tooltip));
+			StatusItem item = BarTextItem(std::move(text), std::move(tooltip));
 			item.Id = id;
 			item.Reports = reports;
 
@@ -404,7 +454,7 @@ namespace Graphite {
 			}
 
 			const float gapBefore = item.Pieces.empty() ? kNoGap : Core::Scaled(kMarkToTextGap);
-			item.Pieces.push_back(Piece{.Text = *messages.Server, .Colour = TextColour(), .GapBefore = gapBefore});
+			item.Pieces.push_back(Piece{.Text = *messages.Server, .GapBefore = gapBefore});
 
 			return item;
 		}
@@ -425,19 +475,18 @@ namespace Graphite {
 
 			if (messages.Background && !messages.Background->empty())
 			{
-				items.push_back(TextItem(*messages.Background, TextColour(), messages.BackgroundDetail.value_or(std::string{})));
+				items.push_back(BarTextItem(*messages.Background, messages.BackgroundDetail.value_or(std::string{})));
 			}
 
 			if (document != nullptr)
 			{
-				StatusItem caret = TextItem(DescribeCaret(*document), TextColour());
+				StatusItem caret = BarTextItem(DescribeCaret(*document));
 				caret.Face = ItemFace::Code;
 				items.push_back(std::move(caret));
 
-				items.push_back(TextItem(std::string{Core::EncodingName(document->Document->GetFileEncoding())}, TextColour()));
-				items.push_back(TextItem(LineEndingName(document->Document->GetDocumentLineEnding(),
-														document->Document->HasMixedLineEndings()),
-										 TextColour()));
+				items.push_back(BarTextItem(std::string{Core::EncodingName(document->Document->GetFileEncoding())}));
+				items.push_back(BarTextItem(LineEndingName(document->Document->GetDocumentLineEnding(),
+														   document->Document->HasMixedLineEndings())));
 			}
 
 			return items;
@@ -463,7 +512,7 @@ namespace Graphite {
 
 				if (!segment.Distance.empty())
 				{
-					row.Place(TextItem(segment.Distance, TextColour(), segment.DistanceTooltip), ImGui::GetStyle().ItemSpacing.x);
+					row.Place(BarTextItem(segment.Distance, segment.DistanceTooltip), ImGui::GetStyle().ItemSpacing.x);
 				}
 
 				if (!segment.Changes.empty())
@@ -505,6 +554,18 @@ namespace Graphite {
 
 			return row.GetClicked();
 		}
+	}
+
+	ImU32 StatusBarTextColour()
+	{
+		const ImVec4* colours = ImGui::GetStyle().Colors;
+
+		return ImGui::GetColorU32(ImLerp(colours[ImGuiCol_Text], colours[ImGuiCol_TextDisabled], kStatusTextShareOfDisabled));
+	}
+
+	ImU32 ServerReadyColour(const Core::Color& chromeBackground)
+	{
+		return Core::IsLightBackground(chromeBackground) ? kReadyOnLight : kReadyOnDark;
 	}
 
 	StatusBarClick DrawStatusBar(const Core::DocumentSet& documents,

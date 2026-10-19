@@ -79,4 +79,10 @@ namespace Graphite {
 								 std::optional<std::size_t> shown,
 								 const StatusMessages& messages);
 
+	// The bar's own words at rest.
+	ImU32 StatusBarTextColour();
+
+	// The dot before a ready server's words, for the chrome it is drawn on.
+	ImU32 ServerReadyColour(const Core::Color& chromeBackground);
+
 }

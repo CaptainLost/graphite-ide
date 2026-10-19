@@ -7,6 +7,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <utility>
 
 namespace Core {
@@ -16,20 +17,31 @@ namespace Core {
 		constexpr const char* kIconGap = "  ";
 		constexpr const char* kImGuiIdSeparator = "###";
 
-		bool BeginTopLevelMenu(const char* label, const ImVec2& dropdownPadding)
+		constexpr int kDropdownStyleVarCount = 2;
+		constexpr float kHalf = 0.5f;
+
+		// The style a dropdown draws with: the window's own, from before the bar pushed its padding and spacing.
+		struct DropdownStyle
+		{
+			ImVec2 FramePadding;
+			ImVec2 ItemSpacing;
+		};
+
+		bool BeginTopLevelMenu(const char* label, const DropdownStyle& dropdown)
 		{
 			if (!ImGui::BeginMenu(label))
 			{
 				return false;
 			}
 
-			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, dropdownPadding);
+			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, dropdown.FramePadding);
+			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, dropdown.ItemSpacing);
 			return true;
 		}
 
 		void EndTopLevelMenu()
 		{
-			ImGui::PopStyleVar();
+			ImGui::PopStyleVar(kDropdownStyleVarCount);
 			ImGui::EndMenu();
 		}
 
@@ -171,21 +183,31 @@ namespace Core {
 	}
 
 	void MenuBar::Render(CommandRegistry& commands, const Keymap& keymap,
-						 const std::vector<MenuItem>& menuTree, float rowHeight,
+						 const std::vector<MenuItem>& menuTree, const MenuBarHeights& heights,
 						 const std::function<void()>& drawLeading, const std::function<void()>& drawTrailing)
 	{
-		// Read before the bar's own padding is pushed over it: BeginTopLevelMenu hands this
-		// padding back to each dropdown.
-		const ImVec2 dropdownPadding = ImGui::GetStyle().FramePadding;
+		// Read before the bar's own padding and spacing are pushed over them: BeginTopLevelMenu
+		// hands them back to each dropdown.
+		const ImGuiStyle& style = ImGui::GetStyle();
+		const DropdownStyle dropdown{.FramePadding = style.FramePadding, .ItemSpacing = style.ItemSpacing};
+		int pushedStyleVars = 0;
 
 		// DockSpaceHost::Begin pops its own padding before opening the dockspace, so the bar has
 		// to push one that centres its items, and what drawLeading and drawTrailing draw, in the row.
-		const bool rowHeightGiven = rowHeight > 0.0f;
-
-		if (rowHeightGiven)
+		if (heights.Row > 0.0f)
 		{
-			const float paddingThatCentresText = (rowHeight - ImGui::GetFontSize()) * 0.5f;
-			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(dropdownPadding.x, paddingThatCentresText));
+			const float paddingThatCentresText = (heights.Row - ImGui::GetFontSize()) * kHalf;
+			ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(dropdown.FramePadding.x, paddingThatCentresText));
+			++pushedStyleVars;
+		}
+
+		// WARNING: A top-level menu is a Selectable a line tall, whose fill ImGui stretches by half the item spacing
+		// above and below, so the vertical spacing is what sets the fill's height. Only the dropdowns must not see it.
+		if (heights.Item > 0.0f)
+		{
+			const float spacingThatFillsTheItem = std::max(heights.Item - ImGui::GetFontSize(), 0.0f);
+			ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(dropdown.ItemSpacing.x, spacingThatFillsTheItem));
+			++pushedStyleVars;
 		}
 
 		// Not an early return on BeginMenuBar: the bar's padding still has to be popped.
@@ -206,7 +228,7 @@ namespace Core {
 					continue;
 				}
 
-				if (BeginTopLevelMenu(item.GetText().c_str(), dropdownPadding))
+				if (BeginTopLevelMenu(item.GetText().c_str(), dropdown))
 				{
 					RenderMenuItems(commands, keymap, item.GetChildren());
 					EndTopLevelMenu();
@@ -221,9 +243,6 @@ namespace Core {
 			ImGui::EndMenuBar();
 		}
 
-		if (rowHeightGiven)
-		{
-			ImGui::PopStyleVar();
-		}
+		ImGui::PopStyleVar(pushedStyleVars);
 	}
 }

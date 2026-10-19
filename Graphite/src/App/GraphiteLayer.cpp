@@ -1069,7 +1069,7 @@ namespace Graphite {
 		const EditorPalette statusPalette = ReadEditorPalette(m_ActiveScheme.Get());
 		messages.Colours = StatusBarColours{.Error = statusPalette.DiagnosticError,
 											.Warning = statusPalette.DiagnosticWarning,
-											.Ready = ReadGitPalette(m_ActiveScheme.Get()).GutterAdded};
+											.Ready = ServerReadyColour(ChromePaletteFor(m_ActiveScheme.Get()).Background)};
 
 		switch (DrawStatusBar(m_Documents, shownIndex, messages))
 		{
@@ -1099,7 +1099,8 @@ namespace Graphite {
 		const Core::ChromePalette chromePalette = ChromePaletteFor(m_ActiveScheme.Get());
 		const Core::ToolStripContent toolStrip = BuildToolStrip(workingTreeHasChanges, counts, chromePalette);
 
-		m_Layout.MenuBarHeight = m_CustomTitleBar ? Core::Scaled(kCaptionHeight) : 0.0f;
+		const Core::MenuBarHeights menuHeights = m_CustomTitleBar ? TitleMenuHeights() : Core::MenuBarHeights{};
+		m_Layout.MenuBarHeight = menuHeights.Row;
 		m_Layout.StripWidth = Core::ToolStripWidth();
 		m_DockSpace.Begin(
 			m_Layout,
@@ -1125,7 +1126,7 @@ namespace Graphite {
 			titleContext.Branch = titleBranch;
 		}
 
-		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, m_Layout.MenuBarHeight, [this] { m_TitleBar.RenderLogo(Core::Application::Get().GetWindow()); }, [this, &titleContext] { m_TitleBar.Render(Core::Application::Get().GetWindow(), titleContext); });
+		m_MenuBar.Render(m_Commands, m_Keys, m_MenuTree, menuHeights, [this] { m_TitleBar.RenderLogo(Core::Application::Get().GetWindow()); }, [this, &titleContext] { m_TitleBar.Render(Core::Application::Get().GetWindow(), titleContext); });
 		RenderEmptyEditorArea();
 		m_DockSpace.End();
 

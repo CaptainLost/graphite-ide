@@ -1,13 +1,18 @@
 #include <doctest/doctest.h>
 
 #include "DrawnColours.h"
+#include "DrawnGlyphs.h"
 #include "ImGuiFrames.h"
 #include "TempDirectory.h"
 
 #include "Editor/StatusBar/StatusBar.h"
+#include "Theme/BuiltInSchemes.h"
+#include "Theme/ChromePalette.h"
 
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/ImGuiColors.h"
+#include "Core/ImGui/Theme.h"
 #include "Core/ImGui/UiScale.h"
 #include "Core/Text/DocumentSet.h"
 
@@ -16,6 +21,7 @@
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <vector>
@@ -118,37 +124,6 @@ namespace {
 	ImU32 HoverFill()
 	{
 		return ImGui::GetColorU32(ImGuiCol_ButtonHovered);
-	}
-
-	bool IsGlyphVertex(const ImDrawVert& vertex)
-	{
-		const ImVec2 white = ImGui::GetDrawListSharedData()->TexUvWhitePixel;
-		return vertex.uv.x != white.x || vertex.uv.y != white.y;
-	}
-
-	std::vector<ImRect> GlyphQuads(const ImDrawList& drawing)
-	{
-		std::vector<ImRect> quads;
-		int first = 0;
-
-		while (first + kVerticesInAGlyph <= drawing.VtxBuffer.Size)
-		{
-			const ImDrawVert* quad = &drawing.VtxBuffer[first];
-			const bool allGlyph = IsGlyphVertex(quad[0]) && IsGlyphVertex(quad[1]) && IsGlyphVertex(quad[2]) && IsGlyphVertex(quad[3]);
-			const bool isRectangle = quad[0].pos.y == quad[1].pos.y && quad[1].pos.x == quad[2].pos.x &&
-									 quad[2].pos.y == quad[3].pos.y && quad[3].pos.x == quad[0].pos.x;
-
-			if (allGlyph && isRectangle)
-			{
-				quads.emplace_back(quad[0].pos, quad[2].pos);
-				first += kVerticesInAGlyph;
-				continue;
-			}
-
-			++first;
-		}
-
-		return quads;
 	}
 
 	bool Near(float value, float expected)
@@ -265,7 +240,7 @@ TEST_CASE("The bell with a missed notification's dot completes a frame without a
 	CHECK_FALSE(screen.BellClicked);
 }
 
-TEST_CASE("The bell is a glyph button like any other: the text colour at rest, on the hover fill under the pointer")
+TEST_CASE("The bell is in the status grey at rest, and in the text colour on the hover fill under the pointer")
 {
 	StatusBarScreen screen;
 	screen.Frames.Next([&] { screen.Draw(); });
@@ -273,12 +248,15 @@ TEST_CASE("The bell is a glyph button like any other: the text colour at rest, o
 	const ImU32 dimColour = ImGui::GetColorU32(ImGuiCol_TextDisabled);
 	const ImU32 textColour = ImGui::GetColorU32(ImGuiCol_Text);
 
-	CHECK(DrawsInColour(StatusBarScreen::BarDrawing(), textColour));
+	CHECK(DrawsInColour(StatusBarScreen::BarDrawing(), Graphite::StatusBarTextColour()));
+	CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), textColour));
 	CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), dimColour));
 
 	screen.HoverAt(screen.BellCentre());
 
 	CHECK(DrawsInColour(StatusBarScreen::BarDrawing(), HoverFill()));
+	CHECK(DrawsInColour(StatusBarScreen::BarDrawing(), textColour));
+	CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), Graphite::StatusBarTextColour()));
 }
 
 TEST_CASE("A click on the server's words reports the server when they open its settings")
@@ -539,6 +517,104 @@ TEST_CASE("Items are separated by the named gap")
 	REQUIRE(bellFill.has_value());
 
 	CHECK(bellFill->Left - (wordsFill->Right - fillPadding) == doctest::Approx(gap));
+}
+
+TEST_CASE("The status bar's text is the status grey, in dark and in light")
+{
+	constexpr float kStatusGreyShare = 0.47f;
+	constexpr float kShareTolerance = 0.03f;
+	constexpr ImU32 kMockupStatusGrey = IM_COL32(0xaa, 0xb1, 0xbb, 0xff);
+
+	for (const Graphite::ResolvedScheme* scheme : {&Graphite::DarkScheme(), &Graphite::LightScheme()})
+	{
+		StatusBarScreen screen;
+		const Core::ChromePalette palette = Graphite::ChromePaletteFor(*scheme);
+		CAPTURE(palette.Background.R);
+		Core::Theme::Apply(palette);
+		screen.Messages.Git = Graphite::GitStatusSegment{.Branch = "main", .Distance = "2", .Changes = "3 changes", .HasRepository = true};
+		screen.Messages.Server = "C++: clangd ready";
+		screen.Messages.Background = "analysing workspace";
+
+		ImU32 statusGrey = 0;
+		screen.Frames.Next([&] {
+			screen.Draw();
+			statusGrey = Graphite::StatusBarTextColour();
+		});
+
+		const ImU32 text = ImGui::GetColorU32(Core::ToImVec4(palette.Text));
+		const ImU32 disabled = ImGui::GetColorU32(Core::ToImVec4(palette.TextDisabled));
+
+		CHECK(ShareFromTo(statusGrey, text, disabled) == doctest::Approx(kStatusGreyShare).epsilon(kShareTolerance));
+		CHECK(DrawsInColour(StatusBarScreen::BarDrawing(), statusGrey));
+		CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), text));
+
+		if (!Core::IsLightBackground(palette.Background))
+		{
+			CHECK(WithinOneLevel(statusGrey, kMockupStatusGrey));
+		}
+	}
+}
+
+TEST_CASE("A clickable item's words turn to the text colour under the pointer, and back to the status grey after")
+{
+	constexpr const char* kBranch = "main";
+	constexpr int kGlyphsInTheBranch = 4;
+
+	StatusBarScreen screen;
+	screen.Messages.Git = Graphite::GitStatusSegment{.Branch = kBranch, .Changes = "3 changes", .HasRepository = true};
+
+	float branchWidth = 0.0f;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		branchWidth = BarTextWidth(kBranch);
+	});
+
+	const ImGuiWindow& bar = StatusBarScreen::Bar();
+	const float branchLeft = bar.Pos.x + bar.WindowPadding.x;
+	const ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
+
+	screen.HoverAt(ImVec2(branchLeft + branchWidth * 0.5f, bar.Pos.y + bar.Size.y * 0.5f));
+
+	CHECK(VerticesInColour(StatusBarScreen::BarDrawing(), text) == kGlyphsInTheBranch * kVerticesInAGlyph);
+	CHECK(DrawsInColour(StatusBarScreen::BarDrawing(), Graphite::StatusBarTextColour()));
+
+	constexpr ImVec2 kFarFromTheBar(10.0f, 10.0f);
+	screen.HoverAt(kFarFromTheBar);
+
+	CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), text));
+}
+
+TEST_CASE("A clickable item's fill reaches seven pixels past its words on each side")
+{
+	constexpr float kSeven = 7.0f;
+	constexpr const char* kBranch = "main";
+
+	StatusBarScreen screen;
+	screen.Messages.Git = Graphite::GitStatusSegment{.Branch = kBranch, .HasRepository = true};
+
+	float branchWidth = 0.0f;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		branchWidth = BarTextWidth(kBranch);
+	});
+
+	const ImGuiWindow& bar = StatusBarScreen::Bar();
+	const float branchLeft = bar.Pos.x + bar.WindowPadding.x;
+	screen.HoverAt(ImVec2(branchLeft + branchWidth * 0.5f, bar.Pos.y + bar.Size.y * 0.5f));
+
+	const std::optional<HorizontalExtent> fill = HorizontalExtentInColour(StatusBarScreen::BarDrawing(), HoverFill());
+	REQUIRE(fill.has_value());
+	CHECK(fill->Left == doctest::Approx(branchLeft - kSeven));
+	CHECK(fill->Right == doctest::Approx(branchLeft + branchWidth + kSeven));
+}
+
+TEST_CASE("The server's ready dot is the mockup's green on a dark chrome and a deeper green on a light one")
+{
+	constexpr ImU32 kMockupReadyGreen = IM_COL32(0x7f, 0xbf, 0x6a, 0xff);
+	constexpr ImU32 kDeeperLightGreen = IM_COL32(32, 96, 32, 255);
+
+	CHECK(Graphite::ServerReadyColour(Graphite::ChromePaletteFor(Graphite::DarkScheme()).Background) == kMockupReadyGreen);
+	CHECK(Graphite::ServerReadyColour(Graphite::ChromePaletteFor(Graphite::LightScheme()).Background) == kDeeperLightGreen);
 }
 
 TEST_CASE("The caret position is drawn in the code face at the bar's size, whatever the interface size")
