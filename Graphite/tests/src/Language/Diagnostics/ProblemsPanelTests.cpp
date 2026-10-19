@@ -2,6 +2,7 @@
 
 #include "Language/Diagnostics/ProblemsPanel.h"
 #include "UI/FileIcons.h"
+#include "UI/Lists/ListRow.h"
 #include "Workspace/Workspace.h"
 
 #include "DrawnColours.h"
@@ -15,6 +16,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <cmath>
 #include <filesystem>
 #include <optional>
 #include <string_view>
@@ -93,4 +95,53 @@ TEST_CASE("A file in Problems draws its glyph in its kind's colour and its name 
 	REQUIRE(glyph.has_value());
 	REQUIRE(name.has_value());
 	CHECK(glyph->Right < name->Left);
+}
+
+TEST_CASE("A file heading in Problems takes one list row pitch, as the problem rows under it do")
+{
+	constexpr bool kDarkScheme = false;
+
+	TempDirectory folder;
+	const std::filesystem::path settingsFile = folder.MakeFile("graphite.json", "{}");
+	const std::filesystem::path sourceFile = folder.MakeFile("main.cpp", "int main() {}");
+
+	ImGuiFrames frames;
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace{events, settings.Get()};
+	Core::DocumentSet documents;
+	REQUIRE(documents.Open(settingsFile, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+	REQUIRE(documents.Open(sourceFile, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+
+	Graphite::DiagnosticsModel diagnostics;
+	diagnostics.Apply(OneErrorIn(settingsFile));
+	diagnostics.Apply(OneErrorIn(sourceFile));
+
+	const Graphite::ActiveScheme scheme;
+	Graphite::ProblemsPanel panel{diagnostics, documents, workspace, scheme};
+
+	float pitch = 0.0f;
+
+	frames.Next([&] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(kPanelSize);
+		ImGui::Begin("Problems", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoSavedSettings);
+		panel.OnImGuiRender();
+		pitch = Graphite::ListRowPitch();
+		ImGui::End();
+	});
+
+	const ImGuiWindow* list = FindProblemList();
+	REQUIRE(list != nullptr);
+
+	const std::optional<VerticalExtent> settingsGlyph =
+		VerticalExtentInColour(*list->DrawList, Graphite::ColourOf(Graphite::FileKind::Json, kDarkScheme));
+	const std::optional<VerticalExtent> sourceGlyph =
+		VerticalExtentInColour(*list->DrawList, Graphite::ColourOf(Graphite::FileKind::CppSource, kDarkScheme));
+
+	REQUIRE(settingsGlyph.has_value());
+	REQUIRE(sourceGlyph.has_value());
+
+	constexpr float kHeadingAndOneProblem = 2.0f;
+	CHECK(std::abs(sourceGlyph->Top - settingsGlyph->Top) == doctest::Approx(kHeadingAndOneProblem * pitch));
 }

@@ -143,6 +143,9 @@ namespace Graphite {
 		const std::string name = Core::ToUtf8(path.filename());
 		constexpr float kNoSpacing = 0.0f;
 
+		const ImVec2 headingStart = ImGui::GetCursorScreenPos();
+		ImGui::SetCursorScreenPos(ImVec2(headingStart.x, ListRowTextTop(headingStart.y)));
+
 		ImGui::BeginGroup();
 		DrawFileIcon(KindOfFile(path), ImGui::GetCursorScreenPos());
 		ImGui::Dummy(ImVec2(IconToNameOffset(), ImGui::GetTextLineHeight()));
@@ -157,6 +160,12 @@ namespace Graphite {
 
 		ImGui::SameLine();
 		ImGui::TextDisabled("(%s, %s)", Core::Counted(errors, "error").c_str(), Core::Counted(warnings, "warning").c_str());
+
+		// WARNING: The heading is plain text, not a row, so it stands on a list row's text line and is laid out that
+		// tall from its top: ImGui would end it one text line and the item spacing down, short of the pitch the
+		// problem rows keep.
+		ImGui::SetCursorScreenPos(headingStart);
+		ImGui::ItemSize(ImVec2(0.0f, ListRowLineHeight()));
 
 		ImGui::Indent();
 
