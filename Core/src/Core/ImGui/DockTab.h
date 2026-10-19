@@ -49,21 +49,38 @@ namespace Core {
 	// The frame padding above and below the interface font that makes a dock tab bar 32 pixels tall.
 	float DockTabBarFramePaddingY();
 
-	// The style a dock space's tab bars are laid out in while it lives: tab against tab from the node's left edge, as
-	// tall as kDockTabBarHeight, and without ImGui's own close button, which DrawDockTab draws in its place.
+	// Where a tab bar's first tab starts: at the node's own edge, in a dock space, or inside the border of the window a
+	// floating node draws round itself.
+	enum class DockTabBarEdge
+	{
+		AtTheNode,
+		InsideTheWindowBorder
+	};
+
+	// The style dock tab bars are laid out in while it lives: tab against tab from the bar's start, as tall as
+	// kDockTabBarHeight, with borderless overflow arrows and without ImGui's own close button, which DrawDockTab draws
+	// in its place.
 	class DockTabBarStyle final : NonCopyable
 	{
 	public:
-		DockTabBarStyle();
+		explicit DockTabBarStyle(DockTabBarEdge edge = DockTabBarEdge::AtTheNode);
 		~DockTabBarStyle();
 
 	private:
+		ImVec2 m_FramePadding;
+		float m_ItemInnerSpacingX = 0.0f;
+		float m_FrameBorderSize = 0.0f;
+		float m_WindowBorderSize = 0.0f;
 		float m_CloseButtonMinWidthSelected = 0.0f;
 		float m_CloseButtonMinWidthUnselected = 0.0f;
 	};
 
-	// Draws a line along the bottom of every tab bar the dock space showed this frame. DrawDockTab paints each tab over
-	// it and draws it again under every tab but the selected one.
+	// Lays out the tab bars of floating dock nodes, which ImGui updates in NewFrame, in DockTabBarStyle too: a context
+	// hook applies it for NewFrame's span. Once per context; DockSpaceHost calls it.
+	void KeepFloatingTabBarsFlat();
+
+	// Draws a line along the bottom of every tab bar the dock space and the floating dock nodes showed this frame.
+	// DrawDockTab paints each tab over it and draws it again under every tab but the selected one.
 	void DrawDockTabBarLines(ImGuiID dockSpaceId);
 
 	// Begins a window that may be docked with the frame padding its node's tab bar is laid out with, so the window's

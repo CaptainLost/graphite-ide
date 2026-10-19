@@ -139,6 +139,7 @@ namespace Core {
 		}
 
 		DrawDockTabBarLines(dockSpaceId);
+		KeepFloatingTabBarsFlat();
 
 		if (m_LayoutBuilt)
 		{

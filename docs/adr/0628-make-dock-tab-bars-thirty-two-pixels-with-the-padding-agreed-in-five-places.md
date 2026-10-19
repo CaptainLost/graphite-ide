@@ -13,7 +13,9 @@ apart, and the close button is a 16 px box.
 ImGui gives a dock tab bar no height of its own. `DockSpace` lays each node's
 bar out at the font size plus twice `FramePadding.y`. A docked window's `Begin`
 sizes its title bar the same way, and the window's content starts below that
-title bar. The two agree only when both see the same padding.
+title bar. The two agree only when both see the same padding. A floating node,
+a group of tabs dragged out into a window of its own, is laid out apart from
+`DockSpace`, inside `ImGui::NewFrame`, before any of the app's code runs.
 
 With `FramePadding.y` at 5 for 26 px fields (0627), both would be 26 px. Pushed
 around `DockSpace` alone, the bar would grow under the window and the content
@@ -29,21 +31,34 @@ name in one face for every tab of a node.
 
 - **Height.** Make a dock tab bar `round(Scaled(32))` tall.
   `Core::DockTabBarFramePaddingY()` is that height less the font size, halved:
-  8 at the 16 px interface size. Push it in five places, so that what lays out
-  a bar and what sits below it agree:
-  1. around `DockSpace`, through `Core::DockTabBarStyle`;
-  2. around the `Begin` of every docked window, through `Core::BeginDockedWindow`,
+  8 at the 16 px interface size. Agree on it in five places, so that what lays
+  out a bar and what sits below it agree:
+  1. around `DockSpace`, which lays out the dock space's bars, through
+     `Core::DockTabBarStyle`;
+  2. around NewFrame's docking update, which lays out the bars of floating
+     nodes, through `Core::DockTabBarStyle` too. A `NewFramePre` context hook
+     applies it and a `NewFramePost` hook puts the style back
+     (`Core::KeepFloatingTabBarsFlat`, which `DockSpaceHost` installs once per
+     context);
+  3. around the `Begin` of every docked window, through `Core::BeginDockedWindow`,
      which `Graphite::BeginTabWindow` and `Core::PanelManager` call;
-  3. and 4. around each of the terminal's two tab-bar buttons, `+` and the shell
-     chevron, which are tabs of the bar;
+  4. around the terminal's tab-bar buttons, `+` and the shell chevron, which are
+     tabs of the bar;
   5. in `Core::DrawDockTab` and `Core::DrawDockTabBarLines`, which draw over the
      bar from the rects ImGui laid out at that height.
-- **Flat tabs.** Inside `DockSpace`, set `FramePadding.x`, `ItemInnerSpacing.x`
-  and `WindowBorderSize` to 0. Then the first tab starts at the node's edge and
-  each tab starts where the one before it ends. Set
-  `TabCloseButtonMinWidthSelected` and `TabCloseButtonMinWidthUnselected` to
-  `FLT_MAX` for that call, and back after it, so ImGui's own close button never
-  shows.
+- **Flat tabs.** While a bar is laid out, set `FramePadding.x`,
+  `ItemInnerSpacing.x` and `FrameBorderSize` to 0. Then each tab starts where the
+  one before it ends, and the overflow arrows are borderless like every frame but
+  a field's (0627). Set `TabCloseButtonMinWidthSelected` and
+  `TabCloseButtonMinWidthUnselected` to `FLT_MAX`, so ImGui's own close button
+  never shows, never takes the pointer and never closes on a middle click. In the
+  dock space, set `WindowBorderSize` to 0 as well, so the first tab starts at the
+  node's edge. A floating node keeps its window's border, and its first tab
+  starts just inside it.
+- **The style is written, not pushed.** The close button's two widths have no
+  style var. The floating bars are laid out inside NewFrame, where no style var
+  may stay pushed. So `DockTabBarStyle` writes the values and puts back the old
+  ones when it ends.
 - **Width.** Each tab asks for its width every frame through its
   `ImGuiTabItem::RequestedWidth`. That width is 12 + lead + 6 + name (+ 6 + 6
   for a dot) + 6 + 16 + 8 px. ImGui reads it at the next layout and forgets it
@@ -85,9 +100,15 @@ draw.
 
 - A tab drawn this frame was laid out from the width it asked for last frame.
   A change of width, such as a dot appearing, lands a frame late.
-- A node dragged out to float is laid out by ImGui in `NewFrame`, with the
-  global padding: its bar is 26 px under 32 px title bars. ImGui's close button
-  shows there under our fill, and its first tab is inset.
+- For the span of NewFrame, the style holds the tab bar's values. Anything
+  NewFrame itself lays out besides the floating bars sees them too. That is only
+  ImGui's hidden fallback window, which shows nothing unless something is drawn
+  outside every window.
+- NewFrame lays the floating bars out at the font size the previous frame ended
+  with. On the very first frame there is none, so the floating bars keep the
+  global style for that one frame. On a monitor of another DPI, a floating node
+  and its windows agree on the bar's height, but it is scaled from the main
+  monitor's font.
 - Closing through the close button or a middle click takes effect a frame
   later than ImGui's own close did, as the context menu's always has.
 - A docked window whose owner does not call `DrawDockTab`, such as ImGui's own
@@ -106,6 +127,9 @@ draw.
   drawn in one face for every tab.
 - **The global `FramePadding.y` at 8.** This lost because every field would then
   be 32 px tall.
+- **Wrapping `ImGui::NewFrame` where the renderer calls it,** instead of the
+  context hook. This lost because every context with a dock space would need the
+  wrapper. The hook comes with `DockSpaceHost`, in the app and in tests alike.
 
 ## Related
 

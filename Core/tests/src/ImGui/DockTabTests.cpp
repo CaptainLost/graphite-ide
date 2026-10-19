@@ -16,6 +16,7 @@
 #include <IconsLucide.h>
 
 #include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <functional>
 #include <memory>
@@ -40,8 +41,6 @@ namespace {
 		}
 	};
 
-	// A dock space with two panels side by side in its left node and a document in its centre, under the theme, at
-	// the interface size.
 	Core::ChromePalette LightPalette()
 	{
 		Core::ChromePalette palette = Core::Theme::DefaultPalette();
@@ -57,11 +56,33 @@ namespace {
 		return palette;
 	}
 
+	constexpr const char* kFloatingAlpha = ICON_LC_FILE "  Alpha###alpha";
+	constexpr const char* kFloatingBeta = ICON_LC_FILE "  Beta###beta";
+	const ImVec2 kFloatingNodePos(560.0f, 380.0f);
+	const ImVec2 kFloatingNodeSize(300.0f, 160.0f);
+
+	struct ScreenOptions
+	{
+		Core::ChromePalette Palette = Core::Theme::DefaultPalette();
+		float Scale = 1.0f;
+		bool FloatingPair = false;
+	};
+
+	// A window of the floating pair, and every close its owner was told of.
+	struct FloatingTab
+	{
+		const char* Name = nullptr;
+		bool Open = true;
+		int Closes = 0;
+	};
+
+	// A dock space with two panels side by side in its left node and a document in its centre, under the theme, at
+	// the interface size; with the floating pair, two more windows docked together in a node of their own.
 	class TabBarScreen
 	{
 	public:
-		explicit TabBarScreen(const Core::ChromePalette& palette = Core::Theme::DefaultPalette())
-			: m_Context(ImGui::CreateContext())
+		explicit TabBarScreen(const ScreenOptions& options = {})
+			: m_Context(ImGui::CreateContext()), m_FloatingPair(options.FloatingPair)
 		{
 			ImGuiIO& inputOutput = ImGui::GetIO();
 			inputOutput.DisplaySize = ImVec2(1000.0f, 600.0f);
@@ -77,9 +98,10 @@ namespace {
 																	   Core::kInterfaceFontSize, &borrowed);
 			inputOutput.Fonts->Build();
 
-			Core::Theme::Apply(palette);
+			Core::Theme::Apply(options.Palette);
 			Core::Theme::SetMetrics(ImGui::GetStyle());
 			ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+			ImGui::GetStyle().FontScaleMain = options.Scale;
 
 			Explorer = m_Panels.Add(std::make_unique<TitledPanel>("explorer", "Explorer"));
 			Changes = m_Panels.Add(std::make_unique<TitledPanel>("changes", "Changes"));
@@ -98,9 +120,20 @@ namespace {
 		void Frame()
 		{
 			ImGui::NewFrame();
+
+			if (m_FloatingPair && !m_FloatingNodeBuilt)
+			{
+				BuildFloatingNode();
+			}
+
 			m_Host.Begin(m_Layout);
 			m_Host.End();
 			m_Panels.OnImGuiRender(m_CloseRequests);
+
+			if (m_FloatingPair)
+			{
+				DrawFloatingPair();
+			}
 
 			if (DocumentOpen)
 			{
@@ -163,6 +196,13 @@ namespace {
 			return *window;
 		}
 
+		static const ImGuiWindow& WindowNamed(const char* name)
+		{
+			const ImGuiWindow* window = ImGui::FindWindowByName(name);
+			REQUIRE(window != nullptr);
+			return *window;
+		}
+
 		static ImRect TabOf(const ImGuiWindow& window) { return window.DC.DockTabItemRect; }
 
 		static const ImGuiDockNode& NodeOf(const ImGuiWindow& window)
@@ -186,9 +226,45 @@ namespace {
 		bool DocumentTabHovered = false;
 		Core::DockTabLook DocumentLook = Core::DockTabLookOf(kDocumentWindow);
 		std::function<void()> DuringFrame;
+		FloatingTab Alpha{.Name = kFloatingAlpha};
+		FloatingTab Beta{.Name = kFloatingBeta};
 
 	private:
+		void BuildFloatingNode()
+		{
+			const ImGuiID node = ImGui::DockBuilderAddNode(0, ImGuiDockNodeFlags_None);
+			ImGui::DockBuilderSetNodePos(node, kFloatingNodePos);
+			ImGui::DockBuilderSetNodeSize(node, kFloatingNodeSize);
+			ImGui::DockBuilderDockWindow(kFloatingAlpha, node);
+			ImGui::DockBuilderDockWindow(kFloatingBeta, node);
+			ImGui::DockBuilderFinish(node);
+			m_FloatingNodeBuilt = true;
+		}
+
+		// As an owner keeps its tabs: it asks after every one, closed or not, so a second close of the same tab is
+		// counted rather than missed.
+		void DrawFloatingPair()
+		{
+			for (FloatingTab* tab : {&Alpha, &Beta})
+			{
+				bool open = true;
+
+				if (tab->Open)
+				{
+					Core::BeginDockedWindow(tab->Name, &open, ImGuiWindowFlags_None);
+					Core::DrawDockTab(Core::DockTabLookOf(tab->Name), m_CloseRequests);
+					ImGui::End();
+				}
+
+				const bool asked = m_CloseRequests.Take(tab->Name);
+				tab->Closes += (open ? 0 : 1) + (asked ? 1 : 0);
+				tab->Open = tab->Open && open && !asked;
+			}
+		}
+
 		ImGuiContext* m_Context = nullptr;
+		bool m_FloatingPair = false;
+		bool m_FloatingNodeBuilt = false;
 		Core::DockSpaceHost m_Host;
 		Core::DockLayout m_Layout;
 		Core::PanelManager m_Panels;
@@ -299,6 +375,36 @@ TEST_CASE("A tab is as wide as its padding, glyph, name, gaps and close button")
 
 	CHECK(measured == doctest::Approx(expected));
 	CHECK(TabBarScreen::TabOf(TabBarScreen::WindowOf(*screen.Explorer)).GetWidth() == doctest::Approx(expected));
+}
+
+TEST_CASE("Tab bars are laid out with borderless overflow arrows, no gaps and no close button of ImGui's, and the style is put back")
+{
+	TabBarScreen screen;
+	ImGuiStyle& style = ImGui::GetStyle();
+	const ImGuiStyle before = style;
+
+	for (const Core::DockTabBarEdge edge : {Core::DockTabBarEdge::AtTheNode, Core::DockTabBarEdge::InsideTheWindowBorder})
+	{
+		CAPTURE(static_cast<int>(edge));
+		{
+			const Core::DockTabBarStyle flat(edge);
+
+			CHECK(style.FrameBorderSize == doctest::Approx(0.0f));
+			CHECK(style.FramePadding.x == doctest::Approx(0.0f));
+			CHECK(style.ItemInnerSpacing.x == doctest::Approx(0.0f));
+			CHECK(style.TabCloseButtonMinWidthSelected == FLT_MAX);
+			CHECK(style.TabCloseButtonMinWidthUnselected == FLT_MAX);
+			CHECK(style.WindowBorderSize == doctest::Approx(edge == Core::DockTabBarEdge::AtTheNode ? 0.0f : before.WindowBorderSize));
+		}
+
+		CHECK(style.FrameBorderSize == doctest::Approx(before.FrameBorderSize));
+		CHECK(style.FramePadding.x == doctest::Approx(before.FramePadding.x));
+		CHECK(style.FramePadding.y == doctest::Approx(before.FramePadding.y));
+		CHECK(style.ItemInnerSpacing.x == doctest::Approx(before.ItemInnerSpacing.x));
+		CHECK(style.WindowBorderSize == doctest::Approx(before.WindowBorderSize));
+		CHECK(style.TabCloseButtonMinWidthSelected == doctest::Approx(before.TabCloseButtonMinWidthSelected));
+		CHECK(style.TabCloseButtonMinWidthUnselected == doctest::Approx(before.TabCloseButtonMinWidthUnselected));
+	}
 }
 
 TEST_CASE("A window's name gives its tab the glyph before the name and the words after it")
@@ -426,7 +532,7 @@ TEST_CASE("A selected chrome-window tab and a selected document tab both stand o
 	for (const Core::ChromePalette& palette : {Core::Theme::DefaultPalette(), LightPalette()})
 	{
 		CAPTURE(palette.Background.R);
-		TabBarScreen screen(palette);
+		TabBarScreen screen({.Palette = palette});
 		screen.PointAt(ImVec2(900.0f, 500.0f));
 
 		const ImGuiWindow& explorer = TabBarScreen::WindowOf(*screen.Explorer);
@@ -468,6 +574,118 @@ TEST_CASE("An inactive tab is the bar's colour")
 
 	CHECK(ColourShownAt(TabBarScreen::BarDrawing(explorer), ImVec2(inactive.Min.x + 4.0f, inactive.Min.y + 4.0f)) ==
 		  std::optional<ImU32>{ImGui::GetColorU32(ImGuiCol_Tab)});
+}
+
+TEST_CASE("At one and a half times the scale the close button's cross is drawn at its scaled size, inside its box")
+{
+	constexpr float kOneAndAHalf = 1.5f;
+	constexpr float kCloseGlyphSize = 11.0f;
+	constexpr float kCloseBoxSize = 16.0f;
+	constexpr float kLabelPaddingRight = 8.0f;
+	constexpr float kWithinAPixel = 0.5f;
+
+	TabBarScreen screen({.Scale = kOneAndAHalf});
+
+	float expectedHeight = 0.0f;
+	screen.DuringFrame = [&] {
+		ImGui::PushFont(nullptr, kCloseGlyphSize);
+		unsigned int cross = 0;
+		ImTextCharFromUtf8(&cross, ICON_LC_X, nullptr);
+		// A face may hand back a bake of another size than the one asked for, which AddText scales to the size it is given.
+		ImFontBaked* const baked = ImGui::GetFontBaked();
+		const ImFontGlyph* glyph = baked->FindGlyph(static_cast<ImWchar>(cross));
+		REQUIRE(glyph != nullptr);
+		expectedHeight = (glyph->Y1 - glyph->Y0) * ImGui::GetFontSize() / baked->Size;
+		ImGui::PopFont();
+	};
+	screen.PointAt(ImVec2(990.0f, 590.0f));
+
+	const ImGuiWindow& document = TabBarScreen::DocumentWindow();
+	const ImRect tab = TabBarScreen::TabOf(document);
+	const float boxSize = kCloseBoxSize * kOneAndAHalf;
+	const float boxLeft = tab.Max.x - kLabelPaddingRight * kOneAndAHalf - boxSize;
+	const float boxTop = std::floor(tab.Min.y + (tab.GetHeight() - boxSize) * 0.5f);
+	const ImRect box(ImVec2(boxLeft, boxTop), ImVec2(boxLeft + boxSize, boxTop + boxSize));
+
+	const ImU32 dim = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+	ImRect cross(ImVec2(FLT_MAX, FLT_MAX), ImVec2(-FLT_MAX, -FLT_MAX));
+	const ImRect closeEnd(ImVec2(boxLeft - 4.0f, tab.Min.y), tab.Max);
+
+	for (const ImDrawVert& vertex : TabBarScreen::BarDrawing(document).VtxBuffer)
+	{
+		if (vertex.col == dim && closeEnd.Contains(vertex.pos))
+		{
+			cross.Add(vertex.pos);
+		}
+	}
+
+	REQUIRE(cross.Min.x <= cross.Max.x);
+	CHECK(cross.GetHeight() == doctest::Approx(expectedHeight).epsilon(0.05));
+	CHECK(cross.Min.x >= box.Min.x - kWithinAPixel);
+	CHECK(cross.Max.x <= box.Max.x + kWithinAPixel);
+	CHECK(cross.Min.y >= box.Min.y - kWithinAPixel);
+	CHECK(cross.Max.y <= box.Max.y + kWithinAPixel);
+}
+
+TEST_CASE("Two windows docked together in a floating node get a 32 pixel bar, with tabs flat inside its border")
+{
+	TabBarScreen screen({.FloatingPair = true});
+	screen.Settle();
+
+	const ImGuiWindow& alpha = TabBarScreen::WindowNamed(kFloatingAlpha);
+	const ImGuiWindow& beta = TabBarScreen::WindowNamed(kFloatingBeta);
+	const ImGuiDockNode& node = TabBarScreen::NodeOf(alpha);
+	REQUIRE(node.IsFloatingNode());
+	REQUIRE(beta.DockNode == alpha.DockNode);
+
+	CHECK(node.TabBar->BarRect.GetHeight() == doctest::Approx(kBarHeight));
+	CHECK(alpha.TitleBarHeight == doctest::Approx(kBarHeight));
+
+	const ImRect first = TabBarScreen::TabOf(alpha).Min.x < TabBarScreen::TabOf(beta).Min.x ? TabBarScreen::TabOf(alpha)
+																							  : TabBarScreen::TabOf(beta);
+	const ImRect second = TabBarScreen::TabOf(alpha).Min.x < TabBarScreen::TabOf(beta).Min.x ? TabBarScreen::TabOf(beta)
+																							   : TabBarScreen::TabOf(alpha);
+	CHECK(first.Min.x == doctest::Approx(node.Pos.x + node.HostWindow->WindowBorderSize));
+	CHECK(second.Min.x == doctest::Approx(first.Max.x));
+}
+
+TEST_CASE("In a floating node ImGui's own close button never takes the pointer from the tab's")
+{
+	TabBarScreen screen({.FloatingPair = true});
+	screen.Settle();
+
+	const ImGuiWindow& alpha = TabBarScreen::WindowNamed(kFloatingAlpha);
+	const ImGuiWindow& beta = TabBarScreen::WindowNamed(kFloatingBeta);
+	const bool alphaSelected = alpha.DockNode->TabBar->VisibleTabId == alpha.TabId;
+	const ImGuiWindow& selected = alphaSelected ? alpha : beta;
+	const ImRect tab = TabBarScreen::TabOf(selected);
+
+	screen.PointAt(ImVec2(tab.Max.x - 8.0f - 8.0f, tab.GetCenter().y));
+
+	const ImGuiID imguiClose = ImGui::GetIDWithSeed("#CLOSE", nullptr, selected.ID);
+	const ImGuiID ownClose = ImGui::GetIDWithSeed("#DockTabClose", nullptr, selected.ID);
+	CHECK(ImGui::GetCurrentContext()->HoveredId != imguiClose);
+	CHECK(ImGui::GetCurrentContext()->HoveredId == ownClose);
+}
+
+TEST_CASE("One middle click on a tab in a floating node that is not selected closes that tab, and only once")
+{
+	TabBarScreen screen({.FloatingPair = true});
+	screen.Settle();
+
+	const ImGuiWindow& alpha = TabBarScreen::WindowNamed(kFloatingAlpha);
+	const bool alphaSelected = alpha.DockNode->TabBar->VisibleTabId == alpha.TabId;
+	FloatingTab& clicked = alphaSelected ? screen.Beta : screen.Alpha;
+	const FloatingTab& other = alphaSelected ? screen.Alpha : screen.Beta;
+	const ImRect tab = TabBarScreen::TabOf(TabBarScreen::WindowNamed(clicked.Name));
+
+	screen.Click(ImVec2(tab.Min.x + 14.0f, tab.GetCenter().y), ImGuiMouseButton_Middle);
+	screen.Settle();
+
+	CHECK_FALSE(clicked.Open);
+	CHECK(clicked.Closes == 1);
+	CHECK(other.Open);
+	CHECK(other.Closes == 0);
 }
 
 TEST_CASE("The close button on the active tab closes it, through the close requests")

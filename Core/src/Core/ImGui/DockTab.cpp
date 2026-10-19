@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <optional>
 
 namespace Core {
 
@@ -28,11 +29,28 @@ namespace Core {
 		constexpr float kHalf = 0.5f;
 		constexpr float kNoBorder = 0.0f;
 		constexpr float kNeverShown = FLT_MAX;
-		constexpr int kTabBarStyleVarCount = 3;
+		constexpr const char* kFloatingTabBarsHook = "Core::KeepFloatingTabBarsFlat";
 		constexpr unsigned int kFirstPrivateUseCodepoint = 0xE000;
 		constexpr unsigned int kLastPrivateUseCodepoint = 0xF8FF;
 		constexpr std::string_view kIdMarker = "##";
 		constexpr const char* kCloseButtonId = "#DockTabClose";
+
+		// NewFrame's span opens in one hook and closes in another, so the style it is laid out in lives here between them.
+		std::optional<DockTabBarStyle>& FloatingTabBarStyle()
+		{
+			static std::optional<DockTabBarStyle> style;
+			return style;
+		}
+
+		// WARNING: NewFrame lays the floating nodes' bars out at the font size it has set by then, the last frame's on
+		// every frame but the first, where there is none yet and nothing to lay out.
+		void FlattenFloatingTabBars()
+		{
+			if (ImGui::GetFontSize() > 0.0f)
+			{
+				FloatingTabBarStyle().emplace(DockTabBarEdge::InsideTheWindowBorder);
+			}
+		}
 
 		ImFont* FaceOf(const DockTabLook& look)
 		{
@@ -141,7 +159,8 @@ namespace Core {
 				drawList.AddRectFilled(box.Min, box.Max, ImGui::GetColorU32(ImGuiCol_ButtonHovered), Scaled(kCloseBoxRounding));
 			}
 
-			ImGui::PushFont(nullptr, Scaled(kCloseGlyphSize));
+			// WARNING: The size is the unscaled one: ImGui multiplies a pushed size by the interface scale itself.
+			ImGui::PushFont(nullptr, kCloseGlyphSize);
 			DrawCentredGlyph(&drawList, box, ICON_LC_X, ImGui::GetColorU32(hovered || held ? ImGuiCol_Text : ImGuiCol_TextDisabled));
 			ImGui::PopFont();
 
@@ -292,30 +311,70 @@ namespace Core {
 		return (std::round(Scaled(kDockTabBarHeight)) - ImGui::GetFontSize()) * kHalf;
 	}
 
-	// WARNING: ImGui lays a dock node's tab bar out inside DockSpace from the frame padding then in effect: across, it
-	// sets the first tab in by the window border and the padding, and puts its own close button that far from the
-	// tab's end. Neither the close button's reach nor its visibility has a style var, so both are set and put back here.
-	DockTabBarStyle::DockTabBarStyle()
+	// WARNING: ImGui lays a dock node's tab bar out from the style then in effect: across, it sets the first tab in by
+	// the window border and the frame padding, spaces the tabs by the inner item spacing, puts its own close button the
+	// padding from a tab's end, and draws its overflow arrows as bordered frames. The close button's reach and its
+	// visibility have no style var, and the floating nodes' bars are laid out in NewFrame, where no style var may stay
+	// pushed, so the style is written here and put back as it was.
+	DockTabBarStyle::DockTabBarStyle(DockTabBarEdge edge)
 	{
 		ImGuiStyle& style = ImGui::GetStyle();
 
-		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, DockTabBarFramePaddingY()));
-		ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(0.0f, style.ItemInnerSpacing.y));
-		ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, kNoBorder);
-
+		m_FramePadding = style.FramePadding;
+		m_ItemInnerSpacingX = style.ItemInnerSpacing.x;
+		m_FrameBorderSize = style.FrameBorderSize;
+		m_WindowBorderSize = style.WindowBorderSize;
 		m_CloseButtonMinWidthSelected = style.TabCloseButtonMinWidthSelected;
 		m_CloseButtonMinWidthUnselected = style.TabCloseButtonMinWidthUnselected;
+
+		style.FramePadding = ImVec2(0.0f, DockTabBarFramePaddingY());
+		style.ItemInnerSpacing.x = 0.0f;
+		style.FrameBorderSize = kNoBorder;
 		style.TabCloseButtonMinWidthSelected = kNeverShown;
 		style.TabCloseButtonMinWidthUnselected = kNeverShown;
+
+		if (edge == DockTabBarEdge::AtTheNode)
+		{
+			style.WindowBorderSize = kNoBorder;
+		}
 	}
 
 	DockTabBarStyle::~DockTabBarStyle()
 	{
 		ImGuiStyle& style = ImGui::GetStyle();
+
+		style.FramePadding = m_FramePadding;
+		style.ItemInnerSpacing.x = m_ItemInnerSpacingX;
+		style.FrameBorderSize = m_FrameBorderSize;
+		style.WindowBorderSize = m_WindowBorderSize;
 		style.TabCloseButtonMinWidthSelected = m_CloseButtonMinWidthSelected;
 		style.TabCloseButtonMinWidthUnselected = m_CloseButtonMinWidthUnselected;
+	}
 
-		ImGui::PopStyleVar(kTabBarStyleVarCount);
+	void KeepFloatingTabBarsFlat()
+	{
+		ImGuiContext& context = *ImGui::GetCurrentContext();
+		const ImGuiID owner = ImHashStr(kFloatingTabBarsHook);
+
+		for (const ImGuiContextHook& hook : context.Hooks)
+		{
+			if (hook.Owner == owner)
+			{
+				return;
+			}
+		}
+
+		ImGuiContextHook before;
+		before.Type = ImGuiContextHookType_NewFramePre;
+		before.Owner = owner;
+		before.Callback = [](ImGuiContext*, ImGuiContextHook*) { FlattenFloatingTabBars(); };
+		ImGui::AddContextHook(&context, &before);
+
+		ImGuiContextHook after;
+		after.Type = ImGuiContextHookType_NewFramePost;
+		after.Owner = owner;
+		after.Callback = [](ImGuiContext*, ImGuiContextHook*) { FloatingTabBarStyle().reset(); };
+		ImGui::AddContextHook(&context, &after);
 	}
 
 	void DrawDockTabBarLines(ImGuiID dockSpaceId)
@@ -323,6 +382,17 @@ namespace Core {
 		if (ImGuiDockNode* root = ImGui::DockBuilderGetNode(dockSpaceId); root != nullptr)
 		{
 			DrawLinesUnder(*root);
+		}
+
+		for (const ImGuiStoragePair& entry : ImGui::GetCurrentContext()->DockContext.Nodes.Data)
+		{
+			ImGuiDockNode* const node = static_cast<ImGuiDockNode*>(entry.val_p);
+			const bool floatingRoot = node != nullptr && node->IsFloatingNode();
+
+			if (floatingRoot)
+			{
+				DrawLinesUnder(*node);
+			}
 		}
 	}
 
