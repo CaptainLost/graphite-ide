@@ -529,6 +529,35 @@ TEST_CASE("Chrome symbols resolve in the interface face")
 	}
 }
 
+TEST_CASE("Symbols Inter lacks resolve in the italic face through the system symbol font, which the badge face still shuts out")
+{
+	HeadlessContext context;
+	const Core::FontSet set = LoadIntoContext();
+	REQUIRE(set.Italic != nullptr);
+	REQUIRE(set.Badge != nullptr);
+
+	if (!SymbolFontPresent())
+	{
+		MESSAGE("seguisym.ttf is absent; skipped");
+		return;
+	}
+
+	// Inter has the arrows, the black star and the plain check mark of its own; these it has not.
+	constexpr ImWchar kHeavyCheckMark = 0x2714;
+	constexpr ImWchar kGear = 0x2699;
+	constexpr ImWchar kWhiteMediumStar = 0x2B50;
+
+	for (const ImWchar symbol : {kHeavyCheckMark, kGear, kWhiteMediumStar})
+	{
+		CAPTURE(static_cast<unsigned int>(symbol));
+
+		const ImFontConfig* const source = SourceOf(*set.Italic, Core::kInterfaceFontSize, symbol);
+		CHECK(source != nullptr);
+		CHECK_FALSE(IsFacesOwnFont(*set.Italic, source));
+		CHECK_FALSE(Draws(*set.Badge, Core::kBadgeFontSize, symbol));
+	}
+}
+
 TEST_CASE("With no fonts loaded, the push helpers keep the current face and set only the size")
 {
 	HeadlessFrame frame;

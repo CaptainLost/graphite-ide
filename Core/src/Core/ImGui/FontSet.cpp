@@ -84,7 +84,8 @@ namespace Core {
 		// WARNING: the terminal draws a run of cells with one AddText call, so a proportional
 		// symbol wider than a cell would push the rest of its row off its cells. The code face
 		// passes its own cell advance to keep every fallback glyph one cell wide.
-		void MergeSymbolFallback(ImFontAtlas& atlas, float size, std::optional<float> cellAdvance)
+		void MergeSymbolFallback(ImFontAtlas& atlas, float size, std::optional<float> cellAdvance,
+								 const ImWchar* excludedRanges = nullptr)
 		{
 			const Result<std::filesystem::path> fonts = SystemFontsDirectory();
 
@@ -97,6 +98,7 @@ namespace Core {
 
 			ImFontConfig config;
 			config.MergeMode = true;
+			config.GlyphExcludeRanges = excludedRanges;
 
 			if (cellAdvance.has_value())
 			{
@@ -144,8 +146,12 @@ namespace Core {
 
 		set.Badge = LoadFace(atlas, JetBrainsMonoBold(), kBadgeFontSize, kBadgeExcludedRanges);
 
-		// A preview tab's name is all this face draws, so it takes no icons.
+		// A preview tab's name is all this face draws, so it takes no icons, but a file's name may hold a symbol Inter
+		// lacks. Merged right after the face is added, the symbol fallback lands on it.
+		// WARNING: the symbol font has private-use glyphs of its own at Lucide's codepoints, which no merged Lucide
+		// comes before here, so it gives up the span of the used icons too.
 		set.Italic = LoadFace(atlas, InterItalic(), kInterfaceFontSize, UsedIconSpan());
+		MergeSymbolFallback(atlas, kInterfaceFontSize, std::nullopt, UsedIconSpan());
 
 		return set;
 	}

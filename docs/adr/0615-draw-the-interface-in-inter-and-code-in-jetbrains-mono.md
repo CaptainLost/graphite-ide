@@ -32,7 +32,12 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
      Its file is the static `Inter-Italic.ttf` of the Inter 4.1 release, the
      release `Inter-Regular.ttf` and `Inter-SemiBold.ttf` come from. Like the
      interface face, it gives up the span of the used icons, and it carries no
-     icons and no symbols.
+     icons;
+  10. the system symbol font merged onto it, so a file's name with a symbol
+     Inter lacks, such as the heavy check mark U+2714 or the gear U+2699, does
+     not draw the fallback box in a preview tab. The symbol font has
+     private-use glyphs of its own at Lucide's codepoints, and no Lucide merge
+     comes before it here, so it gives up the span of the used icons too.
 
   The interface face is the atlas's first font and `io.FontDefault`. All five are
   compiled into the executable
@@ -46,13 +51,15 @@ digits are proportional, and ImGui cannot turn on its tabular figures (`tnum`).
 - The badge face holds only ASCII and the identical-to sign, U+2261. ImGui's
   dynamic atlas reads a face's glyph ranges only to preload, so every other
   character is shut out through `GlyphExcludeRanges`. It carries no icons and no
-  symbols, and comes after every merge, as the italic face after it does.
+  symbols, and comes after every merge onto the code face. The italic face comes
+  after it, and its own symbol merge right after it, so that merge lands on the
+  italic face and not on the badge face.
 - The interface, the code and the strong face carry the icons, each with a
   minimum advance of its own size and lowered by its own descent
   ([0625](0625-draw-the-interface-s-icons-from-lucide.md)), so an icon draws in
   any of them; the code face keeps JetBrains Mono's Powerline glyphs over the
-  icons at their codepoints. The interface and the code face carry the system
-  symbols.
+  icons at their codepoints. The interface, the code and the italic face carry
+  the system symbols.
 - Pin the code face's symbol advance, minimum and maximum, to the advance of its
   `'0'`. The terminal draws a run of cells with one `AddText`, so a symbol wider
   than a cell would push the rest of its row off its cells. The interface face
@@ -98,13 +105,13 @@ on its own.
 
 - Labels, menus, tabs and dialogs are narrower and read as an interface.
 - Code views keep their face and their size.
-- Icons draw in every face, and symbols in the interface and the code face
-  alike.
+- Icons draw in the interface, the code and the strong face, and symbols in the
+  interface, the code and the italic face alike.
 
 ### Negative
 
-- The atlas holds the Lucide icons three times and reads `seguisym.ttf` twice,
-  once per face, which costs memory and startup time.
+- The atlas holds the Lucide icons three times and reads `seguisym.ttf` three
+  times, once per face, which costs memory and startup time.
 - A number drawn in the interface face changes width as its digits change.
   Anything that must line up has to push the code face.
 
