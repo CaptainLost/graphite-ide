@@ -39,6 +39,10 @@ namespace Graphite {
 		constexpr const char* kOwnSchemeDescription = "A copy of your own: rename it, delete it, or change its colours below.";
 		constexpr const char* kColourNote = "Dimmed names are inherited from the built-in scheme. \xE2\x86\xBA puts an overridden colour back.";
 		constexpr const char* kBuiltInColourDescription = "Built-in scheme: duplicate it to change this colour.";
+		constexpr const char* kLayoutNote = "Dimmed names are inherited from the built-in scheme. âº puts an overridden measurement back.";
+		constexpr const char* kBuiltInLayoutDescription = "Built-in scheme: duplicate it to change this measurement.";
+		constexpr const char* kLayoutFormat = "%d px";
+		constexpr const char* kResetLayoutTip = "Put back the inherited measurement";
 		constexpr float kColourCellWidth = 230.0f;
 		constexpr float kPercentPerScale = 100.0f;
 		constexpr float kRevealSeconds = 1.5f;
@@ -432,6 +436,7 @@ namespace Graphite {
 	{
 		return {DescribeTheme(),
 				DescribeInterface(),
+				DescribeLayout(),
 				DescribeColours<TokenKind>("Syntax colours", static_cast<std::size_t>(TokenKind::Count)),
 				DescribeColours<EditorColor>("Editor colours", static_cast<std::size_t>(EditorColor::Count)),
 				DescribeColours<ChromeColor>("Application colours", static_cast<std::size_t>(ChromeColor::Count)),
@@ -466,6 +471,65 @@ namespace Graphite {
 										.Keywords = {"zoom", "dpi", "size"},
 										.ControlWidth = SettingsLayout::ComboWidth(InterfaceScaleLabels()),
 										.DrawControl = [this] { DrawInterfaceScale(); }});
+
+		return card;
+	}
+
+	bool AppearancePage::ShowsLayoutReset(LayoutMetric metric) const
+	{
+		return !m_Draft.IsReadOnly() && m_Draft.IsOverridden(metric);
+	}
+
+	void AppearancePage::DrawLayoutMetric(LayoutMetric metric)
+	{
+		const bool readOnly = m_Draft.IsReadOnly();
+
+		if (ShowsLayoutReset(metric))
+		{
+			if (Core::DrawIconButton("##reset", ICON_LC_ROTATE_CCW, false, kResetLayoutTip))
+			{
+				m_Draft.Revert(metric);
+				Apply();
+				m_Draft.Save();
+			}
+
+			ImGui::SameLine();
+			ImGui::SetNextItemWidth(SettingsLayout::SliderWidth());
+		}
+
+		const LayoutRange range = RangeOf(metric);
+		int value = static_cast<int>(m_Draft.GetPreview().Layout[static_cast<std::size_t>(metric)]);
+
+		ImGui::BeginDisabled(readOnly);
+
+		if (ImGui::SliderInt("##layout", &value, static_cast<int>(range.Smallest), static_cast<int>(range.Largest), kLayoutFormat) && !readOnly)
+		{
+			m_Draft.SetLayout(metric, static_cast<float>(value));
+			Apply();
+			m_ColourEdited = true;
+		}
+
+		ImGui::EndDisabled();
+	}
+
+	SettingsCard AppearancePage::DescribeLayout()
+	{
+		SettingsCard card{.Heading = "Layout", .Note = m_Draft.IsReadOnly() ? kNoText : kLayoutNote};
+
+		const float resetWidth = ImGui::GetStyle().ItemSpacing.x + Core::IconButtonSize();
+		const bool ownScheme = !m_Draft.IsReadOnly();
+
+		for (std::size_t metricIndex = 0; metricIndex < kLayoutMetricCount; ++metricIndex)
+		{
+			const LayoutMetric metric = static_cast<LayoutMetric>(metricIndex);
+
+			card.Rows.push_back(SettingsRow{.Title = std::string{LabelOf(metric)},
+											.Description = ownScheme ? kNoText : kBuiltInLayoutDescription,
+											.DimmedTitle = ownScheme && !m_Draft.IsOverridden(metric),
+											.Keywords = {"layout", "spacing", "gap", "radius", "rounded", "round", "border", "scrollbar", "size"},
+											.ControlWidth = SettingsLayout::SliderWidth() + (ShowsLayoutReset(metric) ? resetWidth : 0.0f),
+											.DrawControl = [this, metric] { DrawLayoutMetric(metric); }});
+		}
 
 		return card;
 	}

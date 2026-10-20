@@ -200,3 +200,118 @@ TEST_CASE("Scaling the dock nodes multiplies their reference sizes and leaves a 
 
 	CHECK(ImGui::DockBuilderGetNode(first)->SizeRef.x == doctest::Approx(450.0f));
 }
+
+namespace {
+	// Puts the default metrics back while the context is still alive, because Theme keeps the applied ones for the process.
+	class RestoresDefaultMetrics
+	{
+	public:
+		RestoresDefaultMetrics() = default;
+
+		~RestoresDefaultMetrics()
+		{
+			Core::Theme::Apply(Core::Theme::DefaultPalette());
+			static_cast<void>(Core::Theme::TakeMetricsChanged());
+		}
+
+		RestoresDefaultMetrics(const RestoresDefaultMetrics&) = delete;
+		RestoresDefaultMetrics& operator=(const RestoresDefaultMetrics&) = delete;
+	};
+
+	Core::StyleMetrics CardMetrics()
+	{
+		Core::StyleMetrics metrics;
+
+		metrics.PanelGap = 6.0f;
+		metrics.PanelRounding = 8.0f;
+		metrics.ControlRounding = 3.0f;
+		metrics.BorderWidth = 2.0f;
+		metrics.ScrollbarWidth = 16.0f;
+
+		return metrics;
+	}
+}
+
+TEST_CASE("A rebuilt style takes the applied palette's metrics, scaled with the rest")
+{
+	const IsolatedImGuiContext context;
+	const RestoresDefaultMetrics restore;
+
+	Core::ChromePalette palette = Core::Theme::DefaultPalette();
+	palette.Metrics = CardMetrics();
+	Core::Theme::Apply(palette);
+
+	const ImGuiStyle once = ScaledStyle(ImGuiStyle{}, 1.0f, false);
+	const ImGuiStyle doubled = ScaledStyle(ImGuiStyle{}, 2.0f, false);
+
+	CHECK(once.DockingSeparatorSize == doctest::Approx(6.0f));
+	CHECK(once.WindowRounding == doctest::Approx(8.0f));
+	CHECK(once.ChildRounding == doctest::Approx(8.0f));
+	CHECK(once.PopupRounding == doctest::Approx(8.0f));
+	CHECK(once.FrameRounding == doctest::Approx(3.0f));
+	CHECK(once.WindowBorderSize == doctest::Approx(2.0f));
+	CHECK(once.FrameBorderSize == doctest::Approx(2.0f));
+	CHECK(once.ScrollbarSize == doctest::Approx(16.0f));
+	CHECK(once.ScrollbarRounding == doctest::Approx(8.0f));
+	CHECK(doubled.DockingSeparatorSize == doctest::Approx(12.0f));
+	CHECK(doubled.FrameRounding == doctest::Approx(6.0f));
+	CHECK(doubled.ScrollbarSize == doctest::Approx(32.0f));
+}
+
+TEST_CASE("Default metrics are the sizes the interface has always had")
+{
+	ImGuiStyle style;
+
+	Core::Theme::SetMetrics(style);
+
+	CHECK(style.WindowRounding == doctest::Approx(4.0f));
+	CHECK(style.PopupRounding == doctest::Approx(4.0f));
+	CHECK(style.FrameRounding == doctest::Approx(6.0f));
+	CHECK(style.GrabRounding == doctest::Approx(3.0f));
+	CHECK(style.SelectableRounding == doctest::Approx(4.0f));
+	CHECK(style.MenuItemRounding == doctest::Approx(4.0f));
+	CHECK(style.ScrollbarRounding == doctest::Approx(6.0f));
+	CHECK(style.WindowBorderSize == doctest::Approx(1.0f));
+	CHECK(style.FrameBorderSize == doctest::Approx(1.0f));
+	CHECK(style.ScrollbarSize == doctest::Approx(12.0f));
+	CHECK(style.DockingSeparatorSize == doctest::Approx(1.0f));
+	CHECK(style.TabRounding == doctest::Approx(0.0f));
+}
+
+TEST_CASE("Applying a palette with new metrics reports the change once, and the same metrics again report none")
+{
+	const IsolatedImGuiContext context;
+	const RestoresDefaultMetrics restore;
+
+	static_cast<void>(Core::Theme::TakeMetricsChanged());
+
+	Core::ChromePalette palette = Core::Theme::DefaultPalette();
+
+	Core::Theme::Apply(palette);
+	CHECK_FALSE(Core::Theme::TakeMetricsChanged());
+
+	palette.Metrics = CardMetrics();
+	Core::Theme::Apply(palette);
+
+	CHECK(Core::Theme::AppliedMetrics() == CardMetrics());
+	CHECK(Core::Theme::TakeMetricsChanged());
+	CHECK_FALSE(Core::Theme::TakeMetricsChanged());
+
+	Core::Theme::Apply(palette);
+	CHECK_FALSE(Core::Theme::TakeMetricsChanged());
+}
+
+TEST_CASE("A border width of zero draws no borders and does not turn into a hairline when scaled down")
+{
+	const IsolatedImGuiContext context;
+	const RestoresDefaultMetrics restore;
+
+	Core::ChromePalette palette = Core::Theme::DefaultPalette();
+	palette.Metrics.BorderWidth = 0.0f;
+	Core::Theme::Apply(palette);
+
+	const ImGuiStyle style = ScaledStyle(ImGuiStyle{}, 0.75f, false);
+
+	CHECK(style.WindowBorderSize == doctest::Approx(0.0f));
+	CHECK(style.FrameBorderSize == doctest::Approx(0.0f));
+}

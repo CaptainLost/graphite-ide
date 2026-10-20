@@ -16,6 +16,12 @@ namespace Graphite {
 		palette.Border = ColourFromScheme(scheme, ChromeColor::Border);
 		palette.Content = ColourFromScheme(scheme, EditorColor::Background);
 
+		palette.Metrics.PanelGap = scheme.Layout[static_cast<std::size_t>(LayoutMetric::PanelGap)];
+		palette.Metrics.PanelRounding = scheme.Layout[static_cast<std::size_t>(LayoutMetric::PanelRounding)];
+		palette.Metrics.ControlRounding = scheme.Layout[static_cast<std::size_t>(LayoutMetric::ControlRounding)];
+		palette.Metrics.BorderWidth = scheme.Layout[static_cast<std::size_t>(LayoutMetric::BorderWidth)];
+		palette.Metrics.ScrollbarWidth = scheme.Layout[static_cast<std::size_t>(LayoutMetric::ScrollbarWidth)];
+
 		return palette;
 	}
 }

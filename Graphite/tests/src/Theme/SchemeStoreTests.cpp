@@ -426,3 +426,49 @@ TEST_CASE("A scheme can be renamed to the same name in another case")
 	REQUIRE(names.size() == 1);
 	CHECK(names[0] == "Mine");
 }
+
+TEST_CASE("A scheme's layout survives save and load")
+{
+	const TempDirectory temp;
+
+	Graphite::ColorScheme scheme;
+
+	scheme.Layout[static_cast<std::size_t>(Graphite::LayoutMetric::PanelGap)] = 7.0f;
+	scheme.Layout[static_cast<std::size_t>(Graphite::LayoutMetric::BorderWidth)] = 2.0f;
+
+	REQUIRE(Graphite::SaveScheme(temp.GetPath(), "roomy", scheme));
+
+	const Graphite::ColorScheme loaded = Graphite::LoadScheme(temp.GetPath() / "roomy.json");
+
+	CHECK(loaded.Layout[static_cast<std::size_t>(Graphite::LayoutMetric::PanelGap)] == 7.0f);
+	CHECK(loaded.Layout[static_cast<std::size_t>(Graphite::LayoutMetric::BorderWidth)] == 2.0f);
+	CHECK_FALSE(loaded.Layout[static_cast<std::size_t>(Graphite::LayoutMetric::PanelRounding)].has_value());
+}
+
+TEST_CASE("A layout value outside its range loads clamped, and an unreadable one is ignored")
+{
+	const TempDirectory temp;
+
+	WriteFileBytes(temp.GetPath() / "odd.json",
+				   "{\"base\": \"dark\", \"layout.panelGap\": \"500\", \"layout.borderWidth\": \"wide\", \"layout.nonsense\": \"3\"}");
+
+	const Graphite::ColorScheme loaded = Graphite::LoadScheme(temp.GetPath() / "odd.json");
+
+	CHECK(loaded.Layout[static_cast<std::size_t>(Graphite::LayoutMetric::PanelGap)] ==
+		  Graphite::RangeOf(Graphite::LayoutMetric::PanelGap).Largest);
+	CHECK_FALSE(loaded.Layout[static_cast<std::size_t>(Graphite::LayoutMetric::BorderWidth)].has_value());
+}
+
+TEST_CASE("A new built-in name cannot be saved over, and a file named after one is not listed as a user scheme")
+{
+	const TempDirectory temp;
+
+	CHECK_FALSE(Graphite::SaveScheme(temp.GetPath(), "graphite-cards", Graphite::ColorScheme{}));
+	CHECK_FALSE(Graphite::SaveScheme(temp.GetPath(), "gruvbox-dark-hard", Graphite::ColorScheme{}));
+
+	WriteFileBytes(temp.GetPath() / "graphite.json", "{}");
+
+	const std::vector<std::string> names = Graphite::ListSchemes(temp.GetPath());
+
+	CHECK(std::find(names.begin(), names.end(), "graphite") == names.end());
+}

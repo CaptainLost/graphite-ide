@@ -33,21 +33,24 @@ namespace Core {
 		constexpr float kScrollbarGrabAlpha = 0.12f;
 		constexpr float kScrollbarGrabHoveredAlpha = 0.20f;
 		constexpr float kScrollbarGrabActiveAlpha = 0.28f;
-		constexpr float kScrollbarSize = 12.0f;
 		constexpr float kScrollbarGrabInset = 4.0f;
 		constexpr float kSquareTabs = 0.0f;
 		constexpr float kIndentSpacing = 14.0f;
 		constexpr float kSelectableRounding = 4.0f;
-		constexpr float kDockSplitterWidth = 1.0f;
 		constexpr float kNoOverline = 0.0f;
 		constexpr float kNoTabBarLine = 0.0f;
 		constexpr float kTransparent = 0.0f;
-		constexpr float kFieldRounding = 6.0f;
-		constexpr float kFieldBorder = 1.0f;
 		constexpr ImVec2 kFieldPadding{8.0f, 5.0f};
 		constexpr float kFieldFillShare = 0.035f;
 		constexpr ImVec4 kWhite{1.0f, 1.0f, 1.0f, 1.0f};
 		constexpr float kTabBarShade = 0.03f;
+
+		StyleMetrics g_AppliedMetrics;
+		bool g_MetricsChanged = false;
+
+		constexpr float kSelectableShareOfControlRounding = 2.0f / 3.0f;
+		constexpr float kGrabShareOfControlRounding = 0.5f;
+		constexpr float kHalfOfTheWidth = 0.5f;
 
 		constexpr float ClampAtZero(float value)
 		{
@@ -118,33 +121,50 @@ namespace Core {
 		return DefaultPalette().Border;
 	}
 
-	void Theme::SetMetrics(ImGuiStyle& style)
+	const StyleMetrics& Theme::AppliedMetrics()
 	{
-		style.WindowRounding = 4.0f;
-		style.ChildRounding = 4.0f;
-		style.FrameRounding = kFieldRounding;
-		style.PopupRounding = 4.0f;
-		style.ScrollbarRounding = 6.0f;
+		return g_AppliedMetrics;
+	}
+
+	bool Theme::TakeMetricsChanged()
+	{
+		const bool changed = g_MetricsChanged;
+		g_MetricsChanged = false;
+
+		return changed;
+	}
+
+	void Theme::SetMetrics(ImGuiStyle& style, const StyleMetrics& metrics)
+	{
+		const float selectableRounding = metrics.ControlRounding * kSelectableShareOfControlRounding;
+
+		style.WindowRounding = metrics.PanelRounding;
+		style.ChildRounding = metrics.PanelRounding;
+		style.FrameRounding = metrics.ControlRounding;
+		style.PopupRounding = metrics.PanelRounding;
+		style.ScrollbarRounding = metrics.ScrollbarWidth * kHalfOfTheWidth;
 		style.TabRounding = kSquareTabs;
-		style.GrabRounding = 3.0f;
+		style.GrabRounding = metrics.ControlRounding * kGrabShareOfControlRounding;
 		// WARNING: MenuItem and BeginMenu swap MenuItemRounding in for SelectableRounding while they draw, so a menu's highlight is rounded only if MenuItemRounding is set too.
-		style.SelectableRounding = kSelectableRounding;
-		style.MenuItemRounding = kSelectableRounding;
-		style.WindowBorderSize = 1.0f;
+		style.SelectableRounding = selectableRounding;
+		style.MenuItemRounding = selectableRounding;
+		style.WindowBorderSize = metrics.BorderWidth;
+		style.ChildBorderSize = metrics.BorderWidth;
+		style.PopupBorderSize = metrics.BorderWidth;
 		// WARNING: Every frame ImGui draws with a border takes this hairline: fields, combos, sliders, the steps of a
 		// number field. A text button is the one frame drawn without it, so it goes through Core::TextButton.
-		style.FrameBorderSize = kFieldBorder;
+		style.FrameBorderSize = metrics.BorderWidth;
 		style.WindowPadding = ImVec2(8.0f, 8.0f);
 		style.FramePadding = kFieldPadding;
 		style.ItemSpacing = ImVec2(8.0f, 5.0f);
 		style.IndentSpacing = kIndentSpacing;
 		style.WindowMenuButtonPosition = ImGuiDir_None;
-		style.ScrollbarSize = kScrollbarSize;
+		style.ScrollbarSize = metrics.ScrollbarWidth;
 		style.ScrollbarPadding = kScrollbarGrabInset;
 		style.TabBarOverlineSize = kNoOverline;
 		style.TabBarBorderSize = kNoTabBarLine;
 		style.DockingNodeHasCloseButton = false;
-		style.DockingSeparatorSize = kDockSplitterWidth;
+		style.DockingSeparatorSize = metrics.PanelGap;
 	}
 
 	void Theme::Apply(const ChromePalette& palette)
@@ -160,6 +180,12 @@ namespace Core {
 		}
 
 		ImGuiStyle& style = ImGui::GetStyle();
+
+		if (!(palette.Metrics == g_AppliedMetrics))
+		{
+			g_AppliedMetrics = palette.Metrics;
+			g_MetricsChanged = true;
+		}
 
 		const ImVec4 background = ToImVec4(palette.Background);
 		const ImVec4 surface = ToImVec4(palette.Surface);

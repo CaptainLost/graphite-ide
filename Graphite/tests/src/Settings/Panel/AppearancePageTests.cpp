@@ -58,7 +58,8 @@ namespace {
 		SettingsPageFrames Frames{Page};
 	};
 
-	constexpr std::size_t kThemeAndInterfaceCards = 2;
+	constexpr std::size_t kLayoutCard = 2;
+	constexpr std::size_t kCardsBeforeColours = 3;
 
 	constexpr float kNarrowWidth = 400.0f;
 
@@ -83,28 +84,65 @@ namespace {
 	}
 }
 
-TEST_CASE("The appearance page holds the theme, the interface and a card for each group of colours")
+TEST_CASE("The appearance page holds the theme, the interface, the layout and a card for each group of colours")
 {
 	AppearanceScreen screen;
 
-	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Theme", "Interface", "Syntax colours", "Editor colours",
-																   "Application colours", "Git colours", "Claude sessions colours"});
+	CHECK(screen.Frames.CardHeadings() == std::vector<std::string>{"Theme", "Interface", "Layout", "Syntax colours",
+																   "Editor colours", "Application colours", "Git colours",
+																   "Claude sessions colours"});
 }
 
-TEST_CASE("Each group of colours is one block row under the theme and the interface")
+TEST_CASE("Each group of colours is one block row under the theme, the interface and the layout")
 {
 	AppearanceScreen screen;
 
-	CHECK(screen.Frames.RowTitles() == std::vector<std::string>{"Colour scheme", "This scheme", "Interface scale", "Syntax colours",
-																"Editor colours", "Application colours", "Git colours",
-																"Claude sessions colours"});
+	CHECK(screen.Frames.RowTitles() == std::vector<std::string>{"Colour scheme", "This scheme", "Interface scale", "Gap between panels",
+																"Panel corner radius", "Control corner radius", "Border width",
+																"Scrollbar width", "Syntax colours", "Editor colours", "Application colours",
+																"Git colours", "Claude sessions colours"});
 
 	const std::vector<Graphite::SettingsCard> cards = screen.Frames.DescribeInFrame();
 
-	for (std::size_t cardIndex = kThemeAndInterfaceCards; cardIndex < cards.size(); ++cardIndex)
+	for (std::size_t cardIndex = kCardsBeforeColours; cardIndex < cards.size(); ++cardIndex)
 	{
 		REQUIRE(cards[cardIndex].Rows.size() == 1);
 		CHECK(cards[cardIndex].Rows.front().IsBlock());
+	}
+}
+
+TEST_CASE("The layout card has a slider row for each measurement, and a built-in's are for looking at")
+{
+	AppearanceScreen screen;
+
+	const std::vector<Graphite::SettingsCard> cards = screen.Frames.DescribeInFrame();
+
+	REQUIRE(cards.size() > kLayoutCard);
+	CHECK(cards[kLayoutCard].Rows.size() == Graphite::kLayoutMetricCount);
+
+	for (const Graphite::SettingsRow& row : cards[kLayoutCard].Rows)
+	{
+		CHECK_FALSE(row.IsBlock());
+		CHECK(row.DrawControl);
+		CHECK(row.Description == "Built-in scheme: duplicate it to change this measurement.");
+	}
+}
+
+TEST_CASE("A copy's layout rows are dimmed until the copy sets them, and the card says what the reset does")
+{
+	AppearanceScreen screen;
+
+	screen.Frames.ClickControl("This scheme");
+
+	const std::vector<Graphite::SettingsCard> cards = screen.Frames.DescribeInFrame();
+
+	REQUIRE(cards.size() > kLayoutCard);
+	CHECK(cards[kLayoutCard].Note == "Dimmed names are inherited from the built-in scheme. âº puts an overridden measurement back.");
+
+	for (const Graphite::SettingsRow& row : cards[kLayoutCard].Rows)
+	{
+		CHECK(row.DimmedTitle);
+		CHECK(row.Description.empty());
 	}
 }
 
@@ -136,7 +174,7 @@ TEST_CASE("An own scheme's colour cards explain dimmed names and the reset icon"
 
 	const std::vector<Graphite::SettingsCard> builtInCards = screen.Frames.DescribeInFrame();
 
-	for (std::size_t cardIndex = kThemeAndInterfaceCards; cardIndex < builtInCards.size(); ++cardIndex)
+	for (std::size_t cardIndex = kCardsBeforeColours; cardIndex < builtInCards.size(); ++cardIndex)
 	{
 		CHECK(builtInCards[cardIndex].Note.empty());
 	}
@@ -145,7 +183,7 @@ TEST_CASE("An own scheme's colour cards explain dimmed names and the reset icon"
 
 	const std::vector<Graphite::SettingsCard> cards = screen.Frames.DescribeInFrame();
 
-	for (std::size_t cardIndex = kThemeAndInterfaceCards; cardIndex < cards.size(); ++cardIndex)
+	for (std::size_t cardIndex = kCardsBeforeColours; cardIndex < cards.size(); ++cardIndex)
 	{
 		CHECK(cards[cardIndex].Note == "Dimmed names are inherited from the built-in scheme. \xE2\x86\xBA puts an overridden colour back.");
 	}

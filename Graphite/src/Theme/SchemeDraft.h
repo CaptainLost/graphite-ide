@@ -32,6 +32,7 @@ namespace Graphite {
 		bool IsOverridden(ChromeColor color) const;
 		bool IsOverridden(GitColor color) const;
 		bool IsOverridden(SessionColor color) const;
+		bool IsOverridden(LayoutMetric metric) const;
 
 		void SetColor(TokenKind kind, const Core::Color& color);
 		void SetColor(EditorColor which, const Core::Color& color);
@@ -44,6 +45,9 @@ namespace Graphite {
 		void Revert(ChromeColor which);
 		void Revert(GitColor which);
 		void Revert(SessionColor which);
+		void Revert(LayoutMetric which);
+
+		void SetLayout(LayoutMetric which, float value);
 
 		bool Save();
 

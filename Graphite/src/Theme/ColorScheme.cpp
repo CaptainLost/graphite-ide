@@ -183,6 +183,27 @@ namespace Graphite {
 		return {};
 	}
 
+	ColorNames NamesOf(LayoutMetric metric)
+	{
+		switch (metric)
+		{
+		case LayoutMetric::PanelGap:
+			return {"panelGap", "Gap between panels"};
+		case LayoutMetric::PanelRounding:
+			return {"panelRounding", "Panel corner radius"};
+		case LayoutMetric::ControlRounding:
+			return {"controlRounding", "Control corner radius"};
+		case LayoutMetric::BorderWidth:
+			return {"borderWidth", "Border width"};
+		case LayoutMetric::ScrollbarWidth:
+			return {"scrollbarWidth", "Scrollbar width"};
+		case LayoutMetric::Count:
+			break;
+		}
+
+		return {};
+	}
+
 	std::string_view NameOf(TokenKind kind)
 	{
 		return NamesOf(kind).Key;
@@ -206,6 +227,16 @@ namespace Graphite {
 	std::string_view NameOf(SessionColor color)
 	{
 		return NamesOf(color).Key;
+	}
+
+	std::string_view NameOf(LayoutMetric metric)
+	{
+		return NamesOf(metric).Key;
+	}
+
+	std::string_view LabelOf(LayoutMetric metric)
+	{
+		return NamesOf(metric).Label;
 	}
 
 	std::string_view LabelOf(TokenKind kind)
@@ -299,6 +330,14 @@ namespace Graphite {
 			if (scheme.Session[slotIndex])
 			{
 				resolved.Session[slotIndex] = *scheme.Session[slotIndex];
+			}
+		}
+
+		for (std::size_t metricIndex = 0; metricIndex < scheme.Layout.size(); ++metricIndex)
+		{
+			if (scheme.Layout[metricIndex])
+			{
+				resolved.Layout[metricIndex] = *scheme.Layout[metricIndex];
 			}
 		}
 

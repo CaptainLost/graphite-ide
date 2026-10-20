@@ -10,6 +10,9 @@
 #include "Persistence/FileBackup.h"
 #include "Theme/BuiltInSchemes.h"
 
+#include <algorithm>
+#include <charconv>
+#include <cmath>
 #include <format>
 #include <optional>
 #include <string>
@@ -24,6 +27,7 @@ namespace Graphite {
 		constexpr std::string_view kChromePrefix = "ui.";
 		constexpr std::string_view kGitPrefix = "git.";
 		constexpr std::string_view kSessionPrefix = "sessions.";
+		constexpr std::string_view kLayoutPrefix = "layout.";
 
 		std::optional<std::size_t> IndexOfSyntax(std::string_view name)
 		{
@@ -90,6 +94,33 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
+		std::optional<std::size_t> IndexOfLayout(std::string_view name)
+		{
+			for (std::size_t metricIndex = 0; metricIndex < kLayoutMetricCount; ++metricIndex)
+			{
+				if (NameOf(static_cast<LayoutMetric>(metricIndex)) == name)
+				{
+					return metricIndex;
+				}
+			}
+
+			return std::nullopt;
+		}
+
+		std::optional<float> ParseMeasurement(const std::string& text)
+		{
+			float value = 0.0f;
+			const char* const end = text.data() + text.size();
+			const std::from_chars_result parsed = std::from_chars(text.data(), end, value);
+
+			if (text.empty() || parsed.ec != std::errc{} || parsed.ptr != end || !std::isfinite(value))
+			{
+				return std::nullopt;
+			}
+
+			return value;
+		}
+
 		bool HoldsCharacterForbiddenInFileName(std::string_view name)
 		{
 			for (const char character : name)
@@ -143,6 +174,25 @@ namespace Graphite {
 		{
 			if (key == "base")
 			{
+				continue;
+			}
+
+			if (std::string_view(key).starts_with(kLayoutPrefix))
+			{
+				const std::optional<std::size_t> index = IndexOfLayout(std::string_view(key).substr(kLayoutPrefix.size()));
+				const std::optional<float> measurement = ParseMeasurement(json.Get(key));
+
+				if (index && measurement)
+				{
+					const LayoutRange range = RangeOf(static_cast<LayoutMetric>(*index));
+
+					scheme.Layout[*index] = std::clamp(*measurement, range.Smallest, range.Largest);
+				}
+				else
+				{
+					APP_WARN("Colour scheme '{}' has an unreadable measurement for '{}'", Core::ToUtf8(file), key);
+				}
+
 				continue;
 			}
 
@@ -268,6 +318,15 @@ namespace Graphite {
 			{
 				json.Set(std::string(kSessionPrefix) + std::string(NameOf(static_cast<SessionColor>(colorIndex))),
 						 Core::ToHexColor(*scheme.Session[colorIndex]));
+			}
+		}
+
+		for (std::size_t metricIndex = 0; metricIndex < scheme.Layout.size(); ++metricIndex)
+		{
+			if (scheme.Layout[metricIndex].has_value())
+			{
+				json.Set(std::string(kLayoutPrefix) + std::string(NameOf(static_cast<LayoutMetric>(metricIndex))),
+						 std::format("{}", *scheme.Layout[metricIndex]));
 			}
 		}
 

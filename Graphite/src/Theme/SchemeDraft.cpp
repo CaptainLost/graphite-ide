@@ -4,6 +4,7 @@
 #include "Theme/BuiltInSchemes.h"
 #include "Theme/SchemeStore.h"
 
+#include <algorithm>
 #include <format>
 #include <utility>
 
@@ -52,8 +53,11 @@ namespace Graphite {
 	void SchemeDraft::Rebuild()
 	{
 		m_Names.clear();
-		m_Names.push_back(std::string(NameOf(BuiltInScheme::Dark)));
-		m_Names.push_back(std::string(NameOf(BuiltInScheme::Light)));
+
+		for (const BuiltInScheme builtIn : AllBuiltInSchemes())
+		{
+			m_Names.push_back(std::string(NameOf(builtIn)));
+		}
 
 		for (std::string& name : ListSchemes(m_Directory))
 		{
@@ -112,6 +116,35 @@ namespace Graphite {
 	bool SchemeDraft::IsOverridden(SessionColor color) const
 	{
 		return m_Scheme.Session[static_cast<std::size_t>(color)].has_value();
+	}
+
+	bool SchemeDraft::IsOverridden(LayoutMetric metric) const
+	{
+		return m_Scheme.Layout[static_cast<std::size_t>(metric)].has_value();
+	}
+
+	void SchemeDraft::SetLayout(LayoutMetric metric, float value)
+	{
+		if (IsReadOnly())
+		{
+			return;
+		}
+
+		const LayoutRange range = RangeOf(metric);
+
+		m_Scheme.Layout[static_cast<std::size_t>(metric)] = std::clamp(value, range.Smallest, range.Largest);
+		Resolve();
+	}
+
+	void SchemeDraft::Revert(LayoutMetric metric)
+	{
+		if (IsReadOnly())
+		{
+			return;
+		}
+
+		m_Scheme.Layout[static_cast<std::size_t>(metric)].reset();
+		Resolve();
 	}
 
 	void SchemeDraft::SetColor(TokenKind kind, const Core::Color& color)

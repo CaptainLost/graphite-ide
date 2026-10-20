@@ -1,8 +1,11 @@
 #include "Theme/BuiltInSchemes.h"
 
 #include "Core/Base/Color.h"
+#include "Theme/DerivedSchemes.h"
 
+#include <array>
 #include <iterator>
+#include <optional>
 #include <span>
 
 namespace Graphite {
@@ -296,6 +299,49 @@ namespace Graphite {
 		return scheme;
 	}
 
+	namespace {
+
+		struct BuiltInName
+		{
+			BuiltInScheme Scheme;
+			std::string_view Name;
+		};
+
+		constexpr BuiltInName kBuiltInNames[] = {
+			{BuiltInScheme::Dark, "dark"},
+			{BuiltInScheme::Light, "light"},
+			{BuiltInScheme::Graphite, "graphite"},
+			{BuiltInScheme::GraphiteBright, "graphite-bright"},
+			{BuiltInScheme::GraphiteWarm, "graphite-warm"},
+			{BuiltInScheme::GraphiteCards, "graphite-cards"},
+			{BuiltInScheme::GraphiteLight, "graphite-light"},
+			{BuiltInScheme::GruvboxDarkHard, "gruvbox-dark-hard"},
+			{BuiltInScheme::GruvboxDarkMedium, "gruvbox-dark-medium"},
+			{BuiltInScheme::GruvboxDarkSoft, "gruvbox-dark-soft"},
+			{BuiltInScheme::GruvboxLightHard, "gruvbox-light-hard"},
+			{BuiltInScheme::GruvboxLightMedium, "gruvbox-light-medium"},
+			{BuiltInScheme::GruvboxLightSoft, "gruvbox-light-soft"},
+		};
+
+		static_assert(std::size(kBuiltInNames) == kBuiltInSchemeCount);
+
+		constexpr std::array<BuiltInScheme, kBuiltInSchemeCount> kEveryBuiltIn = [] {
+			std::array<BuiltInScheme, kBuiltInSchemeCount> every{};
+
+			for (std::size_t index = 0; index < every.size(); ++index)
+			{
+				every[index] = kBuiltInNames[index].Scheme;
+			}
+
+			return every;
+		}();
+	}
+
+	std::span<const BuiltInScheme> AllBuiltInSchemes()
+	{
+		return kEveryBuiltIn;
+	}
+
 	const ResolvedScheme& SchemeFor(BuiltInScheme scheme)
 	{
 		switch (scheme)
@@ -304,19 +350,33 @@ namespace Graphite {
 			return DarkScheme();
 		case BuiltInScheme::Light:
 			return LightScheme();
+		case BuiltInScheme::Count:
+			return DarkScheme();
+		default:
+			break;
 		}
 
-		return DarkScheme();
+		// WARNING: built once per scheme, on first use, and never moved: callers hold the reference.
+		static std::array<std::optional<ResolvedScheme>, kBuiltInSchemeCount> derived;
+
+		std::optional<ResolvedScheme>& slot = derived[static_cast<std::size_t>(scheme)];
+
+		if (!slot)
+		{
+			slot = BuildDerivedScheme(scheme);
+		}
+
+		return *slot;
 	}
 
 	std::string_view NameOf(BuiltInScheme scheme)
 	{
-		switch (scheme)
+		for (const BuiltInName& entry : kBuiltInNames)
 		{
-		case BuiltInScheme::Dark:
-			return "dark";
-		case BuiltInScheme::Light:
-			return "light";
+			if (entry.Scheme == scheme)
+			{
+				return entry.Name;
+			}
 		}
 
 		return {};
@@ -324,14 +384,12 @@ namespace Graphite {
 
 	std::optional<BuiltInScheme> ParseBuiltInName(std::string_view name)
 	{
-		if (name == "dark")
+		for (const BuiltInName& entry : kBuiltInNames)
 		{
-			return BuiltInScheme::Dark;
-		}
-
-		if (name == "light")
-		{
-			return BuiltInScheme::Light;
+			if (entry.Name == name)
+			{
+				return entry.Scheme;
+			}
 		}
 
 		return std::nullopt;

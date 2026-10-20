@@ -362,3 +362,71 @@ TEST_CASE("Two failures before the section drains are handed out as two toasts, 
 	CHECK(deleteFailure->Title == "Could not delete scheme");
 	CHECK_FALSE(draft.TakeFailure().has_value());
 }
+
+TEST_CASE("A fresh draft lists every built-in, the dark and light first")
+{
+	const TempDirectory temp;
+
+	const Graphite::SchemeDraft draft(temp.GetPath());
+
+	REQUIRE(draft.GetNames().size() == Graphite::kBuiltInSchemeCount);
+	CHECK(draft.GetNames()[0] == "dark");
+	CHECK(draft.GetNames()[1] == "light");
+
+	for (const Graphite::BuiltInScheme scheme : Graphite::AllBuiltInSchemes())
+	{
+		CHECK(std::find(draft.GetNames().begin(), draft.GetNames().end(), Graphite::NameOf(scheme)) != draft.GetNames().end());
+	}
+}
+
+TEST_CASE("Selecting a new built-in shows its colours and layout, read-only")
+{
+	const TempDirectory temp;
+
+	Graphite::SchemeDraft draft(temp.GetPath());
+
+	draft.Select("graphite-cards");
+
+	CHECK(draft.IsReadOnly());
+	CHECK(draft.GetPreview().Layout[static_cast<std::size_t>(Graphite::LayoutMetric::PanelGap)] == doctest::Approx(6.0f));
+
+	draft.SetLayout(Graphite::LayoutMetric::PanelGap, 2.0f);
+
+	CHECK_FALSE(draft.IsOverridden(Graphite::LayoutMetric::PanelGap));
+	CHECK(draft.GetPreview().Layout[static_cast<std::size_t>(Graphite::LayoutMetric::PanelGap)] == doctest::Approx(6.0f));
+}
+
+TEST_CASE("A copy overrides one measurement, clamps it, saves it and puts it back")
+{
+	const TempDirectory temp;
+
+	Graphite::SchemeDraft draft(temp.GetPath());
+
+	draft.Select("graphite-cards");
+	REQUIRE(draft.Duplicate());
+
+	draft.SetLayout(Graphite::LayoutMetric::PanelGap, 3.0f);
+
+	CHECK(draft.IsOverridden(Graphite::LayoutMetric::PanelGap));
+	CHECK_FALSE(draft.IsOverridden(Graphite::LayoutMetric::PanelRounding));
+	CHECK(draft.GetPreview().Layout[static_cast<std::size_t>(Graphite::LayoutMetric::PanelGap)] == doctest::Approx(3.0f));
+	CHECK(draft.GetPreview().Layout[static_cast<std::size_t>(Graphite::LayoutMetric::PanelRounding)] == doctest::Approx(8.0f));
+
+	draft.SetLayout(Graphite::LayoutMetric::PanelGap, 1000.0f);
+
+	CHECK(draft.GetPreview().Layout[static_cast<std::size_t>(Graphite::LayoutMetric::PanelGap)] ==
+		  doctest::Approx(Graphite::RangeOf(Graphite::LayoutMetric::PanelGap).Largest));
+
+	REQUIRE(draft.Save());
+
+	const std::string name = draft.GetSelected();
+	Graphite::SchemeDraft reopened(temp.GetPath());
+	reopened.Select(name);
+
+	CHECK(reopened.IsOverridden(Graphite::LayoutMetric::PanelGap));
+
+	reopened.Revert(Graphite::LayoutMetric::PanelGap);
+
+	CHECK_FALSE(reopened.IsOverridden(Graphite::LayoutMetric::PanelGap));
+	CHECK(reopened.GetPreview().Layout[static_cast<std::size_t>(Graphite::LayoutMetric::PanelGap)] == doctest::Approx(6.0f));
+}

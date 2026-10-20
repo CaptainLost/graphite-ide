@@ -91,7 +91,7 @@ namespace Core {
 	ImGuiStyle ScaledStyle(const ImGuiStyle& current, float scale, bool squareViewportWindows)
 	{
 		ImGuiStyle style;
-		Theme::SetMetrics(style);
+		Theme::SetMetrics(style, Theme::AppliedMetrics());
 
 		if (squareViewportWindows)
 		{

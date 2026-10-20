@@ -6,6 +6,18 @@
 
 namespace Core {
 
+	// The measurements a theme sets besides its colours, in unscaled pixels. The defaults are the interface's own.
+	struct StyleMetrics
+	{
+		float PanelGap = 1.0f;
+		float PanelRounding = 4.0f;
+		float ControlRounding = 6.0f;
+		float BorderWidth = 1.0f;
+		float ScrollbarWidth = 12.0f;
+
+		bool operator==(const StyleMetrics&) const = default;
+	};
+
 	struct ChromePalette
 	{
 		Color Background;
@@ -17,6 +29,7 @@ namespace Core {
 		Color TextDisabled;
 		Color Border;
 		Color Content;
+		StyleMetrics Metrics;
 	};
 
 	bool IsLightBackground(const Color& background);
@@ -33,7 +46,13 @@ namespace Core {
 	public:
 		static void Apply(const ChromePalette& palette);
 
-		static void SetMetrics(ImGuiStyle& style);
+		static void SetMetrics(ImGuiStyle& style, const StyleMetrics& metrics = {});
+
+		// The metrics of the palette applied last, which a rebuilt style takes.
+		static const StyleMetrics& AppliedMetrics();
+
+		// True once after Apply changes the metrics, until the style has been rebuilt from them.
+		static bool TakeMetricsChanged();
 
 		static ChromePalette DefaultPalette();
 

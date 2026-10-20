@@ -111,7 +111,10 @@ namespace Core {
 		const bool sourceSwitched = viewportDpiReported && !m_ViewportDpiKnown;
 		m_ViewportDpiKnown = viewportDpiReported;
 
-		if (scale == m_StyleScale)
+		// WARNING: TakeMetricsChanged has to run every frame, or a change made at an unchanged scale would be seen only at the next scale.
+		const bool metricsChanged = Theme::TakeMetricsChanged();
+
+		if (scale == m_StyleScale && !metricsChanged)
 		{
 			return;
 		}

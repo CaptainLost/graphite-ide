@@ -61,6 +61,10 @@ namespace Graphite {
 
 		SettingsCard DescribeTheme();
 		SettingsCard DescribeInterface();
+		SettingsCard DescribeLayout();
+
+		void DrawLayoutMetric(LayoutMetric metric);
+		bool ShowsLayoutReset(LayoutMetric metric) const;
 
 		template<typename Which>
 			requires std::is_enum_v<Which>
