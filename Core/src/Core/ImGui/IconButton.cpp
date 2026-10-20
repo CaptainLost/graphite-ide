@@ -174,7 +174,10 @@ namespace Core {
 			DrawFace(rect, glyph, fill, glyphColour, rounding);
 		}
 
-		ImGui::SetItemTooltip("%s", tooltip);
+		if (tooltip != nullptr)
+		{
+			ImGui::SetItemTooltip("%s", tooltip);
+		}
 
 		return pressed;
 	}

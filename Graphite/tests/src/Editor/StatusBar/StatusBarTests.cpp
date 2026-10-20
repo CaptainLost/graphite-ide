@@ -216,6 +216,40 @@ namespace {
 
 		return run;
 	}
+
+	const ImGuiWindow* ShownTooltip()
+	{
+		for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+		{
+			if ((window->Flags & ImGuiWindowFlags_Tooltip) != 0 && window->Active)
+			{
+				return window;
+			}
+		}
+
+		return nullptr;
+	}
+
+	// The tooltip shown under the pointer this frame, and its text as the bar's face and as the window's would draw it.
+	struct TooltipRuns
+	{
+		const ImGuiWindow* Tooltip = nullptr;
+		std::vector<ImRect> AtFifteen;
+		std::vector<ImRect> AtTheWindowSize;
+	};
+
+	TooltipRuns DrawWithTooltip(StatusBarScreen& screen, const char* text)
+	{
+		TooltipRuns runs;
+		screen.Frames.Next([&] {
+			screen.Draw();
+			runs.AtFifteen = GlyphRunOf(text, RunFace::TheBarFace);
+			runs.AtTheWindowSize = GlyphRunOf(text, RunFace::TheWindowFace);
+		});
+		runs.Tooltip = ShownTooltip();
+
+		return runs;
+	}
 }
 
 TEST_CASE("A click on the bell at the status bar's right end reports the notifications")
@@ -257,6 +291,67 @@ TEST_CASE("The bell is in the status grey at rest, and in the text colour on the
 	CHECK(DrawsInColour(StatusBarScreen::BarDrawing(), HoverFill()));
 	CHECK(DrawsInColour(StatusBarScreen::BarDrawing(), textColour));
 	CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), Graphite::StatusBarTextColour()));
+}
+
+TEST_CASE("Halfway into the pointer's hover, the bell's glyph is between the status grey and the text colour, as its fill eases in")
+{
+	constexpr int kFramesIntoTheFade = 2;
+	constexpr float kClearOfEitherEnd = 0.05f;
+
+	StatusBarScreen screen;
+	screen.Frames.Next([&] { screen.Draw(); });
+	screen.Frames.Next([&] { screen.Draw(); });
+
+	const ImVec2 bell = screen.BellCentre();
+	ImGui::GetIO().AddMousePosEvent(bell.x, bell.y);
+
+	for (int frame = 0; frame < kFramesIntoTheFade; ++frame)
+	{
+		screen.Frames.Next([&] { screen.Draw(); });
+	}
+
+	// With nothing else in the bar, the bell's is the one glyph drawn.
+	const std::vector<DrawnGlyph> glyphs = DrawnGlyphs(StatusBarScreen::BarDrawing());
+	REQUIRE(glyphs.size() == 1);
+
+	const ImU32 statusGrey = Graphite::StatusBarTextColour();
+	const ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
+	const float share = ShareFromTo(glyphs.front().Colour, statusGrey, text);
+	CAPTURE(share);
+
+	REQUIRE_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), HoverFill()));
+	CHECK(share > kClearOfEitherEnd);
+	CHECK(share < 1.0f - kClearOfEitherEnd);
+}
+
+TEST_CASE("The status bar's tooltips, an item's and the bell's, are drawn at the window's size and not at the bar's fifteen pixels")
+{
+	constexpr const char* kWords = "C#: Roslyn ready";
+	constexpr const char* kDetail = "Roslyn ready for 3 projects";
+	constexpr const char* kBellTooltip = "Notifications";
+
+	StatusBarScreen screen;
+	screen.Messages.Server = kWords;
+	screen.Messages.ServerOpensSettings = true;
+	screen.Messages.ServerDetail = kDetail;
+
+	screen.Frames.Next([&] { screen.DrawMeasuringWords(kWords); });
+	screen.HoverAt(ImVec2(screen.WordsRight - screen.WordsWidth * 0.5f, screen.BarMiddle));
+	const TooltipRuns item = DrawWithTooltip(screen, kDetail);
+
+	REQUIRE(item.Tooltip != nullptr);
+	REQUIRE_FALSE(item.AtFifteen.empty());
+	REQUIRE_FALSE(item.AtTheWindowSize.empty());
+	REQUIRE(item.AtFifteen.front().GetHeight() > item.AtTheWindowSize.front().GetHeight());
+	CHECK(DrawsGlyphRun(*item.Tooltip->DrawList, item.AtTheWindowSize));
+	CHECK_FALSE(DrawsGlyphRun(*item.Tooltip->DrawList, item.AtFifteen));
+
+	screen.HoverAt(screen.BellCentre());
+	const TooltipRuns bell = DrawWithTooltip(screen, kBellTooltip);
+
+	REQUIRE(bell.Tooltip != nullptr);
+	CHECK(DrawsGlyphRun(*bell.Tooltip->DrawList, bell.AtTheWindowSize));
+	CHECK_FALSE(DrawsGlyphRun(*bell.Tooltip->DrawList, bell.AtFifteen));
 }
 
 TEST_CASE("A click on the server's words reports the server when they open its settings")

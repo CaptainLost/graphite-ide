@@ -22,7 +22,7 @@ Draw every button that is only a glyph with `Core::DrawIconButton` (`Core/src/Co
 - **Under the pointer:** a rounded fill in the hovered button colour, eased in.
 - **Held:** the active button colour, but only while the pointer stays on the button.
 - **Engaged:** a toggle that is on is filled and drawn in the accent.
-- **Tooltip:** shown through `SetItemTooltip`, so it waits for the pointer to rest.
+- **Tooltip:** shown through `SetItemTooltip`, so it waits for the pointer to rest. A null tooltip shows none, for a caller that shows the button's tooltip itself, as the status bar does for its bell (0620).
 - **Two fits:**
   - `Frame` is a square a little taller than a line, centred in a row one frame high, for toolbars and bars.
   - `Line` is a square one text line high, for a list row, which must not grow taller for it.

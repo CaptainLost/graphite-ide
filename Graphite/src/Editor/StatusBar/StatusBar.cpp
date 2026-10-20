@@ -88,7 +88,28 @@ namespace Graphite {
 		struct DrawnItem
 		{
 			bool Clicked = false;
+			bool Hovered = false;
 			float Width = 0.0f;
+		};
+
+		// WARNING: A tooltip takes the font in effect where it is begun, and the bar's 15 px font and frame padding stay
+		// pushed while its items are drawn, so the item under the pointer leaves its tooltip here and the bar shows it
+		// once they are popped, at the interface size every other tooltip is drawn at.
+		class PendingTooltip
+		{
+		public:
+			void Leave(std::string text) { m_Text = std::move(text); }
+
+			void Show() const
+			{
+				if (m_Text.has_value())
+				{
+					ImGui::SetTooltip("%s", m_Text->c_str());
+				}
+			}
+
+		private:
+			std::optional<std::string> m_Text;
 		};
 
 		const char* LineEndingName(Core::LineEnding ending, bool mixed)
@@ -148,24 +169,30 @@ namespace Graphite {
 			return hoveredAlpha > kInvisibleAlpha ? std::clamp(fill.w / hoveredAlpha, kAtRest, kFullyHovered) : kAtRest;
 		}
 
-		bool DrawNotificationBell(const std::optional<Core::Color>& missedColour)
+		bool DrawNotificationBell(const std::optional<Core::Color>& missedColour, PendingTooltip& tooltip)
 		{
 			ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() - BellWidth() - ImGui::GetStyle().WindowPadding.x, kBarTop));
 
-			// WARNING: The bell draws its glyph in the text colour, and the hover is only known once it is drawn, so its
-			// glyph takes the status grey unless the bell was the item under the pointer on the frame before.
-			const bool bellUnderThePointer = ImGui::GetHoveredID() == ImGui::GetID(kBellId);
-			ImGui::PushStyleColor(ImGuiCol_Text, BarTextColour(bellUnderThePointer ? kFullyHovered : kAtRest));
+			// The bell rests dim, and a dim icon button eases its glyph from the disabled-text colour to the text colour
+			// with its fill, so the status grey stands in for the disabled-text colour while it is drawn.
+			ImGui::PushStyleColor(ImGuiCol_TextDisabled, StatusBarTextColour());
 
 			// WARNING: Without NoFocus the press focuses the bar, and the popup the click opens hands the
 			// keyboard back to the bar when it closes rather than to the editor.
 			constexpr bool kNotEngaged = false;
+			constexpr const char* kNoTooltipOfItsOwn = nullptr;
 			const Core::IconButtonOptions bellButton{.Fit = Core::IconButtonFit::Bar,
+													 .Rest = Core::IconButtonRest::Dim,
 													 .Flags = ImGuiButtonFlags_NoFocus | ImGuiButtonFlags_NoNavFocus};
 			const bool clicked =
-				Core::DrawIconButton(kBellId, ICON_LC_BELL, kNotEngaged, "Notifications", bellButton);
+				Core::DrawIconButton(kBellId, ICON_LC_BELL, kNotEngaged, kNoTooltipOfItsOwn, bellButton);
 
 			ImGui::PopStyleColor();
+
+			if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip))
+			{
+				tooltip.Leave("Notifications");
+			}
 
 			if (missedColour.has_value())
 			{
@@ -313,10 +340,7 @@ namespace Graphite {
 
 			PopItemFace(item.Face);
 
-			if (ImGui::IsItemHovered() && !item.Tooltip.empty())
-			{
-				ImGui::SetTooltip("%s", item.Tooltip.c_str());
-			}
+			drawn.Hovered = ImGui::IsItemHovered();
 
 			return drawn;
 		}
@@ -324,7 +348,10 @@ namespace Graphite {
 		class ItemRow
 		{
 		public:
-			ItemRow(float start, float barHeight) : m_Next(start), m_BarHeight(barHeight) {}
+			ItemRow(float start, float barHeight, PendingTooltip& tooltip)
+				: m_Next(start), m_BarHeight(barHeight), m_Tooltip(&tooltip)
+			{
+			}
 
 			void Place(const StatusItem& item, float spacing)
 			{
@@ -334,6 +361,11 @@ namespace Graphite {
 				if (drawn.Clicked)
 				{
 					m_Clicked = item.Reports;
+				}
+
+				if (drawn.Hovered && !item.Tooltip.empty())
+				{
+					m_Tooltip->Leave(item.Tooltip);
 				}
 
 				m_Next = x + drawn.Width;
@@ -347,6 +379,7 @@ namespace Graphite {
 			float m_BarHeight = 0.0f;
 			bool m_Started = false;
 			StatusBarClick m_Clicked = StatusBarClick::None;
+			PendingTooltip* m_Tooltip = nullptr;
 		};
 
 		StatusItem TextItem(std::string text, std::optional<ImU32> colour, std::string tooltip = {})
@@ -492,10 +525,11 @@ namespace Graphite {
 			return items;
 		}
 
-		StatusBarClick DrawLeftHandItems(const StatusMessages& messages, const Core::OpenItem* document, float barHeight)
+		StatusBarClick DrawLeftHandItems(const StatusMessages& messages, const Core::OpenItem* document, float barHeight,
+										 PendingTooltip& tooltip)
 		{
 			const float gap = Core::Scaled(kStatusItemGap);
-			ItemRow row(ImGui::GetStyle().WindowPadding.x, barHeight);
+			ItemRow row(ImGui::GetStyle().WindowPadding.x, barHeight, tooltip);
 
 			if (messages.Git)
 			{
@@ -529,7 +563,7 @@ namespace Graphite {
 			return row.GetClicked();
 		}
 
-		StatusBarClick DrawRightHandItems(const std::vector<StatusItem>& items, float barHeight)
+		StatusBarClick DrawRightHandItems(const std::vector<StatusItem>& items, float barHeight, PendingTooltip& tooltip)
 		{
 			if (items.empty())
 			{
@@ -545,7 +579,7 @@ namespace Graphite {
 			}
 
 			const float start = ImGui::GetWindowWidth() - ImGui::GetStyle().WindowPadding.x - BellWidth() - gap - width;
-			ItemRow row(start, barHeight);
+			ItemRow row(start, barHeight, tooltip);
 
 			for (const StatusItem& item : items)
 			{
@@ -600,15 +634,16 @@ namespace Graphite {
 		const bool hasDocument = shown && documents.At(*shown).Document != nullptr;
 		const Core::OpenItem* document = hasDocument ? &documents.At(*shown) : nullptr;
 
-		StatusBarClick clicked = DrawLeftHandItems(messages, document, height);
+		PendingTooltip tooltip;
+		StatusBarClick clicked = DrawLeftHandItems(messages, document, height, tooltip);
 
-		if (const StatusBarClick rightClick = DrawRightHandItems(RightHandItems(messages, document), height);
+		if (const StatusBarClick rightClick = DrawRightHandItems(RightHandItems(messages, document), height, tooltip);
 			rightClick != StatusBarClick::None)
 		{
 			clicked = rightClick;
 		}
 
-		if (DrawNotificationBell(messages.MissedNotificationColour))
+		if (DrawNotificationBell(messages.MissedNotificationColour, tooltip))
 		{
 			clicked = StatusBarClick::Notifications;
 		}
@@ -622,6 +657,8 @@ namespace Graphite {
 
 		ImGui::PopStyleVar();
 		ImGui::PopFont();
+
+		tooltip.Show();
 		ImGui::End();
 
 		return clicked;

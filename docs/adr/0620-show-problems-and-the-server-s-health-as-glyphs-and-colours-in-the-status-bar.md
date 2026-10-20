@@ -33,6 +33,13 @@ pointer, pads each item's fill by 7 px and draws a ready server's dot in
   `kStatusBarFontSize`, 15 px, the mockup's 12 px converted by Inter's factor
   ([0626](0626-size-fonts-by-the-em-the-mockup-was-drawn-at.md)). Every item's
   line is centred in the bar.
+- **Tooltips.** The bar's 15 px font and its frame padding stay pushed while
+  its items are drawn, and a tooltip takes the font in effect where it is
+  begun. So the item under the pointer leaves its tooltip with the bar, which
+  shows it once they are popped, at the interface size every other tooltip is
+  drawn at. An item's tooltip shows at once, as before. The bell draws its
+  `DrawIconButton` without a tooltip and leaves "Notifications" the same way
+  once the pointer has rested, as an icon button's own tooltip waits.
 - **Problems.** `StatusMessages::Problems` is an optional `ProblemCounts` of
   errors and warnings, in place of the joined string.
   - The error glyph (`ICON_LC_CIRCLE_X`) and the error count draw in the
@@ -91,9 +98,10 @@ pointer, pads each item's fill by 7 px and draws a ready server's dot in
     corners.
   - The fill is `Core::IconButtonFill`, the eased colours `DrawIconButton` uses.
   - As the fill fades in, the item's words go from the status grey to the text
-    colour. The bell's glyph takes the text colour when the bell was the item
-    under the pointer on the frame before, since `DrawIconButton` reports its
-    hover only once it has drawn.
+    colour. The bell's glyph does too: the bell rests dim
+    (`IconButtonRest::Dim`), with the status grey pushed as the disabled-text
+    colour, and a dim icon button eases its glyph from that colour to the text
+    colour with its fill.
   - Inert items take no fill.
   - The bell stays a `DrawIconButton`, with a third fit, `IconButtonFit::Bar`: a
     square one frame high, filled out to its corners. The bar sets the frame
@@ -148,8 +156,6 @@ colours gives the light scheme the same relation without a value of its own.
 - The caret position is in another face than the items beside it.
 - An uninstall under way shows no dot.
 - A custom scheme no longer chooses the ready dot's colour.
-- The bell's glyph brightens a frame after the pointer reaches it, and does not
-  fade with its fill.
 
 ### Neutral
 

@@ -218,7 +218,7 @@ namespace {
 						 ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
 							 ImGuiWindowFlags_NoSavedSettings);
 
-			Core::DrawIconButton("##box", kGlyph, engaged, "Do it", options);
+			Core::DrawIconButton("##box", kGlyph, engaged, Tooltip, options);
 			const ImRect button(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
 
 			ImGui::End();
@@ -248,6 +248,21 @@ namespace {
 			REQUIRE(window != nullptr);
 			return *window->DrawList;
 		}
+
+		static bool ShowsATooltip()
+		{
+			for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+			{
+				if ((window->Flags & ImGuiWindowFlags_Tooltip) != 0 && window->Active)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		const char* Tooltip = "Do it";
 
 	private:
 		ImGuiContext* m_Context = nullptr;
@@ -368,4 +383,24 @@ TEST_CASE("A dim icon button's glyph brightens as its fill eases in under the po
 	CHECK_FALSE(InkInColour(BoxWindow::Drawing(), ImGui::GetColorU32(ImGuiCol_ButtonHovered)).has_value());
 	CHECK_FALSE(InkInColour(BoxWindow::Drawing(), ImGui::GetColorU32(ImGuiCol_TextDisabled)).has_value());
 	CHECK_FALSE(InkInColour(BoxWindow::Drawing(), ImGui::GetColorU32(ImGuiCol_Text)).has_value());
+}
+
+TEST_CASE("An icon button given no tooltip shows none under the pointer, and one given a tooltip does")
+{
+	const Core::IconButtonOptions box{.Fit = Core::IconButtonFit::Box};
+
+	{
+		BoxWindow window;
+		window.DrawHovered(box);
+
+		CHECK(BoxWindow::ShowsATooltip());
+	}
+
+	{
+		BoxWindow window;
+		window.Tooltip = nullptr;
+		window.DrawHovered(box);
+
+		CHECK_FALSE(BoxWindow::ShowsATooltip());
+	}
 }

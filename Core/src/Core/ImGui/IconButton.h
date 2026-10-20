@@ -32,6 +32,7 @@ namespace Core {
 
 	ImVec4 IconButtonFill(ImGuiID id, bool hovered, bool held, bool engaged = false);
 
+	// A null tooltip shows none, for a caller that shows the button's tooltip itself.
 	bool DrawIconButton(const char* id, const char* glyph, bool engaged, const char* tooltip,
 						const IconButtonOptions& options = {});
 
