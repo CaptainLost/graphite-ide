@@ -108,6 +108,7 @@ namespace Graphite {
 
 		void DrawSchemeChoice();
 		void DrawSchemeActions();
+		void DrawThemesFolder();
 		void DrawInterfaceScale();
 
 		void Apply();
@@ -120,6 +121,8 @@ namespace Graphite {
 		ActiveScheme& m_Active;
 		AppSettings& m_Settings;
 		Core::EventBus& m_Events;
+
+		std::filesystem::path m_ThemesDirectory;
 
 		SchemeDraft m_Draft;
 

@@ -97,10 +97,10 @@ TEST_CASE("Each group of colours is one block row under the theme, the interface
 {
 	AppearanceScreen screen;
 
-	CHECK(screen.Frames.RowTitles() == std::vector<std::string>{"Colour scheme", "This scheme", "Interface scale", "Gap between panels",
-																"Panel corner radius", "Control corner radius", "Border width",
-																"Scrollbar width", "Syntax colours", "Editor colours", "Application colours",
-																"Git colours", "Claude sessions colours"});
+	CHECK(screen.Frames.RowTitles() == std::vector<std::string>{"Colour scheme", "This scheme", "Themes folder", "Interface scale",
+																"Gap between panels", "Panel corner radius", "Control corner radius",
+																"Border width", "Scrollbar width", "Syntax colours", "Editor colours",
+																"Application colours", "Git colours", "Claude sessions colours"});
 
 	const std::vector<Graphite::SettingsCard> cards = screen.Frames.DescribeInFrame();
 

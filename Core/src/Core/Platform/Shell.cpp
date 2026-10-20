@@ -41,6 +41,38 @@ namespace Core {
 	}
 #endif
 
+	Result<void> Shell::OpenFolder(const std::filesystem::path& folder)
+	{
+		if (!PathExists(folder))
+		{
+			return Error{.Code = ErrorCode::NotFound,
+						 .Message = std::format("'{}' no longer exists", ToUtf8(folder))};
+		}
+
+#ifdef CORE_PLATFORM_WINDOWS
+		std::filesystem::path preferredFolder = folder;
+		preferredFolder.make_preferred();
+
+		const HINSTANCE launchResult = ::ShellExecuteW(nullptr, L"explore", preferredFolder.c_str(), nullptr,
+													   nullptr, SW_SHOWNORMAL);
+
+		const bool launched = reinterpret_cast<INT_PTR>(launchResult) > kLargestShellExecuteErrorCode;
+
+		if (!launched)
+		{
+			return Error{.Code = ErrorCode::IoFailure,
+						 .Message = std::format("cannot open the file browser for '{}'", ToUtf8(folder))};
+		}
+
+		return Result<void>::Ok();
+#else
+		return Error{.Code = ErrorCode::Unsupported,
+					 .Message = std::format("opening a file browser for '{}' is not implemented on "
+											"this platform",
+											ToUtf8(folder))};
+#endif
+	}
+
 	Result<void> Shell::RevealInFileBrowser(const std::filesystem::path& path)
 	{
 		if (!PathExists(path))

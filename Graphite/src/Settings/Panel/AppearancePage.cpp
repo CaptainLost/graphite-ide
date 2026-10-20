@@ -18,6 +18,7 @@
 #include "Core/ImGui/Slider.h"
 #include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/UiScale.h"
+#include "Core/Platform/Shell.h"
 
 #include <IconsLucide.h>
 #include <imgui.h>
@@ -25,6 +26,7 @@
 
 #include <algorithm>
 #include <array>
+#include <filesystem>
 #include <optional>
 #include <span>
 #include <string>
@@ -142,7 +144,7 @@ namespace Graphite {
 	// the resolved value; the two agree, because Load reads the same key.
 	AppearancePage::AppearancePage(ActiveScheme& scheme, AppSettings& settings, ModalGate& modals, Core::EventBus& events,
 								   std::filesystem::path themesDirectory)
-		: m_Active(scheme), m_Settings(settings), m_Events(events), m_Draft(std::move(themesDirectory)),
+		: m_Active(scheme), m_Settings(settings), m_Events(events), m_ThemesDirectory(themesDirectory), m_Draft(std::move(themesDirectory)),
 		  m_DeleteQuestion(modals, "Delete colour scheme?"), m_RenameQuestion(modals, "Rename colour scheme")
 	{
 		m_Draft.Select(m_Settings.GetColorScheme());
@@ -459,6 +461,11 @@ namespace Graphite {
 										.Keywords = {"duplicate", "rename", "delete"},
 										.ControlWidth = SettingsLayout::ButtonsWidth(SchemeActionLabels()),
 										.DrawControl = [this] { DrawSchemeActions(); }});
+		card.Rows.push_back(SettingsRow{.Title = "Themes folder",
+										.Description = "Where your own schemes are kept, one file each.",
+										.Keywords = {"open", "folder", "directory", "explorer", "files"},
+										.ControlWidth = SettingsLayout::ButtonsWidth(std::vector<std::string>{"Open folder"}),
+										.DrawControl = [this] { DrawThemesFolder(); }});
 
 		return card;
 	}
@@ -594,6 +601,25 @@ namespace Graphite {
 		if (Core::TextButton("Delete"))
 		{
 			m_DeleteQuestion.Ask(m_Draft.GetSelected());
+		}
+	}
+
+	void AppearancePage::DrawThemesFolder()
+	{
+		if (!Core::TextButton("Open folder"))
+		{
+			return;
+		}
+
+		// The folder is created with the first saved scheme, so before that there is nothing to open.
+		std::error_code ignored;
+		std::filesystem::create_directories(m_ThemesDirectory, ignored);
+
+		if (const Core::Result<void> opened = Core::Shell::OpenFolder(m_ThemesDirectory); !opened)
+		{
+			m_Events.Publish(ToastEvent{.Kind = Core::ToastKind::Error,
+										.Title = "Cannot open themes folder",
+										.Message = opened.GetError().Message});
 		}
 	}
 
