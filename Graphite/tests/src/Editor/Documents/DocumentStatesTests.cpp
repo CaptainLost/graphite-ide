@@ -10,6 +10,7 @@
 #include "FileFixtures.h"
 #include "TempDirectory.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -106,7 +107,8 @@ namespace {
 		RecordingServer Server;
 		LspAnswerRouter Router{Server, [] { return 0.0; }};
 		DiagnosticsModel Diagnostics;
-		DocumentStates States{Server, Router, Diagnostics};
+		DocumentStates::Clock::time_point Now{};
+		DocumentStates States{Server, Router, Diagnostics, [this] { return Now; }};
 		Core::DocumentSet Documents;
 	};
 }
@@ -254,4 +256,79 @@ TEST_CASE("Saving a document asks for its symbols again")
 
 	CHECK(harness.Server.CountOf("save") == 1);
 	CHECK(harness.Server.CountOf("symbols") == 2);
+}
+
+namespace {
+	std::string TextLargerThanTheQuietThreshold()
+	{
+		std::string text;
+		const std::string line = "int value = 0; // padding to make the document large\n";
+
+		while (text.size() <= DocumentStates::kLargeDocumentBytes)
+		{
+			text += line;
+		}
+
+		return text;
+	}
+}
+
+TEST_CASE("A large document is sent to the server only once it has stopped changing")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "big.cpp";
+	WriteFileBytes(path, TextLargerThanTheQuietThreshold());
+	Harness harness;
+	REQUIRE(harness.Documents.Open(path, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+	Core::TextDocument& document = *harness.Documents.At(0).Document;
+	harness.States.OpenWithServer(path, document);
+
+	document.GetBuffer().Insert(0, "a");
+	CHECK(harness.States.SendChanges(harness.Documents.GetStore()).empty());
+
+	harness.Now += std::chrono::milliseconds(100);
+	document.GetBuffer().Insert(0, "b");
+	harness.Now += std::chrono::milliseconds(100);
+	CHECK(harness.States.SendChanges(harness.Documents.GetStore()).empty());
+	CHECK(harness.Server.CountOf("change") == 0);
+
+	harness.Now += DocumentStates::kLargeDocumentQuiet;
+
+	REQUIRE(harness.States.SendChanges(harness.Documents.GetStore()).size() == 1);
+	REQUIRE(harness.Server.CountOf("change") == 1);
+	CHECK(harness.Server.Calls.back().Text.starts_with("ba"));
+}
+
+TEST_CASE("A large document is sent at once when the caller cannot wait")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "big.cpp";
+	WriteFileBytes(path, TextLargerThanTheQuietThreshold());
+	Harness harness;
+	REQUIRE(harness.Documents.Open(path, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+	Core::TextDocument& document = *harness.Documents.At(0).Document;
+	harness.States.OpenWithServer(path, document);
+
+	document.GetBuffer().Insert(0, "a");
+
+	CHECK(harness.States.SendChangeIfMoved(path, document, SendTiming::Now));
+	CHECK(harness.Server.CountOf("change") == 1);
+}
+
+TEST_CASE("A small document is sent at once however quickly it changes")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "a.cpp";
+	WriteFileBytes(path, "int a;\n");
+	Harness harness;
+	REQUIRE(harness.Documents.Open(path, Core::TabKind::Permanent) == Core::OpenOutcome::Opened);
+	Core::TextDocument& document = *harness.Documents.At(0).Document;
+	harness.States.OpenWithServer(path, document);
+
+	document.GetBuffer().Insert(0, "a");
+	CHECK(harness.States.SendChanges(harness.Documents.GetStore()).size() == 1);
+
+	document.GetBuffer().Insert(0, "b");
+	CHECK(harness.States.SendChanges(harness.Documents.GetStore()).size() == 1);
+	CHECK(harness.Server.CountOf("change") == 2);
 }

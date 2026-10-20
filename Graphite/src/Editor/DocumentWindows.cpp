@@ -1378,7 +1378,7 @@ namespace Graphite {
 		// analysis, is updated directly.
 		if (m_DocumentStates.IsOpenWithServer(item.Path))
 		{
-			m_DocumentStates.SendChangeIfMoved(item.Path, *item.Document);
+			m_DocumentStates.SendChangeIfMoved(item.Path, *item.Document, SendTiming::Now);
 		}
 		else
 		{

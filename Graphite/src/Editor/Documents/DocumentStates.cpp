@@ -1,5 +1,6 @@
 #include "Editor/Documents/DocumentStates.h"
 
+#include "Core/App/Redraw.h"
 #include "Editor/Server/DocumentServerPort.h"
 #include "Editor/Server/LspAnswerRouter.h"
 #include "Language/Diagnostics/DiagnosticsModel.h"
@@ -8,8 +9,8 @@
 namespace Graphite {
 
 	DocumentStates::DocumentStates(DocumentServerPort& server, LspAnswerRouter& router,
-								   const DiagnosticsModel& diagnostics)
-		: m_Server(server), m_Router(router), m_Diagnostics(diagnostics)
+								   const DiagnosticsModel& diagnostics, ClockReader now)
+		: m_Server(server), m_Router(router), m_Diagnostics(diagnostics), m_Now(std::move(now))
 	{
 	}
 
@@ -95,13 +96,33 @@ namespace Graphite {
 		return found != m_States.end() && found->second.OpenWithServer;
 	}
 
-	bool DocumentStates::SendChangeIfMoved(const std::filesystem::path& path, const Core::TextDocument& document)
+	bool DocumentStates::SendChangeIfMoved(const std::filesystem::path& path, const Core::TextDocument& document,
+										   SendTiming timing)
 	{
 		DocumentLevelState* const state = Find(path);
 		const std::uint64_t sequence = document.GetBuffer().GetChangeSequence();
 
 		if (state == nullptr || !state->OpenWithServer || state->SentChange == sequence)
 		{
+			return false;
+		}
+
+		const Clock::time_point now = m_Now();
+
+		if (state->NoticedChange != sequence)
+		{
+			state->NoticedChange = sequence;
+			state->NoticedAt = now;
+		}
+
+		const bool isLarge = document.GetBuffer().GetLength() > kLargeDocumentBytes;
+		const Clock::time_point quietFrom = state->NoticedAt + kLargeDocumentQuiet;
+
+		if (timing == SendTiming::WhenQuiet && isLarge && now < quietFrom)
+		{
+			// WARNING: A redraw deadline lasts one wait, so each frame that finds the document still
+			// settling has to ask for the end of the wait again.
+			Core::Redraw::RequestIn(std::chrono::duration<double>(quietFrom - now));
 			return false;
 		}
 
