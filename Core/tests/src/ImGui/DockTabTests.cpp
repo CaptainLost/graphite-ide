@@ -8,6 +8,7 @@
 #include "Core/ImGui/TabCloseRequests.h"
 #include "Core/ImGui/TabContextMenu.h"
 #include "Core/ImGui/Theme.h"
+#include "Core/ImGui/UiScale.h"
 #include "Core/UI/PanelManager.h"
 
 #include <imgui.h>
@@ -65,6 +66,8 @@ namespace {
 	{
 		Core::ChromePalette Palette = Core::Theme::DefaultPalette();
 		float Scale = 1.0f;
+		// The monitor's scale, which ImGui gives the fonts of the windows on it, as the application has it do.
+		float MonitorScale = 1.0f;
 		bool FloatingPair = false;
 	};
 
@@ -89,6 +92,8 @@ namespace {
 			inputOutput.DeltaTime = 1.0f / 60.0f;
 			inputOutput.IniFilename = nullptr;
 			inputOutput.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
+			inputOutput.ConfigDpiScaleFonts = true;
+			ImGui::GetMainViewport()->DpiScale = options.MonitorScale;
 
 			inputOutput.Fonts->AddFontDefault();
 			ImFontConfig borrowed;
@@ -647,6 +652,38 @@ TEST_CASE("Two windows docked together in a floating node get a 32 pixel bar, wi
 																							   : TabBarScreen::TabOf(alpha);
 	CHECK(first.Min.x == doctest::Approx(node.Pos.x + node.HostWindow->WindowBorderSize));
 	CHECK(second.Min.x == doctest::Approx(first.Max.x));
+}
+
+TEST_CASE("At an interface scale of 125 % or 150 %, or on a monitor at 150 %, a floating node's bar is as tall as the title bars of its windows")
+{
+	struct Scales
+	{
+		float Interface = 1.0f;
+		float Monitor = 1.0f;
+	};
+
+	for (const Scales scales : {Scales{.Interface = 1.25f}, Scales{.Interface = 1.5f}, Scales{.Monitor = 1.5f}})
+	{
+		CAPTURE(scales.Interface);
+		CAPTURE(scales.Monitor);
+
+		TabBarScreen screen({.Scale = scales.Interface, .MonitorScale = scales.Monitor, .FloatingPair = true});
+		float scaledBar = 0.0f;
+		screen.DuringFrame = [&] { scaledBar = std::round(Core::Scaled(kBarHeight)); };
+		screen.Settle();
+
+		const ImGuiWindow& alpha = TabBarScreen::WindowNamed(kFloatingAlpha);
+		const ImGuiWindow& beta = TabBarScreen::WindowNamed(kFloatingBeta);
+		const ImGuiDockNode& node = TabBarScreen::NodeOf(alpha);
+		REQUIRE(node.IsFloatingNode());
+		REQUIRE(beta.DockNode == alpha.DockNode);
+
+		const ImGuiWindow& selected = node.TabBar->VisibleTabId == alpha.TabId ? alpha : beta;
+
+		CHECK(scaledBar == doctest::Approx(std::round(kBarHeight * scales.Interface * scales.Monitor)));
+		CHECK(node.TabBar->BarRect.GetHeight() == doctest::Approx(scaledBar));
+		CHECK(selected.TitleBarHeight == doctest::Approx(scaledBar));
+	}
 }
 
 TEST_CASE("In a floating node ImGui's own close button never takes the pointer from the tab's")

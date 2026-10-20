@@ -39,7 +39,11 @@ name in one face for every tab of a node.
      nodes, through `Core::DockTabBarStyle` too. A `NewFramePre` context hook
      applies it and a `NewFramePost` hook puts the style back
      (`Core::KeepFloatingTabBarsFlat`, which `DockSpaceHost` installs once per
-     context);
+     context). The hook does not work the padding out: before NewFrame, ImGui
+     has put the font size back to its unscaled base and dropped the monitor's
+     scale, so `DockTabBarFramePaddingY()` there would mix an unscaled font with
+     the interface scale alone. It takes the padding that the dock space's
+     `DockTabBarStyle` applied on the frame before, which records it;
   3. around the `Begin` of every docked window, through `Core::BeginDockedWindow`,
      which `Graphite::BeginTabWindow` and `Core::PanelManager` call;
   4. around the terminal's tab-bar buttons, `+` and the shell chevron, which are
@@ -104,11 +108,14 @@ draw.
   NewFrame itself lays out besides the floating bars sees them too. That is only
   ImGui's hidden fallback window, which shows nothing unless something is drawn
   outside every window.
-- NewFrame lays the floating bars out at the font size the previous frame ended
-  with. On the very first frame there is none, so the floating bars keep the
-  global style for that one frame. On a monitor of another DPI, a floating node
-  and its windows agree on the bar's height, but it is scaled from the main
-  monitor's font.
+- NewFrame lays the floating bars out at the padding the dock space applied on
+  the frame before. Until the dock space has been laid out once there is none,
+  so the floating bars keep the global style for that first frame, and a change
+  of interface scale reaches their padding a frame late.
+- The padding is worked out on the main window's monitor. A floating node in a
+  window of its own on a monitor of another DPI and the windows in it still
+  agree on the bar's height, but the bar is that monitor's font plus the main
+  monitor's padding, not 32 px at that monitor's scale.
 - Closing through the close button or a middle click takes effect a frame
   later than ImGui's own close did, as the context menu's always has.
 - A docked window whose owner does not call `DrawDockTab`, such as ImGui's own

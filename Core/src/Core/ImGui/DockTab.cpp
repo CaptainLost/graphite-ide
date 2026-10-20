@@ -42,13 +42,32 @@ namespace Core {
 			return style;
 		}
 
-		// WARNING: NewFrame lays the floating nodes' bars out at the font size it has set by then, the last frame's on
-		// every frame but the first, where there is none yet and nothing to lay out.
+		// The frame padding the dock space's bars were last laid out with, and the context they were laid out in.
+		struct DockSpacePadding
+		{
+			const ImGuiContext* Context = nullptr;
+			float PaddingY = 0.0f;
+		};
+
+		std::optional<DockSpacePadding>& LastDockSpacePadding()
+		{
+			static std::optional<DockSpacePadding> padding;
+			return padding;
+		}
+
+		// WARNING: The padding is the one the dock space applied, not one worked out here. Before NewFrame, EndFrame has
+		// put the font size back to its unscaled base and left no viewport current, which drops the monitor's scale
+		// from Scaled, so the font and the scale read here stand on different footings. NewFrame lays each bar out at
+		// the font of the window its node draws round itself, while the windows in the node begin, in the frame, at
+		// the dock space's padding; the two agree only at the same padding. Until a dock space has been laid out in
+		// this context there is none, and the floating bars keep the global style.
 		void FlattenFloatingTabBars()
 		{
-			if (ImGui::GetFontSize() > 0.0f)
+			const std::optional<DockSpacePadding>& padding = LastDockSpacePadding();
+
+			if (padding.has_value() && padding->Context == ImGui::GetCurrentContext())
 			{
-				FloatingTabBarStyle().emplace(DockTabBarEdge::InsideTheWindowBorder);
+				FloatingTabBarStyle().emplace(DockTabBarEdge::InsideTheWindowBorder, padding->PaddingY);
 			}
 		}
 
@@ -317,6 +336,16 @@ namespace Core {
 	// visibility have no style var, and the floating nodes' bars are laid out in NewFrame, where no style var may stay
 	// pushed, so the style is written here and put back as it was.
 	DockTabBarStyle::DockTabBarStyle(DockTabBarEdge edge)
+		: DockTabBarStyle(edge, DockTabBarFramePaddingY())
+	{
+		if (edge == DockTabBarEdge::AtTheNode)
+		{
+			LastDockSpacePadding() =
+				DockSpacePadding{.Context = ImGui::GetCurrentContext(), .PaddingY = ImGui::GetStyle().FramePadding.y};
+		}
+	}
+
+	DockTabBarStyle::DockTabBarStyle(DockTabBarEdge edge, float framePaddingY)
 	{
 		ImGuiStyle& style = ImGui::GetStyle();
 
@@ -327,7 +356,7 @@ namespace Core {
 		m_CloseButtonMinWidthSelected = style.TabCloseButtonMinWidthSelected;
 		m_CloseButtonMinWidthUnselected = style.TabCloseButtonMinWidthUnselected;
 
-		style.FramePadding = ImVec2(0.0f, DockTabBarFramePaddingY());
+		style.FramePadding = ImVec2(0.0f, framePaddingY);
 		style.ItemInnerSpacing.x = 0.0f;
 		style.FrameBorderSize = kNoBorder;
 		style.TabCloseButtonMinWidthSelected = kNeverShown;
