@@ -748,3 +748,94 @@ TEST_CASE("Indenting more lines than the change log keeps leaves the caches whol
 
 	CheckCachesMatchRecompute(item);
 }
+
+namespace {
+	// The widest line is remembered by index, so every edit has to leave that index pointing at a line that is
+	// still as wide as WidestColumn says.
+	void CheckWidestLineIsWhereItIsRecorded(const Core::OpenItem& item)
+	{
+		const Core::TextBuffer& buffer = item.Document->GetBuffer();
+
+		REQUIRE(item.WidestLine < buffer.GetLineCount());
+		CHECK(Core::ColumnCount(buffer.LineText(item.WidestLine), item.TabWidth) == item.WidestColumn);
+		CHECK(item.WidestColumn == Core::WidestColumn(buffer, item.TabWidth));
+	}
+}
+
+TEST_CASE("An edit above the widest line that keeps the line count leaves the widest line where it is")
+{
+	Core::OpenItem item = ItemWith("a\nb\nthe widest line of all\nc");
+	REQUIRE(item.WidestLine == 2);
+
+	PlaceCaretAt(item, 1);
+
+	REQUIRE(Core::InsertText(item, "x"));
+
+	CHECK(item.WidestLine == 2);
+	CheckWidestLineIsWhereItIsRecorded(item);
+	CheckLineCachesAreCorrect(item);
+}
+
+TEST_CASE("A line inserted above the widest line moves the widest line down with it")
+{
+	Core::OpenItem item = ItemWith("a\nb\nthe widest line of all\nc");
+	REQUIRE(item.WidestLine == 2);
+
+	PlaceCaretAt(item, 0);
+
+	REQUIRE(Core::InsertNewline(item));
+
+	CHECK(item.WidestLine == 3);
+	CheckWidestLineIsWhereItIsRecorded(item);
+	CheckLineCachesAreCorrect(item);
+}
+
+TEST_CASE("Widening the widest line in place keeps it the widest line")
+{
+	Core::OpenItem item = ItemWith("a\nthe widest line of all\nc");
+	REQUIRE(item.WidestLine == 1);
+
+	const std::size_t endOfWidestLine = 24;
+	PlaceCaretAt(item, endOfWidestLine);
+
+	REQUIRE(Core::InsertText(item, " and then some"));
+
+	CHECK(item.WidestLine == 1);
+	CHECK(item.WidestColumn == 36);
+	CheckWidestLineIsWhereItIsRecorded(item);
+	CheckLineCachesAreCorrect(item);
+}
+
+TEST_CASE("Narrowing the widest line in place hands the title to the next widest line")
+{
+	Core::OpenItem item = ItemWith("a\nthe widest line of all\nthe second widest\nc");
+	REQUIRE(item.WidestLine == 1);
+
+	const std::size_t endOfWidestLine = 24;
+	PlaceCaretAt(item, endOfWidestLine);
+
+	for (int deleted = 0; deleted < 10; ++deleted)
+	{
+		REQUIRE(Core::DeleteBackward(item));
+	}
+
+	CHECK(item.WidestLine == 2);
+	CheckWidestLineIsWhereItIsRecorded(item);
+	CheckLineCachesAreCorrect(item);
+}
+
+TEST_CASE("Typing above and below the widest line over and over leaves the widest line recorded correctly")
+{
+	Core::OpenItem item = ItemWith("first\nsecond\nthe widest line of all\nfourth\nfifth");
+
+	for (int round = 0; round < 20; ++round)
+	{
+		PlaceCaretAt(item, round % 2 == 0 ? 0 : item.Document->GetBuffer().GetLength());
+
+		REQUIRE(Core::InsertText(item, "x"));
+
+		CheckWidestLineIsWhereItIsRecorded(item);
+	}
+
+	CheckLineCachesAreCorrect(item);
+}

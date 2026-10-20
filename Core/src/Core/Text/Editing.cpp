@@ -135,14 +135,27 @@ namespace Core {
 			}
 		}
 
+		bool HasNarrowedBelowWidest(const OpenItem& item, const TextBuffer& buffer)
+		{
+			return ColumnCount(buffer.LineText(item.WidestLine), item.TabWidth) < item.WidestColumn;
+		}
+
 		void UpdateLineCachesAfterEdit(OpenItem& item, std::size_t firstLine, std::size_t lastLine)
 		{
 			const TextBuffer& buffer = item.Document->GetBuffer();
 
 			const bool widestLineNoLongerExists = item.WidestLine >= buffer.GetLineCount();
-			const bool editMayHaveMovedOrShortenedWidestLine = item.WidestLine >= firstLine;
 
-			if (widestLineNoLongerExists || editMayHaveMovedOrShortenedWidestLine)
+			// WARNING: Recomputing visits every line of the document, so it is kept for the edits that can
+			// leave the recorded line wrong: one that shifts the lines below it, or one that narrowed it. A
+			// line that is only below the edit, or only wider than before, is left alone; without this,
+			// typing anywhere above the widest line of a large file recomputed the whole file per keystroke.
+			const bool lineCountChanged = buffer.GetLineCount() != item.Rows.GetLineCount();
+			const bool widestLineMayHaveMoved = lineCountChanged && item.WidestLine >= firstLine;
+			const bool widestLineWasEdited = item.WidestLine >= firstLine && item.WidestLine <= lastLine;
+
+			if (widestLineNoLongerExists || widestLineMayHaveMoved ||
+				(widestLineWasEdited && HasNarrowedBelowWidest(item, buffer)))
 			{
 				RecomputeLineCaches(item);
 				return;
