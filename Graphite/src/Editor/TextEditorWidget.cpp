@@ -301,8 +301,12 @@ namespace Graphite {
 			const ImRect bounds(origin, ImVec2(origin.x + extent.x, origin.y + extent.y));
 			const ImGuiID id = ImGui::GetID("##EditorInput");
 
+			// WARNING: NoNavFocus is needed as much as NoNav. ButtonBehavior takes navigation focus on
+			// a click regardless of the item's flags, which makes the whole document the focused
+			// item's rectangle, and ImGuiListClipper then adds that rectangle to the visible range:
+			// every row of the file is drawn on every frame from the first click on.
 			ImGui::ItemAdd(bounds, id, nullptr, ImGuiItemFlags_NoNav);
-			ImGui::ButtonBehavior(bounds, id, nullptr, nullptr);
+			ImGui::ButtonBehavior(bounds, id, nullptr, nullptr, ImGuiButtonFlags_NoNavFocus);
 
 			PointerState pointer;
 
