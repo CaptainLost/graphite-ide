@@ -15,6 +15,7 @@
 #include "Core/Events/EventBus.h"
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/Slider.h"
 #include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/UiScale.h"
 
@@ -41,7 +42,7 @@ namespace Graphite {
 		constexpr const char* kBuiltInColourDescription = "Built-in scheme: duplicate it to change this colour.";
 		constexpr const char* kLayoutNote = "Dimmed names are inherited from the built-in scheme. âº puts an overridden measurement back.";
 		constexpr const char* kBuiltInLayoutDescription = "Built-in scheme: duplicate it to change this measurement.";
-		constexpr const char* kLayoutFormat = "%d px";
+		constexpr std::string_view kLayoutUnit = "px";
 		constexpr const char* kResetLayoutTip = "Put back the inherited measurement";
 		constexpr float kColourCellWidth = 230.0f;
 		constexpr float kPercentPerScale = 100.0f;
@@ -494,7 +495,6 @@ namespace Graphite {
 			}
 
 			ImGui::SameLine();
-			ImGui::SetNextItemWidth(SettingsLayout::SliderWidth());
 		}
 
 		const LayoutRange range = RangeOf(metric);
@@ -502,7 +502,9 @@ namespace Graphite {
 
 		ImGui::BeginDisabled(readOnly);
 
-		if (ImGui::SliderInt("##layout", &value, static_cast<int>(range.Smallest), static_cast<int>(range.Largest), kLayoutFormat) && !readOnly)
+		if (Core::SliderInt("##layout", &value, static_cast<int>(range.Smallest), static_cast<int>(range.Largest), kLayoutUnit,
+							SettingsLayout::SliderWidth()) &&
+			!readOnly)
 		{
 			m_Draft.SetLayout(metric, static_cast<float>(value));
 			Apply();
