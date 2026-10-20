@@ -19,7 +19,7 @@ namespace Core {
 		constexpr float kButtonRounding = 6.0f;
 		constexpr float kButtonSpacing = 6.0f;
 		constexpr float kEndPadding = 6.0f;
-		constexpr float kIconSize = 18.0f;
+		constexpr float kIconSize = 17.0f;
 		constexpr float kSeparatorLength = 18.0f;
 		constexpr float kSeparatorMargin = 4.0f;
 		constexpr float kLineThickness = 1.0f;

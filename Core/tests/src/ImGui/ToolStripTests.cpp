@@ -26,6 +26,7 @@ namespace {
 	const ImVec2 kStripWindowSize(36.0f, 600.0f);
 	const ImVec2 kEditorPosition(100.0f, 0.0f);
 	const ImVec2 kEditorSize(300.0f, 300.0f);
+	constexpr const char* kItemIcon = "M";
 
 	class StripWindow
 	{
@@ -112,6 +113,26 @@ namespace {
 			return drawn;
 		}
 
+		// How tall an item's glyph is drawn at this font size, in a window of its own.
+		float ReferenceGlyphHeight(float fontSize)
+		{
+			ImGui::NewFrame();
+			ImGui::SetNextWindowPos(kEditorPosition);
+			ImGui::Begin("Reference", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+			const ImDrawList* drawList = ImGui::GetWindowDrawList();
+			const int verticesBefore = drawList->VtxBuffer.Size;
+			ImGui::PushFont(nullptr, fontSize);
+			ImGui::TextUnformatted(kItemIcon);
+			ImGui::PopFont();
+			const float height = GlyphHeight(*drawList, verticesBefore);
+
+			ImGui::End();
+			ImGui::EndFrame();
+
+			return height;
+		}
+
 		void MoveMouse(ImVec2 position) { ImGui::GetIO().AddMousePosEvent(position.x, position.y); }
 
 		void PressMouse() { ImGui::GetIO().AddMouseButtonEvent(ImGuiMouseButton_Left, true); }
@@ -169,7 +190,7 @@ namespace {
 
 	ToolStripItem Item(const char* id)
 	{
-		return ToolStripItem{.Id = id, .Icon = "M", .Tooltip = id};
+		return ToolStripItem{.Id = id, .Icon = kItemIcon, .Tooltip = id};
 	}
 
 	std::vector<ToolStripItem> Group(std::initializer_list<const char*> ids)
@@ -428,4 +449,22 @@ TEST_CASE("The icon is scaled once by the interface scale and not twice")
 
 	REQUIRE(glyphAtOne > 0.0f);
 	CHECK(glyphAtOneAndAHalf / glyphAtOne == doctest::Approx(1.5f).epsilon(0.15));
+}
+
+TEST_CASE("The icon is drawn at the mockup's seventeen pixels")
+{
+	constexpr float kSeventeen = 17.0f;
+	constexpr float kEighteen = 18.0f;
+
+	StripWindow window;
+	ToolStripContent content;
+	content.Top = {Group({"a"})};
+
+	const float drawn = window.Draw(content).GlyphHeight;
+	const float atSeventeen = window.ReferenceGlyphHeight(kSeventeen);
+	const float atEighteen = window.ReferenceGlyphHeight(kEighteen);
+
+	REQUIRE(atSeventeen > 0.0f);
+	REQUIRE(atEighteen > atSeventeen);
+	CHECK(drawn == doctest::Approx(atSeventeen));
 }
