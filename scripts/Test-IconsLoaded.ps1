@@ -5,10 +5,11 @@
 
 .DESCRIPTION
     Only the icons listed in kUsedIcons (Core/src/Core/ImGui/Icons.cpp) are baked into
-    the font atlas; any other ICON_LC_ constant draws ImGui's fallback glyph instead.
+    the font atlas's icon span; any other ICON_LC_ constant draws a wrong glyph (Inter's
+    own private-use glyph in the interface face, or Lucide's unclipped one in the code face).
     This scans Core/src and Graphite/src for ICON_LC_ constants and reports every one
     missing from that list. It also reports every ICON_MDI_ constant, listed or not:
-    Material Design Icons are no longer loaded, so each would draw the fallback glyph.
+    Material Design Icons are no longer loaded, so each would draw a wrong glyph or none.
     Exits 1 on any finding.
 
 .EXAMPLE

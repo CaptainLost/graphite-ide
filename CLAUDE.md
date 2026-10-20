@@ -103,6 +103,6 @@ hook or a check.
 
 `scripts/Test-NoImGuiCheckbox.ps1` fails on any `ImGui::Checkbox` in `Core/src` or `Graphite/src`; checkboxes go through `Graphite::DrawTickBox`.
 
-`scripts/Test-IconsLoaded.ps1` fails on any `ICON_LC_` (Lucide) constant in `Core/src` or `Graphite/src` missing from `kUsedIcons` in `Core/src/Core/ImGui/Icons.cpp`, and on any leftover `ICON_MDI_`; only the icons listed there are baked into the font atlas, and any other draws ImGui's fallback glyph. Its tests are `scripts/tests/TestIconsLoadedTests.ps1`.
+`scripts/Test-IconsLoaded.ps1` fails on any `ICON_LC_` (Lucide) constant in `Core/src` or `Graphite/src` missing from `kUsedIcons` in `Core/src/Core/ImGui/Icons.cpp`, and on any leftover `ICON_MDI_`; only the icons listed there are baked into the font atlas's icon span, and any other draws a wrong glyph (the face's own private-use glyph). Its tests are `scripts/tests/TestIconsLoadedTests.ps1`.
 
 `scripts/Test-NoImGuiButton.ps1` fails on any `ImGui::Button` or `ImGui::SmallButton` in `Core/src` or `Graphite/src` outside `Core/src/Core/ImGui/TextButton.cpp`; text buttons go through `Core::TextButton`. Its tests are `scripts/tests/TestNoImGuiButtonTests.ps1`.
