@@ -88,7 +88,10 @@ namespace Core {
 		class Win32Frame final : public WindowFrame
 		{
 		public:
-			Win32Frame(HWND windowHandle, COLORREF borderColour) : m_WindowHandle(windowHandle), m_BorderColour(borderColour) {}
+			Win32Frame(HWND windowHandle, COLORREF borderColour, FrameBorder border)
+				: m_WindowHandle(windowHandle), m_BorderColour(borderColour), m_Border(border)
+			{
+			}
 
 			~Win32Frame() override
 			{
@@ -107,6 +110,10 @@ namespace Core {
 
 			Result<void> Install()
 			{
+				constexpr LONG_PTR kFrameStyles = WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+				const LONG_PTR style = GetWindowLongPtrW(m_WindowHandle, GWL_STYLE);
+				SetWindowLongPtrW(m_WindowHandle, GWL_STYLE, style | kFrameStyles);
+
 				// The property goes on before the subclass, so the procedure never runs without
 				// finding its frame.
 				const BOOL propertySet = SetPropW(m_WindowHandle, kFrameProperty, this);
@@ -193,7 +200,7 @@ namespace Core {
 				{
 					InsetByResizeFrame(proposedClientArea, dpi);
 				}
-				else
+				else if (m_Border == FrameBorder::Inset)
 				{
 					InsetByBorder(proposedClientArea, dpi);
 				}
@@ -271,17 +278,24 @@ namespace Core {
 
 			HWND m_WindowHandle = nullptr;
 			COLORREF m_BorderColour = 0;
+			FrameBorder m_Border = FrameBorder::Inset;
 			WNDPROC m_ReplacedWindowProcedure = nullptr;
 			CaptionMetrics m_Metrics;
 		};
 	}
 #endif
 
-	Result<Scope<WindowFrame>> WindowFrame::Hide([[maybe_unused]] Window& window,
-												 [[maybe_unused]] const Color& borderColor)
+	Result<Scope<WindowFrame>> WindowFrame::Hide(Window& window, const Color& borderColor)
+	{
+		return HideCaptionOf(window.GetNativeHandle(), borderColor);
+	}
+
+	Result<Scope<WindowFrame>> WindowFrame::HideCaptionOf([[maybe_unused]] void* nativeWindow,
+	                                                      [[maybe_unused]] const Color& borderColor,
+	                                                      [[maybe_unused]] FrameBorder border)
 	{
 #ifdef CORE_PLATFORM_WINDOWS
-		auto* glfwWindow = static_cast<GLFWwindow*>(window.GetNativeHandle());
+		auto* glfwWindow = static_cast<GLFWwindow*>(nativeWindow);
 		if (glfwWindow == nullptr)
 		{
 			return Error{.Code = ErrorCode::Unsupported, .Message = "the window has no native handle"};
@@ -293,7 +307,7 @@ namespace Core {
 			return Error{.Code = ErrorCode::Unsupported, .Message = "the window is not a Win32 window"};
 		}
 
-		auto frame = CreateScope<Win32Frame>(windowHandle, static_cast<COLORREF>(PackBgr(borderColor)));
+		auto frame = CreateScope<Win32Frame>(windowHandle, static_cast<COLORREF>(PackBgr(borderColor)), border);
 
 		const Result<void> installResult = frame->Install();
 		if (!installResult)

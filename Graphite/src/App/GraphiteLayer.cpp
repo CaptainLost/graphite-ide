@@ -57,6 +57,7 @@
 
 #include "Core/Base/Log.h"
 
+#include "Core/ImGui/DetachedWindows.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/ToastStyle.h"
@@ -872,6 +873,7 @@ namespace Graphite {
 
 		Core::ImGuiRenderer::ApplyTheme(palette);
 		Core::Application::Get().GetWindow().SetBorderColor(palette.Border);
+		Core::SetDetachedWindowBorderColor(palette.Border);
 	}
 
 	void GraphiteLayer::UpdateGitDecorations()

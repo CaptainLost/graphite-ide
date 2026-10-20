@@ -4,6 +4,7 @@
 
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/DetachedWindows.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/Animation.h"
 #include "Core/ImGui/Theme.h"
@@ -205,6 +206,8 @@ namespace Core {
 			return Error{ErrorCode::Unsupported, "ImGui_ImplOpenGL3_Init failed"};
 		}
 
+		InstallDetachedWindowHooks(ImGui::GetPlatformIO());
+
 		m_Initialized = true;
 		CORE_INFO("ImGui initialized (docking + viewports)");
 		return Result<void>::Ok();
@@ -244,9 +247,28 @@ namespace Core {
 		return ImGui::IsAnyMouseDown();
 	}
 
+	void ImGuiRenderer::HideDetachedWindows()
+	{
+		const ImGuiPlatformIO& platformIo = ImGui::GetPlatformIO();
+
+		for (const ImGuiViewport* viewport : platformIo.Viewports)
+		{
+			const bool isMainWindow = viewport->ID == ImGui::GetMainViewport()->ID;
+
+			if (isMainWindow || viewport->PlatformHandle == nullptr)
+			{
+				continue;
+			}
+
+			glfwHideWindow(static_cast<GLFWwindow*>(viewport->PlatformHandle));
+		}
+	}
+
 	void ImGuiRenderer::BeginFrame()
 	{
 		UpdateStyleScale();
+
+		ApplyPendingDetachedWindowActions();
 
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();

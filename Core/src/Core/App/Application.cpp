@@ -258,6 +258,7 @@ namespace Core {
 		// Teardown can wait on child processes, language servers among them, and a window left up
 		// while it does would look frozen. Placement is read from a hidden window just the same.
 		m_Window->Hide();
+		m_Gui->HideDetachedWindows();
 
 		OnShutdown();
 

@@ -2,6 +2,8 @@
 
 #include "Core/ImGui/DockTab.h"
 
+#include "Core/ImGui/DetachedWindows.h"
+
 #include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/TabCloseRequests.h"
 #include "Core/ImGui/Theme.h"
@@ -423,6 +425,8 @@ namespace Core {
 				DrawLinesUnder(*node);
 			}
 		}
+
+		DrawDetachedWindowButtons();
 	}
 
 	// WARNING: A docked window's title bar is what its content starts below, and Begin sizes it from the frame padding

@@ -13,6 +13,12 @@ namespace Core {
 
 	class Window;
 
+	enum class FrameBorder
+	{
+		Inset,
+		Flush
+	};
+
 	class WindowFrame : NonCopyable
 	{
 	public:
@@ -26,5 +32,8 @@ namespace Core {
 
 		static Result<Scope<WindowFrame>> Hide(Window& window,
 											   const Color& borderColor);
+
+		static Result<Scope<WindowFrame>> HideCaptionOf(void* nativeWindow, const Color& borderColor,
+																FrameBorder border = FrameBorder::Inset);
 	};
 }

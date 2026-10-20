@@ -36,6 +36,8 @@ namespace Core {
 
 		bool IsPointerHeld() const;
 
+		void HideDetachedWindows();
+
 		static ImFont* GetInterfaceFont();
 
 		static ImFont* GetMonoFont();
