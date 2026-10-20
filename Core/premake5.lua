@@ -71,4 +71,5 @@ project "Core"
         defines { "CORE_DIST" }
         runtime "Release"
         optimize "on"
+        linktimeoptimization "on"
         symbols "off"
