@@ -14,14 +14,12 @@ namespace Core {
 	struct CaptionTitleWidths
 	{
 		float Folder = 0.0f;
-		float Branch = 0.0f;
 	};
 
 	struct CaptionTitleSpacing
 	{
 		float Margin = 0.0f;
 		float DividerWidth = 0.0f;
-		float GroupGap = 0.0f;
 		float ButtonsGap = 0.0f;
 	};
 
@@ -33,11 +31,9 @@ namespace Core {
 
 		CaptionRect Divider;
 		CaptionRect Folder;
-		CaptionRect Branch;
 
 		bool DividerVisible = false;
 		bool FolderVisible = false;
-		bool BranchVisible = false;
 	};
 
 	CaptionLayout LayOutCaption(float barWidth, float barHeight, float buttonWidth, float contentLeft,

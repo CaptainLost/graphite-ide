@@ -31,6 +31,4 @@ namespace Graphite {
 	};
 
 	std::optional<GitStatusSegment> GitStatusText(const GitStatusInputs& inputs);
-
-	std::optional<std::string> GitBranchLabel(const GitStatusInputs& inputs);
 }

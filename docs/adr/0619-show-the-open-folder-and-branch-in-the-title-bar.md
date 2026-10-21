@@ -138,3 +138,5 @@ their hover-to-switch and keyboard handling.
   glyphs.
 - [0626](0626-size-fonts-by-the-em-the-mockup-was-drawn-at.md): the mockup's
   lengths taken one to one.
+- [0630](0630-leave-the-branch-out-of-the-title-bar-since-the-status-bar-shows-it.md):
+  takes the branch back out of the bar; the folder and the rest stand.

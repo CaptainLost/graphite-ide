@@ -188,16 +188,4 @@ namespace Graphite {
 
 		return segment;
 	}
-
-	std::optional<std::string> GitBranchLabel(const GitStatusInputs& inputs)
-	{
-		const std::optional<GitStatusSegment> segment = GitStatusText(inputs);
-
-		if (!segment.has_value() || !segment->HasRepository)
-		{
-			return std::nullopt;
-		}
-
-		return segment->Branch.substr(std::string_view{kBranchGlyphPrefix}.size());
-	}
 }

@@ -38,14 +38,6 @@ namespace Core {
 		layout.FolderVisible = folderLeft + widths.Folder <= limit;
 		layout.DividerVisible = layout.FolderVisible;
 
-		if (widths.Branch > 0.0f)
-		{
-			const float branchLeft = folderLeft + widths.Folder + spacing.GroupGap;
-
-			layout.Branch = RectAcrossBar(branchLeft, widths.Branch, barHeight);
-			layout.BranchVisible = layout.FolderVisible && branchLeft + widths.Branch <= limit;
-		}
-
 		return layout;
 	}
 }

@@ -659,4 +659,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0627](0627-draw-fields-as-the-mockup-s-bordered-faint-filled-boxes.md) | Draw fields as the mockup's bordered, faint-filled boxes | proposed | 2026-10-19 |
 | [0628](0628-make-dock-tab-bars-thirty-two-pixels-with-the-padding-agreed-in-five-places.md) | Make dock tab bars thirty-two pixels with the padding agreed in five places | proposed | 2026-10-19 |
 | [0629](0629-let-a-colour-scheme-set-the-interface-s-measurements-as-well-as-its-colours.md) | Let a colour scheme set the interface's measurements as well as its colours | proposed | 2026-10-20 |
+| [0630](0630-leave-the-branch-out-of-the-title-bar-since-the-status-bar-shows-it.md) | Leave the branch out of the title bar, since the status bar shows it | proposed | 2026-10-21 |
 <!-- /adr-index -->

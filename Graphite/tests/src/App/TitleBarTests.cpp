@@ -313,27 +313,20 @@ namespace {
 	}
 }
 
-TEST_CASE("The title bar draws the folder and branch after the menus and no version")
+TEST_CASE("The title bar draws the folder after the menus and no version")
 {
 	const Drawn none = DrawTitleOnce({});
 	const Drawn folder = DrawTitleOnce({.Folder = "ab"});
 	const Drawn longerFolder = DrawTitleOnce({.Folder = "abcd"});
-	const Drawn both = DrawTitleOnce({.Folder = "ab", .Branch = "xy"});
 
 	CHECK(folder.Layout.DividerVisible);
 	CHECK(folder.Layout.FolderVisible);
-	CHECK_FALSE(folder.Layout.BranchVisible);
-	CHECK(both.Layout.BranchVisible);
 
 	CHECK(folder.Layout.Divider.X >= kMenusEnd);
 	CHECK(folder.Layout.Folder.X > folder.Layout.Divider.X);
-	CHECK(both.Layout.Branch.X > both.Layout.Folder.X + both.Layout.Folder.Width);
 
 	constexpr int kVerticesInAGlyph = 4;
 	CHECK(longerFolder.Vertices - folder.Vertices == 2 * kVerticesInAGlyph);
-
-	const int branchAndItsGlyph = both.Vertices - folder.Vertices;
-	CHECK(branchAndItsGlyph == 3 * kVerticesInAGlyph);
 
 	const std::string version = Graphite::Version::String();
 	const int versionGlyphs = static_cast<int>(version.size()) + static_cast<int>(std::string("Graphite ").size());
@@ -358,23 +351,21 @@ TEST_CASE("The title bar is twenty-eight pixels and its window buttons forty-two
 
 TEST_CASE("With no folder, nothing follows the menus")
 {
-	const Drawn drawn = DrawTitleOnce({.Branch = "main"});
+	const Drawn drawn = DrawTitleOnce({});
 
 	CHECK_FALSE(drawn.Layout.DividerVisible);
 	CHECK_FALSE(drawn.Layout.FolderVisible);
-	CHECK_FALSE(drawn.Layout.BranchVisible);
 	CHECK(drawn.Vertices == 0);
 }
 
 TEST_CASE("The labels are dropped before they would overlap the window buttons")
 {
-	const TitleContext context{.Folder = "a folder with a rather long name", .Branch = "feature/a-branch-with-a-long-name"};
+	const TitleContext context{.Folder = "a folder with a rather long name"};
 
 	const Drawn roomy = DrawTitleOnce(context);
 	const Drawn narrow = DrawTitleOnce(context, kNarrowBarWidth);
 
-	CHECK(roomy.Layout.BranchVisible);
-	CHECK_FALSE(narrow.Layout.BranchVisible);
+	CHECK(roomy.Layout.FolderVisible);
 	CHECK(narrow.Vertices < roomy.Vertices);
 
 	if (narrow.Layout.FolderVisible)

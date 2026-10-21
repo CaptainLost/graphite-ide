@@ -28,7 +28,6 @@ namespace Graphite {
 	struct TitleContext
 	{
 		std::optional<std::string> Folder;
-		std::optional<std::string> Branch;
 	};
 
 	enum class WindowButton

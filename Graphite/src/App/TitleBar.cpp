@@ -26,7 +26,6 @@ namespace Graphite {
 		constexpr float kTitleMargin = 12.0f;
 		constexpr float kDividerWidth = 1.0f;
 		constexpr float kDividerHeightRatio = 0.5f;
-		constexpr float kGroupGap = 16.0f;
 		constexpr float kGlyphGap = 6.0f;
 
 		constexpr float kLogoHeightRatio = 0.6f;
@@ -266,13 +265,11 @@ namespace Graphite {
 	{
 		const Core::CaptionTitleWidths widths{
 			.Folder = GroupWidth(ICON_LC_FOLDER, context.Folder),
-			.Branch = context.Folder.has_value() ? GroupWidth(ICON_LC_GIT_BRANCH, context.Branch) : 0.0f,
 		};
 
 		const Core::CaptionTitleSpacing spacing{
 			.Margin = Core::Scaled(kTitleMargin),
 			.DividerWidth = Core::Scaled(kDividerWidth),
-			.GroupGap = Core::Scaled(kGroupGap),
 			.ButtonsGap = Core::Scaled(kButtonsGap),
 		};
 
@@ -287,11 +284,6 @@ namespace Graphite {
 		if (layout.FolderVisible)
 		{
 			DrawGroup(layout.Folder, ICON_LC_FOLDER, *context.Folder);
-		}
-
-		if (layout.BranchVisible)
-		{
-			DrawGroup(layout.Branch, ICON_LC_GIT_BRANCH, *context.Branch);
 		}
 
 		return layout;
