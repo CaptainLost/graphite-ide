@@ -162,7 +162,14 @@ namespace Graphite {
 			std::vector<ServerMessage> Messages;
 			std::vector<std::filesystem::path> Recolour;
 
-			std::vector<nlohmann::json> ProgressTokens;
+			struct RunningProgress
+			{
+				nlohmann::json Token;
+				std::string Title;
+				std::string Message;
+			};
+
+			std::vector<RunningProgress> Progress;
 
 			std::optional<std::string> ProjectsLoading;
 
@@ -245,6 +252,7 @@ namespace Graphite {
 
 		static void RecordServerMessage(Shared& shared, const nlohmann::json& params);
 		static void ApplyProgress(Shared& shared, const nlohmann::json& params);
+		static std::string ActivityOf(const std::vector<Shared::RunningProgress>& running);
 
 		static Answer ReadAnswer(const Asked& asked, const IncomingMessage& reply,
 								 const std::vector<SemanticKind>& legend);

@@ -6,6 +6,7 @@
 #include "Editor/EditorCommands.h"
 #include "Theme/Palettes.h"
 #include "UI/ClipboardCopy.h"
+#include "Editor/StatusBar/ServerReportText.h"
 #include "Editor/StatusBar/ServerStatusText.h"
 #include "Editor/StatusBar/StatusBar.h"
 #include "Editor/StatusBar/StatusLineComposer.h"
@@ -1006,6 +1007,17 @@ namespace Graphite {
 		if (shownDocument && m_DocumentWindows.IsAnalysing(*shownDocument))
 		{
 			serverInputs.AnalysingFile = Core::ToUtf8(shownDocument->filename());
+		}
+
+		if (shownDocument)
+		{
+			if (const std::optional<ServerReport> report = m_LanguageServices.ReportFor(*shownDocument, activeLanguage))
+			{
+				const std::chrono::minutes localOffset = Core::OffsetAt(
+					m_LocalTimeZone, std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
+
+				serverInputs.ActiveReport = ServerReportText(*report, localOffset);
+			}
 		}
 
 		if (const ServerDefinition* chosen = m_LanguageServices.ChosenServer(activeLanguage); shownDocument && chosen != nullptr)

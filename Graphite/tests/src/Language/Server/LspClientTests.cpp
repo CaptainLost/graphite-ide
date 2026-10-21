@@ -1734,3 +1734,46 @@ TEST_CASE("Closing a document cancels its pull and drops the answer")
 	CHECK(drained.Diagnostics.empty());
 	CHECK(drained.Recolour.empty());
 }
+
+TEST_CASE("A progress title and its latest message are what the server is working on, until the progress ends")
+{
+	TempDirectory temp;
+	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+
+	Graphite::LspClient client = Offline(temp.GetPath());
+	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
+
+	client.Deliver(
+		R"({"method":"$/progress","params":{"token":"i","value":{"kind":"begin","title":"Background index"}}})");
+
+	CHECK(StatusOf(client).Activity == "Background index");
+
+	client.Deliver(
+		R"({"method":"$/progress","params":{"token":"i","value":{"kind":"report","message":"120/450","percentage":26}}})");
+
+	CHECK(StatusOf(client).Activity == "Background index: 120/450");
+
+	client.Deliver(R"({"method":"$/progress","params":{"token":"i","value":{"kind":"end"}}})");
+
+	CHECK(StatusOf(client).Activity.empty());
+}
+
+TEST_CASE("When one of two progresses ends the server is working on the other")
+{
+	TempDirectory temp;
+	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+
+	Graphite::LspClient client = Offline(temp.GetPath());
+	client.Deliver(R"({"jsonrpc":"2.0","id":1,"result":{}})");
+
+	client.Deliver(
+		R"({"method":"$/progress","params":{"token":"index","value":{"kind":"begin","title":"Background index"}}})");
+	client.Deliver(
+		R"({"method":"$/progress","params":{"token":"build","value":{"kind":"begin","title":"Building preamble"}}})");
+
+	CHECK(StatusOf(client).Activity == "Building preamble");
+
+	client.Deliver(R"({"method":"$/progress","params":{"token":"build","value":{"kind":"end"}}})");
+
+	CHECK(StatusOf(client).Activity == "Background index");
+}

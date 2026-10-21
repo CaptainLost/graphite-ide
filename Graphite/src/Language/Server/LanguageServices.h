@@ -23,6 +23,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -121,6 +122,9 @@ namespace Graphite {
 
 		ServerStatus StatusFor(const std::filesystem::path& path, LanguageId language);
 
+		// Empty where no server runs for the file: none is chosen, or its root has none yet.
+		std::optional<ServerReport> ReportFor(const std::filesystem::path& path, LanguageId language);
+
 		std::optional<ServerStatus> OverallStatus() const;
 
 		void Poll();
@@ -218,6 +222,9 @@ namespace Graphite {
 			PendingTickets Pending;
 
 			std::optional<std::chrono::steady_clock::time_point> IdleSince;
+
+			std::deque<ServerEvent> History;
+			std::optional<std::chrono::steady_clock::time_point> StateSince;
 		};
 
 		using ServerMap = std::map<ServerKey, ManagedServer>;
@@ -278,6 +285,12 @@ namespace Graphite {
 		void StartServer(ManagedServer& server, const ServerKey& key);
 
 		void RestartServer(const ServerKey& key, ManagedServer& server);
+
+		std::chrono::steady_clock::time_point Now() const;
+
+		static void NoteEvent(ManagedServer& server, std::string text, std::optional<std::chrono::seconds> took = std::nullopt);
+		void NoteStateEntered(ManagedServer& server, std::string text, std::optional<std::chrono::seconds> took = std::nullopt);
+		void NoteStateChange(ManagedServer& server, const ServerStatus& next);
 
 		void ReapIdle(std::chrono::steady_clock::time_point now);
 

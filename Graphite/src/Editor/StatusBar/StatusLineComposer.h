@@ -35,6 +35,9 @@ namespace Graphite {
 		bool FolderTrusted = false;
 
 		std::optional<ServerStatus> Overall;
+
+		// The active document's server's report, worded by ServerReportText, set below its detail.
+		std::string ActiveReport;
 	};
 
 	struct ServerLine

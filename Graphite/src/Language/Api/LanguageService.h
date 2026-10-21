@@ -2,10 +2,12 @@
 
 #include "Language/Api/LanguageId.h"
 
+#include <chrono>
 #include <compare>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -177,6 +179,31 @@ namespace Graphite {
 		ProjectProblem Problem;
 		std::string Loading;
 		LanguageId Language = LanguageId::PlainText;
+
+		// The title and latest message of the progress the server began last and has not ended, as
+		// "Background index: 120/450"; empty when it reports none.
+		std::string Activity;
+	};
+
+	struct ServerEvent
+	{
+		std::chrono::system_clock::time_point At;
+		std::string Text;
+		std::optional<std::chrono::seconds> Took;
+	};
+
+	inline constexpr std::size_t kServerHistoryLength = 20;
+
+	// What the status bar's tooltip tells about one server beyond its status: where it runs, how busy it is, and
+	// what happened to it lately, oldest first.
+	struct ServerReport
+	{
+		ServerStatus Status;
+		std::filesystem::path Root;
+		std::size_t OpenDocuments = 0;
+		std::size_t RequestsInFlight = 0;
+		std::optional<std::chrono::seconds> InStateFor;
+		std::vector<ServerEvent> History;
 	};
 
 	enum class ServerMessageKind : std::uint8_t

@@ -22,6 +22,19 @@ namespace {
 	}
 }
 
+TEST_CASE("The active server's line carries its report below its detail")
+{
+	ServerLineInputs inputs;
+	inputs.Active = Clangd(ServerState::Ready);
+	inputs.ActiveLanguage = LanguageId::Cpp;
+	inputs.ActiveReport = "Folder: D:/Repos/IDE";
+
+	const std::optional<ServerLine> line = ChooseServerLine(inputs);
+
+	REQUIRE(line.has_value());
+	CHECK(line->Detail == ServerStatusDetail(inputs.Active) + "\n\nFolder: D:/Repos/IDE");
+}
+
 TEST_CASE("No problems leaves the problems slot empty rather than saying zero")
 {
 	CHECK_FALSE(ProblemCountText(0, 0).has_value());

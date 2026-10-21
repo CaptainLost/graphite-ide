@@ -91,8 +91,11 @@ namespace Graphite {
 			const std::string activeText = inputs.AnalysingFile ? AnalysingText(inputs.Active, *inputs.AnalysingFile)
 																: ServerStatusText(inputs.Active);
 
+			std::string detail = ServerStatusDetail(inputs.Active);
+			Core::AppendSeparatedIfNotEmpty(detail, "\n\n", inputs.ActiveReport);
+
 			return ServerLine{.Text = activeText,
-							  .Detail = ServerStatusDetail(inputs.Active),
+							  .Detail = std::move(detail),
 							  .SettingsLanguage = SettingsLanguageIfServed(inputs.Active.Language),
 							  .Health = ServerHealthOf(inputs.Active.State)};
 		}

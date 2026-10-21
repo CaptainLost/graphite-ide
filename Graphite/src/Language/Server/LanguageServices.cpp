@@ -3,6 +3,7 @@
 #include "Core/Base/Base.h"
 
 #include "Core/Base/Log.h"
+#include "Core/Base/Strings.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Repository.h"
 #include "Core/Text/FileProbe.h"
@@ -550,6 +551,7 @@ namespace Graphite {
 		{
 			server.Status.State = server.Command.State;
 			server.Status.Detail = server.Command.Detail;
+			NoteStateEntered(server, "cannot start: " + server.Command.Detail);
 
 			APP_WARN("Cannot start {} for {}: {}", server.Definition->DisplayName, LanguageDisplayName(key.Language),
 					 server.Command.Detail);
@@ -581,6 +583,7 @@ namespace Graphite {
 
 		server.Status.State = ServerState::Starting;
 		server.Status.Detail = DescribeCommand(server.Command);
+		NoteStateEntered(server, "starting");
 	}
 
 	void LanguageServices::EnsureStarted(const std::filesystem::path& path, LanguageId language)
@@ -1008,6 +1011,103 @@ namespace Graphite {
 		server.Status.State = ServerState::Starting;
 		server.Status.Detail = DescribeCommand(server.Command);
 		server.Status.Restarts = server.Restarts;
+		NoteStateEntered(server, "restarting");
+	}
+
+	std::chrono::steady_clock::time_point LanguageServices::Now() const
+	{
+		return m_Clock ? m_Clock() : std::chrono::steady_clock::now();
+	}
+
+	void LanguageServices::NoteEvent(ManagedServer& server, std::string text, std::optional<std::chrono::seconds> took)
+	{
+		server.History.push_back(ServerEvent{.At = std::chrono::system_clock::now(), .Text = std::move(text), .Took = took});
+
+		while (server.History.size() > kServerHistoryLength)
+		{
+			server.History.pop_front();
+		}
+	}
+
+	void LanguageServices::NoteStateEntered(ManagedServer& server, std::string text, std::optional<std::chrono::seconds> took)
+	{
+		server.StateSince = Now();
+		NoteEvent(server, std::move(text), took);
+	}
+
+	// WARNING: Called before server.Status takes `next`, so the state left is still in server.Status.
+	void LanguageServices::NoteStateChange(ManagedServer& server, const ServerStatus& next)
+	{
+		const bool leavesIndexing = server.Status.State == ServerState::Indexing;
+		std::optional<std::chrono::seconds> indexedFor;
+
+		if (leavesIndexing && server.StateSince)
+		{
+			indexedFor = std::chrono::duration_cast<std::chrono::seconds>(Now() - *server.StateSince);
+		}
+
+		switch (next.State)
+		{
+		case ServerState::Starting:
+			NoteStateEntered(server, "starting");
+			return;
+
+		case ServerState::Indexing:
+			NoteStateEntered(server, next.Loading.empty() ? std::string{"indexing"} : "loading " + next.Loading);
+			return;
+
+		case ServerState::Ready:
+			NoteStateEntered(server, leavesIndexing ? "finished indexing" : "ready", indexedFor);
+			return;
+
+		case ServerState::ProjectIncomplete:
+			NoteStateEntered(server, "limited: " + next.Problem.Summary, indexedFor);
+			return;
+
+		case ServerState::Failed:
+			NoteStateEntered(server, next.Detail.empty() ? std::string{"failed"} : "failed: " + next.Detail);
+			return;
+
+		case ServerState::NotConfigured:
+		case ServerState::Off:
+		case ServerState::NotFound:
+		case ServerState::NotInstalled:
+		case ServerState::MissingRuntime:
+		case ServerState::Restricted:
+			break;
+		}
+
+		server.StateSince = Now();
+	}
+
+	std::optional<ServerReport> LanguageServices::ReportFor(const std::filesystem::path& path, LanguageId language)
+	{
+		ServerKey key;
+
+		if (ChoiceFor(language).Kind == ServerChoiceKind::Off || Resolve(path, language, key) == nullptr)
+		{
+			return std::nullopt;
+		}
+
+		const ManagedServer* found = FindManagedServer(key);
+
+		if (found == nullptr)
+		{
+			return std::nullopt;
+		}
+
+		ServerReport report{.Status = WithLanguage(found->Status, language),
+							.Root = key.Root,
+							.OpenDocuments = found->OpenDocuments.size(),
+							.RequestsInFlight = found->Pending.size(),
+							.History = {found->History.begin(), found->History.end()}};
+
+		if (found->StateSince)
+		{
+			report.InStateFor = std::chrono::duration_cast<std::chrono::seconds>(Now() - *found->StateSince);
+		}
+
+		return report;
 	}
 
 	void LanguageServices::SetRootPermission(RootPermission permission)
@@ -1201,6 +1301,7 @@ namespace Graphite {
 		server.ProjectSearch = m_NextProjectSearch++;
 		server.Status.State = ServerState::Starting;
 		server.Status.Detail = "looking for projects";
+		NoteStateEntered(server, "looking for projects");
 
 		APP_INFO("Looking for projects for {} below {}", server.Definition->DisplayName, Core::ToUtf8(key.Root));
 
@@ -1247,9 +1348,11 @@ namespace Graphite {
 			}
 
 			server.ProjectSearch = kNoProjectSearch;
+			NoteEvent(server, "found " + Core::Counted(keptCount + droppedCount, "project"));
 			server.Projects = std::move(search.Projects.Kept);
 			server.Client = MakeClient(server, search.Server);
 			server.Status.Detail = DescribeCommand(server.Command);
+			NoteEvent(server, "starting");
 
 			ReplayOpenDocuments(server);
 		}
@@ -1356,6 +1459,8 @@ namespace Graphite {
 				{
 					APP_WARN("{} failed for {}: {}", server.Status.Name, name, drained.Status.Detail);
 				}
+
+				NoteStateChange(server, drained.Status);
 			}
 
 			server.Status = drained.Status;

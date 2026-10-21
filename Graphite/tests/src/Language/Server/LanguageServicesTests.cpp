@@ -2532,3 +2532,126 @@ TEST_CASE("An answer reaches its asker under the asker's ticket with what the se
 	REQUIRE(answers[0].Declarations.size() == 1);
 	CHECK(answers[0].Declarations[0].Name == "run");
 }
+
+namespace {
+
+	std::vector<std::string> EventTexts(const Graphite::ServerReport& report)
+	{
+		std::vector<std::string> texts;
+
+		for (const Graphite::ServerEvent& event : report.History)
+		{
+			texts.push_back(event.Text);
+		}
+
+		return texts;
+	}
+}
+
+TEST_CASE("A server's report lists it starting and getting ready")
+{
+	TempDirectory temp;
+	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	StartWithSpy(services, temp, spy, clock, source);
+	spy.Answer();
+	services.Poll();
+
+	const std::optional<Graphite::ServerReport> report = services.ReportFor(source, Graphite::LanguageId::Cpp);
+
+	REQUIRE(report.has_value());
+	CHECK(report->Status.State == Graphite::ServerState::Ready);
+	CHECK(EventTexts(*report) == std::vector<std::string>{"starting", "ready"});
+	CHECK_FALSE(report->Root.empty());
+}
+
+TEST_CASE("A server's report says how long it has been in its state, on the services clock")
+{
+	TempDirectory temp;
+	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	StartWithSpy(services, temp, spy, clock, source);
+	spy.Answer();
+	services.Poll();
+
+	clock.Now += std::chrono::seconds{90};
+
+	const std::optional<Graphite::ServerReport> report = services.ReportFor(source, Graphite::LanguageId::Cpp);
+
+	REQUIRE(report.has_value());
+	CHECK(report->InStateFor == std::optional<std::chrono::seconds>{std::chrono::seconds{90}});
+}
+
+TEST_CASE("A server's report records how long its indexing took")
+{
+	TempDirectory temp;
+	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	StartWithSpy(services, temp, spy, clock, source);
+	spy.Answer();
+	services.Poll();
+
+	spy.Latest->Deliver(R"({"method":"$/progress","params":{"token":"i","value":{"kind":"begin","title":"indexing"}}})");
+	services.Poll();
+
+	clock.Now += std::chrono::seconds{155};
+	spy.Latest->Deliver(R"({"method":"$/progress","params":{"token":"i","value":{"kind":"end"}}})");
+	services.Poll();
+
+	const std::optional<Graphite::ServerReport> report = services.ReportFor(source, Graphite::LanguageId::Cpp);
+
+	REQUIRE(report.has_value());
+	REQUIRE(report->History.size() == 4);
+	CHECK(report->History[2].Text == "indexing");
+	CHECK(report->History[3].Text == "finished indexing");
+	CHECK(report->History[3].Took == std::optional<std::chrono::seconds>{std::chrono::seconds{155}});
+}
+
+TEST_CASE("A server's report records the failure that stopped it and its restart")
+{
+	TempDirectory temp;
+	temp.MakeFile("compile_flags.txt", "-std=c++20\n");
+	Graphite::LanguageServices services{temp.GetPath()};
+	ClientFactorySpy spy;
+	FakeClock clock;
+
+	const std::filesystem::path source = temp.GetPath() / "main.cpp";
+
+	StartWithSpy(services, temp, spy, clock, source);
+
+	spy.Kill();
+	services.Poll();
+
+	const std::optional<Graphite::ServerReport> report = services.ReportFor(source, Graphite::LanguageId::Cpp);
+
+	REQUIRE(report.has_value());
+	const std::vector<std::string> texts = EventTexts(*report);
+
+	REQUIRE(texts.size() == 3);
+	CHECK(texts[0] == "starting");
+	CHECK(texts[1].starts_with("failed"));
+	CHECK(texts[2] == "restarting");
+}
+
+TEST_CASE("A file whose language has no server has no report")
+{
+	TempDirectory temp;
+	Graphite::LanguageServices services{temp.GetPath()};
+
+	CHECK_FALSE(services.ReportFor(temp.GetPath() / "notes.txt", Graphite::LanguageId::PlainText).has_value());
+}

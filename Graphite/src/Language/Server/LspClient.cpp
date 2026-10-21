@@ -18,6 +18,13 @@
 
 namespace Graphite {
 	namespace {
+		std::string StringField(const nlohmann::json& object, const char* name)
+		{
+			const nlohmann::json::const_iterator field = object.find(name);
+
+			return field != object.end() && field->is_string() ? field->get<std::string>() : std::string{};
+		}
+
 		std::string SectionOf(const nlohmann::json& item)
 		{
 			if (!item.is_object())
@@ -939,7 +946,7 @@ namespace Graphite {
 
 				const bool answering = shared.Initialized && shared.Status.State != ServerState::Failed;
 
-				if (answering && shared.ProgressTokens.empty())
+				if (answering && shared.Progress.empty())
 				{
 					Settle(shared);
 					shared.Status.Percent = kNoPercent;
@@ -1363,19 +1370,26 @@ namespace Graphite {
 		const nlohmann::json::const_iterator token = params.find("token");
 		const nlohmann::json tokenId = token != params.end() ? *token : nlohmann::json();
 
+		const std::string title = StringField(*value, "title");
+		const std::string message = StringField(*value, "message");
+
 		const std::lock_guard<std::mutex> state(shared.StateMutex);
 
-		std::vector<nlohmann::json>& running = shared.ProgressTokens;
+		std::vector<Shared::RunningProgress>& running = shared.Progress;
+
+		const auto isThisToken = [&tokenId](const Shared::RunningProgress& progress) { return progress.Token == tokenId; };
+		const std::vector<Shared::RunningProgress>::iterator found = std::find_if(running.begin(), running.end(), isThisToken);
 
 		if (stage == "begin")
 		{
-			if (std::find(running.begin(), running.end(), tokenId) == running.end())
+			if (found == running.end())
 			{
-				running.push_back(tokenId);
+				running.push_back(Shared::RunningProgress{.Token = tokenId, .Title = title, .Message = message});
 			}
 
 			shared.Status.State = ServerState::Indexing;
 			shared.Status.Percent = percent < 0 ? 0 : percent;
+			shared.Status.Activity = ActivityOf(running);
 			return;
 		}
 
@@ -1386,12 +1400,19 @@ namespace Graphite {
 				shared.Status.Percent = percent;
 			}
 
+			if (found != running.end() && !message.empty())
+			{
+				found->Message = message;
+			}
+
+			shared.Status.Activity = ActivityOf(running);
 			return;
 		}
 
 		if (stage == "end")
 		{
-			std::erase(running, tokenId);
+			std::erase_if(running, isThisToken);
+			shared.Status.Activity = ActivityOf(running);
 
 			if (!running.empty())
 			{
@@ -1401,5 +1422,22 @@ namespace Graphite {
 			Settle(shared);
 			shared.Status.Percent = kNoPercent;
 		}
+	}
+
+	std::string LspClient::ActivityOf(const std::vector<Shared::RunningProgress>& running)
+	{
+		if (running.empty())
+		{
+			return {};
+		}
+
+		const Shared::RunningProgress& latest = running.back();
+
+		if (latest.Message.empty())
+		{
+			return latest.Title;
+		}
+
+		return latest.Title.empty() ? latest.Message : latest.Title + ": " + latest.Message;
 	}
 }
