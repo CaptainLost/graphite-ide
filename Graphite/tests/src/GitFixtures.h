@@ -4,13 +4,75 @@
 #include "Core/Git/Oid.h"
 #include "Core/Git/Status.h"
 #include "Git/GitModel.h"
+#include "Git/GitPort.h"
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
+
+// A repository with nothing in it: every query answers empty and every write succeeds, for tests
+// that need a GitModel but none of its answers.
+class EmptyGitPort final : public Graphite::GitPort
+{
+public:
+	using Paths = std::vector<std::filesystem::path>;
+
+	Core::Result<Core::WorkingTreeStatus> QueryStatus() override { return Core::WorkingTreeStatus{}; }
+	Core::Result<Core::WorkingTreeStatus> QueryUntrackedIn(const std::filesystem::path&) override { return Core::WorkingTreeStatus{}; }
+	Core::Result<std::filesystem::path> GetWorkingDirectory() override { return std::filesystem::path{"C:/repo"}; }
+
+	Core::Result<std::vector<Core::Branch>> QueryBranches() override { return std::vector<Core::Branch>{}; }
+	Core::Result<std::vector<Core::TipAuthors>> QueryOwnAuthors(const Core::OwnAuthorsRequest&) override { return std::vector<Core::TipAuthors>{}; }
+	Core::Result<std::optional<std::string>> ReadUserEmail() override { return std::optional<std::string>{}; }
+	Core::Result<Core::HeadState> QueryHead() override { return Core::HeadState{}; }
+	Core::Result<Core::LogPage> QueryLog(const Core::LogRequest&) override { return Core::LogPage{}; }
+
+	Core::Result<Graphite::CommitCount> CountCommits(const std::optional<std::string>&, const std::optional<Graphite::CommitCount>&) override
+	{
+		return Graphite::CommitCount{};
+	}
+
+	Core::Result<Core::Diff> QueryDiff(const Core::DiffRequest&) override { return Core::Diff{}; }
+
+	Core::Result<Graphite::FileTexts> ReadFileTexts(const Core::Oid&, const std::filesystem::path&, const std::filesystem::path&) override
+	{
+		return Graphite::FileTexts{};
+	}
+
+	Core::Result<Graphite::FileTexts> ReadWorkingTreeTexts(Core::DiffTarget, const std::filesystem::path&, const std::filesystem::path&) override
+	{
+		return Graphite::FileTexts{};
+	}
+
+	Core::Result<void> Stage(const Paths&) override { return Core::Result<void>::Ok(); }
+	Core::Result<void> Unstage(const Paths&) override { return Core::Result<void>::Ok(); }
+	Core::Result<void> DiscardWorkTree(const Paths&) override { return Core::Result<void>::Ok(); }
+	Core::Result<void> DeleteUntracked(const Paths&) override { return Core::Result<void>::Ok(); }
+	Core::Result<Core::Oid> Commit(const Core::CommitRequest&) override { return Core::Oid{}; }
+
+	Core::Result<void> CreateBranch(const std::string&, const Core::Oid&) override { return Core::Result<void>::Ok(); }
+	Core::Result<void> RenameBranch(const std::string&, const std::string&) override { return Core::Result<void>::Ok(); }
+	Core::Result<std::size_t> CountUnmergedCommits(const std::string&) override { return std::size_t{0}; }
+	Core::Result<void> DeleteBranch(const std::string&) override { return Core::Result<void>::Ok(); }
+
+	Core::Result<bool> StashSave(const std::string&, Core::UntrackedFiles) override { return false; }
+	Core::Result<std::vector<Core::StashEntry>> QueryStashes() override { return std::vector<Core::StashEntry>{}; }
+	Core::Result<void> StashApply(const Core::Oid&) override { return Core::Result<void>::Ok(); }
+	Core::Result<void> StashPop(const Core::Oid&) override { return Core::Result<void>::Ok(); }
+	Core::Result<void> StashDrop(const Core::Oid&) override { return Core::Result<void>::Ok(); }
+
+	Core::Result<Core::CheckoutPlan> PlanCheckout(const Core::CheckoutTarget&) override { return Core::CheckoutPlan{}; }
+	Core::CheckoutOutcome Checkout(const Core::CheckoutTarget&) override { return Core::CheckoutOutcome{}; }
+	Core::Result<void> DiscardAll(Core::UntrackedFiles) override { return Core::Result<void>::Ok(); }
+
+	Core::Result<void> Init() override { return Core::Result<void>::Ok(); }
+};
 
 inline Core::Oid OidWithFirstByte(std::uint8_t firstByte)
 {

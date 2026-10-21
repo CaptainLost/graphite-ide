@@ -200,10 +200,7 @@ namespace Graphite {
 			}
 		}
 
-		constexpr bool fresh = true;
-		constexpr bool focus = true;
-
-		m_Open.push_back(Entry{diff, DiffView{}, fresh, focus});
+		m_Open.push_back(Entry{.Diff = diff, .Window = {.Fresh = true, .Focus = true}});
 	}
 
 	bool DiffWindows::IsOpen(const OpenDiff& diff) const

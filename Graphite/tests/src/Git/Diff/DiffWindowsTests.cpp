@@ -4,8 +4,13 @@
 #include "UI/FileIcons.h"
 
 #include "GitFixtures.h"
+#include "ImGuiFrames.h"
 
 #include "Core/Git/Status.h"
+#include "Core/ImGui/TabCloseRequests.h"
+
+#include <imgui.h>
+#include <imgui_internal.h>
 
 #include <string>
 
@@ -212,4 +217,50 @@ TEST_CASE("An empty working-tree diff says which side is empty, and for which fi
 TEST_CASE("An empty commit diff still reports a file missing from that commit")
 {
 	CHECK(Graphite::EmptyDiffMessage(Diff(1, "a.txt")) == "That file is not in this diff.");
+}
+
+namespace {
+
+	constexpr const char* kPanelInFront = "Git";
+
+	bool IsFocused(const std::string& name)
+	{
+		const ImGuiWindow* focused = ImGui::GetCurrentContext()->NavWindow;
+		return focused != nullptr && std::string{focused->Name} == name;
+	}
+}
+
+TEST_CASE("A diff opened while another window has the focus takes the focus as it appears")
+{
+	ImGuiFrames frames;
+	EmptyGitPort port;
+	Graphite::GitModel model(port, RunJobsInline());
+	const Graphite::GitPalette palette;
+	const Graphite::SyntaxPalette syntax;
+	Core::TabCloseRequests closeRequests;
+	Graphite::DiffWindows windows;
+
+	constexpr ImU32 kNoSelectionColour = 0;
+	constexpr bool kNoWordWrap = false;
+	constexpr unsigned int kNoCentreNode = 0;
+
+	frames.Next([] {
+		ImGui::SetNextWindowFocus();
+		ImGui::Begin(kPanelInFront);
+		ImGui::End();
+	});
+	REQUIRE(IsFocused(kPanelInFront));
+
+	const Graphite::OpenDiff unstaged = WorkingDiff(Core::DiffTarget::WorkTreeToIndex, "a.txt");
+	windows.Open(unstaged);
+
+	frames.Next([&] {
+		ImGui::Begin(kPanelInFront);
+		ImGui::End();
+
+		windows.Render(model, palette, syntax, kNoSelectionColour, kNoWordWrap, kNoCentreNode, closeRequests);
+	});
+	closeRequests.EndFrame();
+
+	CHECK(IsFocused(Graphite::DiffWindowName(unstaged)));
 }
