@@ -39,6 +39,7 @@
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/Scrollbar.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Platform/Clipboard.h"
 #include "Core/Text/Caret.h"
@@ -2362,8 +2363,7 @@ namespace Graphite {
 				return std::nullopt;
 			}
 
-			track.Inset = IM_TRUNC(ImMin(ImGui::GetStyle().ScrollbarPadding,
-										 ImMin(track.Bar.GetWidth(), track.Bar.GetHeight()) * kHalf));
+			track.Inset = Core::ScrollbarGrabInset(ImGui::GetStyle().ScrollbarPadding, track.Bar.GetSize());
 			track.Top = track.Bar.Min.y + track.Inset;
 			track.Height = track.Bar.GetHeight() - track.Inset * kBothTrackEdges;
 			track.Content = std::max(window->ContentSize.y + window->WindowPadding.y * kBothTrackEdges,

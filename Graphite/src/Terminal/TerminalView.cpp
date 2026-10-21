@@ -11,6 +11,7 @@
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiKeys.h"
+#include "Core/ImGui/Scrollbar.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Terminal/KeyEncoding.h"
 #include "Core/Text/Utf8.h"
@@ -448,7 +449,13 @@ namespace Graphite {
 			return;
 		}
 
-		const float trackHeight = trackMax.y - trackMin.y;
+		// The thumb runs inset from the bar as ImGui's own grabs do, so it is as thin as every other scrollbar's.
+		const float inset = Core::ScrollbarGrabInset(ImGui::GetStyle().ScrollbarPadding,
+													 ImVec2(trackMax.x - trackMin.x, trackMax.y - trackMin.y));
+		const ImVec2 railMin(trackMin.x + inset, trackMin.y + inset);
+		const ImVec2 railMax(trackMax.x - inset, trackMax.y - inset);
+
+		const float trackHeight = railMax.y - railMin.y;
 		const float minimumThumbHeight = ImGui::GetStyle().GrabMinSize;
 		const ImVec2 mouse = ImGui::GetMousePos();
 
@@ -462,7 +469,7 @@ namespace Graphite {
 		{
 			ImGui::SetWindowFocus();
 
-			const float thumbTop = trackMin.y + thumb.Top;
+			const float thumbTop = railMin.y + thumb.Top;
 			const bool pressedOnThumb = mouse.y >= thumbTop && mouse.y < thumbTop + thumb.Height;
 
 			m_ScrollbarGrab = pressedOnThumb ? mouse.y - thumbTop : thumb.Height * kHalf;
@@ -477,7 +484,7 @@ namespace Graphite {
 			else
 			{
 				m_ScrollOffset = TerminalScrollOffsetForThumbTop(
-					mouse.y - trackMin.y - m_ScrollbarGrab, scrollback, trackHeight, thumb.Height);
+					mouse.y - railMin.y - m_ScrollbarGrab, scrollback, trackHeight, thumb.Height);
 
 				thumb = ComputeTerminalScrollbarThumb(m_ScrollOffset, rows, scrollback, trackHeight,
 													  minimumThumbHeight);
@@ -485,15 +492,15 @@ namespace Graphite {
 		}
 
 		const bool dragging = IsScrollbarGrabbed();
-		const bool overThumb = overTrack && mouse.y >= trackMin.y + thumb.Top &&
-							   mouse.y < trackMin.y + thumb.Top + thumb.Height;
+		const bool overThumb = overTrack && mouse.y >= railMin.y + thumb.Top &&
+							   mouse.y < railMin.y + thumb.Top + thumb.Height;
 
 		ImDrawList& drawList = *ImGui::GetWindowDrawList();
 
 		drawList.AddRectFilled(trackMin, trackMax, ImGui::GetColorU32(ImGuiCol_ScrollbarBg));
 		drawList.AddRectFilled(
-			ImVec2(trackMin.x, trackMin.y + thumb.Top),
-			ImVec2(trackMax.x, trackMin.y + thumb.Top + thumb.Height),
+			ImVec2(railMin.x, railMin.y + thumb.Top),
+			ImVec2(railMax.x, railMin.y + thumb.Top + thumb.Height),
 			ImGui::GetColorU32(dragging	   ? ImGuiCol_ScrollbarGrabActive
 							   : overThumb ? ImGuiCol_ScrollbarGrabHovered
 										   : ImGuiCol_ScrollbarGrab),
