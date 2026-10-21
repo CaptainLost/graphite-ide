@@ -311,6 +311,18 @@ namespace Graphite {
 		return rows;
 	}
 
+	void LensModel::ForgetFailed()
+	{
+		for (Entry& entry : m_Entries)
+		{
+			if (entry.LensValue.CountFailed)
+			{
+				entry.Asked = false;
+				entry.LensValue.CountFailed = false;
+			}
+		}
+	}
+
 	void LensModel::ForgetAsked()
 	{
 		for (Entry& entry : m_Entries)

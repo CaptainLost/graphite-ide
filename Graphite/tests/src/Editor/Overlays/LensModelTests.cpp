@@ -387,3 +387,20 @@ TEST_CASE("A count that arrives after a failure is known and no longer failed")
 	CHECK(model.LensAt(1)->CountKnown);
 	CHECK_FALSE(model.LensAt(1)->CountFailed);
 }
+
+TEST_CASE("Forgetting the failed counts offers them again and leaves the counts still asked alone")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({Function("Draw", 1), Function("Update", 3)}, rows, buffer, 4);
+	REQUIRE(model.TakeRowsToAsk(0, 4).size() == 2);
+
+	model.SetCountFailed(1);
+	model.ForgetFailed();
+
+	CHECK_FALSE(model.LensAt(1)->CountFailed);
+	CHECK(model.TakeRowsToAsk(0, 4) == std::vector<std::size_t>{1});
+}

@@ -49,8 +49,8 @@ namespace Graphite {
 		// WARNING: A failed count is not asked again until ForgetAsked, which the owner calls when the server or
 		// the document changes, so a server that cannot count is not asked on every frame.
 		void SetCountFailed(std::size_t documentRow);
+		void ForgetFailed();
 
-		// What a lens with no count says meanwhile; see LensWaitingText.
 		void SetWaitingText(std::string text) { m_WaitingText = std::move(text); }
 		const std::string& GetWaitingText() const { return m_WaitingText; }
 

@@ -1446,6 +1446,17 @@ namespace Graphite {
 			state.Model.ForgetAsked();
 		}
 
+		// WARNING: A count that failed is not asked again on its own, so one that failed while the server was busy
+		// would say unavailable until the next edit; the server becoming able to count again is when to retry it.
+		const bool serverCanCount = m_Router.CanCountReferences(item.Path);
+
+		if (serverCanCount && !state.ServerCouldCount)
+		{
+			state.Model.ForgetFailed();
+		}
+
+		state.ServerCouldCount = serverCanCount;
+
 		if (m_DocumentStates.SendChangeIfMoved(item.Path, *item.Document))
 		{
 			DropInFlightCounts(item.Path, state);

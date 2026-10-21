@@ -175,6 +175,8 @@ namespace Graphite {
 			bool WasModified = false;
 
 			bool NeedsRebuild = false;
+
+			bool ServerCouldCount = false;
 		};
 
 		struct DocumentState;
