@@ -10,7 +10,6 @@ namespace {
 	constexpr std::chrono::minutes kTwoHoursEast{120};
 	constexpr std::chrono::minutes kUtc{0};
 
-	// 2026-10-21 16:01:03 UTC.
 	const std::chrono::system_clock::time_point kStartedAt =
 		std::chrono::sys_days{std::chrono::year{2026} / 10 / 21} + std::chrono::hours{16} + std::chrono::minutes{1} +
 		std::chrono::seconds{3};
@@ -102,4 +101,12 @@ TEST_CASE("A long stretch in one state is said in hours and minutes")
 	report.InStateFor = std::chrono::seconds{3900};
 
 	CHECK(Says(Graphite::ServerReportText(report, kUtc), "Ready for 1 h 5 min"));
+}
+
+TEST_CASE("A server that stopped mid-index is not said to be working on its index")
+{
+	Graphite::ServerReport report = IndexingReport();
+	report.Status.State = Graphite::ServerState::Failed;
+
+	CHECK_FALSE(Says(Graphite::ServerReportText(report, kUtc), "Working on"));
 }

@@ -100,7 +100,8 @@ namespace Graphite {
 	{
 		std::vector<std::string> lines;
 
-		if (!report.Status.Activity.empty())
+		// WARNING: A client that fails mid-index keeps its last progress, so only an indexing server is working on it.
+		if (report.Status.State == ServerState::Indexing && !report.Status.Activity.empty())
 		{
 			lines.push_back("Working on: " + report.Status.Activity);
 		}
