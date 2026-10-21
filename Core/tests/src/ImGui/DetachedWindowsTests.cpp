@@ -7,7 +7,6 @@
 
 namespace {
 
-	// Where the system has the window, read by the stubs below as the backend reads it from the OS.
 	struct SystemRect
 	{
 		ImVec2 Pos;
@@ -127,4 +126,33 @@ TEST_CASE("The main window and windows not yet created or minimised are never as
 
 	main.PlatformUserData = nullptr;
 	notCreated.PlatformUserData = nullptr;
+}
+
+TEST_CASE("A window ImGui is dragging is asked for its system size but not its position, so it keeps following the pointer")
+{
+	DetachedScreen screen;
+	screen.System = SystemRect{ImVec2(90.0f, 80.0f), ImVec2(500.0f, 375.0f)};
+
+	ImGuiIO& io = ImGui::GetIO();
+	io.DisplaySize = ImVec2(800.0f, 600.0f);
+	io.DeltaTime = 1.0f / 60.0f;
+	io.Fonts->Build();
+
+	ImGui::NewFrame();
+	ImGui::Begin("Dragged");
+	ImGuiWindow* const dragged = ImGui::GetCurrentWindow();
+	ImGui::End();
+	ImGui::EndFrame();
+
+	ImGuiViewportP* const ownViewport = dragged->Viewport;
+	dragged->Viewport = &screen.Detached;
+	ImGui::GetCurrentContext()->MovingWindow = dragged;
+
+	CHECK(Core::AskDetachedWindowsForTheirSystemRects(screen.PlatformIo));
+
+	CHECK_FALSE(screen.Detached.PlatformRequestMove);
+	CHECK(screen.Detached.PlatformRequestResize);
+
+	ImGui::GetCurrentContext()->MovingWindow = nullptr;
+	dragged->Viewport = ownViewport;
 }

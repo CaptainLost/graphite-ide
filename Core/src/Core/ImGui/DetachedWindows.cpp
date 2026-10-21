@@ -48,10 +48,18 @@ namespace Core {
 		std::vector<ImGuiID> g_PendingMinimizes;
 		std::unordered_map<ImGuiID, ImRect> g_RestoreRects;
 
-		// The backend cuts a position and a size to whole pixels when it hands them to the system.
+		// WARNING: The backend cuts a position and a size to whole pixels when it hands them to the system, so a
+		// fraction of a pixel apart is where ImGui put the window.
 		bool WithinAPixel(ImVec2 system, ImVec2 own)
 		{
 			return std::fabs(system.x - own.x) < kWholePixel && std::fabs(system.y - own.y) < kWholePixel;
+		}
+
+		const ImGuiViewport* ViewportBeingDragged()
+		{
+			const ImGuiWindow* const moving = ImGui::GetCurrentContext()->MovingWindow;
+
+			return moving != nullptr && moving->RootWindowDockTree != nullptr ? moving->RootWindowDockTree->Viewport : nullptr;
 		}
 
 		bool FillsWorkArea(const ImGuiViewportP& viewport, const ImGuiWindow& window)
@@ -354,6 +362,7 @@ namespace Core {
 		}
 
 		const ImGuiViewport* const main = ImGui::GetMainViewport();
+		const ImGuiViewport* const dragged = ViewportBeingDragged();
 		bool askedForAny = false;
 
 		for (ImGuiViewport* const viewport : platformIo.Viewports)
@@ -366,7 +375,9 @@ namespace Core {
 				continue;
 			}
 
-			if (!WithinAPixel(platformIo.Platform_GetWindowPos(viewport), viewport->Pos))
+			// WARNING: ImGui sets a dragged window's position from the pointer every frame and holds back its own
+			// move while a request stands, so asking here would leave the system window behind the pointer.
+			if (viewport != dragged && !WithinAPixel(platformIo.Platform_GetWindowPos(viewport), viewport->Pos))
 			{
 				detached.PlatformRequestMove = true;
 				askedForAny = true;
