@@ -2,6 +2,7 @@
 
 #include "Core/ImGui/ImGuiRenderer.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/DetachedWindows.h"
@@ -299,6 +300,12 @@ namespace Core {
 		{
 			GLFWwindow* previousContext = glfwGetCurrentContext();
 			ImGui::UpdatePlatformWindows();
+
+			if (AskDetachedWindowsForTheirSystemRects(ImGui::GetPlatformIO()))
+			{
+				Redraw::Request();
+			}
+
 			ImGui::RenderPlatformWindowsDefault();
 			glfwMakeContextCurrent(previousContext);
 		}

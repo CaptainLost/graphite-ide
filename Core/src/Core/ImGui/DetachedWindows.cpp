@@ -31,6 +31,7 @@ namespace Core {
 		constexpr float kFullyHovered = 1.0f;
 		constexpr float kIconGreyShareOfDisabled = 0.21f;
 		constexpr int kButtonCount = 3;
+		constexpr float kWholePixel = 1.0f;
 		constexpr ImU32 kCloseHoveredFill = IM_COL32(196, 43, 28, 255);
 		constexpr ImU32 kCloseHoveredGlyph = IM_COL32(255, 255, 255, 255);
 
@@ -46,6 +47,12 @@ namespace Core {
 
 		std::vector<ImGuiID> g_PendingMinimizes;
 		std::unordered_map<ImGuiID, ImRect> g_RestoreRects;
+
+		// The backend cuts a position and a size to whole pixels when it hands them to the system.
+		bool WithinAPixel(ImVec2 system, ImVec2 own)
+		{
+			return std::fabs(system.x - own.x) < kWholePixel && std::fabs(system.y - own.y) < kWholePixel;
+		}
 
 		bool FillsWorkArea(const ImGuiViewportP& viewport, const ImGuiWindow& window)
 		{
@@ -337,6 +344,42 @@ namespace Core {
 				DrawButtonsOver(*viewport, *bar);
 			}
 		}
+	}
+
+	bool AskDetachedWindowsForTheirSystemRects(ImGuiPlatformIO& platformIo)
+	{
+		if (platformIo.Platform_GetWindowPos == nullptr || platformIo.Platform_GetWindowSize == nullptr)
+		{
+			return false;
+		}
+
+		const ImGuiViewport* const main = ImGui::GetMainViewport();
+		bool askedForAny = false;
+
+		for (ImGuiViewport* const viewport : platformIo.Viewports)
+		{
+			ImGuiViewportP& detached = *static_cast<ImGuiViewportP*>(viewport);
+			const bool isMinimized = (viewport->Flags & ImGuiViewportFlags_IsMinimized) != 0;
+
+			if (viewport == main || !detached.PlatformWindowCreated || isMinimized)
+			{
+				continue;
+			}
+
+			if (!WithinAPixel(platformIo.Platform_GetWindowPos(viewport), viewport->Pos))
+			{
+				detached.PlatformRequestMove = true;
+				askedForAny = true;
+			}
+
+			if (!WithinAPixel(platformIo.Platform_GetWindowSize(viewport), viewport->Size))
+			{
+				detached.PlatformRequestResize = true;
+				askedForAny = true;
+			}
+		}
+
+		return askedForAny;
 	}
 
 	void ApplyPendingDetachedWindowActions()
