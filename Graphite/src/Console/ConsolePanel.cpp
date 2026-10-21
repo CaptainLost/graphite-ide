@@ -10,6 +10,7 @@
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Text/Columns.h"
 
+#include "Theme/Palettes.h"
 #include "UI/ClipboardCopy.h"
 #include "UI/Lists/FilterField.h"
 #include "UI/TickBox.h"
@@ -27,13 +28,6 @@
 namespace Graphite {
 
 	namespace {
-		constexpr ImVec4 kTraceColour{0.55f, 0.58f, 0.62f, 1.0f};
-		constexpr ImVec4 kInfoColour{0.84f, 0.86f, 0.89f, 1.0f};
-		constexpr ImVec4 kWarnColour{0.95f, 0.75f, 0.30f, 1.0f};
-		constexpr ImVec4 kErrorColour{0.94f, 0.42f, 0.42f, 1.0f};
-		constexpr ImVec4 kCriticalColour{1.0f, 0.25f, 0.55f, 1.0f};
-		constexpr ImVec4 kUnknownLevelColour{1.0f, 1.0f, 1.0f, 1.0f};
-
 		constexpr float kRowSpacing = 1.0f;
 		constexpr float kRowItemSpacingX = 4.0f;
 		constexpr float kFilterBoxWidth = 240.0f;
@@ -41,23 +35,14 @@ namespace Graphite {
 		constexpr float kScrollToBottom = 1.0f;
 		constexpr ImVec2 kFillAvailableSpace{0.0f, 0.0f};
 
-		ImVec4 ColourOfLogLevel(Core::LogLevel level)
+		ConsoleLevelColours ReadConsoleLevelColours(const ResolvedScheme& scheme)
 		{
-			switch (level)
-			{
-			case Core::LogLevel::Trace:
-				return kTraceColour;
-			case Core::LogLevel::Info:
-				return kInfoColour;
-			case Core::LogLevel::Warn:
-				return kWarnColour;
-			case Core::LogLevel::Error:
-				return kErrorColour;
-			case Core::LogLevel::Critical:
-				return kCriticalColour;
-			}
+			const EditorPalette palette = ReadEditorPalette(scheme);
 
-			return kUnknownLevelColour;
+			return ConsoleLevelColours{.Text = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyleColorVec4(ImGuiCol_Text)),
+									   .Quiet = ImGui::ColorConvertFloat4ToU32(ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled)),
+									   .Warning = palette.DiagnosticWarning,
+									   .Error = palette.DiagnosticError};
 		}
 
 		std::string JoinEntries(const std::vector<Core::LogEntry>& entries)
@@ -76,9 +61,9 @@ namespace Graphite {
 		}
 	}
 
-	ConsolePanel::ConsolePanel(Core::Ref<Core::RingBufferSink> sink, Core::EventBus& events)
+	ConsolePanel::ConsolePanel(Core::Ref<Core::RingBufferSink> sink, Core::EventBus& events, const ActiveScheme& scheme)
 		: Core::Panel("console", "Console", "tools", ICON_LC_MESSAGE_SQUARE_TEXT), m_Sink(std::move(sink)),
-		  m_Events(events)
+		  m_Events(events), m_Scheme(scheme)
 	{
 	}
 
@@ -196,6 +181,7 @@ namespace Graphite {
 
 		ImDrawList* const drawList = ImGui::GetWindowDrawList();
 		const float lineHeight = ImGui::GetTextLineHeight();
+		const ConsoleLevelColours colours = ReadConsoleLevelColours(m_Scheme.Get());
 
 		for (std::size_t row = 0; row < m_Shown.size(); ++row)
 		{
@@ -213,7 +199,7 @@ namespace Graphite {
 										top, lineHeight);
 			}
 
-			ImGui::PushStyleColor(ImGuiCol_Text, ColourOfLogLevel(entry.Level));
+			ImGui::PushStyleColor(ImGuiCol_Text, ColourOfConsoleLevel(entry.Level, colours));
 			ImGui::TextUnformatted(entry.Message.c_str());
 			ImGui::PopStyleColor();
 		}

@@ -37,4 +37,22 @@ namespace Graphite {
 
 		return std::to_string(shownCount) + " / " + Core::Counted(totalCount, "entry", "entries");
 	}
+
+	ImU32 ColourOfConsoleLevel(Core::LogLevel level, const ConsoleLevelColours& colours)
+	{
+		switch (level)
+		{
+		case Core::LogLevel::Trace:
+			return colours.Quiet;
+		case Core::LogLevel::Info:
+			return colours.Text;
+		case Core::LogLevel::Warn:
+			return colours.Warning;
+		case Core::LogLevel::Error:
+		case Core::LogLevel::Critical:
+			return colours.Error;
+		}
+
+		return colours.Text;
+	}
 }

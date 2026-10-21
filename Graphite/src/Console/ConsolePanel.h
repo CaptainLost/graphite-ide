@@ -10,6 +10,7 @@
 
 #include "Console/ConsoleLevel.h"
 #include "Console/ConsoleLines.h"
+#include "Theme/ActiveScheme.h"
 
 #include <imgui.h>
 
@@ -30,7 +31,7 @@ namespace Graphite {
 	class ConsolePanel final : public Core::Panel
 	{
 	public:
-		ConsolePanel(Core::Ref<Core::RingBufferSink> sink, Core::EventBus& events);
+		ConsolePanel(Core::Ref<Core::RingBufferSink> sink, Core::EventBus& events, const ActiveScheme& scheme);
 
 		void OnImGuiRender() override;
 
@@ -46,6 +47,7 @@ namespace Graphite {
 		std::vector<Core::LogEntry> m_Entries;
 		std::vector<Core::LogEntry> m_Shown;
 		Core::EventBus& m_Events;
+		const ActiveScheme& m_Scheme;
 		Core::TextSelection m_Selection;
 		Core::SelectionGesture m_Gesture;
 		ImGuiTextFilter m_Filter;

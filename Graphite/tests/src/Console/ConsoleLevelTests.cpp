@@ -52,3 +52,24 @@ TEST_CASE("Every level the combo offers has a name and critical is never hidden 
 		CHECK(Graphite::IsShownAtLevel(LogLevel::Critical, minimum));
 	}
 }
+
+namespace {
+
+	const Graphite::ConsoleLevelColours kColours{.Text = IM_COL32(1, 1, 1, 255),
+												 .Quiet = IM_COL32(2, 2, 2, 255),
+												 .Warning = IM_COL32(3, 3, 3, 255),
+												 .Error = IM_COL32(4, 4, 4, 255)};
+}
+
+TEST_CASE("An info entry is drawn in the text colour and a trace entry in the quiet one")
+{
+	CHECK(Graphite::ColourOfConsoleLevel(LogLevel::Info, kColours) == kColours.Text);
+	CHECK(Graphite::ColourOfConsoleLevel(LogLevel::Trace, kColours) == kColours.Quiet);
+}
+
+TEST_CASE("A warning is drawn in the warning colour and an error or critical entry in the error colour")
+{
+	CHECK(Graphite::ColourOfConsoleLevel(LogLevel::Warn, kColours) == kColours.Warning);
+	CHECK(Graphite::ColourOfConsoleLevel(LogLevel::Error, kColours) == kColours.Error);
+	CHECK(Graphite::ColourOfConsoleLevel(LogLevel::Critical, kColours) == kColours.Error);
+}

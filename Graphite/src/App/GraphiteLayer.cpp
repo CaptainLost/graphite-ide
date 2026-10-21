@@ -165,7 +165,7 @@ namespace Graphite {
 											 submitToSharedQueue));
 		m_Explorer = explorer;
 
-		m_Panels.Add(Core::CreateScope<ConsolePanel>(m_Sink, m_Events));
+		m_Panels.Add(Core::CreateScope<ConsolePanel>(m_Sink, m_Events, m_ActiveScheme));
 
 		m_SearchPanel = m_Panels.Add(Core::CreateScope<SearchPanel>(
 			m_Search, m_SearchSettings, m_Workspace, m_Documents, m_ActiveScheme,
