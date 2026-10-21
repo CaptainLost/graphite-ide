@@ -203,6 +203,11 @@ namespace {
 			Counts.push_back(documentRow);
 		}
 
+		void FailCount(const std::filesystem::path&, std::size_t documentRow) override
+		{
+			FailedCounts.push_back(documentRow);
+		}
+
 		bool Offer(const Answer&) override
 		{
 			++Offered;
@@ -217,6 +222,7 @@ namespace {
 		std::vector<std::filesystem::path> Semantic;
 		std::vector<std::filesystem::path> Symbols;
 		std::vector<std::size_t> Counts;
+		std::vector<std::size_t> FailedCounts;
 		std::size_t Offered = 0;
 	};
 
@@ -559,7 +565,7 @@ TEST_CASE("References are counted only by a server that has finished starting an
 	CHECK_FALSE(harness.Router.CanCountReferences(kSource));
 }
 
-TEST_CASE("A count answer is applied to the row it was asked for, and a failed one to none")
+TEST_CASE("A count answer is applied to the row it was asked for, and a failed one is reported for its row")
 {
 	Harness harness;
 
@@ -575,6 +581,7 @@ TEST_CASE("A count answer is applied to the row it was asked for, and a failed o
 
 	REQUIRE(harness.Target.Counts.size() == 1);
 	CHECK(harness.Target.Counts[0] == 3);
+	CHECK(harness.Target.FailedCounts == std::vector<std::size_t>{4});
 }
 
 TEST_CASE("A forgotten document's outstanding answers are applied to nothing")

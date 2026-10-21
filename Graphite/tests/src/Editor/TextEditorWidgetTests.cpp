@@ -466,6 +466,37 @@ TEST_CASE("A lens label is drawn at 0.78 of the editor size and hit across that 
 	CHECK(editor.StackAfter == editor.StackBefore);
 }
 
+TEST_CASE("A lens with no count yet says what it waits for in the lens colour and takes no click")
+{
+	EditorFrames editor("void Draw();\n");
+	editor.Next();
+
+	const ImVec2 lensRowStart = editor.CaretScreenPos();
+
+	Graphite::LensModel lenses;
+	lenses.SetDeclarations({Graphite::Declaration{.Name = "Draw",
+												  .Kind = Graphite::DeclarationKind::Function,
+												  .Line = kFirstLine,
+												  .Column = Graphite::Utf16Column(0)}},
+						   editor.Item.Rows, BufferOf(editor.Item), editor.Item.TabWidth);
+	lenses.SetWaitingText("waiting for clangd to index");
+	editor.View.Lens = &lenses;
+	editor.Next();
+
+	const ImGuiWindow* surface = EditorSurface();
+	REQUIRE(surface != nullptr);
+
+	const std::optional<VerticalExtent> words = VerticalExtentInColourWithin(
+		*surface->DrawList, DarkEditorPalette().Lens,
+		Region{.Left = lensRowStart.x, .Top = lensRowStart.y, .Bottom = lensRowStart.y + kEditorLineHeight});
+	CHECK(words.has_value());
+
+	editor.LensClicked.reset();
+	editor.Click(ImVec2(lensRowStart.x + kIntoTheRow, lensRowStart.y + kEditorLineHeight * kHalf));
+	CHECK_FALSE(editor.LensClicked.has_value());
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
 TEST_CASE("The editor's context menu opens in the interface face")
 {
 	EditorFrames editor("int value = 0;\n");

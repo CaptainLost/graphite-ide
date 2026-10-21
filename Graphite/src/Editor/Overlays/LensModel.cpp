@@ -217,6 +217,18 @@ namespace Graphite {
 		{
 			foundEntry->LensValue.Count = count;
 			foundEntry->LensValue.CountKnown = true;
+			foundEntry->LensValue.CountFailed = false;
+		}
+	}
+
+	void LensModel::SetCountFailed(std::size_t documentRow)
+	{
+		const std::vector<Entry>::iterator foundEntry =
+			std::lower_bound(m_Entries.begin(), m_Entries.end(), documentRow, EntryBeforeRow);
+
+		if (foundEntry != m_Entries.end() && foundEntry->LensValue.DocumentRow == documentRow)
+		{
+			foundEntry->LensValue.CountFailed = true;
 		}
 	}
 
@@ -304,6 +316,7 @@ namespace Graphite {
 		for (Entry& entry : m_Entries)
 		{
 			entry.Asked = false;
+			entry.LensValue.CountFailed = false;
 		}
 	}
 

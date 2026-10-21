@@ -99,6 +99,7 @@ namespace {
 		void ApplySemanticTokens(const std::filesystem::path&, const LanguageServices::Answer&) override {}
 		bool ApplySymbols(const std::filesystem::path&, const LanguageServices::Answer&) override { return true; }
 		void ApplyCount(const std::filesystem::path&, std::size_t, std::size_t) override {}
+		void FailCount(const std::filesystem::path&, std::size_t) override {}
 		bool Offer(const LanguageServices::Answer&) override { return false; }
 	};
 

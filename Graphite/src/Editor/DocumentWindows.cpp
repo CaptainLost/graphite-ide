@@ -5,6 +5,7 @@
 #include "Editor/ActiveTextDocument.h"
 #include "Editor/Breadcrumb.h"
 #include "Editor/Navigation/DefinitionNavigation.h"
+#include "Editor/Overlays/LensWaiting.h"
 #include "Editor/EditorCommands.h"
 #include "Editor/TabColour.h"
 #include "Theme/Palettes.h"
@@ -1461,6 +1462,8 @@ namespace Graphite {
 
 		m_Router.AskSymbolsIfDue(item.Path);
 		AskForVisibleCounts(item, state, frame);
+
+		state.Model.SetWaitingText(LensWaitingText(m_Router.StatusOf(item.Path)));
 	}
 
 	bool DocumentWindows::ApplySymbolAnswer(const std::filesystem::path& path,
@@ -1884,6 +1887,14 @@ namespace Graphite {
 				if (LensState* const lens = m_Windows.FindLens(path))
 				{
 					lens->Model.SetCount(documentRow, count);
+				}
+			}
+
+			void FailCount(const std::filesystem::path& path, std::size_t documentRow) override
+			{
+				if (LensState* const lens = m_Windows.FindLens(path))
+				{
+					lens->Model.SetCountFailed(documentRow);
 				}
 			}
 

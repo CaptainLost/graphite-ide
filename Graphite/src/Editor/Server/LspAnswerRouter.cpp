@@ -189,6 +189,11 @@ namespace Graphite {
 		return currentState == ServerState::Ready || currentState == ServerState::ProjectIncomplete;
 	}
 
+	ServerStatus LspAnswerRouter::StatusOf(const std::filesystem::path& path)
+	{
+		return m_Server.StatusFor(path, LanguageOfPath(path));
+	}
+
 	void LspAnswerRouter::AskCount(const std::filesystem::path& path, std::size_t documentRow,
 								   const FilePosition& where)
 	{
@@ -456,6 +461,7 @@ namespace Graphite {
 
 			if (answer.Failed)
 			{
+				target.FailCount(pending.Path, pending.DocumentRow);
 				continue;
 			}
 

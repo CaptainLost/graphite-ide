@@ -348,3 +348,42 @@ TEST_CASE("A lens whose declaration moved to another row is asked about again, a
 
 	CHECK(model.TakeRowsToAsk(0, 4) == std::vector<std::size_t>{2});
 }
+
+TEST_CASE("A lens whose count could not be had says so and is asked again only once the asking is forgotten")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({Function("Draw", 1)}, rows, buffer, 4);
+	REQUIRE(model.TakeRowsToAsk(0, 4) == std::vector<std::size_t>{1});
+
+	model.SetCountFailed(1);
+
+	REQUIRE(model.LensAt(1) != nullptr);
+	CHECK(model.LensAt(1)->CountFailed);
+	CHECK_FALSE(model.LensAt(1)->CountKnown);
+	CHECK(model.TakeRowsToAsk(0, 4).empty());
+
+	model.ForgetAsked();
+
+	CHECK_FALSE(model.LensAt(1)->CountFailed);
+	CHECK(model.TakeRowsToAsk(0, 4) == std::vector<std::size_t>{1});
+}
+
+TEST_CASE("A count that arrives after a failure is known and no longer failed")
+{
+	const Core::TextBuffer buffer{"a\nb\nc\nd\n"};
+	Core::RowMap rows;
+	rows.Rebuild(buffer, Core::RowMap::kNoWrap, 4);
+
+	Graphite::LensModel model;
+	model.SetDeclarations({Function("Draw", 1)}, rows, buffer, 4);
+	model.SetCountFailed(1);
+
+	model.SetCount(1, 5);
+
+	CHECK(model.LensAt(1)->CountKnown);
+	CHECK_FALSE(model.LensAt(1)->CountFailed);
+}

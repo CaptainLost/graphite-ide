@@ -71,6 +71,8 @@ namespace Graphite {
 		virtual void ApplyCount(const std::filesystem::path& path, std::size_t documentRow,
 								std::size_t count) = 0;
 
+		virtual void FailCount(const std::filesystem::path& path, std::size_t documentRow) = 0;
+
 		virtual bool Offer(const LanguageServices::Answer& answer) = 0;
 	};
 
@@ -98,6 +100,8 @@ namespace Graphite {
 		void AskSemanticTokens(const std::filesystem::path& path);
 
 		bool CanCountReferences(const std::filesystem::path& path);
+
+		ServerStatus StatusOf(const std::filesystem::path& path);
 
 		void AskCount(const std::filesystem::path& path, std::size_t documentRow,
 					  const FilePosition& where);

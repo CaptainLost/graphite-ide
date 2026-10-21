@@ -14,6 +14,7 @@
 #include "Editor/Hover/HoverToken.h"
 #include "Editor/Hover/HoverTooltip.h"
 #include "Editor/Overlays/LensModel.h"
+#include "Editor/Overlays/LensWaiting.h"
 #include "Editor/Find/MatchColumns.h"
 #include "Theme/Palettes.h"
 #include "Editor/Overlays/SemanticOverlay.h"
@@ -334,6 +335,22 @@ namespace Graphite {
 			const bool singular = lens.Count == 1;
 
 			return std::to_string(lens.Count) + (singular ? " reference" : " references");
+		}
+
+		// Only a count takes a click; the other words only say why there is none yet.
+		std::string LensRowText(const Lens& lens, std::string_view waiting)
+		{
+			if (lens.CountKnown)
+			{
+				return LensLabelOf(lens);
+			}
+
+			if (lens.CountFailed)
+			{
+				return std::string{kLensCountUnavailable};
+			}
+
+			return std::string{waiting};
 		}
 
 		// WARNING: There is no ScrollX term here. textOriginX derives from the origin, which
@@ -1589,7 +1606,7 @@ namespace Graphite {
 			return boundary > selectionFrom && boundary < selectionTo;
 		}
 
-		void DrawLensRow(const RowCanvas& canvas, const Lens* lens, float y, bool selected,
+		void DrawLensRow(const RowCanvas& canvas, const Lens* lens, std::string_view waiting, float y, bool selected,
 						 bool hovered)
 		{
 			if (selected)
@@ -1600,9 +1617,10 @@ namespace Graphite {
 										   canvas.Palette.Selection);
 			}
 
-			if (lens != nullptr && lens->CountKnown)
+			const std::string text = lens != nullptr ? LensRowText(*lens, waiting) : std::string{};
+
+			if (!text.empty())
 			{
-				const std::string text = LensLabelOf(*lens);
 				const float x = LensLabelLeft(*lens, canvas.TextOriginX, canvas.Metrics);
 				const ImU32 colour = hovered ? canvas.Palette.Text : canvas.Palette.Lens;
 
@@ -2748,7 +2766,10 @@ namespace Graphite {
 						const Lens* const lens =
 							lensModel != nullptr ? lensModel->LensAt(screenRow.DocumentRow) : nullptr;
 
-						DrawLensRow(canvas, lens, y,
+						const std::string_view waiting =
+							lensModel != nullptr ? std::string_view{lensModel->GetWaitingText()} : std::string_view{};
+
+						DrawLensRow(canvas, lens, waiting, y,
 									SelectionPassesThroughLens(buffer, item, screenRow.DocumentRow),
 									hoveredLens == screenRow.DocumentRow);
 

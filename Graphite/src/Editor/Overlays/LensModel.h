@@ -26,6 +26,7 @@ namespace Graphite {
 
 		std::size_t Count = 0;
 		bool CountKnown = false;
+		bool CountFailed = false;
 	};
 
 	struct KnownCount
@@ -44,6 +45,14 @@ namespace Graphite {
 							 const Core::TextBuffer& buffer, std::size_t tabWidth);
 
 		void SetCount(std::size_t documentRow, std::size_t count);
+
+		// WARNING: A failed count is not asked again until ForgetAsked, which the owner calls when the server or
+		// the document changes, so a server that cannot count is not asked on every frame.
+		void SetCountFailed(std::size_t documentRow);
+
+		// What a lens with no count says meanwhile; see LensWaitingText.
+		void SetWaitingText(std::string text) { m_WaitingText = std::move(text); }
+		const std::string& GetWaitingText() const { return m_WaitingText; }
 
 		void OnLinesChanged(std::size_t fromLine, std::ptrdiff_t delta, const Core::RowMap& rows);
 
@@ -80,5 +89,7 @@ namespace Graphite {
 		LensRows m_Rows;
 
 		std::vector<KnownCount> m_Seeded;
+
+		std::string m_WaitingText;
 	};
 }
