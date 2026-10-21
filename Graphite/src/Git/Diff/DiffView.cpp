@@ -934,7 +934,8 @@ namespace Graphite {
 			chosen.WordWrap = !m_Options.WordWrap;
 		}
 
-		// The choice is drawn from this frame on, so the rows below the toolbar do not lag it by a frame.
+		// WARNING: The owner's options come back only next frame, so the rows below are drawn with the choice now or
+		// they show the old layout for a frame.
 		if (chosen != m_Options)
 		{
 			m_Options = chosen;

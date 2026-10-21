@@ -61,7 +61,6 @@ namespace {
 			ImGui::EndFrame();
 		}
 
-		// The rightmost point drawn in `colour`, read before the next frame clears the list.
 		std::optional<float> RightmostInColour(ImU32 colour) const
 		{
 			float right = -FLT_MAX;
@@ -95,12 +94,10 @@ TEST_CASE("A slider's knob is ringed in the filled track's colour, so it shows o
 
 	frames.Next(value);
 
-	// At the smallest value the filled track ends at the knob's centre, so anything in its colour
-	// further right than that is the knob's edge.
 	const float knobRadius = Core::kSliderKnobDiameter * kHalf;
-	const float knobCentreX = frames.GetItemTopLeft().x + knobRadius;
-	const std::optional<float> rightmost = frames.RightmostInColour(ImGui::GetColorU32(kLightAccent));
+	const float filledTrackEndAtSmallest = frames.GetItemTopLeft().x + knobRadius;
+	const std::optional<float> rightmostInAccent = frames.RightmostInColour(ImGui::GetColorU32(kLightAccent));
 
-	REQUIRE(rightmost.has_value());
-	CHECK(*rightmost > knobCentreX + knobRadius * kHalf);
+	REQUIRE(rightmostInAccent.has_value());
+	CHECK(*rightmostInAccent > filledTrackEndAtSmallest + knobRadius * kHalf);
 }

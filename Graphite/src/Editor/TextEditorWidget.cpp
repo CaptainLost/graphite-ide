@@ -337,7 +337,6 @@ namespace Graphite {
 			return std::to_string(lens.Count) + (singular ? " reference" : " references");
 		}
 
-		// Only a count takes a click; the other words only say why there is none yet.
 		std::string LensRowText(const Lens& lens, std::string_view waiting)
 		{
 			if (lens.CountKnown)

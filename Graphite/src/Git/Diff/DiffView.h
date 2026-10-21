@@ -115,7 +115,6 @@ namespace Graphite {
 		void RebuildLineCache(const Core::Ref<const FileTexts>& texts);
 		void ClearLineCache();
 
-		// The options this frame is drawn with: those Render was given, or the toolbar's choice from the moment it is made.
 		DiffViewOptions m_Options;
 
 		struct Layout

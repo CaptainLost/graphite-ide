@@ -180,8 +180,6 @@ namespace Graphite {
 		std::string Loading;
 		LanguageId Language = LanguageId::PlainText;
 
-		// The title and latest message of the progress the server began last and has not ended, as
-		// "Background index: 120/450"; empty when it reports none.
 		std::string Activity;
 	};
 
@@ -194,8 +192,6 @@ namespace Graphite {
 
 	inline constexpr std::size_t kServerHistoryLength = 20;
 
-	// What the status bar's tooltip tells about one server beyond its status: where it runs, how busy it is, and
-	// what happened to it lately, oldest first.
 	struct ServerReport
 	{
 		ServerStatus Status;

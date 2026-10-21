@@ -449,7 +449,6 @@ namespace Graphite {
 			return;
 		}
 
-		// The thumb runs inset from the bar as ImGui's own grabs do, so it is as thin as every other scrollbar's.
 		const float inset = Core::ScrollbarGrabInset(ImGui::GetStyle().ScrollbarPadding,
 													 ImVec2(trackMax.x - trackMin.x, trackMax.y - trackMin.y));
 		const ImVec2 railMin(trackMin.x + inset, trackMin.y + inset);

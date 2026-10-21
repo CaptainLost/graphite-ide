@@ -22,7 +22,6 @@ namespace Graphite {
 
 	std::string ConsoleEntryCount(std::size_t shownCount, std::size_t totalCount);
 
-	// Read from the scheme in use each frame, so an entry stays legible on a light scheme as on a dark one.
 	struct ConsoleLevelColours
 	{
 		ImU32 Text = 0;

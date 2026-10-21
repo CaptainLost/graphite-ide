@@ -1377,12 +1377,11 @@ namespace Graphite {
 
 		std::vector<Shared::RunningProgress>& running = shared.Progress;
 
-		const auto isThisToken = [&tokenId](const Shared::RunningProgress& progress) { return progress.Token == tokenId; };
-		const std::vector<Shared::RunningProgress>::iterator found = std::find_if(running.begin(), running.end(), isThisToken);
+		Shared::RunningProgress* const found = FindProgress(running, tokenId);
 
 		if (stage == "begin")
 		{
-			if (found == running.end())
+			if (found == nullptr)
 			{
 				running.push_back(Shared::RunningProgress{.Token = tokenId, .Title = title, .Message = message});
 			}
@@ -1400,7 +1399,7 @@ namespace Graphite {
 				shared.Status.Percent = percent;
 			}
 
-			if (found != running.end() && !message.empty())
+			if (found != nullptr && !message.empty())
 			{
 				found->Message = message;
 			}
@@ -1411,7 +1410,7 @@ namespace Graphite {
 
 		if (stage == "end")
 		{
-			std::erase_if(running, isThisToken);
+			std::erase_if(running, [&tokenId](const Shared::RunningProgress& progress) { return IsProgressOf(progress, tokenId); });
 			shared.Status.Activity = ActivityOf(running);
 
 			if (!running.empty())
@@ -1422,6 +1421,24 @@ namespace Graphite {
 			Settle(shared);
 			shared.Status.Percent = kNoPercent;
 		}
+	}
+
+	bool LspClient::IsProgressOf(const Shared::RunningProgress& progress, const nlohmann::json& token)
+	{
+		return progress.Token == token;
+	}
+
+	LspClient::Shared::RunningProgress* LspClient::FindProgress(std::vector<Shared::RunningProgress>& running, const nlohmann::json& token)
+	{
+		for (Shared::RunningProgress& progress : running)
+		{
+			if (IsProgressOf(progress, token))
+			{
+				return &progress;
+			}
+		}
+
+		return nullptr;
 	}
 
 	std::string LspClient::ActivityOf(const std::vector<Shared::RunningProgress>& running)

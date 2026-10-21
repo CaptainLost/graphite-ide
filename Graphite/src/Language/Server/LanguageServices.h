@@ -122,8 +122,7 @@ namespace Graphite {
 
 		ServerStatus StatusFor(const std::filesystem::path& path, LanguageId language);
 
-		// Empty where no server runs for the file: none is chosen, or its root has none yet.
-		std::optional<ServerReport> ReportFor(const std::filesystem::path& path, LanguageId language);
+		std::optional<ServerReport> ReportFor(const std::filesystem::path& path, LanguageId language) const;
 
 		std::optional<ServerStatus> OverallStatus() const;
 

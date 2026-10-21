@@ -271,10 +271,9 @@ namespace Graphite {
 				workingTreeOpen = true;
 			}
 
-			Entry entry{diff, DiffView{}};
-			entry.Window.Restored = true;
-			entry.AwaitingFirstAnswer = diff.Commit.has_value();
-			m_Open.push_back(std::move(entry));
+			m_Open.push_back(Entry{.Diff = diff,
+								   .Window = {.Fresh = true, .Restored = true},
+								   .AwaitingFirstAnswer = diff.Commit.has_value()});
 		}
 	}
 

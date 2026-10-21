@@ -253,6 +253,8 @@ namespace Graphite {
 		static void RecordServerMessage(Shared& shared, const nlohmann::json& params);
 		static void ApplyProgress(Shared& shared, const nlohmann::json& params);
 		static std::string ActivityOf(const std::vector<Shared::RunningProgress>& running);
+		static Shared::RunningProgress* FindProgress(std::vector<Shared::RunningProgress>& running, const nlohmann::json& token);
+		static bool IsProgressOf(const Shared::RunningProgress& progress, const nlohmann::json& token);
 
 		static Answer ReadAnswer(const Asked& asked, const IncomingMessage& reply,
 								 const std::vector<SemanticKind>& legend);

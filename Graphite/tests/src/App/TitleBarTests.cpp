@@ -366,12 +366,8 @@ TEST_CASE("The labels are dropped before they would overlap the window buttons")
 	const Drawn narrow = DrawTitleOnce(context, kNarrowBarWidth);
 
 	CHECK(roomy.Layout.FolderVisible);
+	CHECK_FALSE(narrow.Layout.FolderVisible);
 	CHECK(narrow.Vertices < roomy.Vertices);
-
-	if (narrow.Layout.FolderVisible)
-	{
-		CHECK(narrow.Layout.Folder.X + narrow.Layout.Folder.Width <= narrow.Layout.Minimize.X);
-	}
 }
 
 TEST_CASE("The title-bar divider is drawn in the line colour, in dark and in light")

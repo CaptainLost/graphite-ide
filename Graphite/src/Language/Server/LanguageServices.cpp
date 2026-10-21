@@ -1080,7 +1080,7 @@ namespace Graphite {
 		server.StateSince = Now();
 	}
 
-	std::optional<ServerReport> LanguageServices::ReportFor(const std::filesystem::path& path, LanguageId language)
+	std::optional<ServerReport> LanguageServices::ReportFor(const std::filesystem::path& path, LanguageId language) const
 	{
 		ServerKey key;
 
@@ -1089,22 +1089,24 @@ namespace Graphite {
 			return std::nullopt;
 		}
 
-		const ManagedServer* found = FindManagedServer(key);
+		const ServerMap::const_iterator found = m_Servers.find(key);
 
-		if (found == nullptr)
+		if (found == m_Servers.end())
 		{
 			return std::nullopt;
 		}
 
-		ServerReport report{.Status = WithLanguage(found->Status, language),
-							.Root = key.Root,
-							.OpenDocuments = found->OpenDocuments.size(),
-							.RequestsInFlight = found->Pending.size(),
-							.History = {found->History.begin(), found->History.end()}};
+		const ManagedServer& server = found->second;
 
-		if (found->StateSince)
+		ServerReport report{.Status = WithLanguage(server.Status, language),
+							.Root = key.Root,
+							.OpenDocuments = server.OpenDocuments.size(),
+							.RequestsInFlight = server.Pending.size(),
+							.History = {server.History.begin(), server.History.end()}};
+
+		if (server.StateSince)
 		{
-			report.InStateFor = std::chrono::duration_cast<std::chrono::seconds>(Now() - *found->StateSince);
+			report.InStateFor = std::chrono::duration_cast<std::chrono::seconds>(Now() - *server.StateSince);
 		}
 
 		return report;
