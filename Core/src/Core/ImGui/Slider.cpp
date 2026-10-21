@@ -19,8 +19,10 @@ namespace Core {
 		constexpr float kValueGap = 10.0f;
 		constexpr float kHoveredKnobGrowShare = 0.12f;
 		constexpr float kHoveredTrackTextShare = 0.12f;
+		constexpr float kKnobRingThickness = 1.5f;
 
 		// WARNING: the knob is white on every scheme for the same reason the toggle's is: the text colour is near black in the light one.
+		// Unlike the toggle's it sits mostly on the card, which is white too in a light scheme, so its ring is what shows it there.
 		constexpr ImVec4 kKnobColour(1.0f, 1.0f, 1.0f, 1.0f);
 
 		std::string ValueText(int value, std::string_view unit)
@@ -84,12 +86,16 @@ namespace Core {
 		const ImVec4 filledTrack = ImGui::GetStyleColorVec4(ImGuiCol_SliderGrab);
 		const ImVec4 hoveredFilled = Animation::Blend(filledTrack, ImGui::GetStyleColorVec4(ImGuiCol_Text), kHoveredTrackTextShare);
 
+		const ImU32 filledColour = ImGui::GetColorU32(Animation::Blend(filledTrack, hoveredFilled, hoverAmount));
+		const ImVec2 knobCentre(knobCentreX, centreY);
+		const float shownKnobRadius = knobRadius * (1.0f + kHoveredKnobGrowShare * hoverAmount);
+		const float ringThickness = Scaled(kKnobRingThickness);
+
 		ImDrawList* drawList = ImGui::GetWindowDrawList();
 		drawList->AddRectFilled(trackTopLeft, trackBottomRight, ImGui::GetColorU32(emptyTrack), trackHeight * kHalf);
-		drawList->AddRectFilled(trackTopLeft, ImVec2(knobCentreX, trackBottomRight.y),
-								ImGui::GetColorU32(Animation::Blend(filledTrack, hoveredFilled, hoverAmount)), trackHeight * kHalf);
-		drawList->AddCircleFilled(ImVec2(knobCentreX, centreY), knobRadius * (1.0f + kHoveredKnobGrowShare * hoverAmount),
-								  ImGui::GetColorU32(kKnobColour));
+		drawList->AddRectFilled(trackTopLeft, ImVec2(knobCentreX, trackBottomRight.y), filledColour, trackHeight * kHalf);
+		drawList->AddCircleFilled(knobCentre, shownKnobRadius, ImGui::GetColorU32(kKnobColour));
+		drawList->AddCircle(knobCentre, shownKnobRadius - ringThickness * kHalf, filledColour, 0, ringThickness);
 
 		const std::string text = ValueText(*value, unit);
 		const float textWidth = ImGui::CalcTextSize(text.c_str()).x;
