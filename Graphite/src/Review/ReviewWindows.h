@@ -52,7 +52,7 @@ namespace Graphite {
 		const GitPalette& Palette;
 		const SyntaxPalette& Syntax;
 		ImU32 Selection = 0;
-		bool WordWrap = false;
+		DiffViewOptions DiffOptions;
 		unsigned int CentreNode = 0;
 		Core::TabCloseRequests& CloseRequests;
 	};
@@ -98,7 +98,7 @@ namespace Graphite {
 
 		std::function<void(std::string_view)> OnCopied;
 
-		std::function<void(bool)> OnSetWordWrap;
+		std::function<void(const DiffViewOptions&)> OnSetDiffOptions;
 
 		std::function<void(std::string_view what, const std::string& text)> CopyText;
 

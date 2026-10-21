@@ -16,6 +16,31 @@ namespace Graphite {
 		constexpr std::string_view kPreviewCtrl = "ctrl";
 		constexpr std::string_view kPreviewAlways = "always";
 
+		constexpr std::string_view kDiffSideBySide = "sideBySide";
+		constexpr std::string_view kDiffUnified = "unified";
+		constexpr std::string_view kDiffHunks = "hunks";
+		constexpr std::string_view kDiffWholeFile = "wholeFile";
+
+		DiffViewMode DiffLayoutFrom(std::string_view stored)
+		{
+			return stored == kDiffUnified ? DiffViewMode::Unified : DiffViewMode::SideBySide;
+		}
+
+		std::string_view DiffLayoutName(DiffViewMode mode)
+		{
+			return mode == DiffViewMode::Unified ? kDiffUnified : kDiffSideBySide;
+		}
+
+		DiffScope DiffScopeFrom(std::string_view stored)
+		{
+			return stored == kDiffWholeFile ? DiffScope::WholeFile : DiffScope::Hunks;
+		}
+
+		std::string_view DiffScopeName(DiffScope scope)
+		{
+			return scope == DiffScope::WholeFile ? kDiffWholeFile : kDiffHunks;
+		}
+
 		DefinitionPreviewMode PreviewModeFrom(std::string_view stored)
 		{
 			if (stored == kPreviewOff)
@@ -90,7 +115,10 @@ namespace Graphite {
 		}
 
 		m_WordWrap = m_Store.IsWordWrapEnabled();
-		m_DiffWordWrap = m_Store.IsDiffWordWrapEnabled();
+		m_DiffView = DiffViewOptions{.Mode = DiffLayoutFrom(m_Store.GetDiffLayout()),
+									 .Scope = DiffScopeFrom(m_Store.GetDiffScope()),
+									 .ColourSyntax = m_Store.IsDiffSyntaxColoured(),
+									 .WordWrap = m_Store.IsDiffWordWrapEnabled()};
 		m_GutterChangeMarkers = m_Store.HasGutterChangeMarkers();
 		m_ScrollbarChangeMarkers = m_Store.HasScrollbarChangeMarkers();
 
@@ -147,8 +175,17 @@ namespace Graphite {
 
 	void EditorSettings::SetDiffWordWrap(bool wrap)
 	{
-		m_DiffWordWrap = wrap;
-		m_Store.SetDiffWordWrap(m_DiffWordWrap);
+		m_DiffView.WordWrap = wrap;
+		m_Store.SetDiffWordWrap(wrap);
+	}
+
+	void EditorSettings::SetDiffViewOptions(const DiffViewOptions& options)
+	{
+		m_DiffView = options;
+		m_Store.SetDiffLayout(DiffLayoutName(options.Mode));
+		m_Store.SetDiffScope(DiffScopeName(options.Scope));
+		m_Store.SetDiffSyntaxColoured(options.ColourSyntax);
+		m_Store.SetDiffWordWrap(options.WordWrap);
 	}
 
 	void EditorSettings::SetGutterChangeMarkers(bool show)

@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "DrawnColours.h"
+#include "HoveredItems.h"
 #include "ImGuiFrames.h"
 
 #include "Git/Diff/DiffView.h"
@@ -10,12 +11,12 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <optional>
 #include <string_view>
 #include <vector>
 
 namespace {
 
-	constexpr bool kNoWordWrap = false;
 	constexpr ImU32 kNoSelectionColour = 0;
 	constexpr const char* kDiffWindowName = "Diff";
 
@@ -75,7 +76,7 @@ TEST_CASE("Hunk headers and signatures draw two frames with their fonts balanced
 
 		ImGuiFrames frames;
 		Graphite::DiffView view;
-		view.SetMode(mode);
+		const Graphite::DiffViewOptions options{.Mode = mode};
 
 		const Core::FileDiff file = HunksWithSignatureGapAndEmptySide();
 		const Graphite::GitPalette palette;
@@ -92,7 +93,7 @@ TEST_CASE("Hunk headers and signatures draw two frames with their fonts balanced
 			ImGui::Begin(kDiffWindowName, nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 
 			stackBefore = ImGui::GetCurrentContext()->FontStack.Size;
-			view.Render(file, palette, syntax, kNoSelectionColour, nullptr, tokens, kNoWordWrap);
+			view.Render(file, palette, syntax, kNoSelectionColour, nullptr, tokens, options);
 			stackAfter = ImGui::GetCurrentContext()->FontStack.Size;
 			headerTextDrawn = DrawsHeaderText();
 
@@ -105,4 +106,106 @@ TEST_CASE("Hunk headers and signatures draw two frames with their fonts balanced
 		CHECK(stackAfter == stackBefore);
 		CHECK(headerTextDrawn);
 	}
+}
+
+namespace {
+
+	constexpr ImVec2 kDiffWindowSize{900.0f, 400.0f};
+	constexpr std::string_view kUnifiedChild = "/unified";
+	constexpr std::string_view kSideBySideChild = "/pairs";
+
+	bool DrewChild(std::string_view nameEnd)
+	{
+		const ImGuiContext& context = *ImGui::GetCurrentContext();
+
+		for (const ImGuiWindow* window : context.Windows)
+		{
+			const std::string_view name{window->Name};
+
+			if (name.starts_with(kDiffWindowName) && name.find(nameEnd) != std::string_view::npos &&
+				window->LastFrameActive == context.FrameCount)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	struct DiffScreen
+	{
+		void Draw(const Graphite::DiffViewOptions& options)
+		{
+			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+			ImGui::SetNextWindowSize(kDiffWindowSize);
+			ImGui::Begin(kDiffWindowName, nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+
+			ToolbarY = ImGui::GetCursorScreenPos().y + ImGui::GetFrameHeight() * 0.5f;
+			View.Render(File, Palette, Syntax, kNoSelectionColour, nullptr, Tokens, options);
+			UnifiedButton = ImGui::GetCurrentWindow()->GetID("##unified");
+
+			ImGui::End();
+		}
+
+		ImGuiFrames Frames;
+		Graphite::DiffView View;
+		const Core::FileDiff File = HunksWithSignatureGapAndEmptySide();
+		const Graphite::GitPalette Palette;
+		const Graphite::SyntaxPalette Syntax;
+		const Graphite::FileTokens Tokens;
+
+		float ToolbarY = 0.0f;
+		ImGuiID UnifiedButton = 0;
+	};
+}
+
+TEST_CASE("A diff is laid out as the options it is drawn with say, whichever diff chose them")
+{
+	DiffScreen screen;
+
+	screen.Frames.Next([&] { screen.Draw(Graphite::DiffViewOptions{.Mode = Graphite::DiffViewMode::Unified}); });
+
+	CHECK(DrewChild(kUnifiedChild));
+	CHECK_FALSE(DrewChild(kSideBySideChild));
+
+	screen.Frames.Next([&] { screen.Draw(Graphite::DiffViewOptions{.Mode = Graphite::DiffViewMode::SideBySide}); });
+
+	CHECK(DrewChild(kSideBySideChild));
+	CHECK_FALSE(DrewChild(kUnifiedChild));
+}
+
+TEST_CASE("A layout picked in a diff's toolbar is handed back as options for every diff and the rest are kept")
+{
+	DiffScreen screen;
+
+	const Graphite::DiffViewOptions given{.Mode = Graphite::DiffViewMode::SideBySide,
+										  .Scope = Graphite::DiffScope::WholeFile,
+										  .ColourSyntax = false,
+										  .WordWrap = true};
+
+	std::optional<Graphite::DiffViewOptions> handedBack;
+	screen.View.OnSetOptions = [&](const Graphite::DiffViewOptions& chosen) { handedBack = chosen; };
+
+	const auto draw = [&] { screen.Draw(given); };
+	screen.Frames.Next(draw);
+
+	const std::vector<HoveredStretch> stretches = HoveredAcross(screen.Frames, screen.ToolbarY, 0.0f, kDiffWindowSize.x, draw);
+	const HoveredStretch* unified = nullptr;
+
+	for (const HoveredStretch& stretch : stretches)
+	{
+		if (stretch.Id == screen.UnifiedButton)
+		{
+			unified = &stretch;
+		}
+	}
+
+	REQUIRE(unified != nullptr);
+	screen.Frames.Click(ImVec2(unified->Middle(), screen.ToolbarY), draw);
+
+	REQUIRE(handedBack.has_value());
+	CHECK(handedBack->Mode == Graphite::DiffViewMode::Unified);
+	CHECK(handedBack->Scope == given.Scope);
+	CHECK(handedBack->ColourSyntax == given.ColourSyntax);
+	CHECK(handedBack->WordWrap == given.WordWrap);
 }

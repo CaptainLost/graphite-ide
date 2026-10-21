@@ -40,6 +40,9 @@ namespace Graphite {
 		constexpr const char* kIndentWidthKey = "indentWidth";
 		constexpr const char* kWordWrapKey = "wordWrap";
 		constexpr const char* kDiffWordWrapKey = "diffWordWrap";
+		constexpr const char* kDiffLayoutKey = "diffLayout";
+		constexpr const char* kDiffScopeKey = "diffScope";
+		constexpr const char* kDiffColourSyntaxKey = "diffColourSyntax";
 		constexpr const char* kGutterChangeMarkersKey = "gutterChangeMarkers";
 		constexpr const char* kScrollbarChangeMarkersKey = "scrollbarChangeMarkers";
 		constexpr const char* kHoverInfoKey = "hoverInfo";
@@ -416,6 +419,36 @@ namespace Graphite {
 	void AppSettings::SetDiffWordWrap(bool wrap)
 	{
 		Set(kDiffWordWrapKey, Flag(wrap));
+	}
+
+	std::string AppSettings::GetDiffLayout() const
+	{
+		return std::string{Get(kDiffLayoutKey)};
+	}
+
+	void AppSettings::SetDiffLayout(std::string_view layout)
+	{
+		Set(kDiffLayoutKey, std::string{layout});
+	}
+
+	std::string AppSettings::GetDiffScope() const
+	{
+		return std::string{Get(kDiffScopeKey)};
+	}
+
+	void AppSettings::SetDiffScope(std::string_view scope)
+	{
+		Set(kDiffScopeKey, std::string{scope});
+	}
+
+	bool AppSettings::IsDiffSyntaxColoured() const
+	{
+		return ReadFlag(Get(kDiffColourSyntaxKey), kOnWhenAbsent);
+	}
+
+	void AppSettings::SetDiffSyntaxColoured(bool colour)
+	{
+		Set(kDiffColourSyntaxKey, Flag(colour));
 	}
 
 	bool AppSettings::HasGutterChangeMarkers() const

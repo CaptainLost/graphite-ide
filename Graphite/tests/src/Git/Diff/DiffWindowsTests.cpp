@@ -241,7 +241,7 @@ TEST_CASE("A diff opened while another window has the focus takes the focus as i
 	Graphite::DiffWindows windows;
 
 	constexpr ImU32 kNoSelectionColour = 0;
-	constexpr bool kNoWordWrap = false;
+	const Graphite::DiffViewOptions options;
 	constexpr unsigned int kNoCentreNode = 0;
 
 	frames.Next([] {
@@ -258,7 +258,7 @@ TEST_CASE("A diff opened while another window has the focus takes the focus as i
 		ImGui::Begin(kPanelInFront);
 		ImGui::End();
 
-		windows.Render(model, palette, syntax, kNoSelectionColour, kNoWordWrap, kNoCentreNode, closeRequests);
+		windows.Render(model, palette, syntax, kNoSelectionColour, options, kNoCentreNode, closeRequests);
 	});
 	closeRequests.EndFrame();
 

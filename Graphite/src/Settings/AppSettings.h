@@ -70,6 +70,15 @@ namespace Graphite {
 		bool IsDiffWordWrapEnabled() const;
 		void SetDiffWordWrap(bool wrap);
 
+		std::string GetDiffLayout() const;
+		void SetDiffLayout(std::string_view layout);
+
+		std::string GetDiffScope() const;
+		void SetDiffScope(std::string_view scope);
+
+		bool IsDiffSyntaxColoured() const;
+		void SetDiffSyntaxColoured(bool colour);
+
 		bool HasGutterChangeMarkers() const;
 		void SetGutterChangeMarkers(bool show);
 

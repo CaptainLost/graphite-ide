@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Git/Diff/DiffViewOptions.h"
+
 #include "Core/ImGui/FontSet.h"
 #include "Core/Text/Editing.h"
 
@@ -55,8 +57,11 @@ namespace Graphite {
 
 		bool IsWordWrap() const { return m_WordWrap; }
 
-		bool IsDiffWordWrap() const { return m_DiffWordWrap; }
+		bool IsDiffWordWrap() const { return m_DiffView.WordWrap; }
 		void SetDiffWordWrap(bool wrap);
+
+		const DiffViewOptions& GetDiffViewOptions() const { return m_DiffView; }
+		void SetDiffViewOptions(const DiffViewOptions& options);
 
 		bool HasGutterChangeMarkers() const { return m_GutterChangeMarkers; }
 		bool HasScrollbarChangeMarkers() const { return m_ScrollbarChangeMarkers; }
@@ -91,7 +96,7 @@ namespace Graphite {
 		std::size_t m_IndentWidth = kDefaultIndentWidth;
 
 		bool m_WordWrap = false;
-		bool m_DiffWordWrap = false;
+		DiffViewOptions m_DiffView;
 
 		bool m_GutterChangeMarkers = true;
 		bool m_ScrollbarChangeMarkers = true;

@@ -1440,7 +1440,7 @@ namespace Graphite {
 	{
 		tab.View.OnOpenFile = openFile;
 		tab.View.OnCopied = OnCopied;
-		tab.View.OnSetWordWrap = OnSetWordWrap;
-		tab.View.Render(file, input.Palette, input.Syntax, input.Selection, tab.Texts, tab.Tokens, input.WordWrap);
+		tab.View.OnSetOptions = OnSetDiffOptions;
+		tab.View.Render(file, input.Palette, input.Syntax, input.Selection, tab.Texts, tab.Tokens, input.DiffOptions);
 	}
 }

@@ -5,6 +5,7 @@
 #include "Theme/Palettes.h"
 #include "Git/Diff/DiffRows.h"
 #include "Git/Diff/DiffSelection.h"
+#include "Git/Diff/DiffViewOptions.h"
 #include "Git/Diff/DiffWrap.h"
 #include "Git/Diff/FileTexts.h"
 #include "Theme/GitPalette.h"
@@ -33,16 +34,7 @@ namespace Graphite {
 		void Render(const Core::FileDiff& file, const GitPalette& palette,
 					const SyntaxPalette& syntax, ImU32 selection,
 					const Core::Ref<const FileTexts>& wholeFileTexts, const FileTokens& tokens,
-					bool wordWrap);
-
-		void SetMode(DiffViewMode mode) { m_Mode = mode; }
-		DiffViewMode GetMode() const { return m_Mode; }
-
-		void SetScope(DiffScope scope) { m_Scope = scope; }
-		DiffScope GetScope() const { return m_Scope; }
-
-		void SetColourSyntax(bool colour) { m_ColourSyntax = colour; }
-		bool IsSyntaxColoured() const { return m_ColourSyntax; }
+					const DiffViewOptions& options);
 
 		// WARNING: Left unset inside a tab, so a tab never offers to open a second copy of itself.
 		std::function<void()> OnOpenAsTab;
@@ -57,12 +49,14 @@ namespace Graphite {
 		// WARNING: Called only for the menu's Copy, never for Ctrl+C.
 		std::function<void(std::string_view)> OnCopied;
 
-		std::function<void(bool)> OnSetWordWrap;
+		// WARNING: A choice in the toolbar is handed here and not kept: the options come back through Render,
+		// from the one place every diff reads them, so the next diff opened is drawn the same way.
+		std::function<void(const DiffViewOptions&)> OnSetOptions;
 
 	private:
 		struct SideBySideContext;
 
-		void RenderToolbar(const Core::FileDiff& file, bool wordWrap);
+		void RenderToolbar(const Core::FileDiff& file);
 		void RenderUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
 						   const GitPalette& palette, const SyntaxPalette& syntax,
 						   ImU32 selection, const FileTokens& tokens, bool wordWrap);
@@ -121,9 +115,8 @@ namespace Graphite {
 		void RebuildLineCache(const Core::Ref<const FileTexts>& texts);
 		void ClearLineCache();
 
-		DiffViewMode m_Mode = DiffViewMode::SideBySide;
-		DiffScope m_Scope = DiffScope::Hunks;
-		bool m_ColourSyntax = true;
+		// The options this frame is drawn with: those Render was given, or the toolbar's choice from the moment it is made.
+		DiffViewOptions m_Options;
 
 		struct Layout
 		{

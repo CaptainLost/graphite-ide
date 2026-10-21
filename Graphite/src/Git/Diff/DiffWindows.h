@@ -68,12 +68,12 @@ namespace Graphite {
 		void RestoreState(const std::vector<DiffTabState>& diffs);
 
 		void Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,
-					ImU32 selection, bool wordWrap, unsigned int centreNode,
+					ImU32 selection, const DiffViewOptions& options, unsigned int centreNode,
 					Core::TabCloseRequests& closeRequests);
 
 		std::function<void(std::string_view)> OnCopied;
 
-		std::function<void(bool)> OnSetWordWrap;
+		std::function<void(const DiffViewOptions&)> OnSetOptions;
 
 		std::function<void(const std::filesystem::path&)> OpenFile;
 

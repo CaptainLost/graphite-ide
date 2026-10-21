@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Git/Diff/DiffViewOptions.h"
 #include "Git/Diff/SyntaxRuns.h"
 
 #include "Core/Git/Diff.h"
@@ -42,18 +43,6 @@ namespace Graphite {
 	{
 		std::optional<DiffRow> Left;
 		std::optional<DiffRow> Right;
-	};
-
-	enum class DiffViewMode
-	{
-		SideBySide,
-		Unified
-	};
-
-	enum class DiffScope
-	{
-		Hunks,
-		WholeFile
 	};
 
 	std::vector<DiffRow> BuildUnifiedRows(const Core::FileDiff& file);

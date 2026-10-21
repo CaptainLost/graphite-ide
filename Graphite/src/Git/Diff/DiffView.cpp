@@ -755,9 +755,12 @@ namespace Graphite {
 	void DiffView::Render(const Core::FileDiff& file, const GitPalette& palette,
 						  const SyntaxPalette& syntax, ImU32 selection,
 						  const Core::Ref<const FileTexts>& wholeFileTexts, const FileTokens& tokens,
-						  bool wordWrap)
+						  const DiffViewOptions& options)
 	{
-		RenderToolbar(file, wordWrap);
+		m_Options = options;
+		RenderToolbar(file);
+
+		const bool wordWrap = m_Options.WordWrap;
 
 		if (wholeFileTexts != nullptr)
 		{
@@ -777,18 +780,18 @@ namespace Graphite {
 			return;
 		}
 
-		const bool wholeFile = m_Scope == DiffScope::WholeFile && wholeFileTexts != nullptr;
+		const bool wholeFile = m_Options.Scope == DiffScope::WholeFile && wholeFileTexts != nullptr;
 
-		const Layout layout{m_Mode, wholeFile ? DiffScope::WholeFile : DiffScope::Hunks, wordWrap};
+		const Layout layout{m_Options.Mode, wholeFile ? DiffScope::WholeFile : DiffScope::Hunks, wordWrap};
 		const bool layoutChanged = layout != m_DrawnLayout;
 		m_RestoreKeptLine = layoutChanged && IsKeptLineOf(file);
 		m_DrawnLayout = layout;
 
 		const DiffSelectionContext context{
 			.Path = ShownPath(file),
-			.Mode = m_Mode,
+			.Mode = m_Options.Mode,
 			.Scope = layout.Scope,
-			.Side = m_Mode == DiffViewMode::SideBySide ? m_SelectionSide : DiffSide::New,
+			.Side = m_Options.Mode == DiffViewMode::SideBySide ? m_SelectionSide : DiffSide::New,
 			.ContentHash = ContentHashOf(file),
 			.TextsHash = wholeFile ? m_TextsHash : 0};
 
@@ -803,7 +806,7 @@ namespace Graphite {
 		{
 			const WholeFileRows rows = BuildWholeFileRows(file, m_OldLines.size(), m_NewLines.size());
 
-			if (m_Mode == DiffViewMode::Unified)
+			if (m_Options.Mode == DiffViewMode::Unified)
 			{
 				RenderUnified(rows.Unified, file, palette, syntax, selection, tokens, wordWrap);
 			}
@@ -821,7 +824,7 @@ namespace Graphite {
 			return;
 		}
 
-		if (m_Mode == DiffViewMode::Unified)
+		if (m_Options.Mode == DiffViewMode::Unified)
 		{
 			RenderUnified(BuildUnifiedRows(file), file, palette, syntax, selection, tokens, wordWrap);
 			return;
@@ -870,7 +873,7 @@ namespace Graphite {
 		}
 	}
 
-	void DiffView::RenderToolbar(const Core::FileDiff& file, bool wordWrap)
+	void DiffView::RenderToolbar(const Core::FileDiff& file)
 	{
 		const std::filesystem::path& path = ShownPath(file);
 
@@ -879,18 +882,20 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
+		DiffViewOptions chosen = m_Options;
+
 		if (Core::DrawIconButton("##sideBySide", ICON_LC_COLUMNS_2,
-						   m_Mode == DiffViewMode::SideBySide, "Side by side"))
+						   m_Options.Mode == DiffViewMode::SideBySide, "Side by side"))
 		{
-			m_Mode = DiffViewMode::SideBySide;
+			chosen.Mode = DiffViewMode::SideBySide;
 		}
 
 		ImGui::SameLine(kNoOffsetFromStart, Core::Scaled(kModeButtonGap));
 
 		if (Core::DrawIconButton("##unified", ICON_LC_ROWS_2,
-						   m_Mode == DiffViewMode::Unified, "Unified"))
+						   m_Options.Mode == DiffViewMode::Unified, "Unified"))
 		{
-			m_Mode = DiffViewMode::Unified;
+			chosen.Mode = DiffViewMode::Unified;
 		}
 
 		ImGui::SameLine();
@@ -898,17 +903,17 @@ namespace Graphite {
 		ImGui::SameLine();
 
 		if (Core::DrawIconButton("##hunks", ICON_LC_CHEVRONS_DOWN_UP,
-						   m_Scope == DiffScope::Hunks, "Hunks only"))
+						   m_Options.Scope == DiffScope::Hunks, "Hunks only"))
 		{
-			m_Scope = DiffScope::Hunks;
+			chosen.Scope = DiffScope::Hunks;
 		}
 
 		ImGui::SameLine(kNoOffsetFromStart, Core::Scaled(kModeButtonGap));
 
 		if (Core::DrawIconButton("##wholeFile", ICON_LC_CHEVRONS_UP_DOWN,
-						   m_Scope == DiffScope::WholeFile, "Whole file"))
+						   m_Options.Scope == DiffScope::WholeFile, "Whole file"))
 		{
-			m_Scope = DiffScope::WholeFile;
+			chosen.Scope = DiffScope::WholeFile;
 		}
 
 		ImGui::SameLine();
@@ -916,19 +921,27 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		if (Core::DrawIconButton("##colourSyntax", ICON_LC_PALETTE, m_ColourSyntax,
+		if (Core::DrawIconButton("##colourSyntax", ICON_LC_PALETTE, m_Options.ColourSyntax,
 						   "Colour syntax"))
 		{
-			m_ColourSyntax = !m_ColourSyntax;
+			chosen.ColourSyntax = !m_Options.ColourSyntax;
 		}
 
-		if (OnSetWordWrap)
-		{
-			ImGui::SameLine(kNoOffsetFromStart, Core::Scaled(kModeButtonGap));
+		ImGui::SameLine(kNoOffsetFromStart, Core::Scaled(kModeButtonGap));
 
-			if (Core::DrawIconButton("##wordWrap", ICON_LC_WRAP_TEXT, wordWrap, "Word wrap"))
+		if (Core::DrawIconButton("##wordWrap", ICON_LC_WRAP_TEXT, m_Options.WordWrap, "Word wrap"))
+		{
+			chosen.WordWrap = !m_Options.WordWrap;
+		}
+
+		// The choice is drawn from this frame on, so the rows below the toolbar do not lag it by a frame.
+		if (chosen != m_Options)
+		{
+			m_Options = chosen;
+
+			if (OnSetOptions)
 			{
-				OnSetWordWrap(!wordWrap);
+				OnSetOptions(chosen);
 			}
 		}
 
@@ -1129,7 +1142,7 @@ namespace Graphite {
 				}
 
 				DrawLine(ImVec2(rowPos.x + textOffset, rowPos.y), *resolved.Text,
-						 m_ColourSyntax ? resolved.Tokens : nullptr,
+						 m_Options.ColourSyntax ? resolved.Tokens : nullptr,
 						 TextColourFor(drawn.Kind, palette), syntax, breaks, rowHeight);
 			}
 
@@ -1173,7 +1186,7 @@ namespace Graphite {
 									const GitPalette& palette, const SyntaxPalette& syntax,
 									ImU32 selection, const FileTokens& tokens, bool wordWrap)
 	{
-		if (const DiffMeasurement measurement = MeasurementOf(file, m_Scope);
+		if (const DiffMeasurement measurement = MeasurementOf(file, m_Options.Scope);
 			measurement != m_WidestLineMeasuredFor)
 		{
 			m_WidestLineMeasuredFor = measurement;
@@ -1405,7 +1418,7 @@ namespace Graphite {
 			}
 
 			DrawLine(ImVec2(rowPos.x + numberWidth, rowPos.y), *resolved.Text,
-					 m_ColourSyntax ? resolved.Tokens : nullptr,
+					 m_Options.ColourSyntax ? resolved.Tokens : nullptr,
 					 TextColourFor(drawn.Kind, context.Palette), context.Syntax, breaks, rowHeight);
 
 			widest = std::max(widest, numberWidth + Core::TextWidth(*resolved.Text));

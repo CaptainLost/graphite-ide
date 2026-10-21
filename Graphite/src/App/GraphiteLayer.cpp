@@ -186,7 +186,7 @@ namespace Graphite {
 			ReportCopied(m_Events, "selection", text);
 		};
 
-		m_DiffWindows.OnSetWordWrap = [this](bool wrap) { m_EditorSettings.SetDiffWordWrap(wrap); };
+		m_DiffWindows.OnSetOptions = [this](const DiffViewOptions& options) { m_EditorSettings.SetDiffViewOptions(options); };
 
 		m_ReviewWindows.OpenFile = [this](const std::filesystem::path& path) {
 			const bool permanentTab = true;
@@ -194,7 +194,7 @@ namespace Graphite {
 		};
 
 		m_ReviewWindows.OnCopied = [this](std::string_view text) { ReportCopied(m_Events, "selection", text); };
-		m_ReviewWindows.OnSetWordWrap = [this](bool wrap) { m_EditorSettings.SetDiffWordWrap(wrap); };
+		m_ReviewWindows.OnSetDiffOptions = [this](const DiffViewOptions& options) { m_EditorSettings.SetDiffViewOptions(options); };
 		m_ReviewWindows.CopyText = [this](std::string_view what, const std::string& text) {
 			CopyToClipboard(m_Events, what, text);
 		};
@@ -1162,7 +1162,7 @@ namespace Graphite {
 		m_DiffWindows.Render(m_Git, ReadGitPalette(m_ActiveScheme.Get()),
 							 ReadSyntaxPalette(m_ActiveScheme.Get()),
 							 ReadEditorPalette(m_ActiveScheme.Get()).Selection,
-							 m_EditorSettings.IsDiffWordWrap(), m_DockSpace.GetCenterNodeId(),
+							 m_EditorSettings.GetDiffViewOptions(), m_DockSpace.GetCenterNodeId(),
 							 m_TabCloseRequests);
 
 		const GitPalette reviewPalette = ReadGitPalette(m_ActiveScheme.Get());
@@ -1174,7 +1174,7 @@ namespace Graphite {
 												 .Palette = reviewPalette,
 												 .Syntax = reviewSyntax,
 												 .Selection = ReadEditorPalette(m_ActiveScheme.Get()).Selection,
-												 .WordWrap = m_EditorSettings.IsDiffWordWrap(),
+												 .DiffOptions = m_EditorSettings.GetDiffViewOptions(),
 												 .CentreNode = m_DockSpace.GetCenterNodeId(),
 												 .CloseRequests = m_TabCloseRequests});
 

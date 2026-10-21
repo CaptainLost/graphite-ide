@@ -325,7 +325,7 @@ namespace Graphite {
 	}
 
 	void DiffWindows::Render(GitModel& model, const GitPalette& palette, const SyntaxPalette& syntax,
-							 ImU32 selection, bool wordWrap, unsigned int centreNode,
+							 ImU32 selection, const DiffViewOptions& options, unsigned int centreNode,
 							 Core::TabCloseRequests& closeRequests)
 	{
 		for (std::size_t tabIndex = 0; tabIndex < m_Open.size();)
@@ -424,10 +424,10 @@ namespace Graphite {
 
 						entry.View.OnOpenFile = OpenFileIn(model);
 						entry.View.OnCopied = OnCopied;
-						entry.View.OnSetWordWrap = OnSetWordWrap;
+						entry.View.OnSetOptions = OnSetOptions;
 
 						entry.View.Render(file, palette, syntax, selection, entry.Texts.Texts,
-										  entry.Texts.Tokens, wordWrap);
+										  entry.Texts.Tokens, options);
 					}
 				}
 			}

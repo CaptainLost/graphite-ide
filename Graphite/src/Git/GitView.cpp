@@ -89,7 +89,7 @@ namespace Graphite {
 		  m_NewBranchQuestion(modals, "###GitNewBranch"), m_RenameBranchQuestion(modals, "###GitRenameBranch"),
 		  m_DeleteBranchQuestion(modals, "###GitDeleteBranch"), m_DropStashQuestion(modals, "###GitDropStash")
 	{
-		m_Diff.OnSetWordWrap = [this](bool wrap) { m_EditorSettings.SetDiffWordWrap(wrap); };
+		m_Diff.OnSetOptions = [this](const DiffViewOptions& options) { m_EditorSettings.SetDiffViewOptions(options); };
 
 		m_BranchList.OnBranchClicked = [this](const Core::Branch& branch) { SelectBranch(branch); };
 		m_BranchList.DrawBranchMenu = [this](const Core::Branch& branch) { RenderRefMenu(branch); };
@@ -1008,6 +1008,6 @@ namespace Graphite {
 
 		const SyntaxPalette syntax = ReadSyntaxPalette(m_Scheme.Get());
 		m_Diff.Render(file, palette, syntax, ReadEditorPalette(m_Scheme.Get()).Selection, m_Texts.Texts,
-					  m_Texts.Tokens, m_EditorSettings.IsDiffWordWrap());
+					  m_Texts.Tokens, m_EditorSettings.GetDiffViewOptions());
 	}
 }

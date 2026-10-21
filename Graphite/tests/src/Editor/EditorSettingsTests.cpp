@@ -157,6 +157,44 @@ TEST_CASE("EditorSettings wraps diffs on a switch of their own, off by default")
 	CHECK_FALSE(reloaded.IsWordWrap());
 }
 
+TEST_CASE("Diffs start side by side, hunks only, syntax coloured and unwrapped")
+{
+	TempAppSettings store;
+	Graphite::EditorSettings settings{store.Get()};
+	settings.Load();
+
+	const Graphite::DiffViewOptions options = settings.GetDiffViewOptions();
+
+	CHECK(options.Mode == Graphite::DiffViewMode::SideBySide);
+	CHECK(options.Scope == Graphite::DiffScope::Hunks);
+	CHECK(options.ColourSyntax);
+	CHECK_FALSE(options.WordWrap);
+}
+
+TEST_CASE("Diff options chosen in one diff are what every diff is drawn with, after a restart too")
+{
+	TempAppSettings store;
+
+	const Graphite::DiffViewOptions chosen{.Mode = Graphite::DiffViewMode::Unified,
+										   .Scope = Graphite::DiffScope::WholeFile,
+										   .ColourSyntax = false,
+										   .WordWrap = true};
+
+	{
+		Graphite::EditorSettings settings{store.Get()};
+		settings.Load();
+		settings.SetDiffViewOptions(chosen);
+
+		CHECK(settings.GetDiffViewOptions() == chosen);
+		CHECK(settings.IsDiffWordWrap());
+	}
+
+	Graphite::EditorSettings reloaded{store.Get()};
+	reloaded.Load();
+
+	CHECK(reloaded.GetDiffViewOptions() == chosen);
+}
+
 TEST_CASE("EditorSettings loads back what it set, after a restart")
 {
 	TempAppSettings store;
