@@ -139,6 +139,11 @@ namespace Core {
 	{
 		const bool shows = HasWaitedLongEnough(kLineWaitSinceId, kLineLastFrameId);
 
+		if (!shows && whileWaiting == WhileLoaderWaits::TakeNoRoom)
+		{
+			return;
+		}
+
 		if (!shows && whileWaiting == WhileLoaderWaits::ShowNothing)
 		{
 			ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));

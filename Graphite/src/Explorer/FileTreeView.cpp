@@ -291,7 +291,7 @@ namespace Graphite {
 
 		if (freshness == ListingFreshness::Refreshing && !nothingMatches)
 		{
-			DrawTreeLoader(kRefreshingFileList, Core::WhileLoaderWaits::ShowNothing);
+			DrawTreeLoader(kRefreshingFileList, Core::WhileLoaderWaits::TakeNoRoom);
 		}
 
 		// WARNING: The scope keeps the filtered rows' ids apart from the real tree's. ImGui stores a

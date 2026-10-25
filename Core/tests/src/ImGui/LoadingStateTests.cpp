@@ -266,6 +266,28 @@ TEST_CASE("LoadingLine that shows its text while it waits draws the text at once
 	CHECK(shown.Advance == doctest::Approx(shown.LineHeightWithSpacing));
 }
 
+TEST_CASE("LoadingLine asked to take no room takes none while it waits and one row once it shows")
+{
+	LoaderWindow window;
+	const Core::WhileLoaderWaits takeNoRoom = Core::WhileLoaderWaits::TakeNoRoom;
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	const LoaderWindow::LineDrawn waiting = window.DrawLineLoader("Refreshing the file list", kWindowSize, takeNoRoom);
+	const std::optional<Core::Redraw::Clock::time_point> wake = Core::Redraw::TakeDeadline();
+
+	LoaderWindow::LineDrawn shown;
+	for (int frameIndex = 0; frameIndex < kFramesPastTheWait; ++frameIndex)
+	{
+		shown = window.DrawLineLoader("Refreshing the file list", kWindowSize, takeNoRoom);
+	}
+
+	CHECK(waiting.Advance == doctest::Approx(0.0f));
+	CHECK(waiting.Vertices == 0);
+	CHECK(wake.has_value());
+	CHECK(shown.SpinnerDrawn);
+	CHECK(shown.Advance == doctest::Approx(shown.LineHeightWithSpacing));
+}
+
 TEST_CASE("LoadingLine asks for the next frame so its spinner keeps turning")
 {
 	LoaderWindow window;

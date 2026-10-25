@@ -519,6 +519,39 @@ TEST_CASE("A change on disk is not read again until the filter is focused")
 	CHECK(jobs.Count() == 0);
 }
 
+TEST_CASE("Matching files stay where they are through a quick re-read and make room for its loader only once it shows")
+{
+	TempDirectory folder;
+	folder.MakeFile("src/Deep.cpp");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+	screen.Click(kFilterBox);
+	jobs.RunAll();
+	screen.Type("Deep");
+	screen.Next();
+	REQUIRE(FindTreeBody() != nullptr);
+	const float resultsHeight = FindTreeBody()->ContentSize.y;
+
+	screen.Events.Publish(Graphite::WorkspaceFilesChangedEvent{.Everything = true});
+	screen.Next();
+	screen.Next();
+	REQUIRE(jobs.Count() == 1);
+
+	CHECK(FindTreeBody()->ContentSize.y == doctest::Approx(resultsHeight));
+
+	const double pastTheWait = 0.25;
+	screen.WaitSeconds(pastTheWait);
+
+	CHECK(FindTreeBody()->ContentSize.y > resultsHeight);
+
+	jobs.RunAll();
+	screen.Next();
+	screen.Next();
+
+	CHECK(FindTreeBody()->ContentSize.y == doctest::Approx(resultsHeight));
+}
+
 TEST_CASE("A filter matching nothing while the folder is read again shows a loader until the read lands")
 {
 	TempDirectory folder;
