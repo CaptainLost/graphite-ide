@@ -30,36 +30,13 @@ namespace Graphite {
 
 	namespace {
 		constexpr std::size_t kTabTitleBytes = 60;
-		constexpr double kBytesPerMegabyte = 1024.0 * 1024.0;
-		constexpr float kFillAvailableWidth = -1.0f;
 		constexpr ImGuiMouseButton kMouseBackButton = 3;
-
-		double Megabytes(std::uint64_t bytes)
-		{
-			return static_cast<double>(bytes) / kBytesPerMegabyte;
-		}
-
-		float LoadedFraction(const LiveTranscript::LoadProgress& progress)
-		{
-			if (progress.Total == 0)
-			{
-				return 0.0f;
-			}
-
-			const double loadedRatio = static_cast<double>(progress.Bytes) / static_cast<double>(progress.Total);
-			return static_cast<float>(loadedRatio);
-		}
 
 		void DrawProgress(const LiveTranscript::LoadProgress& progress)
 		{
 			if (!progress.FirstPassDone)
 			{
-				const float fraction = LoadedFraction(progress);
-				const std::string label =
-					std::format("{:.1f} / {:.1f} MB", Megabytes(progress.Bytes), Megabytes(progress.Total));
-
-				ImGui::TextDisabled("Loading transcript…");
-				ImGui::ProgressBar(fraction, ImVec2(kFillAvailableWidth, 0.0f), label.c_str());
+				Core::LoadingLine(TranscriptLoadingText(progress.Bytes, progress.Total).c_str());
 			}
 			else if (!progress.SubagentsWalked)
 			{
@@ -170,6 +147,7 @@ namespace Graphite {
 		entry.Title = summary.DisplayTitle();
 		entry.Summary = summary;
 		entry.Looking = false;
+		entry.UnfoundBecause.reset();
 
 		if (!entry.Main.Live)
 		{
@@ -312,6 +290,21 @@ namespace Graphite {
 			APP_INFO("Not reopening Claude session '{}' ({}): the index has no transcript for it", entry.Title,
 					 entry.Id);
 			m_Open.erase(m_Open.begin() + static_cast<std::ptrdiff_t>(index));
+		}
+	}
+
+	void SessionWindows::SettleRestoredAsUnfound(const std::string& problem)
+	{
+		for (const Core::Scope<Entry>& entry : m_Open)
+		{
+			if (!entry->Looking)
+			{
+				continue;
+			}
+
+			APP_INFO("Cannot look for Claude session '{}' ({}): {}", entry->Title, entry->Id, problem);
+			entry->Looking = false;
+			entry->UnfoundBecause = problem;
 		}
 	}
 
@@ -559,11 +552,13 @@ namespace Graphite {
 
 			Core::DrawTabContextMenu(closeRequests);
 
+			bool closeRequested = false;
+
 			if (frame.Visible)
 			{
 				if (!entry.Main.Live)
 				{
-					DrawWithoutTranscript(entry);
+					closeRequested = DrawWithoutTranscript(entry);
 				}
 				else
 				{
@@ -604,7 +599,7 @@ namespace Graphite {
 
 			ImGui::End();
 
-			if (frame.Open)
+			if (frame.Open && !closeRequested)
 			{
 				++index;
 			}
@@ -615,12 +610,18 @@ namespace Graphite {
 		}
 	}
 
-	void SessionWindows::DrawWithoutTranscript(Entry& entry)
+	bool SessionWindows::DrawWithoutTranscript(Entry& entry)
 	{
 		if (entry.Looking)
 		{
 			Core::LoadingLine("Looking for this session");
-			return;
+			return false;
+		}
+
+		if (entry.UnfoundBecause.has_value())
+		{
+			ImGui::TextWrapped("%s", UnfoundSessionText(*entry.UnfoundBecause).c_str());
+			return Core::TextButton("Close");
 		}
 
 		const std::optional<std::string> pendingEnd =
@@ -629,7 +630,7 @@ namespace Graphite {
 		if (!pendingEnd.has_value())
 		{
 			Core::LoadingLine("Waiting for Claude to write the session's first lines", Core::WhileLoaderWaits::ShowText);
-			return;
+			return false;
 		}
 
 		ImGui::TextWrapped("%s", pendingEnd->c_str());
@@ -639,5 +640,7 @@ namespace Graphite {
 			entry.Terminal->ShowRequested = true;
 			Core::Redraw::Request();
 		}
+
+		return false;
 	}
 }

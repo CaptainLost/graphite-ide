@@ -20,6 +20,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/TextButton.h"
 #include "Core/Platform/Process.h"
 #include "Core/UI/PanelMarginScope.h"
@@ -267,6 +268,11 @@ namespace Graphite {
 		}
 
 		StartIndexingWhenPresent();
+
+		if (m_Problem.has_value() && m_Windows.IsLookingForSessions())
+		{
+			m_Windows.SettleRestoredAsUnfound(*m_Problem);
+		}
 
 		if (m_Indexing)
 		{
@@ -535,9 +541,19 @@ namespace Graphite {
 		if (visible.empty())
 		{
 			const Core::PanelMarginScope margin;
-			Core::EmptyState(EmptyListMessage(m_InitialScan, m_ScanProgress.Scanned, m_ScanProgress.Total,
-											  limitedToWorkspace, m_Filter)
-								 .c_str());
+			const bool scanning = SessionScanIsUnderway(m_Indexing, m_InitialScan);
+			const std::string message = EmptyListMessage(scanning, m_ScanProgress.Scanned, m_ScanProgress.Total,
+														 limitedToWorkspace, m_Filter);
+
+			if (scanning)
+			{
+				Core::LoadingState(message.c_str());
+			}
+			else
+			{
+				Core::EmptyState(message);
+			}
+
 			return;
 		}
 

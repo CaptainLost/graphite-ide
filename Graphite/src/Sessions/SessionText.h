@@ -8,6 +8,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -29,7 +30,13 @@ namespace Graphite {
 	std::string EmptyListMessage(bool isScanning, std::size_t finishedCount, std::size_t totalCount,
 								 bool isWorkspaceOnly, std::string_view filter);
 
+	bool SessionScanIsUnderway(bool indexing, bool initialScanRunning);
+
 	std::optional<std::string> PendingSessionEndText(const CommandTerminal& terminal);
+
+	std::string UnfoundSessionText(std::string_view problem);
+
+	std::string TranscriptLoadingText(std::uint64_t loadedBytes, std::uint64_t totalBytes);
 
 	std::string FormatDuration(std::chrono::milliseconds span);
 

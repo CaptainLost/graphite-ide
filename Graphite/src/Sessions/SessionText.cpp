@@ -31,6 +31,13 @@ namespace Graphite {
 		const char* const kRemovedLinePrefix = "- ";
 		const char* const kAddedLinePrefix = "+ ";
 
+		constexpr double kBytesPerMegabyte = 1024.0 * 1024.0;
+
+		double Megabytes(std::uint64_t bytes)
+		{
+			return static_cast<double>(bytes) / kBytesPerMegabyte;
+		}
+
 		void AddLines(std::vector<std::string>& lines, const std::string& text, const char* linePrefix)
 		{
 			std::size_t lineStart = 0;
@@ -119,6 +126,12 @@ namespace Graphite {
 		return isWorkspaceOnly ? "No sessions in this workspace" : "No sessions.";
 	}
 
+	bool SessionScanIsUnderway(bool indexing, bool initialScanRunning)
+	{
+		const bool scanNotStartedYet = !indexing;
+		return scanNotStartedYet || initialScanRunning;
+	}
+
 	std::optional<std::string> PendingSessionEndText(const CommandTerminal& terminal)
 	{
 		if (terminal.Exited)
@@ -139,6 +152,24 @@ namespace Graphite {
 		}
 
 		return std::nullopt;
+	}
+
+	std::string UnfoundSessionText(std::string_view problem)
+	{
+		return std::format("This session can't be found: {}", problem);
+	}
+
+	std::string TranscriptLoadingText(std::uint64_t loadedBytes, std::uint64_t totalBytes)
+	{
+		const std::string loadingText = "Loading transcript";
+
+		if (totalBytes == 0)
+		{
+			return loadingText;
+		}
+
+		return std::format("{}{}{:.1f} / {:.1f} MB", loadingText, kMiddleDotSeparator, Megabytes(loadedBytes),
+						   Megabytes(totalBytes));
 	}
 
 	std::string FormatDuration(std::chrono::milliseconds span)

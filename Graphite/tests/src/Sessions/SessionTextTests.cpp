@@ -7,6 +7,7 @@
 
 #include "TranscriptFixtures.h"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -283,6 +284,18 @@ TEST_CASE("An empty session list says why it is empty")
 	CHECK(EmptyListMessage(false, 0, 0, false, "") == "No sessions.");
 }
 
+TEST_CASE("A scan that has not started yet counts as scanning, so the list never says it is empty before it looked")
+{
+	constexpr bool kIndexing = true;
+	constexpr bool kNotIndexing = false;
+	constexpr bool kInitialScanRunning = true;
+	constexpr bool kInitialScanDone = false;
+
+	CHECK(SessionScanIsUnderway(kNotIndexing, kInitialScanDone));
+	CHECK(SessionScanIsUnderway(kIndexing, kInitialScanRunning));
+	CHECK_FALSE(SessionScanIsUnderway(kIndexing, kInitialScanDone));
+}
+
 TEST_CASE("A pending session keeps waiting while Claude's terminal runs")
 {
 	const CommandTerminal running;
@@ -306,6 +319,22 @@ TEST_CASE("A pending session stops waiting when Claude's terminal is closed whil
 	const CommandTerminal closed{.Closed = true};
 
 	CHECK(PendingSessionEndText(closed) == std::optional<std::string>{"Claude's terminal was closed before it started a session"});
+}
+
+TEST_CASE("A restored session that cannot be looked for says why")
+{
+	CHECK(UnfoundSessionText("No Claude transcripts at C:\\Users\\me\\.claude\\projects") ==
+		  "This session can't be found: No Claude transcripts at C:\\Users\\me\\.claude\\projects");
+}
+
+TEST_CASE("The transcript loader names sizes only once the total is known")
+{
+	constexpr std::uint64_t kNothingYet = 0;
+	constexpr std::uint64_t kOneAndAHalfMegabytes = 1572864;
+	constexpr std::uint64_t kFourMegabytes = 4194304;
+
+	CHECK(TranscriptLoadingText(kNothingYet, kNothingYet) == "Loading transcript");
+	CHECK(TranscriptLoadingText(kOneAndAHalfMegabytes, kFourMegabytes) == "Loading transcript \xC2\xB7 1.5 / 4.0 MB");
 }
 
 TEST_CASE("An empty session is hidden from the list unless it is live or open")

@@ -53,6 +53,9 @@ namespace Graphite {
 		bool IsLookingForSessions() const;
 
 		void SettleRestored(const std::function<const SessionSummary*(const std::string& id)>& findSummary);
+
+		void SettleRestoredAsUnfound(const std::string& problem);
+
 		void NotifyChanged(const std::vector<std::filesystem::path>& directories);
 
 		void Update();
@@ -107,6 +110,8 @@ namespace Graphite {
 
 			bool Looking = false;
 
+			std::optional<std::string> UnfoundBecause;
+
 			Core::Ref<CommandTerminal> Terminal;
 
 			bool CarriedOver = false;
@@ -115,7 +120,7 @@ namespace Graphite {
 		Entry* Find(const std::string& id);
 		void Attach(Entry& entry, const SessionSummary& summary);
 
-		static void DrawWithoutTranscript(Entry& entry);
+		static bool DrawWithoutTranscript(Entry& entry);
 
 		static void Take(TranscriptViews& views);
 
