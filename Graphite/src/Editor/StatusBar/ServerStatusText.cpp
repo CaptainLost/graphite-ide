@@ -36,6 +36,24 @@ namespace Graphite {
 		{
 			return LanguagePrefix(status.Language) + status.Name + std::string{kEmDashSeparator} + std::string{words};
 		}
+
+		std::string AnalysisWaitText(const AnalysisProgress& progress)
+		{
+			switch (progress.Pause)
+			{
+			case AnalysisPause::WhileSavedAnalysisLoads:
+				return "Paused while the saved analysis loads.";
+
+			case AnalysisPause::UntilServerIsReady:
+				return "Paused until " + (progress.PausedForServer.empty() ? std::string{"the language server"} : progress.PausedForServer) +
+					   " is ready.";
+
+			case AnalysisPause::NotPaused:
+				break;
+			}
+
+			return "The file you are reading has its own questions answered first; this waits.";
+		}
 	}
 
 	std::string ServerStatusText(const ServerStatus& status)
@@ -238,8 +256,14 @@ namespace Graphite {
 			return {};
 		}
 
-		return "analysing workspace: " + std::to_string(progress.Done) + " of " +
-			   std::to_string(progress.Total);
+		std::string text = "analysing workspace: " + std::to_string(progress.Done) + " of " + std::to_string(progress.Total);
+
+		if (progress.Pause != AnalysisPause::NotPaused)
+		{
+			text += std::string{kMiddleDotSeparator} + "paused";
+		}
+
+		return text;
 	}
 
 	std::string BackgroundAnalysisDetail(const AnalysisProgress& progress, std::size_t keptBytes,
@@ -250,7 +274,7 @@ namespace Graphite {
 							 std::to_string(progress.Total) + " files.\n";
 
 		detail += "Holding " + Core::FormatWholeMegabytes(keptBytes) + " of " + Core::FormatWholeMegabytes(budgetBytes) + ".\n";
-		detail += "The file you are reading has its own questions answered first; this waits.";
+		detail += AnalysisWaitText(progress);
 
 		return detail;
 	}

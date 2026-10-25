@@ -87,6 +87,8 @@ namespace {
 
 		std::vector<Graphite::LanguageId> Unchosen;
 
+		std::string ServerNameOf(LanguageId) override { return "clangd"; }
+
 		void Close(const std::filesystem::path& path, LanguageId) override
 		{
 			Calls.push_back({"close", path});
@@ -990,6 +992,7 @@ TEST_CASE("Nothing is started while the store is still reading its index")
 
 	CHECK(analysis.Progress().Done == 0);
 	CHECK(analysis.Progress().Total == 1);
+	CHECK(analysis.Progress().Pause == AnalysisPause::WhileSavedAnalysisLoads);
 
 	WaitForStoreReady(store);
 
@@ -997,6 +1000,30 @@ TEST_CASE("Nothing is started while the store is still reading its index")
 	analysis.Tick(4.0, kForegroundQuiet, NobodyElse);
 
 	CHECK(port.CountOf("open") == 1);
+	CHECK(analysis.Progress().Pause == AnalysisPause::NotPaused);
+}
+
+TEST_CASE("Analysis held back by a server coming up is paused until that server is ready, and names it")
+{
+	FakePort port;
+	port.ReadinessByLanguage[LanguageId::Cpp] = ServerReadiness::ComingUp;
+
+	FakeTexts texts;
+	AnalysisCache cache{kCacheCapacityBytes};
+	WorkspaceAnalysis analysis{port, texts, cache, nullptr};
+
+	analysis.Enqueue({"a.cpp"});
+	analysis.Tick(1.0, kForegroundQuiet, NobodyElse);
+
+	CHECK(analysis.Progress().Pause == AnalysisPause::UntilServerIsReady);
+	CHECK(analysis.Progress().PausedForServer == "clangd");
+	CHECK(port.Calls.empty());
+
+	port.ReadinessByLanguage[LanguageId::Cpp] = ServerReadiness::Ready;
+	analysis.Tick(2.0, kForegroundQuiet, NobodyElse);
+
+	CHECK(analysis.Progress().Pause == AnalysisPause::NotPaused);
+	CHECK(analysis.Progress().PausedForServer.empty());
 }
 
 TEST_CASE("A completed analysis reaches the store as well as the memory cache")

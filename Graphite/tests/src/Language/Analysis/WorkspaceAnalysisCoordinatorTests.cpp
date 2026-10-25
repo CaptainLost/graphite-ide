@@ -56,6 +56,8 @@ namespace {
 
 		bool HasChosenServer(Graphite::LanguageId language) override { return Graphite::LanguageHasServers(language); }
 
+		std::string ServerNameOf(LanguageId) override { return "clangd"; }
+
 		std::uint64_t Tickets = 0;
 	};
 

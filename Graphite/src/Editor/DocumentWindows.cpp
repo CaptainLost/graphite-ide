@@ -1280,7 +1280,7 @@ namespace Graphite {
 		{
 			const DocumentState& closedState = m_States.at(path);
 
-			if (const std::optional<LensState>& lens = closedState.Lens)
+			if (const std::optional<LensState>& lens = closedState.Lens; lens && LearnsFromServer(path))
 			{
 				KeepAnalysis(path, *lens, m_DocumentStates.SemanticFor(path));
 			}
@@ -1297,6 +1297,14 @@ namespace Graphite {
 	bool DocumentWindows::IsAnalysing(const std::filesystem::path& path) const
 	{
 		return m_Router.IsAnalysing(path);
+	}
+
+	// WARNING: Under a server turned off, never chosen or kept from an untrusted folder, a file's lenses are hidden and
+	// keep only what an earlier session learned: restoring its counts would show nothing, and keeping them on close
+	// would write that session's analysis over a better one.
+	bool DocumentWindows::LearnsFromServer(const std::filesystem::path& path)
+	{
+		return !HasNoServerToWaitFor(m_Router.StatusOf(path));
 	}
 
 	void DocumentWindows::KeepAnalysis(const std::filesystem::path& path, const LensState& lens,
@@ -1343,7 +1351,11 @@ namespace Graphite {
 
 		lens.Declarations = std::move(restored->Declarations);
 		lens.HaveDeclarations = !lens.Declarations.empty();
-		lens.Model.SeedCounts(std::move(restored->Counts));
+
+		if (LearnsFromServer(item.Path))
+		{
+			lens.Model.SeedCounts(std::move(restored->Counts));
+		}
 
 		// WARNING: A lens anchors to a row and this runs before the document has drawn once, so
 		// its row map is empty and every line maps to row zero. Anchoring now would collapse the
@@ -2205,7 +2217,10 @@ namespace Graphite {
 
 				if (lens != nullptr)
 				{
-					view.HoverLoadingText = HoverLoadingText(m_Router.StatusOf(item.Path));
+					const ServerStatus serverStatus = m_Router.StatusOf(item.Path);
+
+					view.HoverLoadingText = HoverLoadingText(serverStatus);
+					view.ShowLensRows = !HasNoServerToWaitFor(serverStatus);
 				}
 
 				if (state.Hover.Preview)

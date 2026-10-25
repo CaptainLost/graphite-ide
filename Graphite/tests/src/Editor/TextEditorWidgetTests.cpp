@@ -466,6 +466,28 @@ TEST_CASE("A lens label is drawn at 0.78 of the editor size and hit across that 
 	CHECK(editor.StackAfter == editor.StackBefore);
 }
 
+TEST_CASE("Lens rows hidden while no server runs for the file take no room until they are shown")
+{
+	EditorFrames editor("void Draw();\n");
+	editor.Next();
+
+	const ImVec2 withoutLenses = editor.CaretScreenPos();
+
+	Graphite::LensModel lenses;
+	DeclareReferencedFirstLine(lenses, editor.Item);
+	editor.View.Lens = &lenses;
+	editor.View.ShowLensRows = false;
+	editor.Next();
+
+	CHECK(editor.CaretScreenPos().y == doctest::Approx(withoutLenses.y));
+
+	editor.View.ShowLensRows = true;
+	editor.Next();
+
+	CHECK(editor.CaretScreenPos().y == doctest::Approx(withoutLenses.y + kEditorLineHeight));
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
 TEST_CASE("A lens with no count yet says what it waits for in the lens colour and takes no click")
 {
 	EditorFrames editor("void Draw();\n");

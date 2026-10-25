@@ -2889,14 +2889,15 @@ namespace Graphite {
 			RewrapIfGeometryChanged(item, buffer,
 									ColumnsThatFit(metrics, available, view.WordWrap));
 
-			const LensRows& lenses = LensRowsOf(view.Lens);
+			const LensModel* const drawnLenses = view.ShowLensRows ? view.Lens : nullptr;
+			const LensRows& lenses = LensRowsOf(drawnLenses);
 
 			const PointerState pointer = AddInteractiveSurface(
 				origin, ContentWidthOf(item, metrics, available, view.WordWrap),
 				DocumentHeightOf(item, metrics, lenses));
 
 			ApplyMouseToCaret(pointer, buffer, item, metrics, origin,
-							  origin.x + metrics.Gutter.TotalWidth, lenses, view.Lens, result);
+							  origin.x + metrics.Gutter.TotalWidth, lenses, drawnLenses, result);
 			RouteMouseWheel(context);
 
 			const bool hasMenu = context.ContextMenu != nullptr && context.Commands != nullptr &&
@@ -3004,7 +3005,7 @@ namespace Graphite {
 				view.ChangeDisplay.Scrollbar ? view.Changes : nullptr;
 
 			DrawVisibleRows(buffer, item, metrics, origin, scrollX, available, view.WordWrap,
-							focused, view.Syntax, scheme, view.Lens, view.Semantic,
+							focused, view.Syntax, scheme, drawnLenses, view.Semantic,
 							view.Diagnostics, view.DiagnosticsStale, gutterChanges,
 							scrollbarChanges, widget, hoverFrame, pointer, result);
 

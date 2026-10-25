@@ -97,6 +97,9 @@ namespace Graphite {
 
 		LensModel* Lens = nullptr;
 
+		// WARNING: Hidden rows still follow edits through Lens, so they stand at the right declarations when shown.
+		bool ShowLensRows = true;
+
 		std::vector<Declaration>* Declarations = nullptr;
 
 		const DiagnosticOverlay* Diagnostics = nullptr;

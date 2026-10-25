@@ -204,6 +204,8 @@ namespace Graphite {
 
 		void RestoreAnalysis(const Core::OpenItem& item, DocumentState& state);
 
+		bool LearnsFromServer(const std::filesystem::path& path);
+
 		static std::optional<std::filesystem::file_time_type> ModifiedTimeOf(
 			const std::filesystem::path& path);
 

@@ -166,6 +166,8 @@ namespace Graphite {
 			return;
 		}
 
+		m_Pause = AnalysisPause::NotPaused;
+
 		BeginArrivedFiles(now, heldElsewhere);
 
 		for (PendingAnalysis& pending : m_Pending)
@@ -208,6 +210,7 @@ namespace Graphite {
 		// so starting before then would analyse again every file the store already holds.
 		if (m_Store != nullptr && !m_Store->IsReady())
 		{
+			m_Pause = AnalysisPause::WhileSavedAnalysisLoads;
 			return;
 		}
 
@@ -220,6 +223,7 @@ namespace Graphite {
 
 				if (readiness == ServerReadiness::ComingUp)
 				{
+					PauseUntilServerIsReady(language);
 					break;
 				}
 
@@ -408,12 +412,31 @@ namespace Graphite {
 		}
 	}
 
+	void WorkspaceAnalysis::PauseUntilServerIsReady(LanguageId language)
+	{
+		const bool alreadyPausedForAnother = m_Pause == AnalysisPause::UntilServerIsReady;
+
+		if (alreadyPausedForAnother)
+		{
+			return;
+		}
+
+		m_Pause = AnalysisPause::UntilServerIsReady;
+		m_PausedForServer = m_Port.ServerNameOf(language);
+	}
+
 	AnalysisProgress WorkspaceAnalysis::Progress() const
 	{
 		AnalysisProgress progress;
 		progress.Done = m_Done;
 		progress.Total = m_Queued;
 		progress.Walking = m_Walking;
+		progress.Pause = m_Pause;
+
+		if (m_Pause == AnalysisPause::UntilServerIsReady)
+		{
+			progress.PausedForServer = m_PausedForServer;
+		}
 
 		return progress;
 	}
