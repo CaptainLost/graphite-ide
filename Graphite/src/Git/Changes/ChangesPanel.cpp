@@ -679,7 +679,7 @@ namespace Graphite {
 		const float letterWidth = ImGui::CalcTextSize(letterText).x;
 
 		// WARNING: The count is shown only for an open folder git has answered for. The model
-		// keeps a listing until the next status refresh even after the folder is closed, so a
+		// keeps a listing after the folder is closed and asks again only while it is open, so a
 		// count on a closed row would describe a listing nobody has re-asked for. The only other
 		// number is one read off the disk, which is what git is asked instead of.
 		const bool listingIsKnown = expanded && listing != nullptr;
@@ -790,11 +790,6 @@ namespace Graphite {
 
 		m_Model.RequestUntrackedIn(file.Path);
 
-		if (listing == nullptr)
-		{
-			return;
-		}
-
 		const float childIndent = FolderChildIndent(placement, drawnGlyphs.Chevron, IconColumnWidth());
 
 		ImGui::Indent(childIndent);
@@ -804,13 +799,49 @@ namespace Graphite {
 		// are scoped under the folder's own path.
 		ImGui::PushID(Core::ToUtf8(file.Path).c_str());
 
-		for (std::size_t childIndex = 0; childIndex < listing->Entries.size(); ++childIndex)
+		if (listing == nullptr)
 		{
-			RenderRow(childIndex, *listing, palette);
+			RenderListingWait(file.Path);
+		}
+		else
+		{
+			for (std::size_t childIndex = 0; childIndex < listing->Entries.size(); ++childIndex)
+			{
+				RenderRow(childIndex, *listing, palette);
+			}
 		}
 
 		ImGui::PopID();
 		ImGui::Unindent(childIndent);
+	}
+
+	void ChangesPanel::RenderListingWait(const std::filesystem::path& folder)
+	{
+		const ImVec2 rowStart = ImGui::GetCursorPos();
+		const float rowWidth = ImGui::GetContentRegionAvail().x;
+
+		ImGui::SetCursorPos(ImVec2(rowStart.x + RowPadding(), ListRowTextTop(rowStart.y)));
+
+		if (const std::optional<Core::Error> failure = m_Model.GetUntrackedFailureIn(folder); failure.has_value())
+		{
+			const std::string reason = "Could not list the files: " + failure->Message;
+			bool cut = false;
+			const std::string fitted = FitToWidth(reason, ImGui::GetContentRegionAvail().x - RowPadding(), &cut);
+			ImGui::TextDisabled("%s", fitted.c_str());
+
+			if (cut)
+			{
+				ImGui::SetItemTooltip("%s", reason.c_str());
+			}
+		}
+		else
+		{
+			Core::LoadingLine("Listing files");
+		}
+
+		// WARNING: A row laid out by hand ends on a Dummy the size of the row, or ImGui aborts on the SetCursorPos above.
+		ImGui::SetCursorPos(rowStart);
+		ImGui::Dummy(ImVec2(rowWidth, ListRowLineHeight()));
 	}
 
 	void ChangesPanel::RenderRowContextMenu(const Core::FileStatus& file, char letter)

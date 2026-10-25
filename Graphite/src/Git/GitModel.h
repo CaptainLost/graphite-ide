@@ -86,8 +86,13 @@ namespace Graphite {
 
 		void RequestUntrackedIn(std::filesystem::path directory);
 
+		// WARNING: A listing is kept through the status refreshes that still list its folder, and asked for again by
+		// the next RequestUntrackedIn, so the one returned can be a refresh behind while that answer is on its way.
 		Core::Ref<const Core::WorkingTreeStatus> GetUntrackedIn(
 			const std::filesystem::path& directory) const;
+
+		// Why the folder's last listing failed, until it is asked for again.
+		std::optional<Core::Error> GetUntrackedFailureIn(const std::filesystem::path& directory) const;
 
 		void RequestBranches();
 		void RequestStashes();
@@ -393,13 +398,19 @@ namespace Graphite {
 
 			Core::Ref<const Core::WorkingTreeStatus> Listing;
 
-			bool Failed = false;
+			std::optional<Core::Error> Failure;
+
+			// A status landed after the listing was asked for, so the next RequestUntrackedIn asks again.
+			bool Stale = false;
 		};
 
 		using UntrackedByDirectory = std::unordered_map<std::string, CachedUntracked>;
 
 		CachedUntracked* FindUntracked(const std::string& directoryKey);
 		const CachedUntracked* FindUntracked(const std::string& directoryKey) const;
+
+		// Keeps the listings of the folders the new status still lists, to be asked for again, and forgets the rest.
+		void KeepUntrackedListingsOf(const Core::WorkingTreeStatus& status);
 
 		UntrackedByDirectory m_Untracked;
 

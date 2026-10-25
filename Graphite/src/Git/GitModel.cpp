@@ -5,6 +5,8 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Workspace/Workspace.h"
 
+#include <set>
+#include <string>
 #include <utility>
 
 namespace Graphite {
@@ -215,7 +217,7 @@ namespace Graphite {
 					return;
 				}
 
-				m_Untracked.clear();
+				KeepUntrackedListingsOf(*m_Status.Get());
 
 				if (workingDirectory.HasValue())
 				{
@@ -564,10 +566,15 @@ namespace Graphite {
 		const std::string directoryKey = Core::ToUtf8(directory);
 		CachedUntracked& entry = m_Untracked[directoryKey];
 
-		if (entry.Listing != nullptr || entry.Failed || entry.Requested > entry.Applied)
+		const bool inFlight = entry.Requested > entry.Applied;
+		const bool answered = entry.Listing != nullptr || entry.Failure.has_value();
+
+		if (inFlight || (answered && !entry.Stale))
 		{
 			return;
 		}
+
+		entry.Stale = false;
 
 		++m_UntrackedGeneration;
 		entry.Requested = m_UntrackedGeneration;
@@ -589,14 +596,44 @@ namespace Graphite {
 
 				if (!listing.HasValue())
 				{
-					held->Failed = true;
+					held->Failure = listing.GetError();
+					held->Listing.reset();
 					return;
 				}
 
+				held->Failure.reset();
 				held->Listing = Core::CreateRef<const Core::WorkingTreeStatus>(
 					std::move(listing).GetValue());
 			});
 		});
+	}
+
+	void GitModel::KeepUntrackedListingsOf(const Core::WorkingTreeStatus& status)
+	{
+		std::set<std::string> listedDirectories;
+
+		for (const Core::FileStatus& entry : status.Entries)
+		{
+			if (entry.IsDirectory)
+			{
+				listedDirectories.insert(Core::ToUtf8(entry.Path));
+			}
+		}
+
+		UntrackedByDirectory kept;
+
+		for (auto& [directoryKey, cached] : m_Untracked)
+		{
+			if (!listedDirectories.contains(directoryKey))
+			{
+				continue;
+			}
+
+			cached.Stale = true;
+			kept.emplace(directoryKey, std::move(cached));
+		}
+
+		m_Untracked = std::move(kept);
 	}
 
 	GitModel::CachedUntracked* GitModel::FindUntracked(const std::string& directoryKey)
@@ -625,6 +662,13 @@ namespace Graphite {
 		const CachedUntracked* held = FindUntracked(Core::ToUtf8(directory));
 
 		return held == nullptr ? nullptr : held->Listing;
+	}
+
+	std::optional<Core::Error> GitModel::GetUntrackedFailureIn(const std::filesystem::path& directory) const
+	{
+		const CachedUntracked* held = FindUntracked(Core::ToUtf8(directory));
+
+		return held == nullptr ? std::nullopt : held->Failure;
 	}
 
 	void GitModel::ForgetFailedDiffFor(const Core::Oid& commit)
