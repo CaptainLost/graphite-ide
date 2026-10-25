@@ -1499,6 +1499,7 @@ namespace Graphite {
 
 		input.Model.RequestCommittedTexts(ends, *file);
 		HoldTexts(tab, input.Model.GetCommittedTexts(ends, *file));
+		tab.View.SetTextsWait(input.Model.CommittedTextsWait(ends, *file));
 		RenderFileDiff(tab, input, *file, openFile);
 	}
 

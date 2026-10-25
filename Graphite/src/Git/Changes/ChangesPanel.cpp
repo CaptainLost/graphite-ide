@@ -296,7 +296,13 @@ namespace Graphite {
 			const bool drawnUnstaged =
 				RenderSection("CHANGES", sections.Unstaged, *status, palette, drawnAbove);
 
-			if (!drawnAbove && !drawnUnstaged)
+			const bool noSectionDrawn = !drawnAbove && !drawnUnstaged;
+
+			if (noSectionDrawn && m_Model.IsUpdatingWorkingTree())
+			{
+				Core::LoadingState("Updating…");
+			}
+			else if (noSectionDrawn)
 			{
 				Core::EmptyState("No changes");
 			}

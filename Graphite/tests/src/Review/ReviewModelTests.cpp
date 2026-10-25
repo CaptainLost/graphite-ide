@@ -349,6 +349,43 @@ TEST_CASE("Failed committed texts are read again after a retry")
 	CHECK(model.GetCommittedTexts(ends, file) != nullptr);
 }
 
+TEST_CASE("Committed texts are loading until they land, and once they failed they say why")
+{
+	FakeReviewPort port;
+	port.RangeTextsFailure = Core::Error{Core::ErrorCode::IoFailure, "locked"};
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	const RangeEnds ends = RangeWithTip(2).Ends;
+	const Core::FileDiff file = TextFile("a.cpp");
+
+	model.RequestCommittedTexts(ends, file);
+
+	CHECK(model.CommittedTextsWait(ends, file) == Graphite::TextsWait{.Progress = Graphite::TextsProgress::Loading});
+
+	Settle(model, jobs);
+
+	CHECK(model.CommittedTextsWait(ends, file) ==
+		  Graphite::TextsWait{.Progress = Graphite::TextsProgress::Failed, .Reason = "locked"});
+}
+
+TEST_CASE("Committed texts that are held, or a binary file's, are waited for by nothing")
+{
+	FakeReviewPort port;
+	port.Texts.HasNew = true;
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	const RangeEnds ends = RangeWithTip(2).Ends;
+	const Core::FileDiff file = TextFile("a.cpp");
+	Core::FileDiff binary = TextFile("image.png");
+	binary.IsBinary = true;
+
+	model.RequestCommittedTexts(ends, file);
+	Settle(model, jobs);
+
+	CHECK(model.CommittedTextsWait(ends, file) == Graphite::TextsWait{});
+	CHECK(model.CommittedTextsWait(ends, binary) == Graphite::TextsWait{});
+}
+
 TEST_CASE("Clearing drops every review and every held diff")
 {
 	FakeReviewPort port;
