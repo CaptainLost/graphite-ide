@@ -313,13 +313,44 @@ TEST_CASE("Writes go to the write submitter and reads to the read submitter, so 
 	model.OnUpdate(Core::Timestep{0.0f});
 	model.OnUpdate(Core::Timestep{0.0f});
 
-	CHECK(writesSubmitted == 2);
+	constexpr int kStageItsStatusAndHeadAndThePlan = 4;
+	CHECK(writesSubmitted == kStageItsStatusAndHeadAndThePlan);
 	CHECK(readsSubmitted == 0);
 
 	model.RequestStatus();
 
 	CHECK(readsSubmitted == 1);
-	CHECK(writesSubmitted == 2);
+	CHECK(writesSubmitted == kStageItsStatusAndHeadAndThePlan);
+}
+
+TEST_CASE("The status and head read that settle a write go to the write submitter, ahead of any long read")
+{
+	WritePort port;
+	int readsSubmitted = 0;
+	std::vector<std::function<void()>> writeJobs;
+
+	const Graphite::JobSubmitter submitRead = [&readsSubmitted](std::function<void()>) { ++readsSubmitted; };
+	const Graphite::JobSubmitter submitWrite = [&writeJobs](std::function<void()> job) {
+		writeJobs.push_back(std::move(job));
+	};
+
+	Graphite::GitModel model{port, submitRead, submitWrite};
+	OpenA(model);
+
+	model.RequestStage({"a.txt"});
+	REQUIRE(writeJobs.size() == 1);
+	writeJobs.front()();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	REQUIRE(model.IsWriteUnsettled());
+	REQUIRE(writeJobs.size() == 3);
+
+	writeJobs[1]();
+	writeJobs[2]();
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(readsSubmitted == 0);
+	CHECK_FALSE(model.IsWriteUnsettled());
 }
 
 TEST_CASE("A second write waits for the first to be applied")

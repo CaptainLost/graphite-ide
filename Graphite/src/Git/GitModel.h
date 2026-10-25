@@ -387,6 +387,13 @@ namespace Graphite {
 
 		void MarkDirty();
 
+		void RequestStatusOn(const JobSubmitter& submit);
+		void RequestHeadOn(const JobSubmitter& submit);
+
+		// WARNING: On the write queue, so the read that settles a write never waits behind Load all, the authors walk
+		// or a commit count on the shared one.
+		void ReadStatusAfterWrite();
+
 
 		void PumpWorkingTreeDiff();
 

@@ -969,6 +969,11 @@ namespace Graphite {
 				mayHaveWrittenSomeFiles || job.Kind == WriteKind::Discard || job.Kind == WriteKind::Checkout;
 			FailTicket(job.Ticket, refreshesAfterFailure);
 
+			if (refreshesAfterFailure)
+			{
+				ReadStatusAfterWrite();
+			}
+
 			PumpWrites();
 			return;
 		}
@@ -1004,6 +1009,9 @@ namespace Graphite {
 		}
 
 		++m_AppliedWrites;
+
+		// WARNING: Asked after the settling marks above are taken, so this read is one that settles them.
+		ReadStatusAfterWrite();
 
 		PumpWrites();
 	}

@@ -205,9 +205,20 @@ namespace Graphite {
 
 	void GitModel::RequestStatus()
 	{
+		RequestStatusOn(m_Submit);
+	}
+
+	void GitModel::ReadStatusAfterWrite()
+	{
+		RequestStatusOn(m_SubmitWrite);
+		RequestHeadOn(m_SubmitWrite);
+	}
+
+	void GitModel::RequestStatusOn(const JobSubmitter& submit)
+	{
 		const std::uint64_t generation = m_Status.Begin();
 
-		m_Submit([this, generation]() {
+		submit([this, generation]() {
 			Core::Result<Core::WorkingTreeStatus> result = m_Port.QueryStatus();
 			Core::Result<std::filesystem::path> workingDirectory = m_Port.GetWorkingDirectory();
 
@@ -294,9 +305,14 @@ namespace Graphite {
 
 	void GitModel::RequestHead()
 	{
+		RequestHeadOn(m_Submit);
+	}
+
+	void GitModel::RequestHeadOn(const JobSubmitter& submit)
+	{
 		const std::uint64_t generation = m_Head.Begin();
 
-		m_Submit([this, generation]() {
+		submit([this, generation]() {
 			Core::Result<Core::HeadState> result = m_Port.QueryHead();
 
 			Deliver([this, generation, result = std::move(result)]() mutable {
