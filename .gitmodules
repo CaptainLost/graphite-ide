@@ -38,3 +38,6 @@
 [submodule "vendor/imspinner"]
 	path = vendor/imspinner
 	url = https://github.com/dalerank/imspinner.git
+[submodule "vendor/stb"]
+	path = vendor/stb
+	url = https://github.com/nothings/stb.git
