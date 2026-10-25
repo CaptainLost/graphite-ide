@@ -156,4 +156,8 @@ namespace Graphite {
 	void WriteProcessExitedLine(Core::TerminalScreen& screen, std::optional<std::uint32_t> exitCode);
 
 	std::string ExitedTerminalTitle(const std::string& title);
+
+	bool TerminalScreenIsBlank(const Core::TerminalScreen& screen);
+
+	std::string TerminalStartingText(const std::string& profileName);
 }

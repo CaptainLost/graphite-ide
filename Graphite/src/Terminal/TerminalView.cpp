@@ -11,6 +11,7 @@
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiKeys.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/Scrollbar.h"
 #include "Core/ImGui/TextMetrics.h"
 #include "Core/Terminal/KeyEncoding.h"
@@ -282,6 +283,7 @@ namespace Graphite {
 		const std::uint64_t scrolledOff = screen.GetRowsScrolledOff();
 
 		m_Columns = static_cast<std::size_t>(columns);
+		m_OutputSeen = m_OutputSeen || !TerminalScreenIsBlank(screen);
 
 		if (!m_FollowTail && scrolledOff > m_LastRowsScrolledOff)
 		{
@@ -380,7 +382,7 @@ namespace Graphite {
 			}
 		}
 
-		if (screen.IsCursorVisible() && m_FollowTail)
+		if (m_OutputSeen && screen.IsCursorVisible() && m_FollowTail)
 		{
 			const Core::CursorPosition cursor = screen.GetCursor();
 
@@ -424,6 +426,13 @@ namespace Graphite {
 		HandleKeyboard();
 
 		ImGui::PopFont();
+
+		if (!m_OutputSeen)
+		{
+			ImGui::SetCursorScreenPos(origin);
+			Core::LoadingLine(TerminalStartingText(m_Session.GetProfileName()).c_str());
+			ImGui::SetCursorScreenPos(origin);
+		}
 
 		// WARNING: The grid is drawn straight onto the draw list, so an item must cover it or the
 		// item protocol asserts. ItemSize adds the spacing back, so it comes off here, or the region

@@ -98,6 +98,7 @@ namespace Graphite {
 		Core::SelectionGesture m_Gesture;
 		std::uint64_t m_LastRowsScrolledOff = 0;
 		bool m_WasAlternate = false;
+		bool m_OutputSeen = false;
 		std::vector<ImU32> m_RowForegrounds;
 		std::vector<ImU32> m_RowBackgrounds;
 	};

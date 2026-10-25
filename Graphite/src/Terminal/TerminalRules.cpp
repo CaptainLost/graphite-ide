@@ -493,4 +493,30 @@ namespace Graphite {
 	{
 		return title + std::string{kMiddleDotSeparator} + "exited";
 	}
+
+	bool TerminalScreenIsBlank(const Core::TerminalScreen& screen)
+	{
+		const Core::CursorPosition cursor = screen.GetCursor();
+		const bool cursorIsHome = cursor.Row == 0 && cursor.Column == 0;
+
+		if (!cursorIsHome || screen.GetRowsScrolledOff() > 0)
+		{
+			return false;
+		}
+
+		for (std::uint16_t row = 0; row < screen.GetRows(); ++row)
+		{
+			if (RowShowsSomething(screen, row))
+			{
+				return false;
+			}
+		}
+
+		return true;
+	}
+
+	std::string TerminalStartingText(const std::string& profileName)
+	{
+		return "Starting " + profileName + std::string{kEllipsis};
+	}
 }

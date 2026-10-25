@@ -679,3 +679,28 @@ TEST_CASE("An exited command's tab says it exited")
 {
 	CHECK(ExitedTerminalTitle("Claude") == "Claude \xC2\xB7 exited");
 }
+
+TEST_CASE("A terminal's screen is blank until something is drawn on it or its cursor moves")
+{
+	Core::TerminalScreen screen(kScreenColumns, kScreenRows);
+	CHECK(TerminalScreenIsBlank(screen));
+
+	Core::TerminalScreen printed(kScreenColumns, kScreenRows);
+	PrintText(printed, "PS C:\\>");
+	CHECK_FALSE(TerminalScreenIsBlank(printed));
+
+	Core::TerminalScreen moved(kScreenColumns, kScreenRows);
+	moved.LineFeed();
+	CHECK_FALSE(TerminalScreenIsBlank(moved));
+
+	constexpr std::uint8_t kBlueInThePalette = 4;
+	Core::TerminalScreen painted(kScreenColumns, kScreenRows);
+	painted.SetPen(Core::Pen{.Background = Core::TerminalColor::FromPalette(kBlueInThePalette)});
+	painted.EraseInLine(Core::EraseExtent::All);
+	CHECK_FALSE(TerminalScreenIsBlank(painted));
+}
+
+TEST_CASE("A terminal starting up names the shell it is starting")
+{
+	CHECK(TerminalStartingText("PowerShell") == "Starting PowerShell\xE2\x80\xA6");
+}
