@@ -1,5 +1,7 @@
 #include "Language/Diagnostics/DiagnosticsModel.h"
 
+#include <algorithm>
+
 namespace Graphite {
 
 	namespace {
@@ -16,6 +18,19 @@ namespace Graphite {
 		for (const DocumentVersionNote& note : update.Versions)
 		{
 			m_Documents[note.Path].Sent = note.Version;
+		}
+
+		for (const DocumentVersionNote& note : update.Unanswered)
+		{
+			const std::map<std::filesystem::path, Entry>::iterator found = m_Documents.find(note.Path);
+
+			if (found == m_Documents.end())
+			{
+				continue;
+			}
+
+			auto& [foundPath, entry] = *found;
+			entry.GaveUpOn = std::max(entry.GaveUpOn, note.Version);
 		}
 
 		for (const PublishedDiagnostics& published : update.Published)

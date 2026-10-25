@@ -588,6 +588,7 @@ TEST_CASE("A question asked of a server that never started is answered rather th
 	REQUIRE(answers.size() == 1);
 	CHECK(answers[0].Id == id);
 	CHECK(answers[0].Failed);
+	CHECK(answers[0].FailedBecause == Graphite::ReplyFailure::ServerUnavailable);
 }
 
 TEST_CASE("Nothing is queued for a server that is already gone")
@@ -1776,4 +1777,155 @@ TEST_CASE("When one of two progresses ends the server is working on the other")
 	client.Deliver(R"({"method":"$/progress","params":{"token":"build","value":{"kind":"end"}}})");
 
 	CHECK(StatusOf(client).Activity == "Background index");
+}
+
+namespace {
+
+	constexpr std::chrono::seconds kOneSecond{1};
+	constexpr std::chrono::hours kLongAfterAnyLimit{1};
+
+	std::vector<Graphite::LspClient::Answer> AnswersOf(Graphite::LspClient& client)
+	{
+		Graphite::LspClient::Drained drained;
+		client.Drain(drained);
+
+		return drained.Answers;
+	}
+
+	bool CancelSentFor(const std::vector<std::string>& sent, Graphite::RequestId id)
+	{
+		for (const nlohmann::json& cancel : MessagesFor(sent, "$/cancelRequest"))
+		{
+			if (cancel.at("params").at("id").get<Graphite::RequestId>() == id)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
+TEST_CASE("A definition the server leaves unanswered past its time limit is cancelled and fails as timed out")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+	client.Deliver(std::string{kHandshakeAnswer});
+
+	const std::chrono::steady_clock::time_point askedAt = std::chrono::steady_clock::now();
+	const Graphite::RequestId id = client.AskDefinition({temp.GetPath() / "main.cpp", 0, Graphite::Utf16Column{0}});
+	client.TakeSent();
+
+	client.ExpireOverdueRequests(askedAt + Graphite::LspClient::kNavigationTimeLimit - kOneSecond);
+
+	CHECK_FALSE(CancelSentFor(client.TakeSent(), id));
+	CHECK(AnswersOf(client).empty());
+
+	client.ExpireOverdueRequests(std::chrono::steady_clock::now() + Graphite::LspClient::kNavigationTimeLimit + kOneSecond);
+
+	CHECK(CancelSentFor(client.TakeSent(), id));
+
+	const std::vector<Graphite::LspClient::Answer> answers = AnswersOf(client);
+
+	REQUIRE(answers.size() == 1);
+	CHECK(answers[0].Id == id);
+	CHECK(answers[0].Failed);
+	CHECK(answers[0].FailedBecause == Graphite::ReplyFailure::TimedOut);
+}
+
+TEST_CASE("References are given longer than a definition before they time out")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+	client.Deliver(std::string{kHandshakeAnswer});
+
+	const Graphite::RequestId id = client.AskReferences({temp.GetPath() / "main.cpp", 0, Graphite::Utf16Column{0}});
+
+	client.ExpireOverdueRequests(std::chrono::steady_clock::now() + Graphite::LspClient::kNavigationTimeLimit + kOneSecond);
+
+	CHECK(AnswersOf(client).empty());
+
+	client.ExpireOverdueRequests(std::chrono::steady_clock::now() + Graphite::LspClient::kReferencesTimeLimit + kOneSecond);
+
+	const std::vector<Graphite::LspClient::Answer> answers = AnswersOf(client);
+
+	REQUIRE(answers.size() == 1);
+	CHECK(answers[0].Id == id);
+	CHECK(answers[0].FailedBecause == Graphite::ReplyFailure::TimedOut);
+}
+
+TEST_CASE("A request asked before the handshake has no time limit until the handshake completes")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+
+	const Graphite::RequestId id = client.AskHover({temp.GetPath() / "main.cpp", 0, Graphite::Utf16Column{0}});
+
+	client.ExpireOverdueRequests(std::chrono::steady_clock::now() + kLongAfterAnyLimit);
+
+	CHECK(AnswersOf(client).empty());
+
+	client.Deliver(std::string{kHandshakeAnswer});
+	client.ExpireOverdueRequests(std::chrono::steady_clock::now() + Graphite::LspClient::kNavigationTimeLimit + kOneSecond);
+
+	const std::vector<Graphite::LspClient::Answer> answers = AnswersOf(client);
+
+	REQUIRE(answers.size() == 1);
+	CHECK(answers[0].Id == id);
+	CHECK(answers[0].FailedBecause == Graphite::ReplyFailure::TimedOut);
+}
+
+TEST_CASE("A reply that arrives after its request timed out is dropped")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+	client.Deliver(std::string{kHandshakeAnswer});
+
+	const Graphite::RequestId id = client.AskSymbols(temp.GetPath() / "main.cpp");
+
+	client.ExpireOverdueRequests(std::chrono::steady_clock::now() + Graphite::LspClient::kAnalysisTimeLimit + kOneSecond);
+	client.Deliver(R"({"id":)" + std::to_string(id) + R"(,"result":[]})");
+
+	const std::vector<Graphite::LspClient::Answer> answers = AnswersOf(client);
+
+	REQUIRE(answers.size() == 1);
+	CHECK(answers[0].FailedBecause == Graphite::ReplyFailure::TimedOut);
+}
+
+TEST_CASE("An error reply fails its request as the server's error")
+{
+	TempDirectory temp;
+	Graphite::LspClient client = Offline(temp.GetPath());
+	client.Deliver(std::string{kHandshakeAnswer});
+
+	const Graphite::RequestId id = client.AskDefinition({temp.GetPath() / "main.cpp", 0, Graphite::Utf16Column{0}});
+	client.Deliver(R"({"id":)" + std::to_string(id) + R"(,"error":{"code":-32603,"message":"internal"}})");
+
+	const std::vector<Graphite::LspClient::Answer> answers = AnswersOf(client);
+
+	REQUIRE(answers.size() == 1);
+	CHECK(answers[0].Failed);
+	CHECK(answers[0].FailedBecause == Graphite::ReplyFailure::ServerError);
+}
+
+TEST_CASE("A pull the server leaves unanswered past its time limit is cancelled and reported as unanswered")
+{
+	Graphite::LspClient client = Offline("C:/src");
+	client.OpenDocument("C:/src/Main.cs", "class A {}\n", Graphite::DocumentRole::Shown);
+	client.Deliver(std::string{kHandshakeOfferingPulls});
+
+	const std::vector<nlohmann::json> pulls = MessagesFor(client.TakeSent(), "textDocument/diagnostic");
+	REQUIRE(pulls.size() == 1);
+
+	client.ExpireOverdueRequests(std::chrono::steady_clock::now() + Graphite::LspClient::kAnalysisTimeLimit + kOneSecond);
+
+	CHECK(CancelSentFor(client.TakeSent(), IdOf(pulls[0])));
+
+	Graphite::LspClient::Drained drained;
+	client.Drain(drained);
+
+	CHECK(drained.Answers.empty());
+	REQUIRE(drained.Unanswered.size() == 1);
+	CHECK(drained.Unanswered[0].Path == std::filesystem::path{"C:/src/Main.cs"});
+	CHECK(drained.Unanswered[0].Version == Graphite::DocumentVersion{1});
 }

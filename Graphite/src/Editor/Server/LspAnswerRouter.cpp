@@ -16,6 +16,11 @@ namespace Graphite {
 				   state == ServerState::ProjectIncomplete;
 		}
 
+		bool AskingAgainCannotHelp(const LanguageServices::Answer& answer)
+		{
+			return answer.Failed && answer.FailedBecause != ReplyFailure::ServerUnavailable;
+		}
+
 		bool AnyTicketIsFor(const std::map<LanguageServices::Ticket, std::filesystem::path>& tickets,
 							const std::filesystem::path& path)
 		{
@@ -432,9 +437,12 @@ namespace Graphite {
 
 					schedule.SymbolsOutstanding = AnyTicketIsFor(m_PendingSymbols, path);
 
+					const bool applied = !answer.Failed && target.ApplySymbols(path, answer);
+					const bool lastQuestionFailedForGood = AskingAgainCannotHelp(answer) && !schedule.SymbolsOutstanding;
+
 					// WARNING: The answer describes the text as it was when it was asked, so a want
 					// that arrived since, from an edit or a save, keeps symbols wanted.
-					if (!answer.Failed && target.ApplySymbols(path, answer))
+					if (applied || lastQuestionFailedForGood)
 					{
 						schedule.SymbolsWanted = schedule.WantedWhileOutstanding;
 						schedule.WantedWhileOutstanding = false;

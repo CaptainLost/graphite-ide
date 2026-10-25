@@ -108,6 +108,24 @@ TEST_CASE("A publication naming no version reads as stale once anything has been
 	CHECK(model.IsStale(kMain));
 }
 
+TEST_CASE("A version the server gave up answering is remembered, and only for a document it was sent")
+{
+	Graphite::DiagnosticsModel model;
+
+	Graphite::DiagnosticsUpdate sent;
+	sent.Versions.push_back({kMain, Graphite::DocumentVersion{3}});
+	model.Apply(sent);
+
+	Graphite::DiagnosticsUpdate givenUp;
+	givenUp.Unanswered.push_back({kMain, Graphite::DocumentVersion{3}});
+	givenUp.Unanswered.push_back({"C:/src/NeverSent.cpp", Graphite::DocumentVersion{1}});
+	model.Apply(givenUp);
+
+	REQUIRE(model.GetDocuments().size() == 1);
+	CHECK(model.GetDocuments().at(kMain).GaveUpOn == Graphite::DocumentVersion{3});
+	CHECK_FALSE(model.GetDocuments().at(kMain).HasAnswer);
+}
+
 TEST_CASE("A close forgets a document entirely")
 {
 	Graphite::DiagnosticsModel model;

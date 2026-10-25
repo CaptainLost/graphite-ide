@@ -95,11 +95,12 @@ namespace {
 			Recolour.clear();
 		}
 
-		void Reply(Ticket ticket, bool failed = false)
+		void Reply(Ticket ticket, bool failed = false, ReplyFailure reason = ReplyFailure::ServerError)
 		{
 			LanguageServices::Answer answer;
 			answer.For = ticket;
 			answer.Failed = failed;
+			answer.FailedBecause = reason;
 			Queued.push_back(std::move(answer));
 		}
 
@@ -383,14 +384,14 @@ TEST_CASE("A colours ticket the server refused at once does not hold analysing")
 	CHECK_FALSE(harness.Router.IsAnalysing(kSource));
 }
 
-TEST_CASE("Failed declarations stay wanted and are asked for again only once the retry clock runs out")
+TEST_CASE("Declarations asked of a server that could not be reached are asked again only once the retry clock runs out")
 {
 	Harness harness;
 
 	harness.Router.Track(kSource);
 	harness.Router.AskSymbolsIfDue(kSource);
 
-	harness.Server.Reply(harness.Server.LastOf("symbols"), kFailedAnswer);
+	harness.Server.Reply(harness.Server.LastOf("symbols"), kFailedAnswer, ReplyFailure::ServerUnavailable);
 	harness.Router.Collect(harness.Target);
 
 	CHECK(harness.Target.Symbols.empty());
@@ -406,6 +407,35 @@ TEST_CASE("Failed declarations stay wanted and are asked for again only once the
 	harness.Now += kOneHundredthSecond;
 	harness.Router.AskSymbolsIfDue(kSource);
 	CHECK(harness.Server.CountOf("symbols") == 2);
+}
+
+TEST_CASE("Declarations the server failed to give or never gave end the document's analysing")
+{
+	for (const ReplyFailure reason : {ReplyFailure::ServerError, ReplyFailure::TimedOut})
+	{
+		CAPTURE(static_cast<int>(reason));
+
+		Harness harness;
+
+		harness.Router.Track(kSource);
+		harness.Router.AskSymbolsIfDue(kSource);
+
+		harness.Server.Reply(harness.Server.LastOf("symbols"), kFailedAnswer, reason);
+		harness.Server.Reply(harness.Server.LastOf("semantic"));
+		harness.Router.Collect(harness.Target);
+
+		CHECK_FALSE(harness.Router.IsAnalysing(kSource));
+
+		harness.Now += kLongIdleSeconds;
+		harness.Router.AskSymbolsIfDue(kSource);
+
+		CHECK(harness.Server.CountOf("symbols") == 1);
+
+		harness.Router.WantSymbolsNow(kSource);
+		harness.Router.AskSymbolsIfDue(kSource);
+
+		CHECK(harness.Server.CountOf("symbols") == 2);
+	}
 }
 
 TEST_CASE("One declarations question is outstanding at a time")

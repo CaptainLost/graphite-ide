@@ -567,6 +567,63 @@ namespace Graphite {
 		SendLocked(*m_Shared, m_Shared->Rpc.Notification("textDocument/didClose", TextDocumentParams(uri)));
 	}
 
+	LspClient::Answer LspClient::FailedAnswer(RequestId id, ReplyFailure reason)
+	{
+		Answer answer;
+		answer.Id = id;
+		answer.Failed = true;
+		answer.FailedBecause = reason;
+
+		return answer;
+	}
+
+	std::chrono::seconds LspClient::TimeLimitOf(Question question)
+	{
+		switch (question)
+		{
+		case Question::Definition:
+		case Question::Hover:
+		case Question::SwitchSourceHeader:
+			return kNavigationTimeLimit;
+
+		case Question::References:
+			return kReferencesTimeLimit;
+
+		case Question::Symbols:
+		case Question::SemanticTokens:
+		case Question::Diagnostics:
+			return kAnalysisTimeLimit;
+		}
+
+		return kAnalysisTimeLimit;
+	}
+
+	std::optional<std::chrono::steady_clock::time_point> LspClient::DeadlineFromNowLocked(const Shared& shared, Question question)
+	{
+		if (!shared.Initialized)
+		{
+			return std::nullopt;
+		}
+
+		return std::chrono::steady_clock::now() + TimeLimitOf(question);
+	}
+
+	void LspClient::StartWaitingDeadlinesLocked(Shared& shared)
+	{
+		for (auto& [requestId, asked] : shared.Pending)
+		{
+			if (!asked.Deadline)
+			{
+				asked.Deadline = DeadlineFromNowLocked(shared, asked.Kind);
+			}
+		}
+	}
+
+	bool LspClient::IsOverdue(const Asked& asked, std::chrono::steady_clock::time_point now)
+	{
+		return asked.Deadline.has_value() && now >= *asked.Deadline;
+	}
+
 	RequestId LspClient::AskLocked(std::string_view method, const nlohmann::json& params,
 								   Question question, std::optional<FilePosition> from)
 	{
@@ -578,16 +635,12 @@ namespace Graphite {
 
 			const std::lock_guard<std::mutex> state(m_Shared->StateMutex);
 
-			Answer answer;
-			answer.Id = id;
-			answer.Failed = true;
-
-			m_Shared->Answers.push_back(std::move(answer));
+			m_Shared->Answers.push_back(FailedAnswer(id, ReplyFailure::ServerUnavailable));
 
 			return id;
 		}
 
-		m_Shared->Pending[id] = Asked{question, std::move(from)};
+		m_Shared->Pending[id] = Asked{.Kind = question, .From = std::move(from), .Deadline = DeadlineFromNowLocked(*m_Shared, question)};
 		SendLocked(*m_Shared, std::move(bytes));
 
 		return id;
@@ -713,6 +766,80 @@ namespace Graphite {
 		m_Shared->Status.Percent = kNoPercent;
 	}
 
+	std::optional<DocumentVersionNote> LspClient::GiveUpPullLocked(Shared& shared, const Asked& asked)
+	{
+		Document* document = FindDocument(shared, asked.Uri);
+
+		if (document == nullptr)
+		{
+			return std::nullopt;
+		}
+
+		document->Pull = kNoRequest;
+
+		const DocumentVersionNote unanswered{.Path = document->Path, .Version = asked.Version};
+
+		if (document->PullAgain)
+		{
+			PullLocked(shared, asked.Uri);
+		}
+
+		return unanswered;
+	}
+
+	void LspClient::ExpireOverdueRequests(std::chrono::steady_clock::time_point now)
+	{
+		std::vector<Answer> timedOut;
+		std::vector<DocumentVersionNote> unanswered;
+
+		{
+			const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
+
+			// WARNING: Collected first, because giving up a pull can send the next one, and inserting into the table
+			// while walking it invalidates the walk.
+			std::vector<RequestId> overdue;
+
+			for (const auto& [requestId, asked] : m_Shared->Pending)
+			{
+				if (IsOverdue(asked, now))
+				{
+					overdue.push_back(requestId);
+				}
+			}
+
+			for (const RequestId requestId : overdue)
+			{
+				PendingTable::node_type pending = m_Shared->Pending.extract(requestId);
+				const Asked& asked = pending.mapped();
+
+				SendLocked(*m_Shared, m_Shared->Rpc.Cancel(requestId));
+
+				if (asked.Kind != Question::Diagnostics)
+				{
+					timedOut.push_back(FailedAnswer(requestId, ReplyFailure::TimedOut));
+					continue;
+				}
+
+				if (std::optional<DocumentVersionNote> givenUp = GiveUpPullLocked(*m_Shared, asked))
+				{
+					unanswered.push_back(std::move(*givenUp));
+				}
+			}
+		}
+
+		if (timedOut.empty() && unanswered.empty())
+		{
+			return;
+		}
+
+		const std::lock_guard<std::mutex> state(m_Shared->StateMutex);
+
+		m_Shared->Answers.insert(m_Shared->Answers.end(), std::make_move_iterator(timedOut.begin()),
+								 std::make_move_iterator(timedOut.end()));
+		m_Shared->Unanswered.insert(m_Shared->Unanswered.end(), std::make_move_iterator(unanswered.begin()),
+									std::make_move_iterator(unanswered.end()));
+	}
+
 	std::size_t LspClient::QueuedCount() const
 	{
 		const std::lock_guard<std::mutex> protocol(m_Shared->ProtocolMutex);
@@ -722,9 +849,17 @@ namespace Graphite {
 
 	void LspClient::Drain(Drained& drained)
 	{
-		ExpireHandshakeIfStalled(std::chrono::steady_clock::now());
+		const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+
+		ExpireHandshakeIfStalled(now);
+		ExpireOverdueRequests(now);
 
 		const std::lock_guard<std::mutex> state(m_Shared->StateMutex);
+
+		drained.Unanswered.insert(drained.Unanswered.end(), std::make_move_iterator(m_Shared->Unanswered.begin()),
+								  std::make_move_iterator(m_Shared->Unanswered.end()));
+
+		m_Shared->Unanswered.clear();
 
 		drained.Answers.insert(drained.Answers.end(),
 							   std::make_move_iterator(m_Shared->Answers.begin()),
@@ -860,11 +995,7 @@ namespace Graphite {
 
 		for (const RequestId id : abandoned)
 		{
-			Answer answer;
-			answer.Id = id;
-			answer.Failed = true;
-
-			shared->Answers.push_back(std::move(answer));
+			shared->Answers.push_back(FailedAnswer(id, ReplyFailure::ServerUnavailable));
 		}
 
 		if (!shared->Stopping.load())
@@ -1052,7 +1183,10 @@ namespace Graphite {
 
 		auto [id, bytes] = shared.Rpc.Request("textDocument/diagnostic", TextDocumentParams(uri));
 
-		shared.Pending[id] = Asked{.Kind = Question::Diagnostics, .Uri = uri, .Version = DocumentVersion{document.Sent}};
+		shared.Pending[id] = Asked{.Kind = Question::Diagnostics,
+								   .Uri = uri,
+								   .Version = DocumentVersion{document.Sent},
+								   .Deadline = DeadlineFromNowLocked(shared, Question::Diagnostics)};
 		document.Pull = id;
 		document.PullAgain = false;
 
@@ -1166,14 +1300,13 @@ namespace Graphite {
 	LspClient::Answer LspClient::ReadAnswer(const Asked& asked, const IncomingMessage& reply,
 											const std::vector<SemanticKind>& legend)
 	{
+		if (reply.IsError)
+		{
+			return FailedAnswer(*reply.ReplyTo, ReplyFailure::ServerError);
+		}
+
 		Answer answer;
 		answer.Id = *reply.ReplyTo;
-		answer.Failed = reply.IsError;
-
-		if (answer.Failed)
-		{
-			return answer;
-		}
 
 		if (asked.Kind == Question::Symbols)
 		{
@@ -1323,6 +1456,8 @@ namespace Graphite {
 		}
 
 		shared.Queued.clear();
+
+		StartWaitingDeadlinesLocked(shared);
 
 		PullShownLocked(shared);
 
