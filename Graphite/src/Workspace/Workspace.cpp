@@ -144,7 +144,7 @@ namespace Graphite {
 	{
 		m_Watcher.reset();
 
-		Core::Result<Core::Scope<Core::DirectoryWatcher>> watcher = Core::DirectoryWatcher::Start(root);
+		Core::Result<Core::Scope<Core::DirectoryWatcher>> watcher = m_StartWatcher(root);
 
 		if (!watcher)
 		{
@@ -440,7 +440,7 @@ namespace Graphite {
 
 		m_WatcherResumed = true;
 
-		Core::Result<Core::Scope<Core::DirectoryWatcher>> watcher = Core::DirectoryWatcher::Start(m_Root);
+		Core::Result<Core::Scope<Core::DirectoryWatcher>> watcher = m_StartWatcher(m_Root);
 
 		if (!watcher)
 		{
