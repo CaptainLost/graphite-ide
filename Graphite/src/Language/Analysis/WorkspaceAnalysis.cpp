@@ -431,9 +431,13 @@ namespace Graphite {
 		progress.Done = m_Done;
 		progress.Total = m_Queued;
 		progress.Walking = m_Walking;
-		progress.Pause = m_Pause;
 
-		if (m_Pause == AnalysisPause::UntilServerIsReady)
+		// WARNING: A pause holds back one language's queue only, so the pass reads as paused only while nothing of any
+		// other language is being analysed.
+		const bool nothingBeingAnalysed = m_Pending.empty() && m_AwaitingText.empty();
+		progress.Pause = nothingBeingAnalysed ? m_Pause : AnalysisPause::NotPaused;
+
+		if (progress.Pause == AnalysisPause::UntilServerIsReady)
 		{
 			progress.PausedForServer = m_PausedForServer;
 		}

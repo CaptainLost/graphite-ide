@@ -1003,6 +1003,28 @@ TEST_CASE("Nothing is started while the store is still reading its index")
 	CHECK(analysis.Progress().Pause == AnalysisPause::NotPaused);
 }
 
+TEST_CASE("A language held back while another is being analysed does not make the pass read as paused")
+{
+	FakePort port;
+	port.ReadinessByLanguage[LanguageId::Cpp] = ServerReadiness::ComingUp;
+
+	FakeTexts texts;
+	AnalysisCache cache{kCacheCapacityBytes};
+	WorkspaceAnalysis analysis{port, texts, cache, nullptr};
+	analysis.SetConcurrency(2);
+
+	analysis.Enqueue({"a.cpp", "Program.cs"});
+	analysis.Tick(1.0, kForegroundQuiet, NobodyElse);
+
+	REQUIRE(texts.Requested == std::vector<std::filesystem::path>{"Program.cs"});
+	CHECK(analysis.Progress().Pause == AnalysisPause::NotPaused);
+
+	analysis.Tick(2.0, kForegroundQuiet, NobodyElse);
+
+	REQUIRE(port.CountOf("open") == 1);
+	CHECK(analysis.Progress().Pause == AnalysisPause::NotPaused);
+}
+
 TEST_CASE("Analysis held back by a server coming up is paused until that server is ready, and names it")
 {
 	FakePort port;
