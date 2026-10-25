@@ -151,3 +151,12 @@ TEST_CASE("A commit message to copy is the summary, then the body after a blank 
 	commit.Body = "It read past the end.";
 	CHECK(Graphite::CommitMessageText(commit) == "Fix the parser\n\nIt read past the end.");
 }
+
+TEST_CASE("The change count says it is counting while the diff is read, and that it could not once the diff failed")
+{
+	constexpr bool kDiffFailed = true;
+	constexpr bool kDiffOnItsWay = false;
+
+	CHECK(Graphite::UncountedChangesText(kDiffOnItsWay) == "counting changes\xE2\x80\xA6");
+	CHECK(Graphite::UncountedChangesText(kDiffFailed) == "couldn't count changes");
+}

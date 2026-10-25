@@ -48,3 +48,15 @@ TEST_CASE("A folder is missing a repository only when the status said so and no 
 
 	CHECK_FALSE(Graphite::IsMissingRepository(kStatusDelivered, kNoRepository));
 }
+
+TEST_CASE("While a new attempt at the history runs an earlier failure gives way to the loader")
+{
+	CHECK_FALSE(
+		Graphite::HistoryPlaceholder(kStatusDelivered, std::nullopt, kLogFailed, Graphite::LogAttempt::InFlight).has_value());
+}
+
+TEST_CASE("A missing repository is still said while a new attempt at the history runs")
+{
+	CHECK(Graphite::HistoryPlaceholder(kNoStatusDelivered, kNoRepository, kLogFailed, Graphite::LogAttempt::InFlight) ==
+		  "No repository.");
+}

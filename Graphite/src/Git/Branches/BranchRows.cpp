@@ -18,6 +18,8 @@ namespace Graphite {
 		constexpr const char* kLoadingLabel = "Reading authors";
 		constexpr const char* kFailurePrefix = "Cannot read authors: ";
 		constexpr const char* kNoMatchesLabel = "No matching branches";
+		constexpr const char* kMoreMayMatchLabel = "Reading authors \xC2\xB7 more branches may match";
+		constexpr const char* kNoMatchesYetLabel = "No matching branches yet \xC2\xB7 reading authors";
 		constexpr const char* kUserSuffix = " (you)";
 
 		constexpr std::string_view kDigits = "0123456789";
@@ -515,6 +517,8 @@ namespace Graphite {
 		const std::vector<std::string> words = LoweredWordsOf(input.Filter.Text);
 		const AuthorsByBranch authorsByBranch = AuthorsOfEveryBranch(input);
 		const bool waitingForAuthors = ViewNeedsAuthors(input) && input.Authors == nullptr;
+		const bool authorsBeingRead = input.Authors == nullptr && !input.AuthorsFailure.has_value();
+		const bool moreMayMatch = !words.empty() && authorsBeingRead;
 		const bool needsPeople = input.Authors != nullptr && input.Options.Group == BranchGrouping::Author;
 		const PeopleByKey people = needsPeople ? PeopleOf(authorsByBranch) : PeopleByKey{};
 
@@ -540,7 +544,10 @@ namespace Graphite {
 
 			if (listed.Indices.empty())
 			{
-				rows.push_back(BranchRow{.Kind = BranchRowKind::NoMatches, .Section = section, .Label = kNoMatchesLabel});
+				const BranchRow noMatches =
+					moreMayMatch ? BranchRow{.Kind = BranchRowKind::Loading, .Section = section, .Label = kNoMatchesYetLabel}
+								 : BranchRow{.Kind = BranchRowKind::NoMatches, .Section = section, .Label = kNoMatchesLabel};
+				rows.push_back(noMatches);
 				continue;
 			}
 
@@ -552,6 +559,11 @@ namespace Graphite {
 			{
 				const std::string noGroup;
 				AddBranchRows(rows, section, listed.Indices, kTopLevelDepth, noGroup);
+			}
+
+			if (moreMayMatch)
+			{
+				rows.push_back(BranchRow{.Kind = BranchRowKind::Loading, .Section = section, .Label = kMoreMayMatchLabel});
 			}
 		}
 

@@ -890,8 +890,10 @@ namespace Graphite {
 
 		if (!page)
 		{
-			const std::optional<std::string> placeholder =
-				HistoryPlaceholder(m_Model.GetStatus() != nullptr, m_Model.GetStatusError(), m_Model.GetLogError());
+			const LogAttempt attempt =
+				m_Model.IsLogAnswered(m_Model.GetLogGeneration()) ? LogAttempt::Settled : LogAttempt::InFlight;
+			const std::optional<std::string> placeholder = HistoryPlaceholder(
+				m_Model.GetStatus() != nullptr, m_Model.GetStatusError(), m_Model.GetLogError(), attempt);
 
 			if (placeholder.has_value())
 			{
@@ -1069,7 +1071,9 @@ namespace Graphite {
 			stats = CountChanges(*diff);
 		}
 
-		if (Graphite::RenderCommitDetails(commit, stats, LocalOffset(), palette))
+		const bool diffFailed = m_Model.IsDiffFailed(commit.Id);
+
+		if (Graphite::RenderCommitDetails(commit, stats, diffFailed, LocalOffset(), palette))
 		{
 			m_Commits.ClearCommitSelection();
 		}

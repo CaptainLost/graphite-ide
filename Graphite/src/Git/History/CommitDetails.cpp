@@ -20,6 +20,11 @@ namespace Graphite {
 		return changeCounts;
 	}
 
+	std::string UncountedChangesText(bool diffFailed)
+	{
+		return diffFailed ? "couldn't count changes" : "counting changes\xE2\x80\xA6";
+	}
+
 	std::string FormattedTimestamp(std::chrono::sys_seconds instant, std::chrono::minutes offset)
 	{
 		return std::format("{:%Y-%m-%d %H:%M}", instant + offset);

@@ -58,9 +58,17 @@ namespace Graphite {
 
 	std::optional<HistoryStatus> DescribeHistory(const HistoryStatusInput& input)
 	{
-		if (input.Stash || (!input.Filtered && input.Shown == 0))
+		const char* busy = input.AskedFiltered ? kSearching : kLoading;
+		const bool pageHasNothingToCount = input.Stash || (!input.Filtered && input.Shown == 0);
+
+		if (pageHasNothingToCount)
 		{
-			return std::nullopt;
+			if (!input.Asking)
+			{
+				return std::nullopt;
+			}
+
+			return HistoryStatus{.Busy = busy};
 		}
 
 		HistoryStatus status;
@@ -68,7 +76,7 @@ namespace Graphite {
 
 		if (input.Asking)
 		{
-			status.Busy = input.AskedFiltered ? kSearching : kLoading;
+			status.Busy = busy;
 			return status;
 		}
 
