@@ -188,7 +188,7 @@ namespace Graphite {
 		m_WriteQueue.pop_front();
 		m_WriteInFlight = true;
 
-		m_Submit([this, job = std::move(job)]() mutable {
+		m_SubmitWrite([this, job = std::move(job)]() mutable {
 			WriteOutcome outcome = RunWrite(job);
 
 			Deliver([this, job = std::move(job), outcome = std::move(outcome)]() mutable {

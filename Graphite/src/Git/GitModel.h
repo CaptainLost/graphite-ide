@@ -68,13 +68,17 @@ namespace Graphite {
 	};
 
 	// WARNING: Every job submitted by the model captures `this`. An owner holding both the
-	// model and the queue behind its submitter must declare the model BEFORE the queue, so
-	// the queue is destroyed and its workers joined first. The inline submitter used in tests
+	// model and the queues behind its submitters must declare the model BEFORE the queues, so
+	// the queues are destroyed and their workers joined first. The inline submitter used in tests
 	// does not show a wrong order.
 	class GitModel : Core::NonCopyable
 	{
 	public:
+		// Reads and writes on one submitter.
 		GitModel(GitPort& port, JobSubmitter submit);
+
+		// Writes on a submitter of their own, so a write never waits behind a long read.
+		GitModel(GitPort& port, JobSubmitter submitRead, JobSubmitter submitWrite);
 
 		void OnUpdate(Core::Timestep timestep);
 
@@ -395,6 +399,7 @@ namespace Graphite {
 
 		GitPort& m_Port;
 		JobSubmitter m_Submit;
+		JobSubmitter m_SubmitWrite;
 
 		// WARNING: The inbox's mutex covers the inbox and nothing else. Every other member is
 		// touched on the UI thread only, the write queue's state included.

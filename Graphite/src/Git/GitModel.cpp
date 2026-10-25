@@ -62,7 +62,12 @@ namespace Graphite {
 	}
 
 	GitModel::GitModel(GitPort& port, JobSubmitter submit)
-		: m_Port(port), m_Submit(std::move(submit))
+		: m_Port(port), m_Submit(submit), m_SubmitWrite(std::move(submit))
+	{
+	}
+
+	GitModel::GitModel(GitPort& port, JobSubmitter submitRead, JobSubmitter submitWrite)
+		: m_Port(port), m_Submit(std::move(submitRead)), m_SubmitWrite(std::move(submitWrite))
 	{
 	}
 

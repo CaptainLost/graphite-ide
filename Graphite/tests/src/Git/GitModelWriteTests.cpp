@@ -288,6 +288,38 @@ namespace {
 	}
 }
 
+TEST_CASE("Writes go to the write submitter and reads to the read submitter, so a click never waits behind a long read")
+{
+	WritePort port;
+	int readsSubmitted = 0;
+	int writesSubmitted = 0;
+
+	const Graphite::JobSubmitter submitRead = [&readsSubmitted](std::function<void()> job) {
+		++readsSubmitted;
+		job();
+	};
+	const Graphite::JobSubmitter submitWrite = [&writesSubmitted](std::function<void()> job) {
+		++writesSubmitted;
+		job();
+	};
+
+	Graphite::GitModel model{port, submitRead, submitWrite};
+	OpenA(model);
+
+	model.RequestStage({"a.txt"});
+	model.RequestCheckoutPlan({.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"});
+	model.OnUpdate(Core::Timestep{0.0f});
+	model.OnUpdate(Core::Timestep{0.0f});
+
+	CHECK(writesSubmitted == 2);
+	CHECK(readsSubmitted == 0);
+
+	model.RequestStatus();
+
+	CHECK(readsSubmitted == 1);
+	CHECK(writesSubmitted == 2);
+}
+
 TEST_CASE("A second write waits for the first to be applied")
 {
 	WritePort port;
