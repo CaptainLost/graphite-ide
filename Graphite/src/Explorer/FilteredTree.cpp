@@ -1,7 +1,10 @@
 #include "Explorer/FilteredTree.h"
 
+#include "UI/TypographicMarks.h"
+
 #include <algorithm>
 #include <cstddef>
+#include <format>
 #include <optional>
 #include <utility>
 
@@ -115,5 +118,18 @@ namespace Graphite {
 	{
 		FilteredTreeBuilder builder{entries, passes};
 		return builder.Build(root);
+	}
+
+	std::string NoMatchingFilesText(std::string_view filter, ListingFreshness freshness)
+	{
+		switch (freshness)
+		{
+		case ListingFreshness::UpToDate:
+			return std::format("No files match \"{}\"", filter);
+		case ListingFreshness::Refreshing:
+			return std::format("No files match \"{}\" yet{}refreshing the file list", filter, kMiddleDotSeparator);
+		}
+
+		return std::format("No files match \"{}\"", filter);
 	}
 }

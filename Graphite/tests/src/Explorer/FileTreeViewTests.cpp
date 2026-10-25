@@ -482,6 +482,73 @@ TEST_CASE("A read of the folder that takes a while is shown by a moving loader u
 	CHECK_FALSE(Core::Redraw::TakeDeadline().has_value());
 }
 
+TEST_CASE("Focusing the filter starts reading the folder before a letter is typed")
+{
+	TempDirectory folder;
+	folder.MakeFile("src/Deep.cpp");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+	screen.Next();
+
+	CHECK(jobs.Count() == 0);
+
+	screen.Click(kFilterBox);
+	screen.Next();
+
+	CHECK(jobs.Count() == 1);
+}
+
+TEST_CASE("A change on disk is not read again until the filter is focused")
+{
+	TempDirectory folder;
+	folder.MakeFile("src/Deep.cpp");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+	screen.Click(kFilterBox);
+	jobs.RunAll();
+	screen.ClearFilterWithEscape();
+	screen.Click(ImVec2(kExplorerSize.x * 0.5f, kExplorerSize.y - 20.0f));
+	screen.Next();
+
+	screen.Events.Publish(Graphite::WorkspaceFilesChangedEvent{.Everything = true});
+	screen.Next();
+	screen.Next();
+
+	CHECK(jobs.Count() == 0);
+}
+
+TEST_CASE("A filter matching nothing while the folder is read again shows a loader until the read lands")
+{
+	TempDirectory folder;
+	folder.MakeFile("README.md");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+	screen.Click(kFilterBox);
+	jobs.RunAll();
+	screen.Next();
+
+	screen.Events.Publish(Graphite::WorkspaceFilesChangedEvent{.Everything = true});
+	screen.Type("Deep");
+	screen.Next();
+	REQUIRE(jobs.Count() == 1);
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	screen.Next();
+
+	CHECK(Core::Redraw::TakeDeadline().has_value());
+
+	jobs.RunAll();
+	screen.Next();
+	static_cast<void>(Core::Redraw::TakeDeadline());
+
+	screen.Next();
+
+	CHECK_FALSE(Core::Redraw::TakeDeadline().has_value());
+}
+
 TEST_CASE("Delete chosen while another question holds the modal gate waits for it, and asks once the gate is free")
 {
 	TempDirectory folder;

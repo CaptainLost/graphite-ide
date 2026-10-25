@@ -31,6 +31,8 @@
 
 #include "Core/Events/EventBus.h"
 
+#include <imgui_internal.h>
+
 #include <algorithm>
 #include <format>
 #include <string>
@@ -41,9 +43,22 @@
 namespace Graphite {
 
 	namespace {
+
+		constexpr const char* kFilterFieldId = "##fileFilter";
+		constexpr const char* kRefreshingFileList = "Refreshing the file list";
+
 		std::string NewFromTemplateLabel()
 		{
 			return std::string{"New File from Template"} + std::string{kEllipsis};
+		}
+
+		void DrawTreeLoader(const std::string& text, Core::WhileLoaderWaits whileWaiting)
+		{
+			const float inset = TreeRowChevronBoxLeft();
+
+			ImGui::Indent(inset);
+			Core::LoadingLine(text.c_str(), whileWaiting);
+			ImGui::Unindent(inset);
 		}
 	}
 
@@ -126,7 +141,14 @@ namespace Graphite {
 		}
 
 		ResolvePendingRename();
-		RenderFilter();
+		const bool typingInFilter = RenderFilter();
+
+		// WARNING: Read from the moment the filter is focused, so the list is fresh by the first letter, and never in
+		// the background on a change on disk: every entry read costs a git ignore check.
+		if (typingInFilter || m_Filter.IsActive())
+		{
+			m_Listing.Update();
+		}
 
 		if (ImGui::BeginChild("##fileTreeBody", ImVec2(0.0f, 0.0f), ImGuiChildFlags_None))
 		{
@@ -192,14 +214,16 @@ namespace Graphite {
 		m_ScrollToPath = path;
 	}
 
-	void FileTreeView::RenderFilter()
+	bool FileTreeView::RenderFilter()
 	{
 		const Core::PanelMarginScope margin;
 
-		if (DrawFilterField("##fileFilter", m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf), {.Hint = "Filter files"}))
+		if (DrawFilterField(kFilterFieldId, m_Filter.InputBuf, IM_ARRAYSIZE(m_Filter.InputBuf), {.Hint = "Filter files"}))
 		{
 			m_Filter.Build();
 		}
+
+		return ImGui::GetActiveID() == ImGui::GetID(kFilterFieldId);
 	}
 
 	void FileTreeView::NewFileInRoot()
@@ -250,8 +274,6 @@ namespace Graphite {
 	{
 		constexpr const char* kFilteredTreeScope = "##filteredTree";
 
-		m_Listing.Update();
-
 		if (!m_Listing.HasListing())
 		{
 			RenderSearching();
@@ -259,6 +281,15 @@ namespace Graphite {
 		}
 
 		RebuildFilteredTreeWhenOutOfDate();
+
+		const ListingFreshness freshness =
+			m_Listing.IsUpToDate() ? ListingFreshness::UpToDate : ListingFreshness::Refreshing;
+		const bool nothingMatches = !AnyChildPassesFilter(m_FilteredTree);
+
+		if (freshness == ListingFreshness::Refreshing && !nothingMatches)
+		{
+			DrawTreeLoader(kRefreshingFileList, Core::WhileLoaderWaits::ShowNothing);
+		}
 
 		// WARNING: The scope keeps the filtered rows' ids apart from the real tree's. ImGui stores a
 		// folder's open state by id, so a folder opened by the filter would stay open after it.
@@ -268,11 +299,21 @@ namespace Graphite {
 
 		m_ReopenFilteredFolders = false;
 
-		const bool nothingMatches = !AnyChildPassesFilter(m_FilteredTree);
-
-		if (nothingMatches)
+		if (!nothingMatches)
 		{
-			DrawTreeMessage(std::format("No files match \"{}\"", m_Filter.InputBuf));
+			return;
+		}
+
+		const std::string message = NoMatchingFilesText(m_Filter.InputBuf, freshness);
+
+		switch (freshness)
+		{
+		case ListingFreshness::UpToDate:
+			DrawTreeMessage(message);
+			return;
+		case ListingFreshness::Refreshing:
+			DrawTreeLoader(message, Core::WhileLoaderWaits::ShowText);
+			return;
 		}
 	}
 

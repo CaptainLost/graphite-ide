@@ -216,3 +216,10 @@ TEST_CASE("With nothing matching the filtered tree is the root alone")
 	CHECK(root.Name == "proj");
 	CHECK(root.Children.empty());
 }
+
+TEST_CASE("A filter that matches nothing says so outright only once the file list is up to date")
+{
+	CHECK(Graphite::NoMatchingFilesText("Foo", Graphite::ListingFreshness::UpToDate) == "No files match \"Foo\"");
+	CHECK(Graphite::NoMatchingFilesText("Foo", Graphite::ListingFreshness::Refreshing) ==
+		  "No files match \"Foo\" yet \xC2\xB7 refreshing the file list");
+}

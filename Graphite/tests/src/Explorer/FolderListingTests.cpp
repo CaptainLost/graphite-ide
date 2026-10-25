@@ -349,6 +349,53 @@ TEST_CASE("A folder listing runs one read at a time")
 	CHECK_FALSE(listing.HasListing());
 }
 
+TEST_CASE("A folder listing is up to date only once the read after the last change noted has landed")
+{
+	TempDirectory folder;
+	folder.MakeFile("a.txt");
+
+	DeferredJobs jobs;
+	FolderListing listing{jobs.Submitter()};
+	listing.SetRoot(folder.GetPath());
+
+	CHECK_FALSE(listing.IsUpToDate());
+
+	listing.Update();
+	jobs.RunAll();
+	listing.Update();
+
+	CHECK(listing.IsUpToDate());
+
+	listing.NoteChangedDirectories({folder.GetPath()});
+
+	CHECK_FALSE(listing.IsUpToDate());
+
+	listing.Update();
+
+	CHECK_FALSE(listing.IsUpToDate());
+	CHECK(listing.HasListing());
+
+	jobs.RunAll();
+	listing.Update();
+
+	CHECK(listing.IsUpToDate());
+}
+
+TEST_CASE("A folder listing stays up to date through a change inside a folder git ignores")
+{
+	TempDirectory folder;
+	InitRepository(folder, "bin/\n");
+	folder.MakeFile("bin/Debug/Graphite.exe");
+
+	FolderListing listing{RunJobsAtOnce()};
+	listing.SetRoot(folder.GetPath());
+	listing.Update();
+
+	listing.NoteChangedDirectories({folder.GetPath() / "bin" / "Debug"});
+
+	CHECK(listing.IsUpToDate());
+}
+
 TEST_CASE("A folder listing reads again after a read that a change overtook")
 {
 	TempDirectory folder;

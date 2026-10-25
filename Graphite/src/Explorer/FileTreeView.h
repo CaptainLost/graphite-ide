@@ -103,7 +103,7 @@ namespace Graphite {
 		};
 
 		void FollowActiveDocument();
-		void RenderFilter();
+		bool RenderFilter();
 		void RenderEmptyState();
 		void RenderFilteredTree();
 		void RenderSearching();
