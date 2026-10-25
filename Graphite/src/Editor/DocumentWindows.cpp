@@ -2094,7 +2094,8 @@ namespace Graphite {
 	void DocumentWindows::RenderDocumentWindows(
 		const CommandContext& context, float fontSize, Core::IndentStyle indentStyle,
 		unsigned int fallbackDockNode, bool wordWrap, ChangeMarkerDisplay changeDisplay,
-		HoverSettings hoverSettings, const ResolvedScheme& scheme, ReferencesPanel& referencesPanel,
+		bool highlightOccurrences, HoverSettings hoverSettings, const ResolvedScheme& scheme,
+		ReferencesPanel& referencesPanel,
 		Core::TabCloseRequests& closeRequests, const std::filesystem::path& workspaceRoot)
 	{
 		m_Shown.clear();
@@ -2175,6 +2176,7 @@ namespace Graphite {
 				view.Indent = indentStyle;
 				view.WordWrap = wordWrap;
 				view.ChangeDisplay = changeDisplay;
+				view.HighlightOccurrences = highlightOccurrences;
 				view.Scheme = &scheme;
 				view.Lens = lens != nullptr ? &lens->Model : nullptr;
 				view.Declarations = lens != nullptr ? &lens->Declarations : nullptr;
@@ -2384,7 +2386,7 @@ namespace Graphite {
 		RenderDefinitionChoices(frame.Scheme, frame.Indent.Width);
 
 		RenderDocumentWindows(context, frame.FontSize, frame.Indent, frame.FallbackDockNode,
-							  frame.WordWrap, frame.ChangeMarkers, frame.Hover, frame.Scheme,
+							  frame.WordWrap, frame.ChangeMarkers, frame.HighlightOccurrences, frame.Hover, frame.Scheme,
 							  referencesPanel,
 							  frame.CloseRequests, frame.WorkspaceRoot);
 

@@ -16,6 +16,7 @@
 #include "Editor/Overlays/LensModel.h"
 #include "Editor/Overlays/LensWaiting.h"
 #include "Editor/Find/MatchColumns.h"
+#include "Editor/Find/SelectionOccurrences.h"
 #include "Theme/Palettes.h"
 #include "Editor/Overlays/SemanticOverlay.h"
 #include "Git/Changes/ChangeMarkers.h"
@@ -543,7 +544,14 @@ namespace Graphite {
 			}
 			else if (clicks == kDoubleClick)
 			{
-				item.Caret = Core::SelectWordAt(buffer, offset);
+				// WARNING: The word is taken from the character under the pointer, not from the caret
+				// position the click rounds to. Rounded, the right half of a word's last character
+				// lands on whatever follows the word, and that is what got selected.
+				const auto cellUnderPointer = static_cast<std::size_t>(relativeX / metrics.CellWidth);
+				const std::size_t characterUnderPointer = Core::VisualToCaret(
+					buffer, item.Rows, Core::VisualPosition{.Row = row, .Column = cellUnderPointer}, item.TabWidth);
+
+				item.Caret = Core::SelectWordAt(buffer, characterUnderPointer);
 			}
 			else
 			{
@@ -1085,6 +1093,8 @@ namespace Graphite {
 
 			LineMatches Matches;
 
+			LineMatches Occurrences;
+
 			LineMatches Brackets;
 			bool BracketsUnmatched = false;
 
@@ -1097,9 +1107,11 @@ namespace Graphite {
 		{
 			const Core::TextBuffer& Buffer;
 			const std::vector<Core::FindMatch>& Matches;
+			const std::vector<Core::FindMatch>& Occurrences;
 
 			Core::OffsetRange Selection;
 			std::size_t CurrentMatch = 0;
+			std::size_t SelectedOccurrence = 0;
 			std::size_t TabWidth = Core::DefaultTabWidth;
 
 			std::optional<BracketPair> Brackets;
@@ -1131,6 +1143,15 @@ namespace Graphite {
 			matchInput.TabWidth = tabWidth;
 
 			cache.Matches = MatchColumnsOnLine(matchInput);
+
+			LineMatchInput occurrenceInput{input.Occurrences};
+
+			occurrenceInput.LineText = cache.Text;
+			occurrenceInput.LineStart = start;
+			occurrenceInput.CurrentMatch = input.SelectedOccurrence;
+			occurrenceInput.TabWidth = tabWidth;
+
+			cache.Occurrences = MatchColumnsOnLine(occurrenceInput);
 
 			cache.Brackets.Columns.clear();
 			cache.Brackets.Current = 0;
@@ -1295,29 +1316,47 @@ namespace Graphite {
 			}
 		}
 
+		void FillRowColumns(const RowCanvas& canvas, const RowSlice& slice, const MatchColumns& match,
+							ImU32 color)
+		{
+			const ColumnSpan clipped = ClipToRow(slice, match.FromColumn, match.ToColumn);
+
+			if (clipped.IsEmpty())
+			{
+				return;
+			}
+
+			const float fromX = ColumnX(canvas, slice, clipped.FromColumn);
+			const float toX = ColumnX(canvas, slice, clipped.ToColumn);
+
+			canvas.Draw->AddRectFilled(ImVec2(fromX, slice.Y),
+									   ImVec2(toX, slice.Y + canvas.Metrics.LineHeight), color);
+		}
+
 		void DrawRowMatches(const RowCanvas& canvas, const RowSlice& slice,
 							const VisibleLineCache& cache)
 		{
 			for (std::size_t index = 0; index < cache.Matches.Columns.size(); ++index)
 			{
-				const MatchColumns& match = cache.Matches.Columns[index];
-				const ColumnSpan clipped = ClipToRow(slice, match.FromColumn, match.ToColumn);
-
-				if (clipped.IsEmpty())
-				{
-					continue;
-				}
-
-				const float fromX = ColumnX(canvas, slice, clipped.FromColumn);
-				const float toX = ColumnX(canvas, slice, clipped.ToColumn);
-
 				const ImU32 color = index == cache.Matches.Current
 										? canvas.Palette.FindCurrentMatch
 										: canvas.Palette.FindMatch;
 
-				canvas.Draw->AddRectFilled(ImVec2(fromX, slice.Y),
-										   ImVec2(toX, slice.Y + canvas.Metrics.LineHeight),
-										   color);
+				FillRowColumns(canvas, slice, cache.Matches.Columns[index], color);
+			}
+		}
+
+		// The selected occurrence is left out: the selection already covers it.
+		void DrawRowOccurrences(const RowCanvas& canvas, const RowSlice& slice,
+								const VisibleLineCache& cache)
+		{
+			for (std::size_t index = 0; index < cache.Occurrences.Columns.size(); ++index)
+			{
+				if (index != cache.Occurrences.Current)
+				{
+					FillRowColumns(canvas, slice, cache.Occurrences.Columns[index],
+								   canvas.Palette.SelectionOccurrence);
+				}
 			}
 		}
 
@@ -2346,6 +2385,8 @@ namespace Graphite {
 
 		constexpr float kOverviewMarkWidth = 4.0f;
 
+		constexpr float kOccurrenceTickGap = 1.0f;
+
 		constexpr float kOverviewCaretHeight = 2.0f;
 
 		constexpr float kBothTrackEdges = 2.0f;
@@ -2411,6 +2452,22 @@ namespace Graphite {
 			window->DrawList->PushClipRect(clip.Min, clip.Max, kIntersectWithCurrentClip);
 		}
 
+		struct OverviewStrip
+		{
+			float Left = 0.0f;
+			float Right = 0.0f;
+		};
+
+		OverviewStrip CentreStripOf(const OverviewTrack& track)
+		{
+			const float centre = (track.Bar.Min.x + track.Bar.Max.x) * kHalf;
+			const float halfWidth =
+				ImMin(Core::Scaled(kOverviewMarkWidth), track.Bar.GetWidth() - track.Inset * kBothTrackEdges) * kHalf;
+			const float left = IM_TRUNC(centre - halfWidth);
+
+			return OverviewStrip{.Left = left, .Right = left + halfWidth * kBothTrackEdges};
+		}
+
 		float OverviewLineTop(const Core::OpenItem& item, const RowCanvas& canvas,
 							  const LensRows& lenses, const OverviewTrack& track, std::size_t line)
 		{
@@ -2455,13 +2512,7 @@ namespace Graphite {
 			const std::vector<OverviewMark> marks = BuildChangeOverview(
 				*changes, lineTop, Core::Scaled(kOverviewMinHeight) / track.Height);
 
-			const float centre = (track.Bar.Min.x + track.Bar.Max.x) * kHalf;
-			const float halfMarkWidth =
-				ImMin(Core::Scaled(kOverviewMarkWidth),
-					  track.Bar.GetWidth() - track.Inset * kBothTrackEdges) *
-				kHalf;
-			const float markLeft = IM_TRUNC(centre - halfMarkWidth);
-			const float markRight = markLeft + halfMarkWidth * kBothTrackEdges;
+			const OverviewStrip strip = CentreStripOf(track);
 
 			PushOverviewClip(window, track);
 
@@ -2470,9 +2521,54 @@ namespace Graphite {
 				const ImU32 base = OverviewColourOf(mark.Kind, canvas.Palette);
 
 				window->DrawList->AddRectFilled(
-					ImVec2(markLeft, track.Top + mark.From * track.Height),
-					ImVec2(markRight, track.Top + mark.To * track.Height),
+					ImVec2(strip.Left, track.Top + mark.From * track.Height),
+					ImVec2(strip.Right, track.Top + mark.To * track.Height),
 					mark.Staged ? Core::WithAlphaScaled(base, kStagedChangeAlpha) : base);
+			}
+
+			window->DrawList->PopClipRect();
+		}
+
+		// Ticked in the margins either side of the grab and the centre strip, so they cover neither. A
+		// wide scrollbar's grab is wider than the strip.
+		void DrawOccurrenceOverview(const Core::OpenItem& item, const RowCanvas& canvas,
+									const LensRows& lenses, const SelectionOccurrences& occurrences,
+									const OverviewTrack& track)
+		{
+			if (occurrences.Lines.empty())
+			{
+				return;
+			}
+
+			ImGuiWindow* window = ImGui::GetCurrentWindow();
+
+			const auto lineTop = [&](std::size_t line) { return OverviewLineTop(item, canvas, lenses, track, line); };
+
+			const std::vector<OccurrenceMark> marks = BuildOccurrenceOverview(
+				occurrences.Lines, lineTop, Core::Scaled(kOverviewMinHeight) / track.Height);
+
+			const OverviewStrip strip = CentreStripOf(track);
+			const float gap = Core::Scaled(kOccurrenceTickGap);
+			const float leftTickRight = std::min(strip.Left, track.Bar.Min.x + track.Inset) - gap;
+			const float rightTickLeft = std::max(strip.Right, track.Bar.Max.x - track.Inset) + gap;
+			const ImU32 color = Core::WithOpaqueAlpha(canvas.Palette.SelectionOccurrence);
+
+			PushOverviewClip(window, track);
+
+			for (const OccurrenceMark& mark : marks)
+			{
+				const float top = track.Top + mark.From * track.Height;
+				const float bottom = track.Top + mark.To * track.Height;
+
+				if (leftTickRight > track.Bar.Min.x)
+				{
+					window->DrawList->AddRectFilled(ImVec2(track.Bar.Min.x, top), ImVec2(leftTickRight, bottom), color);
+				}
+
+				if (rightTickLeft < track.Bar.Max.x)
+				{
+					window->DrawList->AddRectFilled(ImVec2(rightTickLeft, top), ImVec2(track.Bar.Max.x, bottom), color);
+				}
 			}
 
 			window->DrawList->PopClipRect();
@@ -2601,6 +2697,7 @@ namespace Graphite {
 
 			DrawIndentGuides(canvas, slice, depth, item.TabWidth);
 
+			DrawRowOccurrences(canvas, slice, cache);
 			DrawRowMatches(canvas, slice, cache);
 			DrawRowBrackets(canvas, slice, cache);
 
@@ -2645,6 +2742,19 @@ namespace Graphite {
 			return surface->ParentWindow != nullptr ? surface->ParentWindow->Pos.x : surface->Pos.x;
 		}
 
+		// WARNING: matches.size() stands for "none of them", the value MatchColumnsOnLine reads as no
+		// current match. Zero is a real index and would leave the first occurrence unpainted.
+		std::size_t IndexOfRange(const std::vector<Core::FindMatch>& matches, Core::OffsetRange range)
+		{
+			const auto atOrAfter = std::lower_bound(
+				matches.begin(), matches.end(), range.From,
+				[](const Core::FindMatch& match, std::size_t from) { return match.From < from; });
+
+			const bool isRange = atOrAfter != matches.end() && atOrAfter->From == range.From && atOrAfter->To == range.To;
+
+			return isRange ? static_cast<std::size_t>(std::distance(matches.begin(), atOrAfter)) : matches.size();
+		}
+
 		std::optional<BracketPair> BracketPairFor(const Core::TextBuffer& buffer,
 												  const Core::OpenItem& item, SyntaxCache* syntax,
 												  BracketMemo& memo)
@@ -2672,8 +2782,9 @@ namespace Graphite {
 							 const SemanticOverlay* semanticOverlay,
 							 const DiagnosticOverlay* diagnosticOverlay, bool diagnosticsStale,
 							 const ChangeMarkers* changes, const ChangeMarkers* scrollbarChanges,
-							 EditorWidgetState& widget, const HoverFrame& hoverFrame,
-							 const PointerState& pointer, EditorFrameResult& result)
+							 const SelectionOccurrences& occurrences, EditorWidgetState& widget,
+							 const HoverFrame& hoverFrame, const PointerState& pointer,
+							 EditorFrameResult& result)
 		{
 			const LensRows& lenses = LensRowsOf(lensModel);
 
@@ -2744,13 +2855,15 @@ namespace Graphite {
 			if (const std::optional<OverviewTrack> track = OverviewTrackOf(ImGui::GetCurrentWindow()))
 			{
 				DrawChangeOverview(item, canvas, lenses, scrollbarChanges, *track);
+				DrawOccurrenceOverview(item, canvas, lenses, occurrences, *track);
 				DrawCaretOverview(canvas, lenses.ScreenRowOf(caret.Visual.Row), *track);
 			}
 
-			LineCacheInput lineInput{buffer, item.Find.Matches};
+			LineCacheInput lineInput{buffer, item.Find.Matches, occurrences.Matches};
 
 			lineInput.Selection = Core::SelectionRange(item.Caret);
 			lineInput.CurrentMatch = item.Find.CurrentMatch;
+			lineInput.SelectedOccurrence = IndexOfRange(occurrences.Matches, lineInput.Selection);
 			lineInput.TabWidth = item.TabWidth;
 			lineInput.Brackets = BracketPairFor(buffer, item, syntax, widget.Brackets);
 
@@ -2965,6 +3078,9 @@ namespace Graphite {
 				RefreshFindMatchesIfStale(item, buffer);
 			}
 
+			const SelectionOccurrences& occurrences =
+				OccurrencesToShow(widget.Occurrences, buffer, item, view.HighlightOccurrences);
+
 			// WARNING: The anchor is applied before the caret, deliberately. Both want the scroll
 			// this frame and the caret is the fresher claim: a reply arriving the frame somebody
 			// pressed a key must not drag the view back off where they just went.
@@ -3007,7 +3123,7 @@ namespace Graphite {
 			DrawVisibleRows(buffer, item, metrics, origin, scrollX, available, view.WordWrap,
 							focused, view.Syntax, scheme, drawnLenses, view.Semantic,
 							view.Diagnostics, view.DiagnosticsStale, gutterChanges,
-							scrollbarChanges, widget, hoverFrame, pointer, result);
+							scrollbarChanges, occurrences, widget, hoverFrame, pointer, result);
 
 			// WARNING: A frame that drew nothing reports row zero, and adopting it would claim
 			// the reader had scrolled to the top. The anchor is recorded as a line and a sub-row

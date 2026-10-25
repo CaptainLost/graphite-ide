@@ -668,4 +668,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0636](0636-run-git-writes-on-a-worker-of-their-own.md) | Run git writes on a worker of their own | proposed | 2026-10-25 |
 | [0637](0637-keep-a-command-terminal-open-after-its-process-exits.md) | Keep a command terminal open after its process exits | proposed | 2026-10-25 |
 | [0638](0638-show-where-a-navigation-command-waits-and-how-it-ended-in-a-bubble-at-the-caret.md) | Show where a navigation command waits and how it ended in a bubble at the caret | proposed | 2026-10-25 |
+| [0639](0639-highlight-the-other-occurrences-of-a-selected-word-in-the-text-and-either-side-of-the-scrollbar-s-centre-strip.md) | Highlight the other occurrences of a selected word, in the text and either side of the scrollbar's centre strip | proposed | 2026-10-25 |
 <!-- /adr-index -->

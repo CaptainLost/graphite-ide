@@ -110,6 +110,8 @@ namespace Graphite {
 
 		ChangeMarkerDisplay ChangeDisplay;
 
+		bool HighlightOccurrences = false;
+
 		ScrollAnchor* Anchor = nullptr;
 
 		EditorWidgetState* Widget = nullptr;

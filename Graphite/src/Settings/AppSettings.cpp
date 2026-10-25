@@ -45,6 +45,7 @@ namespace Graphite {
 		constexpr const char* kDiffColourSyntaxKey = "diffColourSyntax";
 		constexpr const char* kGutterChangeMarkersKey = "gutterChangeMarkers";
 		constexpr const char* kScrollbarChangeMarkersKey = "scrollbarChangeMarkers";
+		constexpr const char* kHighlightOccurrencesKey = "highlightOccurrences";
 		constexpr const char* kHoverInfoKey = "hoverInfo";
 		constexpr const char* kHoverPreviewKey = "hoverPreview";
 		constexpr const char* kHoverDelayKey = "hoverDelayMs";
@@ -469,6 +470,16 @@ namespace Graphite {
 	void AppSettings::SetScrollbarChangeMarkers(bool show)
 	{
 		Set(kScrollbarChangeMarkersKey, Flag(show));
+	}
+
+	bool AppSettings::IsHighlightingOccurrences() const
+	{
+		return ReadFlag(Get(kHighlightOccurrencesKey), kOnWhenAbsent);
+	}
+
+	void AppSettings::SetHighlightOccurrences(bool highlight)
+	{
+		Set(kHighlightOccurrencesKey, Flag(highlight));
 	}
 
 	bool AppSettings::IsHoverInfoEnabled() const

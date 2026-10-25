@@ -9,6 +9,7 @@ namespace Graphite {
 		Background,
 		Text,
 		Selection,
+		SelectionOccurrence,
 		CurrentLine,
 		Guide,
 		GutterFill,

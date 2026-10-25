@@ -85,6 +85,9 @@ namespace Graphite {
 		bool HasScrollbarChangeMarkers() const;
 		void SetScrollbarChangeMarkers(bool show);
 
+		bool IsHighlightingOccurrences() const;
+		void SetHighlightOccurrences(bool highlight);
+
 		bool IsHoverInfoEnabled() const;
 		void SetHoverInfo(bool show);
 

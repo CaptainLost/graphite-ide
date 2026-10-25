@@ -55,6 +55,8 @@ namespace Graphite {
 			return {"text", "Text"};
 		case EditorColor::Selection:
 			return {"selection", "Selection"};
+		case EditorColor::SelectionOccurrence:
+			return {"selectionOccurrence", "Selection occurrence"};
 		case EditorColor::CurrentLine:
 			return {"currentLine", "Current line"};
 		case EditorColor::Guide:

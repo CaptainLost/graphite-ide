@@ -13,6 +13,8 @@ namespace Graphite {
 		constexpr int kOpaque = 255;
 		constexpr int kDarkSelectionAlpha = 89;
 		constexpr int kLightSelectionAlpha = 70;
+		constexpr int kDarkOccurrenceAlpha = 45;
+		constexpr int kLightOccurrenceAlpha = 30;
 		constexpr int kDarkGuideAlpha = 45;
 		constexpr int kLightGuideAlpha = 40;
 		constexpr int kBracketAlpha = 179;
@@ -300,6 +302,8 @@ namespace Graphite {
 			SetEditor(scheme, EditorColor::LineNumber, FromHex(palette.LineNumber));
 			SetEditor(scheme, EditorColor::Lens, FromHex(palette.TextDisabled));
 			SetEditor(scheme, EditorColor::Selection, FromHex(palette.Accent, palette.Light ? kLightSelectionAlpha : kDarkSelectionAlpha));
+			SetEditor(scheme, EditorColor::SelectionOccurrence,
+					  FromHex(palette.Accent, palette.Light ? kLightOccurrenceAlpha : kDarkOccurrenceAlpha));
 			SetEditor(scheme, EditorColor::Guide, FromHex(palette.TextDisabled, palette.Light ? kLightGuideAlpha : kDarkGuideAlpha));
 			SetEditor(scheme, EditorColor::MatchingBracket, FromHex(palette.SurfaceActive, kBracketAlpha));
 			SetEditor(scheme, EditorColor::CurrentLine,

@@ -121,6 +121,20 @@ TEST_CASE("In every built-in scheme the chrome is darker than the editor, so the
 	}
 }
 
+TEST_CASE("In every built-in scheme an occurrence of the selection is fainter than the selection itself")
+{
+	constexpr std::size_t kSelection = static_cast<std::size_t>(Graphite::EditorColor::Selection);
+	constexpr std::size_t kSelectionOccurrence = static_cast<std::size_t>(Graphite::EditorColor::SelectionOccurrence);
+
+	for (const Graphite::BuiltInScheme which : Graphite::AllBuiltInSchemes())
+	{
+		const Graphite::ResolvedScheme& scheme = Graphite::SchemeFor(which);
+
+		CAPTURE(Graphite::NameOf(which));
+		CHECK(scheme.Editor[kSelectionOccurrence].A < scheme.Editor[kSelection].A);
+	}
+}
+
 TEST_CASE("The schemes named light are light, and every other one is dark")
 {
 	const std::set<Graphite::BuiltInScheme> light = {

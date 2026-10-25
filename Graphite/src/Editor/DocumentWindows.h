@@ -66,6 +66,7 @@ namespace Graphite {
 		unsigned int FallbackDockNode;
 		bool WordWrap;
 		ChangeMarkerDisplay ChangeMarkers;
+		bool HighlightOccurrences;
 		HoverSettings Hover;
 		const ResolvedScheme& Scheme;
 		Core::TabCloseRequests& CloseRequests;
@@ -340,7 +341,7 @@ namespace Graphite {
 		void RenderDocumentWindows(const CommandContext& context, float fontSize,
 								   Core::IndentStyle indentStyle, unsigned int fallbackDockNode,
 								   bool wordWrap, ChangeMarkerDisplay changeDisplay,
-								   HoverSettings hoverSettings,
+								   bool highlightOccurrences, HoverSettings hoverSettings,
 								   const ResolvedScheme& scheme, ReferencesPanel& referencesPanel,
 								   Core::TabCloseRequests& closeRequests,
 								   const std::filesystem::path& workspaceRoot);

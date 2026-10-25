@@ -2,6 +2,7 @@
 
 #include "Editor/BracketMatch.h"
 #include "Editor/EditorCommands.h"
+#include "Editor/Find/SelectionOccurrences.h"
 
 #include <cstddef>
 #include <limits>
@@ -70,6 +71,8 @@ namespace Graphite {
 		HistoryHold History;
 
 		BracketMemo Brackets;
+
+		OccurrenceMemo Occurrences;
 
 		std::vector<PendingEditorAction> PendingActions;
 	};

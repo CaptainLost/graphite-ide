@@ -121,6 +121,7 @@ namespace Graphite {
 									 .WordWrap = m_Store.IsDiffWordWrapEnabled()};
 		m_GutterChangeMarkers = m_Store.HasGutterChangeMarkers();
 		m_ScrollbarChangeMarkers = m_Store.HasScrollbarChangeMarkers();
+		m_HighlightOccurrences = m_Store.IsHighlightingOccurrences();
 
 		m_Hover.ShowInfo = m_Store.IsHoverInfoEnabled();
 		m_Hover.Preview = PreviewModeFrom(m_Store.GetHoverPreview());
@@ -198,6 +199,12 @@ namespace Graphite {
 	{
 		m_ScrollbarChangeMarkers = show;
 		m_Store.SetScrollbarChangeMarkers(m_ScrollbarChangeMarkers);
+	}
+
+	void EditorSettings::SetHighlightOccurrences(bool highlight)
+	{
+		m_HighlightOccurrences = highlight;
+		m_Store.SetHighlightOccurrences(m_HighlightOccurrences);
 	}
 
 	void EditorSettings::SetHoverInfo(bool show)

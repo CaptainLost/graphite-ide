@@ -1172,6 +1172,7 @@ namespace Graphite {
 											 .WordWrap = m_EditorSettings.IsWordWrap(),
 											 .ChangeMarkers = {.Gutter = m_EditorSettings.HasGutterChangeMarkers(),
 															   .Scrollbar = m_EditorSettings.HasScrollbarChangeMarkers()},
+											 .HighlightOccurrences = m_EditorSettings.IsHighlightingOccurrences(),
 											 .Hover = m_EditorSettings.GetHoverSettings(),
 											 .Scheme = m_ActiveScheme.Get(),
 											 .CloseRequests = m_TabCloseRequests,
