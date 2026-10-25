@@ -270,4 +270,31 @@ namespace Graphite {
 
 		return target.Name;
 	}
+
+	CheckoutPlanVerdict DecideOnCheckoutPlan(const LandedCheckoutPlan& plan)
+	{
+		if (plan.Failed)
+		{
+			return CheckoutPlanVerdict::ReportFailure;
+		}
+
+		if (!plan.NeedsDialog)
+		{
+			return CheckoutPlanVerdict::CheckOut;
+		}
+
+		return plan.PanelOnScreen ? CheckoutPlanVerdict::Ask : CheckoutPlanVerdict::HoldForPanel;
+	}
+
+	std::optional<Core::CheckoutTarget> HeldCheckout::TakeOnceOnScreen(bool panelOnScreen)
+	{
+		if (!panelOnScreen || !m_Target.has_value())
+		{
+			return std::nullopt;
+		}
+
+		std::optional<Core::CheckoutTarget> taken = std::move(m_Target);
+		m_Target.reset();
+		return taken;
+	}
 }

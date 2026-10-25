@@ -113,17 +113,16 @@ namespace Graphite {
 
 		FollowSelectedRef();
 
-		if (std::optional<CheckoutPlanAnswer> answer = m_Model.TakeCheckoutPlan();
+		if (const std::optional<Core::CheckoutTarget> heldTarget = m_HeldCheckout.TakeOnceOnScreen(panelOnScreen))
+		{
+			BeginCheckout(*heldTarget);
+		}
+
+		if (const std::optional<CheckoutPlanAnswer> answer = m_Model.TakeCheckoutPlan();
 			answer.has_value() && m_PendingCheckout == answer->Target)
 		{
 			m_PendingCheckout.reset();
-			m_HeldCheckoutPlan = std::move(answer);
-		}
-
-		if (m_HeldCheckoutPlan.has_value() &&
-			ApplyCheckoutPlan(*m_HeldCheckoutPlan, panelOnScreen) == PlanApplied::Answered)
-		{
-			m_HeldCheckoutPlan.reset();
+			ApplyCheckoutPlan(*answer, panelOnScreen);
 		}
 
 		if (std::optional<DeleteCheck> check = m_Model.TakeDeleteCheck())
@@ -201,10 +200,10 @@ namespace Graphite {
 
 	void GitView::HoldAskedQuestionsForPanel()
 	{
-		if (m_CheckoutQuestion.IsAsked() && m_AskedCheckoutPlan.has_value())
+		if (m_CheckoutQuestion.IsAsked() && m_AskedCheckout.has_value())
 		{
-			m_HeldCheckoutPlan = std::move(m_AskedCheckoutPlan);
-			m_AskedCheckoutPlan.reset();
+			m_HeldCheckout.Hold(*m_AskedCheckout);
+			m_AskedCheckout.reset();
 		}
 
 		if (m_DeleteBranchQuestion.IsAsked() && m_DeleteUnanswered.has_value())
@@ -226,17 +225,10 @@ namespace Graphite {
 
 	GitPanelCheckouts GitView::Checkouts() const
 	{
-		GitPanelCheckouts checkouts{.Planning = m_PendingCheckout, .Writing = m_Model.GetCheckoutUnderWay()};
-
-		if (m_AskedCheckoutPlan.has_value())
-		{
-			checkouts.Asking = m_AskedCheckoutPlan->Target;
-		}
-
-		if (m_HeldCheckoutPlan.has_value())
-		{
-			checkouts.HeldForPanel = m_HeldCheckoutPlan->Target;
-		}
+		GitPanelCheckouts checkouts{.Planning = m_PendingCheckout,
+									.Asking = m_AskedCheckout,
+									.HeldForPanel = m_HeldCheckout.HeldTarget(),
+									.Writing = m_Model.GetCheckoutUnderWay()};
 
 		if (m_DeleteHeldForPanel)
 		{
@@ -343,7 +335,7 @@ namespace Graphite {
 		m_StashSaveFailed = false;
 		m_BranchNameFor = nullptr;
 
-		m_AskedCheckoutPlan.reset();
+		m_AskedCheckout.reset();
 
 		if (!m_DeleteHeldForPanel)
 		{
@@ -358,18 +350,8 @@ namespace Graphite {
 		m_Model.RequestCheckoutPlan(target);
 	}
 
-	GitView::PlanApplied GitView::ApplyCheckoutPlan(const CheckoutPlanAnswer& answer, bool panelOnScreen)
+	void GitView::ApplyCheckoutPlan(const CheckoutPlanAnswer& answer, bool panelOnScreen)
 	{
-		const std::string label = CheckoutTargetLabel(answer.Target);
-
-		if (answer.Failure.has_value() || !answer.Plan.has_value())
-		{
-			const std::string failureMessage =
-				answer.Failure.has_value() ? answer.Failure->Message : std::string("no plan");
-			ShowFailure(m_Events, "Checkout failed", label + ": " + failureMessage, m_Model.GetWorkingDirectory());
-			return PlanApplied::Answered;
-		}
-
 		const std::filesystem::path& root = m_Model.GetWorkingDirectory();
 		std::vector<std::filesystem::path> unsaved =
 			root.empty() ? std::vector<std::filesystem::path>{} : m_Buffers.ModifiedUnder(root);
@@ -382,21 +364,42 @@ namespace Graphite {
 			unsavedRelative.push_back(RelativeOrClimbing(path, root));
 		}
 
-		if (!NeedsCheckoutDialog(*answer.Plan, unsavedRelative))
+		const bool planFailed = answer.Failure.has_value() || !answer.Plan.has_value();
+		const bool needsDialog = !planFailed && NeedsCheckoutDialog(*answer.Plan, unsavedRelative);
+
+		switch (DecideOnCheckoutPlan({.Failed = planFailed, .NeedsDialog = needsDialog, .PanelOnScreen = panelOnScreen}))
 		{
+		case CheckoutPlanVerdict::ReportFailure:
+		{
+			const std::string failureMessage =
+				answer.Failure.has_value() ? answer.Failure->Message : std::string("no plan");
+			ShowFailure(m_Events, "Checkout failed", CheckoutTargetLabel(answer.Target) + ": " + failureMessage,
+						m_Model.GetWorkingDirectory());
+			break;
+		}
+
+		case CheckoutPlanVerdict::CheckOut:
 			m_Model.RequestCheckout(CheckoutRequest{.Target = answer.Target});
-			return PlanApplied::Answered;
-		}
+			break;
 
-		if (!panelOnScreen)
-		{
-			return PlanApplied::HeldForPanel;
-		}
+		case CheckoutPlanVerdict::Ask:
+			AskCheckoutQuestion(answer, std::move(unsaved), unsavedRelative);
+			break;
 
+		case CheckoutPlanVerdict::HoldForPanel:
+			m_HeldCheckout.Hold(answer.Target);
+			break;
+		}
+	}
+
+	void GitView::AskCheckoutQuestion(const CheckoutPlanAnswer& answer, std::vector<std::filesystem::path> unsaved,
+									  const std::vector<std::filesystem::path>& unsavedRelative)
+	{
 		const Core::Ref<const Core::WorkingTreeStatus> gitStatusIfKnown = m_Model.GetStatus();
 
-		CheckoutQuestion question = BuildCheckoutQuestion(
-			label, *answer.Plan, gitStatusIfKnown ? *gitStatusIfKnown : Core::WorkingTreeStatus{}, unsavedRelative);
+		CheckoutQuestion question =
+			BuildCheckoutQuestion(CheckoutTargetLabel(answer.Target), *answer.Plan,
+								  gitStatusIfKnown ? *gitStatusIfKnown : Core::WorkingTreeStatus{}, unsavedRelative);
 
 		const bool untrackedForced = question.UntrackedForced;
 
@@ -404,9 +407,7 @@ namespace Graphite {
 															.Question = std::move(question),
 															.UnsavedAbsolute = std::move(unsaved),
 															.IncludeUntracked = untrackedForced});
-		m_AskedCheckoutPlan = answer;
-
-		return PlanApplied::Answered;
+		m_AskedCheckout = answer.Target;
 	}
 
 	void GitView::BeginNewBranch(std::string from, const Core::Oid& at, std::string_view suggested)
@@ -496,7 +497,7 @@ namespace Graphite {
 		m_GraphOf.reset();
 		m_Graph = Core::CommitGraph{};
 
-		m_HeldCheckoutPlan.reset();
+		m_HeldCheckout.Forget();
 		m_DeleteHeldForPanel = false;
 
 		// WARNING: Withdraw is only valid outside a popup, and this runs from an event handler.

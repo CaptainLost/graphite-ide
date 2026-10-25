@@ -101,7 +101,7 @@ namespace Graphite {
 			// WARNING: Escape closes the popup and drops the question without reaching the code below.
 			if (!m_CheckoutQuestion.IsAsked())
 			{
-				m_AskedCheckoutPlan.reset();
+				m_AskedCheckout.reset();
 			}
 
 			return;
@@ -212,7 +212,7 @@ namespace Graphite {
 	void GitView::AnswerCheckoutQuestion()
 	{
 		m_CheckoutQuestion.Answer();
-		m_AskedCheckoutPlan.reset();
+		m_AskedCheckout.reset();
 
 		// WARNING: Reset here as well as when Begin fails: a question queued behind this one opens on
 		// the very next Begin, with no frame between them to reset on.

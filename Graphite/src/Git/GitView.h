@@ -163,14 +163,9 @@ namespace Graphite {
 
 		void FollowSelectedRef();
 
-		enum class PlanApplied
-		{
-			Answered,
-			HeldForPanel
-		};
-
-		// A failure, or a plan that needs no question, is answered at once; a question waits for the panel to be on screen.
-		PlanApplied ApplyCheckoutPlan(const CheckoutPlanAnswer& answer, bool panelOnScreen);
+		void ApplyCheckoutPlan(const CheckoutPlanAnswer& answer, bool panelOnScreen);
+		void AskCheckoutQuestion(const CheckoutPlanAnswer& answer, std::vector<std::filesystem::path> unsaved,
+								 const std::vector<std::filesystem::path>& unsavedRelative);
 
 		void BeginDelete(const std::string& branch);
 		void ApplyDeleteCheck(const DeleteCheck& check);
@@ -289,9 +284,8 @@ namespace Graphite {
 
 		std::optional<Core::CheckoutTarget> m_PendingCheckout;
 
-		// A plan whose question waits for the panel to be on screen, and the plan whose question is asked.
-		std::optional<CheckoutPlanAnswer> m_HeldCheckoutPlan;
-		std::optional<CheckoutPlanAnswer> m_AskedCheckoutPlan;
+		HeldCheckout m_HeldCheckout;
+		std::optional<Core::CheckoutTarget> m_AskedCheckout;
 
 		std::optional<std::string> m_PendingDelete;
 
