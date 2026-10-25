@@ -1855,6 +1855,7 @@ namespace Graphite {
 			const Core::FrameInput* Input = nullptr;
 			const SemanticOverlay* PreviewOverlay = nullptr;
 			PreviewSemantics* Semantics = nullptr;
+			std::string_view LoadingText;
 		};
 
 		// WARNING: The syntax cache's tokens are ranges of the tab-expanded line, so they are
@@ -2093,6 +2094,10 @@ namespace Graphite {
 				actions.ShowInfo && question.has_value() && hover.InfoFor == question;
 			actions.ShowPreview =
 				actions.ShowPreview && question.has_value() && hover.PreviewFor == question;
+			actions.InfoLoading = actions.InfoLoading && question.has_value();
+			actions.PreviewLoading = actions.PreviewLoading && question.has_value();
+			actions.InfoGaveUp = actions.InfoGaveUp && question.has_value() && hover.InfoFailedFor == question;
+			actions.PreviewGaveUp = actions.PreviewGaveUp && question.has_value() && hover.PreviewFailedFor == question;
 
 			// WARNING: Refreshed only while the mouse is still where the tracker's token is. During
 			// the grace it may be crossing some other squiggle on its way to the tooltip.
@@ -2136,6 +2141,7 @@ namespace Graphite {
 			look.BoundsMax = surface->InnerRect.Max;
 			look.PreviewOverlay = frame.PreviewOverlay;
 			look.Semantics = frame.Semantics;
+			look.LoadingText = std::string{frame.LoadingText};
 
 			DrawHoverTooltip(actions, hover, hover.HeldDiagnostics, look,
 							 HoverAnchor{hover.AnchorMin, hover.AnchorMax},
@@ -2988,7 +2994,8 @@ namespace Graphite {
 										.Settings = view.HoverConfig,
 										.Input = context.Input,
 										.PreviewOverlay = view.HoverPreviewOverlay,
-										.Semantics = view.HoverSemantics};
+										.Semantics = view.HoverSemantics,
+										.LoadingText = view.HoverLoadingText};
 
 			const ResolvedScheme& scheme = view.Scheme != nullptr ? *view.Scheme : DarkScheme();
 			const ChangeMarkers* const gutterChanges =

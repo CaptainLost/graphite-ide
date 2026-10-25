@@ -9,6 +9,7 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -58,6 +59,7 @@ namespace {
 		Graphite::HoverActions Actions;
 		Graphite::HoverState Hover;
 		std::vector<Graphite::DiagnosticSpan> Diagnostics;
+		std::string LoadingText;
 
 		int StackBefore = 0;
 		int StackAfter = 0;
@@ -73,6 +75,7 @@ namespace {
 			Graphite::HoverTooltipLook look;
 			look.LineHeight = ImGui::GetTextLineHeight();
 			look.CellWidth = ImGui::CalcTextSize("0").x;
+			look.LoadingText = LoadingText;
 
 			const Graphite::HoverAnchor anchor{.Min = ImVec2(100.0f, 100.0f), .Max = ImVec2(140.0f, 120.0f)};
 
@@ -130,6 +133,82 @@ TEST_CASE("A hover tooltip with every section draws two frames with its fonts ba
 		CHECK(tooltip.Hover.TooltipShown);
 		CHECK(tooltip.StackAfter == tooltip.StackBefore);
 	}
+}
+
+TEST_CASE("A hover tooltip that is loading, failed or found no definition draws with its fonts balanced")
+{
+	ImGuiFrames frames;
+	TooltipFrame tooltip;
+	tooltip.Actions.InfoLoading = true;
+	tooltip.Actions.ShowPreview = true;
+	tooltip.Hover.Preview = Graphite::DefinitionPreview{.Unreadable = true};
+	tooltip.Hover.NoDefinitionFound = true;
+	tooltip.LoadingText = "Loading";
+
+	frames.Next([&] { tooltip.Draw(); });
+	frames.Next([&] { tooltip.Draw(); });
+
+	CHECK(tooltip.Hover.TooltipShown);
+	CHECK(tooltip.StackAfter == tooltip.StackBefore);
+
+	tooltip.Actions = Graphite::HoverActions{.InfoGaveUp = true};
+	tooltip.Hover.InfoFailureText = "clangd not installed";
+
+	frames.Next([&] { tooltip.Draw(); });
+
+	CHECK(tooltip.Hover.TooltipShown);
+	CHECK(tooltip.StackAfter == tooltip.StackBefore);
+}
+
+TEST_CASE("A hover that is still loading shows the loader and nothing else it lacks")
+{
+	const Graphite::HoverState hover;
+	Graphite::HoverTooltipLook look;
+	look.LoadingText = "Loading";
+
+	const Graphite::HoverSections sections =
+		Graphite::SectionsToShow(Graphite::HoverActions{.InfoLoading = true}, hover, {}, look);
+
+	CHECK(sections.Loading);
+	CHECK_FALSE(sections.Info);
+	CHECK(sections.Any());
+}
+
+TEST_CASE("An empty or failed plain hover has nothing to show")
+{
+	Graphite::HoverState hover;
+	hover.Info = Graphite::HoverInfo{};
+	const Graphite::HoverTooltipLook look;
+
+	CHECK_FALSE(Graphite::SectionsToShow(Graphite::HoverActions{.ShowInfo = true}, hover, {}, look).Any());
+	CHECK_FALSE(Graphite::SectionsToShow(Graphite::HoverActions{.InfoGaveUp = true}, hover, {}, look).Any());
+}
+
+TEST_CASE("A hover that could not reach its server says why, once for both kinds of question")
+{
+	Graphite::HoverState hover;
+	hover.InfoFailureText = "clangd not installed";
+	hover.PreviewFailureText = "clangd not installed";
+	const Graphite::HoverTooltipLook look;
+
+	const Graphite::HoverSections sections =
+		Graphite::SectionsToShow(Graphite::HoverActions{.InfoGaveUp = true, .PreviewGaveUp = true}, hover, {}, look);
+
+	CHECK(sections.InfoFailure);
+	CHECK_FALSE(sections.PreviewFailure);
+}
+
+TEST_CASE("A Ctrl+hover with no definition says so")
+{
+	Graphite::HoverState hover;
+	hover.Preview = Graphite::DefinitionPreview{.Unreadable = true};
+	hover.NoDefinitionFound = true;
+	const Graphite::HoverTooltipLook look;
+
+	const Graphite::HoverSections sections = Graphite::SectionsToShow(Graphite::HoverActions{.ShowPreview = true}, hover, {}, look);
+
+	CHECK(sections.NoDefinition);
+	CHECK_FALSE(sections.Preview);
 }
 
 TEST_CASE("Hover documentation is set at the interface size while the editor is at another")

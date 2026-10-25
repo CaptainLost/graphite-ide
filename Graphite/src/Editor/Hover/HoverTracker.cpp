@@ -37,6 +37,32 @@ namespace Graphite {
 			WakeNoLaterThan(actions, retryAt);
 			return false;
 		}
+
+		void NoteFirstAsk(bool asked, double now, std::optional<double>& firstAskedAt)
+		{
+			if (asked && !firstAskedAt)
+			{
+				firstAskedAt = now;
+			}
+		}
+
+		bool LoadingIsDue(double now, const std::optional<double>& firstAskedAt, HoverActions& actions)
+		{
+			if (!firstAskedAt)
+			{
+				return false;
+			}
+
+			const double dueAt = *firstAskedAt + HoverTracker::kLoadingAfterSeconds;
+
+			if (now >= dueAt)
+			{
+				return true;
+			}
+
+			WakeNoLaterThan(actions, dueAt);
+			return false;
+		}
 	}
 
 	void HoverTracker::Restart(const HoverInput& input, HoverActions& actions)
@@ -51,6 +77,8 @@ namespace Graphite {
 		m_RetriedPreview = false;
 		m_InfoFailedAt.reset();
 		m_PreviewFailedAt.reset();
+		m_InfoFirstAskedAt.reset();
+		m_PreviewFirstAskedAt.reset();
 		m_Latched = false;
 		m_LeftAt.reset();
 	}
@@ -135,10 +163,24 @@ namespace Graphite {
 			actions.AskPreview = (wantPreview && !m_AskedPreview && !input.PreviewArrived) || retryPreview;
 			m_AskedInfo = m_AskedInfo || actions.AskInfo;
 			m_AskedPreview = m_AskedPreview || actions.AskPreview;
+
+			NoteFirstAsk(actions.AskInfo, input.Now, m_InfoFirstAskedAt);
+			NoteFirstAsk(actions.AskPreview, input.Now, m_PreviewFirstAskedAt);
 		}
 
 		actions.ShowInfo = elapsed && wantInfo && input.InfoArrived;
 		actions.ShowPreview = elapsed && wantPreview && input.PreviewArrived;
+
+		const bool awaitedHere = elapsed && !m_LeftAt;
+		const bool infoAwaited = awaitedHere && wantInfo && m_AskedInfo && !input.InfoArrived && !input.InfoFailed;
+		const bool previewAwaited =
+			awaitedHere && wantPreview && m_AskedPreview && !input.PreviewArrived && !input.PreviewFailed;
+
+		actions.InfoLoading = infoAwaited && LoadingIsDue(input.Now, m_InfoFirstAskedAt, actions);
+		actions.PreviewLoading = previewAwaited && LoadingIsDue(input.Now, m_PreviewFirstAskedAt, actions);
+
+		actions.InfoGaveUp = elapsed && wantInfo && input.InfoFailed && m_RetriedInfo && !actions.AskInfo;
+		actions.PreviewGaveUp = elapsed && wantPreview && input.PreviewFailed && m_RetriedPreview && !actions.AskPreview;
 		actions.ShowDiagnostic = held ? m_HeldDiagnostic : input.DiagnosticUnderMouse;
 
 		if (!held)

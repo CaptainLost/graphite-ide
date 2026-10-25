@@ -47,9 +47,19 @@ namespace Graphite {
 		bool ShowInfo = false;
 		bool ShowPreview = false;
 
+		bool InfoLoading = false;
+		bool PreviewLoading = false;
+
+		bool InfoGaveUp = false;
+		bool PreviewGaveUp = false;
+
 		std::optional<double> WakeAt;
 
-		bool Visible() const { return ShowDiagnostic || ShowInfo || ShowPreview; }
+		bool Visible() const
+		{
+			return ShowDiagnostic || ShowInfo || ShowPreview || InfoLoading || PreviewLoading || InfoGaveUp ||
+				   PreviewGaveUp;
+		}
 	};
 
 	class HoverTracker
@@ -57,6 +67,7 @@ namespace Graphite {
 	public:
 		static constexpr double kLeaveGraceSeconds = 0.25;
 		static constexpr double kHoverRetrySeconds = 0.5;
+		static constexpr double kLoadingAfterSeconds = 0.2;
 
 		HoverActions Update(const HoverInput& input);
 
@@ -74,6 +85,8 @@ namespace Graphite {
 		bool m_RetriedPreview = false;
 		std::optional<double> m_InfoFailedAt;
 		std::optional<double> m_PreviewFailedAt;
+		std::optional<double> m_InfoFirstAskedAt;
+		std::optional<double> m_PreviewFirstAskedAt;
 		bool m_WasVisible = false;
 		bool m_Dismissed = false;
 		bool m_Latched = false;

@@ -2203,6 +2203,11 @@ namespace Graphite {
 				view.HoverConfig = hoverSettings;
 				view.HoverSemantics = &m_PreviewSemantics;
 
+				if (lens != nullptr)
+				{
+					view.HoverLoadingText = HoverLoadingText(m_Router.StatusOf(item.Path));
+				}
+
 				if (state.Hover.Preview)
 				{
 					const std::optional<std::size_t> shownIndex = m_Documents.Find(state.Hover.Preview->Path);

@@ -12,6 +12,8 @@
 #include <imgui.h>
 
 #include <cstddef>
+#include <string>
+#include <string_view>
 #include <vector>
 
 struct ImGuiWindow;
@@ -38,7 +40,30 @@ namespace Graphite {
 
 		const SemanticOverlay* PreviewOverlay = nullptr;
 		PreviewSemantics* Semantics = nullptr;
+
+		std::string LoadingText;
 	};
+
+	inline constexpr std::string_view kHoverNoDefinition = "No definition found";
+
+	struct HoverSections
+	{
+		bool Diagnostic = false;
+		bool Info = false;
+		bool InfoFailure = false;
+		bool Preview = false;
+		bool NoDefinition = false;
+		bool PreviewFailure = false;
+		bool Loading = false;
+
+		bool Any() const
+		{
+			return Diagnostic || Info || InfoFailure || Preview || NoDefinition || PreviewFailure || Loading;
+		}
+	};
+
+	HoverSections SectionsToShow(const HoverActions& actions, const HoverState& hover,
+								 const std::vector<DiagnosticSpan>& diagnostics, const HoverTooltipLook& look);
 
 	struct HoverAnchor
 	{

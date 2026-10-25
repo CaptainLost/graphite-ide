@@ -116,6 +116,8 @@ namespace Graphite {
 
 		const SemanticOverlay* HoverPreviewOverlay = nullptr;
 		PreviewSemantics* HoverSemantics = nullptr;
+
+		std::string HoverLoadingText;
 	};
 
 	class FindBar;

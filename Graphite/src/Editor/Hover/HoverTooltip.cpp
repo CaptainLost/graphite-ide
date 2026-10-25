@@ -15,6 +15,7 @@
 #include "Core/App/Redraw.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/FontSet.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/Encoding.h"
 
@@ -78,6 +79,23 @@ namespace Graphite {
 			PlainText(text);
 			ImGui::PopFont();
 		}
+
+		class SectionSeparator
+		{
+		public:
+			void BeforeSection()
+			{
+				if (m_AnyDrawn)
+				{
+					ImGui::Separator();
+				}
+
+				m_AnyDrawn = true;
+			}
+
+		private:
+			bool m_AnyDrawn = false;
+		};
 
 		std::vector<std::size_t> RowStarts(std::string_view text, std::size_t columns)
 		{
@@ -529,6 +547,25 @@ namespace Graphite {
 		}
 	}
 
+	HoverSections SectionsToShow(const HoverActions& actions, const HoverState& hover,
+								 const std::vector<DiagnosticSpan>& diagnostics, const HoverTooltipLook& look)
+	{
+		HoverSections sections;
+		sections.Diagnostic = actions.ShowDiagnostic && !diagnostics.empty();
+		sections.Info = HasInfo(actions, hover);
+		sections.InfoFailure = !sections.Info && actions.InfoGaveUp && !hover.InfoFailureText.empty();
+		sections.Preview = HasPreview(actions, hover);
+		sections.NoDefinition = !sections.Preview && actions.ShowPreview && hover.Preview.has_value() && hover.NoDefinitionFound;
+
+		const bool previewFailureSaysWhatInfoSaid = sections.InfoFailure && hover.PreviewFailureText == hover.InfoFailureText;
+
+		sections.PreviewFailure = !sections.Preview && !sections.NoDefinition && actions.PreviewGaveUp &&
+								  !hover.PreviewFailureText.empty() && !previewFailureSaysWhatInfoSaid;
+		sections.Loading = (actions.InfoLoading || actions.PreviewLoading) && !look.LoadingText.empty();
+
+		return sections;
+	}
+
 	void DrawDiagnosticMessages(const std::vector<DiagnosticSpan>& spans)
 	{
 		for (std::size_t index = 0; index < spans.size(); ++index)
@@ -553,14 +590,11 @@ namespace Graphite {
 						  const HoverTooltipLook& look, const HoverAnchor& anchor,
 						  ImGuiWindow* returnFocusTo)
 	{
-		const bool showDiagnostic = actions.ShowDiagnostic && !diagnostics.empty();
-		const bool showInfo = HasInfo(actions, hover);
-		const bool showPreview = HasPreview(actions, hover);
+		const HoverSections sections = SectionsToShow(actions, hover, diagnostics, look);
 
 		// WARNING: No tooltip while a modal is up. The tooltip is raised to the front every
 		// frame, which would put it over the dialog meant to be the only thing taking input.
-		if ((!showDiagnostic && !showInfo && !showPreview) ||
-			ImGui::GetTopMostPopupModal() != nullptr)
+		if (!sections.Any() || ImGui::GetTopMostPopupModal() != nullptr)
 		{
 			hover.TooltipShown = false;
 			return;
@@ -662,31 +696,49 @@ namespace Graphite {
 
 		ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + maxContentWidth);
 
-		if (showDiagnostic)
+		SectionSeparator separator;
+
+		if (sections.Diagnostic)
 		{
+			separator.BeforeSection();
 			Core::PushInterfaceFont();
 			DrawDiagnosticMessages(diagnostics);
 			ImGui::PopFont();
-
-			if (showInfo || showPreview)
-			{
-				ImGui::Separator();
-			}
 		}
 
-		if (showInfo)
+		if (sections.Info)
 		{
+			separator.BeforeSection();
 			DrawInfo(*hover.Info, look, maxContentWidth);
-
-			if (showPreview)
-			{
-				ImGui::Separator();
-			}
+		}
+		else if (sections.InfoFailure)
+		{
+			separator.BeforeSection();
+			DisabledProse(hover.InfoFailureText);
 		}
 
-		if (showPreview)
+		if (sections.Preview)
 		{
+			separator.BeforeSection();
 			DrawPreview(hover, look);
+		}
+		else if (sections.NoDefinition)
+		{
+			separator.BeforeSection();
+			DisabledProse(kHoverNoDefinition);
+		}
+		else if (sections.PreviewFailure)
+		{
+			separator.BeforeSection();
+			DisabledProse(hover.PreviewFailureText);
+		}
+
+		if (sections.Loading)
+		{
+			separator.BeforeSection();
+			Core::PushInterfaceFont();
+			Core::LoadingLine(look.LoadingText.c_str(), Core::WhileLoaderWaits::ShowText);
+			ImGui::PopFont();
 		}
 
 		ImGui::PopTextWrapPos();

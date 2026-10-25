@@ -1,12 +1,36 @@
 #include "Editor/Hover/HoverState.h"
 
 #include "Language/Registry/LanguageRegistry.h"
+#include "Language/Server/ServerWaitingText.h"
 #include "Language/Syntax/ColourLines.h"
+#include "UI/TypographicMarks.h"
 
 #include <string_view>
 #include <utility>
 
 namespace Graphite {
+
+	std::string HoverFailureText(const LanguageServices::Answer& answer)
+	{
+		const bool serverCouldNotBeAsked = answer.FailedBecause == ReplyFailure::ServerUnavailable;
+
+		if (!answer.Failed || !serverCouldNotBeAsked || HasNoServerToWaitFor(answer.ServerAtFailure))
+		{
+			return {};
+		}
+
+		return AsSentence(ReplyFailureText(answer), answer.ServerAtFailure);
+	}
+
+	std::string HoverLoadingText(const ServerStatus& status)
+	{
+		if (AvailabilityOf(status) == ServerAvailability::ComingUp)
+		{
+			return AsSentence(ServerWaitingText(status), status);
+		}
+
+		return "Loading" + std::string{kEllipsis};
+	}
 
 	void HoldHoverAnswer(HoverState& hover, const HoverQuestion& question,
 						 const LanguageServices::Answer& answer)
@@ -14,10 +38,12 @@ namespace Graphite {
 		if (answer.Failed)
 		{
 			hover.InfoFailedFor = question;
+			hover.InfoFailureText = HoverFailureText(answer);
 			return;
 		}
 
 		hover.InfoFailedFor.reset();
+		hover.InfoFailureText.clear();
 		hover.InfoFor = question;
 		hover.Info = answer.Hover;
 	}
@@ -29,12 +55,15 @@ namespace Graphite {
 		if (answer.Failed)
 		{
 			hover.PreviewFailedFor = question;
+			hover.PreviewFailureText = HoverFailureText(answer);
 			return;
 		}
 
 		hover.PreviewFailedFor.reset();
+		hover.PreviewFailureText.clear();
 		hover.PreviewFor = question;
 		hover.PreviewColours.reset();
+		hover.NoDefinitionFound = answer.Locations.empty();
 
 		if (answer.Locations.empty())
 		{
