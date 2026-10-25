@@ -21,11 +21,10 @@ only png, jpeg, gif and bmp enabled and no file I/O, and of
 never defines an implementation macro; the executables and test projects link
 `stb`.
 
-The resizer is `deprecated/stb_image_resize.h`, not `stb_image_resize2.h`: stb
-moved the second version into a repository of its own and left only the first
-in the tree this submodule tracks. It has `stbir_resize_uint8_srgb`, which
-scales in linear light and keeps the alpha channel straight, and it is the
-header the include path `vendor/stb/deprecated` exists for.
+The resizer is `stb_image_resize2.h`, which lives in the submodule under
+`deprecated/`, so the include path `vendor/stb/deprecated` exists for it.
+`stbir_resize_uint8_srgb` with the non-premultiplied `STBIR_RGBA` layout scales
+in linear light and handles the straight alpha channel.
 
 `Core/Image` is the only code that calls stb. Its API speaks in
 `RgbaImage` and `Result`, so the rest of the codebase never sees an stb type.
@@ -47,8 +46,8 @@ external includes keeps them out of everything else.
 
 ### Negative
 
-- The resizer is the deprecated first version: it receives no fixes, and a move
-  to the second version is a separate change once that header is vendored.
+- stb keeps the resizer under `deprecated/`, so a later stb update may move or
+  drop it.
 - stb decodes untrusted bytes in-process. The decoder refuses images past a
   pixel limit before decoding them, but a malformed file reaches stb's parsers.
 

@@ -8,7 +8,6 @@
 #define STBI_ONLY_BMP
 #include <stb_image.h>
 
-// stb_image_resize.h is the version stb moved under deprecated/ when it split the resizer into its
-// own repository; it is the last one carried here and has stbir_resize_uint8_srgb.
+// stb keeps stb_image_resize2.h under deprecated/ in this tree.
 #define STB_IMAGE_RESIZE_IMPLEMENTATION
-#include <stb_image_resize.h>
+#include <stb_image_resize2.h>

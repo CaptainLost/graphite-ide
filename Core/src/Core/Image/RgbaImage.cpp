@@ -2,7 +2,7 @@
 
 #include "Core/Image/RgbaImage.h"
 
-#include <stb_image_resize.h>
+#include <stb_image_resize2.h>
 
 #include <algorithm>
 #include <cmath>
@@ -11,7 +11,6 @@ namespace Core {
 
 	namespace {
 		constexpr int kChannels = 4;
-		constexpr int kAlphaChannel = 3;
 
 		int ScaledSide(int side, int longest, int maximumSide)
 		{
@@ -36,9 +35,9 @@ namespace Core {
 		scaled.Height = ScaledSide(image.Height, longest, maximumSide);
 		scaled.Pixels.resize(static_cast<std::size_t>(scaled.Width) * static_cast<std::size_t>(scaled.Height) * kChannels);
 
-		const int resized = stbir_resize_uint8_srgb(image.Pixels.data(), image.Width, image.Height, 0, scaled.Pixels.data(), scaled.Width, scaled.Height, 0,
-			kChannels, kAlphaChannel, 0);
-		if (resized == 0)
+		const unsigned char* resized = stbir_resize_uint8_srgb(image.Pixels.data(), image.Width, image.Height, 0, scaled.Pixels.data(), scaled.Width,
+			scaled.Height, 0, STBIR_RGBA);
+		if (resized == nullptr)
 			return image;
 		return scaled;
 	}
