@@ -5,6 +5,7 @@
 
 #include <memory>
 
+struct git_blame;
 struct git_blob;
 struct git_branch_iterator;
 struct git_commit;
@@ -24,6 +25,7 @@ namespace Core {
 
 	struct Libgit2Free
 	{
+		void operator()(git_blame* blame) const;
 		void operator()(git_blob* blob) const;
 		void operator()(git_branch_iterator* iterator) const;
 		void operator()(git_commit* commit) const;
@@ -40,6 +42,7 @@ namespace Core {
 		void operator()(git_worktree* worktree) const;
 	};
 
+	using BlameHandle = std::unique_ptr<git_blame, Libgit2Free>;
 	using BlobHandle = std::unique_ptr<git_blob, Libgit2Free>;
 	using BranchIteratorHandle = std::unique_ptr<git_branch_iterator, Libgit2Free>;
 	using CommitHandle = std::unique_ptr<git_commit, Libgit2Free>;

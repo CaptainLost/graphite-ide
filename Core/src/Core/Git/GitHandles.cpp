@@ -6,6 +6,11 @@
 
 namespace Core {
 
+	void Libgit2Free::operator()(git_blame* blame) const
+	{
+		git_blame_free(blame);
+	}
+
 	void Libgit2Free::operator()(git_blob* blob) const
 	{
 		git_blob_free(blob);
