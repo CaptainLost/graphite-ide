@@ -14,6 +14,7 @@
 #include "Git/Diff/DiffWindows.h"
 #include "Editor/EditorSettings.h"
 #include "Git/EditorBuffers.h"
+#include "Git/GitActivity.h"
 #include "Git/GitModel.h"
 #include "Review/ReviewMenu.h"
 #include "Git/History/HistoryFilter.h"
@@ -61,6 +62,9 @@ namespace Graphite {
 		void OnImGuiRender() override;
 
 		void Subscribe();
+
+		// The checkout under way and any question waiting for this panel, for the status bar.
+		GitPanelWait CurrentWait() const;
 
 		std::function<ReviewMenu(const Core::Branch& branch)> ReviewMenuOf;
 
@@ -110,9 +114,9 @@ namespace Graphite {
 		{
 			std::string Branch;
 
-			std::size_t Unmerged = 0;
-
 			bool IsSameQuestion(const DeleteBranchPayload& other) const { return Branch == other.Branch; }
+
+			bool IsAbout(const std::string& branch) const { return Branch == branch; }
 		};
 
 		struct DetachPayload
@@ -159,7 +163,26 @@ namespace Graphite {
 
 		void FollowSelectedRef();
 
-		void ApplyCheckoutPlan(CheckoutPlanAnswer answer);
+		enum class PlanApplied
+		{
+			Answered,
+			HeldForPanel
+		};
+
+		// A failure, or a plan that needs no question, is answered at once; a question waits for the panel to be on screen.
+		PlanApplied ApplyCheckoutPlan(const CheckoutPlanAnswer& answer, bool panelOnScreen);
+
+		void BeginDelete(const std::string& branch);
+		void ApplyDeleteCheck(const DeleteCheck& check);
+		void ForgetDeleteQuestion(const std::string& branch);
+		std::optional<std::size_t> UnmergedCountFor(const std::string& branch) const;
+
+		GitPanelCheckouts Checkouts() const;
+
+		// WARNING: Called before WithdrawQuestions when the panel is not drawn, which would otherwise drop a question
+		// the reader has not seen yet.
+		void HoldAskedQuestionsForPanel();
+		void AskDeleteHeldForPanel();
 
 		void WithdrawQuestions();
 		void ForgetRepository();
@@ -266,7 +289,16 @@ namespace Graphite {
 
 		std::optional<Core::CheckoutTarget> m_PendingCheckout;
 
+		// A plan whose question waits for the panel to be on screen, and the plan whose question is asked.
+		std::optional<CheckoutPlanAnswer> m_HeldCheckoutPlan;
+		std::optional<CheckoutPlanAnswer> m_AskedCheckoutPlan;
+
 		std::optional<std::string> m_PendingDelete;
+
+		// The branch whose delete question the reader has not answered, and its count once the check has landed.
+		std::optional<std::string> m_DeleteUnanswered;
+		std::optional<std::size_t> m_DeleteUnmerged;
+		bool m_DeleteHeldForPanel = false;
 
 		Core::Ref<const std::vector<Core::Branch>> m_RefsOf;
 		CommitRefMap m_CommitRefs;

@@ -209,6 +209,7 @@ namespace Graphite {
 																   m_DiffWindows, m_Modals, m_DocumentBuffers,
 																   m_BranchList, m_Events));
 		gitView->Subscribe();
+		m_GitView = gitView;
 
 		gitView->ReviewMenuOf = [this](const Core::Branch& branch) { return ReviewMenuOfBranch(branch); };
 		gitView->OnReviewMenuItem = [this](const ReviewMenuItem& item) { ApplyReviewMenuItem(item); };
@@ -1053,6 +1054,7 @@ namespace Graphite {
 			const Core::Ref<const Core::HeadState> head = m_Git.GetHead();
 			const Core::Ref<const std::vector<Core::Branch>> branches = m_Git.GetBranches();
 			const Core::Ref<const Core::WorkingTreeStatus> gitStatus = m_Git.GetStatus();
+			const GitPanelWait gitWait = m_GitView != nullptr ? m_GitView->CurrentWait() : GitPanelWait{};
 
 			const GitStatusInputs gitStatusInputs{
 				.FolderOpen = m_Workspace.IsOpen(),
@@ -1060,6 +1062,8 @@ namespace Graphite {
 				.Head = head.get(),
 				.Branches = branches.get(),
 				.Status = gitStatus.get(),
+				.CheckingOut = gitWait.CheckingOut,
+				.Activity = DescribeGitActivity(m_Git.GetWriteReport(), gitWait.AwaitingAnswer),
 			};
 
 			messages.Git = GitStatusText(gitStatusInputs);

@@ -100,39 +100,40 @@ namespace Graphite {
 
 	void GitView::OnUpdate(Core::Timestep)
 	{
+		const bool panelOnScreen = HasBeenDrawnOnLatestFrame();
+
 		// WARNING: Begin hands the modal gate back, and it only runs from OnImGuiRender, which is
 		// skipped for a panel that is hidden or behind another tab. An undrawn panel withdraws its
 		// questions here or it holds the gate for good.
-		if (!HasBeenDrawnOnLatestFrame())
+		if (!panelOnScreen)
 		{
+			HoldAskedQuestionsForPanel();
 			WithdrawQuestions();
 		}
 
 		FollowSelectedRef();
 
-		if (std::optional<CheckoutPlanAnswer> answer = m_Model.TakeCheckoutPlan())
+		if (std::optional<CheckoutPlanAnswer> answer = m_Model.TakeCheckoutPlan();
+			answer.has_value() && m_PendingCheckout == answer->Target)
 		{
-			ApplyCheckoutPlan(std::move(*answer));
+			m_PendingCheckout.reset();
+			m_HeldCheckoutPlan = std::move(answer);
+		}
+
+		if (m_HeldCheckoutPlan.has_value() &&
+			ApplyCheckoutPlan(*m_HeldCheckoutPlan, panelOnScreen) == PlanApplied::Answered)
+		{
+			m_HeldCheckoutPlan.reset();
 		}
 
 		if (std::optional<DeleteCheck> check = m_Model.TakeDeleteCheck())
 		{
-			const bool isAwaitedCheck = m_PendingDelete == check->Branch;
+			ApplyDeleteCheck(*check);
+		}
 
-			if (isAwaitedCheck)
-			{
-				m_PendingDelete.reset();
-
-				if (check->Failure.has_value())
-				{
-					ShowFailure(m_Events, "Delete branch failed", check->Branch + ": " + check->Failure->Message,
-								m_Model.GetWorkingDirectory());
-				}
-				else
-				{
-					m_DeleteBranchQuestion.AskOnce(DeleteBranchPayload{.Branch = check->Branch, .Unmerged = check->Unmerged});
-				}
-			}
+		if (panelOnScreen)
+		{
+			AskDeleteHeldForPanel();
 		}
 
 		if (std::vector<std::filesystem::path> changed = m_Model.TakeCheckedOut(); !changed.empty())
@@ -198,6 +199,113 @@ namespace Graphite {
 		RequestLog(reach);
 	}
 
+	void GitView::HoldAskedQuestionsForPanel()
+	{
+		if (m_CheckoutQuestion.IsAsked() && m_AskedCheckoutPlan.has_value())
+		{
+			m_HeldCheckoutPlan = std::move(m_AskedCheckoutPlan);
+			m_AskedCheckoutPlan.reset();
+		}
+
+		if (m_DeleteBranchQuestion.IsAsked() && m_DeleteUnanswered.has_value())
+		{
+			m_DeleteHeldForPanel = true;
+		}
+	}
+
+	void GitView::AskDeleteHeldForPanel()
+	{
+		if (!m_DeleteHeldForPanel || !m_DeleteUnanswered.has_value())
+		{
+			return;
+		}
+
+		m_DeleteHeldForPanel = false;
+		m_DeleteBranchQuestion.AskOnce(DeleteBranchPayload{.Branch = *m_DeleteUnanswered});
+	}
+
+	GitPanelCheckouts GitView::Checkouts() const
+	{
+		GitPanelCheckouts checkouts{.Planning = m_PendingCheckout, .Writing = m_Model.GetCheckoutUnderWay()};
+
+		if (m_AskedCheckoutPlan.has_value())
+		{
+			checkouts.Asking = m_AskedCheckoutPlan->Target;
+		}
+
+		if (m_HeldCheckoutPlan.has_value())
+		{
+			checkouts.HeldForPanel = m_HeldCheckoutPlan->Target;
+		}
+
+		if (m_DeleteHeldForPanel)
+		{
+			checkouts.DeleteHeldForPanel = m_DeleteUnanswered;
+		}
+
+		return checkouts;
+	}
+
+	GitPanelWait GitView::CurrentWait() const
+	{
+		return DescribePanelWait(Checkouts());
+	}
+
+	void GitView::BeginDelete(const std::string& branch)
+	{
+		m_PendingDelete = branch;
+		m_DeleteUnanswered = branch;
+		m_DeleteUnmerged.reset();
+		m_DeleteHeldForPanel = false;
+
+		m_Model.RequestDeleteCheck(branch);
+		m_DeleteBranchQuestion.AskOnce(DeleteBranchPayload{.Branch = branch});
+	}
+
+	void GitView::ApplyDeleteCheck(const DeleteCheck& check)
+	{
+		const bool isAwaitedCheck = m_PendingDelete == check.Branch;
+
+		if (!isAwaitedCheck)
+		{
+			return;
+		}
+
+		m_PendingDelete.reset();
+
+		if (check.Failure.has_value())
+		{
+			ShowFailure(m_Events, "Delete branch failed", check.Branch + ": " + check.Failure->Message,
+						m_Model.GetWorkingDirectory());
+			ForgetDeleteQuestion(check.Branch);
+			return;
+		}
+
+		if (m_DeleteUnanswered == check.Branch)
+		{
+			m_DeleteUnmerged = check.Unmerged;
+		}
+	}
+
+	void GitView::ForgetDeleteQuestion(const std::string& branch)
+	{
+		m_DeleteBranchQuestion.WithdrawIf([&branch](const DeleteBranchPayload& payload) { return payload.IsAbout(branch); });
+
+		m_DeleteUnanswered.reset();
+		m_DeleteUnmerged.reset();
+		m_DeleteHeldForPanel = false;
+	}
+
+	std::optional<std::size_t> GitView::UnmergedCountFor(const std::string& branch) const
+	{
+		if (m_DeleteUnanswered != branch)
+		{
+			return std::nullopt;
+		}
+
+		return m_DeleteUnmerged;
+	}
+
 	void GitView::WithdrawQuestions()
 	{
 		if (m_DetachQuestion.IsAsked())
@@ -234,6 +342,14 @@ namespace Graphite {
 		m_IncludeUntracked = false;
 		m_StashSaveFailed = false;
 		m_BranchNameFor = nullptr;
+
+		m_AskedCheckoutPlan.reset();
+
+		if (!m_DeleteHeldForPanel)
+		{
+			m_DeleteUnanswered.reset();
+			m_DeleteUnmerged.reset();
+		}
 	}
 
 	void GitView::BeginCheckout(const Core::CheckoutTarget& target)
@@ -242,15 +358,8 @@ namespace Graphite {
 		m_Model.RequestCheckoutPlan(target);
 	}
 
-	void GitView::ApplyCheckoutPlan(CheckoutPlanAnswer answer)
+	GitView::PlanApplied GitView::ApplyCheckoutPlan(const CheckoutPlanAnswer& answer, bool panelOnScreen)
 	{
-		if (m_PendingCheckout != answer.Target)
-		{
-			return;
-		}
-
-		m_PendingCheckout.reset();
-
 		const std::string label = CheckoutTargetLabel(answer.Target);
 
 		if (answer.Failure.has_value() || !answer.Plan.has_value())
@@ -258,7 +367,7 @@ namespace Graphite {
 			const std::string failureMessage =
 				answer.Failure.has_value() ? answer.Failure->Message : std::string("no plan");
 			ShowFailure(m_Events, "Checkout failed", label + ": " + failureMessage, m_Model.GetWorkingDirectory());
-			return;
+			return PlanApplied::Answered;
 		}
 
 		const std::filesystem::path& root = m_Model.GetWorkingDirectory();
@@ -276,7 +385,12 @@ namespace Graphite {
 		if (!NeedsCheckoutDialog(*answer.Plan, unsavedRelative))
 		{
 			m_Model.RequestCheckout(CheckoutRequest{.Target = answer.Target});
-			return;
+			return PlanApplied::Answered;
+		}
+
+		if (!panelOnScreen)
+		{
+			return PlanApplied::HeldForPanel;
 		}
 
 		const Core::Ref<const Core::WorkingTreeStatus> gitStatusIfKnown = m_Model.GetStatus();
@@ -286,10 +400,13 @@ namespace Graphite {
 
 		const bool untrackedForced = question.UntrackedForced;
 
-		m_CheckoutQuestion.AskOnce(CheckoutQuestionPayload{.Target = std::move(answer.Target),
+		m_CheckoutQuestion.AskOnce(CheckoutQuestionPayload{.Target = answer.Target,
 															.Question = std::move(question),
 															.UnsavedAbsolute = std::move(unsaved),
 															.IncludeUntracked = untrackedForced});
+		m_AskedCheckoutPlan = answer;
+
+		return PlanApplied::Answered;
 	}
 
 	void GitView::BeginNewBranch(std::string from, const Core::Oid& at, std::string_view suggested)
@@ -378,6 +495,9 @@ namespace Graphite {
 		m_LastSeenPage.reset();
 		m_GraphOf.reset();
 		m_Graph = Core::CommitGraph{};
+
+		m_HeldCheckoutPlan.reset();
+		m_DeleteHeldForPanel = false;
 
 		// WARNING: Withdraw is only valid outside a popup, and this runs from an event handler.
 		WithdrawQuestions();
@@ -468,6 +588,7 @@ namespace Graphite {
 
 		frame.AuthorsInFlight = m_Model.IsBranchAuthorsInFlight();
 		frame.SelectedRef = m_SelectedStash.has_value() ? std::nullopt : m_SelectedRef;
+		frame.CheckingOut = CheckoutMarkedOnRows(Checkouts());
 		frame.Now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
 		frame.LocalOffset = LocalOffset();
 
@@ -524,7 +645,7 @@ namespace Graphite {
 		const bool notSelected = false;
 		const char* const noShortcut = nullptr;
 
-		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+		ImGui::BeginDisabled(m_Model.IsWriteUnsettled());
 
 		if (branch.Kind == Core::RefKind::Local)
 		{
@@ -545,8 +666,7 @@ namespace Graphite {
 
 			if (ImGui::MenuItem("Delete", noShortcut, notSelected, !branch.IsHead))
 			{
-				m_PendingDelete = branch.Name;
-				m_Model.RequestDeleteCheck(branch.Name);
+				BeginDelete(branch.Name);
 			}
 		}
 		else
@@ -794,7 +914,7 @@ namespace Graphite {
 				return m_Model.GetDiffFor(commit);
 			};
 
-			m_Commits.SetActionsEnabled(!m_Model.IsWriteInFlight());
+			m_Commits.SetActionsEnabled(!m_Model.IsWriteUnsettled());
 			const Core::Ref<const std::vector<Core::Branch>> branches = m_Model.GetBranches();
 
 			if (branches != m_RefsOf)

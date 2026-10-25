@@ -80,6 +80,9 @@ namespace {
 			bool SpinnerDrawn = false;
 			int Vertices = 0;
 			float LastItemLeft = 0.0f;
+			float RowLeft = 0.0f;
+			float LastItemRight = 0.0f;
+			float MeasuredWidth = 0.0f;
 		};
 
 		LineDrawn DrawLineLoader(const char* text, ImVec2 size = kWindowSize,
@@ -88,12 +91,15 @@ namespace {
 			BeginFrame("LineLoader", size);
 
 			const float before = ImGui::GetCursorPosY();
+			const float rowLeft = ImGui::GetCursorScreenPos().x;
 			const int verticesBefore = ImGui::GetWindowDrawList()->VtxBuffer.Size;
 			Core::LoadingLine(text, whileWaiting);
 			const float after = ImGui::GetCursorPosY();
 			const float lineHeightWithSpacing = ImGui::GetTextLineHeightWithSpacing();
 			const int vertices = ImGui::GetWindowDrawList()->VtxBuffer.Size - verticesBefore;
 			const float lastItemLeft = ImGui::GetItemRectMin().x;
+			const float lastItemRight = ImGui::GetItemRectMax().x;
+			const float measuredWidth = Core::LoadingLineWidth(text);
 
 			EndFrame();
 
@@ -101,7 +107,10 @@ namespace {
 							 .LineHeightWithSpacing = lineHeightWithSpacing,
 							 .SpinnerDrawn = vertices > 0,
 							 .Vertices = vertices,
-							 .LastItemLeft = lastItemLeft};
+							 .LastItemLeft = lastItemLeft,
+							 .RowLeft = rowLeft,
+							 .LastItemRight = lastItemRight,
+							 .MeasuredWidth = measuredWidth};
 		}
 
 		const ImRect& GetRegion() const { return m_Region; }
@@ -286,6 +295,20 @@ TEST_CASE("LoadingLine asked to take no room takes none while it waits and one r
 	CHECK(wake.has_value());
 	CHECK(shown.SpinnerDrawn);
 	CHECK(shown.Advance == doctest::Approx(shown.LineHeightWithSpacing));
+}
+
+TEST_CASE("LoadingLineWidth is how far a shown LoadingLine reaches from where it starts")
+{
+	LoaderWindow window;
+
+	LoaderWindow::LineDrawn shown;
+	for (int frameIndex = 0; frameIndex < kFramesPastTheWait; ++frameIndex)
+	{
+		shown = window.DrawLineLoader("Staging 2,000 files");
+	}
+
+	REQUIRE(shown.SpinnerDrawn);
+	CHECK(shown.LastItemRight - shown.RowLeft == doctest::Approx(shown.MeasuredWidth));
 }
 
 TEST_CASE("LoadingLine asks for the next frame so its spinner keeps turning")

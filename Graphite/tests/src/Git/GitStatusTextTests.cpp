@@ -258,3 +258,60 @@ TEST_CASE("The change count is one per changed path, and absent when clean")
 	CHECK(severalChanges->Changes == kChanges + "3 changes");
 	CHECK(severalChanges->ChangesTooltip == "3 uncommitted changes. Click to show them in Changes.");
 }
+
+TEST_CASE("A checkout under way is named in place of the head it leaves, after a loader, and still links to Git")
+{
+	const Core::HeadState head = HeadOnBranch("main");
+	const std::vector<Core::Branch> branches{TrackingBranch("main", 2, 0)};
+	const Core::WorkingTreeStatus status = StatusWithChangeCount(3);
+
+	const std::optional<GitStatusSegment> segment = GitStatusText(
+		{.FolderOpen = true, .Head = &head, .Branches = &branches, .Status = &status, .CheckingOut = "feature/x"});
+
+	REQUIRE(segment.has_value());
+	CHECK(segment->Branch == "Checking out feature/x\xE2\x80\xA6");
+	CHECK(segment->BranchBusy);
+	CHECK(segment->HasRepository);
+	CHECK(segment->Distance.empty());
+	CHECK(segment->Changes == kChanges + "3 changes");
+}
+
+TEST_CASE("The head is named with no loader when no checkout is under way")
+{
+	const Core::HeadState head = HeadOnBranch("main");
+
+	const std::optional<GitStatusSegment> segment = GitStatusText({.FolderOpen = true, .Head = &head});
+
+	REQUIRE(segment.has_value());
+	CHECK_FALSE(segment->BranchBusy);
+	CHECK_FALSE(segment->Activity.has_value());
+}
+
+TEST_CASE("What git is doing is handed on beside the branch, a missing repository's init included")
+{
+	const Graphite::GitActivity staging{.Text = "Staging 3 files\xE2\x80\xA6", .Busy = true};
+	const Graphite::GitActivity initialising{.Text = "Initialising the repository\xE2\x80\xA6", .Busy = true};
+	const Core::HeadState head = HeadOnBranch("main");
+
+	const std::optional<GitStatusSegment> onBranch =
+		GitStatusText({.FolderOpen = true, .Head = &head, .Activity = staging});
+	const std::optional<GitStatusSegment> missing =
+		GitStatusText({.FolderOpen = true, .MissingRepository = true, .Activity = initialising});
+
+	REQUIRE(onBranch.has_value());
+	CHECK(onBranch->Activity == staging);
+	REQUIRE(missing.has_value());
+	CHECK(missing->Activity == initialising);
+}
+
+TEST_CASE("What git is doing is shown even before the head has arrived")
+{
+	const Graphite::GitActivity committing{.Text = "Committing\xE2\x80\xA6", .Busy = true};
+
+	const std::optional<GitStatusSegment> segment = GitStatusText({.FolderOpen = true, .Activity = committing});
+
+	REQUIRE(segment.has_value());
+	CHECK(segment->Activity == committing);
+	CHECK(segment->Branch.empty());
+	CHECK_FALSE(segment->HasRepository);
+}

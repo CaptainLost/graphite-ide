@@ -20,4 +20,7 @@ namespace Core {
 	// list does not move when it shows. A line over content already on screen can take no room while it waits instead,
 	// so a wait that ends within a frame or two does not push that content down and back.
 	void LoadingLine(const char* text, WhileLoaderWaits whileWaiting = WhileLoaderWaits::ShowNothing);
+
+	// The width LoadingLine takes once it shows, for a row laid out around it.
+	float LoadingLineWidth(const char* text);
 }

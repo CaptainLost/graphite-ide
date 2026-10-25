@@ -174,4 +174,10 @@ namespace Core {
 			Redraw::RequestIn(Redraw::Clock::duration::zero());
 		}
 	}
+
+	float LoadingLineWidth(const char* text)
+	{
+		constexpr float kDiametersPerRadius = 2.0f;
+		return LineSpinnerRadius() * kDiametersPerRadius + ImGui::GetStyle().ItemSpacing.x + ImGui::CalcTextSize(text).x;
+	}
 }

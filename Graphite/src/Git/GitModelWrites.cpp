@@ -1,17 +1,112 @@
 #include "Git/GitModel.h"
 
+#include "Core/App/Redraw.h"
+#include "Core/Base/Ascii.h"
+#include "Core/FileSystem/FileSystem.h"
+
 #include "Git/CheckoutQuestion.h"
 
+#include <chrono>
 #include <cstddef>
 #include <filesystem>
 #include <exception>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace Graphite {
 
 	namespace {
+
+		// WARNING: No default, so a kind added later is a warning here, and warnings fail the build.
+		bool IsAnswerRatherThanWrite(GitModel::WriteKind kind)
+		{
+			switch (kind)
+			{
+			case GitModel::WriteKind::DeleteCheck:
+			case GitModel::WriteKind::CheckoutPlan:
+				return true;
+
+			case GitModel::WriteKind::Stage:
+			case GitModel::WriteKind::Unstage:
+			case GitModel::WriteKind::Discard:
+			case GitModel::WriteKind::Commit:
+			case GitModel::WriteKind::Init:
+			case GitModel::WriteKind::CreateBranch:
+			case GitModel::WriteKind::RenameBranch:
+			case GitModel::WriteKind::DeleteBranch:
+			case GitModel::WriteKind::StashSave:
+			case GitModel::WriteKind::StashApply:
+			case GitModel::WriteKind::StashPop:
+			case GitModel::WriteKind::StashDrop:
+			case GitModel::WriteKind::Checkout:
+				break;
+			}
+
+			return false;
+		}
+
+		// WARNING: No default, so a kind added later is a warning here, and warnings fail the build.
+		bool ChangesWorkingTree(GitModel::WriteKind kind)
+		{
+			switch (kind)
+			{
+			case GitModel::WriteKind::Stage:
+			case GitModel::WriteKind::Unstage:
+			case GitModel::WriteKind::Discard:
+			case GitModel::WriteKind::Commit:
+			case GitModel::WriteKind::Init:
+			case GitModel::WriteKind::StashSave:
+			case GitModel::WriteKind::StashApply:
+			case GitModel::WriteKind::StashPop:
+			case GitModel::WriteKind::Checkout:
+				return true;
+
+			case GitModel::WriteKind::CreateBranch:
+			case GitModel::WriteKind::RenameBranch:
+			case GitModel::WriteKind::DeleteBranch:
+			case GitModel::WriteKind::StashDrop:
+			case GitModel::WriteKind::DeleteCheck:
+			case GitModel::WriteKind::CheckoutPlan:
+				break;
+			}
+
+			return false;
+		}
+
+		// A status entry for an untracked folder may end in a separator, which leaves its filename empty.
+		std::string LastPartOf(const std::filesystem::path& path)
+		{
+			const std::filesystem::path name = path.filename();
+
+			return Core::ToUtf8(name.empty() ? path.parent_path().filename() : name);
+		}
+
+		void NamePaths(GitModel::WriteSubject& subject, const std::vector<std::filesystem::path>& paths)
+		{
+			subject.PathCount = paths.size();
+
+			if (paths.size() == 1)
+			{
+				subject.OnePathName = LastPartOf(paths.front());
+			}
+		}
+
+		std::vector<std::filesystem::path> PathsOf(const DiscardRequest& request)
+		{
+			std::vector<std::filesystem::path> paths = request.Restore;
+			paths.insert(paths.end(), request.Delete.begin(), request.Delete.end());
+
+			return paths;
+		}
+
+		std::string FirstLineOf(std::string_view message)
+		{
+			const std::string trimmed = Core::Trimmed(message);
+
+			return Core::Trimmed(std::string_view(trimmed).substr(0, trimmed.find('\n')));
+		}
 
 		Core::UntrackedFiles UntrackedFilesFor(bool includeUntracked)
 		{
@@ -173,8 +268,295 @@ namespace Graphite {
 		}
 
 		job.Generation = m_WriteGeneration;
+
+		if (!IsAnswerRatherThanWrite(job.Kind))
+		{
+			job.Ticket = ++m_LastTicket;
+
+			const std::optional<Core::CheckoutTarget> checkout =
+				job.Kind == WriteKind::Checkout ? std::optional<Core::CheckoutTarget>{job.Checkout.Target} : std::nullopt;
+
+			m_Tickets.push_back(WriteTicket{.Number = job.Ticket, .Subject = DescribeWrite(job), .Checkout = checkout});
+			m_Confirmed.reset();
+		}
+
 		m_WriteQueue.push_back(std::move(job));
 		PumpWrites();
+	}
+
+	GitModel::WriteSubject GitModel::DescribeWrite(const WriteJob& job) const
+	{
+		WriteSubject subject{.Kind = job.Kind};
+
+		switch (job.Kind)
+		{
+		case WriteKind::Stage:
+		case WriteKind::Unstage:
+			NamePaths(subject, job.Paths);
+			break;
+
+		case WriteKind::Discard:
+			NamePaths(subject, PathsOf(job.Discard));
+			break;
+
+		case WriteKind::Commit:
+			subject.CommitSummary = FirstLineOf(job.Commit.Message);
+			break;
+
+		case WriteKind::CreateBranch:
+		case WriteKind::DeleteBranch:
+		case WriteKind::DeleteCheck:
+			subject.Name = job.Name;
+			break;
+
+		case WriteKind::RenameBranch:
+			subject.Name = job.Name;
+			subject.NewName = job.OtherName;
+			break;
+
+		case WriteKind::StashApply:
+		case WriteKind::StashPop:
+		case WriteKind::StashDrop:
+			subject.StashIndex = StashIndexOf(job.Id);
+			break;
+
+		case WriteKind::Checkout:
+			subject.Name = CheckoutTargetLabel(job.Checkout.Target);
+			break;
+
+		case WriteKind::CheckoutPlan:
+			subject.Name = CheckoutTargetLabel(*job.Target);
+			break;
+
+		case WriteKind::Init:
+		case WriteKind::StashSave:
+			break;
+		}
+
+		return subject;
+	}
+
+	std::optional<std::size_t> GitModel::StashIndexOf(const Core::Oid& stash) const
+	{
+		const Core::Ref<const std::vector<Core::StashEntry>> stashes = m_Stashes.Get();
+
+		if (stashes == nullptr)
+		{
+			return std::nullopt;
+		}
+
+		for (const Core::StashEntry& entry : *stashes)
+		{
+			if (entry.Id == stash)
+			{
+				return entry.Index;
+			}
+		}
+
+		return std::nullopt;
+	}
+
+	GitModel::WriteTicket* GitModel::FindTicket(std::uint64_t number)
+	{
+		for (WriteTicket& ticket : m_Tickets)
+		{
+			if (ticket.Number == number)
+			{
+				return &ticket;
+			}
+		}
+
+		return nullptr;
+	}
+
+	const GitModel::WriteTicket* GitModel::RunningTicket() const
+	{
+		for (const WriteTicket& ticket : m_Tickets)
+		{
+			if (ticket.Phase == TicketPhase::Running)
+			{
+				return &ticket;
+			}
+		}
+
+		return nullptr;
+	}
+
+	const GitModel::WriteTicket* GitModel::NewestUnfailedTicket() const
+	{
+		const WriteTicket* newest = nullptr;
+
+		for (const WriteTicket& ticket : m_Tickets)
+		{
+			if (!ticket.Failed)
+			{
+				newest = &ticket;
+			}
+		}
+
+		return newest;
+	}
+
+	void GitModel::ForgetTicket(std::uint64_t number)
+	{
+		for (std::size_t ticketIndex = 0; ticketIndex < m_Tickets.size(); ++ticketIndex)
+		{
+			if (m_Tickets[ticketIndex].Number == number)
+			{
+				m_Tickets.erase(m_Tickets.begin() + static_cast<std::ptrdiff_t>(ticketIndex));
+				return;
+			}
+		}
+	}
+
+	void GitModel::MarkTicketRunning(std::uint64_t number)
+	{
+		if (WriteTicket* ticket = FindTicket(number); ticket != nullptr)
+		{
+			ticket->Phase = TicketPhase::Running;
+		}
+	}
+
+	void GitModel::AwaitStatusAfter(std::uint64_t number, const std::optional<Core::Oid>& committed)
+	{
+		WriteTicket* ticket = FindTicket(number);
+
+		if (ticket == nullptr)
+		{
+			return;
+		}
+
+		ticket->Phase = TicketPhase::Applied;
+		ticket->StatusAskedWhenApplied = m_Status.GetRequested();
+		ticket->HeadAskedWhenApplied = m_Head.GetRequested();
+		ticket->Subject.Committed = committed;
+	}
+
+	void GitModel::FailTicket(std::uint64_t number, bool changedRepository)
+	{
+		WriteTicket* ticket = FindTicket(number);
+
+		if (ticket == nullptr)
+		{
+			return;
+		}
+
+		if (!changedRepository)
+		{
+			ForgetTicket(number);
+			return;
+		}
+
+		const std::optional<Core::Oid> nothingCommitted;
+		AwaitStatusAfter(number, nothingCommitted);
+		ticket->Failed = true;
+	}
+
+	bool GitModel::HasSettled(const WriteTicket& ticket) const
+	{
+		return ticket.Phase == TicketPhase::Applied && m_Status.GetApplied() > ticket.StatusAskedWhenApplied &&
+			   m_Head.GetApplied() > ticket.HeadAskedWhenApplied;
+	}
+
+	void GitModel::SettleTicketsWhoseStatusLanded()
+	{
+		std::optional<WriteSubject> newestSettled;
+		std::deque<WriteTicket> unsettled;
+
+		for (WriteTicket& ticket : m_Tickets)
+		{
+			if (!HasSettled(ticket))
+			{
+				unsettled.push_back(std::move(ticket));
+			}
+			else if (!ticket.Failed)
+			{
+				newestSettled = std::move(ticket.Subject);
+			}
+		}
+
+		m_Tickets = std::move(unsettled);
+
+		// WARNING: Tickets settle in the order they were asked for, so any left are newer, and the report is theirs.
+		if (!newestSettled.has_value() || NewestUnfailedTicket() != nullptr)
+		{
+			return;
+		}
+
+		m_Confirmed = std::move(newestSettled);
+		m_ConfirmedSecondsLeft = kWriteConfirmationSeconds;
+		Core::Redraw::RequestIn(std::chrono::duration<double>(m_ConfirmedSecondsLeft));
+	}
+
+	void GitModel::CountDownConfirmation(Core::Timestep timestep)
+	{
+		if (!m_Confirmed.has_value())
+		{
+			return;
+		}
+
+		m_ConfirmedSecondsLeft -= timestep.GetSeconds();
+
+		if (m_ConfirmedSecondsLeft <= 0.0f)
+		{
+			m_Confirmed.reset();
+			return;
+		}
+
+		Core::Redraw::RequestIn(std::chrono::duration<double>(m_ConfirmedSecondsLeft));
+	}
+
+	std::optional<GitModel::WriteReport> GitModel::GetWriteReport() const
+	{
+		const WriteTicket* reported = RunningTicket();
+
+		if (reported == nullptr)
+		{
+			reported = NewestUnfailedTicket();
+		}
+
+		if (reported != nullptr)
+		{
+			return WriteReport{.Subject = reported->Subject, .Progress = WriteProgress::Running};
+		}
+
+		if (m_Confirmed.has_value())
+		{
+			return WriteReport{.Subject = *m_Confirmed, .Progress = WriteProgress::Done};
+		}
+
+		return std::nullopt;
+	}
+
+	bool GitModel::IsWriteUnsettled() const
+	{
+		return m_WriteInFlight || !m_Tickets.empty();
+	}
+
+	bool GitModel::IsUpdatingWorkingTree() const
+	{
+		for (const WriteTicket& ticket : m_Tickets)
+		{
+			if (ChangesWorkingTree(ticket.Subject.Kind))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	std::optional<Core::CheckoutTarget> GitModel::GetCheckoutUnderWay() const
+	{
+		for (const WriteTicket& ticket : m_Tickets)
+		{
+			if (ticket.Checkout.has_value() && !ticket.Failed)
+			{
+				return ticket.Checkout;
+			}
+		}
+
+		return std::nullopt;
 	}
 
 	void GitModel::PumpWrites()
@@ -187,6 +569,8 @@ namespace Graphite {
 		WriteJob job = std::move(m_WriteQueue.front());
 		m_WriteQueue.pop_front();
 		m_WriteInFlight = true;
+
+		MarkTicketRunning(job.Ticket);
 
 		m_SubmitWrite([this, job = std::move(job)]() mutable {
 			WriteOutcome outcome = RunWrite(job);
@@ -581,9 +965,15 @@ namespace Graphite {
 				MarkDirty();
 			}
 
+			const bool refreshesAfterFailure =
+				mayHaveWrittenSomeFiles || job.Kind == WriteKind::Discard || job.Kind == WriteKind::Checkout;
+			FailTicket(job.Ticket, refreshesAfterFailure);
+
 			PumpWrites();
 			return;
 		}
+
+		AwaitStatusAfter(job.Ticket, outcome.Committed);
 
 		if (job.Kind == WriteKind::Checkout)
 		{

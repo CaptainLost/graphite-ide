@@ -80,6 +80,7 @@ namespace Graphite {
 	class SearchPanel;
 	class SettingsPanel;
 	class ReferencesPanel;
+	class GitView;
 
 	class GraphiteLayer final : public Core::Layer
 	{
@@ -388,6 +389,7 @@ namespace Graphite {
 		SearchPanel* m_SearchPanel = nullptr;
 		ReferencesPanel* m_ReferencesPanel = nullptr;
 		SettingsPanel* m_SettingsPanel = nullptr;
+		GitView* m_GitView = nullptr;
 
 		StateKeeper m_StateKeeper{
 			[this](const GlobalState& state) { m_AppSettings.SetGlobalState(state); },

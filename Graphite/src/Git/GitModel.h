@@ -283,6 +283,60 @@ namespace Graphite {
 
 		std::optional<WriteFailure> TakeWriteError();
 
+		// What a write is about, as much as the status bar needs to word it.
+		struct WriteSubject
+		{
+			WriteKind Kind = WriteKind::Stage;
+
+			// The paths a stage, unstage or discard was given. One is named by its last part, more are counted.
+			std::size_t PathCount = 0;
+			std::string OnePathName;
+
+			// The branch, or the checkout's target, the write acts on, and a rename's new name.
+			std::string Name;
+			std::string NewName;
+
+			// The stash's place in the list when the write was asked for, while the list was known.
+			std::optional<std::size_t> StashIndex;
+
+			// Set once a commit has landed, with the first line of its message.
+			std::optional<Core::Oid> Committed;
+			std::string CommitSummary;
+
+			friend bool operator==(const WriteSubject&, const WriteSubject&) = default;
+		};
+
+		enum class WriteProgress
+		{
+			// From the click until the status read after the write lands.
+			Running,
+
+			// For a few seconds once that status has landed.
+			Done
+		};
+
+		struct WriteReport
+		{
+			WriteSubject Subject;
+			WriteProgress Progress = WriteProgress::Running;
+		};
+
+		static constexpr float kWriteConfirmationSeconds = 4.0f;
+
+		// The write running, or else the newest one asked for and not yet settled, or else the last one done, for
+		// a few seconds after the status read that followed it. A failed write leaves no report: its toast says it.
+		std::optional<WriteReport> GetWriteReport() const;
+
+		// A write is queued, running, or done with the status read after it still to land, so what the panels
+		// show may be out of date and the controls that start writes stay disabled.
+		bool IsWriteUnsettled() const;
+
+		// Like IsWriteUnsettled, for the writes that change the index or the working tree.
+		bool IsUpdatingWorkingTree() const;
+
+		// The target of a checkout queued, running, or done with the status and head after it still to land.
+		std::optional<Core::CheckoutTarget> GetCheckoutUnderWay() const;
+
 		const std::optional<Core::Error>& GetInitError() const { return m_InitError; }
 		void DismissInitError() { m_InitError.reset(); }
 
@@ -353,6 +407,8 @@ namespace Graphite {
 		// would otherwise let a delivery from before the clear outrank one from after it.
 		std::uint64_t m_UntrackedGeneration = 0;
 
+		static constexpr std::uint64_t kNoTicket = 0;
+
 		struct WriteJob
 		{
 			WriteKind Kind = WriteKind::Stage;
@@ -371,6 +427,8 @@ namespace Graphite {
 			CheckoutRequest Checkout;
 
 			std::uint64_t Generation = 0;
+
+			std::uint64_t Ticket = kNoTicket;
 		};
 
 		struct WriteOutcome
@@ -392,6 +450,57 @@ namespace Graphite {
 		WriteOutcome RunCheckout(const CheckoutRequest& request);
 
 		void ApplyWrite(const WriteJob& job, WriteOutcome outcome);
+
+		enum class TicketPhase
+		{
+			Queued,
+			Running,
+			Applied
+		};
+
+		// A write the reader asked for, from the click until the status read after it lands. Answers such as a
+		// checkout plan get none.
+		struct WriteTicket
+		{
+			std::uint64_t Number = kNoTicket;
+			WriteSubject Subject;
+			std::optional<Core::CheckoutTarget> Checkout;
+
+			TicketPhase Phase = TicketPhase::Queued;
+
+			// A failed write is never reported, but one that changed files before it failed still waits for the
+			// status read after it.
+			bool Failed = false;
+
+			// The status and head generations asked for when the write was applied. Only an answer to a later ask
+			// was read after the write.
+			std::uint64_t StatusAskedWhenApplied = 0;
+			std::uint64_t HeadAskedWhenApplied = 0;
+		};
+
+		WriteSubject DescribeWrite(const WriteJob& job) const;
+
+		std::optional<std::size_t> StashIndexOf(const Core::Oid& stash) const;
+
+		WriteTicket* FindTicket(std::uint64_t number);
+
+		const WriteTicket* RunningTicket() const;
+
+		const WriteTicket* NewestUnfailedTicket() const;
+
+		void ForgetTicket(std::uint64_t number);
+
+		void MarkTicketRunning(std::uint64_t number);
+
+		void AwaitStatusAfter(std::uint64_t number, const std::optional<Core::Oid>& committed);
+
+		void FailTicket(std::uint64_t number, bool changedRepository);
+
+		bool HasSettled(const WriteTicket& ticket) const;
+
+		void SettleTicketsWhoseStatusLanded();
+
+		void CountDownConfirmation(Core::Timestep timestep);
 
 		std::filesystem::path m_Root;
 
@@ -418,6 +527,13 @@ namespace Graphite {
 		std::optional<CheckoutPlanAnswer> m_CheckoutPlan;
 		std::optional<DeleteCheck> m_DeleteCheck;
 		std::uint64_t m_AppliedWrites = 0;
+
+		// In the order the writes were asked for.
+		std::deque<WriteTicket> m_Tickets;
+		std::uint64_t m_LastTicket = kNoTicket;
+
+		std::optional<WriteSubject> m_Confirmed;
+		float m_ConfirmedSecondsLeft = 0.0f;
 
 		std::optional<std::uint64_t> m_InitSettlesAfter;
 

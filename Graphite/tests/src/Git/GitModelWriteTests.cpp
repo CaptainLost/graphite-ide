@@ -202,8 +202,10 @@ namespace {
 
 		Core::Result<std::vector<Core::StashEntry>> QueryStashes() override
 		{
-			return std::vector<Core::StashEntry>{};
+			return Stashes;
 		}
+
+		std::vector<Core::StashEntry> Stashes;
 
 		Core::Result<Core::CheckoutPlan> PlanCheckout(const Core::CheckoutTarget& target) override
 		{
@@ -1399,4 +1401,333 @@ TEST_CASE("Closing the folder forgets a plan, a delete check and checked-out pat
 	CHECK_FALSE(model.TakeCheckoutPlan().has_value());
 	CHECK_FALSE(model.TakeDeleteCheck().has_value());
 	CHECK(model.TakeCheckedOut().empty());
+}
+
+namespace {
+
+	// The quiet the debounce waits for and the status read after it, in one step.
+	constexpr float kPastTheDebounce = 1.0f;
+	constexpr float kNoTimePasses = 0.0f;
+
+	Graphite::GitModel::WriteProgress ProgressOf(const Graphite::GitModel& model)
+	{
+		return model.GetWriteReport()->Progress;
+	}
+}
+
+TEST_CASE("A write is reported as running from the click until the status read after it lands, then as done")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	CHECK_FALSE(model.GetWriteReport().has_value());
+
+	model.RequestStage({"src/a.txt"});
+
+	REQUIRE(model.GetWriteReport().has_value());
+	CHECK(ProgressOf(model) == Graphite::GitModel::WriteProgress::Running);
+	CHECK(model.GetWriteReport()->Subject.Kind == Graphite::GitModel::WriteKind::Stage);
+	CHECK(model.GetWriteReport()->Subject.OnePathName == "a.txt");
+
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	CHECK_FALSE(model.IsWriteInFlight());
+	REQUIRE(model.GetWriteReport().has_value());
+	CHECK(ProgressOf(model) == Graphite::GitModel::WriteProgress::Running);
+
+	model.OnUpdate(Core::Timestep{kPastTheDebounce});
+
+	REQUIRE(model.GetWriteReport().has_value());
+	CHECK(ProgressOf(model) == Graphite::GitModel::WriteProgress::Done);
+}
+
+TEST_CASE("The confirmation of a write done goes after a few seconds")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestUnstage({"a.txt"});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+	model.OnUpdate(Core::Timestep{kPastTheDebounce});
+	REQUIRE(model.GetWriteReport().has_value());
+
+	const float mostOfTheConfirmation = Graphite::GitModel::kWriteConfirmationSeconds - 0.5f;
+	model.OnUpdate(Core::Timestep{mostOfTheConfirmation});
+	CHECK(model.GetWriteReport().has_value());
+
+	model.OnUpdate(Core::Timestep{1.0f});
+	CHECK_FALSE(model.GetWriteReport().has_value());
+}
+
+TEST_CASE("A failed write leaves no report, since its toast says what happened")
+{
+	WritePort port;
+	port.Fail = true;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestStage({"a.txt"});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	CHECK_FALSE(model.GetWriteReport().has_value());
+	CHECK_FALSE(model.IsWriteUnsettled());
+
+	model.OnUpdate(Core::Timestep{kPastTheDebounce});
+	CHECK_FALSE(model.GetWriteReport().has_value());
+}
+
+TEST_CASE("Writes stay unsettled until the status read after them lands, so their controls are not offered on stale rows")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	CHECK_FALSE(model.IsWriteUnsettled());
+	CHECK_FALSE(model.IsUpdatingWorkingTree());
+
+	model.RequestDiscard({.Restore = {"a.txt"}});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	CHECK_FALSE(model.IsWriteInFlight());
+	CHECK(model.IsWriteUnsettled());
+	CHECK(model.IsUpdatingWorkingTree());
+
+	model.OnUpdate(Core::Timestep{kPastTheDebounce});
+
+	CHECK_FALSE(model.IsWriteUnsettled());
+	CHECK_FALSE(model.IsUpdatingWorkingTree());
+}
+
+TEST_CASE("A status read asked before a write was applied does not settle it")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestStage({"a.txt"});
+	model.RequestStatus();
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	CHECK(model.GetStatus() != nullptr);
+	CHECK(model.IsWriteUnsettled());
+}
+
+TEST_CASE("A discard that failed after restoring files reports nothing but stays unsettled until its status lands")
+{
+	WritePort port;
+	port.FailDelete = true;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestDiscard({.Restore = {"a.txt"}, .Delete = {"new.txt"}});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	CHECK_FALSE(model.GetWriteReport().has_value());
+	CHECK(model.IsWriteUnsettled());
+
+	model.OnUpdate(Core::Timestep{kPastTheDebounce});
+
+	CHECK_FALSE(model.IsWriteUnsettled());
+	CHECK_FALSE(model.GetWriteReport().has_value());
+}
+
+TEST_CASE("A branch write is unsettled but does not update the working tree")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCreateBranch("topic", Core::Oid{});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	CHECK(model.IsWriteUnsettled());
+	CHECK_FALSE(model.IsUpdatingWorkingTree());
+	REQUIRE(model.GetWriteReport().has_value());
+	CHECK(model.GetWriteReport()->Subject.Name == "topic");
+}
+
+TEST_CASE("A plan or a delete check is an answer, and is neither reported nor left unsettled")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCheckoutPlan({.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"});
+	model.RequestDeleteCheck("old");
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	CHECK_FALSE(model.GetWriteReport().has_value());
+	CHECK_FALSE(model.IsWriteUnsettled());
+	CHECK_FALSE(model.GetCheckoutUnderWay().has_value());
+}
+
+TEST_CASE("A checkout is under way from its request until the status and head after it land")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	const Core::CheckoutTarget feature{.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"};
+
+	model.RequestCheckout({.Target = feature});
+	CHECK(model.GetCheckoutUnderWay() == feature);
+
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+	CHECK(model.GetCheckoutUnderWay() == feature);
+	REQUIRE(model.GetWriteReport().has_value());
+	CHECK(model.GetWriteReport()->Subject.Name == "feature");
+
+	model.OnUpdate(Core::Timestep{kPastTheDebounce});
+
+	CHECK(model.GetHead() != nullptr);
+	CHECK_FALSE(model.GetCheckoutUnderWay().has_value());
+	REQUIRE(model.GetWriteReport().has_value());
+	CHECK(ProgressOf(model) == Graphite::GitModel::WriteProgress::Done);
+}
+
+TEST_CASE("A failed checkout is no longer under way")
+{
+	WritePort port;
+	port.Fail = true;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCheckout({.Target = {.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"}});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	CHECK_FALSE(model.GetCheckoutUnderWay().has_value());
+	CHECK_FALSE(model.GetWriteReport().has_value());
+}
+
+TEST_CASE("The write running is reported over one queued behind it")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCheckoutPlan({.Kind = Core::CheckoutKind::LocalBranch, .Name = "feature"});
+	model.RequestStage({"a.txt"});
+
+	REQUIRE(model.GetWriteReport().has_value());
+	CHECK(model.GetWriteReport()->Subject.Kind == Graphite::GitModel::WriteKind::Stage);
+
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+	model.RequestCommit({.Message = "one"});
+
+	REQUIRE(model.GetWriteReport().has_value());
+	CHECK(model.GetWriteReport()->Subject.Kind == Graphite::GitModel::WriteKind::Stage);
+}
+
+TEST_CASE("Only the newest of several writes is confirmed")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestStage({"a.txt"});
+	model.RequestCommit({.Message = "one"});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+	model.OnUpdate(Core::Timestep{kPastTheDebounce});
+
+	REQUIRE(model.GetWriteReport().has_value());
+	CHECK(ProgressOf(model) == Graphite::GitModel::WriteProgress::Done);
+	CHECK(model.GetWriteReport()->Subject.Kind == Graphite::GitModel::WriteKind::Commit);
+}
+
+TEST_CASE("A commit's confirmation names its hash and the first line of its message")
+{
+	WritePort port;
+	port.Committed.Bytes[0] = 0xa1;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestCommit({.Message = "  Fix the parser\n\nThe body."});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+	model.OnUpdate(Core::Timestep{kPastTheDebounce});
+
+	const std::optional<Graphite::GitModel::WriteReport> report = model.GetWriteReport();
+	REQUIRE(report.has_value());
+	CHECK(report->Subject.Committed == port.Committed);
+	CHECK(report->Subject.CommitSummary == "Fix the parser");
+}
+
+TEST_CASE("A discard names how many paths it restores and deletes together")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestDiscard({.Restore = {"a.txt", "b.txt"}, .Delete = {"new.txt"}});
+
+	REQUIRE(model.GetWriteReport().has_value());
+	CHECK(model.GetWriteReport()->Subject.PathCount == 3);
+	CHECK(model.GetWriteReport()->Subject.OnePathName.empty());
+}
+
+TEST_CASE("A stash write names the stash's place in the list read before it, and none for a stash not in it")
+{
+	WritePort port;
+
+	Core::StashEntry second;
+	second.Index = 1;
+	second.Id.Bytes[0] = 0xab;
+	port.Stashes = {second};
+
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestStashes();
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	model.RequestStashPop(second.Id);
+
+	REQUIRE(model.GetWriteReport().has_value());
+	CHECK(model.GetWriteReport()->Subject.StashIndex == std::optional<std::size_t>{1});
+
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	Core::Oid unknown;
+	unknown.Bytes[0] = 0xcd;
+	model.RequestStashDrop(unknown);
+
+	REQUIRE(model.GetWriteReport().has_value());
+	CHECK_FALSE(model.GetWriteReport()->Subject.StashIndex.has_value());
+}
+
+TEST_CASE("Closing the folder forgets the report and every unsettled write")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestStage({"a.txt"});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+	REQUIRE(model.IsWriteUnsettled());
+
+	model.Clear();
+
+	CHECK_FALSE(model.GetWriteReport().has_value());
+	CHECK_FALSE(model.IsWriteUnsettled());
+}
+
+TEST_CASE("A new write takes the place of the last one's confirmation")
+{
+	WritePort port;
+	Graphite::GitModel model{port, Inline()};
+	OpenA(model);
+
+	model.RequestStage({"a.txt"});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+	model.OnUpdate(Core::Timestep{kPastTheDebounce});
+	REQUIRE(ProgressOf(model) == Graphite::GitModel::WriteProgress::Done);
+
+	port.Fail = true;
+	model.RequestUnstage({"a.txt"});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	CHECK_FALSE(model.GetWriteReport().has_value());
 }

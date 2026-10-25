@@ -126,6 +126,9 @@ namespace Graphite {
 		m_CheckoutPlan.reset();
 		m_DeleteCheck.reset();
 
+		m_Tickets.clear();
+		m_Confirmed.reset();
+
 		m_Debounce.Reset();
 	}
 
@@ -163,6 +166,9 @@ namespace Graphite {
 
 	void GitModel::OnUpdate(Core::Timestep timestep)
 	{
+		// WARNING: Before the deliveries are drained, so a confirmation settled this frame keeps its full time.
+		CountDownConfirmation(timestep);
+
 		if (m_Debounce.Advance(timestep))
 		{
 			RequestStatus();
@@ -190,6 +196,8 @@ namespace Graphite {
 		}
 
 		m_Inbox.Drain();
+
+		SettleTicketsWhoseStatusLanded();
 	}
 
 	void GitModel::RequestStatus()

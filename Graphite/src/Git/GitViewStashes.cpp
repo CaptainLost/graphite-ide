@@ -127,7 +127,7 @@ namespace Graphite {
 			return;
 		}
 
-		ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+		ImGui::BeginDisabled(m_Model.IsWriteUnsettled());
 
 		if (ImGui::MenuItem("Apply"))
 		{

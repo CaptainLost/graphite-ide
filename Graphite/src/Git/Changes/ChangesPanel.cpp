@@ -7,7 +7,6 @@
 #include "UI/Lists/Chevron.h"
 #include "UI/Lists/ListRow.h"
 #include "UI/ClipboardCopy.h"
-#include "Editor/StatusBar/StatusMessageEvent.h"
 #include "Git/Changes/CommitBlocker.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
@@ -183,22 +182,8 @@ namespace Graphite {
 			ResetStashDialog();
 		}
 
-		if (const std::optional<Core::Oid> committed = m_Model.TakeCommitted(); committed.has_value())
+		if (m_Model.TakeCommitted().has_value())
 		{
-			std::string statusMessage = "Committed " + committed->ShortHex();
-
-			const std::string trimmedMessage = Core::Trimmed(m_Message);
-			const std::string firstLineOfMessage =
-				Core::Trimmed(std::string_view(trimmedMessage).substr(0, trimmedMessage.find('\n')));
-
-			if (!firstLineOfMessage.empty())
-			{
-				statusMessage += ' ';
-				statusMessage += firstLineOfMessage;
-			}
-
-			m_Events.Publish(StatusMessageEvent{std::move(statusMessage)});
-
 			m_Message.clear();
 			m_Amend = false;
 		}
@@ -375,13 +360,21 @@ namespace Graphite {
 		ImGui::SameLine();
 		ImGui::TextDisabled("(%zu)", rows.size());
 
+		const bool isFirstSectionDrawn = !spaced;
+
+		if (isFirstSectionDrawn && m_Model.IsUpdatingWorkingTree())
+		{
+			ImGui::SameLine();
+			Core::LoadingLine("Updating…");
+		}
+
 		if (rowHovered)
 		{
 			const char* allIcon = m_Section == Section::Staged ? ICON_LC_MINUS : ICON_LC_PLUS;
 
 			ImGui::SetCursorScreenPos(ImVec2(ListRowEnd() - RowButtonWidth(), ListRowTextTop(rowScreenStart.y)));
 
-			ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+			ImGui::BeginDisabled(m_Model.IsWriteUnsettled());
 
 			if (Core::DrawIconButton("##stageAll", allIcon, kNotEngaged,
 									 m_Section == Section::Staged ? "Unstage all" : "Stage all", kRowButton))
@@ -573,7 +566,7 @@ namespace Graphite {
 		if (rowHovered)
 		{
 			ImGui::SetCursorPos(ImVec2(rightEdge - buttonsWidth, ListRowTextTop(rowStart.y)));
-			ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+			ImGui::BeginDisabled(m_Model.IsWriteUnsettled());
 
 			if (offersDiscard)
 			{
@@ -756,7 +749,7 @@ namespace Graphite {
 		else
 		{
 			ImGui::SetCursorPos(ImVec2(rightEdge - buttonsWidth, ListRowTextTop(rowStart.y)));
-			ImGui::BeginDisabled(m_Model.IsWriteInFlight());
+			ImGui::BeginDisabled(m_Model.IsWriteUnsettled());
 
 			if (offersDiscard)
 			{
@@ -883,12 +876,12 @@ namespace Graphite {
 	void ChangesPanel::RenderCommitBox()
 	{
 		const Core::PanelMarginScope margin;
-		const bool writeInFlight = m_Model.IsWriteInFlight();
+		const bool writesBlocked = m_Model.IsWriteUnsettled();
 
 		const float rowPadding = RowPadding();
 		const float boxWidth = ImGui::GetContentRegionAvail().x - rowPadding * 2.0f;
 
-		ImGui::BeginDisabled(writeInFlight);
+		ImGui::BeginDisabled(writesBlocked);
 
 		ImGui::SetCursorPosX(ImGui::GetCursorPosX() + rowPadding);
 
@@ -916,7 +909,7 @@ namespace Graphite {
 		const Core::Ref<const Core::HeadState> head = m_Model.GetHead();
 
 		const std::optional<std::string_view> whyNot = WhyCommitIsDisabled(
-			{.WriteInFlight = writeInFlight,
+			{.WriteInFlight = writesBlocked,
 			 .AnythingStaged = status != nullptr && AnythingStaged(*status),
 			 .Merging = head != nullptr && head->Operation == Core::RepositoryOperation::Merge,
 			 .MessageIsEmpty = Core::Trimmed(m_Message).empty(),
@@ -953,7 +946,7 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		const bool canStash = !writeInFlight && status && !status->Entries.empty();
+		const bool canStash = !writesBlocked && status && !status->Entries.empty();
 
 		ImGui::BeginDisabled(!canStash);
 
@@ -976,7 +969,7 @@ namespace Graphite {
 
 		ImGui::SameLine();
 
-		ImGui::BeginDisabled(writeInFlight);
+		ImGui::BeginDisabled(writesBlocked);
 		DrawTickBox("Amend", &m_Amend);
 		ImGui::EndDisabled();
 	}
@@ -1126,7 +1119,7 @@ namespace Graphite {
 
 		const DialogLayout::ButtonSpec absentButton{};
 		const DialogLayout::Choice choice = DialogLayout::ButtonRow(
-			absentButton, {.Label = "Discard", .Enabled = !m_Model.IsWriteInFlight()}, DangerColourOf(m_Scheme.Get()));
+			absentButton, {.Label = "Discard", .Enabled = !m_Model.IsWriteUnsettled()}, DangerColourOf(m_Scheme.Get()));
 
 		if (choice == DialogLayout::Choice::Destructive)
 		{
@@ -1210,7 +1203,7 @@ namespace Graphite {
 		}
 
 		const DialogLayout::ButtonSpec stashButton{.Label = "Stash",
-												   .Enabled = !m_Model.IsWriteInFlight()};
+												   .Enabled = !m_Model.IsWriteUnsettled()};
 		const DialogLayout::ButtonSpec noDestructiveButton{};
 
 		const DialogLayout::Choice choice =
