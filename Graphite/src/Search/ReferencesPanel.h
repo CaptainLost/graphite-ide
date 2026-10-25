@@ -57,6 +57,22 @@ namespace Graphite {
 
 	std::string ReferencesFailureText(const std::string& reason);
 
+	std::string RefreshFailureText(const std::string& reason);
+
+	bool AnswersRefreshOf(ReferencesPhase phase, bool refreshing, const std::string& shownSymbol,
+						  const std::string& answeredSymbol);
+
+	struct HitPlace
+	{
+		std::filesystem::path File;
+		std::size_t Line = 0;
+		std::size_t OrdinalOnLine = 0;
+	};
+
+	std::optional<HitPlace> PlaceOfSelectedHit(const std::vector<HitGroup>& groups, const HitSelection& selection);
+
+	std::optional<HitSelection> SelectionAtPlace(const std::vector<HitGroup>& groups, const HitPlace& place);
+
 	class ReferencesPanel final : public Core::Panel
 	{
 	public:
@@ -86,6 +102,12 @@ namespace Graphite {
 	private:
 		void BeginShowing(ReferencesPhase phase, const std::string& symbol, std::string note);
 
+		bool IsRefreshing(const std::string& symbol) const;
+
+		void FillGroups(const std::string& symbol, const std::vector<Location>& locations);
+
+		void KeepListAfterFailedRefresh(const std::string& reason);
+
 		void RenderSummary();
 		void RenderResults();
 		void RenderPreview();
@@ -112,6 +134,7 @@ namespace Graphite {
 		std::string m_Note;
 
 		std::optional<std::string> m_Refreshing;
+		std::optional<std::string> m_RefreshFailure;
 
 		bool m_RetryWanted = false;
 

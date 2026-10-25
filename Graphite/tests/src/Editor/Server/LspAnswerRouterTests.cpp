@@ -461,6 +461,25 @@ TEST_CASE("References asked of a server still indexing are asked at once and onc
 	CHECK(harness.Server.CountOf("references") == 2);
 }
 
+TEST_CASE("References asked of a ready server that answer while it indexes are asked once more when the index is complete")
+{
+	Harness harness;
+
+	CHECK(harness.Router.AskReferences(ReferencesAbout("Foo")) == QuestionFate::Asked);
+
+	harness.Server.Become(IndexingAt(10));
+	harness.Server.Reply(harness.Server.LastOf("references"));
+	harness.Router.Collect(harness.Target);
+
+	CHECK(harness.Target.Refreshed.empty());
+
+	harness.Server.State = ServerState::Ready;
+	harness.Router.Collect(harness.Target);
+
+	CHECK(harness.Target.Refreshed == std::vector<std::string>{"Foo"});
+	CHECK(harness.Server.CountOf("references") == 2);
+}
+
 TEST_CASE("References that failed while the server indexed are not asked again when the index is complete")
 {
 	Harness harness;

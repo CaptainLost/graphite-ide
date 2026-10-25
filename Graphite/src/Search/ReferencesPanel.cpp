@@ -175,6 +175,73 @@ namespace Graphite {
 		return "Couldn't get references: " + reason;
 	}
 
+	std::string RefreshFailureText(const std::string& reason)
+	{
+		return "Couldn't update the list: " + reason;
+	}
+
+	bool AnswersRefreshOf(ReferencesPhase phase, bool refreshing, const std::string& shownSymbol,
+						  const std::string& answeredSymbol)
+	{
+		return phase == ReferencesPhase::Found && refreshing && shownSymbol == answeredSymbol;
+	}
+
+	std::optional<HitPlace> PlaceOfSelectedHit(const std::vector<HitGroup>& groups, const HitSelection& selection)
+	{
+		for (const HitGroup& group : groups)
+		{
+			if (group.Id != selection.Group || selection.Hit >= group.Hits.size())
+			{
+				continue;
+			}
+
+			const SearchHit& selected = group.Hits[selection.Hit];
+			std::size_t ordinalOnLine = 0;
+
+			for (std::size_t hitIndex = 0; hitIndex < selection.Hit; ++hitIndex)
+			{
+				if (group.Hits[hitIndex].Line == selected.Line)
+				{
+					++ordinalOnLine;
+				}
+			}
+
+			return HitPlace{.File = group.File, .Line = selected.Line, .OrdinalOnLine = ordinalOnLine};
+		}
+
+		return std::nullopt;
+	}
+
+	std::optional<HitSelection> SelectionAtPlace(const std::vector<HitGroup>& groups, const HitPlace& place)
+	{
+		for (const HitGroup& group : groups)
+		{
+			if (group.File != place.File)
+			{
+				continue;
+			}
+
+			std::size_t ordinalOnLine = 0;
+
+			for (std::size_t hitIndex = 0; hitIndex < group.Hits.size(); ++hitIndex)
+			{
+				if (group.Hits[hitIndex].Line != place.Line)
+				{
+					continue;
+				}
+
+				if (ordinalOnLine == place.OrdinalOnLine)
+				{
+					return HitSelection{.Group = group.Id, .Hit = hitIndex};
+				}
+
+				++ordinalOnLine;
+			}
+		}
+
+		return std::nullopt;
+	}
+
 	ReferencesPanel::ReferencesPanel(Workspace& workspace, Core::DocumentSet& documents,
 									 const ActiveScheme& scheme, const EditorSettings& editor,
 									 PreviewSemantics& semantics)
@@ -240,6 +307,7 @@ namespace Graphite {
 		m_Phase = phase;
 		m_Note = std::move(note);
 		m_Refreshing.reset();
+		m_RefreshFailure.reset();
 
 		m_Groups.Clear();
 		m_Groups.SetRoot(m_Workspace.GetRoot());
@@ -274,16 +342,40 @@ namespace Graphite {
 		if (m_Phase == ReferencesPhase::Found)
 		{
 			m_Refreshing = refreshingWhy;
+			m_RefreshFailure.reset();
 		}
+	}
+
+	bool ReferencesPanel::IsRefreshing(const std::string& symbol) const
+	{
+		return AnswersRefreshOf(m_Phase, m_Refreshing.has_value(), m_Symbol, symbol);
+	}
+
+	void ReferencesPanel::KeepListAfterFailedRefresh(const std::string& reason)
+	{
+		m_Refreshing.reset();
+		m_RefreshFailure = RefreshFailureText(reason);
 	}
 
 	void ReferencesPanel::ShowFailure(const std::string& symbol, const std::string& reason)
 	{
+		if (IsRefreshing(symbol))
+		{
+			KeepListAfterFailedRefresh(reason);
+			return;
+		}
+
 		BeginShowing(ReferencesPhase::Failed, symbol, reason);
 	}
 
 	void ReferencesPanel::ShowUnavailable(const std::string& symbol, const std::string& reason)
 	{
+		if (IsRefreshing(symbol))
+		{
+			KeepListAfterFailedRefresh(reason);
+			return;
+		}
+
 		BeginShowing(ReferencesPhase::Unavailable, symbol, reason);
 	}
 
@@ -292,11 +384,8 @@ namespace Graphite {
 		return std::exchange(m_RetryWanted, false);
 	}
 
-	void ReferencesPanel::ShowResults(const std::string& symbol, const std::vector<Location>& locations,
-									  const std::string& incompleteWhy)
+	void ReferencesPanel::FillGroups(const std::string& symbol, const std::vector<Location>& locations)
 	{
-		BeginShowing(ReferencesPhase::Found, symbol, incompleteWhy);
-
 		const LineTextSource lineText = [this](const std::filesystem::path& path, std::size_t line) {
 			return LineTextInOpenDocument(path, line);
 		};
@@ -304,6 +393,35 @@ namespace Graphite {
 		for (SearchHit& hit : AsHits(locations, symbol, lineText))
 		{
 			m_Groups.Add(std::move(hit));
+		}
+	}
+
+	void ReferencesPanel::ShowResults(const std::string& symbol, const std::vector<Location>& locations,
+									  const std::string& incompleteWhy)
+	{
+		if (!IsRefreshing(symbol))
+		{
+			BeginShowing(ReferencesPhase::Found, symbol, incompleteWhy);
+			FillGroups(symbol, locations);
+			return;
+		}
+
+		const std::optional<HitPlace> selectedPlace =
+			m_Selected ? PlaceOfSelectedHit(m_Groups.Get(), *m_Selected) : std::nullopt;
+
+		m_Note = incompleteWhy;
+		m_Refreshing.reset();
+		m_RefreshFailure.reset();
+
+		m_Groups.Clear();
+		m_Groups.SetRoot(m_Workspace.GetRoot());
+		FillGroups(symbol, locations);
+
+		m_Selected = selectedPlace ? SelectionAtPlace(m_Groups.Get(), *selectedPlace) : std::nullopt;
+
+		if (!m_Selected)
+		{
+			m_Preview.Clear();
 		}
 	}
 
@@ -331,6 +449,10 @@ namespace Graphite {
 		if (m_Refreshing)
 		{
 			Core::LoadingLine(m_Refreshing->c_str());
+		}
+		else if (m_RefreshFailure)
+		{
+			ImGui::TextDisabled("%s", m_RefreshFailure->c_str());
 		}
 	}
 

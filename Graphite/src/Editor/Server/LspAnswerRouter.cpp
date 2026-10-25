@@ -551,9 +551,15 @@ namespace Graphite {
 
 				m_PendingReferences.reset();
 
+				// WARNING: Armed again as the answer lands, because the target words the answer as possibly incomplete
+				// from the state the server is in now, which may have begun indexing since the question went out.
 				if (answer.Failed)
 				{
 					m_AskAgainOnceIndexed.reset();
+				}
+				else if (IsStillIndexing(StatusOf(pending.Question.Path)))
+				{
+					m_AskAgainOnceIndexed = pending.Question;
 				}
 
 				target.ApplyReferences(pending.Question, answer);
