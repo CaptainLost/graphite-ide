@@ -5,6 +5,7 @@
 #include "UI/Dialogs/FileDialogOffer.h"
 #include "UI/ToastEvent.h"
 #include "Workspace/OwnStateChanges.h"
+#include "Workspace/WatcherWarning.h"
 
 #include "Core/Base/Log.h"
 #include "Core/Command/CommandRegistry.h"
@@ -149,6 +150,7 @@ namespace Graphite {
 		{
 			APP_WARN("Cannot watch '{}'{}: {}", Core::ToUtf8(root), failureContext,
 					 watcher.GetError().Message);
+			m_Events.Publish(NotWatchingWarning(root));
 			return;
 		}
 
@@ -432,6 +434,7 @@ namespace Graphite {
 		{
 			APP_WARN("Giving up watching '{}' for changes: it failed twice",
 					 Core::ToUtf8(m_Root));
+			m_Events.Publish(NotWatchingWarning(m_Root));
 			return;
 		}
 
@@ -443,6 +446,7 @@ namespace Graphite {
 		{
 			APP_WARN("Cannot resume watching '{}': {}", Core::ToUtf8(m_Root),
 					 watcher.GetError().Message);
+			m_Events.Publish(NotWatchingWarning(m_Root));
 			return;
 		}
 
@@ -686,6 +690,19 @@ namespace Graphite {
 		m_SelectedSolution = path;
 		m_Settings.Write(kSelectedSolutionKey, Core::ToUtf8(path));
 
+		LoadSolution();
+	}
+
+	// WARNING: The attempt is forgotten so the solution is read even when its write time did not move on, as a save
+	// within the file system's timestamp step leaves it.
+	void Workspace::ReloadSolution()
+	{
+		if (!IsOpen())
+		{
+			return;
+		}
+
+		ForgetSolutionAttempt();
 		LoadSolution();
 	}
 

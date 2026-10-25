@@ -969,6 +969,8 @@ namespace Graphite {
 
 	void SolutionTreeView::ApplyAndReport(const PendingAction& action)
 	{
+		const std::uint64_t loadBeforeTheEdit = m_Workspace.GetSolutionLoad();
+
 		if (const Core::Result<void> applied = Apply(action); !applied)
 		{
 			ReportEditFailure(applied.GetError());
@@ -977,11 +979,23 @@ namespace Graphite {
 
 		if (action.Action == PendingAction::Kind::AddFolder)
 		{
-			m_RenameWhenListed.Request(action.Folder, m_Workspace.GetSolutionLoad());
+			m_RenameWhenListed.Request(action.Folder, loadBeforeTheEdit);
 		}
 	}
 
 	Core::Result<void> SolutionTreeView::Apply(const PendingAction& action)
+	{
+		Core::Result<void> saved = SaveEdit(action);
+
+		if (saved)
+		{
+			m_Workspace.ReloadSolution();
+		}
+
+		return saved;
+	}
+
+	Core::Result<void> SolutionTreeView::SaveEdit(const PendingAction& action)
 	{
 		if (!m_Workspace.GetLoadedSolution())
 		{

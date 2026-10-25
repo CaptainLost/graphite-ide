@@ -126,6 +126,7 @@ namespace Graphite {
 		void RenderRemoveConfirmation();
 		void ExecutePendingAction();
 		Core::Result<void> Apply(const PendingAction& action);
+		Core::Result<void> SaveEdit(const PendingAction& action);
 		void ReportEditFailure(const Core::Error& error);
 		void ApplyAndReport(const PendingAction& action);
 

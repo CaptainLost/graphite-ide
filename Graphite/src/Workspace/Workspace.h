@@ -127,6 +127,8 @@ namespace Graphite {
 
 		void SelectSolution(const std::filesystem::path& path);
 
+		void ReloadSolution();
+
 		WorkspaceSettings& GetFolderSettings() { return m_Settings; }
 		const WorkspaceSettings& GetFolderSettings() const { return m_Settings; }
 
