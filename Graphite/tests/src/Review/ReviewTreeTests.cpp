@@ -56,6 +56,9 @@ namespace {
 			case TreeRowKind::File:
 				line = "File " + Graphite::FileOfTreeRow(groups, row).NewPath.filename().generic_string();
 				break;
+			case TreeRowKind::Loading:
+				line = "Loading " + row.Label;
+				break;
 			}
 
 			lines.push_back(line + " @" + std::to_string(row.Depth));
@@ -404,4 +407,56 @@ TEST_CASE("A heading counts the viewed files out of all of its group and the fil
 	CHECK(rows[0].Viewed == 1);
 	CHECK(rows[0].Total == 3);
 	CHECK(rows[0].Shown == 2);
+}
+
+TEST_CASE("Uncommitted changes still loading are listed at once as their group with a loading row")
+{
+	const Core::Diff committed = DiffOfFiles({"a.h"});
+	const ReviewGroups groups{.Commits = &committed};
+
+	const std::vector<ReviewTreeRow> rows =
+		Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups, .UncommittedLoading = true});
+
+	CHECK(Describe(groups, rows) == std::vector<std::string>{"Heading @0", "File a.h @1", "Heading @0",
+															 "Loading Loading uncommitted changes @1"});
+	CHECK(rows[2].Group == ReviewGroup::Uncommitted);
+	CHECK(rows[2].Loading);
+	CHECK_FALSE(rows[0].Loading);
+	CHECK(rows[3].Group == ReviewGroup::Uncommitted);
+}
+
+TEST_CASE("A collapsed group of uncommitted changes still loading keeps only its heading")
+{
+	const Core::Diff committed = DiffOfFiles({"a.h"});
+	ReviewGroups groups{.Commits = &committed};
+	groups.Collapsed[Graphite::IndexOf(ReviewGroup::Uncommitted)] = true;
+
+	const std::vector<ReviewTreeRow> rows =
+		Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups, .UncommittedLoading = true});
+
+	CHECK(Describe(groups, rows) == std::vector<std::string>{"Heading @0", "File a.h @1", "Heading @0"});
+	CHECK(rows[2].Folded);
+}
+
+TEST_CASE("Uncommitted changes on screen keep their files while they are read again")
+{
+	const Core::Diff committed = DiffOfFiles({"a.h"});
+	const Core::Diff uncommitted = DiffOfFiles({"c.h"});
+	const ReviewGroups groups{.Commits = &committed, .Uncommitted = &uncommitted};
+
+	const std::vector<ReviewTreeRow> rows =
+		Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups, .UncommittedLoading = true});
+
+	CHECK(Describe(groups, rows) == std::vector<std::string>{"Heading @0", "File a.h @1", "Heading @0", "File c.h @1"});
+	CHECK_FALSE(rows[2].Loading);
+}
+
+TEST_CASE("Uncommitted changes neither loaded nor loading are left out of the tree")
+{
+	const Core::Diff committed = DiffOfFiles({"a.h"});
+	const ReviewGroups groups{.Commits = &committed};
+
+	const std::vector<ReviewTreeRow> rows = Graphite::BuildReviewTree(ReviewTreeInput{.Groups = groups});
+
+	CHECK(Describe(groups, rows) == std::vector<std::string>{"Heading @0", "File a.h @1"});
 }

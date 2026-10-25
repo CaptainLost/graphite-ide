@@ -168,6 +168,40 @@ TEST_CASE("A failed range keeps its error until a retry succeeds")
 	CHECK(model.GetRange(kKey) != nullptr);
 }
 
+TEST_CASE("A retried range is loading while its last error is still held")
+{
+	FakeReviewPort port;
+	port.RangeFailure = Core::Error{Core::ErrorCode::IoFailure, "disk on fire"};
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	model.RequestRange(kKey);
+	Settle(model, jobs);
+	REQUIRE_FALSE(model.IsRangeLoading(kKey));
+
+	model.Retry(kKey);
+	model.RequestRange(kKey);
+
+	CHECK(model.IsRangeLoading(kKey));
+	CHECK(model.GetRangeError(kKey) != nullptr);
+}
+
+TEST_CASE("A range read again after its branch moved is loading while the earlier range is still held")
+{
+	FakeReviewPort port;
+	port.RangeAnswers = {RangeWithTip(2), RangeWithTip(3)};
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	model.RequestRange(kKey);
+	Settle(model, jobs);
+
+	model.InvalidateRanges();
+	model.RequestRange(kKey);
+
+	CHECK(model.IsRangeLoading(kKey));
+	REQUIRE(model.GetRange(kKey) != nullptr);
+	CHECK(model.GetRange(kKey)->Ends.Tip == IdNumbered(2));
+}
+
 TEST_CASE("A range's diff is fetched once for the same ends")
 {
 	FakeReviewPort port;

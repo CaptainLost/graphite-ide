@@ -48,6 +48,9 @@ namespace Graphite {
 		constexpr const char* kOnlyWhitespace = "Only whitespace changed.";
 		constexpr const char* kDiffUnreadable = "The diff could not be read.";
 		constexpr const char* kSinceViewedUnreadable = "The diff since you viewed could not be read.";
+		constexpr const char* kUpdatingChanges = "Updating the changes";
+
+		constexpr bool kNotUpdating = false;
 
 		void DrawDiffNotLoaded(bool failed)
 		{
@@ -130,6 +133,12 @@ namespace Graphite {
 			DrawChevron(!row.Folded);
 			ImGui::SameLine();
 
+			if (row.Loading)
+			{
+				ImGui::TextUnformatted(FitToWidth(GroupName(row.Group), rowRight - ImGui::GetCursorPosX()).c_str());
+				return clicked;
+			}
+
 			const float spacing = ImGui::GetStyle().ItemSpacing.x;
 			const std::string viewedText = ViewedOfTotalText(row);
 			const bool showsLineCounts = row.Group == ReviewGroup::Uncommitted;
@@ -162,6 +171,31 @@ namespace Graphite {
 			ImGui::TextDisabled("%s", viewedText.c_str());
 
 			return clicked;
+		}
+
+		void DrawLoadingRow(const ReviewTreeRow& row)
+		{
+			const float indent = static_cast<float>(row.Depth) * ImGui::GetStyle().IndentSpacing;
+			const ImVec2 rowStart = ImGui::GetCursorScreenPos();
+
+			ImGui::SetCursorScreenPos(ImVec2(rowStart.x + indent, ListRowTextTop(rowStart.y)));
+			Core::LoadingLine(row.Label.c_str());
+
+			// WARNING: The clipper counts every row as one list row pitch, so the loader stands on a list row's text line
+			// and the row is laid out that tall, or the rows below it would stand short of where the clipper seeks them.
+			ImGui::SetCursorScreenPos(rowStart);
+			ImGui::ItemSize(ImVec2(0.0f, ListRowLineHeight()));
+		}
+
+		// WARNING: The header's text sits a frame padding down to line up with its tick box, and the loader draws its text
+		// where its row starts. In a group it takes that offset without moving the rest of the line or what is under it.
+		void DrawHeaderLoader(const char* text)
+		{
+			ImGui::SameLine();
+			ImGui::BeginGroup();
+			ImGui::SetCursorPosY(ImGui::GetCursorPosY() + ImGui::GetStyle().FramePadding.y);
+			Core::LoadingLine(text);
+			ImGui::EndGroup();
 		}
 
 		std::string FolderCountText(const ReviewTreeRow& row, RowMarks marks)
@@ -644,6 +678,22 @@ namespace Graphite {
 			return mark.has_value() && mark->New == file.NewId;
 		}
 
+		void DrawDiffPaneWithoutFile(DiffPaneWithoutFile pane)
+		{
+			switch (pane)
+			{
+			case DiffPaneWithoutFile::SelectAFile:
+				Core::EmptyState("Select a file to see its changes.");
+				return;
+			case DiffPaneWithoutFile::NothingToReview:
+				Core::EmptyState("Nothing to review.");
+				return;
+			case DiffPaneWithoutFile::LoadingUncommitted:
+				Core::LoadingState(kLoadingUncommitted);
+				return;
+			}
+		}
+
 		void DrawHideWhitespace(ReviewSessions& sessions, const std::string& branch, const SessionSettings& settings)
 		{
 			const char* label = "Hide whitespace";
@@ -678,14 +728,15 @@ namespace Graphite {
 
 		input.Model.RequestRange(key);
 		const Core::Ref<const ReviewRange> range = input.Model.GetRange(key);
+		const bool rangeLoading = input.Model.IsRangeLoading(key);
 
 		if (range == nullptr)
 		{
-			RenderHeader(tab, input, nullptr, noRowsYet);
+			RenderHeader(tab, input, nullptr, noRowsYet, kNotUpdating);
 
 			const Core::Error* error = input.Model.GetRangeError(key);
 
-			if (error == nullptr)
+			if (error == nullptr || rangeLoading)
 			{
 				Core::LoadingState("Loading the review");
 				return;
@@ -701,7 +752,7 @@ namespace Graphite {
 
 		if (range->Problem != RangeProblem::None)
 		{
-			RenderHeader(tab, input, range.get(), noRowsYet);
+			RenderHeader(tab, input, range.get(), noRowsYet, kNotUpdating);
 
 			const std::string problem = RangeProblemMessage(range->Problem, tab.Branch, session->Base);
 
@@ -746,11 +797,16 @@ namespace Graphite {
 								  .Range = range,
 								  .Committed = input.Model.GetCommittedDiff(diffKey),
 								  .Uncommitted = showUncommitted ? input.Model.GetUncommitted(key) : nullptr};
+		const bool uncommittedLoading = showUncommitted && input.Model.IsUncommittedLoading(key);
 
 		if (review.Committed != nullptr)
 		{
 			tab.LastLoaded = review;
-			RenderBody(tab, input, review);
+			RenderBody(tab, input, review,
+					   ReviewRefresh{.ShowsEarlierChanges = false,
+									 .RangeLoading = rangeLoading,
+									 .UncommittedLoading = uncommittedLoading,
+									 .UncommittedShown = review.Uncommitted != nullptr});
 			return;
 		}
 
@@ -759,11 +815,15 @@ namespace Graphite {
 		if (!failed && tab.LastLoaded.has_value())
 		{
 			const LoadedReview previous = *tab.LastLoaded;
-			RenderBody(tab, input, previous);
+			RenderBody(tab, input, previous,
+					   ReviewRefresh{.ShowsEarlierChanges = true,
+									 .RangeLoading = rangeLoading,
+									 .UncommittedLoading = uncommittedLoading,
+									 .UncommittedShown = previous.Uncommitted != nullptr});
 			return;
 		}
 
-		RenderHeader(tab, input, range.get(), noRowsYet);
+		RenderHeader(tab, input, range.get(), noRowsYet, kNotUpdating);
 
 		if (!failed)
 		{
@@ -781,7 +841,7 @@ namespace Graphite {
 	}
 
 	void ReviewWindows::RenderHeader(Tab& tab, const ReviewRenderInput& input, const ReviewRange* range,
-									 const RowsCache* rows)
+									 const RowsCache* rows, bool updating)
 	{
 		const ReviewSession* session = input.Sessions.Find(tab.Branch);
 		const SessionSettings settings = session != nullptr ? session->Settings : SessionSettings{};
@@ -826,6 +886,11 @@ namespace Graphite {
 			ImGui::SetItemTooltip("Not checked out in any worktree");
 		}
 
+		if (updating)
+		{
+			DrawHeaderLoader(kUpdatingChanges);
+		}
+
 		if (rows != nullptr)
 		{
 			const std::string viewedText = std::format("{}/{} viewed", rows->Viewed.Viewed, rows->Viewed.Total);
@@ -837,15 +902,18 @@ namespace Graphite {
 		}
 	}
 
-	void ReviewWindows::RenderBody(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review)
+	void ReviewWindows::RenderBody(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review,
+								   const ReviewRefresh& refresh)
 	{
-		RefreshRows(tab, input.Sessions, ReadSettings(input.Sessions, tab.Branch), review);
+		const bool uncommittedFirstLoad = refresh.UncommittedLoading && !refresh.UncommittedShown;
+
+		RefreshRows(tab, input.Sessions, ReadSettings(input.Sessions, tab.Branch), review, uncommittedFirstLoad);
 		FollowCommits(tab, *review.Range);
 
 		const ReviewGroups groups = GroupsOf(tab, review);
 		const OpenRelativeFile openFile = OpenFileIn(*review.Range);
 
-		RenderHeader(tab, input, review.Range.get(), &tab.Rows);
+		RenderHeader(tab, input, review.Range.get(), &tab.Rows, IsUpdatingChanges(refresh));
 
 		const bool alreadyMerged = review.Range->Ends.MergeBase == review.Range->Ends.Tip;
 
@@ -862,8 +930,9 @@ namespace Graphite {
 		}
 
 		const bool includeUncommitted = ReadSettings(input.Sessions, tab.Branch).IncludeUncommitted;
+		const bool uncommittedFailureShows = includeUncommitted && !refresh.UncommittedLoading;
 		const Core::Error* uncommittedError =
-			includeUncommitted ? input.Model.GetUncommittedError(review.Key) : nullptr;
+			uncommittedFailureShows ? input.Model.GetUncommittedError(review.Key) : nullptr;
 
 		if (uncommittedError != nullptr && review.Range->Worktree.has_value())
 		{
@@ -1020,6 +1089,9 @@ namespace Graphite {
 		}
 		case TreeRowKind::File:
 			RenderFileRow(tab, input, list, row, openFile);
+			return;
+		case TreeRowKind::Loading:
+			DrawLoadingRow(row);
 			return;
 		}
 	}
@@ -1329,8 +1401,7 @@ namespace Graphite {
 
 			if (file == nullptr)
 			{
-				const bool reviewHasFiles = tab.Rows.Viewed.Total > 0;
-				Core::EmptyState(reviewHasFiles ? "Select a file to see its changes." : "Nothing to review.");
+				DrawDiffPaneWithoutFile(DiffPaneWithoutFileFor(tab.Rows.Viewed.Total, tab.Rows.UncommittedLoading));
 			}
 			else if (showsSinceViewed)
 			{

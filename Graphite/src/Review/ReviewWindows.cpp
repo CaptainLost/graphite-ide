@@ -374,7 +374,7 @@ namespace Graphite {
 	}
 
 	void ReviewWindows::RefreshRows(Tab& tab, const ReviewSessions& sessions, const SessionSettings& settings,
-									const LoadedReview& review)
+									const LoadedReview& review, bool uncommittedLoading)
 	{
 		RowsCache& cache = tab.Rows;
 		const std::string_view filter{tab.Filter.data()};
@@ -383,7 +383,8 @@ namespace Graphite {
 			!cache.Built || cache.Committed != review.Committed || cache.Uncommitted != review.Uncommitted;
 		const bool sameList = !diffsChanged && cache.Collapsed == tab.Collapsed && cache.Filter == filter &&
 							  cache.Shape == settings.Shape && cache.HideViewed == settings.HideViewed &&
-							  cache.FoldsVersion == tab.FoldsVersion && cache.SessionsVersion == sessions.GetVersion();
+							  cache.FoldsVersion == tab.FoldsVersion && cache.UncommittedLoading == uncommittedLoading &&
+							  cache.SessionsVersion == sessions.GetVersion();
 
 		if (sameList)
 		{
@@ -397,7 +398,8 @@ namespace Graphite {
 									.Headings = GroupHeadings::Shown,
 									.Filter = std::string{filter},
 									.HideViewed = settings.HideViewed,
-									.FoldedFolders = &tab.Folded};
+									.FoldedFolders = &tab.Folded,
+									.UncommittedLoading = uncommittedLoading};
 
 		cache.Rows = BuildReviewTree(input);
 		cache.Viewed = ViewedOfHeadings(cache.Rows);
@@ -406,6 +408,7 @@ namespace Graphite {
 		cache.Shape = settings.Shape;
 		cache.HideViewed = settings.HideViewed;
 		cache.FoldsVersion = tab.FoldsVersion;
+		cache.UncommittedLoading = uncommittedLoading;
 		cache.SessionsVersion = sessions.GetVersion();
 		cache.Built = true;
 

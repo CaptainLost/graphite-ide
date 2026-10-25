@@ -269,6 +269,41 @@ TEST_CASE("A failed uncommitted diff is asked again only after a retry")
 	CHECK(model.GetUncommittedError(kKey) == nullptr);
 }
 
+TEST_CASE("Uncommitted changes are loading from the first ask until their answer lands")
+{
+	FakeReviewPort port;
+	DeferredJobs jobs;
+	WatchControl watches;
+	ReviewModel model{port, jobs.Submitter(), FakeWatches(watches)};
+
+	model.RequestUncommitted(kKey, kWorktree, Core::WhitespaceInDiff::Shown);
+
+	CHECK(model.IsUncommittedLoading(kKey));
+	CHECK(model.GetUncommitted(kKey) == nullptr);
+
+	Settle(model, jobs);
+
+	CHECK_FALSE(model.IsUncommittedLoading(kKey));
+	CHECK(model.GetUncommitted(kKey) != nullptr);
+}
+
+TEST_CASE("A retried uncommitted diff is loading while its last error is still held")
+{
+	FakeReviewPort port;
+	port.WorktreeFailure = Core::Error{Core::ErrorCode::IoFailure, "locked"};
+	DeferredJobs jobs;
+	WatchControl watches;
+	ReviewModel model{port, jobs.Submitter(), FakeWatches(watches)};
+	AskAndSettle(model, jobs, kWorktree);
+	REQUIRE_FALSE(model.IsUncommittedLoading(kKey));
+
+	model.Retry(kKey);
+	model.RequestUncommitted(kKey, kWorktree, Core::WhitespaceInDiff::Shown);
+
+	CHECK(model.IsUncommittedLoading(kKey));
+	CHECK(model.GetUncommittedError(kKey) != nullptr);
+}
+
 TEST_CASE("Forgetting a review stops its watch too")
 {
 	FakeReviewPort port;

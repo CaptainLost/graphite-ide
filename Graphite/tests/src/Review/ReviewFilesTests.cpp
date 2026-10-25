@@ -308,6 +308,38 @@ TEST_CASE("A group heading says how many files are left on screen out of how man
 	CHECK(Graphite::GroupHeadingText(ReviewGroup::Uncommitted, 0, 3) == "Uncommitted in worktree (0 of 3)");
 }
 
+TEST_CASE("A group still loading is headed by its name alone")
+{
+	CHECK(std::string{Graphite::GroupName(ReviewGroup::Uncommitted)} == "Uncommitted in worktree");
+	CHECK(std::string{Graphite::GroupName(ReviewGroup::Commits)} == "Files");
+}
+
+TEST_CASE("The review says it updates its changes while it shows ones made for other settings or an older range")
+{
+	CHECK_FALSE(Graphite::IsUpdatingChanges(Graphite::ReviewRefresh{}));
+	CHECK(Graphite::IsUpdatingChanges(Graphite::ReviewRefresh{.ShowsEarlierChanges = true}));
+	CHECK(Graphite::IsUpdatingChanges(Graphite::ReviewRefresh{.RangeLoading = true}));
+}
+
+TEST_CASE("Uncommitted changes read again update the review only once some are on screen")
+{
+	const Graphite::ReviewRefresh firstLoad{.UncommittedLoading = true, .UncommittedShown = false};
+	const Graphite::ReviewRefresh refresh{.UncommittedLoading = true, .UncommittedShown = true};
+
+	CHECK_FALSE(Graphite::IsUpdatingChanges(firstLoad));
+	CHECK(Graphite::IsUpdatingChanges(refresh));
+}
+
+TEST_CASE("The diff pane without a file says there is nothing to review only once the uncommitted changes are in")
+{
+	using Graphite::DiffPaneWithoutFile;
+
+	CHECK(Graphite::DiffPaneWithoutFileFor(0, true) == DiffPaneWithoutFile::LoadingUncommitted);
+	CHECK(Graphite::DiffPaneWithoutFileFor(0, false) == DiffPaneWithoutFile::NothingToReview);
+	CHECK(Graphite::DiffPaneWithoutFileFor(3, true) == DiffPaneWithoutFile::SelectAFile);
+	CHECK(Graphite::DiffPaneWithoutFileFor(3, false) == DiffPaneWithoutFile::SelectAFile);
+}
+
 TEST_CASE("The commits tab counts the range's commits and says when the list was cut")
 {
 	Graphite::ReviewRange range;

@@ -31,7 +31,8 @@ namespace Graphite {
 	{
 		Heading,
 		Folder,
-		File
+		File,
+		Loading
 	};
 
 	struct ReviewTreeRow
@@ -52,6 +53,7 @@ namespace Graphite {
 		std::size_t Shown = 0;
 
 		bool Folded = false;
+		bool Loading = false;
 	};
 
 	struct ReviewTreeInput
@@ -66,7 +68,11 @@ namespace Graphite {
 		bool HideViewed = false;
 
 		const std::set<MarkKey>* FoldedFolders = nullptr;
+
+		bool UncommittedLoading = false;
 	};
+
+	inline constexpr const char* kLoadingUncommitted = "Loading uncommitted changes";
 
 	bool MatchesFilter(const std::filesystem::path& path, const std::string& filter);
 
