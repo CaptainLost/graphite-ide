@@ -184,7 +184,8 @@ namespace Core {
 		return centerNode != nullptr && centerNode->IsEmpty();
 	}
 
-	bool DockSpaceHost::CenterEmptyState(std::string_view message, const char* action) const
+	bool DockSpaceHost::CenterEmptyState(std::string_view message, const char* action,
+										 const char* noteWhileDisabled) const
 	{
 		if (!IsCenterEmpty())
 		{
@@ -203,7 +204,7 @@ namespace Core {
 		ImGui::Begin(dockSpaceWindow->Name, nullptr, dockSpaceWindow->Flags);
 
 		ImGui::SetCursorScreenPos(centerNode->Pos);
-		const bool clicked = EmptyState(message, action, centerNode->Size);
+		const bool clicked = EmptyState(message, action, centerNode->Size, noteWhileDisabled);
 
 		ImGui::End();
 

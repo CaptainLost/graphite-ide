@@ -3,6 +3,7 @@
 #include "Core/ImGui/EmptyState.h"
 
 #include "Core/Base/Ascii.h"
+#include "Core/ImGui/DisabledOffer.h"
 #include "Core/ImGui/TextButton.h"
 #include "Core/ImGui/TextMetrics.h"
 
@@ -93,7 +94,7 @@ namespace Core {
 		return lines;
 	}
 
-	bool EmptyState(std::string_view message, const char* action, ImVec2 size)
+	bool EmptyState(std::string_view message, const char* action, ImVec2 size, const char* noteWhileDisabled)
 	{
 		const ImVec2 available = ImGui::GetContentRegionAvail();
 		const ImVec2 region(RegionExtent(size.x, available.x), RegionExtent(size.y, available.y));
@@ -134,6 +135,11 @@ namespace Core {
 			ImGui::SetCursorScreenPos(
 				ImVec2(origin.x + CentredStart(region.x, buttonSize.x), origin.y + buttonTop));
 			clicked = Core::TextButton(action, buttonSize);
+
+			if (noteWhileDisabled != nullptr && OfferWhileDisabled(noteWhileDisabled))
+			{
+				clicked = true;
+			}
 		}
 
 		const float lineHeight = ImGui::GetTextLineHeight();

@@ -12,6 +12,7 @@
 #include "Settings/ArgumentLine.h"
 #include "Settings/LanguageServers/LanguageTabText.h"
 #include "Settings/Panel/SettingsLayout.h"
+#include "UI/Dialogs/FileDialogOffer.h"
 
 #include "Core/Base/Log.h"
 #include "Core/FileSystem/FileSystem.h"
@@ -704,6 +705,7 @@ namespace Graphite {
 		}
 
 		ImGui::EndDisabled();
+		OfferOpenFileDialog(m_Browse);
 	}
 
 	void LanguageServerPage::StartBrowsing(const ServerDefinition& server)

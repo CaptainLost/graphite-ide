@@ -4,7 +4,9 @@
 
 #include "Core/App/Redraw.h"
 #include "Core/Base/Base.h"
+#include "Core/Platform/ThreadWindows.h"
 
+#include <cstdint>
 #include <mutex>
 #include <optional>
 #include <thread>
@@ -12,11 +14,43 @@
 
 namespace Core {
 
+	namespace {
+
+		constexpr std::uint32_t kNoPickerThreadYet = 0;
+
+#ifdef CORE_PLATFORM_WINDOWS
+		std::uint32_t CallingThreadSystemId()
+		{
+			return static_cast<std::uint32_t>(::GetCurrentThreadId());
+		}
+
+		void BringShownWindowOfThreadToFront(std::uint32_t thread)
+		{
+			const HWND shown = FindShownWindowOfThread(static_cast<DWORD>(thread));
+
+			if (shown != nullptr)
+			{
+				BringWindowToFront(shown);
+			}
+		}
+#else
+		std::uint32_t CallingThreadSystemId()
+		{
+			return kNoPickerThreadYet;
+		}
+
+		void BringShownWindowOfThreadToFront(std::uint32_t)
+		{
+		}
+#endif
+	}
+
 	struct AsyncDialog::PendingDialog
 	{
 		std::mutex Mutex;
 		std::optional<Result<std::filesystem::path>> Answer;
 		bool AbandonedByOwner = false;
+		std::uint32_t PickerThread = kNoPickerThreadYet;
 	};
 
 	// Does not join the picker's thread: joining would block the thread that draws on a dialog the
@@ -53,6 +87,27 @@ namespace Core {
 	bool AsyncDialog::IsOpen() const
 	{
 		return m_PendingDialog != nullptr;
+	}
+
+	void AsyncDialog::BringToFront() const
+	{
+		if (!IsOpen())
+		{
+			return;
+		}
+
+		std::uint32_t pickerThread = kNoPickerThreadYet;
+		{
+			const std::lock_guard lock(m_PendingDialog->Mutex);
+			pickerThread = m_PendingDialog->PickerThread;
+		}
+
+		if (pickerThread == kNoPickerThreadYet)
+		{
+			return;
+		}
+
+		BringShownWindowOfThreadToFront(pickerThread);
 	}
 
 	void AsyncDialog::Poll()
@@ -95,6 +150,11 @@ namespace Core {
 
 	void AsyncDialog::PickAndHandOver(const Picker& picker, PendingDialog& pendingDialog)
 	{
+		{
+			const std::lock_guard lock(pendingDialog.Mutex);
+			pendingDialog.PickerThread = CallingThreadSystemId();
+		}
+
 		Result<std::filesystem::path> answer = picker();
 
 		const std::lock_guard lock(pendingDialog.Mutex);

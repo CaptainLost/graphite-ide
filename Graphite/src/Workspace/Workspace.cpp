@@ -2,6 +2,7 @@
 
 #include "Settings/AppSettings.h"
 #include "Solution/SolutionFiles.h"
+#include "UI/Dialogs/FileDialogOffer.h"
 #include "UI/ToastEvent.h"
 #include "Workspace/OwnStateChanges.h"
 
@@ -693,12 +694,16 @@ namespace Graphite {
 		commands.Add({.Id = "workspace.openFolder",
 					  .Label = "Open Folder...",
 					  .Run = [this] { OpenFolderInteractively(*this); },
-					  .Enabled = [this] { return !IsDialogOpen(); }});
+					  .Enabled = [this] { return !IsDialogOpen(); },
+					  .DisabledNote = kFileDialogOpenNote,
+					  .RunWhileDisabled = [this] { m_Dialog.BringToFront(); }});
 
 		commands.Add({.Id = "workspace.openSolution",
 					  .Label = "Open Solution...",
 					  .Run = [this] { OpenSolutionInteractively(*this); },
-					  .Enabled = [this] { return !IsDialogOpen(); }});
+					  .Enabled = [this] { return !IsDialogOpen(); },
+					  .DisabledNote = kFileDialogOpenNote,
+					  .RunWhileDisabled = [this] { m_Dialog.BringToFront(); }});
 	}
 
 	void Workspace::ReportDialogFailure(const Core::Error& error)
@@ -711,6 +716,12 @@ namespace Graphite {
 	// own; the callbacks hold the workspace by reference because the workspace owns the dialog.
 	void OpenFolderInteractively(Workspace& workspace)
 	{
+		if (workspace.IsDialogOpen())
+		{
+			workspace.GetDialog().BringToFront();
+			return;
+		}
+
 		workspace.GetDialog().Start(
 			[] { return Core::FileDialog::PickFolder("Open Folder"); },
 			[&workspace](const std::filesystem::path& picked) {
@@ -722,6 +733,12 @@ namespace Graphite {
 
 	void OpenSolutionInteractively(Workspace& workspace)
 	{
+		if (workspace.IsDialogOpen())
+		{
+			workspace.GetDialog().BringToFront();
+			return;
+		}
+
 		const std::vector<Core::FileDialog::Filter> filters = {
 			{"Visual Studio solutions", "*.sln;*.slnx"},
 			{"All files", "*.*"}};

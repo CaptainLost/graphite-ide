@@ -74,6 +74,7 @@
 #include "Core/Events/ApplicationEvent.h"
 
 #include "UI/Dialogs/DialogLayout.h"
+#include "UI/Dialogs/FileDialogOffer.h"
 #include "UI/FileIcons.h"
 #include "UI/InfoBars/LanguageSupportBar.h"
 #include "UI/InfoBars/RestrictedModeBar.h"
@@ -1344,8 +1345,8 @@ namespace Graphite {
 		if (!m_Workspace.IsOpen())
 		{
 			ImGui::BeginDisabled(m_Workspace.IsDialogOpen());
-			const bool clicked =
-				m_DockSpace.CenterEmptyState("Open a folder to start working, or drop a file here.", "Open Folder");
+			const bool clicked = m_DockSpace.CenterEmptyState("Open a folder to start working, or drop a file here.",
+															  "Open Folder", kFileDialogOpenNote);
 			ImGui::EndDisabled();
 
 			if (clicked)

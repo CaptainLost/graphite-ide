@@ -44,7 +44,8 @@ namespace Core {
 
 		bool IsCenterEmpty() const;
 
-		bool CenterEmptyState(std::string_view message, const char* action = nullptr) const;
+		bool CenterEmptyState(std::string_view message, const char* action = nullptr,
+							  const char* noteWhileDisabled = nullptr) const;
 
 	private:
 		bool m_LayoutBuilt = false;

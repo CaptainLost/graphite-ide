@@ -218,6 +218,32 @@ TEST_CASE("AsyncDialog counts as closed when the callback runs so the callback c
 	CHECK_FALSE(dialog.IsOpen());
 }
 
+TEST_CASE("AsyncDialog brings nothing to the front when no dialog is open")
+{
+	AsyncDialog dialog;
+
+	dialog.BringToFront();
+
+	CHECK_FALSE(dialog.IsOpen());
+}
+
+TEST_CASE("AsyncDialog bringing an open dialog to the front neither waits for the picker nor answers for it")
+{
+	AsyncDialog dialog;
+	HeldOpenPicker heldPicker;
+	bool delivered = false;
+	REQUIRE(dialog.Start(heldPicker.MakePicker(), [&](const std::filesystem::path&) { delivered = true; }, IgnoreFailure));
+
+	dialog.BringToFront();
+	dialog.Poll();
+
+	CHECK(dialog.IsOpen());
+	CHECK_FALSE(delivered);
+
+	heldPicker.Release->set_value();
+	REQUIRE(PollEachFrameUntil(dialog, [&] { return delivered; }));
+}
+
 TEST_CASE("AsyncDialog destroyed while a dialog is open neither waits for it nor calls back")
 {
 	HeldOpenPicker heldPicker;

@@ -16,6 +16,7 @@
 #include "UI/Lists/Chevron.h"
 #include "UI/ClipboardCopy.h"
 #include "UI/Dialogs/DialogLayout.h"
+#include "UI/Dialogs/FileDialogOffer.h"
 #include "UI/FileIcons.h"
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/ListRow.h"
@@ -260,8 +261,10 @@ namespace Graphite {
 	{
 		const Core::PanelMarginScope margin;
 
+		const ImVec2 fillTheRegion{0.0f, 0.0f};
+
 		ImGui::BeginDisabled(m_Workspace.IsDialogOpen());
-		const bool clicked = Core::EmptyState("No folder open.", "Open Folder");
+		const bool clicked = Core::EmptyState("No folder open.", "Open Folder", fillTheRegion, kFileDialogOpenNote);
 		ImGui::EndDisabled();
 
 		if (clicked)

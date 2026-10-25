@@ -15,6 +15,7 @@
 #include "Solution/SolutionEditor.h"
 #include "UI/Lists/Chevron.h"
 #include "UI/Dialogs/DialogLayout.h"
+#include "UI/Dialogs/FileDialogOffer.h"
 #include "UI/FileIcons.h"
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/ListRow.h"
@@ -713,6 +714,11 @@ namespace Graphite {
 		}
 
 		ExplainNotEditable(editable);
+
+		if (editable && OfferOpenFileDialog(m_Workspace.GetDialog()))
+		{
+			ImGui::CloseCurrentPopup();
+		}
 
 		if (ImGui::MenuItem("New Folder", kNoShortcut, kNotSelected, editable))
 		{

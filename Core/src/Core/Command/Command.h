@@ -26,6 +26,9 @@ namespace Core {
 
 		std::function<bool()> Enabled;
 
+		std::string DisabledNote;
+		std::function<void()> RunWhileDisabled;
+
 		std::function<bool()> Checked;
 
 		// Kept on the command rather than on the chord: a chord is saved to settings as plain
