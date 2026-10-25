@@ -53,7 +53,8 @@ namespace Graphite {
 
 		Core::Ref<const LineAuthors> Get(const std::filesystem::path& path) const;
 
-		// Ignored when the same request is already held or in flight for the path.
+		// Ignored when the same request is already held or in flight for the path. A failed answer is
+		// held too; ForgetLineHistory is how a caller retries.
 		void RequestLineHistory(const std::filesystem::path& path, const Core::LineHistoryRequest& request);
 
 		LineHistoryState GetLineHistory(const std::filesystem::path& path) const;
@@ -90,6 +91,7 @@ namespace Graphite {
 			LineHistoryState State;
 		};
 
+		void DropAuthors(Entry& entry);
 		void RequestHead(const std::filesystem::path& path, Entry& entry);
 		void RequestAuthors(const std::filesystem::path& path, Entry& entry,
 							const Core::TextBuffer& buffer);

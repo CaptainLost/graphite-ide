@@ -31,10 +31,14 @@ model next to `ChangeMarkersModel`, built the same way:
   file's committed content may have moved. It is read through
   `BlamePort::BlameAtHead` on the shared job queue, which
   `RepositoryGitPort` implements with the calling thread's own repository
-  handle. `WorkspaceFilesChangedEvent` and `RepositoryChangedEvent` mark
-  the model dirty under the same debounce `GitModel` uses, after which
-  every tracked path's head blame is read again; `WorkspaceOpenedEvent`
-  and `WorkspaceClosedEvent` clear the model outright.
+  handle. Only `RepositoryChangedEvent` and `Invalidate()`, which the
+  application calls when this process has written to the repository
+  itself, mark the model dirty under the same debounce `GitModel` uses,
+  after which every tracked path's head blame is read again.
+  `WorkspaceFilesChangedEvent` is deliberately not subscribed to: HEAD's
+  blame does not depend on the working tree, so saving a file never
+  re-reads it. `WorkspaceOpenedEvent` and `WorkspaceClosedEvent` clear the
+  model outright.
 - The head blame is laid over the buffer with a line diff from HEAD's text
   to the buffer's text, using `Core::DiffTexts`. A buffer line that maps to
   an unchanged HEAD line takes that line's blame; every other line is
@@ -48,7 +52,10 @@ model next to `ChangeMarkersModel`, built the same way:
   copied.
 - Every request takes a generation from one model-wide counter that is
   never reset, so an answer that arrives after a newer request for the same
-  path, or after a `Clear`, is dropped.
+  path, or after a `Clear`, is dropped. Clearing a path's authors, because
+  its head is untracked or failed or its buffer is over the cap, retires the
+  overlay generation too, so an overlay already in flight cannot put a table
+  back.
 - A line history is asked through the same model, per path, and not
   through `GitModel`'s single log slot. `RequestLineHistory` ignores a
   request equal to the one already held or in flight, `GetLineHistory`
@@ -77,7 +84,8 @@ rules, which are already understood and tested.
 - Lines the reader has not touched keep their author and commit while the
   lines around them move, and edited lines show as uncommitted at once.
 - The blame is shared by every pause, and is read again only when the
-  repository or the workspace's files change.
+  repository changes or this process writes to it; saving a file costs no
+  blame.
 
 ### Negative
 
@@ -89,6 +97,10 @@ rules, which are already understood and tested.
 - The overlay trusts a line diff, which can pair a rewritten line with the
   wrong HEAD line; such a line shows the author of the line it was matched
   to rather than uncommitted.
+
+- A change to a tracked file's committed content that git does not report
+  as a repository change is not noticed until the next one; the working
+  tree alone never changes a blame of HEAD.
 
 ### Neutral
 

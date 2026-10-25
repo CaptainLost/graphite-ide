@@ -183,6 +183,64 @@ TEST_CASE("Blame model drops an answer that a newer request overtook")
 	CHECK(model.Get(kPath)->Lines[1].Kind == LineAuthorKind::Committed);
 }
 
+TEST_CASE("Blame model drops an overlay that a reset overtook")
+{
+	FakeBlamePort port;
+	port.Head = Committed("a\nb\n", 2);
+	HeldJobs jobs;
+	BlameModel model{port, jobs.Submitter()};
+
+	Core::TextBuffer buffer{"a\nb\n"};
+	Settle(model, jobs, buffer);
+	REQUIRE(model.Get(kPath) != nullptr);
+
+	buffer.Insert(0, "Z\n");
+	model.Update(kPath, buffer);
+	model.OnUpdate(Core::Timestep{0.2f});
+	model.Update(kPath, buffer);
+	REQUIRE(jobs.Jobs.size() == 1);
+	std::function<void()> overlay = std::move(jobs.Jobs.front());
+	jobs.Jobs.clear();
+
+	port.Head = HeadBlame{};
+	model.Invalidate();
+	model.OnUpdate(Core::Timestep{0.2f});
+	REQUIRE(jobs.Jobs.size() == 1);
+
+	jobs.RunAll();
+	model.OnUpdate(kFrame);
+	model.Update(kPath, buffer);
+	CHECK(jobs.Jobs.empty());
+
+	overlay();
+	model.OnUpdate(kFrame);
+
+	CHECK(model.Get(kPath) == nullptr);
+}
+
+TEST_CASE("Blame model does not re-read the head blame when a file is saved")
+{
+	FakeBlamePort port;
+	port.Head = Committed("a\nb\n", 2);
+	HeldJobs jobs;
+	BlameModel model{port, jobs.Submitter()};
+	Core::EventBus events;
+	model.SubscribeTo(events);
+
+	const Core::TextBuffer buffer{"a\nX\n"};
+	Settle(model, jobs, buffer);
+	REQUIRE(port.Calls == 1);
+
+	events.Publish(Graphite::WorkspaceFilesChangedEvent{});
+
+	model.OnUpdate(Core::Timestep{0.2f});
+	jobs.RunAll();
+	model.OnUpdate(Core::Timestep{0.2f});
+	jobs.RunAll();
+
+	CHECK(port.Calls == 1);
+}
+
 TEST_CASE("Blame model gives no authors for an untracked file")
 {
 	FakeBlamePort port;

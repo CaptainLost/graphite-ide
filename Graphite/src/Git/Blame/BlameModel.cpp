@@ -27,9 +27,8 @@ namespace Graphite {
 		events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent&) { Clear(); });
 		events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) { Clear(); });
 
-		events.Subscribe<WorkspaceFilesChangedEvent>(
-			[this](const WorkspaceFilesChangedEvent&) { MarkDirty(); });
-
+		// WARNING: Not WorkspaceFilesChangedEvent. HEAD's blame does not depend on the working tree,
+		// and re-blaming every open file on each save costs seconds of worker time on a long history.
 		events.Subscribe<RepositoryChangedEvent>([this](const RepositoryChangedEvent&) { MarkDirty(); });
 	}
 
@@ -137,7 +136,7 @@ namespace Graphite {
 				{
 					CORE_WARN("Cannot blame '{}' at HEAD: {}", Core::ToUtf8(path), error->Message);
 					target.Head.reset();
-					target.Authors.reset();
+					DropAuthors(target);
 					return;
 				}
 
@@ -148,18 +147,25 @@ namespace Graphite {
 		});
 	}
 
+	void BlameModel::DropAuthors(Entry& entry)
+	{
+		// Retiring the generation keeps an overlay job already in flight from putting its table back.
+		entry.AuthorsRequested = ++m_Generation;
+		entry.Authors.reset();
+	}
+
 	void BlameModel::RequestAuthors(const std::filesystem::path& path, Entry& entry,
 									const Core::TextBuffer& buffer)
 	{
 		if (!entry.Head->Tracked || entry.Head->Unusable || entry.Head->Blame == nullptr)
 		{
-			entry.Authors.reset();
+			DropAuthors(entry);
 			return;
 		}
 
 		if (buffer.GetLength() > Core::MaximumDiffTextSize)
 		{
-			entry.Authors.reset();
+			DropAuthors(entry);
 			return;
 		}
 
