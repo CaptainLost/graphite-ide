@@ -2,6 +2,8 @@
 
 #include "Core/Image/ImageDecoding.h"
 
+#include "Core/Image/IcoDecoding.h"
+
 #include <stb_image.h>
 
 #include <limits>
@@ -82,6 +84,27 @@ namespace Core {
 			}
 			return frames;
 		}
+
+		Result<DecodedImage> DecodeIcoImage(std::span<const std::uint8_t> bytes, const DecodeLimits& limits)
+		{
+			std::size_t entryCount = 0;
+			Result<RgbaImage> decoded = DecodeIco(bytes, entryCount);
+			if (!decoded)
+				return decoded.GetError();
+
+			RgbaImage entry = std::move(decoded).GetValue();
+			const std::uint64_t pixelCount = static_cast<std::uint64_t>(entry.Width) * static_cast<std::uint64_t>(entry.Height);
+			if (pixelCount > limits.MaximumPixels)
+				return Error{ErrorCode::TooLarge, std::format("Image is too large to preview ({} × {})", entry.Width, entry.Height)};
+
+			DecodedImage image;
+			image.Format = ImageFormat::Ico;
+			image.FileWidth = entry.Width;
+			image.FileHeight = entry.Height;
+			image.EntryCount = entryCount;
+			image.Frames.push_back(ImageFrame{ScaleToFit(entry, limits.MaximumSide), std::chrono::milliseconds{0}});
+			return image;
+		}
 	}
 
 	std::size_t CountGifFrames(std::span<const std::uint8_t> bytes)
@@ -144,10 +167,10 @@ namespace Core {
 
 	Result<DecodedImage> DecodeImage(std::span<const std::uint8_t> bytes, ImageFormat format, const DecodeLimits& limits)
 	{
-		if (format == ImageFormat::Ico)
-			return Error{ErrorCode::Unsupported, "ICO images are not supported yet"};
 		if (bytes.size() > static_cast<std::size_t>(std::numeric_limits<int>::max()))
 			return Error{ErrorCode::TooLarge, "Image file is too large to preview"};
+		if (format == ImageFormat::Ico)
+			return DecodeIcoImage(bytes, limits);
 
 		const stbi_uc* data = bytes.data();
 		const int length = static_cast<int>(bytes.size());
