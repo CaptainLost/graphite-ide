@@ -735,3 +735,166 @@ TEST_CASE("Counting a ref that does not exist fails")
 
 	CHECK_FALSE(count.HasValue());
 }
+
+namespace {
+
+	void WriteBytes(const std::filesystem::path& path, const std::string& bytes)
+	{
+		std::ofstream file{path, std::ios::binary};
+		file << bytes;
+	}
+
+	Core::Oid CommitFile(Graphite::RepositoryGitPort& port, const std::filesystem::path& root, const char* name,
+						 const std::string& bytes, const char* message)
+	{
+		WriteBytes(root / name, bytes);
+		REQUIRE(port.Stage({name}).HasValue());
+		return CommitOnHead(root, message);
+	}
+
+	void DetachHead(const std::filesystem::path& path, const Core::Oid& commit)
+	{
+		git_repository* repository = nullptr;
+		REQUIRE(git_repository_open(&repository, Core::ToUtf8(path).c_str()) == 0);
+
+		git_oid target;
+		std::copy(commit.Bytes.begin(), commit.Bytes.end(), target.id);
+		REQUIRE(git_repository_set_head_detached(repository, &target) == 0);
+
+		git_repository_free(repository);
+	}
+}
+
+TEST_CASE("Blame port blames a committed file at HEAD")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+	CommitFile(port, repo.GetPath(), "a.txt", "a\nb\n", "first");
+
+	const Core::Result<Graphite::HeadBlame> blamed = port.BlameAtHead(repo.GetPath() / "a.txt");
+	REQUIRE(blamed.HasValue());
+
+	CHECK(blamed.GetValue().Tracked);
+	CHECK_FALSE(blamed.GetValue().Unusable);
+	REQUIRE(blamed.GetValue().Blame);
+	CHECK(blamed.GetValue().Blame->LineCount == 2);
+	CHECK(blamed.GetValue().HeadText == "a\nb\n");
+}
+
+TEST_CASE("Blame port normalises a CRLF head")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	{
+		git_repository* raw = nullptr;
+		REQUIRE(git_repository_open(&raw, Core::ToUtf8(repo.GetPath()).c_str()) == 0);
+		git_config* config = nullptr;
+		REQUIRE(git_repository_config(&config, raw) == 0);
+		REQUIRE(git_config_set_bool(config, "core.autocrlf", 0) == 0);
+		git_config_free(config);
+		git_repository_free(raw);
+	}
+
+	CommitFile(port, repo.GetPath(), "a.txt", "a\r\nb\r\n", "first");
+
+	const Core::Result<Graphite::HeadBlame> blamed = port.BlameAtHead(repo.GetPath() / "a.txt");
+	REQUIRE(blamed.HasValue());
+
+	CHECK(blamed.GetValue().Tracked);
+	CHECK(blamed.GetValue().HeadText == "a\nb\n");
+}
+
+TEST_CASE("Blame port calls a file only in the index untracked")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+	CommitFile(port, repo.GetPath(), "a.txt", "a\n", "first");
+
+	WriteBytes(repo.GetPath() / "b.txt", "new\n");
+	REQUIRE(port.Stage({"b.txt"}).HasValue());
+
+	const Core::Result<Graphite::HeadBlame> blamed = port.BlameAtHead(repo.GetPath() / "b.txt");
+	REQUIRE(blamed.HasValue());
+
+	CHECK_FALSE(blamed.GetValue().Tracked);
+	CHECK_FALSE(blamed.GetValue().Blame);
+}
+
+TEST_CASE("Blame port calls a repository with no commit untracked")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+
+	WriteBytes(repo.GetPath() / "a.txt", "a\n");
+	REQUIRE(port.Stage({"a.txt"}).HasValue());
+
+	const Core::Result<Graphite::HeadBlame> blamed = port.BlameAtHead(repo.GetPath() / "a.txt");
+	REQUIRE(blamed.HasValue());
+
+	CHECK_FALSE(blamed.GetValue().Tracked);
+}
+
+TEST_CASE("Blame port calls a binary head unusable")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+	CommitFile(port, repo.GetPath(), "a.bin", std::string{"ab\0cd\n", 6}, "first");
+
+	const Core::Result<Graphite::HeadBlame> blamed = port.BlameAtHead(repo.GetPath() / "a.bin");
+	REQUIRE(blamed.HasValue());
+
+	CHECK(blamed.GetValue().Tracked);
+	CHECK(blamed.GetValue().Unusable);
+	CHECK_FALSE(blamed.GetValue().Blame);
+}
+
+TEST_CASE("Blame port blames on a detached HEAD")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+	const Core::Oid first = CommitFile(port, repo.GetPath(), "a.txt", "a\nb\n", "first");
+	DetachHead(repo.GetPath(), first);
+
+	const Core::Result<Graphite::HeadBlame> blamed = port.BlameAtHead(repo.GetPath() / "a.txt");
+	REQUIRE(blamed.HasValue());
+
+	CHECK(blamed.GetValue().Tracked);
+	CHECK(blamed.GetValue().Blame);
+}
+
+TEST_CASE("Blame port lists a line history")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+	CommitFile(port, repo.GetPath(), "a.txt", "one\nkeep\n", "first");
+	const Core::Oid second = CommitFile(port, repo.GetPath(), "a.txt", "two\nkeep\n", "second");
+
+	Core::LineHistoryRequest request;
+	request.From = second;
+	request.File = "a.txt";
+	request.Line = 1;
+
+	const Core::Result<Core::LineHistory> history = port.QueryLineHistory(request);
+	REQUIRE(history.HasValue());
+
+	CHECK(history.GetValue().Changes.size() == 2);
+}
+
+TEST_CASE("Blame port blames an empty file as having no lines")
+{
+	TempRepo repo;
+	Graphite::RepositoryGitPort port{repo.GetPath()};
+	const Core::Oid first = CommitFile(port, repo.GetPath(), "a.txt", "", "first");
+
+	const Core::Result<Graphite::HeadBlame> blamed = port.BlameAtHead(repo.GetPath() / "a.txt");
+	REQUIRE(blamed.HasValue());
+
+	CHECK(blamed.GetValue().Tracked);
+	CHECK_FALSE(blamed.GetValue().Unusable);
+	REQUIRE(blamed.GetValue().Blame);
+	CHECK(blamed.GetValue().Blame->LineCount == 0);
+	CHECK(blamed.GetValue().Blame->Hunks.empty());
+	CHECK(blamed.GetValue().Blame->At == first);
+	CHECK(blamed.GetValue().Blame->File == std::filesystem::path{"a.txt"});
+}

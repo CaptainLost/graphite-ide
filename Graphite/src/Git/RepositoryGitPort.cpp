@@ -776,6 +776,37 @@ namespace Graphite {
 		return texts;
 	}
 
+	namespace {
+
+		// Empty when the file is outside the working directory, ignored, or inside a submodule.
+		std::optional<std::filesystem::path> RelativePathOfTrackableFile(Core::Repository& repository,
+																		 const std::filesystem::path& absolutePath)
+		{
+			std::error_code relativeError;
+			const std::filesystem::path relative =
+				std::filesystem::relative(absolutePath, repository.GetWorkingDirectory(), relativeError);
+
+			if (relativeError || relative.empty() || *relative.begin() == "..")
+			{
+				return std::nullopt;
+			}
+
+			if (repository.IsIgnored(absolutePath))
+			{
+				return std::nullopt;
+			}
+
+			// WARNING: A file inside a submodule belongs to the submodule's repository. Read here it
+			// would have neither side and be drawn as added from top to bottom.
+			if (repository.IsInsideSubmodule(relative))
+			{
+				return std::nullopt;
+			}
+
+			return relative;
+		}
+	}
+
 	Core::Result<ChangeBases> RepositoryGitPort::ReadBases(const std::filesystem::path& absolutePath)
 	{
 		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
@@ -789,26 +820,14 @@ namespace Graphite {
 
 		Core::Repository* repository = opened.GetValue();
 
-		std::error_code relativeError;
-		const std::filesystem::path relative =
-			std::filesystem::relative(absolutePath, repository->GetWorkingDirectory(), relativeError);
+		const std::optional<std::filesystem::path> trackable = RelativePathOfTrackableFile(*repository, absolutePath);
 
-		if (relativeError || relative.empty() || *relative.begin() == "..")
+		if (!trackable.has_value())
 		{
 			return ChangeBases{};
 		}
 
-		if (repository->IsIgnored(absolutePath))
-		{
-			return ChangeBases{};
-		}
-
-		// WARNING: A file inside a submodule belongs to the submodule's repository. Read here it
-		// would have neither side and be drawn as added from top to bottom.
-		if (repository->IsInsideSubmodule(relative))
-		{
-			return ChangeBases{};
-		}
+		const std::filesystem::path& relative = *trackable;
 
 		Core::Result<SideText> head = ReadOneSide(*repository, TextSide::Head, relative);
 
@@ -830,6 +849,96 @@ namespace Graphite {
 		return MakeChangeBases(
 			headSide.Present ? std::optional<std::string>{std::move(headSide.Text)} : std::nullopt,
 			indexSide.Present ? std::optional<std::string>{std::move(indexSide.Text)} : std::nullopt);
+	}
+
+	Core::Result<HeadBlame> RepositoryGitPort::BlameAtHead(const std::filesystem::path& absolutePath)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		// WARNING: No repository, or one that cannot be opened, leaves the file untracked rather than
+		// failing: the editor has no place to say why, and the Git panel reports the open error.
+		if (!opened.HasValue())
+		{
+			return HeadBlame{};
+		}
+
+		Core::Repository* repository = opened.GetValue();
+
+		const std::optional<std::filesystem::path> trackable = RelativePathOfTrackableFile(*repository, absolutePath);
+
+		if (!trackable.has_value())
+		{
+			return HeadBlame{};
+		}
+
+		const Core::Result<Core::Oid> head = repository->HeadCommit();
+
+		if (!head.HasValue())
+		{
+			if (head.GetError().Code == Core::ErrorCode::NotFound)
+			{
+				return HeadBlame{};
+			}
+
+			return head.GetError();
+		}
+
+		Core::Result<std::string> bytes = repository->ReadBlob(*trackable, head.GetValue());
+
+		if (!bytes.HasValue())
+		{
+			if (bytes.GetError().Code == Core::ErrorCode::NotFound)
+			{
+				return HeadBlame{};
+			}
+
+			return bytes.GetError();
+		}
+
+		std::optional<std::string> text = DecodeBaseText(bytes.GetValue());
+
+		HeadBlame result;
+		result.Tracked = true;
+
+		if (!text.has_value())
+		{
+			result.Unusable = true;
+			return result;
+		}
+
+		result.HeadText = std::move(*text);
+
+		// An empty file has no line to blame, and the blame engine is not asked about one.
+		if (result.HeadText.empty())
+		{
+			Core::Blame empty;
+			empty.At = head.GetValue();
+			empty.File = *trackable;
+			result.Blame = Core::CreateRef<Core::Blame>(std::move(empty));
+			return result;
+		}
+
+		Core::Result<Core::Blame> blame = repository->QueryBlame(Core::BlameRequest{*trackable, head.GetValue()});
+
+		if (!blame.HasValue())
+		{
+			return blame.GetError();
+		}
+
+		result.Blame = Core::CreateRef<Core::Blame>(std::move(blame).GetValue());
+		return result;
+	}
+
+	Core::Result<Core::LineHistory> RepositoryGitPort::QueryLineHistory(const Core::LineHistoryRequest& request)
+	{
+		Core::Result<Core::Repository*> opened = RepositoryForThisThread();
+
+		if (!opened.HasValue())
+		{
+			return opened.GetError();
+		}
+
+		return opened.GetValue()->QueryLineHistory(request);
 	}
 
 	namespace {
