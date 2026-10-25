@@ -659,6 +659,7 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0627](0627-draw-fields-as-the-mockup-s-bordered-faint-filled-boxes.md) | Draw fields as the mockup's bordered, faint-filled boxes | proposed | 2026-10-19 |
 | [0628](0628-make-dock-tab-bars-thirty-two-pixels-with-the-padding-agreed-in-five-places.md) | Make dock tab bars thirty-two pixels with the padding agreed in five places | proposed | 2026-10-19 |
 | [0629](0629-let-a-colour-scheme-set-the-interface-s-measurements-as-well-as-its-colours.md) | Let a colour scheme set the interface's measurements as well as its colours | proposed | 2026-10-20 |
+| [0630](0630-blame-head-once-per-commit-and-lay-it-over-the-buffer-with-a-line-diff.md) | Blame HEAD once per commit and lay it over the buffer with a line diff | proposed | 2026-10-25 |
 | [0630](0630-leave-the-branch-out-of-the-title-bar-since-the-status-bar-shows-it.md) | Leave the branch out of the title bar, since the status bar shows it | proposed | 2026-10-21 |
 | [0631](0631-draw-every-diff-with-one-set-of-options-kept-in-the-settings.md) | Draw every diff with one set of options kept in the settings | proposed | 2026-10-21 |
 | [0632](0632-keep-a-short-history-of-each-language-server-and-show-it-in-the-status-bar-s-tooltip.md) | Keep a short history of each language server and show it in the status bar's tooltip | proposed | 2026-10-21 |
