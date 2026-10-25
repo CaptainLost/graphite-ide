@@ -179,8 +179,12 @@ namespace Graphite {
 		actions.InfoLoading = infoAwaited && LoadingIsDue(input.Now, m_InfoFirstAskedAt, actions);
 		actions.PreviewLoading = previewAwaited && LoadingIsDue(input.Now, m_PreviewFirstAskedAt, actions);
 
-		actions.InfoGaveUp = elapsed && wantInfo && input.InfoFailed && m_RetriedInfo && !actions.AskInfo;
-		actions.PreviewGaveUp = elapsed && wantPreview && input.PreviewFailed && m_RetriedPreview && !actions.AskPreview;
+		actions.InfoGaveUp =
+			elapsed && wantInfo && input.InfoFailed && input.InfoFailureSaysWhy && m_RetriedInfo && !actions.AskInfo;
+		actions.PreviewGaveUp = elapsed && wantPreview && input.PreviewFailed && input.PreviewFailureSaysWhy &&
+								m_RetriedPreview && !actions.AskPreview;
+
+		actions.PreviewHeldByCtrl = previewOnlyWithCtrl && ctrl;
 		actions.ShowDiagnostic = held ? m_HeldDiagnostic : input.DiagnosticUnderMouse;
 
 		if (!held)

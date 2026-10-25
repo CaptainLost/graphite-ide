@@ -2097,6 +2097,8 @@ namespace Graphite {
 			input.InfoFailed = trackedQuestion.has_value() && hover.InfoFailedFor == trackedQuestion;
 			input.PreviewFailed =
 				trackedQuestion.has_value() && hover.PreviewFailedFor == trackedQuestion;
+			input.InfoFailureSaysWhy = !hover.InfoFailureText.empty();
+			input.PreviewFailureSaysWhy = !hover.PreviewFailureText.empty();
 
 			HoverActions actions = hover.Tracker.Update(input);
 

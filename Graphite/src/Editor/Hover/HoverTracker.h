@@ -35,6 +35,9 @@ namespace Graphite {
 
 		bool InfoFailed = false;
 		bool PreviewFailed = false;
+
+		bool InfoFailureSaysWhy = false;
+		bool PreviewFailureSaysWhy = false;
 	};
 
 	struct HoverActions
@@ -52,6 +55,8 @@ namespace Graphite {
 
 		bool InfoGaveUp = false;
 		bool PreviewGaveUp = false;
+
+		bool PreviewHeldByCtrl = false;
 
 		std::optional<double> WakeAt;
 

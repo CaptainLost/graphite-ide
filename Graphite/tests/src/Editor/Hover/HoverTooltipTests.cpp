@@ -141,6 +141,7 @@ TEST_CASE("A hover tooltip that is loading, failed or found no definition draws 
 	TooltipFrame tooltip;
 	tooltip.Actions.InfoLoading = true;
 	tooltip.Actions.ShowPreview = true;
+	tooltip.Actions.PreviewHeldByCtrl = true;
 	tooltip.Hover.Preview = Graphite::DefinitionPreview{.Unreadable = true};
 	tooltip.Hover.NoDefinitionFound = true;
 	tooltip.LoadingText = "Loading";
@@ -205,10 +206,20 @@ TEST_CASE("A Ctrl+hover with no definition says so")
 	hover.NoDefinitionFound = true;
 	const Graphite::HoverTooltipLook look;
 
-	const Graphite::HoverSections sections = Graphite::SectionsToShow(Graphite::HoverActions{.ShowPreview = true}, hover, {}, look);
+	const Graphite::HoverSections sections = Graphite::SectionsToShow(Graphite::HoverActions{.ShowPreview = true, .PreviewHeldByCtrl = true}, hover, {}, look);
 
 	CHECK(sections.NoDefinition);
 	CHECK_FALSE(sections.Preview);
+}
+
+TEST_CASE("A preview shown on every hover, without Ctrl, says nothing when it finds no definition")
+{
+	Graphite::HoverState hover;
+	hover.Preview = Graphite::DefinitionPreview{.Unreadable = true};
+	hover.NoDefinitionFound = true;
+	const Graphite::HoverTooltipLook look;
+
+	CHECK_FALSE(Graphite::SectionsToShow(Graphite::HoverActions{.ShowPreview = true}, hover, {}, look).Any());
 }
 
 TEST_CASE("Hover documentation is set at the interface size while the editor is at another")

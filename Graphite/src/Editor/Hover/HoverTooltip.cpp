@@ -555,7 +555,8 @@ namespace Graphite {
 		sections.Info = HasInfo(actions, hover);
 		sections.InfoFailure = !sections.Info && actions.InfoGaveUp && !hover.InfoFailureText.empty();
 		sections.Preview = HasPreview(actions, hover);
-		sections.NoDefinition = !sections.Preview && actions.ShowPreview && hover.Preview.has_value() && hover.NoDefinitionFound;
+		sections.NoDefinition = !sections.Preview && actions.ShowPreview && actions.PreviewHeldByCtrl &&
+								hover.Preview.has_value() && hover.NoDefinitionFound;
 
 		const bool previewFailureSaysWhatInfoSaid = sections.InfoFailure && hover.PreviewFailureText == hover.InfoFailureText;
 
