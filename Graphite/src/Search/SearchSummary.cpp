@@ -6,16 +6,24 @@
 
 namespace Graphite {
 
-	std::string SearchSummaryText(std::size_t hitCount, const SearchProgress& progress, std::string_view searchedNeedle,
-								  std::string_view typedNeedle)
+	std::optional<std::string> SearchSummaryText(std::size_t hitCount, const SearchProgress& progress,
+												 const std::optional<std::string>& searchedNeedle,
+												 std::string_view typedNeedle)
 	{
+		const bool searchedSomething = searchedNeedle.has_value() && !searchedNeedle->empty();
+
+		if (!searchedSomething)
+		{
+			return std::nullopt;
+		}
+
 		std::string summary = Core::Counted(static_cast<long long>(hitCount), "hit");
 
-		const bool queryEditedSinceSearch = typedNeedle != searchedNeedle;
+		const bool queryEditedSinceSearch = typedNeedle != *searchedNeedle;
 
 		if (queryEditedSinceSearch)
 		{
-			summary += std::format(" for \"{}\"", searchedNeedle);
+			summary += std::format(" for \"{}\"", *searchedNeedle);
 		}
 
 		summary += ", " + Core::Counted(static_cast<long long>(progress.FilesScanned), "file") + " scanned";

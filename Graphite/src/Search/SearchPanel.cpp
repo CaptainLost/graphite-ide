@@ -181,16 +181,16 @@ namespace Graphite {
 
 	void SearchPanel::RenderSummary()
 	{
-		if (!m_SearchedNeedle.has_value())
+		const std::optional<std::string> summary =
+			SearchSummaryText(m_Groups.GetCount(), m_Progress, m_SearchedNeedle, m_QueryBuffer.data());
+
+		if (!summary.has_value())
 		{
 			ImGui::TextDisabled("%s", std::string{kSearchHint}.c_str());
 			return;
 		}
 
-		const std::string summary =
-			SearchSummaryText(m_Groups.GetCount(), m_Progress, *m_SearchedNeedle, m_QueryBuffer.data());
-
-		ImGui::TextUnformatted(summary.c_str());
+		ImGui::TextUnformatted(summary->c_str());
 
 		if (m_Progress.Running)
 		{
