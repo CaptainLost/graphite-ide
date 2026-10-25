@@ -48,7 +48,6 @@ namespace Graphite {
 		constexpr const char* kHeadMark = "* ";
 		constexpr const char* kLoaderWithoutText = "";
 
-		// Where the head's mark stands in its label, wide enough for the loader too.
 		float CheckoutMarkWidth()
 		{
 			return std::max(ImGui::CalcTextSize(kHeadMark).x, Core::LoadingLineWidth(kLoaderWithoutText));

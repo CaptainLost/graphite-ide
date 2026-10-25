@@ -78,7 +78,6 @@ namespace Graphite {
 		void RequestCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file);
 		Core::Ref<const FileTexts> GetCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file) const;
 
-		// What became of the texts asked for the file, while GetCommittedTexts holds none.
 		TextsWait CommittedTextsWait(const RangeEnds& ends, const Core::FileDiff& file) const;
 
 		void RequestSinceViewed(const SinceViewedRequest& request);
@@ -96,7 +95,6 @@ namespace Graphite {
 		void RequestUncommittedTexts(const ReviewKey& key, const Core::FileDiff& file);
 		Core::Ref<const FileTexts> GetUncommittedTexts(const ReviewKey& key, const Core::FileDiff& file) const;
 
-		// What became of the texts asked for the file, while GetUncommittedTexts holds none.
 		TextsWait UncommittedTextsWait(const ReviewKey& key, const Core::FileDiff& file) const;
 
 		void StopUncommitted(const ReviewKey& key);

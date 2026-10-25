@@ -74,10 +74,8 @@ namespace Graphite {
 	class GitModel : Core::NonCopyable
 	{
 	public:
-		// Reads and writes on one submitter.
 		GitModel(GitPort& port, JobSubmitter submit);
 
-		// Writes on a submitter of their own, so a write never waits behind a long read.
 		GitModel(GitPort& port, JobSubmitter submitRead, JobSubmitter submitWrite);
 
 		void OnUpdate(Core::Timestep timestep);
@@ -91,7 +89,6 @@ namespace Graphite {
 		Core::Ref<const Core::WorkingTreeStatus> GetUntrackedIn(
 			const std::filesystem::path& directory) const;
 
-		// Why the folder's last listing failed, until it is asked for again.
 		std::optional<Core::Error> GetUntrackedFailureIn(const std::filesystem::path& directory) const;
 
 		// WARNING: False while a kept listing waits to be read again after a status, when its rows may name files
@@ -120,7 +117,6 @@ namespace Graphite {
 		void ForgetFailedDiffFor(const Core::Oid& commit);
 		bool IsDiffFailed(const Core::Oid& commit) const;
 
-		// Why the commit's diff could not be read, while it stands failed.
 		std::optional<Core::Error> GetDiffFailure(const Core::Oid& commit) const;
 
 		bool HasOpenFolder() const { return !m_Root.empty(); }
@@ -199,10 +195,8 @@ namespace Graphite {
 			return m_WantedWorkingTreeDiff.has_value() && m_WorkingTreeDiffSettled != m_WantedWorkingTreeDiff;
 		}
 
-		// Why the wanted working-tree diff could not be read, once that answer has settled.
 		std::optional<Core::Error> GetWorkingTreeDiffFailure() const;
 
-		// Asks for the wanted working-tree diff again after a failure, and counts it as loading from now on.
 		void RetryWorkingTreeDiff();
 
 		Core::Ref<const FileTexts> GetWorkingTreeTexts() const
@@ -210,7 +204,6 @@ namespace Graphite {
 			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeTexts : nullptr;
 		}
 
-		// Why the wanted working-tree diff's texts could not be read, beside a diff that could.
 		std::optional<Core::Error> GetWorkingTreeTextsFailure() const
 		{
 			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeTextsFailure : std::nullopt;
@@ -311,23 +304,18 @@ namespace Graphite {
 
 		std::optional<WriteFailure> TakeWriteError();
 
-		// What a write is about, as much as the status bar needs to word it.
 		struct WriteSubject
 		{
 			WriteKind Kind = WriteKind::Stage;
 
-			// The paths a stage, unstage or discard was given. One is named by its last part, more are counted.
 			std::size_t PathCount = 0;
 			std::string OnePathName;
 
-			// The branch, or the checkout's target, the write acts on, and a rename's new name.
 			std::string Name;
 			std::string NewName;
 
-			// The stash's place in the list when the write was asked for, while the list was known.
 			std::optional<std::size_t> StashIndex;
 
-			// Set once a commit has landed, with the first line of its message.
 			std::optional<Core::Oid> Committed;
 			std::string CommitSummary;
 
@@ -336,10 +324,8 @@ namespace Graphite {
 
 		enum class WriteProgress
 		{
-			// From the click until the status read after the write lands.
 			Running,
 
-			// For a few seconds once that status has landed.
 			Done
 		};
 
@@ -351,18 +337,15 @@ namespace Graphite {
 
 		static constexpr float kWriteConfirmationSeconds = 4.0f;
 
-		// The write running, or else the newest one asked for and not yet settled, or else the last one done, for
-		// a few seconds after the status read that followed it. A failed write leaves no report: its toast says it.
+		// WARNING: A failed write leaves no report, since its toast says what happened.
 		std::optional<WriteReport> GetWriteReport() const;
 
-		// A write is queued, running, or done with the status read after it still to land, so what the panels
-		// show may be out of date and the controls that start writes stay disabled.
+		// WARNING: True until the status read after a write lands, not only while the write runs, since the rows
+		// drawn before that read are out of date.
 		bool IsWriteUnsettled() const;
 
-		// Like IsWriteUnsettled, for the writes that change the index or the working tree.
 		bool IsUpdatingWorkingTree() const;
 
-		// The target of a checkout queued, running, or done with the status and head after it still to land.
 		std::optional<Core::CheckoutTarget> GetCheckoutUnderWay() const;
 
 		const std::optional<Core::Error>& GetInitError() const { return m_InitError; }
@@ -430,7 +413,6 @@ namespace Graphite {
 
 			std::optional<Core::Error> Failure;
 
-			// A status landed after the listing was asked for, so the next RequestUntrackedIn asks again.
 			bool Stale = false;
 		};
 
@@ -439,7 +421,6 @@ namespace Graphite {
 		CachedUntracked* FindUntracked(const std::string& directoryKey);
 		const CachedUntracked* FindUntracked(const std::string& directoryKey) const;
 
-		// Keeps the listings of the folders the new status still lists, to be asked for again, and forgets the rest.
 		void KeepUntrackedListingsOf(const Core::WorkingTreeStatus& status);
 
 		UntrackedByDirectory m_Untracked;
@@ -499,8 +480,6 @@ namespace Graphite {
 			Applied
 		};
 
-		// A write the reader asked for, from the click until the status read after it lands. Answers such as a
-		// checkout plan get none.
 		struct WriteTicket
 		{
 			std::uint64_t Number = kNoTicket;
@@ -509,12 +488,10 @@ namespace Graphite {
 
 			TicketPhase Phase = TicketPhase::Queued;
 
-			// A failed write is never reported, but one that changed files before it failed still waits for the
-			// status read after it.
+			// WARNING: Never reported, yet a write that changed files before it failed still waits for the status after it.
 			bool Failed = false;
 
-			// The status and head generations asked for when the write was applied. Only an answer to a later ask
-			// was read after the write.
+			// WARNING: Only an answer to a later ask than these was read after the write.
 			std::uint64_t StatusAskedWhenApplied = 0;
 			std::uint64_t HeadAskedWhenApplied = 0;
 		};
@@ -569,7 +546,6 @@ namespace Graphite {
 		std::optional<DeleteCheck> m_DeleteCheck;
 		std::uint64_t m_AppliedWrites = 0;
 
-		// In the order the writes were asked for.
 		std::deque<WriteTicket> m_Tickets;
 		std::uint64_t m_LastTicket = kNoTicket;
 

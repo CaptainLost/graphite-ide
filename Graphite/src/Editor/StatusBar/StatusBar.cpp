@@ -58,7 +58,6 @@ namespace Graphite {
 		{
 			Text,
 			Dot,
-			// Text after the Core loader, for work under way.
 			Loader
 		};
 

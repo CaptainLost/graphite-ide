@@ -18,7 +18,6 @@
 
 namespace {
 
-	// At 60 frames a second the loader's fifth of a second is twelve frames; fifteen are past it.
 	constexpr int kFramesPastTheLoaderWait = 15;
 
 	constexpr const char* kBranch = "main";

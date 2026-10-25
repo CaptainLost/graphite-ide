@@ -48,11 +48,9 @@ namespace Graphite {
 
 	std::string EmptyDiffMessage(const OpenDiff& diff);
 
-	// "Couldn't read the diff of a1b2c3d: <reason>" while the diff the tab shows stands failed, and nothing while it
-	// loads or has loaded.
 	std::optional<std::string> DiffFailureOf(const OpenDiff& diff, const GitModel& model);
 
-	// Forgets the failure first, so the loader shows from this frame on rather than the old failure.
+	// WARNING: Forgets the failure before asking again, or the old failure stays on screen until the new answer lands.
 	void RetryDiff(const OpenDiff& diff, GitModel& model);
 
 	class DiffWindows

@@ -1436,7 +1436,6 @@ TEST_CASE("Closing the folder forgets a plan, a delete check and checked-out pat
 
 namespace {
 
-	// The quiet the debounce waits for and the status read after it, in one step.
 	constexpr float kPastTheDebounce = 1.0f;
 	constexpr float kNoTimePasses = 0.0f;
 

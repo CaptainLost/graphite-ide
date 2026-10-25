@@ -30,7 +30,6 @@ namespace Graphite {
 
 		std::optional<std::string> SelectedRef;
 
-		// The checkout under way, whose target's row turns a loader where the head's mark sits.
 		std::optional<Core::CheckoutTarget> CheckingOut;
 
 		std::chrono::sys_seconds Now;

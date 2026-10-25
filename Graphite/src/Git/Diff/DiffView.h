@@ -30,7 +30,6 @@
 
 namespace Graphite {
 
-	// What the toolbar says while the whole file's texts are not held: a loader, or why they are unavailable.
 	struct WholeFileNote
 	{
 		std::string Text;
@@ -39,13 +38,12 @@ namespace Graphite {
 		friend bool operator==(const WholeFileNote&, const WholeFileNote&) = default;
 	};
 
-	// Said only while the texts are wanted, for the whole file or for colouring, and the owner says what became of them.
 	std::optional<WholeFileNote> WholeFileNoteFor(const DiffViewOptions& options, bool textsHeld, const TextsWait& wait);
 
 	class DiffView
 	{
 	public:
-		// What became of the texts the owner asked for, for the next Render only.
+		// WARNING: Holds for the next Render only, so an owner sets it on every frame it draws.
 		void SetTextsWait(TextsWait wait) { m_TextsWait = std::move(wait); }
 
 		void Render(const Core::FileDiff& file, const GitPalette& palette,

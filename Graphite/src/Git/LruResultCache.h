@@ -116,7 +116,6 @@ namespace Graphite {
 			return entry != nullptr && entry->Failed;
 		}
 
-		// Why the key's answer failed, when the failure was given a reason.
 		std::optional<Core::Error> FailureOf(const Key& key) const
 		{
 			const Entry* entry = Find(key);

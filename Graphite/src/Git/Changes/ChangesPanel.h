@@ -54,7 +54,6 @@ namespace Graphite {
 		void RenderFolderRow(std::size_t entryIndex, const Core::WorkingTreeStatus& status,
 							 const GitPalette& palette);
 
-		// Under an open folder whose files git has not listed: the loader, or why the listing failed.
 		void RenderListingWait(const std::filesystem::path& folder);
 
 		void RenderRowContextMenu(const Core::FileStatus& file, char letter);

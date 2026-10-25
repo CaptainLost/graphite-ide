@@ -12,7 +12,6 @@ namespace Graphite {
 	enum class LogAttempt
 	{
 		Settled,
-		// A new attempt runs while an earlier one's failure still stands.
 		InFlight
 	};
 

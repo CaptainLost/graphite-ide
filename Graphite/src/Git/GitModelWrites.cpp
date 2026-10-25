@@ -75,7 +75,7 @@ namespace Graphite {
 			return false;
 		}
 
-		// A status entry for an untracked folder may end in a separator, which leaves its filename empty.
+		// WARNING: A status entry for an untracked folder can end in a separator, which leaves its filename empty.
 		std::string LastPartOf(const std::filesystem::path& path)
 		{
 			const std::filesystem::path name = path.filename();

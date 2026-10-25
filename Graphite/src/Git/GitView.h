@@ -64,7 +64,6 @@ namespace Graphite {
 
 		void Subscribe();
 
-		// The checkout under way and any question waiting for this panel, for the status bar.
 		GitPanelWait CurrentWait() const;
 
 		std::function<ReviewMenu(const Core::Branch& branch)> ReviewMenuOf;
