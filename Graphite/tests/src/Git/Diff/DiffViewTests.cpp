@@ -209,3 +209,77 @@ TEST_CASE("A layout picked in a diff's toolbar is handed back as options for eve
 	CHECK(handedBack->ColourSyntax == given.ColourSyntax);
 	CHECK(handedBack->WordWrap == given.WordWrap);
 }
+
+TEST_CASE("While the whole file loads the toolbar says so, and while only colouring waits it says that")
+{
+	const Graphite::TextsWait loading{.Progress = Graphite::TextsProgress::Loading};
+	constexpr bool kTextsNotHeld = false;
+
+	const std::optional<Graphite::WholeFileNote> wholeFile =
+		Graphite::WholeFileNoteFor({.Scope = Graphite::DiffScope::WholeFile}, kTextsNotHeld, loading);
+	const std::optional<Graphite::WholeFileNote> colouring =
+		Graphite::WholeFileNoteFor({.Scope = Graphite::DiffScope::Hunks, .ColourSyntax = true}, kTextsNotHeld, loading);
+
+	CHECK(wholeFile == Graphite::WholeFileNote{.Text = "Loading the whole file", .Loading = true});
+	CHECK(colouring == Graphite::WholeFileNote{.Text = "Colouring", .Loading = true});
+}
+
+TEST_CASE("Texts that failed are named in the toolbar with their reason, or without one when none was given")
+{
+	constexpr bool kTextsNotHeld = false;
+	const Graphite::DiffViewOptions wholeFile{.Scope = Graphite::DiffScope::WholeFile};
+
+	CHECK(Graphite::WholeFileNoteFor(wholeFile, kTextsNotHeld,
+									 {.Progress = Graphite::TextsProgress::Failed, .Reason = "blob missing"}) ==
+		  Graphite::WholeFileNote{.Text = "Whole file unavailable: blob missing"});
+	CHECK(Graphite::WholeFileNoteFor(wholeFile, kTextsNotHeld, {.Progress = Graphite::TextsProgress::Failed}) ==
+		  Graphite::WholeFileNote{.Text = "Whole file unavailable"});
+}
+
+TEST_CASE("The toolbar says nothing of texts it holds, does not want, or knows nothing about")
+{
+	constexpr bool kTextsHeld = true;
+	constexpr bool kTextsNotHeld = false;
+	const Graphite::TextsWait loading{.Progress = Graphite::TextsProgress::Loading};
+	const Graphite::DiffViewOptions hunksWithoutColour{.Scope = Graphite::DiffScope::Hunks, .ColourSyntax = false};
+
+	CHECK_FALSE(Graphite::WholeFileNoteFor({}, kTextsHeld, loading).has_value());
+	CHECK_FALSE(Graphite::WholeFileNoteFor(hunksWithoutColour, kTextsNotHeld, loading).has_value());
+	CHECK_FALSE(Graphite::WholeFileNoteFor({}, kTextsNotHeld, Graphite::TextsWait{}).has_value());
+}
+
+TEST_CASE("A whole-file diff with no hunks says no changes only once its texts are not on their way")
+{
+	DiffScreen screen;
+	Core::FileDiff renamed;
+	renamed.OldPath = "old.txt";
+	renamed.NewPath = "new.txt";
+	renamed.Change = Core::FileChange::Renamed;
+
+	const Graphite::DiffViewOptions wholeFile{.Scope = Graphite::DiffScope::WholeFile, .ColourSyntax = false};
+	bool saidNoChanges = false;
+
+	const auto drawWith = [&](Graphite::TextsWait wait) {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(kDiffWindowSize);
+		ImGui::Begin(kDiffWindowName, nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
+
+		screen.View.SetTextsWait(std::move(wait));
+		screen.View.Render(renamed, screen.Palette, screen.Syntax, kNoSelectionColour, nullptr, screen.Tokens, wholeFile);
+
+		const float justUnderTheToolbar = ImGui::GetFrameHeightWithSpacing() * 2.0f;
+		const bool emptyStateFilledTheWindow = ImGui::GetCursorPosY() > justUnderTheToolbar;
+		saidNoChanges = emptyStateFilledTheWindow;
+
+		ImGui::End();
+	};
+
+	screen.Frames.Next([&] { drawWith({.Progress = Graphite::TextsProgress::Loading}); });
+	const bool saidWhileLoading = saidNoChanges;
+
+	screen.Frames.Next([&] { drawWith({}); });
+	const bool saidOnceKnown = saidNoChanges;
+
+	CHECK_FALSE(saidWhileLoading);
+	CHECK(saidOnceKnown);
+}

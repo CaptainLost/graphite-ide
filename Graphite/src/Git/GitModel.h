@@ -116,6 +116,9 @@ namespace Graphite {
 		void ForgetFailedDiffFor(const Core::Oid& commit);
 		bool IsDiffFailed(const Core::Oid& commit) const;
 
+		// Why the commit's diff could not be read, while it stands failed.
+		std::optional<Core::Error> GetDiffFailure(const Core::Oid& commit) const;
+
 		bool HasOpenFolder() const { return !m_Root.empty(); }
 		Core::Ref<const Core::Diff> GetDiffFor(const Core::Oid& commit) const;
 
@@ -134,6 +137,10 @@ namespace Graphite {
 
 		Core::Ref<const FileTexts> GetTextsFor(
 			const Core::Oid& commit, const std::filesystem::path& key) const;
+
+		bool IsTextsFailed(const Core::Oid& commit, const std::filesystem::path& key) const;
+
+		std::optional<Core::Error> GetTextsFailure(const Core::Oid& commit, const std::filesystem::path& key) const;
 
 		static constexpr std::size_t kCachedTexts = 32;
 
@@ -188,9 +195,21 @@ namespace Graphite {
 			return m_WantedWorkingTreeDiff.has_value() && m_WorkingTreeDiffSettled != m_WantedWorkingTreeDiff;
 		}
 
+		// Why the wanted working-tree diff could not be read, once that answer has settled.
+		std::optional<Core::Error> GetWorkingTreeDiffFailure() const;
+
+		// Asks for the wanted working-tree diff again after a failure, and counts it as loading from now on.
+		void RetryWorkingTreeDiff();
+
 		Core::Ref<const FileTexts> GetWorkingTreeTexts() const
 		{
 			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeTexts : nullptr;
+		}
+
+		// Why the wanted working-tree diff's texts could not be read, beside a diff that could.
+		std::optional<Core::Error> GetWorkingTreeTextsFailure() const
+		{
+			return AnswersWantedWorkingTreeDiff() ? m_WorkingTreeTextsFailure : std::nullopt;
 		}
 
 		const std::optional<Core::Error>& GetStatusError() const { return m_Status.GetError(); }
@@ -590,6 +609,7 @@ namespace Graphite {
 
 		GenerationSlot<Core::Diff> m_WorkingTreeDiff;
 		Core::Ref<const FileTexts> m_WorkingTreeTexts;
+		std::optional<Core::Error> m_WorkingTreeTextsFailure;
 
 		std::optional<Core::DiffRequest> m_WantedWorkingTreeDiff;
 		std::optional<Core::DiffRequest> m_WorkingTreeDiffFor;

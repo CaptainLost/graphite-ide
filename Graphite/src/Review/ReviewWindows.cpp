@@ -445,19 +445,23 @@ namespace Graphite {
 									const Core::FileDiff& file)
 	{
 		Core::Ref<const FileTexts> texts;
+		TextsWait wait;
 
 		if (tab.Selected->Group == ReviewGroup::Commits)
 		{
 			model.RequestCommittedTexts(review.Range->Ends, file);
 			texts = model.GetCommittedTexts(review.Range->Ends, file);
+			wait = model.CommittedTextsWait(review.Range->Ends, file);
 		}
 		else
 		{
 			model.RequestUncommittedTexts(review.Key, file);
 			texts = model.GetUncommittedTexts(review.Key, file);
+			wait = model.UncommittedTextsWait(review.Key, file);
 		}
 
 		HoldTexts(tab, texts);
+		tab.View.SetTextsWait(wait);
 	}
 
 	void ReviewWindows::HoldTexts(Tab& tab, const Core::Ref<const FileTexts>& texts)

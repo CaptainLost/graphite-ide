@@ -2,6 +2,8 @@
 
 #include "Core/Base/Base.h"
 
+#include "Core/Base/Result.h"
+
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -61,7 +63,7 @@ namespace Graphite {
 			return true;
 		}
 
-		bool Fail(const Key& key, std::uint64_t generation)
+		bool Fail(const Key& key, std::uint64_t generation, std::optional<Core::Error> reason = std::nullopt)
 		{
 			Entry* entry = Land(key, generation);
 
@@ -71,6 +73,7 @@ namespace Graphite {
 			}
 
 			entry->Failed = true;
+			entry->Reason = std::move(reason);
 			return true;
 		}
 
@@ -113,6 +116,19 @@ namespace Graphite {
 			return entry != nullptr && entry->Failed;
 		}
 
+		// Why the key's answer failed, when the failure was given a reason.
+		std::optional<Core::Error> FailureOf(const Key& key) const
+		{
+			const Entry* entry = Find(key);
+
+			if (entry == nullptr || !entry->Failed)
+			{
+				return std::nullopt;
+			}
+
+			return entry->Reason;
+		}
+
 		void Clear() { m_Entries.clear(); }
 
 		std::size_t GetSize() const { return m_Entries.size(); }
@@ -128,6 +144,7 @@ namespace Graphite {
 
 			Core::Ref<const T> Value;
 			bool Failed = false;
+			std::optional<Core::Error> Reason;
 
 			std::uint64_t LastTouched = 0;
 		};

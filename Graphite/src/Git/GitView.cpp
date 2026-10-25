@@ -1102,9 +1102,13 @@ namespace Graphite {
 
 		const Core::Ref<const Core::Diff> diff = m_Model.GetDiffFor(selected->Commit);
 
-		if (!diff && m_Model.IsDiffFailed(selected->Commit))
+		if (const std::optional<std::string> failure = DiffFailureOf(selection, m_Model); !diff && failure.has_value())
 		{
-			Core::EmptyState("The diff could not be read.");
+			if (Core::EmptyState(*failure, "Retry"))
+			{
+				RetryDiff(selection, m_Model);
+			}
+
 			return;
 		}
 
@@ -1125,6 +1129,7 @@ namespace Graphite {
 		const Core::FileDiff& file = diff->Files[*fileIndex];
 
 		m_Texts.Update(m_Model, selected->Commit, file);
+		m_Diff.SetTextsWait(m_Texts.Wait);
 
 		const SyntaxPalette syntax = ReadSyntaxPalette(m_Scheme.Get());
 		m_Diff.Render(file, palette, syntax, ReadEditorPalette(m_Scheme.Get()).Selection, m_Texts.Texts,

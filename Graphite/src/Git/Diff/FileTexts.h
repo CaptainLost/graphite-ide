@@ -66,10 +66,32 @@ namespace Graphite {
 	// so this compares both sides' bytes and presence, never the pointer.
 	bool TokensStillGood(const FileTexts* held, const FileTexts& fresh);
 
+	enum class TextsProgress
+	{
+		// Nothing is known or nothing is waited for: held, binary, or an owner that does not say.
+		Unknown,
+		Loading,
+		Failed
+	};
+
+	// What became of a file's texts that are not held yet, for the diff's toolbar to say.
+	struct TextsWait
+	{
+		TextsProgress Progress = TextsProgress::Unknown;
+
+		// Why they failed, when the failure gave a reason.
+		std::string Reason;
+
+		friend bool operator==(const TextsWait&, const TextsWait&) = default;
+	};
+
 	struct FileTextsBinding
 	{
 		Core::Ref<const FileTexts> Texts;
 		FileTokens Tokens;
+
+		// Set by Update and UpdateFromWorkingTree while Texts is null.
+		TextsWait Wait;
 
 		// WARNING: Commit is held alongside Key because forgiving a failed entry for the file
 		// just left needs the commit that entry was keyed under, not the one now on screen.

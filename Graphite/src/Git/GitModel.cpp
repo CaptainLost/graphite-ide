@@ -103,6 +103,7 @@ namespace Graphite {
 		m_OwnLabel.clear();
 		m_WorkingTreeDiff.Clear();
 		m_WorkingTreeTexts.reset();
+		m_WorkingTreeTextsFailure.reset();
 		m_WantedWorkingTreeDiff.reset();
 		m_WorkingTreeDiffFor.reset();
 		m_WorkingTreeDiffSettled.reset();
@@ -464,6 +465,7 @@ namespace Graphite {
 			Core::Result<Core::Diff> result = m_Port.QueryDiff(request);
 
 			std::optional<FileTexts> texts;
+			std::optional<Core::Error> textsFailure;
 
 			if (result.HasValue() && result.GetValue().Files.size() == 1)
 			{
@@ -479,11 +481,15 @@ namespace Graphite {
 						texts = std::move(read).GetValue();
 						texts->Tokens = ColourSides(*texts, file.OldPath, file.NewPath);
 					}
+					else
+					{
+						textsFailure = read.GetError();
+					}
 				}
 			}
 
 			Deliver([this, generation, request = std::move(request), result = std::move(result),
-					 texts = std::move(texts)]() mutable {
+					 texts = std::move(texts), textsFailure = std::move(textsFailure)]() mutable {
 				const SlotLanding landing = m_WorkingTreeDiff.Land(generation, std::move(result));
 
 				if (landing == SlotLanding::Stale)
@@ -504,10 +510,30 @@ namespace Graphite {
 				m_WorkingTreeTexts = texts.has_value()
 										 ? Core::CreateRef<const FileTexts>(std::move(*texts))
 										 : nullptr;
+				m_WorkingTreeTextsFailure = std::move(textsFailure);
 
 				PumpWorkingTreeDiff();
 			});
 		});
+	}
+
+	std::optional<Core::Error> GitModel::GetWorkingTreeDiffFailure() const
+	{
+		const bool wantedAnswerSettled =
+			m_WantedWorkingTreeDiff.has_value() && m_WorkingTreeDiffSettled == m_WantedWorkingTreeDiff;
+
+		if (!wantedAnswerSettled || AnswersWantedWorkingTreeDiff())
+		{
+			return std::nullopt;
+		}
+
+		return m_WorkingTreeDiff.GetError();
+	}
+
+	void GitModel::RetryWorkingTreeDiff()
+	{
+		m_WorkingTreeDiffSettled.reset();
+		PumpWorkingTreeDiff();
 	}
 
 	void GitModel::RequestDiffFor(const Core::Oid& commit)
@@ -537,7 +563,7 @@ namespace Graphite {
 			Deliver([this, commit, generation, result = std::move(result)]() mutable {
 				if (!result.HasValue())
 				{
-					if (m_CommitDiffs.Fail(commit, generation))
+					if (m_CommitDiffs.Fail(commit, generation, result.GetError()))
 					{
 						m_CommitDiffError = result.GetError();
 					}
@@ -684,6 +710,11 @@ namespace Graphite {
 		return m_CommitDiffs.IsFailed(commit);
 	}
 
+	std::optional<Core::Error> GitModel::GetDiffFailure(const Core::Oid& commit) const
+	{
+		return m_CommitDiffs.FailureOf(commit);
+	}
+
 	Core::Ref<const Core::Diff> GitModel::GetDiffFor(const Core::Oid& commit) const
 	{
 		return m_CommitDiffs.Get(commit);
@@ -721,7 +752,7 @@ namespace Graphite {
 
 				if (!result.HasValue())
 				{
-					if (m_Texts.Fail(textsKey, generation))
+					if (m_Texts.Fail(textsKey, generation, result.GetError()))
 					{
 						m_TextsError = result.GetError();
 					}
@@ -752,5 +783,15 @@ namespace Graphite {
 		const Core::Oid& commit, const std::filesystem::path& key) const
 	{
 		return m_Texts.Get(TextsKey{commit, key});
+	}
+
+	bool GitModel::IsTextsFailed(const Core::Oid& commit, const std::filesystem::path& key) const
+	{
+		return m_Texts.IsFailed(TextsKey{commit, key});
+	}
+
+	std::optional<Core::Error> GitModel::GetTextsFailure(const Core::Oid& commit, const std::filesystem::path& key) const
+	{
+		return m_Texts.FailureOf(TextsKey{commit, key});
 	}
 }

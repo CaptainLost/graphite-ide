@@ -371,10 +371,11 @@ namespace Graphite {
 										 Core::Result<FileTexts> answer)
 	{
 		// WARNING: A text that cannot be read costs the pane its colouring and whole-file view while the
-		// diff still draws, so the failure is held to stop a retry per frame and is not reported.
+		// diff still draws, so the failure is held to stop a retry per frame and is not reported in a toast;
+		// the diff's toolbar says it.
 		if (!answer.HasValue())
 		{
-			m_CommittedTexts.Fail(key, generation);
+			m_CommittedTexts.Fail(key, generation, answer.GetError());
 			return;
 		}
 
@@ -385,6 +386,26 @@ namespace Graphite {
 	Core::Ref<const FileTexts> ReviewModel::GetCommittedTexts(const RangeEnds& ends, const Core::FileDiff& file) const
 	{
 		return m_CommittedTexts.Get(TextsKey{.Ends = ends, .Path = ShownPath(file)});
+	}
+
+	TextsWait ReviewModel::CommittedTextsWait(const RangeEnds& ends, const Core::FileDiff& file) const
+	{
+		const TextsKey key{.Ends = ends, .Path = ShownPath(file)};
+
+		if (file.IsBinary || m_CommittedTexts.Get(key) != nullptr)
+		{
+			return TextsWait{};
+		}
+
+		if (!m_CommittedTexts.IsFailed(key))
+		{
+			return TextsWait{.Progress = TextsProgress::Loading};
+		}
+
+		const std::optional<Core::Error> failure = m_CommittedTexts.FailureOf(key);
+
+		return TextsWait{.Progress = TextsProgress::Failed,
+						 .Reason = failure.has_value() ? failure->Message : std::string{}};
 	}
 
 	void ReviewModel::RequestSinceViewed(const SinceViewedRequest& request)
@@ -661,6 +682,27 @@ namespace Graphite {
 		const bool landed = uncommitted->TextsApplied == uncommitted->TextsRequested;
 
 		return forThisFile && forThisDiff && landed ? uncommitted->Texts : nullptr;
+	}
+
+	TextsWait ReviewModel::UncommittedTextsWait(const ReviewKey& key, const Core::FileDiff& file) const
+	{
+		const UncommittedState* uncommitted = FindUncommitted(key);
+
+		if (uncommitted == nullptr || file.IsBinary)
+		{
+			return TextsWait{};
+		}
+
+		const bool forThisFile = uncommitted->TextsPath == ShownPath(file);
+		const bool forThisDiff = uncommitted->TextsForDiff == uncommitted->Diff.GetApplied();
+		const bool landed = uncommitted->TextsApplied == uncommitted->TextsRequested;
+
+		if (!forThisFile || !forThisDiff || !landed)
+		{
+			return TextsWait{.Progress = TextsProgress::Loading};
+		}
+
+		return uncommitted->Texts == nullptr ? TextsWait{.Progress = TextsProgress::Failed} : TextsWait{};
 	}
 
 	void ReviewModel::StopUncommitted(const ReviewKey& key)

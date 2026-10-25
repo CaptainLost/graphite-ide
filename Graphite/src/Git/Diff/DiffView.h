@@ -23,14 +23,31 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace Graphite {
 
+	// What the toolbar says while the whole file's texts are not held: a loader, or why they are unavailable.
+	struct WholeFileNote
+	{
+		std::string Text;
+		bool Loading = false;
+
+		friend bool operator==(const WholeFileNote&, const WholeFileNote&) = default;
+	};
+
+	// Said only while the texts are wanted, for the whole file or for colouring, and the owner says what became of them.
+	std::optional<WholeFileNote> WholeFileNoteFor(const DiffViewOptions& options, bool textsHeld, const TextsWait& wait);
+
 	class DiffView
 	{
 	public:
+		// What became of the texts the owner asked for, for the next Render only.
+		void SetTextsWait(TextsWait wait) { m_TextsWait = std::move(wait); }
+
 		void Render(const Core::FileDiff& file, const GitPalette& palette,
 					const SyntaxPalette& syntax, ImU32 selection,
 					const Core::Ref<const FileTexts>& wholeFileTexts, const FileTokens& tokens,
@@ -56,7 +73,7 @@ namespace Graphite {
 	private:
 		struct SideBySideContext;
 
-		void RenderToolbar(const Core::FileDiff& file);
+		void RenderToolbar(const Core::FileDiff& file, const std::optional<WholeFileNote>& note);
 		void RenderUnified(const std::vector<DiffRow>& rows, const Core::FileDiff& file,
 						   const GitPalette& palette, const SyntaxPalette& syntax,
 						   ImU32 selection, const FileTokens& tokens, bool wordWrap);
@@ -116,6 +133,8 @@ namespace Graphite {
 		void ClearLineCache();
 
 		DiffViewOptions m_Options;
+
+		TextsWait m_TextsWait;
 
 		struct Layout
 		{

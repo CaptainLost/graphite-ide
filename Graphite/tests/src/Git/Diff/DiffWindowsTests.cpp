@@ -264,3 +264,104 @@ TEST_CASE("A diff opened while another window has the focus takes the focus as i
 
 	CHECK(IsFocused(Graphite::DiffWindowName(unstaged)));
 }
+
+namespace {
+
+	constexpr float kNoTimePasses = 0.0f;
+
+	Core::FileDiff ModifiedFile(const char* path)
+	{
+		Core::FileDiff file;
+		file.Change = Core::FileChange::Modified;
+		file.NewPath = path;
+		file.OldPath = path;
+		return file;
+	}
+}
+
+TEST_CASE("A commit diff still on its way has no failure to show, so its tab shows the loader")
+{
+	EmptyGitPort port;
+	Graphite::GitModel model(port, [](std::function<void()>) {});
+	model.SetRoot("C:/repo");
+
+	const Graphite::OpenDiff diff = Diff(0xa1, "a.txt");
+	model.RequestDiffFor(*diff.Commit);
+
+	CHECK_FALSE(Graphite::DiffFailureOf(diff, model).has_value());
+	CHECK(model.GetDiffFor(*diff.Commit) == nullptr);
+}
+
+TEST_CASE("A commit diff that failed names the commit and the reason")
+{
+	EmptyGitPort port;
+	port.DiffFailure = Core::Error{Core::ErrorCode::IoFailure, "object not found"};
+	Graphite::GitModel model(port, RunJobsInline());
+	model.SetRoot("C:/repo");
+
+	const Graphite::OpenDiff diff = Diff(0xa1, "a.txt");
+	model.RequestDiffFor(*diff.Commit);
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	CHECK(Graphite::DiffFailureOf(diff, model) ==
+		  std::optional<std::string>{"Couldn't read the diff of " + diff.Commit->ShortHex() + ": object not found"});
+}
+
+TEST_CASE("Retry forgets a failed commit diff and asks again, so the loader shows at once and the diff can land")
+{
+	EmptyGitPort port;
+	port.DiffFailure = Core::Error{Core::ErrorCode::IoFailure, "busy"};
+	Graphite::GitModel model(port, RunJobsInline());
+	model.SetRoot("C:/repo");
+
+	const Graphite::OpenDiff diff = Diff(0xa1, "a.txt");
+	model.RequestDiffFor(*diff.Commit);
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+	REQUIRE(Graphite::DiffFailureOf(diff, model).has_value());
+
+	port.DiffFailure.reset();
+	Graphite::RetryDiff(diff, model);
+
+	CHECK_FALSE(Graphite::DiffFailureOf(diff, model).has_value());
+
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	CHECK(model.GetDiffFor(*diff.Commit) != nullptr);
+}
+
+TEST_CASE("A working-tree diff that failed names the file, and Retry shows the loader at once")
+{
+	EmptyGitPort port;
+	port.DiffFailure = Core::Error{Core::ErrorCode::IoFailure, "index locked"};
+	Graphite::GitModel model(port, RunJobsInline());
+	model.SetRoot("C:/repo");
+
+	const Graphite::OpenDiff diff{.Target = Core::DiffTarget::WorkTreeToIndex, .Path = "src/a.txt"};
+	model.RequestWorkingTreeDiff({.Target = diff.Target, .File = diff.Path});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	CHECK(Graphite::DiffFailureOf(diff, model) ==
+		  std::optional<std::string>{"Couldn't read the diff of a.txt: index locked"});
+
+	Graphite::RetryDiff(diff, model);
+
+	CHECK(model.IsWorkingTreeDiffLoading());
+	CHECK_FALSE(Graphite::DiffFailureOf(diff, model).has_value());
+}
+
+TEST_CASE("A working-tree diff whose texts could not be read says why beside the diff")
+{
+	EmptyGitPort port;
+	port.DiffAnswer.Files.push_back(ModifiedFile("a.txt"));
+	port.TextsFailure = Core::Error{Core::ErrorCode::IoFailure, "access denied"};
+	Graphite::GitModel model(port, RunJobsInline());
+	model.SetRoot("C:/repo");
+
+	model.RequestWorkingTreeDiff({.Target = Core::DiffTarget::WorkTreeToIndex, .File = "a.txt"});
+	model.OnUpdate(Core::Timestep{kNoTimePasses});
+
+	REQUIRE(model.GetWorkingTreeDiff() != nullptr);
+	CHECK(model.GetWorkingTreeTexts() == nullptr);
+	REQUIRE(model.GetWorkingTreeTextsFailure().has_value());
+	CHECK(model.GetWorkingTreeTextsFailure()->Message == "access denied");
+}
