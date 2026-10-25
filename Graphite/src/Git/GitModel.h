@@ -94,6 +94,10 @@ namespace Graphite {
 		// Why the folder's last listing failed, until it is asked for again.
 		std::optional<Core::Error> GetUntrackedFailureIn(const std::filesystem::path& directory) const;
 
+		// WARNING: False while a kept listing waits to be read again after a status, when its rows may name files
+		// already staged or gone, so their buttons must not act on them.
+		bool IsUntrackedListingCurrent(const std::filesystem::path& directory) const;
+
 		void RequestBranches();
 		void RequestStashes();
 		void RequestHead();

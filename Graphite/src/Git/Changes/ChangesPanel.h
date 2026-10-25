@@ -42,8 +42,14 @@ namespace Graphite {
 						   const Core::WorkingTreeStatus& status, const GitPalette& palette,
 						   bool spaced);
 
+		enum class RowButtons
+		{
+			Offered,
+			HeldForFreshListing
+		};
+
 		void RenderRow(std::size_t entryIndex, const Core::WorkingTreeStatus& status,
-					   const GitPalette& palette);
+					   const GitPalette& palette, RowButtons buttons);
 
 		void RenderFolderRow(std::size_t entryIndex, const Core::WorkingTreeStatus& status,
 							 const GitPalette& palette);

@@ -440,7 +440,7 @@ namespace Graphite {
 				}
 				else
 				{
-					RenderRow(entryIndex, status, palette);
+					RenderRow(entryIndex, status, palette, RowButtons::Offered);
 				}
 			}
 
@@ -453,7 +453,7 @@ namespace Graphite {
 	}
 
 	void ChangesPanel::RenderRow(std::size_t entryIndex, const Core::WorkingTreeStatus& status,
-								 const GitPalette& palette)
+								 const GitPalette& palette, RowButtons buttons)
 	{
 		const Core::FileStatus& file = status.Entries[entryIndex];
 
@@ -566,7 +566,7 @@ namespace Graphite {
 		if (rowHovered)
 		{
 			ImGui::SetCursorPos(ImVec2(rightEdge - buttonsWidth, ListRowTextTop(rowStart.y)));
-			ImGui::BeginDisabled(m_Model.IsWriteUnsettled());
+			ImGui::BeginDisabled(m_Model.IsWriteUnsettled() || buttons == RowButtons::HeldForFreshListing);
 
 			if (offersDiscard)
 			{
@@ -805,9 +805,12 @@ namespace Graphite {
 		}
 		else
 		{
+			const RowButtons childButtons = m_Model.IsUntrackedListingCurrent(file.Path) ? RowButtons::Offered
+																						  : RowButtons::HeldForFreshListing;
+
 			for (std::size_t childIndex = 0; childIndex < listing->Entries.size(); ++childIndex)
 			{
-				RenderRow(childIndex, *listing, palette);
+				RenderRow(childIndex, *listing, palette, childButtons);
 			}
 		}
 

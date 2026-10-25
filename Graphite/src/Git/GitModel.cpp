@@ -690,6 +690,20 @@ namespace Graphite {
 		return held == nullptr ? nullptr : held->Listing;
 	}
 
+	bool GitModel::IsUntrackedListingCurrent(const std::filesystem::path& directory) const
+	{
+		const CachedUntracked* held = FindUntracked(Core::ToUtf8(directory));
+
+		if (held == nullptr || held->Listing == nullptr)
+		{
+			return false;
+		}
+
+		const bool beingReadAgain = held->Requested > held->Applied;
+
+		return !held->Stale && !beingReadAgain;
+	}
+
 	std::optional<Core::Error> GitModel::GetUntrackedFailureIn(const std::filesystem::path& directory) const
 	{
 		const CachedUntracked* held = FindUntracked(Core::ToUtf8(directory));
