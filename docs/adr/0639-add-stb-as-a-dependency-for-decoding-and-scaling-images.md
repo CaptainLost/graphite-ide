@@ -17,7 +17,7 @@ pinned to the commit it was added at (`003501f6`). `vendor/premake/stb.lua`
 builds one C file, `vendor/premake/stb/StbImplementation.c`, into a static
 library, `stb`, as `miniz` is. The file holds the bodies of `stb_image.h`, with
 only png, jpeg, gif and bmp enabled and no file I/O, and of
-`stb_image_resize.h`. Core includes the two headers as external includes and
+`stb_image_resize2.h`. Core includes the two headers as external includes and
 never defines an implementation macro; the executables and test projects link
 `stb`.
 
