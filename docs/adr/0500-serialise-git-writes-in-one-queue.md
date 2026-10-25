@@ -62,6 +62,9 @@ Amended by [0557](0557-report-a-failed-action-in-a-toast-rather-than-in-the-pane
 failures are now queued and handed out once through `TakeWriteError()`, and
 reported in a toast rather than in the panel.
 
+Amended by [0636](0636-run-git-writes-on-a-worker-of-their-own.md): the write
+jobs run on a one-worker queue of their own instead of the shared read queue.
+
 ## Rationale
 
 **Why one model.** The argument for a second model — that `GitModel` is already

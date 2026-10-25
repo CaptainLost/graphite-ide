@@ -662,4 +662,10 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0630](0630-leave-the-branch-out-of-the-title-bar-since-the-status-bar-shows-it.md) | Leave the branch out of the title bar, since the status bar shows it | proposed | 2026-10-21 |
 | [0631](0631-draw-every-diff-with-one-set-of-options-kept-in-the-settings.md) | Draw every diff with one set of options kept in the settings | proposed | 2026-10-21 |
 | [0632](0632-keep-a-short-history-of-each-language-server-and-show-it-in-the-status-bar-s-tooltip.md) | Keep a short history of each language server and show it in the status bar's tooltip | proposed | 2026-10-21 |
+| [0633](0633-show-every-wait-with-the-core-loader-and-say-nothing-is-there-only-after-an-answer-said-so.md) | Show every wait with the Core loader and say nothing is there only after an answer said so | proposed | 2026-10-25 |
+| [0634](0634-give-every-language-server-request-a-deadline.md) | Give every language-server request a deadline | proposed | 2026-10-25 |
+| [0635](0635-report-each-git-write-in-the-status-bar-from-the-click-until-the-status-after-it-lands.md) | Report each git write in the status bar from the click until the status after it lands | proposed | 2026-10-25 |
+| [0636](0636-run-git-writes-on-a-worker-of-their-own.md) | Run git writes on a worker of their own | proposed | 2026-10-25 |
+| [0637](0637-keep-a-command-terminal-open-after-its-process-exits.md) | Keep a command terminal open after its process exits | proposed | 2026-10-25 |
+| [0638](0638-show-where-a-navigation-command-waits-and-how-it-ended-in-a-bubble-at-the-caret.md) | Show where a navigation command waits and how it ended in a bubble at the caret | proposed | 2026-10-25 |
 <!-- /adr-index -->
