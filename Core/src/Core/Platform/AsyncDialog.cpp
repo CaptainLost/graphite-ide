@@ -16,7 +16,7 @@ namespace Core {
 
 	namespace {
 
-		constexpr std::uint32_t kNoPickerThreadYet = 0;
+		constexpr std::uint32_t kNoPickerThread = 0;
 
 #ifdef CORE_PLATFORM_WINDOWS
 		std::uint32_t CallingThreadSystemId()
@@ -36,7 +36,7 @@ namespace Core {
 #else
 		std::uint32_t CallingThreadSystemId()
 		{
-			return kNoPickerThreadYet;
+			return kNoPickerThread;
 		}
 
 		void BringShownWindowOfThreadToFront(std::uint32_t)
@@ -50,7 +50,7 @@ namespace Core {
 		std::mutex Mutex;
 		std::optional<Result<std::filesystem::path>> Answer;
 		bool AbandonedByOwner = false;
-		std::uint32_t PickerThread = kNoPickerThreadYet;
+		std::uint32_t PickerThread = kNoPickerThread;
 	};
 
 	// Does not join the picker's thread: joining would block the thread that draws on a dialog the
@@ -96,13 +96,13 @@ namespace Core {
 			return;
 		}
 
-		std::uint32_t pickerThread = kNoPickerThreadYet;
+		std::uint32_t pickerThread = kNoPickerThread;
 		{
 			const std::lock_guard lock(m_PendingDialog->Mutex);
 			pickerThread = m_PendingDialog->PickerThread;
 		}
 
-		if (pickerThread == kNoPickerThreadYet)
+		if (pickerThread == kNoPickerThread)
 		{
 			return;
 		}
@@ -158,6 +158,10 @@ namespace Core {
 		Result<std::filesystem::path> answer = picker();
 
 		const std::lock_guard lock(pendingDialog.Mutex);
+
+		// WARNING: The thread's id is free for another thread once this returns, and the owner learns of the answer only
+		// on its next Poll, so the id is let go here rather than there.
+		pendingDialog.PickerThread = kNoPickerThread;
 
 		if (pendingDialog.AbandonedByOwner)
 		{

@@ -51,16 +51,28 @@ namespace {
 		// Shared, because a dialog abandoned by its owner still runs to the end.
 		std::shared_ptr<std::promise<void>> Release = std::make_shared<std::promise<void>>();
 		std::shared_ptr<std::atomic<bool>> Returned = std::make_shared<std::atomic<bool>>(false);
+		std::shared_ptr<std::atomic<bool>> Running = std::make_shared<std::atomic<bool>>(false);
 
 		AsyncDialog::Picker MakePicker() const
 		{
-			return [release = Release->get_future().share(), returned = Returned]() -> Picked {
+			return [release = Release->get_future().share(), returned = Returned, running = Running]() -> Picked {
+				running->store(true);
 				release.wait();
 				returned->store(true);
 				return std::filesystem::path("picked");
 			};
 		}
 	};
+
+	void WaitUntilPickerRuns(const HeldOpenPicker& heldPicker)
+	{
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kGiveUpAfter;
+
+		while (!heldPicker.Running->load() && std::chrono::steady_clock::now() < deadline)
+		{
+			std::this_thread::sleep_for(kPollInterval);
+		}
+	}
 
 	void WaitUntilPickerReturns(const HeldOpenPicker& heldPicker)
 	{
@@ -233,6 +245,8 @@ TEST_CASE("AsyncDialog bringing an open dialog to the front neither waits for th
 	HeldOpenPicker heldPicker;
 	bool delivered = false;
 	REQUIRE(dialog.Start(heldPicker.MakePicker(), [&](const std::filesystem::path&) { delivered = true; }, IgnoreFailure));
+	WaitUntilPickerRuns(heldPicker);
+	REQUIRE(heldPicker.Running->load());
 
 	dialog.BringToFront();
 	dialog.Poll();
