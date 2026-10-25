@@ -8,7 +8,6 @@
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/LoadingState.h"
-#include "Core/Time/TimeZone.h"
 
 #include "Theme/Palettes.h"
 #include "Theme/GitPalette.h"
@@ -557,7 +556,7 @@ namespace Graphite {
 		frame.SelectedRef = m_SelectedStash.has_value() ? std::nullopt : m_SelectedRef;
 		frame.CheckingOut = CheckoutMarkedOnRows(Checkouts());
 		frame.Now = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
-		frame.LocalOffset = LocalOffset();
+		frame.LocalOffset = LocalClockOffset();
 
 		return frame;
 	}
@@ -711,15 +710,6 @@ namespace Graphite {
 		{
 			ImGui::EndMenu();
 		}
-	}
-
-	std::chrono::minutes GitView::LocalOffset()
-	{
-		// WARNING: The offset is resolved on every call and never cached, since it changes at a
-		// daylight-saving boundary.
-		const std::chrono::sys_seconds now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
-
-		return Core::OffsetAt(Core::LocalTimeZone(), now);
 	}
 
 	void GitView::RequestLog(const HistoryReach& reach, LogAsk ask)
@@ -906,7 +896,7 @@ namespace Graphite {
 			m_Commits.SetRoomBelow(status.has_value() ? HistoryStatusLineHeight() : 0.0f);
 			m_Commits.SetEmptyText(IsShownLogNarrowed() ? "No matching commits." : "No commits yet.");
 
-			m_Commits.Render(*page, m_Graph, palette, LocalOffset(), diffOf, diffFailed, m_CommitRefs,
+			m_Commits.Render(*page, m_Graph, palette, LocalClockOffset(), diffOf, diffFailed, m_CommitRefs,
 							 m_Filter.Get().Text, m_Filter.Get().Path, separator);
 
 			// WARNING: Drawn straight after the list, before anything else moves the cursor, so it sits
@@ -1040,7 +1030,7 @@ namespace Graphite {
 
 		const bool diffFailed = m_Model.IsDiffFailed(commit.Id);
 
-		if (Graphite::RenderCommitDetails(commit, stats, diffFailed, LocalOffset(), palette))
+		if (Graphite::RenderCommitDetails(commit, stats, diffFailed, LocalClockOffset(), palette))
 		{
 			m_Commits.ClearCommitSelection();
 		}

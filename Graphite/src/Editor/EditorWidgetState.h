@@ -4,6 +4,9 @@
 #include "Editor/EditorCommands.h"
 #include "Editor/Find/SelectionOccurrences.h"
 
+#include <imgui.h>
+#include <imgui_internal.h>
+
 #include <cstddef>
 #include <limits>
 #include <optional>
@@ -75,5 +78,8 @@ namespace Graphite {
 		OccurrenceMemo Occurrences;
 
 		std::vector<PendingEditorAction> PendingActions;
+
+		// Where the caret line's author was drawn this frame; empty on a frame that drew none.
+		std::optional<ImRect> AuthorTextRect;
 	};
 }

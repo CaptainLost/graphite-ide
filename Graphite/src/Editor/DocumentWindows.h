@@ -24,6 +24,7 @@
 
 #include "Image/Zoom.h"
 
+#include "Git/Blame/BlameModel.h"
 #include "Git/Changes/ChangeMarkersModel.h"
 #include "Git/GitDecorationView.h"
 
@@ -46,6 +47,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
+#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -73,6 +75,7 @@ namespace Graphite {
 		bool WordWrap;
 		ChangeMarkerDisplay ChangeMarkers;
 		bool HighlightOccurrences;
+		bool LineAuthor;
 		HoverSettings Hover;
 		const ResolvedScheme& Scheme;
 		Core::TabCloseRequests& CloseRequests;
@@ -85,9 +88,9 @@ namespace Graphite {
 	public:
 		DocumentWindows(Core::DocumentSet& documents, ModalGate& modals,
 						DocumentServerPort& server, const DiagnosticsModel& diagnostics,
-						ChangeMarkersModel& changeMarkers, PreviewSemantics& previewSemantics, AnalysisCache& analysis,
-						AnalysisStore& analysisStore, WorkspaceAnalysis& workspaceAnalysis, Core::EventBus& events,
-						ActiveEditorTarget& activeEditor, ImageTabs& images)
+						ChangeMarkersModel& changeMarkers, BlameModel& blame, PreviewSemantics& previewSemantics,
+						AnalysisCache& analysis, AnalysisStore& analysisStore, WorkspaceAnalysis& workspaceAnalysis,
+						Core::EventBus& events, ActiveEditorTarget& activeEditor, ImageTabs& images)
 			: m_Documents(documents),
 			  m_ActiveEditor(activeEditor),
 			  m_Images(images),
@@ -95,6 +98,7 @@ namespace Graphite {
 			  m_Server(server),
 			  m_Diagnostics(diagnostics),
 			  m_ChangeMarkers(changeMarkers),
+			  m_Blame(blame),
 			  m_PreviewSemantics(previewSemantics),
 			  m_Analysis(analysis),
 			  m_AnalysisStore(analysisStore),
@@ -368,7 +372,7 @@ namespace Graphite {
 		void RenderDocumentWindows(const CommandContext& context, float fontSize,
 								   Core::IndentStyle indentStyle, unsigned int fallbackDockNode,
 								   bool wordWrap, ChangeMarkerDisplay changeDisplay,
-								   bool highlightOccurrences, HoverSettings hoverSettings,
+								   bool highlightOccurrences, bool lineAuthor, HoverSettings hoverSettings,
 								   const ResolvedScheme& scheme, ReferencesPanel& referencesPanel,
 								   Core::TabCloseRequests& closeRequests,
 								   const std::filesystem::path& workspaceRoot, EditorSettings& settings);
@@ -433,6 +437,8 @@ namespace Graphite {
 		const DiagnosticsModel& m_Diagnostics;
 
 		ChangeMarkersModel& m_ChangeMarkers;
+
+		BlameModel& m_Blame;
 
 		PreviewSemantics& m_PreviewSemantics;
 
@@ -523,6 +529,9 @@ namespace Graphite {
 			EditorWidgetState Widget;
 
 			HoverState Hover;
+
+			// ImGui::GetTime() of the last edit made through the editor; the lowest double when there was none.
+			double LastEditAt = std::numeric_limits<double>::lowest();
 		};
 
 		std::map<std::filesystem::path, DocumentState> m_States;

@@ -2,6 +2,7 @@
 
 #include "DrawnColours.h"
 #include "HoveredItems.h"
+#include "DrawnGlyphs.h"
 #include "ImGuiFrames.h"
 
 #include "Editor/TextEditorWidget.h"
@@ -10,6 +11,8 @@
 #include "Editor/Hover/HoverState.h"
 #include "Editor/Overlays/DiagnosticOverlay.h"
 #include "Editor/Overlays/LensModel.h"
+#include "Git/Blame/HeadBlame.h"
+#include "Git/Blame/LineAuthors.h"
 #include "Git/Changes/ChangeMarkers.h"
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Syntax/SyntaxCache.h"
@@ -22,6 +25,8 @@
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Command/MenuItem.h"
+#include "Core/Git/Blame.h"
+#include "Core/Git/Commit.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/Scrollbar.h"
@@ -37,8 +42,10 @@
 
 #include <algorithm>
 #include <cfloat>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -432,6 +439,83 @@ namespace {
 	float TextBottomOfRow(float rowTop)
 	{
 		return TextTopOfRow(rowTop) + kEditorFontSize;
+	}
+
+	constexpr std::string_view kTwoLines = "first\nsecond\n";
+	constexpr std::size_t kTwoLinesLineCount = 3;
+	constexpr std::size_t kBothTextLines = 2;
+	constexpr std::size_t kOnlyTheFirstLine = 1;
+	constexpr std::uint8_t kAnnsCommitByte = 0xA1;
+	constexpr std::chrono::sys_seconds kCommittedAt{std::chrono::seconds{1'700'000'000}};
+	constexpr std::chrono::days kThreeMonths{90};
+
+	// A table for kTwoLines whose first `committed` lines Ann last changed in a commit titled `title`; the rest are
+	// Unknown.
+	Graphite::LineAuthors AuthorsByAnn(std::size_t lineCount, std::size_t committed, std::string title)
+	{
+		Core::Oid commit;
+		commit.Bytes.fill(kAnnsCommitByte);
+
+		auto blame = std::make_shared<Core::Blame>();
+		blame->File = "widget.txt";
+		blame->LineCount = committed;
+		blame->Hunks = {Core::BlameHunk{.FirstLine = 1,
+										.LineCount = committed,
+										.Commit = commit,
+										.OriginalPath = "widget.txt",
+										.OriginalFirstLine = 1}};
+
+		Core::CommitSummary& summary = blame->Commits[commit];
+		summary.Id = commit;
+		summary.Author = Core::Signature{.Name = "Ann", .Email = "ann@example.com", .When = kCommittedAt};
+		summary.Summary = std::move(title);
+
+		auto head = std::make_shared<Graphite::HeadBlame>();
+		head->Tracked = true;
+		head->Blame = std::move(blame);
+		head->HeadText = std::string{kTwoLines};
+
+		Graphite::LineAuthors authors;
+		authors.Head = std::move(head);
+		authors.Lines.resize(lineCount);
+
+		for (std::size_t line = 0; line < committed && line < lineCount; ++line)
+		{
+			authors.Lines[line] = Graphite::LineAuthor{.Kind = Graphite::LineAuthorKind::Committed,
+													   .Hunk = 0,
+													   .HeadLine = line + 1};
+		}
+
+		return authors;
+	}
+
+	void ShowAuthors(EditorFrames& editor, const Graphite::LineAuthors& authors)
+	{
+		editor.View.Author.Authors = &authors;
+		editor.View.Author.Now = kCommittedAt + kThreeMonths;
+	}
+
+	std::vector<DrawnGlyph> SurfaceGlyphsIn(ImU32 colour)
+	{
+		const ImGuiWindow* surface = EditorSurface();
+		REQUIRE(surface != nullptr);
+
+		std::vector<DrawnGlyph> found;
+
+		for (const DrawnGlyph& glyph : DrawnGlyphs(*surface->DrawList))
+		{
+			if (glyph.Colour == colour)
+			{
+				found.push_back(glyph);
+			}
+		}
+
+		return found;
+	}
+
+	bool WithinRow(const DrawnGlyph& glyph, float rowTop)
+	{
+		return glyph.Box.Min.y >= rowTop && glyph.Box.Max.y <= rowTop + kEditorLineHeight;
 	}
 }
 
@@ -1340,4 +1424,123 @@ TEST_CASE("Where a document just fits its surface, the rows reserve room for a s
 		CHECK(scrollbarShown == (linesPastFit > 0));
 		CHECK(item.ColumnsPerWrappedRow == Graphite::WrappedColumns(*result.Wrap, static_cast<std::size_t>(lineCount), shownOrHidden));
 	}
+}
+
+TEST_CASE("Line author is drawn after the caret line's text in the lens colour")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kTwoLinesLineCount, kBothTextLines, "Fix");
+	Graphite::EditorWidgetState widget;
+
+	ShowAuthors(editor, authors);
+	editor.View.Widget = &widget;
+	editor.Next();
+	editor.Next();
+
+	const float lineTop = editor.CaretScreenPos().y;
+	float textRight = -FLT_MAX;
+
+	for (const DrawnGlyph& glyph : SurfaceGlyphsIn(DarkEditorPalette().Text))
+	{
+		if (WithinRow(glyph, lineTop))
+		{
+			textRight = std::max(textRight, glyph.Box.Max.x);
+		}
+	}
+
+	REQUIRE(textRight > editor.CaretScreenPos().x);
+
+	const std::vector<DrawnGlyph> author = SurfaceGlyphsIn(DarkEditorPalette().Lens);
+	REQUIRE_FALSE(author.empty());
+	REQUIRE(widget.AuthorTextRect.has_value());
+
+	for (const DrawnGlyph& glyph : author)
+	{
+		CHECK(glyph.Box.Min.x > textRight);
+		CHECK(WithinRow(glyph, lineTop));
+		CHECK(widget.AuthorTextRect->Contains(glyph.Box.GetCenter()));
+	}
+
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Line author is not drawn on other lines")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kTwoLinesLineCount, kBothTextLines, "Fix");
+
+	ShowAuthors(editor, authors);
+	PlaceCaret(editor.Item, BufferOf(editor.Item).LineStart(kSecondLine));
+	editor.Next();
+	editor.Next();
+
+	const float secondLineTop = editor.CaretScreenPos().y;
+	const std::vector<DrawnGlyph> author = SurfaceGlyphsIn(DarkEditorPalette().Lens);
+	REQUIRE_FALSE(author.empty());
+
+	for (const DrawnGlyph& glyph : author)
+	{
+		CHECK(WithinRow(glyph, secondLineTop));
+	}
+}
+
+TEST_CASE("Line author is hidden while typing")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kTwoLinesLineCount, kBothTextLines, "Fix");
+	Graphite::EditorWidgetState widget;
+
+	ShowAuthors(editor, authors);
+	editor.View.Widget = &widget;
+	editor.Next();
+	editor.Next();
+	REQUIRE(widget.AuthorTextRect.has_value());
+
+	editor.View.Author.HiddenWhileTyping = true;
+	editor.Next();
+
+	CHECK(SurfaceGlyphsIn(DarkEditorPalette().Lens).empty());
+	CHECK_FALSE(widget.AuthorTextRect.has_value());
+}
+
+TEST_CASE("Line author draws nothing past a stale table")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kOnlyTheFirstLine, kOnlyTheFirstLine, "Fix");
+
+	ShowAuthors(editor, authors);
+	PlaceCaret(editor.Item, BufferOf(editor.Item).LineStart(kSecondLine));
+	editor.Next();
+	editor.Next();
+
+	CHECK(SurfaceGlyphsIn(DarkEditorPalette().Lens).empty());
+}
+
+TEST_CASE("Line author leaves the horizontal scroll range alone")
+{
+	constexpr int kTitleRepeats = 8;
+
+	std::string longTitle;
+
+	for (int repeat = 0; repeat < kTitleRepeats; ++repeat)
+	{
+		longTitle += "Iterate a copy so handlers can unsubscribe while publishing ";
+	}
+
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kTwoLinesLineCount, kBothTextLines, longTitle);
+
+	ShowAuthors(editor, authors);
+	editor.Next();
+	editor.Next();
+
+	REQUIRE_FALSE(SurfaceGlyphsIn(DarkEditorPalette().Lens).empty());
+	const float withAuthor = EditorSurface()->ScrollMax.x;
+
+	editor.View.Author.Authors = nullptr;
+	editor.Next();
+	editor.Next();
+
+	REQUIRE(SurfaceGlyphsIn(DarkEditorPalette().Lens).empty());
+	CHECK(EditorSurface()->ScrollMax.x == withAuthor);
 }

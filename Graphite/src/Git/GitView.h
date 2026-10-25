@@ -195,8 +195,6 @@ namespace Graphite {
 
 		void RenderDiff(const GitPalette& palette);
 
-		static std::chrono::minutes LocalOffset();
-
 		void RenderDetails(const Core::CommitSummary& commit, const GitPalette& palette);
 
 		void RenderFilterBar();

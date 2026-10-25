@@ -3,6 +3,7 @@
 #include "Core/Base/Base.h"
 
 #include "Editor/ActiveTextDocument.h"
+#include "Editor/Authors/AuthorText.h"
 #include "Editor/Breadcrumb.h"
 #include "Editor/EditorSettings.h"
 #include "Editor/Navigation/DefinitionNavigation.h"
@@ -12,6 +13,7 @@
 #include "Editor/TabColour.h"
 #include "Theme/Palettes.h"
 #include "Editor/TextEditorWidget.h"
+#include "Git/History/CommitLabels.h"
 
 #include "Image/ImageTabView.h"
 #include "Image/ImageTabs.h"
@@ -1577,8 +1579,12 @@ namespace Graphite {
 
 		m_Images.Prune(openPaths);
 
-		m_ChangeMarkers.Retain(
-			[this](const std::filesystem::path& path) { return m_Documents.GetStore().Find(path) != nullptr; });
+		const auto isOpen = [this](const std::filesystem::path& path) {
+			return m_Documents.GetStore().Find(path) != nullptr;
+		};
+
+		m_ChangeMarkers.Retain(isOpen);
+		m_Blame.Retain(isOpen);
 	}
 
 	bool DocumentWindows::IsAnalysing(const std::filesystem::path& path) const
@@ -2391,7 +2397,7 @@ namespace Graphite {
 	void DocumentWindows::RenderDocumentWindows(
 		const CommandContext& context, float fontSize, Core::IndentStyle indentStyle,
 		unsigned int fallbackDockNode, bool wordWrap, ChangeMarkerDisplay changeDisplay,
-		bool highlightOccurrences, HoverSettings hoverSettings, const ResolvedScheme& scheme,
+		bool highlightOccurrences, bool lineAuthor, HoverSettings hoverSettings, const ResolvedScheme& scheme,
 		ReferencesPanel& referencesPanel,
 		Core::TabCloseRequests& closeRequests, const std::filesystem::path& workspaceRoot, EditorSettings& settings)
 	{
@@ -2412,6 +2418,9 @@ namespace Graphite {
 		std::map<std::filesystem::path, ShownPicture> shownPictures;
 		std::optional<std::filesystem::path> focusedPicture;
 		bool documentFocused = false;
+
+		// Resolved at most once a frame, and only for a tab that shows an author, because each lookup asks ICU.
+		std::optional<std::chrono::minutes> clockOffset;
 
 		for (std::size_t index = 0; index < m_Documents.GetCount();)
 		{
@@ -2539,6 +2548,40 @@ namespace Graphite {
 					wantsChanges ? m_ChangeMarkers.Get(item.Path) : nullptr;
 				view.Changes = changes.get();
 
+				Core::Ref<const LineAuthors> authors;
+
+				if (lineAuthor && item.Document)
+				{
+					m_Blame.Update(item.Path, item.Document->GetBuffer());
+					authors = m_Blame.Get(item.Path);
+				}
+
+				view.Author.Authors = authors.get();
+				view.Author.HoverDelaySeconds =
+					std::chrono::duration<float>(std::chrono::milliseconds{hoverSettings.DelayMs}).count();
+
+				if (authors)
+				{
+					const double sinceEdit = ImGui::GetTime() - state.LastEditAt;
+
+					view.Author.HiddenWhileTyping = sinceEdit < kAuthorQuietSeconds;
+					view.Author.Now = std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now());
+
+					if (!clockOffset)
+					{
+						clockOffset = LocalClockOffset();
+					}
+
+					view.Author.Offset = *clockOffset;
+
+					// WARNING: The loop idles between frames, so the frame that ends the quiet period has to be
+					// asked for, or the text stays hidden until something else draws.
+					if (view.Author.HiddenWhileTyping)
+					{
+						Core::Redraw::RequestIn(std::chrono::duration<double>(kAuthorQuietSeconds - sinceEdit));
+					}
+				}
+
 				view.Anchor = &state.Anchor;
 				view.Widget = &state.Widget;
 
@@ -2607,6 +2650,11 @@ namespace Graphite {
 											 .SurfaceMax = ImVec2(editorResult.SurfaceRight, editorResult.SurfaceBottom),
 											 .Viewport = editorResult.Viewport,
 											 .DrawnInFrame = ImGui::GetFrameCount()};
+
+				if (editorResult.Edited)
+				{
+					state.LastEditAt = ImGui::GetTime();
+				}
 
 				if (lens != nullptr)
 				{
@@ -2741,7 +2789,8 @@ namespace Graphite {
 		RenderDefinitionChoices(frame.Scheme, frame.Indent.Width);
 
 		RenderDocumentWindows(context, frame.FontSize, frame.Indent, frame.FallbackDockNode,
-							  frame.WordWrap, frame.ChangeMarkers, frame.HighlightOccurrences, frame.Hover, frame.Scheme,
+							  frame.WordWrap, frame.ChangeMarkers, frame.HighlightOccurrences, frame.LineAuthor,
+							  frame.Hover, frame.Scheme,
 							  referencesPanel,
 							  frame.CloseRequests, frame.WorkspaceRoot, frame.Settings);
 

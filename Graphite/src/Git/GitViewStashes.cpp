@@ -98,7 +98,7 @@ namespace Graphite {
 			return;
 		}
 
-		const std::chrono::minutes localOffset = LocalOffset();
+		const std::chrono::minutes localOffset = LocalClockOffset();
 
 		for (const Core::StashEntry& stash : *stashes)
 		{

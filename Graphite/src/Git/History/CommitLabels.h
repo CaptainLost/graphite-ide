@@ -15,6 +15,9 @@ namespace Graphite {
 
 	std::string RelativeAge(std::chrono::sys_seconds when, std::chrono::sys_seconds now);
 
+	// WARNING: Resolved on every call and never cached, since the offset changes at a daylight-saving boundary.
+	std::chrono::minutes LocalClockOffset();
+
 	std::string AuthorInitials(const Core::Signature& signature);
 
 	std::string AuthorName(const Core::Signature& signature);

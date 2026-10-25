@@ -427,6 +427,7 @@ namespace Graphite {
 	{
 		m_Git.SubscribeTo(m_Events);
 		m_ChangeMarkers.SubscribeTo(m_Events);
+		m_Blame.SubscribeTo(m_Events);
 		m_Reviews.SubscribeTo(m_Events);
 
 		m_Events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent& event) {
@@ -570,9 +571,11 @@ namespace Graphite {
 		{
 			m_SeenGitWrites = writes;
 			m_ChangeMarkers.Invalidate();
+			m_Blame.Invalidate();
 		}
 
 		m_ChangeMarkers.OnUpdate(timestep);
+		m_Blame.OnUpdate(timestep);
 
 		FollowBranchesIntoReviews();
 		m_Reviews.OnUpdate(timestep);
@@ -1196,6 +1199,7 @@ namespace Graphite {
 											 .ChangeMarkers = {.Gutter = m_EditorSettings.HasGutterChangeMarkers(),
 															   .Scrollbar = m_EditorSettings.HasScrollbarChangeMarkers()},
 											 .HighlightOccurrences = m_EditorSettings.IsHighlightingOccurrences(),
+											 .LineAuthor = m_EditorSettings.HasLineAuthor(),
 											 .Hover = m_EditorSettings.GetHoverSettings(),
 											 .Scheme = m_ActiveScheme.Get(),
 											 .CloseRequests = m_TabCloseRequests,

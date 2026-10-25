@@ -14,6 +14,7 @@
 #include "UI/Dialogs/ModalQuestion.h"
 #include "Editor/Server/PreviewSemantics.h"
 #include "App/TitleBar.h"
+#include "Git/Blame/BlameModel.h"
 #include "Git/Changes/ChangeMarkersModel.h"
 #include "Git/Diff/DiffWindows.h"
 #include "Git/GitDecorations.h"
@@ -285,10 +286,10 @@ namespace Graphite {
 							  Core::ImGuiRenderer::GetTextures()};
 
 		// WARNING: Declared after m_DocumentPort, m_Analysis and m_AnalysisCoordinator, which it holds by reference.
-		// m_ChangeMarkers is declared further down and is not yet constructed here; only a reference to it
-		// is bound, and nothing reaches through that reference until the first frame.
+		// m_ChangeMarkers and m_Blame are declared further down and are not yet constructed here; only references
+		// to them are bound, and nothing reaches through those references until the first frame.
 		DocumentWindows m_DocumentWindows{m_Documents, m_Modals, m_DocumentPort,
-										  m_Diagnostics, m_ChangeMarkers, m_PreviewSemantics,
+										  m_Diagnostics, m_ChangeMarkers, m_Blame, m_PreviewSemantics,
 										  m_Analysis, m_AnalysisCoordinator.GetStore(),
 										  m_AnalysisCoordinator.GetPass(), m_Events, m_ActiveEditor,
 										  m_ImageTabs};
@@ -330,8 +331,8 @@ namespace Graphite {
 		ModalQuestion<std::filesystem::path> m_TrustParentQuestion;
 
 		// WARNING: Declared before m_Panels, which constructs the git views that hold references to these.
-		// The order among these six is deliberate. Every job that GitModel, ChangeMarkersModel and ReviewModel
-		// submit captures `this` and reads m_GitPort, so the two queues are declared LAST of the six:
+		// The order among these seven is deliberate. Every job that GitModel, ChangeMarkersModel, BlameModel and
+		// ReviewModel submit captures `this` and reads m_GitPort, so the two queues are declared LAST of the seven:
 		// members are destroyed in reverse order, which joins every worker before the models and the port go away.
 		// Declaring a queue first compiles and fails only under real threading.
 		RepositoryGitPort m_GitPort{std::filesystem::path{}};
@@ -339,6 +340,7 @@ namespace Graphite {
 					   [this](std::function<void()> job) { m_GitWrites.Submit(std::move(job)); }};
 		ChangeMarkersModel m_ChangeMarkers{
 			m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
+		BlameModel m_Blame{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		ReviewModel m_Reviews{m_GitPort, [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
 							  WatchWithDirectoryWatcher()};
 		Core::JobQueue m_Jobs;

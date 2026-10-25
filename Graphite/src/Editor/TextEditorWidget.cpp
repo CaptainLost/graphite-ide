@@ -3,6 +3,7 @@
 #include "Core/Base/EmptyVector.h"
 #include "Core/Base/Narrow.h"
 
+#include "Editor/Authors/AuthorText.h"
 #include "Editor/BracketMatch.h"
 #include "Editor/Overlays/DiagnosticOverlay.h"
 #include "Editor/EditorCommands.h"
@@ -90,6 +91,8 @@ namespace Graphite {
 
 		constexpr float kLineHeightFactor = 1.12f;
 		constexpr float kLensFontFactor = 0.78f;
+
+		constexpr float kAuthorGapCells = 3.0f;
 
 		constexpr float kHalf = 0.5f;
 		constexpr float kHairlineWidth = 1.0f;
@@ -2720,6 +2723,24 @@ namespace Graphite {
 			}
 		}
 
+		float WidthInCurrentFont(std::string_view text)
+		{
+			return ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
+		}
+
+		// Where the row's text ends, counted the way DrawRowText advances across it.
+		std::size_t EndColumnOfRow(const RowSlice& slice, const VisibleLineCache& cache, std::size_t tabWidth)
+		{
+			if (slice.FromByte >= slice.ToByte)
+			{
+				return slice.FromColumn;
+			}
+
+			const std::string_view rowText(cache.Expanded.data() + slice.FromByte, slice.ToByte - slice.FromByte);
+
+			return slice.FromColumn + Core::ColumnCount(rowText, tabWidth);
+		}
+
 		struct CaretPaint
 		{
 			std::size_t Line = 0;
@@ -2728,12 +2749,64 @@ namespace Graphite {
 			double MovedAt = 0.0;
 		};
 
+		// WARNING: The table can describe a buffer a few edits old, and the caret can then sit on a line past its
+		// end, so the line is checked against the table and not only against the buffer.
+		std::optional<ImRect> DrawLineAuthor(const RowCanvas& canvas, const RowSlice& slice,
+											 const VisibleLineCache& cache, const LineAuthorView& author,
+											 const CaretPaint& caret, std::size_t tabWidth)
+		{
+			const bool atCaretLineEnd = slice.Line == caret.Line && slice.LastRowOfLine;
+
+			if (author.Authors == nullptr || author.HiddenWhileTyping || !atCaretLineEnd ||
+				slice.Line >= author.Authors->Lines.size())
+			{
+				return std::nullopt;
+			}
+
+			const std::optional<AuthorTextParts> parts = AuthorTextPartsOf(*author.Authors, slice.Line, author.Now);
+
+			if (!parts)
+			{
+				return std::nullopt;
+			}
+
+			const float left = ColumnX(canvas, slice, EndColumnOfRow(slice, cache, tabWidth)) +
+							   kAuthorGapCells * canvas.Metrics.CellWidth;
+			const float visibleRight = canvas.Draw->GetClipRectMax().x;
+
+			PushLensFont(canvas.Metrics);
+
+			const std::optional<std::string> text = FitAuthorText(*parts, visibleRight - left, WidthInCurrentFont);
+			std::optional<ImRect> drawn;
+
+			if (text)
+			{
+				const float top = slice.Y + CentredTextOffset(canvas.Metrics.LineHeight, ImGui::GetFontSize());
+				const float right = left + WidthInCurrentFont(*text);
+
+				canvas.Draw->AddText(ImVec2(left, top), canvas.Palette.Lens, text->data(), text->data() + text->size());
+
+				// The gutter is painted over whatever part has scrolled under it, so that part is not offered.
+				const float textAreaLeft = canvas.Origin.x + canvas.ScrollX + canvas.Metrics.Gutter.TotalWidth;
+
+				if (right > textAreaLeft)
+				{
+					drawn = ImRect(std::max(left, textAreaLeft), slice.Y, right, slice.Y + canvas.Metrics.LineHeight);
+				}
+			}
+
+			ImGui::PopFont();
+
+			return drawn;
+		}
+
 		void DrawRow(const RowCanvas& canvas, const Core::OpenItem& item,
 					 const VisibleLineCache& cache, const RowSlice& slice,
 					 const std::vector<Token>& tokens, const std::vector<SemanticSpan>& semantic,
 					 const std::vector<DiagnosticSpan>& diagnostics, bool diagnosticsStale,
 					 const ChangeMarkers* changes, const CaretPaint& caret,
-					 const HoverIdentifier& hover)
+					 const HoverIdentifier& hover, const LineAuthorView& author,
+					 EditorWidgetState& widget)
 		{
 			if (slice.Line == caret.Line)
 			{
@@ -2758,6 +2831,12 @@ namespace Graphite {
 
 			DrawRowText(canvas, slice, cache, tokens, semantic, item.TabWidth);
 			DrawRowDiagnostics(canvas, slice, cache, diagnostics, diagnosticsStale, item.TabWidth);
+
+			if (const std::optional<ImRect> authorRect = DrawLineAuthor(canvas, slice, cache, author, caret, item.TabWidth))
+			{
+				widget.AuthorTextRect = authorRect;
+			}
+
 			DrawGutter(canvas, slice, slice.Line == caret.Line, changes,
 					   item.Document->GetBuffer().GetLineCount());
 			DrawHoverUnderline(canvas, slice, hover);
@@ -2830,9 +2909,9 @@ namespace Graphite {
 							 const SemanticOverlay* semanticOverlay,
 							 const DiagnosticOverlay* diagnosticOverlay, bool diagnosticsStale,
 							 const ChangeMarkers* changes, const ChangeMarkers* scrollbarChanges,
-							 const SelectionOccurrences& occurrences, EditorWidgetState& widget,
-							 const HoverFrame& hoverFrame, const PointerState& pointer,
-							 EditorFrameResult& result)
+							 const SelectionOccurrences& occurrences, const LineAuthorView& author,
+							 EditorWidgetState& widget, const HoverFrame& hoverFrame,
+							 const PointerState& pointer, EditorFrameResult& result)
 		{
 			const LensRows& lenses = LensRowsOf(lensModel);
 
@@ -2982,7 +3061,7 @@ namespace Graphite {
 													 : Core::SharedEmptyVector<DiagnosticSpan>();
 
 					DrawRow(canvas, item, cache, slice, tokens, semantic, diagnostics,
-							diagnosticsStale, changes, caret, hover);
+							diagnosticsStale, changes, caret, hover, author, widget);
 				}
 			}
 
@@ -3046,6 +3125,12 @@ namespace Graphite {
 	{
 		EditorFrameResult result;
 
+		EditorWidgetState noState;
+		EditorWidgetState& widget = view.Widget != nullptr ? *view.Widget : noState;
+
+		// Set again by the row that draws the author this frame.
+		widget.AuthorTextRect.reset();
+
 		if (!item.Document)
 		{
 			result.Wrap = WrapGeometryBeforeTheText(view);
@@ -3058,9 +3143,6 @@ namespace Graphite {
 		const Core::TextBuffer& buffer = item.Document->GetBuffer();
 		const std::size_t caretAtFrameStart = item.Caret.Offset;
 		const EditorMetrics metrics = MeasureEditor(buffer, view.ChangeDisplay.Gutter);
-
-		EditorWidgetState noState;
-		EditorWidgetState& widget = view.Widget != nullptr ? *view.Widget : noState;
 
 		const bool documentHoldsFocus =
 			ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
@@ -3228,10 +3310,15 @@ namespace Graphite {
 			const ChangeMarkers* const scrollbarChanges =
 				view.ChangeDisplay.Scrollbar ? view.Changes : nullptr;
 
+			// WARNING: An edit made this frame has not reached the caller's quiet period yet, which starts from
+			// the result. Drawn now, the text would jump right with the keystroke for one frame and then vanish.
+			LineAuthorView author = view.Author;
+			author.HiddenWhileTyping = author.HiddenWhileTyping || result.Edited;
+
 			DrawVisibleRows(buffer, item, metrics, origin, scrollX, rowAreaWidth, view.WordWrap,
 							focused, view.Syntax, scheme, drawnLenses, view.Semantic,
 							view.Diagnostics, view.DiagnosticsStale, gutterChanges,
-							scrollbarChanges, occurrences, widget, hoverFrame, pointer, result);
+							scrollbarChanges, occurrences, author, widget, hoverFrame, pointer, result);
 
 			// WARNING: A frame that drew nothing reports row zero, and adopting it would claim
 			// the reader had scrolled to the top. The anchor is recorded as a line and a sub-row

@@ -7,6 +7,7 @@
 #include "Core/Command/MenuItem.h"
 #include "Core/Text/Editing.h"
 
+#include <chrono>
 #include <cstddef>
 #include <optional>
 #include <string>
@@ -30,6 +31,7 @@ namespace Graphite {
 	class SemanticOverlay;
 	class DiagnosticOverlay;
 	struct ChangeMarkers;
+	struct LineAuthors;
 	struct HoverState;
 	class PreviewSemantics;
 	struct ResolvedScheme;
@@ -71,6 +73,15 @@ namespace Graphite {
 	};
 
 	std::size_t WrappedColumns(const WrapGeometry& geometry, std::size_t lineCount, VerticalScrollbar scrollbar);
+
+	struct LineAuthorView
+	{
+		const LineAuthors* Authors = nullptr;   // null: draw nothing, offer no card
+		std::chrono::sys_seconds Now{};
+		std::chrono::minutes Offset{};          // local clock offset, for the card's absolute time
+		bool HiddenWhileTyping = false;
+		float HoverDelaySeconds = 0.5f;
+	};
 
 	struct EditorFrameResult
 	{
@@ -135,6 +146,8 @@ namespace Graphite {
 		ChangeMarkerDisplay ChangeDisplay;
 
 		bool HighlightOccurrences = false;
+
+		LineAuthorView Author;
 
 		ScrollAnchor* Anchor = nullptr;
 
