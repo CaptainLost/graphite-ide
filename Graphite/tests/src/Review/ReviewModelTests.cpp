@@ -182,7 +182,53 @@ TEST_CASE("A retried range is loading while its last error is still held")
 	model.RequestRange(kKey);
 
 	CHECK(model.IsRangeLoading(kKey));
+	CHECK(model.IsRangeRetrying(kKey));
 	CHECK(model.GetRangeError(kKey) != nullptr);
+
+	Settle(model, jobs);
+
+	CHECK_FALSE(model.IsRangeRetrying(kKey));
+}
+
+TEST_CASE("A failed range read again in the background is loading but not retried, so its failure stays on screen")
+{
+	FakeReviewPort port;
+	port.RangeFailure = Core::Error{Core::ErrorCode::IoFailure, "disk on fire"};
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	model.RequestRange(kKey);
+	Settle(model, jobs);
+
+	model.InvalidateRanges();
+	model.RequestRange(kKey);
+
+	CHECK(model.IsRangeLoading(kKey));
+	CHECK_FALSE(model.IsRangeRetrying(kKey));
+}
+
+TEST_CASE("A retry asked while a background read of the range runs stays a retry until its own read lands")
+{
+	FakeReviewPort port;
+	port.RangeFailure = Core::Error{Core::ErrorCode::IoFailure, "disk on fire"};
+	DeferredJobs jobs;
+	ReviewModel model{port, jobs.Submitter(), NoWatches()};
+	model.RequestRange(kKey);
+	Settle(model, jobs);
+	model.InvalidateRanges();
+	model.RequestRange(kKey);
+
+	model.Retry(kKey);
+	Settle(model, jobs);
+
+	CHECK(model.IsRangeRetrying(kKey));
+
+	model.RequestRange(kKey);
+	CHECK(model.IsRangeRetrying(kKey));
+
+	Settle(model, jobs);
+
+	CHECK_FALSE(model.IsRangeRetrying(kKey));
+	CHECK(port.RangeQueries == 3);
 }
 
 TEST_CASE("A range read again after its branch moved is loading while the earlier range is still held")

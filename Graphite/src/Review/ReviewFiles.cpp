@@ -169,6 +169,18 @@ namespace Graphite {
 		return refresh.ShowsEarlierChanges || refresh.RangeLoading || uncommittedOnScreenIsRefreshed;
 	}
 
+	bool IsUncommittedAwaited(const ReviewRefresh& refresh)
+	{
+		const bool nothingOnScreenYet = refresh.UncommittedLoading && !refresh.UncommittedShown;
+		const bool failureStaysWhileReadAgain = refresh.UncommittedFailed && !refresh.UncommittedRetrying;
+		return nothingOnScreenYet && !failureStaysWhileReadAgain;
+	}
+
+	bool ShowsUncommittedFailure(const ReviewRefresh& refresh)
+	{
+		return refresh.UncommittedFailed && !refresh.UncommittedRetrying;
+	}
+
 	DiffPaneWithoutFile DiffPaneWithoutFileFor(std::size_t reviewFileCount, bool uncommittedLoading)
 	{
 		if (reviewFileCount > 0)

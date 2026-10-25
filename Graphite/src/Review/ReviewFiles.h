@@ -57,9 +57,15 @@ namespace Graphite {
 		bool RangeLoading = false;
 		bool UncommittedLoading = false;
 		bool UncommittedShown = false;
+		bool UncommittedFailed = false;
+		bool UncommittedRetrying = false;
 	};
 
 	bool IsUpdatingChanges(const ReviewRefresh& refresh);
+
+	bool IsUncommittedAwaited(const ReviewRefresh& refresh);
+
+	bool ShowsUncommittedFailure(const ReviewRefresh& refresh);
 
 	enum class DiffPaneWithoutFile
 	{

@@ -62,6 +62,7 @@ namespace Graphite {
 		const Core::Error* GetRangeError(const ReviewKey& key) const;
 
 		bool IsRangeLoading(const ReviewKey& key) const;
+		bool IsRangeRetrying(const ReviewKey& key) const;
 
 		void InvalidateRanges();
 
@@ -90,6 +91,7 @@ namespace Graphite {
 		Core::Ref<const Core::Diff> GetUncommitted(const ReviewKey& key) const;
 		const Core::Error* GetUncommittedError(const ReviewKey& key) const;
 		bool IsUncommittedLoading(const ReviewKey& key) const;
+		bool IsUncommittedRetrying(const ReviewKey& key) const;
 
 		void RequestUncommittedTexts(const ReviewKey& key, const Core::FileDiff& file);
 		Core::Ref<const FileTexts> GetUncommittedTexts(const ReviewKey& key, const Core::FileDiff& file) const;
@@ -103,12 +105,35 @@ namespace Graphite {
 		static constexpr std::size_t kCachedTexts = 32;
 
 	private:
+		// WARNING: A retry is told apart from a re-read in the background, which runs on every branch snapshot and worktree
+		// change: only the reader's own Retry hides a failure behind a loader.
+		struct RetryMark
+		{
+			bool Wanted = false;
+			std::uint64_t Generation = 0;
+
+			void NoteReadBegun(std::uint64_t generation)
+			{
+				if (Wanted)
+				{
+					Generation = generation;
+					Wanted = false;
+				}
+			}
+
+			bool IsUnanswered(std::uint64_t appliedGeneration) const
+			{
+				return Wanted || Generation > appliedGeneration;
+			}
+		};
+
 		struct RangeState
 		{
 			std::uint64_t Incarnation = 0;
 			GenerationSlot<ReviewRange> Slot;
 			bool Asked = false;
 			bool Stale = false;
+			RetryMark Retry;
 		};
 
 		struct TextsKey
@@ -138,6 +163,7 @@ namespace Graphite {
 			GenerationSlot<Core::Diff> Diff;
 			bool Asked = false;
 			bool Stale = false;
+			RetryMark Retry;
 			Core::WhitespaceInDiff Whitespace = Core::WhitespaceInDiff::Shown;
 
 			std::filesystem::path TextsPath;

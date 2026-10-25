@@ -169,6 +169,7 @@ namespace Graphite {
 
 		const std::uint64_t generation = range.Slot.Begin();
 		const std::uint64_t incarnation = range.Incarnation;
+		range.Retry.NoteReadBegun(generation);
 
 		m_Submit([this, key, generation, incarnation]() {
 			Core::Result<ReviewRange> answer = m_Port.ResolveRange(key);
@@ -234,6 +235,12 @@ namespace Graphite {
 		return range != nullptr && range->Slot.IsInFlight();
 	}
 
+	bool ReviewModel::IsRangeRetrying(const ReviewKey& key) const
+	{
+		const RangeState* range = FindRange(key);
+		return range != nullptr && range->Retry.IsUnanswered(range->Slot.GetApplied());
+	}
+
 	void ReviewModel::InvalidateRanges()
 	{
 		for (auto& [key, range] : m_Ranges)
@@ -252,6 +259,7 @@ namespace Graphite {
 			}
 
 			range.Stale = true;
+			range.Retry.Wanted = true;
 
 			if (const Core::Ref<const ReviewRange> held = range.Slot.Get(); held != nullptr)
 			{
@@ -279,6 +287,7 @@ namespace Graphite {
 		if (uncommitted != nullptr)
 		{
 			uncommitted->Stale = true;
+			uncommitted->Retry.Wanted = true;
 		}
 	}
 
@@ -546,6 +555,7 @@ namespace Graphite {
 
 		const std::uint64_t generation = uncommitted.Diff.Begin();
 		const std::uint64_t incarnation = uncommitted.Incarnation;
+		uncommitted.Retry.NoteReadBegun(generation);
 
 		m_Submit([this, key, worktree, whitespace, generation, incarnation]() {
 			Core::Result<Core::Diff> answer = m_Port.QueryWorktreeDiff(worktree, whitespace);
@@ -608,6 +618,12 @@ namespace Graphite {
 	{
 		const UncommittedState* uncommitted = FindUncommitted(key);
 		return uncommitted != nullptr && uncommitted->Diff.IsInFlight();
+	}
+
+	bool ReviewModel::IsUncommittedRetrying(const ReviewKey& key) const
+	{
+		const UncommittedState* uncommitted = FindUncommitted(key);
+		return uncommitted != nullptr && uncommitted->Retry.IsUnanswered(uncommitted->Diff.GetApplied());
 	}
 
 	void ReviewModel::RequestUncommittedTexts(const ReviewKey& key, const Core::FileDiff& file)

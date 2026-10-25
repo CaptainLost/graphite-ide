@@ -736,7 +736,7 @@ namespace Graphite {
 
 			const Core::Error* error = input.Model.GetRangeError(key);
 
-			if (error == nullptr || rangeLoading)
+			if (error == nullptr || input.Model.IsRangeRetrying(key))
 			{
 				Core::LoadingState("Loading the review");
 				return;
@@ -797,16 +797,17 @@ namespace Graphite {
 								  .Range = range,
 								  .Committed = input.Model.GetCommittedDiff(diffKey),
 								  .Uncommitted = showUncommitted ? input.Model.GetUncommitted(key) : nullptr};
-		const bool uncommittedLoading = showUncommitted && input.Model.IsUncommittedLoading(key);
+		ReviewRefresh refresh{.RangeLoading = rangeLoading,
+							  .UncommittedLoading = showUncommitted && input.Model.IsUncommittedLoading(key),
+							  .UncommittedFailed = showUncommitted && input.Model.GetUncommittedError(key) != nullptr,
+							  .UncommittedRetrying = showUncommitted && input.Model.IsUncommittedRetrying(key)};
 
 		if (review.Committed != nullptr)
 		{
 			tab.LastLoaded = review;
-			RenderBody(tab, input, review,
-					   ReviewRefresh{.ShowsEarlierChanges = false,
-									 .RangeLoading = rangeLoading,
-									 .UncommittedLoading = uncommittedLoading,
-									 .UncommittedShown = review.Uncommitted != nullptr});
+			refresh.ShowsEarlierChanges = false;
+			refresh.UncommittedShown = review.Uncommitted != nullptr;
+			RenderBody(tab, input, review, refresh);
 			return;
 		}
 
@@ -815,11 +816,9 @@ namespace Graphite {
 		if (!failed && tab.LastLoaded.has_value())
 		{
 			const LoadedReview previous = *tab.LastLoaded;
-			RenderBody(tab, input, previous,
-					   ReviewRefresh{.ShowsEarlierChanges = true,
-									 .RangeLoading = rangeLoading,
-									 .UncommittedLoading = uncommittedLoading,
-									 .UncommittedShown = previous.Uncommitted != nullptr});
+			refresh.ShowsEarlierChanges = true;
+			refresh.UncommittedShown = previous.Uncommitted != nullptr;
+			RenderBody(tab, input, previous, refresh);
 			return;
 		}
 
@@ -905,9 +904,7 @@ namespace Graphite {
 	void ReviewWindows::RenderBody(Tab& tab, const ReviewRenderInput& input, const LoadedReview& review,
 								   const ReviewRefresh& refresh)
 	{
-		const bool uncommittedFirstLoad = refresh.UncommittedLoading && !refresh.UncommittedShown;
-
-		RefreshRows(tab, input.Sessions, ReadSettings(input.Sessions, tab.Branch), review, uncommittedFirstLoad);
+		RefreshRows(tab, input.Sessions, ReadSettings(input.Sessions, tab.Branch), review, IsUncommittedAwaited(refresh));
 		FollowCommits(tab, *review.Range);
 
 		const ReviewGroups groups = GroupsOf(tab, review);
@@ -930,9 +927,8 @@ namespace Graphite {
 		}
 
 		const bool includeUncommitted = ReadSettings(input.Sessions, tab.Branch).IncludeUncommitted;
-		const bool uncommittedFailureShows = includeUncommitted && !refresh.UncommittedLoading;
 		const Core::Error* uncommittedError =
-			uncommittedFailureShows ? input.Model.GetUncommittedError(review.Key) : nullptr;
+			ShowsUncommittedFailure(refresh) ? input.Model.GetUncommittedError(review.Key) : nullptr;
 
 		if (uncommittedError != nullptr && review.Range->Worktree.has_value())
 		{

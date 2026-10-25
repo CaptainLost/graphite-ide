@@ -301,6 +301,28 @@ TEST_CASE("A retried uncommitted diff is loading while its last error is still h
 	model.RequestUncommitted(kKey, kWorktree, Core::WhitespaceInDiff::Shown);
 
 	CHECK(model.IsUncommittedLoading(kKey));
+	CHECK(model.IsUncommittedRetrying(kKey));
+	CHECK(model.GetUncommittedError(kKey) != nullptr);
+
+	Settle(model, jobs);
+
+	CHECK_FALSE(model.IsUncommittedRetrying(kKey));
+}
+
+TEST_CASE("A failed uncommitted diff read again after a worktree change is loading but not retried")
+{
+	FakeReviewPort port;
+	port.WorktreeFailure = Core::Error{Core::ErrorCode::IoFailure, "locked"};
+	DeferredJobs jobs;
+	WatchControl watches;
+	ReviewModel model{port, jobs.Submitter(), FakeWatches(watches)};
+	AskAndSettle(model, jobs, kWorktree);
+
+	ChangeWorktreeAndSettlePastDebounce(model, watches);
+	model.RequestUncommitted(kKey, kWorktree, Core::WhitespaceInDiff::Shown);
+
+	CHECK(model.IsUncommittedLoading(kKey));
+	CHECK_FALSE(model.IsUncommittedRetrying(kKey));
 	CHECK(model.GetUncommittedError(kKey) != nullptr);
 }
 
