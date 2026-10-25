@@ -135,19 +135,19 @@ namespace Core {
 		Redraw::RequestIn(Redraw::Clock::duration::zero());
 	}
 
-	void LoadingLine(const char* text, WhileLoaderWaits whileWaiting)
+	bool LoadingLine(const char* text, WhileLoaderWaits whileWaiting)
 	{
 		const bool shows = HasWaitedLongEnough(kLineWaitSinceId, kLineLastFrameId);
 
 		if (!shows && whileWaiting == WhileLoaderWaits::TakeNoRoom)
 		{
-			return;
+			return shows;
 		}
 
 		if (!shows && whileWaiting == WhileLoaderWaits::ShowNothing)
 		{
 			ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
-			return;
+			return shows;
 		}
 
 		constexpr float kDiametersPerRadius = 2.0f;
@@ -173,6 +173,8 @@ namespace Core {
 		{
 			Redraw::RequestIn(Redraw::Clock::duration::zero());
 		}
+
+		return shows;
 	}
 
 	float LoadingLineWidth(const char* text)

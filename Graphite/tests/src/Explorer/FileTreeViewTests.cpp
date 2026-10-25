@@ -552,6 +552,47 @@ TEST_CASE("Matching files stay where they are through a quick re-read and make r
 	CHECK(FindTreeBody()->ContentSize.y == doctest::Approx(resultsHeight));
 }
 
+TEST_CASE("A filter matching nothing keeps its message for the first fifth of a second of a re-read, then wraps the loader's")
+{
+	TempDirectory folder;
+	folder.MakeFile("README.md");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+	screen.Click(kFilterBox);
+	jobs.RunAll();
+	screen.Type("nothing-by-this-name");
+	screen.Next();
+
+	const auto messageExtent = [] {
+		const ImGuiWindow* body = FindTreeBody();
+		REQUIRE(body != nullptr);
+		return HorizontalExtentInColour(*body->DrawList, ImGui::GetColorU32(ImGuiCol_TextDisabled));
+	};
+
+	const std::optional<HorizontalExtent> answered = messageExtent();
+	REQUIRE(answered.has_value());
+
+	screen.Events.Publish(Graphite::WorkspaceFilesChangedEvent{.Everything = true});
+	screen.Next();
+	REQUIRE(jobs.Count() == 1);
+
+	const std::optional<HorizontalExtent> rereading = messageExtent();
+	REQUIRE(rereading.has_value());
+	CHECK(rereading->Left == doctest::Approx(answered->Left));
+	CHECK(rereading->Right == doctest::Approx(answered->Right));
+
+	const double pastTheWait = 0.25;
+	screen.WaitSeconds(pastTheWait);
+
+	const ImGuiWindow* body = FindTreeBody();
+	REQUIRE(body != nullptr);
+	const std::optional<HorizontalExtent> loader = messageExtent();
+	REQUIRE(loader.has_value());
+	CHECK(loader->Right > answered->Right);
+	CHECK(loader->Right <= body->Pos.x + body->Size.x - Graphite::ListRowEndInset());
+}
+
 TEST_CASE("A filter matching nothing while the folder is read again shows a loader until the read lands")
 {
 	TempDirectory folder;

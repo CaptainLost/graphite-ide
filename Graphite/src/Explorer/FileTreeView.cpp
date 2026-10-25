@@ -53,13 +53,17 @@ namespace Graphite {
 			return std::string{"New File from Template"} + std::string{kEllipsis};
 		}
 
-		void DrawTreeLoader(const std::string& text, Core::WhileLoaderWaits whileWaiting)
+		bool DrawTreeLoader(const std::string& text, Core::WhileLoaderWaits whileWaiting)
 		{
 			const float inset = TreeRowChevronBoxLeft();
 
 			ImGui::Indent(inset);
-			Core::LoadingLine(text.c_str(), whileWaiting);
+			ImGui::PushTextWrapPos(ListRowEndPosX());
+			const bool loaderShows = Core::LoadingLine(text.c_str(), whileWaiting);
+			ImGui::PopTextWrapPos();
 			ImGui::Unindent(inset);
+
+			return loaderShows;
 		}
 	}
 
@@ -307,16 +311,26 @@ namespace Graphite {
 			return;
 		}
 
-		const std::string message = NoMatchingFilesText(m_Filter.InputBuf, freshness);
+		const std::string answeredMessage = NoMatchingFilesText(m_Filter.InputBuf, ListingFreshness::UpToDate);
 
 		switch (freshness)
 		{
 		case ListingFreshness::UpToDate:
-			DrawTreeMessage(message);
+			DrawTreeMessage(answeredMessage);
 			return;
 		case ListingFreshness::Refreshing:
-			DrawTreeLoader(message, Core::WhileLoaderWaits::ShowText);
+		{
+			// WARNING: The answered message stays until the loader shows, so a re-read over in a frame or two, as on every
+			// save, changes nothing on screen.
+			const std::string refreshingMessage = NoMatchingFilesText(m_Filter.InputBuf, ListingFreshness::Refreshing);
+
+			if (!DrawTreeLoader(refreshingMessage, Core::WhileLoaderWaits::TakeNoRoom))
+			{
+				DrawTreeMessage(answeredMessage);
+			}
+
 			return;
+		}
 		}
 	}
 

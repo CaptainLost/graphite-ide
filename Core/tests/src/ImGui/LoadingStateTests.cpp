@@ -83,6 +83,7 @@ namespace {
 			float RowLeft = 0.0f;
 			float LastItemRight = 0.0f;
 			float MeasuredWidth = 0.0f;
+			bool Shows = false;
 		};
 
 		LineDrawn DrawLineLoader(const char* text, ImVec2 size = kWindowSize,
@@ -93,7 +94,7 @@ namespace {
 			const float before = ImGui::GetCursorPosY();
 			const float rowLeft = ImGui::GetCursorScreenPos().x;
 			const int verticesBefore = ImGui::GetWindowDrawList()->VtxBuffer.Size;
-			Core::LoadingLine(text, whileWaiting);
+			const bool shows = Core::LoadingLine(text, whileWaiting);
 			const float after = ImGui::GetCursorPosY();
 			const float lineHeightWithSpacing = ImGui::GetTextLineHeightWithSpacing();
 			const int vertices = ImGui::GetWindowDrawList()->VtxBuffer.Size - verticesBefore;
@@ -110,7 +111,8 @@ namespace {
 							 .LastItemLeft = lastItemLeft,
 							 .RowLeft = rowLeft,
 							 .LastItemRight = lastItemRight,
-							 .MeasuredWidth = measuredWidth};
+							 .MeasuredWidth = measuredWidth,
+							 .Shows = shows};
 		}
 
 		const ImRect& GetRegion() const { return m_Region; }
@@ -309,6 +311,23 @@ TEST_CASE("LoadingLineWidth is how far a shown LoadingLine reaches from where it
 
 	REQUIRE(shown.SpinnerDrawn);
 	CHECK(shown.LastItemRight - shown.RowLeft == doctest::Approx(shown.MeasuredWidth));
+}
+
+TEST_CASE("LoadingLine answers whether it shows yet, whatever it draws while it waits")
+{
+	LoaderWindow window;
+	const Core::WhileLoaderWaits showText = Core::WhileLoaderWaits::ShowText;
+
+	const LoaderWindow::LineDrawn waiting = window.DrawLineLoader("Loading 500 more", kWindowSize, showText);
+
+	LoaderWindow::LineDrawn shown;
+	for (int frameIndex = 0; frameIndex < kFramesPastTheWait; ++frameIndex)
+	{
+		shown = window.DrawLineLoader("Loading 500 more", kWindowSize, showText);
+	}
+
+	CHECK_FALSE(waiting.Shows);
+	CHECK(shown.Shows);
 }
 
 TEST_CASE("LoadingLine asks for the next frame so its spinner keeps turning")

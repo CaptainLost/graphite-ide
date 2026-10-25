@@ -16,11 +16,9 @@ namespace Core {
 	// does not draw the loader ends its wait, and the next one starts a new one.
 	void LoadingState(const char* text);
 
-	// One row high, for a list that waits on part of its content. The row is taken while the loader waits too, so the
-	// list does not move when it shows. A line over content already on screen can take no room while it waits instead,
-	// so a wait that ends within a frame or two does not push that content down and back.
-	void LoadingLine(const char* text, WhileLoaderWaits whileWaiting = WhileLoaderWaits::ShowNothing);
+	// WARNING: One row high, taken while the loader waits too unless asked to take no room. Answers whether the loader
+	// shows yet, so a caller can keep what it drew before for the first fifth of a second.
+	bool LoadingLine(const char* text, WhileLoaderWaits whileWaiting = WhileLoaderWaits::ShowNothing);
 
-	// The width LoadingLine takes once it shows, for a row laid out around it.
 	float LoadingLineWidth(const char* text);
 }
