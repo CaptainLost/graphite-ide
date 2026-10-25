@@ -4,6 +4,7 @@
 #include "Editor/Navigation/SelectInDocument.h"
 
 #include "Language/Diagnostics/ProblemIdentity.h"
+#include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/LspProtocol.h"
 #include "UI/FileIcons.h"
 #include "UI/FittedText.h"
@@ -13,6 +14,7 @@
 #include "Core/Base/Strings.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
 #include "Core/Text/TextBuffer.h"
@@ -23,6 +25,9 @@
 #include <imgui.h>
 
 #include <algorithm>
+#include <map>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -49,6 +54,28 @@ namespace Graphite {
 			return left->Severity < right->Severity;
 		}
 
+		const DiagnosticsModel::Entry* FindEntry(const DiagnosticsModel& diagnostics, const std::filesystem::path& path)
+		{
+			const std::map<std::filesystem::path, DiagnosticsModel::Entry>& entries = diagnostics.GetDocuments();
+			const std::map<std::filesystem::path, DiagnosticsModel::Entry>::const_iterator found = entries.find(path);
+
+			if (found == entries.end())
+			{
+				return nullptr;
+			}
+
+			const auto& [foundPath, entry] = *found;
+
+			return &entry;
+		}
+
+		void DimNote(const std::string& text)
+		{
+			ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+			ImGui::TextWrapped("%s", text.c_str());
+			ImGui::PopStyleColor();
+		}
+
 		std::vector<const Diagnostic*> Sorted(const std::vector<Diagnostic>& items)
 		{
 			std::vector<const Diagnostic*> sorted;
@@ -66,11 +93,52 @@ namespace Graphite {
 	}
 
 	ProblemsPanel::ProblemsPanel(const DiagnosticsModel& diagnostics, Core::DocumentSet& documents, Workspace& workspace,
-								 const ActiveScheme& scheme)
+								 const ActiveScheme& scheme, ServerStatusSource statusOf)
 		: Core::Panel("problems", "Problems", "tools", ICON_LC_CIRCLE_ALERT, StartsAs::Visible, Sides::Flush),
 		  m_Diagnostics(diagnostics), m_Documents(documents),
-		  m_Workspace(workspace), m_Scheme(scheme)
+		  m_Workspace(workspace), m_Scheme(scheme), m_StatusOf(std::move(statusOf))
 	{
+	}
+
+	ProblemsChecking ProblemsPanel::CheckOpenDocuments() const
+	{
+		std::vector<OpenDocumentCheck> documents;
+
+		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
+		{
+			const Core::OpenItem& item = m_Documents.At(index);
+			const LanguageId language = LanguageOfPath(item.Path);
+
+			if (!item.Document || !LanguageHasServers(language))
+			{
+				continue;
+			}
+
+			documents.push_back(OpenDocumentCheck{.Path = item.Path,
+												  .Language = language,
+												  .Server = m_StatusOf(item.Path, language),
+												  .Entry = FindEntry(m_Diagnostics, item.Path)});
+		}
+
+		return SummariseChecking(documents);
+	}
+
+	void ProblemsPanel::RenderNotes(const ProblemsChecking& checking)
+	{
+		for (const std::string& language : checking.UncheckedLanguages)
+		{
+			DimNote(language);
+		}
+
+		for (const UncheckedDocument& document : checking.NotAnswered)
+		{
+			DimNote(NotAnsweredText(document));
+		}
+
+		if (!checking.NeverSent.empty())
+		{
+			DimNote(NeverSentText(checking));
+		}
 	}
 
 	void ProblemsPanel::OnImGuiRender()
@@ -78,16 +146,68 @@ namespace Graphite {
 		const auto isOpenDocument = [this](const std::filesystem::path& path) { return IsOpenDocument(path); };
 
 		const DiagnosticsModel::Counts counts = m_Diagnostics.Total(isOpenDocument);
+		const bool anyProblems = counts.Errors > 0 || counts.Warnings > 0;
+		const ProblemsChecking checking = CheckOpenDocuments();
 
-		if (counts.Errors == 0 && counts.Warnings == 0)
+		if (!anyProblems)
 		{
-			const Core::PanelMarginScope margin;
-			Core::EmptyState("No problems in open documents.");
 			m_Selected.reset();
+
+			const Core::PanelMarginScope margin;
+
+			if (checking.EverythingChecked())
+			{
+				Core::EmptyState("No problems in open documents.");
+				return;
+			}
+
+			RenderNotes(checking);
+
+			if (!checking.AnyAnswered && checking.AnyStillComing())
+			{
+				Core::LoadingState(NothingCheckedYetText(checking).c_str());
+				return;
+			}
+
+			if (checking.AnyStillComing())
+			{
+				Core::LoadingLine(NoProblemsSoFarText(checking).c_str());
+				return;
+			}
+
+			if (checking.AnyAnswered)
+			{
+				DimNote("No problems in the documents checked.");
+			}
+
 			return;
 		}
 
 		m_SelectionSeen = false;
+
+		if (checking.AnyNotes() || checking.AnyStillComing())
+		{
+			const Core::PanelMarginScope margin;
+
+			RenderNotes(checking);
+
+			if (checking.AnyStillComing())
+			{
+				Core::LoadingLine(StillCheckingText(checking).c_str());
+			}
+		}
+
+		RenderProblemList();
+
+		if (!m_SelectionSeen)
+		{
+			m_Selected.reset();
+		}
+	}
+
+	void ProblemsPanel::RenderProblemList()
+	{
+		const auto isOpenDocument = [this](const std::filesystem::path& path) { return IsOpenDocument(path); };
 
 		const EditorPalette palette = ReadEditorPalette(m_Scheme.Get());
 
@@ -111,11 +231,6 @@ namespace Graphite {
 		}
 
 		ImGui::EndChild();
-
-		if (!m_SelectionSeen)
-		{
-			m_Selected.reset();
-		}
 	}
 
 	void ProblemsPanel::RenderFile(const std::filesystem::path& path,

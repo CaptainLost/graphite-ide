@@ -7,9 +7,11 @@
 #include "Theme/ActiveScheme.h"
 
 #include "Language/Diagnostics/ProblemIdentity.h"
+#include "Language/Diagnostics/ProblemsChecking.h"
 #include "Workspace/Workspace.h"
 
 #include <filesystem>
+#include <functional>
 #include <optional>
 
 namespace Graphite {
@@ -17,12 +19,20 @@ namespace Graphite {
 	class ProblemsPanel final : public Core::Panel
 	{
 	public:
+		using ServerStatusSource = std::function<ServerStatus(const std::filesystem::path& path, LanguageId language)>;
+
 		ProblemsPanel(const DiagnosticsModel& diagnostics, Core::DocumentSet& documents, Workspace& workspace,
-					  const ActiveScheme& scheme);
+					  const ActiveScheme& scheme, ServerStatusSource statusOf);
 
 		void OnImGuiRender() override;
 
 	private:
+		ProblemsChecking CheckOpenDocuments() const;
+
+		void RenderNotes(const ProblemsChecking& checking);
+
+		void RenderProblemList();
+
 		void RenderFile(const std::filesystem::path& path, const DiagnosticsModel::Entry& entry,
 						const EditorPalette& palette);
 
@@ -37,6 +47,7 @@ namespace Graphite {
 		Core::DocumentSet& m_Documents;
 		Workspace& m_Workspace;
 		const ActiveScheme& m_Scheme;
+		ServerStatusSource m_StatusOf;
 
 		std::optional<ProblemIdentity> m_Selected;
 		bool m_SelectionSeen = false;
