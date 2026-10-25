@@ -7,10 +7,12 @@
 #include "Search/SearchPreview.h"
 #include "Search/FileEnumerator.h"
 #include "Search/HitList.h"
+#include "Search/SearchSummary.h"
 #include "UI/SplitResults.h"
 #include "UI/TickBox.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/TextButton.h"
 #include "Core/Text/Caret.h"
 #include "Core/UI/PanelMarginScope.h"
@@ -173,30 +175,28 @@ namespace Graphite {
 		m_Drained.clear();
 		m_Progress = SearchProgress{};
 
+		m_SearchedNeedle = std::string{m_QueryBuffer.data()};
 		m_Service.Start(BuildRequest());
 	}
 
 	void SearchPanel::RenderSummary()
 	{
-		std::string summary = Core::Counted(m_Groups.GetCount(), "hit") + ", " +
-							  Core::Counted(m_Progress.FilesScanned, "file") + " scanned";
-
-		if (m_Progress.FilesSkipped != 0)
+		if (!m_SearchedNeedle.has_value())
 		{
-			summary += ", " + std::to_string(m_Progress.FilesSkipped) + " skipped";
+			ImGui::TextDisabled("%s", std::string{kSearchHint}.c_str());
+			return;
 		}
 
-		if (m_Progress.Unreadable != 0)
-		{
-			summary += ", " + std::to_string(m_Progress.Unreadable) + " unreadable";
-		}
+		const std::string summary =
+			SearchSummaryText(m_Groups.GetCount(), m_Progress, *m_SearchedNeedle, m_QueryBuffer.data());
+
+		ImGui::TextUnformatted(summary.c_str());
 
 		if (m_Progress.Running)
 		{
-			summary += "  (searching...)";
+			ImGui::SameLine();
+			Core::LoadingLine("Searching");
 		}
-
-		ImGui::TextUnformatted(summary.c_str());
 	}
 
 	void SearchPanel::RenderResults()

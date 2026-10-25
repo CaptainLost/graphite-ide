@@ -59,6 +59,8 @@ namespace Graphite {
 		bool m_MatchCase = false;
 		bool m_WholeWord = false;
 
+		std::optional<std::string> m_SearchedNeedle;
+
 		bool m_FocusQueryNextFrame = false;
 
 		std::vector<SearchHit> m_Drained;
