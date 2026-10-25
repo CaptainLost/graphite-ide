@@ -11,8 +11,12 @@
 #include "Core/Command/Keymap.h"
 #include "Core/Events/EventBus.h"
 
+#include <chrono>
+#include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -39,8 +43,8 @@ TEST_CASE("A program that cannot be started is reported in an application toast"
 	TerminalFixture fixture;
 	const std::vector<std::string> noArguments;
 
-	CHECK_FALSE(fixture.Terminals.OpenCommand("Build", fixture.Temp.GetPath() / "missing.exe", noArguments,
-											  fixture.Temp.GetPath()));
+	CHECK(fixture.Terminals.OpenCommand("Build", fixture.Temp.GetPath() / "missing.exe", noArguments,
+										fixture.Temp.GetPath()) == nullptr);
 
 	REQUIRE(fixture.Toasts.size() == 1);
 	CHECK(fixture.Toasts.front().Kind == Core::ToastKind::Error);
@@ -75,10 +79,64 @@ TEST_CASE("A program asked to run in a terminal shows hidden terminals even when
 	const std::vector<std::string> noArguments;
 	fixture.Terminals.SetHidden(true);
 
-	CHECK_FALSE(fixture.Terminals.OpenCommand("Build", fixture.Temp.GetPath() / "missing.exe", noArguments,
-											  fixture.Temp.GetPath()));
+	CHECK(fixture.Terminals.OpenCommand("Build", fixture.Temp.GetPath() / "missing.exe", noArguments,
+										fixture.Temp.GetPath()) == nullptr);
 
 	CHECK_FALSE(fixture.Terminals.IsHidden());
+}
+
+namespace {
+	constexpr std::chrono::seconds kCommandExitLimit{10};
+	constexpr std::chrono::milliseconds kFrameInterval{20};
+
+	void UpdateUntilExited(Graphite::TerminalWindows& terminals, const Graphite::CommandTerminal& command)
+	{
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kCommandExitLimit;
+
+		while (!command.Exited && std::chrono::steady_clock::now() < deadline)
+		{
+			terminals.Update();
+			std::this_thread::sleep_for(kFrameInterval);
+		}
+	}
+}
+
+TEST_CASE("A command's terminal stays open after its program exits and tells whoever started it how it ended")
+{
+	TerminalFixture fixture;
+	const std::vector<std::string> exitWithThree{"/c", "exit 3"};
+	constexpr std::uint32_t kExpectedExitCode = 3;
+
+	const Core::Ref<Graphite::CommandTerminal> command =
+		fixture.Terminals.OpenCommand("Build", "cmd.exe", exitWithThree, fixture.Temp.GetPath());
+
+	REQUIRE(command != nullptr);
+	CHECK_FALSE(command->Exited);
+
+	UpdateUntilExited(fixture.Terminals, *command);
+
+	CHECK(command->Exited);
+	CHECK(command->ExitCode == std::optional<std::uint32_t>{kExpectedExitCode});
+	CHECK_FALSE(command->Closed);
+	CHECK(fixture.Terminals.GetOpenCount() == 1);
+}
+
+TEST_CASE("Asking to see a command's terminal shows hidden terminals")
+{
+	TerminalFixture fixture;
+	const std::vector<std::string> waitForInput{"/k"};
+
+	const Core::Ref<Graphite::CommandTerminal> command =
+		fixture.Terminals.OpenCommand("Build", "cmd.exe", waitForInput, fixture.Temp.GetPath());
+
+	REQUIRE(command != nullptr);
+	fixture.Terminals.SetHidden(true);
+	command->ShowRequested = true;
+
+	fixture.Terminals.Update();
+
+	CHECK_FALSE(fixture.Terminals.IsHidden());
+	CHECK_FALSE(command->ShowRequested);
 }
 
 TEST_CASE("Reset Layout shows hidden terminals")

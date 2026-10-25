@@ -5,7 +5,9 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 
@@ -157,4 +159,35 @@ TEST_CASE("PseudoConsole terminating the shell releases a thread blocked in Read
 	}
 
 	CHECK_FALSE(console.IsRunning());
+}
+
+TEST_CASE("PseudoConsole has no exit code while its program runs")
+{
+	const std::vector<std::string> noArguments;
+	StartedConsole started = Core::PseudoConsole::Start("cmd.exe", noArguments, std::filesystem::current_path(),
+														kColumns, kRows);
+
+	REQUIRE(started);
+	CHECK_FALSE(started.GetValue()->GetExitCode().has_value());
+}
+
+TEST_CASE("PseudoConsole reports the exit code of a program that ended")
+{
+	constexpr std::uint32_t kChosenExitCode = 7;
+	const std::vector<std::string> exitWithSeven{"/c", "exit 7"};
+	StartedConsole started = Core::PseudoConsole::Start("cmd.exe", exitWithSeven, std::filesystem::current_path(),
+														kColumns, kRows);
+
+	REQUIRE(started);
+
+	Core::PseudoConsole& console = *started.GetValue();
+	const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kPatience;
+
+	while (console.IsRunning() && std::chrono::steady_clock::now() < deadline)
+	{
+		std::this_thread::sleep_for(kReleasePollInterval);
+	}
+
+	REQUIRE_FALSE(console.IsRunning());
+	CHECK(console.GetExitCode() == std::optional<std::uint32_t>{kChosenExitCode});
 }

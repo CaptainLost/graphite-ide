@@ -545,4 +545,27 @@ namespace Core {
 		return false;
 #endif
 	}
+
+	std::optional<std::uint32_t> PseudoConsole::GetExitCode() const
+	{
+#ifdef CORE_PLATFORM_WINDOWS
+		// WARNING: Asked only once the process handle has signalled: a program can exit with STILL_ACTIVE's own value,
+		// so the code alone cannot tell a running program from one that ended.
+		if (!m_Process || IsRunning())
+		{
+			return std::nullopt;
+		}
+
+		DWORD exitCode = 0;
+
+		if (!::GetExitCodeProcess(m_Process.Get(), &exitCode))
+		{
+			return std::nullopt;
+		}
+
+		return static_cast<std::uint32_t>(exitCode);
+#else
+		return std::nullopt;
+#endif
+	}
 }

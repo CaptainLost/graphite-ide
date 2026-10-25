@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <atomic>
 #include <string>
@@ -43,6 +44,9 @@ namespace Core {
 		void Terminate();
 
 		bool IsRunning() const;
+
+		// WARNING: Empty while the program runs, and also when the platform cannot say how it ended.
+		std::optional<std::uint32_t> GetExitCode() const;
 
 	private:
 		PseudoConsole() = default;

@@ -2,10 +2,12 @@
 
 #include "Core/Base/KeyCodes.h"
 #include "Core/Platform/ShellProfiles.h"
+#include "Core/Terminal/TerminalScreen.h"
 
 #include "Persistence/PersistedState.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -138,4 +140,20 @@ namespace Graphite {
 
 	std::optional<std::size_t> TerminalToBringForward(const std::vector<std::string>& ids,
 													  const std::string& lastFocused);
+
+	enum class TerminalKind
+	{
+		Shell,
+		Command
+	};
+
+	bool TerminalTabCloses(TerminalKind kind, bool closeRequested, bool processAlive);
+
+	std::string ExitCodeText(std::uint32_t exitCode);
+
+	std::string ProcessExitedText(std::optional<std::uint32_t> exitCode);
+
+	void WriteProcessExitedLine(Core::TerminalScreen& screen, std::optional<std::uint32_t> exitCode);
+
+	std::string ExitedTerminalTitle(const std::string& title);
 }

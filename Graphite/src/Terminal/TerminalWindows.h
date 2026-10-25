@@ -9,6 +9,7 @@
 #include "Core/Terminal/TerminalSession.h"
 
 #include "Theme/EditorPalette.h"
+#include "Terminal/CommandTerminal.h"
 #include "Terminal/TerminalRules.h"
 #include "Terminal/TerminalView.h"
 #include "Persistence/PersistedState.h"
@@ -73,8 +74,10 @@ namespace Graphite {
 
 		bool OpenStartupShell();
 
-		bool OpenCommand(const std::string& label, const std::filesystem::path& program,
-						 std::vector<std::string> arguments, const std::filesystem::path& workingDirectory);
+		// WARNING: Empty when the program did not start; the failure has been reported in a toast by then.
+		Core::Ref<CommandTerminal> OpenCommand(const std::string& label, const std::filesystem::path& program,
+											   std::vector<std::string> arguments,
+											   const std::filesystem::path& workingDirectory);
 
 		std::optional<std::vector<TerminalTabState>> CaptureState() const;
 
@@ -109,6 +112,7 @@ namespace Graphite {
 			Core::Scope<Core::TerminalSession> Session;
 			Core::Scope<TerminalView> View;
 			OpenTerminal Record;
+			Core::Ref<CommandTerminal> Command;
 			TabWindowState Window{.Focus = true};
 			// WARNING: Acted on only after End, since destroying a session joins its reader thread.
 			bool Closing = false;
@@ -136,7 +140,9 @@ namespace Graphite {
 		Entry* FindEntry(const std::string& id);
 		void PlaceNewWindow(const std::string& name, Entry& entry, const TerminalDockTargets& targets);
 		void RemoveClosed();
-		static bool IsFinished(const Core::Scope<Entry>& entry);
+		static bool TabCloses(const Core::Scope<Entry>& entry);
+		static void NoteCommandExit(Entry& entry);
+		void TakeShowRequest(Entry& entry);
 		void StoreRecords(const std::vector<OpenTerminal>& records);
 		std::vector<OpenTerminal> Records() const;
 

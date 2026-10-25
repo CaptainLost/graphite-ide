@@ -2,6 +2,7 @@
 
 #include "Core/Base/Base.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
 #include "Core/Base/Uuid.h"
 #include "Core/Command/CommandRegistry.h"
@@ -24,6 +25,7 @@
 #include <cstdint>
 #include <format>
 #include <functional>
+#include <optional>
 #include <system_error>
 #include <utility>
 
@@ -170,7 +172,42 @@ namespace Graphite {
 		for (const Core::Scope<Entry>& entry : m_Open)
 		{
 			entry->Session->ApplyQueuedOutput();
+			NoteCommandExit(*entry);
+			TakeShowRequest(*entry);
 		}
+	}
+
+	void TerminalWindows::NoteCommandExit(Entry& entry)
+	{
+		const bool exitAlreadyNoted = entry.Command == nullptr || entry.Command->Exited;
+
+		if (exitAlreadyNoted || entry.Session->IsAlive())
+		{
+			return;
+		}
+
+		if (!entry.Session->HasFinished())
+		{
+			Core::Redraw::Request();
+			return;
+		}
+
+		const std::optional<std::uint32_t> exitCode = entry.Session->GetExitCode();
+		WriteProcessExitedLine(entry.Session->GetScreen(), exitCode);
+
+		entry.Command->Exited = true;
+		entry.Command->ExitCode = exitCode;
+	}
+
+	void TerminalWindows::TakeShowRequest(Entry& entry)
+	{
+		if (entry.Command == nullptr || !std::exchange(entry.Command->ShowRequested, false))
+		{
+			return;
+		}
+
+		Reveal();
+		entry.Window.Focus = true;
 	}
 
 	void TerminalWindows::Render(const TerminalDockTargets& targets, const EditorPalette& palette,
@@ -236,8 +273,10 @@ namespace Graphite {
 
 			const std::string& announcedTitle = entry.Session->GetScreen().GetTitle();
 			const std::string windowIdentity = WindowIdentity(entry.Record.Id);
-			const std::string tabTitle =
+			const std::string liveTitle =
 				TerminalTitleFor(TerminalLabelTitle(announcedTitle, entry.Record.Title), entry.Session->GetProfileName());
+			const bool commandExited = entry.Command != nullptr && entry.Command->Exited;
+			const std::string tabTitle = commandExited ? ExitedTerminalTitle(liveTitle) : liveTitle;
 			const std::string windowName = ICON_LC_SQUARE_TERMINAL "  " + std::to_string(tabNumber) + ": " + tabTitle + windowIdentity;
 
 			ImGuiWindowClass windowClass;
@@ -509,9 +548,10 @@ namespace Graphite {
 		return true;
 	}
 
-	bool TerminalWindows::OpenCommand(const std::string& label, const std::filesystem::path& program,
-									  std::vector<std::string> arguments,
-									  const std::filesystem::path& workingDirectory)
+	Core::Ref<CommandTerminal> TerminalWindows::OpenCommand(const std::string& label,
+															const std::filesystem::path& program,
+															std::vector<std::string> arguments,
+															const std::filesystem::path& workingDirectory)
 	{
 		Reveal();
 
@@ -522,7 +562,15 @@ namespace Graphite {
 							.WorkingDirectory = workingDirectory,
 							.FromCommand = true};
 
-		return Start(profile, workingDirectory, std::move(record), EntryOrigin::Requested);
+		if (!Start(profile, workingDirectory, std::move(record), EntryOrigin::Requested))
+		{
+			return nullptr;
+		}
+
+		Core::Ref<CommandTerminal> command = Core::CreateRef<CommandTerminal>();
+		m_Open.back()->Command = command;
+
+		return command;
 	}
 
 	bool TerminalWindows::Start(const Core::ShellProfile& profile, const std::filesystem::path& workingDirectory,
@@ -743,14 +791,23 @@ namespace Graphite {
 		}
 	}
 
-	bool TerminalWindows::IsFinished(const Core::Scope<Entry>& entry)
+	bool TerminalWindows::TabCloses(const Core::Scope<Entry>& entry)
 	{
-		return entry->Closing || !entry->Session->IsAlive();
+		const TerminalKind kind = entry->Command != nullptr ? TerminalKind::Command : TerminalKind::Shell;
+		return TerminalTabCloses(kind, entry->Closing, entry->Session->IsAlive());
 	}
 
 	// WARNING: Call only after every window's End: erasing destroys a session, whose destructor terminates the process and joins the reader thread.
 	void TerminalWindows::RemoveClosed()
 	{
-		std::erase_if(m_Open, IsFinished);
+		for (const Core::Scope<Entry>& entry : m_Open)
+		{
+			if (entry->Command != nullptr && TabCloses(entry))
+			{
+				entry->Command->Closed = true;
+			}
+		}
+
+		std::erase_if(m_Open, TabCloses);
 	}
 }

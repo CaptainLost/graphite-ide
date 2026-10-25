@@ -3,6 +3,7 @@
 #include "Sessions/Transcript/JsonAccess.h"
 #include "Sessions/SessionSummary.h"
 #include "Sessions/Transcript/ToolFacts.h"
+#include "Terminal/TerminalRules.h"
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Strings.h"
@@ -116,6 +117,28 @@ namespace Graphite {
 		}
 
 		return isWorkspaceOnly ? "No sessions in this workspace" : "No sessions.";
+	}
+
+	std::optional<std::string> PendingSessionEndText(const CommandTerminal& terminal)
+	{
+		if (terminal.Exited)
+		{
+			const std::string exitedText = "Claude exited before starting a session";
+
+			if (!terminal.ExitCode.has_value())
+			{
+				return exitedText;
+			}
+
+			return std::format("{} (code {})", exitedText, ExitCodeText(*terminal.ExitCode));
+		}
+
+		if (terminal.Closed)
+		{
+			return "Claude's terminal was closed before it started a session";
+		}
+
+		return std::nullopt;
 	}
 
 	std::string FormatDuration(std::chrono::milliseconds span)

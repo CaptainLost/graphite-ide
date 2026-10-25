@@ -4,6 +4,7 @@
 #include "Sessions/Requests/RequestTimeline.h"
 #include "Sessions/Session.h"
 #include "Sessions/SessionSummary.h"
+#include "Terminal/CommandTerminal.h"
 
 #include <chrono>
 #include <cstddef>
@@ -27,6 +28,8 @@ namespace Graphite {
 
 	std::string EmptyListMessage(bool isScanning, std::size_t finishedCount, std::size_t totalCount,
 								 bool isWorkspaceOnly, std::string_view filter);
+
+	std::optional<std::string> PendingSessionEndText(const CommandTerminal& terminal);
 
 	std::string FormatDuration(std::chrono::milliseconds span);
 

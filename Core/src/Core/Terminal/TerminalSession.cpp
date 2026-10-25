@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cstdint>
+#include <optional>
 
 namespace Core {
 
@@ -153,10 +155,31 @@ namespace Core {
 			Redraw::Request();
 		}
 
-		m_Alive.store(false, std::memory_order_relaxed);
+		{
+			// WARNING: Lowered under the queue's mutex, which HasFinished reads both under: lowered outside it, a reader
+			// could see the flag down and still find the last bytes not yet in the queue.
+			std::lock_guard<std::mutex> lock(m_QueueMutex);
+			m_Alive.store(false, std::memory_order_relaxed);
+		}
 
 		// So the tab of a shell that exited goes away without waiting for input.
 		Redraw::Request();
+	}
+
+	bool TerminalSession::HasFinished() const
+	{
+		std::lock_guard<std::mutex> lock(m_QueueMutex);
+		return !m_Alive.load(std::memory_order_relaxed) && m_QueuedOutput.empty();
+	}
+
+	std::optional<std::uint32_t> TerminalSession::GetExitCode() const
+	{
+		if (!m_Console)
+		{
+			return std::nullopt;
+		}
+
+		return m_Console->GetExitCode();
 	}
 
 	void TerminalSession::ApplyQueuedOutput()

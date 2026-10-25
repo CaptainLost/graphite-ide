@@ -3,6 +3,7 @@
 #include "Sessions/LocalClock.h"
 #include "Sessions/ClaudeLaunch.h"
 #include "Sessions/SessionIndex.h"
+#include "Terminal/CommandTerminal.h"
 
 #include "Core/Base/Base.h"
 #include "Core/FileSystem/DirectoryWatcher.h"
@@ -42,9 +43,10 @@ namespace Graphite {
 	{
 	public:
 		// WARNING: Claude Code looks up a transcript to resume under the project of the directory it is started
-		// in, so a resume started from the wrong directory fails to find the session.
-		using LaunchClaude = std::function<bool(const std::string& label, const ClaudeCommand& command,
-												const std::filesystem::path& workingDirectory)>;
+		// in, so a resume started from the wrong directory fails to find the session. An empty result means
+		// Claude did not start.
+		using LaunchClaude = std::function<Core::Ref<CommandTerminal>(
+			const std::string& label, const ClaudeCommand& command, const std::filesystem::path& workingDirectory)>;
 
 		SessionsPanel(const Workspace& workspace, const ClaudeSettings& settings, SessionWindows& windows,
 					  LaunchClaude launch);

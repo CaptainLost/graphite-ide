@@ -7,6 +7,7 @@
 #include "Sessions/SessionText.h"
 #include "UI/TypographicMarks.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Base/Log.h"
 #include "Core/ImGui/IconButton.h"
 #include "Core/ImGui/LoadingState.h"
@@ -199,18 +200,20 @@ namespace Graphite {
 		m_Open.push_back(std::move(entry));
 	}
 
-	void SessionWindows::OpenPending(const std::string& id, std::string title)
+	void SessionWindows::OpenPending(const std::string& id, std::string title, Core::Ref<CommandTerminal> terminal)
 	{
 		if (Entry* existing = Find(id))
 		{
 			existing->CarriedOver = false;
 			existing->Window.Focus = true;
+			existing->Terminal = std::move(terminal);
 			return;
 		}
 
 		auto entry = Core::CreateScope<Entry>();
 		entry->Id = id;
 		entry->Title = std::move(title);
+		entry->Terminal = std::move(terminal);
 		m_Open.push_back(std::move(entry));
 	}
 
@@ -560,14 +563,7 @@ namespace Graphite {
 			{
 				if (!entry.Main.Live)
 				{
-					if (entry.Looking)
-					{
-						Core::LoadingLine("Looking for this session");
-					}
-					else
-					{
-						ImGui::TextDisabled("Waiting for Claude to write the session's first lines...");
-					}
+					DrawWithoutTranscript(entry);
 				}
 				else
 				{
@@ -616,6 +612,32 @@ namespace Graphite {
 			{
 				m_Open.erase(m_Open.begin() + static_cast<std::ptrdiff_t>(index));
 			}
+		}
+	}
+
+	void SessionWindows::DrawWithoutTranscript(Entry& entry)
+	{
+		if (entry.Looking)
+		{
+			Core::LoadingLine("Looking for this session");
+			return;
+		}
+
+		const std::optional<std::string> pendingEnd =
+			entry.Terminal != nullptr ? PendingSessionEndText(*entry.Terminal) : std::nullopt;
+
+		if (!pendingEnd.has_value())
+		{
+			Core::LoadingLine("Waiting for Claude to write the session's first lines", Core::WhileLoaderWaits::ShowText);
+			return;
+		}
+
+		ImGui::TextWrapped("%s", pendingEnd->c_str());
+
+		if (!entry.Terminal->Closed && Core::TextButton("Show terminal"))
+		{
+			entry.Terminal->ShowRequested = true;
+			Core::Redraw::Request();
 		}
 	}
 }

@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -47,6 +48,12 @@ namespace Core {
 
 		bool IsAlive() const { return m_Alive.load(std::memory_order_relaxed); }
 
+		// WARNING: IsAlive turns false while the program's last output may still be queued, so anything added to the
+		// screen after that output waits for this instead.
+		bool HasFinished() const;
+
+		std::optional<std::uint32_t> GetExitCode() const;
+
 		TerminalScreen& GetScreen() { return m_Screen; }
 		const TerminalScreen& GetScreen() const { return m_Screen; }
 
@@ -67,7 +74,7 @@ namespace Core {
 		TerminalScreen m_Screen;
 		VtParser m_Parser;
 
-		std::mutex m_QueueMutex;
+		mutable std::mutex m_QueueMutex;
 		std::condition_variable m_ReaderWake;
 		std::string m_QueuedOutput;
 		std::atomic<bool> m_Alive{true};

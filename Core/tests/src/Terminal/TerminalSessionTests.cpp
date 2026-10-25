@@ -180,6 +180,49 @@ namespace {
 		outcome.Alive.store(session.IsAlive());
 	}
 
+	constexpr std::uint32_t kCommandExitCode = 3;
+
+	struct FinishOutcome
+	{
+		std::atomic<bool> Started{false};
+		std::atomic<bool> Finished{false};
+		std::atomic<bool> OutputShownWhenFinished{false};
+		std::atomic<bool> ExitCodeKnown{false};
+		std::atomic<std::uint32_t> ExitCode{0};
+	};
+
+	void StartCommandAndWaitUntilFinished(FinishOutcome& outcome)
+	{
+		const Core::ShellProfile echoThenExit{.Name = "Command",
+											  .Path = "cmd.exe",
+											  .Arguments = {"/c", "echo command-output& exit 3"}};
+		Core::Result<Core::Scope<Core::TerminalSession>> sessionResult =
+			Core::TerminalSession::Start(echoThenExit, std::filesystem::current_path(), kInitialColumns, kInitialRows);
+
+		if (!sessionResult)
+		{
+			return;
+		}
+
+		Core::TerminalSession& session = *sessionResult.GetValue();
+		outcome.Started.store(true);
+
+		const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kShellResponseLimit;
+
+		while (!session.HasFinished() && std::chrono::steady_clock::now() < deadline)
+		{
+			session.ApplyQueuedOutput();
+			std::this_thread::sleep_for(kFrameInterval);
+		}
+
+		outcome.Finished.store(session.HasFinished());
+		outcome.OutputShownWhenFinished.store(ScreenText(session.GetScreen()).find(U"command-output") != std::u32string::npos);
+
+		const std::optional<std::uint32_t> exitCode = session.GetExitCode();
+		outcome.ExitCodeKnown.store(exitCode.has_value());
+		outcome.ExitCode.store(exitCode.value_or(0));
+	}
+
 	struct ResizeOutcome
 	{
 		std::atomic<bool> Started{false};
@@ -248,6 +291,30 @@ TEST_CASE("TerminalSession stops being alive after the shell exits")
 	REQUIRE(finished);
 	REQUIRE(outcome->Started.load());
 	CHECK_FALSE(outcome->Alive.load());
+}
+
+TEST_CASE("TerminalSession finishes once its program exited and its output is on the screen, and knows the exit code")
+{
+	auto outcome = std::make_shared<FinishOutcome>();
+
+	const bool finished =
+		FinishesOnItsOwnThreadWithin(kSessionLimit, [outcome] { StartCommandAndWaitUntilFinished(*outcome); });
+
+	REQUIRE(finished);
+	REQUIRE(outcome->Started.load());
+	CHECK(outcome->Finished.load());
+	CHECK(outcome->OutputShownWhenFinished.load());
+	REQUIRE(outcome->ExitCodeKnown.load());
+	CHECK(outcome->ExitCode.load() == kCommandExitCode);
+}
+
+TEST_CASE("TerminalSession is not finished while its shell runs")
+{
+	Core::Result<Core::Scope<Core::TerminalSession>> sessionResult = StartCommandPrompt();
+
+	REQUIRE(sessionResult);
+	CHECK_FALSE(sessionResult.GetValue()->HasFinished());
+	CHECK_FALSE(sessionResult.GetValue()->GetExitCode().has_value());
 }
 
 TEST_CASE("TerminalSession resizes its screen with its shell")

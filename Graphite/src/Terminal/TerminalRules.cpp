@@ -3,13 +3,37 @@
 #include "Core/Base/Ascii.h"
 #include "Core/FileSystem/FileSystem.h"
 
+#include "UI/TypographicMarks.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <format>
 
 namespace Graphite {
 
 	namespace {
+		constexpr std::uint32_t kFirstExitCodeShownInHex = 0x80000000u;
+		constexpr std::uint8_t kNarrowCharacterWidth = 1;
+
+		bool CellShowsSomething(const Core::TerminalCell& cell)
+		{
+			return cell.Code != U' ' || cell.Background.Kind != Core::TerminalColorKind::Default;
+		}
+
+		bool RowShowsSomething(const Core::TerminalScreen& screen, std::uint16_t row)
+		{
+			for (std::uint16_t column = 0; column < screen.GetColumns(); ++column)
+			{
+				if (CellShowsSomething(screen.At(row, column)))
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+
 		constexpr int kMinimumCellsPerSide = 2;
 		constexpr int kRoomyColumns = 20;
 		constexpr std::size_t kFirstShellIndex = 0;
@@ -400,5 +424,73 @@ namespace Graphite {
 		}
 
 		return ids.size() - 1;
+	}
+
+	bool TerminalTabCloses(TerminalKind kind, bool closeRequested, bool processAlive)
+	{
+		if (closeRequested)
+		{
+			return true;
+		}
+
+		switch (kind)
+		{
+		case TerminalKind::Shell:
+			return !processAlive;
+		case TerminalKind::Command:
+			return false;
+		}
+
+		return false;
+	}
+
+	std::string ExitCodeText(std::uint32_t exitCode)
+	{
+		if (exitCode >= kFirstExitCodeShownInHex)
+		{
+			return std::format("0x{:08X}", exitCode);
+		}
+
+		return std::to_string(exitCode);
+	}
+
+	std::string ProcessExitedText(std::optional<std::uint32_t> exitCode)
+	{
+		if (!exitCode.has_value())
+		{
+			return "Process exited";
+		}
+
+		return "Process exited with code " + ExitCodeText(*exitCode);
+	}
+
+	void WriteProcessExitedLine(Core::TerminalScreen& screen, std::optional<std::uint32_t> exitCode)
+	{
+		const Core::CursorPosition cursor = screen.GetCursor();
+		const bool cursorIsAfterText = cursor.Column != 0 || RowShowsSomething(screen, cursor.Row);
+
+		screen.ResetScrollRegion();
+
+		if (cursorIsAfterText)
+		{
+			screen.CarriageReturn();
+			screen.LineFeed();
+		}
+
+		const Core::Pen previousPen = screen.GetPen();
+		screen.SetPen(Core::Pen{.Flags = Core::CellFlags::Faint});
+
+		for (const char character : ProcessExitedText(exitCode))
+		{
+			screen.Print(static_cast<char32_t>(character), kNarrowCharacterWidth);
+		}
+
+		screen.SetPen(previousPen);
+		screen.SetCursorVisible(false);
+	}
+
+	std::string ExitedTerminalTitle(const std::string& title)
+	{
+		return title + std::string{kMiddleDotSeparator} + "exited";
 	}
 }

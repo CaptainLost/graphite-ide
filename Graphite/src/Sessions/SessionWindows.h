@@ -11,6 +11,7 @@
 #include "Sessions/SessionSummary.h"
 #include "Sessions/Transcript/SubagentLinks.h"
 #include "Sessions/Transcript/ToolFacts.h"
+#include "Terminal/CommandTerminal.h"
 #include "Theme/SessionPalette.h"
 #include "UI/TabWindow.h"
 
@@ -37,7 +38,7 @@ namespace Graphite {
 
 		void Open(const SessionSummary& summary);
 
-		void OpenPending(const std::string& id, std::string title);
+		void OpenPending(const std::string& id, std::string title, Core::Ref<CommandTerminal> terminal);
 
 		void UpdateSummary(const SessionSummary& summary);
 
@@ -106,11 +107,15 @@ namespace Graphite {
 
 			bool Looking = false;
 
+			Core::Ref<CommandTerminal> Terminal;
+
 			bool CarriedOver = false;
 		};
 
 		Entry* Find(const std::string& id);
 		void Attach(Entry& entry, const SessionSummary& summary);
+
+		static void DrawWithoutTranscript(Entry& entry);
 
 		static void Take(TranscriptViews& views);
 

@@ -2,9 +2,13 @@
 
 #include "Terminal/TerminalRules.h"
 
+#include "Core/Terminal/TerminalScreen.h"
+
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace Graphite;
@@ -571,4 +575,107 @@ TEST_CASE("A terminal focused last and since closed falls back to the last one o
 TEST_CASE("No terminal means nothing to bring forward")
 {
 	CHECK(TerminalToBringForward({}, "a") == std::nullopt);
+}
+
+TEST_CASE("A shell's tab closes when its shell exits and a command's tab stays until the reader closes it")
+{
+	constexpr bool kCloseRequested = true;
+	constexpr bool kNoCloseRequested = false;
+	constexpr bool kProcessAlive = true;
+	constexpr bool kProcessExited = false;
+
+	CHECK_FALSE(TerminalTabCloses(TerminalKind::Shell, kNoCloseRequested, kProcessAlive));
+	CHECK(TerminalTabCloses(TerminalKind::Shell, kNoCloseRequested, kProcessExited));
+	CHECK(TerminalTabCloses(TerminalKind::Shell, kCloseRequested, kProcessAlive));
+
+	CHECK_FALSE(TerminalTabCloses(TerminalKind::Command, kNoCloseRequested, kProcessAlive));
+	CHECK_FALSE(TerminalTabCloses(TerminalKind::Command, kNoCloseRequested, kProcessExited));
+	CHECK(TerminalTabCloses(TerminalKind::Command, kCloseRequested, kProcessExited));
+	CHECK(TerminalTabCloses(TerminalKind::Command, kCloseRequested, kProcessAlive));
+}
+
+TEST_CASE("An exit code reads in decimal, and one with the top bit set reads as the status it is in hex")
+{
+	CHECK(ExitCodeText(0) == "0");
+	CHECK(ExitCodeText(3) == "3");
+	CHECK(ExitCodeText(0x7FFFFFFFu) == "2147483647");
+	CHECK(ExitCodeText(0xC000013Au) == "0xC000013A");
+	CHECK(ExitCodeText(0xFFFFFFFFu) == "0xFFFFFFFF");
+}
+
+TEST_CASE("The exit line names the code, or only that the process exited when the code is unknown")
+{
+	CHECK(ProcessExitedText(std::optional<std::uint32_t>{1}) == "Process exited with code 1");
+	CHECK(ProcessExitedText(std::nullopt) == "Process exited");
+}
+
+namespace {
+	constexpr std::uint16_t kScreenColumns = 40;
+	constexpr std::uint16_t kScreenRows = 5;
+	constexpr std::uint8_t kNarrow = 1;
+
+	void PrintText(Core::TerminalScreen& screen, std::string_view text)
+	{
+		for (const char character : text)
+		{
+			screen.Print(static_cast<char32_t>(character), kNarrow);
+		}
+	}
+
+	std::string RowText(const Core::TerminalScreen& screen, std::uint16_t row)
+	{
+		std::string text;
+
+		for (std::uint16_t column = 0; column < screen.GetColumns(); ++column)
+		{
+			text.push_back(static_cast<char>(screen.At(row, column).Code));
+		}
+
+		const std::size_t lastVisible = text.find_last_not_of(' ');
+		return lastVisible == std::string::npos ? std::string{} : text.substr(0, lastVisible + 1);
+	}
+}
+
+TEST_CASE("The exit line goes on a line of its own after the program's last output, dimmed, and hides the cursor")
+{
+	Core::TerminalScreen screen(kScreenColumns, kScreenRows);
+	PrintText(screen, "error: not logged in");
+
+	WriteProcessExitedLine(screen, std::optional<std::uint32_t>{1});
+
+	CHECK(RowText(screen, 0) == "error: not logged in");
+	CHECK(RowText(screen, 1) == "Process exited with code 1");
+	CHECK(Core::HasFlag(screen.At(1, 0).Flags, Core::CellFlags::Faint));
+	CHECK_FALSE(Core::HasFlag(screen.GetPen().Flags, Core::CellFlags::Faint));
+	CHECK_FALSE(screen.IsCursorVisible());
+}
+
+TEST_CASE("The exit line follows output that ended with a new line without leaving a blank line")
+{
+	Core::TerminalScreen screen(kScreenColumns, kScreenRows);
+	PrintText(screen, "done");
+	screen.CarriageReturn();
+	screen.LineFeed();
+
+	WriteProcessExitedLine(screen, std::optional<std::uint32_t>{0});
+
+	CHECK(RowText(screen, 0) == "done");
+	CHECK(RowText(screen, 1) == "Process exited with code 0");
+}
+
+TEST_CASE("The exit line does not overwrite text the cursor was left in front of")
+{
+	Core::TerminalScreen screen(kScreenColumns, kScreenRows);
+	PrintText(screen, "status line");
+	screen.SetCursor(0, 0);
+
+	WriteProcessExitedLine(screen, std::nullopt);
+
+	CHECK(RowText(screen, 0) == "status line");
+	CHECK(RowText(screen, 1) == "Process exited");
+}
+
+TEST_CASE("An exited command's tab says it exited")
+{
+	CHECK(ExitedTerminalTitle("Claude") == "Claude \xC2\xB7 exited");
 }

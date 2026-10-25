@@ -368,14 +368,17 @@ namespace Graphite {
 		// pending tab is matched to the index's summary by it.
 		const std::string id = Core::Lowered(Core::Uuid::Generate().ToString());
 
-		if (!m_Launch("Claude", NewSessionCommand(program, id), WorkspaceRootOrCurrentDirectory()))
+		Core::Ref<CommandTerminal> terminal =
+			m_Launch("Claude", NewSessionCommand(program, id), WorkspaceRootOrCurrentDirectory());
+
+		if (terminal == nullptr)
 		{
 			m_LaunchProblem = "Claude did not start. The console has the reason.";
 			return;
 		}
 
 		m_LaunchProblem.reset();
-		m_Windows.OpenPending(id, "New Claude session");
+		m_Windows.OpenPending(id, "New Claude session", std::move(terminal));
 
 		m_NextDirectoryCheck = kCheckImmediately;
 	}
@@ -394,7 +397,7 @@ namespace Graphite {
 		const bool sessionFolderExists = !summary.Cwd.empty() && std::filesystem::is_directory(summary.Cwd, status);
 		const std::filesystem::path directory = sessionFolderExists ? summary.Cwd : WorkspaceRootOrCurrentDirectory();
 
-		if (!m_Launch("Claude", ResumeCommand(program, summary.Id), directory))
+		if (m_Launch("Claude", ResumeCommand(program, summary.Id), directory) == nullptr)
 		{
 			m_LaunchProblem = "Claude did not start. The console has the reason.";
 			return;

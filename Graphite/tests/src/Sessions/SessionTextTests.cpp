@@ -7,6 +7,9 @@
 
 #include "TranscriptFixtures.h"
 
+#include <optional>
+#include <string>
+
 using namespace Graphite;
 
 TEST_CASE("A cost reads as dollars, a trace as less than a cent, and an unknown as a question mark")
@@ -278,6 +281,31 @@ TEST_CASE("An empty session list says why it is empty")
 	CHECK(EmptyListMessage(false, 0, 0, false, "bug") == "No sessions match \"bug\"");
 	CHECK(EmptyListMessage(false, 0, 0, true, "") == "No sessions in this workspace");
 	CHECK(EmptyListMessage(false, 0, 0, false, "") == "No sessions.");
+}
+
+TEST_CASE("A pending session keeps waiting while Claude's terminal runs")
+{
+	const CommandTerminal running;
+
+	CHECK_FALSE(PendingSessionEndText(running).has_value());
+}
+
+TEST_CASE("A pending session stops waiting when Claude exits first, and names the exit code")
+{
+	const CommandTerminal exitedWithCode{.Exited = true, .ExitCode = 1};
+	const CommandTerminal exitedWithoutCode{.Exited = true};
+	const CommandTerminal exitedThenClosed{.Exited = true, .ExitCode = 0, .Closed = true};
+
+	CHECK(PendingSessionEndText(exitedWithCode) == std::optional<std::string>{"Claude exited before starting a session (code 1)"});
+	CHECK(PendingSessionEndText(exitedWithoutCode) == std::optional<std::string>{"Claude exited before starting a session"});
+	CHECK(PendingSessionEndText(exitedThenClosed) == std::optional<std::string>{"Claude exited before starting a session (code 0)"});
+}
+
+TEST_CASE("A pending session stops waiting when Claude's terminal is closed while it runs")
+{
+	const CommandTerminal closed{.Closed = true};
+
+	CHECK(PendingSessionEndText(closed) == std::optional<std::string>{"Claude's terminal was closed before it started a session"});
 }
 
 TEST_CASE("An empty session is hidden from the list unless it is live or open")
