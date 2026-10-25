@@ -1,21 +1,29 @@
 #include <doctest/doctest.h>
 
 #include "Terminal/TerminalWindows.h"
+#include "Theme/BuiltInSchemes.h"
+#include "Theme/Palettes.h"
 #include "UI/ToastEvent.h"
 #include "Workspace/Workspace.h"
 
+#include "ImGuiFrames.h"
 #include "TempAppSettings.h"
 #include "TempDirectory.h"
 
 #include "Core/Command/CommandRegistry.h"
 #include "Core/Command/Keymap.h"
 #include "Core/Events/EventBus.h"
+#include "Core/ImGui/TabCloseRequests.h"
+
+#include <imgui.h>
+#include <imgui_internal.h>
 
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -101,9 +109,47 @@ namespace {
 	}
 }
 
+namespace {
+	constexpr std::string_view kTerminalIdentityMarker = "###terminal-";
+
+	struct DrawnTerminals
+	{
+		ImGuiFrames Frames;
+		const Graphite::EditorPalette Palette = Graphite::ReadEditorPalette(Graphite::DarkScheme());
+		const Graphite::TerminalDockTargets NoDockTargets;
+		Core::TabCloseRequests CloseRequests;
+
+		// As the application runs a frame: output is applied, the windows drawn, and closed tabs removed after them.
+		void Frame(Graphite::TerminalWindows& terminals)
+		{
+			Frames.Next([this, &terminals] {
+				terminals.Update();
+				terminals.Render(NoDockTargets, Palette, CloseRequests);
+			});
+			CloseRequests.EndFrame();
+		}
+	};
+
+	std::optional<std::string> DrawnTerminalWindowName()
+	{
+		for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+		{
+			const std::string_view name = window->Name;
+
+			if (window->Active && name.find(kTerminalIdentityMarker) != std::string_view::npos)
+			{
+				return std::string{name};
+			}
+		}
+
+		return std::nullopt;
+	}
+}
+
 TEST_CASE("A command's terminal stays open after its program exits and tells whoever started it how it ended")
 {
 	TerminalFixture fixture;
+	DrawnTerminals drawn;
 	const std::vector<std::string> exitWithThree{"/c", "exit 3"};
 	constexpr std::uint32_t kExpectedExitCode = 3;
 
@@ -114,11 +160,38 @@ TEST_CASE("A command's terminal stays open after its program exits and tells who
 	CHECK_FALSE(command->Exited);
 
 	UpdateUntilExited(fixture.Terminals, *command);
+	drawn.Frame(fixture.Terminals);
+	drawn.Frame(fixture.Terminals);
 
 	CHECK(command->Exited);
 	CHECK(command->ExitCode == std::optional<std::uint32_t>{kExpectedExitCode});
 	CHECK_FALSE(command->Closed);
 	CHECK(fixture.Terminals.GetOpenCount() == 1);
+	CHECK(DrawnTerminalWindowName().has_value());
+}
+
+TEST_CASE("Closing an exited command's terminal removes its tab and tells whoever started it")
+{
+	TerminalFixture fixture;
+	DrawnTerminals drawn;
+	const std::vector<std::string> exitAtOnce{"/c", "exit 0"};
+
+	const Core::Ref<Graphite::CommandTerminal> command =
+		fixture.Terminals.OpenCommand("Build", "cmd.exe", exitAtOnce, fixture.Temp.GetPath());
+
+	REQUIRE(command != nullptr);
+	UpdateUntilExited(fixture.Terminals, *command);
+	drawn.Frame(fixture.Terminals);
+
+	const std::optional<std::string> windowName = DrawnTerminalWindowName();
+	REQUIRE(windowName.has_value());
+
+	drawn.CloseRequests.Request(*windowName);
+	drawn.CloseRequests.EndFrame();
+	drawn.Frame(fixture.Terminals);
+
+	CHECK(fixture.Terminals.GetOpenCount() == 0);
+	CHECK(command->Closed);
 }
 
 TEST_CASE("Asking to see a command's terminal shows hidden terminals")
