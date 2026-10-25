@@ -22,15 +22,6 @@ namespace Graphite {
 			ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoFocusOnAppearing |
 			ImGuiWindowFlags_NoNav | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_AlwaysAutoResize;
 
-		bool ReaderMovedOn(const ReaderPosition& reader, const std::filesystem::path& path, std::size_t caretOffset,
-						   std::size_t revision)
-		{
-			const bool otherDocument = !reader.ActiveDocument.has_value() || *reader.ActiveDocument != path;
-
-			return otherDocument || reader.CaretOffset != caretOffset || reader.Revision != revision ||
-				   reader.EscapePressed;
-		}
-
 		ImGuiViewport* ViewportOf(const CaretPlacement& caret)
 		{
 			ImGuiViewport* const viewport = ImGui::FindViewportByID(caret.Viewport);
@@ -67,6 +58,7 @@ namespace Graphite {
 		m_Revision = revision;
 		m_Text = std::move(text);
 		m_StartedAt = now;
+		m_DocumentHasBeenActive = false;
 	}
 
 	void NavigationBubble::SetWaitingText(std::string text)
@@ -77,9 +69,9 @@ namespace Graphite {
 		}
 	}
 
-	void NavigationBubble::End(std::string message, double now)
+	void NavigationBubble::End(NavigationCommand command, std::string message, double now)
 	{
-		if (m_Phase == Phase::Closed)
+		if (m_Phase == Phase::Closed || m_Command != command)
 		{
 			return;
 		}
@@ -89,21 +81,49 @@ namespace Graphite {
 		m_EndsAt = now + kOutcomeSeconds;
 	}
 
-	void NavigationBubble::Close()
+	void NavigationBubble::Close(NavigationCommand command)
+	{
+		if (m_Command == command)
+		{
+			Reset();
+		}
+	}
+
+	void NavigationBubble::Reset()
 	{
 		m_Phase = Phase::Closed;
 		m_Text.clear();
 	}
 
+	// WARNING: Another document being active counts only once the bubble's own has been: until its pane takes the focus,
+	// which ImGui gives later in the frame of the click, the document that was active before still is.
+	bool NavigationBubble::ReaderMovedOn(const ReaderPosition& reader)
+	{
+		const bool movedWithinDocument = reader.CaretOffset != m_CaretOffset || reader.Revision != m_Revision;
+
+		if (!reader.BubbleDocumentShown || movedWithinDocument || reader.EscapePressed)
+		{
+			return true;
+		}
+
+		if (reader.ActiveDocument == m_Path)
+		{
+			m_DocumentHasBeenActive = true;
+			return false;
+		}
+
+		return m_DocumentHasBeenActive;
+	}
+
 	std::optional<NavigationCommand> NavigationBubble::AbandonIfReaderMovedOn(const ReaderPosition& reader)
 	{
-		if (m_Phase == Phase::Closed || !ReaderMovedOn(reader, m_Path, m_CaretOffset, m_Revision))
+		if (m_Phase == Phase::Closed || !ReaderMovedOn(reader))
 		{
 			return std::nullopt;
 		}
 
 		const bool wasWaiting = m_Phase == Phase::Waiting;
-		Close();
+		Reset();
 
 		return wasWaiting ? std::optional<NavigationCommand>{m_Command} : std::nullopt;
 	}

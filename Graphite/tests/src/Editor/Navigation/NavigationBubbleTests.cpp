@@ -23,7 +23,7 @@ namespace {
 
 	Graphite::ReaderPosition StillThere()
 	{
-		return Graphite::ReaderPosition{.ActiveDocument = kSource, .CaretOffset = kAskedAt, .Revision = kRevision};
+		return Graphite::ReaderPosition{.ActiveDocument = kSource, .BubbleDocumentShown = true, .CaretOffset = kAskedAt, .Revision = kRevision};
 	}
 }
 
@@ -46,7 +46,7 @@ TEST_CASE("A navigation wait shows only once it has lasted a fifth of a second")
 TEST_CASE("How a navigation command ended shows at once and for a couple of seconds")
 {
 	Graphite::NavigationBubble bubble = WaitingBubble();
-	bubble.End("No definition found", kStart + kJustBefore);
+	bubble.End(Graphite::NavigationCommand::Definition, "No definition found", kStart + kJustBefore);
 
 	const std::optional<Graphite::ShownBubble> shown = bubble.ShownAt(kStart + kJustBefore);
 
@@ -65,8 +65,8 @@ TEST_CASE("How a navigation command ended shows at once and for a couple of seco
 TEST_CASE("A closed bubble ends nothing and shows nothing")
 {
 	Graphite::NavigationBubble bubble = WaitingBubble();
-	bubble.Close();
-	bubble.End("No definition found", kStart);
+	bubble.Close(Graphite::NavigationCommand::Definition);
+	bubble.End(Graphite::NavigationCommand::Definition, "No definition found", kStart);
 
 	CHECK_FALSE(bubble.IsOpen());
 	CHECK_FALSE(bubble.ShownAt(kStart + 1.0).has_value());
@@ -91,13 +91,10 @@ TEST_CASE("Moving the caret, typing, Escape or another document abandons the wai
 	Graphite::ReaderPosition escaped = StillThere();
 	escaped.EscapePressed = true;
 
-	Graphite::ReaderPosition elsewhere = StillThere();
-	elsewhere.ActiveDocument = std::filesystem::path{"C:/project/other.cpp"};
+	Graphite::ReaderPosition hidden = StillThere();
+	hidden.BubbleDocumentShown = false;
 
-	Graphite::ReaderPosition noDocument = StillThere();
-	noDocument.ActiveDocument.reset();
-
-	for (const Graphite::ReaderPosition& reader : {moved, typed, escaped, elsewhere, noDocument})
+	for (const Graphite::ReaderPosition& reader : {moved, typed, escaped, hidden})
 	{
 		Graphite::NavigationBubble bubble = WaitingBubble(Graphite::NavigationCommand::SwitchSourceHeader);
 
@@ -106,10 +103,40 @@ TEST_CASE("Moving the caret, typing, Escape or another document abandons the wai
 	}
 }
 
+TEST_CASE("A command given in a pane that is not active yet waits for that pane, and ends when another becomes active")
+{
+	Graphite::NavigationBubble bubble = WaitingBubble();
+
+	Graphite::ReaderPosition otherPaneStillActive = StillThere();
+	otherPaneStillActive.ActiveDocument = std::filesystem::path{"C:/project/other.cpp"};
+
+	CHECK_FALSE(bubble.AbandonIfReaderMovedOn(otherPaneStillActive).has_value());
+	CHECK_FALSE(bubble.AbandonIfReaderMovedOn(StillThere()).has_value());
+	CHECK(bubble.IsWaitingFor(Graphite::NavigationCommand::Definition));
+
+	CHECK(bubble.AbandonIfReaderMovedOn(otherPaneStillActive) == Graphite::NavigationCommand::Definition);
+	CHECK_FALSE(bubble.IsOpen());
+}
+
+TEST_CASE("How one command ended neither closes nor replaces the bubble of the other")
+{
+	Graphite::NavigationBubble bubble = WaitingBubble(Graphite::NavigationCommand::SwitchSourceHeader);
+
+	bubble.End(Graphite::NavigationCommand::Definition, "No definition found", kStart);
+	bubble.Close(Graphite::NavigationCommand::Definition);
+
+	CHECK(bubble.IsWaitingFor(Graphite::NavigationCommand::SwitchSourceHeader));
+
+	bubble.End(Graphite::NavigationCommand::SwitchSourceHeader, "No header/source counterpart", kStart);
+
+	REQUIRE(bubble.ShownAt(kStart).has_value());
+	CHECK(bubble.ShownAt(kStart)->Text == "No header/source counterpart");
+}
+
 TEST_CASE("Moving on from an ended bubble closes it with nothing to cancel")
 {
 	Graphite::NavigationBubble bubble = WaitingBubble();
-	bubble.End("clangd did not answer", kStart);
+	bubble.End(Graphite::NavigationCommand::Definition, "clangd did not answer", kStart);
 
 	Graphite::ReaderPosition moved = StillThere();
 	moved.CaretOffset = 0;
@@ -125,7 +152,7 @@ TEST_CASE("The waiting text changes only while the bubble waits")
 
 	CHECK(bubble.ShownAt(kStart + 1.0)->Text == "Waiting for Roslyn to load Graphite.csproj");
 
-	bubble.End("No definition found", kStart + 1.0);
+	bubble.End(Graphite::NavigationCommand::Definition, "No definition found", kStart + 1.0);
 	bubble.SetWaitingText("Finding definition");
 
 	CHECK(bubble.ShownAt(kStart + 1.0)->Text == "No definition found");

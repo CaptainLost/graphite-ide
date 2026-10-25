@@ -917,6 +917,8 @@ namespace Graphite {
 		const Core::OpenItem& item = m_Documents.At(index);
 		const std::size_t revision = item.Document ? item.Document->GetBuffer().GetRevision() : 0;
 
+		m_Router.CancelDefinition();
+
 		m_Bubble.BeginWaiting(NavigationCommand::SwitchSourceHeader, item.Path, item.Caret.Offset, revision,
 							  std::string{kLookingForCounterpart}, ImGui::GetTime());
 
@@ -1573,6 +1575,9 @@ namespace Graphite {
 		const CaretScreenPosition screenPosition =
 			state != nullptr ? state->CaretScreen : CaretScreenPosition{};
 
+		// WARNING: F12 and Alt+O share one bubble, so the command it shows replaces the other's question.
+		m_Router.CancelSwitchSourceHeader();
+
 		m_Bubble.BeginWaiting(NavigationCommand::Definition, item.Path, item.Caret.Offset, buffer.GetRevision(),
 							  std::string{kFindingDefinition}, ImGui::GetTime());
 
@@ -1744,18 +1749,18 @@ namespace Graphite {
 	{
 		if (answer.Failed)
 		{
-			m_Bubble.End(AsSentence(ReplyFailureText(answer), answer.ServerAtFailure), ImGui::GetTime());
+			m_Bubble.End(NavigationCommand::SwitchSourceHeader, AsSentence(ReplyFailureText(answer), answer.ServerAtFailure), ImGui::GetTime());
 			return;
 		}
 
 		if (answer.Locations.empty())
 		{
 			APP_INFO("No header/source counterpart for {}", Core::ToUtf8(from));
-			m_Bubble.End(std::string{kNoCounterpart}, ImGui::GetTime());
+			m_Bubble.End(NavigationCommand::SwitchSourceHeader, std::string{kNoCounterpart}, ImGui::GetTime());
 			return;
 		}
 
-		m_Bubble.Close();
+		m_Bubble.Close(NavigationCommand::SwitchSourceHeader);
 
 		const bool permanent = true;
 		RequestOpen(answer.Locations.front().Path, permanent);
@@ -1773,7 +1778,7 @@ namespace Graphite {
 
 		if (answer.Failed)
 		{
-			m_Bubble.End(AsSentence(ReplyFailureText(answer), answer.ServerAtFailure), ImGui::GetTime());
+			m_Bubble.End(NavigationCommand::Definition, AsSentence(ReplyFailureText(answer), answer.ServerAtFailure), ImGui::GetTime());
 			return;
 		}
 
@@ -1783,11 +1788,11 @@ namespace Graphite {
 		switch (outcome)
 		{
 		case DefinitionOutcome::None:
-			m_Bubble.End(NoDefinitionFoundText(m_Router.StatusOf(question.Path)), ImGui::GetTime());
+			m_Bubble.End(NavigationCommand::Definition, NoDefinitionFoundText(m_Router.StatusOf(question.Path)), ImGui::GetTime());
 			break;
 
 		case DefinitionOutcome::Jumped:
-			m_Bubble.Close();
+			m_Bubble.Close(NavigationCommand::Definition);
 
 			if (!candidates.empty())
 			{
@@ -1801,11 +1806,11 @@ namespace Graphite {
 			// cheaper loss: F12 asks again with one keystroke.
 			if (!m_Modals.TryOpen(kDefinitionChoicesTitle))
 			{
-				m_Bubble.End(std::string{kCloseTheDialogFirst}, ImGui::GetTime());
+				m_Bubble.End(NavigationCommand::Definition, std::string{kCloseTheDialogFirst}, ImGui::GetTime());
 				break;
 			}
 
-			m_Bubble.Close();
+			m_Bubble.Close(NavigationCommand::Definition);
 
 			m_DefinitionChoices = std::move(candidates);
 			m_DefinitionChoiceLines.clear();
@@ -1937,12 +1942,19 @@ namespace Graphite {
 		}
 
 		ReaderPosition reader{.ActiveDocument = ActiveTextDocument(m_Documents),
+							  .BubbleDocumentShown = IsShown(m_Bubble.GetPath()),
 							  .EscapePressed = ImGui::IsKeyPressed(ImGuiKey_Escape, kNotRepeating)};
 
-		if (const Core::OpenItem* active = FindActiveTextItem(); active != nullptr && active->Document)
+		if (const std::optional<std::size_t> index = m_Documents.Find(m_Bubble.GetPath()); index && m_Documents.At(*index).Document)
 		{
-			reader.CaretOffset = active->Caret.Offset;
-			reader.Revision = active->Document->GetBuffer().GetRevision();
+			const Core::OpenItem& item = m_Documents.At(*index);
+
+			reader.CaretOffset = item.Caret.Offset;
+			reader.Revision = item.Document->GetBuffer().GetRevision();
+		}
+		else
+		{
+			reader.BubbleDocumentShown = false;
 		}
 
 		const std::optional<NavigationCommand> abandoned = m_Bubble.AbandonIfReaderMovedOn(reader);

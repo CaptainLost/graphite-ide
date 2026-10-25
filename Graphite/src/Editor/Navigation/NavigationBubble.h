@@ -34,9 +34,12 @@ namespace Graphite {
 
 	bool IsCaretInSurface(const CaretPlacement& caret);
 
+	// WARNING: The caret and revision are the bubble's own document's, not the active document's: a Ctrl+click in a pane
+	// that is not active yet gives its command before that pane becomes the active one.
 	struct ReaderPosition
 	{
 		std::optional<std::filesystem::path> ActiveDocument;
+		bool BubbleDocumentShown = false;
 		std::size_t CaretOffset = 0;
 		std::size_t Revision = 0;
 		bool EscapePressed = false;
@@ -66,9 +69,9 @@ namespace Graphite {
 
 		void SetWaitingText(std::string text);
 
-		void End(std::string message, double now);
+		void End(NavigationCommand command, std::string message, double now);
 
-		void Close();
+		void Close(NavigationCommand command);
 
 		std::optional<NavigationCommand> AbandonIfReaderMovedOn(const ReaderPosition& reader);
 
@@ -90,12 +93,18 @@ namespace Graphite {
 			Ended
 		};
 
+		bool ReaderMovedOn(const ReaderPosition& reader);
+
+		void Reset();
+
 		Phase m_Phase = Phase::Closed;
 		NavigationCommand m_Command = NavigationCommand::Definition;
 
 		std::filesystem::path m_Path;
 		std::size_t m_CaretOffset = 0;
 		std::size_t m_Revision = 0;
+
+		bool m_DocumentHasBeenActive = false;
 
 		std::string m_Text;
 
