@@ -60,6 +60,14 @@ namespace Graphite {
 
 		float CaretScreenX = 0.0f;
 		float CaretScreenY = 0.0f;
+		float CaretLineHeight = 0.0f;
+
+		float SurfaceLeft = 0.0f;
+		float SurfaceTop = 0.0f;
+		float SurfaceRight = 0.0f;
+		float SurfaceBottom = 0.0f;
+
+		unsigned int Viewport = 0;
 
 		std::optional<std::size_t> LensClicked;
 

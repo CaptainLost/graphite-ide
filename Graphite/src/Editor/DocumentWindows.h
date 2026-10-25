@@ -10,6 +10,7 @@
 #include "Editor/Find/FindBar.h"
 #include "Editor/Hover/HoverState.h"
 #include "Editor/Navigation/CandidateLine.h"
+#include "Editor/Navigation/NavigationBubble.h"
 #include "Editor/Overlays/AnalysisCache.h"
 #include "Editor/ExpectedWrites.h"
 #include "Editor/Overlays/LensModel.h"
@@ -256,6 +257,12 @@ namespace Graphite {
 
 		void RenderDefinitionChoices(const ResolvedScheme& scheme, std::size_t tabWidth);
 
+		void FollowNavigationWait();
+
+		void AbandonNavigationIfReaderMovedOn();
+
+		void RenderNavigationBubble();
+
 		void SyncEveryDocument();
 
 		struct ReloadBatch
@@ -437,6 +444,9 @@ namespace Graphite {
 		std::vector<CandidateLine> m_DefinitionChoiceLines;
 		std::size_t m_DefinitionChoiceLinesTabWidth = 0;
 
+		NavigationBubble m_Bubble;
+		ImVec2 m_BubbleSize{};
+
 		struct DocumentState
 		{
 			std::optional<LensState> Lens;
@@ -448,6 +458,8 @@ namespace Graphite {
 			bool CarriedOver = false;
 
 			CaretScreenPosition CaretScreen;
+
+			CaretPlacement Caret;
 
 			EditorWidgetState Widget;
 

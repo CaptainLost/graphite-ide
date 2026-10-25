@@ -2703,6 +2703,14 @@ namespace Graphite {
 			result.CaretScreenY =
 				origin.y +
 				static_cast<float>(lenses.ScreenRowOf(caret.Visual.Row)) * metrics.LineHeight;
+			result.CaretLineHeight = metrics.LineHeight;
+
+			const ImRect surface = ImGui::GetCurrentWindow()->InnerRect;
+			result.SurfaceLeft = surface.Min.x;
+			result.SurfaceTop = surface.Min.y;
+			result.SurfaceRight = surface.Max.x;
+			result.SurfaceBottom = surface.Max.y;
+			result.Viewport = ImGui::GetWindowViewport()->ID;
 
 			const HoverIdentifier hover = ComputeHoverIdentifier(
 				buffer, item, metrics, origin, canvas.TextOriginX, lenses, syntax);
