@@ -14,6 +14,8 @@ namespace Graphite {
 	inline constexpr std::string_view kAuthorSeparator = " \xE2\x80\xA2 ";
 	inline constexpr std::size_t kMinimumTitleCharacters = 8;
 	inline constexpr float kAuthorQuietSeconds = 0.5f;
+	inline constexpr std::string_view kYou = "You";
+	inline constexpr std::string_view kUncommittedTitle = "Uncommitted changes";
 
 	struct AuthorTextParts
 	{

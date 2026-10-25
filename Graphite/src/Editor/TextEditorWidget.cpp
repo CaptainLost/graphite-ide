@@ -3,6 +3,7 @@
 #include "Core/Base/EmptyVector.h"
 #include "Core/Base/Narrow.h"
 
+#include "Editor/Authors/AuthorCard.h"
 #include "Editor/Authors/AuthorText.h"
 #include "Editor/BracketMatch.h"
 #include "Editor/Overlays/DiagnosticOverlay.h"
@@ -14,6 +15,7 @@
 #include "Editor/Hover/HoverState.h"
 #include "Editor/Hover/HoverToken.h"
 #include "Editor/Hover/HoverTooltip.h"
+#include "Editor/Hover/InteractiveTooltip.h"
 #include "Editor/Overlays/LensModel.h"
 #include "Editor/Overlays/LensWaiting.h"
 #include "Editor/Find/MatchColumns.h"
@@ -70,6 +72,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -2117,8 +2120,7 @@ namespace Graphite {
 
 			// WARNING: The tooltip is submitted after the surface, so last frame's rectangle is
 			// used here. One frame of lag on a rectangle the mouse has to travel into is invisible.
-			const bool mouseInTooltip =
-				hover.TooltipShown && ImRect(hover.TooltipMin, hover.TooltipMax).Contains(mouse);
+			const bool mouseInTooltip = hover.Tooltip.Contains(mouse);
 			const bool mouseMoved = mouse.x != hover.LastMouse.x || mouse.y != hover.LastMouse.y;
 
 			hover.LastMouse = mouse;
@@ -2236,6 +2238,77 @@ namespace Graphite {
 			DrawHoverTooltip(actions, hover, hover.HeldDiagnostics, look,
 							 HoverAnchor{hover.AnchorMin, hover.AnchorMax},
 							 ImGui::GetCurrentWindow());
+		}
+
+		// WARNING: Tested against the rectangle the author was drawn in last frame. This frame's is drawn with the
+		// rows, after the mouse has been given to the caret, and a click on the text must not move the caret.
+		AuthorCardInput ReadAuthorCardInput(const PointerState& pointer, const std::optional<ImRect>& authorRect,
+											const InteractiveTooltipState& card, std::size_t caretLine,
+											const Core::FrameInput* input)
+		{
+			constexpr bool kNotEdited = false;
+
+			const ImVec2 mouse = ImGui::GetIO().MousePos;
+			const bool selecting = pointer.Held && !pointer.PressedThisFrame;
+
+			AuthorCardInput cardInput;
+			cardInput.TextShown = authorRect.has_value();
+			cardInput.OverText = authorRect.has_value() && pointer.Hovered && !selecting && authorRect->Contains(mouse);
+			cardInput.OverCard = card.Contains(mouse);
+			cardInput.ClickedText = cardInput.OverText && pointer.PressedThisFrame;
+			cardInput.Dismissed = HoverInputHappened(input, cardInput.OverCard || cardInput.ClickedText, kNotEdited);
+			cardInput.Line = caretLine;
+			cardInput.Seconds = ImGui::GetIO().DeltaTime;
+
+			return cardInput;
+		}
+
+		void RunAuthorCard(const LineAuthorView& author, std::size_t caretLine, EditorWidgetState& widget,
+						   EditorFrameResult& result)
+		{
+			const AuthorCardTracker& tracker = widget.AuthorCard;
+			const std::optional<std::size_t> line = tracker.ShownLine();
+
+			std::optional<AuthorCardContent> content;
+
+			// The card hangs off the text drawn this frame, so it is not drawn for a line the caret has left.
+			if (line && *line == caretLine && widget.AuthorTextRect && author.Authors != nullptr)
+			{
+				content = BuildAuthorCard(*author.Authors, *line, author.Now, author.Offset);
+			}
+
+			if (content)
+			{
+				ImGuiWindow* const surface = ImGui::GetCurrentWindow();
+
+				const InteractiveTooltipPlace place{.Viewport = ImGui::GetWindowViewport(),
+													.BoundsMin = surface->InnerRect.Min,
+													.BoundsMax = surface->InnerRect.Max,
+													.AnchorMin = widget.AuthorTextRect->Min,
+													.AnchorMax = widget.AuthorTextRect->Max};
+
+				if (const std::optional<AuthorCardAction::Kind> clicked =
+						DrawAuthorCard(*content, widget.AuthorCardWindow, place, surface))
+				{
+					result.CardAction = AuthorCardAction{.Action = *clicked, .Line = *line};
+				}
+			}
+			else
+			{
+				widget.AuthorCardWindow.Shown = false;
+			}
+
+			// WARNING: The loop idles between frames, so the frames that end the hover delay and the leave grace
+			// have to be asked for.
+			if (const std::optional<float> untilShown = tracker.SecondsUntilShown())
+			{
+				Core::Redraw::RequestIn(std::chrono::duration<double>(*untilShown));
+			}
+
+			if (const std::optional<float> untilHidden = tracker.SecondsUntilHidden())
+			{
+				Core::Redraw::RequestIn(std::chrono::duration<double>(*untilHidden));
+			}
 		}
 
 		constexpr float kChangeHoverSlack = 3.0f;
@@ -2763,16 +2836,21 @@ namespace Graphite {
 				return std::nullopt;
 			}
 
+			const float left = ColumnX(canvas, slice, EndColumnOfRow(slice, cache, tabWidth)) +
+							   kAuthorGapCells * canvas.Metrics.CellWidth;
+			const float visibleRight = canvas.Draw->GetClipRectMax().x;
+
+			if (visibleRight <= left)
+			{
+				return std::nullopt;
+			}
+
 			const std::optional<AuthorTextParts> parts = AuthorTextPartsOf(*author.Authors, slice.Line, author.Now);
 
 			if (!parts)
 			{
 				return std::nullopt;
 			}
-
-			const float left = ColumnX(canvas, slice, EndColumnOfRow(slice, cache, tabWidth)) +
-							   kAuthorGapCells * canvas.Metrics.CellWidth;
-			const float visibleRight = canvas.Draw->GetClipRectMax().x;
 
 			PushLensFont(canvas.Metrics);
 
@@ -3128,8 +3206,9 @@ namespace Graphite {
 		EditorWidgetState noState;
 		EditorWidgetState& widget = view.Widget != nullptr ? *view.Widget : noState;
 
-		// Set again by the row that draws the author this frame.
-		widget.AuthorTextRect.reset();
+		// Last frame's rectangle is the one the mouse can be over now. The row that draws the author this frame sets
+		// it again.
+		const std::optional<ImRect> lastAuthorRect = std::exchange(widget.AuthorTextRect, std::nullopt);
 
 		if (!item.Document)
 		{
@@ -3199,8 +3278,24 @@ namespace Graphite {
 				origin, ContentWidthOf(item, metrics, rowAreaWidth, view.WordWrap),
 				DocumentHeightOf(item, metrics, lenses));
 
-			ApplyMouseToCaret(pointer, buffer, item, metrics, origin,
-							  origin.x + metrics.Gutter.TotalWidth, lenses, drawnLenses, result);
+			const AuthorCardInput cardInput =
+				ReadAuthorCardInput(pointer, lastAuthorRect, widget.AuthorCardWindow,
+									buffer.ToPosition(item.Caret.Offset).Line, context.Input);
+
+			widget.AuthorCard.Update(cardInput, view.Author.HoverDelaySeconds);
+
+			// WARNING: A press on the author is the card's. The caret stays, and the surface lets go of the press, or a
+			// drag from it would extend a selection to wherever the mouse went.
+			if (cardInput.ClickedText)
+			{
+				ImGui::ClearActiveID();
+			}
+			else
+			{
+				ApplyMouseToCaret(pointer, buffer, item, metrics, origin,
+								  origin.x + metrics.Gutter.TotalWidth, lenses, drawnLenses, result);
+			}
+
 			RouteMouseWheel(context);
 
 			const bool hasMenu = context.ContextMenu != nullptr && context.Commands != nullptr &&
@@ -3319,6 +3414,13 @@ namespace Graphite {
 							focused, view.Syntax, scheme, drawnLenses, view.Semantic,
 							view.Diagnostics, view.DiagnosticsStale, gutterChanges,
 							scrollbarChanges, occurrences, author, widget, hoverFrame, pointer, result);
+
+			if (cardInput.OverText)
+			{
+				ImGui::SetMouseCursor(ImGuiMouseCursor_Arrow);
+			}
+
+			RunAuthorCard(author, buffer.ToPosition(item.Caret.Offset).Line, widget, result);
 
 			// WARNING: A frame that drew nothing reports row zero, and adopting it would claim
 			// the reader had scrolled to the top. The anchor is recorded as a line and a sub-row

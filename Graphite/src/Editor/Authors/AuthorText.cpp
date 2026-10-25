@@ -9,9 +9,6 @@ namespace Graphite {
 
 	namespace {
 
-		constexpr std::string_view kYou = "You";
-		constexpr std::string_view kUncommittedTitle = "Uncommitted changes";
-
 		bool IsContinuationByte(char c)
 		{
 			return (static_cast<unsigned char>(c) & 0xC0) == 0x80;

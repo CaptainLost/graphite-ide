@@ -130,7 +130,7 @@ TEST_CASE("A hover tooltip with every section draws two frames with its fonts ba
 		frames.Next([&] { tooltip.Draw(); });
 		frames.Next([&] { tooltip.Draw(); });
 
-		CHECK(tooltip.Hover.TooltipShown);
+		CHECK(tooltip.Hover.Tooltip.Shown);
 		CHECK(tooltip.StackAfter == tooltip.StackBefore);
 	}
 }
@@ -149,7 +149,7 @@ TEST_CASE("A hover tooltip that is loading, failed or found no definition draws 
 	frames.Next([&] { tooltip.Draw(); });
 	frames.Next([&] { tooltip.Draw(); });
 
-	CHECK(tooltip.Hover.TooltipShown);
+	CHECK(tooltip.Hover.Tooltip.Shown);
 	CHECK(tooltip.StackAfter == tooltip.StackBefore);
 
 	tooltip.Actions = Graphite::HoverActions{.InfoGaveUp = true};
@@ -157,7 +157,7 @@ TEST_CASE("A hover tooltip that is loading, failed or found no definition draws 
 
 	frames.Next([&] { tooltip.Draw(); });
 
-	CHECK(tooltip.Hover.TooltipShown);
+	CHECK(tooltip.Hover.Tooltip.Shown);
 	CHECK(tooltip.StackAfter == tooltip.StackBefore);
 }
 

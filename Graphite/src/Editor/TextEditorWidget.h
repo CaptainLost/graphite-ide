@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Editor/Authors/AuthorCard.h"
 #include "Editor/EditorSettings.h"
 #include "Editor/Server/LspAnswerRouter.h"
 #include "Editor/ScrollAnchor.h"
@@ -118,6 +119,8 @@ namespace Graphite {
 		bool RetryPressed = false;
 
 		std::optional<WrapGeometry> Wrap;
+
+		std::optional<AuthorCardAction> CardAction;
 	};
 
 	struct EditorView

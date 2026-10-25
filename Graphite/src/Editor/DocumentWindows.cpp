@@ -3,6 +3,7 @@
 #include "Core/Base/Base.h"
 
 #include "Editor/ActiveTextDocument.h"
+#include "Editor/Authors/AuthorCard.h"
 #include "Editor/Authors/AuthorText.h"
 #include "Editor/Breadcrumb.h"
 #include "Editor/EditorSettings.h"
@@ -13,6 +14,8 @@
 #include "Editor/TabColour.h"
 #include "Theme/Palettes.h"
 #include "Editor/TextEditorWidget.h"
+#include "Git/Blame/LineAuthors.h"
+#include "Git/GitRequests.h"
 #include "Git/History/CommitLabels.h"
 
 #include "Image/ImageTabView.h"
@@ -44,6 +47,7 @@
 #include "Core/Events/EventBus.h"
 #include "Core/Events/FrameInput.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Git/Blame.h"
 #include "Core/ImGui/ContentWindowColours.h"
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiRenderer.h"
@@ -83,6 +87,29 @@ namespace Graphite {
 		std::string DocumentIdentityOf(const Core::DocumentSet& documents, std::size_t index)
 		{
 			return Core::ToUtf8(documents.At(index).Path);
+		}
+
+		void RunAuthorCardAction(Core::EventBus& events, const LineAuthors& authors, const AuthorCardAction& action)
+		{
+			const Core::BlameHunk* const hunk = CommittedHunkOf(authors, action.Line);
+
+			switch (action.Action)
+			{
+			case AuthorCardAction::Kind::LineHistory:
+				break;
+			case AuthorCardAction::Kind::ShowCommit:
+				if (hunk != nullptr)
+				{
+					events.Publish(ShowCommitRequested{.Commit = hunk->Commit, .RelativePath = hunk->OriginalPath});
+				}
+				break;
+			case AuthorCardAction::Kind::CopyHash:
+				if (hunk != nullptr)
+				{
+					CopyToClipboard(events, "hash", hunk->Commit.ToHex());
+				}
+				break;
+			}
 		}
 
 		std::vector<std::string> CurrentIdentities(const Core::DocumentSet& documents)
@@ -2709,6 +2736,11 @@ namespace Graphite {
 				if (editorResult.AskPreview)
 				{
 					m_Router.AskPreviewDefinition(*editorResult.AskPreview);
+				}
+
+				if (editorResult.CardAction && authors)
+				{
+					RunAuthorCardAction(m_Events, *authors, *editorResult.CardAction);
 				}
 			}
 

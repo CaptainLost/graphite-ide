@@ -6,6 +6,7 @@
 #include "ImGuiFrames.h"
 
 #include "Editor/TextEditorWidget.h"
+#include "Editor/Authors/AuthorCard.h"
 #include "Editor/EditorWidgetState.h"
 #include "Editor/Find/FindBar.h"
 #include "Editor/Hover/HoverState.h"
@@ -79,6 +80,7 @@ namespace {
 	constexpr const char* kTooltipWindow = "##Tooltip_00";
 	constexpr std::string_view kEditorSurface = "##EditorSurface";
 	constexpr std::string_view kHoverTooltipPrefix = "##HoverTooltip";
+	constexpr std::string_view kAuthorCardPrefix = "##AuthorCard";
 
 	Core::OpenItem ItemWith(std::string content)
 	{
@@ -516,6 +518,53 @@ namespace {
 	bool WithinRow(const DrawnGlyph& glyph, float rowTop)
 	{
 		return glyph.Box.Min.y >= rowTop && glyph.Box.Max.y <= rowTop + kEditorLineHeight;
+	}
+
+	ImGuiWindow* ShownAuthorCard()
+	{
+		for (ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+		{
+			const bool child = (window->Flags & ImGuiWindowFlags_ChildWindow) != 0;
+
+			if (!child && std::string_view{window->Name}.starts_with(kAuthorCardPrefix) && window->Active)
+			{
+				return window;
+			}
+		}
+
+		return nullptr;
+	}
+
+	// ImGui keeps no item's position past its frame, so the pointer walks the card from its foot up, a row at a
+	// time, until ImGui reports the item with this label under it.
+	std::optional<ImVec2> FindInAuthorCard(EditorFrames& editor, const char* label)
+	{
+		constexpr float kStep = 4.0f;
+
+		ImGuiWindow* const card = ShownAuthorCard();
+
+		if (card == nullptr)
+		{
+			return std::nullopt;
+		}
+
+		const ImGuiID item = card->GetID(label);
+		const ImRect box = card->Rect();
+
+		for (float y = box.Max.y - kStep; y > box.Min.y; y -= kStep)
+		{
+			for (float x = box.Min.x + kStep; x < box.Max.x; x += kStep)
+			{
+				editor.HoverAt(ImVec2(x, y));
+
+				if (ImGui::GetCurrentContext()->HoveredId == item)
+				{
+					return ImVec2(x, y);
+				}
+			}
+		}
+
+		return std::nullopt;
 	}
 }
 
@@ -1543,4 +1592,65 @@ TEST_CASE("Line author leaves the horizontal scroll range alone")
 
 	REQUIRE(SurfaceGlyphsIn(DarkEditorPalette().Lens).empty());
 	CHECK(EditorSurface()->ScrollMax.x == withAuthor);
+}
+
+TEST_CASE("Author card opens over the author and Copy hash reports the line")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kTwoLinesLineCount, kBothTextLines, "Fix");
+	Graphite::EditorWidgetState widget;
+
+	ShowAuthors(editor, authors);
+	editor.View.Author.HoverDelaySeconds = 0.0f;
+	editor.View.Widget = &widget;
+	editor.Next();
+	editor.Next();
+	REQUIRE(widget.AuthorTextRect.has_value());
+
+	editor.HoverAt(widget.AuthorTextRect->GetCenter());
+	editor.Next();
+
+	REQUIRE(ShownAuthorCard() != nullptr);
+	CHECK(editor.StackAfter == editor.StackBefore);
+
+	const std::optional<ImVec2> copyHash = FindInAuthorCard(editor, "Copy hash");
+	REQUIRE(copyHash.has_value());
+
+	const ImGuiWindow* const focusedBefore = ImGui::GetCurrentContext()->NavWindow;
+	REQUIRE(focusedBefore != nullptr);
+
+	editor.Click(*copyHash);
+
+	CHECK(editor.Result.CardAction ==
+		  Graphite::AuthorCardAction{.Action = Graphite::AuthorCardAction::Kind::CopyHash, .Line = kFirstLine});
+	CHECK(ImGui::GetCurrentContext()->NavWindow == focusedBefore);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Author card opens on a click on the author without moving the caret")
+{
+	constexpr float kLongDelay = 10.0f;
+
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LineAuthors authors = AuthorsByAnn(kTwoLinesLineCount, kBothTextLines, "Fix");
+	Graphite::EditorWidgetState widget;
+
+	ShowAuthors(editor, authors);
+	editor.View.Author.HoverDelaySeconds = kLongDelay;
+	editor.View.Widget = &widget;
+	editor.Next();
+	editor.Next();
+	REQUIRE(widget.AuthorTextRect.has_value());
+
+	const ImVec2 author = widget.AuthorTextRect->GetCenter();
+
+	editor.HoverAt(author);
+
+	CHECK(ImGui::GetMouseCursor() == ImGuiMouseCursor_Arrow);
+	CHECK(ShownAuthorCard() == nullptr);
+
+	editor.Click(author);
+
+	CHECK(editor.Item.Caret.Offset == 0);
+	CHECK(ShownAuthorCard() != nullptr);
 }

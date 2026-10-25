@@ -1,8 +1,10 @@
 #pragma once
 
+#include "Editor/Authors/AuthorCard.h"
 #include "Editor/BracketMatch.h"
 #include "Editor/EditorCommands.h"
 #include "Editor/Find/SelectionOccurrences.h"
+#include "Editor/Hover/InteractiveTooltip.h"
 
 #include <imgui.h>
 #include <imgui_internal.h>
@@ -81,5 +83,8 @@ namespace Graphite {
 
 		// Where the caret line's author was drawn this frame; empty on a frame that drew none.
 		std::optional<ImRect> AuthorTextRect;
+
+		AuthorCardTracker AuthorCard;
+		InteractiveTooltipState AuthorCardWindow;
 	};
 }
