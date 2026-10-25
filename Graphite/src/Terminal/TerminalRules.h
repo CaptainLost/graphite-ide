@@ -155,6 +155,10 @@ namespace Graphite {
 
 	void WriteProcessExitedLine(Core::TerminalScreen& screen, std::optional<std::uint32_t> exitCode);
 
+	// WARNING: For a screen whose program has ended and will never paint it again. Rows above scroll into the
+	// scrollback so the last line written stays in view, and columns never narrow, so no line loses its end.
+	void ResizeEndedScreen(Core::TerminalScreen& screen, std::uint16_t columns, std::uint16_t rows);
+
 	std::string ExitedTerminalTitle(const std::string& title);
 
 	bool TerminalScreenIsBlank(const Core::TerminalScreen& screen);

@@ -199,6 +199,19 @@ namespace Graphite {
 		entry.Command->ExitCode = exitCode;
 	}
 
+	// WARNING: A program that has ended never repaints, so its screen must not be cut to a smaller window the way a
+	// live one is: what the cut dropped would be gone for good.
+	void TerminalWindows::ResizeTerminal(Entry& entry, Core::CursorPosition fitted)
+	{
+		if (entry.Session->IsAlive())
+		{
+			entry.Session->Resize(fitted.Column, fitted.Row);
+			return;
+		}
+
+		ResizeEndedScreen(entry.Session->GetScreen(), fitted.Column, fitted.Row);
+	}
+
 	void TerminalWindows::TakeShowRequest(Entry& entry)
 	{
 		if (entry.Command == nullptr || !std::exchange(entry.Command->ShowRequested, false))
@@ -318,7 +331,7 @@ namespace Graphite {
 
 				if (!appearing && TerminalSizeIsPlausible(measured, entry.LastMeasured))
 				{
-					entry.Session->Resize(fitted.Column, fitted.Row);
+					ResizeTerminal(entry, fitted);
 				}
 
 				entry.LastMeasured = appearing ? TerminalGridSize{} : measured;

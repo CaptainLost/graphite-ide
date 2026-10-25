@@ -34,6 +34,21 @@ namespace Graphite {
 			return false;
 		}
 
+		std::uint16_t LastRowShowingSomething(const Core::TerminalScreen& screen)
+		{
+			for (std::uint16_t row = screen.GetRows(); row > 0; --row)
+			{
+				const std::uint16_t candidateRow = static_cast<std::uint16_t>(row - 1);
+
+				if (RowShowsSomething(screen, candidateRow))
+				{
+					return candidateRow;
+				}
+			}
+
+			return 0;
+		}
+
 		constexpr int kMinimumCellsPerSide = 2;
 		constexpr int kRoomyColumns = 20;
 		constexpr std::size_t kFirstShellIndex = 0;
@@ -487,6 +502,22 @@ namespace Graphite {
 
 		screen.SetPen(previousPen);
 		screen.SetCursorVisible(false);
+	}
+
+	void ResizeEndedScreen(Core::TerminalScreen& screen, std::uint16_t columns, std::uint16_t rows)
+	{
+		const Core::CursorPosition cursor = screen.GetCursor();
+		const int lowestRowToKeep = std::max<int>(cursor.Row, LastRowShowingSomething(screen));
+		const int rowsBelowNewBottom = lowestRowToKeep + 1 - static_cast<int>(rows);
+
+		if (rowsBelowNewBottom > 0)
+		{
+			screen.ResetScrollRegion();
+			screen.ScrollUp(static_cast<std::uint16_t>(rowsBelowNewBottom));
+			screen.SetCursor(static_cast<std::uint16_t>(std::max(0, cursor.Row - rowsBelowNewBottom)), cursor.Column);
+		}
+
+		screen.Resize(std::max(columns, screen.GetColumns()), rows);
 	}
 
 	std::string ExitedTerminalTitle(const std::string& title)

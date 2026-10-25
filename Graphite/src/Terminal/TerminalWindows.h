@@ -142,6 +142,7 @@ namespace Graphite {
 		void RemoveClosed();
 		static bool TabCloses(const Core::Scope<Entry>& entry);
 		static void NoteCommandExit(Entry& entry);
+		static void ResizeTerminal(Entry& entry, Core::CursorPosition fitted);
 		void TakeShowRequest(Entry& entry);
 		void StoreRecords(const std::vector<OpenTerminal>& records);
 		std::vector<OpenTerminal> Records() const;

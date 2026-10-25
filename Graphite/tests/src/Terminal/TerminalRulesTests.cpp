@@ -675,6 +675,78 @@ TEST_CASE("The exit line does not overwrite text the cursor was left in front of
 	CHECK(RowText(screen, 1) == "Process exited");
 }
 
+namespace {
+	std::string ScrollbackText(const Core::TerminalScreen& screen, std::size_t index)
+	{
+		std::string text;
+
+		for (const Core::TerminalCell& cell : screen.GetScrollbackLine(index))
+		{
+			text.push_back(static_cast<char>(cell.Code));
+		}
+
+		const std::size_t lastVisible = text.find_last_not_of(' ');
+		return lastVisible == std::string::npos ? std::string{} : text.substr(0, lastVisible + 1);
+	}
+
+	// Four lines of output and the exit line, which fill a five-row screen to its last row.
+	Core::TerminalScreen EndedFullScreen()
+	{
+		Core::TerminalScreen screen(kScreenColumns, kScreenRows);
+
+		for (const std::string_view line : {"line 0", "line 1", "line 2", "line 3"})
+		{
+			PrintText(screen, line);
+			screen.CarriageReturn();
+			screen.LineFeed();
+		}
+
+		WriteProcessExitedLine(screen, std::optional<std::uint32_t>{0});
+		return screen;
+	}
+}
+
+TEST_CASE("Shrinking an ended program's screen scrolls the rows above into history and keeps the exit line in view")
+{
+	constexpr std::uint16_t kTwoRows = 2;
+	Core::TerminalScreen screen = EndedFullScreen();
+
+	ResizeEndedScreen(screen, kScreenColumns, kTwoRows);
+
+	REQUIRE(screen.GetRows() == kTwoRows);
+	CHECK(RowText(screen, 0) == "line 3");
+	CHECK(RowText(screen, 1) == "Process exited with code 0");
+
+	REQUIRE(screen.GetScrollbackCount() == 3);
+	CHECK(ScrollbackText(screen, 0) == "line 0");
+	CHECK(ScrollbackText(screen, 1) == "line 1");
+	CHECK(ScrollbackText(screen, 2) == "line 2");
+}
+
+TEST_CASE("Growing an ended program's screen back loses nothing the shrink moved into history")
+{
+	constexpr std::uint16_t kTwoRows = 2;
+	Core::TerminalScreen screen = EndedFullScreen();
+
+	ResizeEndedScreen(screen, kScreenColumns, kTwoRows);
+	ResizeEndedScreen(screen, kScreenColumns, kScreenRows);
+
+	CHECK(screen.GetScrollbackCount() == 3);
+	CHECK(RowText(screen, 0) == "line 3");
+	CHECK(RowText(screen, 1) == "Process exited with code 0");
+}
+
+TEST_CASE("Narrowing an ended program's screen keeps the ends of its lines")
+{
+	constexpr std::uint16_t kTenColumns = 10;
+	Core::TerminalScreen screen = EndedFullScreen();
+
+	ResizeEndedScreen(screen, kTenColumns, kScreenRows);
+
+	CHECK(screen.GetColumns() == kScreenColumns);
+	CHECK(RowText(screen, 4) == "Process exited with code 0");
+}
+
 TEST_CASE("An exited command's tab says it exited")
 {
 	CHECK(ExitedTerminalTitle("Claude") == "Claude \xC2\xB7 exited");
