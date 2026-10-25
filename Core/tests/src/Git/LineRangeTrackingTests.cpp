@@ -219,3 +219,47 @@ TEST_CASE("A removal at the very start of a hunk is attributed to the position i
 
 	CHECK(Core::TouchesRange(file, OneBasedLineRange{.First = 5, .Last = 5}));
 }
+
+TEST_CASE("Trace line to parent finds an unchanged line through context")
+{
+	const FileDiff file = MakeFile({HunkWithLines(4, 1, 5, 1, {ContextLine(4, 5)})});
+
+	const Core::TracedLine traced = Core::TraceLineToParent(file, 5);
+	CHECK(traced.Fate == Core::LineFate::Unchanged);
+	CHECK(traced.OldLine == 4);
+}
+
+TEST_CASE("Trace line to parent pairs removed and added lines by position")
+{
+	const FileDiff file = MakeFile({HunkWithLines(7, 2, 7, 3,
+												  {
+													  RemovedLine(7),
+													  RemovedLine(8),
+													  AddedLine(7),
+													  AddedLine(8),
+													  AddedLine(9),
+												  })});
+
+	const Core::TracedLine second = Core::TraceLineToParent(file, 8);
+	CHECK(second.Fate == Core::LineFate::Changed);
+	CHECK(second.OldLine == 8);
+	CHECK(Core::TraceLineToParent(file, 9).Fate == Core::LineFate::Added);
+}
+
+TEST_CASE("Trace line to parent calls every line of an added file added")
+{
+	FileDiff file = MakeFile({HunkWithLines(0, 0, 1, 2, {AddedLine(1), AddedLine(2)})});
+	file.Change = Core::FileChange::Added;
+
+	CHECK(Core::TraceLineToParent(file, 1).Fate == Core::LineFate::Added);
+	CHECK(Core::TraceLineToParent(file, 2).Fate == Core::LineFate::Added);
+}
+
+TEST_CASE("Trace line to parent shifts a line below a hunk")
+{
+	const FileDiff file = MakeFile({HunkWithLines(10, 0, 10, 2, {AddedLine(10), AddedLine(11)})});
+
+	const Core::TracedLine traced = Core::TraceLineToParent(file, 20);
+	CHECK(traced.Fate == Core::LineFate::Unchanged);
+	CHECK(traced.OldLine == 18);
+}
