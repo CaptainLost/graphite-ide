@@ -212,6 +212,37 @@ TEST_CASE("Switching to a different root does not leave the old root's handle li
 	CHECK(port.GetLiveHandleCountForThisThread() == 1);
 }
 
+TEST_CASE("A thread lets go of a closed folder's handle on request, without opening anything")
+{
+	TempRepo repoA;
+	Graphite::RepositoryGitPort port{repoA.GetPath()};
+
+	REQUIRE(port.QueryStatus().HasValue());
+	REQUIRE(port.GetLiveHandleCountForThisThread() == 1);
+
+	const std::filesystem::path noRoot;
+	port.SetRoot(noRoot);
+	port.LetGoOfHandlesNoLongerCurrent();
+
+	CHECK(port.GetLiveHandleCountForThisThread() == 0);
+	CHECK(port.GetOpenCount() == 1);
+}
+
+TEST_CASE("A thread lets go of a replaced folder's handle on request and opens the new folder only when asked")
+{
+	TempRepo repoA;
+	TempRepo repoB;
+	Graphite::RepositoryGitPort port{repoA.GetPath()};
+
+	REQUIRE(port.QueryStatus().HasValue());
+
+	port.SetRoot(repoB.GetPath());
+	port.LetGoOfHandlesNoLongerCurrent();
+
+	CHECK(port.GetLiveHandleCountForThisThread() == 0);
+	CHECK(port.GetOpenCount() == 1);
+}
+
 TEST_CASE("Closing the workspace does not leave the last root's handle live")
 {
 	TempRepo repo;

@@ -447,6 +447,7 @@ namespace Graphite {
 			m_StateKeeper.AdoptWorkspace(event.Root, stored);
 
 			m_GitPort.SetRoot(event.Root);
+			LetGoOfOldRepositoryOnWriteWorker();
 
 			LetGoOfFolderWindows();
 
@@ -495,6 +496,7 @@ namespace Graphite {
 
 			// WARNING: Clearing the root releases the port's cached repository handles, which otherwise block the user from deleting .git on Windows.
 			m_GitPort.SetRoot(noRoot);
+			LetGoOfOldRepositoryOnWriteWorker();
 
 			LetGoOfFolderWindows();
 
@@ -511,6 +513,11 @@ namespace Graphite {
 			[this](const WorkspaceFilesChangedEvent& event) {
 				m_DocumentWindows.HandleFilesChanged(event.Directories, event.Everything);
 			});
+	}
+
+	void GraphiteLayer::LetGoOfOldRepositoryOnWriteWorker()
+	{
+		m_GitWrites.Submit([this] { m_GitPort.LetGoOfHandlesNoLongerCurrent(); });
 	}
 
 	void GraphiteLayer::LetGoOfFolderWindows()

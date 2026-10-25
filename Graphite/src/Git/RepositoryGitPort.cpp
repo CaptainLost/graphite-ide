@@ -123,6 +123,36 @@ namespace Graphite {
 		return &insertedRepository.Repo;
 	}
 
+	void RepositoryGitPort::LetGoOfHandlesNoLongerCurrent()
+	{
+		std::string root;
+		std::uint64_t generation = 0;
+
+		{
+			const std::lock_guard<std::mutex> lock{m_RootMutex};
+			root = m_Root;
+			generation = m_Generation;
+		}
+
+		HandleMap& handlesByRoot = HandlesForThisThread();
+
+		DropHandlesOfOtherRoots(handlesByRoot, root);
+
+		const HandleMap::iterator cachedEntry = handlesByRoot.find(root);
+
+		if (cachedEntry == handlesByRoot.end())
+		{
+			return;
+		}
+
+		const auto& [cachedRoot, cachedRepository] = *cachedEntry;
+
+		if (cachedRepository.Generation != generation)
+		{
+			handlesByRoot.erase(cachedEntry);
+		}
+	}
+
 	std::size_t RepositoryGitPort::GetLiveHandleCountForThisThread() const
 	{
 		return HandlesForThisThread().size();

@@ -122,6 +122,10 @@ namespace Graphite {
 		// The windows and caches of the folder being left, whether another opens after it or none does.
 		void LetGoOfFolderWindows();
 
+		// WARNING: An idle worker keeps its last folder's packfiles mapped until its next call, which blocks moving
+		// or deleting that folder on Windows.
+		void LetGoOfOldRepositoryOnWriteWorker();
+
 		void OpenStartupFolder();
 
 		void RouteShortcuts(Core::Event& event);
