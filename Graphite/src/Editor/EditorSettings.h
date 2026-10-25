@@ -83,6 +83,9 @@ namespace Graphite {
 		bool IsHighlightingOccurrences() const { return m_HighlightOccurrences; }
 		void SetHighlightOccurrences(bool highlight);
 
+		bool HasLineAuthor() const { return m_LineAuthor; }
+		void SetLineAuthor(bool show);
+
 		HoverSettings GetHoverSettings() const { return m_Hover; }
 
 		void SetHoverInfo(bool show);
@@ -119,6 +122,7 @@ namespace Graphite {
 
 		bool m_GutterChangeMarkers = true;
 		bool m_ScrollbarChangeMarkers = true;
+		bool m_LineAuthor = true;
 
 		bool m_HighlightOccurrences = true;
 

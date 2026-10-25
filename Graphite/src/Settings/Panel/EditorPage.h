@@ -46,6 +46,7 @@ namespace Graphite {
 		void DrawHoverDelay();
 		void DrawGutterMarkers();
 		void DrawScrollbarMarkers();
+		void DrawLineAuthor();
 
 		EditorSettings& m_Settings;
 		Core::CommandRegistry& m_Commands;

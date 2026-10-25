@@ -36,6 +36,7 @@ namespace Graphite {
 																	 DefinitionPreviewMode::Always};
 
 		const std::vector<std::string> kGitKeywords{"git", "diff"};
+		const std::vector<std::string> kLineAuthorKeywords{"git", "diff", "blame"};
 
 		std::size_t PreviewOptionOf(DefinitionPreviewMode mode)
 		{
@@ -148,6 +149,11 @@ namespace Graphite {
 										.Keywords = kGitKeywords,
 										.ControlWidth = SettingsLayout::ToggleWidth(),
 										.DrawControl = [this] { DrawScrollbarMarkers(); }});
+		card.Rows.push_back(SettingsRow{.Title = "Line author",
+										.Description = "Show who last changed the line with the caret, at its end.",
+										.Keywords = kLineAuthorKeywords,
+										.ControlWidth = SettingsLayout::ToggleWidth(),
+										.DrawControl = [this] { DrawLineAuthor(); }});
 
 		return card;
 	}
@@ -256,6 +262,16 @@ namespace Graphite {
 		if (Core::Toggle("##scrollbarMarkers", &show))
 		{
 			m_Settings.SetScrollbarChangeMarkers(show);
+		}
+	}
+
+	void EditorPage::DrawLineAuthor()
+	{
+		bool show = m_Settings.HasLineAuthor();
+
+		if (Core::Toggle("##lineAuthor", &show))
+		{
+			m_Settings.SetLineAuthor(show);
 		}
 	}
 }
