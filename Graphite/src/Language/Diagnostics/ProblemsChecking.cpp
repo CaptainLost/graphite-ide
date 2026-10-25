@@ -59,6 +59,13 @@ namespace Graphite {
 			return DocumentCheck::Checked;
 		}
 
+		const bool serverNotCreatedYet = document.ServerChosen && document.Server.State == ServerState::NotConfigured;
+
+		if (serverNotCreatedYet)
+		{
+			return DocumentCheck::NeverSent;
+		}
+
 		switch (AvailabilityOf(document.Server))
 		{
 		case ServerAvailability::Unavailable:

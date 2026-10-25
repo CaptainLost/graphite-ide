@@ -93,10 +93,11 @@ namespace Graphite {
 	}
 
 	ProblemsPanel::ProblemsPanel(const DiagnosticsModel& diagnostics, Core::DocumentSet& documents, Workspace& workspace,
-								 const ActiveScheme& scheme, ServerStatusSource statusOf)
+								 const ActiveScheme& scheme, ServerStatusSource statusOf, ChosenServerQuery hasChosenServer)
 		: Core::Panel("problems", "Problems", "tools", ICON_LC_CIRCLE_ALERT, StartsAs::Visible, Sides::Flush),
 		  m_Diagnostics(diagnostics), m_Documents(documents),
-		  m_Workspace(workspace), m_Scheme(scheme), m_StatusOf(std::move(statusOf))
+		  m_Workspace(workspace), m_Scheme(scheme), m_StatusOf(std::move(statusOf)),
+		  m_HasChosenServer(std::move(hasChosenServer))
 	{
 	}
 
@@ -117,6 +118,7 @@ namespace Graphite {
 			documents.push_back(OpenDocumentCheck{.Path = item.Path,
 												  .Language = language,
 												  .Server = m_StatusOf(item.Path, language),
+												  .ServerChosen = m_HasChosenServer(language),
 												  .Entry = FindEntry(m_Diagnostics, item.Path)});
 		}
 

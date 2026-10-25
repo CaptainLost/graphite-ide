@@ -179,7 +179,8 @@ namespace Graphite {
 
 		m_Panels.Add(Core::CreateScope<ProblemsPanel>(
 			m_Diagnostics, m_Documents, m_Workspace, m_ActiveScheme,
-			[this](const std::filesystem::path& path, LanguageId language) { return m_LanguageServices.StatusFor(path, language); }));
+			[this](const std::filesystem::path& path, LanguageId language) { return m_LanguageServices.StatusFor(path, language); },
+			[this](LanguageId language) { return m_LanguageServices.HasChosenServer(language); }));
 
 		m_DiffWindows.OpenFile = [this](const std::filesystem::path& path) {
 			const bool permanentTab = true;

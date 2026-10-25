@@ -100,6 +100,26 @@ TEST_CASE("A document never sent to a running server is not being checked, and p
 	CHECK(Graphite::CheckOf(notes) == Graphite::DocumentCheck::NotSupported);
 }
 
+TEST_CASE("A document whose chosen server has not been created for its root yet is never-sent, not unchosen")
+{
+	Graphite::OpenDocumentCheck notCreatedYet = Document(kFoo, Clangd(Graphite::ServerState::NotConfigured), nullptr);
+	notCreatedYet.ServerChosen = true;
+
+	CHECK(Graphite::CheckOf(notCreatedYet) == Graphite::DocumentCheck::NeverSent);
+
+	const Graphite::ProblemsChecking checking = Graphite::SummariseChecking({notCreatedYet});
+
+	CHECK(checking.UncheckedLanguages.empty());
+	CHECK(checking.NeverSent == std::vector<std::filesystem::path>{kFoo});
+
+	Graphite::OpenDocumentCheck noneChosen = notCreatedYet;
+	noneChosen.ServerChosen = false;
+
+	CHECK(Graphite::CheckOf(noneChosen) == Graphite::DocumentCheck::ServerUnavailable);
+	CHECK(Graphite::SummariseChecking({noneChosen}).UncheckedLanguages ==
+		  std::vector<std::string>{"C++ files are not checked: no language server is chosen for C++"});
+}
+
 TEST_CASE("Every document answered leaves nothing still to check")
 {
 	const Graphite::DiagnosticsModel::Entry answered = Answered(1, 1);

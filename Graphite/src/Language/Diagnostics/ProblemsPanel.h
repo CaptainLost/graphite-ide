@@ -20,9 +20,10 @@ namespace Graphite {
 	{
 	public:
 		using ServerStatusSource = std::function<ServerStatus(const std::filesystem::path& path, LanguageId language)>;
+		using ChosenServerQuery = std::function<bool(LanguageId language)>;
 
 		ProblemsPanel(const DiagnosticsModel& diagnostics, Core::DocumentSet& documents, Workspace& workspace,
-					  const ActiveScheme& scheme, ServerStatusSource statusOf);
+					  const ActiveScheme& scheme, ServerStatusSource statusOf, ChosenServerQuery hasChosenServer);
 
 		void OnImGuiRender() override;
 
@@ -48,6 +49,7 @@ namespace Graphite {
 		Workspace& m_Workspace;
 		const ActiveScheme& m_Scheme;
 		ServerStatusSource m_StatusOf;
+		ChosenServerQuery m_HasChosenServer;
 
 		std::optional<ProblemIdentity> m_Selected;
 		bool m_SelectionSeen = false;

@@ -13,11 +13,14 @@
 
 namespace Graphite {
 
+	// WARNING: A server status reads NotConfigured both when no server is chosen for the language and when the chosen
+	// one has not been created for this file's root yet, so ServerChosen tells the two apart.
 	struct OpenDocumentCheck
 	{
 		std::filesystem::path Path;
 		LanguageId Language = LanguageId::PlainText;
 		ServerStatus Server;
+		bool ServerChosen = false;
 		const DiagnosticsModel::Entry* Entry = nullptr;
 	};
 
