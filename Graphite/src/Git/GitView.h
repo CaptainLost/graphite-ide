@@ -5,6 +5,7 @@
 #include "UI/Dialogs/ModalGate.h"
 #include "UI/Dialogs/ModalQuestion.h"
 #include "Git/CheckoutQuestion.h"
+#include "Git/Branches/BranchDeletion.h"
 #include "Git/Branches/BranchListView.h"
 #include "Git/History/CommitLabels.h"
 #include "Git/History/CommitListView.h"
@@ -169,8 +170,7 @@ namespace Graphite {
 
 		void BeginDelete(const std::string& branch);
 		void ApplyDeleteCheck(const DeleteCheck& check);
-		void ForgetDeleteQuestion(const std::string& branch);
-		std::optional<std::size_t> UnmergedCountFor(const std::string& branch) const;
+		void FinishDeleteQuestion();
 
 		GitPanelCheckouts Checkouts() const;
 
@@ -287,12 +287,7 @@ namespace Graphite {
 		HeldCheckout m_HeldCheckout;
 		std::optional<Core::CheckoutTarget> m_AskedCheckout;
 
-		std::optional<std::string> m_PendingDelete;
-
-		// The branch whose delete question the reader has not answered, and its count once the check has landed.
-		std::optional<std::string> m_DeleteUnanswered;
-		std::optional<std::size_t> m_DeleteUnmerged;
-		bool m_DeleteHeldForPanel = false;
+		BranchDeletion m_Deletion;
 
 		Core::Ref<const std::vector<Core::Branch>> m_RefsOf;
 		CommitRefMap m_CommitRefs;

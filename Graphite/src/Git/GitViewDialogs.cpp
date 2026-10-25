@@ -346,19 +346,18 @@ namespace Graphite {
 		if (current == nullptr)
 		{
 			// WARNING: Escape closes the popup and drops the question without reaching the code below.
-			const bool dismissedByReader = !m_DeleteBranchQuestion.IsAsked() && !m_DeleteHeldForPanel;
+			const bool dismissedByReader = !m_DeleteBranchQuestion.IsAsked() && !m_Deletion.IsHeldForPanel();
 
 			if (dismissedByReader)
 			{
-				m_DeleteUnanswered.reset();
-				m_DeleteUnmerged.reset();
+				m_Deletion.Finish();
 			}
 
 			return;
 		}
 
 		const std::string branch = current->Branch;
-		const std::optional<std::size_t> unmerged = UnmergedCountFor(branch);
+		const std::optional<std::size_t> unmerged = m_Deletion.UnmergedOf(branch);
 		const bool noCommitsLost = unmerged == std::optional<std::size_t>{0};
 
 		if (!unmerged.has_value())
@@ -392,15 +391,11 @@ namespace Graphite {
 		if (choice == DialogLayout::Choice::Destructive)
 		{
 			m_Model.RequestDeleteBranch(branch);
-			m_DeleteBranchQuestion.Answer();
-			m_DeleteUnanswered.reset();
-			m_DeleteUnmerged.reset();
+			FinishDeleteQuestion();
 		}
 		else if (choice == DialogLayout::Choice::Cancel)
 		{
-			m_DeleteBranchQuestion.Answer();
-			m_DeleteUnanswered.reset();
-			m_DeleteUnmerged.reset();
+			FinishDeleteQuestion();
 		}
 
 		m_DeleteBranchQuestion.End();

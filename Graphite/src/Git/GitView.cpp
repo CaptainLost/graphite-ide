@@ -206,21 +206,20 @@ namespace Graphite {
 			m_AskedCheckout.reset();
 		}
 
-		if (m_DeleteBranchQuestion.IsAsked() && m_DeleteUnanswered.has_value())
+		if (m_DeleteBranchQuestion.IsAsked())
 		{
-			m_DeleteHeldForPanel = true;
+			m_Deletion.HoldForPanel();
 		}
 	}
 
 	void GitView::AskDeleteHeldForPanel()
 	{
-		if (!m_DeleteHeldForPanel || !m_DeleteUnanswered.has_value())
-		{
-			return;
-		}
+		constexpr bool kPanelOnScreen = true;
 
-		m_DeleteHeldForPanel = false;
-		m_DeleteBranchQuestion.AskOnce(DeleteBranchPayload{.Branch = *m_DeleteUnanswered});
+		if (const std::optional<std::string> branch = m_Deletion.TakeHeldOnceOnScreen(kPanelOnScreen))
+		{
+			m_DeleteBranchQuestion.AskOnce(DeleteBranchPayload{.Branch = *branch});
+		}
 	}
 
 	GitPanelCheckouts GitView::Checkouts() const
@@ -230,9 +229,9 @@ namespace Graphite {
 									.HeldForPanel = m_HeldCheckout.HeldTarget(),
 									.Writing = m_Model.GetCheckoutUnderWay()};
 
-		if (m_DeleteHeldForPanel)
+		if (m_Deletion.IsHeldForPanel())
 		{
-			checkouts.DeleteHeldForPanel = m_DeleteUnanswered;
+			checkouts.DeleteHeldForPanel = m_Deletion.UnansweredBranch();
 		}
 
 		return checkouts;
@@ -245,10 +244,7 @@ namespace Graphite {
 
 	void GitView::BeginDelete(const std::string& branch)
 	{
-		m_PendingDelete = branch;
-		m_DeleteUnanswered = branch;
-		m_DeleteUnmerged.reset();
-		m_DeleteHeldForPanel = false;
+		m_Deletion.Begin(branch);
 
 		m_Model.RequestDeleteCheck(branch);
 		m_DeleteBranchQuestion.AskOnce(DeleteBranchPayload{.Branch = branch});
@@ -256,46 +252,22 @@ namespace Graphite {
 
 	void GitView::ApplyDeleteCheck(const DeleteCheck& check)
 	{
-		const bool isAwaitedCheck = m_PendingDelete == check.Branch;
-
-		if (!isAwaitedCheck)
+		if (m_Deletion.Land(check) != DeleteCheckLanding::Failed)
 		{
 			return;
 		}
 
-		m_PendingDelete.reset();
+		ShowFailure(m_Events, "Delete branch failed", check.Branch + ": " + check.Failure->Message,
+					m_Model.GetWorkingDirectory());
 
-		if (check.Failure.has_value())
-		{
-			ShowFailure(m_Events, "Delete branch failed", check.Branch + ": " + check.Failure->Message,
-						m_Model.GetWorkingDirectory());
-			ForgetDeleteQuestion(check.Branch);
-			return;
-		}
-
-		if (m_DeleteUnanswered == check.Branch)
-		{
-			m_DeleteUnmerged = check.Unmerged;
-		}
-	}
-
-	void GitView::ForgetDeleteQuestion(const std::string& branch)
-	{
+		const std::string& branch = check.Branch;
 		m_DeleteBranchQuestion.WithdrawIf([&branch](const DeleteBranchPayload& payload) { return payload.IsAbout(branch); });
-
-		m_DeleteUnanswered.reset();
-		m_DeleteUnmerged.reset();
-		m_DeleteHeldForPanel = false;
 	}
 
-	std::optional<std::size_t> GitView::UnmergedCountFor(const std::string& branch) const
+	void GitView::FinishDeleteQuestion()
 	{
-		if (m_DeleteUnanswered != branch)
-		{
-			return std::nullopt;
-		}
-
-		return m_DeleteUnmerged;
+		m_DeleteBranchQuestion.Answer();
+		m_Deletion.Finish();
 	}
 
 	void GitView::WithdrawQuestions()
@@ -336,12 +308,7 @@ namespace Graphite {
 		m_BranchNameFor = nullptr;
 
 		m_AskedCheckout.reset();
-
-		if (!m_DeleteHeldForPanel)
-		{
-			m_DeleteUnanswered.reset();
-			m_DeleteUnmerged.reset();
-		}
+		m_Deletion.ForgetUnlessHeld();
 	}
 
 	void GitView::BeginCheckout(const Core::CheckoutTarget& target)
@@ -498,12 +465,11 @@ namespace Graphite {
 		m_Graph = Core::CommitGraph{};
 
 		m_HeldCheckout.Forget();
-		m_DeleteHeldForPanel = false;
+		m_Deletion.Finish();
 
 		// WARNING: Withdraw is only valid outside a popup, and this runs from an event handler.
 		WithdrawQuestions();
 		m_PendingCheckout.reset();
-		m_PendingDelete.reset();
 	}
 
 	void GitView::OnImGuiRender()
