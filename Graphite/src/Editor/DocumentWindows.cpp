@@ -14,6 +14,7 @@
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/Adapters/ServerAdapter.h"
 #include "Language/Server/LspClient.h"
+#include "Language/Server/ServerWaitingText.h"
 
 #include "Persistence/CaretRestore.h"
 
@@ -1538,14 +1539,6 @@ namespace Graphite {
 			return;
 		}
 
-		const LanguageId language = LanguageOfPath(item.Path);
-
-		if (!m_Server.HasChosenServer(language))
-		{
-			SetTransientMessage("no definition found");
-			return;
-		}
-
 		const Core::TextBuffer& buffer = item.Document->GetBuffer();
 		const Core::Position position = buffer.ToPosition(item.Caret.Offset);
 		const std::string lineText = buffer.LineText(position.Line);
@@ -1592,7 +1585,7 @@ namespace Graphite {
 		const auto [wordFrom, wordTo] = Core::SelectionRange(word);
 		const std::string symbol = buffer.Substring(wordFrom, wordTo);
 
-		RequestReferencesAt(item, LanguageOfPath(item.Path), where, symbol, panel);
+		RequestReferencesAt(item, where, symbol, panel);
 	}
 
 	void DocumentWindows::RequestReferencesForLens(const Core::OpenItem& item,
@@ -1611,25 +1604,71 @@ namespace Graphite {
 			where.Line = declaration.NameLine;
 			where.Column = declaration.NameColumn;
 
-			RequestReferencesAt(item, LanguageOfPath(item.Path), where, declaration.Name, panel);
+			RequestReferencesAt(item, where, declaration.Name, panel);
 			return;
 		}
 	}
 
-	void DocumentWindows::RequestReferencesAt(const Core::OpenItem& item, LanguageId language,
-											  const FilePosition& where, const std::string& symbol,
-											  ReferencesPanel& panel)
+	void DocumentWindows::RequestReferencesAt(const Core::OpenItem& item, const FilePosition& where,
+											  const std::string& symbol, ReferencesPanel& panel)
 	{
-		if (!m_Server.HasChosenServer(language))
+		AskReferencesAndShow(ReferencesQuestion{.Path = item.Path, .Where = where, .Symbol = symbol}, panel);
+		panel.Focus();
+	}
+
+	void DocumentWindows::AskReferencesAndShow(ReferencesQuestion question, ReferencesPanel& panel)
+	{
+		const std::string symbol = question.Symbol;
+		const std::filesystem::path path = question.Path;
+
+		if (m_Router.AskReferences(std::move(question)) == QuestionFate::HeldUntilServerIsUp)
 		{
-			SetTransientMessage("no references found");
+			panel.ShowWaiting(symbol, ServerWaitingText(m_Router.StatusOf(path)));
 			return;
 		}
 
-		m_Router.AskReferences(item.Path, where, symbol);
-
 		panel.ShowWorking(symbol);
-		panel.Focus();
+	}
+
+	void DocumentWindows::FollowReferencesPanel(ReferencesPanel& panel)
+	{
+		if (const ReferencesQuestion* held = m_Router.HeldReferences())
+		{
+			panel.ShowWaiting(held->Symbol, ServerWaitingText(m_Router.StatusOf(held->Path)));
+		}
+
+		if (panel.TakeRetry() && m_Router.LastReferences())
+		{
+			AskReferencesAndShow(*m_Router.LastReferences(), panel);
+		}
+	}
+
+	void DocumentWindows::ShowReferencesAnswer(const ReferencesQuestion& question, const LanguageServices::Answer& answer,
+											   ReferencesPanel& panel)
+	{
+		if (answer.Failed && answer.FailedBecause == ReplyFailure::ServerUnavailable)
+		{
+			panel.ShowUnavailable(question.Symbol, AsSentence(ReplyFailureText(answer), answer.ServerAtFailure));
+			return;
+		}
+
+		if (answer.Failed)
+		{
+			panel.ShowFailure(question.Symbol, ReplyFailureText(answer));
+			return;
+		}
+
+		const ServerStatus status = m_Router.StatusOf(question.Path);
+		const std::string incompleteWhy =
+			IsStillIndexing(status) ? StillIndexingText(status) + ", the list may be incomplete" : std::string{};
+
+		panel.ShowResults(question.Symbol, answer.Locations, incompleteWhy);
+	}
+
+	void DocumentWindows::ShowReferencesRefreshing(const ReferencesQuestion& question, ReferencesPanel& panel)
+	{
+		panel.ShowRefreshing("Updating the list now that " + ServerNameOf(m_Router.StatusOf(question.Path)) +
+							 " has finished indexing");
 	}
 
 	void DocumentWindows::ApplyHoverAnswer(const HoverQuestion& question,
@@ -1699,7 +1738,7 @@ namespace Graphite {
 
 		if (answer.Failed)
 		{
-			SetTransientMessage("no definition found");
+			SetTransientMessage(ReplyFailureText(answer));
 			return;
 		}
 
@@ -1873,11 +1912,20 @@ namespace Graphite {
 				m_Windows.ApplySwitchSourceHeaderAnswer(from, answer);
 			}
 
-			void ApplyReferences(const std::string& symbol,
+			void ApplyReferences(const ReferencesQuestion& question,
 								 const LanguageServices::Answer& answer) override
 			{
-				m_Panel.ShowResults(symbol, answer.Failed ? std::vector<Location>{}
-														  : answer.Locations);
+				m_Windows.ShowReferencesAnswer(question, answer, m_Panel);
+			}
+
+			void AskedHeldReferences(const ReferencesQuestion& question) override
+			{
+				m_Panel.ShowWorking(question.Symbol);
+			}
+
+			void RefreshingReferences(const ReferencesQuestion& question) override
+			{
+				m_Windows.ShowReferencesRefreshing(question, m_Panel);
 			}
 
 			void ApplySemanticTokens(const std::filesystem::path& path,
@@ -2202,6 +2250,7 @@ namespace Graphite {
 		const std::vector<std::string> startingIdentities = CurrentIdentities(m_Documents);
 
 		CollectServerAnswers(referencesPanel);
+		FollowReferencesPanel(referencesPanel);
 
 		const ImVec4 danger = DangerColourOf(frame.Scheme);
 

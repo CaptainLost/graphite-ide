@@ -11,6 +11,7 @@
 #include "Theme/ActiveScheme.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -35,6 +36,27 @@ namespace Graphite {
 	std::vector<SearchHit> AsHits(const std::vector<Location>& locations, const std::string& symbol,
 								  const LineTextSource& lineText);
 
+	enum class ReferencesPhase : std::uint8_t
+	{
+		NotAsked,
+		WaitingForServer,
+		Finding,
+		Found,
+		Failed,
+		Unavailable
+	};
+
+	struct ReferencesSummary
+	{
+		std::string Text;
+		bool Waiting = false;
+	};
+
+	ReferencesSummary SummariseReferences(ReferencesPhase phase, const std::string& symbol, std::size_t hitCount,
+										  const std::string& note);
+
+	std::string ReferencesFailureText(const std::string& reason);
+
 	class ReferencesPanel final : public Core::Panel
 	{
 	public:
@@ -44,13 +66,26 @@ namespace Graphite {
 
 		void OnImGuiRender() override;
 
+		void ShowWaiting(const std::string& symbol, const std::string& waitingFor);
+
 		void ShowWorking(const std::string& symbol);
 
-		void ShowResults(const std::string& symbol, const std::vector<Location>& locations);
+		void ShowRefreshing(const std::string& refreshingWhy);
+
+		void ShowResults(const std::string& symbol, const std::vector<Location>& locations,
+						 const std::string& incompleteWhy);
+
+		void ShowFailure(const std::string& symbol, const std::string& reason);
+
+		void ShowUnavailable(const std::string& symbol, const std::string& reason);
+
+		bool TakeRetry();
 
 		void Focus();
 
 	private:
+		void BeginShowing(ReferencesPhase phase, const std::string& symbol, std::string note);
+
 		void RenderSummary();
 		void RenderResults();
 		void RenderPreview();
@@ -70,10 +105,15 @@ namespace Graphite {
 		const EditorSettings& m_Editor;
 
 		std::string m_Symbol;
-		bool m_Working = false;
 
-		// WARNING: Not m_Symbol.empty(): a search from an empty document asks about an empty word.
-		bool m_Asked = false;
+		// WARNING: Not m_Symbol.empty() for "never asked": a search from an empty document asks about an empty word.
+		ReferencesPhase m_Phase = ReferencesPhase::NotAsked;
+
+		std::string m_Note;
+
+		std::optional<std::string> m_Refreshing;
+
+		bool m_RetryWanted = false;
 
 		HitGroups m_Groups;
 

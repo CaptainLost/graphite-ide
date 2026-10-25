@@ -25,6 +25,46 @@ TEST_CASE("References become hits grouped by file and ordered by line")
 	CHECK(hits[0].Text == "a.cpp line 4");
 }
 
+TEST_CASE("References waiting on a server say what the server is doing, and wait with a loader")
+{
+	const Graphite::ReferencesSummary summary = Graphite::SummariseReferences(
+		Graphite::ReferencesPhase::WaitingForServer, "Foo", 0, "waiting for Roslyn to load Graphite.csproj");
+
+	CHECK(summary.Text == "References to Foo \xC2\xB7 waiting for Roslyn to load Graphite.csproj");
+	CHECK(summary.Waiting);
+}
+
+TEST_CASE("References being found say so with a loader rather than a count")
+{
+	const Graphite::ReferencesSummary summary =
+		Graphite::SummariseReferences(Graphite::ReferencesPhase::Finding, "Foo", 0, "");
+
+	CHECK(summary.Text == "Finding references to Foo");
+	CHECK(summary.Waiting);
+}
+
+TEST_CASE("Found references give their count, and say when the server had not finished indexing")
+{
+	CHECK(Graphite::SummariseReferences(Graphite::ReferencesPhase::Found, "Foo", 12, "").Text == "References to Foo: 12 hits");
+	CHECK(Graphite::SummariseReferences(Graphite::ReferencesPhase::Found, "Foo", 1, "").Text == "References to Foo: 1 hit");
+	CHECK(Graphite::SummariseReferences(Graphite::ReferencesPhase::Found, "Foo", 0, "").Text == "References to Foo: 0 hits");
+
+	const Graphite::ReferencesSummary incomplete = Graphite::SummariseReferences(
+		Graphite::ReferencesPhase::Found, "Foo", 12, "clangd is still indexing (40%), the list may be incomplete");
+
+	CHECK(incomplete.Text == "References to Foo: 12 hits \xC2\xB7 clangd is still indexing (40%), the list may be incomplete");
+	CHECK_FALSE(incomplete.Waiting);
+}
+
+TEST_CASE("References that failed or could not be asked give no count")
+{
+	CHECK(Graphite::SummariseReferences(Graphite::ReferencesPhase::Failed, "Foo", 0, "clangd did not answer").Text ==
+		  "References to Foo");
+	CHECK(Graphite::SummariseReferences(Graphite::ReferencesPhase::Unavailable, "Foo", 0, "clangd not installed").Text ==
+		  "References to Foo");
+	CHECK(Graphite::ReferencesFailureText("clangd returned an error") == "Couldn't get references: clangd returned an error");
+}
+
 TEST_CASE("An empty reply becomes no hits rather than one empty group")
 {
 	CHECK(Graphite::AsHits({}, "Draw", LineOf).empty());

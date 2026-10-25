@@ -218,9 +218,17 @@ namespace Graphite {
 		void AskForVisibleCounts(const Core::OpenItem& item, LensState& state,
 								 const EditorFrameResult& frame);
 
-		void RequestReferencesAt(const Core::OpenItem& item, LanguageId language,
-								 const FilePosition& where, const std::string& symbol,
+		void RequestReferencesAt(const Core::OpenItem& item, const FilePosition& where, const std::string& symbol,
 								 ReferencesPanel& panel);
+
+		void AskReferencesAndShow(ReferencesQuestion question, ReferencesPanel& panel);
+
+		void FollowReferencesPanel(ReferencesPanel& panel);
+
+		void ShowReferencesAnswer(const ReferencesQuestion& question, const LanguageServices::Answer& answer,
+								  ReferencesPanel& panel);
+
+		void ShowReferencesRefreshing(const ReferencesQuestion& question, ReferencesPanel& panel);
 
 		void RequestReferencesForLens(const Core::OpenItem& item, const LensState& state,
 									  std::size_t documentRow, ReferencesPanel& panel);

@@ -92,7 +92,9 @@ namespace {
 	{
 	public:
 		void ApplyDefinition(const DefinitionQuestion&, const LanguageServices::Answer&) override {}
-		void ApplyReferences(const std::string&, const LanguageServices::Answer&) override {}
+		void ApplyReferences(const ReferencesQuestion&, const LanguageServices::Answer&) override {}
+		void AskedHeldReferences(const ReferencesQuestion&) override {}
+		void RefreshingReferences(const ReferencesQuestion&) override {}
 		void ApplySwitchSourceHeader(const std::filesystem::path&, const LanguageServices::Answer&) override {}
 		void ApplyHover(const HoverQuestion&, const LanguageServices::Answer&) override {}
 		void ApplyPreviewDefinition(const HoverQuestion&, const LanguageServices::Answer&) override {}
