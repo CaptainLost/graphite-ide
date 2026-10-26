@@ -10,7 +10,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <fstream>
+#include <memory>
+#include <string_view>
 #include <system_error>
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -75,21 +78,65 @@ namespace Core {
 			return rootEndsInSeparator || separatorFollowsRoot;
 		}
 
+#ifdef CORE_PLATFORM_WINDOWS
+		constexpr std::wstring_view kEveryEntryPattern = L"*";
+		constexpr std::wstring_view kCurrentDirectoryEntry = L".";
+		constexpr std::wstring_view kParentDirectoryEntry = L"..";
+		constexpr int kBitsInLowSizeHalf = 32;
+
+		struct FindClosing
+		{
+			void operator()(HANDLE findHandle) const { ::FindClose(findHandle); }
+		};
+
+		using FindHandle = std::unique_ptr<void, FindClosing>;
+
+		bool IsDotEntry(const WIN32_FIND_DATAW& found)
+		{
+			const std::wstring_view name{found.cFileName};
+			return name == kCurrentDirectoryEntry || name == kParentDirectoryEntry;
+		}
+
+		bool HasHiddenAttribute(DWORD attributes)
+		{
+			return (attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)) != 0;
+		}
+
+		bool HasDirectoryAttribute(DWORD attributes)
+		{
+			return (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+		}
+
+		std::uint64_t SizeOf(const WIN32_FIND_DATAW& found)
+		{
+			return (static_cast<std::uint64_t>(found.nFileSizeHigh) << kBitsInLowSizeHalf) | found.nFileSizeLow;
+		}
+
+		DirectoryEntry EntryFound(const std::filesystem::path& folder, const WIN32_FIND_DATAW& found)
+		{
+			const std::filesystem::path fileName{found.cFileName};
+			const bool isDirectory = HasDirectoryAttribute(found.dwFileAttributes);
+
+			return DirectoryEntry{
+				.Path = folder / fileName,
+				.Name = ToUtf8(fileName),
+				.IsDirectory = isDirectory,
+				.IsHidden = HasHiddenAttribute(found.dwFileAttributes),
+				.Size = isDirectory ? 0 : SizeOf(found),
+			};
+		}
+
+		std::error_code WindowsError(DWORD win32Error)
+		{
+			return std::error_code{static_cast<int>(win32Error), std::system_category()};
+		}
+#else
 		bool IsHidden(const std::filesystem::path& path)
 		{
-#ifdef CORE_PLATFORM_WINDOWS
-			const DWORD attributes = ::GetFileAttributesW(path.c_str());
-			if (attributes == INVALID_FILE_ATTRIBUTES)
-			{
-				return false;
-			}
-
-			return (attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)) != 0;
-#else
 			const std::string name = ToUtf8(path.filename());
 			return !name.empty() && name.front() == '.';
-#endif
 		}
+#endif
 
 		int LoweredByCurrentLocale(char character)
 		{
@@ -164,6 +211,63 @@ namespace Core {
 #endif
 	}
 
+#ifdef CORE_PLATFORM_WINDOWS
+	// WARNING: One enumeration hands back every entry's attributes with its name. Asking for them again per entry
+	// costs a system call each, which on a folder of thirty thousand entries is a second.
+	Result<std::vector<DirectoryEntry>> ReadDirectory(const std::filesystem::path& path)
+	{
+		if (path.empty())
+		{
+			const std::error_code error = WindowsError(ERROR_PATH_NOT_FOUND);
+			return Error{.Code = TranslateError(error), .Message = std::format("cannot read directory '': {}", error.message())};
+		}
+
+		const std::filesystem::path everyEntry = path / kEveryEntryPattern;
+		WIN32_FIND_DATAW found{};
+
+		const HANDLE firstFound = ::FindFirstFileExW(everyEntry.c_str(), FindExInfoBasic, &found, FindExSearchNameMatch,
+													 nullptr, FIND_FIRST_EX_LARGE_FETCH);
+
+		if (firstFound == INVALID_HANDLE_VALUE)
+		{
+			const DWORD openError = ::GetLastError();
+
+			// WARNING: Only a folder with no entries at all, not even "." and "..", answers this, and that is a drive
+			// root with nothing on it, which is an empty listing rather than a missing folder.
+			if (openError == ERROR_FILE_NOT_FOUND)
+			{
+				return std::vector<DirectoryEntry>{};
+			}
+
+			const std::error_code error = WindowsError(openError);
+			return Error{.Code = TranslateError(error), .Message = std::format("cannot read directory '{}': {}", ToUtf8(path), error.message())};
+		}
+
+		const FindHandle findHandle{firstFound};
+		std::vector<DirectoryEntry> entries;
+		bool holdsAnEntry = true;
+
+		while (holdsAnEntry)
+		{
+			if (!IsDotEntry(found))
+			{
+				entries.push_back(EntryFound(path, found));
+			}
+
+			holdsAnEntry = ::FindNextFileW(findHandle.get(), &found) != FALSE;
+		}
+
+		const DWORD enumerationEnd = ::GetLastError();
+
+		if (enumerationEnd != ERROR_NO_MORE_FILES)
+		{
+			const std::error_code error = WindowsError(enumerationEnd);
+			return Error{.Code = TranslateError(error), .Message = std::format("cannot enumerate '{}': {}", ToUtf8(path), error.message())};
+		}
+
+		return entries;
+	}
+#else
 	Result<std::vector<DirectoryEntry>> ReadDirectory(const std::filesystem::path& path)
 	{
 		std::error_code error;
@@ -218,6 +322,7 @@ namespace Core {
 
 		return entries;
 	}
+#endif
 
 	std::string LoweredExtension(const std::filesystem::path& path)
 	{

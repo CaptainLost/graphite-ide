@@ -4,11 +4,14 @@
 
 #include "TempDirectory.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <type_traits>
+#include <vector>
 
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
@@ -141,6 +144,87 @@ TEST_CASE("ReadDirectory counts a file with the system attribute as hidden as we
 	CHECK(hiddenEntry->IsHidden);
 	CHECK(systemEntry->IsHidden);
 	CHECK_FALSE(plainEntry->IsHidden);
+}
+
+namespace {
+	// What the listing was before it read the attributes from the enumeration: the standard walk, and one attribute
+	// query per entry.
+	std::vector<DirectoryEntry> ListedEntryByEntry(const std::filesystem::path& folder)
+	{
+		std::vector<DirectoryEntry> entries;
+
+		for (const std::filesystem::directory_entry& walked : std::filesystem::directory_iterator{folder})
+		{
+			const DWORD attributes = ::GetFileAttributesW(walked.path().c_str());
+			std::error_code ignoredClassifyError;
+			const bool isDirectory = walked.is_directory(ignoredClassifyError);
+			std::error_code sizeError;
+			const std::uintmax_t fileSize = isDirectory ? 0 : walked.file_size(sizeError);
+
+			entries.push_back(DirectoryEntry{
+				.Path = walked.path(),
+				.Name = Core::ToUtf8(walked.path().filename()),
+				.IsDirectory = isDirectory,
+				.IsHidden = (attributes & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM)) != 0,
+				.Size = sizeError ? 0 : fileSize,
+			});
+		}
+
+		return entries;
+	}
+
+	void MarkHidden(const std::filesystem::path& path)
+	{
+		REQUIRE(::SetFileAttributesW(path.c_str(), FILE_ATTRIBUTE_HIDDEN) != FALSE);
+	}
+}
+
+TEST_CASE("ReadDirectory lists the same entries, in the same order and with the same flags, as a walk that asks for each entry's attributes")
+{
+	TempDirectory temporaryDirectory;
+	temporaryDirectory.MakeFile("zeta.txt", "twelve bytes");
+	temporaryDirectory.MakeFile("Alpha.cpp", "x");
+	temporaryDirectory.MakeFile("middle", "");
+	temporaryDirectory.MakeDirectory("beta");
+	temporaryDirectory.MakeDirectory(".config");
+	MarkHidden(temporaryDirectory.MakeFile(".hidden-file", "secret"));
+	MarkHidden(temporaryDirectory.MakeDirectory("hidden-folder"));
+	temporaryDirectory.MakeFile("beta/inside.txt", "not listed");
+
+	const Core::Result<std::vector<DirectoryEntry>> listing = ReadDirectory(temporaryDirectory.GetPath());
+	REQUIRE(listing.HasValue());
+
+	const std::vector<DirectoryEntry> expected = ListedEntryByEntry(temporaryDirectory.GetPath());
+	const std::vector<DirectoryEntry>& listed = listing.GetValue();
+
+	REQUIRE(listed.size() == expected.size());
+
+	for (std::size_t entryIndex = 0; entryIndex < listed.size(); ++entryIndex)
+	{
+		CAPTURE(expected[entryIndex].Name);
+		CHECK(listed[entryIndex].Path == expected[entryIndex].Path);
+		CHECK(listed[entryIndex].Name == expected[entryIndex].Name);
+		CHECK(listed[entryIndex].IsDirectory == expected[entryIndex].IsDirectory);
+		CHECK(listed[entryIndex].IsHidden == expected[entryIndex].IsHidden);
+		CHECK(listed[entryIndex].Size == expected[entryIndex].Size);
+	}
+
+	const DirectoryEntry* hiddenFolder = FindEntry(listed, "hidden-folder");
+	REQUIRE(hiddenFolder != nullptr);
+	CHECK(hiddenFolder->IsHidden);
+	CHECK(hiddenFolder->IsDirectory);
+}
+
+TEST_CASE("ReadDirectory of a drive root lists its entries without the dot entries")
+{
+	const std::filesystem::path systemDrive = std::filesystem::temp_directory_path().root_path();
+
+	const Core::Result<std::vector<DirectoryEntry>> listing = ReadDirectory(systemDrive);
+
+	REQUIRE(listing.HasValue());
+	CHECK(FindEntry(listing.GetValue(), ".") == nullptr);
+	CHECK(FindEntry(listing.GetValue(), "..") == nullptr);
+	CHECK(listing.GetValue().size() == ListedEntryByEntry(systemDrive).size());
 }
 #endif
 
