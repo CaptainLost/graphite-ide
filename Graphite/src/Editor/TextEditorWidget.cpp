@@ -529,29 +529,43 @@ namespace Graphite {
 				return;
 			}
 
+			// WARNING: The word is taken from the character under the pointer, not from the caret
+			// position the click rounds to. Rounded, the right half of a word's last character
+			// lands on whatever follows the word, and that is what got selected.
+			const auto cellUnderPointer = static_cast<std::size_t>(relativeX / metrics.CellWidth);
+			const std::size_t characterUnderPointer = Core::VisualToCaret(
+				buffer, item.Rows, Core::VisualPosition{.Row = row, .Column = cellUnderPointer}, item.TabWidth);
+
 			if (!pointer.PressedThisFrame)
 			{
-				item.Caret = Core::PlaceAt(buffer, item.Caret, offset, Core::SelectionChange::Extend,
-										   item.TabWidth);
+				if (item.DragUnit == Core::SelectionUnit::Character)
+				{
+					item.Caret = Core::PlaceAt(buffer, item.Caret, offset, Core::SelectionChange::Extend,
+											   item.TabWidth);
+				}
+				else
+				{
+					item.Caret = Core::ExtendByUnit(buffer, item.DragOrigin, characterUnderPointer,
+													item.DragUnit);
+				}
+
 				return;
 			}
 
 			const int clicks = ImGui::GetMouseClickedCount(ImGuiMouseButton_Left);
+			item.DragUnit = Core::SelectionUnit::Character;
 
 			if (clicks >= kTripleClick)
 			{
 				item.Caret = Core::SelectLineAt(buffer, item.Rows.RowAt(row).Line);
+				item.DragUnit = Core::SelectionUnit::Line;
+				item.DragOrigin = Core::SelectionRange(item.Caret);
 			}
 			else if (clicks == kDoubleClick)
 			{
-				// WARNING: The word is taken from the character under the pointer, not from the caret
-				// position the click rounds to. Rounded, the right half of a word's last character
-				// lands on whatever follows the word, and that is what got selected.
-				const auto cellUnderPointer = static_cast<std::size_t>(relativeX / metrics.CellWidth);
-				const std::size_t characterUnderPointer = Core::VisualToCaret(
-					buffer, item.Rows, Core::VisualPosition{.Row = row, .Column = cellUnderPointer}, item.TabWidth);
-
 				item.Caret = Core::SelectWordAt(buffer, characterUnderPointer);
+				item.DragUnit = Core::SelectionUnit::Word;
+				item.DragOrigin = Core::SelectionRange(item.Caret);
 			}
 			else
 			{

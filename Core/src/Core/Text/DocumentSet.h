@@ -77,6 +77,11 @@ namespace Core {
 		std::size_t RowAimColumn = 0;
 		std::size_t RowAimCaretOffset = NoRowAim;
 
+		// Set by a double or triple click and read by the drag that follows it; a plain press
+		// puts it back to Character.
+		SelectionUnit DragUnit = SelectionUnit::Character;
+		OffsetRange DragOrigin;
+
 		// The editor scrolls to the caret only when it saw the caret move during its own turn, so
 		// a jump made earlier in the frame from elsewhere sets this to say scroll anyway. The
 		// editor clears it once it has.
