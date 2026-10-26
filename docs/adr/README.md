@@ -671,4 +671,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0639](0639-add-stb-as-a-dependency-for-decoding-and-scaling-images.md) | Add stb as a dependency for decoding and scaling images | proposed | 2026-10-25 |
 | [0640](0640-draw-pictures-through-a-texture-facade-over-imgui-s-user-textures.md) | Draw pictures through a texture facade over ImGui's user textures | proposed | 2026-10-25 |
 | [0641](0641-let-the-view-on-screen-add-its-own-items-to-the-status-bar.md) | Let the view on screen add its own items to the status bar | proposed | 2026-10-26 |
+| [0642](0642-let-a-tab-s-view-put-its-tools-on-the-right-of-the-path-row-and-give-the-row-to-image-tabs.md) | Let a tab's view put its tools on the right of the path row, and give the row to image tabs | proposed | 2026-10-26 |
 <!-- /adr-index -->
