@@ -49,7 +49,9 @@ namespace Core {
 	private:
 		bool IsIgnoredByQuery(const std::filesystem::path& path, bool isDirectory) const;
 
-		FileNode UnloadedNodeFor(const DirectoryEntry& entry) const;
+		bool IsIgnoredInside(const FileNode& folder, const DirectoryEntry& entry) const;
+
+		FileNode UnloadedNodeFor(const FileNode& folder, const DirectoryEntry& entry) const;
 
 		static void RebaseNode(FileNode& node, const std::filesystem::path& newPath);
 

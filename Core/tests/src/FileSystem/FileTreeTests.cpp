@@ -379,6 +379,104 @@ TEST_CASE("Refresh re-asks the query about every node carried over from the prev
 	CHECK(queryCalls == entriesOnDisk);
 }
 
+namespace {
+	struct CountedIgnoreQuery
+	{
+		std::vector<std::string> AskedAbout;
+		std::string IgnoredName;
+
+		Core::IgnoreQuery Query()
+		{
+			return [this](const std::filesystem::path& path, bool) {
+				const std::string fileName = Core::ToUtf8(path.filename());
+				AskedAbout.push_back(fileName);
+				return fileName == IgnoredName;
+			};
+		}
+
+		bool WasAskedAbout(const std::string& fileName) const
+		{
+			for (const std::string& asked : AskedAbout)
+			{
+				if (asked == fileName)
+				{
+					return true;
+				}
+			}
+
+			return false;
+		}
+	};
+}
+
+TEST_CASE("Expanding an ignored folder marks its entries ignored without asking about any of them")
+{
+	TempDirectory temporaryDirectory;
+	temporaryDirectory.MakeFile("build/output.o", "x");
+	temporaryDirectory.MakeFile("build/nested/deeper.o", "x");
+	temporaryDirectory.MakeFile("source.cpp", "x");
+
+	CountedIgnoreQuery counted{.IgnoredName = "build"};
+
+	FileTree tree;
+	tree.SetIgnoreQuery(counted.Query());
+
+	REQUIRE(tree.SetRoot(temporaryDirectory.GetPath()).HasValue());
+	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
+
+	FileNode* build = FindChildNamed(tree.GetRoot(), "build");
+	REQUIRE(build != nullptr);
+	REQUIRE(build->Ignored);
+
+	counted.AskedAbout.clear();
+	REQUIRE(tree.Expand(*build).HasValue());
+
+	FileNode* nested = FindChildNamed(*build, "nested");
+	REQUIRE(nested != nullptr);
+	REQUIRE(tree.Expand(*nested).HasValue());
+
+	CHECK(counted.AskedAbout.empty());
+
+	const FileNode* output = FindChildNamed(*build, "output.o");
+	REQUIRE(output != nullptr);
+	CHECK(output->Ignored);
+	CHECK(nested->Ignored);
+	REQUIRE(nested->Children.size() == 1);
+	CHECK(nested->Children[0].Ignored);
+
+	const FileNode* source = FindChildNamed(tree.GetRoot(), "source.cpp");
+	REQUIRE(source != nullptr);
+	CHECK_FALSE(source->Ignored);
+}
+
+TEST_CASE("A new entry in an ignored folder is marked ignored by a refresh without asking about it")
+{
+	TempDirectory temporaryDirectory;
+	temporaryDirectory.MakeFile("build/output.o", "x");
+
+	CountedIgnoreQuery counted{.IgnoredName = "build"};
+
+	FileTree tree;
+	tree.SetIgnoreQuery(counted.Query());
+
+	REQUIRE(tree.SetRoot(temporaryDirectory.GetPath()).HasValue());
+	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
+
+	FileNode* build = FindChildNamed(tree.GetRoot(), "build");
+	REQUIRE(build != nullptr);
+	REQUIRE(tree.Expand(*build).HasValue());
+
+	temporaryDirectory.MakeFile("build/fresh.o", "x");
+	counted.AskedAbout.clear();
+
+	tree.Refresh(*build);
+
+	CHECK_FALSE(counted.WasAskedAbout("fresh.o"));
+	const FileNode* fresh = FindChildNamed(*build, "fresh.o");
+	REQUIRE(fresh != nullptr);
+	CHECK(fresh->Ignored);
+}
+
 TEST_CASE("Rebase rewrites the root and every loaded descendant and not just the immediate children so a later refresh reaches the whole subtree")
 {
 	TempDirectory temporaryDirectory;

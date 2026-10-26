@@ -83,6 +83,18 @@ namespace Core {
 		return m_IgnoreQuery(path, isDirectory);
 	}
 
+	// WARNING: An entry of an ignored folder is not asked about: git cannot take back a path inside an ignored
+	// directory, and asking costs as much as listing the folder.
+	bool FileTree::IsIgnoredInside(const FileNode& folder, const DirectoryEntry& entry) const
+	{
+		if (folder.Ignored)
+		{
+			return true;
+		}
+
+		return IsIgnoredByQuery(entry.Path, entry.IsDirectory);
+	}
+
 	Result<void> FileTree::Expand(FileNode& node)
 	{
 		if (!node.IsDirectory)
@@ -114,20 +126,20 @@ namespace Core {
 
 		for (const DirectoryEntry& entry : listing.GetValue())
 		{
-			node.Children.push_back(UnloadedNodeFor(entry));
+			node.Children.push_back(UnloadedNodeFor(node, entry));
 		}
 
 		std::sort(node.Children.begin(), node.Children.end(), IsFileNodeListedBefore);
 		return Result<void>::Ok();
 	}
 
-	FileNode FileTree::UnloadedNodeFor(const DirectoryEntry& entry) const
+	FileNode FileTree::UnloadedNodeFor(const FileNode& folder, const DirectoryEntry& entry) const
 	{
 		return FileNode{
 			.Path = entry.Path,
 			.Name = entry.Name,
 			.IsDirectory = entry.IsDirectory,
-			.Ignored = IsIgnoredByQuery(entry.Path, entry.IsDirectory),
+			.Ignored = IsIgnoredInside(folder, entry),
 		};
 	}
 
@@ -167,12 +179,12 @@ namespace Core {
 			if (isSameEntryAsBefore)
 			{
 				node.Children.push_back(std::move(previousChildren[*previousIndex]));
-				node.Children.back().Ignored = IsIgnoredByQuery(entry.Path, entry.IsDirectory);
+				node.Children.back().Ignored = IsIgnoredInside(node, entry);
 				previousChildren.erase(previousChildren.begin() + static_cast<std::ptrdiff_t>(*previousIndex));
 				continue;
 			}
 
-			node.Children.push_back(UnloadedNodeFor(entry));
+			node.Children.push_back(UnloadedNodeFor(node, entry));
 		}
 
 		std::sort(node.Children.begin(), node.Children.end(), IsFileNodeListedBefore);
