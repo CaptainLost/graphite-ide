@@ -14,6 +14,7 @@
 
 namespace {
 	constexpr float kEditorFontSize = 20.0f;
+	constexpr bool kEscapeNotTaken = false;
 }
 
 TEST_CASE("The find bar is filled with the popup surface rather than the menu bar's chrome")
@@ -28,7 +29,7 @@ TEST_CASE("The find bar is filled with the popup surface rather than the menu ba
 		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
 		ImGui::SetNextWindowSize(ImVec2(900.0f, 300.0f));
 		ImGui::Begin("Document", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
-		bar.Draw(item, buffer, true);
+		bar.Draw(item, buffer, true, kEscapeNotTaken);
 		ImGui::End();
 	});
 
@@ -65,7 +66,7 @@ TEST_CASE("The find bar is measured and drawn at the interface size inside an ed
 
 		Core::PushCodeFont(kEditorFontSize);
 		stackBefore = ImGui::GetCurrentContext()->FontStack.Size;
-		bar.Draw(item, buffer, true);
+		bar.Draw(item, buffer, true, kEscapeNotTaken);
 		stackAfter = ImGui::GetCurrentContext()->FontStack.Size;
 		ImGui::PopFont();
 

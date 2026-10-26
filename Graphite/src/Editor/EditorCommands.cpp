@@ -196,6 +196,8 @@ namespace Graphite {
 				Core::MenuItem::Command(kFindReferencesCommand),
 				Core::MenuItem::Command(kSwitchHeaderSourceCommand),
 				Core::MenuItem::Separator(),
+				Core::MenuItem::Command(kLineHistoryCommand),
+				Core::MenuItem::Separator(),
 				Core::MenuItem::Command(kCutCommand),
 				Core::MenuItem::Command(kCopyCommand),
 				Core::MenuItem::Command(kPasteCommand),
@@ -287,5 +289,12 @@ namespace Graphite {
 
 		keys.SetDefault(kFindReferencesCommand,
 						{.Primary = Core::Chord::Key(ImGuiMod_Shift | ImGuiKey_F12)});
+
+		// No default key. From the context menu it acts on the clicked line, because a right-click moves the caret
+		// there before the menu opens.
+		commands.Add({.Id = kLineHistoryCommand,
+					  .Label = "Line History",
+					  .Run = [&active] { active.Get()->ShowLineHistory(); },
+					  .Enabled = [&active] { return active.Get() != nullptr && active.Get()->CanShowLineHistory(); }});
 	}
 }

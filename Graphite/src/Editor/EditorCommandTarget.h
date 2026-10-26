@@ -30,6 +30,9 @@ namespace Graphite {
 		virtual std::optional<std::filesystem::path> CaretFile() = 0;
 		virtual void GoToDefinition() = 0;
 		virtual void FindReferences(ReferencesPanel& panel) = 0;
+		// The history of the caret's line, in a peek under it; only for a file whose lines HEAD can blame.
+		virtual bool CanShowLineHistory() = 0;
+		virtual void ShowLineHistory() = 0;
 	};
 
 	class ActiveEditorTarget

@@ -22,6 +22,8 @@
 #include "UI/Dialogs/ModalQuestion.h"
 #include "Editor/TextEditorWidget.h"
 
+#include "Editor/Authors/LinePeekContent.h"
+
 #include "Image/Zoom.h"
 
 #include "Git/Blame/BlameModel.h"
@@ -43,6 +45,7 @@
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileSync.h"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -155,6 +158,8 @@ namespace Graphite {
 		std::optional<std::filesystem::path> CaretFile() override { return ActiveTextDocument(m_Documents); }
 		void GoToDefinition() override;
 		void FindReferences(ReferencesPanel& panel) override;
+		bool CanShowLineHistory() override;
+		void ShowLineHistory() override;
 
 		std::optional<std::string> GetStatusMessage() const;
 
@@ -202,6 +207,24 @@ namespace Graphite {
 			bool ServerCouldCount = false;
 		};
 
+		struct LinePeekState
+		{
+			std::size_t Line = 0;
+			std::size_t Selected = 0;
+
+			// The authors table the line's history was last asked from. A table a few edits old can name another HEAD
+			// line or none, so the history is asked again from each newer table; the blame model ignores a request equal
+			// to the one it holds.
+			Core::Ref<const LineAuthors> AskedFrom;
+
+			// Passed to the widget on the next frame the tab draws, so the peek is scrolled into view once.
+			bool JustOpened = true;
+
+			// The buffer's change sequence when the peek opened: an edit made through another view of the document
+			// closes the peek as an edit through this one does.
+			std::uint64_t ChangeSequence = 0;
+		};
+
 		struct DocumentState;
 
 		DocumentState& StateFor(const std::filesystem::path& path);
@@ -232,6 +255,18 @@ namespace Graphite {
 			const std::filesystem::path& path);
 
 		void PruneDocumentStates();
+
+		// Opens the peek under `line`, in place of any other the document has; on the line it is already open on, only
+		// scrolls it into view again.
+		void OpenLinePeek(const Core::OpenItem& item, std::size_t line);
+
+		// Asks for the line's history from each authors table the blame gives, and builds what the peek shows.
+		LinePeekContent LinePeekContentFor(const Core::OpenItem& item, LinePeekState& peek,
+										   const Core::Ref<const LineAuthors>& authors, std::chrono::minutes offset);
+
+		// Closes the peek on the caret leaving its line, an edit or a close request, or follows what was clicked in it.
+		void SettleLinePeek(const Core::OpenItem& item, DocumentState& state, const EditorFrameResult& frame,
+							const LinePeekContent* content);
 
 		void UpdateLenses(const Core::OpenItem& item, LensState& state,
 						  const EditorFrameResult& frame);
@@ -462,6 +497,10 @@ namespace Graphite {
 
 		bool m_WasFocused = true;
 
+		// The Line author setting as of the last frame. With it off, a document's blame is kept only while its peek is
+		// open, so the blame model does not re-blame files nobody is looking at the authors of.
+		bool m_LineAuthor = false;
+
 		ModalQuestion<std::filesystem::path> m_ReloadConflict;
 
 		struct OverwriteQuestion
@@ -532,6 +571,9 @@ namespace Graphite {
 
 			// ImGui::GetTime() of the last edit made through the editor; the lowest double when there was none.
 			double LastEditAt = std::numeric_limits<double>::lowest();
+
+			// At most one peek a view; it survives switching to another tab and back.
+			std::optional<LinePeekState> Peek;
 		};
 
 		std::map<std::filesystem::path, DocumentState> m_States;

@@ -193,6 +193,21 @@ TEST_CASE("Author card closes on a dismissal and waits for the mouse to leave")
 	CHECK(tracker.ShownLine() == kLine);
 }
 
+TEST_CASE("Peek opened from the author card closes the card while the mouse is still in it")
+{
+	AuthorCardTracker tracker = ShownByAClick();
+
+	tracker.Dismiss();
+
+	CHECK_FALSE(tracker.ShownLine().has_value());
+
+	tracker.Update(OverCard(0.1f), kDelay);
+	tracker.Update(OverCard(1.0f), kDelay);
+
+	CHECK_FALSE(tracker.ShownLine().has_value());
+	CHECK_FALSE(tracker.SecondsUntilHidden().has_value());
+}
+
 TEST_CASE("Author card waits for the mouse to leave a text hidden while typing")
 {
 	AuthorCardTracker tracker = ShownByAClick();

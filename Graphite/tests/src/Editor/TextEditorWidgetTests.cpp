@@ -7,7 +7,10 @@
 
 #include "Editor/TextEditorWidget.h"
 #include "Editor/Authors/AuthorCard.h"
+#include "Editor/Authors/LinePeek.h"
+#include "Editor/Authors/LinePeekContent.h"
 #include "Editor/EditorWidgetState.h"
+#include "Editor/ScrollAnchor.h"
 #include "Editor/Find/FindBar.h"
 #include "Editor/Hover/HoverState.h"
 #include "Editor/Overlays/DiagnosticOverlay.h"
@@ -113,6 +116,7 @@ namespace {
 		std::optional<std::size_t> LensClicked;
 		int StackBefore = 0;
 		int StackAfter = 0;
+		float Height = kDocumentHeight;
 
 		explicit EditorFrames(std::string content)
 			: Item(ItemWith(std::move(content)))
@@ -123,7 +127,7 @@ namespace {
 		void Draw()
 		{
 			ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
-			ImGui::SetNextWindowSize(ImVec2(kDocumentWidth, kDocumentHeight));
+			ImGui::SetNextWindowSize(ImVec2(kDocumentWidth, Height));
 			ImGui::Begin("Document", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
 
 			StackBefore = ImGui::GetCurrentContext()->FontStack.Size;
@@ -565,6 +569,115 @@ namespace {
 		}
 
 		return std::nullopt;
+	}
+
+	// ImGui names a child window "<parent>/<label>_<id>", so a label's slash and underscore pick out that child alone.
+	constexpr std::string_view kPeekWindowMark = "/##LinePeek_";
+	constexpr std::string_view kPeekListMark = "/##LinePeekList_";
+	constexpr bool kJustOpened = true;
+
+	ImGuiWindow* ActiveWindowNamedWith(std::string_view mark)
+	{
+		for (ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+		{
+			if (window->Active && std::string_view{window->Name}.find(mark) != std::string_view::npos)
+			{
+				return window;
+			}
+		}
+
+		return nullptr;
+	}
+
+	// The surface itself, not one of the children named under it.
+	ImGuiWindow* MutableEditorSurface()
+	{
+		for (ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+		{
+			const std::string_view name{window->Name};
+			const std::size_t mark = name.find(kEditorSurface);
+
+			if (mark != std::string_view::npos && name.find('/', mark) == std::string_view::npos)
+			{
+				return window;
+			}
+		}
+
+		return nullptr;
+	}
+
+	std::string LinesOf(std::size_t count)
+	{
+		std::string content;
+
+		for (std::size_t line = 0; line < count; ++line)
+		{
+			content += "line\n";
+		}
+
+		return content;
+	}
+
+	Graphite::LinePeekContent PeekOfTwoCommits()
+	{
+		Graphite::LinePeekContent content;
+		content.State = Graphite::PeekState::Ready;
+		content.Header = "History of line 1";
+		content.Entries = {Graphite::PeekEntry{.Title = "Fix",
+											   .Meta = "Ann",
+											   .Byline = "Ann",
+											   .Lines = {{Core::DiffLineKind::Removed, "frist", true},
+														 {Core::DiffLineKind::Added, "first", true}},
+											   .Commit = Core::Oid{}},
+						   Graphite::PeekEntry{.Title = "Add",
+											   .Meta = "Ann",
+											   .Byline = "Ann",
+											   .Lines = {{Core::DiffLineKind::Added, "frist", true}},
+											   .Commit = Core::Oid{}}};
+
+		return content;
+	}
+
+	void ShowPeek(EditorFrames& editor, std::size_t line, const Graphite::LinePeekContent& content,
+				  bool justOpened = false)
+	{
+		editor.View.Peek = Graphite::LinePeekView{.Line = line, .Content = &content, .JustOpened = justOpened};
+	}
+
+	// The pointer walks down the window near its left edge, a step at a time, until ImGui reports the item with this
+	// label under it.
+	std::optional<ImVec2> FindDownTheLeftOf(EditorFrames& editor, std::string_view windowMark, const char* label)
+	{
+		constexpr float kStep = 2.0f;
+		constexpr float kIntoTheWindow = 8.0f;
+
+		ImGuiWindow* const window = ActiveWindowNamedWith(windowMark);
+
+		if (window == nullptr)
+		{
+			return std::nullopt;
+		}
+
+		const ImGuiID item = window->GetID(label);
+		const ImRect box = window->Rect();
+		const float x = box.Min.x + kIntoTheWindow;
+
+		for (float y = box.Min.y + kStep; y < box.Max.y; y += kStep)
+		{
+			editor.HoverAt(ImVec2(x, y));
+
+			if (ImGui::GetCurrentContext()->HoveredId == item)
+			{
+				return ImVec2(x, y);
+			}
+		}
+
+		return std::nullopt;
+	}
+
+	float RowsTall(std::size_t rows)
+	{
+		return static_cast<float>(rows) * kEditorLineHeight;
 	}
 }
 
@@ -1653,4 +1766,160 @@ TEST_CASE("Author card opens on a click on the author without moving the caret")
 
 	CHECK(editor.Item.Caret.Offset == 0);
 	CHECK(ShownAuthorCard() != nullptr);
+}
+
+TEST_CASE("Peek pushes the lines below it down by its rows")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LinePeekContent loading;
+
+	editor.Next();
+	const float firstLineTop = editor.CaretScreenPos().y;
+
+	ShowPeek(editor, kFirstLine, loading);
+	PlaceCaret(editor.Item, BufferOf(editor.Item).LineStart(kSecondLine));
+	editor.Next();
+
+	CHECK(editor.CaretScreenPos().y - firstLineTop == RowsTall(Graphite::kLinePeekRows + 1));
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek under the last line draws below it")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LinePeekContent loading;
+
+	editor.Next();
+	editor.Next();
+	const float withoutPeek = EditorSurface()->ContentSize.y;
+
+	ShowPeek(editor, kTwoLinesLineCount - 1, loading);
+	editor.Next();
+	editor.Next();
+
+	CHECK(EditorSurface()->ContentSize.y - withoutPeek == RowsTall(Graphite::kLinePeekRows));
+	CHECK(ActiveWindowNamedWith(kPeekWindowMark) != nullptr);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek takes Escape before the find bar")
+{
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LinePeekContent loading;
+
+	editor.Item.Find.Open = true;
+	ShowPeek(editor, kFirstLine, loading);
+	editor.Next();
+	editor.Next();
+
+	ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, true);
+	editor.Next();
+
+	CHECK(editor.Result.PeekAnswer == Graphite::PeekAction{.Action = Graphite::PeekAction::Kind::Close});
+	CHECK(editor.Item.Find.Open);
+
+	ImGui::GetIO().AddKeyEvent(ImGuiKey_Escape, false);
+	editor.Next();
+
+	CHECK(editor.Item.Find.Open);
+
+	editor.View.Peek.reset();
+	editor.Frames.PressKey(ImGuiKey_Escape, [&editor] { editor.Draw(); });
+
+	CHECK_FALSE(editor.Item.Find.Open);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek reports a selected entry")
+{
+	constexpr std::size_t kSecondEntry = 1;
+
+	EditorFrames editor{std::string{kTwoLines}};
+	const Graphite::LinePeekContent history = PeekOfTwoCommits();
+
+	ShowPeek(editor, kFirstLine, history);
+	editor.Next();
+	editor.Next();
+
+	const std::optional<ImVec2> secondEntry = FindDownTheLeftOf(editor, kPeekListMark, "##LinePeekEntry1");
+	REQUIRE(secondEntry.has_value());
+
+	editor.Click(*secondEntry);
+
+	CHECK(editor.Result.PeekAnswer ==
+		  Graphite::PeekAction{.Action = Graphite::PeekAction::Kind::Select, .Entry = kSecondEntry});
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek scrolls into view when it opens")
+{
+	constexpr std::size_t kLineCount = 60;
+
+	EditorFrames editor{LinesOf(kLineCount)};
+	const Graphite::LinePeekContent loading;
+
+	editor.Next();
+	editor.Next();
+
+	const ImGuiWindow* surface = EditorSurface();
+	REQUIRE(surface != nullptr);
+	REQUIRE(surface->Scroll.y == 0.0f);
+
+	const auto rowsShown = static_cast<std::size_t>(surface->InnerRect.GetHeight() / kEditorLineHeight);
+	REQUIRE(rowsShown > 1);
+
+	ShowPeek(editor, rowsShown - 1, loading, kJustOpened);
+	editor.Next();
+	editor.View.Peek->JustOpened = false;
+	editor.Next();
+
+	const ImGuiWindow* peek = ActiveWindowNamedWith(kPeekWindowMark);
+	REQUIRE(peek != nullptr);
+
+	CHECK(surface->Scroll.y > 0.0f);
+	CHECK(peek->Rect().Min.y >= surface->InnerRect.Min.y);
+	CHECK(peek->Rect().Max.y <= surface->InnerRect.Max.y);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek holds the scroll when only its rows are visible")
+{
+	constexpr std::size_t kLineCount = 60;
+	constexpr std::size_t kPeekLine = 10;
+	constexpr std::size_t kRowsShown = 4;
+	constexpr std::size_t kPeekRowsAboveTheView = 1;
+	constexpr float kTopAndBottom = 2.0f;
+
+	EditorFrames editor{LinesOf(kLineCount)};
+	editor.Height = RowsTall(kRowsShown) + ImGui::GetStyle().WindowPadding.y * kTopAndBottom;
+
+	Graphite::ScrollAnchor anchor;
+	const Graphite::LinePeekContent loading;
+
+	editor.View.Anchor = &anchor;
+	ShowPeek(editor, kPeekLine, loading);
+	editor.Next();
+	editor.Next();
+
+	ImGuiWindow* const surface = MutableEditorSurface();
+	REQUIRE(surface != nullptr);
+	REQUIRE(surface->InnerRect.GetHeight() <= RowsTall(kRowsShown));
+
+	// The peek's rows begin right under its line, so this shows none of the document's rows.
+	const float intoThePeek = RowsTall(kPeekLine + 1 + kPeekRowsAboveTheView);
+	ImGui::SetScrollY(surface, intoThePeek);
+	editor.Next();
+	editor.Next();
+
+	REQUIRE(surface->Scroll.y == intoThePeek);
+	CHECK(anchor.Line == kPeekLine + 1);
+
+	Graphite::LensModel lenses;
+	DeclareReferencedFirstLine(lenses, editor.Item);
+	editor.View.Lens = &lenses;
+	editor.Next();
+	editor.Next();
+
+	CHECK(surface->Scroll.y == intoThePeek + kEditorLineHeight);
+	CHECK(editor.StackAfter == editor.StackBefore);
 }

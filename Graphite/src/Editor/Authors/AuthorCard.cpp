@@ -119,8 +119,7 @@ namespace Graphite {
 
 		if (input.Dismissed)
 		{
-			Hide();
-			m_WaitingToLeave = true;
+			Dismiss();
 			return;
 		}
 
@@ -178,6 +177,12 @@ namespace Graphite {
 		{
 			Hide();
 		}
+	}
+
+	void AuthorCardTracker::Dismiss()
+	{
+		Hide();
+		m_WaitingToLeave = true;
 	}
 
 	std::optional<std::size_t> AuthorCardTracker::ShownLine() const

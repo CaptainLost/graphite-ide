@@ -98,6 +98,11 @@ namespace Graphite {
 
 		constexpr float kAuthorGapCells = 3.0f;
 
+		constexpr float kPeekInset = 6.0f;
+		constexpr float kPeekGap = 2.0f;
+		constexpr float kPeekPaddingX = 8.0f;
+		constexpr float kPeekPaddingY = 4.0f;
+
 		constexpr float kHalf = 0.5f;
 		constexpr float kHairlineWidth = 1.0f;
 		constexpr float kLeastWrapColumns = 1.0f;
@@ -1107,6 +1112,46 @@ namespace Graphite {
 			else if (caretX + metrics.CellWidth > ImGui::GetScrollX() + ImGui::GetWindowWidth())
 			{
 				ImGui::SetScrollX(caretX + metrics.CellWidth - ImGui::GetWindowWidth());
+			}
+		}
+
+		// Under line L is before the first row of line L+1, or past the last row for the last line. A line past the end,
+		// left by a document that shrank before its peek was closed, is placed as the last one is.
+		PeekPlacement PlacePeekUnder(const Core::RowMap& rows, std::size_t line)
+		{
+			const std::size_t totalRows = rows.GetTotalRows();
+			const std::size_t before = line + 1 < rows.GetLineCount() ? rows.FirstRowOf(line + 1) : totalRows;
+
+			return PeekPlacement{.BeforeDocumentRow = std::min(before, totalRows), .Rows = kLinePeekRows};
+		}
+
+		// Scrolls just far enough to show the whole peek and the line it sits under, or puts that line at the top when
+		// the two do not fit together. scrollY is where the view will be, as for ScrollToCaret.
+		void ScrollPeekIntoView(const Core::OpenItem& item, const EditorMetrics& metrics, const ScreenRows& screenRows,
+								const PeekPlacement& placement, std::size_t line, float scrollY)
+		{
+			const std::optional<std::size_t> peekTop = screenRows.PeekTop();
+
+			if (!peekTop || item.Rows.GetLineCount() == 0)
+			{
+				return;
+			}
+
+			const std::size_t shownLine = std::min(line, item.Rows.GetLineCount() - 1);
+			const float lineTop =
+				static_cast<float>(screenRows.ScreenRowOf(item.Rows.FirstRowOf(shownLine))) * metrics.LineHeight;
+			const float peekBottom = static_cast<float>(*peekTop + placement.Rows) * metrics.LineHeight;
+			const float visibleHeight = ImGui::GetCurrentWindow()->InnerRect.GetHeight();
+
+			if (peekBottom > scrollY + visibleHeight)
+			{
+				const bool fitsWithItsLine = peekBottom - lineTop <= visibleHeight;
+
+				ImGui::SetScrollY(fitsWithItsLine ? peekBottom - visibleHeight : lineTop);
+			}
+			else if (lineTop < scrollY)
+			{
+				ImGui::SetScrollY(lineTop);
 			}
 		}
 
@@ -2943,6 +2988,87 @@ namespace Graphite {
 			ImGui::SetCursorScreenPos(origin);
 		}
 
+		// The peek's rows across the visible text, from the gutter's edge to the surface's inner edge, so the peek stays in
+		// view when the text is scrolled sideways.
+		ImRect PeekBlockOf(const ScreenRows& screenRows, const PeekPlacement& placement, const EditorMetrics& metrics,
+						   const ImVec2& origin, float scrollX)
+		{
+			const float top = origin.y + static_cast<float>(screenRows.PeekTop().value_or(0)) * metrics.LineHeight;
+
+			return ImRect(GutterRightEdge(origin, scrollX, metrics), top, ImGui::GetCurrentWindow()->InnerRect.Max.x,
+						  top + static_cast<float>(placement.Rows) * metrics.LineHeight);
+		}
+
+		// WARNING: The peek is a child window of the surface, as the find bar is, so it takes the mouse from the surface.
+		// BeginChild sizes its item like any other and would push the surface's CursorMaxPos out to the peek's far
+		// corner; ReserveDocumentExtent has already reserved its rows, so the extent is restored after EndChild.
+		std::optional<PeekAction> DrawPeekBlock(const LinePeekContent& content, std::size_t selected, const ImRect& block,
+												const ResolvedScheme& scheme)
+		{
+			ImGuiWindow* const surface = ImGui::GetCurrentWindow();
+			const ImVec2 extentBeforePeek = surface->DC.CursorMaxPos;
+
+			const float inset = Core::Scaled(kPeekInset);
+			const float gap = Core::Scaled(kPeekGap);
+			const ImVec2 size(std::max(0.0f, block.GetWidth() - inset * 2.0f),
+							  std::max(0.0f, block.GetHeight() - gap * 2.0f));
+
+			ImGui::SetCursorScreenPos(ImVec2(block.Min.x + inset, block.Min.y + gap));
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding,
+								ImVec2(Core::Scaled(kPeekPaddingX), Core::Scaled(kPeekPaddingY)));
+			ImGui::PushStyleColor(ImGuiCol_ChildBg, ImGui::GetStyleColorVec4(ImGuiCol_PopupBg));
+
+			const bool peekVisible =
+				ImGui::BeginChild("##LinePeek", size, ImGuiChildFlags_Borders,
+								  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+
+			ImGui::PopStyleColor();
+			ImGui::PopStyleVar();
+
+			std::optional<PeekAction> answer;
+			bool peekFocused = false;
+
+			if (peekVisible)
+			{
+				answer = DrawLinePeek(content, selected, ImGui::GetContentRegionAvail(), scheme);
+				peekFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows);
+			}
+
+			ImGui::EndChild();
+			surface->DC.CursorMaxPos = extentBeforePeek;
+
+			// WARNING: A click inside the peek focuses it, and the editor would stop taking keys until its text was
+			// clicked again. Focus goes back to the surface once no button is down: during a press it would end the drag
+			// of a scrollbar. It comes after the content, because FocusWindow clears the active item and a button
+			// released this frame would never report its click.
+			if (peekFocused && !ImGui::IsAnyMouseDown())
+			{
+				ImGui::FocusWindow(surface);
+			}
+
+			return answer;
+		}
+
+		// The row the scroll anchor is recorded on: the first document row drawn or, when only the peek's rows were on
+		// screen, the row it sits on (the last row under the last line), which is the row a view with the peek at its
+		// top anchors on.
+		std::optional<std::size_t> AnchorRowOf(const EditorFrameResult& result,
+											   const std::optional<PeekPlacement>& placement, bool peekOnScreen,
+											   const Core::RowMap& rows)
+		{
+			if (result.DrewRows)
+			{
+				return result.FirstVisibleRow;
+			}
+
+			if (!placement || !peekOnScreen || rows.GetTotalRows() == 0)
+			{
+				return std::nullopt;
+			}
+
+			return std::min(placement->BeforeDocumentRow, rows.GetTotalRows() - 1);
+		}
+
 		// The editor's left edge is the edge of the window that holds the surface, whose padding stands between that
 		// edge and the surface. Read from inside the surface.
 		float EditorLeftEdge()
@@ -3095,8 +3221,11 @@ namespace Graphite {
 						screenRows.At(static_cast<std::size_t>(screenRowIndex));
 					const float y = origin.y + static_cast<float>(screenRowIndex) * metrics.LineHeight;
 
+					// The peek is drawn once after the rows, from its own first row; its rows here only keep the
+					// gutter beside it empty.
 					if (screenRow.Kind == ScreenRows::RowKind::Peek)
 					{
+						DrawGutterFill(canvas, y);
 						continue;
 					}
 
@@ -3234,6 +3363,15 @@ namespace Graphite {
 		const bool documentHoldsFocus =
 			ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
+		// The peek takes Escape first; the find bar sees it only once the peek has closed.
+		const bool peekTakesEscape =
+			view.Peek.has_value() && documentHoldsFocus && ImGui::IsKeyPressed(ImGuiKey_Escape);
+
+		if (peekTakesEscape)
+		{
+			result.PeekAnswer = PeekAction{.Action = PeekAction::Kind::Close};
+		}
+
 		const ImVec2 fillAvailableSpace(0.0f, 0.0f);
 
 		if (ImGui::BeginChild("##EditorSurface", fillAvailableSpace, ImGuiChildFlags_None,
@@ -3269,16 +3407,32 @@ namespace Graphite {
 			}
 
 			const LensModel* const drawnLenses = view.ShowLensRows ? view.Lens : nullptr;
-			const ScreenRows screenRows{LensRowsOf(drawnLenses), std::nullopt};
 
 			const WrapGeometry wrap = WrapGeometryOf(metrics.Gutter, metrics.CellWidth, SurfaceWidthWithoutScrollbar());
 			result.Wrap = wrap;
+
+			std::optional<PeekPlacement> peekPlacement;
+
+			if (view.Peek)
+			{
+				peekPlacement = PlacePeekUnder(item.Rows, view.Peek->Line);
+			}
+
+			ScreenRows screenRows{LensRowsOf(drawnLenses), peekPlacement};
 
 			const VerticalScrollbar scrollbar = ScrollbarOfSurface(item, metrics, screenRows);
 			const std::size_t columnsPerRow =
 				view.WordWrap ? WrappedColumns(wrap, buffer.GetLineCount(), scrollbar) : Core::RowMap::kNoWrap;
 
 			RewrapIfGeometryChanged(item, buffer, columnsPerRow);
+
+			// WARNING: Placed again because the rewrap can move the rows under the peek's line. The placement above
+			// only gave the scrollbar the peek's height, which the wrap does not change.
+			if (peekPlacement)
+			{
+				peekPlacement = PlacePeekUnder(item.Rows, view.Peek->Line);
+				screenRows = ScreenRows{LensRowsOf(drawnLenses), peekPlacement};
+			}
 
 			const float rowAreaWidth = RowAreaWidth(available, scrollbar);
 
@@ -3366,6 +3520,15 @@ namespace Graphite {
 							  caretAtFrameStart, result);
 			}
 
+			// WARNING: The peek was placed against the rows as they stood before this frame's edits, and an edit that
+			// removed rows would leave it past their end, where the rows below it would be read off the end of the
+			// map. An edit closes the peek, so it is dropped for the rest of the frame rather than placed again.
+			if (result.Edited && peekPlacement)
+			{
+				peekPlacement.reset();
+				screenRows = ScreenRows{LensRowsOf(drawnLenses), std::nullopt};
+			}
+
 			if (item.Find.Open)
 			{
 				RefreshFindMatchesIfStale(item, buffer);
@@ -3400,6 +3563,11 @@ namespace Graphite {
 				item.PendingScroll = false;
 			}
 
+			if (peekPlacement && view.Peek->JustOpened)
+			{
+				ScrollPeekIntoView(item, metrics, screenRows, *peekPlacement, view.Peek->Line, scrollY);
+			}
+
 			const HoverFrame hoverFrame{.State = view.Hover,
 										.Settings = view.HoverConfig,
 										.Input = context.Input,
@@ -3430,18 +3598,47 @@ namespace Graphite {
 
 			RunAuthorCard(author, buffer.ToPosition(item.Caret.Offset).Line, widget, result);
 
+			std::optional<ImRect> peekBlock;
+
+			if (peekPlacement)
+			{
+				peekBlock = PeekBlockOf(screenRows, *peekPlacement, metrics, origin, scrollX);
+			}
+
+			const bool peekOnScreen =
+				peekBlock.has_value() && peekBlock->Overlaps(ImGui::GetCurrentWindow()->InnerClipRect);
+
 			// WARNING: A frame that drew nothing reports row zero, and adopting it would claim
 			// the reader had scrolled to the top. The anchor is recorded as a line and a sub-row
-			// because the row index is a position in a mapping that rewrapping rebuilds.
-			if (view.Anchor != nullptr && result.DrewRows)
+			// because the row index is a position in a mapping that rewrapping rebuilds. A view
+			// scrolled onto the peek's rows alone draws no document row, and keeping the anchor of
+			// some earlier frame would scroll back there the next time a row above changed.
+			if (view.Anchor != nullptr)
 			{
-				const Core::RowRef topRow = item.Rows.RowAt(result.FirstVisibleRow);
+				if (const std::optional<std::size_t> anchorRow =
+						AnchorRowOf(result, peekPlacement, peekOnScreen, item.Rows))
+				{
+					const Core::RowRef topRow = item.Rows.RowAt(*anchorRow);
 
-				view.Anchor->Line = topRow.Line;
-				view.Anchor->SubRow = topRow.SubRow;
-				view.Anchor->ScreenRow = screenRows.ScreenRowOf(result.FirstVisibleRow);
-				view.Anchor->ScrollY = ImGui::GetScrollY();
-				view.Anchor->Taken = true;
+					view.Anchor->Line = topRow.Line;
+					view.Anchor->SubRow = topRow.SubRow;
+					view.Anchor->ScreenRow = screenRows.ScreenRowOf(*anchorRow);
+					view.Anchor->ScrollY = ImGui::GetScrollY();
+					view.Anchor->Taken = true;
+				}
+			}
+
+			// The peek is drawn after the rows for the find bar's reason below, and before the bar so the bar stays
+			// on top of it.
+			if (peekOnScreen && view.Peek->Content != nullptr)
+			{
+				const std::optional<PeekAction> answer =
+					DrawPeekBlock(*view.Peek->Content, view.Peek->Selected, *peekBlock, scheme);
+
+				if (answer && !result.PeekAnswer)
+				{
+					result.PeekAnswer = answer;
+				}
 			}
 
 			// WARNING: The find bar is drawn after the rows, so a click on it is a click on it:
@@ -3449,7 +3646,7 @@ namespace Graphite {
 			// top of, and a nested child window takes the hover from its parent.
 			if (item.Find.Open)
 			{
-				findBar.Draw(item, buffer, documentHoldsFocus);
+				findBar.Draw(item, buffer, documentHoldsFocus, peekTakesEscape);
 			}
 		}
 

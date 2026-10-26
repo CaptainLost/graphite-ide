@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Editor/Authors/AuthorCard.h"
+#include "Editor/Authors/LinePeek.h"
 #include "Editor/EditorSettings.h"
 #include "Editor/Server/LspAnswerRouter.h"
 #include "Editor/ScrollAnchor.h"
@@ -33,6 +34,7 @@ namespace Graphite {
 	class DiagnosticOverlay;
 	struct ChangeMarkers;
 	struct LineAuthors;
+	struct LinePeekContent;
 	struct HoverState;
 	class PreviewSemantics;
 	struct ResolvedScheme;
@@ -84,6 +86,14 @@ namespace Graphite {
 		float HoverDelaySeconds = 0.5f;
 	};
 
+	struct LinePeekView
+	{
+		std::size_t Line = 0;                       // zero-based buffer line the peek sits under
+		const LinePeekContent* Content = nullptr;   // null: the rows are kept and nothing is drawn in them
+		std::size_t Selected = 0;
+		bool JustOpened = false;                    // scroll so the whole peek shows, if it fits
+	};
+
 	struct EditorFrameResult
 	{
 		bool Edited = false;
@@ -121,6 +131,8 @@ namespace Graphite {
 		std::optional<WrapGeometry> Wrap;
 
 		std::optional<AuthorCardAction> CardAction;
+
+		std::optional<PeekAction> PeekAnswer;
 	};
 
 	struct EditorView
@@ -151,6 +163,8 @@ namespace Graphite {
 		bool HighlightOccurrences = false;
 
 		LineAuthorView Author;
+
+		std::optional<LinePeekView> Peek;
 
 		ScrollAnchor* Anchor = nullptr;
 

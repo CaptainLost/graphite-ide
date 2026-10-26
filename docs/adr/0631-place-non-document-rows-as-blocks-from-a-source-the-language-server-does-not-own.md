@@ -31,7 +31,12 @@ see a row that is not a document row. Generalise only the translator:
   frame from the lens rows and an optional `PeekPlacement`: a block of
   `Rows` rows placed before a document row, where "under line L" means
   before the first row of line L+1, or before the row count for the last
-  line.
+  line. It is built before the mouse is applied, so the placement is
+  computed against the rows as they stand before the frame's edits. A
+  frame that edits the document while the block is placed builds it a
+  second time, without the block, once the edits are applied: an edit
+  closes the block, and a placement past the rows the edit left would have
+  the rows below it read off the end of `RowMap`.
 - The placement comes from the editor itself, which holds the `RowMap` the
   placement is computed against. It does not come from `LensModel` or from
   anything else that exists only with a language server; without a lens
@@ -51,6 +56,11 @@ see a row that is not a document row. Generalise only the translator:
   `AnchorOfToken`; `ComputeChangeHover`; `OverviewLineTop`; the caret's
   screen position and its overview mark; the clipper loop; and both halves
   of the scroll anchor. No site calls `LensRows` for a translation.
+- A frame scrolled onto the block's rows alone draws no document row. It
+  records the scroll anchor on the document row the block sits before (the
+  last row, under the last line), the row a view with the block at its top
+  anchors on, rather than keeping an earlier frame's anchor, which would
+  scroll the view back there the next time a row above it changed.
 - `LensRows` is unchanged and remains the lens model's storage. `ScreenRows`
   holds it by address and reads it on every call, so an edit that shifts the
   anchors during a frame is seen by the rest of that frame.

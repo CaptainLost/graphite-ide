@@ -198,13 +198,16 @@ namespace Graphite {
 		m_FocusFor = item.Path;
 	}
 
-	void FindBar::Draw(Core::OpenItem& item, const Core::TextBuffer& buffer, bool documentFocused)
+	void FindBar::Draw(Core::OpenItem& item, const Core::TextBuffer& buffer, bool documentFocused, bool escapeTaken)
 	{
 		const FindBarFrame frame = FrameForCurrentWindow(documentFocused);
 
 		const bool noMatches = item.Find.Matches.empty() && !item.Find.Query.empty();
 
-		const bool escapePressed = frame.DocumentFocused && ImGui::IsKeyPressed(ImGuiKey_Escape);
+		// WARNING: An Escape taken by the peek still reaches the field, which reverts its text on it, so the field's
+		// edit is refused on any Escape even though only an Escape not taken closes the bar.
+		const bool escapeSeen = frame.DocumentFocused && ImGui::IsKeyPressed(ImGuiKey_Escape);
+		const bool escapePressed = escapeSeen && !escapeTaken;
 
 		// WARNING: BeginChild sizes its item like any other and pushes the surface's CursorMaxPos
 		// out to the bar's far corner, which would raise a horizontal scrollbar on every document
@@ -266,7 +269,7 @@ namespace Graphite {
 									 ImGuiInputTextFlags_EnterReturnsTrue);
 
 		const bool queryEdited = AcceptsQueryEdit(
-			FindFieldEvents{.Edited = ImGui::IsItemEdited(), .EscapePressed = escapePressed});
+			FindFieldEvents{.Edited = ImGui::IsItemEdited(), .EscapePressed = escapeSeen});
 
 		if (noMatches)
 		{

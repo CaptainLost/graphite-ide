@@ -15,7 +15,9 @@ namespace Graphite {
 	public:
 		void Open(Core::OpenItem& item);
 
-		void Draw(Core::OpenItem& item, const Core::TextBuffer& buffer, bool documentFocused);
+		// escapeTaken: something in front of the bar, the line peek, took this frame's Escape, which then leaves the
+		// bar open.
+		void Draw(Core::OpenItem& item, const Core::TextBuffer& buffer, bool documentFocused, bool escapeTaken);
 
 	private:
 		// WARNING: Keyed on the path rather than the item's address, because a reallocation of the

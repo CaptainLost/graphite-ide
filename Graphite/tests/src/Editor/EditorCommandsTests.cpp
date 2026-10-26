@@ -8,7 +8,9 @@
 #include "Core/Text/Editing.h"
 #include "Core/Text/TextDocument.h"
 
+#include <algorithm>
 #include <cstddef>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <vector>
@@ -76,10 +78,26 @@ TEST_CASE("The context menu lists navigation, clipboard, then comment and select
 
 	CHECK(CommandIds(menu) ==
 		  std::vector<std::string>{kGoToDefinitionCommand, kFindReferencesCommand,
-								   kSwitchHeaderSourceCommand, kCutCommand, kCopyCommand,
+								   kSwitchHeaderSourceCommand, kLineHistoryCommand, kCutCommand, kCopyCommand,
 								   kPasteCommand, kToggleLineCommentCommand, kSelectAllCommand});
 
-	CHECK(CountSeparators(menu) == 2);
+	CHECK(CountSeparators(menu) == 3);
+}
+
+TEST_CASE("Peek command Line History sits in its own group of the context menu")
+{
+	const std::vector<Core::MenuItem> menu = BuildEditorContextMenu();
+
+	const auto lineHistory = std::ranges::find_if(menu, [](const Core::MenuItem& item) {
+		return item.GetKind() == Core::MenuItem::Kind::Command && item.GetText() == kLineHistoryCommand;
+	});
+
+	REQUIRE(lineHistory != menu.end());
+	REQUIRE(lineHistory != menu.begin());
+	REQUIRE(std::next(lineHistory) != menu.end());
+
+	CHECK(std::prev(lineHistory)->GetKind() == Core::MenuItem::Kind::Separator);
+	CHECK(std::next(lineHistory)->GetKind() == Core::MenuItem::Kind::Separator);
 }
 
 TEST_CASE("Cut and copy need a selection, paste needs text on the clipboard")

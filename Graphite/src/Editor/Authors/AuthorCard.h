@@ -39,6 +39,9 @@ namespace Graphite {
 	public:
 		void Update(const AuthorCardInput& input, float delaySeconds);
 
+		// Hides the card as a dismissing input does, so it waits for the mouse to leave the text before showing again.
+		void Dismiss();
+
 		std::optional<std::size_t> ShownLine() const;
 
 		std::optional<float> SecondsUntilShown() const;    // for Core::Redraw::RequestIn
