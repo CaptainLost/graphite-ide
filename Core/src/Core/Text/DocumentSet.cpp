@@ -5,6 +5,7 @@
 #include "Core/Base/ByteSize.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Image/ImageFormat.h"
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileProbe.h"
 
@@ -114,10 +115,19 @@ namespace Core {
 
 		item.Failure = OpenFailure::None;
 		item.FailureDetail.clear();
+		item.View = ItemView::Text;
 
 		switch (probe.Kind)
 		{
 		case FileKind::Binary:
+			if (ImageFormatOfPath(item.Path))
+			{
+				// A text file named .png, such as a Git LFS pointer, never gets here: only a NUL makes it Binary.
+				item.View = ItemView::Image;
+				item.Document.reset();
+				return ItemLoad::Loaded;
+			}
+
 			item.Failure = OpenFailure::Binary;
 			break;
 		case FileKind::TooLarge:

@@ -702,6 +702,69 @@ TEST_CASE("Loading a file that turned out to be binary leaves the reason, not a 
 	CHECK(documents.At(0).Failure == OpenFailure::Binary);
 }
 
+// The classification needs only a NUL in the first bytes and the extension, so these files hold the
+// generic binary bytes, not real pictures.
+TEST_CASE("A binary png opens as an image item with no failure")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "logo.PNG";
+	WriteFileBytes(path, kBinaryFileBytes);
+
+	DocumentSet documents;
+
+	CHECK(documents.Open(path, TabKind::Permanent) == OpenOutcome::Opened);
+	CHECK(documents.At(0).View == ItemView::Image);
+	CHECK(documents.At(0).Failure == OpenFailure::None);
+	CHECK(documents.At(0).Document == nullptr);
+	CHECK(documents.At(0).FileSize == kBinaryFileBytes.size());
+}
+
+TEST_CASE("A png that holds text, such as a Git LFS pointer, opens as text")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "logo.png";
+	WriteFileBytes(path, "version https://git-lfs.github.com/spec/v1\noid sha256:abc\nsize 12345\n");
+
+	DocumentSet documents;
+
+	CHECK(documents.Open(path, TabKind::Permanent) == OpenOutcome::Opened);
+	CHECK(documents.At(0).View == ItemView::Text);
+	CHECK(documents.At(0).Document != nullptr);
+}
+
+TEST_CASE("A binary file of another kind still fails as binary")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "program.exe";
+	WriteFileBytes(path, kBinaryFileBytes);
+
+	DocumentSet documents;
+
+	CHECK(documents.Open(path, TabKind::Permanent) == OpenOutcome::Failed);
+	CHECK(documents.At(0).View == ItemView::Text);
+	CHECK(documents.At(0).Failure == OpenFailure::Binary);
+}
+
+TEST_CASE("An image that went missing and came back opens as an image again")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "photo.jpg";
+	WriteFileBytes(path, kBinaryFileBytes);
+
+	DocumentSet documents;
+	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Opened);
+
+	documents.MarkMissing(path);
+	REQUIRE(documents.At(0).Failure == OpenFailure::Missing);
+
+	documents.MarkPresent(path);
+
+	CHECK(LoadFromFile(documents.At(0), documents.GetStore(), LargeFileConfirmation::Unconfirmed) == ItemLoad::Loaded);
+	CHECK(documents.At(0).View == ItemView::Image);
+	CHECK(documents.At(0).Failure == OpenFailure::None);
+	CHECK(documents.At(0).Document == nullptr);
+}
+
 TEST_CASE("Loading a large file asks and leaves the failure in place until confirmed and then reads it")
 {
 	TempDirectory directory;
