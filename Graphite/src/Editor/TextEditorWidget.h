@@ -113,7 +113,9 @@ namespace Graphite {
 
 		std::optional<std::size_t> LensClicked;
 
-		bool ContextMenuWanted = false;
+		// Set by a right-click that asks for the context menu: the offset clicked, which inside a selection is not the
+		// caret's, because such a click leaves the caret where it was.
+		std::optional<std::size_t> ContextMenuOffset;
 
 		std::optional<std::string> CopiedFromMenu;
 

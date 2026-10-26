@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -49,6 +50,12 @@ namespace {
 		Core::Result<HeadBlame> BlameAtHead(const std::filesystem::path&) override
 		{
 			++Calls;
+
+			if (HeadError)
+			{
+				return *HeadError;
+			}
+
 			return Head;
 		}
 
@@ -59,6 +66,7 @@ namespace {
 		}
 
 		HeadBlame Head;
+		std::optional<Core::Error> HeadError;
 		Core::LineHistory History;
 		int Calls = 0;
 		int HistoryCalls = 0;
@@ -215,7 +223,11 @@ TEST_CASE("Blame model drops an overlay that a reset overtook")
 	overlay();
 	model.OnUpdate(kFrame);
 
-	CHECK(model.Get(kPath) == nullptr);
+	const Core::Ref<const Graphite::LineAuthors> authors = model.Get(kPath);
+	REQUIRE(authors != nullptr);
+	REQUIRE(authors->Head != nullptr);
+	CHECK_FALSE(authors->Head->Tracked);
+	CHECK(authors->Lines.empty());
 }
 
 TEST_CASE("Blame model does not re-read the head blame when a file is saved")
@@ -241,7 +253,7 @@ TEST_CASE("Blame model does not re-read the head blame when a file is saved")
 	CHECK(port.Calls == 1);
 }
 
-TEST_CASE("Blame model gives no authors for an untracked file")
+TEST_CASE("Blame model gives an untracked file an empty table with its head")
 {
 	FakeBlamePort port;
 	HeldJobs jobs;
@@ -252,7 +264,54 @@ TEST_CASE("Blame model gives no authors for an untracked file")
 
 	CHECK(port.Calls == 1);
 	CHECK(jobs.Jobs.empty());
-	CHECK(model.Get(kPath) == nullptr);
+
+	const Core::Ref<const Graphite::LineAuthors> authors = model.Get(kPath);
+	REQUIRE(authors != nullptr);
+	REQUIRE(authors->Head != nullptr);
+	CHECK_FALSE(authors->Head->Tracked);
+	CHECK(authors->Lines.empty());
+	CHECK_FALSE(Graphite::LineHistoryStart(*authors, 0).has_value());
+}
+
+TEST_CASE("Blame model gives an unusable head an empty table with that head")
+{
+	FakeBlamePort port;
+	port.Head = Committed("a\nb\n", 2);
+	port.Head.Unusable = true;
+	HeldJobs jobs;
+	BlameModel model{port, jobs.Submitter()};
+
+	const Core::TextBuffer buffer{"a\nb\n"};
+	Settle(model, jobs, buffer);
+
+	CHECK(jobs.Jobs.empty());
+
+	const Core::Ref<const Graphite::LineAuthors> authors = model.Get(kPath);
+	REQUIRE(authors != nullptr);
+	REQUIRE(authors->Head != nullptr);
+	CHECK(authors->Head->Tracked);
+	CHECK(authors->Head->Unusable);
+	CHECK(authors->Lines.empty());
+}
+
+TEST_CASE("Blame model gives a head it cannot read an empty untracked table")
+{
+	FakeBlamePort port;
+	port.HeadError = Core::Error{Core::ErrorCode::IoFailure, "the object database is gone"};
+	HeldJobs jobs;
+	BlameModel model{port, jobs.Submitter()};
+
+	const Core::TextBuffer buffer{"a\n"};
+	Settle(model, jobs, buffer);
+
+	CHECK(port.Calls == 1);
+	CHECK(jobs.Jobs.empty());
+
+	const Core::Ref<const Graphite::LineAuthors> authors = model.Get(kPath);
+	REQUIRE(authors != nullptr);
+	REQUIRE(authors->Head != nullptr);
+	CHECK_FALSE(authors->Head->Tracked);
+	CHECK(authors->Lines.empty());
 }
 
 TEST_CASE("Blame model re-reads the head blame when the repository changes")

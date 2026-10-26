@@ -86,5 +86,9 @@ namespace Graphite {
 
 		AuthorCardTracker AuthorCard;
 		InteractiveTooltipState AuthorCardWindow;
+
+		// The offset right-clicked to open the context menu, kept while the menu is open, so a command run from it can
+		// act on the clicked line rather than the caret's.
+		std::optional<std::size_t> ContextMenuOffset;
 	};
 }

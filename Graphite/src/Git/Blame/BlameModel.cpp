@@ -136,7 +136,7 @@ namespace Graphite {
 				{
 					CORE_WARN("Cannot blame '{}' at HEAD: {}", Core::ToUtf8(path), error->Message);
 					target.Head.reset();
-					DropAuthors(target);
+					PublishWithoutHistory(target, Core::CreateRef<const HeadBlame>());
 					return;
 				}
 
@@ -154,12 +154,25 @@ namespace Graphite {
 		entry.Authors.reset();
 	}
 
+	void BlameModel::PublishWithoutHistory(Entry& entry, Core::Ref<const HeadBlame> head)
+	{
+		DropAuthors(entry);
+		entry.Authors = Core::CreateRef<const LineAuthors>(LineAuthors{.Head = std::move(head)});
+	}
+
 	void BlameModel::RequestAuthors(const std::filesystem::path& path, Entry& entry,
 									const Core::TextBuffer& buffer)
 	{
-		if (!entry.Head->Tracked || entry.Head->Unusable || entry.Head->Blame == nullptr)
+		if (!entry.Head->Tracked || entry.Head->Unusable)
 		{
-			DropAuthors(entry);
+			PublishWithoutHistory(entry, entry.Head);
+			return;
+		}
+
+		// A tracked head the port gave no blame is read as untracked rather than left with no table at all.
+		if (entry.Head->Blame == nullptr)
+		{
+			PublishWithoutHistory(entry, Core::CreateRef<const HeadBlame>());
 			return;
 		}
 

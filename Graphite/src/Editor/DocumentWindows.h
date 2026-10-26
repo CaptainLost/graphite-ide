@@ -159,7 +159,7 @@ namespace Graphite {
 		void GoToDefinition() override;
 		void FindReferences(ReferencesPanel& panel) override;
 		bool CanShowLineHistory() override;
-		void ShowLineHistory() override;
+		void ShowLineHistory(bool fromMenu) override;
 
 		std::optional<std::string> GetStatusMessage() const;
 

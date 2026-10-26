@@ -1661,14 +1661,20 @@ namespace Graphite {
 		return item->Document->GetBuffer().GetLength() <= Core::MaximumDiffTextSize;
 	}
 
-	void DocumentWindows::ShowLineHistory()
+	void DocumentWindows::ShowLineHistory(bool fromMenu)
 	{
-		const Core::OpenItem* const item = FindActiveTextItem();
+		Core::OpenItem* const item = FindActiveTextItem();
 
-		if (item != nullptr && item->Document)
+		if (item == nullptr || !item->Document)
 		{
-			OpenLinePeek(*item, item->Document->GetBuffer().ToPosition(item->Caret.Offset).Line);
+			return;
 		}
+
+		const DocumentState* const state = FindState(item->Path);
+		const std::optional<std::size_t> rightClicked =
+			fromMenu && state != nullptr ? state->Widget.ContextMenuOffset : std::nullopt;
+
+		OpenLinePeek(*item, PlaceCaretForLineHistory(*item, rightClicked));
 	}
 
 	void DocumentWindows::OpenLinePeek(const Core::OpenItem& item, std::size_t line)
@@ -2737,7 +2743,10 @@ namespace Graphite {
 					authors = m_Blame.Get(item.Path);
 				}
 
-				const Core::Ref<const LineAuthors> shownAuthors = lineAuthor ? authors : nullptr;
+				// An empty table is a file with no committed history: nothing to show at a line's end, and no clock to
+				// resolve for it.
+				const bool anyAuthor = authors != nullptr && !authors->Lines.empty();
+				const Core::Ref<const LineAuthors> shownAuthors = lineAuthor && anyAuthor ? authors : nullptr;
 
 				view.Author.Authors = shownAuthors.get();
 				view.Author.HoverDelaySeconds =

@@ -51,6 +51,9 @@ namespace Graphite {
 		// diffed until it is shown again; its head blame is still re-read when the repository changes.
 		void Update(const std::filesystem::path& path, const Core::TextBuffer& buffer);
 
+		// Null until a table has arrived. A file with no committed history to lay over it (untracked, unusable, or a
+		// head that could not be read) gets an empty table whose head says so, which a reader tells apart from a
+		// table still on its way.
 		Core::Ref<const LineAuthors> Get(const std::filesystem::path& path) const;
 
 		// Ignored when the same request is already held or in flight for the path. A failed answer is
@@ -92,6 +95,8 @@ namespace Graphite {
 		};
 
 		void DropAuthors(Entry& entry);
+		// Retires any overlay in flight first, so it cannot put its table back over this one.
+		void PublishWithoutHistory(Entry& entry, Core::Ref<const HeadBlame> head);
 		void RequestHead(const std::filesystem::path& path, Entry& entry);
 		void RequestAuthors(const std::filesystem::path& path, Entry& entry,
 							const Core::TextBuffer& buffer);

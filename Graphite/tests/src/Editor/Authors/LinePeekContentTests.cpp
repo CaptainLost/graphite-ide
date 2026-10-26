@@ -5,6 +5,7 @@
 #include "Core/Git/TextDiff.h"
 #include "Core/Text/TextBuffer.h"
 
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -104,9 +105,10 @@ namespace {
 
 TEST_CASE("Peek content is loading until the authors arrive")
 {
-	const auto content = Build(nullptr, 0, "a", nullptr);
+	const auto content = Build(nullptr, 4, "a", nullptr);
 
 	CHECK(content.State == PeekState::Loading);
+	CHECK(content.Header == "History of line 5");
 }
 
 TEST_CASE("Peek content for a file without committed history fails with a message")
@@ -119,6 +121,34 @@ TEST_CASE("Peek content for a file without committed history fails with a messag
 
 	CHECK(content.State == PeekState::Failed);
 	CHECK(content.Error == "This file has no committed history.");
+	CHECK(content.Header == "History of line 1");
+}
+
+TEST_CASE("Peek content for an unusable head fails instead of loading")
+{
+	auto head = std::make_shared<Graphite::HeadBlame>();
+	head->Tracked = true;
+	head->Unusable = true;
+	LineAuthors authors;
+	authors.Head = head;
+
+	const auto content = Build(&authors, 2, "a", nullptr);
+
+	CHECK(content.State == PeekState::Failed);
+	CHECK(content.Error == "This file has no committed history.");
+	CHECK(content.Header == "History of line 3");
+}
+
+TEST_CASE("Peek content names the line while its history loads")
+{
+	const auto head = MakeHead();
+	const auto authors = Lay(head, "a\nb\nc\n");
+	const LineHistoryState history{.InFlight = true};
+
+	const auto content = Build(&authors, 1, "b", &history);
+
+	CHECK(content.State == PeekState::Loading);
+	CHECK(content.Header == "History of line 2");
 }
 
 TEST_CASE("Peek content lists an uncommitted edit first with the HEAD line it replaced")

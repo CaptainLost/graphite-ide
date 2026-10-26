@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <iterator>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -98,6 +99,41 @@ TEST_CASE("Peek command Line History sits in its own group of the context menu")
 
 	CHECK(std::prev(lineHistory)->GetKind() == Core::MenuItem::Kind::Separator);
 	CHECK(std::next(lineHistory)->GetKind() == Core::MenuItem::Kind::Separator);
+}
+
+TEST_CASE("Peek command Line History opens on the caret's line when no line was right-clicked")
+{
+	Core::OpenItem item = ItemWith("first\nsecond\nthird\n");
+	const std::size_t intoTheThirdLine = item.Document->GetBuffer().LineStart(2) + 2;
+	item.Caret = Core::Caret{.Offset = intoTheThirdLine, .Anchor = 0};
+
+	CHECK(PlaceCaretForLineHistory(item, std::nullopt) == 2);
+	CHECK(item.Caret.Offset == intoTheThirdLine);
+	CHECK(item.Caret.Anchor == 0);
+}
+
+TEST_CASE("Peek command Line History collapses the caret onto the right-clicked line")
+{
+	Core::OpenItem item = ItemWith("first\nsecond\nthird\n");
+	const Core::TextBuffer& buffer = item.Document->GetBuffer();
+	const std::size_t intoTheThirdLine = buffer.LineStart(2) + 2;
+	const std::size_t intoTheSecondLine = buffer.LineStart(1) + 1;
+	item.Caret = Core::Caret{.Offset = intoTheThirdLine, .Anchor = 0};
+
+	CHECK(PlaceCaretForLineHistory(item, intoTheSecondLine) == 1);
+	CHECK(item.Caret.Offset == intoTheSecondLine);
+	CHECK_FALSE(Core::HasSelection(item.Caret));
+}
+
+TEST_CASE("Peek command Line History keeps a selection whose caret is on the right-clicked line")
+{
+	Core::OpenItem item = ItemWith("first\nsecond\nthird\n");
+	const std::size_t intoTheThirdLine = item.Document->GetBuffer().LineStart(2) + 2;
+	item.Caret = Core::Caret{.Offset = intoTheThirdLine, .Anchor = 0};
+
+	CHECK(PlaceCaretForLineHistory(item, intoTheThirdLine - 1) == 2);
+	CHECK(item.Caret.Offset == intoTheThirdLine);
+	CHECK(item.Caret.Anchor == 0);
 }
 
 TEST_CASE("Cut and copy need a selection, paste needs text on the clipboard")

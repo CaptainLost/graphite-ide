@@ -108,9 +108,14 @@ namespace Graphite {
 			return entry;
 		}
 
+		std::string LineHeader(std::size_t line)
+		{
+			return "History of line " + std::to_string(line + 1);
+		}
+
 		void FillHeader(LinePeekContent& content, std::size_t line)
 		{
-			content.Header = "History of line " + std::to_string(line + 1) + std::string{kDot} +
+			content.Header = LineHeader(line) + std::string{kDot} +
 							 Core::Counted(static_cast<long long>(content.Entries.size()), "change") +
 							 std::string{kDot} + "follows renames";
 		}
@@ -119,6 +124,9 @@ namespace Graphite {
 	LinePeekContent BuildLinePeekContent(const LinePeekInput& input)
 	{
 		LinePeekContent content;
+
+		// The line alone until the history is ready, when the count and the renames note join it.
+		content.Header = LineHeader(input.Line);
 
 		if (input.Authors == nullptr || input.Authors->Head == nullptr)
 		{

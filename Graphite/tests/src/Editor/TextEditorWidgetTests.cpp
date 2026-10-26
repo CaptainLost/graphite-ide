@@ -9,6 +9,8 @@
 #include "Editor/Authors/AuthorCard.h"
 #include "Editor/Authors/LinePeek.h"
 #include "Editor/Authors/LinePeekContent.h"
+#include "Editor/EditorCommandTarget.h"
+#include "Editor/EditorCommands.h"
 #include "Editor/EditorWidgetState.h"
 #include "Editor/ScrollAnchor.h"
 #include "Editor/Find/FindBar.h"
@@ -679,6 +681,41 @@ namespace {
 	{
 		return static_cast<float>(rows) * kEditorLineHeight;
 	}
+
+	// Stands in for DocumentWindows, the one real target, where Line History is concerned: it takes the line the way
+	// that does, from the offset the editor recorded when its context menu opened.
+	class LineHistoryTarget final : public Graphite::EditorCommandTarget
+	{
+	public:
+		LineHistoryTarget(Core::OpenItem& item, const Graphite::EditorWidgetState& widget)
+			: m_Item(&item), m_Widget(&widget)
+		{
+		}
+
+		std::optional<std::size_t> OpenedOn;
+
+		bool CanRun(Graphite::EditorAction) override { return false; }
+		void Queue(Graphite::EditorAction, bool) override {}
+		bool CanSave() override { return false; }
+		void Save() override {}
+		bool CanClose() override { return false; }
+		void Close() override {}
+		bool CanFind() override { return false; }
+		void OpenFind() override {}
+		std::optional<std::filesystem::path> CaretFile() override { return std::nullopt; }
+		void GoToDefinition() override {}
+		void FindReferences(Graphite::ReferencesPanel&) override {}
+		bool CanShowLineHistory() override { return true; }
+
+		void ShowLineHistory(bool fromMenu) override
+		{
+			OpenedOn = Graphite::PlaceCaretForLineHistory(*m_Item, fromMenu ? m_Widget->ContextMenuOffset : std::nullopt);
+		}
+
+	private:
+		Core::OpenItem* m_Item = nullptr;
+		const Graphite::EditorWidgetState* m_Widget = nullptr;
+	};
 }
 
 TEST_CASE("A lens label is drawn at 0.78 of the editor size and hit across that width")
@@ -1921,5 +1958,51 @@ TEST_CASE("Peek holds the scroll when only its rows are visible")
 	editor.Next();
 
 	CHECK(surface->Scroll.y == intoThePeek + kEditorLineHeight);
+	CHECK(editor.StackAfter == editor.StackBefore);
+}
+
+TEST_CASE("Peek command Line History from the menu opens on the right-clicked line inside a selection")
+{
+	constexpr std::size_t kThirdLine = 2;
+	constexpr std::size_t kIntoTheLine = 2;
+
+	EditorFrames editor{"first\nsecond\nthird\n"};
+	Graphite::EditorWidgetState widget;
+	Core::CommandRegistry commands;
+	Core::Keymap keys;
+	Graphite::ActiveEditorTarget active;
+	LineHistoryTarget target{editor.Item, widget};
+	const std::vector<Core::MenuItem> menu = Graphite::BuildEditorContextMenu();
+
+	Graphite::RegisterEditorNavigationCommands(commands, keys, active, Graphite::EditorCommandServices{});
+	active.Set(target);
+
+	editor.View.Widget = &widget;
+	editor.Context.Commands = &commands;
+	editor.Context.Keys = &keys;
+	editor.Context.ContextMenu = &menu;
+
+	editor.Next();
+	const ImVec2 firstLine = editor.CaretScreenPos();
+
+	// Selected from the start of the document into the third line, where the caret is.
+	editor.Item.Caret = Core::Caret{.Offset = BufferOf(editor.Item).LineStart(kThirdLine) + kIntoTheLine, .Anchor = 0};
+	editor.Next();
+
+	editor.Click(ImVec2(firstLine.x + kIntoTheRow, firstLine.y + kEditorLineHeight + kIntoTheRow),
+				 ImGuiMouseButton_Right);
+	editor.Next();
+
+	REQUIRE(CaretLine(editor.Item) == kThirdLine);
+	REQUIRE(editor.Frames.ClickMenuItem("Line History###git.lineHistory", [&editor] { editor.Draw(); }));
+
+	REQUIRE(target.OpenedOn.has_value());
+	CHECK(*target.OpenedOn == kSecondLine);
+	CHECK(CaretLine(editor.Item) == kSecondLine);
+	CHECK_FALSE(Core::HasSelection(editor.Item.Caret));
+
+	editor.Next();
+
+	CHECK_FALSE(widget.ContextMenuOffset.has_value());
 	CHECK(editor.StackAfter == editor.StackBefore);
 }

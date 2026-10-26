@@ -3,6 +3,7 @@
 #include "Core/Command/Binding.h"
 #include "Core/Command/MenuItem.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -91,4 +92,9 @@ namespace Graphite {
 	// Find, Go to Definition, Find All References and Line History: global, so they also run from a panel.
 	void RegisterEditorNavigationCommands(Core::CommandRegistry& commands, Core::Keymap& keys,
 										  ActiveEditorTarget& active, EditorCommandServices services);
+
+	// The line Line History opens its peek under: the caret's, or the one right-clicked to open the context menu. For
+	// the second the caret is collapsed onto the clicked place when it is on another line, since the peek closes as
+	// soon as the caret leaves its line. The item must hold a document.
+	std::size_t PlaceCaretForLineHistory(Core::OpenItem& item, std::optional<std::size_t> rightClickedOffset);
 }

@@ -565,8 +565,6 @@ namespace Graphite {
 				{
 					return;
 				}
-
-				result.ContextMenuWanted = true;
 			}
 
 			// WARNING: Only a press returns here. A drag across a lens must still extend to the
@@ -598,6 +596,8 @@ namespace Graphite {
 
 			if (pointer.RightPressedThisFrame)
 			{
+				result.ContextMenuOffset = offset;
+
 				const auto [selectionFrom, selectionTo] = Core::SelectionRange(item.Caret);
 				const bool insideSelection =
 					selectionFrom != selectionTo && offset >= selectionFrom && offset <= selectionTo;
@@ -3463,13 +3463,15 @@ namespace Graphite {
 			const bool hasMenu = context.ContextMenu != nullptr && context.Commands != nullptr &&
 								 context.Keys != nullptr;
 
-			if (result.ContextMenuWanted && hasMenu)
+			if (result.ContextMenuOffset && hasMenu)
 			{
 				// WARNING: A right press moves no keyboard focus by itself, so the menu of one side
 				// of a split would act on the other side's document. This comes before OpenPopup so
 				// the popup records this surface as the window to hand focus back to.
 				ImGui::SetWindowFocus();
 				ImGui::OpenPopup("##EditorContextMenu");
+
+				widget.ContextMenuOffset = result.ContextMenuOffset;
 			}
 
 			if (hasMenu)
@@ -3480,6 +3482,11 @@ namespace Graphite {
 				{
 					Core::RenderMenuItems(*context.Commands, *context.Keys, *context.ContextMenu);
 					ImGui::EndPopup();
+				}
+				else
+				{
+					// Nothing runs from a closed menu, so nothing may act on the line it was opened on.
+					widget.ContextMenuOffset.reset();
 				}
 
 				ImGui::PopFont();

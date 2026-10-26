@@ -44,7 +44,7 @@ namespace Graphite {
 	struct LinePeekContent
 	{
 		PeekState State = PeekState::Loading;
-		std::string Header;   // "History of line 24 · 3 changes · follows renames"
+		std::string Header;   // "History of line 24 · 3 changes · follows renames"; "History of line 24" until Ready
 		std::string Error;
 		std::vector<PeekEntry> Entries;
 		bool StopsEarly = false;

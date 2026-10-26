@@ -35,7 +35,10 @@ namespace {
 		void GoToDefinition() override { Calls.push_back("definition"); }
 		void FindReferences(ReferencesPanel&) override { Calls.push_back("references"); }
 		bool CanShowLineHistory() override { return Allowed; }
-		void ShowLineHistory() override { Calls.push_back("line history"); }
+		void ShowLineHistory(bool fromMenu) override
+		{
+			Calls.push_back(fromMenu ? "line history from menu" : "line history");
+		}
 	};
 
 	struct Harness
@@ -93,12 +96,13 @@ TEST_CASE("Peek command Line History runs on the active editor")
 	harness.Active.Set(first);
 	harness.Active.Set(second);
 	CHECK(harness.Commands.Run(kLineHistoryCommand));
+	CHECK(harness.Commands.RunFromMenu(kLineHistoryCommand));
 
 	second.Allowed = false;
 	CHECK_FALSE(harness.Commands.Run(kLineHistoryCommand));
 
 	CHECK(first.Calls.empty());
-	CHECK(second.Calls == std::vector<std::string>{"line history"});
+	CHECK(second.Calls == std::vector<std::string>{"line history", "line history from menu"});
 	CHECK(harness.Keys.FindConflicts().empty());
 }
 
