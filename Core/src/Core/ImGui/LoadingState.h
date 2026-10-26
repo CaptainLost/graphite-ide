@@ -26,7 +26,6 @@ namespace Core {
 
 	float LoadingLineWidth(const char* text);
 
-	// WARNING: The line loader's spinner alone, drawn with no item and no wait of its own, so it can stand in a row's icon
-	// slot without moving the row. The caller decides when the wait has gone on long enough to show it.
+	// WARNING: No item and no wait of its own, so it fits a row's icon slot; the caller does the waiting.
 	void DrawLoadingSpinner(ImVec2 centre);
 }

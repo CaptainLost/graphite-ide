@@ -80,6 +80,5 @@ namespace Graphite {
 	// only while that item is hovered.
 	float DrawRowMarker(const RowStatus& status, const FileRowLayout& layout);
 
-	// A loader line where a tree row's chevron starts, wrapped at a row's end. Answers whether it shows yet.
 	bool DrawTreeLoader(const std::string& text, Core::WhileLoaderWaits whileWaiting);
 }

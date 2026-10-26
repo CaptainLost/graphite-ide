@@ -12,8 +12,7 @@
 
 inline constexpr std::uint64_t kLargeTextFileSize = Core::LargeFileThreshold + 1024ull * 1024;
 
-// A text file a megabyte past the size that opens without asking. Its first sample is text, so the probe takes it for
-// text; the rest is what the file system fills a grown file with, never written by the test.
+// WARNING: The probe reads only the first sample, so the rest of the grown file is never written.
 inline std::filesystem::path MakeLargeTextFile(const std::filesystem::path& path)
 {
 	{

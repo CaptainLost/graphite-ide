@@ -256,8 +256,7 @@ namespace Core {
 	}
 
 #ifdef CORE_PLATFORM_WINDOWS
-	// WARNING: One enumeration hands back every entry's attributes with its name. Asking for them again per entry
-	// costs a system call each, which on a folder of thirty thousand entries is a second.
+	// WARNING: The enumeration hands back each entry's attributes; asking again per entry costs a second on a big folder.
 	Result<std::vector<DirectoryEntry>> ReadDirectory(const std::filesystem::path& path)
 	{
 		if (path.empty())
@@ -276,8 +275,7 @@ namespace Core {
 		{
 			const DWORD openError = ::GetLastError();
 
-			// WARNING: Only a folder with no entries at all, not even "." and "..", answers this, and that is a drive
-			// root with nothing on it, which is an empty listing rather than a missing folder.
+			// WARNING: Only an empty drive root, which has no "." or "..", answers this, and it is an empty listing.
 			if (openError == ERROR_FILE_NOT_FOUND)
 			{
 				return std::vector<DirectoryEntry>{};

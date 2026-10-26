@@ -31,6 +31,5 @@ namespace Graphite {
 		float FontSize = 0.0f;
 	};
 
-	// Asks to open the file when its preview offers Open in place of text it would not read.
 	PreviewRequest DrawSearchPreview(PreviewContent& content, const SearchPreviewInput& input);
 }

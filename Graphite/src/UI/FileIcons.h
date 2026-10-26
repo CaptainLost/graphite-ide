@@ -76,7 +76,6 @@ namespace Graphite {
 
 	RowIcon FolderIconOf(bool open, IconTone tone = IconTone::Normal);
 
-	// The loader's spinner in the icon's slot, for a row whose file is busy.
 	RowIcon LoaderIcon();
 
 	float FileIconWidth();

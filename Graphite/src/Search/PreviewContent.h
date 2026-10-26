@@ -31,8 +31,6 @@ namespace Graphite {
 		TooLarge,
 	};
 
-	// The text a preview may show of a file not open in the editor. A file is read only if opening it would not ask
-	// first, so browsing hits in a huge file never reads it: the size comes from the probe, not from a read.
 	struct PreviewText
 	{
 		PreviewState State = PreviewState::Unreadable;

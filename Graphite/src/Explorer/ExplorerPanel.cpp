@@ -50,8 +50,7 @@ namespace Graphite {
 			{"git.ignored.hide", "Hide", "Ignored Files: Hide", GitIgnoredDisplay::Hide},
 		};
 
-		// WARNING: Follows the solution chosen, not the one read: the read runs on a worker, and the choice would show
-		// nothing chosen until it lands.
+		// WARNING: Follows the chosen solution, not the read one, or it shows nothing chosen while the read runs.
 		PanelHeaderChoice SolutionChoice(const std::vector<std::filesystem::path>& candidates,
 										 const std::filesystem::path& selected)
 		{

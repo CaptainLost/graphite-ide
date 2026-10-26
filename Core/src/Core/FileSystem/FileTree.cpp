@@ -33,8 +33,7 @@ namespace Core {
 			std::size_t operator()(const std::filesystem::path& path) const { return std::filesystem::hash_value(path); }
 		};
 
-		// WARNING: A refresh looks up every entry of a folder among its previous children, and a search through the
-		// list for each would cost the square of the folder's size, seconds for a folder of thirty thousand entries.
+		// WARNING: A search of the list for each entry would cost seconds on a folder of thirty thousand entries.
 		using NodeIndexByPath = std::unordered_map<std::filesystem::path, std::size_t, PathHash>;
 
 		NodeIndexByPath IndexByPath(const std::vector<FileNode>& nodes)
@@ -106,8 +105,7 @@ namespace Core {
 		return m_IgnoreQuery(path, isDirectory);
 	}
 
-	// WARNING: An entry of an ignored folder is not asked about: git cannot take back a path inside an ignored
-	// directory, and asking costs as much as listing the folder.
+	// WARNING: git cannot take back a path inside an ignored folder, so its entries are not asked about.
 	bool FileTree::IsIgnoredInside(const FileNode& folder, const DirectoryEntry& entry) const
 	{
 		if (folder.Ignored)

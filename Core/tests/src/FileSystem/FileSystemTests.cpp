@@ -151,8 +151,6 @@ TEST_CASE("ReadDirectory counts a file with the system attribute as hidden as we
 }
 
 namespace {
-	// What the listing was before it read the attributes from the enumeration: the standard walk, and one attribute
-	// query per entry.
 	std::vector<DirectoryEntry> ListedEntryByEntry(const std::filesystem::path& folder)
 	{
 		std::vector<DirectoryEntry> entries;

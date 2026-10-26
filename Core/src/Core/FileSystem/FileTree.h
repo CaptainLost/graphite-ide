@@ -28,8 +28,6 @@ namespace Core {
 
 	using IgnoreQuery = std::function<bool(const std::filesystem::path& path, bool isDirectory)>;
 
-	// An entry's answer changes only when an ignore rule does, so a refresh keeps the answers it already has unless
-	// told that a rule may have changed.
 	enum class IgnoreAnswers : std::uint8_t
 	{
 		Keep,

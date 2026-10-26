@@ -23,8 +23,6 @@ namespace Core {
 
 	bool NamesRepositoryState(const std::filesystem::path& pathRelativeToRoot);
 
-	// A rules file git reads to decide what is ignored: a folder's .gitignore, the repository's exclude file, or its
-	// config, which can name a rules file of its own.
 	bool NamesIgnoreRules(const std::filesystem::path& pathRelativeToRoot);
 
 	class DirectoryWatcher final : NonCopyable
