@@ -882,6 +882,15 @@ namespace Graphite {
 				ReportFailure(Core::ToastKind::Error, "Cannot reveal file", revealed.GetError().Message);
 			}
 		}
+
+		ImGui::Separator();
+
+		const std::optional<std::filesystem::path> relative = m_GitDecorations.RelativeOf(item.Path);
+
+		if (ImGui::MenuItem("File History", nullptr, selected, relative.has_value()))
+		{
+			m_Events.Publish(ShowFileHistoryRequested{.RelativePath = *relative});
+		}
 	}
 
 	bool DocumentWindows::SaveAllModified()

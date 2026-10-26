@@ -10,6 +10,7 @@
 #include "Git/History/CommitLabels.h"
 #include "Git/History/CommitListView.h"
 #include "Git/History/CommitDetailsView.h"
+#include "Git/History/CommitReveal.h"
 #include "Git/History/ForkSeparator.h"
 #include "Git/Diff/DiffView.h"
 #include "Git/Diff/DiffWindows.h"
@@ -65,6 +66,14 @@ namespace Graphite {
 		void Subscribe();
 
 		GitPanelWait CurrentWait() const;
+
+		// HEAD's history of one file: the path, relative to the git working directory, goes in the path
+		// box, and the text filter, the stash and the selection are let go of.
+		void ShowFileHistory(const std::filesystem::path& relativePath);
+
+		// HEAD's whole history, loaded until it holds the commit, which is then selected and expanded
+		// with the file selected in it.
+		void ShowCommit(const CommitReveal& reveal);
 
 		std::function<ReviewMenu(const Core::Branch& branch)> ReviewMenuOf;
 
@@ -201,6 +210,10 @@ namespace Graphite {
 
 		void UpdateForNewPage();
 
+		void ShowHeadHistory(const std::string& pathText);
+		void AdvanceReveal(const Core::LogPage& page);
+		void ConfirmRevealedFile();
+
 		enum class LogAsk
 		{
 			ByReader,
@@ -276,6 +289,12 @@ namespace Graphite {
 		std::uint64_t m_AskedLogGeneration = 0;
 
 		std::unordered_set<Core::Oid> m_PreviouslyWanted;
+
+		// A commit asked for from outside the panel, waiting for a page that holds it.
+		std::optional<CommitReveal> m_PendingReveal;
+
+		// The file a reveal selected, kept until the commit's diff says whether it lists the file.
+		std::optional<FileSelection> m_RevealedFile;
 
 		FileTextsBinding m_Texts;
 

@@ -17,6 +17,7 @@
 #include <cfloat>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <string>
 
 using namespace Graphite;
@@ -180,4 +181,75 @@ TEST_CASE("A commit row under the pointer is highlighted once across the history
 	CHECK(std::abs(right - (ends.Max.x - kHighlightInset)) <= kFringe);
 
 	CHECK_FALSE(DrawsInColour(drawing, ImGui::GetColorU32(ImGuiCol_HeaderHovered)));
+}
+
+TEST_CASE("Commit reveal scrolls the history to a commit far down the page")
+{
+	constexpr int kCommitCount = 300;
+	constexpr int kTargetCommit = 250;
+	constexpr int kSettleFrames = 3;
+	constexpr int kByteValues = 256;
+
+	Core::LogPage page;
+
+	for (int number = 0; number < kCommitCount; ++number)
+	{
+		Core::CommitSummary commit;
+		commit.Id.Bytes[0] = static_cast<std::uint8_t>(number / kByteValues + 1);
+		commit.Id.Bytes[1] = static_cast<std::uint8_t>(number % kByteValues);
+		commit.Summary = "commit " + std::to_string(number);
+		page.Commits.push_back(commit);
+	}
+
+	const Core::CommitGraph graph = Core::LayoutCommits(page.Commits);
+	const GitPalette palette;
+	const CommitRefMap refs;
+	CommitListView view;
+	ImGuiFrames frames;
+	float pitch = 0.0f;
+
+	ImGui::GetStyle().FontSizeBase = Core::kInterfaceFontSize;
+
+	const auto draw = [&] {
+		ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
+		ImGui::SetNextWindowSize(ImVec2(kHistoryWidth, kHistoryHeight));
+		ImGui::Begin("history");
+		view.Render(page, graph, palette, std::chrono::minutes{0},
+					[](const Core::Oid&) { return Core::Ref<const Core::Diff>{}; },
+					[](const Core::Oid&) { return false; }, refs);
+		pitch = Graphite::ListRowPitch();
+		ImGui::End();
+	};
+
+	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
+		frames.Next(draw);
+	}
+
+	view.ScrollToCommit(page.Commits[kTargetCommit].Id);
+
+	for (int frame = 0; frame < kSettleFrames; ++frame)
+	{
+		frames.Next(draw);
+	}
+
+	const ImGuiTable* table = nullptr;
+	ImGuiContext& context = *ImGui::GetCurrentContext();
+
+	for (int index = 0; index < context.Tables.GetMapSize(); ++index)
+	{
+		if (const ImGuiTable* listed = context.Tables.TryGetMapData(index))
+		{
+			table = listed;
+		}
+	}
+
+	REQUIRE(table != nullptr);
+
+	const ImGuiWindow& list = *table->InnerWindow;
+	const float targetTop = static_cast<float>(kTargetCommit) * pitch;
+
+	CHECK(list.Scroll.y > 0.0f);
+	CHECK(targetTop >= list.Scroll.y);
+	CHECK(targetTop + pitch <= list.Scroll.y + list.Size.y);
 }

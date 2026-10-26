@@ -32,6 +32,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace Graphite {
@@ -298,6 +299,25 @@ namespace Graphite {
 
 			ImGui::SetTooltip("%s", text.c_str());
 		}
+
+		std::optional<int> DisplayRowOf(const std::optional<Core::Oid>& commit, const Core::LogPage& page,
+										const CommitRows& rows)
+		{
+			if (!commit.has_value())
+			{
+				return std::nullopt;
+			}
+
+			for (std::size_t commitIndex = 0; commitIndex < page.Commits.size(); ++commitIndex)
+			{
+				if (page.Commits[commitIndex].Id == *commit)
+				{
+					return Core::Narrow<int>(rows.RowOfCommit[commitIndex]);
+				}
+			}
+
+			return std::nullopt;
+		}
 	}
 
 	std::optional<FileSelection> SelectionSurviving(const std::optional<FileSelection>& selection,
@@ -369,11 +389,26 @@ namespace Graphite {
 		}
 	}
 
+	void CommitListView::SetExpanded(const Core::Oid& commit, bool expanded)
+	{
+		if (IsExpanded(commit) != expanded)
+		{
+			ToggleExpanded(commit);
+		}
+	}
+
+	void CommitListView::SelectCommit(const Core::Oid& commit)
+	{
+		m_SelectedCommit = commit;
+		m_SelectedFile.reset();
+	}
+
 	void CommitListView::Reset()
 	{
 		m_Expanded.clear();
 		m_SelectedFile.reset();
 		m_SelectedCommit.reset();
+		m_ScrollTarget.reset();
 	}
 
 	std::optional<CommitAction> CommitListView::TakeCommitAction()
@@ -409,6 +444,8 @@ namespace Graphite {
 	{
 		if (page.Commits.empty())
 		{
+			m_ScrollTarget.reset();
+
 			constexpr float kSmallestRegion = 1.0f;
 			const float height = std::max(ImGui::GetContentRegionAvail().y - m_RoomBelow, kSmallestRegion);
 
@@ -484,8 +521,17 @@ namespace Graphite {
 			ImGui::TableSetupScrollFreeze(kFrozenColumnCount, kFrozenRowCount);
 			ImGui::TableHeadersRow();
 
+			const std::optional<int> scrollRow = DisplayRowOf(std::exchange(m_ScrollTarget, std::nullopt), page, rows);
+
 			ImGuiListClipper clipper;
 			clipper.Begin(Core::Narrow<int>(rows.Rows.size()), metrics.RowHeight);
+
+			// WARNING: The clipper only draws the rows in view, and SetScrollHereY reads the row just
+			// drawn, so a row scrolled far away is made to draw this once.
+			if (scrollRow.has_value())
+			{
+				clipper.IncludeItemByIndex(*scrollRow);
+			}
 
 			while (clipper.Step())
 			{
@@ -515,6 +561,11 @@ namespace Graphite {
 						const bool isEarlierHistory = separatorRow.has_value() && static_cast<std::size_t>(displayRow) > *separatorRow;
 
 						RenderCommitRow(page, commit, palette, refs, highlight, now, offset, isEarlierHistory);
+
+						if (scrollRow == displayRow)
+						{
+							ImGui::SetScrollHereY(kHalf);
+						}
 					}
 					else
 					{

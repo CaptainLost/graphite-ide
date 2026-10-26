@@ -2,6 +2,7 @@
 
 #include "Core/Base/Ascii.h"
 #include "Core/Base/Base.h"
+#include "Core/Base/Log.h"
 #include "Core/Base/Strings.h"
 
 #include "Core/FileSystem/FileSystem.h"
@@ -15,6 +16,7 @@
 #include "UI/Lists/FilterField.h"
 #include "UI/Lists/ListRow.h"
 #include "Git/DefaultBranch.h"
+#include "Git/GitRequests.h"
 #include "Git/History/HistoryFilter.h"
 #include "Git/History/HistoryPlaceholder.h"
 #include "Git/InitRepositoryPrompt.h"
@@ -439,6 +441,14 @@ namespace Graphite {
 
 		m_Events.Subscribe<WorkspaceOpenedEvent>([this](const WorkspaceOpenedEvent&) { ForgetRepository(); });
 		m_Events.Subscribe<WorkspaceClosedEvent>([this](const WorkspaceClosedEvent&) { ForgetRepository(); });
+
+		m_Events.Subscribe<ShowFileHistoryRequested>([this](const ShowFileHistoryRequested& request) {
+			ShowFileHistory(request.RelativePath);
+		});
+
+		m_Events.Subscribe<ShowCommitRequested>([this](const ShowCommitRequested& request) {
+			ShowCommit(CommitReveal{.Commit = request.Commit, .Path = request.RelativePath});
+		});
 	}
 
 	void GitView::ForgetRepository()
@@ -465,6 +475,9 @@ namespace Graphite {
 
 		m_HeldCheckout.Forget();
 		m_Deletion.Finish();
+
+		m_PendingReveal.reset();
+		m_RevealedFile.reset();
 
 		// WARNING: Withdraw is only valid outside a popup, and this runs from an event handler.
 		WithdrawQuestions();
@@ -805,12 +818,160 @@ namespace Graphite {
 			if (page)
 			{
 				m_Commits.KeepSelectionWithin(*page);
+				AdvanceReveal(*page);
 			}
 			else
 			{
 				m_Commits.ClearSelection();
 			}
 		}
+
+		ConfirmRevealedFile();
+	}
+
+	void GitView::ShowFileHistory(const std::filesystem::path& relativePath)
+	{
+		const std::string pathText = HistoryPathText(relativePath);
+		const bool fitsPathBox = pathText.size() < m_FilterPathBuffer.size();
+
+		if (!fitsPathBox)
+		{
+			APP_WARN("File History: '{}' is too long for the history's path box", pathText);
+		}
+
+		ShowHeadHistory(fitsPathBox ? pathText : std::string{});
+	}
+
+	void GitView::ShowCommit(const CommitReveal& reveal)
+	{
+		ShowHeadHistory(std::string{});
+		m_PendingReveal = reveal;
+	}
+
+	// WARNING: The log is asked here rather than left to the settling filter: a path already in the box
+	// changes no filter, and the history would stay on the branch or stash it showed before.
+	void GitView::ShowHeadHistory(const std::string& pathText)
+	{
+		m_PendingReveal.reset();
+		m_RevealedFile.reset();
+
+		m_SelectedRef.reset();
+		DeselectStash();
+
+		m_FilterBuffer = {};
+		m_FilterPathBuffer = {};
+
+		const std::size_t copiedLength = std::min(pathText.size(), m_FilterPathBuffer.size() - 1);
+		std::copy_n(pathText.begin(), copiedLength, m_FilterPathBuffer.begin());
+
+		m_Commits.ClearSelection();
+		m_Commits.ClearCommitSelection();
+
+		m_Filter.Set(HistoryFilter{.Text = {}, .Path = std::string(m_FilterPathBuffer.data())});
+		RequestLog(HistoryReach{});
+	}
+
+	void GitView::AdvanceReveal(const Core::LogPage& page)
+	{
+		if (!m_PendingReveal.has_value())
+		{
+			return;
+		}
+
+		const std::optional<Core::LogRequest>& shown = m_Model.GetShownLogRequest();
+
+		// A page that is not HEAD's whole history means the reader picked a branch, a stash or a filter
+		// while the commit was being looked for, and that choice wins.
+		const bool showsHeadHistory = shown.has_value() && !shown->Ref.has_value() && !shown->Stash.has_value() &&
+									  !NarrowsHistory(*shown);
+
+		if (!showsHeadHistory)
+		{
+			m_PendingReveal.reset();
+			return;
+		}
+
+		const HistoryReach asked{.MaxCount = shown->MaxCount, .MaxWalk = shown->MaxWalk};
+
+		switch (NextRevealStep(*m_PendingReveal, page, asked))
+		{
+		case RevealStep::Select:
+		{
+			const FileSelection file{.Commit = m_PendingReveal->Commit, .Path = m_PendingReveal->Path};
+			m_PendingReveal.reset();
+
+			m_Commits.SelectCommit(file.Commit);
+			m_Commits.SetExpanded(file.Commit, true);
+			m_Commits.ScrollToCommit(file.Commit);
+
+			// WARNING: No path selects no file: IndexOfFile would take an empty path for the empty new
+			// path of the first file the commit deletes.
+			if (!file.Path.empty())
+			{
+				m_Commits.SelectFile(file);
+				m_RevealedFile = file;
+			}
+
+			break;
+		}
+		case RevealStep::LoadMore:
+			RequestLog(LoadMore(m_Reach));
+			break;
+		case RevealStep::FilterByHash:
+		{
+			const std::string hash = m_PendingReveal->Commit.ToHex();
+			m_PendingReveal.reset();
+
+			m_FilterBuffer = {};
+			std::ranges::copy(hash, m_FilterBuffer.begin());
+			break;
+		}
+		}
+	}
+
+	void GitView::ConfirmRevealedFile()
+	{
+		if (!m_RevealedFile.has_value())
+		{
+			return;
+		}
+
+		const std::optional<FileSelection> selected = m_Commits.GetSelectedFile();
+		const bool stillSelected = selected.has_value() && selected->Commit == m_RevealedFile->Commit &&
+								   selected->Path == m_RevealedFile->Path;
+
+		if (!stillSelected)
+		{
+			m_RevealedFile.reset();
+			return;
+		}
+
+		const Core::Ref<const Core::Diff> diff = m_Model.GetDiffFor(m_RevealedFile->Commit);
+
+		if (!diff)
+		{
+			if (m_Model.IsDiffFailed(m_RevealedFile->Commit))
+			{
+				m_RevealedFile.reset();
+			}
+
+			return;
+		}
+
+		const std::optional<std::size_t> fileIndex = IndexOfFile(*diff, m_RevealedFile->Path);
+
+		// The file row is named by its shown path, which for a rename is the new one, so the selection
+		// takes that name for the row to read as selected.
+		if (fileIndex.has_value())
+		{
+			m_Commits.SelectFile(FileSelection{.Commit = m_RevealedFile->Commit, .Path = ShownPath(diff->Files[*fileIndex])});
+		}
+		else
+		{
+			m_Commits.ClearSelection();
+		}
+
+		m_RevealedFile.reset();
 	}
 
 	void GitView::RenderFilterBar()

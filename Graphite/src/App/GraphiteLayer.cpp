@@ -20,6 +20,7 @@
 
 #include "Git/Changes/ChangesPanel.h"
 #include "Theme/GitPalette.h"
+#include "Git/GitRequests.h"
 #include "Git/GitStatusText.h"
 #include "Git/GitView.h"
 #include "Git/History/HistoryPlaceholder.h"
@@ -479,6 +480,10 @@ namespace Graphite {
 			m_Terminals.Reveal();
 			static_cast<void>(m_Terminals.OpenDefaultShellIn(event.Directory)); // reports its own failure
 		});
+
+		// The Git panel answers both itself; here it is only brought forward.
+		m_Events.Subscribe<ShowFileHistoryRequested>([this](const ShowFileHistoryRequested&) { RevealPanel("git"); });
+		m_Events.Subscribe<ShowCommitRequested>([this](const ShowCommitRequested&) { RevealPanel("git"); });
 
 		m_Events.Subscribe<StatusMessageEvent>([this](const StatusMessageEvent& event) {
 			m_DocumentWindows.SetTransientMessage(event.Text);

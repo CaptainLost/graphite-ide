@@ -13,6 +13,7 @@
 #include "Core/UI/PanelMarginScope.h"
 #include "Explorer/FileRow.h"
 #include "Git/GitDecorationView.h"
+#include "Git/GitRequests.h"
 #include "Solution/SolutionEditor.h"
 #include "UI/Lists/Chevron.h"
 #include "UI/Dialogs/DialogLayout.h"
@@ -460,6 +461,8 @@ namespace Graphite {
 			ImGui::SetScrollHereY(kHalf);
 		}
 
+		RenderContextMenu(file);
+
 		if (clicked)
 		{
 			m_Workspace.RequestOpenFile(file.Path, OpensPermanently());
@@ -877,6 +880,26 @@ namespace Graphite {
 		}
 
 		ExplainNotEditable(editable);
+
+		ImGui::EndPopup();
+	}
+
+	void SolutionTreeView::RenderContextMenu(const ContentFile& file)
+	{
+		const std::string popupId = "##ctxSlnFile" + Core::ToUtf8(file.Path);
+		const ListPopupScope popup;
+
+		if (!Core::BeginRightClickPopup(popupId.c_str()))
+		{
+			return;
+		}
+
+		const std::optional<std::filesystem::path> relative = m_GitDecorations.RelativeOf(file.Path);
+
+		if (ImGui::MenuItem("File History", kNoShortcut, kNotSelected, relative.has_value()))
+		{
+			m_Events.Publish(ShowFileHistoryRequested{.RelativePath = *relative});
+		}
 
 		ImGui::EndPopup();
 	}

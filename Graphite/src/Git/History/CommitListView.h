@@ -71,6 +71,16 @@ namespace Graphite {
 
 		bool IsExpanded(const Core::Oid& commit) const;
 		void ToggleExpanded(const Core::Oid& commit);
+		void SetExpanded(const Core::Oid& commit, bool expanded);
+
+		// Selects the commit as a click on its row does, which lets go of the selected file.
+		void SelectCommit(const Core::Oid& commit);
+
+		void SelectFile(const FileSelection& file) { m_SelectedFile = file; }
+
+		// Brings the commit's row into view on the next Render that draws a page holding it; a page
+		// without it drops the request.
+		void ScrollToCommit(const Core::Oid& commit) { m_ScrollTarget = commit; }
 
 		std::optional<FileSelection> GetSelectedFile() const { return m_SelectedFile; }
 
@@ -110,6 +120,7 @@ namespace Graphite {
 		std::unordered_set<Core::Oid> m_Expanded;
 		std::optional<FileSelection> m_SelectedFile;
 		std::optional<Core::Oid> m_SelectedCommit;
+		std::optional<Core::Oid> m_ScrollTarget;
 
 		std::optional<CommitAction> m_CommitAction;
 		bool m_ActionsEnabled = true;
