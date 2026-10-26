@@ -4,7 +4,12 @@
 
 #include "TempDirectory.h"
 
+#include <cstddef>
 #include <fstream>
+#include <iterator>
+#include <string>
+#include <thread>
+#include <vector>
 
 using Core::CreateEmptyFile;
 using Core::Duplicate;
@@ -154,6 +159,34 @@ TEST_CASE("Duplicate copies a directory recursively")
 	CHECK(std::filesystem::exists(duplicateResult.GetValue() / "inner.txt"));
 }
 
+TEST_CASE("Duplicate copies nested folders whole, empty ones included, and counts every file it copies as it goes")
+{
+	TempDirectory temporaryDirectory;
+	temporaryDirectory.MakeFile("project/a.txt", "alpha");
+	temporaryDirectory.MakeFile("project/src/b.cpp", "beta");
+	temporaryDirectory.MakeFile("project/src/deep/c.h", "gamma");
+	temporaryDirectory.MakeDirectory("project/empty");
+
+	std::vector<std::size_t> countsTold;
+	const Core::CopiedFileCount noteCount = [&countsTold](std::size_t copiedFiles) { countsTold.push_back(copiedFiles); };
+
+	const Core::Result<std::filesystem::path> duplicateResult =
+		Duplicate(temporaryDirectory.GetPath() / "project", noteCount);
+
+	REQUIRE(duplicateResult.HasValue());
+	const std::filesystem::path copy = duplicateResult.GetValue();
+	CHECK(copy == temporaryDirectory.GetPath() / "project copy");
+
+	std::ifstream deepest{copy / "src" / "deep" / "c.h", std::ios::binary};
+	const std::string deepestContents{std::istreambuf_iterator<char>{deepest}, std::istreambuf_iterator<char>{}};
+	CHECK(deepestContents == "gamma");
+	CHECK(std::filesystem::exists(copy / "a.txt"));
+	CHECK(std::filesystem::exists(copy / "src" / "b.cpp"));
+	CHECK(std::filesystem::is_directory(copy / "empty"));
+
+	CHECK(countsTold == std::vector<std::size_t>{1, 2, 3});
+}
+
 TEST_CASE("Duplicate reports a missing source")
 {
 	TempDirectory temporaryDirectory;
@@ -172,6 +205,20 @@ TEST_CASE("MoveToRecycleBin removes a file from its path and leaves where it goe
 	REQUIRE(MoveToRecycleBin(fileToRecycle).HasValue());
 
 	CHECK_FALSE(std::filesystem::exists(fileToRecycle));
+}
+
+TEST_CASE("MoveToRecycleBin works from a thread of its own, as a worker that keeps it off the UI thread calls it")
+{
+	TempDirectory temporaryDirectory;
+	const std::filesystem::path folderToRecycle = temporaryDirectory.MakeDirectory("doomed-folder");
+	temporaryDirectory.MakeFile("doomed-folder/inside.txt", "x");
+
+	bool recycled = false;
+	std::thread worker{[&folderToRecycle, &recycled] { recycled = MoveToRecycleBin(folderToRecycle).HasValue(); }};
+	worker.join();
+
+	CHECK(recycled);
+	CHECK_FALSE(std::filesystem::exists(folderToRecycle));
 }
 
 TEST_CASE("MoveToRecycleBin reports a missing path")

@@ -47,6 +47,21 @@ namespace Graphite {
 
 		constexpr const char* kFilterFieldId = "##fileFilter";
 		constexpr const char* kRefreshingFileList = "Refreshing the file list";
+		constexpr const char* kNoShortcut = nullptr;
+		constexpr bool kNotSelected = false;
+
+		const char* FailureTitleOf(FileOperationKind kind)
+		{
+			switch (kind)
+			{
+			case FileOperationKind::Duplicate:
+				return "Duplicate failed";
+			case FileOperationKind::MoveToRecycleBin:
+				return "Delete failed";
+			}
+
+			return "File operation failed";
+		}
 
 		std::string NewFromTemplateLabel()
 		{
@@ -90,7 +105,8 @@ namespace Graphite {
 							   Core::EventBus& events, ModalGate& modals, const ActiveScheme& scheme,
 							   Core::JobSubmitter submitJob)
 		: m_Workspace(workspace), m_Documents(documents), m_Events(events), m_DeleteQuestion(modals, kDeleteTitle),
-		  m_NewFileQuestion(modals, kNewFileTitle), m_Scheme(scheme), m_Listing(std::move(submitJob))
+		  m_NewFileQuestion(modals, kNewFileTitle), m_Scheme(scheme), m_FileOperations(submitJob),
+		  m_Listing(std::move(submitJob))
 	{
 		events.Subscribe<WorkspaceFilesChangedEvent>(
 			[this](const WorkspaceFilesChangedEvent& changed) { NoteFilesChanged(changed); });
@@ -116,6 +132,9 @@ namespace Graphite {
 
 	void FileTreeView::Render()
 	{
+		ApplyFinishedOperations();
+		m_FrameTime = FileOperationJobs::Clock::now();
+
 		// WARNING: The questions go with the folder. Begin, the only other code that hands the modal
 		// gate back, is not reached past the early return.
 		if (!m_Workspace.IsOpen())
@@ -447,11 +466,13 @@ namespace Graphite {
 							Core::ToUtf8(node.Path.filename()));
 		}
 
+		const bool nodeIsFree = !m_FileOperations.IsBusy(node.Path);
+
 		if (!isRoot)
 		{
 			ImGui::Separator();
 
-			if (ImGui::MenuItem("Duplicate"))
+			if (ImGui::MenuItem("Duplicate", kNoShortcut, kNotSelected, nodeIsFree))
 			{
 				RecordAction(PendingAction{.Action = PendingAction::Kind::Duplicate, .Target = node.Path});
 			}
@@ -459,20 +480,21 @@ namespace Graphite {
 
 		const std::filesystem::path creationTarget =
 			node.IsDirectory ? node.Path : node.Path.parent_path();
+		const bool creationTargetIsFree = !m_FileOperations.IsBusy(creationTarget);
 
 		ImGui::Separator();
 
-		if (ImGui::MenuItem("New File"))
+		if (ImGui::MenuItem("New File", kNoShortcut, kNotSelected, creationTargetIsFree))
 		{
 			BeginNewFileIn(creationTarget);
 		}
 
-		if (ImGui::MenuItem(NewFromTemplateLabel().c_str()))
+		if (ImGui::MenuItem(NewFromTemplateLabel().c_str(), kNoShortcut, kNotSelected, creationTargetIsFree))
 		{
 			RecordAction(PendingAction{.Action = PendingAction::Kind::AskNewFileFromTemplate, .Target = creationTarget});
 		}
 
-		if (ImGui::MenuItem("New Folder"))
+		if (ImGui::MenuItem("New Folder", kNoShortcut, kNotSelected, creationTargetIsFree))
 		{
 			MakeFolderIn(creationTarget);
 		}
@@ -481,12 +503,12 @@ namespace Graphite {
 		{
 			ImGui::Separator();
 
-			if (ImGui::MenuItem("Rename"))
+			if (ImGui::MenuItem("Rename", kNoShortcut, kNotSelected, nodeIsFree))
 			{
 				StartRenaming(node);
 			}
 
-			if (ImGui::MenuItem("Delete"))
+			if (ImGui::MenuItem("Delete", kNoShortcut, kNotSelected, nodeIsFree))
 			{
 				RecordAction(PendingAction{.Action = PendingAction::Kind::Delete, .Target = node.Path});
 			}
@@ -789,17 +811,66 @@ namespace Graphite {
 
 	void FileTreeView::HandleDuplicate(const PendingAction& action)
 	{
-		const Core::Result<std::filesystem::path> copied = Core::Duplicate(action.Target);
-
-		if (!copied)
+		if (m_FileOperations.IsBusy(action.Target))
 		{
-			APP_ERROR("{}", copied.GetError().Message);
-			ReportFailure(Core::ToastKind::Error, "Duplicate failed", copied.GetError().Message);
 			return;
 		}
 
-		RefreshParentOf(action.Target);
-		StartRenamingPath(copied.GetValue());
+		m_FileOperations.Start(FileOperationKind::Duplicate, action.Target, m_Workspace.GetRoot(),
+							   FileOperationJobs::Clock::now());
+
+		// WARNING: A job that runs where it is submitted has already finished here.
+		ApplyFinishedOperations();
+	}
+
+	void FileTreeView::ApplyFinishedOperations()
+	{
+		for (const FinishedFileOperation& finished : m_FileOperations.TakeFinished())
+		{
+			ApplyFinished(finished);
+		}
+	}
+
+	std::optional<std::string> FileTreeView::FileOperationText() const
+	{
+		return m_FileOperations.StatusText(FileOperationJobs::Clock::now());
+	}
+
+	void FileTreeView::ApplyFinished(const FinishedFileOperation& finished)
+	{
+		if (!finished.Outcome)
+		{
+			APP_ERROR("{}", finished.Outcome.GetError().Message);
+			m_Events.Publish(FolderToast(Core::ToastKind::Error, FailureTitleOf(finished.Kind),
+										 finished.Outcome.GetError().Message, finished.Folder));
+			return;
+		}
+
+		const bool folderStillOpen = m_Workspace.IsOpen() && finished.Folder == m_Workspace.GetRoot();
+
+		if (!folderStillOpen)
+		{
+			return;
+		}
+
+		RefreshParentOf(finished.Target);
+
+		if (finished.Kind == FileOperationKind::Duplicate && !IsEditingAName())
+		{
+			StartRenamingPath(finished.Outcome.GetValue());
+		}
+	}
+
+	// WARNING: A copy can end seconds after it was asked for, and naming it then must not take the field from a name
+	// being typed meanwhile.
+	bool FileTreeView::IsEditingAName() const
+	{
+		return !m_RenamingPath.empty() || !m_PendingRenamePath.empty() || !m_NewFileIn.empty();
+	}
+
+	bool FileTreeView::ShowsBusy(const Core::FileNode& node) const
+	{
+		return m_FileOperations.IsRunning() && m_FileOperations.ShowsBusy(node.Path, m_FrameTime);
 	}
 
 	void FileTreeView::HandleCreate(const PendingAction& action)
@@ -1065,14 +1136,10 @@ namespace Graphite {
 		{
 			m_DeleteQuestion.Answer();
 
-			if (const Core::Result<void> removed = Core::MoveToRecycleBin(target); !removed)
+			if (!m_FileOperations.IsBusy(target))
 			{
-				APP_ERROR("{}", removed.GetError().Message);
-				ReportFailure(Core::ToastKind::Error, "Delete failed", removed.GetError().Message);
-			}
-			else
-			{
-				RefreshParentOf(target);
+				m_FileOperations.Start(FileOperationKind::MoveToRecycleBin, target, m_Workspace.GetRoot(),
+									   FileOperationJobs::Clock::now());
 			}
 		}
 		else if (choice == DialogLayout::Choice::Cancel)
@@ -1298,7 +1365,7 @@ namespace Graphite {
 
 			FileRowLook look{.Ink = ListRowNameColour(isShownInEditor && !dimmed),
 							 .Tab = OpenTabOf(m_Documents, node.Path),
-							 .Icon = FileIconOf(KindOfFile(node.Path), tone)};
+							 .Icon = ShowsBusy(node) ? LoaderIcon() : FileIconOf(KindOfFile(node.Path), tone)};
 
 			look.Status = FileRowStatusOf(m_GitDecorations, node.Path, node.Ignored);
 
@@ -1376,7 +1443,8 @@ namespace Graphite {
 			node.Ignored ? RowStatus{} : FolderRowStatusOf(m_GitDecorations, node.Path);
 
 		const IconTone tone = dimmed ? IconTone::Dimmed : IconTone::Normal;
-		DrawTreeRowLabel(layout, FolderIconOf(open, tone), node.Name, folderStatus.HasMarker());
+		const RowIcon icon = ShowsBusy(node) ? LoaderIcon() : FolderIconOf(open, tone);
+		DrawTreeRowLabel(layout, icon, node.Name, folderStatus.HasMarker());
 
 		if (dimmed)
 		{

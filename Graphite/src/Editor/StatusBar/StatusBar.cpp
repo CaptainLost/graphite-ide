@@ -456,6 +456,15 @@ namespace Graphite {
 			return item;
 		}
 
+		StatusItem FileOperationItem(const std::string& text)
+		{
+			StatusItem item = BarTextItem(text);
+			item.Id = "##FileOperation";
+			item.Pieces.front().Kind = PieceKind::Loader;
+
+			return item;
+		}
+
 		std::string DescribeCaret(const Core::OpenItem& item)
 		{
 			const Core::TextBuffer& buffer = item.Document->GetBuffer();
@@ -609,6 +618,11 @@ namespace Graphite {
 				{
 					row.Place(ActivityItem(*segment.Activity), gap);
 				}
+			}
+
+			if (messages.FileOperation.has_value())
+			{
+				row.Place(FileOperationItem(*messages.FileOperation), gap);
 			}
 
 			if (document != nullptr && document->Document->IsReadOnly())

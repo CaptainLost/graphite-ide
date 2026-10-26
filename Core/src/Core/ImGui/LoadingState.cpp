@@ -29,8 +29,8 @@ namespace Core {
 		constexpr float kLineSpinnerThickness = 2.0f;
 		constexpr float kLineSpinnerSpeed = 2.8f;
 		constexpr float kLineSpinnerArc = 3.14159265f;
-
-		constexpr double kSecondsBeforeLoaderShows = 0.2;
+		constexpr float kFullTurn = 2.0f * kLineSpinnerArc;
+		constexpr int kSpinnerSegments = 24;
 
 		constexpr int kNeverDrawn = -2;
 		constexpr int kBitsPerHalf = 32;
@@ -188,6 +188,24 @@ namespace Core {
 		}
 
 		return shows;
+	}
+
+	void DrawLoadingSpinner(ImVec2 centre)
+	{
+		ImDrawList* const drawList = ImGui::GetWindowDrawList();
+		const float radius = LineSpinnerRadius();
+		const float start = static_cast<float>(ImGui::GetTime()) * kLineSpinnerSpeed;
+
+		const ImU32 track = ImColor{SurfaceColour()};
+		const ImU32 ink = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+
+		drawList->PathArcTo(centre, radius, start, start + kFullTurn, kSpinnerSegments);
+		drawList->PathStroke(track, ImDrawFlags_None, kLineSpinnerThickness);
+
+		drawList->PathArcTo(centre, radius, start, start + kLineSpinnerArc, kSpinnerSegments);
+		drawList->PathStroke(ink, ImDrawFlags_None, kLineSpinnerThickness);
+
+		Redraw::RequestIn(Redraw::Clock::duration::zero());
 	}
 
 	float LoadingLineWidth(const char* text)

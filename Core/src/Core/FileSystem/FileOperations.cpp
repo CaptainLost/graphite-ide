@@ -6,8 +6,10 @@
 #include "Core/Platform/UniqueHandle.h"
 #include "Core/Platform/Win32Error.h"
 
+#include <cstddef>
 #include <fstream>
 #include <string>
+#include <system_error>
 
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
@@ -28,6 +30,87 @@ namespace Core {
 		Error NoLongerExistsError(const std::filesystem::path& path)
 		{
 			return Error{.Code = ErrorCode::NotFound, .Message = std::format("'{}' no longer exists", ToUtf8(path))};
+		}
+
+		struct CopyTally
+		{
+			const CopiedFileCount& OnFileCopied;
+			std::size_t CopiedFiles = 0;
+
+			void NoteCopied()
+			{
+				++CopiedFiles;
+
+				if (OnFileCopied)
+				{
+					OnFileCopied(CopiedFiles);
+				}
+			}
+		};
+
+		std::error_code CopyEntry(const std::filesystem::path& from, const std::filesystem::path& to, CopyTally& tally);
+
+		std::error_code CopyFolder(const std::filesystem::path& from, const std::filesystem::path& to, CopyTally& tally)
+		{
+			std::error_code error;
+			std::filesystem::create_directory(to, from, error);
+
+			if (error)
+			{
+				return error;
+			}
+
+			std::filesystem::directory_iterator walk{from, error};
+
+			for (; !error && walk != std::filesystem::directory_iterator{}; walk.increment(error))
+			{
+				const std::filesystem::path& inside = walk->path();
+				const std::error_code copyError = CopyEntry(inside, to / inside.filename(), tally);
+
+				if (copyError)
+				{
+					return copyError;
+				}
+			}
+
+			return error;
+		}
+
+		// What std::filesystem::copy does with recursive and copy_symlinks, one entry at a time, so each copied file
+		// can be counted.
+		std::error_code CopyEntry(const std::filesystem::path& from, const std::filesystem::path& to, CopyTally& tally)
+		{
+			std::error_code error;
+			const std::filesystem::file_status status = std::filesystem::symlink_status(from, error);
+
+			if (error)
+			{
+				return error;
+			}
+
+			if (std::filesystem::is_symlink(status))
+			{
+				std::filesystem::copy_symlink(from, to, error);
+			}
+			else if (std::filesystem::is_directory(status))
+			{
+				return CopyFolder(from, to, tally);
+			}
+			else if (std::filesystem::is_regular_file(status))
+			{
+				std::filesystem::copy_file(from, to, std::filesystem::copy_options::none, error);
+			}
+			else
+			{
+				return std::make_error_code(std::errc::not_supported);
+			}
+
+			if (!error)
+			{
+				tally.NoteCopied();
+			}
+
+			return error;
 		}
 
 #ifdef CORE_PLATFORM_WINDOWS
@@ -134,20 +217,18 @@ namespace Core {
 #endif
 	}
 
-	Result<std::filesystem::path> Duplicate(const std::filesystem::path& path)
+	Result<std::filesystem::path> Duplicate(const std::filesystem::path& path, const CopiedFileCount& onFileCopied)
 	{
-		std::error_code error;
-		if (!std::filesystem::exists(path, error))
+		std::error_code existsError;
+		if (!std::filesystem::exists(path, existsError))
 		{
 			return NoLongerExistsError(path);
 		}
 
 		const std::filesystem::path target = MakeUniquePath(path);
 
-		std::filesystem::copy(path, target,
-							  std::filesystem::copy_options::recursive |
-								  std::filesystem::copy_options::copy_symlinks,
-							  error);
+		CopyTally tally{.OnFileCopied = onFileCopied};
+		const std::error_code error = CopyEntry(path, target, tally);
 
 		if (error)
 		{

@@ -2,6 +2,7 @@
 
 #include "Workspace/GitIgnoredDisplay.h"
 #include "Workspace/Workspace.h"
+#include "Explorer/FileOperationJobs.h"
 #include "Explorer/FileTemplates.h"
 #include "Explorer/FolderListing.h"
 #include "Explorer/NewFilePath.h"
@@ -57,6 +58,12 @@ namespace Graphite {
 		void NewFolderInRoot();
 
 		void Refresh();
+
+		// WARNING: Called every frame whether the tree is drawn or not, so a copy that ends while the panel is hidden
+		// still refreshes the tree and reports a failure.
+		void ApplyFinishedOperations();
+
+		std::optional<std::string> FileOperationText() const;
 
 	private:
 		static constexpr const char* kDeleteTitle = "Delete##fileTreeDelete";
@@ -133,6 +140,9 @@ namespace Graphite {
 		void HandleRename(const PendingAction& action);
 		std::filesystem::path ApplyRename(const PendingAction& action);
 		void HandleDuplicate(const PendingAction& action);
+		void ApplyFinished(const FinishedFileOperation& finished);
+		bool IsEditingAName() const;
+		bool ShowsBusy(const Core::FileNode& node) const;
 		void HandleCreate(const PendingAction& action);
 		void HandleBeginNewFile(const PendingAction& action);
 		void ContinueNamingNewFile(const std::filesystem::path& folder, std::string_view typed);
@@ -180,6 +190,8 @@ namespace Graphite {
 		GitIgnoredDisplay m_GitIgnoredDisplay = GitIgnoredDisplay::Dim;
 		GitDecorationView m_GitDecorations;
 		std::filesystem::path m_ShownFile;
+		FileOperationJobs m_FileOperations;
+		FileOperationJobs::Clock::time_point m_FrameTime;
 		FolderListing m_Listing;
 		Core::FileNode m_FilteredTree;
 		std::string m_FilteredTreeText;

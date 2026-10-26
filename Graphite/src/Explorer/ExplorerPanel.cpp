@@ -89,6 +89,8 @@ namespace Graphite {
 	// a hidden panel, or in the view the mode switched away from, would hold the gate for good.
 	void ExplorerPanel::OnUpdate(Core::Timestep)
 	{
+		m_Files.ApplyFinishedOperations();
+
 		const bool drawn = HasBeenDrawnOnLatestFrame();
 
 		if (!drawn || m_Mode != Mode::Files)
@@ -131,6 +133,11 @@ namespace Graphite {
 	{
 		m_Files.SetShownFile(path);
 		m_Solution.SetShownFile(path);
+	}
+
+	std::optional<std::string> ExplorerPanel::FileOperationText() const
+	{
+		return m_Files.FileOperationText();
 	}
 
 	void ExplorerPanel::SyncModeWithWorkspace()

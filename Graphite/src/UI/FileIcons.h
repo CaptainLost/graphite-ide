@@ -39,7 +39,8 @@ namespace Graphite {
 	enum class IconForm : std::uint8_t
 	{
 		Glyph,
-		Badge
+		Badge,
+		Loader
 	};
 
 	struct RowIcon
@@ -74,6 +75,9 @@ namespace Graphite {
 	RowIcon FileIconOf(FileKind kind, IconTone tone = IconTone::Normal);
 
 	RowIcon FolderIconOf(bool open, IconTone tone = IconTone::Normal);
+
+	// The loader's spinner in the icon's slot, for a row whose file is busy.
+	RowIcon LoaderIcon();
 
 	float FileIconWidth();
 

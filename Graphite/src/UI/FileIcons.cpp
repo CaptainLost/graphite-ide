@@ -5,6 +5,7 @@
 #include "Core/ImGui/FontSet.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/ImGui/ImGuiRenderer.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/Theme.h"
 #include "Core/ImGui/UiScale.h"
 
@@ -230,6 +231,11 @@ namespace Graphite {
 
 			ImGui::GetWindowDrawList()->AddText(ImGui::GetFont(), size, glyphTop, colour, glyph);
 		}
+
+		void DrawLoader(ImVec2 lineTop)
+		{
+			Core::DrawLoadingSpinner(ImVec2(lineTop.x + FileIconWidth() * kHalf, LineMiddle(lineTop)));
+		}
 	}
 
 	FileKind KindOfFile(const std::filesystem::path& path)
@@ -314,8 +320,19 @@ namespace Graphite {
 		return FileIconWidth() + Core::Scaled(kIconToNameGap);
 	}
 
+	RowIcon LoaderIcon()
+	{
+		return RowIcon{.Form = IconForm::Loader};
+	}
+
 	void DrawRowIcon(const RowIcon& icon, ImVec2 at)
 	{
+		if (icon.Form == IconForm::Loader)
+		{
+			DrawLoader(at);
+			return;
+		}
+
 		if (icon.Text == nullptr)
 		{
 			return;
@@ -330,6 +347,8 @@ namespace Graphite {
 			return;
 		case IconForm::Badge:
 			DrawBadge(icon.Text, colour, at);
+			return;
+		case IconForm::Loader:
 			return;
 		}
 	}

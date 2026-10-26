@@ -1060,6 +1060,11 @@ namespace Graphite {
 				m_AnalysisCoordinator.GetPass().Progress(), m_Analysis.GetBytes(), m_Analysis.GetBudget());
 		}
 
+		if (m_Explorer != nullptr)
+		{
+			messages.FileOperation = m_Explorer->FileOperationText();
+		}
+
 		bool workingTreeHasChanges = false;
 
 		{

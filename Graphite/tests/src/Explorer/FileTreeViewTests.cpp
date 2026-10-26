@@ -195,6 +195,71 @@ namespace {
 			return Frames.ClickMenuItem(label, [this] { Draw(); });
 		}
 
+		// Empty when the open menu has no item with this label. A disabled item still takes the hover, flagged as
+		// disabled, so the pointer finds it the way ClickMenuItem does and reads the flag.
+		std::optional<bool> IsMenuItemEnabled(const char* label)
+		{
+			constexpr float kStepDown = 4.0f;
+			constexpr float kIntoTheMenuLabel = 8.0f;
+
+			const ImGuiContext& context = *ImGui::GetCurrentContext();
+
+			if (context.OpenPopupStack.Size == 0 || context.OpenPopupStack.back().Window == nullptr)
+			{
+				return std::nullopt;
+			}
+
+			ImGuiWindow& menu = *context.OpenPopupStack.back().Window;
+			const ImGuiID itemId = menu.GetID(label);
+			const float x = menu.Pos.x + menu.WindowPadding.x + kIntoTheMenuLabel;
+
+			for (float y = menu.Pos.y; y < menu.Pos.y + menu.Size.y; y += kStepDown)
+			{
+				ImGui::GetIO().AddMousePosEvent(x, y);
+				Next();
+
+				if (context.HoveredId == itemId)
+				{
+					return !context.HoveredIdIsDisabled;
+				}
+			}
+
+			return std::nullopt;
+		}
+
+		// ImGui keeps no item's position past its frame, so the pointer climbs the dialog's right edge, where its
+		// last button stands, until ImGui reports the button with this label under it.
+		bool ClickLastDialogButton(const char* label)
+		{
+			constexpr float kStepUp = 3.0f;
+			constexpr float kIntoTheButton = 12.0f;
+
+			const ImGuiContext& context = *ImGui::GetCurrentContext();
+
+			if (context.OpenPopupStack.Size == 0 || context.OpenPopupStack.back().Window == nullptr)
+			{
+				return false;
+			}
+
+			ImGuiWindow& dialog = *context.OpenPopupStack.back().Window;
+			const ImGuiID buttonId = dialog.GetID(label);
+			const float x = dialog.Pos.x + dialog.Size.x - dialog.WindowPadding.x - kIntoTheButton;
+
+			for (float y = dialog.Pos.y + dialog.Size.y; y > dialog.Pos.y; y -= kStepUp)
+			{
+				ImGui::GetIO().AddMousePosEvent(x, y);
+				Next();
+
+				if (context.HoveredId == buttonId)
+				{
+					Click(ImVec2(x, y));
+					return true;
+				}
+			}
+
+			return false;
+		}
+
 		void ChooseFromRootMenu(const char* label)
 		{
 			RightClickRow(kRootRow, kRootDepth);
@@ -826,4 +891,117 @@ TEST_CASE("The template dialog refuses a name that is already taken")
 
 	CHECK(ImGuiFrames::IsPopupNamedOpen(kNewFileTemplatePopup));
 	CHECK(EntriesIn(folder.GetPath()) == 1);
+}
+
+TEST_CASE("Move in the delete question closes the question at once and leaves the file on disk until the worker has moved it")
+{
+	TempDirectory folder;
+	folder.MakeFile("doomed.txt");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+
+	screen.AskToDeleteRow(kDoomedRow, kDoomedDepth);
+	REQUIRE(ImGuiFrames::IsPopupNamedOpen("Delete##fileTreeDelete"));
+
+	REQUIRE(screen.ClickLastDialogButton("Move"));
+	screen.Next();
+
+	CHECK_FALSE(ImGuiFrames::IsPopupNamedOpen("Delete##fileTreeDelete"));
+	CHECK_FALSE(screen.Modals.IsBusy());
+	CHECK(std::filesystem::exists(folder.GetPath() / "doomed.txt"));
+	CHECK(ChildNamed(screen.Workspace.GetTree().GetRoot(), "doomed.txt") != nullptr);
+	REQUIRE(jobs.Count() == 1);
+
+	jobs.RunAll();
+	screen.Next();
+
+	CHECK_FALSE(std::filesystem::exists(folder.GetPath() / "doomed.txt"));
+	CHECK(ChildNamed(screen.Workspace.GetTree().GetRoot(), "doomed.txt") == nullptr);
+}
+
+TEST_CASE("While a file is moved to the Recycle Bin, its row offers no Rename, Delete or Duplicate")
+{
+	TempDirectory folder;
+	folder.MakeFile("doomed.txt");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+
+	screen.AskToDeleteRow(kDoomedRow, kDoomedDepth);
+	REQUIRE(screen.ClickLastDialogButton("Move"));
+	screen.Next();
+	REQUIRE(jobs.Count() == 1);
+
+	const std::optional<bool> disabled{false};
+	const std::optional<bool> enabled{true};
+
+	screen.RightClickRow(kDoomedRow, kDoomedDepth);
+	CHECK(screen.IsMenuItemEnabled("Rename") == disabled);
+	CHECK(screen.IsMenuItemEnabled("Delete") == disabled);
+	CHECK(screen.IsMenuItemEnabled("Duplicate") == disabled);
+	CHECK(screen.IsMenuItemEnabled("Copy Path") == enabled);
+
+	screen.Press(ImGuiKey_Escape);
+	jobs.RunAll();
+	screen.Next();
+	screen.Next();
+
+	CHECK(ChildNamed(screen.Workspace.GetTree().GetRoot(), "doomed.txt") == nullptr);
+}
+
+TEST_CASE("While a folder is duplicated, nothing new can be made inside it, and the rest of the folder stays free")
+{
+	TempDirectory folder;
+	folder.MakeFile("busy/inside.txt");
+	folder.MakeFile("free.txt");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+
+	constexpr int kBusyFolderRow = 1;
+	constexpr int kFreeFileRow = 2;
+	const std::optional<bool> disabled{false};
+	const std::optional<bool> enabled{true};
+
+	screen.RightClickRow(kBusyFolderRow, kDoomedDepth);
+	REQUIRE(screen.ChooseMenuItem("Duplicate"));
+	screen.Next();
+	REQUIRE(jobs.Count() == 1);
+
+	screen.RightClickRow(kBusyFolderRow, kDoomedDepth);
+	CHECK(screen.IsMenuItemEnabled("New File") == disabled);
+	CHECK(screen.IsMenuItemEnabled("New Folder") == disabled);
+	CHECK(screen.IsMenuItemEnabled(kNewFileTemplateMenuItem) == disabled);
+	screen.Press(ImGuiKey_Escape);
+
+	screen.RightClickRow(kFreeFileRow, kDoomedDepth);
+	CHECK(screen.IsMenuItemEnabled("Rename") == enabled);
+	CHECK(screen.IsMenuItemEnabled("New File") == enabled);
+	screen.Press(ImGuiKey_Escape);
+
+	jobs.RunAll();
+	screen.Next();
+}
+
+TEST_CASE("Duplicate copies on a worker, and the copy appears in the tree once the copy is done")
+{
+	TempDirectory folder;
+	folder.MakeFile("original.txt", "content");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+
+	screen.RightClickRow(kDoomedRow, kDoomedDepth);
+	REQUIRE(screen.ChooseMenuItem("Duplicate"));
+	screen.Next();
+
+	REQUIRE(jobs.Count() == 1);
+	CHECK_FALSE(std::filesystem::exists(folder.GetPath() / "original copy.txt"));
+
+	jobs.RunAll();
+	screen.Next();
+
+	CHECK(std::filesystem::exists(folder.GetPath() / "original copy.txt"));
+	CHECK(ChildNamed(screen.Workspace.GetTree().GetRoot(), "original copy.txt") != nullptr);
 }

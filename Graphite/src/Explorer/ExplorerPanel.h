@@ -9,6 +9,7 @@
 #include "Core/UI/Panel.h"
 
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -47,6 +48,8 @@ namespace Graphite {
 		void SetGitDecorations(const GitDecorationView& decorations);
 
 		void SetShownFile(const std::filesystem::path& path);
+
+		std::optional<std::string> FileOperationText() const;
 
 	private:
 		enum class Mode

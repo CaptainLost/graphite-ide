@@ -1,8 +1,12 @@
 #pragma once
 
+#include <imgui.h>
+
 #include <cstdint>
 
 namespace Core {
+
+	inline constexpr double kSecondsBeforeLoaderShows = 0.2;
 
 	enum class WhileLoaderWaits : std::uint8_t
 	{
@@ -21,4 +25,8 @@ namespace Core {
 	bool LoadingLine(const char* text, WhileLoaderWaits whileWaiting = WhileLoaderWaits::ShowNothing);
 
 	float LoadingLineWidth(const char* text);
+
+	// WARNING: The line loader's spinner alone, drawn with no item and no wait of its own, so it can stand in a row's icon
+	// slot without moving the row. The caller decides when the wait has gone on long enough to show it.
+	void DrawLoadingSpinner(ImVec2 centre);
 }

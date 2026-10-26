@@ -59,6 +59,9 @@ namespace Graphite {
 
 		std::optional<GitStatusSegment> Git;
 
+		// A copy or a delete the Explorer runs, drawn with the loader while it lasts.
+		std::optional<std::string> FileOperation;
+
 		std::optional<Core::Color> MissedNotificationColour;
 
 		StatusBarColours Colours;
