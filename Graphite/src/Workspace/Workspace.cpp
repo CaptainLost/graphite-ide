@@ -120,7 +120,7 @@ namespace Graphite {
 		m_Root = root;
 
 		TryOpenRepository();
-		m_Tree.Refresh(m_Tree.GetRoot());
+		m_Tree.Refresh(m_Tree.GetRoot(), Core::IgnoreAnswers::AskAgain);
 
 		m_WatcherResumed = false;
 
@@ -157,9 +157,9 @@ namespace Graphite {
 		m_Watcher = std::move(watcher).GetValue();
 	}
 
-	void Workspace::RereadEverything()
+	void Workspace::RereadEverything(Core::IgnoreAnswers ignoreAnswers)
 	{
-		m_Tree.Refresh(m_Tree.GetRoot());
+		m_Tree.Refresh(m_Tree.GetRoot(), ignoreAnswers);
 
 		FindSolutions();
 		LoadSolution();
@@ -305,7 +305,7 @@ namespace Graphite {
 			m_Events.Publish(RepositoryChangedEvent{});
 		}
 
-		if (changes.Directories.empty() && !changes.Overflowed)
+		if (changes.Directories.empty() && !changes.Overflowed && !changes.IgnoreRulesChanged)
 		{
 			return;
 		}
@@ -321,14 +321,27 @@ namespace Graphite {
 				APP_TRACE("Filesystem changes were dropped, refreshing the whole tree");
 			}
 
-			RereadEverything();
+			RereadEverything(Core::IgnoreAnswers::AskAgain);
 			m_Events.Publish(WorkspaceFilesChangedEvent{.Everything = true});
 			return;
 		}
 
-		for (const std::filesystem::path& directory : changes.Directories)
+		if (changes.IgnoreRulesChanged)
 		{
-			RefreshChanged(directory);
+			APP_TRACE("An ignore rules file changed, asking again about every entry of the tree");
+			m_Tree.Refresh(m_Tree.GetRoot(), Core::IgnoreAnswers::AskAgain);
+		}
+		else
+		{
+			for (const std::filesystem::path& directory : changes.Directories)
+			{
+				RefreshChanged(directory);
+			}
+		}
+
+		if (changes.Directories.empty())
+		{
+			return;
 		}
 
 		if (TouchesSolution(changes.Directories))
@@ -374,16 +387,16 @@ namespace Graphite {
 		return false;
 	}
 
-	void Workspace::Reload()
+	void Workspace::Reload(Core::IgnoreAnswers ignoreAnswers)
 	{
 		if (!m_Tree.HasRoot())
 		{
 			return;
 		}
 
-		SyncRepository();
+		const bool repositoryChanged = SyncRepository();
 
-		RereadEverything();
+		RereadEverything(repositoryChanged ? Core::IgnoreAnswers::AskAgain : ignoreAnswers);
 	}
 
 	bool Workspace::HasRepositoryVanished() const
@@ -453,7 +466,9 @@ namespace Graphite {
 		m_Watcher = std::move(watcher).GetValue();
 
 		SyncRepository();
-		m_Tree.Refresh(m_Tree.GetRoot());
+
+		// WARNING: Nothing watched the folder while the watcher was down, so a rules file may have changed unseen.
+		m_Tree.Refresh(m_Tree.GetRoot(), Core::IgnoreAnswers::AskAgain);
 
 		APP_INFO("Resumed watching '{}' after a failure", Core::ToUtf8(m_Root));
 	}
@@ -481,7 +496,7 @@ namespace Graphite {
 		ResetSolutionState();
 		m_SelectedSolution = Core::FromUtf8(m_Settings.Read(kSelectedSolutionKey));
 
-		RereadEverything();
+		RereadEverything(Core::IgnoreAnswers::AskAgain);
 
 		m_AppSettings.SetLastFolder(movedRoot);
 		m_Events.Publish(WorkspaceRootMovedEvent{previousRoot, movedRoot});

@@ -19,10 +19,14 @@ namespace Core {
 
 		void AddOverflow(Clock::time_point now);
 
+		void AddIgnoreRulesChange(Clock::time_point now);
+
 		std::vector<std::filesystem::path> TakeSettled(
 			Clock::time_point now, std::chrono::milliseconds quietPeriod);
 
 		bool HasOverflowed() const { return m_LastBatchOverflowed; }
+
+		bool HasIgnoreRulesChanged() const { return m_LastBatchChangedIgnoreRules; }
 
 		std::optional<Clock::time_point> SettlesAt(std::chrono::milliseconds quietPeriod) const;
 
@@ -31,6 +35,8 @@ namespace Core {
 		Clock::time_point m_LastChangeTime;
 		bool m_PendingBatchOverflowed = false;
 		bool m_LastBatchOverflowed = false;
+		bool m_PendingBatchChangedIgnoreRules = false;
+		bool m_LastBatchChangedIgnoreRules = false;
 		bool m_HasPendingChanges = false;
 	};
 }

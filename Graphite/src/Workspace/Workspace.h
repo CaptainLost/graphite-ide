@@ -98,7 +98,9 @@ namespace Graphite {
 
 		void Update();
 
-		void Reload();
+		// Keeping the ignore answers suits a reload nobody asked for; an explicit refresh asks again, since a rules
+		// file outside the watched folder, such as the one core.excludesFile names, changes unseen.
+		void Reload(Core::IgnoreAnswers ignoreAnswers);
 
 		// WARNING: defined inline because panels built into the tests do not link Workspace.cpp;
 		// all it does is publish.
@@ -151,7 +153,7 @@ namespace Graphite {
 		void TryOpenRepository();
 
 		void StartWatching(const std::filesystem::path& root, std::string_view failureContext);
-		void RereadEverything();
+		void RereadEverything(Core::IgnoreAnswers ignoreAnswers);
 		bool IsInsideRoot(const std::filesystem::path& path) const;
 		bool IsIgnoredByRepository(const std::filesystem::path& path) const;
 		Core::Result<void> RefuseToOpenSolution(Core::Error error);

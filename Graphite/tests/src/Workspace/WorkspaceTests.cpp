@@ -8,10 +8,14 @@
 
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/FileSystem/FileTree.h"
+#include "Core/Git/Repository.h"
 
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -187,6 +191,100 @@ TEST_CASE("A folder's solutions are listed by name whatever its case, so the fir
 	REQUIRE(workspace.OpenFolder(temp.GetPath()));
 
 	CHECK(workspace.GetSolutionCandidates() == std::vector<std::filesystem::path>{first, later});
+}
+
+namespace {
+	const Core::FileNode* RootChildNamed(const Graphite::Workspace& workspace, const std::string& name)
+	{
+		for (const Core::FileNode& child : workspace.GetTree().GetRoot().Children)
+		{
+			if (child.Name == name)
+			{
+				return &child;
+			}
+		}
+
+		return nullptr;
+	}
+
+	bool IsRootChildIgnored(const Graphite::Workspace& workspace, const std::string& name)
+	{
+		const Core::FileNode* child = RootChildNamed(workspace, name);
+		REQUIRE(child != nullptr);
+		return child->Ignored;
+	}
+
+	// WARNING: libgit2 tells a rewritten rules file by its size and its write time in whole seconds, so rules of the
+	// same size written within the second read as unchanged.
+	constexpr const char* kRulesOfAnotherSize = "notes.txt\n";
+
+	void WriteRules(const std::filesystem::path& folder, const std::string& rules)
+	{
+		std::ofstream(folder / ".gitignore", std::ios::binary | std::ios::trunc) << rules;
+	}
+
+	struct IgnoreRulesRepository
+	{
+		IgnoreRulesRepository()
+		{
+			REQUIRE(Core::Repository::Init(Temp.GetPath()));
+			WriteRules(Temp.GetPath(), "*.log\n");
+			std::ofstream(Temp.GetPath() / "build.log") << "x";
+			std::ofstream(Temp.GetPath() / "notes.txt") << "x";
+		}
+
+		TempDirectory Temp;
+	};
+}
+
+TEST_CASE("A reload nobody asked for keeps the ignore answers it has, and an explicit refresh asks again")
+{
+	IgnoreRulesRepository repository;
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace(events, settings.Get());
+
+	REQUIRE(workspace.OpenFolder(repository.Temp.GetPath()));
+	REQUIRE(IsRootChildIgnored(workspace, "build.log"));
+	REQUIRE_FALSE(IsRootChildIgnored(workspace, "notes.txt"));
+
+	WriteRules(repository.Temp.GetPath(), kRulesOfAnotherSize);
+
+	workspace.Reload(Core::IgnoreAnswers::Keep);
+
+	CHECK(IsRootChildIgnored(workspace, "build.log"));
+	CHECK_FALSE(IsRootChildIgnored(workspace, "notes.txt"));
+
+	workspace.Reload(Core::IgnoreAnswers::AskAgain);
+
+	CHECK_FALSE(IsRootChildIgnored(workspace, "build.log"));
+	CHECK(IsRootChildIgnored(workspace, "notes.txt"));
+}
+
+TEST_CASE("A rules file changed on disk makes the tree ask again about every entry once the watcher reports it")
+{
+	IgnoreRulesRepository repository;
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace(events, settings.Get());
+
+	REQUIRE(workspace.OpenFolder(repository.Temp.GetPath()));
+	REQUIRE_FALSE(IsRootChildIgnored(workspace, "notes.txt"));
+
+	WriteRules(repository.Temp.GetPath(), kRulesOfAnotherSize);
+
+	constexpr std::chrono::seconds kWatcherTimeout{5};
+	constexpr std::chrono::milliseconds kPollInterval{20};
+	const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kWatcherTimeout;
+
+	while (std::chrono::steady_clock::now() < deadline && !IsRootChildIgnored(workspace, "notes.txt"))
+	{
+		workspace.Update();
+		std::this_thread::sleep_for(kPollInterval);
+	}
+
+	CHECK(IsRootChildIgnored(workspace, "notes.txt"));
+	CHECK_FALSE(IsRootChildIgnored(workspace, "build.log"));
 }
 
 TEST_CASE("An .slnx hides the .sln of the same name in the folder whatever the case of the name")

@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <optional>
+#include <unordered_map>
 
 namespace Core {
 
@@ -27,17 +28,39 @@ namespace Core {
 			return folderName;
 		}
 
-		std::optional<std::size_t> FindNodeWithPath(const std::vector<FileNode>& nodes, const std::filesystem::path& path)
+		struct PathHash
 		{
+			std::size_t operator()(const std::filesystem::path& path) const { return std::filesystem::hash_value(path); }
+		};
+
+		// WARNING: A refresh looks up every entry of a folder among its previous children, and a search through the
+		// list for each would cost the square of the folder's size, seconds for a folder of thirty thousand entries.
+		using NodeIndexByPath = std::unordered_map<std::filesystem::path, std::size_t, PathHash>;
+
+		NodeIndexByPath IndexByPath(const std::vector<FileNode>& nodes)
+		{
+			NodeIndexByPath indexByPath;
+			indexByPath.reserve(nodes.size());
+
 			for (std::size_t nodeIndex = 0; nodeIndex < nodes.size(); ++nodeIndex)
 			{
-				if (nodes[nodeIndex].Path == path)
-				{
-					return nodeIndex;
-				}
+				indexByPath.emplace(nodes[nodeIndex].Path, nodeIndex);
 			}
 
-			return std::nullopt;
+			return indexByPath;
+		}
+
+		std::optional<std::size_t> FindNodeWithPath(const NodeIndexByPath& indexByPath, const std::filesystem::path& path)
+		{
+			const NodeIndexByPath::const_iterator found = indexByPath.find(path);
+
+			if (found == indexByPath.end())
+			{
+				return std::nullopt;
+			}
+
+			const auto& [foundPath, nodeIndex] = *found;
+			return nodeIndex;
 		}
 	}
 
@@ -148,7 +171,7 @@ namespace Core {
 		node.Expanded = false;
 	}
 
-	void FileTree::Refresh(FileNode& node)
+	void FileTree::Refresh(FileNode& node, IgnoreAnswers ignoreAnswers)
 	{
 		if (!node.IsDirectory || !node.ChildrenLoaded)
 		{
@@ -168,19 +191,24 @@ namespace Core {
 		node.Readable = true;
 
 		std::vector<FileNode> previousChildren = std::move(node.Children);
+		const NodeIndexByPath previousIndexByPath = IndexByPath(previousChildren);
 		node.Children.clear();
 		node.Children.reserve(listing.GetValue().size());
 
 		for (const DirectoryEntry& entry : listing.GetValue())
 		{
-			const std::optional<std::size_t> previousIndex = FindNodeWithPath(previousChildren, entry.Path);
+			const std::optional<std::size_t> previousIndex = FindNodeWithPath(previousIndexByPath, entry.Path);
 			const bool isSameEntryAsBefore = previousIndex.has_value() && previousChildren[*previousIndex].IsDirectory == entry.IsDirectory;
 
 			if (isSameEntryAsBefore)
 			{
 				node.Children.push_back(std::move(previousChildren[*previousIndex]));
-				node.Children.back().Ignored = IsIgnoredInside(node, entry);
-				previousChildren.erase(previousChildren.begin() + static_cast<std::ptrdiff_t>(*previousIndex));
+
+				if (ignoreAnswers == IgnoreAnswers::AskAgain)
+				{
+					node.Children.back().Ignored = IsIgnoredInside(node, entry);
+				}
+
 				continue;
 			}
 
@@ -193,7 +221,7 @@ namespace Core {
 		{
 			if (child.IsDirectory && child.ChildrenLoaded)
 			{
-				Refresh(child);
+				Refresh(child, ignoreAnswers);
 			}
 		}
 	}

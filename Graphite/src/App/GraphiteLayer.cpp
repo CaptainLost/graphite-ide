@@ -615,7 +615,7 @@ namespace Graphite {
 			if (m_SecondsInBackground >= kReloadAfterSecondsAway && m_Workspace.IsOpen())
 			{
 				APP_TRACE("Reloading the workspace after {:.1f}s away", m_SecondsInBackground);
-				m_Workspace.Reload();
+				m_Workspace.Reload(Core::IgnoreAnswers::Keep);
 			}
 
 			m_SecondsInBackground = 0.0f;

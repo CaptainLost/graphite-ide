@@ -3,6 +3,7 @@
 #include "Core/Base/NonCopyable.h"
 #include "Core/Base/Result.h"
 
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <string>
@@ -27,6 +28,14 @@ namespace Core {
 
 	using IgnoreQuery = std::function<bool(const std::filesystem::path& path, bool isDirectory)>;
 
+	// An entry's answer changes only when an ignore rule does, so a refresh keeps the answers it already has unless
+	// told that a rule may have changed.
+	enum class IgnoreAnswers : std::uint8_t
+	{
+		Keep,
+		AskAgain
+	};
+
 	class FileTree final : NonCopyable
 	{
 	public:
@@ -38,7 +47,7 @@ namespace Core {
 
 		void SetIgnoreQuery(IgnoreQuery query) { m_IgnoreQuery = std::move(query); }
 
-		void Refresh(FileNode& node);
+		void Refresh(FileNode& node, IgnoreAnswers ignoreAnswers = IgnoreAnswers::Keep);
 
 		void Rebase(const std::filesystem::path& newRoot);
 

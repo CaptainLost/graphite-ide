@@ -18,10 +18,18 @@ namespace Core {
 		m_HasPendingChanges = true;
 	}
 
+	void ChangeCollector::AddIgnoreRulesChange(Clock::time_point now)
+	{
+		m_PendingBatchChangedIgnoreRules = true;
+		m_LastChangeTime = now;
+		m_HasPendingChanges = true;
+	}
+
 	std::vector<std::filesystem::path> ChangeCollector::TakeSettled(
 		Clock::time_point now, std::chrono::milliseconds quietPeriod)
 	{
 		m_LastBatchOverflowed = false;
+		m_LastBatchChangedIgnoreRules = false;
 
 		const bool stillWithinQuietPeriod = now - m_LastChangeTime < quietPeriod;
 
@@ -36,6 +44,8 @@ namespace Core {
 		m_HasPendingChanges = false;
 		m_LastBatchOverflowed = m_PendingBatchOverflowed;
 		m_PendingBatchOverflowed = false;
+		m_LastBatchChangedIgnoreRules = m_PendingBatchChangedIgnoreRules;
+		m_PendingBatchChangedIgnoreRules = false;
 
 		return settled;
 	}

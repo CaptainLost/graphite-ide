@@ -5,8 +5,10 @@
 
 #include "TempDirectory.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <string>
 #include <vector>
 
 using Core::FileNode;
@@ -331,7 +333,7 @@ TEST_CASE("The query is told whether the entry is a directory")
 	}
 }
 
-TEST_CASE("Refresh re-asks the query for a carried-over node so a rules file changed on disk since the last load takes effect")
+TEST_CASE("A refresh told to ask again re-asks the query for a carried-over node so a rules file changed on disk since the last load takes effect")
 {
 	TempDirectory temporaryDirectory;
 	temporaryDirectory.MakeFile("a.txt", "x");
@@ -347,13 +349,64 @@ TEST_CASE("Refresh re-asks the query for a carried-over node so a rules file cha
 	REQUIRE_FALSE(tree.GetRoot().Children[0].Ignored);
 
 	ignoreEverything = true;
-	tree.Refresh(tree.GetRoot());
+	tree.Refresh(tree.GetRoot(), Core::IgnoreAnswers::AskAgain);
 
 	REQUIRE(tree.GetRoot().Children.size() == 1);
 	CHECK(tree.GetRoot().Children[0].Ignored);
 }
 
-TEST_CASE("Refresh re-asks the query about every node carried over from the previous listing")
+TEST_CASE("A refresh that keeps the answers leaves a carried-over node's answer as it was even when the query would now answer otherwise")
+{
+	TempDirectory temporaryDirectory;
+	temporaryDirectory.MakeFile("a.txt", "x");
+
+	bool ignoreEverything = false;
+
+	FileTree tree;
+	tree.SetIgnoreQuery([&ignoreEverything](const std::filesystem::path&, bool) { return ignoreEverything; });
+
+	REQUIRE(tree.SetRoot(temporaryDirectory.GetPath()).HasValue());
+	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
+
+	ignoreEverything = true;
+	tree.Refresh(tree.GetRoot(), Core::IgnoreAnswers::Keep);
+
+	REQUIRE(tree.GetRoot().Children.size() == 1);
+	CHECK_FALSE(tree.GetRoot().Children[0].Ignored);
+}
+
+TEST_CASE("A refresh that keeps the answers asks only about the entries it did not know, in every loaded folder")
+{
+	TempDirectory temporaryDirectory;
+	temporaryDirectory.MakeFile("known.txt", "x");
+	temporaryDirectory.MakeFile("sub/known-inside.txt", "x");
+
+	std::vector<std::string> askedAbout;
+
+	FileTree tree;
+	tree.SetIgnoreQuery([&askedAbout](const std::filesystem::path& path, bool) {
+		askedAbout.push_back(Core::ToUtf8(path.filename()));
+		return false;
+	});
+
+	REQUIRE(tree.SetRoot(temporaryDirectory.GetPath()).HasValue());
+	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
+
+	FileNode* subdirectory = FindChildNamed(tree.GetRoot(), "sub");
+	REQUIRE(subdirectory != nullptr);
+	REQUIRE(tree.Expand(*subdirectory).HasValue());
+
+	temporaryDirectory.MakeFile("new.txt", "x");
+	temporaryDirectory.MakeFile("sub/new-inside.txt", "x");
+	askedAbout.clear();
+
+	tree.Refresh(tree.GetRoot());
+
+	std::sort(askedAbout.begin(), askedAbout.end());
+	CHECK(askedAbout == std::vector<std::string>{"new-inside.txt", "new.txt"});
+}
+
+TEST_CASE("A refresh told to ask again re-asks the query about every node carried over from the previous listing")
 {
 	TempDirectory temporaryDirectory;
 	temporaryDirectory.MakeFile("stays.txt", "x");
@@ -374,9 +427,72 @@ TEST_CASE("Refresh re-asks the query about every node carried over from the prev
 	REQUIRE(queryCalls == entriesOnDisk);
 
 	queryCalls = 0;
-	tree.Refresh(tree.GetRoot());
+	tree.Refresh(tree.GetRoot(), Core::IgnoreAnswers::AskAgain);
 
 	CHECK(queryCalls == entriesOnDisk);
+}
+
+TEST_CASE("A refresh told to ask again works out an ignored folder's entries again from the folder's new answer")
+{
+	TempDirectory temporaryDirectory;
+	temporaryDirectory.MakeFile("build/output.o", "x");
+
+	std::string ignoredName = "build";
+
+	FileTree tree;
+	tree.SetIgnoreQuery([&ignoredName](const std::filesystem::path& path, bool) {
+		return Core::ToUtf8(path.filename()) == ignoredName;
+	});
+
+	REQUIRE(tree.SetRoot(temporaryDirectory.GetPath()).HasValue());
+	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
+
+	FileNode* build = FindChildNamed(tree.GetRoot(), "build");
+	REQUIRE(build != nullptr);
+	REQUIRE(tree.Expand(*build).HasValue());
+	REQUIRE(build->Children.size() == 1);
+	REQUIRE(build->Children[0].Ignored);
+
+	ignoredName = "nothing";
+	tree.Refresh(tree.GetRoot(), Core::IgnoreAnswers::AskAgain);
+
+	build = FindChildNamed(tree.GetRoot(), "build");
+	REQUIRE(build != nullptr);
+	CHECK_FALSE(build->Ignored);
+	REQUIRE(build->Children.size() == 1);
+	CHECK_FALSE(build->Children[0].Ignored);
+}
+
+TEST_CASE("A refresh of a folder of many entries keeps each carried-over node with its own loaded children")
+{
+	TempDirectory temporaryDirectory;
+	constexpr int kFolderCount = 300;
+
+	for (int folderNumber = 0; folderNumber < kFolderCount; ++folderNumber)
+	{
+		temporaryDirectory.MakeFile("folder-" + std::to_string(folderNumber) + "/inside-" + std::to_string(folderNumber) + ".txt", "x");
+	}
+
+	FileTree tree;
+	REQUIRE(tree.SetRoot(temporaryDirectory.GetPath()).HasValue());
+	REQUIRE(tree.Expand(tree.GetRoot()).HasValue());
+
+	for (FileNode& folder : tree.GetRoot().Children)
+	{
+		REQUIRE(tree.Expand(folder).HasValue());
+	}
+
+	tree.Refresh(tree.GetRoot());
+
+	REQUIRE(tree.GetRoot().Children.size() == kFolderCount);
+
+	for (const FileNode& folder : tree.GetRoot().Children)
+	{
+		CAPTURE(folder.Name);
+		CHECK(folder.ChildrenLoaded);
+		REQUIRE(folder.Children.size() == 1);
+		CHECK(folder.Children[0].Path.parent_path() == folder.Path);
+	}
 }
 
 namespace {

@@ -99,6 +99,34 @@ TEST_CASE("Overflow settles alongside ordinary changes")
 	CHECK(collector.HasOverflowed());
 }
 
+TEST_CASE("A change of ignore rules settles with its batch and is reported by that take only")
+{
+	ChangeCollector collector;
+	collector.Add("C:/work/src", AtMillisecond(0));
+	collector.AddIgnoreRulesChange(AtMillisecond(100));
+
+	CHECK(collector.TakeSettled(AtMillisecond(300), kQuietPeriod).empty());
+	CHECK_FALSE(collector.HasIgnoreRulesChanged());
+
+	CHECK(collector.TakeSettled(AtMillisecond(350), kQuietPeriod).size() == 1);
+	CHECK(collector.HasIgnoreRulesChanged());
+
+	collector.Add("C:/work/src", AtMillisecond(400));
+
+	CHECK(collector.TakeSettled(AtMillisecond(700), kQuietPeriod).size() == 1);
+	CHECK_FALSE(collector.HasIgnoreRulesChanged());
+}
+
+TEST_CASE("A change of ignore rules alone is a batch of its own with no directory in it")
+{
+	ChangeCollector collector;
+	collector.AddIgnoreRulesChange(AtMillisecond(0));
+
+	CHECK(collector.TakeSettled(AtMillisecond(250), kQuietPeriod).empty());
+	CHECK(collector.HasIgnoreRulesChanged());
+	CHECK_FALSE(collector.SettlesAt(kQuietPeriod).has_value());
+}
+
 TEST_CASE("Nothing pending settles at no time")
 {
 	ChangeCollector collector;

@@ -243,7 +243,7 @@ namespace Graphite {
 
 	void FileTreeView::Refresh()
 	{
-		m_Workspace.Reload();
+		m_Workspace.Reload(Core::IgnoreAnswers::AskAgain);
 		m_Listing.NoteEverythingChanged();
 
 		if (!m_Workspace.IsOpen())

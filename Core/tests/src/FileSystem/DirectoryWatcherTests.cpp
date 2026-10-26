@@ -444,6 +444,52 @@ TEST_CASE("The rest of a repository's private directory says nothing since git r
 	CHECK_FALSE(Core::NamesRepositoryState(std::filesystem::path{".git"} / "logs" / "HEAD"));
 }
 
+TEST_CASE("A folder's rules file, the repository's exclude file and its config are named as ignore rules")
+{
+	CHECK(Core::NamesIgnoreRules(".gitignore"));
+	CHECK(Core::NamesIgnoreRules(std::filesystem::path{"src"} / "deep" / ".gitignore"));
+	CHECK(Core::NamesIgnoreRules(std::filesystem::path{".git"} / "info" / "exclude"));
+	CHECK(Core::NamesIgnoreRules(std::filesystem::path{".git"} / "config"));
+}
+
+TEST_CASE("Other files, and a rules file inside the repository's private directory, are not named as ignore rules")
+{
+	CHECK_FALSE(Core::NamesIgnoreRules("main.cpp"));
+	CHECK_FALSE(Core::NamesIgnoreRules(std::filesystem::path{"src"} / ".gitignore.bak"));
+	CHECK_FALSE(Core::NamesIgnoreRules(std::filesystem::path{"src"} / "config"));
+	CHECK_FALSE(Core::NamesIgnoreRules(std::filesystem::path{".git"} / "objects" / ".gitignore"));
+	CHECK_FALSE(Core::NamesIgnoreRules(std::filesystem::path{".git"} / "HEAD"));
+}
+
+TEST_CASE("A rules file written in a subfolder is reported as a change of ignore rules with its folder")
+{
+	TempDirectory temporaryDirectory;
+	temporaryDirectory.MakeDirectory("sub");
+
+	Result<Scope<DirectoryWatcher>> started = DirectoryWatcher::Start(temporaryDirectory.GetPath());
+	REQUIRE(started.HasValue());
+	DirectoryWatcher& watcher = *started.GetValue();
+
+	temporaryDirectory.MakeFile("sub/.gitignore", "*.log\n");
+
+	const std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + kChangeTimeout;
+	bool rulesChanged = false;
+	std::vector<std::filesystem::path> changedDirectories;
+
+	while (std::chrono::steady_clock::now() < deadline && changedDirectories.empty())
+	{
+		const DirectoryWatcher::Changes changes = watcher.TakeSettled();
+		rulesChanged = rulesChanged || changes.IgnoreRulesChanged;
+		changedDirectories = changes.Directories;
+
+		std::this_thread::sleep_for(kPollInterval);
+	}
+
+	CHECK(rulesChanged);
+	REQUIRE_FALSE(changedDirectories.empty());
+	CHECK(changedDirectories[0] == temporaryDirectory.GetPath() / "sub");
+}
+
 TEST_CASE("A file of the same name outside the repository's directory says nothing since it is an ordinary file of the working tree")
 {
 	CHECK_FALSE(Core::NamesRepositoryState("HEAD"));
