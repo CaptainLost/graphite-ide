@@ -3,6 +3,8 @@
 #include "Core/ImGui/ImageTexture.h"
 #include "Core/ImGui/UiScale.h"
 
+#include <imgui_internal.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -184,14 +186,33 @@ namespace Graphite {
 
 	PictureCanvasResult DrawPictureCanvas(const char* id, ZoomState& zoom, const PictureCanvasInput& input)
 	{
-		const ImVec2 origin = ImGui::GetCursorScreenPos();
+		ImGuiWindow* const window = ImGui::GetCurrentWindow();
+		const ImVec2 cursor = ImGui::GetCursorScreenPos();
 		const ImVec2 available = ImGui::GetContentRegionAvail();
-		const bool hasRoom = available.x > 0.0f && available.y > 0.0f;
 
-		// WARNING: InvisibleButton refuses a zero size, so a region with no room left is still laid out as one pixel.
-		const ImVec2 size(std::max(available.x, kSmallestItemSide), std::max(available.y, kSmallestItemSide));
+		// The canvas covers the window's inner rectangle from the cursor down, as the path row spans it across.
+		const ImVec2 origin(window->InnerRect.Min.x, cursor.y);
+		const ImVec2 room(window->InnerRect.Max.x - origin.x, window->InnerRect.Max.y - origin.y);
+		const bool hasRoom = room.x > 0.0f && room.y > 0.0f;
+
+		// WARNING: The item is laid out at the size of the content region and takes the whole inner rectangle only as
+		// the rectangle it answers to. Laid out that wide it would reach past the window's padding, and the window would
+		// grow scrollbars. A region with no room left is still one pixel, as a zero size is refused.
+		const ImVec2 layout(std::max(available.x, kSmallestItemSide), std::max(available.y, kSmallestItemSide));
+		const ImVec2 size(std::max(room.x, kSmallestItemSide), std::max(room.y, kSmallestItemSide));
 		const ImRect area(origin, ImVec2(origin.x + size.x, origin.y + size.y));
-		ImGui::InvisibleButton(id, size);
+		const ImGuiID itemId = window->GetID(id);
+
+		ImGui::ItemSize(layout);
+
+		if (!ImGui::ItemAdd(area, itemId))
+		{
+			PictureCanvasResult hidden;
+			hidden.Area = area;
+			return hidden;
+		}
+
+		ImGui::ButtonBehavior(area, itemId, nullptr, nullptr);
 
 		PictureCanvasResult result;
 		result.Area = area;

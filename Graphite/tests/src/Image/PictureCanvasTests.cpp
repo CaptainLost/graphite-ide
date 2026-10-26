@@ -494,16 +494,27 @@ TEST_CASE("Only the grid lines inside the canvas are drawn")
 	CHECK(drawn <= (linesAcross + linesDown) * 4);
 }
 
+TEST_CASE("The canvas covers the window's inner rectangle from the cursor down without growing scrollbars")
+{
+	CanvasScreen screen(kFitsAtFullSize);
+	screen.Idle(3);
+
+	const ImGuiWindow* window = ImGui::FindWindowByName(kWindow);
+	REQUIRE(window != nullptr);
+
+	CHECK(screen.Result.Area.Min.x == window->InnerRect.Min.x);
+	CHECK(screen.Result.Area.Max.x == window->InnerRect.Max.x);
+	CHECK(screen.Result.Area.Min.y == ImGui::GetStyle().WindowPadding.y);
+	CHECK(screen.Result.Area.Max.y == window->InnerRect.Max.y);
+	CHECK(screen.Result.Area.Min.x < ImGui::GetStyle().WindowPadding.x);
+	CHECK_FALSE(window->ScrollbarX);
+	CHECK_FALSE(window->ScrollbarY);
+}
+
 TEST_CASE("The canvas reports the pixel under the pointer")
 {
 	CanvasScreen screen(kFitsAtFullSize);
 	screen.Draw();
-
-	const ImVec2 padding = ImGui::GetStyle().WindowPadding;
-	CHECK(screen.Result.Area.Min.x == padding.x);
-	CHECK(screen.Result.Area.Min.y == padding.y);
-	CHECK(screen.Result.Area.Max.x == kWindowSize.x - padding.x);
-	CHECK(screen.Result.Area.Max.y == kWindowSize.y - padding.y);
 
 	const ImRect placed = screen.Placed();
 	screen.MoveTo(ImVec2(placed.Min.x + 10.5f, placed.Min.y + 7.5f));

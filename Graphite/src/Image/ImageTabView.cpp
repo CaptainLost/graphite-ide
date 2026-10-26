@@ -58,9 +58,7 @@ namespace Graphite {
 		// the row's face as the tools draw in it; rounding down keeps their words on the line the path's words stand on.
 		void CentreInRow()
 		{
-			Core::PushInterfaceFont(kBreadcrumbFontSize);
-			const float frameHeight = ImGui::GetFrameHeight();
-			ImGui::PopFont();
+			const float frameHeight = ImageToolsHeight();
 
 			const ImVec2 cursor = ImGui::GetCursorScreenPos();
 			ImGui::SetCursorScreenPos(ImVec2(cursor.x, cursor.y + std::floor((BreadcrumbHeight() - frameHeight) * kHalf)));

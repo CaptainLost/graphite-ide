@@ -189,7 +189,7 @@ TEST_CASE("The zoom label shows the current zoom")
 		label.clear();
 		ImGui::SetNextWindowPos(ImVec2(0.0f, 100.0f));
 		ImGui::Begin("Reference", nullptr, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoSavedSettings);
-		Core::PushInterfaceFont(Graphite::kBreadcrumbFontSize);
+		Core::PushCodeFont(Graphite::kBreadcrumbFontSize);
 		ImGui::TextUnformatted("150%");
 		ImGui::PopFont();
 
@@ -224,6 +224,30 @@ TEST_CASE("A swatch sets the background")
 	const Clicked checkerboard = ClickButton(kCheckerboardIndex);
 	CHECK(checkerboard.Result.Action == ImageToolAction::SetBackground);
 	CHECK(checkerboard.Result.Background == PictureBackground::Checkerboard);
+}
+
+TEST_CASE("The image tools' frames fit inside the path row")
+{
+	ImGuiFrames frames;
+	ToolsScreen screen;
+	frames.Next(screen.Drawer());
+
+	frames.Next([&] {
+		const float height = Graphite::ImageToolsHeight();
+
+		CHECK(height > 0.0f);
+		CHECK(height <= Graphite::BreadcrumbHeight());
+	});
+
+	// Nothing is hovered along the row's last line, which the tools' frames leave free.
+	const float belowTheFrames = Graphite::BreadcrumbHeight() - 1.0f;
+
+	for (float x = 0.0f; x < kWindowSize.x; x += 1.0f)
+	{
+		ImGui::GetIO().AddMousePosEvent(x, belowTheFrames);
+		frames.Next(screen.Drawer());
+		CHECK(ImGui::GetCurrentContext()->HoveredId == 0);
+	}
 }
 
 TEST_CASE("The image tools take the width they report")

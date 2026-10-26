@@ -22,14 +22,25 @@ namespace Graphite {
 	namespace {
 		constexpr ImU32 kDarkSwatch = IM_COL32(13, 14, 16, 255);
 		constexpr ImU32 kLightSwatch = IM_COL32(243, 244, 246, 255);
-		constexpr float kSwatchInset = 4.0f;
+		constexpr ImU32 kSwatchBorder = IM_COL32(255, 255, 255, 64);
+		constexpr float kToolHeight = 22.0f;
+		constexpr float kSegmentPadding = 2.0f;
+		constexpr float kSegmentGap = 2.0f;
+		constexpr float kSegmentBorder = 1.0f;
+		constexpr float kSegmentRounding = 6.0f;
+		constexpr float kSwatchButtonWidth = 22.0f;
+		constexpr float kSwatchButtonRounding = 4.0f;
+		constexpr float kSwatchSide = 10.0f;
+		constexpr float kSwatchRounding = 2.0f;
 		constexpr float kCheckerNearShare = 0.06f;
 		constexpr float kCheckerFarShare = 0.14f;
 		constexpr float kHalf = 0.5f;
 		constexpr float kSameZoom = 0.0001f;
-		constexpr int kButtonCountBetweenGaps = 9;
+		constexpr std::size_t kSwatchCount = 3;
+		constexpr int kToolCountBetweenGaps = 7;
 		constexpr const char* kZoomMenuId = "##ImageZoomMenu";
-		constexpr const char* kNoGlyph = "";
+		constexpr const char* kFitLabel = ICON_LC_MAXIMIZE " Fit";
+		constexpr const char* kFitId = "##imageFit";
 		constexpr bool kNotEngaged = false;
 
 		struct ZoomChoice
@@ -56,22 +67,77 @@ namespace Graphite {
 			return zoomLabel + " " ICON_LC_CHEVRON_DOWN;
 		}
 
-		// The widest label a zoom step can have, so the buttons beside it do not move as the zoom changes.
+		// WARNING: The tools' buttons take a frame no taller than the path row, so the frame's vertical padding is set
+		// from the tool height rather than the theme's, and every size here is measured under it.
+		float ToolPaddingY()
+		{
+			return std::max(0.0f, std::floor((Core::Scaled(kToolHeight) - ImGui::GetFontSize()) * kHalf));
+		}
+
+		class ToolFrame
+		{
+		public:
+			ToolFrame()
+			{
+				ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(ImGui::GetStyle().FramePadding.x, ToolPaddingY()));
+			}
+
+			~ToolFrame() { ImGui::PopStyleVar(); }
+
+			ToolFrame(const ToolFrame&) = delete;
+			ToolFrame& operator=(const ToolFrame&) = delete;
+		};
+
+		float ButtonWidthOf(const char* label)
+		{
+			return std::ceil(ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0f);
+		}
+
+		// The widest label a zoom step can have, in the code face the label is drawn in, so the buttons beside it do
+		// not move as the zoom changes.
 		float ZoomButtonWidth()
 		{
+			Core::PushCodeFont(kBreadcrumbFontSize);
 			float widest = 0.0f;
 
 			for (const float step : kZoomSteps)
 			{
-				widest = std::max(widest, ImGui::CalcTextSize(ZoomButtonLabel(ZoomLabel(step)).c_str()).x);
+				widest = std::max(widest, ButtonWidthOf(ZoomButtonLabel(ZoomLabel(step)).c_str()));
 			}
 
-			return std::ceil(widest + ImGui::GetStyle().FramePadding.x * 2.0f);
+			ImGui::PopFont();
+			return widest;
 		}
 
 		float ActualSizeButtonWidth()
 		{
-			return std::ceil(ImGui::CalcTextSize("1:1").x + ImGui::GetStyle().FramePadding.x * 2.0f);
+			return ButtonWidthOf("1:1");
+		}
+
+		float FitButtonWidth()
+		{
+			return ButtonWidthOf(kFitLabel);
+		}
+
+		float SegmentInset()
+		{
+			return std::floor(Core::Scaled(kSegmentBorder + kSegmentPadding));
+		}
+
+		float SwatchButtonWidth()
+		{
+			return std::floor(Core::Scaled(kSwatchButtonWidth));
+		}
+
+		float SegmentGap()
+		{
+			return std::floor(Core::Scaled(kSegmentGap));
+		}
+
+		float SegmentWidth()
+		{
+			return SegmentInset() * 2.0f + SwatchButtonWidth() * static_cast<float>(kSwatchCount) +
+				   SegmentGap() * static_cast<float>(kSwatchCount - 1);
 		}
 
 		ImageToolResult Chosen(ImageToolAction action)
@@ -90,7 +156,11 @@ namespace Graphite {
 
 			const std::string label = ZoomButtonLabel(ZoomLabel(zoom)) + "##zoomMenu";
 
-			if (Core::TextButton(label.c_str(), ImVec2(ZoomButtonWidth(), 0.0f)))
+			Core::PushCodeFont(kBreadcrumbFontSize);
+			const bool opened = Core::TextButton(label.c_str(), ImVec2(ZoomButtonWidth(), 0.0f));
+			ImGui::PopFont();
+
+			if (opened)
 			{
 				ImGui::OpenPopup(kZoomMenuId);
 			}
@@ -136,22 +206,13 @@ namespace Graphite {
 			drawList.AddRectFilled(ImVec2(rect.Min.x, middle.y), ImVec2(middle.x, rect.Max.y), farColour);
 		}
 
-		bool DrawSwatch(const char* id, PictureBackground kind, bool current, const char* tooltip)
+		void DrawSwatch(ImDrawList& drawList, PictureBackground kind, const ImRect& cell)
 		{
-			const bool pressed = Core::DrawIconButton(id, kNoGlyph, current, tooltip);
-
-			const ImRect cell(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-			ImDrawList& drawList = *ImGui::GetWindowDrawList();
-
-			if (current)
-			{
-				drawList.AddRectFilled(cell.Min, cell.Max, ImGui::GetColorU32(ImGuiCol_ButtonActive),
-									   ImGui::GetStyle().FrameRounding);
-			}
-
-			const float inset = std::floor(Core::Scaled(kSwatchInset));
-			const ImRect swatch(ImVec2(cell.Min.x + inset, cell.Min.y + inset),
-								ImVec2(cell.Max.x - inset, cell.Max.y - inset));
+			const float side = std::floor(Core::Scaled(kSwatchSide));
+			const ImVec2 corner(std::floor((cell.Min.x + cell.Max.x - side) * kHalf),
+								std::floor((cell.Min.y + cell.Max.y - side) * kHalf));
+			const ImRect swatch(corner, ImVec2(corner.x + side, corner.y + side));
+			const float rounding = Core::Scaled(kSwatchRounding);
 
 			switch (kind)
 			{
@@ -159,14 +220,77 @@ namespace Graphite {
 				DrawCheckerSwatch(drawList, swatch);
 				break;
 			case PictureBackground::Dark:
-				drawList.AddRectFilled(swatch.Min, swatch.Max, kDarkSwatch);
+				drawList.AddRectFilled(swatch.Min, swatch.Max, kDarkSwatch, rounding);
 				break;
 			case PictureBackground::Light:
-				drawList.AddRectFilled(swatch.Min, swatch.Max, kLightSwatch);
+				drawList.AddRectFilled(swatch.Min, swatch.Max, kLightSwatch, rounding);
 				break;
 			}
 
+			drawList.AddRect(swatch.Min, swatch.Max, kSwatchBorder, rounding);
+		}
+
+		bool DrawSwatchButton(const char* id, PictureBackground kind, bool current, const char* tooltip, ImVec2 size)
+		{
+			const bool pressed = ImGui::InvisibleButton(id, size);
+			const ImRect cell(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+			ImDrawList& drawList = *ImGui::GetWindowDrawList();
+
+			const ImVec4 fill =
+				Core::IconButtonFill(ImGui::GetItemID(), ImGui::IsItemHovered(), ImGui::IsItemActive(), current);
+			drawList.AddRectFilled(cell.Min, cell.Max, ImGui::GetColorU32(fill), Core::Scaled(kSwatchButtonRounding));
+
+			DrawSwatch(drawList, kind, cell);
+			ImGui::SetItemTooltip("%s", tooltip);
+
 			return pressed;
+		}
+
+		// A bordered segment holding the three swatch buttons. Its buttons are placed by position, and the segment is
+		// then laid out as one item of the frame's height.
+		ImageToolResult DrawBackgroundSegment(PictureBackground background)
+		{
+			struct Swatch
+			{
+				const char* Id;
+				PictureBackground Kind;
+				const char* Tooltip;
+			};
+
+			constexpr std::array<Swatch, kSwatchCount> swatches = {{{"##imageCheckerboard",
+																	  PictureBackground::Checkerboard,
+																	  "Checkerboard background"},
+																	 {"##imageDark", PictureBackground::Dark, "Dark background"},
+																	 {"##imageLight", PictureBackground::Light, "Light background"}}};
+
+			ImageToolResult result;
+
+			const ImVec2 start = ImGui::GetCursorScreenPos();
+			const ImVec2 size(SegmentWidth(), ImGui::GetFrameHeight());
+			const float inset = SegmentInset();
+			const ImVec2 button(SwatchButtonWidth(), std::max(1.0f, size.y - inset * 2.0f));
+
+			ImGui::GetWindowDrawList()->AddRect(start, ImVec2(start.x + size.x, start.y + size.y),
+												ImGui::GetColorU32(ImGuiCol_Border), Core::Scaled(kSegmentRounding));
+
+			float x = start.x + inset;
+
+			for (const Swatch& swatch : swatches)
+			{
+				ImGui::SetCursorScreenPos(ImVec2(x, start.y + inset));
+
+				if (DrawSwatchButton(swatch.Id, swatch.Kind, swatch.Kind == background, swatch.Tooltip, button))
+				{
+					result = {.Action = ImageToolAction::SetBackground, .Background = swatch.Kind};
+				}
+
+				x += button.x + SegmentGap();
+			}
+
+			ImGui::SetCursorScreenPos(start);
+			ImGui::Dummy(size);
+
+			return result;
 		}
 
 		ImageToolResult DrawTools(float zoom, PictureBackground background)
@@ -198,7 +322,7 @@ namespace Graphite {
 			Core::DrawIconSeparator();
 			ImGui::SameLine();
 
-			if (Core::DrawIconButton("##imageFit", ICON_LC_MAXIMIZE, kNotEngaged, "Fit"))
+			if (Core::TextButton((std::string(kFitLabel) + kFitId).c_str(), ImVec2(FitButtonWidth(), 0.0f)))
 			{
 				result = Chosen(ImageToolAction::Fit);
 			}
@@ -214,31 +338,10 @@ namespace Graphite {
 
 			ImGui::SameLine();
 
-			struct Swatch
+			if (const ImageToolResult fromSegment = DrawBackgroundSegment(background);
+				fromSegment.Action != ImageToolAction::None)
 			{
-				const char* Id;
-				PictureBackground Kind;
-				const char* Tooltip;
-			};
-
-			constexpr std::array<Swatch, 3> swatches = {{{"##imageCheckerboard", PictureBackground::Checkerboard,
-														  "Checkerboard background"},
-														 {"##imageDark", PictureBackground::Dark, "Dark background"},
-														 {"##imageLight", PictureBackground::Light, "Light background"}}};
-
-			for (std::size_t index = 0; index < swatches.size(); ++index)
-			{
-				if (index > 0)
-				{
-					ImGui::SameLine();
-				}
-
-				const Swatch& swatch = swatches[index];
-
-				if (DrawSwatch(swatch.Id, swatch.Kind, swatch.Kind == background, swatch.Tooltip))
-				{
-					result = {.Action = ImageToolAction::SetBackground, .Background = swatch.Kind};
-				}
+				result = fromSegment;
 			}
 
 			return result;
@@ -248,21 +351,30 @@ namespace Graphite {
 	float ImageToolsWidth()
 	{
 		Core::PushInterfaceFont(kBreadcrumbFontSize);
+		const ToolFrame frame;
 
-		const float side = IconSide();
-		const float iconButtons = side * 3.0f;
-		const float swatches = side * 3.0f;
-		const float gaps = ImGui::GetStyle().ItemSpacing.x * static_cast<float>(kButtonCountBetweenGaps - 1);
-		const float width =
-			iconButtons + swatches + ZoomButtonWidth() + ActualSizeButtonWidth() + Core::Scaled(Core::kIconSeparatorWidth) + gaps;
+		const float gaps = ImGui::GetStyle().ItemSpacing.x * static_cast<float>(kToolCountBetweenGaps - 1);
+		const float width = IconSide() * 2.0f + ZoomButtonWidth() + FitButtonWidth() + ActualSizeButtonWidth() +
+							SegmentWidth() + Core::Scaled(Core::kIconSeparatorWidth) + gaps;
 
 		ImGui::PopFont();
 		return width;
 	}
 
+	float ImageToolsHeight()
+	{
+		Core::PushInterfaceFont(kBreadcrumbFontSize);
+		const ToolFrame frame;
+		const float height = ImGui::GetFrameHeight();
+
+		ImGui::PopFont();
+		return height;
+	}
+
 	ImageToolResult DrawImageTools(float zoom, PictureBackground background)
 	{
 		Core::PushInterfaceFont(kBreadcrumbFontSize);
+		const ToolFrame frame;
 		const ImageToolResult result = DrawTools(zoom, background);
 		ImGui::PopFont();
 
