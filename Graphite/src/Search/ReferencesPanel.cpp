@@ -12,7 +12,6 @@
 #include "Core/ImGui/LoadingState.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/DocumentSet.h"
-#include "Core/Text/FileProbe.h"
 #include "Core/UI/PanelMarginScope.h"
 
 #include "Workspace/Workspace.h"
@@ -501,12 +500,17 @@ namespace Graphite {
 		m_Preview.SetTabWidth(m_Editor.GetIndentStyle().Width);
 		m_Preview.Show(hit.File, m_Documents);
 
-		DrawSearchPreview(m_Preview,
-						  SearchPreviewInput{.Hits = group->Hits,
-											 .Current = m_Selected->Hit,
-											 .Scheme = m_Scheme.Get(),
-											 .TabWidth = m_Editor.GetIndentStyle().Width,
-											 .FontSize = m_Editor.GetFontSize()});
+		const PreviewRequest request = DrawSearchPreview(m_Preview,
+														 SearchPreviewInput{.Hits = group->Hits,
+																			.Current = m_Selected->Hit,
+																			.Scheme = m_Scheme.Get(),
+																			.TabWidth = m_Editor.GetIndentStyle().Width,
+																			.FontSize = m_Editor.GetFontSize()});
+
+		if (request == PreviewRequest::OpenFile)
+		{
+			OpenAndSelect(hit);
+		}
 	}
 
 	void ReferencesPanel::OpenAndSelect(const SearchHit& hit)
@@ -563,9 +567,9 @@ namespace Graphite {
 			m_DiskPath = path;
 			m_DiskBuffer.reset();
 
-			Core::DiskText read = Core::ReadDiskText(path);
+			PreviewText read = ReadPreviewText(path);
 
-			if (read.Outcome == Core::DiskTextOutcome::Read)
+			if (read.State == PreviewState::Ready)
 			{
 				m_DiskBuffer = Core::TextBuffer{std::move(read.Text)};
 			}

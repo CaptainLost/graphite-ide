@@ -7,6 +7,7 @@
 #include "Language/Syntax/Token.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -27,7 +28,21 @@ namespace Graphite {
 		Ready,
 		Unreadable,
 		Skipped,
+		TooLarge,
 	};
+
+	// The text a preview may show of a file not open in the editor. A file is read only if opening it would not ask
+	// first, so browsing hits in a huge file never reads it: the size comes from the probe, not from a read.
+	struct PreviewText
+	{
+		PreviewState State = PreviewState::Unreadable;
+		std::string Text;
+		std::string Message;
+	};
+
+	PreviewText ReadPreviewText(const std::filesystem::path& path);
+
+	std::string TooLargeToPreviewText(std::uint64_t fileSize);
 
 	class PreviewContent
 	{

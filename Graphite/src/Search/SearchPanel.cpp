@@ -235,12 +235,17 @@ namespace Graphite {
 
 		m_Preview.Show(hit.File, m_Documents);
 
-		DrawSearchPreview(m_Preview,
-						  SearchPreviewInput{.Hits = group->Hits,
-											 .Current = m_Selected->Hit,
-											 .Scheme = m_Scheme.Get(),
-											 .TabWidth = m_Editor.GetIndentStyle().Width,
-											 .FontSize = m_Editor.GetFontSize()});
+		const PreviewRequest request = DrawSearchPreview(m_Preview,
+														 SearchPreviewInput{.Hits = group->Hits,
+																			.Current = m_Selected->Hit,
+																			.Scheme = m_Scheme.Get(),
+																			.TabWidth = m_Editor.GetIndentStyle().Width,
+																			.FontSize = m_Editor.GetFontSize()});
+
+		if (request == PreviewRequest::OpenFile)
+		{
+			OpenAndSelect(hit);
+		}
 	}
 
 	void SearchPanel::OpenAndSelect(const SearchHit& hit)

@@ -5,11 +5,18 @@
 #include "Theme/ColorScheme.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 
 namespace Graphite {
 
 	class PreviewContent;
+
+	enum class PreviewRequest : std::uint8_t
+	{
+		None,
+		OpenFile
+	};
 
 	struct SearchPreviewInput
 	{
@@ -24,5 +31,6 @@ namespace Graphite {
 		float FontSize = 0.0f;
 	};
 
-	void DrawSearchPreview(PreviewContent& content, const SearchPreviewInput& input);
+	// Asks to open the file when its preview offers Open in place of text it would not read.
+	PreviewRequest DrawSearchPreview(PreviewContent& content, const SearchPreviewInput& input);
 }

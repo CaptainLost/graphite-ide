@@ -23,6 +23,8 @@ namespace Graphite {
 
 	namespace {
 
+		constexpr const char* kOpenAction = "Open";
+
 		// WARNING: A run is placed by the columns before it, not by its byte offset: a character of more
 		// than one byte takes one cell, and the match highlights are placed by columns.
 		struct TextRunPainter
@@ -94,18 +96,21 @@ namespace Graphite {
 		}
 	}
 
-	void DrawSearchPreview(PreviewContent& content, const SearchPreviewInput& input)
+	PreviewRequest DrawSearchPreview(PreviewContent& content, const SearchPreviewInput& input)
 	{
 		switch (content.GetState())
 		{
 		case PreviewState::Empty:
 			DrawMessage("Select a result to preview it.");
-			return;
+			return PreviewRequest::None;
 
 		case PreviewState::Unreadable:
 		case PreviewState::Skipped:
 			DrawMessage(content.GetDetail().c_str());
-			return;
+			return PreviewRequest::None;
+
+		case PreviewState::TooLarge:
+			return Core::EmptyState(content.GetDetail(), kOpenAction) ? PreviewRequest::OpenFile : PreviewRequest::None;
 
 		case PreviewState::Ready:
 			break;
@@ -116,7 +121,7 @@ namespace Graphite {
 		if (buffer == nullptr || input.Current >= input.Hits.size())
 		{
 			DrawMessage("Select a result to preview it.");
-			return;
+			return PreviewRequest::None;
 		}
 
 		content.SetTabWidth(input.TabWidth);
@@ -220,5 +225,7 @@ namespace Graphite {
 
 		ImGui::PopStyleVar();
 		ImGui::PopFont();
+
+		return PreviewRequest::None;
 	}
 }

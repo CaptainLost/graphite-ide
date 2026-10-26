@@ -7,6 +7,7 @@
 #include "Editor/Overlays/SemanticOverlay.h"
 #include "Language/Syntax/Token.h"
 
+#include "LargeTextFile.h"
 #include "TempDirectory.h"
 
 #include <fstream>
@@ -91,6 +92,36 @@ TEST_CASE("A binary file is skipped rather than shown")
 	CHECK(content.GetState() == PreviewState::Skipped);
 	CHECK_FALSE(content.GetDetail().empty());
 	CHECK(content.GetBuffer() == nullptr);
+}
+
+TEST_CASE("A file past the size that opens without asking is not read, and its preview says how large it is")
+{
+	TempDirectory temp;
+	const std::filesystem::path file = MakeLargeTextFile(temp.GetPath() / "huge.log");
+
+	Core::DocumentSet documents;
+	PreviewContent content;
+
+	content.Show(file, documents);
+
+	CHECK(content.GetState() == PreviewState::TooLarge);
+	CHECK(content.GetBuffer() == nullptr);
+	CHECK(content.GetDetail() == "File too large to preview (17 MB)");
+}
+
+TEST_CASE("A file past the size that opens without asking gives a preview no text, and a small one its whole text")
+{
+	TempDirectory temp;
+	const std::filesystem::path huge = MakeLargeTextFile(temp.GetPath() / "huge.log");
+	const std::filesystem::path small = temp.MakeFile("small.txt", "first\nsecond\n");
+
+	const PreviewText hugeText = ReadPreviewText(huge);
+	CHECK(hugeText.State == PreviewState::TooLarge);
+	CHECK(hugeText.Text.empty());
+
+	const PreviewText smallText = ReadPreviewText(small);
+	CHECK(smallText.State == PreviewState::Ready);
+	CHECK(smallText.Text == "first\nsecond\n");
 }
 
 TEST_CASE("Showing a second file replaces the first")
