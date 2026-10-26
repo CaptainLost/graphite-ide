@@ -72,6 +72,36 @@ TEST_CASE("A file's history continues through a rename when following is on")
 	CHECK(Summaries(log.GetValue().Commits) == std::vector<std::string>{"edit new", "rename to new", "add old"});
 }
 
+TEST_CASE("Root anchor keeps a root file's history through its rename apart from a same-named file in a folder")
+{
+	GitFixture fixture;
+
+	fixture.Write("old.txt", "one\ntwo\nthree\nfour\n");
+	fixture.Commit("add old");
+	fixture.Write("sub/old.txt", "elsewhere\n");
+	fixture.Commit("add sub old");
+	fixture.Write("sub/old.txt", "elsewhere again\n");
+	fixture.Commit("edit sub old");
+	fixture.Write("old.txt", "one\ntwo\nthree\nfive\n");
+	fixture.Commit("edit old");
+	fixture.Rename("old.txt", "new.txt");
+	fixture.Commit("rename to new");
+	fixture.Write("new.txt", "one\ntwo\nthree\nsix\n");
+	fixture.Commit("edit new");
+
+	const Repository repository = OpenRepositoryAt(fixture.GetPath());
+
+	LogRequest request;
+	request.File = std::filesystem::path("/new.txt");
+	request.FollowRenames = true;
+
+	const Core::Result<Core::LogPage> log = repository.QueryLog(request);
+
+	REQUIRE(log.HasValue());
+	CHECK(Summaries(log.GetValue().Commits) ==
+		  std::vector<std::string>{"edit new", "rename to new", "edit old", "add old"});
+}
+
 TEST_CASE("A file's history stops at the rename when following is off")
 {
 	GitFixture fixture;

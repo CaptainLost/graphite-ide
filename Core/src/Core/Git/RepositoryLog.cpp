@@ -324,9 +324,11 @@ namespace Core {
 			// file by its old name.
 			const bool fileWasRenamedHere = matchedFile->Change == FileChange::Renamed && !matchedFile->OldPath.empty();
 
+			// WARNING: The old path goes through PatternNamingOnly: a root file's bare name would be a
+			// fragment naming that name in every folder, and older commits would join other files' history.
 			if (request.FollowRenames && fileWasRenamedHere && PatternNamesExactlyOneFile(match, *trackedPath))
 			{
-				trackedPath = matchedFile->OldPath;
+				trackedPath = FromUtf8(PatternNamingOnly(matchedFile->OldPath));
 			}
 
 			// The filter is asked only after the diff, so a commit it drops still follows the file

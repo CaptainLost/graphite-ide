@@ -6,11 +6,13 @@
 #include "GitFixtures.h"
 
 #include "Core/Git/Commit.h"
+#include "Core/Git/CommitFilter.h"
 
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <initializer_list>
+#include <string>
 
 using Graphite::CommitReveal;
 using Graphite::HistoryPathText;
@@ -117,4 +119,14 @@ TEST_CASE("Commit reveal carries on only over HEAD's whole history")
 TEST_CASE("Commit reveal writes the history path with forward slashes")
 {
 	CHECK(HistoryPathText(std::filesystem::path(L"Assets\\Game\\EventBus.cs")) == "Assets/Game/EventBus.cs");
+}
+
+TEST_CASE("Commit reveal writes a root-level history path that names only that file")
+{
+	const std::string pathText = HistoryPathText(std::filesystem::path(L"README.md"));
+
+	CHECK(pathText == "/README.md");
+	CHECK(Core::NamesPath(pathText, "README.md"));
+	CHECK_FALSE(Core::NamesPath(pathText, "docs/README.md"));
+	CHECK_FALSE(Core::NamesPath(pathText, "src/README.md.bak"));
 }

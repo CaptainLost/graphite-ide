@@ -2,7 +2,7 @@
 
 #include "Git/History/HistoryFilter.h"
 
-#include "Core/FileSystem/FileSystem.h"
+#include "Core/Git/CommitFilter.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -40,6 +40,6 @@ namespace Graphite {
 
 	std::string HistoryPathText(const std::filesystem::path& relativePath)
 	{
-		return Core::ToGenericUtf8(relativePath);
+		return Core::PatternNamingOnly(relativePath);
 	}
 }

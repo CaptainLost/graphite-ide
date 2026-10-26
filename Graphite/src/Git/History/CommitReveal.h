@@ -36,7 +36,8 @@ namespace Graphite {
 	// filter while the commit was being looked for, and that choice wins.
 	bool ShowsWholeHeadHistory(const Core::LogRequest& request);
 
-	// The path box's text for a path relative to the git working directory. A filter with a separator
-	// is matched against the whole path with forward slashes, so a backslash would match nothing.
+	// The path box's text naming one file, relative to the git working directory, and no other: forward
+	// slashes, since a filter with a separator is matched against the whole path, and a leading '/' for
+	// a file at the root, since a bare name would name that name in every folder.
 	std::string HistoryPathText(const std::filesystem::path& relativePath);
 }

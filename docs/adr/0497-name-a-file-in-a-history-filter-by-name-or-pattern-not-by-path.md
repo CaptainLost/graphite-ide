@@ -22,9 +22,12 @@ any .cpp", which is a shape rather than a file.
 
 ## Decision
 
-Match `LogRequest::File` as a pattern, in one of three ways, told apart by what
+Match `LogRequest::File` as a pattern, in one of four ways, told apart by what
 the reader typed:
 
+- a leading `/` — anchored to the root of the working directory: the `/` is
+  dropped and the rest is matched whole against the whole path, so `/README.md`
+  names the README.md at the root and no other;
 - a separator in it — matched whole against the whole path, which keeps the file
   and line histories on the one file they were opened for;
 - a `*` or a `?` in it — matched whole against the file name, so `*.cpp` means
@@ -40,10 +43,16 @@ would be a path search wearing a file search's clothes.
 Neither `*` nor `?` crosses a `/`, so a pattern with separators says how deep it
 means.
 
+A file at the root has no directory to write a separator with, and its bare name
+would be a fragment found in every folder. Whoever names exactly one file there
+anchors it: File History writes `/README.md`, through `Core::PatternNamingOnly`,
+which leaves a path with a directory as it is.
+
 Follow a rename by substituting the renamed file's old path for the pattern
 only when the pattern named exactly one file in that commit and carries no
 wildcard. A pattern with a wildcard names a set, and a set has no single
-identity for a rename to carry.
+identity for a rename to carry. An old path with no directory is substituted
+anchored, `/old.txt`, so the older commits are matched as that one file.
 
 Share one matcher: `Core::GlobMatches` in `Core/Base/Glob.h`, which the search
 panel's `MaskAccepts` now calls instead of keeping its own copy.
@@ -70,6 +79,8 @@ that only the single-file case can narrow the walk the way it always did.
   because they run the same matcher.
 - The file and line histories are untouched: a path with separators still
   matches exactly one file, renames included.
+- A file at the root can be named alone: `/README.md` matches it and not
+  `docs/README.md`, so its history stays on that one file, through a rename too.
 
 ### Negative
 
