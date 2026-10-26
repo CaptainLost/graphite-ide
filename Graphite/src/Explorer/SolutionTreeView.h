@@ -45,6 +45,7 @@ namespace Graphite {
 		void WithdrawQuestions();
 
 		bool CanEditSolution() const;
+		bool CanEditNow() const;
 
 		void NewFolderInRoot();
 
@@ -80,7 +81,7 @@ namespace Graphite {
 
 		void FollowActiveDocument();
 
-		static void ExplainNotEditable(bool editable);
+		void ExplainNotEditable(bool editable) const;
 
 		bool OpensToward(const Folder& folder) const;
 		bool OpensToward(const Project& project) const;

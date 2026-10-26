@@ -7,10 +7,12 @@
 
 #include "DeferredJobs.h"
 #include "DrawnColours.h"
+#include "DrawnGlyphs.h"
 #include "ImGuiFrames.h"
 #include "TempAppSettings.h"
 #include "TempDirectory.h"
 
+#include "Core/App/Redraw.h"
 #include "Core/Events/EventBus.h"
 #include "Core/Text/DocumentSet.h"
 
@@ -20,9 +22,13 @@
 #include <algorithm>
 #include <cfloat>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -73,6 +79,13 @@ namespace {
 	float RowPitch()
 	{
 		return Graphite::ListRowPitch();
+	}
+
+	std::size_t GlyphsDrawnInExplorer()
+	{
+		const ImGuiWindow* explorer = ImGui::FindWindowByName("Explorer");
+		REQUIRE(explorer != nullptr);
+		return DrawnGlyphs(*explorer->DrawList).size();
 	}
 
 	struct VerticalSpan
@@ -179,6 +192,37 @@ namespace {
 						 ImGuiMouseButton_Right);
 			REQUIRE(Frames.ClickMenuItem("Remove from Solution", [this] { Draw(); }));
 			Next();
+		}
+
+		// WARNING: A disabled item still takes the hover, only flagged as disabled.
+		std::optional<bool> IsMenuItemEnabled(const char* label)
+		{
+			constexpr float kStepDown = 4.0f;
+			constexpr float kIntoTheMenuLabel = 8.0f;
+
+			const ImGuiContext& context = *ImGui::GetCurrentContext();
+
+			if (context.OpenPopupStack.Size == 0 || context.OpenPopupStack.back().Window == nullptr)
+			{
+				return std::nullopt;
+			}
+
+			ImGuiWindow& menu = *context.OpenPopupStack.back().Window;
+			const ImGuiID itemId = menu.GetID(label);
+			const float x = menu.Pos.x + menu.WindowPadding.x + kIntoTheMenuLabel;
+
+			for (float y = menu.Pos.y; y < menu.Pos.y + menu.Size.y; y += kStepDown)
+			{
+				ImGui::GetIO().AddMousePosEvent(x, y);
+				Next();
+
+				if (context.HoveredId == itemId)
+				{
+					return !context.HoveredIdIsDisabled;
+				}
+			}
+
+			return std::nullopt;
 		}
 
 		int CountDrawnRows()
@@ -478,7 +522,7 @@ TEST_CASE("A remove question on screen when the workspace closes gives the modal
 	CHECK_FALSE(screen.Modals.IsBusy());
 }
 
-TEST_CASE("Before the solution's first read lands, the solution view draws no tree, and draws it once the read lands")
+TEST_CASE("Before the solution's first read lands, the solution view draws the loader and no tree, and draws the tree once the read lands")
 {
 	TempDirectory folder;
 	folder.MakeFile("Tools/Tools.csproj", kProject);
@@ -488,6 +532,23 @@ TEST_CASE("Before the solution's first read lands, the solution view draws no tr
 	SolutionScreen screen{solution, jobs.Submitter()};
 
 	CHECK(screen.Workspace.IsReadingSolution());
+	CHECK(FindSolutionBody() == nullptr);
+	CHECK(GlyphsDrawnInExplorer() == 0);
+
+	constexpr int kFramesPastTheLoaderWait = 20;
+
+	for (int frameIndex = 0; frameIndex < kFramesPastTheLoaderWait; ++frameIndex)
+	{
+		screen.Next();
+	}
+
+	static_cast<void>(Core::Redraw::TakeDeadline());
+	screen.Next();
+
+	const std::optional<Core::Redraw::Clock::time_point> nextFrame = Core::Redraw::TakeDeadline();
+	REQUIRE(nextFrame.has_value());
+	CHECK(*nextFrame <= Core::Redraw::Clock::now());
+	CHECK(GlyphsDrawnInExplorer() > 0);
 	CHECK(FindSolutionBody() == nullptr);
 
 	jobs.RunAll();
@@ -541,4 +602,72 @@ TEST_CASE("While the solution is read again, the solution view keeps its tree an
 
 	CHECK_FALSE(screen.Workspace.IsReadingSolution());
 	CHECK(FindSolutionBody()->ContentSize.y == treeHeight);
+}
+
+TEST_CASE("While the solution is read again, its rows offer no edits")
+{
+	constexpr int kSolutionRow = 0;
+	constexpr int kSolutionDepth = 0;
+	const std::optional<bool> disabled{false};
+
+	TempDirectory folder;
+	folder.MakeFile("Tools/Tools.csproj", kProject);
+	const std::filesystem::path solution = folder.MakeFile("App.slnx", kOneProjectSolution);
+
+	DeferredJobs jobs;
+	SolutionScreen screen{solution, jobs.Submitter()};
+	jobs.RunAll();
+	screen.Workspace.Update();
+	screen.Next();
+	screen.Next();
+
+	screen.Workspace.ReloadSolution();
+	REQUIRE(screen.Workspace.IsReadingSolution());
+
+	screen.Frames.Click(SolutionScreen::RowPointCountedFromSolutionRowZero(kOnlyProjectRow, kOnlyProjectDepth),
+						[&screen] { screen.Draw(); }, ImGuiMouseButton_Right);
+	CHECK(screen.IsMenuItemEnabled("Remove from Solution") == disabled);
+	screen.Frames.PressKey(ImGuiKey_Escape, [&screen] { screen.Draw(); });
+
+	screen.Frames.Click(SolutionScreen::RowPointCountedFromSolutionRowZero(kSolutionRow, kSolutionDepth),
+						[&screen] { screen.Draw(); }, ImGuiMouseButton_Right);
+	CHECK(screen.IsMenuItemEnabled("New Folder") == disabled);
+	screen.Frames.PressKey(ImGuiKey_Escape, [&screen] { screen.Draw(); });
+
+	jobs.RunAll();
+	screen.Workspace.Update();
+	screen.Next();
+}
+
+TEST_CASE("A removal confirmed after the solution started being read again is refused, and the file keeps the project")
+{
+	TempDirectory folder;
+	folder.MakeFile("Tools/Tools.csproj", kProject);
+	const std::filesystem::path solution = folder.MakeFile("App.slnx", kOneProjectSolution);
+
+	DeferredJobs jobs;
+	SolutionScreen screen{solution, jobs.Submitter()};
+	jobs.RunAll();
+	screen.Workspace.Update();
+	screen.Next();
+	screen.Next();
+
+	screen.AskToRemoveTheOnlyProject();
+	REQUIRE(ImGuiFrames::IsPopupNamedOpen("Remove from Solution##solutionTreeRemove"));
+
+	screen.Workspace.ReloadSolution();
+	REQUIRE(screen.Workspace.IsReadingSolution());
+
+	screen.Next();
+	screen.Frames.PressKey(ImGuiKey_Enter, [&screen] { screen.Draw(); });
+
+	CHECK_FALSE(ImGuiFrames::IsPopupNamedOpen("Remove from Solution##solutionTreeRemove"));
+
+	std::ifstream solutionFile{solution, std::ios::binary};
+	const std::string solutionText{std::istreambuf_iterator<char>{solutionFile}, std::istreambuf_iterator<char>{}};
+	CHECK(solutionText.find("Tools.csproj") != std::string::npos);
+
+	jobs.RunAll();
+	screen.Workspace.Update();
+	screen.Next();
 }

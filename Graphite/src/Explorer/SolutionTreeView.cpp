@@ -88,6 +88,8 @@ namespace Graphite {
 		constexpr const char* kNotEditableTip =
 			"Editing .sln files is not supported yet; convert the solution to .slnx";
 
+		constexpr const char* kReadingAgainTip = "The solution is being read again; edit it once the read is done";
+
 		Core::Result<std::filesystem::path> PickProjectFile()
 		{
 			const std::vector<Core::FileDialog::Filter> filters = {
@@ -704,6 +706,12 @@ namespace Graphite {
 			return;
 		}
 
+		if (const std::optional<std::string>& failure = m_Workspace.GetSolutionReadFailure(); failure.has_value())
+		{
+			Core::EmptyState(std::format("This Visual Studio solution could not be read: {}", *failure));
+			return;
+		}
+
 		Core::EmptyState("This Visual Studio solution could not be read. See the console.");
 	}
 
@@ -720,7 +728,7 @@ namespace Graphite {
 
 		const bool isRoot = path.empty();
 
-		const bool editable = CanEditSolution();
+		const bool editable = CanEditNow();
 
 		if (ImGui::MenuItem("Add Existing Project...", kNoShortcut, kNotSelected, editable && !m_Workspace.IsDialogOpen()))
 		{
@@ -799,11 +807,16 @@ namespace Graphite {
 		return m_Workspace.GetLoadedSolution() && SolutionEditor::CanEdit(m_Workspace.GetLoadedSolution()->Path);
 	}
 
-	void SolutionTreeView::ExplainNotEditable(bool editable)
+	bool SolutionTreeView::CanEditNow() const
+	{
+		return CanEditSolution() && !m_Workspace.IsReadingSolution();
+	}
+
+	void SolutionTreeView::ExplainNotEditable(bool editable) const
 	{
 		if (!editable && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled))
 		{
-			ImGui::SetTooltip("%s", kNotEditableTip);
+			ImGui::SetTooltip("%s", m_Workspace.IsReadingSolution() ? kReadingAgainTip : kNotEditableTip);
 		}
 	}
 
@@ -833,7 +846,7 @@ namespace Graphite {
 			return;
 		}
 
-		const bool editable = CanEditSolution();
+		const bool editable = CanEditNow();
 
 		if (ImGui::MenuItem("Remove from Solution", kNoShortcut, kNotSelected, editable))
 		{
@@ -999,6 +1012,11 @@ namespace Graphite {
 
 	Core::Result<void> SolutionTreeView::Apply(const PendingAction& action)
 	{
+		if (m_Workspace.IsReadingSolution())
+		{
+			return Core::Error{Core::ErrorCode::InvalidArgument, kReadingAgainTip};
+		}
+
 		Core::Result<void> saved = SaveEdit(action);
 
 		if (saved)
