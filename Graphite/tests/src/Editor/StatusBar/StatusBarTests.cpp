@@ -18,6 +18,8 @@
 
 #include <imgui_internal.h>
 
+#include <algorithm>
+#include <cfloat>
 #include <cmath>
 #include <cstddef>
 #include <filesystem>
@@ -838,4 +840,114 @@ TEST_CASE("The read-only warning still shows in the status bar, where the path s
 
 	const ImGuiWindow& bar = StatusBarScreen::Bar();
 	CHECK(drawn->Left < bar.Pos.x + bar.WindowPadding.x + Core::Scaled(Graphite::kStatusItemGap));
+}
+
+TEST_CASE("A view's items stand on the right of the status bar when no document is shown")
+{
+	constexpr const char* kPictureFacts = "256 \xC3\x97 256 \xC2\xB7 PNG \xC2\xB7 24.6 KB";
+
+	StatusBarScreen screen;
+	screen.Messages.View = {Graphite::ViewStatusItem{.Text = kPictureFacts}};
+
+	std::vector<ImRect> facts;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		facts = GlyphRunOf(kPictureFacts, RunFace::TheBarFace);
+	});
+
+	REQUIRE_FALSE(facts.empty());
+	REQUIRE(DrawsGlyphRun(StatusBarScreen::BarDrawing(), facts));
+
+	const ImGuiWindow& bar = StatusBarScreen::Bar();
+	const float barMiddle = bar.Pos.x + bar.Size.x * 0.5f;
+
+	for (const ImRect& glyph : GlyphQuads(StatusBarScreen::BarDrawing()))
+	{
+		CHECK(glyph.Min.x > barMiddle);
+	}
+}
+
+TEST_CASE("A view's item with a swatch draws the swatch's colour before its text")
+{
+	constexpr const char* kColourName = "#0AC81E";
+	constexpr ImU32 kSwatchColour = IM_COL32(10, 200, 30, 128);
+
+	StatusBarScreen screen;
+	screen.Messages.View = {Graphite::ViewStatusItem{.Text = kColourName, .Swatch = kSwatchColour}};
+
+	std::vector<ImRect> name;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		name = GlyphRunOf(kColourName, RunFace::TheBarFace);
+	});
+
+	REQUIRE(DrawsGlyphRun(StatusBarScreen::BarDrawing(), name));
+
+	const std::optional<HorizontalExtent> swatch = HorizontalExtentInColour(StatusBarScreen::BarDrawing(), kSwatchColour);
+	REQUIRE(swatch.has_value());
+
+	float firstGlyphLeft = FLT_MAX;
+	for (const ImRect& glyph : GlyphQuads(StatusBarScreen::BarDrawing()))
+	{
+		firstGlyphLeft = std::min(firstGlyphLeft, glyph.Min.x);
+	}
+
+	CHECK(swatch->Right < firstGlyphLeft);
+	CHECK(swatch->Right - swatch->Left == doctest::Approx(Core::Scaled(11.0f)));
+}
+
+TEST_CASE("A view's item without a swatch draws no square before its text")
+{
+	constexpr ImU32 kSwatchColour = IM_COL32(10, 200, 30, 128);
+
+	StatusBarScreen screen;
+	screen.Messages.View = {Graphite::ViewStatusItem{.Text = "plain"}};
+	screen.Frames.Next([&] { screen.Draw(); });
+
+	CHECK_FALSE(DrawsInColour(StatusBarScreen::BarDrawing(), kSwatchColour));
+}
+
+TEST_CASE("A view's code item is drawn in the code face")
+{
+	constexpr const char* kCoordinates = "Ln 1, Col 1";
+
+	StatusBarScreen screen;
+	ImGui::GetStyle().FontSizeBase = 20.0f;
+	screen.Messages.View = {Graphite::ViewStatusItem{.Text = kCoordinates, .Code = true}};
+
+	std::vector<ImRect> inCode;
+	std::vector<ImRect> inInterface;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		inCode = GlyphRunOf(kCoordinates, RunFace::TheCodeFaceAtTheBarSize);
+		inInterface = GlyphRunOf(kCoordinates, RunFace::TheWindowFace);
+	});
+
+	REQUIRE_FALSE(inCode.empty());
+	CHECK(DrawsGlyphRun(StatusBarScreen::BarDrawing(), inCode));
+	CHECK_FALSE(DrawsGlyphRun(StatusBarScreen::BarDrawing(), inInterface));
+}
+
+TEST_CASE("A text document's caret, encoding and line endings are unchanged")
+{
+	constexpr const char* kViewText = "256 x 256";
+
+	TempDirectory temp;
+	StatusBarScreen screen;
+	screen.Open(temp.MakeFile("notes.txt", "abc\n"));
+	screen.Messages.View = {Graphite::ViewStatusItem{.Text = kViewText}};
+
+	std::vector<ImRect> caret;
+	std::vector<ImRect> encoding;
+	std::vector<ImRect> view;
+	screen.Frames.Next([&] {
+		screen.Draw();
+		caret = GlyphRunOf("Ln 1, Col 1", RunFace::TheCodeFaceAtTheBarSize);
+		encoding = GlyphRunOf("LF", RunFace::TheBarFace);
+		view = GlyphRunOf(kViewText, RunFace::TheBarFace);
+	});
+
+	CHECK(DrawsGlyphRun(StatusBarScreen::BarDrawing(), caret));
+	CHECK(DrawsGlyphRun(StatusBarScreen::BarDrawing(), encoding));
+	CHECK_FALSE(DrawsGlyphRun(StatusBarScreen::BarDrawing(), view));
 }

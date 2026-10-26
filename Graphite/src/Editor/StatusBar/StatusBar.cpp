@@ -38,6 +38,10 @@ namespace Graphite {
 		constexpr float kMarkToTextGap = 4.0f;
 		constexpr float kBetweenCountsGap = 8.0f;
 
+		constexpr float kSwatchSide = 11.0f;
+		constexpr ImU32 kCheckerLight = IM_COL32(204, 204, 204, 255);
+		constexpr ImU32 kCheckerDark = IM_COL32(128, 128, 128, 255);
+
 		constexpr float kStatusTextShareOfDisabled = 0.47f;
 
 		// The mockup's ready green on a dark chrome. On a light one, the light git added colour, (40, 120, 40), as
@@ -56,7 +60,8 @@ namespace Graphite {
 		enum class PieceKind
 		{
 			Text,
-			Dot
+			Dot,
+			Swatch
 		};
 
 		struct Piece
@@ -219,6 +224,11 @@ namespace Graphite {
 
 		float PieceWidth(const Piece& piece)
 		{
+			if (piece.Kind == PieceKind::Swatch)
+			{
+				return Core::Scaled(kSwatchSide);
+			}
+
 			if (piece.Kind == PieceKind::Dot)
 			{
 				return Core::Scaled(kServerDotDiameter);
@@ -239,6 +249,19 @@ namespace Graphite {
 			return width;
 		}
 
+		// A 2x2 checkerboard under the colour, so a translucent colour shows as such.
+		void DrawSwatch(ImDrawList& drawList, ImVec2 topLeft, float side, ImU32 colour)
+		{
+			const float cell = side * kHalf;
+			const ImVec2 middle(topLeft.x + cell, topLeft.y + cell);
+			const ImVec2 bottomRight(topLeft.x + side, topLeft.y + side);
+
+			drawList.AddRectFilled(topLeft, bottomRight, kCheckerLight);
+			drawList.AddRectFilled(topLeft, middle, kCheckerDark);
+			drawList.AddRectFilled(middle, bottomRight, kCheckerDark);
+			drawList.AddRectFilled(topLeft, bottomRight, colour);
+		}
+
 		void DrawPieces(const std::vector<Piece>& pieces, ImVec2 lineStart, float hoverAmount)
 		{
 			ImDrawList* const drawList = ImGui::GetWindowDrawList();
@@ -256,6 +279,10 @@ namespace Graphite {
 				{
 					const float radius = width * kHalf;
 					drawList->AddCircleFilled(ImVec2(x + radius, lineMiddle), radius, colour);
+				}
+				else if (piece.Kind == PieceKind::Swatch)
+				{
+					DrawSwatch(*drawList, ImVec2(x, lineMiddle - width * kHalf), width, colour);
 				}
 				else
 				{
@@ -492,6 +519,24 @@ namespace Graphite {
 			return item;
 		}
 
+		StatusItem ViewItem(const ViewStatusItem& view)
+		{
+			StatusItem item = BarTextItem(view.Text);
+
+			if (view.Code)
+			{
+				item.Face = ItemFace::Code;
+			}
+
+			if (view.Swatch)
+			{
+				item.Pieces.front().GapBefore = Core::Scaled(kMarkToTextGap);
+				item.Pieces.insert(item.Pieces.begin(), Piece{.Kind = PieceKind::Swatch, .Colour = *view.Swatch});
+			}
+
+			return item;
+		}
+
 		std::vector<StatusItem> RightHandItems(const StatusMessages& messages, const Core::OpenItem* document)
 		{
 			std::vector<StatusItem> items;
@@ -520,6 +565,13 @@ namespace Graphite {
 				items.push_back(BarTextItem(std::string{Core::EncodingName(document->Document->GetFileEncoding())}));
 				items.push_back(BarTextItem(LineEndingName(document->Document->GetDocumentLineEnding(),
 														   document->Document->HasMixedLineEndings())));
+			}
+			else
+			{
+				for (const ViewStatusItem& view : messages.View)
+				{
+					items.push_back(ViewItem(view));
+				}
 			}
 
 			return items;
