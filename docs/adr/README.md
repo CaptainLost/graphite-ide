@@ -674,4 +674,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0642](0642-run-explorer-file-operations-and-large-file-loads-on-a-worker-and-show-them-while-they-run.md) | Run Explorer file operations and large file loads on a worker and show them while they run | proposed | 2026-10-26 |
 | [0643](0643-preview-only-files-that-open-without-asking.md) | Preview only files that open without asking | proposed | 2026-10-26 |
 | [0644](0644-read-solutions-off-the-ui-thread.md) | Read solutions off the UI thread | proposed | 2026-10-26 |
+| [0645](0645-hold-what-is-asked-of-a-loading-tab-until-its-text-lands.md) | Hold what is asked of a loading tab until its text lands | proposed | 2026-10-27 |
 <!-- /adr-index -->
