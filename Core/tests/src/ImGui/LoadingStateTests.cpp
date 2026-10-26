@@ -66,6 +66,17 @@ namespace {
 			return drawn;
 		}
 
+		float ScrollRoomAfterLoader(const char* text, ImVec2 size)
+		{
+			static_cast<void>(DrawLoaderPastItsWait(text, size));
+
+			BeginFrame("Loader", size);
+			const float scrollRoom = ImGui::GetScrollMaxY();
+			EndFrame();
+
+			return scrollRoom;
+		}
+
 		void DrawWithoutLoader()
 		{
 			BeginFrame("Loader", kWindowSize);
@@ -210,6 +221,19 @@ TEST_CASE("LoadingState in a window narrower than its text stays inside the wind
 	REQUIRE(drawn.has_value());
 	CHECK(drawn->Min.x >= window.GetRegion().Min.x);
 	CHECK(drawn->Max.x <= window.GetRegion().Max.x + 0.5f);
+}
+
+TEST_CASE("LoadingState with a text wider than the window is tall keeps the text in the middle and adds no scrolling")
+{
+	LoaderWindow window;
+	const ImVec2 lowAndWide{800.0f, 120.0f};
+	constexpr const char* kLongText = "Waiting for clangd to start, 2 open files not checked yet";
+
+	const std::optional<ImRect> drawn = window.DrawLoaderPastItsWait(kLongText, lowAndWide);
+
+	REQUIRE(drawn.has_value());
+	CHECK(drawn->GetCenter().y == doctest::Approx(window.GetRegion().GetCenter().y).epsilon(0.01));
+	CHECK(window.ScrollRoomAfterLoader(kLongText, lowAndWide) == doctest::Approx(0.0f));
 }
 
 TEST_CASE("LoadingState asks for the next frame so its text keeps moving")
