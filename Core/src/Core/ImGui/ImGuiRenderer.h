@@ -14,6 +14,8 @@ struct ImFont;
 namespace Core {
 
 	struct ChromePalette;
+	class ImGuiTextureFactory;
+	class TextureFactory;
 	class Window;
 
 	// WARNING: ImGui's WantCaptureKeyboard is true for any focused window that allows
@@ -52,6 +54,8 @@ namespace Core {
 
 		static void SetInterfaceScale(float scale);
 
+		static TextureFactory& GetTextures();
+
 	private:
 		ImGuiRenderer();
 
@@ -63,6 +67,7 @@ namespace Core {
 		// outlive the context.
 		std::string m_LayoutFile;
 		ImGuiErrorLog m_ErrorLog;
+		Scope<ImGuiTextureFactory> m_Textures;
 		float m_InitialDpiScale = 1.0f;
 		float m_StyleScale = 0.0f;
 		bool m_ViewportDpiKnown = false;

@@ -669,4 +669,5 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0637](0637-keep-a-command-terminal-open-after-its-process-exits.md) | Keep a command terminal open after its process exits | proposed | 2026-10-25 |
 | [0638](0638-show-where-a-navigation-command-waits-and-how-it-ended-in-a-bubble-at-the-caret.md) | Show where a navigation command waits and how it ended in a bubble at the caret | proposed | 2026-10-25 |
 | [0639](0639-add-stb-as-a-dependency-for-decoding-and-scaling-images.md) | Add stb as a dependency for decoding and scaling images | proposed | 2026-10-25 |
+| [0640](0640-draw-pictures-through-a-texture-facade-over-imgui-s-user-textures.md) | Draw pictures through a texture facade over ImGui's user textures | proposed | 2026-10-25 |
 <!-- /adr-index -->
