@@ -21,6 +21,40 @@ namespace Graphite {
 		constexpr std::string_view kDiffHunks = "hunks";
 		constexpr std::string_view kDiffWholeFile = "wholeFile";
 
+		constexpr std::string_view kBackgroundDark = "dark";
+		constexpr std::string_view kBackgroundLight = "light";
+		constexpr std::string_view kBackgroundCheckerboard = "checkerboard";
+
+		PictureBackground ImageBackgroundFrom(std::string_view stored)
+		{
+			if (stored == kBackgroundDark)
+			{
+				return PictureBackground::Dark;
+			}
+
+			if (stored == kBackgroundLight)
+			{
+				return PictureBackground::Light;
+			}
+
+			return PictureBackground::Checkerboard;
+		}
+
+		std::string_view ImageBackgroundName(PictureBackground background)
+		{
+			switch (background)
+			{
+			case PictureBackground::Checkerboard:
+				return kBackgroundCheckerboard;
+			case PictureBackground::Dark:
+				return kBackgroundDark;
+			case PictureBackground::Light:
+				return kBackgroundLight;
+			}
+
+			return kBackgroundCheckerboard;
+		}
+
 		DiffViewMode DiffLayoutFrom(std::string_view stored)
 		{
 			return stored == kDiffUnified ? DiffViewMode::Unified : DiffViewMode::SideBySide;
@@ -119,6 +153,7 @@ namespace Graphite {
 									 .Scope = DiffScopeFrom(m_Store.GetDiffScope()),
 									 .ColourSyntax = m_Store.IsDiffSyntaxColoured(),
 									 .WordWrap = m_Store.IsDiffWordWrapEnabled()};
+		m_ImageBackground = ImageBackgroundFrom(m_Store.GetImageBackground());
 		m_GutterChangeMarkers = m_Store.HasGutterChangeMarkers();
 		m_ScrollbarChangeMarkers = m_Store.HasScrollbarChangeMarkers();
 
@@ -186,6 +221,12 @@ namespace Graphite {
 		m_Store.SetDiffScope(DiffScopeName(options.Scope));
 		m_Store.SetDiffSyntaxColoured(options.ColourSyntax);
 		m_Store.SetDiffWordWrap(options.WordWrap);
+	}
+
+	void EditorSettings::SetImageBackground(PictureBackground background)
+	{
+		m_ImageBackground = background;
+		m_Store.SetImageBackground(ImageBackgroundName(background));
 	}
 
 	void EditorSettings::SetGutterChangeMarkers(bool show)

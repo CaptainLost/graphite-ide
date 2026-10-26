@@ -73,6 +73,9 @@ namespace Graphite {
 		std::string GetDiffLayout() const;
 		void SetDiffLayout(std::string_view layout);
 
+		std::string GetImageBackground() const;
+		void SetImageBackground(std::string_view background);
+
 		std::string GetDiffScope() const;
 		void SetDiffScope(std::string_view scope);
 

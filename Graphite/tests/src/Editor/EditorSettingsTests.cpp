@@ -272,3 +272,34 @@ TEST_CASE("EditorSettings reads an unknown stored preview mode as the default")
 
 	CHECK(settings.GetHoverSettings().Preview == Graphite::DefinitionPreviewMode::WithCtrl);
 }
+
+TEST_CASE("The image background is kept in the settings")
+{
+	TempAppSettings store;
+
+	{
+		Graphite::EditorSettings settings{store.Get()};
+		CHECK(settings.GetImageBackground() == Graphite::PictureBackground::Checkerboard);
+
+		settings.SetImageBackground(Graphite::PictureBackground::Dark);
+		CHECK(settings.GetImageBackground() == Graphite::PictureBackground::Dark);
+	}
+
+	Graphite::EditorSettings reloaded{store.Get()};
+	reloaded.Load();
+	CHECK(reloaded.GetImageBackground() == Graphite::PictureBackground::Dark);
+
+	reloaded.SetImageBackground(Graphite::PictureBackground::Light);
+	CHECK(store.Get().GetImageBackground() == "light");
+}
+
+TEST_CASE("An unknown image background reads as the checkerboard")
+{
+	TempAppSettings store;
+	store.Get().SetImageBackground("sepia");
+
+	Graphite::EditorSettings settings{store.Get()};
+	settings.Load();
+
+	CHECK(settings.GetImageBackground() == Graphite::PictureBackground::Checkerboard);
+}

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Git/Diff/DiffViewOptions.h"
+#include "Image/PictureBackground.h"
 
 #include "Core/ImGui/FontSet.h"
 #include "Core/Text/Editing.h"
@@ -63,6 +64,9 @@ namespace Graphite {
 		const DiffViewOptions& GetDiffViewOptions() const { return m_DiffView; }
 		void SetDiffViewOptions(const DiffViewOptions& options);
 
+		PictureBackground GetImageBackground() const { return m_ImageBackground; }
+		void SetImageBackground(PictureBackground background);
+
 		bool HasGutterChangeMarkers() const { return m_GutterChangeMarkers; }
 		bool HasScrollbarChangeMarkers() const { return m_ScrollbarChangeMarkers; }
 
@@ -97,6 +101,7 @@ namespace Graphite {
 
 		bool m_WordWrap = false;
 		DiffViewOptions m_DiffView;
+		PictureBackground m_ImageBackground = PictureBackground::Checkerboard;
 
 		bool m_GutterChangeMarkers = true;
 		bool m_ScrollbarChangeMarkers = true;
