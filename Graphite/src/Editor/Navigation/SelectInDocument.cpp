@@ -14,6 +14,7 @@ namespace Graphite {
 
 	namespace {
 
+		// An item whose file is still being read is returned too: its selection waits for the text.
 		Core::OpenItem* OpenForSelection(Core::DocumentSet& documents,
 										 const std::filesystem::path& path,
 										 const OpenDocument& open)
@@ -28,8 +29,9 @@ namespace Graphite {
 			}
 
 			Core::OpenItem& item = documents.At(*index);
+			const bool holdsOrAwaitsText = item.Document != nullptr || Core::IsLoading(item);
 
-			return item.Document ? &item : nullptr;
+			return holdsOrAwaitsText ? &item : nullptr;
 		}
 
 		void Select(Core::OpenItem& item, std::size_t from, std::size_t to)
@@ -42,6 +44,30 @@ namespace Graphite {
 			item.RowAimCaretOffset = Core::NoRowAim;
 
 			item.PendingScroll = true;
+		}
+
+		void SelectBytesOfLine(Core::OpenItem& item, std::size_t line, std::size_t from, std::size_t to)
+		{
+			const Core::TextBuffer& buffer = item.Document->GetBuffer();
+			const std::size_t lineStart = buffer.LineStart(line);
+
+			Select(item, lineStart + from, lineStart + to);
+		}
+
+		void SelectUtf16ColumnsOfLine(Core::OpenItem& item, std::size_t line, Utf16Column column, std::size_t endLine,
+									  Utf16Column endColumn)
+		{
+			const Core::TextBuffer& buffer = item.Document->GetBuffer();
+			const std::string lineText = buffer.LineText(line);
+			const std::size_t lineStart = buffer.LineStart(line);
+
+			const std::size_t from = std::min(FromUtf16Column(lineText, column), lineText.size());
+			const std::size_t to =
+				SpansOneLine(line, column, endLine, endColumn)
+					? std::min(FromUtf16Column(lineText, endColumn), lineText.size())
+					: from;
+
+			Select(item, lineStart + from, lineStart + to);
 		}
 	}
 
@@ -62,10 +88,13 @@ namespace Graphite {
 			return false;
 		}
 
-		const Core::TextBuffer& buffer = item->Document->GetBuffer();
-		const std::size_t lineStart = buffer.LineStart(line);
+		if (Core::IsLoading(*item))
+		{
+			item->PlaceCaretOnLoad = [line, from, to](Core::OpenItem& loaded) { SelectBytesOfLine(loaded, line, from, to); };
+			return true;
+		}
 
-		Select(*item, lineStart + from, lineStart + to);
+		SelectBytesOfLine(*item, line, from, to);
 		return true;
 	}
 
@@ -80,17 +109,15 @@ namespace Graphite {
 			return false;
 		}
 
-		const Core::TextBuffer& buffer = item->Document->GetBuffer();
-		const std::string lineText = buffer.LineText(line);
-		const std::size_t lineStart = buffer.LineStart(line);
+		if (Core::IsLoading(*item))
+		{
+			item->PlaceCaretOnLoad = [line, column, endLine, endColumn](Core::OpenItem& loaded) {
+				SelectUtf16ColumnsOfLine(loaded, line, column, endLine, endColumn);
+			};
+			return true;
+		}
 
-		const std::size_t from = std::min(FromUtf16Column(lineText, column), lineText.size());
-		const std::size_t to =
-			SpansOneLine(line, column, endLine, endColumn)
-				? std::min(FromUtf16Column(lineText, endColumn), lineText.size())
-				: from;
-
-		Select(*item, lineStart + from, lineStart + to);
+		SelectUtf16ColumnsOfLine(*item, line, column, endLine, endColumn);
 		return true;
 	}
 }

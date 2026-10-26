@@ -13,6 +13,7 @@
 
 #include <optional>
 #include <span>
+#include <utility>
 
 namespace Core {
 
@@ -174,25 +175,46 @@ namespace Core {
 
 	}
 
-	void RecomputeLineCaches(OpenItem& item)
+	LineCaches ComputeLineCaches(const TextBuffer& buffer, std::size_t tabWidth, std::size_t columnsPerRow)
 	{
-		const TextBuffer& buffer = item.Document->GetBuffer();
-
-		item.IndentDepths = IndentDepths(buffer, item.TabWidth);
-		item.WidestColumn = 0;
-		item.WidestLine = 0;
+		LineCaches caches;
+		caches.TabWidth = tabWidth;
+		caches.IndentDepths = IndentDepths(buffer, tabWidth);
 
 		for (std::size_t line = 0; line < buffer.GetLineCount(); ++line)
 		{
-			RecordLineIfWidest(item, buffer, line);
+			const std::size_t width = ColumnCount(buffer.LineText(line), tabWidth);
+
+			if (width > caches.WidestColumn)
+			{
+				caches.WidestColumn = width;
+				caches.WidestLine = line;
+			}
 		}
 
+		caches.Rows.Rebuild(buffer, columnsPerRow, tabWidth);
+		caches.SeenChange = buffer.GetChangeSequence();
+
+		return caches;
+	}
+
+	void AdoptLineCaches(OpenItem& item, LineCaches caches)
+	{
+		item.TabWidth = caches.TabWidth;
+		item.IndentDepths = std::move(caches.IndentDepths);
+		item.WidestColumn = caches.WidestColumn;
+		item.WidestLine = caches.WidestLine;
+		item.Rows = std::move(caches.Rows);
+		item.SeenChange = caches.SeenChange;
+	}
+
+	void RecomputeLineCaches(OpenItem& item)
+	{
 		// Rebuilt at the width already in force, not at kNoWrap: the editor rewraps only when its
 		// width changes, so a document on screen would stay unwrapped until the next resize.
 		const std::size_t columnsPerRowInForce = item.Rows.GetColumnsPerRow();
-		item.Rows.Rebuild(buffer, columnsPerRowInForce, item.TabWidth);
 
-		item.SeenChange = buffer.GetChangeSequence();
+		AdoptLineCaches(item, ComputeLineCaches(item.Document->GetBuffer(), item.TabWidth, columnsPerRowInForce));
 	}
 
 	void CatchUpWithDocument(OpenItem& item, CaretFollow follow)

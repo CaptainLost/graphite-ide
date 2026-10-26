@@ -49,6 +49,13 @@ namespace Core {
 		return document;
 	}
 
+	void DocumentStore::Adopt(const std::filesystem::path& path, const std::shared_ptr<TextDocument>& document)
+	{
+		ForgetReleased();
+
+		m_Entries.push_back(Entry{.Path = path, .Document = document});
+	}
+
 	std::vector<std::shared_ptr<TextDocument>> DocumentStore::GetDocuments() const
 	{
 		std::vector<std::shared_ptr<TextDocument>> documents;

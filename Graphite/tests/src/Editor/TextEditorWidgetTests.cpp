@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include "DrawnColours.h"
+#include "HoveredItems.h"
 #include "ImGuiFrames.h"
 
 #include "Editor/TextEditorWidget.h"
@@ -1160,4 +1161,65 @@ TEST_CASE("Occurrences are ticked on the scrollbar either side of its grab, neve
 	CHECK(ticks->Top >= bar.Min.y);
 	CHECK(ticks->Bottom <= bar.Max.y);
 	CHECK(ticks->Bottom - ticks->Top > bar.GetHeight() * kHalf);
+}
+
+namespace {
+
+	bool AnyWindowNamedLike(std::string_view part)
+	{
+		for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+		{
+			if (std::string_view{window->Name}.find(part) != std::string_view::npos)
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
+TEST_CASE("A tab whose file is still being read draws no editor and asks for nothing")
+{
+	EditorFrames frames{""};
+	frames.Item = Core::OpenItem{.Path = "C:/p/big.log", .FileSize = 100ull * 1024 * 1024};
+	frames.Item.LoadTicket = 1;
+
+	frames.Next();
+	frames.Next();
+
+	CHECK(frames.StackAfter == frames.StackBefore);
+	CHECK_FALSE(AnyWindowNamedLike(kEditorSurface));
+	CHECK_FALSE(frames.Result.RetryLoad);
+	CHECK_FALSE(frames.Result.DrewRows);
+}
+
+TEST_CASE("A tab whose file could not be read offers Retry and reports the press")
+{
+	EditorFrames frames{""};
+	frames.Item = Core::OpenItem{.Path = "C:/p/locked.log", .Failure = Core::OpenFailure::ReadFailed,
+								 .FailureDetail = "Cannot open file: C:/p/locked.log"};
+
+	const float middleX = kDocumentWidth * kHalf;
+	const std::vector<HoveredStretch> stretches = HoveredItems::Walk(
+		frames.Frames, HoveredItems::Along::Down, middleX, 0.0f, kDocumentHeight, [&frames] { frames.Draw(); });
+
+	REQUIRE(stretches.size() == 1);
+
+	frames.Frames.Click(ImVec2(middleX, stretches.front().Middle()), [&frames] { frames.Draw(); });
+
+	CHECK(frames.Result.RetryLoad);
+	CHECK_FALSE(AnyWindowNamedLike(kEditorSurface));
+}
+
+TEST_CASE("A tab refused as binary says why and offers nothing to press")
+{
+	EditorFrames frames{""};
+	frames.Item = Core::OpenItem{.Path = "C:/p/tool.exe", .Failure = Core::OpenFailure::Binary, .FileSize = 4096};
+
+	const std::vector<HoveredStretch> stretches = HoveredItems::Walk(
+		frames.Frames, HoveredItems::Along::Down, kDocumentWidth * kHalf, 0.0f, kDocumentHeight, [&frames] { frames.Draw(); });
+
+	CHECK(stretches.empty());
+	CHECK_FALSE(frames.Result.RetryLoad);
 }

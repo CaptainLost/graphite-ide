@@ -158,6 +158,27 @@ namespace Graphite {
 
 			return std::to_string(names.size()) + " changed on disk and " + (names.size() == 1 ? "was" : "were") + " not saved: " + Core::JoinedWith(names, ", ");
 		}
+
+		bool HoldsOrAwaitsDocument(const Core::OpenItem& item)
+		{
+			return item.Document != nullptr || Core::IsLoading(item);
+		}
+
+		void PlaceRestoredCaret(Core::OpenItem& item, std::size_t line, std::size_t byteColumn)
+		{
+			const std::size_t offset = RestoredCaretOffset(item.Document->GetBuffer(), line, byteColumn);
+
+			item.Caret = Core::Caret{.Offset = offset, .Anchor = offset};
+		}
+
+		TabState TabStillBeingRead(const Core::OpenItem& item, const std::optional<TabState>& restoring)
+		{
+			TabState tab = restoring.value_or(TabState{});
+			tab.Path = item.Path;
+			tab.Preview = item.Preview;
+
+			return tab;
+		}
 	}
 
 	std::string SaveFailureMessage(const std::filesystem::path& path, std::string_view error)
@@ -208,7 +229,7 @@ namespace Graphite {
 		{
 			const Core::OpenItem& item = m_Documents.At(index);
 
-			if (!item.Document)
+			if (!HoldsOrAwaitsDocument(item))
 			{
 				continue;
 			}
@@ -217,6 +238,13 @@ namespace Graphite {
 
 			if (kept != nullptr && kept->CarriedOver)
 			{
+				continue;
+			}
+
+			if (Core::IsLoading(item))
+			{
+				const std::optional<TabState> noRestore;
+				state.Tabs.push_back(TabStillBeingRead(item, kept != nullptr ? kept->Restoring : noRestore));
 				continue;
 			}
 
@@ -242,7 +270,7 @@ namespace Graphite {
 
 		const std::optional<std::size_t> activeIndex = m_Documents.GetActiveIndex();
 
-		if (activeIndex && m_Documents.At(*activeIndex).Document &&
+		if (activeIndex && HoldsOrAwaitsDocument(m_Documents.At(*activeIndex)) &&
 			!IsCarriedOver(m_Documents.At(*activeIndex).Path))
 		{
 			state.Active = m_Documents.At(*activeIndex).Path;
@@ -295,20 +323,22 @@ namespace Graphite {
 			item.PendingFocus = false;
 			m_RestoredIdentities.insert(DocumentIdentityOf(m_Documents, *itemIndex));
 
+			if (Core::IsLoading(item))
+			{
+				item.PlaceCaretOnLoad = [line = tab.Line, column = tab.Column](Core::OpenItem& loaded) {
+					PlaceRestoredCaret(loaded, line, column);
+				};
+				StateFor(tab.Path).Restoring = tab;
+				continue;
+			}
+
 			if (!item.Document)
 			{
 				continue;
 			}
 
-			const Core::TextBuffer& buffer = item.Document->GetBuffer();
-			const std::size_t offset = RestoredCaretOffset(buffer, tab.Line, tab.Column);
-
-			item.Caret = Core::Caret{.Offset = offset, .Anchor = offset};
-
-			if (const std::size_t top = RestoredTopLine(buffer, tab.Top); top > 0)
-			{
-				StateFor(tab.Path).PendingTop = PendingTopLine{.Line = top, .CaretOffset = offset};
-			}
+			PlaceRestoredCaret(item, tab.Line, tab.Column);
+			KeepRestoredTopLine(item, tab.Top);
 		}
 
 		if (state.Active)
@@ -322,18 +352,45 @@ namespace Graphite {
 		}
 	}
 
+	void DocumentWindows::KeepRestoredTopLine(const Core::OpenItem& item, std::size_t savedTopLine)
+	{
+		if (const std::size_t top = RestoredTopLine(item.Document->GetBuffer(), savedTopLine); top > 0)
+		{
+			StateFor(item.Path).PendingTop = PendingTopLine{.Line = top, .CaretOffset = item.Caret.Offset};
+		}
+	}
+
 	void DocumentWindows::LoadConfirmed(const std::filesystem::path& path, bool permanent)
 	{
 		const std::optional<std::size_t> existing = m_Documents.Find(path);
 
 		if (existing && !m_Documents.At(*existing).Document)
 		{
-			static_cast<void>(Core::LoadFromFile(m_Documents.At(*existing), m_Documents.GetStore(), Core::LargeFileConfirmation::Confirmed));
+			m_Documents.LoadAgain(*existing, Core::LargeFileConfirmation::Confirmed);
 			return;
 		}
 
 		const Core::TabKind tabKind = permanent ? Core::TabKind::Permanent : Core::TabKind::Preview;
 		m_Documents.OpenConfirmed(path, tabKind);
+	}
+
+	void DocumentWindows::LandFinishedLoads()
+	{
+		for (const std::size_t landedIndex : m_Documents.TakeFinishedLoads())
+		{
+			const Core::OpenItem& item = m_Documents.At(landedIndex);
+			DocumentState* const state = FindState(item.Path);
+
+			if (state == nullptr || !state->Restoring)
+			{
+				continue;
+			}
+
+			const std::size_t savedTopLine = state->Restoring->Top;
+			state->Restoring.reset();
+
+			KeepRestoredTopLine(item, savedTopLine);
+		}
 	}
 
 	void DocumentWindows::AskAboutSize(const std::filesystem::path& path, bool permanent)
@@ -525,9 +582,9 @@ namespace Graphite {
 
 		case Core::FileSyncOutcome::NeedsLoad:
 		{
-			Core::OpenItem& item = m_Documents.At(index);
+			const Core::OpenItem& item = m_Documents.At(index);
 
-			if (Core::LoadFromFile(item, m_Documents.GetStore(), Core::LargeFileConfirmation::Unconfirmed) == Core::ItemLoad::NeedsConfirmation)
+			if (m_Documents.LoadAgain(index, Core::LargeFileConfirmation::Unconfirmed) == Core::ItemLoad::NeedsConfirmation)
 			{
 				AskAboutSize(item.Path, !item.Preview);
 			}
@@ -734,8 +791,9 @@ namespace Graphite {
 		for (const std::filesystem::path& path : paths)
 		{
 			const std::optional<std::size_t> index = FindOpen(path);
+			const bool tabHoldsText = index && m_Documents.At(*index).Document != nullptr;
 
-			if (!index)
+			if (!tabHoldsText)
 			{
 				continue;
 			}
@@ -864,11 +922,17 @@ namespace Graphite {
 		return item != nullptr && item->Document != nullptr;
 	}
 
+	bool DocumentWindows::CanClose()
+	{
+		return m_Documents.GetActiveItemPath() != nullptr;
+	}
+
+	// WARNING: Any tab closes, not only one holding text, because closing is how a long read is given up.
 	void DocumentWindows::RequestCloseOfActiveTab()
 	{
-		if (const Core::OpenItem* item = FindActiveTextItem())
+		if (const std::filesystem::path* activePath = m_Documents.GetActiveItemPath())
 		{
-			m_CloseRequested = item->Path;
+			m_CloseRequested = *activePath;
 			Core::Redraw::Request();
 		}
 	}
@@ -2301,6 +2365,11 @@ namespace Graphite {
 					m_Documents.Promote(index);
 				}
 
+				if (editorResult.RetryLoad)
+				{
+					m_Documents.LoadAgain(index, Core::LargeFileConfirmation::Confirmed);
+				}
+
 				if (editorResult.DefinitionRequested)
 				{
 					RequestDefinition(index);
@@ -2378,6 +2447,13 @@ namespace Graphite {
 								 ReferencesPanel& referencesPanel)
 	{
 		m_WorkspaceRoot = frame.WorkspaceRoot;
+
+		if (frame.Indent.Width > 0)
+		{
+			m_Documents.SetTabWidthForLoads(frame.Indent.Width);
+		}
+
+		LandFinishedLoads();
 
 		// WARNING: The order is load-bearing. Answers come first so they are on screen this frame,
 		// and popups open before any Begin. A renamed document's pending dock target must be

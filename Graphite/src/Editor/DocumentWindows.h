@@ -105,6 +105,8 @@ namespace Graphite {
 
 		void RequestOpen(const std::filesystem::path& path, bool permanent);
 
+		void LandFinishedLoads();
+
 		void SetGitDecorations(const GitDecorationView& decorations) { m_GitDecorations = decorations; }
 
 		WorkspaceState CaptureState() const;
@@ -134,7 +136,7 @@ namespace Graphite {
 		void Queue(EditorAction action, bool fromMenu) override { QueueOnActiveDocument(action, fromMenu); }
 		bool CanSave() override { return ActiveTabHoldsDocument(); }
 		void Save() override { RequestSaveOfActiveDocument(); }
-		bool CanClose() override { return FindActiveTextItem() != nullptr; }
+		bool CanClose() override;
 		void Close() override { RequestCloseOfActiveTab(); }
 		bool CanFind() override { return FindActiveTextItem() != nullptr; }
 		void OpenFind() override;
@@ -293,6 +295,8 @@ namespace Graphite {
 		void AskAboutSize(const std::filesystem::path& path, bool permanent);
 
 		void LoadConfirmed(const std::filesystem::path& path, bool permanent);
+
+		void KeepRestoredTopLine(const Core::OpenItem& item, std::size_t savedTopLine);
 
 		bool SaveOne(std::size_t index);
 
@@ -457,6 +461,9 @@ namespace Graphite {
 			ScrollAnchor Anchor;
 
 			std::optional<PendingTopLine> PendingTop;
+
+			// A restored tab whose file is still being read is saved as this, and takes its top line once the text lands.
+			std::optional<TabState> Restoring;
 
 			bool CarriedOver = false;
 

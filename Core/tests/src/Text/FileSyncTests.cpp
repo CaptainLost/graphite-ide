@@ -1,9 +1,11 @@
 #include <doctest/doctest.h>
 
 #include "Core/Text/DocumentSet.h"
+#include "Core/Text/FileProbe.h"
 #include "Core/Text/FileSync.h"
 #include "Core/Text/TextDocument.h"
 
+#include "DeferredJobs.h"
 #include "FileFixtures.h"
 #include "TempDirectory.h"
 
@@ -93,6 +95,24 @@ TEST_CASE("A tab opened on a file that was not there asks its caller to load the
 	CHECK(SyncWithFile(documents, 0) == FileSyncOutcome::NeedsLoad);
 	CHECK(documents.At(0).Failure == OpenFailure::None);
 	CHECK_FALSE(documents.At(0).Document != nullptr);
+}
+
+TEST_CASE("A tab whose file is still being read is not asked to load it again when the file comes back")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.GetPath() / "big.log";
+	WriteFileBytes(path, std::string(static_cast<std::size_t>(BackgroundLoadThreshold) + 1, 'a'));
+
+	DeferredJobs jobs;
+	DocumentSet documents;
+	documents.LoadLargeFilesWith(jobs.Submitter());
+	REQUIRE(documents.Open(path, TabKind::Permanent) == OpenOutcome::Loading);
+
+	documents.MarkMissing(path);
+
+	CHECK(SyncWithFile(documents, 0) == FileSyncOutcome::Unchanged);
+	CHECK(documents.At(0).Failure == OpenFailure::None);
+	CHECK(IsLoading(documents.At(0)));
 }
 
 TEST_CASE("A tab refused as binary has no document either but is not asked to load")

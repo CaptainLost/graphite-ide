@@ -46,7 +46,10 @@ namespace Core {
 
 		if (!item.Document || !item.Document->CheckChangedOnDisk())
 		{
-			return cameBack ? FileSyncOutcome::NeedsLoad : FileSyncOutcome::Unchanged;
+			const bool readAlreadyRunning = IsLoading(item);
+			const bool needsLoad = cameBack && !readAlreadyRunning;
+
+			return needsLoad ? FileSyncOutcome::NeedsLoad : FileSyncOutcome::Unchanged;
 		}
 
 		if (!item.Document->IsModified())

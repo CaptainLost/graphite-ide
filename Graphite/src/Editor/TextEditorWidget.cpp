@@ -33,6 +33,8 @@
 
 #include "Core/ImGui/UiScale.h"
 #include "Core/App/Redraw.h"
+#include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/LoadingState.h"
 #include "Core/Command/KeyName.h"
 #include "Core/Command/MenuBar.h"
 #include "Core/Command/ShortcutRouter.h"
@@ -92,6 +94,8 @@ namespace Graphite {
 		constexpr float kHalf = 0.5f;
 		constexpr float kHairlineWidth = 1.0f;
 		constexpr float kLeastWrapColumns = 1.0f;
+
+		constexpr const char* kRetryLabel = "Retry";
 
 		constexpr int kTripleClick = 3;
 		constexpr int kDoubleClick = 2;
@@ -156,6 +160,23 @@ namespace Graphite {
 			ImGui::SetCursorPos(ImVec2(ImGui::GetCursorPosX() + (available.x - size.x) * kHalf,
 									   ImGui::GetCursorPosY() + (available.y - size.y) * kHalf));
 			ImGui::TextDisabled("%s", message.c_str());
+		}
+
+		bool DrawWithoutDocumentAndReportRetry(const Core::OpenItem& item)
+		{
+			if (Core::IsLoading(item))
+			{
+				Core::LoadingState(Core::LoadingMessage(item).c_str());
+				return false;
+			}
+
+			if (Core::CanRetryLoad(item))
+			{
+				return Core::EmptyState(Core::FailureMessage(item), kRetryLabel);
+			}
+
+			DrawFailure(item);
+			return false;
 		}
 
 		struct GutterMetrics
@@ -2965,7 +2986,7 @@ namespace Graphite {
 
 		if (!item.Document)
 		{
-			DrawFailure(item);
+			result.RetryLoad = DrawWithoutDocumentAndReportRetry(item);
 			return result;
 		}
 

@@ -83,6 +83,9 @@ namespace Graphite {
 		std::optional<HoverQuestion> AskHover;
 		std::optional<HoverQuestion> AskPreview;
 		bool CancelHover = false;
+
+		// Retry pressed on a tab whose file could not be read.
+		bool RetryLoad = false;
 	};
 
 	struct EditorView

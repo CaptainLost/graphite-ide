@@ -5,6 +5,7 @@
 #include "Core/Base/ByteSize.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/Jobs/Mailbox.h"
 #include "Core/Text/Editing.h"
 #include "Core/Text/FileProbe.h"
 
@@ -12,6 +13,196 @@
 #include <utility>
 
 namespace Core {
+
+	namespace {
+
+		enum class ProbeVerdict
+		{
+			ReadText,
+			NeedsConfirmation,
+			Refused
+		};
+
+		ProbeVerdict ProbeForLoad(OpenItem& item, LargeFileConfirmation largeFileConfirmation)
+		{
+			const Result<FileProbe> probeResult = ProbeFile(item.Path);
+
+			if (!probeResult)
+			{
+				const Error& probeError = probeResult.GetError();
+				const bool fileIsGone = probeError.Code == ErrorCode::NotFound;
+				item.Failure = fileIsGone ? OpenFailure::Missing : OpenFailure::ReadFailed;
+				item.FailureDetail = probeError.Message;
+
+				return ProbeVerdict::Refused;
+			}
+
+			const FileProbe& probe = probeResult.GetValue();
+
+			// The probe's encoding is not kept: the document sniffs its own, and two fields both meaning
+			// the file's encoding are two answers waiting to differ.
+			item.FileSize = probe.Size;
+
+			if (probe.Kind == FileKind::LargeText && largeFileConfirmation == LargeFileConfirmation::Unconfirmed)
+			{
+				// Failure and FailureDetail are cleared only past this return, so a question answered
+				// with no leaves the tab saying what it said before.
+				return ProbeVerdict::NeedsConfirmation;
+			}
+
+			item.Failure = OpenFailure::None;
+			item.FailureDetail.clear();
+
+			switch (probe.Kind)
+			{
+			case FileKind::Binary:
+				item.Failure = OpenFailure::Binary;
+				return ProbeVerdict::Refused;
+			case FileKind::TooLarge:
+				item.Failure = OpenFailure::TooLarge;
+				return ProbeVerdict::Refused;
+			case FileKind::Text:
+			case FileKind::LargeText:
+				break;
+			}
+
+			return ProbeVerdict::ReadText;
+		}
+
+		void RecordReadFailure(OpenItem& item, const Error& readError)
+		{
+			const bool fileIsGone = readError.Code == ErrorCode::NotFound;
+			item.Failure = fileIsGone ? OpenFailure::Missing : OpenFailure::ReadFailed;
+			item.FailureDetail = readError.Message;
+		}
+
+		ItemLoad ReadNow(OpenItem& item, DocumentStore& store)
+		{
+			Result<std::shared_ptr<TextDocument>> document = store.Acquire(item.Path);
+
+			if (!document)
+			{
+				item.Failure = OpenFailure::ReadFailed;
+				item.FailureDetail = document.GetError().Message;
+
+				return ItemLoad::Failed;
+			}
+
+			item.Document = std::move(document).GetValue();
+			RecomputeLineCaches(item);
+
+			return ItemLoad::Loaded;
+		}
+
+		struct LoadedDocument
+		{
+			std::shared_ptr<TextDocument> Document;
+			LineCaches Caches;
+		};
+
+		// WARNING: Everything opening does that needs only the file belongs here, so the UI thread only hands it to the item.
+		Result<LoadedDocument> ReadWithLineCaches(const std::filesystem::path& path, std::size_t tabWidth)
+		{
+			Result<TextDocument> loaded = TextDocument::Load(path);
+
+			if (!loaded)
+			{
+				return loaded.GetError();
+			}
+
+			std::shared_ptr<TextDocument> document = std::make_shared<TextDocument>(std::move(loaded).GetValue());
+			LineCaches caches = ComputeLineCaches(document->GetBuffer(), tabWidth, RowMap::kNoWrap);
+
+			return LoadedDocument{.Document = std::move(document), .Caches = std::move(caches)};
+		}
+
+		struct FinishedLoad
+		{
+			std::uint64_t Ticket = 0;
+			Result<LoadedDocument> Loaded;
+		};
+
+		struct BackgroundRead
+		{
+			std::filesystem::path Path;
+			std::size_t TabWidth = DefaultTabWidth;
+			std::uint64_t Ticket = 0;
+			CancellationToken Cancellation;
+		};
+
+		// WARNING: The second check is not redundant: what is read for a tab closed meanwhile is let go of here, on the worker, rather than on the UI thread.
+		void ReadInBackground(const BackgroundRead& read, Mailbox<FinishedLoad>& finished)
+		{
+			if (read.Cancellation.IsCancelled())
+			{
+				return;
+			}
+
+			Result<LoadedDocument> loaded = ReadWithLineCaches(read.Path, read.TabWidth);
+
+			if (read.Cancellation.IsCancelled())
+			{
+				return;
+			}
+
+			finished.Post(FinishedLoad{.Ticket = read.Ticket, .Loaded = std::move(loaded)});
+		}
+
+		void LandDocument(OpenItem& item, LoadedDocument loaded, DocumentStore& store)
+		{
+			if (std::shared_ptr<TextDocument> registered = store.Find(item.Path))
+			{
+				item.Document = std::move(registered);
+				RecomputeLineCaches(item);
+			}
+			else
+			{
+				// WARNING: The tab may have moved with a renamed folder while its file was read.
+				loaded.Document->SetPath(item.Path);
+				store.Adopt(item.Path, loaded.Document);
+				item.Document = std::move(loaded.Document);
+				AdoptLineCaches(item, std::move(loaded.Caches));
+			}
+
+			// WARNING: Without this the editor rebuilds every row again on its first draw.
+			item.ColumnsPerWrappedRow = item.Rows.GetColumnsPerRow();
+
+			const bool fileWentMissingWhileRead = item.Failure == OpenFailure::Missing;
+
+			if (!fileWentMissingWhileRead)
+			{
+				item.Failure = OpenFailure::None;
+				item.FailureDetail.clear();
+			}
+
+			if (item.PlaceCaretOnLoad)
+			{
+				const std::function<void(OpenItem&)> placeCaret = std::move(item.PlaceCaretOnLoad);
+				item.PlaceCaretOnLoad = nullptr;
+				placeCaret(item);
+			}
+		}
+	}
+
+	struct DocumentSet::FinishedLoads
+	{
+		Mailbox<FinishedLoad> Box;
+	};
+
+	bool IsLoading(const OpenItem& item)
+	{
+		return item.LoadTicket.has_value();
+	}
+
+	std::string LoadingMessage(const OpenItem& item)
+	{
+		return "Opening " + ToUtf8(item.Path.filename()) + " (" + FormatWholeMegabytes(item.FileSize) + ")";
+	}
+
+	bool CanRetryLoad(const OpenItem& item)
+	{
+		return !item.Document && !IsLoading(item) && item.Failure == OpenFailure::ReadFailed;
+	}
 
 	std::string FailureMessage(const OpenItem& item)
 	{
@@ -87,62 +278,160 @@ namespace Core {
 
 	ItemLoad LoadFromFile(OpenItem& item, DocumentStore& store, LargeFileConfirmation largeFileConfirmation)
 	{
-		const Result<FileProbe> probeResult = ProbeFile(item.Path);
-
-		if (!probeResult)
+		switch (ProbeForLoad(item, largeFileConfirmation))
 		{
-			const Error& probeError = probeResult.GetError();
-			const bool fileIsGone = probeError.Code == ErrorCode::NotFound;
-			item.Failure = fileIsGone ? OpenFailure::Missing : OpenFailure::ReadFailed;
-			item.FailureDetail = probeError.Message;
+		case ProbeVerdict::NeedsConfirmation:
+			return ItemLoad::NeedsConfirmation;
+		case ProbeVerdict::Refused:
+			return ItemLoad::Failed;
+		case ProbeVerdict::ReadText:
+			break;
+		}
 
+		return ReadNow(item, store);
+	}
+
+	void DocumentSet::LoadLargeFilesWith(JobSubmitter submit)
+	{
+		m_SubmitLoad = std::move(submit);
+
+		if (!m_FinishedLoads)
+		{
+			m_FinishedLoads = std::make_shared<FinishedLoads>();
+		}
+	}
+
+	ItemLoad DocumentSet::LoadInto(OpenItem& item, LargeFileConfirmation largeFileConfirmation)
+	{
+		item.TabWidth = m_TabWidthForLoads;
+
+		switch (ProbeForLoad(item, largeFileConfirmation))
+		{
+		case ProbeVerdict::NeedsConfirmation:
+			return ItemLoad::NeedsConfirmation;
+		case ProbeVerdict::Refused:
+			return ItemLoad::Failed;
+		case ProbeVerdict::ReadText:
+			break;
+		}
+
+		if (ReadsInBackground(item))
+		{
+			StartBackgroundLoad(item);
+			return ItemLoad::Loading;
+		}
+
+		return ReadNow(item, m_Store);
+	}
+
+	bool DocumentSet::ReadsInBackground(const OpenItem& item) const
+	{
+		const bool canSubmit = static_cast<bool>(m_SubmitLoad);
+		const bool alreadyRead = m_Store.Find(item.Path) != nullptr;
+
+		return canSubmit && LoadsInBackground(item.FileSize) && !alreadyRead;
+	}
+
+	void DocumentSet::StartBackgroundLoad(OpenItem& item)
+	{
+		const std::uint64_t ticket = ++m_LastLoadTicket;
+		const BackgroundLoad load{.Ticket = ticket};
+
+		m_BackgroundLoads.push_back(load);
+		item.LoadTicket = ticket;
+
+		const BackgroundRead read{.Path = item.Path, .TabWidth = item.TabWidth, .Ticket = ticket, .Cancellation = load.Cancellation};
+		const std::shared_ptr<FinishedLoads> finished = m_FinishedLoads;
+
+		m_SubmitLoad([read, finished] { ReadInBackground(read, finished->Box); });
+	}
+
+	void DocumentSet::StopBackgroundLoad(const OpenItem& item)
+	{
+		if (!item.LoadTicket)
+		{
+			return;
+		}
+
+		for (std::size_t loadIndex = 0; loadIndex < m_BackgroundLoads.size(); ++loadIndex)
+		{
+			if (m_BackgroundLoads[loadIndex].Ticket == *item.LoadTicket)
+			{
+				m_BackgroundLoads[loadIndex].Cancellation.Cancel();
+				m_BackgroundLoads.erase(m_BackgroundLoads.begin() + static_cast<std::ptrdiff_t>(loadIndex));
+				return;
+			}
+		}
+	}
+
+	std::optional<std::size_t> DocumentSet::FindLoading(std::uint64_t ticket) const
+	{
+		for (std::size_t index = 0; index < m_Items.size(); ++index)
+		{
+			if (m_Items[index].LoadTicket == ticket)
+			{
+				return index;
+			}
+		}
+
+		return std::nullopt;
+	}
+
+	ItemLoad DocumentSet::LoadAgain(std::size_t index, LargeFileConfirmation largeFileConfirmation)
+	{
+		if (index >= m_Items.size())
+		{
 			return ItemLoad::Failed;
 		}
 
-		const FileProbe& probe = probeResult.GetValue();
+		OpenItem& item = m_Items[index];
 
-		// The probe's encoding is not kept: the document sniffs its own, and two fields both meaning
-		// the file's encoding are two answers waiting to differ.
-		item.FileSize = probe.Size;
-
-		if (probe.Kind == FileKind::LargeText && largeFileConfirmation == LargeFileConfirmation::Unconfirmed)
+		if (item.Document)
 		{
-			// Failure and FailureDetail are cleared only past this return, so a question answered
-			// with no leaves the tab saying what it said before.
-			return ItemLoad::NeedsConfirmation;
+			return ItemLoad::Loaded;
 		}
 
-		item.Failure = OpenFailure::None;
-		item.FailureDetail.clear();
-
-		switch (probe.Kind)
+		if (IsLoading(item))
 		{
-		case FileKind::Binary:
-			item.Failure = OpenFailure::Binary;
-			break;
-		case FileKind::TooLarge:
-			item.Failure = OpenFailure::TooLarge;
-			break;
-		case FileKind::Text:
-		case FileKind::LargeText:
-		{
-			Result<std::shared_ptr<TextDocument>> document = store.Acquire(item.Path);
+			return ItemLoad::Loading;
+		}
 
-			if (document)
+		return LoadInto(item, largeFileConfirmation);
+	}
+
+	std::vector<std::size_t> DocumentSet::TakeFinishedLoads()
+	{
+		std::vector<std::size_t> landedIndices;
+
+		if (!m_FinishedLoads)
+		{
+			return landedIndices;
+		}
+
+		for (FinishedLoad& finished : m_FinishedLoads->Box.TakeAll())
+		{
+			const std::optional<std::size_t> index = FindLoading(finished.Ticket);
+
+			if (!index)
 			{
-				item.Document = std::move(document).GetValue();
-				RecomputeLineCaches(item);
+				continue;
 			}
-			else
+
+			OpenItem& item = m_Items[*index];
+			StopBackgroundLoad(item);
+			item.LoadTicket.reset();
+
+			if (!finished.Loaded)
 			{
-				item.Failure = OpenFailure::ReadFailed;
-				item.FailureDetail = document.GetError().Message;
+				RecordReadFailure(item, finished.Loaded.GetError());
+				continue;
 			}
-		}
-		break;
+
+			LandDocument(item, std::move(finished.Loaded).GetValue(), m_Store);
+			landedIndices.push_back(*index);
 		}
 
-		return item.Document ? ItemLoad::Loaded : ItemLoad::Failed;
+		return landedIndices;
 	}
 
 	OpenOutcome DocumentSet::Add(const std::filesystem::path& path, TabKind tabKind, LargeFileConfirmation largeFileConfirmation)
@@ -172,7 +461,7 @@ namespace Core {
 
 		// Asked before anything is added or the preview closed, so a question answered with no
 		// leaves no trace, not even the loss of the existing preview.
-		const ItemLoad loadOutcome = LoadFromFile(item, m_Store, largeFileConfirmation);
+		const ItemLoad loadOutcome = LoadInto(item, largeFileConfirmation);
 
 		if (loadOutcome == ItemLoad::NeedsConfirmation)
 		{
@@ -188,7 +477,18 @@ namespace Core {
 		const std::size_t addedIndex = m_Items.size() - 1;
 		Activate(addedIndex);
 
-		return loadOutcome == ItemLoad::Loaded ? OpenOutcome::Opened : OpenOutcome::Failed;
+		switch (loadOutcome)
+		{
+		case ItemLoad::Loaded:
+			return OpenOutcome::Opened;
+		case ItemLoad::Loading:
+			return OpenOutcome::Loading;
+		case ItemLoad::NeedsConfirmation:
+		case ItemLoad::Failed:
+			break;
+		}
+
+		return OpenOutcome::Failed;
 	}
 
 	void DocumentSet::ClosePreviewIfAny()
@@ -208,6 +508,7 @@ namespace Core {
 			return;
 		}
 
+		StopBackgroundLoad(m_Items[index]);
 		m_Items.erase(m_Items.begin() + static_cast<std::ptrdiff_t>(index));
 
 		if (m_Items.empty())
@@ -234,6 +535,12 @@ namespace Core {
 
 	void DocumentSet::CloseAll()
 	{
+		for (const BackgroundLoad& load : m_BackgroundLoads)
+		{
+			load.Cancellation.Cancel();
+		}
+
+		m_BackgroundLoads.clear();
 		m_Items.clear();
 		m_ActiveIndex.reset();
 	}

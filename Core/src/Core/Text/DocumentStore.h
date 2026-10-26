@@ -20,6 +20,9 @@ namespace Core {
 		// The registered document, or the file loaded and registered now.
 		Result<std::shared_ptr<TextDocument>> Acquire(const std::filesystem::path& path);
 
+		// Registers a document read elsewhere, on a worker; the caller has checked that no live one has the path.
+		void Adopt(const std::filesystem::path& path, const std::shared_ptr<TextDocument>& document);
+
 		std::vector<std::shared_ptr<TextDocument>> GetDocuments() const;
 
 		void RewritePaths(const std::filesystem::path& movedFrom, const std::filesystem::path& movedTo);

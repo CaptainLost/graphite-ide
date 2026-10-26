@@ -300,6 +300,10 @@ namespace Graphite {
 		m_ActiveScheme.Load(m_AppSettings);
 		m_SearchSettings.Load();
 
+		// WARNING: Before OpenStartupFolder, whose restored tabs are the first files opened.
+		m_Documents.LoadLargeFilesWith(submitToSharedQueue);
+		m_Documents.SetTabWidthForLoads(m_EditorSettings.GetIndentStyle().Width);
+
 		// WARNING: Load these before OpenStartupFolder sets the root: a pass begun under the default budget and then resized would evict its way down to the saved one for nothing.
 		m_AnalysisSettings.Load();
 		m_Analysis.SetBudget(m_AnalysisSettings.GetBudgetBytes());

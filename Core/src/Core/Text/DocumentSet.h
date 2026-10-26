@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Core/Jobs/CancellationToken.h"
+#include "Core/Jobs/JobSubmitter.h"
 #include "Core/Text/Caret.h"
 #include "Core/Text/Columns.h"
 #include "Core/Text/DocumentStore.h"
@@ -9,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -101,11 +104,26 @@ namespace Core {
 		FindState Find;
 
 		std::string FailureDetail;
+
+		// Set while a worker reads the document; until it lands the item holds none.
+		std::optional<std::uint64_t> LoadTicket;
+
+		// Run once a document read on a worker lands, so a caret placed while it was read lands in its text. A later
+		// placement replaces an earlier one.
+		std::function<void(OpenItem&)> PlaceCaretOnLoad;
 	};
+
+	bool IsLoading(const OpenItem& item);
+
+	std::string LoadingMessage(const OpenItem& item);
+
+	// A read that failed may succeed when asked again; a file refused for what it is will not.
+	bool CanRetryLoad(const OpenItem& item);
 
 	enum class ItemLoad
 	{
 		Loaded,
+		Loading,
 		NeedsConfirmation,
 		Failed
 	};
@@ -122,6 +140,7 @@ namespace Core {
 	{
 		Opened,
 		Activated,
+		Loading,
 		NeedsConfirmation,
 		Failed
 	};
@@ -143,6 +162,21 @@ namespace Core {
 		OpenOutcome Open(const std::filesystem::path& path, TabKind tabKind);
 
 		OpenOutcome OpenConfirmed(const std::filesystem::path& path, TabKind tabKind);
+
+		// Files above BackgroundLoadThreshold are then read through `submit` while their tab waits. Without it every
+		// file is read where it is opened.
+		void LoadLargeFilesWith(JobSubmitter submit);
+
+		// WARNING: An item measured at a width other than the editor's is measured again, on the UI thread, when it is
+		// first drawn; this is the editor's width, so a load measures once.
+		void SetTabWidthForLoads(std::size_t tabWidth) { m_TabWidthForLoads = tabWidth; }
+
+		// For an item that holds no document and is not being read: after a failure, or when its file came back.
+		ItemLoad LoadAgain(std::size_t index, LargeFileConfirmation largeFileConfirmation);
+
+		// Gives each item a worker finished reading its document or its failure; what was read for an item closed since
+		// is dropped. Answers the indices of the items that got a document.
+		std::vector<std::size_t> TakeFinishedLoads();
 
 		void Close(std::size_t index);
 		void CloseAll();
@@ -172,7 +206,25 @@ namespace Core {
 		void MarkPresent(const std::filesystem::path& path);
 
 	private:
+		struct BackgroundLoad
+		{
+			std::uint64_t Ticket = 0;
+			CancellationToken Cancellation;
+		};
+
+		struct FinishedLoads;
+
 		OpenOutcome Add(const std::filesystem::path& path, TabKind tabKind, LargeFileConfirmation largeFileConfirmation);
+
+		ItemLoad LoadInto(OpenItem& item, LargeFileConfirmation largeFileConfirmation);
+
+		bool ReadsInBackground(const OpenItem& item) const;
+
+		void StartBackgroundLoad(OpenItem& item);
+
+		void StopBackgroundLoad(const OpenItem& item);
+
+		std::optional<std::size_t> FindLoading(std::uint64_t ticket) const;
 
 		void ClosePreviewIfAny();
 
@@ -182,6 +234,14 @@ namespace Core {
 		DocumentStore m_Store;
 		std::vector<OpenItem> m_Items;
 		std::optional<std::size_t> m_ActiveIndex;
+
+		JobSubmitter m_SubmitLoad;
+		std::size_t m_TabWidthForLoads = DefaultTabWidth;
+		std::uint64_t m_LastLoadTicket = 0;
+		std::vector<BackgroundLoad> m_BackgroundLoads;
+
+		// WARNING: Shared with the workers, so a read that finishes after the set is gone still has somewhere to post.
+		std::shared_ptr<FinishedLoads> m_FinishedLoads;
 	};
 
 	// The path is matched exactly, as Find matches it, not through PathKey. The pointer is valid

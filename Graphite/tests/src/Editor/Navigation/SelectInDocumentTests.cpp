@@ -3,8 +3,12 @@
 #include "Editor/Navigation/SelectInDocument.h"
 
 #include "Core/Text/DocumentSet.h"
+#include "Core/Text/FileProbe.h"
 
+#include "DeferredJobs.h"
 #include "TempDirectory.h"
+
+#include <string>
 
 namespace {
 
@@ -13,6 +17,18 @@ namespace {
 	Graphite::OpenDocument OpenPermanently(Core::DocumentSet& documents)
 	{
 		return [&documents](const std::filesystem::path& path) { documents.Open(path, Core::TabKind::Permanent); };
+	}
+
+	std::string FirstLineThenFillerPastBackgroundThreshold(const std::string& firstLine)
+	{
+		std::string text = firstLine + "\n";
+
+		while (text.size() <= Core::BackgroundLoadThreshold)
+		{
+			text += "filler line\n";
+		}
+
+		return text;
 	}
 }
 
@@ -92,4 +108,44 @@ TEST_CASE("A span is one line only when it ends on its own line past where it st
 	CHECK_FALSE(Graphite::SpansOneLine(3, Utf16Column(2), 3, Utf16Column(2)));
 	CHECK_FALSE(Graphite::SpansOneLine(3, Utf16Column(2), 3, Utf16Column(1)));
 	CHECK_FALSE(Graphite::SpansOneLine(3, Utf16Column(2), 4, Utf16Column(9)));
+}
+
+TEST_CASE("A byte range asked for while its file is read is selected once the text lands")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.MakeFile("big.log", FirstLineThenFillerPastBackgroundThreshold("first line"));
+
+	DeferredJobs jobs;
+	Core::DocumentSet documents;
+	documents.LoadLargeFilesWith(jobs.Submitter());
+
+	REQUIRE(Graphite::SelectInDocument(documents, path, 0, 6, 10, OpenPermanently(documents)));
+	REQUIRE(Core::IsLoading(documents.At(0)));
+
+	jobs.RunAll();
+	REQUIRE(documents.TakeFinishedLoads().size() == 1);
+
+	const Core::OpenItem& item = documents.At(0);
+	CHECK(item.Caret.Anchor == 6);
+	CHECK(item.Caret.Offset == 10);
+	CHECK(item.PendingScroll);
+}
+
+TEST_CASE("A UTF-16 range asked for while its file is read is selected once the text lands")
+{
+	TempDirectory directory;
+	const std::filesystem::path path = directory.MakeFile("big.log", FirstLineThenFillerPastBackgroundThreshold("\xc3\xa9 abcd"));
+
+	DeferredJobs jobs;
+	Core::DocumentSet documents;
+	documents.LoadLargeFilesWith(jobs.Submitter());
+
+	REQUIRE(Graphite::SelectInDocument(documents, path, 0, Utf16Column(2), 0, Utf16Column(5),
+									   OpenPermanently(documents)));
+
+	jobs.RunAll();
+	REQUIRE(documents.TakeFinishedLoads().size() == 1);
+
+	CHECK(documents.At(0).Caret.Anchor == 3);
+	CHECK(documents.At(0).Caret.Offset == 6);
 }
