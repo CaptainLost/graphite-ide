@@ -669,4 +669,9 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0637](0637-keep-a-command-terminal-open-after-its-process-exits.md) | Keep a command terminal open after its process exits | proposed | 2026-10-25 |
 | [0638](0638-show-where-a-navigation-command-waits-and-how-it-ended-in-a-bubble-at-the-caret.md) | Show where a navigation command waits and how it ended in a bubble at the caret | proposed | 2026-10-25 |
 | [0639](0639-highlight-the-other-occurrences-of-a-selected-word-in-the-text-and-either-side-of-the-scrollbar-s-centre-strip.md) | Highlight the other occurrences of a selected word, in the text and either side of the scrollbar's centre strip | proposed | 2026-10-25 |
+| [0640](0640-read-a-folder-s-entries-and-their-attributes-in-one-pass.md) | Read a folder's entries and their attributes in one pass | proposed | 2026-10-26 |
+| [0641](0641-inherit-the-ignored-state-from-an-ignored-folder-and-keep-known-answers-across-reloads.md) | Inherit the ignored state from an ignored folder and keep known answers across reloads | proposed | 2026-10-26 |
+| [0642](0642-run-explorer-file-operations-and-large-file-loads-on-a-worker-and-show-them-while-they-run.md) | Run Explorer file operations and large file loads on a worker and show them while they run | proposed | 2026-10-26 |
+| [0643](0643-preview-only-files-that-open-without-asking.md) | Preview only files that open without asking | proposed | 2026-10-26 |
+| [0644](0644-read-solutions-off-the-ui-thread.md) | Read solutions off the UI thread | proposed | 2026-10-26 |
 <!-- /adr-index -->
