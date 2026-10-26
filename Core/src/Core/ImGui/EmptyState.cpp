@@ -42,6 +42,31 @@ namespace Core {
 
 			return lines.back().Offset.y + ImGui::GetTextLineHeight() + itemSpacingHeight;
 		}
+
+		bool FitsBesideButton(std::string_view message, ImVec2 region, ImVec2 buttonSize, const ImGuiStyle& style)
+		{
+			const bool stackTooTall = ImGui::GetTextLineHeight() + style.ItemSpacing.y + buttonSize.y > region.y;
+			const bool oneLine = message.find('\n') == std::string_view::npos;
+
+			return stackTooTall && oneLine && TextWidth(message) + style.ItemSpacing.x + buttonSize.x <= region.x;
+		}
+
+		float DrawBesideButton(std::string_view message, ImVec2 origin, ImVec2 region, ImVec2 buttonSize, const ImGuiStyle& style)
+		{
+			const float lineHeight = ImGui::GetTextLineHeight();
+			const float messageWidth = TextWidth(message);
+			const float rowHeight = std::max(lineHeight, buttonSize.y);
+			const float rowTop = CentredStart(region.y, rowHeight);
+			const float rowLeft = CentredStart(region.x, messageWidth + style.ItemSpacing.x + buttonSize.x);
+
+			ImGui::GetWindowDrawList()->AddText(ImVec2(origin.x + rowLeft, origin.y + rowTop + (rowHeight - lineHeight) * kHalf),
+												ImGui::GetColorU32(ImGuiCol_TextDisabled), message.data(),
+												message.data() + message.size());
+			ImGui::SetCursorScreenPos(ImVec2(origin.x + rowLeft + messageWidth + style.ItemSpacing.x,
+											 origin.y + rowTop + (rowHeight - buttonSize.y) * kHalf));
+
+			return rowTop + rowHeight;
+		}
 	}
 
 	std::vector<CentredLine> CentreLines(std::string_view text, ImVec2 region, float below)
@@ -113,6 +138,24 @@ namespace Core {
 
 			buttonSize = ImGui::CalcItemSize(sizeFromContent, buttonWidth, ImGui::GetFrameHeight());
 			below = style.ItemSpacing.y + buttonSize.y;
+
+			const std::string_view oneLineMessage = WithoutTrailing(message, kTrailingBlanks);
+
+			if (FitsBesideButton(oneLineMessage, region, buttonSize, style))
+			{
+				const float rowBottom = DrawBesideButton(oneLineMessage, origin, region, buttonSize, style);
+				bool clicked = Core::TextButton(action, buttonSize);
+
+				if (noteWhileDisabled != nullptr && OfferWhileDisabled(noteWhileDisabled))
+				{
+					clicked = true;
+				}
+
+				ImGui::SetCursorScreenPos(origin);
+				ImGui::Dummy(ImVec2(region.x, std::max(region.y, rowBottom)));
+
+				return clicked;
+			}
 		}
 
 		const std::vector<CentredLine> lines = CentreLines(message, region, below);

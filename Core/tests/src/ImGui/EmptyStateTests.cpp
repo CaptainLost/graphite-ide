@@ -4,6 +4,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -151,7 +152,7 @@ TEST_CASE("EmptyState claims the whole region left in the window, so the window 
 	ImGui::End();
 }
 
-TEST_CASE("EmptyState claims past a region too short for its message and button")
+TEST_CASE("EmptyState claims past a region too short and too narrow for its message beside its button")
 {
 	Frame frame;
 
@@ -162,10 +163,30 @@ TEST_CASE("EmptyState claims past a region too short for its message and button"
 	const ImVec2 origin = ImGui::GetCursorScreenPos();
 	const ImGuiStyle& style = ImGui::GetStyle();
 
-	CHECK_FALSE(Core::EmptyState("Nothing here.", "Open", ImVec2(0.0f, 4.0f)));
+	CHECK_FALSE(Core::EmptyState("Nothing here.", "Open", ImVec2(WidthOf("Nothing here."), 4.0f)));
 
 	const float block = ImGui::GetTextLineHeight() + style.ItemSpacing.y + ImGui::GetFrameHeight();
 	CHECK(ImGui::GetItemRectMax().y == doctest::Approx(origin.y + block));
+
+	ImGui::End();
+}
+
+TEST_CASE("EmptyState puts its button beside the message in a region too short to stack them")
+{
+	Frame frame;
+
+	ImGui::SetNextWindowPos(ImVec2(100.0f, 100.0f));
+	ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f));
+	ImGui::Begin("Low");
+
+	const ImVec2 origin = ImGui::GetCursorScreenPos();
+	const float rowHeight = std::max(ImGui::GetTextLineHeight(), ImGui::GetFrameHeight());
+	const ImVec2 region(360.0f, rowHeight + 2.0f);
+
+	CHECK_FALSE(Core::EmptyState("File too large to preview (20 MB)", "Open", region));
+
+	CHECK(ImGui::GetItemRectMax().y == doctest::Approx(origin.y + region.y));
+	CHECK(ImGui::GetItemRectMax().x == doctest::Approx(origin.x + region.x));
 
 	ImGui::End();
 }
