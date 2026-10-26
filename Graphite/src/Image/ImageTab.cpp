@@ -1,10 +1,10 @@
 #include "Image/ImageTab.h"
 
 #include "Core/App/Redraw.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Image/ImageFormat.h"
 
-#include <fstream>
-#include <ios>
+#include <limits>
 #include <new>
 #include <span>
 #include <system_error>
@@ -13,44 +13,29 @@
 namespace Graphite {
 
 	namespace {
-		constexpr std::size_t kReadChunkBytes = 64 * 1024;
+		// The most DecodeImage takes, so a larger file is refused before it is read.
+		constexpr std::uintmax_t kMaximumFileBytes = static_cast<std::uintmax_t>(std::numeric_limits<int>::max());
 
-		// Read whole and closed before decoding starts, so the file is never held while the tab shows it.
-		Core::Result<std::vector<std::uint8_t>> ReadWholeFile(const std::filesystem::path& path)
+		// The reader's messages name the path and are whole sentences, so the line is worded from the code instead.
+		Core::Error ReadFailure(const Core::Error& error)
 		{
-			std::error_code sizeError;
-			const std::uintmax_t size = std::filesystem::file_size(path, sizeError);
-
-			if (sizeError)
+			switch (error.Code)
 			{
-				return Core::Error{Core::ErrorCode::IoFailure, sizeError.message()};
+				case Core::ErrorCode::NotFound:
+					return Core::Error{error.Code, "the file was not found"};
+				case Core::ErrorCode::AccessDenied:
+					return Core::Error{error.Code, "the file cannot be opened"};
+				case Core::ErrorCode::TooLarge:
+					return Core::Error{error.Code, "Image file is too large to preview"};
+				case Core::ErrorCode::None:
+				case Core::ErrorCode::InvalidArgument:
+				case Core::ErrorCode::IoFailure:
+				case Core::ErrorCode::Unsupported:
+				case Core::ErrorCode::Cancelled:
+					break;
 			}
 
-			std::ifstream file(path, std::ios::binary);
-
-			if (!file)
-			{
-				return Core::Error{Core::ErrorCode::AccessDenied, "the file cannot be opened"};
-			}
-
-			std::vector<std::uint8_t> bytes;
-			bytes.reserve(static_cast<std::size_t>(size));
-			std::vector<char> chunk(kReadChunkBytes);
-
-			// Read to the end rather than to the size taken above, because the file can change in between.
-			while (file)
-			{
-				file.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
-				const auto* begin = reinterpret_cast<const std::uint8_t*>(chunk.data());
-				bytes.insert(bytes.end(), begin, begin + file.gcount());
-			}
-
-			if (file.bad())
-			{
-				return Core::Error{Core::ErrorCode::IoFailure, "reading the file failed"};
-			}
-
-			return bytes;
+			return Core::Error{error.Code, "reading the file failed"};
 		}
 
 		std::string FailureLine(const Core::Error& error)
@@ -257,14 +242,16 @@ namespace Graphite {
 
 		try
 		{
-			Core::Result<std::vector<std::uint8_t>> bytes = ReadWholeFile(path);
+			// Read whole and closed before decoding starts, so the file is never held while the tab shows it.
+			const Core::Result<std::string> bytes = Core::ReadFileBytes(path, kMaximumFileBytes);
 
 			if (!bytes)
 			{
-				return {generation, bytes.GetError(), stamp};
+				return {generation, ReadFailure(bytes.GetError()), stamp};
 			}
 
-			const std::span<const std::uint8_t> read = bytes.GetValue();
+			const std::string& contents = bytes.GetValue();
+			const std::span<const std::uint8_t> read{reinterpret_cast<const std::uint8_t*>(contents.data()), contents.size()};
 			return {generation, Core::DecodeImage(read, *format, limits), stamp, read.size()};
 		}
 		catch (const std::bad_alloc&)

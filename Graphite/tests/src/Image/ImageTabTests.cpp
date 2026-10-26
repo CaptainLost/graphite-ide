@@ -12,9 +12,11 @@
 
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <optional>
+#include <share.h>
 #include <span>
 #include <string>
 #include <string_view>
@@ -241,8 +243,21 @@ TEST_CASE("An image tab that cannot decode its file fails with the reason")
 		LoadAndLand(missing, jobs);
 
 		CHECK(missing.GetState() == ImageTabState::Failed);
-		CHECK(missing.GetFailure().starts_with("Could not read this image: "));
-		CHECK(missing.GetFailure().size() > std::string_view("Could not read this image: ").size());
+		CHECK(missing.GetFailure() == "Could not read this image: the file was not found");
+	}
+
+	SUBCASE("A file another program holds shut fails as one that cannot be opened")
+	{
+		const std::filesystem::path path = WriteFile(directory.GetPath() / "held.png", Bytes(ImageFixtures::kPng2x2));
+		std::FILE* held = ::_wfsopen(path.c_str(), L"rb", _SH_DENYRW);
+		REQUIRE(held != nullptr);
+
+		ImageTab heldTab(path, jobs.Submitter(), textures);
+		LoadAndLand(heldTab, jobs);
+		std::fclose(held);
+
+		CHECK(heldTab.GetState() == ImageTabState::Failed);
+		CHECK(heldTab.GetFailure() == "Could not read this image: the file cannot be opened");
 	}
 }
 
