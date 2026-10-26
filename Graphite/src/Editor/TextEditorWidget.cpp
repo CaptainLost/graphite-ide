@@ -18,6 +18,7 @@
 #include "Editor/Hover/InteractiveTooltip.h"
 #include "Editor/Overlays/LensModel.h"
 #include "Editor/Overlays/LensWaiting.h"
+#include "Editor/Overlays/ScreenRows.h"
 #include "Editor/Find/MatchColumns.h"
 #include "Editor/Find/SelectionOccurrences.h"
 #include "Theme/Palettes.h"
@@ -321,17 +322,18 @@ namespace Graphite {
 		}
 
 		float DocumentHeightOf(const Core::OpenItem& item, const EditorMetrics& metrics,
-							   const LensRows& lenses)
+							   const ScreenRows& screenRows)
 		{
-			return static_cast<float>(lenses.TotalScreenRows(item.Rows.GetTotalRows())) *
+			return static_cast<float>(screenRows.TotalScreenRows(item.Rows.GetTotalRows())) *
 				   metrics.LineHeight;
 		}
 
 		// WARNING: ImGui shows a new surface's scrollbar only from its second frame, so a tall document would be wrapped twice.
-		VerticalScrollbar ScrollbarOfSurface(const Core::OpenItem& item, const EditorMetrics& metrics, const LensRows& lenses)
+		VerticalScrollbar ScrollbarOfSurface(const Core::OpenItem& item, const EditorMetrics& metrics,
+											 const ScreenRows& screenRows)
 		{
 			const bool scrollbarShown = ImGui::GetCurrentWindow()->ScrollbarY;
-			const float contentHeightAsImGuiMeasuresIt = ImTrunc64(DocumentHeightOf(item, metrics, lenses));
+			const float contentHeightAsImGuiMeasuresIt = ImTrunc64(DocumentHeightOf(item, metrics, screenRows));
 			const bool documentTallerThanView = contentHeightAsImGuiMeasuresIt > ImGui::GetContentRegionAvail().y;
 
 			return scrollbarShown || documentTallerThanView ? VerticalScrollbar::Shown : VerticalScrollbar::Hidden;
@@ -345,9 +347,9 @@ namespace Graphite {
 			return scrollbarStillToCome ? availableNow - ImGui::GetStyle().ScrollbarSize : availableNow;
 		}
 
-		// WARNING: Deliberately not translated through LensRows. The count is handed to
+		// WARNING: Deliberately not translated through ScreenRows. The count is handed to
 		// MoveByRows, which works in document rows through CaretToVisual, so a page move
-		// overshoots by the lens rows it crosses; translating here would push screen-row
+		// overshoots by the lens and peek rows it crosses; translating here would push screen-row
 		// arithmetic into caret motion.
 		std::size_t RowsPerPage(const EditorMetrics& metrics)
 		{
@@ -458,9 +460,9 @@ namespace Graphite {
 			return x >= left && x < left + width;
 		}
 
-		std::optional<LensRows::Row> RowUnderMouse(const LensRows& lenses,
-												   const EditorMetrics& metrics,
-												   const ImVec2& origin)
+		std::optional<ScreenRows::Row> RowUnderMouse(const ScreenRows& screenRows,
+													 const EditorMetrics& metrics,
+													 const ImVec2& origin)
 		{
 			const ImVec2 mouse = ImGui::GetMousePos();
 
@@ -469,11 +471,11 @@ namespace Graphite {
 				return std::nullopt;
 			}
 
-			return lenses.At(static_cast<std::size_t>((mouse.y - origin.y) / metrics.LineHeight));
+			return screenRows.At(static_cast<std::size_t>((mouse.y - origin.y) / metrics.LineHeight));
 		}
 
 		std::optional<std::size_t> HoveredLensRow(const PointerState& pointer,
-												  const LensRows& lenses, const LensModel* lensModel,
+												  const ScreenRows& screenRows, const LensModel* lensModel,
 												  const EditorMetrics& metrics, const ImVec2& origin,
 												  float textOriginX)
 		{
@@ -482,9 +484,9 @@ namespace Graphite {
 				return std::nullopt;
 			}
 
-			const std::optional<LensRows::Row> hit = RowUnderMouse(lenses, metrics, origin);
+			const std::optional<ScreenRows::Row> hit = RowUnderMouse(screenRows, metrics, origin);
 
-			if (!hit || !hit->IsLens ||
+			if (!hit || hit->Kind != ScreenRows::RowKind::Lens ||
 				!IsOverLensLabel(lensModel->LensAt(hit->DocumentRow), ImGui::GetMousePos().x,
 								 textOriginX, metrics))
 			{
@@ -499,7 +501,7 @@ namespace Graphite {
 			return origin.x + scrollX + metrics.Gutter.TotalWidth;
 		}
 
-		void SetEditorCursor(const PointerState& pointer, bool overLink, const LensRows& lenses,
+		void SetEditorCursor(const PointerState& pointer, bool overLink, const ScreenRows& screenRows,
 							 const EditorMetrics& metrics, const ImVec2& origin, float scrollX)
 		{
 			if (overLink)
@@ -520,9 +522,10 @@ namespace Graphite {
 			}
 
 			const float gutterRight = GutterRightEdge(origin, scrollX, metrics);
-			const std::optional<LensRows::Row> hit = RowUnderMouse(lenses, metrics, origin);
+			const std::optional<ScreenRows::Row> hit = RowUnderMouse(screenRows, metrics, origin);
 
-			if (ImGui::GetMousePos().x >= gutterRight && hit && !hit->IsLens)
+			if (ImGui::GetMousePos().x >= gutterRight && hit &&
+				hit->Kind == ScreenRows::RowKind::Document)
 			{
 				ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput);
 			}
@@ -530,7 +533,7 @@ namespace Graphite {
 
 		void ApplyMouseToCaret(const PointerState& pointer, const Core::TextBuffer& buffer,
 							   Core::OpenItem& item, const EditorMetrics& metrics,
-							   const ImVec2& origin, float textOriginX, const LensRows& lenses,
+							   const ImVec2& origin, float textOriginX, const ScreenRows& screenRows,
 							   const LensModel* lensModel, EditorFrameResult& result)
 		{
 			if (!pointer.PressedThisFrame && !pointer.Dragging && !pointer.RightPressedThisFrame)
@@ -546,13 +549,14 @@ namespace Graphite {
 			const auto screenRow = static_cast<std::size_t>(
 				std::max(0.0f, (mouse.y - origin.y) / metrics.LineHeight));
 
-			const LensRows::Row hit = lenses.At(screenRow);
+			const ScreenRows::Row hit = screenRows.At(screenRow);
+			const bool onText = hit.Kind == ScreenRows::RowKind::Document;
 
 			if (pointer.RightPressedThisFrame)
 			{
 				const float gutterRight = GutterRightEdge(origin, ImGui::GetScrollX(), metrics);
 
-				if (hit.IsLens || mouse.x < gutterRight)
+				if (!onText || mouse.x < gutterRight)
 				{
 					return;
 				}
@@ -563,10 +567,11 @@ namespace Graphite {
 			// WARNING: Only a press returns here. A drag across a lens must still extend to the
 			// row under the pointer; returning for it as well dropped the extend and made the
 			// selection stutter a row short while the pointer sat over a lens.
-			if (hit.IsLens && pointer.PressedThisFrame)
+			if (!onText && pointer.PressedThisFrame)
 			{
-				const Lens* const lens =
-					lensModel != nullptr ? lensModel->LensAt(hit.DocumentRow) : nullptr;
+				const Lens* const lens = lensModel != nullptr && hit.Kind == ScreenRows::RowKind::Lens
+											 ? lensModel->LensAt(hit.DocumentRow)
+											 : nullptr;
 
 				if (IsOverLensLabel(lens, mouse.x, textOriginX, metrics))
 				{
@@ -1062,7 +1067,7 @@ namespace Graphite {
 		// SetScrollY only records a target and the getter reports the old offset until the next
 		// Begin. A caller that corrected the scroll earlier in the frame must pass its own figure.
 		void ScrollToCaret(const Core::TextBuffer& buffer, const Core::OpenItem& item,
-						   const EditorMetrics& metrics, bool wordWrap, const LensRows& lenses,
+						   const EditorMetrics& metrics, bool wordWrap, const ScreenRows& screenRows,
 						   float scrollY)
 		{
 			const Core::Position caretPosition = buffer.ToPosition(item.Caret.Offset);
@@ -1070,7 +1075,7 @@ namespace Graphite {
 			const std::size_t caretDocumentRow =
 				Core::CaretToVisual(buffer, item.Rows, item.Caret.Offset, item.TabWidth).Row;
 			const float caretY =
-				static_cast<float>(lenses.ScreenRowOf(caretDocumentRow)) * metrics.LineHeight;
+				static_cast<float>(screenRows.ScreenRowOf(caretDocumentRow)) * metrics.LineHeight;
 
 			if (caretY < scrollY)
 			{
@@ -1766,7 +1771,7 @@ namespace Graphite {
 
 		MouseHit ComputeMouseHit(const Core::TextBuffer& buffer, const Core::OpenItem& item,
 								 const EditorMetrics& metrics, const ImVec2& origin,
-								 float textOriginX, const LensRows& lenses)
+								 float textOriginX, const ScreenRows& screenRows)
 		{
 			MouseHit hit;
 
@@ -1783,14 +1788,14 @@ namespace Graphite {
 			}
 
 			const std::size_t screenRow = static_cast<std::size_t>((mouse.y - origin.y) / metrics.LineHeight);
-			const LensRows::Row lensHit = lenses.At(screenRow);
+			const ScreenRows::Row rowHit = screenRows.At(screenRow);
 
-			if (lensHit.IsLens)
+			if (rowHit.Kind != ScreenRows::RowKind::Document)
 			{
 				return hit;
 			}
 
-			const std::size_t row = lensHit.DocumentRow;
+			const std::size_t row = rowHit.DocumentRow;
 			const float relativeX = mouse.x - textOriginX;
 			const auto column = static_cast<std::size_t>(
 				(relativeX + metrics.CellWidth * kHalf) / metrics.CellWidth);
@@ -1817,7 +1822,7 @@ namespace Graphite {
 		HoverIdentifier ComputeHoverIdentifier(const Core::TextBuffer& buffer,
 											   const Core::OpenItem& item,
 											   const EditorMetrics& metrics, const ImVec2& origin,
-											   float textOriginX, const LensRows& lenses,
+											   float textOriginX, const ScreenRows& screenRows,
 											   SyntaxCache* syntax)
 		{
 			HoverIdentifier hover;
@@ -1827,7 +1832,7 @@ namespace Graphite {
 				return hover;
 			}
 
-			const MouseHit hit = ComputeMouseHit(buffer, item, metrics, origin, textOriginX, lenses);
+			const MouseHit hit = ComputeMouseHit(buffer, item, metrics, origin, textOriginX, screenRows);
 
 			if (!hit.Valid)
 			{
@@ -1890,7 +1895,7 @@ namespace Graphite {
 		DiagnosticHover ComputeDiagnosticHover(const Core::TextBuffer& buffer,
 											   const Core::OpenItem& item,
 											   const EditorMetrics& metrics, const ImVec2& origin,
-											   float textOriginX, const LensRows& lenses,
+											   float textOriginX, const ScreenRows& screenRows,
 											   const DiagnosticOverlay* diagnostics)
 		{
 			DiagnosticHover hover;
@@ -1900,7 +1905,7 @@ namespace Graphite {
 				return hover;
 			}
 
-			const MouseHit hit = ComputeMouseHit(buffer, item, metrics, origin, textOriginX, lenses);
+			const MouseHit hit = ComputeMouseHit(buffer, item, metrics, origin, textOriginX, screenRows);
 
 			if (!hit.Valid)
 			{
@@ -1957,14 +1962,14 @@ namespace Graphite {
 													const Core::OpenItem& item,
 													const EditorMetrics& metrics,
 													const ImVec2& origin, float textOriginX,
-													const LensRows& lenses, SyntaxCache* syntax)
+													const ScreenRows& screenRows, SyntaxCache* syntax)
 		{
 			if (syntax == nullptr)
 			{
 				return std::nullopt;
 			}
 
-			const MouseHit hit = ComputeMouseHit(buffer, item, metrics, origin, textOriginX, lenses);
+			const MouseHit hit = ComputeMouseHit(buffer, item, metrics, origin, textOriginX, screenRows);
 
 			if (!hit.Valid)
 			{
@@ -2006,7 +2011,7 @@ namespace Graphite {
 
 		HoverAnchor AnchorOfToken(const Core::TextBuffer& buffer, const Core::OpenItem& item,
 								  const EditorMetrics& metrics, const ImVec2& origin,
-								  float textOriginX, const LensRows& lenses,
+								  float textOriginX, const ScreenRows& screenRows,
 								  const HoverToken& token)
 		{
 			const std::string raw = buffer.LineText(token.Line);
@@ -2018,7 +2023,7 @@ namespace Graphite {
 
 			HoverAnchor anchor;
 			anchor.Min = ImVec2(textOriginX + static_cast<float>(visual.Column) * metrics.CellWidth,
-								origin.y + static_cast<float>(lenses.ScreenRowOf(visual.Row)) *
+								origin.y + static_cast<float>(screenRows.ScreenRowOf(visual.Row)) *
 											   metrics.LineHeight);
 			anchor.Max = ImVec2(anchor.Min.x + static_cast<float>(width) * metrics.CellWidth,
 								anchor.Min.y + metrics.LineHeight);
@@ -2110,7 +2115,7 @@ namespace Graphite {
 		}
 
 		void RunHover(const Core::TextBuffer& buffer, const Core::OpenItem& item,
-					  const RowCanvas& canvas, const LensRows& lenses, SyntaxCache* syntax,
+					  const RowCanvas& canvas, const ScreenRows& screenRows, SyntaxCache* syntax,
 					  const DiagnosticHover& diagnostic, const HoverFrame& frame,
 					  EditorFrameResult& result)
 		{
@@ -2127,7 +2132,7 @@ namespace Graphite {
 
 			HoverInput input;
 			input.Token = ComputeHoverToken(buffer, item, metrics, canvas.Origin,
-											canvas.TextOriginX, lenses, syntax);
+											canvas.TextOriginX, screenRows, syntax);
 			input.MouseInTooltip = mouseInTooltip;
 			input.MouseMoved = mouseMoved;
 			input.Ctrl = ImGui::GetIO().KeyCtrl;
@@ -2201,7 +2206,7 @@ namespace Graphite {
 			if (current && current->Line < buffer.GetLineCount())
 			{
 				const HoverAnchor anchor = AnchorOfToken(buffer, item, metrics, canvas.Origin,
-														 canvas.TextOriginX, lenses, *current);
+														 canvas.TextOriginX, screenRows, *current);
 				hover.AnchorMin = anchor.Min;
 				hover.AnchorMax = anchor.Max;
 			}
@@ -2319,7 +2324,7 @@ namespace Graphite {
 		// bars on either side, so it is tested first: within its own height of the boundary the
 		// pointer is over the triangle.
 		const ChangeHunk* ComputeChangeHover(const Core::OpenItem& item, const RowCanvas& canvas,
-											 const LensRows& lenses, const ChangeMarkers* changes)
+											 const ScreenRows& screenRows, const ChangeMarkers* changes)
 		{
 			if (changes == nullptr || changes->Hunks.empty() || !ImGui::IsWindowHovered())
 			{
@@ -2343,9 +2348,9 @@ namespace Graphite {
 			const float offsetInRow =
 				relativeY - static_cast<float>(screenRow) * canvas.Metrics.LineHeight;
 
-			const LensRows::Row hit = lenses.At(screenRow);
+			const ScreenRows::Row hit = screenRows.At(screenRow);
 
-			if (hit.IsLens || hit.DocumentRow >= item.Rows.GetTotalRows())
+			if (hit.Kind != ScreenRows::RowKind::Document || hit.DocumentRow >= item.Rows.GetTotalRows())
 			{
 				return nullptr;
 			}
@@ -2361,11 +2366,11 @@ namespace Graphite {
 				}
 			}
 
-			// WARNING: A lens row between this line and the next holds the upper half of the next
-			// line's triangle, so the bottom of this row is then only this line's bar.
+			// WARNING: A lens or peek row between this line and the next holds the upper half of the
+			// next line's triangle, so the bottom of this row is then only this line's bar.
 			if (lastRowOfLine &&
 				offsetInRow >= canvas.Metrics.LineHeight - Core::Scaled(kChangeColumnWidth) &&
-				!lenses.At(screenRow + 1).IsLens)
+				screenRows.At(screenRow + 1).Kind == ScreenRows::RowKind::Document)
 			{
 				if (const ChangeHunk* below = FindDeletionHunk(*changes, rowRef.Line + 1))
 				{
@@ -2593,14 +2598,14 @@ namespace Graphite {
 		}
 
 		float OverviewLineTop(const Core::OpenItem& item, const RowCanvas& canvas,
-							  const LensRows& lenses, const OverviewTrack& track, std::size_t line)
+							  const ScreenRows& screenRows, const OverviewTrack& track, std::size_t line)
 		{
 			const std::size_t lineCount = item.Rows.GetLineCount();
 			const std::size_t totalRows = item.Rows.GetTotalRows();
 
 			const std::size_t screenRow = line >= lineCount
-											  ? lenses.TotalScreenRows(totalRows)
-											  : lenses.ScreenRowOf(item.Rows.FirstRowOf(line));
+											  ? screenRows.TotalScreenRows(totalRows)
+											  : screenRows.ScreenRowOf(item.Rows.FirstRowOf(line));
 
 			return track.RowFraction(screenRow, canvas.Metrics.LineHeight);
 		}
@@ -2621,7 +2626,7 @@ namespace Graphite {
 		}
 
 		void DrawChangeOverview(const Core::OpenItem& item, const RowCanvas& canvas,
-								const LensRows& lenses, const ChangeMarkers* changes,
+								const ScreenRows& screenRows, const ChangeMarkers* changes,
 								const OverviewTrack& track)
 		{
 			if (changes == nullptr || changes->Hunks.empty())
@@ -2631,7 +2636,7 @@ namespace Graphite {
 
 			ImGuiWindow* window = ImGui::GetCurrentWindow();
 
-			const auto lineTop = [&](std::size_t line) { return OverviewLineTop(item, canvas, lenses, track, line); };
+			const auto lineTop = [&](std::size_t line) { return OverviewLineTop(item, canvas, screenRows, track, line); };
 
 			const std::vector<OverviewMark> marks = BuildChangeOverview(
 				*changes, lineTop, Core::Scaled(kOverviewMinHeight) / track.Height);
@@ -2656,7 +2661,7 @@ namespace Graphite {
 		// Ticked in the margins either side of the grab and the centre strip, so they cover neither. A
 		// wide scrollbar's grab is wider than the strip.
 		void DrawOccurrenceOverview(const Core::OpenItem& item, const RowCanvas& canvas,
-									const LensRows& lenses, const SelectionOccurrences& occurrences,
+									const ScreenRows& screenRows, const SelectionOccurrences& occurrences,
 									const OverviewTrack& track)
 		{
 			if (occurrences.Lines.empty())
@@ -2666,7 +2671,7 @@ namespace Graphite {
 
 			ImGuiWindow* window = ImGui::GetCurrentWindow();
 
-			const auto lineTop = [&](std::size_t line) { return OverviewLineTop(item, canvas, lenses, track, line); };
+			const auto lineTop = [&](std::size_t line) { return OverviewLineTop(item, canvas, screenRows, track, line); };
 
 			const std::vector<OccurrenceMark> marks = BuildOccurrenceOverview(
 				occurrences.Lines, lineTop, Core::Scaled(kOverviewMinHeight) / track.Height);
@@ -2983,16 +2988,14 @@ namespace Graphite {
 		void DrawVisibleRows(const Core::TextBuffer& buffer, const Core::OpenItem& item,
 							 const EditorMetrics& metrics, const ImVec2& origin, float scrollX,
 							 float available, bool wordWrap, bool focused, SyntaxCache* syntax,
-							 const ResolvedScheme& scheme, const LensModel* lensModel,
-							 const SemanticOverlay* semanticOverlay,
+							 const ResolvedScheme& scheme, const ScreenRows& screenRows,
+							 const LensModel* lensModel, const SemanticOverlay* semanticOverlay,
 							 const DiagnosticOverlay* diagnosticOverlay, bool diagnosticsStale,
 							 const ChangeMarkers* changes, const ChangeMarkers* scrollbarChanges,
 							 const SelectionOccurrences& occurrences, const LineAuthorView& author,
 							 EditorWidgetState& widget, const HoverFrame& hoverFrame,
 							 const PointerState& pointer, EditorFrameResult& result)
 		{
-			const LensRows& lenses = LensRowsOf(lensModel);
-
 			RowCanvas canvas;
 
 			canvas.Draw = ImGui::GetWindowDrawList();
@@ -3009,7 +3012,7 @@ namespace Graphite {
 			canvas.Draw->AddRectFilled(
 				canvas.Origin,
 				ImVec2(canvas.Origin.x + std::max(canvas.ContentWidth, canvas.WindowWidth),
-					   canvas.Origin.y + std::max(DocumentHeightOf(item, metrics, lenses),
+					   canvas.Origin.y + std::max(DocumentHeightOf(item, metrics, screenRows),
 												  ImGui::GetWindowHeight())),
 				canvas.Palette.Background);
 
@@ -3024,7 +3027,7 @@ namespace Graphite {
 				canvas.TextOriginX + static_cast<float>(caret.Visual.Column) * metrics.CellWidth;
 			result.CaretScreenY =
 				origin.y +
-				static_cast<float>(lenses.ScreenRowOf(caret.Visual.Row)) * metrics.LineHeight;
+				static_cast<float>(screenRows.ScreenRowOf(caret.Visual.Row)) * metrics.LineHeight;
 			result.CaretLineHeight = metrics.LineHeight;
 
 			const ImRect surface = ImGui::GetCurrentWindow()->InnerRect;
@@ -3035,33 +3038,33 @@ namespace Graphite {
 			result.Viewport = ImGui::GetWindowViewport()->ID;
 
 			const HoverIdentifier hover = ComputeHoverIdentifier(
-				buffer, item, metrics, origin, canvas.TextOriginX, lenses, syntax);
+				buffer, item, metrics, origin, canvas.TextOriginX, screenRows, syntax);
 			const std::optional<std::size_t> hoveredLens =
-				HoveredLensRow(pointer, lenses, lensModel, metrics, origin, canvas.TextOriginX);
+				HoveredLensRow(pointer, screenRows, lensModel, metrics, origin, canvas.TextOriginX);
 
-			SetEditorCursor(pointer, hover.Valid || hoveredLens.has_value(), lenses, metrics, origin,
+			SetEditorCursor(pointer, hover.Valid || hoveredLens.has_value(), screenRows, metrics, origin,
 							scrollX);
 
 			const DiagnosticHover diagnosticHover = ComputeDiagnosticHover(
-				buffer, item, metrics, origin, canvas.TextOriginX, lenses, diagnosticOverlay);
+				buffer, item, metrics, origin, canvas.TextOriginX, screenRows, diagnosticOverlay);
 
 			if (hoverFrame.State != nullptr)
 			{
-				RunHover(buffer, item, canvas, lenses, syntax, diagnosticHover, hoverFrame, result);
+				RunHover(buffer, item, canvas, screenRows, syntax, diagnosticHover, hoverFrame, result);
 			}
 			else
 			{
 				DrawDiagnosticTooltip(diagnosticHover);
 			}
 
-			DrawChangeTooltip(ComputeChangeHover(item, canvas, lenses, changes), buffer,
+			DrawChangeTooltip(ComputeChangeHover(item, canvas, screenRows, changes), buffer,
 							  canvas.Palette, item.TabWidth);
 
 			if (const std::optional<OverviewTrack> track = OverviewTrackOf(ImGui::GetCurrentWindow()))
 			{
-				DrawChangeOverview(item, canvas, lenses, scrollbarChanges, *track);
-				DrawOccurrenceOverview(item, canvas, lenses, occurrences, *track);
-				DrawCaretOverview(canvas, lenses.ScreenRowOf(caret.Visual.Row), *track);
+				DrawChangeOverview(item, canvas, screenRows, scrollbarChanges, *track);
+				DrawOccurrenceOverview(item, canvas, screenRows, occurrences, *track);
+				DrawCaretOverview(canvas, screenRows.ScreenRowOf(caret.Visual.Row), *track);
 			}
 
 			LineCacheInput lineInput{buffer, item.Find.Matches, occurrences.Matches};
@@ -3073,12 +3076,12 @@ namespace Graphite {
 			lineInput.Brackets = BracketPairFor(buffer, item, syntax, widget.Brackets);
 
 			ReserveDocumentExtent(origin, canvas.ContentWidth,
-								  DocumentHeightOf(item, metrics, lenses));
+								  DocumentHeightOf(item, metrics, screenRows));
 
 			VisibleLineCache cache;
 
 			ImGuiListClipper clipper;
-			clipper.Begin(static_cast<int>(lenses.TotalScreenRows(item.Rows.GetTotalRows())),
+			clipper.Begin(static_cast<int>(screenRows.TotalScreenRows(item.Rows.GetTotalRows())),
 						  metrics.LineHeight);
 
 			bool anyDrawn = false;
@@ -3088,11 +3091,16 @@ namespace Graphite {
 				for (int screenRowIndex = clipper.DisplayStart; screenRowIndex < clipper.DisplayEnd;
 					 ++screenRowIndex)
 				{
-					const LensRows::Row screenRow =
-						lenses.At(static_cast<std::size_t>(screenRowIndex));
+					const ScreenRows::Row screenRow =
+						screenRows.At(static_cast<std::size_t>(screenRowIndex));
 					const float y = origin.y + static_cast<float>(screenRowIndex) * metrics.LineHeight;
 
-					if (screenRow.IsLens)
+					if (screenRow.Kind == ScreenRows::RowKind::Peek)
+					{
+						continue;
+					}
+
+					if (screenRow.Kind == ScreenRows::RowKind::Lens)
 					{
 						const Lens* const lens =
 							lensModel != nullptr ? lensModel->LensAt(screenRow.DocumentRow) : nullptr;
@@ -3261,12 +3269,12 @@ namespace Graphite {
 			}
 
 			const LensModel* const drawnLenses = view.ShowLensRows ? view.Lens : nullptr;
-			const LensRows& lenses = LensRowsOf(drawnLenses);
+			const ScreenRows screenRows{LensRowsOf(drawnLenses), std::nullopt};
 
 			const WrapGeometry wrap = WrapGeometryOf(metrics.Gutter, metrics.CellWidth, SurfaceWidthWithoutScrollbar());
 			result.Wrap = wrap;
 
-			const VerticalScrollbar scrollbar = ScrollbarOfSurface(item, metrics, lenses);
+			const VerticalScrollbar scrollbar = ScrollbarOfSurface(item, metrics, screenRows);
 			const std::size_t columnsPerRow =
 				view.WordWrap ? WrappedColumns(wrap, buffer.GetLineCount(), scrollbar) : Core::RowMap::kNoWrap;
 
@@ -3276,7 +3284,7 @@ namespace Graphite {
 
 			const PointerState pointer = AddInteractiveSurface(
 				origin, ContentWidthOf(item, metrics, rowAreaWidth, view.WordWrap),
-				DocumentHeightOf(item, metrics, lenses));
+				DocumentHeightOf(item, metrics, screenRows));
 
 			const AuthorCardInput cardInput =
 				ReadAuthorCardInput(pointer, lastAuthorRect, widget.AuthorCardWindow,
@@ -3293,7 +3301,7 @@ namespace Graphite {
 			else
 			{
 				ApplyMouseToCaret(pointer, buffer, item, metrics, origin,
-								  origin.x + metrics.Gutter.TotalWidth, lenses, drawnLenses, result);
+								  origin.x + metrics.Gutter.TotalWidth, screenRows, drawnLenses, result);
 			}
 
 			RouteMouseWheel(context);
@@ -3373,7 +3381,7 @@ namespace Graphite {
 
 			if (view.Anchor != nullptr && view.Anchor->Taken)
 			{
-				const std::size_t screenRowNow = lenses.ScreenRowOf(
+				const std::size_t screenRowNow = screenRows.ScreenRowOf(
 					AnchoredRow(*view.Anchor, item.Rows.FirstRowOf(view.Anchor->Line),
 								item.Rows.RowsOf(view.Anchor->Line)));
 
@@ -3387,7 +3395,7 @@ namespace Graphite {
 
 			if (item.Caret.Offset != caretAtFrameStart || item.PendingScroll)
 			{
-				ScrollToCaret(buffer, item, metrics, view.WordWrap, lenses, scrollY);
+				ScrollToCaret(buffer, item, metrics, view.WordWrap, screenRows, scrollY);
 				widget.CaretMovedAt = ImGui::GetTime();
 				item.PendingScroll = false;
 			}
@@ -3411,7 +3419,7 @@ namespace Graphite {
 			author.HiddenWhileTyping = author.HiddenWhileTyping || result.Edited;
 
 			DrawVisibleRows(buffer, item, metrics, origin, scrollX, rowAreaWidth, view.WordWrap,
-							focused, view.Syntax, scheme, drawnLenses, view.Semantic,
+							focused, view.Syntax, scheme, screenRows, drawnLenses, view.Semantic,
 							view.Diagnostics, view.DiagnosticsStale, gutterChanges,
 							scrollbarChanges, occurrences, author, widget, hoverFrame, pointer, result);
 
@@ -3431,7 +3439,7 @@ namespace Graphite {
 
 				view.Anchor->Line = topRow.Line;
 				view.Anchor->SubRow = topRow.SubRow;
-				view.Anchor->ScreenRow = lenses.ScreenRowOf(result.FirstVisibleRow);
+				view.Anchor->ScreenRow = screenRows.ScreenRowOf(result.FirstVisibleRow);
 				view.Anchor->ScrollY = ImGui::GetScrollY();
 				view.Anchor->Taken = true;
 			}

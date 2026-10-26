@@ -662,6 +662,7 @@ Do not hand-edit the rows between the markers; edit the record and rebuild.
 | [0630](0630-blame-head-once-per-commit-and-lay-it-over-the-buffer-with-a-line-diff.md) | Blame HEAD once per commit and lay it over the buffer with a line diff | proposed | 2026-10-25 |
 | [0630](0630-leave-the-branch-out-of-the-title-bar-since-the-status-bar-shows-it.md) | Leave the branch out of the title bar, since the status bar shows it | proposed | 2026-10-21 |
 | [0631](0631-draw-every-diff-with-one-set-of-options-kept-in-the-settings.md) | Draw every diff with one set of options kept in the settings | proposed | 2026-10-21 |
+| [0631](0631-place-non-document-rows-as-blocks-from-a-source-the-language-server-does-not-own.md) | Place non-document rows as blocks from a source the language server does not own | proposed | 2026-10-26 |
 | [0632](0632-keep-a-short-history-of-each-language-server-and-show-it-in-the-status-bar-s-tooltip.md) | Keep a short history of each language server and show it in the status bar's tooltip | proposed | 2026-10-21 |
 | [0633](0633-show-every-wait-with-the-core-loader-and-say-nothing-is-there-only-after-an-answer-said-so.md) | Show every wait with the Core loader and say nothing is there only after an answer said so | proposed | 2026-10-25 |
 | [0634](0634-give-every-language-server-request-a-deadline.md) | Give every language-server request a deadline | proposed | 2026-10-25 |

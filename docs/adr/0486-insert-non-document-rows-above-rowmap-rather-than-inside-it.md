@@ -172,6 +172,9 @@ of a single shared `RowMap` has one wrap implementation to get right.
   is Graphite's concept to hold, not Core's.
 - [0485](0485-take-code-intelligence-from-external-language-servers.md) — the
   language-server answer a lens row displays.
+- [0631](0631-place-non-document-rows-as-blocks-from-a-source-the-language-server-does-not-own.md)
+  — amends this record: the sites below now translate through `ScreenRows`,
+  which adds a block of rows from a source other than the language server.
 - `Core/src/Core/Text/RowMap.h`, `Core/src/Core/Text/WrapLayout.cpp` — the
   types and functions this record keeps document-only.
 - `Graphite/src/Editor/TextEditorWidget.cpp` — the nine sites:
