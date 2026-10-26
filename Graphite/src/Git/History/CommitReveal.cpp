@@ -1,5 +1,7 @@
 #include "Git/History/CommitReveal.h"
 
+#include "Git/History/HistoryFilter.h"
+
 #include "Core/FileSystem/FileSystem.h"
 
 #include <algorithm>
@@ -29,6 +31,11 @@ namespace Graphite {
 		}
 
 		return RevealStep::FilterByHash;
+	}
+
+	bool ShowsWholeHeadHistory(const Core::LogRequest& request)
+	{
+		return !request.Ref.has_value() && !request.Stash.has_value() && !NarrowsHistory(request);
 	}
 
 	std::string HistoryPathText(const std::filesystem::path& relativePath)
