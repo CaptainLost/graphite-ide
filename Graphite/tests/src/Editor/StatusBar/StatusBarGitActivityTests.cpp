@@ -89,6 +89,24 @@ TEST_CASE("A running git write shows its words at once and its loader after a fi
 	CHECK(greyOnceShown > greyAtOnce);
 }
 
+TEST_CASE("An Explorer copy shows neither its words nor its loader for a fifth of a second, then both at once")
+{
+	GitActivityScreen screen;
+	screen.DrawFrames(1);
+	const int greyOfTheBarAlone = VerticesInColour(*GitActivityScreen::Bar().DrawList, Graphite::StatusBarTextColour());
+
+	screen.Messages.ExplorerFileOperation = "Duplicating Foo\xE2\x80\xA6 12 files";
+
+	screen.DrawFrames(1);
+	const int greyAtOnce = VerticesInColour(*GitActivityScreen::Bar().DrawList, Graphite::StatusBarTextColour());
+
+	screen.DrawFrames(kFramesPastTheLoaderWait);
+	const int greyOnceShown = VerticesInColour(*GitActivityScreen::Bar().DrawList, Graphite::StatusBarTextColour());
+
+	CHECK(greyAtOnce == greyOfTheBarAlone);
+	CHECK(greyOnceShown > greyAtOnce);
+}
+
 TEST_CASE("A git write done is plain words beside the branch, with no loader")
 {
 	GitActivityScreen screen;

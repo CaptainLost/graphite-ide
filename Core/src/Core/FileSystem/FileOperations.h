@@ -8,7 +8,6 @@
 
 namespace Core {
 
-	// Told how many files a copy has copied so far, after each one, on the thread that copies.
 	using CopiedFileCount = std::function<void(std::size_t copiedFiles)>;
 
 	Result<void> CreateEmptyFile(const std::filesystem::path& path);
@@ -17,9 +16,11 @@ namespace Core {
 
 	Result<void> Rename(const std::filesystem::path& from, const std::filesystem::path& to);
 
-	// A folder is copied whole, links inside it copied as links. Answers the copy's path, beside the original.
 	Result<std::filesystem::path> Duplicate(const std::filesystem::path& path,
 											const CopiedFileCount& onFileCopied = CopiedFileCount{});
+
+	Result<std::filesystem::path> DuplicateTo(const std::filesystem::path& path, const std::filesystem::path& destination,
+											  const CopiedFileCount& onFileCopied = CopiedFileCount{});
 
 	Result<void> MoveToRecycleBin(const std::filesystem::path& path);
 

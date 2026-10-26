@@ -4,12 +4,13 @@
 
 #include "Core/App/Redraw.h"
 #include "Core/Base/Count.h"
-#include "Core/FileSystem/FileOperations.h"
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/LoadingState.h"
 
 #include <chrono>
+#include <exception>
 #include <format>
+#include <string_view>
 #include <utility>
 
 namespace Graphite {
@@ -22,6 +23,22 @@ namespace Graphite {
 		{
 			const std::chrono::duration<double> runFor = now - operation.StartedAt;
 			return runFor.count() >= Core::kSecondsBeforeLoaderShows;
+		}
+
+		bool IsOnPathOf(const std::filesystem::path& path, const RunningFileOperation& operation)
+		{
+			const bool onTarget = Core::IsSameOrWithin(path, operation.Target);
+			const bool onCopy = !operation.CopyDestination.empty() && Core::IsSameOrWithin(path, operation.CopyDestination);
+
+			return onTarget || onCopy;
+		}
+
+		bool HoldsPathOf(const std::filesystem::path& folder, const RunningFileOperation& operation)
+		{
+			const bool holdsTarget = Core::IsSameOrWithin(operation.Target, folder);
+			const bool holdsCopy = !operation.CopyDestination.empty() && Core::IsSameOrWithin(operation.CopyDestination, folder);
+
+			return holdsTarget || holdsCopy;
 		}
 
 		std::string CopiedFilesText(std::size_t copiedFiles)
@@ -41,42 +58,71 @@ namespace Graphite {
 			return target;
 		}
 
-		Core::Result<std::filesystem::path> DuplicateCountingFiles(const RunningFileOperation& operation)
+		std::string StoppedText(const RunningFileOperation& operation, std::string_view reason)
+		{
+			const std::string name = Core::ToUtf8(operation.Target.filename());
+
+			switch (operation.Kind)
+			{
+			case FileOperationKind::Duplicate:
+				return std::format("the copy of '{}' stopped: {}", name, reason);
+			case FileOperationKind::MoveToRecycleBin:
+				return std::format("moving '{}' to the Recycle Bin stopped: {}", name, reason);
+			}
+
+			return std::format("the operation on '{}' stopped: {}", name, reason);
+		}
+
+		// WARNING: A job that throws posts nothing, which would leave its path busy for good.
+		Core::Result<std::filesystem::path> OutcomeCatchingThrows(const RunningFileOperation& operation,
+																  const FileOperationRunner& run)
 		{
 			std::atomic<std::size_t>& copiedFiles = *operation.CopiedFiles;
 			const Core::CopiedFileCount noteCopied = [&copiedFiles](std::size_t copiedSoFar) {
 				copiedFiles.store(copiedSoFar, std::memory_order_relaxed);
 			};
 
-			return Core::Duplicate(operation.Target, noteCopied);
-		}
-
-		Core::Result<std::filesystem::path> OutcomeOf(const RunningFileOperation& operation)
-		{
-			switch (operation.Kind)
+			try
 			{
-			case FileOperationKind::Duplicate:
-				return DuplicateCountingFiles(operation);
-			case FileOperationKind::MoveToRecycleBin:
-				return MoveToRecycleBinAnsweringTarget(operation.Target);
+				return run(operation, noteCopied);
 			}
-
-			return Core::Error{.Code = Core::ErrorCode::Unsupported, .Message = "not a file operation the Explorer runs"};
+			catch (const std::exception& thrown)
+			{
+				return Core::Error{.Code = Core::ErrorCode::IoFailure, .Message = StoppedText(operation, thrown.what())};
+			}
+			catch (...)
+			{
+				return Core::Error{.Code = Core::ErrorCode::IoFailure, .Message = StoppedText(operation, "unknown failure")};
+			}
 		}
 
-		FinishedFileOperation RunOperation(const RunningFileOperation& operation)
+		FinishedFileOperation RunOperation(const RunningFileOperation& operation, const FileOperationRunner& run)
 		{
 			return FinishedFileOperation{.Id = operation.Id,
 										 .Kind = operation.Kind,
 										 .Target = operation.Target,
-										 .Folder = operation.Folder,
-										 .Outcome = OutcomeOf(operation)};
+										 .FolderOpenAtStart = operation.FolderOpenAtStart,
+										 .CopyOrMovedPath = OutcomeCatchingThrows(operation, run)};
 		}
 
 		bool HasId(const RunningFileOperation& operation, std::uint64_t id)
 		{
 			return operation.Id == id;
 		}
+	}
+
+	Core::Result<std::filesystem::path> RunFileOperation(const RunningFileOperation& operation,
+														 const Core::CopiedFileCount& noteCopied)
+	{
+		switch (operation.Kind)
+		{
+		case FileOperationKind::Duplicate:
+			return Core::DuplicateTo(operation.Target, operation.CopyDestination, noteCopied);
+		case FileOperationKind::MoveToRecycleBin:
+			return MoveToRecycleBinAnsweringTarget(operation.Target);
+		}
+
+		return Core::Error{.Code = Core::ErrorCode::Unsupported, .Message = "not a file operation the Explorer runs"};
 	}
 
 	std::string RunningOperationText(FileOperationKind kind, const std::filesystem::path& target, std::size_t copiedFiles)
@@ -99,66 +145,52 @@ namespace Graphite {
 		return {};
 	}
 
-	std::optional<std::string> FileOperationsStatusText(const std::vector<RunningFileOperation>& running,
-														Core::SteadyClock::time_point now)
+	std::optional<std::string> FileOperationsStatusText(const std::vector<RunningFileOperation>& running)
 	{
-		const RunningFileOperation* first = nullptr;
-		std::size_t othersShown = 0;
-
-		for (const RunningFileOperation& operation : running)
-		{
-			if (!HasRunLongEnoughToShow(operation, now))
-			{
-				continue;
-			}
-
-			if (first == nullptr)
-			{
-				first = &operation;
-			}
-			else
-			{
-				++othersShown;
-			}
-		}
-
-		if (first == nullptr)
+		if (running.empty())
 		{
 			return std::nullopt;
 		}
 
-		const std::size_t copiedFiles = first->CopiedFiles != nullptr ? first->CopiedFiles->load(std::memory_order_relaxed) : 0;
-		std::string text = RunningOperationText(first->Kind, first->Target, copiedFiles);
+		const RunningFileOperation& oldest = running.front();
+		const std::size_t copiedFiles = oldest.CopiedFiles != nullptr ? oldest.CopiedFiles->load(std::memory_order_relaxed) : 0;
+		std::string text = RunningOperationText(oldest.Kind, oldest.Target, copiedFiles);
 
-		if (othersShown > 0)
+		const std::size_t othersRunning = running.size() - 1;
+
+		if (othersRunning > 0)
 		{
-			text += std::format(" and {} more", othersShown);
+			text += std::format(" and {} more", othersRunning);
 		}
 
 		return text;
 	}
 
-	FileOperationJobs::FileOperationJobs(Core::JobSubmitter submit) : m_Submit(std::move(submit))
+	FileOperationJobs::FileOperationJobs(Core::JobSubmitter submit, FileOperationRunner run)
+		: m_Submit(std::move(submit)), m_Run(std::move(run))
 	{
 	}
 
 	void FileOperationJobs::Start(FileOperationKind kind, const std::filesystem::path& target,
-								  const std::filesystem::path& folder, Clock::time_point now)
+								  const std::filesystem::path& folderOpen, Clock::time_point now)
 	{
+		const std::filesystem::path copyDestination =
+			kind == FileOperationKind::Duplicate ? Core::MakeUniquePath(target) : std::filesystem::path{};
+
 		const RunningFileOperation operation{.Id = m_NextId++,
 											 .Kind = kind,
 											 .Target = target,
-											 .Folder = folder,
+											 .CopyDestination = copyDestination,
+											 .FolderOpenAtStart = folderOpen,
 											 .StartedAt = now,
 											 .CopiedFiles = Core::CreateRef<std::atomic<std::size_t>>(0)};
 
 		m_Running.push_back(operation);
 
-		// WARNING: Nothing else may ask for a frame while the copy runs, and the status bar shows it only after the
-		// loader's wait.
+		// WARNING: Nothing else may ask for the frame in which the busy rows' loader is due.
 		Core::Redraw::RequestIn(std::chrono::duration<double>(Core::kSecondsBeforeLoaderShows));
 
-		m_Submit([operation, finished = m_Finished] { finished->Post(RunOperation(operation)); });
+		m_Submit([operation, run = m_Run, finished = m_Finished] { finished->Post(RunOperation(operation, run)); });
 	}
 
 	std::vector<FinishedFileOperation> FileOperationJobs::TakeFinished()
@@ -177,7 +209,20 @@ namespace Graphite {
 	{
 		for (const RunningFileOperation& operation : m_Running)
 		{
-			if (Core::IsSameOrWithin(path, operation.Target))
+			if (IsOnPathOf(path, operation))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	bool FileOperationJobs::IsBusyOrHoldsABusyPath(const std::filesystem::path& path) const
+	{
+		for (const RunningFileOperation& operation : m_Running)
+		{
+			if (IsOnPathOf(path, operation) || HoldsPathOf(path, operation))
 			{
 				return true;
 			}
@@ -190,7 +235,7 @@ namespace Graphite {
 	{
 		for (const RunningFileOperation& operation : m_Running)
 		{
-			if (HasRunLongEnoughToShow(operation, now) && Core::IsSameOrWithin(path, operation.Target))
+			if (HasRunLongEnoughToShow(operation, now) && IsOnPathOf(path, operation))
 			{
 				return true;
 			}
@@ -199,8 +244,8 @@ namespace Graphite {
 		return false;
 	}
 
-	std::optional<std::string> FileOperationJobs::StatusText(Clock::time_point now) const
+	std::optional<std::string> FileOperationJobs::StatusText() const
 	{
-		return FileOperationsStatusText(m_Running, now);
+		return FileOperationsStatusText(m_Running);
 	}
 }

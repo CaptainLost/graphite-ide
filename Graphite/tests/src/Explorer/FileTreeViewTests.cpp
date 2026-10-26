@@ -195,8 +195,7 @@ namespace {
 			return Frames.ClickMenuItem(label, [this] { Draw(); });
 		}
 
-		// Empty when the open menu has no item with this label. A disabled item still takes the hover, flagged as
-		// disabled, so the pointer finds it the way ClickMenuItem does and reads the flag.
+		// WARNING: A disabled item still takes the hover, only flagged as disabled.
 		std::optional<bool> IsMenuItemEnabled(const char* label)
 		{
 			constexpr float kStepDown = 4.0f;
@@ -227,8 +226,7 @@ namespace {
 			return std::nullopt;
 		}
 
-		// ImGui keeps no item's position past its frame, so the pointer climbs the dialog's right edge, where its
-		// last button stands, until ImGui reports the button with this label under it.
+		// WARNING: ImGui keeps no item's position past its frame, so the pointer has to search for the button.
 		bool ClickLastDialogButton(const char* label)
 		{
 			constexpr float kStepUp = 3.0f;
@@ -982,6 +980,69 @@ TEST_CASE("While a folder is duplicated, nothing new can be made inside it, and 
 
 	jobs.RunAll();
 	screen.Next();
+}
+
+TEST_CASE("While a file inside a folder is moved to the Recycle Bin, the folder cannot be moved but still takes a new file")
+{
+	TempDirectory folder;
+	folder.MakeFile("outer/doomed.txt");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+
+	constexpr int kOuterRow = 1;
+	constexpr int kOuterDepth = 1;
+	constexpr int kDoomedInsideRow = 2;
+	constexpr int kDoomedInsideDepth = 2;
+	const std::optional<bool> disabled{false};
+	const std::optional<bool> enabled{true};
+
+	screen.ClickRow(kOuterRow, kOuterDepth);
+	screen.Next();
+	screen.AskToDeleteRow(kDoomedInsideRow, kDoomedInsideDepth);
+	REQUIRE(screen.ClickLastDialogButton("Move"));
+	screen.Next();
+	REQUIRE(jobs.Count() == 1);
+
+	screen.RightClickRow(kOuterRow, kOuterDepth);
+	CHECK(screen.IsMenuItemEnabled("Rename") == disabled);
+	CHECK(screen.IsMenuItemEnabled("Delete") == disabled);
+	CHECK(screen.IsMenuItemEnabled("Duplicate") == disabled);
+	CHECK(screen.IsMenuItemEnabled("New File") == enabled);
+	screen.Press(ImGuiKey_Escape);
+
+	jobs.RunAll();
+	screen.Next();
+}
+
+TEST_CASE("The copy a duplicate is making offers no Rename, Delete or New File once its row appears")
+{
+	TempDirectory folder;
+	folder.MakeFile("box/inside.txt");
+
+	DeferredJobs jobs;
+	ExplorerScreen screen{folder.GetPath(), jobs.Submitter()};
+
+	constexpr int kBoxRow = 1;
+	constexpr int kCopyRow = 2;
+	constexpr int kDepth = 1;
+	const std::optional<bool> disabled{false};
+
+	screen.RightClickRow(kBoxRow, kDepth);
+	REQUIRE(screen.ChooseMenuItem("Duplicate"));
+	screen.Next();
+	REQUIRE(jobs.Count() == 1);
+
+	folder.MakeDirectory("box copy");
+	screen.Workspace.GetTree().Refresh(screen.Workspace.GetTree().GetRoot());
+	screen.Next();
+	REQUIRE(ChildNamed(screen.Workspace.GetTree().GetRoot(), "box copy") != nullptr);
+
+	screen.RightClickRow(kCopyRow, kDepth);
+	CHECK(screen.IsMenuItemEnabled("Rename") == disabled);
+	CHECK(screen.IsMenuItemEnabled("Delete") == disabled);
+	CHECK(screen.IsMenuItemEnabled("New File") == disabled);
+	screen.Press(ImGuiKey_Escape);
 }
 
 TEST_CASE("Duplicate copies on a worker, and the copy appears in the tree once the copy is done")

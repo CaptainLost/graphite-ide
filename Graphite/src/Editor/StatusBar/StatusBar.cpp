@@ -70,6 +70,8 @@ namespace Graphite {
 			std::optional<ImU32> Colour;
 
 			float GapBefore = kNoGap;
+
+			Core::WhileLoaderWaits WhileLoaderWaits = Core::WhileLoaderWaits::ShowText;
 		};
 
 		enum class ItemFace
@@ -253,7 +255,7 @@ namespace Graphite {
 			ImGui::PushID(itemId);
 			ImGui::PushStyleColor(ImGuiCol_TextDisabled, colour);
 
-			Core::LoadingLine(piece.Text.c_str(), Core::WhileLoaderWaits::ShowText);
+			Core::LoadingLine(piece.Text.c_str(), piece.WhileLoaderWaits);
 
 			ImGui::PopStyleColor();
 			ImGui::PopID();
@@ -461,6 +463,7 @@ namespace Graphite {
 			StatusItem item = BarTextItem(text);
 			item.Id = "##FileOperation";
 			item.Pieces.front().Kind = PieceKind::Loader;
+			item.Pieces.front().WhileLoaderWaits = Core::WhileLoaderWaits::ShowNothing;
 
 			return item;
 		}
@@ -620,9 +623,9 @@ namespace Graphite {
 				}
 			}
 
-			if (messages.FileOperation.has_value())
+			if (messages.ExplorerFileOperation.has_value())
 			{
-				row.Place(FileOperationItem(*messages.FileOperation), gap);
+				row.Place(FileOperationItem(*messages.ExplorerFileOperation), gap);
 			}
 
 			if (document != nullptr && document->Document->IsReadOnly())

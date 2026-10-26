@@ -187,6 +187,19 @@ TEST_CASE("Duplicate copies nested folders whole, empty ones included, and count
 	CHECK(countsTold == std::vector<std::size_t>{1, 2, 3});
 }
 
+TEST_CASE("DuplicateTo refuses a folder that exists rather than copying into it")
+{
+	TempDirectory temporaryDirectory;
+	temporaryDirectory.MakeFile("source/a.txt", "a");
+	temporaryDirectory.MakeFile("taken/b.txt", "b");
+
+	const Core::Result<std::filesystem::path> duplicateResult =
+		Core::DuplicateTo(temporaryDirectory.GetPath() / "source", temporaryDirectory.GetPath() / "taken");
+
+	REQUIRE_FALSE(duplicateResult.HasValue());
+	CHECK_FALSE(std::filesystem::exists(temporaryDirectory.GetPath() / "taken" / "a.txt"));
+}
+
 TEST_CASE("Duplicate reports a missing source")
 {
 	TempDirectory temporaryDirectory;

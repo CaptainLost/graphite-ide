@@ -67,6 +67,12 @@ namespace Graphite {
 		{
 			return std::string{"New File from Template"} + std::string{kEllipsis};
 		}
+
+		std::string BusyText(const std::filesystem::path& path)
+		{
+			return std::format("'{}' is busy until a copy or a move to the Recycle Bin there finishes",
+							   Core::ToUtf8(path.filename()));
+		}
 	}
 
 	void FileTreeView::ReportInvalidName(std::string title, const std::string& name)
@@ -453,7 +459,7 @@ namespace Graphite {
 							Core::ToUtf8(node.Path.filename()));
 		}
 
-		const bool nodeIsFree = !m_FileOperations.IsBusy(node.Path);
+		const bool nodeIsFree = !m_FileOperations.IsBusyOrHoldsABusyPath(node.Path);
 
 		if (!isRoot)
 		{
@@ -747,10 +753,29 @@ namespace Graphite {
 	void FileTreeView::HandleDelete(const PendingAction& action)
 	{
 		m_RenamingPath.clear();
+		CloseNameEditorsInside(action.Target);
 
 		const DeleteQuestion question{.Target = action.Target};
 
 		m_DeleteQuestion.AskOnce(question);
+	}
+
+	void FileTreeView::CloseNameEditorsInside(const std::filesystem::path& folder)
+	{
+		if (!m_RenamingPath.empty() && Core::IsSameOrWithin(m_RenamingPath, folder))
+		{
+			m_RenamingPath.clear();
+		}
+
+		if (!m_PendingRenamePath.empty() && Core::IsSameOrWithin(m_PendingRenamePath, folder))
+		{
+			m_PendingRenamePath.clear();
+		}
+
+		if (!m_NewFileIn.empty() && Core::IsSameOrWithin(m_NewFileIn, folder))
+		{
+			m_NewFileIn.clear();
+		}
 	}
 
 	void FileTreeView::HandleRefresh(const PendingAction& action)
@@ -785,6 +810,12 @@ namespace Graphite {
 			return action.Target;
 		}
 
+		if (m_FileOperations.IsBusyOrHoldsABusyPath(action.Target))
+		{
+			ReportFailure(Core::ToastKind::Error, "Rename failed", BusyText(action.Target));
+			return action.Target;
+		}
+
 		if (const Core::Result<void> renamed = Core::Rename(action.Target, target); !renamed)
 		{
 			APP_ERROR("{}", renamed.GetError().Message);
@@ -798,8 +829,9 @@ namespace Graphite {
 
 	void FileTreeView::HandleDuplicate(const PendingAction& action)
 	{
-		if (m_FileOperations.IsBusy(action.Target))
+		if (m_FileOperations.IsBusyOrHoldsABusyPath(action.Target))
 		{
+			ReportFailure(Core::ToastKind::Error, "Duplicate failed", BusyText(action.Target));
 			return;
 		}
 
@@ -820,20 +852,20 @@ namespace Graphite {
 
 	std::optional<std::string> FileTreeView::FileOperationText() const
 	{
-		return m_FileOperations.StatusText(FileOperationJobs::Clock::now());
+		return m_FileOperations.StatusText();
 	}
 
 	void FileTreeView::ApplyFinished(const FinishedFileOperation& finished)
 	{
-		if (!finished.Outcome)
+		if (!finished.CopyOrMovedPath)
 		{
-			APP_ERROR("{}", finished.Outcome.GetError().Message);
+			APP_ERROR("{}", finished.CopyOrMovedPath.GetError().Message);
 			m_Events.Publish(FolderToast(Core::ToastKind::Error, FailureTitleOf(finished.Kind),
-										 finished.Outcome.GetError().Message, finished.Folder));
+										 finished.CopyOrMovedPath.GetError().Message, finished.FolderOpenAtStart));
 			return;
 		}
 
-		const bool folderStillOpen = m_Workspace.IsOpen() && finished.Folder == m_Workspace.GetRoot();
+		const bool folderStillOpen = m_Workspace.IsOpen() && finished.FolderOpenAtStart == m_Workspace.GetRoot();
 
 		if (!folderStillOpen)
 		{
@@ -844,12 +876,11 @@ namespace Graphite {
 
 		if (finished.Kind == FileOperationKind::Duplicate && !IsEditingAName())
 		{
-			StartRenamingPath(finished.Outcome.GetValue());
+			StartRenamingPath(finished.CopyOrMovedPath.GetValue());
 		}
 	}
 
-	// WARNING: A copy can end seconds after it was asked for, and naming it then must not take the field from a name
-	// being typed meanwhile.
+	// WARNING: A copy can land seconds later, and must not take the field from a name being typed meanwhile.
 	bool FileTreeView::IsEditingAName() const
 	{
 		return !m_RenamingPath.empty() || !m_PendingRenamePath.empty() || !m_NewFileIn.empty();
@@ -862,6 +893,12 @@ namespace Graphite {
 
 	void FileTreeView::HandleCreate(const PendingAction& action)
 	{
+		if (m_FileOperations.IsBusy(action.Target))
+		{
+			ReportFailure(Core::ToastKind::Error, "Create failed", BusyText(action.Target));
+			return;
+		}
+
 		if (!Core::IsValidFileName(action.Name))
 		{
 			APP_ERROR("'{}' is not a valid file name", action.Name);
@@ -902,6 +939,12 @@ namespace Graphite {
 			return;
 		}
 
+		if (m_FileOperations.IsBusy(action.Target))
+		{
+			ReportFailure(Core::ToastKind::Error, "Create failed", BusyText(action.Target));
+			return;
+		}
+
 		ReadFolderFromDisk(*folder);
 		folder->Expanded = true;
 		m_ForceOpen.push_back(action.Target);
@@ -922,6 +965,12 @@ namespace Graphite {
 
 	void FileTreeView::HandleCreateNamedFile(const PendingAction& action)
 	{
+		if (m_FileOperations.IsBusy(action.Target))
+		{
+			ReportFailure(Core::ToastKind::Error, "Create failed", BusyText(action.Target));
+			return;
+		}
+
 		const std::optional<NewFilePath> path = ParseNewFilePath(action.Name);
 
 		if (!path.has_value())
@@ -1123,8 +1172,13 @@ namespace Graphite {
 		{
 			m_DeleteQuestion.Answer();
 
-			if (!m_FileOperations.IsBusy(target))
+			if (m_FileOperations.IsBusyOrHoldsABusyPath(target))
 			{
+				ReportFailure(Core::ToastKind::Error, "Delete failed", BusyText(target));
+			}
+			else
+			{
+				CloseNameEditorsInside(target);
 				m_FileOperations.Start(FileOperationKind::MoveToRecycleBin, target, m_Workspace.GetRoot(),
 									   FileOperationJobs::Clock::now());
 			}
@@ -1291,7 +1345,11 @@ namespace Graphite {
 		{
 			m_NewFileQuestion.Answer();
 
-			if (const Core::Result<std::filesystem::path> created = CreateFiles(folder, files); !created)
+			if (m_FileOperations.IsBusy(folder))
+			{
+				ReportFailure(Core::ToastKind::Error, "Create failed", BusyText(folder));
+			}
+			else if (const Core::Result<std::filesystem::path> created = CreateFiles(folder, files); !created)
 			{
 				APP_ERROR("{}", created.GetError().Message);
 				ReportFailure(Core::ToastKind::Error, "Create failed", created.GetError().Message);

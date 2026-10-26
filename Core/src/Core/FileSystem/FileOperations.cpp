@@ -76,8 +76,6 @@ namespace Core {
 			return error;
 		}
 
-		// What std::filesystem::copy does with recursive and copy_symlinks, one entry at a time, so each copied file
-		// can be counted.
 		std::error_code CopyEntry(const std::filesystem::path& from, const std::filesystem::path& to, CopyTally& tally)
 		{
 			std::error_code error;
@@ -219,23 +217,33 @@ namespace Core {
 
 	Result<std::filesystem::path> Duplicate(const std::filesystem::path& path, const CopiedFileCount& onFileCopied)
 	{
+		return DuplicateTo(path, MakeUniquePath(path), onFileCopied);
+	}
+
+	Result<std::filesystem::path> DuplicateTo(const std::filesystem::path& path, const std::filesystem::path& destination,
+											  const CopiedFileCount& onFileCopied)
+	{
 		std::error_code existsError;
 		if (!std::filesystem::exists(path, existsError))
 		{
 			return NoLongerExistsError(path);
 		}
 
-		const std::filesystem::path target = MakeUniquePath(path);
+		// WARNING: create_directory succeeds on a folder that exists, so a copy would merge into whatever is there.
+		if (std::filesystem::exists(destination, existsError))
+		{
+			return AlreadyExistsError(destination);
+		}
 
 		CopyTally tally{.OnFileCopied = onFileCopied};
-		const std::error_code error = CopyEntry(path, target, tally);
+		const std::error_code error = CopyEntry(path, destination, tally);
 
 		if (error)
 		{
 			return Error{.Code = ErrorCode::IoFailure, .Message = std::format("cannot copy '{}': {}", ToUtf8(path), error.message())};
 		}
 
-		return target;
+		return destination;
 	}
 
 	Result<void> MoveToRecycleBin(const std::filesystem::path& path)

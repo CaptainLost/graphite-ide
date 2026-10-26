@@ -59,8 +59,7 @@ namespace Graphite {
 
 		void Refresh();
 
-		// WARNING: Called every frame whether the tree is drawn or not, so a copy that ends while the panel is hidden
-		// still refreshes the tree and reports a failure.
+		// WARNING: Call every frame, drawn or not, so a copy ending behind a hidden panel still lands.
 		void ApplyFinishedOperations();
 
 		std::optional<std::string> FileOperationText() const;
@@ -136,6 +135,7 @@ namespace Graphite {
 		void MakeFolderIn(const std::filesystem::path& folder);
 		void ExecutePendingAction();
 		void HandleDelete(const PendingAction& action);
+		void CloseNameEditorsInside(const std::filesystem::path& folder);
 		void HandleRefresh(const PendingAction& action);
 		void HandleRename(const PendingAction& action);
 		std::filesystem::path ApplyRename(const PendingAction& action);

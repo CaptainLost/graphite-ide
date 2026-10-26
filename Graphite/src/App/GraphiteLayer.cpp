@@ -1065,7 +1065,7 @@ namespace Graphite {
 
 		if (m_Explorer != nullptr)
 		{
-			messages.FileOperation = m_Explorer->FileOperationText();
+			messages.ExplorerFileOperation = m_Explorer->FileOperationText();
 		}
 
 		bool workingTreeHasChanges = false;
