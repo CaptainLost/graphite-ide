@@ -18,6 +18,14 @@ namespace Graphite {
 	inline constexpr float kNearestFromZoom = 1.0f;
 	inline constexpr float kPixelGridFromZoom = 8.0f;
 
+	// What the zoom shortcuts ask of the picture with the keyboard focus.
+	enum class PictureZoom
+	{
+		In,
+		Out,
+		Fit
+	};
+
 	struct ZoomState {
 		float Zoom = 1.0f;
 		ImVec2 Pan{0.0f, 0.0f};

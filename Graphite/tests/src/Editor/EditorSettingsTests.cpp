@@ -4,6 +4,11 @@
 
 #include "TempAppSettings.h"
 
+#include "Core/Command/CommandRegistry.h"
+#include "Core/Command/Keymap.h"
+
+#include <vector>
+
 namespace {
 	constexpr bool kEnabled = true;
 	constexpr bool kDisabled = false;
@@ -302,4 +307,65 @@ TEST_CASE("An unknown image background reads as the checkerboard")
 	settings.Load();
 
 	CHECK(settings.GetImageBackground() == Graphite::PictureBackground::Checkerboard);
+}
+
+namespace {
+	struct ZoomCommands
+	{
+		TempAppSettings Store;
+		Graphite::EditorSettings Settings{Store.Get()};
+		Core::CommandRegistry Commands;
+		Core::Keymap Keys;
+		std::vector<Graphite::PictureZoom> Asked;
+
+		ZoomCommands() { Settings.RegisterCommands(Commands, Keys); }
+
+		void PictureTakes(bool takes)
+		{
+			Settings.SetPictureZoom([this, takes](Graphite::PictureZoom zoom) {
+				Asked.push_back(zoom);
+				return takes;
+			});
+		}
+	};
+}
+
+TEST_CASE("The zoom commands zoom a picture that takes them and leave the font as it was")
+{
+	ZoomCommands zoom;
+	zoom.PictureTakes(true);
+	const float before = zoom.Settings.GetFontSize();
+
+	CHECK(zoom.Commands.Run("editor.zoomIn"));
+	CHECK(zoom.Commands.Run("editor.zoomOut"));
+	CHECK(zoom.Commands.Run("editor.resetZoom"));
+
+	CHECK(zoom.Asked == std::vector<Graphite::PictureZoom>{Graphite::PictureZoom::In, Graphite::PictureZoom::Out,
+														   Graphite::PictureZoom::Fit});
+	CHECK(zoom.Settings.GetFontSize() == doctest::Approx(before));
+}
+
+TEST_CASE("The zoom commands change the font when no picture takes them")
+{
+	ZoomCommands zoom;
+	const float before = zoom.Settings.GetFontSize();
+
+	SUBCASE("A picture that declines the zoom")
+	{
+		zoom.PictureTakes(false);
+	}
+
+	SUBCASE("No picture asked at all")
+	{
+	}
+
+	zoom.Commands.Run("editor.zoomIn");
+	CHECK(zoom.Settings.GetFontSize() == doctest::Approx(before + 1.0f));
+
+	zoom.Commands.Run("editor.zoomOut");
+	zoom.Commands.Run("editor.zoomOut");
+	CHECK(zoom.Settings.GetFontSize() == doctest::Approx(before - 1.0f));
+
+	zoom.Commands.Run("editor.resetZoom");
+	CHECK(zoom.Settings.GetFontSize() == doctest::Approx(17.0f));
 }

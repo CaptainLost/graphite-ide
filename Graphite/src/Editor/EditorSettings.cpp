@@ -259,19 +259,39 @@ namespace Graphite {
 		m_Store.SetHoverDelayMs(m_Hover.DelayMs);
 	}
 
+	bool EditorSettings::ZoomsPicture(PictureZoom zoom) const
+	{
+		return m_PictureZoom && m_PictureZoom(zoom);
+	}
+
 	void EditorSettings::RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys)
 	{
 		commands.Add({.Id = "editor.zoomIn",
 					  .Label = "Zoom In",
-					  .Run = [this] { SetFontSize(m_FontSize + kFontSizeStep); }});
+					  .Run = [this] {
+						  if (!ZoomsPicture(PictureZoom::In))
+						  {
+							  SetFontSize(m_FontSize + kFontSizeStep);
+						  }
+					  }});
 
 		commands.Add({.Id = "editor.zoomOut",
 					  .Label = "Zoom Out",
-					  .Run = [this] { SetFontSize(m_FontSize - kFontSizeStep); }});
+					  .Run = [this] {
+						  if (!ZoomsPicture(PictureZoom::Out))
+						  {
+							  SetFontSize(m_FontSize - kFontSizeStep);
+						  }
+					  }});
 
 		commands.Add({.Id = "editor.resetZoom",
 					  .Label = "Reset Zoom",
-					  .Run = [this] { SetFontSize(kDefaultFontSize); }});
+					  .Run = [this] {
+						  if (!ZoomsPicture(PictureZoom::Fit))
+						  {
+							  SetFontSize(kDefaultFontSize);
+						  }
+					  }});
 
 		// WARNING: No default binding on purpose. AltGr on Windows reports as Ctrl+Alt, so Alt+Z
 		// would fire on every AltGr+Z, an ordinary Polish letter.

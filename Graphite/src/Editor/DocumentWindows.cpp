@@ -4,12 +4,16 @@
 
 #include "Editor/ActiveTextDocument.h"
 #include "Editor/Breadcrumb.h"
+#include "Editor/EditorSettings.h"
 #include "Editor/Navigation/DefinitionNavigation.h"
 #include "Editor/Overlays/LensWaiting.h"
 #include "Editor/EditorCommands.h"
 #include "Editor/TabColour.h"
 #include "Theme/Palettes.h"
 #include "Editor/TextEditorWidget.h"
+
+#include "Image/ImageTabView.h"
+#include "Image/ImageTabs.h"
 
 #include "Language/Registry/LanguageRegistry.h"
 #include "Language/Server/Adapters/ServerAdapter.h"
@@ -53,6 +57,7 @@
 #include <imgui_internal.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <format>
 #include <span>
@@ -134,6 +139,18 @@ namespace Graphite {
 			return Core::ToUtf8(path.filename());
 		}
 
+		// A tab shown as text or as a picture comes back after a restart; one whose file could not be read does not.
+		bool IsKeptAcrossRestart(const Core::OpenItem& item)
+		{
+			return item.Document != nullptr || item.View == Core::ItemView::Image;
+		}
+
+		// An image item whose file has gone draws the failure message, as a text tab does.
+		bool ShowsPicture(const Core::OpenItem& item)
+		{
+			return item.View == Core::ItemView::Image && item.Failure == Core::OpenFailure::None;
+		}
+
 		std::string SavedCount(std::size_t saved)
 		{
 			if (saved == 0)
@@ -206,7 +223,7 @@ namespace Graphite {
 		{
 			const Core::OpenItem& item = m_Documents.At(index);
 
-			if (!item.Document)
+			if (!IsKeptAcrossRestart(item))
 			{
 				continue;
 			}
@@ -218,21 +235,25 @@ namespace Graphite {
 				continue;
 			}
 
-			const Core::Position caret = item.Document->GetBuffer().ToPosition(item.Caret.Offset);
-
 			TabState tab;
 			tab.Path = item.Path;
 			tab.Preview = item.Preview;
-			tab.Line = caret.Line;
-			tab.Column = caret.Column;
 
-			if (kept != nullptr && kept->PendingTop)
+			// A picture has no caret and no scroll to keep.
+			if (item.Document)
 			{
-				tab.Top = kept->PendingTop->Line;
-			}
-			else if (kept != nullptr && kept->Anchor.Taken)
-			{
-				tab.Top = kept->Anchor.Line;
+				const Core::Position caret = item.Document->GetBuffer().ToPosition(item.Caret.Offset);
+				tab.Line = caret.Line;
+				tab.Column = caret.Column;
+
+				if (kept != nullptr && kept->PendingTop)
+				{
+					tab.Top = kept->PendingTop->Line;
+				}
+				else if (kept != nullptr && kept->Anchor.Taken)
+				{
+					tab.Top = kept->Anchor.Line;
+				}
 			}
 
 			state.Tabs.push_back(std::move(tab));
@@ -240,7 +261,7 @@ namespace Graphite {
 
 		const std::optional<std::size_t> activeIndex = m_Documents.GetActiveIndex();
 
-		if (activeIndex && m_Documents.At(*activeIndex).Document &&
+		if (activeIndex && IsKeptAcrossRestart(m_Documents.At(*activeIndex)) &&
 			!IsCarriedOver(m_Documents.At(*activeIndex).Path))
 		{
 			state.Active = m_Documents.At(*activeIndex).Path;
@@ -426,6 +447,7 @@ namespace Graphite {
 			}
 
 			RespondToSync(index, Core::SyncWithFile(m_Documents, index), batch);
+			CheckPictureOnDisk(index);
 		}
 
 		AnnounceExpectedReloads(batch);
@@ -451,6 +473,7 @@ namespace Graphite {
 		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
 		{
 			RespondToSync(index, Core::SyncWithFile(m_Documents, index), batch);
+			CheckPictureOnDisk(index);
 		}
 
 		AnnounceExpectedReloads(batch);
@@ -862,11 +885,17 @@ namespace Graphite {
 		return item != nullptr && item->Document != nullptr;
 	}
 
+	// Any tab closes, whatever it shows: a picture, or a file that could not be read, holds no document.
+	bool DocumentWindows::CanClose()
+	{
+		return m_Documents.GetActiveIndex().has_value();
+	}
+
 	void DocumentWindows::RequestCloseOfActiveTab()
 	{
-		if (const Core::OpenItem* item = FindActiveTextItem())
+		if (const std::optional<std::size_t> active = m_Documents.GetActiveIndex())
 		{
-			m_CloseRequested = item->Path;
+			m_CloseRequested = m_Documents.At(*active).Path;
 			Core::Redraw::Request();
 		}
 	}
@@ -919,6 +948,69 @@ namespace Graphite {
 	{
 		m_TransientMessage =
 			TransientMessage{std::move(text), ImGui::GetTime() + kTransientMessageSeconds};
+	}
+
+	// WARNING: A zoom command run while the wheel turns came from Ctrl+wheel over a text editor, since a picture takes
+	// the wheel itself and never routes it; the font is what the pointer is over, whichever tab has the focus.
+	bool DocumentWindows::ZoomFocusedPicture(PictureZoom zoom)
+	{
+		if (!m_FocusedPicture || ImGui::GetIO().MouseWheel != 0.0f)
+		{
+			return false;
+		}
+
+		const std::optional<std::size_t> index = m_Documents.Find(*m_FocusedPicture);
+
+		if (!index || !ShowsPicture(m_Documents.At(*index)))
+		{
+			return false;
+		}
+
+		if (const auto shown = m_ShownPictures.find(*m_FocusedPicture); shown != m_ShownPictures.end())
+		{
+			ZoomImageTab(m_Images.For(*m_FocusedPicture), zoom, shown->second.Area);
+			Core::Redraw::Request();
+		}
+
+		return true;
+	}
+
+	std::vector<ViewStatusItem> DocumentWindows::GetViewStatusItems() const
+	{
+		const std::filesystem::path* const active = m_Documents.GetActiveItemPath();
+
+		if (active == nullptr)
+		{
+			return {};
+		}
+
+		const auto shown = m_ShownPictures.find(*active);
+		return shown != m_ShownPictures.end() ? shown->second.Status : std::vector<ViewStatusItem>{};
+	}
+
+	DocumentWindows::ShownPicture DocumentWindows::RenderImageTab(const Core::OpenItem& item, EditorSettings& settings,
+																	const std::filesystem::path& workspaceRoot,
+																	bool updatedAsShown)
+	{
+		const ImageTabFrame frame = DrawImageTab(m_Images.For(item.Path),
+												 BuildBreadcrumb(workspaceRoot, item.Path, {}, 0), settings);
+
+		// WARNING: A tab that came on screen this frame was updated as hidden, so its load starts on the next frame,
+		// which nothing else may ask for.
+		if (!updatedAsShown)
+		{
+			Core::Redraw::Request();
+		}
+
+		return ShownPicture{.Status = frame.Status, .Area = frame.Area, .Focused = frame.Focused};
+	}
+
+	void DocumentWindows::CheckPictureOnDisk(std::size_t index)
+	{
+		if (const Core::OpenItem& item = m_Documents.At(index); ShowsPicture(item))
+		{
+			m_Images.CheckDisk(item.Path);
+		}
 	}
 
 	std::optional<std::string> DocumentWindows::GetStatusMessage() const
@@ -1279,6 +1371,15 @@ namespace Graphite {
 		}
 
 		m_DocumentStates.Prune(m_Documents.GetStore());
+
+		std::set<std::filesystem::path> openPaths;
+
+		for (std::size_t index = 0; index < m_Documents.GetCount(); ++index)
+		{
+			openPaths.insert(m_Documents.At(index).Path);
+		}
+
+		m_Images.Prune(openPaths);
 
 		m_ChangeMarkers.Retain(
 			[this](const std::filesystem::path& path) { return m_Documents.GetStore().Find(path) != nullptr; });
@@ -1941,9 +2042,24 @@ namespace Graphite {
 		const CommandContext& context, float fontSize, Core::IndentStyle indentStyle,
 		unsigned int fallbackDockNode, bool wordWrap, ChangeMarkerDisplay changeDisplay,
 		HoverSettings hoverSettings, const ResolvedScheme& scheme, ReferencesPanel& referencesPanel,
-		Core::TabCloseRequests& closeRequests, const std::filesystem::path& workspaceRoot)
+		Core::TabCloseRequests& closeRequests, const std::filesystem::path& workspaceRoot, EditorSettings& settings)
 	{
 		m_Shown.clear();
+
+		// WARNING: Every picture is updated before any is drawn, because a load that landed or a gif's next frame
+		// frees the texture shown before it. Which tabs are on screen is known only as their windows begin, so the
+		// pictures are updated as last frame showed them.
+		std::set<std::filesystem::path> updatedAsShown;
+
+		for (const auto& [path, picture] : m_ShownPictures)
+		{
+			updatedAsShown.insert(path);
+		}
+
+		m_Images.Update(std::chrono::steady_clock::now(), updatedAsShown);
+
+		std::map<std::filesystem::path, ShownPicture> shownPictures;
+		std::optional<std::filesystem::path> focusedPicture;
 
 		for (std::size_t index = 0; index < m_Documents.GetCount();)
 		{
@@ -2012,7 +2128,21 @@ namespace Graphite {
 				{
 					m_Documents.Promote(index);
 				}
+			}
 
+			if (visible && ShowsPicture(item))
+			{
+				ShownPicture picture = RenderImageTab(item, settings, workspaceRoot, updatedAsShown.contains(item.Path));
+
+				if (picture.Focused)
+				{
+					focusedPicture = item.Path;
+				}
+
+				shownPictures.insert_or_assign(item.Path, std::move(picture));
+			}
+			else if (visible)
+			{
 				LensState* const lens = LensFor(item);
 				DocumentState& state = StateFor(item.Path);
 
@@ -2179,6 +2309,9 @@ namespace Graphite {
 			++index;
 		}
 
+		m_ShownPictures = std::move(shownPictures);
+		m_FocusedPicture = std::move(focusedPicture);
+
 		// Edits a drawn tab made were sent as it drew. This sends the rest: a reload, or an edit
 		// made through another view.
 		for (const std::filesystem::path& path : m_DocumentStates.SendChanges(m_Documents.GetStore()))
@@ -2214,7 +2347,7 @@ namespace Graphite {
 		RenderDocumentWindows(context, frame.FontSize, frame.Indent, frame.FallbackDockNode,
 							  frame.WordWrap, frame.ChangeMarkers, frame.Hover, frame.Scheme,
 							  referencesPanel,
-							  frame.CloseRequests, frame.WorkspaceRoot);
+							  frame.CloseRequests, frame.WorkspaceRoot, frame.Settings);
 
 		m_CloseRequested.reset();
 

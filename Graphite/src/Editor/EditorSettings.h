@@ -2,12 +2,15 @@
 
 #include "Git/Diff/DiffViewOptions.h"
 #include "Image/PictureBackground.h"
+#include "Image/Zoom.h"
 
 #include "Core/ImGui/FontSet.h"
 #include "Core/Text/Editing.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <utility>
 
 namespace Core {
 
@@ -42,6 +45,10 @@ namespace Graphite {
 		void Load();
 
 		void RegisterCommands(Core::CommandRegistry& commands, Core::Keymap& keys);
+
+		// Asked first by the zoom commands, which change the font only when it answers false, meaning no picture
+		// took the zoom.
+		void SetPictureZoom(std::function<bool(PictureZoom)> zoom) { m_PictureZoom = std::move(zoom); }
 
 		float GetFontSize() const { return m_FontSize; }
 
@@ -82,7 +89,11 @@ namespace Graphite {
 	private:
 		void SetWordWrap(bool wrap);
 
+		bool ZoomsPicture(PictureZoom zoom) const;
+
 		AppSettings& m_Store;
+
+		std::function<bool(PictureZoom)> m_PictureZoom;
 
 		static constexpr float kMinimumFontSize = 8.0f;
 		static constexpr float kMaximumFontSize = 32.0f;

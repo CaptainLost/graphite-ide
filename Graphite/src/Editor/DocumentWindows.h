@@ -17,8 +17,11 @@
 #include "Editor/Server/PreviewSemantics.h"
 #include "Editor/ScrollAnchor.h"
 #include "Editor/Overlays/SemanticOverlay.h"
+#include "Editor/StatusBar/StatusBar.h"
 #include "UI/Dialogs/ModalQuestion.h"
 #include "Editor/TextEditorWidget.h"
+
+#include "Image/Zoom.h"
 
 #include "Git/Changes/ChangeMarkersModel.h"
 #include "Git/GitDecorationView.h"
@@ -58,6 +61,9 @@ namespace Core {
 }
 
 namespace Graphite {
+	class EditorSettings;
+	class ImageTabs;
+
 	struct EditorFrame
 	{
 		float FontSize;
@@ -69,6 +75,7 @@ namespace Graphite {
 		const ResolvedScheme& Scheme;
 		Core::TabCloseRequests& CloseRequests;
 		const std::filesystem::path& WorkspaceRoot;
+		EditorSettings& Settings;
 	};
 
 	class DocumentWindows final : public EditorCommandTarget
@@ -78,9 +85,10 @@ namespace Graphite {
 						DocumentServerPort& server, const DiagnosticsModel& diagnostics,
 						ChangeMarkersModel& changeMarkers, PreviewSemantics& previewSemantics, AnalysisCache& analysis,
 						AnalysisStore& analysisStore, WorkspaceAnalysis& workspaceAnalysis, Core::EventBus& events,
-						ActiveEditorTarget& activeEditor)
+						ActiveEditorTarget& activeEditor, ImageTabs& images)
 			: m_Documents(documents),
 			  m_ActiveEditor(activeEditor),
+			  m_Images(images),
 			  m_Events(events),
 			  m_Server(server),
 			  m_Diagnostics(diagnostics),
@@ -132,7 +140,7 @@ namespace Graphite {
 		void Queue(EditorAction action, bool fromMenu) override { QueueOnActiveDocument(action, fromMenu); }
 		bool CanSave() override { return ActiveTabHoldsDocument(); }
 		void Save() override { RequestSaveOfActiveDocument(); }
-		bool CanClose() override { return FindActiveTextItem() != nullptr; }
+		bool CanClose() override;
 		void Close() override { RequestCloseOfActiveTab(); }
 		bool CanFind() override { return FindActiveTextItem() != nullptr; }
 		void OpenFind() override;
@@ -141,6 +149,13 @@ namespace Graphite {
 		void FindReferences(ReferencesPanel& panel) override;
 
 		std::optional<std::string> GetStatusMessage() const;
+
+		// True when the tab with the keyboard focus last frame shows a picture, which takes the zoom instead of the
+		// font.
+		bool ZoomFocusedPicture(PictureZoom zoom);
+
+		// What the active tab's picture put in the status bar last frame; nothing when it shows no picture.
+		std::vector<ViewStatusItem> GetViewStatusItems() const;
 
 		void SetTransientMessage(std::string text);
 
@@ -326,7 +341,19 @@ namespace Graphite {
 								   HoverSettings hoverSettings,
 								   const ResolvedScheme& scheme, ReferencesPanel& referencesPanel,
 								   Core::TabCloseRequests& closeRequests,
-								   const std::filesystem::path& workspaceRoot);
+								   const std::filesystem::path& workspaceRoot, EditorSettings& settings);
+
+		struct ShownPicture
+		{
+			std::vector<ViewStatusItem> Status;
+			ImRect Area;
+			bool Focused = false;
+		};
+
+		ShownPicture RenderImageTab(const Core::OpenItem& item, EditorSettings& settings,
+									const std::filesystem::path& workspaceRoot, bool updatedAsShown);
+
+		void CheckPictureOnDisk(std::size_t index);
 
 		bool IsNewSinceLastFrame(const std::string& identity) const;
 
@@ -361,6 +388,7 @@ namespace Graphite {
 
 		Core::DocumentSet& m_Documents;
 		ActiveEditorTarget& m_ActiveEditor;
+		ImageTabs& m_Images;
 
 		Core::EventBus& m_Events;
 
@@ -451,6 +479,11 @@ namespace Graphite {
 		std::set<std::string> m_RestoredIdentities;
 
 		std::set<std::filesystem::path> m_Shown;
+
+		// The pictures drawn last frame, and the one whose window had the keyboard focus. Both are kept as they were
+		// for the whole of the next frame, so a command run while it draws sees what the user saw.
+		std::map<std::filesystem::path, ShownPicture> m_ShownPictures;
+		std::optional<std::filesystem::path> m_FocusedPicture;
 
 		// WARNING: Constructed after m_Server, which it holds.
 		LspAnswerRouter m_Router;

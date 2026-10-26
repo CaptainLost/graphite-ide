@@ -19,6 +19,7 @@
 #include "Git/GitDecorations.h"
 #include "Git/GitModel.h"
 #include "Git/RepositoryGitPort.h"
+#include "Image/ImageTabs.h"
 #include "Notifications/NotificationHistory.h"
 #include "Notifications/NotificationsPopup.h"
 #include "UI/ToastEvent.h"
@@ -56,6 +57,7 @@
 #include "Core/Events/EventBus.h"
 #include "Core/Events/FrameInput.h"
 #include "Core/ImGui/DockSpaceHost.h"
+#include "Core/ImGui/ImGuiRenderer.h"
 #include "Core/ImGui/TabCloseRequests.h"
 #include "Core/ImGui/Toasts.h"
 #include "Core/ImGui/ToolStrip.h"
@@ -269,13 +271,20 @@ namespace Graphite {
 		// WARNING: Declared before m_DocumentWindows, which holds it by reference and sets itself on it.
 		ActiveEditorTarget m_ActiveEditor;
 
+		// WARNING: Declared before m_DocumentWindows, which holds it by reference. Its jobs hold only their own
+		// mailboxes, so it may outlive m_Jobs, declared further down; its textures go before the renderer's factory,
+		// which outlives every layer.
+		ImageTabs m_ImageTabs{[this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); },
+							  Core::ImGuiRenderer::GetTextures()};
+
 		// WARNING: Declared after m_DocumentPort, m_Analysis and m_AnalysisCoordinator, which it holds by reference.
 		// m_ChangeMarkers is declared further down and is not yet constructed here; only a reference to it
 		// is bound, and nothing reaches through that reference until the first frame.
 		DocumentWindows m_DocumentWindows{m_Documents, m_Modals, m_DocumentPort,
 										  m_Diagnostics, m_ChangeMarkers, m_PreviewSemantics,
 										  m_Analysis, m_AnalysisCoordinator.GetStore(),
-										  m_AnalysisCoordinator.GetPass(), m_Events, m_ActiveEditor};
+										  m_AnalysisCoordinator.GetPass(), m_Events, m_ActiveEditor,
+										  m_ImageTabs};
 
 		// WARNING: Declared after m_Documents and m_DocumentWindows and before m_Panels, where GitView holds it by reference.
 		DocumentBuffers m_DocumentBuffers{m_Documents, m_DocumentWindows};
