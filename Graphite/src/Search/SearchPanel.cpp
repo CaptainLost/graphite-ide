@@ -12,6 +12,7 @@
 #include "UI/TickBox.h"
 
 #include "Core/FileSystem/FileSystem.h"
+#include "Core/ImGui/EmptyState.h"
 #include "Core/ImGui/LoadingState.h"
 #include "Core/ImGui/TextButton.h"
 #include "Core/Text/Caret.h"
@@ -47,6 +48,11 @@ namespace Graphite {
 
 	void SearchPanel::OnUpdate(Core::Timestep)
 	{
+		if (m_Held == SearchHold::UntilTheSolutionIsRead && CurrentScope() != SearchScope::WaitForSolution)
+		{
+			StartOrHoldSearch();
+		}
+
 		m_Drained.clear();
 		m_Service.Drain(m_Drained, m_Progress);
 
@@ -99,10 +105,7 @@ namespace Graphite {
 			}
 		}
 
-		// WARNING: The ProjectsOnly setting outlives the solution it was set for, so without a loaded
-		// solution it is ignored; otherwise the search would list no files and find nothing.
-		request.Options.ProjectsOnly =
-			request.Options.ProjectsOnly && m_Workspace.GetLoadedSolution().has_value();
+		request.Options.ProjectsOnly = CurrentScope() == SearchScope::Projects;
 
 		if (request.Options.ProjectsOnly)
 		{
@@ -164,6 +167,14 @@ namespace Graphite {
 		}
 	}
 
+	SearchScope SearchPanel::CurrentScope() const
+	{
+		return ScopeOfSearch(SearchScopeInputs{.ProjectsOnly = m_Settings.Get().ProjectsOnly,
+											   .SolutionSelected = !m_Workspace.GetSelectedSolution().empty(),
+											   .SolutionLoaded = m_Workspace.GetLoadedSolution().has_value(),
+											   .SolutionBeingRead = m_Workspace.IsReadingSolution()});
+	}
+
 	void SearchPanel::RunSearch()
 	{
 		m_Groups.Clear();
@@ -174,9 +185,29 @@ namespace Graphite {
 
 		m_Drained.clear();
 		m_Progress = SearchProgress{};
+		m_SearchedNeedle.reset();
+		m_Held = SearchHold::None;
 
-		m_SearchedNeedle = std::string{m_QueryBuffer.data()};
-		m_Service.Start(BuildRequest());
+		StartOrHoldSearch();
+	}
+
+	void SearchPanel::StartOrHoldSearch()
+	{
+		switch (CurrentScope())
+		{
+		case SearchScope::WholeFolder:
+		case SearchScope::Projects:
+			m_Held = SearchHold::None;
+			m_SearchedNeedle = std::string{m_QueryBuffer.data()};
+			m_Service.Start(BuildRequest());
+			return;
+		case SearchScope::WaitForSolution:
+			m_Held = SearchHold::UntilTheSolutionIsRead;
+			return;
+		case SearchScope::SolutionUnreadable:
+			m_Held = SearchHold::BecauseTheSolutionIsUnreadable;
+			return;
+		}
 	}
 
 	void SearchPanel::RenderSummary()
@@ -201,6 +232,18 @@ namespace Graphite {
 
 	void SearchPanel::RenderResults()
 	{
+		switch (m_Held)
+		{
+		case SearchHold::None:
+			break;
+		case SearchHold::UntilTheSolutionIsRead:
+			Core::LoadingState("Reading the solution");
+			return;
+		case SearchHold::BecauseTheSolutionIsUnreadable:
+			Core::EmptyState("The solution could not be read, so Projects only has no files to search.");
+			return;
+		}
+
 		const std::function<void(const SearchHit&)> onOpen = [this](const SearchHit& hit) { OpenAndSelect(hit); };
 
 		DrawHitList(HitListInput{

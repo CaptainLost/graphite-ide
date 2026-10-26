@@ -6,12 +6,15 @@
 #include "Search/HitGroups.h"
 #include "Search/HitList.h"
 #include "Search/PreviewContent.h"
+#include "Search/SearchScope.h"
 #include "Search/SearchService.h"
 #include "Search/SearchSettings.h"
 #include "Theme/ActiveScheme.h"
 #include "Workspace/Workspace.h"
 
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -35,10 +38,21 @@ namespace Graphite {
 
 		std::optional<std::string> GetStatusMessage() const;
 
+		std::size_t GetHitCount() const { return m_Groups.GetCount(); }
+
 		void Focus();
 
 	private:
+		enum class SearchHold : std::uint8_t
+		{
+			None,
+			UntilTheSolutionIsRead,
+			BecauseTheSolutionIsUnreadable
+		};
+
 		SearchStart BuildRequest() const;
+		SearchScope CurrentScope() const;
+		void StartOrHoldSearch();
 
 		void RenderQuery();
 		void RenderSummary();
@@ -60,6 +74,8 @@ namespace Graphite {
 		bool m_WholeWord = false;
 
 		std::optional<std::string> m_SearchedNeedle;
+
+		SearchHold m_Held = SearchHold::None;
 
 		bool m_FocusQueryNextFrame = false;
 
