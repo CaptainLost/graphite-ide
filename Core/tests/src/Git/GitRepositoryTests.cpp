@@ -11,6 +11,7 @@
 #include <cctype>
 #include <fstream>
 #include <string>
+#include <vector>
 
 using Core::Repository;
 using Core::Result;
@@ -264,6 +265,40 @@ TEST_CASE("A path spelled with other case and other separators than the working 
 
 	CHECK(opened.GetValue().IsIgnored(Core::FromUtf8(otherCaseRoot + "/sub/error.log")));
 	CHECK(opened.GetValue().IsIgnored(Core::FromUtf8(otherCaseRoot + "\\sub\\.\\error.log")));
+}
+
+namespace {
+	bool NamesFile(const std::vector<std::filesystem::path>& files, const std::filesystem::path& wanted)
+	{
+		for (const std::filesystem::path& file : files)
+		{
+			if (Core::SamePath(file, wanted))
+			{
+				return true;
+			}
+		}
+
+		return false;
+	}
+}
+
+TEST_CASE("A folder below the working directory has the rules files of the folders above it among its ignore rules")
+{
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	const std::filesystem::path deep = temp.MakeDirectory("a/b");
+
+	Result<Repository> opened = Repository::Open(deep);
+	REQUIRE(opened.HasValue());
+
+	const std::vector<std::filesystem::path> files = opened.GetValue().IgnoreRuleFilesAbove(deep);
+
+	CHECK(NamesFile(files, temp.GetPath() / ".gitignore"));
+	CHECK(NamesFile(files, temp.GetPath() / "a" / ".gitignore"));
+	CHECK(NamesFile(files, temp.GetPath() / ".git" / "info" / "exclude"));
+	CHECK(NamesFile(files, temp.GetPath() / ".git" / "config"));
+	CHECK_FALSE(NamesFile(files, deep / ".gitignore"));
+	CHECK_FALSE(NamesFile(files, temp.GetPath().parent_path() / ".gitignore"));
 }
 
 TEST_CASE("A path outside the working directory is never ignored, even one whose folder name starts with it")

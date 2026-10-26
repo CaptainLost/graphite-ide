@@ -13,7 +13,9 @@
 #include "Core/Platform/FileDialog.h"
 
 #include <algorithm>
+#include <exception>
 #include <format>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -105,13 +107,64 @@ namespace Graphite {
 			return newest;
 		}
 
-		SolutionRead ReadSolutionWithStamp(const std::filesystem::path& solutionPath, std::uint64_t generation)
+		SolutionRead ReadSolutionWithStamp(const std::filesystem::path& solutionPath, std::uint64_t generation,
+										   const SolutionReading& readSolution)
 		{
-			Core::Result<Solution> read = ReadSolution(solutionPath);
-			const Solution* readSolution = read ? &read.GetValue() : nullptr;
-			const std::filesystem::file_time_type stamp = SolutionStampOf(solutionPath, readSolution);
+			Core::Result<Solution> read = readSolution(solutionPath);
+			const Solution* readSolutionModel = read ? &read.GetValue() : nullptr;
+			const std::filesystem::file_time_type stamp = SolutionStampOf(solutionPath, readSolutionModel);
 
-			return SolutionRead{.Generation = generation, .Read = std::move(read), .Stamp = stamp};
+			return SolutionRead{.Generation = generation, .Read = std::move(read), .StampWithProjectsNamed = stamp};
+		}
+
+		IgnoreSourceStamp StampOf(const std::filesystem::path& file)
+		{
+			IgnoreSourceStamp stamp{.File = file};
+			std::error_code queryError;
+			const std::filesystem::directory_entry entry{file, queryError};
+
+			if (queryError || !entry.exists(queryError))
+			{
+				return stamp;
+			}
+
+			const std::filesystem::file_time_type writeTime = entry.last_write_time(queryError);
+
+			if (!queryError)
+			{
+				stamp.WriteTime = writeTime;
+			}
+
+			const std::uintmax_t size = entry.file_size(queryError);
+			stamp.Size = queryError ? 0 : size;
+
+			return stamp;
+		}
+
+		SolutionRead ThrownRead(std::uint64_t generation, std::string_view reason)
+		{
+			return SolutionRead{.Generation = generation,
+								.Read = Core::Error{.Code = Core::ErrorCode::IoFailure,
+													.Message = std::format("the read stopped: {}", reason)},
+								.ReaderThrew = true};
+		}
+
+		// WARNING: A read that throws posts nothing, which would leave the solution view waiting for good.
+		SolutionRead ReadSolutionCatchingThrows(const std::filesystem::path& solutionPath, std::uint64_t generation,
+												const SolutionReading& readSolution)
+		{
+			try
+			{
+				return ReadSolutionWithStamp(solutionPath, generation, readSolution);
+			}
+			catch (const std::exception& thrown)
+			{
+				return ThrownRead(generation, thrown.what());
+			}
+			catch (...)
+			{
+				return ThrownRead(generation, "unknown failure");
+			}
 		}
 	}
 
@@ -147,7 +200,7 @@ namespace Graphite {
 		m_Root = root;
 
 		TryOpenRepository();
-		m_Tree.Refresh(m_Tree.GetRoot(), Core::IgnoreAnswers::AskAgain);
+		RefreshWholeTree(Core::IgnoreAnswers::AskAgain);
 
 		m_WatcherResumed = false;
 
@@ -184,9 +237,36 @@ namespace Graphite {
 		m_Watcher = std::move(watcher).GetValue();
 	}
 
-	void Workspace::RereadEverything(Core::IgnoreAnswers ignoreAnswers)
+	void Workspace::RefreshWholeTree(Core::IgnoreAnswers ignoreAnswers)
 	{
 		m_Tree.Refresh(m_Tree.GetRoot(), ignoreAnswers);
+
+		if (ignoreAnswers == Core::IgnoreAnswers::AskAgain)
+		{
+			m_IgnoreSourceStamps = StampIgnoreSourcesTheWatcherCannotSee();
+		}
+	}
+
+	std::vector<IgnoreSourceStamp> Workspace::StampIgnoreSourcesTheWatcherCannotSee() const
+	{
+		std::vector<IgnoreSourceStamp> stamps;
+
+		if (!m_Repository)
+		{
+			return stamps;
+		}
+
+		for (const std::filesystem::path& file : m_Repository->IgnoreRuleFilesAbove(m_Root))
+		{
+			stamps.push_back(StampOf(file));
+		}
+
+		return stamps;
+	}
+
+	void Workspace::RereadEverything(Core::IgnoreAnswers ignoreAnswers)
+	{
+		RefreshWholeTree(ignoreAnswers);
 
 		FindSolutions();
 		LoadSolution();
@@ -359,7 +439,7 @@ namespace Graphite {
 		if (changes.IgnoreRulesChanged)
 		{
 			APP_TRACE("An ignore rules file changed, asking again about every entry of the tree");
-			m_Tree.Refresh(m_Tree.GetRoot(), Core::IgnoreAnswers::AskAgain);
+			RefreshWholeTree(Core::IgnoreAnswers::AskAgain);
 		}
 		else
 		{
@@ -425,8 +505,10 @@ namespace Graphite {
 		}
 
 		const bool repositoryChanged = SyncRepository();
+		const bool unseenRulesChanged = StampIgnoreSourcesTheWatcherCannotSee() != m_IgnoreSourceStamps;
+		const bool asksAgain = repositoryChanged || unseenRulesChanged;
 
-		RereadEverything(repositoryChanged ? Core::IgnoreAnswers::AskAgain : ignoreAnswers);
+		RereadEverything(asksAgain ? Core::IgnoreAnswers::AskAgain : ignoreAnswers);
 	}
 
 	bool Workspace::HasRepositoryVanished() const
@@ -498,7 +580,7 @@ namespace Graphite {
 		SyncRepository();
 
 		// WARNING: Nothing watched the folder while the watcher was down, so a rules file may have changed unseen.
-		m_Tree.Refresh(m_Tree.GetRoot(), Core::IgnoreAnswers::AskAgain);
+		RefreshWholeTree(Core::IgnoreAnswers::AskAgain);
 
 		APP_INFO("Resumed watching '{}' after a failure", Core::ToUtf8(m_Root));
 	}
@@ -642,6 +724,7 @@ namespace Graphite {
 			}
 
 			m_Solution.reset();
+			m_SolutionReadFailure.reset();
 			m_SelectedSolution.clear();
 			ForgetSolutionAttempt();
 			StopReadingSolution();
@@ -683,8 +766,9 @@ namespace Graphite {
 		const std::uint64_t generation = ++m_SolutionReadGeneration;
 		m_ReadingSolution = true;
 
-		m_SubmitJob([solutionPath = m_SelectedSolution, generation, finished = m_FinishedSolutionReads] {
-			finished->Post(ReadSolutionWithStamp(solutionPath, generation));
+		m_SubmitJob([solutionPath = m_SelectedSolution, generation, readSolution = m_ReadSolution,
+					 finished = m_FinishedSolutionReads] {
+			finished->Post(ReadSolutionCatchingThrows(solutionPath, generation, readSolution));
 		});
 
 		// WARNING: A job that runs where it is submitted has already finished here.
@@ -719,6 +803,13 @@ namespace Graphite {
 		if (!finished.Read)
 		{
 			m_Solution.reset();
+			m_SolutionReadFailure = finished.Read.GetError().Message;
+
+			// WARNING: A throw says nothing about the files, so the same files are read again on the next chance.
+			if (finished.ReaderThrew)
+			{
+				ForgetSolutionAttempt();
+			}
 
 			APP_WARN("Cannot read '{}': {}", Core::ToUtf8(m_SelectedSolution), finished.Read.GetError().Message);
 
@@ -730,10 +821,10 @@ namespace Graphite {
 		}
 
 		m_Solution.emplace(std::move(finished.Read).GetValue());
+		m_SolutionReadFailure.reset();
 
-		// WARNING: The stamp taken when the read started saw the solution file alone; keeping it would make the very
-		// next check read again, so the one taken with the projects named replaces it.
-		m_SolutionStamp = finished.Stamp;
+		// WARNING: The stamp taken at the start saw the solution file alone, and would make the next check read again.
+		m_SolutionStamp = finished.StampWithProjectsNamed;
 
 		APP_INFO("Solution '{}' loaded with {} projects", m_Solution->Name, m_Solution->ProjectCount);
 	}
@@ -755,6 +846,7 @@ namespace Graphite {
 	void Workspace::ResetSolutionState()
 	{
 		m_Solution.reset();
+		m_SolutionReadFailure.reset();
 		++m_SolutionLoads;
 		m_SolutionCandidates.clear();
 		m_SelectedSolution.clear();

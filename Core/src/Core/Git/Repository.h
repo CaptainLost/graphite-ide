@@ -54,6 +54,8 @@ namespace Core {
 
 		bool IsIgnored(const std::filesystem::path& path) const;
 
+		std::vector<std::filesystem::path> IgnoreRuleFilesAbove(const std::filesystem::path& folder) const;
+
 		// A file inside a submodule belongs to the submodule's own repository, so reading it here as
 		// untracked would be wrong. The index is asked rather than HEAD because a checkout, a
 		// submodule add and a submodule removal all update the index first.

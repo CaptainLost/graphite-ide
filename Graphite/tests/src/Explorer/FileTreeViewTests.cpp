@@ -17,6 +17,7 @@
 #include "Core/App/Redraw.h"
 #include "Core/Events/EventBus.h"
 #include "Core/FileSystem/FileTree.h"
+#include "Core/Git/Repository.h"
 #include "Core/ImGui/ImGuiColors.h"
 #include "Core/Text/DocumentSet.h"
 
@@ -1043,6 +1044,27 @@ TEST_CASE("The copy a duplicate is making offers no Rename, Delete or New File o
 	CHECK(screen.IsMenuItemEnabled("Delete") == disabled);
 	CHECK(screen.IsMenuItemEnabled("New File") == disabled);
 	screen.Press(ImGuiKey_Escape);
+}
+
+TEST_CASE("Refresh chosen from the folder's menu asks again whether each entry is ignored")
+{
+	TempDirectory folder;
+	REQUIRE(Core::Repository::Init(folder.GetPath()));
+	folder.MakeFile(".gitignore", "*.log\n");
+	folder.MakeFile("build.log", "x");
+	folder.MakeFile("notes.txt", "x");
+
+	ExplorerScreen screen{folder.GetPath()};
+	const Core::FileNode* notes = ChildNamed(screen.Workspace.GetTree().GetRoot(), "notes.txt");
+	REQUIRE(notes != nullptr);
+	REQUIRE_FALSE(notes->Ignored);
+
+	folder.MakeFile(".gitignore", "notes.txt\n");
+	screen.ChooseFromRootMenu("Refresh");
+
+	notes = ChildNamed(screen.Workspace.GetTree().GetRoot(), "notes.txt");
+	REQUIRE(notes != nullptr);
+	CHECK(notes->Ignored);
 }
 
 TEST_CASE("Duplicate copies on a worker, and the copy appears in the tree once the copy is done")

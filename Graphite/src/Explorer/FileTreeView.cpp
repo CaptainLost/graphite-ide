@@ -782,7 +782,7 @@ namespace Graphite {
 	{
 		if (Core::FileNode* node = FindNode(action.Target); node != nullptr)
 		{
-			m_Workspace.GetTree().Refresh(*node);
+			m_Workspace.GetTree().Refresh(*node, Core::IgnoreAnswers::AskAgain);
 		}
 
 		m_Listing.NoteChangedDirectories({action.Target});

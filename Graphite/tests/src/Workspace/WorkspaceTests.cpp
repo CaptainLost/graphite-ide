@@ -4,6 +4,7 @@
 #include "Workspace/Workspace.h"
 
 #include "DeferredJobs.h"
+#include "Review/ReviewRepository.h"
 #include "TempAppSettings.h"
 #include "TempDirectory.h"
 
@@ -16,8 +17,10 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -216,8 +219,7 @@ namespace {
 		return child->Ignored;
 	}
 
-	// WARNING: libgit2 tells a rewritten rules file by its size and its write time in whole seconds, so rules of the
-	// same size written within the second read as unchanged.
+	// WARNING: libgit2 tells a rewritten rules file by its size and its write time in whole seconds.
 	constexpr const char* kRulesOfAnotherSize = "notes.txt\n";
 
 	void WriteRules(const std::filesystem::path& folder, const std::string& rules)
@@ -312,8 +314,8 @@ namespace {
 
 	struct SolutionWorkspace
 	{
-		explicit SolutionWorkspace(DeferredJobs& jobs)
-			: Workspace(Events, Settings.Get(), Core::DirectoryWatcher::Start, jobs.Submitter())
+		explicit SolutionWorkspace(DeferredJobs& jobs, Graphite::SolutionReading readSolution = Graphite::ReadSolution)
+			: Workspace(Events, Settings.Get(), Core::DirectoryWatcher::Start, jobs.Submitter(), std::move(readSolution))
 		{
 		}
 
@@ -439,6 +441,102 @@ TEST_CASE("Opening a solution while it is read is not a failure, and the failure
 	REQUIRE(opened.Log.Toasts.size() == 1);
 	CHECK(opened.Log.Toasts.front().Title == "Cannot open solution");
 	CHECK_FALSE(opened.Workspace.GetLoadedSolution().has_value());
+}
+
+namespace {
+	struct ReaderThatThrowsOnce
+	{
+		int* Calls = nullptr;
+
+		Core::Result<Graphite::Solution> operator()(const std::filesystem::path& solution) const
+		{
+			++*Calls;
+
+			if (*Calls == 1)
+			{
+				throw std::runtime_error("the disk went away");
+			}
+
+			return Graphite::ReadSolution(solution);
+		}
+	};
+}
+
+TEST_CASE("A solution read that throws says why in place of the solution, and the next reload reads it again")
+{
+	TempDirectory folder;
+	MakeSolution(folder, "App.slnx", kOneProjectSolution);
+
+	DeferredJobs jobs;
+	int readerCalls = 0;
+	SolutionWorkspace opened{jobs, ReaderThatThrowsOnce{.Calls = &readerCalls}};
+
+	REQUIRE(opened.Workspace.OpenFolder(folder.GetPath()));
+	jobs.RunAll();
+	opened.Workspace.Update();
+
+	CHECK_FALSE(opened.Workspace.IsReadingSolution());
+	CHECK_FALSE(opened.Workspace.GetLoadedSolution().has_value());
+	REQUIRE(opened.Workspace.GetSolutionReadFailure().has_value());
+	CHECK(opened.Workspace.GetSolutionReadFailure()->find("the disk went away") != std::string::npos);
+	CHECK(opened.Log.Toasts.size() == 1);
+
+	opened.Workspace.Reload(Core::IgnoreAnswers::Keep);
+	REQUIRE(jobs.Count() == 1);
+	jobs.RunAll();
+	opened.Workspace.Update();
+
+	REQUIRE(opened.Workspace.GetLoadedSolution().has_value());
+	CHECK_FALSE(opened.Workspace.GetSolutionReadFailure().has_value());
+	CHECK(readerCalls == 2);
+}
+
+TEST_CASE("A rules file above an open subfolder, which the watcher cannot see, is asked about again on the next reload")
+{
+	IgnoreRulesRepository repository;
+	const std::filesystem::path subfolder = repository.Temp.MakeDirectory("sub");
+	std::ofstream(subfolder / "build.log") << "x";
+	std::ofstream(subfolder / "notes.txt") << "x";
+
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace(events, settings.Get());
+
+	REQUIRE(workspace.OpenFolder(subfolder));
+	REQUIRE(IsRootChildIgnored(workspace, "build.log"));
+	REQUIRE_FALSE(IsRootChildIgnored(workspace, "notes.txt"));
+
+	WriteRules(repository.Temp.GetPath(), kRulesOfAnotherSize);
+	workspace.Reload(Core::IgnoreAnswers::Keep);
+
+	CHECK_FALSE(IsRootChildIgnored(workspace, "build.log"));
+	CHECK(IsRootChildIgnored(workspace, "notes.txt"));
+}
+
+TEST_CASE("A linked worktree's exclude file, kept in the repository it belongs to, is asked about again on the next reload")
+{
+	ReviewRepository repository;
+	repository.Write("build.log", "x");
+	repository.Write("notes.txt", "x");
+	repository.Commit("one");
+	repository.Branch("side");
+	const std::filesystem::path worktree = repository.AddWorktree("side");
+	const std::filesystem::path commonExclude = repository.GetPath() / ".git" / "info" / "exclude";
+	ReviewRepository::WriteFileAt(commonExclude, "*.log\n");
+
+	TempAppSettings settings;
+	Core::EventBus events;
+	Graphite::Workspace workspace(events, settings.Get());
+
+	REQUIRE(workspace.OpenFolder(worktree));
+	REQUIRE(IsRootChildIgnored(workspace, "build.log"));
+	REQUIRE_FALSE(IsRootChildIgnored(workspace, "notes.txt"));
+
+	ReviewRepository::WriteFileAt(commonExclude, kRulesOfAnotherSize);
+	workspace.Reload(Core::IgnoreAnswers::Keep);
+
+	CHECK_FALSE(IsRootChildIgnored(workspace, "build.log"));
+	CHECK(IsRootChildIgnored(workspace, "notes.txt"));
 }
 
 TEST_CASE("An .slnx hides the .sln of the same name in the folder whatever the case of the name")

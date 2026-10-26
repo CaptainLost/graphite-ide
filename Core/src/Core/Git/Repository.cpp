@@ -19,6 +19,10 @@ namespace Core {
 	namespace {
 
 		constexpr const char* kParentDirectoryComponent = "..";
+		constexpr const char* kInfoDirectoryName = "info";
+		constexpr const char* kExcludeFileName = "exclude";
+		constexpr const char* kConfigFileName = "config";
+		constexpr const char* kIgnoreRulesFileName = ".gitignore";
 
 		// Compared as components rather than as a string, so that an in-tree file called "..config"
 		// is not mistaken for a leading "..".
@@ -135,8 +139,7 @@ namespace Core {
 			return false;
 		}
 
-		// WARNING: Cut from the spelling, never through std::filesystem::relative, which asks the disk to resolve both
-		// paths and costs as much as the ignore check itself.
+		// WARNING: std::filesystem::relative asks the disk to resolve both paths, which costs as much as the check.
 		const std::optional<std::filesystem::path> relativePath = RelativeToKey(path, m_WorkingDirectoryKey);
 
 		if (!relativePath.has_value() || !IsInsideTree(*relativePath))
@@ -154,6 +157,43 @@ namespace Core {
 		}
 
 		return ignoredFlag != 0;
+	}
+
+	// WARNING: A linked worktree reads its exclude file and config from the common directory, not from its own.
+	std::vector<std::filesystem::path> Repository::IgnoreRuleFilesAbove(const std::filesystem::path& folder) const
+	{
+		std::vector<std::filesystem::path> files;
+
+		if (m_Handle == nullptr)
+		{
+			return files;
+		}
+
+		const std::filesystem::path commonDirectory = FromUtf8(git_repository_commondir(m_Handle.get()));
+		files.push_back(NormalizePath(commonDirectory / kInfoDirectoryName / kExcludeFileName));
+		files.push_back(NormalizePath(commonDirectory / kConfigFileName));
+
+		if (m_WorkingDirectory.empty())
+		{
+			return files;
+		}
+
+		const std::filesystem::path normalizedFolder = NormalizeDirectory(folder);
+
+		for (std::filesystem::path above = normalizedFolder.parent_path(); IsSameOrWithin(above, m_WorkingDirectory);
+			 above = above.parent_path())
+		{
+			files.push_back(above / kIgnoreRulesFileName);
+
+			const bool reachedTopOfDrive = above == above.parent_path();
+
+			if (reachedTopOfDrive)
+			{
+				break;
+			}
+		}
+
+		return files;
 	}
 
 	bool Repository::IsInsideSubmodule(const std::filesystem::path& pathRelativeToWorkingDirectory) const

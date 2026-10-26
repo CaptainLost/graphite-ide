@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -66,6 +67,33 @@ namespace {
 		REQUIRE(holding.HasValue());
 		return !holding.GetValue().has_value();
 	}
+}
+
+TEST_CASE("A linked worktree's ignore rules include the exclude file and config of the repository it belongs to")
+{
+	GitFixture fixture;
+	fixture.Write("a.txt", "one\n");
+	fixture.Commit("one");
+	fixture.Branch("side");
+
+	TempDirectory outside;
+	const std::filesystem::path worktreePath = outside.GetPath() / "side-tree";
+	AddWorktree(fixture, "side", worktreePath);
+
+	Core::Repository worktree = OpenRepositoryAt(worktreePath);
+	const std::vector<std::filesystem::path> files = worktree.IgnoreRuleFilesAbove(worktreePath);
+
+	bool namesCommonExclude = false;
+	bool namesCommonConfig = false;
+
+	for (const std::filesystem::path& file : files)
+	{
+		namesCommonExclude = namesCommonExclude || Core::SamePath(file, fixture.GetPath() / ".git" / "info" / "exclude");
+		namesCommonConfig = namesCommonConfig || Core::SamePath(file, fixture.GetPath() / ".git" / "config");
+	}
+
+	CHECK(namesCommonExclude);
+	CHECK(namesCommonConfig);
 }
 
 TEST_CASE("The branch checked out here is held by this working directory")

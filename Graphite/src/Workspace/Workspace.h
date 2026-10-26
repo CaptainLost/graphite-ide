@@ -18,6 +18,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -81,28 +82,37 @@ namespace Graphite {
 	using WatcherStart =
 		std::function<Core::Result<Core::Scope<Core::DirectoryWatcher>>(const std::filesystem::path& root)>;
 
-	// What a workspace given no worker does with a read: runs it at once, on the calling thread.
 	inline void RunJobWhereSubmitted(std::function<void()> job)
 	{
 		job();
 	}
 
-	// A read of the solution as a worker hands it back. The stamp is taken once the projects are named, so the next check
-	// of the files on disk compares against all of them.
+	using SolutionReading = std::function<Core::Result<Solution>(const std::filesystem::path& solution)>;
+
 	struct SolutionRead
 	{
 		std::uint64_t Generation = 0;
 		Core::Result<Solution> Read;
-		std::filesystem::file_time_type Stamp;
+		std::filesystem::file_time_type StampWithProjectsNamed;
+		bool ReaderThrew = false;
+	};
+
+	struct IgnoreSourceStamp
+	{
+		std::filesystem::path File;
+		std::optional<std::filesystem::file_time_type> WriteTime;
+		std::uintmax_t Size = 0;
+
+		bool operator==(const IgnoreSourceStamp&) const = default;
 	};
 
 	class Workspace final
 	{
 	public:
 		Workspace(Core::EventBus& events, AppSettings& settings, WatcherStart startWatcher = Core::DirectoryWatcher::Start,
-				  Core::JobSubmitter submitJob = RunJobWhereSubmitted)
+				  Core::JobSubmitter submitJob = RunJobWhereSubmitted, SolutionReading readSolution = ReadSolution)
 			: m_Events(events), m_AppSettings(settings), m_StartWatcher(std::move(startWatcher)),
-			  m_SubmitJob(std::move(submitJob))
+			  m_SubmitJob(std::move(submitJob)), m_ReadSolution(std::move(readSolution))
 		{
 		}
 
@@ -117,8 +127,6 @@ namespace Graphite {
 
 		void Update();
 
-		// Keeping the ignore answers suits a reload nobody asked for; an explicit refresh asks again, since a rules
-		// file outside the watched folder, such as the one core.excludesFile names, changes unseen.
 		void Reload(Core::IgnoreAnswers ignoreAnswers);
 
 		// WARNING: defined inline because panels built into the tests do not link Workspace.cpp;
@@ -145,8 +153,8 @@ namespace Graphite {
 
 		std::uint64_t GetSolutionLoad() const { return m_SolutionLoads; }
 
-		// While true, GetLoadedSolution holds the solution read before, if it is the same one, or nothing.
 		bool IsReadingSolution() const { return m_ReadingSolution; }
+		const std::optional<std::string>& GetSolutionReadFailure() const { return m_SolutionReadFailure; }
 		const std::filesystem::path& GetSelectedSolution() const { return m_SelectedSolution; }
 
 		const std::vector<std::filesystem::path>& GetSolutionCandidates() const
@@ -176,6 +184,8 @@ namespace Graphite {
 
 		void StartWatching(const std::filesystem::path& root, std::string_view failureContext);
 		void RereadEverything(Core::IgnoreAnswers ignoreAnswers);
+		void RefreshWholeTree(Core::IgnoreAnswers ignoreAnswers);
+		std::vector<IgnoreSourceStamp> StampIgnoreSourcesTheWatcherCannotSee() const;
 		bool IsInsideRoot(const std::filesystem::path& path) const;
 		bool IsIgnoredByRepository(const std::filesystem::path& path) const;
 		Core::Result<void> RefuseToOpenSolution(Core::Error error);
@@ -208,10 +218,12 @@ namespace Graphite {
 		AppSettings& m_AppSettings;
 		WatcherStart m_StartWatcher;
 		Core::JobSubmitter m_SubmitJob;
+		SolutionReading m_ReadSolution;
 		Core::Ref<Core::Mailbox<SolutionRead>> m_FinishedSolutionReads = Core::CreateRef<Core::Mailbox<SolutionRead>>();
 		std::uint64_t m_SolutionReadGeneration = 0;
 		bool m_ReadingSolution = false;
 		std::optional<Core::Repository> m_Repository;
+		std::vector<IgnoreSourceStamp> m_IgnoreSourceStamps;
 		Core::FileTree m_Tree;
 		Core::Scope<Core::DirectoryWatcher> m_Watcher;
 
@@ -219,6 +231,7 @@ namespace Graphite {
 		std::filesystem::path m_Root;
 
 		std::optional<Solution> m_Solution;
+		std::optional<std::string> m_SolutionReadFailure;
 		std::uint64_t m_SolutionLoads = 0;
 		std::vector<std::filesystem::path> m_SolutionCandidates;
 		std::filesystem::path m_SelectedSolution;
