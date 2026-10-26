@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Base/Result.h"
+#include "Core/FileSystem/FileSystem.h"
 #include "Core/Git/Checkout.h"
 #include "Core/Git/Commit.h"
 #include "Core/Git/Diff.h"
@@ -212,5 +213,6 @@ namespace Core {
 
 		std::unique_ptr<git_repository, Free> m_Handle;
 		std::filesystem::path m_WorkingDirectory;
+		PathKeyText m_WorkingDirectoryKey;
 	};
 }

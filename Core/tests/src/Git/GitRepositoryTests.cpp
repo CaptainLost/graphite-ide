@@ -8,6 +8,7 @@
 
 #include <git2.h>
 
+#include <cctype>
 #include <fstream>
 #include <string>
 
@@ -241,6 +242,45 @@ TEST_CASE("A file inside an ignored directory is ignored")
 	REQUIRE(opened.HasValue());
 
 	CHECK(opened.GetValue().IsIgnored(temp.GetPath() / "build" / "output.o"));
+}
+
+TEST_CASE("A path spelled with other case and other separators than the working directory is still asked about")
+{
+	TempDirectory temp;
+	InitRepository(temp.GetPath());
+	temp.MakeFile(".gitignore", "*.log\n");
+	temp.MakeFile("sub/error.log", "x");
+
+	Result<Repository> opened = Repository::Open(temp.GetPath());
+	REQUIRE(opened.HasValue());
+
+	const std::string forwardSlashedRoot = Core::ToGenericUtf8(temp.GetPath());
+	std::string otherCaseRoot;
+
+	for (const char character : forwardSlashedRoot)
+	{
+		otherCaseRoot += static_cast<char>(std::toupper(static_cast<unsigned char>(character)));
+	}
+
+	CHECK(opened.GetValue().IsIgnored(Core::FromUtf8(otherCaseRoot + "/sub/error.log")));
+	CHECK(opened.GetValue().IsIgnored(Core::FromUtf8(otherCaseRoot + "\\sub\\.\\error.log")));
+}
+
+TEST_CASE("A path outside the working directory is never ignored, even one whose folder name starts with it")
+{
+	TempDirectory temp;
+	const std::filesystem::path repositoryRoot = temp.MakeDirectory("repo");
+	InitRepository(repositoryRoot);
+	temp.MakeFile("repo/.gitignore", "*.log\n");
+	temp.MakeFile("repo-other/error.log", "x");
+	temp.MakeFile("outside.log", "x");
+
+	Result<Repository> opened = Repository::Open(repositoryRoot);
+	REQUIRE(opened.HasValue());
+
+	CHECK_FALSE(opened.GetValue().IsIgnored(temp.GetPath() / "repo-other" / "error.log"));
+	CHECK_FALSE(opened.GetValue().IsIgnored(temp.GetPath() / "outside.log"));
+	CHECK_FALSE(opened.GetValue().IsIgnored(repositoryRoot / ".." / "outside.log"));
 }
 
 TEST_CASE("A directory-only rule ignores the directory itself and not a similarly named file")

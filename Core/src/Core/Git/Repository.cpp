@@ -10,6 +10,7 @@
 #include <git2.h>
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -88,6 +89,7 @@ namespace Core {
 		Repository repository;
 		repository.m_Handle.reset(openedHandle);
 		repository.m_WorkingDirectory = WorkingDirectoryOf(openedHandle);
+		repository.m_WorkingDirectoryKey = PathKey(repository.m_WorkingDirectory);
 
 		return repository;
 	}
@@ -116,6 +118,7 @@ namespace Core {
 		Repository repository;
 		repository.m_Handle.reset(createdHandle);
 		repository.m_WorkingDirectory = WorkingDirectoryOf(createdHandle);
+		repository.m_WorkingDirectoryKey = PathKey(repository.m_WorkingDirectory);
 
 		return repository;
 	}
@@ -132,16 +135,16 @@ namespace Core {
 			return false;
 		}
 
-		std::error_code relativeError;
-		const std::filesystem::path relativePath =
-			std::filesystem::relative(path, m_WorkingDirectory, relativeError);
+		// WARNING: Cut from the spelling, never through std::filesystem::relative, which asks the disk to resolve both
+		// paths and costs as much as the ignore check itself.
+		const std::optional<std::filesystem::path> relativePath = RelativeToKey(path, m_WorkingDirectoryKey);
 
-		if (relativeError || !IsInsideTree(relativePath))
+		if (!relativePath.has_value() || !IsInsideTree(*relativePath))
 		{
 			return false;
 		}
 
-		const std::string gitPath = ToGitPath(relativePath);
+		const std::string gitPath = ToGitPath(*relativePath);
 
 		int ignoredFlag = 0;
 		if (git_ignore_path_is_ignored(&ignoredFlag, m_Handle.get(), gitPath.c_str()) != 0)
