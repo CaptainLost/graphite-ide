@@ -1,0 +1,230 @@
+#include "Image/PictureCanvas.h"
+
+#include "Core/ImGui/ImageTexture.h"
+#include "Core/ImGui/UiScale.h"
+
+#include <algorithm>
+#include <cmath>
+#include <cstdlib>
+
+namespace Graphite {
+
+	namespace {
+		constexpr ImU32 kDarkBackground = IM_COL32(13, 14, 16, 255);
+		constexpr ImU32 kLightBackground = IM_COL32(243, 244, 246, 255);
+		constexpr ImU32 kGridColour = IM_COL32(0, 0, 0, 128);
+		constexpr float kGridLineWidth = 1.0f;
+		constexpr float kCheckerSide = 8.0f;
+		constexpr float kCheckerNearShare = 0.06f;
+		constexpr float kCheckerFarShare = 0.14f;
+		constexpr float kSmallestItemSide = 1.0f;
+
+		// A touchpad reports a fraction of a notch, which still counts as one, as the terminal counts it.
+		int WholeNotches(float wheel)
+		{
+			return static_cast<int>(wheel > 0.0f ? std::ceil(wheel) : std::floor(wheel));
+		}
+
+		float SteppedZoom(float zoom, int notches)
+		{
+			for (int step = 0; step < std::abs(notches); ++step)
+			{
+				zoom = notches > 0 ? StepIn(zoom) : StepOut(zoom);
+			}
+
+			return zoom;
+		}
+
+		void HandleInput(ZoomState& zoom, ImVec2 picture, const ImRect& area, bool hovered, bool dragging)
+		{
+			const ImGuiIO& io = ImGui::GetIO();
+
+			if (dragging)
+			{
+				zoom.Pan.x += io.MouseDelta.x;
+				zoom.Pan.y += io.MouseDelta.y;
+				zoom = ClampPan(zoom, picture, area);
+			}
+
+			if (!hovered)
+			{
+				return;
+			}
+
+			// WARNING: The wheel is claimed on every hovered frame, not only when a notch arrives. ImGui applies the
+			// wheel to the window's own scroll at the start of the next frame and tests the ownership set during this one.
+			ImGui::SetKeyOwner(ImGuiKey_MouseWheelY, ImGui::GetItemID());
+
+			if (const int notches = WholeNotches(io.MouseWheel); notches != 0)
+			{
+				zoom = ZoomAround(zoom, SteppedZoom(zoom.Zoom, notches), io.MousePos, picture, area);
+			}
+
+			if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+			{
+				zoom.Zoom = zoom.Zoom == 1.0f ? FitZoom(picture, area.GetSize()) : 1.0f;
+				zoom.Pan = ImVec2(0.0f, 0.0f);
+			}
+		}
+
+		// Squares fixed in screen pixels from the picture's top-left corner, drawn only where the picture is seen.
+		void DrawCheckerboard(ImDrawList& drawList, const ImRect& placed, const ImRect& visible)
+		{
+			const ImVec4 content = ImGui::GetStyleColorVec4(ImGuiCol_WindowBg);
+			const ImVec4 text = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+			const ImU32 nearColour = ImGui::GetColorU32(ImLerp(content, text, kCheckerNearShare));
+			const ImU32 farColour = ImGui::GetColorU32(ImLerp(content, text, kCheckerFarShare));
+			const float side = Core::Scaled(kCheckerSide);
+			const auto edge = [side](float start, int square) { return start + static_cast<float>(square) * side; };
+
+			drawList.AddRectFilled(visible.Min, visible.Max, nearColour);
+
+			const int firstColumn = static_cast<int>(std::floor((visible.Min.x - placed.Min.x) / side));
+			const int firstRow = static_cast<int>(std::floor((visible.Min.y - placed.Min.y) / side));
+
+			for (int row = firstRow; edge(placed.Min.y, row) < visible.Max.y; ++row)
+			{
+				const float top = edge(placed.Min.y, row);
+				const int firstFarColumn = firstColumn + ((firstColumn + row) % 2 == 0 ? 1 : 0);
+
+				for (int column = firstFarColumn; edge(placed.Min.x, column) < visible.Max.x; column += 2)
+				{
+					const float left = edge(placed.Min.x, column);
+					ImRect square(left, top, left + side, top + side);
+					square.ClipWithFull(visible);
+					drawList.AddRectFilled(square.Min, square.Max, farColour);
+				}
+			}
+		}
+
+		void DrawBackground(ImDrawList& drawList, PictureBackground background, const ImRect& placed,
+							const ImRect& visible)
+		{
+			switch (background)
+			{
+			case PictureBackground::Checkerboard:
+				DrawCheckerboard(drawList, placed, visible);
+				return;
+			case PictureBackground::Dark:
+				drawList.AddRectFilled(visible.Min, visible.Max, kDarkBackground);
+				return;
+			case PictureBackground::Light:
+				drawList.AddRectFilled(visible.Min, visible.Max, kLightBackground);
+				return;
+			}
+		}
+
+		struct LineSpan
+		{
+			int First = 0;
+			int Last = -1;
+		};
+
+		// The lines between file pixels on one axis that fall within [from, to]; line n starts file pixel n.
+		LineSpan LinesWithin(float start, float pitch, int pixels, float from, float to)
+		{
+			return {std::max(1, static_cast<int>(std::ceil((from - start) / pitch))),
+					std::min(pixels - 1, static_cast<int>(std::floor((to - start) / pitch)))};
+		}
+
+		void DrawPixelGrid(ImDrawList& drawList, ImVec2 picture, const ImRect& placed, const ImRect& visible)
+		{
+			const float across = placed.GetWidth() / picture.x;
+			const float down = placed.GetHeight() / picture.y;
+
+			const LineSpan columns =
+				LinesWithin(placed.Min.x, across, static_cast<int>(picture.x), visible.Min.x, visible.Max.x);
+
+			for (int column = columns.First; column <= columns.Last; ++column)
+			{
+				const float x = std::round(placed.Min.x + static_cast<float>(column) * across);
+				drawList.AddRectFilled(ImVec2(x, visible.Min.y), ImVec2(x + kGridLineWidth, visible.Max.y), kGridColour);
+			}
+
+			const LineSpan rows = LinesWithin(placed.Min.y, down, static_cast<int>(picture.y), visible.Min.y, visible.Max.y);
+
+			for (int row = rows.First; row <= rows.Last; ++row)
+			{
+				const float y = std::round(placed.Min.y + static_cast<float>(row) * down);
+				drawList.AddRectFilled(ImVec2(visible.Min.x, y), ImVec2(visible.Max.x, y + kGridLineWidth), kGridColour);
+			}
+		}
+
+		void DrawPicture(const ZoomState& zoom, const PictureCanvasInput& input, const ImRect& area)
+		{
+			const ImRect placed = PlacePicture(zoom, input.Picture, area);
+			ImRect visible = placed;
+			visible.ClipWithFull(area);
+
+			if (visible.GetWidth() <= 0.0f || visible.GetHeight() <= 0.0f)
+			{
+				return;
+			}
+
+			ImDrawList& drawList = *ImGui::GetWindowDrawList();
+			drawList.PushClipRect(area.Min, area.Max, true);
+
+			DrawBackground(drawList, input.Background, placed, visible);
+
+			if (input.Texture != nullptr)
+			{
+				const Core::TextureSampling sampling =
+					zoom.Zoom >= kNearestFromZoom ? Core::TextureSampling::Nearest : Core::TextureSampling::Smooth;
+				Core::DrawTexture(drawList, *input.Texture, placed, sampling);
+			}
+
+			if (input.PixelGrid && zoom.Zoom >= kPixelGridFromZoom)
+			{
+				DrawPixelGrid(drawList, input.Picture, placed, visible);
+			}
+
+			drawList.PopClipRect();
+		}
+	}
+
+	PictureCanvasResult DrawPictureCanvas(const char* id, ZoomState& zoom, const PictureCanvasInput& input)
+	{
+		const ImVec2 origin = ImGui::GetCursorScreenPos();
+		const ImVec2 available = ImGui::GetContentRegionAvail();
+		const bool hasRoom = available.x > 0.0f && available.y > 0.0f;
+
+		// WARNING: InvisibleButton refuses a zero size, so a region with no room left is still laid out as one pixel.
+		const ImVec2 size(std::max(available.x, kSmallestItemSide), std::max(available.y, kSmallestItemSide));
+		const ImRect area(origin, ImVec2(origin.x + size.x, origin.y + size.y));
+		ImGui::InvisibleButton(id, size);
+
+		PictureCanvasResult result;
+		result.Area = area;
+
+		// Opening in a region with no room would fit the picture to a pixel and keep it that small.
+		if (!zoom.Opened)
+		{
+			if (!hasRoom)
+			{
+				return result;
+			}
+
+			zoom.Zoom = OpeningZoom(input.Picture, area.GetSize());
+			zoom.Pan = ImVec2(0.0f, 0.0f);
+			zoom.Opened = true;
+		}
+
+		const bool hovered = ImGui::IsItemHovered();
+		const bool dragging = ImGui::IsItemActive();
+		HandleInput(zoom, input.Picture, area, hovered, dragging);
+
+		if (hovered || dragging)
+		{
+			ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+		}
+
+		DrawPicture(zoom, input, area);
+
+		if (hovered)
+		{
+			result.Hovered = PixelUnder(ImGui::GetIO().MousePos, zoom, input.Picture, area);
+		}
+
+		return result;
+	}
+}
