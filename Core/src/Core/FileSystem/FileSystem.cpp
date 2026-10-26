@@ -112,18 +112,62 @@ namespace Core {
 			return (static_cast<std::uint64_t>(found.nFileSizeHigh) << kBitsInLowSizeHalf) | found.nFileSizeLow;
 		}
 
+		bool IsLinkToFollow(const WIN32_FIND_DATAW& found)
+		{
+			const bool isReparsePoint = (found.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+			const DWORD reparseTag = found.dwReserved0;
+
+			return isReparsePoint && (reparseTag == IO_REPARSE_TAG_SYMLINK || reparseTag == IO_REPARSE_TAG_MOUNT_POINT);
+		}
+
+		struct WhatALinkNames
+		{
+			bool IsDirectory = false;
+			std::uint64_t Size = 0;
+		};
+
+		// WARNING: A link lists as what it points at, and a dangling one as an empty file, never an unreadable folder.
+		WhatALinkNames FollowLink(const std::filesystem::path& link)
+		{
+			std::error_code statusError;
+			const std::filesystem::file_status target = std::filesystem::status(link, statusError);
+
+			if (statusError)
+			{
+				return WhatALinkNames{};
+			}
+
+			if (std::filesystem::is_directory(target))
+			{
+				return WhatALinkNames{.IsDirectory = true};
+			}
+
+			std::error_code sizeError;
+			const std::uintmax_t targetSize = std::filesystem::file_size(link, sizeError);
+
+			return WhatALinkNames{.Size = sizeError ? 0 : static_cast<std::uint64_t>(targetSize)};
+		}
+
 		DirectoryEntry EntryFound(const std::filesystem::path& folder, const WIN32_FIND_DATAW& found)
 		{
 			const std::filesystem::path fileName{found.cFileName};
-			const bool isDirectory = HasDirectoryAttribute(found.dwFileAttributes);
-
-			return DirectoryEntry{
+			DirectoryEntry entry{
 				.Path = folder / fileName,
 				.Name = ToUtf8(fileName),
-				.IsDirectory = isDirectory,
+				.IsDirectory = HasDirectoryAttribute(found.dwFileAttributes),
 				.IsHidden = HasHiddenAttribute(found.dwFileAttributes),
-				.Size = isDirectory ? 0 : SizeOf(found),
 			};
+
+			if (IsLinkToFollow(found))
+			{
+				const WhatALinkNames target = FollowLink(entry.Path);
+				entry.IsDirectory = target.IsDirectory;
+				entry.Size = target.Size;
+				return entry;
+			}
+
+			entry.Size = entry.IsDirectory ? 0 : SizeOf(found);
+			return entry;
 		}
 
 		std::error_code WindowsError(DWORD win32Error)

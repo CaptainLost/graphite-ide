@@ -15,7 +15,11 @@
 
 #ifdef CORE_PLATFORM_WINDOWS
 #include <windows.h>
+
+#include <winioctl.h>
 #endif
+
+#include <cstddef>
 
 using Core::DirectoryEntry;
 using Core::ErrorCode;
@@ -213,6 +217,137 @@ TEST_CASE("ReadDirectory lists the same entries, in the same order and with the 
 	REQUIRE(hiddenFolder != nullptr);
 	CHECK(hiddenFolder->IsHidden);
 	CHECK(hiddenFolder->IsDirectory);
+}
+
+TEST_CASE("ReadDirectory lists a link as what it points at, and a dangling link as an empty file")
+{
+	TempDirectory temporaryDirectory;
+	temporaryDirectory.MakeFile("target.txt", "twelve bytes");
+	temporaryDirectory.MakeFile("target-folder/inside.txt", "x");
+
+	const std::filesystem::path links = temporaryDirectory.MakeDirectory("links");
+	std::error_code linkError;
+	std::filesystem::create_symlink(temporaryDirectory.GetPath() / "target.txt", links / "file-link.txt", linkError);
+
+	if (linkError)
+	{
+		MESSAGE("Skipped: this process cannot create symbolic links: " << linkError.message());
+		return;
+	}
+
+	std::filesystem::create_directory_symlink(temporaryDirectory.GetPath() / "target-folder", links / "folder-link", linkError);
+	REQUIRE_FALSE(linkError);
+	std::filesystem::create_directory_symlink(temporaryDirectory.GetPath() / "gone", links / "dangling-link", linkError);
+	REQUIRE_FALSE(linkError);
+
+	const Core::Result<std::vector<DirectoryEntry>> listing = ReadDirectory(links);
+	REQUIRE(listing.HasValue());
+
+	const std::vector<DirectoryEntry> expected = ListedEntryByEntry(links);
+	REQUIRE(listing.GetValue().size() == expected.size());
+
+	for (std::size_t entryIndex = 0; entryIndex < expected.size(); ++entryIndex)
+	{
+		CAPTURE(expected[entryIndex].Name);
+		CHECK(listing.GetValue()[entryIndex].Name == expected[entryIndex].Name);
+		CHECK(listing.GetValue()[entryIndex].IsDirectory == expected[entryIndex].IsDirectory);
+		CHECK(listing.GetValue()[entryIndex].Size == expected[entryIndex].Size);
+	}
+
+	const DirectoryEntry* fileLink = FindEntry(listing.GetValue(), "file-link.txt");
+	const DirectoryEntry* folderLink = FindEntry(listing.GetValue(), "folder-link");
+	const DirectoryEntry* danglingLink = FindEntry(listing.GetValue(), "dangling-link");
+	REQUIRE(fileLink != nullptr);
+	REQUIRE(folderLink != nullptr);
+	REQUIRE(danglingLink != nullptr);
+
+	CHECK_FALSE(fileLink->IsDirectory);
+	CHECK(fileLink->Size == 12);
+	CHECK(folderLink->IsDirectory);
+	CHECK_FALSE(danglingLink->IsDirectory);
+	CHECK(danglingLink->Size == 0);
+}
+
+namespace {
+	constexpr std::size_t kReparseHeaderBytes = 8;
+	constexpr std::size_t kMountPointNameFieldBytes = 8;
+
+	void AppendBytes(std::vector<std::byte>& buffer, const void* data, std::size_t byteCount)
+	{
+		const std::byte* first = static_cast<const std::byte*>(data);
+		buffer.insert(buffer.end(), first, first + byteCount);
+	}
+
+	void AppendWord(std::vector<std::byte>& buffer, std::uint16_t word)
+	{
+		AppendBytes(buffer, &word, sizeof(word));
+	}
+
+	// WARNING: The reparse buffer's layout is the kernel's, and no user-mode header declares it.
+	bool MakeJunction(const std::filesystem::path& junction, const std::filesystem::path& target)
+	{
+		if (::CreateDirectoryW(junction.c_str(), nullptr) == FALSE)
+		{
+			return false;
+		}
+
+		const std::wstring substituteName = L"\\??\\" + target.wstring();
+		const std::wstring printName = target.wstring();
+		const std::size_t namesBytes = (substituteName.size() + 1 + printName.size() + 1) * sizeof(wchar_t);
+
+		std::vector<std::byte> buffer;
+		const DWORD tag = IO_REPARSE_TAG_MOUNT_POINT;
+		AppendBytes(buffer, &tag, sizeof(tag));
+		AppendWord(buffer, static_cast<std::uint16_t>(kMountPointNameFieldBytes + namesBytes));
+		AppendWord(buffer, 0);
+		AppendWord(buffer, 0);
+		AppendWord(buffer, static_cast<std::uint16_t>(substituteName.size() * sizeof(wchar_t)));
+		AppendWord(buffer, static_cast<std::uint16_t>((substituteName.size() + 1) * sizeof(wchar_t)));
+		AppendWord(buffer, static_cast<std::uint16_t>(printName.size() * sizeof(wchar_t)));
+		AppendBytes(buffer, substituteName.c_str(), (substituteName.size() + 1) * sizeof(wchar_t));
+		AppendBytes(buffer, printName.c_str(), (printName.size() + 1) * sizeof(wchar_t));
+
+		const HANDLE handle = ::CreateFileW(junction.c_str(), GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
+											FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+
+		if (handle == INVALID_HANDLE_VALUE)
+		{
+			return false;
+		}
+
+		DWORD bytesReturned = 0;
+		const BOOL set = ::DeviceIoControl(handle, FSCTL_SET_REPARSE_POINT, buffer.data(), static_cast<DWORD>(buffer.size()),
+										   nullptr, 0, &bytesReturned, nullptr);
+		::CloseHandle(handle);
+
+		return set != FALSE && buffer.size() == kReparseHeaderBytes + kMountPointNameFieldBytes + namesBytes;
+	}
+}
+
+TEST_CASE("ReadDirectory lists a junction as the folder it points at, and a dangling one as an empty file")
+{
+	TempDirectory temporaryDirectory;
+	temporaryDirectory.MakeFile("target-folder/inside.txt", "x");
+	const std::filesystem::path links = temporaryDirectory.MakeDirectory("links");
+
+	REQUIRE(MakeJunction(links / "folder-junction", temporaryDirectory.GetPath() / "target-folder"));
+	REQUIRE(MakeJunction(links / "dangling-junction", temporaryDirectory.GetPath() / "gone"));
+
+	const Core::Result<std::vector<DirectoryEntry>> listing = ReadDirectory(links);
+	REQUIRE(listing.HasValue());
+
+	const DirectoryEntry* folderJunction = FindEntry(listing.GetValue(), "folder-junction");
+	const DirectoryEntry* danglingJunction = FindEntry(listing.GetValue(), "dangling-junction");
+	REQUIRE(folderJunction != nullptr);
+	REQUIRE(danglingJunction != nullptr);
+
+	CHECK(folderJunction->IsDirectory);
+	CHECK_FALSE(danglingJunction->IsDirectory);
+	CHECK(danglingJunction->Size == 0);
+
+	std::error_code ignoredRemoveError;
+	std::filesystem::remove(links / "folder-junction", ignoredRemoveError);
+	std::filesystem::remove(links / "dangling-junction", ignoredRemoveError);
 }
 
 TEST_CASE("ReadDirectory of a drive root lists its entries without the dot entries")
