@@ -349,6 +349,19 @@ namespace Graphite {
 		ImGui::PopStyleColor();
 	}
 
+	bool DrawTreeLoader(const std::string& text, Core::WhileLoaderWaits whileWaiting)
+	{
+		const float inset = TreeRowChevronBoxLeft();
+
+		ImGui::Indent(inset);
+		ImGui::PushTextWrapPos(ListRowEndPosX());
+		const bool loaderShows = Core::LoadingLine(text.c_str(), whileWaiting);
+		ImGui::PopTextWrapPos();
+		ImGui::Unindent(inset);
+
+		return loaderShows;
+	}
+
 	void DrawFileRowLabel(const FileRowLayout& layout, const FileRowLook& look, const std::string& name)
 	{
 		if (!ImGui::IsItemVisible())

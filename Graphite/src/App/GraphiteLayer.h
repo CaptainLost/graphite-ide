@@ -215,7 +215,10 @@ namespace Graphite {
 
 		Core::FrameInput m_FrameInput;
 
-		Workspace m_Workspace{m_Events, m_AppSettings};
+		// WARNING: m_Jobs is declared below. The workspace submits only once the layer is attached, and its jobs hold
+		// nothing of it.
+		Workspace m_Workspace{m_Events, m_AppSettings, Core::DirectoryWatcher::Start,
+							  [this](std::function<void()> job) { m_Jobs.Submit(std::move(job)); }};
 		Core::DocumentSet m_Documents;
 
 		// WARNING: Declared before m_LanguageServices, whose root permission reads it, so it is destroyed after.

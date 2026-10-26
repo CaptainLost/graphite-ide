@@ -5,6 +5,7 @@
 #include "UI/Lists/ListRow.h"
 #include "Workspace/Workspace.h"
 
+#include "DeferredJobs.h"
 #include "DrawnColours.h"
 #include "ImGuiFrames.h"
 #include "TempAppSettings.h"
@@ -23,6 +24,7 @@
 #include <filesystem>
 #include <optional>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -97,7 +99,9 @@ namespace {
 	class SolutionScreen
 	{
 	public:
-		explicit SolutionScreen(const std::filesystem::path& solution)
+		explicit SolutionScreen(const std::filesystem::path& solution,
+								Core::JobSubmitter submitJob = Graphite::RunJobWhereSubmitted)
+			: Workspace{Events, Settings.Get(), Core::DirectoryWatcher::Start, std::move(submitJob)}
 		{
 			REQUIRE(Workspace.OpenSolution(solution));
 
@@ -188,7 +192,7 @@ namespace {
 		ImGuiFrames Frames;
 		TempAppSettings Settings;
 		Core::EventBus Events;
-		Graphite::Workspace Workspace{Events, Settings.Get()};
+		Graphite::Workspace Workspace;
 		Core::DocumentSet Documents;
 		Graphite::ModalGate Modals;
 		Graphite::SolutionTreeView View{Workspace, Documents, Events, Modals};
@@ -472,4 +476,69 @@ TEST_CASE("A remove question on screen when the workspace closes gives the modal
 	screen.Next();
 
 	CHECK_FALSE(screen.Modals.IsBusy());
+}
+
+TEST_CASE("Before the solution's first read lands, the solution view draws no tree, and draws it once the read lands")
+{
+	TempDirectory folder;
+	folder.MakeFile("Tools/Tools.csproj", kProject);
+	const std::filesystem::path solution = folder.MakeFile("App.slnx", kOneProjectSolution);
+
+	DeferredJobs jobs;
+	SolutionScreen screen{solution, jobs.Submitter()};
+
+	CHECK(screen.Workspace.IsReadingSolution());
+	CHECK(FindSolutionBody() == nullptr);
+
+	jobs.RunAll();
+	screen.Workspace.Update();
+	screen.Next();
+
+	CHECK_FALSE(screen.Workspace.IsReadingSolution());
+	CHECK(FindSolutionBody() != nullptr);
+}
+
+TEST_CASE("While the solution is read again, the solution view keeps its tree and adds a loader line once the wait shows")
+{
+	TempDirectory folder;
+	folder.MakeFile("Tools/Tools.csproj", kProject);
+	const std::filesystem::path solution = folder.MakeFile("App.slnx", kOneProjectSolution);
+
+	DeferredJobs jobs;
+	SolutionScreen screen{solution, jobs.Submitter()};
+	jobs.RunAll();
+	screen.Workspace.Update();
+
+	// WARNING: A window's content size is the one its previous frame laid out, so each check follows two frames.
+	screen.Next();
+	screen.Next();
+
+	const ImGuiWindow* body = FindSolutionBody();
+	REQUIRE(body != nullptr);
+	const float treeHeight = body->ContentSize.y;
+	REQUIRE(treeHeight > 0.0f);
+
+	screen.Workspace.ReloadSolution();
+	REQUIRE(screen.Workspace.IsReadingSolution());
+	screen.Next();
+	screen.Next();
+
+	CHECK(FindSolutionBody()->ContentSize.y == treeHeight);
+
+	constexpr int kFramesPastTheLoaderWait = 20;
+
+	for (int frameIndex = 0; frameIndex < kFramesPastTheLoaderWait; ++frameIndex)
+	{
+		screen.Next();
+	}
+
+	CHECK(FindSolutionBody()->ContentSize.y > treeHeight);
+
+	jobs.RunAll();
+	screen.Workspace.Update();
+	screen.Next();
+	screen.Next();
+
+	CHECK_FALSE(screen.Workspace.IsReadingSolution());
+	CHECK(FindSolutionBody()->ContentSize.y == treeHeight);
 }

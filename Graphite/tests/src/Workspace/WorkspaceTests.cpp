@@ -3,6 +3,7 @@
 #include "UI/ToastEvent.h"
 #include "Workspace/Workspace.h"
 
+#include "DeferredJobs.h"
 #include "TempAppSettings.h"
 #include "TempDirectory.h"
 
@@ -12,6 +13,7 @@
 #include "Core/Git/Repository.h"
 
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <string>
@@ -285,6 +287,158 @@ TEST_CASE("A rules file changed on disk makes the tree ask again about every ent
 
 	CHECK(IsRootChildIgnored(workspace, "notes.txt"));
 	CHECK_FALSE(IsRootChildIgnored(workspace, "build.log"));
+}
+
+namespace {
+	constexpr const char* kProject = R"(<Project Sdk="Microsoft.NET.Sdk"></Project>)";
+
+	constexpr const char* kOneProjectSolution = R"(<Solution>
+  <Project Path="Tools\Tools.csproj" />
+</Solution>
+)";
+
+	constexpr const char* kTwoProjectSolution = R"(<Solution>
+  <Project Path="Tools\Tools.csproj" />
+  <Project Path="Engine\Engine.csproj" />
+</Solution>
+)";
+
+	std::filesystem::path MakeSolution(TempDirectory& folder, const std::string& name, const char* text)
+	{
+		folder.MakeFile("Tools/Tools.csproj", kProject);
+		folder.MakeFile("Engine/Engine.csproj", kProject);
+		return folder.MakeFile(name, text);
+	}
+
+	struct SolutionWorkspace
+	{
+		explicit SolutionWorkspace(DeferredJobs& jobs)
+			: Workspace(Events, Settings.Get(), Core::DirectoryWatcher::Start, jobs.Submitter())
+		{
+		}
+
+		TempAppSettings Settings;
+		Core::EventBus Events;
+		ToastLog Log{Events};
+		Graphite::Workspace Workspace;
+	};
+}
+
+TEST_CASE("A folder's solution is read on a worker, and the workspace says it is reading until the read lands")
+{
+	TempDirectory folder;
+	MakeSolution(folder, "App.slnx", kOneProjectSolution);
+
+	DeferredJobs jobs;
+	SolutionWorkspace opened{jobs};
+
+	REQUIRE(opened.Workspace.OpenFolder(folder.GetPath()));
+
+	CHECK(opened.Workspace.IsReadingSolution());
+	CHECK_FALSE(opened.Workspace.GetLoadedSolution().has_value());
+	CHECK(jobs.Count() == 1);
+
+	jobs.RunAll();
+	opened.Workspace.Update();
+
+	CHECK_FALSE(opened.Workspace.IsReadingSolution());
+	REQUIRE(opened.Workspace.GetLoadedSolution().has_value());
+	CHECK(opened.Workspace.GetLoadedSolution()->ProjectCount == 1);
+	CHECK(opened.Log.Toasts.empty());
+}
+
+TEST_CASE("Reading the shown solution again keeps it until the new read lands")
+{
+	TempDirectory folder;
+	const std::filesystem::path solution = MakeSolution(folder, "App.slnx", kOneProjectSolution);
+
+	DeferredJobs jobs;
+	SolutionWorkspace opened{jobs};
+
+	REQUIRE(opened.Workspace.OpenFolder(folder.GetPath()));
+	jobs.RunAll();
+	opened.Workspace.Update();
+	REQUIRE(opened.Workspace.GetLoadedSolution().has_value());
+	const std::uint64_t loadBefore = opened.Workspace.GetSolutionLoad();
+
+	std::ofstream(solution, std::ios::binary | std::ios::trunc) << kTwoProjectSolution;
+	opened.Workspace.ReloadSolution();
+
+	CHECK(opened.Workspace.IsReadingSolution());
+	REQUIRE(opened.Workspace.GetLoadedSolution().has_value());
+	CHECK(opened.Workspace.GetLoadedSolution()->ProjectCount == 1);
+	CHECK(opened.Workspace.GetSolutionLoad() == loadBefore);
+
+	jobs.RunAll();
+	opened.Workspace.Update();
+
+	CHECK_FALSE(opened.Workspace.IsReadingSolution());
+	REQUIRE(opened.Workspace.GetLoadedSolution().has_value());
+	CHECK(opened.Workspace.GetLoadedSolution()->ProjectCount == 2);
+	CHECK(opened.Workspace.GetSolutionLoad() != loadBefore);
+}
+
+TEST_CASE("A read that a newer one replaced is dropped when it lands")
+{
+	TempDirectory folder;
+	const std::filesystem::path first = MakeSolution(folder, "Alpha.slnx", kOneProjectSolution);
+	const std::filesystem::path second = folder.MakeFile("Beta.slnx", kTwoProjectSolution);
+
+	DeferredJobs jobs;
+	SolutionWorkspace opened{jobs};
+
+	REQUIRE(opened.Workspace.OpenFolder(folder.GetPath()));
+	REQUIRE(opened.Workspace.GetSelectedSolution() == first);
+
+	opened.Workspace.SelectSolution(second);
+	CHECK(jobs.Count() == 2);
+
+	jobs.RunAll();
+	opened.Workspace.Update();
+
+	CHECK_FALSE(opened.Workspace.IsReadingSolution());
+	REQUIRE(opened.Workspace.GetLoadedSolution().has_value());
+	CHECK(opened.Workspace.GetLoadedSolution()->Path == second);
+	CHECK(opened.Workspace.GetLoadedSolution()->ProjectCount == 2);
+}
+
+TEST_CASE("A read of a folder closed before it lands is dropped, and an unreadable one says nothing then")
+{
+	TempDirectory folder;
+	folder.MakeFile("Broken.slnx", "<Solution><Project");
+
+	DeferredJobs jobs;
+	SolutionWorkspace opened{jobs};
+
+	REQUIRE(opened.Workspace.OpenFolder(folder.GetPath()));
+	REQUIRE(opened.Workspace.IsReadingSolution());
+
+	opened.Workspace.Close();
+	jobs.RunAll();
+	opened.Workspace.Update();
+
+	CHECK_FALSE(opened.Workspace.IsReadingSolution());
+	CHECK_FALSE(opened.Workspace.GetLoadedSolution().has_value());
+	CHECK(opened.Log.Toasts.empty());
+}
+
+TEST_CASE("Opening a solution while it is read is not a failure, and the failure is reported once the read says so")
+{
+	TempDirectory folder;
+	const std::filesystem::path broken = folder.MakeFile("Broken.slnx", "<Solution><Project");
+
+	DeferredJobs jobs;
+	SolutionWorkspace opened{jobs};
+
+	CHECK(opened.Workspace.OpenSolution(broken));
+	CHECK(opened.Log.Toasts.empty());
+
+	jobs.RunAll();
+	opened.Workspace.Update();
+
+	REQUIRE(opened.Log.Toasts.size() == 1);
+	CHECK(opened.Log.Toasts.front().Title == "Cannot open solution");
+	CHECK_FALSE(opened.Workspace.GetLoadedSolution().has_value());
 }
 
 TEST_CASE("An .slnx hides the .sln of the same name in the folder whatever the case of the name")

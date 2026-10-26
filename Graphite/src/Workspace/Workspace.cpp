@@ -86,6 +86,33 @@ namespace Graphite {
 				CarryNewestProjectWriteTime(child, newest);
 			}
 		}
+
+		std::filesystem::file_time_type SolutionStampOf(const std::filesystem::path& solutionPath, const Solution* solution)
+		{
+			std::error_code fileSystemError;
+			std::filesystem::file_time_type newest = std::filesystem::last_write_time(solutionPath, fileSystemError);
+
+			if (fileSystemError)
+			{
+				newest = std::filesystem::file_time_type{};
+			}
+
+			if (solution != nullptr)
+			{
+				CarryNewestProjectWriteTime(solution->Root, newest);
+			}
+
+			return newest;
+		}
+
+		SolutionRead ReadSolutionWithStamp(const std::filesystem::path& solutionPath, std::uint64_t generation)
+		{
+			Core::Result<Solution> read = ReadSolution(solutionPath);
+			const Solution* readSolution = read ? &read.GetValue() : nullptr;
+			const std::filesystem::file_time_type stamp = SolutionStampOf(solutionPath, readSolution);
+
+			return SolutionRead{.Generation = generation, .Read = std::move(read), .Stamp = stamp};
+		}
 	}
 
 	Core::Result<void> Workspace::OpenFolder(const std::filesystem::path& folderPath)
@@ -239,7 +266,9 @@ namespace Graphite {
 
 		m_Events.Publish(SolutionOpenedEvent{chosen});
 
-		if (!m_Solution)
+		const bool readFailed = !m_Solution && !m_ReadingSolution;
+
+		if (readFailed)
 		{
 			return Core::Error{Core::ErrorCode::InvalidArgument,
 							   std::format("cannot read '{}'", Core::ToUtf8(chosen))};
@@ -280,6 +309,7 @@ namespace Graphite {
 	void Workspace::Update()
 	{
 		m_Dialog.Poll();
+		TakeFinishedSolutionReads();
 
 		if (!m_Watcher)
 		{
@@ -614,6 +644,7 @@ namespace Graphite {
 			m_Solution.reset();
 			m_SelectedSolution.clear();
 			ForgetSolutionAttempt();
+			StopReadingSolution();
 			return;
 		}
 
@@ -634,54 +665,84 @@ namespace Graphite {
 
 		m_SolutionAttempted = true;
 		m_AttemptedSolution = m_SelectedSolution;
-
 		m_SolutionStamp = stamp;
-		m_Solution.reset();
+
+		const bool rereadsTheShownSolution = m_Solution.has_value() && m_Solution->Path == m_SelectedSolution;
+
+		if (!rereadsTheShownSolution)
+		{
+			m_Solution.reset();
+			++m_SolutionLoads;
+		}
+
+		StartReadingSolution();
+	}
+
+	void Workspace::StartReadingSolution()
+	{
+		const std::uint64_t generation = ++m_SolutionReadGeneration;
+		m_ReadingSolution = true;
+
+		m_SubmitJob([solutionPath = m_SelectedSolution, generation, finished = m_FinishedSolutionReads] {
+			finished->Post(ReadSolutionWithStamp(solutionPath, generation));
+		});
+
+		// WARNING: A job that runs where it is submitted has already finished here.
+		TakeFinishedSolutionReads();
+	}
+
+	// WARNING: A read already running cannot be stopped, so its answer is dropped when it lands instead.
+	void Workspace::StopReadingSolution()
+	{
+		++m_SolutionReadGeneration;
+		m_ReadingSolution = false;
+	}
+
+	void Workspace::TakeFinishedSolutionReads()
+	{
+		for (SolutionRead& finished : m_FinishedSolutionReads->TakeAll())
+		{
+			const bool answersTheLatestRead = m_ReadingSolution && finished.Generation == m_SolutionReadGeneration;
+
+			if (answersTheLatestRead)
+			{
+				m_ReadingSolution = false;
+				ApplySolutionRead(std::move(finished));
+			}
+		}
+	}
+
+	void Workspace::ApplySolutionRead(SolutionRead finished)
+	{
 		++m_SolutionLoads;
 
-		Core::Result<Solution> solution = ReadSolution(m_SelectedSolution);
-
-		if (!solution)
+		if (!finished.Read)
 		{
-			APP_WARN("Cannot read '{}': {}", Core::ToUtf8(m_SelectedSolution),
-					 solution.GetError().Message);
+			m_Solution.reset();
+
+			APP_WARN("Cannot read '{}': {}", Core::ToUtf8(m_SelectedSolution), finished.Read.GetError().Message);
 
 			m_Events.Publish(FolderToast(Core::ToastKind::Error, "Cannot open solution",
 										 std::format("Cannot read '{}': {}", Core::ToUtf8(m_SelectedSolution),
-													 solution.GetError().Message),
+													 finished.Read.GetError().Message),
 										 m_Root));
 			return;
 		}
 
-		m_Solution.emplace(std::move(solution).GetValue());
+		m_Solution.emplace(std::move(finished.Read).GetValue());
 
-		// WARNING: the stamp taken above saw the solution file alone; keeping it would make the
-		// very next call parse again, so it is taken again now that the projects are named.
-		m_SolutionStamp = ComputeSolutionStamp();
+		// WARNING: The stamp taken when the read started saw the solution file alone; keeping it would make the very
+		// next check read again, so the one taken with the projects named replaces it.
+		m_SolutionStamp = finished.Stamp;
 
-		APP_INFO("Solution '{}' loaded with {} projects", m_Solution->Name,
-				 m_Solution->ProjectCount);
+		APP_INFO("Solution '{}' loaded with {} projects", m_Solution->Name, m_Solution->ProjectCount);
 	}
 
 	std::filesystem::file_time_type Workspace::ComputeSolutionStamp() const
 	{
-		std::error_code fileSystemError;
-		std::filesystem::file_time_type newest =
-			std::filesystem::last_write_time(m_SelectedSolution, fileSystemError);
+		const Solution* shownSolution = m_Solution.has_value() ? &*m_Solution : nullptr;
 
-		if (fileSystemError)
-		{
-			newest = std::filesystem::file_time_type{};
-		}
-
-		if (!m_Solution)
-		{
-			return newest;
-		}
-
-		CarryNewestProjectWriteTime(m_Solution->Root, newest);
-
-		return newest;
+		return SolutionStampOf(m_SelectedSolution, shownSolution);
 	}
 
 	void Workspace::ForgetSolutionAttempt()
@@ -698,6 +759,7 @@ namespace Graphite {
 		m_SolutionCandidates.clear();
 		m_SelectedSolution.clear();
 		ForgetSolutionAttempt();
+		StopReadingSolution();
 	}
 
 	void Workspace::SelectSolution(const std::filesystem::path& path)

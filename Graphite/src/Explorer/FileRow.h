@@ -3,6 +3,8 @@
 #include "Git/GitDecorationView.h"
 #include "UI/FileIcons.h"
 
+#include "Core/ImGui/LoadingState.h"
+
 #include <imgui.h>
 
 #include <cstdint>
@@ -77,4 +79,7 @@ namespace Graphite {
 	// WARNING: Call this while the row's own item is the last one: the marker's tooltip is shown
 	// only while that item is hovered.
 	float DrawRowMarker(const RowStatus& status, const FileRowLayout& layout);
+
+	// A loader line where a tree row's chevron starts, wrapped at a row's end. Answers whether it shows yet.
+	bool DrawTreeLoader(const std::string& text, Core::WhileLoaderWaits whileWaiting);
 }

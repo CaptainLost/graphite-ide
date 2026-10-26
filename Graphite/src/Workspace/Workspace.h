@@ -8,6 +8,8 @@
 #include "Core/FileSystem/DirectoryWatcher.h"
 #include "Core/FileSystem/FileTree.h"
 #include "Core/Git/Repository.h"
+#include "Core/Jobs/JobSubmitter.h"
+#include "Core/Jobs/Mailbox.h"
 #include "Core/Platform/AsyncDialog.h"
 #include "Solution/SolutionReader.h"
 
@@ -79,11 +81,28 @@ namespace Graphite {
 	using WatcherStart =
 		std::function<Core::Result<Core::Scope<Core::DirectoryWatcher>>(const std::filesystem::path& root)>;
 
+	// What a workspace given no worker does with a read: runs it at once, on the calling thread.
+	inline void RunJobWhereSubmitted(std::function<void()> job)
+	{
+		job();
+	}
+
+	// A read of the solution as a worker hands it back. The stamp is taken once the projects are named, so the next check
+	// of the files on disk compares against all of them.
+	struct SolutionRead
+	{
+		std::uint64_t Generation = 0;
+		Core::Result<Solution> Read;
+		std::filesystem::file_time_type Stamp;
+	};
+
 	class Workspace final
 	{
 	public:
-		Workspace(Core::EventBus& events, AppSettings& settings, WatcherStart startWatcher = Core::DirectoryWatcher::Start)
-			: m_Events(events), m_AppSettings(settings), m_StartWatcher(std::move(startWatcher))
+		Workspace(Core::EventBus& events, AppSettings& settings, WatcherStart startWatcher = Core::DirectoryWatcher::Start,
+				  Core::JobSubmitter submitJob = RunJobWhereSubmitted)
+			: m_Events(events), m_AppSettings(settings), m_StartWatcher(std::move(startWatcher)),
+			  m_SubmitJob(std::move(submitJob))
 		{
 		}
 
@@ -125,6 +144,9 @@ namespace Graphite {
 		}
 
 		std::uint64_t GetSolutionLoad() const { return m_SolutionLoads; }
+
+		// While true, GetLoadedSolution holds the solution read before, if it is the same one, or nothing.
+		bool IsReadingSolution() const { return m_ReadingSolution; }
 		const std::filesystem::path& GetSelectedSolution() const { return m_SelectedSolution; }
 
 		const std::vector<std::filesystem::path>& GetSolutionCandidates() const
@@ -169,6 +191,10 @@ namespace Graphite {
 		void FindSolutions();
 		void KeepSelectedSolutionListed();
 		void LoadSolution();
+		void StartReadingSolution();
+		void StopReadingSolution();
+		void TakeFinishedSolutionReads();
+		void ApplySolutionRead(SolutionRead finished);
 
 		bool TouchesSolution(
 			const std::vector<std::filesystem::path>& directories) const;
@@ -181,6 +207,10 @@ namespace Graphite {
 		Core::EventBus& m_Events;
 		AppSettings& m_AppSettings;
 		WatcherStart m_StartWatcher;
+		Core::JobSubmitter m_SubmitJob;
+		Core::Ref<Core::Mailbox<SolutionRead>> m_FinishedSolutionReads = Core::CreateRef<Core::Mailbox<SolutionRead>>();
+		std::uint64_t m_SolutionReadGeneration = 0;
+		bool m_ReadingSolution = false;
 		std::optional<Core::Repository> m_Repository;
 		Core::FileTree m_Tree;
 		Core::Scope<Core::DirectoryWatcher> m_Watcher;

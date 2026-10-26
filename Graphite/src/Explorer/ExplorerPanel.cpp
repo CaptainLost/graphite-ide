@@ -50,8 +50,10 @@ namespace Graphite {
 			{"git.ignored.hide", "Hide", "Ignored Files: Hide", GitIgnoredDisplay::Hide},
 		};
 
+		// WARNING: Follows the solution chosen, not the one read: the read runs on a worker, and the choice would show
+		// nothing chosen until it lands.
 		PanelHeaderChoice SolutionChoice(const std::vector<std::filesystem::path>& candidates,
-										 const std::optional<Solution>& loaded)
+										 const std::filesystem::path& selected)
 		{
 			PanelHeaderChoice choice{.Id = kSolutionChoiceId, .Options = {}, .Selected = kNoOption};
 
@@ -59,7 +61,7 @@ namespace Graphite {
 			{
 				choice.Options.push_back(Core::ToUtf8(candidates[index].filename()));
 
-				if (loaded && candidates[index] == loaded->Path)
+				if (candidates[index] == selected)
 				{
 					choice.Selected = static_cast<int>(index);
 				}
@@ -179,7 +181,7 @@ namespace Graphite {
 
 		if (choosesSolution)
 		{
-			choices.push_back(SolutionChoice(candidates, m_Workspace.GetLoadedSolution()));
+			choices.push_back(SolutionChoice(candidates, m_Workspace.GetSelectedSolution()));
 		}
 
 		const std::vector<HeaderCommand> commands = HeaderCommands();

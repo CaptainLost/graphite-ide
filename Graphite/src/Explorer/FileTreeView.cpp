@@ -67,19 +67,6 @@ namespace Graphite {
 		{
 			return std::string{"New File from Template"} + std::string{kEllipsis};
 		}
-
-		bool DrawTreeLoader(const std::string& text, Core::WhileLoaderWaits whileWaiting)
-		{
-			const float inset = TreeRowChevronBoxLeft();
-
-			ImGui::Indent(inset);
-			ImGui::PushTextWrapPos(ListRowEndPosX());
-			const bool loaderShows = Core::LoadingLine(text.c_str(), whileWaiting);
-			ImGui::PopTextWrapPos();
-			ImGui::Unindent(inset);
-
-			return loaderShows;
-		}
 	}
 
 	void FileTreeView::ReportInvalidName(std::string title, const std::string& name)

@@ -6,6 +6,7 @@
 #include "Core/FileSystem/FileSystem.h"
 #include "Core/ImGui/ContextMenu.h"
 #include "Core/ImGui/EmptyState.h"
+#include "Core/ImGui/LoadingState.h"
 
 #include "Core/Platform/FileDialog.h"
 #include "Core/Text/DocumentSet.h"
@@ -36,6 +37,8 @@ namespace Graphite {
 
 	namespace {
 		const std::string kSolutionRootPath;
+		constexpr const char* kReadingTheSolution = "Reading the solution";
+		const std::string kReadingTheSolutionAgain = "Reading the solution again";
 		constexpr const char* kNoShortcut = nullptr;
 		constexpr bool kNotSelected = false;
 		constexpr bool kOpenTheRow = true;
@@ -136,6 +139,11 @@ namespace Graphite {
 			const ListBodyScope listBody;
 			constexpr const char* kFilteredTreeScope = "##filteredTree";
 			const bool filtering = m_Filter.IsActive();
+
+			if (m_Workspace.IsReadingSolution())
+			{
+				DrawTreeLoader(kReadingTheSolutionAgain, Core::WhileLoaderWaits::TakeNoRoom);
+			}
 
 			// WARNING: ImGui keeps a row's open state by its ID. Without a scope of their own, the rows the
 			// filter opens would stay open once it is cleared.
@@ -681,6 +689,12 @@ namespace Graphite {
 		if (!m_Workspace.IsOpen())
 		{
 			Core::EmptyState("Open a folder to see its Visual Studio solution.");
+			return;
+		}
+
+		if (m_Workspace.IsReadingSolution())
+		{
+			Core::LoadingState(kReadingTheSolution);
 			return;
 		}
 
