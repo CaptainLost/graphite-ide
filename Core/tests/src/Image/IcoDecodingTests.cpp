@@ -160,6 +160,8 @@ TEST_CASE("An ico with no entries is unreadable")
 
 	REQUIRE_FALSE(decoded.HasValue());
 	CHECK(decoded.GetError().Code == ErrorCode::InvalidArgument);
+	// The reason alone, which the caller puts after its own words.
+	CHECK(decoded.GetError().Message == "it holds no images");
 }
 
 TEST_CASE("A truncated ico is unreadable")

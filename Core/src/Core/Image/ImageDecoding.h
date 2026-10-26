@@ -31,6 +31,8 @@ namespace Core {
 		int MaximumSide = 16384;
 	};
 
+	// A TooLarge error's message is a whole line for the reader; any other's is the reason alone, for the caller to
+	// put after its own words, such as "Could not read this image: ".
 	Result<DecodedImage> DecodeImage(std::span<const std::uint8_t> bytes, ImageFormat format, const DecodeLimits& limits);
 
 	// Walks the GIF blocks and counts the image descriptors without decoding any pixels; 0 for bytes that are not a GIF.

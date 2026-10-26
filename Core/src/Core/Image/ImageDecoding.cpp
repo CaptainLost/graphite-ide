@@ -28,7 +28,7 @@ namespace Core {
 		Error Unreadable()
 		{
 			const char* reason = stbi_failure_reason();
-			return Error{ErrorCode::InvalidArgument, std::string{"Image cannot be read: "} + (reason != nullptr ? reason : "unknown format")};
+			return Error{ErrorCode::InvalidArgument, reason != nullptr ? reason : "unknown format"};
 		}
 
 		std::chrono::milliseconds FrameDelay(int milliseconds)
@@ -181,7 +181,7 @@ namespace Core {
 		if (stbi_info_from_memory(data, length, &width, &height, &channels) == 0)
 			return Unreadable();
 		if (width <= 0 || height <= 0)
-			return Error{ErrorCode::InvalidArgument, "Image cannot be read: it has no pixels"};
+			return Error{ErrorCode::InvalidArgument, "it has no pixels"};
 
 		const std::uint64_t pixelCount = static_cast<std::uint64_t>(width) * static_cast<std::uint64_t>(height);
 		if (pixelCount > limits.MaximumPixels)

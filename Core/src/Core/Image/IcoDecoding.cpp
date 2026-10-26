@@ -30,7 +30,7 @@ namespace Core {
 
 		Error Unreadable(const char* reason)
 		{
-			return Error{ErrorCode::InvalidArgument, std::string{"Icon cannot be read: "} + reason};
+			return Error{ErrorCode::InvalidArgument, reason};
 		}
 
 		std::uint16_t ReadU16(std::span<const std::uint8_t> bytes, std::size_t at)
